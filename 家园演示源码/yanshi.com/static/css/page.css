@@ -1,0 +1,62 @@
+/* Reset */
+body,div,p,a,table,textarea,form,input,img,ul,li{margin:0;padding:0;}
+body{font-size:14px;width:100%;margin:0 auto;border:1px solid #c6c6c6;}
+li{list-style:none;text-indent:0;}
+img,a img{border:0;}
+
+/* Common Elements */
+a{text-decoration:none;color:#004299;}
+a:visited {color:#800080;}
+
+/* Header Details */
+.main-nav{padding:1px 0 0 12px;background:#7bd3ed url(../image/bg_main_nav2.png) no-repeat;}
+.main-nav p{line-height:20px;}
+.main-nav p a{margin:0 7px 0 0;color:#fff;}
+.search-box{padding:3px 0 3px 35px;background:#e0eef3 url(../image/icon_soso.gif) 12px 6px no-repeat;}
+.search-box .ipt-txt{width:125px;height:18px;margin:0 3px 0 0;border:1px solid #b1d5e5;}
+
+.ads{border:1px solid #c6c6c6;overflow:hidden;}
+.dotline{border-bottom:#E8E8E8 1px dotted;margin:3px;}
+.wid{white-space:nowrap;text-overflow:ellipsis;-o-text-overflow:ellipsis;overflow:hidden;}
+.box{padding: 3px;border: 1px solid #2e9cd3;background-color: #FFFFFF;color: #000000;margin: auto;text-align: left;word-break: break-all;word-wrap: break-word;border-radius: 5px;}
+.bnav{padding: 5px;background-color: #2e9cd3;color: #FFFFFF;margin: auto;text-align: left;}
+.bnav a{color: #fff;}
+.bline{padding: 5px;background-color: #FFF;color: #000;margin: auto;text-align: left;line-height: 20px;}
+.draw-line{margin:2px 0 1px;padding:0 5px;border:1px solid #00FFFF;}
+
+/*顶部导航*/
+.top_nav{overflow:hidden;padding:0 5px;border-bottom:#d9d9d9 solid 1px;height:22px;line-height:22px;color:#666;background-color:#f3f3f3;}
+.top_nav a{color:#666;}
+.top_nav span{float:right;}
+.top_nav span a{padding:0 5px;}
+
+/* Common Buttons */
+.ipt-btn-gray-s{width:40px;height:20px;border:none;background:url(../image/btn_s_gray.gif) no-repeat;}
+.ipt-btn-gray-m{width:60px;height:20px;border:none;background:url(../image/btn_m_gray.gif) no-repeat;}
+.ipt-btn-gray-l{width:80px;height:20px;border:none;background:url(../image/btn_l_gray.gif) no-repeat;}
+.ipt-btn-gray-xl{width:100px;height:20px;border:none;background:url(../image/btn_xl_gray.gif) no-repeat;}
+.ipt-txt{margin-right:3px;}
+.ipt-intro{margin-right:3px;}
+
+/* Header Details */
+.site-logo{padding:5px 0 0 10px;background:#fff;}
+
+/* Module Details */
+.tab-nav{height:24px;line-height:24px;padding:0 0 0 12px;background:#e7e7e7 url(../image/bg_tab_nav.png) repeat-x;}
+.tab-nav .separate{margin-left:5px;margin-right:5px;}
+.title-nav{height:25px;padding:0 5px;background:#71afe3 url(http://3gqq.cn/template/default/images/title_nav.gif) repeat-x;line-height:25px;color:#fff;}
+.title-nav a{color:#fff;}
+.module-title{padding:0 0 0 5px;height:20px;line-height:20px;border-bottom:3px solid #9FC6EC;color:#000;font-weight:bold;}
+.module-title a{color:#0051A4;}
+.module-content{line-height:1.3;padding:3px 5px;word-wrap:break-word;}
+.module-content img{margin-right:2px;vertical-align:middle;}
+.note{background:#FFF9B7;border-bottom:1px solid #9FC6EC;}
+.deep{background:#E3EEF8;border:1px solid #9FC6EC;border-left:none;border-right:none;}
+
+/* Footer Details */
+.footer{padding:5px;background:#F5FFFA;border-top:1px solid #9FC6EC;}
+.footer p{text-align:center;line-height:18px;color:#515151;}
+.footer p a{color:#0051A4;}
+.footer .separate{margin-left:3px;margin-right:3px;}
+.footer .txt-em{}
+.footer .version a{color:#004299;}

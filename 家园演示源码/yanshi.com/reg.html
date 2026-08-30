@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://www.wapforum.org/DTD/xhtml-mobile10.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>用户注册-3GQQ家园社区</title>
+<link rel="stylesheet" href="static/css/style.css" type="text/css">
+<link rel="stylesheet" href="static/css/common.css" type="text/css">
+<script type="text/javascript" src="static/js/base1.js"></script>
+<script type="text/javascript" src="static/js/jquery.js"></script>
+<script type="text/javascript" src="static/js/common.js"></script>
+</head>
+<body>
+<img src="static/picture/2.png" width="255" height="65" alt="logo"><br>
+欢迎来到3GQQ家园社区，完善下面的信息注册家园账号，开启社区之旅吧！<a href="1257098.html">专属靓号注册</a><img src="static/picture/liang.gif" alt="靓号"><br>
+<form action="/login/reg.html" method="post">
+<input type="hidden" name="act" value="ok">
+<div class="submit">
+<div class="item">
+<div class="text">您的昵称:</div>
+<div class="box"><input type="text" name="name" maxlength="20" value=""></div>
+</div>
+<div class="hblank"></div>
+<div class="item">
+<div class="text">您的性别:</div>
+<div class="box">
+<select name="sex">
+<option value="1">小哥哥</option>
+<option value="2">小姐姐</option>
+</select>
+</div>
+</div>
+<div class="hblank"></div>
+<div class="item">
+<div class="text">手机号码:</div>
+<div class="box"><input type="text" name="phone" maxlength="20" value=""></div>
+</div>
+<div class="hblank"></div>
+<div class="item">
+<div class="text">登录密码:</div>
+<div class="box"><input type="text" name="pass" maxlength="20" value=""></div>
+</div>
+<div class="hblank"></div>
+<input type="hidden" name="vid" value="0">
+<div class="item">
+<div class="text">短信验证:</div>
+<div class="box"><input type="text" name="code" maxlength="20" value=""><div class="code"><button id="send" type="button" class="send">获取验证码</button></div></div>
+</div>
+<div class="hblank"></div>
+<button type="submit" class="button">提交注册</button>
+</div>
+</form>
+注册异常请联系QQ：1130395504<br>-------------<br>
+<div class="footer">
+<p>
+<a href="index11.html">3GQQ家园社区</a>-<a href="index.html">社区广场</a>-<a href="114.html">导航</a>-<a href="login4.html">登录</a><br>
+</p>
+<p>
+小Q报时：2022-05-03 01:41:58<br>
+</p>
+</div>
+<script>stat(); push();</script>
+<!--Processed in 0 second(s)-->
+<script>
+$(document).ready(function () {
+$('#send').click(function () {
+var time = 180;
+var send = $(this);
+var phone = $('input[name="phone"]').val();
+if (phone == '') {
+Dialog('手机号码不能为空！');
+}
+else {
+var rephone = /^1\d{10}$/;
+if (!rephone.test(phone)) {
+Dialog('请填写正确手机号码！');
+}
+else {
+send.attr('disabled', 'true').html('正在获取');
+$.ajax({
+url: '/server/sms.aspx',
+type: 'post',
+data: { tid: 1, name: phone },
+dataType: 'json',
+success: function (json) {
+Dialog(json.prompt);
+send.html('重新获取(' + time + 's)');
+var t = setInterval(function () {
+time--;
+send.html('重新获取(' + time + 's)');
+if (time == 0) {
+clearInterval(t);
+send.html('重新获取');
+send.removeAttr('disabled');
+}
+}, 1000);
+var status = json.status;
+if (status == 0) {
+$('input[name="vid"]').val(json.vid);
+}
+},
+error: function () {
+Dialog('系统错误，请稍候再试！');
+send.removeAttr('disabled').html('获取验证码');
+}
+});
+}
+}
+});
+});
+</script>
+</body>
+</html>

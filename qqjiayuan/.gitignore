@@ -1,0 +1,5 @@
+server/server.exe
+server/*.exe
+web/node_modules
+web/dist
+shots/

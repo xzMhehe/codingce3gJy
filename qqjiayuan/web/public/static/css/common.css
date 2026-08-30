@@ -1,0 +1,19 @@
+html{font-size:10px;}
+*{margin:0;padding:0;}
+input,button,textarea{font-size:1.4rem;font-weight:300;border:none;outline:none;-webkit-appearance:none;}
+.hblank{height:1rem;overflow:hidden;}
+.dialog{top:40%;left:40%;padding:0.5rem 0.8rem;text-align:center;position:fixed;border-radius:0.5rem;font-size:1.6rem;color:#fff;background:rgba(0, 0, 0, 0.7);box-shadow:0 0.2rem 0.3rem #9b9b9b;z-index:9999;}
+.submit{padding:0.5rem;background:#fff;font-size:1.5rem;}
+.submit p{margin-bottom:0.3rem;}
+.submit .item{height:3rem;position:relative;}
+.submit .item .text{width:7rem;height:3rem;line-height:3rem;position:absolute;}
+.submit .item .box{left:7rem;right:0;height:3rem;line-height:3rem;position:absolute;}
+.submit .item .box input{width:100%;height:2.8rem;line-height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;text-indent:0.5rem;}
+.submit .item .box select{width:100%;height:2.8rem;line-height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;text-indent:0.2rem;}
+.submit .item .box textarea{padding:0.3rem 0.5rem;width:100%;height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;}
+.submit .item .box .hide{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://3gqq.cn/template/default/images/hide.png) no-repeat;background-size:4rem auto;position:absolute;}
+.submit .item .box .show{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://3gqq.cn/template/default/images/show.png) no-repeat;background-size:4rem auto;position:absolute;}
+.submit .item .box .code{top:0;right:0.2rem;position:absolute;}
+.submit .item .box .send{color:#f40;background:#fff;font-size:1.4rem;}
+.submit textarea{padding:0.5rem;width:100%;line-height:2rem;background:#fff;font-size:1.4rem;display:block;box-sizing:border-box;border:0.1rem solid #d6d6d6;border-radius:0.1rem;}
+.submit .button{width:100%;height:3.5rem;line-height:3.5rem;text-align:center;border-radius:0.5rem;font-size:1.6rem;color:#fff;background:#ffa100;cursor:pointer;}

@@ -1,0 +1,207 @@
+package router
+
+import (
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
+	"qqjiayuan/server/internal/config"
+	"qqjiayuan/server/internal/handler"
+	"qqjiayuan/server/internal/middleware"
+)
+
+func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
+	r := gin.Default()
+	r.Use(middleware.CORS())
+
+	authH := &handler.AuthHandler{DB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
+	userH := &handler.UserHandler{DB: db}
+	boardH := &handler.BoardHandler{DB: db}
+	threadH := &handler.ThreadHandler{DB: db}
+	plazaH := &handler.PlazaHandler{DB: db}
+	signH := &handler.SignHandler{DB: db}
+	friendH := &handler.FriendHandler{DB: db}
+	msgH := &handler.MessageHandler{DB: db}
+	chatH := &handler.ChatHandler{DB: db}
+	notifyH := &handler.NotifyHandler{DB: db}
+	adminH := &handler.AdminHandler{DB: db}
+	badgeH := &handler.BadgeHandler{DB: db}
+	gameH := &handler.GameHandler{DB: db}
+	resH := &handler.ResourceHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
+	spaceH := &handler.SpaceHandler{DB: db}
+	moodH := &handler.MoodHandler{DB: db}
+
+	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
+	perm := middleware.RequirePerm
+
+	api := r.Group("/api")
+	{
+		// 公开接口
+		api.POST("/auth/register", authH.Register)
+		api.POST("/auth/login", authH.Login)
+		api.GET("/auth/find", authH.FindAccount)
+		api.GET("/plaza", plazaH.Index)
+		api.GET("/search", plazaH.Search)
+		api.GET("/boards", boardH.Tree)
+		api.GET("/boards/:id", boardH.Info)
+		api.GET("/boards/:id/threads", boardH.Threads)
+		api.GET("/threads/:id", threadH.Detail)
+		api.GET("/users/:id", userH.Profile)
+		api.GET("/badges", badgeH.List)
+		api.GET("/badge-presets", badgeH.Presets)
+		api.GET("/games", gameH.List)
+		api.GET("/privs", resH.Privs)
+
+		// 空间公开接口
+		api.GET("/space/:userId", spaceH.SpaceInfo)
+		api.GET("/space/:userId/moods", spaceH.MoodList)
+		api.GET("/space/:userId/articles", spaceH.ArticleList)
+		api.GET("/space/:userId/albums", spaceH.AlbumList)
+		api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
+		api.GET("/space/:userId/visitors", spaceH.VisitorList)
+		api.GET("/space/article/:id", spaceH.ArticleDetail)
+
+		authed := api.Group("/", jwtM)
+		{
+			authed.GET("/auth/me", authH.Me)
+			authed.PUT("/auth/password", authH.ChangePassword)
+			authed.PUT("/users/me", userH.UpdateMe)
+			authed.POST("/boards/:id/threads", boardH.CreateThread)
+			authed.PUT("/threads/:id", threadH.Update)
+			authed.POST("/threads/:id/replies", threadH.Reply)
+			authed.DELETE("/threads/:id", threadH.DeleteThread)
+			authed.DELETE("/replies/:id", threadH.DeleteReply)
+
+			authed.POST("/signin", signH.Do)
+			authed.GET("/signin/info", signH.Info)
+			authed.GET("/friends", friendH.List)
+			authed.POST("/friends", friendH.Add)
+			authed.POST("/friends/:id/handle", friendH.Handle)
+			authed.DELETE("/friends/:id", friendH.Remove)
+
+			authed.GET("/messages/conversations", msgH.Conversations)
+			authed.GET("/messages/with/:id", msgH.With)
+			authed.POST("/messages", msgH.Send)
+			authed.GET("/chat", chatH.List)
+			authed.POST("/chat", chatH.Send)
+			authed.GET("/notifications", notifyH.List)
+			authed.POST("/notifications/read", notifyH.ReadAll)
+
+			// 空间认证接口
+			authed.POST("/space", spaceH.OpenSpace)
+			authed.PUT("/space", spaceH.UpdateSpace)
+			authed.POST("/space/mood", spaceH.MoodAdd)
+			authed.DELETE("/space/mood/:id", spaceH.MoodDel)
+			authed.POST("/space/mood/:id/comment", spaceH.MoodCommentAdd)
+			authed.POST("/space/mood/:id/forward", spaceH.MoodForward)
+			authed.POST("/space/article", spaceH.ArticleAdd)
+			authed.DELETE("/space/article/:id", spaceH.ArticleDel)
+			authed.POST("/space/album", spaceH.AlbumCreate)
+			authed.POST("/space/message/:userId", spaceH.SpaceMsgAdd)
+			authed.DELETE("/space/message/:id", spaceH.SpaceMsgDel)
+			authed.POST("/space/visit/:userId", spaceH.VisitSpace)
+
+			// 我的心情（家园个人动态，不依赖空间）
+			authed.GET("/moods", moodH.List)
+			authed.POST("/moods", moodH.Add)
+			authed.DELETE("/moods/:id", moodH.Del)
+			authed.GET("/moods/latest", moodH.Latest)
+
+			// 管理后台（RBAC 权限点）
+			admin := authed.Group("/admin")
+			{
+				admin.GET("/stats", perm(db, "admin:access"), adminH.Stats)
+
+				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
+				admin.PUT("/users/:id/status", perm(db, "user:manage"), adminH.UserStatus)
+				admin.PUT("/users/:id/password", perm(db, "user:manage"), adminH.ResetPassword)
+				admin.PUT("/users/:id/roles", perm(db, "user:manage"), adminH.UserRoles)
+				admin.PUT("/users/:id/badges", perm(db, "badge:manage"), badgeH.UserBadges)
+				admin.PUT("/users/:id/extras", perm(db, "user:manage"), adminH.UserExtras)
+
+				admin.GET("/badges", perm(db, "badge:manage"), badgeH.AdminList)
+				admin.POST("/badges", perm(db, "badge:manage"), badgeH.Create)
+				admin.PUT("/badges/:id", perm(db, "badge:manage"), badgeH.Update)
+				admin.DELETE("/badges/:id", perm(db, "badge:manage"), badgeH.Delete)
+
+				admin.GET("/games", perm(db, "game:manage"), gameH.AdminList)
+				admin.POST("/games", perm(db, "game:manage"), gameH.Create)
+				admin.PUT("/games/:id", perm(db, "game:manage"), gameH.Update)
+				admin.DELETE("/games/:id", perm(db, "game:manage"), gameH.Delete)
+
+				admin.GET("/resources", perm(db, "admin:access"), resH.List)
+				admin.PUT("/resources/:id", perm(db, "admin:access"), resH.Update)
+				admin.POST("/resources/sync", perm(db, "admin:access"), resH.Sync)
+
+				admin.GET("/boards", perm(db, "board:manage"), adminH.Boards)
+				admin.POST("/boards", perm(db, "board:manage"), adminH.CreateBoard)
+				admin.PUT("/boards/:id", perm(db, "board:manage"), adminH.UpdateBoard)
+				admin.DELETE("/boards/:id", perm(db, "board:manage"), adminH.DeleteBoard)
+
+				admin.GET("/threads", perm(db, "thread:manage"), adminH.Threads)
+				admin.PUT("/threads/:id", perm(db, "thread:manage"), adminH.UpdateThread)
+				admin.DELETE("/threads/:id", perm(db, "thread:manage"), adminH.DeleteThread)
+				admin.DELETE("/replies/:id", perm(db, "thread:manage"), adminH.DeleteReply)
+
+				admin.GET("/announcements", perm(db, "announcement:manage"), adminH.Announcements)
+				admin.POST("/announcements", perm(db, "announcement:manage"), adminH.CreateAnnouncement)
+				admin.PUT("/announcements/:id", perm(db, "announcement:manage"), adminH.UpdateAnnouncement)
+				admin.DELETE("/announcements/:id", perm(db, "announcement:manage"), adminH.DeleteAnnouncement)
+
+				admin.GET("/roles", perm(db, "role:manage"), adminH.Roles)
+				admin.GET("/permissions", perm(db, "role:manage"), adminH.Permissions)
+				admin.POST("/roles", perm(db, "role:manage"), adminH.CreateRole)
+				admin.PUT("/roles/:id/perms", perm(db, "role:manage"), adminH.UpdateRolePerms)
+				admin.DELETE("/roles/:id", perm(db, "role:manage"), adminH.DeleteRole)
+
+				// 空间管理
+				admin.GET("/spaces", perm(db, "user:manage"), spaceH.AdminSpaces)
+				admin.PUT("/spaces/:id/status", perm(db, "user:manage"), spaceH.AdminSpaceStatus)
+				admin.DELETE("/spaces/:id", perm(db, "user:manage"), spaceH.AdminSpaceDelete)
+				admin.GET("/spaces/:userId/moods", perm(db, "user:manage"), spaceH.AdminSpaceMoods)
+				admin.DELETE("/moods/:id", perm(db, "user:manage"), spaceH.AdminDeleteMood)
+				admin.GET("/spaces/:userId/articles", perm(db, "user:manage"), spaceH.AdminSpaceArticles)
+				admin.DELETE("/articles/:id", perm(db, "user:manage"), spaceH.AdminDeleteArticle)
+				admin.GET("/spaces/:userId/albums", perm(db, "user:manage"), spaceH.AdminSpaceAlbums)
+				admin.GET("/spaces/:userId/messages", perm(db, "user:manage"), spaceH.AdminSpaceMessages)
+				admin.GET("/spaces/:userId/visitors", perm(db, "user:manage"), spaceH.AdminSpaceVisitors)
+				admin.GET("/albums/:id/photos", perm(db, "user:manage"), spaceH.AdminAlbumPhotos)
+				admin.DELETE("/photos/:id", perm(db, "user:manage"), spaceH.AdminDeletePhoto)
+				admin.DELETE("/albums/:id", perm(db, "user:manage"), spaceH.AdminDeleteAlbum)
+				admin.DELETE("/space-messages/:id", perm(db, "user:manage"), spaceH.AdminDeleteSpaceMessage)
+			}
+		}
+	}
+
+	// 生产模式：托管前端构建产物
+	if cfg.Server.WebDir != "" {
+		if st, err := os.Stat(cfg.Server.WebDir); err == nil && st.IsDir() {
+			r.Static("/assets", cfg.Server.WebDir+"/assets")
+			r.NoRoute(func(c *gin.Context) {
+				path := c.Request.URL.Path
+				if path == "/" || !strings.Contains(path, ".") {
+					c.File(cfg.Server.WebDir + "/index.html")
+					return
+				}
+				if _, err := os.Stat(cfg.Server.WebDir + path); err == nil {
+					c.File(cfg.Server.WebDir + path)
+					return
+				}
+				c.File(cfg.Server.WebDir + "/index.html")
+			})
+		}
+	}
+	// 管理系统前端（/admin-ui/，FileServer 对目录根自动回 index.html）
+	if cfg.Server.AdminWebDir != "" {
+		if st, err := os.Stat(cfg.Server.AdminWebDir); err == nil && st.IsDir() {
+			r.Static("/admin-ui", cfg.Server.AdminWebDir)
+		}
+	}
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": "3GQQ家园社区 API 运行中"})
+	})
+	return r
+}

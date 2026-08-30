@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  # 生产模式下托管前端构建产物目录（web/dist），留空则为纯 API 服务
+  web_dir: "../web/dist"
+  # 管理系统前端（admin-web/dist），托管在 /admin-ui/
+  admin_web_dir: "../admin-web/dist"
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "1234567890"
+  dbname: qq_jiayuan
+
+jwt:
+  secret: "qq-jiayuan-secret-2026-do-not-leak"
+  expire_hours: 168
