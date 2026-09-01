@@ -7,7 +7,7 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="角色名" min-width="110">
+        <el-table-column label="角色名" min-width="120">
           <template slot-scope="{row}"><b>{{ row.name }}</b></template>
         </el-table-column>
         <el-table-column prop="code" label="编码" width="120" />
@@ -18,7 +18,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="说明" min-width="140" show-overflow-tooltip />
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

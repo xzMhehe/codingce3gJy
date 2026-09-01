@@ -10,14 +10,14 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="名称" min-width="160" show-overflow-tooltip>
+        <el-table-column label="名称" min-width="170" show-overflow-tooltip>
           <template slot-scope="{row}">
             <template v-if="row.parent_id">└ </template>
             <b v-else>{{ row.name }}</b>
             <span v-if="row.parent_id">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="层级" width="80">
+        <el-table-column label="层级" width="90">
           <template slot-scope="{row}">{{ row.parent_id ? '子板块' : '分区' }}</template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="240" show-overflow-tooltip />
@@ -28,7 +28,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="thread_count" label="帖数" width="60" />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

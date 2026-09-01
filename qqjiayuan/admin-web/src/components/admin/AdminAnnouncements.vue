@@ -12,7 +12,7 @@
             <el-tag :type="{ notice: '', broadcast: 'warning', activity: 'success' }[row.type]" size="mini">{{ typeName(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="content" label="内容" min-width="240" show-overflow-tooltip />
         <el-table-column label="状态" width="80">
           <template slot-scope="{row}">
@@ -22,7 +22,7 @@
         <el-table-column label="发布时间" width="150">
           <template slot-scope="{row}">{{ fmt(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

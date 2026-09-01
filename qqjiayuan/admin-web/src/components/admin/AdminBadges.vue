@@ -10,9 +10,9 @@
         <el-table-column label="图标" width="80">
           <template slot-scope="{row}"><img class="bicon" :src="'/static/picture/' + row.icon" :alt="row.name"></template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="110" />
+        <el-table-column prop="name" label="名称" min-width="120" />
         <el-table-column prop="remark" label="说明" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

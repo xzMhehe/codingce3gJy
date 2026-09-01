@@ -11,7 +11,7 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="标题" min-width="220" show-overflow-tooltip>
+        <el-table-column label="标题" min-width="240" show-overflow-tooltip>
           <template slot-scope="{row}">
             <el-tag v-if="row.is_top" type="danger" size="mini" style="margin-right:4px">顶</el-tag>
             <el-tag v-if="row.is_fine" type="success" size="mini" style="margin-right:4px">精</el-tag>
@@ -24,10 +24,10 @@
         <el-table-column label="楼主" min-width="100" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.user ? row.user.nickname : '—' }}</template>
         </el-table-column>
-        <el-table-column label="数据" width="100">
+        <el-table-column label="数据" width="110">
           <template slot-scope="{row}">{{ row.view_count }}阅/{{ row.reply_count }}回</template>
         </el-table-column>
-        <el-table-column label="操作" width="340" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

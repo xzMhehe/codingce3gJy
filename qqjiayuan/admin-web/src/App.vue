@@ -83,7 +83,15 @@ export default {
       }
     }
   },
-  watch: { $route () { this.loadUser() } },
+  watch: {
+    $route () {
+      this.loadUser()
+      this.$nextTick(() => {
+        const wrap = this.$el && this.$el.querySelector('.content')
+        if (wrap) wrap.scrollTop = 0
+      })
+    }
+  },
   created () { this.loadUser() },
   computed: {
     showChrome () { return this.$route.path !== '/login' },
@@ -149,24 +157,47 @@ body {
 .sidebar .scrollbar-wrapper { overflow-x: hidden; }
 .sidebar .el-scrollbar { flex: 1; min-height: 0; }
 .sidebar .el-scrollbar__wrap { overflow-x: hidden; }
-.sidebar .el-menu { border-right: none; background: transparent !important; }
+/* 菜单整体留白，纵向收纳 */
+.sidebar .el-menu {
+  border-right: none; background: transparent !important;
+  padding: 6px 8px;
+}
+/* 一级/二级菜单项通用 */
 .sidebar .el-menu-item, .sidebar .el-submenu__title {
   height: 44px; line-height: 44px; background: transparent !important;
-  transition: all .2s;
+  border-radius: 8px; margin-bottom: 2px; position: relative;
+  transition: background .2s ease, color .2s ease;
 }
+.sidebar .el-menu-item i, .sidebar .el-submenu__title i { color: #7c8aa5; transition: color .2s ease; }
+/* hover：轻柔高亮，图标变亮 */
 .sidebar .el-menu-item:hover, .sidebar .el-submenu__title:hover {
-  background: rgba(255,255,255,.06) !important; color: #fff !important;
+  background: rgba(255,255,255,.07) !important; color: #fff !important;
 }
+.sidebar .el-menu-item:hover i, .sidebar .el-submenu__title:hover i { color: #b6c4dd; }
+/* 选中项：左侧竖向指示条 + 渐变高亮（主流后台风格） */
 .sidebar .el-menu-item.is-active {
-  background: linear-gradient(90deg, rgba(64,158,255,.85), rgba(92,173,255,.85)) !important;
+  background: linear-gradient(90deg, rgba(64,158,255,.32), rgba(64,158,255,.12)) !important;
   color: #fff !important;
-  box-shadow: 0 2px 10px rgba(64,158,255,.3);
-  border-radius: 6px; margin: 3px 10px;
+  box-shadow: inset 0 0 0 1px rgba(64,158,255,.28);
 }
-.sidebar .el-menu-item.is-active i { color: #fff; }
-.sidebar .el-submenu .el-menu { background: rgba(0,0,0,.15) !important; }
-.sidebar .el-submenu .el-menu .el-menu-item { padding-left: 54px !important; min-width: auto; }
-.sidebar .el-submenu__icon-arrow { color: #6b7a94; }
+.sidebar .el-menu-item.is-active::before {
+  content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 20px; border-radius: 4px; background: #409eff;
+}
+.sidebar .el-menu-item.is-active i { color: #4aa8ff !important; }
+/* 父级菜单在其子项选中时保持高亮标题 */
+.sidebar .el-submenu.is-active > .el-submenu__title { color: #fff; }
+.sidebar .el-submenu.is-active > .el-submenu__title i { color: #4aa8ff; }
+/* 二级菜单容器：加深底色，缩进 */
+.sidebar .el-submenu .el-menu { background: rgba(0,0,0,.18) !important; }
+.sidebar .el-submenu .el-menu .el-menu-item { padding-left: 50px !important; min-width: auto; }
+/* 展开箭头：hover 渐变、展开旋转 */
+.sidebar .el-submenu__icon-arrow {
+  color: #6b7a94; transition: transform .28s ease, color .2s ease;
+}
+.sidebar .el-submenu.is-opened > .el-submenu__title .el-submenu__icon-arrow {
+  transform: rotateZ(180deg);
+}
 
 /* ===== 主区域 ===== */
 .main-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }

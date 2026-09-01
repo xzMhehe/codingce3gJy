@@ -13,7 +13,7 @@
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><b>{{ row.nickname }}</b></template>
         </el-table-column>
-        <el-table-column label="马甲" width="110">
+        <el-table-column label="马甲" width="90">
           <template slot-scope="{row}">
             <img v-for="b in (row.badges || [])" :key="b.id" class="bicon" :src="$pic(b.icon)" :alt="b.name" :title="b.name">
           </template>
@@ -21,13 +21,13 @@
         <el-table-column label="角色" min-width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ (row.roles || []).map(r => r.name).join('，') || '—' }}</template>
         </el-table-column>
-        <el-table-column label="等级" width="70"><template slot-scope="{row}">Lv.{{ row.level }}</template></el-table-column>
+        <el-table-column label="等级" width="80"><template slot-scope="{row}">Lv.{{ row.level }}</template></el-table-column>
         <el-table-column label="状态" width="80">
           <template slot-scope="{row}">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '封禁' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEditor(row)">编辑</el-button>

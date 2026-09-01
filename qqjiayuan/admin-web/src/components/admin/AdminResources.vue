@@ -19,8 +19,8 @@
         <el-table-column label="预览" width="80">
           <template slot-scope="{row}"><img :src="'/static/' + row.file" class="preview" :alt="row.name"></template>
         </el-table-column>
-        <el-table-column prop="file" label="文件" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="name" label="名称" width="140" show-overflow-tooltip />
+        <el-table-column prop="file" label="文件" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="name" label="名称" width="150" show-overflow-tooltip />
         <el-table-column label="分类" width="100">
           <template slot-scope="{row}">{{ catName(row.category) }}</template>
         </el-table-column>
@@ -32,7 +32,7 @@
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

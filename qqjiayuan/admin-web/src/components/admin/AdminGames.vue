@@ -13,13 +13,13 @@
             <el-tag v-else size="mini" type="info">文字标</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="名称" min-width="160" show-overflow-tooltip>
+        <el-table-column label="名称" min-width="170" show-overflow-tooltip>
           <template slot-scope="{row}">
             {{ row.name }}
             <el-tag v-if="row.url" size="mini" type="success" style="margin-left:4px">有官网</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="分类" width="100">
+        <el-table-column label="分类" width="110">
           <template slot-scope="{row}">{{ row.category === 'net' ? '网络游戏' : '社区游戏' }}</template>
         </el-table-column>
         <el-table-column prop="stars" label="星级" width="110" />
@@ -34,7 +34,7 @@
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

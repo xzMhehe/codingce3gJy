@@ -9,8 +9,8 @@
       <el-alert v-if="listError" :title="listError" type="error" show-icon closable @close="listError = ''" style="margin-bottom:12px" />
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="username" label="号码" width="90" />
-        <el-table-column prop="nickname" label="昵称" width="120" show-overflow-tooltip />
-        <el-table-column prop="name" label="空间名称" width="160" show-overflow-tooltip>
+        <el-table-column prop="nickname" label="昵称" width="130" show-overflow-tooltip />
+        <el-table-column prop="name" label="空间名称" width="170" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.name || '—' }}</template>
         </el-table-column>
         <el-table-column prop="signature" label="空间签名" min-width="180" show-overflow-tooltip>
@@ -24,7 +24,7 @@
         <el-table-column prop="created_at" label="开通时间" width="160">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right">
+        <el-table-column label="操作" header-align="center" width="300" fixed="right">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEditor(row)">编辑资料</el-button>
@@ -70,7 +70,7 @@
             <el-table-column prop="content" label="内容" min-width="390" show-overflow-tooltip><template slot-scope="{row}"><el-button type="text" @click="viewMood(row)">{{ row.content }}</el-button></template></el-table-column>
             <el-table-column prop="created_at" label="时间" width="170"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="状态" width="75"><template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '已删' }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteMood(row)">删除</el-button></template></el-table-column>
+            <el-table-column label="操作" header-align="center" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteMood(row)">删除</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-if="moodTotal" background layout="total, prev, pager, next" :total="moodTotal" :page-size="moodSize" :current-page="moodPage" @current-change="p => { moodPage = p; loadMoods() }" />
         </el-tab-pane>
@@ -80,7 +80,7 @@
             <el-table-column prop="title" label="标题" min-width="390" show-overflow-tooltip><template slot-scope="{row}"><el-button type="text" @click="viewArticle(row)">{{ row.title }}</el-button></template></el-table-column>
             <el-table-column prop="created_at" label="时间" width="170"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="状态" width="75"><template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '已删' }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteArticle(row)">删除</el-button></template></el-table-column>
+            <el-table-column label="操作" header-align="center" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteArticle(row)">删除</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-if="articleTotal" background layout="total, prev, pager, next" :total="articleTotal" :page-size="articleSize" :current-page="articlePage" @current-change="p => { articlePage = p; loadArticles() }" />
         </el-tab-pane>
@@ -91,7 +91,7 @@
             <el-table-column label="封面" width="90"><template slot-scope="{row}"><img v-if="row.cover" class="album-cover" :src="$pic(row.cover)" :alt="row.name"><span v-else>—</span></template></el-table-column>
             <el-table-column prop="count" label="照片数" width="90" />
             <el-table-column prop="created_at" label="创建时间" width="170"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
-            <el-table-column label="操作" width="180"><template slot-scope="{row}"><el-button size="mini" type="primary" plain icon="el-icon-picture" @click="loadPhotos(row)">查看照片</el-button><el-button size="mini" type="danger" plain icon="el-icon-delete" @click="deleteAlbum(row)">删除</el-button></template></el-table-column>
+            <el-table-column label="操作" header-align="center" width="180"><template slot-scope="{row}"><el-button size="mini" type="primary" plain icon="el-icon-picture" @click="loadPhotos(row)">查看照片</el-button><el-button size="mini" type="danger" plain icon="el-icon-delete" @click="deleteAlbum(row)">删除</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-if="albumTotal" background layout="total, prev, pager, next" :total="albumTotal" :page-size="albumSize" :current-page="albumPage" @current-change="p => { albumPage = p; loadAlbums() }" />
         </el-tab-pane>
@@ -102,7 +102,7 @@
             <el-table-column prop="content" label="内容" min-width="390" show-overflow-tooltip />
             <el-table-column prop="created_at" label="时间" width="170"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
             <el-table-column label="状态" width="75"><template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '已删' }}</el-tag></template></el-table-column>
-            <el-table-column label="操作" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteMessage(row)">删除</el-button></template></el-table-column>
+            <el-table-column label="操作" header-align="center" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain :disabled="row.status !== 1" @click="deleteMessage(row)">删除</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-if="messageTotal" background layout="total, prev, pager, next" :total="messageTotal" :page-size="messageSize" :current-page="messagePage" @current-change="p => { messagePage = p; loadMessages() }" />
         </el-tab-pane>
@@ -125,7 +125,7 @@
         <el-table-column label="照片" width="120"><template slot-scope="{row}"><img class="photo-preview" :src="$pic(row.file)" :alt="row.caption || '照片'" @click="previewPhoto(row)"></template></el-table-column>
         <el-table-column prop="caption" label="说明" min-width="300"><template slot-scope="{row}">{{ row.caption || '—' }}</template></el-table-column>
         <el-table-column prop="created_at" label="上传时间" width="180"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain @click="deletePhoto(row)">删除</el-button></template></el-table-column>
+        <el-table-column label="操作" header-align="center" width="80"><template slot-scope="{row}"><el-button size="mini" type="danger" plain @click="deletePhoto(row)">删除</el-button></template></el-table-column>
       </el-table>
       <el-pagination v-if="photoTotal" background layout="total, prev, pager, next" :total="photoTotal" :page-size="photoSize" :current-page="photoPage" @current-change="p => { photoPage = p; loadPhotos(selectedAlbum) }" />
     </el-dialog>
