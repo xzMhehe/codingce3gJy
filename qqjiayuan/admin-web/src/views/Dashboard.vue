@@ -6,7 +6,7 @@
       <div class="overview-hero">
         <div class="hero-left">
           <div class="hero-title">{{ greeting }}，{{ adminName }}！</div>
-          <div class="hero-sub">欢迎回到 3GQQ 家园社区管理系统，祝您工作愉快。</div>
+          <div class="hero-sub">欢迎回到  家园社区管理系统，祝您工作愉快。</div>
         </div>
         <div class="hero-badge">
           <i class="el-icon-date"></i>
@@ -48,9 +48,10 @@
     <admin-plaza-sections v-else-if="tab === 'plazaSections'" />
     <admin-roles v-else-if="tab === 'roles'" />
     <admin-badges v-else-if="tab === 'badges'" />
-    <admin-noble v-else-if="tab === 'noble'" />
+    <admin-privileges v-else-if="tab === 'privileges'" />
     <admin-games v-else-if="tab === 'games'" />
     <admin-garden-activities v-else-if="tab === 'gardenActivities'" />
+    <admin-goods v-else-if="tab === 'goods'" />
     <admin-resources v-else-if="tab === 'resources'" />
     <admin-spaces v-else-if="tab === 'spaces'" />
   </div>
@@ -65,15 +66,16 @@ import AdminAnnouncements from '../components/admin/AdminAnnouncements.vue'
 import AdminPlazaSections from '../components/admin/AdminPlazaSections.vue'
 import AdminRoles from '../components/admin/AdminRoles.vue'
 import AdminBadges from '../components/admin/AdminBadges.vue'
-import AdminNoble from '../components/admin/AdminNoble.vue'
+import AdminPrivileges from '../components/admin/AdminPrivileges.vue'
 import AdminGames from '../components/admin/AdminGames.vue'
 import AdminGardenActivities from '../components/admin/AdminGardenActivities.vue'
+import AdminGoods from '../components/admin/AdminGoods.vue'
 import AdminResources from '../components/admin/AdminResources.vue'
 import AdminSpaces from '../components/admin/AdminSpaces.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminBoards, AdminThreads, AdminAnnouncements, AdminPlazaSections, AdminRoles, AdminBadges, AdminNoble, AdminGames, AdminGardenActivities, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminBoards, AdminThreads, AdminAnnouncements, AdminPlazaSections, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGoods, AdminResources, AdminSpaces },
   data () {
     return { stats: {}, adminName: '' }
   },

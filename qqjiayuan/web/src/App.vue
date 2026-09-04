@@ -3,7 +3,7 @@
     <!-- 顶部个人导航（同真实  top_nav） -->
     <div class="top_nav">
       <template v-if="isLogin">
-        <a href="javascript:;" @click="$router.push('/inbox')"><img src="/static/image/id.gif" alt="家信">{{ user.username }}</a><a href="javascript:;" @click="$router.push('/home')"><img src="/static/image/home.gif" alt="家园">家园({{ unread }})</a><a href="javascript:;" @click="$router.push('/space/'+user.id)"><img src="/static/image/blog.gif" alt="空间">空间({{ spaceCount }})</a><a href="javascript:;" @click="goNoble"><img src="/static/image/vipqq.jpg" alt="超Q">超Q</a><a href="javascript:;" @click="$router.push('/nav')">&gt;&gt;</a><br>
+        <a href="javascript:;" @click="$router.push('/inbox')"><img src="/static/image/id.gif" alt="家信">{{ user.username }}</a><a href="javascript:;" @click="$router.push('/home')"><img src="/static/image/home.gif" alt="家园">家园({{ unread }})</a><a href="javascript:;" @click="$router.push('/space/'+user.id)"><img src="/static/image/blog.gif" alt="空间">空间({{ spaceCount }})</a><a href="javascript:;" @click="goNoble"><img src="/static/image/vipqq.jpg" alt="超Q">超Q</a><a href="javascript:;" @click="$router.push('/box')">&gt;&gt;</a><br>
       </template>
       <template v-else>
         <a href="javascript:;" @click="$router.push('/login')"><img src="/static/image/id.gif" alt="号码">登陆</a><a href="javascript:;" @click="$router.push('/register')"><img src="/static/image/home.gif" alt="家信">注册</a><a href="javascript:;" @click="$router.push('/find')"><img src="/static/image/blog.gif" alt="空间">找回</a><a href="javascript:;" @click="$router.push('/login')"><img src="/static/image/vipqq.jpg" alt="超Q">超Q</a><a href="javascript:;" @click="$router.push('/nav')">&gt;&gt;</a><br>

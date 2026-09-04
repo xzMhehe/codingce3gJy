@@ -1,8 +1,5 @@
 <template>
   <div>
-    <!-- 面包屑 -->
-    <div class="bar"><a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">广场</a>&gt;家族天地</div>
-
     <div class="list">
       <div class="row"><img src="/static/image/jzsy.gif" alt="家族">&nbsp;三潴家族，以家为名，结伴江湖。</div>
     </div>
@@ -80,7 +77,6 @@
       <a href="javascript:;" @click="$router.push('/families')">家族排行</a>.<a href="javascript:;" @click="createOpen = true; cat=''">创建家族</a>.<a href="javascript:;" @click="$router.push('/channel/1')">逛论坛</a>.<a href="javascript:;" @click="$router.push('/')">回广场</a><br>
     </div>
 
-    <div class="bar"><a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">广场</a>&gt;家族天地</div>
   </div>
 </template>
 

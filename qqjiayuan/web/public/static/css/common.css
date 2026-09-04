@@ -11,9 +11,9 @@ input,button,textarea{font-size:1.4rem;font-weight:300;border:none;outline:none;
 .submit .item .box input{width:100%;height:2.8rem;line-height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;text-indent:0.5rem;}
 .submit .item .box select{width:100%;height:2.8rem;line-height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;text-indent:0.2rem;}
 .submit .item .box textarea{padding:0.3rem 0.5rem;width:100%;height:2.8rem;border:0.1rem solid #d6d6d6;border-radius:0.1rem;background:#fff;}
-.submit .item .box .hide{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://3gqq.cn/template/default/images/hide.png) no-repeat;background-size:4rem auto;position:absolute;}
-.submit .item .box .show{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://3gqq.cn/template/default/images/show.png) no-repeat;background-size:4rem auto;position:absolute;}
+.submit .item .box .hide{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://.cn/template/default/images/hide.png) no-repeat;background-size:4rem auto;position:absolute;}
+.submit .item .box .show{top:0.4rem;right:0.2rem;width:4rem;height:3rem;background:url(http://.cn/template/default/images/show.png) no-repeat;background-size:4rem auto;position:absolute;}
 .submit .item .box .code{top:0;right:0.2rem;position:absolute;}
 .submit .item .box .send{color:#f40;background:#fff;font-size:1.4rem;}
 .submit textarea{padding:0.5rem;width:100%;line-height:2rem;background:#fff;font-size:1.4rem;display:block;box-sizing:border-box;border:0.1rem solid #d6d6d6;border-radius:0.1rem;}
-.submit .button{width:100%;height:3.5rem;line-height:3.5rem;text-align:center;border-radius:0.5rem;font-size:1.6rem;color:#fff;background:#ffa100;cursor:pointer;}
+.submit .button{width:100%;height:3.5rem;line-height:3.5rem;text-align:center;border-radius:0.5rem;font-size:1.6rem;color:#fff;background:#ffa100;cursor:pointer;}

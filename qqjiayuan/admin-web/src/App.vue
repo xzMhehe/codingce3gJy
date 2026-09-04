@@ -5,7 +5,7 @@
       <div class="logo">
         <div class="logo-ico">Q</div>
         <div class="logo-txt">
-          <div class="t1">3GQQ 家园</div>
+          <div class="t1"> 家园</div>
           <div class="t2">社区管理系统</div>
         </div>
       </div>
@@ -27,12 +27,13 @@
             <template slot="title"><i class="el-icon-s-operation"></i><span>权限与装扮</span></template>
             <el-menu-item index="roles"><i class="el-icon-s-check"></i>角色权限</el-menu-item>
             <el-menu-item index="badges"><i class="el-icon-medal"></i>马甲勋章</el-menu-item>
-            <el-menu-item index="noble"><i class="el-icon-star-off"></i>超Q管理</el-menu-item>
+            <el-menu-item index="privileges"><i class="el-icon-star-off"></i>特权管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g3">
             <template slot="title"><i class="el-icon-picture-outline-round"></i><span>运营与资源</span></template>
             <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏管理</el-menu-item>
             <el-menu-item index="gardenActivities"><i class="el-icon-flower"></i>花园活动</el-menu-item>
+            <el-menu-item index="goods"><i class="el-icon-shopping-bag-2"></i>道具商城</el-menu-item>
             <el-menu-item index="resources"><i class="el-icon-picture-outline"></i>资源管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g4">
@@ -82,7 +83,7 @@ export default {
       user: {},
       names: {
         dashboard: '数据概览', users: '用户管理', boards: '板块管理', threads: '帖子管理',
-        announcements: '公告管理', plazaSections: '广场板块', roles: '角色权限', badges: '马甲勋章', noble: '超Q管理', games: '游戏管理', gardenActivities: '花园活动', resources: '资源管理', spaces: '空间管理'
+        announcements: '公告管理', plazaSections: '广场板块', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', goods: '道具商城', resources: '资源管理', spaces: '空间管理'
       }
     }
   },

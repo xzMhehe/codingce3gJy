@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title 3GQQ家园社区
+title 家园社区
 cd /d "%~dp0server"
 
 echo ==========================================
-echo   正在启动 3GQQ家园社区...
+echo   正在启动 家园社区...
 echo   首次运行会自动建表并写入种子数据
 echo   启动后访问 http://127.0.0.1:8080
 echo   管理员：10000 / admin123

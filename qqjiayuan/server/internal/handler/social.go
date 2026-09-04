@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -27,6 +28,7 @@ func (h *FriendHandler) List(c *gin.Context) {
 		Color    string `json:"color"`
 		Level    int    `json:"level"`
 		Sign     string `json:"signature"`
+		Online   bool   `json:"online"`
 	}
 	list := []friendInfo{}
 	for _, f := range friends {
@@ -36,7 +38,8 @@ func (h *FriendHandler) List(c *gin.Context) {
 		}
 		var u model.User
 		if err := h.DB.First(&u, otherID).Error; err == nil {
-			list = append(list, friendInfo{ID: u.ID, Nickname: u.Nickname, Color: u.Color, Level: u.Level, Sign: u.Signature})
+			online := u.LastActiveAt != nil && time.Since(*u.LastActiveAt) < 10*time.Minute
+			list = append(list, friendInfo{ID: u.ID, Nickname: u.Nickname, Color: u.Color, Level: u.Level, Sign: u.Signature, Online: online})
 		}
 	}
 	requests := []gin.H{}

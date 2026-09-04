@@ -18,7 +18,7 @@ input[type=checkbox], input[type=radio] {-webkit-box-shadow: inset 0 1px 2px whi
 input[type=radio] {border-radius: 100%;height: 15px;width: 15px;margin-left: 3px;}
 input[type=checkbox] {border-radius: 3px;height: 16px;width: 16px;}
 input[type=radio]:checked::before {-webkit-box-shadow: 0 1px 0 rgba(255, 255, 255, .5);-webkit-margin-start: 3px;background: #2e9cd3;border-radius: 10px;content: '';display: inline-block;font-size: 13px;font-weight: 400;height: 7px;left: 0;margin-top: 3px;opacity: 1;position: absolute;top: 0;vertical-align: top;width: 7px;}
-input[type=checkbox]:checked::before {color: #808080;content: url(http://3gqq.cn/template/default/images/checkmark_blue.png);font-size: 13px;height: 16px;left: 2px;top: 0px;position: absolute;}
+input[type=checkbox]:checked::before {color: #808080;content: url(http://.cn/template/default/images/checkmark_blue.png);font-size: 13px;height: 16px;left: 2px;top: 0px;position: absolute;}
 .site-logo{padding: 5px 0 0 10px;background: #fff;}
 .Rt{ font-size:14px; padding-right:3px; float:right; color:#8B8B8B;}
 .Lt{ font-size:14px; padding-left:3px; float:left; color:#8B8B8B;}
@@ -26,7 +26,7 @@ input[type=checkbox]:checked::before {color: #808080;content: url(http://3gqq.cn
 .mainnav{padding: 1px 0 0 12px;background-color: #4c95e7;}
 .mainnav p{height: 30px;line-height: 30px;}
 .mainnav p a{margin: 0 7px 0 0;color: #fff;}
-.search-box{padding: 2px 0 2px 35px;background: #e0eef3 url(http://3gqq.cn/template/default/images/icon_search.gif) 12px 4px no-repeat;}
+.search-box{padding: 2px 0 2px 35px;background: #e0eef3 url(http://.cn/template/default/images/icon_search.gif) 12px 4px no-repeat;}
 .ta-border{font-size:13px;width:98%;height:30px;margin:0 0 5px 0;border:1px solid #9FC6EC;}
 .user-info{padding:3px 5px;}
 .user-info a{padding-right:1px;}
@@ -57,13 +57,13 @@ input[type=checkbox]:checked::before {color: #808080;content: url(http://3gqq.cn
 .note{ background:#FFF9B7; border-bottom:1px solid #9FC6EC;}
 .deep{ background:#E3EEF8; border:1px solid #9FC6EC; border-left:none; border-right:none;}
 .module-page{padding:5px;}
-.crumb-nav{height:22px;padding:0 3px;background:#71afe3 url(http://3gqq.cn/template/default/images/bg_navbar.gif) repeat-x;line-height:22px;color:#fff;}
+.crumb-nav{height:22px;padding:0 3px;background:#71afe3 url(http://.cn/template/default/images/bg_navbar.gif) repeat-x;line-height:22px;color:#fff;}
 .crumb-nav a{color:#fff;}
 .crumb-nav .current{color:#98d2ff;}
 .bottom-crumb-nav{padding:5px;border-top:1px solid #eee;line-height:1.3;}
 .bottom-crumb-nav-sim{padding:0 5px;line-height:1.3;}
 .bottom-module{padding:5px;line-height:1.3;}
-.crumb-nav-large{height:25px;padding:0 5px;background:#71afe3 url(http://3gqq.cn/template/default/images/bg_navbar.gif) repeat-x;line-height:25px;color:#fff;}
+.crumb-nav-large{height:25px;padding:0 5px;background:#71afe3 url(http://.cn/template/default/images/bg_navbar.gif) repeat-x;line-height:25px;color:#fff;}
 .crumb-nav-large a{color:#fff;}
 .crumb-nav-large .current{color:#98d2ff;}
 .txt-big{font-size: 13px;}
@@ -95,7 +95,7 @@ input[type=checkbox]:checked::before {color: #808080;content: url(http://3gqq.cn
 .down{color:#20b800;font-family:Verdana;}
 .up{color:#fc0000;font-family:Verdana;}
 .ud{color:#2e9cd3;font-family:Verdana;}
-.image {display: block;position: relative;padding-top: 150%;background: url(http://3gqq.cn/template/default/images/loading.gif) no-repeat;background-position: 50% 50%;background-size: cover;}
+.image {display: block;position: relative;padding-top: 150%;background: url(http://.cn/template/default/images/loading.gif) no-repeat;background-position: 50% 50%;background-size: cover;}
 .chief.self{ left: 0;}
 .chief img{ width: 100%;height: 100%;}
 .nvcframe{position: absolute;height: 100%;width: 100%;}
@@ -104,7 +104,7 @@ input[type=checkbox]:checked::before {color: #808080;content: url(http://3gqq.cn
 .chief1 img{ width: 100%;height: 100%;}
 .nvcframe1{position: absolute;height: 100%;width: 100%;}
 .chief1{ height: 100px;width: 80px;background-color: #fff;right: 0;top: 0px;position: relative;}
-.emotion{ background:url(http://3gqq.cn/template/default/images/icon.gif) no-repeat 2px 2px; padding-left:20px; cursor:pointer}
+.emotion{ background:url(http://.cn/template/default/images/icon.gif) no-repeat 2px 2px; padding-left:20px; cursor:pointer}
 .emotion:hover{background-position:2px -28px}
 .ggface{margin-top:4px;background:#fff;padding:2px;border:1px #dfe6f6 solid;}
 .ggface table td{padding:0px;}

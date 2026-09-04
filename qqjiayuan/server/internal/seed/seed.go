@@ -35,6 +35,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
 		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
+		&model.NoblePlan{}, &model.Good{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -56,6 +57,8 @@ func Run(db *gorm.DB, staticDir string) {
 	seedBooks(db)
 	seedGardenActivities(db)
 	seedPlazaSections(db)
+	seedNoblePlans(db)
+	seedGoods(db)
 	seedResources(db, staticDir)
 	fmt.Println("数据初始化完成")
 }
@@ -213,6 +216,30 @@ func seedPlazaSections(db *gorm.DB) {
 	}
 	for i, p := range model.PlazaSectionPresets {
 		db.Create(&model.PlazaSection{Key: p.Key, Name: p.Name, Enabled: 1, Sort: i})
+	}
+}
+
+// seedNoblePlans 特权开通方案（幂等）
+func seedNoblePlans(db *gorm.DB) {
+	var n int64
+	db.Model(&model.NoblePlan{}).Count(&n)
+	if n > 0 {
+		return
+	}
+	for _, p := range model.NoblePlanPresets {
+		db.Create(&p)
+	}
+}
+
+// seedGoods 道具商城示例（幂等）
+func seedGoods(db *gorm.DB) {
+	var n int64
+	db.Model(&model.Good{}).Count(&n)
+	if n > 0 {
+		return
+	}
+	for _, g := range model.GoodPresets {
+		db.Create(&g)
 	}
 }
 

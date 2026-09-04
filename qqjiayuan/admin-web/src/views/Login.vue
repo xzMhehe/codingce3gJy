@@ -11,7 +11,7 @@
         <div class="brand-logo">
           <span>Q</span>
         </div>
-        <h1 class="brand-name">3GQQ 家园社区</h1>
+        <h1 class="brand-name"> 家园社区</h1>
         <p class="brand-slogan">后台管理系统</p>
         <ul class="brand-features">
           <li><i class="el-icon-chat-dot-round"></i><span>社区内容一站式管理</span></li>
@@ -19,7 +19,7 @@
           <li><i class="el-icon-data-board"></i><span>运营数据实时概览</span></li>
         </ul>
       </div>
-      <p class="brand-copyright">3GQQ 家园 · 管理员工作台</p>
+      <p class="brand-copyright"> 家园 · 管理员工作台</p>
     </aside>
 
     <!-- 右侧登录表单 -->

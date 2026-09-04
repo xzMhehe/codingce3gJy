@@ -39,6 +39,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	favH := &handler.FavoriteHandler{DB: db}
 	fgH := &handler.FriendGroupHandler{DB: db}
 	nobleH := &handler.NobleHandler{DB: db}
+	goodH := &handler.GoodHandler{DB: db}
+	rankH := &handler.RankHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
@@ -70,6 +72,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 花园活动公开列表
 		api.GET("/garden-activities", gardenH.ActivityList)
 		api.GET("/plaza-sections", plazaH.Sections)
+		api.GET("/goods", goodH.List)
+		api.GET("/rank", rankH.Top)
 
 		// 书城公开
 		api.GET("/books", bookH.Index)
@@ -179,6 +183,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/lottery", ecoH.Lottery)
 			authed.GET("/noble", nobleH.View)
 			authed.POST("/noble/activate", nobleH.Activate)
+			authed.POST("/goods/:id/buy", goodH.Buy)
 
 			authed.POST("/dig", ecoH.Dig)
 			authed.POST("/charity", ecoH.Charity)
@@ -193,9 +198,20 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/plaza-sections", perm(db, "admin:access"), plazaH.AdminSections)
 				admin.PUT("/plaza-sections/:id", perm(db, "admin:access"), plazaH.AdminSectionUpdate)
 
-				// 超Q管理
-				admin.GET("/nobles", perm(db, "admin:access"), nobleH.AdminList)
-				admin.PUT("/nobles/:id", perm(db, "admin:access"), nobleH.AdminUpdate)
+				// 特权管理（蓝钻/超Q）
+				admin.GET("/privileges/plans", perm(db, "admin:access"), nobleH.AdminPlans)
+				admin.POST("/privileges/plans", perm(db, "admin:access"), nobleH.AdminPlanCreate)
+				admin.PUT("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanUpdate)
+				admin.DELETE("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanDelete)
+				admin.GET("/privileges/users", perm(db, "admin:access"), nobleH.AdminUsers)
+				admin.PUT("/privileges/users/:id", perm(db, "admin:access"), nobleH.AdminUserUpdate)
+				admin.POST("/privileges/batch", perm(db, "admin:access"), nobleH.AdminBatch)
+
+				// 道具商城管理
+				admin.GET("/goods", perm(db, "admin:access"), goodH.AdminList)
+				admin.POST("/goods", perm(db, "admin:access"), goodH.AdminCreate)
+				admin.PUT("/goods/:id", perm(db, "admin:access"), goodH.AdminUpdate)
+				admin.DELETE("/goods/:id", perm(db, "admin:access"), goodH.AdminDelete)
 
 				// 花园活动管理
 				admin.GET("/garden-activities", perm(db, "admin:access"), gardenH.AdminActivities)
