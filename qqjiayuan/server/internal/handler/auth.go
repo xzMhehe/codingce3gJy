@@ -66,7 +66,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	h.DB.Create(&model.Notification{
 		UserID: user.ID, Type: "system",
-		Title:   "欢迎来到3GQQ家园社区",
+		Title:   "欢迎来到家园社区",
 		Content: fmt.Sprintf("你的家园号码是 %d，请牢记！新人礼包100金币已到账。多逛论坛多回帖，经验等级蹭蹭涨。", user.ID),
 	})
 	token, _ := authutil.GenerateToken(user.ID, user.Nickname, h.Secret, h.ExpH)

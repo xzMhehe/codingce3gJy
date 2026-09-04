@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">3GQQ</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}
+      <a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}
     </div>
     <div class="module-content">{{ board.description }}</div>
     <template v-for="ch in subGroups">
@@ -20,7 +20,7 @@
       </form>
     </div>
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">3GQQ</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}
+      <a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}
     </div>
   </div>
 </template>

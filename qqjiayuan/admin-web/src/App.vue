@@ -21,15 +21,18 @@
             <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
             <el-menu-item index="boards"><i class="el-icon-menu"></i>板块管理</el-menu-item>
             <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告管理</el-menu-item>
+            <el-menu-item index="plazaSections"><i class="el-icon-s-grid"></i>广场板块</el-menu-item>
           </el-submenu>
           <el-submenu index="g2">
             <template slot="title"><i class="el-icon-s-operation"></i><span>权限与装扮</span></template>
             <el-menu-item index="roles"><i class="el-icon-s-check"></i>角色权限</el-menu-item>
             <el-menu-item index="badges"><i class="el-icon-medal"></i>马甲勋章</el-menu-item>
+            <el-menu-item index="noble"><i class="el-icon-star-off"></i>超Q管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g3">
             <template slot="title"><i class="el-icon-picture-outline-round"></i><span>运营与资源</span></template>
             <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏管理</el-menu-item>
+            <el-menu-item index="gardenActivities"><i class="el-icon-flower"></i>花园活动</el-menu-item>
             <el-menu-item index="resources"><i class="el-icon-picture-outline"></i>资源管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g4">
@@ -79,7 +82,7 @@ export default {
       user: {},
       names: {
         dashboard: '数据概览', users: '用户管理', boards: '板块管理', threads: '帖子管理',
-        announcements: '公告管理', roles: '角色权限', badges: '马甲勋章', games: '游戏管理', resources: '资源管理', spaces: '空间管理'
+        announcements: '公告管理', plazaSections: '广场板块', roles: '角色权限', badges: '马甲勋章', noble: '超Q管理', games: '游戏管理', gardenActivities: '花园活动', resources: '资源管理', spaces: '空间管理'
       }
     }
   },

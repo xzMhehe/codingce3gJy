@@ -2,7 +2,7 @@
   <div>
     <div class="module-content">
       <img :src="$pic('2.png')" alt="logo"><br>
-      欢迎来到3GQQ家园社区，完善下面的信息注册家园账号，开启社区之旅吧！<a href="javascript:;">专属靓号注册</a><br>
+      欢迎来到家园社区，完善下面的信息注册家园账号，开启社区之旅吧！<a href="javascript:;">专属靓号注册</a><br>
       <form @submit.prevent="doReg">
         <div class="submit">
           <div class="item">

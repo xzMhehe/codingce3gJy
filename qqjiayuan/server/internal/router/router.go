@@ -33,6 +33,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	resH := &handler.ResourceHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
 	spaceH := &handler.SpaceHandler{DB: db}
 	moodH := &handler.MoodHandler{DB: db}
+	ecoH := &handler.EconomyHandler{DB: db}
+	famH := &handler.FamilyHandler{DB: db, Secret: cfg.Jwt.Secret}
+	bookH := &handler.BookHandler{DB: db}
+	favH := &handler.FavoriteHandler{DB: db}
+	fgH := &handler.FriendGroupHandler{DB: db}
+	nobleH := &handler.NobleHandler{DB: db}
+	gardenH := &handler.GardenHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
@@ -54,6 +61,21 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/badge-presets", badgeH.Presets)
 		api.GET("/games", gameH.List)
 		api.GET("/privs", resH.Privs)
+		// 家族列表/详情/动态公开（未登录仅浏览，无角色）
+		api.GET("/families", famH.List)
+		api.GET("/families/:id", famH.Detail)
+		api.GET("/families/activities", famH.Activities)
+		api.GET("/families/:id/activities", famH.FamilyActivities)
+
+		// 花园活动公开列表
+		api.GET("/garden-activities", gardenH.ActivityList)
+		api.GET("/plaza-sections", plazaH.Sections)
+
+		// 书城公开
+		api.GET("/books", bookH.Index)
+		api.GET("/books/list", bookH.List)
+		api.GET("/books/categories", bookH.Categories)
+		api.GET("/books/:id", bookH.Detail)
 
 		// 空间公开接口
 		api.GET("/space/:userId", spaceH.SpaceInfo)
@@ -74,6 +96,32 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/threads/:id/replies", threadH.Reply)
 			authed.DELETE("/threads/:id", threadH.DeleteThread)
 			authed.DELETE("/replies/:id", threadH.DeleteReply)
+			authed.POST("/threads/:id/favorite", favH.Toggle)
+			authed.GET("/threads/:id/favorite-status", favH.Status)
+			authed.GET("/favorite-threads", favH.MyFavorites)
+			authed.GET("/my-replies", favH.MyReplies)
+
+			// 好友分组
+			authed.GET("/friend-groups", fgH.List)
+			authed.POST("/friend-groups", fgH.Create)
+			authed.DELETE("/friend-groups/:id", fgH.Delete)
+			authed.POST("/friend-groups/:id/friends", fgH.AddFriend)
+			authed.DELETE("/friend-groups/:id/friends/:friendId", fgH.RemoveFriend)
+
+			// 游戏：魔法花园（独立前后端）
+			authed.GET("/games/garden/view", gardenH.View)
+			authed.POST("/games/garden/plant", gardenH.Plant)
+			authed.POST("/games/garden/harvest", gardenH.Harvest)
+			authed.POST("/games/garden/addpot", gardenH.AddPot)
+			authed.GET("/games/garden/basket", gardenH.Basket)
+			authed.GET("/games/garden/synlist", gardenH.SynList)
+			authed.POST("/games/garden/synthesize", gardenH.Synthesize)
+			authed.POST("/games/garden/activity-submit", gardenH.SubmitActivity)
+
+			// 我的游戏
+			authed.GET("/my-games", gameH.MyList)
+			authed.POST("/my-games", gameH.MyAdd)
+			authed.DELETE("/my-games/:gameId", gameH.MyRemove)
 
 			authed.POST("/signin", signH.Do)
 			authed.GET("/signin/info", signH.Info)
@@ -110,10 +158,50 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.DELETE("/moods/:id", moodH.Del)
 			authed.GET("/moods/latest", moodH.Latest)
 
+			// 社区经济小助手：银行 / 打工 / 每日星运 / 幸运猜数字
+			// 家族系统
+			authed.GET("/families/mine", famH.Mine)
+			authed.POST("/families", famH.Create)
+			authed.POST("/families/:id/join", famH.Join)
+			authed.POST("/families/:id/leave", famH.Leave)
+			authed.PUT("/families/:id/ann", famH.UpdateAnn)
+			authed.POST("/families/:id/signin", famH.SignIn)
+			authed.POST("/families/:id/tree", famH.Tree)
+			authed.POST("/families/:id/battle", famH.Battle)
+
+			authed.GET("/bank/view", ecoH.BankView)
+			authed.POST("/bank/deposit", ecoH.BankDeposit)
+			authed.POST("/bank/withdraw", ecoH.BankWithdraw)
+			authed.POST("/bank/interest", ecoH.BankInterest)
+			authed.GET("/work/status", ecoH.WorkStatus)
+			authed.POST("/work", ecoH.WorkDo)
+			authed.GET("/fortune", ecoH.Fortune)
+			authed.POST("/lottery", ecoH.Lottery)
+			authed.GET("/noble", nobleH.View)
+			authed.POST("/noble/activate", nobleH.Activate)
+
+			authed.POST("/dig", ecoH.Dig)
+			authed.POST("/charity", ecoH.Charity)
+			authed.GET("/charity/rank", ecoH.CharityRank)
+
 			// 管理后台（RBAC 权限点）
 			admin := authed.Group("/admin")
 			{
 				admin.GET("/stats", perm(db, "admin:access"), adminH.Stats)
+
+				// 广场板块开关
+				admin.GET("/plaza-sections", perm(db, "admin:access"), plazaH.AdminSections)
+				admin.PUT("/plaza-sections/:id", perm(db, "admin:access"), plazaH.AdminSectionUpdate)
+
+				// 超Q管理
+				admin.GET("/nobles", perm(db, "admin:access"), nobleH.AdminList)
+				admin.PUT("/nobles/:id", perm(db, "admin:access"), nobleH.AdminUpdate)
+
+				// 花园活动管理
+				admin.GET("/garden-activities", perm(db, "admin:access"), gardenH.AdminActivities)
+				admin.POST("/garden-activities", perm(db, "admin:access"), gardenH.AdminActCreate)
+				admin.PUT("/garden-activities/:id", perm(db, "admin:access"), gardenH.AdminActUpdate)
+				admin.DELETE("/garden-activities/:id", perm(db, "admin:access"), gardenH.AdminActDelete)
 
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
 				admin.PUT("/users/:id/status", perm(db, "user:manage"), adminH.UserStatus)
@@ -201,7 +289,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		}
 	}
 	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": "3GQQ家园社区 API 运行中"})
+		c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": "家园社区 API 运行中"})
 	})
 	return r
 }

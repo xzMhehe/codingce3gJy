@@ -1,42 +1,40 @@
 <template>
   <div>
-    <div class="bar">【游戏大厅】<a class="rt" href="javascript:;" @click="$router.push('/')">回广场</a></div>
-    <div style="background-image:url(/static/image/fresh_1.gif);background-color:#91e09d;background-repeat:no-repeat;height:25px;"></div>
-    <div class="bodule-title"> 【网络游戏】 </div>
-    <div class="module-content" v-for="g in netGames" :key="g.id">
-      <table>
-        <tr>
-          <th rowspan="3">
-            <div v-if="g.logo" class="glogo" :style="{background:'url(/static/image/'+g.logo+') 0 0/100% 100% no-repeat'}"></div>
-            <div v-else class="glogo glogo-text">{{ shortName(g.name) }}</div>
-          </th>
-          <td><a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="forum(g)">游戏论坛</a></td>
-        </tr>
-        <tr><td>推荐：{{ g.stars }}</td></tr>
-        <tr><td>{{ g.desc }}</td></tr>
-      </table>
-    </div>
-    <div v-if="!netGames.length" class="empty">暂无网络游戏</div>
+    <div><img src="/static/image/youxi.gif" alt="游戏"></div>
 
-    <div class="bodule-title"><p>【社区游戏】</p></div>
+    <div class="module-title">社区游戏|<a href="javascript:;" @click="$router.push('/channel/1')">互联网游戏板块</a></div>
+    <div class="module-content"><span class="txt-fade">社区小游戏，免费游玩，无任何充值消费</span></div>
+
+    <div class="module-title">【我的游戏】<a href="javascript:;" @click="$router.push('/games')">管理</a></div>
+    <div class="module-content" v-if="myGames.length">
+      <span v-for="g in myGames" :key="'m'+g.id"><a href="javascript:;" @click="play(g)">{{ g.name }}</a> [<a href="javascript:;" style="color:#c00" @click="removeGame(g.id)">移除</a>]　</span>
+    </div>
+    <div class="module-content" v-else><span class="txt-fade">还没有添加游戏，去下面「添加游戏」里挑一个</span></div>
+
+    <div class="module-title">【社区游戏大厅】</div>
     <div class="module-content" v-for="g in comGames" :key="g.id">
-      <table>
-        <tr>
-          <th rowspan="3">
-            <div v-if="g.logo" class="glogo" :style="{background:'url(/static/image/'+g.logo+') 0 0/100% 100% no-repeat'}"></div>
-            <div v-else class="glogo glogo-text">{{ shortName(g.name) }}</div>
-          </th>
-          <td><a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="forum(g)">游戏论坛</a></td>
-        </tr>
-        <tr><td>推荐：{{ g.stars }}</td></tr>
-        <tr><td>{{ g.desc }}</td></tr>
-      </table>
+      <a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="forum(g)">论坛</a>
+      <template v-if="isLogin"><a href="javascript:;" @click="addGame(g)">[{{ inMy(g.id) ? '已在游戏中' : '添加游戏' }}]</a></template>
+      <span class="txt-fade">（{{ g.desc || g.stars }}）</span><br>
     </div>
     <div v-if="!comGames.length" class="empty">暂无社区游戏</div>
 
+    <div class="module-title">【网络游戏】</div>
+    <div class="module-content" v-for="g in netGames" :key="g.id">
+      <a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="forum(g)">论坛</a>
+      <template v-if="isLogin"><a href="javascript:;" @click="addGame(g)">[{{ inMy(g.id) ? '已在游戏中' : '添加游戏' }}]</a></template>
+      <span class="txt-fade">（{{ g.desc || g.stars }}）</span><br>
+    </div>
+    <div v-if="!netGames.length" class="empty">暂无网络游戏</div>
+
+    <div class="module-title">【游戏论坛】</div>
+    <div class="module-content">
+      <a href="javascript:;" @click="tip('游戏综合反馈')">游戏综合反馈</a>. <a href="javascript:;" @click="tip('游戏研发')">游戏研发</a>.<a href="javascript:;" @click="tip('游戏交流')">游戏交流</a><br>
+    </div>
+
     <div class="login-tips">
       <ul>
-        <li class="wid"><img :src="$pic('notice.gif')" alt="广告">游戏还在开发中，先到各游戏论坛聊聊情怀！</li>
+        <li class="wid"><img :src="$pic('notice.gif')" alt="广告">魔法花园已可玩，其余游戏陆续开放，先去游戏论坛聊聊情怀！</li>
       </ul>
     </div>
   </div>
@@ -48,14 +46,16 @@ import api from '../api'
 export default {
   name: 'Games',
   data () {
-    return { games: [], boards: {} }
+    return { games: [], boards: {}, myGames: [] }
   },
   computed: {
+    isLogin () { return this.$store.getters.isLogin },
     netGames () { return this.games.filter(g => g.category === 'net') },
     comGames () { return this.games.filter(g => g.category !== 'net') }
   },
   mounted () {
     api.get('/games').then(r => { if (r.code === 0) this.games = r.data })
+    this.loadMy()
     api.get('/boards').then(r => {
       if (r.code !== 0) return
       const map = {}
@@ -64,13 +64,29 @@ export default {
     })
   },
   methods: {
+    loadMy () {
+      if (!this.isLogin) return
+      api.get('/my-games').then(r => { if (r.code === 0) this.myGames = r.data })
+    },
+    inMy (id) { return this.myGames.some(m => m.id === id) },
+    addGame (g) {
+      api.post('/my-games', { game_id: g.id }).then(r => { if (r.code === 0) this.loadMy(); else alert(r.msg) })
+    },
+    removeGame (id) {
+      api.delete('/my-games/' + id).then(r => { if (r.code === 0) this.loadMy() })
+    },
     play (g) {
+      if (g.name && g.name.indexOf('魔法花园') >= 0) {
+        this.$router.push('/games/garden')
+        return
+      }
       if (g.url) {
         window.open(g.url)
         return
       }
       alert('「' + g.name + '」游戏开发中，敬请期待！先去游戏论坛和大家聊聊吧')
     },
+    tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('游戏·' + title)) },
     forum (g) {
       if (g.board_id) {
         this.$router.push('/board/' + g.board_id)
@@ -81,8 +97,8 @@ export default {
       else alert('该游戏的论坛还在建设中')
     },
     shortName (name) {
-      // 3GQQ幻想西游 → 幻想西游 / 3GQQ魔法花园 → 魔法花园
-      return name.replace(/^3GQQ/, '')
+      // 幻想西游 → 幻想西游 / 魔法花园 → 魔法花园
+      return name.replace(/^/, '')
     }
   }
 }

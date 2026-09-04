@@ -45,9 +45,12 @@
     <admin-boards v-else-if="tab === 'boards'" />
     <admin-threads v-else-if="tab === 'threads'" />
     <admin-announcements v-else-if="tab === 'announcements'" />
+    <admin-plaza-sections v-else-if="tab === 'plazaSections'" />
     <admin-roles v-else-if="tab === 'roles'" />
     <admin-badges v-else-if="tab === 'badges'" />
+    <admin-noble v-else-if="tab === 'noble'" />
     <admin-games v-else-if="tab === 'games'" />
+    <admin-garden-activities v-else-if="tab === 'gardenActivities'" />
     <admin-resources v-else-if="tab === 'resources'" />
     <admin-spaces v-else-if="tab === 'spaces'" />
   </div>
@@ -59,15 +62,18 @@ import AdminUsers from '../components/admin/AdminUsers.vue'
 import AdminBoards from '../components/admin/AdminBoards.vue'
 import AdminThreads from '../components/admin/AdminThreads.vue'
 import AdminAnnouncements from '../components/admin/AdminAnnouncements.vue'
+import AdminPlazaSections from '../components/admin/AdminPlazaSections.vue'
 import AdminRoles from '../components/admin/AdminRoles.vue'
 import AdminBadges from '../components/admin/AdminBadges.vue'
+import AdminNoble from '../components/admin/AdminNoble.vue'
 import AdminGames from '../components/admin/AdminGames.vue'
+import AdminGardenActivities from '../components/admin/AdminGardenActivities.vue'
 import AdminResources from '../components/admin/AdminResources.vue'
 import AdminSpaces from '../components/admin/AdminSpaces.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminBoards, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminGames, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminBoards, AdminThreads, AdminAnnouncements, AdminPlazaSections, AdminRoles, AdminBadges, AdminNoble, AdminGames, AdminGardenActivities, AdminResources, AdminSpaces },
   data () {
     return { stats: {}, adminName: '' }
   },

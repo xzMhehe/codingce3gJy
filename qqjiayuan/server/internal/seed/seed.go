@@ -28,6 +28,13 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Space{}, &model.Mood{}, &model.MoodComment{},
 		&model.Article{}, &model.Album{}, &model.Photo{},
 		&model.SpaceMessage{}, &model.Visitor{},
+		&model.BankAccount{}, &model.WorkRecord{},
+		&model.Family{}, &model.FamilyMember{}, &model.FamilySignIn{},
+		&model.FamilyActivity{},
+		&model.Book{}, &model.ThreadFavorite{},
+		&model.FriendGroup{}, &model.FriendGroupItem{},
+		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
+		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -44,6 +51,11 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGongtan(db)
 	seedMigrate2026(db)
 	seedGames(db)
+	seedFamilies(db)
+	seedFamilyPatch(db)
+	seedBooks(db)
+	seedGardenActivities(db)
+	seedPlazaSections(db)
 	seedResources(db, staticDir)
 	fmt.Println("数据初始化完成")
 }
@@ -72,6 +84,139 @@ func seedResources(db *gorm.DB, staticDir string) {
 	// 扫描目录登记新文件
 	syncDir(db, staticDir)
 }
+
+// seedFamilies 示例家族（幂等：family 表为空时才写入）
+func seedFamilies(db *gorm.DB) {
+	var count int64
+	db.Model(&model.Family{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	byNick := func(nick string) uint {
+		var u model.User
+		db.Where("nickname = ?", nick).First(&u)
+		return u.ID
+	}
+	spec := []struct {
+		name, slogan, desc, ann, ownerNick, category string
+		battle                                        int
+		members                                       []string
+	}{
+		{"清风明月", "轻风徐来，明月入怀", "以文会友，共话家常。", "欢迎回家，常来常往。", "云起", "舞文弄墨", 320, []string{"云起", "咏荷", "闲云野鹤"}},
+		{"与世无争", "与世无争，不问西东", "恬淡生活，其乐融融。", "兄弟姐妹们常回家看看。", "安珞", "情感男女", 260, []string{"安珞", "蓝天"}},
+		{"断念阁", "聚是一团火，散是满天星", "以舞会友，以歌传情。", "新老朋友皆可入阁。", "　　瞿詺南　", "青春校园", 180, []string{"　　瞿詺南　"}},
+	}
+	for _, s := range spec {
+		ownerID := byNick(s.ownerNick)
+		fam := model.Family{Name: s.name, Slogan: s.slogan, Description: s.desc,
+			Announcement: s.ann, Category: s.category, OwnerID: ownerID, TreeLevel: 2 + randInt(3), TreeExp: 150 + randInt(200), BattleScore: s.battle}
+		db.Create(&fam)
+		db.Create(&model.FamilyMember{FamilyID: fam.ID, UserID: ownerID, Role: "owner", Exp: 320})
+		for _, nick := range s.members {
+			if nick == s.ownerNick {
+				continue
+			}
+			db.Create(&model.FamilyMember{FamilyID: fam.ID, UserID: byNick(nick), Role: "member", Exp: 30 + randInt(80)})
+		}
+	}
+}
+
+// seedFamilyPatch 给已有家族补类别、并在家族动态表为空时写入示例动态（幂等）
+func seedFamilyPatch(db *gorm.DB) {
+	patches := map[string]string{"云起": "舞文弄墨", "安珞": "情感男女", "　　瞿詺南　": "青春校园"}
+	for nick, cat := range patches {
+		var owner model.User
+		db.Where("nickname = ?", nick).First(&owner)
+		if owner.ID == 0 {
+			continue
+		}
+		db.Model(&model.Family{}).Where("owner_id = ? AND (category IS NULL OR category = '')", owner.ID).Update("category", cat)
+	}
+
+	var n int64
+	db.Model(&model.FamilyActivity{}).Count(&n)
+	if n > 0 {
+		return
+	}
+	byNick := func(nick string) uint {
+		var u model.User
+		db.Where("nickname = ?", nick).First(&u)
+		return u.ID
+	}
+	famOwner := func(ownerNick string) uint {
+		ownerID := byNick(ownerNick)
+		var f model.Family
+		db.Where("owner_id = ?", ownerID).First(&f)
+		return f.ID
+	}
+	samples := []string{
+		"在家族签到",
+		"抚摸/拥抱了守护树",
+		"参加了家族乐斗，战胜了对手",
+		"分享了家族公告",
+	}
+	if fid := famOwner("云起"); fid > 0 {
+		for _, s := range samples {
+			db.Create(&model.FamilyActivity{FamilyID: fid, UserID: byNick("云起"), Content: s})
+		}
+	}
+	if fid := famOwner("安珞"); fid > 0 {
+		db.Create(&model.FamilyActivity{FamilyID: fid, UserID: byNick("安珞"), Content: "在家族签到"})
+	}
+}
+
+// seedBooks 书城示例书籍（幂等）
+func seedBooks(db *gorm.DB) {
+	var count int64
+	db.Model(&model.Book{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	books := []model.Book{
+		{Title: "剑影江湖", Author: "家园侠客", Category: "武侠", Intro: "乱世出英雄，一柄长剑闯天涯。家国恩怨，儿女情长。", Status: "连载", Recommend: 1, Rating: "★★★★★"},
+		{Title: "山河故人", Author: "云深不知", Category: "武侠", Intro: "倦鸟归林，故人相逢。旧时刀剑，今朝煮茶。", Status: "连载", Recommend: 0, Rating: "★★★★"},
+		{Title: "仲夏绮梦", Author: "木槿昔年", Category: "言情", Intro: "那年仲夏，蝉鸣与少年，都是青春最美的模样。", Status: "完结", Recommend: 1, Rating: "★★★★★"},
+		{Title: "碎碎念", Author: "文墨", Category: "都市", Intro: "都市里的烟火气，柴米油盐也动人。", Status: "连载", Recommend: 0, Rating: "★★★"},
+		{Title: "盗墓", Author: "夜行人", Category: "灵异", Intro: "地下的秘密，随着灯火一盏盏熄灭。", Status: "连载", Recommend: 1, Rating: "★★★★"},
+		{Title: "忘忧奶茶店", Author: "小甜", Category: "都市", Intro: "一杯奶茶，换你一个故事。", Status: "完结", NewBook: 1, Rating: "★★★★"},
+		{Title: "六零：城里小白菜回乡当团宠", Author: "阿园", Category: "言情", Intro: "穿越六零，从城里小白菜到乡间团宠。", Status: "连载", NewBook: 1, Recommend: 1, Rating: "★★★★★"},
+		{Title: "大汉宏图", Author: "子夜", Category: "武侠", Intro: "铁血王朝，宏图霸业，一将功成万骨枯。", Status: "连载", NewBook: 1, Rating: "★★★★"},
+	}
+	for _, b := range books {
+		db.Create(&b)
+	}
+}
+
+// seedGardenActivities 花园示例活动（幂等）
+func seedGardenActivities(db *gorm.DB) {
+	var n int64
+	db.Model(&model.GardenActivity{}).Count(&n)
+	if n > 0 {
+		return
+	}
+	for _, a := range []model.GardenActivity{
+		{Title: "春天的爱恋", Desc: "收集春天花朵，赢取限定花种。"},
+		{Title: "小魔女的烦恼", Desc: "帮助小魔女完成任务，获得魔法药水。"},
+		{Title: "花仙子的新房子", Desc: "装饰花仙子的小屋，赢取家园装扮。"},
+		{Title: "寻找遗失的碎片", Desc: "集齐碎片，兑换稀有花盆。"},
+	} {
+		db.Create(&a)
+	}
+}
+
+// seedPlazaSections 广场板块开关（幂等，默认全显示）
+func seedPlazaSections(db *gorm.DB) {
+	var n int64
+	db.Model(&model.PlazaSection{}).Count(&n)
+	if n > 0 {
+		return
+	}
+	for i, p := range model.PlazaSectionPresets {
+		db.Create(&model.PlazaSection{Key: p.Key, Name: p.Name, Enabled: 1, Sort: i})
+	}
+}
+
+func randInt(n int) int { return int(time.Now().UnixNano())%n + 1 }
 
 // syncDir 扫描 static/picture 与 static/image，把未登记的图片登记为「其他」
 func syncDir(db *gorm.DB, staticDir string) int {
@@ -215,15 +360,15 @@ func seedMigrate2026(db *gorm.DB) {
 	}
 	list := []th{
 		{board: "新人求助", title: "【小破网】社区论坛公约", by: "李春风", fine: 1, views: 79, created: d(6, 1, 9, 0),
-			content: "【小破网】社区论坛公约\n\n第一条 为加强3GQQ社区网络平台的建设、管理及维护，营造健康和谐的交流环境，特制定本公约。\n第二条 友友发帖回帖应当遵守法律法规，尊重他人，文明用语。\n第三条 禁止发布外网链接、广告及任何形式的商业推广。\n第四条 各板块版主应当及时处理违规内容，公坛协管员负责巡查督导。\n第五条 本公约自发布之日起施行。\n\n　　　　　　　　3GQQ家园社区 公坛管理组"},
+			content: "【小破网】社区论坛公约\n\n第一条 为加强社区网络平台的建设、管理及维护，营造健康和谐的交流环境，特制定本公约。\n第二条 友友发帖回帖应当遵守法律法规，尊重他人，文明用语。\n第三条 禁止发布外网链接、广告及任何形式的商业推广。\n第四条 各板块版主应当及时处理违规内容，公坛协管员负责巡查督导。\n第五条 本公约自发布之日起施行。\n\n　　　　　　　　家园社区 公坛管理组"},
 		{board: "新人求助", title: "严厉打击宣传外网公告", by: "李春风", fine: 1, views: 527, created: d(7, 1, 8, 30),
-			content: "【公告】严厉打击宣传外网行为\n\n近期发现有部分账号在社区内宣传外部网站、发布拉人广告，严重扰乱社区秩序。\n\n现公告如下：\n一、凡发布外网宣传内容的帖子一律删除，账号视情节封禁3-30天；\n二、屡教不改者永久封号并公示；\n三、欢迎大家向客服中心举报，举报属实奖励金币。\n\n家园是我们共同的家，请大家一起守护！\n\n　　　　　　　　3GQQ家园社区 客服团",
+			content: "【公告】严厉打击宣传外网行为\n\n近期发现有部分账号在社区内宣传外部网站、发布拉人广告，严重扰乱社区秩序。\n\n现公告如下：\n一、凡发布外网宣传内容的帖子一律删除，账号视情节封禁3-30天；\n二、屡教不改者永久封号并公示；\n三、欢迎大家向客服中心举报，举报属实奖励金币。\n\n家园是我们共同的家，请大家一起守护！\n\n　　　　　　　　家园社区 客服团",
 			replies: []rp{
 				{by: "云起", content: "严厉支持！共同维护家园环境。", at: d(7, 1, 10, 0)},
 				{by: "苍笙踏歌", content: "支持！见到一个举报一个。", at: d(7, 2, 9, 0)},
 			}},
 		{board: "新人求助", title: "【UBB代码演示】ubb功能调用代码", by: "秋水未央", fine: 1, views: 8467, created: d(5, 20, 14, 0),
-			content: "【UBB代码演示】\n\nUBB 是家园发帖常用的排版代码，掌握以下几条，帖子立刻好看十倍：\n\n[b]加粗文字[/b] —— 加粗\n[i]倾斜文字[/i] —— 倾斜\n[color=red]红字[/color] —— 变色\n[url=http://3gqq.cn]链接[/url] —— 超链接\n\n排版三件套：分割线、颜色代码、居中标签，配合使用效果最佳。\n大家回帖练手，不懂就问！",
+			content: "【UBB代码演示】\n\nUBB 是家园发帖常用的排版代码，掌握以下几条，帖子立刻好看十倍：\n\n[b]加粗文字[/b] —— 加粗\n[i]倾斜文字[/i] —— 倾斜\n[color=red]红字[/color] —— 变色\n[url=http://家园社区]链接[/url] —— 超链接\n\n排版三件套：分割线、颜色代码、居中标签，配合使用效果最佳。\n大家回帖练手，不懂就问！",
 			replies: []rp{
 				{by: "轻轻淡写", content: "收藏了，排版果然重要。", at: d(5, 21, 9, 0)},
 				{by: "Ruby", content: "好用！帖子瞬间变好看了", at: d(5, 21, 20, 0)},
@@ -294,13 +439,13 @@ func seedMigrate2026(db *gorm.DB) {
 				{by: "刘乐乐ヾ", content: "等一个真香价。", at: d(8, 24, 11, 0)},
 			}},
 		{board: "公坛事务", title: "【小破网】社区统筹管理纲要", by: "　　瞿詺南　", fine: 1, views: 308, created: d(7, 15, 16, 0),
-			content: "第一章，总则\n\n第一条 为加强3GQQ社区网络平台的建设、管理及维护（以下简称社区），服务社区工作，服务用户，提升社区知名度、美誉度，特制定本管理规定；\n\n第二条 网络平台建设、运营和管理必须坚持立德树人，以人为本，弘扬社会主义核心价值观，传递网络正能量；\n\n第三条 社区目前所建设和管理的网络平台包括：\n\n1.社区网站，网址：https://3gqq.cn\n\n2.手机QQ群，群号242973387\n\n第四条 社区发布的信息内容须遵循真实性、准确性和及时性相统一的原则；\n\n第五条 信息内容和展现方式须全面、完整、合时宜。\n\n第二章 管理机构及职责\n\n第六条 社区设立  七大管理区域，即〔公坛〕〔同城〕〔客服团〕〔家服团〕〔爱游团〕〔社区传媒〕〔监察局〕\n\n第七条，各区域管理 对所负责的区域进行全面监督及管理。\n\n第八条 专职监察员负责社区的信息收集与汇总、日常管理，负责社区案件审核，处理通告发布以及其他信息材料的管理、录入与发布；\n\n第九条 处理结果发布后的反馈（含反响评论、错误指正、批评建议等）须及时上报，妥善处理。\n\n第三章 规范及要求\n\n第十条 信息发布严格执行\"谁发布、谁负责；谁批准、谁负责\"的原则。如发布不良、有害或反动等内容信息，将对经办人和负责人依据规定追究相关责任；\n\n第十六条 其他事宜参考【小破网】社区论坛公约\n\n第四章，社区的应聘要求及流程\n\n随着社区人员越来越多，管理人员的更替和加入也越来越频繁。社区必须做出一个统一的管理流程，终结各自一摊的局面。\n\n为此做出以下规定，\n\n应聘贴必须在招聘活动进行时有效，拒绝凭空应聘和空降职务。\n\n应聘要求统一为〔一线管理〕\n\n1.家园等级不低于3级\n\n2.论坛等级不低于一级\n\n3.有足够时间上线活跃\n\n〔一级管理〕\n\n不接受直接申请，\n\n应聘帖子统一为\n\n标题：昵称+ID+应聘区域职务\n\n帖子内容为\n\n①.家园ID:\n\n②.家园昵称:\n\n③.家园等级:\n\n④.论坛等级:\n\n⑤.是否已经绑定手机:\n\n⑥.每日在线时长:\n\n⑦.对社区的了解:\n\n⑧.对应聘职位的了解:\n\n社区原则上是不支持社区管理兼职，但是各区域可根据实际情况调整管理是否兼职，最多两个一线管理职务，需要分管仲裁报备到仲裁团，(家族职务除外)\n\n第五章， 管理员的考核和审核\n\n报名成功后：需要统一安排培训，是否被录取，以录取公告为准。\n\n统一为不带权考核时间最多为7天，\n\n带权实习最长时间为一个月，\n\n第六章，管理员实习\n\n社区支持新人培训后上岗，但是各区域可根据实际情况选择是否培训。需要分管仲裁报备到仲裁团。\n\n实习内容包括\n\n1.实习目的\n\n2.实习时间\n\n3.实习单位\n\n4.实习主要内容\n\n5.实习心得\n\n撰写报告后提交各区域内版\n\n管理的晋升参考社区管理统筹大纲\n\n【监察局】\n\n第七章，监察员转正后的工作内容详责\n\n第一条 ，工作内容可参考【小破网】社区论坛公约进行，\n\n二条， 关于签名\n\n1、 不得出现宣扬反动、封建迷信、淫秽、色情、暴力、凶杀、恐怖、教唆犯罪等不符合国家法律规定的以及任何包含种族、性别、宗教歧视性和猥亵性的信息内容；\n\n2、 不得出现有侮辱性言语、挑衅、辱骂其他人以及不健康内容；\n\n3、 不得出现国家明令禁止广告的内容或链接；\n\n4、 不得出现其它违反《小破网社区各区域管理规定》的内容。\n\n　　　　　　　　3GQQ家园社区 公坛管理组",
+			content: "第一章，总则\n\n第一条 为加强社区网络平台的建设、管理及维护（以下简称社区），服务社区工作，服务用户，提升社区知名度、美誉度，特制定本管理规定；\n\n第二条 网络平台建设、运营和管理必须坚持立德树人，以人为本，弘扬社会主义核心价值观，传递网络正能量；\n\n第三条 社区目前所建设和管理的网络平台包括：\n\n1.社区网站，网址：https://家园社区\n\n2.手机QQ群，群号242973387\n\n第四条 社区发布的信息内容须遵循真实性、准确性和及时性相统一的原则；\n\n第五条 信息内容和展现方式须全面、完整、合时宜。\n\n第二章 管理机构及职责\n\n第六条 社区设立  七大管理区域，即〔公坛〕〔同城〕〔客服团〕〔家服团〕〔爱游团〕〔社区传媒〕〔监察局〕\n\n第七条，各区域管理 对所负责的区域进行全面监督及管理。\n\n第八条 专职监察员负责社区的信息收集与汇总、日常管理，负责社区案件审核，处理通告发布以及其他信息材料的管理、录入与发布；\n\n第九条 处理结果发布后的反馈（含反响评论、错误指正、批评建议等）须及时上报，妥善处理。\n\n第三章 规范及要求\n\n第十条 信息发布严格执行\"谁发布、谁负责；谁批准、谁负责\"的原则。如发布不良、有害或反动等内容信息，将对经办人和负责人依据规定追究相关责任；\n\n第十六条 其他事宜参考【小破网】社区论坛公约\n\n第四章，社区的应聘要求及流程\n\n随着社区人员越来越多，管理人员的更替和加入也越来越频繁。社区必须做出一个统一的管理流程，终结各自一摊的局面。\n\n为此做出以下规定，\n\n应聘贴必须在招聘活动进行时有效，拒绝凭空应聘和空降职务。\n\n应聘要求统一为〔一线管理〕\n\n1.家园等级不低于3级\n\n2.论坛等级不低于一级\n\n3.有足够时间上线活跃\n\n〔一级管理〕\n\n不接受直接申请，\n\n应聘帖子统一为\n\n标题：昵称+ID+应聘区域职务\n\n帖子内容为\n\n①.家园ID:\n\n②.家园昵称:\n\n③.家园等级:\n\n④.论坛等级:\n\n⑤.是否已经绑定手机:\n\n⑥.每日在线时长:\n\n⑦.对社区的了解:\n\n⑧.对应聘职位的了解:\n\n社区原则上是不支持社区管理兼职，但是各区域可根据实际情况调整管理是否兼职，最多两个一线管理职务，需要分管仲裁报备到仲裁团，(家族职务除外)\n\n第五章， 管理员的考核和审核\n\n报名成功后：需要统一安排培训，是否被录取，以录取公告为准。\n\n统一为不带权考核时间最多为7天，\n\n带权实习最长时间为一个月，\n\n第六章，管理员实习\n\n社区支持新人培训后上岗，但是各区域可根据实际情况选择是否培训。需要分管仲裁报备到仲裁团。\n\n实习内容包括\n\n1.实习目的\n\n2.实习时间\n\n3.实习单位\n\n4.实习主要内容\n\n5.实习心得\n\n撰写报告后提交各区域内版\n\n管理的晋升参考社区管理统筹大纲\n\n【监察局】\n\n第七章，监察员转正后的工作内容详责\n\n第一条 ，工作内容可参考【小破网】社区论坛公约进行，\n\n二条， 关于签名\n\n1、 不得出现宣扬反动、封建迷信、淫秽、色情、暴力、凶杀、恐怖、教唆犯罪等不符合国家法律规定的以及任何包含种族、性别、宗教歧视性和猥亵性的信息内容；\n\n2、 不得出现有侮辱性言语、挑衅、辱骂其他人以及不健康内容；\n\n3、 不得出现国家明令禁止广告的内容或链接；\n\n4、 不得出现其它违反《小破网社区各区域管理规定》的内容。\n\n　　　　　　　　家园社区 公坛管理组",
 			replies: []rp{
 				{by: "云起", content: "纲要已读，共同遵守！", at: d(7, 15, 17, 0)},
 				{by: "李春风", content: "已转发客服团学习。", at: d(7, 16, 9, 0)},
 			}},
-		{board: "公坛事务", title: "[重要]3GQQ家园社区已完成所有法定备案", by: "站长小Q", fine: 1, views: 4384, created: d(6, 10, 10, 0),
-			content: "3GQQ家园社区（3GQQ.CN）已取得工信部备案：渝ICP备17001534号-2。\n\n备案信息可在工信部官网查询。家园合法合规运营，请大家放心游玩，也别忘了身边的老朋友。\n\n　　　　　　　　3GQQ家园社区 站长办",
+		{board: "公坛事务", title: "[重要]家园社区已完成所有法定备案", by: "站长小Q", fine: 1, views: 4384, created: d(6, 10, 10, 0),
+			content: "家园社区（家园社区）已取得工信部备案：渝ICP备17001534号-2。\n\n备案信息可在工信部官网查询。家园合法合规运营，请大家放心游玩，也别忘了身边的老朋友。\n\n　　　　　　　　家园社区 站长办",
 			replies: []rp{
 				{by: "云起", content: "大事务！恭喜家园。", at: d(6, 10, 12, 0)},
 				{by: "尊上", content: "普天同庆，家园长长久久。", at: d(6, 10, 14, 0)},
@@ -440,7 +585,7 @@ func seedAnnouncements(db *gorm.DB) {
 		return
 	}
 	db.Create(&[]model.Announcement{
-		{Type: "notice", Title: "欢迎来到3GQQ家园社区", Content: "在这里，玩家可以随时随地的和好友进行互动，一起玩游戏。社区常年招募管理员与版主，有意者到客服中心申请。"},
+		{Type: "notice", Title: "欢迎来到家园社区", Content: "在这里，玩家可以随时随地的和好友进行互动，一起玩游戏。社区常年招募管理员与版主，有意者到客服中心申请。"},
 		{Type: "broadcast", Title: "行百里者，半于九十", Content: "小Q广播：走一百里路，走了九十里才算走了一半。越接近成功越要认真对待！"},
 		{Type: "activity", Title: "五一活动之《歌王就是你》第二届举办帖", Content: "活动时间：即日起至月底。参与方式：在休闲灌水板块发布你的拿手歌曲翻唱帖，回帖数前三名获得社区勋章与金币奖励！"},
 	})
@@ -529,7 +674,7 @@ func seedUsersAndContent(db *gorm.DB) {
 		}
 	}
 	threads := []t{
-		{"新人求助", "【新手大全实用手册】", "欢迎加入社区。\n幸甚曾拥有三猪，拥有曾几何时青春澎湃的你们。有人在这寻得单纯的友情、青涩的爱情，亦有人寻得逛街的水友，皆由缘起。\n\n【论坛经验等级对照表】发帖+10经验，回帖+5经验，签到+20经验。\n【日常签到】每天签到可得金币，连续7天有惊喜！\n【新人礼包】注册即送100金币，签到还能翻倍哦。\n\n　　　　　　　　3GQQ家园社区欢迎你！", 0, 1, 1, 1153, []struct {
+		{"新人求助", "【新手大全实用手册】", "欢迎加入社区。\n幸甚曾拥有三猪，拥有曾几何时青春澎湃的你们。有人在这寻得单纯的友情、青涩的爱情，亦有人寻得逛街的水友，皆由缘起。\n\n【论坛经验等级对照表】发帖+10经验，回帖+5经验，签到+20经验。\n【日常签到】每天签到可得金币，连续7天有惊喜！\n【新人礼包】注册即送100金币，签到还能翻倍哦。\n\n　　　　　　　　家园社区欢迎你！", 0, 1, 1, 1153, []struct {
 			user  int
 			floor string
 		}{{1, "感谢站长整理，收藏了！"}, {2, "新人报到，学习学习~"}, {5, "手册很实用，赞一个"}}},
@@ -671,7 +816,7 @@ func seedGameBoards(db *gorm.DB) {
 		{"家园宠物", "家园宠物，内测中"},
 		{"水果乐园", "轻松娱乐，点缀生活，水果乐园"},
 		{"全民猎马", "周二四六，包你赢够，尽在猎马"},
-		{"家园股市", "3GQQ家园股市，一夜成名，瞬间暴富"},
+		{"家园股市", "家园股市，一夜成名，瞬间暴富"},
 		{"大话吹牛", "大话吹牛，打打闹闹，更是乐哉"},
 	}
 	ids := map[string]uint{}
@@ -786,7 +931,7 @@ func seedGongtan(db *gorm.DB) {
 		BoardID: gt.ID, UserID: qun.ID,
 		Title: "【公坛区域】管理须知",
 		IsTop: 1, IsFine: 1, ViewCount: 520,
-		Content: "【公坛区域管理须知】\n\n一、公坛区域范围\n公共论坛下设各板块（休闲灌水、时尚美眉、新人求助、情感天地、数码动漫、公坛事务）均属公坛区域管理范围。\n\n二、管理员职责\n1. 公坛协管员负责日常巡查，及时处理违规帖；\n2. 各板块版主负责本版加精、置顶、删帖；\n3. 发现宣传外网、广告、辱骂等行为，第一时间删帖并上报客服中心。\n\n三、发帖规范\n1. 禁止发布外网链接与广告；\n2. 禁止人身攻击、地域攻击；\n3. 水贴适度，共同维护社区环境。\n\n四、本须知自发布之日起施行，解释权归公坛管理组。\n\n　　　　　　　　3GQQ家园社区 公坛管理组",
+		Content: "【公坛区域管理须知】\n\n一、公坛区域范围\n公共论坛下设各板块（休闲灌水、时尚美眉、新人求助、情感天地、数码动漫、公坛事务）均属公坛区域管理范围。\n\n二、管理员职责\n1. 公坛协管员负责日常巡查，及时处理违规帖；\n2. 各板块版主负责本版加精、置顶、删帖；\n3. 发现宣传外网、广告、辱骂等行为，第一时间删帖并上报客服中心。\n\n三、发帖规范\n1. 禁止发布外网链接与广告；\n2. 禁止人身攻击、地域攻击；\n3. 水贴适度，共同维护社区环境。\n\n四、本须知自发布之日起施行，解释权归公坛管理组。\n\n　　　　　　　　家园社区 公坛管理组",
 	}
 	db.Create(&th1)
 	var yun model.User
@@ -826,17 +971,17 @@ func seedGames(db *gorm.DB) {
 		return 0
 	}
 	games := []model.Game{
-		{Name: "3GQQ幻想西游", Category: "net", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", BoardID: bid("幻想西游"), Sort: 1},
+		{Name: "幻想西游", Category: "net", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", BoardID: bid("幻想西游"), Sort: 1},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
-		{Name: "3GQQ魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", BoardID: bid("魔法花园"), Sort: 1},
+		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", BoardID: bid("魔法花园"), Sort: 1},
 		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 2},
 		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★☆", Desc: "开心农场，播种开心，收获快乐", BoardID: bid("开心农场"), Sort: 3},
 		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", BoardID: bid("狂抢车位"), Sort: 4},
 		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 5},
-		{Name: "3GQQ家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 6},
+		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 6},
 		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 7},
 		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 8},
-		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "3GQQ家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 9},
+		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 9},
 		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", BoardID: bid("大话吹牛"), Sort: 10},
 	}
 	for i := range games {

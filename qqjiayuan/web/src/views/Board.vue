@@ -29,7 +29,7 @@
       <a v-if="isLogin && board.parent_id" href="javascript:;" @click="$router.push('/post/'+board.id)">发帖</a><template v-if="isLogin && board.parent_id">.</template><a href="javascript:;" @click="$router.push('/games')">工具箱</a>.<a v-if="canManage" href="javascript:;" @click="$router.push('/admin')">版主</a><template v-if="canManage">.</template><a href="javascript:;" @click="$router.push('/')">在线({{ online }})</a><br>
     </div>
     <div class="login-tips">
-      <img :src="$pic('0.gif')" alt="广播">3GQQ家园社区欢迎你的到来！<br>
+      <img :src="$pic('0.gif')" alt="广播">家园社区欢迎你的到来！<br>
     </div>
     <div class="module-content">
       <form @submit.prevent="jump">

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
 )
@@ -24,6 +25,53 @@ func (h *GameHandler) List(c *gin.Context) {
 	var games []model.Game
 	h.DB.Where("status = 1").Order("sort ASC, id ASC").Find(&games)
 	resp.OK(c, games)
+}
+
+// 我的游戏
+func (h *GameHandler) MyList(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var rows []model.MyGame
+	h.DB.Preload("Game").Where("user_id = ?", uid).Order("id ASC").Find(&rows)
+	out := []gin.H{}
+	for _, r := range rows {
+		if r.Game != nil {
+			out = append(out, gin.H{"id": r.Game.ID, "name": r.Game.Name, "desc": r.Game.Desc, "stars": r.Game.Stars})
+		}
+	}
+	resp.OK(c, out)
+}
+
+type addMyGameReq struct {
+	GameID uint `json:"game_id" binding:"required"`
+}
+
+func (h *GameHandler) MyAdd(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req addMyGameReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择游戏")
+		return
+	}
+	var g model.Game
+	if err := h.DB.First(&g, req.GameID).Error; err != nil {
+		resp.NotFound(c, "游戏不存在")
+		return
+	}
+	var exist int64
+	h.DB.Model(&model.MyGame{}).Where("user_id = ? AND game_id = ?", uid, req.GameID).Count(&exist)
+	if exist > 0 {
+		resp.ParamError(c, "该游戏已在你的游戏中")
+		return
+	}
+	h.DB.Create(&model.MyGame{UserID: uid, GameID: req.GameID})
+	resp.OK(c, nil)
+}
+
+func (h *GameHandler) MyRemove(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	gid, _ := strconv.Atoi(c.Param("gameId"))
+	h.DB.Where("user_id = ? AND game_id = ?", uid, gid).Delete(&model.MyGame{})
+	resp.OK(c, nil)
 }
 
 // 后台：分页列表

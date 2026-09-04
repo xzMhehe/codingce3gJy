@@ -23,7 +23,7 @@
     <div class="module-content">
       如需添加投票/回帖/踩楼奖励等，请先保存为草稿（功能开发中）。<br>
       返回<a href="javascript:;" @click="$router.push('/board/'+(board.id||1))">主题帖列表</a>|<a href="javascript:;" @click="$router.push('/nav')">UBB指南</a><br>
-      《<a href="javascript:;" @click="$router.push('/channel/4')">3GQQ家园论坛公约协议</a>》
+      《<a href="javascript:;" @click="$router.push('/channel/4')">家园论坛公约协议</a>》
     </div>
   </div>
 </template>

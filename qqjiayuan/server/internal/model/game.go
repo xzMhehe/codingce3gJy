@@ -1,5 +1,18 @@
 package model
 
+import "time"
+
+// 我的游戏（用户添加到"正在玩"）
+type MyGame struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_mygame" json:"user_id"`
+	GameID    uint      `gorm:"uniqueIndex:uk_mygame" json:"game_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Game      *Game     `gorm:"foreignKey:GameID" json:"game,omitempty"`
+}
+
+func (MyGame) TableName() string { return "my_games" }
+
 // 游戏大厅条目：Logo 为 static/image 下文件名，空则前端渲染文字标
 type Game struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`

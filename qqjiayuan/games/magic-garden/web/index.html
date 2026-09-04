@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta name="MobileOptimized" content="400"/>
+<title>我的花园</title>
+<link rel="stylesheet" href="assets/css/style_blue01.css" type="text/css"/>
+<link rel="stylesheet" href="assets/css/style.css" type="text/css"/>
+<style>
+  /* 仅在原版无对应规则时补充（花盆排布、状态行） */
+  .plots { padding:3px 2px; }
+  .plots img { width:44px; height:44px; margin:2px 4px 2px 0; vertical-align:middle; }
+  .plot-line { padding:2px 5px; }
+  .plot-line.tip { color:#999; font-size:12px; }
+  .seed-row { padding:4px 5px; }
+  .seed-row select { border:1px solid #2e9cd3; }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <a href="javascript:;" onclick="demo('活动')">美加墨世界杯【绿茵足球兑换活动】介绍</a><br/>
+  <img src="assets/image/vipqq.jpg" alt="."/>&nbsp;回家的礼物、一天都不能少(0/7) <a href="javascript:;" onclick="demo('签到')">签到</a><br/>
+</div>
+
+<div class="bar">
+  <a class="Rt" href="javascript:;">花园</a>
+  <a href="javascript:;" onclick="demo('好友')">好友</a> <a href="javascript:;" onclick="demo('花房')">花房</a> <a href="javascript:;" onclick="demo('魔法屋')">魔法屋</a> <a href="javascript:;" onclick="demo('活动')">活动</a>.<br/>
+</div>
+
+<div class="deep">
+  <div class="name">夜凌云 <img src="assets/noble_2_1.gif" alt="."/>(1级)</div>
+  <div class="module-content deep" id="title">1级 见习魔法学徒(经验 0/200)</div>
+</div>
+
+<div class="module-content">
+  精灵花册:<a href="javascript:;" onclick="demo('精灵花册')">0/10</a><br/>
+  <br/>花之图谱:<a href="javascript:;" onclick="demo('花之图谱')">0/619</a><br/>珍稀:0 独特:0 普通:0<br/>
+</div>
+
+<div class="plots" id="plots"></div>
+<br/>
+<div class="module-content">背包中没有魔力道具，无法使用一键功能！</div><br/>
+
+<div class="name">花盆(<b id="potNum">0</b>)<a href="javascript:location.reload()">刷新</a></div>
+<div class="list" id="potlist"></div>
+<a href="javascript:;" onclick="addPot()">添置新花盆</a><br/>
+
+<div class="name">消息</div>
+<div class="list">您没有消息.</div>
+
+<div class="name">花园设施</div>
+<div class="list">
+  <div class="row">公告板:劳动光荣，偷窃可耻！ <a href="javascript:;" onclick="demo('公告板')">更改</a></div>
+  <div class="row">花园名:<span id="gname"></span> <a href="javascript:;" onclick="demo('花园名')">更改</a></div>
+</div>
+
+<div class="footer">
+  <a href="javascript:;" onclick="demo('背包')">背包</a>.<a href="javascript:;" onclick="demo('商店')">商店</a>.<a href="javascript:;" onclick="demo('排行')">排行</a>.<a href="javascript:;" onclick="demo('帮助')">帮助</a>.<a href="javascript:;" onclick="demo('论坛')">论坛</a><br/>
+  昵称：<input type="text" id="nick" size="8" maxlength="10" value=""/><br/>
+</div>
+
+<div class="module-content" style="color:#c00" id="msg"></div>
+<div class="module-content" style="color:#1a9e1a" id="ok"></div>
+
+<script>
+var nick = localStorage.getItem('garden_nick') || (function(){ var s=''; for(var i=0;i<5;i++) s+=('abcdefghjkmnpqrstuvwxyz'[Math.floor(Math.random()*24)]); return '花友'+s; })();
+localStorage.setItem('garden_nick', nick);
+document.getElementById('nick').value = nick;
+document.getElementById('nick').onchange = function(){ localStorage.setItem('garden_nick', this.value.trim()||nick); location.reload(); };
+
+var selOpen = false;
+function show(t){ document.getElementById('msg').textContent = t||''; document.getElementById('ok').textContent=''; }
+function ok(t){ document.getElementById('ok').textContent = t||''; document.getElementById('msg').textContent=''; }
+function demo(t){ alert('魔法花园 · '+t+'（演示入口）'); }
+
+function remainText(s){ if(s<=0) return '即将成熟'; if(s<60) return s+'秒'; return Math.floor(s/60)+'分'; }
+
+function load(){
+  fetch('/api/state?nick='+encodeURIComponent(nick)).then(function(r){return r.json();}).then(function(res){
+    if(res.code!==0){ show(res.msg); return; }
+    var d=res.data;
+    document.getElementById('title').textContent = '1级 见习魔法学徒(经验 ' + d.coins + '/200)';
+    document.getElementById('potNum').textContent = d.plots.length;
+    document.getElementById('gname').textContent = nick + '的花园';
+
+    var oc='';
+    d.plots.forEach(function(p){
+      var icon = p.status==='empty' ? 'm_s_1.gif' : (p.status==='growing' ? 'm_s_3.gif' : 'm_s_10.gif');
+      oc += '<img src="assets/'+icon+'" alt="." title="'+ (p.status==='empty'?'空花盆':(p.status==='growing'?p.crop+' '+remainText(p.remain):p.crop+' 可收'))+'">';
+    });
+    document.getElementById('plots').innerHTML = oc;
+
+    var emptyCount = d.plots.filter(function(x){return x.status==='empty';}).length;
+    var pl = '<div class="row">空花盆:'+emptyCount+' [<a href="javascript:;" onclick="openSeed()">播种</a>]</div>';
+    d.plots.forEach(function(p){
+      if(p.status==='growing') pl += '<div class="row">'+p.crop+' 生长中，剩余 '+remainText(p.remain)+'</div>';
+      else if(p.status==='ripe') pl += '<div class="row">'+p.crop+' <b style="color:#1a9e1a">已成熟</b> [<a href="javascript:;" onclick="harvest('+p.index+')">收获</a>]</div>';
+    });
+    if(selOpen!==false){ pl += '<div class="row" id="seedbox"></div>'; }
+    document.getElementById('potlist').innerHTML = pl;
+  });
+}
+
+function openSeed(){
+  show(''); ok('');
+  fetch('/api/state?nick='+encodeURIComponent(nick)).then(function(r){return r.json();}).then(function(res){
+    var d=res.data; var h='<span class="seed-row">选择空花盆播种：</span><select id="sel0"><option value="">选花盆</option>';
+    d.plots.forEach(function(p){ if(p.status==='empty') h+='<option value="'+p.index+'">第'+(p.index+1)+'个花盆</option>'; });
+    h+='</select> <select id="selcrop"><option value="">选种子</option>';
+    d.crops.forEach(function(c){ h+='<option value="'+c.name+'">'+c.name+'（'+c.seed+'）</option>'; });
+    h+='</select> <a href="javascript:;" onclick="plant()">确认</a>';
+    document.getElementById('seedbox').innerHTML=h;
+  });
+}
+function plant(){
+  var i=document.getElementById('sel0').value;
+  var crop=document.getElementById('selcrop').value;
+  if(i===''||!crop){ show('请选择花盆和种子'); return; }
+  fetch('/api/plant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nick:nick,index:parseInt(i),crop:crop})}).then(function(r){return r.json();}).then(function(res){
+    if(res.code===0){ ok('已种下'+crop); selOpen=false; load(); } else show(res.msg);
+  });
+}
+function harvest(i){
+  fetch('/api/harvest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nick:nick,index:i})}).then(function(r){return r.json();}).then(function(res){
+    if(res.code===0){ ok('收获成功，金币 +'+res.data.gain); load(); } else show(res.msg);
+  });
+}
+function addPot(){ demo('添置新花盆'); }
+
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

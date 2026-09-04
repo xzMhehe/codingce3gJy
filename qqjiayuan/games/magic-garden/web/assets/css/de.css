@@ -1,0 +1,128 @@
+
+.myax{  z-index: 9999;position: fixed; background-color: rgba(0,0,0,0.7); color: #fff; height: 60px; left: 50%; top: 50%; font-size: 100%; line-height: 25px; border-radius: 15px; text-align: center;  padding:18px 18px 15px 18px;  }   
+
+.showBox { z-index: 9999;position: fixed; background-color: rgba(0,0,0,0.7); color: #fff; height: 30px; left: 50%; top: 50%; font-size: 100%; line-height: 30px; border: 2px solid #888; border-radius: 5px; text-align: center; padding: 10px; }
+ #show,#show1,#show2,#show3,#show4{position: fixed; background-color: rgba(0,0,0,0.7); color: #fff; height: 30px; left: 50%; top: 50%; font-size: 100%; line-height: 30px; border: 2px solid #888; border-radius: 5px; text-align: center; padding: 10px;transform: translate(-50%, -50%);}   
+
+.bbsface { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 5px; } 
+.bbsface:hover, .face.in { background-position: 0px -118px; }
+
+.bbsfacea { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 15px; } 
+.bbsfacea:hover, .face.in { background-position: 0px -118px; }
+
+.bbsfaceb { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 15px; } 
+.bbsfaceb:hover, .face.in { background-position: 0px -118px; }
+
+.bbsfacec { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 15px; } 
+.bbsfacec:hover, .face.in { background-position: 0px -118px; }
+
+.bbsfaced { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 15px; } 
+.bbsfaced:hover, .face.in { background-position: 0px -118px; }
+
+.bbsfacef { display: block; width: 20px; height: 20px; background: url(../image/facebg_1.png) 0px -100px no-repeat; float: left; margin-left: 15px; } 
+.bbsfacef:hover, .face.in { background-position: 0px -118px; }
+
+
+#submit, #reset { background-image: -moz-linear-gradient(top, #ffffff, #f1f1f1); background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, #ffffff), color-stop(1, #f1f1f1)); background-image: -ms-linear-gradient(top, #ffffff, #f1f1f1); progid:DXImageTransform.Microsoft.gradient(startColorstr='#ffffff', endColorstr='#f1f1f1', GradientType='0'); float: right; height: 33px; margin: -5px 0 0 0; border-width: 0 0 0 1px; border-style: solid; border-color: #ddd; font-weight: bold; color: #555; transition: all 0.0s ease-in-out 0s; -moz-transition: all 0.0s ease-in-out 0s; -webkit-transition: all 0.2s ease-in-out 0s; padding-top: 2px; width: 85px; } 
+
+#comment-post textarea { position: relative; border-radius: 2px 2px 0 0; height: 70px; padding: 4px; border: #ddd 1px solid; box-shadow: inset 0 1px 1px #f6f6f6; overflow-y: hidden; margin-bottom: -0px }
+
+#comment-post .gdpl .fujian a { padding-left: 17px; font-size: 17px; color: #333; }
+
+#comment-post .gdpl { background-image: -moz-linear-gradient(top, #ffffff, #f6f6f6); background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, #fff), color-stop(1, #f6f6f6)); background-image: -ms-linear-gradient(top, #ffffff, #f6f6f6); progid:DXImageTransform.Microsoft.gradient(startColorstr='#ffffff', endColorstr='#f6f6f6', GradientType='0');
+border: #ddd 1px solid; width: 99%; padding: 4px; border-top: none; height: 24px; border-radius: 0 0 2px 2px; overflow: hidden; }
+#comments h3, #comment-post h3 { font-weight: bold; font-size: 18px; margin-bottom: 15px; text-align: left; }
+
+
+.content { background: #FCFCFC; }
+.content { padding: 5px; word-wrap: break-word; }
+.content img { max-width: 100%;/* border-radius: 10px; */ }
+#content .c-value-no, #content .c-value-no i, #content .c-value-no em, #detail .i-butie, .tb-prop .tb-selected i, .tm-ser .tm-pay-box .tm-pay .pay-credit s { background-image: url(../image/shoptm.png); }
+
+#SmohanFaceBox6 { display: block; width: 100%; max-width: 97%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBox6 .Corner { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 0px; top: 0; z-index: 100; }
+#SmohanFaceBox6 .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBox6 .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBox6 .Content h3 span { float: left; }
+#SmohanFaceBox6 .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBox6 .Content h3 .close:hover { background-position: -46px -120px; }
+
+#SmohanFaceBox { display: block; width: 100%; max-width: 97%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBox .Corner { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 0px; top: 0; z-index: 100; }
+#SmohanFaceBox .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBox .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBox .Content h3 span { float: left; }
+#SmohanFaceBox .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBox .Content h3 .close:hover { background-position: -46px -120px; }
+
+#SmohanFaceBox .Content ul { margin: 5px 0px 0px 0px; padding: 0; list-style-type: none; }
+#SmohanFaceBox .Content ul li { display: inline-block; padding: 2px; border: 1px solid #f8f8f8; float: left; }
+#SmohanFaceBox .Content ul li:hover { border-color: #6C3; }
+
+
+
+#SmohanFaceBoxa { display: block; width: 97%; max-width: 100%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBoxa .Cornera { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 35px; top: 0; z-index: 100; }
+#SmohanFaceBoxa .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBoxa .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBoxa .Content h3 span { float: left; }
+#SmohanFaceBoxa .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBoxa .Content h3 .close:hover { background-position: -46px -120px; }
+#SmohanFaceBoxa .Content ul { margin: 5px 0px 0px 0px; padding: 0; list-style-type: none; }
+#SmohanFaceBoxa .Content ul li { display: inline-block; padding: 2px; border: 1px solid #f8f8f8; float: left; }
+#SmohanFaceBoxa .Content ul li:hover { border-color: #6C3; }
+
+#SmohanFaceBoxb { display: block; width: 97%; max-width: 100%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBoxb .Cornerb { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 70px; top: 0; z-index: 100; }
+#SmohanFaceBoxb .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBoxb .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBoxb .Content h3 span { float: left; }
+#SmohanFaceBoxb .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBoxb .Content h3 .close:hover { background-position: -46px -120px; }
+#SmohanFaceBoxb .Content ul { margin: 5px 0px 0px 0px; padding: 0; list-style-type: none; }
+#SmohanFaceBoxb .Content ul li { display: inline-block; padding: 2px; border: 1px solid #f8f8f8; float: left; }
+#SmohanFaceBoxb .Content ul li:hover { border-color: #6C3; }
+
+#SmohanFaceBoxc { display: block; width: 97%; max-width: 100%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBoxc .Cornerc { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 105px; top: 0; z-index: 100; }
+#SmohanFaceBoxc .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBoxc .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBoxc .Content h3 span { float: left; }
+#SmohanFaceBoxc .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBoxc .Content h3 .close:hover { background-position: -46px -120px; }
+#SmohanFaceBoxc .Content ul { margin: 5px 0px 0px 0px; padding: 0; list-style-type: none; }
+#SmohanFaceBoxc .Content ul li { display: inline-block; padding: 2px; border: 1px solid #f8f8f8; float: left; }
+#SmohanFaceBoxc .Content ul li:hover { border-color: #6C3; }
+
+#SmohanFaceBoxd { display: block; width: 97%; max-width: 100%; margin-top: 20px; position: absolute; z-index: 9999; }
+#SmohanFaceBoxd .Cornerd { display: block; width: 28px; height: 16px; background: url(../image/facebg_1.png) -32px -100px no-repeat; position: absolute; left: 140px; top: 0; z-index: 100; }
+#SmohanFaceBoxd .Content { display: block; width: 100%; min-height: 100%; padding: 5px; background: #ffffff; border: 1px solid #cfcfcf; z-index: 99; margin: 14px 0px 0px 0px; box-shadow: 0px 1px 10px rgba(204,204,204,1); border-radius: 2px; }
+#SmohanFaceBoxd .Content h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+#SmohanFaceBoxd .Content h3 span { float: left; }
+#SmohanFaceBoxd .Content h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+#SmohanFaceBoxd .Content h3 .close:hover { background-position: -46px -120px; }
+#SmohanFaceBoxd .Content ul { margin: 5px 0px 0px 0px; padding: 0; list-style-type: none; }
+#SmohanFaceBoxd .Content ul li { display: inline-block; padding: 2px; border: 1px solid #f8f8f8; float: left; }
+#SmohanFaceBoxd .Content ul li:hover { border-color: #6C3; }
+
+.hide{
+  display: none;
+}
+.popWindow .Contenta h3 { margin: 0; padding: 0; width: 250px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+.popWindow .Contenta h3 span { float: left; }
+.popWindow .Contenta h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+.popWindow .Contenta h3 .close:hover { background-position: -46px -120px; }
+.popWindow{
+position: fixed; background-color: rgba(0,0,0,0.7); color: #fff;text-align:center; left: 0%; top: 22%;line-height: 30px;border: 2px solid #888;border-radius: 5px;
+}
+
+
+.popWindowa .Contenta h3 { margin: 0; padding: 0; width: 300px; height: 30px; line-height: 26px; display: block; font-size: 14px; text-align: left; }
+.popWindowa .Contenta h3 span { float: left; }
+.popWindowa .Contenta h3 .close { display: inline-block; width: 17px; height: 16px; background: url(../image/facebg_1.png) -30px -120px; float: right; cursor: pointer; }
+.popWindowa .Contenta h3 .close:hover { background-position: -46px -120px; }
+.popWindowa {
+position: fixed; background-color: rgba(0,0,0,0.7); color: #fff;text-align:center; left: 0%; top: 22%;line-height: 30px;border: 2px solid #888;border-radius: 5px;}
+
+.num { position: relative; float: right; color: #777; font-size: 17px }
+

@@ -7,10 +7,12 @@ html, body { background: #fff; }
 ul.dtuser { margin: 0; padding: 0 2px; list-style: none; }
 ul.dtuser li { padding: 3px 0; border-bottom: 1px dotted #dfe8f2; }
 ul.dtuser li:last-child { border-bottom: none; }
+ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 
-/* 顶部个人导航（同真实 3GQQ top_nav） */
-.top_nav { padding: 3px 5px; background: #eaf3fb; border-bottom: 1px solid #d5e6f3; }
-.top_nav a { margin-right: 3px; color: #004299; }
+/* 顶部个人导航（同真实  top_nav） */
+.top_nav { padding: 4px 5px; background: #eaf3fb; border-bottom: 1px solid #d5e6f3; line-height: 18px; }
+.top_nav a { margin-right: 4px; color: #004299; text-decoration: none; transition: color .15s; }
+.top_nav a:hover { color: #e05a00; }
 .top_nav img { width: 14px; height: 14px; vertical-align: -2px; margin-right: 1px; }
 
 /* 广场欢迎区（plist/row00） */
@@ -21,6 +23,8 @@ ul.dtuser li:last-child { border-bottom: none; }
 .tt-avatar { width: 54px; height: 54px; border-radius: 20%; margin: 2px 5px; position: relative; }
 .tt-avatar img { max-width: none; }
 .tt-priv { position: absolute; right: -4px; bottom: -3px; width: 20px; }
+.tt-level { position: absolute; left: -3px; bottom: -3px; width: 18px; height: 18px; }
+.tt-mark { position: absolute; right: -4px; top: -3px; width: 16px; height: 16px; }
 
 /* 发帖表情按钮 */
 .face-btn { margin: 2px 4px 2px 0; padding: 1px 4px; background: #fff; border: 1px solid #2e9cd3; cursor: pointer; }

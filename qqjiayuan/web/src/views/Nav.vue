@@ -1,52 +1,73 @@
 <template>
   <div>
     <div class="bar">【站内导航】</div>
-    <template v-for="g in groups">
-      <div class="module-title" :key="'t'+g.title">{{ g.title }}</div>
-      <div class="module-content" :key="'c'+g.title">
-        [{{ g.title.slice(2, -2) }}]
-        <template v-for="(l, i) in g.links">
-          <a :key="'a'+g.title+i" href="javascript:;" @click="l.go && l.go()">{{ l.name }}</a><span :key="'s'+g.title+i" v-if="i < g.links.length-1"> · </span>
-        </template>
+
+    <!-- 资讯 -->
+    <div class="module-title">【<a href="javascript:;" @click="tip('资讯')">资讯</a>】<a href="javascript:;" @click="tip('新闻')">新闻</a>.<a href="javascript:;" @click="tip('财经')">财经</a>.<a href="javascript:;" @click="tip('体育')">体育</a>.<a href="javascript:;" @click="tip('娱乐')">娱乐</a>.<a href="javascript:;" @click="tip('科技')">科技</a></div>
+    <div class="module-content">
+      <a href="javascript:;" @click="tip('资讯')">资讯频道建设中，敬请期待</a><br>
+    </div>
+
+    <!-- 社区 -->
+    <div class="module-title">【<a href="javascript:;" @click="$router.push('/channel/1')">社区</a>】<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a></div>
+    <div class="module-content">
+      <template v-for="(t,i) in hotThreads">
+        <span :key="'h'+i"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count || 0 }}阅)<br></span>
+      </template>
+    </div>
+
+    <!-- 书城 -->
+    <div class="module-title">【<a href="javascript:;" @click="tip('书城')">书城</a>】<a href="javascript:;" @click="tip('玄幻')">玄幻</a>.<a href="javascript:;" @click="tip('言情')">言情</a></div>
+    <div class="module-content"><a href="javascript:;" @click="tip('书城')">书城建设中：玄幻、言情小说敬请期待</a><br></div>
+
+    <!-- 商城 -->
+    <div class="module-title">【<a href="javascript:;" @click="tip('商城')">商城</a>】<a href="javascript:;" @click="tip('拍卖')">拍卖</a>.<a href="javascript:;" @click="tip('勋章')">勋章</a></div>
+    <div class="module-content"><a href="javascript:;" @click="tip('商城')">道具商城 / 拍卖 / 勋章建设中</a><br></div>
+
+    <!-- 游戏大厅 -->
+    <div class="module-title">【社区游戏大厅】</div>
+    <div class="plist">
+      <div class="row00">
+        <a href="javascript:;" @click="$router.push('/games')">魔法花园</a><br>
+        <a href="javascript:;" @click="$router.push('/games')">精武堂</a><br>
+        <a href="javascript:;" @click="$router.push('/games')">阳光牧场</a><br>
+        <a href="javascript:;" @click="$router.push('/games')">爱宠国</a><br>
+        <a href="javascript:;" @click="$router.push('/games')">抢车位</a><br>
+        <a href="javascript:;" @click="$router.push('/games')">开心农场</a><br>
+        <a href="javascript:;" @click="$router.push('/play')">打工</a><br>
       </div>
-    </template>
-    <div class="login-tips">移动版 WAP 风格 · 适配手机/电脑 · 3GQQ家园社区 出品</div>
+    </div>
+
+    <!-- 便民服务 -->
+    <div class="module-title">【便民服务】<a href="javascript:;" @click="tip('天气')">天气</a></div>
+    <div class="module-content">
+      <a href="javascript:;" @click="tip('天气')">天气</a>.<a href="javascript:;" @click="tip('手机')">手机</a>.<a href="javascript:;" @click="tip('IP')">IP</a>.<a href="javascript:;" @click="tip('翻译')">翻译</a><br>
+    </div>
+
+    <!-- 社区服务 -->
+    <div class="module-title">【社区服务】</div>
+    <div class="module-content">
+      <a href="javascript:;" @click="tip('客服')">客服</a>.<a href="javascript:;" @click="tip('关于')">关于</a>.<a href="javascript:;" @click="tip('招商')">招商</a><br>
+      <a href="javascript:;" @click="$router.push('/sign')">每日签到</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/search')">搜搜</a><br>
+    </div>
+
+    <div class="login-tips">【管理专区】<a href="javascript:;" @click="window.open('http://'+location.host+'/admin-ui/')">管理系统</a>　移动版 WAP 风格 · 家园社区 出品</div>
   </div>
 </template>
 
 <script>
+import api from '../api'
+
 export default {
   name: 'Nav',
-  data () {
-    return {
-      groups: [
-        { title: '【互动社区】', links: [
-          { name: '广场', go: () => this.$router.push('/') },
-          { name: '论坛', go: () => this.$router.push('/channel/1') },
-          { name: '家族', go: () => this.$router.push('/channel/2') },
-          { name: '同城', go: () => this.$router.push('/channel/3') },
-          { name: '聊天', go: () => this.$router.push('/chat') },
-          { name: '好友', go: () => this.$router.push('/friends') },
-          { name: '私信', go: () => this.$router.push('/messages') },
-          { name: '签到', go: () => this.$router.push('/sign') }
-        ] },
-        { title: '【社区服务】', links: [
-          { name: '客服中心', go: () => this.$router.push('/channel/4') },
-          { name: '意见建议', go: () => this.$router.push('/channel/4') },
-          { name: '通知', go: () => this.$router.push('/notices') },
-          { name: '资料设置', go: () => this.$router.push('/profile') },
-          { name: '找回资料', go: () => this.$router.push('/find') }
-        ] },
-        { title: '【游戏中心】', links: [
-          { name: '游戏大厅', go: () => this.$router.push('/games') },
-          { name: '敬请期待', go: () => this.$router.push('/games') }
-        ] },
-        { title: '【管理专区】', links: [
-          { name: '管理系统', go: () => window.open('http://' + location.host + '/admin-ui/') },
-          { name: '社区公示', go: () => this.$router.push('/board/18') }
-        ] }
-      ]
-    }
+  data () { return { hotThreads: [] } },
+  mounted () {
+    api.get('/plaza').then(r => {
+      if (r.code === 0 && r.data) this.hotThreads = (r.data.fine_threads || []).slice(0, 3)
+    })
+  },
+  methods: {
+    tip (title) { this.$router.push('/tip?title=' + encodeURIComponent(title)) }
   }
 }
 </script>

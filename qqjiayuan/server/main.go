@@ -29,7 +29,7 @@ func main() {
 	r := router.Setup(db, cfg)
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	fmt.Println("==========================================")
-	fmt.Println("  3GQQ家园社区 服务端已启动  http://127.0.0.1" + addr)
+	fmt.Println("  家园社区 服务端已启动  http://127.0.0.1" + addr)
 	fmt.Println("  默认管理员：账号 10000 / 密码 admin123")
 	fmt.Println("==========================================")
 	if err := r.Run(addr); err != nil {

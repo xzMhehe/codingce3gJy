@@ -29,7 +29,7 @@ var (
 	}
 )
 
-// 特权等级种子：超Q 1-8 级 + 蓝钻 1-8 级（图标来自真实 3GQQ 资源）
+// 特权等级种子：超Q 1-8 级 + 蓝钻 1-8 级（图标来自真实  资源）
 var PrivSeed = []struct {
 	File  string
 	Name  string

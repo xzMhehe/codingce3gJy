@@ -11,6 +11,7 @@
     </div>
     <div class="title">
       [板块]:<a v-if="thread.board" href="javascript:;" @click="$router.push('/board/'+thread.board.id)">{{ thread.board.name }}</a>
+      <template v-if="isLogin"><a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '☆收藏' }}</font></a></template>
       <template v-if="canManage"> | <a href="javascript:;" @click="toggle('is_top')">{{ thread.is_top ? '取消置顶' : '置顶' }}</a> | <a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '取消精华' : '加精' }}</a></template>
       <template v-if="canManage || mine"> | <a href="javascript:;" @click="startEdit">{{ editing ? '取消编辑' : '编辑' }}</a> | <a href="javascript:;" style="color:#c00" @click="delThread">删除</a></template>
       <br>
@@ -62,7 +63,7 @@
       </form>
     </div>
     <div class="module-content" v-else>
-      <a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆3GQQ家园社区</a>后回复盖楼，与友友一起怀旧
+      <a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆家园社区</a>后回复盖楼，与友友一起怀旧
     </div>
   </div>
 </template>
@@ -74,7 +75,7 @@ import { renderFace } from '../utils/qqface'
 export default {
   name: 'Thread',
   data () {
-    return { thread: { user: {} }, replies: [], total: 0, page: 1, pages: 1, pageInput: 1, content: '', sending: false, editing: false, editForm: { title: '', content: '' }, editTip: '', editOk: false, saving: false }
+    return { thread: { user: {} }, replies: [], total: 0, page: 1, pages: 1, pageInput: 1, content: '', sending: false, editing: false, editForm: { title: '', content: '' }, editTip: '', editOk: false, saving: false, favored: false }
   },
   computed: {
     contentFace () { return renderFace(this.thread.content) },
@@ -104,6 +105,12 @@ export default {
           alert(r.msg)
         }
       })
+      if (this.isLogin) {
+        api.get(`/threads/${id}/favorite-status`).then(r => { if (r.code === 0) this.favored = r.data.favored })
+      }
+    },
+    toggleFav () {
+      api.post(`/threads/${this.thread.id}/favorite`).then(r => { if (r.code === 0) this.favored = r.data.favored })
     },
     quote (floor) {
       this.content = '回复' + floor + '楼：'

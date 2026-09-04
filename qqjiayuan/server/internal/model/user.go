@@ -23,6 +23,8 @@ type User struct {
 	PartnerID    uint    `gorm:"default:0" json:"partner_id"`    // 婚恋：伴侣（城堡）
 	BabyName     string  `gorm:"type:varchar(20)" json:"baby_name"` // 婚恋：宝宝
 	Achieve      int     `gorm:"default:0" json:"achieve"`       // 社区成就点
+	NobleExp     int     `gorm:"default:0" json:"noble_exp"`   // 超Q/蓝钻成长值
+	GardenPots   int     `gorm:"default:4" json:"garden_pots"` // 魔法花园花盆数
 	Status       int     `gorm:"default:1" json:"status"` // 1正常 0封禁
 	LastActiveAt *time.Time `json:"last_active_at"`
 	LastLoginAt  *time.Time `json:"last_login_at"`

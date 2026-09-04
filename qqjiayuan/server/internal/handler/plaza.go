@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -125,6 +126,39 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 		"quick_threads": quickThreads, "active_threads": activeThreads,
 		"ttou": ttouOut,
 	})
+}
+
+// 公开：广场板块开关（前端按 enabled 显示）
+func (h *PlazaHandler) Sections(c *gin.Context) {
+	var list []model.PlazaSection
+	h.DB.Order("sort ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+// 后台：广场板块列表
+func (h *PlazaHandler) AdminSections(c *gin.Context) {
+	var list []model.PlazaSection
+	h.DB.Order("sort ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+type sectReq struct {
+	Enabled int `json:"enabled"`
+}
+
+// 后台：更新板块开关
+func (h *PlazaHandler) AdminSectionUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req sectReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	if req.Enabled != 0 {
+		req.Enabled = 1
+	}
+	h.DB.Model(&model.PlazaSection{}).Where("id = ?", id).Update("enabled", req.Enabled)
+	resp.OK(c, nil)
 }
 
 // 全站搜索：搜帖子标题 + 友友昵称
