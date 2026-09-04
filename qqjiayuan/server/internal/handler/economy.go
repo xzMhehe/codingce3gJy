@@ -197,6 +197,29 @@ GROUP BY d.user_id, u.nickname, u.color ORDER BY total DESC LIMIT 10`).Scan(&row
 	resp.OK(c, rows)
 }
 
+// 我的钱包：金币/银行/捐款记录/打工统计
+func (h *EconomyHandler) Wallet(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var u model.User
+	h.DB.First(&u, uid)
+
+	acc := h.getAccount(uid)
+	balance := 0
+	if acc.ID > 0 {
+		balance = acc.Balance
+	}
+	var donat []model.Donation
+	h.DB.Preload("User").Where("user_id = ?", uid).Order("created_at DESC").Limit(10).Find(&donat)
+	var workTotal int64
+	h.DB.Model(&model.WorkRecord{}).Where("user_id = ?", uid).Count(&workTotal)
+
+	// 我的收藏商品/买入记录（用银行/超Q/慈善等聚合的简单流水）
+	resp.OK(c, gin.H{
+		"coins": u.Coins, "bank": balance,
+		"donations": donat, "work_total": workTotal,
+	})
+}
+
 // 打工：每次随机奖励金币，每日最多 3 次
 const workDailyLimit = 3
 

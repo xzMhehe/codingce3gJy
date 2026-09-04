@@ -64,7 +64,7 @@
       </form>
 
       <div class="module-title">【功能导航】</div>
-      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="cur='active'">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="tip('更多')">&gt;&gt;</a><br>
+      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="cur='active'">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.      <a href="javascript:;" @click="$router.push('/home-level')">家园等级</a>.<a href="javascript:;" @click="tip('更多')">&gt;&gt;</a><br>
       <a href="javascript:;" @click="tip('任务')">任务</a>.<a href="javascript:;" @click="tip('反馈')">反馈</a>.<a href="javascript:;" @click="tip('秘密')">秘密</a>.<a href="javascript:;" @click="tip('黑板墙')">黑板墙</a>.<a href="javascript:;" @click="$router.push('/profile')">特权</a>.<a href="javascript:;" @click="$router.push('/find')">靓号</a><br>
     </template>
 

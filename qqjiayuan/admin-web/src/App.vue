@@ -18,10 +18,15 @@
           <el-submenu index="g1">
             <template slot="title"><i class="el-icon-chat-dot-round"></i><span>社区管理</span></template>
             <el-menu-item index="users"><i class="el-icon-user"></i>用户管理</el-menu-item>
+            <el-menu-item index="home"><i class="el-icon-house"></i>家园资料</el-menu-item>
+            <el-menu-item index="wallet"><i class="el-icon-wallet"></i>钱包管理</el-menu-item>
             <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
             <el-menu-item index="boards"><i class="el-icon-menu"></i>板块管理</el-menu-item>
             <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告管理</el-menu-item>
             <el-menu-item index="plazaSections"><i class="el-icon-s-grid"></i>广场板块</el-menu-item>
+            <el-menu-item index="families"><i class="el-icon-office-building"></i>家族管理</el-menu-item>
+            <el-menu-item index="tongcheng"><i class="el-icon-location-outline"></i>同城管理</el-menu-item>
+            <el-menu-item index="ttou"><i class="el-icon-star-on"></i>T台秀管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g2">
             <template slot="title"><i class="el-icon-s-operation"></i><span>权限与装扮</span></template>
@@ -32,8 +37,8 @@
           <el-submenu index="g3">
             <template slot="title"><i class="el-icon-picture-outline-round"></i><span>运营与资源</span></template>
             <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏管理</el-menu-item>
-            <el-menu-item index="gardenActivities"><i class="el-icon-flower"></i>花园活动</el-menu-item>
-            <el-menu-item index="goods"><i class="el-icon-shopping-bag-2"></i>道具商城</el-menu-item>
+            <el-menu-item index="gardenActivities"><i class="el-icon-magic-stick"></i>花园活动</el-menu-item>
+            <el-menu-item index="goods"><i class="el-icon-shopping-cart-2"></i>道具商城</el-menu-item>
             <el-menu-item index="resources"><i class="el-icon-picture-outline"></i>资源管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g4">
@@ -82,8 +87,8 @@ export default {
     return {
       user: {},
       names: {
-        dashboard: '数据概览', users: '用户管理', boards: '板块管理', threads: '帖子管理',
-        announcements: '公告管理', plazaSections: '广场板块', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', goods: '道具商城', resources: '资源管理', spaces: '空间管理'
+        dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', threads: '帖子管理',
+        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', goods: '道具商城', resources: '资源管理', spaces: '空间管理'
       }
     }
   },

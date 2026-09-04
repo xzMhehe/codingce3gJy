@@ -42,10 +42,15 @@
 
     <!-- ===== 管理面板（仅对应 tab 显示） ===== -->
     <admin-users v-if="tab === 'users'" />
+    <admin-home v-else-if="tab === 'home'" />
+    <admin-wallet v-else-if="tab === 'wallet'" />
     <admin-boards v-else-if="tab === 'boards'" />
     <admin-threads v-else-if="tab === 'threads'" />
     <admin-announcements v-else-if="tab === 'announcements'" />
     <admin-plaza-sections v-else-if="tab === 'plazaSections'" />
+    <admin-families v-else-if="tab === 'families'" />
+    <admin-tongcheng v-else-if="tab === 'tongcheng'" />
+    <admin-ttou v-else-if="tab === 'ttou'" />
     <admin-roles v-else-if="tab === 'roles'" />
     <admin-badges v-else-if="tab === 'badges'" />
     <admin-privileges v-else-if="tab === 'privileges'" />
@@ -60,10 +65,15 @@
 <script>
 import api from '../api'
 import AdminUsers from '../components/admin/AdminUsers.vue'
+import AdminHome from '../components/admin/AdminHome.vue'
+import AdminWallet from '../components/admin/AdminWallet.vue'
 import AdminBoards from '../components/admin/AdminBoards.vue'
 import AdminThreads from '../components/admin/AdminThreads.vue'
 import AdminAnnouncements from '../components/admin/AdminAnnouncements.vue'
 import AdminPlazaSections from '../components/admin/AdminPlazaSections.vue'
+import AdminFamilies from '../components/admin/AdminFamilies.vue'
+import AdminTongcheng from '../components/admin/AdminTongcheng.vue'
+import AdminTtou from '../components/admin/AdminTtou.vue'
 import AdminRoles from '../components/admin/AdminRoles.vue'
 import AdminBadges from '../components/admin/AdminBadges.vue'
 import AdminPrivileges from '../components/admin/AdminPrivileges.vue'
@@ -75,7 +85,7 @@ import AdminSpaces from '../components/admin/AdminSpaces.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminBoards, AdminThreads, AdminAnnouncements, AdminPlazaSections, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGoods, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminThreads, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGoods, AdminResources, AdminSpaces },
   data () {
     return { stats: {}, adminName: '' }
   },

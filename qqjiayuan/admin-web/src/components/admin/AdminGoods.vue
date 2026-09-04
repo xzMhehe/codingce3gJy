@@ -6,15 +6,15 @@
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增商品</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="商品" min-width="140" />
         <el-table-column prop="category" label="分类" width="100" />
-        <el-table-column prop="price" label="金币" width="80" />
-        <el-table-column label="状态" width="80">
+        <el-table-column prop="price" label="金币" width="90" header-align="center" />
+        <el-table-column label="状态" width="90" header-align="center">
           <template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="desc" label="说明" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="180" fixed="right" header-align="center">
+        <el-table-column prop="desc" label="说明" min-width="160" show-overflow-tooltip />
+        <el-table-column label="操作" width="270" header-align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
             <el-button size="mini" @click="toggle(row)">{{ row.status === 1 ? '下架' : '上架' }}</el-button>

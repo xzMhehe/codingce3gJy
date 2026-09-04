@@ -58,6 +58,22 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 			db.Model(&struct{}{}).Table("users").
 				Where("id = ?", claims.UserID).
 				Updates(map[string]interface{}{"last_active_at": now, "last_login_at": now})
+			// 家园活跃天数：每天首次活跃 +1，连续登录 +0.2，超级QQ 加速
+			var lastDate string
+			db.Raw("SELECT IFNULL(last_active_date, '') FROM users WHERE id = ?", claims.UserID).Scan(&lastDate)
+			today := now.Format("2006-01-02")
+			if lastDate != today {
+				base := 1.0
+				if lastDate == now.AddDate(0, 0, -1).Format("2006-01-02") {
+					base = 1.2
+				}
+				var qqLv int
+				db.Raw("SELECT IFNULL(qq_lv, 0) FROM users WHERE id = ?", claims.UserID).Scan(&qqLv)
+				if qqLv > 0 {
+					base += 0.1 * float64(qqLv)
+				}
+				db.Exec("UPDATE users SET active_days = active_days + ?, last_active_date = ? WHERE id = ?", base, today, claims.UserID)
+			}
 		}
 		c.Next()
 	}

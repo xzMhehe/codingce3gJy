@@ -34,9 +34,20 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	var newestUser model.User
 	db.Order("id DESC").First(&newestUser)
 
-	// T台秀：资历最深的友友（经验最高）
+	// T台秀：默认经验最高，后台可指定（settings.ttou_user_id）
 	var ttou model.User
-	db.Where("status = 1").Order("exp DESC").First(&ttou)
+	var ttouID string
+	db.Raw("SELECT value FROM settings WHERE `key` = 'ttou_user_id'").Scan(&ttouID)
+	if ttouID != "" {
+		var id uint
+		db.Raw("SELECT id FROM users WHERE username = ?", ttouID).Scan(&id)
+		if id > 0 {
+			db.First(&ttou, id)
+		}
+	}
+	if ttou.ID == 0 {
+		db.Where("status = 1").Order("exp DESC").First(&ttou)
+	}
 	ttouOut := gin.H{}
 	if ttou.ID > 0 {
 		ttouOut = gin.H{"id": ttou.ID, "nickname": ttou.Nickname, "color": ttou.Color,

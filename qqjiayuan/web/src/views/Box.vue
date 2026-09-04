@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;我的百宝箱</div>
-    <div class="module-title">用户中心|<a href="javascript:;" @click="$router.push('/profile')">安全中心</a>|<a href="javascript:;" @click="$router.push('/play')">我的钱包</a>|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a></div>
+    <div class="module-title">用户中心|<a href="javascript:;" @click="$router.push('/security')">安全中心</a>|<a href="javascript:;" @click="$router.push('/wallet')">我的钱包</a>|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a></div>
     <div class="module-content"><span class="txt-fade">当前金币：<b style="color:#e05a00">{{ coins }}</b></span></div>
 
     <div class="module-content">

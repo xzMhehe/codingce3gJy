@@ -2,21 +2,21 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <span class="el-input__inner is-disabled" style="pointer-events:none;background:#f5f7fa">控制社区广场各板块的显示/隐藏（参考站点默认全开，可关闭不需要的）</span>
+        <span class="txt-fade">控制社区广场各板块的显示/隐藏</span>
         <div class="grow" />
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="板块" min-width="180">
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column label="板块" min-width="220">
           <template slot-scope="{row}"><b>{{ row.name }}</b></template>
         </el-table-column>
-        <el-table-column prop="key" label="标识" width="130" />
-        <el-table-column label="显示" width="90">
+        <el-table-column prop="key" label="标识" width="180" />
+        <el-table-column label="显示" width="120" header-align="center">
           <template slot-scope="{row}">
             <el-switch :value="row.enabled === 1" active-color="#409eff" @change="v => toggle(row, v)" />
           </template>
         </el-table-column>
-        <el-table-column prop="sort" label="顺序" width="70" />
+        <el-table-column prop="sort" label="顺序" width="90" header-align="center" />
       </el-table>
     </el-card>
   </div>

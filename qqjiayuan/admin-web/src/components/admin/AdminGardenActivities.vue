@@ -6,15 +6,15 @@
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增活动</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="desc" label="说明" min-width="220" show-overflow-tooltip />
-        <el-table-column label="状态" width="80">
+        <el-table-column prop="desc" label="说明" min-width="200" show-overflow-tooltip />
+        <el-table-column label="状态" width="90" header-align="center">
           <template slot-scope="{row}">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '显示' : '隐藏' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" header-align="center">
+        <el-table-column label="操作" width="270" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>

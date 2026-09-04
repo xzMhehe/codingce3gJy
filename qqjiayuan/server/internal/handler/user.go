@@ -60,6 +60,30 @@ func (h *UserHandler) Profile(c *gin.Context) {
 			partnerName = p.Nickname
 		}
 	}
+	// 所属家族
+	familyName := ""
+	var fm model.FamilyMember
+	if err := h.DB.Where("user_id = ?", user.ID).First(&fm).Error; err == nil {
+		var fam model.Family
+		if err := h.DB.First(&fam, fm.FamilyID).Error; err == nil {
+			familyName = fam.Name
+		}
+	}
+	// 最新心情
+	mood := ""
+	var m model.Mood
+	if err := h.DB.Where("user_id = ?", user.ID).Order("created_at DESC").First(&m).Error; err == nil {
+		mood = m.Content
+	}
+	// 家园等级
+	hl := homeLevelOf(user.ActiveDays)
+	nextDays := 0
+	for _, l := range homeLevels {
+		if l.Lv == hl+1 {
+			nextDays = int(l.Days)
+			break
+		}
+	}
 	// 社区职务：职务类马甲（演示站：1.<图标>公坛协管员 2.家族版主）
 	dutyIcons := map[string]bool{"706.jpg": true, "704.gif": true, "3.gif": true, "501.gif": true}
 	duties := []gin.H{}
@@ -78,6 +102,8 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,
 		"priv_id": user.PrivID, "priv": user.Priv,
 		"online":     online,
+		"active_days": user.ActiveDays, "home_level": hl, "home_next_days": nextDays,
+		"family": familyName, "mood": mood, "city": user.City,
 		"created_at": user.CreatedAt, "last_login_at": user.LastLoginAt,
 		"thread_count": threadCount, "reply_count": replyCount, "sign_days": signDays,
 		"badges": badges, "roles": roles, "duties": duties, "threads": threads,
@@ -90,6 +116,7 @@ type profileReq struct {
 	Color     string `json:"color" binding:"max=10"`
 	Nickname  string `json:"nickname" binding:"min=1,max=20"`
 	Avatar    string `json:"avatar" binding:"max=100"`
+	City      string `json:"city" binding:"max=30"`
 }
 
 func (h *UserHandler) UpdateMe(c *gin.Context) {
@@ -115,7 +142,7 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 	}
 	h.DB.Model(&user).Updates(map[string]interface{}{
 		"nickname": req.Nickname, "signature": req.Signature,
-		"gender": req.Gender, "color": req.Color, "avatar": req.Avatar,
+		"gender": req.Gender, "color": req.Color, "avatar": req.Avatar, "city": req.City,
 	})
 	resp.OK(c, nil)
 }

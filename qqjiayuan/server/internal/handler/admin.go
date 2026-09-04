@@ -41,6 +41,175 @@ func (h *AdminHandler) Users(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": users})
 }
 
+// 家族管理：列表（含成员数）
+func (h *AdminHandler) Families(c *gin.Context) {
+	var fams []model.Family
+	h.DB.Preload("Owner").Where("status = 1").Order("id ASC").Find(&fams)
+	out := []gin.H{}
+	for _, f := range fams {
+		var cnt int64
+		h.DB.Model(&model.FamilyMember{}).Where("family_id = ?", f.ID).Count(&cnt)
+		owner := ""
+		if f.Owner != nil {
+			owner = f.Owner.Nickname
+		}
+		out = append(out, gin.H{"id": f.ID, "name": f.Name, "slogan": f.Slogan, "owner": owner,
+			"members": cnt, "announcement": f.Announcement, "battle_score": f.BattleScore})
+	}
+	resp.OK(c, out)
+}
+
+// 家族解散/恢复
+func (h *AdminHandler) FamilyStatus(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	h.DB.Model(&model.Family{}).Where("id = ?", id).Update("status", req.Status)
+	resp.OK(c, nil)
+}
+
+// 家族公告修改
+func (h *AdminHandler) FamilyAnn(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Announcement string `json:"announcement"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	h.DB.Model(&model.Family{}).Where("id = ?", id).Update("announcement", req.Announcement)
+	resp.OK(c, nil)
+}
+
+// 同城管理：同城客栈下的子板块（城市）
+func (h *AdminHandler) Tongcheng(c *gin.Context) {
+	var root model.Board
+	h.DB.Where("name = ?", "同城客栈").First(&root)
+	var subs []model.Board
+	if root.ID > 0 {
+		h.DB.Where("parent_id = ?", root.ID).Order("sort ASC").Find(&subs)
+	}
+	resp.OK(c, subs)
+}
+
+// T台秀：当前上榜用户（默认经验最高，可被配置覆盖）
+func (h *AdminHandler) Ttou(c *gin.Context) {
+	var ttouID string
+	h.DB.Model(&model.Setting{}).Where("key = ?", "ttou_user_id").First(&struct {
+		Key   string `gorm:"primaryKey"`
+		Value string
+	}{})
+	h.DB.Raw("SELECT value FROM settings WHERE `key`='ttou_user_id'").Scan(&ttouID)
+	var u model.User
+	if ttouID != "" {
+		var id uint
+		h.DB.Raw("SELECT id FROM users WHERE id = ?", ttouID).Scan(&id)
+		if id > 0 {
+			h.DB.First(&u, id)
+		}
+	}
+	if u.ID == 0 {
+		h.DB.Where("status = 1").Order("exp DESC").First(&u)
+	}
+	resp.OK(c, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "exp": u.Exp})
+}
+
+// 设置 T台秀用户
+func (h *AdminHandler) TtouSet(c *gin.Context) {
+	var req struct {
+		UserID uint `json:"user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请填写用户号码")
+		return
+	}
+	var u model.User
+	if err := h.DB.First(&u, req.UserID).Error; err != nil {
+		resp.NotFound(c, "用户不存在")
+		return
+	}
+	h.DB.Exec("REPLACE INTO settings(`key`,`value`) VALUES ('ttou_user_id', ?)", u.Username)
+	resp.OK(c, nil)
+}
+
+// 移除 T台秀指定（恢复自动取经验最高）
+func (h *AdminHandler) TtouClear(c *gin.Context) {
+	h.DB.Exec("DELETE FROM settings WHERE `key` = 'ttou_user_id'")
+	resp.OK(c, nil)
+}
+
+// 钱包管理：用户金币列表
+func (h *AdminHandler) Wallets(c *gin.Context) {
+	page, offset := pageOf(c, 10)
+	word := c.Query("word")
+	q := h.DB.Model(&model.User{})
+	if word != "" {
+		q = q.Where("username = ? OR nickname LIKE ?", word, "%"+word+"%")
+	}
+	var total int64
+	q.Count(&total)
+	var users []model.User
+	q.Order("coins DESC").Offset(offset).Limit(10).Find(&users)
+	out := []gin.H{}
+	for _, u := range users {
+		bank := 0
+		var acc model.BankAccount
+		if err := h.DB.Where("user_id = ?", u.ID).First(&acc).Error; err == nil {
+			bank = acc.Balance
+		}
+		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": out})
+}
+
+// 设置用户金币
+func (h *AdminHandler) WalletSet(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Coins int `json:"coins"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Coins < 0 {
+		resp.ParamError(c, "金币需大于等于 0")
+		return
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", id).Update("coins", req.Coins)
+	resp.OK(c, nil)
+}
+
+// 设置用户家园资料（等级/活跃天数/成就点/城市）
+func (h *AdminHandler) UserHomeSet(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Level      int     `json:"level"`
+		ActiveDays float64 `json:"active_days"`
+		Achieve    int     `json:"achieve"`
+		City       string  `json:"city"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	if req.Level < 1 {
+		req.Level = 1
+	}
+	if req.ActiveDays < 0 {
+		req.ActiveDays = 0
+	}
+	if req.Achieve < 0 {
+		req.Achieve = 0
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"level": req.Level, "active_days": req.ActiveDays, "achieve": req.Achieve, "city": req.City,
+	})
+	resp.OK(c, nil)
+}
+
 func (h *AdminHandler) UserStatus(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {

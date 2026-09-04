@@ -41,6 +41,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	nobleH := &handler.NobleHandler{DB: db}
 	goodH := &handler.GoodHandler{DB: db}
 	rankH := &handler.RankHandler{DB: db}
+	hlH := &handler.HomeLevelHandler{DB: db}
+	achH := &handler.AchieveHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
@@ -173,6 +175,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/families/:id/tree", famH.Tree)
 			authed.POST("/families/:id/battle", famH.Battle)
 
+			authed.GET("/home-level", hlH.View)
+			authed.GET("/achieve", achH.View)
+			authed.GET("/wallet", ecoH.Wallet)
 			authed.GET("/bank/view", ecoH.BankView)
 			authed.POST("/bank/deposit", ecoH.BankDeposit)
 			authed.POST("/bank/withdraw", ecoH.BankWithdraw)
@@ -220,6 +225,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/garden-activities/:id", perm(db, "admin:access"), gardenH.AdminActDelete)
 
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
+				admin.PUT("/users/:id/home", perm(db, "user:manage"), adminH.UserHomeSet)
+				admin.GET("/wallets", perm(db, "user:manage"), adminH.Wallets)
+				admin.PUT("/wallets/:id", perm(db, "user:manage"), adminH.WalletSet)
+
+				// 家族 / 同城 / T台秀
+				admin.GET("/families", perm(db, "admin:access"), adminH.Families)
+				admin.PUT("/families/:id/status", perm(db, "admin:access"), adminH.FamilyStatus)
+				admin.PUT("/families/:id/ann", perm(db, "admin:access"), adminH.FamilyAnn)
+				admin.GET("/tongcheng", perm(db, "admin:access"), adminH.Tongcheng)
+				admin.GET("/ttou", perm(db, "admin:access"), adminH.Ttou)
+				admin.PUT("/ttou", perm(db, "admin:access"), adminH.TtouSet)
+				admin.DELETE("/ttou", perm(db, "admin:access"), adminH.TtouClear)
 				admin.PUT("/users/:id/status", perm(db, "user:manage"), adminH.UserStatus)
 				admin.PUT("/users/:id/password", perm(db, "user:manage"), adminH.ResetPassword)
 				admin.PUT("/users/:id/roles", perm(db, "user:manage"), adminH.UserRoles)

@@ -13,8 +13,9 @@ type User struct {
 	Nickname     string  `gorm:"type:varchar(20);uniqueIndex" json:"nickname"`
 	Password     string  `gorm:"type:varchar(100)" json:"-"`
 	Gender       int     `gorm:"default:1" json:"gender"` // 1小哥哥 2小姐姐
-	Signature    string  `gorm:"type:varchar(100)" json:"signature"`
-	Color        string  `gorm:"type:varchar(10)"  json:"color"`  // 昵称颜色，情怀功能
+	Signature    string    `gorm:"type:varchar(100)" json:"signature"`
+	City         string    `gorm:"type:varchar(30)" json:"city"`    // 城市设置
+	Color        string    `gorm:"type:varchar(10)"  json:"color"`  // 昵称颜色，情怀功能
 	Avatar       string  `gorm:"type:varchar(100)" json:"avatar"` // 头像图片文件名（static/picture 下）
 	Coins        int     `gorm:"default:0" json:"coins"`
 	Exp          int     `gorm:"default:0" json:"exp"`
@@ -34,8 +35,10 @@ type User struct {
 	QqEnd        *time.Time `json:"qq_end"`
 	GardenPots   int     `gorm:"default:4" json:"garden_pots"` // 魔法花园花盆数
 	Status       int     `gorm:"default:1" json:"status"` // 1正常 0封禁
-	LastActiveAt *time.Time `json:"last_active_at"`
-	LastLoginAt  *time.Time `json:"last_login_at"`
+	LastActiveAt  *time.Time `json:"last_active_at"`
+	LastLoginAt   *time.Time `json:"last_login_at"`
+	ActiveDays    float64    `gorm:"default:0" json:"active_days"`  // 家园活跃天数
+	LastActiveDate string    `gorm:"type:varchar(10)" json:"last_active_date"` // 最后活跃日期(去重)
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Roles        []Role  `gorm:"many2many:user_roles;" json:"roles,omitempty"`
