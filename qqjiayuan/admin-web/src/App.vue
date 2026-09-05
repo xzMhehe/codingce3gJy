@@ -21,6 +21,7 @@
             <el-menu-item index="home"><i class="el-icon-house"></i>家园资料</el-menu-item>
             <el-menu-item index="wallet"><i class="el-icon-wallet"></i>钱包管理</el-menu-item>
             <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
+            <el-menu-item index="reports"><i class="el-icon-warning-outline"></i>举报管理</el-menu-item>
             <el-menu-item index="boards"><i class="el-icon-menu"></i>板块管理</el-menu-item>
             <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告管理</el-menu-item>
             <el-menu-item index="plazaSections"><i class="el-icon-s-grid"></i>广场板块</el-menu-item>
@@ -88,7 +89,7 @@ export default {
       user: {},
       names: {
         dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', threads: '帖子管理',
-        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', goods: '道具商城', resources: '资源管理', spaces: '空间管理'
+        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', goods: '道具商城', resources: '资源管理', spaces: '空间管理', reports: '举报管理'
       }
     }
   },
