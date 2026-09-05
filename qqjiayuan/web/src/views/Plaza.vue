@@ -29,7 +29,6 @@
         <td valign="top" align="center">
           <div class="tt-avatar" :style="ttBg">
             <img v-if="plaza.ttou.priv && plaza.ttou.priv.file" :src="'/static/' + plaza.ttou.priv.file" class="tt-priv" alt=".">
-            <img v-if="plaza.ttou.level_icon" :src="$pic('v'+plaza.ttou.level_icon+'.gif')" class="tt-level" alt="等级">
             <img src="/static/picture/marksix_1.gif" class="tt-mark" alt="身份">
           </div>
         </td>
