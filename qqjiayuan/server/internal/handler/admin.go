@@ -520,6 +520,131 @@ func (h *AdminHandler) DeleteReply(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
+// ---- 举报管理 ----
+
+// Reports 举报列表（status: 全部/-1，0待处理，1已忽略，2已删内容，3已封人）
+func (h *AdminHandler) Reports(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 50 {
+		size = 10
+	}
+	q := h.DB.Model(&model.Report{})
+	if s := c.Query("status"); s != "" && s != "-1" {
+		q = q.Where("status = ?", s)
+	}
+	if t := c.Query("target_type"); t != "" && t != "all" {
+		q = q.Where("target_type = ?", t)
+	}
+	var total int64
+	q.Count(&total)
+	var list []model.Report
+	q.Preload("Reporter").Order("status ASC, id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
+
+	out := []gin.H{}
+	for _, r := range list {
+		item := gin.H{
+			"id": r.ID, "reporter_id": r.ReporterID, "reporter": r.Reporter,
+			"target_type": r.TargetType, "target_id": r.TargetID,
+			"reason": r.Reason, "status": r.Status, "result": r.Result,
+			"handled_at": r.HandledAt, "created_at": r.CreatedAt,
+		}
+		// 附带被举报内容快照与作者
+		if r.TargetType == "thread" {
+			var th model.Thread
+			if h.DB.Preload("User").First(&th, r.TargetID).Error == nil {
+				item["content"] = th.Title
+				item["author"] = th.User
+				item["content_status"] = th.Status
+			}
+		} else {
+			var rp model.Reply
+			if h.DB.Preload("User").First(&rp, r.TargetID).Error == nil {
+				item["content"] = rp.Content
+				item["author"] = rp.User
+				item["content_status"] = rp.Status
+				item["thread_id"] = rp.ThreadID
+			}
+		}
+		out = append(out, item)
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// ReportHandle 处理举报：ignore忽略 / delete删内容 / ban封作者
+func (h *AdminHandler) ReportHandle(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	uid := middleware.GetUID(c)
+	var req struct {
+		Action string `json:"action" binding:"required,oneof=ignore delete ban"`
+		Result string `json:"result"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "处理动作有误")
+		return
+	}
+	var r model.Report
+	if err := h.DB.First(&r, id).Error; err != nil {
+		resp.NotFound(c, "举报记录不存在")
+		return
+	}
+	if r.Status != 0 {
+		resp.ParamError(c, "该举报已处理过")
+		return
+	}
+	status := 1
+	result := req.Result
+	switch req.Action {
+	case "ignore":
+		if result == "" {
+			result = "核实后未发现违规，予以忽略"
+		}
+	case "delete":
+		if r.TargetType == "thread" {
+			h.DB.Model(&model.Thread{}).Where("id = ?", r.TargetID).Update("status", 0)
+		} else {
+			h.DB.Model(&model.Reply{}).Where("id = ?", r.TargetID).Update("status", 0)
+		}
+		status = 2
+		if result == "" {
+			result = "内容违规，已删除"
+		}
+	case "ban":
+		var authorID uint
+		if r.TargetType == "thread" {
+			var th model.Thread
+			if h.DB.First(&th, r.TargetID).Error == nil {
+				authorID = th.UserID
+			}
+		} else {
+			var rp model.Reply
+			if h.DB.First(&rp, r.TargetID).Error == nil {
+				authorID = rp.UserID
+			}
+		}
+		if authorID == 0 {
+			resp.ParamError(c, "被举报内容不存在，无法封禁")
+			return
+		}
+		h.DB.Model(&model.User{}).Where("id = ?", authorID).Update("status", 0)
+		status = 3
+		if result == "" {
+			result = "情节严重，已封禁发布者"
+		}
+	}
+	now := time.Now()
+	h.DB.Model(&r).Updates(map[string]interface{}{"status": status, "result": result, "handler_id": uid, "handled_at": &now})
+	// 通知举报人处理结果
+	if r.ReporterID > 0 {
+		h.DB.Create(&model.Notification{UserID: r.ReporterID, Type: "system",
+			Title: "举报处理结果", Content: "你的举报（编号" + strconv.FormatUint(uint64(r.ID), 10) + "）已处理：" + result})
+	}
+	resp.OK(c, gin.H{"status": status, "result": result})
+}
+
 // ---- 公告管理 ----
 func (h *AdminHandler) Announcements(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

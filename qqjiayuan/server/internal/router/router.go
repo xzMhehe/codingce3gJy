@@ -44,6 +44,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	hlH := &handler.HomeLevelHandler{DB: db}
 	achH := &handler.AchieveHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
+	itH := &handler.InteractHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
@@ -84,7 +85,6 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/plaza-sections", plazaH.Sections)
 		api.GET("/goods", goodH.List)
 		api.GET("/rank", rankH.Top)
-
 		// 书城公开
 		api.GET("/books", bookH.Index)
 		api.GET("/books/list", bookH.List)
@@ -114,6 +114,15 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/threads/:id/favorite-status", favH.Status)
 			authed.GET("/favorite-threads", favH.MyFavorites)
 			authed.GET("/my-replies", favH.MyReplies)
+
+			// 帖子互动：赞/踩/打赏/送花/分享/举报
+			authed.POST("/threads/:id/vote", itH.Vote)
+			authed.GET("/threads/:id/interact-status", itH.Status)
+			authed.POST("/replies/:id/like", itH.ReplyLike)
+			authed.POST("/threads/:id/gift", itH.Gift)
+			authed.POST("/threads/:id/flower", itH.Flower)
+			authed.POST("/threads/:id/share", itH.Share)
+			authed.POST("/reports", itH.CreateReport)
 
 			// 好友分组
 			authed.GET("/friend-groups", fgH.List)
@@ -206,6 +215,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			admin := authed.Group("/admin")
 			{
 				admin.GET("/stats", perm(db, "admin:access"), adminH.Stats)
+
+				// 举报管理
+				admin.GET("/reports", perm(db, "thread:manage"), adminH.Reports)
+				admin.PUT("/reports/:id", perm(db, "thread:manage"), adminH.ReportHandle)
 
 				// 广场板块开关
 				admin.GET("/plaza-sections", perm(db, "admin:access"), plazaH.AdminSections)

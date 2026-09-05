@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族<br></div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族</div>
 
     <img src="/static/image/jiazu.gif" alt="家族" style="max-width:100%;vertical-align:middle">
 
@@ -69,9 +69,10 @@
     <!-- 家族区动态 -->
     <div class="module-title">家族区动态</div>
     <div class="module-content" v-if="acts.length">
-      <div v-for="a in acts" :key="'a'+a.id" class="row00">
+      <div v-for="a in acts.slice(0,10)" :key="'a'+a.id" class="row00">
+        <span class="txt-fade">({{ ago(a.created_at) }})</span>
         <a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><font :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</font></a>
-        {{ a.content }} <span class="dtime">({{ ago(a.created_at) }})</span>
+        {{ a.content }}
       </div>
     </div>
     <div class="module-content" v-else><span class="empty">还没有家族动态</span></div>
@@ -88,8 +89,8 @@
 
     <!-- 家族服务（导航到家族排行等） -->
     <div class="module-content">
-      <a href="javascript:;" @click="$router.push('/families/top')">家族排行</a>.<a href="javascript:;" @click="createOpen = true">创建家族</a>.<a href="javascript:;" @click="pendingOpen = !pendingOpen">待审家族</a>.<a href="javascript:;" @click="$router.push('/channel/1')">逛论坛</a><br>
-      <a href="javascript:;" @click="$router.push('/channel/1')">论坛申家</a>.<a href="javascript:;" @click="$router.push('/channel/2')">游同城</a><br>
+      <a href="javascript:;" @click="$router.push('/families/top')">家族排行</a>.<a href="javascript:;" @click="$router.push('/channel/1')">家族服务</a>.<a href="javascript:;" @click="$router.push('/family/'+mine.id+'/forum')">帮助</a><br>
+      <a href="javascript:;" @click="$router.push('/channel/1')">论坛申家</a>.<a href="javascript:;" @click="$router.push('/channel/1')">逛论坛</a>.<a href="javascript:;" @click="$router.push('/channel/9')">游同城</a><br>
       <a href="javascript:;" @click="createOpen = true">创建家族</a>.<a href="javascript:;" @click="pendingOpen = !pendingOpen; loadPending()">待审家族</a><br>
     </div>
 
@@ -101,6 +102,9 @@
       </div>
       <div v-if="!pendingList.length"><span class="empty">暂无待审家族</span></div>
     </div>
+
+    <!-- 底部 bar（与线上页底一致） -->
+    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族</div>
 
   </div>
 </template>

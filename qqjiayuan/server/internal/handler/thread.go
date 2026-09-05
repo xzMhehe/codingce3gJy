@@ -56,7 +56,20 @@ func (h *ThreadHandler) Detail(c *gin.Context) {
 	h.DB.Preload("User").Preload("User.Badges").Where("thread_id = ? AND status = 1", th.ID).
 		Order("floor ASC").Offset((page - 1) * 10).Limit(10).Find(&replies)
 
-	resp.OK(c, gin.H{"thread": th, "replies": replies, "total": total, "page": page, "size": 10})
+	// 互动统计（未登录也可看）
+	var giftCount, flowerPeople int64
+	h.DB.Model(&model.ThreadGift{}).Where("thread_id = ?", th.ID).Count(&giftCount)
+	h.DB.Model(&model.ThreadFlower{}).Where("thread_id = ?", th.ID).Distinct("sender_id").Count(&flowerPeople)
+	var flowers []model.ThreadFlower
+	h.DB.Preload("Sender").Where("thread_id = ?", th.ID).Order("id DESC").Limit(20).Find(&flowers)
+	var gifts []model.ThreadGift
+	h.DB.Preload("Sender").Where("thread_id = ?", th.ID).Order("id DESC").Limit(20).Find(&gifts)
+
+	resp.OK(c, gin.H{"thread": th, "replies": replies, "total": total, "page": page, "size": 10,
+		"like_count": th.LikeCount, "dislike_count": th.DislikeCount,
+		"gift_total": th.GiftTotal, "gift_count": giftCount, "flower_count": th.FlowerCount,
+		"flower_people": flowerPeople, "share_count": th.ShareCount,
+		"flowers": flowers, "gifts": gifts})
 }
 
 type replyReq struct {

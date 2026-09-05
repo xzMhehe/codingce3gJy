@@ -558,7 +558,7 @@ func (h *FamilyHandler) act(familyID, userID uint, format string, args ...interf
 // 家族区动态（全站）
 func (h *FamilyHandler) Activities(c *gin.Context) {
 	var acts []model.FamilyActivity
-	h.DB.Preload("User").Order("created_at DESC").Limit(30).Find(&acts)
+	h.DB.Preload("User").Order("created_at DESC").Limit(10).Find(&acts)
 	resp.OK(c, acts)
 }
 
@@ -569,7 +569,7 @@ func (h *FamilyHandler) FamilyActivities(c *gin.Context) {
 		return
 	}
 	var acts []model.FamilyActivity
-	h.DB.Preload("User").Where("family_id = ?", fam.ID).Order("created_at DESC").Limit(30).Find(&acts)
+	h.DB.Preload("User").Where("family_id = ?", fam.ID).Order("created_at DESC").Limit(10).Find(&acts)
 	resp.OK(c, acts)
 }
 

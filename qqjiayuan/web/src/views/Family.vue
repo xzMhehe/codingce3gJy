@@ -35,7 +35,7 @@
       <!-- 家族动态 -->
       <div class="module-title">家族动态</div>
       <div class="module-content" v-if="acts.length">
-        <div v-for="(a,i) in acts" :key="'a'+a.id" class="row00">
+        <div v-for="(a,i) in acts.slice(0,10)" :key="'a'+a.id" class="row00">
           {{ i+1 }}.({{ ago(a.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><font :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</font></a>{{ a.content }}
         </div>
       </div>

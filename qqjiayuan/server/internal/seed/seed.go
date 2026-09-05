@@ -36,6 +36,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
 		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
 		&model.NoblePlan{}, &model.Good{}, &model.Setting{},
+		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
+		&model.Report{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)

@@ -54,3 +54,20 @@ type Notification struct {
 	IsRead    int       `gorm:"default:0" json:"is_read"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// 举报（帖子/回复），后台可处理：ignore忽略 / delete删内容 / ban封人
+type Report struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	ReporterID  uint      `gorm:"index" json:"reporter_id"`
+	TargetType  string    `gorm:"type:varchar(10);index" json:"target_type"` // thread / reply
+	TargetID    uint      `gorm:"index" json:"target_id"`
+	Reason      string    `gorm:"type:varchar(200)" json:"reason"`
+	Status      int       `gorm:"default:0" json:"status"` // 0待处理 1已忽略 2已删除内容 3已封禁发布者
+	Result      string    `gorm:"type:varchar(200)" json:"result"`
+	HandlerID   uint      `json:"handler_id"`
+	HandledAt   *time.Time `json:"handled_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	Reporter    *User     `gorm:"foreignKey:ReporterID" json:"reporter,omitempty"`
+}
+
+func (Report) TableName() string { return "reports" }
