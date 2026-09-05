@@ -2,6 +2,12 @@
   <div>
     <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;<a href="javascript:;" @click="$router.push('/box')">我的百宝箱</a>&gt;我的头像</div>
 
+    <div class="note"></div>
+    欢迎您,<b><font :color="user.color || '#333'">{{ user.nickname || '--' }}</font></b>({{ user.username || '' }})<br>
+    <div class="module-title">
+      <a href="javascript:;" @click="$router.push('/home')">用户中心</a>|<a href="javascript:;" @click="$router.push('/security')">安全中心</a>|<a href="javascript:;" @click="$router.push('/wallet')">我的钱包</a>|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a><br>
+    </div>
+
     <div class="module-title">【我的头像】</div>
     <div class="module-content">
       当前头像:<br>
@@ -54,6 +60,7 @@ export default {
       preview: '',     // 待上传预览
       msg: '', okMsg: '',
       qq: '', qqMsg: '', qqOk: '',
+      user: {},        // 当前登录用户（欢迎语/导航用）
       presets: [], page: 1, size: 12, total: 0
     }
   },
@@ -67,6 +74,7 @@ export default {
     pages () { return Math.max(1, Math.ceil(this.total / this.size)) }
   },
   mounted () {
+    api.get('/auth/me').then(r => { if (r.code === 0) this.user = r.data || {} }).catch(() => {})
     this.loadFace()
     this.loadPresets()
   },

@@ -1,5 +1,11 @@
 <template>
   <div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;安全中心</div>
+    <div class="note"></div>
+    欢迎您,<b><font :color="user.color || '#333'">{{ user.nickname || '--' }}</font></b>({{ user.username || '' }})<br>
+    <div class="module-title">
+      <a href="javascript:;" @click="$router.push('/home')">用户中心</a>|安全中心|<a href="javascript:;" @click="$router.push('/wallet')">我的钱包</a>|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a><br>
+    </div>
     <div class="module-title">安全中心</div>
     <div class="module-content">
       <p>修改密码：</p>
@@ -18,7 +24,8 @@ import api from '../api'
 
 export default {
   name: 'Security',
-  data () { return { oldPwd: '', newPwd: '', msg: '', okMsg: '' } },
+  data () { return { user: {}, oldPwd: '', newPwd: '', msg: '', okMsg: '' } },
+  mounted () { api.get('/auth/me').then(r => { if (r.code === 0) this.user = r.data || {} }).catch(() => {}) },
   methods: {
     change () {
       this.msg = ''; this.okMsg = ''
