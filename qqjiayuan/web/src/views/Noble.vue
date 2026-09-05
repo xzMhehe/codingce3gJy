@@ -25,15 +25,40 @@
 
     <!-- 成长体系 -->
     <template v-if="cur === 'level'">
-      <div class="bodule-title"><font color="#FF0000">【蓝钻介绍】</font></div>
-      <div class="module-content">等级　图标　成长值<br>
-        <div v-for="l in data.levels" :key="'b'+l.lv">{{ l.lv }}　<img :src="pic(l.Blue)" alt="." />　{{ l.Exp }}</div>
+      <div class="bodule-title"><font color="#FF0000">【蓝钻成长体系】</font></div>
+      <div class="module-content">
+        <div class="row00 noble-hd">
+          <span style="display:inline-block;width:30px;text-align:center">等级</span>
+          <span style="display:inline-block;width:50px;text-align:center">图标</span>
+          <span style="display:inline-block;width:80px;text-align:center">所需成长值</span>
+        </div>
+        <div v-for="l in data.levels" :key="'b'+l.Lv" class="row00">
+          <span style="display:inline-block;width:30px;text-align:center">{{ l.Lv }}</span>
+          <span style="display:inline-block;width:50px;text-align:center"><img :src="pic(l.Blue)" alt="." /></span>
+          <span style="display:inline-block;width:80px;text-align:center">{{ l.Exp }} 点</span>
+        </div>
       </div>
-      <div class="bodule-title"><font color="#FF0000">【超Q介绍】</font></div>
-      <div class="module-content">等级　图标　成长值<br>
-        <div v-for="l in data.levels" :key="'q'+l.lv">{{ l.lv }}　<img :src="pic(l.QQ)" alt="." />　{{ l.Exp }}</div>
+
+      <div class="bodule-title"><font color="#FF0000">【超Q成长体系】</font></div>
+      <div class="module-content">
+        <div class="row00 noble-hd">
+          <span style="display:inline-block;width:30px;text-align:center">等级</span>
+          <span style="display:inline-block;width:50px;text-align:center">图标</span>
+          <span style="display:inline-block;width:80px;text-align:center">所需成长值</span>
+        </div>
+        <div v-for="l in data.levels" :key="'q'+l.Lv" class="row00">
+          <span style="display:inline-block;width:30px;text-align:center">{{ l.Lv }}</span>
+          <span style="display:inline-block;width:50px;text-align:center"><img :src="pic(l.QQ)" alt="." /></span>
+          <span style="display:inline-block;width:80px;text-align:center">{{ l.Exp }} 点</span>
+        </div>
       </div>
-      <div class="module-content"><span class="txt-fade">每日可获 {{ data.blue.speed || 10 }} 点成长值。</span></div>
+
+      <div class="bodule-title"><font color="#FF0000">【每日成长说明】</font></div>
+      <div class="module-content">
+        每日可获 <font color="#FF0000">{{ data.blue.speed || 10 }}</font> 点成长值。<br>
+        在线时长、签到、互动均可加速成长，更多特权敬请期待。<br>
+        <a href="javascript:;" @click="cur='shop'">开通/续费贵族</a>.<a href="javascript:;" @click="cur='me'">查看我的成长</a>
+      </div>
     </template>
 
     <!-- 开通特权 -->
@@ -130,4 +155,5 @@ export default {
 <style scoped>
 .module-title a { margin-right: 10px; }
 .module-title a.cur { color: #c00; font-weight: bold; }
+.noble-hd { color:#004299; border-bottom:1px dashed #9FC6EC; padding-bottom:4px; margin-bottom:4px; font-weight:bold; }
 </style>
