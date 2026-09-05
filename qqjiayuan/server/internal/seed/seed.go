@@ -39,6 +39,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.WalletLog{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
 		&model.Report{},
+		&model.TtouApply{}, &model.TtouWorship{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)

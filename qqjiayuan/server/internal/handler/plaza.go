@@ -42,17 +42,43 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 		var id uint
 		db.Raw("SELECT id FROM users WHERE username = ?", ttouID).Scan(&id)
 		if id > 0 {
-			db.First(&ttou, id)
+			db.Preload("Priv").First(&ttou, id)
 		}
 	}
 	if ttou.ID == 0 {
-		db.Where("status = 1").Order("exp DESC").First(&ttou)
+		db.Preload("Priv").Where("status = 1").Order("exp DESC").First(&ttou)
 	}
 	ttouOut := gin.H{}
 	if ttou.ID > 0 {
+		var worshipCount int64
+		db.Model(&model.TtouWorship{}).Where("target_id = ?", ttou.ID).Count(&worshipCount)
+		priv := gin.H{}
+		if ttou.Priv != nil {
+			priv = gin.H{"file": ttou.Priv.File, "name": ttou.Priv.Name}
+		}
 		ttouOut = gin.H{"id": ttou.ID, "nickname": ttou.Nickname, "color": ttou.Color,
-			"avatar": ttou.Avatar, "signature": ttou.Signature, "exp": ttou.Exp}
+			"username": ttou.Username, "avatar": ttou.Avatar, "avatar_base64": ttou.AvatarBase64,
+			"signature": ttou.Signature, "exp": ttou.Exp, "level_icon": ttou.LevelIcon,
+			"priv": priv, "worship_count": worshipCount}
 	}
+	// 我的上榜/膜拜状态
+	uid := middleware.GetUID(c)
+	ttouOut["applied"] = false
+	ttouOut["worshiped_today"] = false
+	if uid > 0 {
+		var applied int64
+		db.Model(&model.TtouApply{}).Where("user_id = ? AND status = 0", uid).Count(&applied)
+		ttouOut["applied"] = applied > 0
+		if ttou.ID > 0 {
+			var worshiped int64
+			db.Raw("SELECT COUNT(*) FROM ttou_worships WHERE user_id = ? AND target_id = ? AND DATE(created_at) = ?",
+				uid, ttou.ID, time.Now().Format("2006-01-02")).Scan(&worshiped)
+			ttouOut["worshiped_today"] = worshiped > 0
+		}
+	}
+	var applyCount int64
+	db.Model(&model.TtouApply{}).Where("status = 0").Count(&applyCount)
+	ttouOut["apply_count"] = applyCount
 
 	// 社区快报 = 最新发帖；家园活跃 = 最新被回复
 	var quickThreads []model.Thread

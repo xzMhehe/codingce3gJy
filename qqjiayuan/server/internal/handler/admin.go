@@ -223,6 +223,44 @@ func (h *AdminHandler) TtouClear(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
+// T台秀上榜申请列表
+func (h *AdminHandler) TtouApplies(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	var total int64
+	h.DB.Model(&model.TtouApply{}).Where("status = 0").Count(&total)
+	var applies []model.TtouApply
+	h.DB.Where("status = 0").Order("id DESC").Offset(offset).Limit(size).Find(&applies)
+	list := []gin.H{}
+	for _, a := range applies {
+		var u model.User
+		h.DB.Preload("Priv").First(&u, a.UserID)
+		list = append(list, gin.H{
+			"id": a.ID, "user_id": a.UserID, "nickname": u.Nickname, "username": u.Username,
+			"color": u.Color, "avatar": u.Avatar, "avatar_base64": u.AvatarBase64,
+			"level_icon": u.LevelIcon, "slogan": a.Slogan, "created_at": a.CreatedAt,
+		})
+	}
+	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "size": size})
+}
+
+// 采纳上榜申请：设为当前秀主
+func (h *AdminHandler) TtouApplyAccept(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var a model.TtouApply
+	if err := h.DB.First(&a, id).Error; err != nil {
+		resp.NotFound(c, "申请不存在")
+		return
+	}
+	var u model.User
+	if err := h.DB.First(&u, a.UserID).Error; err != nil {
+		resp.NotFound(c, "用户不存在")
+		return
+	}
+	h.DB.Exec("REPLACE INTO settings(`key`,`value`) VALUES ('ttou_user_id', ?)", u.Username)
+	h.DB.Model(&model.TtouApply{}).Where("id = ?", id).Update("status", 1)
+	resp.OK(c, nil)
+}
+
 // 钱包管理：用户G币列表
 func (h *AdminHandler) Wallets(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)

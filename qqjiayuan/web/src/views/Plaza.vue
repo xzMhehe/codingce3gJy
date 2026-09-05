@@ -22,25 +22,26 @@
       <a href="javascript:;" @click="$router.push('/channel/1')">更多热点&gt;&gt;</a><br>
     </div>
 
-    <!-- T台秀 -->
+    <!-- T台秀（参考站 bbs/index.html：头像圆角图+角标 / 膜拜行 / 我要上榜 / 我要膜拜） -->
     <div class="module-title" v-if="sec('tt')">T台秀</div>
     <div class="row" v-if="sec('tt') && plaza.ttou && plaza.ttou.id">
       <table><tbody><tr>
         <td valign="top" align="center">
           <div class="tt-avatar" :style="ttBg">
-            <img v-if="plaza.ttou.priv" :src="'/static/' + plaza.ttou.priv.file" class="tt-priv" alt=".">
+            <img v-if="plaza.ttou.priv && plaza.ttou.priv.file" :src="'/static/' + plaza.ttou.priv.file" class="tt-priv" alt=".">
             <img v-if="plaza.ttou.level_icon" :src="$pic('v'+plaza.ttou.level_icon+'.gif')" class="tt-level" alt="等级">
             <img src="/static/picture/marksix_1.gif" class="tt-mark" alt="身份">
           </div>
         </td>
         <td style="width:100%;padding-left:2px">
           膜拜：<a href="javascript:;" @click="$router.push('/user/'+plaza.ttou.id)"><font :color="plaza.ttou.color || '#ff0000'">{{ plaza.ttou.nickname }}</font>({{ plaza.ttou.username }})</a>
-          <a href="javascript:;" @click="$router.push('/profile')"><em style="color:#fff;font-size:12px;background:#71afe3;border-radius:3px;padding:0 3px">我要上榜</em></a><br>
+          <a href="javascript:;" @click="applyTtou"><em style="color:#fff;font-size:12px;background:#71afe3;border-radius:3px;padding:0 3px">我要上榜</em></a><br>
           <em>宣言：{{ plaza.ttou.signature || '这个佬佬很懒，什么也没有写。' }}</em><br>
         </td>
       </tr></tbody></table>
     </div>
-    <a href="javascript:;" @click="$router.push('/user/'+(plaza.ttou ? plaza.ttou.id : ''))" v-if="sec('tt') && plaza.ttou && plaza.ttou.id">我要膜拜</a><br>
+    <a href="javascript:;" @click="worshipTtou" v-if="sec('tt') && plaza.ttou && plaza.ttou.id">{{ plaza.ttou.worshiped_today ? '今日已膜拜' : '我要膜拜' }}</a>
+    <span v-if="sec('tt') && plaza.ttou && plaza.ttou.id" class="txt-fade"> (膜拜 {{ plaza.ttou.worship_count || 0 }} 次{{ plaza.ttou.applied ? '，已提交上榜申请' : '' }})</span><br>
 
     <!-- 欢乐坊（真实入口） -->
     <div class="module-title" v-if="sec('joy')">欢乐坊</div>
@@ -140,7 +141,11 @@ export default {
       return '夜深了，睡前记得签个到！'
     },
     ttBg () {
-      const a = this.plaza.ttou && this.plaza.ttou.avatar
+      const t = this.plaza.ttou || {}
+      if (t.avatar_base64 && t.avatar_base64.length > 20) {
+        return { background: 'url(' + t.avatar_base64 + ') 0 0/100% 100% no-repeat' }
+      }
+      const a = t.avatar
       return a ? { background: 'url(/static/picture/' + a + ') 0 0/100% 100% no-repeat' } : { background: '#cfe0f0' }
     }
   },
@@ -167,6 +172,33 @@ export default {
       api.post('/chat', { content: this.chatWord }).then(r => { if (r.code === 0) { this.chatWord = ''; this.loadChat() } })
     },
     goSearch () { if (this.word) this.$router.push('/search?word=' + encodeURIComponent(this.word)) },
+    worshipTtou () {
+      if (!this.isLogin) { this.$router.push('/login'); return }
+      if (this.plaza.ttou.worshiped_today) { window.alert('今天已经膜拜过啦，明天再来~'); return }
+      api.post('/ttou/worship').then(r => {
+        if (r.code === 0) {
+          this.plaza.ttou.worship_count = r.data.count
+          this.plaza.ttou.worshiped_today = true
+          window.alert('膜拜成功！')
+        } else {
+          window.alert(r.msg || '膜拜失败')
+        }
+      }).catch(() => { window.alert('网络异常，请稍后再试') })
+    },
+    applyTtou () {
+      if (!this.isLogin) { this.$router.push('/login'); return }
+      const slogan = window.prompt('填写你的上榜宣言（100字内）：', this.plaza.ttou.signature ? '' : '')
+      if (slogan === null) return
+      if (!slogan.trim()) { window.alert('宣言不能为空'); return }
+      api.post('/ttou/apply', { slogan: slogan.trim() }).then(r => {
+        if (r.code === 0) {
+          this.plaza.ttou.applied = true
+          window.alert('上榜申请已提交，等管理员把你设为秀主吧~')
+        } else {
+          window.alert(r.msg || '提交失败')
+        }
+      }).catch(() => { window.alert('网络异常，请稍后再试') })
+    },
     showAnn (a) { this.annPopup = a },
     brief (s) { s = s || ''; return s.length > 20 ? s.slice(0, 20) + '…' : s },
     excerpt (s) {

@@ -43,6 +43,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	rankH := &handler.RankHandler{DB: db, Secret: cfg.Jwt.Secret}
 	hlH := &handler.HomeLevelHandler{DB: db}
 	achH := &handler.AchieveHandler{DB: db}
+	ttouH := &handler.TtouHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
 	itH := &handler.InteractHandler{DB: db}
 
@@ -197,6 +198,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/me/avatar", userH.MyAvatar)
 			authed.POST("/me/avatar", userH.UploadAvatar)
 			authed.POST("/me/avatar/qq", userH.QqAvatar)
+			authed.POST("/ttou/apply", ttouH.Apply)
+			authed.POST("/ttou/worship", ttouH.Worship)
 			authed.GET("/avatar/presets", userH.AvatarPresets)
 			authed.POST("/avatar/presets", userH.SetPresetAvatar)
 			authed.GET("/wallet", ecoH.Wallet)
@@ -270,6 +273,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ttou", perm(db, "admin:access"), adminH.Ttou)
 				admin.PUT("/ttou", perm(db, "admin:access"), adminH.TtouSet)
 				admin.DELETE("/ttou", perm(db, "admin:access"), adminH.TtouClear)
+				admin.GET("/ttou/applies", perm(db, "admin:access"), adminH.TtouApplies)
+				admin.POST("/ttou/applies/:id/accept", perm(db, "admin:access"), adminH.TtouApplyAccept)
 				admin.PUT("/users/:id/status", perm(db, "user:manage"), adminH.UserStatus)
 				admin.PUT("/users/:id/password", perm(db, "user:manage"), adminH.ResetPassword)
 				admin.PUT("/users/:id/roles", perm(db, "user:manage"), adminH.UserRoles)
