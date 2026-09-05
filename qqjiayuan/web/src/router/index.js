@@ -28,6 +28,7 @@ const routes = [
   { path: '/families', name: 'families', component: () => import('../views/Families.vue') },
   { path: '/families/category/:cat', name: 'familiesCategory', component: () => import('../views/FamiliesCategory.vue') },
   { path: '/families/search/:wd?', name: 'familiesSearch', component: () => import('../views/FamiliesSearch.vue') },
+  { path: '/fla', name: 'fla', component: () => import('../views/Fla.vue') },
   { path: '/families/top', name: 'familiesTop', component: () => import('../views/FamiliesTop.vue') },
   { path: '/family/:id', name: 'family', component: () => import('../views/Family.vue') },
   { path: '/family/:id/forum', name: 'familyForum', component: () => import('../views/FamilyForum.vue') },

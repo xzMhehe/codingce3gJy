@@ -34,12 +34,12 @@
         </td>
         <td style="width:100%;padding-left:2px">
           膜拜：<a href="javascript:;" @click="$router.push('/user/'+plaza.ttou.id)"><font :color="plaza.ttou.color || '#ff0000'">{{ plaza.ttou.nickname }}</font>({{ plaza.ttou.username }})</a>
-          <a href="javascript:;" @click="applyTtou"><em style="color:#fff;font-size:12px;background:#71afe3;border-radius:3px;padding:0 3px">我要上榜</em></a><br>
+          <a href="javascript:;" @click="$router.push('/fla')"><span id="anniu">我要上榜</span></a><br>
           <em>宣言：{{ plaza.ttou.signature || '这个佬佬很懒，什么也没有写。' }}</em><br>
         </td>
       </tr></tbody></table>
     </div>
-    <a href="javascript:;" @click="worshipTtou" v-if="sec('tt') && plaza.ttou && plaza.ttou.id">{{ plaza.ttou.worshiped_today ? '今日已膜拜' : '我要膜拜' }}</a>
+    <a href="javascript:;" @click="worshipTtou" v-if="sec('tt') && plaza.ttou && plaza.ttou.id" class="text_effect22">{{ plaza.ttou.worshiped_today ? '今日已膜拜' : '我要膜拜' }}</a>
     <span v-if="sec('tt') && plaza.ttou && plaza.ttou.id" class="txt-fade"> (膜拜 {{ plaza.ttou.worship_count || 0 }} 次{{ plaza.ttou.applied ? '，已提交上榜申请' : '' }})</span><br>
 
     <!-- 欢乐坊（真实入口） -->

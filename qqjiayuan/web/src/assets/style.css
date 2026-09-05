@@ -25,6 +25,36 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 .tt-priv { position: absolute; right: -4px; bottom: -3px; width: 20px; }
 .tt-mark { position: absolute; right: -4px; top: -3px; width: 16px; height: 16px; }
 
+/* 原版我要上榜按钮 */
+#anniu {
+    width: 66px;
+    height: 20px;
+    border: none;
+    background: #0052d9;
+    color: #fff;
+    border-radius: 5px;
+    font-size: 14px;
+    padding: 2px 6px;
+    box-shadow: 1px 1px 7px #fb3d3d;
+}
+
+/* 原版我要膜拜效果（text_effect22） */
+.text_effect22 {
+    color: #6B8E23;
+    font-weight: bold;
+    text-decoration: none;
+    position: relative;
+}
+.text_effect22::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #9ACD32, transparent);
+}
+
 /* 发帖表情按钮 */
 .face-btn { margin: 2px 4px 2px 0; padding: 1px 4px; background: #fff; border: 1px solid #2e9cd3; cursor: pointer; }
 
