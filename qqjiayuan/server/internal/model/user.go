@@ -13,6 +13,11 @@ type User struct {
 	Nickname     string  `gorm:"type:varchar(20);uniqueIndex" json:"nickname"`
 	Password     string  `gorm:"type:varchar(100)" json:"-"`
 	Gender       int     `gorm:"default:1" json:"gender"` // 1小哥哥 2小姐姐
+	Age          int     `gorm:"default:0" json:"age"`
+	BirthYear    int     `gorm:"default:0" json:"birth_year"`
+	BirthMonth   int     `gorm:"default:0" json:"birth_month"`
+	BirthDay     int     `gorm:"default:0" json:"birth_day"`
+	Introduction string  `gorm:"type:varchar(200)" json:"introduction"` // 个人简介
 	Signature    string    `gorm:"type:varchar(100)" json:"signature"`
 	City         string    `gorm:"type:varchar(30)" json:"city"`    // 城市设置
 	Color        string    `gorm:"type:varchar(10)"  json:"color"`  // 昵称颜色，情怀功能

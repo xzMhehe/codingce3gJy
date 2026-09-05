@@ -265,11 +265,11 @@ type NotifyHandler struct{ DB *gorm.DB }
 
 func (h *NotifyHandler) List(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	page, offset := pageOf(c, 20)
+	page, offset, size := pageOf(c, 20)
 	var total int64
 	h.DB.Model(&model.Notification{}).Where("user_id = ?", uid).Count(&total)
 	var list []model.Notification
-	h.DB.Where("user_id = ?", uid).Order("created_at DESC").Offset(offset).Limit(20).Find(&list)
+	h.DB.Where("user_id = ?", uid).Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
 	var unread int64
 	h.DB.Model(&model.Notification{}).Where("user_id = ? AND is_read = 0", uid).Count(&unread)
 	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "unread": unread})

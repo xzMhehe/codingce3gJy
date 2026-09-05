@@ -51,7 +51,7 @@ func (h *BoardHandler) Info(c *gin.Context) {
 // 板块帖子列表（置顶优先，然后按最后回复时间）
 func (h *BoardHandler) Threads(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	page, _ := pageOf(c, 10)
+	page, _, _ := pageOf(c, 10)
 
 	var board model.Board
 	if err := h.DB.First(&board, id).Error; err != nil {

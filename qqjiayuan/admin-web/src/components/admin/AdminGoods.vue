@@ -15,7 +15,7 @@
         </el-table-column>
         <el-table-column prop="name" label="商品" min-width="120" />
         <el-table-column prop="category" label="分类" width="90" />
-        <el-table-column prop="price" label="金币" width="80" header-align="center" />
+        <el-table-column prop="price" label="G币" width="80" header-align="center" />
         <el-table-column prop="sort" label="排序" width="70" header-align="center" />
         <el-table-column label="状态" width="80" header-align="center">
           <template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag></template>
@@ -29,6 +29,10 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination background layout="total, prev, pager, next" :total="total"
+                     :page-size="size" :current-page="page"
+                     @current-change="p => { page = p; load() }"
+                     style="margin-top:14px;text-align:right" />
     </el-card>
 
     <el-dialog :title="form.id ? '编辑商品' : '新增商品'" :visible.sync="dlg" width="560px" :close-on-click-modal="false">
@@ -60,15 +64,16 @@ import api from '../../api'
 
 export default {
   name: 'AdminGoods',
-  data () { return { list: [], categories: ['鲜花', '道具', '装扮', '特权'], loading: false, dlg: false, form: { id: 0, name: '', category: '道具', icon: '', price: 0, sort: 0, desc: '', status: 1 } } },
+  data () { return { list: [], total: 0, page: 1, size: 10, categories: ['鲜花', '道具', '装扮', '特权'], loading: false, dlg: false, form: { id: 0, name: '', category: '道具', icon: '', price: 0, sort: 0, desc: '', status: 1 } } },
   mounted () { this.load() },
   methods: {
     load () {
       this.loading = true
-      api.get('/admin/goods').then(r => {
+      api.get('/admin/goods', { params: { page: this.page, size: this.size } }).then(r => {
         this.loading = false
         if (r.code === 0) {
           this.list = r.data.list || []
+          this.total = r.data.total || 0
           if (r.data.categories && r.data.categories.length) {
             const merged = this.categories.concat(r.data.categories.filter(c => this.categories.indexOf(c) < 0))
             this.categories = merged

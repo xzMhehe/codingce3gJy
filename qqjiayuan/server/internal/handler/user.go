@@ -16,8 +16,8 @@ type UserHandler struct {
 	DB *gorm.DB
 }
 
-// 通用分页参数：page 从 1 起，size 默认 10
-func pageOf(c *gin.Context, defSize int) (int, int) {
+// 通用分页参数：page 从 1 起，size 默认 defSize（1~100），返回 page、offset、size
+func pageOf(c *gin.Context, defSize int) (int, int, int) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", strconv.Itoa(defSize)))
 	if page < 1 {
@@ -26,7 +26,7 @@ func pageOf(c *gin.Context, defSize int) (int, int) {
 	if size < 1 || size > 100 {
 		size = defSize
 	}
-	return page, (page - 1) * size
+	return page, (page - 1) * size, size
 }
 
 // 他人主页：资料 + 最新发帖/回帖统计
@@ -111,19 +111,23 @@ func (h *UserHandler) Profile(c *gin.Context) {
 }
 
 type profileReq struct {
-	Signature string `json:"signature" binding:"max=50"`
-	Gender    int    `json:"gender"`
-	Color     string `json:"color" binding:"max=10"`
-	Nickname  string `json:"nickname" binding:"min=1,max=20"`
-	Avatar    string `json:"avatar" binding:"max=100"`
-	City      string `json:"city" binding:"max=30"`
+	Signature    string `json:"signature" binding:"max=120"`
+	Gender       int    `json:"gender"`
+	Nickname     string `json:"nickname" binding:"min=1,max=12"`
+	Avatar       string `json:"avatar" binding:"max=100"`
+	City         string `json:"city" binding:"max=30"`
+	Age          int    `json:"age"`
+	BirthYear    int    `json:"birth_year"`
+	BirthMonth   int    `json:"birth_month"`
+	BirthDay     int    `json:"birth_day"`
+	Introduction string `json:"introduction" binding:"max=200"`
 }
 
 func (h *UserHandler) UpdateMe(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req profileReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.ParamError(c, "资料格式不对：昵称1-20字，签名50字以内")
+		resp.ParamError(c, "资料格式不对：昵称1-12字，签名120字以内，年龄/生日请填写数字")
 		return
 	}
 	if req.Gender != 1 && req.Gender != 2 {
@@ -140,9 +144,41 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 			return
 		}
 	}
+	// 年龄 / 生日 互相推断：填了完整生日 → 算年龄；只填年龄 → 用 now-year 推年份（保留原月日或默认当前月日）
+	age := req.Age
+	by, bm, bd := req.BirthYear, req.BirthMonth, req.BirthDay
+	if by > 0 && bm > 0 && bd > 0 {
+		now := time.Now()
+		calc := now.Year() - by
+		if int(now.Month()) < bm || (int(now.Month()) == bm && now.Day() < bd) {
+			calc--
+		}
+		if calc > 0 {
+			age = calc
+		}
+	} else if age > 0 && (by == 0 || bm == 0 || bd == 0) {
+		now := time.Now()
+		if by == 0 {
+			by = now.Year() - age
+		}
+		if bm == 0 {
+			bm = user.BirthMonth
+			if bm == 0 {
+				bm = int(now.Month())
+			}
+		}
+		if bd == 0 {
+			bd = user.BirthDay
+			if bd == 0 {
+				bd = now.Day()
+			}
+		}
+	}
 	h.DB.Model(&user).Updates(map[string]interface{}{
 		"nickname": req.Nickname, "signature": req.Signature,
-		"gender": req.Gender, "color": req.Color, "avatar": req.Avatar, "city": req.City,
+		"gender": req.Gender, "avatar": req.Avatar, "city": req.City,
+		"age": age, "birth_year": by, "birth_month": bm, "birth_day": bd,
+		"introduction": req.Introduction,
 	})
 	resp.OK(c, nil)
 }

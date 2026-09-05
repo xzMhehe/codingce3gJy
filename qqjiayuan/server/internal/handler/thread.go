@@ -35,7 +35,7 @@ func addExpAndCoins(db *gorm.DB, uid uint, exp, coins, achieve int, kind, title 
 // 帖子详情 + 分页楼层（1楼=楼主，回复从2楼起）
 func (h *ThreadHandler) Detail(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	page, _ := pageOf(c, 10)
+	page, _, _ := pageOf(c, 10)
 
 	var th model.Thread
 	if err := h.DB.Preload("User").Preload("User.Badges").Preload("Board").First(&th, id).Error; err != nil || th.Status == 0 {

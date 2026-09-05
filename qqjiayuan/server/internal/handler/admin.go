@@ -28,7 +28,7 @@ func (h *AdminHandler) Stats(c *gin.Context) {
 
 // ---- 用户管理 ----
 func (h *AdminHandler) Users(c *gin.Context) {
-	page, offset := pageOf(c, 10)
+	page, offset, size := pageOf(c, 10)
 	word := c.Query("word")
 	q := h.DB.Model(&model.User{})
 	if word != "" {
@@ -37,14 +37,18 @@ func (h *AdminHandler) Users(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var users []model.User
-	q.Preload("Roles").Preload("Badges").Order("id ASC").Offset(offset).Limit(10).Find(&users)
-	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": users})
+	q.Preload("Roles").Preload("Badges").Order("id ASC").Offset(offset).Limit(size).Find(&users)
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": users})
 }
 
-// 家族管理：列表（含成员数）
+// 家族管理：列表（含成员数，分页）
 func (h *AdminHandler) Families(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.Family{}).Where("status = 1")
+	var total int64
+	q.Count(&total)
 	var fams []model.Family
-	h.DB.Preload("Owner").Where("status = 1").Order("id ASC").Find(&fams)
+	q.Preload("Owner").Order("id ASC").Offset(offset).Limit(size).Find(&fams)
 	out := []gin.H{}
 	for _, f := range fams {
 		var cnt int64
@@ -57,7 +61,7 @@ func (h *AdminHandler) Families(c *gin.Context) {
 			"members": cnt, "announcement": f.Announcement, "battle_score": f.BattleScore,
 			"is_feature": f.IsFeature, "category": f.Category})
 	}
-	resp.OK(c, out)
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
 // 待审核家族列表（管理端）
@@ -221,7 +225,7 @@ func (h *AdminHandler) TtouClear(c *gin.Context) {
 
 // 钱包管理：用户G币列表
 func (h *AdminHandler) Wallets(c *gin.Context) {
-	page, offset := pageOf(c, 10)
+	page, offset, size := pageOf(c, 10)
 	word := c.Query("word")
 	q := h.DB.Model(&model.User{})
 	if word != "" {
@@ -230,7 +234,7 @@ func (h *AdminHandler) Wallets(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var users []model.User
-	q.Order("coins DESC").Offset(offset).Limit(10).Find(&users)
+	q.Order("coins DESC").Offset(offset).Limit(size).Find(&users)
 	out := []gin.H{}
 	for _, u := range users {
 		bank := 0
@@ -241,7 +245,7 @@ func (h *AdminHandler) Wallets(c *gin.Context) {
 		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank,
 			"yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan})
 	}
-	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": out})
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
 // 设置用户货币（G币/元宝/金钻/友友券）
@@ -811,7 +815,7 @@ func (h *AdminHandler) DeleteRole(c *gin.Context) {
 
 // ---- 帖子管理列表 ----
 func (h *AdminHandler) Threads(c *gin.Context) {
-	page, offset := pageOf(c, 10)
+	page, offset, size := pageOf(c, 10)
 	word := c.Query("word")
 	q := h.DB.Model(&model.Thread{}).Where("status = 1")
 	if word != "" {
@@ -820,8 +824,8 @@ func (h *AdminHandler) Threads(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	var list []model.Thread
-	q.Preload("User").Preload("Board").Order("created_at DESC").Offset(offset).Limit(10).Find(&list)
-	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": list})
+	q.Preload("User").Preload("Board").Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": list})
 }
 
 func boolToInt(b bool) int {

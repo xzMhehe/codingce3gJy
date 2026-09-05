@@ -196,11 +196,11 @@ func (h *NobleHandler) AdminPlanDelete(c *gin.Context) {
 
 // 后台：用户特权列表
 func (h *NobleHandler) AdminUsers(c *gin.Context) {
-	page, offset := pageOf(c, 20)
+	page, offset, size := pageOf(c, 20)
 	var total int64
 	h.DB.Model(&model.User{}).Where("blue_exp > 0 OR qq_exp > 0").Count(&total)
 	var users []model.User
-	h.DB.Where("blue_exp > 0 OR qq_exp > 0").Order("blue_exp DESC, qq_exp DESC").Offset(offset).Limit(20).Find(&users)
+	h.DB.Where("blue_exp > 0 OR qq_exp > 0").Order("blue_exp DESC, qq_exp DESC").Offset(offset).Limit(size).Find(&users)
 	out := []gin.H{}
 	for _, u := range users {
 		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "blue_lv": lvOf(u.BlueExp), "blue_exp": u.BlueExp, "qq_lv": lvOf(u.QqExp), "qq_exp": u.QqExp})

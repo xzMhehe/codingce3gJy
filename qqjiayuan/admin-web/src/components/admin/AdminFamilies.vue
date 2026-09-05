@@ -15,6 +15,10 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination background layout="total, prev, pager, next" :total="total"
+                     :page-size="size" :current-page="page"
+                     @current-change="p => { page = p; load() }"
+                     style="margin-top:14px;text-align:right" />
     </el-card>
 
     <el-dialog title="修改家族公告" :visible.sync="dlg" width="520px" :close-on-click-modal="false">
@@ -29,12 +33,15 @@ import api from '../../api'
 
 export default {
   name: 'AdminFamilies',
-  data () { return { list: [], loading: false, dlg: false, ann: '', current: 0 } },
+  data () { return { list: [], total: 0, page: 1, size: 10, loading: false, dlg: false, ann: '', current: 0 } },
   mounted () { this.load() },
   methods: {
     load () {
       this.loading = true
-      api.get('/admin/families').then(r => { this.loading = false; if (r.code === 0) this.list = r.data })
+      api.get('/admin/families', { params: { page: this.page, size: this.size } }).then(r => {
+        this.loading = false
+        if (r.code === 0) { this.list = r.data.list || []; this.total = r.data.total || 0 } else this.$message.error(r.msg)
+      })
     },
     editAnn (row) { this.current = row.id; this.ann = row.announcement; this.dlg = true },
     saveAnn () { api.put('/admin/families/' + this.current + '/ann', { announcement: this.ann }).then(r => { if (r.code === 0) { this.dlg = false; this.load() } }) },

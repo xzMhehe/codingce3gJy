@@ -460,7 +460,7 @@ func (h *FamilyHandler) Forum(c *gin.Context) {
 	if !ok {
 		return
 	}
-	page, _ := pageOf(c, 10)
+	page, _, _ := pageOf(c, 10)
 	board := familyForumBoard(h.DB, fam.Name)
 	if board.ID == 0 {
 		resp.OK(c, gin.H{"board": nil, "total": 0, "page": 1, "size": 10, "list": []gin.H{}})

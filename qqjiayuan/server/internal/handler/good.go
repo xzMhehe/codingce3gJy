@@ -150,11 +150,15 @@ func (h *GoodHandler) BagUse(c *gin.Context) {
 	}
 }
 
-// 后台：商品列表
+// 后台：商品列表（分页）
 func (h *GoodHandler) AdminList(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.Good{})
+	var total int64
+	q.Count(&total)
 	var list []model.Good
-	h.DB.Order("sort ASC, id ASC").Find(&list)
-	resp.OK(c, gin.H{"list": list, "categories": goodCategories(list)})
+	q.Order("sort ASC, id ASC").Offset(offset).Limit(size).Find(&list)
+	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "size": size, "categories": goodCategories(list)})
 }
 
 type goodReq struct {

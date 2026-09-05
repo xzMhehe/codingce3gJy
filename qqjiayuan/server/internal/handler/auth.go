@@ -144,6 +144,8 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"gender": user.Gender, "signature": user.Signature, "color": user.Color,
 		"avatar": user.Avatar, "coins": user.Coins, "exp": user.Exp, "level": user.Level,
 		"yuanbao": user.YuanBao, "jinzuan": user.JinZuan, "youquan": user.YouQuan,
+		"age": user.Age, "birth_year": user.BirthYear, "birth_month": user.BirthMonth, "birth_day": user.BirthDay,
+		"introduction": user.Introduction, "city": user.City,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"roles": user.Roles, "badges": user.Badges, "priv": user.Priv,
 		"perms": middleware.UserPermissionCodes(h.DB, uid),
