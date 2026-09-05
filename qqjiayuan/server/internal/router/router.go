@@ -196,6 +196,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/achieve", achH.View)
 			authed.GET("/me/avatar", userH.MyAvatar)
 			authed.POST("/me/avatar", userH.UploadAvatar)
+			authed.POST("/me/avatar/qq", userH.QqAvatar)
 			authed.GET("/avatar/presets", userH.AvatarPresets)
 			authed.POST("/avatar/presets", userH.SetPresetAvatar)
 			authed.GET("/wallet", ecoH.Wallet)

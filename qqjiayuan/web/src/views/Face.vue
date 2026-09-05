@@ -19,6 +19,14 @@
       <p v-if="okMsg" style="color:#1a9e1a">{{ okMsg }}</p>
     </div>
 
+    <div class="module-title">选项2.取QQ头像变为社区头像</div>
+    <div class="module-content">
+      输入QQ:<input type="text" v-model.trim="qq" emptyok="true" maxlength="12" style="width:120px">
+      <a href="javascript:;" class="ipt-btn-gold-b" :class="{ disabled: !qq }" @click="setQq">确定设置</a>
+      <p v-if="qqMsg" style="color:#c00">{{ qqMsg }}</p>
+      <p v-if="qqOk" style="color:#1a9e1a">{{ qqOk }}</p>
+    </div>
+
     <div class="module-title">推荐头像（点击图片即可设为头像）</div>
     <div class="module-content">
       <a v-for="f in presets" :key="f" href="javascript:;" @click="setPreset(f)" :title="f">
@@ -45,6 +53,7 @@ export default {
       face: '',        // 当前头像：base64(data URI) 或文件名
       preview: '',     // 待上传预览
       msg: '', okMsg: '',
+      qq: '', qqMsg: '', qqOk: '',
       presets: [], page: 1, size: 12, total: 0
     }
   },
@@ -113,6 +122,18 @@ export default {
           this.msg = r.msg || '设置失败'
         }
       }).catch(() => { this.msg = '设置失败，请重试' })
+    },
+    setQq () {
+      this.qqMsg = ''; this.qqOk = ''
+      if (!/^\d{5,12}$/.test(this.qq)) { this.qqMsg = '请输入正确的QQ号（5-12位数字）'; return }
+      api.post('/me/avatar/qq', { qq: this.qq }).then(r => {
+        if (r.code === 0) {
+          this.loadFace()
+          this.qqOk = '已获取QQ头像并设为社区头像'
+        } else {
+          this.qqMsg = r.msg || '获取QQ头像失败'
+        }
+      }).catch(() => { this.qqMsg = '获取QQ头像失败，请稍后再试' })
     },
     go (p) {
       if (p < 1) return

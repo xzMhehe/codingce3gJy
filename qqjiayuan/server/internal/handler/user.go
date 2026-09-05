@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"encoding/base64"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -283,4 +286,65 @@ func (h *UserHandler) SetPresetAvatar(c *gin.Context) {
 		"avatar": req.File, "avatar_base64": "",
 	})
 	resp.OK(c, nil)
+}
+
+// 选项2：取QQ头像变为社区头像（复刻参考站 QQtx.aspx，拉 qlogo CDN 转 base64 存库）
+var qqNumRe = regexp.MustCompile(`^\d{5,12}$`)
+
+func (h *UserHandler) QqAvatar(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		QQ string `json:"qq" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请输入QQ号")
+		return
+	}
+	qq := strings.TrimSpace(req.QQ)
+	if !qqNumRe.MatchString(qq) {
+		resp.ParamError(c, "QQ号格式不对（5-12位数字）")
+		return
+	}
+	// 拉取QQ头像（100x100）
+	client := &http.Client{Timeout: 8 * time.Second}
+	httpResp, err := client.Get("https://q1.qlogo.cn/g?b=qq&nk=" + qq + "&s=100")
+	if err != nil {
+		resp.ParamError(c, "获取QQ头像失败，请稍后再试")
+		return
+	}
+	defer httpResp.Body.Close()
+	if httpResp.StatusCode != http.StatusOK {
+		resp.ParamError(c, "获取QQ头像失败，请检查QQ号")
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(httpResp.Body, 600*1024))
+	if err != nil || len(data) < 100 {
+		resp.ParamError(c, "获取QQ头像失败")
+		return
+	}
+	ct := httpResp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "image/") {
+		ct = sniffImageType(data) // 部分 CDN 不返回 Content-Type，按魔数识别
+	}
+	uri := "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+		"avatar_base64": uri, "avatar": "",
+	})
+	resp.OK(c, nil)
+}
+
+// sniffImageType 按文件魔数识别图片类型
+func sniffImageType(data []byte) string {
+	switch {
+	case len(data) > 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "image/jpeg"
+	case len(data) > 8 && string(data[0:4]) == "\x89PNG":
+		return "image/png"
+	case len(data) > 6 && string(data[0:6]) == "GIF89a" || (len(data) > 6 && string(data[0:6]) == "GIF87a"):
+		return "image/gif"
+	case len(data) > 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	default:
+		return "image/jpeg"
+	}
 }
