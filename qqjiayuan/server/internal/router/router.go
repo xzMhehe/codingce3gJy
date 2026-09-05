@@ -40,7 +40,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	fgH := &handler.FriendGroupHandler{DB: db}
 	nobleH := &handler.NobleHandler{DB: db}
 	goodH := &handler.GoodHandler{DB: db}
-	rankH := &handler.RankHandler{DB: db}
+	rankH := &handler.RankHandler{DB: db, Secret: cfg.Jwt.Secret}
 	hlH := &handler.HomeLevelHandler{DB: db}
 	achH := &handler.AchieveHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
