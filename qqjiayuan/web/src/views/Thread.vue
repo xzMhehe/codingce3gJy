@@ -157,9 +157,13 @@
     <div class="write-mood">
       <div class="item">
         <form @submit.prevent="submit">
-          <textarea v-model.trim="content" rows="2" style="width:100%" :disabled="!isLogin"></textarea><br>
-          <input v-if="isLogin" type="submit" value="回复"> <span class="help-line">回复+5经验+2金币</span>
-          <template v-else><a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆家园社区</a>后回复盖楼</template>
+          <template v-if="isLogin">
+            <textarea v-model.trim="content" rows="2" style="width:100%"></textarea><br>
+            <input type="submit" value="回复"> <span class="help-line">回复+5经验+2金币</span>
+          </template>
+          <template v-else>
+            <a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆家园社区</a>后回复盖楼
+          </template>
         </form>
       </div>
     </div>
