@@ -45,7 +45,7 @@
 
     <div class="list">
       <div class="row" v-for="r in replies" :key="r.id">
-        {{ r.floor }}楼.{{ r.content }} (<span v-for="b in (r.user?r.user.badges:[])" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span><img class="bicon" v-if="r.user && r.user.priv" :src="'/static/' + r.user.priv.file" :alt="r.user.priv.name" :title="r.user.priv.name" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级"><a href="javascript:;" @click="$router.push('/user/'+(r.user?r.user.id:''))"><font :color="r.user?r.user.color:''">{{ r.user?r.user.nickname:'路人' }}</font></a>){{ fmt(r.created_at) }} <a v-if="isLogin" href="javascript:;" @click="quote(r.floor)">回复</a><a v-if="user && r.user && r.user.id === user.id" href="javascript:;" style="color:#c00" @click="delReply(r)">.删除</a><br>
+        {{ r.floor }}楼.{{ r.content }} (<span v-for="b in (r.user?r.user.badges:[])" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span><img class="bicon" v-if="r.user && r.user.priv" :src="'/static/' + r.user.priv.file" :alt="r.user.priv.name" :title="r.user.priv.name"><img class="bicon" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级"><a href="javascript:;" @click="$router.push('/user/'+(r.user?r.user.id:''))"><font :color="r.user?r.user.color:''">{{ r.user?r.user.nickname:'路人' }}</font></a>){{ fmt(r.created_at) }} <a v-if="isLogin" href="javascript:;" @click="quote(r.floor)">回复</a><a v-if="user && r.user && r.user.id === user.id" href="javascript:;" style="color:#c00" @click="delReply(r)">.删除</a><br>
       </div>
     </div>
     <div v-if="!replies.length" class="empty">还没有人回复，来抢沙发！</div>

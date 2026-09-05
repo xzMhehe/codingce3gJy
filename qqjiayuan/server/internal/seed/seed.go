@@ -54,6 +54,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGames(db)
 	seedFamilies(db)
 	seedFamilyPatch(db)
+	seedFamilyBoards(db)
 	seedBooks(db)
 	seedGardenActivities(db)
 	seedPlazaSections(db)
@@ -165,6 +166,51 @@ func seedFamilyPatch(db *gorm.DB) {
 	}
 	if fid := famOwner("安珞"); fid > 0 {
 		db.Create(&model.FamilyActivity{FamilyID: fid, UserID: byNick("安珞"), Content: "在家族签到"})
+	}
+}
+
+// seedFamilyBoards 家族大看台板块 + 特色家族标记 + 示例活动帖（幂等）
+func seedFamilyBoards(db *gorm.DB) {
+	var root model.Board
+	db.Where("name = ?", "家族大厅").First(&root)
+	if root.ID == 0 {
+		return
+	}
+	var board model.Board
+	db.Where("parent_id = ? AND name = ?", root.ID, "家族大看台").First(&board)
+	if board.ID == 0 {
+		board = model.Board{ParentID: root.ID, Name: "家族大看台", Description: "家族活动、家族大事一览"}
+		db.Create(&board)
+	}
+	// 特色家族标记
+	db.Model(&model.Family{}).Where("name = ? AND status = 1", "清风明月").Update("is_feature", 1)
+	db.Model(&model.Family{}).Where("name = ? AND status = 1", "与世无争").Update("is_feature", 1)
+	// 示例活动帖（该板块无帖子时写入）
+	var n int64
+	db.Model(&model.Thread{}).Where("board_id = ?", board.ID).Count(&n)
+	if n > 0 {
+		return
+	}
+	byNick := func(nick string) uint {
+		var u model.User
+		db.Where("nickname = ?", nick).First(&u)
+		return u.ID
+	}
+	spec := []struct {
+		title, content, by string
+		views              int
+	}{
+		{"【清风明月·中秋活动】月圆人团圆，回帖赢金币", "中秋佳节，家族全体成员一起赏月吃月饼，回帖即可获得金币奖励！", "云起", 286},
+		{"【与世无争·周末聚会】来家族大厅唠唠嗑", "周末啦，兄弟姐妹们快来家族大看台集合，聊聊这一周的趣事～", "安珞", 190},
+		{"【断念阁】新成员入阁欢迎帖", "欢迎新伙伴加入断念阁，新人报道帖～", "　　瞿詺南　", 120},
+	}
+	for _, s := range spec {
+		uid := byNick(s.by)
+		if uid == 0 {
+			continue
+		}
+		db.Create(&model.Thread{BoardID: board.ID, UserID: uid, Title: s.title,
+			Content: s.content, ViewCount: s.views, Status: 1})
 	}
 }
 

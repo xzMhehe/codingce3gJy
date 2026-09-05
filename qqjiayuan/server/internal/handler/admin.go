@@ -54,9 +54,84 @@ func (h *AdminHandler) Families(c *gin.Context) {
 			owner = f.Owner.Nickname
 		}
 		out = append(out, gin.H{"id": f.ID, "name": f.Name, "slogan": f.Slogan, "owner": owner,
-			"members": cnt, "announcement": f.Announcement, "battle_score": f.BattleScore})
+			"members": cnt, "announcement": f.Announcement, "battle_score": f.BattleScore,
+			"is_feature": f.IsFeature, "category": f.Category})
 	}
 	resp.OK(c, out)
+}
+
+// 待审核家族列表（管理端）
+func (h *AdminHandler) PendingFamilies(c *gin.Context) {
+	var fams []model.Family
+	h.DB.Preload("Owner").Where("status = 2").Order("created_at ASC").Find(&fams)
+	out := []gin.H{}
+	for _, f := range fams {
+		owner := ""
+		if f.Owner != nil {
+			owner = f.Owner.Nickname
+		}
+		out = append(out, gin.H{"id": f.ID, "name": f.Name, "slogan": f.Slogan,
+			"description": f.Description, "category": f.Category, "owner_id": f.OwnerID,
+			"owner": owner, "created_at": f.CreatedAt})
+	}
+	resp.OK(c, out)
+}
+
+// 特色家族设置
+func (h *AdminHandler) FamilyFeature(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		IsFeature int `json:"is_feature"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	if req.IsFeature != 0 && req.IsFeature != 1 {
+		req.IsFeature = 0
+	}
+	h.DB.Model(&model.Family{}).Where("id = ?", id).Update("is_feature", req.IsFeature)
+	resp.OK(c, nil)
+}
+
+// 家族审核：通过（扣 500 金币并成立）/ 拒绝（删除并保留申请记录日志）
+func (h *AdminHandler) FamilyReview(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Approve bool `json:"approve"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	var fam model.Family
+	if err := h.DB.First(&fam, id).Error; err != nil || fam.Status != 2 {
+		resp.ParamError(c, "家族不存在或不在待审状态")
+		return
+	}
+	if req.Approve {
+		var u model.User
+		if err := h.DB.First(&u, fam.OwnerID).Error; err != nil {
+			resp.ParamError(c, "族长账号不存在")
+			return
+		}
+		if u.Coins < familyCreateCost {
+			resp.ParamError(c, "族长金币不足 " + strconv.Itoa(familyCreateCost) + "，无法通过（可先给族长充值）")
+			return
+		}
+		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", familyCreateCost))
+		h.DB.Model(&fam).Update("status", 1)
+		h.DB.Create(&model.FamilyMember{FamilyID: fam.ID, UserID: fam.OwnerID, Role: "owner"})
+		h.DB.Create(&model.FamilyActivity{FamilyID: fam.ID, UserID: fam.OwnerID, Content: "家族审核通过，正式成立！"})
+		resp.OK(c, gin.H{"approved": true})
+		return
+	}
+	// 拒绝：删除家族及其关联数据
+	h.DB.Where("family_id = ?", fam.ID).Delete(&model.FamilyMember{})
+	h.DB.Where("family_id = ?", fam.ID).Delete(&model.FamilyActivity{})
+	h.DB.Where("family_id = ?", fam.ID).Delete(&model.FamilySignIn{})
+	h.DB.Delete(&fam)
+	resp.OK(c, gin.H{"approved": false})
 }
 
 // 家族解散/恢复

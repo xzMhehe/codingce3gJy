@@ -14,7 +14,8 @@ type Family struct {
 	TreeLevel    int       `gorm:"default:1" json:"tree_level"` // 守护树等级
 	TreeExp      int       `gorm:"default:0" json:"tree_exp"`   // 守护树成长值
 	BattleScore  int       `gorm:"default:0" json:"battle_score"` // 家族乐斗积分
-	Status       int       `gorm:"default:1" json:"status"`    // 1正常 0解散
+	IsFeature    int       `gorm:"default:0" json:"is_feature"`   // 特色家族 1是 0否
+	Status       int       `gorm:"default:1" json:"status"`       // 1正常 2待审核 0解散
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	Owner        *User     `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`

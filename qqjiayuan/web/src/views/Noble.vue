@@ -64,7 +64,7 @@
       <div class="module-content">
         <template v-if="data.blue.active">
           尊贵的蓝钻，{{ data.nickname }}<br>
-          目前等级：<img :src="pic(data.blue.icon)" alt="Lv{{ data.blue.lv }}" /><br>
+          目前等级：<img :src="pic(data.blue.icon)" :alt="'Lv' + data.blue.lv" /><br>
           等级经验：{{ data.blue.exp }}<br>
           经验速度：{{ data.blue.speed }}点/天 <a href="javascript:;" @click="cur='shop'">提速</a><br>
           开通时间：{{ fmt(data.blue.start) }}<br>
@@ -75,7 +75,7 @@
       <div class="module-content">
         <template v-if="data.qq.active">
           超级QQ，{{ data.nickname }}<br>
-          目前等级：<img :src="pic(data.qq.icon)" alt="Lv{{ data.qq.lv }}" /><br>
+          目前等级：<img :src="pic(data.qq.icon)" :alt="'Lv' + data.qq.lv" /><br>
           等级经验：{{ data.qq.exp }}<br>
           经验速度：{{ data.qq.speed }}点/天 <a href="javascript:;" @click="cur='shop'">提速</a><br>
           开通时间：{{ fmt(data.qq.start) }}<br>

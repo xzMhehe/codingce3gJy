@@ -53,7 +53,7 @@ func (h *FamilyHandler) List(c *gin.Context) {
 		out = append(out, gin.H{
 			"id": f.ID, "name": f.Name, "slogan": f.Slogan, "description": f.Description,
 			"category": f.Category, "owner_id": f.OwnerID, "owner": f.Owner, "members": f.Members,
-			"tree_level": f.TreeLevel, "battle_score": f.BattleScore,
+			"tree_level": f.TreeLevel, "battle_score": f.BattleScore, "is_feature": f.IsFeature,
 			"role": f.Role, "created_at": f.CreatedAt,
 		})
 	}
@@ -67,7 +67,7 @@ type createFamilyReq struct {
 	Category    string `json:"category"`
 }
 
-// 创建家族（需消耗金币）
+// 创建家族（提交申请，需管理员审核；通过后扣 500 金币正式成立）
 func (h *FamilyHandler) Create(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req createFamilyReq
@@ -76,9 +76,9 @@ func (h *FamilyHandler) Create(c *gin.Context) {
 		return
 	}
 	var exists int64
-	h.DB.Model(&model.Family{}).Where("name = ? AND status = 1", req.Name).Count(&exists)
+	h.DB.Model(&model.Family{}).Where("name = ? AND status IN (1,2)", req.Name).Count(&exists)
 	if exists > 0 {
-		resp.ParamError(c, "这个家族名已被占用，换一个吧")
+		resp.ParamError(c, "这个家族名已被占用（含待审核），换一个吧")
 		return
 	}
 	var memberCount int64
@@ -87,25 +87,19 @@ func (h *FamilyHandler) Create(c *gin.Context) {
 		resp.ParamError(c, "你已经加入家族，先退出再建新的吧")
 		return
 	}
-	var u model.User
-	if err := h.DB.First(&u, uid).Error; err != nil {
-		resp.ParamError(c, "用户不存在")
-		return
-	}
-	if u.Coins < familyCreateCost {
-		resp.ParamError(c, "创建家族需要 " + strconv.Itoa(familyCreateCost) + " 金币，你的金币不足")
+	var pending int64
+	h.DB.Model(&model.Family{}).Where("owner_id = ? AND status = 2", uid).Count(&pending)
+	if pending > 0 {
+		resp.ParamError(c, "你已有一个家族正在审核中，请耐心等待")
 		return
 	}
 	fam := model.Family{Name: req.Name, Slogan: req.Slogan, Description: req.Description,
-		Category: req.Category, OwnerID: uid, TreeLevel: 1}
+		Category: req.Category, OwnerID: uid, TreeLevel: 1, Status: 2}
 	if err := h.DB.Create(&fam).Error; err != nil {
 		resp.ServerError(c, err)
 		return
 	}
-	h.DB.Create(&model.FamilyMember{FamilyID: fam.ID, UserID: uid, Role: "owner"})
-	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", familyCreateCost))
-	h.act(fam.ID, uid, "创建了家族《%s》", fam.Name)
-	resp.OK(c, gin.H{"id": fam.ID})
+	resp.OK(c, gin.H{"id": fam.ID, "pending": true, "msg": "申请已提交，等待管理员审核（通过后扣 500 金币）"})
 }
 
 // 我的家族
@@ -327,8 +321,8 @@ func (h *FamilyHandler) Battle(c *gin.Context) {
 func (h *FamilyHandler) familyOf(c *gin.Context) (model.Family, bool) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var fam model.Family
-	if err := h.DB.Preload("Owner").First(&fam, id).Error; err != nil || fam.Status == 0 {
-		resp.NotFound(c, "家族不存在或已解散")
+	if err := h.DB.Preload("Owner").First(&fam, id).Error; err != nil || fam.Status != 1 {
+		resp.NotFound(c, "家族不存在或未通过审核")
 		return fam, false
 	}
 	return fam, true
@@ -381,4 +375,59 @@ func (h *FamilyHandler) FamilyActivities(c *gin.Context) {
 	var acts []model.FamilyActivity
 	h.DB.Preload("User").Where("family_id = ?", fam.ID).Order("created_at DESC").Limit(30).Find(&acts)
 	resp.OK(c, acts)
+}
+
+// 特色家族列表（is_feature=1 且已审核通过）
+func (h *FamilyHandler) FeatureList(c *gin.Context) {
+	var fams []model.Family
+	h.DB.Preload("Owner").Where("status = 1 AND is_feature = 1").Order("battle_score DESC, id ASC").Find(&fams)
+	out := make([]gin.H, 0, len(fams))
+	for _, f := range fams {
+		var count int64
+		h.DB.Model(&model.FamilyMember{}).Where("family_id = ?", f.ID).Count(&count)
+		out = append(out, gin.H{
+			"id": f.ID, "name": f.Name, "slogan": f.Slogan, "description": f.Description,
+			"category": f.Category, "owner_id": f.OwnerID, "owner": f.Owner, "members": count,
+			"tree_level": f.TreeLevel, "battle_score": f.BattleScore, "is_feature": f.IsFeature,
+		})
+	}
+	resp.OK(c, out)
+}
+
+// 待审核家族列表（公开）
+func (h *FamilyHandler) Pending(c *gin.Context) {
+	var fams []model.Family
+	h.DB.Preload("Owner").Where("status = 2").Order("created_at ASC").Find(&fams)
+	out := make([]gin.H, 0, len(fams))
+	for _, f := range fams {
+		owner := ""
+		if f.Owner != nil {
+			owner = f.Owner.Nickname
+		}
+		out = append(out, gin.H{"id": f.ID, "name": f.Name, "slogan": f.Slogan,
+			"description": f.Description, "category": f.Category, "owner_id": f.OwnerID, "owner": owner,
+			"created_at": f.CreatedAt})
+	}
+	resp.OK(c, out)
+}
+
+// 家族大看台：家族活动板块最新帖子
+func (h *FamilyHandler) ActivityThreads(c *gin.Context) {
+	var root model.Board
+	h.DB.Where("name = ?", "家族大厅").First(&root)
+	var board model.Board
+	h.DB.Where("parent_id = ? AND name = ?", root.ID, "家族大看台").First(&board)
+	if board.ID == 0 {
+		resp.OK(c, []gin.H{})
+		return
+	}
+	var threads []model.Thread
+	h.DB.Preload("User").Where("board_id = ? AND status = 1", board.ID).
+		Order("is_top DESC, last_reply_at DESC, id DESC").Limit(10).Find(&threads)
+	out := make([]gin.H, 0, len(threads))
+	for _, t := range threads {
+		out = append(out, gin.H{"id": t.ID, "title": t.Title, "view_count": t.ViewCount,
+			"reply_count": t.ReplyCount, "created_at": t.CreatedAt, "user": t.User})
+	}
+	resp.OK(c, out)
 }

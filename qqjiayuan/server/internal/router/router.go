@@ -70,6 +70,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/families/:id", famH.Detail)
 		api.GET("/families/activities", famH.Activities)
 		api.GET("/families/:id/activities", famH.FamilyActivities)
+		api.GET("/families/featured", famH.FeatureList)
+		api.GET("/families/pending", famH.Pending)
+		api.GET("/families/activity-threads", famH.ActivityThreads)
 
 		// 花园活动公开列表
 		api.GET("/garden-activities", gardenH.ActivityList)
@@ -233,6 +236,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/families", perm(db, "admin:access"), adminH.Families)
 				admin.PUT("/families/:id/status", perm(db, "admin:access"), adminH.FamilyStatus)
 				admin.PUT("/families/:id/ann", perm(db, "admin:access"), adminH.FamilyAnn)
+				admin.GET("/families/pending", perm(db, "admin:access"), adminH.PendingFamilies)
+				admin.PUT("/families/:id/feature", perm(db, "admin:access"), adminH.FamilyFeature)
+				admin.PUT("/families/:id/review", perm(db, "admin:access"), adminH.FamilyReview)
 				admin.GET("/tongcheng", perm(db, "admin:access"), adminH.Tongcheng)
 				admin.GET("/ttou", perm(db, "admin:access"), adminH.Ttou)
 				admin.PUT("/ttou", perm(db, "admin:access"), adminH.TtouSet)
