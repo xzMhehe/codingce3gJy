@@ -40,6 +40,7 @@ const routes = [
   { path: '/noble', name: 'noble', component: () => import('../views/Noble.vue'), meta: { auth: true } },
   { path: '/box', name: 'box', component: () => import('../views/Box.vue'), meta: { auth: true } },
   { path: '/shop', name: 'shop', component: () => import('../views/Shop.vue'), meta: { auth: true } },
+  { path: '/bag', name: 'bag', component: () => import('../views/Bag.vue'), meta: { auth: true } },
   { path: '/rank', name: 'rank', component: () => import('../views/Rank.vue') },
   { path: '/security', name: 'security', component: () => import('../views/Security.vue'), meta: { auth: true } },
   { path: '/wallet', name: 'wallet', component: () => import('../views/Wallet.vue'), meta: { auth: true } },

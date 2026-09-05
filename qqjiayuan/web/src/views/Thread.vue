@@ -91,7 +91,7 @@
       <select v-model="flowerKind" style="margin-left:4px">
         <option v-for="f in flowerKinds" :key="f" :value="f">{{ f }}</option>
       </select>
-      <a href="javascript:;" @click="$router.push('/games/garden')">去花园种花&gt;&gt;</a><br>
+      <a href="javascript:;" @click="$router.push('/shop')">商城买鲜花&gt;&gt;</a>（从购买的鲜花中扣除）<br>
     </div>
 
     <!-- 互动区：[分享/收藏/复制/举报] -->

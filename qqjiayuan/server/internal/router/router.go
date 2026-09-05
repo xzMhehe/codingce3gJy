@@ -206,6 +206,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/noble", nobleH.View)
 			authed.POST("/noble/activate", nobleH.Activate)
 			authed.POST("/goods/:id/buy", goodH.Buy)
+			authed.GET("/bag", goodH.Bag)
+			authed.POST("/bag/:id/use", goodH.BagUse)
 
 			authed.POST("/dig", ecoH.Dig)
 			authed.POST("/charity", ecoH.Charity)

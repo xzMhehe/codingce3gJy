@@ -21,6 +21,7 @@
       <a href="javascript:;" @click="$router.push('/families')">家族</a>
       <a href="javascript:;" @click="$router.push('/')">广场</a>
       <a href="javascript:;" @click="$router.push('/games')">游戏</a>
+      <a href="javascript:;" @click="$router.push('/shop')">商城</a>
       <a class="Rt" v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a>
       <a class="Rt" v-else href="javascript:;" @click="$router.push('/login')">登陆</a>
     </div>

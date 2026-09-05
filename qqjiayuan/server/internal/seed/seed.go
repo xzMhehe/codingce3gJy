@@ -35,7 +35,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
 		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
-		&model.NoblePlan{}, &model.Good{}, &model.Setting{},
+		&model.NoblePlan{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
 		&model.Report{},
 	)
@@ -279,15 +279,14 @@ func seedNoblePlans(db *gorm.DB) {
 	}
 }
 
-// seedGoods 道具商城示例（幂等）
+// seedGoods 道具商城示例（幂等：按名称补种，老库已有商品也会补齐鲜花等新品）
 func seedGoods(db *gorm.DB) {
-	var n int64
-	db.Model(&model.Good{}).Count(&n)
-	if n > 0 {
-		return
-	}
 	for _, g := range model.GoodPresets {
-		db.Create(&g)
+		var exist int64
+		db.Model(&model.Good{}).Where("name = ?", g.Name).Count(&exist)
+		if exist == 0 {
+			db.Create(&g)
+		}
 	}
 }
 

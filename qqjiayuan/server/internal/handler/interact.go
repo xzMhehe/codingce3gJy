@@ -131,7 +131,7 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 	resp.OK(c, gin.H{"gift_total": th.GiftTotal + req.Coins, "gift_count": total})
 }
 
-// Flower 送花（从送花人花篮扣，花直接记到帖子）
+// Flower 送花（从商城购买的鲜花背包扣，花直接记到帖子）
 func (h *InteractHandler) Flower(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -148,12 +148,18 @@ func (h *InteractHandler) Flower(c *gin.Context) {
 		resp.NotFound(c, "帖子不存在或已被删除")
 		return
 	}
-	var uf model.UserFlower
-	if err := h.DB.Where("user_id = ? AND flower = ?", uid, req.Flower).First(&uf).Error; err != nil || uf.Count < req.Count {
-		resp.ParamError(c, "你的花篮里「"+req.Flower+"」数量不足")
+	// 花名对应商城鲜花商品，从背包（user_goods）扣除
+	var g model.Good
+	if err := h.DB.Where("name = ? AND category = ?", req.Flower, "鲜花").First(&g).Error; err != nil {
+		resp.ParamError(c, "暂不支持该花名，请到商城查看在售鲜花")
 		return
 	}
-	h.DB.Model(&uf).Update("count", gorm.Expr("count - ?", req.Count))
+	var ug model.UserGood
+	if err := h.DB.Where("user_id = ? AND good_id = ?", uid, g.ID).First(&ug).Error; err != nil || ug.Count < req.Count {
+		resp.ParamError(c, "「"+req.Flower+"」数量不足，请先到商城购买鲜花")
+		return
+	}
+	h.DB.Model(&ug).Update("count", gorm.Expr("count - ?", req.Count))
 	f := model.ThreadFlower{ThreadID: th.ID, SenderID: uid, Flower: req.Flower, Count: req.Count}
 	h.DB.Create(&f)
 	h.DB.Model(&model.Thread{}).Where("id = ?", th.ID).UpdateColumn("flower_count", gorm.Expr("flower_count + ?", req.Count))
@@ -165,7 +171,9 @@ func (h *InteractHandler) Flower(c *gin.Context) {
 	var total int
 	h.DB.Model(&model.Thread{}).Select("flower_count").First(&th, th.ID)
 	total = th.FlowerCount
-	resp.OK(c, gin.H{"flower_count": total})
+	var remain int
+	h.DB.Model(&model.UserGood{}).Select("count").Where("user_id = ? AND good_id = ?", uid, g.ID).First(&remain)
+	resp.OK(c, gin.H{"flower_count": total, "remain": remain})
 }
 
 // Share 分享（计数+返回分享链接，可同步发到心情）
