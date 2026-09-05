@@ -3,7 +3,7 @@
     <!-- 资料卡：夜凌云 1级 [等级][贵族][身份] 三图标 -->
     <div class="module-content unline">
       <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname || '我' }}</font></a> {{ u.level || 1 }}级</b>
-      <img :src="$pic('home_' + (u.level || 1) + '_' + (u.level || 1) + '.gif')" alt="等级" class="bicon uic" @error="iconErr($event, u.level)">
+      <img :src="homeIcon(u)" alt="等级" class="bicon uic" @error="iconErr($event)">
       <img v-if="u.noble > 0" :src="$pic('noble_' + u.noble + '_1.gif')" alt="贵族" class="bicon uic" @error="hideErr($event)">
       <img src="/static/picture/chuping.jpg" alt="身份" class="bicon uic">
     </div>
@@ -146,11 +146,11 @@ export default {
       const me = this.$store.state.user
       if (!me) return
       const id = me.id
-      api.get('/users/' + id).then(r => { if (r.code === 0) this.u = r.data; this.threads = (r.data.threads || []).slice(0, 8) })
-      api.get('/moods/latest').then(r => { if (r.code === 0) this.mood = r.data })
-      api.get('/friends').then(r => { if (r.code === 0) this.friends = r.data.friends.slice(0, 5) })
-      api.get('/games').then(r => { if (r.code === 0) this.games = r.data })
-      api.get('/my-games').then(r => { if (r.code === 0) this.myGames = r.data })
+      api.get('/users/' + id).then(r => { if (r.code === 0) { this.u = r.data; this.threads = (r.data.threads || []).slice(0, 8) } }).catch(() => {})
+      api.get('/moods/latest').then(r => { if (r.code === 0) this.mood = r.data }).catch(() => {})
+      api.get('/friends').then(r => { if (r.code === 0) this.friends = (r.data.friends || []).slice(0, 5) }).catch(() => {})
+      api.get('/games').then(r => { if (r.code === 0) this.games = r.data || [] }).catch(() => {})
+      api.get('/my-games').then(r => { if (r.code === 0) this.myGames = r.data || [] }).catch(() => {})
       api.get('/plaza').then(r => {
         if (r.code === 0) {
           this.feed = (r.data.dynamics || []).slice(0, 8)
@@ -166,7 +166,17 @@ export default {
     },
     visit () { if (this.visitId) this.$router.push('/user/' + this.visitId) },
     brief (s) { s = s || ''; return s.length > 30 ? s.slice(0, 30) + '…' : s },
-    iconErr (e, level) { e.target.src = this.$pic('v' + (level || 1) + '.gif') },
+    homeIcon (u) {
+      const lv = Math.max(1, Math.min(50, u.level || 1))
+      const sex = (u.gender === 2 || u.gender === '2') ? '2' : '1'
+      return this.$pic('home_' + sex + '_' + lv + '.gif')
+    },
+    iconErr (e) {
+      const img = e.target
+      if (img.dataset.fallback) { img.src = ''; img.style.visibility = 'hidden'; return }
+      img.dataset.fallback = '1'
+      img.src = this.$pic('v' + ((this.u && this.u.level) || 1) + '.gif')
+    },
     hideErr (e) { e.target.style.display = 'none' },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('家园·' + title)) },
     ago (t) {
