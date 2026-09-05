@@ -5,7 +5,7 @@
     <div class="module-content"><span class="txt-fade">当前G币：<b style="color:#e05a00">{{ coins }}</b></span></div>
 
     <div class="module-content">
-      <a href="javascript:;" @click="$router.push('/profile')">编辑资料</a>.<a href="javascript:;" @click="$router.push('/profile')">我的头像</a>.<a href="javascript:;" @click="$router.push('/profile')">个性昵称</a><br>
+      <a href="javascript:;" @click="$router.push('/profile')">编辑资料</a>.<a href="javascript:;" @click="$router.push('/face')">我的头像</a>.<a href="javascript:;" @click="$router.push('/profile')">个性昵称</a><br>
       <a href="javascript:;" @click="tip('城市设置')">城市设置</a>.<a href="javascript:;" @click="tip('我的证件')">我的证件</a>.<a href="javascript:;" @click="tip('个性设置')">个性设置</a><br>
       <a href="javascript:;" @click="tip('推荐有礼')">推荐有礼</a>.<a href="javascript:;" @click="tip('图标开关')">图标开关</a><br>
     </div>

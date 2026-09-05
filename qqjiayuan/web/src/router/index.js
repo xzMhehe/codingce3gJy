@@ -39,6 +39,7 @@ const routes = [
   { path: '/games/garden', name: 'garden', component: () => import('../views/Garden.vue'), meta: { auth: true } },
   { path: '/noble', name: 'noble', component: () => import('../views/Noble.vue'), meta: { auth: true } },
   { path: '/box', name: 'box', component: () => import('../views/Box.vue'), meta: { auth: true } },
+  { path: '/face', name: 'face', component: () => import('../views/Face.vue'), meta: { auth: true } },
   { path: '/shop', name: 'shop', component: () => import('../views/Shop.vue'), meta: { auth: true } },
   { path: '/bag', name: 'bag', component: () => import('../views/Bag.vue'), meta: { auth: true } },
   { path: '/rank', name: 'rank', component: () => import('../views/Rank.vue') },

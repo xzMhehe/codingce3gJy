@@ -1,7 +1,12 @@
 package handler
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,7 +18,8 @@ import (
 )
 
 type UserHandler struct {
-	DB *gorm.DB
+	DB        *gorm.DB
+	StaticDir string // 如 ../web/dist/static
 }
 
 // 通用分页参数：page 从 1 起，size 默认 defSize（1~100），返回 page、offset、size
@@ -179,6 +185,102 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 		"gender": req.Gender, "avatar": req.Avatar, "city": req.City,
 		"age": age, "birth_year": by, "birth_month": bm, "birth_day": bd,
 		"introduction": req.Introduction,
+	})
+	resp.OK(c, nil)
+}
+
+// ---- 我的头像（复刻参考站 /home/face.html） ----
+
+// 推荐头像文件名规则：static/picture 下长数字命名的图片（参考站头像素材）
+var avatarPresetRe = regexp.MustCompile(`^\d{6,}\.(jpg|jpeg|gif|png)$`)
+
+// 当前头像
+func (h *UserHandler) MyAvatar(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var u model.User
+	if err := h.DB.First(&u, uid).Error; err != nil {
+		resp.NotFound(c, "用户不存在")
+		return
+	}
+	resp.OK(c, gin.H{"avatar": u.Avatar, "avatar_base64": u.AvatarBase64})
+}
+
+// 上传自定义头像：base64(data URI) 存库，单独字段 avatar_base64
+func (h *UserHandler) UploadAvatar(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Data string `json:"data" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择图片")
+		return
+	}
+	if !strings.HasPrefix(req.Data, "data:image/") || !strings.Contains(req.Data, ";base64,") {
+		resp.ParamError(c, "仅支持 JPG/PNG/GIF/WEBP 图片")
+		return
+	}
+	idx := strings.Index(req.Data, ";base64,")
+	raw := req.Data[idx+len(";base64,"):]
+	if len(raw)*3/4 > 500*1024 { // base64 解码后约 500KB 上限
+		resp.ParamError(c, "图片不能超过 500KB，请压缩后上传")
+		return
+	}
+	if len(raw) < 16 {
+		resp.ParamError(c, "图片数据不完整")
+		return
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("avatar_base64", req.Data)
+	resp.OK(c, nil)
+}
+
+// 推荐头像列表（分页）
+func (h *UserHandler) AvatarPresets(c *gin.Context) {
+	_, offset, size := pageOf(c, 12)
+	var files []string
+	if entries, err := os.ReadDir(filepath.Join(h.StaticDir, "picture")); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if avatarPresetRe.MatchString(e.Name()) {
+				files = append(files, e.Name())
+			}
+		}
+	}
+	sort.Strings(files)
+	total := len(files)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := offset + size
+	if end > total {
+		end = total
+	}
+	resp.OK(c, gin.H{"total": total, "page": offset/size + 1, "size": size, "list": files[start:end]})
+}
+
+// 设置推荐头像（点击图片即设为头像）
+func (h *UserHandler) SetPresetAvatar(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		File string `json:"file" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择头像")
+		return
+	}
+	if !avatarPresetRe.MatchString(req.File) {
+		resp.ParamError(c, "头像不存在")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(h.StaticDir, "picture", req.File)); err != nil {
+		resp.ParamError(c, "头像不存在")
+		return
+	}
+	// 设置推荐头像：写 avatar 文件名，同时清掉自定义 base64（避免优先级混乱）
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+		"avatar": req.File, "avatar_base64": "",
 	})
 	resp.OK(c, nil)
 }

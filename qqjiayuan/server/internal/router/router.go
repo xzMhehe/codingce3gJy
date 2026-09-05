@@ -18,7 +18,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	r.Use(middleware.CORS())
 
 	authH := &handler.AuthHandler{DB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
-	userH := &handler.UserHandler{DB: db}
+	userH := &handler.UserHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
 	boardH := &handler.BoardHandler{DB: db}
 	threadH := &handler.ThreadHandler{DB: db}
 	plazaH := &handler.PlazaHandler{DB: db}
@@ -194,6 +194,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			authed.GET("/home-level", hlH.View)
 			authed.GET("/achieve", achH.View)
+			authed.GET("/me/avatar", userH.MyAvatar)
+			authed.POST("/me/avatar", userH.UploadAvatar)
+			authed.GET("/avatar/presets", userH.AvatarPresets)
+			authed.POST("/avatar/presets", userH.SetPresetAvatar)
 			authed.GET("/wallet", ecoH.Wallet)
 			authed.POST("/wallet/exchange", ecoH.Exchange)
 			authed.POST("/wallet/transfer", ecoH.Transfer)

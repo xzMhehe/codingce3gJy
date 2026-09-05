@@ -53,6 +53,9 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE users ADD COLUMN " + col + " int DEFAULT 0")
 		}
 	}
+	if !m.HasColumn("users", "avatar_base64") {
+		db.Exec("ALTER TABLE users ADD COLUMN avatar_base64 longtext")
+	}
 
 	seedRBAC(db)
 	seedBoards(db)
