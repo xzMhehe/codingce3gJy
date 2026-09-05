@@ -195,6 +195,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/home-level", hlH.View)
 			authed.GET("/achieve", achH.View)
 			authed.GET("/wallet", ecoH.Wallet)
+			authed.POST("/wallet/exchange", ecoH.Exchange)
+			authed.POST("/wallet/transfer", ecoH.Transfer)
 			authed.GET("/bank/view", ecoH.BankView)
 			authed.POST("/bank/deposit", ecoH.BankDeposit)
 			authed.POST("/bank/withdraw", ecoH.BankWithdraw)

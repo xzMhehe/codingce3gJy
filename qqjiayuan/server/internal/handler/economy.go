@@ -223,12 +223,107 @@ func (h *EconomyHandler) Wallet(c *gin.Context) {
 	h.DB.Model(&model.WorkRecord{}).Where("user_id = ?", uid).Count(&workTotal)
 	var logs []model.WalletLog
 	h.DB.Where("user_id = ?", uid).Order("id DESC").Limit(30).Find(&logs)
+	logOut := []gin.H{}
+	for _, l := range logs {
+		logOut = append(logOut, gin.H{
+			"id": l.ID, "kind": l.Kind, "title": l.Title, "delta": l.Delta,
+			"currency": l.Currency, "currency_name": currencyName(l.Currency),
+			"created_at": l.CreatedAt,
+		})
+	}
 
 	resp.OK(c, gin.H{
 		"coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
+		"nickname": u.Nickname, "username": u.Username,
 		"bank": balance,
-		"donations": donat, "work_total": workTotal, "logs": logs,
+		"donations": donat, "work_total": workTotal, "logs": logOut,
 	})
+}
+
+// currencyName 币种显示名
+func currencyName(currency string) string {
+	switch currency {
+	case "yuanbao":
+		return "元宝"
+	case "jinzuan":
+		return "金钻"
+	case "youquan":
+		return "友友券"
+	default:
+		return "G币"
+	}
+}
+
+// G币兑换：元宝兑换G币（对齐参考站：1000元宝 → 1000000 G币）
+const exchangeRate = 1000 // 1元宝=1000G币
+
+func (h *EconomyHandler) Exchange(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		YuanBao int `json:"yuanbao" binding:"required,min=1,max=100000"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "兑换数量需在 1~100000 元宝之间")
+		return
+	}
+	var u model.User
+	if err := h.DB.First(&u, uid).Error; err != nil {
+		resp.Unauthorized(c, "请先登录")
+		return
+	}
+	if u.YuanBao < req.YuanBao {
+		resp.ParamError(c, "元宝不足，需要 "+strconv.Itoa(req.YuanBao)+" 元宝")
+		return
+	}
+	gain := req.YuanBao * exchangeRate
+	h.DB.Model(&u).Updates(map[string]interface{}{
+		"yuanbao": gorm.Expr("yuanbao - ?", req.YuanBao),
+		"coins":   gorm.Expr("coins + ?", gain),
+	})
+	addWalletLog(h.DB, uid, "exchange", "元宝兑换G币", "yuanbao", -req.YuanBao)
+	addWalletLog(h.DB, uid, "exchange", "元宝兑换G币", "coins", gain)
+	resp.OK(c, gin.H{"coins": u.Coins + gain, "yuanbao": u.YuanBao - req.YuanBao, "gain": gain})
+}
+
+// G币转账：转给指定家园号码，双方记流水
+func (h *EconomyHandler) Transfer(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		To     string `json:"to" binding:"required"`
+		Amount int    `json:"amount" binding:"required,min=1,max=10000000"`
+		Remark string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请输入接收号码和转账金额（1~10000000 G币）")
+		return
+	}
+	var me model.User
+	if err := h.DB.First(&me, uid).Error; err != nil {
+		resp.Unauthorized(c, "请先登录")
+		return
+	}
+	var to model.User
+	if err := h.DB.Where("username = ?", req.To).First(&to).Error; err != nil {
+		resp.ParamError(c, "接收号码不存在")
+		return
+	}
+	if to.ID == uid {
+		resp.ParamError(c, "不能转给自己哦")
+		return
+	}
+	if me.Coins < req.Amount {
+		resp.ParamError(c, "G币不足")
+		return
+	}
+	h.DB.Model(&me).Update("coins", gorm.Expr("coins - ?", req.Amount))
+	h.DB.Model(&to).Update("coins", gorm.Expr("coins + ?", req.Amount))
+	remark := req.Remark
+	if remark == "" {
+		remark = "-"
+	}
+	addWalletLog(h.DB, uid, "transfer", "转账给"+to.Nickname+"("+to.Username+")", "coins", -req.Amount)
+	addWalletLog(h.DB, to.ID, "transfer", "收到"+me.Nickname+"("+me.Username+")转账", "coins", req.Amount)
+	resp.OK(c, gin.H{"coins": me.Coins - req.Amount})
 }
 
 // 打工：每次随机奖励G币，每日最多 3 次
