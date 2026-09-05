@@ -5,11 +5,10 @@
       <a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;我的钱包<br>
     </div>
     <div class="note"></div>
-    欢迎您,<b><font :color="data.color || '#333'">{{ data.nickname || '--' }}</font></b>({{ data.username || '' }})<br>
 
     <!-- 用户中心导航 -->
     <div class="module-title">
-      <a href="javascript:;" @click="$router.push('/home')">用户中心</a>|<a href="javascript:;" @click="$router.push('/security')">安全中心</a>|我的钱包|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a><br>
+      <a href="javascript:;" @click="$router.push('/box')">用户中心</a>|<a href="javascript:;" @click="$router.push('/security')">安全中心</a>|我的钱包|<a href="javascript:;" @click="$router.push('/rank')">家园排行</a><br>
     </div>
 
     <!-- 四币种余额（对齐参考站 mon00~mon03 图标） -->
