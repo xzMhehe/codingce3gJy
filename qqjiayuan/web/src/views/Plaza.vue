@@ -2,7 +2,7 @@
   <div>
     <!-- 欢迎 / 在线 / 问候 -->
     <div class="plist" v-if="sec('welcome')">
-      <div class="row00">欢迎新童鞋: <a href="javascript:;" @click="$router.push('/user/'+plaza.newest_user.id)">{{ plaza.newest_user.nickname }}</a>回归三潴家园~</div>
+      <div class="row00">欢迎新童鞋: <a href="javascript:;" @click="$router.push('/user/'+plaza.newest_user.id)">{{ plaza.newest_user.nickname }}</a>回归家园~</div>
       <div class="row00">30分钟内广场上共有<a href="javascript:;"> {{ plaza.online_count }} </a>位小姐姐来来往往！</div>
     </div>
     <div class="module-content" v-if="sec('greeting')"><font color="#ff0000">{{ isLogin ? user.nickname : '游客' }}</font>{{ greeting }}<br></div>

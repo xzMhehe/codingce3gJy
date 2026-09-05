@@ -2,7 +2,7 @@
   <div>
     <div class="name">道具商城<br></div>
     <div class="module-content">
-      <span class="txt-fade">当前金币：<b style="color:#e05a00">{{ coins < 0 ? '--' : coins }}</b></span>
+      <span class="txt-fade">当前G币：<b style="color:#e05a00">{{ coins < 0 ? '--' : coins }}</b></span>
       [<a href="javascript:;" @click="$router.push('/bag')">我的仓库</a>]
     </div>
 
@@ -16,7 +16,7 @@
       <div class="row" v-for="g in goods" :key="g.id" style="padding:4px 2px;border-bottom:1px dotted #dfe8f2">
         <img v-if="g.icon" class="gicon" :src="'/static/picture/' + g.icon" :alt="g.name">
         <b>{{ g.name }}</b>
-        <span class="txt-fade">（{{ g.category }} · {{ g.price }}金币）</span>
+        <span class="txt-fade">（{{ g.category }} · {{ g.price }}G币）</span>
         <div class="txt-fade">{{ g.desc }}</div>
         <span class="txt-fade">数量</span><input type="text" v-model.number="nums[g.id]" size="3" maxlength="3">
         <input type="submit" value="购买" @click="buy(g)">

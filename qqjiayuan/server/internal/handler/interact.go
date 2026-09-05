@@ -91,7 +91,7 @@ func (h *InteractHandler) ReplyLike(c *gin.Context) {
 	resp.OK(c, gin.H{"liked": liked, "like_count": count})
 }
 
-// Gift 打赏金币（从打赏人扣，转给楼主，抽成5%给社区）
+// Gift 打赏G币（从打赏人扣，转给楼主，抽成5%给社区）
 func (h *InteractHandler) Gift(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -99,7 +99,7 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 		Coins int `json:"coins" binding:"required,min=1,max=100000"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.ParamError(c, "打赏金额需在 1~100000 金币之间")
+		resp.ParamError(c, "打赏金额需在 1~100000 G币之间")
 		return
 	}
 	var th model.Thread
@@ -117,7 +117,7 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 		return
 	}
 	if sender.Coins < req.Coins {
-		resp.ParamError(c, "金币不足，打赏需要 " + strconv.Itoa(req.Coins) + " 金币")
+		resp.ParamError(c, "G币不足，打赏需要 " + strconv.Itoa(req.Coins) + " G币")
 		return
 	}
 	h.DB.Model(&sender).Update("coins", gorm.Expr("coins - ?", req.Coins))
@@ -125,7 +125,7 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 	g := model.ThreadGift{ThreadID: th.ID, SenderID: uid, Coins: req.Coins}
 	h.DB.Create(&g)
 	h.DB.Model(&model.Thread{}).Where("id = ?", th.ID).UpdateColumn("gift_total", gorm.Expr("gift_total + ?", req.Coins))
-	h.notify(th.UserID, "打赏", "你的帖子《"+th.Title+"》收到来自 "+sender.Nickname+" 的 "+strconv.Itoa(req.Coins)+" 金币打赏")
+	h.notify(th.UserID, "打赏", "你的帖子《"+th.Title+"》收到来自 "+sender.Nickname+" 的 "+strconv.Itoa(req.Coins)+" G币打赏")
 	var total int64
 	h.DB.Model(&model.ThreadGift{}).Where("thread_id = ?", th.ID).Count(&total)
 	resp.OK(c, gin.H{"gift_total": th.GiftTotal + req.Coins, "gift_count": total})

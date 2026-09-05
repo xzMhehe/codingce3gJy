@@ -6,18 +6,27 @@
                   style="width:220px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
-        <span class="txt-fade">管理用户金币</span>
+        <span class="txt-fade">管理用户四种货币（G币/元宝/金钻/友友券）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
-        <el-table-column prop="id" label="号码" width="100" header-align="center" />
-        <el-table-column label="昵称" min-width="140">
+        <el-table-column prop="id" label="号码" width="90" header-align="center" />
+        <el-table-column label="昵称" min-width="110">
           <template slot-scope="{row}"><b><font :color="row.color || '#333'">{{ row.nickname }}</font></b></template>
         </el-table-column>
-        <el-table-column label="金币" min-width="160" header-align="center">
+        <el-table-column label="G币" min-width="120" header-align="center">
           <template slot-scope="{row}"><el-input-number v-model="row.coins" size="small" :min="0" :max="999999999" controls-position="right" /></template>
         </el-table-column>
-        <el-table-column prop="bank" label="银行存款" min-width="120" header-align="center" />
-        <el-table-column label="操作" width="100" header-align="center">
+        <el-table-column label="元宝" min-width="110" header-align="center">
+          <template slot-scope="{row}"><el-input-number v-model="row.yuanbao" size="small" :min="0" :max="999999999" controls-position="right" /></template>
+        </el-table-column>
+        <el-table-column label="金钻" min-width="110" header-align="center">
+          <template slot-scope="{row}"><el-input-number v-model="row.jinzuan" size="small" :min="0" :max="999999999" controls-position="right" /></template>
+        </el-table-column>
+        <el-table-column label="友友券" min-width="110" header-align="center">
+          <template slot-scope="{row}"><el-input-number v-model="row.youquan" size="small" :min="0" :max="999999999" controls-position="right" /></template>
+        </el-table-column>
+        <el-table-column prop="bank" label="银行存款" min-width="90" header-align="center" />
+        <el-table-column label="操作" width="90" header-align="center">
           <template slot-scope="{row}"><el-button size="mini" type="primary" plain @click="save(row)">保存</el-button></template>
         </el-table-column>
       </el-table>
@@ -44,7 +53,9 @@ export default {
     },
     search () { this.page = 1; this.load() },
     save (row) {
-      api.put('/admin/wallets/' + row.id, { coins: row.coins }).then(r => { if (r.code === 0) this.$message.success('已保存'); else this.$message.error(r.msg) })
+      api.put('/admin/wallets/' + row.id, { coins: row.coins, yuanbao: row.yuanbao, jinzuan: row.jinzuan, youquan: row.youquan }).then(r => {
+        if (r.code === 0) this.$message.success('已保存'); else this.$message.error(r.msg)
+      })
     }
   }
 }

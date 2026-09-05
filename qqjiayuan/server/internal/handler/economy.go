@@ -18,7 +18,7 @@ type EconomyHandler struct {
 	DB *gorm.DB
 }
 
-// 社区银行：年化日息 0.5%（向上取整，最少 1 金币），每日可领一次
+// 社区银行：年化日息 0.5%（向上取整，最少 1 G币），每日可领一次
 const bankDailyRate = 0.005
 
 func (h *EconomyHandler) BankView(c *gin.Context) {
@@ -70,7 +70,7 @@ func (h *EconomyHandler) BankDeposit(c *gin.Context) {
 		return
 	}
 	if u.Coins < amount {
-		resp.ParamError(c, "金币不足")
+		resp.ParamError(c, "G币不足")
 		return
 	}
 	var ack model.BankAccount
@@ -130,7 +130,7 @@ func (h *EconomyHandler) BankInterest(c *gin.Context) {
 	resp.OK(c, gin.H{"rate": rate, "balance": acc.Balance + rate, "coins": u.Coins + rate})
 }
 
-// 挖宝：花金币挖，随机得金币
+// 挖宝：花G币挖，随机得G币
 const digCost = 30
 
 func (h *EconomyHandler) Dig(c *gin.Context) {
@@ -138,7 +138,7 @@ func (h *EconomyHandler) Dig(c *gin.Context) {
 	var u model.User
 	h.DB.First(&u, uid)
 	if u.Coins < digCost {
-		resp.ParamError(c, "金币不足，挖宝需要 "+strconv.Itoa(digCost)+" 金币")
+		resp.ParamError(c, "G币不足，挖宝需要 "+strconv.Itoa(digCost)+" G币")
 		return
 	}
 	r := rand.Intn(100)
@@ -174,7 +174,7 @@ func (h *EconomyHandler) Charity(c *gin.Context) {
 	var u model.User
 	h.DB.First(&u, uid)
 	if u.Coins < req.Amount {
-		resp.ParamError(c, "金币不足")
+		resp.ParamError(c, "G币不足")
 		return
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", req.Amount))
@@ -197,7 +197,7 @@ GROUP BY d.user_id, u.nickname, u.color ORDER BY total DESC LIMIT 10`).Scan(&row
 	resp.OK(c, rows)
 }
 
-// 我的钱包：金币/银行/捐款记录/打工统计
+// 我的钱包：G币/元宝/金钻/友友券 + 银行存款 + 捐款记录 + 打工统计
 func (h *EconomyHandler) Wallet(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var u model.User
@@ -215,12 +215,13 @@ func (h *EconomyHandler) Wallet(c *gin.Context) {
 
 	// 我的收藏商品/买入记录（用银行/超Q/慈善等聚合的简单流水）
 	resp.OK(c, gin.H{
-		"coins": u.Coins, "bank": balance,
+		"coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
+		"bank": balance,
 		"donations": donat, "work_total": workTotal,
 	})
 }
 
-// 打工：每次随机奖励金币，每日最多 3 次
+// 打工：每次随机奖励G币，每日最多 3 次
 const workDailyLimit = 3
 
 func (h *EconomyHandler) WorkStatus(c *gin.Context) {
@@ -236,7 +237,7 @@ func (h *EconomyHandler) WorkDo(c *gin.Context) {
 		resp.ParamError(c, "今天已经打满工了，明天再来吧")
 		return
 	}
-	reward := 5 + rand.Intn(11) // 5~15 金币
+	reward := 5 + rand.Intn(11) // 5~15 G币
 	if err := h.DB.Create(&model.WorkRecord{UserID: uid}).Error; err != nil {
 		resp.ServerError(c, err)
 		return
@@ -302,7 +303,7 @@ func (h *EconomyHandler) Lottery(c *gin.Context) {
 		return
 	}
 	if u.Coins < amount {
-		resp.ParamError(c, "金币不足")
+		resp.ParamError(c, "G币不足")
 		return
 	}
 	num := 1 + rand.Intn(9) // 1~9

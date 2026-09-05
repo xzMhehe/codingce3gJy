@@ -30,7 +30,7 @@
         <option v-for="ct in categories" :key="ct" :value="ct">{{ ct }}</option>
       </select></p>
       <p>家族介绍：<textarea v-model.trim="form.description" maxlength="60" rows="2"></textarea></p>
-      <p><button class="btn" @click="createFamily">提交申请（通过后扣 500 金币）</button></p>
+      <p><button class="btn" @click="createFamily">提交申请（通过后扣 500 G币）</button></p>
     </div>
 
     <p v-if="msg" style="color:#c00;padding:0 5px">{{ msg }}</p>
@@ -151,7 +151,7 @@ export default {
       this.msg = ''; this.okMsg = ''
       if (!this.form.name) { this.msg = '请填写家族名称'; return }
       api.post('/families', this.form).then(r => {
-        if (r.code === 0) { this.okMsg = '申请已提交，等待管理员审核（通过后扣 500 金币）！'; this.createOpen = false; this.load() }
+        if (r.code === 0) { this.okMsg = '申请已提交，等待管理员审核（通过后扣 500 G币）！'; this.createOpen = false; this.load() }
         else this.msg = r.msg
       })
     },

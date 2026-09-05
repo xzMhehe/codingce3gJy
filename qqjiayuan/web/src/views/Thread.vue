@@ -64,10 +64,10 @@
 
     <!-- 打赏面板 -->
     <div class="module-content" v-if="giftOpen" style="background:#E3EEF8">
-      打赏金币：<input type="text" v-model.number="giftCoins" size="6"> <input type="submit" value="确认打赏" @click.prevent="doGift">
-      <span class="help-line">（金币实时转入楼主账户）</span><br>
+      打赏G币：<input type="text" v-model.number="giftCoins" size="6"> <input type="submit" value="确认打赏" @click.prevent="doGift">
+      <span class="help-line">（G币实时转入楼主账户）</span><br>
       <div v-if="gifts.length" class="txt-fade">
-        <div v-for="g in gifts" :key="g.id">{{ g.sender ? g.sender.nickname : '?' }} 打赏 {{ g.coins }} 金币（{{ fmt(g.created_at) }}）</div>
+        <div v-for="g in gifts" :key="g.id">{{ g.sender ? g.sender.nickname : '?' }} 打赏 {{ g.coins }} G币（{{ fmt(g.created_at) }}）</div>
       </div>
     </div>
 
@@ -159,7 +159,7 @@
         <form @submit.prevent="submit">
           <template v-if="isLogin">
             <textarea v-model.trim="content" rows="2" style="width:100%"></textarea><br>
-            <input type="submit" value="回复"> <span class="help-line">回复+5经验+2金币</span>
+            <input type="submit" value="回复"> <span class="help-line">回复+5经验+2G币</span>
           </template>
           <template v-else>
             <a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆家园社区</a>后回复盖楼

@@ -27,7 +27,7 @@ func goodCategories(list []model.Good) []string {
 	return out
 }
 
-// 公开：商城列表（?cat=分类 筛选；登录时带金币余额）
+// 公开：商城列表（?cat=分类 筛选；登录时带G币余额）
 func (h *GoodHandler) List(c *gin.Context) {
 	q := h.DB.Where("status = 1")
 	if cat := c.Query("cat"); cat != "" && cat != "全部" {
@@ -46,7 +46,7 @@ func (h *GoodHandler) List(c *gin.Context) {
 	resp.OK(c, gin.H{"list": list, "categories": goodCategories(list), "coins": coins})
 }
 
-// 购买道具（扣金币，数量可叠加进仓库）
+// 购买道具（扣G币，数量可叠加进仓库）
 func (h *GoodHandler) Buy(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -76,7 +76,7 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 		return
 	}
 	if u.Coins < cost {
-		resp.ParamError(c, "金币不足，需要 "+strconv.Itoa(cost)+" 金币")
+		resp.ParamError(c, "G币不足，需要 "+strconv.Itoa(cost)+" G币")
 		return
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))

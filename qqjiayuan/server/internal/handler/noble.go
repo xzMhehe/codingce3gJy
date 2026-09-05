@@ -111,7 +111,7 @@ func (h *NobleHandler) Activate(c *gin.Context) {
 	var u model.User
 	h.DB.First(&u, uid)
 	if u.Coins < plan.Cost {
-		resp.ParamError(c, "金币不足，开通需要 "+strconv.Itoa(plan.Cost)+" 金币")
+		resp.ParamError(c, "G币不足，开通需要 "+strconv.Itoa(plan.Cost)+" G币")
 		return
 	}
 	now := time.Now()

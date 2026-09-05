@@ -111,7 +111,7 @@ func (h *GardenHandler) Plant(c *gin.Context) {
 		return
 	}
 	if u.Coins < crop.Seed {
-		resp.ParamError(c, "金币不足，买不起" + crop.Name + "种子")
+		resp.ParamError(c, "G币不足，买不起" + crop.Name + "种子")
 		return
 	}
 	var plot model.GardenPlot
@@ -171,7 +171,7 @@ func (h *GardenHandler) Harvest(c *gin.Context) {
 	resp.OK(c, gin.H{"gain": reward, "flower": plot.Crop, "coins": u.Coins})
 }
 
-// 添置新花盆（花费金币，+1 花盆）
+// 添置新花盆（花费G币，+1 花盆）
 func (h *GardenHandler) AddPot(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var u model.User
@@ -182,7 +182,7 @@ func (h *GardenHandler) AddPot(c *gin.Context) {
 		return
 	}
 	if u.Coins < gardenPotCost {
-		resp.ParamError(c, "金币不足，添置花盆需要 " + strconv.Itoa(gardenPotCost) + " 金币")
+		resp.ParamError(c, "G币不足，添置花盆需要 " + strconv.Itoa(gardenPotCost) + " G币")
 		return
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", gardenPotCost))
@@ -195,7 +195,7 @@ func (h *GardenHandler) AddPot(c *gin.Context) {
 	resp.OK(c, gin.H{"pots": pots + 1, "coins": u.Coins - gardenPotCost})
 }
 
-// 收获：花入库存 + 少量金币/经验
+// 收获：花入库存 + 少量G币/经验
 func (h *GardenHandler) addFlower(uid uint, flower string, n int) {
 	var uf model.UserFlower
 	if err := h.DB.Where("user_id = ? AND flower = ?", uid, flower).First(&uf).Error; err != nil {

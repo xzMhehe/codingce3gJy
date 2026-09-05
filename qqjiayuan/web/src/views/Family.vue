@@ -142,7 +142,7 @@ export default {
     doSign () {
       this.msg = ''; this.okMsg = ''
       api.post('/families/' + this.fam.id + '/signin').then(r => {
-        if (r.code === 0) { this.okMsg = '家族签到成功 +20经验 +5金币'; this.load() }
+        if (r.code === 0) { this.okMsg = '家族签到成功 +20经验 +5G币'; this.load() }
         else this.msg = r.msg
       })
     },

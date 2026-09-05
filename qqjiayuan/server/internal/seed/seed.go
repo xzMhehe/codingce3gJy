@@ -45,6 +45,14 @@ func Run(db *gorm.DB, staticDir string) {
 	db.Exec("ALTER TABLE users AUTO_INCREMENT = 10000")
 	db.Exec("ALTER TABLE threads AUTO_INCREMENT = 10000")
 
+	// 兜底：个别环境 AutoMigrate 对存量表可能漏加列，这里显式补齐（幂等）
+	m := db.Migrator()
+	for _, col := range []string{"yuanbao", "jinzuan", "youquan"} {
+		if !m.HasColumn("users", col) {
+			db.Exec("ALTER TABLE users ADD COLUMN " + col + " int DEFAULT 0")
+		}
+	}
+
 	seedRBAC(db)
 	seedBoards(db)
 	seedAnnouncements(db)

@@ -94,7 +94,7 @@ func (h *AdminHandler) FamilyFeature(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 家族审核：通过（扣 500 金币并成立）/ 拒绝（删除并保留申请记录日志）
+// 家族审核：通过（扣 500 G币并成立）/ 拒绝（删除并保留申请记录日志）
 func (h *AdminHandler) FamilyReview(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
@@ -116,7 +116,7 @@ func (h *AdminHandler) FamilyReview(c *gin.Context) {
 			return
 		}
 		if u.Coins < familyCreateCost {
-			resp.ParamError(c, "族长金币不足 " + strconv.Itoa(familyCreateCost) + "，无法通过（可先给族长充值）")
+			resp.ParamError(c, "族长G币不足 " + strconv.Itoa(familyCreateCost) + "，无法通过（可先给族长充值）")
 			return
 		}
 		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", familyCreateCost))
@@ -219,7 +219,7 @@ func (h *AdminHandler) TtouClear(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 钱包管理：用户金币列表
+// 钱包管理：用户G币列表
 func (h *AdminHandler) Wallets(c *gin.Context) {
 	page, offset := pageOf(c, 10)
 	word := c.Query("word")
@@ -238,22 +238,28 @@ func (h *AdminHandler) Wallets(c *gin.Context) {
 		if err := h.DB.Where("user_id = ?", u.ID).First(&acc).Error; err == nil {
 			bank = acc.Balance
 		}
-		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank})
+		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank,
+			"yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": 10, "list": out})
 }
 
-// 设置用户金币
+// 设置用户货币（G币/元宝/金钻/友友券）
 func (h *AdminHandler) WalletSet(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Coins int `json:"coins"`
+		Coins   int `json:"coins"`
+		YuanBao int `json:"yuanbao"`
+		JinZuan int `json:"jinzuan"`
+		YouQuan int `json:"youquan"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Coins < 0 {
-		resp.ParamError(c, "金币需大于等于 0")
+	if err := c.ShouldBindJSON(&req); err != nil || req.Coins < 0 || req.YuanBao < 0 || req.JinZuan < 0 || req.YouQuan < 0 {
+		resp.ParamError(c, "货币数值需大于等于 0")
 		return
 	}
-	h.DB.Model(&model.User{}).Where("id = ?", id).Update("coins", req.Coins)
+	h.DB.Model(&model.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"coins": req.Coins, "yuanbao": req.YuanBao, "jinzuan": req.JinZuan, "youquan": req.YouQuan,
+	})
 	resp.OK(c, nil)
 }
 

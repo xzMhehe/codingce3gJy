@@ -5,13 +5,13 @@
       <template v-if="signed">
         <div style="font-size:30px;color:#1a9e1a">✔</div>
         <p>今天已签到，连续 <b style="color:#e05a00">{{ consec }}</b> 天，共 <b>{{ totalDays }}</b> 天</p>
-        <p style="color:#999">明天继续来哦，连续签到金币更多！</p>
+        <p style="color:#999">明天继续来哦，连续签到G币更多！</p>
       </template>
       <template v-else>
         <div style="font-size:30px">📅</div>
         <p>今天还没签到</p>
         <p><button class="btn" @click="doSign" :disabled="doing">立 即 签 到</button></p>
-        <p style="color:#999">签到+20经验，奖励金币 = 10 + 连续天数（连续7天封顶17金币）</p>
+        <p style="color:#999">签到+20经验，奖励G币 = 10 + 连续天数（连续7天封顶17G币）</p>
       </template>
       <p v-if="msg" style="color:#c00">{{ msg }}</p>
       <p v-if="okMsg" style="color:#1a9e1a">{{ okMsg }}</p>
@@ -55,7 +55,7 @@ export default {
       api.post('/signin').then(r => {
         this.doing = false
         if (r.code === 0) {
-          this.okMsg = '签到成功！连续' + r.data.consec + '天，获得' + r.data.reward + '金币+20经验'
+          this.okMsg = '签到成功！连续' + r.data.consec + '天，获得' + r.data.reward + 'G币+20经验'
           this.load()
         } else {
           this.msg = r.msg

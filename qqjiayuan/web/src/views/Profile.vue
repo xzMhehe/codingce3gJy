@@ -4,7 +4,7 @@
     <div class="module-content">
       <p>
         昵称：<b><font :color="u.color || '#004299'">{{ u.nickname }}</font></b>
-        （{{ u.username }}）Lv.{{ u.level }} · 金币 {{ u.coins }} · 经验 {{ u.exp }}
+        （{{ u.username }}）Lv.{{ u.level }} · G币 {{ u.coins }} · 经验 {{ u.exp }}
       </p>
       <p>签名：{{ u.signature || '这个人很懒，什么都没留下' }}</p>
       <p>性别：{{ u.gender === 2 ? '小姐姐' : '小哥哥' }} · 注册于 {{ fmt(u.created_at) }}</p>

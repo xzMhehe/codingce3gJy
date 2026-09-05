@@ -17,7 +17,10 @@ type User struct {
 	City         string    `gorm:"type:varchar(30)" json:"city"`    // 城市设置
 	Color        string    `gorm:"type:varchar(10)"  json:"color"`  // 昵称颜色，情怀功能
 	Avatar       string  `gorm:"type:varchar(100)" json:"avatar"` // 头像图片文件名（static/picture 下）
-	Coins        int     `gorm:"default:0" json:"coins"`
+	Coins        int     `gorm:"default:0" json:"coins"` // G币（主货币，发帖回帖/打工/签到获得）
+	YuanBao      int     `gorm:"column:yuanbao;default:0" json:"yuanbao"`      // 元宝（活动/连签奖励）
+	JinZuan      int     `gorm:"column:jinzuan;default:0" json:"jinzuan"`      // 金钻（稀有货币，活动/后台发放）
+	YouQuan      int     `gorm:"column:youquan;default:0" json:"youquan"`      // 友友券（活动/连签奖励）
 	Exp          int     `gorm:"default:0" json:"exp"`
 	Level        int     `gorm:"default:1" json:"level"`
 	Noble        int     `gorm:"default:0" json:"noble"`         // 贵族身份 0无 1一级 2二级

@@ -19,7 +19,7 @@
       </div>
       <div class="bodule-title"><font color="#FF0000">【特权开通】</font></div>
       <div class="module-content">
-        <div v-for="p in data.plans" :key="p.id">{{ p.id }}.<a href="javascript:;" @click="activate(p)">{{ p.name }}({{ p.cost }}金币)</a></div>
+        <div v-for="p in data.plans" :key="p.id">{{ p.id }}.<a href="javascript:;" @click="activate(p)">{{ p.name }}({{ p.cost }}G币)</a></div>
       </div>
     </template>
 
@@ -66,7 +66,7 @@
       <template v-if="!selPlan">
         <div class="bodule-title"><font color="#FF0000">【特权开通】</font></div>
         <div class="module-content">
-          <div v-for="(p,i) in data.plans" :key="p.id">{{ i+1 }}.<a href="javascript:;" @click="selPlan=p">{{ p.name }}({{ p.cost }}金币)</a></div>
+          <div v-for="(p,i) in data.plans" :key="p.id">{{ i+1 }}.<a href="javascript:;" @click="selPlan=p">{{ p.name }}({{ p.cost }}G币)</a></div>
           <div>(第<b>1</b>/1页/共{{ data.plans.length }}条记录)</div>
         </div>
       </template>
@@ -75,7 +75,7 @@
         <div class="module-content">
           商店&gt;{{ selPlan.name }}<br>
           贵族类型：{{ selPlan.type === 'blue' ? '蓝钻' : '超Q' }}<br>
-          订购价格：{{ selPlan.cost }}金币/月<br>
+          订购价格：{{ selPlan.cost }}G币/月<br>
           成长速度：10点/天<br>
           赠送经验：{{ selPlan.gain }}点<br>
           <a href="javascript:;" @click="activate(selPlan)">购买</a>.<a href="javascript:;" @click="selPlan=null">返回</a><br>

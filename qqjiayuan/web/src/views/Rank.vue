@@ -22,7 +22,7 @@ export default {
     return {
       type: 'coins', rows: [],
       types: [
-        { key: 'coins', name: '金币排行' }, { key: 'exp', name: '经验排行' },
+        { key: 'coins', name: 'G币排行' }, { key: 'exp', name: '经验排行' },
         { key: 'level', name: '等级排行' }, { key: 'sign', name: '签到排行' }
       ]
     }

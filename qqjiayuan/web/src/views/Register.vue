@@ -30,7 +30,7 @@
       <p v-if="err" style="color:#c00">{{ err }}</p>
       <div v-if="okNo" class="deep" style="padding:8px;margin:6px 0">
         注册成功！你的家园号码是：<b style="color:#c00">{{ okNo }}</b><br>
-        已送新人礼包100金币，<a href="javascript:;" @click="$router.push('/login')">快去登陆吧 &gt;&gt;</a>
+        已送新人礼包100G币，<a href="javascript:;" @click="$router.push('/login')">快去登陆吧 &gt;&gt;</a>
       </div>
     </div>
   </div>

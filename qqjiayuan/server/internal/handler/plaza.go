@@ -214,15 +214,35 @@ func (h *SignHandler) Do(c *gin.Context) {
 	if reward > 17 {
 		reward = 17
 	}
+	// 连签奖励：7天+2元宝，14天+5友友券，30天+1金钻
+	yuanbao, youquan, jinzuan := 0, 0, 0
+	if consec >= 7 {
+		yuanbao = 2
+	}
+	if consec >= 14 {
+		youquan = 5
+	}
+	if consec >= 30 {
+		jinzuan = 1
+	}
 	sign := model.SignIn{UserID: uid, SignDate: date, Consec: consec, Reward: reward}
 	if err := h.DB.Create(&sign).Error; err != nil {
 		resp.ParamError(c, "今天已经签到过啦")
 		return
 	}
 	addExpAndCoins(h.DB, uid, 20, reward, 2)
+	if yuanbao > 0 || youquan > 0 || jinzuan > 0 {
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+			"yuanbao": gorm.Expr("yuanbao + ?", yuanbao),
+			"youquan": gorm.Expr("youquan + ?", youquan),
+			"jinzuan": gorm.Expr("jinzuan + ?", jinzuan),
+		})
+	}
 	var u model.User
 	h.DB.First(&u, uid)
-	resp.OK(c, gin.H{"consec": consec, "reward": reward, "coins": u.Coins, "exp": u.Exp, "level": u.Level})
+	resp.OK(c, gin.H{"consec": consec, "reward": reward, "coins": u.Coins, "exp": u.Exp, "level": u.Level,
+		"yuanbao": yuanbao, "youquan": youquan, "jinzuan": jinzuan,
+		"yuanbao_total": u.YuanBao, "youquan_total": u.YouQuan, "jinzuan_total": u.JinZuan})
 }
 
 // 签到状态与排行（连续天数榜）

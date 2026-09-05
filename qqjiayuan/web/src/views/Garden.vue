@@ -175,11 +175,11 @@ export default {
     },
     harvest (idx) {
       api.post('/games/garden/harvest', { index: idx }).then(r => {
-        if (r.code === 0) { this.okMsg = '收获花朵：' + (r.data.flower || '') + ' 金币 +' + r.data.gain; this.load() } else this.msg = r.msg
+        if (r.code === 0) { this.okMsg = '收获花朵：' + (r.data.flower || '') + ' G币 +' + r.data.gain; this.load() } else this.msg = r.msg
       })
     },
     addPot () {
-      api.post('/games/garden/addpot').then(r => { if (r.code === 0) { this.okMsg = '添置花盆成功，金币 -100'; this.load() } else this.msg = r.msg })
+      api.post('/games/garden/addpot').then(r => { if (r.code === 0) { this.okMsg = '添置花盆成功，G币 -100'; this.load() } else this.msg = r.msg })
     },
     syn (s) {
       api.post('/games/garden/synthesize', { flower: s.name }).then(r => {
