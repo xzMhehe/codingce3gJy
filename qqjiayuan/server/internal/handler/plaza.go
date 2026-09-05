@@ -230,7 +230,16 @@ func (h *SignHandler) Do(c *gin.Context) {
 		resp.ParamError(c, "今天已经签到过啦")
 		return
 	}
-	addExpAndCoins(h.DB, uid, 20, reward, 2)
+	addExpAndCoins(h.DB, uid, 20, reward, 2, "sign", "每日签到")
+	if yuanbao > 0 {
+		addWalletLog(h.DB, uid, "sign", "每日签到（连续"+strconv.Itoa(consec)+"天）", "yuanbao", yuanbao)
+	}
+	if youquan > 0 {
+		addWalletLog(h.DB, uid, "sign", "每日签到（连续"+strconv.Itoa(consec)+"天）", "youquan", youquan)
+	}
+	if jinzuan > 0 {
+		addWalletLog(h.DB, uid, "sign", "每日签到（连续"+strconv.Itoa(consec)+"天）", "jinzuan", jinzuan)
+	}
 	if yuanbao > 0 || youquan > 0 || jinzuan > 0 {
 		h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
 			"yuanbao": gorm.Expr("yuanbao + ?", yuanbao),

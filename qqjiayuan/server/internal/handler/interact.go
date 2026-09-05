@@ -122,6 +122,8 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 	}
 	h.DB.Model(&sender).Update("coins", gorm.Expr("coins - ?", req.Coins))
 	h.DB.Model(&model.User{}).Where("id = ?", th.UserID).Update("coins", gorm.Expr("coins + ?", req.Coins))
+	addWalletLog(h.DB, uid, "tip", "打赏《"+th.Title+"》", "coins", -req.Coins)
+	addWalletLog(h.DB, th.UserID, "tip", "收到《"+th.Title+"》打赏", "coins", req.Coins)
 	g := model.ThreadGift{ThreadID: th.ID, SenderID: uid, Coins: req.Coins}
 	h.DB.Create(&g)
 	h.DB.Model(&model.Thread{}).Where("id = ?", th.ID).UpdateColumn("gift_total", gorm.Expr("gift_total + ?", req.Coins))

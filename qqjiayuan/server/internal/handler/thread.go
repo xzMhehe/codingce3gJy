@@ -16,8 +16,11 @@ type ThreadHandler struct {
 	DB *gorm.DB
 }
 
-// 发帖/回帖/签到收益：经验 + 金币 + 社区成就点
-func addExpAndCoins(db *gorm.DB, uid uint, exp, coins, achieve int) {
+// 发帖/回帖/签到收益：经验 + G币 + 社区成就点（同时记一条钱包流水）
+func addExpAndCoins(db *gorm.DB, uid uint, exp, coins, achieve int, kind, title string) {
+	if coins != 0 {
+		addWalletLog(db, uid, kind, title, "coins", coins)
+	}
 	db.Model(&model.User{}).Where("id = ?", uid).
 		Updates(map[string]interface{}{
 			"exp":     gorm.Expr("exp + ?", exp),
@@ -118,7 +121,7 @@ func (h *ThreadHandler) Reply(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
-	addExpAndCoins(h.DB, uid, 5, 2, 1)
+	addExpAndCoins(h.DB, uid, 5, 2, 1, "reply", "回复帖子")
 
 	if th.UserID != uid {
 		var me model.User

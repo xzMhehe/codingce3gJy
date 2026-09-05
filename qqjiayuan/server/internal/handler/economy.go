@@ -77,6 +77,7 @@ func (h *EconomyHandler) BankDeposit(c *gin.Context) {
 	h.DB.Where("user_id = ?", uid).FirstOrCreate(&ack, model.BankAccount{UserID: uid})
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", amount))
 	h.DB.Model(&ack).Update("balance", gorm.Expr("balance + ?", amount))
+	addWalletLog(h.DB, uid, "bank", "存入银行", "coins", -amount)
 	resp.OK(c, h.bankAfter(uid))
 }
 
@@ -99,6 +100,7 @@ func (h *EconomyHandler) BankWithdraw(c *gin.Context) {
 	h.DB.First(&u, uid)
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins + ?", amount))
 	h.DB.Model(&acc).Update("balance", gorm.Expr("balance - ?", amount))
+	addWalletLog(h.DB, uid, "bank", "银行取款", "coins", amount)
 	resp.OK(c, h.bankAfter(uid))
 }
 
@@ -127,6 +129,7 @@ func (h *EconomyHandler) BankInterest(c *gin.Context) {
 	var u model.User
 	h.DB.First(&u, uid)
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins + ?", rate))
+	addWalletLog(h.DB, uid, "bank", "银行利息（日息0.5%）", "coins", rate)
 	resp.OK(c, gin.H{"rate": rate, "balance": acc.Balance + rate, "coins": u.Coins + rate})
 }
 
@@ -155,6 +158,11 @@ func (h *EconomyHandler) Dig(c *gin.Context) {
 		tip = "大丰收！挖到稀有宝藏"
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins + ? - ?", reward, digCost))
+	if reward > 0 {
+		addWalletLog(h.DB, uid, "dig", "挖宝（"+tip+"）", "coins", reward-digCost)
+	} else {
+		addWalletLog(h.DB, uid, "dig", "挖宝（"+tip+"）", "coins", -digCost)
+	}
 	h.DB.First(&u, uid)
 	resp.OK(c, gin.H{"tip": tip, "reward": reward, "coins": u.Coins})
 }
@@ -179,6 +187,7 @@ func (h *EconomyHandler) Charity(c *gin.Context) {
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", req.Amount))
 	h.DB.Create(&model.Donation{UserID: uid, Amount: req.Amount})
+	addWalletLog(h.DB, uid, "charity", "慈善捐款", "coins", -req.Amount)
 	resp.OK(c, gin.H{"coins": u.Coins - req.Amount})
 }
 
@@ -197,7 +206,7 @@ GROUP BY d.user_id, u.nickname, u.color ORDER BY total DESC LIMIT 10`).Scan(&row
 	resp.OK(c, rows)
 }
 
-// 我的钱包：G币/元宝/金钻/友友券 + 银行存款 + 捐款记录 + 打工统计
+// 钱包：四币种 + 银行存款 + 打工统计 + 收支明细
 func (h *EconomyHandler) Wallet(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var u model.User
@@ -212,12 +221,13 @@ func (h *EconomyHandler) Wallet(c *gin.Context) {
 	h.DB.Preload("User").Where("user_id = ?", uid).Order("created_at DESC").Limit(10).Find(&donat)
 	var workTotal int64
 	h.DB.Model(&model.WorkRecord{}).Where("user_id = ?", uid).Count(&workTotal)
+	var logs []model.WalletLog
+	h.DB.Where("user_id = ?", uid).Order("id DESC").Limit(30).Find(&logs)
 
-	// 我的收藏商品/买入记录（用银行/超Q/慈善等聚合的简单流水）
 	resp.OK(c, gin.H{
 		"coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
 		"bank": balance,
-		"donations": donat, "work_total": workTotal,
+		"donations": donat, "work_total": workTotal, "logs": logs,
 	})
 }
 
@@ -243,6 +253,7 @@ func (h *EconomyHandler) WorkDo(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", reward))
+	addWalletLog(h.DB, uid, "work", "打工工资", "coins", reward)
 	var u model.User
 	h.DB.First(&u, uid)
 	resp.OK(c, gin.H{"reward": reward, "coins": u.Coins, "done": done + 1, "limit": workDailyLimit})
@@ -320,8 +331,10 @@ func (h *EconomyHandler) Lottery(c *gin.Context) {
 	}
 	if win {
 		h.DB.Model(&u).Update("coins", gorm.Expr("coins + ?", amount))
+		addWalletLog(h.DB, uid, "lottery", "幸运猜数字中奖", "coins", amount)
 	} else {
 		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", amount))
+		addWalletLog(h.DB, uid, "lottery", "幸运猜数字", "coins", -amount)
 	}
 	h.DB.First(&u, uid)
 	resp.OK(c, gin.H{"num": num, "win": win, "coins": u.Coins})

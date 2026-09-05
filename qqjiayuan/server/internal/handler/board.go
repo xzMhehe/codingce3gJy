@@ -121,6 +121,6 @@ func (h *BoardHandler) CreateThread(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&board).UpdateColumn("thread_count", gorm.Expr("thread_count + 1"))
-	addExpAndCoins(h.DB, uid, 10, 5, 3)
+	addExpAndCoins(h.DB, uid, 10, 5, 3, "post", "发布帖子")
 	resp.OK(c, gin.H{"id": th.ID})
 }

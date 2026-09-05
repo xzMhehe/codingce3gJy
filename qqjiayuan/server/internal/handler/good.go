@@ -80,6 +80,7 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
+	addWalletLog(h.DB, uid, "buy", "购买「"+g.Name+"」×"+strconv.Itoa(req.Num), "coins", -cost)
 	// 入库（背包叠加）
 	var ug model.UserGood
 	if err := h.DB.Where("user_id = ? AND good_id = ?", uid, g.ID).First(&ug).Error; err != nil {

@@ -32,3 +32,16 @@ type Donation struct {
 }
 
 func (Donation) TableName() string { return "donations" }
+
+// 钱包收支流水（钱包页明细）
+type WalletLog struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index" json:"user_id"`
+	Kind      string    `gorm:"type:varchar(20)" json:"kind"` // post/reply/sign/work/buy/tip/dig/bank/charity/lottery
+	Title     string    `gorm:"type:varchar(60)" json:"title"`
+	Currency  string    `gorm:"type:varchar(10);default:coins" json:"currency"` // coins/yuanbao/jinzuan/youquan
+	Delta     int       `json:"delta"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (WalletLog) TableName() string { return "wallet_logs" }

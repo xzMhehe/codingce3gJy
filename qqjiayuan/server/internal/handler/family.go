@@ -266,7 +266,7 @@ func (h *FamilyHandler) SignIn(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
-	addExpAndCoins(h.DB, uid, 20, 5, 1)
+	addExpAndCoins(h.DB, uid, 20, 5, 1, "fsign", "家族签到")
 	h.DB.Model(&model.FamilyMember{}).Where("family_id = ? AND user_id = ?", fam.ID, uid).
 		Update("exp", gorm.Expr("exp + ?", 20))
 	h.act(fam.ID, uid, "在家族签到")
@@ -296,7 +296,7 @@ func (h *FamilyHandler) Tree(c *gin.Context) {
 	newLevel := newExp/100 + 1
 	leveled := newLevel > fam.TreeLevel
 	h.DB.Model(&fam).Updates(map[string]interface{}{"tree_exp": newExp, "tree_level": newLevel})
-	addExpAndCoins(h.DB, uid, 10, 3, 1)
+	addExpAndCoins(h.DB, uid, 10, 3, 1, "ftree", "家族守护树")
 	h.act(fam.ID, uid, "抚摸/拥抱了守护树")
 	resp.OK(c, gin.H{"tree_exp": newExp, "tree_level": newLevel, "leveled": leveled})
 }
