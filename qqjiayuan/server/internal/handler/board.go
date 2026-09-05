@@ -110,6 +110,11 @@ func (h *BoardHandler) CreateThread(c *gin.Context) {
 		resp.ParamError(c, "请选择具体的子板块发帖")
 		return
 	}
+	// 家族专属论坛板块（家族·xxx）：仅家族成员可发帖
+	if famID, ok := familyBoardOwner(h.DB, board); ok && !isFamilyMember(h.DB, famID, uid) {
+		resp.Forbidden(c, "只有家族成员才能在家族论坛发帖")
+		return
+	}
 	th := model.Thread{BoardID: uint(boardID), UserID: uid, Title: req.Title, Content: req.Content}
 	if err := h.DB.Create(&th).Error; err != nil {
 		resp.ServerError(c, err)

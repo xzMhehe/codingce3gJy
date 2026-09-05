@@ -1,22 +1,23 @@
 <template>
   <div>
     <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族<br></div>
+
     <img src="/static/image/jiazu.gif" alt="家族" style="max-width:100%;vertical-align:middle">
 
-    <!-- 我的家族 -->
+    <!-- 我的家族 / 推荐加入 -->
     <div class="module-title">我的家族</div>
     <div class="module-content" v-if="mine">
       欢迎回家 → <a href="javascript:;" @click="$router.push('/family/'+mine.id)"><b style="color:#004299">{{ mine.name }}</b></a>
-      <span class="txt-fade">（{{ mine.role==='owner' ? '族长' : '成员' }}，{{ mine.members || 0 }}人）</span>
+      <span class="txt-fade">（{{ mine.role==='owner' ? '族长' : (mine.role==='admin' ? '长老' : '成员') }}，{{ mine.members || 0 }}人）</span>
       <br><a href="javascript:;" @click="$router.push('/family/'+mine.id)">进入家族&gt;&gt;</a>
     </div>
     <div class="module-content" v-else>
-      加入家族一起在  家园社区闯荡吧，我们为你推荐：<br>
+      加入家族一起在家园社区闯荡吧，我们为你推荐：<br>
       <template v-if="list.length">
         最佳匹配：<a href="javascript:;" @click="$router.push('/family/'+list[0].id)">{{ list[0].name }}</a>
         (<a href="javascript:;" @click="join(list[0])">快速加入</a>)<br>
       </template>
-      <a href="javascript:;" @click="createOpen = !createOpen">{{ createOpen ? '收起' : '申请我的家族' }}</a><br>
+      <a href="javascript:;" @click="createOpen = !createOpen">申请我的家族</a><br>
     </div>
 
     <!-- 创建家族 -->
@@ -53,19 +54,12 @@
     </div>
     <div class="module-content" v-else><span class="empty">暂无家族活动</span></div>
 
-    <!-- 家族列表（分类筛选） -->
-    <div class="module-title">家族列表（{{ curCat || '全部' }}）<span class="name"><a href="javascript:;" @click="cat=''">全部分类</a></span></div>
-    <div class="module-content" v-for="f in filteredList" :key="'f'+f.id">
-      ★.<a href="javascript:;" @click="$router.push('/family/'+f.id)"><b>{{ f.name }}</b></a>({{ f.members || 0 }}人)<template v-if="f.role"><span style="color:#1a9e1a">[已加入]</span></template><br>
-      简介：{{ f.description || '（暂无简介）' }}<br>
-      <span class="txt-fade">族长：<a href="javascript:;" @click="$router.push('/user/'+f.owner_id)"><font :color="f.owner && f.owner.color || '#004299'">{{ f.owner ? f.owner.nickname : '?' }}</font></a>　守护树 Lv.{{ f.tree_level }}　积分 {{ f.battle_score }}</span>
-    </div>
-    <div class="module-content" v-if="!filteredList.length"><span class="empty">该分类下暂无家族</span></div>
-
-    <!-- 家族类别 -->
+    <!-- 家族类别（每行3个，点击进分类页，与线上一致） -->
     <div class="module-title">家族类别</div>
     <div class="module-content">
-      <template v-for="(ct,i) in categories"><a :key="'c'+ct" href="javascript:;" @click="cat = ct">{{ ct }}</a><template v-if="i < categories.length-1">.</template></template>
+      <template v-for="(ct,i) in categories">
+        <a :key="'c'+ct" href="javascript:;" @click="$router.push('/families/category/'+encodeURIComponent(ct))">{{ ct }}</a><template v-if="i < categories.length-1">.</template><br v-if="(i+1)%3===0 && i<categories.length-1">
+      </template>
     </div>
 
     <!-- 友联家族 -->
@@ -85,26 +79,27 @@
     <!-- 家族搜索 -->
     <div class="module-title">家族搜索</div>
     <div class="module-content">
-      <form @submit.prevent="">
+      <form @submit.prevent="$router.push('/families/search/'+encodeURIComponent(wd))">
         请输入家族名或ID：
         <input type="text" v-model.trim="wd" maxlength="30" size="12">
         <input type="submit" value="搜索">
       </form>
     </div>
 
+    <!-- 家族服务（导航到家族排行等） -->
+    <div class="module-content">
+      <a href="javascript:;" @click="$router.push('/families/top')">家族排行</a>.<a href="javascript:;" @click="createOpen = true">创建家族</a>.<a href="javascript:;" @click="pendingOpen = !pendingOpen">待审家族</a>.<a href="javascript:;" @click="$router.push('/channel/1')">逛论坛</a><br>
+      <a href="javascript:;" @click="$router.push('/channel/1')">论坛申家</a>.<a href="javascript:;" @click="$router.push('/channel/2')">游同城</a><br>
+      <a href="javascript:;" @click="createOpen = true">创建家族</a>.<a href="javascript:;" @click="pendingOpen = !pendingOpen; loadPending()">待审家族</a><br>
+    </div>
+
     <!-- 待审家族 -->
     <div class="module-title">待审家族 <span class="name"><a href="javascript:;" @click="pendingOpen = !pendingOpen">{{ pendingOpen ? '收起' : '查看' }}</a></span></div>
     <div class="module-content" v-if="pendingOpen">
       <div v-for="p in pendingList" :key="'p'+p.id" class="row00">
-        <a href="javascript:;" @click="joinPending(p)"><b>{{ p.name }}</b></a>（{{ p.category || '未分类' }}）<span class="txt-fade">族长：{{ p.owner || '?' }}　{{ fmtDate(p.created_at) }}</span><br>
+        <a href="javascript:;" @click="$router.push('/family/'+p.id)"><b>{{ p.name }}</b></a>（{{ p.category || '未分类' }}）<span class="txt-fade">族长：{{ p.owner || '?' }}　{{ fmtDate(p.created_at) }}</span><br>
       </div>
       <div v-if="!pendingList.length"><span class="empty">暂无待审家族</span></div>
-    </div>
-
-    <!-- 家族服务 -->
-    <div class="module-title">家族服务</div>
-    <div class="module-content">
-      <a href="javascript:;" @click="$router.push('/families')">家族排行</a>.<a href="javascript:;" @click="createOpen = true; cat=''">创建家族</a>.<a href="javascript:;" @click="pendingOpen = !pendingOpen; loadPending()">待审家族</a>.<a href="javascript:;" @click="$router.push('/channel/1')">逛论坛</a>.<a href="javascript:;" @click="$router.push('/')">回广场</a><br>
     </div>
 
   </div>
@@ -125,19 +120,12 @@ export default {
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
-    isAdmin () { return this.$store.getters.isAdmin },
-    curCat () { return this.cat },
-    filteredList () {
-      let arr = this.list
-      if (this.cat) arr = arr.filter(f => f.category === this.cat)
-      if (this.wd) arr = arr.filter(f => (f.name || '').indexOf(this.wd) >= 0 || (f.slogan || '').indexOf(this.wd) >= 0)
-      return arr
-    }
+    isAdmin () { return this.$store.getters.isAdmin }
   },
   mounted () { this.load() },
   methods: {
     load () {
-      api.get('/families' + (this.cat ? '?category=' + encodeURIComponent(this.cat) : '')).then(r => { if (r.code === 0) this.list = r.data })
+      api.get('/families').then(r => { if (r.code === 0) this.list = r.data })
       api.get('/families/featured').then(r => { if (r.code === 0) this.featured = r.data })
       api.get('/families/activity-threads').then(r => { if (r.code === 0) this.activityThreads = r.data })
       api.get('/families/activities').then(r => { if (r.code === 0) this.acts = r.data })
@@ -154,10 +142,6 @@ export default {
         if (r.code === 0) { this.okMsg = '已加入【' + f.name + '】，欢迎回家！'; this.load() }
         else this.msg = r.msg
       })
-    },
-    joinPending (p) {
-      this.pendingOpen = true
-      this.loadPending()
     },
     createFamily () {
       this.msg = ''; this.okMsg = ''

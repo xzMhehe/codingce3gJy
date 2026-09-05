@@ -78,6 +78,14 @@ func (h *ThreadHandler) Reply(c *gin.Context) {
 		resp.NotFound(c, "帖子不存在或已被删除")
 		return
 	}
+	// 家族专属论坛板块：仅家族成员可回帖
+	var board model.Board
+	if h.DB.First(&board, th.BoardID).Error == nil {
+		if famID, ok := familyBoardOwner(h.DB, board); ok && !isFamilyMember(h.DB, famID, uid) {
+			resp.Forbidden(c, "只有家族成员才能在家族论坛回帖")
+			return
+		}
+	}
 
 	var reply model.Reply
 	err := h.DB.Transaction(func(tx *gorm.DB) error {

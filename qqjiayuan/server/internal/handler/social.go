@@ -221,13 +221,15 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	resp.OK(c, gin.H{"id": msg.ID})
 }
 
-// 聊天室（公共，轮询）
+// 聊天室（family_id=0 公共 / >0 家族聊室，轮询）
 type ChatHandler struct{ DB *gorm.DB }
 
 func (h *ChatHandler) List(c *gin.Context) {
 	after, _ := strconv.Atoi(c.DefaultQuery("after", "0"))
+	famID, _ := strconv.Atoi(c.DefaultQuery("family_id", "0"))
 	var msgs []model.ChatMessage
-	h.DB.Preload("User").Preload("User.Badges").Where("id > ?", after).Order("id ASC").Limit(50).Find(&msgs)
+	q := h.DB.Preload("User").Preload("User.Badges").Where("family_id = ?", famID)
+	q.Where("id > ?", after).Order("id ASC").Limit(50).Find(&msgs)
 	resp.OK(c, msgs)
 }
 
@@ -242,7 +244,17 @@ func (h *ChatHandler) Send(c *gin.Context) {
 		resp.ParamError(c, "说点什么吧（500字以内）")
 		return
 	}
-	msg := model.ChatMessage{UserID: uid, Content: req.Content}
+	famID, _ := strconv.Atoi(c.DefaultQuery("family_id", "0"))
+	if famID > 0 {
+		// 家族聊室：仅成员可发言
+		var n int64
+		h.DB.Model(&model.FamilyMember{}).Where("family_id = ? AND user_id = ?", famID, uid).Count(&n)
+		if n == 0 {
+			resp.Forbidden(c, "只有家族成员才能在家族聊室发言")
+			return
+		}
+	}
+	msg := model.ChatMessage{UserID: uid, FamilyID: uint(famID), Content: req.Content}
 	h.DB.Create(&msg)
 	h.DB.Preload("User").Preload("User.Badges").First(&msg, msg.ID)
 	resp.OK(c, msg)
