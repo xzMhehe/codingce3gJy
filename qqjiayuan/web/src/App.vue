@@ -14,16 +14,14 @@
       <a href="javascript:;" @click="$router.push('/login')">登陆家园社区</a>与好友互动、家族乐斗、最炫魔法花园、武林精武帮战、最牛游戏赢活动豪礼!<a href="javascript:;" @click="$router.push('/register')">注册&gt;&gt;&gt;</a>
     </div>
 
-    <!-- 主导航（仅 家园 好友 家族 广场 游戏，管理员多一个 管理） -->
+    <!-- 主导航（仅 家园 好友 家族 广场 游戏） -->
     <div class="bar navbar">
       <a href="javascript:;" @click="$router.push(isLogin ? '/home' : '/login')">家园</a>
       <a href="javascript:;" @click="$router.push('/friends')">好友</a>
       <a href="javascript:;" @click="$router.push('/families')">家族</a>
       <a href="javascript:;" @click="$router.push('/')">广场</a>
       <a href="javascript:;" @click="$router.push('/games')">游戏</a>
-      <a class="Rt" href="javascript:;" @click="$router.push('/shop')">商城</a>
-      <a class="Rt" v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a>
-      <a class="Rt" v-else href="javascript:;" @click="$router.push('/login')">登陆</a>
+      <a class="Rt" v-if="!isLogin" href="javascript:;" @click="$router.push('/login')">登陆</a>
     </div>
 
     <router-view />
@@ -31,7 +29,7 @@
     <!-- 页脚 -->
     <div class="footer">
       <p>
-        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" onclick="window.open('http://'+location.host+'/admin-ui/')">管理</a><br>
+        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" onclick="window.open('http://'+location.host+'/admin-ui/')">管理</a>-<a v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a><br>
         <template v-if="isLogin"><a href="javascript:;">超Q(0)</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博(0)</a><br></template>
       </p>
       <p>
