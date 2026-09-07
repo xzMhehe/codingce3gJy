@@ -15,5 +15,8 @@ package-lock.json
 å®¶å›­æ¼”ç¤ºæºç /
 è¯ºå“ˆä¸‰ä»£ç ´è§£ç‰ˆ/
 
-# air ÈÈÖØÔØ±àÒë²úÎï
+# air
 qqjiayuan/server/tmp/
+
+
+*.log

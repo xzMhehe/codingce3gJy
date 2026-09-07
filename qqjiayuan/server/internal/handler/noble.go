@@ -196,16 +196,16 @@ func (h *NobleHandler) AdminPlanDelete(c *gin.Context) {
 
 // 后台：用户特权列表
 func (h *NobleHandler) AdminUsers(c *gin.Context) {
-	page, offset, size := pageOf(c, 20)
+	page, offset, size := pageOf(c, 10)
 	var total int64
-	h.DB.Model(&model.User{}).Where("blue_exp > 0 OR qq_exp > 0").Count(&total)
+	h.DB.Model(&model.User{}).Count(&total)
 	var users []model.User
-	h.DB.Where("blue_exp > 0 OR qq_exp > 0").Order("blue_exp DESC, qq_exp DESC").Offset(offset).Limit(size).Find(&users)
+	h.DB.Order("blue_exp DESC, qq_exp DESC, id ASC").Offset(offset).Limit(size).Find(&users)
 	out := []gin.H{}
 	for _, u := range users {
 		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "blue_lv": lvOf(u.BlueExp), "blue_exp": u.BlueExp, "qq_lv": lvOf(u.QqExp), "qq_exp": u.QqExp})
 	}
-	resp.OK(c, gin.H{"list": out, "total": total, "page": page})
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
 // 一键给所有用户开通蓝钻/超Q
@@ -221,6 +221,24 @@ func (h *NobleHandler) AdminBatch(c *gin.Context) {
 		h.DB.Exec("UPDATE users SET blue_exp = GREATEST(blue_exp,100), blue_lv = 1, blue_start = NOW(), blue_end = DATE_ADD(NOW(), INTERVAL 30 DAY)")
 	} else {
 		h.DB.Exec("UPDATE users SET qq_exp = GREATEST(qq_exp,100), qq_lv = 1, qq_start = NOW(), qq_end = DATE_ADD(NOW(), INTERVAL 30 DAY)")
+	}
+	resp.OK(c, nil)
+}
+
+// 后台：给单个用户开通蓝钻/超Q
+func (h *NobleHandler) AdminUserOpen(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Type string `json:"type" binding:"required,oneof=blue qq"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择开通类型")
+		return
+	}
+	if req.Type == "blue" {
+		h.DB.Exec("UPDATE users SET blue_exp = GREATEST(blue_exp,100), blue_lv = 1, blue_start = NOW(), blue_end = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?", id)
+	} else {
+		h.DB.Exec("UPDATE users SET qq_exp = GREATEST(qq_exp,100), qq_lv = 1, qq_start = NOW(), qq_end = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?", id)
 	}
 	resp.OK(c, nil)
 }

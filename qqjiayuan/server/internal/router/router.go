@@ -258,7 +258,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanUpdate)
 				admin.DELETE("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanDelete)
 				admin.GET("/privileges/users", perm(db, "admin:access"), nobleH.AdminUsers)
-				admin.PUT("/privileges/users/:id", perm(db, "admin:access"), nobleH.AdminUserUpdate)
+				admin.PUT("/privileges/users/:id", perm(db, "admin:access"), nobleH.AdminUserUpdate)   
+				admin.POST("/privileges/users/:id/open", perm(db, "admin:access"), nobleH.AdminUserOpen)
 				admin.POST("/privileges/batch", perm(db, "admin:access"), nobleH.AdminBatch)
 
 				// 道具商城管理

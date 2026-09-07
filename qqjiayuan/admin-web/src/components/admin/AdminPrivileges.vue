@@ -36,16 +36,46 @@
         <el-table-column label="昵称" min-width="130">
           <template slot-scope="{row}"><font :color="row.color || '#333'">{{ row.nickname }}</font></template>
         </el-table-column>
-        <el-table-column label="蓝钻等级" width="110">
-          <template slot-scope="{row}"><el-input-number v-model="row.blue_exp" size="mini" :min="0" :max="999999" /></template>
+        <el-table-column label="蓝钻等级" min-width="180">
+          <template slot-scope="{row}">
+            <div class="priv-cell">
+              <el-tag :type="row.blue_exp > 0 ? 'primary' : 'info'" size="mini">Lv.{{ row.blue_lv }}</el-tag>
+              <el-input-number v-model="row.blue_exp" size="mini" :min="0" :max="999999" controls-position="right" />
+            </div>
+          </template>
         </el-table-column>
-        <el-table-column label="超Q等级" width="110">
-          <template slot-scope="{row}"><el-input-number v-model="row.qq_exp" size="mini" :min="0" :max="999999" /></template>
+        <el-table-column label="超Q等级" min-width="180">
+          <template slot-scope="{row}">
+            <div class="priv-cell">
+              <el-tag :type="row.qq_exp > 0 ? 'warning' : 'info'" size="mini">Lv.{{ row.qq_lv }}</el-tag>
+              <el-input-number v-model="row.qq_exp" size="mini" :min="0" :max="999999" controls-position="right" />
+            </div>
+          </template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right" header-align="center">
-          <template slot-scope="{row}"><el-button size="mini" type="primary" plain @click="saveUser(row)">保存</el-button></template>
+        <el-table-column label="操作" width="240" fixed="right" header-align="center" align="center">
+          <template slot-scope="{row}">
+            <el-button size="mini" type="primary" plain @click="openOne(row, 'blue')">开蓝钻</el-button>
+            <el-button size="mini" type="warning" plain @click="openOne(row, 'qq')">开超Q</el-button>
+            <el-button size="mini" type="success" plain @click="saveUser(row)">保存</el-button>
+          </template>
         </el-table-column>
       </el-table>
+
+      <!-- 用户分页 -->
+      <div v-if="tab === 'users'" class="pager-bar">
+        <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ pageSize }} 条</div>
+        <el-pagination
+          small
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :total="total"
+          :page-size.sync="pageSize"
+          :current-page.sync="page"
+          :page-sizes="[10, 20, 50, 100]"
+          @size-change="page = 1; load()"
+          @current-change="load"
+        />
+      </div>
     </el-card>
 
     <el-dialog :title="form.id ? '编辑方案' : '新增方案'" :visible.sync="dlg" width="520px" :close-on-click-modal="false">
@@ -75,16 +105,22 @@ import api from '../../api'
 export default {
   name: 'AdminPrivileges',
   data () {
-    return { tab: 'plans', plans: [], users: [], loading: false, dlg: false, form: { id: 0, type: 'blue', name: '', cost: 0, gain: 0, days: 0 } }
+    return { tab: 'plans', plans: [], users: [], loading: false, dlg: false, page: 1, pageSize: 10, total: 0, form: { id: 0, type: 'blue', name: '', cost: 0, gain: 0, days: 0 } }
   },
   mounted () { this.load() },
   methods: {
     load () {
       this.loading = true
-      const url = this.tab === 'plans' ? '/admin/privileges/plans' : '/admin/privileges/users'
-      api.get(url).then(r => {
+      if (this.tab === 'plans') {
+        api.get('/admin/privileges/plans').then(r => {
+          this.loading = false
+          if (r.code === 0) this.plans = r.data
+        })
+        return
+      }
+      api.get('/admin/privileges/users', { params: { page: this.page, size: this.pageSize } }).then(r => {
         this.loading = false
-        if (r.code === 0) { if (this.tab === 'plans') this.plans = r.data; else this.users = r.data.list }
+        if (r.code === 0) { this.users = r.data.list; this.total = r.data.total }
       })
     },
     openDlg (row) {
@@ -107,8 +143,24 @@ export default {
     },
     saveUser (row) {
       api.put('/admin/privileges/users/' + row.id, { blue_exp: row.blue_exp, qq_exp: row.qq_exp }).then(r => { if (r.code === 0) this.$message.success('已保存') })
+    },
+    openOne (row, type) {
+      this.$confirm('确定给用户「' + row.nickname + '」开通' + (type === 'blue' ? '蓝钻' : '超Q') + '吗？', '提示').then(() => {
+        api.post('/admin/privileges/users/' + row.id + '/open', { type }).then(r => {
+          if (r.code === 0) { this.$message.success('已开通'); this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
     }
   },
-  watch: { tab () { this.load() } }
+  watch: {
+    tab () { this.page = 1; this.load() }
+  }
 }
 </script>
+
+<style scoped>
+.priv-cell { display: flex; align-items: center; gap: 8px; }
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+</style>
