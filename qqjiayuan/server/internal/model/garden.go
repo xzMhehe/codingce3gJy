@@ -195,3 +195,15 @@ type GardenElfLog struct {
 }
 
 func (GardenElfLog) TableName() string { return "garden_elf_logs" }
+
+// 七日签到（对齐参考站 check：周一~周日，7天一轮，奖励按累计天数）
+type GardenSign struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index:uk_gs" json:"user_id"`
+	SignDate  string    `gorm:"type:varchar(10);index:uk_gs" json:"sign_date"` // YYYY-MM-DD
+	WeekDay   int       `gorm:"default:0" json:"week_day"`                     // 1-7 周一~周日
+	DayNo     int       `gorm:"default:0" json:"day_no"`                       // 本轮累计签到第几天
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (GardenSign) TableName() string { return "garden_signs" }

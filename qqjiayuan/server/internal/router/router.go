@@ -154,6 +154,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/games/garden/msgs", gardenH.Msgs)
 			authed.GET("/games/garden/elves", gardenH.Elves)
 			authed.GET("/games/garden/rank", gardenH.Rank)
+			authed.GET("/games/garden/sign-status", gardenH.SignStatus)
+			authed.POST("/games/garden/sign", gardenH.Sign)
 			authed.POST("/games/garden/activity-submit", gardenH.SubmitActivity)
 
 			// 我的游戏

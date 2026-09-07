@@ -39,6 +39,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenBottle{}, &model.GardenGift{}, &model.GardenMix{},
 		&model.GardenMsg{}, &model.GardenMapLog{}, &model.GardenLandLog{},
 		&model.GardenElf{}, &model.GardenElfLog{},
+		&model.GardenSign{},
 		&model.NoblePlan{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
 		&model.WalletLog{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
@@ -292,6 +293,15 @@ func seedGardenData(db *gorm.DB) {
 		{Name: "银友谊花", DType: 1, Level: 6, Price: 0, Seed: 3, Ling: 4, Buds: 4, Less: 7, More: 14, Remark: "友谊长存。"},
 		{Name: "银色烈焰焚情", DType: 1, Level: 8, Price: 0, Seed: 4, Ling: 5, Buds: 5, Less: 8, More: 16, Remark: "炽热的爱。"},
 		{Name: "金色烈焰焚情", DType: 1, Level: 10, Price: 0, Seed: 5, Ling: 6, Buds: 6, Less: 10, More: 20, Remark: "永恒的爱。"},
+		// 道具（对齐参考站 dz_list：魔力播种机/爱心棒/收割机/花肥/营养液等）
+		{Name: "染色药水", DType: 2, Level: 1, Price: 5000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "可以给花朵染色。"},
+		{Name: "魔力播种机", DType: 2, Level: 1, Price: 20000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "一键播种所有空花盆。"},
+		{Name: "魔力爱心棒", DType: 2, Level: 1, Price: 20000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "一键照料所有花朵。"},
+		{Name: "魔力收割机", DType: 2, Level: 1, Price: 20000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "一键收获所有成熟花朵。"},
+		{Name: "愿望果实", DType: 2, Level: 1, Price: 5000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "许下一个美好的愿望。"},
+		{Name: "小魔法花肥", DType: 2, Level: 1, Price: 10000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "缩短花朵成长时间。"},
+		{Name: "魔法营养液", DType: 2, Level: 1, Price: 50000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "大幅缩短花朵成长时间。"},
+		{Name: "小魔力营养液", DType: 2, Level: 1, Price: 100000, Seed: 0, Ling: 0, Buds: 0, Less: 0, More: 0, Remark: "让花朵立即成熟。"},
 	}
 	for _, s := range seeds {
 		var n int64

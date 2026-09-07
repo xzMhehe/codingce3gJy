@@ -1,9 +1,9 @@
 <template>
   <div>
-    <!-- 活动公告（参考站 .note） -->
+    <!-- 活动公告（参考站 .note：游戏公告=论坛帖子 + 七日签到） -->
     <div class="note" v-if="cur === 'garden'">
-      <a href="javascript:;" @click="cur='active'">花园活动公告</a><br/>
-      <img class="noteico" src="/static/image/vipqq.jpg" alt="." />&nbsp;回家的礼物、一天都不能少(<span v-if="activities.length">{{ activities.length }}</span><span v-else>0</span>/7) <a href="javascript:;" @click="cur='active'">签到</a><br/>
+      <a href="javascript:;" @click="openNotice">游戏公告：{{ noticeTitle }}</a><br/>
+      <img class="noteico" src="/static/image/vipqq.jpg" alt="." />&nbsp;回家的礼物、一天都不能少({{ signCount }}/7) <a href="javascript:;" @click="openCheck">签到</a><br/>
     </div>
 
     <!-- 顶部导航（对齐参考站 .bar：花园 好友 花房 魔法屋 活动） -->
@@ -21,8 +21,10 @@
           <br/>花之图谱:<a href="javascript:;" @click="openMap">{{ g.common + g.festival + g.scarce }}/{{ g.map_total }}</a><br/>珍稀:{{ g.scarce }} 独特:{{ g.festival }} 普通:{{ g.common }}<br/>
         </div>
         <div class="recent-maps">
-          <img v-for="m in recentMaps" :key="m.id" :src="'/static/picture/garden/' + (m.img || ('m_s_' + m.id + '.gif'))" class="map-icon" :title="m.name" alt="." />
-          <img v-for="i in Math.max(0, 7 - recentMaps.length)" :key="'e' + i" src="/static/picture/garden/m_s.gif" alt="." />
+          <template v-for="i in 7" :key="i">
+            <img v-if="recentMaps[i-1]" :src="'/static/picture/garden/' + (recentMaps[i-1].img || ('m_s_' + recentMaps[i-1].id + '.gif'))" :title="recentMaps[i-1].name" alt="." />
+            <img v-else src="/static/picture/garden/m_s.gif" alt="." />
+          </template>
         </div>
         <br/>
         <div class="module-content">背包中没有魔力道具，无法使用一键功能！</div><br/>
@@ -71,7 +73,7 @@
         </div>
         <br/>
 
-        <div class="module-title"><a href="javascript:;" @click="switchTab('bag')">背包</a>.<a href="javascript:;" @click="switchTab('shop')">商店</a>.<a href="javascript:;" @click="switchTab('rank')">排行</a>.<a href="javascript:;" @click="switchTab('help')">帮助</a>.<a href="javascript:;" @click="switchTab('forum')">论坛</a><br/></div>
+        <div class="module-title"><a href="javascript:;" @click="switchTab('bag')">背包</a>.<a href="javascript:;" @click="switchTab('shop')">商店</a>.<a href="javascript:;" @click="switchTab('rank')">排行</a>.<a href="javascript:;" @click="switchTab('help')">帮助</a>.<a href="javascript:;" @click="goForum">论坛</a><br/></div>
       </template>
 
       <!-- ============ 花之图谱（复刻 map_list.aspx） ============ -->
@@ -114,18 +116,30 @@
         <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
       </template>
 
-      <!-- ============ 商店（复刻 seed_list.aspx） ============ -->
+      <!-- ============ 商店（复刻 seed_list.aspx / dz_list.aspx） ============ -->
       <template v-else-if="cur === 'shop'">
         <div class="bar sub">【花园商店】<br/></div>
         <div class="module-title"><a :class="{ cur: shopTy === 0 }" href="javascript:;" @click="switchShop(0)">普通花种</a>|<a :class="{ cur: shopTy === 1 }" href="javascript:;" @click="switchShop(1)">独特花种</a>|<a :class="{ cur: shopTy === 2 }" href="javascript:;" @click="switchShop(2)">道具</a><br/></div>
-        花种|价格|等级|{{ shopTy === 1 ? '独特' : shopTy === 2 ? '道具' : '普通' }}<br/>
-        <div class="list">
+        道具名|价格<br/>
+        <div class="list" v-if="shopTy === 2">
+          <div class="row" v-for="(s, i) in pagedShop" :key="s.id">
+            {{ (shopPage - 1) * 10 + i + 1 }}.{{ s.name }} {{ s.price }}G币 <a href="javascript:;" @click="openSeedDetail(s)">[购买]</a><br/>
+          </div>
+          <div class="row" v-if="!pagedShop.length">商店暂无商品<br/></div>
+          <div class="row" v-if="shop.length">
+            <a v-if="shopPage > 1" href="javascript:;" @click="shopPage--">上页</a>
+            <a v-if="shopPage < shopPages" href="javascript:;" @click="shopPage++">下页</a>
+            (第<b>{{ shopPage }}</b>/{{ shopPages }}页/共{{ shop.length }}条记录)<br/>
+          </div>
+        </div>
+        花种|价格|等级|{{ shopTy === 1 ? '独特' : '普通' }}<br/>
+        <div class="list" v-else>
           <div class="row" v-for="s in pagedShop" :key="s.id">
-            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ shopTy === 2 ? '--' : s.price + 'G币' }}
+            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ s.price }}G币
             <template v-if="s.dtype === 0"><a href="javascript:;" @click="openSeedDetail(s)">[购买]</a></template>
             <template v-else><a href="javascript:;" @click="switchTab('room')">[魔法屋合成]</a></template><br/>
           </div>
-          <div class="row" v-if="!pagedShop.length">{{ shopTy === 1 ? '独特花种需在魔法屋中合成获得，敬请期待直接购买！' : shopTy === 2 ? '道具功能建设中，敬请期待！' : '商店暂无商品<br/>' }}<br/></div>
+          <div class="row" v-if="!pagedShop.length">{{ shopTy === 1 ? '独特花种需在魔法屋中合成获得，敬请期待直接购买！' : '商店暂无商品<br/>' }}<br/></div>
           <div class="row" v-if="shop.length">
             <a v-if="shopPage > 1" href="javascript:;" @click="shopPage--">上页</a>
             <a v-if="shopPage < shopPages" href="javascript:;" @click="shopPage++">下页</a>
@@ -139,10 +153,14 @@
       <template v-else-if="cur === 'bag'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;背包<br/></div>
         <div class="name">我的背包(G币 {{ coins }})</div>
+        花种|道具<br/>
         <div class="list">
-          <div class="row" v-for="b in bag" :key="b.seed_id">
+          <div class="row" v-for="b in bagSeeds" :key="b.seed_id">
             <img :src="'/static/picture/garden/' + (b.img || ('s_s_' + b.seed_id + '.gif'))" class="map-icon" alt="." /><a href="javascript:;" @click="openBagSeed(b)">{{ b.seed_name }}</a>×{{ b.count }}
             <a href="javascript:;" @click="openSowSeed(b)">[播种]</a><br/>
+          </div>
+          <div class="row" v-for="b in bagItems" :key="'d' + b.seed_id">
+            {{ b.seed_name }}×{{ b.count }}<br/>
           </div>
           <div class="row" v-if="!bag.length">背包空空的，去商店买点种子吧。<br/></div>
         </div>
@@ -258,12 +276,38 @@
         </div>
       </template>
 
-      <!-- ============ 活动 ============ -->
+      <!-- ============ 七日签到（复刻 check/index） ============ -->
+      <template v-else-if="cur === 'check'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;签到<br/></div>
+        <div class="name">七日签到<br/></div>
+        <table class="sign-table">
+          <tr>
+            <td v-for="(d, i) in signDays" :key="i" align="center">
+              <span style="color:black">{{ weekNames[i] }}</span><br/>
+              <span style="color:green"><a v-if="d.signed" href="javascript:;">√</a><a v-else-if="!signToday" href="javascript:;" @click="doSign">签到</a><span v-else>&nbsp;</span></span>
+            </td>
+          </tr>
+        </table>
+        <div class="name">签到奖励预览<br/></div>
+        <div class="module-content">
+          签到第1天奖励：随机花种+1,G币+500,花园经验+200<br/>
+          签到第3天奖励：随机花种+3,G币+2000,花园经验+500<br/>
+          签到第5天奖励：随机花种+4,G币+10000,花园经验+1000<br/>
+          签到第7天奖励：随机花种+5,G币+30000,花园经验+2000,元宝+5<br/>
+          每日固定奖励：随机花种+1,G币+500,花园经验+200<br/><br/>
+          <a href="javascript:;" @click="doSign" v-if="!signToday">[今日签到]</a>
+          <span v-else>今日已签到</span>
+        </div>
+        <a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;<a href="javascript:;" @click="switchTab('active')">活动</a><br/>
+      </template>
+
+      <!-- ============ 活动（复刻 active/seed_list：追寻远古花园的记忆） ============ -->
       <template v-else-if="cur === 'active'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;活动<br/></div>
+        <div class="name">追寻远古花园的记忆<br/></div>
         <div class="list">
           <div class="row" v-for="a in activities" :key="a.id">
-            <a href="javascript:;" @click="selAct = a">{{ a.name }}</a> <a href="javascript:;" @click="selAct = a">[查看]</a><br/>
+            <a href="javascript:;" @click="selAct = a">{{ a.title }}</a><br/>
           </div>
           <div class="row" v-if="!activities.length">暂无活动<br/></div>
         </div>
@@ -272,7 +316,7 @@
           参与份数：<input v-model.number="amount" type="number" min="1" max="9" style="width:60px" />
           <a href="javascript:;" @click="submitActivity">[参与]</a><br/>
         </div>
-        <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
+        <a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;<a href="javascript:;" @click="openCheck">签到</a><br/>
       </template>
 
       <!-- ============ 帮助 ============ -->
@@ -287,11 +331,10 @@
         <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
       </template>
 
-      <!-- ============ 论坛 ============ -->
+      <!-- ============ 论坛（跳转魔法花园游戏论坛） ============ -->
       <template v-else-if="cur === 'forum'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;论坛<br/></div>
-        <div class="module-content">花园论坛建设中，敬请期待。<br/></div>
-        <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
+        <div class="module-content">正在前往魔法花园游戏论坛...<br/></div>
       </template>
 
       <!-- ============ 花朵详情（复刻 plant.asp） ============ -->
@@ -313,22 +356,32 @@
         <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
       </template>
 
-      <!-- ============ 种子详情（复刻 seed.asp） ============ -->
+      <!-- ============ 种子/道具详情（复刻 seed.asp / dz_buy） ============ -->
       <template v-else-if="cur === 'seed'">
-        <div class="bar sub"><a href="javascript:;" @click="switchTab('shop')">商店</a>&gt;种子<br/></div>
-        <div class="module-content">【花园商店】<br/></div>
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('shop')">商店</a>&gt;{{ curSeed.dtype === 2 ? '道具' : '种子' }}<br/></div>
+        <div class="module-content">【{{ curSeed.dtype === 2 ? '道具购买' : '花园商店' }}】<br/></div>
         <div class="module-content" v-if="curSeed">
-          <img :src="'/static/picture/garden/s_l_' + curSeed.id + '.gif'" alt="." /><br/>
-          {{ curSeed.name }}<br/>
-          花种等级:{{ curSeed.level_name }}<br/>
-          种子价格:{{ curSeed.price }}G币<br/>
-          VIP 价格:{{ curSeed.vip_price }}G币<br/>
-          预计成花:{{ curSeed.yield_avg }}朵<br/>
-          预计时间:{{ growTxt(curSeed) }}<br/>
-          鲜花花语:{{ curSeed.remark }}<br/>
-          <br/>
-          购买<input type="text" v-model.number="buyAmount" maxlength="2" size="2" value="1" />颗。<br/>
-          <a href="javascript:;" @click="buy(curSeed)">确定购买</a><br/>
+          <template v-if="curSeed.dtype === 2">
+            {{ curSeed.name }}<br/>
+            道具价格:{{ curSeed.price }}G币<br/>
+            {{ curSeed.remark }}<br/>
+            <br/>
+            购买<input type="text" v-model.number="buyAmount" maxlength="2" size="2" value="1" />个。<br/>
+            <a href="javascript:;" @click="buy(curSeed)">确定购买</a><br/>
+          </template>
+          <template v-else>
+            <img :src="'/static/picture/garden/s_l_' + curSeed.id + '.gif'" alt="." /><br/>
+            {{ curSeed.name }}<br/>
+            花种等级:{{ curSeed.level_name }}<br/>
+            种子价格:{{ curSeed.price }}G币<br/>
+            VIP 价格:{{ curSeed.vip_price }}G币<br/>
+            预计成花:{{ curSeed.yield_avg }}朵<br/>
+            预计时间:{{ growTxt(curSeed) }}<br/>
+            鲜花花语:{{ curSeed.remark }}<br/>
+            <br/>
+            购买<input type="text" v-model.number="buyAmount" maxlength="2" size="2" value="1" />颗。<br/>
+            <a href="javascript:;" @click="buy(curSeed)">确定购买</a><br/>
+          </template>
         </div>
         <a href="javascript:;" @click="switchTab('shop')">返回商店</a><br/>
       </template>
@@ -471,6 +524,8 @@ export default {
       sowBox: false, sowTarget: null, setBox: false, setAct: 1, setName: '', setNotice: '', setConfig: 0,
       giftBox: false, giftTarget: {}, giftTo: '', giftAmount: 1, giftRemark: '希望你开心快乐！', giftPickFlower: '',
       bottleShow: false, curPlot: null, curSeed: null, curMap: null, curRoom: null, giftLogs: [], buyAmount: 1,
+      signDays: [], signToday: false, signCount: 0, weekNames: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+      noticeTitle: '点击查看魔法花园最新公告', noticeThreadId: 0,
       okMsg: '', msg: ''
     }
   },
@@ -478,6 +533,8 @@ export default {
     nick () { return (this.$store.state.user || {}).nickname || '神秘园丁' },
     emptyCount () { return this.plots.filter(p => p.stage === 0).length },
     basketTotal () { return this.basket.reduce((s, f) => s + f.count, 0) },
+    bagSeeds () { return this.bag.filter(b => b.dtype !== 2) },
+    bagItems () { return this.bag.filter(b => b.dtype === 2) },
     filteredMaps () {
       if (!this.mapWd) return this.mapList
       return this.mapList.filter(m => m.name.indexOf(this.mapWd) !== -1)
@@ -547,12 +604,20 @@ export default {
           this.g = r.data.garden || {}
           this.coins = r.data.coins || 0
           this.plots = r.data.plots || []
-          this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount }))
+          this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount, dtype: b.dtype || 0 }))
           this.msgs = r.data.msgs || []
           this.recentMaps = r.data.recent_maps || []
           this.g.map_total = this.g.map_total || 619
         }
       })
+      // 公告 = 魔法花园游戏论坛最新帖子（参考站 note 链接 BBS 帖子）
+      api.get('/boards/22/threads').then(r => {
+        if (r.code === 0 && r.data && r.data.list && r.data.list.length) {
+          this.noticeTitle = r.data.list[0].title
+          this.noticeThreadId = r.data.list[0].id
+        }
+      })
+      this.loadSign()
     },
     loadFriends () {
       api.get('/friends').then(r => { if (r.code === 0) this.friends = r.data.friends })
@@ -568,7 +633,7 @@ export default {
       api.get('/games/garden/shop').then(r => { if (r.code === 0) this.shop = r.data })
     },
     loadBag () {
-      api.get('/games/garden/view').then(r => { if (r.code === 0) this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount })) })
+      api.get('/games/garden/view').then(r => { if (r.code === 0) this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount, dtype: b.dtype || 0 })) })
     },
     loadRank () {
       api.get('/games/garden/rank').then(r => { if (r.code === 0) this.rankList = r.data || [] })
@@ -601,6 +666,27 @@ export default {
       this.giftBox = true
     },
     openMapDetail (m) { this.curMap = m; this.cur = 'mapinfo' },
+    openBagSeed (b) { this.msg = b.seed_name + (b.dtype === 2 ? ' 道具，共 ' : ' 种子，共 ') + b.count + (b.dtype === 2 ? ' 个' : ' 颗') },
+    openNotice () {
+      if (this.noticeThreadId) { this.$router.push('/thread/' + this.noticeThreadId); return }
+      this.goForum()
+    },
+    goForum () { this.$router.push('/board/22') },
+    openCheck () { this.cur = 'check'; this.loadSign() },
+    loadSign () {
+      api.get('/games/garden/sign-status').then(r => {
+        if (r.code === 0) {
+          this.signDays = r.data.days || []
+          this.signToday = !!r.data.today_signed
+          this.signCount = r.data.signed_count || 0
+        }
+      })
+    },
+    doSign () {
+      api.post('/games/garden/sign').then(r => {
+        if (r.code === 0) { this.okMsg = (r.data && r.data.msg) || '签到成功'; this.loadSign(); this.load() } else this.msg = r.msg
+      })
+    },
     goShopSeed (m) {
       // 去商店购买对应种子（图谱详情）
       this.switchTab('shop')
@@ -615,7 +701,6 @@ export default {
       if (s.dtype === 1) { this.cur = 'room'; this.roomWd = s.name; this.msg = ''; this.okMsg = '该花种需在魔法屋合成获得'; return }
       this.curSeed = s; this.buyAmount = 1; this.cur = 'seed'
     },
-    openBagSeed (b) { this.msg = b.seed_name + ' 种子，共 ' + b.count + ' 颗' },
     growTxt (s) {
       const mins = (s.seed || 0) + (s.ling || 0) + (s.buds || 0)
       return mins >= 60 ? (Math.round(mins / 6) / 10 + '小时') : (mins + '分钟')
@@ -796,8 +881,11 @@ export default {
 .userline img { vertical-align: middle; }
 .bicon { vertical-align: middle; }
 .map-icon { vertical-align: middle; margin-right: 2px; }
-.recent-maps { padding: 2px 3px; line-height: 0; }
-.recent-maps img { width: 24px; height: 24px; margin-right: 1px; }
+.recent-maps { padding: 4px 3px; line-height: 0; text-align: center; background: #f4f9fd; border-bottom: 1px dashed #cfe0f0; }
+.recent-maps img { width: 30px; height: 30px; margin: 2px 3px; border: 1px solid #d7e6f3; border-radius: 3px; vertical-align: middle; }
+.sign-table { width: 100%; margin: 4px 0; border-collapse: collapse; font-size: 13px; }
+.sign-table td { border: 1px solid #cfe0f0; padding: 6px 2px; background: #f7fbfe; }
+.sign-table a { color: #2e9cd3; text-decoration: none; }
 .got-tag { color: #43a047; font-size: 11px; }
 .ok-txt a { color: #43a047; font-weight: bold; }
 .elf-prev { vertical-align: middle; width: 32px; height: 32px; margin-right: 4px; }

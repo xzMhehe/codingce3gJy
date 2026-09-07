@@ -570,6 +570,14 @@ func (h *GardenHandler) View(c *gin.Context) {
 	// 背包
 	var bags []model.GardenBag
 	h.DB.Where("user_id = ?", uid).Find(&bags)
+	bagOut := make([]gin.H, 0, len(bags))
+	for _, b := range bags {
+		dtype := 0
+		if sd := h.seedByID(b.SeedID); sd != nil {
+			dtype = sd.DType
+		}
+		bagOut = append(bagOut, gin.H{"seed_id": b.SeedID, "name": b.Name, "amount": b.Amount, "dtype": dtype})
+	}
 	// 图鉴进度
 	total := len(h.loadMaps())
 	var logged int64
@@ -612,7 +620,7 @@ func (h *GardenHandler) View(c *gin.Context) {
 		},
 		"coins":      u.Coins,
 		"plots":      out,
-		"bag":        bags,
+		"bag":        bagOut,
 		"msgs":       msgOut,
 		"recent_maps": recent,
 	})
@@ -691,8 +699,8 @@ func (h *GardenHandler) Buy(c *gin.Context) {
 		return
 	}
 	sd := h.seedByID(uint(req.ID))
-	if sd == nil || sd.DType != 0 {
-		resp.ParamError(c, "无此花种")
+	if sd == nil || (sd.DType != 0 && sd.DType != 2) {
+		resp.ParamError(c, "无此商品")
 		return
 	}
 	amount := req.Amount
@@ -707,8 +715,12 @@ func (h *GardenHandler) Buy(c *gin.Context) {
 	var u model.User
 	h.DB.First(&u, uid)
 	cost := sd.Price * amount
+	unit := "颗"
+	if sd.DType == 2 {
+		unit = "个"
+	}
 	if u.Coins < cost {
-		resp.ParamError(c, "G币不足，买不起"+strconv.Itoa(amount)+"颗"+sd.Name+"种子")
+		resp.ParamError(c, "G币不足，买不起"+strconv.Itoa(amount)+unit+sd.Name)
 		return
 	}
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins - ?", cost))
@@ -1318,6 +1330,131 @@ func (h *GardenHandler) SubmitActivity(c *gin.Context) {
 	h.addFlower(uid, actTaskReward, amount)
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("exp", gorm.Expr("exp + ?", 20*amount))
 	resp.OK(c, gin.H{"reward": actTaskReward, "amount": amount})
+}
+
+// 七日签到状态：返回本周(周一起)签到情况
+func (h *GardenHandler) SignStatus(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	now := time.Now()
+	weekStart := now.AddDate(0, 0, -int(now.Weekday()) + 1) // 周一
+	if now.Weekday() == 0 { // 周日
+		weekStart = now.AddDate(0, 0, -6)
+	}
+	weekStartStr := weekStart.Format("2006-01-02")
+	weekEndStr := weekStart.AddDate(0, 0, 6).Format("2006-01-02")
+	var signs []model.GardenSign
+	h.DB.Where("user_id = ? AND sign_date >= ? AND sign_date <= ?", uid, weekStartStr, weekEndStr).Order("sign_date ASC").Find(&signs)
+	days := make([]gin.H, 7)
+	for i := 0; i < 7; i++ {
+		days[i] = gin.H{"day": i + 1, "signed": false, "date": weekStart.AddDate(0, 0, i).Format("2006-01-02")}
+	}
+	for _, s := range signs {
+		days[s.WeekDay-1] = gin.H{"day": s.WeekDay, "signed": true, "date": s.SignDate}
+	}
+	todaySigned := false
+	for _, s := range signs {
+		if s.SignDate == now.Format("2006-01-02") {
+			todaySigned = true
+		}
+	}
+	resp.OK(c, gin.H{
+		"week_start": weekStartStr, "week_end": weekEndStr,
+		"days": days, "signed_count": len(signs), "today_signed": todaySigned,
+	})
+}
+
+// 签到：每天一次，7天一轮，按累计天数发奖励（对齐参考站 check）
+func (h *GardenHandler) Sign(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	var s model.GardenSign
+	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, today).First(&s).Error; err == nil {
+		resp.ParamError(c, "今天已经签过到了")
+		return
+	}
+	weekDay := int(now.Weekday())
+	if weekDay == 0 {
+		weekDay = 7
+	}
+	weekStart := now.AddDate(0, 0, -int(now.Weekday())+1)
+	if now.Weekday() == 0 {
+		weekStart = now.AddDate(0, 0, -6)
+	}
+	weekStartStr := weekStart.Format("2006-01-02")
+	var cnt int64
+	h.DB.Model(&model.GardenSign{}).Where("user_id = ? AND sign_date >= ? AND sign_date <= ?", uid, weekStartStr, now.Format("2006-01-02")).Count(&cnt)
+	dayNo := int(cnt) + 1
+	h.DB.Create(&model.GardenSign{UserID: uid, SignDate: today, WeekDay: weekDay, DayNo: dayNo})
+
+	// 奖励（对齐参考站）：每日固定 随机花种+1,G币+500,花园经验+200
+	coins := 500
+	exp := 200
+	seedN := 1
+	var extra string
+	switch dayNo {
+	case 3:
+		coins += 2000 - 500
+		exp += 500 - 200
+		seedN += 2
+		extra = "第3天额外：随机花种+2,G币+2000,花园经验+500"
+	case 5:
+		coins += 10000 - 500
+		exp += 1000 - 200
+		seedN += 3
+		extra = "第5天额外：随机花种+3,G币+10000,花园经验+1000"
+	case 7:
+		coins += 30000 - 500
+		exp += 2000 - 200
+		seedN += 4
+		extra = "第7天额外：随机花种+4,G币+30000,花园经验+2000"
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", coins))
+	h.addGardenPoint(uid, exp)
+	// 随机花种：从普通种子中随机
+	seedName := h.randomSeedName()
+	if seedName != "" {
+		h.addBag(uid, h.seedIDByName(seedName), seedName, seedN)
+	}
+	msg := "签到成功！每日固定：随机花种+" + strconv.Itoa(seedN) + ",G币+" + strconv.Itoa(coins) + ",花园经验+" + strconv.Itoa(exp)
+	if extra != "" {
+		msg += "。" + extra
+	}
+	resp.OK(c, gin.H{"msg": msg, "day_no": dayNo, "coins": coins, "exp": exp, "seed_name": seedName, "seed_n": seedN})
+}
+
+func (h *GardenHandler) randomSeedName() string {
+	var names []string
+	for _, sd := range h.loadSeeds() {
+		if sd.DType == 0 && sd.Status == 1 {
+			names = append(names, sd.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return names[rand.Intn(len(names))]
+}
+
+func (h *GardenHandler) seedIDByName(name string) uint {
+	for _, sd := range h.loadSeeds() {
+		if sd.Name == name {
+			return sd.ID
+		}
+	}
+	return 0
+}
+
+func (h *GardenHandler) addBag(uid, seedID uint, name string, n int) {
+	if seedID == 0 || n <= 0 {
+		return
+	}
+	var bag model.GardenBag
+	if err := h.DB.Where("user_id = ? AND seed_id = ?", uid, seedID).First(&bag).Error; err != nil {
+		h.DB.Create(&model.GardenBag{UserID: uid, SeedID: seedID, Name: name, Amount: n})
+	} else {
+		h.DB.Model(&bag).Update("amount", gorm.Expr("amount + ?", n))
+	}
 }
 
 // 公开：花园活动列表
