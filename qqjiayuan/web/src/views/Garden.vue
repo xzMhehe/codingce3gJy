@@ -84,11 +84,6 @@
         <br/>
 
         <div class="module-title"><a href="javascript:;" @click="switchTab('bag')">背包</a>.<a href="javascript:;" @click="switchTab('shop')">商店</a>.<a href="javascript:;" @click="switchTab('rank')">排行</a>.<a href="javascript:;" @click="switchTab('help')">帮助</a>.<a href="javascript:;" @click="switchTab('forum')">论坛</a><br/></div>
-        <div class="footer">
-          <a href="#top">回顶部</a><br/>
-          <a href="javascript:;" @click="$router.push('/')">3GQQ家园社区</a>-<a href="javascript:;" @click="$router.push('/channel/1')">广场</a>-<a href="javascript:;" @click="$router.push('/')">导航</a>-<a href="javascript:;" @click="logout">退出</a><br/>
-          小Q报时({{ nowTxt }})<br/>
-        </div>
       </template>
 
       <!-- ============ 花之图谱（复刻 map_list.aspx） ============ -->
@@ -386,7 +381,7 @@ export default {
       sowBox: false, sowTarget: null, setBox: false, setAct: 1, setName: '', setNotice: '', setConfig: 0,
       giftBox: false, giftTarget: {}, giftTo: '', giftAmount: 1, giftRemark: '希望你开心快乐！',
       bottleShow: false,
-      okMsg: '', msg: '', now: new Date()
+      okMsg: '', msg: ''
     }
   },
   computed: {
@@ -424,18 +419,11 @@ export default {
     myRank () {
       const me = this.rankList.find(r => r.user_id === (this.$store.state.user || {}).id)
       return me ? ('第' + me.rank + '名') : '未入榜'
-    },
-    nowTxt () {
-      const d = this.now
-      const p = n => (n < 10 ? '0' + n : '' + n)
-      return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     }
   },
   mounted () {
     this.loadAll()
-    this.timer = setInterval(() => { this.now = new Date() }, 1000)
   },
-  beforeDestroy () { clearInterval(this.timer) },
   methods: {
     gardenImg (file) { return '/static/picture/garden/' + file },
     flowerImg (flower) {
@@ -456,10 +444,6 @@ export default {
       if (tab === 'bag') this.loadBag()
       if (tab === 'rank') this.loadRank()
       if (tab === 'elves') this.loadElves()
-    },
-    logout () {
-      this.$store.commit('logout')
-      this.$router.push('/login')
     },
     loadAll () {
       this.load()
@@ -653,8 +637,6 @@ export default {
 .row { padding: 3px; border-bottom: 1px solid #E3E6EB; }
 .row a { color: #2e9cd3; text-decoration: none; }
 .text { line-height: 1.6; padding: 3px 5px; word-wrap: break-word; font-size: 13px; }
-.footer { padding: 5px; background: #F5FFFA; border-top: 1px solid #9FC6EC; font-size: 12px; line-height: 1.8; }
-.footer a { color: #2e9cd3; text-decoration: none; margin-right: 4px; }
 .g-main { padding: 2px 3px; }
 .userline img { vertical-align: middle; }
 .bicon { vertical-align: middle; }
