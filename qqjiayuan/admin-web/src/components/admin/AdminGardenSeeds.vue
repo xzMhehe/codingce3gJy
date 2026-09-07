@@ -42,59 +42,76 @@
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-select v-model="tyFilter" placeholder="类型" clearable style="width:130px" @change="page = 1">
+        <el-select v-model="tyFilter" placeholder="类型" clearable style="width:140px" @change="page = 1">
           <el-option label="普通(商店)" :value="0" />
           <el-option label="特殊(合成)" :value="1" />
         </el-select>
-        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索名称/花语" clearable style="width:220px;margin-left:8px" @input="page = 1" />
+        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索名称/花语" clearable style="width:230px" @input="page = 1" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增花种</el-button>
       </div>
-      <el-table :data="paged" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column label="种子图" width="86" header-align="center">
+
+      <!-- 按行表格 -->
+      <el-table :data="paged" v-loading="loading" stripe border size="medium">
+        <el-table-column prop="id" label="ID" width="64" align="center" />
+        <el-table-column label="花种" width="110" align="center">
           <template slot-scope="{row}">
-            <img :src="'/static/picture/garden/' + (row.img || ('s_s_' + row.id + '.gif'))" class="seed-prev" :alt="row.name" />
+            <img :src="'/static/picture/garden/' + (row.img || ('s_s_' + row.id + '.gif'))"
+                 class="td-img" :alt="row.name" />
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="110" />
-        <el-table-column label="类型" width="120">
+        <el-table-column label="名称" min-width="110">
+          <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
+        </el-table-column>
+        <el-table-column label="类型" width="88" align="center">
           <template slot-scope="{row}">
-            <el-tag :type="row.dtype === 1 ? 'warning' : 'success'" size="mini" effect="light">{{ row.dtype === 1 ? '特殊(合成)' : '普通' }}</el-tag>
+            <el-tag :type="row.dtype === 1 ? 'warning' : 'success'" size="mini">{{ row.dtype === 1 ? '特殊' : '普通' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="level" label="等级" width="70" header-align="center" />
-        <el-table-column prop="price" label="价格(G币)" width="100" header-align="center">
+        <el-table-column label="等级" width="70" align="center">
+          <template slot-scope="{row}"><i class="el-icon-medal td-gold"></i>{{ row.level }}</template>
+        </el-table-column>
+        <el-table-column label="价格(G)" width="88" align="center">
           <template slot-scope="{row}">
-            <span v-if="row.dtype === 1" class="mix-only">—</span>
-            <span v-else>{{ row.price }}</span>
+            <span v-if="row.dtype === 1" class="td-muted">—</span>
+            <span v-else><i class="el-icon-coin td-blue"></i>{{ row.price }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="生长(分)" width="160">
+        <el-table-column label="生长(种/苗/蕾 分钟)" width="165" align="center">
+          <template slot-scope="{row}"><span class="td-mono">{{ row.seed }}/{{ row.ling }}/{{ row.buds }}</span></template>
+        </el-table-column>
+        <el-table-column label="产量" width="78" align="center">
+          <template slot-scope="{row}"><span class="td-blue">{{ row.less }}-{{ row.more }}</span></template>
+        </el-table-column>
+        <el-table-column label="花语" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}"><span class="td-sub">{{ row.remark || '—' }}</span></template>
+        </el-table-column>
+        <el-table-column label="状态" width="78" align="center">
           <template slot-scope="{row}">
-            <span class="grow-txt">{{ row.seed }}/{{ row.ling }}/{{ row.buds }}</span>
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini" effect="plain">{{ row.status === 1 ? '上架' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="产量" width="80" header-align="center">
-          <template slot-scope="{row}">{{ row.less }}-{{ row.more }}</template>
-        </el-table-column>
-        <el-table-column prop="remark" label="花语" min-width="160" show-overflow-tooltip />
-        <el-table-column label="状态" width="80" header-align="center">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '停用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" header-align="center">
-          <template slot-scope="{row}">
-            <div class="ops">
-              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
-              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>
-            </div>
+            <el-button size="mini" type="primary" icon="el-icon-edit" circle title="编辑" @click="openDlg(row)" />
+            <el-button size="mini" type="danger" icon="el-icon-delete" circle title="删除" @click="del(row)" />
           </template>
         </el-table-column>
       </el-table>
-      <div class="pager" v-if="paged.length < filtered.length">
-        <el-pagination layout="prev, pager, next" :total="filtered.length" :page-size="pageSize" :current-page.sync="page" background />
+
+      <!-- 分页底部栏（始终显示） -->
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ filtered.length }}</b> 条 · 每页 {{ pageSize }} 条</div>
+        <el-pagination
+          small
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :total="filtered.length"
+          :page-size.sync="pageSize"
+          :current-page.sync="page"
+          :page-sizes="[5, 10, 20, 50]"
+          @size-change="page = 1"
+        />
       </div>
     </el-card>
 
@@ -148,7 +165,7 @@ export default {
   data () {
     return {
       list: [], loading: false, dlg: false, saving: false,
-      kw: '', tyFilter: null, page: 1, pageSize: 12,
+      kw: '', tyFilter: null, page: 1, pageSize: 5,
       form: { id: 0, name: '', dtype: 0, level: 1, price: 0, seed: 1, ling: 1, buds: 1, less: 2, more: 4, remark: '', status: 1 }
     }
   },
@@ -199,20 +216,40 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 14px; }
-.stat-card { display: flex; align-items: center; background: #fff; border-radius: 10px; padding: 14px 16px; border: 1px solid #eef1f5; }
-.stat-ico { font-size: 28px; margin-right: 12px; }
-.s-green .stat-ico { color: #43a047; }
-.s-blue .stat-ico { color: #2e9cd3; }
-.s-purple .stat-ico { color: #7b1fa2; }
-.s-orange .stat-ico { color: #fb8c00; }
-.stat-num { font-size: 22px; font-weight: bold; color: #333; line-height: 1.2; }
-.stat-lab { font-size: 12px; color: #999; }
-.toolbar { display: flex; align-items: center; margin-bottom: 12px; }
+.stat-row { margin-bottom: 18px; }
+.stat-card {
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
+  transition: box-shadow .2s, transform .2s;
+}
+.stat-card:hover { box-shadow: 0 6px 18px rgba(18,38,63,.09); transform: translateY(-2px); }
+.stat-ico {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
+}
+.s-green .stat-ico { background: linear-gradient(135deg,#43a047,#2e7d32); }
+.s-blue .stat-ico { background: linear-gradient(135deg,#29b6f6,#0288d1); }
+.s-purple .stat-ico { background: linear-gradient(135deg,#ab47bc,#6a1b9a); }
+.s-orange .stat-ico { background: linear-gradient(135deg,#ffa726,#ef6c00); }
+.stat-info { display: flex; flex-direction: column; }
+.stat-num { font-size: 24px; font-weight: 700; color: #1f2d3d; line-height: 1; }
+.stat-lab { font-size: 12px; color: #8a9bb0; margin-top: 6px; letter-spacing: .3px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
 .grow { flex: 1; }
-.seed-prev { width: 40px; height: 40px; border-radius: 8px; background: #f5f9fc; border: 1px solid #e3eef8; object-fit: contain; }
-.grow-txt { font-size: 12px; color: #666; font-family: Consolas, monospace; }
-.mix-only { color: #bbb; }
-.help-line { font-size: 12px; color: #999; margin-top: 4px; }
-.pager { margin-top: 12px; text-align: right; }
+
+/* 表格样式 */
+.td-img { width: 52px; height: 52px; object-fit: contain; border-radius: 6px; border: 1px solid #eef2f6; background: #f7fafc; vertical-align: middle; }
+.td-main { font-weight: 600; color: #303133; }
+.td-sub { color: #8a9bb0; font-size: 13px; }
+.td-muted { color: #b6c2d2; }
+.td-mono { font-family: Consolas, 'Courier New', monospace; color: #5b6b82; }
+.td-blue { color: #2e9cd3; font-weight: 600; }
+.td-gold { color: #fb8c00; margin-right: 3px; }
+/* 分页 */
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+.pager-bar >>> .el-pagination { margin: 0; }
 </style>

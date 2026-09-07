@@ -42,41 +42,60 @@
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-select v-model="tyFilter" placeholder="稀有度" clearable style="width:110px" @change="page = 1">
+        <el-select v-model="tyFilter" placeholder="稀有度" clearable style="width:120px" @change="page = 1">
           <el-option label="普通" :value="0" />
           <el-option label="独特" :value="1" />
           <el-option label="珍稀" :value="2" />
         </el-select>
-        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索花名/种子" clearable style="width:220px;margin-left:8px" @input="page = 1" />
+        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索花名/种子" clearable style="width:230px" @input="page = 1" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增图鉴花</el-button>
       </div>
-      <el-table :data="paged" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column label="图片" width="86" header-align="center">
+
+      <!-- 按行表格 -->
+      <el-table :data="paged" v-loading="loading" stripe border size="medium">
+        <el-table-column prop="id" label="ID" width="64" align="center" />
+        <el-table-column label="图片" width="110" align="center">
           <template slot-scope="{row}">
-            <img :src="'/static/picture/garden/' + (row.img || ('m_s_' + row.id + '.gif'))" class="map-prev" :alt="row.name" />
+            <img :src="'/static/picture/garden/' + (row.img || ('m_s_' + row.id + '.gif'))"
+                 class="td-img" :alt="row.name" />
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="花名" min-width="120" />
-        <el-table-column prop="seed_name" label="所属种子" min-width="110" />
-        <el-table-column label="稀有度" width="90" header-align="center">
+        <el-table-column label="花名" min-width="130">
+          <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
+        </el-table-column>
+        <el-table-column label="稀有度" width="100" align="center">
           <template slot-scope="{row}">
             <el-tag :type="['success', 'warning', 'danger'][row.dtype] || 'info'" size="mini">{{ ['普通', '独特', '珍稀'][row.dtype] }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="img" label="图片文件" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="160" header-align="center">
+        <el-table-column label="所属种子" min-width="130">
+          <template slot-scope="{row}"><span class="td-sub">{{ row.seed_name || '—' }}</span></template>
+        </el-table-column>
+        <el-table-column label="图片文件" min-width="160">
+          <template slot-scope="{row}"><span class="td-file">{{ row.img || ('m_s_' + row.id + '.gif') }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
-            <div class="ops">
-              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
-              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>
-            </div>
+            <el-button size="mini" type="primary" icon="el-icon-edit" circle title="编辑" @click="openDlg(row)" />
+            <el-button size="mini" type="danger" icon="el-icon-delete" circle title="删除" @click="del(row)" />
           </template>
         </el-table-column>
       </el-table>
-      <div class="pager" v-if="paged.length < filtered.length">
-        <el-pagination layout="prev, pager, next" :total="filtered.length" :page-size="pageSize" :current-page.sync="page" background />
+
+      <!-- 分页底部栏（始终显示） -->
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ filtered.length }}</b> 条 · 每页 {{ pageSize }} 条</div>
+        <el-pagination
+          small
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :total="filtered.length"
+          :page-size.sync="pageSize"
+          :current-page.sync="page"
+          :page-sizes="[5, 10, 20, 50]"
+          @size-change="page = 1"
+        />
       </div>
     </el-card>
 
@@ -121,7 +140,7 @@ export default {
   data () {
     return {
       list: [], seeds: [], loading: false, dlg: false, saving: false,
-      kw: '', tyFilter: null, page: 1, pageSize: 12,
+      kw: '', tyFilter: null, page: 1, pageSize: 5,
       form: { id: 0, seed_id: 1, name: '', dtype: 0, img: '' }
     }
   },
@@ -178,20 +197,40 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 14px; }
-.stat-card { display: flex; align-items: center; background: #fff; border-radius: 10px; padding: 14px 16px; border: 1px solid #eef1f5; }
-.stat-ico { font-size: 28px; margin-right: 12px; }
-.s-green .stat-ico { color: #43a047; }
-.s-purple .stat-ico { color: #7b1fa2; }
-.s-red .stat-ico { color: #d32f2f; }
-.s-blue .stat-ico { color: #2e9cd3; }
-.stat-num { font-size: 22px; font-weight: bold; color: #333; line-height: 1.2; }
-.stat-lab { font-size: 12px; color: #999; }
-.toolbar { display: flex; align-items: center; margin-bottom: 12px; }
+.stat-row { margin-bottom: 18px; }
+.stat-card {
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
+  transition: box-shadow .2s, transform .2s;
+}
+.stat-card:hover { box-shadow: 0 6px 18px rgba(18,38,63,.09); transform: translateY(-2px); }
+.stat-ico {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
+}
+.s-green .stat-ico { background: linear-gradient(135deg,#43a047,#2e7d32); }
+.s-purple .stat-ico { background: linear-gradient(135deg,#ab47bc,#6a1b9a); }
+.s-red .stat-ico { background: linear-gradient(135deg,#ef5350,#c62828); }
+.s-blue .stat-ico { background: linear-gradient(135deg,#29b6f6,#0288d1); }
+.stat-info { display: flex; flex-direction: column; }
+.stat-num { font-size: 24px; font-weight: 700; color: #1f2d3d; line-height: 1; }
+.stat-lab { font-size: 12px; color: #8a9bb0; margin-top: 6px; letter-spacing: .3px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
 .grow { flex: 1; }
-.map-prev { width: 44px; height: 44px; border-radius: 8px; background: #f5f9fc; border: 1px solid #e3eef8; object-fit: contain; }
+
+/* 表格样式 */
+.td-img { width: 52px; height: 52px; object-fit: contain; border-radius: 6px; border: 1px solid #eef2f6; background: #f7fafc; vertical-align: middle; }
+.td-main { font-weight: 600; color: #303133; }
+.td-sub { color: #8a9bb0; font-size: 13px; }
+.td-file { color: #2e9cd3; font-family: Consolas, 'Courier New', monospace; font-size: 13px; }
+/* 分页 */
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+.pager-bar >>> .el-pagination { margin: 0; }
 .img-pick { display: flex; align-items: center; gap: 10px; }
 .dlg-prev { width: 52px; height: 52px; border-radius: 8px; border: 1px solid #e3eef8; background: #f5f9fc; object-fit: contain; }
 .help-line { font-size: 12px; color: #999; margin-top: 4px; }
-.pager { margin-top: 12px; text-align: right; }
 </style>

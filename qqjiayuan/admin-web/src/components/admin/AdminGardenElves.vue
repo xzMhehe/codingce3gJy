@@ -33,43 +33,58 @@
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索精灵名称/介绍" clearable style="width:240px" @input="onSearch" />
+        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索精灵名称/介绍" clearable style="width:250px" @input="page = 1" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增精灵</el-button>
       </div>
-      <el-table :data="paged" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="精灵" width="130" header-align="center">
+
+      <!-- 按行表格 -->
+      <el-table :data="paged" v-loading="loading" stripe border size="medium">
+        <el-table-column prop="id" label="ID" width="64" align="center" />
+        <el-table-column label="精灵" width="120" align="center">
           <template slot-scope="{row}">
-            <div class="elf-cell">
-              <img :src="'/static/picture/garden/' + (row.img || 'elf_' + row.id + '.png')" class="elf-prev" :alt="row.name" />
-              <div class="elf-name">{{ row.name }}</div>
-            </div>
+            <img :src="'/static/picture/garden/' + (row.img || 'elf_' + row.id + '.png')"
+                 class="td-img" :alt="row.name" />
           </template>
         </el-table-column>
-        <el-table-column prop="desc" label="介绍" min-width="240" show-overflow-tooltip />
-        <el-table-column label="解锁条件" width="150" header-align="center">
+        <el-table-column label="名称" width="140">
+          <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
+        </el-table-column>
+        <el-table-column label="介绍" min-width="180" show-overflow-tooltip>
+          <template slot-scope="{row}"><span class="td-sub">{{ row.desc || '—' }}</span></template>
+        </el-table-column>
+        <el-table-column label="解锁条件" width="150" align="center">
+          <template slot-scope="{row}"><span class="td-cond">点亮 {{ row.need_map }} 个图谱</span></template>
+        </el-table-column>
+        <el-table-column prop="sort" label="排序" width="80" align="center">
+          <template slot-scope="{row}"><span class="td-sort">{{ row.sort }}</span></template>
+        </el-table-column>
+        <el-table-column label="状态" width="80" align="center">
           <template slot-scope="{row}">
-            <span class="cond-txt">点亮 <b>{{ row.need_map }}</b> 个图谱</span>
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini" effect="plain">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="sort" label="排序" width="70" header-align="center" />
-        <el-table-column label="状态" width="90" header-align="center">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini" effect="light">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" header-align="center">
-          <template slot-scope="{row}">
-            <div class="ops">
-              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
-              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>
-            </div>
+            <el-button size="mini" type="primary" icon="el-icon-edit" circle title="编辑" @click="openDlg(row)" />
+            <el-button size="mini" type="danger" icon="el-icon-delete" circle title="删除" @click="del(row)" />
           </template>
         </el-table-column>
       </el-table>
-      <div class="pager" v-if="paged.length < filtered.length">
-        <el-pagination layout="prev, pager, next" :total="filtered.length" :page-size="pageSize" :current-page.sync="page" background />
+
+      <!-- 分页底部栏（始终显示） -->
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ filtered.length }}</b> 条 · 每页 {{ pageSize }} 条</div>
+        <el-pagination
+          small
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :total="filtered.length"
+          :page-size.sync="pageSize"
+          :current-page.sync="page"
+          :page-sizes="[5, 10, 20, 50]"
+          @size-change="page = 1"
+        />
       </div>
     </el-card>
 
@@ -114,7 +129,7 @@ export default {
   data () {
     return {
       list: [], loading: false, saving: false, dlg: false, form: {},
-      kw: '', page: 1, pageSize: 10
+      kw: '', page: 1, pageSize: 5
     }
   },
   computed: {
@@ -138,7 +153,6 @@ export default {
     kw () { this.page = 1 }
   },
   methods: {
-    onSearch () {},
     load () {
       this.loading = true
       api.get('/admin/garden-elves').then(r => {
@@ -173,23 +187,40 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 14px; }
-.stat-card { display: flex; align-items: center; background: #fff; border-radius: 10px; padding: 14px 16px; border: 1px solid #eef1f5; }
-.stat-ico { font-size: 30px; margin-right: 12px; }
-.s-green .stat-ico { color: #43a047; }
-.s-blue .stat-ico { color: #2e9cd3; }
-.s-orange .stat-ico { color: #fb8c00; }
-.stat-num { font-size: 22px; font-weight: bold; color: #333; line-height: 1.2; }
-.stat-lab { font-size: 12px; color: #999; }
-.toolbar { display: flex; align-items: center; margin-bottom: 12px; }
+.stat-row { margin-bottom: 18px; }
+.stat-card {
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
+  transition: box-shadow .2s, transform .2s;
+}
+.stat-card:hover { box-shadow: 0 6px 18px rgba(18,38,63,.09); transform: translateY(-2px); }
+.stat-ico {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
+}
+.s-green .stat-ico { background: linear-gradient(135deg,#43a047,#2e7d32); }
+.s-blue .stat-ico { background: linear-gradient(135deg,#29b6f6,#0288d1); }
+.s-orange .stat-ico { background: linear-gradient(135deg,#ffa726,#ef6c00); }
+.stat-info { display: flex; flex-direction: column; }
+.stat-num { font-size: 24px; font-weight: 700; color: #1f2d3d; line-height: 1; }
+.stat-lab { font-size: 12px; color: #8a9bb0; margin-top: 6px; letter-spacing: .3px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
 .grow { flex: 1; }
-.elf-cell { display: flex; align-items: center; gap: 8px; }
-.elf-prev { width: 44px; height: 44px; border-radius: 8px; background: #f5f9fc; border: 1px solid #e3eef8; object-fit: contain; }
-.elf-name { font-size: 13px; color: #333; }
-.cond-txt { font-size: 12px; color: #666; }
-.cond-txt b { color: #2e9cd3; font-size: 14px; }
+
+/* 表格样式 */
+.td-img { width: 52px; height: 52px; object-fit: contain; border-radius: 6px; border: 1px solid #ece7f7; background: #f7f5fd; vertical-align: middle; }
+.td-main { font-weight: 600; color: #303133; }
+.td-sub { color: #8a9bb0; font-size: 13px; }
+.td-cond { color: #7367f0; font-weight: 600; }
+.td-sort { color: #5b6b82; font-weight: 600; }
+/* 分页 */
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+.pager-bar >>> .el-pagination { margin: 0; }
 .img-pick { display: flex; align-items: center; gap: 10px; }
 .dlg-prev { width: 52px; height: 52px; border-radius: 8px; border: 1px solid #e3eef8; background: #f5f9fc; object-fit: contain; }
 .help-line { font-size: 12px; color: #999; margin-top: 4px; }
-.pager { margin-top: 12px; text-align: right; }
 </style>

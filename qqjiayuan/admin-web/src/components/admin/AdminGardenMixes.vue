@@ -33,39 +33,55 @@
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索产物种子/材料花" clearable style="width:240px" @input="page = 1" />
+        <el-input v-model.trim="kw" prefix-icon="el-icon-search" placeholder="搜索产物种子/材料花" clearable style="width:250px" @input="page = 1" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增配方</el-button>
       </div>
-      <el-table :data="paged" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column label="产物种子" min-width="180">
+
+      <!-- 按行表格 -->
+      <el-table :data="paged" v-loading="loading" stripe border size="medium">
+        <el-table-column prop="id" label="ID" width="64" align="center" />
+        <el-table-column label="材料花" min-width="140">
           <template slot-scope="{row}">
-            <div class="mix-cell">
-              <img :src="'/static/picture/garden/' + (row.seed_img || ('s_s_' + row.seed_id + '.gif'))" class="mix-prev" :alt="row.seed_name" />
-              <span class="mix-seed">{{ row.seed_name }}</span>
+            <span class="mix-flower"><i class="el-icon-sunny"></i>{{ row.flower }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="需要数量" width="110" align="center">
+          <template slot-scope="{row}"><span class="td-need">× {{ row.need }}</span></template>
+        </el-table-column>
+        <el-table-column label="合成" width="70" align="center">
+          <template slot-scope=""><span class="td-arrow">→</span></template>
+        </el-table-column>
+        <el-table-column label="产物种子" min-width="150">
+          <template slot-scope="{row}">
+            <div class="seed-inline">
+              <img :src="'/static/picture/garden/' + (row.seed_img || ('s_s_' + row.seed_id + '.gif'))"
+                   class="td-img" :alt="row.seed_name" />
+              <span class="td-main">{{ row.seed_name }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="配方" min-width="180">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
-            <span class="mix-formula">
-              <i class="el-icon-sunny flower-dot" />{{ row.flower }}
-              <b class="mix-need">× {{ row.need }}</b>
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" header-align="center">
-          <template slot-scope="{row}">
-            <div class="ops">
-              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
-              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>
-            </div>
+            <el-button size="mini" type="primary" icon="el-icon-edit" circle title="编辑" @click="openDlg(row)" />
+            <el-button size="mini" type="danger" icon="el-icon-delete" circle title="删除" @click="del(row)" />
           </template>
         </el-table-column>
       </el-table>
-      <div class="pager" v-if="paged.length < filtered.length">
-        <el-pagination layout="prev, pager, next" :total="filtered.length" :page-size="pageSize" :current-page.sync="page" background />
+
+      <!-- 分页底部栏（始终显示） -->
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ filtered.length }}</b> 条 · 每页 {{ pageSize }} 条</div>
+        <el-pagination
+          small
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :total="filtered.length"
+          :page-size.sync="pageSize"
+          :current-page.sync="page"
+          :page-sizes="[5, 10, 20, 50]"
+          @size-change="page = 1"
+        />
       </div>
     </el-card>
 
@@ -102,7 +118,7 @@ export default {
   data () {
     return {
       list: [], seeds: [], loading: false, dlg: false, saving: false,
-      kw: '', page: 1, pageSize: 12,
+      kw: '', page: 1, pageSize: 5,
       form: { id: 0, seed_id: 0, flower: '', need: 1 }
     }
   },
@@ -161,22 +177,40 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 14px; }
-.stat-card { display: flex; align-items: center; background: #fff; border-radius: 10px; padding: 14px 16px; border: 1px solid #eef1f5; }
-.stat-ico { font-size: 28px; margin-right: 12px; }
-.s-purple .stat-ico { color: #7b1fa2; }
-.s-blue .stat-ico { color: #2e9cd3; }
-.s-orange .stat-ico { color: #fb8c00; }
-.stat-num { font-size: 22px; font-weight: bold; color: #333; line-height: 1.2; }
-.stat-lab { font-size: 12px; color: #999; }
-.toolbar { display: flex; align-items: center; margin-bottom: 12px; }
+.stat-row { margin-bottom: 18px; }
+.stat-card {
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
+  transition: box-shadow .2s, transform .2s;
+}
+.stat-card:hover { box-shadow: 0 6px 18px rgba(18,38,63,.09); transform: translateY(-2px); }
+.stat-ico {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
+}
+.s-purple .stat-ico { background: linear-gradient(135deg,#ab47bc,#6a1b9a); }
+.s-blue .stat-ico { background: linear-gradient(135deg,#29b6f6,#0288d1); }
+.s-orange .stat-ico { background: linear-gradient(135deg,#ffa726,#ef6c00); }
+.stat-info { display: flex; flex-direction: column; }
+.stat-num { font-size: 24px; font-weight: 700; color: #1f2d3d; line-height: 1; }
+.stat-lab { font-size: 12px; color: #8a9bb0; margin-top: 6px; letter-spacing: .3px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
 .grow { flex: 1; }
-.mix-cell { display: flex; align-items: center; gap: 8px; }
-.mix-prev { width: 36px; height: 36px; border-radius: 6px; background: #f5f9fc; border: 1px solid #e3eef8; object-fit: contain; }
-.mix-seed { font-size: 13px; color: #333; }
-.mix-formula { font-size: 13px; color: #555; }
-.flower-dot { color: #e91e63; margin-right: 2px; }
-.mix-need { color: #fb8c00; }
+
+/* 表格样式 */
+.td-img { width: 46px; height: 46px; object-fit: contain; border-radius: 6px; border: 1px solid #eef2f6; background: #f7fafc; vertical-align: middle; margin-right: 8px; }
+.seed-inline { display: flex; align-items: center; }
+.td-main { font-weight: 600; color: #303133; }
+.mix-flower { color: #d97b2b; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.mix-flower i { color: #fb8c00; }
+.td-need { font-weight: 600; color: #7b1fa2; }
+.td-arrow { color: #c9b8ab; font-size: 18px; font-weight: 700; }
+/* 分页 */
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+.pager-bar >>> .el-pagination { margin: 0; }
 .help-line { font-size: 12px; color: #999; margin-top: 4px; }
-.pager { margin-top: 12px; text-align: right; }
 </style>
