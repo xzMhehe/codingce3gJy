@@ -35,11 +35,11 @@
               空花盆 [<a href="javascript:;" @click="openSow(p)">播种</a>]<br/>
             </template>
             <template v-else-if="p.stage === 4">
-              <a href="javascript:;" @click="openHarvest(p)">{{ p.name }}</a>[<a href="javascript:;" @click="openHarvest(p)">收获</a>]<br/>
+              <a href="javascript:;" @click="openPlotPage(p)">{{ p.name }}</a>[<a href="javascript:;" @click="openHarvest(p)">收获</a>]<br/>
               (产{{ p.yield }}剩{{ p.amount }})<br/>
             </template>
             <template v-else>
-              <a href="javascript:;" @click="openPlot(p)">{{ p.seed }}</a>
+              <a href="javascript:;" @click="openPlotPage(p)">{{ p.seed }}</a>
               <span v-if="p.stage === 1"><a v-if="p.need_water" href="javascript:;" @click="care(p, 'water')">[浇水]</a></span>
               <span v-else-if="p.stage === 2"><a v-if="p.need_weed" href="javascript:;" @click="care(p, 'weed')">[锄草]</a></span>
               <span v-else-if="p.stage === 3"><a v-if="p.need_pest" href="javascript:;" @click="care(p, 'pest')">[捉虫]</a></span>
@@ -52,16 +52,13 @@
         </div>
         <br/>
 
-        <div class="name">消息</div>
+        <div class="name">消息<a href="javascript:;" @click="openMsgs">({{ msgs.length }})</a></div>
         <div class="list">
           <div class="row" v-for="(m, i) in msgs.slice(0, 3)" :key="m.id">
             {{ i + 1 }}.({{ m.time_txt || '' }})<b>{{ m.nick }}</b> {{ m.msg }}<br/>
           </div>
           <div class="row" v-if="!msgs.length">您没有消息.<br/></div>
-          <div class="row" v-if="msgs.length > 3"><a href="javascript:;" @click="msgMore = !msgMore">查看更多&gt;&gt;</a><br/></div>
-          <div class="row" v-for="m in (msgMore ? msgs.slice(3) : [])" :key="'x' + m.id">
-            {{ m.nick }}: {{ m.msg }}<br/>
-          </div>
+          <div class="row" v-if="msgs.length > 3"><a href="javascript:;" @click="openMsgs">查看更多&gt;&gt;</a><br/></div>
         </div>
         <br/>
 
@@ -124,7 +121,7 @@
         花种|价格|等级|普通<br/>
         <div class="list">
           <div class="row" v-for="s in pagedShop" :key="s.id">
-            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ s.price }}G币 <a href="javascript:;" @click="buy(s)">[购买]</a><br/>
+            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ s.price }}G币 <a href="javascript:;" @click="openSeedDetail(s)">[购买]</a><br/>
           </div>
           <div class="row" v-if="!pagedShop.length">商店暂无商品<br/></div>
           <div class="row" v-if="shop.length">
@@ -206,7 +203,7 @@
       <!-- ============ 参观花园（复刻 garden.asp） ============ -->
       <template v-else-if="cur === 'visit'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('friend')">好友</a>&gt;{{ visitNick }}的花园<br/></div>
-        <div class="name">{{ visitNick }} <img class="bicon" src="/static/image/noble_2_1.gif" alt="." />({{ vg.level }}级)</div>
+        <div class="name">主人:{{ visitNick }} [<a href="javascript:;" @click="openGiftToVisit">送花</a>] <img class="bicon" src="/static/image/noble_2_1.gif" alt="." />({{ vg.level }}级)</div>
         <div class="module-content deep">{{ vg.level }}级 {{ vg.level_name }}(经验 {{ vg.point }}/{{ vg.need }})</div>
         <div class="module-content">
           花之图谱:<a href="javascript:;" @click="msg = '只能查看自己的图谱'">{{ vg.common + vg.festival + vg.scarce }}/{{ vg.map_total }}</a><br/>珍稀:{{ vg.scarce }} 独特:{{ vg.festival }} 普通:{{ vg.common }}<br/>
@@ -233,14 +230,15 @@
       <template v-else-if="cur === 'basket'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;花房<br/></div>
         <div class="name">【我的花篮|<a href="javascript:;" @click="bottleShow = true">我的花瓶</a>】<br/></div>
+        <div class="module-content" v-if="basket.length">您收获和采摘的花均存放于您的花篮中,共有鲜花{{ basket.length }}种,{{ basketTotal }}朵<br/></div>
         <div class="text" v-if="!basket.length">暂无记录！<br/></div>
         <div class="list" v-if="basket.length">
           <div class="row" v-for="f in basket" :key="f.flower">
-            <img :src="flowerImg(f.flower)" class="map-icon" alt="." />{{ f.flower }}×{{ f.count }} <a href="javascript:;" @click="openGift(f)">[送花]</a><br/>
+            <img :src="flowerImg(f.flower)" class="map-icon" alt="." /><a href="javascript:;" @click="msg = f.flower + ' 花篮'">{{ f.flower }}</a>×{{ f.count }} <a href="javascript:;" @click="openGift(f)">[送花]</a><br/>
           </div>
         </div>
         <br/>
-        <a href="javascript:;" @click="switchTab('room')">合成</a>.<a href="javascript:;" @click="msg = '送花记录功能建设中'">送花记录</a><br/>
+        <a href="javascript:;" @click="openGift(null)">送花</a>.<a href="javascript:;" @click="switchTab('room')">合成</a>.<a href="javascript:;" @click="openGiftLog">送花记录</a><br/>
         <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
 
         <!-- 花瓶弹层 -->
@@ -293,6 +291,102 @@
         <div class="module-content">花园论坛建设中，敬请期待。<br/></div>
         <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
       </template>
+
+      <!-- ============ 花朵详情（复刻 plant.asp） ============ -->
+      <template v-else-if="cur === 'plot'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;花朵<br/></div>
+        <div class="module-content">【花朵】<br/></div>
+        <div class="module-content" v-if="curPlot">
+          <img :src="plotBigImg(curPlot)" alt="." /><br/>
+          {{ curPlot.stage === 4 ? curPlot.name : curPlot.seed }}<br/>
+          <span v-if="curPlot.stage === 1">健康:{{ curPlot.drys === 1 ? '良好' : '干旱 [<a href="javascript:;" @click="careFromPlot('water')">浇水</a>]' }}<br/></span>
+          <span v-else-if="curPlot.stage === 2">健康:{{ curPlot.weed === 1 ? '良好' : '长草 [<a href="javascript:;" @click="careFromPlot('weed')">锄草</a>]' }}<br/></span>
+          <span v-else-if="curPlot.stage === 3">健康:{{ curPlot.pest === 1 ? '良好' : '生虫 [<a href="javascript:;" @click="careFromPlot('pest')">捉虫</a>]' }}<br/></span>
+          <span v-else>健康:{{ curPlot.drys === 1 ? '' : '干旱 ' }}{{ curPlot.weed === 1 ? '' : '长草 ' }}{{ curPlot.pest === 1 ? '' : '生虫 ' }}<span v-if="curPlot.drys === 1 && curPlot.weed === 1 && curPlot.pest === 1">良好</span><br/></span>
+          <span v-if="curPlot.stage === 4">产量:{{ curPlot.amount }}/{{ curPlot.yield }}<br/>成长期:成熟 [<a href="javascript:;" @click="openHarvest(curPlot)">收获</a>]<br/></span>
+          <span v-else>成长期:{{ curPlot.remain_txt }}<br/></span>
+          <br/>
+          <a href="javascript:;" @click="openDelPlot">铲除</a><br/>
+        </div>
+        <a href="javascript:;" @click="switchTab('garden')">返回花园</a><br/>
+      </template>
+
+      <!-- ============ 种子详情（复刻 seed.asp） ============ -->
+      <template v-else-if="cur === 'seed'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('shop')">商店</a>&gt;种子<br/></div>
+        <div class="module-content">【花园商店】<br/></div>
+        <div class="module-content" v-if="curSeed">
+          <img :src="'/static/picture/garden/s_l_' + curSeed.id + '.gif'" alt="." /><br/>
+          {{ curSeed.name }}<br/>
+          花种等级:{{ curSeed.level_name }}<br/>
+          种子价格:{{ curSeed.price }}G币<br/>
+          VIP 价格:{{ curSeed.vip_price }}G币<br/>
+          预计成花:{{ curSeed.yield_avg }}朵<br/>
+          预计时间:{{ growTxt(curSeed) }}<br/>
+          鲜花花语:{{ curSeed.remark }}<br/>
+          <br/>
+          购买<input type="text" v-model.number="buyAmount" maxlength="2" size="2" value="1" />颗。<br/>
+          <a href="javascript:;" @click="buy(curSeed)">确定购买</a><br/>
+        </div>
+        <a href="javascript:;" @click="switchTab('shop')">返回商店</a><br/>
+      </template>
+
+      <!-- ============ 图谱详情（复刻 map.asp） ============ -->
+      <template v-else-if="cur === 'mapinfo'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('map')">图谱</a>&gt;{{ curMap.name }}<br/></div>
+        <div class="module-content">【花种图谱】<br/></div>
+        <div class="module-content" v-if="curMap">
+          <img :src="curMap.got ? ('/static/picture/garden/' + (curMap.img || ('m_l_' + curMap.id + '.gif'))) : '/static/picture/garden/m_l.gif'" alt="." /><br/>
+          {{ curMap.name }}<br/>
+          花种等级:{{ curMap.level_name }}<br/>
+          种子单价:{{ curMap.price }}G币<br/>
+          预计成花:{{ curMap.yield_avg }}朵<br/>
+          成花时间:{{ growTxt(curMap) }}<br/>
+          鲜花花语:{{ curMap.remark }}<br/>
+          购买{{ curMap.seed_name }}种子有一定几率种出{{ curMap.name }}，<a href="javascript:;" @click="goShopSeed(curMap)">去商店购买</a><br/>
+        </div>
+        <a href="javascript:;" @click="switchTab('map')">返回图谱</a><br/>
+      </template>
+
+      <!-- ============ 配方详情（复刻 room.asp） ============ -->
+      <template v-else-if="cur === 'roominfo'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('room')">魔法屋</a>&gt;{{ curRoom.name }}<br/></div>
+        <div class="module-content" v-if="curRoom">
+          {{ curRoom.name }}<br/>
+          花种等级:{{ curRoom.level }}级<br/>
+          合成需消耗:<br/>
+          <span v-for="(m, j) in curRoom.mats" :key="j">{{ m.flower }}({{ m.need }}/{{ m.have }})<br/></span>
+          <span v-if="curRoom.can" class="ok-txt"><a href="javascript:;" @click="mixFromRoom">合成</a><br/></span>
+          <span v-else>所需花朵不足，您目前还不能合成{{ curRoom.name }}。<br/></span>
+        </div>
+        <a href="javascript:;" @click="switchTab('room')">返回魔法屋</a><br/>
+      </template>
+
+      <!-- ============ 送花记录（复刻 basket_gift.asp） ============ -->
+      <template v-else-if="cur === 'giftlog'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('basket')">花篮</a>&gt;送花<br/></div>
+        <div class="module-content">【送花记录】<br/></div>
+        <div class="list">
+          <div class="row" v-for="(r, i) in giftLogs" :key="r.id">
+            {{ i + 1 }}.<a href="javascript:;" @click="visitUid(r.from_uid)">{{ r.from_nick }}</a>送{{ r.flower }}({{ r.amount }}朵)，赠言：{{ r.remark }} [{{ r.time_txt }}] [<a href="javascript:;" @click="regift(r)">再送</a>]<br/>
+          </div>
+          <div class="row" v-if="!giftLogs.length">暂无记录！<br/></div>
+        </div>
+        <a href="javascript:;" @click="switchTab('basket')">返回花篮</a><br/>
+      </template>
+
+      <!-- ============ 消息列表（复刻 message_list.asp） ============ -->
+      <template v-else-if="cur === 'msgs'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">我的花园</a>&gt;消息<br/></div>
+        <div class="module-content">【花园消息】<br/></div>
+        <div class="list">
+          <div class="row" v-for="(m, i) in msgs" :key="m.id">
+            {{ i + 1 }}.({{ m.time_txt || '' }})<b>{{ m.nick }}</b> {{ m.msg }}<br/>
+          </div>
+          <div class="row" v-if="!msgs.length">您没有消息！<br/></div>
+        </div>
+        <a href="javascript:;" @click="switchTab('garden')">返回我的花园</a><br/>
+      </template>
     </div>
 
     <!-- 播种弹层 -->
@@ -325,8 +419,11 @@
     <!-- 送花弹层 -->
     <div class="mask" v-if="giftBox" @click.self="giftBox = false">
       <div class="panel">
-        <div class="name">送花（{{ giftTarget.flower }}）</div>
+        <div class="name">送花（{{ giftTarget.flower || '选择花朵' }}）</div>
         <div class="module-content">
+          <span v-if="!giftTarget.flower">花朵：<select v-model="giftPickFlower">
+            <option v-for="f in basket" :key="f.flower" :value="f.flower">{{ f.flower }}×{{ f.count }}</option>
+          </select><br/></span>
           收花好友：<input v-model.trim="giftTo" placeholder="好友昵称" style="width:120px" /><br/>
           数量：<input v-model.number="giftAmount" type="number" min="1" style="width:60px" /><br/>
           寄语：<input v-model.trim="giftRemark" style="width:160px" /><br/>
@@ -367,17 +464,18 @@ export default {
       friends: [], vplots: [], vg: {}, visitNick: '', roomList: [], shop: [], mapList: [], mapTy: 0,
       activities: [], selAct: null, amount: 1, msgs: [], recentMaps: [],
       elfList: [], elvesUnlocked: 0, elvesTotal: 0,
-      rankList: [], helpList, helpOpen: -1, msgMore: false,
+      rankList: [], helpList, helpOpen: -1,
       mapWd: '', mapPage: 1, shopTy: 0, shopPage: 1, roomWd: '', roomPage: 1,
       sowBox: false, sowTarget: null, setBox: false, setAct: 1, setName: '', setNotice: '', setConfig: 0,
-      giftBox: false, giftTarget: {}, giftTo: '', giftAmount: 1, giftRemark: '希望你开心快乐！',
-      bottleShow: false,
+      giftBox: false, giftTarget: {}, giftTo: '', giftAmount: 1, giftRemark: '希望你开心快乐！', giftPickFlower: '',
+      bottleShow: false, curPlot: null, curSeed: null, curMap: null, curRoom: null, giftLogs: [], buyAmount: 1,
       okMsg: '', msg: ''
     }
   },
   computed: {
     nick () { return (this.$store.state.user || {}).nickname || '神秘园丁' },
     emptyCount () { return this.plots.filter(p => p.stage === 0).length },
+    basketTotal () { return this.basket.reduce((s, f) => s + f.count, 0) },
     filteredMaps () {
       if (!this.mapWd) return this.mapList
       return this.mapList.filter(m => m.name.indexOf(this.mapWd) !== -1)
@@ -486,18 +584,64 @@ export default {
     searchRoom () { this.roomPage = 1 },
     openMap () { this.cur = 'map'; this.mapPage = 1; this.mapWd = ''; this.loadMap(0) },
     openElves () { this.cur = 'elves'; this.loadElves() },
-    openMapDetail (m) {
-      const got = m.got ? '已点亮' : '未点亮'
-      this.msg = ''; this.okMsg = ''
-      this.msg = m.name + '：' + got
+    openMsgs () { this.cur = 'msgs' },
+    openGiftLog () { this.cur = 'giftlog'; this.loadGiftLog() },
+    loadGiftLog () {
+      api.get('/games/garden/giftlog').then(r => { if (r.code === 0) this.giftLogs = r.data || [] })
+    },
+    regift (r) {
+      // 再送：向原送花人回送同样花朵
+      this.giftTarget = { flower: r.flower }
+      this.giftTo = r.from_nick
+      this.giftAmount = r.amount
+      this.giftRemark = '回赠' + r.flower
+      this.giftBox = true
+    },
+    openMapDetail (m) { this.curMap = m; this.cur = 'mapinfo' },
+    goShopSeed (m) {
+      // 去商店购买对应种子（图谱详情）
+      this.switchTab('shop')
+      this.shopTy = 0
+      const sd = this.shop.find(s => s.id === m.seed_id)
+      if (sd) this.openSeedDetail(sd)
     },
     openElfDetail (e) {
       this.msg = e.name + '：' + (e.unlocked ? '已开启，唤醒需点亮图谱 ' + e.need_map + ' 个' : '未开启，点亮 ' + e.need_map + ' 个图谱后开启。' + (e.desc || ''))
     },
-    openSeedDetail (s) { this.msg = s.name + '：' + (s.remark || '') },
+    openSeedDetail (s) { this.curSeed = s; this.buyAmount = 1; this.cur = 'seed' },
     openBagSeed (b) { this.msg = b.seed_name + ' 种子，共 ' + b.count + ' 颗' },
-    openRoomDetail (s) { this.msg = s.name + '：' + (s.mix_txt || (s.mats || []).map(m => m.flower + '×' + m.need).join('，')) },
+    growTxt (s) {
+      const mins = (s.seed || 0) + (s.ling || 0) + (s.buds || 0)
+      return mins >= 60 ? (Math.round(mins / 6) / 10 + '小时') : (mins + '分钟')
+    },
+    openRoomDetail (s) { this.curRoom = s; this.cur = 'roominfo' },
+    mixFromRoom () { this.mix(this.curRoom) },
     openPlot (p) { this.msg = p.seed + ' ' + p.stage_name + ' ' + p.remain_txt },
+    openPlotPage (p) {
+      this.curPlot = p
+      this.cur = 'plot'
+      this.loadPlotDetail(p.id)
+    },
+    loadPlotDetail (id) {
+      // 详情数据来自 view 里最新的花圃（含 drys/weed/pest/yield/amount/remain_txt）
+      const p = this.plots.find(x => x.id === id)
+      if (p) this.curPlot = p
+    },
+    plotBigImg (p) {
+      if (!p) return '/static/picture/garden/m_s.gif'
+      if (p.stage === 4) {
+        return '/static/picture/garden/' + (p.map_id ? ('m_l_' + p.map_id + '.gif') : 'm_l.gif')
+      }
+      return '/static/picture/garden/s_l_' + (p.seed_id || 0) + '.gif'
+    },
+    careFromPlot (kind) { this.care(this.curPlot, kind) },
+    openDelPlot () {
+      if (!window.confirm('确定铲除该株花朵吗？')) return
+      const fd = new FormData(); fd.append('id', this.curPlot.id)
+      api.post('/games/garden/delplot', fd).then(r => {
+        if (r.code === 0) { this.okMsg = r.data.msg || '铲除花朵成功'; this.cur = 'garden'; this.load() } else this.msg = r.msg
+      })
+    },
     openSowFirst () {
       const empty = this.plots.find(p => p.stage === 0)
       if (empty) this.openSow(empty)
@@ -572,12 +716,30 @@ export default {
         if (r.code === 0) { this.okMsg = r.data.msg; this.loadBasket(); this.visitGarden({ id: this.vg.user_id }) } else this.msg = r.msg
       })
     },
-    openGift (f) { this.giftBox = true; this.giftTarget = f; this.giftTo = ''; this.giftAmount = 1; this.giftRemark = '希望你开心快乐！' },
+    openGift (f) {
+      this.giftBox = true
+      this.giftTarget = f || {}
+      this.giftPickFlower = f ? f.flower : ''
+      this.giftTo = ''
+      this.giftAmount = 1
+      this.giftRemark = '希望你开心快乐！'
+    },
+    openGiftToVisit () {
+      // 参观页送花：目标 = 被参观园主，花从花篮选
+      this.giftBox = true
+      this.giftTarget = {}
+      this.giftPickFlower = ''
+      this.giftTo = this.visitNick
+      this.giftAmount = 1
+      this.giftRemark = '希望你开心快乐！'
+    },
     sendGift () {
+      const flower = this.giftTarget.flower || this.giftPickFlower
+      if (!flower) { this.msg = '请选择要送的花朵'; return }
       if (!this.giftTo) { this.msg = '请填写收花好友昵称'; return }
       const target = this.friends.find(x => x.nickname === this.giftTo) || this.friends.find(x => String(x.id) === this.giftTo)
       if (!target) { this.msg = '只能给好友送花'; return }
-      api.post('/games/garden/gift', { to_uid: target.id, flower: this.giftTarget.flower, amount: this.giftAmount || 1, remark: this.giftRemark }).then(r => {
+      api.post('/games/garden/gift', { to_uid: target.id, flower: flower, amount: this.giftAmount || 1, remark: this.giftRemark }).then(r => {
         if (r.code === 0) { this.okMsg = r.data.msg || '赠送成功'; this.giftBox = false; this.loadBasket() } else this.msg = r.msg
       })
     },
@@ -587,8 +749,9 @@ export default {
       })
     },
     buy (s) {
-      api.post('/games/garden/buy', { id: s.id, amount: 1 }).then(r => {
-        if (r.code === 0) { this.okMsg = '成功购买' + s.name + '种子1颗'; this.coins = r.data.coins; this.loadBag() } else this.msg = r.msg
+      const n = this.buyAmount && this.buyAmount > 0 ? Math.min(this.buyAmount, 99) : 1
+      api.post('/games/garden/buy', { id: s.id, amount: n }).then(r => {
+        if (r.code === 0) { this.okMsg = '成功购买' + s.name + '种子' + n + '颗'; this.coins = r.data.coins; this.loadBag() } else this.msg = r.msg
       })
     },
     submitActivity () {

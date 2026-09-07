@@ -140,6 +140,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/games/garden/sow", gardenH.Sow)
 			authed.POST("/games/garden/care/:kind", gardenH.Care)
 			authed.POST("/games/garden/harvest", gardenH.Harvest)
+			authed.POST("/games/garden/delplot", gardenH.DelPlot)
 			authed.POST("/games/garden/pick", gardenH.Pick)
 			authed.POST("/games/garden/addland", gardenH.AddLand)
 			authed.GET("/games/garden/basket", gardenH.Basket)

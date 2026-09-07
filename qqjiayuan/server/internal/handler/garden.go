@@ -19,15 +19,17 @@ type GardenHandler struct{ DB *gorm.DB }
 // ============ 种子与图鉴数据（数据库驱动，空表回退内置默认；管理端可维护） ============
 
 type seedDef struct {
-	Name  string
-	DType int    // 0普通可购买 1特殊(魔法屋合成)
-	Level int    // 购买所需花园等级
-	Price int    // 金币价格
-	Seed  int    // 种子期 分钟
-	Ling  int    // 花苗期 分钟
-	Buds  int    // 花蕾期 分钟
-	Less  int    // 最低产量
-	More  int    // 最高产量
+	ID     uint
+	Name   string
+	DType  int    // 0普通可购买 1特殊(魔法屋合成)
+	Level  int    // 购买所需花园等级
+	Price  int    // 金币价格
+	Seed   int    // 种子期 分钟
+	Ling   int    // 花苗期 分钟
+	Buds   int    // 花蕾期 分钟
+	Less   int    // 最低产量
+	More   int    // 最高产量
+	Remark string // 鲜花花语
 }
 
 type mapDef struct {
@@ -44,22 +46,22 @@ type mixDef struct {
 
 // 内置默认（seed 幂等写入 garden_seeds / garden_maps / garden_mixes，表空时兜底用）
 var defaultSeeds = []seedDef{
-	{"向日葵", 0, 1, 5, 1, 1, 1, 2, 4},
-	{"玫瑰花", 0, 1, 10, 1, 1, 2, 3, 5},
-	{"郁金香", 0, 2, 20, 2, 2, 2, 3, 6},
-	{"月光花", 0, 3, 40, 2, 2, 3, 4, 8},
-	{"百合花", 0, 4, 80, 3, 3, 3, 5, 10},
-	{"牡丹", 0, 5, 150, 3, 4, 4, 6, 12},
-	{"蓝色妖姬", 0, 7, 300, 4, 5, 5, 8, 16},
-	{"樱花", 0, 9, 500, 5, 6, 6, 10, 20},
-	{"天山雪莲", 0, 12, 800, 6, 8, 8, 12, 24},
+	{Name: "向日葵", DType: 0, Level: 1, Price: 5, Seed: 1, Ling: 1, Buds: 1, Less: 2, More: 4, Remark: "阳光,明亮,爱慕"},
+	{Name: "玫瑰花", DType: 0, Level: 1, Price: 10, Seed: 1, Ling: 1, Buds: 2, Less: 3, More: 5, Remark: "爱情,美丽,热情"},
+	{Name: "郁金香", DType: 0, Level: 2, Price: 20, Seed: 2, Ling: 2, Buds: 2, Less: 3, More: 6, Remark: "爱的表白,荣誉,祝福"},
+	{Name: "月光花", DType: 0, Level: 3, Price: 40, Seed: 2, Ling: 2, Buds: 3, Less: 4, More: 8, Remark: "梦幻,纯洁,相思"},
+	{Name: "百合花", DType: 0, Level: 4, Price: 80, Seed: 3, Ling: 3, Buds: 3, Less: 5, More: 10, Remark: "纯洁,庄严,心心相印"},
+	{Name: "牡丹", DType: 0, Level: 5, Price: 150, Seed: 3, Ling: 4, Buds: 4, Less: 6, More: 12, Remark: "圆满,浓情,富贵"},
+	{Name: "蓝色妖姬", DType: 0, Level: 7, Price: 300, Seed: 4, Ling: 5, Buds: 5, Less: 8, More: 16, Remark: "清纯的爱,敦厚善良"},
+	{Name: "樱花", DType: 0, Level: 9, Price: 500, Seed: 5, Ling: 6, Buds: 6, Less: 10, More: 20, Remark: "生命,幸福,热烈"},
+	{Name: "天山雪莲", DType: 0, Level: 12, Price: 800, Seed: 6, Ling: 8, Buds: 8, Less: 12, More: 24, Remark: "纯白的爱,坚韧,圣洁"},
 	// 魔法屋合成产物（特殊种子）
-	{"银色菊花", 1, 3, 0, 2, 2, 2, 4, 8},
-	{"银野花", 1, 4, 0, 2, 3, 3, 5, 10},
-	{"端阳花", 1, 5, 0, 3, 3, 3, 6, 12},
-	{"银友谊花", 1, 6, 0, 3, 4, 4, 7, 14},
-	{"银色烈焰焚情", 1, 8, 0, 4, 5, 5, 8, 16},
-	{"金色烈焰焚情", 1, 10, 0, 5, 6, 6, 10, 20},
+	{Name: "银色菊花", DType: 1, Level: 3, Price: 0, Seed: 2, Ling: 2, Buds: 2, Less: 4, More: 8, Remark: "银色思念,静谧"},
+	{Name: "银野花", DType: 1, Level: 4, Price: 0, Seed: 2, Ling: 3, Buds: 3, Less: 5, More: 10, Remark: "银色梦想,自由"},
+	{Name: "端阳花", DType: 1, Level: 5, Price: 0, Seed: 3, Ling: 3, Buds: 3, Less: 6, More: 12, Remark: "端午安康,平安"},
+	{Name: "银友谊花", DType: 1, Level: 6, Price: 0, Seed: 3, Ling: 4, Buds: 4, Less: 7, More: 14, Remark: "银色友谊,长存"},
+	{Name: "银色烈焰焚情", DType: 1, Level: 8, Price: 0, Seed: 4, Ling: 5, Buds: 5, Less: 8, More: 16, Remark: "银色烈焰,炙热"},
+	{Name: "金色烈焰焚情", DType: 1, Level: 10, Price: 0, Seed: 5, Ling: 6, Buds: 6, Less: 10, More: 20, Remark: "金色烈焰,永恒"},
 }
 
 var defaultMaps = []mapDef{
@@ -117,7 +119,7 @@ func (h *GardenHandler) loadSeeds() []model.GardenSeed {
 	h.DB.Order("id ASC").Find(&rows)
 	if len(rows) == 0 {
 		for i, d := range defaultSeeds {
-			rows = append(rows, model.GardenSeed{ID: uint(i + 1), Name: d.Name, DType: d.DType, Level: d.Level, Price: d.Price, Seed: d.Seed, Ling: d.Ling, Buds: d.Buds, Less: d.Less, More: d.More, Status: 1})
+			rows = append(rows, model.GardenSeed{ID: uint(i + 1), Name: d.Name, DType: d.DType, Level: d.Level, Price: d.Price, Seed: d.Seed, Ling: d.Ling, Buds: d.Buds, Less: d.Less, More: d.More, Remark: d.Remark, Status: 1})
 		}
 	}
 	return rows
@@ -150,11 +152,12 @@ func (h *GardenHandler) seedByID(id uint) *seedDef {
 	rows := h.loadSeeds()
 	for _, s := range rows {
 		if s.ID == id && s.Status == 1 {
-			return &seedDef{Name: s.Name, DType: s.DType, Level: s.Level, Price: s.Price, Seed: s.Seed, Ling: s.Ling, Buds: s.Buds, Less: s.Less, More: s.More}
+			return &seedDef{ID: s.ID, Name: s.Name, DType: s.DType, Level: s.Level, Price: s.Price, Seed: s.Seed, Ling: s.Ling, Buds: s.Buds, Less: s.Less, More: s.More, Remark: s.Remark}
 		}
 	}
 	if id > 0 && uint(id) <= uint(len(defaultSeeds)) {
 		d := defaultSeeds[id-1]
+		d.ID = id
 		return &d
 	}
 	return nil
@@ -665,8 +668,10 @@ func (h *GardenHandler) Shop(c *gin.Context) {
 		if sd.DType != 0 || sd.Status == 0 {
 			continue
 		}
-		out = append(out, gin.H{"id": sd.ID, "name": sd.Name, "level": sd.Level, "price": sd.Price,
+		out = append(out, gin.H{"id": sd.ID, "name": sd.Name, "level": sd.Level, "level_name": gardenLevelName(sd.Level), "price": sd.Price, "vip_price": sd.Price * 8 / 10,
 			"seed": sd.Seed, "ling": sd.Ling, "buds": sd.Buds, "less": sd.Less, "more": sd.More,
+			"yield_avg": (sd.Less + sd.More) / 2,
+			"hours": float64(int(float64(sd.Seed+sd.Ling+sd.Buds)/60*10)) / 10,
 			"remark": sd.Remark, "garden_level": g.Level})
 	}
 	resp.OK(c, out)
@@ -878,6 +883,31 @@ func (h *GardenHandler) Harvest(c *gin.Context) {
 	resp.OK(c, gin.H{"flower": flower, "amount": amount, "exp": exp, "money": money, "coins": u.Coins, "msg": "收获成功！经验值+" + strconv.Itoa(exp) + "，金币+" + strconv.Itoa(money)})
 }
 
+// 铲除花朵（对齐 plant_del：清空地里的花，返还地块）
+func (h *GardenHandler) DelPlot(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	pid, _ := strconv.Atoi(c.PostForm("id"))
+	if pid == 0 {
+		resp.ParamError(c, "请选择花圃")
+		return
+	}
+	var plot model.GardenPlot
+	if err := h.DB.First(&plot, pid).Error; err != nil || plot.UserID != uid {
+		resp.ParamError(c, "无此花朵")
+		return
+	}
+	if plot.Status == 0 || plot.SeedID == 0 {
+		resp.ParamError(c, "这个花盆是空的")
+		return
+	}
+	h.DB.Model(&plot).Updates(map[string]interface{}{
+		"seed_id": 0, "name": "", "drys": 0, "weed": 0, "pest": 0,
+		"yield": 0, "amount": 0, "status": 0, "seed_at": nil,
+	})
+	h.DB.Where("land_id = ?", plot.ID).Delete(&model.GardenLandLog{})
+	resp.OK(c, gin.H{"msg": "铲除花朵成功"})
+}
+
 // 采摘（好友）：每花圃每人限 1 次，花圃剩>=2 才能摘
 func (h *GardenHandler) Pick(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -1033,7 +1063,24 @@ func (h *GardenHandler) GiftLog(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var rows []model.GardenGift
 	h.DB.Where("from_uid = ? OR to_uid = ?", uid, uid).Order("id DESC").Limit(50).Find(&rows)
-	resp.OK(c, rows)
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		var fu, tu model.User
+		fromNick, toNick := "?", "?"
+		if err := h.DB.First(&fu, r.FromUID).Error; err == nil {
+			fromNick = fu.Nickname
+		}
+		if err := h.DB.First(&tu, r.ToUID).Error; err == nil {
+			toNick = tu.Nickname
+		}
+		out = append(out, gin.H{
+			"id": r.ID, "from_uid": r.FromUID, "to_uid": r.ToUID,
+			"from_nick": fromNick, "to_nick": toNick,
+			"flower": r.Flower, "amount": r.Amount, "remark": r.Remark,
+			"time_txt": timeAgo(r.CreatedAt),
+		})
+	}
+	resp.OK(c, out)
 }
 
 // 魔法屋：合成列表
@@ -1152,7 +1199,18 @@ func (h *GardenHandler) MapList(c *gin.Context) {
 		if img == "" {
 			img = "m_s_" + strconv.Itoa(int(md.ID)) + ".gif"
 		}
-		out = append(out, gin.H{"id": md.ID, "name": md.Name, "dtype": md.DType, "img": img, "got": got[md.ID]})
+		item := gin.H{"id": md.ID, "name": md.Name, "dtype": md.DType, "img": img, "got": got[md.ID]}
+		// 图谱详情（对齐 map.asp：花种等级/单价/预计成花/成花时间/花语）
+		if sd := h.seedByID(md.SeedID); sd != nil {
+			item["seed_id"] = sd.ID
+			item["seed_name"] = sd.Name
+			item["level_name"] = gardenLevelName(sd.Level)
+			item["price"] = sd.Price
+			item["yield_avg"] = (sd.Less + sd.More) / 2
+			item["hours"] = float64(int(float64(sd.Seed+sd.Ling+sd.Buds)/60*10)) / 10
+			item["remark"] = sd.Remark
+		}
+		out = append(out, item)
 	}
 	var g model.Garden
 	h.DB.Where("user_id = ?", uid).First(&g)
@@ -1202,7 +1260,7 @@ func (h *GardenHandler) Msgs(c *gin.Context) {
 		if err := h.DB.First(&u, r.UID).Error; err == nil {
 			nick = u.Nickname
 		}
-		out = append(out, gin.H{"uid": r.UID, "nickname": nick, "remark": r.Remark, "created_at": r.CreatedAt})
+		out = append(out, gin.H{"uid": r.UID, "nickname": nick, "remark": r.Remark, "created_at": r.CreatedAt, "time_txt": timeAgo(r.CreatedAt)})
 	}
 	resp.OK(c, out)
 }
