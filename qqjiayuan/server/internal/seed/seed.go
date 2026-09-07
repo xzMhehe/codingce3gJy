@@ -447,7 +447,11 @@ func syncDir(db *gorm.DB, staticDir string) int {
 			var n int64
 			db.Model(&model.Resource{}).Where("file = ?", file).Count(&n)
 			if n == 0 {
-				db.Create(&model.Resource{File: file, Category: "other", Name: strings.TrimSuffix(name, ext), Status: 1})
+				short := strings.TrimSuffix(name, ext)
+				if len(short) > 30 {
+					short = short[:30]
+				}
+				db.Create(&model.Resource{File: file, Category: "other", Name: short, Status: 1})
 				added++
 			}
 		}

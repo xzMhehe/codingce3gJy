@@ -1,0 +1,21 @@
+# air 热重载配置 —— 后端开发模式启动
+# 用法: 在 qqjiayuan/server 目录下执行 air
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server.exe ."
+  bin = "./tmp/server.exe"
+  full_bin = ""
+  include_ext = ["go", "yaml", "toml", "html"]
+  exclude_dir = ["tmp", "dist", "node_modules", ".git"]
+  exclude_regex = ["_test\\.go$"]
+  delay = 1000
+  stop_on_error = true
+  log = "build-errors.log"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

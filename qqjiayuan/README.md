@@ -43,6 +43,9 @@ qqjiayuan/
         ├── views/          # 广场/登录/注册/板块/帖子/签到/好友/私信/聊天室/导航/游戏大厅/管理后台...
         ├── components/admin/  # 管理后台五个面板
         └── assets/style.css   # 复刻自演示站的 WAP 风格样式
+
+另外还有一个独立管理端：
+└── admin-web/              # Vue 2.7 管理后台（8001 端口，/admin-ui/ 入口，独立于 web）
 ```
 
 ## 快速开始
@@ -93,6 +96,30 @@ npm run build
 cd web && npm run serve     # 前端热更新在 http://localhost:8000，/api 代理到 8080
 cd server && go run .       # 后端照常
 ```
+
+### 5. 开发阶段热更新启动（推荐：改代码自动生效，免手动重编译）
+
+后端用 **air** 监听 `.go` 文件变化自动重编译重启；两个前端 `npm run serve` 自带 HMR 热模块替换。
+
+```bash
+# ① 后端（air 热重载，监听 server 下 .go/.yaml 变化）
+cd qqjiayuan/server
+air                    # 首次需安装: go install github.com/air-verse/air@latest
+
+# ② 用户端（HMR 热更新，端口 8000，/api 代理到 8080）
+cd qqjiayuan/web
+npm run serve
+
+# ③ 管理端（HMR 热更新，端口 8001，入口 /admin-ui/，/api 与 /static 代理到 8080）
+cd qqjiayuan/admin-web
+npm run serve
+```
+
+> 说明：
+> - 改 Go 代码后 air 自动 `build + restart`，无需手动 `go run`；编译失败会输出到 `server/build-errors.log`。
+> - 改 Vue 代码后浏览器自动热更新，无需刷新（个别情况 F5 一下）。
+> - 生产部署仍用 `npm run build` + `go build`，热更新仅限开发阶段。
+> - air 配置见 `server/.air.toml`（监听 .go/.yaml/.toml/.html，排除 tmp/dist/node_modules）。
 
 ## 演示账号
 
