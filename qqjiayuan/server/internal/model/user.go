@@ -48,6 +48,7 @@ type User struct {
 	LastLoginAt   *time.Time `json:"last_login_at"`
 	ActiveDays    float64    `gorm:"default:0" json:"active_days"`  // 家园活跃天数
 	LastActiveDate string    `gorm:"type:varchar(10)" json:"last_active_date"` // 最后活跃日期(去重)
+	InvitedBy     uint       `gorm:"default:0" json:"invited_by"`   // 邀请人（0=自然注册）
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Roles        []Role  `gorm:"many2many:user_roles;" json:"roles,omitempty"`

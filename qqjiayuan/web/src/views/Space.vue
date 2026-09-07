@@ -46,13 +46,27 @@
           <input type="submit" value="发表" />
         </form>
         <template v-if="isOwner">
-          <a href="javascript:;" @click="showLogForm = !showLogForm">写日志</a>.<a href="javascript:;">传相片</a>.<a href="javascript:;">传文件</a><br>
+          <a href="javascript:;" @click="showLogForm = !showLogForm">写日志</a>.<a href="javascript:;" @click="showPhotoForm = !showPhotoForm">传相片</a><br>
           <template v-if="showLogForm">
             <form @submit.prevent="addArticle">
               日志标题:<input type="text" v-model.trim="articleForm.title" maxlength="100" /><br>
               日志内容:<br>
               <textarea v-model.trim="articleForm.content" rows="5"></textarea><br>
               <input type="submit" value="发表日志" /> <a href="javascript:;" @click="showLogForm = false">取消</a>
+            </form>
+          </template>
+          <template v-if="showPhotoForm">
+            <form @submit.prevent="addPhoto">
+              选择相册:
+              <select v-model.number="photoForm.albumId">
+                <option v-for="al in albums" :key="al.id" :value="al.id">{{ al.name }}({{ al.count || 0 }})</option>
+                <option :value="0">+ 新建相册</option>
+              </select>
+              <input v-if="photoForm.albumId === 0" type="text" v-model.trim="photoForm.newAlbum" maxlength="50" placeholder="新相册名" size="10" />
+              <br>
+              相片说明:<input type="text" v-model.trim="photoForm.caption" maxlength="100" size="15" /><br>
+              <input type="file" accept="image/*" @change="onPhotoFile" /> <span v-if="photoForm.name" class="txt-fade">{{ photoForm.name }}</span><br>
+              <input type="submit" value="上传" /> <a href="javascript:;" @click="showPhotoForm = false">取消</a>
             </form>
           </template>
         </template>
@@ -104,17 +118,28 @@
         </template>
         <span v-else>暂无心情</span><br>
 
-        【<a href="javascript:;" @click="$router.push('/profile')">日志</a>】<br>
+        【<a href="javascript:;" @click="$router.push('/space/article/'+a.id)">日志</a>】<br>
         <template v-if="articles.length">
           <div v-for="a in articles" :key="'ha'+a.id">
-            <a href="javascript:;" @click="viewArticle(a)">{{ a.title }}</a>({{ fmtTime(a.created_at) }})<template v-if="isOwner">.<a href="javascript:;" @click="delArticle(a.id)">删除</a></template>
+            <a href="javascript:;" @click="$router.push('/space/article/'+a.id)">{{ a.title }}</a>({{ fmtTime(a.created_at) }})<template v-if="isOwner">.<a href="javascript:;" @click="delArticle(a.id)">删除</a></template>
           </div>
         </template>
         <span v-else>暂无日志</span><br>
 
-        【<a href="javascript:;">相册</a>】<br>
+        【<a href="javascript:;" @click="curAlbum = null">相册</a>】<br>
         <template v-if="albums.length">
-          <span v-for="al in albums" :key="al.id"><a href="javascript:;">{{ al.name }}({{ al.count || 0 }})</a> </span>
+          <span v-for="al in albums" :key="al.id"><a href="javascript:;" @click="showAlbum(al)">{{ al.name }}({{ al.count || 0 }})</a> </span>
+          <div v-if="curAlbum">
+            <b>【{{ curAlbum.name }}】</b> <a href="javascript:;" @click="curAlbum = null">收起</a><br>
+            <template v-if="curAlbum.photos.length">
+              <div v-for="p in curAlbum.photos" :key="p.id">
+                <img :src="p.photo_base64 || ''" alt="." style="max-width:180px;display:block" />
+                <span v-if="p.caption" class="txt-fade">{{ p.caption }}</span>
+                <template v-if="isOwner">.<a href="javascript:;" @click="delPhoto(p.id)">删除</a></template><br>
+              </div>
+            </template>
+            <span v-else>这个相册还没有照片</span>
+          </div>
         </template>
         <span v-else>暂无相册</span><br>
 
@@ -127,6 +152,7 @@
         <span v-else>暂无留言</span>
         <form v-if="isLogin && !isOwner" @submit.prevent="addSpaceMsg">
           <input type="text" v-model.trim="spaceMsgContent" maxlength="300" size="20" placeholder="给TA留言" />
+          <label><input type="checkbox" v-model="spaceMsgPrivate" />悄悄话</label>
           <input type="submit" value="留言" />
         </form><br>
 
@@ -202,6 +228,10 @@ export default {
       showOpen: false,
       showEditSpace: false,
       showLogForm: false,
+      showPhotoForm: false,
+      photoForm: { albumId: 0, newAlbum: '', caption: '', file: null, name: '' },
+      curAlbum: null,
+      spaceMsgPrivate: false,
       openForm: { name: '', signature: '', intro: '' },
       editForm: { name: '', signature: '', intro: '' },
       articleForm: { title: '', content: '' },
@@ -356,16 +386,56 @@ export default {
     delArticle (id) {
       api.delete('/space/article/' + id).then(() => this.loadArticles())
     },
-    viewArticle (a) {
-      this.$alert('<div style="white-space:pre-wrap">' + a.content + '</div>', a.title, { dangerouslyUseHTMLString: true }).catch(() => {})
-    },
     addSpaceMsg () {
       if (!this.spaceMsgContent) return
-      api.post('/space/message/' + this.userId, { content: this.spaceMsgContent }).then(r => {
+      api.post('/space/message/' + this.userId, { content: this.spaceMsgContent, mtype: this.spaceMsgPrivate ? 1 : 0 }).then(r => {
         if (r.code === 0) {
           this.spaceMsgContent = ''
+          this.spaceMsgPrivate = false
           this.loadSpaceMsgs()
         }
+      })
+    },
+    onPhotoFile (e) {
+      const f = e.target.files && e.target.files[0]
+      if (!f) return
+      if (f.size > 3 * 1024 * 1024) { this.tip = '图片太大，请压缩到 3MB 以内'; return }
+      const reader = new FileReader()
+      reader.onload = () => { this.photoForm.file = reader.result; this.photoForm.name = f.name }
+      reader.readAsDataURL(f)
+    },
+    addPhoto () {
+      if (!this.photoForm.file) { this.tip = '请选择要上传的相片'; return }
+      const doUpload = (albumId) => {
+        api.post('/space/albums/' + albumId + '/photos', {
+          caption: this.photoForm.caption,
+          photo_base64: this.photoForm.file,
+          format: (this.photoForm.name.split('.').pop() || 'jpg').toLowerCase()
+        }).then(r => {
+          if (r.code === 0) {
+            this.tip = '上传成功'
+            this.photoForm = { albumId: 0, newAlbum: '', caption: '', file: null, name: '' }
+            this.showPhotoForm = false
+            this.loadAlbums()
+          } else { this.tip = r.msg || '上传失败' }
+        }).catch(() => { this.tip = '上传失败，请稍后再试' })
+      }
+      if (this.photoForm.albumId > 0) { doUpload(this.photoForm.albumId); return }
+      // 新建相册
+      if (!this.photoForm.newAlbum) { this.tip = '请选择相册或填写新相册名'; return }
+      api.post('/space/album', { name: this.photoForm.newAlbum }).then(r => {
+        if (r.code === 0) doUpload(r.data.id)
+      })
+    },
+    showAlbum (al) {
+      api.get('/space/albums/' + al.id + '/photos').then(r => {
+        if (r.code === 0) this.curAlbum = { id: al.id, name: al.name, photos: r.data.list || [] }
+      })
+    },
+    delPhoto (id) {
+      api.delete('/space/photos/' + id).then(() => {
+        if (this.curAlbum) this.showAlbum({ id: this.curAlbum.id, name: this.curAlbum.name })
+        this.loadAlbums()
       })
     },
     delSpaceMsg (id) {

@@ -24,6 +24,7 @@ type regReq struct {
 	Nickname string `json:"nickname" binding:"required,min=1,max=20"`
 	Password string `json:"password" binding:"required,min=6,max=20"`
 	Gender   int    `json:"gender"`
+	Invite   string `json:"invite"` // 邀请码（邀请开通家园）
 }
 
 // 注册：昵称+性别+密码，系统自动分配家园号码（靓号）
@@ -63,6 +64,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	var member model.Role
 	h.DB.Where("code = ?", "member").First(&member)
 	h.DB.Model(&user).Association("Roles").Append(&member)
+
+	// 邀请开通家园：记录邀请关系 + 双方奖励（诺哈 promo 推荐奖励）
+	if code := strings.TrimSpace(req.Invite); code != "" {
+		applyInvite(h.DB, &user, code)
+	}
 
 	h.DB.Create(&model.Notification{
 		UserID: user.ID, Type: "system",

@@ -122,5 +122,6 @@ func (h *BoardHandler) CreateThread(c *gin.Context) {
 	}
 	h.DB.Model(&board).UpdateColumn("thread_count", gorm.Expr("thread_count + 1"))
 	addExpAndCoins(h.DB, uid, 10, 5, 3, "post", "发布帖子")
+	addHomeNews(h.DB, uid, 0, 1, th.ID, "发表了帖子《"+th.Title+"》")
 	resp.OK(c, gin.H{"id": th.ID})
 }

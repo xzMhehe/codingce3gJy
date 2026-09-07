@@ -46,6 +46,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	ttouH := &handler.TtouHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
 	itH := &handler.InteractHandler{DB: db}
+	homeH := &handler.HomeHandler{DB: db}
+	contactH := &handler.ContactHandler{DB: db}
+	guestH := &handler.GuestHandler{DB: db}
+	saH := &handler.SiteArticleHandler{DB: db}
+	shopH := &handler.ShopHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
@@ -100,6 +105,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
 		api.GET("/space/:userId/visitors", spaceH.VisitorList)
 		api.GET("/space/article/:id", spaceH.ArticleDetail)
+		api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
+		api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
+		api.GET("/space/photos/:id", spaceH.PhotoClick)
+
+		// 家园（诺哈：他人家园 / 串门）
+		api.GET("/home/other/:userId", homeH.Other)
+		api.GET("/home/visit", homeH.Visit)
+
+		// 留言本（全站）
+		api.GET("/guestbook", guestH.List)
+
+		// 文章（社区专栏）
+		api.GET("/articles", saH.List)
+		api.GET("/articles/categories", saH.Categories)
+		api.GET("/articles/:id", saH.Detail)
+		api.GET("/articles/:id/comments", saH.Comments)
+
+		// 商店市场（公开浏览）
+		api.GET("/market", shopH.GoodsList)
+		api.GET("/market/categories", shopH.Categories)
+		api.GET("/market/:id", shopH.GoodsDetail)
 
 		authed := api.Group("/", jwtM)
 		{
@@ -191,6 +217,56 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/space/message/:userId", spaceH.SpaceMsgAdd)
 			authed.DELETE("/space/message/:id", spaceH.SpaceMsgDel)
 			authed.POST("/space/visit/:userId", spaceH.VisitSpace)
+
+			// 家园聚合（诺哈 my_home.asp）与新鲜事
+			authed.GET("/home", homeH.View)
+			authed.GET("/home/news", homeH.NewsList)
+
+			// 我的收藏（诺哈 wap_bbs_favor 泛化）
+			authed.GET("/favorites", homeH.FavList)
+			authed.POST("/favorites", homeH.FavAdd)
+			authed.DELETE("/favorites/:id", homeH.FavDel)
+
+			// 邀请开通家园（诺哈 invite.asp）
+			authed.GET("/invite", homeH.InviteInfo)
+
+			// 通讯录（诺哈 contact.asp）+ QQ 绑定
+			authed.GET("/contact", contactH.View)
+			authed.POST("/contact", contactH.Save)
+			authed.POST("/contact/qq", contactH.SaveQQ)
+
+			// 空间日志分类 / 相册照片 / 日志评论（诺哈 blog 子模块）
+			authed.GET("/space/article-categories", spaceH.ArticleCatList)
+			authed.POST("/space/article-categories", spaceH.ArticleCatAdd)
+			authed.POST("/space/albums/:albumId/photos", spaceH.PhotoAdd)
+			authed.DELETE("/space/photos/:id", spaceH.PhotoDel)
+			authed.POST("/space/article/:id/comment", spaceH.ArticleCommentAdd)
+
+			// 留言本（诺哈 guest.asp）
+			authed.POST("/guestbook", guestH.Add)
+			authed.POST("/guestbook/:id/unlock", guestH.Unlock)
+			authed.POST("/guestbook/:id/reply", perm(db, "admin:access"), guestH.Reply)
+			authed.DELETE("/guestbook/:id", guestH.Del)
+
+			// 文章（诺哈 article.asp 社区专栏）
+			authed.POST("/articles", saH.Add)
+			authed.POST("/articles/:id/comments", saH.CommentAdd)
+			authed.DELETE("/articles/:id", saH.Del)
+
+			// 商店（诺哈 shop.asp C2C 道具买卖）
+			authed.GET("/shop/mine", shopH.MyShop)
+			authed.POST("/shop", shopH.OpenShop)
+			authed.POST("/market", shopH.GoodsAdd)
+			authed.PUT("/market/:id", shopH.GoodsUpdate)
+			authed.DELETE("/market/:id", shopH.GoodsDelete)
+			authed.POST("/market/:id/order", shopH.OrderCreate)
+			authed.POST("/shop/orders/:id/pay", shopH.OrderPay)
+			authed.POST("/shop/orders/:id/ship", shopH.OrderShip)
+			authed.POST("/shop/orders/:id/receive", shopH.OrderReceive)
+			authed.POST("/shop/orders/:id/cancel", shopH.OrderCancel)
+			authed.GET("/shop/orders", shopH.MyOrders)
+			authed.POST("/market/:id/comments", shopH.CommentAdd)
+			authed.POST("/shop/comments/:id/reply", shopH.CommentReply)
 
 			// 我的心情（家园个人动态，不依赖空间）
 			authed.GET("/moods", moodH.List)

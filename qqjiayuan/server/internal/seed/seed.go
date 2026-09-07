@@ -45,6 +45,11 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
 		&model.Report{},
 		&model.TtouApply{}, &model.TtouWorship{},
+		&model.Home{}, &model.HomeNews{}, &model.HomeFavorite{}, &model.UserContact{},
+		&model.Invite{}, &model.GuestBook{}, &model.GuestReply{},
+		&model.SiteArticleCategory{}, &model.SiteArticle{}, &model.SiteArticleComment{},
+		&model.ShopCategory{}, &model.Shop{}, &model.ShopGoods{}, &model.ShopOrder{}, &model.ShopComment{},
+		&model.ArticleComment{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -82,6 +87,9 @@ func Run(db *gorm.DB, staticDir string) {
 	seedNoblePlans(db)
 	seedGoods(db)
 	seedResources(db, staticDir)
+	seedGuestbook(db)
+	seedSiteArticles(db)
+	seedShop(db)
 	fmt.Println("数据初始化完成")
 }
 
@@ -1214,5 +1222,112 @@ func seedGames(db *gorm.DB) {
 	}
 	for i := range games {
 		db.Create(&games[i])
+	}
+}
+
+// seedGuestbook 站长留言本样例（幂等：表为空才写入）
+func seedGuestbook(db *gorm.DB) {
+	var count int64
+	db.Model(&model.GuestBook{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	adminID := idByUsername(db, "10000")
+	rows := []struct {
+		name, content string
+		private       bool
+	}{
+		{"游客", "家园社区重新上线啦，欢迎新老朋友回家！", false},
+		{"站长小Q", "签到、盖楼、灌水、聊天交友，当年的快乐都回来了。", false},
+		{"游客", "找回当年的家园号码，满满都是回忆。", true},
+	}
+	for _, r := range rows {
+		g := model.GuestBook{Name: r.name, Content: r.content, Status: 1}
+		if r.private {
+			g.Pass = "seed" // 私密样例，密码可输入"seed"查看
+		}
+		if r.name == "站长小Q" {
+			g.UserID = adminID
+		}
+		db.Create(&g)
+	}
+	if adminID > 0 {
+		var first model.GuestBook
+		db.Where("name = ?", "游客").First(&first)
+		db.Create(&model.GuestReply{GuestID: first.ID, UserID: adminID, Content: "欢迎常来！", Status: 1})
+	}
+}
+
+func idByUsername(db *gorm.DB, username string) uint {
+	var u model.User
+	db.Select("id").Where("username = ?", username).First(&u)
+	return u.ID
+}
+
+// seedSiteArticles 文章专栏样例（分类 + 文章，幂等）
+func seedSiteArticles(db *gorm.DB) {
+	var n int64
+	db.Model(&model.SiteArticleCategory{}).Count(&n)
+	if n == 0 {
+		for i, name := range []string{"社区公告", "心情随笔", "攻略分享"} {
+			db.Create(&model.SiteArticleCategory{Name: name, Sort: i})
+		}
+	}
+	db.Model(&model.SiteArticle{}).Count(&n)
+	if n == 0 {
+		var adminID = idByUsername(db, "10000")
+		arts := []struct {
+			title, cat, content string
+		}{
+			{"家园社区开放公测", "社区公告", "家园社区以 QQ家园为蓝本复刻上线，欢迎大家来盖楼、灌水、交朋友！找回当年的家园号码，续写你的青春记忆。"},
+			{"写在重开的第一天", "心情随笔", "还记得吗？那年我们用 3GQQ 登上家园，签到、浇水、抢车位……如今一切都回来了。"},
+			{"新手指南：如何快速升级", "攻略分享", "每天登录+1活跃天，多回帖、多签到、去打工，金币经验涨得飞快。记得开通个人空间，写写心情记录生活。"},
+		}
+		for _, a := range arts {
+			var catID uint
+			db.Model(&model.SiteArticleCategory{}).Where("name = ?", a.cat).Select("id").Scan(&catID)
+			db.Create(&model.SiteArticle{
+				UserID: adminID, Title: a.title, CatID: catID, Content: a.content,
+				Writer: "站长小Q", Source: "家园社区", Status: 1,
+			})
+		}
+	}
+}
+
+// seedShop 商店样例（分类 + 站长店铺 + 商品，幂等）
+func seedShop(db *gorm.DB) {
+	var n int64
+	db.Model(&model.ShopCategory{}).Count(&n)
+	if n == 0 {
+		for i, name := range []string{"装扮道具", "功能道具", "互动道具", "稀有道具"} {
+			db.Create(&model.ShopCategory{Name: name, Sort: i})
+		}
+	}
+	db.Model(&model.ShopGoods{}).Count(&n)
+	if n == 0 {
+		adminID := idByUsername(db, "10000")
+		if adminID > 0 {
+			db.Where(&model.Shop{UserID: adminID}).FirstOrCreate(&model.Shop{UserID: adminID, Name: "站长杂货铺", Status: 1})
+			catID := func(name string) uint {
+				var id uint
+				db.Model(&model.ShopCategory{}).Where("name = ?", name).Select("id").Scan(&id)
+				return id
+			}
+			goods := []struct {
+				name, cat, intro string
+				price, amount    int
+			}{
+				{"家园记忆相册", "装扮道具", "把在家园的点滴装订成册，放在个人空间展示。", 120, 50},
+				{"超值新手礼包", "功能道具", "内含金币与经验加成，助力快速升级。", 88, 100},
+				{"交友名片卡", "互动道具", "在广场展示自己的名片，更容易被好友发现。", 66, 80},
+				{"限量纪念勋章", "稀有道具", "复刻当年家园的限量勋章，戴上它做最靓的仔。", 520, 20},
+			}
+			for _, g := range goods {
+				db.Create(&model.ShopGoods{
+					UserID: adminID, Name: g.name, CatID: catID(g.cat), BidMT: 1, Money: 0,
+					Price: g.price, Amount: g.amount, Intro: g.intro, Status: 1,
+				})
+			}
+		}
 	}
 }

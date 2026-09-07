@@ -9,11 +9,12 @@
     </div>
 
     <!-- 心情 -->
-    <div class="write-mood">{{ mood ? mood.content : (u.signature || '我的心情很好') }} <a href="javascript:;" @click="$router.push('/mood')">&gt;&gt;</a><br></div>
+    <div class="write-mood">{{ mood ? mood : (u.signature || '我的心情很好') }} <a href="javascript:;" @click="$router.push('/mood')">&gt;&gt;</a><br></div>
+    <div v-if="todayFirst" class="txt-fade">今日登录+1活跃天。</div>
 
     <!-- 快捷入口 -->
     <div>
-      <a href="javascript:;" @click="tip('宅子')">宅子</a> . <a href="javascript:;" @click="tip('友友券')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="tip('花仙子')">花仙子</a><br>
+      <a href="javascript:;" @click="$router.push('/space/'+u.id)">宅子</a> . <a href="javascript:;" @click="tip('友友券')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="$router.push('/noble')">超Q</a><br>
     </div>
 
     <!-- tab：我的 活动 帖 书（参考站 module-title 样式） -->
@@ -59,13 +60,41 @@
       </div>
       <div class="module-content" v-else><span class="empty">还没有好友来访</span></div>
 
+      <!-- 访客 -->
+      <div class="module-title">访客(共{{ homeAgg ? homeAgg.visitor_total : 0 }}次)</div>
+      <div class="list" v-if="visitors.length">
+        <div v-for="(v, i) in visitors" :key="'v'+i" class="row">
+          <a href="javascript:;" @click="$router.push('/user/'+v.user_id)"><font :color="v.color || '#004299'">{{ v.nickname || '游客' }}</font></a>({{ ago(v.time) }})<br>
+        </div>
+      </div>
+      <div class="module-content" v-else><span class="empty">还没有访客</span></div>
+
+      <!-- 我的新鲜事 -->
+      <div class="module-title">我的新鲜事|<a href="javascript:;" @click="tip('新鲜事设置')">设置</a></div>
+      <div class="list" v-if="myNews.length">
+        <div v-for="n in myNews" :key="'mn'+n.id" class="row">
+          ({{ ago(n.created_at) }})<font :color="n.color || '#004299'">{{ n.nickname }}</font>{{ n.content }}<br>
+        </div>
+      </div>
+      <div class="module-content" v-else><span class="empty">还没有新鲜事</span></div>
+
+      <!-- 好友新鲜事 -->
+      <div class="module-title">好友新鲜事</div>
+      <div class="list" v-if="friendNews.length">
+        <div v-for="n in friendNews" :key="'fn'+n.id" class="row">
+          ({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a>{{ n.content }}<br>
+        </div>
+      </div>
+      <div class="module-content" v-else><span class="empty">还没有好友动态</span></div>
+
       <form @submit.prevent="visit">
         <input type="text" v-model.number="visitId" maxlength="10" size="10"><input type="submit" value="串门">
       </form>
 
       <div class="module-title">【功能导航】</div>
-      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="cur='active'">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.      <a href="javascript:;" @click="$router.push('/home-level')">家园等级</a>.<a href="javascript:;" @click="tip('更多')">&gt;&gt;</a><br>
-      <a href="javascript:;" @click="tip('任务')">任务</a>.<a href="javascript:;" @click="tip('反馈')">反馈</a>.<a href="javascript:;" @click="tip('秘密')">秘密</a>.<a href="javascript:;" @click="tip('黑板墙')">黑板墙</a>.<a href="javascript:;" @click="$router.push('/profile')">特权</a>.<a href="javascript:;" @click="$router.push('/find')">靓号</a><br>
+      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="cur='active'">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="$router.push('/home-level')">家园等级</a><br>
+      <a href="javascript:;" @click="$router.push('/favorites')">我的收藏({{ favCount }})</a>.<a href="javascript:;" @click="$router.push('/contacts')">通讯录</a>.<a href="javascript:;" @click="$router.push('/invite')">邀请</a>.<a href="javascript:;" @click="$router.push('/guestbook')">留言本</a>.<a href="javascript:;" @click="$router.push('/articles')">文章</a>.<a href="javascript:;" @click="$router.push('/market')">商店</a>.<a href="javascript:;" @click="$router.push('/space/'+u.id)">空间</a><br>
+      <a href="javascript:;" @click="$router.push('/noble')">超Q</a>.<a href="javascript:;" @click="$router.push('/wallet')">钱包</a>.<a href="javascript:;" @click="$router.push('/bag')">仓库</a>.<a href="javascript:;" @click="$router.push('/profile')">特权</a>.<a href="javascript:;" @click="$router.push('/find')">靓号</a>.<a href="javascript:;" @click="tip('更多')">&gt;&gt;</a><br>
     </template>
 
     <!-- ===== 活动 ===== -->
@@ -137,7 +166,9 @@ export default {
       cur: 'mine', u: {}, threads: [], friends: [], visitId: '', mood: null,
       games: [], myGames: [], feed: [], msgs: [],
       fineThreads: [], commonThreads: [], announcements: [],
-      myReplies: [], favThreads: []
+      myReplies: [], favThreads: [],
+      // 诺哈 my_home 聚合
+      homeAgg: null, myNews: [], friendNews: [], visitors: [], msgTotal: 0, favCount: 0, todayFirst: false
     }
   },
   mounted () { this.load() },
@@ -163,8 +194,25 @@ export default {
       api.get('/space/' + id + '/messages').then(r => { if (r.code === 0) this.msgs = (r.data.list || r.data || []).slice(0, 3) }).catch(() => {})
       api.get('/my-replies').then(r => { if (r.code === 0) this.myReplies = r.data }).catch(() => {})
       api.get('/favorite-threads').then(r => { if (r.code === 0) this.favThreads = r.data }).catch(() => {})
+      api.get('/home').then(r => {
+        if (r.code === 0) {
+          this.homeAgg = r.data
+          this.myNews = r.data.my_news || []
+          this.friendNews = r.data.friend_news || []
+          this.visitors = r.data.visitors || []
+          this.msgTotal = r.data.message_total || 0
+          this.favCount = r.data.favorite_count || 0
+          this.todayFirst = !!r.data.today_first
+          if (r.data.mood && r.data.mood.content) this.mood = r.data.mood.content
+        }
+      }).catch(() => {})
     },
-    visit () { if (this.visitId) this.$router.push('/user/' + this.visitId) },
+    visit () {
+      if (!this.visitId) return
+      api.get('/home/visit', { params: { no: this.visitId } }).then(r => {
+        if (r.code === 0) this.$router.push('/space/' + r.data.user_id)
+      }).catch(() => {})
+    },
     brief (s) { s = s || ''; return s.length > 30 ? s.slice(0, 30) + '…' : s },
     homeIcon (u) {
       const lv = Math.max(1, Math.min(50, u.level || 1))

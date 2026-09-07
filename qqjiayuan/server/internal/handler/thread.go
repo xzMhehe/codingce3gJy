@@ -122,6 +122,7 @@ func (h *ThreadHandler) Reply(c *gin.Context) {
 		return
 	}
 	addExpAndCoins(h.DB, uid, 5, 2, 1, "reply", "回复帖子")
+	addHomeNews(h.DB, uid, 0, 2, th.ID, "回复了帖子《"+th.Title+"》")
 
 	if th.UserID != uid {
 		var me model.User
