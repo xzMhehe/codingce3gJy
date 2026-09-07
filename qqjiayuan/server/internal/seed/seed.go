@@ -35,6 +35,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
 		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
+		&model.Garden{}, &model.GardenSeed{}, &model.GardenMap{}, &model.GardenBag{},
+		&model.GardenBottle{}, &model.GardenGift{}, &model.GardenMix{},
+		&model.GardenMsg{}, &model.GardenMapLog{}, &model.GardenLandLog{},
+		&model.GardenElf{}, &model.GardenElfLog{},
 		&model.NoblePlan{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
 		&model.WalletLog{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
@@ -72,6 +76,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedFamilyBoards(db)
 	seedBooks(db)
 	seedGardenActivities(db)
+	seedGardenData(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedGoods(db)
@@ -265,6 +270,122 @@ func seedGardenActivities(db *gorm.DB) {
 		{Title: "寻找遗失的碎片", Desc: "集齐碎片，兑换稀有花盆。"},
 	} {
 		db.Create(&a)
+	}
+}
+
+// seedGardenData 魔法花园种子/图鉴/合成配方（幂等：按名称去重，老库已有不覆盖）
+func seedGardenData(db *gorm.DB) {
+	seeds := []model.GardenSeed{
+		{Name: "向日葵", DType: 0, Level: 1, Price: 5, Seed: 1, Ling: 1, Buds: 1, Less: 2, More: 4, Remark: "沉默的爱，勇敢追求幸福。"},
+		{Name: "玫瑰花", DType: 0, Level: 1, Price: 10, Seed: 1, Ling: 1, Buds: 2, Less: 3, More: 5, Remark: "爱情与热恋，勇敢表达。"},
+		{Name: "郁金香", DType: 0, Level: 2, Price: 20, Seed: 2, Ling: 2, Buds: 2, Less: 3, More: 6, Remark: "博爱、体贴、高雅。"},
+		{Name: "月光花", DType: 0, Level: 3, Price: 40, Seed: 2, Ling: 2, Buds: 3, Less: 4, More: 8, Remark: "幸福与美好的憧憬。"},
+		{Name: "百合花", DType: 0, Level: 4, Price: 80, Seed: 3, Ling: 3, Buds: 3, Less: 5, More: 10, Remark: "百年好合，纯洁无瑕。"},
+		{Name: "牡丹", DType: 0, Level: 5, Price: 150, Seed: 3, Ling: 4, Buds: 4, Less: 6, More: 12, Remark: "圆满、浓情、富贵。"},
+		{Name: "蓝色妖姬", DType: 0, Level: 7, Price: 300, Seed: 4, Ling: 5, Buds: 5, Less: 8, More: 16, Remark: "奇迹与不可能的爱。"},
+		{Name: "樱花", DType: 0, Level: 9, Price: 500, Seed: 5, Ling: 6, Buds: 6, Less: 10, More: 20, Remark: "生命、幸福、热烈。"},
+		{Name: "天山雪莲", DType: 0, Level: 12, Price: 800, Seed: 6, Ling: 8, Buds: 8, Less: 12, More: 24, Remark: "纯洁的爱、坚贞。"},
+		// 魔法屋合成产物（特殊种子）
+		{Name: "银色菊花", DType: 1, Level: 3, Price: 0, Seed: 2, Ling: 2, Buds: 2, Less: 4, More: 8, Remark: "真诚的思念。"},
+		{Name: "银野花", DType: 1, Level: 4, Price: 0, Seed: 2, Ling: 3, Buds: 3, Less: 5, More: 10, Remark: "野性之美。"},
+		{Name: "端阳花", DType: 1, Level: 5, Price: 0, Seed: 3, Ling: 3, Buds: 3, Less: 6, More: 12, Remark: "端午安康。"},
+		{Name: "银友谊花", DType: 1, Level: 6, Price: 0, Seed: 3, Ling: 4, Buds: 4, Less: 7, More: 14, Remark: "友谊长存。"},
+		{Name: "银色烈焰焚情", DType: 1, Level: 8, Price: 0, Seed: 4, Ling: 5, Buds: 5, Less: 8, More: 16, Remark: "炽热的爱。"},
+		{Name: "金色烈焰焚情", DType: 1, Level: 10, Price: 0, Seed: 5, Ling: 6, Buds: 6, Less: 10, More: 20, Remark: "永恒的爱。"},
+	}
+	for _, s := range seeds {
+		var n int64
+		db.Model(&model.GardenSeed{}).Where("name = ?", s.Name).Count(&n)
+		if n == 0 {
+			db.Create(&s)
+		}
+	}
+
+	maps := []model.GardenMap{
+		{SeedID: 1, Name: "金色向日葵", DType: 0},
+		{SeedID: 1, Name: "七彩向日葵", DType: 1},
+		{SeedID: 1, Name: "太阳神花", DType: 2},
+		{SeedID: 2, Name: "红玫瑰", DType: 0},
+		{SeedID: 2, Name: "蓝玫瑰", DType: 1},
+		{SeedID: 2, Name: "黑玫瑰", DType: 2},
+		{SeedID: 3, Name: "黄郁金香", DType: 0},
+		{SeedID: 3, Name: "粉郁金香", DType: 1},
+		{SeedID: 3, Name: "黑郁金香", DType: 2},
+		{SeedID: 4, Name: "月光花", DType: 0},
+		{SeedID: 4, Name: "星月花", DType: 1},
+		{SeedID: 4, Name: "幻月花", DType: 2},
+		{SeedID: 5, Name: "白百合", DType: 0},
+		{SeedID: 5, Name: "金百合", DType: 1},
+		{SeedID: 5, Name: "火百合", DType: 2},
+		{SeedID: 6, Name: "粉牡丹", DType: 0},
+		{SeedID: 6, Name: "绿牡丹", DType: 1},
+		{SeedID: 6, Name: "黑牡丹", DType: 2},
+		{SeedID: 7, Name: "蓝色妖姬", DType: 0},
+		{SeedID: 7, Name: "冰蓝妖姬", DType: 1},
+		{SeedID: 7, Name: "魅蓝妖姬", DType: 2},
+		{SeedID: 8, Name: "粉樱花", DType: 0},
+		{SeedID: 8, Name: "垂枝樱", DType: 1},
+		{SeedID: 8, Name: "夜樱", DType: 2},
+		{SeedID: 9, Name: "雪莲花", DType: 0},
+		{SeedID: 9, Name: "金雪莲", DType: 1},
+		{SeedID: 9, Name: "七彩雪莲", DType: 2},
+		{SeedID: 10, Name: "银色菊花", DType: 0},
+		{SeedID: 11, Name: "银野花", DType: 0},
+		{SeedID: 12, Name: "端阳花", DType: 0},
+		{SeedID: 13, Name: "银友谊花", DType: 0},
+		{SeedID: 14, Name: "银色烈焰焚情", DType: 1},
+		{SeedID: 15, Name: "金色烈焰焚情", DType: 2},
+	}
+	for _, m := range maps {
+		var n int64
+		db.Model(&model.GardenMap{}).Where("name = ?", m.Name).Count(&n)
+		if n == 0 {
+			db.Create(&m)
+		}
+	}
+
+	mixes := []model.GardenMix{
+		{SeedID: 10, Flower: "向日葵", Need: 5},
+		{SeedID: 11, Flower: "向日葵", Need: 3},
+		{SeedID: 11, Flower: "玫瑰花", Need: 2},
+		{SeedID: 12, Flower: "玫瑰花", Need: 4},
+		{SeedID: 12, Flower: "郁金香", Need: 2},
+		{SeedID: 13, Flower: "向日葵", Need: 2},
+		{SeedID: 13, Flower: "玫瑰花", Need: 2},
+		{SeedID: 13, Flower: "郁金香", Need: 2},
+		{SeedID: 14, Flower: "月光花", Need: 3},
+		{SeedID: 15, Flower: "月光花", Need: 6},
+	}
+	for _, m := range mixes {
+		var n int64
+		db.Model(&model.GardenMix{}).Where("seed_id = ? AND flower = ?", m.SeedID, m.Flower).Count(&n)
+		if n == 0 {
+			db.Create(&m)
+		}
+	}
+
+	// 精灵花册（10 只，按点亮图谱数解锁）
+	elves := []model.GardenElf{
+		{Name: "绿芽精灵", Desc: "花园的新生，点亮 3 个图谱后觉醒。", NeedMap: 3, Sort: 1, Img: "elf_1.png"},
+		{Name: "露珠精灵", Desc: "清晨的第一滴露水，点亮 6 个图谱后觉醒。", NeedMap: 6, Sort: 2, Img: "elf_2.png"},
+		{Name: "花粉精灵", Desc: "随风飞舞的花粉，点亮 9 个图谱后觉醒。", NeedMap: 9, Sort: 3, Img: "elf_3.png"},
+		{Name: "花苞精灵", Desc: "含苞待放的期待，点亮 12 个图谱后觉醒。", NeedMap: 12, Sort: 4, Img: "elf_4.png"},
+		{Name: "月光精灵", Desc: "月下的银色光辉，点亮 15 个图谱后觉醒。", NeedMap: 15, Sort: 5, Img: "elf_5.png"},
+		{Name: "彩虹精灵", Desc: "七彩的花之桥，点亮 18 个图谱后觉醒。", NeedMap: 18, Sort: 6, Img: "elf_6.png"},
+		{Name: "星光精灵", Desc: "夜空里的花语，点亮 21 个图谱后觉醒。", NeedMap: 21, Sort: 7, Img: "elf_7.png"},
+		{Name: "晨露精灵", Desc: "晨曦中的晶莹，点亮 24 个图谱后觉醒。", NeedMap: 24, Sort: 8, Img: "elf_8.png"},
+		{Name: "花语精灵", Desc: "读懂每一朵花的低语，点亮 27 个图谱后觉醒。", NeedMap: 27, Sort: 9, Img: "elf_9.png"},
+		{Name: "花园精灵王", Desc: "花园世界的守护者，点亮 30 个图谱后降临。", NeedMap: 30, Sort: 10, Img: "elf_10.png"},
+	}
+	for _, e := range elves {
+		var n int64
+		db.Model(&model.GardenElf{}).Where("name = ?", e.Name).Count(&n)
+		if n == 0 {
+			db.Create(&e)
+		} else {
+			// 补全图片字段（老库已有行）
+			db.Model(&model.GardenElf{}).Where("name = ?", e.Name).Update("img", e.Img)
+		}
 	}
 }
 

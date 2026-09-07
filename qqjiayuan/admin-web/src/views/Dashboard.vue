@@ -57,6 +57,10 @@
     <admin-privileges v-else-if="tab === 'privileges'" />
     <admin-games v-else-if="tab === 'games'" />
     <admin-garden-activities v-else-if="tab === 'gardenActivities'" />
+    <admin-garden-seeds v-else-if="tab === 'gardenSeeds'" />
+    <admin-garden-maps v-else-if="tab === 'gardenMaps'" />
+    <admin-garden-mixes v-else-if="tab === 'gardenMixes'" />
+    <admin-garden-elves v-else-if="tab === 'gardenElves'" />
     <admin-goods v-else-if="tab === 'goods'" />
     <admin-resources v-else-if="tab === 'resources'" />
     <admin-spaces v-else-if="tab === 'spaces'" />
@@ -81,13 +85,17 @@ import AdminBadges from '../components/admin/AdminBadges.vue'
 import AdminPrivileges from '../components/admin/AdminPrivileges.vue'
 import AdminGames from '../components/admin/AdminGames.vue'
 import AdminGardenActivities from '../components/admin/AdminGardenActivities.vue'
+import AdminGardenSeeds from '../components/admin/AdminGardenSeeds.vue'
+import AdminGardenMaps from '../components/admin/AdminGardenMaps.vue'
+import AdminGardenMixes from '../components/admin/AdminGardenMixes.vue'
+import AdminGardenElves from '../components/admin/AdminGardenElves.vue'
 import AdminGoods from '../components/admin/AdminGoods.vue'
 import AdminResources from '../components/admin/AdminResources.vue'
 import AdminSpaces from '../components/admin/AdminSpaces.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminThreads, AdminReports, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGoods, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminThreads, AdminReports, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGoods, AdminResources, AdminSpaces },
   data () {
     return { stats: {}, adminName: '' }
   },
