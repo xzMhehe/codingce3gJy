@@ -1,14 +1,5 @@
 <template>
   <div>
-    <!-- 顶部用户信息行（对齐参考站：ID/家信/空间/超Q） -->
-    <div class="user-top">
-      <a href="javascript:;" @click="$router.push('/home/chat')"><img src="/static/image/site/id.gif" alt="." />{{ myId }}</a>
-      <a href="javascript:;" @click="$router.push('/home/chat')"><img src="/static/image/site/message.gif" alt="." />家信({{ msgCount }})</a>
-      <a href="javascript:;" @click="$router.push('/box')"><img src="/static/image/site/blog.gif" alt="." />百宝箱</a>
-      <a href="javascript:;" @click="$router.push('/user')"><img src="/static/image/vipqq.jpg" alt="." />超Q</a>
-      <a href="javascript:;" @click="$router.push('/')">>></a><br/>
-    </div>
-
     <!-- 活动公告（参考站 .note） -->
     <div class="note" v-if="cur === 'garden'">
       <a href="javascript:;" @click="cur='active'">花园活动公告</a><br/>
@@ -386,8 +377,6 @@ export default {
   },
   computed: {
     nick () { return (this.$store.state.user || {}).nickname || '神秘园丁' },
-    myId () { return (this.$store.state.user || {}).username || '' },
-    msgCount () { return this.msgs.length },
     emptyCount () { return this.plots.filter(p => p.stage === 0).length },
     filteredMaps () {
       if (!this.mapWd) return this.mapList
@@ -616,9 +605,6 @@ export default {
 
 <style scoped>
 /* ===== 复刻 3gqq.ink 参考站 style.css ===== */
-.user-top { padding: 4px 3px; font-size: 12px; line-height: 20px; }
-.user-top img { vertical-align: middle; margin-right: 2px; }
-.user-top a { color: #2e9cd3; text-decoration: none; margin-right: 8px; }
 .note { background: #FFF9B7; border-bottom: 1px solid #9FC6EC; padding: 3px; font-size: 13px; line-height: 1.6; }
 .note a { color: #2e9cd3; text-decoration: none; }
 .noteico { vertical-align: middle; }
