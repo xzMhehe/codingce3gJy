@@ -160,11 +160,13 @@ type GardenLandLog struct {
 
 func (GardenLandLog) TableName() string { return "garden_land_logs" }
 
-// 花园活动（后台可管理）
+// 花园活动（后台可管理；needs=任务需求花朵 JSON，reward=奖励花朵）
 type GardenActivity struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Title     string    `gorm:"type:varchar(60)" json:"title"`
-	Desc      string    `gorm:"type:varchar(200)" json:"desc"`
+	Desc      string    `gorm:"type:varchar(500)" json:"desc"`
+	Needs     string    `gorm:"type:text" json:"needs"`   // [{"flower":"红玫瑰","n":6},...]
+	Reward    string    `gorm:"type:varchar(30)" json:"reward"` // 奖励花朵名
 	Status    int       `gorm:"default:1" json:"status"` // 1显示 0隐藏
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

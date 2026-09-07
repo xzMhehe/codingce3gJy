@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -1280,12 +1281,18 @@ func (h *GardenHandler) Msgs(c *gin.Context) {
 // ============ 活动（保留） ============
 
 // 提交活动任务：用指定花朵兑换奖励花（对齐参考站「完成任务需要/奖励」）
-var actTaskNeeds = []struct {
+// needs 为活动配置的 JSON 需求列表；无配置时兜底默认
+var actTaskNeedsFallback = []struct {
 	Flower string
 	N      int
 }{{"玫瑰花", 6}, {"郁金香", 6}}
 
-const actTaskReward = "朝暮盈霄花"
+const actTaskRewardFallback = "朝暮盈霄花"
+
+type actNeed struct {
+	Flower string `json:"flower"`
+	N      int    `json:"n"`
+}
 
 type actSubmitReq struct {
 	ID     uint `json:"id" binding:"required"`
@@ -1311,25 +1318,39 @@ func (h *GardenHandler) SubmitActivity(c *gin.Context) {
 	if amount > 9 {
 		amount = 9
 	}
+	// 解析活动需求（优先用活动配置）
+	var needs []actNeed
+	if act.Needs != "" {
+		_ = json.Unmarshal([]byte(act.Needs), &needs)
+	}
+	if len(needs) == 0 {
+		for _, n := range actTaskNeedsFallback {
+			needs = append(needs, actNeed{Flower: n.Flower, N: n.N})
+		}
+	}
+	reward := act.Reward
+	if reward == "" {
+		reward = actTaskRewardFallback
+	}
 	var uf []model.UserFlower
 	h.DB.Where("user_id = ?", uid).Find(&uf)
 	have := map[string]int{}
 	for _, r := range uf {
 		have[r.Flower] = r.Count
 	}
-	for _, need := range actTaskNeeds {
+	for _, need := range needs {
 		if have[need.Flower] < need.N*amount {
 			resp.ParamError(c, "所需花朵不足，您目前还不能完成任务")
 			return
 		}
 	}
-	for _, need := range actTaskNeeds {
+	for _, need := range needs {
 		h.DB.Model(&model.UserFlower{}).Where("user_id = ? AND flower = ?", uid, need.Flower).
 			Update("count", gorm.Expr("count - ?", need.N*amount))
 	}
-	h.addFlower(uid, actTaskReward, amount)
+	h.addFlower(uid, reward, amount)
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("exp", gorm.Expr("exp + ?", 20*amount))
-	resp.OK(c, gin.H{"reward": actTaskReward, "amount": amount})
+	resp.OK(c, gin.H{"reward": reward, "amount": amount})
 }
 
 // 七日签到状态：返回本周(周一起)签到情况
@@ -1346,10 +1367,10 @@ func (h *GardenHandler) SignStatus(c *gin.Context) {
 	h.DB.Where("user_id = ? AND sign_date >= ? AND sign_date <= ?", uid, weekStartStr, weekEndStr).Order("sign_date ASC").Find(&signs)
 	days := make([]gin.H, 7)
 	for i := 0; i < 7; i++ {
-		days[i] = gin.H{"day": i + 1, "signed": false, "date": weekStart.AddDate(0, 0, i).Format("2006-01-02")}
+		days[i] = gin.H{"day": i + 1, "signed": false, "is_today": weekStart.AddDate(0, 0, i).Format("2006-01-02") == now.Format("2006-01-02"), "date": weekStart.AddDate(0, 0, i).Format("2006-01-02")}
 	}
 	for _, s := range signs {
-		days[s.WeekDay-1] = gin.H{"day": s.WeekDay, "signed": true, "date": s.SignDate}
+		days[s.WeekDay-1] = gin.H{"day": s.WeekDay, "signed": true, "is_today": s.SignDate == now.Format("2006-01-02"), "date": s.SignDate}
 	}
 	todaySigned := false
 	for _, s := range signs {

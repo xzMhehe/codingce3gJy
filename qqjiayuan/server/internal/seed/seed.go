@@ -257,20 +257,26 @@ func seedBooks(db *gorm.DB) {
 	}
 }
 
-// seedGardenActivities 花园示例活动（幂等）
+// seedGardenActivities 花园示例活动（幂等；已存在则补齐 desc/needs/reward）
 func seedGardenActivities(db *gorm.DB) {
-	var n int64
-	db.Model(&model.GardenActivity{}).Count(&n)
-	if n > 0 {
-		return
+	acts := []model.GardenActivity{
+		{Title: "春天的爱恋", Desc: "春天来了，魔法花园里的花儿沐浴着温馨的春风和绵绵的春雨含苞待放着，想要在春天绽放自己最美的身影。花仙子陶醉在浓浓的春意中，撒下了许多象征着爱情的朝暮盈霄花种子，快去寻找吧！",
+			Needs: `[{"flower":"红玫瑰","n":6},{"flower":"红桃花","n":6},{"flower":"红色勿忘我","n":6},{"flower":"红色烈焰焚情","n":6}]`, Reward: "朝暮盈霄花"},
+		{Title: "小魔女的烦恼", Desc: "小魔女：“每次聚会都要hold住全场，不够鲜花装扮自己怎么办呀！谁能送我一些鲜花，我会给TA丰厚的回报哟！”",
+			Needs: `[{"flower":"红色菊花","n":3},{"flower":"红色野花","n":3},{"flower":"红桃花","n":3},{"flower":"红兰花","n":3}]`, Reward: "夜魔南瓜花"},
+		{Title: "花仙子的新房子", Desc: "花仙子：“555，我的花房有些时候没有修整了，天气开始转凉，我都被冻感冒几次了，我急需一些花来重新补整我的花房，请你帮我去采些丁香/樱花/野花/梅花/兰花，我会拿最新出的步步高升花种回报你哦！”",
+			Needs: `[{"flower":"红丁香","n":1},{"flower":"红樱花","n":1},{"flower":"红色野花","n":1},{"flower":"红梅花","n":1},{"flower":"红兰花","n":1}]`, Reward: "步步高升"},
+		{Title: "寻找遗失的碎片", Desc: "想要开启花园的精灵花册，需要集齐对应的珍惜碎片，快来用你种出来的鲜花和我兑换！",
+			Needs: `[{"flower":"红玫瑰","n":33},{"flower":"黄玫瑰","n":33},{"flower":"白玫瑰","n":33},{"flower":"粉玫瑰","n":33},{"flower":"银玫瑰","n":3},{"flower":"金玫瑰","n":1}]`, Reward: "玫瑰金碎片"},
 	}
-	for _, a := range []model.GardenActivity{
-		{Title: "春天的爱恋", Desc: "收集春天花朵，赢取限定花种。"},
-		{Title: "小魔女的烦恼", Desc: "帮助小魔女完成任务，获得魔法药水。"},
-		{Title: "花仙子的新房子", Desc: "装饰花仙子的小屋，赢取家园装扮。"},
-		{Title: "寻找遗失的碎片", Desc: "集齐碎片，兑换稀有花盆。"},
-	} {
-		db.Create(&a)
+	for _, a := range acts {
+		var old model.GardenActivity
+		if err := db.Where("title = ?", a.Title).First(&old).Error; err == nil {
+			// 老记录补齐字段
+			db.Model(&old).Updates(map[string]interface{}{"desc": a.Desc, "needs": a.Needs, "reward": a.Reward})
+		} else {
+			db.Create(&a)
+		}
 	}
 }
 
