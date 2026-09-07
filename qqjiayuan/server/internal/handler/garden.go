@@ -1838,3 +1838,435 @@ func (h *GardenHandler) AdminElfDelete(c *gin.Context) {
 	h.DB.Model(&model.GardenElfLog{}).Where("elf_id = ?", id).Delete(&model.GardenElfLog{})
 	resp.OK(c, nil)
 }
+
+// ============ 后台：游戏数据管理（用户数据/日志流水/排行榜） ============
+
+// 用户游戏数据列表（分页，可按家园号/昵称搜索）
+func (h *GardenHandler) AdminGardenUsers(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	word := c.Query("word")
+	q := h.DB.Model(&model.Garden{})
+	sub := h.DB.Model(&model.User{}).Select("id")
+	if word != "" {
+		sub = sub.Where("username = ? OR nickname LIKE ?", word, "%"+word+"%")
+	}
+	var total int64
+	q.Where("user_id IN (?)", sub).Count(&total)
+	var rows []model.Garden
+	q.Where("user_id IN (?)", sub).Order("level DESC, point DESC, id ASC").Offset(offset).Limit(size).Find(&rows)
+	uidSet := map[uint]bool{}
+	for _, g := range rows {
+		uidSet[g.UserID] = true
+	}
+	nick := h.nickMap(uidSet)
+	out := make([]gin.H, 0, len(rows))
+	for _, g := range rows {
+		var bagN, flowerN, bottleN, mapCnt int64
+		h.DB.Model(&model.GardenBag{}).Where("user_id = ?", g.UserID).Count(&bagN)
+		h.DB.Model(&model.UserFlower{}).Where("user_id = ? AND count > 0", g.UserID).Count(&flowerN)
+		h.DB.Model(&model.GardenBottle{}).Where("user_id = ? AND count > 0", g.UserID).Count(&bottleN)
+		h.DB.Model(&model.GardenMapLog{}).Where("user_id = ?", g.UserID).Count(&mapCnt)
+		out = append(out, gin.H{
+			"user_id": g.UserID, "nickname": nick[g.UserID], "garden_id": g.ID, "name": g.Name,
+			"level": g.Level, "level_name": gardenLevelName(g.Level), "point": g.Point,
+			"lands": g.Lands, "map_got": mapCnt, "bag_kinds": bagN,
+			"flower_kinds": flowerN, "bottle_kinds": bottleN,
+		})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+}
+
+// 用户游戏数据详情：花园 + 花圃 + 背包 + 花篮 + 花瓶
+func (h *GardenHandler) AdminGardenUserDetail(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	var u model.User
+	if err := h.DB.First(&u, uid).Error; err != nil {
+		resp.NotFound(c, "无此用户")
+		return
+	}
+	var g model.Garden
+	hasGarden := h.DB.Where("user_id = ?", uid).First(&g).Error == nil
+	detail := gin.H{"user_id": uint(uid), "nickname": u.Nickname, "coins": u.Coins, "has_garden": hasGarden}
+	if hasGarden {
+		var mapCnt int64
+		h.DB.Model(&model.GardenMapLog{}).Where("user_id = ?", uid).Count(&mapCnt)
+		detail["garden"] = gin.H{
+			"id": g.ID, "name": g.Name, "level": g.Level, "level_name": gardenLevelName(g.Level),
+			"point": g.Point, "need": g.Level * 200, "lands": g.Lands, "notice": g.Notice,
+			"config": g.Config, "basket_cnt": g.BasketCnt, "bottle_cnt": g.BottleCnt,
+			"common": g.Common, "festival": g.Festival, "scarce": g.Scarce, "map_got": mapCnt,
+		}
+		var plots []model.GardenPlot
+		h.DB.Where("user_id = ?", uid).Order("plot ASC").Find(&plots)
+		plotOut := make([]gin.H, 0, len(plots))
+		for _, p := range plots {
+			seedName := ""
+			if sd := h.seedByID(p.SeedID); sd != nil {
+				seedName = sd.Name
+			}
+			plotOut = append(plotOut, gin.H{
+				"id": p.ID, "plot": p.Plot, "seed_id": p.SeedID, "seed": seedName, "name": p.Name,
+				"status": p.Status, "drys": p.Drys, "weed": p.Weed, "pest": p.Pest,
+				"yield": p.Yield, "amount": p.Amount,
+			})
+		}
+		detail["plots"] = plotOut
+		var bags []model.GardenBag
+		h.DB.Where("user_id = ?", uid).Find(&bags)
+		bagOut := make([]gin.H, 0, len(bags))
+		for _, b := range bags {
+			bagOut = append(bagOut, gin.H{"seed_id": b.SeedID, "name": b.Name, "amount": b.Amount})
+		}
+		detail["bag"] = bagOut
+		var flowers []model.UserFlower
+		h.DB.Where("user_id = ? AND count > 0", uid).Order("flower ASC").Find(&flowers)
+		flowerOut := make([]gin.H, 0, len(flowers))
+		for _, f := range flowers {
+			flowerOut = append(flowerOut, gin.H{"flower": f.Flower, "count": f.Count})
+		}
+		detail["flowers"] = flowerOut
+		var bottles []model.GardenBottle
+		h.DB.Where("user_id = ? AND count > 0", uid).Order("flower ASC").Find(&bottles)
+		bottleOut := make([]gin.H, 0, len(bottles))
+		for _, b := range bottles {
+			bottleOut = append(bottleOut, gin.H{"flower": b.Flower, "count": b.Count})
+		}
+		detail["bottle"] = bottleOut
+	}
+	resp.OK(c, detail)
+}
+
+// 游戏日志/流水：type = gift(送花) | msg(花园消息) | sign(签到) | pick(采摘)
+func (h *GardenHandler) AdminGardenLogs(c *gin.Context) {
+	page, offset, size := pageOf(c, 15)
+	ty := c.DefaultQuery("type", "gift")
+	word := c.Query("word")
+	var total int64
+	switch ty {
+	case "msg":
+		q := h.DB.Model(&model.GardenMsg{})
+		if word != "" {
+			q = q.Where("remark LIKE ?", "%"+word+"%")
+		}
+		q.Count(&total)
+		var rows []model.GardenMsg
+		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+		uidSet := map[uint]bool{}
+		for _, r := range rows {
+			uidSet[r.UID] = true
+			uidSet[r.FID] = true
+		}
+		nick := h.nickMap(uidSet)
+		out := make([]gin.H, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, gin.H{"id": r.ID, "uid": r.UID, "fid": r.FID,
+				"from_nick": nick[r.UID], "to_nick": nick[r.FID], "remark": r.Remark,
+				"created_at": r.CreatedAt.Format("2006-01-02 15:04")})
+		}
+		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+	case "sign":
+		q := h.DB.Model(&model.GardenSign{})
+		if word != "" {
+			q = q.Joins("JOIN users ON users.id = garden_signs.user_id").
+				Where("users.username = ? OR users.nickname LIKE ?", word, "%"+word+"%")
+		}
+		q.Count(&total)
+		var rows []model.GardenSign
+		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+		uidSet := map[uint]bool{}
+		for _, r := range rows {
+			uidSet[r.UserID] = true
+		}
+		nick := h.nickMap(uidSet)
+		out := make([]gin.H, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, gin.H{"id": r.ID, "uid": r.UserID, "nickname": nick[r.UserID],
+				"sign_date": r.SignDate, "week_day": r.WeekDay, "day_no": r.DayNo})
+		}
+		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+	case "pick":
+		q := h.DB.Model(&model.GardenLandLog{})
+		q.Count(&total)
+		var rows []model.GardenLandLog
+		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+		uidSet := map[uint]bool{}
+		landMap := map[uint]model.GardenPlot{}
+		var lands []model.GardenPlot
+		h.DB.Find(&lands)
+		for _, p := range lands {
+			landMap[p.ID] = p
+		}
+		for _, r := range rows {
+			uidSet[r.UserID] = true
+			if p, ok := landMap[r.LandID]; ok {
+				uidSet[p.UserID] = true
+			}
+		}
+		nick := h.nickMap(uidSet)
+		out := make([]gin.H, 0, len(rows))
+		for _, r := range rows {
+			flower, owner := "—", uint(0)
+			if p, ok := landMap[r.LandID]; ok {
+				flower = p.Name
+				owner = p.UserID
+			}
+			out = append(out, gin.H{"id": r.ID, "land_id": r.LandID, "uid": r.UserID,
+				"nickname": nick[r.UserID], "owner_id": owner, "owner_nick": nick[owner], "flower": flower})
+		}
+		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+	default: // gift 送花记录
+		q := h.DB.Model(&model.GardenGift{})
+		if word != "" {
+			q = q.Where("flower LIKE ? OR remark LIKE ?", "%"+word+"%", "%"+word+"%")
+		}
+		q.Count(&total)
+		var rows []model.GardenGift
+		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+		uidSet := map[uint]bool{}
+		for _, r := range rows {
+			uidSet[r.FromUID] = true
+			uidSet[r.ToUID] = true
+		}
+		nick := h.nickMap(uidSet)
+		out := make([]gin.H, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, gin.H{"id": r.ID, "from_uid": r.FromUID, "to_uid": r.ToUID,
+				"from_nick": nick[r.FromUID], "to_nick": nick[r.ToUID], "flower": r.Flower,
+				"amount": r.Amount, "remark": r.Remark,
+				"created_at": r.CreatedAt.Format("2006-01-02 15:04")})
+		}
+		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+	}
+}
+
+// 花园排行榜（管理端）：按等级/经验降序，可选只含已开通花园
+func (h *GardenHandler) AdminGardenRank(c *gin.Context) {
+	page, offset, size := pageOf(c, 20)
+	var total int64
+	h.DB.Model(&model.Garden{}).Count(&total)
+	var rows []model.Garden
+	h.DB.Order("level DESC, point DESC, id ASC").Offset(offset).Limit(size).Find(&rows)
+	uidSet := map[uint]bool{}
+	for _, g := range rows {
+		uidSet[g.UserID] = true
+	}
+	nick := h.nickMap(uidSet)
+	base := offset
+	out := make([]gin.H, 0, len(rows))
+	for i, g := range rows {
+		var mapCnt int64
+		h.DB.Model(&model.GardenMapLog{}).Where("user_id = ?", g.UserID).Count(&mapCnt)
+		out = append(out, gin.H{
+			"rank": base + i + 1, "user_id": g.UserID, "nickname": nick[g.UserID], "name": g.Name,
+			"level": g.Level, "level_name": gardenLevelName(g.Level), "point": g.Point,
+			"need": g.Level * 200, "lands": g.Lands, "map_got": mapCnt,
+			"basket_cnt": g.BasketCnt, "bottle_cnt": g.BottleCnt,
+		})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+}
+
+// 批量查询用户昵称
+func (h *GardenHandler) nickMap(uidSet map[uint]bool) map[uint]string {
+	nick := map[uint]string{}
+	if len(uidSet) == 0 {
+		return nick
+	}
+	ids := make([]uint, 0, len(uidSet))
+	for id := range uidSet {
+		if id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nick
+	}
+	var users []model.User
+	h.DB.Where("id IN (?)", ids).Find(&users)
+	for _, u := range users {
+		nick[u.ID] = u.Nickname
+	}
+	return nick
+}
+
+// ============ 后台：修改用户游戏数据 ============
+
+// 修改花园基础信息（名/公告/采摘权限/花圃数）
+type adminGardenEditReq struct {
+	Name   string `json:"name"`
+	Notice string `json:"notice"`
+	Config int    `json:"config"`
+	Lands  int    `json:"lands"`
+}
+
+func (h *GardenHandler) AdminGardenEdit(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	var req adminGardenEditReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var g model.Garden
+	if err := h.DB.Where("user_id = ?", uid).First(&g).Error; err != nil {
+		resp.NotFound(c, "该用户还未开通花园")
+		return
+	}
+	updates := map[string]interface{}{}
+	if req.Name != "" && req.Name != g.Name {
+		updates["name"] = req.Name
+	}
+	if req.Notice != "" && req.Notice != g.Notice {
+		updates["notice"] = req.Notice
+	}
+	if req.Config >= 0 && req.Config <= 2 && req.Config != g.Config {
+		updates["config"] = req.Config
+	}
+	if req.Lands >= 1 && req.Lands <= gardenMaxLands && req.Lands != g.Lands {
+		updates["lands"] = req.Lands
+		h.DB.Where("user_id = ? AND plot >= ?", uid, req.Lands).Delete(&model.GardenPlot{})
+		for i := 0; i < req.Lands; i++ {
+			var c1 int64
+			h.DB.Model(&model.GardenPlot{}).Where("user_id = ? AND plot = ?", uid, i).Count(&c1)
+			if c1 == 0 {
+				h.DB.Create(&model.GardenPlot{UserID: uint(uid), Plot: i, Status: 0})
+			}
+		}
+	}
+	if len(updates) == 0 {
+		resp.ParamError(c, "没有需要修改的内容")
+		return
+	}
+	h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).Updates(updates)
+	resp.OK(c, gin.H{"msg": "花园资料已更新"})
+}
+
+// 修改用户 G币
+func (h *GardenHandler) AdminGardenCoins(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	var req struct {
+		Coins int `json:"coins"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.Coins < 0 {
+		req.Coins = 0
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", req.Coins)
+	resp.OK(c, gin.H{"msg": "G币已更新", "coins": req.Coins})
+}
+
+// 修改背包花种数量：type=bag(背包) flower=种子名 amount=数量(0删除)
+func (h *GardenHandler) AdminGardenBagSet(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	var req struct {
+		SeedID uint   `json:"seed_id"`
+		Name   string `json:"name"`
+		Amount int    `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	seedID := req.SeedID
+	name := req.Name
+	if seedID == 0 {
+		if sd := h.seedByName(name); sd != nil {
+			seedID = sd.ID
+		}
+	}
+	if name == "" {
+		resp.ParamError(c, "请填写花种名")
+		return
+	}
+	if seedID == 0 {
+		if sd := h.seedByName(name); sd == nil {
+			resp.ParamError(c, "未找到该花种，请核对名称")
+			return
+		}
+	}
+	var bag model.GardenBag
+	found := h.DB.Where("user_id = ? AND seed_id = ?", uid, seedID).First(&bag).Error == nil
+	if req.Amount <= 0 {
+		h.DB.Where("user_id = ? AND seed_id = ?", uid, seedID).Delete(&model.GardenBag{})
+	} else if found {
+		h.DB.Model(&bag).Updates(map[string]interface{}{"amount": req.Amount, "name": name})
+	} else {
+		h.DB.Create(&model.GardenBag{UserID: uint(uid), SeedID: seedID, Name: name, Amount: req.Amount})
+	}
+	resp.OK(c, gin.H{"msg": "背包已更新"})
+}
+
+// 修改花篮/花瓶花朵数量：target=flowers(花篮) bottle(花瓶)
+func (h *GardenHandler) AdminGardenFlowerSet(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	target := c.Param("target")
+	if target != "flowers" && target != "bottle" {
+		resp.ParamError(c, "未知目标")
+		return
+	}
+	var req struct {
+		Flower string `json:"flower"`
+		Amount int    `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.Flower == "" {
+		resp.ParamError(c, "请填写花朵名")
+		return
+	}
+	// 同步更新花园累计数（花篮）
+	if target == "flowers" {
+		var g model.Garden
+		if err := h.DB.Where("user_id = ?", uid).First(&g).Error; err == nil {
+			var old model.UserFlower
+			oldCnt := 0
+			if h.DB.Where("user_id = ? AND flower = ?", uid, req.Flower).First(&old).Error == nil {
+				oldCnt = old.Count
+			}
+			if req.Amount != oldCnt {
+				diff := req.Amount - oldCnt
+				h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).
+					Update("basket_cnt", gorm.Expr("basket_cnt + ?", diff))
+			}
+		}
+	}
+	if target == "flowers" {
+		var uf model.UserFlower
+		if h.DB.Where("user_id = ? AND flower = ?", uid, req.Flower).First(&uf).Error == nil {
+			if req.Amount <= 0 {
+				h.DB.Delete(&uf)
+			} else {
+				h.DB.Model(&uf).Update("count", req.Amount)
+			}
+		} else if req.Amount > 0 {
+			h.DB.Create(&model.UserFlower{UserID: uint(uid), Flower: req.Flower, Count: req.Amount})
+		}
+	} else {
+		var b model.GardenBottle
+		if h.DB.Where("user_id = ? AND flower = ?", uid, req.Flower).First(&b).Error == nil {
+			if req.Amount <= 0 {
+				h.DB.Delete(&b)
+			} else {
+				h.DB.Model(&b).Update("count", req.Amount)
+			}
+		} else if req.Amount > 0 {
+			h.DB.Create(&model.GardenBottle{UserID: uint(uid), Flower: req.Flower, Count: req.Amount})
+		}
+	}
+	resp.OK(c, gin.H{"msg": "已更新"})
+}
+
+// 种子名 → 定义（含停用）
+func (h *GardenHandler) seedByName(name string) *seedDef {
+	for _, s := range h.loadSeeds() {
+		if s.Name == name {
+			return &seedDef{ID: s.ID, Name: s.Name, DType: s.DType, Level: s.Level, Price: s.Price,
+				Seed: s.Seed, Ling: s.Ling, Buds: s.Buds, Less: s.Less, More: s.More, Remark: s.Remark}
+		}
+	}
+	return nil
+}

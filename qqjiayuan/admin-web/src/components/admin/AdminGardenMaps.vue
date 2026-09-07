@@ -1,44 +1,36 @@
 <template>
   <div class="garden-admin">
     <!-- 统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="6">
-        <div class="stat-card s-green">
-          <div class="stat-ico el-icon-sunny" />
-          <div class="stat-info">
-            <div class="stat-num">{{ countBy(0) }}</div>
-            <div class="stat-lab">普通</div>
-          </div>
+    <div class="stat-row">
+      <div class="stat-card s-green">
+        <div class="stat-ico el-icon-sunny" />
+        <div class="stat-info">
+          <div class="stat-num">{{ countBy(0) }}</div>
+          <div class="stat-lab">普通</div>
         </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card s-purple">
-          <div class="stat-ico el-icon-star-off" />
-          <div class="stat-info">
-            <div class="stat-num">{{ countBy(1) }}</div>
-            <div class="stat-lab">独特</div>
-          </div>
+      </div>
+      <div class="stat-card s-purple">
+        <div class="stat-ico el-icon-star-off" />
+        <div class="stat-info">
+          <div class="stat-num">{{ countBy(1) }}</div>
+          <div class="stat-lab">独特</div>
         </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card s-red">
-          <div class="stat-ico el-icon-medal" />
-          <div class="stat-info">
-            <div class="stat-num">{{ countBy(2) }}</div>
-            <div class="stat-lab">珍稀</div>
-          </div>
+      </div>
+      <div class="stat-card s-red">
+        <div class="stat-ico el-icon-medal" />
+        <div class="stat-info">
+          <div class="stat-num">{{ countBy(2) }}</div>
+          <div class="stat-lab">珍稀</div>
         </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card s-blue">
-          <div class="stat-ico el-icon-collection" />
-          <div class="stat-info">
-            <div class="stat-num">{{ list.length }}</div>
-            <div class="stat-lab">图谱总数</div>
-          </div>
+      </div>
+      <div class="stat-card s-blue">
+        <div class="stat-ico el-icon-collection" />
+        <div class="stat-info">
+          <div class="stat-num">{{ list.length }}</div>
+          <div class="stat-lab">图谱总数</div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -197,8 +189,9 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 18px; }
+.stat-row { display: flex; gap: 12px; margin-bottom: 18px; }
 .stat-card {
+  flex: 1; display: flex; align-items: center; gap: 14px;
   display: flex; align-items: center; gap: 14px;
   background: #fff; border-radius: 12px; padding: 16px 18px;
   border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);

@@ -1,35 +1,29 @@
 <template>
   <div class="garden-admin">
     <!-- 统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="8">
-        <div class="stat-card s-purple">
-          <div class="stat-ico el-icon-magic-stick" />
-          <div class="stat-info">
-            <div class="stat-num">{{ list.length }}</div>
-            <div class="stat-lab">配方总数</div>
-          </div>
+    <div class="stat-row">
+      <div class="stat-card s-purple">
+        <div class="stat-ico el-icon-magic-stick" />
+        <div class="stat-info">
+          <div class="stat-num">{{ list.length }}</div>
+          <div class="stat-lab">配方总数</div>
         </div>
-      </el-col>
-      <el-col :span="8">
-        <div class="stat-card s-blue">
-          <div class="stat-ico el-icon-sunny" />
-          <div class="stat-info">
-            <div class="stat-num">{{ seedCount }}</div>
-            <div class="stat-lab">涉及产物种子</div>
-          </div>
+      </div>
+      <div class="stat-card s-blue">
+        <div class="stat-ico el-icon-sunny" />
+        <div class="stat-info">
+          <div class="stat-num">{{ seedCount }}</div>
+          <div class="stat-lab">涉及产物种子</div>
         </div>
-      </el-col>
-      <el-col :span="8">
-        <div class="stat-card s-orange">
-          <div class="stat-ico el-icon-folder-opened" />
-          <div class="stat-info">
-            <div class="stat-num">{{ flowerCount }}</div>
-            <div class="stat-lab">涉及材料花</div>
-          </div>
+      </div>
+      <div class="stat-card s-orange">
+        <div class="stat-ico el-icon-folder-opened" />
+        <div class="stat-info">
+          <div class="stat-num">{{ flowerCount }}</div>
+          <div class="stat-lab">涉及材料花</div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
 
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -177,9 +171,9 @@ export default {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 18px; }
+.stat-row { display: flex; gap: 12px; margin-bottom: 18px; }
 .stat-card {
-  display: flex; align-items: center; gap: 14px;
+  flex: 1; display: flex; align-items: center; gap: 14px;
   background: #fff; border-radius: 12px; padding: 16px 18px;
   border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
   transition: box-shadow .2s, transform .2s;

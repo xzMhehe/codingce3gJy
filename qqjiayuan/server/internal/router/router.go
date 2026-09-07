@@ -291,6 +291,16 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/garden-elves/:id", perm(db, "admin:access"), gardenH.AdminElfUpdate)
 				admin.DELETE("/garden-elves/:id", perm(db, "admin:access"), gardenH.AdminElfDelete)
 
+				// 花园游戏数据管理（用户数据/日志流水/排行榜）
+				admin.GET("/garden-users", perm(db, "admin:access"), gardenH.AdminGardenUsers)
+				admin.GET("/garden-users/:uid", perm(db, "admin:access"), gardenH.AdminGardenUserDetail)
+				admin.PUT("/garden-users/:uid/garden", perm(db, "admin:access"), gardenH.AdminGardenEdit)
+				admin.PUT("/garden-users/:uid/coins", perm(db, "admin:access"), gardenH.AdminGardenCoins)
+				admin.PUT("/garden-users/:uid/bag", perm(db, "admin:access"), gardenH.AdminGardenBagSet)
+				admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "admin:access"), gardenH.AdminGardenFlowerSet)
+				admin.GET("/garden-logs", perm(db, "admin:access"), gardenH.AdminGardenLogs)
+				admin.GET("/garden-rank", perm(db, "admin:access"), gardenH.AdminGardenRank)
+
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
 				admin.PUT("/users/:id/home", perm(db, "user:manage"), adminH.UserHomeSet)
 				admin.GET("/wallets", perm(db, "user:manage"), adminH.Wallets)

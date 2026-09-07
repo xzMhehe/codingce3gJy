@@ -48,6 +48,7 @@
             <el-menu-item index="gardenMaps"><i class="el-icon-picture"></i>花之图谱</el-menu-item>
             <el-menu-item index="gardenMixes"><i class="el-icon-s-cooperation"></i>合成配方</el-menu-item>
             <el-menu-item index="gardenElves"><i class="el-icon-star-on"></i>精灵花册</el-menu-item>
+            <el-menu-item index="gardenData"><i class="el-icon-data-analysis"></i>游戏数据管理</el-menu-item>
           </el-submenu>
           <el-submenu index="g4">
             <template slot="title"><i class="el-icon-user"></i><span>空间管理</span></template>
@@ -96,7 +97,7 @@ export default {
       user: {},
       names: {
         dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', threads: '帖子管理',
-        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', goods: '道具商城', resources: '资源管理', spaces: '空间管理', reports: '举报管理'
+        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '游戏数据管理', goods: '道具商城', resources: '资源管理', spaces: '空间管理', reports: '举报管理'
       }
     }
   },
