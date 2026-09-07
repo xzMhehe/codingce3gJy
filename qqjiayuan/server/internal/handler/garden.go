@@ -665,10 +665,10 @@ func (h *GardenHandler) Shop(c *gin.Context) {
 	g := h.ensureGarden(middleware.GetUID(c))
 	out := make([]gin.H, 0)
 	for _, sd := range h.loadSeeds() {
-		if sd.DType != 0 || sd.Status == 0 {
+		if sd.Status == 0 {
 			continue
 		}
-		out = append(out, gin.H{"id": sd.ID, "name": sd.Name, "level": sd.Level, "level_name": gardenLevelName(sd.Level), "price": sd.Price, "vip_price": sd.Price * 8 / 10,
+		out = append(out, gin.H{"id": sd.ID, "dtype": sd.DType, "name": sd.Name, "level": sd.Level, "level_name": gardenLevelName(sd.Level), "price": sd.Price, "vip_price": sd.Price * 8 / 10,
 			"seed": sd.Seed, "ling": sd.Ling, "buds": sd.Buds, "less": sd.Less, "more": sd.More,
 			"yield_avg": (sd.Less + sd.More) / 2,
 			"hours": float64(int(float64(sd.Seed+sd.Ling+sd.Buds)/60*10)) / 10,

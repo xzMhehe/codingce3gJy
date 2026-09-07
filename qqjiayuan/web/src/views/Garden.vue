@@ -116,14 +116,16 @@
 
       <!-- ============ 商店（复刻 seed_list.aspx） ============ -->
       <template v-else-if="cur === 'shop'">
-        【花园商店】<br/>
-        <div class="module-title">普通花种|<a href="javascript:;" @click="shopTy = 1">独特花种</a>|<a href="javascript:;" @click="shopTy = 2">道具</a><br/></div>
-        花种|价格|等级|普通<br/>
+        <div class="bar sub">【花园商店】<br/></div>
+        <div class="module-title"><a :class="{ cur: shopTy === 0 }" href="javascript:;" @click="switchShop(0)">普通花种</a>|<a :class="{ cur: shopTy === 1 }" href="javascript:;" @click="switchShop(1)">独特花种</a>|<a :class="{ cur: shopTy === 2 }" href="javascript:;" @click="switchShop(2)">道具</a><br/></div>
+        花种|价格|等级|{{ shopTy === 1 ? '独特' : shopTy === 2 ? '道具' : '普通' }}<br/>
         <div class="list">
           <div class="row" v-for="s in pagedShop" :key="s.id">
-            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ s.price }}G币 <a href="javascript:;" @click="openSeedDetail(s)">[购买]</a><br/>
+            <img :src="'/static/picture/garden/' + (s.img || ('s_s_' + s.id + '.gif'))" alt="." /><a href="javascript:;" @click="openSeedDetail(s)">{{ s.name }}</a> {{ s.level }}级 {{ shopTy === 2 ? '--' : s.price + 'G币' }}
+            <template v-if="s.dtype === 0"><a href="javascript:;" @click="openSeedDetail(s)">[购买]</a></template>
+            <template v-else><a href="javascript:;" @click="switchTab('room')">[魔法屋合成]</a></template><br/>
           </div>
-          <div class="row" v-if="!pagedShop.length">商店暂无商品<br/></div>
+          <div class="row" v-if="!pagedShop.length">{{ shopTy === 1 ? '独特花种需在魔法屋中合成获得，敬请期待直接购买！' : shopTy === 2 ? '道具功能建设中，敬请期待！' : '商店暂无商品<br/>' }}<br/></div>
           <div class="row" v-if="shop.length">
             <a v-if="shopPage > 1" href="javascript:;" @click="shopPage--">上页</a>
             <a v-if="shopPage < shopPages" href="javascript:;" @click="shopPage++">下页</a>
@@ -486,12 +488,12 @@ export default {
     },
     mapPages () { return Math.max(1, Math.ceil(this.filteredMaps.length / 10)) },
     pagedShop () {
-      const list = this.shop.filter(s => s.dtype === this.shopTy || (this.shopTy === 2 && s.dtype === 1))
+      const list = this.shop.filter(s => (this.shopTy === 0 && s.dtype === 0) || (this.shopTy === 1 && s.dtype === 1) || (this.shopTy === 2 && s.dtype === 2))
       const start = (this.shopPage - 1) * 10
       return list.slice(start, start + 10)
     },
     shopPages () {
-      const list = this.shop.filter(s => s.dtype === this.shopTy || (this.shopTy === 2 && s.dtype === 1))
+      const list = this.shop.filter(s => (this.shopTy === 0 && s.dtype === 0) || (this.shopTy === 1 && s.dtype === 1) || (this.shopTy === 2 && s.dtype === 2))
       return Math.max(1, Math.ceil(list.length / 10))
     },
     filteredRoom () {
@@ -532,6 +534,7 @@ export default {
       if (tab === 'rank') this.loadRank()
       if (tab === 'elves') this.loadElves()
     },
+    switchShop (ty) { this.shopTy = ty; this.shopPage = 1 },
     loadAll () {
       this.load()
       this.loadBasket()
@@ -544,7 +547,7 @@ export default {
           this.g = r.data.garden || {}
           this.coins = r.data.coins || 0
           this.plots = r.data.plots || []
-          this.bag = r.data.bag || []
+          this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount }))
           this.msgs = r.data.msgs || []
           this.recentMaps = r.data.recent_maps || []
           this.g.map_total = this.g.map_total || 619
@@ -565,7 +568,7 @@ export default {
       api.get('/games/garden/shop').then(r => { if (r.code === 0) this.shop = r.data })
     },
     loadBag () {
-      api.get('/games/garden/view').then(r => { if (r.code === 0) this.bag = r.data.bag || [] })
+      api.get('/games/garden/view').then(r => { if (r.code === 0) this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount })) })
     },
     loadRank () {
       api.get('/games/garden/rank').then(r => { if (r.code === 0) this.rankList = r.data || [] })
@@ -608,7 +611,10 @@ export default {
     openElfDetail (e) {
       this.msg = e.name + '：' + (e.unlocked ? '已开启，唤醒需点亮图谱 ' + e.need_map + ' 个' : '未开启，点亮 ' + e.need_map + ' 个图谱后开启。' + (e.desc || ''))
     },
-    openSeedDetail (s) { this.curSeed = s; this.buyAmount = 1; this.cur = 'seed' },
+    openSeedDetail (s) {
+      if (s.dtype === 1) { this.cur = 'room'; this.roomWd = s.name; this.msg = ''; this.okMsg = '该花种需在魔法屋合成获得'; return }
+      this.curSeed = s; this.buyAmount = 1; this.cur = 'seed'
+    },
     openBagSeed (b) { this.msg = b.seed_name + ' 种子，共 ' + b.count + ' 颗' },
     growTxt (s) {
       const mins = (s.seed || 0) + (s.ling || 0) + (s.buds || 0)
@@ -751,7 +757,7 @@ export default {
     buy (s) {
       const n = this.buyAmount && this.buyAmount > 0 ? Math.min(this.buyAmount, 99) : 1
       api.post('/games/garden/buy', { id: s.id, amount: n }).then(r => {
-        if (r.code === 0) { this.okMsg = '成功购买' + s.name + '种子' + n + '颗'; this.coins = r.data.coins; this.loadBag() } else this.msg = r.msg
+        if (r.code === 0) { this.okMsg = r.data.msg || ('成功购买' + s.name + '种子' + n + '颗'); this.coins = r.data.coins; this.loadBag() } else this.msg = r.msg
       })
     },
     submitActivity () {
