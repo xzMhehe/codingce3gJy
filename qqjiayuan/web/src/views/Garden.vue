@@ -21,9 +21,9 @@
           <br/>花之图谱:<a href="javascript:;" @click="openMap">{{ g.common + g.festival + g.scarce }}/{{ g.map_total }}</a><br/>珍稀:{{ g.scarce }} 独特:{{ g.festival }} 普通:{{ g.common }}<br/>
         </div>
         <div class="recent-maps">
-          <template v-for="i in 7" :key="i">
-            <img v-if="recentMaps[i-1]" :src="'/static/picture/garden/' + (recentMaps[i-1].img || ('m_s_' + recentMaps[i-1].id + '.gif'))" :title="recentMaps[i-1].name" alt="." />
-            <img v-else src="/static/picture/garden/m_s.gif" alt="." />
+          <template v-for="i in 7">
+            <img v-if="recentMaps[i-1]" :key="i" :src="'/static/picture/garden/' + (recentMaps[i-1].img || ('m_s_' + recentMaps[i-1].id + '.gif'))" :title="recentMaps[i-1].name" alt="." />
+            <img v-else :key="i" src="/static/picture/garden/m_s.gif" alt="." />
           </template>
         </div>
         <br/>
