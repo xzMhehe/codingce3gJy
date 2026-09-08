@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
@@ -101,11 +104,15 @@ func (h *UserHandler) Profile(c *gin.Context) {
 			duties = append(duties, gin.H{"name": b.Name, "icon": b.Icon})
 		}
 	}
+	// 通信地址（诺哈 wap_user_address：故乡/现居，公开展示省市）
+	var addr model.UserAddress
+	h.DB.Where("user_id = ?", user.ID).First(&addr)
+	isMe := middleware.GetUID(c) == user.ID
 
 	resp.OK(c, gin.H{
 		"id": user.ID, "username": user.Username, "nickname": user.Nickname,
 		"gender": user.Gender, "signature": user.Signature, "color": user.Color,
-		"avatar": user.Avatar, "level": user.Level, "exp": user.Exp, "coins": user.Coins,
+		"avatar": user.Avatar, "avatar_base64": user.AvatarBase64, "level": user.Level, "exp": user.Exp, "coins": user.Coins,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"noble": user.Noble, "partner_id": user.PartnerID, "partner_name": partnerName,
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,
@@ -113,10 +120,48 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"online":     online,
 		"active_days": user.ActiveDays, "home_level": hl, "home_next_days": nextDays,
 		"family": familyName, "mood": mood, "city": user.City,
+		// 诺哈 wap_user 字段
+		"age": user.Age, "birth_year": user.BirthYear, "birth_month": user.BirthMonth, "birth_day": user.BirthDay,
+		"birth_type": user.BirthType, "solar": user.Solar, "lunar": user.Lunar,
+		"hours": user.Hours, "friend_policy": user.FriendPolicy,
+		"introduction": user.Introduction,
+		// 通信地址（省市对所有人可见，详细地址仅本人）
+		"home_prov": addr.HomeProv, "home_city": addr.HomeCity,
+		"live_prov": addr.LiveProv, "live_city": addr.LiveCity,
+		"address": addressOut(&addr, isMe),
+		// 联系方式仅本人可见（诺哈 contact 仅本人/管理员可见）
+		"contact": contactOut(h.DB, user.ID, isMe),
 		"created_at": user.CreatedAt, "last_login_at": user.LastLoginAt,
 		"thread_count": threadCount, "reply_count": replyCount, "sign_days": signDays,
 		"badges": badges, "roles": roles, "duties": duties, "threads": threads,
 	})
+}
+
+// addressOut 通信地址输出：详细地址/邮编仅本人可见
+func addressOut(a *model.UserAddress, isMe bool) gin.H {
+	out := gin.H{
+		"home_nation": a.HomeNation, "home_prov": a.HomeProv, "home_city": a.HomeCity,
+		"live_nation": a.LiveNation, "live_prov": a.LiveProv, "live_city": a.LiveCity,
+	}
+	if isMe {
+		out["home_dist"] = a.HomeDist
+		out["home_addr"] = a.HomeAddr
+		out["home_zip"] = a.HomeZip
+		out["live_dist"] = a.LiveDist
+		out["live_addr"] = a.LiveAddr
+		out["live_zip"] = a.LiveZip
+	}
+	return out
+}
+
+// contactOut 联系方式（诺哈 wap_user_contact）：仅本人可见
+func contactOut(db *gorm.DB, uid uint, isMe bool) gin.H {
+	if !isMe {
+		return nil
+	}
+	var ct model.UserContact
+	db.Where("user_id = ?", uid).First(&ct)
+	return gin.H{"qq": ct.QQ, "mail": ct.Mail, "phone": ct.Phone}
 }
 
 type profileReq struct {
@@ -129,6 +174,11 @@ type profileReq struct {
 	BirthYear    int    `json:"birth_year"`
 	BirthMonth   int    `json:"birth_month"`
 	BirthDay     int    `json:"birth_day"`
+	BirthType    *int   `json:"birth_type"`  // 0阴历 1阳历（诺哈）
+	Solar        string `json:"solar" binding:"max=20"`
+	Lunar        string `json:"lunar" binding:"max=20"`
+	FriendPolicy *int   `json:"friend_policy"` // 0允许 1验证 2拒绝（诺哈）
+	PerPage      *int   `json:"per_page"`      // 每页帖子数 5-20（诺哈 config[0]）
 	Introduction string `json:"introduction" binding:"max=200"`
 }
 
@@ -183,12 +233,47 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 			}
 		}
 	}
-	h.DB.Model(&user).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"nickname": req.Nickname, "signature": req.Signature,
 		"gender": req.Gender, "avatar": req.Avatar, "city": req.City,
 		"age": age, "birth_year": by, "birth_month": bm, "birth_day": bd,
 		"introduction": req.Introduction,
-	})
+		"solar":        req.Solar, "lunar": req.Lunar,
+	}
+	// 诺哈 wap_user 扩展字段
+	if req.BirthType != nil {
+		if *req.BirthType != 0 {
+			*req.BirthType = 1
+		}
+		updates["birth_type"] = *req.BirthType
+	}
+	if req.FriendPolicy != nil {
+		if *req.FriendPolicy < 0 || *req.FriendPolicy > 2 {
+			*req.FriendPolicy = 0
+		}
+		updates["friend_policy"] = *req.FriendPolicy
+	}
+	if req.PerPage != nil {
+		// 个性设置 config：只改第 0 段（每页帖子数 5-20），其余段保留（诺哈 config CSV）
+		pp := *req.PerPage
+		if pp < 5 {
+			pp = 5
+		}
+		if pp > 20 {
+			pp = 20
+		}
+		cfg := user.Config
+		if cfg == "" {
+			cfg = "10,1200,1500,1200,0"
+		}
+		parts := strings.Split(cfg, ",")
+		if len(parts) < 5 {
+			parts = []string{"10", "1200", "1500", "1200", "0"}
+		}
+		parts[0] = strconv.Itoa(pp)
+		updates["config"] = strings.Join(parts, ",")
+	}
+	h.DB.Model(&user).Updates(updates)
 	resp.OK(c, nil)
 }
 
@@ -347,4 +432,177 @@ func sniffImageType(data []byte) string {
 	default:
 		return "image/jpeg"
 	}
+}
+
+// ============ 用户附属信息（对齐诺哈 contact/address/docu/protec/pass 家族） ============
+
+// userLog 记录用户操作日志（诺哈 wap_user_log）
+func userLog(db *gorm.DB, uid uint, action, intro, ip string) {
+	db.Create(&model.UserLog{UserID: uid, Action: action, Intro: intro, IP: ip})
+}
+
+// ---- 通信地址（诺哈 address.asp：故乡/现居） ----
+
+// AddressView 我的通信地址
+func (h *UserHandler) AddressView(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var a model.UserAddress
+	h.DB.Where("user_id = ?", uid).First(&a)
+	resp.OK(c, a)
+}
+
+// AddressSave 保存通信地址
+func (h *UserHandler) AddressSave(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req model.UserAddress
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "地址格式不对")
+		return
+	}
+	var a model.UserAddress
+	if err := h.DB.Where("user_id = ?", uid).First(&a).Error; err != nil {
+		a = model.UserAddress{UserID: uid}
+		h.DB.Create(&a)
+	}
+	h.DB.Model(&a).Updates(map[string]interface{}{
+		"home_nation": req.HomeNation, "home_prov": req.HomeProv, "home_city": req.HomeCity,
+		"home_dist": req.HomeDist, "home_addr": req.HomeAddr, "home_zip": req.HomeZip,
+		"live_nation": req.LiveNation, "live_prov": req.LiveProv, "live_city": req.LiveCity,
+		"live_dist": req.LiveDist, "live_addr": req.LiveAddr, "live_zip": req.LiveZip,
+	})
+	resp.OK(c, nil)
+}
+
+// ---- 实名证件（诺哈 docu：设置需登录密码确认） ----
+
+// DocumentView 我的实名证件（号码脱敏）
+func (h *UserHandler) DocumentView(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var d model.UserDocument
+	h.DB.Where("user_id = ?", uid).First(&d)
+	num := d.Number
+	if len(num) > 6 {
+		num = num[:3] + "***********" + num[len(num)-3:]
+	}
+	resp.OK(c, gin.H{"type": d.Type, "real_name": d.RealName, "number": num, "has_doc": d.ID > 0})
+}
+
+// DocumentSave 保存实名证件（需登录密码确认，对齐诺哈）
+func (h *UserHandler) DocumentSave(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Type     int    `json:"type"`
+		RealName string `json:"real_name" binding:"required,max=30"`
+		Number   string `json:"number" binding:"required,max=30"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请填写证件类型、姓名和号码")
+		return
+	}
+	var u model.User
+	h.DB.First(&u, uid)
+	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)) != nil {
+		resp.ParamError(c, "登录密码不对，无法设置证件")
+		return
+	}
+	if req.Type != 1 {
+		req.Type = 1
+	}
+	var d model.UserDocument
+	if err := h.DB.Where("user_id = ?", uid).First(&d).Error; err != nil {
+		d = model.UserDocument{UserID: uid}
+		h.DB.Create(&d)
+	}
+	h.DB.Model(&d).Updates(map[string]interface{}{"type": req.Type, "real_name": req.RealName, "number": req.Number})
+	userLog(h.DB, uid, "设置证件", "更新了实名证件信息", c.ClientIP())
+	resp.OK(c, nil)
+}
+
+// ---- 密保问题（诺哈 protec：issue 编号 + MD5 答案） ----
+
+// ProtectionView 密保状态与问题库
+func (h *UserHandler) ProtectionView(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var p model.UserProtection
+	h.DB.Where("user_id = ?", uid).First(&p)
+	resp.OK(c, gin.H{
+		"questions": model.ProtectionQuestions,
+		"issue":     p.Issue, "has_protection": p.ID > 0,
+	})
+}
+
+// ProtectionSave 设置密保问题
+func (h *UserHandler) ProtectionSave(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Issue  int    `json:"issue" binding:"min=1"`
+		Answer string `json:"answer" binding:"required,max=30"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择密保问题并填写答案")
+		return
+	}
+	if req.Issue > len(model.ProtectionQuestions) {
+		resp.ParamError(c, "密保问题不存在")
+		return
+	}
+	sum := md5.Sum([]byte(strings.TrimSpace(req.Answer)))
+	var p model.UserProtection
+	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err != nil {
+		p = model.UserProtection{UserID: uid}
+		h.DB.Create(&p)
+	}
+	h.DB.Model(&p).Updates(map[string]interface{}{"issue": req.Issue, "answer": hex.EncodeToString(sum[:])})
+	userLog(h.DB, uid, "设置密保", "更新了密保问题", c.ClientIP())
+	resp.OK(c, nil)
+}
+
+// ---- 支付密码（诺哈 wap_user_money.pass，独立于登录密码） ----
+
+// PayPassView 是否已设置支付密码
+func (h *UserHandler) PayPassView(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var u model.User
+	h.DB.Select("pay_pass").First(&u, uid)
+	resp.OK(c, gin.H{"has_paypass": u.PayPass != ""})
+}
+
+// PayPassSet 设置/修改支付密码（首次直接设；修改需原支付密码）
+func (h *UserHandler) PayPassSet(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Old string `json:"old"`
+		New string `json:"new" binding:"required,min=6,max=20"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "支付密码需要 6-20 位")
+		return
+	}
+	var u model.User
+	h.DB.Select("id,pay_pass").First(&u, uid)
+	if u.PayPass != "" {
+		if bcrypt.CompareHashAndPassword([]byte(u.PayPass), []byte(req.Old)) != nil {
+			resp.ParamError(c, "原支付密码不对")
+			return
+		}
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(req.New), bcrypt.DefaultCost)
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("pay_pass", string(hash))
+	userLog(h.DB, uid, "支付密码", "修改了支付密码", c.ClientIP())
+	resp.OK(c, nil)
+}
+
+// ---- 登录/操作日志（诺哈 log.asp） ----
+
+// MyLogs 我的操作日志
+func (h *UserHandler) MyLogs(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 20)
+	q := h.DB.Model(&model.UserLog{}).Where("user_id = ?", uid)
+	var total int64
+	q.Count(&total)
+	var list []model.UserLog
+	q.Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": list})
 }

@@ -17,6 +17,16 @@ type User struct {
 	BirthYear    int     `gorm:"default:0" json:"birth_year"`
 	BirthMonth   int     `gorm:"default:0" json:"birth_month"`
 	BirthDay     int     `gorm:"default:0" json:"birth_day"`
+	BirthType    int     `gorm:"default:1" json:"birth_type"`     // 生日类型 0阴历 1阳历（诺哈 wap_user.birth）
+	Solar        string  `gorm:"type:varchar(20)" json:"solar"`   // 阳历生日（诺哈 wap_user.solar）
+	Lunar        string  `gorm:"type:varchar(20)" json:"lunar"`   // 阴历生日（诺哈 wap_user.lunar）
+	Hours        int     `gorm:"default:0" json:"hours"`          // 累计在线分钟数（诺哈 wap_user.hours，在线时长等级依据）
+	FriendPolicy int     `gorm:"default:0" json:"friend_policy"`  // 加好友策略 0允许 1需要验证 2拒绝（诺哈 wap_user.friend）
+	Config       string  `gorm:"type:varchar(50)" json:"config"`  // 个性设置 CSV：每页帖子数,页面字数,书城字数,每页字数（诺哈 wap_user.config）
+	AddIP        string  `gorm:"type:varchar(45)" json:"-"`       // 注册IP（诺哈 wap_user.addip）
+	LastIP       string  `gorm:"type:varchar(45)" json:"-"`       // 最后登录IP（诺哈 wap_user.endip）
+	PayPass      string  `gorm:"type:varchar(100)" json:"-"`      // 支付密码（bcrypt，独立于登录密码，诺哈 wap_user_money.pass）
+	Paid         int     `gorm:"default:0" json:"paid"`           // 累计消费（诺哈 wap_user.paid）
 	Introduction string  `gorm:"type:varchar(200)" json:"introduction"` // 个人简介
 	Signature    string    `gorm:"type:varchar(100)" json:"signature"`
 	City         string    `gorm:"type:varchar(30)" json:"city"`    // 城市设置

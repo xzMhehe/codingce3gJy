@@ -73,6 +73,11 @@ func (h *FriendHandler) Add(c *gin.Context) {
 		resp.NotFound(c, "这位友友不存在")
 		return
 	}
+	// 加好友策略（诺哈 wap_user.friend：0允许 1需要验证 2拒绝）
+	if target.FriendPolicy == 2 {
+		resp.Forbidden(c, "对方设置了不接受好友申请")
+		return
+	}
 	var exist model.Friendship
 	if err := h.DB.Where("(user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)",
 		uid, req.TargetID, req.TargetID, uid).First(&exist).Error; err == nil {

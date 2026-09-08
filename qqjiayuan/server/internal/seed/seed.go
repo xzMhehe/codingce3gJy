@@ -50,6 +50,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.SiteArticleCategory{}, &model.SiteArticle{}, &model.SiteArticleComment{},
 		&model.ShopCategory{}, &model.Shop{}, &model.ShopGoods{}, &model.ShopOrder{}, &model.ShopComment{},
 		&model.ArticleComment{},
+		&model.UserAddress{}, &model.UserDocument{}, &model.UserProtection{}, &model.UserLog{},
 		&model.BoardCategory{}, &model.BoardMember{}, &model.StickyReply{},
 		&model.ThreadPoll{}, &model.ThreadPollOption{}, &model.ThreadPollVote{},
 		&model.ThreadReward{}, &model.ThreadRewardLog{}, &model.ThreadFloor{},
@@ -71,6 +72,34 @@ func Run(db *gorm.DB, staticDir string) {
 	if !m.HasColumn("users", "avatar_base64") {
 		db.Exec("ALTER TABLE users ADD COLUMN avatar_base64 longtext")
 	}
+	// 用户模块（对齐诺哈 wap_user）存量表补列（幂等）
+	for _, col := range []string{"hours", "friend_policy", "paid"} {
+		if !m.HasColumn("users", col) {
+			db.Exec("ALTER TABLE users ADD COLUMN " + col + " int DEFAULT 0")
+		}
+	}
+	if !m.HasColumn("users", "birth_type") {
+		db.Exec("ALTER TABLE users ADD COLUMN birth_type int DEFAULT 1")
+	}
+	for _, col := range []string{"solar", "lunar"} {
+		if !m.HasColumn("users", col) {
+			db.Exec("ALTER TABLE users ADD COLUMN " + col + " varchar(20) DEFAULT ''")
+		}
+	}
+	if !m.HasColumn("users", "config") {
+		db.Exec("ALTER TABLE users ADD COLUMN config varchar(50) DEFAULT ''")
+	}
+	if !m.HasColumn("users", "add_ip") {
+		db.Exec("ALTER TABLE users ADD COLUMN add_ip varchar(45) DEFAULT ''")
+	}
+	if !m.HasColumn("users", "last_ip") {
+		db.Exec("ALTER TABLE users ADD COLUMN last_ip varchar(45) DEFAULT ''")
+	}
+	if !m.HasColumn("users", "pay_pass") {
+		db.Exec("ALTER TABLE users ADD COLUMN pay_pass varchar(100) DEFAULT ''")
+	}
+	// 老用户补默认个性配置（诺哈 wap_user.config CSV）
+	db.Exec("UPDATE users SET config = '10,1200,1500,1200,0' WHERE config IS NULL OR config = ''")
 	// 种子演示帖统一设为已发布（audit_status=1），否则论坛/详情/活动专区不可见
 	db.Exec("UPDATE threads SET audit_status = 1 WHERE audit_status = 0 AND status = 1")
 

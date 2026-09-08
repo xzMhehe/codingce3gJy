@@ -6,9 +6,18 @@
       昵称:<a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname }}</font></a>
       (<a href="javascript:;" @click="addFriend">加为好友</a>)<template v-if="friendTip"><font color="#1a9e1a"> {{ friendTip }}</font></template><br>
       性别:{{ u.gender === 2 ? '女' : '男' }}<br>
+      年龄:{{ u.age || '—' }}<br>
+      生日:{{ birthText }}<span v-if="u.birth_type === 0" class="txt-fade">(阴历)</span><br>
       城市:{{ u.city || '—' }}<br>
-      年龄:—<br>
-      生日:{{ fmt(u.created_at) }}<br>
+      故乡:{{ homeText }}<br>
+      现居:{{ liveText }}<br>
+      在线时长:{{ hoursText }}<br>
+      <template v-if="contact">
+        <span class="txt-fade">--- 我的联系方式 ---</span><br>
+        QQ:{{ contact.qq || '未设置' }}<br>
+        邮箱:{{ contact.mail || '未设置' }}<br>
+        手机:{{ contact.phone || '未设置' }}<br>
+      </template>
     </div>
 
     <div class="module-title">家园资料</div>
@@ -48,6 +57,28 @@ export default {
     isLogin () { return this.$store.getters.isLogin },
     user () { return this.$store.state.user },
     isMine () { return this.user && this.u.id === this.user.id },
+    contact () { return this.isMine ? this.u.contact : null },
+    birthText () {
+      if (this.u.solar) return this.u.solar
+      const y = this.u.birth_year; const m = this.u.birth_month; const d = this.u.birth_day
+      if (y && m && d) return y + '-' + m + '-' + d
+      return '—'
+    },
+    homeText () {
+      const a = this.u.address || {}
+      const s = [a.home_nation, a.home_prov, a.home_city].filter(Boolean).join(' ')
+      return s || '—'
+    },
+    liveText () {
+      const a = this.u.address || {}
+      const s = [a.live_nation, a.live_prov, a.live_city].filter(Boolean).join(' ')
+      return s || '—'
+    },
+    hoursText () {
+      const h = this.u.hours || 0
+      if (h < 60) return h + '分钟'
+      return Math.floor(h / 60) + '小时' + (h % 60 ? (h % 60) + '分' : '')
+    },
     nextNeed () {
       const d = this.u.active_days || 0
       const nd = this.u.home_next_days || 0

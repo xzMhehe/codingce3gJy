@@ -54,12 +54,16 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Gender:   req.Gender,
 		Coins:    100, // 新人礼包
 		Level:    1,
+		Config:   "10,1200,1500,1200,0", // 诺哈 wap_user.config 默认值
+		AddIP:    c.ClientIP(),
+		LastIP:   c.ClientIP(),
 	}
 	if err := h.DB.Create(&user).Error; err != nil {
 		resp.ServerError(c, err)
 		return
 	}
 	h.DB.Model(&user).Update("username", fmt.Sprintf("%d", user.ID))
+	userLog(h.DB, user.ID, "注册成功", "家园号码 "+user.Username, c.ClientIP())
 
 	var member model.Role
 	h.DB.Where("code = ?", "member").First(&member)
@@ -96,10 +100,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	if user.Status == 0 {
+		userLog(h.DB, user.ID, "登陆失败", "账号已被封禁", c.ClientIP())
 		resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+		userLog(h.DB, user.ID, "登陆失败", "密码错误", c.ClientIP())
 		resp.ParamError(c, "密码不对哦，再想想")
 		return
 	}
@@ -109,7 +115,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	now := gorm.Expr("NOW()")
-	h.DB.Model(&user).Updates(map[string]interface{}{"last_login_at": now, "last_active_at": now})
+	h.DB.Model(&user).Updates(map[string]interface{}{"last_login_at": now, "last_active_at": now, "last_ip": c.ClientIP()})
+	userLog(h.DB, user.ID, "登陆成功", "欢迎回来", c.ClientIP())
 	resp.OK(c, gin.H{"token": token, "user": h.userBrief(user)})
 }
 
@@ -151,6 +158,9 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"avatar": user.Avatar, "coins": user.Coins, "exp": user.Exp, "level": user.Level,
 		"yuanbao": user.YuanBao, "jinzuan": user.JinZuan, "youquan": user.YouQuan,
 		"age": user.Age, "birth_year": user.BirthYear, "birth_month": user.BirthMonth, "birth_day": user.BirthDay,
+		"birth_type": user.BirthType, "solar": user.Solar, "lunar": user.Lunar,
+		"friend_policy": user.FriendPolicy, "config": user.Config, "hours": user.Hours,
+		"has_paypass": user.PayPass != "",
 		"introduction": user.Introduction, "city": user.City, "avatar_base64": user.AvatarBase64,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"roles": user.Roles, "badges": user.Badges, "priv": user.Priv,

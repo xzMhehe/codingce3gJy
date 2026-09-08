@@ -22,14 +22,18 @@
           <template slot-scope="{row}">{{ (row.roles || []).map(r => r.name).join('，') || '—' }}</template>
         </el-table-column>
         <el-table-column label="等级" width="80"><template slot-scope="{row}">Lv.{{ row.level }}</template></el-table-column>
+        <el-table-column label="好友策略" width="90" align="center">
+          <template slot-scope="{row}">{{ {0:'允许',1:'验证',2:'拒绝'}[row.friend_policy] || '允许' }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="80">
           <template slot-scope="{row}">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '封禁' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right" header-align="center">
+        <el-table-column label="操作" width="260" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
+              <el-button size="mini" plain icon="el-icon-view" @click="openDetail(row)">详情</el-button>
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEditor(row)">编辑</el-button>
               <el-button size="mini" :type="row.status === 1 ? 'danger' : 'success'" plain @click="setStatus(row)">
                 {{ row.status === 1 ? '封禁' : '解封' }}
@@ -90,6 +94,56 @@
         <el-button type="primary" @click="saveAll">保存全部修改</el-button>
       </div>
     </el-dialog>
+
+    <!-- 用户详情弹窗（对齐诺哈 admin/user：资料+IP+地址/证件/密保/联系/日志） -->
+    <el-dialog :title="'用户详情：' + (detail.user ? detail.user.nickname + '（' + detail.user.username + '）' : '')"
+               :visible.sync="detailDlg" width="760px">
+      <div v-if="detail.user" v-loading="detailLoading">
+        <el-descriptions :column="3" border size="small" title="基本资料">
+          <el-descriptions-item label="性别">{{ detail.user.gender === 2 ? '女' : '男' }}</el-descriptions-item>
+          <el-descriptions-item label="年龄">{{ detail.user.age || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="生日">{{ detail.user.solar || (detail.user.birth_year ? detail.user.birth_year + '-' + detail.user.birth_month + '-' + detail.user.birth_day : '—') }}{{ detail.user.birth_type === 0 ? '（阴历' + (detail.user.lunar || '') + '）' : '' }}</el-descriptions-item>
+          <el-descriptions-item label="城市">{{ detail.user.city || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="签名">{{ detail.user.signature || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="简介">{{ detail.user.introduction || '—' }}</el-descriptions-item>
+        </el-descriptions>
+        <el-descriptions :column="3" border size="small" title="经济与活跃" style="margin-top:12px">
+          <el-descriptions-item label="等级">Lv.{{ detail.user.level }}（经验 {{ detail.user.exp }}）</el-descriptions-item>
+          <el-descriptions-item label="货币">G币{{ detail.user.coins }} / 元宝{{ detail.user.yuanbao }} / 金钻{{ detail.user.jinzuan }} / 友友券{{ detail.user.youquan }}</el-descriptions-item>
+          <el-descriptions-item label="成就">{{ detail.user.achieve }}</el-descriptions-item>
+          <el-descriptions-item label="活跃天数">{{ Math.floor(detail.user.active_days || 0) }}天</el-descriptions-item>
+          <el-descriptions-item label="在线时长">{{ Math.floor((detail.user.hours || 0) / 60) }}小时{{ (detail.user.hours || 0) % 60 }}分</el-descriptions-item>
+          <el-descriptions-item label="贵族">{{ detail.user.noble || 0 }}</el-descriptions-item>
+          <el-descriptions-item label="注册IP">{{ detail.user.add_ip || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="最后IP">{{ detail.user.last_ip || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="最后登录">{{ fmtTime(detail.user.last_login_at) }}</el-descriptions-item>
+        </el-descriptions>
+        <el-descriptions :column="3" border size="small" title="安全与设置" style="margin-top:12px">
+          <el-descriptions-item label="好友策略">{{ {0:'允许',1:'需要验证',2:'拒绝'}[detail.user.friend_policy] || '允许' }}</el-descriptions-item>
+          <el-descriptions-item label="个性配置">{{ detail.user.config || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="支付密码">{{ detail.user.has_paypass ? '已设置' : '未设置' }}</el-descriptions-item>
+          <el-descriptions-item label="密保">{{ detail.protection.has_protection ? '已设置（问题' + detail.protection.issue + '）' : '未设置' }}</el-descriptions-item>
+          <el-descriptions-item label="实名证件">{{ detail.document.has_doc ? detail.document.real_name + ' ' + detail.document.number : '未认证' }}</el-descriptions-item>
+          <el-descriptions-item label="联系方式">{{ detail.contact.qq || 'QQ未绑' }} / {{ detail.contact.mail || '邮箱未绑' }} / {{ detail.contact.phone || '手机未绑' }}</el-descriptions-item>
+        </el-descriptions>
+        <el-descriptions :column="2" border size="small" title="通信地址" style="margin-top:12px">
+          <el-descriptions-item label="故乡">{{ addrText(detail.address, 'home') }}</el-descriptions-item>
+          <el-descriptions-item label="现居">{{ addrText(detail.address, 'live') }}</el-descriptions-item>
+        </el-descriptions>
+        <div style="margin-top:12px">
+          <div style="font-size:13px;font-weight:bold;margin-bottom:6px">最近操作日志</div>
+          <el-table :data="detail.logs || []" size="mini" max-height="240" stripe>
+            <el-table-column prop="action" label="动作" width="100" />
+            <el-table-column prop="intro" label="详情" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="ip" label="IP" width="130" />
+            <el-table-column label="时间" width="160"><template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template></el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <div slot="footer">
+        <el-button @click="detailDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -105,7 +159,8 @@ export default {
       dlg: false,
       form: { id: 0 },
       panel: { password: '', roleIds: [], badgeIds: [], noble: 0, partnerId: 0, babyName: '', privId: 0 },
-      savePwd: false
+      savePwd: false,
+      detailDlg: false, detailLoading: false, detail: { user: null }
     }
   },
   mounted () {
@@ -191,6 +246,26 @@ export default {
           if (r.code === 0) { this.$message.success(target === 0 ? '已封禁' : '已解封'); this.load() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    openDetail (row) {
+      this.detailDlg = true
+      this.detailLoading = true
+      this.detail = { user: null }
+      api.get(`/admin/users/${row.id}/detail`).then(r => {
+        this.detailLoading = false
+        if (r.code === 0) this.detail = r.data
+        else this.$message.error(r.msg)
+      }).catch(() => { this.detailLoading = false })
+    },
+    addrText (a, prefix) {
+      if (!a) return '—'
+      const s = [a[prefix + '_nation'], a[prefix + '_prov'], a[prefix + '_city'], a[prefix + '_dist'], a[prefix + '_addr'], a[prefix + '_zip']].filter(Boolean).join(' ')
+      return s || '—'
+    },
+    fmtTime (t) {
+      if (!t) return '—'
+      const d = new Date(t); const p = n => (n < 10 ? '0' + n : '' + n)
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
     }
   }
 }

@@ -41,6 +41,50 @@ func (h *AdminHandler) Users(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": users})
 }
 
+// UserDetail 用户详情：完整资料 + IP + 地址/证件/密保/联系方式 + 最近日志（对齐诺哈 admin/user）
+func (h *AdminHandler) UserDetail(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var u model.User
+	if err := h.DB.First(&u, id).Error; err != nil {
+		resp.NotFound(c, "用户不存在")
+		return
+	}
+	var addr model.UserAddress
+	h.DB.Where("user_id = ?", u.ID).First(&addr)
+	var doc model.UserDocument
+	h.DB.Where("user_id = ?", u.ID).First(&doc)
+	var prot model.UserProtection
+	h.DB.Where("user_id = ?", u.ID).First(&prot)
+	var ct model.UserContact
+	h.DB.Where("user_id = ?", u.ID).First(&ct)
+	var logs []model.UserLog
+	h.DB.Where("user_id = ?", u.ID).Order("created_at DESC").Limit(20).Find(&logs)
+	// 证件号脱敏
+	num := doc.Number
+	if len(num) > 6 {
+		num = num[:3] + "***********" + num[len(num)-3:]
+	}
+	resp.OK(c, gin.H{
+		"user": gin.H{
+			"id": u.ID, "username": u.Username, "nickname": u.Nickname, "gender": u.Gender,
+			"age": u.Age, "birth_year": u.BirthYear, "birth_month": u.BirthMonth, "birth_day": u.BirthDay,
+			"birth_type": u.BirthType, "solar": u.Solar, "lunar": u.Lunar,
+			"signature": u.Signature, "introduction": u.Introduction, "city": u.City, "color": u.Color,
+			"level": u.Level, "exp": u.Exp, "coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
+			"active_days": u.ActiveDays, "hours": u.Hours, "achieve": u.Achieve,
+			"friend_policy": u.FriendPolicy, "config": u.Config, "noble": u.Noble,
+			"status": u.Status, "add_ip": u.AddIP, "last_ip": u.LastIP,
+			"created_at": u.CreatedAt, "last_login_at": u.LastLoginAt, "last_active_at": u.LastActiveAt,
+			"has_paypass": u.PayPass != "",
+		},
+		"address":     addr,
+		"document":    gin.H{"type": doc.Type, "real_name": doc.RealName, "number": num, "has_doc": doc.ID > 0},
+		"protection":  gin.H{"issue": prot.Issue, "has_protection": prot.ID > 0},
+		"contact":     gin.H{"qq": ct.QQ, "mail": ct.Mail, "phone": ct.Phone},
+		"logs":        logs,
+	})
+}
+
 // 家族管理：列表（含成员数，分页）
 func (h *AdminHandler) Families(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
