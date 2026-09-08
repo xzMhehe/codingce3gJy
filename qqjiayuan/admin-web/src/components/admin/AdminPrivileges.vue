@@ -19,9 +19,13 @@
           <template slot-scope="{row}"><el-tag :type="row.type === 'blue' ? 'primary' : 'warning'" size="mini">{{ row.type === 'blue' ? '蓝钻' : '超Q' }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="name" label="方案" min-width="180" />
-        <el-table-column prop="cost" label="金币" width="80" />
-        <el-table-column prop="gain" label="成长" width="80" />
-        <el-table-column prop="days" label="天数" width="80" />
+        <el-table-column prop="cost" label="金币" width="70" />
+        <el-table-column prop="gain" label="赠送" width="70" />
+        <el-table-column prop="speed" label="速度/天" width="80" />
+        <el-table-column prop="days" label="天数" width="70" />
+        <el-table-column label="限购/库存/销量" min-width="130" header-align="center">
+          <template slot-scope="{row}">{{ row.limit || '不限' }}/{{ row.stock || '不限' }}/{{ row.sales }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="150" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
@@ -88,8 +92,11 @@
         </el-form-item>
         <el-form-item label="名称"><el-input v-model.trim="form.name" maxlength="40" /></el-form-item>
         <el-form-item label="金币"><el-input-number v-model="form.cost" :min="0" /></el-form-item>
-        <el-form-item label="成长"><el-input-number v-model="form.gain" :min="0" /></el-form-item>
+        <el-form-item label="成长赠送"><el-input-number v-model="form.gain" :min="0" /></el-form-item>
+        <el-form-item label="成长速度/天"><el-input-number v-model="form.speed" :min="0" /></el-form-item>
         <el-form-item label="天数"><el-input-number v-model="form.days" :min="0" /></el-form-item>
+        <el-form-item label="每号限购"><el-input-number v-model="form.limit" :min="0" /></el-form-item>
+        <el-form-item label="库存"><el-input-number v-model="form.stock" :min="0" /></el-form-item>
       </el-form>
       <div slot="footer">
         <el-button @click="dlg = false">取 消</el-button>
@@ -105,7 +112,7 @@ import api from '../../api'
 export default {
   name: 'AdminPrivileges',
   data () {
-    return { tab: 'plans', plans: [], users: [], loading: false, dlg: false, page: 1, pageSize: 10, total: 0, form: { id: 0, type: 'blue', name: '', cost: 0, gain: 0, days: 0 } }
+    return { tab: 'plans', plans: [], users: [], loading: false, dlg: false, page: 1, pageSize: 10, total: 0, form: { id: 0, type: 'blue', name: '', cost: 0, gain: 0, speed: 0, days: 0, limit: 0, stock: 0 } }
   },
   mounted () { this.load() },
   methods: {
@@ -124,12 +131,12 @@ export default {
       })
     },
     openDlg (row) {
-      this.form = row ? { id: row.id, type: row.type, name: row.name, cost: row.cost, gain: row.gain, days: row.days } : { id: 0, type: 'blue', name: '', cost: 0, gain: 0, days: 0 }
+      this.form = row ? { id: row.id, type: row.type, name: row.name, cost: row.cost, gain: row.gain, speed: row.speed, days: row.days, limit: row.limit, stock: row.stock } : { id: 0, type: 'blue', name: '', cost: 0, gain: 0, speed: 0, days: 0, limit: 0, stock: 0 }
       this.dlg = true
     },
     save () {
       if (!this.form.name) { this.$message.warning('请填写方案名'); return }
-      const body = { type: this.form.type, name: this.form.name, cost: this.form.cost, gain: this.form.gain, days: this.form.days }
+      const body = { type: this.form.type, name: this.form.name, cost: this.form.cost, gain: this.form.gain, speed: this.form.speed, days: this.form.days, limit: this.form.limit, stock: this.form.stock }
       if (this.form.id) api.put('/admin/privileges/plans/' + this.form.id, body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
       else api.post('/admin/privileges/plans', body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
     },

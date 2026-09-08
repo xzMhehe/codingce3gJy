@@ -14,16 +14,44 @@
       <template v-if="editing">
         <input type="text" v-model.trim="editForm.title" maxlength="100" style="width:96%">
       </template>
-      <template v-else>{{ thread.title }}</template><br>
+      <template v-else>
+        <template v-if="thread.is_head">[头条]</template><template v-if="thread.is_top">【顶】</template><template v-if="thread.is_fine">【精】</template><template v-if="thread.is_recom">[荐]</template><template v-if="thread.is_notice">[公告]</template>
+        {{ thread.title }}
+      </template><br>
     </div>
 
     <!-- 板块/收藏/管理 -->
     <div class="title">
       <a v-if="thread.board" href="javascript:;" @click="$router.push('/board/'+thread.board.id)">[{{ thread.board.name }}]</a>
+      <template v-if="thread.is_lock"><font color="#c00">[已锁定]</font></template>
+      <template v-if="thread.audit_status === 0"><font color="#c00">[待审核]</font></template>
+      <template v-if="thread.audit_status === 2"><font color="#c00">[审核未通过]</font></template>
       <template v-if="isLogin"><a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '☆收藏' }}</font></a></template>
-      <template v-if="canManage"> | <a href="javascript:;" @click="toggle('is_top')">{{ thread.is_top ? '取消置顶' : '置顶' }}</a> | <a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '取消精华' : '加精' }}</a></template>
+      <template v-if="canManage || canMod">
+        | <a href="javascript:;" @click="toggle('is_top')">{{ thread.is_top ? '取消置顶' : '置顶' }}</a>
+        | <a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '取消精华' : '加精' }}</a>
+        | <a href="javascript:;" @click="toggle('is_head')">{{ thread.is_head ? '取消头条' : '头条' }}</a>
+        | <a href="javascript:;" @click="toggle('is_lock')">{{ thread.is_lock ? '解锁' : '锁定' }}</a>
+        | <a href="javascript:;" @click="toggle('is_recom')">{{ thread.is_recom ? '取消推荐' : '推荐' }}</a>
+      </template>
+      <template v-if="canManage || canMod">
+        | <a href="javascript:;" @click="openMove">移动</a>
+        <template v-if="thread.audit_status !== 1"><a href="javascript:;" @click="audit(true)">通过</a>|<a href="javascript:;" @click="audit(false)">拒绝</a></template>
+      </template>
       <template v-if="canManage || mine"> | <a href="javascript:;" @click="startEdit">{{ editing ? '取消编辑' : '编辑' }}</a> | <a href="javascript:;" style="color:#c00" @click="delThread">删除</a></template>
       <br>
+    </div>
+
+    <!-- 移动面板 -->
+    <div class="module-content" v-if="moveOpen" style="background:#E3EEF8">
+      移动到：
+      <select v-model.number="moveBoardId">
+        <optgroup v-for="ch in channels" :key="ch.id" :label="ch.name">
+          <option v-for="s in allSubBoards(ch)" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </optgroup>
+      </select>
+      <input type="submit" value="确认移动" @click.prevent="doMove">
+      <span v-if="moveMsg" style="color:#c00">{{ moveMsg }}</span><br>
     </div>
 
     <!-- 正文 -->
@@ -43,6 +71,53 @@
     <!-- 统计：页数/字数/阅读 -->
     <div class="item">
       (第<b>{{ page }}</b>/{{ pages }}页/{{ wordCount }}字/{{ thread.view_count || 0 }}阅)<br>
+    </div>
+
+    <!-- 投票 -->
+    <div class="module-content" v-if="poll" style="background:#FFF6E5">
+      <b>【投票】{{ poll.question }}</b><template v-if="poll.multiple">（多选）</template><br>
+      <div v-for="o in poll.options" :key="o.id">
+        <label v-if="!pollVoted">
+          <input type="checkbox" v-if="poll.multiple" :value="o.id" v-model="pollSel">
+          <input type="radio" v-else name="pollopt" :value="o.id" v-model="pollSel">
+          {{ o.name }}（{{ o.votes }}票）
+        </label>
+        <template v-else>
+          {{ o.name }}：<span class="bar-bg" style="display:inline-block;width:80px"><span class="bar-fg" :style="{width: percent(o.votes) + '%'}"></span></span> {{ o.votes }}票
+        </template>
+      </div>
+      <template v-if="!pollVoted">
+        <input type="submit" value="投票" @click.prevent="doVote">
+      </template>
+      <template v-else><font color="#1a9e1a">已投票（总 {{ pollTotal }} 票）</font></template>
+      <span v-if="pollMsg" style="color:#c00">{{ pollMsg }}</span><br>
+    </div>
+
+    <!-- 回帖奖励 -->
+    <div class="module-content" v-if="reward" style="background:#E6F7E6">
+      <b>【回帖奖励】</b>每次回帖 +{{ reward.coins }} G币、+{{ reward.exp }} 经验<template v-if="reward.limit">（共 {{ reward.limit }} 次，已发 {{ reward.used }} 次）</template><br>
+    </div>
+
+    <!-- 踩楼 -->
+    <div class="module-content" v-if="floors && floors.length" style="background:#F0E6F7">
+      <b>【踩楼奖励】</b>踩中以下楼层得奖励：<br>
+      <span v-for="f in floors" :key="f.id">第{{ f.floor }}楼 +{{ f.coins }}G币/{{ f.exp }}经验<template v-if="f.status">（已被{{ f.user_id }}踩中）</template> </span><br>
+    </div>
+
+    <!-- 附件 -->
+    <div class="module-content" v-if="attachments && attachments.length" style="background:#E3EEF8">
+      <b>【附件】</b><br>
+      <span v-for="a in attachments" :key="a.id">
+        <a v-if="a.type === 'file'" href="javascript:;" @click="downloadAtt(a)">📎 {{ a.name }}</a>
+        <a v-else href="javascript:;" @click="downloadAtt(a)">🖼 {{ a.name }}</a>
+        <template v-if="a.price">（{{ a.price }}G币）</template>（{{ a.downloads }}次下载）
+        <br>
+      </span>
+    </div>
+
+    <!-- 置顶回复 -->
+    <div class="module-content" v-if="stickyReply" style="background:#FFFDE7">
+      <b>【置顶回复】</b>{{ stickyReply.content }} —— {{ stickyReply.user ? stickyReply.user.nickname : '?' }}（{{ fmt(stickyReply.created_at) }}）<br>
     </div>
 
     <!-- 楼主信息 -->
@@ -124,7 +199,7 @@
     <div class="list">
       <div v-for="(r, i) in replies" :key="r.id" :class="['module-content', i % 2 === 1 ? 'deep' : '']">
         <div class="row">
-          {{ r.floor }}楼.{{ r.content }}<br>
+          {{ r.floor }}楼.<template v-if="r.parent_reply_id"><font color="#c00">[回复{{ parentFloor(r) }}楼]</font></template>{{ r.content }}<br>
           <span v-for="b in (r.user ? r.user.badges : [])" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
           <img class="bicon" v-if="r.user && r.user.priv" :src="'/static/' + r.user.priv.file" :alt="r.user.priv.name" :title="r.user.priv.name">
           <img class="bicon" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级">
@@ -157,9 +232,14 @@
     <div class="write-mood">
       <div class="item">
         <form @submit.prevent="submit">
-          <template v-if="isLogin">
+          <template v-if="isLogin && !thread.is_lock">
             <textarea v-model.trim="content" rows="2" style="width:100%"></textarea><br>
             <input type="submit" value="回复"> <span class="help-line">回复+5经验+2G币</span>
+            <template v-if="thread.type === 1"> <span class="help-line">本贴回帖有奖励</span></template>
+            <input type="submit" value="顶贴" @click.prevent="doSticky"><span class="help-line">（楼主/版主置顶一条回复）</span>
+          </template>
+          <template v-else-if="isLogin && thread.is_lock">
+            <font color="#c00">本贴已锁定，仅供查阅</font>
           </template>
           <template v-else>
             <a href="javascript:;" @click="$router.push('/login?redirect='+$route.fullPath)">登陆家园社区</a>后回复盖楼
@@ -205,7 +285,11 @@ export default {
       shareTip: '', msg: '',
       reportOpen: false, reportType: 'thread', reportTargetId: 0,
       reportReasonSel: '', reportReasonCustom: '', reportMsg: '',
-      reportReasons: ['广告垃圾', '辱骂攻击', '色情低俗', '造谣传谣', '引战挑事', '其他违规']
+      reportReasons: ['广告垃圾', '辱骂攻击', '色情低俗', '造谣传谣', '引战挑事', '其他违规'],
+      // 论坛新增
+      poll: null, pollVoted: false, pollTotal: 0, myOptions: [], pollSel: [], pollMsg: '',
+      reward: null, floors: [], stickyReply: null, attachments: [],
+      channels: [], moveOpen: false, moveBoardId: 0, moveMsg: '', quoteReplyId: 0
     }
   },
   computed: {
@@ -221,7 +305,11 @@ export default {
     author () { return this.thread.user || {} },
     authorBadges () { return this.author.badges || [] },
     mine () { return this.user && this.author && this.user.id === this.author.id },
-    canManage () { return this.user && this.user.perms && this.user.perms.indexOf('thread:manage') >= 0 }
+    canManage () { return this.user && this.user.perms && this.user.perms.indexOf('thread:manage') >= 0 },
+    canMod () {
+      // 版主或楼主可管理（置顶回复等）
+      return this.isLogin && (this.mine || (this.thread.board && this.user && this.thread.board.moderator_id === this.user.id))
+    }
   },
   watch: { '$route': 'load' },
   mounted () { this.load() },
@@ -248,6 +336,17 @@ export default {
           this.shareCount = r.data.share_count || 0
           this.flowers = r.data.flowers || []
           this.gifts = r.data.gifts || []
+          // 论坛新增
+          this.poll = r.data.poll || null
+          this.pollVoted = r.data.poll_voted || false
+          this.pollTotal = r.data.poll_total || 0
+          this.myOptions = r.data.my_options || []
+          this.pollSel = this.poll ? this.poll.options.filter(o => this.myOptions.indexOf(o.id) >= 0).map(o => o.id) : []
+          this.reward = r.data.reward || null
+          this.floors = r.data.floors || []
+          this.stickyReply = r.data.sticky_reply || null
+          this.attachments = r.data.attachments || []
+          this.quoteReplyId = 0
         } else {
           alert(r.msg)
         }
@@ -275,6 +374,8 @@ export default {
     },
     quote (floor) {
       this.content = '回复' + floor + '楼：'
+      const r = this.replies.find(x => x.floor === floor)
+      this.quoteReplyId = r ? r.id : 0
       const el = document.querySelector('.write-mood textarea')
       if (el) { el.scrollIntoView(); el.focus() }
     },
@@ -303,10 +404,11 @@ export default {
     submit () {
       if (!this.content) return
       this.sending = true
-      api.post(`/threads/${this.$route.params.id}/replies`, { content: this.content }).then(r => {
+      api.post(`/threads/${this.$route.params.id}/replies`, { content: this.content, parent_reply_id: this.quoteReplyId || 0 }).then(r => {
         this.sending = false
         if (r.code === 0) {
           this.content = ''
+          this.quoteReplyId = 0
           api.get(`/threads/${this.$route.params.id}`, { params: { page: 999999 } }).then(d => {
             if (d.code === 0) this.go(d.data.page)
           })
@@ -322,10 +424,69 @@ export default {
     },
     toggle (field) {
       const v = this.thread[field] ? 0 : 1
-      api.put(`/admin/threads/${this.thread.id}`, { [field]: v }).then(r => {
+      api.post(`/threads/${this.thread.id}/manage`, { field, value: v }).then(r => {
         if (r.code === 0) this.thread[field] = v
         else alert(r.msg)
       })
+    },
+    audit (approve) {
+      api.post(`/threads/${this.thread.id}/audit`, { approve }).then(r => {
+        if (r.code === 0) { this.thread.audit_status = approve ? 1 : 2; alert(approve ? '已通过审核' : '已拒绝') }
+        else alert(r.msg)
+      })
+    },
+    doVote () {
+      if (!this.pollSel.length) { this.pollMsg = '请选择选项'; return }
+      const optionIds = Array.isArray(this.pollSel) ? this.pollSel : [this.pollSel]
+      api.post(`/threads/${this.thread.id}/poll-vote`, { option_ids: optionIds }).then(r => {
+        if (r.code === 0) { alert('投票成功！'); this.load() }
+        else { this.pollMsg = r.msg; alert(r.msg) }
+      })
+    },
+    doSticky () {
+      const content = prompt('输入置顶回复内容：')
+      if (!content) return
+      api.post(`/threads/${this.thread.id}/sticky-reply`, { content }).then(r => {
+        if (r.code === 0) { alert('置顶回复成功'); this.load() }
+        else alert(r.msg)
+      })
+    },
+    downloadAtt (a) {
+      if (!this.isLogin) { alert('请先登录'); return }
+      api.get(`/attachments/${a.id}/download`).then(r => {
+        if (r.code === 0) {
+          if (a.price) alert('下载成功，已扣除 ' + a.price + ' G币')
+          else alert('下载成功')
+          this.load()
+        } else alert(r.msg)
+      })
+    },
+    openMove () {
+      if (!this.channels.length) {
+        api.get('/boards').then(r => { if (r.code === 0) this.channels = r.data })
+      }
+      this.moveOpen = !this.moveOpen
+      this.moveMsg = ''
+    },
+    allSubBoards (ch) {
+      const arr = (ch.children || []).slice()
+      ;(ch.categories || []).forEach(cat => (cat.boards || []).forEach(b => arr.push(b)))
+      return arr
+    },
+    doMove () {
+      if (!this.moveBoardId) { this.moveMsg = '请选择目标版块'; return }
+      api.post(`/threads/${this.thread.id}/move`, { board_id: this.moveBoardId }).then(r => {
+        if (r.code === 0) { alert('移动成功'); this.moveOpen = false; this.load() }
+        else { this.moveMsg = r.msg; alert(r.msg) }
+      })
+    },
+    parentFloor (r) {
+      const p = this.replies.find(x => x.id === r.parent_reply_id)
+      return p ? p.floor : '?'
+    },
+    percent (v) {
+      const max = Math.max(...(this.poll ? this.poll.options.map(o => o.votes) : [1]), 1)
+      return Math.round((v / max) * 100)
     },
     delThread () {
       if (!confirm('确定删除这篇帖子吗？')) return

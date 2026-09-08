@@ -38,10 +38,12 @@ type User struct {
 	BlueExp      int        `gorm:"default:0" json:"blue_exp"`    // 蓝钻成长值
 	BlueStart    *time.Time `json:"blue_start"`
 	BlueEnd      *time.Time `json:"blue_end"`
+	BluePtime    *time.Time `json:"blue_ptime"` // 蓝钻上次每日成长时间
 	QqLv         int        `gorm:"default:0" json:"qq_lv"`       // 超Q等级
 	QqExp        int        `gorm:"default:0" json:"qq_exp"`      // 超Q成长值
 	QqStart      *time.Time `json:"qq_start"`
 	QqEnd        *time.Time `json:"qq_end"`
+	QqPtime      *time.Time `json:"qq_ptime"` // 超Q上次每日成长时间
 	GardenPots   int     `gorm:"default:4" json:"garden_pots"` // 魔法花园花盆数
 	Status       int     `gorm:"default:1" json:"status"` // 1正常 0封禁
 	LastActiveAt  *time.Time `json:"last_active_at"`

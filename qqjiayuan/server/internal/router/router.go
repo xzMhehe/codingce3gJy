@@ -51,8 +51,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	guestH := &handler.GuestHandler{DB: db}
 	saH := &handler.SiteArticleHandler{DB: db}
 	shopH := &handler.ShopHandler{DB: db}
+	yqH := &handler.YouQuanHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
+	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 
 	api := r.Group("/api")
@@ -66,7 +68,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/boards", boardH.Tree)
 		api.GET("/boards/:id", boardH.Info)
 		api.GET("/boards/:id/threads", boardH.Threads)
-		api.GET("/threads/:id", threadH.Detail)
+		api.GET("/threads/hot", threadH.Hot)
+		api.GET("/threads/:id", optAuth, threadH.Detail)
 		api.GET("/users/:id", userH.Profile)
 		api.GET("/badges", badgeH.List)
 		api.GET("/badge-presets", badgeH.Presets)
@@ -137,6 +140,14 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/threads/:id/replies", threadH.Reply)
 			authed.DELETE("/threads/:id", threadH.DeleteThread)
 			authed.DELETE("/replies/:id", threadH.DeleteReply)
+			authed.POST("/threads/:id/sticky-reply", threadH.StickyReply)
+			authed.POST("/threads/:id/poll-vote", threadH.VotePoll)
+			authed.POST("/threads/:id/manage", threadH.Manage)
+			authed.POST("/threads/:id/audit", threadH.Audit)
+			authed.POST("/threads/:id/move", threadH.Move)
+			authed.GET("/my-threads", threadH.MyThreads)
+			authed.GET("/audit-threads", threadH.AuditList)
+			authed.GET("/attachments/:id/download", threadH.Download)
 			authed.POST("/threads/:id/favorite", favH.Toggle)
 			authed.GET("/threads/:id/favorite-status", favH.Status)
 			authed.GET("/favorite-threads", favH.MyFavorites)
@@ -297,6 +308,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/wallet", ecoH.Wallet)
 			authed.POST("/wallet/exchange", ecoH.Exchange)
 			authed.POST("/wallet/transfer", ecoH.Transfer)
+			// 友友券中心
+			authed.GET("/youquan", yqH.View)
+			authed.POST("/youquan/daily", yqH.Daily)
+			authed.POST("/youquan/exchange", yqH.Exchange)
+			authed.POST("/youquan/transfer", yqH.Transfer)
 			authed.GET("/bank/view", ecoH.BankView)
 			authed.POST("/bank/deposit", ecoH.BankDeposit)
 			authed.POST("/bank/withdraw", ecoH.BankWithdraw)
@@ -307,6 +323,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/lottery", ecoH.Lottery)
 			authed.GET("/noble", nobleH.View)
 			authed.POST("/noble/activate", nobleH.Activate)
+			authed.POST("/noble/gift", nobleH.Gift)
 			authed.POST("/goods/:id/buy", goodH.Buy)
 			authed.GET("/bag", goodH.Bag)
 			authed.POST("/bag/:id/use", goodH.BagUse)
@@ -420,6 +437,17 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/boards", perm(db, "board:manage"), adminH.CreateBoard)
 				admin.PUT("/boards/:id", perm(db, "board:manage"), adminH.UpdateBoard)
 				admin.DELETE("/boards/:id", perm(db, "board:manage"), adminH.DeleteBoard)
+				admin.GET("/board-categories", perm(db, "board:manage"), adminH.BoardCategories)
+				admin.POST("/board-categories", perm(db, "board:manage"), adminH.CreateBoardCategory)
+				admin.PUT("/board-categories/:id", perm(db, "board:manage"), adminH.UpdateBoardCategory)
+				admin.DELETE("/board-categories/:id", perm(db, "board:manage"), adminH.DeleteBoardCategory)
+				admin.GET("/board-members", perm(db, "board:manage"), adminH.BoardMembers)
+				admin.POST("/board-members", perm(db, "board:manage"), adminH.BoardMemberAdd)
+				admin.DELETE("/board-members/:boardId/:userId", perm(db, "board:manage"), adminH.BoardMemberRemove)
+				admin.GET("/word-filters", perm(db, "board:manage"), adminH.WordFilters)
+				admin.POST("/word-filters", perm(db, "board:manage"), adminH.CreateWordFilter)
+				admin.PUT("/word-filters/:id", perm(db, "board:manage"), adminH.UpdateWordFilter)
+				admin.DELETE("/word-filters/:id", perm(db, "board:manage"), adminH.DeleteWordFilter)
 
 				admin.GET("/threads", perm(db, "thread:manage"), adminH.Threads)
 				admin.PUT("/threads/:id", perm(db, "thread:manage"), adminH.UpdateThread)

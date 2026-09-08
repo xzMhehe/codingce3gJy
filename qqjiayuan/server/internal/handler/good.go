@@ -27,7 +27,7 @@ func goodCategories(list []model.Good) []string {
 	return out
 }
 
-// 公开：商城列表（?cat=分类 筛选；登录时带G币余额）
+// 公开：商城列表（?cat=分类 筛选；登录时带G币/友友券余额）
 func (h *GoodHandler) List(c *gin.Context) {
 	q := h.DB.Where("status = 1")
 	if cat := c.Query("cat"); cat != "" && cat != "全部" {
@@ -36,22 +36,23 @@ func (h *GoodHandler) List(c *gin.Context) {
 	var list []model.Good
 	q.Order("sort ASC, id ASC").Find(&list)
 	uid := middleware.GetUID(c)
-	coins := -1
+	coins, youquan := -1, -1
 	if uid > 0 {
 		var u model.User
 		if h.DB.First(&u, uid).Error == nil {
-			coins = u.Coins
+			coins, youquan = u.Coins, u.YouQuan
 		}
 	}
-	resp.OK(c, gin.H{"list": list, "categories": goodCategories(list), "coins": coins})
+	resp.OK(c, gin.H{"list": list, "categories": goodCategories(list), "coins": coins, "youquan": youquan})
 }
 
-// 购买道具（扣G币，数量可叠加进仓库）
+// 购买道具（扣G币或友友券，数量可叠加进仓库）
 func (h *GoodHandler) Buy(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Num int `json:"num"` // 购买数量，默认1
+		Num      int    `json:"num"`      // 购买数量，默认1
+		Currency string `json:"currency"` // coins=G币（默认）/ youquan=友友券
 	}
 	_ = c.ShouldBindJSON(&req)
 	if req.Num < 1 {
@@ -59,6 +60,9 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 	}
 	if req.Num > 999 {
 		req.Num = 999
+	}
+	if req.Currency == "" {
+		req.Currency = "coins"
 	}
 	var g model.Good
 	if err := h.DB.First(&g, id).Error; err != nil {
@@ -69,18 +73,36 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "商品已下架")
 		return
 	}
-	cost := g.Price * req.Num
 	var u model.User
 	if err := h.DB.First(&u, uid).Error; err != nil {
 		resp.Unauthorized(c, "请先登录")
 		return
 	}
-	if u.Coins < cost {
-		resp.ParamError(c, "G币不足，需要 "+strconv.Itoa(cost)+" G币")
-		return
+	var currencyName, currency string
+	cost := 0
+	switch req.Currency {
+	case "youquan":
+		cost = g.YouQuanPrice * req.Num
+		currency, currencyName = "youquan", "友友券"
+		if cost <= 0 {
+			resp.ParamError(c, "该商品暂不支持用友友券购买")
+			return
+		}
+		if u.YouQuan < cost {
+			resp.ParamError(c, "友友券不足，需要 "+strconv.Itoa(cost)+" 张")
+			return
+		}
+		h.DB.Model(&u).Update("youquan", gorm.Expr("youquan - ?", cost))
+	default:
+		cost = g.Price * req.Num
+		currency, currencyName = "coins", "G币"
+		if u.Coins < cost {
+			resp.ParamError(c, "G币不足，需要 "+strconv.Itoa(cost)+" G币")
+			return
+		}
+		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
 	}
-	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
-	addWalletLog(h.DB, uid, "buy", "购买「"+g.Name+"」×"+strconv.Itoa(req.Num), "coins", -cost)
+	addWalletLog(h.DB, uid, "buy", "购买「"+g.Name+"」×"+strconv.Itoa(req.Num), currency, -cost)
 	// 入库（背包叠加）
 	var ug model.UserGood
 	if err := h.DB.Where("user_id = ? AND good_id = ?", uid, g.ID).First(&ug).Error; err != nil {
@@ -88,7 +110,9 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 	} else {
 		h.DB.Model(&ug).Update("count", gorm.Expr("count + ?", req.Num))
 	}
-	resp.OK(c, gin.H{"name": g.Name, "num": req.Num, "coins": u.Coins - cost, "bag_count": req.Num + (func() int {
+	_ = currencyName
+	h.DB.First(&u, uid)
+	resp.OK(c, gin.H{"name": g.Name, "num": req.Num, "coins": u.Coins, "youquan": u.YouQuan, "currency": req.Currency, "bag_count": req.Num + (func() int {
 		if ug.ID == 0 {
 			return 0
 		}
@@ -162,13 +186,14 @@ func (h *GoodHandler) AdminList(c *gin.Context) {
 }
 
 type goodReq struct {
-	Name     string `json:"name" binding:"required"`
-	Desc     string `json:"desc"`
-	Icon     string `json:"icon"`
-	Category string `json:"category"`
-	Price    int    `json:"price"`
-	Status   int    `json:"status"`
-	Sort     int    `json:"sort"`
+	Name        string `json:"name" binding:"required"`
+	Desc        string `json:"desc"`
+	Icon        string `json:"icon"`
+	Category    string `json:"category"`
+	Price       int    `json:"price"`
+	YouQuanPrice int   `json:"youquan_price"`
+	Status      int    `json:"status"`
+	Sort        int    `json:"sort"`
 }
 
 func (h *GoodHandler) AdminCreate(c *gin.Context) {
@@ -180,7 +205,7 @@ func (h *GoodHandler) AdminCreate(c *gin.Context) {
 	if req.Status == 0 {
 		req.Status = 1
 	}
-	h.DB.Create(&model.Good{Name: req.Name, Desc: req.Desc, Icon: req.Icon, Category: req.Category, Price: req.Price, Status: req.Status, Sort: req.Sort})
+	h.DB.Create(&model.Good{Name: req.Name, Desc: req.Desc, Icon: req.Icon, Category: req.Category, Price: req.Price, YouQuanPrice: req.YouQuanPrice, Status: req.Status, Sort: req.Sort})
 	resp.OK(c, nil)
 }
 
@@ -193,7 +218,7 @@ func (h *GoodHandler) AdminUpdate(c *gin.Context) {
 	}
 	h.DB.Model(&model.Good{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"name": req.Name, "desc": req.Desc, "icon": req.Icon, "category": req.Category,
-		"price": req.Price, "status": req.Status, "sort": req.Sort,
+		"price": req.Price, "youquan_price": req.YouQuanPrice, "status": req.Status, "sort": req.Sort,
 	})
 	resp.OK(c, nil)
 }

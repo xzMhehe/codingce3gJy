@@ -16,6 +16,9 @@
         <el-table-column prop="name" label="商品" min-width="120" />
         <el-table-column prop="category" label="分类" width="90" />
         <el-table-column prop="price" label="G币" width="80" header-align="center" />
+        <el-table-column prop="youquan_price" label="友友券" width="80" header-align="center">
+          <template slot-scope="{row}">{{ row.youquan_price || '—' }}</template>
+        </el-table-column>
         <el-table-column prop="sort" label="排序" width="70" header-align="center" />
         <el-table-column label="状态" width="80" header-align="center">
           <template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag></template>
@@ -44,6 +47,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="金币"><el-input-number v-model="form.price" :min="0" /></el-form-item>
+        <el-form-item label="友友券"><el-input-number v-model="form.youquan_price" :min="0" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="form.sort" :min="0" /></el-form-item>
         <el-form-item label="图标">
           <el-input v-model.trim="form.icon" maxlength="50" placeholder="static/picture 下的文件名，如 flower_rose.gif">
@@ -64,7 +68,7 @@ import api from '../../api'
 
 export default {
   name: 'AdminGoods',
-  data () { return { list: [], total: 0, page: 1, size: 10, categories: ['鲜花', '道具', '装扮', '特权'], loading: false, dlg: false, form: { id: 0, name: '', category: '道具', icon: '', price: 0, sort: 0, desc: '', status: 1 } } },
+  data () { return { list: [], total: 0, page: 1, size: 10, categories: ['鲜花', '道具', '装扮', '特权'], loading: false, dlg: false, form: { id: 0, name: '', category: '道具', icon: '', price: 0, youquan_price: 0, sort: 0, desc: '', status: 1 } } },
   mounted () { this.load() },
   methods: {
     load () {
@@ -82,17 +86,17 @@ export default {
       })
     },
     openDlg (row) {
-      this.form = row ? { id: row.id, name: row.name, category: row.category, icon: row.icon || '', price: row.price, sort: row.sort || 0, desc: row.desc, status: row.status } : { id: 0, name: '', category: '道具', icon: '', price: 0, sort: 0, desc: '', status: 1 }
+      this.form = row ? { id: row.id, name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, sort: row.sort || 0, desc: row.desc, status: row.status } : { id: 0, name: '', category: '道具', icon: '', price: 0, youquan_price: 0, sort: 0, desc: '', status: 1 }
       this.dlg = true
     },
     save () {
       if (!this.form.name) { this.$message.warning('请填写商品名'); return }
-      const body = { name: this.form.name, category: this.form.category, icon: this.form.icon, price: this.form.price, sort: this.form.sort, desc: this.form.desc, status: this.form.status }
+      const body = { name: this.form.name, category: this.form.category, icon: this.form.icon, price: this.form.price, youquan_price: this.form.youquan_price, sort: this.form.sort, desc: this.form.desc, status: this.form.status }
       if (this.form.id) api.put('/admin/goods/' + this.form.id, body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
       else api.post('/admin/goods', body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
     },
     toggle (row) {
-      api.put('/admin/goods/' + row.id, { name: row.name, category: row.category, icon: row.icon || '', price: row.price, sort: row.sort || 0, desc: row.desc, status: row.status === 1 ? 0 : 1 }).then(() => this.load())
+      api.put('/admin/goods/' + row.id, { name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, sort: row.sort || 0, desc: row.desc, status: row.status === 1 ? 0 : 1 }).then(() => this.load())
     },
     del (row) {
       this.$confirm('确定删除「' + row.name + '」吗？', '提示', { type: 'warning' }).then(() => {

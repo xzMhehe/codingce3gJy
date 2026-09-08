@@ -6,12 +6,15 @@
     <div class="title">
       <a href="javascript:;" @click="setFilter('')">所有</a>|<a href="javascript:;" @click="setFilter('fine')">精华</a>|<a href="javascript:;" @click="setSort('new')">新贴</a><br>
     </div>
+    <div class="module-content" v-if="board.notice">【版块公告】<span v-html="renderLine(board.notice)"></span><br></div>
+    <div class="module-content" v-if="board.members_only"><font color="#c00">本版块为会员制，仅成员可发帖/回帖。</font> <template v-if="isMember">（你是成员）</template><br></div>
+    <div class="module-content" v-if="moderator">【版主】<a href="javascript:;" @click="$router.push('/user/'+moderator.id)"><font :color="moderator.color||'#004299'">{{ moderator.nickname }}</font></a><br></div>
     <div class="module-content" v-if="headThread">
       [头条]<a href="javascript:;" @click="$router.push('/thread/'+headThread.id)">{{ headThread.title }}</a><br>
     </div>
     <div class="list">
       <div class="row" v-for="(t,i) in threads" :key="t.id">
-        {{ i+1 }}.<template v-if="t.is_top">【顶】</template><template v-if="t.is_fine">【精】</template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a><br>
+        {{ i+1 }}.<template v-if="t.is_head">[头条]</template><template v-if="t.is_top">【顶】</template><template v-if="t.is_fine">【精】</template><template v-if="t.is_lock">[锁]</template><template v-if="t.is_recom">[荐]</template><template v-if="t.is_notice">[公告]</template><template v-if="t.type===1">[奖励]</template><template v-if="t.type===2">[踩楼]</template><template v-if="t.type===3">[投票]</template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a><br>
         (<span v-for="b in (t.user?t.user.badges:[])" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span><img class="bicon" v-if="t.user && t.user.priv" :src="'/static/' + t.user.priv.file" :alt="t.user.priv.name" :title="t.user.priv.name"><img class="bicon" v-else-if="t.user && t.user.level_icon" :src="$pic('v'+t.user.level_icon+'.gif')" alt="等级"> <a href="javascript:;" @click="$router.push('/user/'+(t.user?t.user.id:''))"><font :color="t.user?t.user.color:''">{{ t.user?t.user.nickname:'路人' }}</font></a>:<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
       </div>
     </div>
@@ -35,7 +38,7 @@
       <form @submit.prevent="jump">
         <select v-model.number="jumpId">
           <optgroup v-for="ch in channels" :key="ch.id" :label="ch.name">
-            <option v-for="s in ch.children" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in allSubs(ch)" :key="s.id" :value="s.id">{{ s.name }}</option>
           </optgroup>
         </select>
         <input type="submit" value="跳转">
@@ -53,7 +56,7 @@ import api from '../api'
 export default {
   name: 'Board',
   data () {
-    return { board: {}, parentName: '', threads: [], total: 0, page: 1, pages: 1, pageInput: 1, filter: '', channels: [], online: 0 }
+    return { board: {}, parentName: '', moderator: null, isMember: false, threads: [], total: 0, page: 1, pages: 1, pageInput: 1, filter: '', channels: [], online: 0 }
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
@@ -73,6 +76,8 @@ export default {
       api.get(`/boards/${id}/threads`, { params: { page: this.page, filter: this.filter, sort: q.sort || '' } }).then(r => {
         if (r.code === 0) {
           this.board = r.data.board
+          this.moderator = r.data.moderator || null
+          this.isMember = r.data.is_member || false
           this.threads = r.data.list
           this.total = r.data.total
           this.page = r.data.page
@@ -102,7 +107,13 @@ export default {
     },
     jump () {
       if (this.jumpId) this.$router.push('/board/' + this.jumpId)
-    }
+    },
+    allSubs (ch) {
+      const arr = (ch.children || []).slice()
+      ;(ch.categories || []).forEach(cat => (cat.boards || []).forEach(b => arr.push(b)))
+      return arr
+    },
+    renderLine (t) { return (t || '').replace(/\n/g, '<br>') }
   }
 }
 </script>

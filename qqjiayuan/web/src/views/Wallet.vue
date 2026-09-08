@@ -15,7 +15,7 @@
     <img src="/static/picture/mon00.gif" alt=".">G币余额:{{ data.coins || 0 }}<br>
     <img src="/static/picture/mon01.gif" alt=".">元宝余额:{{ data.yuanbao || 0 }}<a href="javascript:;" @click="goSign">获取</a><br>
     <img src="/static/picture/mon02.gif" alt=".">金钻数量:{{ data.jinzuan || 0 }}点<br>
-    <img src="/static/picture/mon03.png" alt=".">友友券数量:{{ data.youquan || 0 }}张<br>
+    <img src="/static/picture/mon03.png" alt=".">友友券数量:{{ data.youquan || 0 }}张<a href="javascript:;" @click="$router.push('/youquan')">进入友友券中心</a><br>
 
     <!-- G币兑换 -->
     <b>【G币兑换】</b><br>

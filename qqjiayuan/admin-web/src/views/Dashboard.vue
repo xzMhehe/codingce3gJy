@@ -45,6 +45,8 @@
     <admin-home v-else-if="tab === 'home'" />
     <admin-wallet v-else-if="tab === 'wallet'" />
     <admin-boards v-else-if="tab === 'boards'" />
+    <admin-board-categories v-else-if="tab === 'boardCategories'" />
+    <admin-word-filters v-else-if="tab === 'wordFilters'" />
     <admin-threads v-else-if="tab === 'threads'" />
     <admin-reports v-else-if="tab === 'reports'" />
     <admin-announcements v-else-if="tab === 'announcements'" />
@@ -74,6 +76,8 @@ import AdminUsers from '../components/admin/AdminUsers.vue'
 import AdminHome from '../components/admin/AdminHome.vue'
 import AdminWallet from '../components/admin/AdminWallet.vue'
 import AdminBoards from '../components/admin/AdminBoards.vue'
+import AdminBoardCategories from '../components/admin/AdminBoardCategories.vue'
+import AdminWordFilters from '../components/admin/AdminWordFilters.vue'
 import AdminThreads from '../components/admin/AdminThreads.vue'
 import AdminReports from '../components/admin/AdminReports.vue'
 import AdminAnnouncements from '../components/admin/AdminAnnouncements.vue'
@@ -97,7 +101,7 @@ import AdminSpaces from '../components/admin/AdminSpaces.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminThreads, AdminReports, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminGoods, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminReports, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminGoods, AdminResources, AdminSpaces },
   data () {
     return { stats: {}, adminName: '' }
   },

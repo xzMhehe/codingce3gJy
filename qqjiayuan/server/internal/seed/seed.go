@@ -50,6 +50,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.SiteArticleCategory{}, &model.SiteArticle{}, &model.SiteArticleComment{},
 		&model.ShopCategory{}, &model.Shop{}, &model.ShopGoods{}, &model.ShopOrder{}, &model.ShopComment{},
 		&model.ArticleComment{},
+		&model.BoardCategory{}, &model.BoardMember{}, &model.StickyReply{},
+		&model.ThreadPoll{}, &model.ThreadPollOption{}, &model.ThreadPollVote{},
+		&model.ThreadReward{}, &model.ThreadRewardLog{}, &model.ThreadFloor{},
+		&model.ThreadAttachment{}, &model.WordFilter{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -68,8 +72,58 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("ALTER TABLE users ADD COLUMN avatar_base64 longtext")
 	}
 
+	// 论坛重构：boards/threads 新增列兜底补齐（幂等）
+	bcols := map[string]string{
+		"category_id": "ALTER TABLE boards ADD COLUMN category_id bigint DEFAULT 0",
+		"notice":      "ALTER TABLE boards ADD COLUMN notice text",
+		"tags":        "ALTER TABLE boards ADD COLUMN tags varchar(100) DEFAULT ''",
+		"moderator_id": "ALTER TABLE boards ADD COLUMN moderator_id bigint DEFAULT 0",
+		"members_only": "ALTER TABLE boards ADD COLUMN members_only int DEFAULT 0",
+	}
+	for col, sql := range bcols {
+		if !m.HasColumn("boards", col) {
+			db.Exec(sql)
+		}
+	}
+	tcols := map[string]string{
+		"is_head":      "ALTER TABLE threads ADD COLUMN is_head int DEFAULT 0",
+		"is_lock":      "ALTER TABLE threads ADD COLUMN is_lock int DEFAULT 0",
+		"is_recom":     "ALTER TABLE threads ADD COLUMN is_recom int DEFAULT 0",
+		"is_notice":    "ALTER TABLE threads ADD COLUMN is_notice int DEFAULT 0",
+		"type":         "ALTER TABLE threads ADD COLUMN type int DEFAULT 0",
+		"audit_status": "ALTER TABLE threads ADD COLUMN audit_status int DEFAULT 1",
+	}
+	for col, sql := range tcols {
+		if !m.HasColumn("threads", col) {
+			db.Exec(sql)
+		}
+	}
+	if !m.HasColumn("replies", "parent_reply_id") {
+		db.Exec("ALTER TABLE replies ADD COLUMN parent_reply_id bigint DEFAULT 0")
+	}
+	if !m.HasColumn("goods", "youquan_price") {
+		db.Exec("ALTER TABLE goods ADD COLUMN youquan_price int DEFAULT 0")
+	}
+	// 超Q/蓝钻复刻：每日成长时间 + 方案新字段
+	if !m.HasColumn("users", "blue_ptime") {
+		db.Exec("ALTER TABLE users ADD COLUMN blue_ptime datetime NULL")
+	}
+	if !m.HasColumn("users", "qq_ptime") {
+		db.Exec("ALTER TABLE users ADD COLUMN qq_ptime datetime NULL")
+	}
+	for _, col := range []string{"speed", "`limit`", "stock", "sales"} {
+		if !m.HasColumn("noble_plans", col) {
+			db.Exec("ALTER TABLE noble_plans ADD COLUMN " + col + " int DEFAULT 0")
+		}
+	}
+	if !m.HasColumn("wallet_logs", "remark") {
+		db.Exec("ALTER TABLE wallet_logs ADD COLUMN remark varchar(50) DEFAULT ''")
+	}
+
+	seedWordFilters(db)
 	seedRBAC(db)
 	seedBoards(db)
+	seedBoardCategories(db)
 	seedAnnouncements(db)
 	seedUsersAndContent(db)
 	seedBadges(db)
@@ -429,11 +483,17 @@ func seedPlazaSections(db *gorm.DB) {
 func seedNoblePlans(db *gorm.DB) {
 	var n int64
 	db.Model(&model.NoblePlan{}).Count(&n)
-	if n > 0 {
+	if n == 0 {
+		for _, p := range model.NoblePlanPresets {
+			db.Create(&p)
+		}
 		return
 	}
+	// 老库方案补齐 speed/limit/stock（幂等）
 	for _, p := range model.NoblePlanPresets {
-		db.Create(&p)
+		db.Model(&model.NoblePlan{}).Where("name = ?", p.Name).Updates(map[string]interface{}{
+			"speed": p.Speed, "limit": p.Limit, "stock": p.Stock,
+		})
 	}
 }
 
@@ -444,6 +504,9 @@ func seedGoods(db *gorm.DB) {
 		db.Model(&model.Good{}).Where("name = ?", g.Name).Count(&exist)
 		if exist == 0 {
 			db.Create(&g)
+		} else {
+			// 老库商品补齐友友券价（幂等）
+			db.Model(&model.Good{}).Where("name = ?", g.Name).Update("youquan_price", g.YouQuanPrice)
 		}
 	}
 }
@@ -812,6 +875,56 @@ func seedBoards(db *gorm.DB) {
 	for _, s := range subs {
 		db.Create(&model.Board{ParentID: nameID[s.parent], Name: s.name, Description: s.desc})
 	}
+}
+
+// seedBoardCategories 分区下分类分组（诺哈 wap_bbs_category），幂等
+func seedBoardCategories(db *gorm.DB) {
+	var count int64
+	db.Model(&model.BoardCategory{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	channelID := func(name string) uint {
+		var b model.Board
+		db.Where("name = ? AND parent_id = 0", name).First(&b)
+		return b.ID
+	}
+	gs, fs, zc := channelID("公共论坛"), channelID("家族大厅"), channelID("同城客栈")
+	if gs > 0 {
+		db.Create(&[]model.BoardCategory{
+			{ParentID: gs, Name: "灌水闲聊", Sort: 1},
+			{ParentID: gs, Name: "兴趣圈子", Sort: 2},
+			{ParentID: gs, Name: "互助问答", Sort: 3},
+		})
+	}
+	if zc > 0 {
+		db.Create(&[]model.BoardCategory{
+			{ParentID: zc, Name: "沿海城市", Sort: 1},
+			{ParentID: zc, Name: "内陆地区", Sort: 2},
+		})
+	}
+	if fs > 0 {
+		db.Create(&model.BoardCategory{ParentID: fs, Name: "家族专区", Sort: 1})
+	}
+}
+
+// seedWordFilters 敏感词库（幂等）
+func seedWordFilters(db *gorm.DB) {
+	var count int64
+	db.Model(&model.WordFilter{}).Count(&count)
+	if count > 0 {
+		return
+	}
+	db.Create(&[]model.WordFilter{
+		{Word: "垃圾", Replace: "***", Type: 1},
+		{Word: "废柴", Replace: "***", Type: 1},
+		{Word: "去死", Replace: "***", Type: 1},
+		{Word: "傻逼", Replace: "***", Type: 1},
+		{Word: "脑残", Replace: "***", Type: 1},
+		{Word: "色情", Replace: "***", Type: 1},
+		{Word: "赌博", Replace: "***", Type: 2},
+		{Word: "代练", Replace: "***", Type: 2},
+	})
 }
 
 func seedAnnouncements(db *gorm.DB) {

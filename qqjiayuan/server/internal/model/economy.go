@@ -41,6 +41,7 @@ type WalletLog struct {
 	Title     string    `gorm:"type:varchar(60)" json:"title"`
 	Currency  string    `gorm:"type:varchar(10);default:coins" json:"currency"` // coins/yuanbao/jinzuan/youquan
 	Delta     int       `json:"delta"`
+	Remark    string    `gorm:"type:varchar(50);default:''" json:"remark"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

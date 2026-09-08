@@ -23,6 +23,8 @@
             <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
             <el-menu-item index="reports"><i class="el-icon-warning-outline"></i>举报管理</el-menu-item>
             <el-menu-item index="boards"><i class="el-icon-menu"></i>板块管理</el-menu-item>
+            <el-menu-item index="boardCategories"><i class="el-icon-collection"></i>板块分类</el-menu-item>
+            <el-menu-item index="wordFilters"><i class="el-icon-remove-outline"></i>敏感词管理</el-menu-item>
             <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告管理</el-menu-item>
             <el-menu-item index="plazaSections"><i class="el-icon-s-grid"></i>广场板块</el-menu-item>
             <el-menu-item index="families"><i class="el-icon-office-building"></i>家族管理</el-menu-item>
@@ -96,7 +98,7 @@ export default {
     return {
       user: {},
       names: {
-        dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', threads: '帖子管理',
+        dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', boardCategories: '板块分类', wordFilters: '敏感词管理', threads: '帖子管理',
         announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '游戏数据管理', goods: '道具商城', resources: '资源管理', spaces: '空间管理', reports: '举报管理'
       }
     }

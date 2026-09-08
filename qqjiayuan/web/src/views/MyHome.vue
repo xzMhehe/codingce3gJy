@@ -14,7 +14,7 @@
 
     <!-- 快捷入口 -->
     <div>
-      <a href="javascript:;" @click="$router.push('/space/'+u.id)">宅子</a> . <a href="javascript:;" @click="tip('友友券')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="$router.push('/noble')">超Q</a><br>
+      <a href="javascript:;" @click="$router.push('/space/'+u.id)">宅子</a> . <a href="javascript:;" @click="$router.push('/youquan')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="$router.push('/noble')">超Q</a><br>
     </div>
 
     <!-- tab：我的 活动 帖 书（参考站 module-title 样式） -->
@@ -114,12 +114,21 @@
 
     <!-- ===== 帖 ===== -->
     <template v-if="cur === 'post'">
-      <div class="module-title">我的帖子|<a href="javascript:;" @click="$router.push('/profile')">回帖</a>|<a href="javascript:;" @click="$router.push('/profile')">收藏</a>|<a href="javascript:;" @click="tip('草稿')">草稿</a></div>
+      <!-- 发帖入口（复刻诺哈：发帖.工具箱 风格） -->
+      <div class="module-content">
+        <a href="javascript:;" @click="$router.push('/post')">发帖</a>.<a href="javascript:;" @click="$router.push('/games')">工具箱</a>.<a href="javascript:;" @click="$router.push('/my-threads')">我的帖子</a>.<a href="javascript:;" @click="$router.push('/search')">搜帖</a><br>
+      </div>
+
+      <div class="module-title"><a href="javascript:;" @click="$router.push('/my-threads')">我的帖子({{ threadTotal }})</a>|<a href="javascript:;" @click="$router.push('/profile')">回帖</a>|<a href="javascript:;" @click="$router.push('/favorites')">收藏</a>|<a href="javascript:;" @click="tip('草稿')">草稿</a></div>
 
       <ul class="dtuser" v-if="threads.length">
-        <li v-for="t in threads" :key="'t'+t.id"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a> <em>（{{ t.board ? t.board.name : '' }} · {{ t.view_count }}阅/{{ t.reply_count }}回）</em></li>
+        <li v-for="t in threads" :key="'t'+t.id">
+          <span v-if="t.is_head" class="tag">[头条]</span><span v-if="t.is_top" class="tag">【顶】</span><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>
+          <em>（{{ t.board ? t.board.name : '' }} · {{ t.view_count }}阅/{{ t.reply_count }}回）</em>
+        </li>
       </ul>
-      <div class="text" v-else>你还没有发过帖子呢，快去<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>发一个吧！<br></div>
+      <div class="text" v-else>你还没有发过帖子呢，点击上方「<a href="javascript:;" @click="$router.push('/post')">发帖</a>」开始吧！<br></div>
+      <a v-if="threadTotal > threads.length" href="javascript:;" @click="$router.push('/my-threads')">查看全部({{ threadTotal }})&gt;&gt;</a><br>
 
       <div class="module-title">我的回帖</div>
       <ul class="dtuser" v-if="myReplies.length">
@@ -134,8 +143,8 @@
       <div class="module-content" v-else><span class="empty">还没有收藏帖子</span></div>
 
       <div class="module-title">常用地址</div>
-      <a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/search')">搜帖</a>.<a href="javascript:;" @click="cur='post'">收藏夹</a><br>
-      <a href="javascript:;" @click="$router.push('/channel/1')">今日热帖</a>.<a href="javascript:;" @click="$router.push('/channel/1')">公共论坛</a><br>
+      <a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/search')">搜帖</a>.<a href="javascript:;" @click="$router.push('/favorites')">收藏夹</a><br>
+      <a href="javascript:;" @click="$router.push('/threads/hot')">今日热帖</a>.<a href="javascript:;" @click="$router.push('/channel/1')">公共论坛</a><br>
       <a href="javascript:;" @click="tip('社区服务')">社区服务</a>.<a href="javascript:;" @click="$router.push('/channel/1')">产品论坛</a><br>
     </template>
 
@@ -166,7 +175,7 @@ export default {
       cur: 'mine', u: {}, threads: [], friends: [], visitId: '', mood: null,
       games: [], myGames: [], feed: [], msgs: [],
       fineThreads: [], commonThreads: [], announcements: [],
-      myReplies: [], favThreads: [],
+      myReplies: [], favThreads: [], threadTotal: 0,
       // 诺哈 my_home 聚合
       homeAgg: null, myNews: [], friendNews: [], visitors: [], msgTotal: 0, favCount: 0, todayFirst: false
     }
@@ -178,6 +187,9 @@ export default {
       if (!me) return
       const id = me.id
       api.get('/users/' + id).then(r => { if (r.code === 0) { this.u = r.data; this.threads = (r.data.threads || []).slice(0, 8) } }).catch(() => {})
+      api.get('/my-threads', { params: { page: 1 } }).then(r => {
+        if (r.code === 0) { this.threads = r.data.list || []; this.threadTotal = r.data.total || 0 }
+      }).catch(() => {})
       api.get('/moods/latest').then(r => { if (r.code === 0) this.mood = r.data }).catch(() => {})
       api.get('/friends').then(r => { if (r.code === 0) this.friends = (r.data.friends || []).slice(0, 5) }).catch(() => {})
       api.get('/games').then(r => { if (r.code === 0) this.games = r.data || [] }).catch(() => {})
@@ -192,8 +204,8 @@ export default {
         }
       })
       api.get('/space/' + id + '/messages').then(r => { if (r.code === 0) this.msgs = (r.data.list || r.data || []).slice(0, 3) }).catch(() => {})
-      api.get('/my-replies').then(r => { if (r.code === 0) this.myReplies = r.data }).catch(() => {})
-      api.get('/favorite-threads').then(r => { if (r.code === 0) this.favThreads = r.data }).catch(() => {})
+      api.get('/my-replies').then(r => { if (r.code === 0) this.myReplies = r.data || [] }).catch(() => {})
+      api.get('/favorite-threads').then(r => { if (r.code === 0) this.favThreads = r.data || [] }).catch(() => {})
       api.get('/home').then(r => {
         if (r.code === 0) {
           this.homeAgg = r.data

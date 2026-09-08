@@ -458,7 +458,12 @@ func (h *AdminHandler) Boards(c *gin.Context) {
 type boardReq struct {
 	Name        string `json:"name" binding:"required,min=1,max=30"`
 	ParentID    uint   `json:"parent_id"`
-	Description string `json:"description" binding:"max=200"`
+	CategoryID  uint   `json:"category_id"`
+	Description string `json:"description" binding:"max=500"`
+	Notice      string `json:"notice"`
+	Tags        string `json:"tags" binding:"max=100"`
+	ModeratorID uint   `json:"moderator_id"`
+	MembersOnly int    `json:"members_only"`
 	Sort        int    `json:"sort"`
 	Status      int    `json:"status"`
 }
@@ -472,13 +477,25 @@ func (h *AdminHandler) CreateBoard(c *gin.Context) {
 	if req.Status == 0 && req.ParentID == 0 {
 		req.Status = 1
 	}
-	board := model.Board{Name: req.Name, ParentID: req.ParentID, Description: req.Description, Sort: req.Sort, Status: req.Status}
+	board := model.Board{Name: req.Name, ParentID: req.ParentID, CategoryID: req.CategoryID,
+		Description: req.Description, Notice: req.Notice, Tags: req.Tags,
+		ModeratorID: req.ModeratorID, MembersOnly: req.MembersOnly, Sort: req.Sort, Status: req.Status}
 	if req.ParentID != 0 {
 		var parent model.Board
 		if err := h.DB.First(&parent, req.ParentID).Error; err != nil || parent.ParentID != 0 {
 			resp.ParamError(c, "上级分区不存在（只支持两级）")
 			return
 		}
+		if req.CategoryID != 0 {
+			var ct model.BoardCategory
+			if err := h.DB.First(&ct, req.CategoryID).Error; err != nil || ct.ParentID != req.ParentID {
+				resp.ParamError(c, "分类不属于该分区")
+				return
+			}
+		}
+	} else {
+		req.CategoryID = 0
+		board.CategoryID = 0
 	}
 	h.DB.Create(&board)
 	resp.OK(c, board)
@@ -496,10 +513,21 @@ func (h *AdminHandler) UpdateBoard(c *gin.Context) {
 		resp.NotFound(c, "板块不存在")
 		return
 	}
-	h.DB.Model(&board).Updates(map[string]interface{}{
-		"name": req.Name, "description": req.Description, "sort": req.Sort,
-		"status": boolToInt(req.Status != 0),
-	})
+	if board.ParentID == 0 {
+		req.CategoryID = 0
+		req.ModeratorID = 0
+		req.MembersOnly = 0
+	}
+	updates := map[string]interface{}{
+		"name": req.Name, "description": req.Description, "notice": req.Notice, "tags": req.Tags,
+		"sort": req.Sort, "status": boolToInt(req.Status != 0),
+		"category_id": req.CategoryID, "moderator_id": req.ModeratorID, "members_only": req.MembersOnly,
+	}
+	if board.ParentID == 0 {
+		updates["moderator_id"] = board.ModeratorID
+		updates["members_only"] = board.MembersOnly
+	}
+	h.DB.Model(&board).Updates(updates)
 	resp.OK(c, board)
 }
 
@@ -521,12 +549,171 @@ func (h *AdminHandler) DeleteBoard(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
+// ---- 板块分类 ----
+func (h *AdminHandler) BoardCategories(c *gin.Context) {
+	var list []model.BoardCategory
+	h.DB.Order("parent_id ASC, sort ASC, id ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+func (h *AdminHandler) CreateBoardCategory(c *gin.Context) {
+	var req struct {
+		ParentID uint   `json:"parent_id" binding:"required"`
+		Name     string `json:"name" binding:"required,min=1,max=30"`
+		Sort     int    `json:"sort"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "分类名称1-30字")
+		return
+	}
+	var parent model.Board
+	if err := h.DB.First(&parent, req.ParentID).Error; err != nil || parent.ParentID != 0 {
+		resp.ParamError(c, "分区不存在")
+		return
+	}
+	ct := model.BoardCategory{ParentID: req.ParentID, Name: req.Name, Sort: req.Sort}
+	h.DB.Create(&ct)
+	resp.OK(c, ct)
+}
+
+func (h *AdminHandler) UpdateBoardCategory(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Name string `json:"name" binding:"required,min=1,max=30"`
+		Sort int    `json:"sort"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "分类名称1-30字")
+		return
+	}
+	var ct model.BoardCategory
+	if err := h.DB.First(&ct, id).Error; err != nil {
+		resp.NotFound(c, "分类不存在")
+		return
+	}
+	h.DB.Model(&ct).Updates(map[string]interface{}{"name": req.Name, "sort": req.Sort})
+	resp.OK(c, ct)
+}
+
+func (h *AdminHandler) DeleteBoardCategory(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var cnt int64
+	h.DB.Model(&model.Board{}).Where("category_id = ?", id).Count(&cnt)
+	if cnt > 0 {
+		resp.ParamError(c, "该分类下还有板块，请先移出")
+		return
+	}
+	h.DB.Delete(&model.BoardCategory{}, id)
+	resp.OK(c, nil)
+}
+
+// ---- 会员制版块成员 ----
+func (h *AdminHandler) BoardMembers(c *gin.Context) {
+	bid, _ := strconv.Atoi(c.DefaultQuery("board_id", "0"))
+	q := h.DB.Model(&model.BoardMember{})
+	if bid > 0 {
+		q = q.Where("board_id = ?", bid)
+	}
+	var list []model.BoardMember
+	q.Preload("User").Order("id DESC").Limit(200).Find(&list)
+	resp.OK(c, list)
+}
+
+func (h *AdminHandler) BoardMemberAdd(c *gin.Context) {
+	var req struct {
+		BoardID uint `json:"board_id" binding:"required"`
+		UserID  uint `json:"user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数不对")
+		return
+	}
+	var cnt int64
+	h.DB.Model(&model.BoardMember{}).Where("board_id = ? AND user_id = ?", req.BoardID, req.UserID).Count(&cnt)
+	if cnt > 0 {
+		h.DB.Model(&model.BoardMember{}).Where("board_id = ? AND user_id = ?", req.BoardID, req.UserID).Update("status", 1)
+		resp.OK(c, nil)
+		return
+	}
+	h.DB.Create(&model.BoardMember{BoardID: req.BoardID, UserID: req.UserID, Status: 1})
+	resp.OK(c, nil)
+}
+
+func (h *AdminHandler) BoardMemberRemove(c *gin.Context) {
+	bid, _ := strconv.Atoi(c.Param("boardId"))
+	uid, _ := strconv.Atoi(c.Param("userId"))
+	h.DB.Where("board_id = ? AND user_id = ?", bid, uid).Delete(&model.BoardMember{})
+	resp.OK(c, nil)
+}
+
+// ---- 敏感词管理 ----
+func (h *AdminHandler) WordFilters(c *gin.Context) {
+	var list []model.WordFilter
+	h.DB.Order("id ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+func (h *AdminHandler) CreateWordFilter(c *gin.Context) {
+	var req model.WordFilter
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数不对")
+		return
+	}
+	if req.Word == "" {
+		resp.ParamError(c, "敏感词不能为空")
+		return
+	}
+	if req.Replace == "" {
+		req.Replace = "***"
+	}
+	h.DB.Create(&req)
+	resp.OK(c, req)
+}
+
+func (h *AdminHandler) UpdateWordFilter(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Word    string `json:"word"`
+		Replace string `json:"replace"`
+		Type    int    `json:"type"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数不对")
+		return
+	}
+	var wf model.WordFilter
+	if err := h.DB.First(&wf, id).Error; err != nil {
+		resp.NotFound(c, "敏感词不存在")
+		return
+	}
+	updates := map[string]interface{}{"type": req.Type}
+	if req.Word != "" {
+		updates["word"] = req.Word
+	}
+	if req.Replace != "" {
+		updates["replace"] = req.Replace
+	}
+	h.DB.Model(&wf).Updates(updates)
+	resp.OK(c, wf)
+}
+
+func (h *AdminHandler) DeleteWordFilter(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	h.DB.Delete(&model.WordFilter{}, id)
+	resp.OK(c, nil)
+}
+
 // ---- 帖子管理 ----
 func (h *AdminHandler) UpdateThread(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		IsTop  *int `json:"is_top"`
-		IsFine *int `json:"is_fine"`
+		IsTop    *int `json:"is_top"`
+		IsFine   *int `json:"is_fine"`
+		IsHead   *int `json:"is_head"`
+		IsLock   *int `json:"is_lock"`
+		IsRecom  *int `json:"is_recom"`
+		IsNotice *int `json:"is_notice"`
+		Audit    *int `json:"audit_status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数不对")
@@ -538,6 +725,21 @@ func (h *AdminHandler) UpdateThread(c *gin.Context) {
 	}
 	if req.IsFine != nil {
 		updates["is_fine"] = *req.IsFine
+	}
+	if req.IsHead != nil {
+		updates["is_head"] = *req.IsHead
+	}
+	if req.IsLock != nil {
+		updates["is_lock"] = *req.IsLock
+	}
+	if req.IsRecom != nil {
+		updates["is_recom"] = *req.IsRecom
+	}
+	if req.IsNotice != nil {
+		updates["is_notice"] = *req.IsNotice
+	}
+	if req.Audit != nil {
+		updates["audit_status"] = *req.Audit
 	}
 	if len(updates) == 0 {
 		resp.ParamError(c, "没有需要更新的字段")

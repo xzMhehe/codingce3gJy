@@ -11,28 +11,46 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
         <el-table-column prop="id" label="ID" width="80" header-align="center" />
-        <el-table-column label="标题" min-width="220" show-overflow-tooltip>
+        <el-table-column label="标题" min-width="200" show-overflow-tooltip>
           <template slot-scope="{row}">
+            <el-tag v-if="row.is_head" type="warning" size="mini" style="margin-right:4px">头条</el-tag>
             <el-tag v-if="row.is_top" type="danger" size="mini" style="margin-right:4px">顶</el-tag>
             <el-tag v-if="row.is_fine" type="success" size="mini" style="margin-right:4px">精</el-tag>
+            <el-tag v-if="row.is_lock" type="info" size="mini" style="margin-right:4px">锁</el-tag>
+            <el-tag v-if="row.is_recom" type="warning" size="mini" style="margin-right:4px">荐</el-tag>
+            <el-tag v-if="row.type === 1" type="success" size="mini" style="margin-right:4px">奖励</el-tag>
+            <el-tag v-if="row.type === 2" type="success" size="mini" style="margin-right:4px">踩楼</el-tag>
+            <el-tag v-if="row.type === 3" type="success" size="mini" style="margin-right:4px">投票</el-tag>
             {{ row.title }}
           </template>
         </el-table-column>
-        <el-table-column label="板块" min-width="110" show-overflow-tooltip>
+        <el-table-column label="板块" min-width="100" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.board ? row.board.name : '—' }}</template>
         </el-table-column>
-        <el-table-column label="楼主" min-width="110" show-overflow-tooltip>
+        <el-table-column label="楼主" min-width="100" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.user ? row.user.nickname : '—' }}</template>
         </el-table-column>
-        <el-table-column label="数据" min-width="110" header-align="center">
+        <el-table-column label="数据" min-width="90" header-align="center">
           <template slot-scope="{row}">{{ row.view_count }}阅/{{ row.reply_count }}回</template>
         </el-table-column>
-        <el-table-column label="操作" min-width="260">
+        <el-table-column label="状态" width="80" align="center">
+          <template slot-scope="{row}">
+            <el-tag v-if="row.audit_status === 0" type="warning" size="mini">待审核</el-tag>
+            <el-tag v-else-if="row.audit_status === 2" type="danger" size="mini">未通过</el-tag>
+            <el-tag v-else type="success" size="mini">已发布</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="360">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
               <el-button size="mini" @click="toggle(row, 'is_top')">{{ row.is_top ? '取消置顶' : '置顶' }}</el-button>
               <el-button size="mini" @click="toggle(row, 'is_fine')">{{ row.is_fine ? '取消精华' : '加精' }}</el-button>
+              <el-button size="mini" @click="toggle(row, 'is_head')">{{ row.is_head ? '取消头条' : '头条' }}</el-button>
+              <el-button size="mini" @click="toggle(row, 'is_lock')">{{ row.is_lock ? '解锁' : '锁定' }}</el-button>
+              <el-button size="mini" @click="toggle(row, 'is_recom')">{{ row.is_recom ? '取消推荐' : '推荐' }}</el-button>
+              <el-button v-if="row.audit_status !== 1" size="mini" type="success" plain @click="audit(row, 1)">通过</el-button>
+              <el-button v-if="row.audit_status === 1" size="mini" type="warning" plain @click="audit(row, 0)">转审核</el-button>
               <el-button size="mini" type="danger" plain @click="del(row)">删除</el-button>
             </div>
           </template>
@@ -103,6 +121,12 @@ export default {
     },
     toggle (row, field) {
       api.put(`/admin/threads/${row.id}`, { [field]: row[field] ? 0 : 1 }).then(r => {
+        if (r.code === 0) this.load()
+        else this.$message.error(r.msg)
+      })
+    },
+    audit (row, status) {
+      api.put(`/admin/threads/${row.id}`, { audit_status: status }).then(r => {
         if (r.code === 0) this.load()
         else this.$message.error(r.msg)
       })
