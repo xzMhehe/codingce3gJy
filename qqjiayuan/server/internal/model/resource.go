@@ -1,13 +1,15 @@
 package model
 
-// 静态资源目录：图标/头像/游戏logo/特权图标等，管理端「资源管理」维护
+// 静态资源目录：图标/头像/游戏logo/特权图标等，管理端「文件管理」维护
+// File 为 static 相对路径（如 picture/v1.gif）；管理端上传的图片存 Data(base64 data URI)，File 形如 db/xxx.gif，经 /api/res/db/xxx.gif 提供
 type Resource struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
-	File     string `gorm:"type:varchar(120);uniqueIndex" json:"file"` // 相对 static 的路径，如 picture/v1.gif
+	File     string `gorm:"type:varchar(120);uniqueIndex" json:"file"` // 相对 static 的路径或 db/ 上传件名
 	Category string `gorm:"type:varchar(10);index" json:"category"`    // badge/avatar/game/priv/other
 	Name     string `gorm:"type:varchar(30)" json:"name"`              // 资源名称（特权名称等）
 	Level    int    `gorm:"default:0" json:"level"`                    // 特权等级 1-8
 	Status   int    `gorm:"default:1" json:"status"`                   // 1启用 0停用（停用后不出现在选择器）
+	Data     string `gorm:"type:longtext" json:"-"`                    // base64 data URI（库存图片，管理端上传）
 }
 
 func (Resource) TableName() string { return "resources" }

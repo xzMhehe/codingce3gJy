@@ -44,29 +44,42 @@
     <admin-users v-if="tab === 'users'" />
     <admin-home v-else-if="tab === 'home'" />
     <admin-wallet v-else-if="tab === 'wallet'" />
+    <admin-wallet-logs v-else-if="tab === 'walletLogs'" />
+    <admin-invites v-else-if="tab === 'invites'" />
+    <admin-user-docu v-else-if="tab === 'userDocu'" />
+    <admin-user-contacts v-else-if="tab === 'userContact'" />
+    <admin-user-addresses v-else-if="tab === 'userAddress'" />
+    <admin-user-protections v-else-if="tab === 'userProtec'" />
+    <admin-user-logs v-else-if="tab === 'userLogs'" />
     <admin-boards v-else-if="tab === 'boards'" />
     <admin-board-categories v-else-if="tab === 'boardCategories'" />
     <admin-word-filters v-else-if="tab === 'wordFilters'" />
     <admin-threads v-else-if="tab === 'threads'" />
-    <admin-reports v-else-if="tab === 'reports'" />
+    <admin-thread-recycle v-else-if="tab === 'recycle'" />
     <admin-announcements v-else-if="tab === 'announcements'" />
-    <admin-plaza-sections v-else-if="tab === 'plazaSections'" />
-    <admin-families v-else-if="tab === 'families'" />
-    <admin-tongcheng v-else-if="tab === 'tongcheng'" />
-    <admin-ttou v-else-if="tab === 'ttou'" />
     <admin-roles v-else-if="tab === 'roles'" />
-    <admin-badges v-else-if="tab === 'badges'" />
     <admin-privileges v-else-if="tab === 'privileges'" />
     <admin-games v-else-if="tab === 'games'" />
+    <admin-badges v-else-if="tab === 'badges'" />
     <admin-garden-activities v-else-if="tab === 'gardenActivities'" />
     <admin-garden-seeds v-else-if="tab === 'gardenSeeds'" />
     <admin-garden-maps v-else-if="tab === 'gardenMaps'" />
     <admin-garden-mixes v-else-if="tab === 'gardenMixes'" />
     <admin-garden-elves v-else-if="tab === 'gardenElves'" />
     <admin-garden-data v-else-if="tab === 'gardenData'" />
-    <admin-goods v-else-if="tab === 'goods'" />
     <admin-resources v-else-if="tab === 'resources'" />
     <admin-spaces v-else-if="tab === 'spaces'" />
+    <admin-homes v-else-if="tab === 'homes'" />
+    <admin-visitors v-else-if="tab === 'visitors'" />
+    <admin-shops v-else-if="tab === 'shops'" />
+    <admin-shop-goods v-else-if="tab === 'shopGoods'" />
+    <admin-shop-orders v-else-if="tab === 'shopOrders'" />
+    <admin-shop-comments v-else-if="tab === 'shopComments'" />
+    <admin-site-articles v-else-if="tab === 'articles'" />
+    <admin-guestbook v-else-if="tab === 'guestbook'" />
+    <admin-messages v-else-if="tab === 'messages'" />
+    <admin-books v-else-if="tab === 'books'" />
+    <admin-site-config v-else-if="tab === 'siteConfig'" />
   </div>
 </template>
 
@@ -98,10 +111,29 @@ import AdminGardenData from '../components/admin/AdminGardenData.vue'
 import AdminGoods from '../components/admin/AdminGoods.vue'
 import AdminResources from '../components/admin/AdminResources.vue'
 import AdminSpaces from '../components/admin/AdminSpaces.vue'
+import AdminWalletLogs from '../components/admin/AdminWalletLogs.vue'
+import AdminInvites from '../components/admin/AdminInvites.vue'
+import AdminUserDocu from '../components/admin/AdminUserDocu.vue'
+import AdminUserContacts from '../components/admin/AdminUserContacts.vue'
+import AdminUserAddresses from '../components/admin/AdminUserAddresses.vue'
+import AdminUserProtections from '../components/admin/AdminUserProtections.vue'
+import AdminUserLogs from '../components/admin/AdminUserLogs.vue'
+import AdminThreadRecycle from '../components/admin/AdminThreadRecycle.vue'
+import AdminHomes from '../components/admin/AdminHomes.vue'
+import AdminVisitors from '../components/admin/AdminVisitors.vue'
+import AdminShops from '../components/admin/AdminShops.vue'
+import AdminShopGoods from '../components/admin/AdminShopGoods.vue'
+import AdminShopOrders from '../components/admin/AdminShopOrders.vue'
+import AdminShopComments from '../components/admin/AdminShopComments.vue'
+import AdminSiteArticles from '../components/admin/AdminSiteArticles.vue'
+import AdminGuestbook from '../components/admin/AdminGuestbook.vue'
+import AdminMessages from '../components/admin/AdminMessages.vue'
+import AdminBooks from '../components/admin/AdminBooks.vue'
+import AdminSiteConfig from '../components/admin/AdminSiteConfig.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminReports, AdminAnnouncements, AdminPlazaSections, AdminFamilies, AdminTongcheng, AdminTtou, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminGoods, AdminResources, AdminSpaces },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminSiteConfig },
   data () {
     return { stats: {}, adminName: '' }
   },
@@ -127,11 +159,12 @@ export default {
     },
     quickLinks () {
       return [
-        { tab: 'users', icon: 'el-icon-user', name: '用户管理', desc: '分配角色与马甲', bg: '#ecf5ff', color: '#409eff' },
-        { tab: 'threads', icon: 'el-icon-document', name: '帖子管理', desc: '置顶、加精、审核', bg: '#fdf6ec', color: '#e6a23c' },
-        { tab: 'boards', icon: 'el-icon-menu', name: '板块管理', desc: '分区与板块维护', bg: '#f0f9eb', color: '#67c23a' },
-        { tab: 'announcements', icon: 'el-icon-bell', name: '公告管理', desc: '发布社区公告', bg: '#fef0f0', color: '#f56c6c' },
-        { tab: 'spaces', icon: 'el-icon-office-building', name: '空间管理', desc: '维护用户空间', bg: '#f4f0ff', color: '#7367f0' }
+        { tab: 'users', icon: 'el-icon-user', name: '会员列表', desc: '资料/角色/封禁/详情', bg: '#ecf5ff', color: '#409eff' },
+        { tab: 'threads', icon: 'el-icon-document', name: '帖子管理', desc: '置顶、加精、活动、审核', bg: '#fdf6ec', color: '#e6a23c' },
+        { tab: 'boards', icon: 'el-icon-menu', name: '版块管理', desc: '分区与版块维护', bg: '#f0f9eb', color: '#67c23a' },
+        { tab: 'shopGoods', icon: 'el-icon-box', name: '商品管理', desc: '上下架与删除', bg: '#fef0f0', color: '#f56c6c' },
+        { tab: 'homes', icon: 'el-icon-s-home', name: '家园列表', desc: '活跃点与家园统计', bg: '#f4f0ff', color: '#7367f0' },
+        { tab: 'siteConfig', icon: 'el-icon-s-tools', name: '站点设置', desc: '注册赠送等系统配置', bg: '#f0f9eb', color: '#67c23a' }
       ]
     }
   },

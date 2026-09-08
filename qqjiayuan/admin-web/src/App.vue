@@ -15,36 +15,79 @@
           <el-menu-item index="dashboard">
             <i class="el-icon-data-board"></i><span>数据概览</span>
           </el-menu-item>
-          <el-submenu index="g1">
-            <template slot="title"><i class="el-icon-chat-dot-round"></i><span>社区管理</span></template>
-            <el-menu-item index="users"><i class="el-icon-user"></i>用户管理</el-menu-item>
-            <el-menu-item index="home"><i class="el-icon-house"></i>家园资料</el-menu-item>
-            <el-menu-item index="wallet"><i class="el-icon-wallet"></i>钱包管理</el-menu-item>
-            <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
-            <el-menu-item index="reports"><i class="el-icon-warning-outline"></i>举报管理</el-menu-item>
-            <el-menu-item index="boards"><i class="el-icon-menu"></i>板块管理</el-menu-item>
-            <el-menu-item index="boardCategories"><i class="el-icon-collection"></i>板块分类</el-menu-item>
-            <el-menu-item index="wordFilters"><i class="el-icon-remove-outline"></i>敏感词管理</el-menu-item>
-            <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告管理</el-menu-item>
-            <el-menu-item index="plazaSections"><i class="el-icon-s-grid"></i>广场板块</el-menu-item>
-            <el-menu-item index="families"><i class="el-icon-office-building"></i>家族管理</el-menu-item>
-            <el-menu-item index="tongcheng"><i class="el-icon-location-outline"></i>同城管理</el-menu-item>
-            <el-menu-item index="ttou"><i class="el-icon-star-on"></i>T台秀管理</el-menu-item>
+          <!-- 会员管理（诺哈 user/：会员列表/证件/联系/地址/密保/日志/推荐） -->
+          <el-submenu index="g-user">
+            <template slot="title"><i class="el-icon-user"></i><span>会员管理</span></template>
+            <el-menu-item index="users"><i class="el-icon-s-custom"></i>会员列表</el-menu-item>
+            <el-menu-item index="home"><i class="el-icon-edit-outline"></i>会员资料</el-menu-item>
+            <el-menu-item index="userDocu"><i class="el-icon-postcard"></i>会员证件</el-menu-item>
+            <el-menu-item index="userContact"><i class="el-icon-phone-outline"></i>会员联系</el-menu-item>
+            <el-menu-item index="userAddress"><i class="el-icon-map-location"></i>会员地址</el-menu-item>
+            <el-menu-item index="userProtec"><i class="el-icon-key"></i>会员密保</el-menu-item>
+            <el-menu-item index="userLogs"><i class="el-icon-date"></i>会员日志</el-menu-item>
+            <el-menu-item index="invites"><i class="el-icon-share"></i>会员推荐</el-menu-item>
           </el-submenu>
-          <el-submenu index="g2">
-            <template slot="title"><i class="el-icon-s-operation"></i><span>权限与装扮</span></template>
-            <el-menu-item index="roles"><i class="el-icon-s-check"></i>角色权限</el-menu-item>
-            <el-menu-item index="badges"><i class="el-icon-medal"></i>马甲勋章</el-menu-item>
+          <!-- 货币管理（诺哈 money/：财务/流水） -->
+          <el-submenu index="g-money">
+            <template slot="title"><i class="el-icon-coin"></i><span>货币管理</span></template>
+            <el-menu-item index="wallet"><i class="el-icon-wallet"></i>会员财务</el-menu-item>
+            <el-menu-item index="walletLogs"><i class="el-icon-tickets"></i>货币流水</el-menu-item>
+          </el-submenu>
+          <!-- 社区管理（诺哈 bbs/：版块/帖子/恢复帖子/黑名单榜） -->
+          <el-submenu index="g-bbs">
+            <template slot="title"><i class="el-icon-chat-dot-round"></i><span>社区管理</span></template>
+            <el-menu-item index="boards"><i class="el-icon-menu"></i>版块管理</el-menu-item>
+            <el-menu-item index="boardCategories"><i class="el-icon-collection"></i>版块分类</el-menu-item>
+            <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
+            <el-menu-item index="recycle"><i class="el-icon-delete"></i>恢复帖子</el-menu-item>
+            <el-menu-item index="wordFilters"><i class="el-icon-remove-outline"></i>黑名单榜</el-menu-item>
+          </el-submenu>
+          <!-- 内容管理（诺哈 article/ guest/ message/） -->
+          <el-submenu index="g-content">
+            <template slot="title"><i class="el-icon-notebook-2"></i><span>内容管理</span></template>
+            <el-menu-item index="articles"><i class="el-icon-notebook-1"></i>文章管理</el-menu-item>
+            <el-menu-item index="guestbook"><i class="el-icon-edit"></i>留言本管理</el-menu-item>
+            <el-menu-item index="messages"><i class="el-icon-message"></i>家信管理</el-menu-item>
+          </el-submenu>
+          <!-- 博客管理（诺哈 blog/） -->
+          <el-submenu index="g-blog">
+            <template slot="title"><i class="el-icon-s-shop"></i><span>博客管理</span></template>
+            <el-menu-item index="spaces"><i class="el-icon-office-building"></i>空间列表</el-menu-item>
+          </el-submenu>
+          <!-- 家园管理（诺哈 home/：家园列表/家园访客） -->
+          <el-submenu index="g-home">
+            <template slot="title"><i class="el-icon-house"></i><span>家园管理</span></template>
+            <el-menu-item index="homes"><i class="el-icon-s-home"></i>家园列表</el-menu-item>
+            <el-menu-item index="visitors"><i class="el-icon-view"></i>家园访客</el-menu-item>
+          </el-submenu>
+          <!-- 商城管理（诺哈 shop/：商品/订单/评论） -->
+          <el-submenu index="g-shop">
+            <template slot="title"><i class="el-icon-shopping-cart-2"></i><span>商城管理</span></template>
+            <el-menu-item index="shops"><i class="el-icon-s-shop"></i>店铺管理</el-menu-item>
+            <el-menu-item index="shopGoods"><i class="el-icon-box"></i>商品管理</el-menu-item>
+            <el-menu-item index="shopOrders"><i class="el-icon-s-order"></i>订单管理</el-menu-item>
+            <el-menu-item index="shopComments"><i class="el-icon-s-comment"></i>评论管理</el-menu-item>
+          </el-submenu>
+          <!-- 书城管理（诺哈 book/） -->
+          <el-submenu index="g-book">
+            <template slot="title"><i class="el-icon-reading"></i><span>书城管理</span></template>
+            <el-menu-item index="books"><i class="el-icon-notebook-1"></i>小说列表</el-menu-item>
+          </el-submenu>
+          <!-- 贵宾会员（诺哈 vip/） -->
+          <el-submenu index="g-vip">
+            <template slot="title"><i class="el-icon-s-operation"></i><span>贵宾会员</span></template>
             <el-menu-item index="privileges"><i class="el-icon-star-off"></i>特权管理</el-menu-item>
           </el-submenu>
-          <el-submenu index="g3">
-            <template slot="title"><i class="el-icon-picture-outline-round"></i><span>运营与资源</span></template>
-            <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏管理</el-menu-item>
-            <el-menu-item index="goods"><i class="el-icon-shopping-cart-2"></i>道具商城</el-menu-item>
-            <el-menu-item index="resources"><i class="el-icon-picture-outline"></i>资源管理</el-menu-item>
+          <!-- 广播管理（诺哈 radio/） -->
+          <el-submenu index="g-radio">
+            <template slot="title"><i class="el-icon-bell"></i><span>广播管理</span></template>
+            <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告广播</el-menu-item>
           </el-submenu>
-          <el-submenu index="g5">
-            <template slot="title"><i class="el-icon-magic-stick"></i><span>魔法花园</span></template>
+          <!-- 游戏管理（诺哈 game/，含花园 garden/、勋章 medal/） -->
+          <el-submenu index="g-game">
+            <template slot="title"><i class="el-icon-magic-stick"></i><span>游戏管理</span></template>
+            <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏大厅</el-menu-item>
+            <el-menu-item index="badges"><i class="el-icon-medal"></i>勋章管理</el-menu-item>
             <el-menu-item index="gardenActivities"><i class="el-icon-magic-stick"></i>花园活动</el-menu-item>
             <el-menu-item index="gardenSeeds"><i class="el-icon-sunny"></i>花园花种</el-menu-item>
             <el-menu-item index="gardenMaps"><i class="el-icon-picture"></i>花之图谱</el-menu-item>
@@ -52,9 +95,12 @@
             <el-menu-item index="gardenElves"><i class="el-icon-star-on"></i>精灵花册</el-menu-item>
             <el-menu-item index="gardenData"><i class="el-icon-data-analysis"></i>游戏数据管理</el-menu-item>
           </el-submenu>
-          <el-submenu index="g4">
-            <template slot="title"><i class="el-icon-user"></i><span>空间管理</span></template>
-            <el-menu-item index="spaces"><i class="el-icon-office-building"></i>空间列表</el-menu-item>
+          <!-- 系统配置（诺哈 config/ manage/ file/） -->
+          <el-submenu index="g-config">
+            <template slot="title"><i class="el-icon-setting"></i><span>系统配置</span></template>
+            <el-menu-item index="siteConfig"><i class="el-icon-s-tools"></i>站点设置</el-menu-item>
+            <el-menu-item index="roles"><i class="el-icon-s-check"></i>管理设置</el-menu-item>
+            <el-menu-item index="resources"><i class="el-icon-picture-outline"></i>文件管理</el-menu-item>
           </el-submenu>
         </el-menu>
       </el-scrollbar>
@@ -98,8 +144,19 @@ export default {
     return {
       user: {},
       names: {
-        dashboard: '数据概览', users: '用户管理', home: '家园资料', wallet: '钱包管理', boards: '板块管理', boardCategories: '板块分类', wordFilters: '敏感词管理', threads: '帖子管理',
-        announcements: '公告管理', plazaSections: '广场板块', families: '家族管理', tongcheng: '同城管理', ttou: 'T台秀管理', roles: '角色权限', badges: '马甲勋章', privileges: '特权管理', games: '游戏管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '游戏数据管理', goods: '道具商城', resources: '资源管理', spaces: '空间管理', reports: '举报管理'
+        dashboard: '数据概览',
+        users: '会员列表', home: '会员资料', userDocu: '会员证件', userContact: '会员联系', userAddress: '会员地址', userProtec: '会员密保', userLogs: '会员日志', invites: '会员推荐',
+        wallet: '会员财务', walletLogs: '货币流水',
+        boards: '版块管理', boardCategories: '版块分类', threads: '帖子管理', recycle: '恢复帖子', wordFilters: '黑名单榜',
+        articles: '文章管理', guestbook: '留言本管理', messages: '家信管理',
+        spaces: '空间列表',
+        homes: '家园列表', visitors: '家园访客',
+        shops: '店铺管理', shopGoods: '商品管理', shopOrders: '订单管理', shopComments: '评论管理',
+        books: '小说列表',
+        privileges: '特权管理',
+        announcements: '公告广播',
+        games: '游戏大厅', badges: '勋章管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '游戏数据管理',
+        siteConfig: '站点设置', roles: '管理设置', resources: '文件管理'
       }
     }
   },

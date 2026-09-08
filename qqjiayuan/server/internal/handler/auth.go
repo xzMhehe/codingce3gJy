@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -48,11 +49,18 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
+	// 注册配置：新人礼包金币（系统配置 reg_coins，默认 100）
+	regCoins := 100
+	var regCoinsStr string
+	h.DB.Raw("SELECT value FROM settings WHERE `key` = 'reg_coins'").Scan(&regCoinsStr)
+	if n, err := strconv.Atoi(strings.TrimSpace(regCoinsStr)); err == nil && n >= 0 && n <= 100000 {
+		regCoins = n
+	}
 	user := model.User{
 		Nickname: req.Nickname,
 		Password: string(hash),
 		Gender:   req.Gender,
-		Coins:    100, // 新人礼包
+		Coins:    regCoins,
 		Level:    1,
 		Config:   "10,1200,1500,1200,0", // 诺哈 wap_user.config 默认值
 		AddIP:    c.ClientIP(),

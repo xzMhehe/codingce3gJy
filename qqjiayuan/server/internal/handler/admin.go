@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -71,7 +72,7 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 			"birth_type": u.BirthType, "solar": u.Solar, "lunar": u.Lunar,
 			"signature": u.Signature, "introduction": u.Introduction, "city": u.City, "color": u.Color,
 			"level": u.Level, "exp": u.Exp, "coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
-			"active_days": u.ActiveDays, "hours": u.Hours, "achieve": u.Achieve,
+			"active_days": u.ActiveDays, "hours": u.Hours, "achieve": u.Achieve, "paid": u.Paid,
 			"friend_policy": u.FriendPolicy, "config": u.Config, "noble": u.Noble,
 			"status": u.Status, "add_ip": u.AddIP, "last_ip": u.LastIP,
 			"created_at": u.CreatedAt, "last_login_at": u.LastLoginAt, "last_active_at": u.LastActiveAt,
@@ -353,10 +354,25 @@ func (h *AdminHandler) WalletSet(c *gin.Context) {
 func (h *AdminHandler) UserHomeSet(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Level      int     `json:"level"`
-		ActiveDays float64 `json:"active_days"`
-		Achieve    int     `json:"achieve"`
-		City       string  `json:"city"`
+		Level        int     `json:"level"`
+		ActiveDays   float64 `json:"active_days"`
+		Achieve      int     `json:"achieve"`
+		City         string  `json:"city"`
+		// 诺哈 wap_user 扩展字段（管理端可编辑）
+		Gender       *int    `json:"gender"`
+		Age          *int    `json:"age"`
+		BirthYear    *int    `json:"birth_year"`
+		BirthMonth   *int    `json:"birth_month"`
+		BirthDay     *int    `json:"birth_day"`
+		BirthType    *int    `json:"birth_type"`
+		Solar        *string `json:"solar"`
+		Lunar        *string `json:"lunar"`
+		Signature    *string `json:"signature"`
+		Introduction *string `json:"introduction"`
+		FriendPolicy *int    `json:"friend_policy"`
+		Hours        *int    `json:"hours"`
+		PerPage      *int    `json:"per_page"`
+		Paid         *int    `json:"paid"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数有误")
@@ -371,9 +387,81 @@ func (h *AdminHandler) UserHomeSet(c *gin.Context) {
 	if req.Achieve < 0 {
 		req.Achieve = 0
 	}
-	h.DB.Model(&model.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"level": req.Level, "active_days": req.ActiveDays, "achieve": req.Achieve, "city": req.City,
-	})
+	}
+	if req.Gender != nil {
+		if *req.Gender != 2 {
+			*req.Gender = 1
+		}
+		updates["gender"] = *req.Gender
+	}
+	if req.Age != nil && *req.Age >= 0 {
+		updates["age"] = *req.Age
+	}
+	if req.BirthYear != nil && *req.BirthYear >= 0 {
+		updates["birth_year"] = *req.BirthYear
+	}
+	if req.BirthMonth != nil && *req.BirthMonth >= 0 {
+		updates["birth_month"] = *req.BirthMonth
+	}
+	if req.BirthDay != nil && *req.BirthDay >= 0 {
+		updates["birth_day"] = *req.BirthDay
+	}
+	if req.BirthType != nil {
+		bt := 1
+		if *req.BirthType == 0 {
+			bt = 0
+		}
+		updates["birth_type"] = bt
+	}
+	if req.Solar != nil {
+		updates["solar"] = *req.Solar
+	}
+	if req.Lunar != nil {
+		updates["lunar"] = *req.Lunar
+	}
+	if req.Signature != nil {
+		updates["signature"] = *req.Signature
+	}
+	if req.Introduction != nil {
+		updates["introduction"] = *req.Introduction
+	}
+	if req.FriendPolicy != nil {
+		fp := *req.FriendPolicy
+		if fp < 0 || fp > 2 {
+			fp = 0
+		}
+		updates["friend_policy"] = fp
+	}
+	if req.Hours != nil && *req.Hours >= 0 {
+		updates["hours"] = *req.Hours
+	}
+	if req.Paid != nil && *req.Paid >= 0 {
+		updates["paid"] = *req.Paid
+	}
+	if req.PerPage != nil {
+		pp := *req.PerPage
+		if pp < 5 {
+			pp = 5
+		}
+		if pp > 20 {
+			pp = 20
+		}
+		var u model.User
+		h.DB.Select("config").First(&u, id)
+		cfg := u.Config
+		if cfg == "" {
+			cfg = "10,1200,1500,1200,0"
+		}
+		parts := strings.Split(cfg, ",")
+		if len(parts) < 5 {
+			parts = []string{"10", "1200", "1500", "1200", "0"}
+		}
+		parts[0] = strconv.Itoa(pp)
+		updates["config"] = strings.Join(parts, ",")
+	}
+	h.DB.Model(&model.User{}).Where("id = ?", id).Updates(updates)
 	resp.OK(c, nil)
 }
 

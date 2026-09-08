@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -76,6 +77,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/badge-presets", badgeH.Presets)
 		api.GET("/games", gameH.List)
 		api.GET("/privs", resH.Privs)
+		// 库存图片取图（管理端上传的 base64 图片）
+		api.GET("/res/*path", resH.Serve)
 		// 家族列表/详情/动态公开（未登录仅浏览，无角色）
 		api.GET("/families", famH.List)
 		api.GET("/families/categories", famH.Categories)
@@ -408,9 +411,62 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/garden-logs", perm(db, "admin:access"), gardenH.AdminGardenLogs)
 				admin.GET("/garden-rank", perm(db, "admin:access"), gardenH.AdminGardenRank)
 
+				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
 				admin.GET("/users/:id/detail", perm(db, "user:manage"), adminH.UserDetail)
 				admin.PUT("/users/:id/home", perm(db, "user:manage"), adminH.UserHomeSet)
+				admin.GET("/invites", perm(db, "user:manage"), adminH.AdminInvites)
+				admin.GET("/wallet-logs", perm(db, "user:manage"), adminH.AdminWalletLogs)
+				// 会员子页（诺哈：会员证件/联系/地址/密保/日志）
+				admin.GET("/user-docu", perm(db, "user:manage"), adminH.AdminUserDocu)
+				admin.GET("/user-contacts", perm(db, "user:manage"), adminH.AdminUserContacts)
+				admin.GET("/user-addresses", perm(db, "user:manage"), adminH.AdminUserAddresses)
+				admin.GET("/user-protections", perm(db, "user:manage"), adminH.AdminUserProtections)
+				admin.GET("/user-logs", perm(db, "user:manage"), adminH.AdminUserLogs)
+
+				// ============ 家园管理 home/（诺哈：家园列表/家园访客/游戏管理） ============
+				admin.GET("/homes", perm(db, "admin:access"), adminH.AdminHomes)
+				admin.GET("/visitors", perm(db, "admin:access"), adminH.AdminVisitors)
+
+				// ============ 信息管理 message/（诺哈：家信列表） ============
+				admin.GET("/home-news", perm(db, "admin:access"), adminH.AdminHomeNews)
+				admin.DELETE("/home-news/:id", perm(db, "admin:access"), adminH.AdminHomeNewsDel)
+				admin.GET("/messages", perm(db, "admin:access"), adminH.AdminMessages)
+				admin.DELETE("/messages/:id", perm(db, "admin:access"), adminH.AdminMessageDel)
+
+				// ============ 书城管理 book/（诺哈：小说列表） ============
+				admin.GET("/books", perm(db, "admin:access"), adminH.AdminBooks)
+				admin.PUT("/books/:id", perm(db, "admin:access"), adminH.AdminBookUpdate)
+				admin.DELETE("/books/:id", perm(db, "admin:access"), adminH.AdminBookDel)
+
+				// ============ 系统配置 config/（站点设置） ============
+				admin.GET("/site-config", perm(db, "admin:access"), adminH.AdminSiteConfig)
+				admin.PUT("/site-config", perm(db, "admin:access"), adminH.AdminSiteConfigSave)
+
+				// ============ 社区管理 bbs/（诺哈：帖子管理/回复管理/恢复帖子/黑名单） ============
+				admin.GET("/threads/recycle", perm(db, "thread:manage"), adminH.AdminThreadRecycle)
+				admin.PUT("/threads/:id/restore", perm(db, "thread:manage"), adminH.AdminThreadRestore)
+
+				// ============ 商城管理 shop/（诺哈：商品管理/订单/评论） ============
+				admin.GET("/shops", perm(db, "admin:access"), adminH.AdminShops)
+				admin.GET("/shop-goods", perm(db, "admin:access"), adminH.AdminShopGoods)
+				admin.PUT("/shop-goods/:id/status", perm(db, "admin:access"), adminH.AdminShopGoodsStatus)
+				admin.DELETE("/shop-goods/:id", perm(db, "admin:access"), adminH.AdminShopGoodsDel)
+				admin.GET("/shop-orders", perm(db, "admin:access"), adminH.AdminShopOrders)
+				admin.GET("/shop-comments", perm(db, "admin:access"), adminH.AdminShopComments)
+				admin.DELETE("/shop-comments/:id", perm(db, "admin:access"), adminH.AdminShopCommentDel)
+
+				// ============ 文章管理 article/（诺哈：文章配置/文章分类） ============
+				admin.GET("/site-articles", perm(db, "admin:access"), adminH.AdminSiteArticles)
+				admin.DELETE("/site-articles/:id", perm(db, "admin:access"), adminH.AdminSiteArticleDel)
+				admin.GET("/article-categories", perm(db, "admin:access"), adminH.AdminArticleCategories)
+				admin.POST("/article-categories", perm(db, "admin:access"), adminH.AdminArticleCategoryCreate)
+				admin.PUT("/article-categories/:id", perm(db, "admin:access"), adminH.AdminArticleCategoryUpdate)
+				admin.DELETE("/article-categories/:id", perm(db, "admin:access"), adminH.AdminArticleCategoryDel)
+
+				// ============ 留言管理 guest/ ============
+				admin.GET("/guestbook", perm(db, "admin:access"), adminH.AdminGuestbook)
+				admin.DELETE("/guestbook/:id", perm(db, "admin:access"), adminH.AdminGuestbookDel)
 				admin.GET("/wallets", perm(db, "user:manage"), adminH.Wallets)
 				admin.PUT("/wallets/:id", perm(db, "user:manage"), adminH.WalletSet)
 
@@ -446,6 +502,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/resources", perm(db, "admin:access"), resH.List)
 				admin.PUT("/resources/:id", perm(db, "admin:access"), resH.Update)
 				admin.POST("/resources/sync", perm(db, "admin:access"), resH.Sync)
+				admin.POST("/resources/upload", perm(db, "admin:access"), resH.Upload)
+				admin.DELETE("/resources/:id", perm(db, "admin:access"), resH.Delete)
 
 				admin.GET("/boards", perm(db, "board:manage"), adminH.Boards)
 				admin.POST("/boards", perm(db, "board:manage"), adminH.CreateBoard)
@@ -514,6 +572,20 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				}
 				c.File(cfg.Server.WebDir + "/index.html")
 			})
+		}
+	}
+	// 静态图片素材：生产托管 web/dist/static；开发模式回退到 web/public/static（源码目录）
+	// 管理端 dev server 将 /static 代理到 8080，此路由保证任意模式下 /static 均可用
+	if cfg.Server.WebDir != "" {
+		staticDir := filepath.Join(cfg.Server.WebDir, "static")
+		if _, err := os.Stat(staticDir); err != nil {
+			alt := filepath.Clean(filepath.Join(cfg.Server.WebDir, "..", "public", "static"))
+			if st, err2 := os.Stat(alt); err2 == nil && st.IsDir() {
+				staticDir = alt
+			}
+		}
+		if st, err := os.Stat(staticDir); err == nil && st.IsDir() {
+			r.Static("/static", staticDir)
 		}
 	}
 	// 管理系统前端（/admin-ui/，FileServer 对目录根自动回 index.html）
