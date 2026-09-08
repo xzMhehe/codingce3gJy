@@ -18,6 +18,7 @@
             <el-tag v-if="row.is_fine" type="success" size="mini" style="margin-right:4px">精</el-tag>
             <el-tag v-if="row.is_lock" type="info" size="mini" style="margin-right:4px">锁</el-tag>
             <el-tag v-if="row.is_recom" type="warning" size="mini" style="margin-right:4px">荐</el-tag>
+            <el-tag v-if="row.is_active" type="danger" size="mini" style="margin-right:4px">活动</el-tag>
             <el-tag v-if="row.type === 1" type="success" size="mini" style="margin-right:4px">奖励</el-tag>
             <el-tag v-if="row.type === 2" type="success" size="mini" style="margin-right:4px">踩楼</el-tag>
             <el-tag v-if="row.type === 3" type="success" size="mini" style="margin-right:4px">投票</el-tag>
@@ -49,6 +50,7 @@
               <el-button size="mini" @click="toggle(row, 'is_head')">{{ row.is_head ? '取消头条' : '头条' }}</el-button>
               <el-button size="mini" @click="toggle(row, 'is_lock')">{{ row.is_lock ? '解锁' : '锁定' }}</el-button>
               <el-button size="mini" @click="toggle(row, 'is_recom')">{{ row.is_recom ? '取消推荐' : '推荐' }}</el-button>
+              <el-button size="mini" @click="toggle(row, 'is_active')">{{ row.is_active ? '取消活动' : '设活动' }}</el-button>
               <el-button v-if="row.audit_status !== 1" size="mini" type="success" plain @click="audit(row, 1)">通过</el-button>
               <el-button v-if="row.audit_status === 1" size="mini" type="warning" plain @click="audit(row, 0)">转审核</el-button>
               <el-button size="mini" type="danger" plain @click="del(row)">删除</el-button>

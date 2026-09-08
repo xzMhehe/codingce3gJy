@@ -62,14 +62,6 @@
     <div class="module-title" v-if="sec('newreply')"><a href="javascript:;" @click="$router.push('/channel/1')">最新回帖</a></div>
     <div class="module-content wid" v-if="sec('newreply')" v-for="(t,i) in plaza.active_threads" :key="'at'+t.id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅/<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回)</div>
 
-    <!-- 活动公告（参与活动可获取元宝/金钻/友友券） -->
-    <div class="module-title" v-if="sec('activity')"><img src="/static/image/active.gif" alt="活动" class="bicon">【最新活动】</div>
-    <div class="module-content" v-if="sec('activity')" v-for="a in plaza.activities" :key="'act'+a.id">
-      <div><b>★.</b><a href="javascript:;" @click="$router.push('/thread/'+a.thread_id)">{{ a.title }}</a></div>
-      <div class="txt-fade">{{ a.content }}</div>
-    </div>
-    <div class="module-content" v-if="sec('activity') && (!plaza.activities || !plaza.activities.length)"><span class="empty">暂无活动，关注本帖获得元宝/G币</span></div>
-
     <!-- 公共论坛 / 同城客栈 / 家族天地 -->
     <template v-if="sec('channels') && mainChannels.length">
       <div v-for="ch in mainChannels" :key="'ch'+ch.channel.id">

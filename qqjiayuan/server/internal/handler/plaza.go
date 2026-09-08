@@ -24,8 +24,6 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	db.Where("type = ? AND status = 1", "notice").Order("created_at DESC").Limit(2).Find(&announcements)
 	var broadcasts []model.Announcement
 	db.Where("type = ? AND status = 1", "broadcast").Order("created_at DESC").Limit(1).Find(&broadcasts)
-	var activities []model.Announcement
-	db.Where("type = ? AND status = 1", "activity").Order("created_at DESC").Limit(1).Find(&activities)
 
 	var onlineCount, userCount int64
 	tenMinAgo := time.Now().Add(-10 * time.Minute)
@@ -156,7 +154,7 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	}
 
 	resp.OK(c, gin.H{
-		"announcements": announcements, "broadcasts": broadcasts, "activities": activities,
+		"announcements": announcements, "broadcasts": broadcasts,
 		"online_count": onlineCount, "user_count": userCount,
 		"newest_user":  gin.H{"id": newestUser.ID, "nickname": newestUser.Nickname},
 		"fine_threads": fineThreads, "channels": channelData, "dynamics": dynamics,

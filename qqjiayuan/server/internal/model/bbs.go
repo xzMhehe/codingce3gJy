@@ -57,6 +57,7 @@ type Thread struct {
 	IsLock       int        `gorm:"default:0" json:"is_lock"`       // 锁定
 	IsRecom      int        `gorm:"default:0" json:"is_recom"`      // 推荐
 	IsNotice     int        `gorm:"default:0" json:"is_notice"`     // 公告帖
+	IsActive     int        `gorm:"default:0" json:"is_active"`     // 活动帖（参考诺哈 wap_topic.active，活动专区收录）
 	Type         int        `gorm:"default:0" json:"type"`          // 0普通 1回帖奖励 2踩楼 3投票
 	AuditStatus  int        `gorm:"not null" json:"audit_status"`   // 1已发布 0待审核 2审核不通过
 	ViewCount    int        `gorm:"default:0" json:"view_count"`

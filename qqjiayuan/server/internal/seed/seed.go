@@ -71,6 +71,8 @@ func Run(db *gorm.DB, staticDir string) {
 	if !m.HasColumn("users", "avatar_base64") {
 		db.Exec("ALTER TABLE users ADD COLUMN avatar_base64 longtext")
 	}
+	// 种子演示帖统一设为已发布（audit_status=1），否则论坛/详情/活动专区不可见
+	db.Exec("UPDATE threads SET audit_status = 1 WHERE audit_status = 0 AND status = 1")
 
 	// 论坛重构：boards/threads 新增列兜底补齐（幂等）
 	bcols := map[string]string{
@@ -144,6 +146,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGuestbook(db)
 	seedSiteArticles(db)
 	seedShop(db)
+	seedActivities(db)
 	fmt.Println("数据初始化完成")
 }
 
@@ -1375,6 +1378,21 @@ func idByUsername(db *gorm.DB, username string) uint {
 	var u model.User
 	db.Select("id").Where("username = ?", username).First(&u)
 	return u.ID
+}
+
+// seedActivities 活动专区演示帖（幂等：无活动帖时，挑若干既有帖标为活动帖）
+func seedActivities(db *gorm.DB) {
+	var n int64
+	db.Model(&model.Thread{}).Where("is_active = 1 AND status = 1").Count(&n)
+	if n > 0 {
+		return
+	}
+	var ids []uint
+	db.Model(&model.Thread{}).Where("status = 1 AND type = 0").
+		Order("id DESC").Limit(4).Pluck("id", &ids)
+	for _, id := range ids {
+		db.Model(&model.Thread{}).Where("id = ?", id).Update("is_active", 1)
+	}
 }
 
 // seedSiteArticles 文章专栏样例（分类 + 文章，幂等）

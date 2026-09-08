@@ -713,6 +713,7 @@ func (h *AdminHandler) UpdateThread(c *gin.Context) {
 		IsLock   *int `json:"is_lock"`
 		IsRecom  *int `json:"is_recom"`
 		IsNotice *int `json:"is_notice"`
+		IsActive *int `json:"is_active"`
 		Audit    *int `json:"audit_status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -737,6 +738,9 @@ func (h *AdminHandler) UpdateThread(c *gin.Context) {
 	}
 	if req.IsNotice != nil {
 		updates["is_notice"] = *req.IsNotice
+	}
+	if req.IsActive != nil {
+		updates["is_active"] = *req.IsActive
 	}
 	if req.Audit != nil {
 		updates["audit_status"] = *req.Audit

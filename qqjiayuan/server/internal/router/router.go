@@ -51,6 +51,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	guestH := &handler.GuestHandler{DB: db}
 	saH := &handler.SiteArticleHandler{DB: db}
 	shopH := &handler.ShopHandler{DB: db}
+	actH := &handler.ActivityHandler{DB: db}
 	yqH := &handler.YouQuanHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
@@ -94,6 +95,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/plaza-sections", plazaH.Sections)
 		api.GET("/goods", goodH.List)
 		api.GET("/rank", rankH.Top)
+		// 活动专区（诺哈 topic_active.asp：活动帖列表）
+		api.GET("/activities", actH.List)
 		// 书城公开
 		api.GET("/books", bookH.Index)
 		api.GET("/books/list", bookH.List)

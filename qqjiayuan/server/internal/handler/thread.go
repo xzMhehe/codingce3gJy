@@ -509,7 +509,7 @@ func (h *ThreadHandler) Manage(c *gin.Context) {
 		return
 	}
 	switch req.Field {
-	case "is_top", "is_fine", "is_head", "is_lock", "is_recom", "is_notice":
+	case "is_top", "is_fine", "is_head", "is_lock", "is_recom", "is_notice", "is_active":
 		h.DB.Model(&th).Update(req.Field, boolToInt(req.Value != 0))
 	default:
 		resp.ParamError(c, "不支持的操作")

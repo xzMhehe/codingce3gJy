@@ -15,7 +15,7 @@
         <input type="text" v-model.trim="editForm.title" maxlength="100" style="width:96%">
       </template>
       <template v-else>
-        <template v-if="thread.is_head">[头条]</template><template v-if="thread.is_top">【顶】</template><template v-if="thread.is_fine">【精】</template><template v-if="thread.is_recom">[荐]</template><template v-if="thread.is_notice">[公告]</template>
+        <template v-if="thread.is_head">[头条]</template><template v-if="thread.is_top">【顶】</template><template v-if="thread.is_fine">【精】</template><template v-if="thread.is_recom">[荐]</template><template v-if="thread.is_notice">[公告]</template><template v-if="thread.is_active"><font color="#e05a00">[活动]</font></template>
         {{ thread.title }}
       </template><br>
     </div>
@@ -33,6 +33,7 @@
         | <a href="javascript:;" @click="toggle('is_head')">{{ thread.is_head ? '取消头条' : '头条' }}</a>
         | <a href="javascript:;" @click="toggle('is_lock')">{{ thread.is_lock ? '解锁' : '锁定' }}</a>
         | <a href="javascript:;" @click="toggle('is_recom')">{{ thread.is_recom ? '取消推荐' : '推荐' }}</a>
+        | <a href="javascript:;" @click="toggle('is_active')">{{ thread.is_active ? '取消活动' : '设活动' }}</a>
       </template>
       <template v-if="canManage || canMod">
         | <a href="javascript:;" @click="openMove">移动</a>

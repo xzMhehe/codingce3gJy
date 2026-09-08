@@ -47,6 +47,7 @@ const routes = [
   { path: '/shop', name: 'shop', component: () => import('../views/Shop.vue'), meta: { auth: true } },
   { path: '/bag', name: 'bag', component: () => import('../views/Bag.vue'), meta: { auth: true } },
   { path: '/rank', name: 'rank', component: () => import('../views/Rank.vue') },
+  { path: '/activities', name: 'activities', component: () => import('../views/Activities.vue') },
   { path: '/security', name: 'security', component: () => import('../views/Security.vue'), meta: { auth: true } },
   { path: '/wallet', name: 'wallet', component: () => import('../views/Wallet.vue'), meta: { auth: true } },
   { path: '/youquan', name: 'youquan', component: () => import('../views/YouQuan.vue'), meta: { auth: true } },

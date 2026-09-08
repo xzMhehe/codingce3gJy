@@ -92,20 +92,19 @@
       </form>
 
       <div class="module-title">【功能导航】</div>
-      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="cur='active'">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="$router.push('/home-level')">家园等级</a><br>
+      <a href="javascript:;" @click="$router.push('/messages')">家信</a>.<a href="javascript:;" @click="$router.push('/board/4')">婚恋</a>.<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="$router.push('/activities')">活动</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="$router.push('/home-level')">家园等级</a><br>
       <a href="javascript:;" @click="$router.push('/favorites')">我的收藏({{ favCount }})</a>.<a href="javascript:;" @click="$router.push('/contacts')">通讯录</a>.<a href="javascript:;" @click="$router.push('/invite')">邀请</a>.<a href="javascript:;" @click="$router.push('/guestbook')">留言本</a>.<a href="javascript:;" @click="$router.push('/articles')">文章</a>.<a href="javascript:;" @click="$router.push('/market')">商店</a>.<a href="javascript:;" @click="$router.push('/space/'+u.id)">空间</a><br>
       <a href="javascript:;" @click="$router.push('/noble')">超Q</a>.<a href="javascript:;" @click="$router.push('/wallet')">钱包</a>.<a href="javascript:;" @click="$router.push('/bag')">仓库</a>.<a href="javascript:;" @click="$router.push('/profile')">特权</a>.<a href="javascript:;" @click="$router.push('/find')">靓号</a>.<a href="javascript:;" @click="tip('更多')">&gt;&gt;</a><br>
     </template>
 
     <!-- ===== 活动 ===== -->
     <template v-if="cur === 'active'">
-      <div class="module-title"><img src="/static/image/active.gif" alt="活动" class="bicon">【最新活动】</div>
-      <div v-for="t in fineThreads" :key="'fa'+t.id"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count || 0 }}阅)<br></div>
-      <a href="javascript:;" @click="$router.push('/channel/1')">更多活动&gt;&gt;</a>
-
-      <div class="module-title"><img src="/static/image/active.gif" alt="活动" class="bicon">【长期活动】</div>
-      <div v-for="t in commonThreads" :key="'lc'+t.id"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count || 0 }}阅)<br></div>
-      <a href="javascript:;" @click="$router.push('/channel/1')">更多活动&gt;&gt;</a>
+      <div class="module-title"><img :src="$pic('active.gif')" alt="活动" class="bicon">【最新活动】</div>
+      <div v-for="a in plazaActivities" :key="'pa'+a.id">
+        <a href="javascript:;" @click="$router.push('/thread/'+a.id)">{{ a.title }}</a>({{ a.reply_count || 0 }}回/{{ a.view_count || 0 }}阅)<br>
+      </div>
+      <div v-if="!plazaActivities.length" class="module-content"><span class="empty">还没有活动</span></div>
+      <a href="javascript:;" @click="$router.push('/activities')">活动专区&gt;&gt;</a><br>
 
       <div class="module-title"><img src="/static/picture/notice.bmp" alt="公告" class="bicon">【家园公告】</div>
       <div v-for="a in announcements" :key="'an'+a.id"><a href="javascript:;" @click="$router.push('/notices')">{{ a.title }}</a><br></div>
@@ -175,6 +174,7 @@ export default {
       cur: 'mine', u: {}, threads: [], friends: [], visitId: '', mood: null,
       games: [], myGames: [], feed: [], msgs: [],
       fineThreads: [], commonThreads: [], announcements: [],
+      plazaActivities: [],
       myReplies: [], favThreads: [], threadTotal: 0,
       // 诺哈 my_home 聚合
       homeAgg: null, myNews: [], friendNews: [], visitors: [], msgTotal: 0, favCount: 0, todayFirst: false
@@ -203,6 +203,7 @@ export default {
           this.mood = this.mood || null
         }
       })
+      api.get('/activities').then(r => { if (r.code === 0) this.plazaActivities = (r.data.list || []).slice(0, 5) }).catch(() => {})
       api.get('/space/' + id + '/messages').then(r => { if (r.code === 0) this.msgs = (r.data.list || r.data || []).slice(0, 3) }).catch(() => {})
       api.get('/my-replies').then(r => { if (r.code === 0) this.myReplies = r.data || [] }).catch(() => {})
       api.get('/favorite-threads').then(r => { if (r.code === 0) this.favThreads = r.data || [] }).catch(() => {})
