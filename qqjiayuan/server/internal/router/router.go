@@ -121,6 +121,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
 		api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
 		api.GET("/space/photos/:id", spaceH.PhotoClick)
+		api.GET("/space/:userId/files", spaceH.SpaceFileList)
+		api.GET("/space/files/:id/download", spaceH.SpaceFileDownload)
 
 		// 家园（诺哈：他人家园 / 串门）
 		api.GET("/home/other/:userId", homeH.Other)
@@ -285,6 +287,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/space/article-categories", spaceH.ArticleCatAdd)
 			authed.POST("/space/albums/:albumId/photos", spaceH.PhotoAdd)
 			authed.DELETE("/space/photos/:id", spaceH.PhotoDel)
+			authed.POST("/space/file", spaceH.SpaceFileAdd)
+			authed.DELETE("/space/file/:id", spaceH.SpaceFileDel)
 			authed.POST("/space/article/:id/comment", spaceH.ArticleCommentAdd)
 
 			// 留言本（诺哈 guest.asp）

@@ -47,7 +47,7 @@
           <input type="submit" value="发表" />
         </form>
         <template v-if="isOwner">
-          <a href="javascript:;" @click="showLogForm = !showLogForm">写日志</a>.<a href="javascript:;" @click="showPhotoForm = !showPhotoForm">传相片</a><br>
+          <a href="javascript:;" @click="showLogForm = !showLogForm">写日志</a>.<a href="javascript:;" @click="showPhotoForm = !showPhotoForm">传相片</a>.<a href="javascript:;" @click="showFileForm = !showFileForm">传文件</a><br>
           <template v-if="showLogForm">
             <form @submit.prevent="addArticle">
               日志标题:<input type="text" v-model.trim="articleForm.title" maxlength="100" /><br>
@@ -68,6 +68,13 @@
               相片说明:<input type="text" v-model.trim="photoForm.caption" maxlength="100" size="15" /><br>
               <input type="file" accept="image/*" @change="onPhotoFile" /> <span v-if="photoForm.name" class="txt-fade">{{ photoForm.name }}</span><br>
               <input type="submit" value="上传" /> <a href="javascript:;" @click="showPhotoForm = false">取消</a>
+            </form>
+          </template>
+          <template v-if="showFileForm">
+            <form @submit.prevent="addFile">
+              文件名称:<input type="text" v-model.trim="fileForm.name" maxlength="100" placeholder="如 音乐.mp3" size="15" /><br>
+              <input type="file" @change="onFile" /> <span v-if="fileForm.fileName" class="txt-fade">{{ fileForm.fileName }}</span><br>
+              <input type="submit" value="上传" /> <a href="javascript:;" @click="showFileForm = false">取消</a>
             </form>
           </template>
         </template>
@@ -94,8 +101,8 @@
         【<a href="javascript:;" @click="$router.push('/friends')">好友动态</a>】<br>
 
         【<a href="javascript:;" @click="$router.push('/home')">功能导航</a>】<br>
-        <a href="javascript:;" @click="$router.push('/friends')">好友</a>.<a href="javascript:;" @click="$router.push('/messages')">信箱</a>.<a href="javascript:;" @click="$router.push('/profile')">账户</a>.<a href="javascript:;">贵族</a><br>
-        <a href="javascript:;" @click="$router.push('/')">社区</a>.<a href="javascript:;" @click="$router.push('/channel/2')">家族</a>.<a href="javascript:;" @click="$router.push('/profile')">帖子</a>.<a href="javascript:;">草稿</a><br>
+        <a href="javascript:;" @click="$router.push('/friends')">好友</a>.<a href="javascript:;" @click="$router.push('/messages')">信箱</a>.<a href="javascript:;" @click="$router.push('/wallet')">账户</a>.<a href="javascript:;" @click="$router.push('/noble')">贵族</a><br>
+        <a href="javascript:;" @click="$router.push('/')">社区</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="$router.push('/my-threads')">帖子</a>.<a href="javascript:;" @click="$router.push('/my-threads')">我的帖子</a><br>
       </template>
 
       <!-- ========== 主页 ========== -->
@@ -162,6 +169,16 @@
           <input type="submit" value="留言" />
         </form><br>
 
+        【<a href="javascript:;" @click="loadFiles">文件</a>】<br>
+        <template v-if="files.length">
+          <div v-for="f in files" :key="'f'+f.id">
+            <a href="javascript:;" @click="downloadFile(f)">{{ f.name }}</a>
+            <span class="txt-fade">（{{ f.size }}B / {{ f.clicks }}次下载）</span>
+            <template v-if="isOwner">.<a href="javascript:;" style="color:#c00" @click="delFile(f.id)">删除</a></template><br>
+          </div>
+        </template>
+        <span v-else>暂无文件</span><br>
+
         【<a href="javascript:;">访客</a>】<br>
         <template v-if="visitors.length">
           <div v-for="(v, i) in visitors" :key="'v'+v.id">
@@ -208,13 +225,13 @@
       ----------<br>
       <!-- 底部链接 -->
       <template v-if="subTab === 'home'">
-        <a href="javascript:;" @click="subTab = 'center'">个人中心</a>.<a href="javascript:;">管理</a>.<a href="javascript:;" @click="$router.push('/')">论坛</a><br>
+        <a href="javascript:;" @click="subTab = 'center'">个人中心</a>.<a href="javascript:;" @click="$router.push('/profile')">管理</a>.<a href="javascript:;" @click="$router.push('/')">论坛</a><br>
       </template>
       <template v-else-if="subTab === 'profile'">
         <a href="javascript:;" @click="$router.push('/home')">我的地盘</a>.<a href="javascript:;" @click="$router.push('/')">论坛</a><br>
       </template>
       <template v-else>
-        <a href="javascript:;" @click="$router.push('/home')">我的地盘</a>.<a href="javascript:;">管理</a>.<a href="javascript:;" @click="$router.push('/')">论坛</a><br>
+        <a href="javascript:;" @click="$router.push('/home')">我的地盘</a>.<a href="javascript:;" @click="$router.push('/profile')">管理</a>.<a href="javascript:;" @click="$router.push('/')">论坛</a><br>
       </template>
     </template>
 
@@ -239,6 +256,7 @@ export default {
       articles: [],
       albums: [],
       friends: [],
+      files: [],
       spaceMsgs: [],
       visitors: [],
       moodPage: 1,
@@ -249,7 +267,9 @@ export default {
       showEditSpace: false,
       showLogForm: false,
       showPhotoForm: false,
+      showFileForm: false,
       photoForm: { albumId: 0, newAlbum: '', caption: '', file: null, name: '' },
+      fileForm: { name: '', file: null, fileName: '' },
       curAlbum: null,
       spaceMsgPrivate: false,
       openForm: { name: '', signature: '', intro: '' },
@@ -302,7 +322,48 @@ export default {
       this.loadAlbums()
       this.loadSpaceMsgs()
       this.loadVisitors()
+      this.loadFiles()
       if (v === 'friends') this.loadFriends()
+    },
+    loadFiles () {
+      api.get('/space/' + this.userId + '/files', { params: { user_id: this.userId } }).then(r => {
+        if (r.code === 0) this.files = r.data || []
+      })
+    },
+    onFile (e) {
+      const f = e.target.files && e.target.files[0]
+      if (!f) return
+      if (f.size > 5 * 1024 * 1024) { this.tip = '文件太大，请压缩到 5MB 以内'; return }
+      const reader = new FileReader()
+      reader.onload = () => { this.fileForm.file = reader.result; this.fileForm.fileName = f.name }
+      reader.readAsDataURL(f)
+    },
+    addFile () {
+      if (!this.fileForm.file) { this.tip = '请选择要上传的文件'; return }
+      const name = this.fileForm.name || this.fileForm.fileName || 'file'
+      api.post('/space/file', { name, file_base64: this.fileForm.file }).then(r => {
+        if (r.code === 0) {
+          this.tip = '上传成功'
+          this.fileForm = { name: '', file: null, fileName: '' }
+          this.showFileForm = false
+          this.loadFiles()
+        } else { this.tip = r.msg || '上传失败' }
+      }).catch(() => { this.tip = '上传失败，请稍后再试' })
+    },
+    downloadFile (f) {
+      api.get('/space/files/' + f.id + '/download').then(r => {
+        if (r.code !== 0) { this.tip = r.msg || '下载失败'; return }
+        const a = document.createElement('a')
+        a.href = r.data.base64
+        a.download = r.data.name || 'file'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        this.loadFiles()
+      })
+    },
+    delFile (id) {
+      api.delete('/space/file/' + id).then(() => this.loadFiles())
     },
     loadFriends () {
       api.get('/space/' + this.userId + '/friends', { params: { user_id: this.userId } }).then(r => {

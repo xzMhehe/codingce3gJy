@@ -314,8 +314,63 @@ func (h *SpaceHandler) ArticleDel(c *gin.Context) {
 // ---- 相册 ----
 
 // AlbumList 相册列表
-func (h *SpaceHandler) SpaceFriends(c *gin.Context) {
+// SpaceFileList 空间文件（诺哈 blog/file：列表）
+func (h *SpaceHandler) SpaceFileList(c *gin.Context) {
 	userID, ok := positiveQuery(c, "user_id")
+	if !ok {
+		return
+	}
+	var files []model.SpaceFile
+	h.DB.Select("id", "user_id", "name", "size", "clicks", "created_at").
+		Where("user_id = ?", userID).Order("id DESC").Limit(50).Find(&files)
+	resp.OK(c, files)
+}
+
+// SpaceFileAdd 传文件（base64 上传）
+func (h *SpaceHandler) SpaceFileAdd(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Name       string `json:"name" binding:"required,max=100"`
+		FileBase64 string `json:"file_base64" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择要上传的文件")
+		return
+	}
+	if len(req.FileBase64) > 5*1024*1024 {
+		resp.ParamError(c, "文件太大，请压缩到 5MB 以内")
+		return
+	}
+	f := model.SpaceFile{UserID: uid, Name: req.Name, FileBase64: req.FileBase64, Size: len(req.FileBase64)}
+	h.DB.Create(&f)
+	resp.OK(c, gin.H{"id": f.ID, "name": f.Name})
+}
+
+// SpaceFileDel 删除空间文件
+func (h *SpaceHandler) SpaceFileDel(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	id, _ := strconv.Atoi(c.Param("id"))
+	res := h.DB.Where("id = ? AND user_id = ?", id, uid).Delete(&model.SpaceFile{})
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "文件不存在")
+		return
+	}
+	resp.OK(c, "已删除")
+}
+
+// SpaceFileDownload 下载空间文件（记点击）
+func (h *SpaceHandler) SpaceFileDownload(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var f model.SpaceFile
+	if err := h.DB.First(&f, id).Error; err != nil {
+		resp.NotFound(c, "文件不存在")
+		return
+	}
+	h.DB.Model(&f).UpdateColumn("clicks", gorm.Expr("clicks + 1"))
+	resp.OK(c, gin.H{"name": f.Name, "base64": f.FileBase64})
+}
+
+func (h *SpaceHandler) SpaceFriends(c *gin.Context) {	userID, ok := positiveQuery(c, "user_id")
 	if !ok {
 		return
 	}

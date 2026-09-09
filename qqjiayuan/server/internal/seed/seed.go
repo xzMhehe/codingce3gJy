@@ -27,6 +27,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Resource{},
 		&model.Space{}, &model.Mood{}, &model.MoodComment{},
 		&model.Article{}, &model.Album{}, &model.Photo{},
+		&model.SpaceFile{},
 		&model.SpaceMessage{}, &model.Visitor{},
 		&model.BankAccount{}, &model.WorkRecord{},
 		&model.Family{}, &model.FamilyMember{}, &model.FamilySignIn{},

@@ -82,6 +82,19 @@ type Photo struct {
 
 func (Photo) TableName() string { return "photos" }
 
+// SpaceFile 空间文件（诺哈 blog/file：传文件）
+type SpaceFile struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     uint      `gorm:"index" json:"user_id"`
+	Name       string    `gorm:"type:varchar(100)" json:"name"`
+	FileBase64 string    `gorm:"type:longtext" json:"file_base64,omitempty"` // base64 data URI
+	Size       int       `gorm:"default:0" json:"size"`
+	Clicks     int       `gorm:"default:0" json:"clicks"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (SpaceFile) TableName() string { return "space_files" }
+
 // SpaceMessage 空间留言
 type SpaceMessage struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
