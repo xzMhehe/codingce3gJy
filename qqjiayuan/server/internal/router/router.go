@@ -115,6 +115,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/space/:userId/albums", spaceH.AlbumList)
 		api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
 		api.GET("/space/:userId/visitors", spaceH.VisitorList)
+		api.GET("/space/:userId/friends", spaceH.SpaceFriends)
 		api.GET("/space/article/:id", spaceH.ArticleDetail)
 		api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
 		api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
@@ -238,6 +239,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.DELETE("/friends/black/:id", blackH.Remove)
 
 			authed.GET("/messages/conversations", msgH.Conversations)
+			authed.GET("/messages/inbox", msgH.Inbox)
+			authed.GET("/messages/outbox", msgH.Outbox)
 			authed.GET("/messages/with/:id", msgH.With)
 			authed.POST("/messages", msgH.Send)
 			authed.GET("/chat", chatH.List)

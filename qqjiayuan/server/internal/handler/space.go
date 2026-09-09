@@ -314,8 +314,26 @@ func (h *SpaceHandler) ArticleDel(c *gin.Context) {
 // ---- 相册 ----
 
 // AlbumList 相册列表
-func (h *SpaceHandler) AlbumList(c *gin.Context) {
+func (h *SpaceHandler) SpaceFriends(c *gin.Context) {
 	userID, ok := positiveQuery(c, "user_id")
+	if !ok {
+		return
+	}
+	var ids []uint
+	h.DB.Model(&model.Friendship{}).Where("user_id = ? AND status = 1", userID).
+		Order("id DESC").Limit(50).Pluck("friend_id", &ids)
+	out := []gin.H{}
+	if len(ids) > 0 {
+		var friends []model.User
+		h.DB.Select("id", "nickname", "color", "level", "signature").Where("id IN ?", ids).Find(&friends)
+		for _, u := range friends {
+			out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "level": u.Level, "signature": u.Signature})
+		}
+	}
+	resp.OK(c, out)
+}
+
+func (h *SpaceHandler) AlbumList(c *gin.Context) {	userID, ok := positiveQuery(c, "user_id")
 	if !ok { return }
 	if _, err := h.activeSpace(userID); err != nil { resp.NotFound(c, "空间未开通或已关闭"); return }
 	var albums []model.Album

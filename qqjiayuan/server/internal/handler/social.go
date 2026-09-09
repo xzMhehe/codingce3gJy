@@ -401,6 +401,49 @@ func (h *MessageHandler) With(c *gin.Context) {
 	resp.OK(c, gin.H{"peer": gin.H{"id": peer.ID, "nickname": peer.Nickname, "color": peer.Color}, "list": msgs})
 }
 
+// 收信箱（对齐诺哈 inbox.asp）：收到的私信列表，点击进入往来
+func (h *MessageHandler) Inbox(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
+	var total int64
+	h.DB.Model(&model.PrivateMessage{}).Where("receiver_id = ?", uid).Count(&total)
+	var msgs []model.PrivateMessage
+	h.DB.Preload("Sender").Where("receiver_id = ?", uid).Order("id DESC").Offset(offset).Limit(size).Find(&msgs)
+	out := []gin.H{}
+	for _, m := range msgs {
+		nick, color := "系统信息", ""
+		if m.Sender != nil {
+			nick = m.Sender.Nickname
+			color = m.Sender.Color
+		}
+		out = append(out, gin.H{"id": m.ID, "sender_id": m.SenderID, "sender": nick, "color": color,
+			"content": m.Content, "is_read": m.IsRead, "created_at": m.CreatedAt})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// 发信箱（对齐诺哈 outbox.asp）：发出的私信列表
+func (h *MessageHandler) Outbox(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
+	var total int64
+	h.DB.Model(&model.PrivateMessage{}).Where("sender_id = ?", uid).Count(&total)
+	var msgs []model.PrivateMessage
+	h.DB.Where("sender_id = ?", uid).Order("id DESC").Offset(offset).Limit(size).Find(&msgs)
+	out := []gin.H{}
+	for _, m := range msgs {
+		nick, color := "—", ""
+		var r model.User
+		if err := h.DB.First(&r, m.ReceiverID).Error; err == nil {
+			nick = r.Nickname
+			color = r.Color
+		}
+		out = append(out, gin.H{"id": m.ID, "receiver_id": m.ReceiverID, "receiver": nick, "color": color,
+			"content": m.Content, "is_read": m.IsRead, "created_at": m.CreatedAt})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
 type sendMsgReq struct {
 	To      uint   `json:"to" binding:"required"`
 	Content string `json:"content" binding:"required,min=1,max=500"`

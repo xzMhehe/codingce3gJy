@@ -32,9 +32,10 @@
 
     <!-- ================= 空间已开通 ================= -->
     <template v-else-if="state === 'active'">
-      <!-- 子导航：个人中心 | 主页 | 个人档（当前页为纯文本） -->
+      <!-- 子导航：个人中心 | 主页 | 好友 | 个人档（对齐诺哈 blog：个人中心|主页|好友|个人档） -->
       <a href="javascript:;" v-if="subTab !== 'center'" @click="subTab = 'center'">个人中心</a><span v-else>个人中心</span>|
       <a href="javascript:;" v-if="subTab !== 'home'" @click="subTab = 'home'">主页</a><span v-else>主页</span>|
+      <a href="javascript:;" v-if="subTab !== 'friends'" @click="subTab = 'friends'">好友</a><span v-else>好友</span>|
       <a href="javascript:;" v-if="subTab !== 'profile'" @click="subTab = 'profile'">个人档</a><span v-else>个人档</span>
       <br>
 
@@ -128,7 +129,12 @@
 
         【<a href="javascript:;" @click="curAlbum = null">相册</a>】<br>
         <template v-if="albums.length">
-          <span v-for="al in albums" :key="al.id"><a href="javascript:;" @click="showAlbum(al)">{{ al.name }}({{ al.count || 0 }})</a> </span>
+          <span v-for="al in albums" :key="al.id">
+            <a href="javascript:;" @click="showAlbum(al)">
+              <template v-if="al.cover && al.cover.indexOf('data:') === 0"><img :src="al.cover" alt="." style="width:46px;height:46px;object-fit:cover;vertical-align:middle"></template>
+              <template v-else-if="al.cover"><img :src="'/static/picture/' + al.cover" alt="." style="width:46px;height:46px;object-fit:cover;vertical-align:middle" onerror="this.style.display='none'"></template>
+              {{ al.name }}({{ al.count || 0 }})
+            </a> </span>
           <div v-if="curAlbum">
             <b>【{{ curAlbum.name }}】</b> <a href="javascript:;" @click="curAlbum = null">收起</a><br>
             <template v-if="curAlbum.photos.length">
@@ -164,6 +170,19 @@
           (第<b>1</b>/1页/共{{ visitors.length }}条记录)
         </template>
         <span v-else>暂无访客</span>
+      </template>
+
+      <!-- ========== 好友（对齐诺哈 friend_list.asp） ========== -->
+      <template v-if="subTab === 'friends'">
+        【<a href="javascript:;" @click="loadFriends">好友</a>】<br>
+        <template v-if="friends.length">
+          <div v-for="f in friends" :key="'f'+f.id">
+            <a href="javascript:;" @click="$router.push('/user/'+f.id)"><font :color="f.color || '#004299'">{{ f.nickname }}</font></a>
+            <span class="txt-fade">Lv.{{ f.level }}</span>
+            <a href="javascript:;" @click="$router.push('/messages/'+f.id)">[家信]</a><br>
+          </div>
+        </template>
+        <span v-else>暂无好友</span><br>
       </template>
 
       <!-- ========== 个人档 ========== -->
@@ -219,6 +238,7 @@ export default {
       moods: [],
       articles: [],
       albums: [],
+      friends: [],
       spaceMsgs: [],
       visitors: [],
       moodPage: 1,
@@ -282,6 +302,12 @@ export default {
       this.loadAlbums()
       this.loadSpaceMsgs()
       this.loadVisitors()
+      if (v === 'friends') this.loadFriends()
+    },
+    loadFriends () {
+      api.get('/space/' + this.userId + '/friends', { params: { user_id: this.userId } }).then(r => {
+        if (r.code === 0) this.friends = r.data || []
+      })
     },
     loadMoods (page) {
       api.get('/space/' + this.userId + '/moods', { params: { user_id: this.userId, page: page } }).then(r => {

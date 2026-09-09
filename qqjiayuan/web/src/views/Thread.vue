@@ -20,26 +20,12 @@
       </template><br>
     </div>
 
-    <!-- 板块/收藏/管理 -->
+    <!-- 板块标签/锁定/审核 -->
     <div class="title">
       <a v-if="thread.board" href="javascript:;" @click="$router.push('/board/'+thread.board.id)">[{{ thread.board.name }}]</a>
       <template v-if="thread.is_lock"><font color="#c00">[已锁定]</font></template>
       <template v-if="thread.audit_status === 0"><font color="#c00">[待审核]</font></template>
       <template v-if="thread.audit_status === 2"><font color="#c00">[审核未通过]</font></template>
-      <template v-if="isLogin"><a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '☆收藏' }}</font></a></template>
-      <template v-if="canManage || canMod">
-        | <a href="javascript:;" @click="toggle('is_top')">{{ thread.is_top ? '取消置顶' : '置顶' }}</a>
-        | <a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '取消精华' : '加精' }}</a>
-        | <a href="javascript:;" @click="toggle('is_head')">{{ thread.is_head ? '取消头条' : '头条' }}</a>
-        | <a href="javascript:;" @click="toggle('is_lock')">{{ thread.is_lock ? '解锁' : '锁定' }}</a>
-        | <a href="javascript:;" @click="toggle('is_recom')">{{ thread.is_recom ? '取消推荐' : '推荐' }}</a>
-        | <a href="javascript:;" @click="toggle('is_active')">{{ thread.is_active ? '取消活动' : '设活动' }}</a>
-      </template>
-      <template v-if="canManage || canMod">
-        | <a href="javascript:;" @click="openMove">移动</a>
-        <template v-if="thread.audit_status !== 1"><a href="javascript:;" @click="audit(true)">通过</a>|<a href="javascript:;" @click="audit(false)">拒绝</a></template>
-      </template>
-      <template v-if="canManage || mine"> | <a href="javascript:;" @click="startEdit">{{ editing ? '取消编辑' : '编辑' }}</a> | <a href="javascript:;" style="color:#c00" @click="delThread">删除</a></template>
       <br>
     </div>
 
@@ -116,83 +102,56 @@
       </span>
     </div>
 
-    <!-- 置顶回复 -->
+    <!-- 置顶回复（诺哈 wap_topic_reply_apex） -->
     <div class="module-content" v-if="stickyReply" style="background:#FFFDE7">
       <b>【置顶回复】</b>{{ stickyReply.content }} —— {{ stickyReply.user ? stickyReply.user.nickname : '?' }}（{{ fmt(stickyReply.created_at) }}）<br>
     </div>
 
-    <!-- 楼主信息 -->
+    <!-- 楼主信息（对齐演示站 topic：楼主/时间/分享/勋章/签名/逛逛） -->
     <div class="item">
-      <span v-for="b in authorBadges" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
+      [楼主]:<span v-for="b in authorBadges" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
       <img class="bicon" v-if="author.noble > 0" :src="$pic('noble_' + author.noble + '_1.gif')" alt="贵族" :title="'贵族' + (author.noble === 1 ? '一级' : '二级')" @error="hideErr">
       <img class="bicon" v-if="author.priv" :src="'/static/' + author.priv.file" :alt="author.priv.name" :title="author.priv.name">
       <img class="bicon" v-else-if="author.level_icon" :src="$pic('v'+author.level_icon+'.gif')" alt="等级">
       <a href="javascript:;" @click="$router.push('/user/'+author.id)"><font :color="author.color || '#004299'">{{ author.nickname || '?' }}</font></a>
-      <i><font color="SlateGray">{{ fmt(thread.created_at) }}</font></i><br>
+      <template v-if="isLogin && author.id && !mine">(<a href="javascript:;" @click="$router.push('/messages/'+author.id)">家信</a>)</template><br>
+      [发帖时间]:{{ fmt(thread.created_at) }}<br>
+      <template v-if="author.city">[发表于]:{{ author.city }}<br></template>
+      [分享到]:<a href="javascript:;" @click="shareWeibo">新浪微博</a>.<a href="javascript:;" @click="shareQzone">QQ空间</a>.<a href="javascript:;" @click="shareForum">其他论坛</a><br>
+      [TA的勋章]:<span v-if="authorBadges.length"><span v-for="b in authorBadges" :key="'m'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name" :title="b.name"> </span></span><span v-else class="txt-fade">无</span><br>
+      [TA的签名]:<span class="txt-fade">{{ author.signature || '无' }}</span><br>
+      [逛逛]:<a href="javascript:;" @click="$router.push('/home')">TA的家园</a>.<a href="javascript:;" @click="$router.push('/space/'+author.id)">TA的空间</a>.<a href="javascript:;" @click="goUserThreads">TA的帖子</a><br>
     </div>
-    <div class="item" v-if="author.city">发表于：<i><font color="SlateGray">{{ author.city }}</font></i> <br></div>
 
-    <!-- 互动区：[评价] -->
+    <!-- 贴子管理（对齐演示站：收藏.复制.推荐.管理） -->
     <div class="item">
-      [评价] <input type="submit" :value="'赞(' + likeCount + ')'" @click.prevent="vote(1)">
-      <input type="submit" :value="'踩(' + dislikeCount + ')'" @click.prevent="vote(-1)">
-      <input type="submit" value="打赏" @click.prevent="giftOpen = !giftOpen"><br>
+      [贴子管理]:<a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '收藏' }}</font></a>.<a href="javascript:;" @click="copyLink">复制</a>.<a href="javascript:;" @click="shareForum">推荐</a>
+      <template v-if="canManage || canMod">
+        .<a href="javascript:;" @click="toggle('is_top')">{{ thread.is_top ? '取消置顶' : '置顶' }}</a>
+        .<a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '取消精华' : '加精' }}</a>
+        .<a href="javascript:;" @click="toggle('is_head')">{{ thread.is_head ? '取消头条' : '头条' }}</a>
+        .<a href="javascript:;" @click="toggle('is_lock')">{{ thread.is_lock ? '解锁' : '锁定' }}</a>
+        .<a href="javascript:;" @click="toggle('is_recom')">{{ thread.is_recom ? '取消推荐' : '推荐' }}</a>
+        .<a href="javascript:;" @click="toggle('is_active')">{{ thread.is_active ? '取消活动' : '设活动' }}</a>
+        .<a href="javascript:;" @click="openMove">移动</a>
+        <template v-if="thread.audit_status !== 1"><a href="javascript:;" @click="audit(true)">通过</a>|<a href="javascript:;" @click="audit(false)">拒绝</a></template>
+      </template>
+      <template v-if="canManage || mine">.<a href="javascript:;" @click="startEdit">{{ editing ? '取消编辑' : '编辑' }}</a>.<a href="javascript:;" style="color:#c00" @click="delThread">删除</a></template><br>
     </div>
 
-    <!-- 打赏面板 -->
-    <div class="module-content" v-if="giftOpen" style="background:#E3EEF8">
-      打赏G币：<input type="text" v-model.number="giftCoins" size="6"> <input type="submit" value="确认打赏" @click.prevent="doGift">
-      <span class="help-line">（G币实时转入楼主账户）</span><br>
-      <div v-if="gifts.length" class="txt-fade">
-        <div v-for="g in gifts" :key="g.id">{{ g.sender ? g.sender.nickname : '?' }} 打赏 {{ g.coins }} G币（{{ fmt(g.created_at) }}）</div>
-      </div>
-    </div>
-
-    <!-- 互动区：[鲜花] -->
-    <div class="item">
-      [鲜花] ({{ flowerCount }})朵 <a href="javascript:;" @click="flowerLogOpen = !flowerLogOpen">{{ flowerLogOpen ? '收起收花记录' : '查看收花记录' }}</a><br>
-    </div>
-    <div class="module-content" v-if="flowerLogOpen" style="background:#E3EEF8">
-      <div v-if="flowers.length">
-        <div v-for="f in flowers" :key="f.id">{{ f.sender ? f.sender.nickname : '?' }} 送出 {{ f.count }} 朵{{ f.flower }}（{{ fmt(f.created_at) }}）</div>
-      </div>
-      <div v-else class="empty">还没有人送花</div>
-    </div>
-
-    <!-- 互动区：[送花] -->
-    <div class="item">
-      [送花] <input type="submit" value="99朵" @click.prevent="doFlower(99)">
-      <input type="submit" value="520朵" @click.prevent="doFlower(520)">
-      <input type="submit" value="999朵" @click.prevent="doFlower(999)">
-      <input type="text" v-model.number="flowerNum" size="4" @keyup.enter="doFlower(flowerNum)"> <input type="submit" value="自定义" @click.prevent="doFlower(flowerNum)">
-      <select v-model="flowerKind" style="margin-left:4px">
-        <option v-for="f in flowerKinds" :key="f" :value="f">{{ f }}</option>
+    <!-- 移动面板 -->
+    <div class="module-content" v-if="moveOpen" style="background:#E3EEF8">
+      移动到：
+      <select v-model.number="moveBoardId">
+        <optgroup v-for="ch in channels" :key="ch.id" :label="ch.name">
+          <option v-for="s in allSubBoards(ch)" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </optgroup>
       </select>
-      <a href="javascript:;" @click="$router.push('/shop')">商城买鲜花&gt;&gt;</a>（从购买的鲜花中扣除）<br>
+      <input type="submit" value="确认移动" @click.prevent="doMove">
+      <span v-if="moveMsg" style="color:#c00">{{ moveMsg }}</span><br>
     </div>
 
-    <!-- 互动区：[分享/收藏/复制/举报] -->
-    <div class="item">
-      <input type="submit" value="分享" @click.prevent="doShare(false)">
-      <a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '收藏' }}</font></a>
-      .<a href="javascript:;" @click="copyLink">复制本帖链接</a>
-      .<a href="javascript:;" @click="openReport('thread', thread.id)">举报该帖</a>
-      <input type="submit" value="分享到心情" @click.prevent="doShare(true)" v-if="isLogin"><br>
-      <span v-if="shareTip" style="color:#1a9e1a">{{ shareTip }}</span>
-      <span v-if="msg" style="color:#c00">{{ msg }}</span>
-    </div>
-
-    <!-- 举报面板 -->
-    <div class="module-content" v-if="reportOpen" style="background:#E3EEF8">
-      举报理由：
-      <select v-model="reportReasonSel">
-        <option value="">选择理由</option>
-        <option v-for="r in reportReasons" :key="r" :value="r">{{ r }}</option>
-      </select><br>
-      或输入自定义理由：<input type="text" v-model.trim="reportReasonCustom" maxlength="100" style="width:60%"><br>
-      <input type="submit" value="提交举报" @click.prevent="submitReport">
-      <span v-if="reportMsg" style="color:#1a9e1a">{{ reportMsg }}</span>
-    </div>
+    <div class="module-content" v-if="shareTip" style="background:#E3EEF8">{{ shareTip }}<br></div>
 
     <!-- 回帖列表 -->
     <div class="name">
@@ -209,10 +168,8 @@
           <a href="javascript:;" @click="$router.push('/user/'+(r.user ? r.user.id : ''))"><font :color="r.user ? r.user.color : ''">{{ r.user ? r.user.nickname : '路人' }}</font></a>
           <i><font color="SlateGray">{{ fmt(r.created_at) }}</font></i>
           <template v-if="isLogin">
-            <a href="javascript:;" @click="likeReply(r)">[赞{{ r.like_count || 0 }}]</a>
             <a href="javascript:;" @click="quote(r.floor)">[回复]</a>
             <a href="javascript:;" v-if="user && r.user && r.user.id === user.id" style="color:#c00" @click="delReply(r)">[删除]</a>
-            <a href="javascript:;" @click="openReport('reply', r.id)">[举报]</a>
           </template>
           <br>
         </div>
@@ -231,15 +188,19 @@
       (第<b>{{ page }}</b>/{{ pages }}页)<br>
     </div>
 
-    <!-- 回复框（write-mood） -->
+    <!-- 回复框（对齐演示站 topic：1-120字 + 插入表情） -->
     <div class="write-mood">
       <div class="item">
         <form @submit.prevent="submit">
           <template v-if="isLogin && !thread.is_lock">
-            <textarea v-model.trim="content" rows="2" style="width:100%"></textarea><br>
-            <input type="submit" value="回复"> <span class="help-line">回复+5经验+2G币</span>
+            回复该贴(1-120字): <a href="javascript:;" @click="faceOpen = !faceOpen">插入表情</a><br>
+            <div v-if="faceOpen" class="module-content" style="background:#E3EEF8">
+              <span v-for="f in faces" :key="f"><a href="javascript:;" @click="insertFace(f)" :title="f">{{ faceEmoji(f) }}</a> </span><br>
+            </div>
+            <textarea v-model.trim="content" rows="3" style="width:99%"></textarea><br>
+            <input type="submit" value="确定回复"> <span class="help-line">回复+5经验+2G币</span>
             <template v-if="thread.type === 1"> <span class="help-line">本贴回帖有奖励</span></template>
-            <input type="submit" value="顶贴" @click.prevent="doSticky"><span class="help-line">（楼主/版主置顶一条回复）</span>
+            <template v-if="canMod && quoteReplyId"><input type="submit" value="顶贴" @click.prevent="doSticky"><span class="help-line">（楼主/版主置顶一条回复）</span></template>
           </template>
           <template v-else-if="isLogin && thread.is_lock">
             <font color="#c00">本贴已锁定，仅供查阅</font>
@@ -252,7 +213,10 @@
     </div>
 
     <!-- 全部回帖 -->
-    <a href="javascript:;" @click="go(pages)"><b>全部回帖({{ total }})</b></a><br>
+    <div class="item">
+      <a href="javascript:;" @click="go(pages)"><b>全部回贴({{ total }})</b></a>
+      <a class="rt" href="javascript:;" @click="$router.push('/board/'+(thread.board ? thread.board.id : ''))">返回贴子列表</a><br>
+    </div>
 
     <!-- 面包屑重复 -->
     <div class="bar">
@@ -267,7 +231,7 @@
 
 <script>
 import api from '../api'
-import { renderFace } from '../utils/qqface'
+import { renderFace, FACE_NAMES } from '../utils/qqface'
 
 export default {
   name: 'Thread',
@@ -275,20 +239,12 @@ export default {
     return {
       thread: { user: {}, board: {} },
       replies: [], total: 0, page: 1, pages: 1, pageInput: 1,
-      content: '', sending: false,
+      content: '', sending: false, faceOpen: false,
       editing: false, editForm: { title: '', content: '' }, editTip: '', editOk: false, saving: false,
       favored: false,
-      // 互动
-      myVote: 0, likeCount: 0, dislikeCount: 0,
-      giftTotal: 0, giftCount: 0, flowerCount: 0, flowerPeople: 0, shareCount: 0,
-      flowers: [], gifts: [],
-      giftOpen: false, giftCoins: 100,
-      flowerOpen: false, flowerLogOpen: false, flowerKind: '玫瑰花', flowerNum: 99,
-      flowerKinds: ['玫瑰花', '向日葵', '郁金香', '月光花'],
+      // 互动统计
+      likeCount: 0, dislikeCount: 0, shareCount: 0,
       shareTip: '', msg: '',
-      reportOpen: false, reportType: 'thread', reportTargetId: 0,
-      reportReasonSel: '', reportReasonCustom: '', reportMsg: '',
-      reportReasons: ['广告垃圾', '辱骂攻击', '色情低俗', '造谣传谣', '引战挑事', '其他违规'],
       // 论坛新增
       poll: null, pollVoted: false, pollTotal: 0, myOptions: [], pollSel: [], pollMsg: '',
       reward: null, floors: [], stickyReply: null, attachments: [],
@@ -297,6 +253,7 @@ export default {
   },
   computed: {
     contentFace () { return renderFace(this.thread.content) },
+    faces () { return FACE_NAMES },
     wordCount () { return (this.thread.content || '').length },
     parentName () {
       const b = this.thread.board
@@ -332,13 +289,7 @@ export default {
           // 互动统计
           this.likeCount = r.data.like_count || 0
           this.dislikeCount = r.data.dislike_count || 0
-          this.giftTotal = r.data.gift_total || 0
-          this.giftCount = r.data.gift_count || 0
-          this.flowerCount = r.data.flower_count || 0
-          this.flowerPeople = r.data.flower_people || 0
           this.shareCount = r.data.share_count || 0
-          this.flowers = r.data.flowers || []
-          this.gifts = r.data.gifts || []
           // 论坛新增
           this.poll = r.data.poll || null
           this.pollVoted = r.data.poll_voted || false
@@ -358,16 +309,9 @@ export default {
         api.get(`/threads/${id}/favorite-status`).then(r => { if (r.code === 0) this.favored = r.data.favored })
         api.get(`/threads/${id}/interact-status`).then(r => {
           if (r.code === 0) {
-            this.myVote = r.data.my_vote || 0
             this.likeCount = r.data.like_count || 0
             this.dislikeCount = r.data.dislike_count || 0
-            this.giftTotal = r.data.gift_total || 0
-            this.giftCount = r.data.gift_count || 0
-            this.flowerCount = r.data.flower_count || 0
-            this.flowerPeople = r.data.flower_people || 0
             this.shareCount = r.data.share_count || 0
-            this.flowers = r.data.flowers || []
-            this.gifts = r.data.gifts || []
           }
         })
       }
@@ -412,18 +356,27 @@ export default {
         if (r.code === 0) {
           this.content = ''
           this.quoteReplyId = 0
-          api.get(`/threads/${this.$route.params.id}`, { params: { page: 999999 } }).then(d => {
-            if (d.code === 0) this.go(d.data.page)
-          })
+          this.jumpToLastPage()
         } else {
           alert(r.msg)
         }
       })
     },
+    jumpToLastPage () {
+      api.get(`/threads/${this.$route.params.id}`, { params: { page: 999999 } }).then(d => {
+        if (d.code !== 0) return
+        this.go(d.data.page)
+      })
+    },
     go (p) {
       if (p < 1) p = 1
       if (p > this.pages) p = this.pages
-      this.$router.push('/thread/' + this.$route.params.id + '?page=' + p)
+      if (p === this.page) {
+        // 已在目标页：直接刷新数据，避免重复导航报错
+        this.load()
+        return
+      }
+      this.$router.push('/thread/' + this.$route.params.id + '?page=' + p).catch(() => {})
     },
     toggle (field) {
       const v = this.thread[field] ? 0 : 1
@@ -511,49 +464,30 @@ export default {
         else alert(x.msg)
       })
     },
-    // ---- 互动 ----
-    vote (v) {
-      if (!this.isLogin) { alert('请先登录'); return }
-      api.post(`/threads/${this.thread.id}/vote`, { value: v }).then(r => {
-        if (r.code === 0) {
-          this.myVote = r.data.my_vote
-          this.likeCount = r.data.like_count
-          this.dislikeCount = r.data.dislike_count
-        } else alert(r.msg)
-      })
+    // ---- 分享/表情/逛逛（对齐演示站 topic） ----
+    faceEmoji (name) {
+      const m = { 微笑: '🙂', 撇嘴: '😖', 色: '😍', 发呆: '😲', 得意: '😏', 流泪: '😢', 害羞: '😳', 闭嘴: '🤐', 睡: '😴', 大哭: '😭', 尴尬: '😬', 发怒: '😡', 调皮: '😜', 呲牙: '😁', 惊讶: '😮', 难过: '😞', 酷: '😎', 冷汗: '😓', 抓狂: '🤯', 吐: '🤮', 偷笑: '🤭', 可爱: '🥰', 白眼: '🙄', 傲慢: '😠', 饥饿: '😋', 困: '😪', 惊恐: '😱', 流汗: '😅', 憨笑: '🤣', 大兵: '💂', 奋斗: '💪', 咒骂: '🤬', 疑问: '❓', 嘘: '🤫', 晕: '😵', 再见: '👋', 擦汗: '🥵', 鼓掌: '👏', 委屈: '🙇', 亲亲: '😘', 可怜: '🥺', 玫瑰: '🌹', 爱心: '❤️', 心碎: '💔', 蛋糕: '🎂', 音乐: '🎵' }
+      return m[name] || ''
     },
-    doGift () {
-      if (!this.giftCoins || this.giftCoins < 1) { alert('请输入打赏金额'); return }
-      api.post(`/threads/${this.thread.id}/gift`, { coins: this.giftCoins }).then(r => {
-        if (r.code === 0) {
-          this.giftTotal = r.data.gift_total
-          this.giftCount = r.data.gift_count
-          this.giftOpen = false
-          alert('打赏成功！')
-          this.load()
-        } else alert(r.msg)
-      })
+    insertFace (name) {
+      this.content += '/' + name
     },
-    doFlower (n) {
-      if (!this.isLogin) { alert('请先登录'); return }
-      const count = Math.max(1, Math.floor(n || 1))
-      api.post(`/threads/${this.thread.id}/flower`, { flower: this.flowerKind, count }).then(r => {
-        if (r.code === 0) {
-          this.flowerCount = r.data.flower_count
-          alert('送花成功！')
-          this.load()
-        } else alert(r.msg)
-      })
+    goUserThreads () {
+      const id = this.author.id
+      if (id) this.$router.push('/user/' + id)
     },
-    doShare (toMood) {
-      if (!this.isLogin) { alert('请先登录'); return }
-      api.post(`/threads/${this.thread.id}/share`, { to_mood: !!toMood }).then(r => {
-        if (r.code === 0) {
-          this.shareCount = r.data.share_count
-          this.shareTip = toMood ? '已分享到心情！' : '分享成功！'
-          setTimeout(() => { this.shareTip = '' }, 2500)
-        } else alert(r.msg)
-      })
+    shareWeibo () {
+      const url = encodeURIComponent(location.href)
+      window.open('http://service.weibo.com/share/share.php?url=' + url)
+    },
+    shareQzone () {
+      const url = encodeURIComponent(location.href)
+      const title = encodeURIComponent(this.thread.title || '')
+      window.open('http://sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey?url=' + url + '&title=' + title)
+    },
+    shareForum () {
+      this.shareTip = '帖子链接：' + location.href
+      this.copyLink()
     },
     copyLink () {
       const url = location.origin + location.pathname + '#/thread/' + this.thread.id
@@ -565,33 +499,6 @@ export default {
       document.body.removeChild(ta)
       this.shareTip = '链接已复制：' + url
       setTimeout(() => { this.shareTip = '' }, 3000)
-    },
-    likeReply (r) {
-      api.post(`/replies/${r.id}/like`).then(x => {
-        if (x.code === 0) r.like_count = x.data.like_count
-        else alert(x.msg)
-      })
-    },
-    openReport (type, id) {
-      if (!this.isLogin) { alert('请先登录'); return }
-      this.reportType = type
-      this.reportTargetId = id
-      this.reportReasonSel = ''
-      this.reportReasonCustom = ''
-      this.reportMsg = ''
-      this.reportOpen = true
-      const el = document.querySelector('.write-mood')
-      if (el) el.scrollIntoView()
-    },
-    submitReport () {
-      const reason = this.reportReasonCustom || this.reportReasonSel
-      if (!reason) { alert('请选择或填写举报理由'); return }
-      api.post('/reports', { target_type: this.reportType, target_id: this.reportTargetId, reason }).then(r => {
-        if (r.code === 0) {
-          this.reportMsg = r.data.duplicated ? '你已举报过该内容，等待管理员处理' : '举报成功，管理员会尽快处理'
-          this.reportOpen = false
-        } else alert(r.msg)
-      })
     },
     fmt (t) {
       if (!t) return ''
