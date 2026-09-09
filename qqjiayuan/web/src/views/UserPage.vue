@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;用户信息<br></div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区</a>&gt;用户信息<br></div>
 
     <!-- ===== 会员信息 ===== -->
     <div class="module-title">【会员信息】</div>
@@ -138,7 +138,7 @@
     </div>
     <div class="module-content" v-else><span class="empty">{{ taWord }}还没有发过帖子</span></div>
 
-    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;用户信息<br></div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区</a>&gt;用户信息<br></div>
 
     <p style="color:#c00;padding:0 5px" v-if="msg">{{ msg }}</p>
   </div>

@@ -205,6 +205,7 @@ export default {
     },
     openPlan (p) {
       this.selPlan = p
+      this.cur = 'shop'
       this.buyOpen = false
       this.giftOpen = false
       this.buyNum = 1

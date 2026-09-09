@@ -74,9 +74,9 @@
             <template slot="title"><i class="el-icon-reading"></i><span>书城管理</span></template>
             <el-menu-item index="books"><i class="el-icon-notebook-1"></i>小说列表</el-menu-item>
           </el-submenu>
-          <!-- 贵宾会员（诺哈 vip/） -->
+          <!-- 会员特权（诺哈 vip/） -->
           <el-submenu index="g-vip">
-            <template slot="title"><i class="el-icon-s-operation"></i><span>贵宾会员</span></template>
+            <template slot="title"><i class="el-icon-s-operation"></i><span>会员特权</span></template>
             <el-menu-item index="privileges"><i class="el-icon-star-off"></i>特权管理</el-menu-item>
           </el-submenu>
           <!-- 广播管理（诺哈 radio/） -->

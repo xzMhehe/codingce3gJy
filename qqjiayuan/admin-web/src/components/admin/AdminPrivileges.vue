@@ -20,7 +20,7 @@
         <div class="pico pico-plan"><i class="el-icon-shopping-cart-2"></i></div>
         <div class="pnum">
           <div class="n"><b>{{ stats.plan_count }}</b><span class="fade">个</span></div>
-          <div class="l">贵宾销售方案</div>
+          <div class="l">特权套餐</div>
         </div>
       </div>
       <div class="pstat">
@@ -35,9 +35,9 @@
     <el-card shadow="never" class="box">
       <div class="toolbar tabbar">
         <el-tabs v-model="tab" class="ptabs">
-          <el-tab-pane label="贵宾等级" name="levels" />
-          <el-tab-pane label="贵宾会员" name="users" />
-          <el-tab-pane label="贵宾销售" name="plans" />
+          <el-tab-pane label="特权等级" name="levels" />
+          <el-tab-pane label="特权会员" name="users" />
+          <el-tab-pane label="特权套餐" name="plans" />
         </el-tabs>
         <div class="grow" />
         <template v-if="tab === 'users'">
@@ -52,16 +52,16 @@
         <el-button size="small" circle icon="el-icon-refresh" title="刷新" @click="refresh" />
       </div>
 
-      <!-- ===== 贵宾等级（复刻诺哈 wap_vip_config：升级经验+图标） ===== -->
-      <div v-if="tab === 'levels'" class="hint">成长值达到「升级经验」即自动升至对应等级，图标取自 static/picture 素材（1级为入门贵宾）。</div>
-      <el-table v-if="tab === 'levels'" :data="levels" v-loading="loading" stripe>
+      <!-- ===== 特权等级（复刻诺哈 wap_vip_config：升级经验+图标） ===== -->
+      <div v-if="tab === 'levels'" class="hint">成长值达到「升级经验」即自动升至对应等级，图标取自 static/picture 素材（1级为入门特权）。</div>
+      <el-table ref="levelsTable" key="t-levels" v-if="tab === 'levels'" :data="levels" v-loading="loading" stripe>
         <el-table-column label="等级" width="90" align="center">
           <template slot-scope="{row}"><span class="lv-badge">Lv.{{ row.id }}</span></template>
         </el-table-column>
-        <el-table-column label="升级经验" width="120" align="center">
+        <el-table-column label="升级经验" min-width="130" align="center">
           <template slot-scope="{row}"><b class="num">{{ row.point }}</b><span class="unit">点</span></template>
         </el-table-column>
-        <el-table-column label="蓝钻图标" min-width="155">
+        <el-table-column label="蓝钻图标" min-width="130">
           <template slot-scope="{row}">
             <span class="icon-cell">
               <span class="priv-chip chip-blue">
@@ -72,7 +72,7 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="超Q图标" min-width="155">
+        <el-table-column label="超Q图标" min-width="130">
           <template slot-scope="{row}">
             <span class="icon-cell">
               <span class="priv-chip chip-qq">
@@ -83,23 +83,25 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right" header-align="center" align="center">
+        <el-table-column label="操作" width="112" header-align="center" align="center">
           <template slot-scope="{row}">
-            <el-button size="mini" type="primary" plain @click="openLevel(row)">编辑</el-button>
-            <el-button size="mini" type="danger" plain :disabled="row.id <= 1" @click="delLevel(row)">删除</el-button>
+            <div class="ops">
+              <el-button size="mini" type="primary" plain @click="openLevel(row)">编辑</el-button>
+              <el-button size="mini" type="danger" plain :disabled="row.id <= 1" @click="delLevel(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
 
-      <!-- ===== 贵宾会员（复刻诺哈 wap_vip：等级/成长值/速度/成长时间/速度时间/开通时间/结束时间） ===== -->
+      <!-- ===== 特权会员（复刻诺哈 wap_vip：等级/成长值/速度/成长时间/速度时间/开通时间/结束时间） ===== -->
       <template v-else-if="tab === 'users'">
-        <div class="hint">仅展示已开通贵宾的会员；到期保留30天，期间可续费，超期自动清空（也可用「清除到期」立即清理）。</div>
-        <el-table :data="users" v-loading="loading" stripe>
-          <el-table-column prop="id" label="号码" width="88" fixed="left" />
-          <el-table-column label="昵称" min-width="150" show-overflow-tooltip>
-            <template slot-scope="{row}"><font :color="row.color || '#333'">{{ nameOf(row) }}</font></template>
+        <div class="hint">仅展示已开通特权的会员；到期保留30天，期间可续费，超期自动清空（也可用「清除到期」立即清理）。</div>
+        <el-table ref="usersTable" key="t-users" :data="users" v-loading="loading" stripe>
+          <el-table-column prop="id" label="号码" width="88" />
+          <el-table-column label="昵称" min-width="140">
+            <template slot-scope="{row}"><font :color="row.color || '#333'" :title="nameOf(row)">{{ nameOf(row) }}</font></template>
           </el-table-column>
-          <el-table-column label="蓝钻" width="185">
+          <el-table-column label="蓝钻" min-width="180">
             <template slot-scope="{row}">
               <div class="priv-cell">
                 <span class="priv-chip chip-blue">
@@ -107,15 +109,11 @@
                   <i v-show="imgBroken('ub' + row.id)" class="el-icon-star-off chip-ico blue"></i>
                 </span>
                 <span class="lv-tag" :class="isOn(row.blue_end) ? 'on' : 'off'">Lv.{{ row.blue_lv }}</span>
-                <span class="txt-fade">{{ row.blue_exp }}点</span>
-              </div>
-              <div class="priv-sub">
-                <span v-if="isOn(row.blue_end)">{{ row.blue_speed || '—' }}点/天 · 剩{{ left(row.blue_end) }}天</span>
-                <span v-else class="txt-fade">已到期</span>
+                <span class="priv-main"><b>{{ row.blue_exp }}</b>点<span class="sep">·</span>{{ row.blue_speed || '—' }}点/天</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="超Q" width="185">
+          <el-table-column label="超Q" min-width="180">
             <template slot-scope="{row}">
               <div class="priv-cell">
                 <span class="priv-chip chip-qq">
@@ -123,32 +121,27 @@
                   <i v-show="imgBroken('uq' + row.id)" class="el-icon-star-on chip-ico qq"></i>
                 </span>
                 <span class="lv-tag" :class="isOn(row.qq_end) ? 'on' : 'off'">Lv.{{ row.qq_lv }}</span>
-                <span class="txt-fade">{{ row.qq_exp }}点</span>
-              </div>
-              <div class="priv-sub">
-                <span v-if="isOn(row.qq_end)">{{ row.qq_speed || '—' }}点/天 · 剩{{ left(row.qq_end) }}天</span>
-                <span v-else class="txt-fade">已到期</span>
+                <span class="priv-main"><b>{{ row.qq_exp }}</b>点<span class="sep">·</span>{{ row.qq_speed || '—' }}点/天</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="104" align="left">
+          <el-table-column label="状态" min-width="140" align="left">
             <template slot-scope="{row}">
-              <div class="st-tags">
-                <el-tag v-if="isOn(row.blue_end)" type="success" size="mini" class="st">蓝钻生效</el-tag>
-                <el-tag v-else-if="row.blue_exp > 0" type="info" size="mini" class="st">蓝钻保留</el-tag>
-                <el-tag v-if="isOn(row.qq_end)" type="warning" size="mini" class="st">超Q生效</el-tag>
-                <el-tag v-else-if="row.qq_exp > 0" type="info" size="mini" class="st">超Q保留</el-tag>
+              <div class="st-line">
+                <el-tag v-if="isOn(row.blue_end)" type="success" size="mini" class="st">蓝生效</el-tag>
+                <el-tag v-else-if="row.blue_exp > 0" type="info" size="mini" class="st">蓝保留</el-tag>
+                <el-tag v-if="isOn(row.qq_end)" type="warning" size="mini" class="st">超生效</el-tag>
+                <el-tag v-else-if="row.qq_exp > 0" type="info" size="mini" class="st">超保留</el-tag>
                 <span v-if="!isOn(row.blue_end) && !isOn(row.qq_end) && row.blue_exp <= 0 && row.qq_exp <= 0" class="txt-fade">已到期</span>
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="开通 / 到期" min-width="170">
+          <el-table-column label="开通 / 到期" min-width="176">
             <template slot-scope="{row}">
-              <div class="dt-line"><i class="el-icon-star-off dt-ico blue"></i>蓝 {{ short(row.blue_start) }} ~ {{ short(row.blue_end) }}</div>
-              <div class="dt-line"><i class="el-icon-star-on dt-ico qq"></i>超 {{ short(row.qq_start) }} ~ {{ short(row.qq_end) }}</div>
+              <div class="dt-line"><i class="el-icon-star-off dt-ico blue"></i>蓝 {{ md(row.blue_start) }}~{{ md(row.blue_end) }}<span class="sep">·</span><i class="el-icon-star-on dt-ico qq"></i>超 {{ md(row.qq_start) }}~{{ md(row.qq_end) }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="252" fixed="right" header-align="center" align="center">
+          <el-table-column label="操作" width="236" header-align="center" align="center">
             <template slot-scope="{row}">
               <div class="ops">
                 <el-button size="mini" type="primary" plain @click="openUser(row)">编辑</el-button>
@@ -160,9 +153,8 @@
           </el-table-column>
         </el-table>
         <div class="pager-bar">
-          <div class="pager-info">共 <b>{{ total }}</b> 名贵宾 · 每页 {{ pageSize }} 条</div>
           <el-pagination
-            small background layout="sizes, prev, pager, next, jumper"
+            small background layout="total, sizes, prev, pager, next"
             :total="total" :page-size.sync="pageSize" :current-page.sync="page"
             :page-sizes="[10, 20, 50, 100]"
             @size-change="page = 1; load()" @current-change="load"
@@ -170,63 +162,70 @@
         </div>
       </template>
 
-      <!-- ===== 贵宾销售（复刻诺哈 wap_vip_shop：标题/几月/币种/价格/速度/赠送/限购/库存/销量/时间/状态） ===== -->
+      <!-- ===== 特权套餐（复刻诺哈 wap_vip_shop：标题/周期/价格/速度/赠送/限购/库存/销量/时间/状态） ===== -->
       <template v-else>
-        <div class="hint">「销售几月」1月=30天，年费=12月；出售/结束时间留空表示长期有效；成长速度与赠送经验为开通时赋予会员的数值。</div>
-        <el-table :data="plans" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="50" align="center" />
-        <el-table-column label="类型" width="70" align="center">
-          <template slot-scope="{row}"><el-tag :type="row.type === 'blue' ? 'primary' : 'warning'" size="mini">{{ row.type === 'blue' ? '蓝钻' : '超Q' }}</el-tag></template>
+        <div class="hint">「销售周期」1月=30天，年费=12月；出售/结束时间留空表示长期有效；成长速度与赠送经验为开通时赋予会员的数值。</div>
+        <el-table ref="plansTable" key="t-plans" :data="pagedPlans" v-loading="loading" stripe>
+        <el-table-column prop="id" label="ID" width="52" align="center" />
+        <el-table-column label="类型" min-width="78" align="center">
+          <template slot-scope="{row}"><el-tag size="mini" class="plan-type" :class="row.type">{{ row.type === 'blue' ? '蓝钻' : '超Q' }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="销售标题" min-width="180" show-overflow-tooltip>
-          <template slot-scope="{row}"><b>{{ row.name }}</b></template>
+        <el-table-column label="套餐标题" min-width="170">
+          <template slot-scope="{row}"><b :title="row.name">{{ row.name }}</b></template>
         </el-table-column>
-        <el-table-column label="销售几月" width="76" align="center">
+        <el-table-column label="周期" min-width="72" align="center">
           <template slot-scope="{row}">{{ months(row.days) }}<span class="unit">月</span></template>
         </el-table-column>
-        <el-table-column label="币种" width="56" align="center">
-          <template slot-scope="{row}">{{ row.money === 1 ? 'G币' : '—' }}</template>
-        </el-table-column>
-        <el-table-column label="销售价格" width="86" align="center">
+        <el-table-column label="价格(G币)" min-width="92" align="center">
           <template slot-scope="{row}"><b class="cost">{{ row.cost }}</b><span class="unit">币/月</span></template>
         </el-table-column>
-        <el-table-column label="成长速度" width="86" align="center">
+        <el-table-column label="成长速度" min-width="86" align="center">
           <template slot-scope="{row}">{{ row.speed }}<span class="unit">点/天</span></template>
         </el-table-column>
-        <el-table-column label="赠送经验" width="80" align="center">
-          <template slot-scope="{row}">{{ row.gain }}<span class="unit">点</span></template>
+        <el-table-column label="赠送经验" min-width="80" align="center">
+          <template slot-scope="{row}">+{{ row.gain }}<span class="unit">点</span></template>
         </el-table-column>
-        <el-table-column label="限购" width="60" align="center">
+        <el-table-column label="限购" min-width="58" align="center">
           <template slot-scope="{row}">{{ row.limit || '不限' }}</template>
         </el-table-column>
-        <el-table-column label="库存" width="60" align="center">
+        <el-table-column label="库存" min-width="58" align="center">
           <template slot-scope="{row}">{{ row.stock || '不限' }}</template>
         </el-table-column>
-        <el-table-column label="销量" width="60" align="center">
+        <el-table-column label="销量" min-width="58" align="center">
           <template slot-scope="{row}">{{ row.sales }}</template>
         </el-table-column>
-        <el-table-column label="出售 / 结束" min-width="140">
+        <el-table-column label="出售 / 结束" min-width="126">
           <template slot-scope="{row}">
-            <span class="txt-fade">{{ short(row.stime) }} ~ {{ short(row.etime) }}</span>
+            <span class="txt-fade">{{ md(row.stime) }}~{{ row.etime ? md(row.etime) : '长期' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="60" align="center">
+        <el-table-column label="状态" min-width="58" align="center">
           <template slot-scope="{row}">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag>
           </template>
         </el-table-column>
-          <el-table-column label="操作" width="120" fixed="right" header-align="center" align="center">
+          <el-table-column label="操作" width="120" header-align="center" align="center">
             <template slot-scope="{row}">
-              <el-button size="mini" type="primary" plain @click="openPlan(row)">编辑</el-button>
-              <el-button size="mini" type="danger" plain @click="delPlan(row)">删除</el-button>
+              <div class="ops">
+                <el-button size="mini" type="primary" plain @click="openPlan(row)">编辑</el-button>
+                <el-button size="mini" type="danger" plain @click="delPlan(row)">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
+        <div class="pager-bar" v-if="plans.length">
+          <el-pagination
+            small background layout="total, sizes, prev, pager, next"
+            :total="plans.length" :page-size.sync="planSize" :current-page.sync="planPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @size-change="planPage = 1"
+          />
+        </div>
       </template>
     </el-card>
 
     <!-- 等级编辑 -->
-    <el-dialog :title="levelForm.id ? '编辑贵宾等级 Lv.' + levelForm.id : '新增贵宾等级'" :visible.sync="levelDlg" width="480px" :close-on-click-modal="false">
+    <el-dialog :title="levelForm.id ? '编辑特权等级 Lv.' + levelForm.id : '新增特权等级'" :visible.sync="levelDlg" width="480px" :close-on-click-modal="false">
       <el-form label-width="96px">
         <el-form-item label="等级">Lv.{{ levelForm.id || '新增自动编号' }}</el-form-item>
         <el-form-item label="升级经验">
@@ -258,8 +257,8 @@
       </div>
     </el-dialog>
 
-    <!-- 贵宾会员编辑（复刻诺哈 user_edit：等级/成长值/速度/成长时间/速度时间/开通时间/结束时间） -->
-    <el-dialog :title="'编辑贵宾：' + (userForm.nickname || '')" :visible.sync="userDlg" width="680px" :close-on-click-modal="false">
+    <!-- 特权会员编辑（复刻诺哈 user_edit：等级/成长值/速度/成长时间/速度时间/开通时间/结束时间） -->
+    <el-dialog :title="'编辑特权：' + (userForm.nickname || '')" :visible.sync="userDlg" width="680px" :close-on-click-modal="false">
       <div class="dlg-head">号码 <b>{{ userForm.id }}</b> · 昵称 <b>{{ userForm.nickname || '（未命名）' }}</b></div>
       <el-form label-width="96px">
         <div class="group-hd">蓝钻</div>
@@ -300,7 +299,7 @@
             <el-date-picker v-model="userForm.qq.end" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" style="width:200px" />
           </el-form-item>
         </div>
-        <div class="dlg-tip">等级为0且成长值0时表示取消该贵宾；成长速度0表示按方案默认（10/15点每天）。</div>
+        <div class="dlg-tip">等级为0且成长值0时表示取消该特权；成长速度0表示按方案默认（10/15点每天）。</div>
       </el-form>
       <div slot="footer">
         <el-button @click="userDlg = false">取 消</el-button>
@@ -309,7 +308,7 @@
     </el-dialog>
 
     <!-- 方案编辑（复刻诺哈 shop_edit） -->
-    <el-dialog :title="planForm.id ? '编辑销售：' + planForm.name : '新增销售'" :visible.sync="planDlg" width="560px" :close-on-click-modal="false">
+    <el-dialog :title="planForm.id ? '编辑套餐：' + planForm.name : '新增套餐'" :visible.sync="planDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="96px">
         <el-form-item label="类型">
           <el-radio-group v-model="planForm.type">
@@ -317,10 +316,10 @@
             <el-radio label="qq">超Q</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="销售标题"><el-input v-model.trim="planForm.name" maxlength="40" /></el-form-item>
-        <el-form-item label="销售几月"><el-input-number v-model="planForm.months" :min="1" :max="24" /> <span class="hint-inline">1月=30天，12=年费</span></el-form-item>
+        <el-form-item label="套餐标题"><el-input v-model.trim="planForm.name" maxlength="40" /></el-form-item>
+        <el-form-item label="销售周期"><el-input-number v-model="planForm.months" :min="1" :max="24" /> <span class="hint-inline">1月=30天，12=年费</span></el-form-item>
         <el-form-item label="销售币种"><el-radio-group v-model="planForm.money"><el-radio :label="1">G币</el-radio></el-radio-group></el-form-item>
-        <el-form-item label="销售价格"><el-input-number v-model="planForm.cost" :min="0" /> <span class="hint-inline">G币/月</span></el-form-item>
+        <el-form-item label="套餐价格"><el-input-number v-model="planForm.cost" :min="0" /> <span class="hint-inline">G币/月</span></el-form-item>
         <el-form-item label="成长速度"><el-input-number v-model="planForm.speed" :min="0" /> <span class="hint-inline">点/天</span></el-form-item>
         <el-form-item label="赠送经验"><el-input-number v-model="planForm.gain" :min="0" /> <span class="hint-inline">开通即得</span></el-form-item>
         <el-form-item label="每号限购"><el-input-number v-model="planForm.limit" :min="0" /> <span class="hint-inline">0=不限</span></el-form-item>
@@ -331,7 +330,7 @@
         <el-form-item label="结束时间">
           <el-date-picker v-model="planForm.etime" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="留空=长期" style="width:220px" />
         </el-form-item>
-        <el-form-item label="销售状态">
+        <el-form-item label="上架状态">
           <el-switch v-model="planForm.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" />
         </el-form-item>
       </el-form>
@@ -341,9 +340,9 @@
       </div>
     </el-dialog>
 
-    <!-- 取消贵宾确认 -->
-    <el-dialog title="取消贵宾" :visible.sync="closeDlg" width="360px" :close-on-click-modal="false">
-      <div class="dlg-head">确定取消 <b>{{ closeUser && closeUser.nickname }}</b> 的贵宾吗？</div>
+    <!-- 取消特权确认 -->
+    <el-dialog title="取消特权" :visible.sync="closeDlg" width="360px" :close-on-click-modal="false">
+      <div class="dlg-head">确定取消 <b>{{ closeUser && closeUser.nickname }}</b> 的特权吗？</div>
       <el-form label-width="90px">
         <el-form-item label="取消类型">
           <el-radio-group v-model="closeType">
@@ -380,13 +379,17 @@ export default {
       users: [], page: 1, pageSize: 10, total: 0, kw: '', userDlg: false,
       closeDlg: false, closeUser: null, closeType: 'blue',
       userForm: { id: 0, nickname: '', blue: { lv: 0, exp: 0, speed: 0, ptime: '', start: '', end: '' }, qq: { lv: 0, exp: 0, speed: 0, ptime: '', start: '', end: '' } },
-      // 贵宾销售
-      plans: [], planDlg: false,
+      // 特权套餐
+      plans: [], planPage: 1, planSize: 10, planDlg: false,
       planForm: { id: 0, type: 'blue', name: '', months: 1, money: 1, cost: 0, speed: 0, gain: 0, limit: 0, stock: 0, stime: '', etime: '', status: 1 }
     }
   },
   computed: {
-    maxLv () { return Array.from({ length: Math.max(9, this.levels.length + 1) }, (_, i) => i) }
+    maxLv () { return Array.from({ length: Math.max(9, this.levels.length + 1) }, (_, i) => i) },
+    pagedPlans () {
+      const s = this.planSize
+      return this.plans.slice((this.planPage - 1) * s, this.planPage * s)
+    }
   },
   mounted () { this.load() },
   methods: {
@@ -394,17 +397,25 @@ export default {
       this.loading = true
       this.loadStats()
       if (this.tab === 'levels') {
-        api.get('/admin/privileges/levels').then(r => { this.loading = false; if (r.code === 0) this.levels = r.data || [] })
+        api.get('/admin/privileges/levels').then(r => { this.loading = false; if (r.code === 0) this.levels = r.data || []; this.layout('levelsTable') })
         return
       }
       if (this.tab === 'users') {
         api.get('/admin/privileges/users', { params: { page: this.page, size: this.pageSize, kw: this.kw } }).then(r => {
           this.loading = false
           if (r.code === 0) { this.users = r.data.list; this.total = r.data.total }
+          this.layout('usersTable')
         })
         return
       }
-      api.get('/admin/privileges/plans').then(r => { this.loading = false; if (r.code === 0) this.plans = r.data || [] })
+      api.get('/admin/privileges/plans').then(r => { this.loading = false; if (r.code === 0) this.plans = r.data || []; this.layout('plansTable') })
+    },
+    // 数据渲染后重新计算表格列宽，避免 Element 表头/表体错位遮盖
+    layout (ref) {
+      this.$nextTick(() => {
+        const t = this.$refs[ref]
+        if (t && t.doLayout) t.doLayout()
+      })
     },
     refresh () { this.load() },
     loadStats () {
@@ -419,15 +430,18 @@ export default {
     markBroken (key) { this.$set(this.broken, key, true) },
     imgBroken (key) { return !!this.broken[key] },
     isOn (end) { return !!end && new Date(end).getTime() > Date.now() },
-    left (end) {
-      if (!end) return 0
-      return Math.max(0, Math.ceil((new Date(end).getTime() - Date.now()) / 86400000))
-    },
     short (t) {
       if (!t) return '—'
       const d = new Date(t)
       const p = v => (v < 10 ? '0' : '') + v
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+    },
+    md (t) {
+      if (!t) return '—'
+      const d = new Date(t)
+      if (isNaN(d.getTime())) return '—'
+      const p = v => (v < 10 ? '0' : '') + v
+      return p(d.getMonth() + 1) + '-' + p(d.getDate())
     },
     // ===== 等级 =====
     openLevel (row) {
@@ -445,7 +459,7 @@ export default {
       }
     },
     delLevel (row) {
-      this.$confirm('确定删除 Lv.' + row.id + ' 贵宾等级吗？已有会员等级不变。', '提示').then(() => {
+      this.$confirm('确定删除 Lv.' + row.id + ' 特权等级吗？已有会员等级不变。', '提示').then(() => {
         api.delete('/admin/privileges/levels/' + row.id).then(r => { if (r.code === 0) this.load() })
       }).catch(() => {})
     },
@@ -497,7 +511,7 @@ export default {
       }).catch(() => {})
     },
     cleanExpired () {
-      this.$confirm('确定清除所有已到期的贵宾会员吗？（复刻诺哈：到期即清空等级与成长值）', '提示').then(() => {
+      this.$confirm('确定清除所有已到期的特权会员吗？（复刻诺哈：到期即清空等级与成长值）', '提示').then(() => {
         api.post('/admin/privileges/expired-clean').then(r => { if (r.code === 0) { this.load() } })
       }).catch(() => {})
     },
@@ -509,7 +523,7 @@ export default {
       this.planDlg = true
     },
     savePlan () {
-      if (!this.planForm.name) { this.$message.warning('请填写销售标题'); return }
+      if (!this.planForm.name) { this.$message.warning('请填写套餐标题'); return }
       const body = {
         type: this.planForm.type, name: this.planForm.name,
         days: this.planForm.months * 30, money: this.planForm.money,
@@ -575,11 +589,17 @@ function ts (t) {
 /* ===== 说明行 ===== */
 .hint { font-size: 12px; color: #97a8be; margin: 2px 0 12px; line-height: 1.6; }
 
+/* ===== 表格通用：每行数据只占一行，不自动换行 ===== */
+/deep/ .el-table .cell { white-space: nowrap; }
+.plan-type { white-space: nowrap; }
+.plan-type.blue { color: #409eff; background: #ecf5ff; border-color: #d4e8fc; }
+.plan-type.qq { color: #e6a23c; background: #fdf6ec; border-color: #f7e3c0; }
+
 /* ===== 等级表 ===== */
 .lv-badge {
-  display: inline-block; min-width: 42px; padding: 3px 10px; border-radius: 12px;
+  display: inline-block; min-width: 34px; padding: 2px 7px; border-radius: 10px;
   background: linear-gradient(135deg, #409eff, #7367f0); color: #fff;
-  font-weight: 700; font-size: 13px; letter-spacing: .5px;
+  font-weight: 700; font-size: 12px; letter-spacing: .3px;
   box-shadow: 0 2px 8px rgba(64,158,255,.3);
 }
 .num { color: #303133; font-family: "DIN Alternate", "Segoe UI", sans-serif; }
@@ -588,27 +608,28 @@ function ts (t) {
 .icon-file { font-size: 12px; max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 图标徽章：源图多为 16px 小图，放进统一底色圆角框中，大小一致、不显毛边 */
 .priv-chip {
-  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid #ebeef5; background: #f5f7fa;
 }
-.priv-chip .priv-img { width: 24px; height: 24px; object-fit: contain; display: block; vertical-align: middle; margin-right: 0; }
+.priv-chip .priv-img { width: 19px; height: 19px; object-fit: contain; display: block; vertical-align: middle; margin-right: 0; }
 .chip-blue { background: #ecf5ff; border-color: #d4e8fc; }
 .chip-qq { background: #fdf6ec; border-color: #f7e3c0; }
-.chip-ico { font-size: 16px; }
+.chip-ico { font-size: 12px; }
 .chip-ico.blue { color: #409eff; }
 .chip-ico.qq { color: #e6a23c; }
 
 /* ===== 会员表 ===== */
-.priv-cell { display: flex; align-items: center; gap: 6px; }
-.priv-cell .txt-fade { font-size: 12px; }
-.priv-sub { font-size: 12px; color: #97a8be; margin-top: 2px; padding-left: 36px; }
-.lv-tag { font-weight: 700; font-size: 12px; padding: 1px 7px; border-radius: 3px; }
+.priv-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.priv-main { font-size: 12px; color: #909399; }
+.priv-main b { color: #303133; font-weight: 700; font-family: "DIN Alternate", "Segoe UI", sans-serif; }
+.sep { color: #c0c4cc; margin: 0 4px; }
+.lv-tag { font-weight: 700; font-size: 12px; padding: 1px 7px; border-radius: 3px; flex-shrink: 0; }
 .lv-tag.on { color: #409eff; border: 1px solid #b3d8ff; background: #ecf5ff; }
 .lv-tag.off { color: #909399; border: 1px solid #dcdfe6; background: #f4f4f5; }
-.st-tags { display: flex; flex-direction: column; gap: 3px; }
-.st-tags .st { width: fit-content; }
-.dt-line { font-size: 12px; color: #606266; line-height: 1.8; white-space: nowrap; }
+.st-line { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.st-line .el-tag { margin: 0; }
+.dt-line { font-size: 12px; color: #606266; line-height: 1.6; white-space: nowrap; }
 .dt-ico { font-size: 12px; margin-right: 3px; }
 .dt-ico.blue { color: #409eff; }
 .dt-ico.qq { color: #e6a23c; }
@@ -616,14 +637,14 @@ function ts (t) {
 /* ===== 销售表 ===== */
 .cost { color: #e6a23c; font-weight: 700; font-family: "DIN Alternate", "Segoe UI", sans-serif; }
 
-/* ===== 操作按钮组 ===== */
-.ops { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-width: 0; }
+/* ===== 操作按钮组（单行不换行，压缩内边距） ===== */
+.ops { display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
 .ops .el-button { margin-left: 0; }
+.ops .el-button--mini { padding: 4px 6px; }
 
-/* ===== 分页 ===== */
-.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.pager-info { font-size: 13px; color: #909399; }
-.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+/* ===== 分页（单行，不换行） ===== */
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+.pager-bar .el-pagination { white-space: nowrap; }
 .txt-fade { color: #909399; }
 
 /* ===== 弹窗 ===== */

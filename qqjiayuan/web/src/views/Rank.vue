@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- 面包屑 -->
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;综合排行榜</div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区</a>&gt;综合排行榜</div>
 
     <!-- 标题（诺哈 rank.asp：【综合排行】） -->
     <div class="name">【综合排行】</div>

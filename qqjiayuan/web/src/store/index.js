@@ -28,5 +28,16 @@ export default new Vuex.Store({
       localStorage.removeItem('jy_token')
       localStorage.removeItem('jy_user')
     }
+  },
+  actions: {
+    // 拉取未读家信数（top_nav 家信(N) = 私信未读，诺哈 wap_user_news.home）
+    refreshUnread ({ commit, state }) {
+      if (!state.token) return
+      const token = state.token
+      fetch('/api/messages/unread', { headers: { Authorization: 'Bearer ' + token } })
+        .then(r => r.json())
+        .then(d => { if (d && d.code === 0) commit('setUnread', (d.data && d.data.unread) || 0) })
+        .catch(() => {})
+    }
   }
 })

@@ -1,8 +1,8 @@
 <template>
   <div>
-    <!-- 面包屑 panav -->
+    <!-- 面包屑 panav（诺哈：社区 > 分类名） -->
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}<br>
+      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name }}<br>
     </div>
 
     <!-- 简介 -->
@@ -41,7 +41,7 @@
 
     <!-- 面包屑重复 -->
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">首页</a>&gt;<a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;{{ board.name }}<br>
+      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name }}<br>
     </div>
   </div>
 </template>

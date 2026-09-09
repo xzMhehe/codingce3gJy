@@ -444,6 +444,44 @@ func (h *MessageHandler) Outbox(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
+// 清空信箱（参考诺哈 message_del.asp：box=inbox 收件箱 / outbox 发件箱 / all 全部）
+func (h *MessageHandler) Clear(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Box string `json:"box"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Box != "inbox" && req.Box != "outbox" && req.Box != "all") {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	tx := h.DB.Model(&model.PrivateMessage{})
+	switch req.Box {
+	case "inbox":
+		tx = tx.Where("receiver_id = ?", uid)
+	case "outbox":
+		tx = tx.Where("sender_id = ?", uid)
+	default:
+		tx = tx.Where("sender_id = ? OR receiver_id = ?", uid, uid)
+	}
+	tx.Delete(&model.PrivateMessage{})
+	resp.OK(c, nil)
+}
+
+// 私信未读数（参考诺哈 wap_user_news.home = wap_message 未读数，家信提醒）
+func (h *MessageHandler) Unread(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var n int64
+	h.DB.Model(&model.PrivateMessage{}).Where("receiver_id = ? AND is_read = 0", uid).Count(&n)
+	resp.OK(c, gin.H{"unread": n})
+}
+
+// 全部私信标记已读
+func (h *MessageHandler) ReadAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.DB.Model(&model.PrivateMessage{}).Where("receiver_id = ? AND is_read = 0", uid).Update("is_read", 1)
+	resp.OK(c, nil)
+}
+
 type sendMsgReq struct {
 	To      uint   `json:"to" binding:"required"`
 	Content string `json:"content" binding:"required,min=1,max=500"`

@@ -27,14 +27,20 @@ func goodCategories(list []model.Good) []string {
 	return out
 }
 
-// 公开：商城列表（?cat=分类 筛选；登录时带G币/友友券余额）
+// 公开：商城列表（?cat=分类 &page=页码 &size=每页条数；登录时带G币/友友券余额）
 func (h *GoodHandler) List(c *gin.Context) {
-	q := h.DB.Where("status = 1")
+	page, offset, size := pageOf(c, 12)
+	q := h.DB.Model(&model.Good{}).Where("status = 1")
 	if cat := c.Query("cat"); cat != "" && cat != "全部" {
 		q = q.Where("category = ?", cat)
 	}
+	var total int64
+	q.Count(&total)
 	var list []model.Good
-	q.Order("sort ASC, id ASC").Find(&list)
+	q.Order("sort ASC, id ASC").Offset(offset).Limit(size).Find(&list)
+	// 分类从全部在售商品聚合（不受分页影响）
+	var all []model.Good
+	h.DB.Model(&model.Good{}).Where("status = 1").Order("sort ASC, id ASC").Find(&all)
 	uid := middleware.GetUID(c)
 	coins, youquan := -1, -1
 	if uid > 0 {
@@ -43,7 +49,10 @@ func (h *GoodHandler) List(c *gin.Context) {
 			coins, youquan = u.Coins, u.YouQuan
 		}
 	}
-	resp.OK(c, gin.H{"list": list, "categories": goodCategories(list), "coins": coins, "youquan": youquan})
+	resp.OK(c, gin.H{
+		"list": list, "total": total, "page": page, "size": size,
+		"categories": goodCategories(all), "coins": coins, "youquan": youquan,
+	})
 }
 
 // 购买道具（扣G币或友友券，数量可叠加进仓库）

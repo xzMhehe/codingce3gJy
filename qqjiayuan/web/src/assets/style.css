@@ -58,9 +58,10 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 /* 发帖表情按钮 */
 .face-btn { margin: 2px 4px 2px 0; padding: 1px 4px; background: #fff; border: 1px solid #2e9cd3; cursor: pointer; }
 
-/* 主导航项间距（Vue 模板会吞掉标签间空白，这里补回呼吸感） */
-.navbar a { margin-right: 8px; }
+/* 主导航（复刻诺哈 crumb-nav-large：蓝条白字，当前项仅变 #98d2ff，间距统一不跳动） */
+.navbar a { color: #fff; margin-right: 8px; text-decoration: none; }
 .navbar a.Rt { margin-right: 0; margin-left: 8px; }
+.navbar .current { color: #98d2ff; margin-right: 8px; }
 
 /* 聊天室/私信楼层 */
 .floor-item { padding: 4px 2px; border-bottom: 1px solid #E3E6EB; }
