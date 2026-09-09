@@ -53,6 +53,7 @@ const routes = [
   { path: '/youquan', name: 'youquan', component: () => import('../views/YouQuan.vue'), meta: { auth: true } },
   { path: '/home-level', name: 'homelevel', component: () => import('../views/HomeLevel.vue'), meta: { auth: true } },
   { path: '/achieve', name: 'achieve', component: () => import('../views/Achieve.vue'), meta: { auth: true } },
+  { path: '/marriage', name: 'marriage', component: () => import('../views/Marriage.vue'), meta: { auth: true } },
   { path: '/space/:userId', name: 'space', component: () => import('../views/Space.vue') },
   { path: '/space/article/:id', name: 'blogArticle', component: () => import('../views/BlogArticle.vue') },
   { path: '/contacts', name: 'contacts', component: () => import('../views/Contacts.vue'), meta: { auth: true } },

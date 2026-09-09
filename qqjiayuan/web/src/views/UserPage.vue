@@ -43,11 +43,13 @@
     <div class="module-content">
       <template v-if="u.partner_name">
         伴侣:<a href="javascript:;" @click="$router.push('/user/'+u.partner_id)"><font :color="u.color || '#004299'">{{ u.partner_name }}</font></a>
-        <template v-if="u.baby_name"><br>宝宝:{{ u.baby_name }}</template><br>
+        <template v-if="u.baby_name"><br>宝宝:{{ u.baby_name }}</template>
+        <template v-if="!isMine"> <a href="javascript:;" @click="$router.push('/marriage')">婚恋中心</a></template><br>
       </template>
       <template v-else>
-        单身贵族<template v-if="!isMine"> <a href="javascript:;" @click="tip('求婚功能')">求婚</a></template><br>
+        单身贵族<template v-if="!isMine"> <a href="javascript:;" @click="goMarriage">求婚</a></template><template v-if="isMine"> <a href="javascript:;" @click="$router.push('/marriage')">去求婚</a></template><br>
       </template>
+      <span class="txt-fade" v-if="!isMine">（求婚需 999 G币，到「婚恋中心」操作）</span>
     </div>
 
     <!-- ===== 贵族身份 ===== -->
@@ -192,6 +194,10 @@ export default {
     goHisHome () {
       if (this.isMine) { this.$router.push('/home'); return }
       this.$router.push('/space/' + this.u.id)
+    },
+    goMarriage () {
+      if (!this.isLogin) { this.$router.push('/login?redirect=' + encodeURIComponent(this.$route.fullPath)); return }
+      this.$router.push('/marriage')
     },
     addFriend () {
       if (!this.isLogin) { this.$router.push('/login?redirect=' + encodeURIComponent(this.$route.fullPath)); return }

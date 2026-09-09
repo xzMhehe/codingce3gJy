@@ -46,3 +46,16 @@ type WalletLog struct {
 }
 
 func (WalletLog) TableName() string { return "wallet_logs" }
+
+// 婚恋：婚姻证书（对齐诺哈 wap_marriage_marry：aid 求婚方 / bid 被求婚方 / status 1求婚中 0已婚）
+type Marriage struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	Aid       uint       `gorm:"index" json:"aid"`         // 求婚方
+	Bid       uint       `gorm:"index" json:"bid"`         // 被求婚方
+	Status    int        `gorm:"default:1" json:"status"`  // 1求婚中 0已婚
+	Message   string     `gorm:"type:varchar(200)" json:"message"` // 表白语
+	CreatedAt time.Time  `json:"created_at"`
+	EndTime   *time.Time `json:"end_time"` // 结婚时间
+}
+
+func (Marriage) TableName() string { return "marriages" }

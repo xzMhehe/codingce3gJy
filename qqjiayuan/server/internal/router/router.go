@@ -25,6 +25,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	plazaH := &handler.PlazaHandler{DB: db}
 	signH := &handler.SignHandler{DB: db}
 	friendH := &handler.FriendHandler{DB: db}
+	marryH := &handler.MarriageHandler{DB: db}
 	blackH := &handler.BlackHandler{DB: db}
 	fnewsH := &handler.FriendNewsHandler{DB: db}
 	msgH := &handler.MessageHandler{DB: db}
@@ -117,6 +118,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
 		api.GET("/space/:userId/visitors", spaceH.VisitorList)
 		api.GET("/space/:userId/friends", spaceH.SpaceFriends)
+		api.GET("/marriage/list", marryH.List)
 		api.GET("/space/article/:id", spaceH.ArticleDetail)
 		api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
 		api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
@@ -250,6 +252,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/chat", chatH.Send)
 			authed.GET("/notifications", notifyH.List)
 			authed.POST("/notifications/read", notifyH.ReadAll)
+			// 婚恋（对齐诺哈 bbs/marriage）
+			authed.GET("/marriage/status", marryH.Status)
+			authed.POST("/marriage/propose", marryH.Propose)
+			authed.POST("/marriage/:id/handle", marryH.Handle)
+			authed.POST("/marriage/divorce", marryH.Divorce)
 
 			// 空间认证接口
 			authed.POST("/space", spaceH.OpenSpace)
