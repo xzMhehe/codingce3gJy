@@ -126,12 +126,28 @@ func (h *ThreadHandler) Detail(c *gin.Context) {
 	var attachments []model.ThreadAttachment
 	h.DB.Where("thread_id = ?", th.ID).Order("id ASC").Find(&attachments)
 
+	// 最近 3 条回帖（参考诺哈 topic.asp 回贴列表只列最后 3 楼）
+	var recent []model.Reply
+	h.DB.Preload("User").Preload("User.Badges").Where("thread_id = ? AND status = 1", th.ID).
+		Order("floor DESC").Limit(3).Find(&recent)
+
+	// 楼主或版主可置顶回复（参考诺哈 ReplyApexRight）
+	canSticky := false
+	if uid != 0 {
+		if th.UserID == uid {
+			canSticky = true
+		} else if th.Board != nil {
+			canSticky = h.isModeratorOfBoard(h.DB, *th.Board, uid)
+		}
+	}
+
 	resp.OK(c, gin.H{"thread": th, "replies": replies, "total": total, "page": page, "size": 10,
 		"like_count": th.LikeCount, "dislike_count": th.DislikeCount,
 		"gift_total": th.GiftTotal, "gift_count": giftCount, "flower_count": th.FlowerCount,
 		"flower_people": flowerPeople, "share_count": th.ShareCount,
 		"flowers": flowers, "gifts": gifts,
-		"sticky_reply": sticky, "poll": poll, "poll_voted": pollVoted, "poll_total": pollTotal,
+		"sticky_reply": sticky, "can_sticky": canSticky, "recent_replies": recent,
+		"poll": poll, "poll_voted": pollVoted, "poll_total": pollTotal,
 		"my_options": myOptions, "reward": reward, "floors": floors,
 		"attachments": attachments, "audit_status": th.AuditStatus})
 }
@@ -338,15 +354,16 @@ func (h *ThreadHandler) Reply(c *gin.Context) {
 	resp.OK(c, gin.H{"id": reply.ID, "floor": reply.Floor})
 }
 
-// 置顶回复（顶贴）：一贴至多一条
+// 置顶回复（顶贴，参考诺哈 wap_topic_reply_apex）：一贴至多一条，可置顶某楼或自定义内容
 func (h *ThreadHandler) StickyReply(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	uid := middleware.GetUID(c)
 	var req struct {
-		Content string `json:"content" binding:"required,min=1,max=500"`
+		ReplyID uint   `json:"reply_id"`
+		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.ParamError(c, "置顶回复内容不能为空")
+		resp.ParamError(c, "参数错误")
 		return
 	}
 	var th model.Thread
@@ -356,14 +373,77 @@ func (h *ThreadHandler) StickyReply(c *gin.Context) {
 	}
 	var board model.Board
 	h.DB.First(&board, th.BoardID)
-	// 仅作者或版主可顶
+	// 仅楼主或版主可顶（参考诺哈 ReplyApexRight）
 	if th.UserID != uid && !h.isModeratorOfBoard(h.DB, board, uid) {
 		resp.Forbidden(c, "只有楼主或版主才能置顶回复")
 		return
 	}
+	content := req.Content
+	stickyUID := uid
+	if req.ReplyID > 0 {
+		var r model.Reply
+		if err := h.DB.First(&r, req.ReplyID).Error; err != nil || r.ThreadID != th.ID {
+			resp.NotFound(c, "回复不存在")
+			return
+		}
+		content = r.Content
+		stickyUID = r.UserID
+	}
+	if content == "" {
+		resp.ParamError(c, "置顶回复内容不能为空")
+		return
+	}
 	h.DB.Where("thread_id = ?", th.ID).Delete(&model.StickyReply{})
-	h.DB.Create(&model.StickyReply{ThreadID: th.ID, UserID: uid, Content: req.Content})
+	h.DB.Create(&model.StickyReply{ThreadID: th.ID, UserID: stickyUID, Content: content})
 	resp.OK(c, nil)
+}
+
+// 撤销置顶回复（撤顶，参考诺哈 reply_operate）
+func (h *ThreadHandler) UnstickyReply(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	uid := middleware.GetUID(c)
+	var th model.Thread
+	if err := h.DB.First(&th, id).Error; err != nil || th.Status == 0 {
+		resp.NotFound(c, "帖子不存在")
+		return
+	}
+	var board model.Board
+	h.DB.First(&board, th.BoardID)
+	if th.UserID != uid && !h.isModeratorOfBoard(h.DB, board, uid) {
+		resp.Forbidden(c, "只有楼主或版主才能撤顶")
+		return
+	}
+	h.DB.Where("thread_id = ?", th.ID).Delete(&model.StickyReply{})
+	resp.OK(c, nil)
+}
+
+// 回帖列表（倒序分页，参考诺哈 reply_list.asp：最新回复在前）
+func (h *ThreadHandler) Replies(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	page, _, _ := pageOf(c, 10)
+	var th model.Thread
+	if err := h.DB.First(&th, id).Error; err != nil || th.Status == 0 {
+		resp.NotFound(c, "帖子不存在或已被删除")
+		return
+	}
+	var total int64
+	h.DB.Model(&model.Reply{}).Where("thread_id = ? AND status = 1", th.ID).Count(&total)
+	if maxPage := int(total+9) / 10; maxPage < 1 {
+		page = 1
+	} else if page > maxPage {
+		page = maxPage
+	}
+	var replies []model.Reply
+	h.DB.Preload("User").Preload("User.Badges").Where("thread_id = ? AND status = 1", th.ID).
+		Order("floor DESC").Offset((page-1)*10).Limit(10).Find(&replies)
+	var sticky *model.StickyReply
+	h.DB.Preload("User").Where("thread_id = ?", th.ID).First(&sticky)
+	if sticky != nil && sticky.ID == 0 {
+		sticky = nil
+	}
+	resp.OK(c, gin.H{"thread_id": th.ID, "thread_title": th.Title, "board_id": th.BoardID,
+		"is_lock": th.IsLock, "replies": replies, "total": total, "page": page, "size": 10,
+		"sticky_reply": sticky})
 }
 
 // 编辑帖子：作者本人，或持有 thread:manage 权限的管理员，或该版版主

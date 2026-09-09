@@ -5,6 +5,8 @@
       <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname || '我' }}</font></a> {{ u.level || 1 }}级</b>
       <img :src="homeIcon(u)" alt="等级" class="bicon uic" @error="iconErr($event)">
       <img v-if="u.noble > 0" :src="$pic('noble_' + u.noble + '_1.gif')" alt="贵族" class="bicon uic" @error="hideErr($event)">
+      <img v-if="u.blue_lv > 0" :src="$pic('noble_2_' + u.blue_lv + '.gif')" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" class="bicon uic" @error="hideErr($event)">
+      <img v-if="u.qq_lv > 0" :src="$pic('noble_1_' + u.qq_lv + '.gif')" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" class="bicon uic" @error="hideErr($event)">
       <img src="/static/picture/chuping.jpg" alt="身份" class="bicon uic">
     </div>
 

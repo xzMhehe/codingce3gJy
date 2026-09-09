@@ -16,6 +16,20 @@ import (
 
 // Run 建表 + 幂等初始化数据
 func Run(db *gorm.DB, staticDir string) {
+	// user_badges 旧结构兜底：老表为 (user_id,badge_id) 复合主键且无自增 id，
+	// AutoMigrate 直接加 id 主键会报 Multiple primary key defined，先升级（幂等）
+	if db.Migrator().HasTable("user_badges") && !db.Migrator().HasColumn("user_badges", "id") {
+		db.Exec(`ALTER TABLE user_badges
+			DROP PRIMARY KEY,
+			ADD COLUMN id bigint unsigned NOT NULL AUTO_INCREMENT,
+			ADD PRIMARY KEY (id),
+			ADD COLUMN sort int DEFAULT 0,
+			ADD COLUMN granted_at datetime NULL,
+			ADD COLUMN expire_at datetime NULL,
+			ADD UNIQUE KEY uk_ub (user_id, badge_id)`)
+		db.Exec("UPDATE user_badges SET granted_at = NOW() WHERE granted_at IS NULL")
+	}
+
 	err := db.AutoMigrate(
 		&model.User{}, &model.Role{}, &model.Permission{},
 		&model.Board{}, &model.Thread{}, &model.Reply{},

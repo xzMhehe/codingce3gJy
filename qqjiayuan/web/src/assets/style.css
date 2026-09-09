@@ -101,3 +101,9 @@ table.grid th { background: #E3EEF8; }
 .empty { padding: 12px 5px; color: #999; text-align: center; }
 .mt4 { margin-top: 4px; }
 img.bicon { vertical-align: middle; margin-right: 1px; }
+
+/* 诺哈 BBS 布局补充：分页条（ppage）+ 回帖列表斑马纹（row01/row02） */
+.ppage { padding-left: 2px; border: 1px solid #a5cae4; background: #f0f7fc; }
+.ppage a { color: #0051A4; }
+.list .row01 { border-bottom: 1px solid #F2F2F2; background: #FCFCFC; }
+.list .row02 { border-bottom: 1px solid #F2F2F2; background: #E3EEF8; }

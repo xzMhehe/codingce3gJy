@@ -1,25 +1,39 @@
 <template>
   <div>
+    <!-- 面包屑 -->
     <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;综合排行榜</div>
-    <div class="note"></div>
-    <div class="module-title">
-      <a href="javascript:;" @click="$router.push('/box')">用户中心</a>|<a href="javascript:;" @click="$router.push('/security')">安全中心</a>|<a href="javascript:;" @click="$router.push('/wallet')">我的钱包</a>|家园排行<br>
+
+    <!-- 标题（诺哈 rank.asp：【综合排行】） -->
+    <div class="name">【综合排行】</div>
+
+    <!-- 选项卡（诺哈：按：评分.收藏.阅读.评论，当前项纯文本，其余链接） -->
+    <div class="module-content">
+      按：
+      <template v-for="(t, i) in tabs">
+        <template v-if="i > 0">.</template>
+        <a v-if="type !== t.key" :key="t.key" href="javascript:;" @click="switchTab(t.key)">{{ t.name }}</a>
+        <span v-else :key="t.key">{{ t.name }}</span>
+      </template>
+      <br>
     </div>
 
-    <div class="tab-nav">
-      <a v-for="t in tabs" :key="t.key" :class="['tab-btn', { active: type === t.key }]" href="javascript:;" @click="switchTab(t.key)">{{ t.name }}</a>
-    </div>
-
-    <div class="tab-content">
-      <div v-for="(r, i) in rows" :key="r.id" class="rank-item" :class="'rk' + Math.min(i + 1, 3)">
-        {{ i + 1 }}.<a href="javascript:;" @click="$router.push('/user/' + r.id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a><span v-if="r.unit" class="rk-val">({{ r.value }}{{ r.unit }})</span>
+    <!-- 排行列表（诺哈：N.昵称 编号行） -->
+    <div class="list">
+      <div class="row" v-for="(r, i) in rows" :key="r.id">
+        <span class="no">{{ i + 1 }}.</span>
+        <a href="javascript:;" @click="$router.push('/user/' + r.id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a>({{ r.value }}{{ r.unit }})<br>
       </div>
-      <div v-if="!rows.length" class="rank-item"><span class="txt-fade">暂无排行数据</span></div>
-      <div class="my-rank">我的排名：<b>{{ myRank }}</b>名</div>
+      <div v-if="!rows.length" class="row"><span class="txt-fade">暂无记录！</span><br></div>
     </div>
 
+    <!-- 我的排名 -->
+    <div class="item">
+      我的排名：<b>{{ myRank }}</b>名<br>
+    </div>
+
+    <!-- 页脚导航 -->
     <div class="module-content" style="margin-top:6px">
-      <a href="javascript:;" @click="$router.push('/home')">家园</a>|<a href="javascript:;" @click="$router.push('/box')">用户中心</a><br>
+      <a href="javascript:;" @click="$router.push('/home')">家园</a>.<a href="javascript:;" @click="$router.push('/box')">用户中心</a>.<a href="javascript:;" @click="$router.push('/security')">安全中心</a>.<a href="javascript:;" @click="$router.push('/wallet')">我的钱包</a><br>
     </div>
   </div>
 </template>
@@ -62,14 +76,6 @@ export default {
 </script>
 
 <style scoped>
-.tab-nav { padding: 5px; background: #f0f0f0; overflow-x: auto; white-space: nowrap; }
-.tab-btn { display: inline-block; padding: 5px 10px; margin: 2px; border: 1px solid #ccc; background: #fff; text-decoration: none; font-size: 12px; border-radius: 3px; }
-.tab-btn.active { background: #007bff; color: #fff; border-color: #007bff; }
-.tab-content { padding: 10px 5px; }
-.rank-item { padding: 5px 0; border-bottom: 1px solid #eee; }
-.rank-item.rk1 { color: #ff6600; font-weight: bold; }
-.rank-item.rk2 { color: #888; }
-.rank-item.rk3 { color: #cd7f32; }
-.rk-val { color: #999; }
-.my-rank { padding: 8px; background: #e7f3ff; margin-top: 10px; border-radius: 5px; font-size: 12px; }
+/* 排行序号与昵称间距（同「最新帖子」） */
+.list .row .no { margin-right: 4px; color: #999; }
 </style>

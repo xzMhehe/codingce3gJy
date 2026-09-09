@@ -76,6 +76,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/boards/:id/threads", boardH.Threads)
 		api.GET("/threads/hot", threadH.Hot)
 		api.GET("/threads/:id", optAuth, threadH.Detail)
+		api.GET("/threads/:id/replies", optAuth, threadH.Replies)
 		api.GET("/users/:id", userH.Profile)
 		api.GET("/badges", badgeH.List)
 		api.GET("/badge-presets", badgeH.Presets)
@@ -165,6 +166,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.DELETE("/threads/:id", threadH.DeleteThread)
 			authed.DELETE("/replies/:id", threadH.DeleteReply)
 			authed.POST("/threads/:id/sticky-reply", threadH.StickyReply)
+			authed.DELETE("/threads/:id/sticky-reply", threadH.UnstickyReply)
 			authed.POST("/threads/:id/poll-vote", threadH.VotePoll)
 			authed.POST("/threads/:id/manage", threadH.Manage)
 			authed.POST("/threads/:id/audit", threadH.Audit)
@@ -393,14 +395,21 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/plaza-sections", perm(db, "admin:access"), plazaH.AdminSections)
 				admin.PUT("/plaza-sections/:id", perm(db, "admin:access"), plazaH.AdminSectionUpdate)
 
-				// 特权管理（蓝钻/超Q）
+				// 特权管理（蓝钻/超Q，复刻诺哈 vip：等级配置/贵宾会员/贵宾销售）
+				admin.GET("/privileges/stats", perm(db, "admin:access"), nobleH.AdminStats)
+				admin.GET("/privileges/levels", perm(db, "admin:access"), nobleH.AdminLevels)
+				admin.POST("/privileges/levels", perm(db, "admin:access"), nobleH.AdminLevelCreate)
+				admin.PUT("/privileges/levels/:id", perm(db, "admin:access"), nobleH.AdminLevelUpdate)
+				admin.DELETE("/privileges/levels/:id", perm(db, "admin:access"), nobleH.AdminLevelDelete)
 				admin.GET("/privileges/plans", perm(db, "admin:access"), nobleH.AdminPlans)
 				admin.POST("/privileges/plans", perm(db, "admin:access"), nobleH.AdminPlanCreate)
 				admin.PUT("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanUpdate)
 				admin.DELETE("/privileges/plans/:id", perm(db, "admin:access"), nobleH.AdminPlanDelete)
 				admin.GET("/privileges/users", perm(db, "admin:access"), nobleH.AdminUsers)
-				admin.PUT("/privileges/users/:id", perm(db, "admin:access"), nobleH.AdminUserUpdate)   
+				admin.PUT("/privileges/users/:id", perm(db, "admin:access"), nobleH.AdminUserUpdate)
 				admin.POST("/privileges/users/:id/open", perm(db, "admin:access"), nobleH.AdminUserOpen)
+				admin.POST("/privileges/users/:id/close", perm(db, "admin:access"), nobleH.AdminUserClose)
+				admin.POST("/privileges/expired-clean", perm(db, "admin:access"), nobleH.AdminExpiredClean)
 				admin.POST("/privileges/batch", perm(db, "admin:access"), nobleH.AdminBatch)
 
 				// 道具商城管理

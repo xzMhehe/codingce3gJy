@@ -115,12 +115,44 @@ func (h *UserHandler) Profile(c *gin.Context) {
 	var ct model.UserContact
 	h.DB.Where("user_id = ?", user.ID).First(&ct)
 
+	// 贵族身份（复刻诺哈 my_vip.asp：图标/等级/成长值/成长速度/开通时间/到期时间）
+	var levels []model.NobleLevel
+	h.DB.Order("id ASC").Find(&levels)
+	now := time.Now()
+	blueLv := model.NobleLvOf(levels, user.BlueExp)
+	qqLv := model.NobleLvOf(levels, user.QqExp)
+	blueSpeed := user.BlueSpeed
+	if blueSpeed <= 0 {
+		blueSpeed = logSpeedOf(h.DB, user.ID, "blue")
+	}
+	qqSpeed := user.QqSpeed
+	if qqSpeed <= 0 {
+		qqSpeed = logSpeedOf(h.DB, user.ID, "qq")
+	}
+	nobleInfo := gin.H{
+		"blue": gin.H{
+			"lv": blueLv, "exp": user.BlueExp, "speed": blueSpeed,
+			"active":  user.BlueEnd != nil && user.BlueEnd.After(now),
+			"icon":    iconOrEmpty(levels, blueLv, "blue"),
+			"start":   user.BlueStart, "end": user.BlueEnd,
+			"days_left": nobleDaysLeft(user.BlueEnd),
+		},
+		"qq": gin.H{
+			"lv": qqLv, "exp": user.QqExp, "speed": qqSpeed,
+			"active":  user.QqEnd != nil && user.QqEnd.After(now),
+			"icon":    iconOrEmpty(levels, qqLv, "qq"),
+			"start":   user.QqStart, "end": user.QqEnd,
+			"days_left": nobleDaysLeft(user.QqEnd),
+		},
+	}
+
 	resp.OK(c, gin.H{
 		"id": user.ID, "username": user.Username, "nickname": user.Nickname,
 		"gender": user.Gender, "signature": user.Signature, "color": user.Color,
 		"avatar": user.Avatar, "avatar_base64": user.AvatarBase64, "level": user.Level, "exp": user.Exp, "coins": user.Coins,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"noble": user.Noble, "qq_lv": user.QqLv, "blue_lv": user.BlueLv,
+		"noble_info": nobleInfo,
 		"partner_id": user.PartnerID, "partner_name": partnerName,
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,
 		"priv_id": user.PrivID, "priv": user.Priv,
@@ -145,6 +177,37 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"thread_count": threadCount, "reply_count": replyCount, "sign_days": signDays,
 		"badges": badges, "roles": roles, "duties": duties, "threads": threads,
 	})
+}
+
+// logSpeedOf 按最近一次开通方案日志取成长速度（点/天），无则默认 10
+func logSpeedOf(db *gorm.DB, uid uint, typ string) int {
+	var log model.WalletLog
+	if err := db.Where("user_id = ? AND kind = ?", uid, typ+"_open").Order("id DESC").First(&log).Error; err == nil {
+		if speed, e := strconv.Atoi(log.Remark); e == nil && speed > 0 {
+			return speed
+		}
+	}
+	return 10
+}
+
+// iconOrEmpty 取贵宾图标：0 级返回空（未开通不显示图标）
+func iconOrEmpty(levels []model.NobleLevel, lv int, typ string) string {
+	if lv <= 0 {
+		return ""
+	}
+	return model.NobleIconOf(levels, lv, typ)
+}
+
+// nobleDaysLeft 剩余天数（已过期返回 0）
+func nobleDaysLeft(end *time.Time) int {
+	if end == nil {
+		return 0
+	}
+	d := int(end.Sub(time.Now()).Hours()/24) + 1
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 // addressOut 通信地址输出：详细地址/邮编仅本人可见

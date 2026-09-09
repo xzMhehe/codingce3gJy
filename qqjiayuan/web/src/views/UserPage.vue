@@ -6,7 +6,10 @@
     <div class="module-title">【会员信息】</div>
     <div class="module-content">
       <img :src="avatarImg" style="width:96px;height:96px;object-fit:contain;border-radius:4px" alt="头像"><br>
-      社区 I D :{{ u.username || u.id }}<span :style="{ color: u.online ? '#1a9e1a' : '#999' }">({{ u.online ? '在线' : '离线' }})</span><br>
+      社区 I D :{{ u.username || u.id }}<span :style="{ color: u.online ? '#1a9e1a' : '#999' }">({{ u.online ? '在线' : '离线' }})</span>
+      <template v-if="u.blue_lv > 0"><img class="id-vip" :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" @error="hideErr"></template>
+      <template v-if="u.qq_lv > 0"><img class="id-vip" :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr"></template>
+      <br>
       家园昵称:<a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname }}</font></a>
       <template v-if="!isMine">
         (<a href="javascript:;" @click="addFriend">{{ friendState === 'friend' ? '删好友' : (friendState === 'applied' ? '申请中' : '加为好友') }}</a>)
@@ -52,21 +55,27 @@
       <span class="txt-fade" v-if="!isMine">（求婚需 999 G币，到「婚恋中心」操作）</span>
     </div>
 
-    <!-- ===== 贵族身份 ===== -->
+    <!-- ===== 贵族身份（复刻诺哈 my_vip.asp：简单文本行 + 内联图标） ===== -->
     <div class="module-title">贵族身份</div>
     <div class="module-content">
-      <template v-if="u.blue_lv > 0 || u.qq_lv > 0">
-        <span v-if="u.blue_lv > 0" class="noble-chip">
-          <img :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" @error="hideErr">蓝钻<span class="noble-lv">Lv.{{ u.blue_lv }}</span>
-        </span>
-        <span v-if="u.qq_lv > 0" class="noble-chip noble-qq">
-          <img :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr">超Q<span class="noble-lv">Lv.{{ u.qq_lv }}</span>
-        </span>
-        <template v-if="extraPriv"><br><img class="noble-priv" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr"></template>
+      <template v-if="nb.blue || nb.qq">
+        <div class="noble-line" v-if="nb.blue">
+          <img class="noble-ico" :src="nb.blue.icon ? '/static/picture/' + nb.blue.icon : ''" alt="蓝钻" @error="hideErr">
+          <b>蓝钻</b> <em>Lv.{{ nb.blue.lv }}（成长值 {{ nb.blue.exp }}，{{ nb.blue.active ? '剩 ' + nb.blue.days_left + ' 天' : '已到期' }}）</em>
+        </div>
+        <div class="noble-line" v-if="nb.qq">
+          <img class="noble-ico" :src="nb.qq.icon ? '/static/picture/' + nb.qq.icon : ''" alt="超Q" @error="hideErr">
+          <b>超Q</b> <em>Lv.{{ nb.qq.lv }}（成长值 {{ nb.qq.exp }}，{{ nb.qq.active ? '剩 ' + nb.qq.days_left + ' 天' : '已到期' }}）</em>
+        </div>
+        <div class="noble-line" v-if="extraPriv">
+          <img class="noble-ico" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr">
+          {{ extraPriv.name }}
+        </div>
+        <div class="txt-fade" v-if="isMine"><a href="javascript:;" @click="$router.push('/noble')">贵族中心</a>：开通 / 续费 / 提速</div>
       </template>
       <template v-else>
         <span class="txt-fade">未开通贵族身份，<a href="javascript:;" @click="$router.push('/noble')">去开通</a></span>
-        <template v-if="extraPriv"><br><img class="noble-priv" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr"></template><br>
+        <template v-if="extraPriv"><div class="noble-line"><img class="noble-ico" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr"> {{ extraPriv.name }}</div></template>
       </template>
     </div>
 
@@ -120,11 +129,13 @@
       </div>
     </template>
 
-    <!-- ===== 最新帖子 ===== -->
+    <!-- ===== 最新帖子（复刻诺哈 home/topic.asp：编号列表 N.标题(X回/Y阅)） ===== -->
     <div class="module-title">{{ taWord }}的最新帖子</div>
-    <ul class="dtuser" v-if="threads.length">
-      <li v-for="t in threads" :key="t.id"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a> <em>（{{ t.board ? t.board.name : '' }} · {{ t.view_count }}阅/{{ t.reply_count }}回）</em></li>
-    </ul>
+    <div class="list" v-if="threads.length">
+      <div class="row" v-for="(t, i) in threads" :key="t.id">
+        <span class="no">{{ i+1 }}.</span><template v-if="t.is_head">[头条]</template><template v-if="t.is_top">【顶】</template><template v-if="t.is_fine"><img src="/static/image/fine.gif" alt="精"></template><template v-if="t.is_notice">[公告]</template><template v-if="t.type===1">[奖励]</template><template v-if="t.type===2">[踩楼]</template><template v-if="t.type===3">[投票]</template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>(<a href="javascript:;" @click="$router.push('/replies/'+t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
+      </div>
+    </div>
     <div class="module-content" v-else><span class="empty">{{ taWord }}还没有发过帖子</span></div>
 
     <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;用户信息<br></div>
@@ -190,6 +201,11 @@ export default {
       const n = p.name || ''
       if ((this.u.blue_lv > 0 || this.u.qq_lv > 0) && (n.indexOf('蓝钻') === 0 || n.indexOf('超Q') === 0)) return null
       return p
+    },
+    // 贵族身份卡片数据（复刻诺哈 my_vip.asp：等级/成长值/速度/开通/到期）
+    nb () {
+      const ni = this.u.noble_info || {}
+      return { blue: ni.blue || null, qq: ni.qq || null }
     }
   },
   watch: { '$route': 'load' },
@@ -256,9 +272,12 @@ export default {
 </script>
 
 <style scoped>
-.noble-chip { display:inline-block; border:1px solid #9FC6EC; background:#F0F8FF; border-radius:3px; padding:2px 8px; margin:2px 6px 2px 0; line-height:18px; }
-.noble-chip img { height:16px; vertical-align:-3px; margin-right:2px; }
-.noble-chip.noble-qq { border-color:#F4B97F; background:#FFF8EE; }
-.noble-lv { color:#1a9e1a; font-weight:bold; margin-left:4px; }
-.noble-priv { height:14px; vertical-align:-2px; }
+/* 号码行 VIP 图标（诺哈 profile.asp：VIP 徽标紧跟号码后） */
+.id-vip { height:16px; vertical-align:-3px; margin-left:6px; }
+/* 贵族身份（复刻诺哈 my_vip.asp：内联图标 + 简单文本行） */
+.noble-line { line-height:1.7; }
+.noble-line em { color:#666; font-size:12px; font-style:normal; margin-left:2px; }
+.noble-ico { height:16px; width:16px; object-fit:contain; vertical-align:-3px; margin-right:2px; }
+/* 帖子列表序号与标题间距 */
+.list .row .no { margin-right:4px; color:#999; }
 </style>

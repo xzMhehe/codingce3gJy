@@ -49,14 +49,17 @@ type User struct {
 	BlueStart    *time.Time `json:"blue_start"`
 	BlueEnd      *time.Time `json:"blue_end"`
 	BluePtime    *time.Time `json:"blue_ptime"` // 蓝钻上次每日成长时间
+	BlueSpeed    int        `gorm:"default:0" json:"blue_speed"` // 蓝钻成长速度（点/天，0=默认）
 	QqLv         int        `gorm:"default:0" json:"qq_lv"`       // 超Q等级
 	QqExp        int        `gorm:"default:0" json:"qq_exp"`      // 超Q成长值
 	QqStart      *time.Time `json:"qq_start"`
 	QqEnd        *time.Time `json:"qq_end"`
 	QqPtime      *time.Time `json:"qq_ptime"` // 超Q上次每日成长时间
+	QqSpeed      int        `gorm:"default:0" json:"qq_speed"` // 超Q成长速度（点/天，0=默认）
 	GardenPots   int     `gorm:"default:4" json:"garden_pots"` // 魔法花园花盆数
 	Status       int     `gorm:"default:1" json:"status"` // 1正常 0封禁
 	LastActiveAt  *time.Time `json:"last_active_at"`
+	LastBoardID   uint       `gorm:"default:0" json:"last_board_id"` // 最后停留版块（版块在线统计，参考诺哈 wap_online.bbsid）
 	LastLoginAt   *time.Time `json:"last_login_at"`
 	ActiveDays    float64    `gorm:"default:0" json:"active_days"`  // 家园活跃天数
 	LastActiveDate string    `gorm:"type:varchar(10)" json:"last_active_date"` // 最后活跃日期(去重)

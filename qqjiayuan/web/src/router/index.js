@@ -17,6 +17,7 @@ const routes = [
   { path: '/channel/:id', name: 'channel', component: () => import('../views/Channel.vue') },
   { path: '/board/:id', name: 'board', component: () => import('../views/Board.vue') },
   { path: '/thread/:id', name: 'thread', component: () => import('../views/Thread.vue') },
+  { path: '/replies/:id', name: 'replies', component: () => import('../views/ReplyList.vue') },
   { path: '/my-threads', name: 'myThreads', component: () => import('../views/MyThreads.vue'), meta: { auth: true } },
   { path: '/threads/hot', name: 'hotThreads', component: () => import('../views/HotThreads.vue') },
   { path: '/post', name: 'postSelect', component: () => import('../views/PostSelect.vue'), meta: { auth: true } },

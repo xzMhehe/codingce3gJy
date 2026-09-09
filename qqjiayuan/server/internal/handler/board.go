@@ -160,6 +160,25 @@ func (h *BoardHandler) Threads(c *gin.Context) {
 		}
 	}
 
+	// 登录用户心跳：记录所在版块（参考诺哈 wap_online.bbsid，用于版块在线统计）
+	if uid := middleware.GetUID(c); uid != 0 {
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+			"last_board_id": board.ID, "last_active_at": time.Now(),
+		})
+	}
+	// 版块在线人数：10 分钟内活跃且停留在本版块（分区则统计所有子板块）
+	tenMinAgo := time.Now().Add(-10 * time.Minute)
+	var boardOnline int64
+	h.DB.Model(&model.User{}).Where("last_board_id IN ? AND last_active_at > ?", boardIDs, tenMinAgo).Count(&boardOnline)
+
+	// 版块头条（参考诺哈 ForumTopicHead：最新一条 head 帖）
+	var head *model.Thread
+	var ht model.Thread
+	if err := h.DB.Preload("User").Where("board_id IN ? AND is_head = 1 AND status = 1 AND audit_status = 1", boardIDs).
+		Order("id DESC").First(&ht).Error; err == nil {
+		head = &ht
+	}
+
 	q := h.DB.Model(&model.Thread{}).Where("board_id IN ? AND status = 1 AND audit_status = 1", boardIDs)
 	if f := c.Query("filter"); f == "fine" {
 		q = q.Where("is_fine = 1")
@@ -199,6 +218,7 @@ func (h *BoardHandler) Threads(c *gin.Context) {
 		isMember = cnt > 0
 	}
 	resp.OK(c, gin.H{"board": board, "moderator": mod, "is_member": isMember,
+		"board_online": boardOnline, "head": head,
 		"total": total, "page": page, "size": 10, "list": threads})
 }
 
