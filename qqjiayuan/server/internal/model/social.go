@@ -12,15 +12,45 @@ type SignIn struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// 好友关系：申请方向 user -> friend，status: 0待处理 1已同意 2已拒绝
+// 好友关系（对齐诺哈 wap_friend）：单向一条记录，双向好友即存在「我→TA」「TA→我」两行。
+// status: 1为已确认好友（对方接受后另一侧也为1）；0为待对方处理的申请（对侧不存在）。
+// 通过后，双方各插入一条 status=1 的记录，实现各自的备注/分组/亲密度。
 type Friendship struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"index" json:"user_id"` // 发起方
-	FriendID  uint      `gorm:"index" json:"friend_id"` // 接收方
-	Status    int       `gorm:"default:0" json:"status"`
+	UserID    uint      `gorm:"index:idx_uf" json:"user_id"` // uid 归属者（我）
+	FriendID  uint      `gorm:"index:idx_uf" json:"friend_id"` // oid 好友（TA）
+	Status    int       `gorm:"default:1" json:"status"`                  // 1好友 0待对方处理（对侧建立后转1）
+	Remark    string    `gorm:"type:varchar(30)" json:"remark"`           // name 备注（空=显示对方昵称）
+	GroupID   uint      `gorm:"default:0" json:"group_id"`                // group 分组（0=未分组）
+	Degree    int       `gorm:"default:0" json:"degree"`                  // 亲密度
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+func (Friendship) TableName() string { return "friendships" }
+
+// 好友申请（对齐诺哈 wap_friend_apply）：uid=接收方（被加的人），friend_id=申请方，remark=验证信息
+type FriendApply struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index:idx_ua,unique" json:"user_id"`     // 接收方
+	FriendID  uint      `gorm:"index:idx_ua,unique" json:"friend_id"`   // 申请方
+	Remark    string    `gorm:"type:varchar(100)" json:"remark"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (FriendApply) TableName() string { return "friend_applies" }
+
+// 黑名单（对齐诺哈 wap_friend_black）：加入后双方不再互为好友，且对方消息被屏蔽
+type FriendBlack struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index:idx_ub,unique;index" json:"user_id"` // uid 归属者（我）
+	FriendID  uint      `gorm:"index:idx_ub,unique" json:"friend_id"`     // oid 被拉黑者（TA）
+	Name      string    `gorm:"type:varchar(30)" json:"name"`             // 备注名（诺哈 wap_friend_black.name）
+	AddTime   time.Time `json:"add_time"`
+	EndTime   time.Time `json:"end_time"` // 1年有效（诺哈 wap_friend_black.endtime）
+}
+
+func (FriendBlack) TableName() string { return "friend_blacks" }
 
 // 私信
 type PrivateMessage struct {

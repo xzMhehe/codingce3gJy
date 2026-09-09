@@ -189,7 +189,10 @@ func (h *HomeHandler) Other(c *gin.Context) {
 	isFriend := false
 	if uid > 0 && uid != u.ID {
 		var cnt int64
-		h.DB.Model(&model.Friendship{}).Where("uid = ? AND oid = ? AND status = 1", uid, u.ID).Count(&cnt)
+		h.DB.Model(&model.Friendship{}).Where("user_id = ? AND friend_id = ? AND status = 1", uid, u.ID).Count(&cnt)
+		if cnt == 0 {
+			h.DB.Model(&model.Friendship{}).Where("user_id = ? AND friend_id = ? AND status = 1", u.ID, uid).Count(&cnt)
+		}
 		isFriend = cnt > 0
 	}
 	online := u.LastActiveAt != nil && time.Since(*u.LastActiveAt) < 30*time.Minute

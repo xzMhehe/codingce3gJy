@@ -109,12 +109,19 @@ func (h *UserHandler) Profile(c *gin.Context) {
 	h.DB.Where("user_id = ?", user.ID).First(&addr)
 	isMe := middleware.GetUID(c) == user.ID
 
+	// 业务图标（诺哈 profile.asp）：靓号/身份证/QQ/手机/邮箱
+	var docuCount int64
+	h.DB.Model(&model.UserDocument{}).Where("user_id = ?", user.ID).Count(&docuCount)
+	var ct model.UserContact
+	h.DB.Where("user_id = ?", user.ID).First(&ct)
+
 	resp.OK(c, gin.H{
 		"id": user.ID, "username": user.Username, "nickname": user.Nickname,
 		"gender": user.Gender, "signature": user.Signature, "color": user.Color,
 		"avatar": user.Avatar, "avatar_base64": user.AvatarBase64, "level": user.Level, "exp": user.Exp, "coins": user.Coins,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
-		"noble": user.Noble, "partner_id": user.PartnerID, "partner_name": partnerName,
+		"noble": user.Noble, "qq_lv": user.QqLv, "blue_lv": user.BlueLv,
+		"partner_id": user.PartnerID, "partner_name": partnerName,
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,
 		"priv_id": user.PrivID, "priv": user.Priv,
 		"online":     online,
@@ -131,7 +138,10 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"address": addressOut(&addr, isMe),
 		// 联系方式仅本人可见（诺哈 contact 仅本人/管理员可见）
 		"contact": contactOut(h.DB, user.ID, isMe),
-		"created_at": user.CreatedAt, "last_login_at": user.LastLoginAt,
+		// 业务图标（公开标志，具体内容仅本人可见）
+		"paid": user.Paid, "has_docu": docuCount > 0,
+		"has_qq": ct.QQ != "", "has_phone": ct.Phone != "", "has_mail": ct.Mail != "",
+		"created_at": user.CreatedAt, "last_login_at": user.LastLoginAt, "last_active_at": user.LastActiveAt,
 		"thread_count": threadCount, "reply_count": replyCount, "sign_days": signDays,
 		"badges": badges, "roles": roles, "duties": duties, "threads": threads,
 	})

@@ -2,11 +2,13 @@ package model
 
 import "time"
 
-// 好友分组
+// 好友分组（对齐诺哈 wap_friend_group）
 type FriendGroup struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserID    uint      `gorm:"index" json:"user_id"`
 	Name      string    `gorm:"type:varchar(20)" json:"name"`
+	Sort      int       `gorm:"default:0" json:"sort"`   // 排序（诺哈 wap_friend_group.sort）
+	Amount    int       `gorm:"default:0" json:"amount"` // 组内好友数（诺哈 wap_friend_group.amount）
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

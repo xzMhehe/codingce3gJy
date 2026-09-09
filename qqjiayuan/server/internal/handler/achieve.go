@@ -27,7 +27,7 @@ func (h *AchieveHandler) View(c *gin.Context) {
 	h.DB.First(&u, uid)
 
 	var friends, chatCount, sign, threadCount, replyCount int64
-	h.DB.Model(&model.Friendship{}).Where("(user_id = ? OR friend_id = ?) AND status = 1", uid, uid).Count(&friends)
+	h.DB.Model(&model.Friendship{}).Where("user_id = ? AND status = 1", uid).Count(&friends)
 	h.DB.Model(&model.ChatMessage{}).Where("user_id = ?", uid).Count(&chatCount)
 	h.DB.Model(&model.SignIn{}).Where("user_id = ?", uid).Count(&sign)
 	h.DB.Model(&model.Thread{}).Where("user_id = ? AND status = 1", uid).Count(&threadCount)

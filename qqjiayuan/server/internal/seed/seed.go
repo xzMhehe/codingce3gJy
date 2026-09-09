@@ -20,7 +20,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.User{}, &model.Role{}, &model.Permission{},
 		&model.Board{}, &model.Thread{}, &model.Reply{},
 		&model.Announcement{}, &model.SignIn{},
-		&model.Friendship{}, &model.PrivateMessage{},
+		&model.Friendship{}, &model.FriendApply{}, &model.FriendBlack{}, &model.PrivateMessage{},
 		&model.ChatMessage{}, &model.Notification{},
 		&model.Badge{},
 		&model.Game{},
@@ -197,6 +197,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedSiteArticles(db)
 	seedShop(db)
 	seedActivities(db)
+	seedFriendMigrate(db)
 	fmt.Println("数据初始化完成")
 }
 
@@ -601,6 +602,112 @@ func syncDir(db *gorm.DB, staticDir string) int {
 
 // seedMigrate2026 迁移演示站其余友友与帖子，全部时间落在 2026 年
 // （逐条幂等：用户按号码去重，帖子按「标题+板块」去重，可安全重复执行）
+func seedFriendMigrate(db *gorm.DB) {
+	// 老表补齐新列（幂等，对齐诺哈 wap_friend：remark/group_id/degree）
+	m := db.Migrator()
+	for _, col := range []string{"remark", "group_id", "degree"} {
+		if !m.HasColumn("friendships", col) {
+			db.Exec("ALTER TABLE friendships ADD COLUMN " + col + " " + map[string]string{
+				"remark":   "varchar(30) DEFAULT ''",
+				"group_id": "bigint DEFAULT 0",
+				"degree":   "int DEFAULT 0",
+			}[col])
+		}
+	}
+	for _, col := range []string{"sort", "amount"} {
+		if !m.HasColumn("friend_groups", col) {
+			db.Exec("ALTER TABLE friend_groups ADD COLUMN " + col + " int DEFAULT 0")
+		}
+	}
+
+	// 幂等：仅当还未迁移（不存在 friend_applies/friend_blacks 数据）且老库有 status 列时执行
+	if !m.HasColumn("friendships", "status") {
+		return
+	}
+	var applyCount int64
+	db.Model(&model.FriendApply{}).Count(&applyCount)
+	var blackCount int64
+	db.Model(&model.FriendBlack{}).Count(&blackCount)
+	if applyCount > 0 || blackCount > 0 {
+		// 已迁移过，直接同步一次 group 数量后返回
+		syncGroupAmounts(db)
+		return
+	}
+
+	// ① 未确认的申请（老 status=0：user_id 申请 → friend_id）转 friend_applies
+	type oldRow struct {
+		UserID   uint
+		FriendID uint
+	}
+	var pend []oldRow
+	db.Raw("SELECT user_id, friend_id FROM friendships WHERE status = 0 AND user_id != friend_id").Scan(&pend)
+	for _, p := range pend {
+		var n int64
+		db.Model(&model.FriendApply{}).Where("user_id = ? AND friend_id = ?", p.FriendID, p.UserID).Count(&n)
+		if n == 0 {
+			db.Create(&model.FriendApply{UserID: p.FriendID, FriendID: p.UserID})
+		}
+	}
+
+	// ② 已确认的好友（老 status=1，无向）转双向 status=1 记录，并合并分组/备注
+	var acc []oldRow
+	db.Raw("SELECT user_id, friend_id FROM friendships WHERE status = 1 AND user_id != friend_id").Scan(&acc)
+	// 收集分组信息（老 friend_group_items：group_id -> user_id, friend_id）
+	groupOf := map[string]uint{} // "uid:oid" -> group_id
+	type gi struct {
+		GroupID  uint
+		UserID   uint
+		FriendID uint
+	}
+	var gis []gi
+	db.Table("friend_group_items").Scan(&gis)
+	for _, g := range gis {
+		groupOf[fmt.Sprintf("%d:%d", g.UserID, g.FriendID)] = g.GroupID
+	}
+
+	// 清空旧无向记录，改造成纯方向模型
+	db.Exec("DELETE FROM friendships")
+	created := 0
+	for _, a := range acc {
+		// 建立 我→TA 与 TA→我 两条
+		for _, dir := range []oldRow{{a.UserID, a.FriendID}, {a.FriendID, a.UserID}} {
+			var n int64
+			db.Model(&model.Friendship{}).Where("user_id = ? AND friend_id = ?", dir.UserID, dir.FriendID).Count(&n)
+			if n == 0 {
+				db.Create(&model.Friendship{
+					UserID: dir.UserID, FriendID: dir.FriendID, Status: 1,
+					GroupID: groupOf[fmt.Sprintf("%d:%d", dir.UserID, dir.FriendID)],
+				})
+				created++
+			}
+		}
+	}
+
+	// ③ 统一 status=1（纯方向模型下 status 仅记录建立状态）
+	db.Exec("UPDATE friendships SET status = 1")
+	// ④ 追加唯一约束（数据清洗后确保同一 user→friend 唯一）
+	if !m.HasIndex("friendships", "uk_uf") {
+		db.Exec("ALTER TABLE friendships ADD UNIQUE INDEX uk_uf (user_id, friend_id)")
+	}
+
+	syncGroupAmounts(db)
+	if created > 0 {
+		fmt.Printf("好友模块迁移：建立 %d 条双向好友关系\n", created)
+	}
+}
+
+// syncGroupAmounts 同步各分组的好友数（诺哈 wap_friend_group.amount）
+func syncGroupAmounts(db *gorm.DB) {
+	var groups []model.FriendGroup
+	db.Find(&groups)
+	for _, g := range groups {
+		var n int64
+		db.Model(&model.Friendship{}).Where("user_id = ? AND group_id = ? AND status = 1", g.UserID, g.ID).Count(&n)
+		db.Model(&model.FriendGroup{}).Where("id = ?", g.ID).Update("amount", n)
+	}
+	// 未分组（group_id=0）好友数不额外记录
+}
+
 func seedMigrate2026(db *gorm.DB) {
 	d := func(month, day, h, m int) time.Time {
 		return time.Date(2026, time.Month(month), day, h, m, 0, 0, time.Local)

@@ -4,8 +4,10 @@
 
     <div class="module-title">【分组管理】<a href="javascript:;" @click="showAdd = !showAdd">添加分组</a></div>
     <div class="module-content" v-if="showAdd">
-      分组名：<input type="text" v-model.trim="newName" maxlength="20" size="12">
+      分组名：<input type="text" v-model.trim="newName" maxlength="12" size="12">
+      排序：<input type="text" v-model.number="newSort" size="3" placeholder="0">
       <button class="btn" @click="createGroup">添加</button>
+      <div class="help-line">最多10个分组，名称 1-12 个字，排序 0-99。</div>
     </div>
 
     <p v-if="msg" style="color:#c00;padding:0 5px">{{ msg }}</p>
@@ -42,7 +44,7 @@ import api from '../api'
 export default {
   name: 'Group',
   data () {
-    return { groups: [], friends: [], newName: '', showAdd: false, openGroup: 0, selFriends: {}, msg: '', okMsg: '' }
+    return { groups: [], friends: [], newName: '', newSort: 0, showAdd: false, openGroup: 0, selFriends: {}, msg: '', okMsg: '' }
   },
   mounted () { this.load() },
   methods: {
@@ -54,8 +56,8 @@ export default {
     createGroup () {
       this.msg = ''; this.okMsg = ''
       if (!this.newName) { this.msg = '请填写分组名'; return }
-      api.post('/friend-groups', { name: this.newName }).then(r => {
-        if (r.code === 0) { this.okMsg = '分组已添加'; this.newName = ''; this.showAdd = false; this.load() }
+      api.post('/friend-groups', { name: this.newName, sort: this.newSort }).then(r => {
+        if (r.code === 0) { this.okMsg = '分组已添加'; this.newName = ''; this.newSort = 0; this.showAdd = false; this.load() }
         else this.msg = r.msg
       })
     },

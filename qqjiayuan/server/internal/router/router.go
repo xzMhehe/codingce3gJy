@@ -25,6 +25,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	plazaH := &handler.PlazaHandler{DB: db}
 	signH := &handler.SignHandler{DB: db}
 	friendH := &handler.FriendHandler{DB: db}
+	blackH := &handler.BlackHandler{DB: db}
+	fnewsH := &handler.FriendNewsHandler{DB: db}
 	msgH := &handler.MessageHandler{DB: db}
 	chatH := &handler.ChatHandler{DB: db}
 	notifyH := &handler.NotifyHandler{DB: db}
@@ -221,8 +223,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/signin/info", signH.Info)
 			authed.GET("/friends", friendH.List)
 			authed.POST("/friends", friendH.Add)
-			authed.POST("/friends/:id/handle", friendH.Handle)
+			authed.GET("/friends/status/:id", friendH.Status)
+			authed.GET("/friends/news", fnewsH.List)
+			authed.POST("/friends/:id/remark", friendH.SetRemark)
+			authed.POST("/friends/:id/group", friendH.MoveGroup)
+			authed.POST("/friends/apply/:id/handle", friendH.Handle)
+			authed.POST("/friends/policy", friendH.SetPolicy)
 			authed.DELETE("/friends/:id", friendH.Remove)
+
+			// 黑名单
+			authed.GET("/friends/black", blackH.List)
+			authed.POST("/friends/black/:id", blackH.Add)
+			authed.DELETE("/friends/black/:id", blackH.Remove)
 
 			authed.GET("/messages/conversations", msgH.Conversations)
 			authed.GET("/messages/with/:id", msgH.With)
