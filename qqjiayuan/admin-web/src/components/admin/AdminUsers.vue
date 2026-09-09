@@ -13,7 +13,7 @@
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><b>{{ row.nickname }}</b></template>
         </el-table-column>
-        <el-table-column label="马甲" width="90">
+        <el-table-column label="勋章" width="90">
           <template slot-scope="{row}">
             <img v-for="b in (row.badges || [])" :key="b.id" class="bicon" :src="$pic(b.icon)" :alt="b.name" :title="b.name">
           </template>
@@ -61,7 +61,7 @@
             <el-checkbox v-for="r in allRoles" :key="r.id" :label="r.id">{{ r.name }}</el-checkbox>
           </el-checkbox-group>
         </el-form-item>
-        <el-form-item label="马甲">
+        <el-form-item label="勋章">
           <el-checkbox-group v-model="panel.badgeIds">
             <el-checkbox v-for="b in allBadges" :key="b.id" :label="b.id">
               <img class="bicon" :src="$pic(b.icon)" :alt="b.name">{{ b.name }}

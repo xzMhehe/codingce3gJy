@@ -64,7 +64,7 @@ type User struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Roles        []Role  `gorm:"many2many:user_roles;" json:"roles,omitempty"`
-	Badges       []Badge `gorm:"many2many:user_badges;" json:"badges,omitempty"` // 马甲/勋章图标
+	Badges       []Badge `gorm:"many2many:user_badges;joinForeignKey:UserID;joinReferences:BadgeID;" json:"badges,omitempty"` // 会员勋章（含排序/过期）
 	PrivID       uint    `gorm:"default:0" json:"priv_id"`                       // 特权（蓝钻/超Q等级图标）
 	Priv         *Resource `gorm:"foreignKey:PrivID" json:"priv,omitempty"`
 	LevelIcon    int     `gorm:"-" json:"level_icon"`                            // 等级图标 v{N}.gif
@@ -72,14 +72,32 @@ type User struct {
 	AchieveLevel int     `gorm:"-" json:"achieve_level"`                         // 成就等级（每100点升1级）
 }
 
-// 勋章/马甲：Icon 为 static/picture 下的图片文件名，昵称前的一串小图标
+// 勋章商店（复刻诺哈 wap_medal_shop）：Icon 为 static/picture 下的图片文件名
+// sort 排序 / price 价格 / period 有效期限(天,0=永久) / status 状态
 type Badge struct {
 	ID     uint   `gorm:"primaryKey" json:"id"`
 	Name   string `gorm:"type:varchar(30)" json:"name"`
 	Icon   string `gorm:"type:varchar(50)" json:"icon"`
 	Remark string `gorm:"type:varchar(100)" json:"remark"`
+	Price  int    `gorm:"default:0" json:"price"`
+	Period int    `gorm:"default:0" json:"period"`
+	Sort   int    `gorm:"default:0" json:"sort"`
 	Status int    `gorm:"default:1" json:"status"`
 }
+
+func (Badge) TableName() string { return "badges" }
+
+// 会员勋章（复刻诺哈 wap_medal）：授予用户的勋章记录，含排序与过期时间
+type UserBadge struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	UserID    uint       `gorm:"uniqueIndex:uk_ub;index" json:"user_id"`
+	BadgeID   uint       `gorm:"uniqueIndex:uk_ub" json:"badge_id"`
+	Sort      int        `gorm:"default:0" json:"sort"`
+	GrantedAt time.Time  `json:"granted_at"`
+	ExpireAt  *time.Time `json:"expire_at"`
+}
+
+func (UserBadge) TableName() string { return "user_badges" }
 
 // 等级图标可用的 v{N}.gif（来自演示站素材）
 var levelIcons = []int{1, 6, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 36}
@@ -122,7 +140,6 @@ func (u *User) AfterFind(tx *gorm.DB) error {
 func (User) TableName() string       { return "users" }
 func (Role) TableName() string       { return "roles" }
 func (Permission) TableName() string { return "permissions" }
-func (Badge) TableName() string      { return "badges" }
 
 // 角色
 type Role struct {

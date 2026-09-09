@@ -55,12 +55,33 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadPoll{}, &model.ThreadPollOption{}, &model.ThreadPollVote{},
 		&model.ThreadReward{}, &model.ThreadRewardLog{}, &model.ThreadFloor{},
 		&model.ThreadAttachment{}, &model.WordFilter{},
+		&model.UserBadge{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
 	}
 	db.Exec("ALTER TABLE users AUTO_INCREMENT = 10000")
 	db.Exec("ALTER TABLE threads AUTO_INCREMENT = 10000")
+
+	// 会员勋章：注册自定义 join model（含排序/授予时间/过期时间）
+	db.SetupJoinTable(&model.User{}, "Badges", &model.UserBadge{})
+
+	// 勋章商店/会员勋章列兜底（幂等）
+	mig := db.Migrator()
+	for _, col := range []string{"price", "period", "sort"} {
+		if !mig.HasColumn("badges", col) {
+			db.Exec("ALTER TABLE badges ADD COLUMN " + col + " int DEFAULT 0")
+		}
+	}
+	for _, col := range []string{"sort", "granted_at", "expire_at"} {
+		if !mig.HasColumn("user_badges", col) {
+			db.Exec("ALTER TABLE user_badges ADD COLUMN " + col + " datetime NULL")
+		}
+	}
+	db.Exec("ALTER TABLE user_badges MODIFY COLUMN sort int DEFAULT 0")
+	db.Exec("UPDATE user_badges SET granted_at = NOW() WHERE granted_at IS NULL")
+	// 清理已过期勋章（复刻诺哈：自动删除过期勋章）
+	db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")
 
 	// 兜底：个别环境 AutoMigrate 对存量表可能漏加列，这里显式补齐（幂等）
 	m := db.Migrator()
@@ -1114,28 +1135,47 @@ func seedUsersAndContent(db *gorm.DB) {
 	}
 }
 
-// seedBadges 勋章/马甲种子：图标均来自演示站 static/picture 素材
+// seedBadges 勋章商店 + 会员勋章种子（复刻诺哈 wap_medal_shop / wap_medal，不含贵族勋章——贵族为身份非勋章）
 func seedBadges(db *gorm.DB) {
 	var count int64
 	db.Model(&model.Badge{}).Count(&count)
 	if count == 0 {
 		badges := []model.Badge{
-			{Name: "公坛协管员", Icon: "706.jpg", Remark: "社区职务徽章"},
-			{Name: "公坛管理", Icon: "704.gif", Remark: "公坛管理组"},
-			{Name: "客服专员", Icon: "3.gif", Remark: "客服团专属"},
-			{Name: "社区传媒", Icon: "501.gif", Remark: "时报记者专属"},
-			{Name: "老友归来", Icon: "803.gif", Remark: "回归纪念"},
-			{Name: "原创写手", Icon: "804.gif", Remark: "文学贡献"},
-			{Name: "贵族一级", Icon: "103.gif", Remark: "贵族身份"},
-			{Name: "贵族二级", Icon: "15.gif", Remark: "贵族身份"},
-			{Name: "尊上", Icon: "903.gif", Remark: "传说中的马甲"},
-			{Name: "表情大师", Icon: "45.gif", Remark: "斗图冠军"},
+			{Name: "公坛协管员", Icon: "706.jpg", Remark: "社区职务徽章", Price: 0, Period: 0, Sort: 1},
+			{Name: "公坛管理", Icon: "704.gif", Remark: "公坛管理组", Price: 0, Period: 0, Sort: 2},
+			{Name: "客服专员", Icon: "3.gif", Remark: "客服团专属", Price: 0, Period: 0, Sort: 3},
+			{Name: "社区传媒", Icon: "501.gif", Remark: "时报记者专属", Price: 0, Period: 0, Sort: 4},
+			{Name: "老友归来", Icon: "803.gif", Remark: "回归纪念", Price: 50, Period: 30, Sort: 5},
+			{Name: "原创写手", Icon: "804.gif", Remark: "文学贡献", Price: 100, Period: 30, Sort: 6},
+			{Name: "尊上", Icon: "903.gif", Remark: "传说中的勋章", Price: 500, Period: 7, Sort: 7},
+			{Name: "表情大师", Icon: "45.gif", Remark: "斗图冠军", Price: 200, Period: 30, Sort: 8},
 		}
 		for i := range badges {
 			db.Create(&badges[i])
 		}
 	}
-	// 给示例用户发马甲与头像（已发过则跳过）
+	// 老库清除「贵族一级/二级」勋章（贵族改为身份展示，非勋章）及其授予记录（幂等）
+	var nobleBadges []model.Badge
+	db.Where("name IN (?)", []string{"贵族一级", "贵族二级"}).Find(&nobleBadges)
+	if len(nobleBadges) > 0 {
+		for _, b := range nobleBadges {
+			db.Exec("DELETE FROM user_badges WHERE badge_id = ?", b.ID)
+		}
+		db.Where("name IN (?)", []string{"贵族一级", "贵族二级"}).Delete(&model.Badge{})
+	}
+	// 老库勋章补齐排序/价格/有效期（幂等）
+	existing := []model.Badge{}
+	db.Find(&existing)
+	meta := map[string]struct{ sort, price, period int }{
+		"公坛协管员": {1, 0, 0}, "公坛管理": {2, 0, 0}, "客服专员": {3, 0, 0}, "社区传媒": {4, 0, 0},
+		"老友归来": {5, 50, 30}, "原创写手": {6, 100, 30}, "尊上": {7, 500, 7}, "表情大师": {8, 200, 30},
+	}
+	for _, b := range existing {
+		if m, ok := meta[b.Name]; ok {
+			db.Model(&model.Badge{}).Where("id = ?", b.ID).Updates(map[string]interface{}{"sort": m.sort, "price": m.price, "period": m.period})
+		}
+	}
+	// 给示例用户发会员勋章（已发过则跳过）
 	var ubCount int64
 	db.Raw("SELECT COUNT(*) FROM user_badges").Scan(&ubCount)
 	if ubCount > 0 {
@@ -1152,6 +1192,7 @@ func seedBadges(db *gorm.DB) {
 		}
 		return 0
 	}
+	now := time.Now()
 	grant := func(nickname string, avatar string, names ...string) {
 		var u model.User
 		if err := db.Where("nickname = ?", nickname).First(&u).Error; err != nil {
@@ -1160,20 +1201,16 @@ func seedBadges(db *gorm.DB) {
 		if avatar != "" && u.Avatar == "" {
 			db.Model(&u).Update("avatar", avatar)
 		}
-		var bs []model.Badge
-		for _, n := range names {
+		for i, n := range names {
 			if id := idOf(n); id > 0 {
-				bs = append(bs, model.Badge{ID: id})
+				db.Create(&model.UserBadge{UserID: u.ID, BadgeID: id, Sort: i + 1, GrantedAt: now})
 			}
 		}
-		if len(bs) > 0 {
-			db.Model(&u).Association("Badges").Append(&bs)
-		}
 	}
-	// 与演示站一致：马甲一串挂在昵称前，等级图标 v{N}.gif 由等级自动生成
-	grant("站长小Q", "1985acg.jpg", "公坛协管员", "公坛管理", "贵族一级")
-	grant("云起", "131851611.jpg", "公坛协管员", "老友归来", "贵族一级")
-	grant("安珞", "1031047330.png", "社区传媒", "贵族二级")
+	// 与演示站一致：勋章一串挂在昵称前，等级图标 v{N}.gif 由等级自动生成（贵族为身份，不占勋章位）
+	grant("站长小Q", "1985acg.jpg", "公坛协管员", "公坛管理")
+	grant("云起", "131851611.jpg", "公坛协管员", "老友归来")
+	grant("安珞", "1031047330.png", "社区传媒")
 	grant("咏荷", "1031047330.png", "原创写手")
 	grant("闲云野鹤", "125703412.png", "老友归来")
 	grant("蓝天", "104039478.jpg", "表情大师")

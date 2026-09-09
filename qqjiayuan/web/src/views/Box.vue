@@ -14,7 +14,7 @@
     <div class="module-content">
       <a href="javascript:;" @click="$router.push('/noble')">超Q蓝钻</a>.<a href="javascript:;" @click="$router.push('/shop')">道具商城</a>.<a href="javascript:;" @click="tip('活动荣誉')">活动荣誉</a>.<a href="javascript:;" @click="tip('礼物')">礼物</a><br>
       <a href="javascript:;" @click="$router.push('/profile')">收藏夹</a>.<a href="javascript:;" @click="tip('草稿箱')">草稿箱</a>.<a href="javascript:;" @click="tip('社区拍卖')">社区拍卖</a><br>
-      <a href="javascript:;" @click="tip('剪贴板')">剪贴板</a>.<a href="javascript:;" @click="$router.push('/inbox')">信箱</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">我的相册</a>.<a href="javascript:;" @click="$router.push('/play')">幸运抽奖</a>.<a href="javascript:;" @click="tip('专属勋章')">专属勋章</a><br>
+      <a href="javascript:;" @click="tip('剪贴板')">剪贴板</a>.<a href="javascript:;" @click="$router.push('/inbox')">信箱</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">我的相册</a>.<a href="javascript:;" @click="$router.push('/play')">幸运抽奖</a>.<a href="javascript:;" @click="$router.push('/medals')">专属勋章</a><br>
     </div>
 
     <div class="module-title">【管理功能】</div>

@@ -80,6 +80,8 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 				db.Exec("UPDATE users SET active_days = active_days + ?, last_active_date = ? WHERE id = ?", base, today, claims.UserID)
 			}
 		}
+		// 清理已过期会员勋章（复刻诺哈：过期勋章自动消失，节流执行）
+		db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")
 		c.Next()
 	}
 }

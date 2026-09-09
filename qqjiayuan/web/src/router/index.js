@@ -57,6 +57,7 @@ const routes = [
   { path: '/space/article/:id', name: 'blogArticle', component: () => import('../views/BlogArticle.vue') },
   { path: '/contacts', name: 'contacts', component: () => import('../views/Contacts.vue'), meta: { auth: true } },
   { path: '/favorites', name: 'favorites', component: () => import('../views/Favorites.vue'), meta: { auth: true } },
+  { path: '/medals', name: 'medals', component: () => import('../views/Medals.vue'), meta: { auth: true } },
   { path: '/invite', name: 'invite', component: () => import('../views/Invite.vue'), meta: { auth: true } },
   { path: '/guestbook', name: 'guestbook', component: () => import('../views/Guestbook.vue') },
   { path: '/articles', name: 'articles', component: () => import('../views/Articles.vue') },

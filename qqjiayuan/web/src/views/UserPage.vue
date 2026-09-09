@@ -24,6 +24,9 @@
     <div class="module-content">
       等级:<img :src="'/static/picture/home_' + (u.gender === 2 ? '2' : '1') + '_' + pad(u.level) + '.gif'" alt="." style="height:14px;vertical-align:-2px">
       (<a href="javascript:;" @click="$router.push('/home-level')">LV{{ u.level }}</a>)<br>
+      <template v-if="u.noble > 0">
+        贵族身份:<img :src="'/static/picture/noble_' + u.noble + '_1.gif'" alt="贵族" style="height:14px;vertical-align:-2px" @error="hideErr"><br>
+      </template>
       <img src="/static/picture/jindu.jpg" alt="." /><br>
       升级还需{{ nextNeed }}天<br>
       触屏版用户:<img src="/static/picture/chuping.jpg" alt="." /><br>
@@ -37,6 +40,14 @@
       个人说明:{{ u.signature || '这个人很懒，什么都没留下' }}<br>
       <a v-if="isMine" href="javascript:;" @click="$router.push('/profile')">更新个人资料</a><br>
       发帖 {{ u.thread_count }} · 回帖 {{ u.reply_count }} · 签到 {{ u.sign_days }} 天 · 注册 {{ fmt(u.created_at) }}<br>
+    </div>
+
+    <div class="module-title">TA的勋章</div>
+    <div class="module-content">
+      <span v-for="b in (u.badges || []).slice(0, 10)" :key="b.id">
+        <img class="bicon" :src="'/static/picture/' + b.icon" :alt="b.name" :title="b.name">
+      </span>
+      <span v-if="!(u.badges || []).length" class="txt-fade">TA还没有勋章</span><br>
     </div>
 
     <div class="module-title">TA的最新帖子</div>
@@ -101,6 +112,7 @@ export default {
       api.post('/friends', { target_id: this.u.id }).then(r => { this.friendTip = r.code === 0 ? (typeof r.data === 'string' ? r.data : '申请已发送') : r.msg })
     },
     pad (n) { return '' + (n || 1) },
+    hideErr (e) { e.target.style.display = 'none' },
     fmt (t) { return t ? new Date(t).toISOString().slice(0, 10) : '' }
   }
 }

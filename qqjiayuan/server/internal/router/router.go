@@ -163,6 +163,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/threads/:id/move", threadH.Move)
 			authed.GET("/my-threads", threadH.MyThreads)
 			authed.GET("/audit-threads", threadH.AuditList)
+			authed.GET("/my-medals", badgeH.MyMedals)
 			authed.GET("/attachments/:id/download", threadH.Download)
 			authed.POST("/threads/:id/favorite", favH.Toggle)
 			authed.GET("/threads/:id/favorite-status", favH.Status)
@@ -493,6 +494,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/badges", perm(db, "badge:manage"), badgeH.Create)
 				admin.PUT("/badges/:id", perm(db, "badge:manage"), badgeH.Update)
 				admin.DELETE("/badges/:id", perm(db, "badge:manage"), badgeH.Delete)
+				admin.GET("/user-badges", perm(db, "badge:manage"), badgeH.AdminUserBadges)
+				admin.POST("/user-badges/grant", perm(db, "badge:manage"), badgeH.GrantOne)
+				admin.DELETE("/user-badges/:id", perm(db, "badge:manage"), badgeH.AdminUserBadgeDel)
 
 				admin.GET("/games", perm(db, "game:manage"), gameH.AdminList)
 				admin.POST("/games", perm(db, "game:manage"), gameH.Create)

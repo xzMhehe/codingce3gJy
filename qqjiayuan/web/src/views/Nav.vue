@@ -21,8 +21,8 @@
     <div class="module-content"><a href="javascript:;" @click="tip('书城')">书城建设中：玄幻、言情小说敬请期待</a><br></div>
 
     <!-- 商城 -->
-    <div class="module-title">【<a href="javascript:;" @click="tip('商城')">商城</a>】<a href="javascript:;" @click="tip('拍卖')">拍卖</a>.<a href="javascript:;" @click="tip('勋章')">勋章</a></div>
-    <div class="module-content"><a href="javascript:;" @click="tip('商城')">道具商城 / 拍卖 / 勋章建设中</a><br></div>
+    <div class="module-title">【<a href="javascript:;" @click="$router.push('/shop')">商城</a>】<a href="javascript:;" @click="tip('拍卖')">拍卖</a>.<a href="javascript:;" @click="$router.push('/medals')">勋章</a></div>
+    <div class="module-content"><a href="javascript:;" @click="$router.push('/shop')">道具商城</a> / <a href="javascript:;" @click="$router.push('/medals')">勋章大全</a> / 拍卖建设中<br></div>
 
     <!-- 游戏大厅 -->
     <div class="module-title">【社区游戏大厅】</div>

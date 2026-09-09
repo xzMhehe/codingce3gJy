@@ -124,6 +124,7 @@
     <!-- 楼主信息 -->
     <div class="item">
       <span v-for="b in authorBadges" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
+      <img class="bicon" v-if="author.noble > 0" :src="$pic('noble_' + author.noble + '_1.gif')" alt="贵族" :title="'贵族' + (author.noble === 1 ? '一级' : '二级')" @error="hideErr">
       <img class="bicon" v-if="author.priv" :src="'/static/' + author.priv.file" :alt="author.priv.name" :title="author.priv.name">
       <img class="bicon" v-else-if="author.level_icon" :src="$pic('v'+author.level_icon+'.gif')" alt="等级">
       <a href="javascript:;" @click="$router.push('/user/'+author.id)"><font :color="author.color || '#004299'">{{ author.nickname || '?' }}</font></a>
@@ -202,6 +203,7 @@
         <div class="row">
           {{ r.floor }}楼.<template v-if="r.parent_reply_id"><font color="#c00">[回复{{ parentFloor(r) }}楼]</font></template>{{ r.content }}<br>
           <span v-for="b in (r.user ? r.user.badges : [])" :key="b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
+          <img class="bicon" v-if="r.user && r.user.noble > 0" :src="$pic('noble_' + r.user.noble + '_1.gif')" alt="贵族" :title="'贵族' + (r.user.noble === 1 ? '一级' : '二级')" @error="hideErr">
           <img class="bicon" v-if="r.user && r.user.priv" :src="'/static/' + r.user.priv.file" :alt="r.user.priv.name" :title="r.user.priv.name">
           <img class="bicon" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级">
           <a href="javascript:;" @click="$router.push('/user/'+(r.user ? r.user.id : ''))"><font :color="r.user ? r.user.color : ''">{{ r.user ? r.user.nickname : '路人' }}</font></a>
@@ -596,7 +598,8 @@ export default {
       const d = new Date(t)
       const p = n => (n < 10 ? '0' + n : n)
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
-    }
+    },
+    hideErr (e) { e.target.style.display = 'none' }
   }
 }
 </script>
