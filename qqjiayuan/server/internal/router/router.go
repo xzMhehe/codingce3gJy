@@ -68,6 +68,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/login", authH.Login)
 		api.GET("/auth/find", authH.FindAccount)
 		api.GET("/plaza", plazaH.Index)
+		api.GET("/announcements", plazaH.Announcements)
 		api.GET("/search", plazaH.Search)
 		api.GET("/boards", boardH.Tree)
 		api.GET("/boards/:id", boardH.Info)

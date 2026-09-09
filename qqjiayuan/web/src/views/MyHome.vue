@@ -190,7 +190,13 @@ export default {
       api.get('/my-threads', { params: { page: 1 } }).then(r => {
         if (r.code === 0) { this.threads = r.data.list || []; this.threadTotal = r.data.total || 0 }
       }).catch(() => {})
-      api.get('/moods/latest').then(r => { if (r.code === 0) this.mood = r.data }).catch(() => {})
+      api.get('/moods/latest').then(r => {
+        if (r.code === 0) {
+          // /moods/latest 返回 Mood 对象，取 content 字符串（避免闪现 [object Object]）
+          const m = r.data
+          this.mood = m ? (typeof m === 'string' ? m : (m.content || '')) : ''
+        }
+      }).catch(() => {})
       api.get('/friends').then(r => { if (r.code === 0) this.friends = (r.data.friends || []).slice(0, 5) }).catch(() => {})
       api.get('/games').then(r => { if (r.code === 0) this.games = r.data || [] }).catch(() => {})
       api.get('/my-games').then(r => { if (r.code === 0) this.myGames = r.data || [] }).catch(() => {})

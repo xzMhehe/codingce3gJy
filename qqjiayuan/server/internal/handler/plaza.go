@@ -17,6 +17,18 @@ type PlazaHandler struct {
 }
 
 // 广场首页聚合数据：公告广播、在线人数、最新友友、社区头条、各频道最新帖、友友动态
+// Announcements 公告中心：返回全部启用的公告/广播/活动（诺哈 wap_notice 分类）
+func (h *PlazaHandler) Announcements(c *gin.Context) {
+	typ := c.Query("type") // notice / broadcast / activity，空=全部
+	q := h.DB.Model(&model.Announcement{}).Where("status = 1")
+	if typ != "" {
+		q = q.Where("type = ?", typ)
+	}
+	var list []model.Announcement
+	q.Order("created_at DESC").Find(&list)
+	resp.OK(c, list)
+}
+
 func (h *PlazaHandler) Index(c *gin.Context) {
 	db := h.DB
 
