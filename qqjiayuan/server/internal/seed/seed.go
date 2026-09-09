@@ -47,6 +47,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.TtouApply{}, &model.TtouWorship{},
 		&model.Home{}, &model.HomeNews{}, &model.HomeFavorite{}, &model.UserContact{},
 		&model.Invite{}, &model.GuestBook{}, &model.GuestReply{},
+		&model.PhoneAudit{},
 		&model.SiteArticleCategory{}, &model.SiteArticle{}, &model.SiteArticleComment{},
 		&model.ShopCategory{}, &model.Shop{}, &model.ShopGoods{}, &model.ShopOrder{}, &model.ShopComment{},
 		&model.ArticleComment{},
@@ -1343,6 +1344,14 @@ func seedGameBoards(db *gorm.DB) {
 		{"全民猎马", "周二四六，包你赢够，尽在猎马"},
 		{"家园股市", "家园股市，一夜成名，瞬间暴富"},
 		{"大话吹牛", "大话吹牛，打打闹闹，更是乐哉"},
+		// 复刻诺哈 game 目录：slave/arena/apple/ball/guess/marksix/nabob
+		{"好友买卖", "买下好友，打工赚钱，奴隶翻身当主人"},
+		{"竞技场", "擂台争霸，比武切磋，胜者为王"},
+		{"砸金蛋", "金蛋一砸，好运连连"},
+		{"台球", "一杆进洞，桌上争雄"},
+		{"猜数", "猜数字赢大奖，试试你的运气"},
+		{"六合彩", "买马投注，一夜暴富"},
+		{"大富翁", "掷骰子走格子，买地收租当富豪"},
 	}
 	ids := map[string]uint{}
 	for _, g := range games {
@@ -1480,11 +1489,6 @@ func seedGongtan(db *gorm.DB) {
 
 // seedGames 游戏大厅种子（与演示站 index3.html 一致，幂等）
 func seedGames(db *gorm.DB) {
-	var count int64
-	db.Model(&model.Game{}).Count(&count)
-	if count > 0 {
-		return
-	}
 	var boards []model.Board
 	db.Find(&boards)
 	bid := func(name string) uint {
@@ -1495,22 +1499,39 @@ func seedGames(db *gorm.DB) {
 		}
 		return 0
 	}
+	// 复刻诺哈 wap_game：net 外站游戏 / com 社区游戏（path 为本站路由入口，空=未开发）
 	games := []model.Game{
 		{Name: "幻想西游", Category: "net", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", BoardID: bid("幻想西游"), Sort: 1},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
-		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", BoardID: bid("魔法花园"), Sort: 1},
+		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", Intro: "播种·浇灌·收获，收集图谱点亮精灵，还可到好友花园采摘！", Path: "/games/garden", BoardID: bid("魔法花园"), Sort: 1},
 		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 2},
-		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★☆", Desc: "开心农场，播种开心，收获快乐", BoardID: bid("开心农场"), Sort: 3},
-		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", BoardID: bid("狂抢车位"), Sort: 4},
-		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 5},
-		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 6},
-		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 7},
-		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 8},
-		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 9},
-		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", BoardID: bid("大话吹牛"), Sort: 10},
+		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★☆", Desc: "开心农场，播种开心，收获快乐", Intro: "种菜偷菜，牧场养殖，好友互动其乐无穷", BoardID: bid("开心农场"), Sort: 3},
+		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，好友停车场就是你的金库", BoardID: bid("狂抢车位"), Sort: 4},
+		{Name: "好友买卖", Category: "com", Logo: "", Stars: "★★★★★", Desc: "买下好友，打工赚钱，奴隶翻身当主人", Intro: "把好友买来做奴隶，让他打工赚钱，还可以身价翻倍转卖", BoardID: bid("好友买卖"), Sort: 5},
+		{Name: "竞技场", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "擂台争霸，比武切磋，胜者为王", Intro: "挑战好友擂台，胜场提升段位，冲击竞技之巅", BoardID: bid("竞技场"), Sort: 6},
+		{Name: "砸金蛋", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "金蛋一砸，好运连连", Intro: "花G币砸金蛋，砸出金币元宝惊喜不断", BoardID: bid("砸金蛋"), Sort: 7},
+		{Name: "台球", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "一杆进洞，桌上争雄", Intro: "好友对战台球，展示你的杆法与技巧", BoardID: bid("台球"), Sort: 8},
+		{Name: "猜数", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "猜数字赢大奖，试试你的运气", Intro: "参与竞猜，猜中大奖抱回家", BoardID: bid("猜数"), Sort: 9},
+		{Name: "六合彩", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "买马投注，一夜暴富", Intro: "六合彩开奖，买中即赚", BoardID: bid("六合彩"), Sort: 10},
+		{Name: "大富翁", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "掷骰子走格子，买地收租当富豪", Intro: "掷骰前进，买地建屋，收租致富", BoardID: bid("大富翁"), Sort: 11},
+		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 12},
+		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 13},
+		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 14},
+		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 15},
+		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 16},
+		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", Intro: "吹牛打闹，好友互喷，乐在其中", BoardID: bid("大话吹牛"), Sort: 17},
 	}
 	for i := range games {
-		db.Create(&games[i])
+		var exist int64
+		db.Model(&model.Game{}).Where("name = ?", games[i].Name).Count(&exist)
+		if exist == 0 {
+			db.Create(&games[i])
+		} else {
+			// 老库补齐新字段（幂等）
+			db.Model(&model.Game{}).Where("name = ?", games[i].Name).Updates(map[string]interface{}{
+				"intro": games[i].Intro, "path": games[i].Path,
+			})
+		}
 	}
 }
 

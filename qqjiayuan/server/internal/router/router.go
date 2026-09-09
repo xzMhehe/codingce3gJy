@@ -218,6 +218,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/my-games", gameH.MyList)
 			authed.POST("/my-games", gameH.MyAdd)
 			authed.DELETE("/my-games/:gameId", gameH.MyRemove)
+			authed.POST("/my-games/:gameId/move", gameH.MyMove)
 
 			authed.POST("/signin", signH.Do)
 			authed.GET("/signin/info", signH.Info)
@@ -501,6 +502,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/users/:id/roles", perm(db, "user:manage"), adminH.UserRoles)
 				admin.PUT("/users/:id/badges", perm(db, "badge:manage"), badgeH.UserBadges)
 				admin.PUT("/users/:id/extras", perm(db, "user:manage"), adminH.UserExtras)
+				admin.POST("/users/batch-delete", perm(db, "user:manage"), adminH.UsersBatchDelete)
+				admin.GET("/phones", perm(db, "user:manage"), adminH.Phones)
+				admin.POST("/phones/:id/audit", perm(db, "user:manage"), adminH.PhoneAudit)
+				admin.DELETE("/phones/:id", perm(db, "user:manage"), adminH.PhoneDelete)
 
 				admin.GET("/badges", perm(db, "badge:manage"), badgeH.AdminList)
 				admin.POST("/badges", perm(db, "badge:manage"), badgeH.Create)

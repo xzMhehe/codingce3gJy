@@ -60,6 +60,19 @@ type UserContact struct {
 
 func (UserContact) TableName() string { return "user_contacts" }
 
+// PhoneAudit 手机号验证（对齐诺哈 wap_phone）：用户提交手机号待审核，管理员通过后写入联系方式
+type PhoneAudit struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	UserID    uint       `gorm:"index" json:"user_id"`
+	Phone     string     `gorm:"type:varchar(16)" json:"phone"`
+	Status    int        `gorm:"default:0" json:"status"` // 0待审核 1通过 2拒绝
+	HandledAt *time.Time `json:"handled_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	User      *User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+func (PhoneAudit) TableName() string { return "phone_audits" }
+
 // Invite 邀请开通家园（诺哈 invite.asp + wap_user_promo 推荐奖励）
 type Invite struct {
 	ID        uint       `gorm:"primaryKey" json:"id"`

@@ -25,6 +25,7 @@
             <el-menu-item index="userAddress"><i class="el-icon-map-location"></i>会员地址</el-menu-item>
             <el-menu-item index="userProtec"><i class="el-icon-key"></i>会员密保</el-menu-item>
             <el-menu-item index="userLogs"><i class="el-icon-date"></i>会员日志</el-menu-item>
+            <el-menu-item index="userPhones"><i class="el-icon-mobile-phone"></i>手机审核</el-menu-item>
             <el-menu-item index="invites"><i class="el-icon-share"></i>会员推荐</el-menu-item>
           </el-submenu>
           <!-- 货币管理（诺哈 money/：财务/流水） -->

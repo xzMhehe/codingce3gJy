@@ -6,9 +6,13 @@
                   style="width:220px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
+        <template v-if="selection.length">
+          <el-button type="danger" plain icon="el-icon-delete" @click="batchDelete">批量删除({{ selection.length }})</el-button>
+        </template>
         <el-button type="primary" icon="el-icon-plus" @click="openEditor(null)">新增用户</el-button>
       </div>
-      <el-table :data="list" v-loading="loading" stripe>
+      <el-table :data="list" v-loading="loading" stripe @selection-change="s => selection = s">
+        <el-table-column type="selection" width="44" />
         <el-table-column prop="username" label="号码" width="90" />
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><b>{{ row.nickname }}</b></template>
@@ -155,6 +159,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, pages: 1, size: 10, word: '', loading: false,
+      selection: [],
       allRoles: [], allBadges: [], allPrivs: [],
       dlg: false,
       form: { id: 0 },
@@ -171,6 +176,17 @@ export default {
   },
   methods: {
     search () { this.page = 1; this.load() },
+    batchDelete () {
+      if (!this.selection.length) return
+      const names = this.selection.map(s => s.nickname).join('，')
+      this.$confirm('确定删除选中的 ' + this.selection.length + ' 个会员吗？\n（' + names + '）\n删除后其帖子回复保留但隐藏，联系方式等资料一并清除。', '批量删除', {
+        type: 'warning', confirmButtonText: '确定删除'
+      }).then(() => {
+        api.post('/admin/users/batch-delete', { ids: this.selection.map(s => s.id) }).then(r => {
+          if (r.code === 0) { this.$message.success('已删除 ' + (r.data.deleted || 0) + ' 个会员'); this.selection = []; this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
     load () {
       this.loading = true
       api.get('/admin/users', { params: { page: this.page, size: this.size, word: this.word } }).then(r => {

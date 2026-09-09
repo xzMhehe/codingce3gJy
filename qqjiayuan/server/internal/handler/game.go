@@ -27,18 +27,70 @@ func (h *GameHandler) List(c *gin.Context) {
 	resp.OK(c, games)
 }
 
-// 我的游戏
+// 我的游戏（对齐诺哈 game_list.asp：按 sort 排序，含上移下移）
 func (h *GameHandler) MyList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var rows []model.MyGame
-	h.DB.Preload("Game").Where("user_id = ?", uid).Order("id ASC").Find(&rows)
+	h.DB.Preload("Game").Where("user_id = ?", uid).Order("sort ASC, id ASC").Find(&rows)
 	out := []gin.H{}
 	for _, r := range rows {
 		if r.Game != nil {
-			out = append(out, gin.H{"id": r.Game.ID, "name": r.Game.Name, "desc": r.Game.Desc, "stars": r.Game.Stars})
+			out = append(out, gin.H{"id": r.Game.ID, "name": r.Game.Name, "logo": r.Game.Logo,
+				"desc": r.Game.Desc, "stars": r.Game.Stars, "sort": r.Sort})
 		}
 	}
 	resp.OK(c, out)
+}
+
+// 我的游戏排序（对齐诺哈 game_move.asp：dir=up 上移 / down 下移）
+func (h *GameHandler) MyMove(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	gid, _ := strconv.Atoi(c.Param("gameId"))
+	dir := c.Query("dir")
+	var cur model.MyGame
+	if err := h.DB.Where("user_id = ? AND game_id = ?", uid, gid).First(&cur).Error; err != nil {
+		resp.NotFound(c, "该游戏不在你的游戏中")
+		return
+	}
+	// 先重编号（1..n），保证 sort 互异
+	h.renumberMyGames(uid)
+	h.DB.First(&cur, cur.ID)
+	var curSort, peerSort int
+	if dir == "up" {
+		var prev model.MyGame
+		if err := h.DB.Where("user_id = ? AND sort = ?", uid, cur.Sort-1).First(&prev).Error; err != nil {
+			resp.ParamError(c, "已经在最前面啦")
+			return
+		}
+		curSort, peerSort = cur.Sort, prev.Sort
+		h.DB.Model(&model.MyGame{}).Where("id = ?", cur.ID).Update("sort", peerSort)
+		h.DB.Model(&model.MyGame{}).Where("id = ?", prev.ID).Update("sort", curSort)
+	} else if dir == "down" {
+		var next model.MyGame
+		if err := h.DB.Where("user_id = ? AND sort = ?", uid, cur.Sort+1).First(&next).Error; err != nil {
+			resp.ParamError(c, "已经在最后面啦")
+			return
+		}
+		curSort, peerSort = cur.Sort, next.Sort
+		h.DB.Model(&model.MyGame{}).Where("id = ?", cur.ID).Update("sort", peerSort)
+		h.DB.Model(&model.MyGame{}).Where("id = ?", next.ID).Update("sort", curSort)
+	} else {
+		resp.ParamError(c, "dir 必须是 up 或 down")
+		return
+	}
+	h.renumberMyGames(uid)
+	resp.OK(c, "排序已更新")
+}
+
+// renumberMyGames 重新编号（对齐诺哈 sort 连续，保证排序稳定）
+func (h *GameHandler) renumberMyGames(uid uint) {
+	var rows []model.MyGame
+	h.DB.Where("user_id = ?", uid).Order("sort ASC, id ASC").Find(&rows)
+	for i, r := range rows {
+		if r.Sort != i+1 {
+			h.DB.Model(&model.MyGame{}).Where("id = ?", r.ID).Update("sort", i+1)
+		}
+	}
 }
 
 type addMyGameReq struct {
@@ -63,7 +115,10 @@ func (h *GameHandler) MyAdd(c *gin.Context) {
 		resp.ParamError(c, "该游戏已在你的游戏中")
 		return
 	}
-	h.DB.Create(&model.MyGame{UserID: uid, GameID: req.GameID})
+	// 追加到末尾（对齐诺哈 wap_game_bag：sort 递增）
+	var maxSort int
+	h.DB.Model(&model.MyGame{}).Where("user_id = ?", uid).Select("COALESCE(MAX(sort), 0)").Scan(&maxSort)
+	h.DB.Create(&model.MyGame{UserID: uid, GameID: req.GameID, Sort: maxSort + 1})
 	resp.OK(c, nil)
 }
 
@@ -103,6 +158,8 @@ type gameReq struct {
 	Logo     string `json:"logo" binding:"max=50"`
 	Stars    string `json:"stars" binding:"max=10"`
 	Desc     string `json:"desc" binding:"max=100"`
+	Intro    string `json:"intro" binding:"max=200"`
+	Path     string `json:"path" binding:"max=100"`
 	Url      string `json:"url" binding:"max=200"`
 	BoardID  uint   `json:"board_id"`
 	Sort     int    `json:"sort"`
@@ -126,7 +183,7 @@ func (h *GameHandler) Create(c *gin.Context) {
 		req.Stars = "★★★"
 	}
 	g := model.Game{Name: req.Name, Category: req.Category, Logo: req.Logo, Stars: req.Stars,
-		Desc: req.Desc, Url: req.Url, BoardID: req.BoardID, Sort: req.Sort, Status: req.Status}
+		Desc: req.Desc, Intro: req.Intro, Path: req.Path, Url: req.Url, BoardID: req.BoardID, Sort: req.Sort, Status: req.Status}
 	h.DB.Create(&g)
 	resp.OK(c, g)
 }
@@ -149,7 +206,7 @@ func (h *GameHandler) Update(c *gin.Context) {
 	}
 	h.DB.Model(&g).Updates(map[string]interface{}{
 		"name": req.Name, "category": req.Category, "logo": req.Logo,
-		"stars": req.Stars, "desc": req.Desc, "url": req.Url,
+		"stars": req.Stars, "desc": req.Desc, "intro": req.Intro, "path": req.Path, "url": req.Url,
 		"board_id": req.BoardID, "sort": req.Sort, "status": req.Status,
 	})
 	resp.OK(c, g)

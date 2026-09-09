@@ -57,8 +57,21 @@ func (h *ContactHandler) Save(c *gin.Context) {
 	}
 	var ct model.UserContact
 	h.DB.Where("user_id = ?", uid).FirstOrCreate(&ct, model.UserContact{UserID: uid})
-	h.DB.Model(&ct).Updates(map[string]interface{}{"qq": req.QQ, "mail": req.Mail, "phone": req.Phone})
-	resp.OK(c, gin.H{"qq": req.QQ, "mail": req.Mail, "phone": req.Phone})
+
+	// 手机号走验证（对齐诺哈 wap_phone）：提交待审核，管理员通过后写入
+	phonePending := ""
+	if req.Phone != "" && req.Phone != ct.Phone {
+		h.DB.Where("user_id = ? AND status = 0", uid).Delete(&model.PhoneAudit{})
+		h.DB.Create(&model.PhoneAudit{UserID: uid, Phone: req.Phone, Status: 0})
+		phonePending = req.Phone
+	}
+
+	updates := map[string]interface{}{"qq": req.QQ, "mail": req.Mail}
+	if req.Phone == "" || req.Phone == ct.Phone {
+		updates["phone"] = req.Phone
+	}
+	h.DB.Model(&ct).Updates(updates)
+	resp.OK(c, gin.H{"qq": req.QQ, "mail": req.Mail, "phone": ct.Phone, "phone_pending": phonePending})
 }
 
 // SaveQQ 绑定 QQ（诺哈 wap_qq：qnum + 校验，这里演示站简化为号+密码确认）

@@ -86,6 +86,184 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 	})
 }
 
+// 批量删除会员（对齐诺哈 user_bdel.asp）：删除用户及其联系方式/地址/证件/密保/游戏/好友关系等
+func (h *AdminHandler) UsersBatchDelete(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请选择要删除的会员")
+		return
+	}
+	if len(req.IDs) > 100 {
+		resp.ParamError(c, "单次最多删除 100 个会员")
+		return
+	}
+	uid := middleware.GetUID(c)
+	// 保护：不能删除自己（站长）
+	clean := []uint{}
+	for _, id := range req.IDs {
+		if id == uid || id == 10000 {
+			continue
+		}
+		clean = append(clean, id)
+	}
+	if len(clean) == 0 {
+		resp.ParamError(c, "不能删除自己或站长账号")
+		return
+	}
+	tx := h.DB.Begin()
+	// 先清理各关联数据，再删用户
+	related := []interface{}{
+		&model.UserContact{}, &model.UserAddress{}, &model.UserDocument{}, &model.UserProtection{},
+		&model.UserLog{}, &model.MyGame{}, &model.Friendship{}, &model.FriendApply{}, &model.FriendBlack{},
+		&model.Notification{}, &model.ChatMessage{}, &model.SignIn{},
+		&model.Home{}, &model.HomeNews{}, &model.PhoneAudit{},
+	}
+	for _, m := range related {
+		if err := tx.Where("user_id IN ?", clean).Delete(m).Error; err != nil {
+			tx.Rollback()
+			resp.ServerError(c, err)
+			return
+		}
+	}
+	// 私信双向清理
+	if err := tx.Where("sender_id IN ?", clean).Delete(&model.PrivateMessage{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Where("friend_id IN ?", clean).Delete(&model.Friendship{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Where("friend_id IN ?", clean).Delete(&model.FriendApply{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Where("friend_id IN ?", clean).Delete(&model.FriendBlack{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Where("receiver_id IN ?", clean).Delete(&model.PrivateMessage{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	// 家族成员
+	if err := tx.Where("user_id IN ?", clean).Delete(&model.FamilyMember{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	// 多对多关联表（user_roles / user_badges）
+	if err := tx.Exec("DELETE FROM user_roles WHERE user_id IN ?", clean).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Exec("DELETE FROM user_badges WHERE user_id IN ?", clean).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	// 帖子/回复改为已删除（保留数据用于审计）
+	tx.Model(&model.Thread{}).Where("user_id IN ?", clean).Update("status", 0)
+	tx.Model(&model.Reply{}).Where("user_id IN ?", clean).Update("status", 0)
+	if err := tx.Where("id IN ?", clean).Delete(&model.User{}).Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		resp.ServerError(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"deleted": len(clean)})
+}
+
+// 手机号验证列表（对齐诺哈 phone_list.asp / phone_search.asp）
+func (h *AdminHandler) Phones(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	word := c.Query("word")
+	q := h.DB.Model(&model.PhoneAudit{})
+	if word != "" {
+		q = q.Where("phone LIKE ?", "%"+word+"%")
+		var ids []uint
+		h.DB.Model(&model.User{}).Where("username = ? OR nickname LIKE ?", word, "%"+word+"%").Pluck("id", &ids)
+		if len(ids) > 0 {
+			q = q.Or("user_id IN ?", ids)
+		}
+	}
+	var total int64
+	q.Count(&total)
+	var rows []model.PhoneAudit
+	q.Preload("User").Order("status ASC, id DESC").Offset(offset).Limit(size).Find(&rows)
+	out := []gin.H{}
+	for _, r := range rows {
+		nickname, color := "", ""
+		if r.User != nil {
+			nickname = r.User.Nickname
+			color = r.User.Color
+		}
+		out = append(out, gin.H{
+			"id": r.ID, "user_id": r.UserID, "nickname": nickname, "color": color,
+			"phone": r.Phone, "status": r.Status, "created_at": r.CreatedAt, "handled_at": r.HandledAt,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// 手机号审核（对齐诺哈 phone_audit_ok.asp：status 1通过 2拒绝）
+func (h *AdminHandler) PhoneAudit(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Status int `json:"status" binding:"oneof=1 2"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "status 必须是 1(通过) 或 2(拒绝)")
+		return
+	}
+	var pa model.PhoneAudit
+	if err := h.DB.First(&pa, id).Error; err != nil {
+		resp.NotFound(c, "记录不存在")
+		return
+	}
+	if pa.Status != 0 {
+		resp.ParamError(c, "该记录已处理过")
+		return
+	}
+	now := time.Now()
+	h.DB.Model(&pa).Updates(map[string]interface{}{"status": req.Status, "handled_at": now})
+	if req.Status == 1 {
+		// 通过：写入联系方式 + 通知
+		var ct model.UserContact
+		h.DB.Where("user_id = ?", pa.UserID).FirstOrCreate(&ct, model.UserContact{UserID: pa.UserID})
+		h.DB.Model(&ct).Update("phone", pa.Phone)
+		h.DB.Create(&model.Notification{UserID: pa.UserID, Type: "system", RefID: pa.ID,
+			Title: "手机号验证通过", Content: "恭喜！你的手机号码“" + pa.Phone + "”已通过验证！"})
+	} else {
+		h.DB.Create(&model.Notification{UserID: pa.UserID, Type: "system", RefID: pa.ID,
+			Title: "手机号验证未通过", Content: "你的手机号码“" + pa.Phone + "”未通过验证，请检查后重新提交。"})
+	}
+	resp.OK(c, "审核成功")
+}
+
+// 删除手机号验证记录（对齐诺哈 phone.asp 删除）
+func (h *AdminHandler) PhoneDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	res := h.DB.Delete(&model.PhoneAudit{}, id)
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "记录不存在")
+		return
+	}
+	resp.OK(c, "已删除")
+}
+
 // 家族管理：列表（含成员数，分页）
 func (h *AdminHandler) Families(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
