@@ -1,5 +1,61 @@
 package model
 
+// 贵宾等级配置（复刻诺哈三代 wap_vip_config）：升级经验 + 等级图标
+// id 即等级（1-8 级），point 为升到本级所需成长值，图标为 static/picture 下文件名
+type NobleLevel struct {
+	ID       uint   `gorm:"primaryKey" json:"id"`                // 等级
+	Point    int    `gorm:"default:0" json:"point"`              // 升级经验（诺哈 vip_edit 的 point）
+	IconBlue string `gorm:"type:varchar(50)" json:"icon_blue"`   // 蓝钻等级图标
+	IconQQ   string `gorm:"type:varchar(50)" json:"icon_qq"`     // 超Q等级图标
+}
+
+func (NobleLevel) TableName() string { return "noble_levels" }
+
+// 默认等级配置（对齐诺哈 wap_vip_config 初始数据）
+var NobleLevelPresets = []NobleLevel{
+	{ID: 1, Point: 0, IconBlue: "noble_2_1.gif", IconQQ: "noble_1_1.gif"},
+	{ID: 2, Point: 600, IconBlue: "noble_2_2.gif", IconQQ: "noble_1_2.gif"},
+	{ID: 3, Point: 1800, IconBlue: "noble_2_3.gif", IconQQ: "noble_1_3.gif"},
+	{ID: 4, Point: 3600, IconBlue: "noble_2_4.gif", IconQQ: "noble_1_4.gif"},
+	{ID: 5, Point: 6000, IconBlue: "noble_2_5.gif", IconQQ: "noble_1_5.gif"},
+	{ID: 6, Point: 10800, IconBlue: "noble_2_6.gif", IconQQ: "noble_1_6.gif"},
+	{ID: 7, Point: 32400, IconBlue: "noble_2_7.gif", IconQQ: "noble_1_7.gif"},
+	{ID: 8, Point: 46800, IconBlue: "noble_2_8.gif", IconQQ: "noble_1_8.gif"},
+}
+
+// NobleLvOf 按成长值算贵宾等级：0 成长值未开通为 0 级，其余取满足门槛的最高级
+func NobleLvOf(levels []NobleLevel, exp int) int {
+	if exp <= 0 {
+		return 0
+	}
+	lv := 1
+	for _, l := range levels {
+		if exp >= l.Point && int(l.ID) > lv {
+			lv = int(l.ID)
+		}
+	}
+	return lv
+}
+
+// NobleIconOf 取某等级图标，typ=blue 蓝钻 / qq 超Q
+func NobleIconOf(levels []NobleLevel, lv int, typ string) string {
+	for _, l := range levels {
+		if int(l.ID) == lv {
+			if typ == "blue" {
+				return l.IconBlue
+			}
+			return l.IconQQ
+		}
+	}
+	if len(levels) > 0 {
+		if typ == "blue" {
+			return levels[0].IconBlue
+		}
+		return levels[0].IconQQ
+	}
+	return ""
+}
+
 // 特权开通方案（后台可管理）：type=blue 蓝钻 / qq 超Q
 // 复刻诺哈三代 wap_vip_shop：订购价格/成长速度/成长赠送/每号限购/库存/销量
 type NoblePlan struct {

@@ -32,6 +32,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.BankAccount{}, &model.WorkRecord{},
 		&model.Family{}, &model.FamilyMember{}, &model.FamilySignIn{},
 		&model.FamilyActivity{},
+		&model.FamilyFavorite{},
 		&model.Book{}, &model.ThreadFavorite{},
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
@@ -41,7 +42,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenMsg{}, &model.GardenMapLog{}, &model.GardenLandLog{},
 		&model.GardenElf{}, &model.GardenElfLog{},
 		&model.GardenSign{},
-		&model.NoblePlan{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
+		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
 		&model.WalletLog{},
 		&model.Marriage{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
@@ -194,6 +195,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGardenData(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
+	seedNobleLevels(db)
 	seedGoods(db)
 	seedResources(db, staticDir)
 	seedGuestbook(db)
@@ -551,6 +553,30 @@ func seedNoblePlans(db *gorm.DB) {
 		db.Model(&model.NoblePlan{}).Where("name = ?", p.Name).Updates(map[string]interface{}{
 			"speed": p.Speed, "limit": p.Limit, "stock": p.Stock,
 		})
+	}
+}
+
+// seedNobleLevels 贵宾等级配置（复刻诺哈 wap_vip_config，幂等）
+func seedNobleLevels(db *gorm.DB) {
+	var n int64
+	db.Model(&model.NobleLevel{}).Count(&n)
+	if n == 0 {
+		for _, l := range model.NobleLevelPresets {
+			db.Create(&l)
+		}
+		return
+	}
+	// 老库补齐 1-8 级与图标（幂等）
+	for _, l := range model.NobleLevelPresets {
+		var exist int64
+		db.Model(&model.NobleLevel{}).Where("id = ?", l.ID).Count(&exist)
+		if exist == 0 {
+			db.Create(&l)
+		} else {
+			db.Model(&model.NobleLevel{}).Where("id = ?", l.ID).Updates(map[string]interface{}{
+				"icon_blue": l.IconBlue, "icon_qq": l.IconQQ,
+			})
+		}
 	}
 }
 

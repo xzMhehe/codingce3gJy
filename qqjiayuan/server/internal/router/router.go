@@ -333,9 +333,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			// 社区经济小助手：银行 / 打工 / 每日星运 / 幸运猜数字
 			// 家族系统
 			authed.GET("/families/mine", famH.Mine)
+			authed.GET("/families/mine/favorites", famH.MyFavorites)
 			authed.POST("/families", famH.Create)
 			authed.POST("/families/:id/join", famH.Join)
 			authed.POST("/families/:id/leave", famH.Leave)
+			authed.POST("/families/:id/favorite", famH.Favorite)
+			authed.POST("/families/:id/members/:userId/remove", famH.RemoveMember)
 			authed.PUT("/families/:id/ann", famH.UpdateAnn)
 			authed.POST("/families/:id/signin", famH.SignIn)
 			authed.POST("/families/:id/tree", famH.Tree)

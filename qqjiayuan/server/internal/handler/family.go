@@ -162,15 +162,90 @@ func (h *FamilyHandler) Detail(c *gin.Context) {
 	// 家族专属论坛板块（不存在则幂等创建）
 	forumBoard := ensureFamilyForumBoard(h.DB, &fam)
 
+	// 我是否收藏了本家族
+	var favored bool
+	if uid > 0 {
+		var n int64
+		h.DB.Model(&model.FamilyFavorite{}).Where("user_id = ? AND family_id = ?", uid, fam.ID).Count(&n)
+		favored = n > 0
+	}
+
 	out := gin.H{
 		"id": fam.ID, "name": fam.Name, "slogan": fam.Slogan, "description": fam.Description,
 		"announcement": fam.Announcement, "owner_id": fam.OwnerID, "owner": fam.Owner,
 		"tree_level": fam.TreeLevel, "tree_exp": fam.TreeExp, "battle_score": fam.BattleScore,
 		"members": members, "my_role": myRole, "member_count": len(members),
 		"signed_today": signed > 0, "tree_today": treeToday, "online": online, "created_at": fam.CreatedAt,
-		"forum_board_id": forumBoard.ID,
+		"forum_board_id": forumBoard.ID, "favored": favored,
 	}
 	resp.OK(c, out)
+}
+
+// 收藏/取消收藏家族（对齐诺哈 family_favor.asp）
+func (h *FamilyHandler) Favorite(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	var exist model.FamilyFavorite
+	if err := h.DB.Where("user_id = ? AND family_id = ?", uid, fam.ID).First(&exist).Error; err == nil {
+		h.DB.Delete(&exist)
+		resp.OK(c, gin.H{"favored": false, "msg": "已取消收藏"})
+		return
+	}
+	h.DB.Create(&model.FamilyFavorite{UserID: uid, FamilyID: fam.ID})
+	resp.OK(c, gin.H{"favored": true, "msg": "已收藏该家族"})
+}
+
+// 我的收藏家族列表
+func (h *FamilyHandler) MyFavorites(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var rows []model.FamilyFavorite
+	h.DB.Where("user_id = ?", uid).Order("id DESC").Find(&rows)
+	ids := []uint{}
+	for _, r := range rows {
+		ids = append(ids, r.FamilyID)
+	}
+	out := []gin.H{}
+	if len(ids) > 0 {
+		var fams []model.Family
+		h.DB.Preload("Owner").Where("id IN ?", ids).Find(&fams)
+		for _, f := range fams {
+			out = append(out, gin.H{"id": f.ID, "name": f.Name, "slogan": f.Slogan, "category": f.Category,
+				"owner": f.Owner.Nickname, "tree_level": f.TreeLevel, "battle_score": f.BattleScore})
+		}
+	}
+	resp.OK(c, out)
+}
+
+// 族长移除成员（对齐诺哈 family_func_member_remove.asp）
+func (h *FamilyHandler) RemoveMember(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if fam.OwnerID != uid {
+		resp.Forbidden(c, "只有族长才能管理成员")
+		return
+	}
+	mid, _ := strconv.Atoi(c.Param("userId"))
+	if mid == int(uid) {
+		resp.ParamError(c, "族长不能移除自己，请解散家族")
+		return
+	}
+	res := h.DB.Where("family_id = ? AND user_id = ?", fam.ID, mid).Delete(&model.FamilyMember{})
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "该成员不在本家族")
+		return
+	}
+	h.act(fam.ID, uid, "将 %s 移出了家族", func() string {
+		var u model.User
+		h.DB.First(&u, mid)
+		return u.Nickname
+	}())
+	resp.OK(c, "已移除该成员")
 }
 
 // 加入家族

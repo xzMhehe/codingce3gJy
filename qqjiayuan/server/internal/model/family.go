@@ -44,11 +44,21 @@ type FamilySignIn struct {
 	FamilyID  uint      `gorm:"index" json:"family_id"`
 	UserID    uint      `gorm:"index" json:"user_id"`
 	SignDate  string    `gorm:"type:varchar(10)" json:"sign_date"`
-	Type      string    `gorm:"type:varchar(10);default:sign" json:"type"`
+	Type      string    `gorm:"type:varchar(10);default:sign" json:"type"` // sign/tree
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func (FamilySignIn) TableName() string { return "family_sign_ins" }
+
+// 收藏家族（对齐诺哈 wap_bbs_favor type=4）
+type FamilyFavorite struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_ff" json:"user_id"`
+	FamilyID  uint      `gorm:"uniqueIndex:uk_ff" json:"family_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (FamilyFavorite) TableName() string { return "family_favorites" }
 
 // 家族区动态（加入/签到/守护/乐斗等）
 type FamilyActivity struct {

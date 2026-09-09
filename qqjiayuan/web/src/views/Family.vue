@@ -9,8 +9,9 @@
       <div class="module-title">
         主页 | <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/forum')">论坛</a>
         | <a href="javascript:;" @click="$router.push({ path: '/chat', query: { family_id: fam.id } })">聊室</a>
-        | <a href="javascript:;" @click="$router.push('/channel/1')">娱乐</a>
-        | <a href="javascript:;" @click="$router.push('/family/'+fam.id+'#members')">家人</a><br>
+        | <a href="javascript:;" @click="$router.push('/games')">游戏</a>
+        | <a href="javascript:;" @click="$router.push('/family/'+fam.id+'#members')">家人</a>
+        | <a href="javascript:;" @click="doFavor"><font :color="fam.favored ? '#1a9e1a' : '#004299'">{{ fam.favored ? '★已收藏' : '☆收藏该家' }}</font></a><br>
       </div>
 
       <!-- 家族风采 -->
@@ -45,12 +46,13 @@
       <div class="module-title">功能导航</div>
       <div class="module-content plist">
         <div class="row00" v-if="fam.my_role">
-          <a href="javascript:;" @click="doBattle">乐斗</a>.<a href="javascript:;" @click="$router.push('/channel/1')">活动</a>.<a href="javascript:;" @click="$router.push('/friends')">邀好友</a>.<a href="javascript:;" @click="doSign">签到</a><br>
-          <a href="javascript:;" @click="doTree">族斗</a>.<a href="javascript:;" @click="$router.push('/mood')">心情</a>.<a href="javascript:;" @click="$router.push('/channel/4')">反馈</a>.<a href="javascript:;" @click="doFavor">收藏夹</a><br>
+          <a href="javascript:;" @click="doBattle">乐斗</a>.<a href="javascript:;" @click="$router.push('/activities')">活动</a>.<a href="javascript:;" @click="$router.push('/friends')">邀好友</a>.<a href="javascript:;" @click="doSign">签到</a><br>
+          <a href="javascript:;" @click="doTree">抚摸/拥抱守护树</a>.<a href="javascript:;" @click="$router.push('/mood')">心情</a>.<a href="javascript:;" @click="$router.push('/notices')">公告</a><br>
+          <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/forum')">家族论坛</a>.<a href="javascript:;" @click="doFavor">{{ fam.favored ? '取消收藏' : '收藏该家' }}</a>.<a href="javascript:;" @click="doLeave" style="color:#c00">退出家族</a><br>
           <template v-if="fam.signed_today"><span style="color:#1a9e1a">今天已在家族签到 ✓</span><br></template>
         </div>
         <div class="row00" v-else>
-          你还不是本家族成员，<a href="javascript:;" @click="doJoin">快速加入</a><br>
+          你还不是本家族成员，<a href="javascript:;" @click="doJoin">快速加入</a>.<a href="javascript:;" @click="doFavor">{{ fam.favored ? '取消收藏' : '收藏该家' }}</a><br>
         </div>
         <!-- 串门：跳到其他家族 -->
         <form style="margin-top:4px" @submit.prevent="goVisit">
@@ -66,12 +68,13 @@
       <p v-if="okMsg" style="color:#1a9e1a;padding:0 5px">{{ okMsg }}</p>
 
       <!-- 家人（成员） -->
-      <div class="module-title" id="members">家人：在线{{ fam.online || 0 }}人/总{{ fam.member_count || 0 }}人</div>
+      <div class="module-title" id="members">家人：在线{{ fam.online || 0 }}人/总{{ fam.member_count || 0 }}人<template v-if="isOwner">　<font color="#1a9e1a">（族长可管理成员）</font></template></div>
       <ul class="dtuser">
         <li v-for="m in fam.members" :key="m.id">
           <template v-if="m.role === 'owner'">👑</template><template v-else-if="m.role === 'admin'">⭐</template><template v-else>◆</template>
           <a href="javascript:;" @click="$router.push('/user/'+m.user_id)"><font :color="m.user && m.user.color || '#004299'">{{ m.user ? m.user.nickname : '友友' }}</font></a>
           <span class="txt-fade">（{{ roleName(m.role) }}，贡献 {{ m.exp }}）</span>
+          <template v-if="isOwner && m.role !== 'owner'"><a href="javascript:;" style="color:#c00" @click="removeMember(m.user_id)">[移除]</a></template>
         </li>
       </ul>
 
@@ -130,7 +133,29 @@ export default {
     goVisit () {
       if (this.visitId > 0) this.$router.push('/family/' + this.visitId)
     },
-    doFavor () { this.msg = '收藏夹功能开发中，敬请期待'; this.okMsg = '' },
+    doFavor () {
+      this.msg = ''; this.okMsg = ''
+      if (!this.isLogin) { this.msg = '请先登录'; return }
+      api.post('/families/' + this.fam.id + '/favorite').then(r => {
+        if (r.code === 0) { this.fam.favored = r.data.favored; this.okMsg = r.data.msg; this.load() }
+        else this.msg = r.msg
+      })
+    },
+    doLeave () {
+      this.msg = ''; this.okMsg = ''
+      if (!window.confirm('确定退出「' + this.fam.name + '」家族吗？')) return
+      api.post('/families/' + this.fam.id + '/leave').then(r => {
+        if (r.code === 0) { this.okMsg = r.data || '已退出家族'; this.load() }
+        else this.msg = r.msg
+      })
+    },
+    removeMember (userId) {
+      if (!window.confirm('确定将该成员移出家族吗？')) return
+      api.post('/families/' + this.fam.id + '/members/' + userId + '/remove').then(r => {
+        if (r.code === 0) { this.okMsg = r.data || '已移除'; this.load() }
+        else this.msg = r.msg
+      })
+    },
     doJoin () {
       this.msg = ''; this.okMsg = ''
       if (!this.isLogin) { this.msg = '请先登录'; return }

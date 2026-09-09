@@ -55,12 +55,19 @@
     <!-- ===== 贵族身份 ===== -->
     <div class="module-title">贵族身份</div>
     <div class="module-content">
-      <template v-if="u.blue_lv > 0">蓝钻<img :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" style="height:14px;vertical-align:-2px" @error="hideErr"> Lv.{{ u.blue_lv }}</template>
-      <template v-if="u.qq_lv > 0">超Q<img :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" style="height:14px;vertical-align:-2px" @error="hideErr"> Lv.{{ u.qq_lv }}</template>
-      <template v-if="!u.blue_lv && !u.qq_lv">
-        <span class="txt-fade">未开通贵族身份，<a href="javascript:;" @click="$router.push('/noble')">去开通</a></span><br>
+      <template v-if="u.blue_lv > 0 || u.qq_lv > 0">
+        <span v-if="u.blue_lv > 0" class="noble-chip">
+          <img :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" @error="hideErr">蓝钻<span class="noble-lv">Lv.{{ u.blue_lv }}</span>
+        </span>
+        <span v-if="u.qq_lv > 0" class="noble-chip noble-qq">
+          <img :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr">超Q<span class="noble-lv">Lv.{{ u.qq_lv }}</span>
+        </span>
+        <template v-if="extraPriv"><br><img class="noble-priv" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr"></template>
       </template>
-      <template v-if="u.priv"><img :src="'/static/picture/' + u.priv.file" :alt="u.priv.name" :title="u.priv.name" style="height:14px;vertical-align:-2px"></template>
+      <template v-else>
+        <span class="txt-fade">未开通贵族身份，<a href="javascript:;" @click="$router.push('/noble')">去开通</a></span>
+        <template v-if="extraPriv"><br><img class="noble-priv" :src="'/static/' + extraPriv.file" :alt="extraPriv.name" :title="extraPriv.name" @error="hideErr"></template><br>
+      </template>
     </div>
 
     <!-- ===== 业务状态 ===== -->
@@ -176,6 +183,13 @@ export default {
       if (!nd) return '满级'
       const r = Math.max(0, nd - d)
       return Math.round(r * 10) / 10
+    },
+    extraPriv () {
+      const p = this.u.priv
+      if (!p) return null
+      const n = p.name || ''
+      if ((this.u.blue_lv > 0 || this.u.qq_lv > 0) && (n.indexOf('蓝钻') === 0 || n.indexOf('超Q') === 0)) return null
+      return p
     }
   },
   watch: { '$route': 'load' },
@@ -240,3 +254,11 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.noble-chip { display:inline-block; border:1px solid #9FC6EC; background:#F0F8FF; border-radius:3px; padding:2px 8px; margin:2px 6px 2px 0; line-height:18px; }
+.noble-chip img { height:16px; vertical-align:-3px; margin-right:2px; }
+.noble-chip.noble-qq { border-color:#F4B97F; background:#FFF8EE; }
+.noble-lv { color:#1a9e1a; font-weight:bold; margin-left:4px; }
+.noble-priv { height:14px; vertical-align:-2px; }
+</style>
