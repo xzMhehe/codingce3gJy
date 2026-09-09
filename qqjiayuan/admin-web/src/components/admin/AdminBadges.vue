@@ -11,7 +11,7 @@
         <el-button v-if="tab === 'medals'" type="primary" icon="el-icon-plus" @click="grantOpen = true">授予勋章</el-button>
       </div>
 
-      <!-- 勋章商店（复刻诺哈 wap_medal_shop） -->
+      <!-- 勋章商店 -->
       <el-table v-if="tab === 'shop'" :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column label="图标" width="80">
@@ -35,12 +35,12 @@
         </el-table-column>
       </el-table>
 
-      <!-- 会员勋章（复刻诺哈 wap_medal / medal_list） -->
+      <!-- 会员勋章 -->
       <template v-else>
         <div class="toolbar" style="margin-bottom:12px">
           <el-input v-model="medalUid" placeholder="会员号码" style="width:130px" />
           <el-button size="small" icon="el-icon-search" @click="loadMedals">搜索</el-button>
-          <span class="help-line" style="margin-left:8px">过期勋章已自动清除（复刻诺哈）</span>
+          <span class="help-line" style="margin-left:8px">过期勋章已自动清除</span>
         </div>
         <el-table :data="medals" v-loading="loading" stripe>
           <el-table-column prop="id" label="ID" width="70" />

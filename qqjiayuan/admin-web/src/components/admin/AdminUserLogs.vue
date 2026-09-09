@@ -5,7 +5,7 @@
         <el-input v-model.number="userId" placeholder="按用户号码过滤" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">查询</el-button>
         <div class="grow" />
-        <span class="help-line">会员登录/操作日志（对齐诺哈 会员日志）</span>
+        <span class="help-line">会员登录/操作日志</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="user_id" label="号码" width="90" />

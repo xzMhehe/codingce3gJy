@@ -5,7 +5,7 @@
         <el-input v-model.number="userId" placeholder="按卖家号码过滤" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">查询</el-button>
         <div class="grow" />
-        <span class="help-line">全部商品（含下架，对齐诺哈 商品管理）</span>
+        <span class="help-line">全部商品（含下架）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />

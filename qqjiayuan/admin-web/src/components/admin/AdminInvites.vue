@@ -2,7 +2,7 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <span class="help-line">会员邀请/推荐关系（对齐诺哈 会员推荐）</span>
+        <span class="help-line">会员邀请/推荐关系</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="code" label="邀请码" width="120" />

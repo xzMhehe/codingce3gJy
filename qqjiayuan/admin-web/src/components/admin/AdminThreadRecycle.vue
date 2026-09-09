@@ -2,7 +2,7 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <span class="help-line">已删除帖子（对齐诺哈 恢复帖子）</span>
+        <span class="help-line">已删除帖子</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="90" />

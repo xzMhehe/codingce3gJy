@@ -5,7 +5,7 @@
         <el-input v-model="word" placeholder="按号码/昵称搜索" prefix-icon="el-icon-search" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
-        <span class="help-line">家园列表（活跃点排行，对齐诺哈 家园管理）</span>
+        <span class="help-line">家园列表（活跃点排行）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="user_id" label="号码" width="90" />

@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-card shadow="never" class="box">
-      <div class="toolbar"><span class="help-line">会员通信地址：故乡 / 现居（对齐诺哈 会员地址）</span></div>
+      <div class="toolbar"><span class="help-line">会员通信地址：故乡 / 现居</span></div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="user_id" label="号码" width="90" />
         <el-table-column prop="nickname" label="昵称" min-width="100" />

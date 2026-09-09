@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div class="toolbar">
         <div class="grow" />
-        <span class="help-line">系统通知/家信（对齐诺哈 信息管理）</span>
+        <span class="help-line">系统通知/家信</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="user_id" label="收信号码" width="100" />

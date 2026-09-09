@@ -5,7 +5,7 @@
         <el-input v-model.number="userId" placeholder="按家园主人号码过滤" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">查询</el-button>
         <div class="grow" />
-        <span class="help-line">家园访客记录（对齐诺哈 家园访客）</span>
+        <span class="help-line">家园访客记录</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="owner_nick" label="家园主人" min-width="130" />

@@ -10,7 +10,7 @@
           <el-option label="已取消" :value="5" />
         </el-select>
         <div class="grow" />
-        <span class="help-line">商店订单（对齐诺哈 商城管理）</span>
+        <span class="help-line">商店订单</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="订单号" width="90" />

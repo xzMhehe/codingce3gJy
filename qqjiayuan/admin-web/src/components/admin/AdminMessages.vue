@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-card shadow="never" class="box">
-      <div class="toolbar"><span class="help-line">家信列表（站内私信，对齐诺哈 信息管理·家信列表）</span></div>
+      <div class="toolbar"><span class="help-line">家信列表（站内私信）</span></div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="sender_id" label="发信号码" width="100" />

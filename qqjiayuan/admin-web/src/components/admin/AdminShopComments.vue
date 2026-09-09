@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div class="toolbar">
         <div class="grow" />
-        <span class="help-line">商品评价（对齐诺哈 评论管理）</span>
+        <span class="help-line">商品评价</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />

@@ -5,7 +5,7 @@
         <el-input v-model="word" placeholder="按书名/作者搜索" prefix-icon="el-icon-search" clearable style="width:220px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
-        <span class="help-line">小说列表（对齐诺哈 书城管理）</span>
+        <span class="help-line">小说列表</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />

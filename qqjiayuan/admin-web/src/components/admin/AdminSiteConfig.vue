@@ -2,7 +2,7 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <span class="help-line">站点配置（对齐诺哈 系统配置·注册/社区/网站配置）</span>
+        <span class="help-line">站点配置</span>
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="addRow">新增配置</el-button>
         <el-button type="success" icon="el-icon-check" @click="saveAll">保存全部</el-button>

@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div class="toolbar">
         <div class="grow" />
-        <span class="help-line">全站留言本（对齐诺哈 留言管理，含私密留言内容）</span>
+        <span class="help-line">全站留言本</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="70" />

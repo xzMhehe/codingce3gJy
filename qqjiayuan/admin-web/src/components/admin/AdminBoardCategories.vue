@@ -2,7 +2,7 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <span class="help-line">分类用于在分区下对子板块二次分组（参考诺哈「分区→分类→版块」三级）。</span>
+        <span class="help-line">分类用于在分区下对子板块二次分组</span>
         <div class="grow" />
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增分类</el-button>
       </div>
