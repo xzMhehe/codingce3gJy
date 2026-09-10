@@ -51,6 +51,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	ttouH := &handler.TtouHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
 	farmH := &handler.FarmHandler{DB: db}
+	parkH := &handler.ParkHandler{DB: db}
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -247,6 +248,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/games/farm/slaves", farmH.Slaves)
 			authed.POST("/games/farm/slave/:kind/:id", farmH.SlaveAct)
 			authed.POST("/games/farm/setting", farmH.Setting)
+			// 抢车位（对齐诺哈三代 wap/game/car 玩法）
+			authed.GET("/games/park/view", parkH.View)
+			authed.GET("/games/park/owner", parkH.Owner)
+			authed.GET("/games/park/friends", parkH.Friends)
+			authed.GET("/games/park/shop", parkH.Shop)
+			authed.POST("/games/park/buy", parkH.Buy)
+			authed.POST("/games/park/send", parkH.Send)
+			authed.POST("/games/park/stop", parkH.Stop)
+			authed.POST("/games/park/favor", parkH.Favor)
+			authed.POST("/games/park/seal", parkH.Seal)
+			authed.GET("/games/park/garage", parkH.Garage)
+			authed.GET("/games/park/top", parkH.Top)
 
 			// 我的游戏
 			authed.GET("/my-games", gameH.MyList)
@@ -512,6 +525,15 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/farm-users/:uid/land/:id/clear", perm(db, "admin:access"), farmH.AdminLandClear)
 				admin.GET("/farm-logs", perm(db, "admin:access"), farmH.AdminLogs)
 				admin.GET("/farm-rank", perm(db, "admin:access"), farmH.AdminRank)
+				// 抢车位管理（车市/用户数据/日志）
+				admin.GET("/park-cars", perm(db, "admin:access"), parkH.AdminCars)
+				admin.POST("/park-cars", perm(db, "admin:access"), parkH.AdminCarCreate)
+				admin.PUT("/park-cars/:id", perm(db, "admin:access"), parkH.AdminCarUpdate)
+				admin.DELETE("/park-cars/:id", perm(db, "admin:access"), parkH.AdminCarDelete)
+				admin.GET("/park-users", perm(db, "admin:access"), parkH.AdminUsers)
+				admin.PUT("/park-users/:uid", perm(db, "admin:access"), parkH.AdminUserEdit)
+				admin.PUT("/park-users/:uid/spots/:id/clear", perm(db, "admin:access"), parkH.AdminSpotClear)
+				admin.GET("/park-logs", perm(db, "admin:access"), parkH.AdminLogs)
 
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)

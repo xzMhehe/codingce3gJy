@@ -104,6 +104,11 @@
               <el-menu-item index="farmItems"><i class="el-icon-coin"></i>化肥陷阱</el-menu-item>
               <el-menu-item index="farmData"><i class="el-icon-data-analysis"></i>农场数据管理</el-menu-item>
             </el-submenu>
+            <el-submenu index="g-park">
+              <template slot="title"><i class="el-icon-truck"></i><span>抢车位</span></template>
+              <el-menu-item index="parkCars"><i class="el-icon-truck"></i>车市车辆</el-menu-item>
+              <el-menu-item index="parkData"><i class="el-icon-data-analysis"></i>车位数据管理</el-menu-item>
+            </el-submenu>
           </el-submenu>
           <!-- 系统配置（诺哈 config/ manage/ file/） -->
           <el-submenu index="g-config">
@@ -167,6 +172,7 @@ export default {
         announcements: '公告广播',
         games: '游戏大厅', badges: '勋章管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '花园数据管理',
         farmSeeds: '农场种子', farmItems: '化肥陷阱', farmData: '农场数据管理',
+        parkCars: '车市车辆', parkData: '车位数据管理',
         siteConfig: '站点设置', roles: '管理设置', resources: '文件管理'
       }
     }

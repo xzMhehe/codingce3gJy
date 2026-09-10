@@ -58,6 +58,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenSign{},
 		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
 		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
+		&model.ParkUser{}, &model.CarShop{}, &model.CarGarage{}, &model.CarStop{}, &model.CarLog{}, &model.CarMsg{},
 		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
 		&model.MoneyShop{},
 		&model.WalletLog{},
@@ -224,6 +225,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGardenActivities(db)
 	seedGardenData(db)
 	seedFarmData(db)
+	seedParkData(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)
@@ -608,6 +610,72 @@ func seedFarmData(db *gorm.DB) {
 		db.Model(&model.FarmTrap{}).Where("name = ?", t.Name).Count(&n)
 		if n == 0 {
 			db.Create(&t)
+		}
+	}
+}
+
+// seedParkData 抢车位车辆数据（幂等：按名称逐条补齐）
+// 对齐诺哈 wap_car_shop：dtype 1普通车 2高级车 3酷族车 4贵族车 5试驾车
+// 盈利≈价格的0.5%/小时（停满12小时净收入约价5.4%，符合原版"停车一天回本一成"节奏）
+func seedParkData(db *gorm.DB) {
+	cars := []model.CarShop{
+		// 普通车
+		{Name: "奥拓", Icon: "gif", Price: 1200, Money: 6, DType: 1},
+		{Name: "奇瑞QQ", Icon: "gif", Price: 2000, Money: 10, DType: 1},
+		{Name: "夏利", Icon: "gif", Price: 2800, Money: 14, DType: 1},
+		{Name: "五菱之光", Icon: "gif", Price: 3600, Money: 18, DType: 1},
+		{Name: "长安之星", Icon: "gif", Price: 4500, Money: 22, DType: 1},
+		{Name: "捷达", Icon: "gif", Price: 6000, Money: 30, DType: 1},
+		{Name: "富康", Icon: "gif", Price: 6800, Money: 34, DType: 1},
+		{Name: "桑塔纳", Icon: "gif", Price: 8000, Money: 40, DType: 1},
+		{Name: "比亚迪F3", Icon: "gif", Price: 9000, Money: 45, DType: 1},
+		{Name: "爱丽舍", Icon: "gif", Price: 10000, Money: 50, DType: 1},
+		// 高级车
+		{Name: "伊兰特", Icon: "gif", Price: 15000, Money: 75, DType: 2},
+		{Name: "别克凯越", Icon: "gif", Price: 18000, Money: 90, DType: 2},
+		{Name: "骐达", Icon: "gif", Price: 22000, Money: 110, DType: 2},
+		{Name: "POLO", Icon: "gif", Price: 26000, Money: 130, DType: 2},
+		{Name: "卡罗拉", Icon: "gif", Price: 30000, Money: 150, DType: 2},
+		{Name: "思域", Icon: "gif", Price: 36000, Money: 180, DType: 2},
+		{Name: "福克斯", Icon: "gif", Price: 40000, Money: 200, DType: 2},
+		{Name: "速腾", Icon: "gif", Price: 45000, Money: 225, DType: 2},
+		{Name: "轩逸", Icon: "gif", Price: 50000, Money: 250, DType: 2},
+		{Name: "明锐", Icon: "gif", Price: 55000, Money: 275, DType: 2},
+		// 酷族车
+		{Name: "马自达3", Icon: "gif", Price: 68000, Money: 340, DType: 3},
+		{Name: "甲壳虫", Icon: "gif", Price: 88000, Money: 440, DType: 3},
+		{Name: "MINI COOPER", Icon: "gif", Price: 108000, Money: 540, DType: 3},
+		{Name: "马自达6", Icon: "gif", Price: 128000, Money: 640, DType: 3},
+		{Name: "天籁", Icon: "gif", Price: 158000, Money: 790, DType: 3},
+		{Name: "锐志", Icon: "gif", Price: 188000, Money: 940, DType: 3},
+		{Name: "君越", Icon: "gif", Price: 218000, Money: 1090, DType: 3},
+		{Name: "凯美瑞", Icon: "gif", Price: 248000, Money: 1240, DType: 3},
+		{Name: "雅阁", Icon: "gif", Price: 278000, Money: 1390, DType: 3},
+		{Name: "帕萨特领驭", Icon: "gif", Price: 308000, Money: 1540, DType: 3},
+		// 贵族车
+		{Name: "奥迪A4", Icon: "gif", Price: 400000, Money: 2000, DType: 4},
+		{Name: "宝马3系", Icon: "gif", Price: 500000, Money: 2500, DType: 4},
+		{Name: "奔驰C级", Icon: "gif", Price: 600000, Money: 3000, DType: 4},
+		{Name: "凯迪拉克CTS", Icon: "gif", Price: 700000, Money: 3500, DType: 4},
+		{Name: "奥迪A6L", Icon: "gif", Price: 800000, Money: 4000, DType: 4},
+		{Name: "宝马5系", Icon: "gif", Price: 1000000, Money: 5000, DType: 4},
+		{Name: "奔驰E级", Icon: "gif", Price: 1200000, Money: 6000, DType: 4},
+		{Name: "奥迪Q7", Icon: "gif", Price: 1600000, Money: 8000, DType: 4},
+		{Name: "宝马7系", Icon: "gif", Price: 2000000, Money: 10000, DType: 4},
+		{Name: "奔驰S级", Icon: "gif", Price: 2500000, Money: 12500, DType: 4},
+		{Name: "保时捷卡宴", Icon: "gif", Price: 3000000, Money: 15000, DType: 4},
+		{Name: "法拉利F430", Icon: "gif", Price: 5000000, Money: 25000, DType: 4},
+		{Name: "兰博基尼", Icon: "gif", Price: 8000000, Money: 40000, DType: 4},
+		{Name: "劳斯莱斯幻影", Icon: "gif", Price: 12000000, Money: 60000, DType: 4},
+		// 试驾车（低门槛高盈利彩蛋）
+		{Name: "试驾体验车", Icon: "gif", Price: 500, Money: 15, DType: 5},
+		{Name: "试驾跑车", Icon: "gif", Price: 2000, Money: 80, DType: 5},
+	}
+	for _, s := range cars {
+		var n int64
+		db.Model(&model.CarShop{}).Where("name = ?", s.Name).Count(&n)
+		if n == 0 {
+			db.Create(&s)
 		}
 	}
 }
@@ -1642,7 +1710,7 @@ func seedGames(db *gorm.DB) {
 	games := []model.Game{
 		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", Intro: "播种·浇灌·收获，收集图谱点亮精灵，还可到好友花园采摘！", Path: "/games/garden", BoardID: bid("魔法花园"), Sort: 1},
 		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★★", Desc: "开心农场，播种开心，收获快乐", Intro: "翻地播种浇水施肥，偷菜设陷阱，还能卖果实赚G币！", Path: "/games/farm", BoardID: bid("开心农场"), Sort: 2},
-		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，好友停车场就是你的金库", BoardID: bid("狂抢车位"), Sort: 3},
+		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，贴条没收罚金，超时收入入国库，还能赠好友豪车！", Path: "/games/park", BoardID: bid("狂抢车位"), Sort: 3},
 		{Name: "好友买卖", Category: "com", Logo: "", Stars: "★★★★★", Desc: "买下好友，打工赚钱，奴隶翻身当主人", Intro: "把好友买来做奴隶，让他打工赚钱，还可以身价翻倍转卖", BoardID: bid("好友买卖"), Sort: 4},
 		{Name: "竞技场", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "热血江湖，擂台争霸，胜者为王", Intro: "挑战好友擂台，胜场提升段位，冲击竞技之巅", BoardID: bid("竞技场"), Sort: 5},
 		{Name: "台球", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "一杆进洞，桌上争雄", Intro: "好友对战台球，展示你的杆法与技巧", BoardID: bid("台球"), Sort: 6},
