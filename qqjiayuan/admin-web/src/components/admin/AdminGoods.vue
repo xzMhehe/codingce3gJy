@@ -19,6 +19,8 @@
         <el-table-column prop="youquan_price" label="友友券" width="80" header-align="center">
           <template slot-scope="{row}">{{ row.youquan_price || '—' }}</template>
         </el-table-column>
+        <el-table-column prop="stock" label="库存" width="70" header-align="center" />
+        <el-table-column prop="sales" label="销量" width="70" header-align="center" />
         <el-table-column prop="sort" label="排序" width="70" header-align="center" />
         <el-table-column label="状态" width="80" header-align="center">
           <template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag></template>
@@ -86,17 +88,17 @@ export default {
       })
     },
     openDlg (row) {
-      this.form = row ? { id: row.id, name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, sort: row.sort || 0, desc: row.desc, status: row.status } : { id: 0, name: '', category: '道具', icon: '', price: 0, youquan_price: 0, sort: 0, desc: '', status: 1 }
+      this.form = row ? { id: row.id, name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, stock: row.stock || 0, sales: row.sales || 0, end_time: row.end_time || null, sort: row.sort || 0, desc: row.desc, status: row.status } : { id: 0, name: '', category: '道具', icon: '', price: 0, youquan_price: 0, stock: 0, sales: 0, end_time: null, sort: 0, desc: '', status: 1 }
       this.dlg = true
     },
     save () {
       if (!this.form.name) { this.$message.warning('请填写商品名'); return }
-      const body = { name: this.form.name, category: this.form.category, icon: this.form.icon, price: this.form.price, youquan_price: this.form.youquan_price, sort: this.form.sort, desc: this.form.desc, status: this.form.status }
+      const body = { name: this.form.name, category: this.form.category, icon: this.form.icon, price: this.form.price, youquan_price: this.form.youquan_price, stock: this.form.stock, sales: this.form.sales, end_time: this.form.end_time, sort: this.form.sort, desc: this.form.desc, status: this.form.status }
       if (this.form.id) api.put('/admin/goods/' + this.form.id, body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
       else api.post('/admin/goods', body).then(r => { if (r.code === 0) { this.dlg = false; this.load() } })
     },
     toggle (row) {
-      api.put('/admin/goods/' + row.id, { name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, sort: row.sort || 0, desc: row.desc, status: row.status === 1 ? 0 : 1 }).then(() => this.load())
+      api.put('/admin/goods/' + row.id, { name: row.name, category: row.category, icon: row.icon || '', price: row.price, youquan_price: row.youquan_price || 0, stock: row.stock || 0, sales: row.sales || 0, end_time: row.end_time || null, sort: row.sort || 0, desc: row.desc, status: row.status === 1 ? 0 : 1 }).then(() => this.load())
     },
     del (row) {
       this.$confirm('确定删除「' + row.name + '」吗？', '提示', { type: 'warning' }).then(() => {

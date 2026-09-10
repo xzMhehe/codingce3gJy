@@ -666,6 +666,19 @@ func (h *UserHandler) PayPassSet(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
+// verifyPayPass 校验支付密码（购买/赠送等消费确认，复刻诺哈 VerifyPayPass），返回错误文案（空串=通过）
+func verifyPayPass(db *gorm.DB, uid uint, payPass string) string {
+	var u model.User
+	db.Select("id,pay_pass").First(&u, uid)
+	if u.PayPass == "" {
+		return "您还未设置支付密码，请先到安全中心设置！"
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PayPass), []byte(payPass)) != nil {
+		return "支付密码错误！"
+	}
+	return ""
+}
+
 // ---- 登录/操作日志（诺哈 log.asp） ----
 
 // MyLogs 我的操作日志

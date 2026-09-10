@@ -47,6 +47,23 @@ type WalletLog struct {
 
 func (WalletLog) TableName() string { return "wallet_logs" }
 
+// 货币商店（复刻诺哈 wap_money_shop）：花 ptype 货币买 mtype 货币礼包
+type MoneyShop struct {
+	ID      uint      `gorm:"primaryKey" json:"id"`
+	Name    string    `gorm:"type:varchar(40)" json:"name"`
+	MType   string    `gorm:"column:mtype;type:varchar(10)" json:"mtype"` // 卖出货币 coins/yuanbao/jinzuan/youquan
+	Money   int       `gorm:"default:0" json:"money"`                     // 每份卖出数量
+	PType   string    `gorm:"column:ptype;type:varchar(10)" json:"ptype"` // 支付货币
+	Price   int       `gorm:"default:0" json:"price"`                     // 每份单价
+	Stock   int       `gorm:"default:0" json:"stock"`                     // 库存数量
+	Sales   int       `gorm:"default:0" json:"sales"`                     // 销售数量
+	Status  int       `gorm:"default:1" json:"status"`                    // 1上架 0下架
+	AddTime time.Time `json:"add_time"`                                   // 销售时间
+	EndTime time.Time `json:"end_time"`                                   // 结束时间
+}
+
+func (MoneyShop) TableName() string { return "money_shop" }
+
 // 婚恋：婚姻证书（对齐诺哈 wap_marriage_marry：aid 求婚方 / bid 被求婚方 / status 1求婚中 0已婚）
 type Marriage struct {
 	ID        uint       `gorm:"primaryKey" json:"id"`

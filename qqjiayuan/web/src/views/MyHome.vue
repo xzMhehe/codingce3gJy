@@ -38,14 +38,23 @@
       <a href="javascript:;" @click="$router.push('/games')">更多我的游戏&gt;&gt;</a><br>
       <a href="javascript:;" @click="$router.push('/games')">添加游戏</a> . <a href="javascript:;" @click="$router.push('/games')">管理游戏</a>
 
-      <div class="module-title"><a href="javascript:;" @click="$router.push('/channel/1')">新鲜事({{ feed.length }})</a> <a href="javascript:;" @click="tip('新鲜事设置')">设置</a></div>
-      <div class="list" v-if="feed.length">
-        <div v-for="d in feed" :key="'f'+d.id" class="row">
-          ({{ ago(d.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+d.user_id)"><font :color="d.color || '#004299'">{{ d.nickname }}</font></a>{{ d.action }}《<a href="javascript:;" @click="$router.push('/thread/'+d.thread_id)">{{ d.title }}</a>》<br>
+      <!-- 我的新鲜事（复刻诺哈 my_home.asp：TOP3 编号条目 + 底边框行，标题进完整列表页） -->
+      <div class="module-title">【<a href="javascript:;" @click="$router.push('/my-news')">我的新鲜事</a>】</div>
+      <template v-if="myNews.length">
+        <div v-for="(n, i) in myNews.slice(0, 3)" :key="'mn'+n.id" class="news-item">
+          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
         </div>
-      </div>
-      <div class="module-content" v-else><span class="empty">还没有新鲜事</span></div>
-      <a href="javascript:;" @click="$router.push('/channel/1')">查看更多&gt;&gt;</a><br>
+      </template>
+      <template v-else><br></template>
+
+      <!-- 好友新鲜事（复刻诺哈 friend_news：TOP3） -->
+      <div class="module-title">【<a href="javascript:;" @click="$router.push('/friend-news')">好友新鲜事</a>】</div>
+      <template v-if="friendNews.length">
+        <div v-for="(n, i) in friendNews.slice(0, 3)" :key="'fn'+n.id" class="news-item">
+          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
+        </div>
+      </template>
+      <template v-else><br></template>
 
       <div class="module-title"><a href="javascript:;" @click="$router.push('/space/'+u.id)">留言板</a></div>
       <ul class="dtuser" v-if="msgs.length">
@@ -70,24 +79,6 @@
         </div>
       </div>
       <div class="module-content" v-else><span class="empty">还没有访客</span></div>
-
-      <!-- 我的新鲜事 -->
-      <div class="module-title">我的新鲜事|<a href="javascript:;" @click="tip('新鲜事设置')">设置</a></div>
-      <div class="list" v-if="myNews.length">
-        <div v-for="n in myNews" :key="'mn'+n.id" class="row">
-          ({{ ago(n.created_at) }})<font :color="n.color || '#004299'">{{ n.nickname }}</font>{{ n.content }}<br>
-        </div>
-      </div>
-      <div class="module-content" v-else><span class="empty">还没有新鲜事</span></div>
-
-      <!-- 好友新鲜事 -->
-      <div class="module-title">好友新鲜事</div>
-      <div class="list" v-if="friendNews.length">
-        <div v-for="n in friendNews" :key="'fn'+n.id" class="row">
-          ({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a>{{ n.content }}<br>
-        </div>
-      </div>
-      <div class="module-content" v-else><span class="empty">还没有好友动态</span></div>
 
       <form @submit.prevent="visit">
         <input type="text" v-model.number="visitId" maxlength="10" size="10"><input type="submit" value="串门">
@@ -174,7 +165,7 @@ export default {
   data () {
     return {
       cur: 'mine', u: {}, threads: [], friends: [], visitId: '', mood: null,
-      games: [], myGames: [], feed: [], msgs: [],
+      games: [], myGames: [], msgs: [],
       fineThreads: [], commonThreads: [], announcements: [],
       plazaActivities: [],
       myReplies: [], favThreads: [], threadTotal: 0,
@@ -204,7 +195,6 @@ export default {
       api.get('/my-games').then(r => { if (r.code === 0) this.myGames = r.data || [] }).catch(() => {})
       api.get('/plaza').then(r => {
         if (r.code === 0) {
-          this.feed = (r.data.dynamics || []).slice(0, 8)
           this.fineThreads = (r.data.fine_threads || [])
           this.commonThreads = (r.data.quick_threads || [])
           this.announcements = (r.data.announcements || [])
@@ -235,6 +225,12 @@ export default {
       }).catch(() => {})
     },
     brief (s) { s = s || ''; return s.length > 30 ? s.slice(0, 30) + '…' : s },
+    // 诺哈 fnews.asp 动态渲染：ntype 1=发表帖子 2=回复帖子（标题取自《》内），其余（心情/日志/照片/留言/文章）直接显示内容
+    isThreadNews (n) { return n.ntype === 1 || n.ntype === 2 },
+    newsTitle (n) {
+      const m = String(n.content || '').match(/《(.+?)》/)
+      return m ? m[1] : '帖子已删除'
+    },
     homeIcon (u) {
       const lv = Math.max(1, Math.min(50, u.level || 1))
       const sex = (u.gender === 2 || u.gender === '2') ? '2' : '1'
@@ -268,4 +264,6 @@ export default {
 <style scoped>
 .unline { display: flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .unline .bicon.uic { height: 16px; width: 16px; object-fit: contain; }
+/* 诺哈 home.css：module-content + border-btm + tab-5 + spacing-3 */
+.news-item { padding: 3px 5px; border-bottom: 1px solid #E3E6EB; line-height: 1.6; word-break: break-all; }
 </style>

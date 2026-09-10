@@ -36,7 +36,8 @@ func (h *GameHandler) MyList(c *gin.Context) {
 	for _, r := range rows {
 		if r.Game != nil {
 			out = append(out, gin.H{"id": r.Game.ID, "name": r.Game.Name, "logo": r.Game.Logo,
-				"desc": r.Game.Desc, "stars": r.Game.Stars, "sort": r.Sort})
+				"desc": r.Game.Desc, "stars": r.Game.Stars, "sort": r.Sort,
+				"path": r.Game.Path, "url": r.Game.Url})
 		}
 	}
 	resp.OK(c, out)

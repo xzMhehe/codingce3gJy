@@ -1,0 +1,41 @@
+/* 开心农场管理组件共享样式（与 AdminGardenSeeds.vue 一致） */
+.stat-row { display: flex; gap: 12px; margin-bottom: 18px; }
+.stat-card {
+  flex: 1; display: flex; align-items: center; gap: 14px;
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  border: 1px solid #eef1f5; box-shadow: 0 2px 8px rgba(18,38,63,.05);
+  transition: box-shadow .2s, transform .2s;
+}
+.stat-card:hover { box-shadow: 0 6px 18px rgba(18,38,63,.09); transform: translateY(-2px); }
+.stat-ico {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
+}
+.s-green .stat-ico { background: linear-gradient(135deg,#43a047,#2e7d32); }
+.s-blue .stat-ico { background: linear-gradient(135deg,#29b6f6,#0288d1); }
+.s-purple .stat-ico { background: linear-gradient(135deg,#ab47bc,#6a1b9a); }
+.s-orange .stat-ico { background: linear-gradient(135deg,#ffa726,#ef6c00); }
+.stat-info { display: flex; flex-direction: column; }
+.stat-num { font-size: 24px; font-weight: 700; color: #1f2d3d; line-height: 1; }
+.stat-lab { font-size: 12px; color: #8a9bb0; margin-top: 6px; letter-spacing: .3px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+.grow { flex: 1; }
+.td-main { font-weight: 600; color: #303133; }
+.td-sub { color: #8a9bb0; font-size: 13px; }
+.td-muted { color: #b6c2d2; }
+.td-mono { font-family: Consolas, 'Courier New', monospace; color: #5b6b82; }
+.td-blue { color: #2e9cd3; font-weight: 600; }
+.td-gold { color: #fb8c00; margin-right: 3px; }
+.pager-bar { margin-top: 14px; padding-top: 12px; border-top: 1px solid #f0f2f5; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.pager-info { font-size: 13px; color: #909399; }
+.pager-info b { color: #303133; font-weight: 600; margin: 0 2px; }
+.pager-bar >>> .el-pagination { margin: 0; }
+.lv { color: #409eff; font-weight: 700; margin-right: 2px; }
+.rank-no {
+  display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center;
+  border-radius: 50%; font-weight: 700; color: #97a8be; background: #f0f2f5;
+}
+.rank-no.r1 { background: linear-gradient(135deg, #f6c445, #e8a20a); color: #fff; }
+.rank-no.r2 { background: linear-gradient(135deg, #c9d2dc, #a6b3c2); color: #fff; }
+.rank-no.r3 { background: linear-gradient(135deg, #e09a6a, #c9793f); color: #fff; }

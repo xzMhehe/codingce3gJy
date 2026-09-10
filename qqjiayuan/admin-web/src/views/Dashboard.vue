@@ -68,6 +68,9 @@
     <admin-garden-mixes v-else-if="tab === 'gardenMixes'" />
     <admin-garden-elves v-else-if="tab === 'gardenElves'" />
     <admin-garden-data v-else-if="tab === 'gardenData'" />
+    <admin-farm-seeds v-else-if="tab === 'farmSeeds'" />
+    <admin-farm-items v-else-if="tab === 'farmItems'" />
+    <admin-farm-data v-else-if="tab === 'farmData'" />
     <admin-resources v-else-if="tab === 'resources'" />
     <admin-spaces v-else-if="tab === 'spaces'" />
     <admin-homes v-else-if="tab === 'homes'" />
@@ -109,7 +112,11 @@ import AdminGardenMaps from '../components/admin/AdminGardenMaps.vue'
 import AdminGardenMixes from '../components/admin/AdminGardenMixes.vue'
 import AdminGardenElves from '../components/admin/AdminGardenElves.vue'
 import AdminGardenData from '../components/admin/AdminGardenData.vue'
+import AdminFarmSeeds from '../components/admin/AdminFarmSeeds.vue'
+import AdminFarmItems from '../components/admin/AdminFarmItems.vue'
+import AdminFarmData from '../components/admin/AdminFarmData.vue'
 import AdminGoods from '../components/admin/AdminGoods.vue'
+import AdminMoneyShop from '../components/admin/AdminMoneyShop.vue'
 import AdminResources from '../components/admin/AdminResources.vue'
 import AdminSpaces from '../components/admin/AdminSpaces.vue'
 import AdminWalletLogs from '../components/admin/AdminWalletLogs.vue'
@@ -135,7 +142,7 @@ import AdminSiteConfig from '../components/admin/AdminSiteConfig.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminUserPhones, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminSiteConfig },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminFarmSeeds, AdminFarmItems, AdminFarmData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminUserPhones, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminSiteConfig },
   data () {
     return { stats: {}, adminName: '' }
   },

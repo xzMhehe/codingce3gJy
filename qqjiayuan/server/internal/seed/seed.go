@@ -56,7 +56,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenMsg{}, &model.GardenMapLog{}, &model.GardenLandLog{},
 		&model.GardenElf{}, &model.GardenElfLog{},
 		&model.GardenSign{},
+		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
+		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
 		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
+		&model.MoneyShop{},
 		&model.WalletLog{},
 		&model.Marriage{},
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
@@ -174,6 +177,19 @@ func Run(db *gorm.DB, staticDir string) {
 	if !m.HasColumn("goods", "youquan_price") {
 		db.Exec("ALTER TABLE goods ADD COLUMN youquan_price int DEFAULT 0")
 	}
+	// 道具商城复刻诺哈商店中心：库存/销量/结束时间补列（幂等；首次加库存列时回填，避免反复覆盖管理员设置）
+	if !m.HasColumn("goods", "stock") {
+		db.Exec("ALTER TABLE goods ADD COLUMN stock int DEFAULT 0")
+		db.Exec("UPDATE goods SET stock = 999")
+	}
+	if !m.HasColumn("goods", "sales") {
+		db.Exec("ALTER TABLE goods ADD COLUMN sales int DEFAULT 0")
+	}
+	if !m.HasColumn("goods", "end_time") {
+		db.Exec("ALTER TABLE goods ADD COLUMN end_time datetime NULL")
+	}
+	// 存量商品补销售时间（幂等）
+	db.Exec("UPDATE goods SET add_time = NOW() WHERE add_time IS NULL")
 	// 超Q/蓝钻复刻：每日成长时间 + 方案新字段
 	if !m.HasColumn("users", "blue_ptime") {
 		db.Exec("ALTER TABLE users ADD COLUMN blue_ptime datetime NULL")
@@ -207,10 +223,12 @@ func Run(db *gorm.DB, staticDir string) {
 	seedBooks(db)
 	seedGardenActivities(db)
 	seedGardenData(db)
+	seedFarmData(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)
 	seedGoods(db)
+	seedMoneyShop(db)
 	seedResources(db, staticDir)
 	seedGuestbook(db)
 	seedSiteArticles(db)
@@ -540,6 +558,60 @@ func seedGardenData(db *gorm.DB) {
 	}
 }
 
+// seedFarmData 开心农场种子数据（幂等：按名称逐条补齐）
+// 对齐诺哈三代 wap_farm_seed / wap_farm_muck / wap_farm_trap 数值体系
+// 种子价 = price*5*cycle（商店购入价），aging/again 为分钟
+func seedFarmData(db *gorm.DB) {
+	seeds := []model.FarmSeed{
+		{Name: "白萝卜", Cycle: 1, Aging: 15, Again: 0, Yield: 8, Price: 2, Point: 4, Level: 1},
+		{Name: "胡萝卜", Cycle: 1, Aging: 25, Again: 0, Yield: 8, Price: 4, Point: 5, Level: 1},
+		{Name: "玉米", Cycle: 2, Aging: 30, Again: 30, Yield: 9, Price: 6, Point: 6, Level: 2},
+		{Name: "土豆", Cycle: 1, Aging: 45, Again: 0, Yield: 10, Price: 8, Point: 7, Level: 3},
+		{Name: "番茄", Cycle: 3, Aging: 40, Again: 25, Yield: 10, Price: 10, Point: 8, Level: 4},
+		{Name: "草莓", Cycle: 4, Aging: 45, Again: 30, Yield: 12, Price: 14, Point: 10, Level: 5},
+		{Name: "西瓜", Cycle: 1, Aging: 90, Again: 0, Yield: 14, Price: 20, Point: 12, Level: 6},
+		{Name: "南瓜", Cycle: 2, Aging: 80, Again: 60, Yield: 16, Price: 25, Point: 14, Level: 8},
+		{Name: "樱桃", Cycle: 3, Aging: 90, Again: 60, Yield: 18, Price: 32, Point: 16, Level: 10},
+		{Name: "榴莲", Cycle: 2, Aging: 120, Again: 90, Yield: 20, Price: 40, Point: 20, Level: 12},
+		{Name: "人参", Cycle: 1, Aging: 240, Again: 0, Yield: 24, Price: 60, Point: 30, Level: 15},
+	}
+	for _, s := range seeds {
+		var n int64
+		db.Model(&model.FarmSeed{}).Where("name = ?", s.Name).Count(&n)
+		if n == 0 {
+			db.Create(&s)
+		}
+	}
+
+	mucks := []model.FarmMuck{
+		{Name: "小化肥", Speed: 10, Price: 100},
+		{Name: "化肥", Speed: 30, Price: 250},
+		{Name: "大化肥", Speed: 60, Price: 450},
+		{Name: "神奇化肥", Speed: 120, Price: 800},
+	}
+	for _, m := range mucks {
+		var n int64
+		db.Model(&model.FarmMuck{}).Where("name = ?", m.Name).Count(&n)
+		if n == 0 {
+			db.Create(&m)
+		}
+	}
+
+	traps := []model.FarmTrap{
+		{Name: "烂陷阱", Rate: 30, Price: 100},
+		{Name: "普通陷阱", Rate: 50, Price: 200},
+		{Name: "高级陷阱", Rate: 70, Price: 350},
+		{Name: "神奇陷阱", Rate: 90, Price: 600},
+	}
+	for _, t := range traps {
+		var n int64
+		db.Model(&model.FarmTrap{}).Where("name = ?", t.Name).Count(&n)
+		if n == 0 {
+			db.Create(&t)
+		}
+	}
+}
+
 // seedPlazaSections 广场板块开关（幂等，默认全显示）
 func seedPlazaSections(db *gorm.DB) {
 	var n int64
@@ -602,8 +674,31 @@ func seedGoods(db *gorm.DB) {
 		if exist == 0 {
 			db.Create(&g)
 		} else {
-			// 老库商品补齐友友券价（幂等）
+			// 老库商品补齐友友券价（幂等）；库存仅在为0时回填，不覆盖运营调整
 			db.Model(&model.Good{}).Where("name = ?", g.Name).Update("youquan_price", g.YouQuanPrice)
+			db.Model(&model.Good{}).Where("name = ? AND stock = 0", g.Name).Update("stock", g.Stock)
+		}
+	}
+}
+
+// seedMoneyShop 货币商店种子（复刻诺哈 wap_money_shop：花一种货币买另一种货币礼包，幂等按名称补种）
+func seedMoneyShop(db *gorm.DB) {
+	end := time.Date(2027, 12, 31, 23, 59, 59, 0, time.Local)
+	presets := []model.MoneyShop{
+		{Name: "1000G币礼包", MType: "coins", Money: 1000, PType: "yuanbao", Price: 10, Stock: 100, Status: 1},
+		{Name: "10000G币豪华礼包", MType: "coins", Money: 10000, PType: "yuanbao", Price: 88, Stock: 50, Status: 1},
+		{Name: "10元宝特惠包", MType: "yuanbao", Money: 10, PType: "coins", Price: 10000, Stock: 200, Status: 1},
+		{Name: "100元宝礼包", MType: "yuanbao", Money: 100, PType: "coins", Price: 100000, Stock: 100, Status: 1},
+		{Name: "5张友友券礼包", MType: "youquan", Money: 5, PType: "yuanbao", Price: 2, Stock: 80, Status: 1},
+		{Name: "1金钻礼包", MType: "jinzuan", Money: 1, PType: "yuanbao", Price: 50, Stock: 30, Status: 1},
+	}
+	for _, s := range presets {
+		var exist int64
+		db.Model(&model.MoneyShop{}).Where("name = ?", s.Name).Count(&exist)
+		if exist == 0 {
+			s.AddTime = time.Now()
+			s.EndTime = end
+			db.Create(&s)
 		}
 	}
 }
@@ -1542,26 +1637,28 @@ func seedGames(db *gorm.DB) {
 		return 0
 	}
 	// 复刻诺哈 wap_game：net 外站游戏 / com 社区游戏（path 为本站路由入口，空=未开发）
+	// 排序对齐诺哈游戏大厅：四大社交游戏(魔法花园/开心农场/狂抢车位/好友买卖)在前，
+	// 其余诺哈游戏(竞技场/台球/猜数/六合彩/大富翁/大话吹牛/砸金蛋)居中，非诺哈扩展游戏殿后
 	games := []model.Game{
+		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", Intro: "播种·浇灌·收获，收集图谱点亮精灵，还可到好友花园采摘！", Path: "/games/garden", BoardID: bid("魔法花园"), Sort: 1},
+		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★★", Desc: "开心农场，播种开心，收获快乐", Intro: "翻地播种浇水施肥，偷菜设陷阱，还能卖果实赚G币！", Path: "/games/farm", BoardID: bid("开心农场"), Sort: 2},
+		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，好友停车场就是你的金库", BoardID: bid("狂抢车位"), Sort: 3},
+		{Name: "好友买卖", Category: "com", Logo: "", Stars: "★★★★★", Desc: "买下好友，打工赚钱，奴隶翻身当主人", Intro: "把好友买来做奴隶，让他打工赚钱，还可以身价翻倍转卖", BoardID: bid("好友买卖"), Sort: 4},
+		{Name: "竞技场", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "热血江湖，擂台争霸，胜者为王", Intro: "挑战好友擂台，胜场提升段位，冲击竞技之巅", BoardID: bid("竞技场"), Sort: 5},
+		{Name: "台球", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "一杆进洞，桌上争雄", Intro: "好友对战台球，展示你的杆法与技巧", BoardID: bid("台球"), Sort: 6},
+		{Name: "猜数", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "猜数字赢大奖，试试你的运气", Intro: "参与竞猜，猜中大奖抱回家", BoardID: bid("猜数"), Sort: 7},
+		{Name: "六合彩", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "买马投注，一夜暴富", Intro: "六合彩开奖，买中即赚", BoardID: bid("六合彩"), Sort: 8},
+		{Name: "大富翁", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "超级富翁，掷骰子走格子，买地收租", Intro: "掷骰前进，买地建屋，收租致富", BoardID: bid("大富翁"), Sort: 9},
+		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", Intro: "吹牛打闹，好友互喷，乐在其中", BoardID: bid("大话吹牛"), Sort: 10},
+		{Name: "砸金蛋", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "金蛋一砸，好运连连", Intro: "花G币砸金蛋，砸出金币元宝惊喜不断", BoardID: bid("砸金蛋"), Sort: 11},
+		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 12},
+		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 13},
+		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 14},
+		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 15},
+		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
+		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 17},
 		{Name: "幻想西游", Category: "net", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", BoardID: bid("幻想西游"), Sort: 1},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
-		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", Intro: "播种·浇灌·收获，收集图谱点亮精灵，还可到好友花园采摘！", Path: "/games/garden", BoardID: bid("魔法花园"), Sort: 1},
-		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 2},
-		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★☆", Desc: "开心农场，播种开心，收获快乐", Intro: "种菜偷菜，牧场养殖，好友互动其乐无穷", BoardID: bid("开心农场"), Sort: 3},
-		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，好友停车场就是你的金库", BoardID: bid("狂抢车位"), Sort: 4},
-		{Name: "好友买卖", Category: "com", Logo: "", Stars: "★★★★★", Desc: "买下好友，打工赚钱，奴隶翻身当主人", Intro: "把好友买来做奴隶，让他打工赚钱，还可以身价翻倍转卖", BoardID: bid("好友买卖"), Sort: 5},
-		{Name: "竞技场", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "擂台争霸，比武切磋，胜者为王", Intro: "挑战好友擂台，胜场提升段位，冲击竞技之巅", BoardID: bid("竞技场"), Sort: 6},
-		{Name: "砸金蛋", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "金蛋一砸，好运连连", Intro: "花G币砸金蛋，砸出金币元宝惊喜不断", BoardID: bid("砸金蛋"), Sort: 7},
-		{Name: "台球", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "一杆进洞，桌上争雄", Intro: "好友对战台球，展示你的杆法与技巧", BoardID: bid("台球"), Sort: 8},
-		{Name: "猜数", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "猜数字赢大奖，试试你的运气", Intro: "参与竞猜，猜中大奖抱回家", BoardID: bid("猜数"), Sort: 9},
-		{Name: "六合彩", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "买马投注，一夜暴富", Intro: "六合彩开奖，买中即赚", BoardID: bid("六合彩"), Sort: 10},
-		{Name: "大富翁", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "掷骰子走格子，买地收租当富豪", Intro: "掷骰前进，买地建屋，收租致富", BoardID: bid("大富翁"), Sort: 11},
-		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 12},
-		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 13},
-		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 14},
-		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 15},
-		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 16},
-		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", Intro: "吹牛打闹，好友互喷，乐在其中", BoardID: bid("大话吹牛"), Sort: 17},
 	}
 	for i := range games {
 		var exist int64
@@ -1571,7 +1668,7 @@ func seedGames(db *gorm.DB) {
 		} else {
 			// 老库补齐新字段（幂等）
 			db.Model(&model.Game{}).Where("name = ?", games[i].Name).Updates(map[string]interface{}{
-				"intro": games[i].Intro, "path": games[i].Path,
+				"intro": games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
 			})
 		}
 	}

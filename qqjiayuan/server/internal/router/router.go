@@ -44,11 +44,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	fgH := &handler.FriendGroupHandler{DB: db}
 	nobleH := &handler.NobleHandler{DB: db}
 	goodH := &handler.GoodHandler{DB: db}
+	msH := &handler.MoneyShopHandler{DB: db}
 	rankH := &handler.RankHandler{DB: db, Secret: cfg.Jwt.Secret}
 	hlH := &handler.HomeLevelHandler{DB: db}
 	achH := &handler.AchieveHandler{DB: db}
 	ttouH := &handler.TtouHandler{DB: db}
 	gardenH := &handler.GardenHandler{DB: db}
+	farmH := &handler.FarmHandler{DB: db}
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -102,6 +104,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/garden-activities", gardenH.ActivityList)
 		api.GET("/plaza-sections", plazaH.Sections)
 		api.GET("/goods", goodH.List)
+		api.GET("/goods/:id", goodH.Detail)
+		api.GET("/money-shop", msH.List)
+		api.GET("/money-shop/:id", msH.Detail)
 		api.GET("/rank", rankH.Top)
 		// 活动专区（诺哈 topic_active.asp：活动帖列表）
 		api.GET("/activities", actH.List)
@@ -221,6 +226,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/games/garden/sign-status", gardenH.SignStatus)
 			authed.POST("/games/garden/sign", gardenH.Sign)
 			authed.POST("/games/garden/activity-submit", gardenH.SubmitActivity)
+			// 开心农场（对齐诺哈三代 wap/game/farm 玩法）
+			authed.GET("/games/farm/view", farmH.View)
+			authed.GET("/games/farm/visit", farmH.Visit)
+			authed.GET("/games/farm/neighbors", farmH.Neighbors)
+			authed.GET("/games/farm/shop", farmH.Shop)
+			authed.POST("/games/farm/buy", farmH.Buy)
+			authed.GET("/games/farm/bag", farmH.Bag)
+			authed.GET("/games/farm/warehouse", farmH.Warehouse)
+			authed.POST("/games/farm/plow", farmH.Plow)
+			authed.POST("/games/farm/plant", farmH.Plant)
+			authed.POST("/games/farm/care/:kind", farmH.Care)
+			authed.POST("/games/farm/ppest", farmH.Ppest)
+			authed.POST("/games/farm/muck", farmH.Muck)
+			authed.POST("/games/farm/trap", farmH.Trap)
+			authed.POST("/games/farm/pick", farmH.Pick)
+			authed.POST("/games/farm/steal", farmH.Steal)
+			authed.POST("/games/farm/sell", farmH.Sell)
+			authed.GET("/games/farm/rank", farmH.Rank)
+			authed.GET("/games/farm/slaves", farmH.Slaves)
+			authed.POST("/games/farm/slave/:kind/:id", farmH.SlaveAct)
+			authed.POST("/games/farm/setting", farmH.Setting)
 
 			// 我的游戏
 			authed.GET("/my-games", gameH.MyList)
@@ -378,8 +404,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/noble/activate", nobleH.Activate)
 			authed.POST("/noble/gift", nobleH.Gift)
 			authed.POST("/goods/:id/buy", goodH.Buy)
+			authed.GET("/goods/:id/send-preview", goodH.SendPreview)
+			authed.POST("/goods/:id/send", goodH.Send)
 			authed.GET("/bag", goodH.Bag)
 			authed.POST("/bag/:id/use", goodH.BagUse)
+			authed.POST("/money-shop/:id/buy", msH.Buy)
+			authed.GET("/money-shop/:id/send-preview", msH.SendPreview)
+			authed.POST("/money-shop/:id/send", msH.Send)
 
 			authed.POST("/dig", ecoH.Dig)
 			authed.POST("/charity", ecoH.Charity)
@@ -421,6 +452,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/goods/:id", perm(db, "admin:access"), goodH.AdminUpdate)
 				admin.DELETE("/goods/:id", perm(db, "admin:access"), goodH.AdminDelete)
 
+				// 货币商店管理（复刻诺哈 wap_money_shop）
+				admin.GET("/money-shops", perm(db, "admin:access"), msH.AdminList)
+				admin.POST("/money-shops", perm(db, "admin:access"), msH.AdminCreate)
+				admin.PUT("/money-shops/:id", perm(db, "admin:access"), msH.AdminUpdate)
+				admin.DELETE("/money-shops/:id", perm(db, "admin:access"), msH.AdminDelete)
+
 				// 花园活动管理
 				admin.GET("/garden-activities", perm(db, "admin:access"), gardenH.AdminActivities)
 				admin.POST("/garden-activities", perm(db, "admin:access"), gardenH.AdminActCreate)
@@ -454,6 +491,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "admin:access"), gardenH.AdminGardenFlowerSet)
 				admin.GET("/garden-logs", perm(db, "admin:access"), gardenH.AdminGardenLogs)
 				admin.GET("/garden-rank", perm(db, "admin:access"), gardenH.AdminGardenRank)
+				// 开心农场管理（种子/化肥/陷阱/用户数据/日志/排行）
+				admin.GET("/farm-seeds", perm(db, "admin:access"), farmH.AdminSeeds)
+				admin.POST("/farm-seeds", perm(db, "admin:access"), farmH.AdminSeedCreate)
+				admin.PUT("/farm-seeds/:id", perm(db, "admin:access"), farmH.AdminSeedUpdate)
+				admin.DELETE("/farm-seeds/:id", perm(db, "admin:access"), farmH.AdminSeedDelete)
+				admin.GET("/farm-mucks", perm(db, "admin:access"), farmH.AdminMucks)
+				admin.POST("/farm-mucks", perm(db, "admin:access"), farmH.AdminMuckCreate)
+				admin.PUT("/farm-mucks/:id", perm(db, "admin:access"), farmH.AdminMuckUpdate)
+				admin.DELETE("/farm-mucks/:id", perm(db, "admin:access"), farmH.AdminMuckDelete)
+				admin.GET("/farm-traps", perm(db, "admin:access"), farmH.AdminTraps)
+				admin.POST("/farm-traps", perm(db, "admin:access"), farmH.AdminTrapCreate)
+				admin.PUT("/farm-traps/:id", perm(db, "admin:access"), farmH.AdminTrapUpdate)
+				admin.DELETE("/farm-traps/:id", perm(db, "admin:access"), farmH.AdminTrapDelete)
+				admin.GET("/farm-users", perm(db, "admin:access"), farmH.AdminUsers)
+				admin.GET("/farm-users/:uid", perm(db, "admin:access"), farmH.AdminUserDetail)
+				admin.PUT("/farm-users/:uid/farm", perm(db, "admin:access"), farmH.AdminFarmEdit)
+				admin.PUT("/farm-users/:uid/coins", perm(db, "admin:access"), farmH.AdminCoins)
+				admin.PUT("/farm-users/:uid/bag/:target", perm(db, "admin:access"), farmH.AdminBagSet)
+				admin.PUT("/farm-users/:uid/land/:id/clear", perm(db, "admin:access"), farmH.AdminLandClear)
+				admin.GET("/farm-logs", perm(db, "admin:access"), farmH.AdminLogs)
+				admin.GET("/farm-rank", perm(db, "admin:access"), farmH.AdminRank)
 
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)

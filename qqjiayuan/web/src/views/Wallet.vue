@@ -27,6 +27,7 @@
     </div>
 
     <!-- 功能链接 -->
+    <a href="javascript:;" @click="$router.push('/money-shop')">货币商店</a> . <a href="javascript:;" @click="$router.push('/shop')">道具商城</a> . <a href="javascript:;" @click="$router.push('/bag')">我的仓库</a><br>
     <a href="javascript:;" @click="$router.push('/wallet?view=transfer')">G币转账</a> . <a href="javascript:;" @click="$router.push('/wallet?view=log')">收支记录</a><br>
     <a href="javascript:;" @click="$router.push('/play')">社区银行</a> . <a href="javascript:;" @click="$router.push('/play')">G币存取</a><br><br>
 

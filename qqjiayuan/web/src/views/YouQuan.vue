@@ -32,6 +32,7 @@
       <div class="module-title">【使用友友券】</div>
       <div class="module-content">
         <a href="javascript:;" @click="$router.push('/shop')">商城购物</a>（{{ data.youquan_goods || 0 }}种商品支持友友券支付）<br>
+        <a href="javascript:;" @click="$router.push('/money-shop')">货币商店</a>（部分货币礼包支持友友券支付）<br>
         <a href="javascript:;" @click="view='exchange'">兑换G币</a>（{{ data.exchange_rate || 100 }} G币/张）<br>
         <a href="javascript:;" @click="view='transfer'">转账给好友</a>（1%手续费）<br>
       </div>

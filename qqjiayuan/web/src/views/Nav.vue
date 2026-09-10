@@ -22,7 +22,7 @@
 
     <!-- 商城 -->
     <div class="module-title">【<a href="javascript:;" @click="$router.push('/shop')">商城</a>】<a href="javascript:;" @click="tip('拍卖')">拍卖</a>.<a href="javascript:;" @click="$router.push('/medals')">勋章</a></div>
-    <div class="module-content"><a href="javascript:;" @click="$router.push('/shop')">道具商城</a> / <a href="javascript:;" @click="$router.push('/medals')">勋章大全</a> / 拍卖建设中<br></div>
+    <div class="module-content"><a href="javascript:;" @click="$router.push('/shop')">道具商城</a> / <a href="javascript:;" @click="$router.push('/money-shop')">货币商店</a> / <a href="javascript:;" @click="$router.push('/medals')">勋章大全</a> / 拍卖建设中<br></div>
 
     <!-- 游戏大厅 -->
     <div class="module-title">【社区游戏大厅】</div>

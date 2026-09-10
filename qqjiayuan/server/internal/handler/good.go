@@ -3,6 +3,7 @@ package handler
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -14,7 +15,7 @@ import (
 
 type GoodHandler struct{ DB *gorm.DB }
 
-// 分类列表（按现有商品聚合）
+// 分类列表（后台商品管理用）
 func goodCategories(list []model.Good) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -27,20 +28,18 @@ func goodCategories(list []model.Good) []string {
 	return out
 }
 
-// 公开：商城列表（?cat=分类 &page=页码 &size=每页条数；登录时带G币/友友券余额）
+// 在售商品查询条件（复刻诺哈：status 上架 且 未过结束时间）
+func goodOnSale(db *gorm.DB) *gorm.DB {
+	return db.Where("status = 1 AND (end_time IS NULL OR end_time > ?)", time.Now())
+}
+
+// 公开：商店列表（复刻诺哈 shop_list.asp：平铺编号列表，按ID倒序，每页10条）
 func (h *GoodHandler) List(c *gin.Context) {
-	page, offset, size := pageOf(c, 12)
-	q := h.DB.Model(&model.Good{}).Where("status = 1")
-	if cat := c.Query("cat"); cat != "" && cat != "全部" {
-		q = q.Where("category = ?", cat)
-	}
+	page, offset, size := pageOf(c, 10)
 	var total int64
-	q.Count(&total)
+	goodOnSale(h.DB.Model(&model.Good{})).Count(&total)
 	var list []model.Good
-	q.Order("sort ASC, id ASC").Offset(offset).Limit(size).Find(&list)
-	// 分类从全部在售商品聚合（不受分页影响）
-	var all []model.Good
-	h.DB.Model(&model.Good{}).Where("status = 1").Order("sort ASC, id ASC").Find(&all)
+	goodOnSale(h.DB).Order("id DESC").Offset(offset).Limit(size).Find(&list)
 	uid := middleware.GetUID(c)
 	coins, youquan := -1, -1
 	if uid > 0 {
@@ -51,28 +50,30 @@ func (h *GoodHandler) List(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"list": list, "total": total, "page": page, "size": size,
-		"categories": goodCategories(all), "coins": coins, "youquan": youquan,
+		"coins": coins, "youquan": youquan,
 	})
 }
 
-// 购买道具（扣G币或友友券，数量可叠加进仓库）
+// 公开：商品详情（复刻诺哈 shop.asp）
+func (h *GoodHandler) Detail(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var g model.Good
+	if err := goodOnSale(h.DB).First(&g, id).Error; err != nil {
+		resp.NotFound(c, "商品不存在或已下架")
+		return
+	}
+	resp.OK(c, g)
+}
+
+// 购买道具（复刻诺哈 shop_buy_ok.asp：支付密码确认，扣G币入仓库，扣库存加销量）
 func (h *GoodHandler) Buy(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Num      int    `json:"num"`      // 购买数量，默认1
-		Currency string `json:"currency"` // coins=G币（默认）/ youquan=友友券
+		Num     int    `json:"num"`
+		PayPass string `json:"pay_pass"`
 	}
 	_ = c.ShouldBindJSON(&req)
-	if req.Num < 1 {
-		req.Num = 1
-	}
-	if req.Num > 999 {
-		req.Num = 999
-	}
-	if req.Currency == "" {
-		req.Currency = "coins"
-	}
 	var g model.Good
 	if err := h.DB.First(&g, id).Error; err != nil {
 		resp.NotFound(c, "商品不存在")
@@ -82,36 +83,34 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "商品已下架")
 		return
 	}
+	if g.EndTime != nil && g.EndTime.Before(time.Now()) {
+		resp.ParamError(c, "商品已过销售时间！")
+		return
+	}
+	if msg := verifyPayPass(h.DB, uid, req.PayPass); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if req.Num < 1 {
+		resp.ParamError(c, "购买数量错误！")
+		return
+	}
+	if req.Num > g.Stock {
+		resp.ParamError(c, "购买数量超过库存数量！")
+		return
+	}
+	cost := g.Price * req.Num
 	var u model.User
 	if err := h.DB.First(&u, uid).Error; err != nil {
 		resp.Unauthorized(c, "请先登录")
 		return
 	}
-	var currencyName, currency string
-	cost := 0
-	switch req.Currency {
-	case "youquan":
-		cost = g.YouQuanPrice * req.Num
-		currency, currencyName = "youquan", "友友券"
-		if cost <= 0 {
-			resp.ParamError(c, "该商品暂不支持用友友券购买")
-			return
-		}
-		if u.YouQuan < cost {
-			resp.ParamError(c, "友友券不足，需要 "+strconv.Itoa(cost)+" 张")
-			return
-		}
-		h.DB.Model(&u).Update("youquan", gorm.Expr("youquan - ?", cost))
-	default:
-		cost = g.Price * req.Num
-		currency, currencyName = "coins", "G币"
-		if u.Coins < cost {
-			resp.ParamError(c, "G币不足，需要 "+strconv.Itoa(cost)+" G币")
-			return
-		}
-		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
+	if u.Coins < cost {
+		resp.ParamError(c, "您的G币不足！")
+		return
 	}
-	addWalletLog(h.DB, uid, "buy", "购买「"+g.Name+"」×"+strconv.Itoa(req.Num), currency, -cost)
+	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
+	addWalletLog(h.DB, uid, "buy", "购买「"+g.Name+"」×"+strconv.Itoa(req.Num), "coins", -cost)
 	// 入库（背包叠加）
 	var ug model.UserGood
 	if err := h.DB.Where("user_id = ? AND good_id = ?", uid, g.ID).First(&ug).Error; err != nil {
@@ -119,9 +118,12 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 	} else {
 		h.DB.Model(&ug).Update("count", gorm.Expr("count + ?", req.Num))
 	}
-	_ = currencyName
+	// 扣库存加销量（诺哈 shop_buy_ok）
+	h.DB.Model(&model.Good{}).Where("id = ?", g.ID).Updates(map[string]interface{}{
+		"stock": gorm.Expr("stock - ?", req.Num), "sales": gorm.Expr("sales + ?", req.Num),
+	})
 	h.DB.First(&u, uid)
-	resp.OK(c, gin.H{"name": g.Name, "num": req.Num, "coins": u.Coins, "youquan": u.YouQuan, "currency": req.Currency, "bag_count": req.Num + (func() int {
+	resp.OK(c, gin.H{"name": g.Name, "num": req.Num, "coins": u.Coins, "youquan": u.YouQuan, "bag_count": req.Num + (func() int {
 		if ug.ID == 0 {
 			return 0
 		}
@@ -129,11 +131,126 @@ func (h *GoodHandler) Buy(c *gin.Context) {
 	})()})
 }
 
-// 我的仓库（背包列表）
+// 赠送预览（复刻诺哈 shop_send.asp 确认页数据：校验商品/号码/数量/库存，不扣款不验密码）
+func (h *GoodHandler) SendPreview(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	to := strings.TrimSpace(c.Query("to"))
+	num, _ := strconv.Atoi(c.Query("num"))
+	var g model.Good
+	if err := goodOnSale(h.DB).First(&g, id).Error; err != nil {
+		resp.NotFound(c, "商品不存在或已下架")
+		return
+	}
+	if to == "" {
+		resp.ParamError(c, "请填写赠送号码！")
+		return
+	}
+	if num < 1 {
+		resp.ParamError(c, "赠送数量错误！")
+		return
+	}
+	if num > g.Stock {
+		resp.ParamError(c, "赠送数量超过库存数量！")
+		return
+	}
+	var toU model.User
+	if err := h.DB.Where("username = ?", to).First(&toU).Error; err != nil {
+		resp.ParamError(c, "会员号码不正确！")
+		return
+	}
+	resp.OK(c, gin.H{
+		"name": g.Name, "nickname": toU.Nickname, "username": toU.Username,
+		"num": num, "total": g.Price * num, "currency_name": "G币",
+	})
+}
+
+// 赠送道具（复刻诺哈 shop_send_ok.asp：扣款、道具入对方仓库、扣库存加销量、站内信）
+func (h *GoodHandler) Send(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		To      string `json:"to"`
+		Num     int    `json:"num"`
+		PayPass string `json:"pay_pass"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	var g model.Good
+	if err := h.DB.First(&g, id).Error; err != nil {
+		resp.NotFound(c, "商品不存在")
+		return
+	}
+	if g.Status == 0 {
+		resp.ParamError(c, "商品已下架")
+		return
+	}
+	if g.EndTime != nil && g.EndTime.Before(time.Now()) {
+		resp.ParamError(c, "商品已过销售时间！")
+		return
+	}
+	if msg := verifyPayPass(h.DB, uid, req.PayPass); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if strings.TrimSpace(req.To) == "" {
+		resp.ParamError(c, "请填写赠送号码！")
+		return
+	}
+	if req.Num < 1 {
+		resp.ParamError(c, "赠送数量错误！")
+		return
+	}
+	if req.Num > g.Stock {
+		resp.ParamError(c, "赠送数量超过库存数量！")
+		return
+	}
+	var toU model.User
+	if err := h.DB.Where("username = ?", strings.TrimSpace(req.To)).First(&toU).Error; err != nil {
+		resp.ParamError(c, "会员号码不正确！")
+		return
+	}
+	if toU.ID == uid {
+		resp.ParamError(c, "不能赠送给自己！")
+		return
+	}
+	cost := g.Price * req.Num
+	var u model.User
+	if err := h.DB.First(&u, uid).Error; err != nil {
+		resp.Unauthorized(c, "请先登录")
+		return
+	}
+	if u.Coins < cost {
+		resp.ParamError(c, "您的G币不足！")
+		return
+	}
+	// 扣赠送方G币
+	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", cost))
+	addWalletLog(h.DB, uid, "buy", "赠送「"+g.Name+"」×"+strconv.Itoa(req.Num)+" 给"+toU.Nickname+"("+toU.Username+")", "coins", -cost)
+	// 道具入对方仓库
+	var ug model.UserGood
+	if err := h.DB.Where("user_id = ? AND good_id = ?", toU.ID, g.ID).First(&ug).Error; err != nil {
+		h.DB.Create(&model.UserGood{UserID: toU.ID, GoodID: g.ID, Count: req.Num})
+	} else {
+		h.DB.Model(&ug).Update("count", gorm.Expr("count + ?", req.Num))
+	}
+	// 扣库存加销量
+	h.DB.Model(&model.Good{}).Where("id = ?", g.ID).Updates(map[string]interface{}{
+		"stock": gorm.Expr("stock - ?", req.Num), "sales": gorm.Expr("sales + ?", req.Num),
+	})
+	// 站内信（诺哈 MessageSend）
+	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: toU.ID,
+		Content: "恭喜！赠送了您" + strconv.Itoa(req.Num) + "个「" + g.Name + "」。"})
+	resp.OK(c, gin.H{"name": g.Name, "num": req.Num, "coins": u.Coins - cost})
+}
+
+// Bag 我的仓库（复刻诺哈 my_bag.asp：平铺编号列表，ID倒序，每页10条）
 func (h *GoodHandler) Bag(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.UserGood{}).Where("user_id = ? AND count > 0", uid)
+	var total int64
+	q.Count(&total)
 	var list []model.UserGood
-	h.DB.Preload("Good").Where("user_id = ? AND count > 0", uid).Order("updated_at DESC").Find(&list)
+	q.Preload("Good").Order("id DESC").Offset(offset).Limit(size).Find(&list)
 	out := []gin.H{}
 	for _, ug := range list {
 		if ug.Good == nil {
@@ -145,7 +262,7 @@ func (h *GoodHandler) Bag(c *gin.Context) {
 			"category": ug.Good.Category, "price": ug.Good.Price,
 		})
 	}
-	resp.OK(c, gin.H{"list": out})
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
 // 使用道具：改名卡真改昵称；鲜花提示去送花；其余提示待开放（不消耗）
@@ -195,14 +312,17 @@ func (h *GoodHandler) AdminList(c *gin.Context) {
 }
 
 type goodReq struct {
-	Name        string `json:"name" binding:"required"`
-	Desc        string `json:"desc"`
-	Icon        string `json:"icon"`
-	Category    string `json:"category"`
-	Price       int    `json:"price"`
-	YouQuanPrice int   `json:"youquan_price"`
-	Status      int    `json:"status"`
-	Sort        int    `json:"sort"`
+	Name         string     `json:"name" binding:"required"`
+	Desc         string     `json:"desc"`
+	Icon         string     `json:"icon"`
+	Category     string     `json:"category"`
+	Price        int        `json:"price"`
+	YouQuanPrice int        `json:"youquan_price"`
+	Stock        int        `json:"stock"`
+	Sales        int        `json:"sales"`
+	Status       int        `json:"status"`
+	Sort         int        `json:"sort"`
+	EndTime      *time.Time `json:"end_time"`
 }
 
 func (h *GoodHandler) AdminCreate(c *gin.Context) {
@@ -214,7 +334,9 @@ func (h *GoodHandler) AdminCreate(c *gin.Context) {
 	if req.Status == 0 {
 		req.Status = 1
 	}
-	h.DB.Create(&model.Good{Name: req.Name, Desc: req.Desc, Icon: req.Icon, Category: req.Category, Price: req.Price, YouQuanPrice: req.YouQuanPrice, Status: req.Status, Sort: req.Sort})
+	h.DB.Create(&model.Good{Name: req.Name, Desc: req.Desc, Icon: req.Icon, Category: req.Category,
+		Price: req.Price, YouQuanPrice: req.YouQuanPrice, Stock: req.Stock, Sales: req.Sales,
+		Status: req.Status, Sort: req.Sort, AddTime: time.Now(), EndTime: req.EndTime})
 	resp.OK(c, nil)
 }
 
@@ -227,7 +349,8 @@ func (h *GoodHandler) AdminUpdate(c *gin.Context) {
 	}
 	h.DB.Model(&model.Good{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"name": req.Name, "desc": req.Desc, "icon": req.Icon, "category": req.Category,
-		"price": req.Price, "youquan_price": req.YouQuanPrice, "status": req.Status, "sort": req.Sort,
+		"price": req.Price, "youquan_price": req.YouQuanPrice, "stock": req.Stock, "sales": req.Sales,
+		"status": req.Status, "sort": req.Sort, "end_time": req.EndTime,
 	})
 	resp.OK(c, nil)
 }

@@ -84,17 +84,26 @@
             <template slot="title"><i class="el-icon-bell"></i><span>广播管理</span></template>
             <el-menu-item index="announcements"><i class="el-icon-bell"></i>公告广播</el-menu-item>
           </el-submenu>
-          <!-- 游戏管理（诺哈 game/，含花园 garden/、勋章 medal/） -->
+          <!-- 游戏管理（诺哈 game/，按游戏分组：大厅/勋章 + 各游戏独立管理） -->
           <el-submenu index="g-game">
             <template slot="title"><i class="el-icon-magic-stick"></i><span>游戏管理</span></template>
             <el-menu-item index="games"><i class="el-icon-trophy"></i>游戏大厅</el-menu-item>
             <el-menu-item index="badges"><i class="el-icon-medal"></i>勋章管理</el-menu-item>
-            <el-menu-item index="gardenActivities"><i class="el-icon-magic-stick"></i>花园活动</el-menu-item>
-            <el-menu-item index="gardenSeeds"><i class="el-icon-sunny"></i>花园花种</el-menu-item>
-            <el-menu-item index="gardenMaps"><i class="el-icon-picture"></i>花之图谱</el-menu-item>
-            <el-menu-item index="gardenMixes"><i class="el-icon-s-cooperation"></i>合成配方</el-menu-item>
-            <el-menu-item index="gardenElves"><i class="el-icon-star-on"></i>精灵花册</el-menu-item>
-            <el-menu-item index="gardenData"><i class="el-icon-data-analysis"></i>游戏数据管理</el-menu-item>
+            <el-submenu index="g-garden">
+              <template slot="title"><i class="el-icon-sunny"></i><span>魔法花园</span></template>
+              <el-menu-item index="gardenActivities"><i class="el-icon-magic-stick"></i>花园活动</el-menu-item>
+              <el-menu-item index="gardenSeeds"><i class="el-icon-sunny"></i>花园花种</el-menu-item>
+              <el-menu-item index="gardenMaps"><i class="el-icon-picture"></i>花之图谱</el-menu-item>
+              <el-menu-item index="gardenMixes"><i class="el-icon-s-cooperation"></i>合成配方</el-menu-item>
+              <el-menu-item index="gardenElves"><i class="el-icon-star-on"></i>精灵花册</el-menu-item>
+              <el-menu-item index="gardenData"><i class="el-icon-data-analysis"></i>花园数据管理</el-menu-item>
+            </el-submenu>
+            <el-submenu index="g-farm">
+              <template slot="title"><i class="el-icon-cherry"></i><span>开心农场</span></template>
+              <el-menu-item index="farmSeeds"><i class="el-icon-suitcase-1"></i>农场种子</el-menu-item>
+              <el-menu-item index="farmItems"><i class="el-icon-coin"></i>化肥陷阱</el-menu-item>
+              <el-menu-item index="farmData"><i class="el-icon-data-analysis"></i>农场数据管理</el-menu-item>
+            </el-submenu>
           </el-submenu>
           <!-- 系统配置（诺哈 config/ manage/ file/） -->
           <el-submenu index="g-config">
@@ -152,11 +161,12 @@ export default {
         articles: '文章管理', guestbook: '留言本管理', messages: '家信管理',
         spaces: '空间列表',
         homes: '家园列表', visitors: '家园访客',
-        shops: '店铺管理', shopGoods: '商品管理', shopOrders: '订单管理', shopComments: '评论管理',
+        shops: '店铺管理', goods: '道具商城', moneyShop: '货币商店', shopGoods: '店铺商品', shopOrders: '订单管理', shopComments: '评论管理',
         books: '小说列表',
         privileges: '特权管理',
         announcements: '公告广播',
-        games: '游戏大厅', badges: '勋章管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '游戏数据管理',
+        games: '游戏大厅', badges: '勋章管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '花园数据管理',
+        farmSeeds: '农场种子', farmItems: '化肥陷阱', farmData: '农场数据管理',
         siteConfig: '站点设置', roles: '管理设置', resources: '文件管理'
       }
     }

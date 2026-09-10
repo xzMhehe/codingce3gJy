@@ -232,11 +232,16 @@ func (h *EconomyHandler) Wallet(c *gin.Context) {
 		})
 	}
 
+	// 财务中心【购买货币】：最新5个在售货币商品（复刻诺哈 home/money/index.asp）
+	var msList []model.MoneyShop
+	h.DB.Where("status = 1 AND end_time > ?", time.Now()).Order("id DESC").Limit(5).Find(&msList)
+
 	resp.OK(c, gin.H{
 		"coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
 		"nickname": u.Nickname, "username": u.Username,
 		"bank": balance,
 		"donations": donat, "work_total": workTotal, "logs": logOut,
+		"money_shop": msList,
 	})
 }
 
