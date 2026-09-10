@@ -171,6 +171,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"has_paypass": user.PayPass != "",
 		"introduction": user.Introduction, "city": user.City, "avatar_base64": user.AvatarBase64,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
+		"noble": user.Noble,
 		"roles": user.Roles, "badges": user.Badges, "priv": user.Priv,
 		"perms": middleware.UserPermissionCodes(h.DB, uid),
 	})
