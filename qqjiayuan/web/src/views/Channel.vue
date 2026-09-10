@@ -1,48 +1,39 @@
 <template>
   <div>
-    <!-- 面包屑 panav（诺哈：社区 > 分类名） -->
-    <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name }}<br>
+    <!-- 面包屑（诺哈论坛天地：家园>论坛） -->
+    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name || '论坛' }}<br></div>
+
+    <!-- 论坛工具箱（诺哈：草稿/帖子工具入口） -->
+    <div class="module-content" v-if="board.name"><a href="javascript:;" @click="$router.push('/my-threads')">论坛工具箱</a><br></div>
+
+    <!-- 同城行（诺哈论坛页：同城：大理.邯郸.保定） -->
+    <div class="module-content" v-if="cities.length">
+      <a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>：<a v-for="(ct, i) in cities" :key="'ct'+ct.id" href="javascript:;" @click="$router.push('/tongcheng/province/' + ct.id)">{{ ct.name }}</a><template v-if="i < cities.length - 1">.</template><br>
     </div>
 
-    <!-- 简介 -->
-    <div class="module-content">{{ board.description }}</div>
+    <!-- 子版块行（诺哈：版块名.版块名.版块名） -->
+    <div class="module-content" v-if="subs.length">
+      <template v-for="(s, i) in subs"><a :key="'s'+s.id" href="javascript:;" @click="$router.push('/board/' + s.id)">{{ s.name }}</a><template v-if="i < subs.length - 1">.</template></template><br>
+    </div>
 
-    <!-- 子版块列表（诺哈 category.asp 编号列表；有分类则按分类分组） -->
-    <template v-if="board.categories && board.categories.length">
-      <div class="module-content" style="padding:0">
-        <div class="module-title" v-for="cat in board.categories" :key="'ct'+cat.id">【{{ cat.name }}】</div>
-        <div class="list">
-          <div class="row" v-for="(s, i) in flattenCats(board.categories)" :key="'cl'+s.id">
-            <template v-if="i === 0">0.</template><template v-else>{{ i }}.</template><a href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a><br>
-          </div>
-        </div>
+    <!-- 各版块最新帖（诺哈：版块名标题 + 3 条主题(N阅) + 更多热点>>） -->
+    <template v-for="s in activeSubs">
+      <div class="module-title" :key="'bt'+s.id"><a href="javascript:;" @click="$router.push('/board/' + s.id)">{{ s.name }}</a></div>
+      <div class="module-content" :key="'bc'+s.id">
+        <div v-for="t in s.threads" :key="'t'+t.id"><a href="javascript:;" @click="$router.push('/thread/' + t.id)">{{ t.title }}({{ t.view_count }}阅)</a><br></div>
+        <a href="javascript:;" @click="$router.push('/board/' + s.id)">更多热点&gt;&gt;</a><br>
       </div>
     </template>
 
-    <!-- 无分类：直接编号列出所有子版块 -->
-    <template v-else-if="board.children && board.children.length">
-      <div class="list">
-        <div class="row" v-for="(s, i) in board.children" :key="'c'+s.id">
-          {{ i+1 }}.<a href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a><br>
-        </div>
-      </div>
-    </template>
-    <div class="module-content" v-else>该分区下暂无版块<br></div>
-
-    <!-- 搜索（诺哈按版块名搜索） -->
-    <div class="module-content">
-      <form @submit.prevent="">
-        [按名称搜索]<br>
-        <input type="text" v-model.trim="wd" maxlength="30">
-        <button class="btn small" @click.prevent="doSearch">搜索</button>
-      </form>
+    <!-- 热点版块 -->
+    <div class="module-content" v-if="subs.length">热点版块<br>
+      <template v-for="(s, i) in subs"><a :key="'h'+s.id" href="javascript:;" @click="$router.push('/board/' + s.id)">{{ s.name }}</a><template v-if="i < subs.length - 1">.</template></template><br>
     </div>
 
-    <!-- 面包屑重复 -->
-    <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name }}<br>
-    </div>
+    <!-- 论坛导航 / 服务论坛 -->
+    <div class="module-content"><a href="javascript:;" @click="$router.push('/nav')">论坛导航</a>.<a href="javascript:;" @click="$router.push('/channel/4')">服务论坛</a><br></div>
+
+    <div class="bar"><a href="javascript:;" @click="$router.push('/')">社区</a>&gt;{{ board.name || '论坛' }}<br></div>
   </div>
 </template>
 
@@ -51,39 +42,28 @@ import api from '../api'
 
 export default {
   name: 'Channel',
-  data () { return { board: {}, wd: '' } },
+  data () { return { board: {}, subs: [], cities: [] } },
+  computed: {
+    activeSubs () { return this.subs.filter(s => s.threads && s.threads.length) }
+  },
   watch: { '$route': 'load' },
   mounted () { this.load() },
   methods: {
     load () {
       const id = this.$route.params.id
-      this.wd = this.$route.query.wd || ''
-      api.get('/boards').then(r => {
-        if (r.code !== 0) return
-        const target = r.data.find(b => String(b.id) === String(id))
-        if (!target) {
-          // 非分区板块（如同城省份）→ 跳转到对应页面
-          if (this.$route.name === 'channel') {
-            this.$router.replace('/tongcheng/province/' + id)
-          }
+      api.get('/boards/' + id + '/forum').then(r => {
+        if (r.code !== 0) {
+          // 非分区板块（如同城省份）→ 交给版块页处理
+          this.$router.replace('/board/' + id)
           return
         }
-        this.board = target
-        if (!target.categories || !target.categories.length) {
-          // 保证 children 存在
-          this.board = Object.assign({}, target)
-        }
+        this.board = r.data.board || {}
+        this.subs = r.data.subs || []
+      }).catch(() => {})
+      // 同城行（诺哈论坛页固定行）：取同城省份前三个
+      api.get('/tongcheng').then(r => {
+        if (r.code === 0) this.cities = (r.data.provinces || []).slice(0, 3)
       })
-    },
-    flattenCats (cats) {
-      const arr = []
-      cats.forEach(cat => (cat.boards || []).forEach(b => arr.push(b)))
-      return arr
-    },
-    doSearch () {
-      if (!this.wd) return
-      // 站内搜索
-      this.$router.push('/search?w=' + encodeURIComponent(this.wd))
     }
   }
 }

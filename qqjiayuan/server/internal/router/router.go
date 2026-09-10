@@ -85,6 +85,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/tongcheng/city/:id", optAuth, cityH.Detail)
 		api.GET("/tongcheng/city/:id/online", optAuth, cityH.Online)
 		api.GET("/threads/hot", threadH.Hot)
+		// 社区新帖/社区动态（复刻诺哈 topic_new.asp / topic_reply.asp）
+		api.GET("/threads/new", threadH.NewList)
+		api.GET("/threads/active", threadH.ActiveList)
+		// 频道论坛页（复刻诺哈论坛天地：各子版块最新帖）
+		api.GET("/boards/:id/forum", boardH.Forum)
 		api.GET("/threads/:id", optAuth, threadH.Detail)
 		api.GET("/threads/:id/replies", optAuth, threadH.Replies)
 		api.GET("/users/:id", userH.Profile)
@@ -117,6 +122,14 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 花园活动公开列表
 		api.GET("/garden-activities", gardenH.ActivityList)
 		api.GET("/plaza-sections", plazaH.Sections)
+		// 便民服务（复刻诺哈三代 wap/tool 便民中心）
+		toolH := &handler.ToolHandler{DB: db}
+		api.GET("/tool/client", toolH.Client)
+		api.GET("/tool/ip", toolH.IP)
+		api.GET("/tool/weather", toolH.Weather)
+		api.GET("/tool/phone", toolH.Phone)
+		api.GET("/tool/translate", toolH.Translate)
+		api.GET("/tool/name", toolH.Name)
 		api.GET("/goods", goodH.List)
 		api.GET("/goods/:id", goodH.Detail)
 		api.GET("/money-shop", msH.List)
@@ -425,6 +438,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/families/:id/signin", famH.SignIn)
 			authed.POST("/families/:id/tree", famH.Tree)
 			authed.POST("/families/:id/battle", famH.Battle)
+			authed.GET("/families/:id/ld", famH.Ld)
+			authed.POST("/families/:id/ld/fruit", famH.LdFruit)
+			authed.POST("/families/:id/ld/pk/:userId", famH.LdPk)
+			authed.GET("/families/:id/war", famH.War)
+			authed.POST("/families/:id/war/life", famH.WarLife)
+			authed.POST("/families/:id/war/pk/:userId", famH.WarPk)
+			authed.POST("/families/:id/war/chat", famH.WarChat)
 
 			authed.GET("/home-level", hlH.View)
 			authed.GET("/achieve", achH.View)

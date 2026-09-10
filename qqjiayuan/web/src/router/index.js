@@ -17,6 +17,12 @@ const routes = [
   { path: '/mood', name: 'mymood', component: () => import('../views/MyMood.vue'), meta: { auth: true } },
   { path: '/sign', name: 'sign', component: () => import('../views/Sign.vue'), meta: { auth: true } },
   { path: '/channel/:id', name: 'channel', component: () => import('../views/Channel.vue') },
+  // 社区新帖/社区动态（复刻诺哈 topic_new/topic_reply）
+  { path: '/threads/new', name: 'topicNew', component: () => import('../views/TopicNew.vue') },
+  { path: '/threads/active', name: 'topicReply', component: () => import('../views/TopicReply.vue') },
+  // 便民中心（复刻诺哈 wap/tool）
+  { path: '/tool', name: 'tool', component: () => import('../views/Tool.vue') },
+  { path: '/tool/:name', name: 'toolPage', component: () => import('../views/ToolPage.vue') },
   { path: '/tongcheng', name: 'tongcheng', component: () => import('../views/CityHome.vue') },
   { path: '/tongcheng/province/:id', name: 'cityList', component: () => import('../views/CityList.vue') },
   { path: '/tongcheng/city/:id', name: 'city', component: () => import('../views/City.vue') },
@@ -42,6 +48,8 @@ const routes = [
   { path: '/families/top', name: 'familiesTop', component: () => import('../views/FamiliesTop.vue') },
   { path: '/family/:id', name: 'family', component: () => import('../views/Family.vue') },
   { path: '/family/:id/forum', name: 'familyForum', component: () => import('../views/FamilyForum.vue') },
+  { path: '/family/:id/battle', name: 'familyBattle', component: () => import('../views/FamilyBattle.vue'), meta: { auth: true } },
+  { path: '/family/:id/war', name: 'familyWar', component: () => import('../views/FamilyWar.vue'), meta: { auth: true } },
   { path: '/tip', name: 'tip', component: () => import('../views/Tip.vue') },
   { path: '/book', name: 'book', component: () => import('../views/Book.vue') },
   { path: '/book/:id', name: 'bookDetail', component: () => import('../views/BookDetail.vue') },

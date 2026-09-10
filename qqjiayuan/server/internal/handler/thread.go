@@ -710,3 +710,54 @@ func (h *ThreadHandler) Download(c *gin.Context) {
 	h.DB.Model(&att).UpdateColumn("downloads", gorm.Expr("downloads + 1"))
 	resp.OK(c, gin.H{"path": att.Path, "name": att.Name})
 }
+
+// threadBrief 帖子摘要（诺哈 topic_new/topic_reply：标题+作者+回数+阅数）
+type threadBrief struct {
+	ID         uint   `json:"id"`
+	Title      string `json:"title"`
+	ViewCount  int    `json:"view_count"`
+	ReplyCount int    `json:"reply_count"`
+	UserID     uint   `json:"user_id"`
+	Nickname   string `json:"nickname"`
+	Color      string `json:"color"`
+}
+
+// queryBriefList 分页取帖子摘要（TOP 1000，每页 10 条，对齐诺哈 topic_new.asp）
+func (h *ThreadHandler) queryBriefList(c *gin.Context, order string) {
+	page, _, _ := pageOf(c, 10)
+	var total int64
+	h.DB.Model(&model.Thread{}).Where("status = 1 AND audit_status = 1").Count(&total)
+	if total > 1000 {
+		total = 1000
+	}
+	pageCount := int((total + 9) / 10)
+	if pageCount < 1 {
+		pageCount = 1
+	}
+	if page > pageCount {
+		page = pageCount
+	}
+	var threads []model.Thread
+	h.DB.Preload("User").Where("status = 1 AND audit_status = 1").Order(order).
+		Offset((page - 1) * 10).Limit(10).Find(&threads)
+	list := []threadBrief{}
+	for _, t := range threads {
+		nickname, color := "神秘友友", ""
+		if t.User != nil {
+			nickname, color = t.User.Nickname, t.User.Color
+		}
+		list = append(list, threadBrief{ID: t.ID, Title: t.Title, ViewCount: t.ViewCount,
+			ReplyCount: t.ReplyCount, UserID: t.UserID, Nickname: nickname, Color: color})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "page_count": pageCount, "list": list})
+}
+
+// 社区新帖（诺哈 topic_new.asp：按发帖时间倒序）
+func (h *ThreadHandler) NewList(c *gin.Context) {
+	h.queryBriefList(c, "id DESC")
+}
+
+// 社区动态（诺哈 topic_reply.asp：按最后回复时间倒序）
+func (h *ThreadHandler) ActiveList(c *gin.Context) {
+	h.queryBriefList(c, "IFNULL(last_reply_at, created_at) DESC")
+}

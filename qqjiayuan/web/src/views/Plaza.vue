@@ -54,15 +54,15 @@
       <a href="javascript:;" @click="$router.push('/chat')">秘密</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/play')">慈善基金</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">&gt;&gt;</a><br>
     </div>
 
-    <!-- 最新发帖 -->
-    <div class="module-title" v-if="sec('newthread')"><a href="javascript:;" @click="$router.push('/channel/1')">最新发帖</a></div>
-    <div class="module-content wid" v-if="sec('newthread')" v-for="(t,i) in plaza.quick_threads" :key="'q'+t.id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅/<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回)</div>
+    <!-- 最新发帖（诺哈社区快报/社区新帖：☆标题(N阅/[M回])，回数进回帖列表） -->
+    <div class="module-title" v-if="sec('newthread')"><a href="javascript:;" @click="$router.push('/threads/new')">最新发帖</a></div>
+    <div class="module-content wid" v-if="sec('newthread')" v-for="t in plaza.quick_threads" :key="'q'+t.id">☆<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅/[<a href="javascript:;" @click="$router.push('/replies/'+t.id)">{{ t.reply_count }}</a>回])</div>
 
-    <!-- 最新回帖 -->
-    <div class="module-title" v-if="sec('newreply')"><a href="javascript:;" @click="$router.push('/channel/1')">最新回帖</a></div>
-    <div class="module-content wid" v-if="sec('newreply')" v-for="(t,i) in plaza.active_threads" :key="'at'+t.id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅/<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回)</div>
+    <!-- 最新回帖（诺哈家园热帖/社区动态：按最后回复时间） -->
+    <div class="module-title" v-if="sec('newreply')"><a href="javascript:;" @click="$router.push('/threads/active')">最新回帖</a></div>
+    <div class="module-content wid" v-if="sec('newreply')" v-for="t in plaza.active_threads" :key="'at'+t.id">☆<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅/[<a href="javascript:;" @click="$router.push('/replies/'+t.id)">{{ t.reply_count }}</a>回])</div>
 
-    <!-- 公共论坛 / 同城客栈 / 家族天地 -->
+    <!-- 公共论坛 / 同城客栈 / 家族天地（诺哈论坛天地：版块行+各版最新帖，更多进论坛页） -->
     <template v-if="sec('channels') && mainChannels.length">
       <div v-for="ch in mainChannels" :key="'ch'+ch.channel.id">
         <div class="module-title">
@@ -71,7 +71,7 @@
         <div class="module-content">
           <template v-for="(s,i) in shownSubs(ch)"><a :key="s.id" href="javascript:;" @click="$router.push(subPath(ch, s))">{{ s.name }}</a>{{ i < shownSubs(ch).length-1 ? '.' : '' }}</template>
           <a href="javascript:;" @click="$router.push(ch.channel.name === '同城客栈' ? '/tongcheng' : '/channel/'+ch.channel.id)"> 更多&gt;&gt;</a><br>
-          <div v-for="t in ch.threads" :key="'t'+t.id" class="row00"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅)</div>
+          <div v-for="t in ch.threads" :key="'t'+t.id" class="row00"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}({{ t.view_count }}阅)</a></div>
         </div>
       </div>
     </template>
@@ -86,9 +86,9 @@
       </form>
     </div>
 
-    <!-- 社区服务 -->
-    <div class="box bline" v-if="sec('service')"><div class="module-title"><a href="javascript:;" @click="$router.push('/channel/1')">社区服务</a></div>
-      <div class="module-content"><a href="javascript:;" @click="$router.push('/channel/4')">时报</a>.<a href="javascript:;" @click="$router.push('/channel/4')">民报</a>.<a href="javascript:;" @click="$router.push('/channel/1')">新人求助</a>.<a href="javascript:;" @click="$router.push('/channel/4')">更多&gt;&gt;</a></div>
+    <!-- 社区服务（诺哈便民服务：天气.手机.ＩＰ.翻译，进便民中心） -->
+    <div class="box bline" v-if="sec('service')"><div class="module-title"><a href="javascript:;" @click="$router.push('/tool')">便民服务</a></div>
+      <div class="module-content"><a href="javascript:;" @click="$router.push('/tool/weather')">天气</a>.<a href="javascript:;" @click="$router.push('/tool/phone')">手机</a>.<a href="javascript:;" @click="$router.push('/tool/ip')">ＩＰ</a>.<a href="javascript:;" @click="$router.push('/tool/translate')">翻译</a>.<a href="javascript:;" @click="$router.push('/tool')">更多&gt;&gt;</a></div>
     </div>
 
     <!-- 用户动态 -->

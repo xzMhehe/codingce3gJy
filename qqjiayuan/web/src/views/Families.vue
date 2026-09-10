@@ -7,9 +7,11 @@
     <!-- 我的家族 / 推荐加入 -->
     <div class="module-title">我的家族</div>
     <div class="module-content" v-if="mine">
-      欢迎回家 → <a href="javascript:;" @click="$router.push('/family/'+mine.id)"><b style="color:#004299">{{ mine.name }}</b></a>
-      <span class="txt-fade">（{{ mine.role==='owner' ? '族长' : (mine.role==='admin' ? '长老' : '成员') }}，{{ mine.members || 0 }}人）</span>
-      <br><a href="javascript:;" @click="$router.push('/family/'+mine.id)">进入家族&gt;&gt;</a>
+      欢迎回家 → <a href="javascript:;" @click="$router.push('/family/'+mine.id)"><b style="color:#004299">{{ mine.name }}</b></a><br>
+      我的贡献值:{{ mine.exp || 0 }}<br>
+      我的职称:<b style="color:#004299">{{ mine.title || '初级家人' }}</b><br>
+      今日待办:<a href="javascript:;" @click="$router.push('/family/'+mine.id)">快快回家</a><br>
+      <a href="javascript:;" @click="$router.push('/family/'+mine.id)">进入家族&gt;&gt;</a>
     </div>
     <div class="module-content" v-else>
       加入家族一起在家园社区闯荡吧，我们为你推荐：<br>

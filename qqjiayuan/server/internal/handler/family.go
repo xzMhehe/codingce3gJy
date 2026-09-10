@@ -121,7 +121,8 @@ func (h *FamilyHandler) Mine(c *gin.Context) {
 	h.DB.Model(&model.FamilyMember{}).Where("family_id = ?", fam.ID).Count(&count)
 	fam.Members = count
 	fam.Role = m.Role
-	resp.OK(c, gin.H{"id": fam.ID, "name": fam.Name, "slogan": fam.Slogan, "role": m.Role, "members": count})
+	resp.OK(c, gin.H{"id": fam.ID, "name": fam.Name, "slogan": fam.Slogan, "role": m.Role, "members": count,
+		"exp": m.Exp, "title": familyTitle(m.Role, m.Exp)})
 }
 
 // 家族详情：公告 / 成员 / 我的角色 / 今日已签到（公开可看，登录可识别角色）
@@ -170,11 +171,25 @@ func (h *FamilyHandler) Detail(c *gin.Context) {
 		favored = n > 0
 	}
 
+	// 我的贡献值与职称
+	myExp, myTitle := 0, ""
+	if myRole != "" {
+		for _, m := range members {
+			if m.UserID == uid {
+				myExp = m.Exp
+				break
+			}
+		}
+		myTitle = familyTitle(myRole, myExp)
+	}
+
 	out := gin.H{
 		"id": fam.ID, "name": fam.Name, "slogan": fam.Slogan, "description": fam.Description,
 		"announcement": fam.Announcement, "owner_id": fam.OwnerID, "owner": fam.Owner,
 		"tree_level": fam.TreeLevel, "tree_exp": fam.TreeExp, "battle_score": fam.BattleScore,
+		"war_points": fam.WarPoints,
 		"members": members, "my_role": myRole, "member_count": len(members),
+		"my_exp": myExp, "my_title": myTitle,
 		"signed_today": signed > 0, "tree_today": treeToday, "online": online, "created_at": fam.CreatedAt,
 		"forum_board_id": forumBoard.ID, "favored": favored,
 	}
@@ -403,6 +418,412 @@ func (h *FamilyHandler) Battle(c *gin.Context) {
 	h.DB.Model(&fam).Update("battle_score", newScore)
 	h.act(fam.ID, uid, "参加家族乐斗，%s对手《%s》", familyBattleTitle(win), oppName)
 	resp.OK(c, gin.H{"win": win, "opponent": oppName, "gain": gain, "score": newScore})
+}
+
+// ---- 家族乐斗（参考站 /bbs/ld/index：战斗力/功勋值/体力值/菜鸟高手乱斗）----
+
+// familyTitle 按贡献值算职称（参考站「初级家人」等）
+func familyTitle(role string, exp int) string {
+	if role == "owner" {
+		return "族长"
+	}
+	switch {
+	case exp >= 1000:
+		return "元老家人"
+	case exp >= 500:
+		return "骨干家人"
+	case exp >= 200:
+		return "高级家人"
+	case exp >= 50:
+		return "中级家人"
+	}
+	return "初级家人"
+}
+
+// ldUserOf 获取或创建乐斗个人数据；跨天重置今日次数与体力
+func (h *FamilyHandler) ldUserOf(uid uint) model.FamilyLdUser {
+	var ld model.FamilyLdUser
+	if err := h.DB.Where("user_id = ?", uid).First(&ld).Error; err != nil {
+		ld = model.FamilyLdUser{UserID: uid, Fight: 10, Merit: 0, Stamina: 10}
+		h.DB.Create(&ld)
+	}
+	today := todayStr()
+	if ld.LdDate != today {
+		ld.LdDate = today
+		ld.LdCount = 0
+		ld.Stamina = 10
+		h.DB.Model(&ld).Updates(map[string]interface{}{"ld_date": today, "ld_count": 0, "stamina": 10})
+	}
+	return ld
+}
+
+// 乐斗首页：我的战斗数据 + 三区对手 + 乐斗动态
+func (h *FamilyHandler) Ld(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if !h.isMember(fam.ID, uid) {
+		resp.Forbidden(c, "你还不是本家族成员")
+		return
+	}
+	ld := h.ldUserOf(uid)
+	bt, _ := strconv.Atoi(c.Query("bt"))
+	if bt < 1 || bt > 3 {
+		bt = 1
+	}
+	// 菜鸟=本族低贡献家人；高手=本族高贡献家人；乱斗=全站随机友友
+	type oppRow struct {
+		UserID   uint   `json:"user_id"`
+		Nickname string `json:"nickname"`
+		Color    string `json:"color"`
+		Fight    int    `json:"fight"`
+		Level    int    `json:"level"`
+	}
+	opps := []oppRow{}
+	if bt <= 2 {
+		var members []model.FamilyMember
+		q := h.DB.Preload("User").Where("family_id = ? AND user_id <> ?", fam.ID, uid)
+		if bt == 1 {
+			q = q.Where("exp < 50")
+		} else {
+			q = q.Where("exp >= 50")
+		}
+		q.Order("RAND()").Limit(5).Find(&members)
+		for _, m := range members {
+			if m.User == nil {
+				continue
+			}
+			old := h.ldUserOf(m.UserID)
+			opps = append(opps, oppRow{UserID: m.UserID, Nickname: m.User.Nickname, Color: m.User.Color, Fight: old.Fight, Level: m.User.Level})
+		}
+	} else {
+		var users []model.User
+		h.DB.Where("id <> ?", uid).Order("RAND()").Limit(5).Find(&users)
+		for _, u := range users {
+			old := h.ldUserOf(u.ID)
+			opps = append(opps, oppRow{UserID: u.ID, Nickname: u.Nickname, Color: u.Color, Fight: old.Fight, Level: u.Level})
+		}
+	}
+	var logs []model.FamilyLdLog
+	h.DB.Preload("User").Where("family_id = ?", fam.ID).Order("created_at DESC").Limit(5).Find(&logs)
+	remain := 20 - ld.LdCount
+	if remain < 0 {
+		remain = 0
+	}
+	resp.OK(c, gin.H{
+		"fight": ld.Fight, "merit": ld.Merit, "stamina": ld.Stamina,
+		"ld_count": ld.LdCount, "ld_limit": 20, "remain": remain,
+		"win_count": ld.WinCount, "lose_count": ld.LoseCount,
+		"bt": bt, "opponents": opps, "logs": logs,
+	})
+}
+
+// 斗一斗：与指定家人乐斗，消耗 1 体力，每日上限 20 次
+func (h *FamilyHandler) LdPk(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if !h.isMember(fam.ID, uid) {
+		resp.Forbidden(c, "你还不是本家族成员")
+		return
+	}
+	oid, _ := strconv.Atoi(c.Param("userId"))
+	if oid <= 0 || oid == int(uid) {
+		resp.ParamError(c, "对手不合法")
+		return
+	}
+	ld := h.ldUserOf(uid)
+	if ld.Stamina <= 0 {
+		resp.ParamError(c, "体力值不足，先吃个果实补充体力吧")
+		return
+	}
+	if ld.LdCount >= 20 {
+		resp.ParamError(c, "今日乐斗已达 20 次上限，明天再来吧")
+		return
+	}
+	var ou model.User
+	if err := h.DB.First(&ou, oid).Error; err != nil {
+		resp.NotFound(c, "对手不存在")
+		return
+	}
+	oldd := h.ldUserOf(uint(oid))
+	// 战斗力 + 临时手气决定胜负（高手区对手更强）
+	win := ld.Fight+rand.Intn(30) > oldd.Fight+rand.Intn(30)
+	ld.Stamina--
+	ld.LdCount++
+	gain := gin.H{}
+	if win {
+		ld.Fight++
+		ld.Merit += 2
+		ld.WinCount++
+		h.DB.Model(&model.FamilyMember{}).Where("family_id = ? AND user_id = ?", fam.ID, uid).
+			Update("exp", gorm.Expr("exp + ?", 5))
+		addExpAndCoins(h.DB, uid, 5, 3, 1, "ldwin", "家族乐斗获胜")
+		h.ldLog(fam.ID, uid, "在家族乐斗中战胜了【%s】", ou.Nickname)
+		h.act(fam.ID, uid, "在家族乐斗中战胜了【%s】", ou.Nickname)
+		gain = gin.H{"fight": ld.Fight, "merit": ld.Merit, "exp": 5, "coins": 3}
+	} else {
+		ld.Merit--
+		ld.LoseCount++
+		addExpAndCoins(h.DB, uid, 2, 1, 0, "ldlose", "家族乐斗参与奖")
+		h.ldLog(fam.ID, uid, "挑战%s惜败，再接再厉！", ou.Nickname)
+		gain = gin.H{"merit": ld.Merit, "exp": 2, "coins": 1}
+	}
+	h.DB.Model(&ld).Updates(map[string]interface{}{
+		"fight": ld.Fight, "merit": ld.Merit, "stamina": ld.Stamina,
+		"ld_count": ld.LdCount, "win_count": ld.WinCount, "lose_count": ld.LoseCount, "ld_date": ld.LdDate,
+	})
+	resp.OK(c, gin.H{"win": win, "opponent": ou.Nickname, "stamina": ld.Stamina, "count": ld.LdCount, "gain": gain})
+}
+
+// 吃果实：每日一次，体力 +5
+func (h *FamilyHandler) LdFruit(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	ld := h.ldUserOf(uid)
+	if ld.Stamina >= 10 {
+		resp.ParamError(c, "体力满满，不用吃果实啦")
+		return
+	}
+	newStamina := ld.Stamina + 5
+	if newStamina > 10 {
+		newStamina = 10
+	}
+	h.DB.Model(&ld).Update("stamina", newStamina)
+	resp.OK(c, gin.H{"stamina": newStamina, "msg": "吃完果实体力恢复了"})
+}
+
+func (h *FamilyHandler) ldLog(familyID, userID uint, format string, args ...interface{}) {
+	h.DB.Create(&model.FamilyLdLog{FamilyID: familyID, UserID: userID, Content: fmt.Sprintf(format, args...)})
+}
+
+// ---- 家族族斗（参考站 /bbs/zd/index：今日战局/生命力/攻击对象/世界喊话/荣誉榜）----
+
+// warLifeOf 获取或创建今日生命力（每日重置 5 点）
+func (h *FamilyHandler) warLifeOf(uid uint) model.FamilyWarLife {
+	var wl model.FamilyWarLife
+	if err := h.DB.Where("user_id = ?", uid).First(&wl).Error; err != nil {
+		wl = model.FamilyWarLife{UserID: uid, Life: 5, WarDate: todayStr()}
+		h.DB.Create(&wl)
+	}
+	today := todayStr()
+	if wl.WarDate != today {
+		wl.Life = 5
+		wl.WarDate = today
+		wl.Bought = 0
+		h.DB.Model(&wl).Updates(map[string]interface{}{"life": 5, "war_date": today, "bought": 0})
+	}
+	return wl
+}
+
+// todayBattleOf 获取或创建今日战局（随机匹配一支敌对家族）
+func (h *FamilyHandler) todayBattleOf(fam *model.Family) model.FamilyWarBattle {
+	today := todayStr()
+	var b model.FamilyWarBattle
+	if err := h.DB.Where("war_date = ? AND family_id = ?", today, fam.ID).First(&b).Error; err == nil {
+		return b
+	}
+	enemy := model.Family{}
+	h.DB.Where("status = 1 AND id <> ?", fam.ID).Order("RAND()").First(&enemy)
+	if enemy.ID == 0 {
+		enemy.Name = "神秘家族"
+	}
+	b = model.FamilyWarBattle{WarDate: today, FamilyID: fam.ID, EnemyID: enemy.ID,
+		EnemyName: enemy.Name, MyScore: fam.WarPoints, EnemyScore: enemy.WarPoints}
+	h.DB.Create(&b)
+	return b
+}
+
+// 族斗首页：今日战局 + 生命力 + 攻击对象 + 喊话 + 荣誉榜
+func (h *FamilyHandler) War(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if !h.isMember(fam.ID, uid) {
+		resp.Forbidden(c, "你还不是本家族成员")
+		return
+	}
+	battle := h.todayBattleOf(&fam)
+	wl := h.warLifeOf(uid)
+	ld := h.ldUserOf(uid)
+
+	// 攻击对象：敌方家族成员随机 3 名
+	var enemies []model.FamilyMember
+	h.DB.Preload("User").Where("family_id = ?", battle.EnemyID).Order("RAND()").Limit(3).Find(&enemies)
+	opps := []gin.H{}
+	for _, m := range enemies {
+		if m.User == nil {
+			continue
+		}
+		opps = append(opps, gin.H{"user_id": m.UserID, "nickname": m.User.Nickname, "color": m.User.Color})
+	}
+
+	// 族斗喊话（yid=1 家族对话 / 默认全部含私聊）
+	yid := c.Query("yid")
+	cq := h.DB.Preload("User").Where("family_id = ?", fam.ID)
+	if yid == "1" {
+		cq = cq.Where("type = 'chat'")
+	}
+	var chats []model.FamilyWarChat
+	cq.Order("created_at DESC").Limit(10).Find(&chats)
+
+	// 族斗荣誉榜（前3）+ 我的排名
+	var tops []model.Family
+	h.DB.Where("status = 1").Order("war_points DESC, id ASC").Limit(3).Find(&tops)
+	var moreCount int64
+	h.DB.Model(&model.Family{}).Where("status = 1 AND war_points > ?", fam.WarPoints).Count(&moreCount)
+
+	// 昨日战况
+	yest := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	var yb model.FamilyWarBattle
+	yesterday := gin.H{}
+	if err := h.DB.Where("war_date = ? AND family_id = ?", yest, fam.ID).First(&yb).Error; err == nil {
+		yesterday = gin.H{"enemy": yb.EnemyName, "win": yb.MyScore >= yb.EnemyScore}
+	}
+
+	// 个人功勋榜（本族前5）
+	var merits []model.FamilyMember
+	h.DB.Preload("User").Where("family_id = ?", fam.ID).Order("exp DESC").Limit(5).Find(&merits)
+
+	// 今日我的攻击次数（动态条数近似）与生命力展示
+	myName := fam.Name
+	resp.OK(c, gin.H{
+		"my_name": myName, "enemy_id": battle.EnemyID, "enemy_name": battle.EnemyName,
+		"my_score": battle.MyScore, "enemy_score": battle.EnemyScore,
+		"fight": ld.Fight, "merit": ld.Merit, "life": wl.Life,
+		"opponents": opps, "chats": chats,
+		"tops": tops, "my_rank": int(moreCount) + 1,
+		"yesterday": yesterday,
+		"merit_top": merits,
+	})
+}
+
+// 族斗攻击：生命力 -1，胜负影响族斗荣誉点与功勋值
+func (h *FamilyHandler) WarPk(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if !h.isMember(fam.ID, uid) {
+		resp.Forbidden(c, "你还不是本家族成员")
+		return
+	}
+	oid, _ := strconv.Atoi(c.Param("userId"))
+	if oid < 0 || oid == int(uid) {
+		resp.ParamError(c, "攻击对象不合法")
+		return
+	}
+	// oid=0 表示随机挑选一名敌方家族成员
+	if oid == 0 {
+		var em model.FamilyMember
+		b0 := h.todayBattleOf(&fam)
+		if err := h.DB.Where("family_id = ?", b0.EnemyID).Order("RAND()").First(&em).Error; err != nil {
+			resp.ParamError(c, "敌方家族暂无成员可攻击")
+			return
+		}
+		oid = int(em.UserID)
+	}
+	wl := h.warLifeOf(uid)
+	if wl.Life <= 0 {
+		resp.ParamError(c, "今日生命力已耗尽，可购买生命力继续战斗")
+		return
+	}
+	var ou model.User
+	if err := h.DB.First(&ou, oid).Error; err != nil {
+		resp.NotFound(c, "攻击对象不存在")
+		return
+	}
+	ld := h.ldUserOf(uid)
+	win := rand.Intn(100) < 55+ld.Fight/10
+	wl.Life--
+	h.DB.Model(&wl).Update("life", wl.Life)
+	gain := gin.H{}
+	newScore := fam.WarPoints
+	if win {
+		points := 1 + rand.Intn(5)
+		ld.Merit += 2
+		newScore = fam.WarPoints + points
+		h.DB.Model(&fam).Update("war_points", newScore)
+		h.DB.Model(&model.FamilyWarBattle{}).Where("war_date = ? AND family_id = ?", todayStr(), fam.ID).
+			Update("my_score", newScore)
+		addExpAndCoins(h.DB, uid, 5, 2, 1, "warwin", "族斗获胜")
+		h.ldLog(fam.ID, uid, "挑战%s大获全胜，高奏凯歌！", ou.Nickname)
+		h.act(fam.ID, uid, "挑战%s大获全胜，高奏凯歌！", ou.Nickname)
+		gain = gin.H{"points": points, "merit": ld.Merit, "exp": 5, "coins": 2}
+	} else {
+		ld.Merit--
+		h.ldLog(fam.ID, uid, "挑战%s，惜败而归！", ou.Nickname)
+		gain = gin.H{"merit": ld.Merit}
+	}
+	h.DB.Model(&ld).Updates(map[string]interface{}{"merit": ld.Merit})
+	resp.OK(c, gin.H{"win": win, "opponent": ou.Nickname, "life": wl.Life,
+		"war_points": newScore, "gain": gain})
+}
+
+// 购买生命力：100 G币 = 1 点，每日限购 3 次
+func (h *FamilyHandler) WarLife(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	wl := h.warLifeOf(uid)
+	if wl.Life >= 5 {
+		resp.ParamError(c, "生命力满格，无需购买")
+		return
+	}
+	if wl.Bought >= 3 {
+		resp.ParamError(c, "今日已限购 3 次生命力")
+		return
+	}
+	var u model.User
+	h.DB.First(&u, uid)
+	if u.Coins < 100 {
+		resp.ParamError(c, "G币不足（需 100 G币）")
+		return
+	}
+	addExpAndCoins(h.DB, uid, 0, -100, 0, "warlife", "购买族斗生命力")
+	newLife := wl.Life + 1
+	h.DB.Model(&wl).Updates(map[string]interface{}{"life": newLife, "bought": wl.Bought + 1})
+	resp.OK(c, gin.H{"life": newLife, "msg": "购买成功，生命力 +1"})
+}
+
+type warChatReq struct {
+	Content string `json:"content" binding:"required,max=120"`
+	Type    string `json:"type"`
+}
+
+// 族斗喊话：私聊/对话，每次扣 1000 G币
+func (h *FamilyHandler) WarChat(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	fam, ok := h.familyOf(c)
+	if !ok {
+		return
+	}
+	if !h.isMember(fam.ID, uid) {
+		resp.Forbidden(c, "你还不是本家族成员")
+		return
+	}
+	var req warChatReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "说点什么吧（120字以内）")
+		return
+	}
+	ctype := "chat"
+	if req.Type == "private" {
+		ctype = "private"
+	}
+	var u model.User
+	h.DB.First(&u, uid)
+	if u.Coins < 1000 {
+		resp.ParamError(c, "G币不足（每次发言需 1000 G币）")
+		return
+	}
+	addExpAndCoins(h.DB, uid, 1, -1000, 0, "warchat", "族斗喊话")
+	h.DB.Create(&model.FamilyWarChat{FamilyID: fam.ID, UserID: uid, Type: ctype, Content: req.Content})
+	resp.OK(c, gin.H{"msg": "喊话成功"})
 }
 
 // 家族类别（含各类别家族数，参考站「家族类别」）

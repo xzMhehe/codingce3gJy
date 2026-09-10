@@ -47,6 +47,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Family{}, &model.FamilyMember{}, &model.FamilySignIn{},
 		&model.FamilyActivity{},
 		&model.FamilyFavorite{},
+		&model.FamilyLdUser{}, &model.FamilyLdLog{},
+		&model.FamilyWarBattle{}, &model.FamilyWarLife{}, &model.FamilyWarChat{},
 		&model.Book{}, &model.BookChapter{}, &model.BookComment{}, &model.BookShelf{}, &model.ThreadFavorite{},
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},

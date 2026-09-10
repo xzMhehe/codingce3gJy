@@ -146,6 +146,31 @@ func (h *BoardHandler) Info(c *gin.Context) {
 	resp.OK(c, gin.H{"board": board, "moderator": mod})
 }
 
+// 频道论坛页（复刻诺哈论坛天地 channel 页：各子版块行 + 每版最新 3 帖）
+func (h *BoardHandler) Forum(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var board model.Board
+	if err := h.DB.First(&board, id).Error; err != nil || board.ParentID != 0 {
+		resp.NotFound(c, "板块不存在")
+		return
+	}
+	var subs []model.Board
+	h.DB.Where("parent_id = ? AND status = 1", board.ID).Order("sort ASC, id ASC").Find(&subs)
+	type subNode struct {
+		ID      uint           `json:"id"`
+		Name    string         `json:"name"`
+		Threads []model.Thread `json:"threads"`
+	}
+	list := []subNode{}
+	for _, s := range subs {
+		var ts []model.Thread
+		h.DB.Preload("User").Where("board_id = ? AND status = 1 AND audit_status = 1", s.ID).
+			Order("IFNULL(last_reply_at, created_at) DESC").Limit(3).Find(&ts)
+		list = append(list, subNode{ID: s.ID, Name: s.Name, Threads: ts})
+	}
+	resp.OK(c, gin.H{"board": board, "subs": list})
+}
+
 // 版块帖子列表（置顶/头条优先，然后按最后回复时间）
 func (h *BoardHandler) Threads(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

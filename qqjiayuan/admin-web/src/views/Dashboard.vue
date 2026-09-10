@@ -40,120 +40,17 @@
       </div>
     </template>
 
-    <!-- ===== 管理面板（仅对应 tab 显示） ===== -->
-    <admin-users v-if="tab === 'users'" />
-    <admin-home v-else-if="tab === 'home'" />
-    <admin-wallet v-else-if="tab === 'wallet'" />
-    <admin-wallet-logs v-else-if="tab === 'walletLogs'" />
-    <admin-invites v-else-if="tab === 'invites'" />
-    <admin-user-phones v-else-if="tab === 'userPhones'" />
-    <admin-user-docu v-else-if="tab === 'userDocu'" />
-    <admin-user-contacts v-else-if="tab === 'userContact'" />
-    <admin-user-addresses v-else-if="tab === 'userAddress'" />
-    <admin-user-protections v-else-if="tab === 'userProtec'" />
-    <admin-user-logs v-else-if="tab === 'userLogs'" />
-    <admin-boards v-else-if="tab === 'boards'" />
-    <admin-board-categories v-else-if="tab === 'boardCategories'" />
-    <admin-word-filters v-else-if="tab === 'wordFilters'" />
-    <admin-threads v-else-if="tab === 'threads'" />
-    <admin-thread-recycle v-else-if="tab === 'recycle'" />
-    <admin-tongcheng v-else-if="tab === 'tongcheng'" />
-    <admin-announcements v-else-if="tab === 'announcements'" />
-    <admin-roles v-else-if="tab === 'roles'" />
-    <admin-privileges v-else-if="tab === 'privileges'" />
-    <admin-games v-else-if="tab === 'games'" />
-    <admin-badges v-else-if="tab === 'badges'" />
-    <admin-garden-activities v-else-if="tab === 'gardenActivities'" />
-    <admin-garden-seeds v-else-if="tab === 'gardenSeeds'" />
-    <admin-garden-maps v-else-if="tab === 'gardenMaps'" />
-    <admin-garden-mixes v-else-if="tab === 'gardenMixes'" />
-    <admin-garden-elves v-else-if="tab === 'gardenElves'" />
-    <admin-garden-sign v-else-if="tab === 'gardenSign'" />
-    <admin-garden-data v-else-if="tab === 'gardenData'" />
-    <admin-farm-seeds v-else-if="tab === 'farmSeeds'" />
-    <admin-farm-items v-else-if="tab === 'farmItems'" />
-    <admin-farm-data v-else-if="tab === 'farmData'" />
-    <admin-park-cars v-else-if="tab === 'parkCars'" />
-    <admin-park-data v-else-if="tab === 'parkData'" />
-    <admin-resources v-else-if="tab === 'resources'" />
-    <admin-spaces v-else-if="tab === 'spaces'" />
-    <admin-homes v-else-if="tab === 'homes'" />
-    <admin-visitors v-else-if="tab === 'visitors'" />
-    <admin-shops v-else-if="tab === 'shops'" />
-    <admin-shop-goods v-else-if="tab === 'shopGoods'" />
-    <admin-shop-orders v-else-if="tab === 'shopOrders'" />
-    <admin-shop-comments v-else-if="tab === 'shopComments'" />
-    <admin-site-articles v-else-if="tab === 'articles'" />
-    <admin-guestbook v-else-if="tab === 'guestbook'" />
-    <admin-messages v-else-if="tab === 'messages'" />
-    <admin-books v-else-if="tab === 'books'" />
-    <admin-book-chapters v-else-if="tab === 'bookChapters'" />
-    <admin-book-comments v-else-if="tab === 'bookComments'" />
-    <admin-site-config v-else-if="tab === 'siteConfig'" />
+    <!-- ===== 管理面板（页面分发由 ../menu.js 配置驱动） ===== -->
+    <component v-else-if="activeComp" :is="activeComp" />
   </div>
 </template>
 
 <script>
 import api from '../api'
-import AdminUsers from '../components/admin/AdminUsers.vue'
-import AdminHome from '../components/admin/AdminHome.vue'
-import AdminWallet from '../components/admin/AdminWallet.vue'
-import AdminBoards from '../components/admin/AdminBoards.vue'
-import AdminBoardCategories from '../components/admin/AdminBoardCategories.vue'
-import AdminWordFilters from '../components/admin/AdminWordFilters.vue'
-import AdminThreads from '../components/admin/AdminThreads.vue'
-import AdminReports from '../components/admin/AdminReports.vue'
-import AdminAnnouncements from '../components/admin/AdminAnnouncements.vue'
-import AdminPlazaSections from '../components/admin/AdminPlazaSections.vue'
-import AdminFamilies from '../components/admin/AdminFamilies.vue'
-import AdminTongcheng from '../components/admin/AdminTongcheng.vue'
-import AdminTtou from '../components/admin/AdminTtou.vue'
-import AdminRoles from '../components/admin/AdminRoles.vue'
-import AdminBadges from '../components/admin/AdminBadges.vue'
-import AdminPrivileges from '../components/admin/AdminPrivileges.vue'
-import AdminGames from '../components/admin/AdminGames.vue'
-import AdminGardenActivities from '../components/admin/AdminGardenActivities.vue'
-import AdminGardenSeeds from '../components/admin/AdminGardenSeeds.vue'
-import AdminGardenMaps from '../components/admin/AdminGardenMaps.vue'
-import AdminGardenMixes from '../components/admin/AdminGardenMixes.vue'
-import AdminGardenElves from '../components/admin/AdminGardenElves.vue'
-import AdminGardenSign from '../components/admin/AdminGardenSign.vue'
-import AdminGardenData from '../components/admin/AdminGardenData.vue'
-import AdminFarmSeeds from '../components/admin/AdminFarmSeeds.vue'
-import AdminFarmItems from '../components/admin/AdminFarmItems.vue'
-import AdminFarmData from '../components/admin/AdminFarmData.vue'
-import AdminParkCars from '../components/admin/AdminParkCars.vue'
-import AdminParkData from '../components/admin/AdminParkData.vue'
-import AdminGoods from '../components/admin/AdminGoods.vue'
-import AdminMoneyShop from '../components/admin/AdminMoneyShop.vue'
-import AdminResources from '../components/admin/AdminResources.vue'
-import AdminSpaces from '../components/admin/AdminSpaces.vue'
-import AdminWalletLogs from '../components/admin/AdminWalletLogs.vue'
-import AdminInvites from '../components/admin/AdminInvites.vue'
-import AdminUserDocu from '../components/admin/AdminUserDocu.vue'
-import AdminUserContacts from '../components/admin/AdminUserContacts.vue'
-import AdminUserAddresses from '../components/admin/AdminUserAddresses.vue'
-import AdminUserProtections from '../components/admin/AdminUserProtections.vue'
-import AdminUserLogs from '../components/admin/AdminUserLogs.vue'
-import AdminUserPhones from '../components/admin/AdminUserPhones.vue'
-import AdminThreadRecycle from '../components/admin/AdminThreadRecycle.vue'
-import AdminHomes from '../components/admin/AdminHomes.vue'
-import AdminVisitors from '../components/admin/AdminVisitors.vue'
-import AdminShops from '../components/admin/AdminShops.vue'
-import AdminShopGoods from '../components/admin/AdminShopGoods.vue'
-import AdminShopOrders from '../components/admin/AdminShopOrders.vue'
-import AdminShopComments from '../components/admin/AdminShopComments.vue'
-import AdminSiteArticles from '../components/admin/AdminSiteArticles.vue'
-import AdminGuestbook from '../components/admin/AdminGuestbook.vue'
-import AdminMessages from '../components/admin/AdminMessages.vue'
-import AdminBooks from '../components/admin/AdminBooks.vue'
-import AdminBookChapters from '../components/admin/AdminBookChapters.vue'
-import AdminBookComments from '../components/admin/AdminBookComments.vue'
-import AdminSiteConfig from '../components/admin/AdminSiteConfig.vue'
+import { pageMap } from '../menu'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenSign, AdminGardenData, AdminFarmSeeds, AdminFarmItems, AdminFarmData, AdminParkCars, AdminParkData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminUserPhones, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminBookChapters, AdminBookComments, AdminSiteConfig, AdminTongcheng },
   data () {
     return { stats: {}, adminName: '' }
   },
@@ -163,6 +60,9 @@ export default {
     },
     isOverview () {
       return this.tab === 'dashboard'
+    },
+    activeComp () {
+      return pageMap[this.tab]
     },
     greeting () {
       const h = new Date().getHours()

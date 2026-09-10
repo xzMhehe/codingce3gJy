@@ -14,12 +14,17 @@
         | <a href="javascript:;" @click="doFavor"><font :color="fam.favored ? '#1a9e1a' : '#004299'">{{ fam.favored ? '★已收藏' : '☆收藏该家' }}</font></a><br>
       </div>
 
-      <!-- 家族风采 -->
+      <!-- 家族风采（参考站：家族名+在线人数+等级行+我的积分/职称） -->
       <div class="module-content">
         <b style="font-size:16px;color:#004299">{{ fam.name }}家族</b><br>
         <template v-if="fam.category">[{{ fam.category }}] </template>
         <span class="txt-fade">（<a href="javascript:;" @click="showOnline">{{ fam.online || 0 }}</a>人在线）</span><br>
-        <span class="txt-fade">等级:{{ fam.tree_level }}({{ fam.tree_exp }}/{{ fam.tree_level * 100 }})　乐斗积分 {{ fam.battle_score }}　族长：<a href="javascript:;" @click="$router.push('/user/'+fam.owner_id)"><font :color="fam.owner && fam.owner.color || '#004299'">{{ fam.owner ? fam.owner.nickname : '?' }}</font></a></span>
+        <a href="javascript:;" @click="showTree">等级</a>:{{ fam.tree_level }}({{ fam.tree_exp }}/{{ fam.tree_level * 100 }})<br>
+        <template v-if="fam.my_role">
+          我的家族积分:{{ fam.my_exp || 0 }}<br>
+          我的职称:<b style="color:#004299">{{ fam.my_title || '初级家人' }}</b><br>
+        </template>
+        <span class="txt-fade">乐斗积分 {{ fam.battle_score }}　族斗荣誉点 {{ fam.war_points || 0 }}　族长：<a href="javascript:;" @click="$router.push('/user/'+fam.owner_id)"><font :color="fam.owner && fam.owner.color || '#004299'">{{ fam.owner ? fam.owner.nickname : '?' }}</font></a></span>
         <p style="color:#888">{{ fam.slogan || '（暂无口号）' }}</p>
         <p>{{ fam.description }}</p>
       </div>
@@ -32,6 +37,21 @@
         </div>
       </div>
       <div class="module-content" v-else><span class="empty">家族论坛还没有帖子，去抢个头楼吧</span></div>
+
+      <!-- 今日任务（参考站：抚摸/拥抱守护树、参与族斗为族争光、每日分财富） -->
+      <div class="module-title">今日任务</div>
+      <div class="module-content" v-if="fam.my_role">
+        <table style="width:100%;border-collapse:collapse"><tbody><tr>
+          <td style="width:74px"><img src="/static/picture/tree.gif" width="65" height="50" alt="守护树"></td>
+          <td valign="top">
+            <a href="javascript:;" @click="doTree">抚摸</a>/<a href="javascript:;" @click="doTree">拥抱</a>守护树<br>
+            参与<a href="javascript:;" @click="$router.push('/family/'+fam.id+'/war')">族斗</a>为族争光<br>
+            <a href="javascript:;" @click="doSign">每日分财富</a><span class="txt-fade">（签到领奖）</span>
+          </td>
+        </tr></tbody></table>
+        <template v-if="fam.signed_today"><span style="color:#1a9e1a">今日任务已全部完成 ✓</span></template>
+      </div>
+      <div class="module-content" v-else><span class="empty">加入家族后可参与今日任务</span></div>
 
       <!-- 家族动态 -->
       <div class="module-title">家族动态</div>
@@ -46,9 +66,9 @@
       <div class="module-title">功能导航</div>
       <div class="module-content plist">
         <div class="row00" v-if="fam.my_role">
-          <a href="javascript:;" @click="doBattle">乐斗</a>.<a href="javascript:;" @click="$router.push('/activities')">活动</a>.<a href="javascript:;" @click="$router.push('/friends')">邀好友</a>.<a href="javascript:;" @click="doSign">签到</a><br>
-          <a href="javascript:;" @click="doTree">抚摸/拥抱守护树</a>.<a href="javascript:;" @click="$router.push('/mood')">心情</a>.<a href="javascript:;" @click="$router.push('/notices')">公告</a><br>
-          <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/forum')">家族论坛</a>.<a href="javascript:;" @click="doFavor">{{ fam.favored ? '取消收藏' : '收藏该家' }}</a>.<a href="javascript:;" @click="doLeave" style="color:#c00">退出家族</a><br>
+          <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/battle')">乐斗</a>.<a href="javascript:;" @click="$router.push('/activities')">活动</a>.<a href="javascript:;" @click="$router.push('/friends')">邀好友</a>.<a href="javascript:;" @click="doSign">签到</a><br>
+          <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/war')">族斗</a>.<a href="javascript:;" @click="$router.push('/mood')">心情</a>.<a href="javascript:;" @click="$router.push('/notices')">公告</a>.<a href="javascript:;" @click="doFavor">{{ fam.favored ? '取消收藏' : '收藏夹' }}</a><br>
+          <a href="javascript:;" @click="$router.push('/family/'+fam.id+'/forum')">家族论坛</a>.<a href="javascript:;" @click="doTree">守护树</a>.<a href="javascript:;" @click="doLeave" style="color:#c00">退出家族</a><br>
           <template v-if="fam.signed_today"><span style="color:#1a9e1a">今天已在家族签到 ✓</span><br></template>
         </div>
         <div class="row00" v-else>
@@ -79,7 +99,7 @@
       </ul>
 
       <!-- 守护树 -->
-      <div class="module-title">守护树</div>
+      <div class="module-title" id="tree-sec">守护树</div>
       <div class="module-content">
         <table style="width:100%;border-collapse:collapse"><tbody><tr>
           <td style="width:56px"><img src="/static/picture/tree.gif" width="48" height="48" alt="守护树"></td>
@@ -130,6 +150,10 @@ export default {
       api.get('/families').then(r => { if (r.code === 0) this.allFamilies = r.data })
     },
     showOnline () { this.msg = ''; this.okMsg = '在线家人可在家人列表查看（10 分钟内活跃）' },
+    showTree () {
+      const el = document.getElementById('tree-sec')
+      if (el) el.scrollIntoView()
+    },
     goVisit () {
       if (this.visitId > 0) this.$router.push('/family/' + this.visitId)
     },
@@ -176,15 +200,6 @@ export default {
       api.post('/families/' + this.fam.id + '/tree').then(r => {
         if (r.code === 0) {
           this.okMsg = (r.data.leveled ? '🎉 守护树升级到 Lv.' + r.data.tree_level + '！' : '守护树成长 +30') + '，当前 Lv.' + r.data.tree_level
-          this.load()
-        } else this.msg = r.msg
-      })
-    },
-    doBattle () {
-      this.msg = ''; this.okMsg = ''
-      api.post('/families/' + this.fam.id + '/battle').then(r => {
-        if (r.code === 0) {
-          this.okMsg = (r.data.win ? '🏆 乐斗获胜！' : '乐斗惜败，参与有奖~') + ' 对手【' + r.data.opponent + '】，积分 ' + (r.data.gain > 0 ? '+' : '') + r.data.gain + ' → ' + r.data.score
           this.load()
         } else this.msg = r.msg
       })
