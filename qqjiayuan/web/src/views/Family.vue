@@ -22,7 +22,7 @@
         <a href="javascript:;" @click="showTree">等级</a>:{{ fam.tree_level }}({{ fam.tree_exp }}/{{ fam.tree_level * 100 }})<br>
         <template v-if="fam.my_role">
           我的家族积分:{{ fam.my_exp || 0 }}<br>
-          我的职称:<b style="color:#004299">{{ fam.my_title || '初级家人' }}</b><br>
+          我的职称:<b style="color:#004299">{{ fam.my_title || '初级家人' }}</b> <a href="javascript:;" @click="$router.push('/family/levels')">>></a><br>
         </template>
         <span class="txt-fade">乐斗积分 {{ fam.battle_score }}　族斗荣誉点 {{ fam.war_points || 0 }}　族长：<a href="javascript:;" @click="$router.push('/user/'+fam.owner_id)"><font :color="fam.owner && fam.owner.color || '#004299'">{{ fam.owner ? fam.owner.nickname : '?' }}</font></a></span>
         <p style="color:#888">{{ fam.slogan || '（暂无口号）' }}</p>
@@ -39,7 +39,7 @@
       <div class="module-content" v-else><span class="empty">家族论坛还没有帖子，去抢个头楼吧</span></div>
 
       <!-- 今日任务（参考站：抚摸/拥抱守护树、参与族斗为族争光、每日分财富） -->
-      <div class="module-title">今日任务</div>
+      <div class="module-title" id="tree-sec">今日任务</div>
       <div class="module-content" v-if="fam.my_role">
         <table style="width:100%;border-collapse:collapse"><tbody><tr>
           <td style="width:74px"><img src="/static/picture/tree.gif" width="65" height="50" alt="守护树"></td>
@@ -97,18 +97,6 @@
           <template v-if="isOwner && m.role !== 'owner'"><a href="javascript:;" style="color:#c00" @click="removeMember(m.user_id)">[移除]</a></template>
         </li>
       </ul>
-
-      <!-- 守护树 -->
-      <div class="module-title" id="tree-sec">守护树</div>
-      <div class="module-content">
-        <table style="width:100%;border-collapse:collapse"><tbody><tr>
-          <td style="width:56px"><img src="/static/picture/tree.gif" width="48" height="48" alt="守护树"></td>
-          <td valign="top">
-            家族守护树 <b style="color:#004299">Lv.{{ fam.tree_level }}</b>（成长值 {{ fam.tree_exp }} / 下一级 {{ (fam.tree_level)*100 }}）　今日签到 {{ fam.tree_today || 0 }} 人<br>
-            <span class="txt-fade">成员每日抚摸可 +30 成长值，满 100 升 1 级，等级越高家族越兴旺。</span>
-          </td>
-        </tr></tbody></table>
-      </div>
 
       <!-- 家族公告 -->
       <div class="module-title">家族公告</div>
