@@ -183,6 +183,16 @@ func (h *FamilyHandler) Detail(c *gin.Context) {
 		myTitle = familyTitle(myRole, myExp)
 	}
 
+	// 家族访客：登录用户访问即记录（每人每日一条），统计今日访客数（对齐诺哈「访客：今天N人」）
+	visitsToday := int64(0)
+	if uid > 0 {
+		var exist model.FamilyVisit
+		if err := h.DB.Where("family_id = ? AND user_id = ? AND day = ?", fam.ID, uid, today).First(&exist).Error; err != nil {
+			h.DB.Create(&model.FamilyVisit{FamilyID: fam.ID, UserID: uid, Day: today})
+		}
+		h.DB.Model(&model.FamilyVisit{}).Where("family_id = ? AND day = ?", fam.ID, today).Count(&visitsToday)
+	}
+
 	out := gin.H{
 		"id": fam.ID, "name": fam.Name, "slogan": fam.Slogan, "description": fam.Description,
 		"announcement": fam.Announcement, "owner_id": fam.OwnerID, "owner": fam.Owner,
@@ -191,7 +201,7 @@ func (h *FamilyHandler) Detail(c *gin.Context) {
 		"members": members, "my_role": myRole, "member_count": len(members),
 		"my_exp": myExp, "my_title": myTitle,
 		"signed_today": signed > 0, "tree_today": treeToday, "online": online, "created_at": fam.CreatedAt,
-		"forum_board_id": forumBoard.ID, "favored": favored,
+		"forum_board_id": forumBoard.ID, "favored": favored, "visits_today": visitsToday,
 	}
 	resp.OK(c, out)
 }

@@ -48,3 +48,26 @@ func (h *ActivityHandler) List(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
+
+// Column 活动栏目页（参考诺哈 column/18：【最新活动】【长期活动】【家园公告】各取4条）
+func (h *ActivityHandler) Column(c *gin.Context) {
+	var latest []model.Thread
+	h.DB.Where("is_active = 1 AND status = 1").Order("id DESC").Limit(4).Find(&latest)
+
+	// 长期活动：排除最新活动后的最早一批（对应诺哈长期挂着的活动）
+	exIDs := make([]uint, 0, len(latest))
+	for _, t := range latest {
+		exIDs = append(exIDs, t.ID)
+	}
+	q := h.DB.Where("is_active = 1 AND status = 1")
+	if len(exIDs) > 0 {
+		q = q.Where("id NOT IN ?", exIDs)
+	}
+	var longterm []model.Thread
+	q.Order("id ASC").Limit(4).Find(&longterm)
+
+	var notices []model.Announcement
+	h.DB.Where("status = 1").Order("created_at DESC").Limit(4).Find(&notices)
+
+	resp.OK(c, gin.H{"latest": latest, "longterm": longterm, "notices": notices})
+}

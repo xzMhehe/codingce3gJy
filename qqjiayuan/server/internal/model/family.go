@@ -61,6 +61,17 @@ type FamilyFavorite struct {
 
 func (FamilyFavorite) TableName() string { return "family_favorites" }
 
+// 家族访客（每人每日一条，统计今日访客数，对齐诺哈「访客：今天N人」）
+type FamilyVisit struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	FamilyID  uint      `gorm:"uniqueIndex:uk_fv" json:"family_id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_fv" json:"user_id"`
+	Day       string    `gorm:"type:varchar(10);uniqueIndex:uk_fv" json:"day"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (FamilyVisit) TableName() string { return "family_visits" }
+
 // 家族区动态（加入/签到/守护/乐斗等）
 type FamilyActivity struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`

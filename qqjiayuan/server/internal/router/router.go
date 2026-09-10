@@ -137,6 +137,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/rank", rankH.Top)
 		// 活动专区（诺哈 topic_active.asp：活动帖列表）
 		api.GET("/activities", actH.List)
+		api.GET("/activities/column", actH.Column)
 		// 书城公开
 		api.GET("/books", bookH.Index)
 		api.GET("/books/list", bookH.List)
