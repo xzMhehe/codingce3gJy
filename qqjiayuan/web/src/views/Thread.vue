@@ -187,7 +187,7 @@
         <br>
       </template>
       <a v-if="mine && !canManageAny" href="javascript:;" @click="startEdit">{{ editing ? '取消编辑' : '编辑' }}</a>
-      <a v-if="mine && canManageAny">.<a href="javascript:;" style="color:#c00" @click="delThread">删除</a>
+      <template v-if="mine && canManageAny">.<a href="javascript:;" style="color:#c00" @click="delThread">删除</a></template>
     </div>
 
     <!-- 面包屑重复 -->
