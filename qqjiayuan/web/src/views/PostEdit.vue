@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>&gt;<a v-if="board.name" href="javascript:;" @click="$router.push('/board/'+board.id)">{{ board.name }}</a>&gt;发帖
+      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;<template v-if="board.city_code"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;<a href="javascript:;" @click="$router.push('/tongcheng/province/'+board.parent_id)">{{ provinceName }}</a>&gt;</template><a v-else href="javascript:;" @click="$router.push('/channel/1')">论坛</a>&gt;<a v-if="board.name" href="javascript:;" @click="$router.push('/board/'+board.id)">{{ board.name }}</a>&gt;发帖
     </div>
     <div class="module-content">
 
@@ -91,7 +91,7 @@
     <div class="module-content">
       版块公告：<span v-html="board.notice ? renderLine(board.notice) : '（无）'"></span><br>
       <a href="javascript:;" @click="$router.push('/board/'+(board.id||1))">返回本版</a><br>
-      <a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>&gt;发帖<br>
+      <a href="javascript:;" @click="$router.push('/')">社区广场</a>&gt;<template v-if="board.city_code"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;<a href="javascript:;" @click="$router.push('/tongcheng/province/'+board.parent_id)">{{ provinceName }}</a>&gt;</template><a v-else href="javascript:;" @click="$router.push('/channel/1')">论坛</a>&gt;<a v-if="board.name" href="javascript:;" @click="$router.push('/board/'+board.id)">{{ board.name }}</a>&gt;发帖<br>
     </div>
   </div>
 </template>
@@ -104,7 +104,7 @@ export default {
   name: 'PostEdit',
   data () {
     return {
-      channels: [], board: {},
+      channels: [], board: {}, provinceName: '',
       title: '', content: '', err: '', sending: false,
       panel: '', faces: FACE_NAMES,
       type: 0, draft: 0,
@@ -129,14 +129,25 @@ export default {
     renderLine (t) { return (t || '').replace(/\n/g, '<br>') },
     loadBoard () {
       api.get('/boards').then(r => {
-        if (r.code === 0) {
-          const all = []
-          r.data.forEach(ch => {
-            ;(ch.children || []).forEach(b => all.push(b))
-            ;(ch.categories || []).forEach(cat => (cat.boards || []).forEach(b => all.push(b)))
-          })
-          this.board = all.find(b => b.id === parseInt(this.$route.params.boardId)) || {}
-        }
+        if (r.code !== 0) return
+        const all = []
+        r.data.forEach(ch => {
+          ;(ch.children || []).forEach(b => all.push(b))
+          ;(ch.categories || []).forEach(cat => (cat.boards || []).forEach(b => all.push(b)))
+        })
+        const found = all.find(b => b.id === parseInt(this.$route.params.boardId))
+        if (found) { this.board = found; return }
+        // 同城城市板块不在频道树中（诺哈 pid=9 城市议事论坛），直接查版块详情
+        api.get('/boards/' + this.$route.params.boardId).then(x => {
+          if (x.code === 0) {
+            this.board = x.data.board || {}
+            if (this.board.city_code && this.board.parent_id) {
+              api.get('/boards/' + this.board.parent_id).then(p => {
+                if (p.code === 0) this.provinceName = (p.data.board || {}).name || ''
+              })
+            }
+          }
+        })
       })
     },
     append (text) {
@@ -179,7 +190,8 @@ export default {
       this.err = ''
       if (!this.board.id) { this.err = '请选择一个子板块'; return }
       if (this.title.length < 2) { this.err = '主题至少2个字'; return }
-      if (this.content.length < 5) { this.err = '内容至少5个字'; return }
+      if (this.title.length > 30) { this.err = '标题不能超过30个字！'; return }
+      if (this.content.length < 25) { this.err = '字数不足，疑是水帖！'; return }
       if (this.type === 5 || this.type === 6) {
         // 图帖/文件帖：把内容转成对应的附件标记
       }

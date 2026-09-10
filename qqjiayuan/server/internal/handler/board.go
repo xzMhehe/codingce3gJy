@@ -38,8 +38,11 @@ func (h *BoardHandler) Tree(c *gin.Context) {
 	}
 
 	childrenByParent := map[uint][]childNode{}
+	// 同城客栈为特殊页面（诺哈 pid=9）：同城频道与省份不作为论坛板块进入版块树
+	var tc model.Board
+	h.DB.Select("id").Where("parent_id = 0 AND name = ?", "同城客栈").First(&tc)
 	for _, b := range boards {
-		if b.ParentID != 0 {
+		if b.ParentID != 0 && b.ParentID != tc.ID {
 			var mod *model.User
 			if b.ModeratorID != 0 {
 				h.DB.First(&mod, b.ModeratorID)
@@ -72,6 +75,9 @@ func (h *BoardHandler) Tree(c *gin.Context) {
 	for _, b := range boards {
 		if b.ParentID != 0 {
 			continue
+		}
+		if tc.ID != 0 && b.ID == tc.ID {
+			continue // 同城客栈走 /tongcheng 专属页面
 		}
 		// 有分类的分区：按分类归组
 		hasCat := len(catByParent[b.ID]) > 0
@@ -159,6 +165,10 @@ func (h *BoardHandler) Threads(c *gin.Context) {
 			boardIDs = append(boardIDs, s.ID)
 		}
 	}
+	// 是否为省份级板块（同城）：省份是页面不是论坛，前端据此跳转到城市列表
+	var subCount int64
+	h.DB.Model(&model.Board{}).Where("parent_id = ?", board.ID).Count(&subCount)
+	isProvince := subCount > 0
 
 	// 登录用户心跳：记录所在版块（参考诺哈 wap_online.bbsid，用于版块在线统计）
 	if uid := middleware.GetUID(c); uid != 0 {
@@ -218,7 +228,7 @@ func (h *BoardHandler) Threads(c *gin.Context) {
 		isMember = cnt > 0
 	}
 	resp.OK(c, gin.H{"board": board, "moderator": mod, "is_member": isMember,
-		"board_online": boardOnline, "head": head,
+		"board_online": boardOnline, "head": head, "is_province": isProvince,
 		"total": total, "page": page, "size": 10, "list": threads})
 }
 
@@ -256,6 +266,13 @@ func (h *BoardHandler) CreateThread(c *gin.Context) {
 	var board model.Board
 	if err := h.DB.First(&board, uint(boardID)).Error; err != nil || board.ParentID == 0 {
 		resp.ParamError(c, "请选择具体的子板块发帖")
+		return
+	}
+	// 省份等含下级的板块不能直接发帖（诺哈：城市才是议事论坛板块）
+	var subCnt int64
+	h.DB.Model(&model.Board{}).Where("parent_id = ?", board.ID).Count(&subCnt)
+	if subCnt > 0 {
+		resp.ParamError(c, "该板块为省份页，请选择具体城市发帖")
 		return
 	}
 	// 家族专属论坛板块（家族·xxx）：仅家族成员可发帖

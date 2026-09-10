@@ -3,10 +3,11 @@
     <!-- 广告位（诺哈 ad001，取最新广播，红字链接） -->
     <div class="ad" v-if="broadcast">*<a href="javascript:;" @click="$router.push('/notices')">{{ broadcast }}</a><br></div>
 
-    <!-- 面包屑 nav01：社区 > 分区 > 版块 -->
+    <!-- 面包屑 nav01：社区 > 分区 > 版块（城市帖：社区>同城>城市，参考诺哈 topic.asp） -->
     <div class="bar">
       <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;
-      <template v-if="thread.board && thread.board.parent_id">
+      <template v-if="isCity"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;</template>
+      <template v-else-if="thread.board && thread.board.parent_id">
         <a href="javascript:;" @click="$router.push('/channel/'+thread.board.parent_id)">{{ parentName }}</a>&gt;
       </template>
       <a v-if="thread.board" href="javascript:;" @click="$router.push('/board/'+thread.board.id)">{{ thread.board.name }}</a><br>
@@ -193,7 +194,8 @@
     <!-- 面包屑重复 -->
     <div class="bar">
       <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;
-      <template v-if="thread.board && thread.board.parent_id">
+      <template v-if="isCity"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;</template>
+      <template v-else-if="thread.board && thread.board.parent_id">
         <a href="javascript:;" @click="$router.push('/channel/'+thread.board.parent_id)">{{ parentName }}</a>&gt;
       </template>
       <a v-if="thread.board" href="javascript:;" @click="$router.push('/board/'+thread.board.id)">{{ thread.board.name }}</a><br>
@@ -230,6 +232,7 @@ export default {
       if (b && b.parent_name) return b.parent_name
       return '论坛'
     },
+    isCity () { return !!(this.thread.board && this.thread.board.city_code) },
     isLogin () { return this.$store.getters.isLogin },
     user () { return this.$store.state.user },
     author () { return this.thread.user || {} },

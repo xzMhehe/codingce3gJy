@@ -1,8 +1,8 @@
 <template>
   <div>
-    <!-- 面包屑 panav -->
+    <!-- 面包屑 panav（城市板块：社区>同城>省份>城市，参考诺哈 city.asp） -->
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;<template v-if="board.parent_id"><a href="javascript:;" @click="$router.push('/channel/'+board.parent_id)">{{ parentName }}</a>&gt;</template>{{ board.name }}<br>
+      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;<template v-if="isCity"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;<a href="javascript:;" @click="$router.push('/tongcheng/province/'+board.parent_id)">{{ parentName }}</a>&gt;</template><template v-else-if="board.parent_id"><a href="javascript:;" @click="$router.push('/channel/'+board.parent_id)">{{ parentName }}</a>&gt;</template>{{ board.name }}<br>
     </div>
 
     <!-- 版块公告（诺哈 notice） -->
@@ -63,7 +63,7 @@
       <a href="javascript:;" @click="$router.push('/search')">在线({{ boardOnline }})</a><br>
     </div>
     <div class="module-content">
-      &gt;&gt;<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="tip">历史帖子</a><br>
+      &gt;&gt;<a href="javascript:;" @click="goChat">{{ isCity ? '老乡聊天室' : '聊天室' }}</a>.<a href="javascript:;" @click="tip">历史帖子</a><br>
     </div>
 
     <!-- 广播（诺哈 radio） -->
@@ -84,7 +84,7 @@
 
     <!-- 面包屑重复 -->
     <div class="bar">
-      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;<template v-if="board.parent_id"><a href="javascript:;" @click="$router.push('/channel/'+board.parent_id)">{{ parentName }}</a>&gt;</template>{{ board.name }}<br>
+      <a href="javascript:;" @click="$router.push('/')">社区</a>&gt;<template v-if="isCity"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>&gt;<a href="javascript:;" @click="$router.push('/tongcheng/province/'+board.parent_id)">{{ parentName }}</a>&gt;</template><template v-else-if="board.parent_id"><a href="javascript:;" @click="$router.push('/channel/'+board.parent_id)">{{ parentName }}</a>&gt;</template>{{ board.name }}<br>
     </div>
   </div>
 </template>
@@ -104,7 +104,8 @@ export default {
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
-    canManage () { return this.$store.getters.isAdmin }
+    canManage () { return this.$store.getters.isAdmin },
+    isCity () { return !!(this.board && this.board.city_code) }
   },
   watch: { '$route': 'load' },
   mounted () { this.load() },
@@ -119,6 +120,11 @@ export default {
       api.get(`/boards/${id}/threads`, { params: { page: this.page, filter: this.filter, sort: this.sort } }).then(r => {
         if (r.code === 0) {
           this.board = r.data.board || {}
+          // 省份是同城页面不是论坛（诺哈 pid=9），跳转到城市列表
+          if (r.data.is_province) {
+            this.$router.replace('/tongcheng/province/' + this.board.id)
+            return
+          }
           this.isSub = !!(this.board.parent_id)
           this.moderator = r.data.moderator || null
           this.isMember = r.data.is_member || false
@@ -130,7 +136,7 @@ export default {
           this.pages = Math.max(1, Math.ceil(this.total / (r.data.size || 10)))
           if (this.board.parent_id) {
             api.get('/boards/' + this.board.parent_id).then(x => {
-              if (x.code === 0) this.parentName = x.data.name
+              if (x.code === 0) this.parentName = (x.data.board || {}).name || ''
             })
           }
         }
@@ -153,6 +159,13 @@ export default {
     },
     jump () {
       if (this.jumpId) this.$router.push('/board/' + this.jumpId)
+    },
+    goChat () {
+      if (this.isCity) {
+        this.$router.push({ path: '/chat', query: { board_id: this.board.id } })
+      } else {
+        this.$router.push('/chat')
+      }
     },
     allSubs (ch) {
       const arr = (ch.children || []).slice()
