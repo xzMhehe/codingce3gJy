@@ -144,6 +144,24 @@
           </el-dropdown>
         </div>
       </el-header>
+      <!-- 标签页导航（主流后台 TagsView：点击切换、× 关闭、右键关闭左侧/右侧/全部） -->
+      <div class="tags-bar" v-if="showChrome">
+        <div class="tags-scroll">
+          <span v-for="t in visited" :key="t" class="tag-item" :class="{ active: t === activeTab }"
+                @click="go(t)" @contextmenu.prevent="openMenu(t, $event)">
+            <i class="dot" />
+            {{ names[t] }}
+            <i v-if="t !== 'dashboard'" class="el-icon-close" @click.stop="closeTag(t)" />
+          </span>
+        </div>
+        <ul class="ctx-menu" v-if="ctxShow" :style="{ left: ctxX + 'px', top: ctxY + 'px' }">
+          <li @click="closeTag(ctxTab)" v-if="ctxTab !== 'dashboard'"><i class="el-icon-close" />关闭</li>
+          <li @click="closeOthers(ctxTab)"><i class="el-icon-copy-document" />关闭其他</li>
+          <li @click="closeSide('left')"><i class="el-icon-back" />关闭左侧</li>
+          <li @click="closeSide('right')"><i class="el-icon-right" />关闭右侧</li>
+          <li @click="closeAll()"><i class="el-icon-circle-close" />关闭全部</li>
+        </ul>
+      </div>
       <el-main class="content">
         <transition name="page-fade" mode="out-in">
           <router-view :key="activeTab" />
@@ -175,7 +193,9 @@ export default {
         farmSeeds: '农场种子', farmItems: '化肥陷阱', farmData: '农场数据管理',
         parkCars: '车市车辆', parkData: '车位数据管理',
         siteConfig: '站点设置', roles: '管理设置', resources: '文件管理'
-      }
+      },
+      visited: ['dashboard'],
+      ctxShow: false, ctxX: 0, ctxY: 0, ctxTab: ''
     }
   },
   watch: {
@@ -185,9 +205,21 @@ export default {
         const wrap = this.$el && this.$el.querySelector('.content')
         if (wrap) wrap.scrollTop = 0
       })
+    },
+    activeTab: {
+      immediate: true,
+      handler (t) {
+        if (!this.visited.includes(t)) this.visited.push(t)
+      }
     }
   },
   created () { this.loadUser() },
+  mounted () {
+    document.addEventListener('click', this.hideMenu)
+  },
+  beforeDestroy () {
+    document.removeEventListener('click', this.hideMenu)
+  },
   computed: {
     showChrome () { return this.$route.path !== '/login' },
     activeTab () {
@@ -202,6 +234,40 @@ export default {
     },
     go (key) {
       this.$router.push({ path: '/', query: { tab: key } }).catch(() => {})
+    },
+    // ===== 标签页导航 =====
+    openMenu (t, e) {
+      this.ctxTab = t
+      this.ctxX = e.clientX
+      this.ctxY = e.clientY
+      this.ctxShow = true
+    },
+    hideMenu () { this.ctxShow = false },
+    closeTag (t) {
+      this.ctxShow = false
+      if (t === 'dashboard') return
+      const i = this.visited.indexOf(t)
+      this.visited = this.visited.filter(x => x !== t)
+      if (t === this.activeTab) this.go(this.visited[Math.min(i - 1, this.visited.length - 1)] || 'dashboard')
+    },
+    closeOthers (t) {
+      this.ctxShow = false
+      this.visited = ['dashboard', t]
+      if (this.activeTab !== t) this.go(t)
+    },
+    closeSide (side) {
+      this.ctxShow = false
+      const i = this.visited.indexOf(this.ctxTab)
+      if (i < 0) return
+      this.visited = side === 'left'
+        ? ['dashboard'].concat(this.visited.slice(i))
+        : this.visited.slice(0, i + 1)
+      if (!this.visited.includes(this.activeTab)) this.go(this.ctxTab)
+    },
+    closeAll () {
+      this.ctxShow = false
+      this.visited = ['dashboard']
+      if (this.activeTab !== 'dashboard') this.go('dashboard')
     },
     openFront () { window.open('http://' + location.host + '/') },
     onCmd (cmd) {
@@ -234,6 +300,44 @@ body {
 /* 操作列按钮不换行、间距紧凑，保证一行放下 */
 .el-table .cell .el-button + .el-button { margin-left: 6px; }
 .el-table .cell .el-button--mini { padding: 6px 8px; }
+
+/* ===== 标签页导航（TagsView） ===== */
+.tags-bar {
+  position: relative;
+  background: #fff;
+  border-bottom: 1px solid #e8ebf2;
+  padding: 6px 14px;
+  flex-shrink: 0;
+  z-index: 20;
+}
+.tags-scroll { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tags-scroll::-webkit-scrollbar { display: none; }
+.tag-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border: 1px solid #dcdfe6; border-radius: 3px;
+  font-size: 12px; color: #495060; cursor: pointer; white-space: nowrap;
+  background: #fff; transition: all .15s; user-select: none;
+}
+.tag-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #c0c4cc; }
+.tag-item:hover { border-color: #b8d4f5; color: #409eff; }
+.tag-item.active { background: #409eff; border-color: #409eff; color: #fff; }
+.tag-item.active .dot { background: #fff; }
+.tag-item .el-icon-close {
+  font-size: 12px; border-radius: 50%; width: 14px; height: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.tag-item .el-icon-close:hover { background: rgba(0,0,0,.15); color: #fff; }
+.ctx-menu {
+  position: fixed; z-index: 4000; margin: 0; padding: 5px 0;
+  background: #fff; border-radius: 4px; min-width: 120px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15); list-style: none;
+}
+.ctx-menu li {
+  padding: 7px 16px; font-size: 13px; color: #495060; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+}
+.ctx-menu li:hover { background: #ecf5ff; color: #409eff; }
 
 /* ===== 侧边栏 ===== */
 .sidebar {
