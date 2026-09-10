@@ -595,9 +595,12 @@ func (h *GardenHandler) View(c *gin.Context) {
 			}
 		}
 	}
-	// 消息（对齐参考站：显示发送者昵称 + 相对时间）
+	// 消息（对齐参考站：显示发送者昵称 + 相对时间；查看即置已读）
 	var msgs []model.GardenMsg
 	h.DB.Where("fid = ?", uid).Order("id DESC").Limit(10).Find(&msgs)
+	var unread int64
+	h.DB.Model(&model.GardenMsg{}).Where("fid = ? AND status = 0", uid).Count(&unread)
+	h.DB.Model(&model.GardenMsg{}).Where("fid = ? AND status = 0", uid).Update("status", 1)
 	msgOut := make([]gin.H, 0, len(msgs))
 	for _, m := range msgs {
 		nick := ""
@@ -623,6 +626,7 @@ func (h *GardenHandler) View(c *gin.Context) {
 		"plots":      out,
 		"bag":        bagOut,
 		"msgs":       msgOut,
+		"unread":     unread,
 		"recent_maps": recent,
 	})
 }
@@ -1353,95 +1357,88 @@ func (h *GardenHandler) SubmitActivity(c *gin.Context) {
 	resp.OK(c, gin.H{"reward": reward, "amount": amount})
 }
 
-// 七日签到状态：返回本周(周一起)签到情况
+// signRewards 七日连签奖励表：{花种数, G币, 经验, 元宝}（连续第N天）
+var signRewards = [7][4]int{
+	{1, 500, 200, 0},
+	{2, 1000, 300, 0},
+	{3, 2000, 500, 0},
+	{3, 4000, 700, 0},
+	{4, 10000, 1000, 0},
+	{4, 20000, 1500, 0},
+	{5, 30000, 2000, 5},
+}
+
+// 七日连签状态：连续天数制（昨天有签则续轮，中断从第1天重算）
 func (h *GardenHandler) SignStatus(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	now := time.Now()
-	weekStart := now.AddDate(0, 0, -int(now.Weekday()) + 1) // 周一
-	if now.Weekday() == 0 { // 周日
-		weekStart = now.AddDate(0, 0, -6)
+	today := now.Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	var last model.GardenSign
+	hasLast := h.DB.Where("user_id = ?", uid).Order("sign_date DESC, id DESC").First(&last).Error == nil
+
+	todaySigned := hasLast && last.SignDate == today
+	progress := 0 // 本轮已连签天数
+	nextDay := 1  // 下次签到是本轮第几天
+	if hasLast && (last.SignDate == today || last.SignDate == yesterday) {
+		p := last.DayNo
+		if p > 7 {
+			p = 7
+		}
+		progress = p
+		nextDay = last.DayNo%7 + 1
 	}
-	weekStartStr := weekStart.Format("2006-01-02")
-	weekEndStr := weekStart.AddDate(0, 0, 6).Format("2006-01-02")
-	var signs []model.GardenSign
-	h.DB.Where("user_id = ? AND sign_date >= ? AND sign_date <= ?", uid, weekStartStr, weekEndStr).Order("sign_date ASC").Find(&signs)
+	if todaySigned {
+		nextDay = last.DayNo
+	}
 	days := make([]gin.H, 7)
 	for i := 0; i < 7; i++ {
-		days[i] = gin.H{"day": i + 1, "signed": false, "is_today": weekStart.AddDate(0, 0, i).Format("2006-01-02") == now.Format("2006-01-02"), "date": weekStart.AddDate(0, 0, i).Format("2006-01-02")}
-	}
-	for _, s := range signs {
-		days[s.WeekDay-1] = gin.H{"day": s.WeekDay, "signed": true, "is_today": s.SignDate == now.Format("2006-01-02"), "date": s.SignDate}
-	}
-	todaySigned := false
-	for _, s := range signs {
-		if s.SignDate == now.Format("2006-01-02") {
-			todaySigned = true
-		}
+		days[i] = gin.H{"day": i + 1, "signed": i < progress,
+			"is_next": !todaySigned && i+1 == nextDay,
+			"reward":  signRewards[i]}
 	}
 	resp.OK(c, gin.H{
-		"week_start": weekStartStr, "week_end": weekEndStr,
-		"days": days, "signed_count": len(signs), "today_signed": todaySigned,
+		"days": days, "signed_count": progress, "today_signed": todaySigned, "next_day": nextDay,
 	})
 }
 
-// 签到：每天一次，7天一轮，按累计天数发奖励（对齐参考站 check）
+// 签到：每天一次，连续7天一轮，按连续天数递增发奖（回家的礼物）
 func (h *GardenHandler) Sign(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	now := time.Now()
 	today := now.Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
 	var s model.GardenSign
 	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, today).First(&s).Error; err == nil {
 		resp.ParamError(c, "今天已经签过到了")
 		return
 	}
-	weekDay := int(now.Weekday())
-	if weekDay == 0 {
-		weekDay = 7
+	dayNo := 1
+	var last model.GardenSign
+	if err := h.DB.Where("user_id = ?", uid).Order("sign_date DESC, id DESC").First(&last).Error; err == nil && last.SignDate == yesterday {
+		if last.DayNo >= 7 {
+			dayNo = 1
+		} else {
+			dayNo = last.DayNo + 1
+		}
 	}
-	weekStart := now.AddDate(0, 0, -int(now.Weekday())+1)
-	if now.Weekday() == 0 {
-		weekStart = now.AddDate(0, 0, -6)
-	}
-	weekStartStr := weekStart.Format("2006-01-02")
-	var cnt int64
-	h.DB.Model(&model.GardenSign{}).Where("user_id = ? AND sign_date >= ? AND sign_date <= ?", uid, weekStartStr, now.Format("2006-01-02")).Count(&cnt)
-	dayNo := int(cnt) + 1
-	h.DB.Create(&model.GardenSign{UserID: uid, SignDate: today, WeekDay: weekDay, DayNo: dayNo})
+	h.DB.Create(&model.GardenSign{UserID: uid, SignDate: today, WeekDay: int(now.Weekday()), DayNo: dayNo})
 
-	// 奖励（对齐参考站）：每日固定 随机花种+1,G币+500,花园经验+200
-	coins := 500
-	exp := 200
-	seedN := 1
-	var extra string
-	switch dayNo {
-	case 3:
-		coins += 2000 - 500
-		exp += 500 - 200
-		seedN += 2
-		extra = "第3天额外：随机花种+2,G币+2000,花园经验+500"
-	case 5:
-		coins += 10000 - 500
-		exp += 1000 - 200
-		seedN += 3
-		extra = "第5天额外：随机花种+3,G币+10000,花园经验+1000"
-	case 7:
-		coins += 30000 - 500
-		exp += 2000 - 200
-		seedN += 4
-		extra = "第7天额外：随机花种+4,G币+30000,花园经验+2000"
-	}
-	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", coins))
+	rw := signRewards[dayNo-1]
+	seedN, coins, exp, ingot := rw[0], rw[1], rw[2], rw[3]
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+		"coins": gorm.Expr("coins + ?", coins), "yuanbao": gorm.Expr("yuanbao + ?", ingot)})
 	h.addGardenPoint(uid, exp)
 	// 随机花种：从普通种子中随机
 	seedName := h.randomSeedName()
 	if seedName != "" {
 		h.addBag(uid, h.seedIDByName(seedName), seedName, seedN)
 	}
-	msg := "签到成功！每日固定：随机花种+" + strconv.Itoa(seedN) + ",G币+" + strconv.Itoa(coins) + ",花园经验+" + strconv.Itoa(exp)
-	if extra != "" {
-		msg += "。" + extra
+	msg := "连续签到第" + strconv.Itoa(dayNo) + "天！随机花种+" + strconv.Itoa(seedN) + ",G币+" + strconv.Itoa(coins) + ",花园经验+" + strconv.Itoa(exp)
+	if ingot > 0 {
+		msg += ",元宝+" + strconv.Itoa(ingot)
 	}
-	resp.OK(c, gin.H{"msg": msg, "day_no": dayNo, "coins": coins, "exp": exp, "seed_name": seedName, "seed_n": seedN})
+	resp.OK(c, gin.H{"msg": msg, "day_no": dayNo, "coins": coins, "exp": exp, "ingot": ingot, "seed_name": seedName, "seed_n": seedN})
 }
 
 func (h *GardenHandler) randomSeedName() string {

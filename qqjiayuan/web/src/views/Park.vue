@@ -328,7 +328,7 @@ export default {
           this.spots = r.data.spots || []
           this.recent = r.data.recent || []
           this.msgs = r.data.msgs || []
-          this.me.unread = this.msgs.length
+          this.me.unread = r.data.unread || 0
         } else this.msg = r.msg
       })
     },

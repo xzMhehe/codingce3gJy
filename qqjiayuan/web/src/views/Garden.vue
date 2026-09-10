@@ -54,7 +54,7 @@
         </div>
         <br/>
 
-        <div class="name">消息<a href="javascript:;" @click="openMsgs">({{ msgs.length }})</a></div>
+        <div class="name">消息<a href="javascript:;" @click="openMsgs">({{ unread }})</a></div>
         <div class="list">
           <div class="row" v-for="(m, i) in msgs.slice(0, 3)" :key="m.id">
             {{ i + 1 }}.({{ m.time_txt || '' }})<b>{{ m.nick }}</b> {{ m.msg }}<br/>
@@ -280,18 +280,18 @@
         </div>
       </template>
 
-      <!-- ============ 七日签到（复刻 check/index） ============ -->
+      <!-- ============ 七日连签（回家的礼物：连续天数制，中断重算） ============ -->
       <template v-else-if="cur === 'check'">
         <div class="bar sub"><a href="javascript:;" @click="switchTab('garden')">花园</a>&gt;签到<br/></div>
-        <div class="name">七日签到<br/></div>
-        <div class="module-content deep">回家的礼物、一天都不能少({{ signCount }}/7)</div>
+        <div class="name">七日连续签到<br/></div>
+        <div class="module-content deep">回家的礼物、一天都不能少({{ signCount }}/7)<br/></div>
         <table class="sign-table">
           <tr>
-            <td v-for="(d, i) in signDays" :key="i" align="center" :class="{ 'sign-today': d.is_today, 'sign-done': d.signed }">
-              <span class="sign-day">{{ weekNames[i] }}</span><br/>
+            <td v-for="d in signDays" :key="d.day" align="center" :class="{ 'sign-today': d.is_next, 'sign-done': d.signed }">
+              <span class="sign-day">第{{ d.day }}天</span><br/>
               <span class="sign-state">
                 <a v-if="d.signed" href="javascript:;" class="sign-ok">√</a>
-                <a v-else-if="!signToday" href="javascript:;" @click="doSign" class="sign-btn">签到</a>
+                <a v-else-if="d.is_next && !signToday" href="javascript:;" @click="doSign" class="sign-btn">签到</a>
                 <span v-else>&nbsp;</span>
               </span>
             </td>
@@ -300,10 +300,13 @@
         <div class="name">签到奖励预览<br/></div>
         <div class="list">
           <div class="row">签到第1天奖励：随机花种+1，G币+500，花园经验+200<br/></div>
+          <div class="row">签到第2天奖励：随机花种+2，G币+1000，花园经验+300<br/></div>
           <div class="row">签到第3天奖励：随机花种+3，G币+2000，花园经验+500<br/></div>
+          <div class="row">签到第4天奖励：随机花种+3，G币+4000，花园经验+700<br/></div>
           <div class="row">签到第5天奖励：随机花种+4，G币+10000，花园经验+1000<br/></div>
+          <div class="row">签到第6天奖励：随机花种+4，G币+20000，花园经验+1500<br/></div>
           <div class="row">签到第7天奖励：随机花种+5，G币+30000，花园经验+2000，元宝+5<br/></div>
-          <div class="row deep">每日固定奖励：随机花种+1，G币+500，花园经验+200<br/></div>
+          <div class="row deep">连续签满7天后进入新一轮，中断则从第1天重算<br/></div>
         </div>
         <div class="module-content">
           <a href="javascript:;" @click="doSign" v-if="!signToday" class="sign-big">[今日签到]</a>
@@ -536,14 +539,14 @@ export default {
     return {
       cur: 'garden', plots: [], g: {}, coins: 0, bag: [], basket: [], bottle: [],
       friends: [], vplots: [], vg: {}, visitNick: '', roomList: [], shop: [], mapList: [], mapTy: 0,
-      activities: [], selAct: null, actNeeds: [], amount: 1, msgs: [], recentMaps: [],
+      activities: [], selAct: null, actNeeds: [], amount: 1, msgs: [], unread: 0, recentMaps: [],
       elfList: [], elvesUnlocked: 0, elvesTotal: 0,
       rankList: [], helpList, helpOpen: -1,
       mapWd: '', mapPage: 1, shopTy: 0, shopPage: 1, roomWd: '', roomPage: 1,
       sowBox: false, sowTarget: null, setBox: false, setAct: 1, setName: '', setNotice: '', setConfig: 0,
       giftBox: false, giftTarget: {}, giftTo: '', giftAmount: 1, giftRemark: '希望你开心快乐！', giftPickFlower: '',
       bottleShow: false, curPlot: null, curSeed: null, curMap: null, curRoom: null, giftLogs: [], buyAmount: 1,
-      signDays: [], signToday: false, signCount: 0, weekNames: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+      signDays: [], signToday: false, signCount: 0,
       noticeTitle: '点击查看魔法花园最新公告', noticeThreadId: 0,
       okMsg: '', msg: ''
     }
@@ -629,6 +632,7 @@ export default {
           this.plots = r.data.plots || []
           this.bag = (r.data.bag || []).map(b => ({ seed_id: b.seed_id, seed_name: b.name, count: b.amount, dtype: b.dtype || 0 }))
           this.msgs = r.data.msgs || []
+          this.unread = r.data.unread || 0
           this.recentMaps = r.data.recent_maps || []
           this.g.map_total = this.g.map_total || 619
         }

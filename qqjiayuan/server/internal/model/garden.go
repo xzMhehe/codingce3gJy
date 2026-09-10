@@ -137,6 +137,7 @@ type GardenMsg struct {
 	UID     uint      `gorm:"column:uid;index" json:"uid"`
 	FID     uint      `gorm:"column:fid;index" json:"fid"`
 	Remark  string    `gorm:"type:varchar(100)" json:"remark"`
+	Status  int       `gorm:"default:0" json:"status"` // 0未读 1已读
 	CreatedAt time.Time `json:"created_at"`
 }
 

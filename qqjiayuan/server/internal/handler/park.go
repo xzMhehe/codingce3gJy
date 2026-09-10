@@ -236,6 +236,8 @@ func (h *ParkHandler) View(c *gin.Context) {
 	// 未读消息弹出（查看即置已读，对齐农场做法）
 	var msgs []model.CarMsg
 	h.DB.Where("user_id = ?", uid).Order("id DESC").Limit(10).Find(&msgs)
+	var unread int64
+	h.DB.Model(&model.CarMsg{}).Where("user_id = ? AND status = 0", uid).Count(&unread)
 	h.DB.Model(&model.CarMsg{}).Where("user_id = ? AND status = 0", uid).Update("status", 1)
 	uidSet = map[uint]bool{}
 	for _, m := range msgs {
@@ -257,7 +259,7 @@ func (h *ParkHandler) View(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"uid": uid, "nick": u.Nickname, "coins": u.Coins,
 		"cars": p.Cars, "love": p.Love, "point": p.Point, "contri": p.Contri,
-		"level": parkLevel(p.Point), "count": h.parkCount(),
+		"level": parkLevel(p.Point), "count": h.parkCount(), "unread": unread,
 		"spots": spots, "recent": recent, "msgs": msgViews,
 	})
 }
