@@ -225,6 +225,16 @@ body {
 #app { max-width: none; }
 .layout { height: 100vh; }
 
+/* ===== 表格规范：所有行强制单行，超出省略并悬停提示 ===== */
+.el-table td .cell, .el-table th .cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 操作列按钮不换行、间距紧凑，保证一行放下 */
+.el-table .cell .el-button + .el-button { margin-left: 6px; }
+.el-table .cell .el-button--mini { padding: 6px 8px; }
+
 /* ===== 侧边栏 ===== */
 .sidebar {
   background: linear-gradient(180deg, #1e2a3a 0%, #253346 100%);

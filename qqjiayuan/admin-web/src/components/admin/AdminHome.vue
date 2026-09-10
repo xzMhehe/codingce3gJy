@@ -6,38 +6,25 @@
                   style="width:220px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
-        <span class="txt-fade">设置用户的 家园等级/活跃天数/成就点/城市/好友策略，点「资料」编辑会员档案</span>
+        <span class="txt-fade">点「资料」编辑会员档案（对齐诺哈 admin/user 资料编辑）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
-        <el-table-column prop="id" label="号码" width="100" header-align="center" />
-        <el-table-column label="昵称" min-width="130">
-          <template slot-scope="{row}"><b><font :color="row.color || '#333'">{{ row.nickname }}</font></b></template>
+        <el-table-column prop="id" label="号码" width="90" align="center" />
+        <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
+          <template slot-scope="{row}"><font :color="row.color || '#333'">{{ row.nickname }}</font></template>
         </el-table-column>
-        <el-table-column label="家园等级" min-width="110" header-align="center">
-          <template slot-scope="{row}"><el-input-number v-model="row.level" size="small" :min="1" :max="99" controls-position="right" /></template>
+        <el-table-column prop="level" label="家园等级" width="90" align="center" />
+        <el-table-column prop="active_days" label="活跃天数" width="90" align="center" />
+        <el-table-column prop="achieve" label="成就点" width="90" align="center" />
+        <el-table-column label="城市" min-width="110" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.city || '—' }}</template>
         </el-table-column>
-        <el-table-column label="活跃天数" min-width="120" header-align="center">
-          <template slot-scope="{row}"><el-input-number v-model="row.active_days" size="small" :min="0" :max="99999" :precision="1" controls-position="right" /></template>
+        <el-table-column label="好友策略" width="100" align="center">
+          <template slot-scope="{row}">{{ policyName(row.friend_policy) }}</template>
         </el-table-column>
-        <el-table-column label="成就点" min-width="110" header-align="center">
-          <template slot-scope="{row}"><el-input-number v-model="row.achieve" size="small" :min="0" :max="999999" controls-position="right" /></template>
-        </el-table-column>
-        <el-table-column label="城市" min-width="120">
-          <template slot-scope="{row}"><el-input v-model="row.city" size="small" maxlength="30" /></template>
-        </el-table-column>
-        <el-table-column label="好友策略" min-width="110" header-align="center">
+        <el-table-column label="操作" width="90" align="center" fixed="right">
           <template slot-scope="{row}">
-            <el-select v-model="row.friend_policy" size="small">
-              <el-option :value="0" label="允许" />
-              <el-option :value="1" label="需要验证" />
-              <el-option :value="2" label="拒绝" />
-            </el-select>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" header-align="center">
-          <template slot-scope="{row}">
-            <el-button size="mini" plain @click="openProfile(row)">资料</el-button>
-            <el-button size="mini" type="primary" plain @click="save(row)">保存</el-button>
+            <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openProfile(row)">资料</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -45,9 +32,28 @@
                      @current-change="p => { page = p; load() }" style="margin-top:14px;text-align:right" />
     </el-card>
 
-    <!-- 会员资料编辑（对齐诺哈 admin/user 资料编辑：性别/年龄/生日类型/阳历阴历/签名/简介/在线时长/每页帖数/消费额） -->
+    <!-- 会员资料编辑（对齐诺哈 admin/user 资料编辑：等级/活跃/成就/城市/好友策略/性别/年龄/生日/签名/简介/在线时长/每页帖数/消费额） -->
     <el-dialog :title="'会员资料：' + (pForm.username || '')" :visible.sync="pDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="90px" size="small">
+        <el-form-item label="家园等级">
+          <el-input-number v-model="pForm.level" :min="1" :max="99" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="活跃天数">
+          <el-input-number v-model="pForm.active_days" :min="0" :max="99999" :precision="1" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="成就点">
+          <el-input-number v-model="pForm.achieve" :min="0" :max="999999" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="城市">
+          <el-input v-model.trim="pForm.city" maxlength="30" style="width:220px" />
+        </el-form-item>
+        <el-form-item label="好友策略">
+          <el-select v-model="pForm.friend_policy" style="width:160px">
+            <el-option :value="0" label="允许" />
+            <el-option :value="1" label="需要验证" />
+            <el-option :value="2" label="拒绝" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="pForm.gender">
             <el-radio :label="1">男</el-radio>
@@ -111,6 +117,9 @@ export default {
   },
   mounted () { this.load() },
   methods: {
+    policyName (v) {
+      return { 0: '允许', 1: '需要验证', 2: '拒绝' }[v] || '允许'
+    },
     load () {
       this.loading = true
       api.get('/admin/users?page=' + this.page + (this.word ? '&word=' + encodeURIComponent(this.word) : '')).then(r => {
@@ -122,17 +131,11 @@ export default {
       })
     },
     search () { this.page = 1; this.load() },
-    save (row) {
-      api.put('/admin/users/' + row.id + '/home', {
-        level: row.level, active_days: row.active_days, achieve: row.achieve, city: row.city,
-        friend_policy: row.friend_policy
-      }).then(r => {
-        if (r.code === 0) this.$message.success('已保存'); else this.$message.error(r.msg)
-      })
-    },
     openProfile (row) {
       this.pForm = {
         id: row.id, username: row.username,
+        level: row.level || 1, active_days: row.active_days || 0, achieve: row.achieve || 0,
+        city: row.city || '', friend_policy: row.friend_policy || 0,
         gender: row.gender || 1, age: row.age || 0,
         birth_type: row.birth_type === 0 ? 0 : 1,
         birth_year: row.birth_year || 0, birth_month: row.birth_month || 0, birth_day: row.birth_day || 0,

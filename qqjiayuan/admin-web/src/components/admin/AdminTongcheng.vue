@@ -13,7 +13,7 @@
           <template slot-scope="{row}"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '显示' : '隐藏' }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="sort" label="排序" width="80" header-align="center" />
-        <el-table-column label="操作" min-width="220">
+        <el-table-column label="操作" width="220" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
             <el-button size="mini" @click="toggle(row)">{{ row.status === 1 ? '隐藏' : '显示' }}</el-button>

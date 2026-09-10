@@ -1017,20 +1017,28 @@ func (h *AdminHandler) DeleteWordFilter(c *gin.Context) {
 func (h *AdminHandler) UpdateThread(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		IsTop    *int `json:"is_top"`
-		IsFine   *int `json:"is_fine"`
-		IsHead   *int `json:"is_head"`
-		IsLock   *int `json:"is_lock"`
-		IsRecom  *int `json:"is_recom"`
-		IsNotice *int `json:"is_notice"`
-		IsActive *int `json:"is_active"`
-		Audit    *int `json:"audit_status"`
+		Title    *string `json:"title"`
+		Content  *string `json:"content"`
+		IsTop    *int    `json:"is_top"`
+		IsFine   *int    `json:"is_fine"`
+		IsHead   *int    `json:"is_head"`
+		IsLock   *int    `json:"is_lock"`
+		IsRecom  *int    `json:"is_recom"`
+		IsNotice *int    `json:"is_notice"`
+		IsActive *int    `json:"is_active"`
+		Audit    *int    `json:"audit_status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数不对")
 		return
 	}
 	updates := map[string]interface{}{}
+	if req.Title != nil && strings.TrimSpace(*req.Title) != "" {
+		updates["title"] = strings.TrimSpace(*req.Title)
+	}
+	if req.Content != nil {
+		updates["content"] = *req.Content
+	}
 	if req.IsTop != nil {
 		updates["is_top"] = *req.IsTop
 	}

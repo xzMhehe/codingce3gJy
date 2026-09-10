@@ -2,7 +2,7 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model.number="userId" placeholder="按用户号码过滤" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
+        <el-input v-model="word" placeholder="按号码/昵称搜索" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">查询</el-button>
         <div class="grow" />
         <span class="help-line">会员登录/操作日志</span>
@@ -30,13 +30,13 @@ import api from '../../api'
 
 export default {
   name: 'AdminUserLogs',
-  data () { return { list: [], total: 0, page: 1, size: 15, userId: '', loading: false } },
+  data () { return { list: [], total: 0, page: 1, size: 15, word: '', loading: false } },
   mounted () { this.load() },
   methods: {
     search () { this.page = 1; this.load() },
     load () {
       this.loading = true
-      api.get('/admin/user-logs', { params: { page: this.page, size: this.size, user_id: this.userId || undefined } }).then(r => {
+      api.get('/admin/user-logs', { params: { page: this.page, size: this.size, word: this.word || undefined } }).then(r => {
         this.loading = false
         if (r.code === 0) { this.list = r.data.list; this.total = r.data.total } else this.$message.error(r.msg)
       })

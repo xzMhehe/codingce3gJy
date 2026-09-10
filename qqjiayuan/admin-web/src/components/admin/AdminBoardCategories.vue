@@ -7,13 +7,13 @@
         <el-button type="primary" icon="el-icon-plus" @click="openDlg(null)">新增分类</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="所属分区" min-width="140">
+        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column label="所属分区" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}">{{ channelName(row.parent_id) }}</template>
         </el-table-column>
-        <el-table-column prop="name" label="分类名称" min-width="160" />
-        <el-table-column prop="sort" label="排序" width="70" />
-        <el-table-column label="操作" width="160">
+        <el-table-column prop="name" label="分类名称" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="sort" label="排序" width="80" align="center" />
+        <el-table-column label="操作" width="150" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>

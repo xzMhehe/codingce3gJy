@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -10,8 +10,8 @@
         <el-tag type="success" size="small">精华{{ fineCount }}</el-tag>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
-        <el-table-column prop="id" label="ID" width="80" header-align="center" />
-        <el-table-column label="标题" min-width="200" show-overflow-tooltip>
+        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column label="标题" min-width="220" show-overflow-tooltip>
           <template slot-scope="{row}">
             <el-tag v-if="row.is_head" type="warning" size="mini" style="margin-right:4px">头条</el-tag>
             <el-tag v-if="row.is_top" type="danger" size="mini" style="margin-right:4px">顶</el-tag>
@@ -25,36 +25,39 @@
             {{ row.title }}
           </template>
         </el-table-column>
-        <el-table-column label="板块" min-width="100" show-overflow-tooltip>
+        <el-table-column label="板块" width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.board ? row.board.name : '—' }}</template>
         </el-table-column>
-        <el-table-column label="楼主" min-width="100" show-overflow-tooltip>
+        <el-table-column label="楼主" width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.user ? row.user.nickname : '—' }}</template>
         </el-table-column>
-        <el-table-column label="数据" min-width="90" header-align="center">
-          <template slot-scope="{row}">{{ row.view_count }}阅/{{ row.reply_count }}回</template>
+        <el-table-column label="阅读/回复" width="100" align="center">
+          <template slot-scope="{row}">{{ row.view_count }}/{{ row.reply_count }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template slot-scope="{row}">
             <el-tag v-if="row.audit_status === 0" type="warning" size="mini">待审核</el-tag>
             <el-tag v-else-if="row.audit_status === 2" type="danger" size="mini">未通过</el-tag>
             <el-tag v-else type="success" size="mini">已发布</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="360">
+        <el-table-column label="操作" width="272" align="center" fixed="right">
           <template slot-scope="{row}">
-            <div class="ops">
-              <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_top')">{{ row.is_top ? '取消置顶' : '置顶' }}</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_fine')">{{ row.is_fine ? '取消精华' : '加精' }}</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_head')">{{ row.is_head ? '取消头条' : '头条' }}</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_lock')">{{ row.is_lock ? '解锁' : '锁定' }}</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_recom')">{{ row.is_recom ? '取消推荐' : '推荐' }}</el-button>
-              <el-button size="mini" @click="toggle(row, 'is_active')">{{ row.is_active ? '取消活动' : '设活动' }}</el-button>
-              <el-button v-if="row.audit_status !== 1" size="mini" type="success" plain @click="audit(row, 1)">通过</el-button>
-              <el-button v-if="row.audit_status === 1" size="mini" type="warning" plain @click="audit(row, 0)">转审核</el-button>
-              <el-button size="mini" type="danger" plain @click="del(row)">删除</el-button>
-            </div>
+            <el-button size="mini" type="primary" plain @click="openDlg(row)">编辑</el-button>
+            <el-button v-if="row.audit_status !== 1" size="mini" type="success" plain @click="audit(row, 1)">通过</el-button>
+            <el-button v-if="row.audit_status === 1" size="mini" type="warning" plain @click="audit(row, 0)">转审</el-button>
+            <el-dropdown trigger="click" @command="cmd => toggle(row, cmd)" style="margin-left:6px">
+              <el-button size="mini" plain>设置<i class="el-icon-arrow-down el-icon--right" /></el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="is_top">{{ row.is_top ? '取消置顶' : '置顶' }}</el-dropdown-item>
+                <el-dropdown-item command="is_fine">{{ row.is_fine ? '取消精华' : '加精' }}</el-dropdown-item>
+                <el-dropdown-item command="is_head">{{ row.is_head ? '取消头条' : '设头条' }}</el-dropdown-item>
+                <el-dropdown-item command="is_recom">{{ row.is_recom ? '取消推荐' : '推荐' }}</el-dropdown-item>
+                <el-dropdown-item command="is_active">{{ row.is_active ? '取消活动' : '设活动' }}</el-dropdown-item>
+                <el-dropdown-item command="is_lock" divided>{{ row.is_lock ? '解锁' : '锁定' }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)" />
           </template>
         </el-table-column>
       </el-table>
@@ -117,7 +120,7 @@ export default {
       this.dlg = true
     },
     save () {
-      api.put(`/threads/${this.form.id}`, { title: this.form.title, content: this.form.content }).then(r => {
+      api.put(`/admin/threads/${this.form.id}`, { title: this.form.title, content: this.form.content }).then(r => {
         if (r.code === 0) { this.$message.success('已保存'); this.dlg = false; this.load() } else this.$message.error(r.msg)
       })
     },

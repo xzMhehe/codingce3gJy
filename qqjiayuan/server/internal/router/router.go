@@ -543,12 +543,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/users/:id/detail", perm(db, "user:manage"), adminH.UserDetail)
 				admin.PUT("/users/:id/home", perm(db, "user:manage"), adminH.UserHomeSet)
 				admin.GET("/invites", perm(db, "user:manage"), adminH.AdminInvites)
+				admin.POST("/invites", perm(db, "user:manage"), adminH.AdminInviteCreate)
+				admin.DELETE("/invites/:id", perm(db, "user:manage"), adminH.AdminInviteDelete)
 				admin.GET("/wallet-logs", perm(db, "user:manage"), adminH.AdminWalletLogs)
 				// 会员子页（诺哈：会员证件/联系/地址/密保/日志）
 				admin.GET("/user-docu", perm(db, "user:manage"), adminH.AdminUserDocu)
+				admin.DELETE("/user-docu/:id", perm(db, "user:manage"), adminH.AdminUserDocuDelete)
 				admin.GET("/user-contacts", perm(db, "user:manage"), adminH.AdminUserContacts)
+				admin.PUT("/user-contacts/:id", perm(db, "user:manage"), adminH.AdminUserContactUpdate)
 				admin.GET("/user-addresses", perm(db, "user:manage"), adminH.AdminUserAddresses)
+				admin.PUT("/user-addresses/:id", perm(db, "user:manage"), adminH.AdminUserAddressUpdate)
 				admin.GET("/user-protections", perm(db, "user:manage"), adminH.AdminUserProtections)
+				admin.DELETE("/user-protections/:uid", perm(db, "user:manage"), adminH.AdminUserProtectionDelete)
 				admin.GET("/user-logs", perm(db, "user:manage"), adminH.AdminUserLogs)
 
 				// ============ 家园管理 home/（诺哈：家园列表/家园访客/游戏管理） ============

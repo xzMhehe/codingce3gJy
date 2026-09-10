@@ -6,10 +6,12 @@
         <span class="help-line" style="margin-left:10px">替换型：帖子中出现即替换为占位符；审核型：帖子进入待审核队列。</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="word" label="敏感词" min-width="160" />
-        <el-table-column prop="replace" label="替换为" min-width="120" />
-        <el-table-column label="类型" width="120">
+        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column prop="word" label="敏感词" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="replace" label="替换为" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.replace || '***' }}</template>
+        </el-table-column>
+        <el-table-column label="类型" width="90" align="center">
           <template slot-scope="{row}">
             <el-tag :type="row.type === 2 ? 'warning' : 'info'" size="mini">{{ row.type === 2 ? '审核' : '替换' }}</el-tag>
           </template>

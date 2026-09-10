@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +11,21 @@ import (
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
 )
+
+// wordUserIDs word 搜索过滤：纯数字=按家园号精确；否则按昵称模糊，返回用户ID集合。
+// 返回 nil 表示无过滤条件。
+func (h *AdminHandler) wordUserIDs(c *gin.Context) []uint {
+	word := strings.TrimSpace(c.Query("word"))
+	if word == "" {
+		return nil
+	}
+	var ids []uint
+	if uid, err := strconv.Atoi(word); err == nil {
+		return []uint{uint(uid)}
+	}
+	h.DB.Model(&model.User{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("id", &ids)
+	return ids
+}
 
 // adminmodules.go 管理后台模块补齐（对齐诺哈三代后台菜单：
 // 家园管理/信息管理/文章管理/留言管理/商城管理/货币管理/会员推荐/帖子回收站）
@@ -137,6 +154,9 @@ func (h *AdminHandler) AdminNotificationDel(c *gin.Context) {
 func (h *AdminHandler) AdminInvites(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	q := h.DB.Model(&model.Invite{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ? OR used_uid IN ?", ids, ids)
+	}
 	var total int64
 	q.Count(&total)
 	type invRow struct {
@@ -158,6 +178,54 @@ func (h *AdminHandler) AdminInvites(c *gin.Context) {
 		out = append(out, invRow{Invite: iv, InviterNick: a.Nickname, UsedNick: usedNick})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+}
+
+// AdminInviteCreate 生成邀请码（归属指定会员，0=系统生成）
+func (h *AdminHandler) AdminInviteCreate(c *gin.Context) {
+	var req struct {
+		UserID uint `json:"user_id"`
+	}
+	c.ShouldBindJSON(&req)
+	if req.UserID > 0 {
+		var u model.User
+		if err := h.DB.First(&u, req.UserID).Error; err != nil {
+			resp.ParamError(c, "邀请人不存在")
+			return
+		}
+	}
+	const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	for i := 0; i < 5; i++ {
+		b := make([]byte, 8)
+		for j := range b {
+			b[j] = letters[rand.Intn(len(letters))]
+		}
+		code := string(b)
+		var n int64
+		h.DB.Model(&model.Invite{}).Where("code = ?", code).Count(&n)
+		if n > 0 {
+			continue
+		}
+		iv := model.Invite{UserID: req.UserID, Code: code}
+		h.DB.Create(&iv)
+		resp.OK(c, gin.H{"msg": "邀请码 " + code + " 已生成", "code": code})
+		return
+	}
+	resp.ParamError(c, "生成失败，请重试")
+}
+
+// AdminInviteDelete 删除邀请码（未使用的才可删）
+func (h *AdminHandler) AdminInviteDelete(c *gin.Context) {
+	var iv model.Invite
+	if err := h.DB.First(&iv, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "邀请码不存在")
+		return
+	}
+	if iv.Status == 1 {
+		resp.ParamError(c, "已使用的邀请码不能删除")
+		return
+	}
+	h.DB.Delete(&iv)
+	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
 // ---- 货币管理 money/（奖罚流水） ----
@@ -451,6 +519,9 @@ func (h *AdminHandler) AdminGuestbookDel(c *gin.Context) {
 func (h *AdminHandler) AdminUserDocu(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	q := h.DB.Model(&model.UserDocument{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
+	}
 	var total int64
 	q.Count(&total)
 	type row struct {
@@ -475,10 +546,24 @@ func (h *AdminHandler) AdminUserDocu(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
+// AdminUserDocuDelete 删除会员证件
+func (h *AdminHandler) AdminUserDocuDelete(c *gin.Context) {
+	var d model.UserDocument
+	if err := h.DB.First(&d, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "证件不存在")
+		return
+	}
+	h.DB.Delete(&d)
+	resp.OK(c, gin.H{"msg": "证件已删除"})
+}
+
 // AdminUserContacts 会员联系列表
 func (h *AdminHandler) AdminUserContacts(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	q := h.DB.Model(&model.UserContact{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
+	}
 	var total int64
 	q.Count(&total)
 	type row struct {
@@ -497,10 +582,33 @@ func (h *AdminHandler) AdminUserContacts(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
+// AdminUserContactUpdate 编辑会员联系方式（QQ/邮箱/手机）
+func (h *AdminHandler) AdminUserContactUpdate(c *gin.Context) {
+	var ct model.UserContact
+	if err := h.DB.First(&ct, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "联系方式不存在")
+		return
+	}
+	var req struct {
+		QQ    string `json:"qq"`
+		Mail  string `json:"mail"`
+		Phone string `json:"phone"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Model(&ct).Updates(map[string]interface{}{"qq": req.QQ, "mail": req.Mail, "phone": req.Phone})
+	resp.OK(c, gin.H{"msg": "联系方式已保存"})
+}
+
 // AdminUserAddresses 会员地址列表
 func (h *AdminHandler) AdminUserAddresses(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	q := h.DB.Model(&model.UserAddress{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
+	}
 	var total int64
 	q.Count(&total)
 	type row struct {
@@ -519,10 +627,39 @@ func (h *AdminHandler) AdminUserAddresses(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
+// AdminUserAddressUpdate 编辑会员通信地址（故乡/现居）
+func (h *AdminHandler) AdminUserAddressUpdate(c *gin.Context) {
+	var a model.UserAddress
+	if err := h.DB.First(&a, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "地址不存在")
+		return
+	}
+	var req map[string]string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	fields := []string{"home_nation", "home_prov", "home_city", "home_dist", "home_addr", "home_zip",
+		"live_nation", "live_prov", "live_city", "live_dist", "live_addr", "live_zip"}
+	up := map[string]interface{}{}
+	for _, f := range fields {
+		if v, ok := req[f]; ok {
+			up[f] = strings.TrimSpace(v)
+		}
+	}
+	if len(up) > 0 {
+		h.DB.Model(&a).Updates(up)
+	}
+	resp.OK(c, gin.H{"msg": "地址已保存"})
+}
+
 // AdminUserProtections 会员密保列表
 func (h *AdminHandler) AdminUserProtections(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	q := h.DB.Model(&model.UserProtection{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
+	}
 	var total int64
 	q.Count(&total)
 	type row struct {
@@ -544,6 +681,17 @@ func (h *AdminHandler) AdminUserProtections(c *gin.Context) {
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
+// AdminUserProtectionDelete 清除会员密保（对齐诺哈 admin/user/protec 删除）
+func (h *AdminHandler) AdminUserProtectionDelete(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Where("user_id = ?", uid).Delete(&model.UserProtection{})
+	resp.OK(c, gin.H{"msg": "密保已清除"})
+}
+
 // AdminUserLogs 会员日志列表（登录/操作）
 func (h *AdminHandler) AdminUserLogs(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
@@ -551,6 +699,8 @@ func (h *AdminHandler) AdminUserLogs(c *gin.Context) {
 	q := h.DB.Model(&model.UserLog{})
 	if uid > 0 {
 		q = q.Where("user_id = ?", uid)
+	} else if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
 	}
 	var total int64
 	q.Count(&total)
