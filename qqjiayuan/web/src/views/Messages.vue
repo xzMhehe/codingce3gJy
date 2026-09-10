@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- ===== 信箱首页（复刻诺哈 chat/index.asp：基本设施 + 功能导航） ===== -->
-    <template v-if="!peer">
+    <template v-if="!peer && !sendView">
       <div class="bar"><a href="javascript:;" @click="$router.push('/home')">我的地盘</a>&gt;信箱<br></div>
 
       <div class="name">【基本设施】</div>
@@ -19,7 +19,7 @@
             {{ inboxPageStart + i }}.<template v-if="!m.is_read"><span class="txt-fade">(新)</span></template>
             <a href="javascript:;" @click="openChat(m.sender_id)">{{ preview(m.content) }}</a><br>
             发信人:<a href="javascript:;" @click="$router.push('/user/'+m.sender_id)"><font :color="m.color || '#004299'">{{ m.sender }}</font>({{ m.sender_id }})</a><br>
-            收信时间:{{ fmt(m.created_at) }}<br>
+            收信时间:{{ fmt(m.created_at) }} [<a href="javascript:;" @click="delMsg(m)">删</a>]<br>
           </div>
         </div>
         <div class="module-content" v-else><span class="empty">您没有收信消息。</span></div>
@@ -43,7 +43,7 @@
             {{ outboxPageStart + i }}.<span class="txt-fade">{{ m.is_read ? '(已阅)' : '(未阅)' }}</span>
             <a href="javascript:;" @click="openChat(m.receiver_id)">{{ preview(m.content) }}</a><br>
             收信人:<a href="javascript:;" @click="$router.push('/user/'+m.receiver_id)"><font :color="m.color || '#004299'">{{ m.receiver }}</font>({{ m.receiver_id }})</a><br>
-            发信时间:{{ fmt(m.created_at) }}<br>
+            发信时间:{{ fmt(m.created_at) }} [<a href="javascript:;" @click="delMsg(m)">删</a>]<br>
           </div>
         </div>
         <div class="module-content" v-else><span class="empty">您没有发出信息。</span></div>
@@ -74,9 +74,10 @@
         <div class="module-content" v-if="sysUnread > 0"><a href="javascript:;" @click="readAll">全部标记已读</a><br></div>
       </template>
 
-      <!-- 功能导航（诺哈 chat/index.asp：清空信箱） -->
+      <!-- 功能导航（诺哈 chat/index.asp：发信息/清空信箱） -->
       <div class="name">【功能导航】</div>
       <div class="module-content">
+        <a href="javascript:;" @click="openSend">发家信</a><br>
         <a href="javascript:;" @click="clearBox('inbox')">清空收信箱</a><br>
         <a href="javascript:;" @click="clearBox('outbox')">清空发信箱</a><br>
         <a href="javascript:;" @click="clearBox('all')">清空所有信息</a><br>
@@ -87,13 +88,14 @@
     </template>
 
     <!-- ===== 与某人往来（复刻诺哈 chat.asp：昵称(号码) + 刷新 + 消息 + 发送） ===== -->
-    <template v-else>
+    <template v-else-if="peer">
       <div class="bar">
         <a href="javascript:;" @click="$router.push('/messages')">我的地盘</a>&gt;<a href="javascript:;" @click="$router.push('/messages')">信箱</a>&gt;聊天<br>
       </div>
 
       <div class="name">
-        <a href="javascript:;" @click="$router.push('/user/'+peer.id)"><font :color="peer.color || '#004299'">{{ peer.nickname }}</font>({{ peer.id }})</a> <a class="rt" href="javascript:;" @click="load">刷新消息</a><br>
+        <a href="javascript:;" @click="$router.push('/user/'+peer.id)"><font :color="peer.color || '#004299'">{{ peer.nickname }}</font>({{ peer.id }})</a>
+        <span class="txt-fade">(往来{{ msgs.length }}条)</span> <a class="rt" href="javascript:;" @click="load">刷新消息</a><br>
       </div>
 
       <div class="list">
@@ -114,14 +116,39 @@
         </form>
       </div>
 
-      <!-- 好友功能（诺哈 chat.asp：聊天记录.好友家园） -->
+      <!-- 好友功能（诺哈 chat.asp：好友家园） -->
       <div class="name">【好友功能】</div>
       <div class="module-content">
-        <a href="javascript:;" @click="tip">聊天记录</a>.<a href="javascript:;" @click="$router.push('/user/'+peer.id)">好友家园</a><br>
+        <a href="javascript:;" @click="$router.push('/user/'+peer.id)">好友家园</a><br>
       </div>
 
       <div class="bar">
         <a href="javascript:;" @click="$router.push('/messages')">我的地盘</a>&gt;<a href="javascript:;" @click="$router.push('/messages')">信箱</a>&gt;聊天<br>
+      </div>
+    </template>
+
+    <!-- ===== 发家信（复刻诺哈 send.asp：输号码→写内容→发送） ===== -->
+    <template v-else-if="sendView">
+      <div class="bar">
+        <a href="javascript:;" @click="$router.push('/home')">我的地盘</a>&gt;<a href="javascript:;" @click="closeSend">信箱</a>&gt;发家信<br>
+      </div>
+
+      <div class="name">【发家信】<br></div>
+      <div class="module-content">
+        <template v-if="!writePeer.id">
+          接收人号码：<input type="text" v-model.number="writeTo" size="10"><br>
+          <input type="submit" value="下一步" @click="checkPeer"><br>
+        </template>
+        <template v-else>
+          收信人：<a href="javascript:;" @click="$router.push('/user/' + writePeer.id)"><font :color="writePeer.color || '#004299'">{{ writePeer.nickname }}</font>({{ writePeer.id }})</a><br>
+          内容：<textarea v-model.trim="writeContent" rows="3" maxlength="500"></textarea><br>
+          <input type="submit" value="发 送" @click="sendTo">　<a href="javascript:;" @click="resetSend">重选接收人</a><br>
+        </template>
+        <a href="javascript:;" @click="closeSend">返回信箱</a><br>
+      </div>
+
+      <div class="bar">
+        <a href="javascript:;" @click="$router.push('/home')">我的地盘</a>&gt;<a href="javascript:;" @click="closeSend">信箱</a>&gt;发家信<br>
       </div>
     </template>
   </div>
@@ -135,6 +162,8 @@ export default {
   data () {
     return {
       tab: 'inbox', peer: null, msgs: [], content: '',
+      sendView: false, writeTo: '', writePeer: {}, writeContent: '',
+      pollTimer: null,
       inbox: [], inboxTotal: 0, inboxPage: 1, inboxPages: 1, inboxUnread: 0,
       outbox: [], outboxTotal: 0, outboxPage: 1, outboxPages: 1,
       sys: [], sysUnread: 0
@@ -148,6 +177,7 @@ export default {
   },
   watch: { '$route': 'load' },
   mounted () { this.load() },
+  beforeDestroy () { this.stopPoll() },
   methods: {
     load () {
       const peerId = this.$route.params.peerId
@@ -155,17 +185,31 @@ export default {
         api.get('/messages/with/' + peerId).then(r => {
           if (r.code === 0) {
             this.peer = r.data.peer
-            this.msgs = r.data.list || []
-            // 已读后刷新全局未读数（top_nav 家信(N)）
-            this.$store.dispatch('refreshUnread')
+            const list = r.data.list || []
+            // 有新消息才刷新全局未读数（top_nav 家信(N)），避免轮询空转
+            if (list.length !== this.msgs.length) this.$store.dispatch('refreshUnread')
+            this.msgs = list
           }
         })
+        this.startPoll()
         return
       }
+      this.stopPoll()
       this.peer = null
       this.loadInbox()
       this.loadOutbox()
       this.loadSys()
+    },
+    // 聊天视图 5 秒轮询（优化：诺哈需手动刷新，这里自动收信）
+    startPoll () {
+      this.stopPoll()
+      this.pollTimer = setInterval(() => {
+        if (this.$route.params.peerId) this.load()
+        else this.stopPoll()
+      }, 5000)
+    },
+    stopPoll () {
+      if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null }
     },
     loadInbox () {
       api.get('/messages/inbox', { params: { page: this.inboxPage } }).then(r => {
@@ -238,7 +282,45 @@ export default {
       s = s || ''
       return s.length > 15 ? s.slice(0, 15) + '…' : s
     },
-    tip () { alert('聊天记录功能敬请期待') },
+    // ---- 发家信（复刻诺哈 send.asp 两步流：输号码→确认收信人→写内容发送） ----
+    openSend () {
+      this.sendView = true
+      this.writeTo = ''
+      this.writePeer = {}
+      this.writeContent = ''
+      this.stopPoll()
+    },
+    closeSend () { this.sendView = false },
+    checkPeer () {
+      if (!this.writeTo) { alert('请输入对方号码'); return }
+      api.get('/users/' + this.writeTo).then(r => {
+        if (r.code === 0) this.writePeer = { id: r.data.id, nickname: r.data.nickname, color: r.data.color }
+        else alert(r.msg || '这位友友不存在')
+      })
+    },
+    resetSend () { this.writePeer = {}; this.writeContent = '' },
+    sendTo () {
+      if (!this.writeContent) { alert('请填写家信内容'); return }
+      api.post('/messages', { to: this.writePeer.id, content: this.writeContent }).then(r => {
+        if (r.code === 0) {
+          alert('家信发送成功！')
+          this.resetSend()
+          this.sendView = false
+          this.loadOutbox()
+        } else alert(r.msg)
+      })
+    },
+    // ---- 单条删除（复刻诺哈 message_del.asp） ----
+    delMsg (m) {
+      if (!confirm('删除这条家信？')) return
+      api.delete('/messages/' + m.id).then(r => {
+        if (r.code === 0) {
+          this.loadInbox()
+          this.loadOutbox()
+          this.$store.dispatch('refreshUnread')
+        } else alert(r.msg)
+      })
+    },
     fmt (t) {
       if (!t) return ''
       const d = new Date(t)

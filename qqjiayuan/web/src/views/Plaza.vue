@@ -8,8 +8,8 @@
     <div class="module-content" v-if="sec('greeting')"><font color="#ff0000">{{ isLogin ? user.nickname : '游客' }}</font>{{ greeting }}<br></div>
 
     <!-- 同城推荐 -->
-    <template v-if="sec('tongcheng')">累了吗？来<a href="javascript:;" @click="$router.push('/channel/3')">同城客栈</a>透个气吧！<br>
-    <span v-if="tcSubs.length"><a href="javascript:;" @click="$router.push('/channel/3')">同城</a> <span v-for="s in tcSubs" :key="'tc'+s.id"><a href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a>.</span></span>
+    <template v-if="sec('tongcheng')">累了吗？来<a href="javascript:;" @click="$router.push('/tongcheng')">同城客栈</a>透个气吧！<br>
+    <span v-if="tcSubs.length"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a> <span v-for="s in tcSubs.slice(0, 8)" :key="'tc'+s.id"><a href="javascript:;" @click="$router.push('/tongcheng/province/'+s.id)">{{ s.name }}</a>.</span><a href="javascript:;" @click="$router.push('/tongcheng')">更多省份&gt;&gt;</a></span>
     你可能还会喜欢以下论坛：<br>
     <span v-if="gtSubs.length"><span v-for="s in gtSubs" :key="'gt'+s.id"><a href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a>.</span></span><a href="javascript:;" @click="$router.push('/channel/1')">&gt;&gt;</a><br></template>
 
@@ -66,11 +66,11 @@
     <template v-if="sec('channels') && mainChannels.length">
       <div v-for="ch in mainChannels" :key="'ch'+ch.channel.id">
         <div class="module-title">
-          <a href="javascript:;" @click="$router.push('/channel/'+ch.channel.id)">{{ ch.channel.name }}</a>
+          <a href="javascript:;" @click="$router.push(ch.channel.name === '同城客栈' ? '/tongcheng' : '/channel/'+ch.channel.id)">{{ ch.channel.name }}</a>
         </div>
         <div class="module-content">
-          <template v-for="(s,i) in ch.subs"><a :key="s.id" href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a>{{ i < ch.subs.length-1 ? '.' : '' }}</template>
-          <a href="javascript:;" @click="$router.push('/channel/'+ch.channel.id)"> 更多&gt;&gt;</a><br>
+          <template v-for="(s,i) in shownSubs(ch)"><a :key="s.id" href="javascript:;" @click="$router.push(subPath(ch, s))">{{ s.name }}</a>{{ i < shownSubs(ch).length-1 ? '.' : '' }}</template>
+          <a href="javascript:;" @click="$router.push(ch.channel.name === '同城客栈' ? '/tongcheng' : '/channel/'+ch.channel.id)"> 更多&gt;&gt;</a><br>
           <div v-for="t in ch.threads" :key="'t'+t.id" class="row00"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count }}阅)</div>
         </div>
       </div>
@@ -119,7 +119,7 @@ export default {
     mainChannels () { return (this.plaza.channels || []).filter(c => ['公共论坛', '同城客栈', '家族大厅'].indexOf(c.channel.name) >= 0) },
     tongcheng () { return (this.plaza.channels || []).find(c => c.channel.name === '同城客栈') },
     gongtan () { return (this.plaza.channels || []).find(c => c.channel.name === '公共论坛') },
-    tcSubs () { return this.tongcheng ? this.tongcheng.subs.slice(0, 2) : [] },
+    tcSubs () { return this.tongcheng ? this.tongcheng.subs.filter(s => s.name !== '共建同城').slice(0, 8) : [] },
     gtSubs () { return this.gongtan ? this.gongtan.subs.slice(0, 3) : [] },
     greeting () {
       const h = new Date().getHours()
@@ -142,6 +142,15 @@ export default {
   },
   mounted () { this.load(); this.loadChat(); this.loadSections() },
   methods: {
+    shownSubs (ch) {
+      if (ch.channel.name === '同城客栈') {
+        return ch.subs.filter(s => s.name !== '共建同城').slice(0, 8)
+      }
+      return ch.subs
+    },
+    subPath (ch, s) {
+      return ch.channel.name === '同城客栈' ? '/tongcheng/province/' + s.id : '/board/' + s.id
+    },
     sec (key) { return (this.sections[key] !== undefined ? this.sections[key] : 1) === 1 },
     loadSections () {
       api.get('/plaza-sections').then(r => {

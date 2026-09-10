@@ -63,11 +63,12 @@ type PrivateMessage struct {
 	Sender     *User     `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
 }
 
-// 聊天室消息（family_id=0 为公共聊天，>0 为家族聊室，轮询拉取）
+// 聊天室消息（family_id=0 且 board_id=0 为公共聊天；>0 家族聊室；board_id>0 为同城老乡聊天室，轮询拉取）
 type ChatMessage struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserID    uint      `gorm:"index" json:"user_id"`
 	FamilyID  uint      `gorm:"index;default:0" json:"family_id"`
+	BoardID   uint      `gorm:"index;default:0" json:"board_id"` // 同城城市板块ID（老乡聊天室）
 	Content   string    `gorm:"type:varchar(500)" json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`

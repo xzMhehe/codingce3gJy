@@ -61,7 +61,13 @@ export default {
       api.get('/boards').then(r => {
         if (r.code !== 0) return
         const target = r.data.find(b => String(b.id) === String(id))
-        if (!target) return
+        if (!target) {
+          // 非分区板块（如同城省份）→ 跳转到对应页面
+          if (this.$route.name === 'channel') {
+            this.$router.replace('/tongcheng/province/' + id)
+          }
+          return
+        }
         this.board = target
         if (!target.categories || !target.categories.length) {
           // 保证 children 存在

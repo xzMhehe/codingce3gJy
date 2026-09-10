@@ -389,17 +389,6 @@ func (h *AdminHandler) FamilyAnn(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 同城管理：同城客栈下的子板块（城市）
-func (h *AdminHandler) Tongcheng(c *gin.Context) {
-	var root model.Board
-	h.DB.Where("name = ?", "同城客栈").First(&root)
-	var subs []model.Board
-	if root.ID > 0 {
-		h.DB.Where("parent_id = ?", root.ID).Order("sort ASC").Find(&subs)
-	}
-	resp.OK(c, subs)
-}
-
 // T台秀：当前上榜用户（默认经验最高，可被配置覆盖）
 func (h *AdminHandler) Ttou(c *gin.Context) {
 	var ttouID string

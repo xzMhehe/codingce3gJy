@@ -14,6 +14,9 @@ type Board struct {
 	Tags        string    `gorm:"type:varchar(100)" json:"tags"`       // 标签
 	ModeratorID uint      `gorm:"default:0" json:"moderator_id"`       // 版主用户ID（0=无版主）
 	MembersOnly int       `gorm:"default:0" json:"members_only"`       // 1=会员制版块，仅成员可发帖
+	CityCode    string    `gorm:"type:varchar(10);default:''" json:"city_code"` // 区号（同城城市，参考诺哈 wap_bbs.ccode）
+	CreatorID   uint      `gorm:"default:0" json:"creator_id"`         // 创建人（同城城市，参考诺哈 wap_bbs.uid）
+	Click       int       `gorm:"default:0" json:"click"`              // 人气（同城城市，参考诺哈 wap_bbs.click）
 	Sort        int       `gorm:"default:0" json:"sort"`
 	Status      int       `gorm:"default:1" json:"status"` // 1显示 0隐藏
 	ThreadCount int       `gorm:"default:0" json:"thread_count"`

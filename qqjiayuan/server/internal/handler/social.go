@@ -467,6 +467,18 @@ func (h *MessageHandler) Clear(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
+// 删除单条家信（对齐诺哈 inbox.asp/outbox.asp 每条记录后的删除链接，message_del.asp）
+func (h *MessageHandler) Del(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	id, _ := strconv.Atoi(c.Param("id"))
+	res := h.DB.Where("(receiver_id = ? OR sender_id = ?) AND id = ?", uid, uid, id).Delete(&model.PrivateMessage{})
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "消息不存在或已删除")
+		return
+	}
+	resp.OK(c, gin.H{"msg": "已删除"})
+}
+
 // 私信未读数（参考诺哈 wap_user_news.home = wap_message 未读数，家信提醒）
 func (h *MessageHandler) Unread(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -515,14 +527,15 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	resp.OK(c, gin.H{"id": msg.ID})
 }
 
-// 聊天室（family_id=0 公共 / >0 家族聊室，轮询）
+// 聊天室（family_id=0/board_id=0 公共 / family_id>0 家族聊室 / board_id>0 同城老乡聊天室，轮询）
 type ChatHandler struct{ DB *gorm.DB }
 
 func (h *ChatHandler) List(c *gin.Context) {
 	after, _ := strconv.Atoi(c.DefaultQuery("after", "0"))
 	famID, _ := strconv.Atoi(c.DefaultQuery("family_id", "0"))
+	boardID, _ := strconv.Atoi(c.DefaultQuery("board_id", "0"))
 	var msgs []model.ChatMessage
-	q := h.DB.Preload("User").Preload("User.Badges").Where("family_id = ?", famID)
+	q := h.DB.Preload("User").Preload("User.Badges").Where("family_id = ? AND board_id = ?", famID, boardID)
 	q.Where("id > ?", after).Order("id ASC").Limit(50).Find(&msgs)
 	resp.OK(c, msgs)
 }
@@ -539,6 +552,7 @@ func (h *ChatHandler) Send(c *gin.Context) {
 		return
 	}
 	famID, _ := strconv.Atoi(c.DefaultQuery("family_id", "0"))
+	boardID, _ := strconv.Atoi(c.DefaultQuery("board_id", "0"))
 	if famID > 0 {
 		// 家族聊室：仅成员可发言
 		var n int64
@@ -548,7 +562,10 @@ func (h *ChatHandler) Send(c *gin.Context) {
 			return
 		}
 	}
-	msg := model.ChatMessage{UserID: uid, FamilyID: uint(famID), Content: req.Content}
+	if famID > 0 {
+		boardID = 0
+	}
+	msg := model.ChatMessage{UserID: uid, FamilyID: uint(famID), BoardID: uint(boardID), Content: req.Content}
 	h.DB.Create(&msg)
 	h.DB.Preload("User").Preload("User.Badges").First(&msg, msg.ID)
 	resp.OK(c, msg)

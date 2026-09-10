@@ -38,6 +38,7 @@
           <el-submenu index="g-bbs">
             <template slot="title"><i class="el-icon-chat-dot-round"></i><span>社区管理</span></template>
             <el-menu-item index="boards"><i class="el-icon-menu"></i>版块管理</el-menu-item>
+            <el-menu-item index="tongcheng"><i class="el-icon-location-outline"></i>同城管理</el-menu-item>
             <el-menu-item index="boardCategories"><i class="el-icon-collection"></i>版块分类</el-menu-item>
             <el-menu-item index="threads"><i class="el-icon-document"></i>帖子管理</el-menu-item>
             <el-menu-item index="recycle"><i class="el-icon-delete"></i>恢复帖子</el-menu-item>

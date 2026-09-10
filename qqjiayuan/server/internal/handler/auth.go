@@ -201,5 +201,6 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 func (h *AuthHandler) userBrief(u model.User) gin.H {
 	return gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname,
-		"gender": u.Gender, "color": u.Color, "level": u.Level, "coins": u.Coins}
+		"gender": u.Gender, "color": u.Color, "level": u.Level, "coins": u.Coins,
+		"noble": u.Noble}
 }

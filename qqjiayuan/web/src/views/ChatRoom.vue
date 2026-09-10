@@ -1,11 +1,13 @@
 <template>
   <div>
     <div class="bar">
-      【{{ isFamily ? '家族聊室' : '社区聊天室' }}】
+      【{{ roomTitle }}】
       <a v-if="isFamily" href="javascript:;" @click="$router.push('/family/'+familyId)">回家族主页</a>
+      <a v-else-if="isCity" href="javascript:;" @click="$router.push('/tongcheng/city/'+boardId)">回{{ cityName || '城市' }}主页</a>
       <a v-else class="rt" href="javascript:;" @click="$router.push('/')">回广场</a>
     </div>
     <div class="login-tips" v-if="isFamily">欢迎来到家族聊室！只有家族成员可以发言（每3秒自动刷新）</div>
+    <div class="login-tips" v-else-if="isCity">欢迎来到{{ cityName || '老乡' }}聊天室！和同城的老乡聊聊天吧~（每3秒自动刷新）</div>
     <div class="login-tips" v-else>欢迎来到聊天室！这里是全园友友的公共客厅，请文明发言~（每3秒自动刷新）</div>
     <div style="max-height:55vh;overflow-y:auto;padding:4px" ref="box">
       <div v-for="m in msgs" :key="m.id" class="floor-item">
@@ -15,7 +17,7 @@
         </div>
         <div class="cnt">{{ m.content }}</div>
       </div>
-      <div v-if="!msgs.length" class="empty">{{ isFamily ? '家族聊室很安静，来打个招呼吧' : '聊天室很安静，来打破沉默吧' }}</div>
+      <div v-if="!msgs.length" class="empty">{{ roomTitle }}很安静，来打个招呼吧</div>
     </div>
     <div class="module-content" v-if="!isFamily || isMember">
       <form @submit.prevent="send">
@@ -36,13 +38,16 @@ import api from '../api'
 
 export default {
   name: 'ChatRoom',
-  data () { return { msgs: [], content: '', timer: null, famRole: '' } },
+  data () { return { msgs: [], content: '', timer: null, famRole: '', cityName: '' } },
   computed: {
     familyId () { return parseInt(this.$route.query.family_id || 0) },
+    boardId () { return parseInt(this.$route.query.board_id || 0) },
     isFamily () { return this.familyId > 0 },
-    isMember () { return this.famRole !== '' }
+    isCity () { return this.boardId > 0 },
+    isMember () { return this.famRole !== '' },
+    roomTitle () { return this.isFamily ? '家族聊室' : (this.isCity ? ((this.cityName || '老乡') + '聊天室') : '社区聊天室') }
   },
-  watch: { 'familyId': 'reload' },
+  watch: { 'familyId': 'reload', 'boardId': 'reload' },
   mounted () { this.reload() },
   beforeDestroy () { clearInterval(this.timer) },
   methods: {
@@ -50,9 +55,15 @@ export default {
       clearInterval(this.timer)
       this.msgs = []
       this.famRole = ''
+      this.cityName = ''
       if (this.isFamily) {
         api.get('/families/' + this.familyId).then(r => {
           if (r.code === 0) this.famRole = r.data.my_role || ''
+        })
+      }
+      if (this.isCity) {
+        api.get('/tongcheng/city/' + this.boardId).then(r => {
+          if (r.code === 0) this.cityName = (r.data.city && r.data.city.name) || ''
         })
       }
       this.load()
@@ -60,7 +71,7 @@ export default {
     },
     load () {
       const after = this.msgs.length ? this.msgs[this.msgs.length - 1].id : 0
-      api.get('/chat', { params: { after, family_id: this.familyId } }).then(r => {
+      api.get('/chat', { params: { after, family_id: this.familyId, board_id: this.boardId } }).then(r => {
         if (r.code === 0 && r.data.length) {
           this.msgs = this.msgs.concat(r.data).slice(-200)
           this.$nextTick(() => {
@@ -72,7 +83,7 @@ export default {
     },
     send () {
       if (!this.content) return
-      api.post('/chat?family_id=' + this.familyId, { content: this.content }).then(r => {
+      api.post('/chat?family_id=' + this.familyId + '&board_id=' + this.boardId, { content: this.content }).then(r => {
         if (r.code === 0) {
           this.content = ''
           this.load()

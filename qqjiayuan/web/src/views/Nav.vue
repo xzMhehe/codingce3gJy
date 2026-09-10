@@ -9,7 +9,7 @@
     </div>
 
     <!-- 社区 -->
-    <div class="module-title">【<a href="javascript:;" @click="$router.push('/channel/1')">社区</a>】<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="$router.push('/marriage')">婚恋</a></div>
+    <div class="module-title">【<a href="javascript:;" @click="$router.push('/channel/1')">社区</a>】<a href="javascript:;" @click="$router.push('/channel/1')">论坛</a>.<a href="javascript:;" @click="$router.push('/families')">家族</a>.<a href="javascript:;" @click="$router.push('/tongcheng')">同城</a>.<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>.<a href="javascript:;" @click="$router.push('/marriage')">婚恋</a></div>
     <div class="module-content">
       <template v-for="(t,i) in hotThreads">
         <span :key="'h'+i"><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a>({{ t.view_count || 0 }}阅)<br></span>

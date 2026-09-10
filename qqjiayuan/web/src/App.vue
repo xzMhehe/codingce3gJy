@@ -30,11 +30,11 @@
 
     <router-view />
 
-    <!-- 页脚 -->
+    <!-- 页脚（复刻诺哈 Page_Bottom：家园社区-广场-导航-聊天室-管理-退出 / 超Q.空间.家园.微博 / 小Q报时） -->
     <div class="footer">
       <p>
-        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" onclick="window.open('http://'+location.host+'/admin-ui/')">管理</a>-<a v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a><br>
-        <template v-if="isLogin"><a href="javascript:;">超Q(0)</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博(0)</a><br></template>
+        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" @click="goAdmin">管理</a>-<a v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a><br>
+        <template v-if="isLogin"><a href="javascript:;" @click="$router.push('/noble')">超Q({{ noble }})</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博({{ noticeUnread }})</a><br></template>
       </p>
       <p>
         小Q报时：{{ nowText }}<br>
@@ -50,7 +50,7 @@ export default {
   name: 'App',
   data () {
     return {
-      nowText: '', timer: null, pollTimer: null, spaceCount: 0,
+      nowText: '', timer: null, pollTimer: null, spaceCount: 0, noticeUnread: 0,
       navs: [
         { name: '家园', to: '/home', keys: ['/home', '/mood', '/sign', '/profile', '/wallet', '/box', '/bag', '/security', '/achieve', '/home-level', '/invite', '/favorites', '/medals', '/guestbook', '/youquan'] },
         { name: '好友', to: '/friends', keys: ['/friends', '/contacts'] },
@@ -63,7 +63,8 @@ export default {
   computed: {
     isLogin () { return this.$store.getters.isLogin },
     user () { return this.$store.state.user || {} },
-    unread () { return this.$store.state.unread }
+    unread () { return this.$store.state.unread },
+    noble () { return this.user.noble || 0 }
   },
   mounted () {
     this.tick()
@@ -78,6 +79,10 @@ export default {
   methods: {
     goNoble () {
       this.$router.push('/noble')
+    },
+    // 页脚"管理"：新窗口打开管理后台（诺哈 Page_Bottom 管理入口）
+    goAdmin () {
+      window.open(location.origin + '/admin-ui/')
     },
     isCurrent (n) {
       const p = this.$route.path
@@ -99,9 +104,13 @@ export default {
       }).catch(() => {})
     },
     pollUnread () {
-      // 家信(N) 只统计私信未读（诺哈 wap_user_news.home = 未读私信）
+      // 家信(N)/家园(N) 只统计私信未读（诺哈 wap_user_news.home = 未读私信）
       api.get('/messages/unread').then(r => {
         if (r.code === 0) this.$store.commit('setUnread', r.data.unread || 0)
+      })
+      // 微博(N) = 系统通知未读数
+      api.get('/notifications').then(r => {
+        if (r.code === 0) this.noticeUnread = (r.data && r.data.unread) || 0
       })
     },
     refreshMe () {
