@@ -11,6 +11,7 @@ const routes = [
   { path: '/find', name: 'find', component: () => import('../views/Find.vue') },
   { path: '/nav', name: 'nav', component: () => import('../views/Nav.vue') },
   { path: '/games', name: 'games', component: () => import('../views/Games.vue') },
+  { path: '/games/net', name: 'gamesNet', component: () => import('../views/GamesNet.vue') },
   { path: '/home', name: 'myhome', component: () => import('../views/MyHome.vue'), meta: { auth: true } },
   { path: '/my-news', name: 'myNews', component: () => import('../views/HomeNews.vue'), props: { scope: 'mine' }, meta: { auth: true } },
   { path: '/friend-news', name: 'friendNews', component: () => import('../views/HomeNews.vue'), props: { scope: 'friend' }, meta: { auth: true } },
