@@ -47,7 +47,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Family{}, &model.FamilyMember{}, &model.FamilySignIn{},
 		&model.FamilyActivity{},
 		&model.FamilyFavorite{},
-		&model.Book{}, &model.ThreadFavorite{},
+		&model.Book{}, &model.BookChapter{}, &model.BookComment{}, &model.BookShelf{}, &model.ThreadFavorite{},
 		&model.FriendGroup{}, &model.FriendGroupItem{},
 		&model.GardenPlot{}, &model.MyGame{}, &model.UserFlower{},
 		&model.GardenActivity{}, &model.Donation{}, &model.PlazaSection{},
@@ -222,6 +222,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedFamilyPatch(db)
 	seedFamilyBoards(db)
 	seedBooks(db)
+	seedBookChapters(db)
 	seedGardenActivities(db)
 	seedGardenData(db)
 	seedGardenSignRewards(db)
@@ -410,6 +411,35 @@ func seedBooks(db *gorm.DB) {
 	}
 	for _, b := range books {
 		db.Create(&b)
+	}
+}
+
+// seedBookChapters 书城章节+书评种子（幂等：给每本书补齐章节，有评论的书跳过）
+func seedBookChapters(db *gorm.DB) {
+	var books []model.Book
+	db.Order("id ASC").Find(&books)
+	if len(books) == 0 {
+		return
+	}
+	adminID := idByUsername(db, "10000")
+	for _, b := range books {
+		var n int64
+		db.Model(&model.BookChapter{}).Where("book_id = ?", b.ID).Count(&n)
+		if n == 0 {
+			chs := []model.BookChapter{
+				{BookID: b.ID, Title: "第一章 缘起", Sort: 1, Content: "故事，要从很久以前说起。\n\n那一年风起云涌，少年背起行囊，独自踏上了远行的路。谁也不知道，这趟旅程将彻底改变他的命运……\n\n（本章为示例章节，可到管理后台-书城管理-章节管理中编辑。）"},
+				{BookID: b.ID, Title: "第二章 风波", Sort: 2, Content: "风波骤起。\n\n镇口的茶棚里，一位灰衣人放下茶碗，只说了一句话，满座皆惊。\n\n他说的正是那个名字——那个所有人都以为再也不会出现的名字。"},
+				{BookID: b.ID, Title: "第三章 入局", Sort: 3, VIP: 1, Content: "所谓入局，便再无回头路。\n\n少年握紧了手中长剑，望向远方的群山。他知道，从这一刻起，自己不再是旁观者。"},
+			}
+			for i := range chs {
+				db.Create(&chs[i])
+			}
+		}
+		var cn int64
+		db.Model(&model.BookComment{}).Where("book_id = ?", b.ID).Count(&cn)
+		if cn == 0 && adminID > 0 {
+			db.Create(&model.BookComment{BookID: b.ID, UserID: adminID, Score: 5, Content: "家园书友推荐好书，值得一读！"})
+		}
 	}
 }
 

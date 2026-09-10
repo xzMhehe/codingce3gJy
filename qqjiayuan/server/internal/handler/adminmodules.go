@@ -12,6 +12,24 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
+// nickMap 批量取昵称
+func (h *AdminHandler) nickMap(uidSet map[uint]bool) map[uint]string {
+	out := map[uint]string{}
+	if len(uidSet) == 0 {
+		return out
+	}
+	ids := make([]uint, 0, len(uidSet))
+	for k := range uidSet {
+		ids = append(ids, k)
+	}
+	var us []model.User
+	h.DB.Select("id, nickname").Where("id IN ?", ids).Find(&us)
+	for _, u := range us {
+		out[u.ID] = u.Nickname
+	}
+	return out
+}
+
 // wordUserIDs word 搜索过滤：纯数字=按家园号精确；否则按昵称模糊，返回用户ID集合。
 // 返回 nil 表示无过滤条件。
 func (h *AdminHandler) wordUserIDs(c *gin.Context) []uint {
@@ -692,6 +710,185 @@ func (h *AdminHandler) AdminUserProtectionDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "密保已清除"})
 }
 
+// AdminBookDel 删除书籍（连同章节/书评/书架）
+func (h *AdminHandler) AdminBookDel(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	h.DB.Where("book_id = ?", id).Delete(&model.BookChapter{})
+	h.DB.Where("book_id = ?", id).Delete(&model.BookComment{})
+	h.DB.Where("book_id = ?", id).Delete(&model.BookShelf{})
+	h.DB.Delete(&model.Book{}, id)
+	resp.OK(c, gin.H{"msg": "已删除"})
+}
+
+// AdminBookCreate 新增书籍
+func (h *AdminHandler) AdminBookCreate(c *gin.Context) {
+	var req struct {
+		Title     string `json:"title" binding:"required"`
+		Author    string `json:"author" binding:"required"`
+		Category  string `json:"category"`
+		Intro     string `json:"intro"`
+		Status    string `json:"status"`
+		Recommend int    `json:"recommend"`
+		NewBook   int    `json:"new_book"`
+		Rating    string `json:"rating"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "书名和作者必填")
+		return
+	}
+	if req.Status == "" {
+		req.Status = "连载"
+	}
+	if req.Rating == "" {
+		req.Rating = "★★★★★"
+	}
+	b := model.Book{Title: strings.TrimSpace(req.Title), Author: strings.TrimSpace(req.Author),
+		Category: strings.TrimSpace(req.Category), Intro: req.Intro, Status: req.Status,
+		Recommend: req.Recommend, NewBook: req.NewBook, Rating: req.Rating}
+	h.DB.Create(&b)
+	resp.OK(c, gin.H{"msg": "《" + b.Title + "》已创建，请到章节管理添加章节", "id": b.ID})
+}
+
+// AdminBookChapters 章节列表（管理）
+func (h *AdminHandler) AdminBookChapters(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var chs []model.BookChapter
+	h.DB.Where("book_id = ?", id).Order("sort ASC, id ASC").Find(&chs)
+	resp.OK(c, chs)
+}
+
+// AdminChapterCreate 新增章节
+func (h *AdminHandler) AdminChapterCreate(c *gin.Context) {
+	bid, _ := strconv.Atoi(c.Param("id"))
+	var b model.Book
+	if err := h.DB.First(&b, bid).Error; err != nil {
+		resp.ParamError(c, "书籍不存在")
+		return
+	}
+	var req struct {
+		Title   string `json:"title" binding:"required"`
+		Content string `json:"content"`
+		VIP     int    `json:"vip"`
+		Sort    int    `json:"sort"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请填写章节标题")
+		return
+	}
+	ch := model.BookChapter{BookID: uint(bid), Title: strings.TrimSpace(req.Title),
+		Content: req.Content, VIP: req.VIP, Sort: req.Sort}
+	h.DB.Create(&ch)
+	resp.OK(c, gin.H{"msg": "章节「" + ch.Title + "」已添加", "id": ch.ID})
+}
+
+// AdminChapterUpdate 编辑章节
+func (h *AdminHandler) AdminChapterUpdate(c *gin.Context) {
+	var ch model.BookChapter
+	if err := h.DB.First(&ch, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "章节不存在")
+		return
+	}
+	var req struct {
+		Title   *string `json:"title"`
+		Content *string `json:"content"`
+		VIP     *int    `json:"vip"`
+		Sort    *int    `json:"sort"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	up := map[string]interface{}{}
+	if req.Title != nil && strings.TrimSpace(*req.Title) != "" {
+		up["title"] = strings.TrimSpace(*req.Title)
+	}
+	if req.Content != nil {
+		up["content"] = *req.Content
+	}
+	if req.VIP != nil {
+		up["vip"] = *req.VIP
+	}
+	if req.Sort != nil {
+		up["sort"] = *req.Sort
+	}
+	if len(up) > 0 {
+		h.DB.Model(&ch).Updates(up)
+	}
+	resp.OK(c, gin.H{"msg": "章节已保存"})
+}
+
+// AdminChapterDel 删除章节
+func (h *AdminHandler) AdminChapterDel(c *gin.Context) {
+	h.DB.Delete(&model.BookChapter{}, c.Param("id"))
+	resp.OK(c, gin.H{"msg": "章节已删除"})
+}
+
+// AdminBookComments 书评列表（全站，管理）
+func (h *AdminHandler) AdminBookComments(c *gin.Context) {
+	page, offset, size := pageOf(c, 15)
+	q := h.DB.Model(&model.BookComment{})
+	if ids := h.wordUserIDs(c); ids != nil {
+		q = q.Where("user_id IN ?", ids)
+	}
+	var total int64
+	q.Count(&total)
+	var list []model.BookComment
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&list)
+	uids, bids := map[uint]bool{}, map[uint]bool{}
+	for _, m := range list {
+		uids[m.UserID] = true
+		bids[m.BookID] = true
+	}
+	nick := h.nickMap(uids)
+	btitles := map[uint]string{}
+	if len(bids) > 0 {
+		bidsArr := make([]uint, 0, len(bids))
+		for k := range bids {
+			bidsArr = append(bidsArr, k)
+		}
+		var bs []model.Book
+		h.DB.Select("id, title").Where("id IN ?", bidsArr).Find(&bs)
+		for _, b := range bs {
+			btitles[b.ID] = b.Title
+		}
+	}
+	type row struct {
+		model.BookComment
+		Nick    string `json:"nick"`
+		Book    string `json:"book"`
+		Visible bool   `json:"visible"`
+	}
+	out := make([]row, 0, len(list))
+	for _, m := range list {
+		out = append(out, row{m, nick[m.UserID], btitles[m.BookID], m.Status == 1})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+}
+
+// AdminBookCommentUpdate 书评显隐
+func (h *AdminHandler) AdminBookCommentUpdate(c *gin.Context) {
+	var m model.BookComment
+	if err := h.DB.First(&m, c.Param("id")).Error; err != nil {
+		resp.ParamError(c, "书评不存在")
+		return
+	}
+	var req struct {
+		Status int `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Model(&m).Update("status", req.Status)
+	resp.OK(c, gin.H{"msg": "已保存"})
+}
+
+// AdminBookCommentDel 删除书评
+func (h *AdminHandler) AdminBookCommentDel(c *gin.Context) {
+	h.DB.Delete(&model.BookComment{}, c.Param("id"))
+	resp.OK(c, gin.H{"msg": "书评已删除"})
+}
+
 // AdminUserLogs 会员日志列表（登录/操作）
 func (h *AdminHandler) AdminUserLogs(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
@@ -785,13 +982,6 @@ func (h *AdminHandler) AdminBookUpdate(c *gin.Context) {
 	h.DB.Model(&model.Book{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"title": req.Title, "author": req.Author, "category": req.Category, "status": req.Status, "intro": req.Intro,
 	})
-	resp.OK(c, nil)
-}
-
-// AdminBookDel 删除小说
-func (h *AdminHandler) AdminBookDel(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	h.DB.Delete(&model.Book{}, id)
 	resp.OK(c, nil)
 }
 

@@ -17,12 +17,16 @@
     </div>
 
     <!-- 书城 -->
-    <div class="module-title">【<a href="javascript:;" @click="tip('书城')">书城</a>】<a href="javascript:;" @click="tip('玄幻')">玄幻</a>.<a href="javascript:;" @click="tip('言情')">言情</a></div>
-    <div class="module-content"><a href="javascript:;" @click="tip('书城')">书城建设中：玄幻、言情小说敬请期待</a><br></div>
+    <div class="module-title">【<a href="javascript:;" @click="$router.push('/book')">书城</a>】<a href="javascript:;" @click="$router.push('/book?category=武侠')">武侠</a>.<a href="javascript:;" @click="$router.push('/book?category=言情')">言情</a>.<a href="javascript:;" @click="$router.push('/shelf')">书架</a></div>
+    <div class="module-content">
+      <template v-for="(b,i) in hotBooks">
+        <span :key="'b'+i">《<a href="javascript:;" @click="$router.push('/book/'+b.id)">{{ b.title }}</a>》<span class="txt-fade">{{ b.author }}</span>({{ b.category }})<br></span>
+      </template>
+    </div>
 
     <!-- 商城 -->
     <div class="module-title">【<a href="javascript:;" @click="$router.push('/shop')">商城</a>】<a href="javascript:;" @click="tip('拍卖')">拍卖</a>.<a href="javascript:;" @click="$router.push('/medals')">勋章</a></div>
-    <div class="module-content"><a href="javascript:;" @click="$router.push('/shop')">道具商城</a> / <a href="javascript:;" @click="$router.push('/money-shop')">货币商店</a> / <a href="javascript:;" @click="$router.push('/medals')">勋章大全</a> / 拍卖建设中<br></div>
+    <div class="module-content"><a href="javascript:;" @click="$router.push('/shop')">道具商城</a> / <a href="javascript:;" @click="$router.push('/money-shop')">货币商店</a> / <a href="javascript:;" @click="$router.push('/store')">店铺街</a> / <a href="javascript:;" @click="$router.push('/book')">书城</a> / <a href="javascript:;" @click="$router.push('/shelf')">书架</a> / <a href="javascript:;" @click="$router.push('/medals')">勋章大全</a> / 拍卖建设中<br></div>
 
     <!-- 游戏大厅 -->
     <div class="module-title">【社区游戏大厅】</div>
@@ -60,10 +64,13 @@ import api from '../api'
 
 export default {
   name: 'Nav',
-  data () { return { hotThreads: [] } },
+  data () { return { hotThreads: [], hotBooks: [] } },
   mounted () {
     api.get('/plaza').then(r => {
       if (r.code === 0 && r.data) this.hotThreads = (r.data.fine_threads || []).slice(0, 3)
+    })
+    api.get('/books').then(r => {
+      if (r.code === 0 && r.data) this.hotBooks = (r.data.recommend || []).slice(0, 3)
     })
   },
   methods: {

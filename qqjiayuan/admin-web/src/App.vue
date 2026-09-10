@@ -73,6 +73,8 @@
           <el-submenu index="g-book">
             <template slot="title"><i class="el-icon-reading"></i><span>书城管理</span></template>
             <el-menu-item index="books"><i class="el-icon-notebook-1"></i>小说列表</el-menu-item>
+            <el-menu-item index="bookChapters"><i class="el-icon-collection-tag"></i>章节管理</el-menu-item>
+            <el-menu-item index="bookComments"><i class="el-icon-chat-line-square"></i>书评管理</el-menu-item>
           </el-submenu>
           <!-- 会员特权（诺哈 vip/） -->
           <el-submenu index="g-vip">
@@ -185,8 +187,8 @@ export default {
         articles: '文章管理', guestbook: '留言本管理', messages: '家信管理',
         spaces: '空间列表',
         homes: '家园列表', visitors: '家园访客',
-        shops: '店铺管理', goods: '道具商城', moneyShop: '货币商店', shopGoods: '店铺商品', shopOrders: '订单管理', shopComments: '评论管理',
-        books: '小说列表',
+        shops: '店铺管理', goods: '道具商城', moneyShop: '货币商店', shopGoods: '商品管理', shopOrders: '订单管理', shopComments: '评论管理',
+        books: '小说列表', bookChapters: '章节管理', bookComments: '书评管理',
         privileges: '特权管理',
         announcements: '公告广播',
         games: '游戏大厅', badges: '勋章管理', gardenActivities: '花园活动', gardenSeeds: '花园花种', gardenMaps: '花之图谱', gardenMixes: '合成配方', gardenElves: '精灵花册', gardenData: '花园数据管理',

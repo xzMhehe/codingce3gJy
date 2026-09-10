@@ -101,6 +101,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/families/pending", famH.Pending)
 		api.GET("/families/activity-threads", famH.ActivityThreads)
 
+		// 店铺商城公开（店铺街/商品详情/评价）
+		storeH := &handler.StoreHandler{DB: db}
+		api.GET("/stores", storeH.Shops)
+		api.GET("/store-goods/:id", storeH.GoodsDetail)
+		api.GET("/store-goods/:id/comments", storeH.GoodsComments)
+
 		// 花园活动公开列表
 		api.GET("/garden-activities", gardenH.ActivityList)
 		api.GET("/plaza-sections", plazaH.Sections)
@@ -116,6 +122,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/books/list", bookH.List)
 		api.GET("/books/categories", bookH.Categories)
 		api.GET("/books/:id", bookH.Detail)
+		api.GET("/books/:id/chapters", bookH.Chapters)
+		api.GET("/books/:id/comments", bookH.Comments)
+		api.GET("/chapters/:id", bookH.Chapter)
 
 		// 空间公开接口
 		api.GET("/space/:userId", spaceH.SpaceInfo)
@@ -185,6 +194,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/threads/:id/favorite-status", favH.Status)
 			authed.GET("/favorite-threads", favH.MyFavorites)
 			authed.GET("/my-replies", favH.MyReplies)
+
+			// 店铺商城（登录态：开店/上货/交易/评价，诺哈 wap/shop）
+			authed.GET("/stores/my", storeH.MyShop)
+			authed.POST("/stores", storeH.ShopCreate)
+			authed.GET("/stores/:id", storeH.ShopDetail)
+			authed.POST("/store-goods", storeH.GoodsAdd)
+			authed.PUT("/store-goods/:id", storeH.GoodsEdit)
+			authed.DELETE("/store-goods/:id", storeH.GoodsDel)
+			authed.GET("/store-goods-mine", storeH.MyGoods)
+			authed.POST("/store-orders", storeH.OrderBuy)
+			authed.GET("/store-orders", storeH.MyOrders)
+			authed.POST("/store-orders/:id/deliver", storeH.OrderDeliver)
+			authed.POST("/store-orders/:id/receive", storeH.OrderReceive)
+			authed.POST("/store-orders/:id/cancel", storeH.OrderCancel)
+			authed.POST("/store-comments", storeH.CommentAdd)
+			authed.POST("/store-comments/:id/reply", storeH.ReplyComment)
+			// 书城（登录态：书评/书架）
+			authed.POST("/books/:id/comments", bookH.CommentAdd)
+			authed.POST("/books/:id/shelf", bookH.ShelfAdd)
+			authed.DELETE("/books/:id/shelf", bookH.ShelfDel)
+			authed.GET("/me/shelf", bookH.ShelfList)
 
 			// 帖子互动：赞/踩/打赏/送花/分享/举报
 			authed.POST("/threads/:id/vote", itH.Vote)
@@ -567,10 +597,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/messages", perm(db, "admin:access"), adminH.AdminMessages)
 				admin.DELETE("/messages/:id", perm(db, "admin:access"), adminH.AdminMessageDel)
 
-				// ============ 书城管理 book/（诺哈：小说列表） ============
+				// ============ 书城管理 book/（诺哈：小说/章节/书评） ============
 				admin.GET("/books", perm(db, "admin:access"), adminH.AdminBooks)
+				admin.POST("/books", perm(db, "admin:access"), adminH.AdminBookCreate)
 				admin.PUT("/books/:id", perm(db, "admin:access"), adminH.AdminBookUpdate)
 				admin.DELETE("/books/:id", perm(db, "admin:access"), adminH.AdminBookDel)
+				admin.GET("/books/:id/chapters", perm(db, "admin:access"), adminH.AdminBookChapters)
+				admin.POST("/books/:id/chapters", perm(db, "admin:access"), adminH.AdminChapterCreate)
+				admin.PUT("/book-chapters/:id", perm(db, "admin:access"), adminH.AdminChapterUpdate)
+				admin.DELETE("/book-chapters/:id", perm(db, "admin:access"), adminH.AdminChapterDel)
+				admin.GET("/book-comments", perm(db, "admin:access"), adminH.AdminBookComments)
+				admin.PUT("/book-comments/:id", perm(db, "admin:access"), adminH.AdminBookCommentUpdate)
+				admin.DELETE("/book-comments/:id", perm(db, "admin:access"), adminH.AdminBookCommentDel)
 
 				// ============ 系统配置 config/（站点设置） ============
 				admin.GET("/site-config", perm(db, "admin:access"), adminH.AdminSiteConfig)
