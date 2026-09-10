@@ -1357,8 +1357,8 @@ func (h *GardenHandler) SubmitActivity(c *gin.Context) {
 	resp.OK(c, gin.H{"reward": reward, "amount": amount})
 }
 
-// signRewards 七日连签奖励表：{花种数, G币, 经验, 元宝}（连续第N天）
-var signRewards = [7][4]int{
+// loadSignRewards 七日连签奖励配置（garden_sign_rewards 表，管理端可调；缺行用默认值兜底）
+var signRewardDefaults = [7][4]int{
 	{1, 500, 200, 0},
 	{2, 1000, 300, 0},
 	{3, 2000, 500, 0},
@@ -1366,6 +1366,23 @@ var signRewards = [7][4]int{
 	{4, 10000, 1000, 0},
 	{4, 20000, 1500, 0},
 	{5, 30000, 2000, 5},
+}
+
+func (h *GardenHandler) loadSignRewards() [7][4]int {
+	var out [7][4]int
+	var rows []model.GardenSignReward
+	h.DB.Order("day ASC").Find(&rows)
+	for _, r := range rows {
+		if r.Day >= 1 && r.Day <= 7 {
+			out[r.Day-1] = [4]int{r.SeedN, r.Coins, r.Exp, r.Ingots}
+		}
+	}
+	for i := 0; i < 7; i++ {
+		if out[i] == [4]int{} {
+			out[i] = signRewardDefaults[i]
+		}
+	}
+	return out
 }
 
 // 七日连签状态：连续天数制（昨天有签则续轮，中断从第1天重算）
@@ -1392,10 +1409,11 @@ func (h *GardenHandler) SignStatus(c *gin.Context) {
 		nextDay = last.DayNo
 	}
 	days := make([]gin.H, 7)
+	rws := h.loadSignRewards()
 	for i := 0; i < 7; i++ {
 		days[i] = gin.H{"day": i + 1, "signed": i < progress,
 			"is_next": !todaySigned && i+1 == nextDay,
-			"reward":  signRewards[i]}
+			"reward":  rws[i]}
 	}
 	resp.OK(c, gin.H{
 		"days": days, "signed_count": progress, "today_signed": todaySigned, "next_day": nextDay,
@@ -1424,7 +1442,8 @@ func (h *GardenHandler) Sign(c *gin.Context) {
 	}
 	h.DB.Create(&model.GardenSign{UserID: uid, SignDate: today, WeekDay: int(now.Weekday()), DayNo: dayNo})
 
-	rw := signRewards[dayNo-1]
+	rws := h.loadSignRewards()
+	rw := rws[dayNo-1]
 	seedN, coins, exp, ingot := rw[0], rw[1], rw[2], rw[3]
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
 		"coins": gorm.Expr("coins + ?", coins), "yuanbao": gorm.Expr("yuanbao + ?", ingot)})
@@ -2061,6 +2080,78 @@ func (h *GardenHandler) AdminGardenRank(c *gin.Context) {
 		})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
+}
+
+// AdminSignRewards 签到奖励配置列表（全量7行）
+func (h *GardenHandler) AdminSignRewards(c *gin.Context) {
+	var rows []model.GardenSignReward
+	h.DB.Order("day ASC").Find(&rows)
+	resp.OK(c, rows)
+}
+
+// AdminSignRewardUpdate 签到奖励配置更新（按天）
+func (h *GardenHandler) AdminSignRewardUpdate(c *gin.Context) {
+	var req struct {
+		SeedN  int `json:"seed_n"`
+		Coins  int `json:"coins"`
+		Exp    int `json:"exp"`
+		Ingots int `json:"ingots"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	day, _ := strconv.Atoi(c.Param("day"))
+	if day < 1 || day > 7 {
+		resp.ParamError(c, "天数只能是1-7")
+		return
+	}
+	if req.SeedN < 0 || req.Coins < 0 || req.Exp < 0 || req.Ingots < 0 {
+		resp.ParamError(c, "奖励不能为负数")
+		return
+	}
+	var row model.GardenSignReward
+	if err := h.DB.Where("day = ?", day).First(&row).Error; err != nil {
+		row = model.GardenSignReward{Day: day}
+		h.DB.Create(&row)
+	}
+	h.DB.Model(&model.GardenSignReward{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+		"seed_n": req.SeedN, "coins": req.Coins, "exp": req.Exp, "ingots": req.Ingots})
+	resp.OK(c, gin.H{"msg": "签到奖励已更新"})
+}
+
+// AdminSignStats 签到统计：今日人数 / 昨日人数 / 本轮签满人数 / 累计次数
+func (h *GardenHandler) AdminSignStats(c *gin.Context) {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+	weekAgo := now.AddDate(0, 0, -6).Format("2006-01-02")
+	var todayCnt, yesterdayCnt, weekCnt, totalCnt, fullRound int64
+	h.DB.Model(&model.GardenSign{}).Where("sign_date = ?", today).Count(&todayCnt)
+	h.DB.Model(&model.GardenSign{}).Where("sign_date = ?", yesterday).Count(&yesterdayCnt)
+	h.DB.Model(&model.GardenSign{}).Where("sign_date >= ?", weekAgo).Count(&weekCnt)
+	h.DB.Model(&model.GardenSign{}).Count(&totalCnt)
+	// 今日签到了连续第7天的（当日大奖人数）
+	h.DB.Model(&model.GardenSign{}).Where("sign_date = ? AND day_no = 7", today).Count(&fullRound)
+	// 今日发放总量（按奖励配置估算）
+	rws := h.loadSignRewards()
+	var coinsOut, expOut, seedOut, ingotOut int64
+	var todays []model.GardenSign
+	h.DB.Where("sign_date = ?", today).Find(&todays)
+	for _, s := range todays {
+		if s.DayNo >= 1 && s.DayNo <= 7 {
+			rw := rws[s.DayNo-1]
+			coinsOut += int64(rw[1])
+			expOut += int64(rw[2])
+			seedOut += int64(rw[0])
+			ingotOut += int64(rw[3])
+		}
+	}
+	resp.OK(c, gin.H{
+		"today_cnt": todayCnt, "yesterday_cnt": yesterdayCnt, "week_cnt": weekCnt,
+		"total_cnt": totalCnt, "full_round": fullRound,
+		"coins_out": coinsOut, "exp_out": expOut, "seed_out": seedOut, "ingot_out": ingotOut,
+	})
 }
 
 // 批量查询用户昵称

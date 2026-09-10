@@ -55,7 +55,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenBottle{}, &model.GardenGift{}, &model.GardenMix{},
 		&model.GardenMsg{}, &model.GardenMapLog{}, &model.GardenLandLog{},
 		&model.GardenElf{}, &model.GardenElfLog{},
-		&model.GardenSign{},
+		&model.GardenSign{}, &model.GardenSignReward{},
 		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
 		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
 		&model.ParkUser{}, &model.CarShop{}, &model.CarGarage{}, &model.CarStop{}, &model.CarLog{}, &model.CarMsg{},
@@ -224,6 +224,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedBooks(db)
 	seedGardenActivities(db)
 	seedGardenData(db)
+	seedGardenSignRewards(db)
 	seedFarmData(db)
 	seedParkData(db)
 	seedPlazaSections(db)
@@ -556,6 +557,27 @@ func seedGardenData(db *gorm.DB) {
 		} else {
 			// 补全图片字段（老库已有行）
 			db.Model(&model.GardenElf{}).Where("name = ?", e.Name).Update("img", e.Img)
+		}
+	}
+}
+
+// seedGardenSignRewards 魔法花园七日连签奖励配置（幂等：按 day 补齐，已有不覆盖）
+// 连续第N天：花种 / G币 / 经验 / 元宝；第7天大奖后进入新一轮
+func seedGardenSignRewards(db *gorm.DB) {
+	rows := []model.GardenSignReward{
+		{Day: 1, SeedN: 1, Coins: 500, Exp: 200, Ingots: 0},
+		{Day: 2, SeedN: 2, Coins: 1000, Exp: 300, Ingots: 0},
+		{Day: 3, SeedN: 3, Coins: 2000, Exp: 500, Ingots: 0},
+		{Day: 4, SeedN: 3, Coins: 4000, Exp: 700, Ingots: 0},
+		{Day: 5, SeedN: 4, Coins: 10000, Exp: 1000, Ingots: 0},
+		{Day: 6, SeedN: 4, Coins: 20000, Exp: 1500, Ingots: 0},
+		{Day: 7, SeedN: 5, Coins: 30000, Exp: 2000, Ingots: 5},
+	}
+	for _, r := range rows {
+		var n int64
+		db.Model(&model.GardenSignReward{}).Where("day = ?", r.Day).Count(&n)
+		if n == 0 {
+			db.Create(&r)
 		}
 	}
 }

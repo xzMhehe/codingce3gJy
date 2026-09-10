@@ -96,6 +96,7 @@
               <el-menu-item index="gardenMaps"><i class="el-icon-picture"></i>花之图谱</el-menu-item>
               <el-menu-item index="gardenMixes"><i class="el-icon-s-cooperation"></i>合成配方</el-menu-item>
               <el-menu-item index="gardenElves"><i class="el-icon-star-on"></i>精灵花册</el-menu-item>
+              <el-menu-item index="gardenSign"><i class="el-icon-date"></i>签到管理</el-menu-item>
               <el-menu-item index="gardenData"><i class="el-icon-data-analysis"></i>花园数据管理</el-menu-item>
             </el-submenu>
             <el-submenu index="g-farm">

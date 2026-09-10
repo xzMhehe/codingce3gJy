@@ -503,7 +503,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/garden-users/:uid/bag", perm(db, "admin:access"), gardenH.AdminGardenBagSet)
 				admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "admin:access"), gardenH.AdminGardenFlowerSet)
 				admin.GET("/garden-logs", perm(db, "admin:access"), gardenH.AdminGardenLogs)
-				admin.GET("/garden-rank", perm(db, "admin:access"), gardenH.AdminGardenRank)
+			admin.GET("/garden-rank", perm(db, "admin:access"), gardenH.AdminGardenRank)
+			admin.GET("/garden-sign-rewards", perm(db, "admin:access"), gardenH.AdminSignRewards)
+			admin.PUT("/garden-sign-rewards/:day", perm(db, "admin:access"), gardenH.AdminSignRewardUpdate)
+			admin.GET("/garden-sign-stats", perm(db, "admin:access"), gardenH.AdminSignStats)
 				// 开心农场管理（种子/化肥/陷阱/用户数据/日志/排行）
 				admin.GET("/farm-seeds", perm(db, "admin:access"), farmH.AdminSeeds)
 				admin.POST("/farm-seeds", perm(db, "admin:access"), farmH.AdminSeedCreate)

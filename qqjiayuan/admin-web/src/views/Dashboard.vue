@@ -67,6 +67,7 @@
     <admin-garden-maps v-else-if="tab === 'gardenMaps'" />
     <admin-garden-mixes v-else-if="tab === 'gardenMixes'" />
     <admin-garden-elves v-else-if="tab === 'gardenElves'" />
+    <admin-garden-sign v-else-if="tab === 'gardenSign'" />
     <admin-garden-data v-else-if="tab === 'gardenData'" />
     <admin-farm-seeds v-else-if="tab === 'farmSeeds'" />
     <admin-farm-items v-else-if="tab === 'farmItems'" />
@@ -113,6 +114,7 @@ import AdminGardenSeeds from '../components/admin/AdminGardenSeeds.vue'
 import AdminGardenMaps from '../components/admin/AdminGardenMaps.vue'
 import AdminGardenMixes from '../components/admin/AdminGardenMixes.vue'
 import AdminGardenElves from '../components/admin/AdminGardenElves.vue'
+import AdminGardenSign from '../components/admin/AdminGardenSign.vue'
 import AdminGardenData from '../components/admin/AdminGardenData.vue'
 import AdminFarmSeeds from '../components/admin/AdminFarmSeeds.vue'
 import AdminFarmItems from '../components/admin/AdminFarmItems.vue'
@@ -146,7 +148,7 @@ import AdminSiteConfig from '../components/admin/AdminSiteConfig.vue'
 
 export default {
   name: 'Dashboard',
-  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenData, AdminFarmSeeds, AdminFarmItems, AdminFarmData, AdminParkCars, AdminParkData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminUserPhones, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminSiteConfig },
+  components: { AdminUsers, AdminHome, AdminWallet, AdminBoards, AdminBoardCategories, AdminWordFilters, AdminThreads, AdminAnnouncements, AdminRoles, AdminBadges, AdminPrivileges, AdminGames, AdminGardenActivities, AdminGardenSeeds, AdminGardenMaps, AdminGardenMixes, AdminGardenElves, AdminGardenSign, AdminGardenData, AdminFarmSeeds, AdminFarmItems, AdminFarmData, AdminParkCars, AdminParkData, AdminResources, AdminSpaces, AdminWalletLogs, AdminInvites, AdminUserDocu, AdminUserContacts, AdminUserAddresses, AdminUserProtections, AdminUserLogs, AdminUserPhones, AdminThreadRecycle, AdminHomes, AdminVisitors, AdminShops, AdminShopGoods, AdminShopOrders, AdminShopComments, AdminSiteArticles, AdminGuestbook, AdminMessages, AdminBooks, AdminSiteConfig },
   data () {
     return { stats: {}, adminName: '' }
   },
