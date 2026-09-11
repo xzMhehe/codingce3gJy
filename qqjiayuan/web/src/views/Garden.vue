@@ -595,6 +595,21 @@ export default {
   },
   mounted () {
     this.loadAll()
+    // 拦截后退快捷键(Alt+左/后退)：不退出游戏，回退到游戏首页
+    // 推入一条“替身”历史(与当前游戏URL相同)，使后退键只会弹回替身而在游戏内
+    history.pushState({ __gardenGuard: true }, '')
+    this._onBack = () => {
+      if (location.hash.split('?')[0].includes('/games/garden')) {
+        this.cur = 'garden'
+        this.loadAll()
+        window.scrollTo(0, 0)
+      }
+      history.pushState({ __gardenGuard: true }, '')
+    }
+    window.addEventListener('popstate', this._onBack)
+  },
+  beforeDestroy () {
+    if (this._onBack) window.removeEventListener('popstate', this._onBack)
   },
   methods: {
     gardenImg (file) { return '/static/picture/garden/' + file },

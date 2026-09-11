@@ -971,6 +971,22 @@ export default {
   },
   mounted() {
     this.load()
+    // 拦截后退快捷键(Alt+左/后退)：不退出游戏，回退到游戏首页
+    // 推入一条“替身”历史(与当前游戏URL相同)，使后退键只会弹回替身而在游戏内
+    history.pushState({ __jwtGuard: true }, '')
+    this._onBack = () => {
+      if (location.hash.split('?')[0].includes('/games/jwt')) {
+        this.cur = 'home'
+        this.loadArena()
+        window.scrollTo(0, 0)
+      }
+      // 始终保持一个替身在最上层，后退不会真正离开游戏
+      history.pushState({ __jwtGuard: true }, '')
+    }
+    window.addEventListener('popstate', this._onBack)
+  },
+  beforeDestroy() {
+    if (this._onBack) window.removeEventListener('popstate', this._onBack)
   },
   methods: {
     async load() {
