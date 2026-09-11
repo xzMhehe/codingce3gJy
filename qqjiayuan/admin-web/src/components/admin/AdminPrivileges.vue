@@ -511,7 +511,7 @@ export default {
       }).catch(() => {})
     },
     cleanExpired () {
-      this.$confirm('确定清除所有已到期的特权会员吗？（复刻诺哈：到期即清空等级与成长值）', '提示').then(() => {
+      this.$confirm('确定清除所有已到期的特权会员吗？（到期即清空等级与成长值）', '提示').then(() => {
         api.post('/admin/privileges/expired-clean').then(r => { if (r.code === 0) { this.load() } })
       }).catch(() => {})
     },

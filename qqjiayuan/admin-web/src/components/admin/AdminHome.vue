@@ -6,7 +6,7 @@
                   style="width:220px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
         <div class="grow" />
-        <span class="txt-fade">点「资料」编辑会员档案（对齐诺哈 admin/user 资料编辑）</span>
+        <span class="txt-fade">点「资料」编辑会员档案</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
         <el-table-column prop="id" label="号码" width="90" align="center" />

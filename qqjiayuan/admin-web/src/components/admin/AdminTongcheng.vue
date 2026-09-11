@@ -5,7 +5,7 @@
         <!-- 省份与城市 -->
         <el-tab-pane label="省份与城市" name="boards">
           <div class="toolbar">
-            <span class="txt-fade">同城客栈（参考诺哈 wap_bbs pid=9：省份→城市带区号）</span>
+            <span class="txt-fade">同城客栈（省份→城市带区号）</span>
             <div class="grow" />
             <el-button type="primary" icon="el-icon-plus" @click="openProv(null)">新增省份</el-button>
           </div>
