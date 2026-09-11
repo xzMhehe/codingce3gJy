@@ -52,6 +52,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	gardenH := &handler.GardenHandler{DB: db}
 	farmH := &handler.FarmHandler{DB: db}
 	parkH := &handler.ParkHandler{DB: db}
+	jwtH := &handler.JwtHandler{DB: db}
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -312,6 +313,49 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/games/park/seal", parkH.Seal)
 			authed.GET("/games/park/garage", parkH.Garage)
 			authed.GET("/games/park/top", parkH.Top)
+
+			// 精武堂（复刻 wap 精武堂：属性/修炼/技能/比武/锻造/任务/头衔/帮派）
+			authed.GET("/games/jwt/view", jwtH.View)
+			authed.GET("/games/jwt/shop", jwtH.Shop)
+			authed.POST("/games/jwt/buy", jwtH.Buy)
+			authed.POST("/games/jwt/energy", jwtH.EnergyAlloc)
+			authed.GET("/games/jwt/skills", jwtH.SkillShop)
+			authed.POST("/games/jwt/learn", jwtH.LearnSkill)
+			authed.POST("/games/jwt/skill-act", jwtH.SkillAct)
+			authed.POST("/games/jwt/practice", jwtH.Practice)
+			authed.GET("/games/jwt/arena", jwtH.ArenaList)
+			authed.POST("/games/jwt/arena", jwtH.Arena)
+			authed.GET("/games/jwt/arena-live", jwtH.ArenaLive)
+			authed.GET("/games/jwt/records", jwtH.ArenaRecords)
+			authed.GET("/games/jwt/records/:id", jwtH.RecordDetail)
+			authed.GET("/games/jwt/bag", jwtH.Bag)
+			authed.POST("/games/jwt/item-use", jwtH.UseItem)
+			authed.POST("/games/jwt/item-drop", jwtH.ItemDrop)
+			authed.POST("/games/jwt/equip", jwtH.Equip)
+			authed.POST("/games/jwt/unequip", jwtH.Unequip)
+			authed.GET("/games/jwt/forge", jwtH.Forge)
+			authed.POST("/games/jwt/forge", jwtH.ForgeItem)
+			authed.GET("/games/jwt/tasks", jwtH.Tasks)
+			authed.POST("/games/jwt/sign", jwtH.Sign)
+			authed.POST("/games/jwt/reward", jwtH.Reward)
+			authed.POST("/games/jwt/chat", jwtH.Chat)
+			authed.GET("/games/jwt/chat", jwtH.ChatList)
+			authed.GET("/games/jwt/logs", jwtH.Logs)
+			authed.GET("/games/jwt/titles", jwtH.Titles)
+			authed.POST("/games/jwt/titles", jwtH.Titles)
+			authed.GET("/games/jwt/gangs", jwtH.Gangs)
+			authed.POST("/games/jwt/gang/create", jwtH.GangCreate)
+			authed.POST("/games/jwt/gang/join", jwtH.GangJoin)
+			authed.POST("/games/jwt/gang/leave", jwtH.GangLeave)
+			authed.GET("/games/jwt/ranking", jwtH.Ranking)
+			authed.GET("/games/jwt/title-ranking", jwtH.TitleRanking)
+			authed.POST("/games/jwt/myskill", jwtH.MySkill)
+			authed.GET("/games/jwt/friends", jwtH.Friends)
+			authed.POST("/games/jwt/profile", jwtH.PlayerProfile)
+			authed.POST("/games/jwt/profile-edit", jwtH.ProfileEdit)
+			authed.POST("/games/jwt/levelup", jwtH.LevelUp)
+			authed.POST("/games/jwt/gangview", jwtH.GangView)
+			authed.POST("/games/jwt/gangapply", jwtH.GangApply)
 
 			// 我的游戏
 			authed.GET("/my-games", gameH.MyList)
@@ -597,6 +641,26 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/park-users/:uid", perm(db, "admin:access"), parkH.AdminUserEdit)
 				admin.PUT("/park-users/:uid/spots/:id/clear", perm(db, "admin:access"), parkH.AdminSpotClear)
 				admin.GET("/park-logs", perm(db, "admin:access"), parkH.AdminLogs)
+
+				// 精武堂管理（玩家/道具/技能/帮派/聊天）
+				admin.GET("/jwt-players", perm(db, "admin:access"), adminH.AdminJwtPlayers)
+				admin.GET("/jwt-players/:uid/detail", perm(db, "admin:access"), adminH.AdminJwtPlayerDetail)
+				admin.PUT("/jwt-players/:uid", perm(db, "admin:access"), adminH.AdminJwtPlayerUpdate)
+				admin.GET("/jwt-items", perm(db, "admin:access"), adminH.AdminJwtItems)
+				admin.POST("/jwt-items", perm(db, "admin:access"), adminH.AdminJwtItemCreate)
+				admin.PUT("/jwt-items/:id", perm(db, "admin:access"), adminH.AdminJwtItemUpdate)
+				admin.DELETE("/jwt-items/:id", perm(db, "admin:access"), adminH.AdminJwtItemDelete)
+				admin.GET("/jwt-skills", perm(db, "admin:access"), adminH.AdminJwtSkills)
+				admin.POST("/jwt-skills", perm(db, "admin:access"), adminH.AdminJwtSkillCreate)
+				admin.PUT("/jwt-skills/:id", perm(db, "admin:access"), adminH.AdminJwtSkillUpdate)
+				admin.DELETE("/jwt-skills/:id", perm(db, "admin:access"), adminH.AdminJwtSkillDelete)
+				admin.GET("/jwt-gangs", perm(db, "admin:access"), adminH.AdminJwtGangs)
+				admin.DELETE("/jwt-gangs/:id", perm(db, "admin:access"), adminH.AdminJwtGangDelete)
+				admin.GET("/jwt-chats", perm(db, "admin:access"), adminH.AdminJwtChats)
+				admin.DELETE("/jwt-chats/:id", perm(db, "admin:access"), adminH.AdminJwtChatDelete)
+				admin.GET("/jwt-records", perm(db, "admin:access"), adminH.AdminJwtRecords)
+				admin.GET("/jwt-records/:id/detail", perm(db, "admin:access"), adminH.AdminJwtRecordDetail)
+				admin.DELETE("/jwt-records/:id", perm(db, "admin:access"), adminH.AdminJwtRecordDelete)
 
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)

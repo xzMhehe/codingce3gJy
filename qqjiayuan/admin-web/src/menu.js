@@ -39,6 +39,11 @@ import AdminPrivileges from './components/admin/AdminPrivileges.vue'
 import AdminAnnouncements from './components/admin/AdminAnnouncements.vue'
 import AdminGames from './components/admin/AdminGames.vue'
 import AdminBadges from './components/admin/AdminBadges.vue'
+import AdminJwtPlayers from './components/admin/AdminJwtPlayers.vue'
+import AdminJwtItems from './components/admin/AdminJwtItems.vue'
+import AdminJwtSkills from './components/admin/AdminJwtSkills.vue'
+import AdminJwtRecords from './components/admin/AdminJwtRecords.vue'
+import AdminJwtData from './components/admin/AdminJwtData.vue'
 import AdminGardenActivities from './components/admin/AdminGardenActivities.vue'
 import AdminGardenSeeds from './components/admin/AdminGardenSeeds.vue'
 import AdminGardenMaps from './components/admin/AdminGardenMaps.vue'
@@ -183,6 +188,16 @@ export const menu = [
         children: [
           { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: AdminParkCars },
           { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: AdminParkData }
+        ]
+      },
+      {
+        key: 'g-jwt', name: '精武堂', icon: 'el-icon-s-flag',
+        children: [
+          { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminJwtPlayers },
+          { key: 'jwtItems', name: '道具管理', icon: 'el-icon-goods', component: AdminJwtItems },
+          { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: AdminJwtSkills },
+          { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: AdminJwtRecords },
+          { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData }
         ]
       }
     ]

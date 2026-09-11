@@ -82,6 +82,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadAttachment{}, &model.WordFilter{},
 		&model.CityManager{},
 		&model.UserBadge{},
+		&model.JwtPlayer{}, &model.JwtItem{}, &model.JwtBag{},
+		&model.JwtSkill{}, &model.JwtLearnedSkill{},
+		&model.JwtGang{}, &model.JwtGangMember{}, &model.JwtGangApply{},
+		&model.JwtChat{}, &model.JwtLog{}, &model.JwtArenaRecord{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -243,6 +247,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGardenSignRewards(db)
 	seedFarmData(db)
 	seedParkData(db)
+	seedJwt(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)
@@ -2063,7 +2068,7 @@ func seedGames(db *gorm.DB) {
 		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", Intro: "吹牛打闹，好友互喷，乐在其中", BoardID: bid("大话吹牛"), Sort: 10},
 		{Name: "砸金蛋", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "金蛋一砸，好运连连", Intro: "花G币砸金蛋，砸出金币元宝惊喜不断", BoardID: bid("砸金蛋"), Sort: 11},
 		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 12},
-		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", BoardID: bid("精武堂"), Sort: 13},
+		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", Intro: "武侠格斗成长，练功比武，技能书店，锻造神兵，激活头衔，加入帮派！", Path: "/games/jwt", BoardID: bid("精武堂"), Sort: 13},
 		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 14},
 		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 15},
 		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
