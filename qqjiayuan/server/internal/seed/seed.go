@@ -278,6 +278,15 @@ func seedResources(db *gorm.DB, staticDir string) {
 			add("", pv.File, "priv", pv.Name, pv.Level)
 		}
 	}
+	// 勋章图标资源：始终补齐到 badge 分类（幂等；已存在但为 other 的改为 badge），补齐缺失入库
+	for _, f := range model.BadgeIconPresets {
+		var res model.Resource
+		if err := db.Where("file = ?", "picture/"+f).First(&res).Error; err != nil {
+			db.Create(&model.Resource{File: "picture/" + f, Category: "badge", Name: f, Level: 0, Status: 1})
+		} else if res.Category != "badge" {
+			db.Model(&model.Resource{}).Where("id = ?", res.ID).Update("category", "badge")
+		}
+	}
 	// 扫描目录登记新文件
 	syncDir(db, staticDir)
 }
@@ -1639,7 +1648,162 @@ func seedBadges(db *gorm.DB) {
 			db.Create(&badges[i])
 		}
 	}
-	// 老库清除「贵族一级/二级」勋章（贵族改为身份展示，非勋章）及其授予记录（幂等）
+	// 复刻诺哈勋章：补齐勋章商店（诺哈 wap_medal_shop 职务/贡献勋章，幂等，已存在则跳过）
+	noha := []model.Badge{
+		{Name: "书城仲裁", Icon: "201.gif", Remark: "书城仲裁专属", Price: 0, Period: 0, Sort: 9},
+		{Name: "书城版主", Icon: "202.gif", Remark: "书城版主专属", Price: 0, Period: 0, Sort: 10},
+		{Name: "公坛仲裁", Icon: "701.gif", Remark: "公坛仲裁专属", Price: 0, Period: 0, Sort: 11},
+		{Name: "公坛副仲裁", Icon: "702.gif", Remark: "公坛副仲裁专属", Price: 0, Period: 0, Sort: 12},
+		{Name: "公坛版主", Icon: "703.gif", Remark: "公坛版主专属", Price: 0, Period: 0, Sort: 13},
+		{Name: "公坛版副", Icon: "704.gif", Remark: "公坛版副专属", Price: 0, Period: 0, Sort: 14},
+		{Name: "聊室聊管", Icon: "705.gif", Remark: "聊室管理专属", Price: 0, Period: 0, Sort: 15},
+		{Name: "聊室副仲裁", Icon: "1002.gif", Remark: "聊室副仲裁专属", Price: 0, Period: 0, Sort: 16},
+		{Name: "聊室副管", Icon: "1004.gif", Remark: "聊室副管专属", Price: 0, Period: 0, Sort: 17},
+		{Name: "家族仲裁", Icon: "801.gif", Remark: "家族仲裁专属", Price: 0, Period: 0, Sort: 18},
+		{Name: "家族族长", Icon: "803.gif", Remark: "家族族长专属", Price: 0, Period: 0, Sort: 19},
+		{Name: "家族长老", Icon: "802.gif", Remark: "家族长老专属", Price: 0, Period: 0, Sort: 20},
+		{Name: "同城仲裁", Icon: "902.gif", Remark: "同城仲裁专属", Price: 0, Period: 0, Sort: 23},
+		{Name: "同城城副", Icon: "904.gif", Remark: "同城城副专属", Price: 0, Period: 0, Sort: 24},
+		{Name: "同城聊副", Icon: "906.gif", Remark: "同城聊副专属", Price: 0, Period: 0, Sort: 25},
+		{Name: "客服仲裁", Icon: "1202.gif", Remark: "客服仲裁专属", Price: 0, Period: 0, Sort: 26},
+		{Name: "客服版主", Icon: "1204.gif", Remark: "客服版主专属", Price: 0, Period: 0, Sort: 27},
+		{Name: "客服聊管", Icon: "1206.gif", Remark: "客服聊管专属", Price: 0, Period: 0, Sort: 28},
+		{Name: "传媒总编", Icon: "1301.gif", Remark: "传媒总编专属", Price: 0, Period: 0, Sort: 29},
+		{Name: "传媒记者", Icon: "1303.gif", Remark: "时报记者专属", Price: 0, Period: 0, Sort: 30},
+		{Name: "传媒版副", Icon: "1305.gif", Remark: "传媒版副专属", Price: 0, Period: 0, Sort: 31},
+		{Name: "传媒聊副", Icon: "1307.gif", Remark: "传媒聊副专属", Price: 0, Period: 0, Sort: 32},
+		{Name: "帖吧副仲裁", Icon: "1402.gif", Remark: "帖吧副仲裁专属", Price: 0, Period: 0, Sort: 33},
+	}
+	for i := range noha {
+		var cnt int64
+		db.Model(&model.Badge{}).Where("name = ?", noha[i].Name).Count(&cnt)
+		if cnt == 0 {
+			db.Create(&noha[i])
+		}
+	}
+	// 线上勋章中心勋章（复刻自 3gqq.cn/bbs/medal，图标已随工程静态目录下发，幂等入库，供后续迭代）
+	online := []model.Badge{
+		// G币勋章
+		{Name: "祈福", Icon: "200.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 34},
+		{Name: "植树节", Icon: "201.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 35},
+		{Name: "三潴美女", Icon: "140.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 36},
+		{Name: "三潴帅哥", Icon: "141.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 37},
+		{Name: "可爱兔", Icon: "1689.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 38},
+		{Name: "秀恩爱", Icon: "163.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 39},
+		{Name: "超级大明星", Icon: "164.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 40},
+		{Name: "幸福风车", Icon: "165.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 41},
+		{Name: "红蘑菇", Icon: "166.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 42},
+		{Name: "小萌宠", Icon: "172.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 43},
+		{Name: "小爱心", Icon: "173.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 44},
+		{Name: "风车", Icon: "176.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 45},
+		{Name: "比心", Icon: "177.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 46},
+		{Name: "小土豪", Icon: "178.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 47},
+		{Name: "小太阳", Icon: "179.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 48},
+		{Name: "小丑", Icon: "180.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 49},
+		{Name: "高富帅", Icon: "181.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 50},
+		{Name: "爱的城堡", Icon: "182.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 51},
+		{Name: "宝石", Icon: "184.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 52},
+		{Name: "小跳跳", Icon: "185.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 53},
+		{Name: "幸福王冠", Icon: "186.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 54},
+		{Name: "魔法书", Icon: "187.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 55},
+		{Name: "画心", Icon: "188.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 56},
+		{Name: "魔力砖石", Icon: "189.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 57},
+		{Name: "幸福轨道", Icon: "190.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 58},
+		{Name: "奔跑", Icon: "191.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 59},
+		{Name: "酷", Icon: "192.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 60},
+		{Name: "小花", Icon: "193.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 61},
+		{Name: "听音乐", Icon: "206.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 62},
+		{Name: "日历", Icon: "207.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 63},
+		{Name: "读书", Icon: "208.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 64},
+		{Name: "头", Icon: "209.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 65},
+		{Name: "马", Icon: "210.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 66},
+		{Name: "盒子", Icon: "212.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 67},
+		{Name: "蹲马桶", Icon: "214.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 68},
+		{Name: "窝粑粑", Icon: "205.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 69},
+		{Name: "黑金VIP", Icon: "194.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 70},
+		{Name: "麦兜专属勋章", Icon: "390.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 71},
+		{Name: "摘星楼", Icon: "2018.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 72},
+		{Name: "沁荷", Icon: "99996.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 73},
+		{Name: "芷曦专属", Icon: "99997.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 74},
+		{Name: "稀饭定制勋章", Icon: "888886.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 75},
+		{Name: "南枫专属勋章", Icon: "379.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 76},
+		{Name: "知意专属勋章", Icon: "380.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 77},
+		{Name: "南风家族专属勋章", Icon: "398.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 78},
+		{Name: "冷暖相依家族专属勋章", Icon: "1683.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 79},
+		{Name: "谁家蒹葭", Icon: "151.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 80},
+		{Name: "安和桥专属勋章", Icon: "3767.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 81},
+		{Name: "红尘客栈家族专属勋章", Icon: "2011.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 82},
+		{Name: "红尘客栈家族专属勋章2", Icon: "2012.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 83},
+		{Name: "南风家族专属勋章2", Icon: "2016.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 84},
+		{Name: "与世无争", Icon: "229.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 85},
+		{Name: "民报团队勋章", Icon: "230.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 86},
+		{Name: "客服团专属勋章", Icon: "235.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 87},
+		{Name: "南风家族专属勋章3", Icon: "237.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 88},
+		{Name: "花晨夕月家族勋章", Icon: "240.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 89},
+		{Name: "家服团专属勋章", Icon: "364.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 90},
+		{Name: "相惜相守家族专属勋章", Icon: "375.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 91},
+		{Name: "安和桥专属勋章2", Icon: "376.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 92},
+		{Name: "小花定制花", Icon: "88810.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 93},
+		{Name: "小花定制约", Icon: "88811.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 94},
+		{Name: "小花定制定", Icon: "88812.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 95},
+		{Name: "小花定制小", Icon: "88889.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 96},
+		{Name: "大富豪", Icon: "101.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 97},
+		// 元宝勋章
+		{Name: "小水滴", Icon: "213.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 98},
+		{Name: "花蝴蝶", Icon: "135.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 99},
+		{Name: "僵小蒙", Icon: "137.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 100},
+		{Name: "能量满满", Icon: "138.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 101},
+		{Name: "单身贵族", Icon: "132.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 102},
+		{Name: "幸运草", Icon: "143.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 103},
+		{Name: "红灯笼", Icon: "170.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 104},
+		{Name: "单身汪", Icon: "174.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 105},
+		{Name: "可爱喵", Icon: "171.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 106},
+		{Name: "幸福之吻", Icon: "167.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 107},
+		{Name: "萌新之吻", Icon: "168.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 108},
+		{Name: "520", Icon: "144.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 109},
+		{Name: "幸福一对", Icon: "133.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 110},
+		{Name: "六一节波板糖勋章", Icon: "150.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 111},
+		{Name: "戒指", Icon: "183.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 112},
+		{Name: "财神爷", Icon: "134.png", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 113},
+		{Name: "丘比特之箭", Icon: "139.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 114},
+		{Name: "小龙人", Icon: "142.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 115},
+		{Name: "中国心", Icon: "145.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 116},
+		{Name: "社区才子", Icon: "175.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 117},
+		{Name: "捕虏监", Icon: "2002.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 118},
+		{Name: "监察官", Icon: "2003.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 119},
+		{Name: "监狱长", Icon: "2000.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 120},
+		{Name: "黄金靓号", Icon: "261.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 121},
+		{Name: "红金靓号", Icon: "262.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 122},
+		{Name: "黑金靓号", Icon: "263.gif", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 123},
+		{Name: "端午安康", Icon: "20260611.png", Remark: "勋章中心·元宝", Price: 0, Period: 0, Status: 1, Sort: 124},
+		// 友友券勋章
+		{Name: "彩钻石勋章", Icon: "1989.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 125},
+		{Name: "橙钻石勋章", Icon: "1990.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 126},
+		{Name: "粉钻石勋章", Icon: "1991.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 127},
+		{Name: "黑钻石勋章", Icon: "1992.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 128},
+		{Name: "蓝钻石勋章", Icon: "1993.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 129},
+		{Name: "绿钻石勋章", Icon: "1994.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 130},
+		{Name: "紫钻石勋章", Icon: "1995.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 131},
+		{Name: "彩钻石勋章2", Icon: "366.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 132},
+		{Name: "橙钻石勋章2", Icon: "367.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 133},
+		{Name: "粉钻石勋章2", Icon: "368.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 134},
+		{Name: "黑钻石勋章2", Icon: "370.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 135},
+		{Name: "蓝钻石勋章2", Icon: "371.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 136},
+		{Name: "绿钻石勋章2", Icon: "372.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 137},
+		{Name: "紫钻石勋章2", Icon: "373.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 138},
+		{Name: "皇冠钻石勋章", Icon: "374.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 139},
+		{Name: "皇冠钻石勋章2", Icon: "1996.gif", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 140},
+		{Name: "满勤", Icon: "2021.jpg", Remark: "勋章中心·友友券", Price: 0, Period: 0, Status: 1, Sort: 141},
+		{Name: "1", Icon: "211.gif", Remark: "勋章中心·G币", Price: 0, Period: 0, Status: 1, Sort: 142},
+	}
+	for i := range online {
+		var cnt int64
+		db.Model(&model.Badge{}).Where("name = ?", online[i].Name).Count(&cnt)
+		if cnt == 0 {
+			db.Create(&online[i])
+		}
+	}
+	// 老库清除「贵族一级/贵族二级」勋章（贵族改为身份展示，非勋章）及其授予记录（幂等）
 	var nobleBadges []model.Badge
 	db.Where("name IN (?)", []string{"贵族一级", "贵族二级"}).Find(&nobleBadges)
 	if len(nobleBadges) > 0 {
@@ -1654,6 +1818,13 @@ func seedBadges(db *gorm.DB) {
 	meta := map[string]struct{ sort, price, period int }{
 		"公坛协管员": {1, 0, 0}, "公坛管理": {2, 0, 0}, "客服专员": {3, 0, 0}, "社区传媒": {4, 0, 0},
 		"老友归来": {5, 50, 30}, "原创写手": {6, 100, 30}, "尊上": {7, 500, 7}, "表情大师": {8, 200, 30},
+		"书城仲裁": {9, 0, 0}, "书城版主": {10, 0, 0}, "公坛仲裁": {11, 0, 0}, "公坛副仲裁": {12, 0, 0},
+		"公坛版主": {13, 0, 0}, "公坛版副": {14, 0, 0}, "聊室聊管": {15, 0, 0}, "聊室副仲裁": {16, 0, 0},
+		"聊室副管": {17, 0, 0}, "家族仲裁": {18, 0, 0}, "家族族长": {19, 0, 0}, "家族长老": {20, 0, 0},
+		"同城仲裁": {23, 0, 0}, "同城城副": {24, 0, 0},
+		"同城聊副": {25, 0, 0}, "客服仲裁": {26, 0, 0}, "客服版主": {27, 0, 0}, "客服聊管": {28, 0, 0},
+		"传媒总编": {29, 0, 0}, "传媒记者": {30, 0, 0}, "传媒版副": {31, 0, 0}, "传媒聊副": {32, 0, 0},
+		"帖吧副仲裁": {33, 0, 0},
 	}
 	for _, b := range existing {
 		if m, ok := meta[b.Name]; ok {
