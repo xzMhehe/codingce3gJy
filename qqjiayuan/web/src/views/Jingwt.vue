@@ -9,8 +9,9 @@
       <a href="javascript:;" @click="go('daily')">每日礼包</a> <br/>
       <div class="logo"><img src="/static/image/jwt.png" width="130" height="100" alt="精武堂" /></div><br/>
       我的状态|<a href="javascript:;" @click="go('friend')">我的好友</a><br/>
-      <a href="javascript:;" @click="go('room')">练功房</a>:{{ roomText }}
-      <a v-if="practice.practicing !== 1" href="javascript:;" @click="go('practicemode')">开始</a><br/>
+      <a href="javascript:;" @click="go('room')">练功房</a>:{{ practice.practicing === 1 ? remainingText : '未修炼' }}
+      <a v-if="practice.practicing !== 1" href="javascript:;" @click="go('practicemode')">开始</a>
+      <a v-else href="javascript:;" @click="stopPractice">停止</a><br/>
       经验:{{ g.exp }}/{{ g.next_exp }} <a href="javascript:;" @click="go('upgrade')">升级</a><br/>
       气血:{{ g.cur_hp }}-{{ c.max_hp }}(<a href="javascript:;" @click="go('bag')">提升</a>)<br/>
       气力:{{ g.cur_mp }}-{{ c.max_mp }}(<a href="javascript:;" @click="go('bag')">提升</a>)<br/>
@@ -238,12 +239,12 @@
     <!-- ==================== 修炼 ==================== -->
     <template v-else-if="cur === 'room'">
       【修炼】<a href="javascript:;" @click="loadPractice">刷新</a><br/>
-      修炼类型：{{ practice.practice_type || '普通' }}({{ practiceDuration }})<br/>
+      修炼类型：{{ practice.practice_type || '普通(4小时)' }}<br/>
       修炼经验：{{ g.exp }}/{{ g.next_exp }} <a href="javascript:;" @click="go('upgrade')">升级</a><br/>
       修炼技能：{{ skillExpText }}<br/>
-      修炼状态：{{ practiceText }}
+      修炼状态：{{ practice.practicing === 1 ? '修炼中 ' + remainingText + ' ' : '未修炼 ' }}
       <a v-if="practice.practicing !== 1" href="javascript:;" @click="go('practicemode')">选择修炼</a>
-      <span v-else><em>[剩余{{ practice.remaining_min }}分]</em></span><br/>
+      <a v-else href="javascript:;" @click="stopPractice">停止</a><br/>
       -----------<br/>
       <a href="javascript:;" @click="go('friend')">好友列表(查看修炼状态/吸取/骚扰/治疗)</a><br/>
       <a href="javascript:;" @click="go('palace')">战神宫(20级·高倍经验)</a>.<a href="javascript:;" @click="go('forge')">装备锻造</a><br/>
@@ -260,6 +261,29 @@
       <a href="javascript:;" @click="startPractice('normal')">普通修炼(4小时·免费·消耗20体力)</a><br/>
       <a href="javascript:;" @click="startPractice('long8')">加长修炼(8小时·50元宝·消耗20体力)</a><br/>
       <a href="javascript:;" @click="startPractice('long24')">加长修炼(24小时·120元宝·消耗20体力)</a><br/>
+      -----------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('contest')">比武</a>.<a href="javascript:;" @click="go('room')">修炼</a>.<a href="javascript:;" @click="go('shop')">商店</a>.<a href="javascript:;" @click="tip('赞助')">赞助</a><br/>
+      <a href="javascript:;" @click="go('profile')">属性</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('task')">任务</a>.<a href="javascript:;" @click="go('ranking')">排行</a>.<a href="javascript:;" @click="go('title')">头衔</a><br/>
+      <a href="javascript:;" @click="go('gang')">帮派</a>.<a href="javascript:;" @click="go('chat')">聊天</a>.<a href="javascript:;" @click="go('help')">论坛</a><br/>
+    </template>
+
+    <!-- ==================== 开始修炼成功（修炼开始修炼.xhtml） ==================== -->
+    <template v-else-if="cur === 'startok'">
+      【修炼】<br/>
+      <span style="color:green;">{{ startMsg }}</span><br/>
+      提示：修炼5分钟内取消将不获得任何经验。<br/>
+      -----------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('contest')">比武</a>.<a href="javascript:;" @click="go('room')">修炼</a>.<a href="javascript:;" @click="go('shop')">商店</a>.<a href="javascript:;" @click="tip('赞助')">赞助</a><br/>
+      <a href="javascript:;" @click="go('profile')">属性</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('task')">任务</a>.<a href="javascript:;" @click="go('ranking')">排行</a>.<a href="javascript:;" @click="go('title')">头衔</a><br/>
+      <a href="javascript:;" @click="go('gang')">帮派</a>.<a href="javascript:;" @click="go('chat')">聊天</a>.<a href="javascript:;" @click="go('help')">论坛</a><br/>
+    </template>
+
+    <!-- ==================== 停止修炼结果（停止修炼.xhtml） ==================== -->
+    <template v-else-if="cur === 'stopok'">
+      【修炼】<br/>
+      修炼结束！<br/>
+      经验：+{{ stopExp }}<br/>
+      技能点：+{{ stopSkill }}<br/>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('contest')">比武</a>.<a href="javascript:;" @click="go('room')">修炼</a>.<a href="javascript:;" @click="go('shop')">商店</a>.<a href="javascript:;" @click="tip('赞助')">赞助</a><br/>
       <a href="javascript:;" @click="go('profile')">属性</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('task')">任务</a>.<a href="javascript:;" @click="go('ranking')">排行</a>.<a href="javascript:;" @click="go('title')">头衔</a><br/>
@@ -796,7 +820,8 @@ export default {
       g: { alloc: { hp: 0, mp: 0, spd: 0, atk: 0, def: 0 }, slots: [], sign: {} },
       c: {},
       gangName: '无',
-      practice: { practicing: 0, remaining_min: 0, practice_type: '普通' },
+      practice: { practicing: 0, remaining_min: 0, practice_type: '普通(4小时)', practice_skill: 0 },
+      startMsg: '', stopExp: 0, stopSkill: 0,
       skills: [],
       skillCat: '全部',
       skillPage: 1,
@@ -876,16 +901,17 @@ export default {
       return this.skills
     },
     skillCats() { return ['全部', 'passive', 'active'] },
-    practiceDuration() {
-      if (this.practice.practice_type === '加长修炼(24小时)') return '24小时'
-      if (this.practice.practice_type === '加长修炼(8小时)') return '8小时'
-      return '4小时'
+    remainingText() {
+      const m = this.practice.remaining_min || 0
+      const h = Math.floor(m / 60)
+      const mm = m % 60
+      return h > 0 ? `${h}小时${mm}分钟` : `${mm}分钟`
     },
     practiceText() { return this.practice.practicing === 1 ? '修炼中' : '未修炼' },
     roomText() { return this.practice.practicing === 1 ? '修炼中' : '未修炼' },
     skillExpText() {
-      if (this.practice.practicing === 1) return `修炼中[剩余${this.practice.remaining_min}分]`
-      return '0/10000'
+      if (this.practice.practicing === 1) return `${this.practice.practice_skill || 0}/10000`
+      return `${this.practice.practice_skill || 0}/10000`
     },
     passiveSkillRows() { return this.mySkills.filter(s => s.act === 0) },
     weekName() {
@@ -1060,8 +1086,26 @@ export default {
     },
     async startPractice(type) {
       const r = await api.post('/games/jwt/practice', { start: true, type })
-      this.tip(r.msg)
-      if (r.code === 0) { this.go('room'); this.load() }
+      if (r.code === 0) {
+        this.loadPractice()
+        this.startMsg = r.data.msg || ''
+        this.cur = 'startok'
+        window.scrollTo(0, 0)
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async stopPractice() {
+      const r = await api.post('/games/jwt/practice', { stop: true })
+      if (r.code === 0) {
+        this.stopExp = r.data.exp || 0
+        this.stopSkill = r.data.skill || 0
+        this.cur = 'stopok'
+        window.scrollTo(0, 0)
+        this.load()
+      } else {
+        this.tip(r.msg)
+      }
     },
     // ---------- 技能 ----------
     async loadSkills() {

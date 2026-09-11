@@ -42,6 +42,8 @@ type JwtPlayer struct {
 	PracticeAt *time.Time `json:"practice_at"`
 	PracticeEnd *time.Time `json:"practice_end"`
 	TrainCnt   int       `gorm:"default:0" json:"train_cnt"` // 今日修炼次数（每日任务）
+	// 修炼技能点（修炼获得，用于技能深造/展示）
+	SkillPoint int `gorm:"default:0" json:"skill_point"`
 	// 今日任务计数
 	TaskDate    string `gorm:"type:varchar(10);default:''" json:"task_date"`
 	ArenaCnt    int    `gorm:"default:0" json:"arena_cnt"`

@@ -504,53 +504,88 @@ func (h *JwtHandler) Practice(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	p := h.jwtPlayer(uid)
 	now := time.Now()
-	// 检查是否有完成的修炼可结算
-	if p.Practicing == 1 && p.PracticeEnd != nil && now.After(*p.PracticeEnd) {
-		var gain int
-		dur := p.PracticeEnd.Sub(*p.PracticeAt).Hours()
-		switch {
-		case dur >= 23:
-			gain = (20 + p.Level*2) * 6 // 24小时 = 6倍
-		case dur >= 7:
-			gain = (20 + p.Level*2) * 2 // 8小时 = 2倍
-		default:
-			gain = 20 + p.Level*2 // 4小时 普通
-		}
-		levels := h.jwtGainExp(p, gain)
-		h.DB.Model(&model.JwtPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
-			"practicing": 0, "practice_at": nil, "practice_end": nil})
-		p.Practicing = 0
-		resp.OK(c, gin.H{"msg": "修炼完成！经验+" + strconv.Itoa(gain) + "，" + strconv.Itoa(levels) + " 个新等级", "practicing": 0})
-		return
-	}
 	var req struct {
-		Start  bool   `json:"start"`
-		Type   string `json:"type"` // normal(4h)/long8(8h)/long24(24h)
-		CostYB int    `json:"cost_yb"`
+		Start bool   `json:"start"`
+		Stop  bool   `json:"stop"`
+		Type  string `json:"type"` // normal(4h)/long8(8h)/long24(24h)
 	}
 	_ = c.ShouldBindJSON(&req)
+
+	// 满时修炼收益（按修炼模式）
+	gainFull := func(totalH float64) int {
+		switch {
+		case totalH >= 23:
+			return (20 + p.Level*2) * 6 // 24小时 = 6倍
+		case totalH >= 7:
+			return (20 + p.Level*2) * 2 // 8小时 = 2倍
+		default:
+			return 20 + p.Level*2 // 4小时 普通
+		}
+	}
+	// settle 结算修炼：按已修炼时长比例给经验，技能点=经验（修炼5分钟内不获得经验）
+	settle := func() (exp int, skill int) {
+		if p.PracticeAt != nil && p.PracticeEnd != nil {
+			totalH := p.PracticeEnd.Sub(*p.PracticeAt).Hours()
+			elapsedH := now.Sub(*p.PracticeAt).Hours()
+			full := gainFull(totalH)
+			if elapsedH < 5.0/60.0 {
+				exp = 0 // 5分钟内取消不获得任何经验
+			} else {
+				exp = int(float64(full) * elapsedH / totalH)
+				if exp < 1 {
+					exp = 1
+				}
+			}
+			skill = exp
+		}
+		h.jwtGainExp(p, exp)
+		h.DB.Model(&model.JwtPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
+			"practicing": 0, "practice_at": nil, "practice_end": nil,
+			"skill_point": gorm.Expr("skill_point + ?", skill)})
+		p.Practicing = 0
+		return
+	}
+
+	// 到期自动结算（含技能点）
+	if p.Practicing == 1 && p.PracticeEnd != nil && now.After(*p.PracticeEnd) {
+		exp, skill := settle()
+		resp.OK(c, gin.H{"msg": "修炼完成！经验+" + strconv.Itoa(exp) + "，技能点+" + strconv.Itoa(skill),
+			"stop": true, "exp": exp, "skill": skill, "practicing": 0})
+		return
+	}
+	// 手动停止修炼（复刻 停止修炼.xhtml：修炼结束！经验+X 技能点+X）
+	if req.Stop {
+		if p.Practicing != 1 {
+			resp.ParamError(c, "当前未在修炼")
+			return
+		}
+		exp, skill := settle()
+		resp.OK(c, gin.H{"msg": "修炼结束！", "stop": true, "exp": exp, "skill": skill, "practicing": 0})
+		return
+	}
+	// 开始修炼
 	if req.Start {
 		if p.Practicing == 1 {
-			resp.ParamError(c, "已在修炼中，请等待修炼完成")
+			resp.ParamError(c, "已在修炼中，请先停止修炼")
 			return
 		}
 		u := h.jwtBrief(uid)
 		var end time.Time
 		var cost int
-		var msg string
+		var typeName string
 		switch req.Type {
 		case "long8":
 			end = now.Add(8 * time.Hour)
 			cost = 50
-			msg = "开始加长修炼(8小时)，经验2倍，消耗50元宝！"
+			typeName = "加长修炼(8小时)"
 		case "long24":
 			end = now.Add(24 * time.Hour)
 			cost = 120
-			msg = "开始加长修炼(24小时)，经验6倍，消耗120元宝！"
+			typeName = "加长修炼(24小时)"
 		default: // normal
 			end = now.Add(4 * time.Hour)
 			cost = 0
-			msg = "开始普通修炼(4小时)，免费！"
+			typeName = "普通修炼(4小时)"
 		}
 		if cost > 0 {
 			if u.YuanBao < cost {
@@ -562,9 +597,12 @@ func (h *JwtHandler) Practice(c *gin.Context) {
 		}
 		h.DB.Model(&model.JwtPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
 			"practicing": 1, "practice_at": now, "practice_end": end, "train_cnt": gorm.Expr("train_cnt + 1")})
-		resp.OK(c, gin.H{"msg": msg, "practicing": 1})
+		resp.OK(c, gin.H{"msg": "开始" + typeName + "成功！消耗体力20",
+			"start": true, "type_name": typeName, "practicing": 1})
 		return
 	}
+
+	// 查询修炼状态（练功房展示）
 	remaining := 0
 	if p.Practicing == 1 && p.PracticeEnd != nil {
 		d := p.PracticeEnd.Sub(now)
@@ -572,9 +610,7 @@ func (h *JwtHandler) Practice(c *gin.Context) {
 			remaining = int(d.Minutes())
 		}
 	}
-	// 返回修炼类型供前端显示
 	var practiceType string
-	var practiceSkillVal int
 	if p.Practicing == 1 && p.PracticeEnd != nil {
 		dur := p.PracticeEnd.Sub(*p.PracticeAt).Hours()
 		switch {
@@ -583,15 +619,13 @@ func (h *JwtHandler) Practice(c *gin.Context) {
 		case dur >= 7:
 			practiceType = "加长修炼(8小时)"
 		default:
-			practiceType = "普通修炼"
+			practiceType = "普通修炼(4小时)"
 		}
-		practiceSkillVal = 0
 	} else {
-		practiceType = "普通"
-		practiceSkillVal = 0
+		practiceType = "普通(4小时)"
 	}
 	resp.OK(c, gin.H{"practicing": p.Practicing, "remaining_min": remaining,
-		"practice_type": practiceType, "practice_skill": practiceSkillVal})
+		"practice_type": practiceType, "practice_skill": p.SkillPoint})
 }
 
 //
