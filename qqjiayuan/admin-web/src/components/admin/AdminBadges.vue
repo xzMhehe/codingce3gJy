@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -12,7 +12,7 @@
       </div>
 
       <!-- 勋章商店 -->
-      <el-table v-if="tab === 'shop'" :data="list" v-loading="loading" stripe>
+      <el-table v-if="tab === 'shop'" :data="list" v-loading="loading" stripe max-height="calc(100vh - 320px)">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column label="图标" width="80">
           <template slot-scope="{row}"><img class="bicon" :src="'/static/picture/' + row.icon" :alt="row.name"></template>
@@ -38,36 +38,35 @@
       <!-- 会员勋章 -->
       <template v-else>
         <div class="toolbar" style="margin-bottom:12px">
-          <el-input v-model="medalUid" placeholder="会员号码" style="width:130px" />
-          <el-button size="small" icon="el-icon-search" @click="loadMedals">搜索</el-button>
-          <span class="help-line" style="margin-left:8px">过期勋章已自动清除</span>
+          <el-input v-model="medalUid" placeholder="会员号码" style="width:130px" clearable />
+          <el-select v-model="medalBadge" placeholder="勋章筛选" style="width:160px" clearable>
+            <el-option v-for="b in badgeOpts" :key="b.id" :value="b.id" :label="b.name" />
+          </el-select>
+          <el-button size="small" type="primary" icon="el-icon-search" @click="loadMedals">搜索</el-button>
+          <el-button size="small" @click="resetMedalFilter">重置</el-button>
+          <span class="help-line" style="margin-left:8px">过期勋章已自动清除，可编辑排序 / 到期时间</span>
         </div>
-        <el-table :data="medals" v-loading="loading" stripe>
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column label="会员" min-width="120">
-            <template slot-scope="{row}"><font :color="row.color || '#333'">{{ row.nickname }}</font></template>
-          </el-table-column>
-          <el-table-column label="勋章" min-width="150">
+        <el-table :data="medals" v-loading="loading" stripe max-height="calc(100vh - 320px)">
+          <el-table-column label="会员" min-width="150" :formatter="(row) => (row.nickname || '') + (row.user_id ? '（' + row.user_id + '）' : '')" />
+          <el-table-column label="勋章" min-width="160">
             <template slot-scope="{row}">
               <img class="bicon" v-if="row.badge_icon" :src="'/static/picture/' + row.badge_icon" :alt="row.badge_name">{{ row.badge_name }}
+              <el-tooltip v-if="row.badge_remark" :content="row.badge_remark" placement="top"><i class="el-icon-info txt-fade"></i></el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column prop="sort" label="排序" width="70" />
-          <el-table-column label="授予时间" min-width="140">
-            <template slot-scope="{row}">{{ fmt(row.granted_at) }}</template>
-          </el-table-column>
-          <el-table-column label="到期时间" min-width="140">
+          <el-table-column label="排序" width="70" :formatter="(row) => row.sort" />
+          <el-table-column label="授予时间" min-width="140" :formatter="(row) => fmt(row.granted_at)" />
+          <el-table-column label="到期时间" min-width="140" :formatter="(row) => (row.expire_at ? fmt(row.expire_at) : '永久')" />
+          <el-table-column label="操作" width="150" fixed="right">
             <template slot-scope="{row}">
-              <el-tag v-if="row.expire_at" type="warning" size="mini">{{ fmt(row.expire_at) }}</el-tag>
-              <span v-else class="txt-fade">永久</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
-            <template slot-scope="{row}">
+              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEdit(row)">编辑</el-button>
               <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="revoke(row)">回收</el-button>
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination style="margin-top:12px;text-align:right" background layout="total, prev, pager, next, sizes" :total="medalTotal" :page-size="medalSize"
+                       :current-page="medalPage" :page-sizes="[10,20,50]" @current-change="p => { medalPage = p; loadMedals() }"
+                       @size-change="s => { medalSize = s; medalPage = 1; loadMedals() }" />
       </template>
 
       <el-pagination v-if="tab === 'shop'" background layout="total, prev, pager, next" :total="total"
@@ -113,7 +112,7 @@
         <el-form-item label="会员号码"><el-input v-model.number="grantForm.user_id" placeholder="输入家园号码" /></el-form-item>
         <el-form-item label="勋章">
           <el-select v-model.number="grantForm.badge_id" placeholder="选择勋章" style="width:100%">
-            <el-option v-for="b in list" :key="b.id" :value="b.id" :label="b.name">
+            <el-option v-for="b in badgeOpts" :key="b.id" :value="b.id" :label="b.name">
               <img class="bicon" v-if="b.icon" :src="'/static/picture/' + b.icon" :alt="b.name">{{ b.name }}
             </el-option>
           </el-select>
@@ -124,6 +123,24 @@
       <div slot="footer">
         <el-button @click="grantOpen = false">取 消</el-button>
         <el-button type="primary" @click="grantOne">确 定</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 会员勋章：编辑（排序/到期时间） 模态框 -->
+    <el-dialog title="编辑会员勋章" :visible.sync="editOpen" width="420px" :close-on-click-modal="false">
+      <el-form label-width="90px">
+        <el-form-item label="会员"><span>{{ editForm.nickname }}（{{ editForm.user_id }}）</span></el-form-item>
+        <el-form-item label="勋章"><span>{{ editForm.badge_name }}</span></el-form-item>
+        <el-form-item label="排序"><el-input-number v-model="editForm.sort" :min="0" /></el-form-item>
+        <el-form-item label="到期时间">
+          <el-date-picker v-model="editForm.expire_at" type="datetime" placeholder="永久" value-format="yyyy-MM-dd HH:mm:ss"
+                          style="width:100%" />
+          <span class="help-line">留空 = 永久</span>
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="editOpen = false">取 消</el-button>
+        <el-button type="primary" @click="saveEdit">确 定</el-button>
       </div>
     </el-dialog>
   </div>
@@ -138,13 +155,16 @@ export default {
     return {
       tab: 'shop',
       list: [], total: 0, page: 1, size: 10, loading: false, icons: [], dlg: false,
-      medals: [], medalUid: '', grantOpen: false,
+      medals: [], medalUid: '', medalBadge: 0, badgeOpts: [], grantOpen: false, editOpen: false,
+      medalPage: 1, medalSize: 10, medalTotal: 0,
       form: { id: 0, name: '', icon: '', remark: '', sort: 0, price: 0, period: 0, status: 1 },
-      grantForm: { user_id: null, badge_id: null, days: 0, sort: 0 }
+      grantForm: { user_id: null, badge_id: null, days: 0, sort: 0 },
+      editForm: { id: 0, nickname: '', user_id: 0, badge_name: '', sort: 0, expire_at: '' }
     }
   },
   mounted () {
     this.load()
+    this.loadBadgeOpts()
     api.get('/badge-presets').then(r => {
       if (r.code === 0) {
         this.icons = r.data.badge_icons
@@ -154,6 +174,9 @@ export default {
     this.loadMedals()
   },
   methods: {
+    loadBadgeOpts () {
+      api.get('/badges').then(r => { if (r.code === 0) this.badgeOpts = r.data || [] })
+    },
     load () {
       this.loading = true
       api.get('/admin/badges', { params: { page: this.page, size: this.size } }).then(r => {
@@ -166,9 +189,20 @@ export default {
       })
     },
     loadMedals () {
-      api.get('/admin/user-badges', { params: { uid: this.medalUid } }).then(r => {
-        if (r.code === 0) this.medals = r.data || []
-      })
+      this.loading = true
+      api.get('/admin/user-badges', { params: { uid: this.medalUid || 0, badge_id: this.medalBadge || 0, page: this.medalPage, size: this.medalSize } }).then(r => {
+        this.loading = false
+        if (r.code === 0) {
+          this.medals = r.data.list || []
+          this.medalTotal = r.data.total || 0
+        }
+      }).catch(() => { this.loading = false })
+    },
+    resetMedalFilter () {
+      this.medalUid = ''
+      this.medalBadge = 0
+      this.medalPage = 1
+      this.loadMedals()
     },
     openDlg (row) {
       if (row) this.form = { id: row.id, name: row.name, icon: row.icon, remark: row.remark, sort: row.sort, price: row.price, period: row.period, status: row.status }
@@ -206,6 +240,18 @@ export default {
           if (r.code === 0) { this.$message.success('已回收'); this.loadMedals() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    openEdit (row) {
+      this.editForm = {
+        id: row.id, nickname: row.nickname, user_id: row.user_id, badge_name: row.badge_name,
+        sort: row.sort, expire_at: row.expire_at ? row.expire_at.slice(0, 19) : ''
+      }
+      this.editOpen = true
+    },
+    saveEdit () {
+      api.put('/admin/user-badges/' + this.editForm.id, { sort: this.editForm.sort, expire_at: this.editForm.expire_at }).then(r => {
+        if (r.code === 0) { this.$message.success('已保存'); this.editOpen = false; this.loadMedals() } else this.$message.error(r.msg)
+      })
     },
     fmt (t) {
       if (!t) return '—'

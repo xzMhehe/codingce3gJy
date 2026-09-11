@@ -203,8 +203,16 @@ func (h *BadgeHandler) UserBadges(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 会员勋章列表（管理端：复刻诺哈 medal_list，可按用户/勋章筛选）
+// 会员勋章分页列表（管理端：复刻诺哈 medal_list/medal_search —— 可按号码 uid/勋章 badge_id 筛选）
 func (h *BadgeHandler) AdminUserBadges(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 10
+	}
 	uid, _ := strconv.Atoi(c.DefaultQuery("uid", "0"))
 	bid, _ := strconv.Atoi(c.DefaultQuery("badge_id", "0"))
 	h.cleanupExpired()
@@ -215,8 +223,15 @@ func (h *BadgeHandler) AdminUserBadges(c *gin.Context) {
 	if bid > 0 {
 		q = q.Where("badge_id = ?", bid)
 	}
+	var total int64
+	q.Count(&total)
+	if maxPage := int(total+int64(size)-1) / size; maxPage < 1 {
+		page = 1
+	} else if page > maxPage {
+		page = maxPage
+	}
 	var list []model.UserBadge
-	q.Order("id DESC").Limit(200).Find(&list)
+	q.Order("user_id ASC, sort ASC, id ASC").Offset((page - 1) * size).Limit(size).Find(&list)
 	// 勋章商店索引
 	badges := map[uint]model.Badge{}
 	var all []model.Badge
@@ -242,7 +257,7 @@ func (h *BadgeHandler) AdminUserBadges(c *gin.Context) {
 			"nickname": u.Nickname, "color": u.Color,
 		})
 	}
-	resp.OK(c, out)
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
 // 回收会员勋章（管理端：复刻诺哈 medal_del）
@@ -250,6 +265,37 @@ func (h *BadgeHandler) AdminUserBadgeDel(c *gin.Context) {
 	ubID, _ := strconv.Atoi(c.Param("id"))
 	h.DB.Delete(&model.UserBadge{}, ubID)
 	resp.OK(c, nil)
+}
+
+// 编辑会员勋章（管理端：复刻诺哈 medal_edit —— 改排序 / 到期时间，空到期=永久）
+func (h *BadgeHandler) AdminUserBadgeUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Sort     int    `json:"sort"`
+		ExpireAt string `json:"expire_at"` // "2006-01-02 15:04:05" 或 "2006-01-02"，空=永久
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var ub model.UserBadge
+	if err := h.DB.First(&ub, id).Error; err != nil {
+		resp.NotFound(c, "勋章记录不存在")
+		return
+	}
+	updates := map[string]interface{}{"sort": req.Sort}
+	if req.ExpireAt == "" {
+		updates["expire_at"] = nil
+	} else if t, err := time.ParseInLocation("2006-01-02 15:04:05", req.ExpireAt, time.Local); err == nil {
+		updates["expire_at"] = t
+	} else if t, err := time.ParseInLocation("2006-01-02", req.ExpireAt, time.Local); err == nil {
+		updates["expire_at"] = t
+	} else {
+		resp.ParamError(c, "到期时间格式错误（空=永久，或 yyyy-MM-dd HH:mm:ss）")
+		return
+	}
+	h.DB.Model(&ub).Updates(updates)
+	resp.OK(c, gin.H{"id": ub.ID, "sort": req.Sort, "expire_at": updates["expire_at"]})
 }
 
 // 给用户授予单个勋章（管理端：指定勋章+有效天数）

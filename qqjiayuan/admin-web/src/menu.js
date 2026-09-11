@@ -70,7 +70,8 @@ export const menu = [
       { key: 'userProtec', name: '会员密保', icon: 'el-icon-key', component: AdminUserProtections },
       { key: 'userLogs', name: '会员日志', icon: 'el-icon-date', component: AdminUserLogs },
       { key: 'userPhones', name: '手机审核', icon: 'el-icon-mobile-phone', component: AdminUserPhones },
-      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: AdminInvites }
+      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: AdminInvites },
+      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: AdminBadges }
     ]
   },
   // 货币管理（诺哈 money/）
@@ -157,7 +158,6 @@ export const menu = [
     key: 'g-game', name: '游戏管理', icon: 'el-icon-magic-stick',
     children: [
       { key: 'games', name: '游戏大厅', icon: 'el-icon-trophy', component: AdminGames },
-      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: AdminBadges },
       {
         key: 'g-garden', name: '魔法花园', icon: 'el-icon-sunny',
         children: [

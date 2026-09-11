@@ -708,6 +708,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/badges/:id", perm(db, "badge:manage"), badgeH.Delete)
 				admin.GET("/user-badges", perm(db, "badge:manage"), badgeH.AdminUserBadges)
 				admin.POST("/user-badges/grant", perm(db, "badge:manage"), badgeH.GrantOne)
+				admin.PUT("/user-badges/:id", perm(db, "badge:manage"), badgeH.AdminUserBadgeUpdate)
 				admin.DELETE("/user-badges/:id", perm(db, "badge:manage"), badgeH.AdminUserBadgeDel)
 
 				admin.GET("/games", perm(db, "game:manage"), gameH.AdminList)
