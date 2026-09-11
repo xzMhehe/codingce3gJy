@@ -1120,7 +1120,7 @@ func (h *GardenHandler) Room(c *gin.Context) {
 	out := []mixItem{}
 	seen := map[uint]int{}
 	for _, sd := range h.loadSeeds() {
-		if sd.DType == 0 || sd.Status == 0 {
+		if sd.DType != 1 || sd.Status == 0 {
 			continue
 		}
 		idx, ok := seen[sd.ID]
@@ -1195,6 +1195,245 @@ func (h *GardenHandler) Mix(c *gin.Context) {
 	}
 	h.addGardenPoint(uid, gardenExpMix)
 	resp.OK(c, gin.H{"msg": "合成成功！经验值+" + strconv.Itoa(gardenExpMix) + "，获得" + sd.Name + "种子一颗"})
+}
+
+// 强制让生长中的花盆立即成熟（对齐开花结算逻辑）
+func (h *GardenHandler) maturePlot(plot *model.GardenPlot) {
+	if plot.Status != 1 {
+		return
+	}
+	sd := h.seedByID(plot.SeedID)
+	if sd == nil {
+		return
+	}
+	yield := sd.Less + rand.Intn(sd.More-sd.Less+1)
+	if plot.Drys == 1 {
+		yield++
+	} else {
+		yield--
+	}
+	if plot.Weed == 1 {
+		yield++
+	} else {
+		yield--
+	}
+	if plot.Pest == 1 {
+		yield++
+	} else {
+		yield--
+	}
+	if yield < 1 {
+		yield = 1
+	}
+	maps := h.mapsBySeedName(sd.Name)
+	var m model.GardenMap
+	if len(maps) > 0 {
+		m = maps[rand.Intn(len(maps))]
+	} else {
+		m = model.GardenMap{Name: sd.Name}
+	}
+	h.DB.Model(plot).Updates(map[string]interface{}{
+		"name": m.Name, "yield": yield, "amount": yield, "status": 2,
+	})
+	plot.Name = m.Name
+	plot.Yield = yield
+	plot.Amount = yield
+	plot.Status = 2
+}
+
+// 道具使用（背包中 dtype=2 的魔法道具）
+func (h *GardenHandler) ItemUse(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req buyReq
+	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
+		resp.ParamError(c, "请选择要使用的道具")
+		return
+	}
+	sd := h.seedByID(uint(req.ID))
+	if sd == nil || sd.DType != 2 {
+		resp.ParamError(c, "无此道具")
+		return
+	}
+	var bag model.GardenBag
+	if err := h.DB.Where("user_id = ? AND seed_id = ?", uid, req.ID).First(&bag).Error; err != nil || bag.Amount < 1 {
+		resp.ParamError(c, "背包中没有「"+sd.Name+"」")
+		return
+	}
+	h.ensureGarden(uid)
+	consume := func() {
+		if bag.Amount > 1 {
+			h.DB.Model(&bag).Update("amount", gorm.Expr("amount - 1"))
+		} else {
+			h.DB.Delete(&bag)
+		}
+	}
+	switch req.ID {
+	case 18: // 染色药水：随机点亮一个未点亮的独特/珍稀图谱
+		var logged []model.GardenMapLog
+		h.DB.Where("user_id = ?", uid).Find(&logged)
+		got := map[uint]bool{}
+		for _, l := range logged {
+			got[l.MapID] = true
+		}
+		cand := []model.GardenMap{}
+		for _, m := range h.loadMaps() {
+			if (m.DType == 1 || m.DType == 2) && !got[m.ID] {
+				cand = append(cand, m)
+			}
+		}
+		if len(cand) == 0 {
+			resp.ParamError(c, "独特/珍稀图谱已全部点亮，染色药水无法生效")
+			return
+		}
+		m := cand[rand.Intn(len(cand))]
+		h.DB.Create(&model.GardenMapLog{UserID: uid, MapID: m.ID})
+		field := "festival"
+		if m.DType == 2 {
+			field = "scarce"
+		}
+		h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).Update(field, gorm.Expr(field+" + 1"))
+		h.addGardenPoint(uid, gardenExpNewRare)
+		h.addGardenMsg(uid, uid, "使用染色药水点亮了"+m.Name+"图谱")
+		consume()
+		resp.OK(c, gin.H{"msg": "染色成功！点亮了「" + m.Name + "」图谱，经验值+" + strconv.Itoa(gardenExpNewRare)})
+	case 19: // 魔力播种机：一键为所有空花盆播种（自动用背包普通种子）
+		var empty []model.GardenPlot
+		h.DB.Where("user_id = ? AND status = 0", uid).Order("plot ASC").Find(&empty)
+		if len(empty) == 0 {
+			resp.ParamError(c, "没有空花盆，无需播种")
+			return
+		}
+		var bags []model.GardenBag
+		h.DB.Where("user_id = ? AND amount > 0", uid).Find(&bags)
+		seedQueue := []model.GardenSeed{}
+		for _, b := range bags {
+			s := h.seedByID(b.SeedID)
+			if s != nil && s.DType == 0 {
+				seedQueue = append(seedQueue, model.GardenSeed{ID: s.ID, Name: s.Name, DType: s.DType})
+			}
+		}
+		if len(seedQueue) == 0 {
+			resp.ParamError(c, "背包中没有普通花种，无法一键播种")
+			return
+		}
+		sowed := 0
+		ai := 0
+		for i := range empty {
+			for ai < len(seedQueue) {
+				var b model.GardenBag
+				if err := h.DB.Where("user_id = ? AND seed_id = ?", uid, seedQueue[ai].ID).First(&b).Error; err != nil || b.Amount < 1 {
+					ai++
+					continue
+				}
+				if b.Amount > 1 {
+					h.DB.Model(&b).Update("amount", gorm.Expr("amount - 1"))
+				} else {
+					h.DB.Delete(&b)
+				}
+				now := time.Now()
+				h.DB.Model(&empty[i]).Updates(map[string]interface{}{
+					"seed_id": seedQueue[ai].ID, "name": "", "drys": 0, "weed": 0, "pest": 0,
+					"yield": 0, "amount": 0, "status": 1, "seed_at": &now,
+				})
+				sowed++
+				h.addGardenPoint(uid, gardenExpSow)
+				break
+			}
+		}
+		if sowed == 0 {
+			resp.ParamError(c, "背包中的普通花种不足，无法一键播种")
+			return
+		}
+		consume()
+		resp.OK(c, gin.H{"msg": "魔力播种机使用了！成功播种" + strconv.Itoa(sowed) + "个花盆"})
+	case 20: // 魔力爱心棒：增加花园经验
+		h.addGardenPoint(uid, 200)
+		consume()
+		resp.OK(c, gin.H{"msg": "爱心祝福生效！花园经验值+200"})
+	case 21: // 魔力收割机：一键收获所有成熟花盆
+		var plots []model.GardenPlot
+		h.DB.Where("user_id = ? AND status = 2", uid).Find(&plots)
+		if len(plots) == 0 {
+			resp.ParamError(c, "没有可收获的成熟花朵")
+			return
+		}
+		got := 0
+		for i := range plots {
+			flower := plots[i].Name
+			if flower == "" {
+				flower = "未知花"
+			}
+			amount := plots[i].Amount
+			if amount < 1 {
+				amount = 1
+			}
+			h.addFlower(uid, flower, amount)
+			h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).Update("basket_cnt", gorm.Expr("basket_cnt + ?", amount))
+			money := rand.Intn(amount + 1)
+			var u model.User
+			h.DB.First(&u, uid)
+			if money > 0 {
+				h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", money))
+			}
+			exp := gardenExpKnown
+			if mapID, dtype, ok := h.mapByName(flower); ok {
+				var c1 int64
+				h.DB.Model(&model.GardenMapLog{}).Where("user_id = ? AND map_id = ?", uid, mapID).Count(&c1)
+				if c1 == 0 {
+					h.DB.Create(&model.GardenMapLog{UserID: uid, MapID: mapID})
+					if dtype == 0 {
+						exp = gardenExpNew
+						h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).Update("common", gorm.Expr("common + 1"))
+					} else {
+						exp = gardenExpNewRare
+						field := "festival"
+						if dtype == 2 {
+							field = "scarce"
+						}
+						h.DB.Model(&model.Garden{}).Where("user_id = ?", uid).Update(field, gorm.Expr(field+" + 1"))
+					}
+				}
+			}
+			h.addGardenPoint(uid, exp)
+			h.DB.Model(&plots[i]).Updates(map[string]interface{}{
+				"seed_id": 0, "name": "", "drys": 0, "weed": 0, "pest": 0,
+				"yield": 0, "amount": 0, "status": 0, "seed_at": nil,
+			})
+			h.DB.Where("land_id = ?", plots[i].ID).Delete(&model.GardenLandLog{})
+			got += amount
+		}
+		consume()
+		resp.OK(c, gin.H{"msg": "魔力收割机使用了！共收获" + strconv.Itoa(got) + "朵鲜花"})
+	case 22: // 愿望果实：直接获得G币
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", 2000))
+		consume()
+		resp.OK(c, gin.H{"msg": "愿望实现！获得 2000 G币"})
+	case 23, 24, 25: // 花肥/营养液：让生长中的花盆立即成熟
+		var plots []model.GardenPlot
+		h.DB.Where("user_id = ? AND status = 1", uid).Find(&plots)
+		if len(plots) == 0 {
+			resp.ParamError(c, "没有生长中的花朵需要加速")
+			return
+		}
+		for i := range plots {
+			h.maturePlot(&plots[i])
+		}
+		if req.ID >= 24 {
+			upd := map[string]interface{}{"drys": 1}
+			if req.ID == 25 {
+				upd["weed"] = 1
+				upd["pest"] = 1
+			}
+			for i := range plots {
+				h.DB.Model(&plots[i]).Updates(upd)
+			}
+		}
+		consume()
+		resp.OK(c, gin.H{"msg": sd.Name + "生效！" + strconv.Itoa(len(plots)) + "株花朵已加速成熟"})
+	default:
+		consume()
+		resp.OK(c, gin.H{"msg": sd.Name + " 已使用"})
+	}
 }
 
 // 花之图谱（分类：0普通 1独特 2珍稀）

@@ -164,7 +164,7 @@
             <a href="javascript:;" @click="openSowSeed(b)">[播种]</a><br/>
           </div>
           <div class="row" v-for="b in bagItems" :key="'d' + b.seed_id">
-            {{ b.seed_name }}×{{ b.count }}<br/>
+            {{ b.seed_name }}×{{ b.count }} <a href="javascript:;" @click="useItem(b)">[使用]</a><br/>
           </div>
           <div class="row" v-if="!bag.length">背包空空的，去商店买点种子吧。<br/></div>
         </div>
@@ -694,6 +694,11 @@ export default {
     },
     openMapDetail (m) { this.curMap = m; this.cur = 'mapinfo' },
     openBagSeed (b) { this.msg = b.seed_name + (b.dtype === 2 ? ' 道具，共 ' : ' 种子，共 ') + b.count + (b.dtype === 2 ? ' 个' : ' 颗') },
+    useItem (b) {
+      api.post('/games/garden/item-use', { id: b.seed_id }).then(r => {
+        if (r.code === 0) { this.okMsg = r.data.msg || '道具使用成功'; this.loadBag(); this.load() } else this.msg = r.msg
+      })
+    },
     openNotice () {
       if (this.noticeThreadId) { this.$router.push('/thread/' + this.noticeThreadId); return }
       this.goForum()

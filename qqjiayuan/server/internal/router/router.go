@@ -270,6 +270,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/games/garden/giftlog", gardenH.GiftLog)
 			authed.GET("/games/garden/room", gardenH.Room)
 			authed.POST("/games/garden/mix", gardenH.Mix)
+			authed.POST("/games/garden/item-use", gardenH.ItemUse)
 			authed.GET("/games/garden/map", gardenH.MapList)
 			authed.POST("/games/garden/setting", gardenH.Setting)
 			authed.GET("/games/garden/msgs", gardenH.Msgs)
