@@ -56,6 +56,10 @@ import AdminFarmItems from './components/admin/AdminFarmItems.vue'
 import AdminFarmData from './components/admin/AdminFarmData.vue'
 import AdminParkCars from './components/admin/AdminParkCars.vue'
 import AdminParkData from './components/admin/AdminParkData.vue'
+import AdminXyPlayers from './components/admin/AdminXyPlayers.vue'
+import AdminXyData from './components/admin/AdminXyData.vue'
+import AdminXyLogs from './components/admin/AdminXyLogs.vue'
+import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
 import AdminRoles from './components/admin/AdminRoles.vue'
 import AdminResources from './components/admin/AdminResources.vue'
@@ -198,6 +202,15 @@ export const menu = [
           { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: AdminJwtSkills },
           { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: AdminJwtRecords },
           { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData }
+        ]
+      },
+      {
+        key: 'g-xy', name: '幻想西游', icon: 'el-icon-s-custom',
+        children: [
+          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminXyPlayers },
+          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs },
+          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem },
+          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData }
         ]
       }
     ]

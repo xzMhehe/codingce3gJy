@@ -1,0 +1,1092 @@
+[
+ {
+  "dtx": 0,
+  "dty": 0,
+  "npc_id": 1,
+  "name": "村长",
+  "img": "npc1.png",
+  "dialogue": "哎！老了，不管事了！",
+  "shop": "",
+  "teles": []
+ },
+ {
+  "dtx": 0,
+  "dty": 1,
+  "npc_id": 20,
+  "name": "李白",
+  "img": "npc3.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "金豆大厅",
+    "dtx": 1,
+    "dty": 33
+   },
+   {
+    "name": "活动大厅",
+    "dtx": 1,
+    "dty": 30
+   },
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 0,
+  "dty": 1,
+  "npc_id": 21,
+  "name": "张果老",
+  "img": "npc2.png",
+  "dialogue": "要移动到哪个区域？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "广场",
+    "dtx": 2,
+    "dty": 1
+   },
+   {
+    "name": "广寒宫门",
+    "dtx": 7,
+    "dty": 0
+   },
+   {
+    "name": "将军府",
+    "dtx": 1,
+    "dty": 72
+   },
+   {
+    "name": "方寸山门",
+    "dtx": 10,
+    "dty": 0
+   },
+   {
+    "name": "山门",
+    "dtx": 13,
+    "dty": 0
+   },
+   {
+    "name": "城南荒野",
+    "dtx": 1,
+    "dty": 122
+   },
+   {
+    "name": "慈恩寺",
+    "dtx": 1,
+    "dty": 86
+   },
+   {
+    "name": "高家大门",
+    "dtx": 21,
+    "dty": 0
+   },
+   {
+    "name": "兵马俑坑",
+    "dtx": 1,
+    "dty": 93
+   },
+   {
+    "name": "昆仑山区",
+    "dtx": 1,
+    "dty": 104
+   },
+   {
+    "name": "接引殿",
+    "dtx": 23,
+    "dty": 0
+   },
+   {
+    "name": "奈何桥",
+    "dtx": 22,
+    "dty": 0
+   },
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   },
+   {
+    "name": "镇东场",
+    "dtx": 25,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 0,
+  "dty": 5,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 0,
+  "dty": 5,
+  "npc_id": 6,
+  "name": "张二妈",
+  "img": "npc5.png",
+  "dialogue": "开着渔村唯一一家店铺！",
+  "shop": "medicine",
+  "teles": []
+ },
+ {
+  "dtx": 0,
+  "dty": 6,
+  "npc_id": 7,
+  "name": "船夫",
+  "img": "npc4.png",
+  "dialogue": "你这是要往哪里去？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "朱雀大街",
+    "dtx": 1,
+    "dty": 6
+   }
+  ]
+ },
+ {
+  "dtx": 1,
+  "dty": 66,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 69,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 95,
+  "npc_id": 145,
+  "name": "宠物店老板",
+  "img": "npc38.png",
+  "dialogue": "想拥有一只可爱的宠物吗？",
+  "shop": "pet",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 96,
+  "npc_id": 83,
+  "name": "店小二",
+  "img": "npc6.png",
+  "dialogue": "客官，住店休息可以恢复气血法力！",
+  "shop": "rest",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 98,
+  "npc_id": 83,
+  "name": "店小二",
+  "img": "npc6.png",
+  "dialogue": "客官，住店休息可以恢复气血法力！",
+  "shop": "rest",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 99,
+  "npc_id": 0,
+  "name": "当铺老板",
+  "img": "npc4.png",
+  "dialogue": "典当寄存，童叟无欺。",
+  "shop": "warehouse",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 100,
+  "npc_id": 0,
+  "name": "当铺老板",
+  "img": "npc4.png",
+  "dialogue": "典当寄存，童叟无欺。",
+  "shop": "warehouse",
+  "teles": []
+ },
+ {
+  "dtx": 1,
+  "dty": 104,
+  "npc_id": 0,
+  "name": "雪山迷宫入口",
+  "img": "npc24.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "雪山迷宫(1,1)",
+    "dtx": 44,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 1,
+  "dty": 116,
+  "npc_id": 0,
+  "name": "泾水河",
+  "img": "npc14.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "泾水河(1,1)",
+    "dtx": 5,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 1,
+  "dty": 122,
+  "npc_id": 0,
+  "name": "城城南荒野(区域)",
+  "img": "npc46.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "城南荒野(1,1)",
+    "dtx": 16,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 2,
+  "dty": 1,
+  "npc_id": 171,
+  "name": "龙宫大弟子",
+  "img": "npc61.png",
+  "dialogue": "要移动到哪个区域？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 3,
+  "dty": 1,
+  "npc_id": 171,
+  "name": "龙宫大弟子",
+  "img": "npc61.png",
+  "dialogue": "要移动到哪个区域？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   },
+   {
+    "name": "海底莽林(4,4)",
+    "dtx": 3,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 3,
+  "dty": 1,
+  "npc_id": 0,
+  "name": "入口",
+  "img": "npc29.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 3,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "进入傲来国",
+  "img": "npc14.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "东海边",
+    "dtx": 24,
+    "dty": 7
+   }
+  ]
+ },
+ {
+  "dtx": 5,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "长安",
+  "img": "npc29.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "泾水滨",
+    "dtx": 1,
+    "dty": 116
+   }
+  ]
+ },
+ {
+  "dtx": 7,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "痴梦仙姑（传送）",
+  "img": "npc20.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 10,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "山门迎客晨月（传送）",
+  "img": "npc50.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "高家大门",
+    "dtx": 21,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 13,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "知客僧（传送）",
+  "img": "npc58.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "池塘边",
+    "dtx": 13,
+    "dty": 4
+   },
+   {
+    "name": "紫竹北林(4,4)",
+    "dtx": 14,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 13,
+  "dty": 4,
+  "npc_id": 0,
+  "name": "紫竹林",
+  "img": "npc6.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "紫竹林(1,1)",
+    "dtx": 15,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 15,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "普陀山",
+  "img": "npc20.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "池塘边",
+    "dtx": 13,
+    "dty": 4
+   }
+  ]
+ },
+ {
+  "dtx": 16,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "长安",
+  "img": "npc29.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "城南荒野",
+    "dtx": 1,
+    "dty": 122
+   }
+  ]
+ },
+ {
+  "dtx": 21,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "看门大爷老余头（传送）",
+  "img": "npc30.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "方寸山门",
+    "dtx": 10,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 21,
+  "dty": 10,
+  "npc_id": 0,
+  "name": "铁匠",
+  "img": "npc16.png",
+  "dialogue": "好铁百炼，宝刀赠英雄！",
+  "shop": "weapon",
+  "teles": []
+ },
+ {
+  "dtx": 22,
+  "dty": 2,
+  "npc_id": 0,
+  "name": "推磨鬼（传送）",
+  "img": "npc41.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "生死河",
+    "dtx": 22,
+    "dty": 7
+   },
+   {
+    "name": "望乡台",
+    "dtx": 22,
+    "dty": 18
+   },
+   {
+    "name": "孽镜台",
+    "dtx": 22,
+    "dty": 17
+   }
+  ]
+ },
+ {
+  "dtx": 23,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "接引仙子（传送）",
+  "img": "npc23.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   },
+   {
+    "name": "兜率宫",
+    "dtx": 23,
+    "dty": 24
+   },
+   {
+    "name": "斩妖台",
+    "dtx": 23,
+    "dty": 29
+   }
+  ]
+ },
+ {
+  "dtx": 23,
+  "dty": 22,
+  "npc_id": 0,
+  "name": "蟠桃园",
+  "img": "npc45.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "蟠桃园(1,1)",
+    "dtx": 32,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 23,
+  "dty": 24,
+  "npc_id": 0,
+  "name": "老君炉",
+  "img": "npc27.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "老君炉一(1,1)",
+    "dtx": 34,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 23,
+  "dty": 29,
+  "npc_id": 0,
+  "name": "斩妖台",
+  "img": "npc46.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "【斩妖台】(1,1)",
+    "dtx": 33,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 23,
+  "dty": 40,
+  "npc_id": 0,
+  "name": "银河",
+  "img": "npc51.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "银河(1,1)",
+    "dtx": 31,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 24,
+  "dty": 0,
+  "npc_id": 297,
+  "name": "傲来国武士",
+  "img": "npc35.png",
+  "dialogue": "要移动到哪个区域？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "照海亭",
+    "dtx": 24,
+    "dty": 22
+   }
+  ]
+ },
+ {
+  "dtx": 24,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "傲来国武士（传送）",
+  "img": "npc30.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "十字街头",
+    "dtx": 1,
+    "dty": 0
+   },
+   {
+    "name": "镇东场",
+    "dtx": 25,
+    "dty": 0
+   },
+   {
+    "name": "照海亭",
+    "dtx": 24,
+    "dty": 22
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "宫兵（传送）",
+  "img": "npc7.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "奈何桥",
+    "dtx": 22,
+    "dty": 0
+   },
+   {
+    "name": "接引殿",
+    "dtx": 23,
+    "dty": 0
+   },
+   {
+    "name": "傲来广场",
+    "dtx": 24,
+    "dty": 0
+   },
+   {
+    "name": "野路",
+    "dtx": 25,
+    "dty": 14
+   },
+   {
+    "name": "金塔(4,4)",
+    "dtx": 37,
+    "dty": 0
+   },
+   {
+    "name": "白骨洞(4,4)",
+    "dtx": 38,
+    "dty": 0
+   },
+   {
+    "name": "平顶山",
+    "dtx": 26,
+    "dty": 14
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 14,
+  "npc_id": 0,
+  "name": "双叉岭",
+  "img": "npc19.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "双叉岭(1,1)",
+    "dtx": 35,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 25,
+  "npc_id": 0,
+  "name": "黑松林",
+  "img": "npc25.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "黑松林(1,1)",
+    "dtx": 36,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 26,
+  "npc_id": 0,
+  "name": "金塔",
+  "img": "npc19.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "金塔(1,1)",
+    "dtx": 37,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 30,
+  "npc_id": 0,
+  "name": "白骨洞",
+  "img": "npc39.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "白骨洞(1,1)",
+    "dtx": 38,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 25,
+  "dty": 34,
+  "npc_id": 0,
+  "name": "平顶山",
+  "img": "npc21.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "平顶山(1,1)",
+    "dtx": 39,
+    "dty": 12
+   }
+  ]
+ },
+ {
+  "dtx": 26,
+  "dty": 14,
+  "npc_id": 0,
+  "name": "平顶山",
+  "img": "npc21.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "平顶山(4,4)",
+    "dtx": 39,
+    "dty": 0
+   }
+  ]
+ },
+ {
+  "dtx": 27,
+  "dty": 22,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 27,
+  "dty": 23,
+  "npc_id": 0,
+  "name": "药店老板",
+  "img": "npc5.png",
+  "dialogue": "需要疗伤的药品吗？",
+  "shop": "medicine",
+  "teles": []
+ },
+ {
+  "dtx": 27,
+  "dty": 25,
+  "npc_id": 0,
+  "name": "铁匠",
+  "img": "npc16.png",
+  "dialogue": "好铁百炼，宝刀赠英雄！",
+  "shop": "weapon",
+  "teles": []
+ },
+ {
+  "dtx": 30,
+  "dty": 8,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 31,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "天宫",
+  "img": "npc26.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "天宫大道",
+    "dtx": 23,
+    "dty": 40
+   }
+  ]
+ },
+ {
+  "dtx": 32,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "天宫",
+  "img": "npc26.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "御花园",
+    "dtx": 23,
+    "dty": 22
+   }
+  ]
+ },
+ {
+  "dtx": 33,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "天宫",
+  "img": "npc26.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "斩妖台",
+    "dtx": 23,
+    "dty": 29
+   }
+  ]
+ },
+ {
+  "dtx": 34,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "天宫",
+  "img": "npc26.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "兜率宫",
+    "dtx": 23,
+    "dty": 24
+   }
+  ]
+ },
+ {
+  "dtx": 35,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "宝象国",
+  "img": "npc1.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "野路",
+    "dtx": 25,
+    "dty": 14
+   }
+  ]
+ },
+ {
+  "dtx": 36,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "宝象国",
+  "img": "npc1.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "黑松林",
+    "dtx": 25,
+    "dty": 25
+   }
+  ]
+ },
+ {
+  "dtx": 37,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "宝象国",
+  "img": "npc1.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "金塔",
+    "dtx": 25,
+    "dty": 26
+   }
+  ]
+ },
+ {
+  "dtx": 38,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "宝象国",
+  "img": "npc1.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "白骨洞",
+    "dtx": 25,
+    "dty": 30
+   }
+  ]
+ },
+ {
+  "dtx": 39,
+  "dty": 0,
+  "npc_id": 0,
+  "name": "乌鸡国",
+  "img": "npc39.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "平顶山",
+    "dtx": 26,
+    "dty": 14
+   }
+  ]
+ },
+ {
+  "dtx": 39,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "宝象国",
+  "img": "npc1.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "山道",
+    "dtx": 25,
+    "dty": 34
+   }
+  ]
+ },
+ {
+  "dtx": 40,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "乌鸡国",
+  "img": "npc39.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "夹脊关",
+    "dtx": 26,
+    "dty": 7
+   }
+  ]
+ },
+ {
+  "dtx": 44,
+  "dty": 12,
+  "npc_id": 0,
+  "name": "长安",
+  "img": "npc29.png",
+  "dialogue": "你要去哪里？",
+  "shop": "",
+  "teles": [
+   {
+    "name": "昆仑山区",
+    "dtx": 1,
+    "dty": 104
+   }
+  ]
+ },
+ {
+  "dtx": 61,
+  "dty": 10,
+  "npc_id": 83,
+  "name": "店小二",
+  "img": "npc6.png",
+  "dialogue": "客官，住店休息可以恢复气血法力！",
+  "shop": "rest",
+  "teles": []
+ },
+ {
+  "dtx": 63,
+  "dty": 5,
+  "npc_id": 0,
+  "name": "铁匠",
+  "img": "npc16.png",
+  "dialogue": "好铁百炼，宝刀赠英雄！",
+  "shop": "weapon",
+  "teles": []
+ },
+ {
+  "dtx": 64,
+  "dty": 6,
+  "npc_id": 0,
+  "name": "杂货老板",
+  "img": "npc3.png",
+  "dialogue": "杂货百货，样样俱全。",
+  "shop": "grocery",
+  "teles": []
+ },
+ {
+  "dtx": 65,
+  "dty": 25,
+  "npc_id": 0,
+  "name": "钱庄老板",
+  "img": "npc4.png",
+  "dialogue": "存取银两，安全可靠。",
+  "shop": "bank",
+  "teles": []
+ }
+]

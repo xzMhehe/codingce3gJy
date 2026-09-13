@@ -86,6 +86,22 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.JwtSkill{}, &model.JwtLearnedSkill{},
 		&model.JwtGang{}, &model.JwtGangMember{}, &model.JwtGangApply{},
 		&model.JwtChat{}, &model.JwtLog{}, &model.JwtArenaRecord{},
+		// 幻想西游（复刻 wap 幻想西游：地图行走/回合战斗/装备/技能/宠物/副本/社交等）
+		&model.HxxyPlayer{}, &model.HxxyMapNode{}, &model.HxxyNpc{}, &model.HxxySpawn{}, &model.HxxyMapNpc{},
+		&model.HxxyItem{}, &model.HxxyEquip{}, &model.HxxyBag{},
+		&model.HxxySkill{}, &model.HxxyPlayerSkill{},
+		&model.HxxyPetSpecies{}, &model.HxxyPet{},
+		&model.HxxyBattle{}, &model.HxxyBattleLog{},
+		&model.HxxyQuest{}, &model.HxxyPlayerQuest{},
+		&model.HxxyDungeon{}, &model.HxxyDungeonRun{},
+		&model.HxxyBoss{}, &model.HxxyTitle{}, &model.HxxyPlayerTitle{},
+		&model.HxxyGang{}, &model.HxxyGangMember{}, &model.HxxyMarriage{},
+		&model.HxxyHouse{}, &model.HxxyFriend{}, &model.HxxyChat{},
+		&model.HxxyMsg{},
+		&model.HxxySignin{}, &model.HxxyStall{}, &model.HxxyWalletLog{},
+		&model.HxxyTeam{}, &model.HxxyTeamMember{}, &model.HxxyTeamInvite{},
+		&model.HxxyGangInvite{}, &model.HxxyHouseInvite{},
+		&model.HxxyGzWar{}, &model.HxxyGzScore{}, &model.HxxyGzPlayer{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -248,6 +264,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedFarmData(db)
 	seedParkData(db)
 	seedJwt(db)
+	seedHxxy(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)
@@ -2073,7 +2090,7 @@ func seedGames(db *gorm.DB) {
 		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 15},
 		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
 		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 17},
-		{Name: "幻想西游", Category: "net", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", BoardID: bid("幻想西游"), Sort: 1},
+		{Name: "幻想西游", Category: "com", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", Intro: "五门派闯荡西游世界：地图冒险、回合战斗、神兵装备、宠物捕捉、副本BOSS、帮派结婚。游戏内独立货币银两金豆！", Path: "/games/hxxy", BoardID: bid("幻想西游"), Sort: 1},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
 	}
 	for i := range games {
