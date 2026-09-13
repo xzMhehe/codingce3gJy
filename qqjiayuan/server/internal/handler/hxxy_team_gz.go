@@ -194,8 +194,8 @@ func (h *HxxyHandler) GzSignup(c *gin.Context) {
 		resp.ParamError(c, "你还没有加入国家（帮派），无法参加国战！")
 		return
 	}
-	if role != 2 {
-		resp.ParamError(c, "只有帮主才能报名国战！")
+	if role != 1 {
+		resp.ParamError(c, "只有君主才能报名国战！")
 		return
 	}
 	w := h.hxGzWarOf(now.Format("2006-01-02"), zcID)
@@ -270,7 +270,7 @@ func (h *HxxyHandler) GzRod(c *gin.Context) {
 	logs := []string{fmt.Sprintf("你随【%s】进攻%s，向神兽守卫发起猛攻，夺下权杖！", gangName, zcName)}
 	b := &model.HxxyBattle{
 		PlayerID: p.ID, Type: "gz", EnemyID: 1, EnemyName: enemy.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(b)
 	resp.OK(c, h.hxBattleView(p, b))
@@ -321,7 +321,7 @@ func (h *HxxyHandler) GzNeijian(c *gin.Context) {
 	logs := []string{fmt.Sprintf("【%s】混入了国战队伍，你上前将其拿下！", w.NeijianName)}
 	b := &model.HxxyBattle{
 		PlayerID: p.ID, Type: "gz", EnemyID: 2, EnemyName: enemy.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(&b)
 	resp.OK(c, h.hxBattleView(p, b))

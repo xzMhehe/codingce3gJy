@@ -22,6 +22,24 @@
       <em>提示：开启维护后，所有玩家将无法进入幻想西游（游戏内所有操作均被拦截并显示维护公告）</em>
     </el-card>
 
+    <!-- 活动开关 -->
+    <el-card shadow="never" class="box">
+      <div slot="header" class="card-head">
+        <span>活动开关</span>
+        <el-tag size="mini" :type="exp2x.on ? 'success' : 'info'">{{ exp2x.on ? '时段进行中或待生效' : '已关闭' }}</el-tag>
+      </div>
+      <el-form label-width="110px" v-loading="loadingExp2x">
+        <el-form-item label="双倍经验时段">
+          <el-switch v-model="exp2xForm.on" active-text="开启" inactive-text="关闭" />
+        </el-form-item>
+      </el-form>
+      <div style="text-align:right">
+        <el-button size="mini" plain icon="el-icon-refresh" @click="loadServer">刷新状态</el-button>
+        <el-button type="primary" :loading="savingExp2x" @click="saveExp2x">保存</el-button>
+      </div>
+      <em>提示：开启后每日 12:00-14:00、19:00-21:00 战斗经验翻倍（游戏内活动中心可见）</em>
+    </el-card>
+
     <!-- 游戏统计 -->
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
@@ -120,7 +138,10 @@ export default {
       granting: false,
       srv: { maintenance: false, notice: '', players: 0 },
       srvForm: { on: false, notice: '' },
-      loadingSrv: false, savingSrv: false
+      loadingSrv: false, savingSrv: false,
+      exp2x: { on: true },
+      exp2xForm: { on: true },
+      loadingExp2x: false, savingExp2x: false
     }
   },
   computed: {
@@ -147,12 +168,24 @@ export default {
   methods: {
     loadServer () {
       this.loadingSrv = true
+      this.loadingExp2x = true
       api.get('/admin/xy-server').then(r => {
         this.loadingSrv = false
+        this.loadingExp2x = false
         if (r.code === 0) {
           this.srv = r.data
           this.srvForm = { on: r.data.maintenance, notice: r.data.notice || '' }
+          this.exp2x = { on: !!r.data.exp2x }
+          this.exp2xForm = { on: !!r.data.exp2x }
         } else this.$message.error(r.msg)
+      })
+    },
+    saveExp2x () {
+      this.savingExp2x = true
+      api.post('/admin/xy-server/exp2x', this.exp2xForm).then(r => {
+        this.savingExp2x = false
+        if (r.code === 0) { this.$message.success(r.data.msg || '已保存'); this.loadServer() }
+        else this.$message.error(r.msg)
       })
     },
     saveServer () {

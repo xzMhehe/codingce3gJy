@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -199,13 +200,13 @@ func (h *HxxyHandler) BattleStart(c *gin.Context) {
 	}
 	enemy := hxNpcEnemy(&npc, diff, "npc", 0, 0)
 	self := h.hxSelfSnap(p)
-	logs := []string{fmt.Sprintf("遭遇【%s】（%d级·%s），战斗开始！", enemy.Name, enemy.Level, enemy.Difficulty)}
+	logs := []string{fmt.Sprintf("遭遇%s（%d级·%s），战斗开始！", hxWName(enemy.Name), enemy.Level, enemy.Difficulty)}
 	if npc.Take != "" {
-		logs = append(logs, fmt.Sprintf("【%s】：%s", enemy.Name, npc.Take))
+		logs = append(logs, fmt.Sprintf("%s：%s", hxWName(enemy.Name), npc.Take))
 	}
 	b := model.HxxyBattle{
 		PlayerID: p.ID, Type: "npc", EnemyID: npc.ID, EnemyName: npc.Name,
-		Round: 0, Status: 1,
+		Round: 1, Status: 1,
 	}
 	b.Enemy = hxJSON(enemy)
 	b.Self = hxJSON(self)
@@ -250,19 +251,19 @@ func (h *HxxyHandler) BossChallenge(c *gin.Context) {
 		ExpReward: boss.Level * boss.Level * 100, MoneyReward: int64(boss.Level) * 500,
 	}
 	self := h.hxSelfSnap(p)
-	logs := []string{fmt.Sprintf("你向世界BOSS【%s】发起了挑战！", boss.Name)}
+	logs := []string{fmt.Sprintf("你向世界BOSS%s发起了挑战！", hxWName(boss.Name))}
 	if boss.Take != "" {
-		logs = append(logs, fmt.Sprintf("【%s】：%s", boss.Name, boss.Take))
+		logs = append(logs, fmt.Sprintf("%s：%s", hxWName(boss.Name), boss.Take))
 	}
 	b := model.HxxyBattle{
 		PlayerID: p.ID, Type: "boss", EnemyID: boss.ID, EnemyName: boss.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(&b)
 	resp.OK(c, h.hxBattleView(p, &b))
 }
 
-// DungeonEnter 进入副本下一层（逐层战斗）
+// DungeonEnter 进入副本（复刻原版 fb/*：激活副本→击杀5大守护BOSS→完成，每日每难度一次）
 func (h *HxxyHandler) DungeonEnter(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -289,48 +290,73 @@ func (h *HxxyHandler) DungeonEnter(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("【%s】需要 %d 级才能进入", dg.Name, dg.MinLevel))
 		return
 	}
-	// 每日次数
+	today := time.Now().Format("2006-01-02")
 	var run model.HxxyDungeonRun
 	h.DB.Where("player_id = ? AND dungeon_id = ?", p.ID, dg.ID).First(&run)
-	today := time.Now().Format("2006-01-02")
-	if run.DayDate != today {
-		run.DayDate, run.CountToday = today, 0
+	activated := false
+	if run.ID == 0 || run.DayDate != today {
+		// 激活：随机 5 只守护怪（等级贴近副本需求）
+		targetLv := dg.MinLevel + 3
+		var npcs []model.HxxyNpc
+		if err := h.DB.Where("kind = 1 AND level BETWEEN ? AND ?", targetLv, targetLv+8).Order("RAND()").Limit(5).Find(&npcs).Error; err != nil || len(npcs) == 0 {
+			h.DB.Where("kind = 1 AND level <= ?", targetLv+5).Order("level DESC").Limit(5).Find(&npcs)
+		}
+		if len(npcs) == 0 {
+			resp.ParamError(c, "副本守护怪数据缺失")
+			return
+		}
+		ids := make([]uint, 0, 5)
+		for i := 0; i < 5; i++ {
+			ids = append(ids, npcs[i%len(npcs)].ID)
+		}
+		gb, _ := json.Marshal(ids)
+		if run.ID > 0 {
+			h.DB.Model(&model.HxxyDungeonRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
+				"day_date": today, "floor": 0, "done": 0, "guards": string(gb)})
+		} else {
+			run = model.HxxyDungeonRun{PlayerID: p.ID, DungeonID: dg.ID, DayDate: today, Guards: string(gb)}
+			h.DB.Create(&run)
+		}
+		activated = true
+		run.Guards = string(gb)
+		run.Floor, run.Done = 0, 0
 	}
-	if run.CountToday >= dg.Daily {
-		resp.ParamError(c, fmt.Sprintf("今日【%s】次数已用完（每日 %d 次）", dg.Name, dg.Daily))
+	if run.Done == 1 {
+		resp.ParamError(c, "【"+dg.Name+"】今日已完成，明日再来！")
 		return
 	}
-	floor := run.Floor + 1
-	if floor > dg.Floors {
-		resp.ParamError(c, fmt.Sprintf("【%s】已全部通关，明日再来！", dg.Name))
+	// 取当前守护怪
+	var guardIDs []uint
+	json.Unmarshal([]byte(run.Guards), &guardIDs)
+	if int(run.Floor) >= len(guardIDs) {
+		resp.ParamError(c, "【"+dg.Name+"】今日已完成，明日再来！")
 		return
 	}
-	// 选取与目标等级接近的困难怪
-	targetLv := dg.MinLevel + (floor-1)*dg.Floors/dg.Floors*2 + floor/2
 	var npc model.HxxyNpc
-	err := h.DB.Where("kind = 1 AND level BETWEEN ? AND ?", targetLv, targetLv+8).Order("RAND()").First(&npc).Error
-	if err != nil {
-		h.DB.Where("kind = 1 AND level <= ?", targetLv+5).Order("level DESC").First(&npc)
-	}
-	if npc.ID == 0 {
-		resp.ParamError(c, "副本怪物数据缺失")
+	if err := h.DB.First(&npc, guardIDs[run.Floor]).Error; err != nil {
+		resp.ParamError(c, "副本守护怪数据缺失")
 		return
 	}
-	enemy := hxNpcEnemy(&npc, "困难", "dungeon", dg.ID, floor)
-	enemy.ExpReward *= 2
-	enemy.MoneyReward *= 2
+	// 难度倍率：普通/困难/梦魇/地狱
+	diff := "普通"
+	if i := strings.Index(dg.Name, "【"); i >= 0 {
+		diff = dg.Name[i+3 : len(dg.Name)-3]
+	}
+	mul := map[string]int64{"普通": 2, "困难": 3, "梦魇": 4, "地狱": 5}[diff]
+	enemy := hxNpcEnemy(&npc, diff, "dungeon", dg.ID, run.Floor+1)
+	enemy.ExpReward *= int(mul)
+	enemy.MoneyReward *= mul
 	self := h.hxSelfSnap(p)
-	logs := []string{fmt.Sprintf("【%s】第 %d/%d 层：守护者【%s】现身！", dg.Name, floor, dg.Floors, npc.Name)}
+	logs := []string{}
+	if activated {
+		logs = append(logs, "副本激活成功！请击杀5大守护BOSS！")
+	}
+	logs = append(logs, fmt.Sprintf("【%s】守护BOSS%s现身！（第%d/5只）", dg.Name, hxWName(npc.Name), run.Floor+1))
 	b := model.HxxyBattle{
 		PlayerID: p.ID, Type: "dungeon", EnemyID: npc.ID, EnemyName: npc.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(&b)
-	if run.ID > 0 {
-		h.DB.Model(&model.HxxyDungeonRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{"day_date": today, "count_today": run.CountToday + 1})
-	} else {
-		h.DB.Create(&model.HxxyDungeonRun{PlayerID: p.ID, DungeonID: dg.ID, Floor: 0, DayDate: today, CountToday: 1})
-	}
 	resp.OK(c, h.hxBattleView(p, &b))
 }
 
@@ -354,6 +380,12 @@ func (h *HxxyHandler) hxSelfSnap(p *model.HxxyPlayer) hxSelf {
 func (h *HxxyHandler) hxOpenBattle(playerID uint) *model.HxxyBattle {
 	var b model.HxxyBattle
 	if err := h.DB.Where("player_id = ? AND status = 1", playerID).First(&b).Error; err != nil {
+		return nil
+	}
+	// 遗留战斗自愈：超过10分钟无操作（刷新/掉线遗留的 status=1 记录）按逃跑关闭，
+	// 避免"你正在战斗中"软锁；正常战斗每回合 Updates 会刷新 updated_at
+	if time.Since(b.UpdatedAt) > 10*time.Minute {
+		h.DB.Model(&model.HxxyBattle{}).Where("id = ?", b.ID).Update("status", 4)
 		return nil
 	}
 	return &b
@@ -433,7 +465,7 @@ func (h *HxxyHandler) BattleAction(c *gin.Context) {
 			h.hxFinishBattle(p, b, &enemy, &self, logs, 3)
 		} else {
 			enemy.HP = 0
-			logs = append(logs, fmt.Sprintf("【%s】被你击败了！", enemy.Name))
+			logs = append(logs, fmt.Sprintf("%s被你击败了！", hxWName(enemy.Name)))
 			h.hxFinishBattle(p, b, &enemy, &self, logs, 2)
 		}
 		resp.OK(c, h.hxBattleView(p, b))
@@ -472,18 +504,18 @@ func (h *HxxyHandler) BattleAction(c *gin.Context) {
 		if enemy.Kind == 2 {
 			logs = append(logs, "BOSS无法被捕捉！")
 		} else if enemy.Level > p.Level {
-			logs = append(logs, fmt.Sprintf("【%s】等级高于你，无法捕捉！", enemy.Name))
+			logs = append(logs, fmt.Sprintf("%s等级高于你，无法捕捉！", hxWName(enemy.Name)))
 		} else {
 			rate := int(0.1 + (1-float64(enemy.HP)/float64(enemy.MaxHP))*0.6*100)
 			if rand.Intn(100) < rate {
 				hxCreatePetFromNpc(h, p, &enemy)
-				logs = append(logs, fmt.Sprintf("捕捉成功！【%s】成为了你的宠物，快去宠物页面看看吧！", enemy.Name))
+				logs = append(logs, fmt.Sprintf("捕捉成功！%s成为了你的宠物，快去宠物页面看看吧！", hxWName(enemy.Name)))
 				end = 2
 				h.hxFinishBattle(p, b, &enemy, &self, logs, end)
 				resp.OK(c, h.hxBattleView(p, b))
 				return
 			}
-			logs = append(logs, fmt.Sprintf("捕捉失败！【%s】挣脱了（剩余气血越少成功率越高）", enemy.Name))
+			logs = append(logs, fmt.Sprintf("捕捉失败！%s挣脱了（剩余气血越少成功率越高）", hxWName(enemy.Name)))
 		}
 	case "flee":
 		if rand.Intn(100) < 60 {
@@ -504,43 +536,49 @@ func (h *HxxyHandler) BattleAction(c *gin.Context) {
 		return
 	}
 
-	// 敌方出手（若我方未胜未逃）
-	if end == 0 && enemy.HP > 0 {
-		atk := enemy.Atk
-		if enemy.Mg > atk && (enemy.Mg > 0) {
-			atk = enemy.Mg // 法系怪取魔攻
-		}
-		gg := hxElemDiff(enemy.Bg, enemy.Hg, enemy.Lg, self.Bf, self.Hf, self.Lf)
-		dmg, crit := hxCalcDmg(atk, self.Def, gg, 100)
-		self.HP -= dmg
-		line := fmt.Sprintf("【%s】出手，对你造成 %d 点伤害", enemy.Name, dmg)
-		if crit {
-			line += "（暴击！）"
-		}
-		logs = append(logs, line)
-		// 宠物替主反击一击
-		if self.Pet != nil && self.Pet.HP > 0 {
-			pdmg, pcrit := hxCalcDmg(self.Pet.Atk, enemy.Def, 0, 100)
-			enemy.HP -= pdmg
-			pl := fmt.Sprintf("宠物【%s】扑击，对【%s】造成 %d 点伤害", self.Pet.Name, enemy.Name, pdmg)
-			if pcrit {
-				pl += "（暴击！）"
-			}
-			logs = append(logs, pl)
-		}
-		if self.HP <= 0 {
-			self.HP = 0
-			logs = append(logs, "你不敌败下阵来……")
-			end = 3
-		} else if enemy.HP <= 0 {
-			enemy.HP = 0
-			logs = append(logs, fmt.Sprintf("【%s】被你击败了！", enemy.Name))
+	// 敌方出手（若我方未胜未逃）；我方击杀当回合立即结算
+	if end == 0 {
+		if enemy.HP <= 0 {
 			end = 2
+		} else {
+			atk := enemy.Atk
+			if enemy.Mg > atk && (enemy.Mg > 0) {
+				atk = enemy.Mg // 法系怪取魔攻
+			}
+			gg := hxElemDiff(enemy.Bg, enemy.Hg, enemy.Lg, self.Bf, self.Hf, self.Lf)
+			dmg, crit := hxCalcDmg(atk, self.Def, gg, 100)
+			self.HP -= dmg
+			line := fmt.Sprintf("%s出手，对你造成 %d 点伤害", hxWName(enemy.Name), dmg)
+			if crit {
+				line += "（暴击！）"
+			}
+			logs = append(logs, line)
+			// 宠物替主反击一击
+			if self.Pet != nil && self.Pet.HP > 0 {
+				pdmg, pcrit := hxCalcDmg(self.Pet.Atk, enemy.Def, 0, 100)
+				enemy.HP -= pdmg
+				pl := fmt.Sprintf("宠物【%s】扑击，对%s造成 %d 点伤害", self.Pet.Name, hxWName(enemy.Name), pdmg)
+				if pcrit {
+					pl += "（暴击！）"
+				}
+				logs = append(logs, pl)
+			}
+			if self.HP <= 0 {
+				self.HP = 0
+				logs = append(logs, "你不敌败下阵来……")
+				end = 3
+			} else if enemy.HP <= 0 {
+				enemy.HP = 0
+				logs = append(logs, fmt.Sprintf("%s被你击败了！", hxWName(enemy.Name)))
+				end = 2
+			}
 		}
 	}
 
-	// 更新快照
-	b.Round++
+	// 更新快照（战斗结束停在当前回合，不再递增）
+	if end == 0 {
+		b.Round++
+	}
 	b.Enemy = hxJSON(enemy)
 	b.Self = hxJSON(self)
 	b.Log = hxJSON(logs)
@@ -561,13 +599,13 @@ func hxRound(enemy *hxEnemy, self *hxSelf, logs *[]string, multPct int, skillNam
 	gg := hxElemDiff(self.Bg, self.Hg, self.Lg, enemy.Bf, enemy.Hf, enemy.Lf)
 	dmg, crit := hxCalcDmg(self.Atk, enemy.Def, gg, multPct)
 	enemy.HP -= dmg
-	line := fmt.Sprintf("你使出【%s】，对【%s】造成 %d 点伤害", skillName, enemy.Name, dmg)
+	line := fmt.Sprintf("你使出【%s】，对%s造成 %d 点伤害", skillName, hxWName(enemy.Name), dmg)
 	if crit {
 		line += "（暴击！）"
 	}
 	if enemy.HP <= 0 {
 		enemy.HP = 0
-		line += fmt.Sprintf("，【%s】被击败了！", enemy.Name)
+		line += fmt.Sprintf("，%s被击败了！", hxWName(enemy.Name))
 	}
 	*logs = append(*logs, line)
 }
@@ -647,6 +685,11 @@ func (h *HxxyHandler) hxFinishBattle(p *model.HxxyPlayer, b *model.HxxyBattle, e
 			h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).Update("vip", p.Vip-1)
 			p.Vip--
 		}
+		// 双倍经验时段（活动，管理端可开关）
+		if h.hxExp2xNow() {
+			exp *= 2
+			logs = append(logs, "【双倍经验时段】本次战斗经验翻倍！")
+		}
 		// 掉落
 		if enemy.Drops != "" {
 			var drops []struct {
@@ -685,12 +728,26 @@ func (h *HxxyHandler) hxFinishBattle(p *model.HxxyPlayer, b *model.HxxyBattle, e
 		}
 		// 任务打怪计数
 		h.hxQuestHuntProgress(p.ID, enemy.ID)
-		// 每日战斗计数
+		// 每日战斗/狩猎计数（活跃度）
 		h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).UpdateColumn("day_battle", p.DayBattle+1)
-		// 经验/银两
+		h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).UpdateColumn("day_hunt", p.DayHunt+1)
+		p.DayBattle++
+		p.DayHunt++
+		// 经验/银两（修炼开关开启时战斗经验存入修炼经验，复刻 xy052）
 		if exp > 0 {
-			_, lvMsg := h.hxGainExp(p, exp)
-			logs = append(logs, fmt.Sprintf("获得经验 %d 点。%s", exp, lvMsg))
+			if p.XiulianSwitch == 1 {
+				h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).UpdateColumn("xiulian_exp", p.XiulianExp+exp)
+				p.XiulianExp += exp
+				logs = append(logs, fmt.Sprintf("获得修炼经验 %d 点。", exp))
+			} else {
+				_, lvMsg := h.hxGainExp(p, exp)
+				logs = append(logs, fmt.Sprintf("获得经验 %d 点。%s", exp, lvMsg))
+			}
+			// 西游声望奖励（修炼升级消耗来源）
+			swGain := int64(1 + exp/100)
+			h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).UpdateColumn("sw", p.Sw+swGain)
+			p.Sw += swGain
+			logs = append(logs, fmt.Sprintf("获得西游声望 %d 点。", swGain))
 		}
 		if money > 0 {
 			h.hxWallet(p, "money", money, "战斗奖励")
@@ -704,18 +761,21 @@ func (h *HxxyHandler) hxFinishBattle(p *model.HxxyPlayer, b *model.HxxyBattle, e
 			}
 			h.DB.Model(&model.HxxyPet{}).Where("id = ?", pet.ID).Update("cur_hp", self.Pet.HP)
 		}
-		// 副本进度
+		// 副本进度（复刻原版 fb_ini：Floor=已杀守护BOSS数，杀满5只完成）
 		if b.Type == "dungeon" && enemy.DungeonID > 0 {
 			h.DB.Model(&model.HxxyDungeonRun{}).
 				Where("player_id = ? AND dungeon_id = ? AND floor < ?", p.ID, enemy.DungeonID, enemy.Floor).
 				Update("floor", enemy.Floor)
-			if enemy.Floor >= 10 {
-				logs = append(logs, "副本已全部通关！")
+			var dg model.HxxyDungeon
+			if err := h.DB.First(&dg, enemy.DungeonID).Error; err == nil && enemy.Floor >= 5 {
+				h.DB.Model(&model.HxxyDungeonRun{}).
+					Where("player_id = ? AND dungeon_id = ?", p.ID, enemy.DungeonID).Update("done", 1)
+				logs = append(logs, "恭喜你！"+dg.Name+"全部守护BOSS已击杀，副本完成！明日可再次激活！")
 			}
 		}
-		// BOSS 刷新
+		// BOSS 刷新（复刻原版 gw/boss.php：区域BOSS msgtime=600 秒）
 		if b.Type == "boss" {
-			at := time.Now().Add(2 * time.Hour)
+			at := time.Now().Add(10 * time.Minute)
 			h.DB.Model(&model.HxxyBoss{}).Where("id = ?", enemy.ID).Update("respawn_at", at)
 		}
 	} else if result == 3 {

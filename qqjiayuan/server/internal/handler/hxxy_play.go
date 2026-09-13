@@ -103,10 +103,10 @@ func (h *HxxyHandler) ArenaFight(c *gin.Context) {
 		enemy.HP = target.HP
 	}
 	self := h.hxSelfSnap(p)
-	logs := []string{fmt.Sprintf("你向【%s】（%d级）发起了比武挑战！", target.Name, target.Level)}
+	logs := []string{fmt.Sprintf("你向%s（%d级）发起了比武挑战！", hxWName(target.Name), target.Level)}
 	b := model.HxxyBattle{
 		PlayerID: p.ID, Type: "pvp", EnemyID: target.ID, EnemyName: target.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(&b)
 	h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).UpdateColumn("day_arena", p.DayArena+1)
@@ -194,10 +194,10 @@ func (h *HxxyHandler) TowerStart(c *gin.Context) {
 	}
 	enemy.HP = enemy.MaxHP
 	self := h.hxSelfSnap(p)
-	logs := []string{fmt.Sprintf("你踏上了通天塔第 %d 层，【%s】拦住了去路！", floor, enemy.Name)}
+	logs := []string{fmt.Sprintf("你踏上了通天塔第 %d 层，%s拦住了去路！", floor, hxWName(enemy.Name))}
 	b := model.HxxyBattle{
 		PlayerID: p.ID, Type: "tower", EnemyID: uint(floor), EnemyName: enemy.Name,
-		Round: 0, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
+		Round: 1, Status: 1, Enemy: hxJSON(enemy), Self: hxJSON(self), Log: hxJSON(logs),
 	}
 	h.DB.Create(&b)
 	resp.OK(c, h.hxBattleView(p, &b))
@@ -277,7 +277,25 @@ func (h *HxxyHandler) FunRoll(c *gin.Context) {
 	resp.OK(c, gin.H{"symbols": roll, "win": win, "msg": msg})
 }
 
-// TeyunList 腾云目的地（各大州府入口节点，复刻 xy476.php）
+// teyunDests 复刻原版 xy476.php 腾云目的地（区域名 → 传送坐标，坐标取自地图传送NPC teles）
+var teyunDests = []struct{ Cat, Name string; Dtx, Dty int }{
+	// 门派区域
+	{"门派区域", "龙宫", 2, 1}, {"门派区域", "月宫", 7, 0}, {"门派区域", "普陀", 13, 0},
+	{"门派区域", "方寸", 10, 0}, {"门派区域", "将军", 1, 72}, {"门派区域", "地府", 22, 0},
+	// 主城区域
+	{"主城区域", "长安城", 1, 0}, {"主城区域", "傲来国", 24, 0}, {"主城区域", "祭赛国", 25, 0},
+	{"主城区域", "天宫", 23, 0}, {"主城区域", "东海海岸", 24, 7},
+	// 野外区域
+	{"野外区域", "城南荒野", 1, 122}, {"野外区域", "慈恩寺", 1, 86}, {"野外区域", "昆仑山区", 1, 104},
+	{"野外区域", "雪山迷宫", 44, 12}, {"野外区域", "泾水河", 5, 12}, {"野外区域", "海底莽林", 3, 0},
+	// 副本区域
+	{"副本区域", "双叉岭", 35, 12}, {"副本区域", "黑松林", 36, 12}, {"副本区域", "白骨洞", 38, 12},
+	{"副本区域", "金塔", 37, 12}, {"副本区域", "平顶山", 39, 12}, {"副本区域", "老君炉", 34, 12},
+	{"副本区域", "斩妖台", 33, 12}, {"副本区域", "蟠桃园", 32, 12}, {"副本区域", "紫竹林", 14, 0},
+	{"副本区域", "兜率宫", 23, 24}, {"副本区域", "斩妖台", 23, 29}, {"副本区域", "银河", 31, 12},
+}
+
+// TeyunList 腾云目的地（按原版 xy476.php 分类，消耗腾云符传送到各区域）
 func (h *HxxyHandler) TeyunList(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -286,21 +304,18 @@ func (h *HxxyHandler) TeyunList(c *gin.Context) {
 	}
 	// 腾云符余量
 	fuCount := h.hxItemCount(p.ID, "腾云符")
-	var rows []struct {
-		Dtx int
-		Dty int
-	}
-	h.DB.Raw("SELECT dtx, MIN(dty) AS dty FROM hxxy_map_nodes GROUP BY dtx ORDER BY dtx ASC LIMIT 40").Scan(&rows)
 	list := []gin.H{}
-	for _, r := range rows {
-		n := h.hxNode(r.Dtx, r.Dty)
-		if n == nil {
+	seen := map[string]bool{}
+	for _, d := range teyunDests {
+		if d.Dtx == p.MapX && d.Dty == p.MapY {
 			continue
 		}
-		if n.Dtx == p.MapX && n.Dty == p.MapY {
-			continue
+		key := fmt.Sprintf("%d-%d", d.Dtx, d.Dty)
+		if seen[key] {
+			continue // 去重（如两个斩妖台取其一）
 		}
-		list = append(list, gin.H{"dtx": r.Dtx, "dty": r.Dty, "name": n.Name})
+		seen[key] = true
+		list = append(list, gin.H{"cat": d.Cat, "name": d.Name, "dtx": d.Dtx, "dty": d.Dty})
 	}
 	resp.OK(c, gin.H{"fu": fuCount, "list": list})
 }
@@ -389,12 +404,129 @@ func (h *HxxyHandler) PlayerView(c *gin.Context) {
 	}
 	nodeName := "未知之地"
 	if n := h.hxNode(t.MapX, t.MapY); n != nil {
+		// 所在地 = 地图区域名·节点名（如 长安城·朱雀大街）
 		nodeName = n.Name
+		if area := h.hxMapName(t.MapX); area != "" {
+			nodeName = area + "·" + n.Name
+		}
+	}
+	// 配偶（复刻 xy093：配偶：X/暂无）
+	spouseName := ""
+	var mg model.HxxyMarriage
+	if err := h.DB.Where("(player_a = ? OR player_b = ?) AND status = 2", t.ID, t.ID).Order("id DESC").First(&mg).Error; err == nil {
+		if mg.PlayerA == t.ID {
+			spouseName = h.hxNameByID(mg.PlayerB)
+		} else {
+			spouseName = h.hxNameByID(mg.PlayerA)
+		}
+	}
+	// 住宅（复刻 xy093：住宅：X/暂无）
+	houseName := ""
+	var hsCount int64
+	h.DB.Model(&model.HxxyHouse{}).Where("player_id = ?", t.ID).Count(&hsCount)
+	if hsCount > 0 {
+		houseName = t.Name + "的住宅"
 	}
 	resp.OK(c, gin.H{
 		"player_id": t.ID, "name": t.Name, "sex": t.Sex, "level": t.Level,
 		"sect_name": hxSectNames[t.Sect], "gang": gangName, "title": titleName,
 		"emz": t.Emz, "wins": wins, "tower_best": t.TowerBest, "node_name": nodeName,
+		"spouse": spouseName, "house": houseName,
 		"is_me": t.ID == p.ID,
 	})
+}
+
+// GiveMoney 赠银（复刻 xy537：1000两起，2%手续费最低1两，对方收全额并收私聊）
+func (h *HxxyHandler) GiveMoney(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		ToID   uint  `json:"to_id"`
+		Amount int64 `json:"amount"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.ToID == 0 {
+		resp.ParamError(c, "输入有误，或者不能为空")
+		return
+	}
+	if in.Amount < 1000 || in.Amount > 99999999999 {
+		resp.ParamError(c, "赠送银两必须大于1000两并且小于999亿9999万9999两~~")
+		return
+	}
+	fee := in.Amount * 2 / 100
+	if fee < 1 {
+		fee = 1
+	}
+	if p.Money < in.Amount+fee {
+		resp.ParamError(c, fmt.Sprintf("对不起！！赠送%s两不足~~\n附带：（%s两手续费用）", hxSilverText(in.Amount), hxSilverText(fee)))
+		return
+	}
+	var t model.HxxyPlayer
+	if err := h.DB.First(&t, in.ToID).Error; err != nil {
+		resp.ParamError(c, "对方ID有误~~请重新赠送")
+		return
+	}
+	h.hxWallet(p, "money", -(in.Amount+fee), "赠银给"+t.Name)
+	h.hxWallet(&t, "money", in.Amount, "收到"+p.Name+"赠银")
+	h.hxNotify(t.ID, "打赏了你"+hxSilverText(in.Amount)+"银两，快去抱抱大佬大腿求包养吧！！")
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("你成功赠送%s给了%s(%d)\n附带：（%s两手续费用）", hxSilverText(in.Amount), t.Name, t.ID, hxSilverText(fee))})
+}
+
+// GiveItem 赠物（复刻 xy538→xy547：从行囊选物品按数量赠送，绑定物品不可赠）
+func (h *HxxyHandler) GiveItem(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		ToID  uint `json:"to_id"`
+		BagID uint `json:"bag_id"`
+		Count int  `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.ToID == 0 || in.BagID == 0 {
+		resp.ParamError(c, "输入有误，或者不能为空")
+		return
+	}
+	var t model.HxxyPlayer
+	if err := h.DB.First(&t, in.ToID).Error; err != nil {
+		resp.ParamError(c, "对方ID有误~~请重新赠送")
+		return
+	}
+	var b model.HxxyBag
+	if err := h.DB.Where("id = ? AND player_id = ? AND store = 0", in.BagID, p.ID).First(&b).Error; err != nil {
+		resp.ParamError(c, "物品不存在")
+		return
+	}
+	if b.Bind == 1 {
+		resp.ParamError(c, "对不起！绑定物品不能赠送")
+		return
+	}
+	if in.Count <= 0 {
+		resp.ParamError(c, "输入有误，或者不能为空")
+		return
+	}
+	if in.Count > b.Count {
+		in.Count = b.Count
+	}
+	name := ""
+	if b.Kind == "item" {
+		var it model.HxxyItem
+		h.DB.First(&it, b.RefID)
+		name = it.Name
+	} else {
+		var e model.HxxyEquip
+		h.DB.First(&e, b.RefID)
+		name = e.Name
+	}
+	if b.Count == in.Count {
+		h.DB.Delete(&model.HxxyBag{}, b.ID)
+	} else {
+		h.DB.Model(&model.HxxyBag{}).Where("id = ?", b.ID).Update("count", b.Count-in.Count)
+	}
+	h.hxBagAdd(&t, b.Kind, b.RefID, in.Count, b.Bind)
+	h.hxNotify(t.ID, fmt.Sprintf("赠送了你%sx%d，快去看看吧！", name, in.Count))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("你成功赠送%sx%d给了%s(%d)", name, in.Count, t.Name, t.ID)})
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,7 @@ func (h *HxxyHandler) hxBagView(b *model.HxxyBag) gin.H {
 		var e model.HxxyEquip
 		if err := h.DB.First(&e, b.RefID).Error; err == nil {
 			v["name"] = e.Name
+			v["star_prefix"] = hxStarPrefix(e.Level)
 			v["desc"] = e.Desc
 			v["category"] = e.Category
 			v["slot_name"] = hxSlotNames[e.Category]
@@ -615,26 +617,26 @@ func (h *HxxyHandler) Shop(c *gin.Context) {
 		var its []model.HxxyItem
 		h.DB.Where("category = 5").Order("id").Limit(60).Find(&its)
 		for _, it := range its {
-			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc})
+			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc, "weight": it.Weight})
 		}
 	case "weapon", "armor", "jewel":
 		cats := map[string][]int{"weapon": {3}, "armor": {4, 5, 6}, "jewel": {7, 8}}[kind]
 		var eqs []model.HxxyEquip
 		h.DB.Where("category IN ? AND (sect IN (0,6,7) OR sect = ?)", cats, p.Sect).Order("level, id").Limit(120).Find(&eqs)
 		for _, e := range eqs {
-			goods = append(goods, gin.H{"kind": "equip", "ref_id": e.ID, "name": e.Name, "level": e.Level, "price": e.Price, "bean_price": e.BeanPrice, "desc": e.Desc, "sect": e.Sect, "category": e.Category})
+			goods = append(goods, gin.H{"kind": "equip", "ref_id": e.ID, "name": e.Name, "level": e.Level, "price": e.Price, "bean_price": e.BeanPrice, "desc": e.Desc, "sect": e.Sect, "category": e.Category, "weight": 5})
 		}
 	case "grocery":
 		var its []model.HxxyItem
 		h.DB.Where("category IN (1,4,8)").Order("id").Limit(60).Find(&its)
 		for _, it := range its {
-			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc})
+			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc, "weight": it.Weight})
 		}
 	case "pet":
 		var its []model.HxxyItem
 		h.DB.Where("id IN (3,4)").Find(&its) // 宠物指南/门派秘籍
 		for _, it := range its {
-			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc})
+			goods = append(goods, gin.H{"kind": "item", "ref_id": it.ID, "name": it.Name, "level": it.Level, "price": it.Price, "bean_price": it.BeanPrice, "desc": it.Desc, "weight": it.Weight})
 		}
 		var sps []model.HxxyPetSpecies
 		h.DB.Where("level <= ?", p.Level+5).Order("level").Limit(15).Find(&sps)
@@ -642,13 +644,21 @@ func (h *HxxyHandler) Shop(c *gin.Context) {
 		for _, sp := range sps {
 			pets = append(pets, gin.H{"species_id": sp.ID, "name": sp.Name, "level": sp.Level, "price": sp.Level * 5000, "bean_price": sp.Level*2 + 10})
 		}
-		resp.OK(c, gin.H{"kind": kind, "goods": goods, "pets": pets})
+		resp.OK(c, gin.H{"kind": kind, "goods": goods, "pets": pets, "used": h.hxBagUsed(p), "cap": p.BagCap})
 		return
 	default:
 		resp.ParamError(c, "没有这个商店")
 		return
 	}
-	resp.OK(c, gin.H{"kind": kind, "goods": goods})
+	// 列表页头部（复刻 xy246：物品负重 X/Y + 银两）
+	resp.OK(c, gin.H{"kind": kind, "goods": goods, "used": h.hxBagUsed(p), "cap": p.BagCap})
+}
+
+// hxBagUsed 背包已用格数（store=0 的行数）
+func (h *HxxyHandler) hxBagUsed(p *model.HxxyPlayer) int64 {
+	var used int64
+	h.DB.Model(&model.HxxyBag{}).Where("player_id = ? AND store = 0", p.ID).Count(&used)
+	return used
 }
 
 // ShopBuy 购买（银两/金豆）
@@ -668,8 +678,14 @@ func (h *HxxyHandler) ShopBuy(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
+	// 复刻原版 mdx02：数量校验文案
 	if in.Count <= 0 {
-		in.Count = 1
+		resp.ParamError(c, "输入有误请重新输入")
+		return
+	}
+	if in.Count > 1000 {
+		resp.ParamError(c, "每次购买只能在1-1000之间")
+		return
 	}
 	if in.Currency == "" {
 		in.Currency = "money"
@@ -683,12 +699,14 @@ func (h *HxxyHandler) ShopBuy(c *gin.Context) {
 			return
 		}
 		if p.Beans < sp.Level*2+10 {
-			resp.ParamError(c, "金豆不足")
+			resp.ParamError(c, fmt.Sprintf("对不起！购买%sx%d所携带的金豆不足", sp.Name, in.Count))
 			return
 		}
-		h.hxWallet(p, "beans", int64(-(sp.Level*2 + 10)), "购买宠物【"+sp.Name+"】")
-		h.DB.Create(&model.HxxyPet{PlayerID: p.ID, SpeciesID: sp.ID, Name: sp.Name, Level: sp.Level, Star: 1, Quality: 1})
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("成功购买宠物【%s】！快去宠物页面查看吧。", sp.Name)})
+		h.hxWallet(p, "beans", int64(-(sp.Level*2+10)*in.Count), "购买宠物【"+sp.Name+"】")
+		for i := 0; i < in.Count; i++ {
+			h.DB.Create(&model.HxxyPet{PlayerID: p.ID, SpeciesID: sp.ID, Name: sp.Name, Level: sp.Level, Star: 1, Quality: 1})
+		}
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("失去：%s金豆", hxSilverText(int64(sp.Level*2+10) * int64(in.Count)))})
 		return
 	default:
 		var name string
@@ -720,7 +738,7 @@ func (h *HxxyHandler) ShopBuy(c *gin.Context) {
 			}
 			total = int64(beanPrice * in.Count)
 			if p.Beans < int(total) {
-				resp.ParamError(c, "金豆不足")
+				resp.ParamError(c, fmt.Sprintf("对不起！购买%sx%d所携带的金豆不足", name, in.Count))
 				return
 			}
 		} else {
@@ -730,17 +748,32 @@ func (h *HxxyHandler) ShopBuy(c *gin.Context) {
 			}
 			total = int64(price * in.Count)
 			if p.Money < total {
-				resp.ParamError(c, fmt.Sprintf("需要 %d 银两，银两不足", total))
+				resp.ParamError(c, fmt.Sprintf("对不起！购买%sx%d所携带的银两不足", name, in.Count))
 				return
 			}
 		}
+		// 负重校验（复刻 mdx02：无同物堆叠需占新格，超容量拒购）
+		need := 0
+		if in.Kind == "equip" {
+			need = 1
+		} else {
+			var cnt int64
+			h.DB.Model(&model.HxxyBag{}).Where("player_id = ? AND kind = 'item' AND ref_id = ? AND store = 0", p.ID, in.RefID).Count(&cnt)
+			if cnt == 0 {
+				need = 1
+			}
+		}
+		if need > 0 && h.hxBagUsed(p)+int64(need) > int64(p.BagCap) {
+			resp.ParamError(c, fmt.Sprintf("对不起！购买%sx%d负重不足", name, in.Count))
+			return
+		}
 		h.hxWallet(p, in.Currency, -total, "购买【"+name+"】×"+fmt.Sprint(in.Count))
 		h.hxBagAdd(p, in.Kind, in.RefID, in.Count, bind)
-		cur := "银两"
 		if in.Currency == "beans" {
-			cur = "金豆"
+			resp.OK(c, gin.H{"msg": fmt.Sprintf("失去：%s金豆", hxSilverText(total))})
+		} else {
+			resp.OK(c, gin.H{"msg": fmt.Sprintf("失去：%s银两", hxSilverText(total))})
 		}
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("购买【%s】×%d 成功！花费 %d %s。", name, in.Count, total, cur)})
 	}
 }
 
@@ -815,6 +848,44 @@ func (h *HxxyHandler) BankWithdraw(c *gin.Context) {
 	h.hxBankMove(c, -1)
 }
 
+// hxYL 银两格式化（照抄原版 wp/warehouse.php：X亿X万X两）
+func hxYL(v int64) string {
+	if v <= 0 {
+		return "0两"
+	}
+	s := fmt.Sprintf("%d", v)
+	n := len(s)
+	if n >= 9 {
+		y, _ := strconv.ParseInt(s[:n-8], 10, 64)
+		w, _ := strconv.ParseInt(s[n-8:n-4], 10, 64)
+		l, _ := strconv.ParseInt(s[n-4:], 10, 64)
+		out := ""
+		if y > 0 {
+			out += fmt.Sprintf("%d亿", y)
+		}
+		if w > 0 {
+			out += fmt.Sprintf("%d万", w)
+		}
+		if l > 0 {
+			out += fmt.Sprintf("%d", l)
+		}
+		return out + "两"
+	}
+	if n >= 5 {
+		w, _ := strconv.ParseInt(s[:n-4], 10, 64)
+		l, _ := strconv.ParseInt(s[n-4:], 10, 64)
+		out := ""
+		if w > 0 {
+			out += fmt.Sprintf("%d万", w)
+		}
+		if l > 0 {
+			out += fmt.Sprintf("%d", l)
+		}
+		return out + "两"
+	}
+	return fmt.Sprintf("%d两", v)
+}
+
 func (h *HxxyHandler) hxBankMove(c *gin.Context, dir int) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -825,24 +896,36 @@ func (h *HxxyHandler) hxBankMove(c *gin.Context, dir int) {
 		Amount int64 `json:"amount"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.Amount <= 0 {
-		resp.ParamError(c, "请输入正确的金额")
+		resp.ParamError(c, "输入有误请重新输入")
+		return
+	}
+	if in.Amount > 99999999999 {
+		resp.ParamError(c, "最大不能超过999亿9999万9999两")
 		return
 	}
 	if dir == 1 {
 		if p.Money < in.Amount {
-			resp.ParamError(c, "身上银两不足")
+			resp.ParamError(c, "对不起!你身上没有那么多银两哦!")
+			return
+		}
+		if p.Bank+in.Amount > 99999999999 {
+			resp.ParamError(c, "对不起!你本次存款达到了仓库银两上限!请重新输入")
 			return
 		}
 		h.hxWallet(p, "money", -in.Amount, "银行存款")
 		h.hxWallet(p, "bank", in.Amount, "银行存款")
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("存入 %d 银两。", in.Amount), "money": p.Money, "bank": p.Bank})
+		resp.OK(c, gin.H{"msg": "恭喜你存入了银两：" + hxYL(in.Amount), "money": p.Money, "bank": p.Bank})
 	} else {
 		if p.Bank < in.Amount {
-			resp.ParamError(c, "存款不足")
+			resp.ParamError(c, "对不起!你仓库没有那么多银两哦!")
+			return
+		}
+		if p.Money+in.Amount > 99999999999 {
+			resp.ParamError(c, "对不起!你本次取款达到了背包银两上限!请重新输入")
 			return
 		}
 		h.hxWallet(p, "bank", -in.Amount, "银行取款")
 		h.hxWallet(p, "money", in.Amount, "银行取款")
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("取出 %d 银两。", in.Amount), "money": p.Money, "bank": p.Bank})
+		resp.OK(c, gin.H{"msg": "恭喜你取出了银两：" + hxYL(in.Amount), "money": p.Money, "bank": p.Bank})
 	}
 }

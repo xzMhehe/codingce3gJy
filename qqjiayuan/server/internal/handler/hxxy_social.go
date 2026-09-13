@@ -23,7 +23,7 @@ func (h *HxxyHandler) hxNameByID(id uint) string {
 	return n
 }
 
-// Friends 好友列表
+// Friends 好友/黑名单列表（复刻 xy114 好友页 + xy116 黑名单页：单向关系，status 1好友 2黑名单）
 func (h *HxxyHandler) Friends(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -31,24 +31,20 @@ func (h *HxxyHandler) Friends(c *gin.Context) {
 		return
 	}
 	var fs []model.HxxyFriend
-	h.DB.Where("player_id = ? OR friend_id = ?", p.ID, p.ID).Find(&fs)
-	friends, applies := []gin.H{}, []gin.H{}
+	h.DB.Where("player_id = ?", p.ID).Order("id").Find(&fs)
+	friends, blacks := []gin.H{}, []gin.H{}
 	for _, f := range fs {
-		other := f.FriendID
-		if other == p.ID {
-			other = f.PlayerID
-		}
-		name := h.hxNameByID(other)
+		name := h.hxNameByID(f.FriendID)
 		if f.Status == 2 {
-			friends = append(friends, gin.H{"player_id": other, "name": name})
-		} else if f.FriendID == p.ID {
-			applies = append(applies, gin.H{"player_id": other, "name": name, "apply_id": f.ID})
+			blacks = append(blacks, gin.H{"player_id": f.FriendID, "name": name})
+		} else {
+			friends = append(friends, gin.H{"player_id": f.FriendID, "name": name})
 		}
 	}
-	resp.OK(c, gin.H{"friends": friends, "applies": applies})
+	resp.OK(c, gin.H{"friends": friends, "blacks": blacks})
 }
 
-// FriendAdd 好友申请
+// FriendAdd 加为好友（复刻 xy100：单向直接成为好友，无申请同意流程）
 func (h *HxxyHandler) FriendAdd(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -70,40 +66,82 @@ func (h *HxxyHandler) FriendAdd(c *gin.Context) {
 		resp.ParamError(c, "找不到该玩家")
 		return
 	}
-	var cnt int64
-	h.DB.Model(&model.HxxyFriend{}).Where("(player_id = ? AND friend_id = ?) OR (player_id = ? AND friend_id = ?)",
-		p.ID, in.PlayerID, in.PlayerID, p.ID).Count(&cnt)
-	if cnt > 0 {
-		resp.ParamError(c, "已是好友或申请中")
+	var t model.HxxyPlayer
+	if err := h.DB.First(&t, in.PlayerID).Error; err != nil {
+		resp.ParamError(c, "找不到该玩家")
 		return
 	}
-	h.DB.Create(&model.HxxyFriend{PlayerID: p.ID, FriendID: in.PlayerID, Status: 1})
-	h.hxNotify(in.PlayerID, fmt.Sprintf("【%s】请求加你为好友，请到[好友]页处理。", p.Name))
-	resp.OK(c, gin.H{"msg": "好友申请已发送！"})
+	var f model.HxxyFriend
+	if err := h.DB.Where("player_id = ? AND friend_id = ?", p.ID, t.ID).First(&f).Error; err == nil {
+		if f.Status == 2 {
+			resp.ParamError(c, fmt.Sprintf("对不起！玩家：%s在你的黑名单内需要移除后才能加友", t.Name))
+		} else {
+			resp.ParamError(c, fmt.Sprintf("对不起！玩家：%s已经是你的好友了", t.Name))
+		}
+		return
+	}
+	h.DB.Create(&model.HxxyFriend{PlayerID: p.ID, FriendID: t.ID, Status: 1})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你！你和%s成为了好友", t.Name)})
 }
 
-// FriendAgree 同意好友
-func (h *HxxyHandler) FriendAgree(c *gin.Context) {
+// FriendBlack 拉入黑名单（复刻 xy104：好友则降为黑名单，非好友直接入黑名单）
+func (h *HxxyHandler) FriendBlack(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
 		resp.ParamError(c, "请先创建角色")
 		return
 	}
 	var in struct {
-		ApplyID uint `json:"apply_id"`
+		PlayerID uint `json:"player_id"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || in.ApplyID == 0 {
+	if err := c.ShouldBindJSON(&in); err != nil || in.PlayerID == 0 || in.PlayerID == p.ID {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var t model.HxxyPlayer
+	if err := h.DB.First(&t, in.PlayerID).Error; err != nil {
+		resp.ParamError(c, "找不到该玩家")
+		return
+	}
+	var f model.HxxyFriend
+	if err := h.DB.Where("player_id = ? AND friend_id = ?", p.ID, t.ID).First(&f).Error; err == nil {
+		if f.Status == 2 {
+			resp.ParamError(c, fmt.Sprintf("对不起！玩家：%s已经在你的黑名单内", t.Name))
+			return
+		}
+		h.DB.Model(&model.HxxyFriend{}).Where("id = ?", f.ID).Update("status", 2)
+	} else {
+		h.DB.Create(&model.HxxyFriend{PlayerID: p.ID, FriendID: t.ID, Status: 2})
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你！成功将%s拉进了黑名单", t.Name)})
+}
+
+// FriendRemove 删除好友/移出黑名单（复刻 xy115/xy117：直接删除记录，按原状态区分文案）
+func (h *HxxyHandler) FriendRemove(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		PlayerID uint `json:"player_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.PlayerID == 0 {
 		resp.ParamError(c, "参数错误")
 		return
 	}
 	var f model.HxxyFriend
-	if err := h.DB.Where("id = ? AND friend_id = ? AND status = 1", in.ApplyID, p.ID).First(&f).Error; err != nil {
-		resp.ParamError(c, "申请不存在")
+	if err := h.DB.Where("player_id = ? AND friend_id = ?", p.ID, in.PlayerID).First(&f).Error; err != nil {
+		resp.ParamError(c, "该玩家不在你的列表内")
 		return
 	}
-	h.DB.Model(&model.HxxyFriend{}).Where("id = ?", f.ID).Update("status", 2)
-	h.hxNotify(f.PlayerID, fmt.Sprintf("【%s】同意了你的好友申请，你们已成为好友。", p.Name))
-	resp.OK(c, gin.H{"msg": "你们已成为好友！"})
+	name := h.hxNameByID(f.FriendID)
+	h.DB.Delete(&f)
+	if f.Status == 2 {
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("你将：%s移除了黑名单", name)})
+	} else {
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("你删除了好友：%s", name)})
+	}
 }
 
 // ChatList 世界聊天（最近 50 条）
@@ -157,6 +195,19 @@ func (h *HxxyHandler) hxNotify(playerID uint, content string) {
 	h.DB.Create(&model.HxxyMsg{PlayerID: playerID, FromName: "系统", Kind: "sys", Content: content})
 }
 
+// hxWorldMsg 全服公告（复刻原版 msgg02.php：写给所有玩家）
+func (h *HxxyHandler) hxWorldMsg(content string) {
+	if content == "" {
+		return
+	}
+	content = trimStr(content, 200)
+	var ids []uint
+	h.DB.Model(&model.HxxyPlayer{}).Pluck("id", &ids)
+	for _, id := range ids {
+		h.DB.Create(&model.HxxyMsg{PlayerID: id, FromName: "系统", Kind: "sys", Content: content})
+	}
+}
+
 // Home 首页数据（未读消息 + 同地地图附近玩家，复刻原版 xy002.php 消息区与附近玩家）
 func (h *HxxyHandler) Home(c *gin.Context) {
 	p := h.hxPlayer(c)
@@ -174,7 +225,15 @@ func (h *HxxyHandler) Home(c *gin.Context) {
 	h.DB.Where("map_x = ? AND map_y = ? AND id != ?", p.MapX, p.MapY, p.ID).Order("id").Limit(8).Find(&near)
 	list := []gin.H{}
 	for _, n := range near {
-		list = append(list, gin.H{"player_id": n.ID, "name": n.Name, "level": n.Level, "sect_name": hxSectNames[n.Sect]})
+		// 复刻 fjwj.php：附近玩家显示 名字【国家】（职务）
+		gangName, gangRole := "", ""
+		np := n
+		if g, mem := h.hxGangOf(&np); g != nil && mem != nil {
+			gangName = g.Name
+			gangRole = hxGangRoleNames[mem.Role]
+		}
+		list = append(list, gin.H{"player_id": n.ID, "name": n.Name, "level": n.Level,
+			"sect_name": hxSectNames[n.Sect], "gang_name": gangName, "gang_role": gangRole})
 	}
 	// 组队邀请（复刻原版 yq1.php：邀请直接显示在首页）
 	var invites []model.HxxyTeamInvite
@@ -203,8 +262,12 @@ func (h *HxxyHandler) Home(c *gin.Context) {
 	if err := h.DB.Where("player_b = ? AND status = 1", p.ID).Order("id DESC").First(&mi).Error; err == nil {
 		marriageInvite = gin.H{"id": mi.ID, "from_id": mi.PlayerA, "from_name": h.hxNameByID(mi.PlayerA)}
 	}
+	// 导航动态标红：未签到 / 有可提交任务
+	var questReady int64
+	h.DB.Model(&model.HxxyPlayerQuest{}).Where("player_id = ? AND status = 2", p.ID).Count(&questReady)
 	resp.OK(c, gin.H{"msgs": msgs, "nearby": list, "notices": hxStaticNotices(), "team_invites": inv,
-		"gang_invites": glist, "house_invites": hlist, "marriage_invite": marriageInvite})
+		"gang_invites": glist, "house_invites": hlist, "marriage_invite": marriageInvite,
+		"today_signed": p.DaySignin > 0, "quest_ready": questReady})
 }
 
 // hxStaticNotices 首页定时活动公告（复刻原版 msgg03.php：按当前时间显示活动预告/进行中红字）
@@ -349,45 +412,248 @@ func (h *HxxyHandler) PMList(c *gin.Context) {
 	})
 }
 
-// GangInfo 帮派信息（我的帮派 + 列表）
+// ================= 国家系统（复刻原版 all_bp：xy171 创建 / xy172 主页 / xy175 成员 / xy176-179 任命罢免 /
+// xy182 退出 / xy184 踢出 / xy185 捐献 / xy186 国家商城 / xy595 升级 / xy605 兑换）=================
+
+// hxGangRoleNames 职务表（复刻原版：0成员 1君主 2辅助 3军机 4财政 5工部 6外交 7军团长）
+var hxGangRoleNames = map[int]string{
+	0: "成员", 1: "君主", 2: "辅助大臣", 3: "军机大臣", 4: "财政大臣", 5: "工部大臣", 6: "外交大臣", 7: "军团长",
+}
+
+func hxGangRoleName(role int) string {
+	if n, ok := hxGangRoleNames[role]; ok {
+		return n
+	}
+	return "成员"
+}
+
+// hxGangUpReq 升级消耗（xy595.php：当前等级→[国家资金,国家经验,国家声望]）
+func hxGangUpReq(level int) (int64, int64, int64) {
+	switch level {
+	case 1:
+		return 10000000000, 5000, 5000
+	case 2:
+		return 20000000000, 10000, 10000
+	case 3:
+		return 30000000000, 15000, 15000
+	case 4:
+		return 40000000000, 20000, 20000
+	case 5:
+		return 50000000000, 20000, 20000
+	case 6:
+		return 60000000000, 25000, 250000
+	case 7:
+		return 70000000000, 30000, 30000
+	case 8:
+		return 80000000000, 50000, 50000
+	case 9:
+		return 99999999999, 100000, 100000
+	}
+	return 0, 0, 0 // 10级封顶
+}
+
+// hxGangUpCap 升级后上限（xy595.php：新等级→[人数上限,经验上限]）
+func hxGangUpCap(level int) (int, int64) {
+	switch level {
+	case 2:
+		return 40, 10000
+	case 3:
+		return 60, 15000
+	case 4:
+		return 80, 20000
+	case 5:
+		return 100, 25000
+	case 6:
+		return 150, 25000
+	case 7:
+		return 200, 30000
+	case 8:
+		return 300, 50000
+	case 9:
+		return 400, 100000
+	case 10:
+		return 500, 150000
+	}
+	return 20, 5000
+}
+
+// hxGangMallItem 国家商城商品（xy605.php 35件：商城等级/物品id/所需贡献/所需银两）
+type hxGangMallItem struct {
+	Level        int
+	ItemID       uint
+	Contribution int
+	Silver       int64
+}
+
+var hxGangMall = []hxGangMallItem{
+	// 1级商城（xy186）
+	{1, 5, 100, 100000000}, {1, 162, 200, 200000000}, {1, 163, 200, 200000000},
+	{1, 164, 200, 200000000}, {1, 168, 200, 200000000}, {1, 169, 200, 200000000}, {1, 170, 200, 200000000},
+	// 2级商城（xy596）
+	{2, 302, 50, 100000000}, {2, 303, 50, 100000000}, {2, 314, 50, 100000000}, {2, 398, 50, 100000000},
+	// 3级商城（xy597）
+	{3, 304, 100, 200000000}, {3, 315, 100, 200000000}, {3, 399, 100, 200000000},
+	// 4级商城（xy598）
+	{4, 305, 150, 200000000}, {4, 316, 200, 400000000}, {4, 126, 100, 200000000},
+	// 5级商城（xy599）
+	{5, 306, 200, 400000000}, {5, 317, 500, 1000000000}, {5, 307, 200, 500000000},
+	// 6级商城（xy600）
+	{6, 175, 500, 500000000}, {6, 318, 1000, 5000000000}, {6, 401, 100, 100000000},
+	// 7级商城（xy601）
+	{7, 400, 500, 500000000}, {7, 319, 3000, 10000000000}, {7, 423, 50, 100000000},
+	// 8级商城（xy602）
+	{8, 427, 200, 500000000}, {8, 454, 1000, 1000000000}, {8, 494, 100, 200000000},
+	// 9级商城（xy603）
+	{9, 455, 3000, 5000000000}, {9, 625, 1000, 100000000}, {9, 128, 1000, 100000000},
+	// 10级商城（xy604）
+	{10, 626, 3000, 300000000}, {10, 627, 6000, 600000000}, {10, 127, 1000, 100000000},
+}
+
+// hxSilverText 银两转汉字（复刻 wp/ylxx.php：X亿X万X两）
+func hxSilverText(v int64) string {
+	if v <= 0 {
+		return "0两"
+	}
+	s := strconv.FormatInt(v, 10)
+	n := len(s)
+	var y, w, l int64
+	if n >= 9 {
+		y, _ = strconv.ParseInt(s[:n-8], 10, 64)
+		w, _ = strconv.ParseInt(s[n-8:n-4], 10, 64)
+		l, _ = strconv.ParseInt(s[n-4:], 10, 64)
+	} else if n >= 5 {
+		w, _ = strconv.ParseInt(s[:n-4], 10, 64)
+		l, _ = strconv.ParseInt(s[n-4:], 10, 64)
+	} else {
+		l = v
+	}
+	out := ""
+	if y > 0 {
+		out += strconv.FormatInt(y, 10) + "亿"
+	}
+	if w > 0 {
+		out += strconv.FormatInt(w, 10) + "万"
+	}
+	if l > 0 {
+		out += strconv.FormatInt(l, 10)
+	}
+	return out + "两"
+}
+
+// hxGangOf 玩家的国家与成员记录（无国家返回 nil, nil）
+func (h *HxxyHandler) hxGangOf(p *model.HxxyPlayer) (*model.HxxyGang, *model.HxxyGangMember) {
+	var mem model.HxxyGangMember
+	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err != nil {
+		return nil, nil
+	}
+	var g model.HxxyGang
+	if err := h.DB.First(&g, mem.GangID).Error; err != nil {
+		return nil, nil
+	}
+	return &g, &mem
+}
+
+// hxGangCount 国家成员数
+func (h *HxxyHandler) hxGangCount(gangID uint) int64 {
+	var cnt int64
+	h.DB.Model(&model.HxxyGangMember{}).Where("gang_id = ?", gangID).Count(&cnt)
+	return cnt
+}
+
+// hxGangReward 国家奖励（复刻 yxpz/gjgx_pz.php：个人贡献+国家经验（受上限）+国家声望）
+func (h *HxxyHandler) hxGangReward(p *model.HxxyPlayer, contrib, exp, sw int64) {
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		return
+	}
+	if contrib > 0 {
+		h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).Updates(map[string]interface{}{
+			"contribution": gorm.Expr("contribution + ?", contrib),
+			"total_contribution": gorm.Expr("total_contribution + ?", contrib)})
+	}
+	if exp > 0 {
+		add := exp
+		if g.Exp+add > g.ExpMax {
+			add = g.ExpMax - g.Exp // 达上限后不再累积，需升级国家
+		}
+		if add > 0 {
+			h.DB.Model(&model.HxxyGang{}).Where("id = ?", g.ID).UpdateColumn("exp", gorm.Expr("exp + ?", add))
+		}
+	}
+	if sw > 0 {
+		h.DB.Model(&model.HxxyGang{}).Where("id = ?", g.ID).UpdateColumn("sw", gorm.Expr("sw + ?", sw))
+	}
+}
+
+// hxMallItemName 商城物品名（物品表优先，其次装备表）
+func (h *HxxyHandler) hxMallItemName(refID uint) string {
+	var it model.HxxyItem
+	if err := h.DB.Select("name").First(&it, refID).Error; err == nil {
+		return it.Name
+	}
+	var e model.HxxyEquip
+	if err := h.DB.Select("name").First(&e, refID).Error; err == nil {
+		return e.Name
+	}
+	return fmt.Sprintf("物品#%d", refID)
+}
+
+// hxGangBrief 国家信息序列化（主页/成员列表共用）
+func (h *HxxyHandler) hxGangBrief(g *model.HxxyGang, mem *model.HxxyGangMember) gin.H {
+	var ms []model.HxxyGangMember
+	h.DB.Where("gang_id = ?", g.ID).Order("role DESC, total_contribution DESC").Find(&ms)
+	members := []gin.H{}
+	officials := gin.H{}
+	for _, m := range ms {
+		name := h.hxNameByID(m.PlayerID)
+		members = append(members, gin.H{
+			"player_id": m.PlayerID, "name": name, "role": m.Role, "role_name": hxGangRoleName(m.Role),
+			"contribution": m.Contribution, "total_contribution": m.TotalContribution})
+		if m.Role >= 2 {
+			officials[fmt.Sprintf("role%d", m.Role)] = gin.H{"player_id": m.PlayerID, "name": name}
+		}
+	}
+	roleName := ""
+	if mem != nil {
+		roleName = hxGangRoleName(mem.Role)
+	}
+	return gin.H{
+		"gang_id": g.ID, "name": g.Name, "level": g.Level,
+		"founder_name": g.FounderName, "leader_id": g.LeaderID, "leader_name": h.hxNameByID(g.LeaderID),
+		"member_count": len(members), "member_max": g.MemberMax,
+		"exp": g.Exp, "exp_max": g.ExpMax, "money": g.Money, "sw": g.Sw,
+		"officials": officials, "members": members,
+		"role": mem.Role, "role_name": roleName,
+		"contribution": mem.Contribution, "total_contribution": mem.TotalContribution,
+		"is_monarch": mem != nil && mem.Role == 1,
+		"can_manage": mem != nil && (mem.Role == 1 || mem.Role == 2), // 君主/辅助可罢免官职
+		"can_invite": mem != nil && (mem.Role == 1 || mem.Role == 2),
+	}
+}
+
+// GangInfo 国家信息（复刻 xy172 主页：国家资料+成员+权限 + 国家列表）
 func (h *HxxyHandler) GangInfo(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
 		resp.ParamError(c, "请先创建角色")
 		return
 	}
-	var mem model.HxxyGangMember
 	myGang := gin.H{}
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err == nil {
-		var g model.HxxyGang
-		if err := h.DB.First(&g, mem.GangID).Error; err == nil {
-			var members []gin.H
-			var ms []model.HxxyGangMember
-			h.DB.Where("gang_id = ?", g.ID).Order("role DESC").Limit(50).Find(&ms)
-			for _, m := range ms {
-				role := "帮众"
-				if m.Role == 2 {
-					role = "帮主"
-				} else if m.Role == 1 {
-					role = "长老"
-				}
-				members = append(members, gin.H{"player_id": m.PlayerID, "name": h.hxNameByID(m.PlayerID), "role": role, "contribution": m.Contribution})
-			}
-			myGang = gin.H{"gang_id": g.ID, "name": g.Name, "level": g.Level, "notice": g.Notice,
-				"money": g.Money, "role": map[int]string{0: "帮众", 1: "长老", 2: "帮主"}[mem.Role],
-				"contribution": mem.Contribution, "members": members}
-		}
+	g, mem := h.hxGangOf(p)
+	if g != nil && mem != nil {
+		myGang = h.hxGangBrief(g, mem)
 	}
 	var gs []model.HxxyGang
-	h.DB.Order("level DESC").Limit(20).Find(&gs)
+	h.DB.Order("level DESC, id ASC").Limit(20).Find(&gs)
 	list := []gin.H{}
-	for _, g := range gs {
-		list = append(list, gin.H{"gang_id": g.ID, "name": g.Name, "level": g.Level, "notice": g.Notice})
+	for _, gg := range gs {
+		list = append(list, gin.H{"gang_id": gg.ID, "name": gg.Name, "level": gg.Level,
+			"member_count": h.hxGangCount(gg.ID), "member_max": gg.MemberMax})
 	}
 	resp.OK(c, gin.H{"my_gang": myGang, "gangs": list})
 }
 
-// GangCreate 创建帮派（10000 银两）
+// GangCreate 创建国家（复刻 xy171/jlbp.php：国家名≤7字，需1亿银两+玄铁令x5）
 func (h *HxxyHandler) GangCreate(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -398,34 +664,61 @@ func (h *HxxyHandler) GangCreate(c *gin.Context) {
 		Name string `json:"name"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || strings.TrimSpace(in.Name) == "" {
-		resp.ParamError(c, "请输入帮派名称")
+		resp.ParamError(c, "国家名不能为空")
 		return
 	}
-	in.Name = trimStr(strings.TrimSpace(in.Name), 10)
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err == nil {
-		resp.ParamError(c, "你已有帮派，先退出再创建")
+	in.Name = strings.TrimSpace(in.Name)
+	if n := len([]rune(in.Name)); n > 7 {
+		resp.ParamError(c, "国家名长度不能超过限制")
+		return
+	}
+	if _, mem := h.hxGangOf(p); mem != nil {
+		resp.ParamError(c, "对不起！你已经有国家了无法创建")
 		return
 	}
 	var cnt int64
 	h.DB.Model(&model.HxxyGang{}).Where("name = ?", in.Name).Count(&cnt)
 	if cnt > 0 {
-		resp.ParamError(c, "帮派名已存在")
+		resp.ParamError(c, "你想要创建的"+in.Name+",已经存在请换个国家名字吧")
 		return
 	}
-	const cost = 10000
+	const cost = 100000000 // 1亿银两
 	if p.Money < cost {
-		resp.ParamError(c, fmt.Sprintf("创建帮派需要 %d 银两", cost))
+		resp.ParamError(c, "对不起！建立国家需要银两1亿和玄铁令x5")
 		return
 	}
-	g := model.HxxyGang{Name: in.Name, LeaderID: p.ID, Notice: "本帮广纳贤士！"}
+	// 玄铁令x5（物品266，跨多行统计）
+	var tokens []model.HxxyBag
+	h.DB.Where("player_id = ? AND kind = 'item' AND ref_id = 266 AND store = 0", p.ID).Order("id ASC").Find(&tokens)
+	total := 0
+	for _, b := range tokens {
+		total += b.Count
+	}
+	if total < 5 {
+		resp.ParamError(c, "对不起！建立国家需要银两1亿和玄铁令x5")
+		return
+	}
+	need := 5
+	for _, b := range tokens {
+		if need <= 0 {
+			break
+		}
+		take := b.Count
+		if take > need {
+			take = need
+		}
+		h.hxBagSub(p.ID, b.ID, take)
+		need -= take
+	}
+	g := model.HxxyGang{Name: in.Name, Level: 1, FounderID: p.ID, FounderName: p.Name,
+		LeaderID: p.ID, MemberMax: 20, ExpMax: 5000}
 	h.DB.Create(&g)
-	h.hxWallet(p, "money", -cost, "创建帮派【"+in.Name+"】")
-	h.DB.Create(&model.HxxyGangMember{GangID: g.ID, PlayerID: p.ID, Role: 2})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("帮派【%s】创建成功！你是帮主。", in.Name)})
+	h.hxWallet(p, "money", -cost, "创建国家【"+in.Name+"】")
+	h.DB.Create(&model.HxxyGangMember{GangID: g.ID, PlayerID: p.ID, Role: 1})
+	resp.OK(c, gin.H{"msg": "恭喜你创建了国家" + in.Name})
 }
 
-// GangJoin 加入帮派
+// GangJoin 加入国家（列表直接加入，人数满则拒绝）
 func (h *HxxyHandler) GangJoin(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -439,52 +732,44 @@ func (h *HxxyHandler) GangJoin(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err == nil {
-		resp.ParamError(c, "你已有帮派")
+	if _, mem := h.hxGangOf(p); mem != nil {
+		resp.ParamError(c, "你已有国家")
 		return
 	}
 	var g model.HxxyGang
 	if err := h.DB.First(&g, in.GangID).Error; err != nil {
-		resp.ParamError(c, "帮派不存在")
+		resp.ParamError(c, "国家不存在")
+		return
+	}
+	if h.hxGangCount(g.ID) >= int64(g.MemberMax) {
+		resp.ParamError(c, "该国家人数已满！")
 		return
 	}
 	h.DB.Create(&model.HxxyGangMember{GangID: g.ID, PlayerID: p.ID})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("欢迎加入【%s】！", g.Name)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("欢迎加入国家【%s】！", g.Name)})
 }
 
-// GangLeave 退出帮派
+// GangLeave 退出国家（原版 xy182：君主无退出入口，仅成员/官员可退）
 func (h *HxxyHandler) GangLeave(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
 		resp.ParamError(c, "请先创建角色")
 		return
 	}
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err != nil {
-		resp.ParamError(c, "你没有帮派")
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
 		return
 	}
-	if mem.Role == 2 {
-		// 帮主退出 → 转让给贡献最高的成员或解散
-		var next model.HxxyGangMember
-		if err := h.DB.Where("gang_id = ? AND player_id <> ?", mem.GangID, p.ID).Order("contribution DESC").First(&next).Error; err == nil {
-			h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", next.ID).Update("role", 2)
-			h.DB.Model(&model.HxxyGang{}).Where("id = ?", mem.GangID).Update("leader_id", next.PlayerID)
-			h.DB.Delete(&model.HxxyGangMember{}, mem.ID)
-			resp.OK(c, gin.H{"msg": "你已退帮，帮主之位已转让。"})
-			return
-		}
-		h.DB.Delete(&model.HxxyGang{}, mem.GangID)
-		h.DB.Delete(&model.HxxyGangMember{}, mem.ID)
-		resp.OK(c, gin.H{"msg": "帮派只剩你一人，已解散。"})
+	if mem.Role == 1 {
+		resp.ParamError(c, "现任君主无法退出国家！可解散国家")
 		return
 	}
 	h.DB.Delete(&model.HxxyGangMember{}, mem.ID)
-	resp.OK(c, gin.H{"msg": "你已退出帮派。"})
+	resp.OK(c, gin.H{"msg": "你退出了" + g.Name}) // 复刻 xy340 文案
 }
 
-// GangDonate 帮派捐献（1银两=1贡献）
+// GangDonate 捐献银两（复刻 wj/gjjx.php：单笔100万~100亿，100万银两=1贡献）
 func (h *HxxyHandler) GangDonate(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -495,38 +780,314 @@ func (h *HxxyHandler) GangDonate(c *gin.Context) {
 		Amount int64 `json:"amount"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.Amount <= 0 {
-		resp.ParamError(c, "请输入正确的金额")
+		resp.ParamError(c, "输入有误请重新输入")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if in.Amount < 1000000 {
+		resp.ParamError(c, "每次最少捐献100万以上的银两哦")
+		return
+	}
+	if in.Amount > 10000000000 {
+		resp.ParamError(c, "每次最多捐献100亿以下银两哦")
 		return
 	}
 	if p.Money < in.Amount {
-		resp.ParamError(c, "银两不足")
+		resp.ParamError(c, "你的银两不足不能进行捐献")
 		return
 	}
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err != nil {
-		resp.ParamError(c, "你没有帮派")
-		return
-	}
-	h.hxWallet(p, "money", -in.Amount, "帮派捐献")
-	h.DB.Model(&model.HxxyGang{}).Where("id = ?", mem.GangID).UpdateColumn("money", gorm.Expr("money + ?", in.Amount))
-	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).UpdateColumn("contribution", gorm.Expr("contribution + ?", in.Amount))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("捐献 %d 银两，贡献 +%d！", in.Amount, in.Amount)})
+	contrib := in.Amount / 1000000
+	h.hxWallet(p, "money", -in.Amount, "捐献国家【"+g.Name+"】")
+	h.DB.Model(&model.HxxyGang{}).Where("id = ?", g.ID).UpdateColumn("money", gorm.Expr("money + ?", in.Amount))
+	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).Updates(map[string]interface{}{
+		"contribution": gorm.Expr("contribution + ?", contrib),
+		"total_contribution": gorm.Expr("total_contribution + ?", contrib)})
+	// 复刻 gjjx.php：恭喜你!为国家捐赠了X亿X万X两,获得国家贡献N点
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你!为国家捐赠了%s,获得国家贡献%d点", hxSilverText(in.Amount), contrib)})
 }
 
-// GangInvite 邀请入帮（复刻原版 yq2.php 国家邀请：帮主/长老可发，邀请直接显示在对方首页）
+// GangMall 国家商城（复刻 xy186：1~10级商城页签，仅展示已达等级商品可兑换）
+func (h *HxxyHandler) GangMall(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	tabs := []gin.H{}
+	for lv := 1; lv <= 10; lv++ {
+		items := []gin.H{}
+		for _, mi := range hxGangMall {
+			if mi.Level == lv {
+				items = append(items, gin.H{"item_id": mi.ItemID, "name": h.hxMallItemName(mi.ItemID),
+					"contribution": mi.Contribution, "silver": mi.Silver})
+			}
+		}
+		tabs = append(tabs, gin.H{"level": lv, "unlocked": g.Level >= lv, "items": items})
+	}
+	resp.OK(c, gin.H{"name": g.Name, "level": g.Level, "contribution": mem.Contribution, "tabs": tabs})
+}
+
+// GangMallBuy 国家商城兑换（复刻 xy605：扣贡献+银两，物品入包）
+func (h *HxxyHandler) GangMallBuy(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		ItemID uint `json:"item_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.ItemID == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	var mi *hxGangMallItem
+	for i := range hxGangMall {
+		if hxGangMall[i].ItemID == in.ItemID {
+			mi = &hxGangMall[i]
+			break
+		}
+	}
+	if mi == nil {
+		resp.ParamError(c, "该商品不存在")
+		return
+	}
+	if g.Level < mi.Level {
+		resp.ParamError(c, fmt.Sprintf("该商品需要%d级国家商城才能兑换！", mi.Level))
+		return
+	}
+	if mem.Contribution < mi.Contribution {
+		resp.ParamError(c, "对不起！！你的国家贡献不足！！")
+		return
+	}
+	if p.Money < mi.Silver {
+		resp.ParamError(c, "对不起！！你的银两不足！！")
+		return
+	}
+	name := h.hxMallItemName(mi.ItemID)
+	h.hxWallet(p, "money", -mi.Silver, "国家商城兑换【"+name+"】")
+	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).UpdateColumn("contribution", gorm.Expr("contribution - ?", mi.Contribution))
+	h.hxBagAdd(p, "item", mi.ItemID, 1, 1)
+	// 复刻 xy605 文案
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你！！兑换成功！！失去%d点国家贡献~~~", mi.Contribution)})
+}
+
+// GangAppoint 任命官员（复刻 xy176-178：仅君主，仅可任命成员，职务2-7各一名）
+func (h *HxxyHandler) GangAppoint(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		PlayerID uint `json:"player_id"`
+		Role     int  `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.PlayerID == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if in.Role < 2 || in.Role > 7 {
+		resp.ParamError(c, "职务不合法")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if mem.Role != 1 {
+		resp.ParamError(c, "只有君主才能任命官员！")
+		return
+	}
+	var target model.HxxyGangMember
+	if err := h.DB.Where("player_id = ? AND gang_id = ?", in.PlayerID, g.ID).First(&target).Error; err != nil {
+		resp.ParamError(c, "对方不是你的国家成员")
+		return
+	}
+	if target.Role != 0 {
+		resp.ParamError(c, "该玩家已有职务，请先罢免原职务")
+		return
+	}
+	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", target.ID).Update("role", in.Role)
+	roleName := hxGangRoleName(in.Role)
+	h.hxNotify(in.PlayerID, fmt.Sprintf("【%s】君主任命你为【%s】！", g.Name, roleName))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("任命成功！【%s】已成为【%s】", h.hxNameByID(in.PlayerID), roleName)})
+}
+
+// GangDismiss 罢免官职（复刻 xy179：君主/辅助大臣可罢免2-7职务，不可动君主）
+func (h *HxxyHandler) GangDismiss(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		PlayerID uint `json:"player_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.PlayerID == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if mem.Role != 1 && mem.Role != 2 {
+		resp.ParamError(c, "只有君主或辅助大臣才能罢免官职！")
+		return
+	}
+	var target model.HxxyGangMember
+	if err := h.DB.Where("player_id = ? AND gang_id = ?", in.PlayerID, g.ID).First(&target).Error; err != nil {
+		resp.ParamError(c, "对方不是你的国家成员")
+		return
+	}
+	if target.Role == 1 {
+		resp.ParamError(c, "不能罢免君主！")
+		return
+	}
+	if target.Role == 0 {
+		resp.ParamError(c, "该玩家没有职务")
+		return
+	}
+	if target.PlayerID == p.ID {
+		resp.ParamError(c, "不能罢免自己！")
+		return
+	}
+	old := hxGangRoleName(target.Role)
+	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", target.ID).Update("role", 0)
+	h.hxNotify(in.PlayerID, fmt.Sprintf("你被罢免了【%s】的职务。", old))
+	// 复刻 xy179 文案
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你！成功将%s罢免为【成员】", h.hxNameByID(in.PlayerID))})
+}
+
+// GangKick 踢出国家（复刻 xy184：君主/辅助可踢任意非君主，其他官员可踢非君主成员）
+func (h *HxxyHandler) GangKick(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var in struct {
+		PlayerID uint `json:"player_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.PlayerID == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if mem.Role < 1 {
+		resp.ParamError(c, "只有官员才能踢人！")
+		return
+	}
+	if in.PlayerID == p.ID {
+		resp.ParamError(c, "不能踢自己！")
+		return
+	}
+	var target model.HxxyGangMember
+	if err := h.DB.Where("player_id = ? AND gang_id = ?", in.PlayerID, g.ID).First(&target).Error; err != nil {
+		resp.ParamError(c, "对方不是你的国家成员")
+		return
+	}
+	if target.Role == 1 {
+		resp.ParamError(c, "不能踢出君主！")
+		return
+	}
+	name := h.hxNameByID(in.PlayerID)
+	h.DB.Delete(&model.HxxyGangMember{}, target.ID)
+	h.hxNotify(in.PlayerID, fmt.Sprintf("你被踢出了国家【%s】。", g.Name))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已将【%s】踢出国家！", name)})
+}
+
+// GangUpgrade 升级国家（复刻 xy595：扣国家资金/经验/声望，提升人数与经验上限）
+func (h *HxxyHandler) GangUpgrade(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if g.Level >= 10 {
+		resp.ParamError(c, "国家已达到最高等级！")
+		return
+	}
+	needMoney, needExp, needSw := hxGangUpReq(g.Level)
+	if g.Money < needMoney || g.Exp < needExp || g.Sw < needSw {
+		resp.ParamError(c, fmt.Sprintf("对不起！！升级%s需要：国家资金%d，国家经验%d，国家声望%d",
+			g.Name, needMoney, needExp, needSw))
+		return
+	}
+	newLevel := g.Level + 1
+	newMax, newExpMax := hxGangUpCap(newLevel)
+	h.DB.Model(&model.HxxyGang{}).Where("id = ?", g.ID).Updates(map[string]interface{}{
+		"level": newLevel, "member_max": newMax, "exp_max": newExpMax,
+		"money": g.Money - needMoney, "exp": g.Exp - needExp, "sw": g.Sw - needSw})
+	h.hxWorldNotice(fmt.Sprintf("【国家】恭喜！【%s】成功升级到了%d级！人口提升为%d！", g.Name, newLevel, newMax))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你！！成功将%s升级到了%d级！！人口提升为%d人口！！", g.Name, newLevel, newMax)})
+}
+
+// GangDissolve 解散国家（复刻 xy173 确认 + xy341 执行：仅君主，且需先将子民流放，成员仅剩君主1人才能解散）
+func (h *HxxyHandler) GangDissolve(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
+		return
+	}
+	if mem.Role != 1 {
+		resp.ParamError(c, "只有君主才能解散国家！")
+		return
+	}
+	if cnt := h.hxGangCount(g.ID); cnt > 1 {
+		resp.ParamError(c, "对不起！要解散国家"+g.Name+"需要将你国家的子民流放掉！！")
+		return
+	}
+	h.DB.Where("gang_id = ?", g.ID).Delete(&model.HxxyGangMember{})
+	h.DB.Delete(&model.HxxyGang{}, g.ID)
+	resp.OK(c, gin.H{"msg": "你解散了" + g.Name}) // 复刻 xy341 文案
+}
+
+// GangInvite 邀请入国（复刻原版 yq2.php：君主/辅助大臣可发，邀请显示在对方首页）
 func (h *HxxyHandler) GangInvite(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
 		resp.ParamError(c, "请先创建角色")
 		return
 	}
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err != nil {
-		resp.ParamError(c, "你还没有帮派")
+	g, mem := h.hxGangOf(p)
+	if g == nil || mem == nil {
+		resp.ParamError(c, "你还未加入任何国家！！")
 		return
 	}
-	if mem.Role < 1 {
-		resp.ParamError(c, "只有帮主或长老才能邀请入帮")
+	if mem.Role != 1 && mem.Role != 2 {
+		resp.ParamError(c, "只有君主或辅助大臣才能邀请入国")
 		return
 	}
 	var in struct {
@@ -544,14 +1105,8 @@ func (h *HxxyHandler) GangInvite(c *gin.Context) {
 		resp.ParamError(c, "找不到该玩家")
 		return
 	}
-	var otherMem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", in.PlayerID).First(&otherMem).Error; err == nil {
-		resp.ParamError(c, "对方已有帮派")
-		return
-	}
-	var g model.HxxyGang
-	if err := h.DB.First(&g, mem.GangID).Error; err != nil {
-		resp.ParamError(c, "帮派不存在")
+	if otherMem := h.DB.Where("player_id = ?", in.PlayerID).First(&model.HxxyGangMember{}); otherMem.Error == nil {
+		resp.ParamError(c, "对方已有国家")
 		return
 	}
 	var cnt int64
@@ -561,11 +1116,11 @@ func (h *HxxyHandler) GangInvite(c *gin.Context) {
 		return
 	}
 	h.DB.Create(&model.HxxyGangInvite{GangID: g.ID, GangName: g.Name, FromID: p.ID, FromName: p.Name, ToID: in.PlayerID, ToName: h.hxNameByID(in.PlayerID)})
-	h.hxNotify(in.PlayerID, fmt.Sprintf("【%s】邀请你加入帮派【%s】，请到首页处理。", p.Name, g.Name))
+	h.hxNotify(in.PlayerID, fmt.Sprintf("【%s】邀请你加入国家【%s】，请到首页处理。", p.Name, g.Name))
 	resp.OK(c, gin.H{"msg": "邀请已发送！"})
 }
 
-// GangInviteAgree 同意入帮邀请（首页处理，复刻原版 cmd 180 接受）
+// GangInviteAgree 同意入国邀请（首页处理，复刻原版 cmd 180 接受）
 func (h *HxxyHandler) GangInviteAgree(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -584,19 +1139,27 @@ func (h *HxxyHandler) GangInviteAgree(c *gin.Context) {
 		resp.ParamError(c, "邀请不存在或已处理")
 		return
 	}
-	var mem model.HxxyGangMember
-	if err := h.DB.Where("player_id = ?", p.ID).First(&mem).Error; err == nil {
+	if _, mem := h.hxGangOf(p); mem != nil {
 		h.DB.Model(&model.HxxyGangInvite{}).Where("id = ?", iv.ID).Update("status", 2)
-		resp.ParamError(c, "你已有帮派")
+		resp.ParamError(c, "你已有国家")
+		return
+	}
+	var g model.HxxyGang
+	if err := h.DB.First(&g, iv.GangID).Error; err != nil {
+		resp.ParamError(c, "该国家已不存在")
+		return
+	}
+	if h.hxGangCount(g.ID) >= int64(g.MemberMax) {
+		resp.ParamError(c, "该国家人数已满！")
 		return
 	}
 	h.DB.Create(&model.HxxyGangMember{GangID: iv.GangID, PlayerID: p.ID})
 	h.DB.Model(&model.HxxyGangInvite{}).Where("id = ?", iv.ID).Update("status", 1)
-	h.hxNotify(iv.FromID, fmt.Sprintf("【%s】接受了你的邀请，已加入帮派【%s】。", p.Name, iv.GangName))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("欢迎加入【%s】！", iv.GangName)})
+	h.hxNotify(iv.FromID, fmt.Sprintf("【%s】接受了你的邀请，已加入国家【%s】。", p.Name, iv.GangName))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("欢迎加入国家【%s】！", iv.GangName)})
 }
 
-// GangInviteRefuse 拒绝入帮邀请（复刻原版 cmd 181 拒绝）
+// GangInviteRefuse 拒绝入国邀请（复刻原版 cmd 181 拒绝）
 func (h *HxxyHandler) GangInviteRefuse(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -616,7 +1179,7 @@ func (h *HxxyHandler) GangInviteRefuse(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&model.HxxyGangInvite{}).Where("id = ?", iv.ID).Update("status", 2)
-	h.hxNotify(iv.FromID, fmt.Sprintf("【%s】拒绝了你加入帮派【%s】的邀请。", p.Name, iv.GangName))
+	h.hxNotify(iv.FromID, fmt.Sprintf("【%s】拒绝了你加入国家【%s】的邀请。", p.Name, iv.GangName))
 	resp.OK(c, gin.H{"msg": "已拒绝邀请"})
 }
 
@@ -937,7 +1500,7 @@ func (h *HxxyHandler) Stalls(c *gin.Context) {
 	resp.OK(c, gin.H{"stalls": list})
 }
 
-// StallSell 上架
+// StallSell 上架（复刻 gssjwp02：单价≥1000、上限、绑定拦截、1%手续费最低1两先扣）
 func (h *HxxyHandler) StallSell(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -949,12 +1512,25 @@ func (h *HxxyHandler) StallSell(c *gin.Context) {
 		Count int   `json:"count"`
 		Price int64 `json:"price"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || in.BagID == 0 || in.Price <= 0 {
-		resp.ParamError(c, "参数错误")
+	if err := c.ShouldBindJSON(&in); err != nil || in.BagID == 0 {
+		resp.ParamError(c, "输入有误请重新输入")
 		return
 	}
 	if in.Count <= 0 {
-		in.Count = 1
+		resp.ParamError(c, "挂售数量输入有误请重新输入")
+		return
+	}
+	if in.Price <= 0 {
+		resp.ParamError(c, "挂售价格输入有误请重新输入")
+		return
+	}
+	if in.Price < 1000 {
+		resp.ParamError(c, "挂售单价必须在1000银两上")
+		return
+	}
+	if in.Price > 99999999999 {
+		resp.ParamError(c, "挂售单价超过最大银两限制")
+		return
 	}
 	for _, bid := range h.hxEqBagIDs(p) {
 		if bid == in.BagID {
@@ -967,8 +1543,21 @@ func (h *HxxyHandler) StallSell(c *gin.Context) {
 		resp.ParamError(c, "物品不存在")
 		return
 	}
+	if b.Bind == 1 {
+		resp.ParamError(c, "对不起！绑定物品不能进行挂售")
+		return
+	}
 	if b.Count < in.Count {
-		resp.ParamError(c, "数量不足")
+		resp.ParamError(c, "挂售数量输入有误请重新输入")
+		return
+	}
+	// 挂售手续费：数量×单价×1%，最低1两，上架时先扣（复刻原版）
+	fee := in.Price * int64(in.Count) / 100
+	if fee < 1 {
+		fee = 1
+	}
+	if p.Money < fee {
+		resp.ParamError(c, "挂售手续费不足")
 		return
 	}
 	name := ""
@@ -981,6 +1570,7 @@ func (h *HxxyHandler) StallSell(c *gin.Context) {
 		h.DB.First(&e, b.RefID)
 		name = e.Name
 	}
+	h.hxWallet(p, "money", -fee, "挂售【"+name+"】手续费")
 	// 挂售物品转移为 store=2
 	if b.Count == in.Count {
 		h.DB.Model(&model.HxxyBag{}).Where("id = ?", b.ID).Update("store", 2)
@@ -989,10 +1579,10 @@ func (h *HxxyHandler) StallSell(c *gin.Context) {
 		h.DB.Create(&model.HxxyBag{PlayerID: p.ID, Kind: b.Kind, RefID: b.RefID, Count: in.Count, Bind: b.Bind, Store: 2, Extra: b.Extra})
 	}
 	h.DB.Create(&model.HxxyStall{SellerID: p.ID, BagID: b.ID, Kind: b.Kind, RefID: b.RefID, Name: name, Count: in.Count, Price: in.Price})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("【%s】×%d 已上架，售价 %d 银两。", name, in.Count, in.Price)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("手续费：%s银两\n你以每件%s两的价格挂售了%sx%d", hxSilverText(fee), hxSilverText(in.Price), name, in.Count)})
 }
 
-// StallBuy 购买摊位物品
+// StallBuy 购买摊位物品（复刻 gsgmbs02：可按数量购买，买方付 1% 手续费（最低1两），卖家收全额并收私聊）
 func (h *HxxyHandler) StallBuy(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -1001,6 +1591,7 @@ func (h *HxxyHandler) StallBuy(c *gin.Context) {
 	}
 	var in struct {
 		StallID uint `json:"stall_id"`
+		Count   int  `json:"count"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.StallID == 0 {
 		resp.ParamError(c, "参数错误")
@@ -1008,38 +1599,54 @@ func (h *HxxyHandler) StallBuy(c *gin.Context) {
 	}
 	var s model.HxxyStall
 	if err := h.DB.Where("id = ? AND status = 1", in.StallID).First(&s).Error; err != nil {
-		resp.ParamError(c, "商品已售出或下架")
+		resp.ParamError(c, "该宝石已被下架或者被买走了！！")
 		return
 	}
 	if s.SellerID == p.ID {
 		resp.ParamError(c, "不能购买自己的商品")
 		return
 	}
-	if p.Money < s.Price {
-		resp.ParamError(c, fmt.Sprintf("需要 %d 银两，银两不足", s.Price))
+	if in.Count <= 0 || in.Count > s.Count {
+		in.Count = s.Count
+	}
+	total := s.Price * int64(in.Count)
+	// 手续费 1%，最低 1 两（买方承担）
+	fee := total / 100
+	if fee < 1 {
+		fee = 1
+	}
+	if p.Money < total+fee {
+		resp.ParamError(c, "对不起！你银两不足！")
 		return
 	}
 	// 校验卖方商品仍在
 	var sb model.HxxyBag
 	if err := h.DB.Where("id = ? AND store = 2", s.BagID).First(&sb).Error; err != nil {
-		resp.ParamError(c, "商品已失效")
+		resp.ParamError(c, "该宝石已被下架或者被买走了！！")
 		return
 	}
-	// 交割
-	h.hxWallet(p, "money", -s.Price, "摆摊购买【"+s.Name+"】")
-	h.hxBagAdd(p, s.Kind, s.RefID, s.Count, sb.Bind)
-	h.DB.Delete(&model.HxxyBag{}, sb.ID)
-	h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("status", 2)
-	// 卖家收款（流水）
+	// 交割：买方付总价+手续费，入包
+	h.hxWallet(p, "money", -(total+fee), "摆摊购买【"+s.Name+"】x"+strconv.Itoa(in.Count)+"（含手续费）")
+	h.hxBagAdd(p, s.Kind, s.RefID, in.Count, sb.Bind)
+	if in.Count >= s.Count {
+		h.DB.Delete(&model.HxxyBag{}, sb.ID)
+		h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("status", 2)
+	} else {
+		// 部分购买：摊位与挂售背包行同步减库存
+		h.DB.Model(&model.HxxyBag{}).Where("id = ?", sb.ID).Update("count", sb.Count-in.Count)
+		h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("count", s.Count-in.Count)
+	}
+	// 卖家收款全额 + 私聊通知（复刻 gsgmbs02 文案）
 	var seller model.HxxyPlayer
 	if err := h.DB.First(&seller, s.SellerID).Error; err == nil {
-		h.hxWallet(&seller, "money", s.Price, "摆摊售出【"+s.Name+"】")
-		h.hxNotify(seller.ID, fmt.Sprintf("你挂售的【%s】×%d 被【%s】买走，入账 %d 银两。", s.Name, s.Count, p.Name, s.Price))
+		h.hxWallet(&seller, "money", total, "摆摊售出【"+s.Name+"】")
+		h.hxNotify(seller.ID, fmt.Sprintf("买走了你挂售的%sx%d，获得%s银两", s.Name, in.Count, hxSilverText(total)))
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买【%s】×%d 成功！", s.Name, s.Count)})
+	// 复刻 gsgmbs02 成功文案
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("你用了%s，购买%sx%d（附带%s手续费）", hxSilverText(total+fee), s.Name, in.Count, hxSilverText(fee))})
 }
 
-// StallCancel 下架
+// StallCancel 下架（复刻 gsxjwp02：可部分下架，"你下架了XxN"）
 func (h *HxxyHandler) StallCancel(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -1048,6 +1655,7 @@ func (h *HxxyHandler) StallCancel(c *gin.Context) {
 	}
 	var in struct {
 		StallID uint `json:"stall_id"`
+		Count   int  `json:"count"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.StallID == 0 {
 		resp.ParamError(c, "参数错误")
@@ -1058,9 +1666,94 @@ func (h *HxxyHandler) StallCancel(c *gin.Context) {
 		resp.ParamError(c, "商品不存在")
 		return
 	}
-	h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("status", 3)
-	h.DB.Model(&model.HxxyBag{}).Where("id = ? AND store = 2", s.BagID).Update("store", 0)
-	resp.OK(c, gin.H{"msg": "已下架，物品退回背包。"})
+	if in.Count <= 0 || in.Count >= s.Count {
+		// 全部下架
+		h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("status", 3)
+		h.DB.Model(&model.HxxyBag{}).Where("id = ? AND store = 2", s.BagID).Update("store", 0)
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("你下架了%sx%d", s.Name, s.Count)})
+		return
+	}
+	// 部分下架：摊位减量，退回对应数量到背包
+	var b model.HxxyBag
+	if err := h.DB.Where("id = ? AND store = 2", s.BagID).First(&b).Error; err == nil && b.Count >= in.Count {
+		if b.Count == in.Count {
+			h.DB.Model(&model.HxxyBag{}).Where("id = ?", b.ID).Update("store", 0)
+		} else {
+			h.DB.Model(&model.HxxyBag{}).Where("id = ?", b.ID).Update("count", b.Count-in.Count)
+			h.DB.Create(&model.HxxyBag{PlayerID: p.ID, Kind: b.Kind, RefID: b.RefID, Count: in.Count, Bind: b.Bind, Store: 0, Extra: b.Extra})
+		}
+	}
+	h.DB.Model(&model.HxxyStall{}).Where("id = ?", s.ID).Update("count", s.Count-in.Count)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("你下架了%sx%d", s.Name, in.Count)})
+}
+
+// StallsMine 我的挂售（复刻 xy219：按物品/装备/宝石分类，标题"我的挂售"+挂售容量）
+func (h *HxxyHandler) StallsMine(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	kind := c.DefaultQuery("kind", "item") // item/equip/gem
+	q := h.DB.Where("seller_id = ? AND status = 1", p.ID)
+	switch kind {
+	case "equip":
+		q = q.Where("kind = 'equip'")
+	case "gem":
+		q = q.Where("kind = 'item' AND name LIKE '%宝石%'")
+	default:
+		q = q.Where("kind = 'item' AND name NOT LIKE '%宝石%'")
+	}
+	var ss []model.HxxyStall
+	q.Order("id DESC").Find(&ss)
+	list := []gin.H{}
+	for _, s := range ss {
+		list = append(list, gin.H{"stall_id": s.ID, "name": s.Name, "kind": s.Kind,
+			"count": s.Count, "price": s.Price, "desc": h.hxItemDesc(s.Kind, s.RefID)})
+	}
+	var used int64
+	h.DB.Model(&model.HxxyStall{}).Where("seller_id = ? AND status = 1", p.ID).Count(&used)
+	resp.OK(c, gin.H{"stalls": list, "used": used, "capacity": 10})
+}
+
+// StallsOf 他人挂售列表（复刻 xy222："{名字}的挂售："，从玩家资料页进入）
+func (h *HxxyHandler) StallsOf(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	sid, _ := strconv.Atoi(c.Param("id"))
+	if sid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var ss []model.HxxyStall
+	h.DB.Where("seller_id = ? AND status = 1", uint(sid)).Order("id DESC").Limit(100).Find(&ss)
+	list := []gin.H{}
+	for _, s := range ss {
+		list = append(list, gin.H{"stall_id": s.ID, "name": s.Name, "kind": s.Kind, "count": s.Count,
+			"price": s.Price, "desc": h.hxItemDesc(s.Kind, s.RefID), "seller": h.hxNameByID(s.SellerID), "seller_id": s.SellerID})
+	}
+	var used int64
+	h.DB.Model(&model.HxxyStall{}).Where("seller_id = ? AND status = 1", uint(sid)).Count(&used)
+	resp.OK(c, gin.H{"seller_id": sid, "seller_name": h.hxNameByID(uint(sid)), "stalls": list, "used": used, "capacity": 10})
+}
+
+// hxItemDesc 物品/装备描述
+func (h *HxxyHandler) hxItemDesc(kind string, refID uint) string {
+	if kind == "equip" {
+		var e model.HxxyEquip
+		if err := h.DB.First(&e, refID).Error; err == nil {
+			return e.Desc
+		}
+		return ""
+	}
+	var it model.HxxyItem
+	if err := h.DB.First(&it, refID).Error; err == nil {
+		return it.Desc
+	}
+	return ""
 }
 
 // jsonUnmarshalInto 宽松 JSON 解析

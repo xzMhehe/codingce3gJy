@@ -17,9 +17,16 @@ type HxxyPlayer struct {
 	Sect   int    `gorm:"default:1" json:"sect"` // 1将军府 2龙宫 3月宫 4方寸山 5普陀山
 	Level  int    `gorm:"default:1" json:"level"`
 	Exp    int    `gorm:"default:0" json:"exp"` // 当前等级累计经验
-	// 修炼（开关：吃经验道具时经验入修炼池，按比例转化为等级经验）
+	// 修炼（开关：开启后战斗经验存入修炼经验，用于四线修炼升级；关闭直接获得等级经验）
 	XiulianExp    int  `gorm:"default:0" json:"xiulian_exp"`
 	XiulianSwitch int  `gorm:"default:0" json:"xiulian_switch"`
+	// 人物修炼四线等级（1血 2攻 3魔 4防，复刻原版 xl_ini 修炼等级）
+	XlLv1 int `gorm:"default:0" json:"xl_lv1"`
+	XlLv2 int `gorm:"default:0" json:"xl_lv2"`
+	XlLv3 int `gorm:"default:0" json:"xl_lv3"`
+	XlLv4 int `gorm:"default:0" json:"xl_lv4"`
+	// 西游声望（修炼升级消耗）
+	Sw int64 `gorm:"default:0" json:"sw"`
 	HP            int  `gorm:"default:0" json:"hp"` // 当前气血
 	MP            int  `gorm:"default:0" json:"mp"` // 当前法力
 	// 货币（游戏内独立）
@@ -29,6 +36,8 @@ type HxxyPlayer struct {
 	// VIP 练级祝福（分钟）
 	Vip    int   `gorm:"default:0" json:"vip"`
 	VipExp int64 `gorm:"default:0" json:"vip_exp"`
+	// VIP 会员等级（0~20，充值等级，决定每日兑换万能果/金豆数量）
+	VipLv int `gorm:"default:0" json:"vip_lv"`
 	// 头衔（佩戴）
 	TitleID uint `gorm:"default:0" json:"title_id"`
 	// 容量
@@ -54,6 +63,7 @@ type HxxyPlayer struct {
 	DayBattle  int    `gorm:"default:0" json:"day_battle"`
 	DayDungeon int    `gorm:"default:0" json:"day_dungeon"`
 	DayArena   int    `gorm:"default:0" json:"day_arena"` // 每日比武次数（上限5）
+	DayHunt    int    `gorm:"default:0" json:"day_hunt"`  // 今日狩猎数（活跃度）
 	// 通天塔（当前层，战败归零）
 	TowerFloor int `gorm:"default:0" json:"tower_floor"`
 	TowerBest  int `gorm:"default:0" json:"tower_best"` // 历史最高层
@@ -84,6 +94,16 @@ type HxxyMapNode struct {
 }
 
 func (HxxyMapNode) TableName() string { return "hxxy_map_nodes" }
+
+// HxxyMapGrid 地图网格布局（复刻原版 xdt/*.php + MapViewer 查看地图）
+// Grid 为二维数组 JSON：0=空位 "|"墙 "—"路 {dtxy,mz,is_jump}=节点
+type HxxyMapGrid struct {
+	ID   uint   `gorm:"primaryKey" json:"id"`
+	Dtx  int    `gorm:"uniqueIndex" json:"dtx"` // 地图编号
+	Grid string `gorm:"type:mediumtext" json:"grid"`
+}
+
+func (HxxyMapGrid) TableName() string { return "hxxy_map_grids" }
 
 // HxxyNpc NPC（含战斗属性；出现在刷怪表的为战斗 NPC，其余为功能 NPC）
 type HxxyNpc struct {
@@ -318,6 +338,7 @@ type HxxyQuest struct {
 	Name    string `gorm:"type:varchar(50)" json:"name"`
 	Desc    string `gorm:"type:varchar(255)" json:"desc"`
 	Type    string `gorm:"type:varchar(10)" json:"type"` // hunt/collect/talk
+	Category int   `gorm:"default:1" json:"category"`    // 1主线 2支线 3日常
 	TargetID uint  `gorm:"default:0" json:"target_id"`   // npc_id / item_id / npc_id
 	Count   int    `gorm:"default:1" json:"count"`
 	MinLevel int   `gorm:"default:1" json:"min_level"`
@@ -331,6 +352,18 @@ type HxxyQuest struct {
 }
 
 func (HxxyQuest) TableName() string { return "hxxy_quests" }
+
+// HxxyActivityLog 活动领取记录（act: login7七日登录礼/daily50 daily100每日活跃宝箱）
+type HxxyActivityLog struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	PlayerID  uint      `gorm:"index" json:"player_id"`
+	Act       string    `gorm:"type:varchar(20)" json:"act"`
+	Day       string    `gorm:"type:varchar(10)" json:"day"`
+	Tier      int       `gorm:"default:0" json:"tier"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (HxxyActivityLog) TableName() string { return "hxxy_activity_logs" }
 
 // HxxyPlayerQuest 玩家任务进度
 type HxxyPlayerQuest struct {
@@ -358,12 +391,14 @@ type HxxyDungeon struct {
 
 func (HxxyDungeon) TableName() string { return "hxxy_dungeons" }
 
-// HxxyDungeonRun 玩家副本进度
+// HxxyDungeonRun 玩家副本进度（复刻原版 fb_ini：激活→杀5守护BOSS→完成，每日每难度一次）
 type HxxyDungeonRun struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
 	PlayerID  uint   `gorm:"index" json:"player_id"`
 	DungeonID uint   `json:"dungeon_id"`
-	Floor     int    `gorm:"default:0" json:"floor"` // 最高通关层
+	Floor     int    `gorm:"default:0" json:"floor"` // 已击杀守护BOSS数（原版怪物1~5）
+	Guards    string `gorm:"type:varchar(255);default:''" json:"guards"` // 激活时随机出的守护怪 npc_id 列表 JSON
+	Done      int    `gorm:"default:0" json:"done"`  // 1=当日已完成
 	DayDate   string `gorm:"type:varchar(10);default:''" json:"day_date"`
 	CountToday int  `gorm:"default:0" json:"count_today"`
 }
@@ -418,26 +453,32 @@ type HxxyPlayerTitle struct {
 
 func (HxxyPlayerTitle) TableName() string { return "hxxy_player_titles" }
 
-// HxxyGang 帮派
+// HxxyGang 国家（复刻原版 all_bp：国家=原版"帮派"，xy172 主页 / xy595 升级 / xy186 国家商城）
 type HxxyGang struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `gorm:"type:varchar(30);uniqueIndex" json:"name"`
-	LeaderID  uint      `json:"leader_id"`
-	Level     int       `gorm:"default:1" json:"level"`
-	Notice    string    `gorm:"type:varchar(255);default:''" json:"notice"`
-	Money     int64     `gorm:"default:0" json:"money"` // 帮派资金
-	CreatedAt time.Time `json:"created_at"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Name        string `gorm:"type:varchar(30);uniqueIndex" json:"name"`
+	Level       int    `gorm:"default:1" json:"level"`
+	FounderID   uint   `json:"founder_id"`                // 首任君主
+	FounderName string `gorm:"type:varchar(30)" json:"founder_name"`
+	LeaderID    uint   `json:"leader_id"`                 // 现任君主
+	MemberMax   int    `gorm:"default:20" json:"member_max"`  // 国家人数上限（升级提升）
+	ExpMax      int64  `gorm:"default:5000" json:"exp_max"`   // 国家经验上限（升级提升）
+	Money       int64  `gorm:"default:0" json:"money"`    // 国家资金（国库）
+	Exp         int64  `gorm:"default:0" json:"exp"`      // 国家经验
+	Sw          int64  `gorm:"default:0" json:"sw"`       // 国家声望
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func (HxxyGang) TableName() string { return "hxxy_gangs" }
 
-// HxxyGangMember 帮派成员
+// HxxyGangMember 国家成员（职务复刻原版：0成员 1君主 2辅助 3军机 4财政 5工部 6外交 7军团长）
 type HxxyGangMember struct {
 	ID      uint   `gorm:"primaryKey" json:"id"`
 	GangID  uint   `gorm:"index" json:"gang_id"`
 	PlayerID uint  `gorm:"uniqueIndex" json:"player_id"`
-	Role    int    `gorm:"default:0" json:"role"` // 0帮众 1长老 2帮主
-	Contribution int `gorm:"default:0" json:"contribution"`
+	Role    int    `gorm:"default:0" json:"role"`
+	Contribution int `gorm:"default:0" json:"contribution"`       // 可用贡献
+	TotalContribution int `gorm:"default:0" json:"total_contribution"` // 历史贡献
 }
 
 func (HxxyGangMember) TableName() string { return "hxxy_gang_members" }
@@ -469,7 +510,7 @@ type HxxyFriend struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
 	PlayerID uint   `gorm:"uniqueIndex:uk_hxxyfriend" json:"player_id"`
 	FriendID uint   `gorm:"uniqueIndex:uk_hxxyfriend" json:"friend_id"`
-	Status   int    `gorm:"default:1" json:"status"` // 1申请中 2好友
+	Status   int    `gorm:"default:1" json:"status"` // 1好友 2黑名单（复刻原版 hyfl 单向关系）
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -512,6 +553,17 @@ type HxxySignin struct {
 
 func (HxxySignin) TableName() string { return "hxxy_signins" }
 
+// HxxySigninClaim 月度累计签到阶梯奖励领取记录（每月清零重领）
+type HxxySigninClaim struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	PlayerID  uint      `gorm:"index" json:"player_id"`
+	Month     string    `gorm:"type:varchar(7)" json:"month"` // 2026-09
+	Tier      int       `json:"tier"`                         // 2/5/10/15/25
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (HxxySigninClaim) TableName() string { return "hxxy_signin_claims" }
+
 // HxxyStall 摆摊挂售
 type HxxyStall struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -527,6 +579,23 @@ type HxxyStall struct {
 }
 
 func (HxxyStall) TableName() string { return "hxxy_stalls" }
+
+// HxxyAuction 全区拍卖场（复刻原版 xy489/all_pm：一口价直购，买方付1%手续费最低1两，10天过期下架）
+type HxxyAuction struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	SellerID  uint      `gorm:"index" json:"seller_id"`
+	BagID     uint      `json:"bag_id"` // 拍卖的背包行
+	Kind      string    `gorm:"type:varchar(10)" json:"kind"`
+	RefID     uint      `json:"ref_id"`
+	Name      string    `gorm:"type:varchar(50)" json:"name"`
+	Category  int       `gorm:"default:0" json:"category"` // 物品分类（书卷1/宝石2/材料4/丹药5/商城6/宝箱8/装备100）
+	Count     int       `gorm:"default:1" json:"count"`
+	Price     int64     `json:"price"`
+	Status    int       `gorm:"default:1" json:"status"` // 1在售 2已售 3下架
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (HxxyAuction) TableName() string { return "hxxy_auctions" }
 
 // HxxyWalletLog 货币流水（银两/金豆）
 type HxxyWalletLog struct {

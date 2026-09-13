@@ -27,23 +27,51 @@
       <a href="javascript:;" @click="retryBoot">[重试连接]</a><br/>
     </template>
 
-    <!-- ==================== 建角 ==================== -->
+    <!-- ==================== 建角（分步流程，复刻原版 xy001~xy010） ==================== -->
     <template v-else-if="cur === 'create'">
-      【创建角色】<br/>
-      欢迎来到幻想西游！选择你的门派，踏上取经之路。<br/>
-      <div class="logo"><img src="/static/image/hxxy.jpg" width="120" height="60" alt="幻想西游" onerror="this.style.display='none'" /></div><br/>
-      角色名：<input v-model="cf.name" maxlength="12" /><br/>
-      性别：<a href="javascript:;" :class="cf.sex === 1 ? 'cur' : ''" @click="cf.sex = 1">[男]</a>
-            <a href="javascript:;" :class="cf.sex === 2 ? 'cur' : ''" @click="cf.sex = 2">[女]</a><br/>
-      门派：<br/>
-      <div v-for="s in sects" :key="'sc' + s.id">
-        <a href="javascript:;" :class="cf.sect === s.id ? 'cur' : ''" @click="cf.sect = s.id">【{{ s.name }}】</a>{{ s.desc }}<br/>
-      </div>
-      <em>月宫只收女弟子，普陀山只收男弟子</em><br/>
-      <form @submit.prevent="doCreate">
-        <input type="submit" value="踏上西游路" />
-      </form>
+      <!-- 第1步：选择性别 -->
+      <template v-if="cf.step === 'sex'">
+        <span class="red">温馨提示：男性玩家无法拜入月宫，女性玩家无法拜入普陀山（性别一旦选择无法更换）</span><br/>
+        -----------<br/>
+        请你先选择个性别吧<br/>
+        <a href="javascript:;" @click="pickSex(1)">男性</a>|<a href="javascript:;" @click="pickSex(2)">女性</a><br/>
+      </template>
+      <!-- 第2~4步：开场故事 -->
+      <template v-else-if="cf.step === 'story'">
+        <img :src="stories[cf.story].pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+        {{ stories[cf.story].text }}<br/>
+        <a href="javascript:;" @click="storyNext()">继续</a><br/>
+      </template>
+      <!-- 第5步：选择门派 -->
+      <template v-else-if="cf.step === 'sect'">
+        【选择门派】<br/>
+        <div v-for="s in sects" :key="'sc' + s.id">
+          <img :src="s.pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+          {{ s.intro }}<template v-if="s.limit"><span class="red">({{ s.limit }})</span></template><br/>
+          （{{ s.bonus }}）<br/>
+          <a href="javascript:;" @click="pickSect(s)">选择{{ s.name }}</a><br/>
+        </div>
+      </template>
+      <!-- 第6步：门派介绍 -->
+      <template v-else-if="cf.step === 'sectIntro'">
+        【{{ cf.sectName }}】<br/>
+        <img :src="cf.sectPic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+        {{ cf.sectLong }}<br/>
+        （{{ cf.sectBonus }}）<br/>
+        <a href="javascript:;" @click="cf.step = 'name'">继续</a><br/>
+      </template>
+      <!-- 第7步：起名字 -->
+      <template v-else-if="cf.step === 'name'">
+        【起名字】<br/>
+        少侠请留名，给你起个响亮的名字吧：<br/>
+        角色名：<input v-model="cf.name" maxlength="12" /><br/>
+        <form @submit.prevent="doCreate">
+          <input type="submit" value="踏上西游路" />
+        </form>
+      </template>
       -----------<br/>
+      <a href="javascript:;" @click="exitToServer">返☆回☆游☆戏☆首☆页</a><br/>
+      西游报时({{ xyNow }})<br/>
     </template>
 
     <!-- ==================== 首页 ==================== -->
@@ -93,14 +121,31 @@
       </template>
       【幻想西游<template v-if="serverName">·{{ serverName }}</template>】<br/>
       <a href="javascript:;" @click="go('attrs')">{{ g.name }}</a>({{ g.sect_name }}·{{ g.level }}级
-      <template v-if="g.vip > 0">·VIP祝福{{ g.vip }}分钟</template>)<br/>
-      所在地：<a href="javascript:;" @click="go('map')">{{ g.node_name }}</a><br/>
+      <template v-if="vipLv > 0"><img :src="'/static/hxxy/vip/vip' + vipLv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /></template>
+      <template v-else-if="g.vip > 0">·VIP祝福{{ g.vip }}分钟</template>)<br/>
       气血：<span class="red">{{ g.hp }}-{{ g.max_hp }}</span>
       法力：<span :class="g.mp < g.max_mp ? 'cur' : 'black'">{{ g.mp }}-{{ g.max_mp }}</span><br/>
       经验：{{ g.exp }}/{{ g.exp_need }}<br/>
       银两：<span class="cur">{{ g.money }}</span> 存款：{{ g.bank }} 金豆：<span class="red">{{ g.beans }}</span><br/>
       宠物：<template v-if="g.fighting_pet">{{ g.fighting_pet.name }}({{ g.fighting_pet.level }}级·参战中)</template><template v-else>无参战</template><br/>
-      修炼：<a href="javascript:;" @click="go('cultivate')">{{ g.xiulian_switch === 1 ? '开启中' : '未开启' }}</a><br/>
+      修炼经验：<span class="red">{{ g.xiulian_exp }}</span>（<a href="javascript:;" @click="go('cultivate')">修炼</a>）<br/>
+      -----------<br/>
+      <!-- 地图节点页内容（复刻原版 xy002.php 内嵌 map/*.php：地名+刷新/NPC/图片/出口/查看地图/描述/怪物行） -->
+      <span class="black">{{ node.name }}</span><a href="javascript:;" @click="loadState()">刷新</a><br/>
+      <div v-for="n in mapNpcs" :key="'hmn' + n.id">
+        <a href="javascript:;" @click="viewNpc(n.id)">{{ n.name }}</a><br/>
+      </div>
+      <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
+      <template v-if="enemies.length">
+        <div><template v-for="(e, i) in enemies" :key="'hen' + i"><template v-if="i > 0">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></template></div>
+      </template>
+      <span class="black">请选择出口</span><br/>
+      <template v-for="d in mapExits" :key="'hex' + d.dir">
+        <template v-if="d.walk"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir)">{{ d.walk.name }}</a><br/></template>
+        <template v-if="d.jump && (!d.walk || d.jump.dir !== d.walk.dir)"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir, true)">{{ d.jump.name }}</a><br/></template>
+      </template>
+      <a href="javascript:;" @click="go('mapview')">查看地图</a><br/>
+      <template v-if="node.desc"><span class="black">{{ node.desc }}</span><br/></template>
       -----------<br/>
       <!-- 附近玩家（复刻原版 fjwj：同地图玩家可私聊） -->
       <template v-if="nearby.length">
@@ -112,21 +157,47 @@
       <a href="javascript:;" @click="go('map')">【西游世界】</a>
       <a href="javascript:;" @click="go('bosses')">【世界BOSS】</a>
       <a href="javascript:;" @click="go('dungeons')">【副本】</a><br/>
-      <a href="javascript:;" @click="doSignin">【每日签到】</a>
-      <a href="javascript:;" @click="go('quests')">【任务】</a>
+      <a href="javascript:;" :class="!homeFlags.today_signed ? 'red' : ''" @click="doSignin">【每日签到】</a>
+      <a href="javascript:;" :class="homeFlags.quest_ready > 0 ? 'red' : ''" @click="go('quests')">【任务】</a>
+      <a href="javascript:;" :class="homeFlags.act_ready ? 'red' : ''" @click="go('activities')">【活动】</a>
       <a href="javascript:;" @click="go('vip')">【充值】</a><br/>
-      -----------<br/>
+      ----------------------<br/>
       <span class="black">火热玩法</span><br/>
       <a href="javascript:;" @click="go('tower')">挑战</a>◎<a href="javascript:;" @click="go('arena')">擂台</a>◎<a href="javascript:;" @click="go('fun')">娱乐</a>◎<a href="javascript:;" @click="go('gz')">国战</a><br/>
-      -----------<br/>
+      ----------------------<br/>
       <span class="black">攻略指引</span><br/>
-      <a href="javascript:;" @click="go('stalls')">拍卖</a>◎<a href="javascript:;" @click="go('guide')">攻略</a>◎<a href="javascript:;" @click="go('guide')">指引</a>◎<a href="javascript:;" @click="go('teyun')">腾云</a><br/>
-      -----------<br/>
+      <a href="javascript:;" @click="go('auction')">拍卖</a>◎<a href="javascript:;" @click="go('guide')">攻略</a>◎<a href="javascript:;" @click="go('guide')">指引</a>◎<a href="javascript:;" @click="go('teyun')">腾云</a><br/>
+      ----------------------<br/>
       <span class="black">基础功能</span><br/>
       <a href="javascript:;" @click="go('attrs')">状态</a>◎<a href="javascript:;" @click="go('bag')">物品</a>◎<a href="javascript:;" @click="go('friends')">好友</a>◎<a href="javascript:;" @click="go('quests')">任务</a><br/>
       <a href="javascript:;" @click="go('gang')">国家</a>◎<a href="javascript:;" @click="go('chat')">聊天</a>◎<a href="javascript:;" @click="go('pets')">宠物</a>◎<a href="javascript:;" @click="go('shop')">商城</a><br/>
       <a href="javascript:;" @click="go('team')">队伍</a>◎<a href="javascript:;" @click="go('house')">住宅</a>◎<a href="javascript:;" @click="go('stalls')">挂售</a>◎<a href="javascript:;" @click="go('rank')">排行</a><br/>
       <a href="javascript:;" @click="go('vip')">兑奖</a>◎<a href="javascript:;" @click="go('vip')">特权</a>◎<a href="javascript:;" @click="go('signin')">福利</a>◎<a href="javascript:;" @click="go('sys')">系统</a><br/>
+      ----------------------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('attrs')">状态</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('skills')">技能</a>.<a href="javascript:;" @click="go('pets')">宠物</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
+      <a href="javascript:;" @click="go('bank')">银行</a>.<a href="javascript:;" @click="go('quests')">任务</a>.<a href="javascript:;" @click="go('dungeons')">副本</a>.<a href="javascript:;" @click="go('bosses')">BOSS</a>.<a href="javascript:;" @click="go('cultivate')">修炼</a>.<a href="javascript:;" @click="go('titles')">头衔</a>.<a href="javascript:;" @click="go('signin')">签到</a><br/>
+      <a href="javascript:;" @click="go('rank')">排行</a>.<a href="javascript:;" @click="go('chat')">聊天</a>.<a href="javascript:;" @click="go('friends')">好友</a>.<a href="javascript:;" @click="go('gang')">帮派</a>.<a href="javascript:;" @click="go('marriage')">结婚</a>.<a href="javascript:;" @click="go('house')">住宅</a>.<a href="javascript:;" @click="go('stalls')">摆摊</a><br/>
+      <a href="javascript:;" @click="go('wallet')">流水</a>.<a href="javascript:;" @click="go('blogs')">战报</a>.<a href="javascript:;" @click="go('vip')">充值</a><br/>
+    </template>
+
+    <!-- ==================== 西游世界（地图，复刻 map/*.php：地名+刷新/NPC/怪物行/出口/查看地图/描述） ==================== -->
+    <template v-else-if="cur === 'map'">
+      <span class="black">{{ node.name }}</span><a href="javascript:;" @click="loadState()">刷新</a><br/>
+      <div v-for="n in mapNpcs" :key="'mn' + n.id">
+        <a href="javascript:;" @click="viewNpc(n.id)">{{ n.name }}</a><br/>
+      </div>
+      <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
+      <template v-if="enemies.length">
+        <div><template v-for="(e, i) in enemies" :key="'en' + i"><template v-if="i > 0">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></template></div>
+      </template>
+      <span class="black">请选择出口</span><br/>
+      <template v-for="d in mapExits" :key="'ex' + d.dir">
+        <template v-if="d.walk"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir)">{{ d.walk.name }}</a><br/></template>
+        <template v-if="d.jump && (!d.walk || d.jump.dir !== d.walk.dir)"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir, true)">{{ d.jump.name }}</a><br/></template>
+      </template>
+      <template v-if="!mapExits.length">四面都是高墙，没有出路……<br/></template>
+      <a href="javascript:;" @click="go('mapview')">查看地图</a><br/>
+      <template v-if="node.desc"><span class="black">{{ node.desc }}</span><br/></template>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('attrs')">状态</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('skills')">技能</a>.<a href="javascript:;" @click="go('pets')">宠物</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
       <a href="javascript:;" @click="go('bank')">银行</a>.<a href="javascript:;" @click="go('quests')">任务</a>.<a href="javascript:;" @click="go('dungeons')">副本</a>.<a href="javascript:;" @click="go('bosses')">BOSS</a>.<a href="javascript:;" @click="go('cultivate')">修炼</a>.<a href="javascript:;" @click="go('titles')">头衔</a>.<a href="javascript:;" @click="go('signin')">签到</a><br/>
@@ -134,36 +205,22 @@
       <a href="javascript:;" @click="go('wallet')">流水</a>.<a href="javascript:;" @click="go('blogs')">战报</a>.<a href="javascript:;" @click="go('vip')">充值</a><br/>
     </template>
 
-    <!-- ==================== 西游世界（地图） ==================== -->
-    <template v-else-if="cur === 'map'">
-      【{{ node.name }}】<a href="javascript:;" @click="loadState()">刷新</a><br/>
-      <span v-if="node.desc" class="gray">{{ node.desc }}</span><br/>
-      <div v-if="mapImgOk" class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="mapImgOk = false" alt="地图" /></div>
-      <template v-if="node.up">北：<a href="javascript:;" @click="move('up')">{{ node.up.name }}</a><template v-if="node.up.jump">[传送]</template><br/></template>
-      <template v-if="node.down">南：<a href="javascript:;" @click="move('down')">{{ node.down.name }}</a><template v-if="node.down.jump">[传送]</template><br/></template>
-      <template v-if="node.left">西：<a href="javascript:;" @click="move('left')">{{ node.left.name }}</a><template v-if="node.left.jump">[传送]</template><br/></template>
-      <template v-if="node.right">东：<a href="javascript:;" @click="move('right')">{{ node.right.name }}</a><template v-if="node.right.jump">[传送]</template><br/></template>
-      <template v-if="!node.up && !node.down && !node.left && !node.right">四面都是高墙，没有出路……<br/></template>
-      <template v-if="mapNpcs.length">
-        此处人物：<br/>
-        <div v-for="n in mapNpcs" :key="'mn' + n.id">
-          <a href="javascript:;" @click="viewNpc(n.id)"><span class="red">{{ n.name }}</span></a><template v-if="n.tele_count">[传送]</template><template v-if="n.shop">[服务]</template><br/>
-        </div>
-      </template>
-      附近出没：<br/>
-      <template v-if="enemies.length">
-        <div v-for="(e, i) in enemies" :key="'en' + i">
-          {{ i + 1 }}.<a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a>({{ e.level }}级·{{ e.difficulty }})
-          <template v-if="e.take"><span class="gray">"{{ e.take }}"</span></template><br/>
-        </div>
-      </template>
-      <template v-else><em>此地一片祥和，没有妖魔出没。</em><br/></template>
-      -----------<br/>
-      <a href="javascript:;" @click="doRest">客栈休息({{ g.level * 10 }}银两回满)</a><br/>
-      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('attrs')">状态</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('skills')">技能</a>.<a href="javascript:;" @click="go('pets')">宠物</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
-      <a href="javascript:;" @click="go('bank')">银行</a>.<a href="javascript:;" @click="go('quests')">任务</a>.<a href="javascript:;" @click="go('dungeons')">副本</a>.<a href="javascript:;" @click="go('bosses')">BOSS</a>.<a href="javascript:;" @click="go('cultivate')">修炼</a>.<a href="javascript:;" @click="go('titles')">头衔</a>.<a href="javascript:;" @click="go('signin')">签到</a><br/>
-      <a href="javascript:;" @click="go('rank')">排行</a>.<a href="javascript:;" @click="go('chat')">聊天</a>.<a href="javascript:;" @click="go('friends')">好友</a>.<a href="javascript:;" @click="go('gang')">帮派</a>.<a href="javascript:;" @click="go('marriage')">结婚</a>.<a href="javascript:;" @click="go('house')">住宅</a>.<a href="javascript:;" @click="go('stalls')">摆摊</a><br/>
-      <a href="javascript:;" @click="go('wallet')">流水</a>.<a href="javascript:;" @click="go('blogs')">战报</a>.<a href="javascript:;" @click="go('vip')">充值</a><br/>
+    <!-- ==================== 查看地图（复刻 xy008 + MapViewer 网格） ==================== -->
+    <template v-else-if="cur === 'mapview'">
+      <a href="javascript:;" @click="mapZoom(2)">放大地图</a> <a href="javascript:;" @click="mapZoom(-2)">缩小地图</a> <a href="javascript:;" @click="mapZoom(0)">重置地图</a><br/>
+      <div style="overflow:auto">
+        <table class="mapgrid">
+          <tr v-for="(row, y) in mapWin.rows" :key="'gr' + y">
+            <td v-for="(c, x) in row" :key="'gc' + y + '_' + x">
+              <template v-if="c && c.dtxy"><div class="mgnode"><span :class="c.dtxy === mapGrid.cur ? 'mgcur' : (c.is_jump ? 'mgjump' : 'mgnorm')">{{ c.mz }}</span></div></template>
+              <template v-else-if="c === '—' || c === '|'"><span class="mgwall">{{ c }}</span></template>
+              <template v-else>&nbsp;</template>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <br/>
+      <a href="javascript:;" @click="go('map')">返回</a>.<a href="javascript:;" @click="go('home')">首页</a><br/>
     </template>
 
     <!-- ==================== NPC交互 ==================== -->
@@ -188,6 +245,15 @@
         -----------<br/>
         <a href="javascript:;" @click="startBattle(npcCur.npc_id)">攻击{{ npcCur.name }}</a><br/>
       </template>
+      <template v-if="npcCur.quests && npcCur.quests.length">
+        -----------<br/>
+        <span class="black">发布的任务：</span><br/>
+        <div v-for="q in npcCur.quests" :key="'nq' + q.quest_id">
+          <span class="red">{{ q.name }}</span>({{ qstCatName(q.category) }})<br/>
+          <span class="gray">{{ q.desc }}</span><br/>
+          <a href="javascript:;" @click="questAccept(q)">[接取任务]</a><br/>
+        </div>
+      </template>
       -----------<br/>
       <a href="javascript:;" @click="backToMap">返回西游世界</a><br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
@@ -195,7 +261,7 @@
 
     <!-- ==================== 战斗 ==================== -->
     <template v-else-if="cur === 'battle' && bt">
-      【战斗】第{{ bt.round + 1 }}回合<br/>
+      【战斗】第{{ bt.round }}回合<br/>
       <template v-if="bt.in_battle">
         你：<span class="green">{{ bt.self.name }}</span>({{ bt.self.level }}级)
         气血：<span :class="bt.self.hp < bt.self.max_hp * 0.3 ? 'red' : 'black'">{{ bt.self.hp }}/{{ bt.self.max_hp }}</span>
@@ -206,12 +272,38 @@
         -----------<br/>
         <a href="javascript:;" @click="battleAct('attack')">【攻击】</a>
         <a v-if="bt.type !== 'pvp'" href="javascript:;" @click="battleAct('catch')">【捕捉】</a>
-        <a href="javascript:;" @click="battleAct('flee')">【逃跑】</a><br/>
+        <a href="javascript:;" @click="battleAct('flee')">【逃跑】</a>
+        <a href="javascript:;" @click="showQuickSet = !showQuickSet">【快捷键设置】</a>
+        <a href="javascript:;" @click="backToMap">【退出战斗】</a><br/>
+        <template v-if="showQuickSet">
+          -----------<br/>
+          <span class="red">战斗场景快捷键设置</span><br/>
+          <template v-for="q in quickSlots" :key="'ss' + q.slot">
+            <template v-if="quickSetSlot === q.slot">
+              <span class="black">选择技能填入快捷{{ q.slot }}：</span><br/>
+              <a v-for="s in quickSkillList()" :key="'qsp' + s.skill_id" href="javascript:;" @click="pickQuick(q.slot, s.skill_id)">[{{ s.name }}({{ s.mp_cost }})]</a>
+              <a href="javascript:;" @click="pickQuick(q.slot, 0)">[清空]</a><br/>
+              <a href="javascript:;" @click="quickSetSlot = 0">[取消]</a><br/>
+            </template>
+            <template v-else>
+              快捷{{ q.slot }}：<template v-if="q.skill_id"><a href="javascript:;" @click="quickSetSlot = q.slot">{{ q.name }}[改]</a></template><template v-else><a href="javascript:;" @click="quickSetSlot = q.slot">未设置[选择]</a></template>
+              <span v-if="q.slot % 3 === 0"><br/></span><template v-else><span class="black">|</span></template>
+            </template>
+          </template>
+          <a href="javascript:;" @click="showQuickSet = false">返回战斗</a><br/>
+        </template>
         <template v-if="bt.skills && bt.skills.length">
           法术：<a v-for="s in bt.skills" :key="'sk' + s.skill_id" href="javascript:;" @click="battleAct('skill', s.skill_id)">[{{ s.name }}({{ s.mp_cost }})]</a><br/>
         </template>
         <template v-if="battleItems.length">
           用药：<a v-for="b in battleItems" :key="'bi' + b.id" href="javascript:;" @click="battleAct('item', 0, b.id)">[{{ b.name }}×{{ b.count }}]</a><br/>
+        </template>
+        <template v-if="quickSlots.length">
+          -----------<br/>
+          <span class="black">快捷键：</span><br/>
+          <div v-for="q in quickSlots" :key="'qs' + q.slot">
+            快捷{{ q.slot }}：<template v-if="q.skill_id"><a href="javascript:;" @click="battleAct('skill', q.skill_id)">{{ q.name }}({{ q.mp_cost }})</a></template><template v-else><span class="gray">未设置</span></template><br/>
+          </div>
         </template>
       </template>
       <template v-else>
@@ -230,26 +322,36 @@
 
     <!-- ==================== 状态 ==================== -->
     <template v-else-if="cur === 'attrs' && at">
-      <div v-if="g.vip > 0" class="npcimg"><img src="/static/hxxy/vip/vip1.png" @error="$event.target.style.display = 'none'" alt="VIP" /></div>
-      【{{ g.name }}】{{ g.sect_name }}·{{ g.level }}级<br/>
-      <div v-if="g.title_id > 0" class="npcimg"><img :src="titleImg(g.title_id)" @error="$event.target.style.display = 'none'" alt="头衔" /></div>
+      <div v-if="g.vip_lv > 0" class="npcimg"><img :src="'/static/hxxy/vip/vip' + g.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" /></div>
+      ID：{{ g.id }}<br/>
+      <a href="javascript:;" @click="go('titles')">称号一览</a><br/>
+      头衔：<template v-if="g.title_name">{{ g.title_name }}</template><template v-else>暂无</template><br/>
+      <span class="red">恶名：{{ emTitle }}({{ g.emz }}点)</span><br/>
+      昵称：{{ g.name }}<br/>
+      性别：{{ g.sex === 2 ? '女' : '男' }}<br/>
+      配偶：<template v-if="g.spouse"><span class="red">{{ g.spouse }}</span></template><template v-else>暂无</template><br/>
+      住宅：<template v-if="g.has_house"><a href="javascript:;" @click="go('house')">我的住宅</a></template><template v-else>暂无</template><br/>
+      国家：<template v-if="gang.my_gang.gang_id"><a href="javascript:;" @click="go('gang')">{{ gang.my_gang.name }}</a></template><template v-else>无</template><br/>
+      门派：{{ g.sect_name }}<br/>
+      <a href="javascript:;" @click="go('vip')">祝福状态</a><br/>
+      等级：{{ g.level }}级<br/>
+      HP：{{ g.hp }}/{{ g.max_hp }}<br/>
+      MP：{{ g.mp }}/{{ g.max_mp }}<br/>
+      攻击：{{ at.attrs.atk }}<br/>
+      魔攻：{{ at.attrs.mg }}<br/>
+      防御：{{ at.attrs.def }}<br/>
+      攻击元素：冰+{{ at.attrs.bg }} 火+{{ at.attrs.hg }} 雷+{{ at.attrs.lg }}<br/>
+      防御元素：冰+{{ at.attrs.bf }} 火+{{ at.attrs.hf }} 雷+{{ at.attrs.lf }}<br/>
       经验：{{ g.exp }}/{{ g.exp_need }}<br/>
-      气血：{{ g.hp }}-{{ g.max_hp }} 法力：{{ g.mp }}-{{ g.max_mp }}<br/>
-      -----------<br/>
-      【战斗属性】<br/>
-      攻击：{{ at.attrs.atk }} 魔攻：{{ at.attrs.mg }}<br/>
-      防御：{{ at.attrs.def }} 魔防：{{ at.attrs.mf }}<br/>
-      冰攻：{{ at.attrs.bg }} 火攻：{{ at.attrs.hg }} 雷攻：{{ at.attrs.lg }}<br/>
-      冰防：{{ at.attrs.bf }} 火防：{{ at.attrs.hf }} 雷防：{{ at.attrs.lf }}<br/>
+      修炼经验：<span class="red">{{ g.xiulian_exp }}</span> | <a href="javascript:;" @click="xiulianQuickToggle">{{ g.xiulian_switch ? '关闭' : '开启' }}</a>{{ g.xiulian_switch ? '(关闭后获得经验)' : '(开启后获得修炼经验)' }}<br/>
       -----------<br/>
       【装备】<br/>
-      <template v-if="at.equips.length">
-        <div v-for="e in at.equips" :key="'eq' + e.slot">
-          {{ e.slot_name }}：<a href="javascript:;" @click="takeoff(e.slot)">{{ e.name }}</a><template v-if="e.star > 0">+{{ e.star }}</template>({{ e.level }}级)
-          <a href="javascript:;" @click="takeoff(e.slot)">[卸下]</a><br/>
-        </div>
-      </template>
-      <template v-else><em>未穿戴任何装备，去商店逛逛吧。</em><br/></template>
+      <div v-for="e in at.equips" :key="'eq' + e.slot">
+        {{ e.slot_name }}：<template v-if="e.name"><span class="blue">{{ e.star_prefix }}{{ e.name }}</span><template v-if="e.star > 0">+{{ e.star }}</template><span class="black">|</span><a href="javascript:;" @click="takeoff(e.slot)">卸下</a></template><template v-else><span class="black">无</span></template><br/>
+      </div>
+      -----------<br/>
+      <a href="javascript:;" @click="go('skills')">技能</a>|<a href="javascript:;" @click="go('cultivate')">修炼</a>|<a href="javascript:;" @click="go('bag')">行囊</a><br/>
+      <a href="javascript:;" @click="go('pets')">宝宝|宠物</a>|<a href="javascript:;" @click="go('titles')">头衔</a><br/>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('shop')">商店</a>.<a href="javascript:;" @click="go('titles')">头衔</a><br/>
     </template>
@@ -261,7 +363,7 @@
       <a href="javascript:;" :class="storeMode === 1 ? 'cur' : ''" @click="switchStore(1)">[仓库]</a><br/>
       <template v-if="bagList.length">
         <div v-for="(b, i) in bagList" :key="'bg' + b.id">
-          {{ i + 1 }}.<a href="javascript:;" @click="bagDetail = bagDetail === b.id ? null : b.id">{{ b.name }}</a>×{{ b.count }}<template v-if="b.kind === 'equip' && b.extra && b.extra.star > 0">+{{ b.extra.star }}</template><template v-if="b.bind === 1">(绑定)</template>
+          {{ i + 1 }}.<a href="javascript:;" @click="bagDetail = bagDetail === b.id ? null : b.id">{{ b.star_prefix || '' }}{{ b.name }}</a>×{{ b.count }}<template v-if="b.kind === 'equip' && b.extra && b.extra.star > 0">+{{ b.extra.star }}</template><template v-if="b.bind === 1">(绑定)</template>
           <template v-if="equippedIDs.indexOf(b.id) >= 0"><span class="green">[已穿戴]</span></template>
           <br/>
           <template v-if="bagDetail === b.id">
@@ -286,7 +388,8 @@
                 <a v-if="b.kind === 'item'" href="javascript:;" @click="useItem(b)">[使用]</a>
                 <a href="javascript:;" @click="dropItem(b, 1)">[丢弃]</a>
                 <a href="javascript:;" @click="storeMove(b.id, 'in')">[存仓库]</a>
-                <a href="javascript:;" @click="stallInput = { bag_id: b.id, count: 1, price: b.price || 100 }; stallShow = true">[摆摊]</a><br/>
+                <a href="javascript:;" @click="openStall(b)">[挂售]</a>
+                <a href="javascript:;" @click="openAuctionSell(b)">[拍卖]</a><br/>
               </template>
               <template v-if="b.kind === 'item' && canUseMany(b)">
                 数量：<input v-model.number="useCounts[b.id]" size="2" />
@@ -301,11 +404,25 @@
         </div>
       </template>
       <template v-else><em>{{ storeMode === 1 ? '仓库空空如也。' : '行囊空空如也，去打怪掉宝或商店购买吧。' }}</em><br/></template>
-      <template v-if="stallShow">
+      <!-- 挂售上架表单（复刻 npcc/gssjwp01.php：数量+单价单页表单） -->
+      <template v-if="stallItem">
         -----------<br/>
-        【摆摊上架】<br/>
-        数量：<input v-model.number="stallInput.count" size="3" /> 售价：<input v-model.number="stallInput.price" size="8" />银两<br/>
-        <a href="javascript:;" @click="doStallSell">[确认上架]</a> <a href="javascript:;" @click="stallShow = false">[取消]</a><br/>
+        <span class="red">你最多可挂售{{ stallItem.name }}x{{ stallItem.count }}</span><br/>
+        <span class="black">请输入你要挂售{{ stallItem.name }}数量和单价</span><br/>
+        数量：<input v-model.trim="stallCount" size="10" placeholder="数量" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+        单价：<input v-model.trim="stallPrice" size="10" placeholder="单价" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+        <input type="submit" value="挂售" @click="doStallSell" /><br/>
+        <a href="javascript:;" @click="stallItem = null">[取消]</a><br/>
+      </template>
+      <!-- 拍卖上架表单（复刻 npcc/pmsjwp01.php） -->
+      <template v-if="aucItem">
+        -----------<br/>
+        <span class="red">你最多可拍卖{{ aucItem.name }}x{{ aucItem.count }}</span><br/>
+        <span class="black">请输入你要拍卖{{ aucItem.name }}数量和单价</span><br/>
+        数量：<input v-model.trim="aucCount" size="10" placeholder="数量" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+        单价：<input v-model.trim="aucPrice" size="10" placeholder="单价" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+        <input type="submit" value="拍卖" @click="doAuctionSell" /><br/>
+        <a href="javascript:;" @click="aucItem = null">[取消]</a><br/>
       </template>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('shop')">商店</a>.<a href="javascript:;" @click="go('stalls')">摆摊</a><br/>
@@ -359,89 +476,194 @@
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
     </template>
 
-    <!-- ==================== 商店 ==================== -->
+    <!-- ==================== 商店（复刻 xy246/xy122/mdx01/mdx02：列表→详情→购买） ==================== -->
     <template v-else-if="cur === 'shop'">
-      【商店】银两:{{ g.money }} 金豆:{{ g.beans }}<br/>
-      <a v-for="t in shopTabs" :key="'st' + t.k" href="javascript:;" :class="shopKind === t.k ? 'cur' : ''" @click="loadShop(t.k)">[{{ t.n }}]</a><br/>
-      -----------<br/>
-      <template v-if="shop.goods.length">
-        <div v-for="(gd, i) in shop.goods" :key="'gd' + i">
-          {{ i + 1 }}.<a href="javascript:;" @click="shopDetail = shopDetail === gd.kind + gd.ref_id ? null : gd.kind + gd.ref_id">{{ gd.name }}</a><template v-if="gd.level > 0">({{ gd.level }}级)</template><br/>
-          <template v-if="shopDetail === gd.kind + gd.ref_id">
-            <span class="gray">{{ gd.desc }}</span><br/>
-            <template v-if="gd.kind === 'equip' && gd.category">部位：{{ slotName(gd.category) }}<br/></template>
-          </template>
-          <a href="javascript:;" @click="buy(gd, 'money')">[{{ gd.price }}银两购买]</a><template v-if="gd.bean_price > 0"> <a href="javascript:;" @click="buy(gd, 'beans')">[{{ gd.bean_price }}金豆购买]</a></template><br/>
-        </div>
-      </template>
-      <template v-else><em>本店暂无货物。</em><br/></template>
-      <template v-if="shop.pets && shop.pets.length">
+      <!-- 列表页 -->
+      <template v-if="shopPage === 'list'">
+        <span v-if="shopMsg" class="black">{{ shopMsg }}</span><br/>
+        <span class="black">物品负重：{{ shop.used }}/{{ shop.cap }}</span><br/>
+        <span class="black">银两：</span><span class="cur">{{ g.money }}</span> 金豆：<span class="red">{{ g.beans }}</span><br/>
+        <a v-for="t in shopTabs" :key="'st' + t.k" href="javascript:;" :class="shopKind === t.k ? 'cur' : ''" @click="loadShop(t.k)">[{{ t.n }}]</a><br/>
         -----------<br/>
-        【宠物柜台】(金豆购买)<br/>
-        <div v-for="(pt, i) in shop.pets" :key="'sp' + i">
-          {{ i + 1 }}.{{ pt.name }}({{ pt.level }}级)——{{ pt.bean_price }}金豆
-          <a href="javascript:;" @click="buyPet(pt)">[购买]</a><br/>
-        </div>
+        <template v-if="shop.goods.length">
+          <div v-for="(gd, i) in shop.goods" :key="'gd' + i">
+            <span class="black">{{ i + 1 }}.</span><a href="javascript:;" @click="openShopItem(gd)">{{ gd.name }}</a><template v-if="gd.price > 0">({{ gd.price }}两)</template><template v-else-if="gd.bean_price > 0">({{ gd.bean_price }}金豆)</template><br/>
+          </div>
+        </template>
+        <template v-else><span class="black">本店暂无货物。</span><br/></template>
+        <template v-if="shop.pets && shop.pets.length">
+          -----------<br/>
+          <span class="black">【宠物柜台】</span><br/>
+          <div v-for="(pt, i) in shop.pets" :key="'sp' + i">
+            <span class="black">{{ i + 1 }}.</span><a href="javascript:;" @click="openShopPet(pt)">{{ pt.name }}</a>({{ pt.level }}级·{{ pt.bean_price }}金豆)<br/>
+          </div>
+        </template>
+        <br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+        -----------<br/>
+        <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('stalls')">摆摊</a>.<a href="javascript:;" @click="go('vip')">充值</a><br/>
       </template>
-      -----------<br/>
-      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('bag')">行囊</a>.<a href="javascript:;" @click="go('stalls')">摆摊</a>.<a href="javascript:;" @click="go('vip')">充值</a><br/>
+      <!-- 物品/装备详情页（复刻 xy122） -->
+      <template v-else-if="shopPage === 'item' && shopItem">
+        <span class="red">{{ shopItem.name }}</span><br/>
+        <template v-if="shopItem.desc"><span class="black">描述：{{ shopItem.desc }}</span><br/></template>
+        <template v-if="shopItem.price > 0"><span class="black">价格：{{ yl(shopItem.price) }}两</span><br/></template>
+        <template v-if="shopItem.bean_price > 0"><span class="black">金豆价：{{ shopItem.bean_price }}金豆</span><br/></template>
+        <span class="black">需要等级：{{ shopItem.level }}</span><br/>
+        <span class="black">重量：{{ shopItem.weight }}</span><br/>
+        <template v-if="shopItem.kind === 'equip' && shopItem.category"><span class="black">部位：{{ slotName(shopItem.category) }}</span><br/></template>
+        <span class="black">物品负重：{{ shop.used }}/{{ shop.cap }}</span><br/>
+        <span class="black">银两：</span><span class="cur">{{ g.money }}</span> 金豆：<span class="red">{{ g.beans }}</span><br/>
+        ------<br/>
+        <span class="black">请输入你要购买多少{{ shopItem.name }}呢？</span><br/>
+        <form @submit.prevent="doShopBuy('money')">
+          <input v-model.trim="shopBuyCount" size="10" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+          <input type="submit" value="银两购买" />
+        </form>
+        <template v-if="shopItem.bean_price > 0"><a href="javascript:;" @click="doShopBuy('beans')">[金豆购买]</a><br/></template>
+        <span v-if="shopMsg" class="red">{{ shopMsg }}</span><br/>
+        <a href="javascript:;" @click="shopPage = 'list'; shopMsg = ''">返回列表</a><br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
+      <!-- 宠物详情页 -->
+      <template v-else-if="shopPage === 'pet' && shopPet">
+        <span class="red">{{ shopPet.name }}</span>({{ shopPet.level }}级)<br/>
+        <span class="black">价格：{{ shopPet.bean_price }}金豆</span><br/>
+        <span class="black">银两：</span><span class="cur">{{ g.money }}</span> 金豆：<span class="red">{{ g.beans }}</span><br/>
+        ------<br/>
+        <span class="black">请输入你要购买多少{{ shopPet.name }}呢？</span><br/>
+        <form @submit.prevent="doShopPetBuy()">
+          <input v-model.trim="shopBuyCount" size="10" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+          <input type="submit" value="购买" />
+        </form>
+        <span v-if="shopMsg" class="red">{{ shopMsg }}</span><br/>
+        <a href="javascript:;" @click="shopPage = 'list'; shopMsg = ''">返回列表</a><br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
     </template>
 
-    <!-- ==================== 银行 ==================== -->
-    <template v-else-if="cur === 'bank'">
+    <!-- ==================== 银行（钱庄，复刻原版 xy257/258/259 三页结构） ==================== -->
+    <template v-else-if="cur === 'bank' && bankView === 'main'">
       【银行】<br/>
-      随身银两：{{ g.money }}　存款：{{ g.bank }}<br/>
+      钱庄存款：<span class="black">{{ yl(g.bank) }}</span><br/>
+      <a href="javascript:;" @click="bankView = 'in'; bankMsg = ''">我要存款</a><br/>
+      <a href="javascript:;" @click="bankView = 'out'; bankMsg = ''">我要取款</a><br/>
+      ------<br/>
+      <a href="javascript:;" @click="go('home')">返回上级</a><br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      -----------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('wallet')">流水</a><br/>
+    </template>
+    <template v-else-if="cur === 'bank' && bankView === 'in'">
+      钱庄存款：<span class="black">{{ yl(g.bank) }}</span><br/>
+      ------<br/>
+      身上银子：<span class="black">{{ yl(g.money) }}</span><br/>
+      请输入存入的银两：<br/>
       <form @submit.prevent="bankOp('in')">
-        存入：<input v-model.number="bankAmount" size="10" /> <input type="submit" value="存款" />
+        <input v-model.number="bankAmount" size="10" inputmode="numeric" /> <input type="submit" value="存款" />
       </form>
+      <span v-if="bankMsg" class="red">{{ bankMsg }}</span><br/>
+      <a href="javascript:;" @click="bankView = 'main'; bankMsg = ''">放弃存款</a><br/>
+      ------<br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      -----------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('wallet')">流水</a><br/>
+    </template>
+    <template v-else-if="cur === 'bank' && bankView === 'out'">
+      钱庄存款：<span class="black">{{ yl(g.bank) }}</span><br/>
+      ------<br/>
+      身上银子：<span class="black">{{ yl(g.money) }}</span><br/>
+      请输入取出的银两：<br/>
       <form @submit.prevent="bankOp('out')">
-        取出：<input v-model.number="bankAmount" size="10" /> <input type="submit" value="取款" />
+        <input v-model.number="bankAmount" size="10" inputmode="numeric" /> <input type="submit" value="取款" />
       </form>
+      <span v-if="bankMsg" class="red">{{ bankMsg }}</span><br/>
+      <a href="javascript:;" @click="bankView = 'main'; bankMsg = ''">放弃取款</a><br/>
+      ------<br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('wallet')">流水</a><br/>
     </template>
 
-    <!-- ==================== 任务 ==================== -->
+    <!-- ==================== 任务（复刻原版分类：主线/支线/日常） ==================== -->
     <template v-else-if="cur === 'quests'">
-      【任务】<br/>
+      【任务】
+      <a href="javascript:;" :class="qstTab === 1 ? 'cur' : ''" @click="qstTab = 1">[主线]</a>
+      <a href="javascript:;" :class="qstTab === 2 ? 'cur' : ''" @click="qstTab = 2">[支线]</a>
+      <a href="javascript:;" :class="qstTab === 3 ? 'cur' : ''" @click="qstTab = 3">[日常]</a><br/>
       【进行中】<br/>
-      <template v-if="qst.active.length">
-        <div v-for="q in qst.active" :key="'qa' + q.quest_id">
+      <template v-if="qst.active.filter(q => q.category === qstTab).length">
+        <div v-for="q in qst.active.filter(q => q.category === qstTab)" :key="'qa' + q.quest_id">
           {{ q.name }}({{ q.type === 'hunt' ? '狩猎' : q.type === 'collect' ? '收集' : '对话' }} {{ q.progress }}/{{ q.count }})<br/>
           <span class="gray">{{ q.desc }}</span><br/>
           奖励：经验{{ q.exp }} 银两{{ q.money }}
-          <a v-if="q.status === 2 || q.type !== 'hunt'" href="javascript:;" @click="questSubmit(q)">[提交]</a><br/>
+          <a v-if="q.status === 2 || q.type !== 'hunt'" href="javascript:;" @click="questSubmit(q)">[提交]</a>
+          <a href="javascript:;" @click="questAbandon(q)">[放弃]</a><br/>
         </div>
       </template>
       <template v-else><em>暂无进行中的任务。</em><br/></template>
       -----------<br/>
       【可接任务】<br/>
-      <template v-if="qst.available.length">
-        <div v-for="q in qst.available" :key="'qv' + q.quest_id">
+      <template v-if="qst.available.filter(q => q.category === qstTab).length">
+        <div v-for="q in qst.available.filter(q => q.category === qstTab)" :key="'qv' + q.quest_id">
           <a href="javascript:;" @click="questAccept(q)">{{ q.name }}</a>({{ q.type === 'hunt' ? '狩猎' + q.count + '只' + q.target : q.type === 'collect' ? '收集' + q.count + '个' + q.target : '拜访' + q.target }})<br/>
           <span class="gray">{{ q.desc }}</span><br/>
-          奖励：经验{{ q.exp }} 银两{{ q.money }}<br/>
+          <template v-if="q.from">发布：<span class="blue">{{ q.from }}</span><br/></template>
+          奖励：经验{{ q.exp }} 银两{{ q.money }}<template v-if="q.bean > 0"> 金豆{{ q.bean }}</template><template v-if="q.item_name"> 【{{ q.item_name }}】</template><br/>
         </div>
       </template>
-      <template v-else><em>暂无可接任务，升级后再来看看。</em><br/></template>
+      <template v-else><em>本类暂无可接任务，升级后再来看看。</em><br/></template>
       -----------<br/>
       【已完成】<br/>
-      <div v-for="q in qst.done" :key="'qd' + q.quest_id">{{ q.name }}<span class="gray">(已完成)</span><br/></div>
+      <template v-if="qst.done.filter(q => q.category === qstTab).length">
+        <div v-for="q in qst.done.filter(q => q.category === qstTab)" :key="'qd' + q.quest_id">{{ q.name }}<span class="gray">(已完成)</span><br/></div>
+      </template>
+      <template v-else><em>本类暂无已完成任务。</em><br/></template>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
+    </template>
+
+    <!-- ==================== 活动中心（复刻原版 xy404：七日登录礼/每日活跃/双倍经验） ==================== -->
+    <template v-else-if="cur === 'activities' && act">
+      <span class="red">【幻想西游活动中心】</span><br/>
+      -----------<br/>
+      <span class="red">【七日登录礼】第{{ act.login7.day }}天</span><br/>
+      <div v-for="(r, i) in act.login7.days" :key="'l7' + i">
+        第{{ i + 1 }}天：银两{{ r[0] }}<template v-if="r[1] > 0">+金豆{{ r[1] }}</template><template v-if="i + 1 === act.login7.day"><span class="red">(今日)</span></template><br/>
+      </div>
+      <template v-if="act.login7.claimed"><span class="gray">今日已领取，明天再来～</span><br/></template>
+      <template v-else><a href="javascript:;" @click="claimActivity('login7', 0)"><span class="red">【领取今日奖励】</span></a><br/></template>
+      -----------<br/>
+      <span class="red">【每日活跃】当前 {{ act.daily.score }} 分</span><br/>
+      <span class="gray">签到+20 副本+30 比武+30 狩猎10只+20</span><br/>
+      今日达成：签到<template v-if="act.daily.signed"><span class="green">已</span></template><template v-else><span class="black">否</span></template>
+      副本<template v-if="act.daily.dungeon"><span class="green">已</span></template><template v-else><span class="black">否</span></template>
+      比武<template v-if="act.daily.arena"><span class="green">已</span></template><template v-else><span class="black">否</span></template>
+      狩猎{{ act.daily.hunt }}/10<br/>
+      <div v-for="t in act.daily.tiers" :key="'dt' + t.tier">
+        {{ t.name }}({{ t.tier }}分)：银两{{ t.money }}<template v-if="t.beans > 0">+金豆{{ t.beans }}</template>
+        <template v-if="t.claimed"><span class="gray">[已领取]</span></template>
+        <template v-else-if="t.can"><a href="javascript:;" @click="claimActivity('daily' + t.tier, t.tier)"><span class="red">[领取]</span></a></template>
+        <template v-else><span class="black">[活跃不足]</span></template><br/>
+      </div>
+      -----------<br/>
+      <span class="red">【双倍经验时段】</span><br/>
+      时间：{{ act.exp2x.windows }}<br/>
+      状态：<template v-if="act.exp2x.on"><span class="green">进行中，战斗经验翻倍！</span></template><template v-else><span class="black">未开启</span></template><br/>
+      -----------<br/>
+      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('signin')">签到</a>.<a href="javascript:;" @click="go('quests')">任务</a><br/>
     </template>
 
     <!-- ==================== 副本 ==================== -->
     <template v-else-if="cur === 'dungeons'">
       【副本】<br/>
-      <div v-for="(dg, i) in dungeons" :key="'dg' + dg.dungeon_id">
-        {{ i + 1 }}.{{ dg.name }}({{ dg.min_level }}级·共{{ dg.floors }}层·每日{{ dg.daily }}次·今日已用{{ dg.used_today }})<br/>
-        <span class="gray">{{ dg.desc }}</span><br/>
-        进度：第{{ dg.floor }}/{{ dg.floors }}层
-        <template v-if="dg.locked"><span class="red">[等级不足]</span></template>
-        <template v-else-if="dg.used_today >= dg.daily"><span class="gray">[今日次数已用完]</span></template>
-        <template v-else><a href="javascript:;" @click="enterDungeon(dg)">[进入副本]</a></template><br/>
+      <template v-for="(dg, i) in dungeons" :key="'dg' + dg.dungeon_id">
+        <span class="black">{{ dg.done ? '！' : (dg.locked || dg.kills >= dg.floors ? '' : '？') }}</span><a v-if="!dg.locked && !dg.done" href="javascript:;" @click="enterDungeon(dg)"><span class="blue">激活{{ dg.name }}</span></a><span v-else class="black">{{ dg.name }}</span><br/>
+        <span class="gray">{{ dg.desc }}（{{ dg.min_level }}级开放）</span><br/>
+        <template v-if="dg.locked"><span class="red">[等级不足]</span><br/></template>
+        <template v-else-if="dg.done"><span class="gray">[今日已完成，明日再来]</span><br/></template>
+        <template v-else-if="dg.kills > 0"><span class="black">已击杀{{ dg.kills }}/{{ dg.floors }}只守护BOSS</span><br/></template>
         ----------<br/>
-      </div>
+      </template>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
     </template>
 
@@ -457,45 +679,191 @@
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
     </template>
 
-    <!-- ==================== 修炼 ==================== -->
+    <!-- ==================== 修炼（复刻 xy427/428/432 + xy052 开关） ==================== -->
     <template v-else-if="cur === 'cultivate'">
-      【修炼】<br/>
-      状态：{{ cult.switch === 1 ? '开启中' : '未开启' }}<br/>
-      修炼池：{{ cult.exp }}/{{ cult.cap }}<br/>
-      <span class="gray">{{ cult.desc }}</span><br/>
-      <a href="javascript:;" @click="cultToggle">{{ cult.switch === 1 ? '[关闭修炼]' : '[开启修炼]' }}</a><br/>
-      -----------<br/>
-      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('bag')">行囊</a><br/>
+      <!-- 主页：我的修炼 -->
+      <template v-if="!cultView">
+        我的修炼如下：<br/>
+        修炼经验：<span class="red">{{ cult.exp }}</span><a href="javascript:;" @click="cultToggle"><span class="blue">|{{ cult.switch === 1 ? '关闭' : '开启' }}</span></a><span class="black">({{ cult.switch === 1 ? '关闭后获得经验' : '开启后获得修炼经验' }})</span><br/>
+        西游声望：<span class="red">{{ cult.sw }}</span><br/>
+        <template v-for="t in cult.tracks" :key="'xt' + t.slot">
+          <a href="javascript:;" @click="cultView = 'up' + t.slot"><span class="blue">【人物修炼（{{ t.name }}）】{{ xlTrackName(t) }}</span></a><br/>
+        </template>
+        <br/>
+        <template v-for="t in cult.tracks" :key="'xb' + t.slot">
+          <span class="red">修炼（{{ t.name }}）加成：</span><span class="black">{{ t.bonus }}{{ { 1: '血量', 2: '攻击', 3: '魔攻', 4: '防御' }[t.slot] }}</span><br/>
+        </template>
+        <a href="javascript:;" @click="cultView = 'intro'"><span class="blue">人物修炼（介绍）</span></a><br/>
+        <a href="javascript:;" @click="cultExchangeDan"><span class="blue">【一键】各类修炼丹兑换修炼经验</span></a><br/>
+        <span class="black">----------------------</span><br/>
+        <a href="javascript:;" @click="go('home')"><span class="blue">返回游戏</span></a><br/>
+        <span class="black">----------------------</span><br/>
+      </template>
+      <!-- 升级详情（复刻 xy428/433） -->
+      <template v-else-if="cultView.indexOf('up') === 0">
+        <template v-for="t in cult.tracks" :key="'xd' + t.slot">
+          <template v-if="cultView === 'up' + t.slot">
+            修炼：{{ xlTrackName(t) }}<br/>
+            <template v-if="t.capped">
+              <span class="red">已达到至高无上的境界了</span><br/>
+            </template>
+            <template v-else>
+              修炼所需：{{ xlNeedText(t) }}<br/>
+              <a href="javascript:;" @click="cultUp(t.slot)"><span class="blue">【开始修炼】</span></a><br/>
+            </template>
+            <br/>
+          </template>
+        </template>
+        <a href="javascript:;" @click="cultView = ''"><span class="blue">返回上级</span></a><br/>
+        <a href="javascript:;" @click="go('home')"><span class="blue">返回游戏</span></a><br/>
+        <span class="black">----------------------</span><br/>
+      </template>
+      <!-- 介绍（复刻 xy432） -->
+      <template v-else-if="cultView === 'intro'">
+        <span class="black">各项修炼介绍</span><br/>
+        <span class="black">1.修炼一共分为四种血攻魔防</span><br/>
+        <span class="black">2.修炼阶级分炼气、筑基、开光、金丹、元婴、出窍、合体、渡劫、寂灭和大乘（等级每升20级可获得新的阶级修炼）</span><br/>
+        <span class="black">3.每个阶级可修炼20层，越往上属性越多当然需要的东西也更多</span><br/>
+        <span class="black">4.当度过大乘期后将开启飞仙隐藏模式</span><br/>
+        <a href="javascript:;" @click="cultView = ''"><span class="blue">返回修炼</span></a><br/>
+        <a href="javascript:;" @click="go('home')"><span class="blue">返回游戏</span></a><br/>
+        <span class="black">----------------------</span><br/>
+      </template>
     </template>
 
-    <!-- ==================== 头衔 ==================== -->
+    <!-- ==================== 头衔（复刻 xy011 管理 + xy477 称号一览 + xy478 详情） ==================== -->
     <template v-else-if="cur === 'titles'">
-      【头衔】当前佩戴：<template v-if="titles.worn > 0">{{ wornTitleName }}</template><template v-else>无</template><br/>
-      【我的头衔】<br/>
-      <template v-if="titles.mine.length">
-        <div v-for="t in titles.mine" :key="'tm' + t.title_id">
-          <div class="npcimg"><img :src="titleImg(t.title_id)" @error="$event.target.style.display = 'none'" alt="头衔" /></div>
-          <a href="javascript:;" @click="wearTitle(t)">{{ t.name }}</a><template v-if="titles.worn === t.title_id"><span class="green">[佩戴中]</span></template><br/>
-          <span class="gray">{{ t.desc }}</span><br/>
+      <template v-if="!titleView">
+        【头衔】当前佩戴：<template v-if="titles.worn > 0">{{ wornTitleName }}</template><template v-else>暂无</template><a href="javascript:;" @click="titleView = 'manage'"><span class="blue">&nbsp管理</span></a><br/>
+        <a href="javascript:;" @click="titleTab = 'list'"><span :class="titleTab === 'list' ? 'cur' : 'blue'">称号</span></a><span class="black">|</span><span class="black">半周年称号</span><span class="black">|</span><span class="black">重阳活动称号</span><span class="black">|</span><span class="black">万圣节活动称号</span><br/>
+        <div v-for="(t, i) in titles.list" :key="'tl' + t.title_id">
+          <span class="black">{{ (titles.page - 1) * 20 + i + 1 }}.</span><a href="javascript:;" @click="openTitle(t)"><span class="blue">{{ t.name }}</span></a><template v-if="t.owned"><span class="red">（已获得）</span></template><template v-else><span class="black">（未获得）</span></template><br/>
         </div>
+        <a v-if="titles.page > 1" href="javascript:;" @click="loadTitles(titles.page - 1)"><span class="blue">上一页</span></a><template v-if="titles.page > 1 && titles.page < titles.total_pages"><span class="black">|</span></template><a v-if="titles.page < titles.total_pages" href="javascript:;" @click="loadTitles(titles.page + 1)"><span class="blue">下一页</span></a><br/>
+        <br/>
+        <a href="javascript:;" @click="go('attrs')"><span class="blue">我的状态</span></a><br/>
       </template>
-      <template v-else><em>还未激活任何头衔。</em><br/></template>
-      -----------<br/>
-      【头衔商店】<br/>
-      <div v-for="t in titles.store" :key="'ts' + t.title_id">
-        <a href="javascript:;" @click="activateTitle(t)">{{ t.name }}</a>({{ t.price }}银两激活)<br/>
-        <span class="gray">{{ t.desc }}</span><br/>
-      </div>
-      <a href="javascript:;" @click="wearTitle({ title_id: 0 })">[摘下头衔]</a><br/>
+      <!-- 详情（复刻 xy478：红字名字+描述） -->
+      <template v-else-if="titleView === 'detail'">
+        <span class="red">{{ titleDetail.name }}</span><br/>
+        <span class="black">描述：{{ titleDetail.desc }}</span><br/>
+        <template v-if="!titleDetail.owned">
+          <span class="black">激活需要 {{ titleDetail.price }} 银两，激活后永久增加属性。</span><br/>
+          <a href="javascript:;" @click="activateTitle(titleDetail)"><span class="blue">[激活头衔]</span></a><br/>
+        </template>
+        <template v-else>
+          <template v-if="titles.worn === titleDetail.title_id"><span class="green">[佩戴中]</span></template>
+          <a href="javascript:;" @click="wearTitle(titleDetail)"><span class="blue">{{ titles.worn === titleDetail.title_id ? '[摘下头衔]' : '[佩戴]' }}</span></a><br/>
+        </template>
+        <a href="javascript:;" @click="titleView = ''"><span class="blue">返回上级</span></a><br/>
+      </template>
+      <!-- 管理（复刻 xy251：我的头衔佩戴管理） -->
+      <template v-else-if="titleView === 'manage'">
+        【头衔管理】当前佩戴：<template v-if="titles.worn > 0">{{ wornTitleName }}</template><template v-else>暂无</template><br/>
+        <template v-if="titles.mine.length">
+          <div v-for="t in titles.mine" :key="'tmg' + t.title_id">
+            <a href="javascript:;" @click="openTitle(t)"><span class="blue">{{ t.name }}</span></a><template v-if="titles.worn === t.title_id"><span class="green">[佩戴中]</span></template><br/>
+          </div>
+        </template>
+        <template v-else><em>还未激活任何头衔。</em><br/></template>
+        <a v-if="titles.worn > 0" href="javascript:;" @click="wearTitle({ title_id: 0 })"><span class="blue">[摘下头衔]</span></a><br/>
+        <a href="javascript:;" @click="titleView = ''"><span class="blue">返回上级</span></a><br/>
+      </template>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('attrs')">状态</a><br/>
     </template>
 
-    <!-- ==================== 签到 ==================== -->
+    <!-- ==================== 福利中心（复刻原版 xy307/408/409/410/417/418/419/420） ==================== -->
     <template v-else-if="cur === 'signin'">
-      【每日签到】<br/>
-      连续签到奖励递增：100/200/300/400/500/600银两，第7天额外+10金豆！<br/>
-      <a href="javascript:;" @click="doSignin">[立即签到]</a><br/>
+      <span class="red">幻想西游福利中心</span><br/>
+      <a href="javascript:;" @click="wfTab = 'gift'"><span :class="wfTab === 'gift' ? 'cur' : 'blue'">每日福利</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'active'"><span :class="wfTab === 'active' ? 'cur' : 'blue'">每日活跃</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'sign'"><span :class="wfTab === 'sign' ? 'cur' : 'blue'">每日签到</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'promo'"><span :class="wfTab === 'promo' ? 'cur' : 'blue'">每日宣传</span></a><br/>
+      <span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'noble1'"><span :class="wfTab === 'noble1' ? 'cur' : 'blue'">黄金贵族</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'noble2'"><span :class="wfTab === 'noble2' ? 'cur' : 'blue'">铂金贵族</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'noble3'"><span :class="wfTab === 'noble3' ? 'cur' : 'blue'">钻石皇族</span></a><span class="black">|</span>
+      <a href="javascript:;" @click="wfTab = 'noble4'"><span :class="wfTab === 'noble4' ? 'cur' : 'blue'">至尊皇族</span></a><br/>
+      <br/>
+      <!-- 每日福利：神秘礼物 -->
+      <template v-if="wfTab === 'gift'">
+        <span class="pink">======</span><br/>
+        <span class="red" v-if="wf.gift.status === 'done'">{{ wf.gift.msg }}</span>
+        <template v-else>
+          <span class="red">第{{ wf.gift.next }}份【神秘礼物】</span>
+          <template v-if="wf.gift.ready"><a href="javascript:;" :class="wfTab === 'gift' ? 'cur' : ''" @click="giftClaim"><span class="blue">领取</span></a></template>
+          <template v-else><span class="black">[{{ fmtWait(wf.gift.remaining) }}]</span><a href="javascript:;" :class="wfTab === 'gift' ? 'cur' : ''" @click="loadWelfare"><span class="blue">刷新</span></a></template>
+          <br/>
+        </template>
+        <span class="pink">======</span><br/>
+        <a href="javascript:;" @click="wfTab = 'gift'"><span class="blue">兑换说明</span></a><br/>
+        <span class="black">介绍：每天凌晨更新10份【神秘礼物】也是对广大玩家的福利每份礼物随机，领的越多东西越好！（只要在线就能获取）</span><br/>
+        <span class="black">VIP{{ wf.vip.level }}级：可用银两兑换【万能果】（详见VIP页）</span><br/>
+        <br/>
+      </template>
+      <!-- 每日活跃：活跃度任务 -->
+      <template v-else-if="wfTab === 'active'">
+        <span class="red">活跃度任务</span><br/>
+        <div v-for="t in wf.active.tasks" :key="'wt' + t.name">
+          <span class="black">{{ t.name }}：</span><span :class="t.done ? 'green' : 'black'">{{ t.done ? t.need : 0 }}/{{ t.need }}</span><span class="gray">(+{{ t.score }}分)</span><br/>
+        </div>
+        <span class="black">今日活跃度：{{ wf.active.score }}/{{ wf.active.total }}</span><br/>
+        <div v-for="t in wf.active.tiers" :key="'wdt' + t.tier">
+          {{ t.name }}({{ t.tier }}分)：<template v-if="t.claimed"><span class="gray">已领取</span></template><template v-else-if="t.can"><a href="javascript:;" @click="claimActivity('daily' + t.tier, 0); loadWelfare()"><span class="red">【领取】</span></a></template><template v-else><span class="gray">未达成</span></template><br/>
+        </div>
+        <span class="black">活跃度获取：签到+20 / 副本+30 / 比武+30 / 狩猎10只+20</span><br/>
+      </template>
+      <!-- 每日签到（复用原今日签到功能） -->
+      <template v-else-if="wfTab === 'sign'">
+        <span class="red">【{{ sign.month_cn }}签到活动】</span><br/>
+        <a href="javascript:;" @click="signDetail = !signDetail"><span class="blue">【{{ sign.month_cn }}签到奖励一览】</span></a><br/>
+        <template v-if="signDetail">
+          <span v-for="t in sign.tiers" :key="'sd' + t.tier" class="gray">{{ t.tier }}次：银两{{ t.money }}+金豆{{ t.beans }}　</span><br/>
+        </template>
+        今日签到情况：<template v-if="sign.today_signed"><span class="red">已签到</span></template><template v-else><a href="javascript:;" @click="doSignin"><span class="red">【每日签到】</span></a></template><br/>
+        <br/>
+        <template v-for="t in sign.tiers" :key="'st' + t.tier">
+          <span class="black">1.</span><span style="color:#87CEEB">{{ t.tier }}次签到奖励--</span><template v-if="t.claimed"><span class="gray">已领取</span></template><template v-else><a href="javascript:;" @click="claimSign(t.tier)"><span class="red">【领取】</span></a></template><br/>
+        </template>
+        <span class="red">本月已累计签到&nbsp{{ sign.count }}&nbsp次</span><br/>
+        <span class="black">介绍：玩家每天可签到一次，每月1日清零</span><br/>
+        <span class="black">当累计达到2,5,10,15,25可领取丰厚的奖励</span><br/>
+      </template>
+      <!-- 每日宣传 -->
+      <template v-else-if="wfTab === 'promo'">
+        <span class="black">幻想西游推广计划</span><span class="red">此活动长期有效</span><br/>
+        <span class="black">1.每日在其他WAP游戏群发布宣传语截图并且发到管理员，得【西游宣传礼包】x1</span><br/>
+        <span class="black">2.邀请新人进群并且注册游戏，邀请人得【西游邀请礼包】x1，被邀请人得【西游新人礼包】x1</span><br/>
+        <span class="black">3.拉人送自充卡。使用自充卡不参与积分排名，与充值赠送</span><br/>
+        <span class="black">4.拉1人送10自充，拉2人送20元自充，必须为真实有效玩家，以此类推，多拉多送禁小号禁作弊，一经发现严惩不贷，不排除封号</span><br/>
+        <br/><br/>
+        <span class="pink">======宣传语======</span><br/>
+        <button @click="copyPromo">点击复制宣传语</button><br/>
+        <span class="red">进群填写我的邀请游戏ID：{{ playerID }}</span><br/>
+        <span class="red">填写邀请ID即可领取超值【三区水帘洞助力包】包含【幻想套装】【vip练级卷】x20，【10亿修炼经验丹】x10，【万能果】x100，【1万西游声望卷轴】x100，【1万法宝经验卷轴】x100，〖瞌睡虫〗（典藏版）x5</span><br/>
+        <span class="red">我不断的寻找，有你的世界在哪儿</span><br/>
+        <span class="red">新区【水帘洞】人气火爆，进群领取豪华大礼包，只等你来！</span><br/>
+      </template>
+      <!-- 贵族 -->
+      <template v-else-if="wfTab.indexOf('noble') === 0">
+        <span class="red" v-if="nobleCurOwned">剩余：每日1次（每天/次）</span>
+        <span class="red">【{{ nobleCur.name }}】</span>
+        <template v-if="nobleCurOwned">
+          <template v-if="nobleCurClaimed"><span class="gray">今日已领取，明天再来～</span><br/></template>
+          <template v-else><a href="javascript:;" @click="nobleClaim(nobleCur.tier)"><span class="red">【领取】</span></a><br/></template>
+        </template>
+        <template v-else>
+          <span class="red">亲！【{{ nobleCur.name }}】已到期，或者未开通（在游戏左下角充值联系GM并告知开通月卡）</span><br/>
+        </template>
+        <br/>
+        <span class="black">介绍：{{ nobleCur.intro }}</span><br/>
+        <span class="black">【{{ nobleCur.name }}】{{ nobleCur.price }}（单购,不计算vip积分）</span><br/>
+        <span class="black">〖{{ nobleCur.box }}〗（随机必得三四五级石头）</span><br/>
+        <span class="black">注：各类贵族可以一起开通奖励更丰厚</span><br/>
+      </template>
+      <br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
       -----------<br/>
       <a href="javascript:;" @click="go('home')">首页</a><br/>
     </template>
@@ -527,57 +895,190 @@
       <a href="javascript:;" @click="go('home')">首页</a><br/>
     </template>
 
-    <!-- ==================== 好友 ==================== -->
+    <!-- ==================== 好友/黑名单（复刻 xy114 好友页 / xy116 黑名单页） ==================== -->
     <template v-else-if="cur === 'friends'">
-      【好友】<br/>
-      【我的好友】<br/>
-      <template v-if="frd.friends.length">
-        <div v-for="f in frd.friends" :key="'fd' + f.player_id"><a href="javascript:;" @click="viewPlayer(f.player_id)">{{ f.name }}</a><br/></div>
+      <template v-if="frdTab === 1">
+        <span class="black">好友</span>|<a href="javascript:;" @click="frdTab = 2">黑名单</a><br/>
+        <span class="black">好友列表（{{ frd.friends.length }}个）</span><br/>
+        <template v-if="frd.friends.length">
+          <div v-for="(f, i) in frd.friends" :key="'fd' + f.player_id">
+            <span class="black">{{ i + 1 }}.</span><a href="javascript:;" @click="viewPlayer(f.player_id)">{{ f.name }}</a><span class="black">|</span><a href="javascript:;" @click="removeFriend(f)">删除</a><br/>
+          </div>
+        </template>
+        <template v-else><span class="black">目前还没有结交到好友</span><br/></template>
       </template>
-      <template v-else><em>还没有好友。</em><br/></template>
-      <template v-if="frd.applies.length">
-        【好友申请】<br/>
-        <div v-for="f in frd.applies" :key="'fa' + f.apply_id"><a href="javascript:;" @click="viewPlayer(f.player_id)">{{ f.name }}</a> <a href="javascript:;" @click="agreeFriend(f)">[同意]</a><br/></div>
-        -----------<br/>
+      <template v-else>
+        <a href="javascript:;" @click="frdTab = 1">好友</a>|<span class="black">黑名单</span><br/>
+        <span class="black">黑名单列表（{{ frd.blacks.length }}个）</span><br/>
+        <template v-if="frd.blacks.length">
+          <div v-for="(f, i) in frd.blacks" :key="'fb' + f.player_id">
+            <span class="black">{{ i + 1 }}.</span><a href="javascript:;" @click="viewPlayer(f.player_id)">{{ f.name }}</a><span class="black">|</span><a href="javascript:;" @click="removeFriend(f)">删除</a><br/>
+          </div>
+        </template>
+        <template v-else><span class="black">目前黑名单内还空空如也</span><br/></template>
       </template>
-      【添加好友】<br/>
-      <form @submit.prevent="addFriend">
-        对方名字：<input v-model="friendName" maxlength="12" />
-        <input type="submit" value="发送申请" />
-      </form>
-      -----------<br/>
+      <br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      <span class="black">----------------------</span><br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('chat')">聊天</a><br/>
     </template>
 
-    <!-- ==================== 帮派 ==================== -->
+    <!-- ==================== 国家（复刻 xy172 主页 / xy175 成员 / xy185 捐献 / xy186 商城 / xy176 任命） ==================== -->
     <template v-else-if="cur === 'gang'">
-      【帮派】<br/>
       <template v-if="gang.my_gang && gang.my_gang.gang_id">
-        【{{ gang.my_gang.name }}】({{ gang.my_gang.level }}级)——你是{{ gang.my_gang.role }}<br/>
-        公告：<span class="gray">{{ gang.my_gang.notice }}</span><br/>
-        帮派资金：{{ gang.my_gang.money }} 你的贡献：{{ gang.my_gang.contribution }}<br/>
-        <form @submit.prevent="gangDonate">
-          捐献：<input v-model.number="gangDonateAmount" size="10" />银两 <input type="submit" value="捐献" />
-        </form>
-        【帮派成员】<br/>
-        <div v-for="m in gang.my_gang.members" :key="'gm' + m.player_id"><a href="javascript:;" @click="viewPlayer(m.player_id)">{{ m.name }}</a>({{ m.role }}·贡献{{ m.contribution }})<br/></div>
-        <a href="javascript:;" @click="gangQuit">[退出帮派]</a><br/>
+        <!-- 主页（xy172） -->
+        <template v-if="!gangSub">
+          <span class="black">{{ gang.my_gang.name }}（{{ gang.my_gang.level }}级）</span>
+          <a href="javascript:;" @click="gangUpgrade">升级</a><br/>
+          <span class="black">【首任君主】:{{ gang.my_gang.founder_name }}</span><br/>
+          <span class="black">【现任君主】:{{ gang.my_gang.leader_name }}</span><br/>
+          <span class="black">【辅助大臣】:{{ gangOffName(2) }}</span><br/>
+          <span class="black">【军机大臣】:{{ gangOffName(3) }}</span><br/>
+          <span class="black">【财政大臣】:{{ gangOffName(4) }}</span><br/>
+          <span class="black">【工部大臣】:{{ gangOffName(5) }}</span><br/>
+          <span class="black">【外交大臣】:{{ gangOffName(6) }}</span><br/>
+          <span class="black">【军团长】:{{ gangOffName(7) }}</span><br/>
+          <span class="black">国家人数:{{ gang.my_gang.member_count }}/{{ gang.my_gang.member_max }}</span><br/>
+          <span class="black">国家经验:{{ gang.my_gang.exp }}/{{ gang.my_gang.exp_max }}</span><br/>
+          <span class="red">国家资金:{{ yl(gang.my_gang.money) }}</span><br/>
+          <span class="black">国家声望:{{ gang.my_gang.sw }}</span><br/>
+          <span class="black">可用贡献:{{ gang.my_gang.contribution }}点</span><br/>
+          <span class="black">历史贡献:{{ gang.my_gang.total_contribution }}点</span><br/>
+          <a href="javascript:;" @click="gangGo('mall')">国家商城</a><br/>
+          <a href="javascript:;" @click="gangGo('members')">国家成员</a><br/>
+          <a href="javascript:;" @click="gangGo('donate')">捐献银两</a><br/>
+          <template v-if="gang.my_gang.is_monarch">
+            <a href="javascript:;" @click="gangGo('appoint')">任命官员</a><br/>
+            <a href="javascript:;" @click="gangGo('dissolve')">解散国家</a><br/>
+          </template>
+          <template v-else>
+            <a href="javascript:;" @click="gangGo('quit')">退出国家</a><br/>
+          </template>
+          <br/>
+          <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 成员列表（xy175：名字/职务/贡献，自己红字，官员可罢免/踢出） -->
+        <template v-else-if="gangSub === 'members'">
+          国家成员列表<br/>
+          名字/职务/贡献<br/>
+          <div v-for="(m, i) in gang.my_gang.members" :key="'gm' + m.player_id">
+            {{ i + 1 }}.<a v-if="m.player_id !== g.id" href="javascript:;" @click="viewPlayer(m.player_id)">{{ m.name }}</a><span v-else class="red">{{ m.name }}.</span><span class="black">[{{ m.role_name }}]|{{ m.total_contribution }}点|</span><template v-if="gang.my_gang.can_manage && m.player_id !== g.id && m.role >= 2"><a href="javascript:;" @click="gangDismiss(m)">罢免官职</a><span class="black">|</span></template><template v-if="gang.my_gang.role >= 1 && m.player_id !== g.id && m.role !== 1"><a href="javascript:;" @click="gangGo('kick', m)">踢出</a></template><br/>
+          </div>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a>.<a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 踢出确认（xy184：红字确认 + 是的，我已想好了 / 不，我点错了） -->
+        <template v-else-if="gangSub === 'kick'">
+          <span class="red">你确定要将{{ gangKickTarget ? gangKickTarget.name : '' }}踢出{{ gang.my_gang.name }}么？？</span><br/>
+          <a href="javascript:;" @click="gangKickDo">是的，我已想好了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('members')">不，我点错了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a><br/>
+          <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 退出国家确认（xy182 结构：是的，我已想好了 / 不，我点错了） -->
+        <template v-else-if="gangSub === 'quit'">
+          <span class="red">你确定要退出{{ gang.my_gang.name }}么？？</span><br/>
+          <a href="javascript:;" @click="gangQuitDo">是的，我已想好了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">不，我点错了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a><br/>
+          <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 解散国家确认（xy173：红字确认 + 是的，我已想好了 / 不，我点错了） -->
+        <template v-else-if="gangSub === 'dissolve'">
+          <span class="red">你确定要将国家{{ gang.my_gang.name }}解散掉么？？</span><br/>
+          <a href="javascript:;" @click="gangDissolve">是的，我已想好了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">不，我点错了</a><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a><br/>
+          <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 国家商城（xy186：1~10级页签，等级不足显示施工中） -->
+        <template v-else-if="gangSub === 'mall'">
+          <span class="black">{{ gang.my_gang.name }}的国家商城</span><br/>
+          <span class="black">我可以使用的国家贡献：{{ gangMall.contribution }}点</span><br/>
+          <span class="black">----------------------</span><br/>
+          <template v-for="t in gangMall.tabs" :key="'mt' + t.level"><a href="javascript:;" @click="gangMallTab = t.level">{{ t.level }}级商城</a><span v-if="t.level < 10" class="black">|</span></template><br/>
+          <template v-if="gangMallTabObj">
+            <template v-if="gangMallTabObj.unlocked">
+              <span class="red">【{{ gangMallTabObj.level }}级国家商城】</span><br/>
+              <div v-for="it in gangMallTabObj.items" :key="'mi' + it.item_id">
+                <a href="javascript:;" @click="gangMallBuy(it)">{{ it.name }}</a><span class="black">|</span><a href="javascript:;" @click="gangMallBuy(it)">兑换（{{ it.contribution }}贡献+{{ ylNum(it.silver) }}银两）</a><br/>
+              </div>
+            </template>
+            <template v-else><span class="black">一大波商品正在赶来中（前方高能正在施工中）</span><br/></template>
+          </template>
+          <span class="black">----------------------</span><br/>
+          <span class="red">温馨提示：国家商城等级越高商品越丰厚越多（在国家商城购买商品需要消耗国家贡献）</span><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a>.<a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 捐献银两（xy185：100万~100亿，100万=1贡献） -->
+        <template v-else-if="gangSub === 'donate'">
+          <span class="black">为自己的国家尽自己的一份力，你考虑好了吗？</span><br/>
+          <form @submit.prevent="gangDonate">
+            <input v-model.number="gangDonateAmount" type="tel" placeholder="请输入你需要捐献的银两" size="22" /><br/>
+            <input type="submit" value="捐献" /><br/>
+          </form>
+          <span class="red">温馨提示：捐献银两时请注意国库银两上限以免造成浪费！！</span><br/>
+          <span class="gray">（单笔100万~100亿银两，每100万银两=1点国家贡献）</span><br/>
+          <br/>
+          <a href="javascript:;" @click="gangGo('')">返回国家</a>.<a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
+
+        <!-- 任命官员（xy177选职务 → xy176选人） -->
+        <template v-else-if="gangSub === 'appoint'">
+          <template v-if="!gangAppointRole">
+            <span class="black">请选择你要任命国家官员职务</span><br/>
+            <template v-for="r in [2, 3, 4, 5, 6, 7]" :key="'ar' + r"><a href="javascript:;" @click="gangAppointRole = r">任命{{ roleNames[r] }}</a><br/></template>
+          </template>
+          <template v-else>
+            <span class="black">请选择你要将谁任命为【{{ roleNames[gangAppointRole] }}】</span><br/>
+            <div v-for="m in gang.my_gang.members" :key="'am' + m.player_id">
+              <template v-if="m.role === 0">{{ m.name }}<span class="black">[{{ m.role_name }}]|</span><a href="javascript:;" @click="gangAppoint(m)">任命{{ roleNames[gangAppointRole] }}</a><br/></template>
+            </div>
+          </template>
+          <br/>
+          <a href="javascript:;" @click="gangAppointRole = 0">返回任命</a>.<a href="javascript:;" @click="gangGo('')">返回国家</a>.<a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+          ----------------------<br/>
+        </template>
       </template>
+
+      <!-- 无国家：创建（xy171：≤7字，1亿银两+玄铁令x5） -->
       <template v-else>
-        <em>你还没有加入帮派。</em><br/>
-        【创建帮派】(10000银两)<br/>
+        <span class="black">你还未加入任何国家！！</span><br/>
+        <span class="black">请输入你要建立的国家名字</span><br/>
         <form @submit.prevent="gangNew">
-          帮派名：<input v-model="gangNameInput" maxlength="10" />
-          <input type="submit" value="创建" />
+          <input v-model="gangNameInput" placeholder="请输入要建立的国家名字" maxlength="7" /><br/>
+          <input type="submit" value="确认" /><br/>
         </form>
-        -----------<br/>
+        <span class="red">建立国家需要银两1亿和玄铁令x5</span><br/>
+        <br/>
       </template>
-      【帮派列表】<br/>
-      <div v-for="gp in gang.gangs" :key="'gg' + gp.gang_id">
-        {{ gp.name }}({{ gp.level }}级)——<span class="gray">{{ gp.notice }}</span>
-        <template v-if="!gang.my_gang || !gang.my_gang.gang_id"><a href="javascript:;" @click="gangJoin(gp)">[加入]</a></template><br/>
-      </div>
-      <a href="javascript:;" @click="go('home')">首页</a><br/>
+      <template v-if="!gangSub">
+        【国家列表】<br/>
+        <div v-for="gp in gang.gangs" :key="'gg' + gp.gang_id">
+          {{ gp.name }}({{ gp.level }}级)——<span class="gray">{{ gp.member_count }}/{{ gp.member_max }}人</span>
+          <template v-if="!gang.my_gang || !gang.my_gang.gang_id"><a href="javascript:;" @click="gangJoin(gp)">[加入]</a></template><br/>
+        </div>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
     </template>
 
     <!-- ==================== 结婚 ==================== -->
@@ -632,19 +1133,99 @@
       <a href="javascript:;" @click="go('home')">返回游戏首页</a><br/>
     </template>
 
-    <!-- ==================== 摆摊 ==================== -->
+    <!-- ==================== 挂售（复刻 xy225 分类 → xy219/229/236 我的挂售） ==================== -->
     <template v-else-if="cur === 'stalls'">
-      【摆摊市场】银两:{{ g.money }}<br/>
-      <template v-if="stallList.length">
-        <div v-for="(s, i) in stallList" :key="'sl' + s.stall_id">
-          {{ i + 1 }}.{{ s.name }}×{{ s.count }}——{{ s.price }}银两(卖家:<a href="javascript:;" class="nk" @click="viewPlayer(s.seller_id)">{{ s.seller }}</a>)
-          <template v-if="s.seller_id === playerID"><a href="javascript:;" @click="stallCancel(s)">[下架]</a></template>
-          <template v-else><a href="javascript:;" @click="stallBuy(s)">[购买]</a></template><br/>
+      <template v-if="stallPage === 'cat'">
+        <span class="black">请选择挂售分类</span><br/>
+        <a href="javascript:;" @click="openStallMine('item')">1.挂售物品类</a><br/>
+        <a href="javascript:;" @click="openStallMine('equip')">2.挂售装备类</a><br/>
+        <a href="javascript:;" @click="openStallMine('gem')">3.挂售宝石类</a><br/>
+        <br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
+      <template v-else>
+        <span class="black">我的挂售</span><br/>
+        <span class="black">挂售容量：{{ stallMine.used }}/{{ stallMine.capacity }}</span><br/>
+        <template v-if="stallMine.stalls.length">
+          <div v-for="(s, i) in stallMine.stalls" :key="'sm' + s.stall_id">
+            <a href="javascript:;" @click="stallDetailId = stallDetailId === s.stall_id ? 0 : s.stall_id">{{ s.name }}</a><span class="blue">x{{ s.count }}（{{ s.price }}两/个）|</span><a href="javascript:;" @click="stallCancelTarget = stallCancelTarget === s.stall_id ? 0 : s.stall_id">下架</a><br/>
+            <template v-if="stallDetailId === s.stall_id"><span class="gray">{{ s.desc }}</span><br/></template>
+            <template v-if="stallCancelTarget === s.stall_id">
+              <span class="red">你最多可下架{{ s.name }}x{{ s.count }}</span><br/>
+              <span class="black">请输入你要下架多少{{ s.name }}呢？</span><br/>
+              数量：<input v-model.number="stallCancelCount" size="3" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+              <a href="javascript:;" @click="doStallCancel(s, stallCancelCount || s.count)">[确定]</a>
+              <a href="javascript:;" @click="doStallCancel(s, s.count)">[下架全部]</a><br/>
+            </template>
+          </div>
+        </template>
+        <template v-else><span class="black">暂时无任何挂售的物品</span><br/></template>
+        <br/>
+        <a href="javascript:;" @click="stallPage = 'cat'">返回上级</a><br/>
+        <br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
+    </template>
+
+    <!-- ==================== 他人挂售（复刻 xy222："{名字}的挂售："） ==================== -->
+    <template v-else-if="cur === 'stallof' && stallOf">
+      <span class="black">{{ stallOf.seller_name }}的挂售：</span><br/>
+      <span class="black">挂售容量：{{ stallOf.used }}/{{ stallOf.capacity }}</span><br/>
+      <template v-if="stallOf.stalls.length">
+        <div v-for="(s, i) in stallOf.stalls" :key="'so' + s.stall_id">
+          <a href="javascript:;" @click="stallBuyTarget = stallBuyTarget === s.stall_id ? 0 : s.stall_id">{{ s.name }}</a><span class="blue">x{{ s.count }}（{{ s.price }}两/个）</span><br/>
+          <template v-if="stallDetailId === s.stall_id"><span class="gray">{{ s.desc }}</span><br/></template>
+          <template v-if="stallBuyTarget === s.stall_id">
+            <span class="red">你最多可购买{{ s.name }}x{{ s.count }}</span><br/>
+            <span class="black">请输入你要购买多少{{ s.name }}呢？</span><br/>
+            数量：<input v-model.number="stallBuyCount" size="3" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+            <input type="button" value="购买" @click="doStallBuy(s, stallBuyCount || s.count)" /><br/>
+          </template>
         </div>
       </template>
-      <template v-else><em>市场上暂无商品。去行囊把闲置物品上架吧！</em><br/></template>
-      -----------<br/>
-      <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('bag')">行囊</a><br/>
+      <template v-else><span class="black">暂时无任何挂售的物品</span><br/></template>
+      <br/>
+      <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+    </template>
+
+    <!-- ==================== 全区拍卖场（复刻 xy489/499） ==================== -->
+    <template v-else-if="cur === 'auction'">
+      <template v-if="auctionView === 'mine'">
+        <span class="black">我的拍卖</span><br/>
+        <template v-if="auctionMine.length">
+          <div v-for="(a, i) in auctionMine" :key="'am' + a.auction_id">
+            {{ i + 1 }}.<a href="javascript:;" @click="doAuctionCancel(a)">{{ a.name }}</a><span class="blue">x{{ a.count }}（{{ a.price }}两/个）|</span><a href="javascript:;" @click="doAuctionCancel(a)">下架</a><br/>
+          </div>
+        </template>
+        <template v-else><span class="black">暂无任何拍卖信息</span><br/></template>
+        <br/>
+        <a href="javascript:;" @click="auctionView = 'list'">返回上级</a><br/>
+      </template>
+      <template v-else>
+        <span class="red">〖全区拍卖场〗</span><br/>
+        <a href="javascript:;" @click="openAuctionMine">我的拍卖</a><br/>
+        <span class="black">☆☆☆☆☆☆☆☆</span><br/>
+        <span class="black">书卷</span>◎<a href="javascript:;" @click="loadAuction('material')">材料</a>◎<a href="javascript:;" @click="loadAuction('equip')">装备</a><br/>
+        <a href="javascript:;" @click="loadAuction('mall')">商城</a>◎<a href="javascript:;" @click="loadAuction('pill')">丹药</a>◎<a href="javascript:;" @click="loadAuction('quest')">任务</a><br/>
+        <a href="javascript:;" @click="loadAuction('farm')">农场</a>◎<a href="javascript:;" @click="loadAuction('box')">宝箱</a>◎<a href="javascript:;" @click="loadAuction('gem')">宝石</a><br/>
+        <span class="black">☆☆☆☆☆☆☆☆</span><br/>
+        <span class="black">全区玩家拍卖如下：</span><br/>
+        <template v-if="auctionList.length">
+          <div v-for="(a, i) in auctionList" :key="'al' + a.auction_id">
+            {{ i + 1 }}.<a href="javascript:;" @click="auctionBuyTarget = auctionBuyTarget === a.auction_id ? 0 : a.auction_id">{{ a.name }}</a><span class="blue">x{{ a.count }}[{{ a.price }}两/个]</span><span class="black">[<a href="javascript:;" @click="viewPlayer(a.seller_id)">{{ a.seller }}</a>]</span>
+            <template v-if="a.seller_id !== playerID"><a href="javascript:;" @click="auctionBuyTarget = auctionBuyTarget === a.auction_id ? 0 : a.auction_id">购买</a></template><br/>
+            <template v-if="auctionBuyTarget === a.auction_id">
+              <span class="red">你最多可购买{{ a.name }}x{{ a.count }}</span><br/>
+              <span class="black">请输入你要购买多少{{ a.name }}呢？</span><br/>
+              数量：<input v-model.number="auctionBuyCount" size="3" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+              <input type="button" value="购买" @click="doAuctionBuy(a, auctionBuyCount || a.count)" /><br/>
+            </template>
+          </div>
+        </template>
+        <template v-else><span class="black">暂无任何拍卖信息</span><br/></template>
+        <br/>
+        <a href="javascript:;" @click="go('home')">返回游戏</a><br/>
+      </template>
     </template>
 
     <!-- ==================== 货币流水 ==================== -->
@@ -671,16 +1252,32 @@
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
     </template>
 
-    <!-- ==================== 充值 ==================== -->
+    <!-- ==================== 会员中心 / 充值 ==================== -->
     <template v-else-if="cur === 'vip'">
-      【充值】<br/>
-      金豆：{{ g.beans }}　VIP练级祝福：{{ g.vip }}分钟(打怪经验1.5倍)<br/>
+      <span class="red">会员中心</span><br/>
+      <span class="black">我的VIP等级：</span><span class="red">VIP{{ vip.level }}级</span><span class="black">（充值可得，等级越高每日兑换越多）</span><br/>
+      金豆：<span class="red">{{ g.beans }}</span>　VIP练级祝福：<span class="red">{{ g.vip }}分钟</span>(打怪经验1.5倍)<br/>
+      <a href="javascript:;" @click="go('signin')">【每日福利】</a><br/>
+      ----------------------<br/>
       <form @submit.prevent="doRecharge">
         充值码：<input v-model="rechargeCode" size="12" />
         <input type="submit" value="兑换" />
       </form>
-      <em>演示充值码：XY666(+10金豆) / VIP666(+30分钟祝福)</em><br/>
-      -----------<br/>
+      <em>演示充值码：XY666(+10金豆) / VIP666(+30分钟祝福) / SVIP0~20(设置会员等级)</em><br/>
+      ----------------------<br/>
+      <span class="red">说明：所有等级达到160的玩家每日可用银两换取【万能果】或者〖金豆〗（每日一次,vip玩家按照vip等级划分）</span><br/>
+      <template v-if="!vip.lvl160"><span class="red">对不起!小仙家等级还未满160级啊？伤不起~~伤不起~~</span><br/></template>
+      <template v-else>
+        当前 {{ vip.level < 20 ? '可兑换' : '已达' }}：<span class="red">VIP{{ vip.level }}级【万能果】x{{ vipCur.cute }}{{ vipCur.beans ? '〖金豆〗x' + vipCur.beans : '' }}（{{ vipCur.silver }}银两）</span><br/>
+        <template v-if="vip.exchanged"><span class="gray">今日已兑换过，明日再来</span><br/></template>
+        <template v-else><a href="javascript:;" @click="vipExchange"><span class="red">【领取兑换】</span></a><br/></template>
+      </template>
+      ----------------------<br/>
+      <span class="red">会员福利一览</span><span class="black">（按充值等级）</span><br/>
+      <template v-for="d in vip.defs" :key="'vd' + d.lv">
+        <span :class="d.lv === vip.level ? 'red' : 'blue'">VIP{{ d.lv }}级：【万能果】x{{ d.cute }}{{ d.beans ? '〖金豆〗x' + d.beans : '' }}（{{ d.silver }}银两）</span><br/>
+      </template>
+      ----------------------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
     </template>
 
@@ -776,10 +1373,15 @@
     <template v-else-if="cur === 'teyun'">
       【腾云驾雾】<br/>
       腾云符：<span class="red">{{ teyun.fu }}</span>张<br/>
+      <em>注：部分区域无法直接腾云，请寻找地图传送NPC！</em><br/>
       <template v-if="teyun.list.length">
-        <div v-for="(t, i) in teyun.list" :key="'ty' + i">
-          {{ i + 1 }}.<a href="javascript:;" @click="teyunGo(t)">{{ t.name }}</a><br/>
-        </div>
+        <template v-for="(g, gi) in teyunGroup" :key="'tyg' + gi">
+          <span class="black">【{{ g.cat }}】</span><br/>
+          <template v-for="(t, tj) in g.items" :key="'ty' + gi + '-' + tj">
+            <a href="javascript:;" @click="teyunGo(t)">{{ t.name }}</a><span class="black">◎</span>
+          </template>
+          <br/>
+        </template>
       </template>
       <template v-else><em>没有可传送的地点。</em><br/></template>
       <em>每次腾云消耗1张腾云符（杂货店有售）。</em><br/>
@@ -799,27 +1401,52 @@
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('guide')">攻略</a><br/>
     </template>
 
-    <!-- ==================== 玩家资料 ==================== -->
+    <!-- ==================== 玩家资料（复刻 xy093.php） ==================== -->
     <template v-else-if="cur === 'playerview' && pv">
-      【玩家资料】<br/>
       <template v-if="!pv.is_me">
-        <a href="javascript:;" @click="openPm(pv.player_id)">[私聊]</a>
-        <a href="javascript:;" @click="addFriendByID(pv.player_id)">[加好友]</a>
-        <a href="javascript:;" @click="teamInvite(pv)">[组队]</a>
-        <a href="javascript:;" @click="fightPlayer(pv)">[比武]</a><br/>
-        <a href="javascript:;" @click="inviteVisitHouse(pv)">[邀请参观住宅]</a>
-        <a v-if="gang.my_gang.gang_id && (gang.my_gang.role === '帮主' || gang.my_gang.role === '长老')" href="javascript:;" @click="inviteJoinGang(pv)">[邀请入帮]</a><br/>
+        <span class="red">恶名：{{ emzName(pv.emz) }}</span><a href="javascript:;" @click="fightPlayer(pv)">PK对方</a><br/>
       </template>
-      -----------<br/>
-      昵称：{{ pv.name }}({{ pv.sex === 2 ? '女' : '男' }})<br/>
-      门派：{{ pv.sect_name }} 等级：{{ pv.level }}级<br/>
-      <template v-if="pv.gang">帮派：{{ pv.gang }}<br/></template>
-      <template v-if="pv.title">头衔：{{ pv.title }}<br/></template>
-      所在地：{{ pv.node_name }}<br/>
-      比武胜场：{{ pv.wins }}场 恶名：{{ pv.emz }}<br/>
-      通天塔最高：第{{ pv.tower_best }}层<br/>
-      -----------<br/>
-      <a href="javascript:;" @click="backPv">返回</a>.<a href="javascript:;" @click="go('home')">首页</a><br/>
+      <template v-else><span class="red">恶名：{{ emzName(pv.emz) }}</span><br/></template>
+      <span class="black">头衔：<template v-if="pv.title">{{ pv.title }}</template><template v-else>暂无</template></span><br/>
+      <span class="black">昵称：{{ pv.name }}</span><br/>
+      <span class="black">性别：{{ pv.sex === 2 ? '女' : '男' }}</span><br/>
+      <span class="black">配偶：<template v-if="pv.spouse">{{ pv.spouse }}</template><template v-else>暂无</template></span><br/>
+      <span class="black">住宅：<template v-if="pv.house">{{ pv.house }}</template><template v-else>暂无</template></span><br/>
+      <span class="black">国家：<template v-if="pv.gang">{{ pv.gang }}</template><template v-else>无</template></span><br/>
+      <span class="black">门派：<template v-if="pv.sect_name">{{ pv.sect_name }}</template><template v-else>无门派</template></span><br/>
+      <template v-if="!pv.is_me">
+        <a href="javascript:;" @click="giveMoney(pv)">【赠银】</a>◎<a href="javascript:;" @click="giveItem(pv)">【赠物】</a><br/>
+        <!-- 赠银表单（复刻 xy537） -->
+        <template v-if="giveMode === 'money'">
+          -----------<br/>
+          <span class="black">请输入你要赠送给{{ pv.name }}({{ pv.player_id }})的银两:</span><br/>
+          <input v-model.trim="giveAmount" size="16" placeholder="请输入你要赠送的银两" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+          <input type="submit" value="赠送" @click="doGiveMoney(pv)" /><br/>
+          <a href="javascript:;" @click="giveMode = ''">返回上级</a><br/>
+        </template>
+        <!-- 赠物流程（复刻 xy538：选物品→数量→赠送） -->
+        <template v-else-if="giveMode === 'item'">
+          -----------<br/>
+          <span class="black">请选择你要赠送给{{ pv.name }}的物品：</span><br/>
+          <div v-for="b in bagList" :key="'gv' + b.id">
+            <template v-if="giveBagId === b.id">
+              <span class="red">{{ b.name }}</span>x{{ b.count }}<br/>
+              <span class="black">请输入你要赠送多少{{ b.name }}呢？</span><br/>
+              <input v-model.trim="giveCount" size="8" inputmode="numeric" onkeyup="this.value=this.value.replace(/\D/g,'')" /><br/>
+              <input type="submit" value="赠送" @click="doGiveItem(pv)" /><br/>
+            </template>
+            <template v-else><a href="javascript:;" @click="pickGiveItem(b)">{{ b.name }}</a>x{{ b.count }}<br/></template>
+          </div>
+          <template v-if="!bagList.length"><em>行囊空空如也。</em><br/></template>
+          <a href="javascript:;" @click="giveMode = ''">返回上级</a><br/>
+        </template>
+        <span class="black">☆☆☆☆☆☆☆☆</span><br/>
+        <a href="javascript:;" @click="openStallOf(pv.player_id)">挂售</a>◎<a href="javascript:;" @click="openPm(pv.player_id)">私聊</a>◎<a href="javascript:;" @click="teamInvite(pv)">组队</a><br/>
+        <a href="javascript:;" @click="blackPlayer(pv.player_id)">拉黑</a>◎<a href="javascript:;" @click="addFriendByID(pv.player_id)">加友</a><br/>
+        <template v-if="gang.my_gang.gang_id && (gang.my_gang.role === 1 || gang.my_gang.role === 2)"><a href="javascript:;" @click="inviteJoinGang(pv)">邀请入国</a><br/></template>
+        <template v-if="gang.my_gang.gang_id && (gang.my_gang.role === 1 || gang.my_gang.role === 2)"><a href="javascript:;" @click="inviteVisitHouse(pv)">邀请参观住宅</a><br/></template>
+      </template>
+      <a href="javascript:;" @click="backPv">返回游戏</a><br/>
     </template>
 
     <!-- ==================== 国战 ==================== -->
@@ -843,7 +1470,7 @@
       </template>
       <template v-else>
         <em>今日还没有国家报名防守</em><br/>
-        <a v-if="gz.my_gang_id > 0 && gz.my_role === 2 && gz.zc_id !== 6" href="javascript:;" @click="gzSignup">[帮主报名今日国战]</a><br/>
+        <a v-if="gz.my_gang_id > 0 && gz.my_role === 1 && gz.zc_id !== 6" href="javascript:;" @click="gzSignup">[君主报名今日国战]</a><br/>
       </template>
       <template v-if="gz.my_gang_id === 0"><em>你还没有加入国家（帮派），先去帮派页加入吧。</em><br/></template>
       我的国家：{{ gz.my_gang_name || '无' }} 国家积分：{{ gz.my_gang_score }}<br/>
@@ -921,11 +1548,17 @@ export default {
       maintMsg: '',
       g: { name: '', level: 1, hp: 0, max_hp: 0, mp: 0, max_mp: 0, money: 0, bank: 0, beans: 0, vip: 0, exp: 0, exp_need: 0, node_name: '', sect_name: '', fighting_pet: null, xiulian_switch: 0, xiulian_exp: 0, xiulian_cap: 0 },
       sects: [],
-      cf: { name: '', sex: 1, sect: 1 },
+      stories: [
+        { pic: '/static/hxxy/story/story1.jpg', text: '大唐年间,妖魔四起,无数百姓处于水生火热当中!！' },
+        { pic: '/static/hxxy/story/story2.jpg', text: '十万天兵天将与众妖魔战斗的难解难分！' },
+        { pic: '/static/hxxy/story/story3.jpg', text: '不断有英雄侠女从亿万百姓中脱颖而出，踏上降妖除魔的征程！' }
+      ],
+      cf: { name: '', sex: 0, sect: 0, step: 'sex', story: 0, sectName: '', sectBonus: '', sectLong: '', sectPic: '' },
       node: {},
       enemies: [],
       mapNpcs: [],
-      mapImgOk: true,
+      mapGrid: { cur: '', rows: [] },
+      mapSize: 11,
       homeMsgs: [],
       nearby: [],
       notices: [],
@@ -939,6 +1572,9 @@ export default {
       npcCur: null,
       bt: null,
       battleItems: [],
+      quickSlots: [],
+      quickSetSlot: 0,
+      showQuickSet: false,
       at: null,
       equippedIDs: [],
       bagList: [],
@@ -952,9 +1588,13 @@ export default {
       petList: [],
       petRenameId: 0,
       petRenameName: '',
-      shop: { goods: [], pets: null },
+      shop: { goods: [], pets: null, used: 0, cap: 0 },
       shopKind: 'medicine',
-      shopDetail: null,
+      shopPage: 'list',
+      shopItem: null,
+      shopPet: null,
+      shopBuyCount: '',
+      shopMsg: '',
       shopTabs: [
         { k: 'medicine', n: '药店' },
         { k: 'weapon', n: '武器' },
@@ -964,21 +1604,40 @@ export default {
         { k: 'pet', n: '宠物店' },
       ],
       bankAmount: 0,
+      bankView: 'main',
+      bankMsg: '',
+      sign: { month_cn: '', count: 0, today_signed: false, tiers: [] },
+      signDetail: false,
+      wf: { gift: {}, active: { score: 0, tasks: [], tiers: [], total: 100 }, vip: {}, nobles: [] },
+      wfTab: 'gift',
       qst: { available: [], active: [], done: [] },
+      qstTab: 1,
+      act: null,
+      homeFlags: { today_signed: false, quest_ready: 0, act_ready: false },
       dungeons: [],
       bossList: [],
-      cult: { switch: 0, exp: 0, cap: 0, desc: '' },
-      titles: { mine: [], store: [], worn: 0 },
+     cult: { switch: 0, exp: 0, sw: 0, tracks: [] },
+      cultView: '',
+      titles: { list: [], mine: [], worn: 0, page: 1, total_pages: 1 },
+      titleView: '',
+      titleDetail: {},
+      titleTab: 'list',
       rankType: 'level',
       rankList: [],
       rankTabs: [{ k: 'level', n: '等级榜' }, { k: 'money', n: '银两榜' }, { k: 'pets', n: '宠物榜' }],
       chatList: [],
       chatInput: '',
-      frd: { friends: [], applies: [] },
-      friendName: '',
+      frd: { friends: [], blacks: [] },
+      frdTab: 1,
       gang: { my_gang: {}, gangs: [] },
+      gangSub: '',
+      gangKickTarget: null,
       gangNameInput: '',
       gangDonateAmount: 0,
+      gangMall: { tabs: [], level: 0, contribution: 0 },
+      gangMallTab: 1,
+      gangAppointRole: 0,
+      roleNames: { 0: '成员', 1: '君主', 2: '辅助大臣', 3: '军机大臣', 4: '财政大臣', 5: '工部大臣', 6: '外交大臣', 7: '军团长' },
       marriage: { status: 0 },
       marryName: '',
       furniture: [],
@@ -992,12 +1651,23 @@ export default {
         { fid: 7, name: '雕花木床', bonus: 'hp', val: 500, price: 5000 },
         { fid: 8, name: '聚灵阵盘', bonus: 'hp', val: 1200, price: 15000 },
       ],
-      stallList: [],
-      stallShow: false,
-      stallInput: { bag_id: 0, count: 1, price: 100 },
+      // 挂售/拍卖上架表单（复刻 gssjwp01/pmsjwp01）
+      stallItem: null, stallCount: '', stallPrice: '',
+      aucItem: null, aucCount: '', aucPrice: '',
+      // 我的挂售（复刻 xy225 分类 → xy219 列表）
+      stallPage: 'cat', stallKind: 'item',
+      stallMine: { stalls: [], used: 0, capacity: 10 },
+      stallDetailId: 0, stallCancelTarget: 0, stallCancelCount: '',
+      // 他人挂售（复刻 xy222）与全区拍卖（复刻 xy489/499）
+      stallOf: null, stallBuyTarget: 0, stallBuyCount: '',
+      auctionView: 'list', auctionTab: 'scroll', auctionList: [], auctionMine: [],
+      auctionBuyTarget: 0, auctionBuyCount: '',
+      // 赠银/赠物（复刻 xy537/538）
+      giveMode: '', giveAmount: '', giveBagId: 0, giveCount: '',
       walletLogs: [],
       blogLogs: [],
       rechargeCode: '',
+      vip: { level: 0, lvl160: false, exchanged: false, defs: [], wanneng_id: 0 },
       tower: { floor: 0, best: 0 },
       arena: { rank: [], me: { rank: 0, wins: 0, today: 0, limit: 5 } },
       funRoll: null,
@@ -1012,6 +1682,66 @@ export default {
   },
   computed: {
     playerID() { return this.g.id || 0 },
+    // 国家商城当前页签（1~10级）
+    gangMallTabObj() {
+      return this.gangMall.tabs.find(t => t.level === this.gangMallTab) || null
+    },
+    // 地图出口（复刻原版"请选择出口"：上/下/左/右，walk=走路 jump=传送出口）
+    mapExits() {
+      const n = this.node || {}
+      return [
+        { dir: 'up', label: '上', walk: n.up, jump: n.up_jump },
+        { dir: 'down', label: '下', walk: n.down, jump: n.down_jump },
+        { dir: 'left', label: '左', walk: n.left, jump: n.left_jump },
+        { dir: 'right', label: '右', walk: n.right, jump: n.right_jump }
+      ].filter(d => d.walk || d.jump)
+    },
+    // 查看地图窗口（复刻 MapViewer.show：以当前位置为中心裁剪 mapSize×mapSize）
+    mapWin() {
+      const rows = this.mapGrid.rows || []
+      const cur = this.mapGrid.cur
+      let cx = -1, cy = -1
+      rows.forEach((row, y) => row.forEach((c, x) => { if (c && c.dtxy === cur) { cx = x; cy = y } }))
+      if (cx < 0) return { rows: [] }
+      const s = this.mapSize
+      const half = s & 1 ? (s - 1) / 2 : (s - 2) / 2
+      const y0 = Math.max(0, cy - half), y1 = Math.min(rows.length - 1, cy + half)
+      const x0 = Math.max(0, cx - half), x1 = Math.min((rows[0] || []).length - 1, cx + half)
+      const out = []
+      for (let y = y0; y <= y1; y++) out.push(rows[y].slice(x0, x1 + 1))
+      return { rows: out }
+    },
+    // 腾云目的地按分类分组（复刻原版 xy476.php 分类）
+    teyunGroup() {
+      const catOrder = ['门派区域', '主城区域', '野外区域', '副本区域']
+      const groups = []
+      catOrder.forEach(cat => {
+        const items = (this.teyun.list || []).filter(t => t.cat === cat)
+        if (items.length) groups.push({ cat, items })
+      })
+      return groups
+    },
+    // 当前选中的贵族（wfTab：noble1~noble4）
+    nobleCur() {
+      const idx = parseInt((this.wfTab || '').replace('noble', ''), 10) - 1
+      return (idx >= 0 && this.wf.nobles) ? (this.wf.nobles[idx] || {}) : {}
+    },
+    nobleCurOwned() { return !!this.nobleCur.owned },
+    nobleCurClaimed() { return !!this.nobleCur.claimed },
+    // 当前 VIP 等级的每日兑换信息
+    vipCur() {
+      const d = (this.vip.defs || []).find(x => x.lv === this.vip.level)
+      return d || { cute: 1, beans: 0, silver: '2000万' }
+    },
+    // 首页角色 VIP 会员等级
+    vipLv() {
+      return this.g.vip_lv || 0
+    },
+    // 西游报时（复刻原版页脚报时，9:27 格式）
+    xyNow() {
+      const d = new Date()
+      return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')
+    },
     battleResultText() {
       if (!this.bt) return ''
       const n = this.bt.type === 'pvp' ? '比武' : this.bt.type === 'tower' ? '通天塔' : '战斗'
@@ -1083,7 +1813,35 @@ export default {
       this._tipTimer = setTimeout(() => { this.tipMsg = '' }, 2200)
     },
     fmtTime(t) { return (t || '').substring(5, 16) },
-    slotName(c) { return { 1: '法宝', 2: '坐骑', 3: '武器', 4: '护甲', 5: '头盔', 6: '靴子', 7: '项链', 8: '手镯' }[c] || '装备' },
+    slotName(c) { return { 1: '法宝', 2: '坐骑', 3: '手持', 4: '身穿', 5: '头戴', 6: '脚穿', 7: '佩戴', 8: '首饰', 9: '婚戒', 10: '婚链', 11: '披风' }[c] || '装备' },
+    // 银两格式化（复刻原版 wp/warehouse.php：X亿X万X两）
+    yl(v) {
+      if (!v || v <= 0) return '0两'
+      const s = String(v)
+      if (s.length >= 9) {
+        const y = parseInt(s.slice(0, s.length - 8), 10)
+        const w = parseInt(s.slice(s.length - 8, s.length - 4), 10)
+        const l = parseInt(s.slice(s.length - 4), 10)
+        let out = ''
+        if (y > 0) out += y + '亿'
+        if (w > 0) out += w + '万'
+        if (l > 0) out += l
+        return out + '两'
+      }
+      if (s.length >= 5) {
+        const w = parseInt(s.slice(0, s.length - 4), 10)
+        const l = parseInt(s.slice(s.length - 4), 10)
+        let out = ''
+        if (w > 0) out += w + '万'
+        if (l > 0) out += l
+        return out + '两'
+      }
+      return v + '两'
+    },
+    // 金额不带"两"字（商城文案"X亿银两"用）
+    ylNum(v) {
+      return this.yl(v).replace(/两$/, '')
+    },
     itemCatName(c) { return { 1: '杂货', 2: '宝石', 3: '任务', 4: '经验书', 5: '药品', 8: '特殊' }[c] || '物品' },
     bonusName(b) { return { hp: '气血', atk: '攻击', def: '防御', mg: '魔攻' }[b] || b },
     currencyName(c) { return c === 'beans' ? '金豆' : c === 'bank' ? '存款' : '银两' },
@@ -1102,7 +1860,7 @@ export default {
       this.cur = v
       if (v !== 'server') sessionStorage.setItem('hxxy_cur', v) // 记录当前页，刷新后恢复
       window.scrollTo(0, 0)
-      if (v === 'home') { this.refreshPlayer(); this.loadHome() }
+      if (v === 'home') { this.refreshPlayer(); this.loadHome(); this.loadState() }
       if (v === 'map') this.loadState()
       if (v === 'attrs') this.loadAttrs()
       if (v === 'bag') this.loadBag()
@@ -1110,18 +1868,23 @@ export default {
       if (v === 'pets') this.loadPets()
       if (v === 'shop') this.loadShop(this.shopKind)
       if (v === 'quests') this.loadQuests()
+      if (v === 'activities') this.loadActivities()
       if (v === 'dungeons') this.loadDungeons()
       if (v === 'bosses') this.loadBosses()
-      if (v === 'cultivate') this.loadCult()
-      if (v === 'titles') this.loadTitles()
+      if (v === 'cultivate') { this.cultView = ''; this.loadCult() }
+      if (v === 'titles') { this.titleView = ''; this.loadTitles() }
       if (v === 'rank') this.loadRank(this.rankType)
       if (v === 'chat') this.loadChat()
       if (v === 'friends') this.loadFriends()
       if (v === 'gang') this.loadGang()
+      if (v === 'mapview') this.loadMapGrid()
       if (v === 'marriage') this.loadMarriage()
       if (v === 'house') this.loadHouse()
-      if (v === 'stalls') this.loadStalls()
+      if (v === 'stalls') { this.stallPage = 'cat'; this.stallCancelTarget = 0; this.stallDetailId = 0; this.stallItem = null; this.aucItem = null }
+      if (v === 'auction') this.openAuction()
       if (v === 'wallet') this.loadWallet()
+      if (v === 'signin') this.loadWelfare()
+      if (v === 'vip') this.loadVip()
       if (v === 'blogs') this.loadBlogs()
       if (v === 'tower') this.loadTower()
       if (v === 'arena') this.loadArena()
@@ -1156,6 +1919,7 @@ export default {
       if (r.data.has_player) {
         this.g = r.data.player
         this.go(target || 'home')
+        this.restoreBattle() // 刷新后恢复遗留战斗（修复"你正在战斗中"软锁）
       } else {
         this.sects = r.data.sects || []
         this.cur = 'create'
@@ -1176,6 +1940,29 @@ export default {
         this.tip(r.msg)
       }
     },
+    // ---------- 建角分步流程（复刻原版） ----------
+    pickSex(sex) {
+      this.cf.sex = sex
+      this.cf.story = 0
+      this.cf.step = 'story'
+    },
+    storyNext() {
+      if (this.cf.story >= this.stories.length - 1) {
+        this.cf.step = 'sect'
+      } else {
+        this.cf.story++
+      }
+    },
+    pickSect(s) {
+      if (s.sex === 1 && this.cf.sex !== 1) { this.tip('普陀山只收男弟子！'); return }
+      if (s.sex === 2 && this.cf.sex !== 2) { this.tip('月宫只收女弟子！'); return }
+      this.cf.sect = s.id
+      this.cf.sectName = s.name
+      this.cf.sectBonus = s.bonus
+      this.cf.sectLong = s.long
+      this.cf.sectPic = s.pic
+      this.cf.step = 'sectIntro'
+    },
     // ---------- 地图 ----------
     async loadState() {
       const r = await api.get('/games/hxxy/state')
@@ -1184,7 +1971,6 @@ export default {
         this.node = r.data.node
         this.enemies = r.data.enemies || []
         this.mapNpcs = r.data.npcs || []
-        this.mapImgOk = true
       } else {
         this.tip(r.msg)
       }
@@ -1200,6 +1986,39 @@ export default {
         this.homeGangInvites = r.data.gang_invites || []
         this.homeHouseInvites = r.data.house_invites || []
         this.homeMarry = r.data.marriage_invite || null
+        // 导航状态标色（复刻原版：未签到/可提交任务/可领活动 时导航红字）
+        this.homeFlags.today_signed = !!r.data.today_signed
+        this.homeFlags.quest_ready = r.data.quest_ready || 0
+        this.loadActFlags()
+      }
+    },
+    // 活动可领状态（首页导航标红用）
+    async loadActFlags() {
+      const r = await api.get('/games/hxxy/activities')
+      if (r.code === 0 && r.data) {
+        const d = r.data
+        let ready = false
+        if (d.login7 && !d.login7.claimed) ready = true
+        if (d.daily && (d.daily.tiers || []).some(t => t.can && !t.claimed)) ready = true
+        this.homeFlags.act_ready = ready
+      }
+    },
+    // ---------- 活动中心（复刻原版 xy404） ----------
+    async loadActivities() {
+      const r = await api.get('/games/hxxy/activities')
+      if (r.code === 0) {
+        this.act = r.data
+        this.loadActFlags()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async claimActivity(act, tier) {
+      const r = await api.post('/games/hxxy/activities/claim', { act, tier })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) {
+        this.loadActivities()
+        this.refreshPlayer()
       }
     },
     async openPm(pid) {
@@ -1273,15 +2092,30 @@ export default {
       this.loadBag()
       window.scrollTo(0, 0)
     },
-    async move(dir) {
-      const r = await api.post('/games/hxxy/move', { dir })
+    async move(dir, jump) {
+      const r = await api.post('/games/hxxy/move', { dir, jump: !!jump })
       if (r.code === 0) {
+        this.tip(r.data.msg)
         this.g = r.data.player
         this.loadState()
         window.scrollTo(0, 0)
       } else {
         this.tip(r.msg)
       }
+    },
+    // ---------- 查看地图（复刻 xy008） ----------
+    async loadMapGrid() {
+      const r = await api.get('/games/hxxy/map/grid')
+      if (r.code === 0) {
+        this.mapGrid = r.data
+      } else {
+        this.tip(r.msg)
+        this.cur = 'map'
+      }
+    },
+    mapZoom(delta) {
+      if (delta === 0) { this.mapSize = 11; return }
+      this.mapSize = Math.min(41, Math.max(5, this.mapSize + delta))
     },
     async doRest() {
       const r = await api.post('/games/hxxy/rest', {})
@@ -1293,12 +2127,25 @@ export default {
       }
     },
     // ---------- 战斗 ----------
+    // 刷新后恢复进行中的战斗：有遗留战斗直接回到战斗页（原版 WAP 会话行为）
+    async restoreBattle() {
+      const r = await api.get('/games/hxxy/battle/state')
+      if (r.code === 0 && r.data.in_battle) {
+        this.bt = r.data
+        this.cur = 'battle'
+        this.refreshPlayer()
+        this.loadBattleItems()
+        this.loadSkills()
+        window.scrollTo(0, 0)
+      }
+    },
     async startBattle(npcID) {
       const r = await api.post('/games/hxxy/battle/start', { npc_id: npcID })
       if (r.code === 0) {
         this.bt = r.data
         this.cur = 'battle'
         this.loadBattleItems()
+        this.loadSkills()
         window.scrollTo(0, 0)
       } else {
         this.tip(r.msg)
@@ -1449,12 +2296,160 @@ export default {
         this.tip(r.msg)
       }
     },
+    // ---------- 赠银/赠物（复刻 xy537/538） ----------
+    giveMoney(pv) { this.giveMode = 'money'; this.giveAmount = '' },
+    giveItem(pv) { this.giveMode = 'item'; this.giveBagId = 0; this.giveCount = ''; this.loadBag() },
+    async doGiveMoney(pv) {
+      const amt = parseInt(this.giveAmount, 10)
+      if (!amt || amt <= 0) { this.tip('输入有误，或者不能为空'); return }
+      const r = await api.post('/games/hxxy/give/money', { to_id: pv.player_id, amount: amt })
+      if (r.code === 0) { this.tip(r.data.msg); this.giveMode = ''; this.refreshPlayer() } else { this.tip(r.msg) }
+    },
+    pickGiveItem(b) { this.giveBagId = b.id; this.giveCount = '' },
+    async doGiveItem(pv) {
+      const n = parseInt(this.giveCount, 10)
+      if (!n || n <= 0) { this.tip('输入有误，或者不能为空'); return }
+      const r = await api.post('/games/hxxy/give/item', { to_id: pv.player_id, bag_id: this.giveBagId, count: n })
+      if (r.code === 0) { this.tip(r.data.msg); this.giveMode = ''; this.loadBag() } else { this.tip(r.msg) }
+    },
+    // 恶名称号（复刻 xy093.php emz 阶梯）
+    emzName(emz) {
+      const e = emz || 0
+      const tiers = [[1, 20, '坏蛋'], [21, 40, '匪徒'], [41, 60, '恶人'], [61, 80, '恶棍'], [81, 100, '恶霸'], [101, 150, '凶人'], [151, 250, '凶徒'], [251, 300, '凶手'], [301, 350, '暴徒'], [351, 400, '暴君'], [401, 450, '嗜血成性'], [451, 500, '赶尽杀绝'], [501, 600, '杀人如麻'], [601, 700, '十恶不赦'], [701, 800, '血流成河'], [801, 900, '血染山河'], [901, 1000, '十方俱灭']]
+      for (const [lo, hi, n] of tiers) { if (e >= lo && e <= hi) return '【' + n + '】(' + e + '点)' }
+      return e >= 1001 ? '【神档杀神~佛档杀佛】(' + e + '点)' : '【与世无争】(' + e + '点)'
+    },
+    // ---------- 挂售/拍卖上架（复刻 gssjwp01/pmsjwp01：数量+单价单页表单） ----------
+    openStall(b) {
+      this.aucItem = null
+      this.stallItem = b
+      this.stallCount = ''
+      this.stallPrice = ''
+    },
     async doStallSell() {
-      const r = await api.post('/games/hxxy/stall/sell', { bag_id: this.stallInput.bag_id, count: this.stallInput.count, price: this.stallInput.price })
-      this.stallShow = false
+      const count = parseInt(this.stallCount, 10)
+      const price = parseInt(this.stallPrice, 10)
+      if (!count || count <= 0 || !price || price <= 0) { this.tip('输入有误请重新输入'); return }
+      const r = await api.post('/games/hxxy/stall/sell', { bag_id: this.stallItem.id, count, price })
       if (r.code === 0) {
+        this.stallItem = null
         this.tip(r.data.msg)
         this.loadBag()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    openAuctionSell(b) {
+      this.stallItem = null
+      this.aucItem = b
+      this.aucCount = ''
+      this.aucPrice = ''
+    },
+    async doAuctionSell() {
+      const count = parseInt(this.aucCount, 10)
+      const price = parseInt(this.aucPrice, 10)
+      if (!count || count <= 0 || !price || price <= 0) { this.tip('输入有误请重新输入'); return }
+      const r = await api.post('/games/hxxy/auction/sell', { bag_id: this.aucItem.id, count, price })
+      if (r.code === 0) {
+        this.aucItem = null
+        this.tip(r.data.msg)
+        this.loadBag()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    // ---------- 我的挂售（复刻 xy225→xy219） ----------
+    async openStallMine(kind) {
+      this.stallKind = kind
+      const r = await api.get('/games/hxxy/stalls/mine', { params: { kind } })
+      if (r.code === 0) {
+        this.stallMine = r.data
+        this.stallPage = 'mine'
+        this.stallDetailId = 0
+        this.stallCancelTarget = 0
+        this.stallCancelCount = ''
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async doStallCancel(s, count) {
+      const n = parseInt(count, 10)
+      if (!n || n <= 0) { this.tip('输入有误请重新输入'); return }
+      const r = await api.post('/games/hxxy/stall/cancel', { stall_id: s.stall_id, count: n })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.openStallMine(this.stallKind)
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    // ---------- 他人挂售（复刻 xy222，从玩家资料页进入） ----------
+    async openStallOf(id) {
+      const r = await api.get('/games/hxxy/stalls/player/' + id)
+      if (r.code === 0) {
+        this.stallOf = r.data
+        this.stallBuyTarget = 0
+        this.stallBuyCount = ''
+        this.go('stallof')
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async doStallBuy(s, count) {
+      const n = parseInt(count, 10)
+      if (!n || n <= 0) { this.tip('输入有误请重新输入'); return }
+      const r = await api.post('/games/hxxy/stall/buy', { stall_id: s.stall_id, count: n })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.refreshPlayer()
+        this.openStallOf(this.stallOf.seller_id)
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    // ---------- 全区拍卖（复刻 xy489/499） ----------
+    async openAuction() {
+      this.auctionView = 'list'
+      this.loadAuction(this.auctionTab)
+    },
+    async loadAuction(tab) {
+      const r = await api.get('/games/hxxy/auction', { params: { tab } })
+      if (r.code === 0) {
+        this.auctionTab = tab
+        this.auctionList = r.data.list || []
+        this.auctionView = 'list'
+        this.auctionBuyTarget = 0
+        this.auctionBuyCount = ''
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async openAuctionMine() {
+      const r = await api.get('/games/hxxy/auction/mine')
+      if (r.code === 0) {
+        this.auctionMine = r.data.list || []
+        this.auctionView = 'mine'
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async doAuctionBuy(a, count) {
+      const n = parseInt(count, 10)
+      if (!n || n <= 0) { this.tip('输入有误请重新输入'); return }
+      const r = await api.post('/games/hxxy/auction/buy', { auction_id: a.auction_id, count: n })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.refreshPlayer()
+        this.loadAuction(this.auctionTab)
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async doAuctionCancel(a) {
+      const r = await api.post('/games/hxxy/auction/cancel', { auction_id: a.auction_id })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.openAuctionMine()
       } else {
         this.tip(r.msg)
       }
@@ -1462,7 +2457,38 @@ export default {
     // ---------- 技能 ----------
     async loadSkills() {
       const r = await api.get('/games/hxxy/skills')
-      if (r.code === 0) this.sk = r.data
+      if (r.code === 0) { this.sk = r.data; this.loadQuickSlots() }
+    },
+    // ---------- 战斗快捷键（复刻原版 快捷键1~9 槽位） ----------
+    quickKey() {
+      const server = this.serverName || localStorage.getItem('hxxy_server') || ''
+      return 'hxxy_quick_' + server + '_' + (this.g.pid || this.g.id || this.g.name || 'self')
+    },
+    loadQuickSlots() {
+      let raw = {}
+      try { raw = JSON.parse(localStorage.getItem(this.quickKey()) || '{}') } catch (e) { raw = {} }
+      const active = (this.sk && this.sk.mine || []).filter(s => s.category === 1)
+      this.quickSlots = []
+      for (let i = 1; i <= 9; i++) {
+        const id = raw['k' + i] || 0
+        const hit = active.find(s => s.skill_id === id)
+        this.quickSlots.push({ slot: i, skill_id: id, name: hit ? hit.name : '', mp_cost: hit ? hit.mp_cost : 0 })
+      }
+    },
+    bindQuick(slot, skill_id) {
+      let raw = {}
+      try { raw = JSON.parse(localStorage.getItem(this.quickKey()) || '{}') } catch (e) { raw = {} }
+      raw['k' + slot] = skill_id
+      localStorage.setItem(this.quickKey(), JSON.stringify(raw))
+      this.loadQuickSlots()
+      this.tip('成功将' + ('快捷' + slot) + '设置为了' + (this.quickSlots[slot - 1] && this.quickSlots[slot - 1].name || '空'))
+    },
+    pickQuick(slot, skill_id) {
+      this.bindQuick(slot, skill_id)
+      this.quickSetSlot = 0
+    },
+    quickSkillList() {
+      return (this.sk && this.sk.mine || []).filter(s => s.category === 1)
     },
     async learnSkill(s) {
       const r = await api.post('/games/hxxy/skills/learn', { skill_id: s.skill_id })
@@ -1494,47 +2520,134 @@ export default {
     // ---------- 商店 ----------
     async loadShop(kind) {
       this.shopKind = kind
-      this.shopDetail = null
+      this.shopPage = 'list'
+      this.shopMsg = ''
       const r = await api.get('/games/hxxy/shop/' + kind)
       if (r.code === 0) {
-        this.shop = { goods: r.data.goods || [], pets: r.data.pets || null }
+        this.shop = { goods: r.data.goods || [], pets: r.data.pets || null, used: r.data.used || 0, cap: r.data.cap || 0 }
       } else {
         this.tip(r.msg)
       }
     },
-    async buy(gd, currency) {
-      const r = await api.post('/games/hxxy/shop/buy', { kind: gd.kind, ref_id: gd.ref_id, count: 1, currency })
+    openShopItem(gd) {
+      this.shopItem = gd
+      this.shopBuyCount = ''
+      this.shopMsg = ''
+      this.shopPage = 'item'
+    },
+    openShopPet(pt) {
+      this.shopPet = pt
+      this.shopBuyCount = ''
+      this.shopMsg = ''
+      this.shopPage = 'pet'
+    },
+    async doShopBuy(currency) {
+      if (!/^\d+$/.test(String(this.shopBuyCount)) || Number(this.shopBuyCount) <= 0) {
+        this.shopMsg = '输入有误请重新输入'
+        return
+      }
+      const gd = this.shopItem
+      const r = await api.post('/games/hxxy/shop/buy', { kind: gd.kind, ref_id: gd.ref_id, count: Number(this.shopBuyCount), currency })
       if (r.code === 0) {
-        this.tip(r.data.msg)
+        this.shopBuyCount = ''
+        this.shopPage = 'list'
+        await this.loadShop(this.shopKind)
+        this.shopMsg = r.data.msg
         this.refreshPlayer()
       } else {
-        this.tip(r.msg)
+        this.shopMsg = r.msg
       }
     },
-    async buyPet(pt) {
-      const r = await api.post('/games/hxxy/shop/buy', { kind: 'pet', ref_id: pt.species_id, count: 1, currency: 'beans' })
+    async doShopPetBuy() {
+      if (!/^\d+$/.test(String(this.shopBuyCount)) || Number(this.shopBuyCount) <= 0) {
+        this.shopMsg = '输入有误请重新输入'
+        return
+      }
+      const r = await api.post('/games/hxxy/shop/buy', { kind: 'pet', ref_id: this.shopPet.species_id, count: Number(this.shopBuyCount), currency: 'beans' })
       if (r.code === 0) {
-        this.tip(r.data.msg)
+        this.shopBuyCount = ''
+        this.shopPage = 'list'
+        await this.loadShop(this.shopKind)
+        this.shopMsg = r.data.msg
         this.refreshPlayer()
       } else {
-        this.tip(r.msg)
+        this.shopMsg = r.msg
       }
     },
     // ---------- 银行 ----------
     async bankOp(dir) {
       const amt = Number(this.bankAmount)
-      if (!amt || amt <= 0) { this.tip('请输入正确金额'); return }
+      if (!amt || amt <= 0) { this.bankMsg = '输入有误请重新输入'; return }
       const url = dir === 'in' ? '/games/hxxy/bank/deposit' : '/games/hxxy/bank/withdraw'
       const r = await api.post(url, { amount: amt })
       if (r.code === 0) {
-        this.tip(r.data.msg)
+        this.bankMsg = r.data.msg
         this.bankAmount = 0
         this.refreshPlayer()
       } else {
-        this.tip(r.msg)
+        this.bankMsg = r.msg
+      }
+    },
+    // ---------- 签到 ----------
+    async loadSigninInfo() {
+      const r = await api.get('/games/hxxy/signin/info')
+      if (r.code === 0) this.sign = r.data
+    },
+    async doSignin() {
+      const r = await api.post('/games/hxxy/signin', {})
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) {
+        this.loadSigninInfo()
+        this.refreshPlayer()
+      }
+    },
+    async claimSign(tier) {
+      const r = await api.post('/games/hxxy/signin/claim', { tier })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) {
+        this.loadSigninInfo()
+        this.refreshPlayer()
+      }
+    },
+    // ---------- 福利中心 ----------
+    async loadWelfare() {
+      const r = await api.get('/games/hxxy/welfare')
+      if (r.code === 0) this.wf = r.data
+      this.loadSigninInfo()
+    },
+    fmtWait(s) {
+      if (!s || s <= 0) return ''
+      const m = Math.floor(s / 60)
+      const sec = s % 60
+      return m > 0 ? m + '分' + sec + '秒' : sec + '秒'
+    },
+    async giftClaim() {
+      const r = await api.post('/games/hxxy/welfare/gift', {})
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) { this.loadWelfare(); this.refreshPlayer() }
+    },
+    async nobleClaim(tier) {
+      const r = await api.post('/games/hxxy/welfare/noble', { tier })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) { this.loadWelfare(); this.refreshPlayer() }
+    },
+    async copyPromo() {
+      const text = '进群填写我的邀请游戏ID：' + (this.playerID || '') + '\n填写邀请ID即可领取超值【三区水帘洞助力包】包含【幻想套装】【vip练级卷】x20，【10亿修炼经验丹】x10，【万能果】x100，【1万西游声望卷轴】x100，【1万法宝经验卷轴】x100，〖瞌睡虫〗（典藏版）x5\n我不断的寻找，有你的世界在哪儿\n新区【水帘洞】人气火爆，进群领取豪华大礼包，只等你来！'
+      try {
+        await navigator.clipboard.writeText(text)
+        this.tip('宣传语已复制')
+      } catch (e) {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+        this.tip('宣传语已复制')
       }
     },
     // ---------- 任务 ----------
+    qstCatName(c) { return { 1: '主线', 2: '支线', 3: '日常' }[c] || '任务' },
     async loadQuests() {
       const r = await api.get('/games/hxxy/quests')
       if (r.code === 0) this.qst = r.data
@@ -1544,9 +2657,15 @@ export default {
       if (r.code === 0) {
         this.tip(r.data.msg)
         this.loadQuests()
+        if (this.cur === 'npcview' && this.npcCur) this.viewNpc(this.npcCur.id) // NPC页接取后刷新任务列表
       } else {
         this.tip(r.msg)
       }
+    },
+    async questAbandon(q) {
+      const r = await api.post('/games/hxxy/quests/abandon', { quest_id: q.quest_id })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) this.loadQuests()
     },
     async questSubmit(q) {
       const r = await api.post('/games/hxxy/quests/submit', { quest_id: q.quest_id })
@@ -1604,16 +2723,43 @@ export default {
         this.tip(r.msg)
       }
     },
+    // 修炼线境界名（复刻 xlms.php：下一级境界+层，封顶显示 天尊（封顶））
+    xlTrackName(t) {
+      if (t.capped) return '（天尊）（封顶）'
+      return '（' + t.realm + '）' + t.layer + '层'
+    },
+    xlNeedText(t) {
+      const n = t.need || {}
+      return '修炼经验' + (n.exp || 0) + '，银两' + (n.silver || 0) + '，西游声望' + (n.sw || 0) + (n.beans > 0 ? '，〖金豆〗x' + n.beans : '')
+    },
+    async cultUp(slot) {
+      const r = await api.post('/games/hxxy/cultivate/upgrade', { slot })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) {
+        this.loadCult()
+        this.refreshPlayer()
+      }
+    },
     // ---------- 头衔 ----------
-    async loadTitles() {
-      const r = await api.get('/games/hxxy/titles')
+    async loadTitles(page) {
+      const r = await api.get('/games/hxxy/titles?page=' + (page || 1))
       if (r.code === 0) this.titles = r.data
+    },
+    openTitle(t) {
+      this.titleDetail = t
+      this.titleView = 'detail'
+    },
+    async cultExchangeDan() {
+      const r = await api.post('/games/hxxy/cultivate/exchange-dan', {})
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) this.loadCult()
     },
     async activateTitle(t) {
       const r = await api.post('/games/hxxy/titles/activate', { title_id: t.title_id })
       if (r.code === 0) {
         this.tip(r.data.msg)
-        this.loadTitles()
+        this.titleDetail.owned = true
+        this.loadTitles(this.titles.page)
         this.refreshPlayer()
       } else {
         this.tip(r.msg)
@@ -1623,17 +2769,10 @@ export default {
       const r = await api.post('/games/hxxy/titles/wear', { title_id: t.title_id })
       if (r.code === 0) {
         this.tip(r.data.msg)
-        this.loadTitles()
-        this.refreshPlayer()
-      } else {
-        this.tip(r.msg)
-      }
-    },
-    // ---------- 签到 ----------
-    async doSignin() {
-      const r = await api.post('/games/hxxy/signin', {})
-      if (r.code === 0) {
-        this.tip(r.data.msg)
+        if (this.titleView === 'detail' && this.titleDetail.title_id === t.title_id) {
+          this.titleDetail = Object.assign({}, this.titleDetail)
+        }
+        this.loadTitles(this.titles.page)
         this.refreshPlayer()
       } else {
         this.tip(r.msg)
@@ -1666,19 +2805,13 @@ export default {
       const r = await api.get('/games/hxxy/friends')
       if (r.code === 0) this.frd = r.data
     },
-    async addFriend() {
-      if (!this.friendName.trim()) { this.tip('请输入对方名字'); return }
-      const r = await api.post('/games/hxxy/friends/add', { name: this.friendName.trim() })
-      if (r.code === 0) {
-        this.tip(r.data.msg)
-        this.friendName = ''
-        this.loadFriends()
-      } else {
-        this.tip(r.msg)
-      }
+    // ---------- 拉黑/删除（复刻 xy104/xy115/xy117） ----------
+    async blackPlayer(pid) {
+      const r = await api.post('/games/hxxy/friends/black', { player_id: pid })
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
     },
-    async agreeFriend(f) {
-      const r = await api.post('/games/hxxy/friends/agree', { apply_id: f.apply_id })
+    async removeFriend(f) {
+      const r = await api.post('/games/hxxy/friends/remove', { player_id: f.player_id })
       if (r.code === 0) {
         this.tip(r.data.msg)
         this.loadFriends()
@@ -1686,13 +2819,22 @@ export default {
         this.tip(r.msg)
       }
     },
-    // ---------- 帮派 ----------
+    // ---------- 国家 ----------
     async loadGang() {
       const r = await api.get('/games/hxxy/gang')
       if (r.code === 0) this.gang = r.data
     },
+    gangGo(sub, m) {
+      this.gangSub = sub
+      if (sub === 'mall') this.loadGangMall()
+      if (sub === 'kick') this.gangKickTarget = m || null
+    },
+    gangOffName(role) {
+      const o = (this.gang.my_gang.officials || {})['role' + role]
+      return o ? o.name : '暂无'
+    },
     async gangNew() {
-      if (!this.gangNameInput.trim()) { this.tip('请输入帮派名'); return }
+      if (!this.gangNameInput.trim()) { this.tip('国家名不能为空'); return }
       const r = await api.post('/games/hxxy/gang/create', { name: this.gangNameInput.trim() })
       if (r.code === 0) {
         this.tip(r.data.msg)
@@ -1712,11 +2854,11 @@ export default {
         this.tip(r.msg)
       }
     },
-    async gangQuit() {
-      if (!window.confirm('确定退出帮派吗？')) return
+    async gangQuitDo() {
       const r = await api.post('/games/hxxy/gang/leave', {})
       if (r.code === 0) {
         this.tip(r.data.msg)
+        this.gangGo('')
         this.loadGang()
       } else {
         this.tip(r.msg)
@@ -1724,13 +2866,81 @@ export default {
     },
     async gangDonate() {
       const amt = Number(this.gangDonateAmount)
-      if (!amt || amt <= 0) { this.tip('请输入正确金额'); return }
+      if (!amt || amt <= 0) { this.tip('输入有误请重新输入'); return }
       const r = await api.post('/games/hxxy/gang/donate', { amount: amt })
       if (r.code === 0) {
         this.tip(r.data.msg)
         this.gangDonateAmount = 0
         this.loadGang()
         this.refreshPlayer()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async loadGangMall() {
+      const r = await api.get('/games/hxxy/gang/mall')
+      if (r.code === 0) {
+        this.gangMall = r.data
+        if (!r.data.tabs.some(t => t.level === this.gangMallTab)) this.gangMallTab = 1
+      }
+    },
+    async gangMallBuy(it) {
+      const r = await api.post('/games/hxxy/gang/mall/buy', { item_id: it.item_id })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.loadGangMall()
+        this.refreshPlayer()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async gangUpgrade() {
+      if (!window.confirm('确定升级国家吗？升级将扣除国家资金/经验/声望！')) return
+      const r = await api.post('/games/hxxy/gang/upgrade', {})
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.loadGang()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async gangDissolve() {
+      const r = await api.post('/games/hxxy/gang/dissolve', {})
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.gangGo('')
+        this.loadGang()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async gangAppoint(m) {
+      const r = await api.post('/games/hxxy/gang/appoint', { player_id: m.player_id, role: this.gangAppointRole })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.loadGang()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async gangDismiss(m) {
+      if (!window.confirm('确定罢免【' + m.name + '】的【' + m.role_name + '】职务吗？')) return
+      const r = await api.post('/games/hxxy/gang/dismiss', { player_id: m.player_id })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.loadGang()
+      } else {
+        this.tip(r.msg)
+      }
+    },
+    async gangKickDo() {
+      if (!this.gangKickTarget) { this.gangGo('members'); return }
+      const r = await api.post('/games/hxxy/gang/kick', { player_id: this.gangKickTarget.player_id })
+      if (r.code === 0) {
+        this.tip(r.data.msg)
+        this.gangKickTarget = null
+        this.gangGo('members')
+        this.loadGang()
       } else {
         this.tip(r.msg)
       }
@@ -1786,31 +2996,6 @@ export default {
         this.tip(r.msg)
       }
     },
-    // ---------- 摆摊 ----------
-    async loadStalls() {
-      const r = await api.get('/games/hxxy/stalls')
-      if (r.code === 0) this.stallList = r.data.stalls || []
-    },
-    async stallBuy(s) {
-      if (!window.confirm('花 ' + s.price + ' 银两购买【' + s.name + '】×' + s.count + '？')) return
-      const r = await api.post('/games/hxxy/stall/buy', { stall_id: s.stall_id })
-      if (r.code === 0) {
-        this.tip(r.data.msg)
-        this.loadStalls()
-        this.refreshPlayer()
-      } else {
-        this.tip(r.msg)
-      }
-    },
-    async stallCancel(s) {
-      const r = await api.post('/games/hxxy/stall/cancel', { stall_id: s.stall_id })
-      if (r.code === 0) {
-        this.tip(r.data.msg)
-        this.loadStalls()
-      } else {
-        this.tip(r.msg)
-      }
-    },
     // ---------- 流水/战报 ----------
     async loadWallet() {
       const r = await api.get('/games/hxxy/wallet')
@@ -1821,6 +3006,19 @@ export default {
       if (r.code === 0) this.blogLogs = r.data.logs || []
     },
     // ---------- 充值 ----------
+    async loadVip() {
+      const r = await api.get('/games/hxxy/vip/info')
+      if (r.code === 0) this.vip = r.data
+    },
+    async vipExchange() {
+      if (this.vip.exchanged) { this.tip('今日已兑换过，明日再来'); return }
+      const r = await api.post('/games/hxxy/vip/exchange', {})
+      this.tip(r.code === 0 ? r.data.msg : r.msg)
+      if (r.code === 0) {
+        this.loadVip()
+        this.refreshPlayer()
+      }
+    },
     async doRecharge() {
       const code = this.rechargeCode.trim()
       if (!code) { this.tip('请输入充值码'); return }
@@ -2078,10 +3276,19 @@ em { color: #9B9B9B; font-size: 12px; font-style: normal; }
 .green { color: #008000; }
 .gray { color: #9B9B9B; }
 .black { color: #000; }
+.blue { color: #0060CD; }
 .cur { color: #f60; font-weight: bold; }
 .nk { color: #c00; }
 .logo { text-align: left; margin: 4px 0; }
 .mapimg img { max-width: 240px; width: 100%; height: auto; display: block; margin: 4px 0; }
 .npcimg img { max-width: 120px; width: auto; height: auto; display: block; margin: 4px 0; }
+/* 查看地图网格（复刻原版 MapViewer 配色） */
+.mapgrid { background-color: #eec65a; text-align: center; font-size: 12px; border-collapse: collapse; }
+.mapgrid td { min-width: 48px; word-break: keep-all; padding: 1px 2px; }
+.mgnode { background-color: #942900; }
+.mgcur { color: #0befe7; }
+.mgjump { color: #86e2e2; }
+.mgnorm { color: #fff; }
+.mgwall { color: #000; }
 .xy-tip { position: fixed; left: 50%; top: 20%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.75); color: #fff; padding: 8px 16px; border-radius: 4px; z-index: 200; }
 </style>

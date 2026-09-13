@@ -254,6 +254,12 @@ var xyTableDefs = map[string]xyTableDef{
 		"name": "string", "img": "string", "dialogue": "string", "shop": "string", "teles": "string",
 		"dtx": "int", "dty": "int", "npc_id": "int",
 	}},
+	"quests": {&model.HxxyQuest{}, map[string]string{
+		"name": "string", "desc": "string", "type": "string", "category": "int",
+		"target_id": "int", "count": "int", "min_level": "int", "from_npc": "int",
+		"exp_reward": "int", "money_reward": "int", "bean_reward": "int",
+		"item_reward": "int", "item_equip": "int", "next_quest": "int",
+	}},
 }
 
 // AdminXyData 游戏数据分页查询（table=items/equips/npcs/skills/spawns/maps/bosses/pets/titles/mapnpcs）
@@ -644,14 +650,16 @@ func xySettingSet(db *gorm.DB, key, val string) {
 	}
 }
 
-// AdminXyServer 服务器维护状态
+// AdminXyServer 服务器维护状态 + 活动开关
 func (h *AdminHandler) AdminXyServer(c *gin.Context) {
 	var on, notice string
 	h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'hxxy_maintenance'").Scan(&on)
 	h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'hxxy_maintenance_notice'").Scan(&notice)
+	var exp2x string
+	h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'hxxy_exp2x'").Scan(&exp2x)
 	var players int64
 	h.DB.Model(&model.HxxyPlayer{}).Count(&players)
-	resp.OK(c, gin.H{"maintenance": on == "1", "notice": notice, "players": players})
+	resp.OK(c, gin.H{"maintenance": on == "1", "notice": notice, "players": players, "exp2x": exp2x != "0"})
 }
 
 // AdminXyServerSet 设置维护模式（on=true 维护中，玩家进游戏看到公告；false 开放）
@@ -674,5 +682,26 @@ func (h *AdminHandler) AdminXyServerSet(c *gin.Context) {
 		resp.OK(c, gin.H{"msg": "服务器已进入维护模式，玩家将无法进入游戏"})
 	} else {
 		resp.OK(c, gin.H{"msg": "服务器已开放，玩家可正常进入"})
+	}
+}
+
+// AdminXyExp2xSet 双倍经验时段开关（12-14/19-21 点战斗经验翻倍）
+func (h *AdminHandler) AdminXyExp2xSet(c *gin.Context) {
+	var in struct {
+		On bool `json:"on"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	val := "0"
+	if in.On {
+		val = "1"
+	}
+	xySettingSet(h.DB, "hxxy_exp2x", val)
+	if in.On {
+		resp.OK(c, gin.H{"msg": "双倍经验时段活动已开启（12:00-14:00、19:00-21:00）"})
+	} else {
+		resp.OK(c, gin.H{"msg": "双倍经验时段活动已关闭"})
 	}
 }

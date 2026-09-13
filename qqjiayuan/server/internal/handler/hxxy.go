@@ -26,7 +26,38 @@ import (
 type HxxyHandler struct{ DB *gorm.DB }
 
 var hxSectNames = map[int]string{1: "将军府", 2: "龙宫", 3: "月宫", 4: "方寸山", 5: "普陀山"}
-var hxSlotNames = map[int]string{1: "法宝", 2: "坐骑", 3: "武器", 4: "护甲", 5: "头盔", 6: "靴子", 7: "项链", 8: "手镯"}
+var hxSlotNames = map[int]string{1: "法宝", 2: "坐骑", 3: "手持", 4: "身穿", 5: "头戴", 6: "脚穿", 7: "佩戴", 8: "首饰", 9: "婚戒", 10: "婚链", 11: "披风"}
+
+// hxStarPrefix 装备星级前缀（照抄原版 wp/zbxj.php，星级=装备等级档）
+func hxStarPrefix(lv int) string {
+	switch {
+	case lv >= 1 && lv <= 9:
+		return "〖铁〗"
+	case lv >= 10 && lv <= 18:
+		return "〖铜〗"
+	case lv >= 19 && lv <= 27:
+		return "〖银〗"
+	case lv >= 28 && lv <= 36:
+		return "〖金〗"
+	case lv >= 37 && lv <= 45:
+		return "〖钻〗"
+	case lv >= 46 && lv <= 54:
+		return "〖陨〗"
+	case lv >= 55 && lv <= 63:
+		return "〖仙の陨〗"
+	case lv >= 64 && lv <= 72:
+		return "〖神の陨〗"
+	}
+	return ""
+}
+
+// hxWName 战报用名称：自带【】的不再包一层（原版怪物名多含【】）
+func hxWName(name string) string {
+	if strings.Contains(name, "【") {
+		return name
+	}
+	return "【" + name + "】"
+}
 
 // hxSectK 门派成长系数 K（照抄 ztt.php）
 func hxSectK(sect int) (hpK, atkK, defK, mgK float64) {
@@ -124,6 +155,11 @@ func (h *HxxyHandler) hxAttrs(p *model.HxxyPlayer) hxCombatAttr {
 			a.Mg += t.Mg
 		}
 	}
+	// 人物修炼四线加成（复刻 xlxx01.php：血/攻/魔/防）
+	a.MaxHP += int(hxXlBonus(1, p.XlLv1))
+	a.Atk += int(hxXlBonus(2, p.XlLv2))
+	a.Mg += int(hxXlBonus(3, p.XlLv3))
+	a.Def += int(hxXlBonus(4, p.XlLv4))
 	// 住宅家具加成
 	var house model.HxxyHouse
 	if err := h.DB.Where("player_id = ?", p.ID).First(&house).Error; err == nil && house.Furniture != "" {
@@ -224,8 +260,8 @@ func (h *HxxyHandler) hxPlayer(c *gin.Context) *model.HxxyPlayer {
 	today := time.Now().Format("2006-01-02")
 	if p.DayDate != today {
 		h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
-			"day_date": today, "day_signin": 0, "day_battle": 0, "day_dungeon": 0, "day_arena": 0})
-		p.DayDate, p.DaySignin, p.DayBattle, p.DayDungeon, p.DayArena = today, 0, 0, 0, 0
+			"day_date": today, "day_signin": 0, "day_battle": 0, "day_dungeon": 0, "day_arena": 0, "day_hunt": 0})
+		p.DayDate, p.DaySignin, p.DayBattle, p.DayDungeon, p.DayArena, p.DayHunt = today, 0, 0, 0, 0, 0
 	}
 	return &p
 }
@@ -234,12 +270,6 @@ func (h *HxxyHandler) hxPlayer(c *gin.Context) *model.HxxyPlayer {
 func hxExpNeed(lv int) int {
 	l := float64(lv)
 	return int(math.Pow(l+1, 3)*(l+2)) + 200
-}
-
-// hxXiulianCap 修炼经验上限（(lv+1)⁴(lv+2)+100）
-func hxXiulianCap(lv int) int {
-	l := float64(lv)
-	return int(math.Pow(l+1, 4)*(l+2)) + 100
 }
 
 // hxGainExp 加经验+升级判定（升级回满血蓝）
@@ -337,6 +367,13 @@ func (h *HxxyHandler) hxNode(dtx, dty int) *model.HxxyMapNode {
 	return &n
 }
 
+// hxMapName 地图区域名（hxxy_maps.id = dtx）
+func (h *HxxyHandler) hxMapName(dtx int) string {
+	var name string
+	h.DB.Raw("SELECT name FROM hxxy_maps WHERE id = ?", dtx).Scan(&name)
+	return name
+}
+
 // hxDirText 方向值转显示文本（"1_33" → 出口目标名）
 func (h *HxxyHandler) hxDirText(v string) gin.H {
 	if v == "" {
@@ -391,14 +428,28 @@ func (h *HxxyHandler) hxBanTip(until int64) string {
 	return fmt.Sprintf("（剩余 %d 分钟）", mins)
 }
 
-// hxSectList 门派介绍（文案复刻原版 xy295.php，过滤广告）
+// hxSectList 门派介绍（文案复刻原版 xy295.php，过滤广告；顺序照抄原版选择页）
 func (h *HxxyHandler) hxSectList() []gin.H {
 	return []gin.H{
-		{"id": 1, "name": "将军府", "sex": 0, "desc": "大唐开国元勋程咬金所创，门下弟子骁勇善战，以刚猛的物理攻击闻名三界。"},
-		{"id": 2, "name": "龙宫", "sex": 0, "desc": "四海龙王坐镇的水下宫殿，弟子防御出众，坚如磐石。"},
-		{"id": 3, "name": "月宫", "sex": 2, "desc": "嫦娥仙子居住的广寒宫，只收女弟子，法术飘逸，气血充沛。"},
-		{"id": 4, "name": "方寸山", "sex": 0, "desc": "菩提祖师道场，斜月三星洞中修得一身玄妙法术，魔攻冠绝三界。"},
-		{"id": 5, "name": "普陀山", "sex": 1, "desc": "观音大士的道场，只收男弟子，法力精深，普度众生。"},
+		{"id": 2, "name": "龙宫", "sex": 0, "limit": "",
+			"intro": "由东海龙王敖广一手创办，希望收罗天下有识之士，借以壮大龙宫",
+			"bonus": "防御+10%", "pic": "/static/hxxy/sect/longgong.jpg",
+			"long": "龙宫弟子借助龙宫得天独厚的灵气修得一身防御功夫是五门派中最强的，虽然法术与物攻都并非最强，但是一套风波叉法使出来倒也没有人敢小看！"},
+		{"id": 3, "name": "月宫", "sex": 2, "limit": "限女玩家",
+			"intro": "月宫乃是嫦娥仙子居住的广寒仙府", "bonus": "生命+10%", "pic": "/static/hxxy/sect/yuegong.jpg",
+			"long": "月宫弟子在广寒宫中汲取月华灵气修炼，气血充沛生命力顽强是五门派中最强的，一手漫天飞舞的飘渺剑法更让人防不胜防！"},
+		{"id": 1, "name": "将军府", "sex": 0, "limit": "",
+			"intro": "大唐将军府由当朝太祖钦命秦琼立派授徒",
+			"bonus": "物理暴击几率+10%", "pic": "/static/hxxy/sect/jiangjunfu.jpg",
+			"long": "将军府弟子由开国名将秦琼亲自授艺，个个武艺高强骁勇善战，出手刚猛大开大合，暴击几率冠绝五门派，是三界中响当当的硬汉子！"},
+		{"id": 5, "name": "普陀山", "sex": 1, "limit": "限男弟子",
+			"intro": "南海普陀山乃是救苦救难大慈大悲观音菩萨宣讲佛法之所在！",
+			"bonus": "魔法攻击+10%", "pic": "/static/hxxy/sect/putuoshan.jpg",
+			"long": "普陀山弟子受观音菩萨点化，修得一身精深佛法，魔法攻击凌厉无比是五门派中最强的，慈悲心肠却身怀降妖除魔的绝技！"},
+		{"id": 4, "name": "方寸山", "sex": 0, "limit": "",
+			"intro": "灵台方寸山开山祖师是菩提祖师，传说他是佛的十大弟子之一！",
+			"bonus": "魔法暴击几率+10%", "pic": "/static/hxxy/sect/fangcunshan.jpg",
+			"long": "方寸山弟子师从菩提祖师，在斜月三星洞中修得一身玄妙道法，出手往往出其不意一击致命，魔法暴击几率冠绝五门派！"},
 	}
 }
 
@@ -408,17 +459,41 @@ func (h *HxxyHandler) hxPlayerBrief(p *model.HxxyPlayer) gin.H {
 	node := h.hxNode(p.MapX, p.MapY)
 	nodeName := "未知之地"
 	if node != nil {
+		// 所在地 = 地图区域名·节点名
 		nodeName = node.Name
+		if area := h.hxMapName(p.MapX); area != "" {
+			nodeName = area + "·" + node.Name
+		}
 	}
+	// 状态页补充（复刻 xy011：头衔名/配偶/住宅）
+	titleName := ""
+	if p.TitleID > 0 {
+		var ti model.HxxyTitle
+		if err := h.DB.First(&ti, p.TitleID).Error; err == nil {
+			titleName = ti.Name
+		}
+	}
+	spouse := ""
+	var m model.HxxyMarriage
+	if err := h.DB.Where("(player_a = ? OR player_b = ?) AND status = 2", p.ID, p.ID).First(&m).Error; err == nil {
+		oid := m.PlayerA
+		if oid == p.ID {
+			oid = m.PlayerB
+		}
+		spouse = h.hxNameByID(oid)
+	}
+	var hc int64
+	h.DB.Model(&model.HxxyHouse{}).Where("player_id = ?", p.ID).Count(&hc)
 	return gin.H{
 		"id": p.ID, "name": p.Name, "sex": p.Sex, "sect": p.Sect, "sect_name": hxSectNames[p.Sect],
 		"level": p.Level, "exp": p.Exp, "exp_need": hxExpNeed(p.Level),
 		"hp": p.HP, "max_hp": a.MaxHP, "mp": p.MP, "max_mp": a.MaxMP,
 		"money": p.Money, "bank": p.Bank, "beans": p.Beans,
-		"vip": p.Vip, "title_id": p.TitleID,
+		"vip": p.Vip, "vip_lv": p.VipLv, "title_id": p.TitleID, "title_name": titleName,
+		"spouse": spouse, "has_house": hc > 0,
 		"bag_cap": p.BagCap, "wh_cap": p.WhCap, "emz": p.Emz,
 		"map_x": p.MapX, "map_y": p.MapY, "node_name": nodeName,
-		"xiulian_switch": p.XiulianSwitch, "xiulian_exp": p.XiulianExp, "xiulian_cap": hxXiulianCap(p.Level),
+		"xiulian_switch": p.XiulianSwitch, "xiulian_exp": p.XiulianExp, "sw": p.Sw,
 		"fighting_pet": h.hxFightingPet(p.ID),
 	}
 }
@@ -600,10 +675,24 @@ func (h *HxxyHandler) NpcView(c *gin.Context) {
 			level = npc.Level
 		}
 	}
+	// 该 NPC 发布的任务（可接的列出接取链接）
+	quests := []gin.H{}
+	if row.NpcID > 0 {
+		var qs []model.HxxyQuest
+		h.DB.Where("from_npc = ?", row.NpcID).Order("category, min_level, id").Find(&qs)
+		for _, q := range qs {
+			var cnt int64
+			h.DB.Model(&model.HxxyPlayerQuest{}).Where("player_id = ? AND quest_id = ?", p.ID, q.ID).Count(&cnt)
+			if cnt > 0 || p.Level < q.MinLevel {
+				continue
+			}
+			quests = append(quests, gin.H{"quest_id": q.ID, "name": q.Name, "desc": q.Desc, "category": q.Category})
+		}
+	}
 	resp.OK(c, gin.H{
 		"id": row.ID, "npc_id": row.NpcID, "name": row.Name, "img": row.Img,
 		"dialogue": row.Dialogue, "shop": row.Shop, "level": level,
-		"teles": teles,
+		"teles": teles, "quests": quests,
 	})
 }
 
@@ -661,7 +750,7 @@ func (h *HxxyHandler) hxDirJump(v string) gin.H {
 	return t
 }
 
-// Move 走路（up/down/left/right）
+// Move 走路/跳转出口（up/down/left/right；jump=true 走 *_jump 传送出口，复刻原版出口链接）
 func (h *HxxyHandler) Move(c *gin.Context) {
 	p := h.hxPlayer(c)
 	if p == nil {
@@ -669,7 +758,8 @@ func (h *HxxyHandler) Move(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Dir string `json:"dir"`
+		Dir  string `json:"dir"`
+		Jump bool   `json:"jump"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -683,16 +773,45 @@ func (h *HxxyHandler) Move(c *gin.Context) {
 	var target string
 	switch in.Dir {
 	case "up":
-		target = node.Up
+		if in.Jump {
+			target = node.UpJump
+		} else {
+			target = node.Up
+		}
 	case "down":
-		target = node.Down
+		if in.Jump {
+			target = node.DownJump
+		} else {
+			target = node.Down
+		}
 	case "left":
-		target = node.Left
+		if in.Jump {
+			target = node.LeftJump
+		} else {
+			target = node.Left
+		}
 	case "right":
-		target = node.Right
+		if in.Jump {
+			target = node.RightJump
+		} else {
+			target = node.Right
+		}
 	default:
 		resp.ParamError(c, "方向错误")
 		return
+	}
+	if target == "" && !in.Jump {
+		// 该方向无普通路，回退传送出口（如碑林只有 up_jump）
+		switch in.Dir {
+		case "up":
+			target = node.UpJump
+		case "down":
+			target = node.DownJump
+		case "left":
+			target = node.LeftJump
+		case "right":
+			target = node.RightJump
+		}
 	}
 	if target == "" {
 		resp.ParamError(c, "这个方向没有路")
@@ -705,6 +824,10 @@ func (h *HxxyHandler) Move(c *gin.Context) {
 	}
 	x, _ := strconv.Atoi(parts[0])
 	y, _ := strconv.Atoi(parts[1])
+	if h.hxNode(x, y) == nil {
+		resp.ParamError(c, "道路不通")
+		return
+	}
 	h.DB.Model(&model.HxxyPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{"map_x": x, "map_y": y})
 	p.MapX, p.MapY = x, y
 	resp.OK(c, gin.H{"msg": "你来到了" + h.hxNodeName(x, y), "player": h.hxPlayerBrief(p)})
@@ -742,6 +865,26 @@ func (h *HxxyHandler) hxNodeName(x, y int) string {
 	return n.Name
 }
 
+// MapGrid 查看地图（复刻原版 xy008 + MapViewer：xdt 网格，前端以当前位置为中心裁剪）
+func (h *HxxyHandler) MapGrid(c *gin.Context) {
+	p := h.hxPlayer(c)
+	if p == nil {
+		resp.ParamError(c, "请先创建角色")
+		return
+	}
+	var g model.HxxyMapGrid
+	if err := h.DB.Where("dtx = ?", p.MapX).First(&g).Error; err != nil {
+		resp.ParamError(c, "这张地图没有可查看的布局")
+		return
+	}
+	var rows [][]interface{}
+	if err := json.Unmarshal([]byte(g.Grid), &rows); err != nil {
+		resp.ParamError(c, "地图布局数据异常")
+		return
+	}
+	resp.OK(c, gin.H{"cur": fmt.Sprintf("%d_%d", p.MapX, p.MapY), "rows": rows})
+}
+
 // Attrs 战斗属性明细（复刻原版状态页：基础+装备+头衔）
 func (h *HxxyHandler) Attrs(c *gin.Context) {
 	p := h.hxPlayer(c)
@@ -750,24 +893,25 @@ func (h *HxxyHandler) Attrs(c *gin.Context) {
 		return
 	}
 	a := h.hxAttrs(p)
-	// 已穿装备明细
+	// 已穿装备明细（复刻原版：11 个槽位全部展示，未穿显示"无"）
+	bagIDs := h.hxEqBagIDs(p)
 	equips := []gin.H{}
-	for slot, bid := range h.hxEqBagIDs(p) {
-		if bid == 0 {
-			continue
+	for slot := 1; slot <= len(hxSlotNames); slot++ {
+		entry := gin.H{"slot": slot, "slot_name": hxSlotNames[slot]}
+		if slot <= len(bagIDs) && bagIDs[slot-1] > 0 {
+			var b model.HxxyBag
+			if err := h.DB.First(&b, bagIDs[slot-1]).Error; err == nil {
+				var e model.HxxyEquip
+				if err := h.DB.First(&e, b.RefID).Error; err == nil {
+					entry["name"] = e.Name
+					entry["star_prefix"] = hxStarPrefix(e.Level)
+					entry["level"] = e.Level
+					entry["star"] = hxExtraStar(b.Extra)
+					entry["bag_id"] = b.ID
+				}
+			}
 		}
-		var b model.HxxyBag
-		if err := h.DB.First(&b, bid).Error; err != nil {
-			continue
-		}
-		var e model.HxxyEquip
-		if err := h.DB.First(&e, b.RefID).Error; err != nil {
-			continue
-		}
-		equips = append(equips, gin.H{
-			"slot": slot + 1, "slot_name": hxSlotNames[slot+1], "bag_id": b.ID,
-			"name": e.Name, "level": e.Level, "star": hxExtraStar(b.Extra),
-		})
+		equips = append(equips, entry)
 	}
 	resp.OK(c, gin.H{
 		"player": h.hxPlayerBrief(p),

@@ -3,6 +3,7 @@ package seed
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"log"
 	"regexp"
 	"strconv"
@@ -19,6 +20,9 @@ import (
 //go:embed hxxy_data/maps.json
 var hxxyMapsJSON []byte
 
+//go:embed hxxy_data/mapgrids.json
+var hxxyMapGridsJSON []byte
+
 //go:embed hxxy_data/npcs.json
 var hxxyNpcsJSON []byte
 
@@ -27,6 +31,9 @@ var hxxySpawnsJSON []byte
 
 //go:embed hxxy_data/map_npcs.json
 var hxxyMapNpcsJSON []byte
+
+//go:embed hxxy_data/mapnpcs_extract.json
+var hxxyMapNpcsExtractJSON []byte
 
 //go:embed hxxy_data/items.json
 var hxxyItemsJSON []byte
@@ -232,6 +239,22 @@ func seedHxxy(db *gorm.DB) {
 		log.Printf("[hxxy] 地图节点灌入 %d 条", len(rows))
 	}
 
+	// ---------- 地图网格（查看地图，复刻 xdt） ----------
+	if hxxyCount(db, &model.HxxyMapGrid{}) == 0 {
+		var raws map[string]json.RawMessage
+		mustJSON(hxxyMapGridsJSON, &raws)
+		rows := make([]model.HxxyMapGrid, 0, len(raws))
+		for k, v := range raws {
+			dtx, err := strconv.Atoi(k)
+			if err != nil {
+				continue
+			}
+			rows = append(rows, model.HxxyMapGrid{Dtx: dtx, Grid: string(v)})
+		}
+		db.CreateInBatches(rows, 100)
+		log.Printf("[hxxy] 地图网格灌入 %d 张", len(rows))
+	}
+
 	// ---------- 物品 ----------
 	if hxxyCount(db, &model.HxxyItem{}) == 0 {
 		var raws []hxxyItemRaw
@@ -406,23 +429,73 @@ func seedHxxy(db *gorm.DB) {
 		log.Printf("[hxxy] 功能NPC灌入 %d 条", len(rows))
 	}
 
-	// ---------- 副本定义 ----------
+	// ---------- 节点NPC放置补全（提取自原版 map/*.php 各节点 clj=7 的 NPC 链接，388条）----------
+	// 幂等：只补缺不覆盖（管理端已在 hxxy_map_npcs 配置的商店/传送保持不变）
+	{
+		var ext []hxxyMapNpcRaw
+		mustJSON(hxxyMapNpcsExtractJSON, &ext)
+		have := map[string]bool{}
+		var cur []model.HxxyMapNpc
+		db.Find(&cur)
+		for _, r := range cur {
+			have[fmt.Sprintf("%d_%d_%d", r.Dtx, r.Dty, r.NpcID)] = true
+		}
+		var npcIDs []uint
+		db.Model(&model.HxxyNpc{}).Pluck("id", &npcIDs)
+		npcSet := map[uint]bool{}
+		for _, id := range npcIDs {
+			npcSet[id] = true
+		}
+		rows := []model.HxxyMapNpc{}
+		for _, r := range ext {
+			if r.NpcID == 0 || !npcSet[r.NpcID] { // 原版活动NPC不在库内则跳过
+				continue
+			}
+			key := fmt.Sprintf("%d_%d_%d", r.Dtx, r.Dty, r.NpcID)
+			if have[key] {
+				continue
+			}
+			have[key] = true
+			rows = append(rows, model.HxxyMapNpc{Dtx: r.Dtx, Dty: r.Dty, NpcID: r.NpcID, Name: r.Name})
+		}
+		if len(rows) > 0 {
+			db.CreateInBatches(rows, 200)
+			log.Printf("[hxxy] 节点NPC补全 %d 条", len(rows))
+		}
+	}
+
+	// ---------- 副本定义（复刻原版 fb/*：斩妖台/北俱芦洲/变异竹林/水帘洞天/老君洞 × 普通/困难/梦魇/地狱） ----------
 	if hxxyCount(db, &model.HxxyDungeon{}) == 0 {
-		rows := []model.HxxyDungeon{
-			{ID: 1, Name: "大雁塔", Desc: "长安城内的大雁塔，塔中妖气缭绕，逐层挑战！", Floors: 10, Daily: 2, MinLevel: 10},
-			{ID: 2, Name: "小雁塔", Desc: "小雁塔中藏有佛门至宝，层层把关。", Floors: 10, Daily: 2, MinLevel: 20},
-			{ID: 3, Name: "兵马俑", Desc: "秦始皇陵兵马俑，千年佣兵苏醒，杀气冲天！", Floors: 15, Daily: 2, MinLevel: 30},
-			{ID: 4, Name: "碑林", Desc: "碑林深处藏有上古碑灵，以文入武。", Floors: 15, Daily: 2, MinLevel: 40},
-			{ID: 5, Name: "冰风谷", Desc: "终年寒风的冰封山谷，传说谷底有上古凶兽！", Floors: 20, Daily: 2, MinLevel: 50},
+		type fbDef struct {
+			Base string
+			Desc string
+			Lv   [4]int // 普通/困难/梦魇/地狱 进入等级
+		}
+		defs := []fbDef{
+			{"北俱芦洲", "北俱芦洲妖气冲天，击杀副本内5大守护BOSS！", [4]int{15, 30, 45, 60}},
+			{"水帘洞天", "水帘洞天藏于花果山，击杀副本内5大守护BOSS！", [4]int{20, 35, 50, 65}},
+			{"变异竹林", "变异竹林妖魔横行，击杀副本内5大守护BOSS！", [4]int{25, 40, 55, 70}},
+			{"斩妖台", "斩妖台乃天庭斩妖除魔之地，击杀副本内5大守护BOSS！", [4]int{30, 45, 60, 75}},
+			{"老君洞", "老君洞中丹炉异变，击杀副本内5大守护BOSS！", [4]int{35, 50, 65, 80}},
+		}
+		diffs := [4]string{"普通", "困难", "梦魇", "地狱"}
+		rows := []model.HxxyDungeon{}
+		id := uint(1)
+		for _, d := range defs {
+			for i, diff := range diffs {
+				rows = append(rows, model.HxxyDungeon{
+					ID: id, Name: fmt.Sprintf("%s副本【%s】", d.Base, diff), Desc: d.Desc,
+					Floors: 5, Daily: 1, MinLevel: d.Lv[i],
+				})
+				id++
+			}
 		}
 		db.Create(&rows)
 		log.Printf("[hxxy] 副本定义灌入 %d 条", len(rows))
 	}
 
-	// ---------- 新手任务（按 NPC/物品名动态查找，找不到就跳过） ----------
-	if hxxyCount(db, &model.HxxyQuest{}) == 0 {
-		hxxySeedQuests(db)
-	}
+	// ---------- 任务库（内部按数量判断是否重建） ----------
+	hxxySeedQuests(db)
 }
 
 // hxxyMarkBattleNpcs 刷怪表中的 NPC 标记为战斗型，并生成 经验/银两奖励 与 掉落
@@ -543,7 +616,8 @@ func hxxyItemEffect(r hxxyItemRaw) string {
 	return ""
 }
 
-// hxxySeedQuests 新手任务链（按名字查 NPC/物品，缺失即跳过该条）
+// hxxySeedQuests 任务库（按名字查 NPC/物品，缺失即跳过该条）
+// 分类：1主线（next 链式推进） 2支线 3日常；不足 15 条时整表重建（保留逻辑简单）
 func hxxySeedQuests(db *gorm.DB) {
 	npcID := func(name string) uint {
 		var n model.HxxyNpc
@@ -565,20 +639,56 @@ func hxxySeedQuests(db *gorm.DB) {
 		count, minLv    int
 		exp             int
 		money           int64
-		next            int // 同列表下标（1起）
+		next            int  // 同列表下标（1起）
+		cat             int  // 1主线 2支线 3日常
+		from            string
 	}
 	specs := []qd{
-		{"初入江湖", "击败新手村外的山贼，证明你的实力！", "hunt", npcID("山贼"), 5, 1, 200, 500, 2},
-		{"小试身手", "再去击败5个强盗，声名渐起。", "hunt", npcID("强盗"), 5, 1, 300, 800, 3},
-		{"拜见村长", "回去拜见村长，领取赏赐。", "talk", npcID("村长"), 1, 1, 100, 300, 4},
-		{"药材收购", "药店缺药材，收集5株小幸运草。", "collect", itemID("小幸运草"), 5, 1, 250, 600, 0},
+		// ---------- 主线（链式） ----------
+		{"初出茅庐", "村外的田地里闹起了大老鼠，去击败5只大老鼠，证明你的实力！", "hunt", npcID("大老鼠"), 5, 1, 200, 500, 2, 1, "村长"},
+		{"剿灭海贼", "海边海贼猖獗，再去击败5个海贼，为民除害。", "hunt", npcID("*海贼"), 5, 3, 300, 800, 3, 1, "村长"},
+		{"拜见村长", "初战告捷！回去拜见村长，领取赏赐。", "talk", npcID("村长"), 1, 3, 150, 400, 4, 1, "村长"},
+		{"长安来客", "长安城的李白想见见你这颗新星，去拜访他吧。", "talk", npcID("李白"), 1, 5, 300, 600, 5, 1, "李白"},
+		{"狼患", "城外野狼成患，猎杀8只野狼还百姓安宁。", "hunt", npcID("野狼"), 8, 6, 500, 1200, 6, 1, "李白"},
+		{"筹备药材", "军营缺药材，收集5份云南白药（小捆）以备不时之需。", "collect", itemID("云南白药（小捆）"), 5, 6, 400, 1000, 7, 1, "李白"},
+		{"除暴安良", "黑衣大汉在城郊横行霸道，击败6个教训他们！", "hunt", npcID("黑衣大汉"), 6, 8, 700, 1600, 8, 1, "张果老"},
+		{"拜见张果老", "张果老对你颇为赏识，去拜见他。", "talk", npcID("张果老"), 1, 8, 500, 1000, 9, 1, "张果老"},
+		{"缉拿飞贼", "近来飞贼四起，缉拿8名飞贼领赏。", "hunt", npcID("飞贼"), 8, 10, 900, 2200, 10, 1, "李捕头"},
+		{"傲来传令", "把军情传给傲来店的店小二，越快越好。", "talk", npcID("店小二"), 1, 10, 600, 1200, 11, 1, "店小二"},
+		{"东海练兵", "东海虾兵操演不断，击败10名虾兵立威。", "hunt", npcID("虾兵"), 10, 12, 1200, 3000, 12, 1, "龙宫大弟子"},
+		{"龙宫拜见", "龙宫大弟子有意引荐你入龙宫，去拜见他。", "talk", npcID("龙宫大弟子"), 1, 12, 800, 2000, 0, 1, "龙宫大弟子"},
+		// ---------- 支线 ----------
+		{"送外卖", "张二妈想吃热包子，收集3个猪肉包给她送去。", "collect", itemID("猪肉包"), 3, 2, 150, 400, 0, 2, "张二妈"},
+		{"蟹将作乱", "蟹将在滩涂作乱，击败5名蟹将。", "hunt", npcID("蟹将"), 5, 13, 1500, 3500, 0, 2, "渔夫海生"},
+		{"西瓜精之患", "瓜田里出了西瓜精，摘除6只！", "hunt", npcID("西瓜精"), 6, 18, 2000, 4500, 0, 2, "小兰"},
+		{"喽罗清剿", "喽罗们集结作乱，清剿10个。", "hunt", npcID("喽罗"), 10, 18, 2200, 5000, 0, 2, "古董老板"},
+		{"野味尝鲜", "众酒客想尝鲜，收集5串冰糖葫芦助兴。", "collect", itemID("冰糖葫芦"), 5, 15, 800, 1800, 0, 2, "众酒客"},
+		{"野蛮丫头", "野蛮丫头又在撒野，去击败6个让她安分点。", "hunt", npcID("野蛮丫头"), 6, 12, 1300, 2800, 0, 2, "萧晓月"},
+		// ---------- 日常 ----------
+		{"每日巡逻", "【日常】城郊巡逻，击败10只野狼。", "hunt", npcID("野狼"), 10, 5, 400, 900, 0, 3, "村长"},
+		{"每日运镖", "【日常】帮船夫押一趟货，去见他领任务。", "talk", npcID("船夫"), 1, 5, 300, 800, 0, 3, "船夫"},
+		{"每日采买", "【日常】店小二缺人手，收集5个素菜包。", "collect", itemID("素菜包"), 5, 5, 350, 800, 0, 3, "店小二"},
+		{"每日缉盗", "【日常】小流氓又出来偷摸，教训10个。", "hunt", npcID("小流氓"), 10, 10, 800, 1800, 0, 3, "李捕头"},
+		{"每日海防", "【日常】海防吃紧，击败12名虾兵。", "hunt", npcID("虾兵"), 12, 25, 3000, 6000, 0, 3, "龙宫大弟子"},
 	}
+	// 重新灌入：任务不足 15 条视为旧版种子，整表重建（连带清空玩家进度）
+	var cnt int64
+	db.Model(&model.HxxyQuest{}).Count(&cnt)
+	if cnt >= 15 {
+		return
+	}
+	db.Exec("DELETE FROM hxxy_player_quests")
+	db.Exec("DELETE FROM hxxy_quests")
 	rows := []model.HxxyQuest{}
 	for i, s := range specs {
 		if s.target == 0 {
 			continue
 		}
-		q := model.HxxyQuest{ID: uint(i + 1), Name: s.name, Desc: s.desc, Type: s.typ, TargetID: s.target, Count: s.count, MinLevel: s.minLv, ExpReward: s.exp, MoneyReward: s.money}
+		q := model.HxxyQuest{ID: uint(i + 1), Name: s.name, Desc: s.desc, Type: s.typ, Category: s.cat,
+			TargetID: s.target, Count: s.count, MinLevel: s.minLv, ExpReward: s.exp, MoneyReward: s.money}
+		if fn := npcID(s.from); fn > 0 {
+			q.FromNpc = fn
+		}
 		if s.next > 0 && s.next-1 < len(specs) && specs[s.next-1].target != 0 {
 			q.NextQuest = uint(s.next)
 		}

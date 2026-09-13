@@ -175,6 +175,12 @@ const COLS = {
     { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '名称', w: 120 }, { k: 'dtx', n: 'X', w: 60 },
     { k: 'dty', n: 'Y', w: 60 }, { k: 'npc_id', n: '战斗NPC', w: 80 }, { k: 'img', n: '图片', w: 100 },
     { k: 'shop', n: '服务', w: 100 }, { k: 'dialogue', n: '对话' }
+  ],
+  quests: [
+    { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '名称', w: 150 }, { k: 'category', n: '分类', w: 70 },
+    { k: 'type', n: '类型', w: 80 }, { k: 'count', n: '数量', w: 60 }, { k: 'min_level', n: '等级', w: 60 },
+    { k: 'from_npc', n: '发布NPC', w: 80 }, { k: 'exp_reward', n: '经验', w: 70 },
+    { k: 'money_reward', n: '银两', w: 70 }, { k: 'desc', n: '描述' }
   ]
 }
 
@@ -286,6 +292,22 @@ const FORMS = {
     { k: 'dialogue', n: '对话', t: 'text', max: 255 },
     { k: 'shop', n: '服务类型', t: 'select', opts: [{ v: '', n: '无服务' }, { v: 'medicine', n: '药店' }, { v: 'weapon', n: '武器店' }, { v: 'armor', n: '防具店' }, { v: 'jewel', n: '首饰店' }, { v: 'grocery', n: '杂货店' }, { v: 'pet', n: '宠物店' }, { v: 'bank', n: '银行' }, { v: 'warehouse', n: '仓库' }, { v: 'rest', n: '客栈休息' }] },
     { k: 'teles', n: '传送目的地', t: 'text', max: 1000 }
+  ],
+  quests: [
+    { k: 'name', n: '名称', t: 'input', req: true, max: 50 },
+    { k: 'desc', n: '描述', t: 'text', max: 255 },
+    { k: 'category', n: '分类', t: 'num', opts: [{ v: 1, n: '1 主线' }, { v: 2, n: '2 支线' }, { v: 3, n: '3 日常' }] },
+    { k: 'type', n: '完成方式', t: 'select', opts: [{ v: 'hunt', n: 'hunt 狩猎' }, { v: 'collect', n: 'collect 收集' }, { v: 'talk', n: 'talk 拜访' }] },
+    { k: 'target_id', n: '目标ID(怪/物)', t: 'num' },
+    { k: 'count', n: '需求数量', t: 'num' },
+    { k: 'min_level', n: '可接等级', t: 'num' },
+    { k: 'from_npc', n: '发布NPC ID(0无)', t: 'num' },
+    { k: 'exp_reward', n: '经验奖励', t: 'num' },
+    { k: 'money_reward', n: '银两奖励', t: 'num' },
+    { k: 'bean_reward', n: '金豆奖励', t: 'num' },
+    { k: 'item_reward', n: '物品奖励ID(0无)', t: 'num' },
+    { k: 'item_equip', n: '奖励类型', t: 'num', opts: [{ v: 0, n: '0 物品' }, { v: 1, n: '1 装备' }] },
+    { k: 'next_quest', n: '后续任务ID(0无)', t: 'num' }
   ]
 }
 
@@ -305,7 +327,7 @@ export default {
         { k: 'items', n: '物品' }, { k: 'equips', n: '装备' }, { k: 'npcs', n: 'NPC' },
         { k: 'skills', n: '技能' }, { k: 'maps', n: '地图节点' }, { k: 'bosses', n: 'BOSS' },
         { k: 'pets', n: '宠物种族' }, { k: 'titles', n: '头衔' }, { k: 'spawns', n: '刷怪点' },
-        { k: 'mapnpcs', n: '功能NPC' }
+        { k: 'mapnpcs', n: '功能NPC' }, { k: 'quests', n: '任务' }
       ],
       table: 'items', word: '',
       rows: [], total: 0, page: 1, size: 10, loading: false,

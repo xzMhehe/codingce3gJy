@@ -88,6 +88,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.JwtChat{}, &model.JwtLog{}, &model.JwtArenaRecord{},
 		// 幻想西游（复刻 wap 幻想西游：地图行走/回合战斗/装备/技能/宠物/副本/社交等）
 		&model.HxxyPlayer{}, &model.HxxyMapNode{}, &model.HxxyNpc{}, &model.HxxySpawn{}, &model.HxxyMapNpc{},
+		&model.HxxyMapGrid{},
 		&model.HxxyItem{}, &model.HxxyEquip{}, &model.HxxyBag{},
 		&model.HxxySkill{}, &model.HxxyPlayerSkill{},
 		&model.HxxyPetSpecies{}, &model.HxxyPet{},
@@ -98,10 +99,11 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.HxxyGang{}, &model.HxxyGangMember{}, &model.HxxyMarriage{},
 		&model.HxxyHouse{}, &model.HxxyFriend{}, &model.HxxyChat{},
 		&model.HxxyMsg{},
-		&model.HxxySignin{}, &model.HxxyStall{}, &model.HxxyWalletLog{},
+		&model.HxxySignin{}, &model.HxxySigninClaim{}, &model.HxxyStall{}, &model.HxxyWalletLog{},
 		&model.HxxyTeam{}, &model.HxxyTeamMember{}, &model.HxxyTeamInvite{},
 		&model.HxxyGangInvite{}, &model.HxxyHouseInvite{},
 		&model.HxxyGzWar{}, &model.HxxyGzScore{}, &model.HxxyGzPlayer{},
+		&model.HxxyActivityLog{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
