@@ -137,22 +137,19 @@
       </div>
       <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
       <template v-if="enemies.length">
-        <div><template v-for="(e, i) in enemies" :key="'hen' + i"><template v-if="i > 0">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></template></div>
+        <div><span v-for="(e, gi) in enemies" :key="'heg' + gi"><span v-for="k in 3" :key="'he' + gi + '-' + k"><template v-if="k > 1">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></span></span></div>
       </template>
       <span class="black">请选择出口</span><br/>
-      <template v-for="d in mapExits" :key="'hex' + d.dir">
+      <span v-for="d in mapExits" :key="'hex' + d.dir">
         <template v-if="d.walk"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir)">{{ d.walk.name }}</a><br/></template>
         <template v-if="d.jump && (!d.walk || d.jump.dir !== d.walk.dir)"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir, true)">{{ d.jump.name }}</a><br/></template>
-      </template>
+      </span>
       <a href="javascript:;" @click="go('mapview')">查看地图</a><br/>
       <template v-if="node.desc"><span class="black">{{ node.desc }}</span><br/></template>
       -----------<br/>
-      <!-- 附近玩家（复刻原版 fjwj：同地图玩家可私聊） -->
+      <!-- 附近玩家（复刻原版 fjwj.php：你看到：名字【国家】（职务），前置逗号分隔，VIP图独占一行，默认3个+更多....） -->
       <template v-if="nearby.length">
-        附近玩家：<br/>
-        <div v-for="(n, i) in nearby" :key="'nb' + i">
-          {{ i + 1 }}.<a href="javascript:;" @click="viewPlayer(n.player_id)">{{ n.name }}</a>({{ n.level }}级·{{ n.sect_name }})<br/>
-        </div>
+        <span class="black">你看到：</span><span v-for="(n, i) in nearbyShow" :key="'nb' + n.player_id"><template v-if="i > 0"><span class="black">,</span></template><template v-if="n.vip_lv > 0"><img :src="'/static/hxxy/vip/vip' + n.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /><br/></template><a href="javascript:;" @click="viewPlayer(n.player_id)">{{ n.name }}<template v-if="n.gang_name">【{{ n.gang_name }}】（{{ n.gang_role }}）</template></a></span><template v-if="!nearbyExpanded && nearby.length > 3"><span class="black">,</span><a href="javascript:;" @click="nearbyExpanded = true">更多....</a></template><br/>
       </template>
       <a href="javascript:;" @click="go('map')">【西游世界】</a>
       <a href="javascript:;" @click="go('bosses')">【世界BOSS】</a>
@@ -188,13 +185,13 @@
       </div>
       <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
       <template v-if="enemies.length">
-        <div><template v-for="(e, i) in enemies" :key="'en' + i"><template v-if="i > 0">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></template></div>
+        <div><span v-for="(e, gi) in enemies" :key="'eg' + gi"><span v-for="k in 3" :key="'e' + gi + '-' + k"><template v-if="k > 1">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></span></span></div>
       </template>
       <span class="black">请选择出口</span><br/>
-      <template v-for="d in mapExits" :key="'ex' + d.dir">
+      <span v-for="d in mapExits" :key="'ex' + d.dir">
         <template v-if="d.walk"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir)">{{ d.walk.name }}</a><br/></template>
         <template v-if="d.jump && (!d.walk || d.jump.dir !== d.walk.dir)"><span class="black">{{ d.label }}:</span><a href="javascript:;" @click="move(d.dir, true)">{{ d.jump.name }}</a><br/></template>
-      </template>
+      </span>
       <template v-if="!mapExits.length">四面都是高墙，没有出路……<br/></template>
       <a href="javascript:;" @click="go('mapview')">查看地图</a><br/>
       <template v-if="node.desc"><span class="black">{{ node.desc }}</span><br/></template>
@@ -278,7 +275,7 @@
         <template v-if="showQuickSet">
           -----------<br/>
           <span class="red">战斗场景快捷键设置</span><br/>
-          <template v-for="q in quickSlots" :key="'ss' + q.slot">
+          <span v-for="q in quickSlots" :key="'ss' + q.slot">
             <template v-if="quickSetSlot === q.slot">
               <span class="black">选择技能填入快捷{{ q.slot }}：</span><br/>
               <a v-for="s in quickSkillList()" :key="'qsp' + s.skill_id" href="javascript:;" @click="pickQuick(q.slot, s.skill_id)">[{{ s.name }}({{ s.mp_cost }})]</a>
@@ -289,7 +286,7 @@
               快捷{{ q.slot }}：<template v-if="q.skill_id"><a href="javascript:;" @click="quickSetSlot = q.slot">{{ q.name }}[改]</a></template><template v-else><a href="javascript:;" @click="quickSetSlot = q.slot">未设置[选择]</a></template>
               <span v-if="q.slot % 3 === 0"><br/></span><template v-else><span class="black">|</span></template>
             </template>
-          </template>
+          </span>
           <a href="javascript:;" @click="showQuickSet = false">返回战斗</a><br/>
         </template>
         <template v-if="bt.skills && bt.skills.length">
@@ -656,14 +653,14 @@
     <!-- ==================== 副本 ==================== -->
     <template v-else-if="cur === 'dungeons'">
       【副本】<br/>
-      <template v-for="(dg, i) in dungeons" :key="'dg' + dg.dungeon_id">
+      <span v-for="dg in dungeons" :key="'dg' + dg.dungeon_id">
         <span class="black">{{ dg.done ? '！' : (dg.locked || dg.kills >= dg.floors ? '' : '？') }}</span><a v-if="!dg.locked && !dg.done" href="javascript:;" @click="enterDungeon(dg)"><span class="blue">激活{{ dg.name }}</span></a><span v-else class="black">{{ dg.name }}</span><br/>
         <span class="gray">{{ dg.desc }}（{{ dg.min_level }}级开放）</span><br/>
         <template v-if="dg.locked"><span class="red">[等级不足]</span><br/></template>
         <template v-else-if="dg.done"><span class="gray">[今日已完成，明日再来]</span><br/></template>
         <template v-else-if="dg.kills > 0"><span class="black">已击杀{{ dg.kills }}/{{ dg.floors }}只守护BOSS</span><br/></template>
         ----------<br/>
-      </template>
+      </span>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('map')">世界</a><br/>
     </template>
 
@@ -686,13 +683,13 @@
         我的修炼如下：<br/>
         修炼经验：<span class="red">{{ cult.exp }}</span><a href="javascript:;" @click="cultToggle"><span class="blue">|{{ cult.switch === 1 ? '关闭' : '开启' }}</span></a><span class="black">({{ cult.switch === 1 ? '关闭后获得经验' : '开启后获得修炼经验' }})</span><br/>
         西游声望：<span class="red">{{ cult.sw }}</span><br/>
-        <template v-for="t in cult.tracks" :key="'xt' + t.slot">
+        <span v-for="t in cult.tracks" :key="'xt' + t.slot">
           <a href="javascript:;" @click="cultView = 'up' + t.slot"><span class="blue">【人物修炼（{{ t.name }}）】{{ xlTrackName(t) }}</span></a><br/>
-        </template>
+        </span>
         <br/>
-        <template v-for="t in cult.tracks" :key="'xb' + t.slot">
+        <span v-for="t in cult.tracks" :key="'xb' + t.slot">
           <span class="red">修炼（{{ t.name }}）加成：</span><span class="black">{{ t.bonus }}{{ { 1: '血量', 2: '攻击', 3: '魔攻', 4: '防御' }[t.slot] }}</span><br/>
-        </template>
+        </span>
         <a href="javascript:;" @click="cultView = 'intro'"><span class="blue">人物修炼（介绍）</span></a><br/>
         <a href="javascript:;" @click="cultExchangeDan"><span class="blue">【一键】各类修炼丹兑换修炼经验</span></a><br/>
         <span class="black">----------------------</span><br/>
@@ -701,7 +698,7 @@
       </template>
       <!-- 升级详情（复刻 xy428/433） -->
       <template v-else-if="cultView.indexOf('up') === 0">
-        <template v-for="t in cult.tracks" :key="'xd' + t.slot">
+        <span v-for="t in cult.tracks" :key="'xd' + t.slot">
           <template v-if="cultView === 'up' + t.slot">
             修炼：{{ xlTrackName(t) }}<br/>
             <template v-if="t.capped">
@@ -713,7 +710,7 @@
             </template>
             <br/>
           </template>
-        </template>
+        </span>
         <a href="javascript:;" @click="cultView = ''"><span class="blue">返回上级</span></a><br/>
         <a href="javascript:;" @click="go('home')"><span class="blue">返回游戏</span></a><br/>
         <span class="black">----------------------</span><br/>
@@ -734,7 +731,7 @@
     <!-- ==================== 头衔（复刻 xy011 管理 + xy477 称号一览 + xy478 详情） ==================== -->
     <template v-else-if="cur === 'titles'">
       <template v-if="!titleView">
-        【头衔】当前佩戴：<template v-if="titles.worn > 0">{{ wornTitleName }}</template><template v-else>暂无</template><a href="javascript:;" @click="titleView = 'manage'"><span class="blue">&nbsp管理</span></a><br/>
+        【头衔】当前佩戴：<template v-if="titles.worn > 0">{{ wornTitleName }}</template><template v-else>暂无</template><a href="javascript:;" @click="titleView = 'manage'"><span class="blue">&nbsp;管理</span></a><br/>
         <a href="javascript:;" @click="titleTab = 'list'"><span :class="titleTab === 'list' ? 'cur' : 'blue'">称号</span></a><span class="black">|</span><span class="black">半周年称号</span><span class="black">|</span><span class="black">重阳活动称号</span><span class="black">|</span><span class="black">万圣节活动称号</span><br/>
         <div v-for="(t, i) in titles.list" :key="'tl' + t.title_id">
           <span class="black">{{ (titles.page - 1) * 20 + i + 1 }}.</span><a href="javascript:;" @click="openTitle(t)"><span class="blue">{{ t.name }}</span></a><template v-if="t.owned"><span class="red">（已获得）</span></template><template v-else><span class="black">（未获得）</span></template><br/>
@@ -823,10 +820,10 @@
         </template>
         今日签到情况：<template v-if="sign.today_signed"><span class="red">已签到</span></template><template v-else><a href="javascript:;" @click="doSignin"><span class="red">【每日签到】</span></a></template><br/>
         <br/>
-        <template v-for="t in sign.tiers" :key="'st' + t.tier">
+        <span v-for="t in sign.tiers" :key="'st' + t.tier">
           <span class="black">1.</span><span style="color:#87CEEB">{{ t.tier }}次签到奖励--</span><template v-if="t.claimed"><span class="gray">已领取</span></template><template v-else><a href="javascript:;" @click="claimSign(t.tier)"><span class="red">【领取】</span></a></template><br/>
-        </template>
-        <span class="red">本月已累计签到&nbsp{{ sign.count }}&nbsp次</span><br/>
+        </span>
+        <span class="red">本月已累计签到&nbsp;{{ sign.count }}&nbsp;次</span><br/>
         <span class="black">介绍：玩家每天可签到一次，每月1日清零</span><br/>
         <span class="black">当累计达到2,5,10,15,25可领取丰厚的奖励</span><br/>
       </template>
@@ -1011,7 +1008,7 @@
           <span class="black">{{ gang.my_gang.name }}的国家商城</span><br/>
           <span class="black">我可以使用的国家贡献：{{ gangMall.contribution }}点</span><br/>
           <span class="black">----------------------</span><br/>
-          <template v-for="t in gangMall.tabs" :key="'mt' + t.level"><a href="javascript:;" @click="gangMallTab = t.level">{{ t.level }}级商城</a><span v-if="t.level < 10" class="black">|</span></template><br/>
+          <span v-for="t in gangMall.tabs" :key="'mt' + t.level"><a href="javascript:;" @click="gangMallTab = t.level">{{ t.level }}级商城</a><span v-if="t.level < 10" class="black">|</span></span><br/>
           <template v-if="gangMallTabObj">
             <template v-if="gangMallTabObj.unlocked">
               <span class="red">【{{ gangMallTabObj.level }}级国家商城】</span><br/>
@@ -1046,7 +1043,7 @@
         <template v-else-if="gangSub === 'appoint'">
           <template v-if="!gangAppointRole">
             <span class="black">请选择你要任命国家官员职务</span><br/>
-            <template v-for="r in [2, 3, 4, 5, 6, 7]" :key="'ar' + r"><a href="javascript:;" @click="gangAppointRole = r">任命{{ roleNames[r] }}</a><br/></template>
+            <span v-for="r in [2, 3, 4, 5, 6, 7]" :key="'ar' + r"><a href="javascript:;" @click="gangAppointRole = r">任命{{ roleNames[r] }}</a><br/></span>
           </template>
           <template v-else>
             <span class="black">请选择你要将谁任命为【{{ roleNames[gangAppointRole] }}】</span><br/>
@@ -1147,7 +1144,7 @@
         <span class="black">我的挂售</span><br/>
         <span class="black">挂售容量：{{ stallMine.used }}/{{ stallMine.capacity }}</span><br/>
         <template v-if="stallMine.stalls.length">
-          <div v-for="(s, i) in stallMine.stalls" :key="'sm' + s.stall_id">
+          <div v-for="s in stallMine.stalls" :key="'sm' + s.stall_id">
             <a href="javascript:;" @click="stallDetailId = stallDetailId === s.stall_id ? 0 : s.stall_id">{{ s.name }}</a><span class="blue">x{{ s.count }}（{{ s.price }}两/个）|</span><a href="javascript:;" @click="stallCancelTarget = stallCancelTarget === s.stall_id ? 0 : s.stall_id">下架</a><br/>
             <template v-if="stallDetailId === s.stall_id"><span class="gray">{{ s.desc }}</span><br/></template>
             <template v-if="stallCancelTarget === s.stall_id">
@@ -1172,7 +1169,7 @@
       <span class="black">{{ stallOf.seller_name }}的挂售：</span><br/>
       <span class="black">挂售容量：{{ stallOf.used }}/{{ stallOf.capacity }}</span><br/>
       <template v-if="stallOf.stalls.length">
-        <div v-for="(s, i) in stallOf.stalls" :key="'so' + s.stall_id">
+        <div v-for="s in stallOf.stalls" :key="'so' + s.stall_id">
           <a href="javascript:;" @click="stallBuyTarget = stallBuyTarget === s.stall_id ? 0 : s.stall_id">{{ s.name }}</a><span class="blue">x{{ s.count }}（{{ s.price }}两/个）</span><br/>
           <template v-if="stallDetailId === s.stall_id"><span class="gray">{{ s.desc }}</span><br/></template>
           <template v-if="stallBuyTarget === s.stall_id">
@@ -1274,9 +1271,9 @@
       </template>
       ----------------------<br/>
       <span class="red">会员福利一览</span><span class="black">（按充值等级）</span><br/>
-      <template v-for="d in vip.defs" :key="'vd' + d.lv">
+      <span v-for="d in vip.defs" :key="'vd' + d.lv">
         <span :class="d.lv === vip.level ? 'red' : 'blue'">VIP{{ d.lv }}级：【万能果】x{{ d.cute }}{{ d.beans ? '〖金豆〗x' + d.beans : '' }}（{{ d.silver }}银两）</span><br/>
-      </template>
+      </span>
       ----------------------<br/>
       <a href="javascript:;" @click="go('home')">首页</a>.<a href="javascript:;" @click="go('shop')">商店</a><br/>
     </template>
@@ -1375,13 +1372,11 @@
       腾云符：<span class="red">{{ teyun.fu }}</span>张<br/>
       <em>注：部分区域无法直接腾云，请寻找地图传送NPC！</em><br/>
       <template v-if="teyun.list.length">
-        <template v-for="(g, gi) in teyunGroup" :key="'tyg' + gi">
+        <span v-for="(g, gi) in teyunGroup" :key="'tyg' + gi">
           <span class="black">【{{ g.cat }}】</span><br/>
-          <template v-for="(t, tj) in g.items" :key="'ty' + gi + '-' + tj">
-            <a href="javascript:;" @click="teyunGo(t)">{{ t.name }}</a><span class="black">◎</span>
-          </template>
+          <span v-for="(t, tj) in g.items" :key="'ty' + gi + '-' + tj"><a href="javascript:;" @click="teyunGo(t)">{{ t.name }}</a><span class="black">◎</span></span>
           <br/>
-        </template>
+        </span>
       </template>
       <template v-else><em>没有可传送的地点。</em><br/></template>
       <em>每次腾云消耗1张腾云符（杂货店有售）。</em><br/>
@@ -1534,7 +1529,7 @@
 import api from '../api'
 
 export default {
-  name: 'Xiyou',
+  name: 'XiyouGame',
   data() {
     return {
       cur: 'boot',
@@ -1561,6 +1556,7 @@ export default {
       mapSize: 11,
       homeMsgs: [],
       nearby: [],
+      nearbyExpanded: false,
       notices: [],
       homeInvites: [],
       homeGangInvites: [],
@@ -1677,11 +1673,15 @@ export default {
       gz: null,
       team: null,
       tipMsg: '',
-      _tipTimer: null,
+      tipTimer: null,
     }
   },
   computed: {
     playerID() { return this.g.id || 0 },
+    // 附近玩家展开（复刻原版 fjwj.php：默认最多显示3个，更多....展开）
+    nearbyShow() {
+      return this.nearbyExpanded ? this.nearby : this.nearby.slice(0, 3)
+    },
     // 国家商城当前页签（1~10级）
     gangMallTabObj() {
       return this.gangMall.tabs.find(t => t.level === this.gangMallTab) || null
@@ -1809,8 +1809,8 @@ export default {
     // ---------- 基础 ----------
     tip(m) {
       this.tipMsg = m
-      if (this._tipTimer) clearTimeout(this._tipTimer)
-      this._tipTimer = setTimeout(() => { this.tipMsg = '' }, 2200)
+      if (this.tipTimer) clearTimeout(this.tipTimer)
+      this.tipTimer = setTimeout(() => { this.tipMsg = '' }, 2200)
     },
     fmtTime(t) { return (t || '').substring(5, 16) },
     slotName(c) { return { 1: '法宝', 2: '坐骑', 3: '手持', 4: '身穿', 5: '头戴', 6: '脚穿', 7: '佩戴', 8: '首饰', 9: '婚戒', 10: '婚链', 11: '披风' }[c] || '装备' },
@@ -2297,8 +2297,8 @@ export default {
       }
     },
     // ---------- 赠银/赠物（复刻 xy537/538） ----------
-    giveMoney(pv) { this.giveMode = 'money'; this.giveAmount = '' },
-    giveItem(pv) { this.giveMode = 'item'; this.giveBagId = 0; this.giveCount = ''; this.loadBag() },
+    giveMoney() { this.giveMode = 'money'; this.giveAmount = '' },
+    giveItem() { this.giveMode = 'item'; this.giveBagId = 0; this.giveCount = ''; this.loadBag() },
     async doGiveMoney(pv) {
       const amt = parseInt(this.giveAmount, 10)
       if (!amt || amt <= 0) { this.tip('输入有误，或者不能为空'); return }

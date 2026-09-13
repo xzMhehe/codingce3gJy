@@ -233,7 +233,7 @@ func (h *HxxyHandler) Home(c *gin.Context) {
 			gangRole = hxGangRoleNames[mem.Role]
 		}
 		list = append(list, gin.H{"player_id": n.ID, "name": n.Name, "level": n.Level,
-			"sect_name": hxSectNames[n.Sect], "gang_name": gangName, "gang_role": gangRole})
+			"sect_name": hxSectNames[n.Sect], "gang_name": gangName, "gang_role": gangRole, "vip_lv": n.VipLv})
 	}
 	// 组队邀请（复刻原版 yq1.php：邀请直接显示在首页）
 	var invites []model.HxxyTeamInvite
