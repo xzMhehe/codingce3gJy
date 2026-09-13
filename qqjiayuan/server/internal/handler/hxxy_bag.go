@@ -27,7 +27,12 @@ func (h *HxxyHandler) hxBagView(b *model.HxxyBag) gin.H {
 			v["level"] = it.Level
 			v["price"] = it.Price
 			v["bean_price"] = it.BeanPrice
-			v["effect"] = it.Effect
+			// 效果以对象返回（原版为 JSON），便于前端判断是否气血/法力恢复类
+			eff := gin.H{}
+			if it.Effect != "" {
+				json.Unmarshal([]byte(it.Effect), &eff)
+			}
+			v["effect"] = eff
 		}
 	} else {
 		var e model.HxxyEquip

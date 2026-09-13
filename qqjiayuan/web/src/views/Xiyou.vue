@@ -38,7 +38,7 @@
       </template>
       <!-- 第2~4步：开场故事 -->
       <template v-else-if="cf.step === 'story'">
-        <img :src="stories[cf.story].pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+        <img :key="cf.story" :src="stories[cf.story].pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
         {{ stories[cf.story].text }}<br/>
         <a href="javascript:;" @click="storyNext()">继续</a><br/>
       </template>
@@ -46,7 +46,7 @@
       <template v-else-if="cf.step === 'sect'">
         【选择门派】<br/>
         <div v-for="s in sects" :key="'sc' + s.id">
-          <img :src="s.pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+          <img :key="s.pic" :src="s.pic" width="200" alt="" onerror="this.style.display='none'"/><br/>
           {{ s.intro }}<template v-if="s.limit"><span class="red">({{ s.limit }})</span></template><br/>
           （{{ s.bonus }}）<br/>
           <a href="javascript:;" @click="pickSect(s)">选择{{ s.name }}</a><br/>
@@ -55,7 +55,7 @@
       <!-- 第6步：门派介绍 -->
       <template v-else-if="cf.step === 'sectIntro'">
         【{{ cf.sectName }}】<br/>
-        <img :src="cf.sectPic" width="200" alt="" onerror="this.style.display='none'"/><br/>
+        <img :key="cf.sectPic" :src="cf.sectPic" width="200" alt="" onerror="this.style.display='none'"/><br/>
         {{ cf.sectLong }}<br/>
         （{{ cf.sectBonus }}）<br/>
         <a href="javascript:;" @click="cf.step = 'name'">继续</a><br/>
@@ -121,7 +121,7 @@
       </template>
       【幻想西游<template v-if="serverName">·{{ serverName }}</template>】<br/>
       <a href="javascript:;" @click="go('attrs')">{{ g.name }}</a>({{ g.sect_name }}·{{ g.level }}级
-      <template v-if="vipLv > 0"><img :src="'/static/hxxy/vip/vip' + vipLv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /></template>
+      <template v-if="vipLv > 0"><img :key="vipLv" :src="'/static/hxxy/vip/vip' + vipLv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /></template>
       <template v-else-if="g.vip > 0">·VIP祝福{{ g.vip }}分钟</template>)<br/>
       气血：<span class="red">{{ g.hp }}-{{ g.max_hp }}</span>
       法力：<span :class="g.mp < g.max_mp ? 'cur' : 'black'">{{ g.mp }}-{{ g.max_mp }}</span><br/>
@@ -135,7 +135,7 @@
       <div v-for="n in mapNpcs" :key="'hmn' + n.id">
         <a href="javascript:;" @click="viewNpc(n.id)">{{ n.name }}</a><br/>
       </div>
-      <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
+      <div v-if="mapImgSrc" class="mapimg"><img v-show="mapImgOk" :src="mapImgSrc" @load="mapImgOk = true" @error="mapImgErr = true; mapImgOk = false" alt="地图" /><span v-if="mapImgErr" class="gray">（本区域暂无地图图片）</span></div>
       <template v-if="enemies.length">
         <div><span v-for="(e, gi) in enemies" :key="'heg' + gi"><span v-for="k in 3" :key="'he' + gi + '-' + k"><template v-if="k > 1">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></span></span></div>
       </template>
@@ -149,7 +149,7 @@
       -----------<br/>
       <!-- 附近玩家（复刻原版 fjwj.php：你看到：名字【国家】（职务），前置逗号分隔，VIP图独占一行，默认3个+更多....） -->
       <template v-if="nearby.length">
-        <span class="black">你看到：</span><span v-for="(n, i) in nearbyShow" :key="'nb' + n.player_id"><template v-if="i > 0"><span class="black">,</span></template><template v-if="n.vip_lv > 0"><img :src="'/static/hxxy/vip/vip' + n.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /><br/></template><a href="javascript:;" @click="viewPlayer(n.player_id)">{{ n.name }}<template v-if="n.gang_name">【{{ n.gang_name }}】（{{ n.gang_role }}）</template></a></span><template v-if="!nearbyExpanded && nearby.length > 3"><span class="black">,</span><a href="javascript:;" @click="nearbyExpanded = true">更多....</a></template><br/>
+        <span class="black">你看到：</span><span v-for="(n, i) in nearbyShow" :key="'nb' + n.player_id"><template v-if="i > 0"><span class="black">,</span></template><template v-if="n.vip_lv > 0"><img :key="'vip' + n.player_id + '-' + n.vip_lv" :src="'/static/hxxy/vip/vip' + n.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" style="vertical-align:middle" /><br/></template><a href="javascript:;" @click="viewPlayer(n.player_id)">{{ n.name }}<template v-if="n.gang_name">【{{ n.gang_name }}】（{{ n.gang_role }}）</template></a></span><template v-if="!nearbyExpanded && nearby.length > 3"><span class="black">,</span><a href="javascript:;" @click="nearbyExpanded = true">更多....</a></template><br/>
       </template>
       <a href="javascript:;" @click="go('map')">【西游世界】</a>
       <a href="javascript:;" @click="go('bosses')">【世界BOSS】</a>
@@ -183,7 +183,7 @@
       <div v-for="n in mapNpcs" :key="'mn' + n.id">
         <a href="javascript:;" @click="viewNpc(n.id)">{{ n.name }}</a><br/>
       </div>
-      <div class="mapimg"><img :src="'/static/hxxy/dtpic/' + g.map_x + '-' + g.map_y + '.jpg'" @error="$event.target.style.display = 'none'" alt="地图" /></div>
+      <div v-if="mapImgSrc" class="mapimg"><img v-show="mapImgOk" :src="mapImgSrc" @load="mapImgOk = true" @error="mapImgErr = true; mapImgOk = false" alt="地图" /><span v-if="mapImgErr" class="gray">（本区域暂无地图图片）</span></div>
       <template v-if="enemies.length">
         <div><span v-for="(e, gi) in enemies" :key="'eg' + gi"><span v-for="k in 3" :key="'e' + gi + '-' + k"><template v-if="k > 1">,</template><a href="javascript:;" @click="startBattle(e.npc_id)">{{ e.name }}</a></span></span></div>
       </template>
@@ -222,7 +222,7 @@
 
     <!-- ==================== NPC交互 ==================== -->
     <template v-else-if="cur === 'npcview' && npcCur">
-      <div v-if="npcCur.img" class="npcimg"><img :src="'/static/hxxy/npc/' + npcCur.img" @error="$event.target.style.display = 'none'" alt="NPC" /></div>
+      <div v-if="npcCur.img" class="npcimg"><img :key="npcCur.img" :src="'/static/hxxy/npc/' + npcCur.img" @error="$event.target.style.display = 'none'" alt="NPC" /></div>
       <span class="red">{{ npcCur.name }}</span><template v-if="npcCur.level > 0">({{ npcCur.level }}级)</template><br/>
       <span class="black">{{ npcCur.name }}：{{ npcCur.dialogue }}</span><br/>
       <template v-if="npcCur.teles && npcCur.teles.length">
@@ -270,23 +270,35 @@
         <a href="javascript:;" @click="battleAct('attack')">【攻击】</a>
         <a v-if="bt.type !== 'pvp'" href="javascript:;" @click="battleAct('catch')">【捕捉】</a>
         <a href="javascript:;" @click="battleAct('flee')">【逃跑】</a>
-        <a href="javascript:;" @click="showQuickSet = !showQuickSet">【快捷键设置】</a>
+        <a href="javascript:;" @click="toggleQuickSet">【快捷键设置】</a>
         <a href="javascript:;" @click="backToMap">【退出战斗】</a><br/>
         <template v-if="showQuickSet">
           -----------<br/>
           <span class="red">战斗场景快捷键设置</span><br/>
-          <span v-for="q in quickSlots" :key="'ss' + q.slot">
-            <template v-if="quickSetSlot === q.slot">
-              <span class="black">选择技能填入快捷{{ q.slot }}：</span><br/>
-              <a v-for="s in quickSkillList()" :key="'qsp' + s.skill_id" href="javascript:;" @click="pickQuick(q.slot, s.skill_id)">[{{ s.name }}({{ s.mp_cost }})]</a>
-              <a href="javascript:;" @click="pickQuick(q.slot, 0)">[清空]</a><br/>
-              <a href="javascript:;" @click="quickSetSlot = 0">[取消]</a><br/>
+          <template v-if="quickSetSlot">
+            <span class="black">请选择指定的物品作为快捷键以便在战斗中直接使用</span><br/>
+            <template v-if="quickPickTab === 'item'">
+              <a href="javascript:;" @click="quickPickTab = 'skill'">技能</a>|<span class="black">药品</span><br/>
             </template>
             <template v-else>
-              快捷{{ q.slot }}：<template v-if="q.skill_id"><a href="javascript:;" @click="quickSetSlot = q.slot">{{ q.name }}[改]</a></template><template v-else><a href="javascript:;" @click="quickSetSlot = q.slot">未设置[选择]</a></template>
-              <span v-if="q.slot % 3 === 0"><br/></span><template v-else><span class="black">|</span></template>
+              <span class="black">技能</span>|<a href="javascript:;" @click="quickPickTab = 'item'">药品</a><br/>
             </template>
-          </span>
+            <template v-if="quickPickList().length">
+              <a v-for="(s, i) in quickPickList()" :key="'qp' + quickPickTab + i" href="javascript:;" @click="pickQuick(quickSetSlot, quickPickTab, quickPickTab === 'item' ? s.id : s.skill_id)">{{ i + 1 }}.{{ s.name }}<template v-if="quickPickTab !== 'item'">（{{ s.mp_cost }}）</template></a><br/>
+            </template>
+            <template v-else>
+              <span class="black">{{ quickPickTab === 'item' ? '你还没有任何可用的丹药' : '你还没有学会任何技能' }}</span><br/>
+            </template>
+            <a href="javascript:;" @click="pickQuick(quickSetSlot, '', 0)">[清空该快捷]</a>
+            <a href="javascript:;" @click="quickSetSlot = 0">[返回]</a><br/>
+          </template>
+          <template v-else>
+            <span v-for="q in quickSlots" :key="'ss' + q.slot">
+              快捷{{ q.slot }}：<template v-if="q.ref_id"><a href="javascript:;" @click="openQuickSetFor(q.slot)">{{ q.name }}[改]</a></template><template v-else><a href="javascript:;" @click="openQuickSetFor(q.slot)">选择</a></template>
+              <span v-if="q.slot % 3 === 0"><br/></span><template v-else><span class="black">|</span></template>
+            </span>
+            <a href="javascript:;" @click="resetQuick">重置快捷键</a><br/>
+          </template>
           <a href="javascript:;" @click="showQuickSet = false">返回战斗</a><br/>
         </template>
         <template v-if="bt.skills && bt.skills.length">
@@ -298,9 +310,11 @@
         <template v-if="quickSlots.length">
           -----------<br/>
           <span class="black">快捷键：</span><br/>
-          <div v-for="q in quickSlots" :key="'qs' + q.slot">
-            快捷{{ q.slot }}：<template v-if="q.skill_id"><a href="javascript:;" @click="battleAct('skill', q.skill_id)">{{ q.name }}({{ q.mp_cost }})</a></template><template v-else><span class="gray">未设置</span></template><br/>
-          </div>
+          <span v-for="q in quickSlots" :key="'qs' + q.slot">
+            <template v-if="q.ref_id"><a href="javascript:;" @click="useQuick(q)">{{ q.name }}</a></template><template v-else><a href="javascript:;" @click="openQuickSetFor(q.slot)"><span class="gray">快捷{{ q.slot }}</span></a></template>
+            <span v-if="q.slot % 3 === 0"><br/></span><template v-else><span class="black">|</span></template>
+          </span>
+          <br/>
         </template>
       </template>
       <template v-else>
@@ -319,11 +333,16 @@
 
     <!-- ==================== 状态 ==================== -->
     <template v-else-if="cur === 'attrs' && at">
-      <div v-if="g.vip_lv > 0" class="npcimg"><img :src="'/static/hxxy/vip/vip' + g.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" /></div>
+      <div v-if="g.vip_lv > 0" class="npcimg"><img :key="g.vip_lv" :src="'/static/hxxy/vip/vip' + g.vip_lv + '.png'" @error="$event.target.style.display = 'none'" alt="VIP" /></div>
       ID：{{ g.id }}<br/>
       <a href="javascript:;" @click="go('titles')">称号一览</a><br/>
       头衔：<template v-if="g.title_name">{{ g.title_name }}</template><template v-else>暂无</template><br/>
-      <span class="red">恶名：{{ emTitle }}({{ g.emz }}点)</span><br/>
+      <!-- 佩戴头衔图片（复刻原版 xy011 → wp/txdt.php：缺图时提示"称号图片还未制作"） -->
+      <template v-if="curTitleId > 0">
+        <img v-show="txImgOk" :src="titleImg(curTitleId)" @load="txImgOk = true" @error="txImgErr = true; txImgOk = false" alt="称号" /><br/>
+        <span v-if="txImgErr" class="gray">（该称号图片还未制作）</span><br/>
+      </template>
+      <span class="red">恶名：{{ emzName(g.emz) }}</span><br/>
       昵称：{{ g.name }}<br/>
       性别：{{ g.sex === 2 ? '女' : '男' }}<br/>
       配偶：<template v-if="g.spouse"><span class="red">{{ g.spouse }}</span></template><template v-else>暂无</template><br/>
@@ -340,7 +359,7 @@
       攻击元素：冰+{{ at.attrs.bg }} 火+{{ at.attrs.hg }} 雷+{{ at.attrs.lg }}<br/>
       防御元素：冰+{{ at.attrs.bf }} 火+{{ at.attrs.hf }} 雷+{{ at.attrs.lf }}<br/>
       经验：{{ g.exp }}/{{ g.exp_need }}<br/>
-      修炼经验：<span class="red">{{ g.xiulian_exp }}</span> | <a href="javascript:;" @click="xiulianQuickToggle">{{ g.xiulian_switch ? '关闭' : '开启' }}</a>{{ g.xiulian_switch ? '(关闭后获得经验)' : '(开启后获得修炼经验)' }}<br/>
+      修炼经验：<span class="red">{{ g.xiulian_exp }}</span> | <a href="javascript:;" @click="cultToggle">{{ g.xiulian_switch ? '关闭' : '开启' }}</a>{{ g.xiulian_switch ? '(关闭后获得经验)' : '(开启后获得修炼经验)' }}<br/>
       -----------<br/>
       【装备】<br/>
       <div v-for="e in at.equips" :key="'eq' + e.slot">
@@ -743,6 +762,11 @@
       <!-- 详情（复刻 xy478：红字名字+描述） -->
       <template v-else-if="titleView === 'detail'">
         <span class="red">{{ titleDetail.name }}</span><br/>
+        <!-- 称号图片（复刻原版 xy478 → wp/txdt.php） -->
+        <template v-if="curTitleId > 0">
+          <img v-show="txImgOk" :src="titleImg(curTitleId)" @load="txImgOk = true" @error="txImgErr = true; txImgOk = false" alt="称号" /><br/>
+          <span v-if="txImgErr" class="gray">（该称号图片还未制作）</span><br/>
+        </template>
         <span class="black">描述：{{ titleDetail.desc }}</span><br/>
         <template v-if="!titleDetail.owned">
           <span class="black">激活需要 {{ titleDetail.price }} 银两，激活后永久增加属性。</span><br/>
@@ -1553,6 +1577,10 @@ export default {
       enemies: [],
       mapNpcs: [],
       mapGrid: { cur: '', rows: [] },
+      mapImgOk: false,   // 当前节点地图图片是否加载成功
+      mapImgErr: false,  // 当前节点地图图片是否缺失（原版 xy008：缺图时给出提示）
+      txImgOk: false,    // 当前头衔图片是否加载成功
+      txImgErr: false,   // 当前头衔图片是否未制作（原版 txdt.php：缺图时给出提示）
       mapSize: 11,
       homeMsgs: [],
       nearby: [],
@@ -1570,6 +1598,9 @@ export default {
       battleItems: [],
       quickSlots: [],
       quickSetSlot: 0,
+      quickPickTab: 'skill',
+      skLoaded: false,
+      bagLoaded: false,
       showQuickSet: false,
       at: null,
       equippedIDs: [],
@@ -1678,6 +1709,18 @@ export default {
   },
   computed: {
     playerID() { return this.g.id || 0 },
+    // 当前节点地图图片（原版 pic/dtpic/{dtx}-{dty}.jpg；素材只覆盖部分节点）
+    mapImgSrc() {
+      const x = this.g.map_x, y = this.g.map_y
+      if (x === undefined || x === null || y === undefined || y === null) return ''
+      return '/static/hxxy/dtpic/' + x + '-' + y + '.jpg'
+    },
+    // 当前应展示的头衔图片 id（原版 xy011 状态页=佩戴头衔；xy478 称号详情=查看的头衔）
+    curTitleId() {
+      if (this.cur === 'attrs') return this.g.title_id || 0
+      if (this.cur === 'titles' && this.titleView === 'detail') return (this.titleDetail && this.titleDetail.title_id) || 0
+      return 0
+    },
     // 附近玩家展开（复刻原版 fjwj.php：默认最多显示3个，更多....展开）
     nearbyShow() {
       return this.nearbyExpanded ? this.nearby : this.nearby.slice(0, 3)
@@ -1777,6 +1820,18 @@ export default {
     },
     rankValName() {
       return { level: '等级', money: '银两', pets: '宠物等级' }[this.rankType] || '值'
+    },
+  },
+  watch: {
+    // 换节点后重置地图图片状态，等待新图加载（避免上一次的"缺图"状态粘住）
+    mapImgSrc() {
+      this.mapImgOk = false
+      this.mapImgErr = false
+    },
+    // 换头衔后同理重置
+    curTitleId() {
+      this.txImgOk = false
+      this.txImgErr = false
     },
   },
   mounted() {
@@ -2154,7 +2209,14 @@ export default {
     async loadBattleItems() {
       const r = await api.get('/games/hxxy/bag')
       if (r.code === 0) {
-        this.battleItems = (r.data.items || []).filter(b => b.kind === 'item' && b.effect && (b.effect.hp > 0 || b.effect.mp > 0))
+        // effect 兼容字符串/对象两种形态；战斗中可用的药品=气血/法力恢复类
+        this.battleItems = (r.data.items || []).filter(b => b.kind === 'item').map(b => {
+          let eff = b.effect
+          if (typeof eff === 'string') { try { eff = JSON.parse(eff || '{}') } catch (e) { eff = {} } }
+          return Object.assign({}, b, { effect: eff || {} })
+        }).filter(b => b.effect.hp > 0 || b.effect.mp > 0)
+        this.bagLoaded = true
+        this.loadQuickSlots()
       }
     },
     async battleAct(act, skillID, bagID) {
@@ -2457,38 +2519,110 @@ export default {
     // ---------- 技能 ----------
     async loadSkills() {
       const r = await api.get('/games/hxxy/skills')
-      if (r.code === 0) { this.sk = r.data; this.loadQuickSlots() }
+      if (r.code === 0) { this.sk = r.data; this.skLoaded = true; this.loadQuickSlots() }
     },
-    // ---------- 战斗快捷键（复刻原版 快捷键1~9 槽位） ----------
+    // ---------- 战斗快捷键（复刻原版 快捷键1~9 槽位，可存「技能」或「药品」） ----------
     quickKey() {
       const server = this.serverName || localStorage.getItem('hxxy_server') || ''
       return 'hxxy_quick_' + server + '_' + (this.g.pid || this.g.id || this.g.name || 'self')
     },
+    // 已学战斗技能（原版 xy015 技能页）
+    quickSkillList() {
+      return ((this.sk && this.sk.mine) || []).filter(s => s.category === 1)
+    },
+    // 可用药品（原版 xy016 药品页：气血/法力恢复类道具）
+    quickItemList() {
+      return this.battleItems || []
+    },
+    // 当前选择页的候选列表
+    quickPickList() {
+      return this.quickPickTab === 'item' ? this.quickItemList() : this.quickSkillList()
+    },
+    // 读取快捷槽：兼容旧格式；仅当来源列表已加载时才清理失效槽（避免列表未加载时误清）
     loadQuickSlots() {
       let raw = {}
       try { raw = JSON.parse(localStorage.getItem(this.quickKey()) || '{}') } catch (e) { raw = {} }
-      const active = (this.sk && this.sk.mine || []).filter(s => s.category === 1)
-      this.quickSlots = []
+      const skills = this.quickSkillList()
+      const items = this.quickItemList()
+      const out = []
+      let dirty = false
       for (let i = 1; i <= 9; i++) {
-        const id = raw['k' + i] || 0
-        const hit = active.find(s => s.skill_id === id)
-        this.quickSlots.push({ slot: i, skill_id: id, name: hit ? hit.name : '', mp_cost: hit ? hit.mp_cost : 0 })
+        const cur = raw[i] || raw['k' + i] // 兼容旧格式 {k1: skillId}
+        let kind = '', id = 0, name = '', cost = 0
+        if (cur && typeof cur === 'object') { kind = cur.t || ''; id = cur.id || 0; name = cur.n || ''; cost = cur.c || 0 } else if (cur) { kind = 'skill'; id = cur }
+        if (kind === 'skill') {
+          if (this.skLoaded) {
+            const hit = skills.find(s => s.skill_id === id)
+            if (hit) { name = hit.name; cost = hit.mp_cost } else { kind = ''; id = 0; name = ''; cost = 0; dirty = true }
+          }
+        } else if (kind === 'item') {
+          if (this.bagLoaded) {
+            const hit = items.find(b => b.id === id)
+            if (hit) { name = hit.name; cost = 0 } else { kind = ''; id = 0; name = ''; cost = 0; dirty = true }
+          }
+        } else { kind = ''; id = 0; name = ''; cost = 0 }
+        out.push({ slot: i, kind: kind, ref_id: id, name: name, mp_cost: cost })
       }
+      this.quickSlots = out
+      if (dirty) this.saveQuickSlots()
     },
-    bindQuick(slot, skill_id) {
-      let raw = {}
-      try { raw = JSON.parse(localStorage.getItem(this.quickKey()) || '{}') } catch (e) { raw = {} }
-      raw['k' + slot] = skill_id
+    saveQuickSlots() {
+      const raw = {}
+      this.quickSlots.forEach(q => { if (q.kind && q.ref_id) raw[q.slot] = { t: q.kind, id: q.ref_id, n: q.name, c: q.mp_cost } })
       localStorage.setItem(this.quickKey(), JSON.stringify(raw))
-      this.loadQuickSlots()
-      this.tip('成功将' + ('快捷' + slot) + '设置为了' + (this.quickSlots[slot - 1] && this.quickSlots[slot - 1].name || '空'))
     },
-    pickQuick(slot, skill_id) {
-      this.bindQuick(slot, skill_id)
+    // 写入某槽位（原版 xy247）：kind='skill'|'item'，refId=0 表示清空
+    bindQuick(slot, kind, refId) {
+      const idx = slot - 1
+      if (!this.quickSlots[idx]) return
+      const q = this.quickSlots[idx]
+      if (!refId || !kind) {
+        q.kind = ''; q.ref_id = 0; q.name = ''; q.mp_cost = 0
+      } else if (kind === 'item') {
+        const hit = this.quickItemList().find(b => b.id === refId)
+        if (!hit) { this.tip('该药品不存在'); return }
+        q.kind = 'item'; q.ref_id = refId; q.name = hit.name; q.mp_cost = 0
+      } else {
+        const hit = this.quickSkillList().find(s => s.skill_id === refId)
+        if (!hit) { this.tip('该技能不存在'); return }
+        q.kind = 'skill'; q.ref_id = refId; q.name = hit.name; q.mp_cost = hit.mp_cost
+      }
+      this.saveQuickSlots()
+      this.tip('成功将快捷' + slot + '设置为了' + (q.name || '空'))
+    },
+    pickQuick(slot, kind, refId) {
+      this.bindQuick(slot, kind, refId)
       this.quickSetSlot = 0
     },
-    quickSkillList() {
-      return (this.sk && this.sk.mine || []).filter(s => s.category === 1)
+    // 重置全部快捷键（原版 xy305）
+    resetQuick() {
+      localStorage.removeItem(this.quickKey())
+      this.loadQuickSlots()
+      this.tip('快捷方式重置成功！')
+    },
+    // 战斗中点击快捷键使用（原版 xy248 / jnxx.php：药品用完自动清空该快捷）
+    useQuick(q) {
+      if (q.kind === 'item') {
+        const hit = this.quickItemList().find(b => b.id === q.ref_id)
+        if (!hit || hit.count < 1) { this.loadQuickSlots(); this.tip('快捷' + q.slot + '的药品已用完，已清空'); return }
+        this.battleAct('item', 0, q.ref_id)
+      } else {
+        this.battleAct('skill', q.ref_id)
+      }
+    },
+    toggleQuickSet() {
+      this.showQuickSet = !this.showQuickSet
+      if (this.showQuickSet) {
+        this.quickSetSlot = 0
+        this.quickPickTab = 'skill'
+        this.loadBattleItems()
+      }
+    },
+    openQuickSetFor(slot) {
+      this.showQuickSet = true
+      this.quickSetSlot = slot
+      this.quickPickTab = 'skill'
+      this.loadBattleItems()
     },
     async learnSkill(s) {
       const r = await api.post('/games/hxxy/skills/learn', { skill_id: s.skill_id })

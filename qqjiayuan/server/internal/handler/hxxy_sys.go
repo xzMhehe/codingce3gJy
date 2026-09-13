@@ -22,6 +22,23 @@ func (h *HxxyHandler) Skills(c *gin.Context) {
 	}
 	var learned []model.HxxyPlayerSkill
 	h.DB.Where("player_id = ?", p.ID).Find(&learned)
+	// 兜底：老角色若一个技能都没有，补发初始技能（普攻 + 本门派技能），
+	// 与原版一致——每个玩家至少拥有基础技能，避免技能页/战斗快捷键可选项为空
+	if len(learned) == 0 {
+		var ids []uint
+		h.DB.Model(&model.HxxySkill{}).
+			Where("category = 1 AND (sect = 0 OR sect = ?) AND id <> 1", p.Sect).
+			Pluck("id", &ids)
+		ids = append(ids, 1) // 普攻
+		for _, sid := range ids {
+			var cnt int64
+			h.DB.Model(&model.HxxyPlayerSkill{}).Where("player_id = ? AND skill_id = ?", p.ID, sid).Count(&cnt)
+			if cnt == 0 {
+				h.DB.Create(&model.HxxyPlayerSkill{PlayerID: p.ID, SkillID: sid, Level: 1})
+			}
+		}
+		h.DB.Where("player_id = ?", p.ID).Find(&learned)
+	}
 	owned := map[uint]bool{}
 	mine := []gin.H{}
 	for _, l := range learned {
