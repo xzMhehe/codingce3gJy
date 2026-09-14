@@ -8,8 +8,8 @@
         <input type="submit" value="确定登录">
       </form>
       <p v-if="err" style="color:#c00">{{ err }}</p>
-      <a href="javascript:;" @click="$router.push('/register')">免费注册</a>|<a href="javascript:;" @click="$router.push('/channel/4')">客服中心</a><br>
-|     <a href="javascript:;" @click="$router.push('/find')">找回资料</a><br>|<a href="javascript:;" @click="$router.push('/nav')">注册声明</a><br>
+      <a href="javascript:;" @click="$router.push('/register')">免费注册</a>|<a href="javascript:;" @click="$router.push('/kefu')">客服中心</a><br>
+      <a href="javascript:;" @click="$router.push('/find')">找回资料</a>|<a href="javascript:;" @click="$router.push('/kefu/terms')">注册声明</a><br>
       ----------<br>
       <br>
     </div>

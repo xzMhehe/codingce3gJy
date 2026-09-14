@@ -32,7 +32,7 @@
     <!-- 页脚（复刻诺哈 Page_Bottom：家园社区-广场-导航-聊天室-管理-退出 / 超Q.空间.家园.微博 / 小Q报时） -->
     <div class="footer">
       <p>
-        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" @click="goAdmin">管理</a>-<a v-if="isLogin" href="javascript:;" @click="logoutOut">退出</a><br>
+        <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" @click="goAdmin">管理</a><a v-if="isLogin" href="javascript:;" @click="logoutOut">-退出</a><br>
         <template v-if="isLogin"><a href="javascript:;" @click="$router.push('/noble')">超Q({{ noble }})</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博({{ noticeUnread }})</a><br></template>
       </p>
       <p>

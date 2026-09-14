@@ -51,7 +51,7 @@
     <!-- 社区服务 -->
     <div class="module-title">【社区服务】</div>
     <div class="module-content">
-      <a href="javascript:;" @click="tip('客服')">客服</a>.<a href="javascript:;" @click="tip('关于')">关于</a>.<a href="javascript:;" @click="tip('招商')">招商</a><br>
+      <a href="javascript:;" @click="$router.push('/kefu')">客服</a>.<a href="javascript:;" @click="tip('关于')">关于</a>.<a href="javascript:;" @click="tip('招商')">招商</a><br>
       <a href="javascript:;" @click="$router.push('/sign')">每日签到</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/search')">搜搜</a><br>
     </div>
 

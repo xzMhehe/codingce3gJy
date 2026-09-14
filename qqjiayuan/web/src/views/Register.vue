@@ -32,6 +32,8 @@
         注册成功！你的家园号码是：<b style="color:#c00">{{ okNo }}</b><br>
         已送新人礼包100G币，<a href="javascript:;" @click="$router.push('/login')">快去登陆吧 &gt;&gt;</a>
       </div>
+      <div class="line"></div>
+      <p>注册前请先阅读<a href="javascript:;" @click="$router.push('/kefu/terms')">《注册声明》</a>，注册即代表同意全部条款。</p>
     </div>
   </div>
 </template>
