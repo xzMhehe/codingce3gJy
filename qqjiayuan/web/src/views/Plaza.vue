@@ -9,7 +9,7 @@
 
     <!-- 同城推荐 -->
     <template v-if="sec('tongcheng')">累了吗？来<a href="javascript:;" @click="$router.push('/tongcheng')">同城客栈</a>透个气吧！<br>
-    <span v-if="tcSubs.length"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a> <span v-for="s in tcSubs.slice(0, 8)" :key="'tc'+s.id"><a href="javascript:;" @click="$router.push('/tongcheng/province/'+s.id)">{{ s.name }}</a>.</span><a href="javascript:;" @click="$router.push('/tongcheng')">更多省份&gt;&gt;</a></span>
+    <span v-if="tcSubs.length"><a href="javascript:;" @click="$router.push('/tongcheng')">同城</a> <span v-for="s in tcSubs.slice(0, 3)" :key="'tc'+s.id"><a href="javascript:;" @click="$router.push('/tongcheng/province/'+s.id)">{{ s.name }}</a>.</span><a href="javascript:;" @click="$router.push('/tongcheng')">更多省份&gt;&gt;</a></span>
     你可能还会喜欢以下论坛：<br>
     <span v-if="gtSubs.length"><span v-for="s in gtSubs" :key="'gt'+s.id"><a href="javascript:;" @click="$router.push('/board/'+s.id)">{{ s.name }}</a>.</span></span><a href="javascript:;" @click="$router.push('/channel/1')">&gt;&gt;</a><br></template>
 

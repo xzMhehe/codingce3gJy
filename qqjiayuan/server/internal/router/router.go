@@ -38,6 +38,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	spaceH := &handler.SpaceHandler{DB: db}
 	moodH := &handler.MoodHandler{DB: db}
 	ecoH := &handler.EconomyHandler{DB: db}
+	flaH := &handler.FlaHandler{DB: db}
 	famH := &handler.FamilyHandler{DB: db, Secret: cfg.Jwt.Secret}
 	bookH := &handler.BookHandler{DB: db}
 	favH := &handler.FavoriteHandler{DB: db}
@@ -79,6 +80,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/repass/qq", authH.RepassByQQ)
 		api.POST("/auth/repass/mail", authH.RepassByMail)
 		api.POST("/auth/repass/protection", authH.RepassByProtection)
+		api.GET("/fla", flaH.Index)
 		api.GET("/plaza", plazaH.Index)
 		api.GET("/announcements", plazaH.Announcements)
 		api.GET("/search", plazaH.Search)

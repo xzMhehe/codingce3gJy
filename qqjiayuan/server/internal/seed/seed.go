@@ -69,6 +69,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadVote{}, &model.ReplyVote{}, &model.ThreadGift{}, &model.ThreadFlower{},
 		&model.Report{},
 		&model.TtouApply{}, &model.TtouWorship{},
+		&model.FlaDonation{}, &model.FlaWorship{},
 		&model.Home{}, &model.HomeNews{}, &model.HomeFavorite{}, &model.UserContact{},
 		&model.Invite{}, &model.GuestBook{}, &model.GuestReply{},
 		&model.PhoneAudit{},
