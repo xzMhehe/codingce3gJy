@@ -67,6 +67,38 @@
       [关注]:<a href="javascript:;" @click="$router.push('/user/'+author.id)">家园</a>.<a href="javascript:;" @click="$router.push('/space/'+author.id)">空间</a>.<a href="javascript:;" @click="$router.push('/user/'+author.id)">帖子</a><br>
     </div>
 
+    <!-- 互动条（赞/踩/打赏/送花/分享/举报，一人一票可改票） -->
+    <div class="item">
+      [互动]:<a href="javascript:;" @click="vote(1)"><font :color="myVote === 1 ? '#1a9e1a' : '#004299'">[赞{{ likeCount }}]</font></a>.<a href="javascript:;" @click="vote(-1)"><font :color="myVote === -1 ? '#c00' : '#004299'">[踩{{ dislikeCount }}]</font></a>.<a href="javascript:;" @click="giftOpen = !giftOpen">[打赏]</a>.<a href="javascript:;" @click="flowerOpen = !flowerOpen">[送花]</a>.<a href="javascript:;" @click="doShare(false)">[分享{{ shareCount }}]</a>.<a href="javascript:;" @click="doShare(true)">[心情]</a>.<a href="javascript:;" @click="openReport('thread', thread.id)">[举报]</a><br>
+      <template v-if="giftCount || flowerCount">
+        <template v-if="giftCount">已收到 {{ giftCount }} 次打赏共 {{ giftTotal }}G币</template><template v-if="giftCount && flowerCount">，</template><template v-if="flowerCount">收到 {{ flowerCount }} 朵鲜花（{{ flowerPeople }} 人送）</template><br>
+      </template>
+    </div>
+
+    <!-- 打赏面板 -->
+    <div class="module-content" v-if="giftOpen" style="background:#E3EEF8">
+      [打赏]：<input type="number" v-model.number="giftCoins" min="1" max="100000" style="width:90px">G币 <input type="submit" value="确定打赏" @click.prevent="doGift"><br>
+      <template v-if="gifts.length"><span v-for="g in gifts" :key="'g'+g.id">{{ g.sender ? g.sender.nickname : '?' }} 打赏 {{ g.coins }}G币（{{ fmt(g.created_at) }}）<br></span></template>
+    </div>
+
+    <!-- 送花面板 -->
+    <div class="module-content" v-if="flowerOpen" style="background:#E3EEF8">
+      [送花]：<select v-model="flowerKind" style="width:80px"><option v-for="f in flowerKinds" :key="f" :value="f">{{ f }}</option></select>
+      <input type="submit" value="9朵" @click.prevent="doFlower(9)"> <input type="submit" value="52朵" @click.prevent="doFlower(52)"> <input type="submit" value="99朵" @click.prevent="doFlower(99)">
+      或 <input type="number" v-model.number="flowerNum" min="1" max="99" style="width:60px"> <input type="submit" value="自定义" @click.prevent="doFlower(flowerNum)"><br>
+      <a href="javascript:;" @click="$router.push('/shop')">鲜花不足？去商城购买&gt;&gt;</a><br>
+      <template v-if="flowers.length"><span v-for="f in flowers" :key="'f'+f.id">{{ f.sender ? f.sender.nickname : '?' }} 送出 {{ f.count }} 朵{{ f.flower }}（{{ fmt(f.created_at) }}）<br></span></template>
+    </div>
+
+    <!-- 举报面板 -->
+    <div class="module-content" v-if="reportOpen" style="background:#E3EEF8">
+      [举报{{ reportType === 'thread' ? '该帖' : '该回复' }}]<br>
+      <select v-model="reportReason"><option value="">选择理由</option><option v-for="r in reportReasons" :key="r" :value="r">{{ r }}</option></select><br>
+      或自定义理由：<input type="text" v-model.trim="reportReason" maxlength="200" style="width:60%"><br>
+      <input type="submit" value="提交举报" @click.prevent="submitReport">
+      <span v-if="reportMsg" style="color:#1a9e1a">{{ reportMsg }}</span><br>
+    </div>
+
     <!-- 投票（诺哈 ==投票选项==） -->
     <div class="title" v-if="poll">==投票选项==<br></div>
     <div class="item" v-if="poll" style="background:#FFF6E5">
@@ -130,10 +162,11 @@
         <img class="bicon" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级">
         <a href="javascript:;" @click="$router.push('/user/'+(r.user ? r.user.id : ''))"><font :color="r.user ? r.user.color : ''">{{ r.user ? r.user.nickname : '路人' }}</font></a><br>
         <span v-html="renderLine(r.content)"></span><br>
-        [{{ fmt(r.created_at) }}] <a href="javascript:;" @click="quote(r)">回复</a>
+        [{{ fmt(r.created_at) }}] <a href="javascript:;" @click="likeReply(r)"><font :color="r.liked ? '#1a9e1a' : '#004299'">[赞{{ r.like_count || 0 }}]</font></a>.<a href="javascript:;" @click="quote(r)">回复</a>
         <template v-if="canSticky">.<a href="javascript:;" @click="stickyReply(r)">置顶</a></template>
         <template v-if="isLogin && r.user && user.id === r.user.id">.<a href="javascript:;" style="color:#c00" @click="delReply(r)">删除</a></template>
-        <template v-if="isLogin && canManageAny && !(r.user && user.id === r.user.id)">.<a href="javascript:;" style="color:#c00" @click="delReply(r)">删除</a></template><br>
+        <template v-if="isLogin && canManageAny && !(r.user && user.id === r.user.id)">.<a href="javascript:;" style="color:#c00" @click="delReply(r)">删除</a></template>
+        <template v-if="isLogin && !(r.user && user.id === r.user.id)">.<a href="javascript:;" @click="openReport('reply', r.id)">举报</a></template><br>
       </div>
       <div v-if="!recent.length" class="row01">还没有人回复，来抢沙发！</div>
       <div class="row01"><a href="javascript:;" @click="$router.push('/replies/'+thread.id)">全部回贴({{ total }})</a><br></div>
@@ -221,7 +254,15 @@ export default {
       content: '', sending: false, faceOpen: false,
       editing: false, editForm: { title: '', content: '' }, editTip: '', editOk: false,
       channels: [], moveOpen: false, moveBoardId: 0, moveMsg: '', manageOpen: false,
-      quoteReplyId: 0, shareTip: '', goInput: 1
+      quoteReplyId: 0, shareTip: '', goInput: 1,
+      myVote: 0, likeCount: 0, dislikeCount: 0,
+      giftTotal: 0, giftCount: 0, flowerCount: 0, flowerPeople: 0, shareCount: 0,
+      flowers: [], gifts: [],
+      giftOpen: false, giftCoins: 100,
+      flowerOpen: false, flowerKind: '玫瑰花', flowerNum: 9,
+      flowerKinds: ['玫瑰花', '向日葵', '郁金香', '月光花'],
+      reportOpen: false, reportType: 'thread', reportTargetId: 0, reportReason: '', reportMsg: '',
+      reportReasons: ['广告/垃圾信息', '人身攻击', '色情低俗', '违法违规', '侵权抄袭', '其他违规']
     }
   },
   computed: {
@@ -285,10 +326,33 @@ export default {
         this.reward = r.data.reward || null
         this.floors = r.data.floors || []
         this.attachments = r.data.attachments || []
+        this.likeCount = r.data.like_count || 0
+        this.dislikeCount = r.data.dislike_count || 0
+        this.giftTotal = r.data.gift_total || 0
+        this.giftCount = r.data.gift_count || 0
+        this.flowerCount = r.data.flower_count || 0
+        this.flowerPeople = r.data.flower_people || 0
+        this.shareCount = r.data.share_count || 0
+        this.flowers = r.data.flowers || []
+        this.gifts = r.data.gifts || []
         this.quoteReplyId = 0
       })
       if (this.isLogin) {
         api.get(`/threads/${id}/favorite-status`).then(r => { if (r.code === 0) this.favored = r.data.favored })
+        api.get(`/threads/${id}/interact-status`).then(r => {
+          if (r.code === 0) {
+            this.myVote = r.data.my_vote || 0
+            this.likeCount = r.data.like_count
+            this.dislikeCount = r.data.dislike_count
+            this.giftTotal = r.data.gift_total
+            this.giftCount = r.data.gift_count
+            this.flowerCount = r.data.flower_count
+            this.flowerPeople = r.data.flower_people
+            this.shareCount = r.data.share_count
+            this.flowers = r.data.flowers || []
+            this.gifts = r.data.gifts || []
+          }
+        })
       }
       api.get('/plaza').then(r => {
         if (r.code !== 0) return
@@ -367,6 +431,58 @@ export default {
     percent (v) {
       const max = Math.max(...(this.poll ? this.poll.options.map(o => o.votes) : [1]), 1)
       return Math.round((v / max) * 100)
+    },
+    // ---- 互动：赞/踩/打赏/送花/分享/举报 ----
+    vote (v) {
+      if (!this.isLogin) return this.$router.push('/login?redirect=' + this.$route.fullPath)
+      const target = this.myVote === v ? 0 : v
+      api.post(`/threads/${this.thread.id}/vote`, { value: target }).then(r => {
+        if (r.code === 0) { this.myVote = r.data.my_vote; this.likeCount = r.data.like_count; this.dislikeCount = r.data.dislike_count }
+        else alert(r.msg)
+      })
+    },
+    doGift () {
+      if (!this.giftCoins || this.giftCoins < 1) return alert('请输入打赏G币数（1~100000）')
+      api.post(`/threads/${this.thread.id}/gift`, { coins: this.giftCoins }).then(r => {
+        if (r.code === 0) { alert('打赏成功！'); this.giftOpen = false; this.load() } else alert(r.msg)
+      })
+    },
+    doFlower (n) {
+      if (!n || n < 1) return alert('请输入正确的送花数量（1~99）')
+      api.post(`/threads/${this.thread.id}/flower`, { flower: this.flowerKind, count: n }).then(r => {
+        if (r.code === 0) { alert('送花成功！'); this.flowerOpen = false; this.load() } else alert(r.msg)
+      })
+    },
+    doShare (toMood) {
+      if (!this.isLogin) return this.$router.push('/login?redirect=' + this.$route.fullPath)
+      api.post(`/threads/${this.thread.id}/share`, { to_mood: !!toMood }).then(r => {
+        if (r.code === 0) { this.shareCount = r.data.share_count; alert(toMood ? '已分享到我的心情！' : '分享成功！') }
+        else alert(r.msg)
+      })
+    },
+    likeReply (r) {
+      if (!this.isLogin) return this.$router.push('/login?redirect=' + this.$route.fullPath)
+      api.post(`/replies/${r.id}/like`).then(x => {
+        if (x.code === 0) { r.like_count = x.data.like_count; r.liked = x.data.liked }
+        else alert(x.msg)
+      })
+    },
+    openReport (type, id) {
+      if (!this.isLogin) return this.$router.push('/login?redirect=' + this.$route.fullPath)
+      this.reportType = type
+      this.reportTargetId = id
+      this.reportReason = ''
+      this.reportMsg = ''
+      this.reportOpen = !this.reportOpen
+    },
+    submitReport () {
+      if (!this.reportReason) return alert('请选择或填写举报理由')
+      api.post('/reports', { target_type: this.reportType, target_id: this.reportTargetId, reason: this.reportReason }).then(r => {
+        if (r.code === 0) {
+          this.reportMsg = r.data && r.data.duplicated ? '该举报已提交过，管理员会尽快处理' : '举报成功！管理员会尽快处理'
+          setTimeout(() => { this.reportMsg = ''; this.reportOpen = false }, 1500)
+        } else alert(r.msg)
+      })
     },
     // ---- 贴子管理 ----
     toggleFav () {

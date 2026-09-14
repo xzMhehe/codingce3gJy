@@ -49,10 +49,16 @@ func (h *InteractHandler) Vote(c *gin.Context) {
 			}
 		}
 	} else if v.Value != req.Value {
-		h.DB.Model(&v).Update("value", req.Value)
-		if v.Value == 1 {
+		// 注意：GORM Update 会把新值同步回结构体，必须先保存旧值再判断
+		old := v.Value
+		if req.Value == 0 {
+			h.DB.Delete(&v)
+		} else {
+			h.DB.Model(&v).Update("value", req.Value)
+		}
+		if old == 1 {
 			h.DB.Model(&model.Thread{}).Where("id = ?", th.ID).UpdateColumn("like_count", gorm.Expr("like_count - 1"))
-		} else if v.Value == -1 {
+		} else if old == -1 {
 			h.DB.Model(&model.Thread{}).Where("id = ?", th.ID).UpdateColumn("dislike_count", gorm.Expr("dislike_count - 1"))
 		}
 		if req.Value == 1 {
