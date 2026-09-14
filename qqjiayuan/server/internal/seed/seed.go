@@ -2102,8 +2102,11 @@ func seedGames(db *gorm.DB) {
 			db.Create(&games[i])
 		} else {
 			// 老库补齐新字段（幂等）
+			// 注意：category 必须一起同步。它决定游戏出现在「社区游戏大厅」还是「互联网游戏板块」，
+			// 早期版本曾把"幻想西游"存成 net，若这里不同步，老库会永远留在错误的分区里。
 			db.Model(&model.Game{}).Where("name = ?", games[i].Name).Updates(map[string]interface{}{
-				"intro": games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
+				"category": games[i].Category,
+				"intro":    games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
 			})
 		}
 	}
