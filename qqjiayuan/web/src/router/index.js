@@ -101,6 +101,46 @@ const routes = [
 
 const router = new VueRouter({ routes })
 
+// ---------------------------------------------------------------------------
+// vue-router 3.4 起，push()/replace() 返回 Promise：导航被守卫重定向或中止时，
+// 这个 Promise 会 reject。未登录点游戏 → 守卫跳登录页，正属于这种"被重定向"，
+// 是预期流程，但全项目的 $router.push 调用处都没有 catch，于是控制台会报：
+//   Redirected when going from "/games" to "/games/garden" via a navigation guard.
+//
+// 这里在原型上统一吞掉「导航类失败」，其余真实错误照旧抛出，避免掩盖问题。
+// 判定用 vue-router 官方导出的 isNavigationFailure（依据 err._isRouter），
+// 不靠错误文案匹配；下面那段字符串兜底只为了兼容更老的 vue-router 版本。
+function isNavFailure (err) {
+  if (!err) return false
+  if (typeof VueRouter.isNavigationFailure === 'function' && VueRouter.isNavigationFailure(err)) {
+    return true
+  }
+  const name = err.name || ''
+  const msg = err.message || ''
+  return name === 'NavigationDuplicated' ||
+    /Redirected when going from|Navigation (?:cancelled|aborted)|Avoided redundant navigation/.test(msg)
+}
+
+function swallowNavFailure (promise) {
+  return promise.catch(err => {
+    if (isNavFailure(err)) return err
+    throw err
+  })
+}
+
+const rawPush = VueRouter.prototype.push
+VueRouter.prototype.push = function push (location, onResolve, onReject) {
+  // 调用方显式传了回调时不拦截，保持 vue-router 原生行为
+  if (onResolve || onReject) return rawPush.call(this, location, onResolve, onReject)
+  return swallowNavFailure(rawPush.call(this, location))
+}
+
+const rawReplace = VueRouter.prototype.replace
+VueRouter.prototype.replace = function replace (location, onResolve, onReject) {
+  if (onResolve || onReject) return rawReplace.call(this, location, onResolve, onReject)
+  return swallowNavFailure(rawReplace.call(this, location))
+}
+
 router.beforeEach((to, from, next) => {
   // 已登录再访问登录/注册页，直接回广场（退出登录后才会放行）
   if ((to.path === '/login' || to.path === '/register') && store.getters.isLogin) {

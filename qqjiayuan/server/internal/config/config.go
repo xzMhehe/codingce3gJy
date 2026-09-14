@@ -54,6 +54,13 @@ func (m *MysqlConfig) DSN() string {
 		m.DBName + "?charset=utf8mb4&parseTime=True&loc=Local"
 }
 
+// DSNWithoutDB 不带库名的连接串。
+// 建库前目标库还不存在，必须用这个连到 MySQL 实例本身。
+func (m *MysqlConfig) DSNWithoutDB() string {
+	return m.User + ":" + m.Password + "@tcp(" + m.Host + ":" + itoa(m.Port) + ")/" +
+		"?charset=utf8mb4&parseTime=True&loc=Local"
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
