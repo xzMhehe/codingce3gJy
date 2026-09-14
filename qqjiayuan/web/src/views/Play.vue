@@ -36,7 +36,7 @@
     <!-- 幸运猜数字 -->
     <div class="module-title">幸运猜数字</div>
     <div class="module-content">
-      <p class="txt-fade">本期开奖 <b style="color:#e05a00">{{ lastNum || '?' }}</b>，猜「大(≥5)/小(≤4)/单/双」，猜中翻倍返还，猜错G币扣除。当前G币 <b style="color:#e05a00">{{ coins }}</b>。</p>
+      <p class="txt-fade">本期开奖 <b style="color:#e05a00">{{ lastNum || '?' }}</b>，猜「大(6-10)/小(1-5)/单/双」，猜中翻倍返还，猜错G币扣除。当前G币 <b style="color:#e05a00">{{ coins }}</b>。</p>
       <p><button class="btn" :class="{ red: bet === 'big' }" @click="bet = 'big'">大</button>
         <button class="btn" :class="{ red: bet === 'small' }" @click="bet = 'small'">小</button>
         <button class="btn" :class="{ red: bet === 'odd' }" @click="bet = 'odd'">单</button>
@@ -86,41 +86,47 @@ export default {
   },
   mounted () { this.coins = this.$store.state.user.coins || 0; this.loadAll() },
   methods: {
+    syncCoins (c) {
+      this.coins = c
+      if (this.$store.state.user) {
+        this.$store.commit('setUser', { user: Object.assign({}, this.$store.state.user, { coins: c }) })
+      }
+    },
     loadAll () { this.loadBank(); this.loadWork(); this.loadFortune(); this.loadCharity() },
     loadCharity () { api.get('/charity/rank').then(r => { if (r.code === 0) this.charityRank = r.data }) },
     doDig () {
       api.post('/dig').then(r => {
-        if (r.code === 0) { this.digTip = r.data.tip + ' 获得 ' + r.data.reward + ' G币'; this.coins = r.data.coins } else this.msg = r.msg
+        if (r.code === 0) { this.digTip = r.data.tip + ' 获得 ' + r.data.reward + ' G币'; this.syncCoins(r.data.coins) } else this.msg = r.msg
       })
     },
     doCharity () {
       if (!this.charityAmt || this.charityAmt < 1) { this.msg = '请输入捐款金额'; return }
       api.post('/charity', { amount: this.charityAmt }).then(r => {
-        if (r.code === 0) { this.okMsg = '感谢捐赠 ' + this.charityAmt + ' G币'; this.charityAmt = 10; this.loadCharity() } else this.msg = r.msg
+        if (r.code === 0) { this.okMsg = '感谢捐赠 ' + this.charityAmt + ' G币'; this.syncCoins(r.data.coins); this.charityAmt = 10; this.loadCharity() } else this.msg = r.msg
       })
     },
-    loadBank () { api.get('/bank/view').then(r => { if (r.code === 0) this.bank = r.data }) },
+    loadBank () { api.get('/bank/view').then(r => { if (r.code === 0) { this.bank = r.data; this.coins = r.data.coins } }) },
     loadWork () { api.get('/work/status').then(r => { if (r.code === 0) this.work = r.data }) },
     loadFortune () { api.get('/fortune').then(r => { if (r.code === 0) this.fortune = r.data }) },
     bankOp (op) {
       this.msg = ''; this.okMsg = ''
       if (!this.bankAmt || this.bankAmt <= 0) { this.msg = '请输入金额'; return }
       api.post('/bank/' + op, { amount: this.bankAmt }).then(r => {
-        if (r.code === 0) { this.okMsg = (op === 'deposit' ? '已存入 ' : '已取出 ') + this.bankAmt + ' G币'; this.bank = r.data }
+        if (r.code === 0) { this.okMsg = (op === 'deposit' ? '已存入 ' : '已取出 ') + this.bankAmt + ' G币'; this.bank = Object.assign({}, this.bank, r.data); this.syncCoins(r.data.coins) }
         else this.msg = r.msg
       })
     },
     doInterest () {
       this.msg = ''; this.okMsg = ''
       api.post('/bank/interest').then(r => {
-        if (r.code === 0) { this.okMsg = '获得利息 ' + r.data.rate + ' G币'; this.loadBank() }
+        if (r.code === 0) { this.okMsg = '获得利息 ' + r.data.rate + ' G币'; this.syncCoins(r.data.coins); this.loadBank() }
         else this.msg = r.msg
       })
     },
     doWork () {
       this.msg = ''; this.okMsg = ''
       api.post('/work').then(r => {
-        if (r.code === 0) { this.okMsg = '打工成功 +' + r.data.reward + ' G币'; this.work = { done: r.data.done, limit: r.data.limit, left: r.data.limit - r.data.done } }
+        if (r.code === 0) { this.okMsg = '打工成功 +' + r.data.reward + ' G币'; this.syncCoins(r.data.coins); this.work = { done: r.data.done, limit: r.data.limit, left: r.data.limit - r.data.done } }
         else this.msg = r.msg
       })
     },
@@ -129,7 +135,7 @@ export default {
       if (!this.lotAmt || this.lotAmt <= 0) { this.msg = '请输入下注G币'; return }
       api.post('/lottery', { bet: this.bet, amount: this.lotAmt }).then(r => {
         if (r.code === 0) {
-          this.lastNum = r.data.num; this.coins = r.data.coins
+          this.lastNum = r.data.num; this.syncCoins(r.data.coins)
           this.okMsg = '开奖 ' + r.data.num + '，' + (r.data.win ? '恭喜猜中！G币 +' + this.lotAmt : '很遗憾，这局没猜中')
         } else this.msg = r.msg
       })

@@ -88,7 +88,7 @@
 
     <!-- 社区服务（诺哈便民服务：天气.手机.ＩＰ.翻译，进便民中心） -->
     <div class="box bline" v-if="sec('service')"><div class="module-title"><a href="javascript:;" @click="$router.push('/tool')">便民服务</a></div>
-      <div class="module-content"><a href="javascript:;" @click="$router.push('/tool/weather')">天气</a>.<a href="javascript:;" @click="$router.push('/tool/phone')">手机</a>.<a href="javascript:;" @click="$router.push('/tool/ip')">ＩＰ</a>.<a href="javascript:;" @click="$router.push('/tool/translate')">翻译</a>.<a href="javascript:;" @click="$router.push('/tool')">更多&gt;&gt;</a></div>
+      <div class="module-content"><a href="javascript:;" @click="$router.push('/tool/weather')">天气</a>.<a href="javascript:;" @click="$router.push('/tool/phone')">手机</a>.<a href="javascript:;" @click="$router.push('/tool/ip')">IP</a>.<a href="javascript:;" @click="$router.push('/tool/translate')">翻译</a>.<a href="javascript:;" @click="$router.push('/tool')">更多&gt;&gt;</a></div>
     </div>
 
     <!-- 用户动态 -->

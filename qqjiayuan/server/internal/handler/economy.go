@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -197,7 +198,7 @@ func (h *EconomyHandler) CharityRank(c *gin.Context) {
 		UserID     uint   `json:"user_id"`
 		Nickname   string `json:"nickname"`
 		Color      string `json:"color"`
-		TotalDonat int64  `json:"total"`
+		TotalDonat int64  `json:"total" gorm:"column:total"`
 	}
 	var rows []row
 	h.DB.Raw(`SELECT d.user_id, u.nickname, u.color, SUM(d.amount) AS total
@@ -391,13 +392,30 @@ func (h *EconomyHandler) Fortune(c *gin.Context) {
 	})
 }
 
-// 幸运猜数字：下注猜大/小/单/双，结果随机 1~9，加倍返还
+// 幸运猜数字：下注猜大/小/单/双，结果随机 1~10（大6-10/小1-5/单/双 各5个，概率均等），猜中翻倍返还
 func (h *EconomyHandler) Lottery(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	bet := c.PostForm("bet")
-	amount, ok := amountOf(c)
-	if !ok {
-		return
+	var bet string
+	var amount int
+	if strings.HasPrefix(c.ContentType(), "application/json") {
+		var req struct {
+			Bet    string `json:"bet"`
+			Amount int    `json:"amount"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.ParamError(c, "参数不合法")
+			return
+		}
+		bet = req.Bet
+		amount = req.Amount
+	} else {
+		bet = c.PostForm("bet")
+		n, err := strconv.Atoi(c.PostForm("amount"))
+		if err != nil {
+			resp.ParamError(c, "金额不合法")
+			return
+		}
+		amount = n
 	}
 	bets := map[string]bool{"big": true, "small": true, "odd": true, "even": true}
 	if !bets[bet] {
@@ -417,13 +435,13 @@ func (h *EconomyHandler) Lottery(c *gin.Context) {
 		resp.ParamError(c, "G币不足")
 		return
 	}
-	num := 1 + rand.Intn(9) // 1~9
+	num := 1 + rand.Intn(10) // 1~10
 	win := false
 	switch bet {
 	case "big":
-		win = num >= 5
+		win = num >= 6
 	case "small":
-		win = num <= 4
+		win = num <= 5
 	case "odd":
 		win = num%2 == 1
 	case "even":
@@ -467,11 +485,27 @@ func (h *EconomyHandler) bankAfter(uid uint) gin.H {
 	return gin.H{"balance": balance, "coins": u.Coins}
 }
 
-// 解析并校验 amount 表单参数
+// 解析并校验 amount 参数（兼容 JSON 与表单两种提交方式；前端 axios 默认发 JSON）
 func amountOf(c *gin.Context) (int, bool) {
-	s := c.PostForm("amount")
-	amount, err := strconv.Atoi(s)
-	if err != nil || amount <= 0 {
+	amount := 0
+	if strings.HasPrefix(c.ContentType(), "application/json") {
+		var req struct {
+			Amount int `json:"amount"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.ParamError(c, "金额不合法")
+			return 0, false
+		}
+		amount = req.Amount
+	} else {
+		n, err := strconv.Atoi(c.PostForm("amount"))
+		if err != nil {
+			resp.ParamError(c, "金额不合法")
+			return 0, false
+		}
+		amount = n
+	}
+	if amount <= 0 {
 		resp.ParamError(c, "金额不合法")
 		return 0, false
 	}
