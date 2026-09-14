@@ -34,11 +34,12 @@
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '封禁' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right" header-align="center">
+        <el-table-column label="操作" width="330" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" plain icon="el-icon-view" @click="openDetail(row)">详情</el-button>
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEditor(row)">编辑</el-button>
+              <el-button size="mini" type="warning" plain icon="el-icon-key" @click="openResetPwd(row)">重置密码</el-button>
               <el-button size="mini" :type="row.status === 1 ? 'danger' : 'success'" plain @click="setStatus(row)">
                 {{ row.status === 1 ? '封禁' : '解封' }}
               </el-button>
@@ -96,6 +97,22 @@
       <div slot="footer">
         <el-button @click="dlg = false">取 消</el-button>
         <el-button type="primary" @click="saveAll">保存全部修改</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 重置密码弹窗 -->
+    <el-dialog :title="'重置密码：' + (pwdRow ? pwdRow.nickname + '（' + pwdRow.username + '）' : '')"
+               :visible.sync="pwdDlg" width="430px" :close-on-click-modal="false">
+      <el-form label-width="80px">
+        <el-form-item label="新密码">
+          <el-input v-model.trim="pwdForm.password" maxlength="20" show-password
+                    placeholder="6-20位" style="width:220px" @keyup.enter.native="doResetPwd" />
+          <el-button size="mini" type="text" @click="genPwd">随机生成</el-button>
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="pwdDlg = false">取 消</el-button>
+        <el-button type="primary" @click="doResetPwd">确认重置</el-button>
       </div>
     </el-dialog>
 
@@ -165,6 +182,7 @@ export default {
       form: { id: 0 },
       panel: { password: '', roleIds: [], badgeIds: [], noble: 0, partnerId: 0, babyName: '', privId: 0 },
       savePwd: false,
+      pwdDlg: false, pwdRow: null, pwdForm: { password: '' },
       detailDlg: false, detailLoading: false, detail: { user: null }
     }
   },
@@ -260,6 +278,28 @@ export default {
       this.$confirm(text, '提示', { type: 'warning' }).then(() => {
         api.put(`/admin/users/${row.id}/status`, { status: target }).then(r => {
           if (r.code === 0) { this.$message.success(target === 0 ? '已封禁' : '已解封'); this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    openResetPwd (row) {
+      this.pwdRow = row
+      this.pwdForm = { password: '' }
+      this.pwdDlg = true
+    },
+    genPwd () {
+      const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+      let s = ''
+      for (let i = 0; i < 10; i++) s += chars[Math.floor(Math.random() * chars.length)]
+      this.pwdForm.password = s
+    },
+    doResetPwd () {
+      const p = this.pwdForm.password
+      if (!p || p.length < 6) { this.$message.error('新密码至少6位'); return }
+      this.$confirm(`确定将「${this.pwdRow.nickname}（${this.pwdRow.username}）」的密码重置为「${p}」吗？重置后请告知用户尽快修改。`, '重置密码', {
+        type: 'warning', confirmButtonText: '确认重置'
+      }).then(() => {
+        api.put(`/admin/users/${this.pwdRow.id}/password`, { password: p }).then(r => {
+          if (r.code === 0) { this.$message.success('密码已重置'); this.pwdDlg = false } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     },

@@ -25,7 +25,6 @@
         <span :key="n.name" v-if="isCurrent(n)" class="current">{{ n.name }}</span>
         <a :key="n.name + 'a'" v-else href="javascript:;" @click="$router.push(n.to)">{{ n.name }}</a>
       </template>
-      <a class="Rt" v-if="!isLogin" href="javascript:;" @click="$router.push('/login')">登陆</a>
     </div>
 
     <router-view />
