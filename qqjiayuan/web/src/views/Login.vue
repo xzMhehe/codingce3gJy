@@ -9,11 +9,10 @@
       </form>
       <p v-if="err" style="color:#c00">{{ err }}</p>
       <a href="javascript:;" @click="$router.push('/register')">免费注册</a>|<a href="javascript:;" @click="$router.push('/find')">靓号注册</a><br>
-      <a href="javascript:;" @click="$router.push('/register')">免费注册</a>|<a href="javascript:;" @click="$router.push('/find')">找回资料</a><br>
+|<a href="javascript:;" @click="$router.push('/find')">找回资料</a><br>
       <a href="javascript:;" @click="$router.push('/nav')">注册声明</a>|<a href="javascript:;" @click="$router.push('/channel/4')">客服中心</a><br>
       ----------<br>
-      家园社区(渝ICP备17001534号-2)<br>
-      <span class="help-line">演示账号：站长 10000 / admin123；友友 10001~10005 / 123456</span>
+      <br>
     </div>
   </div>
 </template>
