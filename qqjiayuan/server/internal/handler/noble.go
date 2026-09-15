@@ -548,7 +548,7 @@ func (h *NobleHandler) AdminUsers(c *gin.Context) {
 	for _, u := range users {
 		blueLv, qqLv := nobleLv(levels, u.BlueExp), nobleLv(levels, u.QqExp)
 		out = append(out, gin.H{
-			"id": u.ID, "nickname": u.Nickname, "color": u.Color,
+			"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color,
 			"blue_lv": blueLv, "blue_exp": u.BlueExp, "blue_speed": u.BlueSpeed,
 			"blue_start": u.BlueStart, "blue_end": u.BlueEnd, "blue_ptime": u.BluePtime,
 			"blue_icon": model.NobleIconOf(levels, blueLv, "blue"),

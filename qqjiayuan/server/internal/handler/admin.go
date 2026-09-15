@@ -40,14 +40,28 @@ func (h *AdminHandler) Users(c *gin.Context) {
 	q.Count(&total)
 	var users []model.User
 	q.Preload("Roles").Preload("Badges").Order("id ASC").Offset(offset).Limit(size).Find(&users)
-	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": users})
+	// 名字设为曾用号展示（靓号转换历史）
+	ids := make([]uint, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	oldNums := map[uint][]string{}
+	if len(ids) > 0 {
+		var hs []model.NumHistory
+		h.DB.Where("user_id IN ?", ids).Order("created_at ASC").Find(&hs)
+		for _, n := range hs {
+			oldNums[n.UserID] = append(oldNums[n.UserID], n.Num)
+		}
+	}
+	out := gin.H{"total": total, "page": page, "size": size, "list": users, "old_nums": oldNums}
+	resp.OK(c, out)
 }
 
 // UserDetail 用户详情：完整资料 + IP + 地址/证件/密保/联系方式 + 最近日志（对齐诺哈 admin/user）
 func (h *AdminHandler) UserDetail(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var u model.User
-	if err := h.DB.First(&u, id).Error; err != nil {
+	if err := h.DB.Preload("Roles").Preload("Badges").First(&u, id).Error; err != nil {
 		resp.NotFound(c, "用户不存在")
 		return
 	}
@@ -75,6 +89,7 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 			"level": u.Level, "exp": u.Exp, "coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
 			"active_days": u.ActiveDays, "hours": u.Hours, "achieve": u.Achieve, "paid": u.Paid,
 			"friend_policy": u.FriendPolicy, "config": u.Config, "noble": u.Noble,
+			"partner_id": u.PartnerID, "baby_name": u.BabyName, "priv_id": u.PrivID,
 			"status": u.Status, "add_ip": u.AddIP, "last_ip": u.LastIP,
 			"created_at": u.CreatedAt, "last_login_at": u.LastLoginAt, "last_active_at": u.LastActiveAt,
 			"has_paypass": u.PayPass != "",
@@ -84,6 +99,9 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 		"protection":  gin.H{"issue": prot.Issue, "has_protection": prot.ID > 0},
 		"contact":     gin.H{"qq": ct.QQ, "mail": ct.Mail, "phone": ct.Phone},
 		"logs":        logs,
+		// 角色与勋章（编辑弹窗回显，防止保存时被清空）
+		"roles":   u.Roles,
+		"badges":  u.Badges,
 	})
 }
 
@@ -493,7 +511,7 @@ func (h *AdminHandler) Wallets(c *gin.Context) {
 		if err := h.DB.Where("user_id = ?", u.ID).First(&acc).Error; err == nil {
 			bank = acc.Balance
 		}
-		out = append(out, gin.H{"id": u.ID, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank,
+		out = append(out, gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color, "coins": u.Coins, "bank": bank,
 			"yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
@@ -1303,6 +1321,14 @@ func (h *AdminHandler) Permissions(c *gin.Context) {
 	resp.OK(c, perms)
 }
 
+// MyPerms 当前登录管理员的权限码（菜单/页面按角色过滤用；超管返回 super 标记）
+func (h *AdminHandler) MyPerms(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var super int64
+	h.DB.Raw(`SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.code = 'super_admin'`, uid).Scan(&super)
+	resp.OK(c, gin.H{"codes": middleware.UserPermissionCodes(h.DB, uid), "super": super > 0})
+}
+
 type roleReq struct {
 	Name   string `json:"name" binding:"required,min=1,max=30"`
 	Code   string `json:"code" binding:"required,min=2,max=30"`
@@ -1482,10 +1508,24 @@ func (h *AdminHandler) UserPretty(c *gin.Context) {
 		return
 	}
 	old := u.Username
+	// 转号次数限制：系统配置 pretty_limit（默认 1 次），站点设置可调
+	limit := 1
+	var ls string
+	h.DB.Raw("SELECT value FROM settings WHERE `key` = 'pretty_limit'").Scan(&ls)
+	if v, err := strconv.Atoi(strings.TrimSpace(ls)); err == nil && v >= 1 && v <= 100 {
+		limit = v
+	}
+	var used int64
+	h.DB.Model(&model.NumHistory{}).Where("user_id = ?", u.ID).Count(&used)
+	if int(used) >= limit {
+		resp.ParamError(c, "已转号 "+strconv.Itoa(int(used))+" 次（限 "+strconv.Itoa(limit)+" 次），不再修改。剩余次数可在站点设置 pretty_limit 中调整")
+		return
+	}
 	if err := h.DB.Model(&u).Update("username", num).Error; err != nil {
 		resp.ServerError(c, err)
 		return
 	}
+	h.DB.Create(&model.NumHistory{UserID: u.ID, Num: old})
 	// T台秀后台指定的是号码，一并同步
 	h.DB.Exec("UPDATE settings SET `value` = ? WHERE `key` = 'ttou_user_id' AND `value` = ?", num, old)
 	userLog(h.DB, u.ID, "靓号转换", "家园号码 "+old+" → "+num, c.ClientIP())

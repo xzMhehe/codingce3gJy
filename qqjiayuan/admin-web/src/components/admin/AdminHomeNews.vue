@@ -8,7 +8,7 @@
         <span class="help-line">新鲜事动态</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="user_id" label="号码" width="90" />
+        <el-table-column prop="username" label="号码" width="110" />
         <el-table-column prop="nickname" label="用户" min-width="110" />
         <el-table-column prop="content" label="动态" min-width="260" show-overflow-tooltip />
         <el-table-column label="类型" width="90" align="center">

@@ -8,7 +8,7 @@
         <span class="help-line">会员登录/操作日志</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="user_id" label="号码" width="90" />
+        <el-table-column prop="username" label="号码" width="90" />
         <el-table-column prop="nickname" label="昵称" min-width="110" />
         <el-table-column prop="action" label="动作" width="110">
           <template slot-scope="{row}">

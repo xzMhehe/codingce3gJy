@@ -21,8 +21,13 @@ func (h *AdminHandler) AdminXyPlayers(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.HxxyPlayer{})
 	if word != "" {
+		var wu model.User
+		h.DB.Select("id").Where("username = ?", word).First(&wu)
 		if uid, err := strconv.Atoi(word); err == nil {
 			q = q.Where("id = ? OR user_id = ?", uid, uid)
+			if wu.ID > 0 {
+				q = q.Or("user_id = ?", wu.ID)
+			}
 		} else {
 			q = q.Where("name LIKE ?", "%"+word+"%")
 		}
@@ -35,12 +40,13 @@ func (h *AdminHandler) AdminXyPlayers(c *gin.Context) {
 	type rowOut struct {
 		model.HxxyPlayer
 		HomeNick string `json:"home_nick"`
+		HomeNum  string `json:"home_num"`
 	}
 	out := []rowOut{}
 	for _, p := range rows {
-		var nick string
-		h.DB.Model(&model.User{}).Select("nickname").Where("id = ?", p.UserID).Scan(&nick)
-		out = append(out, rowOut{HxxyPlayer: p, HomeNick: nick})
+		var u model.User
+		h.DB.First(&u, p.UserID)
+		out = append(out, rowOut{HxxyPlayer: p, HomeNick: u.Nickname, HomeNum: u.Username})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -60,8 +66,12 @@ func (h *AdminHandler) AdminXyPlayerDetail(c *gin.Context) {
 	var pets []model.HxxyPet
 	h.DB.Where("player_id = ?", p.ID).Find(&pets)
 	var homeNick string
-	h.DB.Model(&model.User{}).Select("nickname").Where("id = ?", p.UserID).Scan(&homeNick)
-	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "bag": bag, "battles": battles, "pets": pets})
+	var homeNum string
+	var u model.User
+	h.DB.First(&u, p.UserID)
+	homeNick = u.Nickname
+	homeNum = u.Username
+	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum, "bag": bag, "battles": battles, "pets": pets})
 }
 
 // AdminXyPlayerUpdate 修改玩家（等级/银两/金豆/血蓝/恶名/名字/位置）

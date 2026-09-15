@@ -86,14 +86,16 @@
 </template>
 
 <script>
-import { menu, tabNames } from './menu'
+import { menu, tabNames, pageMap } from './menu'
+import api from './api'
 
 export default {
   name: 'App',
   data () {
     return {
       user: {},
-      menu,
+      // 登录用户角色未分配权限的菜单不展示（管理端菜单按角色过滤）
+      menu: undefined,
       visited: ['dashboard'],
       ctxShow: false, ctxX: 0, ctxY: 0, ctxTab: ''
     }
@@ -113,7 +115,10 @@ export default {
       }
     }
   },
-  created () { this.loadUser() },
+  created () {
+    this.loadUser()
+    this.filterMenu()
+  },
   mounted () {
     document.addEventListener('click', this.hideMenu)
   },
@@ -132,6 +137,28 @@ export default {
   methods: {
     loadUser () {
       this.user = JSON.parse(localStorage.getItem('jy_admin_user') || 'null') || {}
+    },
+    // 按登录用户角色的权限码过滤菜单：未分配的菜单不展示（超级管理员全量展示）
+    async filterMenu () {
+      if (this.$route.path === '/login') return
+      const r = await api.get('/admin/my-perms').catch(() => null)
+      const codes = (r && r.code === 0) ? (r.data.codes || []) : []
+      const isSuper = (r && r.code === 0) ? !!r.data.super : false
+      const allow = it => {
+        if (!it.perm || isSuper || codes.includes(it.perm)) return true
+        return false
+      }
+      const walk = items => items
+        .filter(allow)
+        .map(it => ({
+          ...it,
+          ...(it.children ? { children: walk(it.children).filter(x => !x.children || x.children.length) } : {})
+        }))
+        .filter(it => !it.children || it.children.length)
+      this.menu = isSuper || !codes.length ? menu : walk(menu)
+      // 当前 tab 因菜单被过滤而失效时回数据概览
+      const t = this.$route.query.tab
+      if (t && !pageMap[t] && t !== 'dashboard') this.$router.replace({ path: '/', query: { tab: 'dashboard' } }).catch(() => {})
     },
     go (key) {
       this.$router.push({ path: '/', query: { tab: key } }).catch(() => {})

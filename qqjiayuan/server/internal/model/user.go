@@ -77,6 +77,16 @@ type User struct {
 	AchieveLevel int     `gorm:"-" json:"achieve_level"`                         // 成就等级（每100点升1级）
 }
 
+// NumHistory 用户曾用家园号（靓号转换记录，曾用过的都展示）
+type NumHistory struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index" json:"user_id"`
+	Num       string    `gorm:"type:varchar(10)" json:"num"` // 转换前的家园号码
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (NumHistory) TableName() string { return "num_histories" }
+
 // 勋章商店（复刻诺哈 wap_medal_shop）：Icon 为 static/picture 下的图片文件名
 // sort 排序 / price 价格 / period 有效期限(天,0=永久) / status 状态
 type Badge struct {

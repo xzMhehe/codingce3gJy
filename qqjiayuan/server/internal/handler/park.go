@@ -798,12 +798,13 @@ func (h *ParkHandler) AdminUsers(c *gin.Context) {
 		uidSet[p.UserID] = true
 	}
 	nick := h.nickMap(uidSet)
+	num := numMap(h.DB, uidSet)
 	out := make([]gin.H, 0, len(rows))
 	for _, p := range rows {
 		var garN, parkedN int64
 		h.DB.Model(&model.CarGarage{}).Where("user_id = ?", p.UserID).Count(&garN)
 		h.DB.Model(&model.CarStop{}).Where("user_id = ? AND owner > 0", p.UserID).Count(&parkedN)
-		out = append(out, gin.H{"user_id": p.UserID, "nickname": nick[p.UserID],
+		out = append(out, gin.H{"user_id": p.UserID, "username": num[p.UserID], "nickname": nick[p.UserID],
 			"cars": p.Cars, "love": p.Love, "point": p.Point, "level": parkLevel(p.Point),
 			"contri": p.Contri, "garage": garN, "parked": parkedN})
 	}
@@ -882,13 +883,15 @@ func (h *ParkHandler) AdminLogs(c *gin.Context) {
 			}
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
 			from := "系统"
 			if r.FID > 0 {
 				from = nick[r.FID]
 			}
-			out = append(out, gin.H{"id": r.ID, "to_uid": r.UserID, "to": nick[r.UserID], "from": from,
+			out = append(out, gin.H{"id": r.ID, "to_uid": r.UserID, "to": nick[r.UserID],
+				"to_num": num[r.UserID], "from": from, "from_num": num[r.FID],
 				"content": r.Content, "status": r.Status, "created_at": r.CreatedAt.Format("2006-01-02 15:04:05")})
 		}
 		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
@@ -903,9 +906,14 @@ func (h *ParkHandler) AdminLogs(c *gin.Context) {
 	q.Count(&total)
 	var rows []model.CarLog
 	h.DB.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	uidSet2 := map[uint]bool{}
+	for _, r := range rows {
+		uidSet2[r.UserID] = true
+	}
+	num2 := numMap(h.DB, uidSet2)
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, gin.H{"id": r.ID, "user_id": r.UserID, "name": r.Name,
+		out = append(out, gin.H{"id": r.ID, "user_id": r.UserID, "username": num2[r.UserID], "name": r.Name,
 			"created_at": r.CreatedAt.Format("2006-01-02 15:04:05")})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})

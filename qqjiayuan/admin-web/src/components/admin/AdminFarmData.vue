@@ -11,7 +11,7 @@
             <div class="grow" />
           </div>
           <el-table :data="users" v-loading="userLoading" stripe>
-            <el-table-column prop="user_id" label="家园号" width="90" />
+            <el-table-column prop="username" label="家园号" width="90" />
             <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
             <el-table-column prop="name" label="农场名" min-width="130" show-overflow-tooltip />
             <el-table-column label="等级" width="90" align="center">
@@ -106,7 +106,7 @@
                 <span :class="['rank-no', 'r' + (row.rank > 3 ? 0 : row.rank)]">{{ row.rank }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="user_id" label="家园号" width="90" />
+            <el-table-column prop="username" label="家园号" width="90" />
             <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
             <el-table-column prop="name" label="农场名" min-width="130" show-overflow-tooltip />
             <el-table-column label="等级" width="80" align="center">
@@ -201,7 +201,7 @@
             <el-tab-pane label="奴隶" name="slaves">
               <el-table :data="detail.slaves" size="small" stripe>
                 <el-table-column prop="name" label="奴隶名" min-width="100" />
-                <el-table-column prop="fid" label="家园号" width="90" align="center" />
+                <el-table-column prop="fid_num" label="家园号" width="100" align="center" />
                 <el-table-column prop="punish" label="惩罚次数" width="90" align="center" />
                 <el-table-column prop="appease" label="安抚次数" width="90" align="center" />
                 <el-table-column prop="created_at" label="被抓时间" width="150" />

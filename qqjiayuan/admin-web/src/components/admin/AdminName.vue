@@ -14,7 +14,7 @@
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="家园号" width="90" />
+        <el-table-column prop="username" label="家园号" width="110" />
         <el-table-column label="昵称" min-width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.nickname || '—' }}</template>
         </el-table-column>

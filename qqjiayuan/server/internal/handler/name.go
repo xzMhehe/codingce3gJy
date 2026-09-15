@@ -231,7 +231,8 @@ func (h *NameHandler) AdminNameUsers(c *gin.Context) {
 	q := h.DB.Model(&model.User{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("id = ?", uid)
+			// 数字：先按家园号码匹配，内部ID兜底（靓号转换后按当前号码/内部ID都能查到）
+			q = q.Where(h.DB.Where("username = ?", word).Or("id = ?", uid))
 		} else {
 			q = q.Where("nickname LIKE ?", "%"+word+"%")
 		}

@@ -35,7 +35,8 @@ import api from '../../api'
 
 const HINTS = {
   reg_coins: '注册新人礼包 G币 数量（0-100000）',
-  site_announce: '广场顶部公告语（留空不显示）'
+  site_announce: '广场顶部公告语（留空不显示）',
+  pretty_limit: '靓号转换次数（每人可转号次数，默认1，范围1-100）'
 }
 
 export default {

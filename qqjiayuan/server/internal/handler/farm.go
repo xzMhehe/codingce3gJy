@@ -1179,6 +1179,7 @@ func (h *FarmHandler) AdminUsers(c *gin.Context) {
 		uidSet[f.UserID] = true
 	}
 	nick := h.nickMap(uidSet)
+	num := numMap(h.DB, uidSet)
 	out := make([]gin.H, 0, len(rows))
 	for _, f := range rows {
 		var landN, bagN, whN, slaveN int64
@@ -1187,7 +1188,7 @@ func (h *FarmHandler) AdminUsers(c *gin.Context) {
 		h.DB.Model(&model.FarmBag{}).Where("user_id = ? AND dtype = 11 AND amount > 0", f.UserID).Count(&whN)
 		h.DB.Model(&model.FarmSlave{}).Where("owner_uid = ?", f.UserID).Count(&slaveN)
 		out = append(out, gin.H{
-			"user_id": f.UserID, "nickname": nick[f.UserID], "name": f.Name,
+			"user_id": f.UserID, "username": num[f.UserID], "nickname": nick[f.UserID], "name": f.Name,
 			"level": f.Level, "point": f.Point, "need": (f.Level + 1) * farmPointStep,
 			"lands": landN, "mucks": f.Mucks, "bag_kinds": bagN, "wh_kinds": whN, "slave_n": slaveN,
 		})
@@ -1205,7 +1206,7 @@ func (h *FarmHandler) AdminUserDetail(c *gin.Context) {
 	}
 	var f model.Farm
 	hasFarm := h.DB.Where("user_id = ?", uid).First(&f).Error == nil
-	detail := gin.H{"user_id": uint(uid), "nickname": u.Nickname, "coins": u.Coins, "has_farm": hasFarm}
+	detail := gin.H{"user_id": uint(uid), "username": u.Username, "nickname": u.Nickname, "coins": u.Coins, "has_farm": hasFarm}
 	if hasFarm {
 		detail["farm"] = gin.H{"id": f.ID, "name": f.Name, "level": f.Level,
 			"point": f.Point, "need": (f.Level + 1) * farmPointStep, "mucks": f.Mucks, "csteal": f.CSteal}
@@ -1250,7 +1251,17 @@ func (h *FarmHandler) AdminUserDetail(c *gin.Context) {
 		// 奴隶
 		var slaves []model.FarmSlave
 		h.DB.Where("owner_uid = ?", uid).Order("id DESC").Find(&slaves)
-		detail["slaves"] = slaves
+		sidSet := map[uint]bool{}
+		for _, s := range slaves {
+			sidSet[s.FID] = true
+		}
+		snum := numMap(h.DB, sidSet)
+		sOut := []gin.H{}
+		for _, s := range slaves {
+			sOut = append(sOut, gin.H{"id": s.ID, "fid": s.FID, "fid_num": snum[s.FID], "name": s.Name,
+				"punish": s.Punish, "appease": s.Appease, "created_at": s.CreatedAt})
+		}
+		detail["slaves"] = sOut
 	}
 	resp.OK(c, detail)
 }
@@ -1469,9 +1480,11 @@ func (h *FarmHandler) AdminLogs(c *gin.Context) {
 			uidSet[r.FID] = true
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, gin.H{"id": r.ID, "owner": nick[r.OwnerUID], "thief": nick[r.FID],
+			out = append(out, gin.H{"id": r.ID, "owner": nick[r.OwnerUID], "owner_num": num[r.OwnerUID],
+				"thief": nick[r.FID], "thief_num": num[r.FID],
 				"land_id": r.LandID, "created_at": r.CreatedAt.Format("2006-01-02 15:04:05")})
 		}
 		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
@@ -1489,9 +1502,11 @@ func (h *FarmHandler) AdminLogs(c *gin.Context) {
 			uidSet[r.FID] = true
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, gin.H{"id": r.ID, "owner": nick[r.OwnerUID], "slave": nick[r.FID], "name": r.Name,
+			out = append(out, gin.H{"id": r.ID, "owner": nick[r.OwnerUID], "owner_num": num[r.OwnerUID],
+				"slave": nick[r.FID], "slave_num": num[r.FID], "name": r.Name,
 				"punish": r.Punish, "appease": r.Appease, "created_at": r.CreatedAt.Format("2006-01-02 15:04:05")})
 		}
 		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
@@ -1535,11 +1550,12 @@ func (h *FarmHandler) AdminRank(c *gin.Context) {
 		uidSet[f.UserID] = true
 	}
 	nick := h.nickMap(uidSet)
+	num := numMap(h.DB, uidSet)
 	out := make([]gin.H, 0, len(rows))
 	for i, f := range rows {
 		var landN int64
 		h.DB.Model(&model.FarmLand{}).Where("user_id = ?", f.UserID).Count(&landN)
-		out = append(out, gin.H{"rank": offset + i + 1, "user_id": f.UserID, "nickname": nick[f.UserID],
+		out = append(out, gin.H{"rank": offset + i + 1, "user_id": f.UserID, "username": num[f.UserID], "nickname": nick[f.UserID],
 			"name": f.Name, "level": f.Level, "point": f.Point, "lands": landN})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})

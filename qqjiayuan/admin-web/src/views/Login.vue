@@ -133,8 +133,9 @@ export default {
             throw new Error((m && m.msg) || '无法获取账号信息，请重试')
           }
 
+          // 后台登录门槛：只要拥有任一模块权限（module:*，数据概览等）即可进入管理端
           const perms = m.data && m.data.perms ? m.data.perms : []
-          if (perms.indexOf('admin:access') < 0) {
+          if (!perms.some(p => p && p.indexOf('module:') === 0)) {
             this.clearAdminSession()
             throw new Error('该账号没有后台访问权限，请用管理员账号登录')
           }

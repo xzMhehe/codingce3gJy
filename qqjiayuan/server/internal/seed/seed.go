@@ -31,7 +31,7 @@ func Run(db *gorm.DB, staticDir string) {
 	}
 
 	err := db.AutoMigrate(
-		&model.User{}, &model.Role{}, &model.Permission{},
+		&model.User{}, &model.NumHistory{}, &model.Role{}, &model.Permission{},
 		&model.Board{}, &model.Thread{}, &model.Reply{},
 		&model.Announcement{}, &model.SignIn{},
 		&model.Friendship{}, &model.FriendApply{}, &model.FriendBlack{}, &model.PrivateMessage{},
@@ -1257,19 +1257,58 @@ func seedMigrate2026(db *gorm.DB) {
 }
 
 func seedRBAC(db *gorm.DB) {
-	perms := []model.Permission{
-		{Name: "后台访问", Code: "admin:access", Remark: "进入管理后台"},
-		{Name: "用户管理", Code: "user:manage", Remark: "封禁/解封/重置密码/分配角色"},
-		{Name: "板块管理", Code: "board:manage", Remark: "板块增删改"},
-		{Name: "帖子管理", Code: "thread:manage", Remark: "置顶/精华/删帖删回复"},
-		{Name: "公告管理", Code: "announcement:manage", Remark: "公告广播增删改"},
-		{Name: "角色权限管理", Code: "role:manage", Remark: "角色与权限分配"},
-		{Name: "马甲管理", Code: "badge:manage", Remark: "勋章/马甲增删与授予"},
-		{Name: "游戏管理", Code: "game:manage", Remark: "游戏大厅增删改"},
+	// 全部后台模块权限点（一个管理端菜单模块一个权限，角色未分配则菜单与接口皆不可用）
+	// code 约定 module:<菜单key>，与 admin-web/src/menu.js 的 perm 一一对应
+	mod := func(group, name, key string) model.Permission {
+		return model.Permission{Name: name, Code: "module:" + key, Remark: group}
 	}
-	for _, p := range perms {
+	modulePerms := []model.Permission{
+		mod("概览", "数据概览", "dashboard"),
+		// 会员管理
+		mod("会员", "会员列表", "users"), mod("会员", "个性昵称", "nickName"), mod("会员", "会员资料", "home"),
+		mod("会员", "会员证件", "userDocu"), mod("会员", "会员联系", "userContact"), mod("会员", "会员地址", "userAddress"),
+		mod("会员", "会员密保", "userProtec"), mod("会员", "会员日志", "userLogs"), mod("会员", "手机审核", "userPhones"),
+		mod("会员", "会员推荐", "invites"), mod("会员", "勋章管理", "badges"),
+		// 货币管理
+		mod("货币", "会员财务", "wallet"), mod("货币", "货币流水", "walletLogs"),
+		// 社区管理
+		mod("社区", "版块管理", "boards"), mod("社区", "同城管理", "tongcheng"), mod("社区", "版块分类", "boardCategories"),
+		mod("社区", "帖子管理", "threads"), mod("社区", "捐款上榜", "fla"), mod("社区", "家族管理", "families"),
+		mod("社区", "TT头像", "ttou"), mod("社区", "恢复帖子", "recycle"), mod("社区", "黑名单榜", "wordFilters"),
+		// 内容管理
+		mod("内容", "文章管理", "articles"), mod("内容", "留言本管理", "guestbook"), mod("内容", "家信管理", "messages"),
+		// 博客/家园/商城
+		mod("博客", "空间列表", "spaces"), mod("家园", "家园列表", "homes"), mod("家园", "家园访客", "visitors"),
+		mod("商城", "店铺管理", "shops"), mod("商城", "商品管理", "shopGoods"), mod("商城", "订单管理", "shopOrders"),
+		mod("商城", "评论管理", "shopComments"), mod("商城", "道具商城", "goods"), mod("商城", "货币商店", "moneyShop"),
+		// 书城/特权/广播
+		mod("书城", "小说列表", "books"), mod("书城", "章节管理", "bookChapters"), mod("书城", "书评管理", "bookComments"),
+		mod("特权", "特权管理", "privileges"), mod("广播", "公告广播", "announcements"),
+		// 游戏管理
+		mod("游戏", "游戏大厅", "games"),
+		mod("游戏-魔法花园", "花园活动", "gardenActivities"), mod("游戏-魔法花园", "花园花种", "gardenSeeds"),
+		mod("游戏-魔法花园", "花之图谱", "gardenMaps"), mod("游戏-魔法花园", "合成配方", "gardenMixes"),
+		mod("游戏-魔法花园", "精灵花册", "gardenElves"), mod("游戏-魔法花园", "签到管理", "gardenSign"),
+		mod("游戏-魔法花园", "花园数据管理", "gardenData"),
+		mod("游戏-开心农场", "农场种子", "farmSeeds"), mod("游戏-开心农场", "化肥陷阱", "farmItems"),
+		mod("游戏-开心农场", "农场数据管理", "farmData"),
+		mod("游戏-抢车位", "车市车辆", "parkCars"), mod("游戏-抢车位", "车位数据管理", "parkData"),
+		mod("游戏-精武堂", "玩家管理", "jwtPlayers"), mod("游戏-精武堂", "道具管理", "jwtItems"),
+		mod("游戏-精武堂", "技能管理", "jwtSkills"), mod("游戏-精武堂", "比武记录", "jwtRecords"),
+		mod("游戏-精武堂", "数据管理", "jwtData"),
+		mod("游戏-幻想西游", "西游玩家", "xyPlayers"), mod("游戏-幻想西游", "西游流水", "xyLogs"),
+		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
+		// 系统配置
+		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
+	}
+	for _, p := range modulePerms {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
 	}
+	// 清理旧粗粒度权限及其角色关联（全部改为 module:* 模块权限）
+	legacy := []string{"admin:access", "user:manage", "board:manage", "thread:manage", "announcement:manage", "role:manage", "badge:manage", "game:manage"}
+	// 清理此前测试临时权限（如 module:families 之前的旧测试角色等已随角色删除联动，无需单独处理）
+	db.Exec(`DELETE FROM role_permissions WHERE permission_id IN (SELECT id FROM permissions WHERE code IN ?)`, legacy)
+	db.Exec(`DELETE FROM permissions WHERE code IN ?`, legacy)
 
 	roles := []model.Role{
 		{Name: "超级管理员", Code: "super_admin", Remark: "拥有全部权限"},
@@ -1295,8 +1334,14 @@ func seedRBAC(db *gorm.DB) {
 		db.Where("code IN ?", codes).Find(&ps)
 		db.Model(&role).Association("Permissions").Replace(&ps)
 	}
-	grant("admin", "admin:access", "user:manage", "board:manage", "thread:manage", "announcement:manage", "badge:manage", "game:manage")
-	grant("moderator", "admin:access", "thread:manage")
+	// 「管理员」默认拥有全部模块权限（除超管专属含义的角色管理仍保留 module:roles）
+	var moduleCodes []string
+	for _, mp := range modulePerms {
+		moduleCodes = append(moduleCodes, mp.Code)
+	}
+	grant("admin", moduleCodes...)
+	// 「版主」：帖子管理相关模块 + 数据概览
+	grant("moderator", "module:dashboard", "module:threads", "module:recycle")
 	grant("member")
 }
 

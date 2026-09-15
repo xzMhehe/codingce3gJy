@@ -11,7 +11,7 @@
             <div class="grow" />
           </div>
           <el-table :data="users" v-loading="userLoading" stripe>
-            <el-table-column prop="user_id" label="家园号" width="90" />
+            <el-table-column prop="username" label="家园号" width="90" />
             <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
             <el-table-column label="等级" width="80" align="center">
               <template slot-scope="{row}"><span class="lv">{{ row.level }}</span>级</template>
@@ -52,7 +52,7 @@
             <!-- 加入记录 -->
             <template v-if="logType === 'join'">
               <el-table-column prop="id" label="ID" width="70" />
-              <el-table-column prop="user_id" label="家园号" width="110" />
+              <el-table-column prop="username" label="家园号" width="110" />
               <el-table-column prop="name" label="昵称(加入时)" min-width="140" show-overflow-tooltip />
               <el-table-column prop="created_at" label="加入时间" width="170" />
             </template>

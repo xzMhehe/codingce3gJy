@@ -11,7 +11,7 @@
             <div class="grow" />
           </div>
           <el-table :data="users" v-loading="userLoading" stripe>
-            <el-table-column prop="user_id" label="家园号" width="90" />
+            <el-table-column prop="username" label="家园号" width="90" />
             <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
             <el-table-column prop="name" label="花园名" min-width="130" show-overflow-tooltip />
             <el-table-column label="等级" width="110">
@@ -76,7 +76,7 @@
             <!-- 签到 -->
             <template v-else-if="logType === 'sign'">
               <el-table-column prop="id" label="ID" width="70" />
-              <el-table-column prop="uid" label="家园号" width="90" />
+              <el-table-column prop="username" label="家园号" width="90" />
               <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
               <el-table-column prop="sign_date" label="签到日期" width="120" />
               <el-table-column prop="week_day" label="星期" width="80">
@@ -113,7 +113,7 @@
                 <span :class="['rank-no', 'r' + (row.rank > 3 ? 0 : row.rank)]">{{ row.rank }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="user_id" label="家园号" width="90" />
+            <el-table-column prop="username" label="家园号" width="90" />
             <el-table-column prop="nickname" label="昵称" min-width="120" show-overflow-tooltip />
             <el-table-column prop="name" label="花园名" min-width="130" show-overflow-tooltip />
             <el-table-column label="等级" width="110">

@@ -9,7 +9,7 @@
         <span class="txt-fade">管理用户四种货币（G币/元宝/金钻/友友券）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
-        <el-table-column prop="id" label="号码" width="90" header-align="center" />
+        <el-table-column prop="username" label="号码" width="90" header-align="center" />
         <el-table-column label="昵称" min-width="110">
           <template slot-scope="{row}"><b><font :color="row.color || '#333'">{{ row.nickname }}</font></b></template>
         </el-table-column>

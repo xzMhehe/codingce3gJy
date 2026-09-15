@@ -2,6 +2,8 @@
  * 管理端统一菜单/页面配置（唯一维护点）
  * 新增管理模块：1) 在 components/admin/ 新建组件 2) 在下面菜单树挂一条 { key, name, icon, component }
  * App.vue 的侧边栏/标签导航和 Dashboard.vue 的页面分发都由本文件自动生成，不再手工双写。
+ * perm 为该菜单对应后端接口的权限码（RBAC permissions.code），登录用户的角色未分配该权限则菜单隐藏；
+ * 超级管理员（super_admin）或无 perm 的项永远展示。
  */
 import AdminUsers from './components/admin/AdminUsers.vue'
 import AdminHome from './components/admin/AdminHome.vue'
@@ -18,6 +20,8 @@ import AdminBoards from './components/admin/AdminBoards.vue'
 import AdminTongcheng from './components/admin/AdminTongcheng.vue'
 import AdminBoardCategories from './components/admin/AdminBoardCategories.vue'
 import AdminThreads from './components/admin/AdminThreads.vue'
+import AdminFamilies from './components/admin/AdminFamilies.vue'
+import AdminTtou from './components/admin/AdminTtou.vue'
 import AdminThreadRecycle from './components/admin/AdminThreadRecycle.vue'
 import AdminWordFilters from './components/admin/AdminWordFilters.vue'
 import AdminSiteArticles from './components/admin/AdminSiteArticles.vue'
@@ -68,153 +72,155 @@ import AdminName from './components/admin/AdminName.vue'
 
 // 菜单树：最多两级分组（children 里还可带一层 children，如游戏管理下的各游戏）
 export const menu = [
-  { key: 'dashboard', name: '数据概览', icon: 'el-icon-data-board' },
+  { key: 'dashboard', name: '数据概览', icon: 'el-icon-data-board', perm: 'module:dashboard' },
   // 会员管理（诺哈 user/）
   {
     key: 'g-user', name: '会员管理', icon: 'el-icon-user',
     children: [
-      { key: 'users', name: '会员列表', icon: 'el-icon-s-custom', component: AdminUsers },
-      { key: 'nickName', name: '个性昵称', icon: 'el-icon-brush', component: AdminName },
-      { key: 'home', name: '会员资料', icon: 'el-icon-edit-outline', component: AdminHome },
-      { key: 'userDocu', name: '会员证件', icon: 'el-icon-postcard', component: AdminUserDocu },
-      { key: 'userContact', name: '会员联系', icon: 'el-icon-phone-outline', component: AdminUserContacts },
-      { key: 'userAddress', name: '会员地址', icon: 'el-icon-map-location', component: AdminUserAddresses },
-      { key: 'userProtec', name: '会员密保', icon: 'el-icon-key', component: AdminUserProtections },
-      { key: 'userLogs', name: '会员日志', icon: 'el-icon-date', component: AdminUserLogs },
-      { key: 'userPhones', name: '手机审核', icon: 'el-icon-mobile-phone', component: AdminUserPhones },
-      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: AdminInvites },
-      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: AdminBadges }
+      { key: 'users', name: '会员列表', icon: 'el-icon-s-custom', component: AdminUsers, perm: 'module:users' },
+      { key: 'nickName', name: '个性昵称', icon: 'el-icon-brush', component: AdminName, perm: 'module:nickName' },
+      { key: 'home', name: '会员资料', icon: 'el-icon-edit-outline', component: AdminHome, perm: 'module:home' },
+      { key: 'userDocu', name: '会员证件', icon: 'el-icon-postcard', component: AdminUserDocu, perm: 'module:userDocu' },
+      { key: 'userContact', name: '会员联系', icon: 'el-icon-phone-outline', component: AdminUserContacts, perm: 'module:userContact' },
+      { key: 'userAddress', name: '会员地址', icon: 'el-icon-map-location', component: AdminUserAddresses, perm: 'module:userAddress' },
+      { key: 'userProtec', name: '会员密保', icon: 'el-icon-key', component: AdminUserProtections, perm: 'module:userProtec' },
+      { key: 'userLogs', name: '会员日志', icon: 'el-icon-date', component: AdminUserLogs, perm: 'module:userLogs' },
+      { key: 'userPhones', name: '手机审核', icon: 'el-icon-mobile-phone', component: AdminUserPhones, perm: 'module:userPhones' },
+      { key: 'invites', name: '会员推荐', icon: 'el-icon-share', component: AdminInvites, perm: 'module:invites' },
+      { key: 'badges', name: '勋章管理', icon: 'el-icon-medal', component: AdminBadges, perm: 'module:badges' },
     ]
   },
   // 货币管理（诺哈 money/）
   {
     key: 'g-money', name: '货币管理', icon: 'el-icon-coin',
     children: [
-      { key: 'wallet', name: '会员财务', icon: 'el-icon-wallet', component: AdminWallet },
-      { key: 'walletLogs', name: '货币流水', icon: 'el-icon-tickets', component: AdminWalletLogs }
+      { key: 'wallet', name: '会员财务', icon: 'el-icon-wallet', component: AdminWallet, perm: 'module:wallet' },
+      { key: 'walletLogs', name: '货币流水', icon: 'el-icon-tickets', component: AdminWalletLogs, perm: 'module:walletLogs' },
     ]
   },
   // 社区管理（诺哈 bbs/）
   {
     key: 'g-bbs', name: '社区管理', icon: 'el-icon-chat-dot-round',
     children: [
-      { key: 'boards', name: '版块管理', icon: 'el-icon-menu', component: AdminBoards },
-      { key: 'tongcheng', name: '同城管理', icon: 'el-icon-location-outline', component: AdminTongcheng },
-      { key: 'boardCategories', name: '版块分类', icon: 'el-icon-collection', component: AdminBoardCategories },
-      { key: 'threads', name: '帖子管理', icon: 'el-icon-document', component: AdminThreads },
-      { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla },
-      { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle },
-      { key: 'wordFilters', name: '黑名单榜', icon: 'el-icon-remove-outline', component: AdminWordFilters }
+      { key: 'boards', name: '版块管理', icon: 'el-icon-menu', component: AdminBoards, perm: 'module:boards' },
+      { key: 'tongcheng', name: '同城管理', icon: 'el-icon-location-outline', component: AdminTongcheng, perm: 'module:tongcheng' },
+      { key: 'boardCategories', name: '版块分类', icon: 'el-icon-collection', component: AdminBoardCategories, perm: 'module:boardCategories' },
+      { key: 'threads', name: '帖子管理', icon: 'el-icon-document', component: AdminThreads, perm: 'module:threads' },
+      { key: 'families', name: '家族管理', icon: 'el-icon-s-cooperation', component: AdminFamilies, perm: 'module:families' },
+      { key: 'ttou', name: 'TT头像', icon: 'el-icon-picture-outline', component: AdminTtou, perm: 'module:ttou' },
+      { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla, perm: 'module:fla' },
+      { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle, perm: 'module:recycle' },
+      { key: 'wordFilters', name: '黑名单榜', icon: 'el-icon-remove-outline', component: AdminWordFilters, perm: 'module:wordFilters' },
     ]
   },
   // 内容管理（诺哈 article/ guest/ message/）
   {
     key: 'g-content', name: '内容管理', icon: 'el-icon-notebook-2',
     children: [
-      { key: 'articles', name: '文章管理', icon: 'el-icon-notebook-1', component: AdminSiteArticles },
-      { key: 'guestbook', name: '留言本管理', icon: 'el-icon-edit', component: AdminGuestbook },
-      { key: 'messages', name: '家信管理', icon: 'el-icon-message', component: AdminMessages }
+      { key: 'articles', name: '文章管理', icon: 'el-icon-notebook-1', component: AdminSiteArticles, perm: 'module:articles' },
+      { key: 'guestbook', name: '留言本管理', icon: 'el-icon-edit', component: AdminGuestbook, perm: 'module:guestbook' },
+      { key: 'messages', name: '家信管理', icon: 'el-icon-message', component: AdminMessages, perm: 'module:messages' },
     ]
   },
   // 博客管理（诺哈 blog/）
   {
     key: 'g-blog', name: '博客管理', icon: 'el-icon-s-shop',
     children: [
-      { key: 'spaces', name: '空间列表', icon: 'el-icon-office-building', component: AdminSpaces }
+      { key: 'spaces', name: '空间列表', icon: 'el-icon-office-building', component: AdminSpaces, perm: 'module:spaces' },
     ]
   },
   // 家园管理（诺哈 home/）
   {
     key: 'g-home', name: '家园管理', icon: 'el-icon-house',
     children: [
-      { key: 'homes', name: '家园列表', icon: 'el-icon-s-home', component: AdminHomes },
-      { key: 'visitors', name: '家园访客', icon: 'el-icon-view', component: AdminVisitors }
+      { key: 'homes', name: '家园列表', icon: 'el-icon-s-home', component: AdminHomes, perm: 'module:homes' },
+      { key: 'visitors', name: '家园访客', icon: 'el-icon-view', component: AdminVisitors, perm: 'module:visitors' },
     ]
   },
   // 商城管理（诺哈 shop/ money-shop 道具商城/货币商店）
   {
     key: 'g-shop', name: '商城管理', icon: 'el-icon-shopping-cart-2',
     children: [
-      { key: 'shops', name: '店铺管理', icon: 'el-icon-s-shop', component: AdminShops },
-      { key: 'shopGoods', name: '商品管理', icon: 'el-icon-box', component: AdminShopGoods },
-      { key: 'shopOrders', name: '订单管理', icon: 'el-icon-s-order', component: AdminShopOrders },
-      { key: 'shopComments', name: '评论管理', icon: 'el-icon-s-comment', component: AdminShopComments },
-      { key: 'goods', name: '道具商城', icon: 'el-icon-goods', component: AdminGoods },
-      { key: 'moneyShop', name: '货币商店', icon: 'el-icon-coin', component: AdminMoneyShop }
+      { key: 'shops', name: '店铺管理', icon: 'el-icon-s-shop', component: AdminShops, perm: 'module:shops' },
+      { key: 'shopGoods', name: '商品管理', icon: 'el-icon-box', component: AdminShopGoods, perm: 'module:shopGoods' },
+      { key: 'shopOrders', name: '订单管理', icon: 'el-icon-s-order', component: AdminShopOrders, perm: 'module:shopOrders' },
+      { key: 'shopComments', name: '评论管理', icon: 'el-icon-s-comment', component: AdminShopComments, perm: 'module:shopComments' },
+      { key: 'goods', name: '道具商城', icon: 'el-icon-goods', component: AdminGoods, perm: 'module:goods' },
+      { key: 'moneyShop', name: '货币商店', icon: 'el-icon-coin', component: AdminMoneyShop, perm: 'module:moneyShop' },
     ]
   },
   // 书城管理（诺哈 book/）
   {
     key: 'g-book', name: '书城管理', icon: 'el-icon-reading',
     children: [
-      { key: 'books', name: '小说列表', icon: 'el-icon-notebook-1', component: AdminBooks },
-      { key: 'bookChapters', name: '章节管理', icon: 'el-icon-collection-tag', component: AdminBookChapters },
-      { key: 'bookComments', name: '书评管理', icon: 'el-icon-chat-line-square', component: AdminBookComments }
+      { key: 'books', name: '小说列表', icon: 'el-icon-notebook-1', component: AdminBooks, perm: 'module:books' },
+      { key: 'bookChapters', name: '章节管理', icon: 'el-icon-collection-tag', component: AdminBookChapters, perm: 'module:bookChapters' },
+      { key: 'bookComments', name: '书评管理', icon: 'el-icon-chat-line-square', component: AdminBookComments, perm: 'module:bookComments' },
     ]
   },
   // 会员特权（诺哈 vip/）
   {
     key: 'g-vip', name: '会员特权', icon: 'el-icon-s-operation',
     children: [
-      { key: 'privileges', name: '特权管理', icon: 'el-icon-star-off', component: AdminPrivileges }
+      { key: 'privileges', name: '特权管理', icon: 'el-icon-star-off', component: AdminPrivileges, perm: 'module:privileges' },
     ]
   },
   // 广播管理（诺哈 radio/）
   {
     key: 'g-radio', name: '广播管理', icon: 'el-icon-bell',
     children: [
-      { key: 'announcements', name: '公告广播', icon: 'el-icon-bell', component: AdminAnnouncements }
+      { key: 'announcements', name: '公告广播', icon: 'el-icon-bell', component: AdminAnnouncements, perm: 'module:announcements' },
     ]
   },
   // 游戏管理（诺哈 game/，按游戏分组）
   {
     key: 'g-game', name: '游戏管理', icon: 'el-icon-magic-stick',
     children: [
-      { key: 'games', name: '游戏大厅', icon: 'el-icon-trophy', component: AdminGames },
+      { key: 'games', name: '游戏大厅', icon: 'el-icon-trophy', component: AdminGames, perm: 'module:games' },
       {
         key: 'g-garden', name: '魔法花园', icon: 'el-icon-sunny',
         children: [
-          { key: 'gardenActivities', name: '花园活动', icon: 'el-icon-magic-stick', component: AdminGardenActivities },
-          { key: 'gardenSeeds', name: '花园花种', icon: 'el-icon-sunny', component: AdminGardenSeeds },
-          { key: 'gardenMaps', name: '花之图谱', icon: 'el-icon-picture', component: AdminGardenMaps },
-          { key: 'gardenMixes', name: '合成配方', icon: 'el-icon-s-cooperation', component: AdminGardenMixes },
-          { key: 'gardenElves', name: '精灵花册', icon: 'el-icon-star-on', component: AdminGardenElves },
-          { key: 'gardenSign', name: '签到管理', icon: 'el-icon-date', component: AdminGardenSign },
-          { key: 'gardenData', name: '花园数据管理', icon: 'el-icon-data-analysis', component: AdminGardenData }
+          { key: 'gardenActivities', name: '花园活动', icon: 'el-icon-magic-stick', component: AdminGardenActivities, perm: 'module:gardenActivities' },
+          { key: 'gardenSeeds', name: '花园花种', icon: 'el-icon-sunny', component: AdminGardenSeeds, perm: 'module:gardenSeeds' },
+          { key: 'gardenMaps', name: '花之图谱', icon: 'el-icon-picture', component: AdminGardenMaps, perm: 'module:gardenMaps' },
+          { key: 'gardenMixes', name: '合成配方', icon: 'el-icon-s-cooperation', component: AdminGardenMixes, perm: 'module:gardenMixes' },
+          { key: 'gardenElves', name: '精灵花册', icon: 'el-icon-star-on', component: AdminGardenElves, perm: 'module:gardenElves' },
+          { key: 'gardenSign', name: '签到管理', icon: 'el-icon-date', component: AdminGardenSign, perm: 'module:gardenSign' },
+          { key: 'gardenData', name: '花园数据管理', icon: 'el-icon-data-analysis', component: AdminGardenData, perm: 'module:gardenData' },
         ]
       },
       {
         key: 'g-farm', name: '开心农场', icon: 'el-icon-cherry',
         children: [
-          { key: 'farmSeeds', name: '农场种子', icon: 'el-icon-suitcase-1', component: AdminFarmSeeds },
-          { key: 'farmItems', name: '化肥陷阱', icon: 'el-icon-coin', component: AdminFarmItems },
-          { key: 'farmData', name: '农场数据管理', icon: 'el-icon-data-analysis', component: AdminFarmData }
+          { key: 'farmSeeds', name: '农场种子', icon: 'el-icon-suitcase-1', component: AdminFarmSeeds, perm: 'module:farmSeeds' },
+          { key: 'farmItems', name: '化肥陷阱', icon: 'el-icon-coin', component: AdminFarmItems, perm: 'module:farmItems' },
+          { key: 'farmData', name: '农场数据管理', icon: 'el-icon-data-analysis', component: AdminFarmData, perm: 'module:farmData' },
         ]
       },
       {
         key: 'g-park', name: '抢车位', icon: 'el-icon-truck',
         children: [
-          { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: AdminParkCars },
-          { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: AdminParkData }
+          { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: AdminParkCars, perm: 'module:parkCars' },
+          { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: AdminParkData, perm: 'module:parkData' },
         ]
       },
       {
         key: 'g-jwt', name: '精武堂', icon: 'el-icon-s-flag',
         children: [
-          { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminJwtPlayers },
-          { key: 'jwtItems', name: '道具管理', icon: 'el-icon-goods', component: AdminJwtItems },
-          { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: AdminJwtSkills },
-          { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: AdminJwtRecords },
-          { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData }
+          { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminJwtPlayers, perm: 'module:jwtPlayers' },
+          { key: 'jwtItems', name: '道具管理', icon: 'el-icon-goods', component: AdminJwtItems, perm: 'module:jwtItems' },
+          { key: 'jwtSkills', name: '技能管理', icon: 'el-icon-magic-stick', component: AdminJwtSkills, perm: 'module:jwtSkills' },
+          { key: 'jwtRecords', name: '比武记录', icon: 'el-icon-trophy', component: AdminJwtRecords, perm: 'module:jwtRecords' },
+          { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData, perm: 'module:jwtData' },
         ]
       },
       {
         key: 'g-xy', name: '幻想西游', icon: 'el-icon-s-custom',
         children: [
-          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminXyPlayers },
-          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs },
-          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem },
-          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData }
+          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminXyPlayers, perm: 'module:xyPlayers' },
+          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs, perm: 'module:xyLogs' },
+          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem, perm: 'module:xySystem' },
+          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData, perm: 'module:xyData' },
         ]
       }
     ]
@@ -223,9 +229,9 @@ export const menu = [
   {
     key: 'g-config', name: '系统配置', icon: 'el-icon-setting',
     children: [
-      { key: 'siteConfig', name: '站点设置', icon: 'el-icon-s-tools', component: AdminSiteConfig },
-      { key: 'roles', name: '管理设置', icon: 'el-icon-s-check', component: AdminRoles },
-      { key: 'resources', name: '文件管理', icon: 'el-icon-picture-outline', component: AdminResources }
+      { key: 'siteConfig', name: '站点设置', icon: 'el-icon-s-tools', component: AdminSiteConfig, perm: 'module:siteConfig' },
+      { key: 'roles', name: '管理设置', icon: 'el-icon-s-check', component: AdminRoles, perm: 'module:roles' },
+      { key: 'resources', name: '文件管理', icon: 'el-icon-picture-outline', component: AdminResources, perm: 'module:resources' },
     ]
   }
 ]

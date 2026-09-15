@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -135,10 +136,10 @@ func (h *SiteArticleHandler) CommentAdd(c *gin.Context) {
 func (h *SiteArticleHandler) Add(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
-		Title  string `json:"title" binding:"required,max=60"`
-		CatID  uint   `json:"cat_id"`
-		Writer string `json:"writer"`
-		Source string `json:"source"`
+		Title   string `json:"title" binding:"required,max=60"`
+		CatID   uint   `json:"cat_id"`
+		Writer  string `json:"writer"`
+		Source  string `json:"source"`
 		Content string `json:"content" binding:"required,min=10"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -195,7 +196,7 @@ func (h *SiteArticleHandler) Del(c *gin.Context) {
 
 func (h *SiteArticleHandler) isAdmin(uid uint) bool {
 	for _, code := range middleware.UserPermissionCodes(h.DB, uid) {
-		if code == "admin:access" {
+		if strings.HasPrefix(code, "module:") {
 			return true
 		}
 	}

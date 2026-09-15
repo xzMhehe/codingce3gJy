@@ -36,23 +36,25 @@ func (h *AdminHandler) AdminJwtPlayers(c *gin.Context) {
 	coins := map[uint]int{}
 	yb := map[uint]int{}
 	created := map[uint]string{}
+	usernames := map[uint]string{}
 	if len(uids) > 0 {
 		keys := make([]uint, 0, len(uids))
 		for k := range uids {
 			keys = append(keys, k)
 		}
 		var us []model.User
-		h.DB.Select("id,coins,yuanbao,created_at").Where("id IN ?", keys).Find(&us)
+		h.DB.Select("id,username,coins,yuanbao,created_at").Where("id IN ?", keys).Find(&us)
 		for _, u := range us {
 			coins[u.ID] = u.Coins
 			yb[u.ID] = u.YuanBao
 			created[u.ID] = u.CreatedAt.Format("2006-01-02 15:04:05")
+			usernames[u.ID] = u.Username
 		}
 	}
 	out := make([]gin.H, 0, len(list))
 	for _, p := range list {
 		out = append(out, gin.H{
-			"id": p.ID, "user_id": p.UserID, "nick": p.Nick, "sex": p.Sex,
+			"id": p.ID, "user_id": p.UserID, "username": usernames[p.UserID], "nick": p.Nick, "sex": p.Sex,
 			"level": p.Level, "exp": p.Exp, "next_exp": p.Level*64,
 			"title": p.Title, "title_name": jwtTitleName(p.Title),
 			"energy": p.Energy, "honor": p.Honor, "gang_id": p.GangID,
@@ -74,7 +76,7 @@ func (h *AdminHandler) AdminJwtPlayerDetail(c *gin.Context) {
 		return
 	}
 	var u model.User
-	h.DB.Select("nickname,coins,yuanbao").First(&u, p.UserID)
+	h.DB.Select("nickname,username,coins,yuanbao").First(&u, p.UserID)
 	slots := []gin.H{}
 	slotDefs := []struct {
 		name string
@@ -99,7 +101,7 @@ func (h *AdminHandler) AdminJwtPlayerDetail(c *gin.Context) {
 		bags = []model.JwtBag{}
 	}
 	resp.OK(c, gin.H{
-		"player": p, "nickname": u.Nickname, "coins": u.Coins, "yuanbao": u.YuanBao,
+		"player": p, "nickname": u.Nickname, "username": u.Username, "coins": u.Coins, "yuanbao": u.YuanBao,
 		"title_name": jwtTitleName(p.Title), "slots": slots, "bag": bags,
 	})
 }
@@ -377,11 +379,18 @@ func (h *AdminHandler) AdminJwtGangDelete(c *gin.Context) {
 // AdminJwtChats 精武堂聊天记录（word：家园号精确 / 昵称或内容模糊）
 func (h *AdminHandler) AdminJwtChats(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
-	word := c.Query("word")
+	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.JwtChat{})
 	if word != "" {
+		// 数字：先按家园号码解析成用户，按 user_id 匹配（转靓号后按当前号码可查）
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ?", uid)
+			var wu model.User
+			h.DB.Select("id").Where("username = ?", word).First(&wu)
+			if wu.ID > 0 {
+				q = q.Where("user_id = ?", wu.ID)
+			} else {
+				q = q.Where("user_id = ?", uid)
+			}
 		} else {
 			q = q.Where("nick LIKE ? OR content LIKE ?", "%"+word+"%", "%"+word+"%")
 		}
@@ -390,10 +399,17 @@ func (h *AdminHandler) AdminJwtChats(c *gin.Context) {
 	q.Count(&total)
 	var list []model.JwtChat
 	q.Order("id DESC").Offset(offset).Limit(size).Find(&list)
-	if list == nil {
-		list = []model.JwtChat{}
+	uidSet := map[uint]bool{}
+	for _, l := range list {
+		uidSet[l.UserID] = true
 	}
-	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": list})
+	nums := numMap(h.DB, uidSet)
+	out := make([]gin.H, 0, len(list))
+	for _, l := range list {
+		out = append(out, gin.H{"id": l.ID, "user_id": l.UserID, "username": nums[l.UserID],
+			"nick": l.Nick, "content": l.Content, "type": l.Type, "created_at": l.CreatedAt})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
 // AdminJwtChatDelete 删除聊天记录

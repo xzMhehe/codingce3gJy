@@ -14,6 +14,12 @@
       <el-table :data="list" v-loading="loading" stripe @selection-change="s => selection = s">
         <el-table-column type="selection" width="44" />
         <el-table-column prop="username" label="号码" width="90" />
+        <el-table-column label="曾用家园号" width="160" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="oldNums[row.id] && oldNums[row.id].length"><font color="#999">{{ oldNums[row.id].join(', ') }}</font></span>
+            <span v-else class="txt-none">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><b>{{ row.nickname }}</b></template>
         </el-table-column>
@@ -182,6 +188,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, pages: 1, size: 10, word: '', loading: false,
+      oldNums: {},
       selection: [],
       allRoles: [], allBadges: [],
       dlg: false,
@@ -219,22 +226,24 @@ export default {
           this.list = r.data.list
           this.total = r.data.total
           this.page = r.data.page
+          this.oldNums = r.data.old_nums || {}
         } else this.$message.error(r.msg)
       })
     },
     openEditor (row) {
       if (row) {
-        api.get('/users/' + row.id).then(r => {
+        api.get('/admin/users/' + row.id + '/detail').then(r => {
           if (r.code !== 0) { this.$message.error(r.msg); return }
           this.form = { id: row.id, username: row.username }
+          const u = r.data.user || {}
           this.panel = {
             password: '',
             roleIds: (r.data.roles || []).map(x => x.id),
             badgeIds: (r.data.badges || []).map(x => x.id),
-            noble: r.data.noble || 0,
-            partnerId: r.data.partner_id || 0,
-            babyName: r.data.baby_name || '',
-            privId: r.data.priv_id || 0
+            noble: u.noble || 0,
+            partnerId: u.partner_id || 0,
+            babyName: u.baby_name || '',
+            privId: u.priv_id || 0
           }
           this.dlg = true
         })

@@ -2114,6 +2114,7 @@ func (h *GardenHandler) AdminGardenUsers(c *gin.Context) {
 		uidSet[g.UserID] = true
 	}
 	nick := h.nickMap(uidSet)
+	num := numMap(h.DB, uidSet)
 	out := make([]gin.H, 0, len(rows))
 	for _, g := range rows {
 		var bagN, flowerN, bottleN, mapCnt int64
@@ -2122,7 +2123,7 @@ func (h *GardenHandler) AdminGardenUsers(c *gin.Context) {
 		h.DB.Model(&model.GardenBottle{}).Where("user_id = ? AND count > 0", g.UserID).Count(&bottleN)
 		h.DB.Model(&model.GardenMapLog{}).Where("user_id = ?", g.UserID).Count(&mapCnt)
 		out = append(out, gin.H{
-			"user_id": g.UserID, "nickname": nick[g.UserID], "garden_id": g.ID, "name": g.Name,
+			"user_id": g.UserID, "username": num[g.UserID], "nickname": nick[g.UserID], "garden_id": g.ID, "name": g.Name,
 			"level": g.Level, "level_name": gardenLevelName(g.Level), "point": g.Point,
 			"lands": g.Lands, "map_got": mapCnt, "bag_kinds": bagN,
 			"flower_kinds": flowerN, "bottle_kinds": bottleN,
@@ -2141,7 +2142,7 @@ func (h *GardenHandler) AdminGardenUserDetail(c *gin.Context) {
 	}
 	var g model.Garden
 	hasGarden := h.DB.Where("user_id = ?", uid).First(&g).Error == nil
-	detail := gin.H{"user_id": uint(uid), "nickname": u.Nickname, "coins": u.Coins, "has_garden": hasGarden}
+	detail := gin.H{"user_id": uint(uid), "username": u.Username, "nickname": u.Nickname, "coins": u.Coins, "has_garden": hasGarden}
 	if hasGarden {
 		var mapCnt int64
 		h.DB.Model(&model.GardenMapLog{}).Where("user_id = ?", uid).Count(&mapCnt)
@@ -2212,9 +2213,11 @@ func (h *GardenHandler) AdminGardenLogs(c *gin.Context) {
 			uidSet[r.FID] = true
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
 			out = append(out, gin.H{"id": r.ID, "uid": r.UID, "fid": r.FID,
+				"from_num": num[r.UID], "to_num": num[r.FID],
 				"from_nick": nick[r.UID], "to_nick": nick[r.FID], "remark": r.Remark,
 				"created_at": r.CreatedAt.Format("2006-01-02 15:04")})
 		}
@@ -2233,9 +2236,10 @@ func (h *GardenHandler) AdminGardenLogs(c *gin.Context) {
 			uidSet[r.UserID] = true
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
-			out = append(out, gin.H{"id": r.ID, "uid": r.UserID, "nickname": nick[r.UserID],
+			out = append(out, gin.H{"id": r.ID, "uid": r.UserID, "username": num[r.UserID], "nickname": nick[r.UserID],
 				"sign_date": r.SignDate, "week_day": r.WeekDay, "day_no": r.DayNo})
 		}
 		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
@@ -2258,6 +2262,7 @@ func (h *GardenHandler) AdminGardenLogs(c *gin.Context) {
 			}
 		}
 		nick := h.nickMap(uidSet)
+		num := numMap(h.DB, uidSet)
 		out := make([]gin.H, 0, len(rows))
 		for _, r := range rows {
 			flower, owner := "—", uint(0)
@@ -2266,7 +2271,8 @@ func (h *GardenHandler) AdminGardenLogs(c *gin.Context) {
 				owner = p.UserID
 			}
 			out = append(out, gin.H{"id": r.ID, "land_id": r.LandID, "uid": r.UserID,
-				"nickname": nick[r.UserID], "owner_id": owner, "owner_nick": nick[owner], "flower": flower})
+				"username": num[r.UserID], "nickname": nick[r.UserID], "owner_id": owner, "owner_nick": nick[owner],
+				"owner_num": num[owner], "flower": flower})
 		}
 		resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 	default: // gift 送花记录

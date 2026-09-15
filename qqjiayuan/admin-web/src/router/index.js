@@ -50,7 +50,7 @@ VueRouter.prototype.replace = function replace (location, onResolve, onReject) {
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('jy_admin_token')
   const user = JSON.parse(localStorage.getItem('jy_admin_user') || 'null')
-  const hasPerm = user && user.perms && user.perms.indexOf('admin:access') >= 0
+  const hasPerm = user && user.perms && user.perms.some(p => p && p.indexOf('module:') === 0)
   if (to.path !== '/login' && (!token || !hasPerm)) {
     return next('/login')
   }

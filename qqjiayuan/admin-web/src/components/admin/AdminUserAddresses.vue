@@ -7,7 +7,7 @@
         <el-button type="primary" icon="el-icon-search" @click="search">搜索</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="user_id" label="号码" width="90" align="center" />
+        <el-table-column prop="username" label="号码" width="90" align="center" />
         <el-table-column prop="nickname" label="昵称" min-width="110" show-overflow-tooltip />
         <el-table-column label="故乡" min-width="220" show-overflow-tooltip>
           <template slot-scope="{row}">{{ addr(row, 'home') }}</template>

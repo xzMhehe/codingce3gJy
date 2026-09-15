@@ -49,7 +49,7 @@
           </div>
           <el-table :data="chats" v-loading="chatLoading" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="user_id" label="家园号" width="85" align="center" />
+            <el-table-column prop="username" label="家园号" width="85" align="center" />
             <el-table-column label="昵称" width="110" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.nick || '—' }}</span></template>
             </el-table-column>

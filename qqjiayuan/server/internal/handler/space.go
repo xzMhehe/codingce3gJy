@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"strconv"
 	"time"
 
@@ -36,12 +38,20 @@ func positiveQuery(c *gin.Context, name string) (int, bool) {
 
 func pageParams(c *gin.Context, fallback int) (int, int) {
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil || page < 1 { page = 1 }
+	if err != nil || page < 1 {
+		page = 1
+	}
 	sizeText := c.Query("size")
-	if sizeText == "" { sizeText = c.Query("page_size") }
+	if sizeText == "" {
+		sizeText = c.Query("page_size")
+	}
 	size, err := strconv.Atoi(sizeText)
-	if err != nil || size < 1 { size = fallback }
-	if size > 100 { size = 100 }
+	if err != nil || size < 1 {
+		size = fallback
+	}
+	if size > 100 {
+		size = 100
+	}
 	return page, size
 }
 
@@ -52,7 +62,9 @@ func (h *SpaceHandler) activeSpace(userID int) (model.Space, error) {
 }
 
 func queryError(c *gin.Context, err error) bool {
-	if err == nil { return false }
+	if err == nil {
+		return false
+	}
 	resp.ServerError(c, err)
 	return true
 }
@@ -93,7 +105,9 @@ func (h *SpaceHandler) OpenSpace(c *gin.Context) {
 // SpaceInfo 获取空间信息（公开）
 func (h *SpaceHandler) SpaceInfo(c *gin.Context) {
 	userID, ok := positiveParam(c, "userId")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	space, err := h.activeSpace(userID)
 	if err != nil {
 		resp.NotFound(c, "空间未开通或已关闭")
@@ -108,11 +122,11 @@ func (h *SpaceHandler) SpaceInfo(c *gin.Context) {
 	h.DB.Model(&model.Visitor{}).Where("owner_id = ?", userID).Count(&visitorCount)
 
 	resp.OK(c, gin.H{
-		"space":        space,
-		"mood_count":   moodCount,
+		"space":         space,
+		"mood_count":    moodCount,
 		"article_count": articleCount,
-		"album_count":  albumCount,
-		"msg_count":    msgCount,
+		"album_count":   albumCount,
+		"msg_count":     msgCount,
 		"visitor_count": visitorCount,
 	})
 }
@@ -140,7 +154,9 @@ func (h *SpaceHandler) UpdateSpace(c *gin.Context) {
 // MoodList 心情列表（自己的或某用户的）
 func (h *SpaceHandler) MoodList(c *gin.Context) {
 	userID, ok := positiveQuery(c, "user_id")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	if _, err := h.activeSpace(userID); err != nil {
 		resp.NotFound(c, "空间未开通或已关闭")
 		return
@@ -245,8 +261,13 @@ func (h *SpaceHandler) MoodForward(c *gin.Context) {
 // ArticleList 日志列表
 func (h *SpaceHandler) ArticleList(c *gin.Context) {
 	userID, ok := positiveQuery(c, "user_id")
-	if !ok { return }
-	if _, err := h.activeSpace(userID); err != nil { resp.NotFound(c, "空间未开通或已关闭"); return }
+	if !ok {
+		return
+	}
+	if _, err := h.activeSpace(userID); err != nil {
+		resp.NotFound(c, "空间未开通或已关闭")
+		return
+	}
 	page, pageSize := pageParams(c, defaultSpacePageSize)
 	viewer := middleware.GetUID(c)
 	q := h.DB.Model(&model.Article{}).
@@ -262,7 +283,9 @@ func (h *SpaceHandler) ArticleList(c *gin.Context) {
 // ArticleDetail 日志详情
 func (h *SpaceHandler) ArticleDetail(c *gin.Context) {
 	id, ok := positiveParam(c, "id")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var a model.Article
 	if err := h.DB.Where("id = ? AND status = 1", id).First(&a).Error; err != nil {
 		resp.NotFound(c, "日志不存在")
@@ -370,7 +393,8 @@ func (h *SpaceHandler) SpaceFileDownload(c *gin.Context) {
 	resp.OK(c, gin.H{"name": f.Name, "base64": f.FileBase64})
 }
 
-func (h *SpaceHandler) SpaceFriends(c *gin.Context) {	userID, ok := positiveQuery(c, "user_id")
+func (h *SpaceHandler) SpaceFriends(c *gin.Context) {
+	userID, ok := positiveQuery(c, "user_id")
 	if !ok {
 		return
 	}
@@ -388,9 +412,15 @@ func (h *SpaceHandler) SpaceFriends(c *gin.Context) {	userID, ok := positiveQuer
 	resp.OK(c, out)
 }
 
-func (h *SpaceHandler) AlbumList(c *gin.Context) {	userID, ok := positiveQuery(c, "user_id")
-	if !ok { return }
-	if _, err := h.activeSpace(userID); err != nil { resp.NotFound(c, "空间未开通或已关闭"); return }
+func (h *SpaceHandler) AlbumList(c *gin.Context) {
+	userID, ok := positiveQuery(c, "user_id")
+	if !ok {
+		return
+	}
+	if _, err := h.activeSpace(userID); err != nil {
+		resp.NotFound(c, "空间未开通或已关闭")
+		return
+	}
 	var albums []model.Album
 	h.DB.Where("user_id = ?", userID).Order("created_at DESC").Find(&albums)
 	resp.OK(c, albums)
@@ -416,8 +446,13 @@ func (h *SpaceHandler) AlbumCreate(c *gin.Context) {
 // SpaceMsgList 留言列表
 func (h *SpaceHandler) SpaceMsgList(c *gin.Context) {
 	userID, ok := positiveQuery(c, "user_id")
-	if !ok { return }
-	if _, err := h.activeSpace(userID); err != nil { resp.NotFound(c, "空间未开通或已关闭"); return }
+	if !ok {
+		return
+	}
+	if _, err := h.activeSpace(userID); err != nil {
+		resp.NotFound(c, "空间未开通或已关闭")
+		return
+	}
 	page, pageSize := pageParams(c, 20)
 	viewer := middleware.GetUID(c)
 	q := h.DB.Model(&model.SpaceMessage{}).
@@ -612,7 +647,9 @@ func (h *SpaceHandler) AdminDeleteArticle(c *gin.Context) {
 // AdminSpaceAlbums 管理端：查看某空间的相册（不看空间状态）
 func (h *SpaceHandler) AdminSpaceAlbums(c *gin.Context) {
 	userID, ok := positiveParam(c, "userId")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	var albums []model.Album
 	h.DB.Where("user_id = ?", userID).Order("created_at DESC").Find(&albums)
 	resp.OK(c, albums)
@@ -621,7 +658,9 @@ func (h *SpaceHandler) AdminSpaceAlbums(c *gin.Context) {
 // AdminSpaceMessages 管理端：查看某空间的留言（不看空间状态）
 func (h *SpaceHandler) AdminSpaceMessages(c *gin.Context) {
 	userID, ok := positiveParam(c, "userId")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	page, pageSize := pageParams(c, 20)
 	q := h.DB.Model(&model.SpaceMessage{}).Where("to_user_id = ? AND status = 1", userID)
 	var total int64
@@ -645,7 +684,9 @@ func (h *SpaceHandler) AdminSpaceMessages(c *gin.Context) {
 // AdminSpaceVisitors 管理端：查看某空间的访客（不看空间状态）
 func (h *SpaceHandler) AdminSpaceVisitors(c *gin.Context) {
 	userID, ok := positiveParam(c, "userId")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	page, pageSize := pageParams(c, 10)
 	q := h.DB.Model(&model.Visitor{}).Where("owner_id = ?", userID)
 	var total int64
@@ -669,7 +710,9 @@ func (h *SpaceHandler) AdminSpaceVisitors(c *gin.Context) {
 // AdminAlbumPhotos 管理端：按相册查看照片（管理端用）
 func (h *SpaceHandler) AdminAlbumPhotos(c *gin.Context) {
 	albumID, ok := positiveParam(c, "id")
-	if !ok { return }
+	if !ok {
+		return
+	}
 	page, pageSize := pageParams(c, 10)
 	q := h.DB.Model(&model.Photo{}).Where("album_id = ?", albumID)
 	var total int64
@@ -736,9 +779,9 @@ func (h *SpaceHandler) PhotoAdd(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Caption    string `json:"caption" binding:"max=100"`
+		Caption     string `json:"caption" binding:"max=100"`
 		PhotoBase64 string `json:"photo_base64" binding:"required"`
-		Format     string `json:"format"`
+		Format      string `json:"format"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "请选择要上传的相片")
@@ -889,11 +932,9 @@ func (h *SpaceHandler) ArticleCommentAdd(c *gin.Context) {
 
 func spaceIsAdmin(db *gorm.DB, uid uint) bool {
 	for _, code := range middleware.UserPermissionCodes(db, uid) {
-		if code == "admin:access" {
+		if strings.HasPrefix(code, "module:") {
 			return true
 		}
 	}
 	return false
 }
-
-

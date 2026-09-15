@@ -10,7 +10,7 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="id" label="角色ID" width="80" align="center" />
-        <el-table-column prop="user_id" label="家园号" width="80" align="center" />
+        <el-table-column prop="username" label="家园号" width="80" align="center" />
         <el-table-column label="家园昵称" width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.home_nick || '—' }}</template>
         </el-table-column>
@@ -68,7 +68,7 @@
     <el-dialog title="角色详情" :visible.sync="detailDlg" width="720px" :close-on-click-modal="false">
       <template v-if="detail">
         <el-descriptions :column="3" size="medium" border>
-          <el-descriptions-item label="家园号">{{ detail.player.user_id }}</el-descriptions-item>
+          <el-descriptions-item label="家园号">{{ detail.home_num || detail.player.user_id }}</el-descriptions-item>
           <el-descriptions-item label="家园昵称">{{ detail.home_nick || '—' }}</el-descriptions-item>
           <el-descriptions-item label="角色名">{{ detail.player.name }}</el-descriptions-item>
           <el-descriptions-item label="门派">{{ sectNames[detail.player.sect] }}</el-descriptions-item>

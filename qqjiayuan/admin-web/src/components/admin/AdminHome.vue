@@ -9,7 +9,7 @@
         <span class="txt-fade">点「资料」编辑会员档案</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe style="width:100%">
-        <el-table-column prop="id" label="号码" width="90" align="center" />
+        <el-table-column prop="username" label="号码" width="90" align="center" />
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><font :color="row.color || '#333'">{{ row.nickname }}</font></template>
         </el-table-column>

@@ -119,14 +119,15 @@ func (h *AdminHandler) AdminHomeNews(c *gin.Context) {
 	type newsRow struct {
 		model.HomeNews
 		Nickname string `json:"nickname"`
+		Username string `json:"username"`
 	}
 	var list []model.HomeNews
 	q.Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
 	out := make([]newsRow, 0, len(list))
 	for _, n := range list {
 		var u model.User
-		h.DB.Select("nickname").First(&u, n.UserID)
-		out = append(out, newsRow{HomeNews: n, Nickname: u.Nickname})
+		h.DB.Select("nickname,username").First(&u, n.UserID)
+		out = append(out, newsRow{HomeNews: n, Nickname: u.Nickname, Username: u.Username})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
@@ -915,14 +916,15 @@ func (h *AdminHandler) AdminUserLogs(c *gin.Context) {
 	type row struct {
 		model.UserLog
 		Nickname string `json:"nickname"`
+		Username string `json:"username"`
 	}
 	var list []model.UserLog
 	q.Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
 	out := make([]row, 0, len(list))
 	for _, l := range list {
 		var u model.User
-		h.DB.Select("nickname").First(&u, l.UserID)
-		out = append(out, row{UserLog: l, Nickname: u.Nickname})
+		h.DB.Select("nickname,username").First(&u, l.UserID)
+		out = append(out, row{UserLog: l, Nickname: u.Nickname, Username: u.Username})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }

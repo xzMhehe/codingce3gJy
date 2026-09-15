@@ -8,7 +8,7 @@
         <span class="help-line">家园列表（活跃点排行）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="user_id" label="号码" width="90" />
+        <el-table-column prop="username" label="号码" width="110" />
         <el-table-column label="主人" min-width="120">
           <template slot-scope="{row}"><b>{{ row.nickname }}</b></template>
         </el-table-column>

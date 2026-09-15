@@ -502,7 +502,7 @@ func (h *ThreadHandler) DeleteReply(c *gin.Context) {
 	h.DB.First(&th, reply.ThreadID)
 	var board model.Board
 	h.DB.First(&board, th.BoardID)
-	if reply.UserID != uid && !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "thread:manage") {
+	if reply.UserID != uid && !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "module:threads") {
 		resp.Forbidden(c, "只能删除自己的回复")
 		return
 	}
@@ -551,7 +551,7 @@ func (h *ThreadHandler) Move(c *gin.Context) {
 	var oldBoard, newBoard model.Board
 	h.DB.First(&oldBoard, th.BoardID)
 	h.DB.First(&newBoard, req.BoardID)
-	if !h.isModeratorOfBoard(h.DB, oldBoard, uid) && !h.isModeratorOfBoard(h.DB, newBoard, uid) && !h.hasPerm(uid, "thread:manage") {
+	if !h.isModeratorOfBoard(h.DB, oldBoard, uid) && !h.isModeratorOfBoard(h.DB, newBoard, uid) && !h.hasPerm(uid, "module:threads") {
 		resp.Forbidden(c, "没有移动权限")
 		return
 	}
@@ -584,7 +584,7 @@ func (h *ThreadHandler) Manage(c *gin.Context) {
 	}
 	var board model.Board
 	h.DB.First(&board, th.BoardID)
-	if !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "thread:manage") {
+	if !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "module:threads") {
 		resp.Forbidden(c, "没有管理权限")
 		return
 	}
@@ -616,7 +616,7 @@ func (h *ThreadHandler) Audit(c *gin.Context) {
 	}
 	var board model.Board
 	h.DB.First(&board, th.BoardID)
-	if !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "thread:manage") {
+	if !h.isModeratorOfBoard(h.DB, board, uid) && !h.hasPerm(uid, "module:threads") {
 		resp.Forbidden(c, "没有审核权限")
 		return
 	}
@@ -634,7 +634,7 @@ func (h *ThreadHandler) Audit(c *gin.Context) {
 func (h *ThreadHandler) AuditList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	// 版主只看自己板块的
-	perm := h.hasPerm(uid, "thread:manage")
+	perm := h.hasPerm(uid, "module:threads")
 	q := h.DB.Model(&model.Thread{}).Where("audit_status = 0 AND status = 1")
 	if !perm {
 		var bid []uint
@@ -651,7 +651,7 @@ func (h *ThreadHandler) canManage(th model.Thread, uid uint) bool {
 	if th.UserID == uid {
 		return true
 	}
-	if h.hasPerm(uid, "thread:manage") {
+	if h.hasPerm(uid, "module:threads") {
 		return true
 	}
 	var board model.Board

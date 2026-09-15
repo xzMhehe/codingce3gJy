@@ -9,7 +9,7 @@
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="user_id" label="家园号" width="90" />
+        <el-table-column prop="username" label="家园号" width="90" />
         <el-table-column label="昵称" min-width="110" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.nick || '—' }}</span></template>
         </el-table-column>
@@ -54,7 +54,7 @@
     <el-dialog title="玩家详情" :visible.sync="detailDlg" width="640px" :close-on-click-modal="false">
       <template v-if="detail">
         <el-descriptions :column="3" size="medium" border>
-          <el-descriptions-item label="家园号">{{ detail.player.user_id }}</el-descriptions-item>
+          <el-descriptions-item label="家园号">{{ detail.username || detail.player.user_id }}</el-descriptions-item>
           <el-descriptions-item label="昵称">{{ detail.nickname || '—' }}</el-descriptions-item>
           <el-descriptions-item label="头衔">{{ detail.title_name }}</el-descriptions-item>
           <el-descriptions-item label="等级">{{ detail.player.level }}</el-descriptions-item>

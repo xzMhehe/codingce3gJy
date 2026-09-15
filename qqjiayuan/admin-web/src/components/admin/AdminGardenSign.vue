@@ -63,7 +63,7 @@
           </div>
           <el-table :data="logs" v-loading="loading" stripe>
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="uid" label="家园号" width="100" />
+            <el-table-column prop="username" label="家园号" width="100" />
             <el-table-column prop="nickname" label="昵称" min-width="130" show-overflow-tooltip />
             <el-table-column prop="sign_date" label="签到日期" width="120" />
             <el-table-column label="星期" width="90" align="center">

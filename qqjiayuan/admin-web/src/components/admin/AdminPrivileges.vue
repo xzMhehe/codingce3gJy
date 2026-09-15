@@ -97,7 +97,7 @@
       <template v-else-if="tab === 'users'">
         <div class="hint">仅展示已开通特权的会员；到期保留30天，期间可续费，超期自动清空（也可用「清除到期」立即清理）。</div>
         <el-table ref="usersTable" key="t-users" :data="users" v-loading="loading" stripe>
-          <el-table-column prop="id" label="号码" width="88" />
+          <el-table-column prop="username" label="号码" width="98" />
           <el-table-column label="昵称" min-width="140">
             <template slot-scope="{row}"><font :color="row.color || '#333'" :title="nameOf(row)">{{ nameOf(row) }}</font></template>
           </el-table-column>

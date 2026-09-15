@@ -30,7 +30,7 @@ func hashGuestPass(pass string) string {
 
 func (h *GuestHandler) isAdmin(uid uint) bool {
 	for _, code := range middleware.UserPermissionCodes(h.DB, uid) {
-		if code == "admin:access" {
+		if strings.HasPrefix(code, "module:") {
 			return true
 		}
 	}
