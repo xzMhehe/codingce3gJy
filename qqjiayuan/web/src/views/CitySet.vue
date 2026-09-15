@@ -74,42 +74,22 @@ export default {
     goProv () { this.cur = 'prov' },
     pickCity (c) {
       const name = [this.prov.name, c.name].filter(Boolean).join(' ')
-      const save = () => {
-        // 保存只更新 city，其余资料原样提交（PUT /users/me 全量更新）
-        // me 未加载完成时，nickname 为空会被后端校验拒绝 → 必须先等 me 拉完再保存
-        const b = this.me || {}
-        api.put('/users/me', {
-          nickname: b.nickname || '', signature: b.signature || '', gender: b.gender || 1,
-          avatar: b.avatar || '', age: b.age || 0, birth_year: b.birth_year || 0,
-          birth_month: b.birth_month || 0, birth_day: b.birth_day || 0,
-          birth_type: b.birth_type, solar: b.solar || '', lunar: b.lunar || '',
-          friend_policy: b.friend_policy, introduction: b.introduction || '',
-          city: name
-        }).then(r => {
-          if (r.code === 0) {
-            this.okMsg = '城市设置成功：' + name
-            this.savedProvince = this.prov.name
-            this.savedCity = c.name
-            // 同步 vuex/本地缓存里的用户信息，其它页面（首页/资料页）立即生效
-            if (this.$store.state.user) {
-              this.$store.commit('setUser', {
-                token: this.$store.state.token,
-                user: Object.assign({}, this.$store.state.user, { city: name })
-              })
-            }
-            this.cur = 'prov'
-          } else this.msg = r.msg || '保存失败，请重试'
-        }).catch(() => { this.msg = '网络异常，保存失败' })
-      }
-      if (!this.me || !this.me.nickname) {
-        this.msg = '正在加载资料…'
-        api.get('/auth/me').then(r => {
-          if (r.code === 0) { this.me = r.data; this.msg = '' } else { this.msg = r.msg || '资料加载失败'; return }
-          save()
+      // 乐观更新：点完城市"当前设置"立即就位，接口只是后台确认
+      this.savedProvince = this.prov.name
+      this.savedCity = c.name
+      if (this.$store.state.user) {
+        this.$store.commit('setUser', {
+          token: this.$store.state.token,
+          user: Object.assign({}, this.$store.state.user, { city: name })
         })
-        return
       }
-      save()
+      // 专用接口只更新 city 字段，一次请求原子生效，不依赖资料快照
+      api.put('/me/city', { city: name }).then(r => {
+        if (r.code === 0) {
+          this.okMsg = '城市设置成功：' + name
+          this.cur = 'prov'
+        } else this.msg = r.msg || '保存失败，请重试'
+      }).catch(() => { this.msg = '网络异常，保存失败' })
     }
   }
 }

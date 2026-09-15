@@ -5,11 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"io"
+	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -350,10 +349,25 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// ---- 我的头像（复刻参考站 /home/face.html） ----
+// CitySet 城市设置（只更新 city 字段，单字段原子更新，避免全量资料接口的校验/竞态问题）
+func (h *UserHandler) CitySet(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		City string `json:"city" binding:"max=30"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "城市名称过长（30字以内）")
+		return
+	}
+	log.Printf("[city-set] uid=%d city=%q", uid, req.City)
+	if err := h.DB.Model(&model.User{}).Where("id = ?", uid).Update("city", req.City).Error; err != nil {
+		resp.ParamError(c, "保存失败，请重试")
+		return
+	}
+	resp.OK(c, gin.H{"city": req.City})
+}
 
-// 推荐头像文件名规则：static/picture 下长数字命名的图片（参考站头像素材）
-var avatarPresetRe = regexp.MustCompile(`^\d{6,}\.(jpg|jpeg|gif|png)$`)
+// ---- 我的头像（复刻参考站 /home/face.html） ----
 
 // 当前头像
 func (h *UserHandler) MyAvatar(c *gin.Context) {
@@ -394,34 +408,20 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 推荐头像列表（分页）
+// 推荐头像列表：读资源库（后台「文件管理」维护，分类=头像 且 启用），展示与否由后台控制
 func (h *UserHandler) AvatarPresets(c *gin.Context) {
-	_, offset, size := pageOf(c, 12)
-	var files []string
-	if entries, err := os.ReadDir(filepath.Join(h.StaticDir, "picture")); err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			if avatarPresetRe.MatchString(e.Name()) {
-				files = append(files, e.Name())
-			}
-		}
+	var list []model.Resource
+	h.DB.Where("category = ? AND status = 1", "avatar").Order("id ASC").Find(&list)
+	out := make([]gin.H, 0, len(list))
+	for _, r := range list {
+		out = append(out, gin.H{
+			"id": r.ID, "file": r.File, "name": r.Name, "has_data": r.Data != "",
+		})
 	}
-	sort.Strings(files)
-	total := len(files)
-	start := offset
-	if start > total {
-		start = total
-	}
-	end := offset + size
-	if end > total {
-		end = total
-	}
-	resp.OK(c, gin.H{"total": total, "page": offset/size + 1, "size": size, "list": files[start:end]})
+	resp.OK(c, gin.H{"total": len(out), "list": out})
 }
 
-// 设置推荐头像（点击图片即设为头像）
+// 设置推荐头像（点击图片即设为头像；file 支持静态文件 picture/xxx 或库存 db/xxx）
 func (h *UserHandler) SetPresetAvatar(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -431,18 +431,22 @@ func (h *UserHandler) SetPresetAvatar(c *gin.Context) {
 		resp.ParamError(c, "请选择头像")
 		return
 	}
-	if !avatarPresetRe.MatchString(req.File) {
+	var r model.Resource
+	if err := h.DB.Where("file = ? AND category = ? AND status = 1", req.File, "avatar").First(&r).Error; err != nil {
 		resp.ParamError(c, "头像不存在")
 		return
 	}
-	if _, err := os.Stat(filepath.Join(h.StaticDir, "picture", req.File)); err != nil {
-		resp.ParamError(c, "头像不存在")
-		return
+	if strings.HasPrefix(r.File, "db/") && r.Data != "" {
+		// 库存头像：base64 data URI 直接存入 avatar_base64
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+			"avatar": "", "avatar_base64": r.Data,
+		})
+	} else {
+		// 静态头像：写 avatar 文件名，同时清掉自定义 base64（避免优先级混乱）
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+			"avatar": filepath.Base(r.File), "avatar_base64": "",
+		})
 	}
-	// 设置推荐头像：写 avatar 文件名，同时清掉自定义 base64（避免优先级混乱）
-	h.DB.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
-		"avatar": req.File, "avatar_base64": "",
-	})
 	resp.OK(c, nil)
 }
 

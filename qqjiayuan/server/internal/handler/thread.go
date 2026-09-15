@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,9 +18,35 @@ type ThreadHandler struct {
 }
 
 // 发帖/回帖/签到收益：经验 + G币 + 社区成就点（同时记一条钱包流水）
+// 特权加成：超Q/蓝钻会员在有效期内，经验收益每级 +10%（上限 +80%），加成单独记 noble_bonus 流水
 func addExpAndCoins(db *gorm.DB, uid uint, exp, coins, achieve int, kind, title string) {
 	if coins != 0 {
 		addWalletLog(db, uid, kind, title, "coins", coins)
+	}
+	if exp > 0 {
+		var member model.User
+		if db.First(&member, uid).Error == nil {
+			now := time.Now()
+			bonusLv, tags := 0, []string{}
+			if member.QqEnd != nil && member.QqEnd.After(now) && member.QqLv > 0 {
+				bonusLv += member.QqLv
+				tags = append(tags, "超Q"+strconv.Itoa(member.QqLv))
+			}
+			if member.BlueEnd != nil && member.BlueEnd.After(now) && member.BlueLv > 0 {
+				bonusLv += member.BlueLv
+				tags = append(tags, "蓝钻"+strconv.Itoa(member.BlueLv))
+			}
+			if bonusLv > 0 {
+				bonus := exp * bonusLv * 10 / 100
+				if bonus > exp*4/5 {
+					bonus = exp * 4 / 5
+				}
+				exp += bonus
+				if bonus > 0 {
+					addWalletLog(db, uid, "noble_bonus", "贵宾经验加成（"+strings.Join(tags, " + ")+"）", "exp", bonus)
+				}
+			}
+		}
 	}
 	db.Model(&model.User{}).Where("id = ?", uid).
 		Updates(map[string]interface{}{

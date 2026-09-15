@@ -88,6 +88,10 @@ func (h *FlaHandler) Donate(c *gin.Context) {
 	}
 	h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", req.Amount))
 	h.DB.Create(&model.FlaDonation{UserID: uid, Amount: req.Amount, Word: req.Word})
+	// 捐款同时注入福利院·慈善基金池、记入捐献名单并获得财富值
+	h.DB.Model(&model.WelfareFund{}).Where("id = 1").UpdateColumn("pool", gorm.Expr("pool + ?", req.Amount))
+	h.DB.Create(&model.WelfareDonate{UserID: uid, Amount: req.Amount})
+	h.DB.Model(&u).Update("achieve", gorm.Expr("achieve + ?", req.Amount/100))
 	addWalletLog(h.DB, uid, "fla", "福利院捐款上榜", "coins", -req.Amount)
 	var total int64
 	h.DB.Model(&model.FlaDonation{}).Where("DATE(created_at) = ?", today).Count(&total)

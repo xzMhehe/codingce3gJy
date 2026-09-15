@@ -41,8 +41,8 @@ var (
 		"370.gif", "371.gif", "372.gif", "373.gif", "374.gif", "1996.gif", "2021.jpg",
 	}
 	AvatarPresets = []string{
-		"131851611.jpg", "1985acg.jpg", "104039478.jpg",
-		"125703412.png", "125751186.gif", "1031047330.png",
+		"001130576.jpeg", "113541092.jpeg",
+		"104039478.jpg", "131851611.jpg",
 	}
 	GameLogoPresets = []string{
 		"logo.jpg", "mofahuayuan.gif", "hunli2.jpg", "kaixinnongchang.gif",

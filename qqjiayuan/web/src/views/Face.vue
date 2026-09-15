@@ -35,14 +35,10 @@
 
     <div class="module-title">推荐头像（点击图片即可设为头像）</div>
     <div class="module-content">
-      <a v-for="f in presets" :key="f" href="javascript:;" @click="setPreset(f)" :title="f">
-        <img :src="'/static/picture/' + f" width="60" height="60" style="margin:3px;border:1px solid #eee" alt=".">
+      <a v-for="f in presets" :key="f.file" href="javascript:;" @click="setPreset(f)" :title="f.name || f.file">
+        <img :src="presetSrc(f)" width="60" height="60" style="margin:3px;border:1px solid #eee" alt=".">
       </a>
-      <div v-if="total > 0" style="margin-top:6px">
-        <a v-if="page > 1" href="javascript:;" @click="go(page - 1)">上一页</a>
-        <span class="txt-fade"> (第 <b>{{ page }}</b>/{{ pages }}页/共{{ total }}条记录) </span>
-        <a v-if="page < pages" href="javascript:;" @click="go(page + 1)">下页</a>
-      </div>
+      <div v-if="!presets.length" class="txt-fade">暂无推荐头像</div>
     </div>
 
     <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;<a href="javascript:;" @click="$router.push('/box')">我的百宝箱</a>&gt;头像&gt;上传</div>
@@ -60,7 +56,7 @@ export default {
       preview: '',     // 待上传预览
       msg: '', okMsg: '',
       qq: '', qqMsg: '', qqOk: '',
-      presets: [], page: 1, size: 12, total: 0
+      presets: []
     }
   },
   computed: {
@@ -69,8 +65,7 @@ export default {
         return this.face.indexOf('data:') === 0 ? this.face : '/static/picture/' + this.face
       }
       return ''
-    },
-    pages () { return Math.max(1, Math.ceil(this.total / this.size)) }
+    }
   },
   mounted () {
     this.loadFace()
@@ -87,9 +82,12 @@ export default {
       }).catch(() => {})
     },
     loadPresets () {
-      api.get('/avatar/presets', { params: { page: this.page, size: this.size } }).then(r => {
-        if (r.code === 0) { this.presets = r.data.list || []; this.total = r.data.total || 0 }
+      api.get('/avatar/presets').then(r => {
+        if (r.code === 0) { this.presets = r.data.list || [] }
       }).catch(() => {})
+    },
+    presetSrc (f) {
+      return f.file.indexOf('db/') === 0 ? '/api/res/' + f.file : '/static/' + f.file
     },
     onFile (e) {
       this.msg = ''; this.okMsg = ''
@@ -119,10 +117,10 @@ export default {
       }).catch(() => { this.msg = '上传失败，请重试' })
     },
     setPreset (f) {
-      api.post('/avatar/presets', { file: f }).then(r => {
+      api.post('/avatar/presets', { file: f.file }).then(r => {
         if (r.code === 0) {
-          this.face = f
-          this.okMsg = '已设置头像：' + f
+          this.loadFace()
+          this.okMsg = '已设置推荐头像'
           this.msg = ''
         } else {
           this.msg = r.msg || '设置失败'
@@ -140,11 +138,6 @@ export default {
           this.qqMsg = r.msg || '获取QQ头像失败'
         }
       }).catch(() => { this.qqMsg = '获取QQ头像失败，请稍后再试' })
-    },
-    go (p) {
-      if (p < 1) return
-      this.page = p
-      this.loadPresets()
     }
   }
 }

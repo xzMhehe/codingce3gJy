@@ -81,7 +81,7 @@
           </div>
         </el-form-item>
       </el-form>
-      <div class="help-line" style="margin:0 0 10px 90px">支持 JPG/PNG/GIF/WEBP/BMP，1MB 以内；上传后以 base64 存入数据库。</div>
+      <div class="help-line" style="margin:0 0 10px 90px">支持 JPG/PNG/GIF/WEBP/BMP，1MB 以内；GIF 保留动图原样，其余自动压缩为 240px 内 JPEG 后以 base64 存入数据库。</div>
       <div slot="footer">
         <el-button @click="upDlg = false">取 消</el-button>
         <el-button type="primary" :loading="uploading" @click="doUpload">上传</el-button>
@@ -183,13 +183,41 @@ export default {
       const f = e.target.files && e.target.files[0]
       if (!f) return
       if (f.size > 1024 * 1024) { this.$message.error('图片不能超过 1MB'); return }
-      const reader = new FileReader()
-      reader.onload = () => {
-        this.upForm.data = reader.result
-        this.upForm.preview = reader.result
+      const finish = (dataURL) => {
+        this.upForm.data = dataURL
+        this.upForm.preview = dataURL
         this.upForm.fileName = f.name
-        this.upForm.size = (f.size / 1024).toFixed(1) + 'KB'
+        this.upForm.size = (dataURL.length * 0.75 / 1024).toFixed(1) + 'KB' + (/^data:image\/gif/.test(dataURL) ? '' : '（已压缩）')
         if (!this.upForm.name) this.upForm.name = f.name.replace(/\.[^.]+$/, '').slice(0, 30)
+      }
+      // GIF 保留动图原样；其余图片压到 240px 内JPEG，控制入库体积
+      if (f.type === 'image/gif') {
+        const r0 = new FileReader()
+        r0.onload = () => finish(r0.result)
+        r0.readAsDataURL(f)
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const img = new Image()
+        img.onload = () => {
+          const max = 240
+          let w = img.width; let h = img.height
+          if (w > max || h > max) {
+            const rate = Math.min(max / w, max / h)
+            w = Math.round(w * rate); h = Math.round(h * rate)
+          }
+          try {
+            const canvas = document.createElement('canvas')
+            canvas.width = w; canvas.height = h
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+            finish(canvas.toDataURL('image/jpeg', 0.8))
+          } catch (err) {
+            finish(ev.target.result)
+          }
+        }
+        img.onerror = () => finish(ev.target.result)
+        img.src = ev.target.result
       }
       reader.readAsDataURL(f)
     },

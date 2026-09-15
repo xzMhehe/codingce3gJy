@@ -70,6 +70,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Report{},
 		&model.TtouApply{}, &model.TtouWorship{},
 		&model.FlaDonation{}, &model.FlaWorship{},
+		&model.WelfareFund{}, &model.WelfareClaim{}, &model.WelfareDonate{},
 		&model.Home{}, &model.HomeNews{}, &model.HomeFavorite{}, &model.UserContact{},
 		&model.Invite{}, &model.GuestBook{}, &model.GuestReply{},
 		&model.PhoneAudit{},
@@ -109,6 +110,10 @@ func Run(db *gorm.DB, staticDir string) {
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
+	}
+	// 福利院·慈善基金池（首行池金，已存在则跳过）
+	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
+		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")
 	}
 	db.Exec("ALTER TABLE users AUTO_INCREMENT = 10000")
 	db.Exec("ALTER TABLE threads AUTO_INCREMENT = 10000")
@@ -313,6 +318,32 @@ func seedResources(db *gorm.DB, staticDir string) {
 		} else if res.Category != "badge" {
 			db.Model(&model.Resource{}).Where("id = ?", res.ID).Update("category", "badge")
 		}
+	}
+	// 头像资源：始终补齐到 avatar 分类（幂等）
+	for _, f := range model.AvatarPresets {
+		var res model.Resource
+		if err := db.Where("file = ?", "picture/"+f).First(&res).Error; err != nil {
+			db.Create(&model.Resource{File: "picture/" + f, Category: "avatar", Name: f, Level: 0, Status: 1})
+		} else if res.Category != "avatar" {
+			db.Model(&model.Resource{}).Where("id = ?", res.ID).Update("category", "avatar")
+		}
+	}
+	// 一次性收口：旧的 avatar 种子再次启用时不再回滚（后台可自由增减展示头像）
+	var doneN int64
+	db.Model(&model.Setting{}).Where("`key` = ?", "avatar_presets_migrated").Count(&doneN)
+	if doneN == 0 {
+		inList := map[string]bool{}
+		for _, f := range model.AvatarPresets {
+			inList["picture/"+f] = true
+		}
+		var avatars []model.Resource
+		db.Where("category = ?", "avatar").Find(&avatars)
+		for _, a := range avatars {
+			if !inList[a.File] && a.Status == 1 {
+				db.Model(&model.Resource{}).Where("id = ?", a.ID).Update("status", 0)
+			}
+		}
+		db.Create(&model.Setting{Key: "avatar_presets_migrated", Value: "1"})
 	}
 	// 扫描目录登记新文件
 	syncDir(db, staticDir)
@@ -1274,6 +1305,7 @@ func seedRBAC(db *gorm.DB) {
 		// 社区管理
 		mod("社区", "版块管理", "boards"), mod("社区", "同城管理", "tongcheng"), mod("社区", "版块分类", "boardCategories"),
 		mod("社区", "帖子管理", "threads"), mod("社区", "捐款上榜", "fla"), mod("社区", "家族管理", "families"),
+		mod("社区", "福利院", "welfare"),
 		mod("社区", "TT头像", "ttou"), mod("社区", "恢复帖子", "recycle"), mod("社区", "黑名单榜", "wordFilters"),
 		// 内容管理
 		mod("内容", "文章管理", "articles"), mod("内容", "留言本管理", "guestbook"), mod("内容", "家信管理", "messages"),

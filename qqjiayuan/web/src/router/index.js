@@ -52,6 +52,8 @@ const routes = [
   { path: '/families/category/:cat', name: 'familiesCategory', component: () => import('../views/FamiliesCategory.vue') },
   { path: '/families/search/:wd?', name: 'familiesSearch', component: () => import('../views/FamiliesSearch.vue') },
   { path: '/fla', name: 'fla', component: () => import('../views/Fla.vue') },
+  // 福利院·慈善基金（复刻 3GQQ fl.html/fla.html：领取+捐献清单/榜单）
+  { path: '/fl', name: 'welfare', component: () => import('../views/Welfare.vue') },
   { path: '/families/top', name: 'familiesTop', component: () => import('../views/FamiliesTop.vue') },
   { path: '/family/levels', name: 'familyLevels', component: () => import('../views/FamilyLevels.vue') },
   { path: '/family/:id', name: 'family', component: () => import('../views/Family.vue') },

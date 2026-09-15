@@ -5,7 +5,8 @@
       <em>
         <img src="/static/picture/001.gif" alt=""/>1. 每日捐献慈善币第一名为可以接受全社区网友<span class="sqm4">膜拜</span><br/>
         <img src="/static/picture/001.gif" alt=""/>2. 每人每日仅可捐献一次，价高者上位。<br/>
-        <img src="/static/picture/001.gif" alt=""/>3. 捐款时可以发布挑衅宣言（30字以内）。
+        <img src="/static/picture/001.gif" alt=""/>3. 捐款时可以发布挑衅宣言（30字以内）。<br/>
+        <img src="/static/picture/001.gif" alt=""/>4. <a href="javascript:;" @click="$router.push('/fl')">前往福利院</a>可领取今日慈善福利（需完成发帖/回帖任务）。
       </em>
     </div>
 
@@ -39,9 +40,9 @@
       <template v-else-if="isLogin">
         捐献慈善金额:
         <input type="number" v-model.number="form.amount" maxlength="9" min="1" size="10"/><br/>
-        捐赠宣言：
-        <textarea v-model.trim="form.word" rows="3" maxlength="30"></textarea><br/>
-        <input type="button" value="捐款" :disabled="busy" @click="donate"/>
+        <div class="word-line">捐赠宣言：</div>
+        <textarea v-model.trim="form.word" rows="3" maxlength="30" class="word-box"></textarea><br/>
+        <input type="button" class="btn-anniu" value="捐款" :disabled="busy" @click="donate"/>
         <p style="color:#c00" v-if="msg">{{ msg }}</p>
         <p style="color:#1a9e1a" v-if="okMsg">{{ okMsg }}</p>
       </template>
@@ -53,19 +54,21 @@
     <div class="module-title">【今日上榜】</div>
     <div class="module-content">
       <template v-if="list.length">
-        <div v-for="(d, i) in list" :key="d.id" style="padding:2px 0">
-          <template v-if="i === 0">
-            <img src="/static/picture/001.gif" alt=""/><b>NO.1</b>
-            <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#e05a00'">{{ d.nickname }}</ntext></a>
-            <b style="color:#e05a00">{{ fmtNum(d.amount) }}</b>G币
-          </template>
-          <template v-else>
-            NO.{{ i + 1 }}
-            <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#004299'">{{ d.nickname }}</ntext></a>
-            {{ fmtNum(d.amount) }}G币
-          </template>
-          <span v-if="d.word" class="txt-fade">「{{ d.word }}」</span>
-          <span class="txt-fade">膜拜{{ d.worships }}</span><br>
+        <div v-for="(d, i) in list" :key="d.id" class="rank-row">
+          <div>
+            <template v-if="i === 0">
+              <img src="/static/picture/001.gif" alt=""/><span class="rank-no"><b style="color:#e05a00">NO.1</b></span>
+              <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#e05a00'">{{ d.nickname }}</ntext></a>
+              <span class="rank-amt"><b style="color:#e05a00">{{ fmtNum(d.amount) }}</b>G币</span>
+            </template>
+            <template v-else>
+              <span class="rank-no">NO.{{ i + 1 }}</span>
+              <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#004299'">{{ d.nickname }}</ntext></a>
+              <span class="rank-amt">{{ fmtNum(d.amount) }}G币</span>
+            </template>
+          </div>
+          <div v-if="d.word" class="txt-fade rank-sub">「{{ d.word }}」</div>
+          <div class="txt-fade rank-sub">膜拜 {{ d.worships }}</div>
         </div>
       </template>
       <template v-else>
@@ -74,7 +77,7 @@
     </div>
 
     <div class="module-title">
-      <a href="javascript:;" @click="$router.push('/home')">家园</a>&gt; <a href="javascript:;" @click="$router.push('/box')">福利院</a>&gt;捐款慈善基金
+      <a href="javascript:;" @click="$router.push('/home')">家园</a>&gt; <a href="javascript:;" @click="$router.push('/fl')">福利院</a>&gt;捐款慈善基金
     </div>
   </div>
 </template>
@@ -145,5 +148,33 @@ export default {
   background: #fff;
 }
 .txt-fade { color: #999; font-size: 12px; }
-textarea { width: 95%; }
+.module-content textarea.word-box {
+  width: 120px !important;
+  max-width: 120px !important;
+  margin-left: 6px !important;
+}
+.word-line { margin: 10px 0 2px; }
+.btn-anniu {
+  width: 52px;
+  height: 26px;
+  margin-top: 8px;
+  border: none;
+  background: #0052d9;
+  color: #fff;
+  border-radius: 5px;
+  font-size: 14px;
+  padding: 2px 4px;
+  box-shadow: 1px 1px 7px #fb3d3d;
+  cursor: pointer;
+}
+.btn-anniu:disabled { opacity: .6; cursor: default; }
+.rank-row {
+  padding: 6px 0 7px;
+  border-bottom: 1px dotted #dfe8f2;
+  line-height: 1.9;
+}
+.rank-row:last-child { border-bottom: none; }
+.rank-no { display: inline-block; min-width: 44px; }
+.rank-amt { margin-left: 8px; }
+.rank-sub { line-height: 1.6; margin-top: 1px; }
 </style>

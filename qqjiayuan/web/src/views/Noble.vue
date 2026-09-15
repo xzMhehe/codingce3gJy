@@ -53,6 +53,7 @@
           <span style="display:inline-block;width:50px;text-align:center"><img :src="pic(l.Blue)" alt="." /></span>
           <span style="display:inline-block;width:90px;text-align:center">{{ l.Exp }} 点</span>
         </div>
+        <div class="row00 txt-fade">会员权益：超Q/蓝钻在有效期内，全部经验收益（发帖、回帖、签到等）每级 +10%，等级越高加成越多（最高 +80%）。</div>
       </div>
     </template>
 
@@ -164,7 +165,7 @@
 import api from '../api'
 
 const LEVELS = [
-  { Lv: 1, Exp: 0, Blue: 'noble_2_1.gif', QQ: 'noble_1_1.gif' },
+      { Lv: 1, Exp: 0, Blue: 'noble_2_1.gif', QQ: 'noble_1_1.gif' },
   { Lv: 2, Exp: 600, Blue: 'noble_2_2.gif', QQ: 'noble_1_2.gif' },
   { Lv: 3, Exp: 1800, Blue: 'noble_2_3.gif', QQ: 'noble_1_3.gif' },
   { Lv: 4, Exp: 3600, Blue: 'noble_2_4.gif', QQ: 'noble_1_4.gif' },

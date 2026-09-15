@@ -64,6 +64,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	shopH := &handler.ShopHandler{DB: db}
 	actH := &handler.ActivityHandler{DB: db}
 	yqH := &handler.YouQuanHandler{DB: db}
+	welfareH := &handler.WelfareHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
@@ -82,6 +83,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/repass/mail", authH.RepassByMail)
 		api.POST("/auth/repass/protection", authH.RepassByProtection)
 		api.GET("/fla", flaH.Index)
+		// 福利院·慈善基金（领取/名单公开可见）
+		api.GET("/welfare", optAuth, welfareH.Index)
+		api.GET("/welfare/claims", welfareH.Claims)
+		api.GET("/welfare/donations", welfareH.Donations)
 		api.GET("/plaza", plazaH.Index)
 		// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
 		api.GET("/online", optAuth, plazaH.Online)
@@ -207,6 +212,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/name/set", nameH.NameSet)
 			authed.PUT("/auth/password", authH.ChangePassword)
 			authed.PUT("/users/me", userH.UpdateMe)
+			authed.PUT("/me/city", userH.CitySet)
 			// 用户附属信息（诺哈 address/docu/protec/pass/log）
 			authed.GET("/me/address", userH.AddressView)
 			authed.PUT("/me/address", userH.AddressSave)
@@ -693,6 +699,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/fla/donate", flaH.Donate)
 			authed.POST("/fla/worship", flaH.Worship)
 
+			// 福利院·慈善基金（每日领取/捐献）
+			authed.POST("/welfare/claim", welfareH.Claim)
+			authed.POST("/welfare/donate", welfareH.Donate)
+
 			// 管理后台（RBAC 权限点）
 			admin := authed.Group("/admin")
 			{
@@ -956,6 +966,15 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/fla-donations", perm(db, "module:fla"), flaH.AdminCreate)
 				admin.PUT("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminUpdate)
 				admin.DELETE("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminDelete)
+
+				// 福利院·慈善基金管理
+				admin.GET("/welfare", perm(db, "module:welfare"), welfareH.AdminStats)
+				admin.POST("/welfare/pool", perm(db, "module:welfare"), welfareH.AdminSetPool)
+				admin.GET("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminClaims)
+				admin.POST("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminCreateClaim)
+				admin.DELETE("/welfare/claims/:id", perm(db, "module:welfare"), welfareH.AdminDeleteClaim)
+				admin.GET("/welfare/donations", perm(db, "module:welfare"), welfareH.AdminDonations)
+				admin.DELETE("/welfare/donations/:id", perm(db, "module:welfare"), welfareH.AdminDeleteDonate)
 				admin.PUT("/users/:id/status", perm(db, "module:users"), adminH.UserStatus)
 				admin.PUT("/users/:id/password", perm(db, "module:users"), adminH.ResetPassword)
 				admin.PUT("/users/:id/roles", perm(db, "module:users"), adminH.UserRoles)

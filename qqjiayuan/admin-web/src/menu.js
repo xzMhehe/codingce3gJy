@@ -66,6 +66,7 @@ import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
 import AdminFla from './components/admin/AdminFla.vue'
+import AdminWelfare from './components/admin/AdminWelfare.vue'
 import AdminRoles from './components/admin/AdminRoles.vue'
 import AdminResources from './components/admin/AdminResources.vue'
 import AdminName from './components/admin/AdminName.vue'
@@ -110,6 +111,7 @@ export const menu = [
       { key: 'families', name: '家族管理', icon: 'el-icon-s-cooperation', component: AdminFamilies, perm: 'module:families' },
       { key: 'ttou', name: 'TT头像', icon: 'el-icon-picture-outline', component: AdminTtou, perm: 'module:ttou' },
       { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla, perm: 'module:fla' },
+      { key: 'welfare', name: '福利院', icon: 'el-icon-pie-chart', component: AdminWelfare, perm: 'module:welfare' },
       { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle, perm: 'module:recycle' },
       { key: 'wordFilters', name: '黑名单榜', icon: 'el-icon-remove-outline', component: AdminWordFilters, perm: 'module:wordFilters' },
     ]

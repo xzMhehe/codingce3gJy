@@ -35,7 +35,7 @@
         <td style="width:100%;padding-left:2px">
           膜拜：<a href="javascript:;" @click="$router.push('/user/'+plaza.ttou.id)"><ntext :color="plaza.ttou.color || '#ff0000'">{{ plaza.ttou.nickname }}</ntext>({{ plaza.ttou.username }})</a>
           <a href="javascript:;" @click="$router.push('/fla')"><span id="anniu">我要上榜</span></a><br>
-          <em>宣言：{{ plaza.ttou.signature || '这个佬佬很懒，什么也没有写。' }}</em><br>
+          <em style="display:inline-block;margin-top:4px">宣言：{{ plaza.ttou.signature || '这个佬佬很懒，什么也没有写。' }}</em><br>
         </td>
       </tr></tbody></table>
     </div>
@@ -51,7 +51,7 @@
     <!-- 游乐场（真实入口） -->
     <div class="module-title" v-if="sec('playground')">游乐场</div>
     <div class="module-content" v-if="sec('playground')">
-      <a href="javascript:;" @click="$router.push('/chat')">秘密</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/play')">慈善基金</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">&gt;&gt;</a><br>
+      <a href="javascript:;" @click="$router.push('/chat')">秘密</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/fl')">慈善基金</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">&gt;&gt;</a><br>
     </div>
 
     <!-- 最新发帖（诺哈社区快报/社区新帖：☆标题(N阅/[M回])，回数进回帖列表） -->
