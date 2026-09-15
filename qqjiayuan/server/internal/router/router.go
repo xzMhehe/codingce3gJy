@@ -836,6 +836,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "user:manage"), adminH.Users)
 				admin.GET("/users/:id/detail", perm(db, "user:manage"), adminH.UserDetail)
+				admin.GET("/pretty-suggest", perm(db, "user:manage"), adminH.PrettySuggest)
+				admin.POST("/users/:id/pretty", perm(db, "user:manage"), adminH.UserPretty)
 				admin.PUT("/users/:id/home", perm(db, "user:manage"), adminH.UserHomeSet)
 				admin.GET("/invites", perm(db, "user:manage"), adminH.AdminInvites)
 				admin.POST("/invites", perm(db, "user:manage"), adminH.AdminInviteCreate)

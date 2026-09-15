@@ -1,12 +1,12 @@
 # 家园社区 Windows Server 2012 R2 部署配置
-# 说明:本包假定整个文件夹被放在 D:\qqjiayuan\。
-#       如果放在别的路径,必须同步修改下面两个 web_dir 绝对路径。
+# 说明:本包假定整个文件夹被放在 C:\Users\Public\Code\。
+#       如果放在别的路径,只需同步修改下面两个 web_dir 绝对路径(正斜杠)。
 server:
   port: 8080
   # 必须是绝对路径!注册成 Windows 服务后工作目录是 C:\Windows\System32,
-  # 相对路径会导致配置读取失败或前端整站 404(见 Server2012.md 第五节)
-  web_dir: "D:/qqjiayuan/web/dist"
-  admin_web_dir: "D:/qqjiayuan/admin-web/dist"
+  # 相对路径会导致配置读取失败或前端整站 404
+  web_dir: "C:/Users/Public/Code/web/dist"
+  admin_web_dir: "C:/Users/Public/Code/admin-web/dist"
 
 mysql:
   host: 127.0.0.1

@@ -1,8 +1,8 @@
-﻿============================================================
+﻿﻿============================================================
  家园社区 — Windows Server 2012 R2 部署流程
 ============================================================
 
-一、包内容
+一、包内容与目录
 ------------------------------------------------------------
   server\server.exe        后端(端口 8080,托管两个前端)
   server\dbinit.exe        建库+建表+种子数据(可重复执行)
@@ -10,9 +10,14 @@
   web\dist\                用户端前端
   admin-web\dist\          管理端前端
 
-  把整个文件夹放到 D:\ 并改名为 qqjiayuan
-  (config.yaml 里的前端路径写死为 D:/qqjiayuan/...,
-   放别的位置就必须同步改这两个路径)
+  把整个文件夹放到 C:\Users\Public\Code\ 下
+  (config.yaml 已按 C:/Users/Public/Code 写好绝对路径)
+
+  ※ 目录灵活可改:部署到任意其他目录(如 D:\qqjiayuan)都可以,
+    只需改 server\config.yaml 里两个 web_dir 路径,其余不用动:
+       web_dir: "你的目录/web/dist"
+       admin_web_dir: "你的目录/admin-web/dist"
+    (路径用正斜杠 / 或双反斜杠 \\,必须写绝对路径)
 
 
 二、服务器必装(只装这两个,Node/Go 不需要)
@@ -30,18 +35,19 @@
 
 三、配置 server\config.yaml
 ------------------------------------------------------------
-  只需改一处:
+  通常只需改一处:
      mysql.password: 填服务器 MySQL 的 root 密码
 
   其余保持默认:
-     - 前端路径: D:/qqjiayuan/web/dist 和 D:/qqjiayuan/admin-web/dist
+     - 前端路径: C:/Users/Public/Code/web/dist 和 C:/Users/Public/Code/admin-web/dist
+       (换了部署目录就同步改,见第一节)
      - jwt.secret: 已预生成随机值,可直接用
 
 
 四、初始化数据库
 ------------------------------------------------------------
   cmd 执行:
-     cd /d D:\qqjiayuan\server
+     cd /d C:\Users\Public\Code\server
      dbinit.exe
 
   看到"初始化完成"即成功(约十几秒)。
@@ -57,7 +63,7 @@
 五、启动后端
 ------------------------------------------------------------
   cmd 执行:
-     cd /d D:\qqjiayuan\server
+     cd /d C:\Users\Public\Code\server
      server.exe
 
   预期输出:
@@ -93,16 +99,16 @@
 
 八、注册为 Windows 服务(开机自启,推荐)
 ------------------------------------------------------------
-  用 NSSM(nssm.cc 单文件 exe):
-     nssm install qqjiayuan "D:\qqjiayuan\server\server.exe"
-     nssm set qqjiayuan AppDirectory "D:\qqjiayuan\server"
-     nssm set qqjiayuan AppStdout "D:\qqjiayuan\logs\server-out.log"
-     nssm set qqjiayuan AppStderr "D:\qqjiayuan\logs\server-err.log"
+  用 NSSM(nssm.cc 单文件 exe),路径按实际部署目录替换:
+     nssm install qqjiayuan "C:\Users\Public\Code\server\server.exe"
+     nssm set qqjiayuan AppDirectory "C:\Users\Public\Code\server"
+     nssm set qqjiayuan AppStdout "C:\Users\Public\Code\logs\server-out.log"
+     nssm set qqjiayuan AppStderr "C:\Users\Public\Code\logs\server-err.log"
      nssm set qqjiayuan Start SERVICE_AUTO_START
      nssm start qqjiayuan
      sc query qqjiayuan          应显示 STATE : 4 RUNNING
 
-  免下载备选:任务计划程序建任务,"起始于"必填 D:\qqjiayuan\server。
+  免下载备选:任务计划程序建任务,"起始于"必填 C:\Users\Public\Code\server。
 
 
 九、账号与上线安全
@@ -119,7 +125,8 @@
 十、常见问题
 ------------------------------------------------------------
   服务启动即停 / "读取配置失败"  → 工作目录不对,读不到 config.yaml
-  API 正常但前端整站 404         → config.yaml 里 web_dir 路径不存在(检查 D:\qqjiayuan\web\dist)
+  API 正常但前端整站 404         → config.yaml 里 web_dir 路径不存在
+                                   (核对实际部署目录下 web\dist\index.html 是否存在)
   页面开但图片大面积裂           → web\dist\static 没拷全
   中文变 ???                     → 导库时漏了 --default-character-set=utf8mb4
   数据库连不上                   → 没装 VC++ / MySQL 服务没起 / 密码错

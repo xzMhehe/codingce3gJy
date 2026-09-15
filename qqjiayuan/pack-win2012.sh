@@ -15,6 +15,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# 服务器上的部署目录(正斜杠写法)。覆盖方式:./pack-win2012.sh "D:/qqjiayuan" 或 DEPLOY_DIR=D:/qqjiayuan ./pack-win2012.sh
+# 只影响新生成的 config.yaml 模板;已存在的 config.yaml 一律保留不覆盖
+DEPLOY_DIR="${DEPLOY_DIR:-C:/Users/Public/Code}"
+[ $# -ge 1 ] && [ -n "$1" ] && DEPLOY_DIR="$1"
+
 ROOT="$PWD"
 PKG="$ROOT/WindowsServer2012bushu"
 ZIP="$ROOT/WindowsServer2012bushu.zip"
@@ -134,11 +139,11 @@ if [ ! -f "$PKG/server/config.yaml" ]; then
   SECRET="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   cat > "$PKG/server/config.yaml" <<EOF
 # 家园社区 Windows Server 2012 R2 部署配置
-# 假定整个文件夹放在 D:\qqjiayuan\ ,否则同步修改下面两个 web_dir
+# 本包假定整个文件夹放在 ${DEPLOY_DIR%/}\ ,否则同步修改下面两个 web_dir(正斜杠)
 server:
   port: 8080
-  web_dir: "D:/qqjiayuan/web/dist"
-  admin_web_dir: "D:/qqjiayuan/admin-web/dist"
+  web_dir: "${DEPLOY_DIR%/}/web/dist"
+  admin_web_dir: "${DEPLOY_DIR%/}/admin-web/dist"
 
 mysql:
   host: 127.0.0.1
@@ -151,7 +156,7 @@ jwt:
   secret: "$SECRET"
   expire_hours: 168
 EOF
-  info "已生成 server/config.yaml 模板(记得填 MySQL 密码)"
+  info "已生成 server/config.yaml 模板(部署目录 ${DEPLOY_DIR%/} ,记得填 MySQL 密码)"
 else
   info "保留已有 server/config.yaml(不覆盖手动改动)"
 fi

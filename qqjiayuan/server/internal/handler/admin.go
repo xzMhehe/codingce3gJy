@@ -1385,3 +1385,108 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
+
+// ---- 靓号管理（家园号码转换） ----
+
+// prettyCandidates 生成靓号候选池：重复数字/含 520·666·888 等吉利组合/顺子/回文
+func prettyCandidates() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if len(s) >= 2 && len(s) <= 8 && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, d := range []string{"1", "2", "5", "6", "7", "8", "9"} {
+		for l := 2; l <= 6; l++ {
+			add(strings.Repeat(d, l))
+		}
+	}
+	for _, w := range []string{"520", "521", "1314", "666", "888", "999", "168", "518", "618"} {
+		add(w + w)
+		add(w + "88")
+		add(w + "66")
+		add(w + "00")
+	}
+	for _, p := range []string{"11", "22", "33", "55", "66", "77", "88", "99"} {
+		add(p + p)
+		add(p + "00")
+		add("5" + p)
+		add(p + "8")
+	}
+	for _, p := range []string{"52", "51", "61", "62", "81", "82", "91"} {
+		add(p + p)
+	}
+	for _, s := range []string{"55666", "66777", "66688", "66888", "88866", "88666", "99988", "99666"} {
+		add(s)
+	}
+	for _, s := range []string{"1234", "4321", "12345", "54321", "123456", "654321", "12321", "23432", "34543", "45654", "520131", "131452", "5201314", "1314520"} {
+		add(s)
+	}
+	rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	return out
+}
+
+// PrettySuggest 系统推荐可用靓号
+func (h *AdminHandler) PrettySuggest(c *gin.Context) {
+	out := make([]string, 0, 10)
+	for _, n := range prettyCandidates() {
+		if len(out) >= 10 {
+			break
+		}
+		var cnt int64
+		h.DB.Model(&model.User{}).Where("username = ?", n).Count(&cnt)
+		if cnt == 0 {
+			out = append(out, n)
+		}
+	}
+	resp.OK(c, out)
+}
+
+// UserPretty 把会员的家园号码转换为靓号（手动填写或系统推荐的号码）
+func (h *AdminHandler) UserPretty(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Number string `json:"number" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请填写靓号")
+		return
+	}
+	num := strings.TrimSpace(req.Number)
+	if len(num) < 2 || len(num) > 10 {
+		resp.ParamError(c, "靓号需为 2-10 位数字")
+		return
+	}
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			resp.ParamError(c, "靓号只能由数字组成")
+			return
+		}
+	}
+	var u model.User
+	if err := h.DB.First(&u, id).Error; err != nil {
+		resp.NotFound(c, "用户不存在")
+		return
+	}
+	if u.Username == num {
+		resp.ParamError(c, "新号码与当前号码相同")
+		return
+	}
+	var cnt int64
+	h.DB.Model(&model.User{}).Where("username = ?", num).Count(&cnt)
+	if cnt > 0 {
+		resp.ParamError(c, "该号码已被使用，换一个吧")
+		return
+	}
+	old := u.Username
+	if err := h.DB.Model(&u).Update("username", num).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	// T台秀后台指定的是号码，一并同步
+	h.DB.Exec("UPDATE settings SET `value` = ? WHERE `key` = 'ttou_user_id' AND `value` = ?", num, old)
+	userLog(h.DB, u.ID, "靓号转换", "家园号码 "+old+" → "+num, c.ClientIP())
+	resp.OK(c, gin.H{"id": u.ID, "username": num})
+}

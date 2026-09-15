@@ -34,12 +34,13 @@
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '封禁' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="330" fixed="right" header-align="center">
+        <el-table-column label="操作" width="430" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" plain icon="el-icon-view" @click="openDetail(row)">详情</el-button>
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openEditor(row)">编辑</el-button>
               <el-button size="mini" type="warning" plain icon="el-icon-key" @click="openResetPwd(row)">重置密码</el-button>
+              <el-button size="mini" type="success" plain icon="el-icon-star-off" @click="openPretty(row)">转为靓号</el-button>
               <el-button size="mini" :type="row.status === 1 ? 'danger' : 'success'" plain @click="setStatus(row)">
                 {{ row.status === 1 ? '封禁' : '解封' }}
               </el-button>
@@ -73,20 +74,6 @@
             </el-checkbox>
           </el-checkbox-group>
         </el-form-item>
-        <el-form-item label="贵族">
-          <el-radio-group v-model="panel.noble">
-            <el-radio :label="0">无</el-radio>
-            <el-radio :label="1">一级</el-radio>
-            <el-radio :label="2">二级</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="特权">
-          <el-select v-model="panel.privId" placeholder="无" style="width:220px" clearable>
-            <el-option v-for="pv in allPrivs" :key="pv.id" :label="pv.name + '（Lv.' + pv.level + '）'" :value="pv.id">
-              <img class="bicon" :src="'/static/' + pv.file" :alt="pv.name">{{ pv.name }}
-            </el-option>
-          </el-select>
-        </el-form-item>
         <el-form-item label="伴侣号码">
           <el-input-number v-model="panel.partnerId" :min="0" :max="99999999" />
         </el-form-item>
@@ -113,6 +100,25 @@
       <div slot="footer">
         <el-button @click="pwdDlg = false">取 消</el-button>
         <el-button type="primary" @click="doResetPwd">确认重置</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 转为靓号弹窗 -->
+    <el-dialog :title="'转为靓号：' + (prettyRow ? prettyRow.nickname + '（当前号码 ' + prettyRow.username + '）' : '')"
+               :visible.sync="prettyDlg" width="520px" :close-on-click-modal="false">
+      <el-form label-width="90px">
+        <el-form-item label="靓号">
+          <el-input v-model.trim="prettyNumber" maxlength="10" placeholder="2-10位纯数字，手动填写或点击推荐" style="width:240px" />
+          <el-button size="mini" type="primary" plain icon="el-icon-magic-stick" :loading="prettyLoading" @click="suggestPretty">系统推荐</el-button>
+        </el-form-item>
+        <el-form-item v-if="prettySuggests.length" label="推荐号">
+          <el-tag v-for="n in prettySuggests" :key="n" size="medium" style="margin:0 8px 8px 0;cursor:pointer"
+                  :type="prettyNumber === n ? 'success' : 'info'" @click="prettyNumber = n">{{ n }}</el-tag>
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="prettyDlg = false">取 消</el-button>
+        <el-button type="primary" @click="doPretty">确认转换</el-button>
       </div>
     </el-dialog>
 
@@ -177,20 +183,20 @@ export default {
     return {
       list: [], total: 0, page: 1, pages: 1, size: 10, word: '', loading: false,
       selection: [],
-      allRoles: [], allBadges: [], allPrivs: [],
+      allRoles: [], allBadges: [],
       dlg: false,
       form: { id: 0 },
       panel: { password: '', roleIds: [], badgeIds: [], noble: 0, partnerId: 0, babyName: '', privId: 0 },
       savePwd: false,
       pwdDlg: false, pwdRow: null, pwdForm: { password: '' },
-      detailDlg: false, detailLoading: false, detail: { user: null }
+      detailDlg: false, detailLoading: false, detail: { user: null },
+      prettyDlg: false, prettyRow: null, prettyNumber: '', prettySuggests: [], prettyLoading: false
     }
   },
   mounted () {
     this.load()
     api.get('/admin/roles', { params: { size: 100 } }).then(r => { if (r.code === 0) this.allRoles = r.data.list })
     api.get('/admin/badges', { params: { size: 100 } }).then(r => { if (r.code === 0) this.allBadges = r.data.list })
-    api.get('/privs').then(r => { if (r.code === 0) this.allPrivs = r.data })
   },
   methods: {
     search () { this.page = 1; this.load() },
@@ -300,6 +306,32 @@ export default {
       }).then(() => {
         api.put(`/admin/users/${this.pwdRow.id}/password`, { password: p }).then(r => {
           if (r.code === 0) { this.$message.success('密码已重置'); this.pwdDlg = false } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    openPretty (row) {
+      this.prettyRow = row
+      this.prettyNumber = ''
+      this.prettySuggests = []
+      this.prettyDlg = true
+      this.suggestPretty()
+    },
+    suggestPretty () {
+      this.prettyLoading = true
+      api.get('/admin/pretty-suggest').then(r => {
+        this.prettyLoading = false
+        if (r.code === 0) this.prettySuggests = r.data || []
+        else this.$message.error(r.msg)
+      }).catch(() => { this.prettyLoading = false })
+    },
+    doPretty () {
+      const n = this.prettyNumber
+      if (!/^\d{2,10}$/.test(n)) { this.$message.error('靓号需为 2-10 位纯数字'); return }
+      this.$confirm(`确定将「${this.prettyRow.nickname}」的号码由 ${this.prettyRow.username} 转换为靓号 ${n} 吗？`, '转为靓号', {
+        type: 'warning', confirmButtonText: '确认转换'
+      }).then(() => {
+        api.post(`/admin/users/${this.prettyRow.id}/pretty`, { number: n }).then(r => {
+          if (r.code === 0) { this.$message.success('已转换为靓号 ' + n); this.prettyDlg = false; this.load() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     },
