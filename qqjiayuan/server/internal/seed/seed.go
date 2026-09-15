@@ -2093,7 +2093,7 @@ func seedGames(db *gorm.DB) {
 		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 15},
 		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
 		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 17},
-		{Name: "幻想西游", Category: "com", Logo: "", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", Intro: "五门派闯荡西游世界：地图冒险、回合战斗、神兵装备、宠物捕捉、副本BOSS、帮派结婚。游戏内独立货币银两金豆！", Path: "/games/hxxy", BoardID: bid("幻想西游"), Sort: 1},
+		{Name: "幻想西游", Category: "com", Logo: "hxxyth.png", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", Intro: "五门派闯荡西游世界：地图冒险、回合战斗、神兵装备、宠物捕捉、副本BOSS、帮派结婚。游戏内独立货币银两金豆！", Path: "/games/hxxy", BoardID: bid("幻想西游"), Sort: 1},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
 	}
 	for i := range games {
@@ -2120,6 +2120,13 @@ func seedGames(db *gorm.DB) {
 			updates := map[string]interface{}{
 				"category": games[i].Category,
 				"intro":    games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
+			}
+			// logo 幂等补齐：老库 logo 为空才带上（手动设过的不覆盖）
+			if games[i].Logo != "" {
+				var cur struct{ Logo string }
+				if err := db.Model(&model.Game{}).Select("logo").Where("name = ?", games[i].Name).Scan(&cur).Error; err == nil && cur.Logo == "" {
+					updates["logo"] = games[i].Logo
+				}
 			}
 			if placeholder {
 				updates["status"] = 0
