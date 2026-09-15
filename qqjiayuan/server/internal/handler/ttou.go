@@ -14,7 +14,7 @@ import (
 
 type TtouHandler struct{ DB *gorm.DB }
 
-// currentTTou 当前 T台秀秀主（后台指定优先，否则经验最高）
+// currentTTou 当前 T台秀秀主（后台指定优先，其次当日捐款最多者，最后经验最高）
 func (h *TtouHandler) currentTTou() uint {
 	var ttouID string
 	h.DB.Raw("SELECT value FROM settings WHERE `key` = 'ttou_user_id'").Scan(&ttouID)
@@ -23,6 +23,16 @@ func (h *TtouHandler) currentTTou() uint {
 		h.DB.Raw("SELECT id FROM users WHERE username = ?", ttouID).Scan(&id)
 		if id > 0 {
 			return id
+		}
+	}
+	var don model.FlaDonation
+	h.DB.Where("DATE(created_at) = ?", time.Now().Format("2006-01-02")).
+		Order("amount DESC, id ASC").First(&don)
+	if don.ID > 0 {
+		var du model.User
+		h.DB.Where("status = 1").First(&du, don.UserID)
+		if du.ID > 0 {
+			return du.ID
 		}
 	}
 	var u model.User

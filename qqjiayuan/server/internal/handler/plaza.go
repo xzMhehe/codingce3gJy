@@ -44,7 +44,7 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	var newestUser model.User
 	db.Order("id DESC").First(&newestUser)
 
-	// T台秀：默认经验最高，后台可指定（settings.ttou_user_id）
+	// T台秀：默认当日捐款最多者，后台可指定（settings.ttou_user_id），无人捐款则回退经验最高
 	var ttou model.User
 	var ttouID string
 	db.Raw("SELECT value FROM settings WHERE `key` = 'ttou_user_id'").Scan(&ttouID)
@@ -53,6 +53,14 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 		db.Raw("SELECT id FROM users WHERE username = ?", ttouID).Scan(&id)
 		if id > 0 {
 			db.Preload("Priv").First(&ttou, id)
+		}
+	}
+	if ttou.ID == 0 {
+		var don model.FlaDonation
+		db.Where("DATE(created_at) = ?", time.Now().Format("2006-01-02")).
+			Order("amount DESC, id ASC").First(&don)
+		if don.ID > 0 {
+			db.Preload("Priv").Where("status = 1").First(&ttou, don.UserID)
 		}
 	}
 	if ttou.ID == 0 {

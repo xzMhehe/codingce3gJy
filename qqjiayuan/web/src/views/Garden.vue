@@ -610,8 +610,23 @@ export default {
   },
   beforeDestroy () {
     if (this._onBack) window.removeEventListener('popstate', this._onBack)
+    if (this._toastTimers) {
+      clearTimeout(this._toastTimers.okMsg)
+      clearTimeout(this._toastTimers.msg)
+    }
+  },
+  watch: {
+    // 操作提示 3 秒后自动消失
+    okMsg (v) { this.armToast('okMsg', v) },
+    msg (v) { this.armToast('msg', v) }
   },
   methods: {
+    armToast (key, val) {
+      if (!this._toastTimers) this._toastTimers = {}
+      clearTimeout(this._toastTimers[key])
+      if (!val) return
+      this._toastTimers[key] = setTimeout(() => { this[key] = '' }, 3000)
+    },
     gardenImg (file) { return '/static/picture/garden/' + file },
     flowerImg (flower) {
       const id = this.mapIDByFlower(flower)

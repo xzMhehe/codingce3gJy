@@ -61,6 +61,7 @@ import AdminXyData from './components/admin/AdminXyData.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
+import AdminFla from './components/admin/AdminFla.vue'
 import AdminRoles from './components/admin/AdminRoles.vue'
 import AdminResources from './components/admin/AdminResources.vue'
 
@@ -99,6 +100,7 @@ export const menu = [
       { key: 'tongcheng', name: '同城管理', icon: 'el-icon-location-outline', component: AdminTongcheng },
       { key: 'boardCategories', name: '版块分类', icon: 'el-icon-collection', component: AdminBoardCategories },
       { key: 'threads', name: '帖子管理', icon: 'el-icon-document', component: AdminThreads },
+      { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla },
       { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle },
       { key: 'wordFilters', name: '黑名单榜', icon: 'el-icon-remove-outline', component: AdminWordFilters }
     ]

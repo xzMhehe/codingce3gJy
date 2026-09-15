@@ -426,6 +426,41 @@ func (h *ParkHandler) Send(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "赠送成功！", "coins": u.Coins - car.Price})
 }
 
+// Sell 卖车（半价回收，仅流动中的车可卖）
+func (h *ParkHandler) Sell(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		GarID uint `json:"gar_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var gar model.CarGarage
+	if err := h.DB.Where("id = ? AND user_id = ?", req.GarID, uid).First(&gar).Error; err != nil {
+		resp.ParamError(c, "无此汽车！")
+		return
+	}
+	if gar.StopID != 0 {
+		resp.ParamError(c, "该车已停进车位，请先收车再卖！")
+		return
+	}
+	car := h.carByID(gar.CarID)
+	if car == nil {
+		resp.ParamError(c, "汽车("+strconv.Itoa(int(gar.CarID))+")参数丢失")
+		return
+	}
+	refund := car.Price / 2
+	h.DB.Delete(&gar)
+	h.DB.Model(&model.ParkUser{}).Where("user_id = ? AND cars > 0", uid).Update("cars", gorm.Expr("cars - 1"))
+	if refund > 0 {
+		h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins + ?", refund))
+	}
+	addWalletLog(h.DB, uid, "park", "卖车:"+car.Name, "coins", refund)
+	h.carSend(0, uid, "你以半价卖掉了["+car.Name+"]，获得 "+strconv.Itoa(refund)+"G币。")
+	resp.OK(c, gin.H{"msg": "卖车成功！[" + car.Name + "]半价回收，获得" + strconv.Itoa(refund) + "G币。", "refund": refund})
+}
+
 // Stop 停车（对齐 stop_car.asp：把流动车停进他人空车位）
 func (h *ParkHandler) Stop(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -578,6 +613,29 @@ func (h *ParkHandler) Garage(c *gin.Context) {
 		list = append(list, h.garageInfo(g, uint(uid)))
 	}
 	resp.OK(c, gin.H{"uid": uint(uid), "is_self": uint(uid) == meUID, "list": list})
+}
+
+// Logs 停车记录（收车/贴车/被贴车/卖车/购车/赠送等收支流水，取自钱包日志）
+func (h *ParkHandler) Logs(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.WalletLog{}).Where("user_id = ? AND kind = ?", uid, "park")
+	var total int64
+	q.Count(&total)
+	var rows []model.WalletLog
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	out := make([]gin.H, 0, len(rows))
+	for i, r := range rows {
+		delta := ""
+		if r.Delta > 0 {
+			delta = "+" + strconv.Itoa(r.Delta) + "G"
+		} else if r.Delta < 0 {
+			delta = strconv.Itoa(r.Delta) + "G"
+		}
+		out = append(out, gin.H{"rank": offset + i + 1, "title": r.Title, "delta": delta,
+			"time_txt": r.CreatedAt.Format("01-02 15:04")})
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
 
 // Top 排行（对齐 car_top.asp：act 1爱心 2贡献 3经验）

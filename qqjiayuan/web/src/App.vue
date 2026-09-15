@@ -53,8 +53,8 @@ export default {
       navs: [
         { name: '家园', to: '/home', keys: ['/home', '/mood', '/sign', '/profile', '/wallet', '/box', '/bag', '/security', '/achieve', '/home-level', '/invite', '/favorites', '/medals', '/guestbook', '/youquan'] },
         { name: '好友', to: '/friends', keys: ['/friends', '/contacts'] },
-        { name: '家族', to: '/families', keys: ['/families', '/family', '/fla'] },
-        { name: '广场', to: '/', keys: ['/', '/channel', '/board', '/thread', '/replies', '/search', '/rank', '/threads', '/my-threads', '/post'] },
+        { name: '家族', to: '/families', keys: ['/families', '/family'] },
+        { name: '广场', to: '/', keys: ['/', '/channel', '/board', '/thread', '/replies', '/search', '/rank', '/threads', '/my-threads', '/post', '/fla'] },
         { name: '游戏', to: '/games', keys: ['/games', '/garden', '/play', '/noble', '/marriage'] }
       ]
     }

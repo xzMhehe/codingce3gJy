@@ -2,7 +2,7 @@
   <div>
     <!-- 顶部导航（对齐诺哈 wap/game/car：停车场 车库 车市 好友 排行 规则） -->
     <div class="bar garden-nav">
-      <a :class="{ cur: cur === 'park' }" href="javascript:;" @click="switchTab('park')">停车场</a> <a :class="{ cur: cur === 'garage' }" href="javascript:;" @click="switchTab('garage')">车库</a> <a :class="{ cur: cur === 'shop' }" href="javascript:;" @click="switchTab('shop')">车市</a> <a :class="{ cur: cur === 'friends' }" href="javascript:;" @click="switchTab('friends')">好友</a> <a :class="{ cur: cur === 'top' }" href="javascript:;" @click="switchTab('top')">排行</a> <a :class="{ cur: cur === 'help' }" href="javascript:;" @click="switchTab('help')">规则</a>
+      <a :class="{ cur: cur === 'park' }" href="javascript:;" @click="switchTab('park')">停车场</a> <a :class="{ cur: cur === 'garage' }" href="javascript:;" @click="switchTab('garage')">车库</a> <a :class="{ cur: cur === 'shop' }" href="javascript:;" @click="switchTab('shop')">车市</a> <a :class="{ cur: cur === 'friends' }" href="javascript:;" @click="switchTab('friends')">好友</a> <a :class="{ cur: cur === 'top' }" href="javascript:;" @click="switchTab('top')">排行</a> <a :class="{ cur: cur === 'logs' }" href="javascript:;" @click="switchTab('logs')">记录</a> <a :class="{ cur: cur === 'help' }" href="javascript:;" @click="switchTab('help')">规则</a>
     </div>
 
     <div class="g-main">
@@ -49,7 +49,7 @@
         </div>
         <br/>
 
-        <div class="module-title"><a href="javascript:;" @click="switchTab('garage')">车库</a>.<a href="javascript:;" @click="switchTab('shop')">车市</a>.<a href="javascript:;" @click="switchTab('top')">排行</a>.<a href="javascript:;" @click="switchTab('help')">规则</a>.<a href="javascript:;" @click="goForum">论坛</a><br/></div>
+        <div class="module-title"><a href="javascript:;" @click="switchTab('garage')">车库</a>.<a href="javascript:;" @click="switchTab('shop')">车市</a>.<a href="javascript:;" @click="switchTab('top')">排行</a>.<a href="javascript:;" @click="switchTab('logs')">停车记录</a>.<a href="javascript:;" @click="switchTab('help')">规则</a>.<a href="javascript:;" @click="goForum">论坛</a><br/></div>
       </template>
 
       <!-- ============ 他人停车场（复刻 owner.asp） ============ -->
@@ -129,7 +129,7 @@
           <div class="row" v-for="g in garage" :key="g.id">
             <span class="car-tag" :class="'c' + (g.dtype || 1)">{{ carIcon(g.dtype) }} {{ g.car_name }}</span><br/>
             汽车总值:{{ g.price }}G<br/>
-            <template v-if="g.moving">车位:流动中，小心被警察罚款哦！赶紧<a href="javascript:;" @click="switchTab('friends')">找个车位</a>吧！<br/></template>
+            <template v-if="g.moving">车位:流动中，小心被警察罚款哦！赶紧<a href="javascript:;" @click="switchTab('friends')">找个车位</a>吧！<br/>&gt;&gt;<a href="javascript:;" @click="sellCar(g)">卖车</a>(半价回收)<br/></template>
             <template v-else>
               车位:<a href="javascript:;" @click="visit(g.spot_uid)">{{ g.spot_nick }}</a><br/>
               停车时间:{{ g.minutes }}分钟/{{ g.hours }}小时<br/>
@@ -177,6 +177,23 @@
             {{ r.rank }}.<a href="javascript:;" @click="visit(r.uid)">{{ r.nick }}</a>({{ actName }}:{{ actVal(r) }})<br/>
           </div>
           <div class="row" v-if="!topList.length">暂无记录！<br/></div>
+        </div>
+        <a href="javascript:;" @click="switchTab('park')">返回停车场</a><br/>
+      </template>
+
+      <!-- ============ 停车记录（收车/贴车/卖车等收支流水） ============ -->
+      <template v-else-if="cur === 'logs'">
+        <div class="bar sub"><a href="javascript:;" @click="switchTab('park')">停车场</a>&gt;停车记录<br/></div>
+        <div class="list">
+          <div class="row" v-for="r in logs" :key="r.rank">
+            {{ r.rank }}.({{ r.time_txt }}){{ r.title }} <b :class="r.delta && r.delta[0] === '+' ? 'gain' : 'loss'">{{ r.delta }}</b><br/>
+          </div>
+          <div class="row" v-if="!logs.length">暂无记录！<br/></div>
+        </div>
+        <div class="module-title">
+          <a v-if="lPage > 1" href="javascript:;" @click="lPage--; loadLogs()">上页</a>
+          <a v-if="lPage * lSize < lTotal" href="javascript:;" @click="lPage++; loadLogs()">下页</a>
+          (第{{ lPage }}页/共{{ Math.ceil(lTotal / lSize) || 1 }}页/共{{ lTotal }}条)
         </div>
         <a href="javascript:;" @click="switchTab('park')">返回停车场</a><br/>
       </template>
@@ -288,6 +305,7 @@ export default {
       sDtype: 1, sPage: 1, sSize: 6, sTotal: 0, shopList: [],
       dtypeNames: { 1: '普通车', 2: '高级车', 3: '酷族车', 4: '贵族车', 5: '试驾车' },
       tAct: 1, topList: [],
+      logs: [], lPage: 1, lSize: 10, lTotal: 0,
       stopBox: false, stopTarget: null,
       sealBox: false, sealTarget: {}, sealRatio: 5,
       sendBox: false, sendCar: {}, sendUid: '',
@@ -303,7 +321,26 @@ export default {
   mounted () {
     this.loadAll()
   },
+  watch: {
+    // 操作提示 3 秒后自动消失
+    okMsg (v) { this.armToast('okMsg', v) },
+    msg (v) { this.armToast('msg', v) }
+  },
+  beforeDestroy () {
+    if (this._toastTimers) {
+      clearTimeout(this._toastTimers.okMsg)
+      clearTimeout(this._toastTimers.msg)
+    }
+  },
   methods: {
+    armToast (key, val) {
+      if (!this._toastTimers) this._toastTimers = {}
+      clearTimeout(this._toastTimers[key])
+      if (!val) return
+      // 收益提示留 5 秒方便看清收入，错误提示 3 秒
+      const ms = key === 'okMsg' ? 5000 : 3000
+      this._toastTimers[key] = setTimeout(() => { this[key] = '' }, ms)
+    },
     carIcon (dtype) {
       return { 1: '🚗', 2: '🚙', 3: '🚕', 4: '🏎️', 5: '🚖' }[dtype] || '🚗'
     },
@@ -315,6 +352,7 @@ export default {
       if (tab === 'garage') this.loadGarage()
       if (tab === 'shop') this.loadShop()
       if (tab === 'top') this.loadTop()
+      if (tab === 'logs') this.loadLogs()
       if (tab === 'msgs') this.load()
     },
     loadAll () {
@@ -362,6 +400,14 @@ export default {
     loadTop () {
       api.get('/games/park/top?act=' + this.tAct).then(r => { if (r.code === 0) this.topList = r.data.list || [] })
     },
+    loadLogs () {
+      api.get('/games/park/logs?page=' + this.lPage + '&size=' + this.lSize).then(r => {
+        if (r.code === 0) {
+          this.logs = r.data.list || []
+          this.lTotal = r.data.total || 0
+        }
+      })
+    },
     visit (uid) {
       if (!uid) return
       api.get('/games/park/owner?uid=' + uid).then(r => {
@@ -369,7 +415,7 @@ export default {
           this.vOwner = r.data
           this.vSpots = r.data.spots || []
           this.cur = 'visit'
-          this.msg = ''; this.okMsg = ''
+          // 注意：这里不能清 okMsg/msg——收车/贴条成功后紧跟着刷新，刚弹的提示会被瞬间清掉
         } else this.msg = r.msg
       })
     },
@@ -419,6 +465,12 @@ export default {
       this.sendUid = ''
       this.sendBox = true
     },
+    sellCar (g) {
+      if (!window.confirm('确定把[' + g.car_name + ']半价卖掉吗？可回收 ' + Math.floor((g.price || 0) / 2) + 'G。')) return
+      api.post('/games/park/sell', { gar_id: g.id }).then(r => {
+        if (r.code === 0) { this.okMsg = r.data.msg || '卖车成功'; this.loadGarage(); this.load() } else this.msg = r.msg
+      })
+    },
     doSend () {
       if (!this.sendUid) { this.msg = '请输入好友家园号'; return }
       api.post('/games/park/send', { id: this.sendCar.id, uid: +this.sendUid }).then(r => {
@@ -465,6 +517,8 @@ export default {
 .userline img { vertical-align: middle; }
 .bicon { vertical-align: middle; }
 .dim { color: #999; font-size: 12px; }
+.gain { color: #1a9e1a; }
+.loss { color: #c0392b; }
 .car-empty { color: #999; }
 .car-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; color: #fff; background: #8fb264; }
 .car-tag.c2 { background: #5a9bd5; }

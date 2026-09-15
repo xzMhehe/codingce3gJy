@@ -317,10 +317,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.GET("/games/park/shop", parkH.Shop)
 			authed.POST("/games/park/buy", parkH.Buy)
 			authed.POST("/games/park/send", parkH.Send)
+			authed.POST("/games/park/sell", parkH.Sell)
 			authed.POST("/games/park/stop", parkH.Stop)
 			authed.POST("/games/park/favor", parkH.Favor)
 			authed.POST("/games/park/seal", parkH.Seal)
 			authed.GET("/games/park/garage", parkH.Garage)
+			authed.GET("/games/park/logs", parkH.Logs)
 			authed.GET("/games/park/top", parkH.Top)
 
 			// 精武堂（复刻 wap 精武堂：属性/修炼/技能/比武/锻造/任务/头衔/帮派）
@@ -676,6 +678,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			authed.POST("/charity", ecoH.Charity)
 			authed.GET("/charity/rank", ecoH.CharityRank)
 
+			// 福利院捐款上榜（每日价高者受全社区膜拜）
+			authed.POST("/fla/donate", flaH.Donate)
+			authed.POST("/fla/worship", flaH.Worship)
+
 			// 管理后台（RBAC 权限点）
 			admin := authed.Group("/admin")
 			{
@@ -922,6 +928,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ttou", perm(db, "admin:access"), adminH.TtouClear)
 				admin.GET("/ttou/applies", perm(db, "admin:access"), adminH.TtouApplies)
 				admin.POST("/ttou/applies/:id/accept", perm(db, "admin:access"), adminH.TtouApplyAccept)
+
+				// 福利院捐款上榜记录管理
+				admin.GET("/fla-donations", perm(db, "admin:access"), flaH.AdminList)
+				admin.POST("/fla-donations", perm(db, "admin:access"), flaH.AdminCreate)
+				admin.PUT("/fla-donations/:id", perm(db, "admin:access"), flaH.AdminUpdate)
+				admin.DELETE("/fla-donations/:id", perm(db, "admin:access"), flaH.AdminDelete)
 				admin.PUT("/users/:id/status", perm(db, "user:manage"), adminH.UserStatus)
 				admin.PUT("/users/:id/password", perm(db, "user:manage"), adminH.ResetPassword)
 				admin.PUT("/users/:id/roles", perm(db, "user:manage"), adminH.UserRoles)

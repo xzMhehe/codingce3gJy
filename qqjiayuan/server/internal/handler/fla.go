@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,14 +44,18 @@ func (h *FlaHandler) Index(c *gin.Context) {
 		})
 	}
 	var mineOut gin.H
+	worshipped := false
 	if uid > 0 {
 		var mine model.FlaDonation
 		h.DB.Where("user_id = ? AND DATE(created_at) = ?", uid, today).Order("id DESC").First(&mine)
 		if mine.ID > 0 {
 			mineOut = gin.H{"amount": mine.Amount, "word": mine.Word}
 		}
+		var wcnt int64
+		h.DB.Model(&model.FlaWorship{}).Where("user_id = ? AND DATE(created_at) = ?", uid, today).Count(&wcnt)
+		worshipped = wcnt > 0
 	}
-	resp.OK(c, gin.H{"list": out, "mine": mineOut})
+	resp.OK(c, gin.H{"list": out, "mine": mineOut, "worshipped": worshipped})
 }
 
 // Donate 捐款上榜（每人每日一次，价高者上位）
@@ -117,4 +122,146 @@ func (h *FlaHandler) Worship(c *gin.Context) {
 		Content: fmt.Sprintf("友友 %s（%s）膜拜了今日慈善榜首的你！记得保持低调~", me.Nickname, me.Username),
 	})
 	resp.OK(c, gin.H{"worships": top.Worships + 1})
+}
+
+// ============ 管理端：捐款上榜记录维护 ============
+
+func (h *FlaHandler) donOut(d model.FlaDonation) gin.H {
+	nickname, username, color := "神秘友友", "", ""
+	if d.User != nil {
+		nickname = d.User.Nickname
+		username = d.User.Username
+		color = d.User.Color
+	}
+	return gin.H{
+		"id": d.ID, "user_id": d.UserID, "nickname": nickname, "username": username, "color": color,
+		"amount": d.Amount, "word": d.Word, "worships": d.Worships, "created_at": d.CreatedAt,
+	}
+}
+
+// AdminList 后台·捐款上榜记录（支持号码/昵称关键字与日期筛选）
+func (h *FlaHandler) AdminList(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 100 {
+		size = 10
+	}
+	apply := func(q *gorm.DB) *gorm.DB {
+		if kw := strings.TrimSpace(c.Query("user")); kw != "" {
+			var ids []uint
+			h.DB.Model(&model.User{}).Where("nickname LIKE ? OR username LIKE ?", "%"+kw+"%", "%"+kw+"%").Pluck("id", &ids)
+			if len(ids) == 0 {
+				return q.Where("1 = 0")
+			}
+			q = q.Where("user_id IN ?", ids)
+		}
+		if d := strings.TrimSpace(c.Query("date")); d != "" {
+			q = q.Where("DATE(created_at) = ?", d)
+		}
+		return q
+	}
+	var total int64
+	apply(h.DB.Model(&model.FlaDonation{})).Count(&total)
+	var list []model.FlaDonation
+	apply(h.DB.Preload("User")).Order("created_at DESC, id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
+	out := make([]gin.H, 0, len(list))
+	for _, d := range list {
+		out = append(out, h.donOut(d))
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// AdminCreate 后台手工补一条上榜记录（不改钱包）
+func (h *FlaHandler) AdminCreate(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Nickname string `json:"nickname"`
+		Amount   int    `json:"amount" binding:"required,min=1"`
+		Word     string `json:"word" binding:"max=30"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "金额需大于 0，宣言最多 30 字")
+		return
+	}
+	req.Word = strings.TrimSpace(req.Word)
+	var u model.User
+	q := h.DB
+	switch {
+	case req.Username != "":
+		q = q.Where("username = ?", strings.TrimSpace(req.Username))
+	case req.Nickname != "":
+		q = q.Where("nickname = ?", strings.TrimSpace(req.Nickname))
+	default:
+		resp.ParamError(c, "请填写家园号码或昵称")
+		return
+	}
+	if err := q.First(&u).Error; err != nil {
+		resp.ParamError(c, "用户不存在，请核对号码/昵称")
+		return
+	}
+	d := model.FlaDonation{UserID: u.ID, Amount: req.Amount, Word: req.Word}
+	if err := h.DB.Create(&d).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	d.User = &u
+	resp.OK(c, h.donOut(d))
+}
+
+// AdminUpdate 后台修改记录（金额/宣言/膜拜数）
+func (h *FlaHandler) AdminUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var d model.FlaDonation
+	if err := h.DB.First(&d, id).Error; err != nil {
+		resp.ParamError(c, "记录不存在")
+		return
+	}
+	var req struct {
+		Amount    *int    `json:"amount"`
+		Word      *string `json:"word"`
+		Worships  *int    `json:"worships"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	upd := map[string]interface{}{}
+	if req.Amount != nil {
+		if *req.Amount < 1 {
+			resp.ParamError(c, "金额需大于 0")
+			return
+		}
+		upd["amount"] = *req.Amount
+	}
+	if req.Word != nil {
+		upd["word"] = strings.TrimSpace(*req.Word)
+	}
+	if req.Worships != nil {
+		if *req.Worships < 0 {
+			resp.ParamError(c, "膜拜数不能为负")
+			return
+		}
+		upd["worships"] = *req.Worships
+	}
+	if len(upd) > 0 {
+		h.DB.Model(&d).Updates(upd)
+	}
+	h.DB.Preload("User").First(&d, id)
+	resp.OK(c, h.donOut(d))
+}
+
+// AdminDelete 后台删除记录（连同其膜拜明细）
+func (h *FlaHandler) AdminDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var d model.FlaDonation
+	if err := h.DB.First(&d, id).Error; err != nil {
+		resp.ParamError(c, "记录不存在")
+		return
+	}
+	h.DB.Where("don_id = ?", d.ID).Delete(&model.FlaWorship{})
+	h.DB.Delete(&d)
+	resp.OK(c, nil)
 }
