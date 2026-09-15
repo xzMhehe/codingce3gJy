@@ -13,7 +13,7 @@
         <div class="module-content">
           有<a href="javascript:;" @click="switchTab('friends')">{{ me.count }}</a>人加入了游戏<br/>
           昵称:{{ me.nick }}的停车场<br/>
-          等级:{{ me.level || 0 }} 爱心:{{ me.love || 0 }} 现金:{{ me.coins || 0 }}G 汽车数:{{ me.cars || 0 }}<br/>
+          等级:{{ me.level || 0 }}（经验 {{ me.point || 0 }}/{{ (me.level || 0) + 1 }}00，收车/贴车每停 1 小时 +1 经验） 爱心:{{ me.love || 0 }} 现金:{{ me.coins || 0 }}G 汽车数:{{ me.cars || 0 }}<br/>
           查看:<a href="javascript:;" @click="switchTab('garage')">车库</a>.<a href="javascript:;" @click="switchTab('shop')">市场</a>.<a href="javascript:;" @click="switchTab('top')">排行</a>.<a href="javascript:;" @click="switchTab('msgs')">消息({{ me.unread || 0 }})</a>.<a href="javascript:;" @click="switchTab('friends')">去好友停车场停车</a><br/>
         </div>
         <br/>

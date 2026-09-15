@@ -20,11 +20,14 @@
         <tr><td>黄金6级</td><td>+1.8天</td><td>+2.0天</td></tr>
         <tr><td>黄金7级</td><td>+1.9天</td><td>+2.1天</td></tr>
       </table>
+      [蓝钻用户升级加速]<br>
+      蓝钻与超Q同规则：每晚一天 +0.1天/级，蓝钻7级最高 +0.7天。蓝钻+超Q合计加成封顶 +1.0天。<br>
     </div>
 
     <div class="module-content plist">
       <div class="row00">我的家园等级：<b style="color:#e05a00">Lv.{{ data.level || 1 }}</b> <img v-if="data.icon" :src="data.icon" alt="图标"></div>
       <div class="row00">已积累活跃天数：{{ data.active_days || 0 }}<template v-if="data.next_days">　下一级需 {{ data.next_days }} 天</template></div>
+      <div class="row00" v-if="data.today_speed && data.today_speed > 1">今日登录可获 <b style="color:#e05a00">{{ data.today_speed }}</b> 活跃天（含超Q/蓝钻加速）</div>
     </div>
 
     <div class="module-title">【家园等级列表】</div>

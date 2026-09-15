@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -57,9 +58,26 @@ func (h *HomeLevelHandler) View(c *gin.Context) {
 		}
 	}
 
+	// 今日活跃进度：基准 1 点/天，连续登录 1.2 点；超Q/蓝钻在有效期内每天 +0.1/级（封顶 +1.0）
+	speed := 1.0
+	now := time.Now()
+	if u.LastActiveDate == "" || u.LastActiveDate == now.AddDate(0, 0, -1).Format("2006-01-02") {
+		speed = 1.2
+	}
+	if u.QqEnd != nil && u.QqEnd.After(now) && u.QqLv > 0 {
+		speed += 0.1 * float64(u.QqLv)
+	}
+	if u.BlueEnd != nil && u.BlueEnd.After(now) && u.BlueLv > 0 {
+		speed += 0.1 * float64(u.BlueLv)
+	}
+	if speed > 2.2 {
+		speed = 2.2
+	}
+
 	resp.OK(c, gin.H{
 		"active_days": u.ActiveDays, "level": lv, "icon": icon,
 		"next_days": next, "gender": u.Gender, "levels": homeLevels,
+		"today_speed": speed,
 	})
 }
 
