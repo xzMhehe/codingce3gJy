@@ -32,7 +32,7 @@ func (h *PlazaHandler) Announcements(c *gin.Context) {
 func (h *PlazaHandler) Index(c *gin.Context) {
 	db := h.DB
 
-	// 游客在线记录（诺哈 online.html：游客按 IP 展示，30 分钟滑动窗口；登录用户走 users.last_active_at）
+	// 游客在线记录（30 分钟滑动窗口；登录用户走 users.last_active_at）
 	if middleware.GetUID(c) == 0 {
 		since := time.Now().Add(-30 * time.Minute)
 		db.Exec("INSERT INTO online_guests (ip, last_active_at) VALUES (?, NOW()) ON DUPLICATE KEY UPDATE last_active_at = NOW()", c.ClientIP())
@@ -44,9 +44,11 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	var broadcasts []model.Announcement
 	db.Where("type = ? AND status = 1", "broadcast").Order("created_at DESC").Limit(1).Find(&broadcasts)
 
-	var onlineCount, userCount int64
-	tenMinAgo := time.Now().Add(-10 * time.Minute)
-	db.Model(&model.User{}).Where("last_active_at > ?", tenMinAgo).Count(&onlineCount)
+	var onlineCount, userCount, guestCount int64
+	halfHourAgo := time.Now().Add(-30 * time.Minute)
+	db.Model(&model.User{}).Where("last_active_at > ?", halfHourAgo).Count(&onlineCount)
+	db.Model(&model.OnlineGuest{}).Where("last_active_at > ?", halfHourAgo).Count(&guestCount)
+	onlineCount += guestCount
 	db.Model(&model.User{}).Count(&userCount)
 	var newestUser model.User
 	db.Order("id DESC").First(&newestUser)

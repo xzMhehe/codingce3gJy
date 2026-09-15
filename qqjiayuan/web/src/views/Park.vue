@@ -135,7 +135,7 @@
               停车时间:{{ g.minutes }}分钟/{{ g.hours }}小时<br/>
               <span v-if="g.over" class="dim">{{ g.over_msg }}<br/></span>
               总的收入:{{ g.total }} 税收缴纳:{{ g.tax }} 预计收入:{{ g.net }}G 预计贡献:{{ g.contri }}点<br/>
-              <template v-if="g.can_favor">&gt;&gt;<a href="javascript:;" @click="favor(g)">收车</a><br/></template>
+              <template v-if="g.can_favor">&gt;&gt;<a href="javascript:;" @click="favor({ id: g.stop_id })">收车</a><br/></template>
             </template>
           </div>
           <div class="row" v-if="!garage.length">您还没有汽车，去<a href="javascript:;" @click="switchTab('shop')">车市</a>买一辆吧！<br/></div>
@@ -422,7 +422,8 @@ export default {
     openStop (spot) {
       this.stopTarget = spot
       this.stopBox = true
-      if (!this.garage.length) this.loadGarage()
+      // 弹层里的可选车依赖最新车库状态（收车/被贴条后可能刚变流动车）
+      this.loadGarage()
     },
     doStop (gar) {
       api.post('/games/park/stop', { oid: this.vOwner.uid, stop_id: this.stopTarget.id, gar_id: gar.id }).then(r => {
@@ -434,6 +435,8 @@ export default {
       api.post('/games/park/favor', { stop_id: s.id }).then(r => {
         if (r.code === 0) {
           this.okMsg = r.data.msg || '收车成功'
+          // 收车后车辆回到流动状态，车库缓存必须刷新，否则再停车会被误判为没有车
+          this.loadGarage()
           if (this.cur === 'visit') this.visit(this.vOwner.uid)
           if (this.cur === 'garage') this.loadGarage()
           this.load()

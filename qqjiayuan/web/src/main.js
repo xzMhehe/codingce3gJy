@@ -28,7 +28,7 @@ const ntComponent = {
   },
   render (h) {
     const txt = this.pieces
-    const cs = (this.color || '').split(',').map(s => s.trim()).filter(s => /^#[0-9a-f]{3,6}$/.test(s))
+    const cs = (this.color || '').split(',').map(s => s.trim()).filter(s => /^#[0-9a-f]{3,6}$/i.test(s))
     if (cs.length <= 1) {
       return h('font', { attrs: { color: cs[0] || DEFAULT_NICK_COLOR } }, txt)
     }

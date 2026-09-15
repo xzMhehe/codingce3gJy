@@ -69,6 +69,7 @@ import AdminFla from './components/admin/AdminFla.vue'
 import AdminRoles from './components/admin/AdminRoles.vue'
 import AdminResources from './components/admin/AdminResources.vue'
 import AdminName from './components/admin/AdminName.vue'
+import AdminMenus from './components/admin/AdminMenus.vue'
 
 // 菜单树：最多两级分组（children 里还可带一层 children，如游戏管理下的各游戏）
 export const menu = [
@@ -232,6 +233,7 @@ export const menu = [
       { key: 'siteConfig', name: '站点设置', icon: 'el-icon-s-tools', component: AdminSiteConfig, perm: 'module:siteConfig' },
       { key: 'roles', name: '管理设置', icon: 'el-icon-s-check', component: AdminRoles, perm: 'module:roles' },
       { key: 'resources', name: '文件管理', icon: 'el-icon-picture-outline', component: AdminResources, perm: 'module:resources' },
+      { key: 'menus', name: '菜单维护', icon: 'el-icon-s-operation', component: AdminMenus, perm: 'module:menus' },
     ]
   }
 ]
@@ -249,3 +251,37 @@ export const pageMap = {}
     if (it.children) walk(it.children)
   })
 })(menu)
+
+// 应用菜单覆盖配置：覆盖 name/icon/perm/sort，hidden 过滤，sort 重排同级
+export function applyMenuOverrides (items, keyMap) {
+  const list = items
+    .filter(it => !(keyMap[it.key] && keyMap[it.key].hidden))
+    .map((it, i) => {
+      const o = keyMap[it.key]
+      const node = {
+        ...it,
+        ...(it.component ? { component: it.component } : {}),
+        order: o && o.sort ? o.sort : i + 1
+      }
+      if (o) {
+        if (o.name) node.name = o.name
+        if (o.icon) node.icon = o.icon
+        if (o.perm) node.perm = o.perm
+      }
+      if (it.children) node.children = applyMenuOverrides(it.children, keyMap)
+      return node
+    })
+    .filter(it => !it.children || it.children.length)
+  list.sort((a, b) => a.order - b.order)
+  return list
+}
+
+// 深拷贝默认菜单树（菜单维护页/多次合并需隔离节点的 children 引用）
+export function cloneMenu () {
+  const walk = items => items.map(it => {
+    const n = { ...it }
+    if (it.children) n.children = walk(it.children)
+    return n
+  })
+  return walk(menu)
+}

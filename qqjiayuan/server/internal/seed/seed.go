@@ -62,7 +62,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
 		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
 		&model.ParkUser{}, &model.CarShop{}, &model.CarGarage{}, &model.CarStop{}, &model.CarLog{}, &model.CarMsg{},
-		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{},
+		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, 		&model.Setting{}, &model.AdminMenu{},
 		&model.MoneyShop{},
 		&model.WalletLog{},
 		&model.Marriage{},
@@ -1300,6 +1300,7 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
+		mod("系统", "菜单维护", "menus"),
 	}
 	for _, p := range modulePerms {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
@@ -1972,6 +1973,10 @@ func seedGameBoards(db *gorm.DB) {
 		{"猜数", "猜数字赢大奖，试试你的运气"},
 		{"六合彩", "买马投注，一夜暴富"},
 		{"大富翁", "掷骰子走格子，买地收租当富豪"},
+		// 游戏论坛功能性板块（对齐诺哈 game 页底部 游戏综合反馈/游戏研发/游戏交流）
+		{"游戏综合反馈", "游戏中遇到的问题、建议与反馈专区"},
+		{"游戏研发", "游戏更新与研发动态专区"},
+		{"游戏交流", "各游戏玩家自由交流区"},
 	}
 	ids := map[string]uint{}
 	for _, g := range games {

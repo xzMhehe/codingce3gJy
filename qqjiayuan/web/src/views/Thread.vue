@@ -199,6 +199,7 @@
     <!-- 贴子管理（诺哈 topic_func：收藏/复制/推荐/管理 + 版主操作） -->
     <div class="item">
       [贴子管理]:<a href="javascript:;" @click="toggleFav"><font :color="favored ? '#1a9e1a' : '#004299'">{{ favored ? '★已收藏' : '收藏' }}</font></a>.<a href="javascript:;" @click="copyTopic">复制</a>.<a href="javascript:;" @click="recommend">推荐</a>.<a href="javascript:;" @click="manageOpen = !manageOpen">管理</a>
+      <template v-if="mine">.<a href="javascript:;" @click="delThread" style="color:#c00">删除</a></template>
       <template v-if="canManageAny">
         .<a href="javascript:;" @click="toggle('is_fine')">{{ thread.is_fine ? '撤精' : '加精' }}</a>
         .<a href="javascript:;" @click="toggle('is_lock')">{{ thread.is_lock ? '解锁' : '锁定' }}</a>

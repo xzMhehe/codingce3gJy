@@ -27,9 +27,11 @@
           <input type="submit" value="确定设置" @click="setCustom"><br>
           <br>
           <div class="module-title">【配色工具】</div>
-          推荐方案：<span v-for="(plan,pi) in presets" :key="'ps'+pi">
-            <a href="javascript:;" @click="loadSeq(plan)"><ntext :color="plan.colors.join(',')">{{ plan.name }}</ntext></a>{{ pi === presets.length - 1 ? '' : ' . ' }}
-          </span><br>
+          推荐方案：<span v-for="(plan,pi) in shownPresets" :key="'ps'+pi">
+            <a href="javascript:;" @click="loadSeq(plan)">
+              <span v-for="(c,ci) in plan.colors" :key="'d'+ci"><font :color="c">◆</font></span><ntext :color="plan.colors.join(',')">{{ plan.name }}</ntext>
+            </a>{{ pi === shownPresets.length - 1 ? '' : ' . ' }}
+          </span>.<a href="javascript:;" @click="nextPresets">[换一批]</a><br>
           当前配色：<input type="hidden" /><span v-for="(c,i) in seq" :key="'s'+i">
             <input type="color" :value="toHex6(c)" @change="updSeq(i, $event)">
             <a href="javascript:;" style="color:#c00" @click="seq.splice(i,1)">[删]</a>.
@@ -99,15 +101,33 @@ export default {
       data: { opened: false, days_left: 0, color: '#004299', colors: [], plans: [] },
       customColor: '',
       seq: [],
+      presetIdx: 0,
+      presetCount: 4,
       presets: [
         { name: '炸鱼诱惑', colors: ['#D2B48C', '#800080', '#DAA520', '#FFC0CB', '#EE82EE'] },
-        { name: '彩虹', colors: ['#FF0000', '#FF7F00', '#FFE600', '#00B050', '#3B6AFF', '#800080'] },
+        { name: '八彩虹', colors: ['#FF0000', '#FF7F00', '#FFE600', '#00B050', '#3B6AFF', '#800080'] },
         { name: '粉粉少女', colors: ['#FF69B4', '#FF99CC', '#FFB6D9', '#FF8FC0', '#FFC0CB'] },
         { name: '星空紫', colors: ['#800080', '#9B30FF', '#BA55D3', '#C77DFF', '#6A0DAD'] },
         { name: '海洋蓝', colors: ['#004299', '#0074D9', '#3399FF', '#66CCFF', '#001F7A'] },
         { name: '活力橙绿', colors: ['#FF8C00', '#FFC125', '#00B050', '#00CC66', '#FFD700'] },
         { name: '中国红', colors: ['#C00', '#FF4500', '#D98880', '#E74C3C', '#A02020'] },
-        { name: '暗夜黑金', colors: ['#000000', '#444444', '#FFD700', '#B8860B', '#666666'] }
+        { name: '暗夜黑金', colors: ['#000000', '#444444', '#FFD700', '#B8860B', '#666666'] },
+        { name: '蜜桃甜心', colors: ['#FFB6C1', '#FF9EAA', '#FF7F7F', '#FFC0CB', '#F98CA5'] },
+        { name: '薄荷清爽', colors: ['#7FFFD4', '#40E0D0', '#00CED1', '#20B2AA', '#5F9EA0'] },
+        { name: '樱花渐变', colors: ['#FF4E7E', '#FF7EA5', '#FF9FBF', '#FFC0D3', '#FF87A9'] },
+        { name: '日出金橙', colors: ['#E06000', '#FF8C1A', '#FFB347', '#FFD37E', '#C0392B'] },
+        { name: '深蓝夜空', colors: ['#0B1B4A', '#1F3FA0', '#3B6AFF', '#6FA8FF', '#0A0F2D'] },
+        { name: '青柠冰汽', colors: ['#00CC66', '#66FF99', '#CCFF00', '#00B050', '#8DB800'] },
+        { name: '香芋紫', colors: ['#B57EDC', '#C39BD3', '#A569BD', '#D2B4DE', '#884EA0'] },
+        { name: '海岸线', colors: ['#20B2AA', '#48D1CC', '#7FCFCF', '#2E8B8B', '#66CCC5'] },
+        { name: '落日晚霞', colors: ['#FF512F', '#FF7E4A', '#FFB347', '#DD5E89', '#F59E5A'] },
+        { name: '森林墨绿', colors: ['#0B6E3A', '#2E8B57', '#4CAF50', '#6FA96F', '#1E5631'] },
+        { name: '葡萄美酒', colors: ['#7B1FA2', '#9C27B0', '#BA55D3', '#CE93D8', '#5E1E6B'] },
+        { name: '香槟金', colors: ['#B8860B', '#DAA520', '#E8C97A', '#F5DEB3', '#9A7D2E'] },
+        { name: '圣诞红绿', colors: ['#C0392B', '#E74C3C', '#2E8B57', '#3CB371', '#8B0000'] },
+        { name: '极简灰阶', colors: ['#333333', '#555555', '#777777', '#999999', '#222222'] },
+        { name: '冰雪蓝白', colors: ['#5F9EFF', '#87CEEB', '#B0E2FF', '#4682B4', '#A4D3EE'] },
+        { name: '墨韵山水', colors: ['#1C1C1C', '#36454F', '#536878', '#708090', '#0F1419'] }
       ],
       msg: '', okMsg: '',
       buyPid: 0, buyNum: 1, buyMsg: '', buyOk: '',
@@ -116,7 +136,14 @@ export default {
   },
   computed: {
     user () { return this.$store.state.user || {} },
-    seqColor () { return this.seq.join(',') }
+    seqColor () { return this.seq.join(',') },
+    shownPresets () {
+      const n = this.presets.length
+      const start = (this.presetIdx * this.presetCount) % n
+      const out = []
+      for (let i = 0; i < Math.min(this.presetCount, n); i++) out.push(this.presets[(start + i) % n])
+      return out
+    }
   },
   mounted () { this.load() },
   methods: {
@@ -130,6 +157,9 @@ export default {
       this.seq = plan.colors.slice()
       this.okMsg = '已载入「' + plan.name + '」配色，预览满意后点「确定逐字设置」'
       this.msg = ''
+    },
+    nextPresets () {
+      this.presetIdx = (this.presetIdx + 1) % Math.ceil(this.presets.length / this.presetCount)
     },
     updSeq (i, e) { this.$set(this.seq, i, (e.target.value || '').toLowerCase()) },
     clearSeq () { this.seq = []; this.okMsg = '' },

@@ -86,7 +86,7 @@
 </template>
 
 <script>
-import { menu, tabNames, pageMap } from './menu'
+import { cloneMenu, applyMenuOverrides, tabNames, pageMap } from './menu'
 import api from './api'
 
 export default {
@@ -121,9 +121,11 @@ export default {
   },
   mounted () {
     document.addEventListener('click', this.hideMenu)
+    window.addEventListener('menu-updated', this.filterMenu)
   },
   beforeDestroy () {
     document.removeEventListener('click', this.hideMenu)
+    window.removeEventListener('menu-updated', this.filterMenu)
   },
   computed: {
     showChrome () { return this.$route.path !== '/login' },
@@ -139,11 +141,18 @@ export default {
       this.user = JSON.parse(localStorage.getItem('jy_admin_user') || 'null') || {}
     },
     // 按登录用户角色的权限码过滤菜单：未分配的菜单不展示（超级管理员全量展示）
+    // 菜单维护的覆盖配置（名称/图标/排序/隐藏）在权限过滤前先合并
     async filterMenu () {
       if (this.$route.path === '/login') return
-      const r = await api.get('/admin/my-perms').catch(() => null)
+      const [r, ov] = await Promise.all([
+        api.get('/admin/my-perms').catch(() => null),
+        api.get('/admin/menus').catch(() => null)
+      ])
       const codes = (r && r.code === 0) ? (r.data.codes || []) : []
       const isSuper = (r && r.code === 0) ? !!r.data.super : false
+      const keyMap = {}
+      if (ov && ov.code === 0) (ov.data || []).forEach(o => { keyMap[o.key] = o })
+      const merged = applyMenuOverrides(cloneMenu(), keyMap)
       const allow = it => {
         if (!it.perm || isSuper || codes.includes(it.perm)) return true
         return false
@@ -155,7 +164,10 @@ export default {
           ...(it.children ? { children: walk(it.children).filter(x => !x.children || x.children.length) } : {})
         }))
         .filter(it => !it.children || it.children.length)
-      this.menu = isSuper || !codes.length ? menu : walk(menu)
+      this.menu = isSuper || !codes.length ? merged : walk(merged)
+      // 同步面包屑/标签页名称（菜单维护改名后即时生效）
+      const rf = items => items.forEach(it => { tabNames[it.key] = it.name; if (it.children) rf(it.children) })
+      rf(merged)
       // 当前 tab 因菜单被过滤而失效时回数据概览
       const t = this.$route.query.tab
       if (t && !pageMap[t] && t !== 'dashboard') this.$router.replace({ path: '/', query: { tab: 'dashboard' } }).catch(() => {})

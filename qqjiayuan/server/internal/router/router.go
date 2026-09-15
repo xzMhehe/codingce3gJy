@@ -896,6 +896,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfig)
 				admin.PUT("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfigSave)
 
+				// ============ 菜单维护 admin_menus/（管理端菜单覆盖配置） ============
+				admin.GET("/menus", adminH.AdminMenus)
+				admin.PUT("/menus", perm(db, "module:menus"), adminH.AdminMenuSave)
+				admin.DELETE("/menus/:key", perm(db, "module:menus"), adminH.AdminMenuDel)
+
 				// ============ 社区管理 bbs/（诺哈：帖子管理/回复管理/恢复帖子/黑名单） ============
 				admin.GET("/threads/recycle", perm(db, "module:recycle"), adminH.AdminThreadRecycle)
 				admin.PUT("/threads/:id/restore", perm(db, "module:recycle"), adminH.AdminThreadRestore)

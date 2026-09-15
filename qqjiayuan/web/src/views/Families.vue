@@ -1,6 +1,6 @@
-<template>
+﻿<template>
   <div>
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族</div>
+    
 
     <img src="/static/image/jiazu.gif" alt="家族" style="max-width:100%;vertical-align:middle">
 
@@ -106,7 +106,7 @@
     </div>
 
     <!-- 底部 bar（与线上页底一致） -->
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;家族</div>
+    
 
   </div>
 </template>

@@ -1025,3 +1025,46 @@ func (h *AdminHandler) AdminSiteConfigSave(c *gin.Context) {
 	}
 	resp.OK(c, nil)
 }
+
+// ---- 菜单维护 admin_menus/（管理端菜单覆盖配置） ----
+
+// AdminMenus 菜单覆盖配置列表（登录管理端即可读取，用于前端菜单合并）
+func (h *AdminHandler) AdminMenus(c *gin.Context) {
+	var list []model.AdminMenu
+	h.DB.Order("sort ASC").Find(&list)
+	if list == nil {
+		list = []model.AdminMenu{}
+	}
+	resp.OK(c, list)
+}
+
+// AdminMenuSave 保存菜单覆盖（单条 upsert）
+func (h *AdminHandler) AdminMenuSave(c *gin.Context) {
+	var req model.AdminMenu
+	if err := c.ShouldBindJSON(&req); err != nil || req.Key == "" {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	var item model.AdminMenu
+	if err := h.DB.Where("`key` = ?", req.Key).First(&item).Error; err != nil {
+		req.ID = 0
+		h.DB.Create(&req)
+	} else {
+		h.DB.Model(&item).Updates(map[string]interface{}{
+			"name": req.Name, "icon": req.Icon, "perm": req.Perm,
+			"sort": req.Sort, "hidden": req.Hidden,
+		})
+	}
+	resp.OK(c, nil)
+}
+
+// AdminMenuDel 删除覆盖配置（该菜单恢复 menu.js 默认）
+func (h *AdminHandler) AdminMenuDel(c *gin.Context) {
+	key := c.Param("key")
+	if key == "" {
+		resp.ParamError(c, "参数有误")
+		return
+	}
+	h.DB.Where("`key` = ?", key).Delete(&model.AdminMenu{})
+	resp.OK(c, nil)
+}

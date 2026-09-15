@@ -3,7 +3,7 @@
     <!-- 复刻诺哈 /game/index.asp 游戏大厅（演示站 index3.html 原版布局）：
          题图条 + 我的游戏(序号列表) + 网络游戏 + 社区游戏(65px图标表格) + 娱乐竞猜 + 游戏论坛 + 广告条 -->
     <!-- 题图条（演示站 index3.html 原版内联样式：fresh_1.gif + #91e09d 底色，高 25px） -->
-    <div style="background-image:url(/static/image/fresh_1.gif);background-color:#91e09d;background-repeat:no-repeat;height:25px;"></div>
+    <div style="background-image:url(/static/image/fresh_1.gif);background-repeat:no-repeat;height:25px;"></div>
 
     <!-- 我的游戏（诺哈 home/game_list.asp：序号 + [x]移除 + ↑↓排序，标题带“添加”） -->
     <template v-if="isLogin">
@@ -55,10 +55,10 @@
       <a v-for="(label,j) in guessLabels" :key="'gl' + j" class="g-guess" href="javascript:;" @click="playLabel(label)">{{ label }}</a>
     </div>
 
-    <!-- 游戏论坛（诺哈：游戏综合反馈/游戏研发/游戏交流） -->
+    <!-- 游戏论坛（诺哈：游戏综合反馈/游戏研发/游戏交流，均为论坛板块） -->
     <div class="bodule-title">【游戏论坛】</div>
     <div class="module-content">
-      <a href="javascript:;" @click="tip('游戏综合反馈')">游戏综合反馈</a>|<a href="javascript:;" @click="tip('游戏研发')">游戏研发</a>|<a href="javascript:;" @click="tip('游戏交流')">游戏交流</a><br>
+      <a href="javascript:;" @click="goBoardName('游戏综合反馈')">游戏综合反馈</a>|<a href="javascript:;" @click="goBoardName('游戏研发')">游戏研发</a>|<a href="javascript:;" @click="goBoardName('游戏交流')">游戏交流</a><br>
     </div>
 
     <!-- 广告条（演示站 index3.html 底部 login-tips） -->
@@ -141,6 +141,18 @@ export default {
       this.toastMsg = msg
       clearTimeout(this.toastTimer)
       this.toastTimer = setTimeout(() => { this.toastMsg = '' }, 2000)
+    },
+    goBoardName (name) {
+      // 「游戏论坛」下的功能性板块：从论坛目录里找到板块 ID 直达
+      api.get('/boards').then(r => {
+        if (r.code !== 0) return
+        for (const ch of (r.data || [])) {
+          for (const b of (ch.children || [])) {
+            if (b.name === name) { this.$router.push('/board/' + b.id); return }
+          }
+        }
+        this.toast('「' + name + '」板块暂未开放')
+      })
     },
     play (g) {
       if (g.path) { this.$router.push(g.path); return }

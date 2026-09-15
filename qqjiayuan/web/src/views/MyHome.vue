@@ -58,7 +58,7 @@
 
       <div class="module-title"><a href="javascript:;" @click="$router.push('/space/'+u.id)">留言板</a></div>
       <ul class="dtuser" v-if="msgs.length">
-        <li v-for="m in msgs" :key="'m'+m.id"><a href="javascript:;" @click="$router.push('/user/'+m.from_user_id)"><font :color="m.from_color || '#004299'">{{ m.from_nickname || '友友' }}</font></a> <span class="txt-fade">{{ fmt(m.created_at) }}</span><br>{{ m.content }}</li>
+        <li v-for="m in msgs" :key="'m'+m.id"><a href="javascript:;" @click="$router.push('/user/'+m.from_user_id)"><ntext :color="m.from_color || ''">{{ m.from_nickname || '友友' }}</ntext></a> <span class="txt-fade">{{ fmt(m.created_at) }}</span><br>{{ m.content }}</li>
       </ul>
       <div class="module-content" v-else><span class="empty">还没有留言</span></div>
 

@@ -5,7 +5,7 @@
 
     <div class="list" v-if="rows.length">
       <div class="row00" v-for="(r, i) in rows" :key="r.is_guest ? 'g'+r.ip : 'u'+r.user_id">
-        {{ (page - 1) * size + i + 1 }}.<template v-if="!r.is_guest"><a href="javascript:;" @click="$router.push('/user/' + r.user_id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font>({{ r.username }})</a></template>
+        {{ (page - 1) * size + i + 1 }}.<template v-if="!r.is_guest"><a href="javascript:;" @click="$router.push('/user/' + r.user_id)"><ntext :color="r.color || ''">{{ r.nickname }}</ntext></a>({{ r.username }})</template>
         <template v-else><a href="javascript:;" @click="$router.push({ path: '/tool/ip', query: { ip: r.ip } })">家园社区游客({{ r.ip }})</a></template>
         [{{ fmt(r.last_active_at) }}]<br>
       </div>
