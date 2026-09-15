@@ -419,7 +419,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"has_paypass": user.PayPass != "",
 		"introduction": user.Introduction, "city": user.City, "avatar_base64": user.AvatarBase64,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
-		"noble": user.Noble,
+		"noble": user.Noble, "qq_end": user.QqEnd, "qq_lv": user.QqLv,
 		"roles": user.Roles, "badges": user.Badges, "priv": user.Priv,
 		"perms": middleware.UserPermissionCodes(h.DB, uid),
 	})
@@ -451,5 +451,5 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 func (h *AuthHandler) userBrief(u model.User) gin.H {
 	return gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname,
 		"gender": u.Gender, "color": u.Color, "level": u.Level, "coins": u.Coins,
-		"noble": u.Noble}
+		"noble": u.Noble, "qq_end": u.QqEnd}
 }

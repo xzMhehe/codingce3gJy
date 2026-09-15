@@ -3,7 +3,7 @@
     <!-- 顶部个人导航（复刻诺哈 Page_Login：号码 家信(N) 家园 空间） -->
     <div class="top_nav">
       <template v-if="isLogin">
-        <a href="javascript:;" @click="$router.push('/inbox')"><img src="/static/image/id.gif" alt="号码">{{ user.username }}</a>
+        <a href="javascript:;" @click="$router.push('/inbox')"><img :src="idIcon" alt="号码">{{ user.username }}</a>
         <a href="javascript:;" @click="$router.push('/messages')"><img src="/static/image/message.gif" alt="家信">家信({{ unread }})</a>
         <a href="javascript:;" @click="$router.push('/home')"><img src="/static/image/home.gif" alt="家园">家园</a>
         <a href="javascript:;" @click="$router.push('/space/'+user.id)"><img src="/static/image/blog.gif" alt="空间">空间</a>
@@ -63,7 +63,13 @@ export default {
     isLogin () { return this.$store.getters.isLogin },
     user () { return this.$store.state.user || {} },
     unread () { return this.$store.state.unread },
-    noble () { return this.user.noble || 0 }
+    noble () { return this.user.noble || 0 },
+    // 头像前的超Q标志（复刻诺哈 Page_Login）：开通且未过期用 id.gif，未开通/已过期用 idw.gif
+    idIcon () {
+      const end = this.user.qq_end
+      if (end && new Date(end).getTime() > Date.now()) return '/static/image/id.gif'
+      return '/static/image/idw.gif'
+    }
   },
   mounted () {
     this.tick()
