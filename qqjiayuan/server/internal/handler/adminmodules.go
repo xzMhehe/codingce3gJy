@@ -251,9 +251,19 @@ func (h *AdminHandler) AdminInviteDelete(c *gin.Context) {
 // AdminWalletLogs 钱包流水
 func (h *AdminHandler) AdminWalletLogs(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
-	uid, _ := strconv.Atoi(c.Query("user_id"))
+	word := strings.TrimSpace(c.Query("user_id"))
 	q := h.DB.Model(&model.WalletLog{})
-	if uid > 0 {
+	if word != "" {
+		// 按家园号码或内部ID过滤（靓号转换后按新号码可查全部历史流水，user_id 不变）
+		uid, err := strconv.Atoi(word)
+		if err != nil {
+			var u model.User
+			if err := h.DB.Select("id").Where("username = ? OR nickname = ?", word, word).First(&u).Error; err != nil {
+				resp.OK(c, gin.H{"total": 0, "page": page, "size": size, "list": []gin.H{}})
+				return
+			}
+			uid = int(u.ID)
+		}
 		q = q.Where("user_id = ?", uid)
 	}
 	var total int64
@@ -261,14 +271,15 @@ func (h *AdminHandler) AdminWalletLogs(c *gin.Context) {
 	type logRow struct {
 		model.WalletLog
 		Nickname string `json:"nickname"`
+		Username string `json:"username"`
 	}
 	var list []model.WalletLog
 	q.Order("created_at DESC").Offset(offset).Limit(size).Find(&list)
 	out := make([]logRow, 0, len(list))
 	for _, l := range list {
 		var u model.User
-		h.DB.Select("nickname").First(&u, l.UserID)
-		out = append(out, logRow{WalletLog: l, Nickname: u.Nickname})
+		h.DB.Select("nickname,username").First(&u, l.UserID)
+		out = append(out, logRow{WalletLog: l, Nickname: u.Nickname, Username: u.Username})
 	}
 	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }
@@ -681,12 +692,12 @@ func (h *AdminHandler) AdminUserProtections(c *gin.Context) {
 	var total int64
 	q.Count(&total)
 	type row struct {
-		UserID      uint      `json:"user_id"`
-		Nickname    string    `json:"nickname"`
-		Username    string    `json:"username"`
-		Issue       int       `json:"issue"`
-		HasProtect  bool      `json:"has_protect"`
-		UpdatedAt   time.Time `json:"updated_at"`
+		UserID     uint      `json:"user_id"`
+		Nickname   string    `json:"nickname"`
+		Username   string    `json:"username"`
+		Issue      int       `json:"issue"`
+		HasProtect bool      `json:"has_protect"`
+		UpdatedAt  time.Time `json:"updated_at"`
 	}
 	var list []model.UserProtection
 	q.Order("updated_at DESC").Offset(offset).Limit(size).Find(&list)

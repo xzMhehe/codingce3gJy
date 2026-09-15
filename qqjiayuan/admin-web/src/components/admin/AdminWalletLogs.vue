@@ -2,13 +2,13 @@
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model.number="userId" placeholder="按用户号码过滤" clearable style="width:200px" @keyup.enter.native="search" @clear="search" />
+        <el-input v-model.trim="userId" placeholder="家园号码 / 昵称 / 内部ID" clearable style="width:240px" @keyup.enter.native="search" @clear="search" />
         <el-button type="primary" icon="el-icon-search" @click="search">查询</el-button>
         <div class="grow" />
-        <span class="help-line">会员钱包收支流水</span>
+        <span class="help-line">会员钱包收支流水（靓号转换后历史流水自动跟随新号码）</span>
       </div>
       <el-table :data="list" v-loading="loading" stripe>
-        <el-table-column prop="user_id" label="号码" width="90" />
+        <el-table-column prop="username" label="号码" width="110" />
         <el-table-column prop="nickname" label="昵称" min-width="110" />
         <el-table-column prop="title" label="事项" min-width="180" show-overflow-tooltip />
         <el-table-column prop="kind" label="类型" width="90" />

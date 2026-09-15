@@ -272,11 +272,11 @@ func (h *NameHandler) AdminNameUserEdit(c *gin.Context) {
 		return
 	}
 	var req struct {
-		AddDays int      `json:"add_days"`           // >0 续期
-		End     *string  `json:"end"`                // 直接指定到期时间（yyyy-MM-dd 或 RFC3339）
-		Clear   bool     `json:"clear"`              // 重置：清空开通状态
-		Color   *string  `json:"color"`              // 指定颜色
-		Reset   bool     `json:"reset_color"`        // 颜色重置为默认蓝
+		AddDays int     `json:"add_days"`    // >0 续期
+		End     *string `json:"end"`         // 直接指定到期时间（yyyy-MM-dd 或 RFC3339）
+		Clear   bool    `json:"clear"`       // 重置：清空开通状态
+		Color   *string `json:"color"`       // 指定颜色
+		Reset   bool    `json:"reset_color"` // 颜色重置为默认蓝
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
