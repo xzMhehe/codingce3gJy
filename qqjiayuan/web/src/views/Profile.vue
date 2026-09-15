@@ -24,7 +24,7 @@
         阴历生日:<input type="text" v-model.trim="form.lunar" maxlength="20" style="width:120px" placeholder="如：腊月初八"><br>
         签名:<input type="text" v-model.trim="form.signature" maxlength="120" style="width:180px"><br>
         简介:<input type="text" v-model.trim="form.introduction" maxlength="200" style="width:180px"><br>
-        城市:<a href="javascript:;" @click="tip('城市设置')">去设置</a><br>
+        城市:<span v-if="form.city" style="color:#004299">{{ form.city }}</span>.<a href="javascript:;" @click="$router.push('/city-set')">去设置</a><br>
       </div>
 
       <!-- 通信地址（对齐诺哈 address.asp：故乡/现居） -->

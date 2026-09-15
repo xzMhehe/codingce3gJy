@@ -40,6 +40,7 @@ const routes = [
   { path: '/post', name: 'postSelect', component: () => import('../views/PostSelect.vue'), meta: { auth: true } },
   { path: '/post/:boardId', name: 'post', component: () => import('../views/PostEdit.vue'), meta: { auth: true } },
   { path: '/user/:id', name: 'user', component: () => import('../views/UserPage.vue') },
+  { path: '/city-set', name: 'citySet', component: () => import('../views/CitySet.vue'), meta: { auth: true } },
   { path: '/online', name: 'online', component: () => import('../views/Online.vue') },
   { path: '/profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { auth: true } },
   { path: '/friends', name: 'friends', component: () => import('../views/Friends.vue'), meta: { auth: true } },
