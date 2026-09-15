@@ -9,6 +9,7 @@
       社区 I D :{{ u.username || u.id }}<span :style="{ color: u.online ? '#1a9e1a' : '#999' }">({{ u.online ? '在线' : '离线' }})</span>
       <template v-if="u.blue_lv > 0"><img class="id-vip" :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" @error="hideErr"></template>
       <template v-if="u.qq_lv > 0"><img class="id-vip" :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr"></template>
+      <template v-if="!(u.blue_lv > 0 || u.qq_lv > 0) && u.level_icon"><img class="id-vip" :src="'/static/picture/v' + u.level_icon + '.gif'" alt="论坛等级" :title="'论坛等级 ' + u.level + ' 级'" @error="hideErr"></template>
       <br>
       家园昵称:<a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname }}</font></a>
       <template v-if="!isMine">
@@ -22,9 +23,9 @@
       故乡:{{ homeText }}　现居:{{ liveText }}<br>
       家族:{{ u.family || '无家可归待收留' }}<br>
       去踩踩:<a href="javascript:;" @click="$router.push('/space/'+u.id)">{{ taWord }}的空间</a>|<a href="javascript:;" @click="goHisHome">{{ taWord }}的家园</a><br>
-      论坛成就:{{ u.level_title || '无称号' }}（{{ u.level }}级, exp:{{ u.exp }}）<br>
-      家园等级:<img :src="'/static/picture/home_' + (u.gender === 2 ? '2' : '1') + '_' + pad(u.level) + '.gif'" alt="." style="height:14px;vertical-align:-2px">
-      (<a href="javascript:;" @click="$router.push('/home-level')">LV{{ u.level }}</a>)<span class="txt-fade"> 升级还需{{ nextNeed }}天</span><br>
+      论坛成就:<img v-if="u.level_icon" :src="'/static/picture/v' + u.level_icon + '.gif'" alt="." style="height:14px;vertical-align:-2px" @error="hideErr"> {{ u.level_title || '无称号' }}（{{ u.level }}级, exp:{{ u.exp }}）<br>
+      家园等级:<img :src="'/static/picture/home_' + (u.gender === 2 ? '2' : '1') + '_' + (u.home_level || 1) + '.gif'" alt="." style="height:14px;vertical-align:-2px" @error="hideErr">
+      (<a href="javascript:;" @click="$router.push('/home-level')">LV{{ u.home_level || 1 }}</a>)<span class="txt-fade"> 升级还需{{ nextNeed }}天</span><br>
       在线时长:{{ hoursText }}<br>
       家园心情:{{ u.mood || '（无）' }}<br>
       个人介绍:{{ u.introduction || '这个人很懒，什么都没留下' }}<br>
@@ -264,7 +265,6 @@ export default {
       })
     },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('家园·' + title)) },
-    pad (n) { return '' + (n || 1) },
     hideErr (e) { e.target.style.display = 'none' },
     fmt (t) { return t ? new Date(t).toISOString().slice(0, 10) : '' }
   }

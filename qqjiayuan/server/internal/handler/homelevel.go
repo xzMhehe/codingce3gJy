@@ -37,18 +37,12 @@ func homeLevelOf(days float64) int {
 	return lv
 }
 
-// 我的家园等级（等级=用户数据库等级，图标按性别 男1_女2）
+// 我的家园等级：按活跃天数计算（诺哈公式 n²+4n，与论坛等级 user.Level 分开），最高 50 级
 func (h *HomeLevelHandler) View(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var u model.User
 	h.DB.First(&u, uid)
-	lv := u.Level
-	if lv < 1 {
-		lv = 1
-	}
-	if lv > 50 {
-		lv = 50
-	}
+	lv := homeLevelOf(u.ActiveDays)
 	sex := "1"
 	if u.Gender == 2 {
 		sex = "2"
