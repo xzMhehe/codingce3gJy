@@ -6,7 +6,7 @@
     <div class="module-title">【我的婚恋状态】<a href="javascript:;" @click="load">刷新</a></div>
     <div class="module-content">
       <template v-if="status.married">
-        <font color="#e05a00">已婚</font>，伴侣：<a href="javascript:;" @click="$router.push('/user/'+status.partner.id)"><font :color="status.partner.color || '#004299'">{{ status.partner.nickname }}</font></a>
+        <font color="#e05a00">已婚</font>，伴侣：<a href="javascript:;" @click="$router.push('/user/'+status.partner.id)"><ntext :color="status.partner.color || '#004299'">{{ status.partner.nickname }}</ntext></a>
         <template v-if="status.baby">，宝宝：{{ status.baby }}</template>
         <br>
         <a href="javascript:;" @click="divorce" style="color:#c00">离婚（999G币）</a><br>
@@ -30,7 +30,7 @@
     <div class="module-title">【收到的求婚】({{ status.incoming.length }})</div>
     <div class="module-content" v-if="status.incoming.length">
       <div v-for="p in status.incoming" :key="'i'+p.id">
-        <a href="javascript:;" @click="$router.push('/user/'+p.from_id)"><font :color="p.color || '#004299'">{{ p.from }}</font></a> 向您求婚！<br>
+        <a href="javascript:;" @click="$router.push('/user/'+p.from_id)"><ntext :color="p.color || '#004299'">{{ p.from }}</ntext></a> 向您求婚！<br>
         <span class="txt-fade">表白：{{ p.message }}（{{ fmt(p.created_at) }}）</span><br>
         <a href="javascript:;" @click="handle(p.id, 'accept')">同意</a>.<a href="javascript:;" @click="handle(p.id, 'reject')">拒绝</a><br>
       </div>
@@ -41,7 +41,7 @@
     <div class="module-title">【我发出的求婚】({{ status.outgoing.length }})</div>
     <div class="module-content" v-if="status.outgoing.length">
       <div v-for="p in status.outgoing" :key="'o'+p.id">
-        向 <a href="javascript:;" @click="$router.push('/user/'+p.to_id)"><font :color="p.color || '#004299'">{{ p.to }}</font></a> 求婚（等待对方处理，{{ fmt(p.created_at) }}）<br>
+        向 <a href="javascript:;" @click="$router.push('/user/'+p.to_id)"><ntext :color="p.color || '#004299'">{{ p.to }}</ntext></a> 求婚（等待对方处理，{{ fmt(p.created_at) }}）<br>
       </div>
     </div>
     <div class="module-content" v-else><span class="empty">暂无发出的求婚</span></div>
@@ -50,9 +50,9 @@
     <div class="module-title">【已婚伴侣】</div>
     <div class="module-content" v-if="couples.length">
       <div v-for="cp in couples" :key="'c'+cp.id">
-        <a href="javascript:;" @click="$router.push('/user/'+cp.a.id)"><font :color="cp.a.color || '#004299'">{{ cp.a.nickname }}</font></a>
+        <a href="javascript:;" @click="$router.push('/user/'+cp.a.id)"><ntext :color="cp.a.color || '#004299'">{{ cp.a.nickname }}</ntext></a>
         ❤
-        <a href="javascript:;" @click="$router.push('/user/'+cp.b.id)"><font :color="cp.b.color || '#004299'">{{ cp.b.nickname }}</font></a>
+        <a href="javascript:;" @click="$router.push('/user/'+cp.b.id)"><ntext :color="cp.b.color || '#004299'">{{ cp.b.nickname }}</ntext></a>
         <span class="txt-fade">（{{ fmt(cp.created_at) }}）</span><br>
       </div>
     </div>

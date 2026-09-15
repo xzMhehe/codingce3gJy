@@ -66,6 +66,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Gender:   req.Gender,
 		Coins:    regCoins,
 		Level:    1,
+		Color:    DefaultNickColor, // 普通用户昵称默认蓝色（诺哈用户昵称展示）
 		Config:   "10,1200,1500,1200,0", // 诺哈 wap_user.config 默认值
 		AddIP:    c.ClientIP(),
 		LastIP:   c.ClientIP(),

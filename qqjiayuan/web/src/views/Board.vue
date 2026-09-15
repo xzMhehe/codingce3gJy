@@ -10,7 +10,7 @@
 
     <!-- 版主 / 会员制 -->
     <div class="module-content" v-if="moderator || board.members_only">
-      <template v-if="moderator">版主：<a href="javascript:;" @click="$router.push('/user/'+moderator.id)"><font :color="moderator.color || '#004299'">{{ moderator.nickname }}</font></a></template>
+      <template v-if="moderator">版主：<a href="javascript:;" @click="$router.push('/user/'+moderator.id)"><ntext :color="moderator.color || '#004299'">{{ moderator.nickname }}</ntext></a></template>
       <template v-if="board.members_only"><font color="#c00">（本版为会员制，仅成员可发帖）</font></template>
       <br>
     </div>
@@ -35,7 +35,7 @@
         (<span v-for="b in (t.user ? t.user.badges : [])" :key="'b'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name" :title="b.name"></span>
         <template v-if="t.user && t.user.priv"><img class="bicon" :src="'/static/' + t.user.priv.file" :alt="t.user.priv.name" :title="t.user.priv.name"></template>
         <img class="bicon" v-else-if="t.user && t.user.level_icon" :src="$pic('v'+t.user.level_icon+'.gif')" alt="等级">
-        <a href="javascript:;" @click="$router.push('/user/'+(t.user ? t.user.id : ''))"><font :color="t.user ? t.user.color : ''">{{ t.user ? t.user.nickname : '路人' }}</font></a>:
+        <a href="javascript:;" @click="$router.push('/user/'+(t.user ? t.user.id : ''))"><ntext :color="t.user ? t.user.color : ''">{{ t.user ? t.user.nickname : '路人' }}</ntext></a>:
         <a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
       </div>
       <div v-if="!threads.length" class="row">暂无帖子！<br></div>

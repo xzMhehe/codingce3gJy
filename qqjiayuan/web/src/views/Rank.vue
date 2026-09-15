@@ -21,7 +21,7 @@
     <div class="list">
       <div class="row" v-for="(r, i) in rows" :key="r.id">
         <span class="no">{{ i + 1 }}.</span>
-        <a href="javascript:;" @click="$router.push('/user/' + r.id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a>({{ r.value }}{{ r.unit }})<br>
+        <a href="javascript:;" @click="$router.push('/user/' + r.id)"><ntext :color="r.color || '#004299'">{{ r.nickname }}</ntext></a>({{ r.value }}{{ r.unit }})<br>
       </div>
       <div v-if="!rows.length" class="row"><span class="txt-fade">暂无记录！</span><br></div>
     </div>

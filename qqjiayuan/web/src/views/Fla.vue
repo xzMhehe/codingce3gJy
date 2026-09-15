@@ -16,7 +16,7 @@
           恭喜！你就是今日慈善榜首，正接受全社区膜拜~<br>
         </template>
         <template v-else>
-          榜首：<a href="javascript:;" @click="goUser(top.user_id)"><font :color="top.color || '#004299'">{{ top.nickname }}</font></a>
+          榜首：<a href="javascript:;" @click="goUser(top.user_id)"><ntext :color="top.color || '#004299'">{{ top.nickname }}</ntext></a>
           捐款 <b style="color:#e05a00">{{ fmtNum(top.amount) }}</b> G币<br>
         </template>
         <span v-if="top.word" class="txt-fade">宣言：{{ top.word }}</span><br>
@@ -56,12 +56,12 @@
         <div v-for="(d, i) in list" :key="d.id" style="padding:2px 0">
           <template v-if="i === 0">
             <img src="/static/picture/001.gif" alt=""/><b>NO.1</b>
-            <a href="javascript:;" @click="goUser(d.user_id)"><font :color="d.color || '#e05a00'">{{ d.nickname }}</font></a>
+            <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#e05a00'">{{ d.nickname }}</ntext></a>
             <b style="color:#e05a00">{{ fmtNum(d.amount) }}</b>G币
           </template>
           <template v-else>
             NO.{{ i + 1 }}
-            <a href="javascript:;" @click="goUser(d.user_id)"><font :color="d.color || '#004299'">{{ d.nickname }}</font></a>
+            <a href="javascript:;" @click="goUser(d.user_id)"><ntext :color="d.color || '#004299'">{{ d.nickname }}</ntext></a>
             {{ fmtNum(d.amount) }}G币
           </template>
           <span v-if="d.word" class="txt-fade">「{{ d.word }}」</span>

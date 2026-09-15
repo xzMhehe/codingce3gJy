@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;我的百宝箱&gt;编辑资料</div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;<a href="javascript:;" @click="$router.push('/box')">我的百宝箱</a>&gt;编辑资料</div>
 
     <!-- 会员资料（对齐诺哈 profile_edit：昵称/性别/年龄/生日类型/阳历阴历/签名/简介） -->
     <form @submit.prevent="save">
@@ -64,7 +64,7 @@
     <p v-if="tip" style="color:#c00">{{ tip }}</p>
     <p v-if="okTip" style="color:#1a9e1a">{{ okTip }}</p>
 
-    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;我的百宝箱&gt;编辑资料</div>
+    <div class="bar"><a href="javascript:;" @click="$router.push('/home')">家园</a>&gt;<a href="javascript:;" @click="$router.push('/box')">我的百宝箱</a>&gt;编辑资料</div>
   </div>
 </template>
 

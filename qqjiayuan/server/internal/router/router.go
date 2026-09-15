@@ -44,6 +44,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	favH := &handler.FavoriteHandler{DB: db}
 	fgH := &handler.FriendGroupHandler{DB: db}
 	nobleH := &handler.NobleHandler{DB: db}
+	nameH := &handler.NameHandler{DB: db}
 	goodH := &handler.GoodHandler{DB: db}
 	msH := &handler.MoneyShopHandler{DB: db}
 	rankH := &handler.RankHandler{DB: db, Secret: cfg.Jwt.Secret}
@@ -82,6 +83,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/repass/protection", authH.RepassByProtection)
 		api.GET("/fla", flaH.Index)
 		api.GET("/plaza", plazaH.Index)
+		// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
+		api.GET("/online", optAuth, plazaH.Online)
 		api.GET("/announcements", plazaH.Announcements)
 		api.GET("/search", plazaH.Search)
 		api.GET("/boards", boardH.Tree)
@@ -196,6 +199,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		authed := api.Group("/", jwtM)
 		{
 			authed.GET("/auth/me", authH.Me)
+
+			// 个性昵称（复刻 3GQQ name.html：购买/赠送/颜色设置）
+			authed.GET("/name", nameH.NameInfo)
+			authed.POST("/name/buy", nameH.NameBuy)
+			authed.POST("/name/send", nameH.NameSend)
+			authed.POST("/name/set", nameH.NameSet)
 			authed.PUT("/auth/password", authH.ChangePassword)
 			authed.PUT("/users/me", userH.UpdateMe)
 			// 用户附属信息（诺哈 address/docu/protec/pass/log）
@@ -808,6 +817,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/jwt-gangs", perm(db, "admin:access"), adminH.AdminJwtGangs)
 				admin.DELETE("/jwt-gangs/:id", perm(db, "admin:access"), adminH.AdminJwtGangDelete)
 				admin.GET("/jwt-chats", perm(db, "admin:access"), adminH.AdminJwtChats)
+
+				// 个性昵称管理（购买状态/颜色调整/重置）
+				admin.GET("/name-users", perm(db, "admin:access"), nameH.AdminNameUsers)
+				admin.PUT("/name-users/:uid", perm(db, "admin:access"), nameH.AdminNameUserEdit)
 				admin.DELETE("/jwt-chats/:id", perm(db, "admin:access"), adminH.AdminJwtChatDelete)
 				admin.GET("/jwt-records", perm(db, "admin:access"), adminH.AdminJwtRecords)
 				admin.GET("/jwt-records/:id/detail", perm(db, "admin:access"), adminH.AdminJwtRecordDetail)

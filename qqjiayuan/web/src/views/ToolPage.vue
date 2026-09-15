@@ -125,8 +125,13 @@ export default {
       if (this.name === 'client') {
         api.get('/tool/client').then(r => { if (r.code === 0) this.info = r.data || {} })
       } else if (this.name === 'ip') {
-        // 预取本机 IP 便于留空查询
-        api.get('/tool/client').then(r => { if (r.code === 0) this.info = r.data || {} })
+        // 从在线用户等入口跳转回填 IP 并自动查询；未带参则预取本机 IP 便于留空查询
+        if (this.$route.query.ip) {
+          this.word = this.$route.query.ip
+          this.doQuery()
+        } else {
+          api.get('/tool/client').then(r => { if (r.code === 0) this.info = r.data || {} })
+        }
       }
     },
     doQuery () {

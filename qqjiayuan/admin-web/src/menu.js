@@ -64,6 +64,7 @@ import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
 import AdminFla from './components/admin/AdminFla.vue'
 import AdminRoles from './components/admin/AdminRoles.vue'
 import AdminResources from './components/admin/AdminResources.vue'
+import AdminName from './components/admin/AdminName.vue'
 
 // 菜单树：最多两级分组（children 里还可带一层 children，如游戏管理下的各游戏）
 export const menu = [
@@ -73,6 +74,7 @@ export const menu = [
     key: 'g-user', name: '会员管理', icon: 'el-icon-user',
     children: [
       { key: 'users', name: '会员列表', icon: 'el-icon-s-custom', component: AdminUsers },
+      { key: 'nickName', name: '个性昵称', icon: 'el-icon-brush', component: AdminName },
       { key: 'home', name: '会员资料', icon: 'el-icon-edit-outline', component: AdminHome },
       { key: 'userDocu', name: '会员证件', icon: 'el-icon-postcard', component: AdminUserDocu },
       { key: 'userContact', name: '会员联系', icon: 'el-icon-phone-outline', component: AdminUserContacts },

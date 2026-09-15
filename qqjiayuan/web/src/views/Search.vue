@@ -19,7 +19,7 @@
       <div class="module-title">【找到的友友】({{ users.length }})</div>
       <ul class="dtuser" v-if="users.length">
         <li v-for="u in users" :key="u.id">
-          <a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname }}</font></a>
+          <a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color || '#004299'">{{ u.nickname }}</ntext></a>
           （家园号码 {{ u.username }}）Lv.{{ u.level }}
         </li>
       </ul>

@@ -2,7 +2,7 @@
   <div>
     <!-- 资料卡：夜凌云 1级 [等级][贵族][身份] 三图标 -->
     <div class="module-content unline">
-      <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname || '我' }}</font></a> {{ u.level || 1 }}级</b>
+      <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color || '#004299'">{{ u.nickname || ($store.state.user && $store.state.user.nickname) || '我' }}</ntext></a> {{ u.level || 1 }}级</b>
       <img :src="homeIcon(u)" alt="等级" class="bicon uic" @error="iconErr($event)">
       <img v-if="u.noble > 0" :src="$pic('noble_' + u.noble + '_1.gif')" alt="贵族" class="bicon uic" @error="hideErr($event)">
       <img v-if="u.blue_lv > 0" :src="$pic('noble_2_' + u.blue_lv + '.gif')" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" class="bicon uic" @error="hideErr($event)">
@@ -16,7 +16,7 @@
 
     <!-- 快捷入口 -->
     <div>
-      <a href="javascript:;" @click="$router.push('/space/'+u.id)">宅子</a> . <a href="javascript:;" @click="$router.push('/youquan')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="$router.push('/noble')">超Q</a><br>
+      <a href="javascript:;" @click="$router.push('/space/'+u.id)">宅子</a> . <a href="javascript:;" @click="$router.push('/youquan')">友友券</a> . <a href="javascript:;" @click="$router.push('/home')">回家</a> . <a href="javascript:;" @click="$router.push('/noble')">超Q</a> . <a href="javascript:;" @click="$router.push('/name')">个性昵称</a><br>
     </div>
 
     <!-- tab：我的 活动 帖 书（参考站 module-title 样式） -->
@@ -42,7 +42,7 @@
       <div class="module-title">【<a href="javascript:;" @click="$router.push('/my-news')">我的新鲜事</a>】</div>
       <template v-if="myNews.length">
         <div v-for="(n, i) in myNews.slice(0, 3)" :key="'mn'+n.id" class="news-item">
-          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
+          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><ntext :color="n.color || '#004299'">{{ n.nickname }}</ntext></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
         </div>
       </template>
       <template v-else><br></template>
@@ -51,7 +51,7 @@
       <div class="module-title">【<a href="javascript:;" @click="$router.push('/friend-news')">好友新鲜事</a>】</div>
       <template v-if="friendNews.length">
         <div v-for="(n, i) in friendNews.slice(0, 3)" :key="'fn'+n.id" class="news-item">
-          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
+          {{ i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><ntext :color="n.color || '#004299'">{{ n.nickname }}</ntext></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
         </div>
       </template>
       <template v-else><br></template>
@@ -65,7 +65,7 @@
       <div class="module-title">好友来访|<a href="javascript:;" @click="$router.push('/friends')">其他访客</a></div>
       <div class="list" v-if="friends.length">
         <div v-for="f in friends" :key="'fr'+f.id" class="row">
-          <a href="javascript:;" @click="$router.push('/user/'+f.id)"><font :color="f.color || '#004299'">{{ f.nickname }}</font></a>
+          <a href="javascript:;" @click="$router.push('/user/'+f.id)"><ntext :color="f.color || '#004299'">{{ f.nickname }}</ntext></a>
           <font color="SlateGray">Lv.{{ f.level }}</font><br>
         </div>
       </div>
@@ -75,7 +75,7 @@
       <div class="module-title">访客(共{{ homeAgg ? homeAgg.visitor_total : 0 }}次)</div>
       <div class="list" v-if="visitors.length">
         <div v-for="(v, i) in visitors" :key="'v'+i" class="row">
-          <a href="javascript:;" @click="$router.push('/user/'+v.user_id)"><font :color="v.color || '#004299'">{{ v.nickname || '游客' }}</font></a>({{ ago(v.time) }})<br>
+          <a href="javascript:;" @click="$router.push('/user/'+v.user_id)"><ntext :color="v.color || '#004299'">{{ v.nickname || '游客' }}</ntext></a>({{ ago(v.time) }})<br>
         </div>
       </div>
       <div class="module-content" v-else><span class="empty">还没有访客</span></div>

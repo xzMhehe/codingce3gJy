@@ -26,7 +26,7 @@
     <div class="module-title">【同城管理】</div>
     <div class="list">
       <div class="row" v-for="m in managers" :key="'m'+m.id">
-        {{ m.title }}:<a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:0))"><font :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'路人' }}</font></a><br>
+        {{ m.title }}:<a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:0))"><ntext :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'路人' }}</ntext></a><br>
       </div>
       <div v-if="!managers.length" class="row">虚位以待，等待城市管理员上任～<br></div>
     </div>
@@ -36,7 +36,7 @@
     <div class="list">
       <div class="row">人气:{{ city.click }}<br></div>
       <div class="row">在线:{{ online }}人<br></div>
-      <div class="row">创建人:<a v-if="creator" href="javascript:;" @click="$router.push('/user/'+creator.id)"><font :color="creator.color">{{ creator.nickname }}</font></a><template v-else>站长</template><br></div>
+      <div class="row">创建人:<a v-if="creator" href="javascript:;" @click="$router.push('/user/'+creator.id)"><ntext :color="creator.color">{{ creator.nickname }}</ntext></a><template v-else>站长</template><br></div>
       <div class="row" v-if="city.city_code">区号:{{ city.city_code }}<br></div>
     </div>
 

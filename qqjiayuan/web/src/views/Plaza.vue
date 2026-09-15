@@ -3,7 +3,7 @@
     <!-- 欢迎 / 在线 / 问候 -->
     <div class="plist" v-if="sec('welcome')">
       <div class="row00">欢迎新童鞋: <a href="javascript:;" @click="$router.push('/user/'+plaza.newest_user.id)">{{ plaza.newest_user.nickname }}</a>回归家园~</div>
-      <div class="row00">30分钟内广场上共有<a href="javascript:;"> {{ plaza.online_count }} </a>位小姐姐来来往往！</div>
+      <div class="row00">30分钟内广场上共有<a href="javascript:;" @click="$router.push('/online')"> {{ plaza.online_count }} </a>位小姐姐来来往往！</div>
     </div>
     <div class="module-content" v-if="sec('greeting')"><font color="#ff0000">{{ isLogin ? user.nickname : '游客' }}</font>{{ greeting }}<br></div>
 
@@ -33,7 +33,7 @@
           </div>
         </td>
         <td style="width:100%;padding-left:2px">
-          膜拜：<a href="javascript:;" @click="$router.push('/user/'+plaza.ttou.id)"><font :color="plaza.ttou.color || '#ff0000'">{{ plaza.ttou.nickname }}</font>({{ plaza.ttou.username }})</a>
+          膜拜：<a href="javascript:;" @click="$router.push('/user/'+plaza.ttou.id)"><ntext :color="plaza.ttou.color || '#ff0000'">{{ plaza.ttou.nickname }}</ntext>({{ plaza.ttou.username }})</a>
           <a href="javascript:;" @click="$router.push('/fla')"><span id="anniu">我要上榜</span></a><br>
           <em>宣言：{{ plaza.ttou.signature || '这个佬佬很懒，什么也没有写。' }}</em><br>
         </td>
@@ -80,7 +80,7 @@
     <div class="module-title" v-if="sec('chat')"><a href="javascript:;" @click="$router.push('/chat')">聊天大厅</a></div>
     <div class="module-content" v-if="sec('chat')">
       <a href="javascript:;" @click="$router.push('/chat')">休闲灌水</a>.<a href="javascript:;" @click="$router.push('/chat')">同城北京</a>.<a href="javascript:;" @click="$router.push('/chat')">世外桃源</a>.<a href="javascript:;" @click="$router.push('/chat')">&gt;&gt;</a><br>
-      <div v-for="(m,i) in chats" :key="'cf'+m.id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:''))"><font :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'友友' }}</font></a>说:{{ brief(m.content) }} <span class="txt-fade">{{ m.created_at ? fmtShort(m.created_at) : '' }}</span><br></div>
+      <div v-for="(m,i) in chats" :key="'cf'+m.id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:''))"><ntext :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'友友' }}</ntext></a>说:{{ brief(m.content) }} <span class="txt-fade">{{ m.created_at ? fmtShort(m.created_at) : '' }}</span><br></div>
       <form @submit.prevent="sendChat" v-if="isLogin">
         <input type="text" v-model.trim="chatWord" maxlength="100" size="16"><input type="submit" value="发言">
       </form>
@@ -94,7 +94,7 @@
     <!-- 用户动态 -->
     <div class="module-title" v-if="sec('dynamics')">用户动态</div>
     <div class="module-content" v-if="sec('dynamics')">
-      <div v-for="d in plaza.dynamics" :key="'d'+d.id">({{ ago(d.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+d.user_id)"><font :color="d.color || '#004299'">{{ d.nickname }}</font></a>{{ d.action }}<a href="javascript:;" @click="$router.push('/thread/'+d.thread_id)">《{{ d.title }}》</a></div>
+      <div v-for="d in plaza.dynamics" :key="'d'+d.id">({{ ago(d.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+d.user_id)"><ntext :color="d.color || '#004299'">{{ d.nickname }}</ntext></a>{{ d.action }}<a href="javascript:;" @click="$router.push('/thread/'+d.thread_id)">《{{ d.title }}》</a></div>
     </div>
 
     <!-- 搜索 / 更多 -->

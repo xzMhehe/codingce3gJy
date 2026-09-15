@@ -19,7 +19,7 @@
     <div class="list">
       <div class="row" v-for="(t,i) in threads" :key="t.id">
         {{ (page-1)*10 + i + 1 }}.<template v-if="t.is_top">【顶】</template><template v-if="t.is_fine">【精】</template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a><br>
-        (<a href="javascript:;" @click="$router.push('/user/'+(t.user?t.user.id:''))"><font :color="t.user?t.user.color:''">{{ t.user?t.user.nickname:'路人' }}</font></a>:<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
+        (<a href="javascript:;" @click="$router.push('/user/'+(t.user?t.user.id:''))"><ntext :color="t.user?t.user.color:''">{{ t.user?t.user.nickname:'路人' }}</ntext></a>:<a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
       </div>
     </div>
     <div v-if="!threads.length" class="empty">家族论坛还空空的，来抢个沙发吧！</div>

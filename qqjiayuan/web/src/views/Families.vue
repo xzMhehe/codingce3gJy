@@ -43,7 +43,7 @@
     <div class="module-content" v-for="f in featured" :key="'fd'+f.id">
       ★.<a href="javascript:;" @click="$router.push('/family/'+f.id)"><b>{{ f.name }}</b></a>({{ f.members || 0 }}人)<br>
       简介：{{ f.description || '（暂无简介）' }}<br>
-      <span class="txt-fade">族长：<a href="javascript:;" @click="$router.push('/user/'+f.owner_id)"><font :color="f.owner && f.owner.color || '#004299'">{{ f.owner ? f.owner.nickname : '?' }}</font></a></span>
+      <span class="txt-fade">族长：<a href="javascript:;" @click="$router.push('/user/'+f.owner_id)"><ntext :color="f.owner && f.owner.color || '#004299'">{{ f.owner ? f.owner.nickname : '?' }}</ntext></a></span>
     </div>
     <div class="module-content" v-if="!featured.length"><span class="empty">暂无特色家族</span></div>
 
@@ -73,7 +73,7 @@
     <div class="module-content" v-if="acts.length">
       <div v-for="a in acts.slice(0,10)" :key="'a'+a.id" class="row00">
         <span class="txt-fade">({{ ago(a.created_at) }})</span>
-        <a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><font :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</font></a>
+        <a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><ntext :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</ntext></a>
         {{ a.content }}
       </div>
     </div>

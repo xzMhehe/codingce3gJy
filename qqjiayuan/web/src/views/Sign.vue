@@ -20,7 +20,7 @@
     <div class="module-title">【签到排行榜】连续天数 TOP10</div>
     <ul class="dtuser" v-if="rank.length">
       <li v-for="(r,i) in rank" :key="r.user_id">
-        {{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a>
+        {{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><ntext :color="r.color || '#004299'">{{ r.nickname }}</ntext></a>
         —— 连续 <b style="color:#e05a00">{{ r.consec }}</b> 天
       </li>
     </ul>

@@ -60,7 +60,7 @@
       <p>捐款：<input type="text" v-model.number="charityAmt" size="6">
         <button class="btn" @click="doCharity">捐 款</button></p>
       <div class="module-title">慈善榜 TOP10</div>
-      <div v-for="(r,i) in charityRank" :key="r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a> —— {{ r.total }}</div>
+      <div v-for="(r,i) in charityRank" :key="r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><ntext :color="r.color || '#004299'">{{ r.nickname }}</ntext></a> —— {{ r.total }}</div>
     </div>
 
     <p v-if="msg" style="color:#c00;padding:0 5px">{{ msg }}</p>

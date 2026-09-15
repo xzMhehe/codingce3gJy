@@ -12,7 +12,7 @@
     <div style="max-height:55vh;overflow-y:auto;padding:4px" ref="box">
       <div v-for="m in msgs" :key="m.id" class="floor-item">
         <div class="fl">
-          <a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:0))"><font :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'路人' }}</font></a>
+          <a href="javascript:;" @click="$router.push('/user/'+(m.user?m.user.id:0))"><ntext :color="m.user?m.user.color:''">{{ m.user?m.user.nickname:'路人' }}</ntext></a>
           （{{ m.user?m.user.username:'' }}）{{ fmt(m.created_at) }}
         </div>
         <div class="cnt">{{ m.content }}</div>

@@ -30,7 +30,9 @@ type User struct {
 	Introduction string  `gorm:"type:varchar(200)" json:"introduction"` // 个人简介
 	Signature    string    `gorm:"type:varchar(100)" json:"signature"`
 	City         string    `gorm:"type:varchar(30)" json:"city"`    // 城市设置
-	Color        string    `gorm:"type:varchar(10)"  json:"color"`  // 昵称颜色，情怀功能
+	Color        string    `gorm:"type:varchar(200)" json:"color"` // 昵称颜色，情怀功能（可存逗号分隔的逐字颜色序列），普通用户默认蓝色
+	NameStart    *time.Time `json:"name_start"`                     // 个性昵称开通时间（复刻 3GQQ name.html/name_buy.asp）
+	NameEnd      *time.Time `json:"name_end"`                       // 个性昵称有效期
 	Avatar       string  `gorm:"type:varchar(100)" json:"avatar"` // 头像图片文件名（static/picture 下）
 	AvatarBase64 string  `gorm:"type:longtext" json:"avatar_base64"` // 自定义头像 base64（data URI，优先于 avatar 展示）
 	Coins        int     `gorm:"default:0" json:"coins"` // G币（主货币，发帖回帖/打工/签到获得）

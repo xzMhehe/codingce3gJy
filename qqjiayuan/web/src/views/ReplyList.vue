@@ -19,7 +19,7 @@
     <div class="list">
       <div v-if="sticky" class="row01">
         【顶】<span v-for="b in (sticky.user ? sticky.user.badges : [])" :key="'s'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
-        <a href="javascript:;" @click="$router.push('/user/'+(sticky.user ? sticky.user.id : ''))"><font :color="sticky.user ? sticky.user.color : ''">{{ sticky.user ? sticky.user.nickname : '?' }}</font></a><br>
+        <a href="javascript:;" @click="$router.push('/user/'+(sticky.user ? sticky.user.id : ''))"><ntext :color="sticky.user ? sticky.user.color : ''">{{ sticky.user ? sticky.user.nickname : '?' }}</ntext></a><br>
         <span v-html="renderLine(sticky.content)"></span><br>
         [{{ fmt(sticky.created_at) }}]<template v-if="canSticky"> <a href="javascript:;" @click="unsticky">撤顶</a></template><br>
       </div>
@@ -31,7 +31,7 @@
         <img class="bicon" v-if="r.user && r.user.qq_lv > 0" :src="$pic('noble_1_' + r.user.qq_lv + '.gif')" :alt="'超Q' + r.user.qq_lv + '级'" @error="hideErr">
         <template v-if="r.user && privOf(r.user)"><img class="bicon" :src="'/static/' + privOf(r.user).file" :alt="privOf(r.user).name"></template>
         <img class="bicon" v-else-if="r.user && r.user.level_icon" :src="$pic('v'+r.user.level_icon+'.gif')" alt="等级">
-        <a href="javascript:;" @click="$router.push('/user/'+(r.user ? r.user.id : ''))"><font :color="r.user ? r.user.color : ''">{{ r.user ? r.user.nickname : '路人' }}</font></a><br>
+        <a href="javascript:;" @click="$router.push('/user/'+(r.user ? r.user.id : ''))"><ntext :color="r.user ? r.user.color : ''">{{ r.user ? r.user.nickname : '路人' }}</ntext></a><br>
         <span v-html="renderLine(r.content)"></span><br>
         [{{ fmt(r.created_at) }}] <a href="javascript:;" @click="quote(r)">回复</a>
         <template v-if="canSticky">.<a href="javascript:;" @click="stickyReply(r)">置顶</a></template>

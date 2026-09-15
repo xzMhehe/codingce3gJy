@@ -40,6 +40,7 @@ const routes = [
   { path: '/post', name: 'postSelect', component: () => import('../views/PostSelect.vue'), meta: { auth: true } },
   { path: '/post/:boardId', name: 'post', component: () => import('../views/PostEdit.vue'), meta: { auth: true } },
   { path: '/user/:id', name: 'user', component: () => import('../views/UserPage.vue') },
+  { path: '/online', name: 'online', component: () => import('../views/Online.vue') },
   { path: '/profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { auth: true } },
   { path: '/friends', name: 'friends', component: () => import('../views/Friends.vue'), meta: { auth: true } },
   { path: '/messages', name: 'messages', component: () => import('../views/Messages.vue'), meta: { auth: true } },
@@ -70,6 +71,8 @@ const routes = [
   { path: '/games/jwt', name: 'jwt', component: () => import('../views/Jingwt.vue'), meta: { auth: true } },
   { path: '/games/hxxy', name: 'hxxy', component: () => import('../views/Xiyou.vue'), meta: { auth: true } },
   { path: '/noble', name: 'noble', component: () => import('../views/Noble.vue'), meta: { auth: true } },
+  // 个性昵称（复刻 3GQQ name.html）
+  { path: '/name', name: 'nameCust', component: () => import('../views/Name.vue'), meta: { auth: true } },
   { path: '/box', name: 'box', component: () => import('../views/Box.vue'), meta: { auth: true } },
   { path: '/face', name: 'face', component: () => import('../views/Face.vue'), meta: { auth: true } },
   { path: '/shop', name: 'shop', component: () => import('../views/Shop.vue'), meta: { auth: true } },

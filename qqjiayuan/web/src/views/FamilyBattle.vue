@@ -20,7 +20,7 @@
       </div>
       <div class="module-content" v-if="opponents.length">
         <div class="row00" v-for="o in opponents" :key="'o'+o.user_id">
-          <a href="javascript:;" @click="doPk(o)">[斗一斗]</a>　<a href="javascript:;" @click="$router.push('/user/'+o.user_id)"><font :color="o.color || '#004299'">{{ o.nickname }}</font></a>
+          <a href="javascript:;" @click="doPk(o)">[斗一斗]</a>　<a href="javascript:;" @click="$router.push('/user/'+o.user_id)"><ntext :color="o.color || '#004299'">{{ o.nickname }}</ntext></a>
           <span class="txt-fade">（战斗力{{ o.fight }}）</span><br>
         </div>
       </div>
@@ -30,7 +30,7 @@
       <div class="module-content" v-if="logs.length">
         <div class="row00" v-for="l in logs" :key="'l'+l.id">
           <span class="txt-fade">({{ ago(l.created_at) }})</span>
-          <a href="javascript:;" @click="$router.push('/user/'+l.user_id)"><font :color="l.user && l.user.color || '#004299'">{{ l.user ? l.user.nickname : '神秘友友' }}</font></a>
+          <a href="javascript:;" @click="$router.push('/user/'+l.user_id)"><ntext :color="l.user && l.user.color || '#004299'">{{ l.user ? l.user.nickname : '神秘友友' }}</ntext></a>
           {{ l.content }}
         </div>
       </div>

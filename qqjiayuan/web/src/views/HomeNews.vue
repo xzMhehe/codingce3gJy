@@ -5,7 +5,7 @@
 
     <template v-if="list.length">
       <div v-for="(n, i) in list" :key="n.id" class="news-line">
-        {{ (page - 1) * pageSize + i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
+        {{ (page - 1) * pageSize + i + 1 }}.({{ ago(n.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><ntext :color="n.color || '#004299'">{{ n.nickname }}</ntext></a><template v-if="isThreadNews(n)">{{ n.ntype === 1 ? '发表帖子：' : '回复帖子：' }}《<a href="javascript:;" @click="$router.push('/thread/'+n.ref_id)">{{ newsTitle(n) }}</a>》</template><template v-else>{{ n.content }}</template><br>
       </div>
 
       <!-- 翻页：下页/上页 + (第X页/共Y页/共Z记录) + 第N页前往表单 -->

@@ -16,7 +16,7 @@
         <img src="/static/picture/tree.gif" width="20" height="20" alt="。" style="vertical-align:middle"> 选择攻击对象[<a href="javascript:;" @click="doPk(0)">随机</a>.<a href="javascript:;" @click="load()">换一批</a>]<br>
         <template v-if="war.opponents.length">
           <div class="row00" v-for="(o,i) in war.opponents" :key="'o'+o.user_id">
-            [ <a href="javascript:;" @click="doPk(o.user_id)">攻</a> ] <a href="javascript:;" @click="$router.push('/user/'+o.user_id)"><font :color="o.color || '#004299'">{{ o.nickname }}</font></a><br>
+            [ <a href="javascript:;" @click="doPk(o.user_id)">攻</a> ] <a href="javascript:;" @click="$router.push('/user/'+o.user_id)"><ntext :color="o.color || '#004299'">{{ o.nickname }}</ntext></a><br>
           </div>
         </template>
         <template v-else><span class="empty">敌方家族暂无成员可攻击</span><br></template>
@@ -38,7 +38,7 @@
         </template>
         <div class="row00" v-for="c in war.chats" :key="'c'+c.id">
           <span class="txt-fade">({{ ago(c.created_at) }})</span>
-          <a href="javascript:;" @click="$router.push('/user/'+c.user_id)"><font :color="c.user && c.user.color || '#004299'">{{ c.user ? c.user.nickname : '神秘友友' }}</font></a>：{{ c.content }}
+          <a href="javascript:;" @click="$router.push('/user/'+c.user_id)"><ntext :color="c.user && c.user.color || '#004299'">{{ c.user ? c.user.nickname : '神秘友友' }}</ntext></a>：{{ c.content }}
         </div>
         <div v-if="!war.chats.length"><span class="empty">还没有喊话，来鼓舞士气吧</span></div>
       </div>
@@ -63,7 +63,7 @@
         </template>
         <br>个人功勋榜（贡献值）：<br>
         <template v-for="(m,i) in war.merit_top">
-          {{ i+1 }} . <a href="javascript:;" @click="$router.push('/user/'+m.user_id)"><font :color="m.user && m.user.color || '#004299'">{{ m.user ? m.user.nickname : '友友' }}</font></a> | {{ m.exp }}<br>
+          {{ i+1 }} . <a href="javascript:;" @click="$router.push('/user/'+m.user_id)"><ntext :color="m.user && m.user.color || '#004299'">{{ m.user ? m.user.nickname : '友友' }}</ntext></a> | {{ m.exp }}<br>
         </template>
       </div>
     </template>

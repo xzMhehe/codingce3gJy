@@ -47,7 +47,7 @@
       <div class="module-title">家族动态</div>
       <div class="module-content" v-if="acts.length">
         <div v-for="(a,i) in acts.slice(0,5)" :key="'a'+a.id">
-          {{ i+1 }}.({{ ago(a.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><font :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</font></a>{{ a.content }}<br>
+          {{ i+1 }}.({{ ago(a.created_at) }})<a href="javascript:;" @click="$router.push('/user/'+a.user_id)"><ntext :color="a.user && a.user.color || '#004299'">{{ a.user ? a.user.nickname : '神秘友友' }}</ntext></a>{{ a.content }}<br>
         </div>
       </div>
       <div class="module-content" v-else><span class="empty">本家族还没有动态</span></div>

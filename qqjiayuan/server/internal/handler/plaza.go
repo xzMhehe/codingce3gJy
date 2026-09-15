@@ -32,6 +32,13 @@ func (h *PlazaHandler) Announcements(c *gin.Context) {
 func (h *PlazaHandler) Index(c *gin.Context) {
 	db := h.DB
 
+	// 游客在线记录（诺哈 online.html：游客按 IP 展示，30 分钟滑动窗口；登录用户走 users.last_active_at）
+	if middleware.GetUID(c) == 0 {
+		since := time.Now().Add(-30 * time.Minute)
+		db.Exec("INSERT INTO online_guests (ip, last_active_at) VALUES (?, NOW()) ON DUPLICATE KEY UPDATE last_active_at = NOW()", c.ClientIP())
+		db.Delete(&model.OnlineGuest{}, "last_active_at < ?", since)
+	}
+
 	var announcements []model.Announcement
 	db.Where("type = ? AND status = 1", "notice").Order("created_at DESC").Limit(2).Find(&announcements)
 	var broadcasts []model.Announcement
@@ -183,9 +190,60 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	})
 }
 
+// Online 在线用户列表（复刻诺哈 online.html：用户点进个人资料，游客(家园社区游客)点进 IP 查询；10条/页，按最近活跃倒序）
+func (h *PlazaHandler) Online(c *gin.Context) {
+	page, size := pageParams(c, 10)
+	since := time.Now().Add(-30 * time.Minute)
+
+	type onlineRow struct {
+		IsGuest      bool      `json:"is_guest"`
+		UserID       uint      `json:"user_id"`
+		Username     string    `json:"username"`
+		Nickname     string    `json:"nickname"`
+		Color        string    `json:"color"`
+		IP           string    `json:"ip"`
+		LastActiveAt time.Time `json:"last_active_at"`
+	}
+	type uRow struct {
+		UserID       uint
+		Username     string
+		Nickname     string
+		Color        string
+		LastActiveAt time.Time
+	}
+	var users []uRow
+	h.DB.Model(&model.User{}).Select("id AS user_id, username, nickname, color, last_active_at").
+		Where("last_active_at > ?", since).Order("last_active_at DESC").Find(&users)
+	var guests []model.OnlineGuest
+	h.DB.Where("last_active_at > ?", since).Order("last_active_at DESC").Find(&guests)
+
+	rows := make([]onlineRow, 0, len(users)+len(guests))
+	for _, u := range users {
+		rows = append(rows, onlineRow{UserID: u.UserID, Username: u.Username, Nickname: u.Nickname, Color: u.Color, LastActiveAt: u.LastActiveAt})
+	}
+	for _, g := range guests {
+		rows = append(rows, onlineRow{IsGuest: true, IP: g.IP, LastActiveAt: g.LastActiveAt})
+	}
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if rows[j].LastActiveAt.After(rows[i].LastActiveAt) {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	total := len(rows)
+	start, end := (page-1)*size, page*size
+	if end > total {
+		end = total
+	}
+	if start > end {
+		start = end
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": rows[start:end]})
+}
+
 // 公开：广场板块开关（前端按 enabled 显示）
-func (h *PlazaHandler) Sections(c *gin.Context) {
-	var list []model.PlazaSection
+func (h *PlazaHandler) Sections(c *gin.Context) {	var list []model.PlazaSection
 	h.DB.Order("sort ASC").Find(&list)
 	resp.OK(c, list)
 }

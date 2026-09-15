@@ -82,6 +82,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadReward{}, &model.ThreadRewardLog{}, &model.ThreadFloor{},
 		&model.ThreadAttachment{}, &model.WordFilter{},
 		&model.CityManager{},
+		&model.OnlineGuest{},
 		&model.UserBadge{},
 		&model.JwtPlayer{}, &model.JwtItem{}, &model.JwtBag{},
 		&model.JwtSkill{}, &model.JwtLearnedSkill{},
@@ -275,6 +276,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedMoneyShop(db)
 	seedResources(db, staticDir)
 	seedGuestbook(db)
+	seedNickColor(db)
 	seedSiteArticles(db)
 	seedShop(db)
 	seedActivities(db)
@@ -2137,6 +2139,11 @@ func seedGames(db *gorm.DB) {
 }
 
 // seedGuestbook 站长留言本样例（幂等：表为空才写入）
+// seedNickColor 老库补齐：昵称颜色为空 → 诺哈默认蓝（个性昵称未开通展示蓝色）
+func seedNickColor(db *gorm.DB) {
+	db.Model(&model.User{}).Where("color = '' OR color IS NULL").Where("name_end IS NULL").Update("color", "#004299")
+}
+
 func seedGuestbook(db *gorm.DB) {
 	var count int64
 	db.Model(&model.GuestBook{}).Count(&count)

@@ -11,7 +11,7 @@
       <template v-if="u.qq_lv > 0"><img class="id-vip" :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr"></template>
       <template v-if="!(u.blue_lv > 0 || u.qq_lv > 0) && u.level_icon"><img class="id-vip" :src="'/static/picture/v' + u.level_icon + '.gif'" alt="论坛等级" :title="'论坛等级 ' + u.level + ' 级'" @error="hideErr"></template>
       <br>
-      家园昵称:<a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color || '#004299'">{{ u.nickname }}</font></a>
+      家园昵称:<a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color || '#004299'">{{ u.nickname }}</ntext></a>
       <template v-if="!isMine">
         (<a href="javascript:;" @click="addFriend">{{ friendState === 'friend' ? '删好友' : (friendState === 'applied' ? '申请中' : '加为好友') }}</a>)
         <template v-if="friendTip"><font color="#1a9e1a"> {{ friendTip }}</font></template>
@@ -26,6 +26,11 @@
       论坛成就:<img v-if="u.level_icon" :src="'/static/picture/v' + u.level_icon + '.gif'" alt="." style="height:14px;vertical-align:-2px" @error="hideErr"> {{ u.level_title || '无称号' }}（{{ u.level }}级, exp:{{ u.exp }}）<br>
       家园等级:<img :src="'/static/picture/home_' + (u.gender === 2 ? '2' : '1') + '_' + (u.home_level || 1) + '.gif'" alt="." style="height:14px;vertical-align:-2px" @error="hideErr">
       (<a href="javascript:;" @click="$router.push('/home-level')">LV{{ u.home_level || 1 }}</a>)<span class="txt-fade"> 升级还需{{ nextNeed }}天</span><br>
+      <template v-if="homePercent < 100">
+        <span class="home-progress"><img src="/static/picture/jindu.jpg" alt="进度" :style="{ clipPath: 'inset(0 ' + (100 - Math.max(1, homePercent)) + '% 0 0)' }" @error="hideErr"></span>
+        <span class="txt-fade">{{ homePercent }}%</span><br>
+      </template>
+      <template v-else><span class="txt-fade">家园等级已满级（Lv.50）</span><br></template>
       在线时长:{{ hoursText }}<br>
       家园心情:{{ u.mood || '（无）' }}<br>
       个人介绍:{{ u.introduction || '这个人很懒，什么都没留下' }}<br>
@@ -46,7 +51,7 @@
     <div class="module-title">婚恋状态</div>
     <div class="module-content">
       <template v-if="u.partner_name">
-        伴侣:<a href="javascript:;" @click="$router.push('/user/'+u.partner_id)"><font :color="u.color || '#004299'">{{ u.partner_name }}</font></a>
+        伴侣:<a href="javascript:;" @click="$router.push('/user/'+u.partner_id)"><ntext :color="u.color || '#004299'">{{ u.partner_name }}</ntext></a>
         <template v-if="u.baby_name"><br>宝宝:{{ u.baby_name }}</template>
         <template v-if="!isMine"> <a href="javascript:;" @click="$router.push('/marriage')">婚恋中心</a></template><br>
       </template>
@@ -196,6 +201,16 @@ export default {
       const r = Math.max(0, nd - d)
       return Math.round(r * 10) / 10
     },
+    // 家园等级进度条：诺哈公式 n²+4n 天升一级，当前级起点到下一级终点之间的完成度
+    homePercent () {
+      const lv = this.u.home_level || 1
+      const d = this.u.active_days || 0
+      const cur = lv * (lv + 4)
+      if (!this.u.home_next_days) return 100
+      const next = (lv + 1) * (lv + 4)
+      const p = Math.floor(((d - cur) / (next - cur)) * 100)
+      return Math.min(99, Math.max(0, p))
+    },
     extraPriv () {
       const p = this.u.priv
       if (!p) return null
@@ -278,6 +293,9 @@ export default {
 .noble-line { line-height:1.7; }
 .noble-line em { color:#666; font-size:12px; font-style:normal; margin-left:2px; }
 .noble-ico { height:16px; width:16px; object-fit:contain; vertical-align:-3px; margin-right:2px; }
+/* 家园等级进度条（诺哈 jindu.jpg 进度图：整体定宽，按百分比从右侧裁切填充） */
+.home-progress { position:relative; display:inline-block; width:84px; height:9px; background:#E9F1F8; border-radius:5px; vertical-align:middle; margin-right:4px; }
+.home-progress img { display:block; width:84px; height:9px; }
 /* 帖子列表序号与标题间距 */
 .list .row .no { margin-right:4px; color:#999; }
 </style>

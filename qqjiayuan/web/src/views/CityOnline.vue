@@ -8,7 +8,7 @@
     <div class="module-title">【在线老乡】</div>
     <div class="list">
       <div class="row" v-for="(u, i) in users" :key="'u'+u.id">
-        {{ (page-1)*size+i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+u.id)"><font :color="u.color">{{ u.nickname }}</font></a>({{ u.username }}) Lv.{{ u.level }} - {{ fmt(u.last_active_at) }}<br>
+        {{ (page-1)*size+i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color">{{ u.nickname }}</ntext></a>({{ u.username }}) Lv.{{ u.level }} - {{ fmt(u.last_active_at) }}<br>
       </div>
       <div v-if="!users.length" class="row">没有老乡在此，快来占个位！<br></div>
     </div>

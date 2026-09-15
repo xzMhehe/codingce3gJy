@@ -9,7 +9,7 @@
       评论数量:{{ g.comment }}<br>
       商品分类:{{ catName }}<br>
       商品销量:{{ g.sales }}<br>
-      卖家:<a href="javascript:;" @click="$router.push('/user/'+seller.id)"><font :color="seller.color || '#004299'">{{ seller.nickname }}</font></a><br>
+      卖家:<a href="javascript:;" @click="$router.push('/user/'+seller.id)"><ntext :color="seller.color || '#004299'">{{ seller.nickname }}</ntext></a><br>
       商品说明:{{ g.intro || '暂无说明' }}<br>
     </div>
     <span v-else class="empty">商品不存在或已下架</span>

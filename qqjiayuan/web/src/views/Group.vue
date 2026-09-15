@@ -20,7 +20,7 @@
         <a href="javascript:;" style="color:#c00" @click="del(g.id)">删除</a>
         <div v-if="openGroup === g.id" style="margin-left:10px">
           <div v-for="m in g.members" :key="'m'+m.id" class="row">
-            <a href="javascript:;" @click="$router.push('/user/'+m.id)"><font :color="m.color || '#004299'">{{ m.nickname }}</font></a>
+            <a href="javascript:;" @click="$router.push('/user/'+m.id)"><ntext :color="m.color || '#004299'">{{ m.nickname }}</ntext></a>
             [<a href="javascript:;" @click="removeFriend(g.id, m.id)">移除</a>]
           </div>
           <div class="module-content">

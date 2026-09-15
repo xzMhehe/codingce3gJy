@@ -7,7 +7,7 @@
       <div class="module-content" v-if="friends.length">
         <div v-for="f in friends" :key="f.id" class="row">
           <img :src="f.online ? '/static/image/home.gif' : '/static/image/home1.png'" alt="好友">
-          <a href="javascript:;" @click="$router.push('/user/'+f.id)"><font :color="f.color || '#004299'">{{ displayName(f) }}</font></a>
+          <a href="javascript:;" @click="$router.push('/user/'+f.id)"><ntext :color="f.color || '#004299'">{{ displayName(f) }}</ntext></a>
           <span v-if="f.remark && f.remark !== f.nickname" class="txt-fade">(备注:{{ f.remark }})</span>
           <span v-if="f.group_name" class="txt-fade">[{{ f.group_name }}]</span>
           <span :style="{ color: f.online ? '#1a9e1a' : '#999' }">{{ f.online ? '在线' : '离线' }}</span><br>
@@ -37,7 +37,7 @@
       <div class="list" v-if="conversations.length">
         <div v-for="c in conversations" :key="c.user_id" class="row">
           <img src="/static/image/home.gif" alt="好友">
-          <a href="javascript:;" @click="$router.push('/messages/'+c.user_id)"><font :color="c.color || '#004299'">{{ c.nickname }}</font></a>
+          <a href="javascript:;" @click="$router.push('/messages/'+c.user_id)"><ntext :color="c.color || '#004299'">{{ c.nickname }}</ntext></a>
           <span class="txt-fade">：{{ (c.last_content || '').slice(0, 12) }}</span>
           <span class="txt-fade">（{{ fmtShort(c.last_at) }}）</span>
           [<a href="javascript:;" @click="$router.push('/messages/'+c.user_id)">发家信</a>]
@@ -50,7 +50,7 @@
     <template v-if="tab === 'news'">
       <div class="module-content" v-if="news.length">
         <div v-for="(n,i) in news" :key="n.type+'_'+n.id" class="row">
-          {{ i+1 }}.{{ timeDiff(n.created_at) }} <a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><font :color="n.color || '#004299'">{{ n.nickname }}</font></a>
+          {{ i+1 }}.{{ timeDiff(n.created_at) }} <a href="javascript:;" @click="$router.push('/user/'+n.user_id)"><ntext :color="n.color || '#004299'">{{ n.nickname }}</ntext></a>
           {{ n.type === 'thread' ? '发表帖子' : '回复帖子' }}：
           <a href="javascript:;" @click="$router.push('/thread/'+n.thread_id)">{{ n.title }}</a>
           <span class="txt-fade">（{{ n.board_name }}）</span><br>
@@ -64,7 +64,7 @@
     <template v-if="tab === 'black'">
       <div class="module-content" v-if="blacks.length">
         <div v-for="(b,i) in blacks" :key="b.id" class="row">
-          {{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+b.friend_id)"><font :color="b.color || '#004299'">{{ b.nickname }}</font></a>
+          {{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+b.friend_id)"><ntext :color="b.color || '#004299'">{{ b.nickname }}</ntext></a>
           <span class="txt-fade">（{{ fmt(b.add_time) }}）</span>
           [<a href="javascript:;" @click="unblack(b)" style="color:#1a9e1a">解除</a>]<br>
         </div>
@@ -77,7 +77,7 @@
     <div class="module-title">【好友请求】({{ requests.length }})</div>
     <ul class="dtuser" v-if="requests.length">
       <li v-for="r in requests" :key="'r'+r.apply_id">
-        <a href="javascript:;" @click="$router.push('/user/'+r.id)"><font :color="r.color || '#004299'">{{ r.nickname }}</font></a> ({{ r.id }})<span v-if="r.remark">（{{ r.remark }}）</span>（{{ fmt(r.created_at) }}）<br>
+        <a href="javascript:;" @click="$router.push('/user/'+r.id)"><ntext :color="r.color || '#004299'">{{ r.nickname }}</ntext></a> ({{ r.id }})<span v-if="r.remark">（{{ r.remark }}）</span>（{{ fmt(r.created_at) }}）<br>
         <a href="javascript:;" @click="handle(r.apply_id, 'add')">互加</a>.<a href="javascript:;" @click="handle(r.apply_id, 'pass')">通过</a>.<a href="javascript:;" @click="handle(r.apply_id, 'reject')">拒绝</a>.<a href="javascript:;" @click="handle(r.apply_id, 'ignore')">忽略</a>
       </li>
     </ul>

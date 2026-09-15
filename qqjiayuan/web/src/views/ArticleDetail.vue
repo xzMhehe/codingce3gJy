@@ -13,7 +13,7 @@
     <div class="module-title">评论({{ comments.length }})</div>
     <div class="list" v-if="comments.length">
       <div v-for="cm in comments" :key="cm.id" class="row">
-        <a href="javascript:;" @click="$router.push('/user/'+cm.user_id)"><font :color="cm.color || '#004299'">{{ cm.nickname }}</font></a>:{{ cm.content }} <span class="txt-fade">({{ fmt(cm.created_at) }})</span><br>
+        <a href="javascript:;" @click="$router.push('/user/'+cm.user_id)"><ntext :color="cm.color || '#004299'">{{ cm.nickname }}</ntext></a>:{{ cm.content }} <span class="txt-fade">({{ fmt(cm.created_at) }})</span><br>
       </div>
     </div>
     <span v-else class="empty">还没有评论</span>

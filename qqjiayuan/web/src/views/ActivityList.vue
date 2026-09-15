@@ -6,7 +6,7 @@
     <div class="list">
       <div v-for="(a, i) in list" :key="a.id" class="row">
         {{ (page - 1) * size + i + 1 }}.<a href="javascript:;" @click="$router.push('/thread/'+a.id)">{{ a.title }}</a><br>
-        (<img class="bicon" :src="face(a)" alt="." @error="faceErr($event)"> <font :color="a.color || '#004299'">{{ a.nickname }}</font>:<a href="javascript:;" @click="$router.push('/thread/'+a.id)">{{ a.reply_count }}</a>回/{{ a.view_count }}阅)<br>
+        (<img class="bicon" :src="face(a)" alt="." @error="faceErr($event)"> <ntext :color="a.color || '#004299'">{{ a.nickname }}</ntext>:<a href="javascript:;" @click="$router.push('/thread/'+a.id)">{{ a.reply_count }}</a>回/{{ a.view_count }}阅)<br>
       </div>
     </div>
     <span v-if="!list.length" class="empty">暂无活动</span>

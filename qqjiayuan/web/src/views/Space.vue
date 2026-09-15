@@ -194,7 +194,7 @@
         【<a href="javascript:;" @click="loadFriends">好友</a>】<br>
         <template v-if="friends.length">
           <div v-for="f in friends" :key="'f'+f.id">
-            <a href="javascript:;" @click="$router.push('/user/'+f.id)"><font :color="f.color || '#004299'">{{ f.nickname }}</font></a>
+            <a href="javascript:;" @click="$router.push('/user/'+f.id)"><ntext :color="f.color || '#004299'">{{ f.nickname }}</ntext></a>
             <span class="txt-fade">Lv.{{ f.level }}</span>
             <a href="javascript:;" @click="$router.push('/messages/'+f.id)">[家信]</a><br>
           </div>

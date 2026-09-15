@@ -31,12 +31,12 @@
       <!-- 会员排行 -->
       <div class="bodule-title"><font color="#FF0000">【蓝钻排行】</font></div>
       <div class="module-content">
-        <div v-for="(r,i) in data.blue_rank" :key="'b'+r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><font :color="r.color || '#ff0000'">{{ r.nickname }}</font></a>(<img :src="pic(blueIcon(r.exp))" alt="." />{{ r.exp }}点)<br></div>
+        <div v-for="(r,i) in data.blue_rank" :key="'b'+r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><ntext :color="r.color || '#ff0000'">{{ r.nickname }}</ntext></a>(<img :src="pic(blueIcon(r.exp))" alt="." />{{ r.exp }}点)<br></div>
         <div v-if="!data.blue_rank || !data.blue_rank.length"><span class="empty">暂无蓝钻友友</span></div>
       </div>
       <div class="bodule-title"><font color="#FF0000">【超Q排行】</font></div>
       <div class="module-content">
-        <div v-for="(r,i) in data.qq_rank" :key="'q'+r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><font :color="r.color || '#ff0000'">{{ r.nickname }}</font></a>(<img :src="pic(qqIcon(r.exp))" alt="." />{{ r.exp }}点)<br></div>
+        <div v-for="(r,i) in data.qq_rank" :key="'q'+r.user_id">{{ i+1 }}.<a href="javascript:;" @click="$router.push('/user/'+r.user_id)"><ntext :color="r.color || '#ff0000'">{{ r.nickname }}</ntext></a>(<img :src="pic(qqIcon(r.exp))" alt="." />{{ r.exp }}点)<br></div>
         <div v-if="!data.qq_rank || !data.qq_rank.length"><span class="empty">暂无超Q友友</span></div>
       </div>
 

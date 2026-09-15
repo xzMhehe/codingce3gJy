@@ -6,7 +6,7 @@
     <div class="list" v-if="list.length">
       <div class="row" v-for="(t, i) in list" :key="t.id">
         {{ startIndex + i }}.<a href="javascript:;" @click="$router.push('/thread/' + t.id)">{{ t.title }}</a><br>
-        (<a href="javascript:;" @click="$router.push('/user/' + t.user_id)"><font :color="t.color || ''">{{ t.nickname }}</font></a>:<a href="javascript:;" @click="$router.push('/replies/' + t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
+        (<a href="javascript:;" @click="$router.push('/user/' + t.user_id)"><ntext :color="t.color || ''">{{ t.nickname }}</ntext></a>:<a href="javascript:;" @click="$router.push('/replies/' + t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
       </div>
     </div>
     <div class="module-content" v-else>暂无记录！<br></div>
