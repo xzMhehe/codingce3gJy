@@ -31,7 +31,8 @@ func (h *GameHandler) List(c *gin.Context) {
 func (h *GameHandler) MyList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var rows []model.MyGame
-	h.DB.Preload("Game").Where("user_id = ?", uid).Order("sort ASC, id ASC").Find(&rows)
+	// 已下架的游戏不再展示（含历史添加的）
+	h.DB.Preload("Game", "status = 1").Where("user_id = ?", uid).Order("sort ASC, id ASC").Find(&rows)
 	out := []gin.H{}
 	for _, r := range rows {
 		if r.Game != nil {
@@ -108,6 +109,10 @@ func (h *GameHandler) MyAdd(c *gin.Context) {
 	var g model.Game
 	if err := h.DB.First(&g, req.GameID).Error; err != nil {
 		resp.NotFound(c, "游戏不存在")
+		return
+	}
+	if g.Status != 1 {
+		resp.ParamError(c, "该游戏暂未开放")
 		return
 	}
 	var exist int64

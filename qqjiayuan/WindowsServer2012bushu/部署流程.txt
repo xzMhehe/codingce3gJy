@@ -1,0 +1,132 @@
+﻿============================================================
+ 家园社区 — Windows Server 2012 R2 部署流程
+============================================================
+
+一、包内容
+------------------------------------------------------------
+  server\server.exe        后端(端口 8080,托管两个前端)
+  server\dbinit.exe        建库+建表+种子数据(可重复执行)
+  server\config.yaml       配置文件(启动必读)
+  web\dist\                用户端前端
+  admin-web\dist\          管理端前端
+
+  把整个文件夹放到 D:\ 并改名为 qqjiayuan
+  (config.yaml 里的前端路径写死为 D:/qqjiayuan/...,
+   放别的位置就必须同步改这两个路径)
+
+
+二、服务器必装(只装这两个,Node/Go 不需要)
+------------------------------------------------------------
+  1. VC++ 2015-2022 运行库 x64 (vc_redist.x64.exe,装完重启)
+  2. MySQL 8.0.x(不要装 8.4 / 9.x)
+     - 字符集选 utf8mb4
+     - 勾选"Install as Windows Service"并设为自动启动
+     - 记住 root 密码
+     - 兜底:8.0 装不上可退 5.7,本项目兼容
+
+  时区设为北京(否则所有时间戳偏移):
+     tzutil /s "China Standard Time"
+
+
+三、配置 server\config.yaml
+------------------------------------------------------------
+  只需改一处:
+     mysql.password: 填服务器 MySQL 的 root 密码
+
+  其余保持默认:
+     - 前端路径: D:/qqjiayuan/web/dist 和 D:/qqjiayuan/admin-web/dist
+     - jwt.secret: 已预生成随机值,可直接用
+
+
+四、初始化数据库
+------------------------------------------------------------
+  cmd 执行:
+     cd /d D:\qqjiayuan\server
+     dbinit.exe
+
+  看到"初始化完成"即成功(约十几秒)。
+  日志出现 Duplicate column / Duplicate entry 属幂等正常输出,不用管。
+
+  (可选,上线前做)建专用账号,不用 root 跑应用:
+     CREATE USER 'jiayuan'@'localhost' IDENTIFIED BY '强密码';
+     GRANT ALL PRIVILEGES ON qq_jiayuan.* TO 'jiayuan'@'localhost';
+     FLUSH PRIVILEGES;
+  然后把 config.yaml 的 user/password 改成 jiayuan 账号。
+
+
+五、启动后端
+------------------------------------------------------------
+  cmd 执行:
+     cd /d D:\qqjiayuan\server
+     server.exe
+
+  预期输出:
+     MySQL 连接成功: qq_jiayuan
+     ==========================================
+       家园社区 服务端已启动  http://127.0.0.1:8080
+       默认管理员:账号 10000 / 密码 admin123
+     ==========================================
+
+  ※ 若报"找不到入口点"或 api-ms-win-*.dll 缺失后闪退,
+    是官方 Go 编译的二进制在该系统上的兼容问题,
+    需要换用打补丁工具链编译的版本(联系开发机重新出包)。
+
+
+六、验证(另开一个 CMD 窗口,2012 R2 无 curl,用 PowerShell)
+------------------------------------------------------------
+  Invoke-WebRequest http://127.0.0.1:8080/api/health -UseBasicParsing
+     应返回 {"code":0,...,"data":"家园社区 API 运行中"}
+
+  浏览器打开:
+     http://服务器IP:8080/            用户端(图片不裂 = web\dist\static 拷全了)
+     http://服务器IP:8080/admin-ui/   管理端(末尾斜杠不能省)
+
+  登录管理端:10000 / admin123
+
+
+七、防火墙放行
+------------------------------------------------------------
+  netsh advfirewall firewall add rule name="qqjiayuan-8080" dir=in action=allow protocol=TCP localport=8080
+
+  3306 绝对不要对公网开放。
+
+
+八、注册为 Windows 服务(开机自启,推荐)
+------------------------------------------------------------
+  用 NSSM(nssm.cc 单文件 exe):
+     nssm install qqjiayuan "D:\qqjiayuan\server\server.exe"
+     nssm set qqjiayuan AppDirectory "D:\qqjiayuan\server"
+     nssm set qqjiayuan AppStdout "D:\qqjiayuan\logs\server-out.log"
+     nssm set qqjiayuan AppStderr "D:\qqjiayuan\logs\server-err.log"
+     nssm set qqjiayuan Start SERVICE_AUTO_START
+     nssm start qqjiayuan
+     sc query qqjiayuan          应显示 STATE : 4 RUNNING
+
+  免下载备选:任务计划程序建任务,"起始于"必填 D:\qqjiayuan\server。
+
+
+九、账号与上线安全
+------------------------------------------------------------
+  管理端  10000 / admin123   超级管理员 —— 上线后立即改密
+  用户端  10007 / admin123   测试号 —— 上线后改密或封禁
+
+  [ ] 改掉上面默认密码
+  [ ] MySQL 改用 jiayuan 专用账号
+  [ ] 3306 不对公网开放
+  [ ] config.yaml 不要提交进 Git
+
+
+十、常见问题
+------------------------------------------------------------
+  服务启动即停 / "读取配置失败"  → 工作目录不对,读不到 config.yaml
+  API 正常但前端整站 404         → config.yaml 里 web_dir 路径不存在(检查 D:\qqjiayuan\web\dist)
+  页面开但图片大面积裂           → web\dist\static 没拷全
+  中文变 ???                     → 导库时漏了 --default-character-set=utf8mb4
+  数据库连不上                   → 没装 VC++ / MySQL 服务没起 / 密码错
+  时间戳偏移几小时               → tzutil /s "China Standard Time" 后重启服务
+  控制台中文乱码                 → 先执行 chcp 65001 再运行 exe
+
+============================================================
+ 最小顺序:装 VC++ + MySQL → 改 config.yaml 密码 →
+ dbinit.exe → server.exe → 浏览器访问 :8080
+============================================================

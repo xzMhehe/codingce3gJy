@@ -1,72 +1,70 @@
 <template>
   <div>
-    <!-- 参考：诺哈 /game/index.html 游戏大厅（plist 每行一个游戏 + 娱乐竞猜 + 游戏论坛 + 用户动态） -->
-    <div><img src="/static/image/youxi.gif" alt="游戏"></div>
+    <!-- 复刻诺哈 /game/index.asp 游戏大厅（演示站 index3.html 原版布局）：
+         题图条 + 我的游戏(序号列表) + 网络游戏 + 社区游戏(65px图标表格) + 娱乐竞猜 + 游戏论坛 + 广告条 -->
+    <!-- 题图条（演示站 index3.html 原版内联样式：fresh_1.gif + #91e09d 底色，高 25px） -->
+    <div style="background-image:url(/static/image/fresh_1.gif);background-color:#91e09d;background-repeat:no-repeat;height:25px;"></div>
 
-    <div class="module-title">社区游戏|<a href="javascript:;" @click="$router.push('/games/net')">互联网游戏板块</a></div>
-    <div class="module-content"><span class="txt-fade">社区小游戏，免费游玩，无任何充值消费</span></div>
-
-    <!-- 我的游戏（诺哈 game_list.asp）：卡片式，右侧上移/下移/移除 -->
+    <!-- 我的游戏（诺哈 home/game_list.asp：序号 + [x]移除 + ↑↓排序，标题带“添加”） -->
     <template v-if="isLogin">
-      <div class="module-title">【我的游戏】</div>
-      <div v-if="myGames.length" class="g-hall">
-        <div class="g-card owned" v-for="(g,i) in myGames" :key="'m'+g.id" @click="play(g)">
-          <img v-if="g.logo" class="g-logo" :src="'/static/image/' + g.logo" :alt="g.name">
-          <span v-else class="g-tile" :style="tileStyle(g.name)">{{ initial(g.name) }}</span>
-          <div class="g-info">
-            <div class="g-name">
-              {{ g.name }}
-              <span class="g-stars">{{ g.stars }}</span>
-            </div>
-            <div class="g-intro">{{ g.desc }}</div>
-          </div>
-          <div class="g-right">
-            <button class="g-enter" @click.stop="play(g)">进入游戏</button>
-            <div class="g-move">
-              <button class="g-opt up" :disabled="i===0" title="上移" @click.stop="moveGame(g,'up')">↑</button>
-              <button class="g-opt down" :disabled="i===myGames.length-1" title="下移" @click.stop="moveGame(g,'down')">↓</button>
-              <button class="g-opt del" title="移除" @click.stop="removeGame(g.id)">移除</button>
-            </div>
-          </div>
-        </div>
+      <div class="bodule-title">【我的游戏】<a class="g-op" href="javascript:;" @click="showAdd = !showAdd">{{ showAdd ? '收起' : '添加' }}</a></div>
+      <div class="module-content">
+        <template v-if="myGames.length">
+          <template v-for="(g,i) in myGames">
+            {{ i + 1 }}.<a href="javascript:;" @click="play(g)">{{ g.name }}</a> [<a href="javascript:;" @click="removeGame(g.id)">x</a>] <a href="javascript:;" @click="moveGame(g,'up')">↑</a> <a href="javascript:;" @click="moveGame(g,'down')">↓</a><br>
+          </template>
+        </template>
+        <template v-else>您没有游戏。</template>
       </div>
-      <div v-else class="plist"><div class="row00"><span class="txt-fade">还没有添加游戏，去大厅里点「添加」挑一个</span></div></div>
+      <!-- 添加游戏（诺哈 game_add.asp：序号列出未添加的游戏，点击即加入） -->
+      <div v-if="showAdd" class="module-content">
+        <template v-for="(g,i) in addable">
+          {{ i + 1 }}.<a href="javascript:;" @click="addGame(g)">{{ g.name }}</a><br>
+        </template>
+        <span v-if="!addable.length" class="txt-fade">游戏大厅的游戏都已添加</span>
+      </div>
     </template>
 
-    <!-- 社区游戏大厅（诺哈：每行一个游戏，图标 + 名称 + 评分 + 简介） -->
-    <div class="module-title">【社区游戏大厅】</div>
-    <div v-if="comGames.length" class="g-hall">
-      <div class="g-card" v-for="g in comGames" :key="g.id" :class="{ done: hasGo(g), todo: !hasGo(g), owned: isOwned(g) }" @click="play(g)">
-        <img v-if="g.logo" class="g-logo" :src="'/static/image/' + g.logo" :alt="g.name">
-        <span v-else class="g-tile" :style="tileStyle(g.name)">{{ initial(g.name) }}</span>
-        <div class="g-info">
-          <div class="g-name">
-            {{ g.name }}
-            <span class="g-stars">{{ g.stars }}</span>
-          </div>
-          <div class="g-intro">{{ g.intro || g.desc }}</div>
-        </div>
-        <div class="g-right">
-          <button v-if="isLogin" class="g-add" :class="{ owned: isOwned(g) }" @click.stop="toggleAdd(g)">{{ isOwned(g) ? '已添加' : '添加' }}</button>
-        </div>
-      </div>
+    <!-- 网络游戏（演示站 index3.html：module-content 表格，65px 圆角图标 + 名称|游戏论坛 + 推荐星级 + 简介） -->
+    <div class="bodule-title">【网络游戏】</div>
+    <div class="module-content g-game" v-for="g in netGames" :key="'n' + g.id">
+      <table>
+        <tr><th rowspan="3"><div class="g-icon" :style="iconStyle(g)"></div></th>
+          <td><a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="goBoard(g)">游戏论坛</a></td></tr>
+        <tr><td>推荐：{{ g.stars }}</td></tr>
+        <tr><td>{{ g.desc || g.intro }}</td></tr>
+      </table>
     </div>
-    <div v-else class="plist"><div class="row00"><span class="empty">暂无社区游戏</span></div></div>
+    <div v-if="!netGames.length" class="module-content"><span class="txt-fade">暂无网络游戏</span></div>
 
-    <!-- 娱乐竞猜（诺哈：点击进入互联网游戏板块） -->
-    <div class="module-title">【<a href="javascript:;" @click="$router.push('/games/net')">娱乐竞猜</a>】</div>
-    <div class="plist">
-      <div class="row00">
-        <a v-for="(label,j) in guessLabels" :key="'gl'+j" class="g-guess" href="javascript:;" @click="playLabel(label)">{{ label }}</a>
-      </div>
+    <!-- 社区游戏 -->
+    <div class="bodule-title">【社区游戏】</div>
+    <div class="module-content g-game" v-for="g in comGames" :key="'c' + g.id">
+      <table>
+        <tr><th rowspan="3"><div class="g-icon" :style="iconStyle(g)"></div></th>
+          <td><a href="javascript:;" @click="play(g)">{{ g.name }}</a>|<a href="javascript:;" @click="goBoard(g)">游戏论坛</a></td></tr>
+        <tr><td>推荐：{{ g.stars }}</td></tr>
+        <tr><td>{{ g.desc || g.intro }}</td></tr>
+      </table>
+    </div>
+    <div v-if="!comGames.length" class="module-content"><span class="txt-fade">暂无社区游戏</span></div>
+
+    <!-- 娱乐竞猜（诺哈游戏大厅：点击进入互联网游戏板块） -->
+    <div class="bodule-title">【<a href="javascript:;" @click="$router.push('/games/net')">娱乐竞猜</a>】</div>
+    <div class="module-content">
+      <a v-for="(label,j) in guessLabels" :key="'gl' + j" class="g-guess" href="javascript:;" @click="playLabel(label)">{{ label }}</a>
     </div>
 
     <!-- 游戏论坛（诺哈：游戏综合反馈/游戏研发/游戏交流） -->
-    <div class="module-title"><a href="javascript:;" @click="tip('游戏综合反馈')">游戏综合反馈</a></div>
-    <a href="javascript:;" @click="tip('游戏研发')">游戏研发</a><br>
-    <a href="javascript:;" @click="tip('游戏交流')">游戏交流</a><br>
+    <div class="bodule-title">【游戏论坛】</div>
+    <div class="module-content">
+      <a href="javascript:;" @click="tip('游戏综合反馈')">游戏综合反馈</a>|<a href="javascript:;" @click="tip('游戏研发')">游戏研发</a>|<a href="javascript:;" @click="tip('游戏交流')">游戏交流</a><br>
+    </div>
 
-    <div class="module-title">【用户动态】</div>
+    <!-- 广告条（演示站 index3.html 底部 login-tips） -->
+    <div class="login-tips">
+      <ul><li class="wid"><img src="/static/picture/notice.gif" alt="广告"><a href="javascript:;" @click="$router.push('/games/hxxy')">[虎年新区]古典神话西游！</a></li></ul>
+    </div>
 
     <!-- 未实现游戏的轻提示 -->
     <transition name="g-toast">
@@ -78,19 +76,13 @@
 <script>
 import api from '../api'
 
-// 游戏名 → 兜底色块渐变色（无 logo 时渲染首字彩块，避免空图）：[主色, 深一档]
-const COLORS = [
-  ['#2e9cd3', '#1c6f9c'], ['#e05a00', '#a84100'], ['#1a9e1a', '#116c11'],
-  ['#8a5cf5', '#6433c4'], ['#e83a7a', '#b0205b'], ['#1aa3b0', '#117680'],
-  ['#c76a2e', '#944a1b'], ['#4f8be0', '#2f5fb0']
-]
-
 export default {
   name: 'Games',
   data () {
     return {
       games: [],
       myGames: [],
+      showAdd: false,
       toastMsg: '',
       toastTimer: null,
       // 诺哈原版娱乐竞猜两行：竞猜　农场　江湖　猜球　大话 / 富翁　好友买卖　苹果机　抢车位
@@ -103,7 +95,9 @@ export default {
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
-    comGames () { return this.games.filter(g => g.category !== 'net') }
+    netGames () { return this.games.filter(g => g.category === 'net') },
+    comGames () { return this.games.filter(g => g.category !== 'net') },
+    addable () { return this.comGames.filter(g => !this.isOwned(g)) }
   },
   mounted () {
     api.get('/games').then(r => { if (r.code === 0) this.games = r.data })
@@ -119,10 +113,6 @@ export default {
       api.post('/my-games', { game_id: g.id }).then(r => { if (r.code === 0) this.loadMy(); else alert(r.msg) })
     },
     isOwned (g) { return this.myGames.some(m => m.id === g.id) },
-    toggleAdd (g) {
-      if (this.isOwned(g)) { this.removeGame(g.id); return }
-      this.addGame(g)
-    },
     removeGame (id) {
       api.delete('/my-games/' + id).then(r => { if (r.code === 0) this.loadMy() })
     },
@@ -132,17 +122,20 @@ export default {
       })
     },
     hasGo (g) { return !!(g.path || g.url) },
-    initial (name) { return (name || '游').slice(0, 1) },
-    tileStyle (name) {
-      const n = (name || '').charCodeAt(0) || 0
-      const pair = COLORS[n % COLORS.length]
-      return { background: `linear-gradient(135deg, ${pair[0]}, ${pair[1]})` }
+    // 65px 圆角游戏图标（演示站原版：background-size:100% 100%），无 logo 用问号图兜底
+    iconStyle (g) {
+      const img = g.logo ? '/static/image/' + g.logo : '/static/image/logo_question.png'
+      return { backgroundImage: 'url(' + img + ')' }
     },
     playLabel (label) {
       const name = this.guessMap[label] || label
       const g = this.games.find(x => x.name === name)
       if (g && this.hasGo(g)) { this.play(g); return }
       this.$router.push('/games/net')
+    },
+    goBoard (g) {
+      if (g.board_id) { this.$router.push('/board/' + g.board_id); return }
+      this.toast('「' + g.name + '」游戏论坛暂未开放')
     },
     toast (msg) {
       this.toastMsg = msg
@@ -160,48 +153,24 @@ export default {
 </script>
 
 <style scoped>
-.g-hall { max-width: 360px; padding: 2px 0; }
-.g-card {
-  display: flex; align-items: center; gap: 6px;
-  background: #fff; border: 1px solid #dbe7f3; border-radius: 8px;
-  padding: 6px 8px; margin-bottom: 6px; cursor: pointer;
+/* 游戏块（module-content 内表格布局，同演示站原版） */
+.g-game table { border-collapse: collapse; }
+.g-game th, .g-game td { font-weight: normal; text-align: left; vertical-align: middle; padding: 0; }
+/* 65px 圆角图标：width/height 65px、圆角 5px、margin 0 2px 5px 0、垂直居中（原版内联样式）
+   等比缩放(contain)居中替代原版 100% 100% 拉伸——横版图（如永恒修仙 283x99）不再压扁 */
+.g-icon {
+  width: 65px; height: 65px; border-radius: 5px;
+  margin: 0 2px 5px 0; vertical-align: middle;
+  background-color: #fff;
+  background-size: contain; background-position: center; background-repeat: no-repeat;
 }
-.g-card:hover { border-color: #2e9cd3; box-shadow: 0 1px 6px rgba(46,156,211,.18); }
-.g-card.todo { opacity: .92; }
-.g-card.todo:hover { border-color: #cfd9e3; box-shadow: none; }
-.g-logo { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
-.g-tile {
-  width: 40px; height: 40px; border-radius: 8px; flex-shrink: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: bold; font-size: 18px;
-}
-.g-tile.mini { width: 20px; height: 20px; font-size: 12px; border-radius: 4px; vertical-align: -4px; }
-.g-info { flex: 1; min-width: 0; }
-.g-name { color: #004299; font-weight: bold; font-size: 14px; }
-.g-stars { color: #ffaa00; font-size: 12px; margin-left: 4px; }
-.g-intro { color: #666; font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.g-right { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-.g-enter {
-  flex-shrink: 0; border: none; padding: 3px 12px; font-size: 12px; color: #fff;
-  background: #1a9e1a; border-radius: 10px; cursor: pointer;
-}
-.g-enter:hover { background: #157c15; }
-.g-move { display: flex; gap: 4px; align-items: center; }
-.g-opt {
-  border: 1px solid #d4e0ea; background: #fff; color: #2e6da0;
-  font-size: 13px; line-height: 16px; padding: 1px 7px; border-radius: 8px; cursor: pointer;
-}
-.g-opt:hover { background: #eaf5fc; }
-.g-opt:disabled { color: #c5cfd8; cursor: default; background: #f5f7f9; }
-.g-opt.del { color: #c0392b; }
-.g-opt.del:hover { background: #fdecea; }
-.g-add {
-  border: 1px solid #2e9cd3; color: #2e9cd3; background: #fff;
-  font-size: 12px; line-height: 16px; padding: 1px 8px; border-radius: 10px; cursor: pointer;
-}
-.g-add:hover { background: #eaf5fc; }
-.g-add.owned { border-color: #b9c6d3; color: #8aa3b8; cursor: default; background: #f6f9fb; }
-.g-guess { display: inline-block; margin: 2px 10px 2px 0; color: #004299; }
+
+/* 【我的游戏】标题内“添加/收起”操作链接 */
+.bodule-title .g-op { float: right; margin-right: 10px; font-weight: normal; }
+
+/* 娱乐竞猜词条间距 */
+.g-guess { margin-right: 10px; }
+
 .g-toast {
   position: fixed; left: 50%; bottom: 8%; transform: translateX(-50%);
   z-index: 9; background: rgba(0, 0, 0, .72); color: #fff;

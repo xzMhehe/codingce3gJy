@@ -10,7 +10,8 @@
     <div class="module-title">【我的头像】</div>
     <div class="module-content">
       当前头像:<br>
-      <img :src="currentFace" width="150" height="150" alt="."><br>
+      <img v-if="currentFace" :src="currentFace" width="150" height="150" alt=".">
+      <span v-else class="txt-fade">未设置</span><br>
     </div>
 
     <div class="module-title">自定义头像上传:</div>
@@ -67,7 +68,7 @@ export default {
       if (this.face) {
         return this.face.indexOf('data:') === 0 ? this.face : '/static/picture/' + this.face
       }
-      return '/static/picture/0.gif'
+      return ''
     },
     pages () { return Math.max(1, Math.ceil(this.total / this.size)) }
   },

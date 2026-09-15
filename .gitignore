@@ -18,6 +18,10 @@ package-lock.json
 西游一键端24082201/*
 西游一键端24082201/
 
+# 打包
+dist/
+dist/*
+
 # air
 qqjiayuan/server/tmp/
 .workbuddy-ai/

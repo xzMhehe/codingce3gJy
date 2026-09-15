@@ -1,0 +1,23 @@
+# 家园社区 Windows Server 2012 R2 部署配置
+# 说明:本包假定整个文件夹被放在 D:\qqjiayuan\。
+#       如果放在别的路径,必须同步修改下面两个 web_dir 绝对路径。
+server:
+  port: 8080
+  # 必须是绝对路径!注册成 Windows 服务后工作目录是 C:\Windows\System32,
+  # 相对路径会导致配置读取失败或前端整站 404(见 Server2012.md 第五节)
+  web_dir: "D:/qqjiayuan/web/dist"
+  admin_web_dir: "D:/qqjiayuan/admin-web/dist"
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  # 首次初始化先用 root 跑 init-db.bat;
+  # 初始化完成后按 Server2012.md 3.3 建 jiayuan 专用账号,再改回这里
+  user: root
+  password: "改成服务器MySQL的root密码"
+  dbname: qq_jiayuan
+
+jwt:
+  # 已预生成随机值,不再是源码默认值,可直接使用
+  secret: "3cd2d20d7e77d9c258c786109eb3ecbc80c57939a160914a26511d8b02675435"
+  expire_hours: 168

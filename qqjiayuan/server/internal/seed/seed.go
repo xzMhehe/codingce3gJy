@@ -2097,18 +2097,34 @@ func seedGames(db *gorm.DB) {
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
 	}
 	for i := range games {
+		// 未上架规则（幂等）：初始化不入库，老库置为下架（status=0）
+		// - 社区游戏：无游戏入口（path/url 为空，即“正在建设中”）一律不上架
+		// - 网络游戏：外站推广位，仅无图标且无入口的不上架
+		var placeholder bool
+		if games[i].Category == "net" {
+			placeholder = games[i].Logo == "" && games[i].Path == "" && games[i].Url == ""
+		} else {
+			placeholder = games[i].Path == "" && games[i].Url == ""
+		}
 		var exist int64
 		db.Model(&model.Game{}).Where("name = ?", games[i].Name).Count(&exist)
 		if exist == 0 {
+			if placeholder {
+				continue
+			}
 			db.Create(&games[i])
 		} else {
 			// 老库补齐新字段（幂等）
 			// 注意：category 必须一起同步。它决定游戏出现在「社区游戏大厅」还是「互联网游戏板块」，
 			// 早期版本曾把"幻想西游"存成 net，若这里不同步，老库会永远留在错误的分区里。
-			db.Model(&model.Game{}).Where("name = ?", games[i].Name).Updates(map[string]interface{}{
+			updates := map[string]interface{}{
 				"category": games[i].Category,
 				"intro":    games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
-			})
+			}
+			if placeholder {
+				updates["status"] = 0
+			}
+			db.Model(&model.Game{}).Where("name = ?", games[i].Name).Updates(updates)
 		}
 	}
 }
