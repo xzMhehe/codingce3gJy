@@ -8,7 +8,7 @@
       <a href="javascript:;" @click="tab='notify'"><font :color="tab === 'notify' ? '#e05a00' : '#004299'">【通知】</font></a>
     </div>
 
-    <!-- ===== 公告（诺哈 wap_notice：公告/广播/活动） ===== -->
+    <!-- ===== 公告（诺哈 wap_notice：公告/广播/活动 + topic_notice 公告帖列表） ===== -->
     <template v-if="tab === 'ann'">
       <div v-if="anns.length">
         <div v-for="a in anns" :key="a.id">
@@ -23,6 +23,22 @@
         </div>
       </div>
       <div class="module-content" v-else><span class="empty">暂无公告</span></div>
+
+      <!-- 公告帖（复刻诺哈 topic_notice.asp：N.标题 (头像 作者:回/阅)，10条/页） -->
+      <div class="module-title">社区公告</div>
+      <div class="list" v-if="threads.length">
+        <div class="row" v-for="(t, i) in threads" :key="t.id">
+          <span class="no">{{ (threadPage - 1) * threadSize + i + 1 }}.</span>
+          <a href="javascript:;" @click="$router.push('/thread/' + t.id)"><b>{{ t.title }}</b></a><br>
+          (<a href="javascript:;" @click="$router.push('/user/' + t.user_id)">{{ t.nickname || '友友' }}</a>:<a href="javascript:;" @click="$router.push('/replies/' + t.id)">{{ t.reply_count }}</a>回/{{ t.view_count }}阅)<br>
+        </div>
+      </div>
+      <div class="module-content" v-else><span class="empty">暂无公告帖</span></div>
+      <div class="pager" v-if="threadPages > 1">
+        <a v-if="threadPage > 1" href="javascript:;" @click="goThreads(threadPage - 1)">上页</a>
+        第{{ threadPage }}/{{ threadPages }}页/共{{ threadTotal }}条记录
+        <a v-if="threadPage < threadPages" href="javascript:;" @click="goThreads(threadPage + 1)">下页</a>
+      </div>
     </template>
 
     <!-- ===== 通知（消息通知：回复/好友/系统） ===== -->
@@ -57,11 +73,12 @@ import api from '../api'
 
 export default {
   name: 'Notices',
-  data () { return { tab: 'ann', anns: [], list: [], page: 1, pages: 1 } },
+  data () { return { tab: 'ann', anns: [], list: [], page: 1, pages: 1, threads: [], threadPage: 1, threadPages: 1, threadTotal: 0, threadSize: 10 } },
   mounted () {
     if (this.$route.query.tab === 'notify') this.tab = 'notify'
     this.loadAnn()
     this.loadNotify()
+    this.loadThreads()
   },
   methods: {
     loadAnn () {
@@ -84,6 +101,18 @@ export default {
       api.post('/notifications/read').then(r => { if (r.code === 0) this.loadNotify() })
     },
     go (p) { this.page = p; this.loadNotify() },
+    loadThreads () {
+      api.get('/notices/threads', { params: { page: this.threadPage } }).then(r => {
+        if (r.code === 0) {
+          this.threads = r.data.list || []
+          this.threadPage = r.data.page || 1
+          this.threadSize = r.data.size || 10
+          this.threadTotal = r.data.total || 0
+          this.threadPages = Math.max(1, Math.ceil(this.threadTotal / this.threadSize))
+        }
+      })
+    },
+    goThreads (p) { this.threadPage = p; this.loadThreads() },
     typeName (t) { return { notice: '【公告】', broadcast: '【广播】', activity: '【活动】' }[t] || '【公告】' },
     typeColor (t) { return { notice: '#004299', broadcast: '#1a9e1a', activity: '#e05a00' }[t] || '#004299' },
     nameOf (t) { return { reply: '回复', friend: '好友', system: '系统' }[t] || '通知' },
@@ -97,3 +126,9 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+/* 公告帖列表（复刻诺哈 topic_notice.asp：序号.标题 (作者:回/阅)） */
+.list { line-height: 1.7; padding: 2px 5px; }
+.list .row .no { margin-right: 4px; color: #999; }
+</style>

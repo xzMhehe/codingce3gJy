@@ -805,7 +805,7 @@
       <a href="javascript:;" @click="go('gang')">帮派</a>.<a href="javascript:;" @click="go('chat')">聊天</a>.<a href="javascript:;" @click="go('help')">论坛</a><br/>
     </template>
 
-    <div class="jwt-tip" v-if="tip">{{ tip }}</div>
+    <div class="jwt-tip" v-if="tipMsg">{{ tipMsg }}</div>
   </div>
 </template>
 
@@ -887,7 +887,7 @@ export default {
       editSex: 0,
       editName: '',
       showGangCreate: false,
-      tip: '',
+      tipMsg: '',
     }
   },
   computed: {
@@ -1032,8 +1032,8 @@ export default {
       window.scrollTo(0, 0)
     },
     tip(m) {
-      this.tip = m
-      setTimeout(() => { this.tip = '' }, 2500)
+      this.tipMsg = m
+      setTimeout(() => { this.tipMsg = '' }, 2500)
     },
     // ---------- 工具 ----------
     isEquip(cat) { return ['weapon', 'helmet', 'armor', 'shoes', 'necklace', 'bracelet', 'ring', 'medal'].includes(cat) },

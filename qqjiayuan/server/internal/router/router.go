@@ -148,6 +148,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 活动专区（诺哈 topic_active.asp：活动帖列表）
 		api.GET("/activities", actH.List)
 		api.GET("/activities/column", actH.Column)
+		// 公告帖（诺哈 topic_notice.asp：notice=1 帖子列表）
+		api.GET("/notices/threads", actH.NoticeList)
 		// 书城公开
 		api.GET("/books", bookH.Index)
 		api.GET("/books/list", bookH.List)

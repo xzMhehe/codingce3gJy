@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
@@ -70,4 +72,40 @@ func (h *ActivityHandler) Column(c *gin.Context) {
 	h.DB.Where("status = 1").Order("created_at DESC").Limit(4).Find(&notices)
 
 	resp.OK(c, gin.H{"latest": latest, "longterm": longterm, "notices": notices})
+}
+
+// NoticeList 公告帖列表（参考诺哈三代 topic_notice.asp：notice=1 帖子，10条/页，id 倒序）
+// 布局对齐诺哈：序号.标题 (作者:回复/阅读)，分页 下页.上页 第x/y页/共z条记录
+func (h *ActivityHandler) NoticeList(c *gin.Context) {
+	page, size := pageParams(c, 10)
+	q := h.DB.Model(&model.Thread{}).Where("is_notice = 1 AND status = 1 AND audit_status = 1")
+	var total int64
+	q.Count(&total)
+	var list []model.Thread
+	q.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
+
+	type noticeRow struct {
+		ID          uint   `json:"id"`
+		Title       string `json:"title"`
+		UserID      uint   `json:"user_id"`
+		Username    string `json:"username"`
+		Nickname    string `json:"nickname"`
+		Avatar      string `json:"avatar"`
+		ReplyCount  int    `json:"reply_count"`
+		ViewCount   int    `json:"view_count"`
+		CreatedAt   time.Time `json:"created_at"`
+	}
+	out := make([]noticeRow, 0, len(list))
+	for _, th := range list {
+		row := noticeRow{ID: th.ID, Title: th.Title, UserID: th.UserID, ReplyCount: th.ReplyCount, ViewCount: th.ViewCount}
+		var u model.User
+		if err := h.DB.Select("nickname,username,avatar").First(&u, th.UserID).Error; err == nil {
+			row.Nickname = u.Nickname
+			row.Username = u.Username
+			row.Avatar = u.Avatar
+		}
+		row.CreatedAt = th.CreatedAt
+		out = append(out, row)
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": out})
 }

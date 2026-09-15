@@ -234,7 +234,7 @@ func (h *NobleHandler) Activate(c *gin.Context) {
 		var sold int64
 		h.DB.Model(&model.WalletLog{}).Where("user_id = ? AND kind = ? AND title LIKE ?", uid, plan.Type+"_open", "%"+plan.Name+"%").Count(&sold)
 		if int(sold)+req.Num > plan.Limit {
-			resp.ParamError(c, "该方案每号限购 "+strconv.Itoa(plan.Limit)+" 个月")
+			resp.ParamError(c, "该方案每号限购 "+strconv.Itoa(plan.Limit)+" 份")
 			return
 		}
 	}

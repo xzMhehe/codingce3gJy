@@ -93,7 +93,7 @@
       <template v-else>
         <div class="module-content">
           <a href="javascript:;" @click="cur='shop'; selPlan=null">商店</a>&gt;{{ selPlan.name }}<br>
-          订购价格：{{ selPlan.cost }}G币/{{ selPlan.days }}天<br>
+          订购价格：{{ selPlan.cost }}G币/{{ unitLabel(selPlan) }}（{{ selPlan.days }}天）<br>
           成长速度：{{ selPlan.speed }}点/天<br>
           成长赠送：{{ selPlan.gain }}点<br>
           <template v-if="selPlan.limit">每号限购：{{ selPlan.limit }}<br></template>
@@ -103,14 +103,14 @@
 
           <!-- 购买 -->
           <div v-if="buyOpen" class="module-content deep">
-            购买数量（月）：<input type="text" v-model.number="buyNum" size="2" maxlength="2" value="1"><br>
+            购买数量（{{ unitLabel(selPlan) }}）：<input type="text" v-model.number="buyNum" size="2" maxlength="2" value="1"><br>
             <input type="submit" value="确定购买" @click="doActivate"><br>
           </div>
 
           <!-- 赠送 -->
           <div v-if="giftOpen" class="module-content deep">
             对方号码：<input type="text" v-model.trim="giftTo" size="8"><br>
-            赠送数量（月）：<input type="text" v-model.number="giftNum" size="2" maxlength="2" value="1"><br>
+            赠送数量（{{ unitLabel(selPlan) }}）：<input type="text" v-model.number="giftNum" size="2" maxlength="2" value="1"><br>
             <input type="submit" value="确定赠送" @click="doGift"><br>
           </div>
         </div>
@@ -202,6 +202,15 @@ export default {
       let icon = 'noble_1_1.gif'
       LEVELS.forEach(l => { if (exp >= l.Exp) icon = l.QQ })
       return icon
+    },
+    // 周期单位：按天数换算（30=月 90=季度 180=半年 365=年），后台周期任意天数则显示 X天
+    unitLabel (p) {
+      const d = (p && p.days) || 30
+      if (d === 365) return '年'
+      if (d === 180) return '半年'
+      if (d === 90) return '季度'
+      if (d === 30) return '月'
+      return d + '天'
     },
     openPlan (p) {
       this.selPlan = p

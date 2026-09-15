@@ -817,11 +817,16 @@ func (h *JwtHandler) Arena(c *gin.Context) {
 		}
 	}
 	// 比武受创，持久化当前气血/气力（供药品恢复），下次比武重置
+	// 复刻原站规则：每场比武消耗10点气力（胜/负/平都），被拦截的无效比武不消耗
 	if myHp < 1 {
 		myHp = 1
 	}
+	finalMp := my.MaxMp - 10
+	if finalMp < 0 {
+		finalMp = 0
+	}
 	h.DB.Model(&model.JwtPlayer{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
-		"cur_hp": myHp, "cur_mp": my.MaxMp / 2})
+		"cur_hp": myHp, "cur_mp": finalMp})
 	// 动态落库（首页「动态」feed，复刻原站：向[xxx]发起比武 / 被[xxx]攻击）
 	wText := "失败"
 	gainedExp, gainedCoin := 0, 0
