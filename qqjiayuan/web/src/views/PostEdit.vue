@@ -37,6 +37,7 @@
                 <a href="javascript:;" @click="insertPhoto(p)">选择</a>{{ i+1 }}.<img :src="p.url" alt="" class="pickimg"><br>
               </span>
             </div>
+            <div v-else-if="photosLoading" class="empty">相片加载中…<br></div>
             <div v-else class="empty">暂无相片。<a href="javascript:;" @click="$router.push('/space/'+myId)">去空间上传</a><br></div>
           </template>
           <template v-else>
@@ -112,7 +113,7 @@ export default {
       floorsText: '',
       pollQ: '', pollMulti: false, pollOptionsText: '',
       attachName: '', attachUrl: '', attachPrice: 0,
-      photos: [], pasteItems: []
+      photos: [], photosLoading: false, pasteItems: []
     }
   },
   computed: {
@@ -172,15 +173,20 @@ export default {
     openPhoto () {
       if (this.type !== 5) this.type = 5
       this.panel = ''
-      if (!this.photos.length && this.myId) {
-        api.get('/space/' + this.myId + '/albums').then(r => {
-          if (r.code === 0) {
-            const albums = r.data || []
-            this.photos = []
-            albums.forEach(a => (a.photos || []).forEach(p => this.photos.push({ id: p.id, url: p.url || '/static/picture/' + p.file })))
-          }
-        }).catch(() => {})
-      }
+      if (this.photos.length || this.photosLoading || !this.myId) return
+      this.photosLoading = true
+      // 相册列表不带照片，逐个相册取照片列表（同 Space.vue）
+      api.get('/space/' + this.myId + '/albums').then(r => {
+        if (r.code !== 0) return
+        const albums = r.data || []
+        return Promise.all(albums.map(a =>
+          api.get('/space/albums/' + a.id + '/photos').then(pr => {
+            if (pr.code === 0) {
+              (pr.data.list || []).forEach(p => this.photos.push({ id: p.id, url: p.photo_base64 || '' }))
+            }
+          }).catch(() => {})
+        ))
+      }).catch(() => {}).then(() => { this.photosLoading = false })
     },
     insertPhoto (p) {
       this.append('【图】')
