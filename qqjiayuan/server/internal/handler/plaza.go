@@ -29,6 +29,13 @@ func (h *PlazaHandler) Announcements(c *gin.Context) {
 	resp.OK(c, list)
 }
 
+// SiteInfo 站点展示信息（页脚小Q报时下的 QQ 群号等，后台站点设置 KV 可配）
+func (h *PlazaHandler) SiteInfo(c *gin.Context) {
+	var qqGroup string
+	h.DB.Raw("SELECT `value` FROM settings WHERE `key` = 'qq_group'").Scan(&qqGroup)
+	resp.OK(c, gin.H{"qq_group": qqGroup})
+}
+
 func (h *PlazaHandler) Index(c *gin.Context) {
 	db := h.DB
 
@@ -86,6 +93,7 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 		ttouOut = gin.H{"id": ttou.ID, "nickname": ttou.Nickname, "color": ttou.Color,
 			"username": ttou.Username, "avatar": ttou.Avatar, "avatar_base64": ttou.AvatarBase64,
 			"signature": ttou.Signature, "exp": ttou.Exp, "level_icon": ttou.LevelIcon,
+			"blue_lv": ttou.BlueLv, "blue_end": ttou.BlueEnd, "blue_exp": ttou.BlueExp,
 			"priv": priv, "worship_count": worshipCount}
 	}
 	// 我的上榜/膜拜状态

@@ -39,3 +39,13 @@ export function renderFace (text) {
   })
   return out
 }
+
+// 纯文本替换：/表情码 → emoji（用于 {{ }} 插值的摘要/列表场景，无 HTML 转义）
+export function replaceFace (text) {
+  let out = String(text == null ? '' : text)
+  Object.keys(FACES).forEach(name => {
+    const code = '/' + name
+    if (out.indexOf(code) >= 0) out = out.split(code).join(FACES[name])
+  })
+  return out
+}

@@ -37,6 +37,7 @@
       </p>
       <p>
         小Q报时：{{ nowText }}<br>
+        <template v-if="qqGroup">官方QQ群：<a :href="'https://qm.qq.com/cgi-bin/qm/qr?k=&jump_from=&group=' + qqGroup" target="_blank">{{ qqGroup }}</a><br></template>
       </p>
     </div>
   </div>
@@ -49,7 +50,7 @@ export default {
   name: 'App',
   data () {
     return {
-      nowText: '', timer: null, pollTimer: null, spaceCount: 0, noticeUnread: 0,
+      nowText: '', timer: null, pollTimer: null, spaceCount: 0, noticeUnread: 0, qqGroup: '',
       navs: [
         { name: '家园', to: '/home', keys: ['/home', '/mood', '/sign', '/profile', '/wallet', '/bag', '/security', '/achieve', '/home-level', '/invite', '/favorites', '/medals', '/guestbook', '/youquan'] },
         { name: '好友', to: '/friends', keys: ['/friends', '/contacts'] },
@@ -74,6 +75,7 @@ export default {
   mounted () {
     this.tick()
     this.timer = setInterval(this.tick, 1000)
+    this.loadSiteInfo()
     if (this.isLogin) {
       this.pollUnread()
       this.pollTimer = setInterval(this.pollUnread, 30000)
@@ -82,6 +84,12 @@ export default {
     }
   },
   methods: {
+    // 页脚 QQ 群号（后台站点设置 qq_group，空则不展示）
+    loadSiteInfo () {
+      api.get('/site-info').then(r => {
+        if (r.code === 0 && r.data) this.qqGroup = (r.data.qq_group || '').trim()
+      }).catch(() => {})
+    },
     goNoble () {
       this.$router.push('/noble')
     },

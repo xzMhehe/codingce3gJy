@@ -5,7 +5,7 @@
     <!-- ===== 会员信息 ===== -->
     <div class="module-title">【会员信息】</div>
     <div class="module-content">
-      <img v-if="avatarImg" :src="avatarImg" style="width:96px;height:96px;object-fit:contain;border-radius:4px" alt="头像"><br>
+      <template v-if="avatarImg"><span class="up-avatar"><img :src="avatarImg" style="width:96px;height:96px;object-fit:contain;border-radius:4px" alt="头像"><img v-if="blueActiveIcon" :src="'/static/picture/' + blueActiveIcon" class="up-avatar-priv" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻Lv.' + u.blue_lv" @error="hideErr"></span></template><br>
       社区 I D :{{ u.username || u.id }}<span :style="{ color: u.online ? '#1a9e1a' : '#999' }">({{ u.online ? '在线' : '离线' }})</span>
       <template v-if="u.blue_lv > 0"><img class="id-vip" :src="'/static/picture/noble_2_' + u.blue_lv + '.gif'" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" @error="hideErr"></template>
       <template v-if="u.qq_lv > 0"><img class="id-vip" :src="'/static/picture/noble_1_' + u.qq_lv + '.gif'" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" @error="hideErr"></template>
@@ -172,6 +172,12 @@ export default {
       if (this.u.avatar_base64 && this.u.avatar_base64.length > 20) return this.u.avatar_base64
       if (this.u.avatar) return '/static/picture/' + this.u.avatar
       return ''
+    },
+    blueActiveIcon () {
+      // 蓝钻在有效期内才显示头像框（3gqq home/qs/img/05.gif）
+      if (!(this.u.blue_lv > 0)) return ''
+      if (!(this.u.blue_end && new Date(this.u.blue_end).getTime() > Date.now())) return ''
+      return 'blue_frame_05.gif'
     },
     birthText () {
       if (this.u.solar) return this.u.solar

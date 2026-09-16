@@ -151,6 +151,7 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"avatar": user.Avatar, "avatar_base64": user.AvatarBase64, "level": user.Level, "exp": user.Exp, "coins": user.Coins,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"noble": user.Noble, "qq_lv": user.QqLv, "blue_lv": user.BlueLv,
+		"blue_end": user.BlueEnd, "blue_exp": user.BlueExp,
 		"noble_info": nobleInfo,
 		"partner_id": user.PartnerID, "partner_name": partnerName,
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,

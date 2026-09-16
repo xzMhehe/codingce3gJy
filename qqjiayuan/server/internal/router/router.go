@@ -91,6 +91,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 		// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
 		api.GET("/online", optAuth, plazaH.Online)
 		api.GET("/announcements", plazaH.Announcements)
+		// 站点展示信息（页脚 QQ 群号等，后台站点设置 qq_group 可配）
+		api.GET("/site-info", plazaH.SiteInfo)
 		api.GET("/search", plazaH.Search)
 		api.GET("/boards", boardH.Tree)
 		api.GET("/boards/:id", boardH.Info)

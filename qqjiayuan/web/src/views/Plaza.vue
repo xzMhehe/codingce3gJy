@@ -29,6 +29,7 @@
         <td valign="top" align="center">
           <div class="tt-avatar" :style="ttBg">
             <img v-if="plaza.ttou.priv && plaza.ttou.priv.file" :src="'/static/' + plaza.ttou.priv.file" class="tt-priv" alt=".">
+            <img v-if="ttouBlue" :src="$pic('blue_frame_05.gif')" class="tt-blue" :alt="'蓝钻' + ttouLv + '级'" :title="'蓝钻Lv.' + ttouLv">
             <img src="/static/picture/marksix_1.gif" class="tt-mark" alt="身份">
           </div>
         </td>
@@ -106,6 +107,7 @@
 
 <script>
 import api from '../api'
+import { replaceFace } from '../utils/qqface'
 
 export default {
   name: 'Plaza',
@@ -138,6 +140,16 @@ export default {
       }
       const a = t.avatar
       return a ? { background: 'url(/static/picture/' + a + ') 0 0/100% 100% no-repeat' } : { background: '#cfe0f0' }
+    },
+    ttouLv () {
+      // 蓝钻等级（复刻 Noble.vue blueIcon：按成长值取满足门槛的最高级），未开通/已过期返回 0
+      const t = this.plaza.ttou || {}
+      if (!(t.blue_end && new Date(t.blue_end).getTime() > Date.now())) return 0
+      return t.blue_lv || 0
+    },
+    ttouBlue () {
+      // 蓝钻在有效期内才显示头像框（3gqq home/qs/img/05.gif）
+      return this.ttouLv ? 'blue_frame_05.gif' : ''
     }
   },
   mounted () { this.load(); this.loadChat(); this.loadSections() },
@@ -200,10 +212,10 @@ export default {
       }).catch(() => { window.alert('网络异常，请稍后再试') })
     },
     showAnn (a) { this.annPopup = a },
-    brief (s) { s = s || ''; return s.length > 20 ? s.slice(0, 20) + '…' : s },
+    brief (s) { s = replaceFace(s || ''); return s.length > 20 ? s.slice(0, 20) + '…' : s },
     excerpt (s) {
       if (!s) return ''
-      const t = s.replace(/\s+/g, ' ')
+      const t = replaceFace(s).replace(/\s+/g, ' ')
       return t.length > 38 ? t.slice(0, 38) + '...' : t
     },
     ago (t) {
