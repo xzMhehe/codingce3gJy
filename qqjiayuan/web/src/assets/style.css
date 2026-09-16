@@ -2,6 +2,8 @@
    页面主体外观全部来自 /static/css/style_blue01.css + style.css（演示站原版） */
 html, body { background: #fff; }
 #app { max-width: 480px; margin: 0 auto; }
+/* 复刻诺哈三代破解版 body 字号：16px（演示站 style.css 是 14px，按诺哈调大） */
+body { font-size: 16px; line-height: 1.5; }
 
 /* 友友动态列表（演示站页面结构，无对应样式，按截图观感补齐） */
 ul.dtuser { margin: 0; padding: 0 2px; list-style: none; }
@@ -28,15 +30,18 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 /* 原版我要上榜按钮 */
 #anniu {
     width: 66px;
-    height: 20px;
+    height: 16px;
+    line-height: 16px;
+    display: inline-block;
     border: none;
     background: #0052d9;
     color: #fff;
-    border-radius: 5px;
-    font-size: 14px;
-    padding: 2px 6px;
-    box-shadow: 1px 1px 7px #fb3d3d;
+    border-radius: 3px;
+    font-size: 13px;
+    padding: 0 6px;
+    box-shadow: none;
     margin-left: 4px;
+    text-align: center;
 }
 
 /* 原版我要膜拜效果（text_effect22） */

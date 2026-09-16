@@ -31,7 +31,8 @@
     <!-- 帖子列表 -->
     <div class="list">
       <div class="row" v-for="(t, i) in threads" :key="t.id">
-        {{ i+1 }}.<template v-if="t.is_head">[头条]</template><template v-if="t.is_top">【顶】</template><template v-if="t.is_fine"><img src="/static/image/fine.gif" alt="精"></template><template v-if="t.is_lock">[锁]</template><template v-if="t.is_notice">[公告]</template><template v-if="t.is_recom">[荐]</template><template v-if="t.type===1">[奖励]</template><template v-if="t.type===2">[踩楼]</template><template v-if="t.type===3">[投票]</template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a><br>
+        <!-- 复刻诺哈 forum.asp：列表行只显示一个状态图标，优先级 精>顶>锁 -->
+        {{ i+1 }}.<template v-if="t.is_fine"><img src="/static/image/site/fine.gif" alt="精"></template><template v-else-if="t.is_top"><img src="/static/image/site/apex.gif" alt="顶"></template><template v-else-if="t.is_lock"><img src="/static/image/site/lock.gif" alt="锁"></template><a href="javascript:;" @click="$router.push('/thread/'+t.id)">{{ t.title }}</a><br>
         (<span v-for="b in (t.user ? t.user.badges : [])" :key="'b'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name" :title="b.name"></span>
         <template v-if="t.user && t.user.priv"><img class="bicon" :src="'/static/' + t.user.priv.file" :alt="t.user.priv.name" :title="t.user.priv.name"></template>
         <img class="bicon" v-else-if="t.user && t.user.level_icon" :src="$pic('v'+t.user.level_icon+'.gif')" alt="等级">

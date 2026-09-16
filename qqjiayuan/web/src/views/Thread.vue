@@ -15,10 +15,9 @@
 
     <!-- 标题 pname -->
     <div class="name">
+      <!-- 复刻诺哈 topic.asp：详情页标题只显示标题本身，头条/精/荐/活动/公告/锁徽标不在详情页展示 -->
       <template v-if="editing"><input type="text" v-model.trim="editForm.title" maxlength="50" style="width:90%"></template>
-      <template v-else>
-        <span v-if="thread.is_head" style="color:#c00">[头条]</span><span v-if="thread.is_top">【顶】</span><span v-if="thread.is_fine">【精】</span><span v-if="thread.is_recom">[荐]</span><span v-if="thread.is_notice">[公告]</span><span v-if="thread.is_active" style="color:#e05a00">[活动]</span>{{ thread.title }}
-      </template><br>
+      <template v-else>{{ thread.title }}</template><br>
     </div>
 
     <!-- 正文（诺哈：按字数分页 / || 手动分页 / 余下全文 / 全文） -->
@@ -149,7 +148,7 @@
     </div>
     <div class="list">
       <div v-if="sticky" class="row01">
-        【顶】<span v-for="b in (sticky.user ? sticky.user.badges : [])" :key="'s'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
+        <img alt="顶" src="/static/image/site/apex.gif"><span v-for="b in (sticky.user ? sticky.user.badges : [])" :key="'s'+b.id"><img class="bicon" :src="$pic(b.icon)" :alt="b.name"></span>
         <a href="javascript:;" @click="$router.push('/user/'+(sticky.user ? sticky.user.id : ''))"><ntext :color="sticky.user ? sticky.user.color : ''">{{ sticky.user ? sticky.user.nickname : '?' }}</ntext></a><br>
         <span v-html="renderLine(sticky.content)"></span><br>
         [{{ fmt(sticky.created_at) }}]<template v-if="canSticky"> <a href="javascript:;" @click="unsticky">撤顶</a></template><br>

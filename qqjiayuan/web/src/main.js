@@ -14,21 +14,15 @@ Vue.prototype.$pic = f => {
   return '/static/picture/' + f
 }
 
-// nt组件：昵称颜色渲染。color 传单色时整个昵称一个颜色；
-// 传「#D2B48C,#800080,#DAA520,...」逗号分隔序列时逐字变色（复刻诺哈招牌逐字彩色昵称）
+// 改为函数式组件：每次父组件更新都会重新执行 render，
+// 否则数据（如帖子楼主信息）异步加载后槽内文字变化不会触发重渲染，一直卡在首次的「?」
 const DEFAULT_NICK_COLOR = '#004299'
 const ntComponent = {
   name: 'NickText',
-  props: { color: { type: String, default: '' } },
-  computed: {
-    pieces () {
-      const slot = this.$slots.default || []
-      return slot.map(v => v.text || '').join('')
-    }
-  },
-  render (h) {
-    const txt = this.pieces
-    const cs = (this.color || '').split(',').map(s => s.trim()).filter(s => /^#[0-9a-f]{3,6}$/i.test(s))
+  functional: true,
+  render (h, ctx) {
+    const txt = (ctx.children || []).map(v => v.text || '').join('')
+    const cs = ((ctx.props.color) || '').split(',').map(s => s.trim()).filter(s => /^#[0-9a-f]{3,6}$/i.test(s))
     if (cs.length <= 1) {
       return h('font', { attrs: { color: cs[0] || DEFAULT_NICK_COLOR } }, txt)
     }
