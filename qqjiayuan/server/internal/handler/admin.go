@@ -988,6 +988,47 @@ func (h *AdminHandler) CreateWordFilter(c *gin.Context) {
 	resp.OK(c, req)
 }
 
+// BulkCreateWordFilter 批量导入敏感词：每行一个，格式 "词[,替换词[,类型]]"，类型 1=替换(默认) 2=拦截，# 开头的行忽略
+func (h *AdminHandler) BulkCreateWordFilter(c *gin.Context) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数不对")
+		return
+	}
+	added, skipped := 0, 0
+	for _, line := range strings.Split(req.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.FieldsFunc(line, func(r rune) bool { return r == '|' || r == '，' || r == ',' })
+		word := strings.TrimSpace(fields[0])
+		if word == "" {
+			skipped++
+			continue
+		}
+		var n int64
+		h.DB.Model(&model.WordFilter{}).Where("word = ?", word).Count(&n)
+		if n > 0 {
+			skipped++
+			continue
+		}
+		wf := model.WordFilter{Word: word, Type: 1}
+		wf.Replace = "***"
+		if len(fields) > 1 && strings.TrimSpace(fields[1]) != "" {
+			wf.Replace = strings.TrimSpace(fields[1])
+		}
+		if len(fields) > 2 && strings.TrimSpace(fields[2]) == "2" {
+			wf.Type = 2
+		}
+		h.DB.Create(&wf)
+		added++
+	}
+	resp.OK(c, gin.H{"added": added, "skipped": skipped, "total": added + skipped})
+}
+
 func (h *AdminHandler) UpdateWordFilter(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {

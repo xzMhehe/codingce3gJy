@@ -1020,6 +1020,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/board-members/:boardId/:userId", perm(db, "module:boards"), adminH.BoardMemberRemove)
 				admin.GET("/word-filters", perm(db, "module:wordFilters"), adminH.WordFilters)
 				admin.POST("/word-filters", perm(db, "module:wordFilters"), adminH.CreateWordFilter)
+				admin.POST("/word-filters/bulk", perm(db, "module:wordFilters"), adminH.BulkCreateWordFilter)
 				admin.PUT("/word-filters/:id", perm(db, "module:wordFilters"), adminH.UpdateWordFilter)
 				admin.DELETE("/word-filters/:id", perm(db, "module:wordFilters"), adminH.DeleteWordFilter)
 

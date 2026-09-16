@@ -1306,7 +1306,7 @@ func seedRBAC(db *gorm.DB) {
 		mod("社区", "版块管理", "boards"), mod("社区", "同城管理", "tongcheng"), mod("社区", "版块分类", "boardCategories"),
 		mod("社区", "帖子管理", "threads"), mod("社区", "捐款上榜", "fla"), mod("社区", "家族管理", "families"),
 		mod("社区", "福利院", "welfare"),
-		mod("社区", "TT头像", "ttou"), mod("社区", "恢复帖子", "recycle"), mod("社区", "黑名单榜", "wordFilters"),
+		mod("社区", "TT头像", "ttou"), mod("社区", "恢复帖子", "recycle"), mod("社区", "敏感词", "wordFilters"),
 		// 内容管理
 		mod("内容", "文章管理", "articles"), mod("内容", "留言本管理", "guestbook"), mod("内容", "家信管理", "messages"),
 		// 博客/家园/商城

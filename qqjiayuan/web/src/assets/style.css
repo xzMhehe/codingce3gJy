@@ -35,7 +35,7 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 
 /* 原版我要上榜按钮 */
 #anniu {
-    width: 66px;
+    width: 58px;
     height: 16px;
     line-height: 16px;
     display: inline-block;
@@ -44,7 +44,7 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
     color: #fff;
     border-radius: 3px;
     font-size: 13px;
-    padding: 0 6px;
+    padding: 0 4px;
     box-shadow: none;
     margin-left: 4px;
     text-align: center;
@@ -89,13 +89,16 @@ ul.dtuser .dtime { color: #999; font-size: 12px; margin-left: 2px; }
 .help-line { color: #999; font-size: 12px; }
 
 /* 原版 CSS 把 input[type=submit] 固定成 60px×20px，字数多的按钮（确定设置/确定逐字设置）文字被裁掉：
-   改为自适应宽度 + 居中一行，底图横向平铺保持灰钮观感 */
-input[type=submit] { width: auto; min-width: 60px; height: 22px; padding: 0 8px;
-  line-height: 22px; font-size: 13px; background: #efefef; border: 1px solid #999; border-radius: 2px; cursor: pointer; }
+   改为自适应宽度 + 居中一行，底图横向平铺保持灰钮观感。
+   手机端浏览器（iOS Safari/UC）会用系统默认白色外观渲染原生按钮，必须去掉 appearance 才能保住灰底 */
+input[type=submit], button.btn { width: auto; min-width: 60px; height: 22px; padding: 0 8px;
+  line-height: 22px; font-size: 13px; background: #efefef; border: 1px solid #999; border-radius: 2px; cursor: pointer;
+  -webkit-appearance: none; appearance: none; color: #333; }
 
 /* 通用小按钮（管理后台用；前台一律使用原版 input[submit]/button[button] 灰钮） */
 .btn { display: inline-block; margin: 1px 2px 1px 0; padding: 2px 8px; font-size: 13px;
-  background: #efefef; border: 1px solid #999; border-radius: 2px; color: #333; cursor: pointer; text-decoration: none; }
+  background: #efefef; border: 1px solid #999; border-radius: 2px; color: #333; cursor: pointer; text-decoration: none;
+  -webkit-appearance: none; appearance: none; }
 .btn.red { background: #f3d9d9; border-color: #c33; color: #c00; }
 .btn.small { padding: 1px 6px; font-size: 12px; }
 

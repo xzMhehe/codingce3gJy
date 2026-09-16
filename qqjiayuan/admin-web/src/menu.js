@@ -113,7 +113,7 @@ export const menu = [
       { key: 'fla', name: '捐款上榜', icon: 'el-icon-medal-1', component: AdminFla, perm: 'module:fla' },
       { key: 'welfare', name: '福利院', icon: 'el-icon-pie-chart', component: AdminWelfare, perm: 'module:welfare' },
       { key: 'recycle', name: '恢复帖子', icon: 'el-icon-delete', component: AdminThreadRecycle, perm: 'module:recycle' },
-      { key: 'wordFilters', name: '黑名单榜', icon: 'el-icon-remove-outline', component: AdminWordFilters, perm: 'module:wordFilters' },
+      { key: 'wordFilters', name: '敏感词', icon: 'el-icon-remove-outline', component: AdminWordFilters, perm: 'module:wordFilters' },
     ]
   },
   // 内容管理（诺哈 article/ guest/ message/）

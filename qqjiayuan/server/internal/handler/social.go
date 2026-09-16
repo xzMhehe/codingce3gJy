@@ -551,6 +551,16 @@ func (h *ChatHandler) Send(c *gin.Context) {
 		resp.ParamError(c, "说点什么吧（500字以内）")
 		return
 	}
+	// 敏感词过滤（复用管理端 黑名单榜 word_filters：Type1 替换，Type2 拦截）
+	var ws []model.WordFilter
+	h.DB.Find(&ws)
+	content := replaceText(req.Content, ws)
+	for _, w := range ws {
+		if w.Type == 2 && contains(content, w.Word) {
+			resp.Forbidden(c, "你说的内容包含敏感词，请修改后再发言")
+			return
+		}
+	}
 	famID, _ := strconv.Atoi(c.DefaultQuery("family_id", "0"))
 	boardID, _ := strconv.Atoi(c.DefaultQuery("board_id", "0"))
 	if famID > 0 {
@@ -565,7 +575,7 @@ func (h *ChatHandler) Send(c *gin.Context) {
 	if famID > 0 {
 		boardID = 0
 	}
-	msg := model.ChatMessage{UserID: uid, FamilyID: uint(famID), BoardID: uint(boardID), Content: req.Content}
+	msg := model.ChatMessage{UserID: uid, FamilyID: uint(famID), BoardID: uint(boardID), Content: content}
 	h.DB.Create(&msg)
 	h.DB.Preload("User").Preload("User.Badges").First(&msg, msg.ID)
 	resp.OK(c, msg)

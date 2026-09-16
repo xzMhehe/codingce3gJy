@@ -182,6 +182,16 @@ func (h *HxxyHandler) ChatPost(c *gin.Context) {
 	if len([]rune(in.Content)) > 100 {
 		in.Content = trimStr(in.Content, 100)
 	}
+	// 敏感词过滤（复用管理端 黑名单榜 word_filters：Type1 替换，Type2 拦截）
+	var ws []model.WordFilter
+	h.DB.Find(&ws)
+	for _, w := range ws {
+		if w.Type == 2 && contains(in.Content, w.Word) {
+			resp.Forbidden(c, "你说的内容包含敏感词，请修改后再发言")
+			return
+		}
+	}
+	in.Content = replaceText(in.Content, ws)
 	h.DB.Create(&model.HxxyChat{PlayerID: p.ID, Name: p.Name, Content: in.Content})
 	resp.OK(c, gin.H{"msg": "发言成功"})
 }
