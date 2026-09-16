@@ -360,11 +360,26 @@ func left(s string, n int) string {
 // 私信
 type MessageHandler struct{ DB *gorm.DB }
 
+// resolveUser 按家园号码（username，转靓号后变化）或内部 id 解析用户
+func (h *MessageHandler) resolveUser(s string) (model.User, error) {
+	var u model.User
+	if err := h.DB.Where("username = ?", s).First(&u).Error; err == nil {
+		return u, nil
+	}
+	if id, e := strconv.Atoi(s); e == nil && id > 0 {
+		if err := h.DB.First(&u, id).Error; err == nil {
+			return u, nil
+		}
+	}
+	return u, gorm.ErrRecordNotFound
+}
+
 // 会话列表：按联系人分组，含未读数
 func (h *MessageHandler) Conversations(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	type convRow struct {
 		UserID      uint   `json:"user_id"`
+		Username    string `json:"username"`
 		Nickname    string `json:"nickname"`
 		Color       string `json:"color"`
 		LastContent string `json:"last_content"`
@@ -373,7 +388,7 @@ func (h *MessageHandler) Conversations(c *gin.Context) {
 	}
 	var convs []convRow
 	h.DB.Raw(`
-SELECT u.id AS user_id, u.nickname, u.color, m.content AS last_content, m.created_at AS last_at,
+SELECT u.id AS user_id, u.username AS username, u.nickname, u.color, m.content AS last_content, m.created_at AS last_at,
   (SELECT COUNT(*) FROM private_messages x WHERE x.sender_id = u.id AND x.receiver_id = ? AND x.is_read = 0) AS unread
 FROM private_messages m
 JOIN users u ON u.id = IF(m.sender_id = ?, m.receiver_id, m.sender_id)
@@ -384,21 +399,21 @@ ORDER BY m.created_at DESC`, uid, uid, uid, uid, uid).Scan(&convs)
 	resp.OK(c, convs)
 }
 
-// 与某人的私信往来
+// 与某人的私信往来（peerId 支持家园号码或内部 id，转靓号后号码仍可用）
 func (h *MessageHandler) With(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	peerID, _ := strconv.Atoi(c.Param("id"))
-	var peer model.User
-	if err := h.DB.First(&peer, peerID).Error; err != nil {
+	peer, err := h.resolveUser(c.Param("id"))
+	if err != nil {
 		resp.NotFound(c, "这位友友不存在")
 		return
 	}
+	peerID := peer.ID
 	var msgs []model.PrivateMessage
 	h.DB.Preload("Sender").Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
 		uid, peerID, peerID, uid).Order("created_at ASC").Limit(200).Find(&msgs)
 	h.DB.Model(&model.PrivateMessage{}).
 		Where("sender_id = ? AND receiver_id = ? AND is_read = 0", peerID, uid).Update("is_read", 1)
-	resp.OK(c, gin.H{"peer": gin.H{"id": peer.ID, "nickname": peer.Nickname, "color": peer.Color}, "list": msgs})
+	resp.OK(c, gin.H{"peer": gin.H{"id": peer.ID, "username": peer.Username, "nickname": peer.Nickname, "color": peer.Color}, "list": msgs})
 }
 
 // 收信箱（对齐诺哈 inbox.asp）：收到的私信列表，点击进入往来
@@ -411,12 +426,13 @@ func (h *MessageHandler) Inbox(c *gin.Context) {
 	h.DB.Preload("Sender").Where("receiver_id = ?", uid).Order("id DESC").Offset(offset).Limit(size).Find(&msgs)
 	out := []gin.H{}
 	for _, m := range msgs {
-		nick, color := "系统信息", ""
+		nick, color, num := "系统信息", "", ""
 		if m.Sender != nil {
 			nick = m.Sender.Nickname
 			color = m.Sender.Color
+			num = m.Sender.Username
 		}
-		out = append(out, gin.H{"id": m.ID, "sender_id": m.SenderID, "sender": nick, "color": color,
+		out = append(out, gin.H{"id": m.ID, "sender_id": m.SenderID, "sender": nick, "color": color, "sender_num": num,
 			"content": m.Content, "is_read": m.IsRead, "created_at": m.CreatedAt})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -432,13 +448,14 @@ func (h *MessageHandler) Outbox(c *gin.Context) {
 	h.DB.Where("sender_id = ?", uid).Order("id DESC").Offset(offset).Limit(size).Find(&msgs)
 	out := []gin.H{}
 	for _, m := range msgs {
-		nick, color := "—", ""
+		nick, color, num := "—", "", ""
 		var r model.User
 		if err := h.DB.First(&r, m.ReceiverID).Error; err == nil {
 			nick = r.Nickname
 			color = r.Color
+			num = r.Username
 		}
-		out = append(out, gin.H{"id": m.ID, "receiver_id": m.ReceiverID, "receiver": nick, "color": color,
+		out = append(out, gin.H{"id": m.ID, "receiver_id": m.ReceiverID, "receiver": nick, "color": color, "receiver_num": num,
 			"content": m.Content, "is_read": m.IsRead, "created_at": m.CreatedAt})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -511,7 +528,7 @@ func (h *MessageHandler) Send(c *gin.Context) {
 		return
 	}
 	var target model.User
-	if err := h.DB.First(&target, req.To).Error; err != nil {
+	if err := h.DB.Where("username = ? OR id = ?", strconv.Itoa(int(req.To)), req.To).First(&target).Error; err != nil {
 		resp.NotFound(c, "这位友友不存在")
 		return
 	}

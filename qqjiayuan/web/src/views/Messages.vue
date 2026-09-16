@@ -18,7 +18,7 @@
           <div class="row" v-for="(m, i) in inbox" :key="'i'+m.id">
             {{ inboxPageStart + i }}.<template v-if="!m.is_read"><span class="txt-fade">(新)</span></template>
             <a href="javascript:;" @click="openChat(m.sender_id)">{{ preview(m.content) }}</a><br>
-            发信人:<a href="javascript:;" @click="$router.push('/user/'+m.sender_id)"><ntext :color="m.color || '#004299'">{{ m.sender }}</ntext>({{ m.sender_id }})</a><br>
+            发信人:<a href="javascript:;" @click="$router.push('/user/'+m.sender_id)"><ntext :color="m.color || '#004299'">{{ m.sender }}</ntext>({{ m.sender_num || m.sender_id }})</a><br>
             收信时间:{{ fmt(m.created_at) }} [<a href="javascript:;" @click="delMsg(m)">删</a>]<br>
           </div>
         </div>
@@ -42,7 +42,7 @@
           <div class="row" v-for="(m, i) in outbox" :key="'o'+m.id">
             {{ outboxPageStart + i }}.<span class="txt-fade">{{ m.is_read ? '(已阅)' : '(未阅)' }}</span>
             <a href="javascript:;" @click="openChat(m.receiver_id)">{{ preview(m.content) }}</a><br>
-            收信人:<a href="javascript:;" @click="$router.push('/user/'+m.receiver_id)"><ntext :color="m.color || '#004299'">{{ m.receiver }}</ntext>({{ m.receiver_id }})</a><br>
+            收信人:<a href="javascript:;" @click="$router.push('/user/'+m.receiver_id)"><ntext :color="m.color || '#004299'">{{ m.receiver }}</ntext>({{ m.receiver_num || m.receiver_id }})</a><br>
             发信时间:{{ fmt(m.created_at) }} [<a href="javascript:;" @click="delMsg(m)">删</a>]<br>
           </div>
         </div>
@@ -94,7 +94,7 @@
       </div>
 
       <div class="name">
-        <a href="javascript:;" @click="$router.push('/user/'+peer.id)"><ntext :color="peer.color || '#004299'">{{ peer.nickname }}</ntext>({{ peer.id }})</a>
+        <a href="javascript:;" @click="$router.push('/user/'+peer.id)"><ntext :color="peer.color || '#004299'">{{ peer.nickname }}</ntext>({{ peer.username || peer.id }})</a>
         <span class="txt-fade">(往来{{ msgs.length }}条)</span> <a class="rt" href="javascript:;" @click="load">刷新消息</a><br>
       </div>
 
@@ -140,7 +140,7 @@
           <input type="submit" value="下一步" @click="checkPeer"><br>
         </template>
         <template v-else>
-          收信人：<a href="javascript:;" @click="$router.push('/user/' + writePeer.id)"><ntext :color="writePeer.color || '#004299'">{{ writePeer.nickname }}</ntext>({{ writePeer.id }})</a><br>
+          收信人：<a href="javascript:;" @click="$router.push('/user/' + writePeer.id)"><ntext :color="writePeer.color || '#004299'">{{ writePeer.nickname }}</ntext>({{ writePeer.username || writePeer.id }})</a><br>
           内容：<textarea v-model.trim="writeContent" rows="3" maxlength="500"></textarea><br>
           <input type="submit" value="发 送" @click="sendTo">　<a href="javascript:;" @click="resetSend">重选接收人</a><br>
         </template>
@@ -294,7 +294,7 @@ export default {
     checkPeer () {
       if (!this.writeTo) { alert('请输入对方号码'); return }
       api.get('/users/' + this.writeTo).then(r => {
-        if (r.code === 0) this.writePeer = { id: r.data.id, nickname: r.data.nickname, color: r.data.color }
+        if (r.code === 0) this.writePeer = { id: r.data.id, nickname: r.data.nickname, color: r.data.color, username: r.data.username }
         else alert(r.msg || '这位友友不存在')
       })
     },

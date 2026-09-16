@@ -53,7 +53,12 @@ func (h *AdminHandler) Users(c *gin.Context) {
 			oldNums[n.UserID] = append(oldNums[n.UserID], n.Num)
 		}
 	}
-	out := gin.H{"total": total, "page": page, "size": size, "list": users, "old_nums": oldNums}
+	// 家园等级（由活跃天数计算，与论坛等级 users.level 分开）
+	homeLv := map[uint]int{}
+	for _, u := range users {
+		homeLv[u.ID] = homeLevelOf(u.ActiveDays)
+	}
+	out := gin.H{"total": total, "page": page, "size": size, "list": users, "old_nums": oldNums, "home_levels": homeLv}
 	resp.OK(c, out)
 }
 
@@ -536,12 +541,13 @@ func (h *AdminHandler) WalletSet(c *gin.Context) {
 	resp.OK(c, nil)
 }
 
-// 设置用户家园资料（等级/活跃天数/成就点/城市）
+// 设置用户资料（论坛等级 level / 家园等级 home_level / 活跃天数 / 成就点 / 城市 / 诺哈 wap_user 扩展字段）
 func (h *AdminHandler) UserHomeSet(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Level        int     `json:"level"`
-		ActiveDays   float64 `json:"active_days"`
+		Level        int     `json:"level"`        // 论坛等级（users.level）
+		HomeLevel    int     `json:"home_level"`   // 家园等级（设定后按该级所需最低活跃天数校准 active_days）
+		ActiveDays   float64 `json:"active_days"`  // 家园活跃天数（家园等级的计算依据）
 		Achieve      int     `json:"achieve"`
 		City         string  `json:"city"`
 		// 诺哈 wap_user 扩展字段（管理端可编辑）
@@ -566,6 +572,22 @@ func (h *AdminHandler) UserHomeSet(c *gin.Context) {
 	}
 	if req.Level < 1 {
 		req.Level = 1
+	}
+	// 家园等级 → 校准活跃天数到该级区间 [本级最低天, 下一级最低天-0.5]，最高 50 级。
+	// 家园等级由活跃天数推导（homeLevelOf），因此精确设置家园等级时把 active_days 拉到对应区间，
+	// 已有进度尽量保留；未传 home_level（<1）则不校准
+	if req.HomeLevel >= 1 {
+		if req.HomeLevel > 50 {
+			req.HomeLevel = 50
+		}
+		lo := homeLevelOfMinDays(req.HomeLevel)
+		hi := homeLevelOfMaxDays(req.HomeLevel)
+		if req.ActiveDays < lo {
+			req.ActiveDays = lo
+		}
+		if hi > 0 && req.ActiveDays > hi {
+			req.ActiveDays = hi
+		}
 	}
 	if req.ActiveDays < 0 {
 		req.ActiveDays = 0

@@ -297,7 +297,7 @@ func (h *PlazaHandler) Search(c *gin.Context) {
 		Where("status = 1 AND (title LIKE ? OR content LIKE ?)", like, like).
 		Order("created_at DESC").Limit(20).Find(&threads)
 	var users []model.User
-	h.DB.Where("nickname LIKE ?", like).Limit(10).Find(&users)
+	h.DB.Where("nickname LIKE ? OR username LIKE ?", like, like).Order("id ASC").Limit(10).Find(&users)
 	resp.OK(c, gin.H{"threads": threads, "users": users})
 }
 

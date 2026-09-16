@@ -13,7 +13,12 @@
         <el-table-column label="昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><font :color="row.color || '#333'">{{ row.nickname }}</font></template>
         </el-table-column>
-        <el-table-column prop="level" label="家园等级" width="90" align="center" />
+        <el-table-column label="家园等级" width="100" align="center">
+          <template slot-scope="{row}">
+            <span :title="'活跃 ' + (row.active_days || 0) + ' 天'">{{ homeLevelOf(row) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="level" label="论坛等级" width="90" align="center" />
         <el-table-column prop="active_days" label="活跃天数" width="90" align="center" />
         <el-table-column prop="achieve" label="成就点" width="90" align="center" />
         <el-table-column label="城市" min-width="110" show-overflow-tooltip>
@@ -35,8 +40,12 @@
     <!-- 会员资料编辑（对齐诺哈 admin/user 资料编辑：等级/活跃/成就/城市/好友策略/性别/年龄/生日/签名/简介/在线时长/每页帖数/消费额） -->
     <el-dialog :title="'会员资料：' + (pForm.username || '')" :visible.sync="pDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="90px" size="small">
-        <el-form-item label="家园等级">
+        <el-form-item label="论坛等级">
           <el-input-number v-model="pForm.level" :min="1" :max="99" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="家园等级">
+          <el-input-number v-model="pForm.home_level" :min="1" :max="50" controls-position="right" />
+          <span class="txt-fade" style="margin-left:6px">设定为各级所需活跃天数</span>
         </el-form-item>
         <el-form-item label="活跃天数">
           <el-input-number v-model="pForm.active_days" :min="0" :max="99999" :precision="1" controls-position="right" />
@@ -112,7 +121,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, word: '', loading: false,
-      pDlg: false, pForm: {}
+      homeLevels: {}, pDlg: false, pForm: {}
     }
   },
   mounted () { this.load() },
@@ -120,12 +129,25 @@ export default {
     policyName (v) {
       return { 0: '允许', 1: '需要验证', 2: '拒绝' }[v] || '允许'
     },
+    // 家园等级由活跃天数推导（诺哈 n²+4n，level = floor((sqrt(16+4*days)-4)/2)）。优先后端给的 home_levels 映射
+    homeLevelOf (u) {
+      const fromMap = this.homeLevels[u.id]
+      if (fromMap) return fromMap
+      const d = u.active_days || 0
+      let lv = 1
+      // 根据后端 homeLevels 表反查：逐级比较所需天数
+      for (let i = 1; i <= 50; i++) {
+        if (d >= i * (i + 4)) lv = i
+      }
+      return lv
+    },
     load () {
       this.loading = true
       api.get('/admin/users?page=' + this.page + (this.word ? '&word=' + encodeURIComponent(this.word) : '')).then(r => {
         this.loading = false
         if (r.code === 0) {
           this.list = (r.data.list || []).map(u => ({ ...u, friend_policy: u.friend_policy || 0 }))
+          this.homeLevels = r.data.home_levels || {}
           this.total = r.data.total
         }
       })
@@ -134,7 +156,8 @@ export default {
     openProfile (row) {
       this.pForm = {
         id: row.id, username: row.username,
-        level: row.level || 1, active_days: row.active_days || 0, achieve: row.achieve || 0,
+        level: row.level || 1, home_level: this.homeLevelOf(row) || 1,
+        active_days: row.active_days || 0, achieve: row.achieve || 0,
         city: row.city || '', friend_policy: row.friend_policy || 0,
         gender: row.gender || 1, age: row.age || 0,
         birth_type: row.birth_type === 0 ? 0 : 1,

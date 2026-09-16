@@ -38,6 +38,32 @@ func homeLevelOf(days float64) int {
 	return lv
 }
 
+// homeLevelOfMinDays 家园等级对应的最低活跃天数（诺哈 1 级 5 天，最高 50 级 2700 天）。小于 1 返回 0。
+func homeLevelOfMinDays(lv int) float64 {
+	if lv <= 0 {
+		return 0
+	}
+	for _, l := range homeLevels {
+		if l.Lv == lv {
+			return l.Days
+		}
+	}
+	return 0
+}
+
+// homeLevelOfMaxDays 家园等级对应的最大活跃天数：下一级最低天数减 0.5（50 级封顶 2700）。非等级范围返回 0。
+func homeLevelOfMaxDays(lv int) float64 {
+	if lv <= 0 {
+		return 0
+	}
+	for _, l := range homeLevels {
+		if l.Lv == lv+1 {
+			return l.Days - 0.5
+		}
+	}
+	return homeLevelOfMinDays(50)
+}
+
 // 我的家园等级：按活跃天数计算（诺哈公式 n²+4n，与论坛等级 user.Level 分开），最高 50 级
 func (h *HomeLevelHandler) View(c *gin.Context) {
 	uid := middleware.GetUID(c)

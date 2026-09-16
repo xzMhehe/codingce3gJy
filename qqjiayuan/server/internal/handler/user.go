@@ -41,12 +41,17 @@ func pageOf(c *gin.Context, defSize int) (int, int, int) {
 }
 
 // 他人主页：资料 + 最新发帖/回帖统计
+// 家园号码（username，转靓号后变化）优先匹配，找不到再按内部 id（兼容 /user/:id 旧链接）
 func (h *UserHandler) Profile(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
 	var user model.User
-	if err := h.DB.First(&user, id).Error; err != nil {
-		resp.NotFound(c, "这位友友不见了")
-		return
+	if err := h.DB.Where("username = ?", c.Param("id")).First(&user).Error; err != nil {
+		if id, e := strconv.Atoi(c.Param("id")); e == nil && id > 0 {
+			err = h.DB.First(&user, id).Error
+		}
+		if err != nil {
+			resp.NotFound(c, "这位友友不见了")
+			return
+		}
 	}
 	var threadCount, replyCount, signDays int64
 	h.DB.Model(&model.Thread{}).Where("user_id = ? AND status = 1", user.ID).Count(&threadCount)

@@ -2,7 +2,7 @@
   <div>
     <!-- 资料卡：夜凌云 1级 [等级][蓝钻][超Q][身份] 图标（贵族为纯身份字段，无独立图标，不渲染避免与超Q/蓝钻图标重复） -->
     <div class="module-content unline">
-      <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color || '#004299'">{{ u.nickname || ($store.state.user && $store.state.user.nickname) || '我' }}</ntext></a> {{ u.level || 1 }}级</b>
+      <b><a href="javascript:;" @click="$router.push('/user/'+u.id)"><ntext :color="u.color || '#004299'">{{ u.nickname || ($store.state.user && $store.state.user.nickname) || '我' }}</ntext></a> {{ u.home_level || 1 }}级</b>
       <img :src="homeIcon(u)" alt="等级" class="bicon uic" @error="iconErr($event)">
       <img v-if="u.blue_lv > 0" :src="$pic('noble_2_' + u.blue_lv + '.gif')" :alt="'蓝钻' + u.blue_lv + '级'" :title="'蓝钻' + u.blue_lv + '级'" class="bicon uic" @error="hideErr($event)">
       <img v-if="u.qq_lv > 0" :src="$pic('noble_1_' + u.qq_lv + '.gif')" :alt="'超Q' + u.qq_lv + '级'" :title="'超Q' + u.qq_lv + '级'" class="bicon uic" @error="hideErr($event)">
@@ -231,7 +231,7 @@ export default {
       return m ? m[1] : '帖子已删除'
     },
     homeIcon (u) {
-      const lv = Math.max(1, Math.min(50, u.level || 1))
+      const lv = Math.max(1, Math.min(50, u.home_level || 1))
       const sex = (u.gender === 2 || u.gender === '2') ? '2' : '1'
       return this.$pic('home_' + sex + '_' + lv + '.gif')
     },
@@ -239,7 +239,9 @@ export default {
       const img = e.target
       if (img.dataset.fallback) { img.src = ''; img.style.visibility = 'hidden'; return }
       img.dataset.fallback = '1'
-      img.src = this.$pic('v' + ((this.u && this.u.level) || 1) + '.gif')
+      const lv = Math.max(1, Math.min(50, (this.u && this.u.home_level) || 1))
+      const sex = (this.u && (this.u.gender === 2 || this.u.gender === '2')) ? '2' : '1'
+      img.src = this.$pic('home_' + sex + '_' + lv + '.gif')
     },
     hideErr (e) { e.target.style.display = 'none' },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('家园·' + title)) },
