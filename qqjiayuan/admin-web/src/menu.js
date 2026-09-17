@@ -62,6 +62,10 @@ import AdminParkCars from './components/admin/AdminParkCars.vue'
 import AdminParkData from './components/admin/AdminParkData.vue'
 import AdminXyPlayers from './components/admin/AdminXyPlayers.vue'
 import AdminXyData from './components/admin/AdminXyData.vue'
+import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
+import AdminEzfyData from './components/admin/AdminEzfyData.vue'
+import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
+import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
@@ -224,6 +228,15 @@ export const menu = [
           { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs, perm: 'module:xyLogs' },
           { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem, perm: 'module:xySystem' },
           { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData, perm: 'module:xyData' },
+        ]
+      },
+      {
+        key: 'g-ezfy', name: '二战风云', icon: 'el-icon-position',
+        children: [
+          { key: 'ezfyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
+          { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
+          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
+          { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
         ]
       }
     ]
