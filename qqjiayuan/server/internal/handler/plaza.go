@@ -84,8 +84,16 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	}
 	ttouOut := gin.H{}
 	if ttou.ID > 0 {
+		// 膜拜数：秀主为今日捐款榜首时与 慈善基金/福利院 共用 fla_donations.worships，保证三处数字一致
 		var worshipCount int64
-		db.Model(&model.TtouWorship{}).Where("target_id = ?", ttou.ID).Count(&worshipCount)
+		var topDon model.FlaDonation
+		db.Where("DATE(created_at) = ?", time.Now().Format("2006-01-02")).
+			Order("amount DESC, id ASC").First(&topDon)
+		if topDon.ID > 0 && topDon.UserID == ttou.ID {
+			worshipCount = int64(topDon.Worships)
+		} else {
+			db.Model(&model.TtouWorship{}).Where("target_id = ?", ttou.ID).Count(&worshipCount)
+		}
 		priv := gin.H{}
 		if ttou.Priv != nil {
 			priv = gin.H{"file": ttou.Priv.File, "name": ttou.Priv.Name}

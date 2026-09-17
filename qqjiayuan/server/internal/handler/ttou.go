@@ -70,6 +70,7 @@ func (h *TtouHandler) Apply(c *gin.Context) {
 }
 
 // 我要膜拜：每天对当前秀主限一次
+// 秀主为今日捐款榜首时与福利院共用同一计数（fla_donations.worships），保证 首页/慈善基金/福利院 三处数字一致
 func (h *TtouHandler) Worship(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	target := h.currentTTou()
@@ -82,6 +83,22 @@ func (h *TtouHandler) Worship(c *gin.Context) {
 		return
 	}
 	today := time.Now().Format("2006-01-02")
+
+	var top model.FlaDonation
+	h.DB.Where("DATE(created_at) = ?", today).Order("amount DESC, id ASC").First(&top)
+	if top.ID > 0 && top.UserID == target {
+		var cnt int64
+		h.DB.Model(&model.FlaWorship{}).Where("user_id = ? AND DATE(created_at) = ?", uid, today).Count(&cnt)
+		if cnt > 0 {
+			resp.ParamError(c, "今天已经膜拜过啦，明天再来~")
+			return
+		}
+		h.DB.Create(&model.FlaWorship{DonID: top.ID, UserID: uid})
+		h.DB.Model(&model.FlaDonation{}).Where("id = ?", top.ID).UpdateColumn("worships", gorm.Expr("worships + 1"))
+		resp.OK(c, gin.H{"count": top.Worships + 1, "target_id": target})
+		return
+	}
+
 	var cnt int64
 	h.DB.Raw("SELECT COUNT(*) FROM ttou_worships WHERE user_id = ? AND target_id = ? AND DATE(created_at) = ?",
 		uid, target, today).Scan(&cnt)

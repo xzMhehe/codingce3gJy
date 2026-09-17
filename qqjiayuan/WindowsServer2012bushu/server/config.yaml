@@ -2,7 +2,7 @@
 # 说明:本包假定整个文件夹被放在 C:\Users\Public\Code\。
 #       如果放在别的路径,只需同步修改下面两个 web_dir 绝对路径(正斜杠)。
 server:
-  port: 80
+  port: 8080
   # 必须是绝对路径!注册成 Windows 服务后工作目录是 C:\Windows\System32,
   # 相对路径会导致配置读取失败或前端整站 404
   web_dir: "C:/Users/Public/Code/web/dist"
