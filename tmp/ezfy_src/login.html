@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>登录</title>
+    <meta charset="utf-8">
+    <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+    <meta content="IE=edge" http-equiv="X-UA-Compatible">
+    <meta content="WAP游戏,文字游戏,怀旧,mud" name="keywords">
+    <meta content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+          name="viewport">
+    <meta content="yes" name="apple-mobile-web-app-capable">
+    <meta content="yes" name="mobile-web-app-capable">
+    <meta content="telphone=no,email=no" name="format-detection">
+    <meta content="no" name="misapplication-tap-highlight">
+    <meta content="portrait" name="screen-orientation">
+    <meta content="portrait" name="x5-orientation">
+    <link href="https://raw.githubusercontent.com/xzMhehe/StaticFile_CDN/main/static/mo/media_home_page.png" rel="icon">
+    <link rel="stylesheet" href="/assets/css/bootstrap.min-3.4.0.css;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/css"/>
+    <link rel="stylesheet" href="/assets/css/font-awesome-4.3.0.css;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/css"/>
+    <link rel="stylesheet" href="/assets/css/animate.css;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/css"/>
+    <link rel="stylesheet" href="/assets/css/style-2.2.0.css;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/css"/>
+    <link rel="stylesheet" href="/assets/css/index.css;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/css"/>
+    <script src="/assets/js/flexible.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+    <script src="/assets/js/zepto.min.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+</head>
+<body class="gray-bg">
+<div class="middle-box text-center loginscreen  animated fadeInDown">
+    <div class="form-signin">
+        <div id="stage">
+            <div id="inner">
+                <div id="cover">
+                    <div id="text">
+                        <span style="color: cyan;">GA</span><span style="color: white;">ME</span>
+                    </div>
+                    <div id="detail"></div>
+                    <div id="handle"></div>
+                </div>
+                <canvas class="mb-4" height="800" id="live2d" width="800"></canvas>
+            </div>
+            <a href="javascript:info()" id="info"><i class="fa fa-lg fa-info"></i></a>
+            <a href="javascript:refresh()" id="refresh"><i class="fa fa-lg fa-refresh"></i></a>
+        </div>
+        <h3>新版二次元登录页(二战风云)</h3>
+
+        <!--<form class="m-t" role="form" method="post" action="/H/login">-->
+        <form class="m-t" id="form" method="post" action="login;jsessionid=C6BD0A745397779114189D96B407FD0C">
+            <div class="form-group">
+                <input class="form-control" name="name" placeholder="请输入您的帐号" required="" type="phone">
+            </div>
+            <div class="form-group">
+                <input class="form-control" name="password" placeholder="请输入您的密码" required="" type="password">
+            </div>
+
+            <button class="btn btn-primary block full-width m-b" type="submit">登 录</button>
+            <div class="form-group">
+                <div class="checkbox i-checks">
+                    <span class="text-muted text-center"><a href="register">注册一个新账号</a>
+                        </span>
+                </div>
+            </div>
+            <img style="width: 100%;" src="/assets/picture/1.gif;jsessionid=C6BD0A745397779114189D96B407FD0C">
+        </form>
+    </div>
+</div>
+
+<!-- Mainly scripts -->
+<script src="/assets/js/jquery-2.1.1.min.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+<script src="/assets/js/bootstrap.min-3.4.0.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+<script type="text/javascript">
+    function stop() {
+        return false;
+    }
+
+    document.oncontextmenu = stop;
+</script>
+<script src="/assets/js/live2d.min.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+<script src="/assets/js/index.js;jsessionid=C6BD0A745397779114189D96B407FD0C" type="text/javascript"></script>
+</body>
+</html>
+<script type="text/javascript">
+    // 提交验证
+    $('.submit button').click(function () {
+        var name = $('input[name=name]').val();
+        var password = $('input[name=password]').val();
+        if (!/^[A-Za-z0-9\u4e00-\u9fa5]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$/.test(name)) {
+            alert("请先输入正确帐号")
+            return
+        }
+        if ($.trim(name) == '') {
+            alert("请输入帐号")
+            $('input[name=name]').focus()
+            return false
+        }
+        if ($.trim(password) == '') {
+            alert("请输入密码")
+            $('input[name=password]').focus()
+            return false
+        }
+        $("#form").submit;
+
+    })
+</script>

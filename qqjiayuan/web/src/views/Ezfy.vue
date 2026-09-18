@@ -1,7 +1,7 @@
 <template>
   <div class="ezfy-page">
     <div class="home-wrap">
-      <div class="title-bar">二战复刻-【1区】金印紫授</div>
+      <div class="title-bar">二战风云-红色警戒【1区】</div>
 
       <!-- 顶部导航(每页都有, 复刻原版) -->
       <div class="top-nav">
@@ -135,10 +135,6 @@
           <a href="javascript:;" @click="go('cityhall')">市政</a>
           <a href="javascript:;" @click="go('chat')">聊天</a>
         </div>
-        <br/>
-        <hr/>
-        <div class="footer-line">小Q报时：{{ nowText }}</div>
-        <div class="footer-line">联系我们：</div>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -972,7 +968,7 @@
       <template v-if="cur !== 'home'">
         <br/>
         <div class="bottom-nav"><a class="btn-return" href="javascript:;" @click="go('home')">返回游戏</a></div>
-        <div class="footer">WAP报时:{{ nowText }}<div>联系我们：</div></div>
+        <div class="footer">WAP报时:{{ nowText }}</div>
       </template>
     </div>
   </div>
@@ -1146,6 +1142,8 @@ export default {
     }
   },
   mounted () {
+    // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
+    document.body.classList.add('ezfy-immersive')
     this.load()
     this.loadChats()
     this.loadNotices()
@@ -1158,6 +1156,7 @@ export default {
     }, 30000)
   },
   beforeDestroy () {
+    document.body.classList.remove('ezfy-immersive')
     if (this.timer) clearInterval(this.timer)
     if (this.nowTimer) clearInterval(this.nowTimer)
   },
@@ -1676,12 +1675,19 @@ export default {
 
 <style>
 /* ===== 二战风云 怀旧文字WAP主题(复刻 stzb-fk city-theme.css), 与家园页面一致靠左排布 ===== */
+
+/* 沉浸式: 原版 style.css 给 body 留了 5px 外边距, 会让深色标题条四周露白边.
+   进入本页时由 Ezfy.vue 的 mounted 挂上这个 class, 离开时移除 */
+body.ezfy-immersive { margin: 0; }
+
 .ezfy-page {
-  background: #f2f2f0;
+  background: #fff;
   min-height: 100%;
   font-size: 16px;
   color: #333;
-  margin: -16px -8px 0;
+  /* 根容器左右不再用负 margin: 会溢出 #app 产生横向滚动条.
+     铺满由内部 .title-bar 的 margin:0 -8px 抵消 padding 实现 */
+  margin: 0;
   padding: 0 8px 20px;
 }
 .ezfy-page .home-wrap {
@@ -1698,14 +1704,14 @@ export default {
   color: #fff;
   font-size: 18px;
   font-weight: bold;
-  text-align: center;
+  text-align: left;
   padding: 6px 10px;
   letter-spacing: 1px;
   margin: 0 -8px;
   box-sizing: border-box;
 }
 .ezfy-page .top-nav {
-  text-align: center;
+  text-align: left;
   padding: 4px 0;
 }
 .ezfy-page .top-nav a {
@@ -1738,7 +1744,7 @@ export default {
   padding: 3px 6px;
   border-bottom: 1px dotted #ddd;
 }
-.ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: center; }
+.ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
 .ezfy-page .bottom-nav .btn-return {
   display: inline-block;
   background: #2f4156;
@@ -1752,7 +1758,6 @@ export default {
   box-shadow: 0 1px 3px rgba(31, 51, 87, 0.3);
 }
 .ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
-.ezfy-page .footer-line { font-size: 13px; color: #999; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }

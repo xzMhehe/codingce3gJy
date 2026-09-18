@@ -1,0 +1,46 @@
+# 家园社区 systemd 单元(模板)
+#
+# 用法:
+#   cp qqjiayuan.service /etc/systemd/system/
+#   vi /etc/systemd/system/qqjiayuan.service   # 确认下面两条路径与实际部署目录一致
+#   systemctl daemon-reload
+#   systemctl enable --now qqjiayuan
+#   systemctl status qqjiayuan --no-pager
+#   journalctl -fu qqjiayuan                   # 看实时日志
+#
+# 注意:ExecStart 指向的是 server 这个二进制文件,不是 server 目录。
+#       启用 systemd 后不要再执行 start.sh,两者会抢 8080 端口。
+
+[Unit]
+Description=QQ Jiayuan (家园社区) server
+Documentation=file:/opt/qqjiayuan/部署流程.txt
+After=network-online.target mysqld.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ↓↓↓ 部署目录不是 /opt/qqjiayuan 就改这两行 ↓↓↓
+WorkingDirectory=/opt/qqjiayuan/server
+ExecStart=/opt/qqjiayuan/server/server
+# ↑↑↑
+
+# 时区固定北京时间,否则时间戳会偏移(系统 timedatectl 也建议设成 Asia/Shanghai)
+Environment=TZ=Asia/Shanghai
+
+Restart=always
+RestartSec=3
+
+# 日志默认进 journald,用 journalctl -u qqjiayuan 查看
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qqjiayuan
+
+LimitNOFILE=65535
+
+# 想用非 root 用户跑,取消下面两行注释并先把 /opt/qqjiayuan 授权给该用户
+#User=jiayuan
+#Group=jiayuan
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+# 家园社区 Linux 部署配置
+# 本包假定整个文件夹放在 /opt/qqjiayuan ,否则同步修改下面两个 web_dir(必须是绝对路径)
+server:
+  port: 8080
+  web_dir: "/opt/qqjiayuan/web/dist"
+  admin_web_dir: "/opt/qqjiayuan/admin-web/dist"
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "改成服务器MySQL的root密码"
+  dbname: qq_jiayuan
+
+jwt:
+  secret: "46741119e629f10627cc439798437ecc4312cae8096e902cf8c1a195a67c8f29"
+  expire_hours: 168

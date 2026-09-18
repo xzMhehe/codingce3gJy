@@ -1,0 +1,244 @@
+============================================================
+ 家园社区 — Linux 部署流程
+ 适用:Alibaba Cloud Linux 3 / Anolis OS 8 / CentOS 8 / RHEL 8 系
+============================================================
+
+一、包内容与目录
+------------------------------------------------------------
+  server/server        后端(端口 8080,同时托管两个前端)
+  server/dbinit        建库+建表+种子数据(可重复执行)
+  server/config.yaml   配置文件(启动必读)
+  web/dist/            用户端前端
+  admin-web/dist/      管理端前端
+
+  start.sh             后台启动(带 pid 文件,写 logs/server.log)
+  stop.sh              停止
+  init-db.sh           执行建库+种子(等价于 ./server/dbinit)
+  qqjiayuan.service    systemd 单元模板(开机自启用)
+
+  推荐部署目录 /opt/qqjiayuan
+  (config.yaml 已按 /opt/qqjiayuan 写好绝对路径)
+
+  ※ 换目录也简单:把整个文件夹放哪都行,只需改 server/config.yaml
+    里两个 web_dir 路径,其余不用动:
+       web_dir: "/你的目录/web/dist"
+       admin_web_dir: "/你的目录/admin-web/dist"
+    (必须写绝对路径)
+
+  解压 + 就位:
+     tar -xzf Linuxbushu.tar.gz -C /opt
+     cd /opt/Linuxbushu            # 或直接改名成 /opt/qqjiayuan
+     mv /opt/Linuxbushu /opt/qqjiayuan   # 若用默认路径就改成这个名
+     cd /opt/qqjiayuan && chmod +x server/server server/dbinit *.sh
+   ※ tar 已带可执行位;用 zip/图形工具解压可能丢权限,所以上面这行
+     chmod 建议照做一遍(不做会报 "Permission denied")
+
+
+二、服务器必装(只装 MySQL,Go / Node 都不需要)
+------------------------------------------------------------
+  MySQL 8.0.x(不要装 8.4 / 9.x,本项目按 8.0 验证)
+
+  Alibaba Cloud Linux 3 / Anolis 8 / RHEL 8 自带源里就是 MySQL 8.0:
+     dnf install -y mysql-server
+     systemctl enable --now mysqld
+
+  若自带源版本不是 8.0.x,改用 MySQL 官方源:
+     # 浏览器打开 https://dev.mysql.com/downloads/repo/yum/ 复制 el8 的 rpm 链接
+     dnf install -y <上面复制的 el8 rpm 链接>
+     dnf install -y mysql-community-server
+     systemctl enable --now mysqld
+
+  取初始随机密码(第一次装才有):
+     grep 'temporary password' /var/log/mysqld.log
+
+  改 root 密码:
+     mysql -uroot -p
+     ALTER USER 'root'@'localhost' IDENTIFIED BY '你的强密码';
+     FLUSH PRIVILEGES;
+     exit;
+     ※ 报 "Your password does not satisfy the current policy" 是 MySQL 8
+       的密码强度校验。先临时放宽再设:
+         set global validate_password.policy=LOW;
+         set global validate_password.length=8;
+       字符集不用管,MySQL 8 默认就是 utf8mb4。
+
+  时区必须设成北京(否则所有时间戳偏移 8 小时):
+     timedatectl set-timezone Asia/Shanghai
+     systemctl restart mysqld
+
+  确认服务在跑:
+     systemctl status mysqld --no-pager
+     ss -lntp | grep 3306
+
+
+三、配置 server/config.yaml
+------------------------------------------------------------
+  通常只需改一处:
+     mysql.password: 填服务器 MySQL 的 root 密码
+
+  其余保持默认:
+     - 前端路径: /opt/qqjiayuan/web/dist 和 /opt/qqjiayuan/admin-web/dist
+       (换了部署目录就同步改,见第一节)
+     - jwt.secret: 已预生成随机值,可直接用
+     - port: 8080(改这里的话防火墙/安全组要同步改)
+
+
+四、初始化数据库
+------------------------------------------------------------
+  在部署目录执行:
+     cd /opt/qqjiayuan
+     ./init-db.sh
+  或等价地:
+     cd /opt/qqjiayuan/server && ./dbinit
+
+  看到 "初始化完成" 即成功(约十几秒)。
+  日志里出现 Duplicate column / Duplicate entry 属幂等正常输出,不用管。
+
+  (可选,上线前做)建专用账号,不用 root 跑应用:
+     mysql -uroot -p
+     CREATE USER 'jiayuan'@'localhost' IDENTIFIED BY '你的强密码';
+     GRANT ALL PRIVILEGES ON qq_jiayuan.* TO 'jiayuan'@'localhost';
+     FLUSH PRIVILEGES;
+  然后把 config.yaml 的 user/password 改成 jiayuan 账号。
+
+
+五、启动后端
+------------------------------------------------------------
+  前台跑(调试用,关掉终端就停):
+     cd /opt/qqjiayuan/server
+     ./server
+
+  后台跑(脚本方式,日志落 logs/):
+     cd /opt/qqjiayuan
+     ./start.sh
+     ./stop.sh          # 停止
+
+  预期输出:
+     MySQL 连接成功: qq_jiayuan
+     ==========================================
+       家园社区 服务端已启动  http://127.0.0.1:8080
+       默认管理员:账号 10000 / 密码 admin123
+     ==========================================
+
+  ※ Linux 上一般不会像 Windows 那样缺运行库,因为 CGO_ENABLED=0 编译,
+    二进制是静态的,不依赖 glibc 之外的东西。
+
+
+六、验证
+------------------------------------------------------------
+  curl -s http://127.0.0.1:8080/api/health
+     应返回 {"code":0,"msg":"ok","data":"家园社区 API 运行中"}
+
+  本机看首页:
+     curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/
+     curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/admin-ui/
+     两个都应是 200
+
+  浏览器打开(换成你的公网 IP):
+     http://服务器IP:8080/            用户端(图片不裂 = static 拷全了)
+     http://服务器IP:8080/admin-ui/   管理端(末尾斜杠不能省)
+
+  登录管理端:10000 / admin123
+
+
+七、防火墙放行(云服务器还要开安全组!)
+------------------------------------------------------------
+  1) 系统防火墙 firewalld:
+     firewall-cmd --permanent --add-port=8080/tcp
+     firewall-cmd --reload
+     firewall-cmd --list-ports            # 确认有 8080/tcp
+
+     没装/没开 firewalld 的机器可以跳过这步(或先 systemctl status firewalld 看看)
+
+  2) ★ 阿里云控制台 → 该 ECS 实例 → 安全组 → 入方向 → 添加规则:
+        协议 TCP,端口 8080/8080,授权对象 0.0.0.0/0
+     漏了这步的表现是:本机 curl 通、外网浏览器打不开。
+
+  3) 3306 绝对不要对公网开放(系统防火墙和安全组都不要放)。
+
+  SELinux 说明:Alibaba Cloud Linux 3 默认多为 disabled/permissive,
+  8080 也在 SELinux 允许的 http 端口范围内,正常不用动。
+  若确认是 Enforcing 且访问异常,可临时 setenforce 0 验证,
+  永久改 /etc/selinux/config 里 SELINUX=permissive 后重启。
+
+
+八、注册为 systemd 服务(开机自启,推荐)
+------------------------------------------------------------
+  cp /opt/qqjiayuan/qqjiayuan.service /etc/systemd/system/
+  vi /etc/systemd/system/qqjiayuan.service
+     # 只需确认三行路径与实际部署目录一致:
+     #   WorkingDirectory=/opt/qqjiayuan/server
+     #   ExecStart=/opt/qqjiayuan/server/server
+     # (ExecStart 里的 server 是二进制文件,不是目录)
+  systemctl daemon-reload
+  systemctl enable --now qqjiayuan
+  systemctl status qqjiayuan --no-pager      # 应显示 active (running)
+
+  看日志(unit 已按默认走 journald,日志不会丢):
+     journalctl -u qqjiayuan -n 50 --no-pager
+     journalctl -fu qqjiayuan                 # 实时跟踪
+
+  改完代码/配置后重启:
+     systemctl restart qqjiayuan
+
+  用 systemd 时不要再跑 start.sh,两者会抢 8080 端口。
+
+
+九、Nginx 反向代理(可选,想用 80/443 域名访问时)
+------------------------------------------------------------
+  server {
+      listen 80;
+      server_name your.domain.com;
+
+      client_max_body_size 20m;
+
+      location / {
+          proxy_pass http://127.0.0.1:8080;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+      }
+  }
+
+  注意:管理端走的是 /admin-ui/ 路径,上面整站反代即可,不用单独配。
+  上了 Nginx 就只需放行 80/443,8080 可以只对本机开放。
+
+
+十、账号与上线安全
+------------------------------------------------------------
+  管理端  10000 / admin123   超级管理员 —— 上线后立即改密
+  用户端  10007 / admin123   测试号 —— 上线后改密或封禁
+
+  [ ] 改掉上面默认密码
+  [ ] MySQL 改用 jiayuan 专用账号,root 不直接给应用用
+  [ ] 3306 不对公网开放(防火墙 + 安全组都检查)
+  [ ] 8080 若走 Nginx,则只对本机开放
+  [ ] config.yaml 不要提交进 Git(里面有 MySQL 密码和 jwt.secret)
+  [ ] 建议用非 root 用户跑服务(改 unit 里加 User=jiayuan)
+
+
+十一、常见问题
+------------------------------------------------------------
+  Permission denied                 → 忘了 chmod +x server/server server/dbinit
+  "读取配置失败"                    → 工作目录不对,读不到 config.yaml
+                                       (前台跑要先 cd 到 server 目录)
+  API 正常但前端整站 404            → config.yaml 里 web_dir 路径不存在
+                                       (核对 .../web/dist/index.html 是否存在)
+  页面开但图片大面积裂              → web/dist/static 没拷全
+  本机 curl 通、外网打不开          → 阿里云安全组没放行 8080
+  中文变 ???                        → 手工导 SQL 时漏了 --default-character-set=utf8mb4
+                                       (用 dbinit 初始化不会有这问题)
+  数据库连不上                      → mysqld 没起 / 密码错 / config.yaml 的 host 不对
+  时间戳偏移 8 小时                 → timedatectl set-timezone Asia/Shanghai 后
+                                       systemctl restart qqjiayuan
+  8080 被占用 / 起不来              → ss -lntp | grep 8080 看是谁占了;
+                                       systemd 和 start.sh 同时跑会冲突
+  "Your password does not satisfy"  → MySQL 8 密码强度校验,见第二节
+  日志出现 Duplicate column         → 幂等提示,正常,不影响功能
+
+============================================================
+ 最小顺序:装 MySQL → 改 config.yaml 密码 →
+ ./init-db.sh → ./start.sh(或 systemd)→ 放行安全组 →
+ 浏览器访问 http://IP:8080
+============================================================

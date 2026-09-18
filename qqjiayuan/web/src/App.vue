@@ -1,7 +1,8 @@
 <template>
   <div id="app-shell">
-    <!-- 顶部个人导航（复刻诺哈 Page_Login：号码 家信(N) 家园 空间） -->
-    <div class="top_nav">
+    <!-- 顶部个人导航（复刻诺哈 Page_Login：号码 家信(N) 家园 空间）
+         二战风云是沉浸式游戏页，进入时连同主导航一起隐藏 -->
+    <div class="top_nav" v-if="!immersive">
       <template v-if="isLogin">
         <a href="javascript:;" @click="$router.push('/inbox')"><img :src="idIcon" alt="号码">{{ user.username }}</a>
         <a href="javascript:;" @click="$router.push('/messages')"><img src="/static/image/message.gif" alt="家信">家信({{ unread }})</a>
@@ -19,8 +20,9 @@
       <a href="javascript:;" @click="$router.push('/login')">登陆家园社区</a>与好友互动、家族乐斗、最炫魔法花园、武林精武帮战、最牛游戏赢活动豪礼!<a href="javascript:;" @click="$router.push('/register')">注册&gt;&gt;&gt;</a>
     </div>
 
-    <!-- 主导航（复刻诺哈 crumb-nav-large：深蓝条 #71afe3，家园 好友 家族 广场 游戏，当前项 #98d2ff 高亮） -->
-    <div class="bar navbar">
+    <!-- 主导航（复刻诺哈 crumb-nav-large：深蓝条 #71afe3，家园 好友 家族 广场 游戏，当前项 #98d2ff 高亮）
+         二战风云是沉浸式游戏页，进入时隐藏这条导航 -->
+    <div class="bar navbar" v-if="!immersive">
       <template v-for="n in navs">
         <span :key="n.name" v-if="isCurrent(n)" class="current">{{ n.name }}</span>
         <a :key="n.name + 'a'" v-else href="javascript:;" @click="$router.push(n.to)">{{ n.name }}</a>
@@ -62,6 +64,8 @@ export default {
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
+    // 沉浸式页面（二战风云 /games/ezfy）：隐藏全局主导航条
+    immersive () { return this.$route.path.indexOf('/games/ezfy') === 0 },
     user () { return this.$store.state.user || {} },
     unread () { return this.$store.state.unread },
     noble () { return this.user.noble || 0 },
