@@ -38,6 +38,40 @@ func seedEzfy(db *gorm.DB) {
 	batch(ezfyEzfyCfgEquipment, "ezfy_cfg_equipment")
 
 	seedEzfyNotices(db)
+	seedEzfyOfficerItems(db)
+}
+
+// seedEzfyOfficerItems 军官类道具（复刻设计文档《QQ家园二战风云.txt》道具 #7/#8/#9）
+//
+// 原工程这批道具标为「未实现」，这里补齐；按 ID 幂等 upsert，老库也能补上。
+//
+//	13 招生简章   ItemType 9  立即刷新军校候选名将(不占每日 5 次)
+//	14 经验书     ItemType 10 指定军官获得经验
+//	15 军官技能书 ItemType 11 指定军官免费学习 1 个技能
+//	16 重修书     ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
+func seedEzfyOfficerItems(db *gorm.DB) {
+	rows := []model.EzfyCfgItem{
+		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500,
+			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
+		{ID: 14, Name: "经验书", ItemType: 10, Param1: 1000, PriceGold: 300,
+			Description: "指定军官获得1000点经验"},
+		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 1000,
+			Description: "指定军官免费学习1个技能(不消耗黄金)"},
+		{ID: 16, Name: "重修书", ItemType: 12, Param1: 0, PriceGold: 800,
+			Description: "重置军官属性成长并清空已学技能(等级与经验保留)"},
+	}
+	for _, it := range rows {
+		var count int64
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
+		if count > 0 {
+			// 已存在则只同步名称/说明, 不动价格(避免覆盖后台调价)
+			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
+				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
+					"param1": it.Param1, "description": it.Description})
+			continue
+		}
+		db.Create(&it)
+	}
 }
 
 // seedEzfyNotices 游戏内置公告（幂等：标题存在即跳过）

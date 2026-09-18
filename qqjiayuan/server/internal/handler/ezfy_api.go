@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -803,14 +804,31 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		views = append(views, gin.H{"cfg_id": it.CfgId, "count": it.Count,
 			"name": cfg.Name, "item_type": cfg.ItemType, "description": cfg.Description, "param1": cfg.Param1})
 	}
-	resp.OK(c, gin.H{"items": views})
+	// 军官类道具的目标选择需要军官列表与技能列表
+	city := h.getOrCreateCity(uid)
+	officers := []gin.H{}
+	for _, o := range h.officerList(city.ID) {
+		officers = append(officers, gin.H{"id": o.ID, "name": o.Name, "level": o.Level,
+			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+			"status": o.Status, "status_name": ezfyOfficerStatusName(&o),
+			"is_captive": o.IsCaptive, "skills": officerSkills(&o)})
+	}
+	skills := []gin.H{}
+	for _, s := range ezfyCfg.skills {
+		skills = append(skills, gin.H{"id": s.ID, "name": s.Name, "effect": s.Effect})
+	}
+	sort.Slice(skills, func(i, j int) bool { return skills[i]["id"].(int) < skills[j]["id"].(int) })
+	resp.OK(c, gin.H{"items": views, "officers": officers, "skills": skills})
 }
 
 func (h *EzfyHandler) UseItem(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
-		CityId int64 `json:"city_id"`
-		CfgId  int   `json:"cfg_id"`
+		CityId    int64 `json:"city_id"`
+		CfgId     int   `json:"cfg_id"`
+		Count     int   `json:"count"`
+		OfficerId int64 `json:"officer_id"`
+		SkillId   int   `json:"skill_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -818,7 +836,7 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	msg := h.useItem(uid, city, req.CfgId)
+	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId)
 	if msg == "" {
 		resp.OK(c, gin.H{"msg": "ok"})
 		return

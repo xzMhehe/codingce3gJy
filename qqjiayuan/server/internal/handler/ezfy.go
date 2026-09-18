@@ -1118,14 +1118,60 @@ func (h *EzfyHandler) hasCityEffect(cityId uint, effectType int) bool {
 }
 
 // useItem 使用道具（type 3/4/5 加速优先选最早结束的目标）
-func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId int) string {
+// useItem 使用道具（支持批量：count 个；军官类道具需指定 officerId/skillId）
+// 复刻设计文档《QQ家园二战风云.txt》道具 #7 招生简章 / #8 经验书 / #9 军官技能书·重修书
+func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, officerId int64, skillId int) string {
 	cfg := ezfyCfg.item(cfgId)
 	if cfg == nil {
 		return "道具不存在"
 	}
-	if h.itemCount(uid, cfgId) <= 0 {
+	if count <= 0 {
+		count = 1
+	}
+	have := h.itemCount(uid, cfgId)
+	if have <= 0 {
 		return "道具数量不足"
 	}
+	if count > have {
+		return fmt.Sprintf("道具数量不足(现有%d个)", have)
+	}
+	if count > 99 {
+		return "单次最多使用99个"
+	}
+	// 单次生效类道具不能批量
+	if (cfg.ItemType == 6 || cfg.ItemType == 11 || cfg.ItemType == 12) && count > 1 {
+		return cfg.Name + "每次只能使用1个"
+	}
+	// 需要指定军官的道具
+	needOfficer := cfg.ItemType == 10 || cfg.ItemType == 11 || cfg.ItemType == 12
+	if needOfficer && officerId <= 0 {
+		return "请先选择要使用的军官"
+	}
+	if cfg.ItemType == 11 && skillId <= 0 {
+		return "请选择要学习的技能"
+	}
+
+	var lastMsg string
+	for i := 0; i < count; i++ {
+		msg := h.useItemOnce(uid, city, cfg, officerId, skillId)
+		if !strings.HasPrefix(msg, "使用成功") {
+			if i == 0 {
+				return msg
+			}
+			// 批量中途失败: 已生效的部分保留, 返回说明
+			return fmt.Sprintf("已使用%d个后中断: %s", i, msg)
+		}
+		lastMsg = msg
+	}
+	if count > 1 {
+		return fmt.Sprintf("使用成功: %s×%d", cfg.Name, count)
+	}
+	return lastMsg
+}
+
+// useItemOnce 单个道具生效（内部函数, 由 useItem 调用）
+func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.EzfyCfgItem, officerId int64, skillId int) string {
+	cfgId := cfg.ID
 	param := cfg.Param1
 	var err string
 	switch cfg.ItemType {
@@ -1173,6 +1219,66 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId int) string 
 		h.addCityEffect(city.ID, 2, 0, param)
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 城市免战保护%d小时", param)
+	case 9: // 招生简章: 立即刷新军校候选(不占每日次数)
+		if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
+			return "需要先建造军校"
+		}
+		if err := h.refreshRecruitFree(uid); err != "" {
+			return err
+		}
+		h.consumeItem(uid, cfgId)
+		return "使用成功: 军校候选名将已刷新"
+	case 10: // 经验书
+		o := h.officerOf(city.ID, officerId)
+		if o == nil {
+			return "军官不存在"
+		}
+		h.addOfficerExp(city, o.ID, param)
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, param)
+	case 11: // 军官技能书: 免费学一个技能
+		o := h.officerOf(city.ID, officerId)
+		if o == nil {
+			return "军官不存在"
+		}
+		if o.Status == 1 {
+			return "军官出征中, 无法学习技能"
+		}
+		sk := ezfyCfg.skill(skillId)
+		if sk == nil {
+			return "技能不存在"
+		}
+		skills := officerSkills(o)
+		if len(skills) >= ezfyOfficerMaxSkill {
+			return "技能已满(最多3个)"
+		}
+		for _, s := range skills {
+			if s == sk.Name {
+				return "已学习该技能"
+			}
+		}
+		skills = append(skills, sk.Name)
+		h.saveOfficerSkills(o, skills)
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: %s 学会了「%s」", o.Name, sk.Name)
+	case 12: // 重修书: 属性回到名将初始值, 技能清空(等级/经验保留)
+		o := h.officerOf(city.ID, officerId)
+		if o == nil {
+			return "军官不存在"
+		}
+		if o.Status == 1 {
+			return "军官出征中, 无法重修"
+		}
+		initMil, initLog, initLea := o.Military, o.Logistics, o.Learning
+		if g := ezfyCfg.general(o.GeneralId); g != nil {
+			initMil, initLog, initLea = g.Military, g.Logistics, g.Learning
+		}
+		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
+			"military": initMil, "logistics": initLog, "learning": initLea,
+			"skill": "", "update_time": time.Now(),
+		})
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: %s 已重修(属性回到初始值, 技能清空)", o.Name)
 	default:
 		return "道具类型错误"
 	}

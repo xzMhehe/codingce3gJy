@@ -979,8 +979,37 @@
           <div class="panel-title">背包 <button @click="loadBag">刷新</button></div>
           <div class="old-line" v-for="it in bagItems" :key="'bi' + it.cfg_id">
             <b>{{ it.name }}</b>×{{ it.count }}
-            <a href="javascript:;" @click="doUse(it)">[使用]</a><br/>
+            <a href="javascript:;" @click="openUse(it)">[使用]</a><br/>
             <span class="gray">{{ it.description }}</span>
+
+            <!-- 使用面板: 数量 + (军官类道具)目标军官/技能 -->
+            <div v-if="useItem && useItem.cfg_id === it.cfg_id" class="use-box">
+              数量:
+              <input v-model="useCount" type="number" min="1" :max="it.count" style="width:60px"/>
+              <span class="gray">/{{ it.count }}</span>
+              <a href="javascript:;" @click="useCount = it.count">[全部]</a><br/>
+
+              <template v-if="needOfficer(it)">
+                军官:
+                <select v-model="useOfficerId">
+                  <option :value="0">请选择军官</option>
+                  <option v-for="o in bagOfficers" :key="'bo' + o.id" :value="o.id">
+                    {{ o.name }} Lv{{ o.level }} {{ o.status_name }}
+                  </option>
+                </select><br/>
+              </template>
+              <template v-if="it.item_type === 11">
+                技能:
+                <select v-model="useSkillId">
+                  <option :value="0">请选择技能</option>
+                  <option v-for="s in bagSkills" :key="'bs' + s.id" :value="s.id">
+                    {{ s.name }}({{ s.effect }})
+                  </option>
+                </select><br/>
+              </template>
+              <button @click="doUse(it)">[确认使用]</button>
+              <a href="javascript:;" @click="useItem = null">[取消]</a>
+            </div>
           </div>
           <div class="old-line" v-if="!bagItems.length">(背包空空如也)</div>
           <a href="javascript:;" @click="go('mall')">[前往商城]</a>
@@ -993,8 +1022,16 @@
         <div class="panel">
           <div class="panel-title">商城(黄金{{ city.gold }})</div>
           <div class="old-line" v-for="it in mallItems" :key="'mi' + it.id">
-            <b>{{ it.name }}</b> {{ it.price_gold }}黄金 <a href="javascript:;" @click="doBuy(it)">[购买]</a><br/>
+            <b>{{ it.name }}</b> {{ it.price_gold }}黄金
+            <a href="javascript:;" @click="openBuy(it)">[购买]</a><br/>
             <span class="gray">{{ it.description }}</span>
+            <div v-if="buyItem && buyItem.id === it.id" class="use-box">
+              数量:
+              <input v-model="buyCount" type="number" min="1" max="99" style="width:60px"/>
+              <span class="gray">合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} 黄金</span>
+              <button @click="doBuy(it)">[确认购买]</button>
+              <a href="javascript:;" @click="buyItem = null">[取消]</a>
+            </div>
           </div>
           <a href="javascript:;" @click="go('bag')">[背包]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -1495,6 +1532,14 @@ export default {
       kickUserId: 0,
       mallItems: [],
       bagItems: [],
+      bagOfficers: [],
+      bagSkills: [],
+      useItem: null,
+      useCount: 1,
+      useOfficerId: 0,
+      useSkillId: 0,
+      buyItem: null,
+      buyCount: 1,
       exchangeOrders: [],
       exchangeMine: [],
       exchangeGold: 0,
@@ -1805,7 +1850,11 @@ export default {
     },
     loadBag () {
       api.get('/games/ezfy/bag').then(r => {
-        if (r.code === 0) this.bagItems = r.data.items
+        if (r.code === 0) {
+          this.bagItems = r.data.items
+          this.bagOfficers = r.data.officers || []
+          this.bagSkills = r.data.skills || []
+        }
       })
     },
     loadMall () {
@@ -2172,11 +2221,50 @@ export default {
       })
     },
     // ---- 商城/背包/交易 ----
+    openBuy (it) {
+      this.buyItem = it
+      this.buyCount = 1
+    },
     doBuy (it) {
-      api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: 1 }).then(r => this.alert(r))
+      const n = parseInt(this.buyCount) || 0
+      if (n < 1 || n > 99) { alert('数量需在 1-99 之间'); return }
+      api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n }).then(r => {
+        if (r.code === 0) {
+          alert(r.data && r.data.msg ? r.data.msg : '购买成功')
+          this.buyItem = null
+          this.load()
+          this.loadMall()
+          this.loadBag()
+        } else alert(r.msg || '购买失败')
+      })
+    },
+    needOfficer (it) {
+      return it.item_type === 10 || it.item_type === 11 || it.item_type === 12
+    },
+    openUse (it) {
+      this.useItem = it
+      this.useCount = 1
+      this.useOfficerId = 0
+      this.useSkillId = 0
     },
     doUse (it) {
-      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id }).then(r => this.alert(r))
+      const body = { cfg_id: it.cfg_id, count: parseInt(this.useCount) || 1 }
+      if (this.needOfficer(it)) {
+        if (!this.useOfficerId) { alert('请先选择要使用的军官'); return }
+        body.officer_id = this.useOfficerId
+      }
+      if (it.item_type === 11) {
+        if (!this.useSkillId) { alert('请选择要学习的技能'); return }
+        body.skill_id = this.useSkillId
+      }
+      api.post('/games/ezfy/bag/use', body).then(r => {
+        if (r.code === 0) {
+          alert(r.data && r.data.msg ? r.data.msg : '使用成功')
+          this.useItem = null
+          this.loadBag()
+          this.load()
+        } else alert(r.msg || '使用失败')
+      })
     },
     doExchangeSell () {
       api.post('/games/ezfy/exchange/sell', {
@@ -2452,6 +2540,12 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
 .ezfy-page .acade-tab a.on { color: #c0392b; font-weight: bold; }
+.ezfy-page .use-box {
+  margin: 4px 0 6px 8px;
+  padding: 4px 6px;
+  border-left: 2px solid #d8d5cc;
+  line-height: 1.9;
+}
 .ezfy-page .panel-title {
   font-size: 15px;
   font-weight: bold;

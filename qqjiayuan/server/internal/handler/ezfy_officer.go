@@ -303,6 +303,29 @@ func (h *EzfyHandler) recruitOfficer(city *model.EzfyCity, generalId int) string
 	return ""
 }
 
+// refreshRecruitFree 免费刷新当日候选名将（招生简章用，不消耗每日刷新次数）
+func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
+	city := h.getOrCreateCity(uid)
+	academy := h.buildingLevel(city.ID, ezfyBuildingAcademy)
+	if academy < 1 {
+		return "需要先建造军校"
+	}
+	date := time.Now().Format("2006-01-02")
+	var rec model.EzfyRecruit
+	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
+	cands := h.recruitCandidates(uid, academy)
+	if err != nil {
+		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0}
+	}
+	rec.Candidates = joinGeneralIds(cands)
+	if rec.ID == 0 {
+		h.DB.Create(&rec)
+	} else {
+		h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", rec.Candidates)
+	}
+	return ""
+}
+
 // ============ 军官操作 ============
 
 // grantOfficer 赏赐：1万黄金 → 忠诚 +10
@@ -813,7 +836,7 @@ func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 		list = append(list, gin.H{
 			"id": o.ID, "name": o.Name, "level": o.Level, "star": o.Star,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
-			"loyalty": o.Loyalty,
+			"loyalty":      o.Loyalty,
 			"battle_bonus": h.officerBattleBonus(&o), "position_name": ezfyPositionName(o.Position),
 			"skills": officerSkills(&o),
 		})
