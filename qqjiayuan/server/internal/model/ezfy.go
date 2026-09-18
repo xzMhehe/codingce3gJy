@@ -499,12 +499,14 @@ type EzfyNotice struct {
 
 func (EzfyNotice) TableName() string { return "ezfy_notice" }
 
-// EzfyChat 世界聊天（游戏频道）
+// EzfyChat 游戏聊天（复刻原版 chatB?type=：1公共 2军团 4系统）
 type EzfyChat struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserId    uint      `json:"user_id"`
 	UserName  string    `gorm:"type:varchar(20)" json:"user_name"`
 	Content   string    `gorm:"type:varchar(200)" json:"content"`
+	Channel   int       `gorm:"default:1;index:idx_channel" json:"channel"` // 1公共 2军团 4系统
+	TalkType  int       `gorm:"default:1" json:"talk_type"`                 // 0系统(只读) 1玩家
 	CreatedAt time.Time `json:"created_at"`
 }
 

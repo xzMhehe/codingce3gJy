@@ -618,3 +618,44 @@ func (h *NotifyHandler) ReadAll(c *gin.Context) {
 	h.DB.Model(&model.Notification{}).Where("user_id = ? AND is_read = 0", uid).Update("is_read", 1)
 	resp.OK(c, nil)
 }
+
+// 搜索玩家（复刻二战风云 addToFriend：按家园号码或昵称找人加好友）
+// GET /api/friends/search?keyword=xxx
+func (h *FriendHandler) Search(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	kw := trimSpace(c.Query("keyword"))
+	if kw == "" {
+		resp.ParamError(c, "请输入家园号码或昵称")
+		return
+	}
+	if len([]rune(kw)) > 20 {
+		resp.ParamError(c, "关键词过长")
+		return
+	}
+	type row struct {
+		ID        uint   `json:"id"`
+		Username  string `json:"num"`
+		Nickname  string `json:"nickname"`
+		Color     string `json:"color"`
+		Level     int    `json:"level"`
+		Signature string `json:"signature"`
+		Online    int    `json:"online"`
+		IsFriend  int    `json:"is_friend"`
+		Applied   int    `json:"applied"`
+	}
+	var rows []row = []row{}
+	like := "%" + kw + "%"
+	h.DB.Raw(`
+SELECT u.id, u.username, u.nickname, u.color, u.level, u.signature,
+       CASE WHEN u.last_active_at IS NOT NULL AND u.last_active_at > (NOW() - INTERVAL 10 MINUTE) THEN 1 ELSE 0 END AS online,
+       CASE WHEN f.id IS NOT NULL AND f.status = 1 THEN 1 ELSE 0 END AS is_friend,
+       CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END AS applied
+FROM users u
+LEFT JOIN friendships f ON f.user_id = ? AND f.friend_id = u.id
+LEFT JOIN friend_applies a ON a.user_id = u.id AND a.friend_id = ?
+WHERE u.id <> ? AND u.status <> 0
+  AND (u.username = ? OR u.username LIKE ? OR u.nickname LIKE ?)
+ORDER BY (u.username = ?) DESC, u.id ASC
+LIMIT 20`, uid, uid, uid, kw, like, like, kw).Scan(&rows)
+	resp.OK(c, gin.H{"list": rows, "keyword": kw})
+}

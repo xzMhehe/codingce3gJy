@@ -27,7 +27,9 @@ func (h *EzfyHandler) bodyCity(uid uint, cityId int64) *model.EzfyCity {
 
 func (h *EzfyHandler) readCityReq(c *gin.Context) (*model.EzfyCity, bool) {
 	uid := middleware.GetUID(c)
-	var req struct{ CityId int64 `json:"city_id"` }
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
 	_ = c.ShouldBindJSON(&req)
 	city := h.bodyCity(uid, req.CityId)
 	if city == nil {
@@ -208,7 +210,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			"id": t.ID, "name": ezfyCfg.troopName(t.ID, camp), "type": t.Type,
 			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "attack_range": t.AttackRange,
 			"carry": t.Carry, "pop": t.Pop, "require": t.Require,
-			"cost": gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
+			"cost":       gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
 			"train_time": t.TrainTime,
 		})
 	}
@@ -410,7 +412,9 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 
 func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Name string `json:"name"` }
+	var req struct {
+		Name string `json:"name"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -435,6 +439,20 @@ func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 		resp.ParamError(c, "军团名已存在")
 		return
 	}
+	// 联络中心: 2 级才能创建联盟, 并消耗黄金
+	city := h.getOrCreateCity(uid)
+	h.refreshCity(uid, &city)
+	liaison := h.buildingLevel(city.ID, ezfyBuildingLiaison)
+	if liaison < 2 {
+		resp.ParamError(c, "需要 2 级联络中心才能创建联盟(当前"+strconv.Itoa(liaison)+"级)")
+		return
+	}
+	if city.Gold < ezfyCorpsCreateGold {
+		resp.ParamError(c, "创建联盟需要"+strconv.Itoa(ezfyCorpsCreateGold)+"黄金")
+		return
+	}
+	city.Gold -= ezfyCorpsCreateGold
+	h.saveCityRes(&city)
 	cp := model.EzfyCorps{Name: name, LeaderUserId: uid, Notice: "", MemberCount: 1}
 	h.DB.Create(&cp)
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 1, Title: "军团长"})
@@ -443,7 +461,9 @@ func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 
 func (h *EzfyHandler) CorpsJoin(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ CorpsId uint `json:"corps_id"` }
+	var req struct {
+		CorpsId uint `json:"corps_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -456,6 +476,17 @@ func (h *EzfyHandler) CorpsJoin(c *gin.Context) {
 	var cp model.EzfyCorps
 	if err := h.DB.First(&cp, req.CorpsId).Error; err != nil {
 		resp.ParamError(c, "军团不存在")
+		return
+	}
+	// 联络中心: 1 级才能加入联盟, 且受人数上限限制
+	if h.liaisonLevel(uid) < 1 {
+		resp.ParamError(c, "需要 1 级联络中心才能加入联盟")
+		return
+	}
+	var memberCount int64
+	h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", cp.ID).Count(&memberCount)
+	if cap := h.corpsMemberCap(cp.ID); int(memberCount) >= cap {
+		resp.ParamError(c, "该联盟人数已满("+strconv.Itoa(int(memberCount))+"/"+strconv.Itoa(cap)+")")
 		return
 	}
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 0, Title: "成员"})
@@ -488,7 +519,9 @@ func (h *EzfyHandler) CorpsLeave(c *gin.Context) {
 
 func (h *EzfyHandler) CorpsKick(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ UserId uint `json:"user_id"` }
+	var req struct {
+		UserId uint `json:"user_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -517,7 +550,9 @@ func (h *EzfyHandler) CorpsKick(c *gin.Context) {
 
 func (h *EzfyHandler) CorpsNotice(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Notice string `json:"notice"` }
+	var req struct {
+		Notice string `json:"notice"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -556,7 +591,9 @@ func (h *EzfyHandler) CorpsChats(c *gin.Context) {
 
 func (h *EzfyHandler) CorpsChat(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Content string `json:"content"` }
+	var req struct {
+		Content string `json:"content"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -586,8 +623,8 @@ func (h *EzfyHandler) CorpsChat(c *gin.Context) {
 func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
-		TargetUserId uint   `json:"target_user_id"`
-		CityId       int64  `json:"city_id"`
+		TargetUserId uint  `json:"target_user_id"`
+		CityId       int64 `json:"city_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -870,7 +907,9 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 
 func (h *EzfyHandler) TaskAward(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ TaskId int64 `json:"task_id"` }
+	var req struct {
+		TaskId int64 `json:"task_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return

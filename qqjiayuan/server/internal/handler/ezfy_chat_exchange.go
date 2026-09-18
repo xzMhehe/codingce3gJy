@@ -14,45 +14,144 @@ import (
 
 // 二战风云 世界聊天 + 交易所 + 被占城市管理
 
-// ============ 世界聊天 ============
+// ============ 聊天频道（复刻原版 chatB?type=：1公共 2军团 4系统）============
 
+const (
+	ezfyChanPublic  = 1 // 公共频道
+	ezfyChanCorps   = 2 // 军团频道
+	ezfyChanSystem  = 4 // 系统频道(只读)
+	ezfyChatMaxRune = 25
+)
+
+// ChatList GET /games/ezfy/chat?channel=1|2|4
 func (h *EzfyHandler) ChatList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	var chats []model.EzfyChat
-	h.DB.Order("id DESC").Limit(50).Find(&chats)
-	views := make([]gin.H, 0, len(chats))
-	for i := len(chats) - 1; i >= 0; i-- {
-		ch := chats[i]
-		views = append(views, gin.H{"id": ch.ID, "user_name": ch.UserName,
-			"content": ch.Content, "created_at": ch.CreatedAt, "mine": ch.UserId == uid})
+	channel := ezfyChanPublic
+	if v, err := strconv.Atoi(c.DefaultQuery("channel", "1")); err == nil && v > 0 {
+		channel = v
 	}
+	// 我的军团(军团频道前提)
+	myCorps := h.myCorpsOf(uid)
+	// 没有军团时军团频道降级为公共频道
+	viewChannel := channel
+	if channel == ezfyChanCorps && myCorps == nil {
+		viewChannel = ezfyChanPublic
+	}
+
+	out := gin.H{
+		"channel": viewChannel, "request_channel": channel,
+		"has_corps": myCorps != nil, "corps_name": "",
+		"can_send": viewChannel == ezfyChanPublic || viewChannel == ezfyChanCorps,
+	}
+	if myCorps != nil {
+		out["corps_name"] = myCorps.Name
+	}
+
+	switch viewChannel {
+	case ezfyChanCorps:
+		var list []model.EzfyCorpsChat
+		h.DB.Where("corps_id = ?", myCorps.ID).Order("id DESC").Limit(50).Find(&list)
+		views := make([]gin.H, 0, len(list))
+		for i := len(list) - 1; i >= 0; i-- {
+			ch := list[i]
+			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": ch.UserName,
+				"content": ch.Content, "created_at": ch.CreatedAt, "talk_type": 1, "mine": ch.UserId == uid})
+		}
+		out["chats"] = views
+	case ezfyChanSystem:
+		// 系统频道: 系统公告(全员+个人) + 系统消息(talk_type=0)
+		var notices []model.EzfyNotice
+		h.DB.Where("user_id = 0 OR user_id = ?", uid).
+			Order("is_top DESC, id DESC").Limit(20).Find(&notices)
+		nviews := make([]gin.H, 0, len(notices))
+		for _, n := range notices {
+			nviews = append(nviews, gin.H{"id": n.ID, "title": n.Title, "content": n.Content,
+				"is_top": n.IsTop, "created_at": n.CreatedAt})
+		}
+		var msgs []model.EzfyChat
+		h.DB.Where("channel = ? AND talk_type = 0", ezfyChanSystem).Order("id DESC").Limit(50).Find(&msgs)
+		mviews := make([]gin.H, 0, len(msgs))
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
+			mviews = append(mviews, gin.H{"id": m.ID, "user_name": m.UserName, "content": m.Content,
+				"created_at": m.CreatedAt, "talk_type": 0})
+		}
+		out["notices"] = nviews
+		out["chats"] = mviews
+	default:
+		var chats []model.EzfyChat
+		h.DB.Where("channel = ?", ezfyChanPublic).Order("id DESC").Limit(50).Find(&chats)
+		views := make([]gin.H, 0, len(chats))
+		for i := len(chats) - 1; i >= 0; i-- {
+			ch := chats[i]
+			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": ch.UserName,
+				"content": ch.Content, "created_at": ch.CreatedAt, "talk_type": ch.TalkType,
+				"mine": ch.UserId == uid})
+		}
+		out["chats"] = views
+	}
+
 	var online int64
 	h.DB.Model(&model.EzfyProfile{}).Count(&online)
-	resp.OK(c, gin.H{"chats": views, "players": online})
+	out["players"] = online
+	resp.OK(c, out)
 }
 
+// ChatSend POST /games/ezfy/chat {channel, content}
 func (h *EzfyHandler) ChatSend(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
 		Content string `json:"content"`
+		Channel int    `json:"channel"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
+	}
+	channel := req.Channel
+	if channel == 0 {
+		channel = ezfyChanPublic
 	}
 	content := trimSpace(req.Content)
 	if content == "" {
 		resp.ParamError(c, "消息为空")
 		return
 	}
-	if len([]rune(content)) > 200 {
-		r := []rune(content)
-		content = string(r[:200])
+	if r := []rune(content); len(r) > ezfyChatMaxRune {
+		content = string(r[:ezfyChatMaxRune])
 	}
 	profile := h.ensureProfile(uid)
-	h.DB.Create(&model.EzfyChat{UserId: uid, UserName: profile.Nickname, Content: content})
+	switch channel {
+	case ezfyChanCorps:
+		myCorps := h.myCorpsOf(uid)
+		if myCorps == nil {
+			resp.ParamError(c, "你还没有加入军团")
+			return
+		}
+		h.DB.Create(&model.EzfyCorpsChat{CorpsId: myCorps.ID, UserId: uid, UserName: profile.Nickname, Content: content})
+		resp.OK(c, gin.H{"msg": "军团频道发送成功"})
+		return
+	case ezfyChanSystem:
+		resp.Forbidden(c, "系统频道仅系统可发言")
+		return
+	}
+	h.DB.Create(&model.EzfyChat{UserId: uid, UserName: profile.Nickname,
+		Content: content, Channel: ezfyChanPublic, TalkType: 1})
 	resp.OK(c, gin.H{"msg": "发送成功"})
+}
+
+// myCorpsOf 我所在的军团
+func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
+	var mb model.EzfyCorpsMember
+	if err := h.DB.Where("user_id = ?", uid).First(&mb).Error; err != nil {
+		return nil
+	}
+	var cp model.EzfyCorps
+	if err := h.DB.First(&cp, mb.CorpsId).Error; err != nil {
+		return nil
+	}
+	return &cp
 }
 
 // ============ 交易所 ============

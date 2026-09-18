@@ -140,14 +140,51 @@
       <!-- ============ 世界聊天(chat) ============ -->
       <template v-else-if="cur === 'chat'">
         <div class="panel">
-          <div class="panel-title">世界聊天({{ chatPlayers }}人)</div>
-          <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
-            [{{ ch.user_name }}]:{{ ch.content }}
+          <div class="panel-title">聊天频道</div>
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: chatChannel === 1 }" @click="switchChannel(1)">公共</a>|
+            <a v-if="chatHasCorps" href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">军团</a>|
+            <a href="javascript:;" :class="{ on: chatChannel === 4 }" @click="switchChannel(4)">系统</a>|
+            <a href="javascript:;" @click="go('mail')">私聊</a>
           </div>
-          <div class="old-line" v-if="!worldChats.length">(暂无消息, 快来说点什么吧)</div>
+
+          <!-- 系统频道: 系统公告 + 系统消息(只读) -->
+          <template v-if="chatChannel === 4">
+            <div class="panel-title">系统公告</div>
+            <div class="old-line" v-for="n in chatNotices" :key="'cn' + n.id">
+              <span v-if="n.is_top" class="red">[置顶]</span>
+              <b>{{ n.title }}</b><br/>
+              <span class="gray">{{ n.content }}</span>
+            </div>
+            <div class="old-line gray" v-if="!chatNotices.length">(暂无系统公告)</div>
+            <div class="panel-title">系统消息</div>
+            <div class="old-line" v-for="ch in worldChats" :key="'cs' + ch.id">
+              <span class="orange">[系统]</span>
+              <span class="gray">{{ fmtTime(ch.created_at) }}</span>
+              {{ ch.user_name }}说: {{ ch.content }}
+            </div>
+            <div class="old-line gray" v-if="!worldChats.length">(暂无系统消息)</div>
+          </template>
+
+          <!-- 公共 / 军团频道 -->
+          <template v-else>
+            <div class="panel-title">
+              {{ chatChannel === 2 ? '军团聊天(' + chatCorpsName + ')' : '世界聊天' }}({{ chatPlayers }}人)
+            </div>
+            <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
+              [<span class="orange">{{ chatChannel === 2 ? '军团' : '公共' }}</span>]
+              <span class="gray">{{ fmtTime(ch.created_at) }}</span>
+              [{{ ch.user_name }}]:{{ ch.content }}
+            </div>
+            <div class="old-line" v-if="!worldChats.length">(暂无消息, 快来说点什么吧)</div>
+          </template>
+
           <br/>
-          <input v-model="chatMsg" style="width:72%" @keyup.enter="doChatSend"/>
-          <button @click="doChatSend">发送</button>
+          <template v-if="chatCanSend">
+            <input v-model="chatMsg" style="width:72%" maxlength="25" @keyup.enter="doChatSend"/>
+            <button @click="doChatSend">发送</button>
+          </template>
+          <span v-else class="gray">(系统频道仅系统可发言)</span>
           <button @click="loadChats">刷新</button>
         </div>
       </template>
@@ -190,16 +227,44 @@
       <!-- ============ 好友(friends) ============ -->
       <template v-else-if="cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">家园好友</div>
+          <div class="panel-title">搜索玩家(按家园号码或昵称)</div>
+          <div class="old-line">
+            <input v-model="friendKeyword" placeholder="输入家园号码或昵称" style="width:150px"/>
+            <button @click="doFriendSearch">[搜索]</button>
+          </div>
+          <table v-if="friendSearchDone">
+            <tr><th>号码</th><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="u in friendSearchList" :key="'fs' + u.id">
+              <td>{{ u.num }}</td>
+              <td>{{ u.nickname }}</td>
+              <td>Lv.{{ u.level }}</td>
+              <td>
+                <span :class="u.online ? 'green' : 'gray'">{{ u.online ? '在线' : '离线' }}</span>
+              </td>
+              <td>
+                <span v-if="u.is_friend" class="gray">已是好友</span>
+                <span v-else-if="u.applied" class="orange">已申请</span>
+                <a v-else href="javascript:;" @click="doAddFriend(u)">[加好友]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="friendSearchDone && !friendSearchList.length">(没找到这位友友, 换个号码或昵称试试)</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">家园好友({{ friends.length }})</div>
           <table>
-            <tr><th>昵称</th><th>等级</th><th>状态</th></tr>
+            <tr><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="f in friends" :key="'f' + f.id">
               <td>{{ f.nickname }}</td>
               <td>Lv.{{ f.level }}</td>
               <td><span :class="f.online ? 'green' : 'gray'">{{ f.online ? '在线' : '离线' }}</span></td>
+              <td>
+                <a href="javascript:;" @click="go('mail')">[私聊]</a>
+              </td>
             </tr>
           </table>
-          <div class="old-line" v-if="!friends.length">(还没有好友, 去家园社区添加)</div>
+          <div class="old-line" v-if="!friends.length">(还没有好友, 用上面的搜索找找老友吧)</div>
         </div>
       </template>
 
@@ -271,7 +336,7 @@
         <div class="panel">
           <div class="panel-title">{{ cur === 'buildm' ? '军事区(含城防)' : '资源区' }}
             <span class="gray">({{ areaCount }}/{{ areaCap }})</span></div>
-          <div class="old-line" v-for="b in zoneBuildings" :key="'zb' + (b.id || b.bid)">
+          <div class="old-line" v-for="b in zoneBuildings" :key="b.id ? ('zb-b' + b.id) : ('zb-p' + b.bid)">
             <template v-if="b.id">
               <b>{{ b.name }}</b> {{ b.level }}级
               <span v-if="b.status === 0">{{ b.effect }}</span>
@@ -1027,15 +1092,54 @@
         </div>
       </template>
 
-      <!-- ============ 联络(liaison) ============ -->
+      <!-- ============ 联络中心(liaison) ============ -->
       <template v-else-if="cur === 'liaison'">
         <div class="panel">
-          <div class="panel-title">联络</div>
-          <div class="old-line">
-            <a href="javascript:;" @click="go('friends')">[好友列表]</a>
-            <a href="javascript:;" @click="go('mail')">[邮箱]</a>
-            <a href="javascript:;" @click="go('chat')">[世界聊天]</a>
-            <a href="javascript:;" @click="go('corps')">[军团]</a>
+          <div class="panel-title">联络中心({{ liaison.level }}级)</div>
+          <div class="old-line gray">
+            联络中心是盟友间互相联络的建筑。<br/>
+            1级可加入联盟, 2级可创建联盟(消耗{{ liaison.create_cost }}黄金);<br/>
+            每级多 1 支盟友驻军、多 {{ liaison.member_per_level }} 人联盟人数上限。
+          </div>
+          <template v-if="liaison.level < 1">
+            <div class="old-line red">尚未建造联络中心, 无法加入或创建联盟</div>
+            <div class="old-line"><a href="javascript:;" @click="go('buildm')">[前往军事区建造]</a></div>
+          </template>
+
+          <div class="panel-title">我的联盟</div>
+          <template v-if="liaison.my_corps">
+            <div class="old-line">
+              <b>{{ liaison.my_corps.name }}</b>
+              (成员{{ liaison.member_count }}/{{ liaison.member_cap }})<br/>
+              <span class="gray">{{ liaison.my_corps.notice || '暂无公告' }}</span>
+            </div>
+            <div class="old-line">
+              <a href="javascript:;" @click="go('corps')">[进入军团]</a>
+            </div>
+          </template>
+          <template v-else>
+            <div class="old-line gray">尚未加入联盟</div>
+            <div class="old-line">
+              <a href="javascript:;" @click="go('corps')">[加入联盟]</a>
+              <a v-if="liaison.can_create" href="javascript:;" @click="go('corps')">[创建联盟]</a>
+              <span v-else class="red">(需2级联络中心才能创建联盟)</span>
+            </div>
+          </template>
+
+          <div class="panel-title">盟军驻军({{ liaison.garrison_used }}/{{ liaison.garrison_cap }})</div>
+          <table>
+            <tr><th>来自城市</th><th>军官</th><th>驻军</th></tr>
+            <tr v-for="g in liaison.garrisons" :key="'lg' + g.id">
+              <td>{{ g.from_city }}</td>
+              <td>{{ g.officer || '无' }}</td>
+              <td>
+                <span v-for="(t, i) in g.troops" :key="'lgt' + i">{{ t.name }}×{{ t.count }} </span>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!liaison.garrisons.length">(暂无盟军驻军)</div>
+          <div class="old-line gray">
+            升级联络中心可接收更多盟友驻军; 联盟成员可用「增援」把部队派到你的城市协防。
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -1365,8 +1469,16 @@ export default {
       worldChats: [],
       chatPlayers: 0,
       chatMsg: '',
+      chatChannel: 1,
+      chatHasCorps: false,
+      chatCorpsName: '',
+      chatCanSend: true,
+      chatNotices: [],
       mails: [],
       friends: [],
+      friendKeyword: '',
+      friendSearchList: [],
+      friendSearchDone: false,
       taskGroups: [],
       welfare: { rewards: [], gifts: {} },
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
@@ -1419,6 +1531,9 @@ export default {
       orderOfficer: '',
       ware: { level: 0, total: 0, next_total: 0, res: [], ratio_sum: 0 },
       wareRatio: { food: 25, steel: 25, oil: 25, rare: 25 },
+      liaison: { level: 0, can_join: false, can_create: false, create_cost: 50000,
+        member_per_level: 10, my_corps: null, member_count: 0, member_cap: 0,
+        garrison_cap: 0, garrison_used: 0, garrisons: [] },
       trFood: 0,
       trSteel: 0,
       trOil: 0,
@@ -1444,7 +1559,7 @@ export default {
     },
     zoneBuildings () {
       const isM = this.cur === 'buildm'
-      const zoneIds = isM ? [7, 8, 13, 14, 18, 19, 20, 21] : [2, 3, 4, 5, 6, 12]
+      const zoneIds = isM ? [7, 8, 13, 14, 15, 16, 17, 18, 19, 20, 21] : [2, 3, 4, 5, 6, 12]
       const built = this.buildings.filter(b => zoneIds.indexOf(b.building_id) !== -1)
       const builtIds = {}
       built.forEach(b => { builtIds[b.building_id] = true })
@@ -1453,6 +1568,9 @@ export default {
           { bid: 8, name: '科研中心', type: 2, max_level: 10, des: '研究城市各方面科技', cost: { food: 300, steel: 1200, oil: 600, rare: 300, gold: 0 }, time: 1800 },
           { bid: 13, name: '司令部', type: 2, max_level: 10, des: '军队出征指挥中心', cost: { food: 2000, steel: 3000, oil: 1500, rare: 800, gold: 0 }, time: 3600 },
           { bid: 14, name: '军工厂', type: 2, max_level: 10, des: '生产现代化部队装备设施(最多5个)', cost: { food: 1500, steel: 2600, oil: 1200, rare: 600, gold: 0 }, time: 2700 },
+          { bid: 15, name: '联络中心', type: 2, max_level: 10, des: '允许盟友驻军(1级可加入联盟, 2级可创建联盟)', cost: { food: 200, steel: 2000, oil: 500, rare: 300, gold: 0 }, time: 500 },
+          { bid: 16, name: '轻工厂', type: 2, max_level: 10, des: '生产现代化部队装备设施', cost: { food: 250, steel: 1200, oil: 1500, rare: 500, gold: 0 }, time: 431 },
+          { bid: 17, name: '重工厂', type: 2, max_level: 10, des: '生产大型军事化机械', cost: { food: 150, steel: 1500, oil: 500, rare: 1500, gold: 0 }, time: 456 },
           { bid: 18, name: '停机坪', type: 2, max_level: 10, des: '生产航空部队', cost: { food: 4000, steel: 6000, oil: 3000, rare: 1500, gold: 0 }, time: 5400 },
           { bid: 19, name: '航海协会', type: 2, max_level: 10, des: '生产海军部队(只能建在沿海城市)', cost: { food: 5000, steel: 8000, oil: 4000, rare: 2000, gold: 0 }, time: 6300 },
           { bid: 20, name: '运输站', type: 2, max_level: 10, des: '提高部队行动速度', cost: { food: 2500, steel: 4000, oil: 2000, rare: 1000, gold: 0 }, time: 4500 },
@@ -1558,7 +1676,8 @@ export default {
       else if (t === 'map') this.loadMap()
       else if (t === 'reports') this.loadReports()
       else if (t === 'mail') this.loadMails()
-      else if (t === 'friends' || t === 'liaison') this.loadFriends()
+      else if (t === 'friends') this.loadFriends()
+      else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
       else if (t === 'welfare') this.loadWelfare()
       else if (t === 'rank') this.loadRank()
@@ -1609,12 +1728,24 @@ export default {
       })
     },
     loadChats () {
-      api.get('/games/ezfy/chat').then(r => {
+      api.get('/games/ezfy/chat?channel=' + this.chatChannel).then(r => {
         if (r.code === 0) {
-          this.worldChats = r.data.chats
-          this.chatPlayers = r.data.players
+          const d = r.data
+          this.worldChats = d.chats || []
+          this.chatNotices = d.notices || []
+          this.chatPlayers = d.players
+          this.chatHasCorps = !!d.has_corps
+          this.chatCorpsName = d.corps_name || ''
+          this.chatCanSend = d.can_send !== false
+          // 军团频道无军团时会降级为公共频道, 同步 tab 高亮
+          if (d.channel && d.channel !== this.chatChannel) this.chatChannel = d.channel
         }
       })
+    },
+    switchChannel (ch) {
+      this.chatChannel = ch
+      this.chatMsg = ''
+      this.loadChats()
     },
     loadMails () {
       api.get('/messages/inbox').then(r => {
@@ -1624,6 +1755,32 @@ export default {
     loadFriends () {
       api.get('/friends').then(r => {
         if (r.code === 0) this.friends = r.data.friends || []
+      })
+    },
+    // ---- 好友搜索/添加(复刻 addToFriend) ----
+    doFriendSearch () {
+      const kw = (this.friendKeyword || '').trim()
+      if (!kw) { alert('请输入家园号码或昵称'); return }
+      api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r => {
+        if (r.code === 0) {
+          this.friendSearchList = r.data.list || []
+          this.friendSearchDone = true
+        } else {
+          alert(r.msg || '搜索失败')
+        }
+      })
+    },
+    doAddFriend (u) {
+      const remark = prompt('给 ' + u.nickname + ' 的验证信息(可留空)', '')
+      if (remark === null) return
+      api.post('/friends', { target_id: u.id, remark: remark }).then(r => {
+        if (r.code === 0) {
+          alert(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
+          this.doFriendSearch()
+          this.loadFriends()
+        } else {
+          alert(r.msg || '添加失败')
+        }
       })
     },
     loadReports () {
@@ -1941,6 +2098,12 @@ export default {
         if (r.code === 0) this.onDutyOfficers = r.data.officers || []
       })
     },
+    // ---- 联络中心 ----
+    loadLiaison () {
+      api.get('/games/ezfy/liaison').then(r => {
+        if (r.code === 0) this.liaison = r.data
+      })
+    },
     // ---- 仓库保护 ----
     loadWare () {
       api.get('/games/ezfy/city/warehouse').then(r => {
@@ -1968,7 +2131,9 @@ export default {
     },
     // ---- 聊天/邮箱 ----
     doChatSend () {
-      api.post('/games/ezfy/chat', { content: this.chatMsg }).then(r => {
+      const msg = (this.chatMsg || '').trim()
+      if (!msg) return
+      api.post('/games/ezfy/chat', { content: msg, channel: this.chatChannel }).then(r => {
         if (r.code === 0) {
           this.chatMsg = ''
           this.loadChats()

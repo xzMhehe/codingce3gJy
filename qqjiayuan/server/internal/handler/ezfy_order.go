@@ -302,7 +302,22 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		ally := !own && h.isAllyCity(uid, targetId)
 		if orderType == 6 {
 			if !own {
-				return "增援(部队调动)仅限自己的城市"
+				// 盟友驻军(复刻联络中心): 只能增援同一联盟成员的城市,
+				// 且目标城需有联络中心, 驻军队伍数受其等级限制
+				if !ally {
+					return "增援(部队调动)仅限自己的城市或同一联盟成员的城市"
+				}
+				var tc model.EzfyCity
+				if err := h.DB.First(&tc, targetId).Error; err != nil {
+					return "目标城市不存在"
+				}
+				cap := h.allyGarrisonCap(tc.ID)
+				if cap < 1 {
+					return "目标城市未建造联络中心, 无法接收盟友驻军"
+				}
+				if h.allyGarrisonCount(tc.ID) >= cap {
+					return fmt.Sprintf("目标城市联络中心%d级, 最多接收%d支盟友驻军", cap, cap)
+				}
 			}
 		} else {
 			if !own && !ally {
@@ -814,10 +829,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		order.Status = 3
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
-		// 随军军官调任到目标城市(职位清空)
+		// 随军军官调任到目标城市(职位清空); 盟友驻军时军官留在本城
 		if order.Officer != "" {
-			h.moveOfficerTo(city, order.Officer, target.ID)
-			desc += "\n军官 " + order.Officer + " 随军抵达"
+			if h.isOwnCity(uid, int64(target.ID)) {
+				h.moveOfficerTo(city, order.Officer, target.ID)
+				desc += "\n军官 " + order.Officer + " 随军抵达"
+			} else {
+				h.officerGoOut(city, order.Officer, false)
+				desc += "\n军官 " + order.Officer + " 护送完成后返回本城"
+			}
 		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
