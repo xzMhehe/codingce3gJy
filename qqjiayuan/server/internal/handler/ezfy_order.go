@@ -244,14 +244,15 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	var req struct {
-		CityId     int64           `json:"city_id"`
-		OrderType  int             `json:"order_type"`
-		TargetX    int             `json:"target_x"`
-		TargetY    int             `json:"target_y"`
-		TargetType int             `json:"target_type"`
-		TargetId   int64           `json:"target_id"`
-		Troops     []ezfyUnitGroup `json:"troops"`
+		CityId     int64            `json:"city_id"`
+		OrderType  int              `json:"order_type"`
+		TargetX    int              `json:"target_x"`
+		TargetY    int              `json:"target_y"`
+		TargetType int              `json:"target_type"`
+		TargetId   int64            `json:"target_id"`
+		Troops     []ezfyUnitGroup  `json:"troops"`
 		Resources  map[string]int64 `json:"resources"`
+		Officer    string           `json:"officer"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -262,7 +263,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		city2 := h.getOrCreateCity(uid)
 		city = &city2
 	}
-	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources); msg != "" {
+	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}
@@ -270,7 +271,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 }
 
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
-	targetId int64, troops []ezfyUnitGroup, resources map[string]int64) string {
+	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string) string {
 
 	h.refreshCity(uid, city)
 	// 过滤数量为0的部队
@@ -309,6 +310,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			}
 			if !own && len(validTroops) > 0 {
 				return "同盟运输仅限资源, 不能携带部队"
+			}
+			if !own && officer != "" {
+				return "同盟运输不能携带军官"
 			}
 			if !own && !hasRes {
 				return "同盟运输必须携带资源"
@@ -355,6 +359,22 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		var wl model.EzfyWildland
 		if err := h.DB.Where("id = ? AND city_id = ?", targetId, city.ID).First(&wl).Error; err != nil {
 			return "只能派遣到已占领的野地"
+		}
+		if officer == "" {
+			return "派遣部队必须携带军官"
+		}
+	}
+	// 带队军官校验: 必须存在且在职(未出征/非俘虏)
+	if officer != "" {
+		lead := h.officerByName(city.ID, officer)
+		if lead == nil {
+			return "军官不存在"
+		}
+		if lead.Status == 1 {
+			return "军官" + lead.Name + "正在出征中"
+		}
+		if lead.IsCaptive == 1 {
+			return "俘虏不能带队出征, 请先在军校收编"
 		}
 	}
 	// 掠夺/征服玩家城: 需先宣战且已生效
@@ -441,6 +461,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	travelSec := int64(distance) * 60 * 300 / int64(slowest)
 	travelSec = travelSec * 100 / int64(100+tech[12]*2)
 	travelSec = travelSec * 100 / int64(100+station*3)
+	// 带队军官「移速」技能: 行军 +10%
+	if lead := h.officerByName(city.ID, officer); h.officerHasSkill(lead, "移速") {
+		travelSec = travelSec * 100 / 110
+	}
 	if travelSec < 10 {
 		travelSec = 10
 	}
@@ -449,7 +473,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		UserID: uid, CityId: int64(city.ID),
 		OrderType: orderType, TargetType: targetType,
 		TargetX: targetX, TargetY: targetY, TargetId: targetId,
-		Troops: groupsJSON(validTroops),
+		Troops:    groupsJSON(validTroops),
+		Officer:   officer,
 		StartTime: now, ArriveTime: now + travelSec*1000,
 		ReturnTime: now + travelSec*1000*2, Status: 0,
 		OilUsed: oilCost,
@@ -471,6 +496,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			}
 		}
 	}
+	// 带队军官: 置为出征中, 忠诚 -5(归零自动离职)
+	if officer != "" {
+		h.officerGoOut(city, officer, true)
+	}
 	// 雷达站预警
 	if targetType == 3 && targetId > 0 && (orderType == 1 || orderType == 2 || orderType == 3) {
 		var target model.EzfyCity
@@ -484,8 +513,18 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				if radar >= 3 {
 					warn += fmt.Sprintf("预计到达时间: %s\n", time.UnixMilli(order.ArriveTime).Format("01-02 15:04"))
 				}
+				if radar >= 4 {
+					if officer == "" {
+						warn += "统帅: 无(未带军官)\n"
+					} else {
+						warn += "统帅: " + officer + "\n"
+					}
+				}
 				if radar >= 5 {
 					warn += "出发城市: " + city.Name + "\n"
+				}
+				if radar >= 6 {
+					warn += fmt.Sprintf("出发时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
 				if radar >= 7 && len(validTroops) > 0 {
 					tinfo := ""
@@ -518,7 +557,7 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			"target_type": o.TargetType, "target_x": o.TargetX, "target_y": o.TargetY,
 			"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
 			"status": o.Status, "troops": parseGroups(o.Troops), "resources": o.Resources,
-			"result": o.Result, "oil_used": o.OilUsed,
+			"result": o.Result, "oil_used": o.OilUsed, "officer": o.Officer,
 		})
 	}
 	resp.OK(c, gin.H{"orders": views})
@@ -527,7 +566,9 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 // RecallOrder 召回派遣
 func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ OrderId int64 `json:"order_id"` }
+	var req struct {
+		OrderId int64 `json:"order_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -593,6 +634,10 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 		if g.Count > 0 {
 			h.addTroop(city.ID, g.TroopId, g.Count)
 		}
+	}
+	// 带队军官归来, 恢复在职
+	if order.Officer != "" {
+		h.officerGoOut(city, order.Officer, false)
 	}
 	order.Status = 3
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
@@ -769,6 +814,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		order.Status = 3
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
+		// 随军军官调任到目标城市(职位清空)
+		if order.Officer != "" {
+			h.moveOfficerTo(city, order.Officer, target.ID)
+			desc += "\n军官 " + order.Officer + " 随军抵达"
+		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
 			h.addReport(target.UserID, 5, "增援到达: "+city.Name,
@@ -780,8 +830,21 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ============ 战斗类: 侦查/掠夺/征服 ============
 	attacker := parseGroups(order.Troops)
 	atkTech := h.techMap(city.ID)
-	atkBonus := atkTech[5]*2 + atkTech[6]*3
+	// 带队军官(军事属性 + 装备 + 技能)与科技加成
+	leadOfficer := h.officerByName(city.ID, order.Officer)
+	officerBonus := h.officerBattleBonus(leadOfficer)
+	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
+	if h.officerHasSkill(leadOfficer, "移速") {
+		atkSpeedBonus += 10
+	}
+	if h.officerHasSkill(leadOfficer, "攻速") {
+		atkSpeedBonus += 10
+	}
+	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// 城守(仅玩家城市防守方)
+	var cityGuard *model.EzfyOfficer
+	defOfficerDesc := ""
 
 	defender := []ezfyUnitGroup{}
 	targetName := ""
@@ -822,6 +885,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		targetName = name + strconv.Itoa(level) + "级"
 		rnd := cfg.ResMin + rand.Int63n(cfg.ResMax-cfg.ResMin+1)
 		lootTech := atkTech[17] * 2
+		if h.officerHasSkill(leadOfficer, "掠夺") {
+			lootTech += 10
+		}
 		rnd = rnd * int64(100+lootTech) / 100
 		lootFood, lootSteel, lootOil, lootRare, lootGold = rnd, rnd, rnd, rnd, rnd
 	case 3:
@@ -853,6 +919,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defTech := h.techMap(target.ID)
 		defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2
 		defSpeedBonus = defTech[10]*2 + defTech[19]*3
+		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
+		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
+		defBonus += h.officerGuardBonus(cityGuard)
+		defOfficerDesc = h.officerBattleDesc(cityGuard, 10, "守军防御")
 	}
 
 	// 侦查: 不战斗只报告守军, 部队随即返航
@@ -880,7 +950,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	br := ezfySimulate(attacker, defender, atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
-		"", "", h.buildTargetMap(city.ID, true), h.buildTargetMap(cityIdOf(target), false),
+		atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), h.buildTargetMap(cityIdOf(target), false),
 		h.buildMoveMap(city.ID, true), h.buildMoveMap(cityIdOf(target), false))
 	win = br.AttackerWin
 
@@ -896,6 +966,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
+	// 带队军官 / 城守军官
+	if leadOfficer != nil {
+		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
+	}
+	if cityGuard != nil {
+		report += "守军军官:" + officerReportDesc(cityGuard) + "\n"
+	}
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
@@ -932,6 +1009,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		deadCount += g.Count
 	}
 	healTech := atkTech[21] * 2
+	// 带队军官「修养」技能: 战后伤兵恢复 +10%
+	if h.officerHasSkill(leadOfficer, "修养") {
+		healTech += 10
+	}
 	var repairedTotal int64
 	if deadCount > 0 {
 		for _, g := range losses {
@@ -1013,6 +1094,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 && target != nil {
 			// 玩家城市: 掠夺比例10%+掠夺技巧, 上限50%
 			lootRate := 10 + atkTech[17]*2
+			if h.officerHasSkill(leadOfficer, "掠夺") {
+				lootRate += 10
+			}
 			if targetProtected || order.OrderType != 2 && order.OrderType != 3 {
 				lootRate = 0
 			}
@@ -1251,12 +1335,33 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		} else if order.TargetType == 2 {
 			h.taskProgress(uid, "battle_kou", 1)
 		}
+		// 野地/寇城掉宝：按等级概率掉装备 + 按地形掉珠宝；寇城/高等级野地有概率俘虏守将
+		if (order.TargetType == 1 || order.TargetType == 2) && wildLevel >= 1 {
+			if loot := h.wildlandLoot(city, wildLevel, ezfyTerrain(order.TargetX, order.TargetY), false); loot != "" {
+				report += "\n战利品:" + loot
+			}
+			if order.TargetType == 2 || wildLevel >= 5 {
+				if cap := h.captureWildlandOfficer(city, false); cap != "" {
+					report += "\n" + cap
+				}
+			}
+		}
 		var enemyDead int64
 		for _, g := range br.DefenderLosses {
 			enemyDead += g.Count
 		}
 		if enemyDead > 0 {
 			h.taskProgress(uid, "kill_enemy", int(enemyDead))
+		}
+		// 带队军官战功经验: 我方战损/10 + 50
+		if leadOfficer != nil {
+			var myDead int64
+			for _, g := range br.AttackerLosses {
+				myDead += g.Count
+			}
+			exp := myDead/10 + 50
+			h.addOfficerExp(city, leadOfficer.ID, exp)
+			report += fmt.Sprintf("\n军官经验+%d", exp)
 		}
 		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
 		order.Status = 2

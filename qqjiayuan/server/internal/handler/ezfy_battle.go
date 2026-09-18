@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"fmt"
@@ -147,7 +147,16 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 			if isAtk {
 				moveMap = atkMoves
 			}
-			moveForward := moveMap == nil || moveMap[unit.cfg.ID] > 0
+			// 移动判定: 与原版 BattleEngine 一致 —— 未配置的兵种默认「前进」
+			// (Java: moveMap.getOrDefault(unit.cfg.getId(), 1) > 0)
+			// 注意不能写成 moveMap[id] > 0: 缺键会取零值 0 变成「停止」,
+			// 导致攻方近战兵种原地不动、永远够不到敌人而必败。
+			moveForward := true
+			if moveMap != nil {
+				if v, ok := moveMap[unit.cfg.ID]; ok {
+					moveForward = v > 0
+				}
+			}
 			if moveForward && dist > rangeD {
 				speedBonus := defSpeedBonus
 				if isAtk {

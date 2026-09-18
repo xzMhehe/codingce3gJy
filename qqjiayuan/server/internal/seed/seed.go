@@ -62,7 +62,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
 		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
 		&model.ParkUser{}, &model.CarShop{}, &model.CarGarage{}, &model.CarStop{}, &model.CarLog{}, &model.CarMsg{},
-		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, 		&model.Setting{}, &model.AdminMenu{},
+		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{}, &model.AdminMenu{},
 		&model.MoneyShop{},
 		&model.WalletLog{},
 		&model.Marriage{},
@@ -119,6 +119,9 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyCityEffect{},
 		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
 		&model.EzfyChat{}, &model.EzfyExchange{},
+		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
+		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
+		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -193,9 +196,9 @@ func Run(db *gorm.DB, staticDir string) {
 
 	// 论坛重构：boards/threads 新增列兜底补齐（幂等）
 	bcols := map[string]string{
-		"category_id": "ALTER TABLE boards ADD COLUMN category_id bigint DEFAULT 0",
-		"notice":      "ALTER TABLE boards ADD COLUMN notice text",
-		"tags":        "ALTER TABLE boards ADD COLUMN tags varchar(100) DEFAULT ''",
+		"category_id":  "ALTER TABLE boards ADD COLUMN category_id bigint DEFAULT 0",
+		"notice":       "ALTER TABLE boards ADD COLUMN notice text",
+		"tags":         "ALTER TABLE boards ADD COLUMN tags varchar(100) DEFAULT ''",
 		"moderator_id": "ALTER TABLE boards ADD COLUMN moderator_id bigint DEFAULT 0",
 		"members_only": "ALTER TABLE boards ADD COLUMN members_only int DEFAULT 0",
 	}
@@ -376,8 +379,8 @@ func seedFamilies(db *gorm.DB) {
 	}
 	spec := []struct {
 		name, slogan, desc, ann, ownerNick, category string
-		battle                                        int
-		members                                       []string
+		battle                                       int
+		members                                      []string
 	}{
 		{"清风明月", "轻风徐来，明月入怀", "以文会友，共话家常。", "欢迎回家，常来常往。", "云起", "舞文弄墨", 320, []string{"云起", "咏荷", "闲云野鹤"}},
 		{"与世无争", "与世无争，不问西东", "恬淡生活，其乐融融。", "兄弟姐妹们常回家看看。", "安珞", "情感男女", 260, []string{"安珞", "蓝天"}},

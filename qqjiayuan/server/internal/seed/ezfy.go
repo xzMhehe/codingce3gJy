@@ -32,6 +32,10 @@ func seedEzfy(db *gorm.DB) {
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	batch(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
 	batch(ezfyEzfyCfgTask, "ezfy_cfg_task")
+	// 军官/学院：名将 31 / 技能 15 / 装备 26
+	batch(ezfyEzfyCfgGeneral, "ezfy_cfg_general")
+	batch(ezfyEzfyCfgSkill, "ezfy_cfg_skill")
+	batch(ezfyEzfyCfgEquipment, "ezfy_cfg_equipment")
 
 	seedEzfyNotices(db)
 }

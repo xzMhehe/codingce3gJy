@@ -3,10 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"math/rand"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,21 +20,21 @@ import (
 // 二战风云 核心玩法：进入游戏/城池/建筑/资源懒结算/造兵/伤兵/科技
 
 const (
-	ezfyFactoryBuildingID = 14  // 军工厂
-	ezfyMaxFactoryCount   = 5   // 军工厂最多建造数
-	ezfyMaxBuildings      = 33  // 军事区+资源区建筑总数上限
-	ezfyMaxHouseCount     = 10  // 民居最多建造数
-	ezfyConveneGoldCost   = 100000 // 召集人口消耗黄金
-	ezfyConvenePopGain    = 100000 // 召集获得人口
-	ezfyNewCityGoldCost   = 100000 // 平原起新城消耗黄金
-	ezfyOilDivGrid        = 300    // 出征耗油: 每格耗油 = 总兵力/300
+	ezfyFactoryBuildingID = 14                     // 军工厂
+	ezfyMaxFactoryCount   = 5                      // 军工厂最多建造数
+	ezfyMaxBuildings      = 33                     // 军事区+资源区建筑总数上限
+	ezfyMaxHouseCount     = 10                     // 民居最多建造数
+	ezfyConveneGoldCost   = 100000                 // 召集人口消耗黄金
+	ezfyConvenePopGain    = 100000                 // 召集获得人口
+	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
+	ezfyOilDivGrid        = 300                    // 出征耗油: 每格耗油 = 总兵力/300
 	ezfyDispatchPeriod    = int64(8 * 3600 * 1000) // 派遣采集结算周期 8小时
-	ezfyDispatchTreasure  = 10   // 派遣结算宝物概率 1/10
-	ezfyCommandCarryPct   = 10   // 指挥艺术: 出征携带上限+%/级
-	ezfyMaxUpgradeSeconds = 10   // 一键满级: 每级升级时间(秒)
-	ezfyDeserterRate      = 30   // 守军战败溃逃比例%
-	ezfyWarDelayHours     = 24   // 宣战生效延迟(小时)
-	ezfyWarDurationHours  = 48   // 宣战有效期(小时)
+	ezfyDispatchTreasure  = 10                     // 派遣结算宝物概率 1/10
+	ezfyCommandCarryPct   = 10                     // 指挥艺术: 出征携带上限+%/级
+	ezfyMaxUpgradeSeconds = 10                     // 一键满级: 每级升级时间(秒)
+	ezfyDeserterRate      = 30                     // 守军战败溃逃比例%
+	ezfyWarDelayHours     = 24                     // 宣战生效延迟(小时)
+	ezfyWarDurationHours  = 48                     // 宣战有效期(小时)
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -382,6 +382,13 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
 	steelProd = steelProd * int64(100+techSteel*10) / 100
 	oilProd = oilProd * int64(100+techOil*10) / 100
 	rareProd = rareProd * int64(100+techRare*10) / 100
+	// 市长加成：产量 +10% + 后勤属性/20（复刻原版 mayorBonus）
+	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
+		foodProd = foodProd * int64(100+mayorBonus) / 100
+		steelProd = steelProd * int64(100+mayorBonus) / 100
+		oilProd = oilProd * int64(100+mayorBonus) / 100
+		rareProd = rareProd * int64(100+mayorBonus) / 100
+	}
 	foodProd = int64(float64(foodProd) * morale)
 	steelProd = int64(float64(steelProd) * morale)
 	oilProd = int64(float64(oilProd) * morale)
@@ -550,7 +557,7 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	steelProd = int64(float64(steelProd) * morale)
 	oilProd = int64(float64(oilProd) * morale)
 	rareProd = int64(float64(rareProd) * morale)
-	goldProd := int64(float64(city.Pop)*float64(city.TaxRate)/100.0*morale)
+	goldProd := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	for _, w := range h.wildlandList(city.ID) {
@@ -1410,7 +1417,9 @@ func (h *EzfyHandler) CityList(c *gin.Context) {
 // SwitchCity 切换城市
 func (h *EzfyHandler) SwitchCity(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ CityId int64 `json:"city_id"` }
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -1516,7 +1525,9 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 // Convene 召集人口（黄金召集不受民居上限限制）
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ CityId int64 `json:"city_id"` }
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -1541,7 +1552,9 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 // Placate 安抚民心（花费黄金降低民怨）
 func (h *EzfyHandler) Placate(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ CityId int64 `json:"city_id"` }
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -1576,7 +1589,9 @@ func (h *EzfyHandler) Placate(c *gin.Context) {
 // AbandonWildland 放弃野地
 func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ WildlandId int64 `json:"wildland_id"` }
+	var req struct {
+		WildlandId int64 `json:"wildland_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -1593,7 +1608,9 @@ func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 // Resources 资源详情
 func (h *EzfyHandler) Resources(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ CityId int64 `json:"city_id"` }
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
 	_ = c.ShouldBindJSON(&req)
 	city := h.getOrCreateCity(uid)
 	if req.CityId > 0 {

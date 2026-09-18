@@ -588,6 +588,23 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/city/wildfull", ezfyH.WildlandFull)
 				ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
 				ezfyG.GET("/orders/:id", ezfyH.OrderView)
+
+				// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====
+				ezfyG.GET("/officers", ezfyH.Officers)
+				ezfyG.GET("/officers/onduty", ezfyH.OfficersOnDuty)
+				ezfyG.GET("/officers/skills", ezfyH.OfficerSkills)
+				ezfyG.GET("/officers/equipments", ezfyH.OfficerEquipments)
+				ezfyG.GET("/officers/generals", ezfyH.OfficerGenerals)
+				ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
+				ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
+				ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
+				ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
+				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
+				ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
+				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
+				ezfyG.GET("/acade/recruit", ezfyH.AcadeRecruit)
+				ezfyG.POST("/acade/recruit/refresh", ezfyH.AcadeRefresh)
+				ezfyG.POST("/acade/recruit/:id", ezfyH.AcadeRecruitDo)
 			}
 
 			// 我的游戏
@@ -848,10 +865,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/garden-users/:uid/bag", perm(db, "module:gardenData"), gardenH.AdminGardenBagSet)
 				admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "module:gardenData"), gardenH.AdminGardenFlowerSet)
 				admin.GET("/garden-logs", perm(db, "module:gardenData"), gardenH.AdminGardenLogs)
-			admin.GET("/garden-rank", perm(db, "module:gardenData"), gardenH.AdminGardenRank)
-			admin.GET("/garden-sign-rewards", perm(db, "module:gardenSign"), gardenH.AdminSignRewards)
-			admin.PUT("/garden-sign-rewards/:day", perm(db, "module:gardenSign"), gardenH.AdminSignRewardUpdate)
-			admin.GET("/garden-sign-stats", perm(db, "module:gardenSign"), gardenH.AdminSignStats)
+				admin.GET("/garden-rank", perm(db, "module:gardenData"), gardenH.AdminGardenRank)
+				admin.GET("/garden-sign-rewards", perm(db, "module:gardenSign"), gardenH.AdminSignRewards)
+				admin.PUT("/garden-sign-rewards/:day", perm(db, "module:gardenSign"), gardenH.AdminSignRewardUpdate)
+				admin.GET("/garden-sign-stats", perm(db, "module:gardenSign"), gardenH.AdminSignStats)
 				// 开心农场管理（种子/化肥/陷阱/用户数据/日志/排行）
 				admin.GET("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeeds)
 				admin.POST("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeedCreate)

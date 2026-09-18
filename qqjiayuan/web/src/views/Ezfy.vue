@@ -39,7 +39,7 @@
 
         <div class="old-line">
           <a href="javascript:;" @click="go('builds')">资源</a>.
-          <a href="javascript:;" @click="notOpen('军官系统')">军官</a>.
+          <a href="javascript:;" @click="go('acade')">军官</a>.
           <a href="javascript:;" @click="go('troops')">军队</a>.
           <a href="javascript:;" @click="go('techs')">科技</a>.
           <a href="javascript:;" @click="go('defence')">城防</a>.
@@ -124,7 +124,7 @@
           <a href="javascript:;" @click="go('rank')">排行</a>
           <a href="javascript:;" @click="go('bag')">背包</a>
           <a href="javascript:;" @click="go('mall')">商城</a>
-          <a href="javascript:;" @click="go('mall')">宝物</a>
+          <a href="javascript:;" @click="go('acade')">宝物</a>
         </div>
         <div class="old-line">
           <a href="javascript:;" @click="go('activity')">活动</a>
@@ -416,10 +416,11 @@
           <br/>
           <div class="panel-title">出征队列({{ orders.length }})</div>
           <table>
-            <tr><th>类型</th><th>目标</th><th>状态</th><th></th></tr>
+            <tr><th>类型</th><th>目标</th><th>统帅</th><th>状态</th><th></th></tr>
             <tr v-for="o in orders" :key="'o' + o.id">
               <td>{{ o.type_name }}</td>
               <td>({{ o.target_x }},{{ o.target_y }})</td>
+              <td>{{ o.officer || '无' }}</td>
               <td>{{ orderStatusText(o) }}</td>
               <td>
                 <a href="javascript:;" @click="openOrder(o)">[详情]</a>
@@ -486,6 +487,7 @@
             <a href="javascript:;" @click="moveMap(0, -mapR)">[北]</a>
             <a href="javascript:;" @click="moveMap(0, mapR)">[南]</a>
             <a href="javascript:;" @click="loadMap()">[回城]</a>
+            <a href="javascript:;" @click="go('orders')">[出征队列]</a>
           </div>
           <div class="ezfy-map">
             <div v-for="(row, ri) in mapRows" :key="'mr' + ri" class="ezfy-map-row">
@@ -550,6 +552,20 @@
             <span v-if="!attackTroops.length" class="red">城内无可出征部队</span>
           </div>
           <div class="old-line">
+            带队军官:
+            <select v-model="orderOfficer">
+              <option value="">无</option>
+              <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
+                {{ o.name }} Lv{{ o.level }} 军事{{ o.military }} 忠诚{{ o.loyalty }}
+              </option>
+            </select>
+            <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
+            <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
+            <br/>
+            <span v-if="curOfficerBonus" class="green">军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
+            <span v-if="!onDutyOfficers.length" class="gray">(暂无可用军官, 可前往军校招募)</span>
+          </div>
+          <div class="old-line">
             <button @click="doOrder()">出 发</button>
             <a href="javascript:;" @click="go('map')">[返回地图]</a>
           </div>
@@ -565,6 +581,7 @@
           <div class="panel-title">{{ curOrder.type_name }}命令详情</div>
           目标: ({{ curOrder.target_x }},{{ curOrder.target_y }})<br/>
           状态: {{ orderStatusText(curOrder) }}<br/>
+          统帅: {{ curOrder.officer || '无(未带军官)' }}<br/>
           耗油: {{ curOrder.oil_used }}<br/>
           部队:<br/>
           <div class="old-line" v-for="(t, i) in curOrder.troops" :key="'ot' + i">
@@ -574,6 +591,29 @@
             <a href="javascript:;" @click="jumpReport(curOrder.report_id)">[查看战报]</a>
           </div>
           <a href="javascript:;" @click="go('orders')">[返回命令列表]</a>
+        </div>
+      </template>
+
+      <!-- ============ 出征队列(orders) ============ -->
+      <template v-else-if="cur === 'orders'">
+        <div class="panel">
+          <div class="panel-title">出征队列({{ orders.length }})</div>
+          <table>
+            <tr><th>类型</th><th>目标</th><th>统帅</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="o in orders" :key="'odl' + o.id">
+              <td>{{ o.type_name }}</td>
+              <td>({{ o.target_x }},{{ o.target_y }})</td>
+              <td>{{ o.officer || '无' }}</td>
+              <td>{{ orderStatusText(o) }}</td>
+              <td>
+                <a href="javascript:;" @click="openOrder(o)">[详情]</a>
+                <a v-if="o.order_type === 7 && (o.status === 0 || o.status === 1)" class="red"
+                   href="javascript:;" @click="doRecall(o)">[召回]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line" v-if="!orders.length">(暂无出征部队)</div>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -964,6 +1004,271 @@
         </div>
       </template>
 
+      <!-- ============ 军官/学院(acade) ============ -->
+      <template v-else-if="cur === 'acade'">
+        <div class="acade-tab">
+          <a href="javascript:;" :class="{ on: acadeTab === 'officer' }" @click="switchAcade('officer')">军官</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'scheme' }" @click="switchAcade('scheme')">计谋</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'search' }" @click="switchAcade('search')">招募</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'mayor' }" @click="switchAcade('mayor')">任命市长</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'equip' }" @click="switchAcade('equip')">装备</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'skill' }" @click="switchAcade('skill')">技能</a>
+        </div>
+
+        <!-- 军官列表 -->
+        <div class="panel" v-if="acadeTab === 'officer'">
+          <div class="old-line">
+            军校{{ officerData.academy_level }}级, 参谋部{{ officerData.staff_level }}级
+            (容纳{{ officerData.capacity }}名军官), 当前{{ officerData.used }}名
+          </div>
+          <div class="old-line">
+            黄金:{{ officerData.gold }}
+            <a href="javascript:;" @click="switchAcade('search')">[招募名将]</a>
+          </div>
+          <hr/>
+          <div class="old-line">我的军官({{ officerData.officers.length }}):</div>
+          <table>
+            <tr><th>名称</th><th>星</th><th>等级</th><th>经验</th><th>军事</th><th>后勤</th><th>学习</th><th>忠诚</th><th>职位</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="o in officerData.officers" :key="'of' + o.id">
+              <td>{{ o.name }}</td>
+              <td>{{ o.star }}</td>
+              <td>{{ o.level }}</td>
+              <td>{{ o.exp }}</td>
+              <td>{{ o.military }}</td>
+              <td>{{ o.logistics }}</td>
+              <td>{{ o.learning }}</td>
+              <td>{{ o.loyalty }}</td>
+              <td>{{ o.position_name }}</td>
+              <td>
+                <span :class="{ orange: o.status === 1, red: o.is_captive === 1 }">{{ o.status_name }}</span>
+              </td>
+              <td>
+                <a href="javascript:;" @click="openOfficer(o.id)">[详情]</a>
+                <template v-if="o.is_captive === 1 && o.status !== 1">
+                  <a href="javascript:;" @click="doCaptive(o, 'recruit')">[收编]</a>
+                  <a href="javascript:;" @click="doCaptive(o, 'free')">[释放]</a>
+                </template>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!officerData.officers.length">(暂无军官, 先去招募吧)</div>
+        </div>
+
+        <!-- 招募 -->
+        <div class="panel" v-else-if="acadeTab === 'search'">
+          <div class="old-line">
+            军校({{ recruitData.academy_level }}级)：
+            <span v-if="recruitData.refresh_left !== undefined">
+              今日刷新:{{ recruitData.refresh_left }}/{{ recruitData.refresh_limit }}次
+            </span>
+            <a href="javascript:;" @click="doRefreshRecruit">[刷新]</a>
+          </div>
+          <div class="old-line gray">
+            军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
+            招募费用 = 名将等级 × 500 黄金
+          </div>
+          <div class="old-line" v-if="!recruitData.academy_level">尚未建造军校, 无法招募军官</div>
+          <table v-else>
+            <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>
+            <tr v-for="g in recruitData.candidates" :key="'rc' + g.id">
+              <td>{{ g.name }}</td>
+              <td>{{ g.level }}级</td>
+              <td>{{ g.star }}星</td>
+              <td>{{ g.logistics }}/{{ g.military }}/{{ g.learning }}</td>
+              <td>{{ g.cost }}</td>
+              <td><a href="javascript:;" @click="doRecruit(g)">[招募]</a></td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="recruitData.academy_level && !recruitData.candidates.length">(今日候选已全部招募或刷新)</div>
+          <div class="old-line">前去<a href="javascript:;" @click="switchAcade('officer')">[军官]</a></div>
+        </div>
+
+        <!-- 任命市长 -->
+        <div class="panel" v-else-if="acadeTab === 'mayor'">
+          <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%)</div>
+          <table>
+            <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
+            <tr v-for="o in officerData.officers" :key="'my' + o.id">
+              <td>{{ o.name }}</td>
+              <td>{{ o.level }}</td>
+              <td>{{ o.loyalty }}</td>
+              <td>{{ o.position_name }}</td>
+              <td>
+                <a v-if="o.position !== 1 && o.status === 0" href="javascript:;" @click="doPosition(o, 1)">[任命市长]</a>
+                <a v-if="o.position !== 2 && o.status === 0" href="javascript:;" @click="doPosition(o, 2)">[任命城守]</a>
+                <a v-if="o.position !== 0" href="javascript:;" @click="doPosition(o, 0)">[卸任]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!officerData.officers.length">(暂无军官)</div>
+        </div>
+
+        <!-- 装备 -->
+        <div class="panel" v-else-if="acadeTab === 'equip'">
+          <div class="old-line">我的装备({{ equipData.bag.length }})</div>
+          <table>
+            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
+            <tr v-for="e in equipData.bag" :key="'eq' + e.id">
+              <td>{{ e.name }}</td>
+              <td>{{ e.type }}</td>
+              <td>{{ e.tier_name }}</td>
+              <td>
+                <span v-if="e.military">军事+{{ e.military }} </span>
+                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
+                <span v-if="e.learning">学习+{{ e.learning }}</span>
+              </td>
+              <td>{{ e.level }}</td>
+              <td>
+                <span v-if="e.worn" class="gray">{{ e.worn_by }}已穿戴</span>
+                <a v-else href="javascript:;" @click="switchAcade('officer')">[去穿戴]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备, 战胜野地/寇城有概率掉落)</div>
+          <hr/>
+          <div class="old-line">装备图鉴({{ equipData.all.length }})</div>
+          <table>
+            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
+            <tr v-for="e in equipData.all" :key="'ea' + e.id">
+              <td>{{ e.name }}</td>
+              <td>{{ e.type }}</td>
+              <td>{{ e.tier_name }}</td>
+              <td>
+                <span v-if="e.military">军事+{{ e.military }} </span>
+                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
+                <span v-if="e.learning">学习+{{ e.learning }}</span>
+              </td>
+              <td>{{ e.level }}</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- 技能 -->
+        <div class="panel" v-else-if="acadeTab === 'skill'">
+          <div class="old-line">军官技能(每名武将最多3个, 学习1万金/个):</div>
+          <table>
+            <tr><th>技能</th><th>效果</th></tr>
+            <tr v-for="s in skillData.skills" :key="'sk' + s.id">
+              <td>{{ s.name }}</td>
+              <td>{{ s.effect }}</td>
+            </tr>
+          </table>
+          <hr/>
+          <div class="old-line">我的军官:</div>
+          <table>
+            <tr><th>名称</th><th>已学技能</th><th>操作</th></tr>
+            <tr v-for="o in skillData.officers" :key="'sko' + o.id">
+              <td>{{ o.name }}</td>
+              <td>
+                <span v-if="o.skills.length">{{ o.skills.join('、') }}</span>
+                <span v-else class="gray">无({{ o.skill_count }}/3)</span>
+              </td>
+              <td><a href="javascript:;" @click="openOfficer(o.id)">[学习/遗忘]</a></td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!skillData.officers.length">(暂无军官)</div>
+        </div>
+
+        <!-- 计谋(名将图鉴) -->
+        <div class="panel" v-else-if="acadeTab === 'scheme'">
+          <div class="old-line">名将图鉴(共{{ generalData.generals.length }}名, 按等级排序)</div>
+          <table>
+            <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>获取渠道</th><th>状态</th></tr>
+            <tr v-for="g in generalData.generals" :key="'gg' + g.id">
+              <td>{{ g.name }}</td>
+              <td>{{ g.level }}</td>
+              <td>{{ g.star }}</td>
+              <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
+              <td>{{ g.source }}</td>
+              <td>
+                <span v-if="g.owned" class="green">已拥有</span>
+                <span v-else class="gray">未拥有</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </template>
+
+      <!-- ============ 军官详情(officerdetail) ============ -->
+      <template v-else-if="cur === 'officerdetail'">
+        <div class="panel" v-if="officerDetail.officer">
+          <div class="panel-title">{{ officerDetail.officer.name }}</div>
+          星级:{{ officerDetail.officer.star }}
+          等级:{{ officerDetail.officer.level }}
+          经验:{{ officerDetail.officer.exp }}/{{ officerDetail.officer.exp_need }}<br/>
+          军事:{{ officerDetail.officer.military }}
+          后勤:{{ officerDetail.officer.logistics }}
+          学习:{{ officerDetail.officer.learning }}<br/>
+          忠诚:{{ officerDetail.officer.loyalty }}
+          职位:{{ officerDetail.officer.position_name }}
+          状态:{{ officerDetail.officer.status_name }}<br/>
+          <div class="old-line">
+            <button @click="doGrant">[赏赐+10忠诚(1万金)]</button>
+            <button v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
+                    @click="doExile">[流放]</button>
+            <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
+            <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
+          </div>
+          <hr/>
+          已学技能({{ officerDetail.skills.length }}/3):
+          <table>
+            <tr><th>技能</th><th>效果</th><th>操作</th></tr>
+            <tr v-for="s in officerDetail.skills" :key="'ds' + s.name">
+              <td>{{ s.name }}</td>
+              <td>{{ s.effect }}</td>
+              <td><a href="javascript:;" @click="doForget(s.name)">[遗忘]</a></td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!officerDetail.skills.length">(未学任何技能)</div>
+          <br/>
+          可学技能(1万金/个):
+          <table>
+            <tr><th>名称</th><th>效果</th><th>操作</th></tr>
+            <tr v-for="s in officerDetail.all_skills" :key="'ls' + s.id">
+              <td>{{ s.name }}</td>
+              <td>{{ s.effect }}</td>
+              <td><a href="javascript:;" @click="doLearn(s)">[学习]</a></td>
+            </tr>
+          </table>
+          <hr/>
+          已穿戴装备:
+          <table>
+            <tr><th>名称</th><th>类型</th><th>军事</th><th>后勤</th><th>学习</th><th>操作</th></tr>
+            <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
+              <td>{{ e.name }}</td>
+              <td>{{ e.type }}</td>
+              <td>{{ e.military }}</td>
+              <td>{{ e.logistics }}</td>
+              <td>{{ e.learning }}</td>
+              <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!officerDetail.equipped.length">(未穿戴装备)</div>
+          <hr/>
+          装备背包:
+          <table>
+            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
+            <tr v-for="e in officerDetail.bag" :key="'db' + e.id">
+              <td>{{ e.name }}</td>
+              <td>{{ e.type }}</td>
+              <td>{{ e.tier_name }}</td>
+              <td>
+                <span v-if="e.military">军事+{{ e.military }} </span>
+                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
+                <span v-if="e.learning">学习+{{ e.learning }}</span>
+              </td>
+              <td>{{ e.level }}</td>
+              <td>
+                <a v-if="!e.worn" href="javascript:;" @click="doEquip(e)">[穿戴]</a>
+                <span v-else class="gray">已穿戴</span>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!officerDetail.bag.length">(背包暂无装备)</div>
+          <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官]</a></div>
+        </div>
+      </template>
+
       <!-- 底部返回(非首页) -->
       <template v-if="cur !== 'home'">
         <br/>
@@ -1002,6 +1307,7 @@ export default {
       marching: 0,
       occupying: 0,
       unreadReports: 0,
+      reports: [],
       notices: [],
       curNotice: null,
       worldChats: [],
@@ -1028,6 +1334,13 @@ export default {
       exchangeOrders: [],
       exchangeMine: [],
       exchangeGold: 0,
+      acadeTab: 'officer',
+      officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
+      recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
+      skillData: { skills: [], officers: [], gold: 0 },
+      equipData: { bag: [], all: [] },
+      generalData: { generals: [] },
+      officerDetail: { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 },
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
@@ -1050,6 +1363,8 @@ export default {
       warText: '',
       orderType: 2,
       orderTroops: {},
+      onDutyOfficers: [],
+      orderOfficer: '',
       trFood: 0,
       trSteel: 0,
       trOil: 0,
@@ -1102,6 +1417,12 @@ export default {
     },
     trainCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type !== 4)
+    },
+    curOfficerBonus () {
+      for (const o of this.onDutyOfficers) {
+        if (o.name === this.orderOfficer) return o.battle_bonus
+      }
+      return 0
     },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
@@ -1190,7 +1511,8 @@ export default {
       else if (t === 'orders') this.loadOrders()
       else if (t === 'notices') this.loadNotices()
       else if (t === 'wilds') this.loadWilds()
-      else if (t === 'orderpre') this.loadTroops()
+      else if (t === 'orderpre') { this.loadTroops(); this.loadOnDutyOfficers() }
+      else if (t === 'acade') this.loadAcade()
     },
     load () {
       api.get('/games/ezfy/view').then(r => {
@@ -1307,8 +1629,7 @@ export default {
       api.get('/games/ezfy/notices').then(r => {
         if (r.code === 0) this.notices = r.data.notices
       })
-    },
-    loadWilds () {
+    },    loadWilds () {
       api.get('/games/ezfy/city/wildfull').then(r => {
         if (r.code === 0) {
           this.wildlands = r.data.wildlands
@@ -1544,14 +1865,21 @@ export default {
         }
         body.troops = troops
       }
+      if (this.orderOfficer) body.officer = this.orderOfficer
       api.post('/games/ezfy/order', body).then(r => {
         if (r.code === 0) {
           alert(r.data.msg)
           this.orderTroops = {}
+          this.orderOfficer = ''
           this.load()
           this.cur = 'orders'
           this.loadOrders()
         } else alert(r.msg)
+      })
+    },
+    loadOnDutyOfficers () {
+      api.get('/games/ezfy/officers/onduty').then(r => {
+        if (r.code === 0) this.onDutyOfficers = r.data.officers || []
       })
     },
     // ---- 聊天/邮箱 ----
@@ -1653,8 +1981,18 @@ export default {
     },
     fmtTime (t) {
       if (!t) return ''
-      const d = new Date(t.replace ? t.replace(/-/g, '/') : t)
-      return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0')
+      let d
+      if (typeof t === 'number') {
+        d = new Date(t < 1e12 ? t * 1000 : t)
+      } else {
+        // 后端时间可能是 ISO8601(带时区, 如 2026-09-18T21:15:25.054+08:00)
+        // 或 "YYYY-MM-DD HH:mm:ss"; 后者在部分浏览器需把 - 换成 /
+        d = new Date(t)
+        if (isNaN(d.getTime())) d = new Date(String(t).replace(/-/g, '/'))
+      }
+      if (isNaN(d.getTime())) return ''
+      const p = n => String(n).padStart(2, '0')
+      return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
     fmtNow () {
       const d = new Date()
@@ -1668,6 +2006,144 @@ export default {
       } else {
         alert(r.msg || '操作失败')
       }
+    },
+    // ---- 军官/学院 ----
+    loadAcade () {
+      api.get('/games/ezfy/officers').then(r => {
+        if (r.code === 0) this.officerData = r.data
+      })
+      this.loadAcadeTab()
+    },
+    loadAcadeTab () {
+      if (this.acadeTab === 'search') this.loadRecruit()
+      else if (this.acadeTab === 'skill') this.loadAcadeSkills()
+      else if (this.acadeTab === 'equip') this.loadAcadeEquip()
+      else if (this.acadeTab === 'scheme') this.loadAcadeGenerals()
+      else {
+        api.get('/games/ezfy/officers').then(r => {
+          if (r.code === 0) this.officerData = r.data
+        })
+      }
+    },
+    switchAcade (tab) {
+      this.acadeTab = tab
+      if (tab === 'officer' || tab === 'mayor') {
+        api.get('/games/ezfy/officers').then(r => {
+          if (r.code === 0) this.officerData = r.data
+        })
+      } else if (tab === 'search') this.loadRecruit()
+      else if (tab === 'skill') this.loadAcadeSkills()
+      else if (tab === 'equip') this.loadAcadeEquip()
+      else if (tab === 'scheme') this.loadAcadeGenerals()
+    },
+    loadRecruit () {
+      api.get('/games/ezfy/acade/recruit').then(r => {
+        if (r.code === 0) this.recruitData = r.data
+      })
+    },
+    loadAcadeSkills () {
+      api.get('/games/ezfy/officers/skills').then(r => {
+        if (r.code === 0) this.skillData = r.data
+      })
+    },
+    loadAcadeEquip () {
+      api.get('/games/ezfy/officers/equipments').then(r => {
+        if (r.code === 0) this.equipData = r.data
+      })
+    },
+    loadAcadeGenerals () {
+      api.get('/games/ezfy/officers/generals').then(r => {
+        if (r.code === 0) this.generalData = r.data
+      })
+    },
+    openOfficer (id) {
+      this.cur = 'officerdetail'
+      this.loadOfficerDetail(id)
+    },
+    loadOfficerDetail (id) {
+      api.get('/games/ezfy/officers/' + id).then(r => {
+        if (r.code === 0) this.officerDetail = r.data
+      })
+    },
+    doRefreshRecruit () {
+      api.post('/games/ezfy/acade/recruit/refresh', {}).then(r => {
+        if (r.code !== 0) alert(r.msg || '刷新失败')
+        this.loadRecruit()
+      })
+    },
+    doRecruit (g) {
+      if (!confirm('确定招募 ' + g.name + ' 吗? 需要 ' + g.cost + ' 黄金')) return
+      api.post('/games/ezfy/acade/recruit/' + g.id, {}).then(r => {
+        if (r.code !== 0) alert(r.msg || '招募失败')
+        this.loadRecruit()
+      })
+    },
+    doGrant () {
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/grant', {}).then(r => {
+        if (r.code !== 0) alert(r.msg || '赏赐失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    doLearn (s) {
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn', skill_id: s.id }).then(r => {
+        if (r.code !== 0) alert(r.msg || '学习失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    doForget (name) {
+      const id = this.officerDetail.officer.id
+      const sid = this.skillIdByName(name)
+      api.post('/games/ezfy/officers/' + id + '/skill', { op: 'forget', skill_id: sid }).then(r => {
+        if (r.code !== 0) alert(r.msg || '遗忘失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    skillIdByName (name) {
+      for (const s of this.officerDetail.all_skills) {
+        if (s.name === name) return s.id
+      }
+      return 0
+    },
+    doEquip (e) {
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: e.id, op: 'on' }).then(r => {
+        if (r.code !== 0) alert(r.msg || '穿戴失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    doUnequip (equipId) {
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: equipId, op: 'off' }).then(r => {
+        if (r.code !== 0) alert(r.msg || '卸下失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    doPosition (o, pos) {
+      api.post('/games/ezfy/officers/' + o.id + '/position', { position: pos }).then(r => {
+        if (r.code !== 0) alert(r.msg || '任命失败')
+        api.get('/games/ezfy/officers').then(rr => {
+          if (rr.code === 0) this.officerData = rr.data
+        })
+      })
+    },
+    doCaptive (o, op) {
+      if (op === 'free' && !confirm('确定释放俘虏 ' + o.name + ' 吗?')) return
+      api.post('/games/ezfy/officers/' + o.id + '/captive', { op: op }).then(r => {
+        if (r.code !== 0) alert(r.msg || '操作失败')
+        api.get('/games/ezfy/officers').then(rr => {
+          if (rr.code === 0) this.officerData = rr.data
+        })
+      })
+    },
+    doExile () {
+      if (!confirm('确定流放该武将吗? 流放后无法找回!')) return
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/exile', {}).then(r => {
+        if (r.code !== 0) alert(r.msg || '流放失败')
+        this.go('acade')
+      })
     }
   }
 }
@@ -1720,6 +2196,13 @@ body.ezfy-immersive { margin: 0; }
   font-size: 15px;
 }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
+.ezfy-page .acade-tab {
+  padding: 3px 0;
+  font-size: 14px;
+  color: #666;
+}
+.ezfy-page .acade-tab a { color: #2f4156; }
+.ezfy-page .acade-tab a.on { color: #c0392b; font-weight: bold; }
 .ezfy-page .panel-title {
   font-size: 15px;
   font-weight: bold;

@@ -34,7 +34,9 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 
 func (h *EzfyHandler) ChatSend(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Content string `json:"content"` }
+	var req struct {
+		Content string `json:"content"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -137,7 +139,9 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 
 func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Id uint `json:"id"` }
+	var req struct {
+		Id uint `json:"id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -187,7 +191,9 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 
 func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	var req struct{ Id uint `json:"id"` }
+	var req struct {
+		Id uint `json:"id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -259,7 +265,9 @@ func (h *EzfyHandler) OccupyList(c *gin.Context) {
 func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	op := c.Param("op")
-	var req struct{ OccupyId uint `json:"occupy_id"` }
+	var req struct {
+		OccupyId uint `json:"occupy_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
@@ -373,7 +381,7 @@ func (h *EzfyHandler) OrderView(c *gin.Context) {
 		"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 		"target_x": o.TargetX, "target_y": o.TargetY, "status": o.Status,
 		"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
-		"troops": troopViews, "oil_used": o.OilUsed,
+		"troops": troopViews, "oil_used": o.OilUsed, "officer": o.Officer,
 		"report_id": func() int64 {
 			if hasReport {
 				return int64(rep.ID)

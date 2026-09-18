@@ -127,20 +127,24 @@ func ezfyRankIndex(prestige int) int {
 	return idx
 }
 
-func ezfyRankName(prestige int) string  { return ezfyRanks[ezfyRankIndex(prestige)][0] }
-func ezfyRankPost(prestige int) string  { return ezfyRanks[ezfyRankIndex(prestige)][1] }
+func ezfyRankName(prestige int) string { return ezfyRanks[ezfyRankIndex(prestige)][0] }
+func ezfyRankPost(prestige int) string { return ezfyRanks[ezfyRankIndex(prestige)][1] }
 
 // ============ 配置缓存（进程内加载，seed 完成后首用时加载） ============
 
 type ezfyConfigCache struct {
-	once          sync.Once
-	buildings     map[int]model.EzfyCfgBuilding
-	buildingLvls  map[int]map[int]model.EzfyCfgBuildingLevel
-	troops        map[int]model.EzfyCfgTroop
-	techs         map[int]model.EzfyCfgTech
-	techLvls      map[int]map[int]model.EzfyCfgTechLevel
-	wildlands     map[int]map[int]model.EzfyCfgWildland
-	items         map[int]model.EzfyCfgItem
+	once           sync.Once
+	buildings      map[int]model.EzfyCfgBuilding
+	buildingLvls   map[int]map[int]model.EzfyCfgBuildingLevel
+	troops         map[int]model.EzfyCfgTroop
+	techs          map[int]model.EzfyCfgTech
+	techLvls       map[int]map[int]model.EzfyCfgTechLevel
+	wildlands      map[int]map[int]model.EzfyCfgWildland
+	items          map[int]model.EzfyCfgItem
+	generals       map[int]model.EzfyCfgGeneral
+	skills         map[int]model.EzfyCfgSkill
+	skillByName    map[string]int
+	equipments     map[int]model.EzfyCfgEquipment
 	buildingByName map[string]int
 	techByName     map[string]int
 }
@@ -156,6 +160,10 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 		c.techLvls = map[int]map[int]model.EzfyCfgTechLevel{}
 		c.wildlands = map[int]map[int]model.EzfyCfgWildland{}
 		c.items = map[int]model.EzfyCfgItem{}
+		c.generals = map[int]model.EzfyCfgGeneral{}
+		c.skills = map[int]model.EzfyCfgSkill{}
+		c.skillByName = map[string]int{}
+		c.equipments = map[int]model.EzfyCfgEquipment{}
 		c.buildingByName = map[string]int{}
 		c.techByName = map[string]int{}
 
@@ -211,7 +219,44 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 		for _, it := range its {
 			c.items[it.ID] = it
 		}
+		var gens []model.EzfyCfgGeneral
+		db.Find(&gens)
+		for _, g := range gens {
+			c.generals[g.ID] = g
+		}
+		var sks []model.EzfyCfgSkill
+		db.Find(&sks)
+		for _, s := range sks {
+			c.skills[s.ID] = s
+			c.skillByName[s.Name] = s.ID
+		}
+		var eqs []model.EzfyCfgEquipment
+		db.Find(&eqs)
+		for _, e := range eqs {
+			c.equipments[e.ID] = e
+		}
 	})
+}
+
+func (c *ezfyConfigCache) general(id int) *model.EzfyCfgGeneral {
+	if g, ok := c.generals[id]; ok {
+		return &g
+	}
+	return nil
+}
+
+func (c *ezfyConfigCache) skill(id int) *model.EzfyCfgSkill {
+	if s, ok := c.skills[id]; ok {
+		return &s
+	}
+	return nil
+}
+
+func (c *ezfyConfigCache) equipment(id int) *model.EzfyCfgEquipment {
+	if e, ok := c.equipments[id]; ok {
+		return &e
+	}
+	return nil
 }
 
 func (c *ezfyConfigCache) building(id int) *model.EzfyCfgBuilding {
