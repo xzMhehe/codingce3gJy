@@ -575,22 +575,38 @@
         </div>
       </template>
 
-      <!-- ============ 命令详情(order view) ============ -->
+      <!-- ============ 命令详情 / 军队动态详情(orderview) ============ -->
       <template v-else-if="cur === 'orderview'">
         <div class="panel" v-if="curOrder">
-          <div class="panel-title">{{ curOrder.type_name }}命令详情</div>
-          目标: ({{ curOrder.target_x }},{{ curOrder.target_y }})<br/>
-          状态: {{ orderStatusText(curOrder) }}<br/>
-          统帅: {{ curOrder.officer || '无(未带军官)' }}<br/>
-          耗油: {{ curOrder.oil_used }}<br/>
-          部队:<br/>
-          <div class="old-line" v-for="(t, i) in curOrder.troops" :key="'ot' + i">
-            {{ t.name }}×{{ t.count }}
+          <div class="panel-title">军队动态详情</div>
+          出发地:{{ curOrder.from_name }}<br/>
+          目的地:{{ curOrder.target_name }}({{ curOrder.target_x }},{{ curOrder.target_y }})<br/>
+          命令:{{ curOrder.type_name }}<br/>
+          军官:{{ curOrder.officer || '无(未带军官)' }}<br/>
+          统帅:{{ nick }}<br/>
+          状态:{{ curOrder.status_name || orderStatusText(curOrder) }}<br/>
+          出发时间:{{ curOrder.start_text }}<br/>
+          到达时间:{{ curOrder.arrive_text }}<br/>
+          <template v-if="curOrder.return_text">返航时间:{{ curOrder.return_text }}<br/></template>
+          耗油:{{ curOrder.oil_used }}<br/>
+          <hr/>
+          【进攻方军队】<br/>
+          <span v-for="(t, i) in curOrder.troops" :key="'ot' + i">{{ t.name }}:{{ t.count }}<br/></span>
+          <span v-if="!curOrder.troops.length" class="gray">(未携带部队)</span>
+          <template v-if="curOrder.resources && curOrder.resources.length">
+            <br/>军队携带资源:<br/>
+            <span v-for="(r, i) in curOrder.resources" :key="'or' + i">{{ r.name }}:{{ r.count }}<br/></span>
+          </template>
+          <hr/>
+          <div class="old-line">
+            <a href="javascript:;" @click="go('hq')">[指挥(司令部)]</a>
+            <a v-if="curOrder.order_type === 7 && (curOrder.status === 0 || curOrder.status === 1)"
+               class="red" href="javascript:;" @click="doRecall(curOrder)">[召回]</a>
+            <a v-if="curOrder.order_type === 7 && curOrder.status === 1"
+               href="javascript:;" @click="go('wilds')">[采集]</a>
+            <a v-if="curOrder.report_id" href="javascript:;" @click="jumpReport(curOrder.report_id)">[查看战报]</a>
           </div>
-          <div class="old-line" v-if="curOrder.report_id">
-            <a href="javascript:;" @click="jumpReport(curOrder.report_id)">[查看战报]</a>
-          </div>
-          <a href="javascript:;" @click="go('orders')">[返回命令列表]</a>
+          <a href="javascript:;" @click="go('orders')">[返回出征队列]</a>
         </div>
       </template>
 
@@ -633,6 +649,7 @@
           <span v-if="boostUntil" class="orange">[增产中]</span>
           <br/>
           <a href="javascript:;" @click="go('cityhall')">[市政厅]</a>
+          <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -691,6 +708,40 @@
         </div>
       </template>
 
+      <!-- ============ 仓库调配(wareset) ============ -->
+      <template v-else-if="cur === 'wareset'">
+        <div class="panel">
+          <div class="panel-title">仓库({{ ware.level }}级)</div>
+          <div class="old-line">
+            保护总量:{{ ware.total }}
+            <span class="gray">(保护额度内的资源不会被敌人抢夺走)</span>
+          </div>
+          <div class="old-line" v-if="ware.level < 1">
+            <span class="red">尚未建造仓库, 无法保护资源</span>
+            <a href="javascript:;" @click="go('builds')">[前往资源区建造]</a>
+          </div>
+          <div class="old-line" v-else-if="ware.level < 10">
+            升级仓库可提升保护量, 下一级:{{ ware.next_total }}
+            <a href="javascript:;" @click="go('builds')">[前往资源区]</a>
+          </div>
+          <div class="old-line" v-else>仓库已满级(保护量{{ ware.total }})</div>
+          <div class="panel-title">调配保护比例(四项合计不超过100%)</div>
+          <div class="old-line" v-for="r in ware.res" :key="'wr' + r.key">
+            {{ r.name }}: 保护{{ r.protect }} / 现有{{ r.have }}
+            <input v-model="wareRatio[r.key]" type="number" min="0" max="100" style="width:60px"/>%
+          </div>
+          <div class="old-line">
+            当前合计:{{ wareSum }}%
+            <span v-if="wareSum > 100" class="red">(超出100%, 无法保存)</span>
+            <span v-else class="gray">(未分配部分不产生保护)</span>
+          </div>
+          <div class="old-line">
+            <button @click="doWareSet" :disabled="wareSum > 100">[保存比例]</button>
+          </div>
+          <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
+        </div>
+      </template>
+
       <!-- ============ 安抚(placate) ============ -->
       <template v-else-if="cur === 'placate'">
         <div class="panel">
@@ -739,6 +790,7 @@
             <a href="javascript:;" @click="go('cities')">[城市列表/迁建]</a>
             <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
             <a href="javascript:;" @click="go('wilds')">[附属野地]</a>
+            <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
           </div>
           <div class="panel-title">全部建筑总览</div>
           <table>
@@ -1365,6 +1417,8 @@ export default {
       orderTroops: {},
       onDutyOfficers: [],
       orderOfficer: '',
+      ware: { level: 0, total: 0, next_total: 0, res: [], ratio_sum: 0 },
+      wareRatio: { food: 25, steel: 25, oil: 25, rare: 25 },
       trFood: 0,
       trSteel: 0,
       trOil: 0,
@@ -1423,6 +1477,10 @@ export default {
         if (o.name === this.orderOfficer) return o.battle_bonus
       }
       return 0
+    },
+    wareSum () {
+      const r = this.wareRatio
+      return (parseInt(r.food) || 0) + (parseInt(r.steel) || 0) + (parseInt(r.oil) || 0) + (parseInt(r.rare) || 0)
     },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
@@ -1513,6 +1571,7 @@ export default {
       else if (t === 'wilds') this.loadWilds()
       else if (t === 'orderpre') { this.loadTroops(); this.loadOnDutyOfficers() }
       else if (t === 'acade') this.loadAcade()
+      else if (t === 'wareset') this.loadWare()
     },
     load () {
       api.get('/games/ezfy/view').then(r => {
@@ -1880,6 +1939,31 @@ export default {
     loadOnDutyOfficers () {
       api.get('/games/ezfy/officers/onduty').then(r => {
         if (r.code === 0) this.onDutyOfficers = r.data.officers || []
+      })
+    },
+    // ---- 仓库保护 ----
+    loadWare () {
+      api.get('/games/ezfy/city/warehouse').then(r => {
+        if (r.code === 0) {
+          this.ware = r.data
+          const ratio = {}
+          for (const it of r.data.res) ratio[it.key] = it.ratio
+          this.wareRatio = ratio
+        }
+      })
+    },
+    doWareSet () {
+      if (this.wareSum > 100) { alert('四项比例合计不能超过100%'); return }
+      api.post('/games/ezfy/city/warehouse', {
+        food: parseInt(this.wareRatio.food) || 0,
+        steel: parseInt(this.wareRatio.steel) || 0,
+        oil: parseInt(this.wareRatio.oil) || 0,
+        rare: parseInt(this.wareRatio.rare) || 0
+      }).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.loadWare()
+        } else alert(r.msg)
       })
     },
     // ---- 聊天/邮箱 ----

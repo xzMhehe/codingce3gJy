@@ -374,14 +374,35 @@ func (h *EzfyHandler) OrderView(c *gin.Context) {
 		}
 		troopViews = append(troopViews, gin.H{"name": name, "count": g.Count})
 	}
+	// 目的地名称(复刻 report/viewCityTroopOut 的「目的地」)
+	toName := h.ezfyTargetName(&o)
+	// 出发地
+	fromName := ""
+	if city := h.cityOfOrder(&o, uid); city != nil {
+		fromName = city.Name + "(" + strconv.Itoa(city.X) + "," + strconv.Itoa(city.Y) + ")"
+	}
+	// 携带资源
+	resViews := []gin.H{}
+	if res := h.parseResMap(o.Resources); len(res) > 0 {
+		for _, k := range []string{"gold", "food", "steel", "oil", "rare"} {
+			if v, ok := res[k]; ok && v > 0 {
+				resViews = append(resViews, gin.H{"key": k, "name": ezfyResLabel(k), "count": v})
+			}
+		}
+	}
 	// 关联战报
 	var rep model.EzfyReport
 	hasReport := h.DB.Where("user_id = ? AND order_id = ?", uid, o.ID).Order("id DESC").First(&rep).Error == nil
 	resp.OK(c, gin.H{
 		"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
+		"target_type": o.TargetType, "target_name": toName, "from_name": fromName,
 		"target_x": o.TargetX, "target_y": o.TargetY, "status": o.Status,
-		"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
-		"troops": troopViews, "oil_used": o.OilUsed, "officer": o.Officer,
+		"status_name": ezfyOrderStatusName(o.Status),
+		"start_time":  o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
+		"start_text": ezfyFmtTime(o.StartTime), "arrive_text": ezfyFmtTime(o.ArriveTime),
+		"return_text": ezfyFmtTime(o.ReturnTime),
+		"troops":      troopViews, "oil_used": o.OilUsed, "officer": o.Officer,
+		"resources": resViews,
 		"report_id": func() int64 {
 			if hasReport {
 				return int64(rep.ID)
@@ -389,4 +410,70 @@ func (h *EzfyHandler) OrderView(c *gin.Context) {
 			return 0
 		}(),
 	})
+}
+
+// ezfyResLabel 资源 key → 中文名
+func ezfyResLabel(k string) string {
+	switch k {
+	case "gold":
+		return "黄金"
+	case "food":
+		return "粮食"
+	case "steel":
+		return "钢铁"
+	case "oil":
+		return "石油"
+	default:
+		return "稀矿"
+	}
+}
+
+// ezfyFmtTime 毫秒时间戳 → yyyy-MM-dd HH:mm:ss
+func ezfyFmtTime(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return time.UnixMilli(ms).Format("2006-01-02 15:04:05")
+}
+
+// ezfyOrderStatusName 命令状态中文
+func ezfyOrderStatusName(s int) string {
+	switch s {
+	case 0:
+		return "行军中"
+	case 1:
+		return "驻守中"
+	case 2:
+		return "返航中"
+	case 3:
+		return "已完成"
+	case 4:
+		return "已终止"
+	default:
+		return "未知"
+	}
+}
+
+// ezfyTargetName 命令目的地名称(城市名 / 野地N级 / 寇城N级 / 海野N级)
+func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
+	switch o.TargetType {
+	case 1, 2:
+		level := ezfyWildlandLevel(o.TargetX, o.TargetY)
+		name := "野地"
+		if o.TargetType == 2 {
+			level = ezfyKouLevel(o.TargetX, o.TargetY)
+			name = "寇城"
+		} else if ezfyTerrain(o.TargetX, o.TargetY) == 8 {
+			name = "海野"
+		}
+		return name + strconv.Itoa(level) + "级"
+	case 3:
+		var c model.EzfyCity
+		if err := h.DB.First(&c, o.TargetId).Error; err == nil {
+			return c.Name
+		}
+		return "城市"
+	default:
+		return "未知"
+	}
 }

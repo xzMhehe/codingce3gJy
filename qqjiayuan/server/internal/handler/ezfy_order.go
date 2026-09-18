@@ -1086,6 +1086,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if order.TargetType == 3 && target != nil {
 		targetProtected = h.hasCityEffect(target.ID, 2)
 	}
+	wareNote := ""
 
 	if win {
 		if targetProtected && order.TargetType == 3 {
@@ -1109,6 +1110,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			for i := 0; i < 5; i++ {
 				loot[i] = defRes[i] * int64(lootRate) / 100
 				totalLoot += loot[i]
+			}
+			// 仓库保护: 目标仓库等级决定各项资源保护额度, 保护额度内的资源不可掠夺
+			if order.OrderType == 2 || order.OrderType == 3 {
+				prot, note := h.lootAfterWareProtect(target,
+					[4]int64{target.Food, target.Steel, target.Oil, target.Rare},
+					[4]int64{loot[0], loot[1], loot[2], loot[3]})
+				loot[0], loot[1], loot[2], loot[3] = prot[0], prot[1], prot[2], prot[3]
+				wareNote = note
 			}
 			if totalLoot > carry && carry > 0 {
 				scale := float64(carry) / float64(totalLoot)
@@ -1299,8 +1308,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
 				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
 			h.addReport(target.UserID, 2, "被掠夺报告: "+city.Name,
-				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-5 民怨+5\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses)),
+				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-5 民怨+5\n%s\n%s",
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses), wareNote),
 				detail)
 		}
 		// 掠夺资源入账
@@ -1366,6 +1375,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
 		order.Status = 2
 		order.ReturnTime = now + travel
+		if wareNote != "" {
+			report += "\n" + wareNote
+		}
 		report += fmt.Sprintf("\n战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
 		if repairedTotal > 0 {
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)

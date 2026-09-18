@@ -191,6 +191,13 @@ type EzfyCity struct {
 	RareCap   int64  `json:"rare_cap"`
 	LastTime  int64  `json:"last_time"` // 上次资源结算时间戳(ms)
 
+	// 仓库保护配比(4 项资源的保护额度占比, 合计 ≤ 100; 默认各 25)
+	// 每项保护额度 = 仓库等级对应保护总量 × 该项占比 / 100
+	WareFood  int `gorm:"default:25" json:"ware_food"`
+	WareSteel int `gorm:"default:25" json:"ware_steel"`
+	WareOil   int `gorm:"default:25" json:"ware_oil"`
+	WareRare  int `gorm:"default:25" json:"ware_rare"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
