@@ -298,6 +298,63 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 	h.fail(c, h.trainTroop(city, req.TroopId, req.Count, req.Split))
 }
 
+// ezfySpeedGoldPerSec 训练一键加速收费: 每剩余 1 秒 10 黄金
+const ezfySpeedGoldPerSec = 10
+
+// SpeedTrainAll POST /games/ezfy/troops/speed-all —— 训练一键加速
+// all_city=true 时对所有城市生效(复刻 militaryIndex.html 底部的两个按钮)
+func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId  int64 `json:"city_id"`
+		AllCity bool  `json:"all_city"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	h.cfgs()
+	now := time.Now().UnixMilli()
+
+	targets := []model.EzfyCity{}
+	if req.AllCity {
+		h.DB.Where("user_id = ?", uid).Find(&targets)
+	} else {
+		targets = append(targets, *h.bodyCity(uid, req.CityId))
+	}
+	if len(targets) == 0 {
+		resp.ParamError(c, "没有可加速的城市")
+		return
+	}
+	ids := []int64{}
+	for _, t := range targets {
+		ids = append(ids, int64(t.ID))
+	}
+	var queues []model.EzfyTrainQueue
+	h.DB.Where("city_id IN ? AND status = 0", ids).Find(&queues)
+	if len(queues) == 0 {
+		resp.ParamError(c, "没有训练中的队列")
+		return
+	}
+	var totalSec int64
+	for _, q := range queues {
+		if s := (q.EndTime - now) / 1000; s > 0 {
+			totalSec += s
+		}
+	}
+	cost := totalSec * ezfySpeedGoldPerSec
+	main := h.getOrCreateCity(uid)
+	if main.Gold < cost {
+		resp.ParamError(c, fmt.Sprintf("黄金不足: 一键加速需%d黄金(剩余%d秒), 当前只有%d", cost, totalSec, main.Gold))
+		return
+	}
+	main.Gold -= cost
+	h.saveCityRes(&main)
+	h.DB.Model(&model.EzfyTrainQueue{}).Where("city_id IN ? AND status = 0", ids).Update("end_time", now)
+	scope := "本城"
+	if req.AllCity {
+		scope = "所有城市"
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("%s训练一键加速完成: %d 个队列, 消耗%d黄金", scope, len(queues), cost)})
+}
+
 func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {

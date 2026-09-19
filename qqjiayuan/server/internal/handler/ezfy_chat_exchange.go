@@ -53,10 +53,24 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 	case ezfyChanCorps:
 		var list []model.EzfyCorpsChat
 		h.DB.Where("corps_id = ?", myCorps.ID).Order("id DESC").Limit(50).Find(&list)
+		ids := []uint{}
+		for _, ch := range list {
+			if ch.UserId > 0 {
+				ids = append(ids, ch.UserId)
+			}
+		}
+		nick := h.liveNicknames(ids)
 		views := make([]gin.H, 0, len(list))
 		for i := len(list) - 1; i >= 0; i-- {
 			ch := list[i]
-			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": ch.UserName,
+			name, color := ch.UserName, ""
+			if v, ok := nick[ch.UserId]; ok {
+				if v[0] != "" {
+					name = v[0]
+				}
+				color = v[1]
+			}
+			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": name, "color": color,
 				"content": ch.Content, "created_at": ch.CreatedAt, "talk_type": 1, "mine": ch.UserId == uid})
 		}
 		out["chats"] = views
@@ -83,10 +97,25 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 	default:
 		var chats []model.EzfyChat
 		h.DB.Where("channel = ?", ezfyChanPublic).Order("id DESC").Limit(50).Find(&chats)
+		// 实时昵称/颜色(玩家改了个性昵称, 历史消息也跟着变)
+		ids := []uint{}
+		for _, ch := range chats {
+			if ch.UserId > 0 {
+				ids = append(ids, ch.UserId)
+			}
+		}
+		nick := h.liveNicknames(ids)
 		views := make([]gin.H, 0, len(chats))
 		for i := len(chats) - 1; i >= 0; i-- {
 			ch := chats[i]
-			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": ch.UserName,
+			name, color := ch.UserName, ""
+			if v, ok := nick[ch.UserId]; ok {
+				if v[0] != "" {
+					name = v[0]
+				}
+				color = v[1]
+			}
+			views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": name, "color": color,
 				"content": ch.Content, "created_at": ch.CreatedAt, "talk_type": ch.TalkType,
 				"mine": ch.UserId == uid})
 		}
@@ -163,6 +192,21 @@ func (h *EzfyHandler) chatCooldownLeft(uid uint) int64 {
 	return ezfyChatCooldownSec - elapsed
 }
 
+// liveNicknames 批量取玩家**当前**的昵称与昵称颜色
+// (聊天表里存的是发消息时的快照, 玩家改了个性昵称后要能实时反映)
+func (h *EzfyHandler) liveNicknames(ids []uint) map[uint][2]string {
+	out := map[uint][2]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	var us []model.User
+	h.DB.Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
+	for _, u := range us {
+		out[u.ID] = [2]string{u.Nickname, u.Color}
+	}
+	return out
+}
+
 // myCorpsOf 我所在的军团
 func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 	var mb model.EzfyCorpsMember
@@ -178,11 +222,16 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 
 // HomeChat GET /games/ezfy/chat/home —— 首页「世界聊天」预览
 //
-// 汇总三个来源并按时间倒序, 每条带来源标识(用户要求: 要能看出是 个人/同盟/系统):
+// 汇总四个来源并按时间倒序, 每条带频道标识(用户要求):
 //
-//	系统 —— talk_type = 0 的系统消息
-//	同盟 —— 我所在军团的聊天
-//	个人 —— 公共频道的玩家发言
+//	[世界] —— 公共频道的玩家发言
+//	[军团] —— 我所在军团的聊天
+//	[私聊] —— 发给我的私信
+//	[系统] —— talk_type = 0 的系统消息
+//
+// ★ 昵称/颜色一律**实时**从 users 表取(不是发消息时存的快照),
+//
+//	这样玩家改了个性昵称、换了昵称颜色, 聊天里也会跟着变。
 func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -190,30 +239,91 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 		key     string
 		tag     string
 		user    string
+		color   string
 		content string
 		at      time.Time
 	}
 	rows := []row{}
 
+	// 实时昵称/颜色(用户 id -> {昵称, 颜色})
+	nickOf := func(ids []uint) map[uint][2]string {
+		out := map[uint][2]string{}
+		if len(ids) == 0 {
+			return out
+		}
+		var us []model.User
+		h.DB.Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
+		for _, u := range us {
+			out[u.ID] = [2]string{u.Nickname, u.Color}
+		}
+		return out
+	}
+	ids := []uint{}
+	push := func(id uint) { ids = append(ids, id) }
+
 	// 系统
 	var sys []model.EzfyChat
 	h.DB.Where("talk_type = 0").Order("id DESC").Limit(10).Find(&sys)
 	for _, m := range sys {
-		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, m.Content, m.CreatedAt})
+		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, "", m.Content, m.CreatedAt})
 	}
-	// 同盟(我的军团)
+	// 军团(我的军团)
 	if cp := h.myCorpsOf(uid); cp != nil {
 		var cs []model.EzfyCorpsChat
 		h.DB.Where("corps_id = ?", cp.ID).Order("id DESC").Limit(10).Find(&cs)
 		for _, m := range cs {
-			rows = append(rows, row{"corps-" + strconv.Itoa(int(m.ID)), "同盟", m.UserName, m.Content, m.CreatedAt})
+			push(m.UserId)
+			rows = append(rows, row{"corps-" + strconv.Itoa(int(m.ID)), "军团", m.UserName, "", m.Content, m.CreatedAt})
 		}
 	}
-	// 个人(公共频道)
+	// 私聊(发给我的)
+	var pms []model.PrivateMessage
+	h.DB.Where("receiver_id = ?", uid).Order("id DESC").Limit(10).Find(&pms)
+	for _, m := range pms {
+		push(m.SenderID)
+		rows = append(rows, row{"pm-" + strconv.Itoa(int(m.ID)), "私聊", "", "", m.Content, m.CreatedAt})
+	}
+	// 世界(公共频道)
 	var pub []model.EzfyChat
-	h.DB.Where("channel = ?", ezfyChanPublic).Order("id DESC").Limit(10).Find(&pub)
+	h.DB.Where("channel = ? AND talk_type = 1", ezfyChanPublic).Order("id DESC").Limit(10).Find(&pub)
 	for _, m := range pub {
-		rows = append(rows, row{"pub-" + strconv.Itoa(int(m.ID)), "个人", m.UserName, m.Content, m.CreatedAt})
+		push(m.UserId)
+		rows = append(rows, row{"pub-" + strconv.Itoa(int(m.ID)), "世界", m.UserName, "", m.Content, m.CreatedAt})
+	}
+
+	// 用实时昵称/颜色覆盖快照
+	nick := nickOf(ids)
+	fix := func(r *row, uid uint) {
+		if uid == 0 {
+			return
+		}
+		if v, ok := nick[uid]; ok {
+			if v[0] != "" {
+				r.user = v[0]
+			}
+			r.color = v[1]
+		}
+	}
+	// 回填 uid 到 row(简单起见按 key 前缀再查一次)
+	uidOf := map[string]uint{}
+	for _, m := range sys {
+		uidOf["sys-"+strconv.Itoa(int(m.ID))] = 0
+	}
+	if cp := h.myCorpsOf(uid); cp != nil {
+		var cs []model.EzfyCorpsChat
+		h.DB.Where("corps_id = ?", cp.ID).Order("id DESC").Limit(10).Find(&cs)
+		for _, m := range cs {
+			uidOf["corps-"+strconv.Itoa(int(m.ID))] = m.UserId
+		}
+	}
+	for _, m := range pms {
+		uidOf["pm-"+strconv.Itoa(int(m.ID))] = m.SenderID
+	}
+	for _, m := range pub {
+		uidOf["pub-"+strconv.Itoa(int(m.ID))] = m.UserId
+	}
+	for i := range rows {
+		fix(&rows[i], uidOf[rows[i].key])
 	}
 
 	sort.Slice(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
@@ -223,7 +333,7 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	views := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
 		views = append(views, gin.H{"key": r.key, "tag": r.tag, "user_name": r.user,
-			"content": r.content, "created_at": r.at})
+			"color": r.color, "content": r.content, "created_at": r.at})
 	}
 	var online int64
 	h.DB.Model(&model.EzfyProfile{}).Count(&online)

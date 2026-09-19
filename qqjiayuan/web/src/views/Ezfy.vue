@@ -87,11 +87,11 @@
 
         <div class="old-line">
           <a href="javascript:;" @click="go('buildm')">军事区</a>&nbsp;
-          <a href="javascript:;" @click="go('buildm')">建造</a>
+          <a href="javascript:;" @click="openBuildPre('m')">建造</a>
         </div>
         <div class="old-line">
           <a href="javascript:;" @click="go('builds')">资源区</a>&nbsp;
-          <a href="javascript:;" @click="go('builds')">建造</a>
+          <a href="javascript:;" @click="openBuildPre('s')">建造</a>
         </div>
         <div class="old-line">
           训练军队
@@ -111,8 +111,11 @@
           <a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
         <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">进入</a></div>
+        <!-- 复刻: [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
-          [<span class="orange">{{ ch.tag }}</span>][{{ ch.user_name }}]{{ ch.content }}
+          [<span class="orange">{{ ch.tag }}</span>]
+          <span v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
+                :style="nickColorAt(ch.color, ci)">{{ c }}</span>：{{ ch.content }}
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
@@ -143,8 +146,8 @@
         <div class="panel">
           <div class="panel-title">聊天频道</div>
           <div class="acade-tab">
-            <a href="javascript:;" :class="{ on: chatChannel === 1 }" @click="switchChannel(1)">个人</a>|
-            <a v-if="chatHasCorps" href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">同盟</a>|
+            <a href="javascript:;" :class="{ on: chatChannel === 1 }" @click="switchChannel(1)">世界</a>|
+            <a v-if="chatHasCorps" href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">军团</a>|
             <a href="javascript:;" :class="{ on: chatChannel === 4 }" @click="switchChannel(4)">系统</a>|
             <a href="javascript:;" @click="go('mail')">私聊</a>
           </div>
@@ -160,9 +163,9 @@
             <div class="old-line gray" v-if="!chatNotices.length">(暂无系统公告)</div>
             <div class="panel-title">系统消息</div>
             <div class="old-line" v-for="ch in worldChats" :key="'cs' + ch.id">
-              <span class="orange">[系统]</span>
+              [<span class="orange">系统</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
-              {{ ch.user_name }}说: {{ ch.content }}
+              {{ ch.user_name }}：{{ ch.content }}
             </div>
             <div class="old-line gray" v-if="!worldChats.length">(暂无系统消息)</div>
           </template>
@@ -170,13 +173,15 @@
           <!-- 公共 / 军团频道 -->
           <template v-else>
             <div class="panel-title">
-              {{ chatChannel === 2 ? '同盟聊天(' + chatCorpsName + ')' : '世界聊天' }}({{ chatPlayers }}人)
+              {{ chatChannel === 2 ? '军团聊天(' + chatCorpsName + ')' : '世界聊天' }}({{ chatPlayers }}人)
             </div>
             <div class="old-line gray">每次发言消耗一个喇叭(最大25个字)</div>
             <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
-              [<span class="orange">{{ chatChannel === 2 ? '同盟' : '个人' }}</span>]
+              [<span class="orange">{{ chatChannel === 2 ? '军团' : '世界' }}</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
-              <a href="javascript:;" @click="openUser(ch.user_id)">{{ ch.user_name }}</a> 说: {{ ch.content }}
+              <a href="javascript:;" @click="openUser(ch.user_id)"><span
+                 v-for="(c, ci) in nickChars(ch.user_name)" :key="'ncc' + ci"
+                 :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
             </div>
             <div class="old-line" v-if="!worldChats.length">(暂无消息, 快来说点什么吧)</div>
           </template>
@@ -398,44 +403,85 @@
       </template>
 
       <!-- ============ 建筑区(buildm/builds) ============ -->
+      <!-- ============ 军事区 / 资源区(buildm / builds) 复刻 building/militaryIndex.html ============ -->
       <template v-else-if="cur === 'buildm' || cur === 'builds'">
         <div class="panel">
-          <div class="panel-title">{{ cur === 'buildm' ? '军事区' : '资源区' }}
-            <span class="gray">({{ areaCount }}/{{ areaCap }})</span></div>
           <div class="old-line">
-            <a href="javascript:;" @click="go(cur === 'buildm' ? 'builds' : 'buildm')">[{{ cur === 'buildm' ? '资源区' : '军事区' }}]</a>
-            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+            {{ city.name }}({{ city.x }},{{ city.y }})
+            <a href="javascript:;" @click="go('cities')">切换城市</a>
           </div>
+          <div class="old-line">
+            {{ cur === 'buildm' ? '军事区' : '资源区' }}.
+            <a href="javascript:;" @click="go(cur === 'buildm' ? 'builds' : 'buildm')">{{ cur === 'buildm' ? '资源区' : '军事区' }}</a>
+          </div>
+          <br/>
           <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
           <div class="old-line">
             数量/最大：{{ areaCount }}/{{ areaCap }}
+            <a href="javascript:;" @click="openBuildPre(cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
-          <div class="old-line" v-for="b in zoneBuildings" :key="b.id ? ('zb-b' + b.id) : ('zb-p' + b.building_id)">
-            <template v-if="b.id">
-              <b>{{ b.name }}</b>
-              <a v-if="bEntry(b.building_id)" href="javascript:;" @click="goEntry(b.building_id)">[{{ bEntry(b.building_id).label }}]</a>
-              ({{ b.level }}级)
-              <span v-if="b.status === 0">{{ b.effect }}</span>
-              <span v-else class="orange">施工中 {{ remain(b.end_time) }}
-                <a href="javascript:;" @click="doSpeedBuilding()">[加速]</a></span>
-              <br/>
-              <span v-if="b.status === 0 && b.level > 0 && b.level < b.max_level">
-                <a href="javascript:;" @click="doUpgrade(b)">[升级]</a>
-                <a href="javascript:;" @click="doMaxLevel(b)">[一键{{ b.max_level - 1 }}级]</a>
-              </span>
-              <span v-if="b.status === 0 && b.level === 0"><a href="javascript:;" @click="doUpgrade(b)">[建成中待完成]</a></span>
-              <span v-if="b.can_delete === 1 && b.status === 0 && b.level > 0"><a href="javascript:;" @click="doDeleteBuilding(b)">[拆除]</a></span>
-              <span v-if="b.next_effect" class="gray">下一级:{{ b.next_effect }}</span>
+          <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->
+          <div class="old-line" v-for="b in zoneBuilt" :key="'zb' + b.id">
+            <span v-if="bEntry(b.building_id)">
+              <a href="javascript:;" @click="goEntry(b.building_id)">{{ b.name }}</a>
+            </span>
+            <span v-else>{{ b.name }}</span>
+            ({{ b.level }}级)
+            <template v-if="b.status !== 0">
+              <span class="orange">施工中 {{ remain(b.end_time) }}</span>
+              <a href="javascript:;" @click="doSpeedBuilding()">加速</a>
+            </template>
+            <template v-else-if="b.level > 0 && b.level < b.max_level">
+              <a href="javascript:;" @click="doUpgrade(b)">升级</a>
+              <a href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
+              <a v-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
             </template>
             <template v-else>
-              <b>{{ b.name }}</b>(可建造<template v-if="b.built_count">, 已建{{ b.built_count }}个</template>)<br/>
-              {{ b.des }}<br/>
-              <a href="javascript:;" @click="doBuild(b)">[建造]</a>
-              <span class="gray">造价: 粮{{ b.cost.food }} 钢{{ b.cost.steel }} 油{{ b.cost.oil }} 稀{{ b.cost.rare }} 金{{ b.cost.gold }} 需{{ Math.ceil(b.time / 60) }}分钟</span>
+              <a v-if="b.level === 0" href="javascript:;" @click="doUpgrade(b)">建成中待完成</a>
+              <a v-else-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
             </template>
-            <br/>
+          </div>
+          <div class="old-line gray" v-if="!zoneBuilt.length">(本区还没有建筑, 点上面的「建造」)</div>
+          <br/>
+          <div class="old-line">
+            <a href="javascript:;" @click="doSpeedTrainAll">[训练一键加速]</a>|
+            <a href="javascript:;" @click="doSpeedTrainAllCity">[所有城市训练一键加速]</a>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 建造页(buildpre) 复刻 building/preCreateMilitary.html / preCreateSource.html ============ -->
+      <template v-else-if="cur === 'buildpre'">
+        <div class="panel">
+          <div class="old-line">
+            <a href="javascript:;" @click="go(buildZone === 'm' ? 'buildm' : 'builds')">
+              {{ buildZone === 'm' ? '军事区' : '资源区' }}</a> 建造
+          </div>
+          <div class="old-line">可建造的建筑：</div>
+          <div class="old-line" v-for="b in zonePool" :key="'bp' + b.building_id">
+            {{ b.name }}
+            <a href="javascript:;" @click="openBuildDetail(b)">详情</a>
+            <a href="javascript:;" @click="doBuild(b)">建造</a>
+          </div>
+          <div class="old-line gray" v-if="!zonePool.length">(本区暂无可建造的建筑)</div>
+
+          <!-- 选中建筑后展开: 说明 + 造价 -->
+          <template v-if="buildSel">
+            <hr/>
+            <div class="panel-title">{{ buildSel.name }}</div>
+            <div class="old-line">{{ buildSel.des }}</div>
+            <div class="old-line gray">
+              造价: 粮{{ buildSel.cost.food }} 钢{{ buildSel.cost.steel }} 油{{ buildSel.cost.oil }}
+              稀{{ buildSel.cost.rare }} 金{{ buildSel.cost.gold }}
+              需{{ Math.ceil(buildSel.time / 60) }}分钟
+            </div>
+            <div class="old-line">
+              <button @click="doBuild(buildSel)">[建造]</button>
+              <a href="javascript:;" @click="buildSel = null">[收起]</a>
+            </div>
+          </template>
+          <a href="javascript:;" @click="go(buildZone === 'm' ? 'buildm' : 'builds')">[返回{{ buildZone === 'm' ? '军事区' : '资源区' }}]</a>
         </div>
       </template>
 
@@ -1236,6 +1282,13 @@
       <!-- ============ 排行(rank) ============ -->
       <template v-else-if="cur === 'rank'">
         <div class="panel">
+          <!-- 军衔晋升表放最上面, 三个榜单在下面(用户要求) -->
+          <div class="panel-title">军衔晋升表</div>
+          <div class="old-line" v-for="(r, i) in rankData.ranks" :key="'rk' + i">
+            {{ r.name }}({{ r.post }}) 需声望{{ r.need }}
+            <span v-if="r.name === rankName" class="red">[当前]</span>
+          </div>
+          <hr/>
           <div class="panel-title">军衔声望榜</div>
           <table>
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
@@ -1257,10 +1310,6 @@
               <td>{{ r.rank }}</td><td>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
             </tr>
           </table>
-          <div class="panel-title">军衔晋升表</div>
-          <div class="old-line" v-for="(r, i) in rankData.ranks" :key="'rk' + i">
-            {{ r.name }}({{ r.post }}) 需声望{{ r.need }}
-          </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1938,6 +1987,8 @@ export default {
       welfare: { rewards: [], gifts: {} },
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       orders: [],
+      buildZone: 'm',
+      buildSel: null,
       curReport: null,
       reportTab: 1,
       reportWord: '',
@@ -2042,13 +2093,31 @@ export default {
     queueNames () {
       return this.queues
     },
+    // 当前建筑分区: 'm' 军事区 / 's' 资源区
+    // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1
+    zone () {
+      if (this.cur === 'builds') return 's'
+      if (this.cur === 'buildpre') return this.buildZone
+      return 'm'
+    },
     zoneBuildings () {
-      // 复刻原版 BuildingController：军事区 = type 2/3/4，资源区 = type 1
-      const isM = this.cur === 'buildm'
+      const isM = this.zone === 'm'
       const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
       const built = this.buildings.filter(b => inZone(b.type))
       const pool = (this.buildingPool || []).filter(p => inZone(p.type))
       return built.concat(pool)
+    },
+    // 已建建筑(军事区/资源区主页面只列这些)
+    zoneBuilt () {
+      const isM = this.zone === 'm'
+      const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
+      return this.buildings.filter(b => inZone(b.type))
+    },
+    // 可建造的建筑(「建造」按钮进去的那一页)
+    zonePool () {
+      const isM = this.zone === 'm'
+      const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
+      return (this.buildingPool || []).filter(p => inZone(p.type))
     },
     buildQueueCount () {
       return this.buildings.filter(b => b.status !== 0).length
@@ -2563,6 +2632,33 @@ export default {
       })
     },
     // ---- 建筑操作 ----
+    // ---- 建造页(复刻 preCreateMilitary / preCreateSource) ----
+    openBuildPre (zone) {
+      this.buildZone = zone || (this.cur === 'builds' ? 's' : 'm')
+      this.buildSel = null
+      this.cur = 'buildpre'
+    },
+    openBuildDetail (b) {
+      this.buildSel = b
+    },
+    // 训练一键加速(本城 / 所有城市)
+    doSpeedTrainAll () {
+      api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.load()
+        } else alert(r.msg)
+      })
+    },
+    doSpeedTrainAllCity () {
+      if (!window.confirm('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗黄金)')) return
+      api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.load()
+        } else alert(r.msg)
+      })
+    },
     doBuild (b) {
       api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
         this.alert(r)
@@ -2914,6 +3010,16 @@ export default {
       }, 1000)
     },
     // 聊天/好友里的玩家名 → 家园个人主页
+    // 昵称逐字颜色: color 可能是逗号分隔的多色序列(如 "#f00,#0f0")
+    nickChars (name) {
+      return [...String(name || '')]
+    },
+    nickColorAt (color, i) {
+      if (!color) return {}
+      const cs = String(color).split(',').map(x => x.trim()).filter(Boolean)
+      if (!cs.length) return {}
+      return { color: cs[i % cs.length] }
+    },
     openUser (uid) {
       if (!uid) return
       this.$router.push('/user/' + uid)

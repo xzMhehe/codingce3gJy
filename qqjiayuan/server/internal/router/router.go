@@ -548,6 +548,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/building/speed", ezfyH.SpeedBuilding)
 				ezfyG.GET("/troops", ezfyH.Troops)
 				ezfyG.POST("/troops/train", ezfyH.Train)
+				ezfyG.POST("/troops/speed-all", ezfyH.SpeedTrainAll)
 				ezfyG.POST("/troops/recover", ezfyH.RecoverWounded)
 				ezfyG.GET("/techs", ezfyH.Techs)
 				ezfyG.POST("/techs/research", ezfyH.Research)
