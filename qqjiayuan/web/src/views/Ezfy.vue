@@ -516,52 +516,59 @@
           </div>
           <div class="old-line">人口:{{ troopsData.pop }} 空闲:{{ freePop }} | 围墙:{{ troopsData.wall_level }}级</div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
-            <b>{{ t.name }}</b>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
+            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
             消耗: 粮{{ t.cost.food }} 钢{{ t.cost.steel }} 油{{ t.cost.oil }} 稀{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
             前提: {{ t.require || '无' }}<template v-if="t.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template>
-            <a href="javascript:;" @click="openTrain(t)">[训练]</a><br/>
+            <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
-          <template v-if="trainSel">
-            <div class="panel-title">训练 {{ trainSel.name }}</div>
-            <div class="old-line">
-              数量: <input v-model="trainCount" type="number" min="1" style="width:80px"/>
-              <label><input type="checkbox" v-model="trainSplit"/>分批(多军工厂同时训练)</label><br/>
-              预计耗时: {{ Math.ceil(trainSel.train_time * (trainCount || 0) / (trainSplit ? Math.max(1, factoryFree) : 1) / 60) }}分钟<br/>
-              <button @click="doTrain()">开始训练</button>
-            </div>
-          </template>
           <div class="panel-title">训练队列({{ queues.length }})</div>
           <div class="old-line" v-for="q in queues" :key="'q' + q.id">
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
           <a href="javascript:;" @click="go('defence')">[去建城防]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
-      <!-- ============ 建防(defence) ============ -->
+      <!-- ============ 城防(defence) 复刻 city/troopDefence.html ============ -->
       <template v-else-if="cur === 'defence'">
         <div class="panel">
-          <div class="panel-title">城防设施(围墙{{ troopsData.wall_level }}级, 城防空间受限)</div>
-          <div class="old-line" v-for="t in defenceCfgs" :key="'dt' + t.id">
-            <b>{{ t.name }}</b>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 射程{{ t.attack_range }}<br/>
-            消耗: 粮{{ t.cost.food }} 钢{{ t.cost.steel }} 油{{ t.cost.oil }} 稀{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
-            前提: {{ t.require || '无' }}
-            <a href="javascript:;" @click="openTrain(t)">[建造]</a><br/>
+          <div class="old-line">
+            围墙：{{ troopsData.wall_level }}级 城防空间：({{ troopsData.defence_space_used }}/{{ troopsData.defence_space }})
           </div>
-          <template v-if="trainSel">
-            <div class="panel-title">建造 {{ trainSel.name }}</div>
-            <div class="old-line">
-              数量: <input v-model="trainCount" type="number" min="1" style="width:80px"/><br/>
-              <button @click="doTrain()">开始建造</button>
-            </div>
-          </template>
-          <div class="panel-title">现有城防</div>
-          <div class="old-line" v-for="t in defenceTroops" :key="'dft' + t.troop_id">
-            {{ t.name }}×{{ t.count }}
+          <div class="old-line">正在建造:</div>
+          <div class="old-line" v-for="q in defenceQueues" :key="'dq' + q.id">
+            {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
           </div>
-          <div class="old-line" v-if="!defenceTroops.length">(尚无城防设施)</div>
+          <div class="old-line gray" v-if="!defenceQueues.length">(无)</div>
+          <table>
+            <tr v-for="t in defenceCfgs" :key="'dt' + t.id">
+              <td><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>:</td>
+              <td>{{ troopCount(t.id) }}</td>
+              <td>
+                <a href="javascript:;" @click="openTrainPre(t, 'defence')">[建造]</a>
+                <a href="javascript:;" @click="doDismiss(t)">[拆除]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray">城防设施占用「城防空间」(围墙容量)，不占用人口。</div>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -573,7 +580,8 @@
           <table>
             <tr><th>兵种</th><th>类型</th><th>数量</th></tr>
             <tr v-for="t in troopsData.troops" :key="'tv' + t.troop_id">
-              <td>{{ t.name }}</td><td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
+              <td><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
+              <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
             </tr>
           </table>
           <div class="old-line" v-if="!troopsData.troops.length">(城内无部队)</div>
@@ -584,6 +592,14 @@
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
           <br/>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
           <a href="javascript:;" @click="go('troop')">[造兵]</a>
           <a href="javascript:;" @click="go('defence')">[建防]</a>
           <a href="javascript:;" @click="go('hq')">[司令部]</a>
@@ -764,25 +780,161 @@
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
           </div>
           <div class="old-line gray" v-if="!queues.length">(无)</div>
-          <hr/>
           <div class="old-line" v-for="t in trainCfgs" :key="'ft' + t.id">
-            <a href="javascript:;" @click="openTrain(t)">{{ t.name }}</a> : {{ troopCount(t.id) }}
-            <a href="javascript:;" @click="openTrain(t)">[训练]</a>
+            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a> : {{ troopCount(t.id) }}
+            <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a>
           </div>
-          <template v-if="trainSel">
-            <div class="panel-title">训练 {{ trainSel.name }}</div>
-            <div class="old-line">
-              数量: <input v-model="trainCount" type="number" min="1" style="width:80px"/>
-              <label><input type="checkbox" v-model="trainSplit"/>分批(多军工厂同时训练)</label><br/>
-              预计耗时: {{ Math.ceil(trainSel.train_time * (trainCount || 0) / (trainSplit ? Math.max(1, factoryFree) : 1) / 60) }}分钟<br/>
-              <button @click="doTrain()">开始训练</button>
-            </div>
-          </template>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
           <div class="old-line">
             <a href="javascript:;" @click="go('troops')">[城内军队]</a>
             <a href="javascript:;" @click="go('buildm')">[返回军事区]</a>
             <a href="javascript:;" @click="go('home')">[返回首页]</a>
           </div>
+        </div>
+      </template>
+
+      <!-- ============ 兵种详情(troopview) 复刻 city/cityTroopView.html ============ -->
+      <template v-else-if="cur === 'troopview'">
+        <div class="panel" v-if="troopView">
+          <div class="old-line">
+            {{ troopView.name }}:
+            <span class="gray">(现有 {{ troopCount(troopView.id) }})</span>
+          </div>
+          <div class="old-line">训练/建造需要：</div>
+          <table>
+            <tr>
+              <td>粮食：</td><td>{{ troopView.cost.food }}</td>
+              <td>钢铁：</td><td>{{ troopView.cost.steel }}</td>
+            </tr>
+            <tr>
+              <td>石油：</td><td>{{ troopView.cost.oil }}</td>
+              <td>稀矿：</td><td>{{ troopView.cost.rare }}</td>
+            </tr>
+            <tr>
+              <td>耗时：</td><td>{{ durText(troopView.train_time) }}</td>
+              <td>油耗：</td><td>{{ troopView.oil_keep }}</td>
+            </tr>
+            <tr>
+              <td>耗粮：</td><td>{{ troopView.food_keep }}</td>
+              <td>人口：</td><td>{{ troopView.pop }}</td>
+            </tr>
+            <tr>
+              <td>生命：</td><td>{{ troopView.health }}</td>
+              <td>对地：</td><td>{{ troopView.atk_ground }}</td>
+            </tr>
+            <tr>
+              <td>对空：</td><td>{{ troopView.atk_air }}</td>
+              <td>对海：</td><td>{{ troopView.atk_sea }}</td>
+            </tr>
+            <tr>
+              <td>对防：</td><td>{{ troopView.atk_def }}</td>
+              <td>速度：</td><td>{{ troopView.speed }}</td>
+            </tr>
+            <tr>
+              <td>军种：</td><td>{{ troopTypeName(troopView.type) }}</td>
+              <td>射程：</td><td>{{ troopView.attack_range }}</td>
+            </tr>
+            <tr>
+              <td>攻速：</td><td>{{ troopView.speed }}</td>
+              <td>负重：</td><td>{{ troopView.carry }}</td>
+            </tr>
+            <tr>
+              <td>防御：</td><td>{{ troopView.defence }}</td>
+              <td>修复率：</td><td>{{ troopView.repair_rate }}%</td>
+            </tr>
+          </table>
+          <div class="old-line">
+            {{ troopView.type === 4 ? '围墙' : '军工厂' }}: {{ troopView.type === 4 ? troopsData.wall_level : factoryTotal }}级
+            <template v-if="troopView.require"><br/>前提: {{ troopView.require }}</template>
+          </div>
+          <div class="old-line">
+            <a href="javascript:;" @click="openTrainPre(troopView, troopView.type === 4 ? 'defence' : 'troop')">
+              [{{ troopView.type === 4 ? '建造' : '训练' }}]
+            </a>
+          </div>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
+          <a href="javascript:;" @click="go(troopViewBack)">[返回]</a>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line">请选择兵种 <a href="javascript:;" @click="go('troops')">[城内军队]</a></div>
+        </div>
+      </template>
+
+      <!-- ============ 训练确认(trainpre) 复刻 city/createTroop.html / city/createDefence.html ============ -->
+      <template v-else-if="cur === 'trainpre'">
+        <div class="panel" v-if="trainSel">
+          <div class="old-line" v-if="trainMode === 'defence'">
+            【城防建造】城防空间:{{ troopsData.defence_space_used }}/{{ troopsData.defence_space }}
+          </div>
+          <div class="old-line" v-else>
+            <a href="javascript:;" @click="go('buildm')">军事区</a>
+            -&gt;军工厂({{ factoryTotal }}级)：
+          </div>
+          <div class="old-line">{{ trainSel.name }}{{ trainMode === 'defence' ? '建造' : '训练' }}需求：</div>
+          <div class="old-line">
+            粮食：{{ trainSel.cost.food }}<br/>
+            钢铁：{{ trainSel.cost.steel }}<br/>
+            石油：{{ trainSel.cost.oil }}<br/>
+            稀矿：{{ trainSel.cost.rare }}<br/>
+            {{ trainMode === 'defence' ? '城防空间' : '人口' }}：{{ trainSel.pop }}<br/>
+            <template v-if="trainMode !== 'defence'">吃粮：{{ trainSel.food_keep }}<br/></template>
+            时间：{{ durText(trainSel.train_time) }}<br/>
+            <template v-if="trainMode !== 'defence'">需要军工厂：{{ trainSel.need_factory }}级<br/></template>
+          </div>
+          <div class="old-line green" v-if="troopsData.train_discount > 0 && trainMode !== 'defence'">
+            节日活动·造兵打折：资源消耗 -{{ troopsData.train_discount }}%（上方为折后价）
+          </div>
+          <div class="old-line">
+            建造数量：
+            <input v-model="trainCount" type="number" min="1" :placeholder="'(1~' + maxTrainable + ')'" style="width:90px"/>
+            <span class="gray">(最多 {{ maxTrainable }})</span>
+          </div>
+          <div class="old-line red" v-if="maxTrainable <= 0">
+            当前无法{{ trainMode === 'defence' ? '建造' : '训练' }}：资源或{{ trainMode === 'defence' ? '城防空间' : '人口' }}不足
+            <template v-if="trainMode !== 'defence'">
+              <a href="javascript:;" @click="go('home')">[回首页召集人口]</a>
+            </template>
+            <template v-else>
+              <a href="javascript:;" @click="go('buildm')">[去军事区升级围墙]</a>
+            </template>
+          </div>
+          <div class="old-line">
+            <span>操作选项：</span>
+            <label><input type="radio" :value="true" v-model="trainSplit"/>[全部工厂]</label>
+            <label><input type="radio" :value="false" v-model="trainSplit"/>[仅此工厂]</label>
+          </div>
+          <div class="old-line">预计耗时：{{ trainEstimateText }}</div>
+          <div class="old-line">
+            <button @click="doTrainPre()">{{ trainMode === 'defence' ? '开始建造' : '开始训练' }}</button>
+          </div>
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" @click="go('builds')">资源</a>.
+            <a href="javascript:;" @click="go('acade')">军官</a>.
+            <a href="javascript:;" @click="go('troops')">军队</a>.
+            <a href="javascript:;" @click="go('techs')">科技</a>.
+            <a href="javascript:;" @click="go('defence')">城防</a>.
+            <a href="javascript:;" @click="go('info')">统帅</a>
+          </div>
+          <a href="javascript:;" @click="go(trainMode === 'defence' ? 'defence' : 'factory')">[返回]</a>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line">请先选择兵种 <a href="javascript:;" @click="go('troops')">[城内军队]</a></div>
         </div>
       </template>
 
@@ -1550,41 +1702,41 @@
         </div>
       </template>
 
-      <!-- ============ 联络中心(liaison) ============ -->
+      <!-- ============ 联络中心(liaison) 复刻 liaison/liaisonIndex.html ============ -->
       <template v-else-if="cur === 'liaison'">
         <div class="panel">
-          <div class="panel-title">联络中心({{ liaison.level }}级)</div>
-          <div class="old-line gray">
-            联络中心是盟友间互相联络的建筑。<br/>
-            1级可加入联盟, 2级可创建联盟(消耗{{ liaison.create_cost }}黄金);<br/>
-            每级多 1 支盟友驻军、多 {{ liaison.member_per_level }} 人联盟人数上限。
+          <div class="old-line">联络中心（{{ liaison.level }}级）</div>
+          <div class="old-line">联络中心是盟友间互相联络的建筑</div>
+          <div class="old-line">
+            1级联络中心可以 加入联盟，<br/>
+            2级联络中心可以 创建联盟<br/>
+            创建联盟需消耗{{ liaison.create_cost }}黄金（原版为 50 钻石）<br/>
+            每级联络中心可以多一支盟友驻军、多{{ liaison.member_per_level }}人联盟人数上限
           </div>
-          <template v-if="liaison.level < 1">
-            <div class="old-line red">尚未建造联络中心, 无法加入或创建联盟</div>
-            <div class="old-line"><a href="javascript:;" @click="go('buildm')">[前往军事区建造]</a></div>
-          </template>
+          <div class="old-line gray">使用同盟密令1个可以将联络中心升级至11级（原版道具，本项目未开放）</div>
+          <div class="old-line red" v-if="liaison.level < 1">
+            尚未建造联络中心, 无法加入或创建联盟
+            <a href="javascript:;" @click="go('buildm')">[前往军事区建造]</a>
+          </div>
 
-          <div class="panel-title">我的联盟</div>
+          <div class="old-line">我的联盟：</div>
           <template v-if="liaison.my_corps">
             <div class="old-line">
-              <b>{{ liaison.my_corps.name }}</b>
-              (成员{{ liaison.member_count }}/{{ liaison.member_cap }})<br/>
-              <span class="gray">{{ liaison.my_corps.notice || '暂无公告' }}</span>
-            </div>
-            <div class="old-line">
+              <b>{{ liaison.my_corps.name }}</b>(成员{{ liaison.member_count }}/{{ liaison.member_cap }})
               <a href="javascript:;" @click="go('corps')">[进入军团]</a>
             </div>
+            <div class="old-line gray">公告：{{ liaison.my_corps.notice || '暂无公告' }}</div>
           </template>
-          <template v-else>
-            <div class="old-line gray">尚未加入联盟</div>
-            <div class="old-line">
-              <a href="javascript:;" @click="go('corps')">[加入联盟]</a>
-              <a v-if="liaison.can_create" href="javascript:;" @click="go('corps')">[创建联盟]</a>
-              <span v-else class="red">(需2级联络中心才能创建联盟)</span>
-            </div>
-          </template>
+          <div class="old-line" v-else-if="liaison.level >= 1">
+            <a href="javascript:;" @click="go('corps')">加入联盟</a>
+            <template v-if="liaison.can_create">
+              &nbsp;<a href="javascript:;" @click="go('corps')">创建联盟</a>
+            </template>
+            <span v-else class="red">（创建联盟需2级联络中心）</span>
+          </div>
+          <div class="old-line gray" v-else>（尚未建造联络中心）</div>
 
-          <div class="panel-title">盟军驻军({{ liaison.garrison_used }}/{{ liaison.garrison_cap }})</div>
+          <div class="old-line">盟军驻军：</div>
           <table>
             <tr><th>来自城市</th><th>军官</th><th>驻军</th></tr>
             <tr v-for="g in liaison.garrisons" :key="'lg' + g.id">
@@ -1597,8 +1749,10 @@
           </table>
           <div class="old-line gray" v-if="!liaison.garrisons.length">(暂无盟军驻军)</div>
           <div class="old-line gray">
-            升级联络中心可接收更多盟友驻军; 联盟成员可用「增援」把部队派到你的城市协防。
+            驻军上限 {{ liaison.garrison_used }}/{{ liaison.garrison_cap }}；
+            联盟成员可用「增援」把部队派到你的城市协防。
           </div>
+          <a href="javascript:;" @click="go('buildm')">[返回军事区]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -2078,6 +2232,9 @@ export default {
       trainSel: null,
       trainCount: 10,
       trainSplit: false,
+      trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
+      troopViewId: 0,     // 兵种详情页当前兵种 id
+      troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
       taxInput: 20,
       renameInput: '',
       newCityX: '',
@@ -2209,6 +2366,44 @@ export default {
     defenceTroops () {
       return (this.troopsData.troops || []).filter(t => t.type === 4)
     },
+    // 城防建造队列(复刻 troopDefence.html 的「正在建造」)
+    defenceQueues () {
+      const ids = this.defenceCfgs.map(t => t.id)
+      return (this.queues || []).filter(q => ids.indexOf(q.troop_id) >= 0)
+    },
+    // 兵种详情页当前兵种
+    troopView () {
+      return (this.troopsData.cfgs || []).find(t => t.id === this.troopViewId) || null
+    },
+    // 训练确认页可训练上限: 资源 / 人口(城防为城防空间) 取最小
+    maxTrainable () {
+      if (!this.trainSel) return 0
+      const c = this.trainSel.cost || {}
+      const ct = this.troopsData.city || this.city || {}
+      const caps = []
+      if (c.food > 0) caps.push(Math.floor((ct.food || 0) / c.food))
+      if (c.steel > 0) caps.push(Math.floor((ct.steel || 0) / c.steel))
+      if (c.oil > 0) caps.push(Math.floor((ct.oil || 0) / c.oil))
+      if (c.rare > 0) caps.push(Math.floor((ct.rare || 0) / c.rare))
+      if (this.trainMode === 'defence') {
+        // 城防设施每个占 1 点城防空间(复刻 GameServiceImpl 的 used += count)
+        const space = (this.troopsData.defence_space || 0) - (this.troopsData.defence_space_used || 0)
+        caps.push(Math.max(0, space))
+      } else if (this.trainSel.pop > 0) {
+        caps.push(Math.floor(this.freePop / this.trainSel.pop))
+      }
+      const m = caps.length ? Math.min.apply(null, caps) : 0
+      return Math.max(0, m)
+    },
+    // 训练确认页预计耗时(复刻 createTroop.html 的「时间」: 单个耗时 × 数量 ÷ 并行工厂数)
+    trainEstimateText () {
+      if (!this.trainSel) return '0秒'
+      const n = parseInt(this.trainCount) || 0
+      const par = this.trainMode === 'defence'
+        ? 1
+        : (this.trainSplit ? Math.max(1, this.factoryFree) : 1)
+      return this.durText(Math.ceil(this.trainSel.train_time * n / par))
+    },
     attackTroops () {
       return (this.troopsData.troops || []).filter(t => t.type !== 4)
     },
@@ -2285,7 +2480,8 @@ export default {
       }
       this.cur = t
       if (t === 'home') this.load()
-      else if (t === 'troops' || t === 'troop' || t === 'defence') this.loadTroops()
+      else if (t === 'troops' || t === 'troop' || t === 'defence' ||
+               t === 'troopview' || t === 'trainpre') this.loadTroops()
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
       else if (t === 'techs') this.loadTechs()
       else if (t === 'map') { this.loadMap(); this.loadStars() }
@@ -2832,15 +3028,50 @@ export default {
       }).then(r => this.alert(r))
     },
     // ---- 军队 ----
-    openTrain (t) {
-      this.trainSel = t
-      this.trainCount = 10
+    // 兵种详情(复刻 cityTroopView.html): 军队页/军工厂页/城防页点兵种名进来
+    openTroopView (troopId) {
+      this.troopViewId = troopId
+      this.troopViewBack = this.cur === 'defence' ? 'defence'
+        : (this.cur === 'factory' ? 'factory' : (this.cur === 'troop' ? 'troop' : 'troops'))
+      this.go('troopview')
     },
-    doTrain () {
+    // 训练/建造确认页(复刻 createTroop.html / createDefence.html)
+    openTrainPre (t, mode) {
+      this.trainSel = t
+      this.trainMode = mode || 'troop'
+      this.trainCount = 10
+      this.trainSplit = false
+      this.go('trainpre')
+    },
+    doTrainPre () {
       if (!this.trainSel) return
+      const n = parseInt(this.trainCount) || 0
+      if (n <= 0) { alert('请填写建造数量'); return }
       api.post('/games/ezfy/troops/train', {
-        troop_id: this.trainSel.id, count: parseInt(this.trainCount) || 0, split: this.trainSplit
-      }).then(r => this.alert(r))
+        troop_id: this.trainSel.id, count: n, split: this.trainSplit
+      }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.loadTroops()
+      })
+    },
+    // 拆除城防设施(复刻 troopDefence.html 每行的 [拆除])
+    doDismiss (t) {
+      const have = this.troopCount(t.id)
+      if (have <= 0) { alert('城内没有该城防设施'); return }
+      if (!window.confirm('确定拆除全部 ' + t.name + '×' + have + ' 吗?')) return
+      api.post('/games/ezfy/troops/dismiss', { troop_id: t.id }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.loadTroops()
+      })
+    },
+    // 秒 → 「1分0秒 / 5分20秒 / 57秒」(复刻 createTroop.html 的「时间」)
+    durText (sec) {
+      const s = Math.max(0, Math.floor(Number(sec) || 0))
+      if (s < 60) return s + '秒'
+      const m = Math.floor(s / 60)
+      if (m < 60) return m + '分' + (s % 60) + '秒'
+      const hh = Math.floor(m / 60)
+      return hh + '小时' + (m % 60) + '分'
     },
     doRecover (w) {
       api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type }).then(r => this.alert(r))
@@ -3463,6 +3694,12 @@ body.ezfy-immersive { margin: 0; }
   padding: 2px 5px;
   font-size: 15px;
 }
+/* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
+.ezfy-page .ezfy-subnav a {
+  display: inline-block;
+  padding: 1px 3px;
+  font-size: 14px;
+}
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
@@ -3561,12 +3798,12 @@ body.ezfy-immersive { margin: 0; }
   max-width: 100%;
   border-collapse: separate;
   border-spacing: 8px 3px;   /* 格子之间留出间隔, 不挤在一起 */
-  margin: 8px auto;          /* 整张网格水平居中 */
+  margin: 8px 0;             /* 表格本身靠左(不要整表居中) */
 }
 .ezfy-page .ezfy-map-table td {
   padding: 0;
   border: 0;
-  text-align: center;        /* 每格内容居中 */
+  text-align: center;        /* 居中指的是「表格里的内容」居中 */
   vertical-align: middle;    /* 垂直居中 */
   white-space: nowrap;
 }

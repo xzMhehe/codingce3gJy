@@ -262,23 +262,110 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	h.DB.Order("id ASC").Find(&allTroops)
 	// 节日活动·造兵打折: 列表展示的就是打折后的实际消耗
 	discount := h.actPct(ezfyActTrain)
+	// 已训练数量(城内部队), 供兵种详情页显示「现有:N」
 	for _, t := range allTroops {
 		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
 		cfgViews = append(cfgViews, gin.H{
 			"id": t.ID, "name": ezfyCfg.troopName(t.ID, camp), "type": t.Type,
 			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "attack_range": t.AttackRange,
 			"carry": t.Carry, "pop": t.Pop, "require": t.Require,
-			"cost":       gin.H{"food": f, "steel": s, "oil": o, "rare": r},
-			"raw_cost":   gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
-			"train_time": t.TrainTime,
+			"atk_sea": t.AtkSea, "atk_ground": t.AtkGround, "atk_air": t.AtkAir, "atk_def": t.AtkDef,
+			"food_keep": t.FoodKeep, "oil_keep": t.OilKeep,
+			"icon": t.Icon, "repair_rate": t.RepairRate,
+			// 「军工厂(N级)」从 require 里解析(复刻 createTroop.html 的「需要军工厂：N级」)
+			"need_factory": ezfyNeedFactoryLevel(t.Require),
+			"cost":         gin.H{"food": f, "steel": s, "oil": o, "rare": r},
+			"raw_cost":     gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
+			"train_time":   t.TrainTime,
 		})
+	}
+	// 城防空间(围墙容量)与已占用(复刻 troopDefence.html 的「围墙：N级 城防空间：(used/cap)」)
+	wallLevel := h.buildingLevel(city.ID, 7)
+	defSpace := int64(0)
+	if wall := ezfyCfg.buildingLevel(7, wallLevel); wall != nil {
+		defSpace = wall.Capacity
+	}
+	var defUsed int64
+	for tid, cnt := range h.troopMap(city.ID) {
+		if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
+			defUsed += cnt
+		}
+	}
+	// 军工厂座数(复刻 createTroop.html 的「全部工厂 / 仅此工厂」)
+	factoryCount := 0
+	for _, b := range h.buildingList(city.ID) {
+		if b.BuildingId == ezfyFactoryBuildingID {
+			factoryCount++
+		}
 	}
 	resp.OK(c, gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
-		"wall_level":     h.buildingLevel(city.ID, 7),
-		"train_discount": discount,
+		"wall_level":         wallLevel,
+		"train_discount":     discount,
+		"defence_space":      defSpace,
+		"defence_space_used": defUsed,
+		"factory_total":      h.buildingTotalLevel(city.ID, ezfyFactoryBuildingID),
+		"factory_count":      factoryCount,
 	})
+}
+
+// DismissDefence POST /games/ezfy/troops/dismiss —— 拆除城防设施
+// 复刻 troopDefence.html 每行的 [拆除]（原版 Java 无对应接口, 模板里是失效的旧链接）
+func (h *EzfyHandler) DismissDefence(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId  int64 `json:"city_id"`
+		TroopId int   `json:"troop_id"`
+		Count   int64 `json:"count"` // 0 或省略 = 全部拆除
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	cfg := ezfyCfg.troop(req.TroopId)
+	if cfg == nil || cfg.Type != 4 {
+		resp.ParamError(c, "该兵种不是城防设施")
+		return
+	}
+	city := h.bodyCity(uid, req.CityId)
+	var ct model.EzfyCityTroop
+	if err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).First(&ct).Error; err != nil || ct.Count <= 0 {
+		resp.ParamError(c, "城内没有该城防设施")
+		return
+	}
+	n := ct.Count
+	if req.Count > 0 && req.Count < n {
+		n = req.Count
+	}
+	if ct.Count-n <= 0 {
+		h.DB.Delete(&model.EzfyCityTroop{}, ct.ID)
+	} else {
+		h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", ct.ID).Update("count", ct.Count-n)
+	}
+	name := ezfyCfg.troopName(req.TroopId, h.ensureProfile(uid).Camp)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已拆除 %s×%d, 城防空间已释放", name, n)})
+}
+
+// ezfyNeedFactoryLevel 从 require 文本里解析「军工厂(N级)」的 N, 找不到返回 0
+// (复刻 createTroop.html 的「需要军工厂：N级」)
+func ezfyNeedFactoryLevel(require string) int {
+	const key = "军工厂("
+	i := strings.Index(require, key)
+	if i < 0 {
+		return 0
+	}
+	rest := require[i+len(key):]
+	j := strings.Index(rest, "级)")
+	if j < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(rest[:j]))
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func (h *EzfyHandler) Train(c *gin.Context) {
