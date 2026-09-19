@@ -366,7 +366,7 @@
               <span v-if="b.next_effect" class="gray">下一级:{{ b.next_effect }}</span>
             </template>
             <template v-else>
-              <b>{{ b.name }}</b>(未建造)<br/>
+              <b>{{ b.name }}</b>(可建造<template v-if="b.built_count">, 已建{{ b.built_count }}个</template>)<br/>
               {{ b.des }}<br/>
               <a href="javascript:;" @click="doBuild(b)">[建造]</a>
               <span class="gray">造价: 粮{{ b.cost.food }} 钢{{ b.cost.steel }} 油{{ b.cost.oil }} 稀{{ b.cost.rare }} 金{{ b.cost.gold }} 需{{ Math.ceil(b.time / 60) }}分钟</span>
@@ -381,6 +381,9 @@
       <template v-else-if="cur === 'troop'">
         <div class="panel">
           <div class="panel-title">训练军队(军工厂合计{{ factoryTotal }}级, 队列{{ queues.length }}/{{ factoryTotal }})</div>
+          <div class="old-line green" v-if="troopsData.train_discount > 0">
+            节日活动·造兵打折：资源消耗 -{{ troopsData.train_discount }}%（下方为折后价）
+          </div>
           <div class="old-line">人口:{{ troopsData.pop }} 空闲:{{ freePop }} | 围墙:{{ troopsData.wall_level }}级</div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
             <b>{{ t.name }}</b>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
@@ -601,11 +604,17 @@
             </div>
           </div>
           <div class="old-line">当前坐标中心:({{ mapCx }} , {{ mapCy }})</div>
-          <div class="old-line gray">城=城市 寇=寇城 海=海野 野=野地 数字=等级</div>
+          <div class="old-line gray">
+            城=城市 寇=寇城 墟=废墟 海=海洋 数字=等级<br/>
+            陆地野地按地形分: 平原/草原/森林/盆地/丘陵/沼泽/山地
+          </div>
           <template v-if="selCell">
             <div class="panel-title">目标({{ selCell.x }},{{ selCell.y }})</div>
             <div class="old-line" v-if="selDetail">
-              {{ selDetail.name }} 等级{{ selDetail.level }}<br/>
+              <b>{{ selDetail.terrain_name }}</b> 等级{{ selDetail.level }}
+              <span class="gray" v-if="selDetail.type === 2">(海野)</span>
+              <span class="gray" v-else-if="selDetail.type === 3">(寇城)</span>
+              <span class="gray" v-else>(陆地野地)</span><br/>
               <span v-for="tp in selDetail.troops" :key="'sp' + tp.troop_id">{{ tp.name }}约{{ tp.min }}-{{ tp.max }} </span><br/>
               掠夺资源约:{{ selDetail.res_min }}-{{ selDetail.res_max }}
             </div>
@@ -795,10 +804,10 @@
         <div class="panel">
           <div class="panel-title">占领野地({{ wildlands.length }}/{{ city.city_level }})</div>
           <table>
-            <tr><th>坐标</th><th>类型</th><th>等级</th><th>状态</th><th>操作</th></tr>
+            <tr><th>坐标</th><th>地形</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="w in wildlands" :key="'wd' + w.id">
               <td>({{ w.x }},{{ w.y }})</td>
-              <td>{{ w.wild_type === 2 ? '海野' : '陆地野地' }}</td>
+              <td>{{ w.terrain_name }}<span class="gray" v-if="w.wild_type === 2">(海野)</span></td>
               <td>{{ w.level }}</td>
               <td>{{ w.status === 0 ? '空闲' : '采集中' }}</td>
               <td>
@@ -1234,9 +1243,26 @@
       <template v-else-if="cur === 'activity'">
         <div class="panel">
           <div class="panel-title">活动</div>
+          <template v-if="activities.length">
+            <div class="old-line" v-for="a in activities" :key="'ac' + a.id">
+              <b>{{ a.name }}</b>
+              <span :class="a.running ? 'green' : 'gray'">[{{ a.running ? '进行中' : '未开启' }}]</span>
+              <span class="orange">{{ a.effect }}</span><br/>
+              {{ a.des }}<br/>
+              <span v-if="a.running" class="gray">剩余: {{ fmtLeft(a.left_sec) }}</span>
+              <span v-else-if="a.start_time && a.end_time" class="gray">
+                时间: {{ fmtTime(a.start_time) }} ~ {{ fmtTime(a.end_time) }}
+              </span>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(暂无节日活动, 敬请期待)</div>
+          <hr/>
+          <div class="old-line gray">活动类型: 资源增产 / 造兵打折 / 建造加速 / 研究加速 / 声望加成</div>
+          <hr/>
           <div class="old-line">[开服活动] 新手礼包、每周福利、市政厅等级礼包持续发放中, 前往<a href="javascript:;" @click="go('welfare')">[福利]</a>领取。</div>
           <div class="old-line">[征战天下] 征服野地/寇城可获得军功声望, 声望晋升军衔!</div>
           <div class="old-line">[物资兑换] 交易所开放资源交易, 低买高卖赚黄金。</div>
+          <a href="javascript:;" @click="go('map')">[前往地图]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1687,7 +1713,7 @@
       <!-- 底部返回(非首页) -->
       <template v-if="cur !== 'home'">
         <br/>
-        <div class="bottom-nav"><a class="btn-return" href="javascript:;" @click="go('home')">返回游戏</a></div>
+        <div class="bottom-nav"><a href="javascript:;" @click="go('home')">[返回游戏]</a></div>
         <div class="footer">WAP报时:{{ nowText }}</div>
       </template>
     </div>
@@ -1718,6 +1744,7 @@ export default {
       profile: { prestige: 0, camp: 1, nickname: '' },
       userBrief: { account: '', level: 0, exp: 0 },
       officerCount: 0,
+      activities: [],
       rankName: '列兵',
       rankPost: '士兵',
       city: {},
@@ -1727,7 +1754,7 @@ export default {
       boostUntil: false,
       buildings: [],
       buildingPool: [],
-      troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0 },
+      troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       techsData: { techs: [], academy: 0 },
       wildlands: [],
       occupies: [],
@@ -1997,6 +2024,22 @@ export default {
       else if (t === 'wareset') this.loadWare()
       else if (t === 'citymove') this.loadMoveInfo()
       else if (t === 'sourceset') this.loadProduce()
+      else if (t === 'activity') this.loadActivity()
+    },
+    // 节日活动
+    loadActivity () {
+      api.get('/games/ezfy/activity').then(r => {
+        if (r.code === 0) this.activities = r.data.activities || []
+      })
+    },
+    fmtLeft (sec) {
+      if (!sec || sec <= 0) return '已结束'
+      const d = Math.floor(sec / 86400)
+      const hh = Math.floor((sec % 86400) / 3600)
+      const mm = Math.floor((sec % 3600) / 60)
+      if (d > 0) return d + '天' + hh + '小时'
+      if (hh > 0) return hh + '小时' + mm + '分'
+      return mm + '分'
     },
     load () {
       api.get('/games/ezfy/view').then(r => {
@@ -2489,7 +2532,8 @@ export default {
       if (cell.name === '寇城(废墟)') return '墟'
       if (cell.area_type === 2) return '寇' + cell.level
       if (cell.terrain === 8) return '海' + cell.level
-      return '野' + cell.level
+      // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/山地)
+      return (cell.terrain_name || '野') + cell.level
     },
     cellClass (cell) {
       if (cell.mine) return 'ezfy-mine'
@@ -3030,19 +3074,8 @@ body.ezfy-immersive { margin: 0; }
   padding: 3px 6px;
   border-bottom: 1px dotted #ddd;
 }
+/* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
-.ezfy-page .bottom-nav .btn-return {
-  display: inline-block;
-  background: #2f4156;
-  color: #fff;
-  font-weight: bold;
-  font-size: 14px;
-  padding: 4px 20px;
-  margin: 4px 0 2px;
-  border-radius: 4px;
-  border: 1px solid #46607d;
-  box-shadow: 0 1px 3px rgba(31, 51, 87, 0.3);
-}
 .ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 .ezfy-page .red { color: #c0392b; }
@@ -3093,9 +3126,10 @@ body.ezfy-immersive { margin: 0; }
   margin: 1px;
   background: #e8f0d8;
   border: 1px solid #b8c89a;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   color: #444;
+  white-space: nowrap;
 }
 .ezfy-mine { background: #ffe9b0; border-color: #d0a030; color: #803000; }
 .ezfy-city { background: #d8e4f0; border-color: #90a8c0; }

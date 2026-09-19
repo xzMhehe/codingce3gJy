@@ -38,6 +38,36 @@ func seedEzfy(db *gorm.DB) {
 
 	seedEzfyNotices(db)
 	seedEzfyOfficerItems(db)
+	seedEzfyActivities(db)
+}
+
+// seedEzfyActivities 节日活动模板（E1，设计依据 `参考材料/开发文档/福利.txt`）
+//
+// 原版 Java 只做了静态说明页，这里做成可配置、真实生效的活动。
+// 默认全部「未开启」(status=0)，避免上线即改数值；管理端「数据管理 → 节日活动」
+// 把 status 改成 1 并填好起止时间即可生效。时间戳单位毫秒。
+//
+//	type: 1资源增产 2造兵打折 3建造加速 4研究加速 5声望加成
+func seedEzfyActivities(db *gorm.DB) {
+	var count int64
+	if err := db.Table("ezfy_activity").Count(&count).Error; err != nil || count > 0 {
+		return
+	}
+	rows := []model.EzfyActivity{
+		{ID: 1, Name: "丰收节", Type: 1, Param: 20, Status: 0,
+			Des: "活动期间全城资源产量 +20%，野地产出同样生效"},
+		{ID: 2, Name: "军工动员", Type: 2, Param: 25, Status: 0,
+			Des: "活动期间训练部队的资源消耗 -25%"},
+		{ID: 3, Name: "建设狂潮", Type: 3, Param: 30, Status: 0,
+			Des: "活动期间建造/升级建筑耗时 -30%"},
+		{ID: 4, Name: "科技峰会", Type: 4, Param: 20, Status: 0,
+			Des: "活动期间科技研究耗时 -20%"},
+		{ID: 5, Name: "荣耀之战", Type: 5, Param: 10, Status: 0,
+			Des: "活动期间战斗获得的军功声望 +10%"},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		log.Printf("ezfy 节日活动种子失败: %v", err)
+	}
 }
 
 // seedEzfyOfficerItems 军官类道具（复刻设计文档《QQ家园二战风云.txt》道具 #7/#8/#9）

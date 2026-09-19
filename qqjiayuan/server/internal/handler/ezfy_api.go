@@ -86,8 +86,9 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 }
 
 // buildPool 返回该城当前可建造的建筑池(复刻原版 BuildingController.buildList)。
-// 军事区 = type 2/3, 资源区 = type 1; 市政厅(type 4)自动存在不入池。
-// 军工厂可建 5 个、民居可建 10 个, 其余每类限 1 个; 航海协会仅沿海城市可建。
+//   - 军事区 = type 2/3: 军工厂可建 5 个、民居可建 10 个, 其余每类限 1 个
+//   - 资源区 = type 1: 农田/炼钢厂/石油基地/稀矿厂 **可重复建造**, 只受建筑总数上限约束
+//   - 市政厅(type 4)自动存在, 不入池; 航海协会(19)仅沿海城市可建
 func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuilding) []gin.H {
 	cntOf := map[int]int{}
 	for _, b := range list {
@@ -108,8 +109,11 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 		if lv == nil {
 			continue
 		}
-		can := false
+		var can bool
 		switch {
+		case cfg.Type == 1:
+			// 资源建筑可重复建造(原版资源区 can = true)
+			can = true
 		case id == ezfyFactoryBuildingID:
 			can = cntOf[id] < ezfyMaxFactoryCount
 		case id == 2:
@@ -127,7 +131,7 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 			"building_id": id, "name": cfg.Name, "type": cfg.Type,
 			"max_level": cfg.MaxLevel, "des": cfg.Des, "effect": lv.Effect,
 			"cost": gin.H{"food": lv.Food, "steel": lv.Steel, "oil": lv.Oil, "rare": lv.Rare, "gold": lv.Gold},
-			"time": lv.BuildTime,
+			"time": lv.BuildTime, "built_count": cntOf[id],
 		})
 	}
 	return pool
@@ -256,19 +260,24 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	cfgViews := []gin.H{}
 	var allTroops []model.EzfyCfgTroop
 	h.DB.Order("id ASC").Find(&allTroops)
+	// 节日活动·造兵打折: 列表展示的就是打折后的实际消耗
+	discount := h.actPct(ezfyActTrain)
 	for _, t := range allTroops {
+		f, s, o, r := h.trainCostWithActivity(t.Food, t.Steel, t.Oil, t.Rare)
 		cfgViews = append(cfgViews, gin.H{
 			"id": t.ID, "name": ezfyCfg.troopName(t.ID, camp), "type": t.Type,
 			"health": t.Health, "defence": t.Defence, "speed": t.Speed, "attack_range": t.AttackRange,
 			"carry": t.Carry, "pop": t.Pop, "require": t.Require,
-			"cost":       gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
+			"cost":       gin.H{"food": f, "steel": s, "oil": o, "rare": r},
+			"raw_cost":   gin.H{"food": t.Food, "steel": t.Steel, "oil": t.Oil, "rare": t.Rare},
 			"train_time": t.TrainTime,
 		})
 	}
 	resp.OK(c, gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
-		"wall_level": h.buildingLevel(city.ID, 7),
+		"wall_level":     h.buildingLevel(city.ID, 7),
+		"train_discount": discount,
 	})
 }
 

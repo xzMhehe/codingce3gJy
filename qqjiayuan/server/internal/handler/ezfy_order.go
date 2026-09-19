@@ -76,7 +76,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 	for y := cy - r; y <= cy+r; y++ {
 		for x := cx - r; x <= cx+r; x++ {
 			terrain := ezfyTerrain(x, y)
-			cell := gin.H{"x": x, "y": y, "terrain": terrain, "continent": ""}
+			cell := gin.H{"x": x, "y": y, "terrain": terrain,
+				"terrain_name": ezfyTerrainName(terrain), "continent": ""}
 			if x == cx && y == cy {
 				cell["continent"] = ezfyContinentName(x, y)
 			}
@@ -90,7 +91,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["mine"] = c.UserID == uid
 			} else if terrain == 8 {
 				cell["area_type"] = 1
-				cell["name"] = "海野"
+				cell["name"] = ezfyTerrainName(terrain) // 海洋
 				cell["level"] = ezfyWildlandLevel(x, y)
 			} else if h.ezfyIsKouCity(x, y) {
 				cell["area_type"] = 2
@@ -104,8 +105,9 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 					}
 				}
 			} else {
+				// 陆地野地: 名称取地形名(平原/草原/森林/盆地/丘陵/沼泽/山地), 不再一律叫「野地」
 				cell["area_type"] = 1
-				cell["name"] = "野地"
+				cell["name"] = ezfyTerrainName(terrain)
 				cell["level"] = ezfyWildlandLevel(x, y)
 			}
 			cells = append(cells, cell)
@@ -163,6 +165,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
 		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrain(x, y),
+		"terrain_name": ezfyTerrainName(ezfyTerrain(x, y)),
 	})
 }
 

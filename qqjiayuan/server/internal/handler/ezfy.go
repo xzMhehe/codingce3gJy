@@ -74,6 +74,10 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
 		return
 	}
+	// 节日活动·声望加成(福利.txt #11)
+	if pct := h.actPct(ezfyActPrestige); pct > 0 {
+		amount = amount * (100 + pct) / 100
+	}
 	p := h.ensureProfile(uid)
 	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 		Update("prestige", p.Prestige+amount)
@@ -438,6 +442,19 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
 		}
 	}
 
+	// 节日活动·资源增产(福利.txt #3)
+	if pct := h.actPct(ezfyActProduce); pct > 0 {
+		mult := int64(100 + pct)
+		foodProd = foodProd * mult / 100
+		steelProd = steelProd * mult / 100
+		oilProd = oilProd * mult / 100
+		rareProd = rareProd * mult / 100
+		wildFood = wildFood * mult / 100
+		wildSteel = wildSteel * mult / 100
+		wildOil = wildOil * mult / 100
+		wildRare = wildRare * mult / 100
+	}
+
 	if city.Pop < city.PopMax {
 		grow := int64(float64(city.PopMax) * 0.02 * hours)
 		if grow < 1 {
@@ -593,6 +610,18 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		wildRare *= mult / 100
 		wildGold *= mult / 100
 	}
+	// 节日活动·资源增产(福利.txt #3) —— 与 calcResource 保持一致
+	if pct := h.actPct(ezfyActProduce); pct > 0 {
+		mult := int64(100 + pct)
+		foodProd = foodProd * mult / 100
+		steelProd = steelProd * mult / 100
+		oilProd = oilProd * mult / 100
+		rareProd = rareProd * mult / 100
+		wildFood = wildFood * mult / 100
+		wildSteel = wildSteel * mult / 100
+		wildOil = wildOil * mult / 100
+		wildRare = wildRare * mult / 100
+	}
 	var troopFood int64
 	for tid, count := range h.troopMap(city.ID) {
 		if cfg := ezfyCfg.troop(tid); cfg != nil {
@@ -688,6 +717,13 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 	buildTech := h.techMap(city.ID)[11]
 	now := time.Now().UnixMilli()
 	buildMs := int64(lv.BuildTime) * 1000 * int64(100-buildTech*2) / 100
+	// 节日活动·建造加速(福利.txt #19/#26)
+	if pct := h.actPct(ezfyActBuild); pct > 0 {
+		buildMs = buildMs * int64(100-pct) / 100
+	}
+	if buildMs < 1000 {
+		buildMs = 1000
+	}
 	b := model.EzfyCityBuilding{CityId: int64(city.ID), BuildingId: buildingId, Level: 0, Status: 1,
 		StartTime: now, EndTime: now + buildMs}
 	h.DB.Create(&b)
@@ -724,6 +760,13 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	buildTech := h.techMap(city.ID)[11]
 	now := time.Now().UnixMilli()
 	buildMs := int64(lv.BuildTime) * 1000 * int64(100-buildTech*2) / 100
+	// 节日活动·建造加速(福利.txt #19/#26)
+	if pct := h.actPct(ezfyActBuild); pct > 0 {
+		buildMs = buildMs * int64(100-pct) / 100
+	}
+	if buildMs < 1000 {
+		buildMs = 1000
+	}
 	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
 		Updates(map[string]interface{}{"status": 2, "start_time": now, "end_time": now + buildMs})
 	return ""
@@ -854,6 +897,8 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	steel := cfg.Steel * int64(count)
 	oil := cfg.Oil * int64(count)
 	rare := cfg.Rare * int64(count)
+	// 节日活动·造兵打折(福利.txt #4)
+	food, steel, oil, rare = h.trainCostWithActivity(food, steel, oil, rare)
 	if city.Food < food || city.Steel < steel || city.Oil < oil || city.Rare < rare {
 		return "资源不足"
 	}
@@ -1010,12 +1055,12 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	now := time.Now().UnixMilli()
 	var t model.EzfyCityTech
 	if err := h.DB.Where("city_id = ? AND tech_id = ?", city.ID, techId).First(&t).Error; err != nil {
-		t = model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: 0, Status: 1, EndTime: now + int64(lv.ResearchTime)*1000}
+		t = model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: 0, Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)}
 		h.DB.Create(&t)
 		return ""
 	}
 	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
-		Updates(map[string]interface{}{"status": 1, "end_time": now + int64(lv.ResearchTime)*1000})
+		Updates(map[string]interface{}{"status": 1, "end_time": now + h.techResearchMs(lv.ResearchTime)})
 	return ""
 }
 
@@ -1510,7 +1555,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
-		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level, "wild_type": w.WildType})
+		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
+			"wild_type": w.WildType, "terrain_name": ezfyTerrainName(ezfyTerrain(w.X, w.Y))})
 	}
 
 	var marching, occupying int64

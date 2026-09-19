@@ -93,6 +93,18 @@ func ezfyTerrain(x, y int) int {
 	return h%8 + 1
 }
 
+// ezfyTerrainNames 地形名（复刻原版 MapController.TERRAIN_NAMES，索引即地形 id）
+// 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7山地 8海洋
+var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "山地", "海洋"}
+
+// ezfyTerrainName 地形 id → 中文名
+func ezfyTerrainName(t int) string {
+	if t < 1 || t >= len(ezfyTerrainNames) {
+		return "未知"
+	}
+	return ezfyTerrainNames[t]
+}
+
 func ezfyWildlandLevel(x, y int) int {
 	h := ezfyAbs(x*83492791 ^ y*6291469)
 	return h % 11

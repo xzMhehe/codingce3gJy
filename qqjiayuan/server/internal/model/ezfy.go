@@ -283,6 +283,25 @@ type EzfyMapArea struct {
 
 func (EzfyMapArea) TableName() string { return "ezfy_map_area" }
 
+// EzfyActivity 节日活动(复刻 `参考材料/开发文档/福利.txt` 的活动设计, 原版 Java 未实现)
+// Type: 1资源增产 2造兵打折 3建造加速 4研究加速 5声望加成
+// Param 为百分比; Status: 0未开启 1进行中; 生效还要求 start_time <= now < end_time
+type EzfyActivity struct {
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	Name      string `gorm:"type:varchar(50)" json:"name"`
+	Type      int    `json:"type"`
+	Param     int    `json:"param"`
+	StartTime int64  `json:"start_time"`
+	EndTime   int64  `json:"end_time"`
+	Status    int    `gorm:"default:0" json:"status"`
+	Des       string `gorm:"type:varchar(500)" json:"des"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (EzfyActivity) TableName() string { return "ezfy_activity" }
+
 // EzfyMapStar 地图坐标收藏(复刻原版地图页的「收藏列表」)
 type EzfyMapStar struct {
 	ID     uint   `gorm:"primaryKey" json:"id"`

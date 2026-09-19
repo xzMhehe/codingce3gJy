@@ -123,6 +123,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 		&model.EzfyMapStar{},
+		&model.EzfyActivity{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)

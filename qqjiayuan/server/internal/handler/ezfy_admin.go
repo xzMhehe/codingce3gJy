@@ -255,6 +255,10 @@ type ezfyTableDef struct {
 }
 
 var ezfyTableDefs = map[string]ezfyTableDef{
+	"activities": {&model.EzfyActivity{}, map[string]string{
+		"name": "string", "type": "int", "param": "int",
+		"start_time": "int64", "end_time": "int64", "status": "int", "des": "string",
+	}},
 	"buildings": {&model.EzfyCfgBuilding{}, map[string]string{
 		"name": "string", "type": "int", "max_level": "int", "unique_flag": "int",
 		"can_delete": "int", "pre_building": "string", "des": "string",
