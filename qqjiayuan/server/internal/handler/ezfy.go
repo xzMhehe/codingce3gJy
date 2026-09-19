@@ -1845,6 +1845,71 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "新城建成", "city": city})
 }
 
+// DestroyCity 摧毁自己的城市（★ 仅限「非当前所在」的城市）
+//
+// 用户规则：摧毁后该坐标变回普通平原（不再属于任何玩家）。
+func (h *EzfyHandler) DestroyCity(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.CityId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	ct := h.cityOf(uid, req.CityId)
+	if ct == nil {
+		resp.ParamError(c, "城市不存在或已被占领")
+		return
+	}
+	// ★ 仅能摧毁非当前所在的城市
+	cur := h.currentCity(uid)
+	if cur.ID == ct.ID {
+		resp.ParamError(c, "不能摧毁当前所在的城市，请先切换到别的城市")
+		return
+	}
+	// 至少保留一座城
+	var owned int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
+	if owned <= 1 {
+		resp.ParamError(c, "至少要保留一座城市")
+		return
+	}
+	if msg := h.ezfyDestroyCity(uid, ct); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	resp.OK(c, gin.H{"msg": "城市「" + ct.Name + "」已摧毁，该坐标恢复为普通平原"})
+}
+
+// ezfyDestroyCity 真正拆除一座城：清掉它的建筑/部队/科技/军官/野地/队列等，
+// 并抹掉该坐标的「玩家城」地图区域记录（于是变回普通平原，不属于任何玩家）。
+func (h *EzfyHandler) ezfyDestroyCity(uid uint, ct *model.EzfyCity) string {
+	cid := ct.ID
+	// 还在外面的部队/采集队：一并撤掉（否则会留下指向已删城市的孤儿订单）
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOrder{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityBuilding{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTroop{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTech{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyTrainQueue{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyWildland{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyWounded{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityEffect{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTarget{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOfficer{})
+	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyEquipment{})
+	// 被这座城占领的玩家城/野地记录也要释放
+	h.DB.Where("city_id = ? AND status = 1", cid).Delete(&model.EzfyOccupy{})
+	// ★ 地图区域：删掉「玩家城」记录 → 该格回到普通地形
+	h.DB.Where("x = ? AND y = ?", ct.X, ct.Y).Delete(&model.EzfyMapArea{})
+	if err := h.DB.Delete(&model.EzfyCity{}, cid).Error; err != nil {
+		return "摧毁失败：" + err.Error()
+	}
+	h.addReport(uid, 5, "城市已摧毁",
+		fmt.Sprintf("城市「%s」(%d,%d) 已被摧毁，该坐标恢复为普通平原。", ct.Name, ct.X, ct.Y), "", 0)
+	return ""
+}
+
 // RenameCity 城市改名
 func (h *EzfyHandler) RenameCity(c *gin.Context) {
 	uid := middleware.GetUID(c)

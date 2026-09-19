@@ -401,9 +401,12 @@ type EzfyOrder struct {
 	ReturnTime int64  `json:"return_time"`
 	Status     int    `gorm:"index:idx_status;default:0" json:"status"` // 0行进 1驻守中 2返回 3完成 4阵亡
 	Result     string `gorm:"type:varchar(3000)" json:"result"`         // 返回部队JSON/采集标记
-	Resources  string `gorm:"type:varchar(500)" json:"resources"`
-	OilUsed    int64  `json:"oil_used"`
-	WaitMin    int    `json:"wait_min"` // 宿营分钟数(0~1440), 到达后停留该时长再返航
+	// ★ 采集到的资源先记在部队身上（待带回），只有「返航到达」才入城；
+	//   容量上限 = 部队各兵种 carry 之和。JSON: {"food":..,"steel":..,"oil":..,"rare":..,"gold":..}
+	Carry     string `gorm:"type:varchar(500)" json:"carry"`
+	Resources string `gorm:"type:varchar(500)" json:"resources"`
+	OilUsed   int64  `json:"oil_used"`
+	WaitMin   int    `json:"wait_min"` // 宿营分钟数(0~1440), 到达后停留该时长再返航
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

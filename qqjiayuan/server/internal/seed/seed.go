@@ -265,9 +265,12 @@ func Run(db *gorm.DB, staticDir string) {
 	if !m.HasColumn("users", "qq_ptime") {
 		db.Exec("ALTER TABLE users ADD COLUMN qq_ptime datetime NULL")
 	}
-	for _, col := range []string{"speed", "`limit`", "stock", "sales"} {
+	// ★ 列名不能带反引号去查（HasColumn 传的是纯列名），否则永远判为「不存在」，
+	//   每次启动都重复 ALTER，MySQL 报 Error 1060 Duplicate column name 'limit'。
+	//   ALTER 语句里统一用反引号包起来即可（limit 是 MySQL 保留字）。
+	for _, col := range []string{"speed", "limit", "stock", "sales"} {
 		if !m.HasColumn("noble_plans", col) {
-			db.Exec("ALTER TABLE noble_plans ADD COLUMN " + col + " int DEFAULT 0")
+			db.Exec("ALTER TABLE noble_plans ADD COLUMN `" + col + "` int DEFAULT 0")
 		}
 	}
 	if !m.HasColumn("wallet_logs", "remark") {
@@ -909,6 +912,15 @@ func seedGoods(db *gorm.DB) {
 		var exist int64
 		db.Model(&model.Good{}).Where("name = ?", g.Name).Count(&exist)
 		if exist == 0 {
+			// ★ add_time 是 time.Time，预设里没赋值就是零值；MySQL 8 默认开 strict 模式
+			//   （NO_ZERO_DATE），插 '0000-00-00' 会报
+			//   Error 1292 Incorrect datetime value ... for column 'add_time'
+			if g.AddTime.IsZero() {
+				g.AddTime = time.Now()
+			}
+			if g.Status == 0 {
+				g.Status = 1
+			}
 			db.Create(&g)
 		} else {
 			// 老库商品补齐友友券价（幂等）；库存仅在为0时回填，不覆盖运营调整

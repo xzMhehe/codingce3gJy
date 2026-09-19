@@ -569,6 +569,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if err := h.DB.Where("id = ? AND city_id = ?", targetId, city.ID).First(&wl).Error; err != nil {
 			return "只能采集已占领的野地"
 		}
+		// ★ 用户规则：采集/派遣都要带一个军官（带队）
+		if officer == "" {
+			return "采集部队必须携带一名军官"
+		}
 	}
 	if orderType == 7 {
 		var wl model.EzfyWildland
@@ -862,12 +866,27 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 			h.addTroop(city.ID, g.TroopId, g.Count)
 		}
 	}
+	// ★ 部队带回的采集资源在这里入城（受仓储上限截断）
+	c := parseCarry(order.Carry)
+	if c.total() > 0 {
+		city.Food = min64(city.FoodCap, city.Food+c.Food)
+		city.Steel = min64(city.SteelCap, city.Steel+c.Steel)
+		city.Oil = min64(city.OilCap, city.Oil+c.Oil)
+		city.Rare = min64(city.RareCap, city.Rare+c.Rare)
+		city.Gold = min64(city.GoldCap, city.Gold+c.Gold)
+		h.saveCityRes(city)
+		h.addReport(uid, 5, "部队返航: 采集资源已入库",
+			fmt.Sprintf("采集部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				city.Name, c.Food, c.Steel, c.Oil, c.Rare, c.Gold), "", order.ID)
+	}
 	// 带队军官归来, 恢复在职
 	if order.Officer != "" {
 		h.officerGoOut(city, order.Officer, false)
 	}
 	order.Status = 3
-	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
+	order.Carry = ""
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"status": 3, "carry": ""})
 }
 
 // beginReturn 异常返航: 兵力无损带回
@@ -908,7 +927,7 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64) {
 	var wl model.EzfyWildland
 	err := h.DB.First(&wl, order.TargetId).Error
-	city := h.cityOfOrder(order, uid)
+	// 注意：这里不再需要 city（采集产出改为记在部队身上，返航到达才入城）
 	if err != nil || wl.CityId != order.CityId {
 		h.beginReturn(order, now, 0)
 		h.addReport(uid, 5, "派遣报告: 野地丢失",
@@ -922,27 +941,34 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	} else {
 		food, steel, oil, rare = int64(level)*800, int64(level)*800, int64(level)*800, int64(level)*800
 	}
-	desc := fmt.Sprintf("派遣部队在野地%d级(%d,%d)完成一次采集结算\n获得: 粮%d 钢%d 油%d 稀矿%d 金%d\n",
+	// ★ 采集产出**先记在部队身上**（待带回），不直接入城；超出负重的部分丢弃。
+	//   只有「召回并返航到达」才会入城（见 finishReturn）。
+	loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
+	cur := parseCarry(order.Carry)
+	desc := fmt.Sprintf("派遣部队在野地%d级(%d,%d)完成一次采集结算\n产出: 粮%d 钢%d 油%d 稀矿%d 金%d\n",
 		level, wl.X, wl.Y, food, steel, oil, rare, gold)
-	city.Food = min64(city.FoodCap, city.Food+food)
-	city.Steel = min64(city.SteelCap, city.Steel+steel)
-	city.Oil = min64(city.OilCap, city.Oil+oil)
-	city.Rare = min64(city.RareCap, city.Rare+rare)
-	city.Gold = min64(city.GoldCap, city.Gold+gold)
-	h.saveCityRes(city)
+	desc += fmt.Sprintf("本次装入部队: %d（负重 %d/%d）\n", loaded, cur.total(), h.ezfyCarryCap(order))
+	if dropped > 0 {
+		desc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上（多带运输兵/卡车可提高负重）\n", dropped)
+	}
+	desc += "资源要**召回部队**才能带回城里。\n"
 	if rand.Intn(ezfyDispatchTreasure) == 0 {
 		pool := []int{1, 4, 5, 6, 7, 8, 9}
 		cfgId := pool[rand.Intn(len(pool))]
 		if cfg := ezfyCfg.item(cfgId); cfg != nil {
 			h.addItem(uid, cfgId, 1)
-			desc += "运气爆棚! 获得宝物: " + cfg.Name + "\n"
+			// ★ 宝物不受负重限制，直接进背包
+			desc += "运气爆棚! 获得宝物(已直接放入背包): " + cfg.Name + "\n"
 		}
 	}
 	desc += "部队继续驻守采集, 可随时召回。"
 	order.ArriveTime = now + ezfyDispatchPeriod
 	order.Result = order.Troops
+	// ★ 必须把 carry 一起落库 —— 否则「待带回资源」只存在于内存里，
+	//   下一次请求重新读库就丢了（测试就是靠这条断言抓出来的）
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "result": order.Result})
+		Updates(map[string]interface{}{"arrive_time": order.ArriveTime,
+			"result": order.Result, "carry": order.Carry})
 	h.addReport(uid, 5, "派遣报告: 采集结算", desc, "", order.ID)
 }
 
@@ -993,20 +1019,23 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		} else {
 			food, steel, oil, rare = int64(level)*800, int64(level)*800, int64(level)*800, int64(level)*800
 		}
-		city.Food = min64(city.FoodCap, city.Food+food)
-		city.Steel = min64(city.SteelCap, city.Steel+steel)
-		city.Oil = min64(city.OilCap, city.Oil+oil)
-		city.Rare = min64(city.RareCap, city.Rare+rare)
-		city.Gold = min64(city.GoldCap, city.Gold+gold)
-		h.saveCityRes(city)
+		// ★ 采到的资源装在部队身上，返航到达才入城；超负重丢弃
+		loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
+		cur := parseCarry(order.Carry)
 		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
 		order.Status = 2
-		order.Result = "gather:8h"
+		order.Result = order.Troops
 		order.ReturnTime = now + travel
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"status": 2, "result": "gather:8h", "return_time": order.ReturnTime})
-		h.addReport(uid, 5, fmt.Sprintf("采集报告: 野地%d级(%d,%d)", wl.Level, wl.X, wl.Y),
-			fmt.Sprintf("我军在占领的野地采集了8小时\n获得: 粮%d 钢%d 油%d 稀矿%d 金%d\n部队正在返回。", food, steel, oil, rare, gold))
+			Updates(map[string]interface{}{"status": 2, "result": order.Result,
+				"return_time": order.ReturnTime, "carry": order.Carry})
+		gdesc := fmt.Sprintf("我军在占领的野地采集了8小时\n产出: 粮%d 钢%d 油%d 稀矿%d 金%d\n", food, steel, oil, rare, gold)
+		gdesc += fmt.Sprintf("装入部队: %d（负重 %d/%d）\n", loaded, cur.total(), h.ezfyCarryCap(order))
+		if dropped > 0 {
+			gdesc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上\n", dropped)
+		}
+		gdesc += "部队正在返回, 到达后资源入库。"
+		h.addReport(uid, 5, fmt.Sprintf("采集报告: 野地%d级(%d,%d)", wl.Level, wl.X, wl.Y), gdesc, "", order.ID)
 		return
 	}
 

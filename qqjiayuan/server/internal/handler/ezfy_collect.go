@@ -82,7 +82,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 }
 
 // HarvestAll POST /games/ezfy/wild/harvest-all —— 一键收获
-// 对所有「驻守中(status=1)」的派遣部队立即结算一个采集周期并召回。
+//
+// ★ 用户规则：「收获就是收获」—— 只把采集产出结算进部队的「待带回」池，
+//   **不召回**。资源只有「召回并返航到达」才会入城（见 finishReturn）。
 func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -97,21 +99,50 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	}
 
 	settled := 0
+	var loadedTotal int64
 	for i := range orders {
 		order := &orders[i]
-		// 单程时长必须在结算前取: settleDispatch 会把 ArriveTime 推到下一个周期
-		travel := ezfyOneWayTravel(order)
-		// 先结算一个周期(发放资源, 可能获得宝物)
+		before := parseCarry(order.Carry).total()
+		// 结算一个周期：产出记进「待带回」，宝物直接进背包（不召回）
 		h.settleDispatch(uid, order, now)
-		// 再召回: 恢复为返航状态
-		order.Status = 2
-		order.Result = order.Troops
-		order.ReturnTime = now + travel
+		// settleDispatch 只改了内存里的 order.Carry，这里落库
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
+			Updates(map[string]interface{}{"carry": order.Carry, "arrive_time": order.ArriveTime,
+				"result": order.Result})
+		loadedTotal += parseCarry(order.Carry).total() - before
 		settled++
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获并召回 %d 支采集部队", settled)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获 %d 支采集部队，共装入待带回资源 %d（资源需「召回」才会运回城里）",
+		settled, loadedTotal)})
+}
+
+// RecallAll POST /games/ezfy/wild/recall-all —— 一键召回
+//
+// 把所有驻守中的采集部队改成返航；**返航到达时**才会把「待带回资源」运回城里。
+func (h *EzfyHandler) RecallAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	h.processOrders(uid)
+	now := time.Now().UnixMilli()
+
+	var orders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1", uid).Order("id ASC").Find(&orders)
+	if len(orders) == 0 {
+		resp.ParamError(c, "没有正在采集的部队")
+		return
+	}
+	n := 0
+	var back int64
+	for i := range orders {
+		order := &orders[i]
+		travel := ezfyOneWayTravel(order)
+		back += parseCarry(order.Carry).total()
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+			Updates(map[string]interface{}{"status": 2, "result": order.Troops,
+				"return_time": now + travel})
+		n++
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已召回 %d 支采集部队，共带回资源 %d（到达后入库）", n, back)})
 }
 
 // dedupStrings 去重(保持顺序), 用于把重复的失败原因合并

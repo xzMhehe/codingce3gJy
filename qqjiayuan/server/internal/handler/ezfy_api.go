@@ -1495,21 +1495,15 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	// ★ 走统一懒结算：原来这里只处理了「抵达(0)」和「返航(2)」，
+	//   漏掉了「驻守采集(1) 到点结算」，导致军队动态页看到的采集进度/待带回资源是旧的。
+	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ? AND status IN (0,1,2)", uid).Order("id DESC").Limit(100).Find(&orders)
 	views := []gin.H{}
 	for i := range orders {
 		o := &orders[i]
-		// 到点未结算的先结算, 保证展示状态是最新的
-		if o.Status == 0 && now >= o.ArriveTime {
-			h.processArrive(uid, o, now)
-			continue
-		}
-		if o.Status == 2 && now >= o.ReturnTime {
-			h.finishReturn(uid, o)
-			continue
-		}
 		timeLabel, timeText := "", ""
 		statusName := ""
 		switch o.Status {
@@ -1526,6 +1520,8 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			timeLabel = "返回时间"
 			timeText = ezfyDurationText((o.ReturnTime - now) / 1000)
 		}
+		// ★ 采集部队带上「待带回资源」与负重，前端可展示（资源要召回才入城）
+		c := parseCarry(o.Carry)
 		views = append(views, gin.H{
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 			"target_type": o.TargetType, "target_name": h.ezfyTargetName(o),
@@ -1533,6 +1529,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			"status": o.Status, "status_name": statusName,
 			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
 			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
+			"carry": c, "carry_total": c.total(), "carry_cap": h.ezfyCarryCap(o),
 		})
 	}
 	resp.OK(c, gin.H{"dynamics": views, "count": len(views)})

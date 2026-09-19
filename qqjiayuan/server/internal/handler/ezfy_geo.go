@@ -118,8 +118,21 @@ func ezfyHasSeaNeighbor(x, y int) bool {
 }
 
 // ezfyIsCoastalPlainAt 该坐标是否沿海平原
+//
+// ★ 这里为什么还要再取一次哈希：
+//   本项目的坐标地形是 `abs(x*73856093 ^ y*19349663) % 8 + 1`，**它是周期 8 的**
+//   （(x+8)*73856093 与 x*73856093 在 mod 8 下同余，y 同理），因此整张地图是 8×8 的重复图案。
+//   实测：**每一个「平原」格都恰好只有 1 个海洋邻居（20000/20000）**。
+//   如果只用「平原 + 邻海」判定沿海平原，平原会 100% 变成沿海平原，
+//   陆地城市就再也建不出来了（建城只允许 平原/沿海平原）。
+//   所以这里再用一个独立的哈希，从「靠海的平原」里挑出约 1/3 作为沿海平原，
+//   保证两种地形同时存在（平原 ≈2/3、沿海平原 ≈1/3）。
 func ezfyIsCoastalPlainAt(x, y int) bool {
-	return ezfyTerrain(x, y) == 1 && ezfyHasSeaNeighbor(x, y)
+	if ezfyTerrain(x, y) != 1 || !ezfyHasSeaNeighbor(x, y) {
+		return false
+	}
+	h := ezfyAbs(x*40503 ^ y*2654435761)
+	return h%3 == 0
 }
 
 // ezfyTerrainEx 实际地形：平原且靠海 → 沿海平原(9)，其余同 ezfyTerrain

@@ -535,6 +535,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/city/convene", ezfyH.Convene)
 				ezfyG.POST("/city/placate", ezfyH.Placate)
 				ezfyG.POST("/city/abandon-wild", ezfyH.AbandonWildland)
+				// 摧毁自己的城市（仅限非当前所在城市）
+				ezfyG.POST("/city/destroy", ezfyH.DestroyCity)
 				ezfyG.GET("/city/move", ezfyH.MoveInfo)
 				ezfyG.POST("/city/move", ezfyH.MoveCity)
 				ezfyG.GET("/city/produce", ezfyH.ProduceInfo)
@@ -568,6 +570,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/order/recall", ezfyH.RecallOrder)
 				ezfyG.POST("/wild/collect-all", ezfyH.CollectAll)
 				ezfyG.POST("/wild/harvest-all", ezfyH.HarvestAll)
+				// 一键召回（资源随返航带回）
+				ezfyG.POST("/wild/recall-all", ezfyH.RecallAll)
 				ezfyG.GET("/reports", ezfyH.Reports)
 				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
 				ezfyG.GET("/reports/:id", ezfyH.ReportView)

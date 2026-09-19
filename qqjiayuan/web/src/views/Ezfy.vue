@@ -65,7 +65,7 @@
           <img class="logo-title" src="/static/ezfy/jx.png" title="军衔" alt="."/>
           <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
         </div>
-        <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">签到</a></div>
+        <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line">
           <a href="javascript:;" @click="go('builds')">资源</a>.
@@ -234,8 +234,9 @@
           </div>
           <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
           <div class="old-line">
-            <input v-model="pmContent" placeholder="最多500字" style="width:28%" maxlength="500"
-                   @keyup.enter="doSendPm"/>
+            <!-- ★ 改成可自适应高度的文本域（用户要求）：随内容长高，最多 8 行后内部滚动 -->
+            <textarea v-model="pmContent" class="ezfy-auto-textarea" placeholder="最多500字"
+                      maxlength="500" rows="2"></textarea>
           </div>
           <div class="old-line">
             <button @click="doSendPm">发送</button>
@@ -262,6 +263,10 @@
             <div class="old-line">
               <a href="javascript:;" @click="doCollectAll">一键采集</a>
               <a href="javascript:;" @click="doHarvestAll">一键收获</a>
+              <a href="javascript:;" @click="doRecallAll">一键召回</a>
+            </div>
+            <div class="old-line gray">
+              「收获」只把产出装进部队；资源要「召回」并返航到达才会运回城里（受负重限制）。宝物直接进背包。
             </div>
             <div class="old-line" v-for="o in dynamics" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
@@ -269,6 +274,12 @@
               状态：{{ o.status_name }}<br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o.time_text }}<br/>
+              <span v-if="o.carry_total > 0" class="green">
+                待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
+                （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
+              </span>
+              <span v-else-if="o.order_type === 7 || o.order_type === 4" class="gray">待带回：暂无</span>
+              <br/>
               --------------------
             </div>
             <div class="old-line" v-if="!dynamics.length">(当前没有在外的部队)</div>
@@ -413,6 +424,8 @@
             {{ resShort.gold }}{{ ct.gold }} {{ resShort.food }}{{ ct.food }} {{ resShort.steel }}{{ ct.steel }} {{ resShort.oil }}{{ ct.oil }} {{ resShort.rare }}{{ ct.rare }}<br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
             <a href="javascript:;" @click="go('rename')">[改名]</a>
+            <!-- ★ 只能摧毁「非当前所在」的城市；摧毁后该坐标恢复为普通平原 -->
+            <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[摧毁]</a>
           </div>
           <br/>
           <div class="panel-title">起新城 (消耗10万{{ resNames.gold }})</div>
@@ -1531,7 +1544,7 @@
               （我当前「{{ rankData.mine.rank_name }}」：可建 {{ rankData.mine.city_max }} 座，已有 {{ rankData.mine.city_count }} 座）
             </span>
           </div>
-          <table>
+          <table class="ezfy-rank-table">
             <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>可建城数</th></tr>
             <tr v-for="(r, i) in rankData.ranks" :key="'rk' + i">
               <td>{{ i + 1 }}</td>
@@ -2641,6 +2654,7 @@ export default {
     }
     window.addEventListener('popstate', this._onBack)
     this.load()
+    this.loadWelfare()
     this.loadResCfg()
     this.loadChats()
     this.loadHomeChats()
@@ -2739,7 +2753,7 @@ export default {
         return
       }
       this.cur = t
-      if (t === 'home') this.load()
+      if (t === 'home') { this.load(); this.loadWelfare() }
       else if (t === 'troops' || t === 'troop' || t === 'defence' ||
                t === 'troopview' || t === 'trainpre' || t === 'troopstat') this.loadTroops()
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
@@ -3004,9 +3018,21 @@ export default {
         } else this.notify(r.msg)
       })
     },
+    // ★ 一键收获：只结算产出装进部队，**不召回**
     async doHarvestAll () {
-      if (!await this.ask('确定收获并召回所有正在采集的部队吗?')) return
+      if (!await this.ask('确定收获所有采集部队吗？（只把产出装进部队，资源要「召回」才会运回城里）')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data.msg)
+          this.loadDynamics()
+          this.load()
+        } else this.notify(r.msg)
+      })
+    },
+    // ★ 一键召回：部队返航，到达时把待带回资源运回城里
+    async doRecallAll () {
+      if (!await this.ask('确定召回所有采集部队吗？部队返航到达后，待带回的资源才会入库。')) return
+      api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.data.msg)
           this.loadDynamics()
@@ -3314,6 +3340,19 @@ export default {
     },
     doCreateCity () {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r))
+    },
+    // 摧毁自己的城市（仅限非当前所在城市）
+    async doDestroyCity (ct) {
+      const ok = await this.ask('确定摧毁「' + ct.name + '」吗？该城市的建筑、部队、军官、野地都会一并消失，' +
+        '坐标会恢复为普通平原。此操作不可恢复！')
+      if (!ok) return
+      api.post('/games/ezfy/city/destroy', { city_id: ct.id }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data.msg)
+          this.load()
+          this.loadTroops()
+        } else this.notify(r.msg)
+      })
     },
     doSwitch (ct) {
       api.post('/games/ezfy/city/switch', { city_id: ct.id }).then(r => {
@@ -4142,10 +4181,34 @@ body.ezfy-immersive { margin: 0; }
   font-size: 15px;
 }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
+/* ★ 配色按用户要求：默认 #004299，当前选中黑色 */
 .ezfy-page .ezfy-subnav a {
   display: inline-block;
   padding: 2px 4px;
   font-size: 15px;
+  color: #004299;
+}
+.ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
+/* 军衔晋升表：数据水平+垂直居中 */
+.ezfy-page .ezfy-rank-table th,
+.ezfy-page .ezfy-rank-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+/* 自适应高度文本域（私聊等） */
+.ezfy-page .ezfy-auto-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  max-height: 160px;
+  padding: 4px 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  border: 1px solid #c8c8c8;
+  border-radius: 3px;
+  resize: vertical;
+  overflow-y: auto;
 }
 /* 司令部·兵种战斗配置：一兵种一块，窄屏不遮盖 */
 .ezfy-page .ezfy-tgt-block {
