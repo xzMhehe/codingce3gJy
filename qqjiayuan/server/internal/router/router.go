@@ -1007,6 +1007,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-notices", perm(db, "module:ezfySystem"), adminH.AdminEzfyNotices)
 				admin.POST("/ezfy-announce", perm(db, "module:ezfySystem"), adminH.AdminEzfyAnnounce)
 				admin.DELETE("/ezfy-notices/:id", perm(db, "module:ezfySystem"), adminH.AdminEzfyNoticeDelete)
+				admin.PUT("/ezfy-notices/:id", perm(db, "module:ezfySystem"), adminH.AdminEzfyNoticeUpdate)
 				admin.GET("/ezfy-stats", perm(db, "module:ezfySystem"), adminH.AdminEzfyStats)
 				admin.GET("/ezfy-server", perm(db, "module:ezfySystem"), adminH.AdminEzfyServer)
 				admin.POST("/ezfy-server/maintenance", perm(db, "module:ezfySystem"), adminH.AdminEzfyServerSet)

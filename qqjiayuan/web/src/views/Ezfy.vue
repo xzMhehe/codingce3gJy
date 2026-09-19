@@ -33,6 +33,16 @@
         </div>
       </div>
 
+      <!-- 二级导航（资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
+      <div class="old-line ezfy-subnav" v-if="showSubnav">
+        <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>.
+        <a href="javascript:;" :class="{ on: cur === 'acade' }" @click="go('acade')">军官</a>.
+        <a href="javascript:;" :class="{ on: isArmyPage }" @click="go('troops')">军队</a>.
+        <a href="javascript:;" :class="{ on: cur === 'techs' }" @click="go('techs')">科技</a>.
+        <a href="javascript:;" :class="{ on: cur === 'defence' }" @click="go('defence')">城防</a>.
+        <a href="javascript:;" :class="{ on: cur === 'info' }" @click="go('info')">统帅</a>
+      </div>
+
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
         <div class="old-line" v-for="n in notices.slice(0, 2)" :key="'n' + n.id">
@@ -140,26 +150,6 @@
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
-        <br/>
-        <div class="old-line">
-          <a href="javascript:;" @click="go('buildm')">军事</a>
-          <a href="javascript:;" @click="go('builds')">资源</a>
-          <a href="javascript:;" @click="go('map')">地图</a>
-          <a href="javascript:;" @click="go('corps')">军团</a>
-          <a href="javascript:;" @click="go('rank')">排行</a>
-          <a href="javascript:;" @click="go('bag')">背包</a>
-          <a href="javascript:;" @click="go('mall')">商城</a>
-          <a href="javascript:;" @click="go('acade')">宝物</a>
-        </div>
-        <div class="old-line">
-          <a href="javascript:;" @click="go('activity')">活动</a>
-          <a href="javascript:;" @click="go('welfare')">福利</a>
-          <a href="javascript:;" @click="go('notices')">公告</a>
-          <a href="javascript:;" @click="go('exchange')">交易</a>
-          <a href="javascript:;" @click="go('liaison')">联络</a>
-          <a href="javascript:;" @click="go('cityhall')">市政</a>
-          <a href="javascript:;" @click="go('chat')">聊天</a>
-        </div>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -575,14 +565,6 @@
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
-          </div>
           <a href="javascript:;" @click="go('defence')">[去建城防]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -610,14 +592,6 @@
             </tr>
           </table>
           <div class="old-line gray">城防设施占用「城防空间」(围墙容量)，不占用人口。</div>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
-          </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -641,14 +615,6 @@
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
           <br/>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
-          </div>
           <a href="javascript:;" @click="go('troop')">[造兵]</a>
           <a href="javascript:;" @click="go('defence')">[建防]</a>
           <a href="javascript:;" @click="go('hq')">[司令部]</a>
@@ -839,14 +805,6 @@
             <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a> : {{ troopCount(t.id) }}
             <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a>
           </div>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
-          </div>
           <div class="old-line">
             <a href="javascript:;" @click="go('troops')">[城内军队]</a>
             <a href="javascript:;" @click="go('buildm')">[返回军事区]</a>
@@ -914,14 +872,6 @@
               [{{ troopView.type === 4 ? '建造' : '训练' }}]
             </a>
           </div>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
-          </div>
           <a href="javascript:;" @click="go(troopViewBack)">[返回]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -976,14 +926,6 @@
           <div class="old-line">预计耗时：{{ trainEstimateText }}</div>
           <div class="old-line">
             <button @click="doTrainPre()">{{ trainMode === 'defence' ? '开始建造' : '开始训练' }}</button>
-          </div>
-          <div class="old-line ezfy-subnav">
-            <a href="javascript:;" @click="go('builds')">资源</a>.
-            <a href="javascript:;" @click="go('acade')">军官</a>.
-            <a href="javascript:;" @click="go('troops')">军队</a>.
-            <a href="javascript:;" @click="go('techs')">科技</a>.
-            <a href="javascript:;" @click="go('defence')">城防</a>.
-            <a href="javascript:;" @click="go('info')">统帅</a>
           </div>
           <a href="javascript:;" @click="go(trainMode === 'defence' ? 'defence' : 'factory')">[返回]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -1882,14 +1824,6 @@
       <template v-else-if="cur === 'info'">
         <div class="panel">
           <div class="panel-title">统帅信息</div>
-          <div class="old-line">
-            <a href="javascript:;" @click="go('builds')">资源</a> ·
-            <a href="javascript:;" @click="go('acade')">军官</a> ·
-            <a href="javascript:;" @click="go('troops')">军队</a> ·
-            <a href="javascript:;" @click="go('techs')">科技</a> ·
-            <a href="javascript:;" @click="go('defence')">城防</a> ·
-            个人
-          </div>
           <!-- ★ 只展示「玩家号码(游戏ID)」——不展示家园号码 -->
           玩家号码：{{ selfInfo.game_uid || profile.game_uid || userBrief.game_uid || '—' }}<br/>
           昵称：{{ selfInfo.nickname || profile.nickname }}
@@ -2507,6 +2441,14 @@ export default {
     }
   },
   computed: {
+    // ★ 二级导航（资源/军官/军队/科技/城防/统帅）：只在对应页面显示，位置固定在页面顶部
+    //   军队的几个子页（兵种/兵种详情/训练/工厂）也算「军队」，一并显示，保持导航不中断
+    isArmyPage () {
+      return ['troops', 'troop', 'troopview', 'trainpre', 'factory'].indexOf(this.cur) >= 0
+    },
+    showSubnav () {
+      return ['builds', 'acade', 'techs', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
+    },
     // 改名提示：首次免费 / 之后消耗改名卡
     renameHint () {
       const d = this.selfInfo || {}
@@ -3394,10 +3336,16 @@ export default {
           '确定将城市归还给原玩家吗?')) return
       api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r))
     },
+    // 野地列表 → [采集]：进「出征页」选兵种后再下达命令
+    // ★ 原来直接 POST 且没带 troops，后端必然返回「请选择出征部队」，
+    //   表现就是「点了采集没反应 / 采集发不出去」。
     openWildGather (w) {
-      api.post('/games/ezfy/order', {
-        order_type: 4, target_type: 1, target_x: w.x, target_y: w.y, target_id: w.id
-      }).then(r => this.alert(r))
+      this.selCell = { x: w.x, y: w.y, area_type: 1, level: w.level,
+        name: (w.terrain_name || '野地'), wild_id: w.id }
+      this.selDetail = { id: w.id, level: w.level, x: w.x, y: w.y }
+      this.orderType = 4
+      this.orderCalc = null
+      this.go('orderpre')
     },
     // ---- 军队 ----
     // 兵种详情(复刻 cityTroopView.html): 军队页/军工厂页/城防页点兵种名进来
@@ -3574,6 +3522,9 @@ export default {
         return
       }
       const ttype = cell.area_type === 2 ? 3 : (cell.terrain === 8 ? 2 : 1)
+      // 顺带记住这块地上「我的野地记录 id」，采集/派遣下单要用
+      const mine = (this.wildlands || []).find(x => x.x === cell.x && x.y === cell.y)
+      if (mine) cell.wild_id = mine.id
       api.get('/games/ezfy/map/wildland?x=' + cell.x + '&y=' + cell.y + '&type=' + ttype).then(r => {
         if (r.code === 0) this.selDetail = r.data
       })
@@ -3613,6 +3564,17 @@ export default {
       }
       if (this.selCell.area_type === 3 && this.selCell.city_id) {
         body.target_id = this.selCell.city_id
+      }
+      // ★ 采集(4)/派遣(7) 后端要按 target_id 校验「这块野地是你占领的」，
+      //   而地图格子只有坐标 → 这里按坐标在「我的野地」里反查记录 id。
+      //   （之前没带 target_id，采集/派遣永远发不出去）
+      if (this.orderType === 4 || this.orderType === 7) {
+        if (this.selCell.wild_id) {
+          body.target_id = this.selCell.wild_id
+        } else {
+          const w = (this.wildlands || []).find(x => x.x === this.selCell.x && x.y === this.selCell.y)
+          if (w) body.target_id = w.id
+        }
       }
       const troops = []
       for (const k in this.orderTroops) {
@@ -3774,22 +3736,28 @@ export default {
     },
     // ---- 军团 ----
     doCreateCorps () {
-      api.post('/games/ezfy/corps/create', { name: this.corpsName }).then(r => this.alert(r))
+      api.post('/games/ezfy/corps/create', { name: this.corpsName })
+        .then(r => this.alert(r, '联盟已创建', () => this.loadCorps()))
     },
     doJoinCorps (cp) {
-      api.post('/games/ezfy/corps/join', { corps_id: cp.id }).then(r => this.alert(r))
+      // ★ 加入成功后必须重新拉军团数据，否则页面还显示「未加入」
+      api.post('/games/ezfy/corps/join', { corps_id: cp.id })
+        .then(r => this.alert(r, '已加入联盟', () => this.loadCorps()))
     },
     async doLeaveCorps () {
       if (!await this.ask(this.isLeader ? '军团长退出将解散军团, 确定?' : '确定退出军团?')) return
-      api.post('/games/ezfy/corps/leave', {}).then(r => this.alert(r))
+      api.post('/games/ezfy/corps/leave', {})
+        .then(r => this.alert(r, '已退出联盟', () => this.loadCorps()))
     },
     async openNoticeEdit () {
       const n = await this.ask('输入军团公告', { input: true, value: (this.myCorps ? this.myCorps.notice : '') })
-      if (n !== null) api.post('/games/ezfy/corps/notice', { notice: n }).then(r => this.alert(r))
+      if (n !== null) api.post('/games/ezfy/corps/notice', { notice: n })
+        .then(r => this.alert(r, '公告已更新', () => this.loadCorps()))
     },
     doKick () {
       if (!this.kickUserId) return this.notify('请选择成员')
-      api.post('/games/ezfy/corps/kick', { user_id: this.kickUserId }).then(r => this.alert(r))
+      api.post('/games/ezfy/corps/kick', { user_id: this.kickUserId })
+        .then(r => this.alert(r, '已踢出', () => this.loadCorps()))
     },
     doCorpsChat () {
       api.post('/games/ezfy/corps/chat', { content: this.corpsMsg }).then(r => {
@@ -3923,8 +3891,8 @@ export default {
       const id = this._msgSeq
       this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
       if (this.msgs.length > 6) this.msgs.shift()
-      // 成功类 6 秒、失败类 12 秒后自动收起（也可点 [关闭]）
-      setTimeout(() => this.closeMsg(id), /失败|不足|错误|不能|无法|需要|没有/.test(t) ? 12000 : 6000)
+      // ★ 用户要求：不需要玩家确定的提示 3 秒后自动消失（也可点 [关闭] 手动收起）
+      setTimeout(() => this.closeMsg(id), 3000)
     },
     guessMsgType (t) {
       if (/失败|不足|错误|不能|无法|没有|请先|需要/.test(t)) return 'error'
@@ -3955,10 +3923,13 @@ export default {
       r(box.input ? box.value : true)
     },
     // 统一的接口结果提示（原来弹 alert，现在落到页面消息区）
-    alert (r, fallback) {
+    // ★ after：成功后要额外刷新的数据（如军团信息）。只刷 /view 不够 ——
+    //   军团数据来自 /games/ezfy/corps/*，不重新拉就会「加入后还显示未加入」。
+    alert (r, fallback, after) {
       if (r && r.code === 0) {
         this.notify((r.data && r.data.msg) ? r.data.msg : (fallback || '操作成功'), 'ok')
         this.load()
+        if (typeof after === 'function') after()
       } else {
         this.notify((r && r.msg) ? r.msg : '操作失败', 'error')
       }
@@ -4208,12 +4179,12 @@ body.ezfy-immersive { margin: 0; }
   font-size: 15px;
   line-height: 1.75;
 }
-/* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px，别拉太开 */
+/* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
 .ezfy-page .ezfy-bottom-nav a {
   display: inline;
   padding: 0 1px;
   margin: 0 1px;
-  color: #2f4156;
+  color: #004299;
 }
 .ezfy-page .ezfy-bottom-nav a.on {
   font-weight: bold;

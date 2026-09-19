@@ -622,6 +622,55 @@ func (h *AdminHandler) AdminEzfyAnnounce(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "公告已发布"})
 }
 
+// AdminEzfyNoticeUpdate 编辑已发布的公告（标题/内容/置顶）
+//
+// ★ 用户要求：已发布的公告要能编辑（原来只能删了重发）。
+func (h *AdminHandler) AdminEzfyNoticeUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var n model.EzfyNotice
+	if err := h.DB.Where("user_id = 0").First(&n, id).Error; err != nil {
+		resp.NotFound(c, "公告不存在")
+		return
+	}
+	var in struct {
+		Title   *string `json:"title"`
+		Content *string `json:"content"`
+		IsTop   *int    `json:"is_top"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	updates := map[string]interface{}{}
+	if in.Title != nil {
+		t := strings.TrimSpace(*in.Title)
+		if t == "" {
+			t = "游戏公告"
+		}
+		updates["title"] = trimStr(t, 100)
+	}
+	if in.Content != nil {
+		ct := strings.TrimSpace(*in.Content)
+		if ct == "" {
+			resp.ParamError(c, "公告内容不能为空")
+			return
+		}
+		updates["content"] = trimStr(ct, 2000)
+	}
+	if in.IsTop != nil {
+		updates["is_top"] = *in.IsTop
+	}
+	if len(updates) == 0 {
+		resp.ParamError(c, "无可修改字段")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyNotice{}).Where("id = ?", n.ID).Updates(updates).Error; err != nil {
+		resp.ParamError(c, "保存失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "公告已更新"})
+}
+
 // AdminEzfyNoticeDelete 删除公告
 func (h *AdminHandler) AdminEzfyNoticeDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

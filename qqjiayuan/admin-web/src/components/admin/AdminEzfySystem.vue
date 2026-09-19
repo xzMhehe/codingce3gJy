@@ -92,14 +92,35 @@
         <el-table-column label="时间" width="150" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
+        <el-table-column label="操作" width="170" align="center">
           <template slot-scope="{row}">
+            <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openNoticeEdit(row)">编辑</el-button>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delNotice(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
       <em>提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长）</em>
     </el-card>
+    <!-- 编辑已发布的公告 -->
+    <el-dialog title="编辑公告" :visible.sync="noticeEditDlg" width="680px" :close-on-click-modal="false">
+      <el-form label-width="90px" size="small">
+        <el-form-item label="标题">
+          <el-input v-model="noticeEdit.title" maxlength="100" placeholder="公告标题" />
+        </el-form-item>
+        <el-form-item label="内容" required>
+          <el-input v-model="noticeEdit.content" type="textarea" :rows="5"
+                    maxlength="2000" show-word-limit placeholder="公告内容" />
+        </el-form-item>
+        <el-form-item label="置顶">
+          <el-checkbox v-model="noticeEdit.isTop">在游戏内公告栏置顶显示</el-checkbox>
+        </el-form-item>
+      </el-form>
+      <em>保存后玩家在游戏内公告栏立即看到最新内容</em>
+      <div slot="footer">
+        <el-button @click="noticeEditDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="doNoticeSave">保 存</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -113,8 +134,9 @@ export default {
       stats: null, loadingStats: false,
       srv: { maintenance: false, notice: '', players: 0, cities: 0 },
       srvForm: { on: false, notice: '' },
-      loadingSrv: false, savingSrv: false,
+      loadingSrv: false, savingSrv: false, saving: false,
       noticeForm: { title: '', content: '', isTop: true },
+      noticeEditDlg: false, noticeEdit: { id: 0, title: '', content: '', isTop: true },
       notices: [], loadingNotices: false, sending: false,
       campNames: { 1: '同盟国', 2: '轴心国' }
     }
@@ -185,6 +207,32 @@ export default {
         this.loadingNotices = false
         if (r.code === 0) this.notices = r.data.list
         else this.$message.error(r.msg)
+      })
+    },
+    // 编辑已发布的公告
+    openNoticeEdit (row) {
+      this.noticeEdit = {
+        id: row.id, title: row.title || '',
+        content: row.content || '', isTop: row.is_top === 1
+      }
+      this.noticeEditDlg = true
+    },
+    doNoticeSave () {
+      if (!String(this.noticeEdit.content || '').trim()) {
+        this.$message.warning('请输入公告内容'); return
+      }
+      this.saving = true
+      api.put('/admin/ezfy-notices/' + this.noticeEdit.id, {
+        title: this.noticeEdit.title,
+        content: this.noticeEdit.content,
+        is_top: this.noticeEdit.isTop ? 1 : 0
+      }).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.noticeEditDlg = false
+          this.$message.success(r.data.msg || '已保存')
+          this.loadNotices()
+        } else this.$message.error(r.msg)
       })
     },
     doAnnounce () {
