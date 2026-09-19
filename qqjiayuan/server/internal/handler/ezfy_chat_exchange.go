@@ -332,8 +332,9 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	}
 	views := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		views = append(views, gin.H{"key": r.key, "tag": r.tag, "user_name": r.user,
-			"color": r.color, "content": r.content, "created_at": r.at})
+		// user_id 供前端点玩家名 → 游戏内「统帅信息」页(不能跳去家园个人主页)
+		views = append(views, gin.H{"key": r.key, "tag": r.tag, "user_id": uidOf[r.key],
+			"user_name": r.user, "color": r.color, "content": r.content, "created_at": r.at})
 	}
 	var online int64
 	h.DB.Model(&model.EzfyProfile{}).Count(&online)

@@ -114,8 +114,9 @@
         <!-- 复刻: [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
-          <span v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
-                :style="nickColorAt(ch.color, ci)">{{ c }}</span>：{{ ch.content }}
+          <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
+             v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
+             :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
@@ -179,7 +180,7 @@
             <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
               [<span class="orange">{{ chatChannel === 2 ? '军团' : '世界' }}</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
-              <a href="javascript:;" @click="openUser(ch.user_id)"><span
+              <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
                  v-for="(c, ci) in nickChars(ch.user_name)" :key="'ncc' + ci"
                  :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
             </div>
@@ -202,7 +203,8 @@
         <div class="panel">
           <div class="panel-title">邮箱(家园私信)</div>
           <div class="old-line" v-for="m in mails" :key="'m' + m.id">
-            <span :class="{ red: m.is_read === 0 }">{{ m.sender }}</span>:
+            <a href="javascript:;" @click="openPlayer(m.sender_id)"><span
+               :class="{ red: m.is_read === 0 }">{{ m.sender }}</span></a>:
             {{ m.content }} <span class="gray">({{ fmtTime(m.created_at) }})</span>
           </div>
           <div class="old-line" v-if="!mails.length">(暂无私信)</div>
@@ -323,7 +325,7 @@
             <tr><th>号码</th><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="u in friendSearchList" :key="'fs' + u.id">
               <td>{{ u.num }}</td>
-              <td>{{ u.nickname }}</td>
+              <td><a href="javascript:;" @click="openPlayer(u.id)">{{ u.nickname }}</a></td>
               <td>Lv.{{ u.level }}</td>
               <td>
                 <span :class="u.online ? 'green' : 'gray'">{{ u.online ? '在线' : '离线' }}</span>
@@ -343,10 +345,11 @@
           <table>
             <tr><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="f in friends" :key="'f' + f.id">
-              <td>{{ f.nickname }}</td>
+              <td><a href="javascript:;" @click="openPlayer(f.id)">{{ f.nickname }}</a></td>
               <td>Lv.{{ f.level }}</td>
               <td><span :class="f.online ? 'green' : 'gray'">{{ f.online ? '在线' : '离线' }}</span></td>
               <td>
+                <a href="javascript:;" @click="openPlayer(f.id)">[统帅信息]</a>
                 <a href="javascript:;" @click="go('mail')">[私聊]</a>
               </td>
             </tr>
@@ -1310,6 +1313,8 @@
             <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
             <a href="javascript:;" @click="go('wilds')">[占领野地]</a>
             <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
+            <a href="javascript:;" @click="go('srcstat')">[资源统计]</a>
+            <a href="javascript:;" @click="go('troopstat')">[军队统计]</a>
           </div>
           <div class="panel-title">全部建筑总览</div>
           <table>
@@ -1324,6 +1329,43 @@
               </td>
             </tr>
           </table>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 市政厅→资源统计(srcstat) 复刻 city/citySourceList.html ============ -->
+      <template v-else-if="cur === 'srcstat'">
+        <div class="panel">
+          <div class="old-line">
+            <a href="javascript:;" @click="go('cityhall')">市政厅</a>-&gt;资源统计
+          </div>
+          <div class="old-line">【{{ city.name }}】:</div>
+          <div class="old-line">
+            黄金：{{ city.gold }}/{{ city.gold_cap }}<br/>
+            粮食：{{ city.food }}/{{ city.food_cap }}<br/>
+            钢铁：{{ city.steel }}/{{ city.steel_cap }}<br/>
+            石油：{{ city.oil }}/{{ city.oil_cap }}<br/>
+            稀矿：{{ city.rare }}/{{ city.rare_cap }}
+          </div>
+          <div class="old-line gray">斜杠后为仓库容量上限；升级仓库可提高保护量与上限。</div>
+          <a href="javascript:;" @click="go('cityhall')">[返回]</a>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 市政厅→军队统计(troopstat) 复刻 city/cityTroopList.html ============ -->
+      <template v-else-if="cur === 'troopstat'">
+        <div class="panel">
+          <div class="old-line">
+            <a href="javascript:;" @click="go('cityhall')">市政厅</a>-&gt;军队统计
+          </div>
+          <div class="old-line">【{{ city.name }}】:</div>
+          <div class="old-line" v-for="t in troopsData.troops" :key="'ts' + t.troop_id">
+            <a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a>：{{ t.count }}
+          </div>
+          <div class="old-line gray" v-if="!troopsData.troops.length">(城内无部队)</div>
+          <div class="old-line">合计：{{ totalTroops }}</div>
+          <a href="javascript:;" @click="go('cityhall')">[返回]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1425,7 +1467,7 @@
             <table>
               <tr><th>成员</th><th>职位</th><th>声望</th><th>军衔</th></tr>
               <tr v-for="m in corpsMembers" :key="'cm' + m.user_id">
-                <td>{{ m.name }}</td>
+                <td><a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.name }}</a></td>
                 <td>{{ m.title }}</td>
                 <td>{{ m.prestige }}</td>
                 <td>{{ m.rank_name }}</td>
@@ -1437,6 +1479,12 @@
                 <option v-for="m in corpsMembers" v-if="!m.is_leader" :key="'kc' + m.user_id" :value="m.user_id">{{ m.name }}</option>
               </select>
               <button @click="doKick">[踢出]</button>
+            </div>
+            <!-- 军团邮件群发(复刻 CorpsController.mail, 仅军团长) -->
+            <div class="panel-title" v-if="isLeader">军团邮件(群发全体成员)</div>
+            <div class="old-line" v-if="isLeader">
+              <input v-model="corpsMailContent" placeholder="邮件内容(500字以内)" style="width:60%"/>
+              <button @click="doCorpsMail">[群发]</button>
             </div>
           </div>
         </template>
@@ -1456,7 +1504,7 @@
         <div class="panel" v-if="myCorps">
           <div class="panel-title">军团聊天</div>
           <div class="old-line" v-for="m in corpsChats" :key="'cc' + m.id">
-            [{{ m.user_name }}]:{{ m.content }}
+            [<a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.user_name }}</a>]:{{ m.content }}
           </div>
           <div class="old-line" v-if="!corpsChats.length">(暂无消息)</div>
           <div class="old-line">
@@ -1489,14 +1537,18 @@
           <table>
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
             <tr v-for="r in rankData.prestige" :key="'rp' + r.rank">
-              <td>{{ r.rank }}</td><td>{{ r.name }}</td><td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
+              <td>{{ r.rank }}</td>
+              <td><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.name }}</a></td>
+              <td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
             </tr>
           </table>
           <div class="panel-title">兵力榜</div>
           <table>
             <tr><th>名次</th><th>统帅</th><th>城市</th><th>兵力</th></tr>
             <tr v-for="r in rankData.troops" :key="'rt' + r.rank">
-              <td>{{ r.rank }}</td><td>{{ r.role_name }}</td><td>{{ r.city_name }}</td><td>{{ r.count }}</td>
+              <td>{{ r.rank }}</td>
+              <td><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
+              <td>{{ r.city_name }}</td><td>{{ r.count }}</td>
             </tr>
           </table>
           <div class="panel-title">军团榜</div>
@@ -1783,6 +1835,50 @@
           占领野地：{{ wildlands.length }}块<br/>
           <a href="javascript:;" @click="go('friends')">[申请好友]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 他人统帅信息(playerinfo) 复刻 PlayerController.infoOther + user/info.html ============ -->
+      <!-- 游戏是沉浸式的: 点玩家名只看这一页(二战风云的数据), 不允许跳去家园个人主页 /user/:id -->
+      <template v-else-if="cur === 'playerinfo'">
+        <div class="panel" v-if="playerInfo">
+          <div class="panel-title">统帅信息</div>
+          <div class="old-line">
+            <b :style="nickColorAt(playerInfo.color, 0)">{{ playerInfo.nickname }}</b>
+            <span class="gray">(家园号码 {{ playerInfo.account }})</span>
+          </div>
+          <div class="old-line">
+            阵营：{{ playerInfo.camp_name }}<br/>
+            声望：{{ playerInfo.prestige }}<br/>
+            军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<br/>
+            军团：{{ playerInfo.corps_name || '无' }}<br/>
+            城市数：{{ playerInfo.city_count }}<br/>
+            军官数：{{ playerInfo.officer_count }}<br/>
+            总兵力：{{ playerInfo.troop_total }}<br/>
+            占领野地：{{ playerInfo.wild_count }}块
+          </div>
+          <div class="old-line">
+            <template v-if="playerInfo.is_self">
+              <span class="gray">这是你自己</span>
+              <a href="javascript:;" @click="go('info')">[我的统帅页]</a>
+            </template>
+            <template v-else-if="playerInfo.is_friend">
+              <span class="green">已是好友</span>
+              <a href="javascript:;" @click="go('mail')">[发私信]</a>
+            </template>
+            <template v-else-if="playerInfo.is_applied">
+              <span class="orange">好友申请已发送, 等待对方处理</span>
+            </template>
+            <template v-else>
+              <a href="javascript:;" @click="doAddFriendById()">[申请好友]</a>
+              <a href="javascript:;" @click="go('mail')">[发私信]</a>
+            </template>
+          </div>
+          <a href="javascript:;" @click="go(playerInfoBack)">[返回]</a>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line gray">正在加载统帅信息…</div>
         </div>
       </template>
 
@@ -2235,6 +2331,9 @@ export default {
       trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
       troopViewId: 0,     // 兵种详情页当前兵种 id
       troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
+      playerInfo: null,        // 他人统帅信息(复刻 infoOther)
+      playerInfoBack: 'chat',  // 他人统帅页 [返回] 回到哪一页
+      corpsMailContent: '',    // 军团邮件群发内容
       taxInput: 20,
       renameInput: '',
       newCityX: '',
@@ -2453,6 +2552,18 @@ export default {
   mounted () {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
+    // 沉浸式卡控①: 游戏内任何 <a href="/..."> 都不允许跳出 /games/ezfy 回到家园站点
+    // (捕获阶段拦截, 只拦站内绝对路径链接)
+    document.addEventListener('click', this.blockEscape, true)
+    // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏首页(与幻想西游 Xiyou.vue 一致)
+    history.pushState({ __ezfyGuard: true }, '')
+    this._onBack = () => {
+      if (location.hash.split('?')[0].indexOf('/games/ezfy') >= 0) {
+        this.go('home')
+      }
+      history.pushState({ __ezfyGuard: true }, '')
+    }
+    window.addEventListener('popstate', this._onBack)
     this.load()
     this.loadChats()
     this.loadHomeChats()
@@ -2465,9 +2576,30 @@ export default {
   },
   beforeDestroy () {
     document.body.classList.remove('ezfy-immersive')
+    document.removeEventListener('click', this.blockEscape, true)
+    if (this._onBack) window.removeEventListener('popstate', this._onBack)
     if (this.timer) clearInterval(this.timer)
   },
   methods: {
+    // 退出游戏回家园 —— 游戏内唯一的合法出口(顶部导航的「家园」)。
+    // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
+    exitToHome () {
+      this.$router.push('/home')
+    },
+    // 沉浸式卡控①: 拦掉一切会把玩家带出游戏的站内链接
+    // 兼容 '/home' 与 '/#/home' 两种写法; 不动浏览器的前进/后退(那由下面的 popstate 守卫接管)
+    blockEscape (e) {
+      const a = e.target && e.target.closest ? e.target.closest('a[href]') : null
+      if (!a) return
+      const href = a.getAttribute('href') || ''
+      if (!href || href.charAt(0) !== '/') return          // 相对路径 / javascript: / 外链: 不管
+      const raw = href.charAt(1) === '#' ? href.slice(1) : href
+      const path = (raw.charAt(0) === '#' ? raw.slice(1) : raw).split('?')[0]
+      if (path.indexOf('/games/ezfy') === 0) return         // 游戏内: 放行
+      e.preventDefault()
+      e.stopPropagation()
+      alert('游戏内不能跳回家园。如需离开游戏, 请点顶部导航。')
+    },
     notOpen (what) {
       alert(what + '暂未开放, 敬请期待')
     },
@@ -2481,7 +2613,7 @@ export default {
       this.cur = t
       if (t === 'home') this.load()
       else if (t === 'troops' || t === 'troop' || t === 'defence' ||
-               t === 'troopview' || t === 'trainpre') this.loadTroops()
+               t === 'troopview' || t === 'trainpre' || t === 'troopstat') this.loadTroops()
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
       else if (t === 'techs') this.loadTechs()
       else if (t === 'map') { this.loadMap(); this.loadStars() }
@@ -3346,9 +3478,45 @@ export default {
       if (!cs.length) return {}
       return { color: cs[i % cs.length] }
     },
-    openUser (uid) {
+    // 查看他人统帅信息(复刻 PlayerController.infoOther)
+    // 入口: 首页聊天 / 聊天频道 / 邮箱发件人 / 好友 / 军团成员 / 军团聊天 / 排行 —— 点玩家名
+    // ★ 游戏是沉浸式的: 点玩家名只能看「二战风云」的统帅信息,
+    //   **不要**跳到家园站点的个人主页(/user/:id), 那样就跳出游戏了。
+    openPlayer (uid) {
       if (!uid) return
-      this.$router.push('/user/' + uid)
+      this.playerInfoBack = this.cur === 'playerinfo' ? this.playerInfoBack : this.cur
+      this.playerInfo = null
+      this.go('playerinfo')
+      this.loadPlayerInfo(uid)
+    },
+    loadPlayerInfo (uid) {
+      api.get('/games/ezfy/player/' + uid).then(r => {
+        if (r.code === 0) this.playerInfo = r.data
+        else this.alert(r)
+      })
+    },
+    doAddFriendById () {
+      if (!this.playerInfo) return
+      const name = this.playerInfo.nickname
+      const remark = prompt('给 ' + name + ' 的验证信息(可留空)', '')
+      if (remark === null) return
+      api.post('/friends', { target_id: this.playerInfo.user_id, remark: remark }).then(r => {
+        if (r.code === 0) {
+          alert(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
+          this.loadPlayerInfo(this.playerInfo.user_id)
+        } else {
+          alert(r.msg || '申请失败')
+        }
+      })
+    },
+    // 军团邮件群发(复刻 CorpsController.mail, 仅军团长)
+    doCorpsMail () {
+      const c = (this.corpsMailContent || '').trim()
+      if (!c) { alert('请填写邮件内容'); return }
+      api.post('/games/ezfy/corps/mail', { content: c }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.corpsMailContent = ''
+      })
     },
     openNotice (n) {
       this.curNotice = n
@@ -3699,6 +3867,11 @@ body.ezfy-immersive { margin: 0; }
   display: inline-block;
   padding: 1px 3px;
   font-size: 14px;
+}
+/* 顶部导航里的「家园」——游戏内唯一的出口, 稍微标一下 */
+.ezfy-page .top-nav a.ezfy-exit {
+  color: #2f4156;
+  font-weight: bold;
 }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {

@@ -849,7 +849,7 @@ func (h *EzfyHandler) CorpsChats(c *gin.Context) {
 	views := []gin.H{}
 	for i := len(chats) - 1; i >= 0; i-- {
 		ch := chats[i]
-		views = append(views, gin.H{"id": ch.ID, "user_name": ch.UserName,
+		views = append(views, gin.H{"id": ch.ID, "user_id": ch.UserId, "user_name": ch.UserName,
 			"content": ch.Content, "created_at": ch.CreatedAt, "mine": ch.UserId == uid})
 	}
 	resp.OK(c, gin.H{"chats": views, "in_corps": true})
@@ -950,7 +950,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	h.DB.Order("prestige DESC").Limit(20).Find(&profiles)
 	prestigeRank := []gin.H{}
 	for i, p := range profiles {
-		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname,
+		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
 			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige)})
 	}
 	// 兵力榜(不含城防)
@@ -986,7 +986,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		}
 		p := h.ensureProfile(city.UserID)
 		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": city.Name,
-			"role_name": p.Nickname, "count": e.v})
+			"role_name": p.Nickname, "user_id": city.UserID, "count": e.v})
 	}
 	// 军团榜
 	var corps []model.EzfyCorps

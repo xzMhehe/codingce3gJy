@@ -121,3 +121,54 @@ func (h *EzfyHandler) Liaison(c *gin.Context) {
 	out["garrisons"] = views
 	resp.OK(c, out)
 }
+
+// CorpsMail POST /games/ezfy/corps/mail —— 军团长给全体成员群发邮件
+// 复刻 CorpsController.mail + CorpsServiceImpl.sendCorpsMail：
+// 只有军团长能发、内容 500 字以内、给军团每个成员各写一封私信(Letter)。
+func (h *EzfyHandler) CorpsMail(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	content := trimSpace(req.Content)
+	if content == "" {
+		resp.ParamError(c, "邮件内容为空")
+		return
+	}
+	if len([]rune(content)) > 500 {
+		content = string([]rune(content)[:500])
+	}
+	cp := h.myCorpsOf(uid)
+	if cp == nil {
+		resp.ParamError(c, "你还不在任何军团中")
+		return
+	}
+	if cp.LeaderUserId != uid {
+		resp.Forbidden(c, "只有军团长可以发军团邮件")
+		return
+	}
+	var members []model.EzfyCorpsMember
+	h.DB.Where("corps_id = ?", cp.ID).Find(&members)
+	sent := 0
+	for _, m := range members {
+		if m.UserId == 0 || m.UserId == uid {
+			continue // 不给自己发
+		}
+		var u model.User
+		if err := h.DB.First(&u, m.UserId).Error; err != nil {
+			continue
+		}
+		h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: m.UserId, Content: content})
+		sent++
+	}
+	if sent == 0 {
+		resp.ParamError(c, "军团没有可通知的成员")
+		return
+	}
+	resp.OK(c, gin.H{"msg": "军团邮件已发送给 " + strconv.Itoa(sent) + " 名成员", "sent": sent})
+}
