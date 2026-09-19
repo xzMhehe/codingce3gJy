@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -173,6 +174,60 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 		return nil
 	}
 	return &cp
+}
+
+// HomeChat GET /games/ezfy/chat/home —— 首页「世界聊天」预览
+//
+// 汇总三个来源并按时间倒序, 每条带来源标识(用户要求: 要能看出是 个人/同盟/系统):
+//
+//	系统 —— talk_type = 0 的系统消息
+//	同盟 —— 我所在军团的聊天
+//	个人 —— 公共频道的玩家发言
+func (h *EzfyHandler) HomeChat(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	type row struct {
+		key     string
+		tag     string
+		user    string
+		content string
+		at      time.Time
+	}
+	rows := []row{}
+
+	// 系统
+	var sys []model.EzfyChat
+	h.DB.Where("talk_type = 0").Order("id DESC").Limit(10).Find(&sys)
+	for _, m := range sys {
+		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, m.Content, m.CreatedAt})
+	}
+	// 同盟(我的军团)
+	if cp := h.myCorpsOf(uid); cp != nil {
+		var cs []model.EzfyCorpsChat
+		h.DB.Where("corps_id = ?", cp.ID).Order("id DESC").Limit(10).Find(&cs)
+		for _, m := range cs {
+			rows = append(rows, row{"corps-" + strconv.Itoa(int(m.ID)), "同盟", m.UserName, m.Content, m.CreatedAt})
+		}
+	}
+	// 个人(公共频道)
+	var pub []model.EzfyChat
+	h.DB.Where("channel = ?", ezfyChanPublic).Order("id DESC").Limit(10).Find(&pub)
+	for _, m := range pub {
+		rows = append(rows, row{"pub-" + strconv.Itoa(int(m.ID)), "个人", m.UserName, m.Content, m.CreatedAt})
+	}
+
+	sort.Slice(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
+	if len(rows) > 8 {
+		rows = rows[:8]
+	}
+	views := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		views = append(views, gin.H{"key": r.key, "tag": r.tag, "user_name": r.user,
+			"content": r.content, "created_at": r.at})
+	}
+	var online int64
+	h.DB.Model(&model.EzfyProfile{}).Count(&online)
+	resp.OK(c, gin.H{"chats": views, "players": online})
 }
 
 // ============ 交易所 ============
@@ -574,19 +629,18 @@ func ezfyOrderStatusName(s int) string {
 	}
 }
 
-// ezfyTargetName 命令目的地名称(城市名 / 野地N级 / 寇城N级 / 海野N级)
+// ezfyTargetName 命令目的地名称
+// 复刻 report/index.html 的「目标：盆地(5)(347,2)」—— 野地/海野用「地形名(等级)」,
+// 寇城/特殊目标用「类型(等级)」, 玩家城市用城市名。
 func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
 	switch o.TargetType {
-	case 1, 2:
-		level := ezfyWildlandLevel(o.TargetX, o.TargetY)
-		name := "野地"
-		if o.TargetType == 2 {
-			level = ezfyKouLevel(o.TargetX, o.TargetY)
-			name = "寇城"
-		} else if ezfyTerrain(o.TargetX, o.TargetY) == 8 {
-			name = "海野"
-		}
-		return name + strconv.Itoa(level) + "级"
+	case 1: // 野地(含海野): 地形名 + 等级
+		return ezfyTerrainName(ezfyTerrain(o.TargetX, o.TargetY)) +
+			"(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
+	case 2: // 寇城
+		return "寇城(" + strconv.Itoa(ezfyKouLevel(o.TargetX, o.TargetY)) + ")"
+	case 4: // 特殊目标(活动野地/特殊城市)
+		return "特殊(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
 	case 3:
 		var c model.EzfyCity
 		if err := h.DB.First(&c, o.TargetId).Error; err == nil {

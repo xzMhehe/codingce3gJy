@@ -1233,23 +1233,133 @@ func (h *EzfyHandler) Notices(c *gin.Context) {
 
 // ============ 战报 ============
 
+// ezfyReportCategory 战报归类(复刻原版军情页的三块: 军队动态/军情警讯/战斗报告)
+//
+//	1 军情警讯 —— 别人打我(雷达预警 / 被掠夺 / 城破 / 守卫)
+//	2 战斗报告 —— 我发起的战斗结果(侦查 / 掠夺 / 征服)
+//	3 其他     —— 采集派遣 / 增援运输 / 系统消息
+//
+// ezfyReportCategory 战报归类（复刻 report/index.html 的三个分区）
+//
+//	1 军情警讯 —— 别人打我 / 我的地盘出事(雷达预警、被掠夺、城破、守卫、被归还、野地丢失)
+//	2 战斗报告 —— 我打别人(侦查 / 掠夺 / 征服), 供「战报查询」
+//	3 其他     —— 后勤与系统(采集、运输、增援、派遣、建城、交易、将领变动)
+func ezfyReportCategory(title string) int {
+	switch {
+	case strings.HasPrefix(title, "军情警报"),
+		strings.HasPrefix(title, "被掠夺报告"),
+		strings.HasPrefix(title, "城破报告"),
+		strings.HasPrefix(title, "守卫报告"),
+		strings.HasPrefix(title, "城市归还"),
+		strings.HasPrefix(title, "将领叛离"), // 被攻打后忠诚归零叛离, 属于军情警讯
+		strings.Contains(title, "野地丢失"):
+		return 1
+	case strings.HasPrefix(title, "侦查报告"),
+		strings.HasPrefix(title, "战斗报告"),
+		strings.HasPrefix(title, "征服报告"):
+		return 2
+	}
+	return 3
+}
+
+func ezfyReportCategoryName(cat int) string {
+	switch cat {
+	case 1:
+		return "军情警讯"
+	case 2:
+		return "战斗报告"
+	case 3:
+		return "其他"
+	}
+	return "全部"
+}
+
+// Reports GET /games/ezfy/reports?category=1|2|3&word=xxx
 func (h *EzfyHandler) Reports(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	category, _ := strconv.Atoi(c.DefaultQuery("category", "0"))
+	word := strings.TrimSpace(c.Query("word"))
+
+	q := h.DB.Where("user_id = ?", uid)
+	if word != "" {
+		q = q.Where("title LIKE ?", "%"+word+"%")
+	}
 	var reports []model.EzfyReport
-	h.DB.Where("user_id = ?", uid).Order("id DESC").Limit(50).Find(&reports)
+	q.Order("id DESC").Limit(200).Find(&reports)
+
 	views := []gin.H{}
 	typeName := map[int]string{1: "侦察", 2: "掠夺", 3: "征服", 4: "战斗", 5: "采集", 6: "系统"}
+	counts := map[int]int{}
 	for _, r := range reports {
+		cat := ezfyReportCategory(r.Title)
+		counts[cat]++
+		if category > 0 && cat != category {
+			continue
+		}
+		if len(views) >= 50 {
+			continue
+		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": typeName[r.ReportType], "is_read": r.IsRead, "order_id": r.OrderId,
+			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {
 			h.DB.Model(&model.EzfyReport{}).Where("id = ?", r.ID).Update("is_read", 1)
 		}
 	}
-	resp.OK(c, gin.H{"reports": views})
+	resp.OK(c, gin.H{"reports": views, "counts": counts})
 }
 
+// ReportDynamics GET /games/ezfy/reports/dynamics
+// 军队动态: 所有在外的部队(出征/采集/派遣/侦查/掠夺/运输/增援)
+// 复刻 `二战风云/templates/report/index.html` 的「军队动态」区
+func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	now := time.Now().UnixMilli()
+	var orders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND status IN (0,1,2)", uid).Order("id DESC").Limit(100).Find(&orders)
+	views := []gin.H{}
+	for i := range orders {
+		o := &orders[i]
+		// 到点未结算的先结算, 保证展示状态是最新的
+		if o.Status == 0 && now >= o.ArriveTime {
+			h.processArrive(uid, o, now)
+			continue
+		}
+		if o.Status == 2 && now >= o.ReturnTime {
+			h.finishReturn(uid, o)
+			continue
+		}
+		timeLabel, timeText := "", ""
+		statusName := ""
+		switch o.Status {
+		case 0:
+			statusName = "出征"
+			timeLabel = "抵达时间"
+			timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
+		case 1:
+			statusName = "采集"
+			timeLabel = "已驻守"
+			timeText = ezfyDurationText((now - o.ArriveTime) / 1000)
+		case 2:
+			statusName = "返回"
+			timeLabel = "返回时间"
+			timeText = ezfyDurationText((o.ReturnTime - now) / 1000)
+		}
+		views = append(views, gin.H{
+			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
+			"target_type": o.TargetType, "target_name": h.ezfyTargetName(o),
+			"target_x": o.TargetX, "target_y": o.TargetY,
+			"status": o.Status, "status_name": statusName,
+			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
+			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
+		})
+	}
+	resp.OK(c, gin.H{"dynamics": views, "count": len(views)})
+}
+
+// ReportView GET /games/ezfy/reports/:id
 func (h *EzfyHandler) ReportView(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)

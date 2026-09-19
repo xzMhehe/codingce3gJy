@@ -930,18 +930,36 @@ func (h *EzfyHandler) randomJewel(terrain int) *model.EzfyCfgEquipment {
 	return &j
 }
 
-// captureWildlandOfficer 战胜寇城/特殊野地按概率俘虏守将
-func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, special bool) string {
+// captureWildlandOfficer 战胜野地/寇城后俘虏守将
+//
+// 规则(用户明确):
+//   - **只有该野地/寇城配置里有军官**(cfg.OfficerMax > 0)才可能俘到, 没军官就什么都没有
+//   - 军官数量越多/等级越高, 俘虏概率越高
+//   - 需要参谋部有空位
+//
+// wildType: 1陆地野地 2海野 3寇城;  level: 野地等级
+func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, level int, special bool) string {
 	h.cfgs()
-	chance := 20
+	cfg := ezfyCfg.wildland(wildType, level)
+	if cfg == nil || cfg.OfficerMax <= 0 {
+		return "" // 该目标没有军官, 不产生战俘
+	}
+	// 概率: 基础 20%, 按军官上限加成(每 10 名 +5%), 特殊目标翻倍, 上限 60%
+	chance := 20 + cfg.OfficerMax/10*5
 	if special {
-		chance = 40
+		chance *= 2
+	}
+	if chance > 60 {
+		chance = 60
 	}
 	if rand.Intn(100) >= chance {
 		return ""
 	}
-	staff := h.buildingLevel(city.ID, ezfyBuildingStaff)
-	if staff < 1 {
+	if h.buildingLevel(city.ID, ezfyBuildingStaff) < 1 {
+		return "" // 没有参谋部, 无法收押
+	}
+	// 参谋部容量
+	if h.officerCount(city.ID) >= h.buildingLevel(city.ID, ezfyBuildingStaff) {
 		return ""
 	}
 	owned := h.ownedGeneralIds(city.UserID)
@@ -955,7 +973,14 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, special bool)
 		return ""
 	}
 	g := pool[rand.Intn(len(pool))]
-	star := 1 + rand.Intn(4) // 俘虏星级 1-4
+	// 星级随野地等级提高(1-5), 属性按星级缩放
+	star := 1 + level/3
+	if star > 5 {
+		star = 5
+	}
+	if special && star < 5 {
+		star++
+	}
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
 		Level: 1, Exp: 0,
@@ -966,7 +991,68 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, special bool)
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
-	return " 俘虏敌将:" + o.Name + "(" + strconv.Itoa(star) + "星, 忠诚30) 可前往军校收编"
+	return "俘虏敌将:" + o.Name + "(" + strconv.Itoa(star) + "星, 忠诚30) 可前往军校收编"
+}
+
+// defectDefenderOfficers 攻打玩家城市后, 目标城军官忠诚下降;
+// 忠诚归零的军官会弃城投敌, 成为攻方的战俘(复刻用户描述的 PvP 战俘来源)。
+//
+// 返回写进攻方战报的文本片段。
+func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *model.EzfyCity, atkUid uint) string {
+	if target == nil {
+		return ""
+	}
+	officers := h.officerList(target.ID)
+	if len(officers) == 0 {
+		return ""
+	}
+	// 参谋部有空位才收得下战俘
+	room := h.buildingLevel(atkCity.ID, ezfyBuildingStaff) - h.officerCount(atkCity.ID)
+
+	var defected []model.EzfyOfficer
+	var stayed []string
+	for i := range officers {
+		o := &officers[i]
+		drop := 10 + rand.Intn(11) // 每次被攻打 忠诚 -10~-20
+		loyalty := o.Loyalty - drop
+		if loyalty <= 0 {
+			defected = append(defected, *o)
+			continue
+		}
+		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
+			Update("loyalty", loyalty)
+		stayed = append(stayed, o.Name+"("+strconv.Itoa(loyalty)+")")
+	}
+
+	var b strings.Builder
+	if len(stayed) > 0 {
+		b.WriteString("\n敌方军官忠诚下降: " + strings.Join(stayed, " "))
+	}
+	for i := range defected {
+		o := &defected[i]
+		// 从原城移除
+		h.DB.Delete(&model.EzfyOfficer{}, o.ID)
+		if room > 0 {
+			room--
+			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
+			cap := model.EzfyOfficer{
+				CityId: int64(atkCity.ID), GeneralId: o.GeneralId, Name: o.Name, Star: o.Star,
+				Level: o.Level, Exp: o.Exp,
+				Military: o.Military, Logistics: o.Logistics, Learning: o.Learning,
+				Loyalty: 30, Skill: o.Skill, Equipment: o.Equipment,
+				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
+			}
+			h.DB.Create(&cap)
+			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零, 弃城归降, 已收入我方战俘营")
+			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
+				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "")
+		} else {
+			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方参谋部已满, 未能收押)")
+			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
+				o.Name+"因忠诚度归零而离开了你的城市。", "")
+		}
+	}
+	return b.String()
 }
 
 // ============ HTTP 接口 ============

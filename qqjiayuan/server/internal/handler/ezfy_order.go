@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -72,6 +74,16 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
+	// 已占领野地(一次性载入, 避免逐格查库)
+	var allWilds []model.EzfyWildland
+	h.DB.Select("x, y, city_id").Find(&allWilds)
+	wildAt := map[string]int64{}
+	for i := range allWilds {
+		if allWilds[i].CityId > 0 {
+			wildAt[fmt.Sprintf("%d,%d", allWilds[i].X, allWilds[i].Y)] = allWilds[i].CityId
+		}
+	}
+
 	cells := []gin.H{}
 	for y := cy - r; y <= cy+r; y++ {
 		for x := cx - r; x <= cx+r; x++ {
@@ -110,10 +122,31 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["name"] = ezfyTerrainName(terrain)
 				cell["level"] = ezfyWildlandLevel(x, y)
 			}
+			// 该格是否已被某城占领(详情页据此决定能不能采集)
+			if _, ok := wildAt[fmt.Sprintf("%d,%d", x, y)]; ok {
+				cell["occupied"] = true
+			}
 			cells = append(cells, cell)
 		}
 	}
-	resp.OK(c, gin.H{"cells": cells, "cx": cx, "cy": cy})
+	// 发现精英中立城市(复刻地图页的「发现精英中立城市：[寇(x,y)]」)
+	// 以当前视野中心为原点由近及远扫一圈寇城, 取最近的一个
+	elite := gin.H{}
+	for r := 1; r <= 30 && len(elite) == 0; r++ {
+		for dx := -r; dx <= r && len(elite) == 0; dx++ {
+			for dy := -r; dy <= r && len(elite) == 0; dy++ {
+				if ezfyAbs(dx) != r && ezfyAbs(dy) != r {
+					continue // 只看这一圈的边框
+				}
+				ex, ey := cx+dx, cy+dy
+				if ezfyTerrain(ex, ey) == 8 || !h.ezfyIsKouCity(ex, ey) {
+					continue
+				}
+				elite = gin.H{"x": ex, "y": ey, "level": ezfyKouLevel(ex, ey)}
+			}
+		}
+	}
+	resp.OK(c, gin.H{"cells": cells, "cx": cx, "cy": cy, "elite": elite})
 }
 
 // WildlandView 野地/寇城详情（守军配置预览）
@@ -161,11 +194,32 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 			}
 		}
 	}
+	// 采集可获得的珠宝(按地形固定, 复刻 cfg_equipment 的「珠宝(地形)」)
+	jewelName := ""
+	if j := h.randomJewel(ezfyTerrain(x, y)); j != nil {
+		jewelName = j.Name
+	}
+	// 归属: 已占领该野地的玩家(复刻 mapView 的【归属: xxx】)
+	owner := ""
+	var w model.EzfyWildland
+	if err := h.DB.Where("x = ? AND y = ?", x, y).First(&w).Error; err == nil && w.CityId > 0 {
+		var oc model.EzfyCity
+		if err := h.DB.First(&oc, w.CityId).Error; err == nil {
+			if oc.UserID == uid {
+				owner = "我"
+			} else {
+				owner = h.ensureProfile(oc.UserID).Nickname
+			}
+		}
+	}
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
 		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrain(x, y),
 		"terrain_name": ezfyTerrainName(ezfyTerrain(x, y)),
+		"continent":    ezfyContinentName(x, y),
+		"jewel":        jewelName,
+		"owner":        owner,
 	})
 }
 
@@ -287,14 +341,14 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	var req struct {
-		CityId     int64            `json:"city_id"`
-		OrderType  int              `json:"order_type"`
-		TargetX    int              `json:"target_x"`
-		TargetY    int              `json:"target_y"`
-		Troops     []ezfyUnitGroup  `json:"troops"`
-		Resources  map[string]int64 `json:"resources"`
-		Officer    string           `json:"officer"`
-		WaitMin    int              `json:"wait_min"`
+		CityId    int64            `json:"city_id"`
+		OrderType int              `json:"order_type"`
+		TargetX   int              `json:"target_x"`
+		TargetY   int              `json:"target_y"`
+		Troops    []ezfyUnitGroup  `json:"troops"`
+		Resources map[string]int64 `json:"resources"`
+		Officer   string           `json:"officer"`
+		WaitMin   int              `json:"wait_min"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -346,17 +400,17 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	}
 	needSec := travelSec*2 + int64(waitMin)*60
 	resp.OK(c, gin.H{
-		"oil_used":     oilCost,
-		"oil_enough":   city.Oil >= oilCost,
-		"oil_have":     city.Oil,
-		"carry":        carry,
-		"distance":     distance,
-		"travel_sec":   travelSec,
-		"wait_min":     waitMin,
-		"need_sec":     needSec,
-		"need_time":    ezfyDurationText(needSec),
-		"travel_time":  ezfyDurationText(travelSec),
-		"return_time":  ezfyDurationText(travelSec),
+		"oil_used":    oilCost,
+		"oil_enough":  city.Oil >= oilCost,
+		"oil_have":    city.Oil,
+		"carry":       carry,
+		"distance":    distance,
+		"travel_sec":  travelSec,
+		"wait_min":    waitMin,
+		"need_sec":    needSec,
+		"need_time":   ezfyDurationText(needSec),
+		"travel_time": ezfyDurationText(travelSec),
+		"return_time": ezfyDurationText(travelSec),
 	})
 }
 
@@ -695,6 +749,22 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 }
 
 // RecallOrder 召回派遣
+// ezfyOneWayTravel 命令的单程行军时长(毫秒)
+//
+// 创建命令时: ArriveTime = start + travel, ReturnTime = start + 2*travel,
+// 所以 (ReturnTime - StartTime)/2 恒为单程时长。
+// ⚠️ 不能用 ArriveTime - StartTime: 派遣(7) 抵达后会把 ArriveTime 推到「下一个结算周期」,
+// 那样算出来会凭空多出 8 小时。
+func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
+	if t := (order.ReturnTime - order.StartTime) / 2; t > 0 {
+		return t
+	}
+	if t := order.ArriveTime - order.StartTime; t > 0 {
+		return t
+	}
+	return 60000
+}
+
 func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -717,10 +787,7 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 		resp.ParamError(c, "当前状态无法召回")
 		return
 	}
-	travel := order.ArriveTime - order.StartTime
-	if travel <= 0 {
-		travel = 60000
-	}
+	travel := ezfyOneWayTravel(&order)
 	order.Status = 2
 	order.Result = order.Troops
 	order.ReturnTime = time.Now().UnixMilli() + travel
@@ -1079,15 +1146,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defOfficerDesc = h.officerBattleDesc(cityGuard, 10, "守军防御")
 	}
 
-	// 侦查: 不战斗只报告守军, 部队随即返航
+	// 侦查: 不战斗只报告情报, 部队随即返航
+	// 报告格式复刻 `参考材料/开发文档/侦察报告1.txt`:
+	//   玩家城市 → 资源数量/人口民心/建筑等级/城防数量/军队数量/将领等级/科技等级/最后活动时间
+	//   野地寇城 → 守军情况
 	if order.OrderType == 1 {
-		sb := ""
-		for _, g := range defender {
-			cfg := ezfyCfg.troop(g.TroopId)
-			if cfg != nil {
-				sb += cfg.Name + "×" + strconv.FormatInt(g.Count, 10) + " "
-			}
-		}
 		travel := order.ArriveTime - order.StartTime
 		if travel <= 0 {
 			travel = 60000
@@ -1098,8 +1161,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
 		h.addReport(uid, 1, "侦查报告: "+targetName,
-			fmt.Sprintf("公文报告:侦查报告\n我方一支部队对%s[%d，%d]进行了侦查。侦查过程中未受到任何阻拦。\n守军情况: %s\n侦查完成, 部队已返航。",
-				targetName, order.TargetX, order.TargetY, sb), "", order.ID)
+			h.scoutReportBody(uid, order, targetName, target, defender), "", order.ID)
 		return
 	}
 
@@ -1241,6 +1303,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		targetProtected = h.hasCityEffect(target.ID, 2)
 	}
 	wareNote := ""
+	recyclePct := 0 // 战报里的「回收比例」(玩家城按掠夺比例, 其余 0)
+	prestigeGain := 0
 
 	if win {
 		if targetProtected && order.TargetType == 3 {
@@ -1258,6 +1322,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if lootRate > 50 {
 				lootRate = 50
 			}
+			recyclePct = lootRate
 			defRes := []int64{target.Food, target.Steel, target.Oil, target.Rare, target.Gold}
 			loot := make([]int64, 5)
 			var totalLoot int64
@@ -1309,7 +1374,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				}
 				h.addPrestige(uid, pg)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
-				report += "\n[双方兵力]"
+				report += h.battleStatsTail(uid, pg, 0)
 				h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -1386,14 +1451,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				order.Status = 2
 				order.ReturnTime = now + travel
 				report += "\n民心尚存，征服失败"
-				report += fmt.Sprintf("\n征战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
+				report += fmt.Sprintf("\n征服战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
 				city.Food += lootFood
 				city.Steel += lootSteel
 				city.Oil += lootOil
 				city.Rare += lootRare
 				city.Gold += lootGold
 				h.saveCityRes(city)
-				report += "\n[双方兵力]"
+				report += h.battleStatsTail(uid, 0, recyclePct)
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -1406,7 +1471,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				travel := ezfyAbs64(order.ArriveTime - order.StartTime)
 				order.Status = 2
 				order.ReturnTime = now + travel
-				report += "\n[双方兵力]"
+				report += h.battleStatsTail(uid, 0, recyclePct)
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -1475,6 +1540,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			city.Gold += lootGold
 			h.saveCityRes(city)
 		}
+		// 攻打玩家城市: 目标城军官忠诚下降, 归零者弃城成为我方战俘
+		// (复刻用户说明的 PvP 战俘来源: 把对方军官忠诚打成 0)
+		if (order.OrderType == 2 || order.OrderType == 3) && order.TargetType == 3 && target != nil {
+			if frag := h.defectDefenderOfficers(city, target, uid); frag != "" {
+				report += frag
+			}
+		}
 		// 军功声望
 		prestigeGain := 0
 		switch order.TargetType {
@@ -1503,10 +1575,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if loot := h.wildlandLoot(city, wildLevel, ezfyTerrain(order.TargetX, order.TargetY), false); loot != "" {
 				report += "\n战利品:" + loot
 			}
-			if order.TargetType == 2 || wildLevel >= 5 {
-				if cap := h.captureWildlandOfficer(city, false); cap != "" {
-					report += "\n" + cap
-				}
+			// 该野地/寇城配置里有军官才可能俘到(没军官就什么都没有)
+			wt := 1
+			if order.TargetType == 2 {
+				wt = 3
+			} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+				wt = 2
+			}
+			if cap := h.captureWildlandOfficer(city, wt, wildLevel, false); cap != "" {
+				report += "\n" + cap
 			}
 		}
 		var enemyDead int64
@@ -1536,14 +1613,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if repairedTotal > 0 {
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
 		}
-		report += "\n[双方兵力]"
+		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
 	} else {
 		order.Status = 4
 		if repairedTotal > 0 {
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
 		}
-		report += "\n[双方兵力]"
+		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
 			h.addReport(target.UserID, 4, "守卫报告: "+city.Name,
@@ -1713,6 +1790,115 @@ func ezfyAbs64(v int64) int64 {
 }
 
 // addReport 战报写入
+// scoutReportBody 侦查报告正文
+// 玩家城市给出完整情报(资源/人口民心/建筑等级/城防/军队/将领/科技/最后活动时间),
+// 野地与寇城只给守军情况。格式取自 `参考材料/开发文档/侦察报告1.txt`。
+func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetName string,
+	target *model.EzfyCity, defender []ezfyUnitGroup) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "公文报告:侦查报告\n我方一支部队对%s[%d，%d]进行了侦查。侦查过程中未受到任何阻拦。\n",
+		targetName, order.TargetX, order.TargetY)
+
+	// 野地 / 寇城: 只有守军
+	if target == nil {
+		b.WriteString("守军情况: ")
+		if len(defender) == 0 {
+			b.WriteString("无敌军驻守")
+		}
+		for _, g := range defender {
+			if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
+				fmt.Fprintf(&b, "%s×%d ", cfg.Name, g.Count)
+			}
+		}
+		b.WriteString("\n侦查完成, 部队已返航。")
+		return b.String()
+	}
+
+	// 玩家城市: 完整情报
+	fmt.Fprintf(&b, "资源数量 粮食%d 钢铁%d 石油%d 稀矿%d 黄金%d\n",
+		target.Food, target.Steel, target.Oil, target.Rare, target.Gold)
+	fmt.Fprintf(&b, "人口%d 民心%d\n", target.Pop, target.Feelings)
+
+	// 建筑等级: 按建筑 id 排序, 同类多座依次列出
+	names := map[int]string{}
+	levels := map[int][]int{}
+	ids := []int{}
+	for _, cb := range h.buildingList(target.ID) {
+		if _, ok := levels[cb.BuildingId]; !ok {
+			ids = append(ids, cb.BuildingId)
+			if cfg := ezfyCfg.building(cb.BuildingId); cfg != nil {
+				names[cb.BuildingId] = cfg.Name
+			}
+		}
+		levels[cb.BuildingId] = append(levels[cb.BuildingId], cb.Level)
+	}
+	sort.Ints(ids)
+	b.WriteString("建筑等级 ")
+	for _, id := range ids {
+		b.WriteString(names[id])
+		for _, lv := range levels[id] {
+			fmt.Fprintf(&b, "%d,", lv)
+		}
+	}
+	b.WriteString("\n")
+
+	// 城防 / 军队分列
+	defText, armyText := "", ""
+	for tid, cnt := range h.troopMap(target.ID) {
+		cfg := ezfyCfg.troop(tid)
+		if cfg == nil || cnt <= 0 {
+			continue
+		}
+		if cfg.Type == 4 {
+			defText += fmt.Sprintf("%s×%d ", cfg.Name, cnt)
+		} else {
+			armyText += fmt.Sprintf("%s%d ", cfg.Name, cnt)
+		}
+	}
+	b.WriteString("城防数量：" + defText + "\n")
+	b.WriteString("军队数量：" + armyText + "\n")
+
+	// 将领等级
+	officers := h.officerList(target.ID)
+	offText := ""
+	for _, o := range officers {
+		offText += fmt.Sprintf("%s(%d级)、", o.Name, o.Level)
+	}
+	b.WriteString("将领等级：" + offText + "\n")
+
+	// 科技等级
+	techText := ""
+	techIDs := []int{}
+	tm := h.techMap(target.ID)
+	for id := range tm {
+		techIDs = append(techIDs, id)
+	}
+	sort.Ints(techIDs)
+	for _, id := range techIDs {
+		if cfg := ezfyCfg.tech(id); cfg != nil {
+			techText += fmt.Sprintf("%s%d ", cfg.Name, tm[id])
+		}
+	}
+	b.WriteString("科技等级：" + techText + "\n")
+
+	lastActive := ""
+	if target.UpdatedAt.Unix() > 0 {
+		lastActive = target.UpdatedAt.Format("2006-01-02 15:04:05")
+	}
+	b.WriteString("最后活动时间：" + lastActive + "\n")
+	b.WriteString("侦查完成。")
+	return b.String()
+}
+
+// battleStatsTail 战报尾部的战果统计段
+// (复刻 `参考材料/开发文档/掠夺报告1.txt` 的 个人荣誉/个人战绩/军团战绩/回收比例 + [双方兵力];
+// 军功声望与军官经验已在上文正文里输出, 这里不重复)
+func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int) string {
+	profile := h.ensureProfile(uid)
+	return fmt.Sprintf("\n个人荣誉:%d\n个人战绩:%d\n军团战绩:%d\n回收比例:%d%%\n[双方兵力]",
+		profile.Prestige/6, prestigeGain, 0, recyclePct)
+}
+
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {
 	r := model.EzfyReport{UserID: uid, ReportType: reportType, Title: title, Content: content, IsRead: 0}
 	for i, v := range detailAndOrder {

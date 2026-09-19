@@ -232,6 +232,12 @@ func (h *EzfyHandler) wildlandList(cityId uint) []model.EzfyWildland {
 	return list
 }
 
+// isSeaCity 是否海城(城市本身建在海洋地形上)
+// 复刻用户规则: 海城才能训练海军; 陆地城市不能训练海军
+func (h *EzfyHandler) isSeaCity(city *model.EzfyCity) bool {
+	return ezfyTerrain(city.X, city.Y) == 8
+}
+
 func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
@@ -708,8 +714,8 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 			return fmt.Sprintf("建筑数量已达上限(%d/%d)", cnt, ezfyMaxBuildings)
 		}
 	}
-	if buildingId == 19 && !h.isCoastalCity(city) {
-		return "航海协会只能建在沿海城市"
+	if buildingId == 19 && !h.isCoastalCity(city) && !h.isSeaCity(city) {
+		return "航海协会只能建在沿海城市或海城"
 	}
 	if !h.pay(city, lv) {
 		return "资源不足"
@@ -862,6 +868,10 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	cfg := ezfyCfg.troop(troopId)
 	if cfg == nil {
 		return "兵种不存在"
+	}
+	// 海军(type 1)只能在海城训练(用户规则: 陆地城市不能训练海军)
+	if cfg.Type == 1 && !h.isSeaCity(city) {
+		return "海军只能在海城(建在海洋上的城市)训练, 陆地城市无法训练海军"
 	}
 	if cfg.Require != "" {
 		matches := ezfyRequirePattern.FindAllStringSubmatch(cfg.Require, -1)
@@ -1567,16 +1577,19 @@ func (h *EzfyHandler) View(c *gin.Context) {
 
 	acct, ulv, uexp := h.ezfyUserBrief(uid)
 	resp.OK(c, gin.H{
-		"profile":        profile,
-		"account":        acct,
-		"user_level":     ulv,
-		"user_exp":       uexp,
-		"officer_count":  h.officerCount(city.ID),
-		"rank_name":      ezfyRankName(profile.Prestige),
-		"rank_post":      ezfyRankPost(profile.Prestige),
-		"cities":         cities,
-		"city":           city,
-		"continent":      ezfyContinentName(city.X, city.Y),
+		"profile":       profile,
+		"account":       acct,
+		"user_level":    ulv,
+		"user_exp":      uexp,
+		"officer_count": h.officerCount(city.ID),
+		"rank_name":     ezfyRankName(profile.Prestige),
+		"rank_post":     ezfyRankPost(profile.Prestige),
+		"cities":        cities,
+		"city":          city,
+		"continent":     ezfyContinentName(city.X, city.Y),
+		// 海城/陆地城市(海城可建航海协会、训练海军)
+		"is_sea":         h.isSeaCity(&city),
+		"city_kind":      map[bool]string{true: "海城", false: "陆地城市"}[h.isSeaCity(&city)],
 		"protected":      h.hasCityEffect(city.ID, 2),
 		"boost":          h.hasCityEffect(city.ID, 1),
 		"buildings":      buildingViews,
@@ -1651,10 +1664,13 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		return
 	}
 	h.cfgs()
-	if ezfyTerrain(req.X, req.Y) != 1 {
-		resp.ParamError(c, "只能在平原上建造新城")
+	// 平原 → 陆地城市; 海洋 → 海城(可建海城建筑、训练海军)
+	terr := ezfyTerrain(req.X, req.Y)
+	if terr != 1 && terr != 8 {
+		resp.ParamError(c, "只能在平原或海洋上建造新城")
 		return
 	}
+	isSea := terr == 8
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", req.X, req.Y).Count(&n)
 	if n > 0 {
@@ -1680,9 +1696,15 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	h.initBuilding(city.ID, 1, 1)
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
+	kind := "平原"
+	extra := ""
+	if isSea {
+		kind = "海洋"
+		extra = "\n该城为【海城】: 可建造航海协会并训练海军。"
+	}
 	h.addReport(uid, 5, "新城建成",
-		fmt.Sprintf("花费%d黄金在平原(%d,%d)建造了新城[%s]\n新城自带基础建筑: 市政厅/民居/农田(1级), 可到[城市列表]切换操作。",
-			ezfyNewCityGoldCost, req.X, req.Y, city.Name))
+		fmt.Sprintf("花费%d黄金在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: 市政厅/民居/农田(1级), 可到[城市列表]切换操作。%s",
+			ezfyNewCityGoldCost, kind, req.X, req.Y, city.Name, extra))
 	resp.OK(c, gin.H{"msg": "新城建成", "city": city})
 }
 
