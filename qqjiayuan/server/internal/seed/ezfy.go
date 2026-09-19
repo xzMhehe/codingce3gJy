@@ -34,6 +34,10 @@ func seedEzfy(db *gorm.DB) {
 	// 军官/学院：名将 31 / 技能 15 / 装备 26
 	batch(ezfyEzfyCfgGeneral, "ezfy_cfg_general")
 	batch(ezfyEzfyCfgSkill, "ezfy_cfg_skill")
+	// 技能表按 skill.html 定为 12 条, 清掉历史遗留的多余行
+	if err := db.Where("id > ?", len(ezfyEzfyCfgSkill)).Delete(&model.EzfyCfgSkill{}).Error; err != nil {
+		log.Printf("ezfy 清理多余技能失败: %v", err)
+	}
 	batch(ezfyEzfyCfgEquipment, "ezfy_cfg_equipment")
 
 	seedEzfyNotices(db)

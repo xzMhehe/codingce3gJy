@@ -27,7 +27,7 @@ import (
 
 const (
 	ezfyRecruitRefreshLimit = 5     // 军校每日刷新次数上限
-	ezfyRecruitCostPerLevel = 500   // 招募费用 = 名将等级 × 该值
+	ezfyRecruitCostPerLevel = 1000  // 招募费用 = 军官等级 × 该值(参考 conquer.html: 26级→26000)
 	ezfyGrantCost           = 10000 // 赏赐一次消耗黄金
 	ezfyLearnSkillCost      = 10000 // 学习技能消耗黄金
 	ezfyOfficerMaxSkill     = 3     // 军官技能上限
@@ -136,107 +136,112 @@ func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 
 // ============ 军校招募 ============
 
-// recruitCandidates 生成候选名将（仅 recruit=1，剔除已拥有，随机取 军校等级 个）
-func (h *EzfyHandler) recruitCandidates(uid uint, academyLevel int) []model.EzfyCfgGeneral {
-	h.cfgs()
-	owned := h.ownedGeneralIds(uid)
-	pool := []model.EzfyCfgGeneral{}
-	for _, g := range ezfyCfg.generals {
-		if g.Recruit != 1 || owned[g.ID] {
-			continue
+// ============ 军校招募：随机普通军官 ============
+//
+// 按用户要求: 军校招募给的是**随机生成的普通军官**(参考 conquer.html 的 Jeremy·Lee 26级 1星 31/52/38 26000),
+// 名将(cfg_general 的 31 位)**只能由管理端发放**, 不再出现在招募池里。
+
+var ezfyOfficerFirstNames = []string{
+	"Pater", "Jeremy", "David", "Michael", "John", "Robert", "James", "William", "Charles", "Henry",
+	"George", "Edward", "Frank", "Albert", "Arthur", "Walter", "Harold", "Ralph", "Roy", "Earl",
+	"Bernard", "Clifford", "Norman", "Stanley", "Leonard", "Herbert", "Frederick", "Raymond", "Ernest", "Douglas",
+}
+var ezfyOfficerLastNames = []string{
+	"Robinson", "Lee", "Smith", "Brown", "Wilson", "Taylor", "Clark", "Hall", "Young", "Wright",
+	"King", "Scott", "Green", "Baker", "Adams", "Nelson", "Carter", "Mitchell", "Perez", "Roberts",
+	"Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards", "Collins", "Stewart", "Morris", "Murphy",
+}
+
+// ezfyOfficerDraft 军校招募候选(随机普通军官)
+type ezfyOfficerDraft struct {
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	Level     int    `json:"level"`
+	Star      int    `json:"star"`
+	Logistics int    `json:"logistics"`
+	Military  int    `json:"military"`
+	Learning  int    `json:"learning"`
+	Cost      int64  `json:"cost"`
+}
+
+// ezfyRollStar 星级概率: 5星3% 4星7% 3星20% 2星30% 1星40%
+func ezfyRollStar() int {
+	r := rand.Intn(100)
+	switch {
+	case r < 3:
+		return 5
+	case r < 10:
+		return 4
+	case r < 30:
+		return 3
+	case r < 60:
+		return 2
+	default:
+		return 1
+	}
+}
+
+// rollOfficerDrafts 生成 n 个随机军官候选; 等级/属性随军校等级提高
+func rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft {
+	out := make([]ezfyOfficerDraft, 0, n)
+	used := map[string]bool{}
+	span := maxInt(1, academyLevel*8)
+	for i := 0; i < n; i++ {
+		name := ""
+		for k := 0; k < 30; k++ {
+			name = ezfyOfficerFirstNames[rand.Intn(len(ezfyOfficerFirstNames))] + "·" +
+				ezfyOfficerLastNames[rand.Intn(len(ezfyOfficerLastNames))]
+			if !used[name] {
+				break
+			}
 		}
-		pool = append(pool, g)
+		used[name] = true
+		lv := 5 + rand.Intn(span)
+		star := ezfyRollStar()
+		base := 20 + star*5
+		out = append(out, ezfyOfficerDraft{
+			Key:  name + "-" + strconv.FormatInt(time.Now().UnixNano()+int64(i), 10),
+			Name: name, Level: lv, Star: star,
+			Logistics: base + rand.Intn(25),
+			Military:  base + rand.Intn(25),
+			Learning:  base + rand.Intn(25),
+			Cost:      int64(lv) * ezfyRecruitCostPerLevel,
+		})
 	}
-	if len(pool) == 0 {
-		return pool
-	}
-	randShuffleGenerals(pool)
-	n := maxInt(1, minInt(academyLevel, 10))
-	if n > len(pool) {
-		n = len(pool)
-	}
-	return pool[:n]
+	return out
 }
 
-func randShuffleGenerals(list []model.EzfyCfgGeneral) {
-	for i := len(list) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		list[i], list[j] = list[j], list[i]
-	}
+func joinDrafts(list []ezfyOfficerDraft) string {
+	b, _ := json.Marshal(list)
+	return string(b)
 }
 
-// recruitInfo 当日候选（首次访问生成并落库；展示时再次剔除已拥有/已停用）
-func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]model.EzfyCfgGeneral, int, int) {
+func parseDrafts(raw string) []ezfyOfficerDraft {
+	out := []ezfyOfficerDraft{}
+	if raw == "" {
+		return out
+	}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return []ezfyOfficerDraft{}
+	}
+	return out
+}
+
+// recruitInfo 当日候选(首次访问生成并落库)
+func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraft, int, int) {
 	h.cfgs()
 	date := time.Now().Format("2006-01-02")
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	if err != nil {
-		cands := h.recruitCandidates(uid, academyLevel)
+		drafts := rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0,
-			Candidates: joinGeneralIds(cands)}
+			Candidates: joinDrafts(drafts)}
 		h.DB.Create(&rec)
 	}
-	cands := h.parseGeneralIds(rec.Candidates)
-	owned := h.ownedGeneralIds(uid)
-	out := []model.EzfyCfgGeneral{}
-	for _, g := range cands {
-		if g.Recruit != 1 || owned[g.ID] {
-			continue
-		}
-		out = append(out, g)
-	}
-	return out, maxInt(0, ezfyRecruitRefreshLimit-rec.RefreshCount), ezfyRecruitRefreshLimit
+	return parseDrafts(rec.Candidates), maxInt(0, ezfyRecruitRefreshLimit-rec.RefreshCount), ezfyRecruitRefreshLimit
 }
 
-func joinGeneralIds(list []model.EzfyCfgGeneral) string {
-	s := ""
-	for i, g := range list {
-		if i > 0 {
-			s += ","
-		}
-		s += strconv.Itoa(g.ID)
-	}
-	return s
-}
-
-func (h *EzfyHandler) parseGeneralIds(ids string) []model.EzfyCfgGeneral {
-	out := []model.EzfyCfgGeneral{}
-	if ids == "" {
-		return out
-	}
-	for _, part := range splitComma(ids) {
-		id, err := strconv.Atoi(part)
-		if err != nil {
-			continue
-		}
-		if g := ezfyCfg.general(id); g != nil {
-			out = append(out, *g)
-		}
-	}
-	return out
-}
-
-func splitComma(s string) []string {
-	out := []string{}
-	cur := ""
-	for _, ch := range s {
-		if ch == ',' {
-			if cur != "" {
-				out = append(out, cur)
-			}
-			cur = ""
-			continue
-		}
-		cur += string(ch)
-	}
-	if cur != "" {
-		out = append(out, cur)
-	}
-	return out
-}
-
-// refreshRecruit 刷新当日候选（每日限 5 次）
 func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 	date := time.Now().Format("2006-01-02")
 	var rec model.EzfyRecruit
@@ -248,12 +253,12 @@ func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 	if used >= ezfyRecruitRefreshLimit {
 		return "今日刷新次数已用完(每天限" + strconv.Itoa(ezfyRecruitRefreshLimit) + "次, 明天0点重置)"
 	}
-	cands := h.recruitCandidates(uid, academyLevel)
+	drafts := rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 	if err != nil {
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date}
 	}
 	rec.RefreshCount = used + 1
-	rec.Candidates = joinGeneralIds(cands)
+	rec.Candidates = joinDrafts(drafts)
 	if rec.ID == 0 {
 		h.DB.Create(&rec)
 	} else {
@@ -263,13 +268,9 @@ func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 	return ""
 }
 
-// recruitOfficer 招募名将：需军校≥1、参谋部≥1、容量未满、未拥有、黄金=等级×500
-func (h *EzfyHandler) recruitOfficer(city *model.EzfyCity, generalId int) string {
+// hireOfficerDraft 雇佣候选军官: 从当日候选里按 key 取, 校验容量/黄金后入库并从候选里移除
+func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key string) string {
 	h.calcResource(city)
-	cfg := ezfyCfg.general(generalId)
-	if cfg == nil {
-		return "名将不存在"
-	}
 	if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
 		return "需要先建造军校"
 	}
@@ -280,26 +281,39 @@ func (h *EzfyHandler) recruitOfficer(city *model.EzfyCity, generalId int) string
 	if h.officerCount(city.ID) >= staff {
 		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(staff) + "名军官)"
 	}
-	if h.ownedGeneralIds(city.UserID)[generalId] {
-		return "已拥有该名将, 无法重复招募"
+	date := time.Now().Format("2006-01-02")
+	var rec model.EzfyRecruit
+	if err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error; err != nil {
+		return "候选已失效, 请刷新"
 	}
-	cost := int64(cfg.Level) * ezfyRecruitCostPerLevel
-	if city.Gold < cost {
-		return "黄金不足(招募需要" + strconv.FormatInt(cost, 10) + "黄金)"
+	drafts := parseDrafts(rec.Candidates)
+	var pick *ezfyOfficerDraft
+	kept := []ezfyOfficerDraft{}
+	for i := range drafts {
+		if drafts[i].Key == key && pick == nil {
+			d := drafts[i]
+			pick = &d
+			continue
+		}
+		kept = append(kept, drafts[i])
 	}
-	city.Gold -= cost
+	if pick == nil {
+		return "该候选不存在(可能已被雇佣或已刷新)"
+	}
+	if city.Gold < pick.Cost {
+		return "黄金不足(雇佣需要" + strconv.FormatInt(pick.Cost, 10) + "黄金)"
+	}
+	city.Gold -= pick.Cost
 	h.saveCityRes(city)
-	star := cfg.Star
-	if star <= 0 {
-		star = 5
-	}
 	o := model.EzfyOfficer{
-		CityId: int64(city.ID), GeneralId: cfg.ID, Name: cfg.Name, Star: star,
-		Level: 1, Exp: 0, Military: cfg.Military, Logistics: cfg.Logistics, Learning: cfg.Learning,
+		CityId: int64(city.ID), GeneralId: 0, Name: pick.Name, Star: pick.Star,
+		Level: pick.Level, Exp: 0,
+		Military: pick.Military, Logistics: pick.Logistics, Learning: pick.Learning,
 		Loyalty: ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
+	h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", joinDrafts(kept))
 	return ""
 }
 
@@ -313,11 +327,11 @@ func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 	date := time.Now().Format("2006-01-02")
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
-	cands := h.recruitCandidates(uid, academy)
+	drafts := rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
 	if err != nil {
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0}
 	}
-	rec.Candidates = joinGeneralIds(cands)
+	rec.Candidates = joinDrafts(drafts)
 	if rec.ID == 0 {
 		h.DB.Create(&rec)
 	} else {
@@ -659,12 +673,12 @@ func (h *EzfyHandler) officerSkillBattleBonus(o *model.EzfyOfficer) int {
 	bonus := 0
 	for _, s := range officerSkills(o) {
 		switch s {
-		case "突击":
+		case "尖兵突击":
+			bonus += 30
+		case "火炮控制":
 			bonus += 10
-		case "鼓舞":
-			bonus += 5
-		case "爆破", "空袭", "海战", "装甲突击":
-			bonus += 8
+		case "四指编队", "狼群战术":
+			bonus += 15
 		}
 	}
 	return bonus
@@ -675,6 +689,11 @@ func (h *EzfyHandler) officerBattleBonus(o *model.EzfyOfficer) int {
 	return h.officerBaseBonus(o) + h.officerSkillBattleBonus(o)
 }
 
+// officerSpeedSkill 是否带行军/战斗速度类技能(坦克突袭/闪电袭击/越岛战术 任一)
+func (h *EzfyHandler) officerSpeedSkill(o *model.EzfyOfficer) bool {
+	return h.officerHasSkill(o, "坦克突袭") || h.officerHasSkill(o, "闪电袭击") || h.officerHasSkill(o, "越岛战术")
+}
+
 // officerGuardBonus 城守守城防御加成（+10 及 防御/掩体+10、生命/鼓舞+5）
 func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	if o == nil {
@@ -683,10 +702,10 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	bonus := 10
 	for _, s := range officerSkills(o) {
 		switch s {
-		case "防御", "掩体":
+		case "弧形防御":
+			bonus += 30
+		case "弹幕支援":
 			bonus += 10
-		case "生命", "鼓舞":
-			bonus += 5
 		}
 	}
 	return bonus
@@ -724,24 +743,30 @@ func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, baseBonus int, lab
 // ezfySkillEffectText 技能在战斗/后勤中的作用文本
 func ezfySkillEffectText(skill string) string {
 	switch skill {
-	case "突击":
-		return "攻击+10%"
-	case "鼓舞":
-		return "攻击+5%"
-	case "爆破", "空袭", "海战", "装甲突击":
-		return "攻击+8%"
-	case "防御", "掩体":
-		return "守军防御+10%"
-	case "生命":
-		return "守军防御+5%"
-	case "掠夺":
-		return "掠夺资源+10%"
-	case "移速":
-		return "行军移速+10%"
-	case "攻速":
-		return "战斗速度+10%"
-	case "修养":
-		return "伤兵恢复+10%"
+	case "尖兵突击":
+		return "攻击力+30%"
+	case "弧形防御":
+		return "防御力+30%"
+	case "绝地反击":
+		return "第1回合反击"
+	case "火炮控制":
+		return "陆军装甲攻击+10"
+	case "坦克突袭":
+		return "陆军速度+10%"
+	case "四指编队":
+		return "空军对空攻击+15%"
+	case "闪电袭击":
+		return "空军速度+10%"
+	case "狼群战术":
+		return "海军对海攻击+15%"
+	case "越岛战术":
+		return "海军速度+10%"
+	case "弹幕支援":
+		return "城防攻击范围+10%"
+	case "黄金眼":
+		return "侦查等级+1"
+	case "机械改造":
+		return "回收率+10%, 出征油耗-10%"
 	default:
 		return ""
 	}
@@ -962,18 +987,7 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 	if h.officerCount(city.ID) >= h.buildingLevel(city.ID, ezfyBuildingStaff) {
 		return ""
 	}
-	owned := h.ownedGeneralIds(city.UserID)
-	pool := []model.EzfyCfgGeneral{}
-	for _, g := range ezfyCfg.generals {
-		if g.Recruit == 1 && !owned[g.ID] {
-			pool = append(pool, g)
-		}
-	}
-	if len(pool) == 0 {
-		return ""
-	}
-	g := pool[rand.Intn(len(pool))]
-	// 星级随野地等级提高(1-5), 属性按星级缩放
+	// 守将是**普通军官**(随机生成), 名将只能管理端发放
 	star := 1 + level/3
 	if star > 5 {
 		star = 5
@@ -981,13 +995,15 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 	if special && star < 5 {
 		star++
 	}
+	d := rollOfficerDrafts(maxInt(1, level), 1)
+	if len(d) == 0 {
+		return ""
+	}
 	o := model.EzfyOfficer{
-		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
-		Level: 1, Exp: 0,
-		Military:  g.Military * star / 5,
-		Logistics: g.Logistics * star / 5,
-		Learning:  g.Learning * star / 5,
-		Loyalty:   30, Skill: "", Equipment: "",
+		CityId: int64(city.ID), GeneralId: 0, Name: d[0].Name, Star: star,
+		Level: maxInt(1, d[0].Level), Exp: 0,
+		Military: d[0].Military, Logistics: d[0].Logistics, Learning: d[0].Learning,
+		Loyalty: 30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
@@ -1175,13 +1191,13 @@ func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 		"gold": city.Gold, "candidates": []gin.H{},
 	}
 	if academy >= 1 {
-		cands, left, limit := h.recruitInfo(uid, academy)
+		drafts, left, limit := h.recruitInfo(uid, academy)
 		views := []gin.H{}
-		for _, g := range cands {
+		for _, d := range drafts {
 			views = append(views, gin.H{
-				"id": g.ID, "name": g.Name, "level": g.Level, "star": g.Star,
-				"military": g.Military, "logistics": g.Logistics, "learning": g.Learning,
-				"cost": g.Level * ezfyRecruitCostPerLevel, "des": g.Des, "skill": g.Skill,
+				"key": d.Key, "name": d.Name, "level": d.Level, "star": d.Star,
+				"military": d.Military, "logistics": d.Logistics, "learning": d.Learning,
+				"cost": d.Cost,
 			})
 		}
 		out["candidates"] = views
@@ -1204,13 +1220,19 @@ func (h *EzfyHandler) AcadeRefresh(c *gin.Context) {
 	h.fail(c, h.refreshRecruit(uid, academy))
 }
 
-// AcadeRecruitDo POST /games/ezfy/acade/recruit/:id
+// AcadeRecruitDo POST /games/ezfy/acade/recruit/hire  {key}
 func (h *EzfyHandler) AcadeRecruitDo(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
-	gid, _ := strconv.Atoi(c.Param("id"))
-	h.fail(c, h.recruitOfficer(&city, gid))
+	var req struct {
+		Key string `json:"key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Key == "" {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.fail(c, h.hireOfficerDraft(&city, uid, req.Key))
 }
 
 // OfficerGrant POST /games/ezfy/officers/:id/grant
@@ -1363,10 +1385,11 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 	owned := h.ownedGeneralIds(uid)
 	list := []gin.H{}
 	for _, g := range ezfyCfg.generals {
+		// 名将只由管理端发放, 获取渠道统一显示为「管理端发放」
 		list = append(list, gin.H{
 			"id": g.ID, "name": g.Name, "level": g.Level, "star": g.Star,
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning,
-			"source": g.Source, "skill": g.Skill, "des": g.Des, "owned": owned[g.ID],
+			"source": "管理端发放", "skill": g.Skill, "des": g.Des, "owned": owned[g.ID],
 		})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i]["level"].(int) > list[j]["level"].(int) })

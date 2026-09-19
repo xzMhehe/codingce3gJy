@@ -512,36 +512,65 @@ func (h *MessageHandler) ReadAll(c *gin.Context) {
 }
 
 type sendMsgReq struct {
-	To      uint   `json:"to" binding:"required"`
+	To      uint   `json:"to"`
+	ToName  string `json:"to_name"` // 家园号码或昵称(二选一, 优先级高于 to)
 	Content string `json:"content" binding:"required,min=1,max=500"`
 }
 
+// Send POST /messages —— 发私信
+//
+// 注意: **不要求双方是好友**(对齐诺哈 send.asp), 只拦「对方把我拉黑」。
+// 接收人可以用 to(玩家ID) 或 to_name(家园号码/昵称) 指定。
 func (h *MessageHandler) Send(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req sendMsgReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.ParamError(c, "请选择接收人并填写内容（500字以内）")
-		return
-	}
-	if req.To == uid {
-		resp.ParamError(c, "不能给自己发私信哦")
+		resp.ParamError(c, "请填写接收人和内容（500字以内）")
 		return
 	}
 	var target model.User
-	if err := h.DB.Where("username = ? OR id = ?", strconv.Itoa(int(req.To)), req.To).First(&target).Error; err != nil {
-		resp.NotFound(c, "这位友友不存在")
+	switch {
+	case trimSpace(req.ToName) != "":
+		kw := trimSpace(req.ToName)
+		// 家园号码 → 昵称 → 模糊昵称(唯一命中才认)
+		if u, err := h.resolveUser(kw); err == nil {
+			target = u
+		} else if err := h.DB.Where("nickname = ?", kw).First(&target).Error; err != nil {
+			var cands []model.User
+			h.DB.Where("nickname LIKE ?", "%"+kw+"%").Limit(2).Find(&cands)
+			if len(cands) == 1 {
+				target = cands[0]
+			} else if len(cands) == 0 {
+				resp.NotFound(c, "找不到这位玩家(可填家园号码或昵称)")
+				return
+			} else {
+				resp.ParamError(c, "昵称「"+kw+"」匹配到多位玩家, 请用家园号码")
+				return
+			}
+		}
+	case req.To > 0:
+		if err := h.DB.First(&target, req.To).Error; err != nil {
+			resp.NotFound(c, "这位友友不存在")
+			return
+		}
+	default:
+		resp.ParamError(c, "请填写接收人(家园号码或昵称)")
+		return
+	}
+	if target.ID == uid {
+		resp.ParamError(c, "不能给自己发私信哦")
 		return
 	}
 	// 对齐诺哈 send.asp：黑名单屏蔽家信
 	var black int64
-	h.DB.Model(&model.FriendBlack{}).Where("user_id = ? AND friend_id = ? AND end_time > ?", req.To, uid, time.Now()).Count(&black)
+	h.DB.Model(&model.FriendBlack{}).Where("user_id = ? AND friend_id = ? AND end_time > ?", target.ID, uid, time.Now()).Count(&black)
 	if black > 0 {
 		resp.Forbidden(c, "对方不接受您的家信")
 		return
 	}
-	msg := model.PrivateMessage{SenderID: uid, ReceiverID: req.To, Content: req.Content}
+	msg := model.PrivateMessage{SenderID: uid, ReceiverID: target.ID, Content: req.Content}
 	h.DB.Create(&msg)
-	resp.OK(c, gin.H{"id": msg.ID})
+	resp.OK(c, gin.H{"id": msg.ID, "msg": "已发送给 " + target.Nickname, "to_nickname": target.Nickname})
 }
 
 // 聊天室（family_id=0/board_id=0 公共 / family_id>0 家族聊室 / board_id>0 同城老乡聊天室，轮询）

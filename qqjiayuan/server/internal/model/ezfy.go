@@ -174,9 +174,9 @@ type EzfyCity struct {
 	X         int    `gorm:"index:idx_xy" json:"x"`
 	Y         int    `gorm:"index:idx_xy" json:"y"`
 	CityLevel int    `gorm:"default:1" json:"city_level"` // 市政厅等级
-	Feelings  int    `json:"feelings"`  // 民心
+	Feelings  int    `json:"feelings"`                    // 民心
 	Grievance int    `gorm:"default:0" json:"grievance"`  // 民怨
-	TaxRate   int    `json:"tax_rate"`  // 税率%
+	TaxRate   int    `json:"tax_rate"`                    // 税率%
 	Pop       int64  `json:"pop"`
 	PopMax    int64  `json:"pop_max"`
 	Gold      int64  `json:"gold"`
@@ -595,7 +595,7 @@ type EzfyCfgSkill struct {
 	Name   string `gorm:"type:varchar(50)" json:"name"`
 	Effect string `gorm:"type:varchar(100)" json:"effect"`
 	Type   int    `gorm:"default:1" json:"type"` // 1攻击类 2防御类 3辅助类
-	Des    string `gorm:"type:varchar(200)" json:"des"`
+	Des    string `gorm:"type:text" json:"des"`  // 完整技能说明(参考 skill.html, 较长)
 }
 
 func (EzfyCfgSkill) TableName() string { return "ezfy_cfg_skill" }
@@ -663,7 +663,7 @@ type EzfyRecruit struct {
 	UserId       uint      `gorm:"uniqueIndex:uk_role_date" json:"user_id"`
 	RecruitDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_role_date" json:"recruit_date"`
 	RefreshCount int       `json:"refresh_count"`
-	Candidates   string    `gorm:"type:varchar(255)" json:"candidates"`
+	Candidates   string    `gorm:"type:text" json:"candidates"` // JSON: 随机军官候选
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

@@ -152,6 +152,51 @@ func (h *AdminHandler) AdminEzfyPlayerUpdate(c *gin.Context) {
 }
 
 // AdminEzfyGrant 发放资源/道具（资源入主城并按仓储上限截断，道具入背包）
+// AdminEzfyGrantOfficer POST /admin/ezfy-players/:id/grant-officer  {general_id}
+// 名将只能由管理端发放(用户要求): 直接把 cfg_general 里的名将变成该玩家的军官
+func (h *AdminHandler) AdminEzfyGrantOfficer(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var p model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", id).First(&p).Error; err != nil {
+		resp.NotFound(c, "玩家不存在")
+		return
+	}
+	var in struct {
+		GeneralID int `json:"general_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.GeneralID <= 0 {
+		resp.ParamError(c, "请选择名将")
+		return
+	}
+	ez := &EzfyHandler{DB: h.DB}
+	ez.cfgs()
+	g := ezfyCfg.general(in.GeneralID)
+	if g == nil {
+		resp.ParamError(c, "名将不存在")
+		return
+	}
+	city := ez.getOrCreateCity(p.UserID)
+	var dup int64
+	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ? AND general_id = ?", city.ID, g.ID).Count(&dup)
+	if dup > 0 {
+		resp.ParamError(c, "该玩家已拥有"+g.Name)
+		return
+	}
+	star := g.Star
+	if star <= 0 {
+		star = 5
+	}
+	o := model.EzfyOfficer{
+		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
+		Level: 1, Exp: 0,
+		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
+		Loyalty: 100, Skill: "", Equipment: "",
+		Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
+	}
+	h.DB.Create(&o)
+	resp.OK(c, gin.H{"msg": "已发放名将: " + g.Name})
+}
+
 func (h *AdminHandler) AdminEzfyGrant(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var p model.EzfyProfile
@@ -498,7 +543,7 @@ func (h *AdminHandler) AdminEzfyExchanges(c *gin.Context) {
 	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
 	type rowOut struct {
 		model.EzfyExchange
-		TypeName string `json:"type_name"`
+		TypeName   string `json:"type_name"`
 		StatusName string `json:"status_name"`
 	}
 	out := []rowOut{}

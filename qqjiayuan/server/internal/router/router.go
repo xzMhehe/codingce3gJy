@@ -622,7 +622,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
 				ezfyG.GET("/acade/recruit", ezfyH.AcadeRecruit)
 				ezfyG.POST("/acade/recruit/refresh", ezfyH.AcadeRefresh)
-				ezfyG.POST("/acade/recruit/:id", ezfyH.AcadeRecruitDo)
+				ezfyG.POST("/acade/recruit/hire", ezfyH.AcadeRecruitDo)
 			}
 
 			// 我的游戏
@@ -970,6 +970,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-players/:id/detail", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyPlayerDetail)
 				admin.PUT("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyPlayerUpdate)
 				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyGrant)
+				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyGrantOfficer)
 				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyPlayerDelete)
 				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyData)
 				admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyDataCreate)

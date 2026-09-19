@@ -209,6 +209,28 @@
           <br/>
           <button @click="loadMails">刷新</button>
         </div>
+
+        <!-- 发私信: 不需要先加好友, 填家园号码或昵称即可 -->
+        <div class="panel">
+          <div class="panel-title">发私信</div>
+          <div class="old-line">
+            收件人:
+            <input v-model="pmTo" placeholder="家园号码或昵称" style="width:150px" list="ezfyPmCands"/>
+            <datalist id="ezfyPmCands">
+              <option v-for="f in pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
+            </datalist>
+          </div>
+          <div class="old-line gray">不需要先加好友, 填对方家园号码或昵称即可; 对方把你拉黑则发不出去。</div>
+          <div class="old-line">
+            <input v-model="pmContent" placeholder="最多500字" style="width:88%" maxlength="500"
+                   @keyup.enter="doSendPm"/>
+          </div>
+          <div class="old-line">
+            <button @click="doSendPm">发送</button>
+            <a href="javascript:;" @click="go('friends')">[好友]</a>
+            <a href="javascript:;" @click="go('chat')">[聊天频道]</a>
+          </div>
+        </div>
       </template>
 
       <!-- ============ 情报/军情(reports) ============ -->
@@ -691,7 +713,7 @@
           </div>
           <div class="old-line" v-if="eliteCell">
             发现精英中立城市：
-            <a class="red" href="javascript:;" @click="jumpTo(eliteCell.x, eliteCell.y)">[寇({{ eliteCell.x }},{{ eliteCell.y }})]</a>
+            <a class="red" href="javascript:;" @click="openElite">[寇({{ eliteCell.x }},{{ eliteCell.y }})]</a>
           </div>
           <template v-if="showStars">
             <div class="panel-title">收藏列表</div>
@@ -1594,38 +1616,28 @@
         </div>
 
         <!-- 军官列表 -->
+        <!-- 军官列表: 复刻 acade/acadeIndex.html -->
         <div class="panel" v-if="acadeTab === 'officer'">
           <div class="old-line">
             军校{{ officerData.academy_level }}级, 参谋部{{ officerData.staff_level }}级
             (容纳{{ officerData.capacity }}名军官), 当前{{ officerData.used }}名
           </div>
-          <div class="old-line">
-            黄金:{{ officerData.gold }}
-            <a href="javascript:;" @click="switchAcade('search')">[招募名将]</a>
-          </div>
+          <div class="old-line">黄金:{{ officerData.gold }}</div>
           <hr/>
-          <div class="old-line">我的军官({{ myOfficers.length }}):</div>
-          <!-- WAP 窄屏: 13 列会撑到 500px+ 溢出屏幕, 精简为 8 列(攻/防/经验等放进[详情]) -->
-          <table>
-            <tr><th>名称</th><th>星</th><th>等级</th><th>后/军/学</th><th>忠诚</th><th>职位</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="o in myOfficers" :key="'of' + o.id">
-              <td>{{ o.name }}</td>
-              <td>{{ o.star }}</td>
-              <td>{{ o.level }}</td>
-              <td>{{ o.logistics }}/{{ o.military }}/{{ o.learning }}</td>
-              <td>{{ o.loyalty }}</td>
-              <td>{{ o.position_name }}</td>
-              <td>
-                <span :class="{ orange: o.status === 1 }">{{ o.status_name }}</span>
-              </td>
-              <td>
-                <a href="javascript:;" @click="openOfficer(o.id)">[详情]</a>
-              </td>
-            </tr>
-          </table>
+          <template v-for="o in myOfficers">
+            <div class="old-line" :key="'of' + o.id">
+              {{ o.name }}({{ o.level }}级)
+              <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
+              状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
+              后勤/军事/学识/忠诚：<br/>
+              {{ o.logistics }}/{{ o.military }}/{{ o.learning }}/{{ o.loyalty }}<br/>
+              攻/防：{{ o.attack }}/{{ o.defence }}<br/>
+              ------------------------
+            </div>
+          </template>
           <div class="old-line gray" v-if="!myOfficers.length">(暂无军官, 先去招募吧)</div>
           <div class="old-line">
-            前去<a href="javascript:;" @click="switchAcade('captive')">[战俘营]</a>
+            前去<a href="javascript:;" @click="switchAcade('captive')">战俘营</a>
             <span class="gray" v-if="captiveOfficers.length">({{ captiveOfficers.length }}名俘虏待收编)</span>
           </div>
         </div>
@@ -1641,24 +1653,25 @@
           </div>
           <div class="old-line">
             军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
-            招募费用 = 名将等级 × 500 黄金
+            雇佣费用 = 军官等级 × 1000 黄金
           </div>
+          <div class="old-line gray">军校招募的是普通军官; 名将只能由管理端发放(见[名将图鉴])</div>
           <div class="old-line red" v-if="recruitData.academy_level && officerFull">
             参谋部容量已满({{ recruitData.used }}/{{ recruitData.capacity }}), 请先
             <a href="javascript:;" @click="go('buildm')">[升级参谋部]</a>
             或到 <a href="javascript:;" @click="switchAcade('officer')">[军官]</a> 里流放/释放不需要的军官。
           </div>
           <div class="old-line" v-if="!recruitData.academy_level">尚未建造军校, 无法招募军官</div>
-          <table v-else>
+          <table v-else class="ezfy-plain-table">
             <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>
-            <tr v-for="g in recruitData.candidates" :key="'rc' + g.id">
+            <tr v-for="g in recruitData.candidates" :key="'rc' + g.key">
               <td>{{ g.name }}</td>
               <td>{{ g.level }}级</td>
               <td>{{ g.star }}星</td>
               <td>{{ g.logistics }}/{{ g.military }}/{{ g.learning }}</td>
               <td>{{ g.cost }}</td>
               <td>
-                <a v-if="!officerFull" href="javascript:;" @click="doRecruit(g)">[招募]</a>
+                <a v-if="!officerFull" href="javascript:;" @click="doRecruit(g)">雇佣</a>
                 <span v-else class="gray">(容量已满)</span>
               </td>
             </tr>
@@ -1667,10 +1680,10 @@
           <div class="old-line">前去<a href="javascript:;" @click="switchAcade('officer')">[军官]</a></div>
         </div>
 
-        <!-- 任命市长 -->
+        <!-- 任命市长: 复刻 acade/setMayor.html -->
         <div class="panel" v-else-if="acadeTab === 'mayor'">
           <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%)</div>
-          <table>
+          <table class="ezfy-plain-table">
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
             <tr v-for="o in myOfficers" :key="'my' + o.id">
               <td>{{ o.name }}</td>
@@ -1690,7 +1703,7 @@
         <!-- 装备 -->
         <div class="panel" v-else-if="acadeTab === 'equip'">
           <div class="old-line">我的装备({{ equipData.bag.length }})</div>
-          <table>
+          <table class="ezfy-plain-table">
             <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
             <tr v-for="e in equipData.bag" :key="'eq' + e.id">
               <td>{{ e.name }}</td>
@@ -1711,7 +1724,7 @@
           <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备, 战胜野地/寇城有概率掉落)</div>
           <hr/>
           <div class="old-line">装备图鉴({{ equipData.all.length }})</div>
-          <table>
+          <table class="ezfy-plain-table">
             <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
             <tr v-for="e in equipData.all" :key="'ea' + e.id">
               <td>{{ e.name }}</td>
@@ -1727,19 +1740,17 @@
           </table>
         </div>
 
-        <!-- 技能 -->
+        <!-- 技能: 复刻 acade/skill.html 的编号列表(带完整说明) -->
         <div class="panel" v-else-if="acadeTab === 'skill'">
           <div class="old-line">军官技能(每名武将最多3个, 学习1万金/个):</div>
-          <table>
-            <tr><th>技能</th><th>效果</th></tr>
-            <tr v-for="s in skillData.skills" :key="'sk' + s.id">
-              <td>{{ s.name }}</td>
-              <td>{{ s.effect }}</td>
-            </tr>
-          </table>
+          <div class="old-line" v-for="(sk, i) in skillData.skills" :key="'sk' + sk.id">
+            {{ i + 1 }}、{{ sk.name }}:{{ sk.des || sk.effect }}<br/>
+            <span class="gray">效果：{{ sk.effect }}</span>
+            <br/>--------------------
+          </div>
           <hr/>
           <div class="old-line">我的军官:</div>
-          <table>
+          <table class="ezfy-plain-table">
             <tr><th>名称</th><th>已学技能</th><th>操作</th></tr>
             <tr v-for="o in skillData.officers" :key="'sko' + o.id">
               <td>{{ o.name }}</td>
@@ -1775,7 +1786,7 @@
             <a href="javascript:;" @click="switchAcade('search')">去招募</a> |
             战俘营
           </div>
-          <table>
+          <table class="ezfy-plain-table">
             <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>
             <tr v-for="o in captiveOfficers" :key="'cp' + o.id">
               <td>{{ o.name }}</td>
@@ -1802,7 +1813,8 @@
         <!-- 名将图鉴 -->
         <div class="panel" v-else-if="acadeTab === 'generals'">
           <div class="old-line">名将图鉴(共{{ generalData.generals.length }}名, 按等级排序)</div>
-          <table>
+          <div class="old-line gray">军校招募的是普通军官。</div>
+          <table class="ezfy-plain-table">
             <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>获取渠道</th><th>状态</th></tr>
             <tr v-for="g in generalData.generals" :key="'gg' + g.id">
               <td>{{ g.name }}</td>
@@ -1964,6 +1976,9 @@ export default {
       chatCooldown: 0,
       chatNotices: [],
       mails: [],
+      pmTo: '',
+      pmContent: '',
+      pmCandidates: [],
       friends: [],
       friendKeyword: '',
       friendSearchList: [],
@@ -2196,8 +2211,10 @@ export default {
       return this.mapR * 2 + 1
     },
     mapRows () {
+      // 边长以**实际返回的格子数**为准(后端返回 n×n), 避免与 mapR 不一致时整表错位
+      const n = this.mapCells.length
+      const size = n > 0 && Number.isInteger(Math.sqrt(n)) ? Math.round(Math.sqrt(n)) : this.mapR * 2 + 1
       const rows = []
-      const size = this.mapR * 2 + 1
       for (let i = 0; i < size; i++) {
         rows.push(this.mapCells.slice(i * size, (i + 1) * size))
       }
@@ -2239,7 +2256,7 @@ export default {
       else if (t === 'techs') this.loadTechs()
       else if (t === 'map') { this.loadMap(); this.loadStars() }
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
-      else if (t === 'mail') this.loadMails()
+      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates() }
       else if (t === 'friends') this.loadFriends()
       else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
@@ -2350,6 +2367,33 @@ export default {
           this.homeChats = r.data.chats || []
           this.chatPlayers = r.data.players
         }
+      })
+    },
+    // 收件人候选(好友 + 同军团成员 + 最近聊过的人), 只是方便输入, 也可以直接手填号码/昵称
+    loadPmCandidates () {
+      const list = []
+      const seen = {}
+      const push = (id, name) => {
+        if (!id || seen[id]) return
+        seen[id] = 1
+        list.push({ id: id, name: name })
+      }
+      ;(this.friends || []).forEach(f => push(f.id, f.nickname))
+      ;(this.corpsMembers || []).forEach(m => push(m.user_id || m.id, m.nickname || m.name))
+      ;(this.homeChats || []).forEach(c => { if (c.user_id) push(c.user_id, c.user_name) })
+      this.pmCandidates = list
+    },
+    doSendPm () {
+      const to = (this.pmTo || '').trim()
+      const content = (this.pmContent || '').trim()
+      if (!to) { alert('请填写收件人(家园号码或昵称)'); return }
+      if (!content) { alert('请填写内容'); return }
+      api.post('/messages', { to_name: to, content: content }).then(r => {
+        if (r.code === 0) {
+          alert(r.data && r.data.msg ? r.data.msg : '已发送')
+          this.pmContent = ''
+          this.loadMails()
+        } else alert(r.msg || '发送失败')
       })
     },
     loadMails () {
@@ -2530,7 +2574,9 @@ export default {
       this.eliteCell = d.elite && d.elite.x ? d.elite : null
     },
     loadMap () {
-      api.get('/games/ezfy/map').then(r => { if (r.code === 0) this.applyMap(r.data) })
+      // ★ 必须带 r: 不带的话后端用默认半径返回, 格子数与前端切行用的 mapR 不一致,
+      //   整张网格会错位(本城就不在中心格了)
+      api.get('/games/ezfy/map?r=' + this.mapR).then(r => { if (r.code === 0) this.applyMap(r.data) })
     },
     moveMap (dx, dy) {
       this.jumpTo(this.mapCx + dx, this.mapCy + dy)
@@ -2560,7 +2606,8 @@ export default {
     },
     addStar () {
       if (!this.selCell) return
-      const def = this.selCell.name + '(' + this.selCell.x + ',' + this.selCell.y + ')'
+      // 备注名用「地形名(等级)」, 坐标由列表模板统一拼, 别在这里重复带上
+      const def = this.cellText(this.selCell)
       const name = prompt('备注名(最多16字):', def)
       if (name === null) return
       api.post('/games/ezfy/map/stars', { x: this.selCell.x, y: this.selCell.y, name: name }).then(r => {
@@ -2855,6 +2902,13 @@ export default {
       if (cell.area_type === 2) return 'ezfy-kou'
       if (cell.terrain === 8) return 'ezfy-sea'
       return 'ezfy-wild'
+    },
+    // 点「发现精英中立城市」→ 直接进该寇城的目标详情(里面就是 侦查/掠夺/征服 出征入口),
+    // 而不是仅仅把地图挪过去
+    openElite () {
+      if (!this.eliteCell) return
+      const c = this.eliteCell
+      this.openCell({ x: c.x, y: c.y, area_type: 2, level: c.level || 0, name: '寇城' })
     },
     openCell (cell) {
       this.selCell = cell
@@ -3244,10 +3298,11 @@ export default {
       })
     },
     doRecruit (g) {
-      if (!confirm('确定招募 ' + g.name + ' 吗? 需要 ' + g.cost + ' 黄金')) return
-      api.post('/games/ezfy/acade/recruit/' + g.id, {}).then(r => {
-        if (r.code !== 0) alert(r.msg || '招募失败')
+      if (!confirm('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' 黄金')) return
+      api.post('/games/ezfy/acade/recruit/hire', { key: g.key }).then(r => {
+        if (r.code !== 0) alert(r.msg || '雇佣失败')
         this.loadRecruit()
+        this.loadAcade()
       })
     },
     doGrant () {
@@ -3370,7 +3425,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
-  font-size: 14px;
+  font-size: 16px;   /* 与正文同号 */
   color: #666;
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
@@ -3389,24 +3444,29 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
 .ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
+/* ★ 表格默认用「原版模板的朴素样式」: 宽度按内容自适应(不 width:100%)、无边框。
+   原版 templates 里绝大多数表格都没有任何 CSS, 就是浏览器默认样式;
+   之前统一 width:100% + 虚线下边框, 会把表格拉满整行, 用户会觉得「太长 / 还是表格」。 */
 .ezfy-page table {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   border-collapse: collapse;
   font-size: 15px;
 }
-/* 长名字/长文本允许折行, 否则表格的最小宽度会把整个文档撑宽(WAP 上会横向溢出) */
 .ezfy-page table th,
-.ezfy-page table td { word-break: break-word; overflow-wrap: anywhere; }
+.ezfy-page table td {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  border: 0;
+  text-align: left;
+  vertical-align: top;
+  padding: 2px 10px 2px 0;
+}
 .ezfy-page table th {
   color: #2f4156;
-  padding: 3px 6px;
-  text-align: left;
   font-weight: bold;
-  border-bottom: 1px solid #ccc;
-}
-.ezfy-page table td {
-  padding: 3px 6px;
-  border-bottom: 1px dotted #ddd;
+  white-space: nowrap;
+  padding-bottom: 4px;
 }
 /* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
@@ -3451,33 +3511,37 @@ body.ezfy-immersive { margin: 0; }
 /* 地图 */
 .ezfy-map { padding: 4px 0; overflow-x: auto; }
 .ezfy-map-row { white-space: nowrap; }
-/* 复刻 map/index.html 的 5×5 <table> 布局 */
+/* 复刻 map/index.html 的 5×5 <table>:
+   参考**没有任何表格 CSS**, 就是浏览器默认样式 —— 单元格按内容自适应宽度、
+   无底色、无边框、每个格子一行。所以这里只做三件事:
+   ① 抵消全局 `.ezfy-page table td` 的虚线下边框  ② 单元格紧凑  ③ 不折行 */
 .ezfy-page .ezfy-map-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 4px 0;
-  table-layout: fixed;
+  width: auto;
+  max-width: 100%;
+  border-collapse: separate;
+  border-spacing: 6px 2px;   /* 格子之间留出间隔, 不挤在一起 */
+  margin: 6px 0;
 }
 .ezfy-page .ezfy-map-table td {
-  padding: 1px;
-  text-align: center;
+  padding: 0;
+  border: 0;
+  text-align: left;
   vertical-align: middle;
+  white-space: nowrap;
 }
 .ezfy-page .ezfy-map-table a {
-  display: block;
-  padding: 3px 1px;
-  font-size: 11px;
-  line-height: 1.25;
+  display: inline;
+  padding: 0;
+  margin: 0;
+  font-size: 16px;           /* 和正文(.old-line)同号 */
+  line-height: 1.5;
   color: #333;
-  background: #e8f0d8;
-  border: 1px solid #b8c89a;
-  word-break: break-all;
+  background: none;
+  border: 0;
+  text-decoration: none;
 }
-.ezfy-page .ezfy-map-table a.ezfy-mine { background: #ffe9b0; border-color: #d0a030; color: #803000; }
-.ezfy-page .ezfy-map-table a.ezfy-city { background: #d8e4f0; border-color: #90a8c0; }
-.ezfy-page .ezfy-map-table a.ezfy-kou { background: #f0d8d8; border-color: #c09090; }
-.ezfy-page .ezfy-map-table a.ezfy-sea { background: #c8e0f0; border-color: #80a8c8; }
-.ezfy-page .ezfy-map-table a.ezfy-wild { background: #e8f0d8; border-color: #b8c89a; }
+/* 本城加粗标一下(参考里就是「城名(x,y)」), 其余一律朴素文字 */
+.ezfy-page .ezfy-map-table a.ezfy-mine { font-weight: bold; color: #c0392b; }
 .ezfy-cell {
   display: inline-block;
   width: 36px;
@@ -3507,7 +3571,10 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page table td { padding: 3px 3px; }
   .ezfy-page .old-line { font-size: 13px; line-height: 1.65; }
   .ezfy-page .panel-title { font-size: 14px; }
-  .ezfy-page .ezfy-map-table a { font-size: 10px; padding: 2px 0; }
+  .ezfy-page .acade-tab { font-size: 13px; }
+  /* 地图格子: 字号跟正文一致(13px), 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
+  .ezfy-page .ezfy-map-table a { font-size: 13px; }
+  .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */

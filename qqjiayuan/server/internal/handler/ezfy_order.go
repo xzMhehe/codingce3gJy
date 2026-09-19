@@ -49,7 +49,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		city := h.getOrCreateCity(uid)
 		cx, cy = city.X, city.Y
 	}
-	r := 7
+	// 默认半径 2 → 5×5(复刻 map/index.html)
+	r := 2
 	if v, err := strconv.Atoi(c.Query("r")); err == nil && v > 0 && v <= 15 {
 		r = v
 	}
@@ -384,7 +385,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		travelSec = int64(distance) * 60 * 300 / int64(slowest)
 		travelSec = travelSec * 100 / int64(100+tech[12]*2)
 		travelSec = travelSec * 100 / int64(100+station*3)
-		if lead := h.officerByName(city.ID, req.Officer); h.officerHasSkill(lead, "移速") {
+		if lead := h.officerByName(city.ID, req.Officer); h.officerSpeedSkill(lead) {
 			travelSec = travelSec * 100 / 110
 		}
 		if travelSec < 10 {
@@ -636,7 +637,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	travelSec = travelSec * 100 / int64(100+tech[12]*2)
 	travelSec = travelSec * 100 / int64(100+station*3)
 	// 带队军官「移速」技能: 行军 +10%
-	if lead := h.officerByName(city.ID, officer); h.officerHasSkill(lead, "移速") {
+	if lead := h.officerByName(city.ID, officer); h.officerSpeedSkill(lead) {
 		travelSec = travelSec * 100 / 110
 	}
 	if travelSec < 10 {
@@ -1056,10 +1057,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	officerBonus := h.officerBattleBonus(leadOfficer)
 	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
-	if h.officerHasSkill(leadOfficer, "移速") {
+	if h.officerSpeedSkill(leadOfficer) {
 		atkSpeedBonus += 10
 	}
-	if h.officerHasSkill(leadOfficer, "攻速") {
+	if h.officerSpeedSkill(leadOfficer) {
 		atkSpeedBonus += 10
 	}
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
@@ -1106,7 +1107,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		targetName = name + strconv.Itoa(level) + "级"
 		rnd := cfg.ResMin + rand.Int63n(cfg.ResMax-cfg.ResMin+1)
 		lootTech := atkTech[17] * 2
-		if h.officerHasSkill(leadOfficer, "掠夺") {
+		if h.officerHasSkill(leadOfficer, "黄金眼") {
 			lootTech += 10
 		}
 		rnd = rnd * int64(100+lootTech) / 100
@@ -1226,7 +1227,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	healTech := atkTech[21] * 2
 	// 带队军官「修养」技能: 战后伤兵恢复 +10%
-	if h.officerHasSkill(leadOfficer, "修养") {
+	if h.officerHasSkill(leadOfficer, "机械改造") {
 		healTech += 10
 	}
 	var repairedTotal int64
@@ -1313,7 +1314,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 && target != nil {
 			// 玩家城市: 掠夺比例10%+掠夺技巧, 上限50%
 			lootRate := 10 + atkTech[17]*2
-			if h.officerHasSkill(leadOfficer, "掠夺") {
+			if h.officerHasSkill(leadOfficer, "黄金眼") {
 				lootRate += 10
 			}
 			if targetProtected || order.OrderType != 2 && order.OrderType != 3 {
