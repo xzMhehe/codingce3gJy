@@ -25,6 +25,17 @@ func seedEzfy(db *gorm.DB) {
 	batch(ezfyEzfyCfgBuilding, "ezfy_cfg_building")
 	batch(ezfyEzfyCfgBuildingLevel, "ezfy_cfg_building_level")
 	batch(ezfyEzfyCfgTroop, "ezfy_cfg_troop")
+	// 阵营兵种名: inithebing.sql 里是用 UPDATE 补的(不在 INSERT 列里),
+	// 早期生成脚本只解析了 INSERT 导致全丢, 这里显式对齐一次
+	for _, t := range ezfyEzfyCfgTroop {
+		if t.NameAxis == "" && t.NameAlly == "" {
+			continue
+		}
+		if err := db.Model(&model.EzfyCfgTroop{}).Where("id = ?", t.ID).
+			Updates(map[string]interface{}{"name_axis": t.NameAxis, "name_ally": t.NameAlly}).Error; err != nil {
+			log.Printf("ezfy 阵营兵种名写入失败 id=%d: %v", t.ID, err)
+		}
+	}
 	batch(ezfyEzfyCfgTech, "ezfy_cfg_tech")
 	batch(ezfyEzfyCfgTechLevel, "ezfy_cfg_tech_level")
 	batch(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")

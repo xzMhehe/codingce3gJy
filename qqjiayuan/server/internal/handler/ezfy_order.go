@@ -102,26 +102,40 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["city_level"] = c.CityLevel
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid
-			} else if terrain == 8 {
-				cell["area_type"] = 1
-				cell["name"] = ezfyTerrainName(terrain) // 海洋
-				cell["level"] = ezfyWildlandLevel(x, y)
-			} else if h.ezfyIsKouCity(x, y) {
-				cell["area_type"] = 2
-				cell["name"] = "寇城"
-				cell["level"] = ezfyKouLevel(x, y)
-				var area model.EzfyMapArea
-				if err := h.DB.Where("x = ? AND y = ?", x, y).First(&area).Error; err == nil {
-					if area.AreaType == 2 && area.StartTime > time.Now().UnixMilli() {
-						cell["revive_at"] = area.StartTime
-						cell["name"] = "寇城(废墟)"
-					}
-				}
 			} else {
-				// 陆地野地: 名称取地形名(平原/草原/森林/盆地/丘陵/沼泽/山地), 不再一律叫「野地」
-				cell["area_type"] = 1
-				cell["name"] = ezfyTerrainName(terrain)
-				cell["level"] = ezfyWildlandLevel(x, y)
+				kou := h.ezfyIsKouCity(x, y)
+				switch {
+				case terrain == 8:
+					cell["area_type"] = 1
+					cell["name"] = ezfyTerrainName(terrain) // 海洋
+					cell["level"] = ezfyWildlandLevel(x, y)
+				case kou:
+					cell["area_type"] = 2
+					cell["name"] = "寇城"
+					cell["level"] = ezfyKouLevel(x, y)
+					var area model.EzfyMapArea
+					if err := h.DB.Where("x = ? AND y = ?", x, y).First(&area).Error; err == nil {
+						if area.AreaType == 2 && area.StartTime > time.Now().UnixMilli() {
+							cell["revive_at"] = area.StartTime
+							cell["name"] = "寇城(废墟)"
+						}
+					}
+				default:
+					// 陆地野地: 名称取地形名(平原/草原/森林/盆地/丘陵/沼泽/山地), 不再一律叫「野地」
+					cell["area_type"] = 1
+					cell["name"] = ezfyTerrainName(terrain)
+					cell["level"] = ezfyWildlandLevel(x, y)
+				}
+				// 活动目标标记: 复刻 mapView.html 的 actWild/actKou/actCity
+				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
+				if act := ezfyActTypeFor(x, y, kou); act > 0 {
+					actLevel := ezfyActivityLevel(x, y)
+					cell["act_type"] = act
+					cell["act_level"] = actLevel
+					cell["act_name"] = ezfyActTargetName(act)
+					// 格子名直接用活动标签, 目标详情页标题即「活动野地2级 / 特殊城市3级」
+					cell["name"] = ezfyActTargetLabel(act, actLevel)
+				}
 			}
 			// 该格是否已被某城占领(详情页据此决定能不能采集)
 			if _, ok := wildAt[fmt.Sprintf("%d,%d", x, y)]; ok {
@@ -157,6 +171,11 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	x, _ := strconv.Atoi(c.Query("x"))
 	y, _ := strconv.Atoi(c.Query("y"))
 	profile := h.ensureProfile(uid)
+	// 活动目标(活动野地/活动寇城/特殊城市): 守军/奖励/说明走活动配置, 不走普通野地配置表
+	if act := h.ezfyActTargetType(x, y); act > 0 {
+		resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
+		return
+	}
 	ttype, _ := strconv.Atoi(c.Query("type"))
 	if ttype != 1 && ttype != 2 && ttype != 3 {
 		if ezfyTerrain(x, y) == 8 {
@@ -921,6 +940,15 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64) {
 	city := h.cityOfOrder(order, uid)
 
+	// 活动目标(活动野地/活动寇城/特殊城市): 掠夺/征服走独立的活动战斗结算
+	// (打赢只结算资源/黄金/宝物/声望, 不占领、不占附属野地上限)
+	if order.OrderType == 2 || order.OrderType == 3 {
+		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 {
+			h.processActivityBattle(uid, city, order, now, act)
+			return
+		}
+	}
+
 	// 派遣: 到达已占领野地, 驻守采集
 	if order.OrderType == 7 {
 		var wl model.EzfyWildland
@@ -1079,6 +1107,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	switch order.TargetType {
 	case 1, 2:
+		// 活动目标: 侦查时按活动守军回报情报(不走普通野地配置表)
+		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 {
+			wildLevel = ezfyActivityLevel(order.TargetX, order.TargetY)
+			defender = ezfyActivityDefender(act, wildLevel, ezfyTerrain(order.TargetX, order.TargetY))
+			targetName = ezfyActTargetLabel(act, wildLevel)
+			break
+		}
 		level := ezfyWildlandLevel(order.TargetX, order.TargetY)
 		if order.TargetType == 2 {
 			level = ezfyKouLevel(order.TargetX, order.TargetY)
@@ -1715,6 +1750,8 @@ func troopChangeText(before, after map[int]int64) string {
 	for tid := range before {
 		ids = append(ids, tid)
 	}
+	// 按兵种 id 排序, 避免 Go map 随机遍历导致战报里兵种顺序每次都变
+	sort.Ints(ids)
 	text := ""
 	for _, tid := range ids {
 		name := "兵种" + strconv.Itoa(tid)

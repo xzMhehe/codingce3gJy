@@ -188,7 +188,7 @@
 
           <br/>
           <template v-if="chatCanSend">
-            <input v-model="chatMsg" style="width:72%" maxlength="25" @keyup.enter="doChatSend"/>
+            <input v-model="chatMsg" style="width:20%" maxlength="25" @keyup.enter="doChatSend"/>
             <button v-if="chatCooldown <= 0" @click="doChatSend">发送</button>
             <button v-else disabled class="gray">冷却中 {{ chatCooldown }}s</button>
           </template>
@@ -741,6 +741,10 @@
           <div class="old-line gray">
             城=城市 寇=寇城 墟=废墟 海=海洋 括号内为等级; 点格子进入目标详情
           </div>
+          <div class="old-line gray">
+            <span class="orange">活动</span>=活动野地 <span style="color:#ff00ff">活动寇</span>=活动寇城
+            <span class="red">特殊</span>=特殊城市 (活动目标无法占领, 战胜只结算奖励)
+          </div>
           <div class="old-line">
             <a href="javascript:;" @click="go('orders')">出征队列</a>
           </div>
@@ -789,29 +793,47 @@
             所属区域：{{ selDetail ? selDetail.continent : (selCell.continent || '未知') }}
           </div>
           <div class="old-line">
-            Lv{{ selCell.level || selCell.city_level || 0 }}({{ selCell.x }},{{ selCell.y }})
+            Lv{{ selCell.act_level || selCell.level || selCell.city_level || 0 }}({{ selCell.x }},{{ selCell.y }})
             <a href="javascript:;" @click="addStar">收藏</a>
             <a href="javascript:;" @click="toggleStars">收藏列表</a>
           </div>
           <div class="old-line">
-            {{ selCell.name }}<template v-if="selCell.level">({{ selCell.level }})</template>
+            {{ selCell.name }}<template v-if="selCell.level && !selCell.act_type">({{ selCell.level }})</template>
             <span v-if="selCell.city_level">({{ selCell.city_level }}级)</span>
           </div>
           <template v-if="selDetail">
-            <div class="old-line" v-if="selDetail.type === 1">
-              {{ selDetail.terrain_name }}中可以产出粮食、钢铁、石油、稀矿
-            </div>
-            <div class="old-line" v-else-if="selDetail.type === 2">
-              海洋中可以产出石油、稀矿、黄金
-            </div>
-            <div class="old-line" v-else>寇城中囤积了大量资源与宝物</div>
-            <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
-            <div class="old-line">【归属: {{ selDetail.owner || '无' }}】</div>
-            <div class="old-line">
-              守军情况：<span v-for="tp in selDetail.troops" :key="'sp' + tp.troop_id">{{ tp.name }}约{{ tp.min }}-{{ tp.max }} </span>
-              <span v-if="!selDetail.troops.length" class="gray">(无守军)</span>
-            </div>
-            <div class="old-line">掠夺资源约：{{ selDetail.res_min }}-{{ selDetail.res_max }}</div>
+            <!-- 活动目标(活动野地/活动寇城/特殊城市): 复刻 activityIndex.html 的说明 + 守军/奖励预览 -->
+            <template v-if="selDetail.act_type">
+              <div class="old-line orange">
+                {{ selDetail.act_name }}{{ selDetail.act_level }}级 —— {{ selDetail.act_desc }}
+              </div>
+              <div class="old-line">
+                守军情况：<span v-for="tp in selDetail.troops" :key="'ap' + tp.troop_id">{{ tp.name }}×{{ tp.min }} </span>
+              </div>
+              <div class="old-line">守军总兵力：{{ selDetail.act_total }}</div>
+              <div class="old-line">
+                胜利奖励：粮/钢/油/稀矿 各{{ selDetail.res_min }}，黄金{{ selDetail.gold }}，
+                军功声望+{{ selDetail.prestige }}，必定掉落宝物
+              </div>
+              <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
+              <div class="old-line red">活动目标无法占领，战胜只结算奖励(不占附属野地上限)</div>
+            </template>
+            <template v-else>
+              <div class="old-line" v-if="selDetail.type === 1">
+                {{ selDetail.terrain_name }}中可以产出粮食、钢铁、石油、稀矿
+              </div>
+              <div class="old-line" v-else-if="selDetail.type === 2">
+                海洋中可以产出石油、稀矿、黄金
+              </div>
+              <div class="old-line" v-else>寇城中囤积了大量资源与宝物</div>
+              <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
+              <div class="old-line">【归属: {{ selDetail.owner || '无' }}】</div>
+              <div class="old-line">
+                守军情况：<span v-for="tp in selDetail.troops" :key="'sp' + tp.troop_id">{{ tp.name }}约{{ tp.min }}-{{ tp.max }} </span>
+                <span v-if="!selDetail.troops.length" class="gray">(无守军)</span>
+              </div>
+              <div class="old-line">掠夺资源约：{{ selDetail.res_min }}-{{ selDetail.res_max }}</div>
+            </template>
           </template>
           <div class="old-line" v-else>
             {{ selCell.name }}
@@ -831,7 +853,7 @@
               <a href="javascript:;" @click="pickOrder(6)">增援</a>&nbsp;
             </template>
             <a v-else-if="selCell.occupied" href="javascript:;" @click="pickOrder(4)">采集</a>
-            <span v-else class="gray">(占领该野地后可采集)</span>
+            <span v-else-if="!selDetail || !selDetail.act_type" class="gray">(占领该野地后可采集)</span>
           </div>
           <a href="javascript:;" @click="go('map')">[返回地图]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -1286,7 +1308,7 @@
           </div>
           <div class="old-line" v-if="!corpsChats.length">(暂无消息)</div>
           <div class="old-line">
-            <input v-model="corpsMsg" style="width:64%"/>
+            <input v-model="corpsMsg" style="width:15%"/>
             <button @click="doCorpsChat">发送</button>
             <button @click="loadCorps">刷新</button>
           </div>
@@ -1444,6 +1466,26 @@
       <template v-else-if="cur === 'activity'">
         <div class="panel">
           <div class="panel-title">活动</div>
+          <!-- 复刻 activityIndex.html 的【活动玩法】说明(在地图中寻找的固定位置活动目标) -->
+          <div class="old-line"><b>【活动玩法】</b>(在【地图】中寻找, 固定位置刷新)：</div>
+          <div class="old-line">
+            <span class="orange">活动野地</span>【活动】(标记: 活动野地N级)<br/>
+            陆/海随机刷新, 10万~30万守军, 胜利获得大量资源+黄金(元宝)+必定掉落宝物+大量声望<br/>
+            等级越高守军越强, 奖励越丰厚
+          </div>
+          <div class="old-line">
+            <span class="orange">活动寇城</span>【活动寇】(标记: 活动寇N级)<br/>
+            20万~60万守军, 胜利获得巨大资源+黄金+宝物+声望
+          </div>
+          <div class="old-line">
+            <span class="red">特殊城市</span>【特殊】(标记: 特殊城市N级)<br/>
+            100万~500万守军, 全服最强活动目标, 需要强力的部队!<br/>
+            胜利必定获得高级/特殊宝物, 巨额黄金与资源
+          </div>
+          <div class="old-line gray">活动目标无法占领, 战胜只结算奖励, 不占附属野地上限。</div>
+          <a href="javascript:;" @click="go('map')">[前往地图]</a>
+          <hr/>
+          <div class="old-line"><b>【节日活动】</b></div>
           <template v-if="activities.length">
             <div class="old-line" v-for="a in activities" :key="'ac' + a.id">
               <b>{{ a.name }}</b>
@@ -1463,7 +1505,6 @@
           <div class="old-line">[开服活动] 新手礼包、每周福利、市政厅等级礼包持续发放中, 前往<a href="javascript:;" @click="go('welfare')">[福利]</a>领取。</div>
           <div class="old-line">[征战天下] 征服野地/寇城可获得军功声望, 声望晋升军衔!</div>
           <div class="old-line">[物资兑换] 交易所开放资源交易, 低买高卖赚黄金。</div>
-          <a href="javascript:;" @click="go('map')">[前往地图]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1582,13 +1623,6 @@
           城市数：{{ cities.length }}<br/>
           人口数：{{ city.pop }}<br/>
           军官数：{{ officerCount }}<br/>
-          <br/>
-          ID：{{ profile.user_id }}<br/>
-          等级：{{ userBrief.level }}<br/>
-          特权：普通用户<br/>
-          VIP等级：普通用户<br/>
-          经验：{{ userBrief.exp }}<br/>
-          状态：正常<br/>
           <br/>
           总兵力：{{ totalTroops }}<br/>
           城外行进：{{ marching }}支 | 驻守采集：{{ occupying }}支<br/>
@@ -2890,6 +2924,10 @@ export default {
       // 复刻 map/index.html: 格子文案为「名称(等级)」, 本城显示「城名(x,y)」
       if (cell.mine) return this.city.name + '(' + cell.x + ',' + cell.y + ')'
       if (cell.area_type === 3) return '城'
+      // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
+      if (cell.act_type === 1) return '活动(' + cell.act_level + ')'
+      if (cell.act_type === 2) return '活动寇(' + cell.act_level + ')'
+      if (cell.act_type === 3) return '特殊(' + cell.act_level + ')'
       if (cell.name === '寇城(废墟)') return '墟'
       if (cell.area_type === 2) return '寇(' + cell.level + ')'
       if (cell.terrain === 8) return '海(' + cell.level + ')'
@@ -2898,6 +2936,9 @@ export default {
     },
     cellClass (cell) {
       if (cell.mine) return 'ezfy-mine'
+      if (cell.act_type === 1) return 'ezfy-act-wild'
+      if (cell.act_type === 2) return 'ezfy-act-kou'
+      if (cell.act_type === 3) return 'ezfy-act-city'
       if (cell.area_type === 3) return 'ezfy-city'
       if (cell.area_type === 2) return 'ezfy-kou'
       if (cell.terrain === 8) return 'ezfy-sea'
@@ -3519,14 +3560,14 @@ body.ezfy-immersive { margin: 0; }
   width: auto;
   max-width: 100%;
   border-collapse: separate;
-  border-spacing: 6px 2px;   /* 格子之间留出间隔, 不挤在一起 */
-  margin: 6px 0;
+  border-spacing: 8px 3px;   /* 格子之间留出间隔, 不挤在一起 */
+  margin: 8px auto;          /* 整张网格水平居中 */
 }
 .ezfy-page .ezfy-map-table td {
   padding: 0;
   border: 0;
-  text-align: left;
-  vertical-align: middle;
+  text-align: center;        /* 每格内容居中 */
+  vertical-align: middle;    /* 垂直居中 */
   white-space: nowrap;
 }
 .ezfy-page .ezfy-map-table a {
@@ -3542,6 +3583,10 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 本城加粗标一下(参考里就是「城名(x,y)」), 其余一律朴素文字 */
 .ezfy-page .ezfy-map-table a.ezfy-mine { font-weight: bold; color: #c0392b; }
+/* 活动目标配色照 mapView.html: 活动野地橙 / 活动寇城品红 / 特殊城市红 */
+.ezfy-page .ezfy-map-table a.ezfy-act-wild { font-weight: bold; color: #ff6600; }
+.ezfy-page .ezfy-map-table a.ezfy-act-kou { font-weight: bold; color: #ff00ff; }
+.ezfy-page .ezfy-map-table a.ezfy-act-city { font-weight: bold; color: #d00000; }
 .ezfy-cell {
   display: inline-block;
   width: 36px;
@@ -3574,7 +3619,7 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .acade-tab { font-size: 13px; }
   /* 地图格子: 字号跟正文一致(13px), 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
   .ezfy-page .ezfy-map-table a { font-size: 13px; }
-  .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
+  .ezfy-page .ezfy-map-table { border-spacing: 5px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
