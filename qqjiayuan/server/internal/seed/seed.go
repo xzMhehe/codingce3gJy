@@ -122,6 +122,7 @@ func Run(db *gorm.DB, staticDir string) {
 		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
 		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
+		&model.EzfyMapStar{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)

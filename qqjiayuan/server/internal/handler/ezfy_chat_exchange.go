@@ -122,6 +122,11 @@ func (h *EzfyHandler) ChatSend(c *gin.Context) {
 		content = string(r[:ezfyChatMaxRune])
 	}
 	profile := h.ensureProfile(uid)
+	// 复刻原版聊天: 每次发言 30 秒冷却(前端有倒计时, 服务端同样兜底)
+	if left := h.chatCooldownLeft(uid); left > 0 {
+		resp.ParamError(c, fmt.Sprintf("发言冷却中, 还需 %d 秒", left))
+		return
+	}
 	switch channel {
 	case ezfyChanCorps:
 		myCorps := h.myCorpsOf(uid)
@@ -139,6 +144,22 @@ func (h *EzfyHandler) ChatSend(c *gin.Context) {
 	h.DB.Create(&model.EzfyChat{UserId: uid, UserName: profile.Nickname,
 		Content: content, Channel: ezfyChanPublic, TalkType: 1})
 	resp.OK(c, gin.H{"msg": "发送成功"})
+}
+
+// ezfyChatCooldownSec 发言冷却秒数(复刻原版聊天 30 秒)
+const ezfyChatCooldownSec = 30
+
+// chatCooldownLeft 距下次可发言还剩多少秒(0 表示可以发言)
+func (h *EzfyHandler) chatCooldownLeft(uid uint) int64 {
+	var last model.EzfyChat
+	if err := h.DB.Where("user_id = ? AND talk_type = 1", uid).Order("id DESC").First(&last).Error; err != nil {
+		return 0
+	}
+	elapsed := time.Now().Unix() - last.CreatedAt.Unix()
+	if elapsed >= ezfyChatCooldownSec {
+		return 0
+	}
+	return ezfyChatCooldownSec - elapsed
 }
 
 // myCorpsOf 我所在的军团

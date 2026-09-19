@@ -80,7 +80,57 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		}
 		views = append(views, view)
 	}
-	resp.OK(c, gin.H{"buildings": views, "area_count": h.areaBuildingCount(city.ID), "area_cap": ezfyMaxBuildings})
+	// 可建造池: 复刻原版 BuildingController.buildList
+	pool := h.buildPool(&city, list)
+	resp.OK(c, gin.H{"buildings": views, "pool": pool, "area_count": h.areaBuildingCount(city.ID), "area_cap": ezfyMaxBuildings})
+}
+
+// buildPool 返回该城当前可建造的建筑池(复刻原版 BuildingController.buildList)。
+// 军事区 = type 2/3, 资源区 = type 1; 市政厅(type 4)自动存在不入池。
+// 军工厂可建 5 个、民居可建 10 个, 其余每类限 1 个; 航海协会仅沿海城市可建。
+func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuilding) []gin.H {
+	cntOf := map[int]int{}
+	for _, b := range list {
+		cntOf[b.BuildingId]++
+	}
+	ids := make([]int, 0, len(ezfyCfg.buildings))
+	for id := range ezfyCfg.buildings {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	pool := []gin.H{}
+	for _, id := range ids {
+		cfg := ezfyCfg.buildings[id]
+		if cfg.Type != 1 && cfg.Type != 2 && cfg.Type != 3 {
+			continue
+		}
+		lv := ezfyCfg.buildingLevel(id, 1)
+		if lv == nil {
+			continue
+		}
+		can := false
+		switch {
+		case id == ezfyFactoryBuildingID:
+			can = cntOf[id] < ezfyMaxFactoryCount
+		case id == 2:
+			can = cntOf[id] < ezfyMaxHouseCount
+		default:
+			can = cntOf[id] == 0
+		}
+		if id == 19 && !h.isCoastalCity(city) {
+			can = false
+		}
+		if !can {
+			continue
+		}
+		pool = append(pool, gin.H{
+			"building_id": id, "name": cfg.Name, "type": cfg.Type,
+			"max_level": cfg.MaxLevel, "des": cfg.Des, "effect": lv.Effect,
+			"cost": gin.H{"food": lv.Food, "steel": lv.Steel, "oil": lv.Oil, "rare": lv.Rare, "gold": lv.Gold},
+			"time": lv.BuildTime,
+		})
+	}
+	return pool
 }
 
 func (h *EzfyHandler) Build(c *gin.Context) {
@@ -327,6 +377,68 @@ func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 		req.Minutes = 10
 	}
 	h.fail(c, h.speedUpTech(city, req.Minutes))
+}
+
+// CancelTech POST /games/ezfy/techs/cancel  {tech_id} —— 取消研究并全额退还消耗
+func (h *EzfyHandler) CancelTech(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId int64 `json:"city_id"`
+		TechId int   `json:"tech_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	city := h.bodyCity(uid, req.CityId)
+	h.fail(c, h.cancelTech(city, req.TechId))
+}
+
+// ============ 调整生产(开工率) ============
+
+// ProduceInfo GET /games/ezfy/city/produce —— 复刻原版 city/sourceSet.html
+func (h *EzfyHandler) ProduceInfo(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	h.refreshCity(uid, &city)
+	resp.OK(c, gin.H{
+		"rate_food": ezfyRate(city.RateFood), "rate_steel": ezfyRate(city.RateSteel),
+		"rate_oil": ezfyRate(city.RateOil), "rate_rare": ezfyRate(city.RateRare),
+		"city": gin.H{"id": city.ID, "name": city.Name, "x": city.X, "y": city.Y},
+	})
+}
+
+// ProduceSet POST /games/ezfy/city/produce  {rate_food,rate_steel,rate_oil,rate_rare}
+func (h *EzfyHandler) ProduceSet(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId    int64 `json:"city_id"`
+		RateFood  int   `json:"rate_food"`
+		RateSteel int   `json:"rate_steel"`
+		RateOil   int   `json:"rate_oil"`
+		RateRare  int   `json:"rate_rare"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	city := h.bodyCity(uid, req.CityId)
+	vals := []int{req.RateFood, req.RateSteel, req.RateOil, req.RateRare}
+	for _, v := range vals {
+		if v < 1 || v > 100 {
+			resp.ParamError(c, "开工率需在 1~100 之间")
+			return
+		}
+	}
+	h.refreshCity(uid, city)
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+		"rate_food": req.RateFood, "rate_steel": req.RateSteel,
+		"rate_oil": req.RateOil, "rate_rare": req.RateRare,
+	})
+	resp.OK(c, gin.H{"msg": "开工率已调整"})
 }
 
 // ============ 司令部兵种战斗配置 ============

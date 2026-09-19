@@ -989,6 +989,9 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o),
 			"is_captive": o.IsCaptive, "skills": skills,
 			"equip_count": len(officerEquipped(o)),
+			// 攻/防(复刻原版军官卡片上的 攻/防 两项, 含技能与装备加成)
+			"attack":  h.officerBattleBonus(o),
+			"defence": h.officerGuardBonus(o),
 		})
 	}
 	resp.OK(c, gin.H{

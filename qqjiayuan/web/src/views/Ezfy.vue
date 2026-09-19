@@ -171,10 +171,11 @@
             <div class="panel-title">
               {{ chatChannel === 2 ? '军团聊天(' + chatCorpsName + ')' : '世界聊天' }}({{ chatPlayers }}人)
             </div>
+            <div class="old-line gray">每次发言消耗一个喇叭(最大25个字)</div>
             <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
               [<span class="orange">{{ chatChannel === 2 ? '军团' : '公共' }}</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
-              [{{ ch.user_name }}]:{{ ch.content }}
+              <a href="javascript:;" @click="openUser(ch.user_id)">{{ ch.user_name }}</a> 说: {{ ch.content }}
             </div>
             <div class="old-line" v-if="!worldChats.length">(暂无消息, 快来说点什么吧)</div>
           </template>
@@ -182,7 +183,8 @@
           <br/>
           <template v-if="chatCanSend">
             <input v-model="chatMsg" style="width:72%" maxlength="25" @keyup.enter="doChatSend"/>
-            <button @click="doChatSend">发送</button>
+            <button v-if="chatCooldown <= 0" @click="doChatSend">发送</button>
+            <button v-else disabled class="gray">冷却中 {{ chatCooldown }}s</button>
           </template>
           <span v-else class="gray">(系统频道仅系统可发言)</span>
           <button @click="loadChats">刷新</button>
@@ -326,6 +328,8 @@
           </template>
           总产量(每小时): <span :class="{ red: resDetail.total < 0 }">{{ resDetail.total }}</span><br/>
           <br/>
+          {{ resDes[resType] }}
+          <br/>
           <a href="javascript:;" @click="go('builds')">[资源区]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -334,18 +338,28 @@
       <!-- ============ 建筑区(buildm/builds) ============ -->
       <template v-else-if="cur === 'buildm' || cur === 'builds'">
         <div class="panel">
-          <div class="panel-title">{{ cur === 'buildm' ? '军事区(含城防)' : '资源区' }}
+          <div class="panel-title">{{ cur === 'buildm' ? '军事区' : '资源区' }}
             <span class="gray">({{ areaCount }}/{{ areaCap }})</span></div>
-          <div class="old-line" v-for="b in zoneBuildings" :key="b.id ? ('zb-b' + b.id) : ('zb-p' + b.bid)">
+          <div class="old-line">
+            <a href="javascript:;" @click="go(cur === 'buildm' ? 'builds' : 'buildm')">[{{ cur === 'buildm' ? '资源区' : '军事区' }}]</a>
+            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          </div>
+          <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
+          <div class="old-line">
+            数量/最大：{{ areaCount }}/{{ areaCap }}
+          </div>
+          <div class="old-line" v-for="b in zoneBuildings" :key="b.id ? ('zb-b' + b.id) : ('zb-p' + b.building_id)">
             <template v-if="b.id">
-              <b>{{ b.name }}</b> {{ b.level }}级
+              <b>{{ b.name }}</b>
+              <a v-if="bEntry(b.building_id)" href="javascript:;" @click="goEntry(b.building_id)">[{{ bEntry(b.building_id).label }}]</a>
+              ({{ b.level }}级)
               <span v-if="b.status === 0">{{ b.effect }}</span>
               <span v-else class="orange">施工中 {{ remain(b.end_time) }}
                 <a href="javascript:;" @click="doSpeedBuilding()">[加速]</a></span>
               <br/>
               <span v-if="b.status === 0 && b.level > 0 && b.level < b.max_level">
                 <a href="javascript:;" @click="doUpgrade(b)">[升级]</a>
-                <a href="javascript:;" @click="doMaxLevel(b)">[满级]</a>
+                <a href="javascript:;" @click="doMaxLevel(b)">[一键{{ b.max_level - 1 }}级]</a>
               </span>
               <span v-if="b.status === 0 && b.level === 0"><a href="javascript:;" @click="doUpgrade(b)">[建成中待完成]</a></span>
               <span v-if="b.can_delete === 1 && b.status === 0 && b.level > 0"><a href="javascript:;" @click="doDeleteBuilding(b)">[拆除]</a></span>
@@ -524,13 +538,14 @@
       <!-- ============ 科技(techs) ============ -->
       <template v-else-if="cur === 'techs'">
         <div class="panel">
-          <div class="panel-title">科技研究(科研中心{{ techsData.academy }}级)</div>
+          <div class="panel-title">【科技中心】:{{ techsData.academy }}级</div>
           <div class="old-line" v-for="t in techsData.techs" :key="'te' + t.tech_id">
             <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
             <span class="gray">[需科研中心{{ t.academy_need }}级]</span><br/>
             {{ t.effect }}<br/>
             <span v-if="t.researching" class="orange">研究中 {{ remain(t.end_time) }}
-              <a href="javascript:;" @click="doSpeedTech()">[加速]</a></span>
+              <a href="javascript:;" @click="doSpeedTech()">[加速]</a>
+              <a href="javascript:;" @click="doCancelTech(t)">[取消]</a></span>
             <span v-else-if="t.level < t.max_level">
               <a href="javascript:;" @click="doResearch(t)">[研究{{ t.level + 1 }}级]</a>
               <span class="gray">耗: 粮{{ t.next_cost.food }} 钢{{ t.next_cost.steel }} 油{{ t.next_cost.oil }} 稀{{ t.next_cost.rare }} 金{{ t.next_cost.gold }} 需{{ Math.ceil(t.next_time / 60) }}分钟</span>
@@ -538,6 +553,7 @@
             <span v-else class="gray">[已满级]</span>
             <br/>
           </div>
+          <div class="old-line gray">同一时间只能研究一项科技；[取消] 会全额退还本次研究消耗。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -545,13 +561,34 @@
       <!-- ============ 地图(map) ============ -->
       <template v-else-if="cur === 'map'">
         <div class="panel">
-          <div class="panel-title">世界地图({{ mapCx }},{{ mapCy }} 附近)</div>
+          <div class="panel-title">地图</div>
           <div class="old-line">
-            <a href="javascript:;" @click="moveMap(-mapR, 0)">[西]</a>
-            <a href="javascript:;" @click="moveMap(mapR, 0)">[东]</a>
-            <a href="javascript:;" @click="moveMap(0, -mapR)">[北]</a>
-            <a href="javascript:;" @click="moveMap(0, mapR)">[南]</a>
-            <a href="javascript:;" @click="loadMap()">[回城]</a>
+            {{ city.name }}({{ city.x }},{{ city.y }})
+            <a href="javascript:;" @click="go('cities')">切换城市</a>
+          </div>
+          <div class="old-line">
+            输入坐标查找：
+            <a href="javascript:;" @click="toggleStars">[收藏列表{{ mapStars.length ? '(' + mapStars.length + ')' : '' }}]</a>
+          </div>
+          <div class="old-line">
+            横坐标：<input v-model="jumpX" type="number" placeholder="(1~500)" style="width:70px"/>
+            纵坐标：<input v-model="jumpY" type="number" placeholder="(1~500)" style="width:70px"/>
+            <button @click="doJump">[查找]</button>
+          </div>
+          <template v-if="showStars">
+            <div class="panel-title">收藏列表</div>
+            <div class="old-line" v-for="s in mapStars" :key="'st' + s.id">
+              <a href="javascript:;" @click="jumpTo(s.x, s.y)">{{ s.name }}({{ s.x }},{{ s.y }})</a>
+              <a href="javascript:;" @click="delStar(s)">[删除]</a>
+            </div>
+            <div class="old-line gray" v-if="!mapStars.length">(收藏列表为空, 在地图上选中目标后可收藏)</div>
+          </template>
+          <div class="old-line">
+            <a href="javascript:;" @click="moveMap(-mapR, 0)">[向上]</a>
+            <a href="javascript:;" @click="moveMap(0, mapR)">[向右]</a>
+            <a href="javascript:;" @click="moveMap(mapR, 0)">[向下]</a>
+            <a href="javascript:;" @click="moveMap(0, -mapR)">[向左]</a>
+            <a href="javascript:;" @click="loadMap()">[回到本城]</a>
             <a href="javascript:;" @click="go('orders')">[出征队列]</a>
           </div>
           <div class="ezfy-map">
@@ -563,6 +600,7 @@
               </span>
             </div>
           </div>
+          <div class="old-line">当前坐标中心:({{ mapCx }} , {{ mapCy }})</div>
           <div class="old-line gray">城=城市 寇=寇城 海=海野 野=野地 数字=等级</div>
           <template v-if="selCell">
             <div class="panel-title">目标({{ selCell.x }},{{ selCell.y }})</div>
@@ -575,6 +613,10 @@
               {{ selCell.name }}
               <span v-if="selCell.city_level">{{ selCell.city_level }}级</span>
               <span v-if="selCell.owner">城主:{{ selCell.owner }}</span>
+            </div>
+            <div class="old-line">
+              <a href="javascript:;" @click="addStar">[收藏该坐标]</a>
+              <span v-if="selCell.area_type === 3">【归属: {{ selCell.owner || '无' }}】</span>
             </div>
             <div class="old-line" v-if="selCell.area_type === 3 && !selCell.mine">
               <a href="javascript:;" @click="declareWar">[对城主宣战(24小时后生效)]</a>
@@ -599,29 +641,20 @@
       <!-- ============ 出征确认(orderpre) ============ -->
       <template v-else-if="cur === 'orderpre'">
         <div class="panel" v-if="selCell">
-          <div class="panel-title">{{ orderNames[orderType] }} → ({{ selCell.x }},{{ selCell.y }})</div>
-          <div class="old-line" v-if="orderType === 5">
-            运输资源:<br/>
-            粮食<input v-model="trFood" type="number" style="width:70px"/><br/>
-            钢铁<input v-model="trSteel" type="number" style="width:70px"/><br/>
-            石油<input v-model="trOil" type="number" style="width:70px"/><br/>
-            稀矿<input v-model="trRare" type="number" style="width:70px"/><br/>
-            黄金<input v-model="trGold" type="number" style="width:70px"/><br/>
-          </div>
-          <div class="old-line" v-else>
-            选择部队(城内可用):<br/>
-            <div v-for="t in attackTroops" :key="'at' + t.troop_id">
-              {{ t.name }}(有{{ t.count }}):
-              <input type="number" min="0" v-model="orderTroops[t.troop_id]" style="width:80px"/>
-            </div>
-            <span v-if="!attackTroops.length" class="red">城内无可出征部队</span>
+          <div class="panel-title">{{ selCell.name }}<span v-if="selCell.level">({{ selCell.level }})</span> ({{ selCell.x }},{{ selCell.y }})</div>
+          <div class="old-line">出征命令：<b>{{ orderNames[orderType] }}</b></div>
+          <div class="old-line">
+            集结令：
+            <select disabled title="原版未实现该功能">
+              <option>暂未开放</option>
+            </select>
           </div>
           <div class="old-line">
-            带队军官:
+            指挥军官：
             <select v-model="orderOfficer">
-              <option value="">无</option>
+              <option value="0">未指定</option>
               <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
-                {{ o.name }} Lv{{ o.level }} 军事{{ o.military }} 忠诚{{ o.loyalty }}
+                {{ o.name }}({{ o.level }}级) 军事{{ o.military }} 忠诚{{ o.loyalty }}
               </option>
             </select>
             <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
@@ -631,7 +664,44 @@
             <span v-if="!onDutyOfficers.length" class="gray">(暂无可用军官, 可前往军校招募)</span>
           </div>
           <div class="old-line">
-            <button @click="doOrder()">出 发</button>
+            <div v-for="t in attackTroops" :key="'at' + t.troop_id">
+              {{ t.name }}:<input type="number" min="0" :max="t.count"
+                                  v-model="orderTroops[t.troop_id]"
+                                  :placeholder="'0~' + t.count" style="width:90px"/>
+            </div>
+            <span v-if="!attackTroops.length" class="red">城内无可出征部队</span>
+          </div>
+          <div class="old-line">
+            <div>携带资源：</div>
+            <div>黄金：<input v-model="trGold" type="number" :placeholder="'0~' + city.gold" style="width:90px"/></div>
+            <div>粮食：<input v-model="trFood" type="number" :placeholder="'0~' + city.food" style="width:90px"/></div>
+            <div>钢铁：<input v-model="trSteel" type="number" :placeholder="'0~' + city.steel" style="width:90px"/></div>
+            <div>石油：<input v-model="trOil" type="number" :placeholder="'0~' + city.oil" style="width:90px"/></div>
+            <div>稀矿：<input v-model="trRare" type="number" :placeholder="'0~' + city.rare" style="width:90px"/></div>
+            <span class="gray" v-if="orderType === 5">(运输命令必须携带资源或部队)</span>
+          </div>
+          <div class="old-line">
+            宿营：
+            <input v-model="waitH" type="number" min="0" max="24" style="width:50px"/> 时
+            <input v-model="waitM" type="number" min="0" max="60" style="width:50px"/> 分
+            (最多宿营24小时)
+          </div>
+          <div class="old-line">
+            出征前请先计算消耗，否则可能无法出征成功
+            <div>
+              <button @click="doCalc">[计算]</button>
+              油耗：<span class="orange">{{ orderCalc ? orderCalc.oil_used : '' }}</span>
+              /负重：<span class="orange">{{ orderCalc ? orderCalc.carry : '' }}</span><br/>
+              耗时：<span class="orange">{{ orderCalc ? orderCalc.need_time : '' }}</span>
+              <span v-if="orderCalc" class="gray">(单程{{ orderCalc.travel_time }}<template v-if="orderCalc.wait_min">, 宿营{{ orderCalc.wait_min }}分</template>)</span>
+            </div>
+            <div v-if="orderCalc && !orderCalc.oil_enough" class="red">
+              石油不足：需要{{ orderCalc.oil_used }}，当前只有{{ orderCalc.oil_have }}
+            </div>
+          </div>
+          <hr/>
+          <div class="old-line">
+            <button @click="doOrder()">[出征]</button>
             <a href="javascript:;" @click="go('map')">[返回地图]</a>
           </div>
         </div>
@@ -680,14 +750,15 @@
         <div class="panel">
           <div class="panel-title">出征队列({{ orders.length }})</div>
           <table>
-            <tr><th>类型</th><th>目标</th><th>统帅</th><th>状态</th><th>操作</th></tr>
+            <tr><th>命令</th><th>目标</th><th>状态</th><th>军官</th><th>抵达时间</th><th>操作</th></tr>
             <tr v-for="o in orders" :key="'odl' + o.id">
               <td>{{ o.type_name }}</td>
               <td>({{ o.target_x }},{{ o.target_y }})</td>
-              <td>{{ o.officer || '无' }}</td>
               <td>{{ orderStatusText(o) }}</td>
+              <td>{{ o.officer || '无' }}</td>
+              <td>{{ o.arrive_text }}</td>
               <td>
-                <a href="javascript:;" @click="openOrder(o)">[详情]</a>
+                <a href="javascript:;" @click="openOrder(o)">[查看]</a>
                 <a v-if="o.order_type === 7 && (o.status === 0 || o.status === 1)" class="red"
                    href="javascript:;" @click="doRecall(o)">[召回]</a>
               </td>
@@ -851,10 +922,12 @@
           <div class="panel-title">市政厅({{ city.city_level }}级)</div>
           <div class="old-line">
             <a href="javascript:;" @click="go('taxset')">[税率设置]</a>
-            <a href="javascript:;" @click="go('rename')">[城市改名]</a>
+            <a href="javascript:;" @click="go('sourceset')">[调整生产]</a>
+            <a href="javascript:;" @click="go('citymove')">[地图搬迁]</a>
+            <a href="javascript:;" @click="go('rename')">[城市更名]</a>
             <a href="javascript:;" @click="go('cities')">[城市列表/迁建]</a>
             <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
-            <a href="javascript:;" @click="go('wilds')">[附属野地]</a>
+            <a href="javascript:;" @click="go('wilds')">[占领野地]</a>
             <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
           </div>
           <div class="panel-title">全部建筑总览</div>
@@ -870,6 +943,86 @@
               </td>
             </tr>
           </table>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 城市迁移(citymove) 复刻 city/cityHallMove.html ============ -->
+      <template v-else-if="cur === 'citymove'">
+        <div class="panel">
+          <div class="panel-title">市政厅 → 城市迁移</div>
+          <div class="old-line">当前城市：{{ city.name }}({{ city.x }},{{ city.y }})</div>
+          <div class="old-line">黄金：{{ moveInfo.gold }} / 每次迁城消耗 {{ moveInfo.gold_cost }}</div>
+          <div class="old-line gray">
+            使用迁城计划可改变一次城市坐标，只能迁移到选定区域随机坐标(未被占领的平原)
+          </div>
+          <div class="old-line gray">
+            使用高级迁城计划可改变一次城市坐标，可以迁移到指定坐标(未被占领的平原)
+          </div>
+          <hr/>
+          <div class="old-line">
+            使用【迁城计划】
+            <select v-model="moveArea">
+              <option v-for="a in moveInfo.areas" :key="'ma' + a.id" :value="a.id">{{ a.name }}</option>
+            </select>
+            <button @click="doMoveCity('low')">确认迁城</button>
+          </div>
+          <hr/>
+          <div class="old-line">
+            使用【高级迁城计划】<br/>
+            请确认您输入的坐标是非被占领的平原，沿海平原无法直接迁移城市<br/>
+            横坐标 x：<input v-model="moveX" type="number" style="width:80px"/>
+            纵坐标 y：<input v-model="moveY" type="number" style="width:80px"/>
+            <button @click="doMoveCity('high')">确认迁城</button>
+          </div>
+          <hr/>
+          <div class="old-line">
+            使用【沿海迁城计划】<br/>
+            请确认您输入的坐标是非被占领的沿海平原<br/>
+            横坐标 x：<input v-model="moveX2" type="number" style="width:80px"/>
+            纵坐标 y：<input v-model="moveY2" type="number" style="width:80px"/>
+            <button @click="doMoveCity('sea')">确认迁城</button>
+          </div>
+          <div class="old-line gray">迁城后附属野地不会随城迁移, 需要重新占领。</div>
+          <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
+          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 调整生产(sourceset) 复刻 city/sourceSet.html ============ -->
+      <template v-else-if="cur === 'sourceset'">
+        <div class="panel">
+          <div class="panel-title">调整生产（开工率）</div>
+          <div class="old-line gray">开工率影响该资源的实际产量：实际产量 = 基础产量 × 开工率 / 100</div>
+          <div class="old-line">
+            粮食：
+            <input v-model="rateFood" type="number" min="1" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="rateFood = 1">[最小]</a>
+            <a href="javascript:;" @click="rateFood = 100">[最大]</a>
+          </div>
+          <div class="old-line">
+            钢铁：
+            <input v-model="rateSteel" type="number" min="1" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="rateSteel = 1">[最小]</a>
+            <a href="javascript:;" @click="rateSteel = 100">[最大]</a>
+          </div>
+          <div class="old-line">
+            石油：
+            <input v-model="rateOil" type="number" min="1" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="rateOil = 1">[最小]</a>
+            <a href="javascript:;" @click="rateOil = 100">[最大]</a>
+          </div>
+          <div class="old-line">
+            稀矿：
+            <input v-model="rateRare" type="number" min="1" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="rateRare = 1">[最小]</a>
+            <a href="javascript:;" @click="rateRare = 100">[最大]</a>
+          </div>
+          <div class="old-line" style="color:#0000cc">请检查输入数字是否合理（范围 1~100）</div>
+          <div class="old-line">
+            <button @click="doSaveRate">确认调整</button>
+          </div>
+          <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1186,26 +1339,53 @@
       <template v-else-if="cur === 'info'">
         <div class="panel">
           <div class="panel-title">统帅信息</div>
-          昵称: {{ profile.nickname }}<br/>
-          阵营: {{ profile.camp === 2 ? '轴心国' : '同盟国' }}<br/>
-          军功声望: {{ profile.prestige }} ({{ rankName }}/{{ rankPost }})<br/>
-          城池: {{ cities.length }}座<br/>
-          总兵力: {{ totalTroops }}<br/>
-          城外行进: {{ marching }}支 | 驻守采集: {{ occupying }}支<br/>
-          占领野地: {{ wildlands.length }}块<br/>
+          <div class="old-line">
+            <a href="javascript:;" @click="go('builds')">资源</a> ·
+            <a href="javascript:;" @click="go('acade')">军官</a> ·
+            <a href="javascript:;" @click="go('troops')">军队</a> ·
+            <a href="javascript:;" @click="go('techs')">科技</a> ·
+            <a href="javascript:;" @click="go('defence')">城防</a> ·
+            个人
+          </div>
+          账号：{{ userBrief.account }}<br/>
+          昵称：{{ profile.nickname }}<br/>
+          阵营：{{ profile.camp === 2 ? '轴心国' : '同盟国' }}<br/>
+          声望：{{ profile.prestige }}<br/>
+          军衔：{{ rankName }}({{ rankPost }})<br/>
+          城市数：{{ cities.length }}<br/>
+          人口数：{{ city.pop }}<br/>
+          军官数：{{ officerCount }}<br/>
+          <br/>
+          ID：{{ profile.user_id }}<br/>
+          等级：{{ userBrief.level }}<br/>
+          特权：普通用户<br/>
+          VIP等级：普通用户<br/>
+          经验：{{ userBrief.exp }}<br/>
+          状态：正常<br/>
+          <br/>
+          总兵力：{{ totalTroops }}<br/>
+          城外行进：{{ marching }}支 | 驻守采集：{{ occupying }}支<br/>
+          占领野地：{{ wildlands.length }}块<br/>
+          <a href="javascript:;" @click="go('friends')">[申请好友]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
       <!-- ============ 军官/学院(acade) ============ -->
       <template v-else-if="cur === 'acade'">
+        <div class="panel-title">
+          参谋部({{ officerData.staff_level }}级)
+          <a href="javascript:;" @click="switchAcade('search')">去招募</a> |
+          <a href="javascript:;" @click="switchAcade('captive')">战俘营</a>
+        </div>
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: acadeTab === 'officer' }" @click="switchAcade('officer')">军官</a>|
           <a href="javascript:;" :class="{ on: acadeTab === 'scheme' }" @click="switchAcade('scheme')">计谋</a>|
           <a href="javascript:;" :class="{ on: acadeTab === 'search' }" @click="switchAcade('search')">招募</a>|
           <a href="javascript:;" :class="{ on: acadeTab === 'mayor' }" @click="switchAcade('mayor')">任命市长</a>|
           <a href="javascript:;" :class="{ on: acadeTab === 'equip' }" @click="switchAcade('equip')">装备</a>|
-          <a href="javascript:;" :class="{ on: acadeTab === 'skill' }" @click="switchAcade('skill')">技能</a>
+          <a href="javascript:;" :class="{ on: acadeTab === 'skill' }" @click="switchAcade('skill')">技能</a>|
+          <a href="javascript:;" :class="{ on: acadeTab === 'generals' }" @click="switchAcade('generals')">名将图鉴</a>
         </div>
 
         <!-- 军官列表 -->
@@ -1219,32 +1399,34 @@
             <a href="javascript:;" @click="switchAcade('search')">[招募名将]</a>
           </div>
           <hr/>
-          <div class="old-line">我的军官({{ officerData.officers.length }}):</div>
+          <div class="old-line">我的军官({{ myOfficers.length }}):</div>
           <table>
-            <tr><th>名称</th><th>星</th><th>等级</th><th>经验</th><th>军事</th><th>后勤</th><th>学习</th><th>忠诚</th><th>职位</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="o in officerData.officers" :key="'of' + o.id">
+            <tr><th>名称</th><th>星</th><th>等级</th><th>经验</th><th>后勤</th><th>军事</th><th>学识</th><th>忠诚</th><th>攻</th><th>防</th><th>职位</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="o in myOfficers" :key="'of' + o.id">
               <td>{{ o.name }}</td>
               <td>{{ o.star }}</td>
               <td>{{ o.level }}</td>
               <td>{{ o.exp }}</td>
-              <td>{{ o.military }}</td>
               <td>{{ o.logistics }}</td>
+              <td>{{ o.military }}</td>
               <td>{{ o.learning }}</td>
               <td>{{ o.loyalty }}</td>
+              <td>{{ o.attack }}</td>
+              <td>{{ o.defence }}</td>
               <td>{{ o.position_name }}</td>
               <td>
-                <span :class="{ orange: o.status === 1, red: o.is_captive === 1 }">{{ o.status_name }}</span>
+                <span :class="{ orange: o.status === 1 }">{{ o.status_name }}</span>
               </td>
               <td>
                 <a href="javascript:;" @click="openOfficer(o.id)">[详情]</a>
-                <template v-if="o.is_captive === 1 && o.status !== 1">
-                  <a href="javascript:;" @click="doCaptive(o, 'recruit')">[收编]</a>
-                  <a href="javascript:;" @click="doCaptive(o, 'free')">[释放]</a>
-                </template>
               </td>
             </tr>
           </table>
-          <div class="old-line gray" v-if="!officerData.officers.length">(暂无军官, 先去招募吧)</div>
+          <div class="old-line gray" v-if="!myOfficers.length">(暂无军官, 先去招募吧)</div>
+          <div class="old-line">
+            前去<a href="javascript:;" @click="switchAcade('captive')">[战俘营]</a>
+            <span class="gray" v-if="captiveOfficers.length">({{ captiveOfficers.length }}名俘虏待收编)</span>
+          </div>
         </div>
 
         <!-- 招募 -->
@@ -1281,7 +1463,7 @@
           <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%)</div>
           <table>
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
-            <tr v-for="o in officerData.officers" :key="'my' + o.id">
+            <tr v-for="o in myOfficers" :key="'my' + o.id">
               <td>{{ o.name }}</td>
               <td>{{ o.level }}</td>
               <td>{{ o.loyalty }}</td>
@@ -1362,8 +1544,48 @@
           <div class="old-line gray" v-if="!skillData.officers.length">(暂无军官)</div>
         </div>
 
-        <!-- 计谋(名将图鉴) -->
+        <!-- 计谋(复刻原版 acade/scheme.html: 12 条计谋说明, 各需信号弹) -->
         <div class="panel" v-else-if="acadeTab === 'scheme'">
+          <div class="old-line">说明：计谋需要进入相应界面才可以使用</div>
+          <div class="old-line" v-for="(s, i) in schemes" :key="'sc' + i">
+            {{ i + 1 }}.{{ s.name }}：<br/>
+            {{ s.des }}<br/>
+            需要信号弹：{{ s.bullet }}
+            <br/>--------------------
+          </div>
+          <div class="old-line">
+            <a href="javascript:;" @click="go('bag')">[背包(信号弹)]</a>
+            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          </div>
+        </div>
+
+        <!-- 战俘营(复刻原版 acade/conquer.html) -->
+        <div class="panel" v-else-if="acadeTab === 'captive'">
+          <div class="old-line">
+            参谋部({{ officerData.staff_level }}级)
+            <a href="javascript:;" @click="switchAcade('search')">去招募</a> |
+            战俘营
+          </div>
+          <table>
+            <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>
+            <tr v-for="o in captiveOfficers" :key="'cp' + o.id">
+              <td>{{ o.name }}</td>
+              <td>{{ o.level }}级</td>
+              <td>{{ o.star }}星</td>
+              <td>{{ o.logistics }}/{{ o.military }}/{{ o.learning }}</td>
+              <td>免费</td>
+              <td>
+                <a href="javascript:;" @click="doCaptive(o, 'recruit')">[雇佣]</a>
+                <a href="javascript:;" @click="doCaptive(o, 'free')">[释放]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-if="!captiveOfficers.length">(战俘营暂无俘虏, 战胜寇城/高级野地有几率俘获守将)</div>
+          <div class="old-line">前去<a href="javascript:;" @click="switchAcade('officer')">[军官]</a></div>
+        </div>
+
+        <!-- 名将图鉴 -->
+        <div class="panel" v-else-if="acadeTab === 'generals'">
           <div class="old-line">名将图鉴(共{{ generalData.generals.length }}名, 按等级排序)</div>
           <table>
             <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>获取渠道</th><th>状态</th></tr>
@@ -1477,13 +1699,25 @@ import api from '../api'
 
 const RES_NAMES = { gold: '黄金', food: '粮食', steel: '钢铁', oil: '石油', rare: '稀矿' }
 
+// 资源说明(黄金一段复刻原版 resourceA.html, 其余按同样语气补全)
+const RES_DES = {
+  gold: '黄金是二战世界里重要的交易货币，可以用来购买玩家出售的各种资源，也用于支付雇佣军官的薪资和招募费用，通过战争、税收、任务可获得。',
+  food: '粮食是维持军队的根本，人口增长与部队训练都离不开它，军队每小时还会消耗粮食，一旦断粮部队将大量逃散，通过农田产出、掠夺、任务可获得。',
+  steel: '钢铁是制造武器装备的基础材料，建造建筑、训练陆军部队、研究军事科技都需要消耗钢铁，通过炼钢厂产出、掠夺、任务可获得。',
+  oil: '石油驱动着一切机械化部队，出征行军需要消耗石油，训练装甲与航空部队同样需要石油，通过石油基地产出、掠夺、任务可获得。',
+  rare: '稀矿是尖端军事工业的原料，用于生产重型装备与高级兵种，产量稀少因此格外珍贵，通过稀矿厂产出、掠夺、任务可获得。'
+}
+
 export default {
   name: 'Ezfy',
   data () {
     return {
       cur: 'home',
       resNames: RES_NAMES,
+      resDes: RES_DES,
       profile: { prestige: 0, camp: 1, nickname: '' },
+      userBrief: { account: '', level: 0, exp: 0 },
+      officerCount: 0,
       rankName: '列兵',
       rankPost: '士兵',
       city: {},
@@ -1492,6 +1726,7 @@ export default {
       protectedUntil: false,
       boostUntil: false,
       buildings: [],
+      buildingPool: [],
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0 },
       techsData: { techs: [], academy: 0 },
       wildlands: [],
@@ -1510,6 +1745,7 @@ export default {
       chatHasCorps: false,
       chatCorpsName: '',
       chatCanSend: true,
+      chatCooldown: 0,
       chatNotices: [],
       mails: [],
       friends: [],
@@ -1517,6 +1753,21 @@ export default {
       friendSearchList: [],
       friendSearchDone: false,
       taskGroups: [],
+      // 计谋(复刻原版 acade/scheme.html, 共 12 条, 消耗信号弹)
+      schemes: [
+        { name: '恫疑虚喝', des: '恫疑虚喝', bullet: 4 },
+        { name: '隐真示假', des: '隐真示假', bullet: 4 },
+        { name: '十面埋伏', des: '十面埋伏', bullet: 7 },
+        { name: '欲擒故纵', des: '欲擒故纵', bullet: 7 },
+        { name: '偷梁换柱', des: '偷梁换柱', bullet: 6 },
+        { name: '反客为主', des: '反客为主', bullet: 6 },
+        { name: '先发制人', des: '使我军与敌军城市直接进入可战争状态，可战争时间为军官学识×1分钟，最多持续6小时，中计城市6小时内不再中计', bullet: 12 },
+        { name: '未雨绸缪', des: '未雨绸缪', bullet: 12 },
+        { name: '虚实相乱', des: '虚实相乱', bullet: 4 },
+        { name: '调虎离山', des: '调虎离山', bullet: 4 },
+        { name: '各个击破', des: '各个击破', bullet: 8 },
+        { name: '舍车保帅', des: '舍车保帅', bullet: 8 }
+      ],
       welfare: { rewards: [], gifts: {} },
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       orders: [],
@@ -1573,7 +1824,7 @@ export default {
       orderType: 2,
       orderTroops: {},
       onDutyOfficers: [],
-      orderOfficer: '',
+      orderOfficer: '0',
       ware: { level: 0, total: 0, next_total: 0, res: [], ratio_sum: 0 },
       wareRatio: { food: 25, steel: 25, oil: 25, rare: 25 },
       liaison: { level: 0, can_join: false, can_create: false, create_cost: 50000,
@@ -1584,6 +1835,25 @@ export default {
       trOil: 0,
       trRare: 0,
       trGold: 0,
+      waitH: 0,
+      waitM: 0,
+      orderCalc: null,
+      jumpX: '',
+      jumpY: '',
+      mapStars: [],
+      showStars: false,
+      // 城市迁移
+      moveInfo: { areas: [], gold_cost: 200000, gold: 0 },
+      moveArea: 1,
+      moveX: '',
+      moveY: '',
+      moveX2: '',
+      moveY2: '',
+      // 调整生产(开工率)
+      rateFood: 100,
+      rateSteel: 100,
+      rateOil: 100,
+      rateRare: 100,
       orderNames: ['', '侦查', '掠夺', '征服', '采集', '运输', '增援', '派遣'],
       timer: null,
       nowTimer: null,
@@ -1603,34 +1873,23 @@ export default {
       return this.queues
     },
     zoneBuildings () {
+      // 复刻原版 BuildingController：军事区 = type 2/3/4，资源区 = type 1
       const isM = this.cur === 'buildm'
-      const zoneIds = isM ? [7, 8, 13, 14, 15, 16, 17, 18, 19, 20, 21] : [2, 3, 4, 5, 6, 12]
-      const built = this.buildings.filter(b => zoneIds.indexOf(b.building_id) !== -1)
-      const builtIds = {}
-      built.forEach(b => { builtIds[b.building_id] = true })
-      const pool = isM
-        ? [
-          { bid: 8, name: '科研中心', type: 2, max_level: 10, des: '研究城市各方面科技', cost: { food: 300, steel: 1200, oil: 600, rare: 300, gold: 0 }, time: 1800 },
-          { bid: 13, name: '司令部', type: 2, max_level: 10, des: '军队出征指挥中心', cost: { food: 2000, steel: 3000, oil: 1500, rare: 800, gold: 0 }, time: 3600 },
-          { bid: 14, name: '军工厂', type: 2, max_level: 10, des: '生产现代化部队装备设施(最多5个)', cost: { food: 1500, steel: 2600, oil: 1200, rare: 600, gold: 0 }, time: 2700 },
-          { bid: 15, name: '联络中心', type: 2, max_level: 10, des: '允许盟友驻军(1级可加入联盟, 2级可创建联盟)', cost: { food: 200, steel: 2000, oil: 500, rare: 300, gold: 0 }, time: 500 },
-          { bid: 16, name: '轻工厂', type: 2, max_level: 10, des: '生产现代化部队装备设施', cost: { food: 250, steel: 1200, oil: 1500, rare: 500, gold: 0 }, time: 431 },
-          { bid: 17, name: '重工厂', type: 2, max_level: 10, des: '生产大型军事化机械', cost: { food: 150, steel: 1500, oil: 500, rare: 1500, gold: 0 }, time: 456 },
-          { bid: 18, name: '停机坪', type: 2, max_level: 10, des: '生产航空部队', cost: { food: 4000, steel: 6000, oil: 3000, rare: 1500, gold: 0 }, time: 5400 },
-          { bid: 19, name: '航海协会', type: 2, max_level: 10, des: '生产海军部队(只能建在沿海城市)', cost: { food: 5000, steel: 8000, oil: 4000, rare: 2000, gold: 0 }, time: 6300 },
-          { bid: 20, name: '运输站', type: 2, max_level: 10, des: '提高部队行动速度', cost: { food: 2500, steel: 4000, oil: 2000, rare: 1000, gold: 0 }, time: 4500 },
-          { bid: 21, name: '雷达站', type: 2, max_level: 10, des: '对敌军入侵进行预警', cost: { food: 3000, steel: 5000, oil: 2500, rare: 1200, gold: 0 }, time: 5000 },
-          { bid: 7, name: '围墙', type: 3, max_level: 10, des: '城市防御主导, 可建造碉堡等城防', cost: { food: 4500, steel: 3000, oil: 1500, rare: 700, gold: 0 }, time: 1600 }
-        ]
-        : [
-          { bid: 2, name: '民居', type: 2, max_level: 10, des: '提供人口上限(最多10个)', cost: { food: 100, steel: 500, oil: 100, rare: 50, gold: 0 }, time: 3 },
-          { bid: 3, name: '农田', type: 1, max_level: 10, des: '为城市提供粮食生产', cost: { food: 50, steel: 50, oil: 150, rare: 300, gold: 0 }, time: 45 },
-          { bid: 4, name: '炼钢厂', type: 1, max_level: 10, des: '为城市提供钢铁资源', cost: { food: 50, steel: 50, oil: 300, rare: 150, gold: 0 }, time: 45 },
-          { bid: 5, name: '石油基地', type: 1, max_level: 10, des: '为城市提供石油资源', cost: { food: 180, steel: 500, oil: 150, rare: 210, gold: 0 }, time: 86 },
-          { bid: 6, name: '稀矿厂', type: 1, max_level: 10, des: '为城市提供稀矿资源', cost: { food: 600, steel: 500, oil: 210, rare: 200, gold: 0 }, time: 125 },
-          { bid: 12, name: '仓库', type: 2, max_level: 10, des: '储存资源, 提高资源容量上限', cost: { food: 800, steel: 600, oil: 400, rare: 200, gold: 0 }, time: 900 }
-        ]
-      return built.concat(pool.filter(p => !builtIds[p.bid]))
+      const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
+      const built = this.buildings.filter(b => inZone(b.type))
+      const pool = (this.buildingPool || []).filter(p => inZone(p.type))
+      return built.concat(pool)
+    },
+    buildQueueCount () {
+      return this.buildings.filter(b => b.status !== 0).length
+    },
+    // 正式军官(不含俘虏)
+    myOfficers () {
+      return (this.officerData.officers || []).filter(o => o.is_captive !== 1)
+    },
+    // 战俘营: 未出征的俘虏
+    captiveOfficers () {
+      return (this.officerData.officers || []).filter(o => o.is_captive === 1 && o.status !== 1)
     },
     trainCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type !== 4)
@@ -1716,9 +1975,9 @@ export default {
       this.cur = t
       if (t === 'home') this.load()
       else if (t === 'troops' || t === 'troop' || t === 'defence') this.loadTroops()
-      else if (t === 'hq') { this.loadTroops(); this.loadOrders(); this.loadTargets() }
+      else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
       else if (t === 'techs') this.loadTechs()
-      else if (t === 'map') this.loadMap()
+      else if (t === 'map') { this.loadMap(); this.loadStars() }
       else if (t === 'reports') this.loadReports()
       else if (t === 'mail') this.loadMails()
       else if (t === 'friends') this.loadFriends()
@@ -1733,15 +1992,19 @@ export default {
       else if (t === 'orders') this.loadOrders()
       else if (t === 'notices') this.loadNotices()
       else if (t === 'wilds') this.loadWilds()
-      else if (t === 'orderpre') { this.loadTroops(); this.loadOnDutyOfficers() }
+      else if (t === 'orderpre') { this.orderCalc = null; this.loadTroops(); this.loadOnDutyOfficers() }
       else if (t === 'acade') this.loadAcade()
       else if (t === 'wareset') this.loadWare()
+      else if (t === 'citymove') this.loadMoveInfo()
+      else if (t === 'sourceset') this.loadProduce()
     },
     load () {
       api.get('/games/ezfy/view').then(r => {
         if (r.code === 0) {
           const d = r.data
           this.profile = d.profile
+          this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
+          this.officerCount = d.officer_count || 0
           this.rankName = d.rank_name
           this.rankPost = d.rank_post
           this.city = d.city
@@ -1750,6 +2013,7 @@ export default {
           this.protectedUntil = d.protected
           this.boostUntil = d.boost
           this.buildings = d.buildings
+          this.buildingPool = d.building_pool || []
           this.wildlands = d.wildlands
           this.queues = d.queues
           this.marching = d.marching
@@ -1760,12 +2024,22 @@ export default {
       })
     },
     loadTroops () {
-      api.get('/games/ezfy/troops').then(r => {
+      return api.get('/games/ezfy/troops').then(r => {
         if (r.code === 0) {
           this.troopsData = r.data
           if (r.data.cfgs.length && !this.trainSel) this.trainSel = null
+          // 司令部配置表按兵种建键, 兵种数据后到时要补齐, 否则渲染会取到 undefined
+          this.ensureTargetCfg()
         }
       })
+    },
+    // 保证每个兵种在 targetCfg 里都有条目(司令部页 v-model 直接取 targetCfg[id].atk)
+    ensureTargetCfg () {
+      const cfg = Object.assign({}, this.targetCfg)
+      for (const t of (this.troopsData.cfgs || [])) {
+        if (!cfg[t.id]) cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1 }
+      }
+      this.targetCfg = cfg
     },
     loadTechs () {
       api.get('/games/ezfy/techs').then(r => {
@@ -1903,15 +2177,16 @@ export default {
       })
     },
     loadTargets () {
-      api.get('/games/ezfy/targets').then(r => {
+      return api.get('/games/ezfy/targets').then(r => {
+        // 先按兵种表建全默认值, 再覆盖服务端已保存的配置
         const cfg = {}
+        for (const t of (this.troopsData.cfgs || [])) {
+          cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1 }
+        }
         if (r.code === 0) {
           for (const t of r.data.targets) {
             cfg[t.troop_id] = { atk: t.atk_target_troop, atkMove: t.atk_move, def: t.def_target_troop, defMove: t.def_move }
           }
-        }
-        for (const t of this.troopsData.cfgs) {
-          if (!cfg[t.id]) cfg[t.id] = { atk: 0, atkMove: 1, def: 0, defMove: 1 }
         }
         this.targetCfg = cfg
       })
@@ -1942,21 +2217,160 @@ export default {
         }
       })
     },
+    // ---- 地图坐标查找 / 收藏列表(复刻原版地图页) ----
+    jumpTo (x, y) {
+      api.get('/games/ezfy/map?x=' + x + '&y=' + y + '&r=' + this.mapR).then(r => {
+        if (r.code === 0) {
+          this.mapCells = r.data.cells
+          this.mapCx = r.data.cx
+          this.mapCy = r.data.cy
+        }
+      })
+    },
+    doJump () {
+      const x = parseInt(this.jumpX)
+      const y = parseInt(this.jumpY)
+      if (!x || !y || x < 1 || x > 500 || y < 1 || y > 500) {
+        alert('请输入 1~500 之间的横纵坐标')
+        return
+      }
+      this.jumpTo(x, y)
+    },
+    loadStars () {
+      api.get('/games/ezfy/map/stars').then(r => {
+        if (r.code === 0) this.mapStars = r.data.stars || []
+      })
+    },
+    toggleStars () {
+      this.showStars = !this.showStars
+      if (this.showStars) this.loadStars()
+    },
+    addStar () {
+      if (!this.selCell) return
+      const def = this.selCell.name + '(' + this.selCell.x + ',' + this.selCell.y + ')'
+      const name = prompt('备注名(最多16字):', def)
+      if (name === null) return
+      api.post('/games/ezfy/map/stars', { x: this.selCell.x, y: this.selCell.y, name: name }).then(r => {
+        if (r.code === 0) { this.showStars = true; this.loadStars() } else alert(r.msg || '收藏失败')
+      })
+    },
+    delStar (s) {
+      api.post('/games/ezfy/map/stars/delete', { id: s.id }).then(r => {
+        if (r.code === 0) this.loadStars()
+      })
+    },
+    // ---- 城市迁移(复刻 city/cityHallMove.html) ----
+    loadMoveInfo () {
+      api.get('/games/ezfy/city/move').then(r => {
+        if (r.code === 0) {
+          this.moveInfo = r.data
+          if (r.data.areas && r.data.areas.length) this.moveArea = r.data.areas[0].id
+        }
+      })
+    },
+    doMoveCity (type) {
+      const body = { type: type }
+      if (type === 'low') {
+        body.area_id = this.moveArea
+      } else if (type === 'high') {
+        const x = parseInt(this.moveX)
+        const y = parseInt(this.moveY)
+        if (!x || !y) { alert('请输入横纵坐标'); return }
+        body.x = x; body.y = y
+      } else {
+        const x = parseInt(this.moveX2)
+        const y = parseInt(this.moveY2)
+        if (!x || !y) { alert('请输入横纵坐标'); return }
+        body.x = x; body.y = y
+      }
+      const label = type === 'low' ? '迁城计划' : (type === 'high' ? '高级迁城计划' : '沿海迁城计划')
+      if (!confirm('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' 黄金。')) return
+      api.post('/games/ezfy/city/move', body).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.load()
+          this.loadMoveInfo()
+        } else alert(r.msg || '迁城失败')
+      })
+    },
+    // ---- 调整生产(复刻 city/sourceSet.html) ----
+    loadProduce () {
+      api.get('/games/ezfy/city/produce').then(r => {
+        if (r.code === 0) {
+          this.rateFood = r.data.rate_food
+          this.rateSteel = r.data.rate_steel
+          this.rateOil = r.data.rate_oil
+          this.rateRare = r.data.rate_rare
+        }
+      })
+    },
+    doSaveRate () {
+      const vals = [this.rateFood, this.rateSteel, this.rateOil, this.rateRare]
+      for (const v of vals) {
+        const n = parseInt(v)
+        if (!n || n < 1 || n > 100) { alert('开工率需在 1~100 之间'); return }
+      }
+      api.post('/games/ezfy/city/produce', {
+        rate_food: parseInt(this.rateFood), rate_steel: parseInt(this.rateSteel),
+        rate_oil: parseInt(this.rateOil), rate_rare: parseInt(this.rateRare)
+      }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.loadProduce()
+      })
+    },
     // ---- 建筑操作 ----
     doBuild (b) {
-      api.post('/games/ezfy/build', { building_id: b.bid }).then(r => this.alert(r))
+      api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.load()
+      })
     },
     doUpgrade (b) {
-      api.post('/games/ezfy/building/upgrade', { record_id: b.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/building/upgrade', { record_id: b.id }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.load()
+      })
     },
     doMaxLevel (b) {
-      api.post('/games/ezfy/building/max-level', { record_id: b.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/building/max-level', { record_id: b.id }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.load()
+      })
     },
     doDeleteBuilding (b) {
-      api.post('/games/ezfy/building/delete', { record_id: b.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/building/delete', { record_id: b.id }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.load()
+      })
     },
     doSpeedBuilding () {
-      api.post('/games/ezfy/building/speed', { minutes: 10 }).then(r => this.alert(r, '当前没有正在施工的建筑'))
+      api.post('/games/ezfy/building/speed', { minutes: 10 }).then(r => {
+        this.alert(r, '当前没有正在施工的建筑')
+        if (r.code === 0) this.load()
+      })
+    },
+    // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
+    bEntry (bid) {
+      const map = {
+        1: { label: '市政厅', cur: 'cityhall' },
+        2: null,
+        7: { label: '城防', cur: 'defence' },
+        8: { label: '科技', cur: 'techs' },
+        9: { label: '军校', cur: 'acade', tab: 'search' },
+        10: { label: '参谋部', cur: 'acade', tab: 'officer' },
+        11: { label: '交易所', cur: 'exchange' },
+        12: { label: '仓库调配', cur: 'wareset' },
+        13: { label: '司令部', cur: 'hq' },
+        14: { label: '训练', cur: 'troop' },
+        15: { label: '联络中心', cur: 'liaison' }
+      }
+      return map[bid] || null
+    },
+    goEntry (bid) {
+      const e = this.bEntry(bid)
+      if (!e) return
+      if (e.tab) this.acadeTab = e.tab
+      this.go(e.cur)
     },
     // ---- 城市操作 ----
     doConvene () {
@@ -2018,7 +2432,17 @@ export default {
       api.post('/games/ezfy/techs/research', { tech_id: t.tech_id }).then(r => this.alert(r))
     },
     doSpeedTech () {
-      api.post('/games/ezfy/techs/speed', { minutes: 10 }).then(r => this.alert(r, '没有研究中的科技'))
+      api.post('/games/ezfy/techs/speed', { minutes: 10 }).then(r => {
+        this.alert(r, '没有研究中的科技')
+        if (r.code === 0) this.loadTechs()
+      })
+    },
+    doCancelTech (t) {
+      if (!confirm('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
+      api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id }).then(r => {
+        this.alert(r)
+        if (r.code === 0) this.loadTechs()
+      })
     },
     // ---- 司令部 ----
     doSaveTargets () {
@@ -2105,37 +2529,50 @@ export default {
         if (r.code === 0) this.warText = r.data.text
       })
     },
-    doOrder () {
-      if (!this.selCell) return
+    // 出征表单 → 请求体(部队/资源/军官/宿营)
+    orderBody () {
       const body = {
         order_type: this.orderType,
         target_type: this.selCell.area_type === 3 ? 3 : (this.selCell.area_type === 2 ? 2 : 1),
         target_x: this.selCell.x,
-        target_y: this.selCell.y
+        target_y: this.selCell.y,
+        wait_min: (parseInt(this.waitH) || 0) * 60 + (parseInt(this.waitM) || 0)
       }
       if (this.selCell.area_type === 3 && this.selCell.city_id) {
         body.target_id = this.selCell.city_id
       }
-      if (this.orderType === 5) {
-        body.resources = {
-          food: parseInt(this.trFood) || 0, steel: parseInt(this.trSteel) || 0,
-          oil: parseInt(this.trOil) || 0, rare: parseInt(this.trRare) || 0,
-          gold: parseInt(this.trGold) || 0
-        }
-      } else {
-        const troops = []
-        for (const k in this.orderTroops) {
-          const n = parseInt(this.orderTroops[k]) || 0
-          if (n > 0) troops.push({ troopId: parseInt(k), count: n })
-        }
-        body.troops = troops
+      const troops = []
+      for (const k in this.orderTroops) {
+        const n = parseInt(this.orderTroops[k]) || 0
+        if (n > 0) troops.push({ troopId: parseInt(k), count: n })
       }
-      if (this.orderOfficer) body.officer = this.orderOfficer
-      api.post('/games/ezfy/order', body).then(r => {
+      body.troops = troops
+      body.resources = {
+        food: parseInt(this.trFood) || 0, steel: parseInt(this.trSteel) || 0,
+        oil: parseInt(this.trOil) || 0, rare: parseInt(this.trRare) || 0,
+        gold: parseInt(this.trGold) || 0
+      }
+      if (this.orderOfficer && this.orderOfficer !== '0') body.officer = this.orderOfficer
+      return body
+    },
+    // 复刻原版出征页的 [计算]: 预览油耗/负重/耗时, 不下达命令
+    doCalc () {
+      if (!this.selCell) return
+      api.post('/games/ezfy/order/preview', this.orderBody()).then(r => {
+        if (r.code === 0) this.orderCalc = r.data
+        else this.alert(r)
+      })
+    },
+    doOrder () {
+      if (!this.selCell) return
+      api.post('/games/ezfy/order', this.orderBody()).then(r => {
         if (r.code === 0) {
           alert(r.data.msg)
           this.orderTroops = {}
-          this.orderOfficer = ''
+          this.orderOfficer = '0'
+          this.orderCalc = null
+          this.trFood = 0; this.trSteel = 0; this.trOil = 0; this.trRare = 0; this.trGold = 0
+          this.waitH = 0; this.waitM = 0
           this.load()
           this.cur = 'orders'
           this.loadOrders()
@@ -2182,12 +2619,35 @@ export default {
     doChatSend () {
       const msg = (this.chatMsg || '').trim()
       if (!msg) return
+      if (this.chatCooldown > 0) {
+        alert('发言冷却中，还需 ' + this.chatCooldown + ' 秒')
+        return
+      }
       api.post('/games/ezfy/chat', { content: msg, channel: this.chatChannel }).then(r => {
         if (r.code === 0) {
           this.chatMsg = ''
+          // 复刻原版聊天: 每次发言 30 秒冷却
+          this.startChatCooldown(30)
           this.loadChats()
         } else alert(r.msg)
       })
+    },
+    startChatCooldown (sec) {
+      this.chatCooldown = sec
+      if (this.chatTimer) clearInterval(this.chatTimer)
+      this.chatTimer = setInterval(() => {
+        this.chatCooldown -= 1
+        if (this.chatCooldown <= 0) {
+          this.chatCooldown = 0
+          clearInterval(this.chatTimer)
+          this.chatTimer = null
+        }
+      }, 1000)
+    },
+    // 聊天/好友里的玩家名 → 家园个人主页
+    openUser (uid) {
+      if (!uid) return
+      this.$router.push('/user/' + uid)
     },
     openNotice (n) {
       this.curNotice = n
@@ -2364,14 +2824,14 @@ export default {
     },
     switchAcade (tab) {
       this.acadeTab = tab
-      if (tab === 'officer' || tab === 'mayor') {
+      if (tab === 'officer' || tab === 'mayor' || tab === 'captive') {
         api.get('/games/ezfy/officers').then(r => {
           if (r.code === 0) this.officerData = r.data
         })
       } else if (tab === 'search') this.loadRecruit()
       else if (tab === 'skill') this.loadAcadeSkills()
       else if (tab === 'equip') this.loadAcadeEquip()
-      else if (tab === 'scheme') this.loadAcadeGenerals()
+      else if (tab === 'generals') this.loadAcadeGenerals()
     },
     loadRecruit () {
       api.get('/games/ezfy/acade/recruit').then(r => {

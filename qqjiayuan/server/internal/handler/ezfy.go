@@ -93,6 +93,7 @@ func (h *EzfyHandler) getOrCreateCity(uid uint) model.EzfyCity {
 		Gold: 20000, Food: 5000, Steel: 5000, Oil: 5000, Rare: 5000,
 		GoldCap: 1000000, FoodCap: 100000, SteelCap: 100000, OilCap: 100000, RareCap: 100000,
 		CityLevel: 1, LastTime: time.Now().UnixMilli(),
+		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
 		X: pos[0], Y: pos[1],
 	}
 	h.DB.Create(&city)
@@ -382,6 +383,11 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
 	steelProd = steelProd * int64(100+techSteel*10) / 100
 	oilProd = oilProd * int64(100+techOil*10) / 100
 	rareProd = rareProd * int64(100+techRare*10) / 100
+	// 调整生产·开工率(0~100)，复刻原版 city/sourceSet.html
+	foodProd = foodProd * int64(ezfyRate(city.RateFood)) / 100
+	steelProd = steelProd * int64(ezfyRate(city.RateSteel)) / 100
+	oilProd = oilProd * int64(ezfyRate(city.RateOil)) / 100
+	rareProd = rareProd * int64(ezfyRate(city.RateRare)) / 100
 	// 市长加成：产量 +10% + 后勤属性/20（复刻原版 mayorBonus）
 	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
 		foodProd = foodProd * int64(100+mayorBonus) / 100
@@ -1013,6 +1019,26 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	return ""
 }
 
+// cancelTech 取消研究(复刻原版 techIndex 的 [取消]): 全额退还本次研究消耗, 等级不变
+func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
+	h.refreshCity(city.UserID, city)
+	var t model.EzfyCityTech
+	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", city.ID, techId).First(&t).Error; err != nil {
+		return "该科技没有在研究中"
+	}
+	if lv := ezfyCfg.techLevel(techId, t.Level+1); lv != nil {
+		city.Food += lv.Food
+		city.Steel += lv.Steel
+		city.Oil += lv.Oil
+		city.Rare += lv.Rare
+		city.Gold += lv.Gold
+		h.saveCityRes(city)
+	}
+	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
+		Updates(map[string]interface{}{"status": 0, "end_time": 0})
+	return ""
+}
+
 func (h *EzfyHandler) checkTechDone(city *model.EzfyCity) {
 	now := time.Now().UnixMilli()
 	var list []model.EzfyCityTech
@@ -1447,6 +1473,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		}
 		buildingViews = append(buildingViews, view)
 	}
+	// 可建造池(军事区 type2/3 + 资源区 type1), 供建筑页直接渲染, 前端不再硬编码
+	buildingPool := h.buildPool(&city, buildings)
 
 	camp := profile.Camp
 	troopViews := []gin.H{}
@@ -1491,8 +1519,13 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	var unreadReports int64
 	h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&unreadReports)
 
+	acct, ulv, uexp := h.ezfyUserBrief(uid)
 	resp.OK(c, gin.H{
 		"profile":        profile,
+		"account":        acct,
+		"user_level":     ulv,
+		"user_exp":       uexp,
+		"officer_count":  h.officerCount(city.ID),
 		"rank_name":      ezfyRankName(profile.Prestige),
 		"rank_post":      ezfyRankPost(profile.Prestige),
 		"cities":         cities,
@@ -1501,6 +1534,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"protected":      h.hasCityEffect(city.ID, 2),
 		"boost":          h.hasCityEffect(city.ID, 1),
 		"buildings":      buildingViews,
+		"building_pool":  buildingPool,
 		"troops":         troopViews,
 		"wounded":        wounded,
 		"queues":         queues,
@@ -1510,6 +1544,28 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"occupying":      occupying,
 		"unread_reports": unreadReports,
 	})
+}
+
+// ezfyAccount 家园账号(号码) / 等级 / 经验 —— 统帅信息页需要展示家园侧资料
+func (h *EzfyHandler) ezfyUserBrief(uid uint) (account string, level, exp int) {
+	var u model.User
+	if err := h.DB.First(&u, uid).Error; err != nil {
+		return "", 0, 0
+	}
+	return u.Username, u.Level, u.Exp
+}
+
+// ezfyRate 开工率归一化：0 视为未设置(按 100% 处理), 否则限制在 0~100
+// 说明: 0 与「未设置」在本模型里无法区分, 而把开工率设成 0 等于停产(没有实际意义),
+// 因此把 0 当作 100% 处理, 避免老数据(字段为 0)一上线就停产。
+func ezfyRate(v int) int {
+	if v <= 0 {
+		return 100
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
 }
 
 // CityList 城市列表
@@ -1572,6 +1628,7 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		Gold: 20000, Food: 5000, Steel: 5000, Oil: 5000, Rare: 5000,
 		GoldCap: 1000000, FoodCap: 100000, SteelCap: 100000, OilCap: 100000, RareCap: 100000,
 		CityLevel: 1, LastTime: time.Now().UnixMilli(), X: req.X, Y: req.Y,
+		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
 	}
 	h.DB.Create(&city)
 	h.initBuilding(city.ID, 1, 1)

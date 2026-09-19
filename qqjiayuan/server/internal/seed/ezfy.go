@@ -4,22 +4,21 @@ import (
 	"log"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 )
 
 // seedEzfy 二战风云：配置表幂等种子（数据源自 stzb-fk inithebing.sql 转换，见 ezfy_cfg_gen.go）
+//
+// 采用「按主键 upsert」而非「表为空才写入」：
+// 早期版本用 count>0 就跳过，导致 ezfy_cfg_gen.go 修正过的配置（如市政厅 can_delete）
+// 永远不会落到已有库上，出现「代码对、库里错」的配置漂移。
+// 配置表以 inithebing.sql 转换结果为唯一事实来源，每次启动对齐一次。
 func seedEzfy(db *gorm.DB) {
 	batch := func(items interface{}, table string) {
-		var count int64
-		if err := db.Table(table).Count(&count).Error; err != nil {
-			log.Printf("ezfy 查表失败 %s: %v", table, err)
-			return
-		}
-		if count > 0 {
-			return
-		}
-		if err := db.Create(items).Error; err != nil {
+		if err := db.Clauses(clause.OnConflict{UpdateAll: true}).
+			CreateInBatches(items, 200).Error; err != nil {
 			log.Printf("ezfy 种子失败 %s: %v", table, err)
 		}
 	}

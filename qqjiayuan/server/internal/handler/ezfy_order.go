@@ -253,6 +253,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		Troops     []ezfyUnitGroup  `json:"troops"`
 		Resources  map[string]int64 `json:"resources"`
 		Officer    string           `json:"officer"`
+		WaitMin    int              `json:"wait_min"` // 宿营分钟数(≤1440)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -263,15 +264,128 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		city2 := h.getOrCreateCity(uid)
 		city = &city2
 	}
-	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer); msg != "" {
+	waitMin := req.WaitMin
+	if waitMin < 0 {
+		waitMin = 0
+	}
+	if waitMin > 1440 {
+		waitMin = 1440
+	}
+	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}
 	resp.OK(c, gin.H{"msg": ezfyOrderTypeName(req.OrderType) + "命令已下达, 部队出发"})
 }
 
+// OrderPreview POST /games/ezfy/order/preview
+// 复刻原版出征页的 [计算] 按钮：出征前预览 油耗/负重/耗时, 不下达命令、不扣资源。
+func (h *EzfyHandler) OrderPreview(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		CityId     int64            `json:"city_id"`
+		OrderType  int              `json:"order_type"`
+		TargetX    int              `json:"target_x"`
+		TargetY    int              `json:"target_y"`
+		Troops     []ezfyUnitGroup  `json:"troops"`
+		Resources  map[string]int64 `json:"resources"`
+		Officer    string           `json:"officer"`
+		WaitMin    int              `json:"wait_min"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	city := h.bodyCity(uid, req.CityId)
+	h.refreshCity(uid, city)
+
+	valid := []ezfyUnitGroup{}
+	var carry int64
+	slowest := 0
+	for _, t := range req.Troops {
+		if t.Count <= 0 {
+			continue
+		}
+		cfg := ezfyCfg.troop(t.TroopId)
+		if cfg == nil {
+			continue
+		}
+		valid = append(valid, t)
+		carry += int64(cfg.Carry) * t.Count
+		if slowest == 0 || cfg.Speed < slowest {
+			slowest = cfg.Speed
+		}
+	}
+	distance := ezfyAbs(city.X-req.TargetX) + ezfyAbs(city.Y-req.TargetY)
+	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources)
+
+	var travelSec int64
+	if distance > 0 && slowest > 0 {
+		tech := h.techMap(city.ID)
+		station := h.buildingLevel(city.ID, 20)
+		travelSec = int64(distance) * 60 * 300 / int64(slowest)
+		travelSec = travelSec * 100 / int64(100+tech[12]*2)
+		travelSec = travelSec * 100 / int64(100+station*3)
+		if lead := h.officerByName(city.ID, req.Officer); h.officerHasSkill(lead, "移速") {
+			travelSec = travelSec * 100 / 110
+		}
+		if travelSec < 10 {
+			travelSec = 10
+		}
+	}
+	waitMin := req.WaitMin
+	if waitMin < 0 {
+		waitMin = 0
+	}
+	if waitMin > 1440 {
+		waitMin = 1440
+	}
+	needSec := travelSec*2 + int64(waitMin)*60
+	resp.OK(c, gin.H{
+		"oil_used":     oilCost,
+		"oil_enough":   city.Oil >= oilCost,
+		"oil_have":     city.Oil,
+		"carry":        carry,
+		"distance":     distance,
+		"travel_sec":   travelSec,
+		"wait_min":     waitMin,
+		"need_sec":     needSec,
+		"need_time":    ezfyDurationText(needSec),
+		"travel_time":  ezfyDurationText(travelSec),
+		"return_time":  ezfyDurationText(travelSec),
+	})
+}
+
+// ezfyDurationText 秒 → 「1小时23分45秒」文本
+func ezfyDurationText(sec int64) string {
+	if sec <= 0 {
+		return "0秒"
+	}
+	d := sec / 86400
+	sec %= 86400
+	hr := sec / 3600
+	sec %= 3600
+	mi := sec / 60
+	sec %= 60
+	out := ""
+	if d > 0 {
+		out += fmt.Sprintf("%d天", d)
+	}
+	if hr > 0 {
+		out += fmt.Sprintf("%d小时", hr)
+	}
+	if mi > 0 {
+		out += fmt.Sprintf("%d分", mi)
+	}
+	if sec > 0 || out == "" {
+		out += fmt.Sprintf("%d秒", sec)
+	}
+	return out
+}
+
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
-	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string) string {
+	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin int) string {
 
 	h.refreshCity(uid, city)
 	// 过滤数量为0的部队
@@ -452,19 +566,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return "目标太近了"
 	}
 	// 耗油
-	var oilCost int64
-	if orderType == 5 {
-		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
-		oilCost = maxInt64(1, (f+s+o+r+g)/10000+int64(distance)/50)
-	} else {
-		var oilUnitTotal int64
-		for _, t := range validTroops {
-			if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
-				oilUnitTotal += int64(cfg.OilKeep) * t.Count
-			}
-		}
-		oilCost = maxInt64(1, oilUnitTotal*int64(distance)/ezfyOilDivGrid)
-	}
+	oilCost := h.ezfyOilCost(city, orderType, distance, validTroops, resources)
 	if city.Oil < oilCost {
 		return fmt.Sprintf("石油不足: 本次出征需耗油%d, 当前油库仅%d", oilCost, city.Oil)
 	}
@@ -484,6 +586,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		travelSec = 10
 	}
 	now := time.Now().UnixMilli()
+	// 宿营: 到达后停留 waitMin 分钟再返航(复刻原版出征页的「宿营」, 上限 24 小时)
+	if waitMin < 0 {
+		waitMin = 0
+	}
+	if waitMin > 1440 {
+		waitMin = 1440
+	}
 	order := model.EzfyOrder{
 		UserID: uid, CityId: int64(city.ID),
 		OrderType: orderType, TargetType: targetType,
@@ -492,7 +601,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		Officer:   officer,
 		StartTime: now, ArriveTime: now + travelSec*1000,
 		ReturnTime: now + travelSec*1000*2, Status: 0,
-		OilUsed: oilCost,
+		OilUsed: oilCost, WaitMin: waitMin,
 	}
 	if resources != nil {
 		b, _ := json.Marshal(resources)
@@ -571,7 +680,11 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 			"target_type": o.TargetType, "target_x": o.TargetX, "target_y": o.TargetY,
 			"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
-			"status": o.Status, "troops": parseGroups(o.Troops), "resources": o.Resources,
+			"start_text": ezfyFmtTime(o.StartTime), "arrive_text": ezfyFmtTime(o.ArriveTime),
+			"return_text": ezfyFmtTime(o.ReturnTime),
+			"wait_min":    o.WaitMin,
+			"status":      o.Status, "status_name": ezfyOrderStatusName(o.Status),
+			"troops": parseGroups(o.Troops), "resources": o.Resources,
 			"result": o.Result, "oil_used": o.OilUsed, "officer": o.Officer,
 		})
 	}
@@ -659,6 +772,22 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 }
 
 // beginReturn 异常返航: 兵力无损带回
+// ezfyOilCost 出征耗油(运输按携带资源量计, 其余按兵种油耗×数量×距离计)
+func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
+	troops []ezfyUnitGroup, resources map[string]int64) int64 {
+	if orderType == 5 {
+		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
+		return maxInt64(1, (f+s+o+r+g)/10000+int64(distance)/50)
+	}
+	var oilUnitTotal int64
+	for _, t := range troops {
+		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
+			oilUnitTotal += int64(cfg.OilKeep) * t.Count
+		}
+	}
+	return maxInt64(1, oilUnitTotal*int64(distance)/ezfyOilDivGrid)
+}
+
 func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec int64) {
 	travel := travelSec * 1000
 	if travel <= 0 {
@@ -667,9 +796,11 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 	if travel <= 0 {
 		travel = 60000
 	}
+	// 宿营: 到达后停留 wait_min 分钟再返航
+	wait := int64(order.WaitMin) * 60000
 	order.Status = 2
 	order.Result = order.Troops
-	order.ReturnTime = now + travel
+	order.ReturnTime = now + wait + travel
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
 }
