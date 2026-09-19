@@ -239,7 +239,9 @@ func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraf
 			Candidates: joinDrafts(drafts)}
 		h.DB.Create(&rec)
 	}
-	return parseDrafts(rec.Candidates), maxInt(0, ezfyRecruitRefreshLimit-rec.RefreshCount), ezfyRecruitRefreshLimit
+	// ★ 上限支持按玩家覆盖（管理端「军校免费刷次数」维护）
+	limit := h.ezfyRecruitFreeLimit(uid)
+	return parseDrafts(rec.Candidates), maxInt(0, limit-rec.RefreshCount), limit
 }
 
 func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
@@ -250,8 +252,10 @@ func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 	if err == nil {
 		used = rec.RefreshCount
 	}
-	if used >= ezfyRecruitRefreshLimit {
-		return "今日刷新次数已用完(每天限" + strconv.Itoa(ezfyRecruitRefreshLimit) + "次, 明天0点重置)"
+	limit := h.ezfyRecruitFreeLimit(uid)
+	if used >= limit {
+		return "今日刷新次数已用完(每天限" + strconv.Itoa(limit) +
+			"次, 明天0点重置；也可以在军校直接使用「招生简章」刷新)"
 	}
 	drafts := rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 	if err != nil {

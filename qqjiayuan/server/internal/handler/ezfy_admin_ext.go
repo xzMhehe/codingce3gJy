@@ -83,7 +83,7 @@ func (h *AdminHandler) AdminEzfyCities(c *gin.Context) {
 		}
 		out = append(out, rowOut{EzfyCity: ct, PlayerName: pn, HomeNum: hn, CampName: camp,
 			BuildingNum: bn, TroopNum: tn, OfficerNum: on, WildNum: wn,
-			TerrainName: ezfyTerrainName(ezfyTerrain(ct.X, ct.Y))})
+			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -151,7 +151,7 @@ func (h *AdminHandler) AdminEzfyCityDetail(c *gin.Context) {
 	h.DB.Where("city_id = ?", ct.ID).Order("id DESC").Limit(20).Find(&orders)
 	resp.OK(c, gin.H{
 		"city": ct, "player_name": pn, "home_num": hn,
-		"terrain_name": ezfyTerrainName(ezfyTerrain(ct.X, ct.Y)),
+		"terrain_name": ezfyTerrainNameEx(ct.X, ct.Y),
 		"buildings":    bViews, "troops": tViews, "techs": cViews,
 		"officers": officers, "wildlands": wilds, "orders": orders,
 	})
@@ -1515,7 +1515,7 @@ func (h *AdminHandler) AdminEzfyMapCities(c *gin.Context) {
 		pn, hn := h.ezfyAdminName(ct.UserID)
 		out = append(out, rowOut{ID: ct.ID, Name: ct.Name, UserID: ct.UserID, X: ct.X, Y: ct.Y,
 			CityLevel: ct.CityLevel, PlayerName: pn, HomeNum: hn,
-			TerrainName: ezfyTerrainName(ezfyTerrain(ct.X, ct.Y)),
+			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
 			Continent:   ezfyContinentOf(ct.X, ct.Y)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -1565,7 +1565,7 @@ func (h *AdminHandler) AdminEzfyMapWildlands(c *gin.Context) {
 			st = "采集中"
 		}
 		out = append(out, rowOut{EzfyWildland: w, CityName: cityName, OwnerName: owner,
-			HomeNum: home, TerrainName: ezfyTerrainName(ezfyTerrain(w.X, w.Y)), StatusTxt: st})
+			HomeNum: home, TerrainName: ezfyTerrainNameEx(w.X, w.Y), StatusTxt: st})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1641,7 +1641,7 @@ func (h *AdminHandler) AdminEzfyMapAreas(c *gin.Context) {
 	typeNames := map[int]string{0: "空地", 1: "野地(已占)", 2: "寇城", 3: "玩家城", 4: "资源田"}
 	for _, a := range rows {
 		out = append(out, rowOut{EzfyMapArea: a,
-			TerrainName: ezfyTerrainName(ezfyTerrain(a.X, a.Y)),
+			TerrainName: ezfyTerrainNameEx(a.X, a.Y),
 			TypeName:    typeNames[a.AreaType]})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -1672,7 +1672,7 @@ func (h *AdminHandler) AdminEzfyMapStars(c *gin.Context) {
 	for _, s := range rows {
 		on, hn := h.ezfyAdminName(s.UserID)
 		out = append(out, rowOut{EzfyMapStar: s, OwnerName: on, HomeNum: hn,
-			TerrainName: ezfyTerrainName(ezfyTerrain(s.X, s.Y))})
+			TerrainName: ezfyTerrainNameEx(s.X, s.Y)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1692,7 +1692,7 @@ func (h *AdminHandler) AdminEzfyMapLookup(c *gin.Context) {
 		resp.ParamError(c, "请提供坐标 x / y")
 		return
 	}
-	terrain := ezfyTerrain(x, y)
+	terrain := ezfyTerrainEx(x, y)
 	out := gin.H{
 		"x": x, "y": y,
 		"terrain":      terrain,

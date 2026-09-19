@@ -279,35 +279,6 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 		"name": "string", "type": "int", "param": "int",
 		"start_time": "int64", "end_time": "int64", "status": "int", "des": "string",
 	}},
-	"buildings": {&model.EzfyCfgBuilding{}, map[string]string{
-		"name": "string", "type": "int", "max_level": "int", "unique_flag": "int",
-		"can_delete": "int", "pre_building": "string", "des": "string",
-	}},
-	"buildingLevels": {&model.EzfyCfgBuildingLevel{}, map[string]string{
-		"building_id": "int", "level": "int", "pop": "int",
-		"food": "int64", "steel": "int64", "oil": "int64", "rare": "int64", "gold": "int64",
-		"build_time": "int", "capacity": "int64", "effect": "string",
-	}},
-	"troops": {&model.EzfyCfgTroop{}, map[string]string{
-		"name": "string", "name_axis": "string", "name_ally": "string", "type": "int",
-		"health": "int", "atk_sea": "int", "atk_ground": "int", "atk_air": "int",
-		"atk_def": "int", "defence": "int", "speed": "int", "attack_range": "int",
-		"carry": "int", "pop": "int", "food_keep": "int", "oil_keep": "int",
-		"food": "int64", "steel": "int64", "oil": "int64", "rare": "int64",
-		"train_time": "int", "require": "string", "icon": "string", "repair_rate": "int",
-	}},
-	"techs": {&model.EzfyCfgTech{}, map[string]string{
-		"name": "string", "type": "int", "max_level": "int", "pre_building": "int",
-		"pre_tech": "int", "pre_tech_level": "int", "effect": "string", "des": "string",
-	}},
-	"techLevels": {&model.EzfyCfgTechLevel{}, map[string]string{
-		"tech_id": "int", "level": "int", "food": "int64", "steel": "int64",
-		"oil": "int64", "rare": "int64", "gold": "int64", "research_time": "int", "effect": "string",
-	}},
-	"wildlands": {&model.EzfyCfgWildland{}, map[string]string{
-		"type": "int", "level": "int", "troops": "string", "res_min": "int64", "res_max": "int64",
-		"officer_min": "int", "officer_max": "int", "treasure": "string", "des": "string",
-	}},
 	"items": {&model.EzfyCfgItem{}, map[string]string{
 		"name": "string", "item_type": "int", "param1": "int64",
 		"price_gold": "int64", "icon": "string", "description": "string",
@@ -320,17 +291,32 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 		"reward_food": "int64", "reward_steel": "int64", "reward_oil": "int64",
 		"reward_rare": "int64", "reward_prestige": "int", "sort_no": "int", "type_id": "int", "status": "int",
 	}},
-	"cities": {&model.EzfyCity{}, map[string]string{
-		"name": "string", "city_level": "int", "feelings": "int", "grievance": "int",
-		"tax_rate": "int", "pop": "int64", "pop_max": "int64",
-		"gold": "int64", "food": "int64", "steel": "int64", "oil": "int64", "rare": "int64",
-		"gold_cap": "int64", "food_cap": "int64", "steel_cap": "int64", "oil_cap": "int64", "rare_cap": "int64",
-	}},
+}
+
+// ezfyDataMoved 已经从「数据管理」迁到专属模块的表 → 提示去哪改
+//
+// ★ 之前「数据管理」把建筑/兵种/科技/野地/城池也放进来了，与
+//   建筑管理 / 兵种管理 / 科技管理 / 地图管理 / 城市管理 完全重复，
+//   同一个字段两处能改、种子策略还不一样，容易改出不一致。
+//   现在数据管理只保留「没有专属模块」的零散配置表。
+var ezfyDataMoved = map[string]string{
+	"buildings":      "「建筑管理 → 总建筑配置」",
+	"buildingLevels": "「建筑管理 → 总建筑配置 → 等级配置」",
+	"troops":         "「兵种管理 → 兵种配置」",
+	"techs":          "「科技管理 → 科技配置」",
+	"techLevels":     "「科技管理 → 科技配置 → 等级配置」",
+	"wildlands":      "「地图管理 → 野地类型」",
+	"cities":         "「城市管理」",
 }
 
 func (h *AdminHandler) ezfyTableOf(c *gin.Context) (ezfyTableDef, bool) {
-	def, ok := ezfyTableDefs[c.Param("table")]
+	name := c.Param("table")
+	def, ok := ezfyTableDefs[name]
 	if !ok {
+		if where, moved := ezfyDataMoved[name]; moved {
+			resp.ParamError(c, "该表已迁到 "+where+" 维护，请到对应模块操作（避免两处重复配置）")
+			return def, false
+		}
 		resp.ParamError(c, "未知数据表")
 	}
 	return def, ok

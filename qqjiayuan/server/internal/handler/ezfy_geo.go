@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"log"
 	"sync"
 
 	"gorm.io/gorm"
@@ -93,9 +95,48 @@ func ezfyTerrain(x, y int) int {
 	return h%8 + 1
 }
 
+// ezfyTerrainCoastalPlain 沿海平原（地形 id 9）—— ★ 海城只能建在这里
+//
+// 用户规则：海城不是建在「海洋」上，而是建在「沿海平原」上。
+// 沿海平原 = 平原(1) 且 8 邻域内存在海洋(8)，是派生地形、不占哈希桶，
+// 这样原版 8 种地形（含珠宝按地形 1-8 的映射）完全不受影响。
+const ezfyTerrainCoastalPlain = 9
+
+// ezfyHasSeaNeighbor 8 邻域内是否有海洋
+func ezfyHasSeaNeighbor(x, y int) bool {
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			if dx == 0 && dy == 0 {
+				continue
+			}
+			if ezfyTerrain(x+dx, y+dy) == 8 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ezfyIsCoastalPlainAt 该坐标是否沿海平原
+func ezfyIsCoastalPlainAt(x, y int) bool {
+	return ezfyTerrain(x, y) == 1 && ezfyHasSeaNeighbor(x, y)
+}
+
+// ezfyTerrainEx 实际地形：平原且靠海 → 沿海平原(9)，其余同 ezfyTerrain
+//
+// ★ 只用于「展示 + 建城选址 + 海城判定」；
+//
+//	依赖原版 8 种地形的玩法逻辑（珠宝按地形、野地产出）继续用 ezfyTerrain。
+func ezfyTerrainEx(x, y int) int {
+	if ezfyIsCoastalPlainAt(x, y) {
+		return ezfyTerrainCoastalPlain
+	}
+	return ezfyTerrain(x, y)
+}
+
 // ezfyTerrainNames 地形名（复刻原版 MapController.TERRAIN_NAMES，索引即地形 id）
-// 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7山地 8海洋
-var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "山地", "海洋"}
+// 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7山地 8海洋 9沿海平原(本项目扩展)
+var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "山地", "海洋", "沿海平原"}
 
 // ezfyTerrainName 地形 id → 中文名
 func ezfyTerrainName(t int) string {
@@ -103,6 +144,81 @@ func ezfyTerrainName(t int) string {
 		return "未知"
 	}
 	return ezfyTerrainNames[t]
+}
+
+// ezfyTerrainNameEx 按坐标取实际地形名（含沿海平原）
+func ezfyTerrainNameEx(x, y int) string {
+	return ezfyTerrainName(ezfyTerrainEx(x, y))
+}
+
+// ============ 一次性数据迁移：旧版海城 → 沿海平原 ============
+
+var ezfySeaMigrateOnce sync.Once
+
+// ezfyMigrateSeaCities 把建在「海洋」上的旧海城搬到最近的「沿海平原」格。
+//
+// 背景：旧版把海城定义成「建在海洋地形上」，现在按用户规则改成「只能建在沿海平原上」。
+// 幂等：迁完后不再有城市落在海洋地形，后续启动是空操作。
+func ezfyMigrateSeaCities(db *gorm.DB) {
+	var cities []model.EzfyCity
+	db.Find(&cities)
+	moved := 0
+	for _, ct := range cities {
+		if ezfyTerrain(ct.X, ct.Y) != 8 {
+			continue
+		}
+		pos, ok := ezfyNearestCoastalPlain(db, ct.X, ct.Y)
+		if !ok {
+			log.Printf("ezfy 海城迁移: 城%d (%d,%d) 附近找不到沿海平原，跳过", ct.ID, ct.X, ct.Y)
+			continue
+		}
+		oldX, oldY := ct.X, ct.Y
+		updates := map[string]interface{}{"x": pos[0], "y": pos[1]}
+		// 自动命名的「新城X,Y」跟着新坐标走（玩家自己改过的名字不动）
+		if ct.Name == fmt.Sprintf("新城%d,%d", oldX, oldY) {
+			updates["name"] = fmt.Sprintf("新城%d,%d", pos[0], pos[1])
+		}
+		if err := db.Model(&model.EzfyCity{}).Where("id = ?", ct.ID).
+			Updates(updates).Error; err != nil {
+			log.Printf("ezfy 海城迁移失败 城%d: %v", ct.ID, err)
+			continue
+		}
+		// 清掉旧坐标上的「玩家城」地图区域记录（新坐标由后续逻辑重建）
+		db.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
+		log.Printf("ezfy 海城迁移: 城%d「%s」(%d,%d) → (%d,%d) 沿海平原", ct.ID, ct.Name, oldX, oldY, pos[0], pos[1])
+		moved++
+	}
+	if moved > 0 {
+		log.Printf("ezfy 海城迁移完成，共 %d 座", moved)
+	}
+}
+
+// ezfyNearestCoastalPlain 从 (x,y) 向外螺旋找最近的、无城市的沿海平原格
+func ezfyNearestCoastalPlain(db *gorm.DB, x, y int) ([2]int, bool) {
+	for r := 1; r <= 40; r++ {
+		for dx := -r; dx <= r; dx++ {
+			for dy := -r; dy <= r; dy++ {
+				// 只走外圈
+				if ezfyAbs(dx) != r && ezfyAbs(dy) != r {
+					continue
+				}
+				nx, ny := x+dx, y+dy
+				if nx < 0 || ny < 0 || nx > 499 || ny > 499 {
+					continue
+				}
+				if !ezfyIsCoastalPlainAt(nx, ny) {
+					continue
+				}
+				var n int64
+				db.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", nx, ny).Count(&n)
+				if n > 0 {
+					continue
+				}
+				return [2]int{nx, ny}, true
+			}
+		}
+	}
+	return [2]int{}, false
 }
 
 func ezfyWildlandLevel(x, y int) int {

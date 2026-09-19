@@ -585,6 +585,14 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
 				ezfyG.GET("/liaison", ezfyH.Liaison)
 				ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
+				// 搜索玩家（按游戏ID / 家园号码 / 昵称）
+				ezfyG.GET("/player-search", ezfyH.PlayerSearch)
+				// 统帅页自助：改昵称（首次免费/改名卡）、改阵营（首次免费/阵营转换道具）
+				ezfyG.GET("/profile/self", ezfyH.ProfileSelfInfo)
+				ezfyG.POST("/profile/rename", ezfyH.ProfileRename)
+				ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
+				// 军校：直接用招生简章刷新（不用跳背包）
+				ezfyG.POST("/acade/recruit/ticket", ezfyH.RecruitUseTicket)
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)
@@ -1080,6 +1088,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedCreate)
 				admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedUpdate)
 				admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedDelete)
+
+				// ---- 军校免费刷新次数维护 ----
+				admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitGet)
+				admin.POST("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitSet)
+				admin.GET("/ezfy-recruit-limit-users", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitList)
+				admin.PUT("/ezfy-recruit-limit-users/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitSetUser)
+				admin.POST("/ezfy-recruit-limit-users/:id/reset", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitReset)
 
 				// ---- 资源管理 ----
 				admin.GET("/ezfy-resources", perm(db, "module:ezfyResources"), adminH.AdminEzfyResources)

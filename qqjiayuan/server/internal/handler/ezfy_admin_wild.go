@@ -237,7 +237,7 @@ func (h *AdminHandler) ezfyWildlandRow(w model.EzfyWildland) gin.H {
 		"created_at": w.CreatedAt, "updated_at": w.UpdatedAt,
 		"city_name": cityName, "owner_name": owner, "home_num": home,
 		"terrain":      ezfyTerrain(w.X, w.Y),
-		"terrain_name": ezfyTerrainName(ezfyTerrain(w.X, w.Y)),
+		"terrain_name": ezfyTerrainNameEx(w.X, w.Y),
 		"has_cfg":      hasCfg,
 	}
 	if hasCfg {

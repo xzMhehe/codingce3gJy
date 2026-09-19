@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,12 +29,22 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var u model.User
-	if err := h.DB.First(&u, tid).Error; err != nil {
-		resp.NotFound(c, "这位统帅不存在")
-		return
-	}
+	// ★ id 既接受家园 user_id，也接受「游戏ID」（首次=家园ID，之后可能独立变化）
 	target := uint(tid)
+	var u model.User
+	if err := h.DB.First(&u, target).Error; err != nil {
+		var gp model.EzfyProfile
+		if e2 := h.DB.Where("game_uid = ?", int64(tid)).First(&gp).Error; e2 == nil {
+			target = gp.UserID
+			if e3 := h.DB.First(&u, target).Error; e3 != nil {
+				resp.NotFound(c, "这位统帅不存在")
+				return
+			}
+		} else {
+			resp.NotFound(c, "这位统帅不存在")
+			return
+		}
+	}
 
 	// 档案：只读，不存在就按默认值展示（不给别人凭空建档案）
 	var p model.EzfyProfile
@@ -77,8 +88,10 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	}
 
 	resp.OK(c, gin.H{
-		"user_id": target, "account": strconv.FormatUint(tid, 10),
-		"name": u.Nickname, "nickname": nickname, "color": u.Color,
+		"user_id": target, "account": u.Username,
+		"game_uid": p.GameUID,
+		"home_num": u.Username,
+		"name":     u.Nickname, "nickname": nickname, "color": u.Color,
 		"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
 		"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige), "rank_post": ezfyRankPost(p.Prestige),
 		"corps_name":    corpsName,
@@ -90,4 +103,47 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"is_friend":     isFriend,
 		"is_applied":    isApplied,
 	})
+}
+
+// PlayerSearch 搜索玩家（★ 优先按「游戏ID」，也支持家园号码与昵称）
+//
+// GET /games/ezfy/player-search?keyword=xxx
+func (h *EzfyHandler) PlayerSearch(c *gin.Context) {
+	kw := strings.TrimSpace(c.Query("keyword"))
+	if kw == "" {
+		resp.OK(c, gin.H{"list": []gin.H{}})
+		return
+	}
+	var profs []model.EzfyProfile
+	// 纯数字：游戏ID / 家园号码 精确命中；否则按游戏内昵称模糊
+	if n, err := strconv.ParseInt(kw, 10, 64); err == nil {
+		h.DB.Where("game_uid = ?", n).Limit(20).Find(&profs)
+		if len(profs) == 0 {
+			// 家园号码（users.username）兜底
+			var uids []uint
+			h.DB.Model(&model.User{}).Select("id").Where("username = ?", kw).Scan(&uids)
+			if len(uids) > 0 {
+				h.DB.Where("user_id IN ?", uids).Limit(20).Find(&profs)
+			}
+		}
+	} else {
+		h.DB.Where("nickname LIKE ?", "%"+kw+"%").Limit(20).Find(&profs)
+	}
+
+	out := make([]gin.H, 0, len(profs))
+	for _, p := range profs {
+		var u model.User
+		h.DB.Select("username, nickname").First(&u, p.UserID)
+		nick := p.Nickname
+		if nick == "" {
+			nick = u.Nickname
+		}
+		out = append(out, gin.H{
+			"user_id": p.UserID, "game_uid": p.GameUID,
+			"home_num": u.Username, "nickname": nick,
+			"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
+			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige),
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
 }

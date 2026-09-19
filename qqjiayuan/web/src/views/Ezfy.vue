@@ -217,7 +217,7 @@
           <div class="panel-title">发私信</div>
           <div class="old-line">
             收件人:
-            <input v-model="pmTo" placeholder="家园号码或昵称" style="width:150px" list="ezfyPmCands"/>
+            <input v-model="pmTo" placeholder="游戏ID / 家园号码 / 昵称" style="width:170px" list="ezfyPmCands"/>
             <datalist id="ezfyPmCands">
               <option v-for="f in pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
             </datalist>
@@ -318,7 +318,7 @@
         <div class="panel">
           <div class="panel-title">搜索玩家(按家园号码或昵称)</div>
           <div class="old-line">
-            <input v-model="friendKeyword" placeholder="输入家园号码或昵称" style="width:150px"/>
+            <input v-model="friendKeyword" placeholder="输入游戏ID / 家园号码 / 昵称" style="width:170px"/>
             <button @click="doFriendSearch">[搜索]</button>
           </div>
           <table v-if="friendSearchDone">
@@ -393,7 +393,7 @@
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
-          <div class="gray" style="font-size:12px">
+          <div class="gray" style="font-size:13px">
             <b>平原</b> → 陆地城市; <b>海洋</b> → 海城(可建航海协会、训练海军)。<br/>
             其他地形不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
@@ -1310,6 +1310,8 @@
             <a href="javascript:;" @click="go('citymove')">[地图搬迁]</a>
             <a href="javascript:;" @click="go('rename')">[城市更名]</a>
             <a href="javascript:;" @click="go('cities')">[城市列表/迁建]</a>
+          </div>
+          <div class="old-line">
             <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
             <a href="javascript:;" @click="go('wilds')">[占领野地]</a>
             <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
@@ -1516,7 +1518,7 @@
         <div class="panel" v-if="!myCorps">
           <div class="panel-title">创建军团</div>
           <div class="old-line">
-            军团名: <input v-model="corpsName" style="width:50%"/>
+            军团名: <input v-model="corpsName" style="width:10%"/>
             <button @click="doCreateCorps">[创建]</button>
           </div>
         </div>
@@ -1821,9 +1823,24 @@
             <a href="javascript:;" @click="go('defence')">城防</a> ·
             个人
           </div>
-          账号：{{ userBrief.account }}<br/>
-          昵称：{{ profile.nickname }}<br/>
-          阵营：{{ profile.camp === 2 ? '轴心国' : '同盟国' }}<br/>
+          <!-- ★ 游戏ID 与 家园ID(家园号码) 分开展示：游戏ID 不随家园号码变化 -->
+          游戏ID：{{ selfInfo.game_uid || profile.game_uid || userBrief.game_uid || '—' }}<br/>
+          家园ID(家园号码)：{{ selfInfo.home_num || userBrief.account || '—' }}<br/>
+          昵称：{{ selfInfo.nickname || profile.nickname }}
+          <template v-if="!renameEditing">
+            <a href="javascript:;" @click="startRename">[修改昵称]</a>
+          </template>
+          <template v-else>
+            <br/>
+            <input v-model="renameInput" maxlength="12" placeholder="2~12 个字符" style="width:130px"/>
+            <button @click="doRename">确定</button>
+            <a href="javascript:;" @click="renameEditing = false">[取消]</a>
+          </template>
+          <div class="gray" style="font-size:13px">{{ renameHint }}</div>
+          阵营：{{ selfInfo.camp_name || (profile.camp === 2 ? '轴心国' : '同盟国') }}
+          <a href="javascript:;" @click="doChangeCamp(1)">[转同盟国]</a>
+          <a href="javascript:;" @click="doChangeCamp(2)">[转轴心国]</a>
+          <div class="gray" style="font-size:13px">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
           军衔：{{ rankName }}({{ rankPost }})<br/>
           城市数：{{ cities.length }}<br/>
@@ -1934,6 +1951,9 @@
               今日刷新:{{ recruitData.refresh_left }}/{{ recruitData.refresh_limit }}次
             </span>
             <a href="javascript:;" @click="doRefreshRecruit">[刷新]</a>
+            <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
+            <a href="javascript:;" @click="doUseRecruitTicket">[使用招生简章刷新]</a>
+            <span class="gray">(持有 {{ bagCount(13) }} 张)</span>
           </div>
           <div class="old-line">
             军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
@@ -2195,11 +2215,27 @@
         </div>
       </template>
 
-      <!-- 底部返回(非首页) -->
-      <template v-if="cur !== 'home'">
-        <br/>
-        <div class="bottom-nav"><a href="javascript:;" @click="go('home')">[返回游戏]</a></div>
-      </template>
+      <!-- 底部导航(每页都有, 复刻原版 cityHome.html 的 8+7 两行) -->
+      <br/>
+      <div class="old-line ezfy-bottom-nav">
+        <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>
+        <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>
+        <a href="javascript:;" :class="{ on: cur === 'map' }" @click="go('map')">地图</a>
+        <a href="javascript:;" :class="{ on: cur === 'corps' }" @click="go('corps')">军团</a>
+        <a href="javascript:;" :class="{ on: cur === 'rank' }" @click="go('rank')">排行</a>
+        <a href="javascript:;" :class="{ on: cur === 'bag' }" @click="go('bag')">背包</a>
+        <a href="javascript:;" :class="{ on: cur === 'mall' }" @click="go('mall')">商城</a>
+        <a href="javascript:;" :class="{ on: cur === 'acade' }" @click="goTreasure()">宝物</a>
+      </div>
+      <div class="old-line ezfy-bottom-nav">
+        <a href="javascript:;" :class="{ on: cur === 'activity' }" @click="go('activity')">活动</a>
+        <a href="javascript:;" :class="{ on: cur === 'welfare' }" @click="go('welfare')">福利</a>
+        <a href="javascript:;" :class="{ on: cur === 'notices' }" @click="go('notices')">公告</a>
+        <a href="javascript:;" :class="{ on: cur === 'exchange' }" @click="go('exchange')">交易</a>
+        <a href="javascript:;" :class="{ on: cur === 'liaison' }" @click="go('liaison')">联络</a>
+        <a href="javascript:;" :class="{ on: cur === 'cityhall' }" @click="go('cityhall')">市政</a>
+        <a href="javascript:;" :class="{ on: cur === 'chat' }" @click="go('chat')">聊天</a>
+      </div>
     </div>
   </div>
 </template>
@@ -2343,6 +2379,8 @@ export default {
       trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
       troopViewId: 0,     // 兵种详情页当前兵种 id
       troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
+      // 统帅页自助（游戏ID/家园号码、改昵称、改阵营）
+      selfInfo: {}, renameEditing: false, renameInput: '',
       playerInfo: null,        // 他人统帅信息(复刻 infoOther)
       playerInfoBack: 'chat',  // 他人统帅页 [返回] 回到哪一页
       corpsMailContent: '',    // 军团邮件群发内容
@@ -2399,6 +2437,20 @@ export default {
     }
   },
   computed: {
+    // 改名提示：首次免费 / 之后消耗改名卡
+    renameHint () {
+      const d = this.selfInfo || {}
+      if (!d.game_uid && !d.nickname) return '首次改名免费'
+      if (d.rename_free) return '首次改名免费'
+      return '首次免费已用掉，再次改名需消耗「改名卡」×1（当前持有 ' + (d.rename_card_count || 0) + ' 张）'
+    },
+    // 阵营提示：首次免费 / 之后消耗阵营转换道具
+    campHint () {
+      const d = this.selfInfo || {}
+      if (!d.game_uid && !d.nickname) return '首次转换阵营免费'
+      if (d.camp_free) return '首次转换阵营免费'
+      return '首次免费已用掉，再次转换需消耗「阵营转换道具」×1（当前持有 ' + (d.camp_item_count || 0) + ' 个）'
+    },
     nick () {
       return this.$store.state.user ? this.$store.state.user.nickname : ''
     },
@@ -2616,6 +2668,57 @@ export default {
     notOpen (what) {
       alert(what + '暂未开放, 敬请期待')
     },
+    // ---- 统帅页自助 ----
+    loadSelfInfo () {
+      return api.get('/games/ezfy/profile/self').then(r => {
+        if (r.code === 0) {
+          this.selfInfo = r.data
+          this.renameInput = r.data.nickname || ''
+        }
+      }).catch(() => {})
+    },
+    startRename () {
+      this.renameInput = this.selfInfo.nickname || this.profile.nickname || ''
+      this.renameEditing = true
+    },
+    doRename () {
+      const name = String(this.renameInput || '').trim()
+      if (name.length < 2 || name.length > 12) { alert('昵称长度需在 2~12 个字符之间'); return }
+      const free = this.selfInfo.rename_free
+      const tip = free ? '确认改名为「' + name + '」吗？（首次免费）'
+        : '确认改名为「' + name + '」吗？将消耗「改名卡」×1（当前 ' +
+          (this.selfInfo.rename_card_count || 0) + ' 张）'
+      if (!confirm(tip)) return
+      api.post('/games/ezfy/profile/rename', { nickname: name }).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.renameEditing = false
+          this.loadSelfInfo()
+          this.load()
+        } else alert(r.msg)
+      })
+    },
+    doChangeCamp (camp) {
+      const cur = this.selfInfo.camp || this.profile.camp
+      if (cur === camp) { alert('当前已经是「' + (camp === 2 ? '轴心国' : '同盟国') + '」'); return }
+      const free = this.selfInfo.camp_free
+      const tip = free ? '确认转换为「' + (camp === 2 ? '轴心国' : '同盟国') + '」吗？（首次免费）'
+        : '确认转换为「' + (camp === 2 ? '轴心国' : '同盟国') + '」吗？将消耗「阵营转换道具」×1（当前 ' +
+          (this.selfInfo.camp_item_count || 0) + ' 个）'
+      if (!confirm(tip)) return
+      api.post('/games/ezfy/profile/camp', { camp: camp }).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.loadSelfInfo()
+          this.load()
+        } else alert(r.msg)
+      })
+    },
+    // 宝物：原版 /ezfy/acadeIndex，本项目对应「学院 → 装备」页（我的装备 + 装备图鉴）
+    goTreasure () {
+      this.cur = 'acade'
+      this.switchAcade('equip')
+    },
     go (t) {
       if (t.indexOf('res/') === 0) {
         this.resType = t.slice(4)
@@ -2650,6 +2753,7 @@ export default {
       else if (t === 'citymove') this.loadMoveInfo()
       else if (t === 'sourceset') this.loadProduce()
       else if (t === 'activity') this.loadActivity()
+      else if (t === 'info') this.loadSelfInfo()
       else if (t === 'factory') this.loadTroops()
     },
     // 节日活动
@@ -2803,14 +2907,38 @@ export default {
     // ---- 好友搜索/添加(复刻 addToFriend) ----
     doFriendSearch () {
       const kw = (this.friendKeyword || '').trim()
-      if (!kw) { alert('请输入家园号码或昵称'); return }
-      api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r => {
-        if (r.code === 0) {
-          this.friendSearchList = r.data.list || []
+      if (!kw) { alert('请输入游戏ID / 家园号码 / 昵称'); return }
+      // ★ 先走游戏内搜索（支持「游戏ID」，不随家园号码变化）；
+      //   命中不到再回落到家园的 /friends/search（家园号码/昵称）
+      api.get('/games/ezfy/player-search?keyword=' + encodeURIComponent(kw)).then(r => {
+        const list = (r.code === 0 && r.data && r.data.list) || []
+        if (list.length) {
+          // 统一成好友列表要用的字段（id 用 user_id，家园接口返回的也是 id）
+          this.friendSearchList = list.map(x => ({
+            id: x.user_id,
+            nickname: x.nickname,
+            account: x.home_num,
+            game_uid: x.game_uid,
+            is_friend: false
+          }))
           this.friendSearchDone = true
-        } else {
-          alert(r.msg || '搜索失败')
+          return
         }
+        api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r2 => {
+          if (r2.code === 0) {
+            this.friendSearchList = r2.data.list || []
+            this.friendSearchDone = true
+          } else {
+            alert(r2.msg || '搜索失败')
+          }
+        })
+      }).catch(() => {
+        api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r2 => {
+          if (r2.code === 0) {
+            this.friendSearchList = r2.data.list || []
+            this.friendSearchDone = true
+          } else alert(r2.msg || '搜索失败')
+        })
       })
     },
     doAddFriend (u) {
@@ -3172,8 +3300,12 @@ export default {
     doSwitch (ct) {
       api.post('/games/ezfy/city/switch', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
+          // ★ 后端已把「当前城市」落库，这里必须整体重载，否则各页仍显示旧城数据
           this.load()
+          this.loadTroops()
+          this.loadTechs()
           this.cur = 'home'
+          if (r.data && r.data.msg) this.alert(r.data)
         } else alert(r.msg)
       })
     },
@@ -3763,6 +3895,24 @@ export default {
         if (r.code === 0) this.officerDetail = r.data
       })
     },
+    // 军校直接使用招生简章刷新（不占每日次数；不用跳背包）
+    doUseRecruitTicket () {
+      if (!this.recruitData.academy_level) { alert('需要先建造军校'); return }
+      if (this.bagCount(13) <= 0) { alert('没有「招生简章」，可到商城购买'); return }
+      if (!confirm('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每日次数）')) return
+      api.post('/games/ezfy/acade/recruit/ticket', {}).then(r => {
+        if (r.code === 0) {
+          alert(r.data.msg)
+          this.loadAcade()
+          this.loadBag()
+        } else alert(r.msg)
+      })
+    },
+    // 背包里某道具的数量
+    bagCount (cfgId) {
+      const it = (this.bagItems || []).find(x => x.cfg_id === cfgId)
+      return it ? it.count : 0
+    },
     doRefreshRecruit () {
       api.post('/games/ezfy/acade/recruit/refresh', {}).then(r => {
         if (r.code !== 0) alert(r.msg || '刷新失败')
@@ -3897,8 +4047,24 @@ body.ezfy-immersive { margin: 0; }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
 .ezfy-page .ezfy-subnav a {
   display: inline-block;
-  padding: 1px 3px;
-  font-size: 14px;
+  padding: 2px 4px;
+  font-size: 15px;
+}
+/* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
+.ezfy-page .ezfy-bottom-nav {
+  padding: 2px 0;
+  font-size: 15px;
+  line-height: 1.9;
+}
+.ezfy-page .ezfy-bottom-nav a {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  color: #2f4156;
+}
+.ezfy-page .ezfy-bottom-nav a.on {
+  font-weight: bold;
+  color: #c0392b;
 }
 /* 顶部导航里的「家园」——游戏内唯一的出口, 稍微标一下 */
 .ezfy-page .top-nav a.ezfy-exit {
@@ -4053,15 +4219,18 @@ body.ezfy-immersive { margin: 0; }
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
    实测基准: iPhone SE 320、常见安卓 360/390。 */
 @media (max-width: 420px) {
-  .ezfy-page table { font-size: 12px; }
+  /* ★ 用户反馈「有些页面字体太小」→ 整体上调一档(表格 13、正文 14、标题 15) */
+  .ezfy-page table { font-size: 13px; }
   .ezfy-page table th,
-  .ezfy-page table td { padding: 3px 3px; }
-  .ezfy-page .old-line { font-size: 13px; line-height: 1.65; }
-  .ezfy-page .panel-title { font-size: 14px; }
-  .ezfy-page .acade-tab { font-size: 13px; }
-  /* 地图格子: 字号跟正文一致(13px), 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
-  .ezfy-page .ezfy-map-table a { font-size: 13px; }
-  .ezfy-page .ezfy-map-table { border-spacing: 5px 2px; }
+  .ezfy-page table td { padding: 4px 4px; }
+  .ezfy-page .old-line { font-size: 14px; line-height: 1.7; }
+  .ezfy-page .panel-title { font-size: 15px; }
+  .ezfy-page .acade-tab { font-size: 14px; }
+  .ezfy-page .ezfy-subnav a { font-size: 15px; }
+  .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
+  /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
+  .ezfy-page .ezfy-map-table a { font-size: 14px; }
+  .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */

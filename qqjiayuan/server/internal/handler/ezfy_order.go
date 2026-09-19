@@ -88,7 +88,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 	cells := []gin.H{}
 	for y := cy - r; y <= cy+r; y++ {
 		for x := cx - r; x <= cx+r; x++ {
-			terrain := ezfyTerrain(x, y)
+			// ★ 用 Ex 地形：平原且靠海显示为「沿海平原」(9)；海洋仍是 8
+			terrain := ezfyTerrainEx(x, y)
 			cell := gin.H{"x": x, "y": y, "terrain": terrain,
 				"terrain_name": ezfyTerrainName(terrain), "continent": ""}
 			if x == cx && y == cy {
@@ -236,7 +237,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
 		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrain(x, y),
-		"terrain_name": ezfyTerrainName(ezfyTerrain(x, y)),
+		"terrain_name": ezfyTerrainNameEx(x, y),
 		"continent":    ezfyContinentName(x, y),
 		"jewel":        jewelName,
 		"owner":        owner,

@@ -170,11 +170,26 @@ func (EzfyCfgTask) TableName() string { return "ezfy_cfg_task" }
 
 // EzfyProfile 玩家游戏档案（替代 Java 版挂在 user 表上的声望/阵营字段，保持 ezfy_ 前缀约束）
 type EzfyProfile struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"uniqueIndex" json:"user_id"`
-	Nickname  string    `gorm:"type:varchar(20)" json:"nickname"`
-	Prestige  int       `gorm:"default:0" json:"prestige"` // 军功声望
-	Camp      int       `gorm:"default:1" json:"camp"`     // 1同盟国 2轴心国
+	ID       uint   `gorm:"primaryKey" json:"id"`
+	UserID   uint   `gorm:"uniqueIndex" json:"user_id"`
+	Nickname string `gorm:"type:varchar(20)" json:"nickname"`
+	Prestige int    `gorm:"default:0" json:"prestige"` // 军功声望
+	Camp     int    `gorm:"default:1" json:"camp"`     // 1同盟国 2轴心国
+
+	// ★ 游戏ID：与家园ID 解耦，**首次 = 家园ID，之后永不随家园ID变化**
+	//   游戏内所有业务交互都以它为准（为「游戏单独运行」预留）。
+	GameUID int64 `gorm:"index" json:"game_uid"`
+
+	// 当前操作的城市（分城切换用；0/无效时回落到 id 最小的主城）
+	CurrentCityId int64 `json:"current_city_id"`
+
+	// 首次免费次数是否已用掉（0=还能免费一次，1=已用过，之后要消耗道具）
+	RenameUsed int `json:"rename_used"` // 改昵称
+	CampUsed   int `json:"camp_used"`   // 改阵营
+
+	// 军校每日免费刷新次数覆盖（0 = 跟随全局默认，管理端可单独调整）
+	RecruitFreeLimit int `json:"recruit_free_limit"`
+
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

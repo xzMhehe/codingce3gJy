@@ -746,7 +746,7 @@ func ezfyOrderStatusName(s int) string {
 func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
 	switch o.TargetType {
 	case 1: // 野地(含海野): 地形名 + 等级
-		return ezfyTerrainName(ezfyTerrain(o.TargetX, o.TargetY)) +
+		return ezfyTerrainNameEx(o.TargetX, o.TargetY) +
 			"(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
 	case 2: // 寇城
 		return "寇城(" + strconv.Itoa(ezfyKouLevel(o.TargetX, o.TargetY)) + ")"

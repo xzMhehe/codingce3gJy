@@ -130,6 +130,17 @@ func Run(db *gorm.DB, staticDir string) {
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
 	}
+	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
+	// ★ 游戏ID 之后永不随家园ID/家园号码变化，游戏内业务一律以它为准。
+	if db.Migrator().HasTable("ezfy_profile") {
+		db.Exec("UPDATE ezfy_profile SET game_uid = user_id WHERE game_uid = 0 OR game_uid IS NULL")
+		// AutoMigrate 新加的列在老行里是 NULL，扫描进 int 会出错，这里统一回填 0
+		db.Exec("UPDATE ezfy_profile SET rename_used = 0 WHERE rename_used IS NULL")
+		db.Exec("UPDATE ezfy_profile SET camp_used = 0 WHERE camp_used IS NULL")
+		db.Exec("UPDATE ezfy_profile SET current_city_id = 0 WHERE current_city_id IS NULL")
+		db.Exec("UPDATE ezfy_profile SET recruit_free_limit = 0 WHERE recruit_free_limit IS NULL")
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")

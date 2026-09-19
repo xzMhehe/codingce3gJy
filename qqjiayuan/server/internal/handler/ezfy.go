@@ -50,6 +50,8 @@ type EzfyHandler struct{ DB *gorm.DB }
 
 func (h *EzfyHandler) cfgs() {
 	ezfyCfg.load(h.DB)
+	// 一次性迁移：旧版「建在海洋上」的海城 → 沿海平原（幂等，进程内只跑一次）
+	ezfySeaMigrateOnce.Do(func() { ezfyMigrateSeaCities(h.DB) })
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
@@ -64,6 +66,11 @@ func (h *EzfyHandler) cfgsReload() {
 func (h *EzfyHandler) ensureProfile(uid uint) model.EzfyProfile {
 	var p model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil {
+		// 老数据补游戏ID（首次 = 家园ID）
+		if p.GameUID == 0 {
+			p.GameUID = int64(uid)
+			h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("game_uid", p.GameUID)
+		}
 		return p
 	}
 	var u model.User
@@ -71,9 +78,35 @@ func (h *EzfyHandler) ensureProfile(uid uint) model.EzfyProfile {
 	if err := h.DB.Select("nickname").First(&u, uid).Error; err == nil {
 		nickname = u.Nickname
 	}
-	p = model.EzfyProfile{UserID: uid, Nickname: nickname, Prestige: 0, Camp: 1}
+	// ★ 游戏ID 首次 = 家园ID，之后永不随家园ID变化
+	p = model.EzfyProfile{UserID: uid, GameUID: int64(uid), Nickname: nickname, Prestige: 0, Camp: 1}
 	h.DB.Create(&p)
 	return p
+}
+
+// currentCity 当前操作的城市：优先 profile.current_city_id，无效时回落 id 最小的主城
+func (h *EzfyHandler) currentCity(uid uint) model.EzfyCity {
+	var p model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.CurrentCityId > 0 {
+		var city model.EzfyCity
+		if err := h.DB.Where("id = ? AND user_id = ?", p.CurrentCityId, uid).First(&city).Error; err == nil {
+			return city
+		}
+	}
+	var city model.EzfyCity
+	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err == nil {
+		return city
+	}
+	return h.createMainCity(uid)
+}
+
+// mainCity 主城（id 最小，建城扣费/城市列表基准用，不受切换影响）
+func (h *EzfyHandler) mainCity(uid uint) model.EzfyCity {
+	var city model.EzfyCity
+	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err == nil {
+		return city
+	}
+	return h.createMainCity(uid)
 }
 
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
@@ -90,13 +123,10 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 }
 
 // getOrCreateCity 懒创建主城（随机平原空位，初始建筑 市政厅/民居/农田 各1级）
-func (h *EzfyHandler) getOrCreateCity(uid uint) model.EzfyCity {
-	var city model.EzfyCity
-	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err == nil {
-		return city
-	}
+// createMainCity 建主城（首次进游戏）
+func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
 	pos := h.findFreePos()
-	city = model.EzfyCity{
+	city := model.EzfyCity{
 		UserID: uid, Name: "新城市",
 		Feelings: 80, Grievance: 0, TaxRate: 20,
 		Pop: 0, PopMax: 100,
@@ -110,7 +140,15 @@ func (h *EzfyHandler) getOrCreateCity(uid uint) model.EzfyCity {
 	h.initBuilding(city.ID, 1, 1)
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
+	// 当前城市指向主城
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+		Update("current_city_id", int64(city.ID))
 	return city
+}
+
+// getOrCreateCity 当前操作的城市（分城切换后即切到那座城）
+func (h *EzfyHandler) getOrCreateCity(uid uint) model.EzfyCity {
+	return h.currentCity(uid)
 }
 
 func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
@@ -119,10 +157,12 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 }
 
 func (h *EzfyHandler) findFreePos() [2]int {
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 200; i++ {
 		x := 50 + rand.Intn(400)
 		y := 50 + rand.Intn(400)
-		if ezfyTerrain(x, y) == 8 {
+		// 只在「平原 / 沿海平原」上落点（与建城规则一致）
+		t := ezfyTerrainEx(x, y)
+		if t != 1 && t != ezfyTerrainCoastalPlain {
 			continue
 		}
 		var n int64
@@ -238,24 +278,28 @@ func (h *EzfyHandler) wildlandList(cityId uint) []model.EzfyWildland {
 	return list
 }
 
-// isSeaCity 是否海城(城市本身建在海洋地形上)
-// 复刻用户规则: 海城才能训练海军; 陆地城市不能训练海军
+// isSeaCity 是否海城
+//
+// ★ 用户规则：海城不是建在「海洋」上，而是建在「沿海平原」上（见 ezfy_geo.go）。
+// 只有海城能训练海军、建航海协会。
 func (h *EzfyHandler) isSeaCity(city *model.EzfyCity) bool {
+	return ezfyTerrainEx(city.X, city.Y) == ezfyTerrainCoastalPlain
+}
+
+// isCoastalCity 是否沿海（自己或邻域靠海，航海协会用）
+func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
+	if ezfyHasSeaNeighbor(city.X, city.Y) {
+		return true
+	}
 	return ezfyTerrain(city.X, city.Y) == 8
 }
 
-func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
-	for dx := -1; dx <= 1; dx++ {
-		for dy := -1; dy <= 1; dy++ {
-			if dx == 0 && dy == 0 {
-				continue
-			}
-			if ezfyTerrain(city.X+dx, city.Y+dy) == 8 {
-				return true
-			}
-		}
+// cityKind 城市类型文案
+func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
+	if h.isSeaCity(city) {
+		return "海城"
 	}
-	return false
+	return "陆地城市"
 }
 
 // ============ 懒结算五连（复刻 GameServiceImpl checkBuildingDone/collectTrainQueue/calcResource/processOrders） ============
@@ -1572,7 +1616,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
-			"wild_type": w.WildType, "terrain_name": ezfyTerrainName(ezfyTerrain(w.X, w.Y))})
+			"wild_type": w.WildType, "terrain_name": ezfyTerrainNameEx(w.X, w.Y)})
 	}
 
 	var marching, occupying int64
@@ -1594,20 +1638,27 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"city":          city,
 		"continent":     ezfyContinentName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
-		"is_sea":         h.isSeaCity(&city),
-		"city_kind":      map[bool]string{true: "海城", false: "陆地城市"}[h.isSeaCity(&city)],
-		"protected":      h.hasCityEffect(city.ID, 2),
-		"boost":          h.hasCityEffect(city.ID, 1),
-		"buildings":      buildingViews,
-		"building_pool":  buildingPool,
-		"troops":         troopViews,
-		"wounded":        wounded,
-		"queues":         queues,
-		"techs":          techViews,
-		"wildlands":      wildViews,
-		"marching":       marching,
-		"occupying":      occupying,
-		"unread_reports": unreadReports,
+		"is_sea":       h.isSeaCity(&city),
+		"city_kind":    h.cityKind(&city),
+		"terrain":      ezfyTerrainEx(city.X, city.Y),
+		"terrain_name": ezfyTerrainNameEx(city.X, city.Y),
+		"is_coastal":   h.isCoastalCity(&city),
+		// ★ 游戏ID（不随家园ID变化）与家园号码（转靓号后跟着变）
+		"game_uid":        profile.GameUID,
+		"home_num":        acct,
+		"current_city_id": city.ID,
+		"protected":       h.hasCityEffect(city.ID, 2),
+		"boost":           h.hasCityEffect(city.ID, 1),
+		"buildings":       buildingViews,
+		"building_pool":   buildingPool,
+		"troops":          troopViews,
+		"wounded":         wounded,
+		"queues":          queues,
+		"techs":           techViews,
+		"wildlands":       wildViews,
+		"marching":        marching,
+		"occupying":       occupying,
+		"unread_reports":  unreadReports,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),
 	})
@@ -1702,6 +1753,7 @@ func (h *EzfyHandler) CityList(c *gin.Context) {
 }
 
 // SwitchCity 切换城市
+// SwitchCity 切换当前操作的城市（★ 必须落库，否则下次请求又回落到主城 —— 这就是「分城切不过去」的根因）
 func (h *EzfyHandler) SwitchCity(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1711,14 +1763,21 @@ func (h *EzfyHandler) SwitchCity(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	if h.cityOf(uid, req.CityId) == nil {
+	ct := h.cityOf(uid, req.CityId)
+	if ct == nil {
 		resp.ParamError(c, "城市不存在或已被占领")
 		return
 	}
-	resp.OK(c, gin.H{"msg": "ok"})
+	h.ensureProfile(uid)
+	if err := h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+		Update("current_city_id", int64(ct.ID)).Error; err != nil {
+		resp.ParamError(c, "切换失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "已切换到「" + ct.Name + "」", "city_id": ct.ID})
 }
 
-// CreateCity 平原新建分城
+// CreateCity 新建分城（平原 → 陆地城市；沿海平原 → 海城）
 func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1730,20 +1789,21 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		return
 	}
 	h.cfgs()
-	// 平原 → 陆地城市; 海洋 → 海城(可建海城建筑、训练海军)
-	terr := ezfyTerrain(req.X, req.Y)
-	if terr != 1 && terr != 8 {
-		resp.ParamError(c, "只能在平原或海洋上建造新城")
+	// ★ 用户规则：只能建在「平原」或「沿海平原」上；海城只能建在沿海平原
+	terr := ezfyTerrainEx(req.X, req.Y)
+	if terr != 1 && terr != ezfyTerrainCoastalPlain {
+		resp.ParamError(c, "只能在平原或沿海平原上建造新城（海城需要沿海平原）")
 		return
 	}
-	isSea := terr == 8
+	isSea := terr == ezfyTerrainCoastalPlain
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", req.X, req.Y).Count(&n)
 	if n > 0 {
 		resp.ParamError(c, "该位置已有城市, 无法建造")
 		return
 	}
-	main := h.getOrCreateCity(uid)
+	// 扣费走主城（不受当前切换影响）
+	main := h.mainCity(uid)
 	if main.Gold < ezfyNewCityGoldCost {
 		resp.ParamError(c, fmt.Sprintf("建造新城需要%d黄金", ezfyNewCityGoldCost))
 		return

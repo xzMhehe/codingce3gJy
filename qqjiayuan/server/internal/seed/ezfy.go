@@ -125,6 +125,8 @@ func seedEzfyActivities(db *gorm.DB) {
 //	14 经验书     ItemType 10 指定军官获得经验
 //	15 军官技能书 ItemType 11 指定军官免费学习 1 个技能
 //	16 重修书     ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
+//	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
+//	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
 func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500,
@@ -135,6 +137,10 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "指定军官免费学习1个技能(不消耗黄金)"},
 		{ID: 16, Name: "重修书", ItemType: 12, Param1: 0, PriceGold: 800,
 			Description: "重置军官属性成长并清空已学技能(等级与经验保留)"},
+		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500,
+			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
+		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800,
+			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 	}
 	for _, it := range rows {
 		var count int64

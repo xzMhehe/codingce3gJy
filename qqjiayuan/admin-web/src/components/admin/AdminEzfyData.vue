@@ -1,6 +1,14 @@
 <template>
   <div class="farm-admin">
     <el-card shadow="never" class="box">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom:12px">
+        <template slot="title">
+          本页只维护「没有专属模块」的零散配置表。以下配置已迁到对应模块（避免两处重复维护）：
+          <span v-for="(m, i) in moved" :key="m.k">
+            <b>{{ m.n }}</b> → {{ m.to }}<span v-if="i < moved.length - 1">；</span>
+          </span>
+        </template>
+      </el-alert>
       <div class="toolbar">
         <el-select v-model="table" style="width:150px" @change="page = 1; load()">
           <el-option v-for="t in tables" :key="t.k" :label="t.n" :value="t.k" />
@@ -59,6 +67,16 @@ import api from '../../api'
 
 // 各数据表的展示列（k=字段, n=列名, w=列宽）
 const COLS = {
+  activities: [
+    { k: 'id', n: 'ID', w: 60 },
+    { k: 'name', n: '活动名', w: 150 },
+    { k: 'type_name', n: '类型', w: 110 },
+    { k: 'param', n: '参数', w: 90 },
+    { k: 'start_time', n: '开始', w: 160 },
+    { k: 'end_time', n: '结束', w: 160 },
+    { k: 'status_txt', n: '状态', w: 90 },
+    { k: 'des', n: '说明' }
+  ],
   buildings: [
     { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '建筑名', w: 110 }, { k: 'type', n: '类型', w: 70 },
     { k: 'max_level', n: '最高等级', w: 90 }, { k: 'unique_flag', n: '唯一', w: 60 },
@@ -186,9 +204,20 @@ const FORMS = {
     { k: 'treasure', n: '宝物', t: 'input', max: 100 },
     { k: 'des', n: '描述', t: 'text' }
   ],
+  activities: [
+    { k: 'name', n: '活动名', t: 'input', req: true, max: 50 },
+    { k: 'type', n: '类型', t: 'num', opts: [
+      { v: 1, n: '1 资源增产' }, { v: 2, n: '2 造兵打折' }, { v: 3, n: '3 建造加速' },
+      { v: 4, n: '4 研究加速' }, { v: 5, n: '5 声望加成' }] },
+    { k: 'param', n: '参数(%)', t: 'num' },
+    { k: 'start_time', n: '开始时间(毫秒)', t: 'num' },
+    { k: 'end_time', n: '结束时间(毫秒)', t: 'num' },
+    { k: 'status', n: '状态', t: 'num', opts: [{ v: 0, n: '0 关闭' }, { v: 1, n: '1 开启' }] },
+    { k: 'des', n: '说明', t: 'text' }
+  ],
   items: [
     { k: 'name', n: '道具名', t: 'input', req: true, max: 50 },
-    { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }] },
+    { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }, { v: 9, n: '9 招生简章' }, { v: 10, n: '10 经验书' }, { v: 11, n: '11 军官技能书' }, { v: 12, n: '12 重修书' }, { v: 13, n: '13 改名卡' }, { v: 14, n: '14 阵营转换道具' }] },
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'icon', n: '图标', t: 'input', max: 50 },
@@ -231,14 +260,24 @@ export default {
   name: 'AdminEzfyData',
   data () {
     return {
+      // ★ 只保留「没有专属模块」的表 —— 建筑/兵种/科技/野地/城池
+      //   已在各自模块里维护，放这里会和那些模块重复（同一个字段两处能改）。
       tables: [
-        { k: 'buildings', n: '建筑配置' }, { k: 'buildingLevels', n: '建筑等级' },
-        { k: 'troops', n: '兵种配置' }, { k: 'techs', n: '科技配置' },
-        { k: 'techLevels', n: '科技等级' }, { k: 'wildlands', n: '野地配置' },
-        { k: 'items', n: '道具配置' }, { k: 'taskTypes', n: '任务类型' },
-        { k: 'tasks', n: '任务配置' }, { k: 'cities', n: '玩家城池' }
+        { k: 'items', n: '道具配置' },
+        { k: 'activities', n: '节日活动' },
+        { k: 'taskTypes', n: '任务类型' },
+        { k: 'tasks', n: '任务配置' }
       ],
-      table: 'buildings', word: '',
+      moved: [
+        { k: 'buildings', n: '建筑配置', to: '建筑管理 → 总建筑配置' },
+        { k: 'buildingLevels', n: '建筑等级', to: '建筑管理 → 总建筑配置 → 等级配置' },
+        { k: 'troops', n: '兵种配置', to: '兵种管理 → 兵种配置' },
+        { k: 'techs', n: '科技配置', to: '科技管理 → 科技配置' },
+        { k: 'techLevels', n: '科技等级', to: '科技管理 → 科技配置 → 等级配置' },
+        { k: 'wildlands', n: '野地配置', to: '地图管理 → 野地类型' },
+        { k: 'cities', n: '玩家城池', to: '城市管理' }
+      ],
+      table: 'items', word: '',
       rows: [], total: 0, page: 1, size: 10, loading: false,
       showForm: false, saving: false,
       form: {}, formId: 0
