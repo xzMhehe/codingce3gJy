@@ -124,6 +124,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 		&model.EzfyMapStar{},
 		&model.EzfyActivity{},
+		// 资源显示名配置（管理端可改名，游戏端/管理端展示全部跟随）
+		&model.EzfyCfgResource{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -1350,6 +1352,12 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
 		mod("游戏-二战风云", "风云玩家", "ezfyPlayers"), mod("游戏-二战风云", "风云流水", "ezfyLogs"),
 		mod("游戏-二战风云", "风云系统", "ezfySystem"), mod("游戏-二战风云", "风云数据", "ezfyData"),
+		mod("游戏-二战风云", "风云城市", "ezfyCities"), mod("游戏-二战风云", "风云建筑", "ezfyBuildings"),
+		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
+		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"),
+		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
+		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
+		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
 		mod("系统", "菜单维护", "menus"),

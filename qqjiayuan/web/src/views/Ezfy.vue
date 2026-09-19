@@ -51,24 +51,24 @@
           <a href="javascript:;" @click="go('mall')">增产</a>
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/gold.png" title="黄金" alt="."/>
-          <a href="javascript:;" @click="go('res/gold')">黄金:</a>{{ city.gold }}/{{ city.gold_cap }}
+          <img class="logo-title" src="/static/ezfy/gold.png" :title="resNames.gold" alt="."/>
+          <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/{{ city.gold_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/rice.png" title="粮食" alt="."/>
-          <a href="javascript:;" @click="go('res/food')">粮食:</a>{{ city.food }}/{{ city.food_cap }}
+          <img class="logo-title" src="/static/ezfy/rice.png" :title="resNames.food" alt="."/>
+          <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/{{ city.food_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/steel.png" title="钢铁" alt="."/>
-          <a href="javascript:;" @click="go('res/steel')">钢铁:</a>{{ city.steel }}/{{ city.steel_cap }}
+          <img class="logo-title" src="/static/ezfy/steel.png" :title="resNames.steel" alt="."/>
+          <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/{{ city.steel_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/oil.png" title="石油" alt="."/>
-          <a href="javascript:;" @click="go('res/oil')">石油:</a>{{ city.oil }}/{{ city.oil_cap }}
+          <img class="logo-title" src="/static/ezfy/oil.png" :title="resNames.oil" alt="."/>
+          <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/{{ city.oil_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/mine.png" title="稀矿" alt="."/>
-          <a href="javascript:;" @click="go('res/rare')">稀矿:</a>{{ city.rare }}/{{ city.rare_cap }}
+          <img class="logo-title" src="/static/ezfy/mine.png" :title="resNames.rare" alt="."/>
+          <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/{{ city.rare_cap }}
         </div>
         <div class="old-line">
           <img class="logo-title" src="/static/ezfy/person.png" title="人口" alt="."/>
@@ -382,12 +382,12 @@
             <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
             坐标({{ ct.x }},{{ ct.y }}) 城级{{ ct.city_level }}
             <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海城' : '陆地城市' }}]</span>
-            金{{ ct.gold }} 粮{{ ct.food }} 钢{{ ct.steel }} 油{{ ct.oil }} 稀矿{{ ct.rare }}<br/>
+            {{ resShort.gold }}{{ ct.gold }} {{ resShort.food }}{{ ct.food }} {{ resShort.steel }}{{ ct.steel }} {{ resShort.oil }}{{ ct.oil }} {{ resShort.rare }}{{ ct.rare }}<br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
             <a href="javascript:;" @click="go('rename')">[改名]</a>
           </div>
           <br/>
-          <div class="panel-title">平原起新城 (消耗10万黄金)</div>
+          <div class="panel-title">平原起新城 (消耗10万{{ resNames.gold }})</div>
           <div class="old-line">
             坐标X: <input v-model="newCityX" type="number" style="width:70px"/>
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
@@ -497,8 +497,8 @@
             <div class="panel-title">{{ buildSel.name }}</div>
             <div class="old-line">{{ buildSel.des }}</div>
             <div class="old-line gray">
-              造价: 粮{{ buildSel.cost.food }} 钢{{ buildSel.cost.steel }} 油{{ buildSel.cost.oil }}
-              稀{{ buildSel.cost.rare }} 金{{ buildSel.cost.gold }}
+              造价: {{ resShort.food }}{{ buildSel.cost.food }} {{ resShort.steel }}{{ buildSel.cost.steel }} {{ resShort.oil }}{{ buildSel.cost.oil }}
+              {{ resShort.rare }}{{ buildSel.cost.rare }} {{ resShort.gold }}{{ buildSel.cost.gold }}
               需{{ Math.ceil(buildSel.time / 60) }}分钟
             </div>
             <div class="old-line">
@@ -520,7 +520,7 @@
           <div class="old-line">人口:{{ troopsData.pop }} 空闲:{{ freePop }} | 围墙:{{ troopsData.wall_level }}级</div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
             <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
-            消耗: 粮{{ t.cost.food }} 钢{{ t.cost.steel }} 油{{ t.cost.oil }} 稀{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
+            消耗: {{ resShort.food }}{{ t.cost.food }} {{ resShort.steel }}{{ t.cost.steel }} {{ resShort.oil }}{{ t.cost.oil }} {{ resShort.rare }}{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
             前提: {{ t.require || '无' }}<template v-if="t.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template>
             <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
@@ -700,7 +700,7 @@
               <a href="javascript:;" @click="doCancelTech(t)">[取消]</a></span>
             <span v-else-if="t.level < t.max_level">
               <a href="javascript:;" @click="doResearch(t)">[研究{{ t.level + 1 }}级]</a>
-              <span class="gray">耗: 粮{{ t.next_cost.food }} 钢{{ t.next_cost.steel }} 油{{ t.next_cost.oil }} 稀{{ t.next_cost.rare }} 金{{ t.next_cost.gold }} 需{{ Math.ceil(t.next_time / 60) }}分钟</span>
+              <span class="gray">耗: {{ resShort.food }}{{ t.next_cost.food }} {{ resShort.steel }}{{ t.next_cost.steel }} {{ resShort.oil }}{{ t.next_cost.oil }} {{ resShort.rare }}{{ t.next_cost.rare }} {{ resShort.gold }}{{ t.next_cost.gold }} 需{{ Math.ceil(t.next_time / 60) }}分钟</span>
             </span>
             <span v-else class="gray">[已满级]</span>
             <br/>
@@ -813,12 +813,12 @@
           <div class="old-line">训练/建造需要：</div>
           <table>
             <tr>
-              <td>粮食：</td><td>{{ troopView.cost.food }}</td>
-              <td>钢铁：</td><td>{{ troopView.cost.steel }}</td>
+              <td>{{ resNames.food }}：</td><td>{{ troopView.cost.food }}</td>
+              <td>{{ resNames.steel }}：</td><td>{{ troopView.cost.steel }}</td>
             </tr>
             <tr>
-              <td>石油：</td><td>{{ troopView.cost.oil }}</td>
-              <td>稀矿：</td><td>{{ troopView.cost.rare }}</td>
+              <td>{{ resNames.oil }}：</td><td>{{ troopView.cost.oil }}</td>
+              <td>{{ resNames.rare }}：</td><td>{{ troopView.cost.rare }}</td>
             </tr>
             <tr>
               <td>耗时：</td><td>{{ durText(troopView.train_time) }}</td>
@@ -890,10 +890,10 @@
           </div>
           <div class="old-line">{{ trainSel.name }}{{ trainMode === 'defence' ? '建造' : '训练' }}需求：</div>
           <div class="old-line">
-            粮食：{{ trainSel.cost.food }}<br/>
-            钢铁：{{ trainSel.cost.steel }}<br/>
-            石油：{{ trainSel.cost.oil }}<br/>
-            稀矿：{{ trainSel.cost.rare }}<br/>
+            {{ resNames.food }}：{{ trainSel.cost.food }}<br/>
+            {{ resNames.steel }}：{{ trainSel.cost.steel }}<br/>
+            {{ resNames.oil }}：{{ trainSel.cost.oil }}<br/>
+            {{ resNames.rare }}：{{ trainSel.cost.rare }}<br/>
             {{ trainMode === 'defence' ? '城防空间' : '人口' }}：{{ trainSel.pop }}<br/>
             <template v-if="trainMode !== 'defence'">吃粮：{{ trainSel.food_keep }}<br/></template>
             时间：{{ durText(trainSel.train_time) }}<br/>
@@ -967,7 +967,7 @@
               </div>
               <div class="old-line">守军总兵力：{{ selDetail.act_total }}</div>
               <div class="old-line">
-                胜利奖励：粮/钢/油/稀矿 各{{ selDetail.res_min }}，黄金{{ selDetail.gold }}，
+                胜利奖励：{{ resShort.food }}/{{ resShort.steel }}/{{ resShort.oil }}/{{ resNames.rare }} 各{{ selDetail.res_min }}，{{ resNames.gold }}{{ selDetail.gold }}，
                 军功声望+{{ selDetail.prestige }}，必定掉落宝物
               </div>
               <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
@@ -975,10 +975,10 @@
             </template>
             <template v-else>
               <div class="old-line" v-if="selDetail.type === 1">
-                {{ selDetail.terrain_name }}中可以产出粮食、钢铁、石油、稀矿
+                {{ selDetail.terrain_name }}中可以产出{{ resNames.food }}、{{ resNames.steel }}、{{ resNames.oil }}、{{ resNames.rare }}
               </div>
               <div class="old-line" v-else-if="selDetail.type === 2">
-                海洋中可以产出石油、稀矿、黄金
+                海洋中可以产出{{ resNames.oil }}、{{ resNames.rare }}、{{ resNames.gold }}
               </div>
               <div class="old-line" v-else>寇城中囤积了大量资源与宝物</div>
               <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
@@ -1056,11 +1056,11 @@
           </div>
           <div class="old-line">
             <div>携带资源：</div>
-            <div>黄金：<input v-model="trGold" type="number" :placeholder="'0~' + city.gold" style="width:90px"/></div>
-            <div>粮食：<input v-model="trFood" type="number" :placeholder="'0~' + city.food" style="width:90px"/></div>
-            <div>钢铁：<input v-model="trSteel" type="number" :placeholder="'0~' + city.steel" style="width:90px"/></div>
-            <div>石油：<input v-model="trOil" type="number" :placeholder="'0~' + city.oil" style="width:90px"/></div>
-            <div>稀矿：<input v-model="trRare" type="number" :placeholder="'0~' + city.rare" style="width:90px"/></div>
+            <div>{{ resNames.gold }}：<input v-model="trGold" type="number" :placeholder="'0~' + city.gold" style="width:90px"/></div>
+            <div>{{ resNames.food }}：<input v-model="trFood" type="number" :placeholder="'0~' + city.food" style="width:90px"/></div>
+            <div>{{ resNames.steel }}：<input v-model="trSteel" type="number" :placeholder="'0~' + city.steel" style="width:90px"/></div>
+            <div>{{ resNames.oil }}：<input v-model="trOil" type="number" :placeholder="'0~' + city.oil" style="width:90px"/></div>
+            <div>{{ resNames.rare }}：<input v-model="trRare" type="number" :placeholder="'0~' + city.rare" style="width:90px"/></div>
             <span class="gray" v-if="orderType === 5">(运输命令必须携带资源或部队)</span>
           </div>
           <div class="old-line">
@@ -1079,7 +1079,7 @@
               <span v-if="orderCalc" class="gray">(单程{{ orderCalc.travel_time }}<template v-if="orderCalc.wait_min">, 宿营{{ orderCalc.wait_min }}分</template>)</span>
             </div>
             <div v-if="orderCalc && !orderCalc.oil_enough" class="red">
-              石油不足：需要{{ orderCalc.oil_used }}，当前只有{{ orderCalc.oil_have }}
+              {{ resNames.oil }}不足：需要{{ orderCalc.oil_used }}，当前只有{{ orderCalc.oil_have }}
             </div>
           </div>
           <hr/>
@@ -1221,8 +1221,8 @@
         <div class="panel">
           <div class="panel-title">召集人口</div>
           当前人口: {{ city.pop }} / 民居容纳: {{ city.pop_max }}<br/>
-          花费 10万黄金 召集 10万人口(不受民居容纳上限限制, 可突破上限)<br/>
-          <div class="old-line">黄金: {{ city.gold }}</div>
+          花费 10万{{ resNames.gold }} 召集 10万人口(不受民居容纳上限限制, 可突破上限)<br/>
+          <div class="old-line">{{ resNames.gold }}: {{ city.gold }}</div>
           <button @click="doConvene">[召集]</button>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -1267,8 +1267,8 @@
         <div class="panel">
           <div class="panel-title">安抚民心</div>
           当前民心: {{ city.feelings }} / 民怨: {{ city.grievance }}<br/>
-          安抚花费 民怨×100 黄金, 可清零民怨并回升民心。<br/>
-          <div class="old-line">黄金: {{ city.gold }} | 预计花费: {{ city.grievance * 100 }}</div>
+          安抚花费 民怨×100 {{ resNames.gold }}, 可清零民怨并回升民心。<br/>
+          <div class="old-line">{{ resNames.gold }}: {{ city.gold }} | 预计花费: {{ city.grievance * 100 }}</div>
           <button @click="doPlacate">[安抚]</button>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -1279,7 +1279,7 @@
         <div class="panel">
           <div class="panel-title">税率设置</div>
           当前税率: {{ city.tax_rate }}%<br/>
-          <span class="gray">税率越高黄金收入越多, 但民心下降越快: ≤10%民心+2/时, ≤20%+1, ≤40%不变, ≤60%-1, 更高-2; 民怨≥50时产量减半。</span><br/>
+          <span class="gray">税率越高{{ resNames.gold }}收入越多, 但民心下降越快: ≤10%民心+2/时, ≤20%+1, ≤40%不变, ≤60%-1, 更高-2; 民怨≥50时产量减半。</span><br/>
           <div class="old-line">
             新税率: <input v-model="taxInput" type="number" min="0" max="100" style="width:70px"/>%
             <button @click="doTax">[设置]</button>
@@ -1341,11 +1341,11 @@
           </div>
           <div class="old-line">【{{ city.name }}】:</div>
           <div class="old-line">
-            黄金：{{ city.gold }}/{{ city.gold_cap }}<br/>
-            粮食：{{ city.food }}/{{ city.food_cap }}<br/>
-            钢铁：{{ city.steel }}/{{ city.steel_cap }}<br/>
-            石油：{{ city.oil }}/{{ city.oil_cap }}<br/>
-            稀矿：{{ city.rare }}/{{ city.rare_cap }}
+            {{ resNames.gold }}：{{ city.gold }}/{{ city.gold_cap }}<br/>
+            {{ resNames.food }}：{{ city.food }}/{{ city.food_cap }}<br/>
+            {{ resNames.steel }}：{{ city.steel }}/{{ city.steel_cap }}<br/>
+            {{ resNames.oil }}：{{ city.oil }}/{{ city.oil_cap }}<br/>
+            {{ resNames.rare }}：{{ city.rare }}/{{ city.rare_cap }}
           </div>
           <div class="old-line gray">斜杠后为仓库容量上限；升级仓库可提高保护量与上限。</div>
           <a href="javascript:;" @click="go('cityhall')">[返回]</a>
@@ -1375,7 +1375,7 @@
         <div class="panel">
           <div class="panel-title">市政厅 → 城市迁移</div>
           <div class="old-line">当前城市：{{ city.name }}({{ city.x }},{{ city.y }})</div>
-          <div class="old-line">黄金：{{ moveInfo.gold }} / 每次迁城消耗 {{ moveInfo.gold_cost }}</div>
+          <div class="old-line">{{ resNames.gold }}：{{ moveInfo.gold }} / 每次迁城消耗 {{ moveInfo.gold_cost }}</div>
           <div class="old-line gray">
             使用迁城计划可改变一次城市坐标，只能迁移到选定区域随机坐标(未被占领的平原)
           </div>
@@ -1418,25 +1418,25 @@
           <div class="panel-title">调整生产（开工率）</div>
           <div class="old-line gray">开工率影响该资源的实际产量：实际产量 = 基础产量 × 开工率 / 100</div>
           <div class="old-line">
-            粮食：
+            {{ resNames.food }}：
             <input v-model="rateFood" type="number" min="1" max="100" style="width:70px"/>%
             <a href="javascript:;" @click="rateFood = 1">[最小]</a>
             <a href="javascript:;" @click="rateFood = 100">[最大]</a>
           </div>
           <div class="old-line">
-            钢铁：
+            {{ resNames.steel }}：
             <input v-model="rateSteel" type="number" min="1" max="100" style="width:70px"/>%
             <a href="javascript:;" @click="rateSteel = 1">[最小]</a>
             <a href="javascript:;" @click="rateSteel = 100">[最大]</a>
           </div>
           <div class="old-line">
-            石油：
+            {{ resNames.oil }}：
             <input v-model="rateOil" type="number" min="1" max="100" style="width:70px"/>%
             <a href="javascript:;" @click="rateOil = 1">[最小]</a>
             <a href="javascript:;" @click="rateOil = 100">[最大]</a>
           </div>
           <div class="old-line">
-            稀矿：
+            {{ resNames.rare }}：
             <input v-model="rateRare" type="number" min="1" max="100" style="width:70px"/>%
             <a href="javascript:;" @click="rateRare = 1">[最小]</a>
             <a href="javascript:;" @click="rateRare = 100">[最大]</a>
@@ -1609,15 +1609,15 @@
       <!-- ============ 商城(mall) ============ -->
       <template v-else-if="cur === 'mall'">
         <div class="panel">
-          <div class="panel-title">商城(黄金{{ city.gold }})</div>
+          <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }})</div>
           <div class="old-line" v-for="it in mallItems" :key="'mi' + it.id">
-            <b>{{ it.name }}</b> {{ it.price_gold }}黄金
+            <b>{{ it.name }}</b> {{ it.price_gold }}{{ resNames.gold }}
             <a href="javascript:;" @click="openBuy(it)">[购买]</a><br/>
             <span class="gray">{{ it.description }}</span>
             <div v-if="buyItem && buyItem.id === it.id" class="use-box">
               数量:
               <input v-model="buyCount" type="number" min="1" max="99" style="width:60px"/>
-              <span class="gray">合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} 黄金</span>
+              <span class="gray">合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
             </div>
@@ -1630,8 +1630,8 @@
       <!-- ============ 交易行(exchange) ============ -->
       <template v-else-if="cur === 'exchange'">
         <div class="panel">
-          <div class="panel-title">资源交易行(黄金{{ exchangeGold }})</div>
-          <div class="old-line gray">购买他人挂单的资源; 也可挂单出售资源换取黄金。</div>
+          <div class="panel-title">资源交易行({{ resNames.gold }}{{ exchangeGold }})</div>
+          <div class="old-line gray">购买他人挂单的资源; 也可挂单出售资源换取{{ resNames.gold }}。</div>
           <table>
             <tr><th>卖家</th><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
             <tr v-for="e in exchangeOrders" :key="'eo' + e.id">
@@ -1646,7 +1646,7 @@
           <br/>
           <div class="panel-title">我的挂单</div>
           <div class="old-line" v-for="e in exchangeMine" :key="'em' + e.id">
-            {{ e.type_name }}×{{ e.count }} 售{{ e.total_price }}黄金
+            {{ e.type_name }}×{{ e.count }} 售{{ e.total_price }}{{ resNames.gold }}
             <a href="javascript:;" @click="doExchangeCancel(e)">[下架]</a>
           </div>
           <div class="old-line" v-if="!exchangeMine.length">(无在售挂单)</div>
@@ -1655,11 +1655,11 @@
           <div class="old-line">
             资源:
             <select v-model="sellType" style="width:70px">
-              <option value="1">粮食</option><option value="2">钢铁</option>
-              <option value="3">石油</option><option value="4">稀矿</option>
+              <option value="1">{{ resNames.food }}</option><option value="2">{{ resNames.steel }}</option>
+              <option value="3">{{ resNames.oil }}</option><option value="4">{{ resNames.rare }}</option>
             </select><br/>
             数量: <input v-model="sellCount" type="number" style="width:90px"/><br/>
-            总价(黄金): <input v-model="sellPrice" type="number" style="width:90px"/><br/>
+            总价({{ resNames.gold }}): <input v-model="sellPrice" type="number" style="width:90px"/><br/>
             <button @click="doExchangeSell">[挂单出售]</button>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -1674,17 +1674,17 @@
           <div class="old-line"><b>【活动玩法】</b>(在【地图】中寻找, 固定位置刷新)：</div>
           <div class="old-line">
             <span class="orange">活动野地</span>【活动】(标记: 活动野地N级)<br/>
-            陆/海随机刷新, 10万~30万守军, 胜利获得大量资源+黄金(元宝)+必定掉落宝物+大量声望<br/>
+            陆/海随机刷新, 10万~30万守军, 胜利获得大量资源+{{ resNames.gold }}(元宝)+必定掉落宝物+大量声望<br/>
             等级越高守军越强, 奖励越丰厚
           </div>
           <div class="old-line">
             <span class="orange">活动寇城</span>【活动寇】(标记: 活动寇N级)<br/>
-            20万~60万守军, 胜利获得巨大资源+黄金+宝物+声望
+            20万~60万守军, 胜利获得巨大资源+{{ resNames.gold }}+宝物+声望
           </div>
           <div class="old-line">
             <span class="red">特殊城市</span>【特殊】(标记: 特殊城市N级)<br/>
             100万~500万守军, 全服最强活动目标, 需要强力的部队!<br/>
-            胜利必定获得高级/特殊宝物, 巨额黄金与资源
+            胜利必定获得高级/特殊宝物, 巨额{{ resNames.gold }}与资源
           </div>
           <div class="old-line gray">活动目标无法占领, 战胜只结算奖励, 不占附属野地上限。</div>
           <a href="javascript:;" @click="go('map')">[前往地图]</a>
@@ -1708,7 +1708,7 @@
           <hr/>
           <div class="old-line">[开服活动] 新手礼包、每周福利、市政厅等级礼包持续发放中, 前往<a href="javascript:;" @click="go('welfare')">[福利]</a>领取。</div>
           <div class="old-line">[征战天下] 征服野地/寇城可获得军功声望, 声望晋升军衔!</div>
-          <div class="old-line">[物资兑换] 交易所开放资源交易, 低买高卖赚黄金。</div>
+          <div class="old-line">[物资兑换] 交易所开放资源交易, 低买高卖赚{{ resNames.gold }}。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1762,7 +1762,7 @@
           <div class="old-line">
             1级联络中心可以 加入联盟，<br/>
             2级联络中心可以 创建联盟<br/>
-            创建联盟需消耗{{ liaison.create_cost }}黄金（原版为 50 钻石）<br/>
+            创建联盟需消耗{{ liaison.create_cost }}{{ resNames.gold }}（原版为 50 钻石）<br/>
             每级联络中心可以多一支盟友驻军、多{{ liaison.member_per_level }}人联盟人数上限
           </div>
           <div class="old-line gray">使用同盟密令1个可以将联络中心升级至11级（原版道具，本项目未开放）</div>
@@ -1906,7 +1906,7 @@
             军校{{ officerData.academy_level }}级, 参谋部{{ officerData.staff_level }}级
             (容纳{{ officerData.capacity }}名军官), 当前{{ officerData.used }}名
           </div>
-          <div class="old-line">黄金:{{ officerData.gold }}</div>
+          <div class="old-line">{{ resNames.gold }}:{{ officerData.gold }}</div>
           <hr/>
           <template v-for="o in myOfficers">
             <div class="old-line" :key="'of' + o.id">
@@ -1937,7 +1937,7 @@
           </div>
           <div class="old-line">
             军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
-            雇佣费用 = 军官等级 × 1000 黄金
+            雇佣费用 = 军官等级 × 1000 {{ resNames.gold }}
           </div>
           <div class="old-line gray">军校招募的是普通军官; 名将只能由管理端发放(见[名将图鉴])</div>
           <div class="old-line red" v-if="recruitData.academy_level && officerFull">
@@ -2207,15 +2207,26 @@
 <script>
 import api from '../api'
 
+// ★ 资源显示名的「兜底默认值」。真正的名字由后端 /games/ezfy/res-cfg 下发
+//   （管理端「资源管理 → 资源名称维护」可改），改名后全站展示跟随。
 const RES_NAMES = { gold: '黄金', food: '粮食', steel: '钢铁', oil: '石油', rare: '稀矿' }
+const RES_SHORT = { gold: '金', food: '粮', steel: '钢', oil: '油', rare: '稀' }
 
 // 资源说明(黄金一段复刻原版 resourceA.html, 其余按同样语气补全)
-const RES_DES = {
-  gold: '黄金是二战世界里重要的交易货币，可以用来购买玩家出售的各种资源，也用于支付雇佣军官的薪资和招募费用，通过战争、税收、任务可获得。',
-  food: '粮食是维持军队的根本，人口增长与部队训练都离不开它，军队每小时还会消耗粮食，一旦断粮部队将大量逃散，通过农田产出、掠夺、任务可获得。',
-  steel: '钢铁是制造武器装备的基础材料，建造建筑、训练陆军部队、研究军事科技都需要消耗钢铁，通过炼钢厂产出、掠夺、任务可获得。',
-  oil: '石油驱动着一切机械化部队，出征行军需要消耗石油，训练装甲与航空部队同样需要石油，通过石油基地产出、掠夺、任务可获得。',
-  rare: '稀矿是尖端军事工业的原料，用于生产重型装备与高级兵种，产量稀少因此格外珍贵，通过稀矿厂产出、掠夺、任务可获得。'
+// ★ 用 {key} 占位符, 由 applyResNames 把管理端配的资源名填进去 —— 改名后说明也跟着变
+const RES_DES_TPL = {
+  gold: '{gold}是二战世界里重要的交易货币，可以用来购买玩家出售的各种资源，也用于支付雇佣军官的薪资和招募费用，通过战争、税收、任务可获得。',
+  food: '{food}是维持军队的根本，人口增长与部队训练都离不开它，军队每小时还会消耗{food}，一旦断粮部队将大量逃散，通过农田产出、掠夺、任务可获得。',
+  steel: '{steel}是制造武器装备的基础材料，建造建筑、训练陆军部队、研究军事科技都需要消耗{steel}，通过炼钢厂产出、掠夺、任务可获得。',
+  oil: '{oil}驱动着一切机械化部队，出征行军需要消耗{oil}，训练装甲与航空部队同样需要{oil}，通过石油基地产出、掠夺、任务可获得。',
+  rare: '{rare}是尖端军事工业的原料，用于生产重型装备与高级兵种，产量稀少因此格外珍贵，通过稀矿厂产出、掠夺、任务可获得。'
+}
+function buildResDes (names) {
+  const out = {}
+  Object.keys(RES_DES_TPL).forEach(k => {
+    out[k] = RES_DES_TPL[k].replace(/\{(\w+)\}/g, (m, key) => names[key] || m)
+  })
+  return out
 }
 
 export default {
@@ -2224,7 +2235,8 @@ export default {
     return {
       cur: 'home',
       resNames: RES_NAMES,
-      resDes: RES_DES,
+      resShort: RES_SHORT,
+      resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
       userBrief: { account: '', level: 0, exp: 0 },
       officerCount: 0,
@@ -2565,12 +2577,13 @@ export default {
     }
     window.addEventListener('popstate', this._onBack)
     this.load()
+    this.loadResCfg()
     this.loadChats()
     this.loadHomeChats()
     this.loadNotices()
     this.loadCorps()
     this.timer = setInterval(() => {
-      if (this.cur === 'home') { this.load(); this.loadHomeChats() }
+      if (this.cur === 'home') { this.load(); this.loadResCfg(); this.loadHomeChats() }
       if (this.cur === 'chat') this.loadChats()
     }, 30000)
   },
@@ -2676,8 +2689,27 @@ export default {
           this.occupying = d.occupying
           this.unreadReports = d.unread_reports
           this.taxInput = d.city.tax_rate
+          this.applyResNames(d.res_names)
         }
       })
+    },
+    // 资源显示名：把后端下发/读取到的名字合并进兜底值
+    applyResNames (d) {
+      if (!d || typeof d !== 'object') return
+      const n = Object.assign({}, RES_NAMES)
+      const sh = Object.assign({}, RES_SHORT)
+      Object.keys(RES_NAMES).forEach(k => { if (d[k]) n[k] = d[k] })
+      const sd = d._short || {}
+      Object.keys(RES_SHORT).forEach(k => { if (sd[k]) sh[k] = sd[k] })
+      this.resNames = n
+      this.resShort = sh
+      this.resDes = buildResDes(n)
+    },
+    // 单独拉一次（有些页面不经过 /view）
+    loadResCfg () {
+      return api.get('/games/ezfy/res-cfg').then(r => {
+        if (r.code === 0) this.applyResNames(r.data)
+      }).catch(() => {})
     },
     loadTroops () {
       return api.get('/games/ezfy/troops').then(r => {
@@ -3006,7 +3038,7 @@ export default {
         body.x = x; body.y = y
       }
       const label = type === 'low' ? '迁城计划' : (type === 'high' ? '高级迁城计划' : '沿海迁城计划')
-      if (!confirm('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' 黄金。')) return
+      if (!confirm('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' ' + this.resNames.gold + '。')) return
       api.post('/games/ezfy/city/move', body).then(r => {
         if (r.code === 0) {
           alert(r.data.msg)
@@ -3060,7 +3092,7 @@ export default {
       })
     },
     doSpeedTrainAllCity () {
-      if (!window.confirm('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗黄金)')) return
+      if (!window.confirm('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
       api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
         if (r.code === 0) {
           alert(r.data.msg)
@@ -3738,7 +3770,7 @@ export default {
       })
     },
     doRecruit (g) {
-      if (!confirm('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' 黄金')) return
+      if (!confirm('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' ' + this.resNames.gold)) return
       api.post('/games/ezfy/acade/recruit/hire', { key: g.key }).then(r => {
         if (r.code !== 0) alert(r.msg || '雇佣失败')
         this.loadRecruit()

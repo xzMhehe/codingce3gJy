@@ -156,11 +156,6 @@ func (h *AdminHandler) AdminEzfyPlayerUpdate(c *gin.Context) {
 // 名将只能由管理端发放(用户要求): 直接把 cfg_general 里的名将变成该玩家的军官
 func (h *AdminHandler) AdminEzfyGrantOfficer(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	var p model.EzfyProfile
-	if err := h.DB.Where("user_id = ?", id).First(&p).Error; err != nil {
-		resp.NotFound(c, "玩家不存在")
-		return
-	}
 	var in struct {
 		GeneralID int `json:"general_id"`
 	}
@@ -168,33 +163,12 @@ func (h *AdminHandler) AdminEzfyGrantOfficer(c *gin.Context) {
 		resp.ParamError(c, "请选择名将")
 		return
 	}
-	ez := &EzfyHandler{DB: h.DB}
-	ez.cfgs()
-	g := ezfyCfg.general(in.GeneralID)
-	if g == nil {
-		resp.ParamError(c, "名将不存在")
+	msg, errMsg := h.ezfyGrantGeneral(uint(id), in.GeneralID)
+	if errMsg != "" {
+		resp.ParamError(c, errMsg)
 		return
 	}
-	city := ez.getOrCreateCity(p.UserID)
-	var dup int64
-	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ? AND general_id = ?", city.ID, g.ID).Count(&dup)
-	if dup > 0 {
-		resp.ParamError(c, "该玩家已拥有"+g.Name)
-		return
-	}
-	star := g.Star
-	if star <= 0 {
-		star = 5
-	}
-	o := model.EzfyOfficer{
-		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
-		Level: 1, Exp: 0,
-		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
-		Loyalty: 100, Skill: "", Equipment: "",
-		Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
-	}
-	h.DB.Create(&o)
-	resp.OK(c, gin.H{"msg": "已发放名将: " + g.Name})
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 func (h *AdminHandler) AdminEzfyGrant(c *gin.Context) {
@@ -221,22 +195,23 @@ func (h *AdminHandler) AdminEzfyGrant(c *gin.Context) {
 	}
 	ez := &EzfyHandler{DB: h.DB}
 	msg := "已发放"
-	if in.Gold > 0 || in.Food > 0 || in.Steel > 0 || in.Oil > 0 || in.Rare > 0 {
-		ez.giveResources(p.UserID, in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
-		if in.Gold > 0 {
-			msg += fmt.Sprintf(" 黄金+%d", in.Gold)
+	if in.Gold != 0 || in.Food != 0 || in.Steel != 0 || in.Oil != 0 || in.Rare != 0 {
+		// GM 发放不按仓储上限截断（玩家要多少给多少，可以超上限堆着）
+		ez.giveResourcesNoCap(p.UserID, in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
+		if in.Gold != 0 {
+			msg += fmt.Sprintf(" 黄金%+d", in.Gold)
 		}
-		if in.Food > 0 {
-			msg += fmt.Sprintf(" 粮食+%d", in.Food)
+		if in.Food != 0 {
+			msg += fmt.Sprintf(" 粮食%+d", in.Food)
 		}
-		if in.Steel > 0 {
-			msg += fmt.Sprintf(" 钢铁+%d", in.Steel)
+		if in.Steel != 0 {
+			msg += fmt.Sprintf(" 钢铁%+d", in.Steel)
 		}
-		if in.Oil > 0 {
-			msg += fmt.Sprintf(" 石油+%d", in.Oil)
+		if in.Oil != 0 {
+			msg += fmt.Sprintf(" 石油%+d", in.Oil)
 		}
-		if in.Rare > 0 {
-			msg += fmt.Sprintf(" 稀矿+%d", in.Rare)
+		if in.Rare != 0 {
+			msg += fmt.Sprintf(" 稀矿%+d", in.Rare)
 		}
 	}
 	for _, it := range in.Items {

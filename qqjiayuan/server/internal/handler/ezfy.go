@@ -52,6 +52,12 @@ func (h *EzfyHandler) cfgs() {
 	ezfyCfg.load(h.DB)
 }
 
+// cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
+// 否则进程内的缓存还是旧值，玩家端要重启才看得到改动。
+func (h *EzfyHandler) cfgsReload() {
+	ezfyCfg.reload(h.DB)
+}
+
 // ============ 玩家/城市基础 ============
 
 // ensureProfile 懒创建玩家档案（声望/阵营）
@@ -1602,7 +1608,67 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"marching":       marching,
 		"occupying":      occupying,
 		"unread_reports": unreadReports,
+		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
+		"res_names": ezfyResCfgOf(h.DB),
 	})
+}
+
+// ezfyResCfgOf 读取资源显示名配置（管理端可在「资源管理 → 资源名称维护」改）
+// 返回 {"gold":"黄金","food":"粮食",...,"_short":{"gold":"金",...}}
+// 表为空时回落到内置默认值，保证前端永远拿得到名字。
+func ezfyResCfgOf(db *gorm.DB) gin.H {
+	def := []model.EzfyCfgResource{
+		{Key: "gold", Name: "黄金", Short: "金"},
+		{Key: "food", Name: "粮食", Short: "粮"},
+		{Key: "steel", Name: "钢铁", Short: "钢"},
+		{Key: "oil", Name: "石油", Short: "油"},
+		{Key: "rare", Name: "稀矿", Short: "稀"},
+	}
+	var rows []model.EzfyCfgResource
+	db.Order("sort, id").Find(&rows)
+	if len(rows) == 0 {
+		rows = def
+	}
+	out := gin.H{}
+	short := gin.H{}
+	for _, r := range rows {
+		if r.Key == "" {
+			continue
+		}
+		out[r.Key] = r.Name
+		short[r.Key] = r.Short
+	}
+	out["_short"] = short
+	return out
+}
+
+// buildingName 取建筑显示名（从配置表读，管理端改名后文案跟随）
+func (h *EzfyHandler) buildingName(id int) string {
+	h.cfgs()
+	if b := ezfyCfg.building(id); b != nil && b.Name != "" {
+		return b.Name
+	}
+	return "建筑#" + strconv.Itoa(id)
+}
+
+// ezfyBaseBuildingNames 新城自带的 3 个基础建筑名字（从配置表读，管理端改名后文案跟随）
+func ezfyBaseBuildingNames(db *gorm.DB) string {
+	names := []string{}
+	for _, id := range []int{1, 2, 3} { // 市政厅 / 民居 / 农田
+		var b model.EzfyCfgBuilding
+		if err := db.First(&b, id).Error; err == nil && b.Name != "" {
+			names = append(names, b.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "市政厅/民居/农田"
+	}
+	return strings.Join(names, "/")
+}
+
+// ResCfg 游戏端读取资源显示名（管理端改名后前端可立即跟随，无需重进游戏）
+func (h *EzfyHandler) ResCfg(c *gin.Context) {
+	resp.OK(c, ezfyResCfgOf(h.DB))
 }
 
 // ezfyAccount 家园账号(号码) / 等级 / 经验 —— 统帅信息页需要展示家园侧资料
@@ -1703,8 +1769,8 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		extra = "\n该城为【海城】: 可建造航海协会并训练海军。"
 	}
 	h.addReport(uid, 5, "新城建成",
-		fmt.Sprintf("花费%d黄金在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: 市政厅/民居/农田(1级), 可到[城市列表]切换操作。%s",
-			ezfyNewCityGoldCost, kind, req.X, req.Y, city.Name, extra))
+		fmt.Sprintf("花费%d黄金在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: %s(1级), 可到[城市列表]切换操作。%s",
+			ezfyNewCityGoldCost, kind, req.X, req.Y, city.Name, ezfyBaseBuildingNames(h.DB), extra))
 	resp.OK(c, gin.H{"msg": "新城建成", "city": city})
 }
 

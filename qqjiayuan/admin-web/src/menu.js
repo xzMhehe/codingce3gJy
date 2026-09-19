@@ -66,6 +66,17 @@ import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
 import AdminEzfyData from './components/admin/AdminEzfyData.vue'
 import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
+import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
+import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
+import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
+import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
+import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
+import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
+import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
+import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
+import AdminEzfyMap from './components/admin/AdminEzfyMap.vue'
+import AdminEzfyCorps from './components/admin/AdminEzfyCorps.vue'
+import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
@@ -233,7 +244,18 @@ export const menu = [
       {
         key: 'g-ezfy', name: '二战风云', icon: 'el-icon-position',
         children: [
-          { key: 'ezfyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
+          { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
+          { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },
+          { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: AdminEzfyBuildings, perm: 'module:ezfyBuildings' },
+          { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: AdminEzfyBuildQueue, perm: 'module:ezfyBuildQueue' },
+          { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: AdminEzfyTroops, perm: 'module:ezfyTroops' },
+          { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
+          { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
+          { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },
+          { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: AdminEzfyTechs, perm: 'module:ezfyTechs' },
+          { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
+          { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
+          { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },

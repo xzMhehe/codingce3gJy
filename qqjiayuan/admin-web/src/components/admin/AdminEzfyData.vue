@@ -17,17 +17,20 @@
                          :align="col.w ? 'center' : 'left'" show-overflow-tooltip>
           <template slot-scope="{row}">{{ fmt(row[col.k]) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="130" align="center" fixed="right">
+        <el-table-column label="操作" width="130" align="center">
           <template slot-scope="{row}">
             <el-button type="text" size="mini" @click="openEdit(row)">编辑</el-button>
             <el-button type="text" size="mini" class="danger-btn" @click="doDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination background layout="total, sizes, prev, pager, next" :total="total"
-                     :page-size="size" :current-page="page" :page-sizes="[10, 20, 50]"
-                     @current-change="p => { page = p; load() }"
-                     @size-change="s => { size = s; page = 1; load() }" />
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
+        <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                       :current-page="page" :page-sizes="[10, 20, 50]"
+                       @current-change="p => { page = p; load() }"
+                       @size-change="s => { size = s; page = 1; load() }" />
+      </div>
 
       <!-- 新增/编辑对话框 -->
       <el-dialog :title="formId ? '编辑' + tableName : '新增' + tableName" :visible.sync="showForm" width="600px" append-to-body>

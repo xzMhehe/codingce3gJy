@@ -9,28 +9,30 @@
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="user_id" label="用户ID" width="80" align="center" />
-        <el-table-column prop="home_num" label="家园号" width="80" align="center" />
-        <el-table-column label="家园昵称" width="110" show-overflow-tooltip>
+        <el-table-column prop="user_id" label="用户ID" width="70" align="center" />
+        <el-table-column prop="home_num" label="家园号" width="75" align="center" />
+        <el-table-column label="家园昵称" width="100" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.home_nick || '—' }}</template>
         </el-table-column>
-        <el-table-column label="玩家昵称" min-width="110" show-overflow-tooltip>
+        <el-table-column label="玩家昵称" min-width="100" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.nickname }}</span></template>
         </el-table-column>
-        <el-table-column label="阵营" width="90" align="center">
+        <el-table-column label="阵营" width="80" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="row.camp === 2 ? 'danger' : 'primary'">{{ row.camp_name }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="军功声望" width="100" align="center">
+        <el-table-column label="军功声望" width="95" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ row.prestige }}</span></template>
         </el-table-column>
-        <el-table-column label="军衔" width="110" align="center">
+        <el-table-column label="军衔" width="95" align="center">
           <template slot-scope="{row}">{{ row.rank_name }}</template>
         </el-table-column>
-        <el-table-column prop="city_count" label="城池" width="70" align="center" />
-        <el-table-column prop="updated_at" label="更新时间" width="160" />
-        <el-table-column label="操作" width="210" align="center" fixed="right">
+        <el-table-column prop="city_count" label="城池" width="65" align="center" />
+        <el-table-column label="更新时间" width="150" align="center">
+          <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="230" align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-view" title="详情" @click="openDetail(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
@@ -39,10 +41,13 @@
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination background layout="total, sizes, prev, pager, next" :total="total"
-                     :page-size="size" :current-page="page" :page-sizes="[10, 20, 50]"
-                     @current-change="p => { page = p; load() }"
-                     @size-change="s => { size = s; page = 1; load() }" />
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
+        <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                       :current-page="page" :page-sizes="[10, 20, 50]"
+                       @current-change="p => { page = p; load() }"
+                       @size-change="s => { size = s; page = 1; load() }" />
+      </div>
     </el-card>
 
     <!-- 详情（档案+城池+背包+军团+最近出征） -->
@@ -98,7 +103,9 @@
           <el-table-column label="状态" width="90" align="center">
             <template slot-scope="{row}">{{ statusNames[row.status] || row.status }}</template>
           </el-table-column>
-          <el-table-column prop="created_at" label="时间" width="160" />
+          <el-table-column label="时间" width="150" align="center">
+            <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+          </el-table-column>
         </el-table>
       </template>
       <div slot="footer">
@@ -158,7 +165,7 @@
           </div>
         </el-form-item>
       </el-form>
-      <em>提示：资源发放按主城仓储上限自动截断；道具ID 可在「二战风云 → 数据管理」中查询</em>
+      <em>提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；道具ID 可在「二战风云 → 数据管理」中查询</em>
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -184,6 +191,7 @@ export default {
   },
   mounted () { this.load() },
   methods: {
+    fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     load () {
       this.loading = true
       api.get('/admin/ezfy-players', { params: { page: this.page, size: this.size, word: this.word } }).then(r => {

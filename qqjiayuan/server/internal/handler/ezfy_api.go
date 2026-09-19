@@ -1223,6 +1223,22 @@ func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64
 	h.saveCityRes(&city)
 }
 
+// giveResourcesNoCap 管理端专用发放：**不按仓储上限截断**。
+//
+// 游戏内正常产出走 giveResources（超上限就丢掉溢出部分），但 GM 发资源如果也被
+// 上限吃掉，就会出现「明明发了 100 万，玩家只收到 3 万」的困惑 —— 所以管理端
+// 的「送资源 / 批量发放」一律走这里，允许资源超上限堆着。
+// 负数是合法的（可用来扣减），但结果不会低于 0。
+func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) {
+	city := h.getOrCreateCity(uid)
+	city.Food = max64(0, city.Food+food)
+	city.Steel = max64(0, city.Steel+steel)
+	city.Oil = max64(0, city.Oil+oil)
+	city.Rare = max64(0, city.Rare+rare)
+	city.Gold = max64(0, city.Gold+gold)
+	h.saveCityRes(&city)
+}
+
 func (h *EzfyHandler) Welfare(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	today := time.Now().Format("2006-01-02")
@@ -1349,7 +1365,7 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 		}
 		city := h.getOrCreateCity(uid)
 		if city.CityLevel < needLevel {
-			resp.ParamError(c, fmt.Sprintf("市政厅需要达到%d级", needLevel))
+			resp.ParamError(c, fmt.Sprintf("%s需要达到%d级", h.buildingName(1), needLevel))
 			return
 		}
 		h.giveResources(uid, res, res*3/5, res*2/5, res/5, gold)

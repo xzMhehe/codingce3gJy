@@ -557,6 +557,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/techs/cancel", ezfyH.CancelTech)
 				ezfyG.GET("/map", ezfyH.MapView)
 				ezfyG.GET("/map/wildland", ezfyH.WildlandView)
+				// 资源显示名（管理端改名后前端立即跟随；/view 里也有同名字段）
+				ezfyG.GET("/res-cfg", ezfyH.ResCfg)
 				ezfyG.GET("/map/stars", ezfyH.MapStars)
 				ezfyG.POST("/map/stars", ezfyH.MapStarAdd)
 				ezfyG.POST("/map/stars/delete", ezfyH.MapStarDelete)
@@ -985,14 +987,165 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyLogs"), adminH.AdminEzfyChatDelete)
 				admin.GET("/ezfy-exchanges", perm(db, "module:ezfyLogs"), adminH.AdminEzfyExchanges)
 				admin.DELETE("/ezfy-exchanges/:id", perm(db, "module:ezfyLogs"), adminH.AdminEzfyExchangeDelete)
-				admin.GET("/ezfy-corps", perm(db, "module:ezfySystem"), adminH.AdminEzfyCorps)
-				admin.DELETE("/ezfy-corps/:id", perm(db, "module:ezfySystem"), adminH.AdminEzfyCorpsDelete)
+				admin.GET("/ezfy-corps", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorps)
+				admin.DELETE("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsDelete)
 				admin.GET("/ezfy-notices", perm(db, "module:ezfySystem"), adminH.AdminEzfyNotices)
 				admin.POST("/ezfy-announce", perm(db, "module:ezfySystem"), adminH.AdminEzfyAnnounce)
 				admin.DELETE("/ezfy-notices/:id", perm(db, "module:ezfySystem"), adminH.AdminEzfyNoticeDelete)
 				admin.GET("/ezfy-stats", perm(db, "module:ezfySystem"), adminH.AdminEzfyStats)
 				admin.GET("/ezfy-server", perm(db, "module:ezfySystem"), adminH.AdminEzfyServer)
 				admin.POST("/ezfy-server/maintenance", perm(db, "module:ezfySystem"), adminH.AdminEzfyServerSet)
+
+				// ---- 城市管理 ----
+				admin.GET("/ezfy-cities", perm(db, "module:ezfyCities"), adminH.AdminEzfyCities)
+				admin.GET("/ezfy-cities/:id", perm(db, "module:ezfyCities"), adminH.AdminEzfyCityDetail)
+				admin.PUT("/ezfy-cities/:id", perm(db, "module:ezfyCities"), adminH.AdminEzfyCityUpdate)
+				admin.POST("/ezfy-cities/:id/reset", perm(db, "module:ezfyCities"), adminH.AdminEzfyCityReset)
+				admin.DELETE("/ezfy-cities/:id", perm(db, "module:ezfyCities"), adminH.AdminEzfyCityDelete)
+
+				// ---- 建筑管理 ----
+				admin.GET("/ezfy-buildings", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildings)
+				admin.POST("/ezfy-buildings", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingCreate)
+				admin.PUT("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingUpdate)
+				admin.POST("/ezfy-buildings/:id/finish", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingFinish)
+				admin.DELETE("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingDelete)
+
+				// 总建筑配置（ezfy_cfg_building / _level，可增删改）
+				admin.GET("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingCfg)
+				admin.POST("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingCfgCreate)
+				admin.PUT("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingCfgUpdate)
+				admin.DELETE("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingCfgDelete)
+				admin.GET("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingLevels)
+				admin.POST("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingLevelCreate)
+				admin.PUT("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingLevelUpdate)
+				admin.DELETE("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), adminH.AdminEzfyBuildingLevelDelete)
+
+				// ---- 建筑队列管理 ----
+				admin.GET("/ezfy-build-queue", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueue)
+				admin.POST("/ezfy-build-queue/:id/finish", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueFinish)
+				admin.POST("/ezfy-build-queue/:id/speed", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueSpeed)
+				admin.POST("/ezfy-build-queue/:id/cancel", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueCancel)
+				admin.POST("/ezfy-build-queue/finish-all", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueFinishAll)
+
+				// ---- 兵种管理 ----
+				admin.GET("/ezfy-troops", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroops)
+				admin.GET("/ezfy-troops-cfg", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroopsCfg)
+				admin.POST("/ezfy-troops/grant", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroopGrant)
+				admin.PUT("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroopUpdate)
+				admin.DELETE("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroopDelete)
+				admin.GET("/ezfy-wounded", perm(db, "module:ezfyTroops"), adminH.AdminEzfyWounded)
+				admin.DELETE("/ezfy-wounded/:id", perm(db, "module:ezfyTroops"), adminH.AdminEzfyWoundedDelete)
+				// 兵种配置可改参数（含同盟国/轴心国兵种名）
+				admin.PUT("/ezfy-troops-cfg/:id", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroopCfgUpdate)
+
+				// ---- 队伍征兵（训练队列） ----
+				admin.GET("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainQueue)
+				admin.POST("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainCreate)
+				admin.POST("/ezfy-train-queue/finish-all", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainFinishAll)
+				admin.POST("/ezfy-train-queue/:id/finish", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainFinish)
+				admin.POST("/ezfy-train-queue/:id/speed", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainSpeed)
+				admin.DELETE("/ezfy-train-queue/:id", perm(db, "module:ezfyRecruit"), adminH.AdminEzfyTrainDelete)
+
+				// ---- 军官管理 ----
+				admin.GET("/ezfy-officers", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficers)
+				admin.GET("/ezfy-officers-cfg", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerCfg)
+				admin.POST("/ezfy-officers/grant", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerGrant)
+				admin.PUT("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerUpdate)
+				admin.POST("/ezfy-officers/:id/captive", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerCaptive)
+				admin.DELETE("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerDelete)
+				// 总览 + 下拉数据
+				admin.GET("/ezfy-officer-overview", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerOverview)
+				admin.GET("/ezfy-officer-pickers", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerPickers)
+				// 名将列表（配置表 CRUD）
+				admin.GET("/ezfy-generals", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGenerals)
+				admin.POST("/ezfy-generals", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralCreate)
+				admin.PUT("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralUpdate)
+				admin.DELETE("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralDelete)
+				// 军官技能列表（配置表 CRUD）
+				admin.GET("/ezfy-skills", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySkills)
+				admin.POST("/ezfy-skills", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySkillCreate)
+				admin.PUT("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySkillUpdate)
+				admin.DELETE("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySkillDelete)
+				// 玩家军官技能列表（ezfy_officer.skill 展开）
+				admin.GET("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillsOwned)
+				admin.POST("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillAdd)
+				admin.DELETE("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillRemove)
+				// 军官装备列表（配置表 CRUD）
+				admin.GET("/ezfy-equipments", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipments)
+				admin.POST("/ezfy-equipments", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentCreate)
+				admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentUpdate)
+				admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentDelete)
+				// 玩家军官装备列表（ezfy_equipment）
+				admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentsOwned)
+				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedCreate)
+				admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedUpdate)
+				admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedDelete)
+
+				// ---- 资源管理 ----
+				admin.GET("/ezfy-resources", perm(db, "module:ezfyResources"), adminH.AdminEzfyResources)
+				admin.GET("/ezfy-resources-summary", perm(db, "module:ezfyResources"), adminH.AdminEzfyResourceSummary)
+				admin.POST("/ezfy-resources/set", perm(db, "module:ezfyResources"), adminH.AdminEzfyResourceSet)
+				admin.POST("/ezfy-resources/grant", perm(db, "module:ezfyResources"), adminH.AdminEzfyResourceGrant)
+
+				// ---- 资源名称维护（改名后游戏端/管理端展示全部跟随） ----
+				admin.GET("/ezfy-res-cfg", perm(db, "module:ezfyResources"), adminH.AdminEzfyResCfgList)
+				admin.PUT("/ezfy-res-cfg/:id", perm(db, "module:ezfyResources"), adminH.AdminEzfyResCfgUpdate)
+				admin.POST("/ezfy-res-cfg/reset", perm(db, "module:ezfyResources"), adminH.AdminEzfyResCfgReset)
+
+				// ---- 科技管理 ----
+				admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechs)
+				admin.GET("/ezfy-techs-cfg", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechsCfg)
+				admin.POST("/ezfy-techs/set", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechSet)
+				admin.PUT("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechUpdate)
+				admin.POST("/ezfy-techs/:id/finish", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechFinish)
+				admin.DELETE("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechDelete)
+
+				// ---- 科技配置维护（原先只能只读参考） ----
+				admin.GET("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechCfgList)
+				admin.POST("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechCfgCreate)
+				admin.PUT("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechCfgUpdate)
+				admin.DELETE("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechCfgDelete)
+				admin.GET("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelList)
+				admin.POST("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelCreate)
+				admin.PUT("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelUpdate)
+				admin.DELETE("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelDelete)
+
+				// ---- 地图管理 ----
+				admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapCities)
+				admin.GET("/ezfy-map/wildlands", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapWildlands)
+				admin.GET("/ezfy-map/occupy", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapOccupy)
+				admin.POST("/ezfy-map/occupy/:id/release", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapOccupyRelease)
+				admin.DELETE("/ezfy-map/occupy/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapOccupyDelete)
+				admin.GET("/ezfy-map/areas", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapAreas)
+				admin.DELETE("/ezfy-map/areas/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapAreaDelete)
+				admin.GET("/ezfy-map/stars", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapStars)
+				admin.DELETE("/ezfy-map/stars/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapStarsDelete)
+				admin.GET("/ezfy-map/lookup", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapLookup)
+
+				// ---- 野地维护（全量列表 + 增删改） ----
+				admin.GET("/ezfy-wildlands", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandList)
+				admin.POST("/ezfy-wildlands", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandCreate)
+				admin.PUT("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandUpdate)
+				admin.POST("/ezfy-wildlands/:id/finish", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandFinish)
+				admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandDelete)
+
+				// ---- 野地类型维护（ezfy_cfg_wildland） ----
+				admin.GET("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgList)
+				admin.POST("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgCreate)
+				admin.PUT("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgUpdate)
+				admin.DELETE("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgDelete)
+
+				// ---- 军团管理 ----
+				admin.GET("/ezfy-corps/:id/members", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMembers)
+				admin.PUT("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsUpdate)
+				admin.DELETE("/ezfy-corps/:id/members/:uid", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsKick)
+				admin.GET("/ezfy-corps/:id/chats", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsChats)
+				admin.DELETE("/ezfy-corps-chats/:id", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsChatDelete)
+
+				// ---- 私聊管理 ----
+				admin.GET("/ezfy-privchats", perm(db, "module:ezfyPrivchat"), adminH.AdminEzfyPrivchats)
+				admin.DELETE("/ezfy-privchats/:id", perm(db, "module:ezfyPrivchat"), adminH.AdminEzfyPrivchatDelete)
+				admin.POST("/ezfy-privchats/clear", perm(db, "module:ezfyPrivchat"), adminH.AdminEzfyPrivchatClear)
 
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "module:users"), adminH.Users)

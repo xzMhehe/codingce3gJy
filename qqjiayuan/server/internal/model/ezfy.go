@@ -110,6 +110,21 @@ type EzfyCfgWildland struct {
 
 func (EzfyCfgWildland) TableName() string { return "ezfy_cfg_wildland" }
 
+// EzfyCfgResource 资源显示名配置（管理端可改名，全站展示跟随）
+//
+// ★ 这是「预留」能力：后期把「稀矿」改成别的叫法，只要改这张表，
+// 游戏端 / 管理端的资源名就全部跟着变，不用改代码。
+// Key 是程序内部标识（gold/food/steel/oil/rare），Name 是展示名，Short 是单字简称（金/粮/钢/油/稀）。
+type EzfyCfgResource struct {
+	ID    int    `gorm:"primaryKey" json:"id"`
+	Key   string `gorm:"type:varchar(20);uniqueIndex" json:"key"`
+	Name  string `gorm:"type:varchar(30)" json:"name"`
+	Short string `gorm:"type:varchar(10)" json:"short"`
+	Sort  int    `json:"sort"`
+}
+
+func (EzfyCfgResource) TableName() string { return "ezfy_cfg_resource" }
+
 type EzfyCfgItem struct {
 	ID          int    `gorm:"primaryKey" json:"id"`
 	Name        string `gorm:"type:varchar(50)" json:"name"`

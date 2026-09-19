@@ -69,71 +69,37 @@
       </el-row>
     </el-card>
 
-    <el-row :gutter="14">
-      <!-- 公告管理 -->
-      <el-col :span="14">
-        <el-card shadow="never" class="box">
-          <div slot="header" class="card-head"><span>公告管理（游戏内公告栏 + 世界聊天同步）</span></div>
-          <div class="toolbar">
-            <el-input v-model="noticeForm.title" placeholder="公告标题" maxlength="100" style="width:200px" />
-            <el-checkbox v-model="noticeForm.isTop">置顶</el-checkbox>
-          </div>
-          <el-input v-model="noticeForm.content" type="textarea" :rows="3" maxlength="2000" show-word-limit
-                    placeholder="公告内容" style="margin-bottom:10px" />
-          <div style="text-align:right;margin-bottom:10px">
-            <el-button type="primary" size="small" :loading="sending" @click="doAnnounce">发 布</el-button>
-          </div>
-          <el-table :data="notices" v-loading="loadingNotices" size="mini" stripe border max-height="260">
-            <el-table-column prop="id" label="ID" width="60" align="center" />
-            <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip>
-              <template slot-scope="{row}">
-                <el-tag v-if="row.is_top === 1" size="mini" type="warning" style="margin-right:4px">置顶</el-tag>
-                <span class="td-main">{{ row.title }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="content" label="内容" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="created_at" label="时间" width="150" />
-            <el-table-column label="操作" width="80" align="center" fixed="right">
-              <template slot-scope="{row}">
-                <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delNotice(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-col>
-
-      <!-- 军团管理 -->
-      <el-col :span="10">
-        <el-card shadow="never" class="box">
-          <div slot="header" class="card-head">
-            <span>军团管理</span>
-            <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="loadCorps">刷新</el-button>
-          </div>
-          <div class="toolbar">
-            <el-input v-model="corpsWord" placeholder="军团名搜索" clearable style="width:180px"
-                      @keyup.enter.native="corpsPage = 1; loadCorps()" />
-            <el-button type="primary" size="small" icon="el-icon-search" @click="corpsPage = 1; loadCorps()">查询</el-button>
-          </div>
-          <el-table :data="corps" v-loading="loadingCorps" size="mini" stripe border max-height="380">
-            <el-table-column prop="id" label="ID" width="60" align="center" />
-            <el-table-column prop="name" label="军团名" min-width="100" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
-            </el-table-column>
-            <el-table-column prop="leader_name" label="军团长" width="100" show-overflow-tooltip />
-            <el-table-column prop="member_count" label="成员" width="60" align="center" />
-            <el-table-column prop="created_at" label="创建时间" width="150" />
-            <el-table-column label="操作" width="80" align="center" fixed="right">
-              <template slot-scope="{row}">
-                <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="dissolve(row)">解散</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-pagination background layout="prev, pager, next" :total="corpsTotal"
-                         :page-size="corpsSize" :current-page="corpsPage"
-                         @current-change="p => { corpsPage = p; loadCorps() }" />
-        </el-card>
-      </el-col>
-    </el-row>
+    <el-card shadow="never" class="box">
+      <div slot="header" class="card-head"><span>公告管理（游戏内公告栏 + 世界聊天同步）</span></div>
+      <div class="toolbar">
+        <el-input v-model="noticeForm.title" placeholder="公告标题" maxlength="100" style="width:200px" />
+        <el-checkbox v-model="noticeForm.isTop">置顶</el-checkbox>
+      </div>
+      <el-input v-model="noticeForm.content" type="textarea" :rows="3" maxlength="2000" show-word-limit
+                placeholder="公告内容" style="margin-bottom:10px" />
+      <div style="text-align:right;margin-bottom:10px">
+        <el-button type="primary" size="small" :loading="sending" @click="doAnnounce">发 布</el-button>
+      </div>
+      <el-table :data="notices" v-loading="loadingNotices" size="mini" stripe border max-height="320">
+        <el-table-column prop="id" label="ID" width="60" align="center" />
+        <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <el-tag v-if="row.is_top === 1" size="mini" type="warning" style="margin-right:4px">置顶</el-tag>
+            <span class="td-main">{{ row.title }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
+        <el-table-column label="时间" width="150" align="center">
+          <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template slot-scope="{row}">
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delNotice(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <em>提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长）</em>
+    </el-card>
   </div>
 </template>
 
@@ -150,7 +116,6 @@ export default {
       loadingSrv: false, savingSrv: false,
       noticeForm: { title: '', content: '', isTop: true },
       notices: [], loadingNotices: false, sending: false,
-      corps: [], corpsTotal: 0, corpsPage: 1, corpsSize: 10, corpsWord: '', loadingCorps: false,
       campNames: { 1: '同盟国', 2: '轴心国' }
     }
   },
@@ -178,8 +143,9 @@ export default {
       return this.stats.camps.map(r => ({ name: this.campNames[r.camp] || ('阵营' + r.camp), cnt: r.cnt }))
     }
   },
-  mounted () { this.loadStats(); this.loadServer(); this.loadNotices(); this.loadCorps() },
+  mounted () { this.loadStats(); this.loadServer(); this.loadNotices() },
   methods: {
+    fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     loadServer () {
       this.loadingSrv = true
       api.get('/admin/ezfy-server').then(r => {
@@ -241,24 +207,6 @@ export default {
       this.$confirm('确认删除该条公告？', '提示', { type: 'warning' }).then(() => {
         api.delete('/admin/ezfy-notices/' + row.id).then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadNotices() } else this.$message.error(r.msg)
-        })
-      }).catch(() => {})
-    },
-    loadCorps () {
-      this.loadingCorps = true
-      api.get('/admin/ezfy-corps', { params: { page: this.corpsPage, size: this.corpsSize, word: this.corpsWord } }).then(r => {
-        this.loadingCorps = false
-        if (r.code === 0) {
-          this.corps = r.data.list
-          this.corpsTotal = r.data.total
-          this.corpsPage = r.data.page
-        } else this.$message.error(r.msg)
-      })
-    },
-    dissolve (row) {
-      this.$confirm('解散军团将清除所有成员与军团聊天记录，确认解散「' + row.name + '」？', '提示', { type: 'warning' }).then(() => {
-        api.delete('/admin/ezfy-corps/' + row.id).then(r => {
-          if (r.code === 0) { this.$message.success(r.data.msg || '已解散'); this.loadCorps(); this.loadStats() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     }
