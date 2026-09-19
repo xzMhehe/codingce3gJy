@@ -552,6 +552,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/troops/train", ezfyH.Train)
 				// 取消训练队列（退还资源）
 				ezfyG.POST("/troops/train/cancel", ezfyH.CancelTrain)
+				// 解散部队（用户自输数量）
+				ezfyG.POST("/troops/disband", ezfyH.DisbandTroops)
 				ezfyG.POST("/troops/speed-all", ezfyH.SpeedTrainAll)
 				ezfyG.POST("/troops/recover", ezfyH.RecoverWounded)
 				ezfyG.POST("/troops/dismiss", ezfyH.DismissDefence)
@@ -588,6 +590,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/corps/chats", ezfyH.CorpsChats)
 				ezfyG.POST("/corps/chat", ezfyH.CorpsChat)
 				ezfyG.POST("/corps/mail", ezfyH.CorpsMail)
+				// 军团任职（军团长任命副团长 / 参谋长）
+				ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
 				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
 				ezfyG.GET("/liaison", ezfyH.Liaison)
 				ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
@@ -1152,6 +1156,20 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelCreate)
 				admin.PUT("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelUpdate)
 				admin.DELETE("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelDelete)
+
+				// ---- 建筑数量上限配置（军事区/资源区各 33，默认 33） ----
+				admin.GET("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), adminH.AdminEzfyBuildLimitGet)
+				admin.PUT("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), adminH.AdminEzfyBuildLimitUpdate)
+
+				// ---- 二战聊天敏感词（独立维护页，与社区黑名单榜分开） ----
+				admin.GET("/ezfy-word-filters", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilters)
+				admin.POST("/ezfy-word-filters", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterCreate)
+				admin.POST("/ezfy-word-filters/bulk", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterBulk)
+				admin.PUT("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterUpdate)
+				admin.DELETE("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterDelete)
+
+				// ---- 钻石充值（钻石只能管理端充值） ----
+				admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyDiamondRecharge)
 
 				// ---- 地图管理 ----
 				admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapCities)

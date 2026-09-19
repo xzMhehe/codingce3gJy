@@ -532,19 +532,27 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	switch {
 	case trimSpace(req.ToName) != "":
 		kw := trimSpace(req.ToName)
-		// 家园号码 → 昵称 → 模糊昵称(唯一命中才认)
+		// 玩家号码 → 游戏ID(二战) → 昵称 → 模糊昵称(唯一命中才认)
 		if u, err := h.resolveUser(kw); err == nil {
 			target = u
 		} else if err := h.DB.Where("nickname = ?", kw).First(&target).Error; err != nil {
+			// ★ 二战风云：允许用「游戏ID」(ezfy_profile.game_uid) 找人
+			var pid uint
+			if e := h.DB.Model(&model.EzfyProfile{}).Where("game_uid = ?", kw).
+				Select("user_id").Row().Scan(&pid); e == nil && pid > 0 {
+				h.DB.First(&target, pid)
+			}
+		}
+		if target.ID == 0 {
 			var cands []model.User
 			h.DB.Where("nickname LIKE ?", "%"+kw+"%").Limit(2).Find(&cands)
 			if len(cands) == 1 {
 				target = cands[0]
 			} else if len(cands) == 0 {
-				resp.NotFound(c, "找不到这位玩家(可填家园号码或昵称)")
+				resp.NotFound(c, "找不到这位玩家(可填玩家号码 / 游戏ID / 昵称)")
 				return
 			} else {
-				resp.ParamError(c, "昵称「"+kw+"」匹配到多位玩家, 请用家园号码")
+				resp.ParamError(c, "昵称「"+kw+"」匹配到多位玩家, 请用玩家号码")
 				return
 			}
 		}
@@ -554,7 +562,7 @@ func (h *MessageHandler) Send(c *gin.Context) {
 			return
 		}
 	default:
-		resp.ParamError(c, "请填写接收人(家园号码或昵称)")
+		resp.ParamError(c, "请填写接收人(玩家号码 / 游戏ID / 昵称)")
 		return
 	}
 	if target.ID == uid {
@@ -565,7 +573,7 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	var black int64
 	h.DB.Model(&model.FriendBlack{}).Where("user_id = ? AND friend_id = ? AND end_time > ?", target.ID, uid, time.Now()).Count(&black)
 	if black > 0 {
-		resp.Forbidden(c, "对方不接受您的家信")
+		resp.Forbidden(c, "对方不接受你的私信")
 		return
 	}
 	msg := model.PrivateMessage{SenderID: uid, ReceiverID: target.ID, Content: req.Content}

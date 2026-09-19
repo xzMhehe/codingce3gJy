@@ -818,27 +818,45 @@ func jsonInt(v interface{}) int {
 	return 0
 }
 
-// officerGoOut 军官出征/归来：出征时状态=1 且忠诚-5，归零自动离职
+// officerGoOut 军官出征/归来：出征置状态=1、归来置 0。
+//
+// ★ 第九轮用户规则：出征/派遣**不再扣忠诚**（旧版每次 -5，归零即离职，玩家反感）；
+// 只有打败仗才扣，见 ezfy_order.go 的败仗结算 → officerLoseLoyalty。
 func (h *EzfyHandler) officerGoOut(city *model.EzfyCity, name string, goOut bool) {
 	o := h.officerByName(city.ID, name)
 	if o == nil {
 		return
 	}
 	if goOut {
-		loyalty := o.Loyalty - 5
-		if loyalty < 0 {
-			loyalty = 0
-		}
-		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
-			Updates(map[string]interface{}{"status": 1, "loyalty": loyalty})
-		if loyalty <= 0 {
-			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
-			h.addReport(city.UserID, 6, "将领离职: "+o.Name,
-				o.Name+"因忠诚度归零而离职, 离开了你的城市。", "")
-		}
+		// ★ 第九轮用户规则：**派遣/出征不掉忠心**（原来每次 -5，归零就离职，玩家很反感）。
+		//   只有打了败仗才掉，且掉的量按战损合理计算（见 officerLoseLoyalty / 战斗结算）。
+		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("status", 1)
 		return
 	}
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("status", 0)
+}
+
+// officerLoseLoyalty 扣军官忠心（归零自动离职）。
+//
+// 只在**打败仗**时调用；delta 由战损程度算出来（见 ezfy_order.go 的败仗结算）。
+func (h *EzfyHandler) officerLoseLoyalty(uid uint, cityId uint, name string, delta int, reason string) {
+	if name == "" || delta <= 0 {
+		return
+	}
+	o := h.officerByName(cityId, name)
+	if o == nil {
+		return
+	}
+	loyalty := o.Loyalty - delta
+	if loyalty < 0 {
+		loyalty = 0
+	}
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("loyalty", loyalty)
+	if loyalty <= 0 {
+		h.DB.Delete(&model.EzfyOfficer{}, o.ID)
+		h.addReport(uid, 6, "将领离职: "+o.Name,
+			o.Name+"因连番战败、忠诚度归零而离职, 离开了你的城市。"+reason, "")
+	}
 }
 
 // moveOfficerTo 军官随军调任到目标城市（职位清空）

@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"gorm.io/gorm"
@@ -349,6 +350,53 @@ type ezfyConfigCache struct {
 	tiles map[int64]model.EzfyMapTile
 	// 军衔配置（按等级 1..N 排序）
 	ranks []model.EzfyCfgRank
+	// 建筑数量上限（军事区/资源区分开，管理端可维护）
+	limit model.EzfyCfgLimit
+	// 二战聊天敏感词（独立维护页）
+	words []model.EzfyWordFilter
+}
+
+// ezfyLimit 取建筑数量上限配置（带默认值兜底）
+func ezfyLimit() model.EzfyCfgLimit {
+	l := ezfyCfg.limit
+	if l.MilitaryMax <= 0 {
+		l.MilitaryMax = 33
+	}
+	if l.ResourceMax <= 0 {
+		l.ResourceMax = 33
+	}
+	if l.HouseMax <= 0 {
+		l.HouseMax = 10
+	}
+	return l
+}
+
+// ezfyWords 取二战聊天敏感词
+func ezfyWords() []model.EzfyWordFilter {
+	return ezfyCfg.words
+}
+
+// ezfyFilterChat 过滤二战聊天内容。
+// 返回 (过滤后的文本, 是否被拦截)。拦截类敏感词直接拒绝发言。
+func ezfyFilterChat(text string) (string, bool) {
+	out := text
+	for _, w := range ezfyWords() {
+		if w.Word == "" {
+			continue
+		}
+		if !strings.Contains(out, w.Word) {
+			continue
+		}
+		if w.Type == 2 {
+			return out, true
+		}
+		rep := w.Replace
+		if rep == "" {
+			rep = strings.Repeat("*", len([]rune(w.Word)))
+		}
+		out = strings.ReplaceAll(out, w.Word, rep)
+	}
+	return out, false
 }
 
 var ezfyCfg ezfyConfigCache
@@ -480,6 +528,18 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		rks = ezfyDefaultRanks()
 	}
 	c.ranks = rks
+
+	// 建筑数量上限（单行；缺行时用默认 33/33/10/0）
+	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0}
+	var lim model.EzfyCfgLimit
+	if err := db.First(&lim, 1).Error; err == nil {
+		c.limit = lim
+	}
+
+	// 二战聊天敏感词（独立维护页）
+	var wds []model.EzfyWordFilter
+	db.Order("id").Find(&wds)
+	c.words = wds
 }
 
 // ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）

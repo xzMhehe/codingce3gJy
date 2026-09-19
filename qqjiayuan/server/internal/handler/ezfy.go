@@ -20,10 +20,9 @@ import (
 // 二战风云 核心玩法：进入游戏/城池/建筑/资源懒结算/造兵/伤兵/科技
 
 const (
-	ezfyFactoryBuildingID = 14                     // 军工厂
-	ezfyMaxFactoryCount   = 5                      // 军工厂最多建造数
-	ezfyMaxBuildings      = 33                     // 军事区+资源区建筑总数上限
-	ezfyMaxHouseCount     = 10                     // 民居最多建造数
+	ezfyFactoryBuildingID = 14 // 军工厂（★ 不限数量，只受军事区建筑上限约束）
+	// ★ 建筑数量上限（军事区/资源区各 33、民居 10）已迁到 ezfy_cfg_limit 表，
+	//   管理端「二战风云 → 建筑上限配置」可维护，见 ezfyLimit()。
 	ezfyConveneGoldCost   = 100000                 // 召集人口消耗黄金
 	ezfyConvenePopGain    = 100000                 // 召集获得人口
 	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
@@ -35,6 +34,10 @@ const (
 	ezfyDeserterRate      = 30                     // 守军战败溃逃比例%
 	ezfyWarDelayHours     = 24                     // 宣战生效延迟(小时)
 	ezfyWarDurationHours  = 48                     // 宣战有效期(小时)
+	// ★ 第九轮：取消训练手续费（%），按常见游戏取 10%
+	ezfyCancelTrainFeePct = 10
+	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
+	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -52,6 +55,8 @@ func (h *EzfyHandler) cfgs() {
 	ezfyCfg.load(h.DB)
 	// 一次性迁移：旧版「建在海洋上」的海城 → 沿海平原（幂等，进程内只跑一次）
 	ezfySeaMigrateOnce.Do(func() { ezfyMigrateSeaCities(h.DB) })
+	// 一次性迁移：科技从「按城各存」合并为「所有城池公用」（幂等，见 ezfy_tech_shared.go）
+	ezfySharedTechOnce.Do(func() { ezfyMigrateSharedTech(h.DB) })
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
@@ -216,18 +221,75 @@ func (h *EzfyHandler) buildingTotalLevel(cityId uint, buildingId int) int {
 }
 
 func (h *EzfyHandler) areaBuildingCount(cityId uint) int {
-	n := 0
-	for _, b := range h.buildingList(cityId) {
-		if c := ezfyCfg.building(b.BuildingId); c != nil && (c.Type == 1 || c.Type == 2 || c.Type == 3) {
-			n++
-		}
-	}
-	return n
+	m, r := h.areaCounts(cityId)
+	return m + r
 }
 
+// areaCounts 分别统计「军事区」与「资源区」的建筑数量。
+//
+// ★ 第九轮用户规则：军事区与资源区数量上限**分开**，各 33（管理端可维护，见 ezfy_cfg_limit）。
+// 分区判据与前端 buildZone 一致：军事区 = type 2/3/4，资源区 = type 1。
+func (h *EzfyHandler) areaCounts(cityId uint) (military, resource int) {
+	for _, b := range h.buildingList(cityId) {
+		c := ezfyCfg.building(b.BuildingId)
+		if c == nil {
+			continue
+		}
+		if c.Type == 1 {
+			resource++
+		} else if c.Type == 2 || c.Type == 3 || c.Type == 4 {
+			military++
+		}
+	}
+	return
+}
+
+// ezfyBuildingMaxLevel 建筑等级上限（用户规则，覆盖配置表 max_level）
+//
+//	市政厅(1)            → 10
+//	民居(2)              → 最多比市政厅高 1 级；市政厅到 10 级时民居可升到 12
+//	参谋部(10)/司令部(13) → 12
+//	其他                 → 10
+func ezfyBuildingMaxLevel(buildingId, hallLevel int) int {
+	switch buildingId {
+	case 1:
+		return 10
+	case 2:
+		if hallLevel >= 10 {
+			return 12
+		}
+		if hallLevel+1 >= 12 {
+			return 12
+		}
+		return hallLevel + 1
+	case 10, 13:
+		return 12
+	}
+	return 10
+}
+
+// hallLevelOf 该城市市政厅当前等级
+func (h *EzfyHandler) hallLevelOf(cityId uint) int {
+	return h.buildingLevel(cityId, 1)
+}
+
+// buildingMaxLevel 该城该建筑的等级上限。
+//
+// ★ 第九轮用户规则**优先于配置表**：等级上限是玩法规则，不是数值配置。
+//
+//	配置表 ezfy_cfg_building.max_level 只作参考（历史上民居被写成 10，
+//	会把「民居最多比市政厅高1级」这条规则整个压掉，所以这里不再取它的值）。
+func (h *EzfyHandler) buildingMaxLevel(cityId uint, buildingId int) int {
+	return ezfyBuildingMaxLevel(buildingId, h.hallLevelOf(cityId))
+}
+
+// techMap 某城的科技等级表。
+//
+// ★ 第九轮：科技**所有城池公用** —— 内部先换算成「科技城」(玩家主城)，
+// 所以所有调用点（结算/展示/加成）自动变成全账号共用，不用逐个改。
 func (h *EzfyHandler) techMap(cityId uint) map[int]int {
 	var list []model.EzfyCityTech
-	h.DB.Where("city_id = ?", cityId).Find(&list)
+	h.DB.Where("city_id = ?", h.techCityId(cityId)).Find(&list)
 	m := map[int]int{}
 	for _, t := range list {
 		m[t.TechId] = t.Level
@@ -320,7 +382,7 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 			b.Level++
 			h.addPrestige(city.UserID, b.Level*10)
 			cfg := ezfyCfg.building(b.BuildingId)
-			if b.StartTime == 0 && cfg != nil && b.Level < cfg.MaxLevel {
+			if b.StartTime == 0 && cfg != nil && b.Level < h.buildingMaxLevel(city.ID, b.BuildingId) {
 				b.Status = 2
 				b.EndTime = now + ezfyMaxUpgradeSeconds*1000
 			} else {
@@ -745,27 +807,36 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 			return "该建筑已存在"
 		}
 	}
+	lim := ezfyLimit()
 	if buildingId == ezfyFactoryBuildingID {
-		if countOfType() >= ezfyMaxFactoryCount {
-			return fmt.Sprintf("军工厂最多建造%d个", ezfyMaxFactoryCount)
+		// ★ 第九轮用户规则：军工厂**不限数量**，只要军事区建筑上限没到就能一直建。
+		//   仅当管理端把 factory_max 配成正数时才限制（默认 0 = 不限）。
+		if lim.FactoryMax > 0 && countOfType() >= int64(lim.FactoryMax) {
+			return fmt.Sprintf("军工厂最多建造%d个", lim.FactoryMax)
 		}
 	} else if buildingId == 2 {
-		if countOfType() >= ezfyMaxHouseCount {
-			return fmt.Sprintf("民居最多建造%d个", ezfyMaxHouseCount)
+		if countOfType() >= int64(lim.HouseMax) {
+			return fmt.Sprintf("民居最多建造%d个", lim.HouseMax)
 		}
 	} else if cfg.Type == 2 || cfg.Type == 3 {
 		if countOfType() > 0 {
 			return "该建筑已存在"
 		}
 	}
-	if cfg.Type == 1 || cfg.Type == 2 || cfg.Type == 3 {
-		cnt := h.areaBuildingCount(city.ID)
-		if cnt >= ezfyMaxBuildings {
-			return fmt.Sprintf("建筑数量已达上限(%d/%d)", cnt, ezfyMaxBuildings)
+	// ★ 军事区 / 资源区数量上限**分开**（各 33，管理端可维护）
+	mil, res := h.areaCounts(city.ID)
+	if cfg.Type == 1 {
+		if res >= lim.ResourceMax {
+			return fmt.Sprintf("资源区建筑数量已达上限(%d/%d)", res, lim.ResourceMax)
+		}
+	} else if cfg.Type == 2 || cfg.Type == 3 || cfg.Type == 4 {
+		if mil >= lim.MilitaryMax {
+			return fmt.Sprintf("军事区建筑数量已达上限(%d/%d)", mil, lim.MilitaryMax)
 		}
 	}
-	if buildingId == 19 && !h.isCoastalCity(city) && !h.isSeaCity(city) {
-		return "航海协会只能建在沿海城市或海城"
+	// ★ 航海协会：只有海城（沿海平原）能建，陆城一律不行
+	if buildingId == 19 && !h.isSeaCity(city) {
+		return "航海协会只能建在海城(沿海平原上的城市)"
 	}
 	if !h.pay(city, lv) {
 		return "资源不足"
@@ -797,8 +868,16 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	}
 	target := b.Level + 1
 	cfg := ezfyCfg.building(b.BuildingId)
-	if cfg == nil || target > cfg.MaxLevel {
-		return "已达到最高等级"
+	if cfg == nil {
+		return "建筑配置缺失"
+	}
+	// ★ 第九轮等级规则：市政厅10 / 参谋部·司令部·民居12 / 其他10；民居最多比市政厅高1级
+	if max := h.buildingMaxLevel(city.ID, b.BuildingId); target > max {
+		if b.BuildingId == 2 && h.hallLevelOf(city.ID) < 10 && target == h.hallLevelOf(city.ID)+2 {
+			return fmt.Sprintf("民居最多比市政厅高1级（市政厅%d级，民居最多%d级）",
+				h.hallLevelOf(city.ID), h.hallLevelOf(city.ID)+1)
+		}
+		return fmt.Sprintf("该建筑最高%d级", max)
 	}
 	lv := ezfyCfg.buildingLevel(b.BuildingId, target)
 	if lv == nil {
@@ -841,11 +920,13 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 	if cfg == nil {
 		return "建筑配置缺失"
 	}
-	if b.Level >= cfg.MaxLevel {
+	// ★ 第九轮等级规则（市政厅10 / 参谋部·司令部·民居12 / 其他10，民居 ≤ 市政厅+1）
+	maxLv := h.buildingMaxLevel(city.ID, b.BuildingId)
+	if b.Level >= maxLv {
 		return "该建筑已满级"
 	}
 	var needFood, needSteel, needOil, needRare, needGold int64
-	for lv := b.Level + 1; lv <= cfg.MaxLevel; lv++ {
+	for lv := b.Level + 1; lv <= maxLv; lv++ {
 		if l := ezfyCfg.buildingLevel(b.BuildingId, lv); l != nil {
 			needFood += l.Food
 			needSteel += l.Steel
@@ -921,7 +1002,7 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	}
 	// 海军(type 1)只能在海城训练(用户规则: 陆地城市不能训练海军)
 	if cfg.Type == 1 && !h.isSeaCity(city) {
-		return "海军只能在海城(建在海洋上的城市)训练, 陆地城市无法训练海军"
+		return "海军只能在海城(建在沿海平原上的城市)训练, 陆地城市无法训练海军"
 	}
 	if cfg.Require != "" {
 		matches := ezfyRequirePattern.FindAllStringSubmatch(cfg.Require, -1)
@@ -1076,7 +1157,8 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	if v, ok := ezfyTechAcademy[techId]; ok {
 		academyNeed = v
 	}
-	if h.buildingLevel(city.ID, 8) < academyNeed {
+	// ★ 科技全城公用 → 科研中心等级取玩家所有城的最高值
+	if h.maxAcademyLevel(city.UserID) < academyNeed {
 		return fmt.Sprintf("需要科研中心%d级才能研究%s", academyNeed, cfg.Name)
 	}
 	curLevel := h.techMap(city.ID)[techId]
@@ -1097,8 +1179,10 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 			return fmt.Sprintf("需要先研究%s %d级", preName, cfg.PreTechLevel)
 		}
 	}
+	// ★ 科技全城公用：读写都落到「科技城」（玩家主城）
+	techCity := h.techCityId(city.ID)
 	var researching int64
-	h.DB.Model(&model.EzfyCityTech{}).Where("city_id = ? AND status = 1", city.ID).Count(&researching)
+	h.DB.Model(&model.EzfyCityTech{}).Where("city_id = ? AND status = 1", techCity).Count(&researching)
 	if researching > 0 {
 		return "已有科技研究中"
 	}
@@ -1113,9 +1197,10 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	city.Gold -= lv.Gold
 	h.saveCityRes(city)
 	now := time.Now().UnixMilli()
+	// ★ 科技写入「科技城」（全城公用）
 	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND tech_id = ?", city.ID, techId).First(&t).Error; err != nil {
-		t = model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: 0, Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)}
+	if err := h.DB.Where("city_id = ? AND tech_id = ?", techCity, techId).First(&t).Error; err != nil {
+		t = model.EzfyCityTech{CityId: int64(techCity), TechId: techId, Level: 0, Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)}
 		h.DB.Create(&t)
 		return ""
 	}
@@ -1128,16 +1213,12 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
 	h.refreshCity(city.UserID, city)
 	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", city.ID, techId).First(&t).Error; err != nil {
+	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", h.techCityId(city.ID), techId).First(&t).Error; err != nil {
 		return "该科技没有在研究中"
 	}
 	if lv := ezfyCfg.techLevel(techId, t.Level+1); lv != nil {
-		city.Food += lv.Food
-		city.Steel += lv.Steel
-		city.Oil += lv.Oil
-		city.Rare += lv.Rare
-		city.Gold += lv.Gold
-		h.saveCityRes(city)
+		// 退还也不受仓储上限截断（与取消训练一致）
+		h.giveResNoCap(city, lv.Food, lv.Steel, lv.Oil, lv.Rare, lv.Gold)
 	}
 	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
 		Updates(map[string]interface{}{"status": 0, "end_time": 0})
@@ -1146,8 +1227,11 @@ func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
 
 func (h *EzfyHandler) checkTechDone(city *model.EzfyCity) {
 	now := time.Now().UnixMilli()
+	// ★ 第九轮：科技所有城池公用 —— 研究状态统一落在「科技城」(主城)，
+	//   所以在任意城进入游戏都能结算完成，不会再出现「切城后研究卡住/加成没生效」。
+	tid := h.techCityId(city.ID)
 	var list []model.EzfyCityTech
-	h.DB.Where("city_id = ? AND status = 1", city.ID).Find(&list)
+	h.DB.Where("city_id = ? AND status = 1", tid).Find(&list)
 	for _, t := range list {
 		if now >= t.EndTime {
 			h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
@@ -1159,7 +1243,8 @@ func (h *EzfyHandler) checkTechDone(city *model.EzfyCity) {
 
 func (h *EzfyHandler) speedUpTech(city *model.EzfyCity, minutes int64) string {
 	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND status = 1", city.ID).First(&t).Error; err != nil {
+	// ★ 科技所有城池公用 → 研究中的记录在「科技城」(主城)
+	if err := h.DB.Where("city_id = ? AND status = 1", h.techCityId(city.ID)).First(&t).Error; err != nil {
 		return "没有研究中的科技"
 	}
 	end := time.Now().UnixMilli()
@@ -1682,7 +1767,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"officer_count": h.officerCount(city.ID),
 		"rank_name":     ezfyRankName(profile.Prestige),
 		"rank_post":     ezfyRankPost(profile.Prestige),
-		"cities":        cities,
+		"cities":        h.cityViews(cities),
+		"diamond":       profile.Diamond,
 		"city":          city,
 		"continent":     ezfyContinentName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
@@ -1795,9 +1881,34 @@ func ezfyRate(v int) int {
 // CityList 城市列表
 func (h *EzfyHandler) CityList(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	h.cfgs()
 	var cities []model.EzfyCity
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
-	resp.OK(c, gin.H{"cities": cities})
+	resp.OK(c, gin.H{"cities": h.cityViews(cities)})
+}
+
+// ezfyCityView 城市列表项：在 EzfyCity 全部字段之上补 is_sea / kind。
+//
+// ★ 第九轮：海城判据只在后端算（沿海平原 = ezfyTerrainEx == 9），
+//
+//	前端**不要**再自己用坐标哈希算 —— 旧版前端用「地形==8(海洋)」判海城，
+//	导致真正的海城在列表里显示成「陆地城市」（用户反馈的 bug）。
+type ezfyCityView struct {
+	model.EzfyCity
+	IsSea bool   `json:"is_sea"`
+	Kind  string `json:"kind"`
+}
+
+func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
+	out := make([]ezfyCityView, 0, len(list))
+	for i := range list {
+		out = append(out, ezfyCityView{
+			EzfyCity: list[i],
+			IsSea:    h.isSeaCity(&list[i]),
+			Kind:     h.cityKind(&list[i]),
+		})
+	}
+	return out
 }
 
 // SwitchCity 切换城市
@@ -1884,7 +1995,7 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	kind := "平原"
 	extra := ""
 	if isSea {
-		kind = "海洋"
+		kind = "沿海平原"
 		extra = "\n该城为【海城】: 可建造航海协会并训练海军。"
 	}
 	h.addReport(uid, 5, "新城建成",
@@ -1910,12 +2021,6 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 		resp.ParamError(c, "城市不存在或已被占领")
 		return
 	}
-	// ★ 仅能摧毁非当前所在的城市
-	cur := h.currentCity(uid)
-	if cur.ID == ct.ID {
-		resp.ParamError(c, "不能摧毁当前所在的城市，请先切换到别的城市")
-		return
-	}
 	// 至少保留一座城
 	var owned int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
@@ -1923,9 +2028,19 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 		resp.ParamError(c, "至少要保留一座城市")
 		return
 	}
+	// ★ 第九轮：允许摧毁「当前所在」的城市 —— 摧毁后自动切到剩下的第一座城。
+	//   （老用户反馈「城市列表没有摧毁按钮」，根因是前端只在非当前城显示 + 单城玩家看不到）
+	cur := h.currentCity(uid)
+	needSwitch := cur.ID == ct.ID
 	if msg := h.ezfyDestroyCity(uid, ct); msg != "" {
 		resp.ParamError(c, msg)
 		return
+	}
+	if needSwitch {
+		var next model.EzfyCity
+		if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&next).Error; err == nil {
+			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("current_city_id", next.ID)
+		}
 	}
 	resp.OK(c, gin.H{"msg": "城市「" + ct.Name + "」已摧毁，该坐标恢复为普通平原"})
 }
@@ -1934,6 +2049,14 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 // 并抹掉该坐标的「玩家城」地图区域记录（于是变回普通平原，不属于任何玩家）。
 func (h *EzfyHandler) ezfyDestroyCity(uid uint, ct *model.EzfyCity) string {
 	cid := ct.ID
+	// ★ 科技是全城公用的：如果拆的正好是「科技城」(主城)，先把科技搬到剩下的第一座城，
+	//   否则科技会跟着一起消失。
+	if h.techCityId(cid) == cid {
+		var next model.EzfyCity
+		if err := h.DB.Where("user_id = ? AND id <> ?", uid, cid).Order("id ASC").First(&next).Error; err == nil {
+			h.ezfyMoveTechTo(cid, next.ID)
+		}
+	}
 	// 还在外面的部队/采集队：一并撤掉（否则会留下指向已删城市的孤儿订单）
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOrder{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityBuilding{})

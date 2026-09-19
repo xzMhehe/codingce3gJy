@@ -1126,11 +1126,23 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id")
 	removed := dedup.RowsAffected
 
+	// ★ 第九轮：科技**所有城池公用** —— 每个玩家只写「科技城」(主城) 一份，
+	//   不再按城市各写一份（否则城市越多行数越多，且分城的行是无效数据）。
 	var cities []model.EzfyCity
-	h.DB.Select("id").Find(&cities)
+	h.DB.Select("id", "user_id").Find(&cities)
 	if len(cities) == 0 {
 		resp.ParamError(c, "还没有玩家城市")
 		return
+	}
+	mainOf := map[uint]uint{}
+	for _, ct := range cities {
+		if m, ok := mainOf[ct.UserID]; !ok || ct.ID < m {
+			mainOf[ct.UserID] = ct.ID
+		}
+	}
+	cities = cities[:0]
+	for _, mid := range mainOf {
+		cities = append(cities, model.EzfyCity{ID: mid})
 	}
 	now := time.Now()
 	rows := make([]model.EzfyCityTech, 0, len(cities)*len(techs))

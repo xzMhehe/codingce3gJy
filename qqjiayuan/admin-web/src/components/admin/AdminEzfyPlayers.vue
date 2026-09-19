@@ -60,6 +60,7 @@
           <el-descriptions-item label="阵营">{{ detail.camp_name }}</el-descriptions-item>
           <el-descriptions-item label="军功声望">{{ detail.player.prestige }}</el-descriptions-item>
           <el-descriptions-item label="军衔">{{ detail.rank_name }}</el-descriptions-item>
+          <el-descriptions-item label="钻石余额">{{ detail.player.diamond || 0 }}</el-descriptions-item>
         </el-descriptions>
         <div class="sub-title">城池（{{ detail.cities.length }}）</div>
         <el-table :data="detail.cities" size="mini" border max-height="220">
@@ -153,6 +154,12 @@
         <el-form-item label="稀矿">
           <el-input-number v-model.number="grant.rare" :min="0" :step="1000" />
         </el-form-item>
+        <!-- ★ 第九轮：钻石只能由管理端充值（可负数扣减；玩家端只读余额） -->
+        <el-form-item label="钻石">
+          <el-input-number v-model.number="grant.diamond" :min="-9999999" :max="9999999" :step="100" />
+          <el-button size="mini" type="warning" plain :loading="diamondSaving" @click="doDiamond">充 值</el-button>
+          <span class="td-mono" style="margin-left:8px">当前：{{ grantDiamond }}</span>
+        </el-form-item>
         <el-form-item label="道具">
           <div class="grant-items">
             <div v-for="(it, i) in grant.items" :key="i" class="grant-item-row">
@@ -184,7 +191,8 @@ export default {
       list: [], total: 0, page: 1, size: 10, loading: false, word: '',
       detailDlg: false, detail: null,
       editDlg: false, saving: false, editId: 0, form: {},
-      grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, items: [] },
+      grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0, items: [] },
+      diamondSaving: false, grantDiamond: 0,
       typeNames: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
       statusNames: { 0: '行进中', 1: '驻守中', 2: '返回中', 3: '已完成', 4: '已阵亡' }
     }
@@ -229,8 +237,27 @@ export default {
     },
     openGrant (row) {
       this.grantId = row.user_id
-      this.grant = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, items: [] }
+      this.grant = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0, items: [] }
+      this.grantDiamond = 0
       this.grantDlg = true
+      // 拉一下当前钻石余额（玩家端只读，这里给管理员做参考）
+      api.get('/admin/ezfy-players/' + row.user_id + '/detail').then(r => {
+        if (r.code === 0 && r.data && r.data.player) this.grantDiamond = r.data.player.diamond || 0
+      })
+    },
+    // ★ 第九轮：钻石充值（独立接口，可正可负；走「钻石充值」公告通知玩家）
+    doDiamond () {
+      const n = parseInt(this.grant.diamond) || 0
+      if (!n) { this.$message.warning('请填写充值数量（可为负数扣减）'); return }
+      this.diamondSaving = true
+      api.post('/admin/ezfy-players/' + this.grantId + '/diamond', { amount: n, mode: 'add' }).then(r => {
+        this.diamondSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '充值成功')
+          this.grantDiamond = r.data.diamond
+          this.grant.diamond = 0
+        } else this.$message.error(r.msg || '充值失败')
+      }).catch(() => { this.diamondSaving = false })
     },
     doGrant () {
       const hasRes = this.grant.gold > 0 || this.grant.food > 0 || this.grant.steel > 0 ||

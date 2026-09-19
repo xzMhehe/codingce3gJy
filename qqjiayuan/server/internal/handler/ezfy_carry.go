@@ -43,8 +43,13 @@ func carryJSON(c ezfyCarry) string {
 
 // ezfyCarryCap 该订单部队的总负重上限
 func (h *EzfyHandler) ezfyCarryCap(order *model.EzfyOrder) int64 {
+	return h.ezfyCarryCapOf(parseGroups(order.Troops))
+}
+
+// ezfyCarryCapOf 一组部队的总负重上限（= Σ 兵种 carry × 数量）
+func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup) int64 {
 	var cap int64
-	for _, g := range parseGroups(order.Troops) {
+	for _, g := range groups {
 		if g.Count <= 0 {
 			continue
 		}

@@ -49,6 +49,9 @@ var ezfyEzfyCfgBuildingLevel = []model.EzfyCfgBuildingLevel{
 	{ID: 18, BuildingId: 2, Level: 8, Pop: 0, Food: 12800, Steel: 64000, Oil: 12800, Rare: 6400, Gold: 0, BuildTime: 12000, Capacity: 3600, Effect: "可容纳人口3600人"},
 	{ID: 19, BuildingId: 2, Level: 9, Pop: 0, Food: 25600, Steel: 128000, Oil: 25600, Rare: 12800, Gold: 0, BuildTime: 24000, Capacity: 4500, Effect: "可容纳人口4500人"},
 	{ID: 20, BuildingId: 2, Level: 10, Pop: 0, Food: 51200, Steel: 256000, Oil: 51200, Rare: 25600, Gold: 0, BuildTime: 48000, Capacity: 5500, Effect: "可容纳人口5500人"},
+	// ★ 第九轮：民居上限 12 级（市政厅 10 级后民居可继续升到 12）
+	{ID: 3001, BuildingId: 2, Level: 11, Pop: 0, Food: 102400, Steel: 512000, Oil: 102400, Rare: 51200, Gold: 0, BuildTime: 96000, Capacity: 6700, Effect: "可容纳人口6700人"},
+	{ID: 3002, BuildingId: 2, Level: 12, Pop: 0, Food: 204800, Steel: 1024000, Oil: 204800, Rare: 102400, Gold: 0, BuildTime: 192000, Capacity: 8000, Effect: "可容纳人口8000人"},
 	{ID: 21, BuildingId: 3, Level: 1, Pop: 10, Food: 50, Steel: 50, Oil: 150, Rare: 300, Gold: 0, BuildTime: 45, Capacity: 10000, Effect: "产量100/小时,容量上限10000"},
 	{ID: 22, BuildingId: 3, Level: 2, Pop: 22, Food: 100, Steel: 100, Oil: 300, Rare: 600, Gold: 0, BuildTime: 91, Capacity: 30000, Effect: "产量300/小时,容量上限30000"},
 	{ID: 23, BuildingId: 3, Level: 3, Pop: 50, Food: 200, Steel: 200, Oil: 600, Rare: 1200, Gold: 0, BuildTime: 183, Capacity: 60000, Effect: "产量600/小时,容量上限60000"},
@@ -129,6 +132,9 @@ var ezfyEzfyCfgBuildingLevel = []model.EzfyCfgBuildingLevel{
 	{ID: 98, BuildingId: 10, Level: 8, Pop: 32, Food: 51200, Steel: 320000, Oil: 153600, Rare: 89600, Gold: 0, BuildTime: 76800, Capacity: 8, Effect: "可容纳/发现军官8名"},
 	{ID: 99, BuildingId: 10, Level: 9, Pop: 36, Food: 102400, Steel: 640000, Oil: 307200, Rare: 179200, Gold: 0, BuildTime: 153600, Capacity: 9, Effect: "可容纳/发现军官9名"},
 	{ID: 100, BuildingId: 10, Level: 10, Pop: 40, Food: 204800, Steel: 1280000, Oil: 614400, Rare: 358400, Gold: 0, BuildTime: 307200, Capacity: 10, Effect: "可容纳/发现军官10名"},
+	// ★ 第九轮：参谋部上限 12 级
+	{ID: 3003, BuildingId: 10, Level: 11, Pop: 44, Food: 409600, Steel: 2560000, Oil: 1228800, Rare: 716800, Gold: 0, BuildTime: 614400, Capacity: 11, Effect: "可容纳/发现军官11名"},
+	{ID: 3004, BuildingId: 10, Level: 12, Pop: 48, Food: 819200, Steel: 5120000, Oil: 2457600, Rare: 1433600, Gold: 0, BuildTime: 1228800, Capacity: 12, Effect: "可容纳/发现军官12名"},
 	{ID: 101, BuildingId: 11, Level: 1, Pop: 4, Food: 1000, Steel: 1000, Oil: 1000, Rare: 1000, Gold: 0, BuildTime: 800, Capacity: 100000, Effect: "可同时支持1笔交易,单笔交易资源上限100000"},
 	{ID: 102, BuildingId: 11, Level: 2, Pop: 8, Food: 2000, Steel: 2000, Oil: 2000, Rare: 2000, Gold: 0, BuildTime: 1600, Capacity: 200000, Effect: "可同时支持2笔交易,单笔交易资源上限200000"},
 	{ID: 103, BuildingId: 11, Level: 3, Pop: 12, Food: 4000, Steel: 4000, Oil: 4000, Rare: 4000, Gold: 0, BuildTime: 3200, Capacity: 300000, Effect: "可同时支持3笔交易,单笔交易资源上限300000"},
@@ -159,6 +165,9 @@ var ezfyEzfyCfgBuildingLevel = []model.EzfyCfgBuildingLevel{
 	{ID: 128, BuildingId: 13, Level: 8, Pop: 32, Food: 12800, Steel: 76800, Oil: 256000, Rare: 19200, Gold: 0, BuildTime: 30400, Capacity: 80000, Effect: "可同时出征8支队伍,每次出征上限80000人"},
 	{ID: 129, BuildingId: 13, Level: 9, Pop: 36, Food: 25600, Steel: 153600, Oil: 512000, Rare: 38400, Gold: 0, BuildTime: 60800, Capacity: 90000, Effect: "可同时出征9支队伍,每次出征上限90000人"},
 	{ID: 130, BuildingId: 13, Level: 10, Pop: 40, Food: 51200, Steel: 307200, Oil: 1024000, Rare: 76800, Gold: 0, BuildTime: 121600, Capacity: 100000, Effect: "可同时出征10支队伍,每次出征上限100000人"},
+	// ★ 第九轮：司令部上限 12 级
+	{ID: 3005, BuildingId: 13, Level: 11, Pop: 44, Food: 102400, Steel: 614400, Oil: 2048000, Rare: 153600, Gold: 0, BuildTime: 243200, Capacity: 110000, Effect: "可同时出征11支队伍,每次出征上限110000人"},
+	{ID: 3006, BuildingId: 13, Level: 12, Pop: 48, Food: 204800, Steel: 1228800, Oil: 4096000, Rare: 307200, Gold: 0, BuildTime: 486400, Capacity: 120000, Effect: "可同时出征12支队伍,每次出征上限120000人"},
 	{ID: 131, BuildingId: 14, Level: 1, Pop: 4, Food: 250, Steel: 1200, Oil: 1500, Rare: 500, Gold: 0, BuildTime: 287, Capacity: 1, Effect: "允许1支等待训练的序列"},
 	{ID: 132, BuildingId: 14, Level: 2, Pop: 8, Food: 500, Steel: 2400, Oil: 3000, Rare: 1000, Gold: 0, BuildTime: 575, Capacity: 2, Effect: "允许2支等待训练的序列"},
 	{ID: 133, BuildingId: 14, Level: 3, Pop: 12, Food: 1000, Steel: 4800, Oil: 6000, Rare: 2000, Gold: 0, BuildTime: 1150, Capacity: 3, Effect: "允许3支等待训练的序列"},

@@ -210,9 +210,41 @@ type EzfyCfgItem struct {
 	Description string `gorm:"type:varchar(500)" json:"description"`
 	// ★ 商城库存（管理端「数据管理 → 道具配置」可改），默认 100；0 = 售罄
 	Stock int `gorm:"default:100" json:"stock"`
+	// ★ 钻石售价：> 0 表示这是「钻石道具」，只能用钻石购买（黄金价 price_gold 忽略）。
+	//   管理端「数据管理 → 道具配置」可维护。
+	PriceDiamond int64 `json:"price_diamond"`
+	// ★ 商城分类（管理端可填；留空时按 item_type / price_diamond 自动归类）
+	Category string `gorm:"type:varchar(20)" json:"category"`
 }
 
 func (EzfyCfgItem) TableName() string { return "ezfy_cfg_item" }
+
+// EzfyCfgLimit 二战风云「建筑数量上限」全局配置（单行，id = 1）
+//
+// 用户规则：军事区与资源区数量上限**分开**，各 33；管理端可维护，默认 33。
+type EzfyCfgLimit struct {
+	ID          int `gorm:"primaryKey" json:"id"`
+	MilitaryMax int `gorm:"default:33" json:"military_max"` // 军事区建筑数量上限（type 2/3/4）
+	ResourceMax int `gorm:"default:33" json:"resource_max"` // 资源区建筑数量上限（type 1）
+	HouseMax    int `gorm:"default:10" json:"house_max"`    // 民居数量上限
+	FactoryMax  int `gorm:"default:0" json:"factory_max"`   // 军工厂数量上限（0 = 不限）
+}
+
+func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
+
+// EzfyWordFilter 二战风云聊天敏感词（独立于社区「黑名单榜」的 word_filters）
+//
+// 用户规则：二战的聊天敏感词走自己的单独维护页面。
+// Type: 1 = 替换（用 Replace 覆盖），2 = 拦截（直接拒绝发言）。
+type EzfyWordFilter struct {
+	ID      uint      `gorm:"primaryKey" json:"id"`
+	Word    string    `gorm:"type:varchar(50);uniqueIndex:uk_ezfy_word" json:"word"`
+	Replace string    `gorm:"type:varchar(50)" json:"replace"`
+	Type    int       `gorm:"default:1" json:"type"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (EzfyWordFilter) TableName() string { return "ezfy_word_filter" }
 
 type EzfyCfgTaskType struct {
 	ID        int    `gorm:"primaryKey" json:"id"`
@@ -266,6 +298,10 @@ type EzfyProfile struct {
 
 	// 军校每日免费刷新次数覆盖（0 = 跟随全局默认，管理端可单独调整）
 	RecruitFreeLimit int `json:"recruit_free_limit"`
+
+	// ★ 钻石：二战风云专属币种，**只能由管理端充值**，玩家端只读余额；
+	//   用于购买「钻石道具」（ezfy_cfg_item.price_diamond > 0）。
+	Diamond int64 `gorm:"default:0" json:"diamond"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -161,6 +161,13 @@ func (h *EzfyHandler) ChatSend(c *gin.Context) {
 	if r := []rune(content); len(r) > ezfyChatMaxRune {
 		content = string(r[:ezfyChatMaxRune])
 	}
+	// ★ 第九轮：二战聊天敏感词（独立维护页 ezfy_word_filter），拦截类直接拒绝
+	if filtered, blocked := ezfyFilterChat(content); blocked {
+		resp.Forbidden(c, "你的发言包含敏感词，请修改后再发")
+		return
+	} else {
+		content = filtered
+	}
 	profile := h.ensureProfile(uid)
 	// 复刻原版聊天: 每次发言 30 秒冷却(前端有倒计时, 服务端同样兜底)
 	if left := h.chatCooldownLeft(uid); left > 0 {
@@ -525,14 +532,21 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	}
 	var members []model.EzfyCorpsMember
 	h.DB.Where("corps_id = ?", mb.CorpsId).Order("is_leader DESC, id ASC").Find(&members)
+	// ★ 第九轮：军团长可任命副团长/参谋长；军团长与副团长都能发军团邮件
+	canManage := mb.IsLeader == 1
+	canMail := canManage || mb.Title == ezfyCorpsTitleVice
 	views := []gin.H{}
 	for _, m := range members {
 		p := h.ensureProfile(m.UserId)
-		views = append(views, gin.H{"user_id": m.UserId, "name": p.Nickname,
+		var u model.User
+		h.DB.First(&u, m.UserId)
+		views = append(views, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
 			"is_leader": m.IsLeader, "title": m.Title,
 			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige)})
 	}
-	resp.OK(c, gin.H{"members": views, "in_corps": true})
+	resp.OK(c, gin.H{"members": views, "in_corps": true,
+		"can_manage": canManage, "can_mail": canMail,
+		"my_title": mb.Title, "is_leader": mb.IsLeader})
 }
 
 // ============ 被占城市管理 ============

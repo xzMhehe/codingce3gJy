@@ -525,17 +525,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				}
 			}
 		} else {
+			// ★ 第九轮用户规则：自己城市之间能运输，同盟(军团)成员之间也能运输；
+			//   运量看负重（所以要用卡车等部队装），**可以不带队军官**。
 			if !own && !ally {
 				return "运输目标必须是自己或同盟成员的城市"
 			}
-			if !own && len(validTroops) > 0 {
-				return "同盟运输仅限资源, 不能携带部队"
-			}
-			if !own && officer != "" {
-				return "同盟运输不能携带军官"
-			}
-			if !own && !hasRes {
-				return "同盟运输必须携带资源"
+			if !hasRes {
+				return "运输必须携带资源"
 			}
 		}
 	}
@@ -629,6 +625,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
 		if f < 0 || s < 0 || o < 0 || r < 0 || g < 0 {
 			return "资源数量错误"
+		}
+		// ★ 第九轮：运输必须有部队来装（负重决定能运多少），军官可以不带队。
+		if len(validTroops) == 0 {
+			return "运输需要携带部队来装载资源(卡车负重最高)"
+		}
+		cap := h.ezfyCarryCapOf(validTroops)
+		if total := f + s + o + r + g; total > cap {
+			return fmt.Sprintf("负重不足: 本次要运%d, 运输部队负重只有%d(多带卡车可提高)", total, cap)
 		}
 		if city.Food < f || city.Steel < s || city.Oil < o || city.Rare < r || city.Gold < g {
 			return "资源不足,无法运输"
@@ -924,8 +928,10 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 	order.Status = 2
 	order.Result = order.Troops
 	order.ReturnTime = now + wait + travel
+	// ★ Carry 必须一起落库，否则「随部队带回的资源」下次读库就丢了
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
+		Updates(map[string]interface{}{"status": 2, "result": order.Troops,
+			"return_time": order.ReturnTime, "carry": order.Carry})
 }
 
 // settleDispatch 派遣驻守采集结算(每8小时, 1/10 概率宝物)
@@ -1045,34 +1051,44 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 运输: 向目标城市运送资源
+	//
+	// ★ 第九轮修复：
+	//   1) 目标城仓储装不下的部分**原路带回**（记进 Carry，随部队返航入库），不再凭空蒸发；
+	//   2) 目标城已消失时，整批资源原样带回；
+	//   3) 部队（含同盟运输）一律返航回出发城市 —— beginReturn 会落库 Carry。
 	if order.OrderType == 5 {
-		var target model.EzfyCity
-		if err := h.DB.First(&target, order.TargetId).Error; err != nil {
-			h.beginReturn(order, now, 0)
-			res := h.parseResMap(order.Resources)
-			city.Food = min64(city.FoodCap, city.Food+res["food"])
-			city.Steel = min64(city.SteelCap, city.Steel+res["steel"])
-			city.Oil = min64(city.OilCap, city.Oil+res["oil"])
-			city.Rare = min64(city.RareCap, city.Rare+res["rare"])
-			city.Gold = min64(city.GoldCap, city.Gold+res["gold"])
-			h.saveCityRes(city)
-			h.addReport(uid, 5, "运输报告: 目标城市不存在",
-				"运输目标城市已不存在, 运输部队与资源已返航。", "", order.ID)
-			return
-		}
 		res := h.parseResMap(order.Resources)
 		f, s, o, r, g := res["food"], res["steel"], res["oil"], res["rare"], res["gold"]
+		var target model.EzfyCity
+		if err := h.DB.First(&target, order.TargetId).Error; err != nil {
+			order.Carry = carryJSON(ezfyCarry{Food: f, Steel: s, Oil: o, Rare: r, Gold: g})
+			h.beginReturn(order, now, 0)
+			h.addReport(uid, 5, "运输报告: 目标城市不存在",
+				fmt.Sprintf("运输目标城市已不存在, 运输部队已返航, 资源将随部队带回%s。", city.Name), "", order.ID)
+			return
+		}
+		// 超出目标城仓储上限的部分原路带回
+		overF := max64(0, target.Food+f-target.FoodCap)
+		overS := max64(0, target.Steel+s-target.SteelCap)
+		overO := max64(0, target.Oil+o-target.OilCap)
+		overR := max64(0, target.Rare+r-target.RareCap)
+		overG := max64(0, target.Gold+g-target.GoldCap)
 		target.Food = min64(target.FoodCap, target.Food+f)
 		target.Steel = min64(target.SteelCap, target.Steel+s)
 		target.Oil = min64(target.OilCap, target.Oil+o)
 		target.Rare = min64(target.RareCap, target.Rare+r)
 		target.Gold = min64(target.GoldCap, target.Gold+g)
 		h.saveCityRes(&target)
+		order.Carry = carryJSON(ezfyCarry{Food: overF, Steel: overS, Oil: overO, Rare: overR, Gold: overG})
 		desc := fmt.Sprintf("运输部队已到达%s\n", target.Name)
 		if f+s+o+r+g > 0 {
-			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f, s, o, r, g)
+			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f-overF, s-overS, o-overO, r-overR, g-overG)
 		}
-		desc += "资源已送达, 护送部队正在返航。"
+		if overF+overS+overO+overR+overG > 0 {
+			desc += fmt.Sprintf("⚠ 目标城仓储已满, 粮%d 钢%d 油%d 稀矿%d 金%d 将随部队带回\n",
+				overF, overS, overO, overR, overG)
+		}
+		desc += "护送部队正在返航, 到达后回到出发城市。"
 		h.beginReturn(order, now, 0)
 		h.addReport(uid, 5, "运输报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
@@ -1695,10 +1711,34 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
 	} else {
-		order.Status = 4
+		// ★ 第九轮：打败仗 → 幸存部队撤退返航（原来 status=4 是终止态，
+		//   幸存兵力凭空消失、带队军官永远卡在「出征中」，属于 bug）。
+		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+		order.Status = 2
+		order.ReturnTime = now + travel
 		if repairedTotal > 0 {
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
 		}
+		// ★ 军官忠诚：只有打败仗才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
+		if leadOfficer != nil {
+			var myDead, myTotal int64
+			for _, g := range br.AttackerLosses {
+				myDead += g.Count
+			}
+			for _, g := range parseGroups(order.Troops) {
+				myTotal += g.Count
+			}
+			delta := ezfyLoyaltyOnDefeat
+			if myTotal > 0 {
+				delta += int(float64(ezfyLoyaltyOnDefeat*2) * float64(myDead) / float64(myTotal))
+			}
+			if delta > 10 {
+				delta = 10
+			}
+			h.officerLoseLoyalty(uid, city.ID, leadOfficer.Name, delta, "")
+			report += fmt.Sprintf("\n带队军官 %s 因战败忠诚度-%d", leadOfficer.Name, delta)
+		}
+		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {

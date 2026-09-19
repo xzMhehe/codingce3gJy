@@ -45,7 +45,8 @@
 
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
-        <div class="old-line" v-for="n in notices.slice(0, 2)" :key="'n' + n.id">
+        <!-- ★ 只有【置顶】公告展示到首页外边；普通公告进「公告」页看 -->
+        <div class="old-line" v-for="n in topNotices" :key="'n' + n.id">
           <img class="logo-title" src="/static/ezfy/notice.gif" alt="."/>
           <a class="red" href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
         </div>
@@ -61,6 +62,8 @@
           <a href="javascript:;" @click="go('corps')" v-else>[{{ myCorps.name }}]</a>
         </div>
         <div class="old-line">声望：{{ profile.prestige }}</div>
+        <!-- ★ 第九轮：钻石余额（只读，钻石只能由管理员充值） -->
+        <div class="old-line">钻石：<b>{{ profile.diamond || 0 }}</b><span class="gray">（钻石由管理员充值，可在商城购买钻石道具）</span></div>
         <div class="old-line">
           <img class="logo-title" src="/static/ezfy/jx.png" title="军衔" alt="."/>
           <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
@@ -222,7 +225,7 @@
       <!-- ============ 邮箱(mail) ============ -->
       <template v-else-if="cur === 'mail'">
         <div class="panel">
-          <div class="panel-title">邮箱(家园私信)</div>
+          <div class="panel-title">邮箱(玩家私信)</div>
           <div class="old-line" v-for="m in mails" :key="'m' + m.id">
             <a href="javascript:;" @click="openPlayer(m.sender_id)"><span
                :class="{ red: m.is_read === 0 }">{{ m.sender }}</span></a>:
@@ -238,7 +241,7 @@
           <div class="panel-title">发私信</div>
           <div class="old-line">
             收件人:
-            <input v-model="pmTo" placeholder="游戏ID / 家园号码 / 昵称" style="width:170px" list="ezfyPmCands"/>
+            <input v-model="pmTo" placeholder="游戏ID / 昵称" style="width:170px" list="ezfyPmCands"/>
             <datalist id="ezfyPmCands">
               <option v-for="f in pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
             </datalist>
@@ -348,14 +351,14 @@
       <!-- ============ 好友(friends) ============ -->
       <template v-else-if="cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">游戏内好友（与家园好友分开）</div>
+          <div class="panel-title">游戏内好友（与社区好友分开）</div>
           <div class="old-line gray">
-            这里只是「二战风云」里的好友关系，不影响家园的亲友列表。
+            这里只是「二战风云」里的好友关系，不影响社区的亲友列表。
           </div>
 
-          <div class="panel-title">搜索玩家（按游戏ID / 家园号码 / 昵称）</div>
+          <div class="panel-title">搜索玩家（按游戏ID / 玩家号码 / 昵称）</div>
           <div class="old-line">
-            <input v-model="friendKeyword" placeholder="输入游戏ID / 家园号码 / 昵称" style="width:170px"/>
+            <input v-model="friendKeyword" placeholder="输入游戏ID / 玩家号码 / 昵称" style="width:170px"/>
             <button @click="doFriendSearch">[搜索]</button>
           </div>
           <table v-if="friendSearchDone">
@@ -434,6 +437,8 @@
             <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海城' : '陆地城市' }}]</span>
             {{ resShort.gold }}{{ ct.gold }} {{ resShort.food }}{{ ct.food }} {{ resShort.steel }}{{ ct.steel }} {{ resShort.oil }}{{ ct.oil }} {{ resShort.rare }}{{ ct.rare }}<br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
+            <!-- ★ 第九轮：从当前城市运输资源到自己的其他城市（负重决定运量，可不带军官） -->
+            <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
             <a href="javascript:;" @click="go('rename')">[改名]</a>
             <!-- ★ 只能摧毁「非当前所在」的城市；摧毁后该坐标恢复为普通平原 -->
             <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[摧毁]</a>
@@ -627,10 +632,12 @@
         <div class="panel">
           <div class="panel-title">城内军队</div>
           <table>
-            <tr><th>兵种</th><th>类型</th><th>数量</th></tr>
+            <tr><th>兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
             <tr v-for="t in troopsData.troops" :key="'tv' + t.troop_id">
               <td><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
               <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
+              <!-- ★ 解散：数量由玩家自己输入（用户要求） -->
+              <td><a class="red" href="javascript:;" @click="doDisband(t)">[解散]</a></td>
             </tr>
           </table>
           <div class="old-line" v-if="!troopsData.troops.length">(城内无部队)</div>
@@ -1085,7 +1092,11 @@
             <div>{{ resNames.steel }}：<input v-model="trSteel" type="number" :placeholder="'0~' + city.steel" style="width:90px"/></div>
             <div>{{ resNames.oil }}：<input v-model="trOil" type="number" :placeholder="'0~' + city.oil" style="width:90px"/></div>
             <div>{{ resNames.rare }}：<input v-model="trRare" type="number" :placeholder="'0~' + city.rare" style="width:90px"/></div>
-            <span class="gray" v-if="orderType === 5">(运输命令必须携带资源或部队)</span>
+            <span class="gray" v-if="orderType === 5">
+              (运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
+              可以不带队军官；送完部队会返回出发城市)
+            </span>
+            <span class="gray" v-else-if="orderType === 7">(派遣必须选择带队军官)</span>
           </div>
           <div class="old-line">
             宿营：
@@ -1491,13 +1502,25 @@
             </div>
             <div class="panel-title">军团成员</div>
             <table>
-              <tr><th>成员</th><th>玩家号码</th><th>职位</th><th>声望</th><th>军衔</th></tr>
+              <tr>
+                <th>成员</th><th>玩家号码</th><th>职位</th><th>声望</th><th>军衔</th>
+                <!-- ★ 第九轮：军团长可任命副团长/参谋长 -->
+                <th v-if="isLeader" width="150">任命</th>
+              </tr>
               <tr v-for="m in corpsMembers" :key="'cm' + m.user_id">
                 <td><a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.name }}</a></td>
                 <td><span class="td-mono">{{ m.game_uid || m.user_id }}</span></td>
-                <td>{{ m.title }}</td>
+                <td>{{ m.title || '成员' }}</td>
                 <td>{{ m.prestige }}</td>
                 <td>{{ m.rank_name }}</td>
+                <td v-if="isLeader">
+                  <template v-if="!m.is_leader">
+                    <a v-if="m.title !== '副团长'" href="javascript:;" @click="doSetCorpsTitle(m, '副团长')">[副团长]</a>
+                    <a v-if="m.title !== '参谋长'" href="javascript:;" @click="doSetCorpsTitle(m, '参谋长')">[参谋长]</a>
+                    <a v-if="m.title" class="gray" href="javascript:;" @click="doSetCorpsTitle(m, '')">[撤职]</a>
+                  </template>
+                  <span v-else class="gray">军团长</span>
+                </td>
               </tr>
             </table>
             <div class="old-line" v-if="isLeader && corpsMembers.length > 1">
@@ -1507,9 +1530,9 @@
               </select>
               <button @click="doKick">[踢出]</button>
             </div>
-            <!-- 军团邮件群发(复刻 CorpsController.mail, 仅军团长) -->
-            <div class="panel-title" v-if="isLeader">军团邮件(群发全体成员)</div>
-            <div class="old-line" v-if="isLeader">
+            <!-- 军团邮件群发(复刻 CorpsController.mail): ★ 军团长与副团长都能发 -->
+            <div class="panel-title" v-if="canMailCorps">军团邮件(群发全体成员)</div>
+            <div class="old-line" v-if="canMailCorps">
               <input v-model="corpsMailContent" placeholder="邮件内容(500字以内)" style="width:60%"/>
               <button @click="doCorpsMail">[群发]</button>
             </div>
@@ -1650,9 +1673,19 @@
       <!-- ============ 商城(mall) ============ -->
       <template v-else-if="cur === 'mall'">
         <div class="panel">
-          <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }})</div>
-          <div class="old-line" v-for="it in mallItems" :key="'mi' + it.id">
-            <b>{{ it.name }}</b> {{ it.price_gold }}{{ resNames.gold }}
+          <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }} · 钻石{{ mallDiamond }})</div>
+          <!-- ★ 分类页签（分类由管理端维护，未填时按道具类型自动归类） -->
+          <div class="old-line">
+            <a href="javascript:;" :class="{ on: mallCat === '' }" @click="setMallCat('')">[全部]</a>
+            <template v-for="c in mallCatsList">
+              <a :key="'mc' + c" href="javascript:;" :class="{ on: mallCat === c }" @click="setMallCat(c)">[{{ c }}]</a>
+            </template>
+          </div>
+          <div class="old-line gray" v-if="mallDiamond <= 0">钻石余额为 0，钻石道具需由管理员充值后购买。</div>
+          <div class="old-line" v-for="it in mallPaged" :key="'mi' + it.id">
+            <b>{{ it.name }}</b>
+            <span v-if="it.is_diamond" class="orange">{{ it.price_diamond }}钻石</span>
+            <span v-else>{{ it.price_gold }}{{ resNames.gold }}</span>
             <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100） -->
             <span :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
             <a v-if="it.stock > 0" href="javascript:;" @click="openBuy(it)">[购买]</a>
@@ -1662,10 +1695,18 @@
               数量:
               <input v-model="buyCount" type="number" min="1" :max="Math.max(1, it.stock)" style="width:60px"/>
               <span class="gray">最多 {{ it.stock }}</span>
-              <span class="gray">合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
+              <span class="gray" v-if="it.is_diamond">合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石</span>
+              <span class="gray" v-else>合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
             </div>
+          </div>
+          <div class="old-line" v-if="!mallPaged.length">(该分类下暂无道具)</div>
+          <!-- ★ 分页（每页 10 件） -->
+          <div class="ezfy-pager" v-if="mallFiltered.length > mallPageSize">
+            <a href="javascript:;" :class="{ disabled: mallPage <= 1 }" @click="mallGo(-1)">[上一页]</a>
+            <span class="gray">第 {{ Math.min(mallPage, mallTotalPages) }}/{{ mallTotalPages }} 页 · 共 {{ mallFiltered.length }} 件</span>
+            <a href="javascript:;" :class="{ disabled: mallPage >= mallTotalPages }" @click="mallGo(1)">[下一页]</a>
           </div>
           <a href="javascript:;" @click="go('bag')">[背包]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -2392,6 +2433,8 @@ export default {
       corpsMsg: '',
       kickUserId: 0,
       mallItems: [],
+      // ★ 第九轮：商城分类 + 分页 + 钻石余额
+      mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
       bagItems: [],
       bagOfficers: [],
       bagSkills: [],
@@ -2427,6 +2470,7 @@ export default {
       playerInfo: null,        // 他人统帅信息(复刻 infoOther)
       playerInfoBack: 'chat',  // 他人统帅页 [返回] 回到哪一页
       corpsMailContent: '',    // 军团邮件群发内容
+      myCorpsTitle: '',        // ★ 我在军团的职位(副团长/参谋长)，副团长可发军团邮件
       taxInput: 20,
       renameInput: '',
       newCityX: '',
@@ -2641,12 +2685,36 @@ export default {
     isLeader () {
       return !!(this.myCorps && this.profile.user_id && this.myCorps.leader_user_id === this.profile.user_id)
     },
+    // ★ 军团邮件权限：军团长 或 副团长
+    canMailCorps () {
+      return this.isLeader || this.myCorpsTitle === '副团长'
+    },
+    // ★ 首页外露的公告 = 仅置顶公告
+    topNotices () {
+      return (this.notices || []).filter(n => n.is_top)
+    },
+    // ★ 商城：按分类过滤 + 分页（分类为空 = 全部）
+    mallFiltered () {
+      const cat = this.mallCat
+      const list = this.mallItems || []
+      return cat ? list.filter(i => i.category === cat) : list
+    },
+    mallTotalPages () {
+      return Math.max(1, Math.ceil(this.mallFiltered.length / this.mallPageSize))
+    },
+    mallPaged () {
+      const p = Math.min(Math.max(1, this.mallPage), this.mallTotalPages)
+      return this.mallFiltered.slice((p - 1) * this.mallPageSize, p * this.mallPageSize)
+    },
     // 某坐标是否海城(海洋地形 8)
+    // ★ 海城判据：**以后端返回的 is_sea 为准**。
+    //   后端规则：海城 = 建在「沿海平原」(ezfyTerrainEx==9) 上。
+    //   旧版前端自己用坐标哈希算「地形==8(海洋)」，真正的海城被判成陆地城市。
     isSeaAt () {
       return ct => {
-        const x = Number(ct.x), y = Number(ct.y)
-        let h = Math.abs((x * 73856093) ^ (y * 19349663))
-        return (h % 8) + 1 === 8
+        if (!ct) return false
+        if (typeof ct.is_sea === 'boolean') return ct.is_sea
+        return !!ct.is_sea
       }
     },
     // 翻页步长 = 一整屏(复刻原版: 向上 x-5 / 向右 y+5, 即 2r+1)
@@ -2976,7 +3044,7 @@ export default {
     // ---- 好友搜索/添加(复刻 addToFriend) ----
     doFriendSearch () {
       const kw = (this.friendKeyword || '').trim()
-      if (!kw) { this.notify('请输入游戏ID / 家园号码 / 昵称'); return }
+      if (!kw) { this.notify('请输入游戏ID / 玩家号码 / 昵称'); return }
       // ★ 先走游戏内搜索（支持「游戏ID」，不随家园号码变化）；
       // ★ 只搜游戏内玩家（不回落家园 /friends/search，避免把家园好友混进来）
       api.get('/games/ezfy/friends/search?keyword=' + encodeURIComponent(kw)).then(r => {
@@ -3100,7 +3168,14 @@ export default {
     },
     loadMall () {
       api.get('/games/ezfy/mall').then(r => {
-        if (r.code === 0) this.mallItems = r.data.items
+        if (r.code === 0) {
+          this.mallItems = r.data.items
+          // ★ 分类页签 + 钻石余额（钻石只能管理端充值）
+          this.mallCatsList = r.data.categories || []
+          this.mallDiamond = r.data.diamond || 0
+          if (this.mallCat && this.mallCatsList.indexOf(this.mallCat) < 0) this.mallCat = ''
+          this.mallPage = 1
+        }
       })
     },
     loadExchange () {
@@ -3120,7 +3195,11 @@ export default {
         }
       })
       api.get('/games/ezfy/corps/members').then(r => {
-        if (r.code === 0) this.corpsMembers = r.data.members
+        if (r.code === 0) {
+          this.corpsMembers = r.data.members
+          // ★ 后端下发「我在军团的职位」，副团长也能发军团邮件
+          this.myCorpsTitle = r.data.my_title || ''
+        }
       })
       api.get('/games/ezfy/corps/chats').then(r => {
         if (r.code === 0) this.corpsChats = r.data.chats
@@ -3375,16 +3454,19 @@ export default {
     doCreateCity () {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
-    // 摧毁自己的城市（仅限非当前所在城市）
+    // 摧毁自己的城市（至少保留一座；摧毁当前城会自动切到剩下的城）
     async doDestroyCity (ct) {
-      const ok = await this.ask('确定摧毁「' + ct.name + '」吗？该城市的建筑、部队、军官、野地都会一并消失，' +
+      const cur = this.city && ct.id === this.city.id ? '（这是当前所在城市，摧毁后会自动切换到其他城市）' : ''
+      const ok = await this.ask('确定摧毁「' + ct.name + '」吗？' + cur + '该城市的建筑、部队、军官、野地都会一并消失，' +
         '坐标会恢复为普通平原。此操作不可恢复！')
       if (!ok) return
       api.post('/games/ezfy/city/destroy', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.data.msg)
+          // 摧毁的是当前城时后端会自动切到别的城 → 整体重载
           this.load()
           this.loadTroops()
+          this.loadTechs()
         } else this.notify(r.msg)
       })
     },
@@ -3400,9 +3482,20 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    doAbandon (w) {
-      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地'))
+    // ★ 第九轮：从城市列表直接发起「运输」到自己的另一座城市
+    doTransportTo (ct) {
+      if (ct.id === this.city.id) { this.notify('不能运输到当前所在城市'); return }
+      this.selCell = {
+        x: ct.x, y: ct.y, area_type: 3, city_id: ct.id, user_id: ct.user_id,
+        name: ct.name, level: ct.city_level, mine: true, occupied: true
+      }
+      this.selDetail = null
+      this.orderType = 5
+      this.orderCalc = null
+      this.go('orderpre')
     },
+    doAbandon (w) {
+      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地'))    },
     async doOccupy (op, o) {
       if (!await this.ask(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
@@ -3459,7 +3552,8 @@ export default {
     },
     // 取消训练队列（用户要求：征兵序列玩家可以自己取消，资源全额退还）
     async doCancelTrain (q) {
-      const ok = await this.ask('确定取消「' + q.name + '×' + q.count + '」的训练吗？消耗的资源会全额退还。')
+      const ok = await this.ask('确定取消「' + q.name + '×' + q.count + '」的训练吗？' +
+        '取消会收取 10% 手续费，其余资源退还（不受仓储上限影响）。')
       if (!ok) return
       api.post('/games/ezfy/troops/train/cancel', { queue_id: q.id }).then(r => {
         if (r.code === 0) {
@@ -3467,6 +3561,24 @@ export default {
           this.loadTroops()
           this.load()
         } else this.notify(r.msg || '取消失败', 'error')
+      })
+    },
+    // ★ 解散部队（用户要求：军队页面要有解散按钮，数量由玩家自己输入）
+    async doDisband (t) {
+      const input = await this.ask('解散「' + t.name + '」多少个？（当前 ' + t.count + ' 个）\n' +
+        '解散后兵力直接销毁，不退还任何资源。', { input: true, value: '1', placeholder: '数量' })
+      if (input === null || input === undefined) return
+      const n = parseInt(input, 10)
+      if (!n || n <= 0) { this.notify('解散数量必须是大于 0 的整数', 'error'); return }
+      if (n > t.count) { this.notify('解散数量不能超过当前数量 ' + t.count, 'error'); return }
+      api.post('/games/ezfy/troops/disband', {
+        city_id: this.city ? this.city.id : 0, troop_id: t.troop_id, count: n
+      }).then(r => {
+        if (r.code === 0) {
+          this.notify((r.data && r.data.msg) ? r.data.msg : ('已解散 ' + t.name + '×' + n), 'ok')
+          this.loadTroops()
+          this.load()
+        } else this.notify(r.msg || '解散失败', 'error')
       })
     },
     // 秒 → 「1分0秒 / 5分20秒 / 57秒」(复刻 createTroop.html 的「时间」)
@@ -3853,6 +3965,15 @@ export default {
       api.post('/games/ezfy/corps/kick', { user_id: this.kickUserId })
         .then(r => this.alert(r, '已踢出', () => this.loadCorps()))
     },
+    // ★ 军团长任命副团长/参谋长（title 传空 = 撤职）
+    async doSetCorpsTitle (m, title) {
+      const label = title || '普通成员'
+      const ok = await this.ask('确定把「' + m.name + '」任命为「' + label + '」吗？' +
+        (title === '副团长' ? '\n副团长可以群发军团邮件。' : ''))
+      if (!ok) return
+      api.post('/games/ezfy/corps/member/title', { user_id: m.user_id, title: title })
+        .then(r => this.alert(r, '已任命为' + label, () => this.loadCorps()))
+    },
     doCorpsChat () {
       api.post('/games/ezfy/corps/chat', { content: this.corpsMsg }).then(r => {
         if (r.code === 0) {
@@ -3862,6 +3983,15 @@ export default {
       })
     },
     // ---- 商城/背包/交易 ----
+    // ★ 第九轮：分类切换 / 翻页
+    setMallCat (c) {
+      this.mallCat = c
+      this.mallPage = 1
+    },
+    mallGo (d) {
+      const p = this.mallPage + d
+      if (p >= 1 && p <= this.mallTotalPages) this.mallPage = p
+    },
     openBuy (it) {
       this.buyItem = it
       this.buyCount = 1
@@ -3872,6 +4002,14 @@ export default {
       if (it.stock !== undefined && n > it.stock) {
         this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
         return
+      }
+      // ★ 钻石道具只能用钻石买（钻石仅管理端可充值）
+      if (it.is_diamond) {
+        const cost = (it.price_diamond || 0) * n
+        if (cost > this.mallDiamond) {
+          this.notify('钻石不足：需要 ' + cost + ' 钻石，当前余额 ' + this.mallDiamond + '（钻石仅可由管理员充值）')
+          return
+        }
       }
       api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n }).then(r => {
         if (r.code === 0) {
@@ -4283,6 +4421,11 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-tgt-lab { color: #666; min-width: 56px; display: inline-block; }
 /* 页面内消息区（替代 alert 弹窗） */
 .ezfy-page .ezfy-msgs { margin: 4px 0 2px; }
+/* ★ 第九轮：用户端通用分页条（商城等列表页） */
+.ezfy-page .ezfy-pager { margin: 6px 0 2px; }
+.ezfy-page .ezfy-pager a { margin-right: 8px; }
+.ezfy-page .ezfy-pager a.disabled { color: #bbb; text-decoration: none; cursor: default; }
+.ezfy-page .ezfy-pager span { margin-right: 8px; }
 .ezfy-page .ezfy-msg {
   padding: 4px 6px; margin: 3px 0; border-radius: 3px;
   font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;

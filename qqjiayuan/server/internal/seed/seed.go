@@ -132,6 +132,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgRank{},
 		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
 		&model.EzfyMapTile{},
+		// 建筑数量上限配置（军事区/资源区各 33，管理端可维护）
+		&model.EzfyCfgLimit{},
+		// 二战聊天敏感词（独立维护页）
+		&model.EzfyWordFilter{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -139,6 +143,18 @@ func Run(db *gorm.DB, staticDir string) {
 	// 二战风云：道具库存列是后加的，老行回填默认 100
 	if db.Migrator().HasTable("ezfy_cfg_item") {
 		db.Exec("UPDATE ezfy_cfg_item SET stock = 100 WHERE stock IS NULL")
+		// 钻石售价 / 商城分类（第九轮新增）
+		db.Exec("UPDATE ezfy_cfg_item SET price_diamond = 0 WHERE price_diamond IS NULL")
+		db.Exec("UPDATE ezfy_cfg_item SET category = '' WHERE category IS NULL")
+	}
+	// 二战风云：钻石余额列（第九轮新增，仅管理端充值）
+	if db.Migrator().HasTable("ezfy_profile") {
+		db.Exec("UPDATE ezfy_profile SET diamond = 0 WHERE diamond IS NULL")
+	}
+	// 二战风云：建筑数量上限配置（单行，军事区/资源区各 33）
+	if db.Migrator().HasTable("ezfy_cfg_limit") {
+		db.Exec("INSERT INTO ezfy_cfg_limit(id, military_max, resource_max, house_max, factory_max) " +
+			"VALUES(1, 33, 33, 10, 0) ON DUPLICATE KEY UPDATE id = id")
 	}
 
 	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
@@ -1392,6 +1408,9 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
 		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
 		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
+		// 第九轮新增：建筑数量上限配置 / 聊天敏感词（二战自己的独立维护页）
+		mod("游戏-二战风云", "风云建筑上限", "ezfyBuildLimit"),
+		mod("游戏-二战风云", "风云敏感词", "ezfyWords"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
 		mod("系统", "菜单维护", "menus"),

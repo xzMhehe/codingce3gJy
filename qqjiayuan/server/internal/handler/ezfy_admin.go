@@ -283,6 +283,8 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 	"items": {&model.EzfyCfgItem{}, map[string]string{
 		"name": "string", "item_type": "int", "param1": "int64",
 		"price_gold": "int64", "icon": "string", "description": "string", "stock": "int",
+		// ★ 第九轮：钻石道具（price_diamond > 0 只能用钻石买）+ 商城分类
+		"price_diamond": "int64", "category": "string",
 	}},
 	"taskTypes": {&model.EzfyCfgTaskType{}, map[string]string{
 		"name": "string", "code": "string", "reset_type": "int", "sort_no": "int", "status": "int",
@@ -369,6 +371,9 @@ func (h *AdminHandler) AdminEzfyDataCreate(c *gin.Context) {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
 	}
+	// ★ 第九轮：数据管理写的是配置表（道具/任务/活动…），
+	//   进程内的 ezfyCfg 缓存必须重载，否则游戏内看不到新增的道具。
+	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "新增成功"})
 }
 
@@ -393,6 +398,8 @@ func (h *AdminHandler) AdminEzfyDataUpdate(c *gin.Context) {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
 	}
+	// ★ 第九轮：配置表改完必须重载 ezfyCfg，否则游戏内还是旧值
+	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "修改成功"})
 }
 
@@ -407,6 +414,8 @@ func (h *AdminHandler) AdminEzfyDataDelete(c *gin.Context) {
 		resp.ParamError(c, "删除失败："+err.Error())
 		return
 	}
+	// ★ 第九轮：配置表删完必须重载 ezfyCfg
+	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "删除成功"})
 }
 

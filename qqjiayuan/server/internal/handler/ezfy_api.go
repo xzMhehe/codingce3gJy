@@ -66,7 +66,8 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		if cfg != nil {
 			view["name"] = cfg.Name
 			view["type"] = cfg.Type
-			view["max_level"] = cfg.MaxLevel
+			// ★ 等级上限按用户规则（市政厅10 / 参谋部·司令部·民居12 / 其他10，民居受市政厅约束）
+			view["max_level"] = h.buildingMaxLevel(city.ID, b.BuildingId)
 			view["des"] = cfg.Des
 			view["can_delete"] = cfg.CanDelete
 		}
@@ -82,7 +83,15 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 	}
 	// 可建造池: 复刻原版 BuildingController.buildList
 	pool := h.buildPool(&city, list)
-	resp.OK(c, gin.H{"buildings": views, "pool": pool, "area_count": h.areaBuildingCount(city.ID), "area_cap": ezfyMaxBuildings})
+	// ★ 第九轮：军事区 / 资源区数量上限分开（各 33，管理端可维护）
+	mil, res := h.areaCounts(city.ID)
+	lim := ezfyLimit()
+	resp.OK(c, gin.H{
+		"buildings": views, "pool": pool,
+		"area_count": mil + res, "area_cap": lim.MilitaryMax + lim.ResourceMax,
+		"military_count": mil, "military_cap": lim.MilitaryMax,
+		"resource_count": res, "resource_cap": lim.ResourceMax,
+	})
 }
 
 // buildPool 返回该城当前可建造的建筑池(复刻原版 BuildingController.buildList)。
@@ -110,18 +119,21 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 			continue
 		}
 		var can bool
+		lim := ezfyLimit()
 		switch {
 		case cfg.Type == 1:
 			// 资源建筑可重复建造(原版资源区 can = true)
 			can = true
 		case id == ezfyFactoryBuildingID:
-			can = cntOf[id] < ezfyMaxFactoryCount
+			// ★ 第九轮用户规则：军工厂**不限数量**（只要军事区建筑上限没到就能一直建）
+			can = true
 		case id == 2:
-			can = cntOf[id] < ezfyMaxHouseCount
+			can = cntOf[id] < lim.HouseMax
 		default:
 			can = cntOf[id] == 0
 		}
-		if id == 19 && !h.isCoastalCity(city) {
+		// ★ 第九轮：航海协会(19) 只能建在【海城】(沿海平原)，陆城不得建造
+		if id == 19 && !h.isSeaCity(city) {
 			can = false
 		}
 		if !can {
@@ -424,15 +436,65 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 	steel := cfg.Steel * q.Count
 	oil := cfg.Oil * q.Count
 	rare := cfg.Rare * q.Count
-	// 与训练时同一套折扣算法，保证退还 = 当初扣的
+	// 与训练时同一套折扣算法，保证退还基数 = 当初扣的
 	food, steel, oil, rare = h.trainCostWithActivity(food, steel, oil, rare)
-	city.Food = min64(city.FoodCap, city.Food+food)
-	city.Steel = min64(city.SteelCap, city.Steel+steel)
-	city.Oil = min64(city.OilCap, city.Oil+oil)
-	city.Rare = min64(city.RareCap, city.Rare+rare)
-	h.saveCityRes(city)
+	// ★ 第九轮用户规则：取消训练要收手续费（按常见游戏 10%），
+	//   且退还**不受仓储上限影响**（原实现被 FoodCap 截断，玩家会觉得「退少了」）。
+	fee := int64(ezfyCancelTrainFeePct)
+	food -= food * fee / 100
+	steel -= steel * fee / 100
+	oil -= oil * fee / 100
+	rare -= rare * fee / 100
+	h.giveResNoCap(city, food, steel, oil, rare, 0)
 	h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练，资源已退还", cfg.Name, q.Count)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练，扣除%d%%手续费后退还 粮%d 钢%d 油%d 稀矿%d",
+		cfg.Name, q.Count, ezfyCancelTrainFeePct, food, steel, oil, rare)})
+}
+
+// DisbandTroops 解散部队（用户规则：军队页面要有解散按钮，数量由玩家自己输入）
+//
+// 解散直接销毁兵力（不退还任何资源），用于清理占地力的低级兵。
+func (h *EzfyHandler) DisbandTroops(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId  int64 `json:"city_id"`
+		TroopId int   `json:"troop_id"`
+		Count   int64 `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.TroopId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	city := h.bodyCity(uid, req.CityId)
+	h.refreshCity(uid, city)
+	cfg := ezfyCfg.troop(req.TroopId)
+	if cfg == nil {
+		resp.ParamError(c, "兵种不存在")
+		return
+	}
+	if req.Count <= 0 {
+		resp.ParamError(c, "解散数量必须大于 0")
+		return
+	}
+	owned := h.troopMap(city.ID)[req.TroopId]
+	if owned <= 0 {
+		resp.ParamError(c, fmt.Sprintf("本城没有「%s」", cfg.Name))
+		return
+	}
+	if req.Count > owned {
+		resp.ParamError(c, fmt.Sprintf("兵力不足: 「%s」只有%d", cfg.Name, owned))
+		return
+	}
+	remain := owned - req.Count
+	if remain == 0 {
+		h.DB.Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).Delete(&model.EzfyCityTroop{})
+	} else {
+		h.DB.Model(&model.EzfyCityTroop{}).Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).
+			Update("count", remain)
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已解散「%s」×%d，剩余%d", cfg.Name, req.Count, remain),
+		"remain": remain})
 }
 
 // ezfySpeedGoldPerSec 训练一键加速收费: 每剩余 1 秒 10 黄金
@@ -520,15 +582,17 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
+	// ★ 第九轮：科技所有城池公用 —— 等级取科技城，科研中心取玩家所有城的最高等级
+	techCity := h.techCityId(city.ID)
 	techMap := h.techMap(city.ID)
-	academy := h.buildingLevel(city.ID, 8)
+	academy := h.maxAcademyLevel(uid)
 	var all []model.EzfyCfgTech
 	h.DB.Order("id ASC").Find(&all)
 	views := []gin.H{}
 	for _, t := range all {
 		level := techMap[t.ID]
 		var rec model.EzfyCityTech
-		if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", city.ID, t.ID).First(&rec).Error; err == nil {
+		if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", techCity, t.ID).First(&rec).Error; err == nil {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": t.Effect,
 				"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": true,
@@ -976,6 +1040,13 @@ func (h *EzfyHandler) CorpsChat(c *gin.Context) {
 		r := []rune(content)
 		content = string(r[:200])
 	}
+	// ★ 第九轮：二战聊天敏感词
+	if filtered, blocked := ezfyFilterChat(content); blocked {
+		resp.Forbidden(c, "你的发言包含敏感词，请修改后再发")
+		return
+	} else {
+		content = filtered
+	}
 	profile := h.ensureProfile(uid)
 	h.DB.Create(&model.EzfyCorpsChat{CorpsId: mb.CorpsId, UserId: uid,
 		UserName: profile.Nickname, Content: content})
@@ -1129,11 +1200,56 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 
 // ============ 商城/背包 ============
 
+// ezfyItemCategory 道具的商城分类（管理端没填 category 时按类型自动归类）
+func ezfyItemCategory(it *model.EzfyCfgItem) string {
+	if c := strings.TrimSpace(it.Category); c != "" {
+		return c
+	}
+	if it.PriceDiamond > 0 {
+		return "钻石道具"
+	}
+	switch it.ItemType {
+	case 1, 2:
+		return "资源道具"
+	case 3, 4, 5:
+		return "加速道具"
+	case 6:
+		return "建筑图纸"
+	case 7, 8:
+		return "增益道具"
+	case 9, 10, 11, 12:
+		return "军官道具"
+	case 13, 14:
+		return "身份道具"
+	}
+	return "其他"
+}
+
+// Mall GET /games/ezfy/mall —— 商城道具（★ 第九轮：带分类与钻石价，前端做分类页签 + 分页）
 func (h *EzfyHandler) Mall(c *gin.Context) {
+	uid := middleware.GetUID(c)
 	h.cfgs()
 	var items []model.EzfyCfgItem
 	h.DB.Order("id ASC").Find(&items)
-	resp.OK(c, gin.H{"items": items})
+	views := make([]gin.H, 0, len(items))
+	cats := []string{}
+	seen := map[string]bool{}
+	for i := range items {
+		it := items[i]
+		cat := ezfyItemCategory(&it)
+		if !seen[cat] {
+			seen[cat] = true
+			cats = append(cats, cat)
+		}
+		views = append(views, gin.H{
+			"id": it.ID, "name": it.Name, "item_type": it.ItemType, "param1": it.Param1,
+			"price_gold": it.PriceGold, "price_diamond": it.PriceDiamond,
+			"icon": it.Icon, "description": it.Description, "stock": it.Stock,
+			"category": cat, "is_diamond": it.PriceDiamond > 0,
+		})
+	}
+	prof := h.ensureProfile(uid)
+	resp.OK(c, gin.H{"items": views, "categories": cats, "diamond": prof.Diamond})
 }
 
 func (h *EzfyHandler) Buy(c *gin.Context) {
@@ -1171,6 +1287,28 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			}
 			return
 		}
+	}
+	// ★ 第九轮：钻石道具（price_diamond > 0）只能用钻石买，钻石只能管理端充值
+	if cfg.PriceDiamond > 0 {
+		cost := cfg.PriceDiamond * int64(req.Count)
+		prof := h.ensureProfile(uid)
+		if prof.Diamond < cost {
+			resp.ParamError(c, fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d", cost, prof.Diamond))
+			return
+		}
+		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
+			Update("diamond", prof.Diamond-cost).Error; err != nil {
+			resp.ParamError(c, "扣钻石失败："+err.Error())
+			return
+		}
+		if stock >= req.Count {
+			h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
+				Updates(map[string]interface{}{"stock": stock - req.Count})
+		}
+		h.addItem(uid, req.CfgId, req.Count)
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（消耗%d钻石）", cfg.Name, req.Count, cost),
+			"stock_left": stock - req.Count, "diamond": prof.Diamond - cost})
+		return
 	}
 	cost := cfg.PriceGold * int64(req.Count)
 	city := h.bodyCity(uid, req.CityId)
@@ -1359,6 +1497,19 @@ func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64
 	city.Rare = min64(city.RareCap, city.Rare+rare)
 	city.Gold = min64(city.GoldCap, city.Gold+gold)
 	h.saveCityRes(&city)
+}
+
+// giveResNoCap 给「指定城市」加资源，**不按仓储上限截断**。
+//
+// 用于退还类操作（取消训练/取消研究），避免玩家觉得「退少了」。
+// 负数是合法的，结果不会低于 0。
+func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare, gold int64) {
+	city.Food = max64(0, city.Food+food)
+	city.Steel = max64(0, city.Steel+steel)
+	city.Oil = max64(0, city.Oil+oil)
+	city.Rare = max64(0, city.Rare+rare)
+	city.Gold = max64(0, city.Gold+gold)
+	h.saveCityRes(city)
 }
 
 // giveResourcesNoCap 管理端专用发放：**不按仓储上限截断**。

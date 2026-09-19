@@ -79,6 +79,8 @@ import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
 import AdminEzfyMap from './components/admin/AdminEzfyMap.vue'
 import AdminEzfyCorps from './components/admin/AdminEzfyCorps.vue'
 import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
+import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
+import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
@@ -260,6 +262,8 @@ export const menu = [
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
           { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
           { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
+          { key: 'ezfyBuildLimit', name: '建筑上限配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
+          { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },

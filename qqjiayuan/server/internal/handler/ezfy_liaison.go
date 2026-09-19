@@ -60,6 +60,87 @@ func (h *EzfyHandler) allyGarrisonCount(cityId uint) int {
 	return int(n)
 }
 
+// ============ 军团职位（第九轮：军团长可任命副团长 / 参谋长） ============
+
+const (
+	ezfyCorpsTitleVice  = "副团长" // 可发军团邮件
+	ezfyCorpsTitleChief = "参谋长" // 荣誉职位
+)
+
+// ezfyValidCorpsTitle 合法职位（空字符串 = 普通成员）
+func ezfyValidCorpsTitle(t string) bool {
+	return t == "" || t == ezfyCorpsTitleVice || t == ezfyCorpsTitleChief
+}
+
+// ezfyCanMailCorps 是否有发军团邮件的权限（军团长 / 副团长）
+func ezfyCanMailCorps(cp *model.EzfyCorps, mb *model.EzfyCorpsMember, uid uint) bool {
+	if cp == nil {
+		return false
+	}
+	if cp.LeaderUserId == uid {
+		return true
+	}
+	return mb != nil && mb.Title == ezfyCorpsTitleVice
+}
+
+// CorpsSetTitle POST /games/ezfy/corps/member/title  { user_id, title }
+//
+// 用户规则：军团长可以给军团成员任职（副团长、参谋长）。
+// title 传空字符串表示撤销职位。只有军团长能操作。
+func (h *EzfyHandler) CorpsSetTitle(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		UserId uint   `json:"user_id"`
+		Title  string `json:"title"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.UserId == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	title := trimSpace(req.Title)
+	if !ezfyValidCorpsTitle(title) {
+		resp.ParamError(c, "职位只能是「副团长」「参谋长」或留空撤销")
+		return
+	}
+	cp := h.myCorpsOf(uid)
+	if cp == nil {
+		resp.ParamError(c, "你还不在任何军团中")
+		return
+	}
+	if cp.LeaderUserId != uid {
+		resp.Forbidden(c, "只有军团长可以任命军团职位")
+		return
+	}
+	if req.UserId == uid {
+		resp.ParamError(c, "军团长不需要任命自己")
+		return
+	}
+	var mb model.EzfyCorpsMember
+	if err := h.DB.Where("user_id = ? AND corps_id = ?", req.UserId, cp.ID).First(&mb).Error; err != nil {
+		resp.ParamError(c, "该玩家不在你的军团中")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCorpsMember{}).Where("id = ?", mb.ID).
+		Update("title", title).Error; err != nil {
+		resp.ParamError(c, "任命失败：" + err.Error())
+		return
+	}
+	p := h.ensureProfile(req.UserId)
+	var u model.User
+	h.DB.First(&u, req.UserId)
+	name := ezfyNickOf(p, &u)
+	if name == "" {
+		name = strconv.Itoa(int(req.UserId))
+	}
+	msg := "已任命「" + name + "」为" + title
+	if title == "" {
+		msg = "已撤销「" + name + "」的军团职位"
+	} else {
+		h.DB.Create(&model.EzfyNotice{UserId: req.UserId, Title: "军团任命", Content: msg})
+	}
+	resp.OK(c, gin.H{"msg": msg, "title": title})
+}
+
 // sameCorps 两人是否在同一军团
 func (h *EzfyHandler) sameCorps(a, b uint) bool {
 	var ma, mb model.EzfyCorpsMember
@@ -148,8 +229,11 @@ func (h *EzfyHandler) CorpsMail(c *gin.Context) {
 		resp.ParamError(c, "你还不在任何军团中")
 		return
 	}
-	if cp.LeaderUserId != uid {
-		resp.Forbidden(c, "只有军团长可以发军团邮件")
+	// ★ 第九轮：军团长与**副团长**都能发军团邮件
+	var mb model.EzfyCorpsMember
+	h.DB.Where("user_id = ?", uid).First(&mb)
+	if !ezfyCanMailCorps(cp, &mb, uid) {
+		resp.Forbidden(c, "只有军团长或副团长可以发军团邮件")
 		return
 	}
 	var members []model.EzfyCorpsMember
