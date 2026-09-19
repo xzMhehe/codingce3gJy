@@ -1896,7 +1896,7 @@ func (h *EzfyHandler) CityList(c *gin.Context) {
 type ezfyCityView struct {
 	model.EzfyCity
 	IsSea bool   `json:"is_sea"`
-	Kind  string `json:"kind"`
+	Kind  string `json:"city_kind"` // ★ 与 /view 的 city_kind 保持同名，前端不要出现两套
 }
 
 func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
@@ -2028,19 +2028,16 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 		resp.ParamError(c, "至少要保留一座城市")
 		return
 	}
-	// ★ 第九轮：允许摧毁「当前所在」的城市 —— 摧毁后自动切到剩下的第一座城。
-	//   （老用户反馈「城市列表没有摧毁按钮」，根因是前端只在非当前城显示 + 单城玩家看不到）
+	// ★ 仅能摧毁**非当前所在**的城市（既有规则，勿改）：
+	//   否则玩家会把自己正站着的城拆掉，操作无法撤销。
 	cur := h.currentCity(uid)
-	needSwitch := cur.ID == ct.ID
+	if cur.ID == ct.ID {
+		resp.ParamError(c, "不能摧毁当前所在的城市，请先切换到别的城市")
+		return
+	}
 	if msg := h.ezfyDestroyCity(uid, ct); msg != "" {
 		resp.ParamError(c, msg)
 		return
-	}
-	if needSwitch {
-		var next model.EzfyCity
-		if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&next).Error; err == nil {
-			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("current_city_id", next.ID)
-		}
 	}
 	resp.OK(c, gin.H{"msg": "城市「" + ct.Name + "」已摧毁，该坐标恢复为普通平原"})
 }
