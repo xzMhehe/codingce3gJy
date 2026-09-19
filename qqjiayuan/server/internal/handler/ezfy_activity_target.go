@@ -69,6 +69,18 @@ func ezfyActivityLevel(x, y int) int {
 //	actWild = !isKou                 && isActivityWildland
 //	actCity = !isKou && !actWild     && isSpecialCity
 func (h *EzfyHandler) ezfyActTargetType(x, y int) int {
+	// ★ 管理端「地图格子覆盖」优先：某格被显式标成活动目标就用它，
+	//   否则照旧按坐标哈希推导。
+	switch ezfyMarkKindAt(x, y) {
+	case model.EzfyMarkActKou:
+		return ezfyActKou
+	case model.EzfyMarkActWild:
+		return ezfyActWild
+	case model.EzfyMarkActCity:
+		return ezfyActCity
+	case model.EzfyMarkKou:
+		return ezfyActNone // 普通寇城不算活动目标
+	}
 	return ezfyActTypeFor(x, y, h.ezfyIsKouCity(x, y))
 }
 

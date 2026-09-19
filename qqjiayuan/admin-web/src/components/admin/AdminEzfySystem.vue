@@ -53,7 +53,9 @@
             <el-table-column label="阵营" width="90" align="center">
               <template slot-scope="{row}">{{ campNames[row.camp] || '同盟国' }}</template>
             </el-table-column>
-            <el-table-column prop="prestige" label="声望" width="90" align="center" />
+            <el-table-column label="声望" width="100" align="center">
+              <template slot-scope="{row}">{{ fmtBig(row.prestige) }}</template>
+            </el-table-column>
           </el-table>
         </el-col>
         <el-col :span="12">
@@ -142,22 +144,23 @@ export default {
     }
   },
   computed: {
+    // ★ 统计数字太大（资源总量动辄上亿），统一带「万 / 亿 / 万亿」单位
     statCards () {
       const s = this.stats
       return [
-        { label: '玩家总数', val: s.players },
-        { label: '今日新建城池', val: s.today_players },
-        { label: '城池总数', val: s.cities },
-        { label: '军团 / 交易所挂单', val: s.corps + ' / ' + s.exchanges }
+        { label: '玩家总数', val: this.fmtBig(s.players) },
+        { label: '今日新建城池', val: this.fmtBig(s.today_players) },
+        { label: '城池总数', val: this.fmtBig(s.cities) },
+        { label: '军团 / 交易所挂单', val: this.fmtBig(s.corps) + ' / ' + this.fmtBig(s.exchanges) }
       ]
     },
     resCards () {
       const s = this.stats
       return [
-        { label: '流通黄金', val: s.gold },
-        { label: '粮食总量', val: s.food },
-        { label: '钢铁总量', val: s.steel },
-        { label: '总声望', val: s.prestige }
+        { label: '流通黄金', val: this.fmtBig(s.gold) },
+        { label: '粮食总量', val: this.fmtBig(s.food) },
+        { label: '钢铁总量', val: this.fmtBig(s.steel) },
+        { label: '总声望', val: this.fmtBig(s.prestige) }
       ]
     },
     campRows () {
@@ -168,6 +171,19 @@ export default {
   mounted () { this.loadStats(); this.loadServer(); this.loadNotices() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
+    // 大数带单位：1万以下原样（带千分位）、1亿以下「X.X万」、1万亿以下「X.X亿」、再往上「X.X万亿」
+    fmtBig (v) {
+      if (v === null || v === undefined || v === '') return '—'
+      const n = Number(v)
+      if (!isFinite(n)) return '—'
+      const abs = Math.abs(n)
+      const sign = n < 0 ? '-' : ''
+      const cut = x => x.replace(/\.?0+$/, '')
+      if (abs < 10000) return sign + abs.toLocaleString()
+      if (abs < 1e8) return sign + cut((abs / 1e4).toFixed(2)) + '万'
+      if (abs < 1e12) return sign + cut((abs / 1e8).toFixed(2)) + '亿'
+      return sign + cut((abs / 1e12).toFixed(2)) + '万亿'
+    },
     loadServer () {
       this.loadingSrv = true
       api.get('/admin/ezfy-server').then(r => {

@@ -46,7 +46,7 @@
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[20, 50, 100]"
+                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -83,7 +83,7 @@ export default {
   name: 'AdminEzfyPrivchat',
   data () {
     return {
-      list: [], total: 0, page: 1, size: 20, loading: false, word: '', isRead: -1,
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '', isRead: -1,
       clearDlg: false, clearForm: { user_id: 1, dir: 'all' }, saving: false
     }
   },

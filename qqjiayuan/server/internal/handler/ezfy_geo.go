@@ -141,10 +141,44 @@ func ezfyIsCoastalPlainAt(x, y int) bool {
 //
 //	依赖原版 8 种地形的玩法逻辑（珠宝按地形、野地产出）继续用 ezfyTerrain。
 func ezfyTerrainEx(x, y int) int {
+	// ★ 管理端「地图格子覆盖」优先：配了地形就强制用配置值
+	if t := ezfyTileAt(x, y); t != nil && t.Terrain > 0 {
+		return t.Terrain
+	}
 	if ezfyIsCoastalPlainAt(x, y) {
 		return ezfyTerrainCoastalPlain
 	}
 	return ezfyTerrain(x, y)
+}
+
+// ezfyTileKey 覆盖表的键（世界坐标上限 1000，够用）
+func ezfyTileKey(x, y int) int64 { return int64(x)*100000 + int64(y) }
+
+// ezfyTileAt 取某格的覆盖配置（没有则 nil）
+func ezfyTileAt(x, y int) *model.EzfyMapTile {
+	c := &ezfyCfg
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if t, ok := c.tiles[ezfyTileKey(x, y)]; ok {
+		return &t
+	}
+	return nil
+}
+
+// ezfyMarkKindAt 取某格的「标记类型」（0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市）
+func ezfyMarkKindAt(x, y int) int {
+	if t := ezfyTileAt(x, y); t != nil {
+		return t.MarkKind
+	}
+	return 0
+}
+
+// ezfyMarkLevelAt 取某格的活动等级（覆盖优先，没覆盖就按哈希算）
+func ezfyMarkLevelAt(x, y int) int {
+	if t := ezfyTileAt(x, y); t != nil && t.MarkLevel > 0 {
+		return t.MarkLevel
+	}
+	return ezfyActivityLevel(x, y)
 }
 
 // ezfyTerrainNames 地形名（复刻原版 MapController.TERRAIN_NAMES，索引即地形 id）
@@ -311,6 +345,8 @@ type ezfyConfigCache struct {
 	equipments     map[int]model.EzfyCfgEquipment
 	buildingByName map[string]int
 	techByName     map[string]int
+	// 地图格子覆盖（key = x*100000+y），管理端改完走 cfgsReload 生效
+	tiles map[int64]model.EzfyMapTile
 	// 军衔配置（按等级 1..N 排序）
 	ranks []model.EzfyCfgRank
 }
@@ -427,6 +463,15 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	for _, e := range eqs {
 		c.equipments[e.ID] = e
 	}
+
+	// 地图格子覆盖（改地形 / 设寇城·活动寇城；管理端可维护）
+	var tiles []model.EzfyMapTile
+	db.Find(&tiles)
+	tm := make(map[int64]model.EzfyMapTile, len(tiles))
+	for _, t := range tiles {
+		tm[ezfyTileKey(t.X, t.Y)] = t
+	}
+	c.tiles = tm
 
 	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
 	var rks []model.EzfyCfgRank

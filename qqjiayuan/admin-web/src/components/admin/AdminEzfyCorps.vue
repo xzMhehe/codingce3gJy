@@ -32,7 +32,7 @@
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[10, 20, 50]"
+                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -88,7 +88,7 @@
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ chatTotal }}</b> 条 · 每页 {{ chatSize }} 条</div>
         <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="chatTotal" :page-size="chatSize"
-                       :current-page="chatPage" :page-sizes="[10, 20, 50]"
+                       :current-page="chatPage" :page-sizes="[10, 20, 50, 100]"
                        @current-change="p => { chatPage = p; loadChats() }"
                        @size-change="s => { chatSize = s; chatPage = 1; loadChats() }" />
       </div>
@@ -132,7 +132,7 @@ export default {
       list: [], total: 0, page: 1, size: 10, loading: false, word: '',
       cur: {},
       memberDlg: false, members: [], loadingMember: false,
-      chatDlg: false, chats: [], chatTotal: 0, chatPage: 1, chatSize: 20, loadingChat: false,
+      chatDlg: false, chats: [], chatTotal: 0, chatPage: 1, chatSize: 10, loadingChat: false,
       editDlg: false, saving: false, form: {}
     }
   },

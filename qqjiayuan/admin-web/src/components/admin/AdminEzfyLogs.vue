@@ -45,8 +45,9 @@
             <el-table-column label="创建时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="90" align="center">
+            <el-table-column label="操作" width="170" align="center">
               <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-view" @click="openOrderDetail(row)">详情</el-button>
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delOrder(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -54,7 +55,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ orderTotal }}</b> 条 · 每页 {{ orderSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="orderTotal" :page-size="orderSize"
-                           :current-page="orderPage" :page-sizes="[10, 20, 50]"
+                           :current-page="orderPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { orderPage = p; loadOrders() }"
                            @size-change="s => { orderSize = s; orderPage = 1; loadOrders() }" />
           </div>
@@ -89,7 +90,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ chatTotal }}</b> 条 · 每页 {{ chatSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="chatTotal" :page-size="chatSize"
-                           :current-page="chatPage" :page-sizes="[20, 50, 100]"
+                           :current-page="chatPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { chatPage = p; loadChats() }"
                            @size-change="s => { chatSize = s; chatPage = 1; loadChats() }" />
           </div>
@@ -142,12 +143,66 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ exTotal }}</b> 条 · 每页 {{ exSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="exTotal" :page-size="exSize"
-                           :current-page="exPage" :page-sizes="[10, 20, 50]"
+                           :current-page="exPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { exPage = p; loadExchanges() }"
                            @size-change="s => { exSize = s; exPage = 1; loadExchanges() }" />
           </div>
         </el-tab-pane>
       </el-tabs>
+    <!-- 出征记录详情 -->
+    <el-dialog title="出征记录详情" :visible.sync="orderDlg" width="720px" :close-on-click-modal="false">
+      <div v-if="orderRow" class="od">
+        <div class="od-sec">基本信息</div>
+        <el-row :gutter="10">
+          <el-col :span="8"><b>订单ID</b>：{{ orderRow.id }}</el-col>
+          <el-col :span="8"><b>玩家</b>：{{ orderRow.player_name || '—' }}（{{ orderRow.user_id }}）</el-col>
+          <el-col :span="8"><b>家园号</b>：{{ orderRow.home_num || '—' }}</el-col>
+        </el-row>
+        <el-row :gutter="10" style="margin-top:6px">
+          <el-col :span="8"><b>命令</b>：{{ orderRow.type_name }}</el-col>
+          <el-col :span="8"><b>目标</b>：{{ targetTypeName(orderRow.target_type) }} ({{ orderRow.target_x }},{{ orderRow.target_y }})</el-col>
+          <el-col :span="8"><b>状态</b>：{{ statusNames[orderRow.status] || orderRow.status }}</el-col>
+        </el-row>
+        <el-row :gutter="10" style="margin-top:6px">
+          <el-col :span="8"><b>所属城市</b>：{{ orderRow.city_id }}</el-col>
+          <el-col :span="8"><b>耗油</b>：{{ fmtN(orderRow.oil_used) }}</el-col>
+          <el-col :span="8"><b>宿营</b>：{{ orderRow.wait_min ? orderRow.wait_min + ' 分钟' : '无' }}</el-col>
+        </el-row>
+
+        <div class="od-sec">带队军官</div>
+        <div>{{ orderRow.officer || '（无）' }}</div>
+
+        <div class="od-sec">出征部队</div>
+        <div v-if="troopList.length">
+          <span v-for="(t, i) in troopList" :key="'ot' + i" class="od-tag">
+            {{ t.text ? t.name : (t.name + '×' + fmtN(t.count)) }}
+          </span>
+        </div>
+        <div v-else class="td-sub">（无）</div>
+
+        <div class="od-sec">携带 / 待带回资源</div>
+        <div>携带：{{ orderRow.res_text || resText(orderRow.resources) || '—' }}</div>
+        <div>待带回：{{ orderRow.carry_text || resText(orderRow.carry) || '—' }}</div>
+
+        <div class="od-sec">时间线</div>
+        <el-row :gutter="10">
+          <el-col :span="8"><b>创建</b>：{{ fmtTime(orderRow.created_at) }}</el-col>
+          <el-col :span="8"><b>出发</b>：{{ fmtTime(orderRow.start_time) }}</el-col>
+          <el-col :span="8"><b>到达</b>：{{ fmtTime(orderRow.arrive_time) }}</el-col>
+        </el-row>
+        <el-row :gutter="10" style="margin-top:6px">
+          <el-col :span="8"><b>返航</b>：{{ fmtTime(orderRow.return_time) }}</el-col>
+          <el-col :span="16"><b>更新</b>：{{ fmtTime(orderRow.updated_at) }}</el-col>
+        </el-row>
+
+        <div class="od-sec">结果 / 返回部队</div>
+        <pre class="od-pre">{{ orderRow.result || '（无）' }}</pre>
+      </div>
+      <div slot="footer">
+        <el-button type="primary" @click="orderDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
+
     </el-card>
   </div>
 </template>
@@ -164,12 +219,51 @@ export default {
       statusNames: { 0: '行进中', 1: '驻守中', 2: '返回中', 3: '已完成', 4: '已阵亡' },
       orders: [], orderTotal: 0, orderPage: 1, orderSize: 10, orderLoading: false,
       orderWord: '', orderType: 0, orderStatus: -1,
-      chats: [], chatTotal: 0, chatPage: 1, chatSize: 20, chatLoading: false, chatWord: '',
-      exchanges: [], exTotal: 0, exPage: 1, exSize: 10, exLoading: false, exWord: '', exStatus: -1
+      chats: [], chatTotal: 0, chatPage: 1, chatSize: 10, chatLoading: false, chatWord: '',
+      exchanges: [], exTotal: 0, exPage: 1, exSize: 10, exLoading: false, exWord: '', exStatus: -1,
+      orderDlg: false, orderRow: null
     }
   },
   mounted () { this.loadOrders() },
+  computed: {
+    // 出征记录详情里的部队列表
+    troopList () {
+      const r = this.orderRow
+      if (!r) return []
+      // 后端已经把部队整理成「步兵×100 卡车×50」，优先用它（跨模块不用再拉兵种表）
+      if (r.troops_text) return [{ name: r.troops_text, count: 0, text: true }]
+      return this.parseGroups(r.troops).map(g => ({
+        name: '兵种' + g.troopId, count: g.count
+      }))
+    }
+  },
   methods: {
+    // 解析 [{"troopId":1,"count":100}] / 兼容旧格式
+    parseGroups (raw) {
+      if (!raw) return []
+      try {
+        const arr = JSON.parse(raw)
+        if (!Array.isArray(arr)) return []
+        return arr.map(x => ({ troopId: x.troopId || x.troop_id || 0, count: x.count || 0 }))
+      } catch (e) { return [] }
+    },
+    targetTypeName (t) { return ({ 1: '野地', 2: '寇城', 3: '玩家城' })[t] || ('类型' + t) },
+    // 资源 JSON → 「粮100 钢50」这种
+    resText (raw) {
+      if (!raw || raw === '{}') return '—'
+      try {
+        const o = JSON.parse(raw)
+        const names = { food: '粮', steel: '钢', oil: '油', rare: '稀', gold: '金' }
+        const parts = Object.keys(names)
+          .filter(k => Number(o[k]) > 0)
+          .map(k => names[k] + this.fmtN(o[k]))
+        return parts.length ? parts.join(' ') : '—'
+      } catch (e) { return raw }
+    },
+    openOrderDetail (row) {
+      this.orderRow = row
+      this.orderDlg = true
+    },
     // 后端返回的是 RFC3339（2026-09-19T15:45:27.639+08:00），表格里直接显示又长又乱
     fmtTime (s) {
       if (!s) return '—'

@@ -37,7 +37,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[15, 30, 50]"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -87,7 +87,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cfgFiltered.length }}</b> 条 · 每页 {{ cfgSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="cfgFiltered.length"
-                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[20, 50, 100]"
+                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { cfgPage = p }"
                            @size-change="s => { cfgSize = s; cfgPage = 1 }" />
           </div>
@@ -129,7 +129,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ wTotal }}</b> 条 · 每页 {{ wSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="wTotal" :page-size="wSize"
-                           :current-page="wPage" :page-sizes="[10, 20, 50]"
+                           :current-page="wPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { wPage = p; loadWounded() }"
                            @size-change="s => { wSize = s; wPage = 1; loadWounded() }" />
           </div>
@@ -278,10 +278,10 @@ export default {
   data () {
     return {
       tab: 'troops',
-      list: [], total: 0, page: 1, size: 15, loading: false, word: '',
-      cfgs: [], cfgWord: '', loadingCfg: false, cfgPage: 1, cfgSize: 20,
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '',
+      cfgs: [], cfgWord: '', loadingCfg: false, cfgPage: 1, cfgSize: 10,
       resNames: {},
-      wounded: [], wTotal: 0, wPage: 1, wSize: 15, loadingW: false, wWord: '', wType: -1,
+      wounded: [], wTotal: 0, wPage: 1, wSize: 10, loadingW: false, wWord: '', wType: -1,
       grantDlg: false, grantForm: { city_id: 1, troop_id: 0, count: 100 },
       editDlg: false, editRow: {}, editCount: 0,
       cfgDlg: false, cfgForm: {},

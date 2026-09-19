@@ -608,7 +608,9 @@ func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 		First(&o).Error; err != nil {
 		return 0
 	}
-	return 10 + o.Logistics/20
+	// ★ 用有效后勤（自身 + 装备），否则给市长穿后勤装备没有任何效果
+	_, log, _ := officerEffective(&o)
+	return 10 + log/20
 }
 
 // officerByName 按名字取本城军官
@@ -656,16 +658,35 @@ func (h *EzfyHandler) officerHasSkill(o *model.EzfyOfficer, skill string) bool {
 	return false
 }
 
+// officerEquipBonus 汇总军官已穿戴装备的属性加成
+//
+// ★ 之前装备只算了「军事」一项，后勤/学识的加成**完全没有任何去处**，
+//   玩家穿上带后勤/学识的装备后数字一动不动，看起来就是「穿装备没效果」。
+func officerEquipBonus(o *model.EzfyOfficer) (mil, log, lea int) {
+	for _, m := range officerEquipped(o) {
+		mil += jsonInt(m["military"])
+		log += jsonInt(m["logistics"])
+		lea += jsonInt(m["learning"])
+	}
+	return
+}
+
+// officerEffective 军官的**有效属性**（自身 + 装备）
+func officerEffective(o *model.EzfyOfficer) (mil, log, lea int) {
+	if o == nil {
+		return
+	}
+	em, el, ee := officerEquipBonus(o)
+	return o.Military + em, o.Logistics + el, o.Learning + ee
+}
+
 // officerBaseBonus 军官基础战斗加成（军事属性 + 装备军事加成）
 func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
-	bonus := o.Military
-	for _, m := range officerEquipped(o) {
-		bonus += jsonInt(m["military"])
-	}
-	return bonus
+	em, _, _ := officerEquipBonus(o)
+	return o.Military + em
 }
 
 // officerSkillBattleBonus 军官技能带来的攻击加成（复刻原版 getOfficerBattleBonus 的技能段）
@@ -699,11 +720,17 @@ func (h *EzfyHandler) officerSpeedSkill(o *model.EzfyOfficer) bool {
 }
 
 // officerGuardBonus 城守守城防御加成（+10 及 防御/掩体+10、生命/鼓舞+5）
+// officerGuardBonus 军官防御加成（基础 10 + 学识/20 + 技能）
+//
+// ★ 学识原来只展示、不参与任何计算（原版也是这样），加上装备的学识加成也没去处。
+//   这里把学识接到「防御」上，让三项属性各有用途：
+//   军事→攻击、后勤→市长产量、学识→防御。
 func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
-	bonus := 10
+	_, _, lea := officerEffective(o)
+	bonus := 10 + lea/20
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "弧形防御":
@@ -962,19 +989,28 @@ func (h *EzfyHandler) randomJewel(terrain int) *model.EzfyCfgEquipment {
 // captureWildlandOfficer 战胜野地/寇城后俘虏守将
 //
 // 规则(用户明确):
-//   - **只有该野地/寇城配置里有军官**(cfg.OfficerMax > 0)才可能俘到, 没军官就什么都没有
-//   - 军官数量越多/等级越高, 俘虏概率越高
+//   - 该野地/寇城必须在「野地类型」里配了**守军军官**（cfg.OfficerId > 0，最多 1 个，
+//     且只能从军官池 ezfy_cfg_general 里选）；没配就俘不到军官
+//   - 星级越高（军官池里的名将越强），俘虏概率越高
 //   - 需要参谋部有空位
 //
 // wildType: 1陆地野地 2海野 3寇城;  level: 野地等级
 func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, level int, special bool) string {
 	h.cfgs()
 	cfg := ezfyCfg.wildland(wildType, level)
-	if cfg == nil || cfg.OfficerMax <= 0 {
-		return "" // 该目标没有军官, 不产生战俘
+	if cfg == nil || cfg.OfficerId <= 0 {
+		return "" // 该目标没有守将, 不产生战俘
 	}
-	// 概率: 基础 20%, 按军官上限加成(每 10 名 +5%), 特殊目标翻倍, 上限 60%
-	chance := 20 + cfg.OfficerMax/10*5
+	g := ezfyCfg.general(cfg.OfficerId)
+	if g == nil {
+		return "" // 军官池里已没有这个军官（被删了）
+	}
+	star := g.Star
+	if star <= 0 {
+		star = 1
+	}
+	// 概率: 基础 20%, 名将星级每星 +5%, 特殊目标翻倍, 上限 60%
+	chance := 20 + star*5
 	if special {
 		chance *= 2
 	}
@@ -991,22 +1027,11 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 	if h.officerCount(city.ID) >= h.buildingLevel(city.ID, ezfyBuildingStaff) {
 		return ""
 	}
-	// 守将是**普通军官**(随机生成), 名将只能管理端发放
-	star := 1 + level/3
-	if star > 5 {
-		star = 5
-	}
-	if special && star < 5 {
-		star++
-	}
-	d := rollOfficerDrafts(maxInt(1, level), 1)
-	if len(d) == 0 {
-		return ""
-	}
+	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级取自军官池）
 	o := model.EzfyOfficer{
-		CityId: int64(city.ID), GeneralId: 0, Name: d[0].Name, Star: star,
-		Level: maxInt(1, d[0].Level), Exp: 0,
-		Military: d[0].Military, Logistics: d[0].Logistics, Learning: d[0].Learning,
+		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
+		Level: maxInt(1, level), Exp: 0,
+		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
 		Loyalty: 30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 	}
@@ -1088,10 +1113,15 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	for i := range list {
 		o := &list[i]
 		skills := officerSkills(o)
+		em, el, ee := officerEffective(o)
 		views = append(views, gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
-			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
+			// ★ 含装备加成的有效属性（前端展示「基础(+装备)」）
+			"military_total": em, "logistics_total": el, "learning_total": ee,
+			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
+			"equip_learning": ee - o.Learning,
+			"loyalty":        o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o),
 			"is_captive": o.IsCaptive, "skills": skills,
 			"equip_count": len(officerEquipped(o)),
@@ -1160,6 +1190,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	sort.Slice(allSkills, func(i, j int) bool {
 		return allSkills[i]["id"].(int) < allSkills[j]["id"].(int)
 	})
+	em, el, ee := officerEffective(o)
 	bag := []gin.H{}
 	for _, e := range h.equipmentList(uid) {
 		bag = append(bag, gin.H{
@@ -1173,6 +1204,11 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+			// ★ 有效属性（基础 + 装备），前端展示成「33 (+5) = 38」
+			"military_total": em, "logistics_total": el, "learning_total": ee,
+			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
+			"equip_learning": ee - o.Learning,
+			"attack":         h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
 			"exp_need": o.Level * 200,

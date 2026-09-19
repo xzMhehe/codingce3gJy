@@ -46,13 +46,133 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cityTotal }}</b> 条 · 每页 {{ citySize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="cityTotal" :page-size="citySize"
-                           :current-page="cityPage" :page-sizes="[10, 20, 50]"
+                           :current-page="cityPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { cityPage = p; loadCities() }"
                            @size-change="s => { citySize = s; cityPage = 1; loadCities() }" />
           </div>
         </el-tab-pane>
 
         <!-- ================= 野地维护（全量 + 可编辑） ================= -->
+        <!-- ================= 地图格子（改土地类型 / 设寇城·活动寇城） ================= -->
+        <el-tab-pane label="地图格子" name="tiles">
+          <div class="toolbar">
+            <el-input-number v-model.number="tileX" :min="0" :max="999" controls-position="right" style="width:120px" />
+            <el-input-number v-model.number="tileY" :min="0" :max="999" controls-position="right" style="width:120px" />
+            <el-button type="primary" icon="el-icon-search" @click="loadTileCell">查询该格</el-button>
+            <span class="td-sub">坐标 x / y（世界范围 50~450）</span>
+            <div class="grow" />
+            <el-select v-model="tileMarkFilter" style="width:150px" @change="tilePage = 1; loadTiles()">
+              <el-option label="全部标记" :value="-1" />
+              <el-option label="寇城" :value="1" />
+              <el-option label="活动寇城" :value="2" />
+              <el-option label="活动野地" :value="3" />
+              <el-option label="特殊城市" :value="4" />
+            </el-select>
+            <el-input v-model="tileWord" placeholder="坐标 x,y 或备注" clearable style="width:170px"
+                      @keyup.enter.native="tilePage = 1; loadTiles()" />
+            <el-button type="primary" plain icon="el-icon-refresh" @click="loadTiles">刷新</el-button>
+          </div>
+
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
+            <template slot="title">
+              地图默认是「坐标哈希」推导的，这里做**覆盖**：改了立即生效（不用重启）。
+              地形留「不覆盖」就按默认；标记留「无」也按默认。
+            </template>
+          </el-alert>
+
+          <!-- 该格现状 + 编辑 -->
+          <el-card shadow="never" class="box" v-if="tileCell">
+            <div class="sub-title">
+              坐标 ({{ tileCell.x }},{{ tileCell.y }}) 现状
+              <span class="td-sub" v-if="tileCell.has_override">（已有覆盖）</span>
+              <span class="td-sub" v-else>（按地图默认规则）</span>
+            </div>
+            <el-row :gutter="12">
+              <el-col :span="8">默认地形：<b>{{ tileCell.hash_terrain_name }}</b></el-col>
+              <el-col :span="8">默认标记：<b>{{ tileCell.hash_mark_name }}</b></el-col>
+              <el-col :span="8">野地等级：<b>{{ tileCell.wildland_level }}</b></el-col>
+            </el-row>
+            <el-row :gutter="12" style="margin-top:6px">
+              <el-col :span="8">生效地形：<b class="td-blue">{{ tileCell.eff_terrain_name }}</b></el-col>
+              <el-col :span="8">生效标记：<b class="td-blue">{{ tileCell.eff_mark_name }}</b></el-col>
+              <el-col :span="8">
+                <span v-if="tileCell.city_name">该格已有城池：<b>{{ tileCell.city_name }}</b></span>
+                <span v-else-if="tileCell.wild_owner">该格已被占：<b>{{ tileCell.wild_owner }}</b></span>
+                <span v-else class="td-sub">该格没有城池/占领</span>
+              </el-col>
+            </el-row>
+            <el-divider />
+            <el-form label-width="110px" size="small" inline>
+              <el-form-item label="土地类型">
+                <el-select v-model.number="tileForm.terrain" style="width:150px">
+                  <el-option label="不覆盖（按默认）" :value="0" />
+                  <el-option v-for="(n, t) in terrainNames" :key="'tt' + t" :label="n" :value="Number(t)" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="标记">
+                <el-select v-model.number="tileForm.mark_kind" style="width:150px">
+                  <el-option label="无（按默认）" :value="0" />
+                  <el-option label="寇城" :value="1" />
+                  <el-option label="活动寇城" :value="2" />
+                  <el-option label="活动野地" :value="3" />
+                  <el-option label="特殊城市" :value="4" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="活动等级" v-if="tileForm.mark_kind >= 2">
+                <el-input-number v-model.number="tileForm.mark_level" :min="1" :max="3"
+                                 controls-position="right" style="width:120px" />
+              </el-form-item>
+              <el-form-item label="备注">
+                <el-input v-model="tileForm.des" maxlength="200" style="width:220px" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" :loading="saving" @click="saveTile">保存并生效</el-button>
+                <el-button v-if="tileCell.has_override" type="danger" plain @click="clearTile">清除覆盖</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <el-table :data="tiles" v-loading="loadingTile" stripe border max-height="480">
+            <el-table-column prop="id" label="ID" width="70" align="center" />
+            <el-table-column label="坐标" width="110" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
+            </el-table-column>
+            <el-table-column label="土地类型" width="120" align="center">
+              <template slot-scope="{row}">
+                <span v-if="row.terrain > 0">{{ row.terrain_name }}</span>
+                <span v-else class="td-sub">不覆盖</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="标记" width="120" align="center">
+              <template slot-scope="{row}">
+                <el-tag v-if="row.mark_kind > 0" size="mini"
+                        :type="row.mark_kind === 2 ? 'warning' : (row.mark_kind === 4 ? 'danger' : (row.mark_kind === 3 ? 'success' : 'info'))">
+                  {{ row.mark_name }}<span v-if="row.mark_kind >= 2">{{ row.mark_level }}级</span>
+                </el-tag>
+                <span v-else class="td-sub">无</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="des" label="备注" min-width="160" show-overflow-tooltip />
+            <el-table-column label="更新时间" width="160" align="center">
+              <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" align="center">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑"
+                           @click="tileX = row.x; tileY = row.y; loadTileCell()" />
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除覆盖" @click="delTile(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ tileTotal }}</b> 条 · 每页 {{ tileSize }} 条</div>
+            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="tileTotal" :page-size="tileSize"
+                           :current-page="tilePage" :page-sizes="[10, 20, 50, 100]"
+                           @current-change="p => { tilePage = p; loadTiles() }"
+                           @size-change="s => { tileSize = s; tilePage = 1; loadTiles() }" />
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="野地维护" name="wildlands">
           <div class="toolbar">
             <el-input v-model="wildWord" placeholder="城名 / 城池ID / 坐标" clearable style="width:190px"
@@ -110,7 +230,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ wildTotal }}</b> 条 · 每页 {{ wildSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="wildTotal" :page-size="wildSize"
-                           :current-page="wildPage" :page-sizes="[20, 50, 100]"
+                           :current-page="wildPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { wildPage = p; loadWilds() }"
                            @size-change="s => { wildSize = s; wildPage = 1; loadWilds() }" />
           </div>
@@ -142,14 +262,20 @@
               </template>
             </el-table-column>
             <el-table-column prop="level" label="等级" width="65" align="center" />
-            <el-table-column prop="troops" label="守军" min-width="200" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-mono td-small">{{ row.troops || '—' }}</span></template>
+            <el-table-column label="守军" min-width="220" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="troopText(row.troops)">{{ troopText(row.troops) }}</span>
+                <span v-else class="td-sub">—</span>
+              </template>
             </el-table-column>
             <el-table-column label="产出区间" width="150" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.res_min) }} ~ {{ fmtN(row.res_max) }}</span></template>
             </el-table-column>
-            <el-table-column label="军官数" width="90" align="center">
-              <template slot-scope="{row}">{{ row.officer_min }} ~ {{ row.officer_max }}</template>
+            <el-table-column label="守军军官" width="140" align="center">
+              <template slot-scope="{row}">
+                <span v-if="row.officer_name" class="td-main">{{ row.officer_name }}</span>
+                <span v-else class="td-sub">无</span>
+              </template>
             </el-table-column>
             <el-table-column prop="treasure" label="宝物" width="120" show-overflow-tooltip />
             <el-table-column prop="des" label="说明" min-width="150" show-overflow-tooltip />
@@ -163,7 +289,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ wcTotal }}</b> 条 · 每页 {{ wcSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="wcTotal" :page-size="wcSize"
-                           :current-page="wcPage" :page-sizes="[20, 50, 100]"
+                           :current-page="wcPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { wcPage = p; loadWildCfgs() }"
                            @size-change="s => { wcSize = s; wcPage = 1; loadWildCfgs() }" />
           </div>
@@ -205,7 +331,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ occTotal }}</b> 条 · 每页 {{ occSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="occTotal" :page-size="occSize"
-                           :current-page="occPage" :page-sizes="[10, 20, 50]"
+                           :current-page="occPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { occPage = p; loadOccupy() }"
                            @size-change="s => { occSize = s; occPage = 1; loadOccupy() }" />
           </div>
@@ -245,7 +371,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ areaTotal }}</b> 条 · 每页 {{ areaSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="areaTotal" :page-size="areaSize"
-                           :current-page="areaPage" :page-sizes="[10, 20, 50]"
+                           :current-page="areaPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { areaPage = p; loadAreas() }"
                            @size-change="s => { areaSize = s; areaPage = 1; loadAreas() }" />
           </div>
@@ -274,7 +400,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ starTotal }}</b> 条 · 每页 {{ starSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="starTotal" :page-size="starSize"
-                           :current-page="starPage" :page-sizes="[10, 20, 50]"
+                           :current-page="starPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { starPage = p; loadStars() }"
                            @size-change="s => { starSize = s; starPage = 1; loadStars() }" />
           </div>
@@ -378,21 +504,30 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="军官数下限">
-              <el-input-number v-model.number="wc.officer_min" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="军官数上限">
-              <el-input-number v-model.number="wc.officer_max" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="守军">
-          <el-input v-model="wc.troops" type="textarea" :rows="2" maxlength="1000"
-                    placeholder='JSON 数组，形如 [[兵种ID,最小,最大],...] 例如 [[1,100,200],[2,50,80]]' />
+        <el-form-item label="守军军官">
+          <el-select v-model.number="wc.officer_id" filterable clearable placeholder="不设守将（打下来也俘不到军官）"
+                     style="width:100%">
+            <el-option v-for="g in generals" :key="'gen' + g.id"
+                       :label="g.name + '（' + g.star + '星  军事' + g.military + ' 后勤' + g.logistics + ' 学识' + g.learning + '）'"
+                       :value="g.id" />
+          </el-select>
+          <span class="td-sub">最多 1 个，且只能从军官池里选；打赢后有概率俘虏这名军官</span>
+        </el-form-item>
+        <el-form-item label="守军搭配">
+          <!-- ★ 原来是裸 JSON 文本框（[[兵种ID,最小,最大],...]），改成可视化行编辑 -->
+          <div v-for="(r, i) in wcTroops" :key="'wt' + i" class="wild-troop-row">
+            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:220px">
+              <el-option v-for="t in troopCfgs" :key="'wtc' + t.id"
+                         :label="t.name + '（' + t.type_name + '）'" :value="t.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="r.min" :min="0" controls-position="right" style="width:120px" />
+            <span class="td-sub">~</span>
+            <el-input-number v-model.number="r.max" :min="0" controls-position="right" style="width:120px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="wcTroops.splice(i, 1)" />
+          </div>
+          <div class="old-line" v-if="!wcTroops.length">（暂无守军，野地将没有防守部队）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcTroop">添加兵种</el-button>
         </el-form-item>
         <el-form-item label="宝物">
           <el-input v-model="wc.treasure" maxlength="100" placeholder="可空，例如：珠宝(平原)" />
@@ -414,14 +549,17 @@
 import api from '../../api'
 
 const WILD_KEYS = ['city_id', 'x', 'y', 'wild_type', 'level', 'gain', 'status']
-const WC_KEYS = ['type', 'level', 'troops', 'res_min', 'res_max', 'officer_min', 'officer_max', 'treasure', 'des']
+const WC_KEYS = ['type', 'level', 'troops', 'res_min', 'res_max',
+  'officer_min', 'officer_max', 'officer_id', 'treasure', 'des']
 
 function emptyWild () {
   return { id: 0, city_id: 1, x: 250, y: 250, wild_type: 1, level: 1, gain: '', status: 0 }
 }
 function emptyWc () {
   return { id: 0, type: 1, level: 1, troops: '', res_min: 0, res_max: 0,
-    officer_min: 0, officer_max: 0, treasure: '', des: '' }
+    officer_min: 0, officer_max: 0, officer_id: 0, treasure: '', des: '',
+    // 弹窗内的「守军搭配」行（保存时序列化进 troops）
+    wcTroops: [] }
 }
 
 export default {
@@ -432,18 +570,32 @@ export default {
       lookup: { x: 250, y: 250 }, lookupResult: null,
       wildTypes: { 1: '陆地野地', 2: '海野', 3: '寇城' },
       areaTypes: { 0: '空地', 1: '野地(已占)', 2: '寇城', 3: '玩家城', 4: '资源田' },
-      cities: [], cityTotal: 0, cityPage: 1, citySize: 20, cityWord: '', loadingCity: false,
-      wilds: [], wildTotal: 0, wildPage: 1, wildSize: 20, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
-      wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 20, wcType: -1, wcLevel: 0, loadingWc: false,
-      occupies: [], occTotal: 0, occPage: 1, occSize: 15, occStatus: -1, loadingOcc: false,
-      areas: [], areaTotal: 0, areaPage: 1, areaSize: 20, areaType: -1, loadingArea: false,
-      stars: [], starTotal: 0, starPage: 1, starSize: 20, loadingStar: false,
+      cities: [], cityTotal: 0, cityPage: 1, citySize: 10, cityWord: '', loadingCity: false,
+      wilds: [], wildTotal: 0, wildPage: 1, wildSize: 10, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
+      wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 10, wcType: -1, wcLevel: 0, loadingWc: false,
+      occupies: [], occTotal: 0, occPage: 1, occSize: 10, occStatus: -1, loadingOcc: false,
+      areas: [], areaTotal: 0, areaPage: 1, areaSize: 10, areaType: -1, loadingArea: false,
+      stars: [], starTotal: 0, starPage: 1, starSize: 10, loadingStar: false,
+      // 野地类型弹窗的下拉数据：兵种列表 + 军官池
+      troopCfgs: [], generals: [],
+      // 地图格子覆盖
+      tiles: [], tileTotal: 0, tilePage: 1, tileSize: 10, loadingTile: false,
+      tileX: 250, tileY: 250, tileCell: null, tileWord: '', tileMarkFilter: -1,
+      tileForm: { terrain: 0, mark_kind: 0, mark_level: 1, des: '' },
+      terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '山地', 8: '海洋', 9: '沿海平原' },
       wildDlg: false, wf: emptyWild(), wildCfgMatch: null,
       wcDlg: false, wc: emptyWc(),
       saving: false
     }
   },
-  mounted () { this.loadCities() },
+  computed: {
+    // 弹窗里的「守军搭配」行：直接映射到 wc.wcTroops（模板里要 v-for + splice）
+    wcTroops () {
+      if (!this.wc.wcTroops) this.$set(this.wc, 'wcTroops', [])
+      return this.wc.wcTroops
+    }
+  },
+  mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     fmtN (v) {
@@ -553,15 +705,130 @@ export default {
         } else this.$message.error(r.msg)
       })
     },
+    // ---- 地图格子覆盖 ----
+    loadTiles () {
+      this.loadingTile = true
+      api.get('/admin/ezfy-map-tiles', {
+        params: { page: this.tilePage, size: this.tileSize, word: this.tileWord, mark_kind: this.tileMarkFilter }
+      }).then(r => {
+        this.loadingTile = false
+        if (r.code === 0) {
+          this.tiles = r.data.list || []
+          this.tileTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
+      })
+    },
+    // 查某格：默认规则 vs 生效结果
+    loadTileCell () {
+      const x = Number(this.tileX)
+      const y = Number(this.tileY)
+      if (!(x >= 0) || !(y >= 0)) { this.$message.warning('请填写坐标'); return }
+      api.get('/admin/ezfy-map-tile', { params: { x: x, y: y } }).then(r => {
+        if (r.code !== 0) { this.$message.error(r.msg); return }
+        this.tileCell = r.data
+        const ov = r.data.override || {}
+        this.tileForm = {
+          terrain: ov.terrain || 0,
+          mark_kind: ov.mark_kind || 0,
+          mark_level: ov.mark_level || 1,
+          des: ov.des || ''
+        }
+      })
+    },
+    saveTile () {
+      if (!this.tileCell) { this.$message.warning('请先查询坐标'); return }
+      this.saving = true
+      api.post('/admin/ezfy-map-tiles', Object.assign({
+        x: Number(this.tileCell.x), y: Number(this.tileCell.y)
+      }, this.tileForm)).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已保存')
+          this.loadTileCell()
+          this.loadTiles()
+        } else this.$message.error(r.msg)
+      })
+    },
+    clearTile () {
+      const ov = (this.tileCell || {}).override || {}
+      if (!ov.id) return
+      this.$confirm('清除坐标 (' + ov.x + ',' + ov.y + ') 的覆盖，恢复按地图默认规则？', '提示',
+        { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-map-tiles/' + ov.id).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已清除')
+            this.loadTileCell()
+            this.loadTiles()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    delTile (row) {
+      this.$confirm('删除坐标 (' + row.x + ',' + row.y + ') 的覆盖？删除后按地图默认规则。', '提示',
+        { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-map-tiles/' + row.id).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadTiles() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // 下拉数据（兵种 + 军官池）
+    loadMapOptions () {
+      api.get('/admin/ezfy-map/options').then(r => {
+        if (r.code === 0) {
+          this.troopCfgs = r.data.troops || []
+          this.generals = r.data.generals || []
+        }
+      })
+    },
+    // 把 troops JSON 串 [[tid,min,max],...] 解析成可视化行
+    parseWcTroops (raw) {
+      const out = []
+      try {
+        const arr = JSON.parse(raw || '[]')
+        if (Array.isArray(arr)) {
+          arr.forEach(r => {
+            if (Array.isArray(r) && r.length >= 3) {
+              out.push({ troop_id: Number(r[0]) || 0, min: Number(r[1]) || 0, max: Number(r[2]) || 0 })
+            }
+          })
+        }
+      } catch (e) { /* 历史脏数据忽略 */ }
+      return out
+    },
+    // 列表里把守军显示成「步兵 100~200、卡车 50」这种好读的形式
+    troopText (raw) {
+      const rows = this.parseWcTroops(raw)
+      if (!rows.length) return ''
+      const nameOf = id => {
+        const t = this.troopCfgs.find(x => x.id === id)
+        return t ? t.name : ('兵种' + id)
+      }
+      return rows.map(r => nameOf(r.troop_id) + ' ' + r.min + '~' + r.max).join('、')
+    },
+    addWcTroop () {
+      if (!this.wc.wcTroops) this.$set(this.wc, 'wcTroops', [])
+      const first = this.troopCfgs[0]
+      this.wc.wcTroops.push({ troop_id: first ? first.id : 0, min: 100, max: 200 })
+    },
     openWcCreate () {
       this.wc = emptyWc()
       this.wcDlg = true
     },
     openWcEdit (row) {
       this.wc = Object.assign(emptyWc(), row)
+      this.$set(this.wc, 'wcTroops', this.parseWcTroops(row.troops))
       this.wcDlg = true
     },
     doWcSave () {
+      // ★ 把可视化行序列化回后端要的 [[兵种ID,最小,最大],...]
+      const rows = (this.wc.wcTroops || [])
+        .filter(r => r.troop_id > 0)
+        .map(r => {
+          const lo = Number(r.min) || 0
+          const hi = Math.max(lo, Number(r.max) || 0)
+          return [Number(r.troop_id), lo, hi]
+        })
+      this.wc.troops = JSON.stringify(rows)
       const body = {}
       WC_KEYS.forEach(k => { if (this.wc[k] !== null && this.wc[k] !== undefined) body[k] = this.wc[k] })
       this.saving = true
@@ -652,5 +919,7 @@ export default {
 </script>
 
 <style scoped>
+/* 野地类型弹窗的「守军搭配」行 */
+.wild-troop-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 @import './farm-admin.css';
 </style>

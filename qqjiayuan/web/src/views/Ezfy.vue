@@ -158,7 +158,8 @@
           <div class="panel-title">聊天频道</div>
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: chatChannel === 1 }" @click="switchChannel(1)">世界</a>|
-            <a v-if="chatHasCorps" href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">军团</a>|
+            <!-- ★ 军团频道常显：没加入军团时进去显示「未加入 · 0 人」 -->
+            <a href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">军团</a>|
             <a href="javascript:;" :class="{ on: chatChannel === 4 }" @click="switchChannel(4)">系统</a>|
             <a href="javascript:;" @click="go('mail')">私聊</a>
           </div>
@@ -181,10 +182,20 @@
             <div class="old-line gray" v-if="!worldChats.length">(暂无系统消息)</div>
           </template>
 
+          <!-- 军团频道但还没加入军团：显示 0 人 + 引导 -->
+          <template v-else-if="chatChannel === 2 && !chatHasCorps">
+            <div class="old-line gray">
+              你还没有加入军团（军团人数 0）。
+              <a href="javascript:;" @click="go('corps')">[去看看军团列表]</a>
+            </div>
+          </template>
+
           <!-- 公共 / 军团频道 -->
           <template v-else>
             <div class="panel-title">
-              {{ chatChannel === 2 ? '军团聊天(' + chatCorpsName + ')' : '世界聊天' }}({{ chatPlayers }}人)
+              {{ chatChannel === 2
+                ? '军团聊天(' + (chatHasCorps ? chatCorpsName : '未加入军团') + ')(' + chatCorpsPlayers + '人)'
+                : '世界聊天(' + chatPlayers + '人)' }}
             </div>
             <div class="old-line gray">每次发言消耗一个喇叭(最大25个字)</div>
             <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
@@ -576,6 +587,8 @@
           <div class="panel-title">训练队列({{ queues.length }})</div>
           <div class="old-line" v-for="q in queues" :key="'q' + q.id">
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
+            <!-- 接口只返回 status=0（训练中）的队列，所以这里不需要再判断状态 -->
+            <a href="javascript:;" @click="doCancelTrain(q)">[取消]</a>
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
           <a href="javascript:;" @click="go('defence')">[去建城防]</a>
@@ -625,6 +638,8 @@
           <div class="panel-title">训练队列({{ queues.length }})</div>
           <div class="old-line" v-for="q in queues" :key="'tq' + q.id">
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
+            <!-- 接口只返回 status=0（训练中）的队列，所以这里不需要再判断状态 -->
+            <a href="javascript:;" @click="doCancelTrain(q)">[取消]</a>
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
           <br/>
@@ -1043,7 +1058,9 @@
             <select v-model="orderOfficer">
               <option value="0">未指定</option>
               <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
-                {{ o.name }}({{ o.level }}级) 军事{{ o.military }} 忠诚{{ o.loyalty }}
+                {{ o.name }}({{ o.level }}级) 军事{{ o.military_total || o.military }}
+                <span class="green" v-if="o.equip_military">(装备+{{ o.equip_military }})</span>
+                忠诚{{ o.loyalty }}
               </option>
             </select>
             <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
@@ -1558,7 +1575,7 @@
             </tr>
           </table>
           <div class="panel-title">军衔声望榜</div>
-          <table>
+          <table class="ezfy-rank-table">
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
             <tr v-for="r in rankData.prestige" :key="'rp' + r.rank">
               <td>{{ r.rank }}</td>
@@ -1567,7 +1584,7 @@
             </tr>
           </table>
           <div class="panel-title">兵力榜</div>
-          <table>
+          <table class="ezfy-rank-table">
             <tr><th>名次</th><th>统帅</th><th>城市</th><th>兵力</th></tr>
             <tr v-for="r in rankData.troops" :key="'rt' + r.rank">
               <td>{{ r.rank }}</td>
@@ -1576,7 +1593,7 @@
             </tr>
           </table>
           <div class="panel-title">军团榜</div>
-          <table>
+          <table class="ezfy-rank-table">
             <tr><th>名次</th><th>军团</th><th>人数</th><th>战力</th></tr>
             <tr v-for="r in rankData.corps" :key="'rc' + r.rank">
               <td>{{ r.rank }}</td><td>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
@@ -1636,11 +1653,15 @@
           <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }})</div>
           <div class="old-line" v-for="it in mallItems" :key="'mi' + it.id">
             <b>{{ it.name }}</b> {{ it.price_gold }}{{ resNames.gold }}
-            <a href="javascript:;" @click="openBuy(it)">[购买]</a><br/>
+            <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100） -->
+            <span :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
+            <a v-if="it.stock > 0" href="javascript:;" @click="openBuy(it)">[购买]</a>
+            <span v-else class="gray">[已售罄]</span><br/>
             <span class="gray">{{ it.description }}</span>
             <div v-if="buyItem && buyItem.id === it.id" class="use-box">
               数量:
-              <input v-model="buyCount" type="number" min="1" max="99" style="width:60px"/>
+              <input v-model="buyCount" type="number" min="1" :max="Math.max(1, it.stock)" style="width:60px"/>
+              <span class="gray">最多 {{ it.stock }}</span>
               <span class="gray">合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
@@ -1944,7 +1965,8 @@
               <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
               状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
               后勤/军事/学识/忠诚：<br/>
-              {{ o.logistics }}/{{ o.military }}/{{ o.learning }}/{{ o.loyalty }}<br/>
+              {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
+              <span class="green" v-if="equipTip(o)">{{ equipTip(o) }}</span><br/>
               攻/防：{{ o.attack }}/{{ o.defence }}<br/>
               ------------------------
             </div>
@@ -1999,7 +2021,7 @@
 
         <!-- 任命市长: 复刻 acade/setMayor.html -->
         <div class="panel" v-else-if="acadeTab === 'mayor'">
-          <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%)</div>
+          <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%+学识)。军官身上的装备加成同样计入。</div>
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
             <tr v-for="o in myOfficers" :key="'my' + o.id">
@@ -2155,9 +2177,13 @@
           星级:{{ officerDetail.officer.star }}
           等级:{{ officerDetail.officer.level }}
           经验:{{ officerDetail.officer.exp }}/{{ officerDetail.officer.exp_need }}<br/>
-          军事:{{ officerDetail.officer.military }}
-          后勤:{{ officerDetail.officer.logistics }}
-          学习:{{ officerDetail.officer.learning }}<br/>
+          军事:{{ officerDetail.officer.military_total }}
+          <span class="green" v-if="officerDetail.officer.equip_military">({{ officerDetail.officer.military }}+装备{{ officerDetail.officer.equip_military }})</span>
+          后勤:{{ officerDetail.officer.logistics_total }}
+          <span class="green" v-if="officerDetail.officer.equip_logistics">({{ officerDetail.officer.logistics }}+装备{{ officerDetail.officer.equip_logistics }})</span>
+          学识:{{ officerDetail.officer.learning_total }}
+          <span class="green" v-if="officerDetail.officer.equip_learning">({{ officerDetail.officer.learning }}+装备{{ officerDetail.officer.equip_learning }})</span><br/>
+          攻击加成:{{ officerDetail.officer.attack }} &nbsp; 防御加成:{{ officerDetail.officer.defence }}<br/>
           忠诚:{{ officerDetail.officer.loyalty }}
           职位:{{ officerDetail.officer.position_name }}
           状态:{{ officerDetail.officer.status_name }}<br/>
@@ -2313,7 +2339,7 @@ export default {
       curNotice: null,
       worldChats: [],
       homeChats: [],
-      chatPlayers: 0,
+      chatPlayers: 0, chatCorpsPlayers: 0,
       chatMsg: '',
       chatChannel: 1,
       chatHasCorps: false,
@@ -2875,9 +2901,17 @@ export default {
           this.chatPlayers = d.players
           this.chatHasCorps = !!d.has_corps
           this.chatCorpsName = d.corps_name || ''
+          this.chatCorpsPlayers = d.corps_players || 0
           this.chatCanSend = d.can_send !== false
-          // 军团频道无军团时会降级为公共频道, 同步 tab 高亮
-          if (d.channel && d.channel !== this.chatChannel) this.chatChannel = d.channel
+          // ★ 军团频道但没军团：后端会降级成公共频道并把世界消息塞回来，
+          //   这里按「军团频道」的语义清空，改为显示 0 人 + 引导。
+          if (this.chatChannel === 2 && !this.chatHasCorps) {
+            this.worldChats = []
+            this.chatNotices = []
+            this.chatPlayers = 0
+            this.chatCorpsPlayers = 0
+            this.chatCanSend = false
+          }
         }
       })
     },
@@ -3240,7 +3274,7 @@ export default {
         rate_food: parseInt(this.rateFood), rate_steel: parseInt(this.rateSteel),
         rate_oil: parseInt(this.rateOil), rate_rare: parseInt(this.rateRare)
       }).then(r => {
-        this.alert(r)
+        this.alert(r, '生产比例已调整')
         if (r.code === 0) this.loadProduce()
       })
     },
@@ -3274,25 +3308,25 @@ export default {
     },
     doBuild (b) {
       api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
-        this.alert(r)
+        this.alert(r, '建造命令已下达')
         if (r.code === 0) this.load()
       })
     },
     doUpgrade (b) {
       api.post('/games/ezfy/building/upgrade', { record_id: b.id }).then(r => {
-        this.alert(r)
+        this.alert(r, '建筑已开始升级')
         if (r.code === 0) this.load()
       })
     },
     doMaxLevel (b) {
       api.post('/games/ezfy/building/max-level', { record_id: b.id }).then(r => {
-        this.alert(r)
+        this.alert(r, '已升到最高级')
         if (r.code === 0) this.load()
       })
     },
     doDeleteBuilding (b) {
       api.post('/games/ezfy/building/delete', { record_id: b.id }).then(r => {
-        this.alert(r)
+        this.alert(r, '建筑已拆除')
         if (r.code === 0) this.load()
       })
     },
@@ -3327,19 +3361,19 @@ export default {
     },
     // ---- 城市操作 ----
     doConvene () {
-      api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r))
+      api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r, '部队已集合'))
     },
     doPlacate () {
-      api.post('/games/ezfy/city/placate', {}).then(r => this.alert(r))
+      api.post('/games/ezfy/city/placate', {}).then(r => this.alert(r, '安抚完成'))
     },
     doTax () {
-      api.post('/games/ezfy/city/tax', { tax_rate: parseInt(this.taxInput) || 0 }).then(r => this.alert(r))
+      api.post('/games/ezfy/city/tax', { tax_rate: parseInt(this.taxInput) || 0 }).then(r => this.alert(r, '税率已调整'))
     },
     doRename () {
-      api.post('/games/ezfy/city/rename', { name: this.renameInput }).then(r => this.alert(r))
+      api.post('/games/ezfy/city/rename', { name: this.renameInput }).then(r => this.alert(r, '城市已更名'))
     },
     doCreateCity () {
-      api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r))
+      api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
     // 摧毁自己的城市（仅限非当前所在城市）
     async doDestroyCity (ct) {
@@ -3367,13 +3401,13 @@ export default {
       })
     },
     doAbandon (w) {
-      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地'))
     },
     async doOccupy (op, o) {
       if (!await this.ask(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
           '确定将城市归还给原玩家吗?')) return
-      api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r, '操作已提交'))
     },
     // 野地列表 → [采集]：进「出征页」选兵种后再下达命令
     // ★ 原来直接 POST 且没带 troops，后端必然返回「请选择出征部队」，
@@ -3409,7 +3443,7 @@ export default {
       api.post('/games/ezfy/troops/train', {
         troop_id: this.trainSel.id, count: n, split: this.trainSplit
       }).then(r => {
-        this.alert(r)
+        this.alert(r, '征兵已开始')
         if (r.code === 0) this.loadTroops()
       })
     },
@@ -3419,8 +3453,20 @@ export default {
       if (have <= 0) { this.notify('城内没有该城防设施'); return }
       if (!await this.ask('确定拆除全部 ' + t.name + '×' + have + ' 吗?')) return
       api.post('/games/ezfy/troops/dismiss', { troop_id: t.id }).then(r => {
-        this.alert(r)
+        this.alert(r, '城防设施已拆除')
         if (r.code === 0) this.loadTroops()
+      })
+    },
+    // 取消训练队列（用户要求：征兵序列玩家可以自己取消，资源全额退还）
+    async doCancelTrain (q) {
+      const ok = await this.ask('确定取消「' + q.name + '×' + q.count + '」的训练吗？消耗的资源会全额退还。')
+      if (!ok) return
+      api.post('/games/ezfy/troops/train/cancel', { queue_id: q.id }).then(r => {
+        if (r.code === 0) {
+          this.notify((r.data && r.data.msg) ? r.data.msg : '已取消训练，资源已退还', 'ok')
+          this.loadTroops()
+          this.load()
+        } else this.notify(r.msg || '取消失败', 'error')
       })
     },
     // 秒 → 「1分0秒 / 5分20秒 / 57秒」(复刻 createTroop.html 的「时间」)
@@ -3433,14 +3479,14 @@ export default {
       return hh + '小时' + (m % 60) + '分'
     },
     doRecover (w) {
-      api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type }).then(r => this.alert(r))
+      api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type }).then(r => this.alert(r, '伤兵已恢复'))
     },
     doRecoverAll (t) {
-      api.post('/games/ezfy/troops/recover', { all: true, type: t }).then(r => this.alert(r))
+      api.post('/games/ezfy/troops/recover', { all: true, type: t }).then(r => this.alert(r, '伤兵已恢复'))
     },
     // ---- 科技 ----
     doResearch (t) {
-      api.post('/games/ezfy/techs/research', { tech_id: t.tech_id }).then(r => this.alert(r))
+      api.post('/games/ezfy/techs/research', { tech_id: t.tech_id }).then(r => this.alert(r, '科技研究已开始'))
     },
     doSpeedTech () {
       api.post('/games/ezfy/techs/speed', { minutes: 10 }).then(r => {
@@ -3451,11 +3497,20 @@ export default {
     async doCancelTech (t) {
       if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
       api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id }).then(r => {
-        this.alert(r)
+        this.alert(r, '研究已取消，消耗已全额退还')
         if (r.code === 0) this.loadTechs()
       })
     },
     // ---- 司令部 ----
+    // 军官装备加成提示（有加成才显示，例：装备 军事+5 后勤+5）
+    equipTip (o) {
+      if (!o) return ''
+      const parts = []
+      if (o.equip_military) parts.push('军事+' + o.equip_military)
+      if (o.equip_logistics) parts.push('后勤+' + o.equip_logistics)
+      if (o.equip_learning) parts.push('学识+' + o.equip_learning)
+      return parts.length ? '(装备 ' + parts.join(' ') + ')' : ''
+    },
     // 防御兵种（城防 type=4：碉堡/榴弹炮/反坦克炮/防空炮…）固定阵地
     isDefenceTroop (t) {
       return !!t && t.type === 4
@@ -3510,7 +3565,7 @@ export default {
       })
     },
     doRecall (o) {
-      api.post('/games/ezfy/order/recall', { order_id: o.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/order/recall', { order_id: o.id }).then(r => this.alert(r, '部队已召回'))
     },
     orderStatusText (o) {
       if (o.status === 0) return '行进中 ' + this.remain(o.arrive_time)
@@ -3582,7 +3637,7 @@ export default {
     declareWar () {
       if (!this.selCell || !this.selCell.city_id) return
       api.post('/games/ezfy/war/declare', { city_id: this.selCell.city_id }).then(r => {
-        this.alert(r)
+        this.alert(r, '宣战成功')
         this.checkWar()
       })
     },
@@ -3634,7 +3689,7 @@ export default {
       if (!this.selCell) return
       api.post('/games/ezfy/order/preview', this.orderBody()).then(r => {
         if (r.code === 0) this.orderCalc = r.data
-        else this.alert(r)
+        else this.alert(r, '计算失败')
       })
     },
     doOrder () {
@@ -3743,7 +3798,7 @@ export default {
     loadPlayerInfo (uid) {
       api.get('/games/ezfy/player/' + uid).then(r => {
         if (r.code === 0) this.playerInfo = r.data
-        else this.alert(r)
+        else this.alert(r, '获取统帅信息失败')
       })
     },
     async doAddFriendById () {
@@ -3765,7 +3820,7 @@ export default {
       const c = (this.corpsMailContent || '').trim()
       if (!c) { this.notify('请填写邮件内容'); return }
       api.post('/games/ezfy/corps/mail', { content: c }).then(r => {
-        this.alert(r)
+        this.alert(r, '军团邮件已群发')
         if (r.code === 0) this.corpsMailContent = ''
       })
     },
@@ -3814,6 +3869,10 @@ export default {
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
       if (n < 1 || n > 99) { this.notify('数量需在 1-99 之间'); return }
+      if (it.stock !== undefined && n > it.stock) {
+        this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
+        return
+      }
       api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n }).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
@@ -3856,23 +3915,23 @@ export default {
       api.post('/games/ezfy/exchange/sell', {
         es_type: parseInt(this.sellType), es_count: parseInt(this.sellCount) || 0,
         total_price: parseInt(this.sellPrice) || 0
-      }).then(r => this.alert(r))
+      }).then(r => this.alert(r, '挂单已发布'))
     },
     doExchangeBuy (e) {
-      api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r, '购买成功'))
     },
     doExchangeCancel (e) {
-      api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销'))
     },
     // ---- 任务/福利 ----
     doAward (t) {
-      api.post('/games/ezfy/tasks/award', { task_id: t.id }).then(r => this.alert(r))
+      api.post('/games/ezfy/tasks/award', { task_id: t.id }).then(r => this.alert(r, '奖励已领取'))
     },
     doSign () {
-      api.post('/games/ezfy/welfare/sign', {}).then(r => this.alert(r))
+      api.post('/games/ezfy/welfare/sign', {}).then(r => this.alert(r, '签到成功'))
     },
     doGift (t) {
-      api.post('/games/ezfy/welfare/gift/' + t, {}).then(r => this.alert(r))
+      api.post('/games/ezfy/welfare/gift/' + t, {}).then(r => this.alert(r, '礼包已领取'))
     },
     rewardText (rw) {
       if (!rw) return ''
@@ -3964,9 +4023,14 @@ export default {
     // 统一的接口结果提示（原来弹 alert，现在落到页面消息区）
     // ★ after：成功后要额外刷新的数据（如军团信息）。只刷 /view 不够 ——
     //   军团数据来自 /games/ezfy/corps/*，不重新拉就会「加入后还显示未加入」。
+    //
+    // ★ 用户要求「提示 ok 改成具体的描述，比如领取就是领取成功，不知道的就是操作成功」：
+    //   所以每个调用点都要传 fallback（领取成功 / 购买成功 / 建造命令已下达 …），
+    //   只有真的无从判断时才回落「操作成功」。
     alert (r, fallback, after) {
       if (r && r.code === 0) {
-        this.notify((r.data && r.data.msg) ? r.data.msg : (fallback || '操作成功'), 'ok')
+        const m = (r.data && r.data.msg) ? r.data.msg : (fallback || '操作成功')
+        this.notify(m, 'ok')
         this.load()
         if (typeof after === 'function') after()
       } else {
@@ -4189,7 +4253,7 @@ body.ezfy-immersive { margin: 0; }
   color: #004299;
 }
 .ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
-/* 军衔晋升表：数据水平+垂直居中 */
+/* 军衔/排行页所有表格：数据水平 + 垂直居中（用户要求）*/
 .ezfy-page .ezfy-rank-table th,
 .ezfy-page .ezfy-rank-table td {
   text-align: center;

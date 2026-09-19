@@ -22,6 +22,11 @@ import (
 
 // ezfyIsKouCity 哈希生成寇城位置(距城心区较远), 被摧毁后复活期内不显示
 func (h *EzfyHandler) ezfyIsKouCity(x, y int) bool {
+	// ★ 管理端「地图格子覆盖」优先：标记成寇城/活动寇城就一定是寇城，
+	//   标记成活动野地/特殊城市就一定不是。
+	if mk := ezfyMarkKindAt(x, y); mk > 0 {
+		return mk == model.EzfyMarkKou || mk == model.EzfyMarkActKou
+	}
 	hh := ezfyAbs(x*5381 ^ y*33)
 	if hh%97 != 0 {
 		return false
@@ -129,8 +134,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				}
 				// 活动目标标记: 复刻 mapView.html 的 actWild/actKou/actCity
 				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
-				if act := ezfyActTypeFor(x, y, kou); act > 0 {
-					actLevel := ezfyActivityLevel(x, y)
+				if act := h.ezfyActTargetType(x, y); act > 0 {
+					actLevel := ezfyMarkLevelAt(x, y)
 					cell["act_type"] = act
 					cell["act_level"] = actLevel
 					cell["act_name"] = ezfyActTargetName(act)

@@ -385,6 +385,56 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 	h.fail(c, h.trainTroop(city, req.TroopId, req.Count, req.Split))
 }
 
+// CancelTrain POST /games/ezfy/troops/train/cancel {queue_id}
+//
+// 用户要求：征兵队列玩家可以自己取消。取消时把当初消耗的资源全额退还。
+func (h *EzfyHandler) CancelTrain(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		QueueId int64 `json:"queue_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QueueId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	var q model.EzfyTrainQueue
+	if err := h.DB.First(&q, req.QueueId).Error; err != nil {
+		resp.NotFound(c, "训练队列不存在")
+		return
+	}
+	city := h.cityOf(uid, q.CityId)
+	if city == nil {
+		resp.ParamError(c, "该队列不属于你")
+		return
+	}
+	// 先把到点的队列结算掉，避免「马上就要完成时取消」的歧义
+	h.refreshCity(uid, city)
+	var q2 model.EzfyTrainQueue
+	if err := h.DB.First(&q2, req.QueueId).Error; err != nil || q2.Status != 0 {
+		resp.ParamError(c, "该队列已完成，无法取消")
+		return
+	}
+	cfg := ezfyCfg.troop(q.TroopId)
+	if cfg == nil {
+		resp.ParamError(c, "兵种配置不存在")
+		return
+	}
+	food := cfg.Food * q.Count
+	steel := cfg.Steel * q.Count
+	oil := cfg.Oil * q.Count
+	rare := cfg.Rare * q.Count
+	// 与训练时同一套折扣算法，保证退还 = 当初扣的
+	food, steel, oil, rare = h.trainCostWithActivity(food, steel, oil, rare)
+	city.Food = min64(city.FoodCap, city.Food+food)
+	city.Steel = min64(city.SteelCap, city.Steel+steel)
+	city.Oil = min64(city.OilCap, city.Oil+oil)
+	city.Rare = min64(city.RareCap, city.Rare+rare)
+	h.saveCityRes(city)
+	h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练，资源已退还", cfg.Name, q.Count)})
+}
+
 // ezfySpeedGoldPerSec 训练一键加速收费: 每剩余 1 秒 10 黄金
 const ezfySpeedGoldPerSec = 10
 
@@ -648,12 +698,48 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 
 // ============ 军团 ============
 
+// corpsMemberCount 军团**实时**成员数（以 ezfy_corps_member 为准）
+//
+// ★ 不要用 ezfy_corps.member_count 这个计数字段：它是「加入 +1 / 退出 -1」维护的，
+//   任何一次异常中断（例如加入成功但计数更新失败）都会让它永久漂移。
+//   实测出现过「表里 3 人、字段写 2 人」，玩家看到的人数就是错的。
+func (h *EzfyHandler) corpsMemberCount(corpsId int64) int64 {
+	var n int64
+	h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", corpsId).Count(&n)
+	return n
+}
+
+// corpsMemberCountMap 批量取多个军团的成员数（避免列表页 N+1 查询）
+func (h *EzfyHandler) corpsMemberCountMap(ids []int64) map[int64]int64 {
+	out := map[int64]int64{}
+	if len(ids) == 0 {
+		return out
+	}
+	type row struct {
+		CorpsId int64
+		N       int64
+	}
+	var rows []row
+	h.DB.Model(&model.EzfyCorpsMember{}).
+		Select("corps_id, COUNT(*) AS n").Where("corps_id IN ?", ids).
+		Group("corps_id").Scan(&rows)
+	for _, r := range rows {
+		out[r.CorpsId] = r.N
+	}
+	return out
+}
+
 func (h *EzfyHandler) CorpsList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	profile := h.ensureProfile(uid)
 	var corps []model.EzfyCorps
 	h.DB.Order("id DESC").Find(&corps)
+	ids := make([]int64, 0, len(corps))
+	for _, cp := range corps {
+		ids = append(ids, int64(cp.ID))
+	}
+	counts := h.corpsMemberCountMap(ids)
 	views := []gin.H{}
 	for _, cp := range corps {
 		score := 0
@@ -669,18 +755,23 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 			leaderName = lp.Nickname
 		}
 		views = append(views, gin.H{"id": cp.ID, "name": cp.Name, "notice": cp.Notice,
-			"member_count": cp.MemberCount, "leader": leaderName, "battle_score": score,
+			"member_count": counts[int64(cp.ID)], "leader": leaderName, "battle_score": score,
 			"camp": profile.Camp})
 	}
-	var myCorps *model.EzfyCorps
+	// ★ 我的军团也带上实时人数（前端「我的军团(N人)」直接用它）
+	var myCorpsView interface{}
 	var myMember model.EzfyCorpsMember
 	if err := h.DB.Where("user_id = ?", uid).First(&myMember).Error; err == nil {
 		var cp model.EzfyCorps
 		if err := h.DB.First(&cp, myMember.CorpsId).Error; err == nil {
-			myCorps = &cp
+			myCorpsView = gin.H{
+				"id": cp.ID, "name": cp.Name, "notice": cp.Notice,
+				"leader_user_id": cp.LeaderUserId,
+				"member_count":   counts[int64(cp.ID)],
+			}
 		}
 	}
-	resp.OK(c, gin.H{"corps": views, "my_corps": myCorps})
+	resp.OK(c, gin.H{"corps": views, "my_corps": myCorpsView})
 }
 
 func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
@@ -997,7 +1088,13 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	}
 	// 军团榜
 	var corps []model.EzfyCorps
+	// 排序仍按计数字段（只影响顺序），展示用实时人数
 	h.DB.Order("member_count DESC").Limit(20).Find(&corps)
+	rankIds := make([]int64, 0, len(corps))
+	for _, cp := range corps {
+		rankIds = append(rankIds, int64(cp.ID))
+	}
+	rankCounts := h.corpsMemberCountMap(rankIds)
 	corpsRank := []gin.H{}
 	for i, cp := range corps {
 		score := 0
@@ -1006,7 +1103,8 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		for _, m := range members {
 			score += h.ensureProfile(m.UserId).Prestige
 		}
-		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name, "member_count": cp.MemberCount, "battle_score": score})
+		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name,
+			"member_count": rankCounts[int64(cp.ID)], "battle_score": score})
 	}
 	// 军衔表（★ 含「可建城数」一列，与 model.EzfyCfgRank 一致）
 	ranks := []gin.H{}
@@ -1059,6 +1157,21 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "道具不存在")
 		return
 	}
+	// ★ 库存校验（管理端在「数据管理 → 道具配置」维护，默认 100）
+	//   从库里读最新值，不用配置缓存 —— 管理端改完立即生效，不用等缓存重载。
+	var live model.EzfyCfgItem
+	stock := 0
+	if err := h.DB.First(&live, req.CfgId).Error; err == nil {
+		stock = live.Stock
+		if stock < req.Count {
+			if stock <= 0 {
+				resp.ParamError(c, fmt.Sprintf("「%s」已售罄", cfg.Name))
+			} else {
+				resp.ParamError(c, fmt.Sprintf("「%s」库存不足，只剩 %d 个", cfg.Name, stock))
+			}
+			return
+		}
+	}
 	cost := cfg.PriceGold * int64(req.Count)
 	city := h.bodyCity(uid, req.CityId)
 	if city.Gold < cost {
@@ -1067,8 +1180,14 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	}
 	city.Gold -= cost
 	h.saveCityRes(city)
+	// 扣库存（用 map 更新，避免 GORM 的 default:100 把 0 当未设置）
+	if stock >= req.Count {
+		h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
+			Updates(map[string]interface{}{"stock": stock - req.Count})
+	}
 	h.addItem(uid, req.CfgId, req.Count)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", cfg.Name, req.Count)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", cfg.Name, req.Count),
+		"stock_left": stock - req.Count})
 }
 
 func (h *EzfyHandler) Bag(c *gin.Context) {

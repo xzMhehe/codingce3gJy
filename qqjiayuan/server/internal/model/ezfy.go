@@ -102,13 +102,48 @@ type EzfyCfgWildland struct {
 	Troops     string `gorm:"type:varchar(1000)" json:"troops"` // [[兵种id,最小,最大],...]
 	ResMin     int64  `json:"res_min"`
 	ResMax     int64  `json:"res_max"`
-	OfficerMin int    `json:"officer_min"`
-	OfficerMax int    `json:"officer_max"`
-	Treasure   string `gorm:"type:varchar(100)" json:"treasure"`
-	Des        string `gorm:"type:varchar(500)" json:"des"`
+	OfficerMin int    `json:"officer_min"` // 旧字段，已被 OfficerId 取代（保留避免迁移麻烦）
+	OfficerMax int    `json:"officer_max"` // 旧字段，同上
+	// ★ 守军军官：**最多 1 个**，且只能从「军官池」（ezfy_cfg_general）里选。
+	//   0 = 该野地没有守将（打下来也俘不到军官）。
+	OfficerId int    `json:"officer_id"`
+	Treasure  string `gorm:"type:varchar(100)" json:"treasure"`
+	Des       string `gorm:"type:varchar(500)" json:"des"`
 }
 
 func (EzfyCfgWildland) TableName() string { return "ezfy_cfg_wildland" }
+
+// EzfyMapTile 地图格子覆盖（管理端维护）
+//
+// ★ 用户要求：管理端要能维护**所有**野地（不只是玩家已占领的），能改土地类型，
+//   也能把某格设成 寇城 / 活动寇城。
+//
+//   地图本身是「坐标哈希推导」出来的（地形、野地等级、寇城、活动目标全都不落库），
+//   所以这里做一张**覆盖表**：命中就覆盖哈希结果，没命中就照旧走哈希。
+type EzfyMapTile struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+	X  int  `gorm:"uniqueIndex:uk_map_tile" json:"x"`
+	Y  int  `gorm:"uniqueIndex:uk_map_tile" json:"y"`
+	// Terrain: 0 = 不覆盖（按哈希），1-9 = 强制成该地形（1平原…8海洋, 9沿海平原）
+	Terrain int `json:"terrain"`
+	// MarkKind: 0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市
+	MarkKind int `json:"mark_kind"`
+	// MarkLevel: 活动目标等级 1~3（仅 2/3/4 有意义）
+	MarkLevel int       `json:"mark_level"`
+	Des       string    `gorm:"type:varchar(200)" json:"des"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (EzfyMapTile) TableName() string { return "ezfy_map_tile" }
+
+// 地图格子标记类型
+const (
+	EzfyMarkNone    = 0 // 无（按哈希）
+	EzfyMarkKou     = 1 // 普通寇城
+	EzfyMarkActKou  = 2 // 活动寇城
+	EzfyMarkActWild = 3 // 活动野地
+	EzfyMarkActCity = 4 // 特殊城市
+)
 
 // EzfyCfgRank 军衔配置（复刻原版 rankIndex.html：军衔等级/职位要求/可建城数）
 //
@@ -173,6 +208,8 @@ type EzfyCfgItem struct {
 	PriceGold   int64  `json:"price_gold"`
 	Icon        string `gorm:"type:varchar(50)" json:"icon"`
 	Description string `gorm:"type:varchar(500)" json:"description"`
+	// ★ 商城库存（管理端「数据管理 → 道具配置」可改），默认 100；0 = 售罄
+	Stock int `gorm:"default:100" json:"stock"`
 }
 
 func (EzfyCfgItem) TableName() string { return "ezfy_cfg_item" }

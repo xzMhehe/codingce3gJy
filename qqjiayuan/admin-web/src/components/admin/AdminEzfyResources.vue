@@ -77,7 +77,7 @@
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[15, 30, 50]"
+                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -197,7 +197,7 @@ export default {
   data () {
     return {
       sum: null, loadingSum: false,
-      list: [], total: 0, page: 1, size: 15, loading: false, word: '',
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '',
       setDlg: false, setRow: {}, setForm: { field: 'gold', value: 0 },
       grantDlg: false, grantForm: { ids: '', gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
       resCfgs: [], loadingRes: false,

@@ -35,7 +35,7 @@
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[10, 20, 50]"
+                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -112,7 +112,8 @@ const COLS = {
   ],
   items: [
     { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '道具名', w: 130 }, { k: 'item_type', n: '类型', w: 90 },
-    { k: 'param1', n: '参数', w: 90 }, { k: 'price_gold', n: '黄金价', w: 100 }, { k: 'icon', n: '图标', w: 90 },
+    { k: 'param1', n: '参数', w: 90 }, { k: 'price_gold', n: '黄金价', w: 100 },
+    { k: 'stock', n: '库存', w: 80 }, { k: 'icon', n: '图标', w: 90 },
     { k: 'description', n: '描述' }
   ],
   taskTypes: [
@@ -217,6 +218,7 @@ const FORMS = {
   ],
   items: [
     { k: 'name', n: '道具名', t: 'input', req: true, max: 50 },
+    { k: 'stock', n: '库存（0=售罄，默认 100）', t: 'num' },
     { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }, { v: 9, n: '9 招生简章' }, { v: 10, n: '10 经验书' }, { v: 11, n: '11 军官技能书' }, { v: 12, n: '12 重修书' }, { v: 13, n: '13 改名卡' }, { v: 14, n: '14 阵营转换道具' }] },
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },

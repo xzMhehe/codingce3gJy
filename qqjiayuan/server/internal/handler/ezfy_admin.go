@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -281,7 +282,7 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 	}},
 	"items": {&model.EzfyCfgItem{}, map[string]string{
 		"name": "string", "item_type": "int", "param1": "int64",
-		"price_gold": "int64", "icon": "string", "description": "string",
+		"price_gold": "int64", "icon": "string", "description": "string", "stock": "int",
 	}},
 	"taskTypes": {&model.EzfyCfgTaskType{}, map[string]string{
 		"name": "string", "code": "string", "reset_type": "int", "sort_no": "int", "status": "int",
@@ -412,6 +413,50 @@ func (h *AdminHandler) AdminEzfyDataDelete(c *gin.Context) {
 // ============ 流水管理（出征/世界聊天/交易所） ============
 
 // AdminEzfyOrders 出征订单列表（word=用户ID/玩家昵称，type=出征类型，status=状态）
+// ezfyOrderTroopsText 出征部队 → 「步兵×100 卡车×50」
+func ezfyOrderTroopsText(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	groups := parseGroups(raw)
+	parts := make([]string, 0, len(groups))
+	for _, g := range groups {
+		if g.Count <= 0 {
+			continue
+		}
+		name := ezfyCfg.troopName(g.TroopId, 0)
+		if name == "" {
+			name = "兵种" + strconv.Itoa(g.TroopId)
+		}
+		parts = append(parts, name+"×"+strconv.FormatInt(g.Count, 10))
+	}
+	return strings.Join(parts, " ")
+}
+
+// ezfyOrderResText 资源 JSON → 「粮100 钢50」
+func ezfyOrderResText(raw string) string {
+	if raw == "" || raw == "{}" {
+		return ""
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return raw
+	}
+	order := []struct{ k, n string }{{"food", "粮"}, {"steel", "钢"}, {"oil", "油"}, {"rare", "稀"}, {"gold", "金"}}
+	parts := []string{}
+	for _, it := range order {
+		v, ok := m[it.k]
+		if !ok {
+			continue
+		}
+		n, _ := strconv.ParseInt(fmt.Sprintf("%v", v), 10, 64)
+		if n > 0 {
+			parts = append(parts, it.n+strconv.FormatInt(n, 10))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 func (h *AdminHandler) AdminEzfyOrders(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
@@ -447,12 +492,20 @@ func (h *AdminHandler) AdminEzfyOrders(c *gin.Context) {
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
 		TypeName   string `json:"type_name"`
+		// ★ 把部队/资源/待带回整理成可读文字，管理端「出征记录详情」直接用，
+		//   免得前端还要自己去拉兵种表（跨模块权限也不一定给）。
+		TroopsText string `json:"troops_text"`
+		ResText    string `json:"res_text"`
+		CarryText  string `json:"carry_text"`
 	}
 	out := []rowOut{}
 	for _, o := range rows {
 		pn, hn := h.ezfyAdminName(o.UserID)
 		out = append(out, rowOut{EzfyOrder: o, PlayerName: pn, HomeNum: hn,
-			TypeName: ezfyOrderTypeName(o.OrderType)})
+			TypeName:   ezfyOrderTypeName(o.OrderType),
+			TroopsText: ezfyOrderTroopsText(o.Troops),
+			ResText:    ezfyOrderResText(o.Resources),
+			CarryText:  ezfyOrderResText(o.Carry)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }

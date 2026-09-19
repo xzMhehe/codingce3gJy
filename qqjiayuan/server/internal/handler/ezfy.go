@@ -1392,7 +1392,16 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.saveOfficerSkills(o, skills)
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: %s 学会了「%s」", o.Name, sk.Name)
-	case 12: // 重修书: 属性回到名将初始值, 技能清空(等级/经验保留)
+	case 12: // 重修书（洗点）: 把升级随机加的点全部回收再重新分配; 技能清空; 等级/经验保留
+		//
+		// ★ 原来的实现有 bug：随机军官（general_id=0）没有名将配置，
+		//   `initMil/initLog/initLea` 直接取了「当前值」→ Updates 写回同样的数，
+		//   玩家点完「洗点」什么都没变，看着就是「洗点没用」。
+		//
+		//   现在改成真正的洗点：
+		//     1. 取 1 级基准（名将=配置值；随机军官=「当前总和 − 升级加点」均分）
+		//     2. 把「当前总和 − 基准总和」这点数**重新随机分配**到军事/后勤/学识
+		//     3. 总属性**保持不变**（不会因为洗点变弱），但三项的分布会变
 		o := h.officerOf(city.ID, officerId)
 		if o == nil {
 			return "军官不存在"
@@ -1400,16 +1409,55 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if o.Status == 1 {
 			return "军官出征中, 无法重修"
 		}
-		initMil, initLog, initLea := o.Military, o.Logistics, o.Learning
-		if g := ezfyCfg.general(o.GeneralId); g != nil {
-			initMil, initLog, initLea = g.Military, g.Logistics, g.Learning
+		total := o.Military + o.Logistics + o.Learning
+		if total <= 0 {
+			return "该军官属性异常，无法洗点"
+		}
+		// 属性倾向权重：名将按配置值，随机军官按当前值（保证名将不会洗成平均人）
+		wMil, wLog, wLea := o.Military, o.Logistics, o.Learning
+		if g := ezfyCfg.general(o.GeneralId); g != nil && g.Military+g.Logistics+g.Learning > 0 {
+			wMil, wLog, wLea = g.Military, g.Logistics, g.Learning
+		}
+		wSum := float64(wMil + wLog + wLea)
+		if wSum <= 0 {
+			wMil, wLog, wLea = 1, 1, 1
+			wSum = 3
+		}
+		// ★ 按权重分配总属性，并给每项 ±20% 的随机浮动 ——
+		//   这样「洗点」**一定**会改变三项的分布（否则像名将这种
+		//   「属性正好等于配置值、没有多余加点」的军官会洗完不变，
+		//   玩家看到的就是「洗点没用」），但总属性严格不变、不会变弱。
+		jitter := func() float64 { return 0.8 + rand.Float64()*0.4 }
+		rawMil := float64(total) * float64(wMil) / wSum * jitter()
+		rawLog := float64(total) * float64(wLog) / wSum * jitter()
+		rawLea := float64(total) * float64(wLea) / wSum * jitter()
+		rawSum := rawMil + rawLog + rawLea
+		if rawSum <= 0 {
+			rawMil, rawLog, rawLea = float64(total)/3, float64(total)/3, float64(total)/3
+			rawSum = float64(total)
+		}
+		newMil := int(rawMil * float64(total) / rawSum)
+		newLog := int(rawLog * float64(total) / rawSum)
+		newLea := total - newMil - newLog // 余数给学识，保证总和严格 = total
+		if newMil < 1 {
+			newLea -= 1 - newMil
+			newMil = 1
+		}
+		if newLog < 1 {
+			newLea -= 1 - newLog
+			newLog = 1
+		}
+		if newLea < 1 {
+			newLea = 1
+			newMil = maxInt(1, total-newLog-1)
 		}
 		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
-			"military": initMil, "logistics": initLog, "learning": initLea,
+			"military": newMil, "logistics": newLog, "learning": newLea,
 			"skill": "", "update_time": time.Now(),
 		})
 		h.consumeItem(uid, cfgId)
-		return fmt.Sprintf("使用成功: %s 已重修(属性回到初始值, 技能清空)", o.Name)
+		return fmt.Sprintf("使用成功: %s 洗点完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n（技能已清空，等级与经验保留）",
+			o.Name, o.Military, newMil, o.Logistics, newLog, o.Learning, newLea)
 	default:
 		return "道具类型错误"
 	}

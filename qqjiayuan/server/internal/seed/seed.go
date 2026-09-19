@@ -130,10 +130,17 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyFriend{}, &model.EzfyFriendApply{},
 		// 军衔配置（可建城数）
 		&model.EzfyCfgRank{},
+		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
+		&model.EzfyMapTile{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
 	}
+	// 二战风云：道具库存列是后加的，老行回填默认 100
+	if db.Migrator().HasTable("ezfy_cfg_item") {
+		db.Exec("UPDATE ezfy_cfg_item SET stock = 100 WHERE stock IS NULL")
+	}
+
 	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
 	// ★ 游戏ID 之后永不随家园ID/家园号码变化，游戏内业务一律以它为准。
 	if db.Migrator().HasTable("ezfy_profile") {

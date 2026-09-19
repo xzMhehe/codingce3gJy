@@ -53,7 +53,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[15, 30, 50]"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -280,7 +280,7 @@ export default {
   data () {
     return {
       tab: 'list',
-      list: [], total: 0, page: 1, size: 15, loading: false, word: '', status: -1,
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '', status: -1,
       buildTypes: { 1: '资源', 2: '军事', 3: '城防', 4: '市政' },
       // 玩家建筑
       createDlg: false, createForm: { city_id: 1, building_id: 0, level: 1 },

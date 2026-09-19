@@ -27,7 +27,7 @@ import (
 var ezfyWildCfgFields = map[string]string{
 	"type": "int", "level": "int", "troops": "string",
 	"res_min": "int64", "res_max": "int64",
-	"officer_min": "int", "officer_max": "int",
+	"officer_min": "int", "officer_max": "int", "officer_id": "int",
 	"treasure": "string", "des": "string",
 }
 
@@ -81,6 +81,28 @@ func ezfyWildStatusName(s int) string {
 
 // ============ 1. 野地类型维护（ezfy_cfg_wildland） ============
 
+// AdminEzfyMapOptions GET /admin/ezfy-map/options
+//
+// 给「野地类型」弹窗用的下拉数据：兵种列表（守军搭配）+ 军官池（守军军官，最多选 1 个）。
+// 单独开这个接口是为了不让地图管理依赖兵种管理/军官管理的权限。
+func (h *AdminHandler) AdminEzfyMapOptions(c *gin.Context) {
+	var troops []model.EzfyCfgTroop
+	h.DB.Order("id").Find(&troops)
+	tviews := make([]gin.H, 0, len(troops))
+	for _, t := range troops {
+		tviews = append(tviews, gin.H{"id": t.ID, "name": t.Name, "type": t.Type,
+			"type_name": ezfyTroopTypeName(t.Type)})
+	}
+	var gens []model.EzfyCfgGeneral
+	h.DB.Order("id").Find(&gens)
+	gviews := make([]gin.H, 0, len(gens))
+	for _, g := range gens {
+		gviews = append(gviews, gin.H{"id": g.ID, "name": g.Name, "star": g.Star,
+			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning})
+	}
+	resp.OK(c, gin.H{"troops": tviews, "generals": gviews})
+}
+
 // AdminEzfyWildCfgList 野地类型配置列表
 func (h *AdminHandler) AdminEzfyWildCfgList(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
@@ -104,10 +126,42 @@ func (h *AdminHandler) AdminEzfyWildCfgList(c *gin.Context) {
 			"level": r.Level, "troops": r.Troops,
 			"res_min": r.ResMin, "res_max": r.ResMax,
 			"officer_min": r.OfficerMin, "officer_max": r.OfficerMax,
+			"officer_id": r.OfficerId, "officer_name": h.ezfyGeneralName(r.OfficerId),
 			"treasure": r.Treasure, "des": r.Des,
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// ezfyGeneralName 军官池（ezfy_cfg_general）里的军官名
+func (h *AdminHandler) ezfyGeneralName(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	var g model.EzfyCfgGeneral
+	if err := h.DB.First(&g, id).Error; err != nil {
+		return ""
+	}
+	return g.Name
+}
+
+// ezfyCheckWildOfficer 校验野地的守军军官
+//
+// ★ 用户规则：野地最多只能配置**一个**军官，而且必须来自「军官池」（ezfy_cfg_general）。
+func (h *AdminHandler) ezfyCheckWildOfficer(vals map[string]interface{}) string {
+	raw, ok := vals["officer_id"]
+	if !ok {
+		return ""
+	}
+	id, _ := raw.(int)
+	if id <= 0 {
+		return "" // 0 = 不设守将
+	}
+	var g model.EzfyCfgGeneral
+	if err := h.DB.First(&g, id).Error; err != nil {
+		return "军官池里没有这个军官（ID " + strconv.Itoa(id) + "）"
+	}
+	return ""
 }
 
 // AdminEzfyWildCfgCreate 新增野地类型配置
@@ -124,6 +178,10 @@ func (h *AdminHandler) AdminEzfyWildCfgCreate(c *gin.Context) {
 	}
 	if _, ok := vals["level"]; !ok {
 		resp.ParamError(c, "请填写野地等级")
+		return
+	}
+	if msg := h.ezfyCheckWildOfficer(vals); msg != "" {
+		resp.ParamError(c, msg)
 		return
 	}
 	if err := h.DB.Model(&model.EzfyCfgWildland{}).Create(vals).Error; err != nil {
@@ -150,6 +208,10 @@ func (h *AdminHandler) AdminEzfyWildCfgUpdate(c *gin.Context) {
 	vals := xyPickVals(in, ezfyWildCfgFields)
 	if len(vals) == 0 {
 		resp.ParamError(c, "无可修改字段")
+		return
+	}
+	if msg := h.ezfyCheckWildOfficer(vals); msg != "" {
+		resp.ParamError(c, msg)
 		return
 	}
 	if err := h.DB.Model(&model.EzfyCfgWildland{}).Where("id = ?", id).Updates(vals).Error; err != nil {
@@ -245,6 +307,8 @@ func (h *AdminHandler) ezfyWildlandRow(w model.EzfyWildland) gin.H {
 		row["cfg_res_max"] = cfg.ResMax
 		row["cfg_officer_min"] = cfg.OfficerMin
 		row["cfg_officer_max"] = cfg.OfficerMax
+		row["cfg_officer_id"] = cfg.OfficerId
+		row["cfg_officer_name"] = h.ezfyGeneralName(cfg.OfficerId)
 		row["cfg_treasure"] = cfg.Treasure
 	}
 	return row

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -1104,6 +1105,70 @@ func (h *AdminHandler) AdminEzfyOfficerPickers(c *gin.Context) {
 }
 
 // ============ 一键生成军官（随机名字/等级/星级，属性不超过名将） ============
+
+// AdminEzfyTechMaxAll POST /admin/ezfy-techs/max-all
+//
+// 一键把**所有玩家、所有城市**的科技升到满级。
+//
+// ★ 「不要产生脏数据」的三道保障：
+//   1. 先按 (city_id, tech_id) **去重**（历史脏数据兜底，只保留 id 最小的那行）；
+//   2. 用 `ON DUPLICATE KEY UPDATE` **upsert**（唯一索引 uk_city_tech），不会插重复行；
+//   3. 把 status/end_time 一并归零，避免留下「研究中」的半截状态。
+func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
+	var techs []model.EzfyCfgTech
+	h.DB.Order("id").Find(&techs)
+	if len(techs) == 0 {
+		resp.ParamError(c, "没有科技配置，无法满级")
+		return
+	}
+	// 1) 去重：同一 (city_id, tech_id) 只留 id 最小的一行
+	dedup := h.DB.Exec("DELETE t1 FROM ezfy_city_tech t1 JOIN ezfy_city_tech t2 " +
+		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id")
+	removed := dedup.RowsAffected
+
+	var cities []model.EzfyCity
+	h.DB.Select("id").Find(&cities)
+	if len(cities) == 0 {
+		resp.ParamError(c, "还没有玩家城市")
+		return
+	}
+	now := time.Now()
+	rows := make([]model.EzfyCityTech, 0, len(cities)*len(techs))
+	for _, ct := range cities {
+		for _, t := range techs {
+			lv := t.MaxLevel
+			if lv <= 0 {
+				lv = 10
+			}
+			rows = append(rows, model.EzfyCityTech{
+				CityId: int64(ct.ID), TechId: t.ID, Level: lv,
+				Status: 0, EndTime: 0, UpdatedAt: now,
+			})
+		}
+	}
+	// 2) 分批 upsert
+	err := h.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "city_id"}, {Name: "tech_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"level", "status", "end_time", "updated_at"}),
+	}).CreateInBatches(rows, 200).Error
+	if err != nil {
+		resp.ParamError(c, "满级失败："+err.Error())
+		return
+	}
+	// 3) 回读校验：确认没有重复行、且全部达到满级
+	var dupCnt int64
+	h.DB.Raw("SELECT COUNT(*) FROM (SELECT city_id, tech_id FROM ezfy_city_tech " +
+		"GROUP BY city_id, tech_id HAVING COUNT(*) > 1) t").Scan(&dupCnt)
+	var maxLevel int64
+	h.DB.Raw("SELECT COALESCE(MAX(level), 0) FROM ezfy_city_tech").Scan(&maxLevel)
+
+	resp.OK(c, gin.H{
+		"msg": fmt.Sprintf("已把 %d 座城市 × %d 项科技升到满级（清理重复行 %d 条）",
+			len(cities), len(techs), removed),
+		"cities": len(cities), "techs": len(techs),
+		"dedup_removed": removed, "dup_left": dupCnt, "max_level": maxLevel,
+	})
+}
 
 // ezfyGeneralCapByStar 每个星级下「名将」的属性上限 [军事,后勤,学识]
 //

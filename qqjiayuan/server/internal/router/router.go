@@ -550,6 +550,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/building/speed", ezfyH.SpeedBuilding)
 				ezfyG.GET("/troops", ezfyH.Troops)
 				ezfyG.POST("/troops/train", ezfyH.Train)
+				// 取消训练队列（退还资源）
+				ezfyG.POST("/troops/train/cancel", ezfyH.CancelTrain)
 				ezfyG.POST("/troops/speed-all", ezfyH.SpeedTrainAll)
 				ezfyG.POST("/troops/recover", ezfyH.RecoverWounded)
 				ezfyG.POST("/troops/dismiss", ezfyH.DismissDefence)
@@ -1135,6 +1137,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechs)
 				admin.GET("/ezfy-techs-cfg", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechsCfg)
 				admin.POST("/ezfy-techs/set", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechSet)
+				// 一键满级所有玩家科技（幂等，先去重再 upsert）
+				admin.POST("/ezfy-techs/max-all", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechMaxAll)
 				admin.PUT("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechUpdate)
 				admin.POST("/ezfy-techs/:id/finish", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechFinish)
 				admin.DELETE("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechDelete)
@@ -1169,6 +1173,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildlandDelete)
 
 				// ---- 野地类型维护（ezfy_cfg_wildland） ----
+				admin.GET("/ezfy-map/options", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapOptions)
+				// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
+				admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTiles)
+				admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTileCell)
+				admin.POST("/ezfy-map-tiles", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTileSave)
+				admin.DELETE("/ezfy-map-tiles/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTileDelete)
 				admin.GET("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgList)
 				admin.POST("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgCreate)
 				admin.PUT("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyWildCfgUpdate)

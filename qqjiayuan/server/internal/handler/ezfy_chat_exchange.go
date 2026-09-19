@@ -43,10 +43,12 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 	out := gin.H{
 		"channel": viewChannel, "request_channel": channel,
 		"has_corps": myCorps != nil, "corps_name": "",
-		"can_send": viewChannel == ezfyChanPublic || viewChannel == ezfyChanCorps,
+		"corps_players": 0, // ★ 军团人数（没军团就是 0）
+		"can_send":      viewChannel == ezfyChanPublic || viewChannel == ezfyChanCorps,
 	}
 	if myCorps != nil {
 		out["corps_name"] = myCorps.Name
+		out["corps_players"] = h.corpsMemberCount(int64(myCorps.ID))
 	}
 
 	switch viewChannel {
@@ -122,9 +124,17 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 		out["chats"] = views
 	}
 
+	// ★ 人数要按频道给：
+	//   - 军团频道 → 军团人数（没军团 = 0）
+	//   - 世界/系统频道 → 全服玩家数
+	//   原来无论哪个频道都返回全服人数，军团频道会显示成「全服人数」，看着就是错的。
 	var online int64
 	h.DB.Model(&model.EzfyProfile{}).Count(&online)
-	out["players"] = online
+	if viewChannel == ezfyChanCorps {
+		out["players"] = out["corps_players"]
+	} else {
+		out["players"] = online
+	}
 	resp.OK(c, out)
 }
 

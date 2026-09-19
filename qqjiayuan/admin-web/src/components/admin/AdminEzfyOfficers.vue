@@ -84,7 +84,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ generals.length }}</b> 条 · 每页 {{ gSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="generals.length"
-                           :page-size="gSize" :current-page="gPage" :page-sizes="[20, 50, 100]"
+                           :page-size="gSize" :current-page="gPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { gPage = p }"
                            @size-change="s => { gSize = s; gPage = 1 }" />
           </div>
@@ -152,7 +152,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[15, 30, 50]"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -193,7 +193,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ skills.length }}</b> 条 · 每页 {{ sSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="skills.length"
-                           :page-size="sSize" :current-page="sPage" :page-sizes="[20, 50, 100]"
+                           :page-size="sSize" :current-page="sPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { sPage = p }"
                            @size-change="s => { sSize = s; sPage = 1 }" />
           </div>
@@ -233,7 +233,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ osTotal }}</b> 条 · 每页 {{ osSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="osTotal" :page-size="osSize"
-                           :current-page="osPage" :page-sizes="[15, 30, 50]"
+                           :current-page="osPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { osPage = p; loadOwnedSkills() }"
                            @size-change="s => { osSize = s; osPage = 1; loadOwnedSkills() }" />
           </div>
@@ -278,7 +278,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ equips.length }}</b> 条 · 每页 {{ eSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="equips.length"
-                           :page-size="eSize" :current-page="ePage" :page-sizes="[20, 50, 100]"
+                           :page-size="eSize" :current-page="ePage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { ePage = p }"
                            @size-change="s => { eSize = s; ePage = 1 }" />
           </div>
@@ -336,7 +336,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ oeTotal }}</b> 条 · 每页 {{ oeSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="oeTotal" :page-size="oeSize"
-                           :current-page="oePage" :page-sizes="[15, 30, 50]"
+                           :current-page="oePage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { oePage = p; loadOwnedEquips() }"
                            @size-change="s => { oeSize = s; oePage = 1; loadOwnedEquips() }" />
           </div>
@@ -681,24 +681,24 @@ export default {
       // 1 总览
       ov: {}, loadingOv: false,
       // 2 名将
-      generals: [], loadingG: false, gWord: '', gPage: 1, gSize: 20,
+      generals: [], loadingG: false, gWord: '', gPage: 1, gSize: 10,
       gDlg: false, gf: {},
       // 3 玩家军官
-      list: [], total: 0, page: 1, size: 15, loading: false, word: '', captive: -1,
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '', captive: -1,
       editDlg: false, editId: 0, form: {},
       grantDlg: false, grantForm: { user_id: 1, general_id: 0 },
       // 4 技能
-      skills: [], loadingS: false, sWord: '', sPage: 1, sSize: 20,
+      skills: [], loadingS: false, sWord: '', sPage: 1, sSize: 10,
       sDlg: false, sf: {},
       // 5 玩家军官技能
-      ownedSkills: [], osTotal: 0, osPage: 1, osSize: 15, loadingOS: false,
+      ownedSkills: [], osTotal: 0, osPage: 1, osSize: 10, loadingOS: false,
       osWord: '', osSkill: '',
       saDlg: false, saForm: { officer_id: 0, skill_name: '' },
       // 6 装备
-      equips: [], loadingE: false, eWord: '', ePage: 1, eSize: 20,
+      equips: [], loadingE: false, eWord: '', ePage: 1, eSize: 10,
       eDlg: false, ef: {},
       // 7 玩家装备
-      ownedEquips: [], oeTotal: 0, oePage: 1, oeSize: 15, loadingOE: false,
+      ownedEquips: [], oeTotal: 0, oePage: 1, oeSize: 10, loadingOE: false,
       oeWord: '', oeType: '', oeEquipped: -1,
       egDlg: false, egForm: { user_id: 1, cfg_id: 0, count: 1 },
       oeDlg: false, oef: {}, ownerOfficers: [],

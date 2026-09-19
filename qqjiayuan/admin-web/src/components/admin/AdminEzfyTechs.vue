@@ -9,6 +9,7 @@
                       @keyup.enter.native="page = 1; load()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
+            <el-button type="warning" icon="el-icon-upload2" @click="maxAll">一键满级所有玩家科技</el-button>
             <el-button type="success" icon="el-icon-setting" @click="openSet">设置科技等级</el-button>
             <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
@@ -48,7 +49,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[15, 30, 50]"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -100,7 +101,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cfgTotal }}</b> 条 · 每页 {{ cfgSize }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="cfgTotal"
-                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[20, 50, 100]"
+                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { cfgPage = p; loadCfgs() }"
                            @size-change="s => { cfgSize = s; cfgPage = 1; loadCfgs() }" />
           </div>
@@ -321,8 +322,8 @@ export default {
   data () {
     return {
       tab: 'list',
-      list: [], total: 0, page: 1, size: 15, loading: false, word: '',
-      cfgs: [], cfgTotal: 0, cfgPage: 1, cfgSize: 20, cfgWord: '', loadingCfg: false,
+      list: [], total: 0, page: 1, size: 10, loading: false, word: '',
+      cfgs: [], cfgTotal: 0, cfgPage: 1, cfgSize: 10, cfgWord: '', loadingCfg: false,
       allTechs: [],
       techTypes: { 1: '生产', 2: '军事', 3: '辅助' },
       resNames: {},
@@ -473,6 +474,22 @@ export default {
       }).catch(() => {})
     },
     // ---- 玩家科技 ----
+    // 一键把所有玩家所有城市的科技升到满级（后端幂等：先去重再 upsert）
+    maxAll () {
+      this.$confirm('确定把所有玩家、所有城市的科技**全部升到满级**吗？此操作会覆盖玩家已有的科技等级。',
+        '一键满级', { type: 'warning', confirmButtonText: '确定满级', cancelButtonText: '取消' }).then(() => {
+        this.saving = true
+        api.post('/admin/ezfy-techs/max-all', {}).then(r => {
+          this.saving = false
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已满级')
+            if (r.data.dup_left > 0) this.$message.warning('检测到仍有重复行 ' + r.data.dup_left + ' 条，请刷新查看')
+            this.page = 1
+            this.load()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
     openSet () {
       if (!this.allTechs.length) this.loadAllTechs()
       this.setForm = { city_id: 1, tech_id: this.allTechs.length ? this.allTechs[0].id : 0, level: 1 }

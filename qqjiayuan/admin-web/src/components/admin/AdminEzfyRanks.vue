@@ -83,7 +83,7 @@
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
             <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[20, 50, 100]"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
                            @current-change="p => { page = p; loadPlayers() }"
                            @size-change="s => { size = s; page = 1; loadPlayers() }" />
           </div>
@@ -182,7 +182,7 @@ export default {
     return {
       tab: 'cfg',
       ranks: [], loadingRank: false,
-      players: [], total: 0, page: 1, size: 20, word: '', loading: false,
+      players: [], total: 0, page: 1, size: 10, word: '', loading: false,
       dlg: false, form: {}, saving: false,
       setDlg: false, setRow: {}, setRankId: 0,
       preDlg: false, preRow: {}, preValue: 0
