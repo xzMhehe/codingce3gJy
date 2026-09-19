@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -1099,4 +1101,148 @@ func (h *AdminHandler) AdminEzfyOfficerPickers(c *gin.Context) {
 	}
 
 	resp.OK(c, gin.H{"generals": gs, "skills": sks, "officers": os})
+}
+
+// ============ 一键生成军官（随机名字/等级/星级，属性不超过名将） ============
+
+// ezfyGeneralCapByStar 每个星级下「名将」的属性上限 [军事,后勤,学识]
+//
+// ★ 用户要求：随机生成的军官属性不能超过名将。
+//   同名将星级里取最大值作为上限；该星级没有名将就往下借一档；
+//   都没有就用 星级×20 兜底（比同星级名将保守）。
+func (h *AdminHandler) ezfyGeneralCapByStar() map[int][3]int {
+	var gs []model.EzfyCfgGeneral
+	h.DB.Find(&gs)
+	cap := map[int][3]int{}
+	for _, g := range gs {
+		st := g.Star
+		if st <= 0 {
+			st = 5
+		}
+		c := cap[st]
+		if g.Military > c[0] {
+			c[0] = g.Military
+		}
+		if g.Logistics > c[1] {
+			c[1] = g.Logistics
+		}
+		if g.Learning > c[2] {
+			c[2] = g.Learning
+		}
+		cap[st] = c
+	}
+	// 逐级往下借：该星级没有名将就用低一星的上限
+	for st := 1; st <= 5; st++ {
+		if _, ok := cap[st]; ok {
+			continue
+		}
+		for lower := st - 1; lower >= 1; lower-- {
+			if c, ok := cap[lower]; ok {
+				cap[st] = c
+				break
+			}
+		}
+		if _, ok := cap[st]; !ok {
+			cap[st] = [3]int{st * 20, st * 20, st * 20}
+		}
+	}
+	return cap
+}
+
+// AdminEzfyGenOfficers 一键生成军官（挂到指定玩家的主城下）
+//
+// POST /admin/ezfy-officers/gen  {user_id, count, max_level}
+func (h *AdminHandler) AdminEzfyGenOfficers(c *gin.Context) {
+	var in struct {
+		UserID   uint `json:"user_id"`
+		Count    int  `json:"count"`
+		MaxLevel int  `json:"max_level"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.UserID == 0 {
+		resp.ParamError(c, "请选择玩家")
+		return
+	}
+	if in.Count <= 0 {
+		in.Count = 1
+	}
+	if in.Count > 20 {
+		in.Count = 20
+	}
+	if in.MaxLevel <= 0 {
+		in.MaxLevel = 60
+	}
+	if in.MaxLevel > 200 {
+		in.MaxLevel = 200
+	}
+	var prof model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", in.UserID).First(&prof).Error; err != nil {
+		resp.NotFound(c, "玩家不存在")
+		return
+	}
+	var pu model.User
+	h.DB.First(&pu, in.UserID)
+	ez := h.ezfyH()
+	city := ez.mainCity(in.UserID)
+	caps := h.ezfyGeneralCapByStar()
+
+	used := map[string]bool{}
+	var curNames []model.EzfyOfficer
+	h.DB.Where("city_id = ?", city.ID).Find(&curNames)
+	for _, o := range curNames {
+		used[o.Name] = true
+	}
+
+	created := []gin.H{}
+	for i := 0; i < in.Count; i++ {
+		name := ""
+		for k := 0; k < 40; k++ {
+			name = ezfyOfficerFirstNames[rand.Intn(len(ezfyOfficerFirstNames))] + "·" +
+				ezfyOfficerLastNames[rand.Intn(len(ezfyOfficerLastNames))]
+			if !used[name] {
+				break
+			}
+		}
+		used[name] = true
+
+		star := ezfyRollStar()
+		if star < 1 {
+			star = 1
+		}
+		if star > 5 {
+			star = 5
+		}
+		level := 1 + rand.Intn(in.MaxLevel)
+		if level < 1 {
+			level = 1
+		}
+		cap3 := caps[star]
+		// ★ 属性上限 = 同星级名将的最大值（且至少 1）
+		rnd := func(mx int) int {
+			if mx <= 1 {
+				return 1
+			}
+			return 1 + rand.Intn(mx)
+		}
+		mil, log, lea := rnd(cap3[0]), rnd(cap3[1]), rnd(cap3[2])
+
+		o := model.EzfyOfficer{
+			CityId: int64(city.ID), GeneralId: 0, Name: name, Star: star,
+			Level: level, Exp: 0,
+			Military: mil, Logistics: log, Learning: lea,
+			Loyalty: 80 + rand.Intn(21), Skill: "", Equipment: "",
+			Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
+		}
+		if err := h.DB.Create(&o).Error; err != nil {
+			continue
+		}
+		created = append(created, gin.H{
+			"id": o.ID, "name": o.Name, "star": star, "level": level,
+			"military": mil, "logistics": log, "learning": lea,
+			"cap": gin.H{"military": cap3[0], "logistics": cap3[1], "learning": cap3[2]},
+		})
+	}
+	resp.OK(c, gin.H{
+		"msg":  fmt.Sprintf("已为「%s」生成 %d 名军官（属性上限取自同星级名将）", ezfyNickOf(prof, &pu), len(created)),
+		"list": created,
+	})
 }

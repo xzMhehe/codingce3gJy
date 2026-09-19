@@ -233,30 +233,52 @@ func ezfyKouLevel(x, y int) int {
 
 // ============ 军衔（复刻 ConfigServer.RANKS，20 档） ============
 
-var ezfyRanks = [][3]string{
-	{"列兵", "士兵", "0"}, {"上等兵", "班长", "100"}, {"下士", "排长", "300"}, {"中士", "排长", "600"},
-	{"上士", "连长", "1000"}, {"军士长", "连长", "1500"}, {"准尉", "营长", "2200"}, {"少尉", "营长", "3000"},
-	{"中尉", "营长", "4000"}, {"上尉", "团长", "5200"}, {"大尉", "团长", "6600"}, {"少校", "旅长", "8200"},
-	{"中校", "旅长", "10000"}, {"上校", "旅长", "12000"}, {"大校", "师长", "14500"}, {"少将", "师长", "17500"},
-	{"中将", "军长", "21000"}, {"上将", "军长", "25000"}, {"大将", "军长", "30000"}, {"五星上将", "司令", "40000"},
-}
+// 军衔数据已迁到 ezfy_cfg_rank 表（见 model.EzfyCfgRank / ezfyDefaultRanks），
+// 这里不再保留第二份硬编码，避免两处不一致。
 
+// ezfyRankIndex 声望 → 军衔下标（读配置缓存，管理端改过军衔表也生效）
 func ezfyRankIndex(prestige int) int {
+	ranks := ezfyCfg.rankList()
 	idx := 0
-	for i := 0; i < len(ezfyRanks); i++ {
-		need := 0
-		for _, ch := range ezfyRanks[i][2] {
-			need = need*10 + int(ch-'0')
-		}
-		if prestige >= need {
+	for i := range ranks {
+		if prestige >= ranks[i].NeedPrestige {
 			idx = i
 		}
 	}
 	return idx
 }
 
-func ezfyRankName(prestige int) string { return ezfyRanks[ezfyRankIndex(prestige)][0] }
-func ezfyRankPost(prestige int) string { return ezfyRanks[ezfyRankIndex(prestige)][1] }
+// rankList 军衔列表（缓存为空时回落内置默认）
+func (c *ezfyConfigCache) rankList() []model.EzfyCfgRank {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.ranks) == 0 {
+		return ezfyDefaultRanks()
+	}
+	return c.ranks
+}
+
+// ezfyRankOf 声望对应的军衔配置
+func ezfyRankOf(prestige int) model.EzfyCfgRank {
+	ranks := ezfyCfg.rankList()
+	idx := ezfyRankIndex(prestige)
+	if idx < 0 || idx >= len(ranks) {
+		idx = 0
+	}
+	return ranks[idx]
+}
+
+func ezfyRankName(prestige int) string { return ezfyRankOf(prestige).Name }
+func ezfyRankPost(prestige int) string { return ezfyRankOf(prestige).Post }
+
+// ezfyRankCityMax 该声望下最多能拥有几座城（★ 军衔限制分城数量）
+func ezfyRankCityMax(prestige int) int {
+	m := ezfyRankOf(prestige).CityMax
+	if m <= 0 {
+		m = 1
+	}
+	return m
+}
 
 // ============ 配置缓存（进程内加载，seed 完成后首用时加载） ============
 
@@ -276,6 +298,8 @@ type ezfyConfigCache struct {
 	equipments     map[int]model.EzfyCfgEquipment
 	buildingByName map[string]int
 	techByName     map[string]int
+	// 军衔配置（按等级 1..N 排序）
+	ranks []model.EzfyCfgRank
 }
 
 var ezfyCfg ezfyConfigCache
@@ -389,6 +413,40 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	db.Find(&eqs)
 	for _, e := range eqs {
 		c.equipments[e.ID] = e
+	}
+
+	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
+	var rks []model.EzfyCfgRank
+	db.Order("id").Find(&rks)
+	if len(rks) == 0 {
+		rks = ezfyDefaultRanks()
+	}
+	c.ranks = rks
+}
+
+// ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）
+func ezfyDefaultRanks() []model.EzfyCfgRank {
+	return []model.EzfyCfgRank{
+		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
+		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 100, CityMax: 2},
+		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 300, CityMax: 3},
+		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 600, CityMax: 4},
+		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 1000, CityMax: 5},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 1500, CityMax: 6},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 2200, CityMax: 7},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 3000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 4000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 5200, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 6600, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 8200, CityMax: 12},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 10000, CityMax: 13},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 12000, CityMax: 14},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 14500, CityMax: 15},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 17500, CityMax: 16},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 21000, CityMax: 17},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 25000, CityMax: 18},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 30000, CityMax: 19},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 40000, CityMax: 20},
 	}
 }
 

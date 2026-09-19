@@ -69,6 +69,40 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfyOfficerItems(db)
 	seedEzfyActivities(db)
 	seedEzfyResources(db)
+	seedEzfyRanks(db)
+}
+
+// seedEzfyRanks 军衔配置（复刻原版 rankIndex.html 的「军衔等级/职位要求/可建城数」）
+//
+// 原版：1:列兵/士兵/1 ... 20:五星上将/司令/20 —— 可建城数 = 军衔等级。
+// ★ 只补缺不覆盖，管理端调过的值不会被启动打回。
+func seedEzfyRanks(db *gorm.DB) {
+	rows := []model.EzfyCfgRank{
+		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
+		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 100, CityMax: 2},
+		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 300, CityMax: 3},
+		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 600, CityMax: 4},
+		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 1000, CityMax: 5},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 1500, CityMax: 6},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 2200, CityMax: 7},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 3000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 4000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 5200, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 6600, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 8200, CityMax: 12},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 10000, CityMax: 13},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 12000, CityMax: 14},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 14500, CityMax: 15},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 17500, CityMax: 16},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 21000, CityMax: 17},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 25000, CityMax: 18},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 30000, CityMax: 19},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 40000, CityMax: 20},
+	}
+	if err := db.Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(rows, 50).Error; err != nil {
+		log.Printf("ezfy 军衔种子失败: %v", err)
+	}
 }
 
 // seedEzfyResources 资源显示名配置（管理端可改名，全站跟随）

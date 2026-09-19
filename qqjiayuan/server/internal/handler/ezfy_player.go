@@ -77,13 +77,15 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	}
 
 	// 好友关系（复刻 infoOther 的 isShowAdd）
+	// ★ 用「游戏内好友」表判定，与家园好友彻底分开
 	isSelf := target == uid
 	isFriend, isApplied := false, false
 	if !isSelf {
 		var n int64
-		h.DB.Model(&model.Friendship{}).Where("user_id = ? AND friend_id = ? AND status = 1", uid, target).Count(&n)
+		h.DB.Model(&model.EzfyFriend{}).Where("user_id = ? AND friend_id = ?", uid, target).Count(&n)
 		isFriend = n > 0
-		h.DB.Model(&model.FriendApply{}).Where("user_id = ? AND friend_id = ?", uid, target).Count(&n)
+		h.DB.Model(&model.EzfyFriendApply{}).
+			Where("user_id = ? AND target_id = ? AND status = 0", uid, target).Count(&n)
 		isApplied = n > 0
 	}
 

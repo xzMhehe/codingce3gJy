@@ -621,9 +621,16 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	if ezfyCfg.troop(req.TroopId) == nil {
+	tc := ezfyCfg.troop(req.TroopId)
+	if tc == nil {
 		resp.ParamError(c, "兵种不存在")
 		return
+	}
+	// ★ 防御兵种(type=4 城防：碉堡/榴弹炮/反坦克炮/防空炮…) 固定阵地，
+	//   前进/停止一律按「停止」落库，前端也不给选。
+	if tc.Type == 4 {
+		req.AtkMove = 0
+		req.DefMove = 0
 	}
 	var t model.EzfyCityTarget
 	if err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, req.TroopId).First(&t).Error; err != nil {
@@ -1001,13 +1008,25 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		}
 		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name, "member_count": cp.MemberCount, "battle_score": score})
 	}
-	// 军衔表
+	// 军衔表（★ 含「可建城数」一列，与 model.EzfyCfgRank 一致）
 	ranks := []gin.H{}
-	for _, r := range ezfyRanks {
-		need, _ := strconv.Atoi(r[2])
-		ranks = append(ranks, gin.H{"name": r[0], "post": r[1], "need": need})
+	for _, r := range ezfyCfg.rankList() {
+		ranks = append(ranks, gin.H{
+			"id": r.ID, "name": r.Name, "post": r.Post,
+			"need": r.NeedPrestige, "city_max": r.CityMax,
+		})
 	}
-	resp.OK(c, gin.H{"prestige": prestigeRank, "troops": troopRank, "corps": corpsRank, "ranks": ranks})
+	// 当前玩家的军衔与建城额度（军衔限制分城数量）
+	uid := middleware.GetUID(c)
+	me := h.ensureProfile(uid)
+	var myCities int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&myCities)
+	mine := gin.H{
+		"rank_name": ezfyRankName(me.Prestige), "rank_post": ezfyRankPost(me.Prestige),
+		"prestige": me.Prestige, "city_max": ezfyRankCityMax(me.Prestige), "city_count": myCities,
+	}
+	resp.OK(c, gin.H{"prestige": prestigeRank, "troops": troopRank, "corps": corpsRank,
+		"ranks": ranks, "mine": mine})
 }
 
 // ============ 商城/背包 ============

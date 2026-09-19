@@ -593,6 +593,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
 				// 军校：直接用招生简章刷新（不用跳背包）
 				ezfyG.POST("/acade/recruit/ticket", ezfyH.RecruitUseTicket)
+				// 游戏内好友（与家园好友完全分开）
+				ezfyG.GET("/friends", ezfyH.Friends)
+				ezfyG.GET("/friends/applies", ezfyH.FriendsApplies)
+				ezfyG.GET("/friends/search", ezfyH.FriendsSearch)
+				ezfyG.POST("/friends/apply", ezfyH.FriendsApply)
+				ezfyG.POST("/friends/handle", ezfyH.FriendsHandle)
+				ezfyG.POST("/friends/delete", ezfyH.FriendsDelete)
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)
@@ -1088,6 +1095,18 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedCreate)
 				admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedUpdate)
 				admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedDelete)
+
+				// ---- 一键生成军官（随机名字/等级/星级，属性不超过名将） ----
+				admin.POST("/ezfy-officers/gen", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGenOfficers)
+
+				// ---- 军衔配置维护 ----
+				admin.GET("/ezfy-ranks", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRanks)
+				admin.PUT("/ezfy-ranks/:id", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRankUpdate)
+				admin.POST("/ezfy-ranks/reset", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRankReset)
+				// ---- 玩家军衔维护 ----
+				admin.GET("/ezfy-rank-players", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRankPlayers)
+				admin.PUT("/ezfy-rank-players/:id", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRankSetPlayer)
+				admin.POST("/ezfy-rank-players/:id/prestige", perm(db, "module:ezfyRankCfg"), adminH.AdminEzfyRankSetPrestige)
 
 				// ---- 军校免费刷新次数维护 ----
 				admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyRecruitLimitGet)

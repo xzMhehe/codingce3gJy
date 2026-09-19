@@ -126,6 +126,10 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyActivity{},
 		// 资源显示名配置（管理端可改名，游戏端/管理端展示全部跟随）
 		&model.EzfyCfgResource{},
+		// 游戏内好友（与家园好友分开）
+		&model.EzfyFriend{}, &model.EzfyFriendApply{},
+		// 军衔配置（可建城数）
+		&model.EzfyCfgRank{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
@@ -1365,7 +1369,7 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战风云", "风云系统", "ezfySystem"), mod("游戏-二战风云", "风云数据", "ezfyData"),
 		mod("游戏-二战风云", "风云城市", "ezfyCities"), mod("游戏-二战风云", "风云建筑", "ezfyBuildings"),
 		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
-		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"),
+		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"), mod("游戏-二战风云", "风云军衔", "ezfyRankCfg"),
 		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
 		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
 		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),

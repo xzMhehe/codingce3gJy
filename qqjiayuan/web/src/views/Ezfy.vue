@@ -13,6 +13,26 @@
         <a href="javascript:;" @click="go('home')">首页</a>
       </div>
 
+      <!-- 页面内操作结果（代替 alert 弹窗；原版本来就没有弹窗交互） -->
+      <div class="ezfy-msgs" v-if="msgs.length">
+        <div v-for="m in msgs" :key="m.id" class="ezfy-msg" :class="'ezfy-msg-' + m.type">
+          {{ m.text }}
+          <a href="javascript:;" class="ezfy-msg-close" @click="closeMsg(m.id)">[关闭]</a>
+        </div>
+      </div>
+
+      <!-- 页面内确认条（代替 confirm/prompt 弹窗） -->
+      <div class="ezfy-ask" v-if="askBox.show">
+        <div class="ezfy-ask-text">{{ askBox.text }}</div>
+        <div class="ezfy-ask-row" v-if="askBox.input">
+          <input v-model="askBox.value" :placeholder="askBox.placeholder" style="width:60%"/>
+        </div>
+        <div class="ezfy-ask-row">
+          <a href="javascript:;" class="ezfy-ask-ok" @click="askConfirm(true)">[确定]</a>
+          <a href="javascript:;" class="ezfy-ask-cancel" @click="askConfirm(false)">[取消]</a>
+        </div>
+      </div>
+
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
         <div class="old-line" v-for="n in notices.slice(0, 2)" :key="'n' + n.id">
@@ -212,7 +232,7 @@
           <button @click="loadMails">刷新</button>
         </div>
 
-        <!-- 发私信: 不需要先加好友, 填家园号码或昵称即可 -->
+        <!-- 发私信: 不需要先加好友, 填游戏ID或昵称即可 -->
         <div class="panel">
           <div class="panel-title">发私信</div>
           <div class="old-line">
@@ -222,9 +242,9 @@
               <option v-for="f in pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
             </datalist>
           </div>
-          <div class="old-line gray">不需要先加好友, 填对方家园号码或昵称即可; 对方把你拉黑则发不出去。</div>
+          <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
           <div class="old-line">
-            <input v-model="pmContent" placeholder="最多500字" style="width:88%" maxlength="500"
+            <input v-model="pmContent" placeholder="最多500字" style="width:28%" maxlength="500"
                    @keyup.enter="doSendPm"/>
           </div>
           <div class="old-line">
@@ -316,20 +336,23 @@
       <!-- ============ 好友(friends) ============ -->
       <template v-else-if="cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">搜索玩家(按家园号码或昵称)</div>
+          <div class="panel-title">游戏内好友（与家园好友分开）</div>
+          <div class="old-line gray">
+            这里只是「二战风云」里的好友关系，不影响家园的亲友列表。
+          </div>
+
+          <div class="panel-title">搜索玩家（按游戏ID / 家园号码 / 昵称）</div>
           <div class="old-line">
             <input v-model="friendKeyword" placeholder="输入游戏ID / 家园号码 / 昵称" style="width:170px"/>
             <button @click="doFriendSearch">[搜索]</button>
           </div>
           <table v-if="friendSearchDone">
-            <tr><th>号码</th><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="u in friendSearchList" :key="'fs' + u.id">
-              <td>{{ u.num }}</td>
-              <td><a href="javascript:;" @click="openPlayer(u.id)">{{ u.nickname }}</a></td>
-              <td>Lv.{{ u.level }}</td>
-              <td>
-                <span :class="u.online ? 'green' : 'gray'">{{ u.online ? '在线' : '离线' }}</span>
-              </td>
+            <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>状态</th><th>操作</th></tr>
+            <tr v-for="u in friendSearchList" :key="'fs' + u.user_id">
+              <td><span class="td-mono">{{ u.game_uid }}</span></td>
+              <td><a href="javascript:;" @click="openPlayer(u.user_id)">{{ u.nickname }}</a></td>
+              <td>{{ u.prestige }}</td>
+              <td><span class="gray">{{ u.rank_name }}</span></td>
               <td>
                 <span v-if="u.is_friend" class="gray">已是好友</span>
                 <span v-else-if="u.applied" class="orange">已申请</span>
@@ -337,24 +360,39 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray" v-if="friendSearchDone && !friendSearchList.length">(没找到这位友友, 换个号码或昵称试试)</div>
-        </div>
+          <div class="old-line gray" v-if="friendSearchDone && !friendSearchList.length">(没找到这位统帅, 换个游戏ID或昵称试试)</div>
 
-        <div class="panel">
-          <div class="panel-title">家园好友({{ friends.length }})</div>
-          <table>
-            <tr><th>昵称</th><th>等级</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="f in friends" :key="'f' + f.id">
-              <td><a href="javascript:;" @click="openPlayer(f.id)">{{ f.nickname }}</a></td>
-              <td>Lv.{{ f.level }}</td>
-              <td><span :class="f.online ? 'green' : 'gray'">{{ f.online ? '在线' : '离线' }}</span></td>
+          <div class="panel-title">好友申请（待处理 {{ friendApplies.inbox.length }}）</div>
+          <table v-if="friendApplies.inbox.length">
+            <tr><th>游戏ID</th><th>昵称</th><th>验证信息</th><th>操作</th></tr>
+            <tr v-for="a in friendApplies.inbox" :key="'fa' + a.apply_id">
+              <td><span class="td-mono">{{ a.game_uid }}</span></td>
+              <td><a href="javascript:;" @click="openPlayer(a.user_id)">{{ a.nickname }}</a></td>
+              <td>{{ a.remark || '—' }}</td>
               <td>
-                <a href="javascript:;" @click="openPlayer(f.id)">[统帅信息]</a>
-                <a href="javascript:;" @click="go('mail')">[私聊]</a>
+                <a href="javascript:;" @click="doHandleApply(a, true)">[同意]</a>
+                <a href="javascript:;" @click="doHandleApply(a, false)">[拒绝]</a>
               </td>
             </tr>
           </table>
-          <div class="old-line" v-if="!friends.length">(还没有好友, 用上面的搜索找找老友吧)</div>
+          <div class="old-line gray" v-else>(暂无新的好友申请)</div>
+
+          <div class="panel-title">我的游戏好友（{{ friends.length }}）</div>
+          <table v-if="friends.length">
+            <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
+            <tr v-for="f in friends" :key="'f' + f.user_id">
+              <td><span class="td-mono">{{ f.game_uid }}</span></td>
+              <td><a href="javascript:;" @click="openPlayer(f.user_id)">{{ f.nickname }}</a></td>
+              <td>{{ f.prestige }}</td>
+              <td>{{ f.rank_name }}</td>
+              <td>
+                <a href="javascript:;" @click="openPlayer(f.user_id)">[统帅信息]</a>
+                <a href="javascript:;" @click="go('mail')">[私聊]</a>
+                <a href="javascript:;" @click="doDelFriend(f)">[删除]</a>
+              </td>
+            </tr>
+          </table>
+          <div class="old-line gray" v-else>(还没有游戏好友, 用上面的搜索找找吧)</div>
         </div>
       </template>
 
@@ -387,15 +425,23 @@
             <a href="javascript:;" @click="go('rename')">[改名]</a>
           </div>
           <br/>
-          <div class="panel-title">平原起新城 (消耗10万{{ resNames.gold }})</div>
+          <div class="panel-title">起新城 (消耗10万{{ resNames.gold }})</div>
+          <div class="old-line gray">
+            军衔「{{ rankData.mine ? rankData.mine.rank_name : rankName }}」可建
+            <b>{{ rankData.mine ? rankData.mine.city_max : '-' }}</b> 座，
+            已有 <b>{{ cities.length }}</b> 座
+            <span v-if="rankData.mine && cities.length >= rankData.mine.city_max" class="red">
+              —— 已达上限，提升声望可解锁更多
+            </span>
+          </div>
           <div class="old-line">
             坐标X: <input v-model="newCityX" type="number" style="width:70px"/>
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
           <div class="gray" style="font-size:13px">
-            <b>平原</b> → 陆地城市; <b>海洋</b> → 海城(可建航海协会、训练海军)。<br/>
-            其他地形不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
+            <b>平原</b> → 陆地城市; <b>沿海平原</b> → 海城(可建航海协会、训练海军)。<br/>
+            其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
         </div>
       </template>
@@ -614,35 +660,41 @@
       <template v-else-if="cur === 'hq'">
         <div class="panel">
           <div class="panel-title">司令部: 兵种战斗配置</div>
-          <div class="old-line gray">每个兵种可分别设置 进攻/防守 的默认攻击对象与前进停止:</div>
-          <table>
-            <tr><th>兵种</th><th>进攻目标</th><th>进攻</th><th>防守目标</th><th>防守</th></tr>
-            <tr v-for="t in troopsData.cfgs" :key="'cfg' + t.id">
-              <td>{{ t.name }}</td>
-              <td>
-                <select v-model="targetCfg[t.id].atk" style="width:80px">
-                  <option :value="0">最近目标</option>
-                  <option v-for="tt in troopsData.cfgs" :key="'a' + tt.id" :value="tt.id">{{ tt.name }}</option>
-                </select>
-              </td>
-              <td>
-                <select v-model="targetCfg[t.id].atkMove" style="width:56px">
-                  <option :value="1">前进</option><option :value="0">停止</option>
-                </select>
-              </td>
-              <td>
-                <select v-model="targetCfg[t.id].def" style="width:80px">
-                  <option :value="0">最近目标</option>
-                  <option v-for="tt in troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.name }}</option>
-                </select>
-              </td>
-              <td>
-                <select v-model="targetCfg[t.id].defMove" style="width:56px">
-                  <option :value="1">前进</option><option :value="0">停止</option>
-                </select>
-              </td>
-            </tr>
-          </table>
+          <div class="old-line gray">
+            每个兵种可分别设置 进攻/防守 的默认攻击对象与前进停止。
+            窄屏下改成「一兵种一块」，避免下拉框互相遮盖。
+          </div>
+          <!-- ★ 一个兵种一块（原来 5 列固定宽度表格在手机上会互相遮盖） -->
+          <div class="ezfy-tgt-block" v-for="t in troopsData.cfgs" :key="'cfg' + t.id">
+            <div class="ezfy-tgt-name">
+              {{ t.name }}
+              <span v-if="isDefenceTroop(t)" class="gray">（防御兵种：固定阵地，不能前进/后退，也不能出征）</span>
+            </div>
+            <div class="ezfy-tgt-row">
+              <span class="ezfy-tgt-lab">进攻目标</span>
+              <select v-model="targetCfg[t.id].atk" style="width:110px">
+                <option :value="0">最近目标</option>
+                <option v-for="tt in troopsData.cfgs" :key="'a' + tt.id" :value="tt.id">{{ tt.name }}</option>
+              </select>
+              <span class="ezfy-tgt-lab">进攻</span>
+              <select v-model="targetCfg[t.id].atkMove" style="width:80px"
+                      :disabled="isDefenceTroop(t)">
+                <option :value="1">前进</option><option :value="0">停止</option>
+              </select>
+            </div>
+            <div class="ezfy-tgt-row">
+              <span class="ezfy-tgt-lab">防守目标</span>
+              <select v-model="targetCfg[t.id].def" style="width:110px">
+                <option :value="0">最近目标</option>
+                <option v-for="tt in troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.name }}</option>
+              </select>
+              <span class="ezfy-tgt-lab">防守</span>
+              <select v-model="targetCfg[t.id].defMove" style="width:80px"
+                      :disabled="isDefenceTroop(t)">
+                <option :value="1">前进</option><option :value="0">停止</option>
+              </select>
+            </div>
+          </div>
           <div class="old-line"><button @click="doSaveTargets">[保存全部配置]</button></div>
           <br/>
           <div class="panel-title">出征队列({{ orders.length }})</div>
@@ -1467,9 +1519,10 @@
             </div>
             <div class="panel-title">军团成员</div>
             <table>
-              <tr><th>成员</th><th>职位</th><th>声望</th><th>军衔</th></tr>
+              <tr><th>成员</th><th>玩家号码</th><th>职位</th><th>声望</th><th>军衔</th></tr>
               <tr v-for="m in corpsMembers" :key="'cm' + m.user_id">
                 <td><a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.name }}</a></td>
+                <td><span class="td-mono">{{ m.game_uid || m.user_id }}</span></td>
                 <td>{{ m.title }}</td>
                 <td>{{ m.prestige }}</td>
                 <td>{{ m.rank_name }}</td>
@@ -1530,11 +1583,25 @@
         <div class="panel">
           <!-- 军衔晋升表放最上面, 三个榜单在下面(用户要求) -->
           <div class="panel-title">军衔晋升表</div>
-          <div class="old-line" v-for="(r, i) in rankData.ranks" :key="'rk' + i">
-            {{ r.name }}({{ r.post }}) 需声望{{ r.need }}
-            <span v-if="r.name === rankName" class="red">[当前]</span>
+          <div class="old-line">
+            军衔等级 / 职位 / 需要声望 / <b>可建城数</b>
+            <span v-if="rankData.mine" class="gray">
+              （我当前「{{ rankData.mine.rank_name }}」：可建 {{ rankData.mine.city_max }} 座，已有 {{ rankData.mine.city_count }} 座）
+            </span>
           </div>
-          <hr/>
+          <table>
+            <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>可建城数</th></tr>
+            <tr v-for="(r, i) in rankData.ranks" :key="'rk' + i">
+              <td>{{ i + 1 }}</td>
+              <td>
+                {{ r.name }}
+                <span v-if="r.name === rankName" class="red">[当前]</span>
+              </td>
+              <td>{{ r.post }}</td>
+              <td>{{ r.need }}</td>
+              <td>{{ r.city_max }}</td>
+            </tr>
+          </table>
           <div class="panel-title">军衔声望榜</div>
           <table>
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
@@ -1823,9 +1890,8 @@
             <a href="javascript:;" @click="go('defence')">城防</a> ·
             个人
           </div>
-          <!-- ★ 游戏ID 与 家园ID(家园号码) 分开展示：游戏ID 不随家园号码变化 -->
-          游戏ID：{{ selfInfo.game_uid || profile.game_uid || userBrief.game_uid || '—' }}<br/>
-          家园ID(家园号码)：{{ selfInfo.home_num || userBrief.account || '—' }}<br/>
+          <!-- ★ 只展示「玩家号码(游戏ID)」——不展示家园号码 -->
+          玩家号码：{{ selfInfo.game_uid || profile.game_uid || userBrief.game_uid || '—' }}<br/>
           昵称：{{ selfInfo.nickname || profile.nickname }}
           <template v-if="!renameEditing">
             <a href="javascript:;" @click="startRename">[修改昵称]</a>
@@ -1833,7 +1899,7 @@
           <template v-else>
             <br/>
             <input v-model="renameInput" maxlength="12" placeholder="2~12 个字符" style="width:130px"/>
-            <button @click="doRename">确定</button>
+            <button @click="doPlayerRename">确定</button>
             <a href="javascript:;" @click="renameEditing = false">[取消]</a>
           </template>
           <div class="gray" style="font-size:13px">{{ renameHint }}</div>
@@ -1862,7 +1928,7 @@
           <div class="panel-title">统帅信息</div>
           <div class="old-line">
             <b :style="nickColorAt(playerInfo.color, 0)">{{ playerInfo.nickname }}</b>
-            <span class="gray">(家园号码 {{ playerInfo.account }})</span>
+            <span class="gray">(玩家号码 {{ playerInfo.game_uid || playerInfo.user_id }})</span>
           </div>
           <div class="old-line">
             阵营：{{ playerInfo.camp_name }}<br/>
@@ -2235,6 +2301,7 @@
         <a href="javascript:;" :class="{ on: cur === 'liaison' }" @click="go('liaison')">联络</a>
         <a href="javascript:;" :class="{ on: cur === 'cityhall' }" @click="go('cityhall')">市政</a>
         <a href="javascript:;" :class="{ on: cur === 'chat' }" @click="go('chat')">聊天</a>
+        <a href="javascript:;" :class="{ on: cur === 'home' }" @click="go('home')">首页</a>
       </div>
     </div>
   </div>
@@ -2315,6 +2382,7 @@ export default {
       friendKeyword: '',
       friendSearchList: [],
       friendSearchDone: false,
+      friendApplies: { inbox: [], outbox: [] },
       taskGroups: [],
       // 计谋(复刻原版 acade/scheme.html, 共 12 条, 消耗信号弹)
       schemes: [
@@ -2379,6 +2447,8 @@ export default {
       trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
       troopViewId: 0,     // 兵种详情页当前兵种 id
       troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
+      // 页面内消息 + 内联确认（替代 alert/confirm/prompt 弹窗）
+      msgs: [], askBox: { show: false, text: '', input: false, placeholder: '', value: '' },
       // 统帅页自助（游戏ID/家园号码、改昵称、改阵营）
       selfInfo: {}, renameEditing: false, renameInput: '',
       playerInfo: null,        // 他人统帅信息(复刻 infoOther)
@@ -2663,10 +2733,10 @@ export default {
       if (path.indexOf('/games/ezfy') === 0) return         // 游戏内: 放行
       e.preventDefault()
       e.stopPropagation()
-      alert('游戏内不能跳回家园。如需离开游戏, 请点顶部导航。')
+      this.notify('游戏内不能跳回家园。如需离开游戏, 请点顶部导航。')
     },
     notOpen (what) {
-      alert(what + '暂未开放, 敬请期待')
+      this.notify(what + '暂未开放, 敬请期待')
     },
     // ---- 统帅页自助 ----
     loadSelfInfo () {
@@ -2681,37 +2751,37 @@ export default {
       this.renameInput = this.selfInfo.nickname || this.profile.nickname || ''
       this.renameEditing = true
     },
-    doRename () {
+    async doPlayerRename () {
       const name = String(this.renameInput || '').trim()
-      if (name.length < 2 || name.length > 12) { alert('昵称长度需在 2~12 个字符之间'); return }
+      if (name.length < 2 || name.length > 12) { this.notify('昵称长度需在 2~12 个字符之间'); return }
       const free = this.selfInfo.rename_free
       const tip = free ? '确认改名为「' + name + '」吗？（首次免费）'
         : '确认改名为「' + name + '」吗？将消耗「改名卡」×1（当前 ' +
           (this.selfInfo.rename_card_count || 0) + ' 张）'
-      if (!confirm(tip)) return
+      if (!await this.ask(tip)) return
       api.post('/games/ezfy/profile/rename', { nickname: name }).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.renameEditing = false
           this.loadSelfInfo()
           this.load()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
-    doChangeCamp (camp) {
+    async doChangeCamp (camp) {
       const cur = this.selfInfo.camp || this.profile.camp
-      if (cur === camp) { alert('当前已经是「' + (camp === 2 ? '轴心国' : '同盟国') + '」'); return }
+      if (cur === camp) { this.notify('当前已经是「' + (camp === 2 ? '轴心国' : '同盟国') + '」'); return }
       const free = this.selfInfo.camp_free
       const tip = free ? '确认转换为「' + (camp === 2 ? '轴心国' : '同盟国') + '」吗？（首次免费）'
         : '确认转换为「' + (camp === 2 ? '轴心国' : '同盟国') + '」吗？将消耗「阵营转换道具」×1（当前 ' +
           (this.selfInfo.camp_item_count || 0) + ' 个）'
-      if (!confirm(tip)) return
+      if (!await this.ask(tip)) return
       api.post('/games/ezfy/profile/camp', { camp: camp }).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.loadSelfInfo()
           this.load()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     // 宝物：原版 /ezfy/acadeIndex，本项目对应「学院 → 装备」页（我的装备 + 装备图鉴）
@@ -2740,6 +2810,8 @@ export default {
       else if (t === 'tasks') this.loadTasks()
       else if (t === 'welfare') this.loadWelfare()
       else if (t === 'rank') this.loadRank()
+      // 城市列表页要显示「军衔可建城数」，所以也拉一次军衔数据
+      else if (t === 'cities') this.loadRank()
       else if (t === 'bag') this.loadBag()
       else if (t === 'mall') this.loadMall()
       else if (t === 'exchange') this.loadExchange()
@@ -2884,14 +2956,14 @@ export default {
     doSendPm () {
       const to = (this.pmTo || '').trim()
       const content = (this.pmContent || '').trim()
-      if (!to) { alert('请填写收件人(家园号码或昵称)'); return }
-      if (!content) { alert('请填写内容'); return }
+      if (!to) { this.notify('请填写收件人(游戏ID或昵称)'); return }
+      if (!content) { this.notify('请填写内容'); return }
       api.post('/messages', { to_name: to, content: content }).then(r => {
         if (r.code === 0) {
-          alert(r.data && r.data.msg ? r.data.msg : '已发送')
+          this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
           this.pmContent = ''
           this.loadMails()
-        } else alert(r.msg || '发送失败')
+        } else this.notify(r.msg || '发送失败')
       })
     },
     loadMails () {
@@ -2899,59 +2971,63 @@ export default {
         if (r.code === 0) this.mails = (r.data.list || []).slice(0, 30)
       })
     },
+    // ★ 游戏内好友（不碰家园 /friends）
     loadFriends () {
-      api.get('/friends').then(r => {
-        if (r.code === 0) this.friends = r.data.friends || []
+      api.get('/games/ezfy/friends').then(r => {
+        if (r.code === 0) this.friends = r.data.list || []
+      })
+      this.loadFriendApplies()
+    },
+    loadFriendApplies () {
+      api.get('/games/ezfy/friends/applies').then(r => {
+        if (r.code === 0) this.friendApplies = { inbox: r.data.inbox || [], outbox: r.data.outbox || [] }
       })
     },
     // ---- 好友搜索/添加(复刻 addToFriend) ----
     doFriendSearch () {
       const kw = (this.friendKeyword || '').trim()
-      if (!kw) { alert('请输入游戏ID / 家园号码 / 昵称'); return }
+      if (!kw) { this.notify('请输入游戏ID / 家园号码 / 昵称'); return }
       // ★ 先走游戏内搜索（支持「游戏ID」，不随家园号码变化）；
-      //   命中不到再回落到家园的 /friends/search（家园号码/昵称）
-      api.get('/games/ezfy/player-search?keyword=' + encodeURIComponent(kw)).then(r => {
-        const list = (r.code === 0 && r.data && r.data.list) || []
-        if (list.length) {
-          // 统一成好友列表要用的字段（id 用 user_id，家园接口返回的也是 id）
-          this.friendSearchList = list.map(x => ({
-            id: x.user_id,
-            nickname: x.nickname,
-            account: x.home_num,
-            game_uid: x.game_uid,
-            is_friend: false
-          }))
-          this.friendSearchDone = true
-          return
-        }
-        api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r2 => {
-          if (r2.code === 0) {
-            this.friendSearchList = r2.data.list || []
-            this.friendSearchDone = true
-          } else {
-            alert(r2.msg || '搜索失败')
-          }
-        })
-      }).catch(() => {
-        api.get('/friends/search?keyword=' + encodeURIComponent(kw)).then(r2 => {
-          if (r2.code === 0) {
-            this.friendSearchList = r2.data.list || []
-            this.friendSearchDone = true
-          } else alert(r2.msg || '搜索失败')
-        })
-      })
-    },
-    doAddFriend (u) {
-      const remark = prompt('给 ' + u.nickname + ' 的验证信息(可留空)', '')
-      if (remark === null) return
-      api.post('/friends', { target_id: u.id, remark: remark }).then(r => {
+      // ★ 只搜游戏内玩家（不回落家园 /friends/search，避免把家园好友混进来）
+      api.get('/games/ezfy/friends/search?keyword=' + encodeURIComponent(kw)).then(r => {
         if (r.code === 0) {
-          alert(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
+          this.friendSearchList = r.data.list || []
+          this.friendSearchDone = true
+        } else {
+          this.notify(r.msg || '搜索失败')
+        }
+      }).catch(() => this.notify('搜索失败'))
+    },
+    async doAddFriend (u) {
+      const remark = await this.ask('给 ' + u.nickname + ' 的验证信息（可留空）', { input: true, placeholder: '可留空' })
+      if (remark === null) return
+      api.post('/games/ezfy/friends/apply', { target_id: u.user_id, remark: remark }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
           this.doFriendSearch()
           this.loadFriends()
         } else {
-          alert(r.msg || '添加失败')
+          this.notify(r.msg || '添加失败')
         }
+      })
+    },
+    // 处理好友申请（同意/拒绝）
+    doHandleApply (a, agree) {
+      api.post('/games/ezfy/friends/handle', { apply_id: a.apply_id, agree: agree }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : (agree ? '已同意' : '已拒绝'))
+          this.loadFriends()
+        } else this.notify(r.msg || '操作失败')
+      })
+    },
+    // 删除游戏内好友
+    doDelFriend (f) {
+      this.ask('确定解除与「' + f.nickname + '」的游戏好友关系吗？').then(ok => {
+        if (!ok) return
+        api.post('/games/ezfy/friends/delete', { friend_id: f.user_id }).then(r => {
+          if (r.code === 0) { this.notify(r.data && r.data.msg ? r.data.msg : '已解除'); this.loadFriends() }
+          else this.notify(r.msg || '操作失败')
+        })
       })
     },
     loadReports () {
@@ -2981,19 +3057,19 @@ export default {
     doCollectAll () {
       api.post('/games/ezfy/wild/collect-all', {}).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.loadDynamics()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
-    doHarvestAll () {
-      if (!window.confirm('确定收获并召回所有正在采集的部队吗?')) return
+    async doHarvestAll () {
+      if (!await this.ask('确定收获并召回所有正在采集的部队吗?')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.loadDynamics()
           this.load()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     loadTasks () {
@@ -3112,7 +3188,7 @@ export default {
       const x = parseInt(this.jumpX)
       const y = parseInt(this.jumpY)
       if (!x || !y || x < 1 || x > 500 || y < 1 || y > 500) {
-        alert('请输入 1~500 之间的横纵坐标')
+        this.notify('请输入 1~500 之间的横纵坐标')
         return
       }
       this.jumpTo(x, y)
@@ -3126,14 +3202,14 @@ export default {
       this.showStars = !this.showStars
       if (this.showStars) this.loadStars()
     },
-    addStar () {
+    async addStar () {
       if (!this.selCell) return
       // 备注名用「地形名(等级)」, 坐标由列表模板统一拼, 别在这里重复带上
       const def = this.cellText(this.selCell)
-      const name = prompt('备注名(最多16字):', def)
+      const name = await this.ask('备注名（最多16字）', { input: true, value: def })
       if (name === null) return
       api.post('/games/ezfy/map/stars', { x: this.selCell.x, y: this.selCell.y, name: name }).then(r => {
-        if (r.code === 0) { this.showStars = true; this.loadStars() } else alert(r.msg || '收藏失败')
+        if (r.code === 0) { this.showStars = true; this.loadStars() } else this.notify(r.msg || '收藏失败')
       })
     },
     delStar (s) {
@@ -3150,29 +3226,29 @@ export default {
         }
       })
     },
-    doMoveCity (type) {
+    async doMoveCity (type) {
       const body = { type: type }
       if (type === 'low') {
         body.area_id = this.moveArea
       } else if (type === 'high') {
         const x = parseInt(this.moveX)
         const y = parseInt(this.moveY)
-        if (!x || !y) { alert('请输入横纵坐标'); return }
+        if (!x || !y) { this.notify('请输入横纵坐标'); return }
         body.x = x; body.y = y
       } else {
         const x = parseInt(this.moveX2)
         const y = parseInt(this.moveY2)
-        if (!x || !y) { alert('请输入横纵坐标'); return }
+        if (!x || !y) { this.notify('请输入横纵坐标'); return }
         body.x = x; body.y = y
       }
       const label = type === 'low' ? '迁城计划' : (type === 'high' ? '高级迁城计划' : '沿海迁城计划')
-      if (!confirm('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' ' + this.resNames.gold + '。')) return
+      if (!await this.ask('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' ' + this.resNames.gold + '。')) return
       api.post('/games/ezfy/city/move', body).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.load()
           this.loadMoveInfo()
-        } else alert(r.msg || '迁城失败')
+        } else this.notify(r.msg || '迁城失败')
       })
     },
     // ---- 调整生产(复刻 city/sourceSet.html) ----
@@ -3190,7 +3266,7 @@ export default {
       const vals = [this.rateFood, this.rateSteel, this.rateOil, this.rateRare]
       for (const v of vals) {
         const n = parseInt(v)
-        if (!n || n < 1 || n > 100) { alert('开工率需在 1~100 之间'); return }
+        if (!n || n < 1 || n > 100) { this.notify('开工率需在 1~100 之间'); return }
       }
       api.post('/games/ezfy/city/produce', {
         rate_food: parseInt(this.rateFood), rate_steel: parseInt(this.rateSteel),
@@ -3214,18 +3290,18 @@ export default {
     doSpeedTrainAll () {
       api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.load()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
-    doSpeedTrainAllCity () {
-      if (!window.confirm('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
+    async doSpeedTrainAllCity () {
+      if (!await this.ask('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
       api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.load()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     doBuild (b) {
@@ -3306,14 +3382,14 @@ export default {
           this.loadTechs()
           this.cur = 'home'
           if (r.data && r.data.msg) this.alert(r.data)
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     doAbandon (w) {
       api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r))
     },
-    doOccupy (op, o) {
-      if (!window.confirm(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
+    async doOccupy (op, o) {
+      if (!await this.ask(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
           '确定将城市归还给原玩家吗?')) return
       api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r))
@@ -3342,7 +3418,7 @@ export default {
     doTrainPre () {
       if (!this.trainSel) return
       const n = parseInt(this.trainCount) || 0
-      if (n <= 0) { alert('请填写建造数量'); return }
+      if (n <= 0) { this.notify('请填写建造数量'); return }
       api.post('/games/ezfy/troops/train', {
         troop_id: this.trainSel.id, count: n, split: this.trainSplit
       }).then(r => {
@@ -3351,10 +3427,10 @@ export default {
       })
     },
     // 拆除城防设施(复刻 troopDefence.html 每行的 [拆除])
-    doDismiss (t) {
+    async doDismiss (t) {
       const have = this.troopCount(t.id)
-      if (have <= 0) { alert('城内没有该城防设施'); return }
-      if (!window.confirm('确定拆除全部 ' + t.name + '×' + have + ' 吗?')) return
+      if (have <= 0) { this.notify('城内没有该城防设施'); return }
+      if (!await this.ask('确定拆除全部 ' + t.name + '×' + have + ' 吗?')) return
       api.post('/games/ezfy/troops/dismiss', { troop_id: t.id }).then(r => {
         this.alert(r)
         if (r.code === 0) this.loadTroops()
@@ -3385,24 +3461,34 @@ export default {
         if (r.code === 0) this.loadTechs()
       })
     },
-    doCancelTech (t) {
-      if (!confirm('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
+    async doCancelTech (t) {
+      if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
       api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id }).then(r => {
         this.alert(r)
         if (r.code === 0) this.loadTechs()
       })
     },
     // ---- 司令部 ----
+    // 防御兵种（城防 type=4：碉堡/榴弹炮/反坦克炮/防空炮…）固定阵地
+    isDefenceTroop (t) {
+      return !!t && t.type === 4
+    },
     doSaveTargets () {
       const list = []
+      // ★ 防御兵种(type=4) 固定阵地：前进/停止一律按「停止」提交
+      const defIds = {}
+      ;(this.troopsData.cfgs || []).forEach(c => { if (c.type === 4) defIds[c.id] = true })
       for (const tid in this.targetCfg) {
         const t = this.targetCfg[tid]
+        const isDef = !!defIds[parseInt(tid)]
         list.push(api.post('/games/ezfy/targets', {
-          troop_id: parseInt(tid), atk_target_troop: t.atk, atk_move: t.atkMove,
-          def_target_troop: t.def, def_move: t.defMove
+          troop_id: parseInt(tid), atk_target_troop: t.atk,
+          atk_move: isDef ? 0 : t.atkMove,
+          def_target_troop: t.def,
+          def_move: isDef ? 0 : t.defMove
         }))
       }
-      Promise.all(list).then(() => alert('战斗配置已保存'))
+      Promise.all(list).then(() => this.notify('战斗配置已保存'))
     },
     openOrder (o) {
       api.get('/games/ezfy/orders/' + o.id).then(r => {
@@ -3554,7 +3640,7 @@ export default {
       if (!this.selCell) return
       api.post('/games/ezfy/order', this.orderBody()).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.orderTroops = {}
           this.orderOfficer = '0'
           this.orderCalc = null
@@ -3563,7 +3649,7 @@ export default {
           this.load()
           this.cur = 'orders'
           this.loadOrders()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     loadOnDutyOfficers () {
@@ -3589,7 +3675,7 @@ export default {
       })
     },
     doWareSet () {
-      if (this.wareSum > 100) { alert('四项比例合计不能超过100%'); return }
+      if (this.wareSum > 100) { this.notify('四项比例合计不能超过100%'); return }
       api.post('/games/ezfy/city/warehouse', {
         food: parseInt(this.wareRatio.food) || 0,
         steel: parseInt(this.wareRatio.steel) || 0,
@@ -3597,9 +3683,9 @@ export default {
         rare: parseInt(this.wareRatio.rare) || 0
       }).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.loadWare()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     // ---- 聊天/邮箱 ----
@@ -3607,7 +3693,7 @@ export default {
       const msg = (this.chatMsg || '').trim()
       if (!msg) return
       if (this.chatCooldown > 0) {
-        alert('发言冷却中，还需 ' + this.chatCooldown + ' 秒')
+        this.notify('发言冷却中，还需 ' + this.chatCooldown + ' 秒')
         return
       }
       api.post('/games/ezfy/chat', { content: msg, channel: this.chatChannel }).then(r => {
@@ -3616,7 +3702,7 @@ export default {
           // 复刻原版聊天: 每次发言 30 秒冷却
           this.startChatCooldown(30)
           this.loadChats()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     startChatCooldown (sec) {
@@ -3659,24 +3745,24 @@ export default {
         else this.alert(r)
       })
     },
-    doAddFriendById () {
+    async doAddFriendById () {
       if (!this.playerInfo) return
       const name = this.playerInfo.nickname
-      const remark = prompt('给 ' + name + ' 的验证信息(可留空)', '')
+      const remark = await this.ask('给 ' + name + ' 的验证信息（可留空）', { input: true, placeholder: '可留空' })
       if (remark === null) return
-      api.post('/friends', { target_id: this.playerInfo.user_id, remark: remark }).then(r => {
+      api.post('/games/ezfy/friends/apply', { target_id: this.playerInfo.user_id, remark: remark }).then(r => {
         if (r.code === 0) {
-          alert(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
+          this.notify(r.data && r.data.msg ? r.data.msg : '已发送好友申请')
           this.loadPlayerInfo(this.playerInfo.user_id)
         } else {
-          alert(r.msg || '申请失败')
+          this.notify(r.msg || '申请失败')
         }
       })
     },
     // 军团邮件群发(复刻 CorpsController.mail, 仅军团长)
     doCorpsMail () {
       const c = (this.corpsMailContent || '').trim()
-      if (!c) { alert('请填写邮件内容'); return }
+      if (!c) { this.notify('请填写邮件内容'); return }
       api.post('/games/ezfy/corps/mail', { content: c }).then(r => {
         this.alert(r)
         if (r.code === 0) this.corpsMailContent = ''
@@ -3693,16 +3779,16 @@ export default {
     doJoinCorps (cp) {
       api.post('/games/ezfy/corps/join', { corps_id: cp.id }).then(r => this.alert(r))
     },
-    doLeaveCorps () {
-      if (!window.confirm(this.isLeader ? '军团长退出将解散军团, 确定?' : '确定退出军团?')) return
+    async doLeaveCorps () {
+      if (!await this.ask(this.isLeader ? '军团长退出将解散军团, 确定?' : '确定退出军团?')) return
       api.post('/games/ezfy/corps/leave', {}).then(r => this.alert(r))
     },
-    openNoticeEdit () {
-      const n = window.prompt('输入军团公告', this.myCorps ? this.myCorps.notice : '')
+    async openNoticeEdit () {
+      const n = await this.ask('输入军团公告', { input: true, value: (this.myCorps ? this.myCorps.notice : '') })
       if (n !== null) api.post('/games/ezfy/corps/notice', { notice: n }).then(r => this.alert(r))
     },
     doKick () {
-      if (!this.kickUserId) return alert('请选择成员')
+      if (!this.kickUserId) return this.notify('请选择成员')
       api.post('/games/ezfy/corps/kick', { user_id: this.kickUserId }).then(r => this.alert(r))
     },
     doCorpsChat () {
@@ -3710,7 +3796,7 @@ export default {
         if (r.code === 0) {
           this.corpsMsg = ''
           this.loadCorps()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     // ---- 商城/背包/交易 ----
@@ -3720,15 +3806,15 @@ export default {
     },
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
-      if (n < 1 || n > 99) { alert('数量需在 1-99 之间'); return }
+      if (n < 1 || n > 99) { this.notify('数量需在 1-99 之间'); return }
       api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n }).then(r => {
         if (r.code === 0) {
-          alert(r.data && r.data.msg ? r.data.msg : '购买成功')
+          this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
           this.buyItem = null
           this.load()
           this.loadMall()
           this.loadBag()
-        } else alert(r.msg || '购买失败')
+        } else this.notify(r.msg || '购买失败')
       })
     },
     needOfficer (it) {
@@ -3743,20 +3829,20 @@ export default {
     doUse (it) {
       const body = { cfg_id: it.cfg_id, count: parseInt(this.useCount) || 1 }
       if (this.needOfficer(it)) {
-        if (!this.useOfficerId) { alert('请先选择要使用的军官'); return }
+        if (!this.useOfficerId) { this.notify('请先选择要使用的军官'); return }
         body.officer_id = this.useOfficerId
       }
       if (it.item_type === 11) {
-        if (!this.useSkillId) { alert('请选择要学习的技能'); return }
+        if (!this.useSkillId) { this.notify('请选择要学习的技能'); return }
         body.skill_id = this.useSkillId
       }
       api.post('/games/ezfy/bag/use', body).then(r => {
         if (r.code === 0) {
-          alert(r.data && r.data.msg ? r.data.msg : '使用成功')
+          this.notify(r.data && r.data.msg ? r.data.msg : '使用成功')
           this.useItem = null
           this.loadBag()
           this.load()
-        } else alert(r.msg || '使用失败')
+        } else this.notify(r.msg || '使用失败')
       })
     },
     doExchangeSell () {
@@ -3829,12 +3915,52 @@ export default {
       const p = n => String(n).padStart(2, '0')
       return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
+    // ---- 页面内提示 / 确认（替代 alert / confirm / prompt）----
+    notify (text, type) {
+      const t = String(text === undefined || text === null ? '' : text)
+      if (!t) return
+      this._msgSeq = (this._msgSeq || 0) + 1
+      const id = this._msgSeq
+      this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
+      if (this.msgs.length > 6) this.msgs.shift()
+      // 成功类 6 秒、失败类 12 秒后自动收起（也可点 [关闭]）
+      setTimeout(() => this.closeMsg(id), /失败|不足|错误|不能|无法|需要|没有/.test(t) ? 12000 : 6000)
+    },
+    guessMsgType (t) {
+      if (/失败|不足|错误|不能|无法|没有|请先|需要/.test(t)) return 'error'
+      if (/成功|已|完成/.test(t)) return 'ok'
+      return 'info'
+    },
+    closeMsg (id) {
+      this.msgs = this.msgs.filter(m => m.id !== id)
+    },
+    // 内联确认：返回 true/false；带输入框时返回输入的字符串或 null（取消）
+    ask (text, opts) {
+      opts = opts || {}
+      return new Promise(resolve => {
+        this._askResolve = resolve
+        this.askBox = {
+          show: true, text: String(text || ''), input: !!opts.input,
+          placeholder: opts.placeholder || '', value: opts.value || ''
+        }
+      })
+    },
+    askConfirm (ok) {
+      const box = this.askBox
+      const r = this._askResolve
+      this._askResolve = null
+      this.askBox = { show: false, text: '', input: false, placeholder: '', value: '' }
+      if (!r) return
+      if (!ok) { r(box.input ? null : false); return }
+      r(box.input ? box.value : true)
+    },
+    // 统一的接口结果提示（原来弹 alert，现在落到页面消息区）
     alert (r, fallback) {
-      if (r.code === 0) {
-        alert(r.data && r.data.msg ? r.data.msg : (fallback || '操作成功'))
+      if (r && r.code === 0) {
+        this.notify((r.data && r.data.msg) ? r.data.msg : (fallback || '操作成功'), 'ok')
         this.load()
       } else {
-        alert(r.msg || '操作失败')
+        this.notify((r && r.msg) ? r.msg : '操作失败', 'error')
       }
     },
     // ---- 军官/学院 ----
@@ -3896,16 +4022,16 @@ export default {
       })
     },
     // 军校直接使用招生简章刷新（不占每日次数；不用跳背包）
-    doUseRecruitTicket () {
-      if (!this.recruitData.academy_level) { alert('需要先建造军校'); return }
-      if (this.bagCount(13) <= 0) { alert('没有「招生简章」，可到商城购买'); return }
-      if (!confirm('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每日次数）')) return
+    async doUseRecruitTicket () {
+      if (!this.recruitData.academy_level) { this.notify('需要先建造军校'); return }
+      if (this.bagCount(13) <= 0) { this.notify('没有「招生简章」，可到商城购买'); return }
+      if (!await this.ask('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每日次数）')) return
       api.post('/games/ezfy/acade/recruit/ticket', {}).then(r => {
         if (r.code === 0) {
-          alert(r.data.msg)
+          this.notify(r.data.msg)
           this.loadAcade()
           this.loadBag()
-        } else alert(r.msg)
+        } else this.notify(r.msg)
       })
     },
     // 背包里某道具的数量
@@ -3915,14 +4041,14 @@ export default {
     },
     doRefreshRecruit () {
       api.post('/games/ezfy/acade/recruit/refresh', {}).then(r => {
-        if (r.code !== 0) alert(r.msg || '刷新失败')
+        if (r.code !== 0) this.notify(r.msg || '刷新失败')
         this.loadRecruit()
       })
     },
-    doRecruit (g) {
-      if (!confirm('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' ' + this.resNames.gold)) return
+    async doRecruit (g) {
+      if (!await this.ask('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' ' + this.resNames.gold)) return
       api.post('/games/ezfy/acade/recruit/hire', { key: g.key }).then(r => {
-        if (r.code !== 0) alert(r.msg || '雇佣失败')
+        if (r.code !== 0) this.notify(r.msg || '雇佣失败')
         this.loadRecruit()
         this.loadAcade()
       })
@@ -3930,14 +4056,14 @@ export default {
     doGrant () {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/grant', {}).then(r => {
-        if (r.code !== 0) alert(r.msg || '赏赐失败')
+        if (r.code !== 0) this.notify(r.msg || '赏赐失败')
         this.loadOfficerDetail(id)
       })
     },
     doLearn (s) {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/skill', { op: 'learn', skill_id: s.id }).then(r => {
-        if (r.code !== 0) alert(r.msg || '学习失败')
+        if (r.code !== 0) this.notify(r.msg || '学习失败')
         this.loadOfficerDetail(id)
       })
     },
@@ -3945,7 +4071,7 @@ export default {
       const id = this.officerDetail.officer.id
       const sid = this.skillIdByName(name)
       api.post('/games/ezfy/officers/' + id + '/skill', { op: 'forget', skill_id: sid }).then(r => {
-        if (r.code !== 0) alert(r.msg || '遗忘失败')
+        if (r.code !== 0) this.notify(r.msg || '遗忘失败')
         this.loadOfficerDetail(id)
       })
     },
@@ -3958,39 +4084,39 @@ export default {
     doEquip (e) {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: e.id, op: 'on' }).then(r => {
-        if (r.code !== 0) alert(r.msg || '穿戴失败')
+        if (r.code !== 0) this.notify(r.msg || '穿戴失败')
         this.loadOfficerDetail(id)
       })
     },
     doUnequip (equipId) {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: equipId, op: 'off' }).then(r => {
-        if (r.code !== 0) alert(r.msg || '卸下失败')
+        if (r.code !== 0) this.notify(r.msg || '卸下失败')
         this.loadOfficerDetail(id)
       })
     },
     doPosition (o, pos) {
       api.post('/games/ezfy/officers/' + o.id + '/position', { position: pos }).then(r => {
-        if (r.code !== 0) alert(r.msg || '任命失败')
+        if (r.code !== 0) this.notify(r.msg || '任命失败')
         api.get('/games/ezfy/officers').then(rr => {
           if (rr.code === 0) this.officerData = rr.data
         })
       })
     },
-    doCaptive (o, op) {
-      if (op === 'free' && !confirm('确定释放俘虏 ' + o.name + ' 吗?')) return
+    async doCaptive (o, op) {
+      if (op === 'free' && !await this.ask('确定释放俘虏 ' + o.name + ' 吗?')) return
       api.post('/games/ezfy/officers/' + o.id + '/captive', { op: op }).then(r => {
-        if (r.code !== 0) alert(r.msg || '操作失败')
+        if (r.code !== 0) this.notify(r.msg || '操作失败')
         api.get('/games/ezfy/officers').then(rr => {
           if (rr.code === 0) this.officerData = rr.data
         })
       })
     },
-    doExile () {
-      if (!confirm('确定流放该武将吗? 流放后无法找回!')) return
+    async doExile () {
+      if (!await this.ask('确定流放该武将吗? 流放后无法找回!')) return
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/exile', {}).then(r => {
-        if (r.code !== 0) alert(r.msg || '流放失败')
+        if (r.code !== 0) this.notify(r.msg || '流放失败')
         this.go('acade')
       })
     }
@@ -4050,16 +4176,43 @@ body.ezfy-immersive { margin: 0; }
   padding: 2px 4px;
   font-size: 15px;
 }
+/* 司令部·兵种战斗配置：一兵种一块，窄屏不遮盖 */
+.ezfy-page .ezfy-tgt-block {
+  padding: 4px 2px; margin: 4px 0; border-bottom: 1px dashed #e2e2e2;
+}
+.ezfy-page .ezfy-tgt-name { font-weight: bold; color: #2f4156; margin-bottom: 2px; }
+.ezfy-page .ezfy-tgt-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
+.ezfy-page .ezfy-tgt-lab { color: #666; min-width: 56px; display: inline-block; }
+/* 页面内消息区（替代 alert 弹窗） */
+.ezfy-page .ezfy-msgs { margin: 4px 0 2px; }
+.ezfy-page .ezfy-msg {
+  padding: 4px 6px; margin: 3px 0; border-radius: 3px;
+  font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
+}
+.ezfy-page .ezfy-msg-ok { border-left-color: #27763c; background: #eef7f0; color: #1d5c2e; }
+.ezfy-page .ezfy-msg-error { border-left-color: #c0392b; background: #fdeeec; color: #a02a1e; }
+.ezfy-page .ezfy-msg-info { border-left-color: #2f6f9f; background: #eef4fa; color: #235b85; }
+.ezfy-page .ezfy-msg-close { margin-left: 6px; color: #888; }
+/* 页面内确认条（替代 confirm / prompt 弹窗） */
+.ezfy-page .ezfy-ask {
+  margin: 6px 0; padding: 8px; border: 1px solid #d8c890;
+  background: #fffbe8; border-radius: 4px;
+}
+.ezfy-page .ezfy-ask-text { font-size: 14px; color: #7a5c10; margin-bottom: 6px; }
+.ezfy-page .ezfy-ask-row { margin-top: 4px; }
+.ezfy-page .ezfy-ask-ok { font-weight: bold; color: #27763c; margin-right: 12px; }
+.ezfy-page .ezfy-ask-cancel { color: #999; }
 /* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
 .ezfy-page .ezfy-bottom-nav {
-  padding: 2px 0;
+  padding: 1px 0;
   font-size: 15px;
-  line-height: 1.9;
+  line-height: 1.75;
 }
+/* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px，别拉太开 */
 .ezfy-page .ezfy-bottom-nav a {
-  display: inline-block;
-  padding: 1px 6px;
-  margin-right: 4px;
+  display: inline;
+  padding: 0 1px;
+  margin: 0 1px;
   color: #2f4156;
 }
 .ezfy-page .ezfy-bottom-nav a.on {

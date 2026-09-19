@@ -102,6 +102,7 @@
             </el-select>
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
+            <el-button type="success" icon="el-icon-magic-stick" @click="openGen">一键生成军官</el-button>
             <el-button type="warning" icon="el-icon-present" @click="openGrant">发放名将</el-button>
             <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
@@ -378,6 +379,29 @@
       <div slot="footer">
         <el-button @click="editDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doEdit">保 存</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- ============ 一键生成军官 ============ -->
+    <el-dialog title="一键生成军官" :visible.sync="genDlg" width="640px" :close-on-click-modal="false">
+      <el-form label-width="120px" size="small">
+        <el-form-item label="归属玩家" required>
+          <el-input-number v-model.number="genForm.user_id" :min="1" controls-position="right" style="width:100%" />
+          <span class="td-sub">军官会挂在该玩家的主城下</span>
+        </el-form-item>
+        <el-form-item label="生成数量">
+          <el-input-number v-model.number="genForm.count" :min="1" :max="20" controls-position="right" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="等级上限">
+          <el-input-number v-model.number="genForm.max_level" :min="1" :max="200" controls-position="right" style="width:100%" />
+        </el-form-item>
+      </el-form>
+      <em>
+        随机生成名字 / 等级 / 星级；<b>属性上限取自同星级名将的最大值</b>，保证不会超过名将。
+      </em>
+      <div slot="footer">
+        <el-button @click="genDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="doGen">生 成</el-button>
       </div>
     </el-dialog>
 
@@ -679,7 +703,8 @@ export default {
       egDlg: false, egForm: { user_id: 1, cfg_id: 0, count: 1 },
       oeDlg: false, oef: {}, ownerOfficers: [],
       // 下拉数据
-      pickers: { generals: [], skills: [], officers: [] }
+      pickers: { generals: [], skills: [], officers: [] },
+      genDlg: false, genForm: { user_id: 10007, count: 3, max_level: 60 }
     }
   },
   computed: {
@@ -839,6 +864,23 @@ export default {
           if (r.code === 0) { this.$message.success(r.data.msg || '已解雇'); this.load(); this.loadOverview() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // 一键生成军官（随机名字/等级/星级，属性不超过名将）
+    openGen () {
+      this.genForm = { user_id: this.genForm.user_id || 10007, count: 3, max_level: 60 }
+      this.genDlg = true
+    },
+    doGen () {
+      if (!this.genForm.user_id) { this.$message.warning('请填写归属玩家'); return }
+      this.saving = true
+      api.post('/admin/ezfy-officers/gen', this.genForm).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.genDlg = false
+          this.$message.success(r.data.msg || '已生成')
+          this.load()
+        } else this.$message.error(r.msg)
+      })
     },
     openGrant (row) {
       const gid = row && row.id ? row.id : (this.generals.length ? this.generals[0].id : 0)

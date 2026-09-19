@@ -73,6 +73,7 @@ import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
 import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
 import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
 import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
+import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
 import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
 import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
 import AdminEzfyMap from './components/admin/AdminEzfyMap.vue'
@@ -253,6 +254,7 @@ export const menu = [
           { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
           { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
           { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
+          { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
           { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },
           { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: AdminEzfyTechs, perm: 'module:ezfyTechs' },
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },

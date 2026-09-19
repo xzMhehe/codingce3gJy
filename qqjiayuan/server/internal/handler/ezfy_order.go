@@ -389,6 +389,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		if cfg == nil {
 			continue
 		}
+		// ★ 防御兵种(type=4 城防) 固定阵地，不能出征 —— 预览时直接忽略
+		if cfg.Type == 4 {
+			continue
+		}
 		valid = append(valid, t)
 		carry += int64(cfg.Carry) * t.Count
 		if slowest == 0 || cfg.Speed < slowest {
@@ -470,6 +474,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	validTroops := []ezfyUnitGroup{}
 	for _, t := range troops {
 		if t.Count > 0 {
+			// ★ 防御兵种(type=4 城防：碉堡/榴弹炮/反坦克炮/防空炮…) 固定阵地，不能出征
+			if c := ezfyCfg.troop(t.TroopId); c != nil && c.Type == 4 {
+				return "防御兵种「" + c.Name + "」固定阵地，不能出征"
+			}
 			validTroops = append(validTroops, t)
 		}
 	}

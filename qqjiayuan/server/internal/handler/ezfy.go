@@ -1802,6 +1802,17 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		resp.ParamError(c, "该位置已有城市, 无法建造")
 		return
 	}
+	// ★ 军衔限制分城数量（可建城数见 ezfy_cfg_rank.city_max）
+	prof := h.ensureProfile(uid)
+	var owned int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
+	maxCity := ezfyRankCityMax(prof.Prestige)
+	if int(owned) >= maxCity {
+		resp.ParamError(c, fmt.Sprintf("当前军衔「%s」最多只能拥有 %d 座城市（已有 %d 座），提升声望可解锁更多",
+			ezfyRankName(prof.Prestige), maxCity, owned))
+		return
+	}
+
 	// 扣费走主城（不受当前切换影响）
 	main := h.mainCity(uid)
 	if main.Gold < ezfyNewCityGoldCost {

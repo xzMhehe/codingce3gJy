@@ -110,6 +110,46 @@ type EzfyCfgWildland struct {
 
 func (EzfyCfgWildland) TableName() string { return "ezfy_cfg_wildland" }
 
+// EzfyCfgRank 军衔配置（复刻原版 rankIndex.html：军衔等级/职位要求/可建城数）
+//
+// 原来硬编码在 handler 里，现在落表，管理端可维护。
+// ★ 可建城数就是「玩家能拥有的城市数量上限」。
+type EzfyCfgRank struct {
+	ID           int    `gorm:"primaryKey" json:"id"` // 1..20，同时也是军衔等级
+	Name         string `gorm:"type:varchar(20)" json:"name"`
+	Post         string `gorm:"type:varchar(20)" json:"post"` // 职位
+	NeedPrestige int    `json:"need_prestige"`                // 需要的声望
+	CityMax      int    `json:"city_max"`                     // 可建城数
+	Des          string `gorm:"type:varchar(200)" json:"des"`
+}
+
+func (EzfyCfgRank) TableName() string { return "ezfy_cfg_rank" }
+
+// EzfyFriend 游戏内好友（★ 与家园好友完全分开，不共用 Friendship 表）
+//
+// 双向各存一行：A 加 B 成功时写 (A,B) 与 (B,A)，删除时两行一起删。
+type EzfyFriend struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserId    uint      `gorm:"uniqueIndex:uk_ezfy_friend" json:"user_id"`
+	FriendId  uint      `gorm:"uniqueIndex:uk_ezfy_friend" json:"friend_id"`
+	Remark    string    `gorm:"type:varchar(50)" json:"remark"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (EzfyFriend) TableName() string { return "ezfy_friend" }
+
+// EzfyFriendApply 游戏内好友申请
+type EzfyFriendApply struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserId    uint      `gorm:"index:idx_ezfy_apply" json:"user_id"`   // 申请人
+	TargetId  uint      `gorm:"index:idx_ezfy_apply" json:"target_id"` // 被申请人
+	Remark    string    `gorm:"type:varchar(100)" json:"remark"`
+	Status    int       `gorm:"default:0" json:"status"` // 0待处理 1已同意 2已拒绝
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (EzfyFriendApply) TableName() string { return "ezfy_friend_apply" }
+
 // EzfyCfgResource 资源显示名配置（管理端可改名，全站展示跟随）
 //
 // ★ 这是「预留」能力：后期把「稀矿」改成别的叫法，只要改这张表，
