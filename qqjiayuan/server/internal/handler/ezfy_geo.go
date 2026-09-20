@@ -453,6 +453,17 @@ func ezfyLimit() model.EzfyCfgLimit {
 	return l
 }
 
+// ezfyGatherMax 单次出征最多使用几个集结令（读 ezfy_cfg_limit.gather_max_per_order）
+//
+// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」，默认 50。
+// 0 或未配置时回落默认值（集结令上限为 0 无意义 —— 等于禁用了这个道具）。
+func ezfyGatherMax() int {
+	if n := ezfyCfg.limit.GatherMaxPerOrder; n > 0 {
+		return n
+	}
+	return ezfyGatherMaxDefault
+}
+
 // ezfyWords 取二战聊天敏感词
 func ezfyWords() []model.EzfyWordFilter {
 	return ezfyCfg.words

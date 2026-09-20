@@ -230,6 +230,8 @@ type EzfyCfgLimit struct {
 	FactoryMax  int `gorm:"default:0" json:"factory_max"`   // 军工厂数量上限（0 = 不限）
 	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
 	NoticeHomeCount int `gorm:"default:1" json:"notice_home_count"`
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」→ 单次出征最多用几个集结令（默认 50）
+	GatherMaxPerOrder int `gorm:"default:50" json:"gather_max_per_order"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

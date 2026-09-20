@@ -21,9 +21,13 @@ import (
 
 // AdminEzfyBuildLimitGet GET /admin/ezfy-build-limit
 func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0}
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0, GatherMaxPerOrder: ezfyGatherMaxDefault}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
+	}
+	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 50（0 无意义 = 禁用道具）
+	if lim.GatherMaxPerOrder <= 0 {
+		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
 	resp.OK(c, lim)
 }
@@ -34,17 +38,18 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（默认，符合用户规则）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax     *int `json:"military_max"`
-		ResourceMax     *int `json:"resource_max"`
-		HouseMax        *int `json:"house_max"`
-		FactoryMax      *int `json:"factory_max"`
-		NoticeHomeCount *int `json:"notice_home_count"`
+		MilitaryMax       *int `json:"military_max"`
+		ResourceMax       *int `json:"resource_max"`
+		HouseMax          *int `json:"house_max"`
+		FactoryMax        *int `json:"factory_max"`
+		NoticeHomeCount   *int `json:"notice_home_count"`
+		GatherMaxPerOrder *int `json:"gather_max_per_order"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0}
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0, GatherMaxPerOrder: ezfyGatherMaxDefault}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -81,6 +86,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	} else if in.NoticeHomeCount != nil {
 		lim.NoticeHomeCount = v
 	}
+	// ★ 集结令单次使用上限：1~9999（默认 50）。0 不允许 —— 等于把道具禁用，
+	//   真要禁用请把道具下架，而不是把上限设 0 让玩家点了报错。
+	if in.GatherMaxPerOrder != nil {
+		if *in.GatherMaxPerOrder < 1 || *in.GatherMaxPerOrder > 9999 {
+			resp.ParamError(c, "集结令单次上限需要在 1~9999 之间")
+			return
+		}
+		lim.GatherMaxPerOrder = *in.GatherMaxPerOrder
+	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 33
 	}
@@ -93,6 +107,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 首页公告条数允许 0（= 首页不展示公告），但不允许负数；未配过时默认 1
 	if lim.NoticeHomeCount < 0 {
 		lim.NoticeHomeCount = 1
+	}
+	// ★ 集结令上限兜底：老数据可能是 0（该列刚加），保存时归一化到默认 50
+	if lim.GatherMaxPerOrder <= 0 {
+		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {

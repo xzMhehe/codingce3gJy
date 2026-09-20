@@ -434,8 +434,9 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	if gather < 0 {
 		gather = 0
 	}
-	if gather > ezfyGatherMaxPerOrder {
-		gather = ezfyGatherMaxPerOrder
+	gatherMax := ezfyGatherMax()
+	if gather > gatherMax {
+		gather = gatherMax
 	}
 	totalPreview := int64(0)
 	for _, t := range valid {
@@ -459,7 +460,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		"hq_level":       h.buildingLevel(city.ID, 13),
 		"gather":         gather,
 		"gather_per":     ezfyGatherBonusPer(),
-		"gather_max":     ezfyGatherMaxPerOrder,
+		"gather_max":     gatherMax,
 		"gather_have":    h.itemCount(uid, ezfyGatherItemID),
 		"troop_over_cap": totalPreview > h.ezfyOrderTroopCap(city.ID, gather),
 	})
@@ -499,8 +500,12 @@ const (
 	ezfyGatherItemID = 19
 	// ezfyGatherDefaultPer 每个集结令提升的出征上限（配置表 param1 优先）
 	ezfyGatherDefaultPer = 100000
-	// ezfyGatherMaxPerOrder 单次出征最多使用多少个集结令（用户规则：10 个）
-	ezfyGatherMaxPerOrder = 10
+	// ezfyGatherMaxDefault 单次出征最多使用多少个集结令的**默认值**。
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」→ 默认 50。
+	//   真正的上限由 ezfyGatherMax() 从 ezfy_cfg_limit.gather_max_per_order 读取，
+	//   管理端「建筑上限配置」页可改，改完 cfgsReload() 即时生效。
+	//   这个常量只在配置行缺失/为 0 时兜底。
+	ezfyGatherMaxDefault = 50
 )
 
 // ezfyGatherBonusPer 每个集结令提升的出征上限（读配置 param1，缺省 10 万）
@@ -607,12 +612,12 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if slowest == int(^uint(0)>>1) {
 		slowest = 300
 	}
-	// ★ 集结令：先校验参数（单次最多 10 个、背包要够），再校验兵力与上限
+	// ★ 集结令：先校验参数（不超过管理端配置的单次上限、背包要够），再校验兵力与上限
 	if gather < 0 {
 		gather = 0
 	}
-	if gather > ezfyGatherMaxPerOrder {
-		return fmt.Sprintf("集结令单次最多使用%d个", ezfyGatherMaxPerOrder)
+	if gm := ezfyGatherMax(); gather > gm {
+		return fmt.Sprintf("集结令单次最多使用%d个", gm)
 	}
 	if gather > 0 {
 		if have := h.itemCount(uid, ezfyGatherItemID); have < gather {
@@ -728,8 +733,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		carryCap := h.ezfyOrderTroopCap(city.ID, gather)
 		if total > carryCap {
 			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
-			if gather < ezfyGatherMaxPerOrder {
-				msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), ezfyGatherMaxPerOrder)
+			if gm := ezfyGatherMax(); gather < gm {
+				msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), gm)
 			}
 			return msg
 		}

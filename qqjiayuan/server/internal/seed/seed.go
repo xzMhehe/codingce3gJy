@@ -173,6 +173,16 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
 	}
 
+	// 二战风云：出征集结令单次上限（默认 50）—— 存量表补列 + 老行回填
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」。
+	//   老行该列是 NULL/0 时统一回填 50（0 无意义 = 等于禁用集结令道具）。
+	if db.Migrator().HasTable("ezfy_cfg_limit") {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_max_per_order") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_max_per_order int DEFAULT 50")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_max_per_order = 50 WHERE gather_max_per_order IS NULL OR gather_max_per_order <= 0")
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")

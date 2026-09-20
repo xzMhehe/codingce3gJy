@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <span>建筑数量上限配置（军事区 / 资源区分开）</span>
+        <span>建筑数量上限 / 全局参数配置</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <div class="toolbar">
@@ -29,6 +29,10 @@
           <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
           <span class="td-sub"><b>默认 1 条</b>；填 0 表示首页不展示公告（公告页仍可看全部）</span>
         </el-form-item>
+        <el-form-item label="出征集结令单次上限">
+          <el-input-number v-model.number="form.gather_max_per_order" :min="1" :max="9999" controls-position="right" style="width:180px" />
+          <span class="td-sub"><b>默认 50 个</b>；玩家出征时单次最多使用的集结令个数（每个 +10 万出征上限），范围 1~9999</span>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
         </el-form-item>
@@ -54,7 +58,7 @@ export default {
   data () {
     return {
       saving: false,
-      form: { military_max: 33, resource_max: 33, house_max: 10, factory_max: 0, notice_home_count: 1 },
+      form: { military_max: 33, resource_max: 33, house_max: 10, factory_max: 0, notice_home_count: 1, gather_max_per_order: 50 },
       levelRules: [
         { name: '市政厅', max: '10 级', note: '市政厅最高 10 级' },
         { name: '民居', max: '12 级', note: '最多比市政厅高 1 级；市政厅满级(10)时民居可升到 12 级' },
@@ -74,7 +78,9 @@ export default {
             house_max: r.data.house_max,
             factory_max: r.data.factory_max,
             notice_home_count: r.data.notice_home_count === undefined || r.data.notice_home_count === null
-              ? 1 : r.data.notice_home_count
+              ? 1 : r.data.notice_home_count,
+            gather_max_per_order: r.data.gather_max_per_order === undefined || r.data.gather_max_per_order === null || r.data.gather_max_per_order <= 0
+              ? 50 : r.data.gather_max_per_order
           }
         } else this.$message.error(r.msg)
       })
