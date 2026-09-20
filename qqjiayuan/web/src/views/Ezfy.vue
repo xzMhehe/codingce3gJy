@@ -513,7 +513,7 @@
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
-          <div class="gray" style="font-size:16px">
+          <div class="gray" style="font-size:14px">
             <b>平原</b> → 内陆城市; <b>沿海平原</b> → 沿海城市(可建航海协会、训练海军)。<br/>
             其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
@@ -2029,11 +2029,11 @@
             <button @click="doPlayerRename">确定</button>
             <a href="javascript:;" @click="renameEditing = false">[取消]</a>
           </template>
-          <div class="gray" style="font-size:16px">{{ renameHint }}</div>
+          <div class="gray" style="font-size:13px">{{ renameHint }}</div>
           阵营：{{ selfInfo.camp_name || (profile.camp === 2 ? '轴心国' : '同盟国') }}
           <a href="javascript:;" @click="doChangeCamp(1)">[转同盟国]</a>
           <a href="javascript:;" @click="doChangeCamp(2)">[转轴心国]</a>
-          <div class="gray" style="font-size:16px">{{ campHint }}</div>
+          <div class="gray" style="font-size:13px">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
           军衔：{{ rankName }}({{ rankPost }})<br/>
           城市数：{{ cities.length }}<br/>
@@ -4779,11 +4779,12 @@ body.ezfy-immersive { margin: 0; }
      之前本页从未声明 font-family → 一路继承到浏览器默认(serif), 与全站其它页字体分裂。
      追加的中文回退只在用户机器没装微软雅黑时才会用到(Windows 默认都有)。 */
   font-family: '微软雅黑', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
-  /* ★ 18px 基准: 用户最终决定「在原版 19px 基础上再减少 1 号」。
-     演变: 原版 ezfy.css `*{font-size:19px}` → 照搬 19px 用户嫌大 → 定为 18px。
-     配套阶梯: 标题栏/小标题 19 / 正文·表格·导航·表单·地图内链 18 /
-     按钮 17 / 提示条·确认条·战报·分页 16 / 页脚 15 / 地图格 11(固定格尺寸,勿动)。 */
-  font-size: 18px;
+  /* ★ 16px 基准: 用户最终决定「原版 19px 太大，正文用 16px」。★ 不要再统一放大到 18px！
+     演变: 原版 ezfy.css `*{font-size:19px}` → 照搬 19px 用户嫌大 → 试过统一 18px
+           → 用户反馈「字体太大 看着笨笨的」→ 恢复「有层次」的小字阶梯(当前值)。
+     配套阶梯: 标题栏 18 / 小标题·导航 17 / 正文·表格·表单 16 / 次要信息·页脚 13~15 /
+     提示条·确认条·战报·按钮 14 / 地图格 11(固定格尺寸,勿动)。 */
+  font-size: 16px;
   line-height: 1.5;
   /* 根容器左右不再用负 margin: 会溢出 #app 产生横向滚动条.
      铺满由内部 .title-bar 的 margin:0 -8px 抵消 padding 实现 */
@@ -4798,7 +4799,7 @@ body.ezfy-immersive { margin: 0; }
   font-family: inherit;
 }
 .ezfy-page .home-wrap {
-  font-size: 18px;
+  font-size: 16px;
 }
 .ezfy-page a {
   text-decoration: none;
@@ -4870,7 +4871,7 @@ body.ezfy-immersive { margin: 0; }
   min-height: 44px;
   max-height: 160px;
   padding: 4px 6px;
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.5;
   font-family: inherit;
   border: 1px solid #c8c8c8;
@@ -4894,7 +4895,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-pager span { margin-right: 8px; }
 .ezfy-page .ezfy-msg {
   padding: 4px 6px; margin: 3px 0; border-radius: 3px;
-  font-size: 18px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
+  font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
 }
 .ezfy-page .ezfy-msg-ok { border-left-color: #27763c; background: #eef7f0; color: #1d5c2e; }
 .ezfy-page .ezfy-msg-error { border-left-color: #c0392b; background: #fdeeec; color: #a02a1e; }
@@ -4905,14 +4906,14 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0; padding: 8px; border: 1px solid #d8c890;
   background: #fffbe8; border-radius: 4px;
 }
-.ezfy-page .ezfy-ask-text { font-size: 18px; color: #7a5c10; margin-bottom: 6px; }
+.ezfy-page .ezfy-ask-text { font-size: 14px; color: #7a5c10; margin-bottom: 6px; }
 .ezfy-page .ezfy-ask-row { margin-top: 4px; }
 .ezfy-page .ezfy-ask-ok { font-weight: bold; color: #27763c; margin-right: 12px; }
 .ezfy-page .ezfy-ask-cancel { color: #999; }
 /* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
 .ezfy-page .ezfy-bottom-nav {
   padding: 1px 0;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.75;
 }
 /* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
@@ -4934,7 +4935,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
-  font-size: 18px;   /* 与正文同号 */
+  font-size: 16px;   /* 与正文同号 */
   color: #666;
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
@@ -4947,7 +4948,7 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .panel-title {
   /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18。原先 17 与正文同级, 会看不出层级 */
-  font-size: 18px;
+  font-size: 17px;
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
@@ -4960,7 +4961,7 @@ body.ezfy-immersive { margin: 0; }
    .ezfy-msgs / .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
-.ezfy-page .city-name { font-size: 18px; font-weight: bold; color: #2f4156; }
+.ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 宽度按内容自适应(不 width:100%)、无边框。
    原版 templates 里绝大多数表格都没有任何 CSS, 就是浏览器默认样式;
    之前统一 width:100% + 虚线下边框, 会把表格拉满整行, 用户会觉得「太长 / 还是表格」。 */
@@ -4969,7 +4970,7 @@ body.ezfy-immersive { margin: 0; }
   max-width: 100%;
   border-collapse: collapse;
   /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小 */
-  font-size: 18px;
+  font-size: 15px;
 }
 .ezfy-page table th,
 .ezfy-page table td {
@@ -4988,7 +4989,7 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
-.ezfy-page .footer { text-align: center; font-size: 18px; color: #999; padding: 4px 0 10px; }
+.ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }
@@ -5002,8 +5003,8 @@ body.ezfy-immersive { margin: 0; }
   border: 1px solid #999;
   border-radius: 0;
   padding: 3px 4px;
-  /* ★ 表单字号跟正文(17px): 之前 15px 会让同一行「文字+输入框」字号不一致 */
-  font-size: 18px;
+  /* ★ 表单 15px：比正文(16px)小一号，避免输入框把行撑高 */
+  font-size: 15px;
   background: #fff;
   color: #333;
 }
@@ -5012,8 +5013,8 @@ body.ezfy-immersive { margin: 0; }
   border-radius: 0;
   background: #e8e5dd;
   color: #333;
-  /* ★ 按钮统一 16px: 比正文小一号(视觉上按钮不需要跟正文等大), 但不至于像之前 14px 那样突兀 */
-  font-size: 18px;
+  /* ★ 按钮 14px：比正文小一号，视觉上不抢正文 */
+  font-size: 14px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -5022,7 +5023,7 @@ body.ezfy-immersive { margin: 0; }
   white-space: pre-wrap;
   word-wrap: break-word;
   font-family: inherit;
-  font-size: 18px;
+  font-size: 14px;
   background: #fff;
   border: 1px solid #ddd;
   padding: 6px;
@@ -5053,7 +5054,7 @@ body.ezfy-immersive { margin: 0; }
   display: inline;
   padding: 0;
   margin: 0;
-  font-size: 18px;           /* 和正文(.old-line)同号 */
+  font-size: 16px;           /* 和正文(.old-line)同号 */
   line-height: 1.5;
   color: #333;
   background: none;
@@ -5089,23 +5090,18 @@ body.ezfy-immersive { margin: 0; }
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
    实测基准: iPhone SE 320、常见安卓 360/390。
-   ★ 字号阶梯与桌面端保持同一比例(桌面 正文18/表格18/标题19),
-     窄屏整体缩一档, 但各元素之间仍然成阶梯, 不再出现「表格 13 而正文 14」这类错位。 */
+   ★ 窄屏整体缩一档(表格 13 / 正文 14 / 标题 15)，与桌面端保持同一层次关系。 */
 @media (max-width: 420px) {
-  .ezfy-page { font-size: 16px; line-height: 1.6; }
-  .ezfy-page table { font-size: 16px; }
+  .ezfy-page table { font-size: 13px; }
   .ezfy-page table th,
   .ezfy-page table td { padding: 4px 4px; }
-  .ezfy-page .old-line { font-size: 16px; line-height: 1.7; }
-  .ezfy-page .panel-title { font-size: 17px; }
-  .ezfy-page .acade-tab { font-size: 16px; }
-  .ezfy-page .ezfy-subnav a { font-size: 16px; }
-  .ezfy-page .top-nav a { font-size: 16px; }
-  .ezfy-page .ezfy-bottom-nav { font-size: 16px; line-height: 2; }
-  .ezfy-page input, .ezfy-page select, .ezfy-page textarea { font-size: 16px; }
-  .ezfy-page button { font-size: 15px; }
+  .ezfy-page .old-line { font-size: 14px; line-height: 1.7; }
+  .ezfy-page .panel-title { font-size: 15px; }
+  .ezfy-page .acade-tab { font-size: 14px; }
+  .ezfy-page .ezfy-subnav a { font-size: 15px; }
+  .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
   /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
-  .ezfy-page .ezfy-map-table a { font-size: 16px; }
+  .ezfy-page .ezfy-map-table a { font-size: 14px; }
   .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
 }
@@ -5115,7 +5111,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-pager {
   margin: 8px 0 4px;
   /* ★ 分页条用「小字」档: 它是辅助信息, 不该和正文抢视线 */
-  font-size: 16px;
+  font-size: 15px;
 }
 .ezfy-page .ezfy-pager a {
   margin: 0 4px;
@@ -5129,6 +5125,6 @@ body.ezfy-immersive { margin: 0; }
   margin: 0 6px;
 }
 @media (max-width: 420px) {
-  .ezfy-page .ezfy-pager { font-size: 18px; }
+  .ezfy-page .ezfy-pager { font-size: 13px; }
 }
 </style>
