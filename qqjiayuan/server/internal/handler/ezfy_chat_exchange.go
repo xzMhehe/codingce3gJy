@@ -650,8 +650,12 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
+		// ★ 必须带 terrain_name：前端 loadWilds() 会用这里的返回**整体覆盖** wildlands，
+		//   之前漏了这个字段，导致「附属野地」页面的【地形】列永远是空的。
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
-			"wild_type": w.WildType, "level": w.Level, "status": w.Status})
+			"wild_type": w.WildType, "level": w.Level, "status": w.Status,
+			"terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+			"continent": ezfyRegionName(w.X, w.Y)})
 	}
 	var occupies []model.EzfyOccupy
 	h.DB.Where("atk_city_id = ? AND status = 1", city.ID).Find(&occupies)
@@ -768,7 +772,22 @@ func ezfyOrderStatusName(s int) string {
 // 复刻 report/index.html 的「目标：盆地(5)(347,2)」—— 野地/海野用「地形名(等级)」,
 // 寇城/特殊目标用「类型(等级)」, 玩家城市用城市名。
 func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
-	switch o.TargetType {
+	tt := o.TargetType
+	if tt == 0 {
+		// ★ 兜底：老数据/异常请求可能没带 target_type（前端正常都会带），
+		//   这里按地图实际情况推断一下，避免军情列表里显示成「未知」。
+		var n int64
+		h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", o.TargetX, o.TargetY).Count(&n)
+		switch {
+		case n > 0:
+			tt = 3
+		case h.ezfyIsKouCity(o.TargetX, o.TargetY):
+			tt = 2
+		default:
+			tt = 1
+		}
+	}
+	switch tt {
 	case 1: // 野地(含海野): 地形名 + 等级
 		return ezfyTerrainNameEx(o.TargetX, o.TargetY) +
 			"(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"

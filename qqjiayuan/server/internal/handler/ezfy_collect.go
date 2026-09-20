@@ -63,7 +63,7 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			break
 		}
 		msg := h.createOrder(uid, city, 4, wl.X, wl.Y, 1, int64(wl.ID),
-			[]ezfyUnitGroup{{TroopId: troopId, Count: 1}}, nil, "", 0)
+			[]ezfyUnitGroup{{TroopId: troopId, Count: 1}}, nil, "", 0, 0)
 		if msg != "" {
 			fail = append(fail, msg)
 			continue

@@ -357,6 +357,37 @@ func (h *AdminHandler) AdminEzfyBuildingCreate(c *gin.Context) {
 		resp.ParamError(c, "该城池已有此建筑，请直接修改等级")
 		return
 	}
+	// ★ 用户规则：军事区 / 资源区各有数量上限（默认各 33，见 ezfy_cfg_limit）。
+	//   管理端「添加建筑」原来完全绕过这个校验，是玩家「军事区 36 个」超限的来源。
+	//   这里按 cfg.Type 分区计数后再拦一道，玩家端与管理端口径一致。
+	lim := ezfyLimit()
+	var mil, res int64
+	var exist []model.EzfyCityBuilding
+	h.DB.Where("city_id = ?", in.CityId).Find(&exist)
+	for _, b := range exist {
+		c := ezfyCfg.building(b.BuildingId)
+		if c == nil {
+			continue
+		}
+		switch c.Type {
+		case 1:
+			res++
+		case 2, 3, 4:
+			mil++
+		}
+	}
+	switch cfg.Type {
+	case 1:
+		if res >= int64(lim.ResourceMax) {
+			resp.ParamError(c, fmt.Sprintf("资源区建筑数量已达上限(%d/%d)，无法再添加", res, lim.ResourceMax))
+			return
+		}
+	case 2, 3, 4:
+		if mil >= int64(lim.MilitaryMax) {
+			resp.ParamError(c, fmt.Sprintf("军事区建筑数量已达上限(%d/%d)，无法再添加", mil, lim.MilitaryMax))
+			return
+		}
+	}
 	h.DB.Create(&model.EzfyCityBuilding{CityId: in.CityId, BuildingId: in.BuildingId,
 		Level: in.Level, Status: 0})
 	resp.OK(c, gin.H{"msg": "已添加建筑：" + cfg.Name + " Lv." + strconv.Itoa(in.Level)})

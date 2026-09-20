@@ -52,8 +52,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                           :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -63,13 +63,13 @@
         <el-tab-pane label="总建筑配置" name="cfg">
           <div class="toolbar">
             <el-input v-model="cfgWord" placeholder="建筑名 / ID" clearable style="width:200px"
-                      @keyup.enter.native="loadCfgs" />
-            <el-button type="primary" icon="el-icon-search" @click="loadCfgs">查询</el-button>
+                      @keyup.enter.native="cfgPage = 1; loadCfgs" />
+            <el-button type="primary" icon="el-icon-search" @click="cfgPage = 1; loadCfgs">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openCfgCreate">新增建筑配置</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadCfgs">刷新</el-button>
+            <el-button type="primary" plain icon="el-icon-refresh" @click="cfgPage = 1; loadCfgs">刷新</el-button>
           </div>
-          <el-table :data="cfgShown" v-loading="loadingCfg" stripe border max-height="620">
+          <el-table :data="cfgPaged" v-loading="loadingCfg" stripe border max-height="620">
             <el-table-column prop="id" label="ID" width="55" align="center" />
             <el-table-column prop="name" label="建筑名" width="130" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
@@ -106,6 +106,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ cfgShown.length }}</b> 条 · 每页 {{ cfgSize }} 条</div>
+            <el-pagination v-show="cfgShown.length > 0" small background layout="sizes, prev, pager, next, jumper"
+                           :total="cfgShown.length" :page-size="cfgSize"
+                           :current-page="cfgPage" :page-sizes="[5, 10, 20, 50, 100]"
+                           @current-change="p => { cfgPage = p }"
+                           @size-change="s => { cfgSize = s; cfgPage = 1 }" />
+          </div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -280,13 +288,13 @@ export default {
   data () {
     return {
       tab: 'list',
-      list: [], total: 0, page: 1, size: 10, loading: false, word: '', status: -1,
+      list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1,
       buildTypes: { 1: '资源', 2: '军事', 3: '城防', 4: '市政' },
       // 玩家建筑
       createDlg: false, createForm: { city_id: 1, building_id: 0, level: 1 },
       editDlg: false, editId: 0, form: {},
       // 总建筑配置
-      buildCfgs: [], cfgWord: '', loadingCfg: false,
+      buildCfgs: [], cfgWord: '', loadingCfg: false, cfgPage: 1, cfgSize: 5,
       cfgDlg: false, cfgForm: {},
       // 等级配置
       lvDlg: false, lvBuilding: {}, lvRows: [], loadingLv: false,
@@ -301,6 +309,11 @@ export default {
       return this.buildCfgs.filter(b =>
         String(b.id) === w || String(b.name || '').toLowerCase().indexOf(w) >= 0
       )
+    },
+    // 总建筑配置是后端一次性返回的全量列表，这里做前端切片分页
+    cfgPaged () {
+      const st = (this.cfgPage - 1) * this.cfgSize
+      return this.cfgShown.slice(st, st + this.cfgSize)
     }
   },
   mounted () { this.load(); this.loadCfgs() },
@@ -375,8 +388,12 @@ export default {
       this.loadingCfg = true
       api.get('/admin/ezfy-building-cfg', { params: { word: this.cfgWord } }).then(r => {
         this.loadingCfg = false
-        if (r.code === 0) this.buildCfgs = r.data.list
-        else this.$message.error(r.msg)
+        if (r.code === 0) {
+          this.buildCfgs = r.data.list
+          // 删除/筛选后当前页可能越界，回退到最后一页，避免表格空白
+          const maxPage = Math.max(1, Math.ceil(this.cfgShown.length / this.cfgSize))
+          if (this.cfgPage > maxPage) this.cfgPage = maxPage
+        } else this.$message.error(r.msg)
       })
     },
     openCfgCreate () {

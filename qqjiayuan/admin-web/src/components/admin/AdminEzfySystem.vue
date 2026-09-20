@@ -101,6 +101,14 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ noticeTotal }}</b> 条 · 每页 {{ noticeSize }} 条</div>
+        <el-pagination v-show="noticeTotal > 0" small background layout="sizes, prev, pager, next, jumper"
+                       :total="noticeTotal" :page-size="noticeSize"
+                       :current-page="noticePage" :page-sizes="[5, 10, 20, 50, 100]"
+                       @current-change="p => { noticePage = p; loadNotices() }"
+                       @size-change="s => { noticeSize = s; noticePage = 1; loadNotices() }" />
+      </div>
       <em>提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长）</em>
     </el-card>
     <!-- 编辑已发布的公告 -->
@@ -139,7 +147,7 @@ export default {
       loadingSrv: false, savingSrv: false, saving: false,
       noticeForm: { title: '', content: '', isTop: true },
       noticeEditDlg: false, noticeEdit: { id: 0, title: '', content: '', isTop: true },
-      notices: [], loadingNotices: false, sending: false,
+      notices: [], noticeTotal: 0, noticePage: 1, noticeSize: 5, loadingNotices: false, sending: false,
       campNames: { 1: '同盟国', 2: '轴心国' }
     }
   },
@@ -219,10 +227,15 @@ export default {
     },
     loadNotices () {
       this.loadingNotices = true
-      api.get('/admin/ezfy-notices', { params: { page: 1, size: 20 } }).then(r => {
+      api.get('/admin/ezfy-notices', { params: { page: this.noticePage, size: this.noticeSize } }).then(r => {
         this.loadingNotices = false
-        if (r.code === 0) this.notices = r.data.list
-        else this.$message.error(r.msg)
+        if (r.code === 0) {
+          this.notices = r.data.list
+          this.noticeTotal = r.data.total || 0
+          // 删到当前页为空时回退一页
+          const maxPage = Math.max(1, Math.ceil(this.noticeTotal / this.noticeSize))
+          if (this.noticePage > maxPage) { this.noticePage = maxPage; this.loadNotices() }
+        } else this.$message.error(r.msg)
       })
     },
     // 编辑已发布的公告
@@ -263,6 +276,7 @@ export default {
         if (r.code === 0) {
           this.$message.success(r.data.msg || '已发布')
           this.noticeForm = { title: '', content: '', isTop: true }
+          this.noticePage = 1
           this.loadNotices()
         } else this.$message.error(r.msg)
       })

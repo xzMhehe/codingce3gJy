@@ -292,17 +292,13 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		})
 	}
 	// 城防空间(围墙容量)与已占用(复刻 troopDefence.html 的「围墙：N级 城防空间：(used/cap)」)
+	// ★ 已占用含训练队列里还没出来的城防，与 trainTroop 的校验口径保持一致
 	wallLevel := h.buildingLevel(city.ID, 7)
 	defSpace := int64(0)
 	if wall := ezfyCfg.buildingLevel(7, wallLevel); wall != nil {
 		defSpace = wall.Capacity
 	}
-	var defUsed int64
-	for tid, cnt := range h.troopMap(city.ID) {
-		if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
-			defUsed += cnt
-		}
-	}
+	defUsed := h.defenceSpaceUsed(city.ID)
 	// 军工厂座数(复刻 createTroop.html 的「全部工厂 / 仅此工厂」)
 	factoryCount := 0
 	for _, b := range h.buildingList(city.ID) {
@@ -1201,6 +1197,17 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 // ============ 商城/背包 ============
 
 // ezfyItemCategory 道具的商城分类（管理端没填 category 时按类型自动归类）
+// ezfyIsDiamondItem 是否「钻石道具」。
+//
+// ★ 不能只看 price_diamond > 0：用户要求集结令走钻石渠道但**默认 0 钻石**（先免费放开），
+// 这时价格是 0，靠价格判不出来。所以再加一条：管理端把 category 填成「钻石道具」也算。
+func ezfyIsDiamondItem(it *model.EzfyCfgItem) bool {
+	return it.PriceDiamond > 0 || strings.TrimSpace(it.Category) == "钻石道具"
+}
+
+// ezfyUnlimitedStock 库存为负数表示**无限**（用户规则：库存 -1 = 可以任意购买）
+func ezfyUnlimitedStock(stock int) bool { return stock < 0 }
+
 func ezfyItemCategory(it *model.EzfyCfgItem) string {
 	if c := strings.TrimSpace(it.Category); c != "" {
 		return c
@@ -1221,6 +1228,8 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "军官道具"
 	case 13, 14:
 		return "身份道具"
+	case 15:
+		return "出征道具"
 	}
 	return "其他"
 }
@@ -1245,7 +1254,9 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 			"id": it.ID, "name": it.Name, "item_type": it.ItemType, "param1": it.Param1,
 			"price_gold": it.PriceGold, "price_diamond": it.PriceDiamond,
 			"icon": it.Icon, "description": it.Description, "stock": it.Stock,
-			"category": cat, "is_diamond": it.PriceDiamond > 0,
+			"category": cat, "is_diamond": ezfyIsDiamondItem(&it),
+			// ★ 库存 -1 = 无限可购（前端显示「无限」）
+			"unlimited": ezfyUnlimitedStock(it.Stock),
 		})
 	}
 	prof := h.ensureProfile(uid)
@@ -1275,11 +1286,14 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	}
 	// ★ 库存校验（管理端在「数据管理 → 道具配置」维护，默认 100）
 	//   从库里读最新值，不用配置缓存 —— 管理端改完立即生效，不用等缓存重载。
+	//   ★ 用户规则：库存 **-1 = 无限**，可以任意购买（不做数量校验、也不扣库存）。
 	var live model.EzfyCfgItem
 	stock := 0
+	unlimited := false
 	if err := h.DB.First(&live, req.CfgId).Error; err == nil {
 		stock = live.Stock
-		if stock < req.Count {
+		unlimited = ezfyUnlimitedStock(stock)
+		if !unlimited && stock < req.Count {
 			if stock <= 0 {
 				resp.ParamError(c, fmt.Sprintf("「%s」已售罄", cfg.Name))
 			} else {
@@ -1288,26 +1302,29 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			return
 		}
 	}
-	// ★ 第九轮：钻石道具（price_diamond > 0）只能用钻石买，钻石只能管理端充值
-	if cfg.PriceDiamond > 0 {
+	// ★ 钻石道具（price_diamond > 0，或管理端把分类填成「钻石道具」）只能用钻石买，
+	//   钻石只能管理端充值。默认 0 钻石时即免费发放。
+	if ezfyIsDiamondItem(cfg) {
 		cost := cfg.PriceDiamond * int64(req.Count)
 		prof := h.ensureProfile(uid)
 		if prof.Diamond < cost {
 			resp.ParamError(c, fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d", cost, prof.Diamond))
 			return
 		}
-		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
-			Update("diamond", prof.Diamond-cost).Error; err != nil {
-			resp.ParamError(c, "扣钻石失败："+err.Error())
-			return
+		if cost > 0 {
+			if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
+				Update("diamond", prof.Diamond-cost).Error; err != nil {
+				resp.ParamError(c, "扣钻石失败："+err.Error())
+				return
+			}
 		}
-		if stock >= req.Count {
+		if !unlimited {
 			h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
 				Updates(map[string]interface{}{"stock": stock - req.Count})
 		}
 		h.addItem(uid, req.CfgId, req.Count)
 		resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（消耗%d钻石）", cfg.Name, req.Count, cost),
-			"stock_left": stock - req.Count, "diamond": prof.Diamond - cost})
+			"stock_left": stockLeft(unlimited, stock, req.Count), "diamond": prof.Diamond - cost})
 		return
 	}
 	cost := cfg.PriceGold * int64(req.Count)
@@ -1319,13 +1336,21 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	city.Gold -= cost
 	h.saveCityRes(city)
 	// 扣库存（用 map 更新，避免 GORM 的 default:100 把 0 当未设置）
-	if stock >= req.Count {
+	if !unlimited {
 		h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
 			Updates(map[string]interface{}{"stock": stock - req.Count})
 	}
 	h.addItem(uid, req.CfgId, req.Count)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", cfg.Name, req.Count),
-		"stock_left": stock - req.Count})
+		"stock_left": stockLeft(unlimited, stock, req.Count)})
+}
+
+// stockLeft 购买后剩余库存（无限库存返回 -1）
+func stockLeft(unlimited bool, stock, count int) int {
+	if unlimited {
+		return -1
+	}
+	return stock - count
 }
 
 func (h *EzfyHandler) Bag(c *gin.Context) {
@@ -1704,6 +1729,7 @@ func ezfyReportCategory(title string) int {
 		strings.Contains(title, "野地丢失"):
 		return 1
 	case strings.HasPrefix(title, "侦查报告"),
+		strings.HasPrefix(title, "掠夺报告"),
 		strings.HasPrefix(title, "战斗报告"),
 		strings.HasPrefix(title, "征服报告"):
 		return 2

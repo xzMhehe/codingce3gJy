@@ -45,8 +45,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cityTotal }}</b> 条 · 每页 {{ citySize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="cityTotal" :page-size="citySize"
-                           :current-page="cityPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="cityTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="cityTotal" :page-size="citySize"
+                           :current-page="cityPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { cityPage = p; loadCities() }"
                            @size-change="s => { citySize = s; cityPage = 1; loadCities() }" />
           </div>
@@ -166,8 +166,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ tileTotal }}</b> 条 · 每页 {{ tileSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="tileTotal" :page-size="tileSize"
-                           :current-page="tilePage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="tileTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="tileTotal" :page-size="tileSize"
+                           :current-page="tilePage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { tilePage = p; loadTiles() }"
                            @size-change="s => { tileSize = s; tilePage = 1; loadTiles() }" />
           </div>
@@ -229,8 +229,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ wildTotal }}</b> 条 · 每页 {{ wildSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="wildTotal" :page-size="wildSize"
-                           :current-page="wildPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="wildTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="wildTotal" :page-size="wildSize"
+                           :current-page="wildPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { wildPage = p; loadWilds() }"
                            @size-change="s => { wildSize = s; wildPage = 1; loadWilds() }" />
           </div>
@@ -288,8 +288,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ wcTotal }}</b> 条 · 每页 {{ wcSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="wcTotal" :page-size="wcSize"
-                           :current-page="wcPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="wcTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="wcTotal" :page-size="wcSize"
+                           :current-page="wcPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { wcPage = p; loadWildCfgs() }"
                            @size-change="s => { wcSize = s; wcPage = 1; loadWildCfgs() }" />
           </div>
@@ -330,8 +330,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ occTotal }}</b> 条 · 每页 {{ occSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="occTotal" :page-size="occSize"
-                           :current-page="occPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="occTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="occTotal" :page-size="occSize"
+                           :current-page="occPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { occPage = p; loadOccupy() }"
                            @size-change="s => { occSize = s; occPage = 1; loadOccupy() }" />
           </div>
@@ -370,8 +370,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ areaTotal }}</b> 条 · 每页 {{ areaSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="areaTotal" :page-size="areaSize"
-                           :current-page="areaPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="areaTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="areaTotal" :page-size="areaSize"
+                           :current-page="areaPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { areaPage = p; loadAreas() }"
                            @size-change="s => { areaSize = s; areaPage = 1; loadAreas() }" />
           </div>
@@ -399,8 +399,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ starTotal }}</b> 条 · 每页 {{ starSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="starTotal" :page-size="starSize"
-                           :current-page="starPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="starTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="starTotal" :page-size="starSize"
+                           :current-page="starPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { starPage = p; loadStars() }"
                            @size-change="s => { starSize = s; starPage = 1; loadStars() }" />
           </div>
@@ -570,16 +570,16 @@ export default {
       lookup: { x: 250, y: 250 }, lookupResult: null,
       wildTypes: { 1: '陆地野地', 2: '海野', 3: '寇城' },
       areaTypes: { 0: '空地', 1: '野地(已占)', 2: '寇城', 3: '玩家城', 4: '资源田' },
-      cities: [], cityTotal: 0, cityPage: 1, citySize: 10, cityWord: '', loadingCity: false,
-      wilds: [], wildTotal: 0, wildPage: 1, wildSize: 10, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
-      wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 10, wcType: -1, wcLevel: 0, loadingWc: false,
-      occupies: [], occTotal: 0, occPage: 1, occSize: 10, occStatus: -1, loadingOcc: false,
-      areas: [], areaTotal: 0, areaPage: 1, areaSize: 10, areaType: -1, loadingArea: false,
-      stars: [], starTotal: 0, starPage: 1, starSize: 10, loadingStar: false,
+      cities: [], cityTotal: 0, cityPage: 1, citySize: 5, cityWord: '', loadingCity: false,
+      wilds: [], wildTotal: 0, wildPage: 1, wildSize: 5, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
+      wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 5, wcType: -1, wcLevel: 0, loadingWc: false,
+      occupies: [], occTotal: 0, occPage: 1, occSize: 5, occStatus: -1, loadingOcc: false,
+      areas: [], areaTotal: 0, areaPage: 1, areaSize: 5, areaType: -1, loadingArea: false,
+      stars: [], starTotal: 0, starPage: 1, starSize: 5, loadingStar: false,
       // 野地类型弹窗的下拉数据：兵种列表 + 军官池
       troopCfgs: [], generals: [],
       // 地图格子覆盖
-      tiles: [], tileTotal: 0, tilePage: 1, tileSize: 10, loadingTile: false,
+      tiles: [], tileTotal: 0, tilePage: 1, tileSize: 5, loadingTile: false,
       tileX: 250, tileY: 250, tileCell: null, tileWord: '', tileMarkFilter: -1,
       tileForm: { terrain: 0, mark_kind: 0, mark_level: 1, des: '' },
       terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '山地', 8: '海洋', 9: '沿海平原' },

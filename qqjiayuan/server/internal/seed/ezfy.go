@@ -161,6 +161,7 @@ func seedEzfyActivities(db *gorm.DB) {
 //	16 重修书     ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
 //	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
+//	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万, 单次最多 10 个)
 func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500,
@@ -175,15 +176,21 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
 		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
+		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
+		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
+		//   Param1 = 每个集结令提升的出征上限（10 万），单次最多用 10 个。
+		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
+			PriceGold: 0, PriceDiamond: 0, Stock: -1, Category: "钻石道具",
+			Description: "出征时使用: 每使用1个本次出征兵力上限+10万, 单次最多使用10个"},
 	}
 	for _, it := range rows {
 		var count int64
 		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
 		if count > 0 {
-			// 已存在则只同步名称/说明, 不动价格(避免覆盖后台调价)
+			// 已存在则只同步名称/说明/分类, 不动价格与库存(避免覆盖后台调价)
 			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
 				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
-					"param1": it.Param1, "description": it.Description})
+					"param1": it.Param1, "description": it.Description, "category": it.Category})
 			continue
 		}
 		db.Create(&it)

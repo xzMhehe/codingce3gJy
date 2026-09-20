@@ -54,8 +54,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ orderTotal }}</b> 条 · 每页 {{ orderSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="orderTotal" :page-size="orderSize"
-                           :current-page="orderPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="orderTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="orderTotal" :page-size="orderSize"
+                           :current-page="orderPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { orderPage = p; loadOrders() }"
                            @size-change="s => { orderSize = s; orderPage = 1; loadOrders() }" />
           </div>
@@ -89,8 +89,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ chatTotal }}</b> 条 · 每页 {{ chatSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="chatTotal" :page-size="chatSize"
-                           :current-page="chatPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="chatTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="chatTotal" :page-size="chatSize"
+                           :current-page="chatPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { chatPage = p; loadChats() }"
                            @size-change="s => { chatSize = s; chatPage = 1; loadChats() }" />
           </div>
@@ -142,8 +142,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ exTotal }}</b> 条 · 每页 {{ exSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="exTotal" :page-size="exSize"
-                           :current-page="exPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="exTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="exTotal" :page-size="exSize"
+                           :current-page="exPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { exPage = p; loadExchanges() }"
                            @size-change="s => { exSize = s; exPage = 1; loadExchanges() }" />
           </div>
@@ -217,10 +217,10 @@ export default {
       tab: 'orders',
       typeNames: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
       statusNames: { 0: '行进中', 1: '驻守中', 2: '返回中', 3: '已完成', 4: '已阵亡' },
-      orders: [], orderTotal: 0, orderPage: 1, orderSize: 10, orderLoading: false,
+      orders: [], orderTotal: 0, orderPage: 1, orderSize: 5, orderLoading: false,
       orderWord: '', orderType: 0, orderStatus: -1,
-      chats: [], chatTotal: 0, chatPage: 1, chatSize: 10, chatLoading: false, chatWord: '',
-      exchanges: [], exTotal: 0, exPage: 1, exSize: 10, exLoading: false, exWord: '', exStatus: -1,
+      chats: [], chatTotal: 0, chatPage: 1, chatSize: 5, chatLoading: false, chatWord: '',
+      exchanges: [], exTotal: 0, exPage: 1, exSize: 5, exLoading: false, exWord: '', exStatus: -1,
       orderDlg: false, orderRow: null
     }
   },

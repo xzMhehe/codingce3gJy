@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -68,10 +69,29 @@ func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 }
 
 // orderListByCity 该城市尚未结束的行军命令（用于军官出征态自愈）
+//
+// ★ 必须含 2(返航中)：只写 (0,1) 会让「已踏上归途但还没到家」的军官被误判成空闲，
+//   状态被自愈回 0 → 同一军官能被二次出征（用户反馈的 bug）。
 func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	var orders []model.EzfyOrder
-	h.DB.Where("city_id = ? AND status IN (0,1)", cityId).Find(&orders)
+	h.DB.Where("city_id = ? AND status IN (0,1,2)", cityId).Find(&orders)
 	return orders
+}
+
+// officerBusyOrder 军官当前是否还有未结束的命令（0行军中/1驻守中/2返航中）
+//
+// 与 officer.Status 双保险：officer.Status 可能因历史数据漂移而不准，
+// 这里直接按命令表判定，保证「没回来就不能再出征」。
+func (h *EzfyHandler) officerBusyOrder(cityId uint, name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, o := range h.orderListByCity(cityId) {
+		if o.Officer == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *EzfyHandler) officerOf(cityId uint, id int64) *model.EzfyOfficer {
@@ -916,6 +936,68 @@ func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 		})
 	}
 	resp.OK(c, gin.H{"officers": list, "hq_level": h.buildingLevel(city.ID, 13)})
+}
+
+// OfficerDispatch POST /games/ezfy/officers/:id/dispatch
+//
+// 城市列表的 [派遣]：把当前城市的某名军官调往自己的另一座城市。
+// 规则：军官必须属于当前城、不在出征中、不是俘虏；目标城必须是自己的城且不是本城。
+func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req struct {
+		CityId   int64 `json:"city_id"`   // 军官当前所在城（出发城）
+		TargetId int64 `json:"target_id"` // 目标城
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	src := h.cityOf(uid, req.CityId)
+	if src == nil {
+		c2 := h.currentCity(uid)
+		src = &c2
+	}
+	if src == nil || src.ID == 0 {
+		resp.NotFound(c, "城市不存在")
+		return
+	}
+	dst := h.cityOf(uid, req.TargetId)
+	if dst == nil {
+		resp.ParamError(c, "目标城市不存在或不属于你")
+		return
+	}
+	if dst.ID == src.ID {
+		resp.ParamError(c, "目标城市不能是当前城市")
+		return
+	}
+	o := h.officerOf(src.ID, id)
+	if o == nil {
+		resp.NotFound(c, "军官不在该城市")
+		return
+	}
+	if o.IsCaptive == 1 {
+		resp.ParamError(c, "俘虏不能派遣, 请先在军校收编")
+		return
+	}
+	if o.Status == 1 || h.officerBusyOrder(src.ID, o.Name) {
+		resp.ParamError(c, "军官"+o.Name+"正在出征中, 未归队前不能派遣")
+		return
+	}
+	// 带职位的军官（市长/城守）离开会让职位悬空，要求先卸任
+	if o.Position != 0 {
+		resp.ParamError(c, "请先卸任「"+ezfyPositionName(o.Position)+"」再派遣")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
+		Update("city_id", int64(dst.ID)).Error; err != nil {
+		resp.ParamError(c, "派遣失败："+err.Error())
+		return
+	}
+	h.addReport(uid, 5, "军官调遣",
+		fmt.Sprintf("军官%s已从[%s]调往[%s](%d,%d)。", o.Name, src.Name, dst.Name, dst.X, dst.Y), "", 0)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("%s 已调往 %s", o.Name, dst.Name)})
 }
 
 // ============ 野地掉宝 / 俘虏守将 ============

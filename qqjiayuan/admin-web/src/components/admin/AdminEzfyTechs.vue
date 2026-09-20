@@ -48,8 +48,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                           :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { page = p; load() }"
                            @size-change="s => { size = s; page = 1; load() }" />
           </div>
@@ -100,8 +100,8 @@
           </el-table>
           <div class="pager-bar">
             <div class="pager-info">共 <b>{{ cfgTotal }}</b> 条 · 每页 {{ cfgSize }} 条</div>
-            <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="cfgTotal"
-                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[10, 20, 50, 100]"
+            <el-pagination v-show="cfgTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="cfgTotal"
+                           :page-size="cfgSize" :current-page="cfgPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { cfgPage = p; loadCfgs() }"
                            @size-change="s => { cfgSize = s; cfgPage = 1; loadCfgs() }" />
           </div>
@@ -322,8 +322,8 @@ export default {
   data () {
     return {
       tab: 'list',
-      list: [], total: 0, page: 1, size: 10, loading: false, word: '',
-      cfgs: [], cfgTotal: 0, cfgPage: 1, cfgSize: 10, cfgWord: '', loadingCfg: false,
+      list: [], total: 0, page: 1, size: 5, loading: false, word: '',
+      cfgs: [], cfgTotal: 0, cfgPage: 1, cfgSize: 5, cfgWord: '', loadingCfg: false,
       allTechs: [],
       techTypes: { 1: '生产', 2: '军事', 3: '辅助' },
       resNames: {},

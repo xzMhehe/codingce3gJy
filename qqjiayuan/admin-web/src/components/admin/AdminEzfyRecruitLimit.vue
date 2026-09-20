@@ -67,8 +67,8 @@
       </el-table>
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-        <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
+        <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                       :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -103,7 +103,7 @@ export default {
   data () {
     return {
       globalLimit: 5, saving: false,
-      list: [], total: 0, page: 1, size: 10, word: '', loading: false,
+      list: [], total: 0, page: 1, size: 5, word: '', loading: false,
       setDlg: false, setRow: {}, setValue: 0
     }
   },

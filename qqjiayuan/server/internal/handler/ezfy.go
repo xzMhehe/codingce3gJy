@@ -991,6 +991,28 @@ func (h *EzfyHandler) speedUpBuilding(city *model.EzfyCity, recordId int64, minu
 
 // ============ 造兵/伤兵/逃兵 ============
 
+// defenceSpaceUsed 城防空间已占用 = 已建成的城防 + **训练队列里还没出来的城防**。
+//
+// ★ 用户反馈「城防可以随便造」的根因：原来只统计已建成的城防，
+//   于是玩家可以连下多张训练单、每单都不超上限，最后总量突破围墙容量。
+//   把队列里的量也算进来才是真正的「占用」。
+func (h *EzfyHandler) defenceSpaceUsed(cityId uint) int64 {
+	var used int64
+	for tid, cnt := range h.troopMap(cityId) {
+		if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
+			used += cnt
+		}
+	}
+	var qs []model.EzfyTrainQueue
+	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
+	for _, q := range qs {
+		if c := ezfyCfg.troop(q.TroopId); c != nil && c.Type == 4 {
+			used += q.Count
+		}
+	}
+	return used
+}
+
 func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split bool) string {
 	h.refreshCity(city.UserID, city)
 	if count <= 0 {
@@ -1049,14 +1071,9 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 		if wall := ezfyCfg.buildingLevel(7, wallLevel); wall != nil {
 			space = wall.Capacity
 		}
-		used := int64(0)
-		for tid, cnt := range h.troopMap(city.ID) {
-			if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
-				used += cnt
-			}
-		}
+		used := h.defenceSpaceUsed(city.ID)
 		if used+int64(count) > space {
-			return fmt.Sprintf("城防空间不足(围墙%d级, 上限%d)", wallLevel, space)
+			return fmt.Sprintf("城防空间不足(围墙%d级, 上限%d, 已占用%d)", wallLevel, space, used)
 		}
 	}
 	factoryTotal := h.buildingTotalLevel(city.ID, ezfyFactoryBuildingID)
@@ -1749,7 +1766,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
-			"wild_type": w.WildType, "terrain_name": ezfyTerrainNameEx(w.X, w.Y)})
+			"wild_type": w.WildType, "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+			"continent": ezfyRegionName(w.X, w.Y)})
 	}
 
 	var marching, occupying int64
@@ -1897,15 +1915,18 @@ type ezfyCityView struct {
 	model.EzfyCity
 	IsSea bool   `json:"is_sea"`
 	Kind  string `json:"city_kind"` // ★ 与 /view 的 city_kind 保持同名，前端不要出现两套
+	// ★ 所属大洲 / 大洋（世界地图改版后，城市要标注在哪个州）
+	Continent string `json:"continent"`
 }
 
 func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
 	out := make([]ezfyCityView, 0, len(list))
 	for i := range list {
 		out = append(out, ezfyCityView{
-			EzfyCity: list[i],
-			IsSea:    h.isSeaCity(&list[i]),
-			Kind:     h.cityKind(&list[i]),
+			EzfyCity:  list[i],
+			IsSea:     h.isSeaCity(&list[i]),
+			Kind:      h.cityKind(&list[i]),
+			Continent: ezfyRegionName(list[i].X, list[i].Y),
 		})
 	}
 	return out

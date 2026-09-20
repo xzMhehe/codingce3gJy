@@ -47,14 +47,26 @@ var ezfyHoles = [][][]int{
 
 var ezfyContinentIDs = []int{4, 5, 1, 3, 2, 6, 7}
 
+// ezfyWorldSize 世界坐标范围（0 ~ ezfyWorldSize-1）
+const ezfyWorldSize = 500
+
+// ezfyLandScale 世界坐标 → 大陆几何坐标系(150×150) 的缩放系数
+const ezfyLandScale = 150.0 / float64(ezfyWorldSize)
+
+// ezfyTerrainSea 海洋地形 id（与 ezfyTerrainNames 下标一致）
+const ezfyTerrainSea = 8
+
 func ezfyInShape(x, y int, s []int) bool {
+	// 大陆几何定义在 150×150 的坐标里，先把世界坐标缩回去再判形状
+	fx := float64(x) * ezfyLandScale
+	fy := float64(y) * ezfyLandScale
 	if s[0] == 0 {
-		return s[1] <= x && x <= s[3] && s[2] <= y && y <= s[4]
+		return float64(s[1]) <= fx && fx <= float64(s[3]) && float64(s[2]) <= fy && fy <= float64(s[4])
 	}
 	a := float64(s[3])
 	b := float64(s[4])
-	dx := (float64(x) - float64(s[1])) / a
-	dy := (float64(y) - float64(s[2])) / b
+	dx := (fx - float64(s[1])) / a
+	dy := (fy - float64(s[2])) / b
 	return dx*dx+dy*dy <= 1
 }
 
@@ -82,6 +94,33 @@ func ezfyContinentName(x, y int) string {
 	return ezfyContinentNames[c]
 }
 
+// ezfyRegionName 该坐标属于哪个「大洲 / 大洋」，用于地图格子与城市、野地的所属标注。
+func ezfyRegionName(x, y int) string {
+	if ezfyContinentOf(x, y) != ezfyOcean {
+		return ezfyContinentName(x, y)
+	}
+	return ezfyOceanName(x, y)
+}
+
+// ezfyOceanName 大洋名称（按世界地图的方位粗略划分）。
+//
+// 说明：原版只给了「七大洲」，没有给海洋分区名。这里按常见的大洋方位补上，
+// 让玩家在地图上看到的不只是「海洋」两个字。
+func ezfyOceanName(x, y int) string {
+	switch {
+	case y < 20:
+		return "北冰洋"
+	case y > 440:
+		return "南冰洋"
+	case x < 60 || x > 420:
+		return "太平洋"
+	case x < 160:
+		return "大西洋"
+	default:
+		return "印度洋"
+	}
+}
+
 // ============ 坐标哈希（复刻 GameServiceImpl getTerrain/getWildlandLevel/getKouLevel） ============
 
 func ezfyAbs(v int) int {
@@ -91,9 +130,31 @@ func ezfyAbs(v int) int {
 	return v
 }
 
+// ezfyLandTerrain 陆地地形（1~7，不含海洋）
+//
+// ★ 用一个**非周期**的混合散列，避免旧实现那种 8×8 重复条纹。
+func ezfyLandTerrain(x, y int) int {
+	h := ezfyAbs(x*374761393 + y*668265263)
+	h = (h ^ (h >> 13)) * 1274126177
+	h = ezfyAbs(h ^ (h >> 16))
+	return h%7 + 1
+}
+
+// ezfyTerrain 地形：**先判大陆**，海洋连成片，陆地上再取 1~7 的地形。
+//
+// ★ 用户反馈「海洋是小水坑、地图不对」的根因：
+//
+//	旧实现直接写 `abs(x*73856093 ^ y*19349663) % 8 + 1`，而这个哈希**周期是 8**
+//	（(x+8) 与 x 同余），于是整张地图是 8×8 的重复图案、8 种地形均匀铺满，
+//	海洋只占 1/8 且互不相连 —— 看起来就是满地小水坑，也谈不上「世界地图」。
+//
+//	现在改成先按七大洲几何判陆地/海洋，海洋自然连成大片，
+//	陆地内部再用散列取 1~7 的地形（1 平原 2 草原 3 森林 4 盆地 5 丘陵 6 沼泽 7 山地）。
 func ezfyTerrain(x, y int) int {
-	h := ezfyAbs(x*73856093 ^ y*19349663)
-	return h%8 + 1
+	if ezfyContinentOf(x, y) == ezfyOcean {
+		return ezfyTerrainSea
+	}
+	return ezfyLandTerrain(x, y)
 }
 
 // ezfyTerrainCoastalPlain 沿海平原（地形 id 9）—— ★ 海城只能建在这里
@@ -110,7 +171,7 @@ func ezfyHasSeaNeighbor(x, y int) bool {
 			if dx == 0 && dy == 0 {
 				continue
 			}
-			if ezfyTerrain(x+dx, y+dy) == 8 {
+			if ezfyTerrain(x+dx, y+dy) == ezfyTerrainSea {
 				return true
 			}
 		}
@@ -120,20 +181,12 @@ func ezfyHasSeaNeighbor(x, y int) bool {
 
 // ezfyIsCoastalPlainAt 该坐标是否沿海平原
 //
-// ★ 这里为什么还要再取一次哈希：
-//   本项目的坐标地形是 `abs(x*73856093 ^ y*19349663) % 8 + 1`，**它是周期 8 的**
-//   （(x+8)*73856093 与 x*73856093 在 mod 8 下同余，y 同理），因此整张地图是 8×8 的重复图案。
-//   实测：**每一个「平原」格都恰好只有 1 个海洋邻居（20000/20000）**。
-//   如果只用「平原 + 邻海」判定沿海平原，平原会 100% 变成沿海平原，
-//   陆地城市就再也建不出来了（建城只允许 平原/沿海平原）。
-//   所以这里再用一个独立的哈希，从「靠海的平原」里挑出约 1/3 作为沿海平原，
-//   保证两种地形同时存在（平原 ≈2/3、沿海平原 ≈1/3）。
+// ★ 改成大陆地图后，这里**不再需要**旧实现那个「1/3 抽样」的补丁：
+//   旧地图是周期 8 的图案，每一个平原格都恰好有一个海洋邻居，
+//   只能用独立散列从「靠海的平原」里挑出 1/3，否则平原会 100% 变成沿海平原。
+//   现在大陆是成片的，内陆平原本来就没有海洋邻居，天然区分开了。
 func ezfyIsCoastalPlainAt(x, y int) bool {
-	if ezfyTerrain(x, y) != 1 || !ezfyHasSeaNeighbor(x, y) {
-		return false
-	}
-	h := ezfyAbs(x*40503 ^ y*2654435761)
-	return h%3 == 0
+	return ezfyTerrain(x, y) == 1 && ezfyHasSeaNeighbor(x, y)
 }
 
 // ezfyTerrainEx 实际地形：平原且靠海 → 沿海平原(9)，其余同 ezfyTerrain
@@ -243,7 +296,7 @@ func ezfyMigrateSeaCities(db *gorm.DB) {
 
 // ezfyNearestCoastalPlain 从 (x,y) 向外螺旋找最近的、无城市的沿海平原格
 func ezfyNearestCoastalPlain(db *gorm.DB, x, y int) ([2]int, bool) {
-	for r := 1; r <= 40; r++ {
+	for r := 1; r <= 150; r++ {
 		for dx := -r; dx <= r; dx++ {
 			for dy := -r; dy <= r; dy++ {
 				// 只走外圈
@@ -255,6 +308,31 @@ func ezfyNearestCoastalPlain(db *gorm.DB, x, y int) ([2]int, bool) {
 					continue
 				}
 				if !ezfyIsCoastalPlainAt(nx, ny) {
+					continue
+				}
+				var n int64
+				db.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", nx, ny).Count(&n)
+				if n > 0 {
+					continue
+				}
+				return [2]int{nx, ny}, true
+			}
+		}
+	}
+	// ★ 兜底：实在找不到沿海平原（世界地图改版后，落在远洋上的城市可能离海岸很远），
+	//   退一步找一块「无城市的平原」，保证城市不会一直卡在海洋里。
+	//   宁可牺牲「海城」属性，也不能让玩家的城留在水里。
+	for r := 1; r <= 150; r++ {
+		for dx := -r; dx <= r; dx++ {
+			for dy := -r; dy <= r; dy++ {
+				if ezfyAbs(dx) != r && ezfyAbs(dy) != r {
+					continue
+				}
+				nx, ny := x+dx, y+dy
+				if nx < 0 || ny < 0 || nx > 499 || ny > 499 {
+					continue
+				}
+				if ezfyTerrain(nx, ny) != 1 {
 					continue
 				}
 				var n int64

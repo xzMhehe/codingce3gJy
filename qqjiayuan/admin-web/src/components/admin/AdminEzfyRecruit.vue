@@ -50,8 +50,8 @@
       </el-table>
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-        <el-pagination small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
+        <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                       :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
       </div>
@@ -118,7 +118,7 @@ export default {
   name: 'AdminEzfyRecruit',
   data () {
     return {
-      list: [], total: 0, page: 1, size: 10, loading: false, word: '', status: -1,
+      list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1,
       cfgs: [],
       createDlg: false, createForm: { city_id: 1, troop_id: 0, count: 100, seconds: 0, instant: false },
       speedDlg: false, speedRow: {}, speedMinutes: 10,

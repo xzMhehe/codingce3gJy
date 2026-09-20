@@ -282,7 +282,7 @@
             <div class="old-line gray">
               「收获」只把产出装进部队；资源要「召回」并返航到达才会运回城里（受负重限制）。宝物直接进背包。
             </div>
-            <div class="old-line" v-for="o in dynamics" :key="'dy' + o.id">
+            <div class="old-line" v-for="o in dynPaged" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               状态：{{ o.status_name }}<br/>
@@ -297,6 +297,11 @@
               --------------------
             </div>
             <div class="old-line" v-if="!dynamics.length">(当前没有在外的部队)</div>
+            <div class="ezfy-pager" v-if="dynamics.length > dynSize">
+              <a href="javascript:;" :class="{ gray: dynPage <= 1 }" @click="pagerGo('dyn', -1)">上一页</a>
+              <span class="gray">第 {{ dynPage }}/{{ dynTotalPages }} 页（共 {{ dynamics.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: dynPage >= dynTotalPages }" @click="pagerGo('dyn', 1)">下一页</a>
+            </div>
           </template>
 
           <!-- ===== 军情警讯: 别人打我 ===== -->
@@ -305,12 +310,17 @@
               <span class="gray">敌方来袭预警、被掠夺、城破、守卫战报都会出现在这里</span>
               <button @click="loadReports">刷新</button>
             </div>
-            <div class="old-line" v-for="r in reports" :key="'rw' + r.id">
+            <div class="old-line" v-for="r in repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>{{ r.title }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!reports.length">(暂无军情警讯)</div>
+            <div class="ezfy-pager" v-if="reports.length > repSize">
+              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="pagerGo('rep', -1)">上一页</a>
+              <span class="gray">第 {{ repPage }}/{{ repTotalPages }} 页（共 {{ reports.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="pagerGo('rep', 1)">下一页</a>
+            </div>
           </template>
 
           <!-- ===== 战斗报告: 我打别人 + 战报查询 ===== -->
@@ -322,13 +332,18 @@
               <button @click="loadReports">[查询]</button>
               <a v-if="reportWord" href="javascript:;" @click="reportWord = ''; loadReports()">[清空]</a>
             </div>
-            <div class="old-line" v-for="r in reports" :key="'rb' + r.id">
+            <div class="old-line" v-for="r in repPaged" :key="'rb' + r.id">
               <a href="javascript:;" @click="openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
                 <span class="orange">[{{ r.type_name }}]</span>{{ r.title }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!reports.length">(暂无战斗报告)</div>
+            <div class="ezfy-pager" v-if="reports.length > repSize">
+              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="pagerGo('rep', -1)">上一页</a>
+              <span class="gray">第 {{ repPage }}/{{ repTotalPages }} 页（共 {{ reports.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="pagerGo('rep', 1)">下一页</a>
+            </div>
           </template>
 
           <!-- ===== 战报详情 ===== -->
@@ -435,14 +450,33 @@
             <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
             坐标({{ ct.x }},{{ ct.y }}) 城级{{ ct.city_level }}
             <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海城' : '陆地城市' }}]</span>
-            {{ resShort.gold }}{{ ct.gold }} {{ resShort.food }}{{ ct.food }} {{ resShort.steel }}{{ ct.steel }} {{ resShort.oil }}{{ ct.oil }} {{ resShort.rare }}{{ ct.rare }}<br/>
+            <span class="gray">所属洲: {{ ct.continent || '—' }}</span><br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
-            <!-- ★ 第九轮：从当前城市运输资源到自己的其他城市（负重决定运量，可不带军官） -->
+            <!-- ★ 运输：从当前城市把资源运到这座城（负重决定运量，可不带军官） -->
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
+            <!-- ★ 派遣：把当前城市的军官调往这座城 -->
+            <a v-if="ct.id !== city.id" href="javascript:;" @click="openDispatch(ct)">[派遣]</a>
             <a href="javascript:;" @click="go('rename')">[改名]</a>
-            <!-- ★ 只能摧毁「非当前所在」的城市；摧毁后该坐标恢复为普通平原 -->
-            <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[摧毁]</a>
+            <!-- ★ 弃城：只能弃「非当前所在」的城市；弃城后该坐标恢复为普通平原 -->
+            <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[弃城]</a>
           </div>
+
+          <!-- 派遣面板：列出当前城市可派遣的军官 -->
+          <template v-if="dispatchTarget">
+            <div class="panel-title">派遣军官 → {{ dispatchTarget.name }}({{ dispatchTarget.x }},{{ dispatchTarget.y }})</div>
+            <div class="old-line gray">只列出当前城市里空闲的军官；出征中/俘虏/带职位的不能派遣。</div>
+            <table v-if="dispatchOfficers.length">
+              <tr><th>军官</th><th>等级</th><th>状态</th><th>操作</th></tr>
+              <tr v-for="o in dispatchOfficers" :key="'dp' + o.id">
+                <td>{{ o.name }}</td>
+                <td>{{ o.level }}级</td>
+                <td>{{ o.status_name || (o.status === 1 ? '出征中' : '空闲') }}</td>
+                <td><a href="javascript:;" @click="doDispatch(o)">[调往]</a></td>
+              </tr>
+            </table>
+            <div class="old-line" v-else>(当前城市没有可派遣的军官)</div>
+            <a href="javascript:;" @click="dispatchTarget = null">[取消]</a>
+          </template>
           <br/>
           <div class="panel-title">起新城 (消耗10万{{ resNames.gold }})</div>
           <div class="old-line gray">
@@ -1056,9 +1090,15 @@
           <div class="old-line">出征命令：{{ orderNames[orderType] }}</div>
           <div class="old-line">
             集结令：{{ gatherCount }}个
-            <select disabled title="原版未实现该功能">
-              <option>暂未开放</option>
+            <select v-model.number="orderGather" :disabled="gatherMax <= 0" @change="onGatherChange">
+              <option v-for="n in gatherMax + 1" :key="'gt' + n" :value="n - 1">{{ n - 1 }}个</option>
             </select>
+            <span class="gray">（每个 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个）</span>
+            <br/>
+            <span v-if="orderCalc" :class="orderCalc.troop_over_cap ? 'red' : 'green'">
+              本次出兵 {{ fmtN(orderCalc.troop_total) }} / 上限 {{ fmtN(orderCalc.troop_cap) }}
+              <template v-if="orderCalc.troop_over_cap">—— 超出上限，请减少兵力或加用集结令</template>
+            </span>
           </div>
           <div class="old-line">
             指挥军官：
@@ -1214,10 +1254,11 @@
         <div class="panel">
           <div class="panel-title">占领野地({{ wildlands.length }}/{{ city.city_level }})</div>
           <table>
-            <tr><th>坐标</th><th>地形</th><th>等级</th><th>状态</th><th>操作</th></tr>
+            <tr><th>坐标</th><th>地形</th><th>所属洲</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="w in wildlands" :key="'wd' + w.id">
               <td>({{ w.x }},{{ w.y }})</td>
               <td>{{ w.terrain_name }}<span class="gray" v-if="w.wild_type === 2">(海野)</span></td>
+              <td>{{ w.continent || '—' }}</td>
               <td>{{ w.level }}</td>
               <td>{{ w.status === 0 ? '空闲' : '采集中' }}</td>
               <td>
@@ -1681,20 +1722,24 @@
               <a :key="'mc' + c" href="javascript:;" :class="{ on: mallCat === c }" @click="setMallCat(c)">[{{ c }}]</a>
             </template>
           </div>
-          <div class="old-line gray" v-if="mallDiamond <= 0">钻石余额为 0，钻石道具需由管理员充值后购买。</div>
+          <div class="old-line gray" v-if="mallDiamond <= 0">
+            钻石余额为 0；标记为「钻石道具」的道具若标价 0 钻石可直接购买，其余需由管理员充值钻石后购买。
+          </div>
           <div class="old-line" v-for="it in mallPaged" :key="'mi' + it.id">
             <b>{{ it.name }}</b>
             <span v-if="it.is_diamond" class="orange">{{ it.price_diamond }}钻石</span>
             <span v-else>{{ it.price_gold }}{{ resNames.gold }}</span>
-            <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100） -->
-            <span :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
-            <a v-if="it.stock > 0" href="javascript:;" @click="openBuy(it)">[购买]</a>
+            <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100；-1 = 无限） -->
+            <span v-if="it.unlimited" class="green">库存无限</span>
+            <span v-else :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
+            <a v-if="it.unlimited || it.stock > 0" href="javascript:;" @click="openBuy(it)">[购买]</a>
             <span v-else class="gray">[已售罄]</span><br/>
             <span class="gray">{{ it.description }}</span>
             <div v-if="buyItem && buyItem.id === it.id" class="use-box">
               数量:
-              <input v-model="buyCount" type="number" min="1" :max="Math.max(1, it.stock)" style="width:60px"/>
-              <span class="gray">最多 {{ it.stock }}</span>
+              <input v-model="buyCount" type="number" min="1"
+                     :max="it.unlimited ? 999 : Math.max(1, it.stock)" style="width:60px"/>
+              <span class="gray">{{ it.unlimited ? '不限量' : ('最多 ' + it.stock) }}</span>
               <span class="gray" v-if="it.is_diamond">合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石</span>
               <span class="gray" v-else>合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
               <button @click="doBuy(it)">[确认购买]</button>
@@ -2370,12 +2415,18 @@ export default {
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       techsData: { techs: [], academy: 0 },
       wildlands: [],
+      // ★ 城市列表 [派遣] 用：目标城市 + 当前城市可派遣的军官
+      dispatchTarget: null,
+      dispatchOfficers: [],
       occupies: [],
       queues: [],
       marching: 0,
       occupying: 0,
       unreadReports: 0,
       reports: [],
+      // ★ 军情三区分页：默认每页 5 条
+      dynPage: 1, dynSize: 5,
+      repPage: 1, repSize: 5,
       notices: [],
       curNotice: null,
       worldChats: [],
@@ -2503,6 +2554,8 @@ export default {
       waitH: 0,
       waitM: 0,
       orderCalc: null,
+      // ★ 本次出征使用几个集结令（0~10）
+      orderGather: 0,
       jumpX: '',
       jumpY: '',
       mapStars: [],
@@ -2613,11 +2666,15 @@ export default {
       const r = this.wareRatio
       return (parseInt(r.food) || 0) + (parseInt(r.steel) || 0) + (parseInt(r.oil) || 0) + (parseInt(r.rare) || 0)
     },
-    // 集结令数量(背包里查; 原版此道具未实现, 恒为 0)
+    // 集结令数量(背包里查)
     gatherCount () {
       const it = (this.bagItems || []).find(x => x.name === '集结令')
       return it ? it.count : 0
     },
+    // ★ 集结令相关：单次最多用 10 个，但也不能超过背包里实际有的数量
+    orderCapMax () { return 10 },
+    gatherMax () { return Math.min(this.orderCapMax, this.gatherCount) },
+    orderCapPer () { return 100000 },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
     },
@@ -2716,6 +2773,21 @@ export default {
         if (typeof ct.is_sea === 'boolean') return ct.is_sea
         return !!ct.is_sea
       }
+    },
+    // ★ 军情三区分页（默认每页 5 条，可上一页/下一页）
+    dynTotalPages () {
+      return Math.max(1, Math.ceil(this.dynamics.length / this.dynSize))
+    },
+    dynPaged () {
+      const p = Math.min(Math.max(1, this.dynPage), this.dynTotalPages)
+      return this.dynamics.slice((p - 1) * this.dynSize, p * this.dynSize)
+    },
+    repTotalPages () {
+      return Math.max(1, Math.ceil(this.reports.length / this.repSize))
+    },
+    repPaged () {
+      const p = Math.min(Math.max(1, this.repPage), this.repTotalPages)
+      return this.reports.slice((p - 1) * this.repSize, p * this.repSize)
     },
     // 翻页步长 = 一整屏(复刻原版: 向上 x-5 / 向右 y+5, 即 2r+1)
     mapStep () {
@@ -2869,7 +2941,15 @@ export default {
       else if (t === 'orders') this.loadOrders()
       else if (t === 'notices') this.loadNotices()
       else if (t === 'wilds') this.loadWilds()
-      else if (t === 'orderpre') { this.orderCalc = null; this.loadTroops(); this.loadOnDutyOfficers() }
+      else if (t === 'orderpre') {
+        // ★ 必须一起加载背包：出征页的「集结令」下拉要读 bagItems，
+        //   只进背包页才 loadBag 的话，出征页会永远显示「0个」且下拉被禁用。
+        this.orderCalc = null
+        this.orderGather = 0
+        this.loadTroops()
+        this.loadOnDutyOfficers()
+        this.loadBag()
+      }
       else if (t === 'acade') this.loadAcade()
       else if (t === 'wareset') this.loadWare()
       else if (t === 'citymove') this.loadMoveInfo()
@@ -3097,18 +3177,25 @@ export default {
         if (r.code === 0) {
           this.reports = r.data.reports || []
           this.reportCounts = r.data.counts || {}
+          this.repPage = 1
         }
       })
     },
     // ---- 军队动态 ----
     loadDynamics () {
       api.get('/games/ezfy/reports/dynamics').then(r => {
-        if (r.code === 0) this.dynamics = r.data.dynamics || []
+        if (r.code === 0) {
+          this.dynamics = r.data.dynamics || []
+          this.dynPage = 1
+        }
       })
     },
     switchReportTab (t) {
       this.reportTab = t
       this.curReport = null
+      // ★ 切换分区时回到第 1 页，避免停在上一次的分页位置看到空白
+      this.repPage = 1
+      this.dynPage = 1
       if (t === 1) this.loadDynamics()
       else this.loadReports()
     },
@@ -3455,9 +3542,44 @@ export default {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
     // 摧毁自己的城市（至少保留一座；摧毁当前城会自动切到剩下的城）
+    // ★ 军情分页翻页（which: 'dyn' 军队动态 / 'rep' 战报列表）
+    pagerGo (which, delta) {
+      if (which === 'dyn') {
+        this.dynPage = Math.min(this.dynTotalPages, Math.max(1, this.dynPage + delta))
+      } else {
+        this.repPage = Math.min(this.repTotalPages, Math.max(1, this.repPage + delta))
+      }
+    },
+    // ★ 城市列表 [派遣]：把当前城市的军官调往自己另一座城
+    openDispatch (ct) {
+      this.dispatchTarget = ct
+      this.dispatchOfficers = []
+      api.get('/games/ezfy/officers').then(r => {
+        if (r.code === 0) {
+          const list = r.data.officers || []
+          // 只留可派遣的：不是俘虏、不在出征中、没有带职位
+          this.dispatchOfficers = list.filter(o =>
+            o.is_captive !== 1 && o.status !== 1 && !(o.position && o.position !== 0))
+        }
+      })
+    },
+    doDispatch (o) {
+      if (!this.dispatchTarget) return
+      api.post('/games/ezfy/officers/' + o.id + '/dispatch', {
+        city_id: this.city.id, target_id: this.dispatchTarget.id
+      }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data.msg)
+          this.dispatchTarget = null
+          this.load()
+        } else {
+          this.notify(r.msg, 'error')
+        }
+      })
+    },
     async doDestroyCity (ct) {
-      const cur = this.city && ct.id === this.city.id ? '（这是当前所在城市，摧毁后会自动切换到其他城市）' : ''
-      const ok = await this.ask('确定摧毁「' + ct.name + '」吗？' + cur + '该城市的建筑、部队、军官、野地都会一并消失，' +
+      const cur = this.city && ct.id === this.city.id ? '（这是当前所在城市，弃城后会自动切换到其他城市）' : ''
+      const ok = await this.ask('确定弃城「' + ct.name + '」吗？' + cur + '该城市的建筑、部队、军官、野地都会一并消失，' +
         '坐标会恢复为普通平原。此操作不可恢复！')
       if (!ok) return
       api.post('/games/ezfy/city/destroy', { city_id: ct.id }).then(r => {
@@ -3794,6 +3916,8 @@ export default {
         gold: parseInt(this.trGold) || 0
       }
       if (this.orderOfficer && this.orderOfficer !== '0') body.officer = this.orderOfficer
+      // ★ 集结令个数：每个 +10 万出征上限，单次最多 10 个
+      body.gather = parseInt(this.orderGather) || 0
       return body
     },
     // 复刻原版出征页的 [计算]: 预览油耗/负重/耗时, 不下达命令
@@ -3803,6 +3927,10 @@ export default {
         if (r.code === 0) this.orderCalc = r.data
         else this.alert(r, '计算失败')
       })
+    },
+    // 改集结令数量后立刻重算，让「本次出兵 / 上限」即时刷新
+    onGatherChange () {
+      this.doCalc()
     },
     doOrder () {
       if (!this.selCell) return
@@ -3814,7 +3942,9 @@ export default {
           this.orderCalc = null
           this.trFood = 0; this.trSteel = 0; this.trOil = 0; this.trRare = 0; this.trGold = 0
           this.waitH = 0; this.waitM = 0
+          this.orderGather = 0
           this.load()
+          this.loadBag()
           this.cur = 'orders'
           this.loadOrders()
         } else this.notify(r.msg)
@@ -3999,7 +4129,7 @@ export default {
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
       if (n < 1 || n > 99) { this.notify('数量需在 1-99 之间'); return }
-      if (it.stock !== undefined && n > it.stock) {
+      if (!it.unlimited && it.stock !== undefined && n > it.stock) {
         this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
         return
       }
@@ -4103,6 +4233,14 @@ export default {
       if (m < 60) return m + '分' + (s % 60) + '秒'
       const h = Math.floor(m / 60)
       return h + '时' + (m % 60) + '分'
+    },
+    // ★ 数字千分位（军队动态的「待带回」和出征页的「本次出兵/上限」都用它）
+    //   之前模板里引用了 fmtN 但方法从未定义 → Vue 渲染直接抛
+    //   "TypeError: _vm.fmtN is not a function"，整页白掉，且只在对应分支被渲染时才暴露。
+    fmtN (n) {
+      const v = Number(n)
+      if (!isFinite(v)) return '0'
+      return v.toLocaleString('en-US')
     },
     fmtTime (t) {
       if (!t) return ''
@@ -4629,4 +4767,23 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
 .ezfy-page .panel { max-width: 100%; overflow-x: auto; }
+/* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
+.ezfy-page .ezfy-pager {
+  margin: 8px 0 4px;
+  font-size: 15px;
+}
+.ezfy-page .ezfy-pager a {
+  margin: 0 4px;
+  text-decoration: none;
+}
+.ezfy-page .ezfy-pager a.gray {
+  color: #999;
+  pointer-events: none;
+}
+.ezfy-page .ezfy-pager span.gray {
+  margin: 0 6px;
+}
+@media (max-width: 420px) {
+  .ezfy-page .ezfy-pager { font-size: 13px; }
+}
 </style>

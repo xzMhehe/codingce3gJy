@@ -95,11 +95,9 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		for x := cx - r; x <= cx+r; x++ {
 			// ★ 用 Ex 地形：平原且靠海显示为「沿海平原」(9)；海洋仍是 8
 			terrain := ezfyTerrainEx(x, y)
+			// ★ 每一格都带上所属大洲 / 大洋，前端才能标注「这个城/野地在哪个州」
 			cell := gin.H{"x": x, "y": y, "terrain": terrain,
-				"terrain_name": ezfyTerrainName(terrain), "continent": ""}
-			if x == cx && y == cy {
-				cell["continent"] = ezfyContinentName(x, y)
-			}
+				"terrain_name": ezfyTerrainName(terrain), "continent": ezfyRegionName(x, y)}
 			if c, ok := cityAt[fmt.Sprintf("%d,%d", x, y)]; ok {
 				cell["area_type"] = 3
 				cell["city_id"] = c.ID
@@ -111,7 +109,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 			} else {
 				kou := h.ezfyIsKouCity(x, y)
 				switch {
-				case terrain == 8:
+				case terrain == ezfyTerrainSea:
 					cell["area_type"] = 1
 					cell["name"] = ezfyTerrainName(terrain) // 海洋
 					cell["level"] = ezfyWildlandLevel(x, y)
@@ -337,6 +335,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		Resources  map[string]int64 `json:"resources"`
 		Officer    string           `json:"officer"`
 		WaitMin    int              `json:"wait_min"` // 宿营分钟数(≤1440)
+		Gather     int              `json:"gather"`   // ★ 集结令个数(0~10)，提高本次出征兵力上限
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -354,7 +353,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 	if waitMin > 1440 {
 		waitMin = 1440
 	}
-	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin); msg != "" {
+	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin, req.Gather); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}
@@ -375,6 +374,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		Resources map[string]int64 `json:"resources"`
 		Officer   string           `json:"officer"`
 		WaitMin   int              `json:"wait_min"`
+		Gather    int              `json:"gather"` // ★ 集结令个数
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -429,6 +429,18 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		waitMin = 1440
 	}
 	needSec := travelSec*2 + int64(waitMin)*60
+	// ★ 出征兵力上限（含集结令加成）—— 前端 [计算] 时直接显示「本次出兵 N / 上限 M」
+	gather := req.Gather
+	if gather < 0 {
+		gather = 0
+	}
+	if gather > ezfyGatherMaxPerOrder {
+		gather = ezfyGatherMaxPerOrder
+	}
+	totalPreview := int64(0)
+	for _, t := range valid {
+		totalPreview += t.Count
+	}
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
@@ -441,6 +453,15 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		"need_time":   ezfyDurationText(needSec),
 		"travel_time": ezfyDurationText(travelSec),
 		"return_time": ezfyDurationText(travelSec),
+		// 出征上限相关
+		"troop_total":    totalPreview,
+		"troop_cap":      h.ezfyOrderTroopCap(city.ID, gather),
+		"hq_level":       h.buildingLevel(city.ID, 13),
+		"gather":         gather,
+		"gather_per":     ezfyGatherBonusPer(),
+		"gather_max":     ezfyGatherMaxPerOrder,
+		"gather_have":    h.itemCount(uid, ezfyGatherItemID),
+		"troop_over_cap": totalPreview > h.ezfyOrderTroopCap(city.ID, gather),
 	})
 }
 
@@ -471,8 +492,40 @@ func ezfyDurationText(sec int64) string {
 	return out
 }
 
+// ============ 集结令 / 出征兵力上限 ============
+
+const (
+	// ezfyGatherItemID 集结令道具 id（ezfy_cfg_item）
+	ezfyGatherItemID = 19
+	// ezfyGatherDefaultPer 每个集结令提升的出征上限（配置表 param1 优先）
+	ezfyGatherDefaultPer = 100000
+	// ezfyGatherMaxPerOrder 单次出征最多使用多少个集结令（用户规则：10 个）
+	ezfyGatherMaxPerOrder = 10
+)
+
+// ezfyGatherBonusPer 每个集结令提升的出征上限（读配置 param1，缺省 10 万）
+func ezfyGatherBonusPer() int64 {
+	if it := ezfyCfg.item(ezfyGatherItemID); it != nil && it.Param1 > 0 {
+		return it.Param1
+	}
+	return ezfyGatherDefaultPer
+}
+
+// ezfyOrderTroopCap 本次出征的兵力上限
+//
+//	= 司令部等级 × 1万 × (1 + 指挥艺术科技等级 × 10%)   ← 原版规则（司令部「每次出征上限N人」）
+//	+ 集结令个数 × ezfyGatherBonusPer()                ← 用户规则：每个集结令 +10 万
+func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int) int64 {
+	hq := h.buildingLevel(cityId, 13)
+	cap := int64(10000*hq) * int64(100+h.techMap(cityId)[15]*ezfyCommandCarryPct) / 100
+	if gather > 0 {
+		cap += int64(gather) * ezfyGatherBonusPer()
+	}
+	return cap
+}
+
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
-	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin int) string {
+	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather int) string {
 
 	h.refreshCity(uid, city)
 	// 过滤数量为0的部队
@@ -554,6 +607,18 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if slowest == int(^uint(0)>>1) {
 		slowest = 300
 	}
+	// ★ 集结令：先校验参数（单次最多 10 个、背包要够），再校验兵力与上限
+	if gather < 0 {
+		gather = 0
+	}
+	if gather > ezfyGatherMaxPerOrder {
+		return fmt.Sprintf("集结令单次最多使用%d个", ezfyGatherMaxPerOrder)
+	}
+	if gather > 0 {
+		if have := h.itemCount(uid, ezfyGatherItemID); have < gather {
+			return fmt.Sprintf("集结令不足: 需要%d个, 当前只有%d个", gather, have)
+		}
+	}
 	cityTroops := h.troopMap(city.ID)
 	for _, t := range validTroops {
 		owned := cityTroops[t.TroopId]
@@ -565,6 +630,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return fmt.Sprintf("兵力不足: %s 只有%d可用", name, owned)
 		}
 	}
+	// ★ 出征兵力上限见下面的司令部限制（含集结令加成），这里不再重复校验
 	if orderType == 4 {
 		var wl model.EzfyWildland
 		if err := h.DB.Where("id = ? AND city_id = ?", targetId, city.ID).First(&wl).Error; err != nil {
@@ -590,8 +656,11 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if lead == nil {
 			return "军官不存在"
 		}
-		if lead.Status == 1 {
-			return "军官" + lead.Name + "正在出征中"
+		// ★ 用户规则：同一座城市里，一个军官同时只能带一支队伍出征。
+		//   只要他还有未结束的命令（行军中/驻守中/返航中），就不能再接新命令。
+		//   这里查命令表而不是只看 officer.Status —— 后者可能因历史数据漂移不准。
+		if lead.Status == 1 || h.officerBusyOrder(city.ID, officer) {
+			return "军官" + lead.Name + "正在出征中, 未归队前不能再次出征"
 		}
 		if lead.IsCaptive == 1 {
 			return "俘虏不能带队出征, 请先在军校收编"
@@ -655,9 +724,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return fmt.Sprintf("司令部%d级, 同时只能出征%d支队伍", hq, hq)
 	}
 	if orderType != 5 {
-		carryCap := int64(10000*hq) * int64(100+h.techMap(city.ID)[15]*ezfyCommandCarryPct) / 100
+		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
+		carryCap := h.ezfyOrderTroopCap(city.ID, gather)
 		if total > carryCap {
-			return fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
+			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
+			if gather < ezfyGatherMaxPerOrder {
+				msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), ezfyGatherMaxPerOrder)
+			}
+			return msg
 		}
 	}
 	distance := ezfyAbs(city.X-targetX) + ezfyAbs(city.Y-targetY)
@@ -691,6 +765,12 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	if waitMin > 1440 {
 		waitMin = 1440
+	}
+	// ★ 走到这里所有校验都过了，才真正扣掉集结令（失败路径不能白扣玩家道具）
+	if gather > 0 {
+		for i := 0; i < gather; i++ {
+			h.consumeItem(uid, ezfyGatherItemID)
+		}
 	}
 	order := model.EzfyOrder{
 		UserID: uid, CityId: int64(city.ID),
@@ -772,7 +852,9 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ?", uid).Order("id DESC").Limit(50).Find(&orders)
+	// ★ 用户规则：出征队列只列**还在外面**的部队（行军中/驻守中/返航中）。
+	//   已结束(3已完成/4已终止)的命令不再常驻队列，战报里还能查到。
+	h.DB.Where("user_id = ? AND status IN (0,1,2)", uid).Order("id DESC").Limit(50).Find(&orders)
 	views := []gin.H{}
 	for _, o := range orders {
 		views = append(views, gin.H{
@@ -1164,8 +1246,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	wildLevel := 0
 	var target *model.EzfyCity
 
+	// ★ case 0：老数据/异常请求可能没带 target_type，按「野地」处理，
+	//   否则会落进 default，导致战报标题变成「侦查报告: 」（目标名为空）。
 	switch order.TargetType {
-	case 1, 2:
+	case 0, 1, 2:
 		// 活动目标: 侦查时按活动守军回报情报(不走普通野地配置表)
 		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 {
 			wildLevel = ezfyActivityLevel(order.TargetX, order.TargetY)
@@ -1192,7 +1276,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		wildLevel = level
 		defender = parseWildlandTroops(cfg.Troops)
-		name := "野地"
+		// ★ 用户要求：战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
+		//   原来一律写「野地N级」，看不出打的是什么地形。
+		name := ezfyTerrainName(ezfyTerrain(order.TargetX, order.TargetY))
 		if order.TargetType == 2 {
 			name = "寇城"
 		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
@@ -1470,7 +1556,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.addPrestige(uid, pg)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
 				report += h.battleStatsTail(uid, pg, 0)
-				h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
+				h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -1709,7 +1795,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
 		}
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
-		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
+		h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
 	} else {
 		// ★ 第九轮：打败仗 → 幸存部队撤退返航（原来 status=4 是终止态，
 		//   幸存兵力凭空消失、带队军官永远卡在「出征中」，属于 bug）。
@@ -1740,7 +1826,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
-		h.addReport(uid, 2, "战斗报告: "+targetName, report, detail, order.ID)
+		h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
 			h.addReport(target.UserID, 4, "守卫报告: "+city.Name,
 				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses)), detail)

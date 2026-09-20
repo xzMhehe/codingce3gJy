@@ -650,6 +650,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
 				ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
 				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
+				// 城市列表的 [派遣]：军官调往自己的另一座城
+				ezfyG.POST("/officers/:id/dispatch", ezfyH.OfficerDispatch)
 				ezfyG.GET("/acade/recruit", ezfyH.AcadeRecruit)
 				ezfyG.POST("/acade/recruit/refresh", ezfyH.AcadeRefresh)
 				ezfyG.POST("/acade/recruit/hire", ezfyH.AcadeRecruitDo)
