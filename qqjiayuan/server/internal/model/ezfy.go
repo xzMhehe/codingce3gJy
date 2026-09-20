@@ -698,19 +698,22 @@ type EzfyChat struct {
 
 func (EzfyChat) TableName() string { return "ezfy_chat" }
 
-// EzfyExchange 交易所挂单：玩家卖资源换黄金
+// EzfyExchange 交易所挂单：玩家卖资源换黄金；系统挂单可定价黄金或钻石
 type EzfyExchange struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	SellerId   uint      `gorm:"index:idx_seller" json:"seller_id"`
 	SellerName string    `gorm:"type:varchar(20)" json:"seller_name"`
 	EsType     int       `json:"es_type"` // 1粮 2钢 3油 4稀矿
 	EsCount    int64     `json:"es_count"`
-	TotalPrice int64     `json:"total_price"`                              // 总价(黄金)
+	TotalPrice int64     `json:"total_price"`                              // 总价(货币见 Currency)
 	Status     int       `gorm:"index:idx_status;default:0" json:"status"` // 0在售 1成交 2下架
 	BuyerId    uint      `json:"buyer_id"`
 	IsSystem   int       `gorm:"default:0" json:"is_system"` // 1系统挂单
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	// ★ 计价货币：1 黄金 2 钻石。
+	//   用户规则：**玩家挂单只能用黄金**；系统挂单（管理端新增）可以用黄金或钻石定价。
+	Currency  int       `gorm:"default:1" json:"currency"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (EzfyExchange) TableName() string { return "ezfy_exchange" }

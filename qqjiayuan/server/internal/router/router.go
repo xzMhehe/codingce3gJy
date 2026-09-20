@@ -1139,6 +1139,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-res-cfg/:id", perm(db, "module:ezfyResources"), adminH.AdminEzfyResCfgUpdate)
 				admin.POST("/ezfy-res-cfg/reset", perm(db, "module:ezfyResources"), adminH.AdminEzfyResCfgReset)
 
+				// ---- 资源交易行维护（系统挂单可定价黄金/钻石；玩家挂单只能黄金） ----
+				admin.GET("/ezfy-exchange", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeList)
+				admin.POST("/ezfy-exchange", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeCreate)
+				admin.POST("/ezfy-exchange/:id/off", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeOff)
+				admin.DELETE("/ezfy-exchange/:id", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeRemove)
+
 				// ---- 科技管理 ----
 				admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechs)
 				admin.GET("/ezfy-techs-cfg", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechsCfg)

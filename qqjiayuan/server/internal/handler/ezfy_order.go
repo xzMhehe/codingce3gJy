@@ -803,12 +803,29 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if officer != "" {
 		h.officerGoOut(city, officer, true)
 	}
-	// 雷达站预警
+	// 雷达站预警：**能不能提前看见，取决于被攻击方自己城市的雷达站等级**。
+	//
+	//	侦查(1)      → 「被侦查报告」（军情警讯）
+	//	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随雷达等级递增
+	//
+	// 注意：这里只发**事前预警**；被掠夺/城破这类**事后结果**报告在 processArrive 里发，
+	// 不受雷达站限制 —— 否则玩家资源被抢光了却毫不知情。
 	if targetType == 3 && targetId > 0 && (orderType == 1 || orderType == 2 || orderType == 3) {
 		var target model.EzfyCity
 		if err := h.DB.First(&target, targetId).Error; err == nil && target.UserID > 0 {
 			radar := h.buildingLevel(target.ID, 21)
-			if radar >= 1 {
+			if radar >= 1 && orderType == 1 {
+				body := "有敌军对我方城市进行了侦查!\n"
+				if radar >= 3 {
+					body += "侦查方城市: " + city.Name + "\n"
+				}
+				if radar >= 5 {
+					body += fmt.Sprintf("侦查时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
+				}
+				body += fmt.Sprintf("(雷达站%d级: 等级越高, 情报越详细)", radar)
+				h.addReport(target.UserID, 6, "被侦查报告: "+city.Name, body)
+			}
+			if radar >= 1 && orderType != 1 {
 				warn := "军情警报: 敌方部队正向我方城市进发!\n"
 				if radar >= 2 {
 					warn += "进攻意图: " + ezfyOrderTypeName(orderType) + "\n"
@@ -1052,6 +1069,9 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 			h.addItem(uid, cfgId, 1)
 			// ★ 宝物不受负重限制，直接进背包
 			desc += "运气爆棚! 获得宝物(已直接放入背包): " + cfg.Name + "\n"
+			// ★ 系统消息（用户要求：采集出宝物要能看到）
+			h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物：%s",
+				h.ezfyProfileName(uid), level, wl.X, wl.Y, cfg.Name)
 		}
 	}
 	desc += "部队继续驻守采集, 可随时召回。"

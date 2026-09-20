@@ -22,9 +22,68 @@ const (
 	ezfyChanCorps   = 2 // 军团频道
 	ezfyChanSystem  = 4 // 系统频道(只读)
 	ezfyChatMaxRune = 25
+	// 聊天分页默认每页条数（用户反馈「聊天页太长了」）
+	ezfyChatPageSize = 15
+	ezfyChatPageMax  = 50
+	// 系统消息比玩家发言长一点（「恭喜 xxx 晋升上校」这类），但也别长到刷屏
+	ezfySysChatMaxRune = 120
+	// 首页「世界聊天」预览条数（用户要求：默认展示 6 条）
+	ezfyHomeChatLimit = 6
 )
 
-// ChatList GET /games/ezfy/chat?channel=1|2|4
+// ezfySysChat 往**系统频道**写一条消息（talk_type=0，只读）。
+//
+// 用途：把「军衔晋升 / 采集到宝物 / 战斗掉落装备 / 招募到五星军官」这类值得全服看到的事件
+// 推到世界聊天与首页预览里（用户要求：这些事原来没有任何交互反馈）。
+//
+// 内容同样过一遍敏感词（玩家昵称可能被起成敏感词）并按长度截断。
+func (h *EzfyHandler) ezfySysChat(format string, args ...interface{}) {
+	content := fmt.Sprintf(format, args...)
+	if filtered, blocked := ezfyFilterChat(content); blocked {
+		return
+	} else {
+		content = filtered
+	}
+	if r := []rune(content); len(r) > ezfySysChatMaxRune {
+		content = string(r[:ezfySysChatMaxRune])
+	}
+	if trimSpace(content) == "" {
+		return
+	}
+	// ⚠️ 这里**必须用 map 建**，不能写成 &model.EzfyChat{...TalkType: 0}。
+	//    model.EzfyChat.TalkType 带 `gorm:"default:1"` 标签，GORM 对「带 default 标签且当前是零值」
+	//    的字段会**从 INSERT 里剔除**，让数据库默认值 1 生效 —— 结果就是系统消息被存成玩家消息
+	//    (talk_type=1)，而系统频道按 `talk_type = 0` 查，永远查不到（首页预览同样漏掉）。
+	//    走 map 时 GORM 只插入显式给出的列，零值不会被吞。
+	h.DB.Model(&model.EzfyChat{}).Create(map[string]interface{}{
+		"user_id":    0,
+		"user_name":  "系统",
+		"content":    content,
+		"channel":    ezfyChanSystem,
+		"talk_type":  0,
+		"created_at": time.Now(),
+	})
+}
+
+// ezfyChatPager 解析聊天分页参数（?page=1&size=15）
+func ezfyChatPager(c *gin.Context) (page, size int) {
+	page, _ = strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	size, _ = strconv.Atoi(c.DefaultQuery("size", strconv.Itoa(ezfyChatPageSize)))
+	if size < 1 {
+		size = ezfyChatPageSize
+	}
+	if size > ezfyChatPageMax {
+		size = ezfyChatPageMax
+	}
+	return page, size
+}
+
+// ChatList GET /games/ezfy/chat?channel=1|2|4&page=1&size=15
+//
+// ★ 用户要求：聊天页太长 → 分页；排序改**时间降序（最新的在最上面）**。
 func (h *EzfyHandler) ChatList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -32,6 +91,7 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 	if v, err := strconv.Atoi(c.DefaultQuery("channel", "1")); err == nil && v > 0 {
 		channel = v
 	}
+	page, size := ezfyChatPager(c)
 	// 我的军团(军团频道前提)
 	myCorps := h.myCorpsOf(uid)
 	// 没有军团时军团频道降级为公共频道
@@ -53,8 +113,11 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 
 	switch viewChannel {
 	case ezfyChanCorps:
+		var total int64
+		h.DB.Model(&model.EzfyCorpsChat{}).Where("corps_id = ?", myCorps.ID).Count(&total)
 		var list []model.EzfyCorpsChat
-		h.DB.Where("corps_id = ?", myCorps.ID).Order("id DESC").Limit(50).Find(&list)
+		h.DB.Where("corps_id = ?", myCorps.ID).Order("id DESC").
+			Offset((page - 1) * size).Limit(size).Find(&list)
 		ids := []uint{}
 		for _, ch := range list {
 			if ch.UserId > 0 {
@@ -63,8 +126,8 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 		}
 		nick := h.liveNicknames(ids)
 		views := make([]gin.H, 0, len(list))
-		for i := len(list) - 1; i >= 0; i-- {
-			ch := list[i]
+		// ★ 时间降序：最新的在最上面（原实现是取最新 N 条再反转成升序）
+		for _, ch := range list {
 			name, color := ch.UserName, ""
 			if v, ok := nick[ch.UserId]; ok {
 				if v[0] != "" {
@@ -76,6 +139,9 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 				"content": ch.Content, "created_at": ch.CreatedAt, "talk_type": 1, "mine": ch.UserId == uid})
 		}
 		out["chats"] = views
+		out["total"] = total
+		out["page"] = page
+		out["size"] = size
 	case ezfyChanSystem:
 		// 系统频道: 系统公告(全员+个人) + 系统消息(talk_type=0)
 		var notices []model.EzfyNotice
@@ -86,19 +152,27 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 			nviews = append(nviews, gin.H{"id": n.ID, "title": n.Title, "content": n.Content,
 				"is_top": n.IsTop, "created_at": n.CreatedAt})
 		}
+		var total int64
+		h.DB.Model(&model.EzfyChat{}).Where("channel = ? AND talk_type = 0", ezfyChanSystem).Count(&total)
 		var msgs []model.EzfyChat
-		h.DB.Where("channel = ? AND talk_type = 0", ezfyChanSystem).Order("id DESC").Limit(50).Find(&msgs)
+		h.DB.Where("channel = ? AND talk_type = 0", ezfyChanSystem).Order("id DESC").
+			Offset((page - 1) * size).Limit(size).Find(&msgs)
 		mviews := make([]gin.H, 0, len(msgs))
-		for i := len(msgs) - 1; i >= 0; i-- {
-			m := msgs[i]
+		for _, m := range msgs {
 			mviews = append(mviews, gin.H{"id": m.ID, "user_name": m.UserName, "content": m.Content,
 				"created_at": m.CreatedAt, "talk_type": 0})
 		}
 		out["notices"] = nviews
 		out["chats"] = mviews
+		out["total"] = total
+		out["page"] = page
+		out["size"] = size
 	default:
+		var total int64
+		h.DB.Model(&model.EzfyChat{}).Where("channel = ? AND talk_type = 1", ezfyChanPublic).Count(&total)
 		var chats []model.EzfyChat
-		h.DB.Where("channel = ?", ezfyChanPublic).Order("id DESC").Limit(50).Find(&chats)
+		h.DB.Where("channel = ? AND talk_type = 1", ezfyChanPublic).Order("id DESC").
+			Offset((page - 1) * size).Limit(size).Find(&chats)
 		// 实时昵称/颜色(玩家改了个性昵称, 历史消息也跟着变)
 		ids := []uint{}
 		for _, ch := range chats {
@@ -108,8 +182,7 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 		}
 		nick := h.liveNicknames(ids)
 		views := make([]gin.H, 0, len(chats))
-		for i := len(chats) - 1; i >= 0; i-- {
-			ch := chats[i]
+		for _, ch := range chats {
 			name, color := ch.UserName, ""
 			if v, ok := nick[ch.UserId]; ok {
 				if v[0] != "" {
@@ -122,6 +195,9 @@ func (h *EzfyHandler) ChatList(c *gin.Context) {
 				"mine": ch.UserId == uid})
 		}
 		out["chats"] = views
+		out["total"] = total
+		out["page"] = page
+		out["size"] = size
 	}
 
 	// ★ 人数要按频道给：
@@ -249,6 +325,8 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 // ★ 昵称/颜色一律**实时**从 users 表取(不是发消息时存的快照),
 //
 //	这样玩家改了个性昵称、换了昵称颜色, 聊天里也会跟着变。
+//
+// ★ 展示规则(用户要求)：取**最新 6 条**，按时间**升序**排列（最早的在上、最新的在下）。
 func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -343,9 +421,14 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 		fix(&rows[i], uidOf[rows[i].key])
 	}
 
+	// ★ 用户要求：默认展示 6 条，**升序**（最早的在上、最新的在下）。
+	//   所以先按时间降序取「最新的 6 条」，再翻转成升序输出。
 	sort.Slice(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
-	if len(rows) > 8 {
-		rows = rows[:8]
+	if len(rows) > ezfyHomeChatLimit {
+		rows = rows[:ezfyHomeChatLimit]
+	}
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
 	}
 	views := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
@@ -362,18 +445,36 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 
 var ezfyResNames = map[int]string{1: "粮食", 2: "钢铁", 3: "石油", 4: "稀矿"}
 
+// 交易所计价货币
+const (
+	ezfyMoneyGold    = 1 // 黄金（玩家挂单只能用它）
+	ezfyMoneyDiamond = 2 // 钻石（只有系统挂单能用）
+)
+
+func ezfyMoneyName(cur int) string {
+	if cur == ezfyMoneyDiamond {
+		return "钻石"
+	}
+	return "黄金"
+}
+
 func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var list []model.EzfyExchange
-	h.DB.Where("status = 0").Order("id DESC").Limit(100).Find(&list)
+	h.DB.Where("status = 0").Order("is_system DESC, id DESC").Limit(100).Find(&list)
 	views := []gin.H{}
 	for _, e := range list {
 		if e.SellerId == uid && e.IsSystem != 1 {
 			continue
 		}
-		views = append(views, gin.H{"id": e.ID, "seller_name": e.SellerName,
+		seller := e.SellerName
+		if e.IsSystem == 1 {
+			seller = "系统"
+		}
+		views = append(views, gin.H{"id": e.ID, "seller_name": seller,
 			"type": e.EsType, "type_name": ezfyResNames[e.EsType],
 			"count": e.EsCount, "total_price": e.TotalPrice,
+			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency),
 			"unit_price": e.TotalPrice / maxInt64(1, e.EsCount), "mine": e.SellerId == uid})
 	}
 	var mine []model.EzfyExchange
@@ -381,10 +482,12 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	mineViews := []gin.H{}
 	for _, e := range mine {
 		mineViews = append(mineViews, gin.H{"id": e.ID, "type": e.EsType,
-			"type_name": ezfyResNames[e.EsType], "count": e.EsCount, "total_price": e.TotalPrice})
+			"type_name": ezfyResNames[e.EsType], "count": e.EsCount, "total_price": e.TotalPrice,
+			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency)})
 	}
 	city := h.getOrCreateCity(uid)
-	resp.OK(c, gin.H{"orders": views, "mine": mineViews, "gold": city.Gold})
+	resp.OK(c, gin.H{"orders": views, "mine": mineViews, "gold": city.Gold,
+		"diamond": h.ensureProfile(uid).Diamond})
 }
 
 func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
@@ -435,8 +538,11 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 	}
 	h.saveCityRes(&city)
 	profile := h.ensureProfile(uid)
+	// ★ 玩家挂单一律**黄金计价**（用户规则：玩家卖只能按黄金买卖）。
+	//   钻石定价是系统挂单专属能力，由管理端「交易行维护」新增。
 	h.DB.Create(&model.EzfyExchange{SellerId: uid, SellerName: profile.Nickname,
-		EsType: req.EsType, EsCount: req.EsCount, TotalPrice: req.TotalPrice, Status: 0})
+		EsType: req.EsType, EsCount: req.EsCount, TotalPrice: req.TotalPrice,
+		Status: 0, IsSystem: 0, Currency: ezfyMoneyGold})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("挂单成功: %s×%d 售%d黄金", ezfyResNames[req.EsType], req.EsCount, req.TotalPrice)})
 }
 
@@ -460,11 +566,24 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 	}
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
-	if city.Gold < e.TotalPrice {
-		resp.ParamError(c, fmt.Sprintf("黄金不足(需%d)", e.TotalPrice))
-		return
+	money := ezfyMoneyName(e.Currency)
+	if e.Currency == ezfyMoneyDiamond {
+		// 钻石计价（只有系统挂单会出现）—— 扣档案上的钻石余额
+		p := h.ensureProfile(uid)
+		if p.Diamond < e.TotalPrice {
+			resp.ParamError(c, fmt.Sprintf("钻石不足(需%d, 现有%d)", e.TotalPrice, p.Diamond))
+			return
+		}
+		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
+			Update("diamond", p.Diamond-e.TotalPrice)
+	} else {
+		if city.Gold < e.TotalPrice {
+			resp.ParamError(c, fmt.Sprintf("黄金不足(需%d)", e.TotalPrice))
+			return
+		}
+		city.Gold -= e.TotalPrice
 	}
-	city.Gold -= e.TotalPrice
+	// ★ 买的资源**不受仓储上限截断**（用户确认：交易所买的资源超上限也能买到、不会凭空少）
 	switch e.EsType {
 	case 1:
 		city.Food += e.EsCount
@@ -476,20 +595,24 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 		city.Rare += e.EsCount
 	}
 	h.saveCityRes(&city)
-	// 黄金转给卖家(受其黄金容量上限)
-	var sellerCity model.EzfyCity
-	if err := h.DB.Where("user_id = ?", e.SellerId).Order("id ASC").First(&sellerCity).Error; err == nil {
-		sellerCity.Gold += e.TotalPrice
-		if sellerCity.Gold > sellerCity.GoldCap {
-			sellerCity.Gold = sellerCity.GoldCap
+	// 黄金/钻石转给卖家（受其容量上限）；系统挂单不回款给任何玩家
+	if e.IsSystem != 1 {
+		var sellerCity model.EzfyCity
+		if err := h.DB.Where("user_id = ?", e.SellerId).Order("id ASC").First(&sellerCity).Error; err == nil {
+			sellerCity.Gold += e.TotalPrice
+			if sellerCity.Gold > sellerCity.GoldCap {
+				sellerCity.Gold = sellerCity.GoldCap
+			}
+			h.saveCityRes(&sellerCity)
 		}
-		h.saveCityRes(&sellerCity)
 	}
 	h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).
 		Updates(map[string]interface{}{"status": 1, "buyer_id": uid})
-	h.addReport(e.SellerId, 6, "交易成交",
-		fmt.Sprintf("你挂单出售的%s×%d已被%s以%d黄金购得。", ezfyResNames[e.EsType], e.EsCount, h.ensureProfile(uid).Nickname, e.TotalPrice))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", ezfyResNames[e.EsType], e.EsCount)})
+	if e.IsSystem != 1 {
+		h.addReport(e.SellerId, 6, "交易成交",
+			fmt.Sprintf("你挂单出售的%s×%d已被%s以%d%s购得。", ezfyResNames[e.EsType], e.EsCount, h.ensureProfile(uid).Nickname, e.TotalPrice, money))
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（花费%d%s）", ezfyResNames[e.EsType], e.EsCount, e.TotalPrice, money)})
 }
 
 func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {

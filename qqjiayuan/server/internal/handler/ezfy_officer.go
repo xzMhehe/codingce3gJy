@@ -338,6 +338,10 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	}
 	h.DB.Create(&o)
 	h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", joinDrafts(kept))
+	// ★ 五星军官值得全服看一眼（用户要求）
+	if pick.Star >= 5 {
+		h.ezfySysChat("恭喜玩家 %s 在军校招募到五星军官 %s！", h.ezfyProfileName(uid), o.Name)
+	}
 	return ""
 }
 
@@ -1027,15 +1031,29 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 		if cfg := h.randomEquipment(tier); cfg != nil {
 			h.addEquipment(city, cfg)
 			desc += " 宝物[" + ezfyTierName(tier) + "]:" + cfg.Name
+			// ★ 系统消息（用户要求：战斗掉落的装备要能看到）
+			h.ezfySysChat("恭喜玩家 %s 战斗掉落%s宝物：%s", h.ezfyProfileName(city.UserID), ezfyTierName(tier), cfg.Name)
 		}
 	}
 	if rand.Intn(100) < 40 {
 		if jewel := h.randomJewel(terrain); jewel != nil {
 			h.addEquipment(city, jewel)
 			desc += " 珠宝:" + jewel.Name
+			h.ezfySysChat("恭喜玩家 %s 缴获地形珠宝：%s", h.ezfyProfileName(city.UserID), jewel.Name)
 		}
 	}
 	return desc
+}
+
+// ezfyProfileName 取玩家昵称（发系统消息用），拿不到时给个兜底，避免出现「恭喜玩家  晋升」
+func (h *EzfyHandler) ezfyProfileName(uid uint) string {
+	if uid == 0 {
+		return "某玩家"
+	}
+	if n := h.ensureProfile(uid).Nickname; trimSpace(n) != "" {
+		return n
+	}
+	return "某玩家"
 }
 
 func ezfyTierName(tier int) string {

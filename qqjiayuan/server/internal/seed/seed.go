@@ -168,6 +168,11 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_profile SET recruit_free_limit = 0 WHERE recruit_free_limit IS NULL")
 	}
 
+	// 二战风云：交易所挂单的计价货币（老行是 NULL，回填 1=黄金）
+	if db.Migrator().HasTable("ezfy_exchange") {
+		db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")
@@ -1406,6 +1411,8 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
 		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"), mod("游戏-二战风云", "风云军衔", "ezfyRankCfg"),
 		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
+		// 资源交易行维护（系统挂单定价黄金/钻石）
+		mod("游戏-二战风云", "风云交易行", "ezfyExchange"),
 		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
 		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
 		// 第九轮新增：建筑数量上限配置 / 聊天敏感词（二战自己的独立维护页）

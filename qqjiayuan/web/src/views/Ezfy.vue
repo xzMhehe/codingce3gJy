@@ -45,10 +45,13 @@
 
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
-        <!-- ★ 只有【置顶】公告展示到首页外边；普通公告进「公告」页看 -->
-        <div class="old-line" v-for="n in topNotices" :key="'n' + n.id">
-          <img class="logo-title" src="/static/ezfy/notice.gif" alt="."/>
-          <a class="red" href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
+        <!-- ★ 只有【置顶】公告展示到首页外边；普通公告进「公告」页看。
+             外面包一层 .ezfy-notices 只为统一它与上下两行的间距(见样式表注释)。 -->
+        <div class="ezfy-notices" v-if="topNotices.length">
+          <div class="old-line" v-for="n in topNotices" :key="'n' + n.id">
+            <img class="logo-title" src="/static/ezfy/notice.gif" alt="."/>
+            <a class="red" href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
+          </div>
         </div>
 
         <div class="old-line">
@@ -62,8 +65,6 @@
           <a href="javascript:;" @click="go('corps')" v-else>[{{ myCorps.name }}]</a>
         </div>
         <div class="old-line">声望：{{ profile.prestige }}</div>
-        <!-- ★ 第九轮：钻石余额（只读，钻石只能由管理员充值） -->
-        <div class="old-line">钻石：<b>{{ profile.diamond || 0 }}</b><span class="gray">（钻石由管理员充值，可在商城购买钻石道具）</span></div>
         <div class="old-line">
           <img class="logo-title" src="/static/ezfy/jx.png" title="军衔" alt="."/>
           <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
@@ -167,6 +168,18 @@
             <a href="javascript:;" @click="go('mail')">私聊</a>
           </div>
 
+          <!-- ★ 发言框移到聊天列表**上方**（用户要求），列表按时间降序、最新在最上面 -->
+          <div class="old-line ezfy-chat-send">
+            <template v-if="chatCanSend">
+              <input v-model="chatMsg" class="ezfy-chat-input" maxlength="25" @keyup.enter="doChatSend"/>
+              <button v-if="chatCooldown <= 0" @click="doChatSend">发送</button>
+              <button v-else disabled class="gray">冷却中 {{ chatCooldown }}s</button>
+              <span class="gray">每次发言消耗一个喇叭(最大25个字)</span>
+            </template>
+            <span v-else class="gray">(系统频道仅系统可发言)</span>
+            <button @click="loadChats">刷新</button>
+          </div>
+
           <!-- 系统频道: 系统公告 + 系统消息(只读) -->
           <template v-if="chatChannel === 4">
             <div class="panel-title">系统公告</div>
@@ -183,6 +196,11 @@
               {{ ch.user_name }}：{{ ch.content }}
             </div>
             <div class="old-line gray" v-if="!worldChats.length">(暂无系统消息)</div>
+            <div class="ezfy-pager" v-if="chatTotalPages > 1">
+              <a href="javascript:;" :class="{ gray: chatPage <= 1 }" @click="chatGo(-1)">上一页</a>
+              <span class="gray">第 {{ chatPage }}/{{ chatTotalPages }} 页（共 {{ chatTotal }} 条）</span>
+              <a href="javascript:;" :class="{ gray: chatPage >= chatTotalPages }" @click="chatGo(1)">下一页</a>
+            </div>
           </template>
 
           <!-- 军团频道但还没加入军团：显示 0 人 + 引导 -->
@@ -200,7 +218,6 @@
                 ? '军团聊天(' + (chatHasCorps ? chatCorpsName : '未加入军团') + ')(' + chatCorpsPlayers + '人)'
                 : '世界聊天(' + chatPlayers + '人)' }}
             </div>
-            <div class="old-line gray">每次发言消耗一个喇叭(最大25个字)</div>
             <div class="old-line" v-for="ch in worldChats" :key="'c' + ch.id">
               [<span class="orange">{{ chatChannel === 2 ? '军团' : '世界' }}</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
@@ -209,16 +226,12 @@
                  :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
             </div>
             <div class="old-line" v-if="!worldChats.length">(暂无消息, 快来说点什么吧)</div>
+            <div class="ezfy-pager" v-if="chatTotalPages > 1">
+              <a href="javascript:;" :class="{ gray: chatPage <= 1 }" @click="chatGo(-1)">上一页</a>
+              <span class="gray">第 {{ chatPage }}/{{ chatTotalPages }} 页（共 {{ chatTotal }} 条）</span>
+              <a href="javascript:;" :class="{ gray: chatPage >= chatTotalPages }" @click="chatGo(1)">下一页</a>
+            </div>
           </template>
-
-          <br/>
-          <template v-if="chatCanSend">
-            <input v-model="chatMsg" style="width:20%" maxlength="25" @keyup.enter="doChatSend"/>
-            <button v-if="chatCooldown <= 0" @click="doChatSend">发送</button>
-            <button v-else disabled class="gray">冷却中 {{ chatCooldown }}s</button>
-          </template>
-          <span v-else class="gray">(系统频道仅系统可发言)</span>
-          <button @click="loadChats">刷新</button>
         </div>
       </template>
 
@@ -307,8 +320,15 @@
           <!-- ===== 军情警讯: 别人打我 ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">敌方来袭预警、被掠夺、城破、守卫战报都会出现在这里</span>
+              <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；能不能提前看见、能看见多少细节，取决于自己城市的雷达站等级。</span>
               <button @click="loadReports">刷新</button>
+            </div>
+            <!-- ★ 雷达站决定「事前预警」能不能收到（事后结果战报不受影响） -->
+            <div class="old-line" v-if="reportRadar > 0">
+              <span class="gray">当前雷达站 {{ reportRadar }} 级：已开启「敌军来袭 / 被侦查」预警，等级越高情报越详细。</span>
+            </div>
+            <div class="old-line" v-else>
+              <span class="red">尚未建造雷达站：收不到「敌军来袭 / 被侦查」预警；被掠夺、被征服的结果战报仍会记录在这里。</span>
             </div>
             <div class="old-line" v-for="r in repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="openReport(r)">
@@ -449,14 +469,15 @@
           <div class="old-line" v-for="ct in cities" :key="'ct' + ct.id">
             <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
             坐标({{ ct.x }},{{ ct.y }}) 城级{{ ct.city_level }}
-            <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海城' : '陆地城市' }}]</span>
+            <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ ct.city_kind || (isSeaAt(ct) ? '沿海城市' : '内陆城市') }}]</span>
+            <!-- ★ [改名] 按用户要求挪到「坐标/城级/类型」同一行 -->
+            <a href="javascript:;" @click="go('rename')">[改名]</a><br/>
             <span class="gray">所属洲: {{ ct.continent || '—' }}</span><br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
             <!-- ★ 运输：从当前城市把资源运到这座城（负重决定运量，可不带军官） -->
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
             <!-- ★ 派遣：把当前城市的军官调往这座城 -->
             <a v-if="ct.id !== city.id" href="javascript:;" @click="openDispatch(ct)">[派遣]</a>
-            <a href="javascript:;" @click="go('rename')">[改名]</a>
             <!-- ★ 弃城：只能弃「非当前所在」的城市；弃城后该坐标恢复为普通平原 -->
             <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[弃城]</a>
           </div>
@@ -492,8 +513,8 @@
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
-          <div class="gray" style="font-size:13px">
-            <b>平原</b> → 陆地城市; <b>沿海平原</b> → 海城(可建航海协会、训练海军)。<br/>
+          <div class="gray" style="font-size:14px">
+            <b>平原</b> → 内陆城市; <b>沿海平原</b> → 沿海城市(可建航海协会、训练海军)。<br/>
             其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
         </div>
@@ -508,9 +529,15 @@
           <span v-if="resDetail.store_tech > 0"> [储存技术Lv{{ resDetail.store_tech }}: 容量+{{ resDetail.store_tech * 2 }}%]</span>
           <br/>
           基础产量(每小时): {{ resDetail.base }}
-          <span v-if="resDetail.tech_prod > 0"> [科技+{{ resDetail.tech_prod * 10 }}%]</span>
+          <span v-if="resDetail.tech_prod > 0"> [{{ resTechName }}Lv{{ resDetail.tech_prod }}: +{{ resDetail.tech_prod * 10 }}%]</span>
+          <span class="gray" v-if="resDetail.base_building !== undefined">
+            （建筑{{ resDetail.base_building }} × 科技{{ 100 + (resDetail.tech_prod || 0) * 10 }}%）
+          </span>
           <br/>
-          加成产量(每小时): {{ resDetail.bonus }}<br/>
+          加成产量(每小时): {{ resDetail.bonus }}
+          <span class="gray" v-if="resDetail.rate !== undefined && resDetail.rate !== 100"> [开工率{{ resDetail.rate }}%]</span>
+          <span class="gray" v-if="resDetail.mayor_bonus > 0"> [市长加成+{{ resDetail.mayor_bonus }}%]</span>
+          <br/>
           耗量(每小时): {{ resDetail.consume }}<br/>
           <template v-if="resType === 'food'">
             军队耗粮: {{ resDetail.troop_consume || 0 }}
@@ -1232,7 +1259,9 @@
         <div class="panel">
           <div class="panel-title">城市状态</div>
           城市: {{ city.name }}({{ city.x }},{{ city.y }}) {{ continent }}
-          <span :class="city.is_sea ? 'green' : 'gray'">[{{ city.city_kind || (city.is_sea ? '海城' : '陆地城市') }}]</span><br/>
+          <!-- ★ 类型文案取 /view 顶层下发的 city_kind（原来读 city.city_kind，而嵌套的 city 对象里没有这个字段，
+               于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
+          <span :class="cityIsSea ? 'green' : 'gray'">[{{ cityKindLabel }}]</span><br/>
           市政厅: {{ city.city_level }}级<br/>
           人口: {{ city.pop }}/{{ city.pop_max }} (空闲{{ freePop }})<br/>
           民心/民怨: {{ city.feelings }}/{{ city.grievance }} 税率: {{ city.tax_rate }}%<br/>
@@ -1763,13 +1792,16 @@
         <div class="panel">
           <div class="panel-title">资源交易行({{ resNames.gold }}{{ exchangeGold }})</div>
           <div class="old-line gray">购买他人挂单的资源; 也可挂单出售资源换取{{ resNames.gold }}。</div>
+          <div class="old-line gray">
+            「系统」挂单由管理员上架，可能用<b>{{ resNames.gold }}</b>或<b>钻石</b>定价（钻石需管理员充值）；玩家自己挂单一律按{{ resNames.gold }}买卖。
+          </div>
           <table>
             <tr><th>卖家</th><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
             <tr v-for="e in exchangeOrders" :key="'eo' + e.id">
               <td>{{ e.seller_name }}</td>
               <td>{{ e.type_name }}</td>
               <td>{{ e.count }}</td>
-              <td>{{ e.total_price }}</td>
+              <td>{{ e.total_price }}{{ e.currency_name || resNames.gold }}</td>
               <td><a href="javascript:;" @click="doExchangeBuy(e)">[购买]</a></td>
             </tr>
           </table>
@@ -1777,7 +1809,7 @@
           <br/>
           <div class="panel-title">我的挂单</div>
           <div class="old-line" v-for="e in exchangeMine" :key="'em' + e.id">
-            {{ e.type_name }}×{{ e.count }} 售{{ e.total_price }}{{ resNames.gold }}
+            {{ e.type_name }}×{{ e.count }} 售{{ e.total_price }}{{ e.currency_name || resNames.gold }}
             <a href="javascript:;" @click="doExchangeCancel(e)">[下架]</a>
           </div>
           <div class="old-line" v-if="!exchangeMine.length">(无在售挂单)</div>
@@ -1792,6 +1824,7 @@
             数量: <input v-model="sellCount" type="number" style="width:90px"/><br/>
             总价({{ resNames.gold }}): <input v-model="sellPrice" type="number" style="width:90px"/><br/>
             <button @click="doExchangeSell">[挂单出售]</button>
+            <span class="gray">（玩家挂单只能用{{ resNames.gold }}计价）</span>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -2408,6 +2441,9 @@ export default {
       city: {},
       cities: [],
       continent: '',
+      // ★ 当前城市类型（/view 顶层下发）：city 对象里没有这两个字段，必须单独存
+      cityKindRaw: '',
+      cityIsSea: false,
       protectedUntil: false,
       boostUntil: false,
       buildings: [],
@@ -2439,6 +2475,10 @@ export default {
       chatCanSend: true,
       chatCooldown: 0,
       chatNotices: [],
+      // ★ 聊天分页（后端按时间降序返回，最新的在第 1 页最上面）
+      chatPage: 1,
+      chatTotal: 0,
+      chatSize: 15,
       mails: [],
       pmTo: '',
       pmContent: '',
@@ -2473,6 +2513,8 @@ export default {
       reportTab: 1,
       reportWord: '',
       reportCounts: {},
+      // ★ 自己城市的雷达站等级（决定「来袭/被侦查」预警能不能收到）
+      reportRadar: 0,
       dynamics: [],
       curOrder: null,
       showDetail: true,
@@ -2774,6 +2816,20 @@ export default {
         return !!ct.is_sea
       }
     },
+    // ★ 当前城市类型文案：统一为「沿海城市 / 内陆城市」（后端 city_kind 为准）
+    cityKindLabel () {
+      if (this.cityKindRaw) return this.cityKindRaw
+      return this.cityIsSea ? '沿海城市' : '内陆城市'
+    },
+    // ★ 资源详情页显示对应科技名（1 种植 / 2 炼钢 / 3 勘探 / 4 冶炼）
+    resTechName () {
+      const m = { food: '种植技术', steel: '炼钢技术', oil: '勘探技术', rare: '冶炼技术' }
+      return m[this.resType] || ''
+    },
+    // ★ 聊天分页总页数（后端按时间降序返回）
+    chatTotalPages () {
+      return Math.max(1, Math.ceil(this.chatTotal / this.chatSize))
+    },
     // ★ 军情三区分页（默认每页 5 条，可上一页/下一页）
     dynTotalPages () {
       return Math.max(1, Math.ceil(this.dynamics.length / this.dynSize))
@@ -2985,6 +3041,8 @@ export default {
           this.city = d.city
           this.cities = d.cities
           this.continent = d.continent
+          this.cityKindRaw = d.city_kind || ''
+          this.cityIsSea = !!d.is_sea
           this.protectedUntil = d.protected
           this.boostUntil = d.boost
           this.buildings = d.buildings
@@ -3041,7 +3099,8 @@ export default {
       })
     },
     loadChats () {
-      api.get('/games/ezfy/chat?channel=' + this.chatChannel).then(r => {
+      api.get('/games/ezfy/chat?channel=' + this.chatChannel +
+              '&page=' + this.chatPage + '&size=' + this.chatSize).then(r => {
         if (r.code === 0) {
           const d = r.data
           this.worldChats = d.chats || []
@@ -3051,6 +3110,8 @@ export default {
           this.chatCorpsName = d.corps_name || ''
           this.chatCorpsPlayers = d.corps_players || 0
           this.chatCanSend = d.can_send !== false
+          this.chatTotal = d.total || 0
+          if (d.page) this.chatPage = d.page
           // ★ 军团频道但没军团：后端会降级成公共频道并把世界消息塞回来，
           //   这里按「军团频道」的语义清空，改为显示 0 人 + 引导。
           if (this.chatChannel === 2 && !this.chatHasCorps) {
@@ -3059,13 +3120,22 @@ export default {
             this.chatPlayers = 0
             this.chatCorpsPlayers = 0
             this.chatCanSend = false
+            this.chatTotal = 0
           }
         }
       })
     },
+    // 聊天翻页（-1 上一页 / 1 下一页）
+    chatGo (delta) {
+      const next = this.chatPage + delta
+      if (next < 1 || next > this.chatTotalPages) return
+      this.chatPage = next
+      this.loadChats()
+    },
     switchChannel (ch) {
       this.chatChannel = ch
       this.chatMsg = ''
+      this.chatPage = 1
       this.loadChats()
     },
     // 首页「世界聊天」预览: 汇总 个人/同盟/系统 三个来源并带标识
@@ -3177,6 +3247,7 @@ export default {
         if (r.code === 0) {
           this.reports = r.data.reports || []
           this.reportCounts = r.data.counts || {}
+          this.reportRadar = r.data.radar || 0
           this.repPage = 1
         }
       })
@@ -3999,6 +4070,8 @@ export default {
           this.chatMsg = ''
           // 复刻原版聊天: 每次发言 30 秒冷却
           this.startChatCooldown(30)
+          // ★ 降序展示：新消息在第 1 页最上面，发完回到第 1 页
+          this.chatPage = 1
           this.loadChats()
         } else this.notify(r.msg)
       })
@@ -4513,19 +4586,27 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .top-nav {
   text-align: left;
-  padding: 4px 0;
+  /* ★ 底部不留 padding: 导航链接自身已有 2px 上下 padding, 再加 4px 会让「紧跟它后面
+     的第一个区块」上方凭空多出 4px 留白(导航字→下一行的距离比行与行之间大一截)。
+     顶部那 4px 要留 —— 上面是深色标题条, 需要这段间隔。 */
+  padding: 4px 0 0;
 }
 .ezfy-page .top-nav a {
   display: inline-block;
-  padding: 2px 5px;
-  font-size: 15px;
+  padding: 2px 6px;
+  /* ★ 用户反馈「聊天/邮箱/军情/任务/好友/首页 字体有点小」→ 15 → 17 */
+  font-size: 17px;
 }
+/* ★ 用户反馈「导航整体有点靠右」：每个链接自带 6px 左右 padding + 1px margin，
+   于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移 7px。
+   去掉首链接的左侧留白 → 整条导航左移 7px，与正文左对齐（实测 15px → 8px）。 */
+.ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
 /* ★ 配色按用户要求：默认 #004299，当前选中黑色 */
 .ezfy-page .ezfy-subnav a {
   display: inline-block;
-  padding: 2px 4px;
-  font-size: 15px;
+  padding: 2px 5px;
+  font-size: 17px;
   color: #004299;
 }
 .ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
@@ -4584,7 +4665,7 @@ body.ezfy-immersive { margin: 0; }
 /* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
 .ezfy-page .ezfy-bottom-nav {
   padding: 1px 0;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.75;
 }
 /* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
@@ -4618,12 +4699,19 @@ body.ezfy-immersive { margin: 0; }
   line-height: 1.9;
 }
 .ezfy-page .panel-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
+/* ★ 首页【置顶公告】区：公告行本身和其它 .old-line 一样是 28px 高，问题出在**上下留白不等**。
+   上方那 4px 额外留白已由 .top-nav 去掉底部 padding 解决（见上），
+   这里只需给下方补 2px，让公告行与上一行、下一行的留白相等。
+   注意: 用 margin-bottom 而不是「抵消上方」的负 margin —— 因为导航和公告行之间还可能插入
+   .ezfy-msgs / .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
+   公告行就会贴住提示条（实测只剩 5px）。 */
+.ezfy-page .ezfy-notices { margin: 0 0 2px; }
 .ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 宽度按内容自适应(不 width:100%)、无边框。
    原版 templates 里绝大多数表格都没有任何 CSS, 就是浏览器默认样式;

@@ -1622,7 +1622,8 @@ func (h *EzfyHandler) Sign(c *gin.Context) {
 	}
 	h.DB.Create(&model.EzfySign{UserId: uid, SignDate: today, SignCount: count})
 	r := ezfySignRewards[(count-1)%7]
-	h.giveResources(uid, r[1], r[2], r[3], r[4], r[0])
+	// ★ 签到奖励不受仓储上限截断（用户要求：签到/任务/礼包领到的资源不能被上限吃掉）
+	h.giveResourcesNoCap(uid, r[1], r[2], r[3], r[4], r[0])
 	if r[5] > 0 {
 		h.addPrestige(uid, int(r[5]))
 	}
@@ -1646,7 +1647,7 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 			resp.ParamError(c, "新手礼包已领取")
 			return
 		}
-		h.giveResources(uid, 50000, 30000, 20000, 10000, 5000)
+		h.giveResourcesNoCap(uid, 50000, 30000, 20000, 10000, 5000)
 		recordGift("newbie")
 		resp.OK(c, gin.H{"msg": "新手礼包领取成功"})
 	case "weekly":
@@ -1658,7 +1659,7 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 				return
 			}
 		}
-		h.giveResources(uid, 20000, 20000, 20000, 20000, 2000)
+		h.giveResourcesNoCap(uid, 20000, 20000, 20000, 20000, 2000)
 		recordGift("weekly")
 		resp.OK(c, gin.H{"msg": "每周福利领取成功"})
 	case "level10", "level20", "level30", "level40":
@@ -1682,7 +1683,7 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 			resp.ParamError(c, fmt.Sprintf("%s需要达到%d级", h.buildingName(1), needLevel))
 			return
 		}
-		h.giveResources(uid, res, res*3/5, res*2/5, res/5, gold)
+		h.giveResourcesNoCap(uid, res, res*3/5, res*2/5, res/5, gold)
 		recordGift(giftType)
 		resp.OK(c, gin.H{"msg": "礼包领取成功"})
 	default:
@@ -1715,12 +1716,13 @@ func (h *EzfyHandler) Notices(c *gin.Context) {
 //
 // ezfyReportCategory 战报归类（复刻 report/index.html 的三个分区）
 //
-//	1 军情警讯 —— 别人打我 / 我的地盘出事(雷达预警、被掠夺、城破、守卫、被归还、野地丢失)
+//	1 军情警讯 —— 别人打我 / 我的地盘出事(雷达预警、被侦查、被掠夺、城破、守卫、被归还、野地丢失)
 //	2 战斗报告 —— 我打别人(侦查 / 掠夺 / 征服), 供「战报查询」
 //	3 其他     —— 后勤与系统(采集、运输、增援、派遣、建城、交易、将领变动)
 func ezfyReportCategory(title string) int {
 	switch {
 	case strings.HasPrefix(title, "军情警报"),
+		strings.HasPrefix(title, "被侦查报告"), // 雷达站≥1 才收得到
 		strings.HasPrefix(title, "被掠夺报告"),
 		strings.HasPrefix(title, "城破报告"),
 		strings.HasPrefix(title, "守卫报告"),
@@ -1782,7 +1784,10 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 			h.DB.Model(&model.EzfyReport{}).Where("id = ?", r.ID).Update("is_read", 1)
 		}
 	}
-	resp.OK(c, gin.H{"reports": views, "counts": counts})
+	// ★ 军情警讯的可见范围由**自己城市的雷达站**决定：没有雷达站收不到「来袭预警/被侦查」，
+	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
+	city := h.getOrCreateCity(uid)
+	resp.OK(c, gin.H{"reports": views, "counts": counts, "radar": h.buildingLevel(city.ID, 21)})
 }
 
 // ReportDynamics GET /games/ezfy/reports/dynamics

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -123,8 +124,14 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 		amount = amount * (100 + pct) / 100
 	}
 	p := h.ensureProfile(uid)
+	before := ezfyRankName(p.Prestige)
+	after := ezfyRankName(p.Prestige + amount)
 	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 		Update("prestige", p.Prestige+amount)
+	// ★ 军衔晋升写一条系统消息（用户要求：首页世界聊天要能看到「恭喜玩家晋升XX」）
+	if after != before {
+		h.ezfySysChat("恭喜玩家 %s 军衔晋升至 %s！", h.ezfyProfileName(uid), after)
+	}
 }
 
 // getOrCreateCity 懒创建主城（随机平原空位，初始建筑 市政厅/民居/农田 各1级）
@@ -357,11 +364,14 @@ func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
 }
 
 // cityKind 城市类型文案
+//
+// ★ 用户要求统一口径：建在沿海平原上的叫「沿海城市」，其余叫「内陆城市」。
+//   （原来叫「海城 / 陆地城市」，与城市列表、城市状态页两处不一致）
 func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
 	if h.isSeaCity(city) {
-		return "海城"
+		return "沿海城市"
 	}
-	return "陆地城市"
+	return "内陆城市"
 }
 
 // ============ 懒结算五连（复刻 GameServiceImpl checkBuildingDone/collectTrainQueue/calcResource/processOrders） ============
@@ -690,14 +700,33 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		}
 	}
 	goldBase := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0)
-	foodProd := foodBase * int64(100+techFood*10) / 100
-	steelProd := steelBase * int64(100+techSteel*10) / 100
-	oilProd := oilBase * int64(100+techOil*10) / 100
-	rareProd := rareBase * int64(100+techRare*10) / 100
-	foodProd = int64(float64(foodProd) * morale)
-	steelProd = int64(float64(steelProd) * morale)
-	oilProd = int64(float64(oilProd) * morale)
-	rareProd = int64(float64(rareProd) * morale)
+
+	// ★ 基础产量 = 建筑基础产量 × 科技加成。
+	//   原来科技只体现在「加成产量」里，玩家看完科技页再回资源详情，看到基础产量纹丝不动，
+	//   反馈就是「科技没有生效」。现在科技直接并进基础产量，一眼可见。
+	foodBaseTech := foodBase * int64(100+techFood*10) / 100
+	steelBaseTech := steelBase * int64(100+techSteel*10) / 100
+	oilBaseTech := oilBase * int64(100+techOil*10) / 100
+	rareBaseTech := rareBase * int64(100+techRare*10) / 100
+
+	// ★ 与 calcResource 对齐：开工率 → 市长加成 → 民心
+	//   （原来详情页漏了开工率与市长加成，导致「详情页的数字」和「实际每小时产量」对不上）
+	rateFood := int64(ezfyRate(city.RateFood))
+	rateSteel := int64(ezfyRate(city.RateSteel))
+	rateOil := int64(ezfyRate(city.RateOil))
+	rateRare := int64(ezfyRate(city.RateRare))
+	mayor := int64(h.mayorBonusPct(city.ID))
+	applyProd := func(base, rate int64) int64 {
+		v := base * rate / 100
+		if mayor > 0 {
+			v = v * (100 + mayor) / 100
+		}
+		return int64(float64(v) * morale)
+	}
+	foodProd := applyProd(foodBaseTech, rateFood)
+	steelProd := applyProd(steelBaseTech, rateSteel)
+	oilProd := applyProd(oilBaseTech, rateOil)
+	rareProd := applyProd(rareBaseTech, rateRare)
 	goldProd := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
@@ -756,11 +785,17 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		return m
 	}
 	return gin.H{
-		"food":  item(city.Food, city.FoodCap, foodBase, foodProd-foodBase+wildFood, troopFood, foodProd+wildFood-troopFood, gin.H{"tech_prod": techFood, "troop_consume": troopFood, "supply_tech": techSupply}),
-		"steel": item(city.Steel, city.SteelCap, steelBase, steelProd-steelBase+wildSteel, 0, steelProd+wildSteel, gin.H{"tech_prod": techSteel}),
-		"oil":   item(city.Oil, city.OilCap, oilBase, oilProd-oilBase+wildOil, 0, oilProd+wildOil, gin.H{"tech_prod": techOil}),
-		"rare":  item(city.Rare, city.RareCap, rareBase, rareProd-rareBase+wildRare, 0, rareProd+wildRare, gin.H{"tech_prod": techRare}),
-		"gold":  item(city.Gold, city.GoldCap, goldBase, goldProd-goldBase+wildGold, 0, goldProd+wildGold, gin.H{"tech_prod": 0}),
+		"food": item(city.Food, city.FoodCap, foodBaseTech, foodProd-foodBaseTech+wildFood, troopFood, foodProd+wildFood-troopFood,
+			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "supply_tech": techSupply,
+				"base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
+		"steel": item(city.Steel, city.SteelCap, steelBaseTech, steelProd-steelBaseTech+wildSteel, 0, steelProd+wildSteel,
+			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor}),
+		"oil": item(city.Oil, city.OilCap, oilBaseTech, oilProd-oilBaseTech+wildOil, 0, oilProd+wildOil,
+			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor}),
+		"rare": item(city.Rare, city.RareCap, rareBaseTech, rareProd-rareBaseTech+wildRare, 0, rareProd+wildRare,
+			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor}),
+		"gold": item(city.Gold, city.GoldCap, goldBase, goldProd-goldBase+wildGold, 0, goldProd+wildGold,
+			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor}),
 	}
 }
 
@@ -834,9 +869,9 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 			return fmt.Sprintf("军事区建筑数量已达上限(%d/%d)", mil, lim.MilitaryMax)
 		}
 	}
-	// ★ 航海协会：只有海城（沿海平原）能建，陆城一律不行
+	// ★ 航海协会：只有沿海城市（沿海平原）能建，内陆城市一律不行
 	if buildingId == 19 && !h.isSeaCity(city) {
-		return "航海协会只能建在海城(沿海平原上的城市)"
+		return "航海协会只能建在沿海城市(沿海平原上的城市)"
 	}
 	if !h.pay(city, lv) {
 		return "资源不足"
@@ -1022,9 +1057,9 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	if cfg == nil {
 		return "兵种不存在"
 	}
-	// 海军(type 1)只能在海城训练(用户规则: 陆地城市不能训练海军)
+	// 海军(type 1)只能在沿海城市训练(用户规则: 内陆城市不能训练海军)
 	if cfg.Type == 1 && !h.isSeaCity(city) {
-		return "海军只能在海城(建在沿海平原上的城市)训练, 陆地城市无法训练海军"
+		return "海军只能在沿海城市(建在沿海平原上的城市)训练, 内陆城市无法训练海军"
 	}
 	if cfg.Require != "" {
 		matches := ezfyRequirePattern.FindAllStringSubmatch(cfg.Require, -1)
@@ -1672,12 +1707,9 @@ func (h *EzfyHandler) taskAward(uid uint, taskId int64) string {
 		return "任务已停用"
 	}
 	city := h.getOrCreateCity(uid)
-	city.Food = min64(city.FoodCap, city.Food+cfg.RewardFood)
-	city.Steel = min64(city.SteelCap, city.Steel+cfg.RewardSteel)
-	city.Oil = min64(city.OilCap, city.Oil+cfg.RewardOil)
-	city.Rare = min64(city.RareCap, city.Rare+cfg.RewardRare)
-	city.Gold = min64(city.GoldCap, city.Gold+cfg.RewardGold)
-	h.saveCityRes(&city)
+	// ★ 任务奖励**不受仓储上限截断**（用户要求）。
+	//   原来走 min64(cap, ...)，仓储满了领奖就等于白发；只有「城市自身产量」才该被上限卡住。
+	h.giveResNoCap(&city, cfg.RewardFood, cfg.RewardSteel, cfg.RewardOil, cfg.RewardRare, cfg.RewardGold)
 	if cfg.RewardPrestige > 0 {
 		h.addPrestige(uid, cfg.RewardPrestige)
 	}
@@ -1754,10 +1786,20 @@ func (h *EzfyHandler) View(c *gin.Context) {
 			"name": ezfyCfg.troopName(q.TroopId, camp), "count": q.Count, "end_time": q.EndTime})
 	}
 
+	// ★ 已研究的科技列表（供首页/统帅页展示）
+	//   原实现 `for _, t := range h.techMap(city.ID)` 把 **value(等级)** 当成了 tech_id 去查配置，
+	//   于是「炼钢5级」被显示成「军训艺术 0级」，且 map 遍历顺序随机 → 同一条重复出现。
+	//   现在按 tech_id 升序遍历，等级取 map 的 value。
 	techViews := []gin.H{}
-	for _, t := range h.techMap(city.ID) {
-		if cfg := ezfyCfg.tech(t); cfg != nil {
-			techViews = append(techViews, gin.H{"tech_id": t, "name": cfg.Name, "level": h.techMap(city.ID)[t]})
+	tmap := h.techMap(city.ID)
+	techIds := make([]int, 0, len(tmap))
+	for id := range tmap {
+		techIds = append(techIds, id)
+	}
+	sort.Ints(techIds)
+	for _, id := range techIds {
+		if cfg := ezfyCfg.tech(id); cfg != nil {
+			techViews = append(techViews, gin.H{"tech_id": id, "name": cfg.Name, "level": tmap[id]})
 		}
 	}
 
@@ -2017,7 +2059,7 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	extra := ""
 	if isSea {
 		kind = "沿海平原"
-		extra = "\n该城为【海城】: 可建造航海协会并训练海军。"
+		extra = "\n该城为【沿海城市】: 可建造航海协会并训练海军。"
 	}
 	h.addReport(uid, 5, "新城建成",
 		fmt.Sprintf("花费%d黄金在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: %s(1级), 可到[城市列表]切换操作。%s",

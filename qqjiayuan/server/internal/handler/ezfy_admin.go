@@ -299,9 +299,10 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 // ezfyDataMoved 已经从「数据管理」迁到专属模块的表 → 提示去哪改
 //
 // ★ 之前「数据管理」把建筑/兵种/科技/野地/城池也放进来了，与
-//   建筑管理 / 兵种管理 / 科技管理 / 地图管理 / 城市管理 完全重复，
-//   同一个字段两处能改、种子策略还不一样，容易改出不一致。
-//   现在数据管理只保留「没有专属模块」的零散配置表。
+//
+//	建筑管理 / 兵种管理 / 科技管理 / 地图管理 / 城市管理 完全重复，
+//	同一个字段两处能改、种子策略还不一样，容易改出不一致。
+//	现在数据管理只保留「没有专属模块」的零散配置表。
 var ezfyDataMoved = map[string]string{
 	"buildings":      "「建筑管理 → 总建筑配置」",
 	"buildingLevels": "「建筑管理 → 总建筑配置 → 等级配置」",
@@ -679,8 +680,16 @@ func (h *AdminHandler) AdminEzfyAnnounce(c *gin.Context) {
 	}
 	h.DB.Create(&model.EzfyNotice{UserId: 0, Title: trimStr(title, 100),
 		Content: trimStr(strings.TrimSpace(in.Content), 2000), IsTop: in.IsTop})
-	// 同步到世界聊天频道
-	h.DB.Create(&model.EzfyChat{UserId: 0, UserName: "系统", Content: trimStr("【公告】"+in.Content, 200)})
+	// 同步到世界聊天频道（公共频道 + 玩家样式消息）。
+	// ⚠️ 走 map 显式给 channel/talk_type：Channel/TalkType 都带 `default:1` 标签，
+	//    用结构体建且值为零时会被 GORM 从 INSERT 剔除、退回数据库默认值，语义全靠"碰巧对"。
+	h.DB.Model(&model.EzfyChat{}).Create(map[string]interface{}{
+		"user_id": 0, "user_name": "系统",
+		"content":    trimStr("【公告】"+in.Content, 200),
+		"channel":    1, // 公共频道
+		"talk_type":  1, // 玩家样式（公告是"系统发的普通消息"，不是只读的系统消息）
+		"created_at": time.Now(),
+	})
 	resp.OK(c, gin.H{"msg": "公告已发布"})
 }
 
