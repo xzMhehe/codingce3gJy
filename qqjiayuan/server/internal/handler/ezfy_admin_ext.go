@@ -717,6 +717,11 @@ func (h *AdminHandler) AdminEzfyTroopsCfg(c *gin.Context) {
 }
 
 // AdminEzfyTroopGrant 增/减兵力（count 为负表示扣减）
+//
+// ★ 数量上限 ezfyAdminTroopMax（1 亿）：不是游戏规则，是**防呆**。
+//   线上踩过：管理端输入框里手滑敲成 99999999999，城1 就多了 1000 亿航母，
+//   军队耗粮直接变成 4.4 万亿，玩家以为「补给技巧科技坏了」。
+//   真正的病因是脏数据，不是公式 —— 所以在这里卡一道，别再让别人踩。
 func (h *AdminHandler) AdminEzfyTroopGrant(c *gin.Context) {
 	var in struct {
 		CityId  int64 `json:"city_id"`
@@ -725,6 +730,10 @@ func (h *AdminHandler) AdminEzfyTroopGrant(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.CityId <= 0 || in.TroopId <= 0 || in.Count == 0 {
 		resp.ParamError(c, "请填写城池、兵种与数量")
+		return
+	}
+	if in.Count > ezfyAdminTroopMax || in.Count < -ezfyAdminTroopMax {
+		resp.ParamError(c, fmt.Sprintf("单次数量需在 ±%s 之间（防误输入）", ezfyFmtBig(ezfyAdminTroopMax)))
 		return
 	}
 	var ct model.EzfyCity
@@ -739,6 +748,16 @@ func (h *AdminHandler) AdminEzfyTroopGrant(c *gin.Context) {
 	}
 	ez := h.ezfyH()
 	if in.Count > 0 {
+		// 增加时要检查**结果**是否越界（已有 9000 万 + 再加 9000 万 = 1.8 亿）
+		var cur int64
+		h.DB.Model(&model.EzfyCityTroop{}).
+			Where("city_id = ? AND troop_id = ?", in.CityId, in.TroopId).
+			Pluck("count", &cur)
+		if cur+in.Count > ezfyAdminTroopMax {
+			resp.ParamError(c, fmt.Sprintf("该城【%s】现有 %s，再加会超过上限 %s",
+				cfg.Name, ezfyFmtBig(cur), ezfyFmtBig(ezfyAdminTroopMax)))
+			return
+		}
 		ez.addTroop(uint(in.CityId), in.TroopId, in.Count)
 	} else {
 		var t model.EzfyCityTroop
@@ -753,6 +772,30 @@ func (h *AdminHandler) AdminEzfyTroopGrant(c *gin.Context) {
 		h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", t.ID).Update("count", left)
 	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("【%s】%+d", cfg.Name, in.Count)})
+}
+
+// ezfyAdminTroopMax 单城单兵种数量上限（防呆用，1 亿足够任何正常玩法）
+const ezfyAdminTroopMax int64 = 100000000
+
+// ezfyFmtBig 把大数格式化成带万/亿单位的可读串（管理端提示用，与前端 fmtBig 口径一致）
+func ezfyFmtBig(n int64) string {
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var s string
+	switch {
+	case n >= 100000000:
+		s = fmt.Sprintf("%.2f亿", float64(n)/100000000)
+	case n >= 10000:
+		s = fmt.Sprintf("%.2f万", float64(n)/10000)
+	default:
+		s = fmt.Sprintf("%d", n)
+	}
+	if neg {
+		return "-" + s
+	}
+	return s
 }
 
 // AdminEzfyTroopUpdate 直接设置某城某兵种数量
@@ -772,6 +815,11 @@ func (h *AdminHandler) AdminEzfyTroopUpdate(c *gin.Context) {
 	}
 	if in.Count < 0 {
 		in.Count = 0
+	}
+	// ★ 同上：挡住手滑输入的天文数字（线上就是这么被写脏的）
+	if in.Count > ezfyAdminTroopMax {
+		resp.ParamError(c, fmt.Sprintf("数量不能超过 %s（防误输入）", ezfyFmtBig(ezfyAdminTroopMax)))
+		return
 	}
 	h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", t.ID).Update("count", in.Count)
 	resp.OK(c, gin.H{"msg": "兵力已更新"})

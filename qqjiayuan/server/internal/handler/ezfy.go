@@ -58,6 +58,10 @@ func (h *EzfyHandler) cfgs() {
 	ezfySeaMigrateOnce.Do(func() { ezfyMigrateSeaCities(h.DB) })
 	// 一次性迁移：科技从「按城各存」合并为「所有城池公用」（幂等，见 ezfy_tech_shared.go）
 	ezfySharedTechOnce.Do(func() { ezfyMigrateSharedTech(h.DB) })
+	// 一次性迁移：存量战报「野地N级」→ 具体地形名（幂等，见 ezfy_migrate_report.go）
+	ezfyReportMigrateOnce.Do(func() { ezfyMigrateReportTitles(h.DB) })
+	// 一次性迁移：城防兵超城墙容量 → 按比例缩回（幂等，见 ezfy_migrate_troop_cap.go）
+	ezfyTroopCapOnce.Do(func() { ezfyMigrateTroopCap(h.DB) })
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
@@ -168,21 +172,37 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 	h.DB.Create(&b)
 }
 
+// findFreePos 新玩家首次进游戏的落点
+//
+// ★ 第十二轮：默认落在**欧洲**（ezfyDefaultMoveContinent），
+//   内测玩家互相离得近才打得起仗（用户规则：「新玩家 默认 建城市也是默认欧洲城市」）。
+//   欧洲满员时按「亚洲 → 非洲 → 北美洲 → 南美洲 → 大洋洲 → 南极洲」依次兜底，
+//   最后再退回全世界随机（保证永远建得出城，不会卡住新玩家）。
 func (h *EzfyHandler) findFreePos() [2]int {
-	for i := 0; i < 200; i++ {
-		x := 50 + rand.Intn(400)
-		y := 50 + rand.Intn(400)
-		// 只在「平原 / 沿海平原」上落点（与建城规则一致）
+	order := []int{ezfyDefaultMoveContinent}
+	for _, a := range ezfyMoveAreas {
+		if a.ID != ezfyDefaultMoveContinent {
+			order = append(order, a.ID)
+		}
+	}
+	for _, continent := range order {
+		if x, y, ok := h.findFreePosInContinent(continent, false); ok {
+			return [2]int{x, y}
+		}
+	}
+	// 全世界兜底（正常情况下走不到这里）
+	for i := 0; i < 2000; i++ {
+		x := rand.Intn(ezfyWorldSize)
+		y := rand.Intn(ezfyWorldSize)
 		t := ezfyTerrainEx(x, y)
 		if t != 1 && t != ezfyTerrainCoastalPlain {
 			continue
 		}
 		var n int64
 		h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", x, y).Count(&n)
-		if n > 0 {
-			continue
+		if n == 0 {
+			return [2]int{x, y}
 		}
-		return [2]int{x, y}
 	}
 	return [2]int{200, 200}
 }
@@ -775,6 +795,10 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 			troopFood += int64(cfg.FoodKeep) * count
 		}
 	}
+	// ★ 原始耗粮（未扣补给技巧）与实扣耗粮都下发：
+	//   用户反馈「补给技巧Lv10 -20% 没实现啊」——其实公式是对的（raw×80%），
+	//   只是界面只显示「实扣值 + 一个 -20% 标签」，看起来像是没扣。两个值都给出才不歧义。
+	troopFoodRaw := troopFood
 	troopFood = troopFood * int64(100-techSupply*2) / 100
 
 	item := func(stock, cap, base, bonus, consume, total int64, extra gin.H) gin.H {
@@ -786,8 +810,8 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	}
 	return gin.H{
 		"food": item(city.Food, city.FoodCap, foodBaseTech, foodProd-foodBaseTech+wildFood, troopFood, foodProd+wildFood-troopFood,
-			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "supply_tech": techSupply,
-				"base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
+			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
+				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
 		"steel": item(city.Steel, city.SteelCap, steelBaseTech, steelProd-steelBaseTech+wildSteel, 0, steelProd+wildSteel,
 			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor}),
 		"oil": item(city.Oil, city.OilCap, oilBaseTech, oilProd-oilBaseTech+wildOil, 0, oilProd+wildOil,
@@ -1529,8 +1553,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.saveOfficerSkills(o, skills)
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: %s 学会了「%s」", o.Name, sk.Name)
-	case 12: // 重修书（洗点）: 把升级随机加的点全部回收再重新分配; 技能清空; 等级/经验保留
-		//
+	case 12: // 重修书（洗点）: 把升级随机加的点全部回收再重新分配; 技能清空; 等级/经验保留		//
 		// ★ 原来的实现有 bug：随机军官（general_id=0）没有名将配置，
 		//   `initMil/initLog/initLea` 直接取了「当前值」→ Updates 写回同样的数，
 		//   玩家点完「洗点」什么都没变，看着就是「洗点没用」。
@@ -1595,6 +1618,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: %s 洗点完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n（技能已清空，等级与经验保留）",
 			o.Name, o.Military, newMil, o.Logistics, newLog, o.Learning, newLea)
+	case 16, 17, 18:
+		// ★ 三种迁城道具：**不能在背包里直接点「使用」**。
+		//
+		//   迁城必须知道「迁到哪座城 / 迁到哪个洲 / 迁到哪个坐标」，
+		//   这些参数只有市政厅→城市迁移页（/games/ezfy/city/move）才有。
+		//   所以这里只做「引导」，道具的消耗在 MoveCity 里完成
+		//   （否则玩家在背包里误点一下就把道具用掉了、城却没动 —— 会被当成 bug 报上来）。
+		return fmt.Sprintf("【%s】请在「市政厅 → 城市迁移」页面使用", cfg.Name)
 	default:
 		return "道具类型错误"
 	}

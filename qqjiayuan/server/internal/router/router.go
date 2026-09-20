@@ -1179,6 +1179,20 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ---- 钻石充值（钻石只能管理端充值） ----
 				admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyDiamondRecharge)
 
+				// ---- 宣战管理（列表 / 一键生效 / 一键完成 / 代建 / 删除） ----
+				// ★ 批量接口必须注册在 /:id 路由**之前**，否则 gin 会把 "finish-all"
+				//   当成 :id 匹配掉（gin 的通配优先级：静态路径 > 参数路径，但
+				//   POST /ezfy-wars/finish-all 与 POST /ezfy-wars 不冲突，
+				//   真正要注意的是别把它写成 /ezfy-wars/:id/finish 的形式）。
+				admin.GET("/ezfy-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyWars)
+				admin.POST("/ezfy-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarCreate)
+				admin.POST("/ezfy-wars/effect-all", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarEffectAll)
+				admin.POST("/ezfy-wars/finish-all", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarFinishAll)
+				admin.PUT("/ezfy-wars/:id", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarUpdate)
+				admin.POST("/ezfy-wars/:id/effect", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarEffect)
+				admin.POST("/ezfy-wars/:id/finish", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarFinish)
+				admin.DELETE("/ezfy-wars/:id", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarDelete)
+
 				// ---- 地图管理 ----
 				admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapCities)
 				admin.GET("/ezfy-map/wildlands", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapWildlands)

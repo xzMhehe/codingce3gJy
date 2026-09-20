@@ -513,7 +513,7 @@
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
-          <div class="gray" style="font-size:14px">
+          <div class="gray" style="font-size:16px">
             <b>平原</b> → 内陆城市; <b>沿海平原</b> → 沿海城市(可建航海协会、训练海军)。<br/>
             其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
@@ -540,9 +540,12 @@
           <br/>
           耗量(每小时): {{ resDetail.consume }}<br/>
           <template v-if="resType === 'food'">
-            军队耗粮: {{ resDetail.troop_consume || 0 }}
-            <span v-if="resDetail.supply_tech > 0"> [补给技巧Lv{{ resDetail.supply_tech }}: -{{ resDetail.supply_tech * 2 }}%]</span>
-            <span v-else class="gray"> [补给技巧未研究, 无减免]</span><br/>
+            军队耗粮: {{ fmtBig(resDetail.troop_consume_raw !== undefined ? resDetail.troop_consume_raw : (resDetail.troop_consume || 0)) }}
+          <template v-if="resDetail.supply_tech > 0">
+            [补给技巧Lv{{ resDetail.supply_tech }}: -{{ resDetail.supply_tech * 2 }}%
+            → 实扣 {{ fmtBig(resDetail.troop_consume || 0) }}]
+          </template>
+          <span v-else class="gray"> [补给技巧未研究, 无减免]</span><br/>
           </template>
           总产量(每小时): <span :class="{ red: resDetail.total < 0 }">{{ resDetail.total }}</span><br/>
           <br/>
@@ -859,7 +862,7 @@
           <table class="ezfy-map-table">
             <tr v-for="(row, ri) in mapRows" :key="'mr' + ri">
               <td v-for="cell in row" :key="cell.x + '_' + cell.y">
-                <a href="javascript:;" :class="cellClass(cell)" @click="openCell(cell)">{{ cellText(cell) }}</a>
+                <a href="javascript:;" :class="cellClass(cell)" :title="cellTip(cell)" @click="openCell(cell)">{{ cellText(cell) }}</a>
               </td>
             </tr>
           </table>
@@ -1481,39 +1484,57 @@
       <template v-else-if="cur === 'citymove'">
         <div class="panel">
           <div class="panel-title">市政厅 → 城市迁移</div>
-          <div class="old-line">当前城市：{{ city.name }}({{ city.x }},{{ city.y }})</div>
-          <div class="old-line">{{ resNames.gold }}：{{ moveInfo.gold }} / 每次迁城消耗 {{ moveInfo.gold_cost }}</div>
+          <div class="old-line">当前城市：{{ city.name }}({{ city.x }},{{ city.y }})　所属洲：{{ moveInfo.city ? moveInfo.city.continent : '—' }}</div>
           <div class="old-line gray">
-            使用迁城计划可改变一次城市坐标，只能迁移到选定区域随机坐标(未被占领的平原)
-          </div>
-          <div class="old-line gray">
-            使用高级迁城计划可改变一次城市坐标，可以迁移到指定坐标(未被占领的平原)
+            迁城需要消耗对应道具，道具可在【商城】用黄金或钻石购买（功能相同）。
           </div>
           <hr/>
           <div class="old-line">
-            使用【迁城计划】
-            <select v-model="moveArea">
+            使用【迁城计划】：持有 {{ moveItemCounts.low }} 个
+            <span class="gray">(迁移到所选大洲内未被占领的平原)</span>
+          </div>
+          <div class="old-line">
+            迁入大洲：
+            <select v-model="moveContinent">
               <option v-for="a in moveInfo.areas" :key="'ma' + a.id" :value="a.id">{{ a.name }}</option>
             </select>
             <button @click="doMoveCity('low')">确认迁城</button>
           </div>
           <hr/>
           <div class="old-line">
-            使用【高级迁城计划】<br/>
-            请确认您输入的坐标是非被占领的平原，沿海平原无法直接迁移城市<br/>
+            使用【高级迁城计划】：持有 {{ moveItemCounts.high }} 个
+          </div>
+          <div class="old-line gray">
+            请确认您输入的坐标是非被占领的平原，沿海平原无法直接迁移城市
+          </div>
+          <div class="old-line">
             横坐标 x：<input v-model="moveX" type="number" style="width:80px"/>
             纵坐标 y：<input v-model="moveY" type="number" style="width:80px"/>
             <button @click="doMoveCity('high')">确认迁城</button>
           </div>
           <hr/>
           <div class="old-line">
-            使用【沿海迁城计划】<br/>
-            请确认您输入的坐标是非被占领的沿海平原<br/>
+            使用【沿海迁城计划】：持有 {{ moveItemCounts.sea }} 个
+            <span class="gray">(沿海城市专用，迁移到沿海平原)</span>
+          </div>
+          <div class="old-line">
+            迁入大洲：
+            <select v-model="moveContinentSea">
+              <option v-for="a in moveInfo.areas" :key="'ms' + a.id" :value="a.id">{{ a.name }}</option>
+            </select>
+            <button @click="doMoveCity('sea')">按大洲迁城</button>
+          </div>
+          <div class="old-line gray">或指定坐标（必须是未被占领的沿海平原）：</div>
+          <div class="old-line">
             横坐标 x：<input v-model="moveX2" type="number" style="width:80px"/>
             纵坐标 y：<input v-model="moveY2" type="number" style="width:80px"/>
-            <button @click="doMoveCity('sea')">确认迁城</button>
+            <button @click="doMoveCity('sea')">按坐标迁城</button>
           </div>
           <div class="old-line gray">迁城后附属野地不会随城迁移, 需要重新占领。</div>
+          <div class="old-line">
+            <a href="javascript:;" @click="go('mall')">[去商城买迁城道具]</a>
+            <a href="javascript:;" @click="go('bag')">[打开背包]</a>
+          </div>
           <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -1756,7 +1777,13 @@
           </div>
           <div class="old-line" v-for="it in mallPaged" :key="'mi' + it.id">
             <b>{{ it.name }}</b>
-            <span v-if="it.is_diamond" class="orange">{{ it.price_diamond }}钻石</span>
+            <!-- ★ 双渠道道具（黄金价和钻石价都 > 0）：两种价格都列出来，玩家任选 -->
+            <template v-if="it.dual_pay">
+              <span class="orange">{{ it.price_diamond }}钻石</span>
+              <span class="gray">/</span>
+              {{ it.price_gold }}{{ resNames.gold }}
+            </template>
+            <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond }}钻石</span>
             <span v-else>{{ it.price_gold }}{{ resNames.gold }}</span>
             <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100；-1 = 无限） -->
             <span v-if="it.unlimited" class="green">库存无限</span>
@@ -1769,7 +1796,15 @@
               <input v-model="buyCount" type="number" min="1"
                      :max="it.unlimited ? 999 : Math.max(1, it.stock)" style="width:60px"/>
               <span class="gray">{{ it.unlimited ? '不限量' : ('最多 ' + it.stock) }}</span>
-              <span class="gray" v-if="it.is_diamond">合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石</span>
+              <!-- ★ 双渠道：让玩家选付黄金还是付钻石 -->
+              <template v-if="it.dual_pay">
+                支付方式:
+                <select v-model="buyPayWith">
+                  <option value="gold">黄金 {{ it.price_gold * (parseInt(buyCount) || 0) }}</option>
+                  <option value="diamond">钻石 {{ it.price_diamond * (parseInt(buyCount) || 0) }}</option>
+                </select>
+              </template>
+              <span class="gray" v-else-if="it.is_diamond">合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石</span>
               <span class="gray" v-else>合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
@@ -1989,11 +2024,11 @@
             <button @click="doPlayerRename">确定</button>
             <a href="javascript:;" @click="renameEditing = false">[取消]</a>
           </template>
-          <div class="gray" style="font-size:13px">{{ renameHint }}</div>
+          <div class="gray" style="font-size:16px">{{ renameHint }}</div>
           阵营：{{ selfInfo.camp_name || (profile.camp === 2 ? '轴心国' : '同盟国') }}
           <a href="javascript:;" @click="doChangeCamp(1)">[转同盟国]</a>
           <a href="javascript:;" @click="doChangeCamp(2)">[转轴心国]</a>
-          <div class="gray" style="font-size:13px">{{ campHint }}</div>
+          <div class="gray" style="font-size:16px">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
           军衔：{{ rankName }}({{ rankPost }})<br/>
           城市数：{{ cities.length }}<br/>
@@ -2464,6 +2499,8 @@ export default {
       dynPage: 1, dynSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
+      // ★ 首页外露公告（条数由管理端「建筑上限配置」里的「首页公告条数」决定，默认 1）
+      homeNotices: [],
       curNotice: null,
       worldChats: [],
       homeChats: [],
@@ -2537,6 +2574,7 @@ export default {
       useSkillId: 0,
       buyItem: null,
       buyCount: 1,
+      buyPayWith: 'gold', // ★ 双渠道道具的支付方式选择（gold / diamond）
       exchangeOrders: [],
       exchangeMine: [],
       exchangeGold: 0,
@@ -2603,8 +2641,12 @@ export default {
       mapStars: [],
       showStars: false,
       // 城市迁移
-      moveInfo: { areas: [], gold_cost: 200000, gold: 0 },
-      moveArea: 1,
+      // ★ 第十二轮：迁城区域改成「按大洲」（与地图所属洲一致），且迁城消耗道具
+      moveInfo: { areas: [], items: [], gold_cost: 200000, gold: 0, city: {} },
+      moveArea: 1,          // 兼容旧字段（= moveContinent）
+      moveContinent: 1,     // 迁城计划迁入的洲（默认欧洲）
+      moveContinentSea: 1,  // 沿海迁城计划迁入的洲
+      moveItems: [],        // 三种迁城道具的持有量/定价
       moveX: '',
       moveY: '',
       moveX2: '',
@@ -2788,9 +2830,10 @@ export default {
     canMailCorps () {
       return this.isLeader || this.myCorpsTitle === '副团长'
     },
-    // ★ 首页外露的公告 = 仅置顶公告
+    // ★ 首页外露的公告 = 后端按「首页公告条数」配置下发的 home_notices（默认 1 条）
     topNotices () {
-      return (this.notices || []).filter(n => n.is_top)
+      if (this.homeNotices && this.homeNotices.length) return this.homeNotices
+      return (this.notices || []).filter(n => n.is_top).slice(0, 1)
     },
     // ★ 商城：按分类过滤 + 分页（分类为空 = 全部）
     mallFiltered () {
@@ -2858,6 +2901,14 @@ export default {
         rows.push(this.mapCells.slice(i * size, (i + 1) * size))
       }
       return rows
+    },
+    // 三种迁城道具的持有数量，模板里直接用（'low'/'high'/'sea' → 个数）
+    moveItemCounts () {
+      const out = { low: 0, high: 0, sea: 0 }
+      for (const it of (this.moveItems || [])) {
+        if (out[it.code] !== undefined) out[it.code] = it.count || 0
+      }
+      return out
     }
   },
   mounted () {
@@ -2866,7 +2917,7 @@ export default {
     // 沉浸式卡控①: 游戏内任何 <a href="/..."> 都不允许跳出 /games/ezfy 回到家园站点
     // (捕获阶段拦截, 只拦站内绝对路径链接)
     document.addEventListener('click', this.blockEscape, true)
-    // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏首页(与幻想西游 Xiyou.vue 一致)
+    // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏上一页(与幻想西游 Xiyou.vue 一致)
     history.pushState({ __ezfyGuard: true }, '')
     this._onBack = () => {
       if (location.hash.split('?')[0].indexOf('/games/ezfy') >= 0) {
@@ -2882,6 +2933,9 @@ export default {
     this.loadHomeChats()
     this.loadNotices()
     this.loadCorps()
+    // ★ 刷新后回到刷新前所在的页面（用户反馈：每次刷新都跑首页，不对）
+    //   页面状态写在 URL 的 ?cur= 上，onload 时读回来重放 go() 的加载逻辑。
+    this.restoreFromUrl()
     this.timer = setInterval(() => {
       if (this.cur === 'home') { this.load(); this.loadResCfg(); this.loadHomeChats() }
       if (this.cur === 'chat') this.loadChats()
@@ -2915,6 +2969,56 @@ export default {
     },
     notOpen (what) {
       this.notify(what + '暂未开放, 敬请期待')
+    },
+    // ============ 页面状态与 URL 同步（刷新后停在原页面） ============
+    //
+    // 背景：游戏是单页应用（Ezfy.vue 靠 cur 切换 60+ 个分支），
+    //   以前 cur 只存在内存里，一刷新就回落到 data 里的默认值 'home' ——
+    //   用户反馈「刷新前在哪个页面刷新后还是哪个页面」。
+    //
+    // 做法：把 cur（以及资源页的 resType）挂到 URL 的查询串上，
+    //   刷新/收藏/分享都能回到同一页。
+    //
+    // ★ 必须用 history.replaceState 而不是改 location.hash：
+    //   本组件在 mounted 里注册了 popstate 守卫（后退回首页），
+    //   如果用 pushState / location 赋值，会污染历史栈、把守卫带乱。
+    //   replaceState 只改当前条目的 URL，不产生新历史，最安全。
+
+    // syncUrl 把当前页面写进 URL（replaceState，不产生历史记录）
+    syncUrl () {
+      try {
+        const hash = location.hash || ''
+        const qi = hash.indexOf('?')
+        const base = qi >= 0 ? hash.slice(0, qi) : hash
+        const params = new URLSearchParams(qi >= 0 ? hash.slice(qi + 1) : '')
+        params.set('cur', this.cur)
+        if (this.cur === 'res' && this.resType) params.set('res', this.resType)
+        else params.delete('res')
+        const qs = params.toString()
+        const next = base + (qs ? '?' + qs : '')
+        history.replaceState(history.state, '', location.pathname + location.search + next)
+      } catch (e) { /* URL 同步失败不影响游戏本身 */ }
+    },
+
+    // restoreFromUrl 启动时从 URL 读回页面并重放加载逻辑
+    restoreFromUrl () {
+      let cur = ''
+      let res = ''
+      try {
+        const hash = location.hash || ''
+        const qi = hash.indexOf('?')
+        if (qi >= 0) {
+          const params = new URLSearchParams(hash.slice(qi + 1))
+          cur = params.get('cur') || ''
+          res = params.get('res') || ''
+        }
+      } catch (e) {}
+      if (res) this.resType = res
+      // 没写 cur、或就是 home：保持默认首页即可（go('home') 会重复拉一遍数据）
+      if (!cur || cur === 'home') return
+      // ★ 复用 go()：所有页面分支的加载逻辑都在它里面，
+      //   在这里重写一遍必然漏，直接重放最省事也最不容易出错。
+      this.go(cur)
     },
     // ---- 统帅页自助 ----
     loadSelfInfo () {
@@ -2971,11 +3075,13 @@ export default {
       if (t.indexOf('res/') === 0) {
         this.resType = t.slice(4)
         this.cur = 'res'
+        this.syncUrl()
         this.loadRes()
         return
       }
       this.cur = t
-      if (t === 'home') { this.load(); this.loadWelfare() }
+      this.syncUrl()
+      if (t === 'home') { this.load(); this.loadWelfare(); this.loadHomeChats() }
       else if (t === 'troops' || t === 'troop' || t === 'defence' ||
                t === 'troopview' || t === 'trainpre' || t === 'troopstat') this.loadTroops()
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
@@ -3054,6 +3160,9 @@ export default {
           this.unreadReports = d.unread_reports
           this.taxInput = d.city.tax_rate
           this.applyResNames(d.res_names)
+          // ★ 首页要显示「每日签到：已签到/签到」，但 /view 不下发 welfare。
+          //   不补这一下，签到完回首页仍显示「签到」——用户反馈的 bug。
+          if (this.cur === 'home') this.loadWelfare()
         }
       })
     },
@@ -3370,9 +3479,14 @@ export default {
     },
     loadNotices () {
       api.get('/games/ezfy/notices').then(r => {
-        if (r.code === 0) this.notices = r.data.notices
+        if (r.code === 0) {
+          this.notices = r.data.notices
+          // ★ 首页外露公告由管理端配置条数（默认 1 条），后端直接下发 home_notices
+          this.homeNotices = r.data.home_notices || []
+        }
       })
-    },    loadWilds () {
+    },
+    loadWilds () {
       api.get('/games/ezfy/city/wildfull').then(r => {
         if (r.code === 0) {
           this.wildlands = r.data.wildlands
@@ -3457,31 +3571,54 @@ export default {
       })
     },
     // ---- 城市迁移(复刻 city/cityHallMove.html) ----
+    // ★ 第十二轮：区域 = 大洲；迁城消耗道具（迁城计划/高级迁城计划/沿海迁城计划）
     loadMoveInfo () {
       api.get('/games/ezfy/city/move').then(r => {
         if (r.code === 0) {
           this.moveInfo = r.data
-          if (r.data.areas && r.data.areas.length) this.moveArea = r.data.areas[0].id
+          this.moveItems = r.data.items || []
+          const def = r.data.default_continent || 1
+          if (r.data.areas && r.data.areas.length) {
+            // 默认选中「欧洲」（后端下发的默认洲）；没有就取第一个
+            const hit = r.data.areas.some(a => a.id === def)
+            const pick = hit ? def : r.data.areas[0].id
+            this.moveContinent = pick
+            this.moveContinentSea = pick
+            this.moveArea = pick
+          }
         }
       })
     },
     async doMoveCity (type) {
       const body = { type: type }
       if (type === 'low') {
-        body.area_id = this.moveArea
+        body.continent_id = this.moveContinent
       } else if (type === 'high') {
         const x = parseInt(this.moveX)
         const y = parseInt(this.moveY)
         if (!x || !y) { this.notify('请输入横纵坐标'); return }
         body.x = x; body.y = y
       } else {
+        // 沿海迁城：填了坐标就按坐标迁，没填就按所选大洲随机找沿海平原
         const x = parseInt(this.moveX2)
         const y = parseInt(this.moveY2)
-        if (!x || !y) { this.notify('请输入横纵坐标'); return }
-        body.x = x; body.y = y
+        if (x && y) {
+          body.x = x; body.y = y
+        } else {
+          body.continent_id = this.moveContinentSea
+        }
       }
       const label = type === 'low' ? '迁城计划' : (type === 'high' ? '高级迁城计划' : '沿海迁城计划')
-      if (!await this.ask('确认使用【' + label + '】迁移城市吗？将消耗 ' + this.moveInfo.gold_cost + ' ' + this.resNames.gold + '。')) return
+      const kind = (this.moveItems || []).find(i => i.code === type) || {}
+      const have = kind.count || 0
+      if (have < 1) {
+        this.notify('背包里没有【' + label + '】，请先到商城购买')
+        return
+      }
+      const contName = this.areaName(type === 'sea' ? this.moveContinentSea : this.moveContinent)
+      const where = type === 'low' ? '迁入【' + contName + '】'
+        : (type === 'sea' && !parseInt(this.moveX2) ? '迁入【' + contName + '】的沿海平原' : '迁到指定坐标')
+      if (!await this.ask('确认使用【' + label + '】×1 ' + where + '吗？（当前持有 ' + have + ' 个）')) return
       api.post('/games/ezfy/city/move', body).then(r => {
         if (r.code === 0) {
           this.notify(r.data.msg)
@@ -3489,6 +3626,10 @@ export default {
           this.loadMoveInfo()
         } else this.notify(r.msg || '迁城失败')
       })
+    },
+    areaName (id) {
+      const a = (this.moveInfo.areas || []).find(x => x.id === id)
+      return a ? a.name : '—'
     },
     // ---- 调整生产(复刻 city/sourceSet.html) ----
     loadProduce () {
@@ -3883,7 +4024,12 @@ export default {
     cellText (cell) {
       // 复刻 map/index.html: 格子文案为「名称(等级)」, 本城显示「城名(x,y)」
       if (cell.mine) return this.city.name + '(' + cell.x + ',' + cell.y + ')'
-      if (cell.area_type === 3) return '城'
+      // ★ 用户反馈：地图上别人的城市原来一律显示「城」，看不出是谁的城。
+      //   后端已下发 name(城市名) + owner(城主昵称)，这里直接展示。
+      if (cell.area_type === 3) {
+        const nm = cell.name || '城'
+        return cell.owner ? nm + '(' + cell.owner + ')' : nm
+      }
       // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
       if (cell.act_type === 1) return '活动(' + cell.act_level + ')'
       if (cell.act_type === 2) return '活动寇(' + cell.act_level + ')'
@@ -3893,6 +4039,14 @@ export default {
       if (cell.terrain === 8) return '海(' + cell.level + ')'
       // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/山地)
       return (cell.terrain_name || '野') + '(' + cell.level + ')'
+    },
+    // ★ 格子悬浮提示：城市名字在 36px 格子里会被截断，鼠标悬停看全称
+    cellTip (cell) {
+      if (cell.area_type === 3 && !cell.mine) {
+        return (cell.name || '城市') + (cell.owner ? ' · 城主 ' + cell.owner : '') +
+          ' (' + cell.x + ',' + cell.y + ')'
+      }
+      return this.cellText(cell) + ' (' + cell.x + ',' + cell.y + ')'
     },
     cellClass (cell) {
       if (cell.mine) return 'ezfy-mine'
@@ -4073,6 +4227,9 @@ export default {
           // ★ 降序展示：新消息在第 1 页最上面，发完回到第 1 页
           this.chatPage = 1
           this.loadChats()
+          // ★ 用户反馈「世界聊天后回首页发现没出来我刚发的」：
+          //   一并刷新首页聊天预览，避免回首页还要 Ctrl+F5。
+          this.loadHomeChats()
         } else this.notify(r.msg)
       })
     },
@@ -4198,6 +4355,8 @@ export default {
     openBuy (it) {
       this.buyItem = it
       this.buyCount = 1
+      // ★ 双渠道道具默认用黄金（多数玩家手上黄金比钻石多）
+      this.buyPayWith = it.dual_pay ? 'gold' : (it.is_diamond ? 'diamond' : 'gold')
     },
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
@@ -4206,15 +4365,23 @@ export default {
         this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
         return
       }
-      // ★ 钻石道具只能用钻石买（钻石仅管理端可充值）
-      if (it.is_diamond) {
+      // ★ 支付方式：双渠道道具由玩家选；单渠道按道具属性定
+      const payWith = it.dual_pay ? (this.buyPayWith || 'gold') : (it.is_diamond ? 'diamond' : 'gold')
+      if (payWith === 'diamond') {
         const cost = (it.price_diamond || 0) * n
         if (cost > this.mallDiamond) {
-          this.notify('钻石不足：需要 ' + cost + ' 钻石，当前余额 ' + this.mallDiamond + '（钻石仅可由管理员充值）')
+          this.notify('钻石不足：需要 ' + cost + ' 钻石，当前余额 ' + this.mallDiamond +
+            (it.dual_pay ? '（可改用黄金购买）' : '（钻石仅可由管理员充值）'))
+          return
+        }
+      } else {
+        const cost = (it.price_gold || 0) * n
+        if (cost > (this.city.gold || 0)) {
+          this.notify('黄金不足：需要 ' + cost + '，当前 ' + (this.city.gold || 0))
           return
         }
       }
-      api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n }).then(r => {
+      api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n, pay_with: payWith }).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
           this.buyItem = null
@@ -4269,7 +4436,16 @@ export default {
       api.post('/games/ezfy/tasks/award', { task_id: t.id }).then(r => this.alert(r, '奖励已领取'))
     },
     doSign () {
-      api.post('/games/ezfy/welfare/sign', {}).then(r => this.alert(r, '签到成功'))
+      // ★ 签到后必须重新拉 welfare 与资源，否则：
+      //   ① 首页「每日签到」还显示「签到」（应为「已签到」）—— 用户反馈的 bug
+      //   ② 资源数字不刷新，看起来像「签到后资源没加/反而少了」
+      api.post('/games/ezfy/welfare/sign', {}).then(r => {
+        this.alert(r, '签到成功', () => {
+          this.loadWelfare()
+          this.load()
+          if (this.cur === 'builds') this.loadRes()
+        })
+      })
     },
     doGift (t) {
       api.post('/games/ezfy/welfare/gift/' + t, {}).then(r => this.alert(r, '礼包已领取'))
@@ -4315,6 +4491,16 @@ export default {
       if (!isFinite(v)) return '0'
       return v.toLocaleString('en-US')
     },
+    // ★ 大数加单位（万/亿），资源详情里动辄十几位数字，不缩一下没法看
+    fmtBig (n) {
+      const v = Number(n || 0)
+      if (!isFinite(v)) return '0'
+      const abs = Math.abs(v)
+      const sign = v < 0 ? '-' : ''
+      if (abs >= 1e8) return sign + (abs / 1e8).toFixed(2).replace(/\.?0+$/, '') + '亿'
+      if (abs >= 1e4) return sign + (abs / 1e4).toFixed(2).replace(/\.?0+$/, '') + '万'
+      return String(v)
+    },
     fmtTime (t) {
       if (!t) return ''
       let d
@@ -4328,7 +4514,9 @@ export default {
       }
       if (isNaN(d.getTime())) return ''
       const p = n => String(n).padStart(2, '0')
-      return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+      // ★ 用户要求：战报时间要带年份（原来是 MM-DD HH:mm:ss，跨年就分不清）
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+        ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
     // ---- 页面内提示 / 确认（替代 alert / confirm / prompt）----
     notify (text, type) {
@@ -4557,15 +4745,32 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page {
   background: #fff;
   min-height: 100%;
-  font-size: 16px;
   color: #333;
+  /* ★ 字体族: 完全照原版 ezfy.css 末尾那句
+     `body,button,input,select,textarea,h1..h6{font-family:'微软雅黑'}`。
+     之前本页从未声明 font-family → 一路继承到浏览器默认(serif), 与全站其它页字体分裂。
+     追加的中文回退只在用户机器没装微软雅黑时才会用到(Windows 默认都有)。 */
+  font-family: '微软雅黑', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
+  /* ★ 18px 基准: 用户最终决定「在原版 19px 基础上再减少 1 号」。
+     演变: 原版 ezfy.css `*{font-size:19px}` → 照搬 19px 用户嫌大 → 定为 18px。
+     配套阶梯: 标题栏/小标题 19 / 正文·表格·导航·表单·地图内链 18 /
+     按钮 17 / 提示条·确认条·战报·分页 16 / 页脚 15 / 地图格 11(固定格尺寸,勿动)。 */
+  font-size: 18px;
+  line-height: 1.5;
   /* 根容器左右不再用负 margin: 会溢出 #app 产生横向滚动条.
      铺满由内部 .title-bar 的 margin:0 -8px 抵消 padding 实现 */
   margin: 0;
   padding: 0 8px 20px;
 }
+/* 表单控件/按钮默认不继承字体族, 显式补上(原版也是 body,button,input,select,textarea 一起设) */
+.ezfy-page button,
+.ezfy-page input,
+.ezfy-page select,
+.ezfy-page textarea {
+  font-family: inherit;
+}
 .ezfy-page .home-wrap {
-  font-size: 16px;
+  font-size: 18px;
 }
 .ezfy-page a {
   text-decoration: none;
@@ -4593,20 +4798,27 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .top-nav a {
   display: inline-block;
-  padding: 2px 6px;
-  /* ★ 用户反馈「聊天/邮箱/军情/任务/好友/首页 字体有点小」→ 15 → 17 */
-  font-size: 17px;
+  /* ★ 用户反馈「聊天/邮箱/军情/任务/好友/首页 之间的间隔有点大，想小一些」→ 6px → 3px */
+  padding: 2px 3px;
+  /* ★ 用户反馈「聊天/邮箱/军情/任务/好友/首页 字体有点小」→ 15 → 17；
+     现统一到正文基准，不再单独放大 */
+  font-size: 18px;
 }
-/* ★ 用户反馈「导航整体有点靠右」：每个链接自带 6px 左右 padding + 1px margin，
-   于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移 7px。
-   去掉首链接的左侧留白 → 整条导航左移 7px，与正文左对齐（实测 15px → 8px）。 */
+/* ★ 用户反馈「导航整体有点靠右」：每个链接自带 padding + 1px margin，
+   于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移。
+   去掉首链接的左侧留白 → 整条导航左移，与正文左对齐。 */
 .ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
-/* ★ 配色按用户要求：默认 #004299，当前选中黑色 */
+/* ★ 配色按用户要求：默认 #004299，当前选中黑色
+   ★ 用户反馈「点进去后间隔变大，首页里的这个导航就对」：
+     根因是这里用 inline-block(会把换行空白算成一个空格宽)，
+     而首页导航用的是 inline。改成 inline 并收窄 padding，
+     与首页视觉完全一致。 */
 .ezfy-page .ezfy-subnav a {
-  display: inline-block;
-  padding: 2px 5px;
-  font-size: 17px;
+  display: inline;
+  padding: 0 1px;
+  margin: 0 1px;
+  font-size: 18px;
   color: #004299;
 }
 .ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
@@ -4623,7 +4835,7 @@ body.ezfy-immersive { margin: 0; }
   min-height: 44px;
   max-height: 160px;
   padding: 4px 6px;
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1.5;
   font-family: inherit;
   border: 1px solid #c8c8c8;
@@ -4647,7 +4859,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-pager span { margin-right: 8px; }
 .ezfy-page .ezfy-msg {
   padding: 4px 6px; margin: 3px 0; border-radius: 3px;
-  font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
+  font-size: 18px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
 }
 .ezfy-page .ezfy-msg-ok { border-left-color: #27763c; background: #eef7f0; color: #1d5c2e; }
 .ezfy-page .ezfy-msg-error { border-left-color: #c0392b; background: #fdeeec; color: #a02a1e; }
@@ -4658,14 +4870,14 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0; padding: 8px; border: 1px solid #d8c890;
   background: #fffbe8; border-radius: 4px;
 }
-.ezfy-page .ezfy-ask-text { font-size: 14px; color: #7a5c10; margin-bottom: 6px; }
+.ezfy-page .ezfy-ask-text { font-size: 18px; color: #7a5c10; margin-bottom: 6px; }
 .ezfy-page .ezfy-ask-row { margin-top: 4px; }
 .ezfy-page .ezfy-ask-ok { font-weight: bold; color: #27763c; margin-right: 12px; }
 .ezfy-page .ezfy-ask-cancel { color: #999; }
 /* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
 .ezfy-page .ezfy-bottom-nav {
   padding: 1px 0;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.75;
 }
 /* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
@@ -4687,7 +4899,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
-  font-size: 16px;   /* 与正文同号 */
+  font-size: 18px;   /* 与正文同号 */
   color: #666;
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
@@ -4699,7 +4911,8 @@ body.ezfy-immersive { margin: 0; }
   line-height: 1.9;
 }
 .ezfy-page .panel-title {
-  font-size: 17px;
+  /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18。原先 17 与正文同级, 会看不出层级 */
+  font-size: 18px;
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
@@ -4712,7 +4925,7 @@ body.ezfy-immersive { margin: 0; }
    .ezfy-msgs / .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
-.ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
+.ezfy-page .city-name { font-size: 18px; font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 宽度按内容自适应(不 width:100%)、无边框。
    原版 templates 里绝大多数表格都没有任何 CSS, 就是浏览器默认样式;
    之前统一 width:100% + 虚线下边框, 会把表格拉满整行, 用户会觉得「太长 / 还是表格」。 */
@@ -4720,7 +4933,8 @@ body.ezfy-immersive { margin: 0; }
   width: auto;
   max-width: 100%;
   border-collapse: collapse;
-  font-size: 15px;
+  /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小 */
+  font-size: 18px;
 }
 .ezfy-page table th,
 .ezfy-page table td {
@@ -4739,7 +4953,7 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
-.ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
+.ezfy-page .footer { text-align: center; font-size: 18px; color: #999; padding: 4px 0 10px; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }
@@ -4753,7 +4967,8 @@ body.ezfy-immersive { margin: 0; }
   border: 1px solid #999;
   border-radius: 0;
   padding: 3px 4px;
-  font-size: 15px;
+  /* ★ 表单字号跟正文(17px): 之前 15px 会让同一行「文字+输入框」字号不一致 */
+  font-size: 18px;
   background: #fff;
   color: #333;
 }
@@ -4762,7 +4977,8 @@ body.ezfy-immersive { margin: 0; }
   border-radius: 0;
   background: #e8e5dd;
   color: #333;
-  font-size: 14px;
+  /* ★ 按钮统一 16px: 比正文小一号(视觉上按钮不需要跟正文等大), 但不至于像之前 14px 那样突兀 */
+  font-size: 18px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -4771,7 +4987,7 @@ body.ezfy-immersive { margin: 0; }
   white-space: pre-wrap;
   word-wrap: break-word;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 18px;
   background: #fff;
   border: 1px solid #ddd;
   padding: 6px;
@@ -4802,7 +5018,7 @@ body.ezfy-immersive { margin: 0; }
   display: inline;
   padding: 0;
   margin: 0;
-  font-size: 16px;           /* 和正文(.old-line)同号 */
+  font-size: 18px;           /* 和正文(.old-line)同号 */
   line-height: 1.5;
   color: #333;
   background: none;
@@ -4837,19 +5053,24 @@ body.ezfy-immersive { margin: 0; }
 
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
-   实测基准: iPhone SE 320、常见安卓 360/390。 */
+   实测基准: iPhone SE 320、常见安卓 360/390。
+   ★ 字号阶梯与桌面端保持同一比例(桌面 正文18/表格18/标题19),
+     窄屏整体缩一档, 但各元素之间仍然成阶梯, 不再出现「表格 13 而正文 14」这类错位。 */
 @media (max-width: 420px) {
-  /* ★ 用户反馈「有些页面字体太小」→ 整体上调一档(表格 13、正文 14、标题 15) */
-  .ezfy-page table { font-size: 13px; }
+  .ezfy-page { font-size: 16px; line-height: 1.6; }
+  .ezfy-page table { font-size: 16px; }
   .ezfy-page table th,
   .ezfy-page table td { padding: 4px 4px; }
-  .ezfy-page .old-line { font-size: 14px; line-height: 1.7; }
-  .ezfy-page .panel-title { font-size: 15px; }
-  .ezfy-page .acade-tab { font-size: 14px; }
-  .ezfy-page .ezfy-subnav a { font-size: 15px; }
-  .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
+  .ezfy-page .old-line { font-size: 16px; line-height: 1.7; }
+  .ezfy-page .panel-title { font-size: 17px; }
+  .ezfy-page .acade-tab { font-size: 16px; }
+  .ezfy-page .ezfy-subnav a { font-size: 16px; }
+  .ezfy-page .top-nav a { font-size: 16px; }
+  .ezfy-page .ezfy-bottom-nav { font-size: 16px; line-height: 2; }
+  .ezfy-page input, .ezfy-page select, .ezfy-page textarea { font-size: 16px; }
+  .ezfy-page button { font-size: 15px; }
   /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
-  .ezfy-page .ezfy-map-table a { font-size: 14px; }
+  .ezfy-page .ezfy-map-table a { font-size: 16px; }
   .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
 }
@@ -4858,7 +5079,8 @@ body.ezfy-immersive { margin: 0; }
 /* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
 .ezfy-page .ezfy-pager {
   margin: 8px 0 4px;
-  font-size: 15px;
+  /* ★ 分页条用「小字」档: 它是辅助信息, 不该和正文抢视线 */
+  font-size: 16px;
 }
 .ezfy-page .ezfy-pager a {
   margin: 0 4px;
@@ -4872,6 +5094,6 @@ body.ezfy-immersive { margin: 0; }
   margin: 0 6px;
 }
 @media (max-width: 420px) {
-  .ezfy-page .ezfy-pager { font-size: 13px; }
+  .ezfy-page .ezfy-pager { font-size: 18px; }
 }
 </style>

@@ -1084,7 +1084,40 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 		DeclareTime: now, EffectTime: now + ezfyWarDelayHours*3600000,
 		ExpireTime: now + (ezfyWarDelayHours+ezfyWarDurationHours)*3600000}
 	h.DB.Create(&w)
+
+	// ★ 用户要求「宣战也要如系统消息」：宣战方与被宣战方各发一条系统消息（EzfyNotice），
+	//   与战争管理后台的提示口径保持一致（ezfy_admin_war.go）。
+	atkName, _ := h.ezfyPlayerName(uid)
+	if atkName == "" {
+		atkName = h.ezfyProfileName(uid)
+	}
+	if atkName == "" {
+		atkName = fmt.Sprintf("玩家%d", uid)
+	}
+	defName, _ := h.ezfyPlayerName(req.TargetUserId)
+	if defName == "" {
+		defName = h.ezfyProfileName(req.TargetUserId)
+	}
+	if defName == "" {
+		defName = fmt.Sprintf("玩家%d", req.TargetUserId)
+	}
+	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
+		atkName, ezfyWarDelayHours, ezfyWarDurationHours)
+	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
+	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
+		defName, ezfyWarDelayHours, ezfyWarDurationHours)
+	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})
+
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("宣战成功, %d小时后生效, 生效后%d小时内可互相掠夺/征服", ezfyWarDelayHours, ezfyWarDurationHours)})
+}
+
+// ezfyPlayerName 取玩家在二战里的展示名（优先 profile.nickname）
+func (h *EzfyHandler) ezfyPlayerName(uid uint) (string, error) {
+	var p model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err != nil {
+		return "", err
+	}
+	return p.Nickname, nil
 }
 
 func (h *EzfyHandler) WarStatus(c *gin.Context) {
@@ -1230,6 +1263,8 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "身份道具"
 	case 15:
 		return "出征道具"
+	case 16, 17, 18:
+		return "迁城道具"
 	}
 	return "其他"
 }
@@ -1255,6 +1290,8 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 			"price_gold": it.PriceGold, "price_diamond": it.PriceDiamond,
 			"icon": it.Icon, "description": it.Description, "stock": it.Stock,
 			"category": cat, "is_diamond": ezfyIsDiamondItem(&it),
+			// ★ 双渠道：黄金价和钻石价都 > 0 时，玩家可以任选一种支付（前端出两个按钮）
+			"dual_pay": it.PriceGold > 0 && it.PriceDiamond > 0,
 			// ★ 库存 -1 = 无限可购（前端显示「无限」）
 			"unlimited": ezfyUnlimitedStock(it.Stock),
 		})
@@ -1269,6 +1306,8 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		CityId int64 `json:"city_id"`
 		CfgId  int   `json:"cfg_id"`
 		Count  int   `json:"count"`
+		// ★ 双渠道道具的支付方式："gold" / "diamond"；留空按默认（有钻石价则钻石优先）
+		PayWith string `json:"pay_with"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1302,13 +1341,36 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			return
 		}
 	}
-	// ★ 钻石道具（price_diamond > 0，或管理端把分类填成「钻石道具」）只能用钻石买，
-	//   钻石只能管理端充值。默认 0 钻石时即免费发放。
-	if ezfyIsDiamondItem(cfg) {
+	// ★ 支付渠道判定（第十二轮：支持「黄金 / 钻石」双渠道道具）
+	//
+	//	用户规则：「迁城计划 是道具 可以用黄金 和 钻石 购买 单独的 但是功能是一样的」
+	//
+	//	三种情况：
+	//	  ① pay_with = "gold"    → 强制走黄金（需 price_gold > 0）
+	//	  ② pay_with = "diamond" → 强制走钻石（需 price_diamond > 0）
+	//	  ③ pay_with 留空        → 老行为：有钻石价就走钻石（category=钻石道具 的免费道具也是这条）；
+	//                          只有黄金价则走黄金
+	//
+	//	这样既保住了老道具（集结令等）的既有语义，又让迁城道具能两种钱都买。
+	useDiamond := ezfyIsDiamondItem(cfg)
+	if req.PayWith == "gold" {
+		if cfg.PriceGold <= 0 {
+			resp.ParamError(c, fmt.Sprintf("「%s」不支持用黄金购买", cfg.Name))
+			return
+		}
+		useDiamond = false
+	} else if req.PayWith == "diamond" {
+		if cfg.PriceDiamond <= 0 {
+			resp.ParamError(c, fmt.Sprintf("「%s」不支持用钻石购买", cfg.Name))
+			return
+		}
+		useDiamond = true
+	}
+	if useDiamond {
 		cost := cfg.PriceDiamond * int64(req.Count)
 		prof := h.ensureProfile(uid)
 		if prof.Diamond < cost {
-			resp.ParamError(c, fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d", cost, prof.Diamond))
+			resp.ParamError(c, fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d（也可改用黄金购买）", cost, prof.Diamond))
 			return
 		}
 		if cost > 0 {
@@ -1328,6 +1390,10 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		return
 	}
 	cost := cfg.PriceGold * int64(req.Count)
+	if cfg.PriceGold <= 0 {
+		resp.ParamError(c, fmt.Sprintf("「%s」不支持用黄金购买", cfg.Name))
+		return
+	}
 	city := h.bodyCity(uid, req.CityId)
 	if city.Gold < cost {
 		resp.ParamError(c, "黄金不足")
@@ -1703,7 +1769,31 @@ func (h *EzfyHandler) Notices(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var notices []model.EzfyNotice
 	h.DB.Where("user_id = 0 OR user_id = ?", uid).Order("is_top DESC, id DESC").Limit(30).Find(&notices)
-	resp.OK(c, gin.H{"notices": notices})
+
+	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」：
+	//   首页外露公告取前 N 条（N = ezfy_cfg_limit.notice_home_count，默认 1，0 = 不展示）。
+	limit := h.ezfyNoticeHomeCount()
+	home := []model.EzfyNotice{}
+	if limit > 0 && len(notices) > 0 {
+		n := limit
+		if n > len(notices) {
+			n = len(notices)
+		}
+		home = notices[:n]
+	}
+	resp.OK(c, gin.H{"notices": notices, "home_notices": home, "home_limit": limit})
+}
+
+// ezfyNoticeHomeCount 首页公告展示条数（读 ezfy_cfg_limit，缺省 1）
+func (h *EzfyHandler) ezfyNoticeHomeCount() int {
+	var lim model.EzfyCfgLimit
+	if err := h.DB.First(&lim, 1).Error; err != nil {
+		return 1
+	}
+	if lim.NoticeHomeCount < 0 {
+		return 1
+	}
+	return lim.NoticeHomeCount
 }
 
 // ============ 战报 ============
@@ -1739,8 +1829,67 @@ func ezfyReportCategory(title string) int {
 	return 3
 }
 
-func ezfyReportCategoryName(cat int) string {
-	switch cat {
+// ezfyReportTypeName 战报标签(前端列表里的 [xxx] 前缀)
+//
+// ★ 不能只看 report_type：老代码把「掠夺/战斗/被掠夺」都写成 2，
+//   导致战报列表里清一色显示 [掠夺]（用户反馈「都是掠夺」）。
+//   这里优先按**标题前缀**判定，标题没有可识别前缀时才退回 report_type。
+func ezfyReportTypeName(reportType int, title string) string {
+	switch {
+	case strings.HasPrefix(title, "被掠夺报告"):
+		return "被掠夺"
+	case strings.HasPrefix(title, "被侦查报告"):
+		return "被侦查"
+	case strings.HasPrefix(title, "城破报告"):
+		return "城破"
+	case strings.HasPrefix(title, "守卫报告"):
+		return "守卫"
+	case strings.HasPrefix(title, "军情警报"):
+		return "警报"
+	case strings.HasPrefix(title, "侦查报告"):
+		return "侦察"
+	case strings.HasPrefix(title, "掠夺报告"):
+		return "掠夺"
+	case strings.HasPrefix(title, "征服报告"):
+		return "征服"
+	case strings.Contains(title, "战斗报告"):
+		return "战斗"
+	case strings.HasPrefix(title, "采集报告"):
+		return "采集"
+	case strings.HasPrefix(title, "运输报告"):
+		return "运输"
+	case strings.HasPrefix(title, "增援报告"):
+		return "增援"
+	case strings.HasPrefix(title, "派遣报告"):
+		return "派遣"
+	case strings.HasPrefix(title, "建城报告"):
+		return "建城"
+	case strings.HasPrefix(title, "交易报告"):
+		return "交易"
+	case strings.HasPrefix(title, "将领叛离"):
+		return "叛离"
+	case strings.HasPrefix(title, "城市归还"):
+		return "归还"
+	}
+	// 兜底：按 report_type
+	switch reportType {
+	case 1:
+		return "侦察"
+	case 2:
+		return "战斗"
+	case 3:
+		return "征服"
+	case 4:
+		return "战斗"
+	case 5:
+		return "采集"
+	case 6:
+		return "系统"
+	}
+	return "战报"
+}
+
+func ezfyReportCategoryName(cat int) string {	switch cat {
 	case 1:
 		return "军情警讯"
 	case 2:
@@ -1765,7 +1914,6 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	q.Order("id DESC").Limit(200).Find(&reports)
 
 	views := []gin.H{}
-	typeName := map[int]string{1: "侦察", 2: "掠夺", 3: "征服", 4: "战斗", 5: "采集", 6: "系统"}
 	counts := map[int]int{}
 	for _, r := range reports {
 		cat := ezfyReportCategory(r.Title)
@@ -1777,7 +1925,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 			continue
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
-			"type_name": typeName[r.ReportType], "is_read": r.IsRead, "order_id": r.OrderId,
+			"type_name": ezfyReportTypeName(r.ReportType, r.Title), "is_read": r.IsRead, "order_id": r.OrderId,
 			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {

@@ -228,6 +228,8 @@ type EzfyCfgLimit struct {
 	ResourceMax int `gorm:"default:33" json:"resource_max"` // 资源区建筑数量上限（type 1）
 	HouseMax    int `gorm:"default:10" json:"house_max"`    // 民居数量上限
 	FactoryMax  int `gorm:"default:0" json:"factory_max"`   // 军工厂数量上限（0 = 不限）
+	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
+	NoticeHomeCount int `gorm:"default:1" json:"notice_home_count"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

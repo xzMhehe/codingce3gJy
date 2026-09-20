@@ -1418,6 +1418,8 @@ func seedRBAC(db *gorm.DB) {
 		// 第九轮新增：建筑数量上限配置 / 聊天敏感词（二战自己的独立维护页）
 		mod("游戏-二战风云", "风云建筑上限", "ezfyBuildLimit"),
 		mod("游戏-二战风云", "风云敏感词", "ezfyWords"),
+		// 宣战管理（列表 + 一键生效/一键完成）
+		mod("游戏-二战风云", "风云宣战", "ezfyWars"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
 		mod("系统", "菜单维护", "menus"),

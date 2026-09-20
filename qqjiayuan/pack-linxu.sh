@@ -169,20 +169,24 @@ mkdir -p "$PKG/server"
 # -o 的路径要转成原生形式(见 to_native 注释),否则 git bash 下产物会写飞
 OUT_SERVER="$(to_native "$PKG/server/server")"
 OUT_DBINIT="$(to_native "$PKG/server/dbinit")"
+OUT_MIGRATE="$(to_native "$PKG/server/ezfymigrate")"
 ( cd "$ROOT/server" && "$GO_BIN" build -trimpath -ldflags "-s -w" -o "$OUT_SERVER" . )
 ( cd "$ROOT/server" && "$GO_BIN" build -trimpath -ldflags "-s -w" -o "$OUT_DBINIT" ./cmd/dbinit )
+# ★ 二战风云城池批量迁移工具（运营用，不参与游戏运行）
+#   用途：把所有玩家城池批量迁到指定大洲（内测时统一迁到欧洲，玩家离得近才打得起来）
+( cd "$ROOT/server" && "$GO_BIN" build -trimpath -ldflags "-s -w" -o "$OUT_MIGRATE" ./cmd/ezfymigrate )
 unset GOOS GOARCH CGO_ENABLED
-[ -s "$PKG/server/server" ] && [ -s "$PKG/server/dbinit" ] || die "后端编译产物缺失"
+[ -s "$PKG/server/server" ] && [ -s "$PKG/server/dbinit" ] && [ -s "$PKG/server/ezfymigrate" ] || die "后端编译产物缺失"
 
 # 交叉编译出来的文件在 Windows 上没有可执行位,显式补上(tar 会记录)
-chmod 755 "$PKG/server/server" "$PKG/server/dbinit" 2>/dev/null || true
+chmod 755 "$PKG/server/server" "$PKG/server/dbinit" "$PKG/server/ezfymigrate" 2>/dev/null || true
 
 # 确认真的是 Linux ELF,而不是误编成了 Windows exe
-for b in "$PKG/server/server" "$PKG/server/dbinit"; do
+for b in "$PKG/server/server" "$PKG/server/dbinit" "$PKG/server/ezfymigrate"; do
   MAGIC="$(head -c 4 "$b" | od -An -tx1 | tr -d ' \n')"
   [ "$MAGIC" = "7f454c46" ] || die "$(basename "$b") 不是 Linux ELF(魔数 $MAGIC),检查 GOOS/GOARCH"
 done
-info "server / dbinit 编译完成(linux/amd64 ELF 校验通过)"
+info "server / dbinit / ezfymigrate 编译完成(linux/amd64 ELF 校验通过)"
 
 log "STEP 4/5 组装部署包"
 
@@ -250,10 +254,9 @@ if command -v zip >/dev/null 2>&1; then
 fi
 
 FAIL=0
-for f in "$PKG/server/server" "$PKG/server/dbinit" "$PKG/server/config.yaml" \
+for f in "$PKG/server/server" "$PKG/server/dbinit" "$PKG/server/ezfymigrate" "$PKG/server/config.yaml" \
          "$PKG/web/dist/index.html" "$PKG/web/dist/static" \
-         "$PKG/admin-web/dist/index.html" "$PKG/start.sh" "$PKG/部署流程.txt"; do
-  if [ -e "$f" ]; then info "OK  ${f#"$ROOT"/}"; else info "缺失 $f"; FAIL=1; fi
+         "$PKG/admin-web/dist/index.html" "$PKG/start.sh" "$PKG/部署流程.txt"; do  if [ -e "$f" ]; then info "OK  ${f#"$ROOT"/}"; else info "缺失 $f"; FAIL=1; fi
 done
 [ "$FAIL" -eq 0 ] || die "包内产物不完整,请检查上方输出"
 
@@ -263,6 +266,6 @@ log "打包完成 → $PKG"
 printf '  服务器上最小步骤:\n'
 printf '    tar -xzf Linuxbushu.tar.gz -C /opt && cd /opt/Linuxbushu\n'
 printf '    mv /opt/Linuxbushu %s        # 非默认路径就跳过这步\n' "${DEPLOY_DIR%/}"
-printf '    chmod +x server/server server/dbinit *.sh\n'
+printf '    chmod +x server/server server/dbinit server/ezfymigrate *.sh\n'
 printf '    vi server/config.yaml                       # 填 MySQL 密码\n'
 printf '    ./init-db.sh && ./start.sh\n\n'

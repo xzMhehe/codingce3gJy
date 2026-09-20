@@ -67,6 +67,7 @@ func seedEzfy(db *gorm.DB) {
 
 	seedEzfyNotices(db)
 	seedEzfyOfficerItems(db)
+	seedEzfyMoveItems(db)
 	seedEzfyActivities(db)
 	seedEzfyResources(db)
 	seedEzfyRanks(db)
@@ -188,6 +189,48 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
 		if count > 0 {
 			// 已存在则只同步名称/说明/分类, 不动价格与库存(避免覆盖后台调价)
+			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
+				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
+					"param1": it.Param1, "description": it.Description, "category": it.Category})
+			continue
+		}
+		db.Create(&it)
+	}
+}
+
+// seedEzfyMoveItems 迁城类道具（第十二轮新增）
+//
+// 用户规则：「迁城计划 是道具 可以用黄金 和 钻石 购买 单独的 但是功能是一样的」
+//          「用 迁城计划、高级迁城计划、沿海迁城计划 …… 可以灵活批量迁移城池」
+//
+//	20 迁城计划     ItemType 16 选洲迁城（落该洲随机空平原）
+//	21 高级迁城计划 ItemType 17 指定坐标迁城（平原）
+//	22 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
+//
+// ★ 价格分档（黄金+钻石双渠道，管理端随时可改）：
+//
+//	迁城计划     20 万黄金 / 200 钻石
+//	高级迁城计划 40 万黄金 / 400 钻石
+//	沿海迁城计划 40 万黄金 / 400 钻石
+//
+// 库存 -1 = 无限（迁城是刚需，不该被库存卡住）。
+func seedEzfyMoveItems(db *gorm.DB) {
+	rows := []model.EzfyCfgItem{
+		{ID: 20, Name: "迁城计划", ItemType: 16, Param1: 1,
+			PriceGold: 200000, PriceDiamond: 200, Stock: -1, Category: "迁城道具",
+			Description: "在市政厅→城市迁移使用: 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
+		{ID: 21, Name: "高级迁城计划", ItemType: 17, Param1: 1,
+			PriceGold: 400000, PriceDiamond: 400, Stock: -1, Category: "迁城道具",
+			Description: "在市政厅→城市迁移使用: 指定坐标迁移城市, 目标必须是未被占领的平原"},
+		{ID: 22, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
+			PriceGold: 400000, PriceDiamond: 400, Stock: -1, Category: "迁城道具",
+			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
+	}
+	for _, it := range rows {
+		var count int64
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
+		if count > 0 {
+			// 已存在则只同步名称/类型/说明/分类, 不动价格与库存(避免覆盖后台调价)
 			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
 				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
 					"param1": it.Param1, "description": it.Description, "category": it.Category})

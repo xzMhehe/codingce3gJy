@@ -34,10 +34,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（默认，符合用户规则）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax *int `json:"military_max"`
-		ResourceMax *int `json:"resource_max"`
-		HouseMax    *int `json:"house_max"`
-		FactoryMax  *int `json:"factory_max"`
+		MilitaryMax     *int `json:"military_max"`
+		ResourceMax     *int `json:"resource_max"`
+		HouseMax        *int `json:"house_max"`
+		FactoryMax      *int `json:"factory_max"`
+		NoticeHomeCount *int `json:"notice_home_count"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -75,6 +76,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	} else if in.FactoryMax != nil {
 		lim.FactoryMax = v
 	}
+	if v, ok := check(in.NoticeHomeCount, "首页公告条数"); !ok {
+		return
+	} else if in.NoticeHomeCount != nil {
+		lim.NoticeHomeCount = v
+	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 33
 	}
@@ -83,6 +89,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.HouseMax <= 0 {
 		lim.HouseMax = 10
+	}
+	// ★ 首页公告条数允许 0（= 首页不展示公告），但不允许负数；未配过时默认 1
+	if lim.NoticeHomeCount < 0 {
+		lim.NoticeHomeCount = 1
 	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {

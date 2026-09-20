@@ -25,6 +25,10 @@
           <el-input-number v-model.number="form.factory_max" :min="0" :max="999" controls-position="right" style="width:180px" />
           <span class="td-sub"><b>0 = 不限数量</b>（默认，只要军事区上限没到就能一直建）</span>
         </el-form-item>
+        <el-form-item label="首页公告展示条数">
+          <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
+          <span class="td-sub"><b>默认 1 条</b>；填 0 表示首页不展示公告（公告页仍可看全部）</span>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
         </el-form-item>
@@ -50,7 +54,7 @@ export default {
   data () {
     return {
       saving: false,
-      form: { military_max: 33, resource_max: 33, house_max: 10, factory_max: 0 },
+      form: { military_max: 33, resource_max: 33, house_max: 10, factory_max: 0, notice_home_count: 1 },
       levelRules: [
         { name: '市政厅', max: '10 级', note: '市政厅最高 10 级' },
         { name: '民居', max: '12 级', note: '最多比市政厅高 1 级；市政厅满级(10)时民居可升到 12 级' },
@@ -68,7 +72,9 @@ export default {
             military_max: r.data.military_max,
             resource_max: r.data.resource_max,
             house_max: r.data.house_max,
-            factory_max: r.data.factory_max
+            factory_max: r.data.factory_max,
+            notice_home_count: r.data.notice_home_count === undefined || r.data.notice_home_count === null
+              ? 1 : r.data.notice_home_count
           }
         } else this.$message.error(r.msg)
       })

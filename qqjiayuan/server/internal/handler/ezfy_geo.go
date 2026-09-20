@@ -70,6 +70,10 @@ func ezfyInShape(x, y int, s []int) bool {
 	return dx*dx+dy*dy <= 1
 }
 
+// EzfyContinentOf 是 ezfyContinentOf 的导出包装，供 CLI 运维工具（ezfymigrate）
+// 在日志里显示落点所属大洲用；游戏逻辑仍走内部实现，两者行为完全一致。
+func EzfyContinentOf(x, y int) int { return ezfyContinentOf(x, y) }
+
 func ezfyContinentOf(x, y int) int {
 	for i := 0; i < len(ezfyContinentIDs); i++ {
 		for _, s := range ezfyLands[i] {

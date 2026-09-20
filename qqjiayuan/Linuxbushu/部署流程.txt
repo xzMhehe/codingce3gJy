@@ -7,6 +7,7 @@
 ------------------------------------------------------------
   server/server        后端(端口 8080,同时托管两个前端)
   server/dbinit        建库+建表+种子数据(可重复执行)
+  server/ezfymigrate   二战风云城池批量迁移工具(运营用,详见第十二节)
   server/config.yaml   配置文件(启动必读)
   web/dist/            用户端前端
   admin-web/dist/      管理端前端
@@ -29,7 +30,7 @@
      tar -xzf Linuxbushu.tar.gz -C /opt
      cd /opt/Linuxbushu            # 或直接改名成 /opt/qqjiayuan
      mv /opt/Linuxbushu /opt/qqjiayuan   # 若用默认路径就改成这个名
-     cd /opt/qqjiayuan && chmod +x server/server server/dbinit *.sh
+     cd /opt/qqjiayuan && chmod +x server/server server/dbinit server/ezfymigrate *.sh
    ※ tar 已带可执行位;用 zip/图形工具解压可能丢权限,所以上面这行
      chmod 建议照做一遍(不做会报 "Permission denied")
 
@@ -242,3 +243,82 @@
  ./init-db.sh → ./start.sh(或 systemd)→ 放行安全组 →
  浏览器访问 http://IP:8080
 ============================================================
+
+
+十二、二战风云 —— 城池批量迁移工具(ezfymigrate)
+------------------------------------------------------------
+  用途:把玩家城池批量迁移到指定大洲。内测开荒时把所有城统一搬到
+       欧洲,玩家之间离得近,才打得起征服 / 侦查 / 掠夺。
+
+  ★ 这是运维工具,不参与游戏运行:
+     - 不写进种子(不会每次启动自动跑)
+     - 不消耗玩家道具、不扣黄金
+     - 默认只预演(dry-run),要加 --apply 才真正改数据
+
+  基本用法(在 server 目录下执行,以便读到 config.yaml):
+     cd /opt/Linuxbushu/server
+
+     # 1) 先预演,看看会发生什么(强烈建议)
+     ./ezfymigrate --all --dry-run
+
+     # 2) 全部城池迁到欧洲(默认洲)
+     ./ezfymigrate --all --apply
+
+     # 只迁某个玩家(按家园/游戏 ID)
+     ./ezfymigrate --uid 10007 --apply
+
+     # 只迁海城 / 只迁陆城
+     ./ezfymigrate --all --sea-only --apply
+     ./ezfymigrate --all --land-only --apply
+
+     # 迁到亚洲
+     ./ezfymigrate --all --continent 2 --apply
+
+     # 分批迁(每批 100 座)
+     ./ezfymigrate --all --apply --limit 100
+
+     # 跳过交互确认(脚本/自动化里用)
+     ./ezfymigrate --all --apply --yes
+
+  参数说明:
+     --all           迁移全部玩家的城
+     --uid N         只迁移该玩家的城
+     --continent N   目标大洲:1欧洲 2亚洲 3非洲 4北美洲 5南美洲
+                              6大洋洲 7南极洲(默认欧洲)
+     --sea-only      只迁沿海城市(海城),落点为沿海平原
+     --land-only     只迁内陆城市
+     --limit N       单次最多迁多少座(0 = 不限)
+     --apply         真正落库(不加则预演)
+     --dry-run       显式预演
+     --yes           跳过交互确认
+     -config PATH    指定 config.yaml(默认当前目录)
+
+  结果说明:
+     - 已经在目标大洲的城会被跳过(可重复执行,幂等)
+     - 陆城落在平原或沿海平原;海城只落在沿海平原
+     - 落点优先贴近已有城市(内测玩家互相靠近),找不到再全洲均匀找
+     - 每座城迁移后旧坐标的地图记录会被清理
+     - 执行阶段逐城**实时重算落点**,预演里显示的坐标只是"预计落在哪片区域",
+       不构成承诺(因为每迁一座城就多占一格,预演坐标仅供参考)
+
+  换其他库/其他机器:
+     把 server/config.yaml 里的 mysql 指向目标库即可,
+     例如本地测试库或另一台服务器,不用改任何代码。
+
+  常见问题:
+     - "该坐标已有城市" 大量失败:
+       说明工具是"先算好全部落点再落库"的老版本。正确实现必须逐城重算
+       (handler.EzfyMoveOneCity + excluded),升级到最新 ezfymigrate 即可。
+       线上曾实测:预演 147 全通过、apply 时 71 座撞车,就是这个原因。
+     - 报"读取配置失败: open config.yaml":
+       必须在 server/ 目录下执行(或 -config 指定绝对路径)。
+
+十三、二战风云 —— 迁城道具与地图洲(内测默认欧洲)
+  迁城道具共 3 种,黄金/钻石**双渠道**均可购买,功能一致,分档定价:
+
+     迁城计划(ItemType 16)      200000 黄金 / 200 钻石   选洲随机落(内陆)
+     高级迁城计划(ItemType 17)   400000 黄金 / 400 钻石   指定坐标(内陆)
+     沿海迁城计划(ItemType 18)   400000 黄金 / 400 钻石   选洲落沿海平原(海城)
+
+  使用入口: 游戏内 市政厅 → 城市迁移(背包里直接点会提示去该页面,不消耗道具)。
+  新玩家建城默认落在**欧洲**空平原,找不到才退到别的洲。
