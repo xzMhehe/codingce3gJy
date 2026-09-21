@@ -258,19 +258,68 @@ func (h *EzfyHandler) findFreePosInContinent(continent int, needCoastal bool) (i
 //	表现为大批 `该坐标已有城市` 失败（线上 147 城实测失败 71 座）。
 //	所以执行阶段必须**逐城实时重算**，并把本次已决定的落点排除掉。
 func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bool, excluded map[[2]int]bool) (int, int, bool) {
-	// ★ 一次性把「已占用坐标」读进内存。
+	return h.findFreePosInContinentExceptC(continent, needCoastal, excluded, nil)
+}
+
+// moveCtx 批量迁城时复用的「全城坐标」上下文。
+//
+// ★ 2026-09-21 性能修复：findFreePosInContinentExcept 原来每次调用都要
+//
+//	① `SELECT x,y FROM ezfy_city`（建 occupied）
+//	② `SELECT * FROM ezfy_city`（取 anchors，整表全字段）
+//	批量迁 147 座城 = 294 次全表扫描 → IO 飙升。
+//	现在批量场景把这两份数据在**批次开始时读一次**，逐城复用，
+//	每城只额外维护「本批已落点」的 excluded 集合。
+type moveCtx struct {
+	occupied map[[2]int]bool // 全服已占坐标
+	anchors  []model.EzfyCity
+}
+
+// newMoveCtx 批次开始时调一次，读齐 occupied 与 anchors。
+func (h *EzfyHandler) newMoveCtx() *moveCtx {
+	ctx := &moveCtx{occupied: map[[2]int]bool{}}
+	var cities []model.EzfyCity
+	h.DB.Model(&model.EzfyCity{}).Order("id ASC").Find(&cities)
+	for _, c := range cities {
+		ctx.occupied[[2]int{c.X, c.Y}] = true
+		ctx.anchors = append(ctx.anchors, c)
+	}
+	return ctx
+}
+
+// MoveCtx 导出的批次上下文别名，供 CLI 运维工具（ezfymigrate）使用。
+type MoveCtx = moveCtx
+
+// NewMoveCtx 供 CLI 工具调用：批次开始时建一次，逐城传给 EzfyMoveOneCityC /
+// EzfyMoveOneCityCoastalC，避免「每城都全表扫一遍城市表」。
+func (h *EzfyHandler) NewMoveCtx() *MoveCtx { return h.newMoveCtx() }
+
+// markOccupied 落点后把新坐标记进 occupied，供同批次后续城市避让。
+func (ctx *moveCtx) markOccupied(x, y int) {
+	if ctx != nil && ctx.occupied != nil {
+		ctx.occupied[[2]int{x, y}] = true
+	}
+}
+
+// findFreePosInContinentExceptC 带上下文的版本：ctx 非 nil 时复用其 occupied/anchors，
+// 不再查库；ctx 为 nil 时行为与原来完全一致（自己查库，供单次迁城调用）。
+func (h *EzfyHandler) findFreePosInContinentExceptC(continent int, needCoastal bool,
+	excluded map[[2]int]bool, ctx *moveCtx) (int, int, bool) {
+	// ★ 「已占用坐标」读进内存。
 	//
 	//	原来每个候选点都发一条 `SELECT COUNT(*) ... WHERE x=? AND y=?`，
-	//	在「沿海平原」这种**稀有目标**上要试几万次 → DB 被拖垮，
-	//	而且随机采样命中率极低（线上欧洲沿海平原只剩 5 格 / 一万多格陆地，
-	//	实测 3 座城反复报「目标洲内找不到可用沿海平原」）。
-	//	改成内存判定后，才敢做下面的全图枚举。
+	//	在「沿海平原」这种**稀有目标**上要试几万次 → DB 被拖垮。
+	//	改成内存判定；批量场景由 ctx 复用同一份快照，避免逐城全表扫。
 	occupied := map[[2]int]bool{}
-	{
+	var anchors []model.EzfyCity
+	if ctx != nil {
+		occupied, anchors = ctx.occupied, ctx.anchors
+	} else {
 		var cities []model.EzfyCity
-		h.DB.Model(&model.EzfyCity{}).Select("x, y").Find(&cities)
+		h.DB.Model(&model.EzfyCity{}).Order("id ASC").Find(&cities)
 		for _, c := range cities {
 			occupied[[2]int{c.X, c.Y}] = true
+			anchors = append(anchors, c)
 		}
 	}
 	ok := func(x, y int) bool {
@@ -298,8 +347,6 @@ func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bo
 	}
 
 	// ① 贴着已有城市采样（同一片区域）
-	var anchors []model.EzfyCity
-	h.DB.Model(&model.EzfyCity{}).Order("id ASC").Find(&anchors)
 	if len(anchors) > 0 {
 		for i := 0; i < 4000; i++ {
 			a := anchors[rand.Intn(len(anchors))]
@@ -310,20 +357,17 @@ func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bo
 			}
 		}
 	}
-	// ② 需要沿海平原时：**全图枚举**所有空闲沿海平原再随机取一个。
-	//    沿海平原在整张地图里占比很小，纯随机采样几乎撞不上（见上面注释）。
+	// ② 需要沿海平原时：走**缓存的沿海平原索引**取点。
+	//
+	//	★ 2026-09-21 线上性能事故：这里原来是「双 for 枚举整个 500×500 世界」，
+	//	  每个格子都要跑 ezfyTerrainEx（内部判洲 + 8 邻域判海洋，合计十几次
+	//	  「点在多边形内」判定）→ 单次请求上百万次形状运算，1 核直接打满，
+	//	  批量迁城逐城调用更是雪崩。
+	//	  现在改为：全图枚举只在进程内跑一次（coastalPlainCandidates 带缓存），
+	//	  之后每座城都是「过滤已占用 + 随机取点」，O(n) 且无形状运算。
 	if needCoastal {
-		cands := make([][2]int, 0, 256)
-		for x := 1; x < ezfyWorldSize; x++ {
-			for y := 1; y < ezfyWorldSize; y++ {
-				if ok(x, y) {
-					cands = append(cands, [2]int{x, y})
-				}
-			}
-		}
-		if len(cands) > 0 {
-			p := cands[rand.Intn(len(cands))]
-			return p[0], p[1], true
+		if x, y, found := pickCoastalPos(continent, occupied, excluded); found {
+			return x, y, true
 		}
 		return 0, 0, false
 	}
@@ -473,6 +517,12 @@ func (h *EzfyHandler) EzfyApplyMove(cityId uint, x, y int) string {
 //
 // 返回实际落点 x, y 与错误信息（"" = 成功）。已在目标洲的城原样返回。
 func (h *EzfyHandler) EzfyMoveOneCity(cityId uint, continent int, excluded map[[2]int]bool) (int, int, string) {
+	return h.EzfyMoveOneCityC(cityId, continent, excluded, nil)
+}
+
+// EzfyMoveOneCityC 带 moveCtx 的版本：批量迁移时请用 newMoveCtx() 建一次 ctx，
+// 逐城传入 —— 这样「全城坐标」只读一次，不再每城全表扫描。
+func (h *EzfyHandler) EzfyMoveOneCityC(cityId uint, continent int, excluded map[[2]int]bool, ctx *moveCtx) (int, int, string) {
 	if continent == 0 {
 		continent = ezfyDefaultMoveContinent
 	}
@@ -488,7 +538,7 @@ func (h *EzfyHandler) EzfyMoveOneCity(cityId uint, continent int, excluded map[[
 		return ct.X, ct.Y, ""
 	}
 	isSea := h.isSeaCity(&ct)
-	x, y, ok := h.findFreePosInContinentExcept(continent, isSea, excluded)
+	x, y, ok := h.findFreePosInContinentExceptC(continent, isSea, excluded, ctx)
 	if !ok {
 		return 0, 0, "目标洲内找不到可用空地"
 	}
@@ -498,6 +548,7 @@ func (h *EzfyHandler) EzfyMoveOneCity(cityId uint, continent int, excluded map[[
 	if excluded != nil {
 		excluded[[2]int{x, y}] = true
 	}
+	ctx.markOccupied(x, y)
 	return x, y, ""
 }
 
@@ -563,6 +614,12 @@ func (h *EzfyHandler) EzfyCitiesWithBuilding(buildingId int) []model.EzfyCity {
 //
 // fallback <= 0 表示不启用备用洲。返回实际落点 x, y 与错误信息（"" = 成功）。
 func (h *EzfyHandler) EzfyMoveOneCityCoastal(cityId uint, continent, fallback int, excluded map[[2]int]bool) (int, int, string) {
+	return h.EzfyMoveOneCityCoastalC(cityId, continent, fallback, excluded, nil)
+}
+
+// EzfyMoveOneCityCoastalC 带 moveCtx 的版本（批量场景请复用同一个 ctx）。
+func (h *EzfyHandler) EzfyMoveOneCityCoastalC(cityId uint, continent, fallback int,
+	excluded map[[2]int]bool, ctx *moveCtx) (int, int, string) {
 	if continent == 0 {
 		continent = ezfyDefaultMoveContinent
 	}
@@ -577,9 +634,9 @@ func (h *EzfyHandler) EzfyMoveOneCityCoastal(cityId uint, continent, fallback in
 		}
 		return ct.X, ct.Y, ""
 	}
-	x, y, ok := h.findFreePosInContinentExcept(continent, true, excluded)
+	x, y, ok := h.findFreePosInContinentExceptC(continent, true, excluded, ctx)
 	if !ok && fallback > 0 && fallback != continent {
-		x, y, ok = h.findFreePosInContinentExcept(fallback, true, excluded)
+		x, y, ok = h.findFreePosInContinentExceptC(fallback, true, excluded, ctx)
 	}
 	if !ok {
 		return 0, 0, "目标洲(及备用洲)内找不到可用沿海平原"
@@ -590,5 +647,6 @@ func (h *EzfyHandler) EzfyMoveOneCityCoastal(cityId uint, continent, fallback in
 	if excluded != nil {
 		excluded[[2]int{x, y}] = true
 	}
+	ctx.markOccupied(x, y)
 	return x, y, ""
 }

@@ -186,9 +186,10 @@ func ezfyHasSeaNeighbor(x, y int) bool {
 // ezfyIsCoastalPlainAt 该坐标是否沿海平原
 //
 // ★ 改成大陆地图后，这里**不再需要**旧实现那个「1/3 抽样」的补丁：
-//   旧地图是周期 8 的图案，每一个平原格都恰好有一个海洋邻居，
-//   只能用独立散列从「靠海的平原」里挑出 1/3，否则平原会 100% 变成沿海平原。
-//   现在大陆是成片的，内陆平原本来就没有海洋邻居，天然区分开了。
+//
+//	旧地图是周期 8 的图案，每一个平原格都恰好有一个海洋邻居，
+//	只能用独立散列从「靠海的平原」里挑出 1/3，否则平原会 100% 变成沿海平原。
+//	现在大陆是成片的，内陆平原本来就没有海洋邻居，天然区分开了。
 func ezfyIsCoastalPlainAt(x, y int) bool {
 	return ezfyTerrain(x, y) == 1 && ezfyHasSeaNeighbor(x, y)
 }
@@ -467,7 +468,8 @@ func ezfyGatherMax() int {
 // ============ 战斗 / 经济数值（ezfy_cfg_limit，管理端可维护）============
 //
 // ★ 这几个值都「0 无意义」：0 = 不扣民心 / 军官免费 / 恢复免费，
-//   所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
+//
+//	所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
 const (
 	ezfyConquerFeelingsDef  = 2   // 征服单次最多扣民心（默认 2）
 	ezfyLootFeelingsDef     = 2   // 掠夺每次扣民心（默认 2）
@@ -507,7 +509,8 @@ func ezfyWoundHealDivisorCfg() int {
 // ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 9999）
 //
 // ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」。
-//   前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
+//
+//	前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
 func ezfyMallBuyMaxCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.MallBuyMax, ezfyMallBuyMaxDef)
 }
@@ -566,6 +569,9 @@ func (c *ezfyConfigCache) reload(db *gorm.DB) {
 	defer c.mu.Unlock()
 	c.loadLocked(db)
 	c.loaded = true
+	// ★ 地图格子覆盖配置（ezfy_map_tile）可能改了地形 → 沿海平原索引必须重建，
+	//   否则管理端新配的沿海/陆地不被迁城逻辑看到。
+	ezfyInvalidateCoastalIndex()
 }
 
 // loadLocked 真正干活的部分，调用方必须已持有写锁

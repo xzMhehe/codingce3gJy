@@ -1045,7 +1045,25 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 
 // ============ 订单结算 ============
 
+// processOrders 结算该 uid 名下所有到期的行军命令。
+//
+// ★★ 重入守卫（2026-09-21 线上性能事故）：本函数与 refreshCity 构成闭环 ——
+//
+//	refreshCity → processOrders → processArrive → refreshCity(防守方) → processOrders …
+//
+// 战斗时懒结算防守方是必要的（否则用陈旧民心算征服），但必须防自喂。
+// 原来只在两处写了 `target.UserID == uid` 的判断，覆盖不了 A↔B 互打、
+// 以及「同一轮内订单对象还是 status=0、未落库改状态」被重复进 processArrive 的情况。
+// 现在统一在这里加 per-uid 守卫：同一个 uid 已经在结算中，第二次调用直接返回。
+//
+// 注意：守卫只在**订单结算**这一层加，cityViews / calcResource 等纯展示逻辑不受影响。
 func (h *EzfyHandler) processOrders(uid uint) {
+	if !h.enterProcess(uid) {
+		// 已在结算中（递归回调）→ 跳过，交回上层继续处理，避免无限自喂
+		return
+	}
+	defer h.exitProcess(uid)
+
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&orders)
@@ -1393,7 +1411,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 只做「资源懒结算」，**不能**调 refreshCity ——
 			//   refreshCity 会 processOrders(uid)，而本订单正是该 uid 下
 			//   status=0 且已到期的订单 → 会再次进到这里，无限递归把服务打死。
-			h.calcResource(&target)
+			//   （processOrders 现在另有 per-uid 重入守卫，这里是第二道防线。）
+			//   军官列表显式传入，工资才扣得对（calcResource 自己不查库）。
+			h.calcResource(&target, h.officerList(target.ID))
 			room := func(cur, cap, v int64) (int64, int64) {
 				if cap <= 0 {
 					cap = cur
@@ -1538,12 +1558,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		target = &tc
 		// ★ 结算前先把防守方城市懒结算到当前（建筑完工/资源产出/民心回复/训练完成），
 		//   否则用的是「防守方上次登录时」的陈旧民心与资源 —— 民心偏低会让征服异常容易。
-		//   ★ 注意：防守方 == 自己时**不能**走 refreshCity —— 它会 processOrders(uid)，
-		//   把当前这条 status=0 的订单再喂回 processArrive，造成无限递归。
+		//   ★ 防递归：refreshCity → processOrders 现在有 per-uid 重入守卫
+		//   （见 processOrders 函数头），防守方正在结算中会直接返回，不会自喂。
+		//   防守方 == 自己时仍然只做资源懒结算，少绕一圈。
 		if target.UserID != uid {
 			h.refreshCity(target.UserID, target)
 		} else {
-			h.calcResource(target)
+			h.calcResource(target, h.officerList(target.ID))
 		}
 		if order.OrderType == 2 || order.OrderType == 3 {
 			if target.UserID == uid || !h.isAtWar(uid, target.UserID) {

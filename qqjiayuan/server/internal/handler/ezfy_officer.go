@@ -82,7 +82,8 @@ func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 // orderListByCity 该城市尚未结束的行军命令（用于军官出征态自愈）
 //
 // ★ 必须含 2(返航中)：只写 (0,1) 会让「已踏上归途但还没到家」的军官被误判成空闲，
-//   状态被自愈回 0 → 同一军官能被二次出征（用户反馈的 bug）。
+//
+//	状态被自愈回 0 → 同一军官能被二次出征（用户反馈的 bug）。
 func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	var orders []model.EzfyOrder
 	h.DB.Where("city_id = ? AND status IN (0,1,2)", cityId).Find(&orders)
@@ -117,10 +118,18 @@ func (h *EzfyHandler) officerOf(cityId uint, id int64) *model.EzfyOfficer {
 }
 
 // officerCount 在职军官数（不含俘虏）
+//
+// ⚠️ 性能提示：本函数会查库。高频接口（如 View）请改用 officerCountOf，
+// 把已经取到的军官列表传进去，避免重复查询。
 func (h *EzfyHandler) officerCount(cityId uint) int {
+	return officerCountOf(h.officerList(cityId))
+}
+
+// officerCountOf 按给定军官列表统计在职数（纯内存，不查库）。
+func officerCountOf(list []model.EzfyOfficer) int {
 	n := 0
-	for _, o := range h.officerList(cityId) {
-		if o.IsCaptive != 1 {
+	for i := range list {
+		if list[i].IsCaptive != 1 {
 			n++
 		}
 	}
@@ -700,7 +709,8 @@ func (h *EzfyHandler) officerHasSkill(o *model.EzfyOfficer, skill string) bool {
 // officerEquipBonus 汇总军官已穿戴装备的属性加成
 //
 // ★ 之前装备只算了「军事」一项，后勤/学识的加成**完全没有任何去处**，
-//   玩家穿上带后勤/学识的装备后数字一动不动，看起来就是「穿装备没效果」。
+//
+//	玩家穿上带后勤/学识的装备后数字一动不动，看起来就是「穿装备没效果」。
 func officerEquipBonus(o *model.EzfyOfficer) (mil, log, lea int) {
 	for _, m := range officerEquipped(o) {
 		mil += jsonInt(m["military"])
@@ -762,8 +772,9 @@ func (h *EzfyHandler) officerSpeedSkill(o *model.EzfyOfficer) bool {
 // officerGuardBonus 军官防御加成（基础 10 + 学识/20 + 技能）
 //
 // ★ 学识原来只展示、不参与任何计算（原版也是这样），加上装备的学识加成也没去处。
-//   这里把学识接到「防御」上，让三项属性各有用途：
-//   军事→攻击、后勤→市长产量、学识→防御。
+//
+//	这里把学识接到「防御」上，让三项属性各有用途：
+//	军事→攻击、后勤→市长产量、学识→防御。
 func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
@@ -1277,11 +1288,13 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		"academy_level": h.buildingLevel(city.ID, ezfyBuildingAcademy),
 		"staff_level":   h.buildingLevel(city.ID, ezfyBuildingStaff),
 		"capacity":      h.buildingLevel(city.ID, ezfyBuildingStaff),
-		"used":          h.officerCount(city.ID),
-		"gold":          city.Gold,
+		// ★ 用上面已取到的 list（勿改回 h.officerCount，那会再查一次库）
+		"used": officerCountOf(list),
+		"gold": city.Gold,
 		// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资（黄金/小时）。
 		//   随 calcResource 懒结算一起扣，这里只负责让玩家看得见。
-		"salary":          h.officerSalaryPerHour(city.ID),
+		//   ★ 用上面已取到的 list 做纯内存计算（勿改回 officerSalaryPerHour，那会再查一次库）
+		"salary":           officerSalaryOf(list),
 		"salary_per_level": ezfyOfficerSalaryPerLvCfg(),
 		// ★ 用户规则「军官最高等级 150」：前端据此显示「满级」
 		"max_level": ezfyOfficerMaxLevel,
