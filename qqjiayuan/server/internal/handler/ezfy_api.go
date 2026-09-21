@@ -1394,12 +1394,17 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	useDiamond := ezfyIsDiamondItem(cfg)
 	// ★ 用户规则：分类配成「钻石道具 / 黄金道具」时锁定货币，两种钱不能混用
 	payCur := ezfyItemPayCurrency(cfg)
+	// ★ 用户反馈「标价 0 钻石的集结令买不了，提示『不支持用钻石购买』」：
+	//   价格为 0 且**分类已经锁定该货币**时，0 是「免费发放」而不是「不支持」，
+	//   不能再拿 price<=0 去拦（集结令就是 Category=钻石道具 + 0 钻石的免费道具）。
+	//   只有「没锁定该货币、价格又 <= 0」才是真的不支持这种钱。
+	freeByLock := func(cur string) bool { return payCur == cur }
 	if req.PayWith == "gold" {
 		if payCur == "diamond" {
 			resp.ParamError(c, fmt.Sprintf("「%s」是钻石道具，只能用钻石购买", cfg.Name))
 			return
 		}
-		if cfg.PriceGold <= 0 {
+		if cfg.PriceGold <= 0 && !freeByLock("gold") {
 			resp.ParamError(c, fmt.Sprintf("「%s」不支持用黄金购买", cfg.Name))
 			return
 		}
@@ -1409,7 +1414,7 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			resp.ParamError(c, fmt.Sprintf("「%s」是黄金道具，只能用黄金购买", cfg.Name))
 			return
 		}
-		if cfg.PriceDiamond <= 0 {
+		if cfg.PriceDiamond <= 0 && !freeByLock("diamond") {
 			resp.ParamError(c, fmt.Sprintf("「%s」不支持用钻石购买", cfg.Name))
 			return
 		}
@@ -1445,7 +1450,8 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		return
 	}
 	cost := cfg.PriceGold * int64(req.Count)
-	if cfg.PriceGold <= 0 {
+	// 同上：分类锁定为「黄金道具」时，0 黄金 = 免费发放，不算「不支持黄金购买」。
+	if cfg.PriceGold <= 0 && !freeByLock("gold") {
 		resp.ParamError(c, fmt.Sprintf("「%s」不支持用黄金购买", cfg.Name))
 		return
 	}

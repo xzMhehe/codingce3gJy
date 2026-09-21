@@ -1157,6 +1157,14 @@
       <template v-else-if="cur === 'orderpre'">
         <div class="panel" v-if="selCell">
           <div class="panel-title">出征确认 · {{ orderNames[orderType] }}</div>
+          <!-- ★ 用户反馈「切换城市后感觉出征页还是切换前那个城」→
+               出征页原来只写「目标」，看不出这支部队是从哪座城出发的。
+               把**出发城市**显式写在最上面，玩家一眼就能确认用的是哪座城的兵/军官/资源。 -->
+          <div class="old-line">
+            出发城市：<b>{{ city.name }}</b>
+            <span v-if="city.x || city.y">({{ city.x }},{{ city.y }})</span>
+            <span class="gray">（部队 / 军官 / 随军资源都从这座城市出发）</span>
+          </div>
           <div class="old-line">
             目标：<b>{{ selCell.name }}</b><span v-if="selCell.level">({{ selCell.level }}级)</span>
             ({{ selCell.x }},{{ selCell.y }})
@@ -1200,7 +1208,13 @@
             <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
             <span v-else-if="orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
             <span v-if="curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
-            <span v-if="!onDutyOfficers.length" class="gray">(暂无可用军官, 可前往军校招募)</span>
+            <!-- ★ 用户反馈「新城市有军官，出征页却没有」→ 空列表时把**是哪座城**、**为什么空**写清楚，
+                 避免玩家误以为出征页在用切换前那座城的数据（军官是跟城走的，不跨城指挥）。
+                 若本城其实有军官（只是都在出征中/是俘虏），也直接说明，别让人白找。 -->
+            <span v-if="!onDutyOfficers.length" class="gray">
+              (「{{ city.name }}」暂无可带队军官<template v-if="cityOfficers.length">：本城 {{ cityOfficers.length }} 名军官都在出征中或为俘虏</template>；
+              军官跟着城市走，别的城的军官不能在这里出征，可前往军校招募)
+            </span>
           </div>
 
           <!-- ③ 集结令 -->
@@ -1867,8 +1881,9 @@
               <span class="gray">/</span>
               {{ it.price_gold }}{{ resNames.gold }}
             </template>
-            <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond }}钻石</span>
-            <span v-else>{{ it.price_gold }}{{ resNames.gold }}</span>
+            <!-- ★ 标价 0 = 免费发放（集结令就是这种），直接写「免费」比写「0钻石」更不容易被误解 -->
+            <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond > 0 ? it.price_diamond + '钻石' : '免费' }}</span>
+            <span v-else>{{ it.price_gold > 0 ? it.price_gold + resNames.gold : '免费' }}</span>
             <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100；-1 = 无限） -->
             <span v-if="it.unlimited" class="green">库存无限</span>
             <span v-else :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
@@ -1888,8 +1903,12 @@
                   <option value="diamond">钻石 {{ it.price_diamond * (parseInt(buyCount) || 0) }}</option>
                 </select>
               </template>
-              <span class="gray" v-else-if="it.is_diamond">合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石</span>
-              <span class="gray" v-else>合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}</span>
+              <span class="gray" v-else-if="it.is_diamond">
+                合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石{{ it.price_diamond > 0 ? '' : '（免费）' }}
+              </span>
+              <span class="gray" v-else>
+                合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}{{ it.price_gold > 0 ? '' : '（免费）' }}
+              </span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
             </div>
@@ -2718,6 +2737,8 @@ export default {
       orderType: 2,
       orderTroops: {},
       onDutyOfficers: [],
+      // 本城军官全量列表（含出征中/俘虏）：出征页用它解释「为什么没有可带队军官」
+      cityOfficers: [],
       orderOfficer: '0',
       ware: { level: 0, total: 0, next_total: 0, res: [], ratio_sum: 0 },
       wareRatio: { food: 25, steel: 25, oil: 25, rare: 25 },
@@ -3233,8 +3254,12 @@ export default {
         //   （兵力/军官/携带资源/宿营/集结令），否则上一次的部队数量会残留，
         //   很容易误发一支自己没打算派的队伍。
         this.resetOrderForm()
+        // ★ 出征页顶部要显示「出发城市」，随军资源的「城内现有」也取自 /view，
+        //   所以这里必须连 /view 一起拉 —— 否则切换城市后出征页仍显示上一座城的名字/资源。
+        this.load()
         this.loadTroops()
         this.loadOnDutyOfficers()
+        this.loadCityOfficers()
         this.loadBag()
         // 进来就先算一次：让「本次出兵 0 / 上限 N」和集结令上限立刻是准确值
         // （原来要玩家自己点[计算]才会显示）
@@ -3968,10 +3993,11 @@ export default {
       api.post('/games/ezfy/city/destroy', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
-          // 摧毁的是当前城时后端会自动切到别的城 → 整体重载
+          // 摧毁的是当前城时后端会自动切到别的城 → 整体重载（含军官，军官跟城走）
           this.load()
           this.loadTroops()
           this.loadTechs()
+          this.loadOnDutyOfficers()
         } else this.notify(r.msg)
       })
     },
@@ -3982,6 +4008,9 @@ export default {
           this.load()
           this.loadTroops()
           this.loadTechs()
+          // ★ 军官也是跟城走的：不一起刷新，出征页会残留上一座城的军官列表
+          //   （用户反馈「切换城市后出征页的军官还是切换前那个城的」）。
+          this.loadOnDutyOfficers()
           this.cur = 'home'
           if (r.data && r.data.msg) this.alert(r.data)
         } else this.notify(r.msg)
@@ -4390,6 +4419,12 @@ export default {
     loadOnDutyOfficers () {
       api.get('/games/ezfy/officers/onduty').then(r => {
         if (r.code === 0) this.onDutyOfficers = r.data.officers || []
+      })
+    },
+    // 本城军官全量列表（含出征中/俘虏）：只用于出征页的「为什么没有可带队军官」提示
+    loadCityOfficers () {
+      api.get('/games/ezfy/officers').then(r => {
+        if (r.code === 0) this.cityOfficers = r.data.officers || []
       })
     },
     // ---- 联络中心 ----
@@ -5165,11 +5200,19 @@ body.ezfy-immersive { margin: 0; }
   gap: 0 16px;
   align-items: center;
 }
-/* 兵力：等宽列，窄屏自动减列。
-   ★ 列宽取 330px：正文 17px 下最长的兵种名（「埃塞克斯级航空母舰」9 个汉字 ≈153px）
-     要能完整显示，不能截成「埃塞克…」——那样玩家根本认不出是哪个兵种。
-     330 = 名称定宽 9.6em(163) + 输入 70 + 现有 4.4em(75) + 间距 16。 */
-.ezfy-page .of-grid-troop { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+/* 兵力：★ 用户要求「分三列、对齐」→ **固定 3 列等宽**（原来是 auto-fill，
+   宽屏会变成 4 列、窄屏 2 列，列数随窗口乱跳，用户觉得「丑、不齐」）。
+   3 列等宽 ⇒ 每一格宽度完全一致 ⇒ 名称 / 输入框 / 现有数量 三列在所有行里 x 严格一致。
+   列宽下限 = 名称 9.6em(154) + 输入 70 + 现有 4.4em(70) + 间距 10 ≈ 304px，
+   所以窗口 < 1100px 时降到 2 列、< 700px 时降到 1 列，保证兵种名不会被截断
+   （名字被截成「埃塞克…」玩家就认不出兵种了）。 */
+.ezfy-page .of-grid-troop { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .ezfy-page .of-grid-troop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .ezfy-page .of-grid-troop { grid-template-columns: minmax(0, 1fr); }
+}
 /* 随军资源：名称只有 2 个字，列可以窄一点 */
 .ezfy-page .of-grid-res { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .ezfy-page .of-cell {
@@ -5182,10 +5225,14 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .of-cell .of-name {
   /* ★ 用户要求「文字左最起，按照第一列兵种那块」：
-     兵种名**定宽**（不再随名字长短伸缩），这样每行的输入框都从同一个 x 开始，
-     三列在所有行里纵向严格对齐 —— 这才是「左起对齐」。 */
+     兵种名**定宽**（不随名字长短伸缩），这样每行的输入框都从同一个 x 开始，
+     三列在所有行里纵向严格对齐 —— 这才是「左起对齐」。
+     ★ 定宽还有一层必要性：第 3 列「现有数量」的数字长度是会变的
+       （24,946,000 比 0 宽 15px）。名称若是弹性宽度，长数字会把输入框往左顶，
+       同一列里输入框的 x 就不一致了（实测差 15px）—— 定宽才能钉死。
+     9.6em 放得下最长兵种名「埃塞克斯级航空母舰」= 9 个汉字(≈144px)。 */
   flex: 0 0 auto;
-  width: 9.6em;      /* 放得下最长兵种名「埃塞克斯级航空母舰」= 9 个汉字 */
+  width: 9.6em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5360,6 +5407,9 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .ezfy-map-table a { font-size: 14px; }
   .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
+  /* 出征页格子（名称+输入框+现有）：320px 下单列也要放得下，收窄输入框与数量列 */
+  .ezfy-page .of-cell input.of-num { width: 56px; }
+  .ezfy-page .of-cell .of-avail { min-width: 3.6em; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
 .ezfy-page .panel { max-width: 100%; overflow-x: auto; }

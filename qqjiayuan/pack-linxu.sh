@@ -224,6 +224,31 @@ else
   info "保留已有 server/config.yaml(不覆盖手动改动)"
 fi
 
+# ★ 配置体检（踩过，别删）：
+#   仓库里那份 server/config.yaml 是**模板**（占位密码 + /opt/qqjiayuan 路径）。
+#   它对「已存在就不覆盖」的策略天然免疫，所以会一直跟着包发出去；
+#   一旦照文档直接解压启动，症状是「后端连不上 MySQL + 前端托管不出来（访问根路径 404）」，
+#   而这两件事看起来都不像配置问题，很容易白查半天。
+#   这里只做两件事，都不碰机密：
+#     1) web_dir 若仍是模板路径 → 自动对齐到本次 DEPLOY_DIR（纯路径，不是机密，改了省事）；
+#     2) mysql.password 若仍是占位符 → **大声警告** + 打印上线后的修复命令。
+CFG="$PKG/server/config.yaml"
+if [ -f "$CFG" ]; then
+  if grep -q '"/opt/qqjiayuan/web/dist"' "$CFG" 2>/dev/null; then
+    sed -i.bak -E "s#^([[:space:]]*web_dir:[[:space:]]*)\".*\"#\1\"${DEPLOY_DIR%/}/web/dist\"#" "$CFG" 2>/dev/null && rm -f "$CFG.bak"
+    sed -i.bak -E "s#^([[:space:]]*admin_web_dir:[[:space:]]*)\".*\"#\1\"${DEPLOY_DIR%/}/admin-web/dist\"#" "$CFG" 2>/dev/null && rm -f "$CFG.bak"
+    info "config.yaml 的 web_dir 还是模板路径, 已自动对齐到 ${DEPLOY_DIR%/}"
+  fi
+  if grep -q '改成服务器MySQL的root密码' "$CFG" 2>/dev/null; then
+    printf '\n  ⚠️  ⚠️  ⚠️  注意: 包内 server/config.yaml 的 mysql.password 仍是占位符  ⚠️  ⚠️  ⚠️\n'
+    info "    直接解压启动会【连不上 MySQL】且【前端访问根路径 404】。"
+    info "    上线后二选一："
+    info "      · 服务器上已有正确配置 → cp /opt/config.yaml ${DEPLOY_DIR%/}/server/config.yaml"
+    info "      · 或直接编辑      → vi ${DEPLOY_DIR%/}/server/config.yaml 填真实 root 密码"
+    printf '\n'
+  fi
+fi
+
 normalize_lf
 [ -f "$PKG/部署流程.txt" ] || info "提示: $PKG/部署流程.txt 不存在,部署文档未打包"
 

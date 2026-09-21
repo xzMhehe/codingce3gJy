@@ -162,7 +162,7 @@ func seedEzfyActivities(db *gorm.DB) {
 //	16 重修书     ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
 //	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
-//	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万, 单次最多 10 个)
+//	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万，单次上限由管理端配置)
 func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500,
@@ -179,10 +179,13 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
 		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
-		//   Param1 = 每个集结令提升的出征上限（10 万），单次最多用 10 个。
+		//   Param1 = 每个集结令提升的出征上限（10 万）。
+		// ★ 用户要求：说明里**不要**再写「单次最多使用10个」——
+		//   单次上限由管理端 `ezfy_cfg_limit.gather_max_per_order` 维护（默认 50），
+		//   写死 10 会和管理端配置对不上，玩家会以为只能买 10 个。
 		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
 			PriceGold: 0, PriceDiamond: 0, Stock: -1, Category: "钻石道具",
-			Description: "出征时使用: 每使用1个本次出征兵力上限+10万, 单次最多使用10个"},
+			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 	}
 	for _, it := range rows {
 		var count int64
