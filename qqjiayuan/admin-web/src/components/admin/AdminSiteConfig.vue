@@ -24,7 +24,7 @@
         </el-table-column>
       </el-table>
       <div class="help-line" style="margin-top:10px">
-        常用键：reg_coins=注册赠送G币；site_announce=广场公告语。保存后立即生效。
+        常用键：reg_coins=注册赠送G币；reg_ip_limit=同一IP最多注册账号数；site_announce=广场公告语。保存后立即生效。
       </div>
     </el-card>
   </div>
@@ -35,6 +35,7 @@ import api from '../../api'
 
 const HINTS = {
   reg_coins: '注册新人礼包 G币 数量（0-100000）',
+  reg_ip_limit: '同一IP最多可注册账号数（默认5，填0不限制）',
   site_announce: '广场顶部公告语（留空不显示）',
   pretty_limit: '靓号转换次数（每人可转号次数，默认1，范围1-100）'
 }
