@@ -40,6 +40,18 @@
    注意：不要用 `>>>`（deep 组合器在 @import 进来的 CSS 里不一定被正确改写），
    子组件根元素会带上父作用域 id，普通后代选择器就够用 */
 .pager-bar .el-pagination { margin: 0; padding: 0; }
+/* ★ 分页「铺开」修复（用户反馈：小屏下分页挤在右边、每页条数下拉还会盖住表格）
+   1) 分页控件自身允许换行，窄屏不会把「前往 N 页」挤出卡片；
+   2) 小屏时把分页条改成整行铺开（信息一行、分页一行），不再左右挤在一起；
+   3) 分页条下方留出空间，让「每页 N 条」下拉**向下展开**，不遮挡上面的表格内容。 */
+.pager-bar .el-pagination { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
+.pager-bar { padding-bottom: 6px; }
+@media (max-width: 1280px) {
+  .pager-bar { flex-direction: column; align-items: stretch; row-gap: 10px; }
+  .pager-bar .el-pagination { justify-content: flex-start; }
+}
+/* 页面底部留白：小屏下分页靠底时，下拉仍有空间向下展开（而不是翻上去盖住表格） */
+.farm-admin { padding-bottom: 120px; }
 .lv { color: #409eff; font-weight: 700; margin-right: 2px; }
 .rank-no {
   display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center;

@@ -258,14 +258,32 @@ func (h *EzfyHandler) findFreePosInContinent(continent int, needCoastal bool) (i
 //	表现为大批 `该坐标已有城市` 失败（线上 147 城实测失败 71 座）。
 //	所以执行阶段必须**逐城实时重算**，并把本次已决定的落点排除掉。
 func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bool, excluded map[[2]int]bool) (int, int, bool) {
-	ok := func(x, y int) bool {
-		if ezfyContinentOf(x, y) != continent {
-			return false
+	// ★ 一次性把「已占用坐标」读进内存。
+	//
+	//	原来每个候选点都发一条 `SELECT COUNT(*) ... WHERE x=? AND y=?`，
+	//	在「沿海平原」这种**稀有目标**上要试几万次 → DB 被拖垮，
+	//	而且随机采样命中率极低（线上欧洲沿海平原只剩 5 格 / 一万多格陆地，
+	//	实测 3 座城反复报「目标洲内找不到可用沿海平原」）。
+	//	改成内存判定后，才敢做下面的全图枚举。
+	occupied := map[[2]int]bool{}
+	{
+		var cities []model.EzfyCity
+		h.DB.Model(&model.EzfyCity{}).Select("x, y").Find(&cities)
+		for _, c := range cities {
+			occupied[[2]int{c.X, c.Y}] = true
 		}
+	}
+	ok := func(x, y int) bool {
 		if x < 1 || y < 1 || x >= ezfyWorldSize || y >= ezfyWorldSize {
 			return false
 		}
+		if ezfyContinentOf(x, y) != continent {
+			return false
+		}
 		if excluded != nil && excluded[[2]int{x, y}] {
+			return false
+		}
+		if occupied[[2]int{x, y}] {
 			return false
 		}
 		t := ezfyTerrainEx(x, y)
@@ -276,9 +294,7 @@ func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bo
 		} else if t != 1 && t != ezfyTerrainCoastalPlain {
 			return false
 		}
-		var n int64
-		h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", x, y).Count(&n)
-		return n == 0
+		return true
 	}
 
 	// ① 贴着已有城市采样（同一片区域）
@@ -294,7 +310,24 @@ func (h *EzfyHandler) findFreePosInContinentExcept(continent int, needCoastal bo
 			}
 		}
 	}
-	// ② 目标洲内均匀采样兜底
+	// ② 需要沿海平原时：**全图枚举**所有空闲沿海平原再随机取一个。
+	//    沿海平原在整张地图里占比很小，纯随机采样几乎撞不上（见上面注释）。
+	if needCoastal {
+		cands := make([][2]int, 0, 256)
+		for x := 1; x < ezfyWorldSize; x++ {
+			for y := 1; y < ezfyWorldSize; y++ {
+				if ok(x, y) {
+					cands = append(cands, [2]int{x, y})
+				}
+			}
+		}
+		if len(cands) > 0 {
+			p := cands[rand.Intn(len(cands))]
+			return p[0], p[1], true
+		}
+		return 0, 0, false
+	}
+	// ③ 目标洲内均匀采样兜底（陆地目标多得多，随机足够）
 	for i := 0; i < 20000; i++ {
 		x := rand.Intn(ezfyWorldSize)
 		y := rand.Intn(ezfyWorldSize)
@@ -458,6 +491,98 @@ func (h *EzfyHandler) EzfyMoveOneCity(cityId uint, continent int, excluded map[[
 	x, y, ok := h.findFreePosInContinentExcept(continent, isSea, excluded)
 	if !ok {
 		return 0, 0, "目标洲内找不到可用空地"
+	}
+	if msg := h.EzfyApplyMove(ct.ID, x, y); msg != "" {
+		return 0, 0, msg
+	}
+	if excluded != nil {
+		excluded[[2]int{x, y}] = true
+	}
+	return x, y, ""
+}
+
+// ============ 沿海迁城计划（运维用：把「航海协会城」迁回沿海平原） ============
+//
+// ★ 线上事故复盘（2026-09-20）：
+//
+//	玩家侧迁城是用 isSeaCity() 判断「海城 / 陆城」的，而 isSeaCity() 看的是
+//	**当前坐标的地形**。批量迁城时海城被搬到普通平原后，isSeaCity() 立刻变成
+//	false，再迁一次也只会落回普通平原 —— 结果「海城变成了陆地城」，
+//	航海协会形同虚设（只有沿海平原上的城市才能建/用航海协会）。
+//
+// 修法：不看当前地形，直接按「这座城里有没有航海协会」来判定它应该是海城，
+// 落点强制为**沿海平原**（即「沿海迁城计划」的规则）。
+//
+// EzfyTerrainAt 导出地形值，供 CLI 运维工具（ezfymigrate --stats）统计展示用。
+//
+//	1 = 平原, 2..7 = 其他陆地地形(草原/森林/盆地/丘陵/沼泽/山地),
+//	8 = 海洋, 9 = 沿海平原(ezfyTerrainCoastalPlain, 只有它能建航海协会)
+func EzfyTerrainAt(x, y int) int { return ezfyTerrainEx(x, y) }
+
+// EzfyCoastalPlainValue 沿海平原的地形值（= ezfyTerrainCoastalPlain），给 CLI 比较用
+const EzfyCoastalPlainValue = ezfyTerrainCoastalPlain
+
+// EzfyCoastalNeedMoveAt 该坐标上的城是否需要「沿海迁城计划」重新安置。
+//
+// ★ 用户明确的条件：**只看「脚下是不是沿海平原」** ——
+//
+//	有航海协会、但现在站在普通平原（陆地城市）上的城才需要迁；
+//	已经在沿海平原上的城保持原位（哪怕它不在目标洲，也不再折腾）。
+//
+// 导出给 CLI 工具 ezfymigrate 预演时统计用。continent 参数保留但**不再参与判定**。
+func EzfyCoastalNeedMoveAt(x, y, continent int) bool {
+	_ = continent
+	return ezfyTerrainEx(x, y) != ezfyTerrainCoastalPlain
+}
+
+// EzfyCitiesWithBuilding 取「建有指定建筑(level>0)」的全部城池，按 id 升序。
+func (h *EzfyHandler) EzfyCitiesWithBuilding(buildingId int) []model.EzfyCity {
+	var ids []int64
+	h.DB.Model(&model.EzfyCityBuilding{}).
+		Where("building_id = ? AND level > 0", buildingId).
+		Distinct().Pluck("city_id", &ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	var cities []model.EzfyCity
+	h.DB.Where("id IN ?", ids).Order("id ASC").Find(&cities)
+	return cities
+}
+
+// EzfyMoveOneCityCoastal 把一座城迁到目标洲的**沿海平原**空位（沿海迁城计划）。
+//
+// 与 EzfyMoveOneCity 的差别：
+//   - 落点强制为沿海平原（needCoastal = true），不看当前地形；
+//   - 「已经在沿海平原上」直接跳过 —— 只要它不在沿海平原上就继续迁，
+//     否则「海城变陆城」永远修不回来（这正是线上那个 bug）。
+//
+// ★ 用户规则：「不够就给移动到亚洲的沿海平原」——
+//
+//	目标洲（默认欧洲）没有空闲沿海平原时，自动退到 fallback 洲（默认亚洲）再找。
+//	线上实测：欧洲沿海平原总共只有 55 格，被 50 座城占满后极易「放不下」。
+//
+// fallback <= 0 表示不启用备用洲。返回实际落点 x, y 与错误信息（"" = 成功）。
+func (h *EzfyHandler) EzfyMoveOneCityCoastal(cityId uint, continent, fallback int, excluded map[[2]int]bool) (int, int, string) {
+	if continent == 0 {
+		continent = ezfyDefaultMoveContinent
+	}
+	var ct model.EzfyCity
+	if err := h.DB.First(&ct, cityId).Error; err != nil {
+		return 0, 0, "城市不存在"
+	}
+	// 已经在沿海平原上 → 不用动（哪怕不在目标洲，也别折腾玩家的城）
+	if ezfyTerrainEx(ct.X, ct.Y) == ezfyTerrainCoastalPlain {
+		if excluded != nil {
+			excluded[[2]int{ct.X, ct.Y}] = true
+		}
+		return ct.X, ct.Y, ""
+	}
+	x, y, ok := h.findFreePosInContinentExcept(continent, true, excluded)
+	if !ok && fallback > 0 && fallback != continent {
+		x, y, ok = h.findFreePosInContinentExcept(fallback, true, excluded)
+	}
+	if !ok {
+		return 0, 0, "目标洲(及备用洲)内找不到可用沿海平原"
 	}
 	if msg := h.EzfyApplyMove(ct.ID, x, y); msg != "" {
 		return 0, 0, msg

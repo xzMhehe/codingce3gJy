@@ -86,11 +86,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	} else if in.NoticeHomeCount != nil {
 		lim.NoticeHomeCount = v
 	}
-	// ★ 集结令单次使用上限：1~9999（默认 50）。0 不允许 —— 等于把道具禁用，
-	//   真要禁用请把道具下架，而不是把上限设 0 让玩家点了报错。
+	// ★ 集结令单次使用上限：用户要求「设置的时候不要加上限，我设置多少都可以，默认 50」。
+	//   只校验 > 0（0 等于把道具禁用，真要禁用请把道具下架），不再限制上界。
 	if in.GatherMaxPerOrder != nil {
-		if *in.GatherMaxPerOrder < 1 || *in.GatherMaxPerOrder > 9999 {
-			resp.ParamError(c, "集结令单次上限需要在 1~9999 之间")
+		if *in.GatherMaxPerOrder < 1 {
+			resp.ParamError(c, "集结令单次上限至少为 1")
 			return
 		}
 		lim.GatherMaxPerOrder = *in.GatherMaxPerOrder

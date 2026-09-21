@@ -29,7 +29,7 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.player_count }}</span></template>
             </el-table-column>
             <el-table-column prop="des" label="说明" min-width="150" show-overflow-tooltip />
-            <el-table-column label="操作" width="110" align="center">
+            <el-table-column label="操作" width="110" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
               </template>
@@ -73,7 +73,7 @@
                 <el-tag v-if="row.over_limit" size="mini" type="danger" style="margin-left:4px">超限</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center">
+            <el-table-column label="操作" width="180" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="设为指定军衔" @click="openSetRank(row)" />
                 <el-button size="mini" type="warning" plain icon="el-icon-s-claim" title="直接改声望" @click="openSetPrestige(row)" />

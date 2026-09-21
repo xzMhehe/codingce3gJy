@@ -30,8 +30,8 @@
           <span class="td-sub"><b>默认 1 条</b>；填 0 表示首页不展示公告（公告页仍可看全部）</span>
         </el-form-item>
         <el-form-item label="出征集结令单次上限">
-          <el-input-number v-model.number="form.gather_max_per_order" :min="1" :max="9999" controls-position="right" style="width:180px" />
-          <span class="td-sub"><b>默认 50 个</b>；玩家出征时单次最多使用的集结令个数（每个 +10 万出征上限），范围 1~9999</span>
+          <el-input-number v-model.number="form.gather_max_per_order" :min="1" controls-position="right" style="width:180px" />
+          <span class="td-sub"><b>默认 50 个</b>；玩家出征时单次最多使用的集结令个数（每个 +10 万出征上限）。<b>不设上限，填多少就多少</b></span>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>

@@ -73,7 +73,7 @@
             </el-table-column>
             <el-table-column prop="source" label="来源" min-width="135" show-overflow-tooltip />
             <el-table-column prop="skill" label="组合技" min-width="135" show-overflow-tooltip />
-            <el-table-column label="操作" width="190" align="center">
+            <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="warning" plain icon="el-icon-present" title="分发给玩家" @click="openGrant(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openGeneralEdit(row)" />
@@ -140,7 +140,7 @@
                 <span class="td-muted">（{{ row.home_num || '—' }}）</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center">
+            <el-table-column label="操作" width="180" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
                 <el-button size="mini" type="warning" plain :icon="row.is_captive === 1 ? 'el-icon-unlock' : 'el-icon-lock'"
@@ -183,7 +183,7 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.use_count }}</span></template>
             </el-table-column>
             <el-table-column prop="des" label="说明" min-width="200" show-overflow-tooltip />
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column label="操作" width="140" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openSkillEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delSkill(row)" />
@@ -224,7 +224,7 @@
             <el-table-column prop="effect" label="效果" min-width="180" show-overflow-tooltip />
             <el-table-column prop="city_name" label="归属城池" width="100" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="130" show-overflow-tooltip />
-            <el-table-column label="操作" width="90" align="center">
+            <el-table-column label="操作" width="90" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="遗忘" @click="removeSkill(row)" />
               </template>
@@ -268,7 +268,7 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
             </el-table-column>
             <el-table-column prop="des" label="说明" min-width="180" show-overflow-tooltip />
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column label="操作" width="140" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEquipEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delEquip(row)" />
@@ -326,7 +326,7 @@
                 <span v-else class="td-muted">未穿戴</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center">
+            <el-table-column label="操作" width="180" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑/穿戴" @click="openEquipOwnedEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delEquipOwned(row)" />

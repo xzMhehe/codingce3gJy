@@ -724,10 +724,18 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	switch op {
 	case "build":
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 4)
+		// ★ 修复：「建立城市」原来只改民心、**没有把城市归属改成自己**，
+		//   导致玩家点了建城、战报也说「已建立为自己的城市」，实际城市还是别人的。
+		//   这里把 user_id 真正过户给占领方，民心重置为 50。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-			Updates(map[string]interface{}{"feelings": 50, "grievance": 0, "last_time": time.Now().UnixMilli()})
+			Updates(map[string]interface{}{
+				"user_id": uid, "feelings": 50, "grievance": 0,
+				"last_time": time.Now().UnixMilli(),
+			})
 		h.addReport(uid, 5, "建城成功",
 			fmt.Sprintf("你将被占领的城市[%s]正式建立为自己的城市, 可在城市列表切换操作。", city.Name))
+		h.addReport(o.DefUserId, 5, "城市被占领",
+			fmt.Sprintf("你的城市[%s](%d,%d)已被敌方建立为自己的城市, 不再属于你。", o.CityName, o.X, o.Y))
 		resp.OK(c, gin.H{"msg": "建城成功"})
 	case "destroy":
 		name := o.CityName

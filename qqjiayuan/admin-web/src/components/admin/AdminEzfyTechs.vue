@@ -37,7 +37,7 @@
             <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="90" align="center" />
-            <el-table-column label="操作" width="220" align="center">
+            <el-table-column label="操作" width="220" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改等级" @click="openEdit(row)" />
                 <el-button size="mini" type="success" plain icon="el-icon-check" title="立即完成研究"
@@ -90,7 +90,7 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
             </el-table-column>
             <el-table-column prop="effect" label="效果" min-width="150" show-overflow-tooltip />
-            <el-table-column label="操作" width="230" align="center">
+            <el-table-column label="操作" width="230" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="info" plain icon="el-icon-s-operation" title="等级配置" @click="openLvDlg(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openCfgEdit(row)" />
@@ -235,7 +235,7 @@
         <el-table-column label="黄金" width="90" align="center"><template slot-scope="{row}"><span class="td-mono td-small">{{ fmtN(row.gold) }}</span></template></el-table-column>
         <el-table-column label="研究(秒)" width="85" align="center"><template slot-scope="{row}"><span class="td-mono">{{ row.research_time }}</span></template></el-table-column>
         <el-table-column prop="effect" label="效果" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="130" align="center">
+        <el-table-column label="操作" width="130" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openLvEdit(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delLv(row)" />

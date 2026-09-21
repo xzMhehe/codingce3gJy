@@ -17,7 +17,16 @@ import (
 // （原版 /home/city_troop/begincollectall.html 与 stopcollectall.html）
 
 // CollectAll POST /games/ezfy/wild/collect-all —— 一键采集
-// 对本城所有空闲的已占领野地下达采集命令；每块野地派 1 个城内最弱的非城防兵种作采集队。
+//
+// 对本城所有空闲的已占领野地下达「派遣驻守采集」命令(命令类型 7)：
+// 每块野地派 1 支采集队 + 1 名空闲军官，部队常驻野地每 8 小时结算一次产出，
+// 可随时用「一键收获 / 一键召回」处理。
+//
+// ★ 修复记录：
+//   - 原来把命令类型写成 4(一次性采集)、且 officer 传空串，
+//     而 createOrder 对 4/7 都要求「必须携带军官」→ 一键采集**永远失败**；
+//   - 现在自动挑选空闲军官带队（一名军官同时只能带一支部队），
+//     并覆盖 4/7 两类命令，与「一键收获 / 一键召回」口径一致。
 func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -35,8 +44,8 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 		return
 	}
 
-	// 采集队: 城内最弱的一个非城防兵种
-	troopId, weakest := 0, 0
+	// 采集队: 城内最弱的一个非城防兵种（负重决定能装多少，所以按野地产量配数量）
+	troopId, weakest, carryPer := 0, 0, 0
 	tm := h.troopMap(city.ID)
 	for id, cnt := range tm {
 		if cnt <= 0 {
@@ -47,34 +56,71 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			continue
 		}
 		if troopId == 0 || cfg.AtkGround < weakest {
-			troopId, weakest = id, cfg.AtkGround
+			troopId, weakest, carryPer = id, cfg.AtkGround, cfg.Carry
 		}
 	}
 	if troopId == 0 {
 		resp.ParamError(c, "城内没有可派出的部队")
 		return
 	}
+	if carryPer <= 0 {
+		carryPer = 1
+	}
+
+	// 空闲军官池（不在出征中、不是俘虏、没有带未结束的命令）
+	idleOfficers := []model.EzfyOfficer{}
+	for _, o := range h.officerList(city.ID) {
+		if o.Status == 1 || o.IsCaptive == 1 {
+			continue
+		}
+		if h.officerBusyOrder(city.ID, o.Name) {
+			continue
+		}
+		idleOfficers = append(idleOfficers, o)
+	}
+	if len(idleOfficers) == 0 {
+		resp.ParamError(c, "采集必须由军官带队，城内没有空闲军官(可在军校招募或先召回出征部队)")
+		return
+	}
 
 	ok, fail := 0, []string{}
+	oi := 0
 	for _, wl := range wls {
-		// 每个采集队只需 1 个兵, 兵不够就停
-		if h.troopMap(city.ID)[troopId] <= 0 {
+		if oi >= len(idleOfficers) {
+			fail = append(fail, "空闲军官不足")
+			break
+		}
+		// 一块野地一次产出 ≈ 等级 × 800 × 4(陆地) / ×3(海野)，按此配够负重的兵
+		need := int64(wl.Level) * 800 * 4
+		if wl.WildType == 2 {
+			need = int64(wl.Level) * 800 * 3
+		}
+		want := (need + int64(carryPer) - 1) / int64(carryPer)
+		if want < 1 {
+			want = 1
+		}
+		avail := h.troopMap(city.ID)[troopId]
+		if avail <= 0 {
 			fail = append(fail, "部队不足")
 			break
 		}
-		msg := h.createOrder(uid, city, 4, wl.X, wl.Y, 1, int64(wl.ID),
-			[]ezfyUnitGroup{{TroopId: troopId, Count: 1}}, nil, "", 0, 0)
+		if want > avail {
+			want = avail
+		}
+		msg := h.createOrder(uid, city, 7, wl.X, wl.Y, 1, int64(wl.ID),
+			[]ezfyUnitGroup{{TroopId: troopId, Count: want}}, nil, idleOfficers[oi].Name, 0, 0)
 		if msg != "" {
 			fail = append(fail, msg)
 			continue
 		}
+		oi++
 		ok++
 	}
 	if ok == 0 {
 		resp.ParamError(c, "一键采集失败: "+strings.Join(dedupStrings(fail), "; "))
 		return
 	}
-	msg := fmt.Sprintf("已对 %d 块野地下达采集命令", ok)
+	msg := fmt.Sprintf("已对 %d 块野地下达驻守采集命令(每块 1 名军官带队)", ok)
 	if len(fail) > 0 {
 		msg += fmt.Sprintf("(%d 块跳过: %s)", len(fail), strings.Join(dedupStrings(fail), "; "))
 	}

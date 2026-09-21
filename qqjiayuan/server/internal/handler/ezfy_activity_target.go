@@ -206,7 +206,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
 	report += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
-	report += troopChangeText(atkBefore, atkAfter)
+	report += troopChangeText(atkBefore, atkAfter, profile.Camp)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), label)
 	defBefore := groupCounts(defender)
 	defAfter := map[int]int64{}
@@ -218,7 +218,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			defAfter[tid] = cnt
 		}
 	}
-	report += troopChangeText(defBefore, defAfter)
+	report += troopChangeText(defBefore, defAfter, 0)
 
 	// 详细战报：逐回合过程 + 双方兵力变化
 	detail := ""
@@ -230,9 +230,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if leadOfficer != nil {
 		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
-	detail += troopChangeText(atkBefore, atkAfter)
+	detail += troopChangeText(atkBefore, atkAfter, profile.Camp)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), label)
-	detail += troopChangeText(defBefore, defAfter)
+	detail += troopChangeText(defBefore, defAfter, 0)
 	detail += "[双方兵力]"
 
 	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技 2%/级 + 机械改造 10%

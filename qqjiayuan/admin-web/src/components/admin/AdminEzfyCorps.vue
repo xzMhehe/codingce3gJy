@@ -20,7 +20,7 @@
         <el-table-column label="创建时间" width="150" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="250" align="center">
+        <el-table-column label="操作" width="250" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-user" title="成员" @click="openMembers(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-chat-dot-round" title="军团聊天" @click="openChats(row)" />
@@ -55,7 +55,7 @@
         <el-table-column prop="title" label="头衔" width="100" align="center" />
         <el-table-column prop="prestige" label="声望" width="90" align="center" />
         <el-table-column prop="rank_name" label="军衔" width="110" align="center" />
-        <el-table-column label="操作" width="170" align="center">
+        <el-table-column label="操作" width="170" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain :disabled="row.is_leader === 1"
                        @click="transfer(row)">设为团长</el-button>
@@ -79,7 +79,7 @@
         <el-table-column label="时间" width="150" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" align="center">
+        <el-table-column label="操作" width="90" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delChat(row)" />
           </template>

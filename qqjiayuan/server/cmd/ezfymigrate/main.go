@@ -29,6 +29,11 @@
 //
 //	# 6) 指定配置与批次大小（分批提交，避免一次改动过大）
 //	./ezfymigrate -config /opt/qqjiayuan/server/config.yaml --all --apply --limit 100
+//
+//	# 7) ★ 沿海迁城计划：把所有「建有航海协会」的城重新迁到沿海平原
+//	#    （线上事故修复用：批量迁城把海城搬成了陆地城）
+//	./ezfymigrate --coastal --dry-run
+//	./ezfymigrate --coastal --apply --yes
 package main
 
 import (
@@ -53,14 +58,21 @@ func main() {
 	continent := flag.Int("continent", 0, "目标大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲（默认 0 = 欧洲）")
 	seaOnly := flag.Bool("sea-only", false, "只迁移沿海城市（海城）")
 	landOnly := flag.Bool("land-only", false, "只迁移内陆城市（非海城）")
+	// ★ 沿海迁城计划：把「建有航海协会」的城重新迁到沿海平原。
+	//   线上事故（2026-09-20）批量迁城把海城搬成了陆地城，用这个模式修回来。
+	coastal := flag.Bool("coastal", false, "沿海迁城计划：把所有建有航海协会的城重新迁到沿海平原（可与其他范围参数组合）")
+	coastalBuilding := flag.Int("coastal-building", 19, "「沿海城市」的判定建筑 ID（默认 19 = 航海协会）")
+	stats := flag.Bool("stats", false, "只统计各大洲的空闲沿海平原/空地余量，不做任何迁移")
+	// ★ 用户规则：「不够就给移动到亚洲的沿海平原」—— 目标洲放不下时自动退到备用洲。
+	coastalFallback := flag.Int("coastal-fallback", 2, "沿海迁城计划的备用洲 ID（默认 2 = 亚洲；0 = 不启用备用洲）")
 	apply := flag.Bool("apply", false, "真正落库；不加则只预演（dry-run）")
 	dryRun := flag.Bool("dry-run", false, "显式预演（与不加 --apply 等价，方便脚本里写清楚意图）")
 	limit := flag.Int("limit", 0, "最多迁移多少座城（0 = 不限）")
 	yes := flag.Bool("yes", false, "跳过交互确认（适合脚本/自动化调用）")
 	flag.Parse()
 
-	if !*all && *uid == 0 {
-		log.Fatal("请指定迁移范围：--all（全部玩家）或 --uid <ID>（单个玩家）")
+	if !*all && *uid == 0 && !*coastal && !*stats {
+		log.Fatal("请指定迁移范围：--all（全部玩家）/ --uid <ID>（单个玩家）/ --coastal（所有航海协会城）/ --stats（只看余量）")
 	}
 	if *all && *uid != 0 {
 		log.Fatal("--all 与 --uid 不能同时使用")
@@ -92,6 +104,9 @@ func main() {
 		fmt.Printf("  迁移范围   : 玩家 %d\n", *uid)
 	}
 	fmt.Printf("  目标大洲   : %s\n", continentName)
+	if *coastal {
+		fmt.Printf("  迁移计划   : ★ 沿海迁城计划（判定建筑 ID %d = 航海协会，落点必须是沿海平原）\n", *coastalBuilding)
+	}
 	if *seaOnly {
 		fmt.Println("  城市类型   : 仅沿海城市（海城）")
 	} else if *landOnly {
@@ -112,12 +127,30 @@ func main() {
 
 	// 取待迁移的城
 	var cities []model.EzfyCity
-	q := db.Model(&model.EzfyCity{}).Order("id ASC")
-	if !*all {
-		q = q.Where("user_id = ?", *uid)
+	if *stats {
+		printCoastalStats(db)
+		return
 	}
-	if err := q.Find(&cities).Error; err != nil {
-		log.Fatalf("查询城池失败: %v", err)
+	if *coastal {
+		// 沿海迁城计划：范围 = 所有「建有航海协会」的城（不看它现在是不是海城）
+		cities = h.EzfyCitiesWithBuilding(*coastalBuilding)
+		if *uid != 0 {
+			keep := make([]model.EzfyCity, 0, len(cities))
+			for _, c := range cities {
+				if c.UserID == *uid {
+					keep = append(keep, c)
+				}
+			}
+			cities = keep
+		}
+	} else {
+		q := db.Model(&model.EzfyCity{}).Order("id ASC")
+		if !*all {
+			q = q.Where("user_id = ?", *uid)
+		}
+		if err := q.Find(&cities).Error; err != nil {
+			log.Fatalf("查询城池失败: %v", err)
+		}
 	}
 	if len(cities) == 0 {
 		fmt.Println("没有找到匹配的城池，退出。")
@@ -125,12 +158,39 @@ func main() {
 	}
 	fmt.Printf("共查到 %d 座城池，开始生成迁移计划...\n\n", len(cities))
 
-	plan := h.EzfyBuildMovePlan(cities, *continent, *seaOnly, *landOnly)
+	var plan []handler.EzfyMovePlanItem
+	if *coastal {
+		plan = make([]handler.EzfyMovePlanItem, 0, len(cities))
+		for i := range cities {
+			ct := cities[i]
+			plan = append(plan, handler.EzfyMovePlanItem{
+				CityId: ct.ID, UserID: ct.UserID, Name: ct.Name,
+				OldX: ct.X, OldY: ct.Y, OldRegion: ezfyRegionLabel(ct.X, ct.Y),
+				IsSea: true,
+			})
+		}
+	} else {
+		plan = h.EzfyBuildMovePlan(cities, *continent, *seaOnly, *landOnly)
+	}
 
 	// 打印计划
 	var toMove, skipped, failed int
 	shown := 0
 	for _, p := range plan {
+		if *coastal {
+			// 沿海迁城计划：不在目标洲、或脚下不是沿海平原 → 需要迁
+			if !handler.EzfyCoastalNeedMoveAt(p.OldX, p.OldY, *continent) {
+				skipped++
+				continue
+			}
+			toMove++
+			if shown < 200 {
+				fmt.Printf("  [迁移] 城%-6d 玩家%-6d %-14s 航海协会城 %s(%d,%d) → 沿海平原(%s)\n",
+					p.CityId, p.UserID, trimName(p.Name), p.OldRegion, p.OldX, p.OldY, continentName)
+			}
+			shown++
+			continue
+		}
 		if p.NewX == 0 && p.NewY == 0 {
 			failed++
 			fmt.Printf("  [跳过] 城%-6d 玩家%-6d %-14s (%d,%d) %s  —— %s\n",
@@ -160,7 +220,11 @@ func main() {
 	fmt.Println()
 	fmt.Println("------------------------------------------------------------")
 	fmt.Printf("  需迁移 : %d 座\n", toMove)
-	fmt.Printf("  无需动 : %d 座（已在目标大洲）\n", skipped)
+	if *coastal {
+		fmt.Printf("  无需动 : %d 座（脚下已经是沿海平原）\n", skipped)
+	} else {
+		fmt.Printf("  无需动 : %d 座（已在目标大洲）\n", skipped)
+	}
 	fmt.Printf("  无法迁 : %d 座（目标洲内没找到可用空地）\n", failed)
 	fmt.Println("------------------------------------------------------------")
 
@@ -200,7 +264,12 @@ func main() {
 		if p.Reason != "" {
 			continue // 已在目标洲 / 被 --sea-only、--land-only 过滤掉
 		}
-		nx, ny, msg := h.EzfyMoveOneCity(p.CityId, *continent, used)
+		nx, ny, msg := 0, 0, ""
+		if *coastal {
+			nx, ny, msg = h.EzfyMoveOneCityCoastal(p.CityId, *continent, *coastalFallback, used)
+		} else {
+			nx, ny, msg = h.EzfyMoveOneCity(p.CityId, *continent, used)
+		}
 		if msg != "" {
 			fmt.Printf("  [失败] 城%-6d 玩家%-6d %s: %s\n", p.CityId, p.UserID, trimName(p.Name), msg)
 			errs++
@@ -228,6 +297,53 @@ func main() {
 	fmt.Println("============================================================")
 	if errs > 0 {
 		os.Exit(1)
+	}
+}
+
+// printCoastalStats 统计各大洲的「沿海平原 / 其他陆地」余量，帮助判断还放得下多少海城。
+func printCoastalStats(db *gorm.DB) {
+	names := map[int]string{1: "欧洲", 2: "亚洲", 3: "非洲", 4: "北美洲", 5: "南美洲", 6: "大洋洲", 7: "南极洲"}
+	type st struct{ coastAll, coastFree, landAll, landFree int }
+	m := map[int]*st{}
+	occupied := map[[2]int]bool{}
+	var cs []model.EzfyCity
+	db.Select("x, y").Find(&cs)
+	for _, c := range cs {
+		occupied[[2]int{c.X, c.Y}] = true
+	}
+	for x := 0; x < 500; x++ {
+		for y := 0; y < 500; y++ {
+			cont := handler.EzfyContinentOf(x, y)
+			if cont <= 0 {
+				continue
+			}
+			s := m[cont]
+			if s == nil {
+				s = &st{}
+				m[cont] = s
+			}
+			free := !occupied[[2]int{x, y}]
+			if handler.EzfyTerrainAt(x, y) == handler.EzfyCoastalPlainValue {
+				s.coastAll++
+				if free {
+					s.coastFree++
+				}
+			} else if handler.EzfyTerrainAt(x, y) != 8 {
+				s.landAll++
+				if free {
+					s.landFree++
+				}
+			}
+		}
+	}
+	fmt.Printf("  已有城池 %d 座（占用格）\n\n", len(cs))
+	fmt.Println("  洲        沿海平原 空闲/总数      其他陆地 空闲/总数")
+	for _, id := range []int{1, 2, 3, 4, 5, 6, 7} {
+		s := m[id]
+		if s == nil {
+			continue
+		}
+		fmt.Printf("  %-6s    %6d / %-8d    %6d / %-8d\n", names[id], s.coastFree, s.coastAll, s.landFree, s.landAll)
 	}
 }
 

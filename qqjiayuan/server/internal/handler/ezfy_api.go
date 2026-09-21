@@ -1235,7 +1235,26 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 // ★ 不能只看 price_diamond > 0：用户要求集结令走钻石渠道但**默认 0 钻石**（先免费放开），
 // 这时价格是 0，靠价格判不出来。所以再加一条：管理端把 category 填成「钻石道具」也算。
 func ezfyIsDiamondItem(it *model.EzfyCfgItem) bool {
-	return it.PriceDiamond > 0 || strings.TrimSpace(it.Category) == "钻石道具"
+	// ★ 用户规则：管理端把分类配成「钻石道具 / 黄金道具」时**锁定货币**，
+	//   钻石道具只能用钻石买，黄金道具只能用黄金买。
+	switch strings.TrimSpace(it.Category) {
+	case "钻石道具":
+		return true
+	case "黄金道具":
+		return false
+	}
+	return it.PriceDiamond > 0
+}
+
+// ezfyItemPayCurrency 该道具锁定的支付货币："" = 不锁（自动/双渠道），"gold" / "diamond" = 锁定
+func ezfyItemPayCurrency(it *model.EzfyCfgItem) string {
+	switch strings.TrimSpace(it.Category) {
+	case "钻石道具":
+		return "diamond"
+	case "黄金道具":
+		return "gold"
+	}
+	return ""
 }
 
 // ezfyUnlimitedStock 库存为负数表示**无限**（用户规则：库存 -1 = 可以任意购买）
@@ -1285,13 +1304,16 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 			seen[cat] = true
 			cats = append(cats, cat)
 		}
+		payCur := ezfyItemPayCurrency(&it)
 		views = append(views, gin.H{
 			"id": it.ID, "name": it.Name, "item_type": it.ItemType, "param1": it.Param1,
 			"price_gold": it.PriceGold, "price_diamond": it.PriceDiamond,
 			"icon": it.Icon, "description": it.Description, "stock": it.Stock,
 			"category": cat, "is_diamond": ezfyIsDiamondItem(&it),
-			// ★ 双渠道：黄金价和钻石价都 > 0 时，玩家可以任选一种支付（前端出两个按钮）
-			"dual_pay": it.PriceGold > 0 && it.PriceDiamond > 0,
+			// ★ 锁定的支付货币（"gold"/"diamond"/""）；锁定后前端只出对应那一种价格
+			"pay_currency": payCur,
+			// ★ 双渠道：黄金价和钻石价都 > 0 且**没有锁定货币**时，玩家可以任选一种支付
+			"dual_pay": payCur == "" && it.PriceGold > 0 && it.PriceDiamond > 0,
 			// ★ 库存 -1 = 无限可购（前端显示「无限」）
 			"unlimited": ezfyUnlimitedStock(it.Stock),
 		})
@@ -1353,18 +1375,34 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	//
 	//	这样既保住了老道具（集结令等）的既有语义，又让迁城道具能两种钱都买。
 	useDiamond := ezfyIsDiamondItem(cfg)
+	// ★ 用户规则：分类配成「钻石道具 / 黄金道具」时锁定货币，两种钱不能混用
+	payCur := ezfyItemPayCurrency(cfg)
 	if req.PayWith == "gold" {
+		if payCur == "diamond" {
+			resp.ParamError(c, fmt.Sprintf("「%s」是钻石道具，只能用钻石购买", cfg.Name))
+			return
+		}
 		if cfg.PriceGold <= 0 {
 			resp.ParamError(c, fmt.Sprintf("「%s」不支持用黄金购买", cfg.Name))
 			return
 		}
 		useDiamond = false
 	} else if req.PayWith == "diamond" {
+		if payCur == "gold" {
+			resp.ParamError(c, fmt.Sprintf("「%s」是黄金道具，只能用黄金购买", cfg.Name))
+			return
+		}
 		if cfg.PriceDiamond <= 0 {
 			resp.ParamError(c, fmt.Sprintf("「%s」不支持用钻石购买", cfg.Name))
 			return
 		}
 		useDiamond = true
+	}
+	// 锁定货币时，忽略前端传来的相反渠道
+	if payCur == "diamond" {
+		useDiamond = true
+	} else if payCur == "gold" {
+		useDiamond = false
 	}
 	if useDiamond {
 		cost := cfg.PriceDiamond * int64(req.Count)

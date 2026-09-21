@@ -27,7 +27,7 @@
             <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="90" align="center" />
-            <el-table-column label="操作" width="190" align="center">
+            <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改数量" @click="openEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="清除" @click="del(row)" />
@@ -78,7 +78,7 @@
             <el-table-column :label="'造价(' + resShortText + ')'" width="155" align="center">
               <template slot-scope="{row}"><span class="td-mono td-small">{{ row.food }}/{{ row.steel }}/{{ row.oil }}/{{ row.rare }}</span></template>
             </el-table-column>
-            <el-table-column label="操作" width="72" align="center">
+            <el-table-column label="操作" width="72" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openCfgEdit(row)" />
               </template>
@@ -120,7 +120,7 @@
             </el-table-column>
             <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
-            <el-table-column label="操作" width="120" align="center">
+            <el-table-column label="操作" width="120" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="清除" @click="delWounded(row)" />
               </template>

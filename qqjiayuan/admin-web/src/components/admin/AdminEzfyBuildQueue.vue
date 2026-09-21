@@ -42,7 +42,7 @@
         <el-table-column prop="city_name" label="所属城池" width="105" show-overflow-tooltip />
         <el-table-column prop="owner_name" label="归属玩家" width="100" show-overflow-tooltip />
         <el-table-column prop="home_num" label="家园号" width="80" align="center" />
-        <el-table-column label="操作" width="235" align="center">
+        <el-table-column label="操作" width="235" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="success" plain @click="finish(row)">完成</el-button>
             <el-button size="mini" type="primary" plain @click="openSpeed(row)">加速</el-button>

@@ -67,7 +67,7 @@
         <el-table-column label="资源合计" width="105" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtBig(row.total_res) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="170" align="center">
+        <el-table-column label="操作" width="170" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain @click="openSet(row)">改资源</el-button>
             <el-button size="mini" type="success" plain @click="quickGrant(row)">发资源</el-button>
@@ -104,7 +104,7 @@
         <el-table-column label="说明" min-width="200" show-overflow-tooltip>
           <template slot-scope="{row}">改名后游戏内资源栏、各类花费、交易所、管理端列头全部跟随</template>
         </el-table-column>
-        <el-table-column label="操作" width="110" align="center">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改名" @click="openResEdit(row)" />
           </template>

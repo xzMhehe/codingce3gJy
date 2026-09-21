@@ -156,7 +156,7 @@
             <el-table-column label="更新时间" width="160" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="160" align="center">
+            <el-table-column label="操作" width="160" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑"
                            @click="tileX = row.x; tileY = row.y; loadTileCell()" />
@@ -217,7 +217,7 @@
             </el-table-column>
             <el-table-column prop="city_name" label="占领城池" min-width="115" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" min-width="115" show-overflow-tooltip />
-            <el-table-column label="操作" width="215" align="center">
+            <el-table-column label="操作" width="215" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="info" plain icon="el-icon-view" title="该等级野地配置" @click="openWildCfgOf(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openWildEdit(row)" />
@@ -279,7 +279,7 @@
             </el-table-column>
             <el-table-column prop="treasure" label="宝物" width="120" show-overflow-tooltip />
             <el-table-column prop="des" label="说明" min-width="150" show-overflow-tooltip />
-            <el-table-column label="操作" width="140" align="center">
+            <el-table-column label="操作" width="140" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openWcEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delWc(row)" />
@@ -321,7 +321,7 @@
             <el-table-column label="时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="210" align="center">
+            <el-table-column label="操作" width="210" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="warning" plain :disabled="row.status !== 1" @click="release(row)">解除占领</el-button>
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delOccupy(row)" />
@@ -362,7 +362,7 @@
             <el-table-column prop="hp" label="耐久" width="95" align="center" />
             <el-table-column prop="troops" label="守军" min-width="160" show-overflow-tooltip />
             <el-table-column prop="resources" label="资源" min-width="140" show-overflow-tooltip />
-            <el-table-column label="操作" width="100" align="center">
+            <el-table-column label="操作" width="100" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delArea(row)" />
               </template>
@@ -391,7 +391,7 @@
             <el-table-column label="收藏时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="100" align="center">
+            <el-table-column label="操作" width="100" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delStar(row)" />
               </template>

@@ -58,7 +58,7 @@
         <el-table-column label="到期时间" width="150" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ row.expire_at_text }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="200" align="center">
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button v-if="row.live_status === 1" size="mini" type="warning" plain
                        icon="el-icon-alarm-clock" title="立即生效（跳过等待）" @click="doEffect(row)" />

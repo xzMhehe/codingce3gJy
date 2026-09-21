@@ -23,9 +23,14 @@
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w"
                          :align="col.w ? 'center' : 'left'" show-overflow-tooltip>
-          <template slot-scope="{row}">{{ fmt(row[col.k]) }}</template>
+          <template slot-scope="{row}">
+            <span v-if="col.fmt === 'stock'" :class="row[col.k] < 0 ? 'unlimited' : ''">
+              {{ row[col.k] < 0 ? '无上限' : row[col.k] }}
+            </span>
+            <span v-else>{{ fmt(row[col.k]) }}</span>
+          </template>
         </el-table-column>
-        <el-table-column label="操作" width="130" align="center">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button type="text" size="mini" @click="openEdit(row)">编辑</el-button>
             <el-button type="text" size="mini" class="danger-btn" @click="doDelete(row)">删除</el-button>
@@ -44,10 +49,12 @@
       <el-dialog :title="formId ? '编辑' + tableName : '新增' + tableName" :visible.sync="showForm" width="600px" append-to-body>
         <el-form label-width="140px" size="small">
           <el-form-item v-for="f in formFields" :key="f.k" :label="f.n" :required="f.req">
-            <el-select v-if="f.opts" v-model="form[f.k]" style="width:220px">
+            <el-select v-if="f.opts" v-model="form[f.k]" style="width:240px"
+                       :filterable="!!f.filterable" :allow-create="!!f.allowCreate" default-first-option>
               <el-option v-for="o in f.opts" :key="o.v" :label="o.n" :value="o.v" />
             </el-select>
-            <el-input-number v-else-if="f.t === 'num'" v-model="form[f.k]" :min="0" style="width:180px" />
+            <el-input-number v-else-if="f.t === 'num'" v-model="form[f.k]"
+                             :min="f.min === undefined ? 0 : f.min" style="width:180px" />
             <el-input v-else-if="f.t === 'text'" v-model="form[f.k]" type="textarea" :rows="2" />
             <el-input v-else v-model="form[f.k]" :maxlength="f.max || 50" style="width:320px" />
           </el-form-item>
@@ -111,19 +118,20 @@ const COLS = {
     { k: 'troops', n: '守军' }, { k: 'des', n: '描述' }
   ],
   items: [
-    { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '道具名', w: 130 }, { k: 'item_type', n: '类型', w: 90 },
-    { k: 'param1', n: '参数', w: 90 }, { k: 'price_gold', n: '黄金价', w: 100 },
-    { k: 'stock', n: '库存', w: 80 }, { k: 'icon', n: '图标', w: 90 },
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '道具名', w: 110 }, { k: 'item_type', n: '类型', w: 70 },
+    { k: 'category', n: '分类/货币', w: 96 }, { k: 'param1', n: '参数', w: 70 },
+    { k: 'price_gold', n: '黄金价', w: 80 }, { k: 'price_diamond', n: '钻石价', w: 80 },
+    { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'icon', n: '图标', w: 66 },
     { k: 'description', n: '描述' }
   ],
   taskTypes: [
-    { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '类型名', w: 130 }, { k: 'code', n: '代码', w: 130 },
-    { k: 'reset_type', n: '重置', w: 90 }, { k: 'sort_no', n: '排序', w: 70 }, { k: 'status', n: '状态', w: 70 }
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
+    { k: 'reset_type', n: '重置', w: 70 }, { k: 'sort_no', n: '排序', w: 60 }, { k: 'status', n: '状态', w: 60 }
   ],
   tasks: [
-    { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '任务名', w: 150 }, { k: 'task_type', n: '类型', w: 100 },
-    { k: 'target', n: '目标数', w: 80 }, { k: 'reward_gold', n: '黄金', w: 90 }, { k: 'reward_food', n: '粮食', w: 80 },
-    { k: 'reward_prestige', n: '声望', w: 70 }, { k: 'sort_no', n: '排序', w: 70 }, { k: 'status', n: '状态', w: 70 }
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '任务名', w: 120 }, { k: 'task_type', n: '类型', w: 96 },
+    { k: 'target', n: '目标数', w: 70 }, { k: 'reward_gold', n: '黄金', w: 76 }, { k: 'reward_food', n: '粮食', w: 70 },
+    { k: 'reward_prestige', n: '声望', w: 60 }, { k: 'sort_no', n: '排序', w: 56 }, { k: 'status', n: '状态', w: 56 }
   ],
   cities: [
     { k: 'id', n: '城池ID', w: 80 }, { k: 'user_id', n: '用户ID', w: 80 }, { k: 'name', n: '城名', w: 110 },
@@ -218,12 +226,22 @@ const FORMS = {
   ],
   items: [
     { k: 'name', n: '道具名', t: 'input', req: true, max: 50 },
-    { k: 'stock', n: '库存（0=售罄，默认 100）', t: 'num' },
-    { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }, { v: 9, n: '9 招生简章' }, { v: 10, n: '10 经验书' }, { v: 11, n: '11 军官技能书' }, { v: 12, n: '12 重修书' }, { v: 13, n: '13 改名卡' }, { v: 14, n: '14 阵营转换道具' }] },
+    { k: 'stock', n: '库存（-1 = 无上限，可随便买；0 = 售罄）', t: 'num', min: -1 },
+    { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }, { v: 9, n: '9 招生简章' }, { v: 10, n: '10 经验书' }, { v: 11, n: '11 军官技能书' }, { v: 12, n: '12 重修书' }, { v: 13, n: '13 改名卡' }, { v: 14, n: '14 阵营转换道具' }, { v: 15, n: '15 出征道具' }, { v: 16, n: '16 迁城道具' }] },
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
-    { k: 'price_diamond', n: '钻石售价（>0 = 钻石道具，只能用钻石买）', t: 'num' },
-    { k: 'category', n: '商城分类（留空自动归类）', t: 'input', max: 30 },
+    { k: 'price_diamond', n: '钻石售价', t: 'num' },
+    // ★ 用户要求：道具可配「钻石道具 / 黄金道具」；钻石道具只能钻石买，黄金道具只能黄金买。
+    //   用户端商城会按这两个分类分开展示（也可选别的分类名，或直接输入自定义分类）。
+    { k: 'category', n: '分类 / 货币类型', t: 'input', max: 30, filterable: true, allowCreate: true, opts: [
+      { v: '钻石道具', n: '钻石道具（只能用钻石买）' },
+      { v: '黄金道具', n: '黄金道具（只能用黄金买）' },
+      { v: '资源道具', n: '资源道具' }, { v: '加速道具', n: '加速道具' },
+      { v: '建筑图纸', n: '建筑图纸' }, { v: '增益道具', n: '增益道具' },
+      { v: '军官道具', n: '军官道具' }, { v: '身份道具', n: '身份道具' },
+      { v: '出征道具', n: '出征道具' }, { v: '迁城道具', n: '迁城道具' },
+      { v: '其他', n: '其他' }
+    ] },
     { k: 'icon', n: '图标', t: 'input', max: 50 },
     { k: 'description', n: '描述', t: 'text' }
   ],
@@ -357,4 +375,5 @@ export default {
 <style scoped>
 @import './farm-admin.css';
 .danger-btn { color: #f56c6c; }
+.unlimited { color: #67c23a; font-weight: 600; }
 </style>

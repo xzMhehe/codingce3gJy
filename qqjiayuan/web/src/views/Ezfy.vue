@@ -6,7 +6,7 @@
       <!-- 顶部导航(每页都有, 复刻原版) -->
       <div class="top-nav">
         <a href="javascript:;" @click="go('chat')">聊天</a>
-        <a href="javascript:;" @click="go('mail')">邮箱</a>
+        <a href="javascript:;" @click="openPm()">邮箱</a>
         <a href="javascript:;" @click="go('reports')">军情</a>
         <a href="javascript:;" @click="go('tasks')">任务</a>
         <a href="javascript:;" @click="go('friends')">好友</a>
@@ -165,7 +165,7 @@
             <!-- ★ 军团频道常显：没加入军团时进去显示「未加入 · 0 人」 -->
             <a href="javascript:;" :class="{ on: chatChannel === 2 }" @click="switchChannel(2)">军团</a>|
             <a href="javascript:;" :class="{ on: chatChannel === 4 }" @click="switchChannel(4)">系统</a>|
-            <a href="javascript:;" @click="go('mail')">私聊</a>
+            <a href="javascript:;" @click="openPm()">私聊</a>
           </div>
 
           <!-- ★ 发言框移到聊天列表**上方**（用户要求），列表按时间降序、最新在最上面 -->
@@ -235,21 +235,41 @@
         </div>
       </template>
 
-      <!-- ============ 邮箱(mail) ============ -->
+      <!-- ============ 私聊(mail) ============ -->
       <template v-else-if="cur === 'mail'">
         <div class="panel">
-          <div class="panel-title">邮箱(玩家私信)</div>
-          <div class="old-line" v-for="m in mails" :key="'m' + m.id">
-            <a href="javascript:;" @click="openPlayer(m.sender_id)"><span
-               :class="{ red: m.is_read === 0 }">{{ m.sender }}</span></a>:
-            {{ m.content }} <span class="gray">({{ fmtTime(m.created_at) }})</span>
+          <div class="panel-title">私聊 · 会话列表</div>
+          <div class="old-line gray">
+            点一个会话就切到和那个人的聊天；在「世界聊天 / 好友 / 统帅信息」里点玩家名字也会直接进到和他的私聊。
           </div>
-          <div class="old-line" v-if="!mails.length">(暂无私信)</div>
+          <div class="old-line" v-for="c in pmConvs" :key="'cv' + c.user_id">
+            <a href="javascript:;" @click="selectPm(c.user_id)">
+              <span :class="{ red: pmPeer && pmPeer.id === c.user_id }">
+                {{ pmPeer && pmPeer.id === c.user_id ? '▶ ' : '' }}{{ c.nickname }}</span></a>
+            <span class="gray">({{ c.username }})</span>
+            <span v-if="c.unread > 0" class="red">[未读{{ c.unread }}]</span>
+            <br/>
+            <span class="gray">{{ c.last_content }}</span>
+            <span class="gray"> ({{ fmtTime(c.last_at) }})</span>
+          </div>
+          <div class="old-line" v-if="!pmConvs.length">(还没有聊过的人，在下面填游戏ID或昵称发起私聊)</div>
           <br/>
-          <button @click="loadMails">刷新</button>
+          <button @click="loadPmConvs">刷新会话</button>
         </div>
 
-        <!-- 发私信: 不需要先加好友, 填游戏ID或昵称即可 -->
+        <div class="panel" v-if="pmPeer">
+          <div class="panel-title">与 {{ pmPeer.nickname }}({{ pmPeer.username }}) 的聊天记录</div>
+          <div class="old-line" v-for="m in pmChat" :key="'pc' + m.id">
+            <span :class="m.sender_id === myUserId ? 'green' : ''">
+              {{ m.sender_id === myUserId ? '我' : pmPeer.nickname }}</span>：{{ m.content }}
+            <span class="gray">({{ fmtTime(m.created_at) }})</span>
+          </div>
+          <div class="old-line" v-if="!pmChat.length">(还没有聊天记录，发一条试试)</div>
+          <br/>
+          <button @click="selectPm(pmPeer.id)">刷新记录</button>
+          <a href="javascript:;" @click="pmPeer = null; pmChat = []; pmTo = ''">[关闭会话]</a>
+        </div>
+
         <div class="panel">
           <div class="panel-title">发私信</div>
           <div class="old-line">
@@ -258,6 +278,7 @@
             <datalist id="ezfyPmCands">
               <option v-for="f in pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
             </datalist>
+            <span class="gray" v-if="pmPeer">（当前会话：{{ pmPeer.nickname }}）</span>
           </div>
           <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
           <div class="old-line">
@@ -270,6 +291,19 @@
             <a href="javascript:;" @click="go('friends')">[好友]</a>
             <a href="javascript:;" @click="go('chat')">[聊天频道]</a>
           </div>
+        </div>
+
+        <!-- 收到的私信（系统通知 / 别人的来信） -->
+        <div class="panel">
+          <div class="panel-title">收到的私信</div>
+          <div class="old-line" v-for="m in mails" :key="'m' + m.id">
+            <a href="javascript:;" @click="selectPm(m.sender_id)"><span
+               :class="{ red: m.is_read === 0 }">{{ m.sender }}</span></a>:
+            {{ m.content }} <span class="gray">({{ fmtTime(m.created_at) }})</span>
+          </div>
+          <div class="old-line" v-if="!mails.length">(暂无私信)</div>
+          <br/>
+          <button @click="loadMails">刷新</button>
         </div>
       </template>
 
@@ -437,7 +471,7 @@
               <td>{{ f.rank_name }}</td>
               <td>
                 <a href="javascript:;" @click="openPlayer(f.user_id)">[统帅信息]</a>
-                <a href="javascript:;" @click="go('mail')">[私聊]</a>
+                <a href="javascript:;" @click="openPm(f.user_id)">[私聊]</a>
                 <a href="javascript:;" @click="doDelFriend(f)">[删除]</a>
               </td>
             </tr>
@@ -470,34 +504,17 @@
             <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
             坐标({{ ct.x }},{{ ct.y }}) 城级{{ ct.city_level }}
             <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ ct.city_kind || (isSeaAt(ct) ? '沿海城市' : '内陆城市') }}]</span>
-            <!-- ★ [改名] 按用户要求挪到「坐标/城级/类型」同一行 -->
-            <a href="javascript:;" @click="go('rename')">[改名]</a><br/>
+            <br/>
             <span class="gray">所属洲: {{ ct.continent || '—' }}</span><br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
             <!-- ★ 运输：从当前城市把资源运到这座城（负重决定运量，可不带军官） -->
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
-            <!-- ★ 派遣：把当前城市的军官调往这座城 -->
-            <a v-if="ct.id !== city.id" href="javascript:;" @click="openDispatch(ct)">[派遣]</a>
+            <!-- ★ 派遣：像出征一样，把自己的部队/军官/随军资源送到自己的另一座城市 -->
+            <a v-if="ct.id !== city.id" href="javascript:;" @click="doDispatchTo(ct)">[派遣]</a>
             <!-- ★ 弃城：只能弃「非当前所在」的城市；弃城后该坐标恢复为普通平原 -->
             <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[弃城]</a>
           </div>
 
-          <!-- 派遣面板：列出当前城市可派遣的军官 -->
-          <template v-if="dispatchTarget">
-            <div class="panel-title">派遣军官 → {{ dispatchTarget.name }}({{ dispatchTarget.x }},{{ dispatchTarget.y }})</div>
-            <div class="old-line gray">只列出当前城市里空闲的军官；出征中/俘虏/带职位的不能派遣。</div>
-            <table v-if="dispatchOfficers.length">
-              <tr><th>军官</th><th>等级</th><th>状态</th><th>操作</th></tr>
-              <tr v-for="o in dispatchOfficers" :key="'dp' + o.id">
-                <td>{{ o.name }}</td>
-                <td>{{ o.level }}级</td>
-                <td>{{ o.status_name || (o.status === 1 ? '出征中' : '空闲') }}</td>
-                <td><a href="javascript:;" @click="doDispatch(o)">[调往]</a></td>
-              </tr>
-            </table>
-            <div class="old-line" v-else>(当前城市没有可派遣的军官)</div>
-            <a href="javascript:;" @click="dispatchTarget = null">[取消]</a>
-          </template>
           <br/>
           <div class="panel-title">起新城 (消耗10万{{ resNames.gold }})</div>
           <div class="old-line gray">
@@ -1096,8 +1113,11 @@
             <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">掠夺</a>&nbsp;
             <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(3)">征服</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('征服')">征服</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(5)">运输</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(6)">增援</a>&nbsp;
+            <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示 -->
+            <template v-if="selCell.ally && warStatus !== 2">
+              <a href="javascript:;" @click="pickOrder(5)">运输</a>&nbsp;
+              <a href="javascript:;" @click="pickOrder(6)">增援</a>&nbsp;
+            </template>
             <a v-if="warStatus === 0" href="javascript:;" @click="declareWar">[宣战]</a>
             <span v-if="warText" class="orange">{{ warText }}</span>
           </div>
@@ -1125,10 +1145,11 @@
           <div class="old-line">出征命令：{{ orderNames[orderType] }}</div>
           <div class="old-line">
             集结令：{{ gatherCount }}个
-            <select v-model.number="orderGather" :disabled="gatherMax <= 0" @change="onGatherChange">
-              <option v-for="n in gatherMax + 1" :key="'gt' + n" :value="n - 1">{{ n - 1 }}个</option>
-            </select>
-            <span class="gray">（每个 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个）</span>
+            <!-- ★ 用户要求：不要下拉，玩家自己填写数字 -->
+            <input type="number" min="0" :max="orderCapMax" v-model.number="orderGather"
+                   :disabled="gatherCount <= 0" @change="onGatherChange" style="width:80px"/>
+            个
+            <span class="gray">（每个 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个；背包里有 {{ gatherCount }} 个）</span>
             <br/>
             <span v-if="orderCalc" :class="orderCalc.troop_over_cap ? 'red' : 'green'">
               本次出兵 {{ fmtN(orderCalc.troop_total) }} / 上限 {{ fmtN(orderCalc.troop_cap) }}
@@ -1147,6 +1168,7 @@
             </select>
             <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
             <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
+            <span v-else-if="orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
             <br/>
             <span v-if="curOfficerBonus" class="green">军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
             <span v-if="!onDutyOfficers.length" class="gray">(暂无可用军官, 可前往军校招募)</span>
@@ -1172,6 +1194,10 @@
               可以不带队军官；送完部队会返回出发城市)
             </span>
             <span class="gray" v-else-if="orderType === 7">(派遣必须选择带队军官)</span>
+            <span class="gray" v-else-if="orderType === 8">
+              (派遣：把自己的部队 / 军官 / 随军资源送到<b>自己的另一座城市</b>；必须带部队，
+              能带多少资源看<b>负重</b>，军官会随军调往目标城市)
+            </span>
           </div>
           <div class="old-line">
             宿营：
@@ -2074,14 +2100,14 @@
             </template>
             <template v-else-if="playerInfo.is_friend">
               <span class="green">已是好友</span>
-              <a href="javascript:;" @click="go('mail')">[发私信]</a>
+              <a href="javascript:;" @click="openPm(playerInfo.user_id)">[发私信]</a>
             </template>
             <template v-else-if="playerInfo.is_applied">
               <span class="orange">好友申请已发送, 等待对方处理</span>
             </template>
             <template v-else>
               <a href="javascript:;" @click="doAddFriendById()">[申请好友]</a>
-              <a href="javascript:;" @click="go('mail')">[发私信]</a>
+              <a href="javascript:;" @click="openPm(playerInfo.user_id)">[发私信]</a>
             </template>
           </div>
           <a href="javascript:;" @click="go(playerInfoBack)">[返回]</a>
@@ -2491,9 +2517,6 @@ export default {
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       techsData: { techs: [], academy: 0 },
       wildlands: [],
-      // ★ 城市列表 [派遣] 用：目标城市 + 当前城市可派遣的军官
-      dispatchTarget: null,
-      dispatchOfficers: [],
       occupies: [],
       queues: [],
       marching: 0,
@@ -2525,6 +2548,10 @@ export default {
       pmTo: '',
       pmContent: '',
       pmCandidates: [],
+      // ★ 私聊：当前会话对象 + 与该对象的聊天记录 + 会话列表
+      pmPeer: null,
+      pmChat: [],
+      pmConvs: [],
       friends: [],
       friendKeyword: '',
       friendSearchList: [],
@@ -2662,7 +2689,7 @@ export default {
       rateSteel: 100,
       rateOil: 100,
       rateRare: 100,
-      orderNames: ['', '侦查', '掠夺', '征服', '采集', '运输', '增援', '派遣'],
+      orderNames: ['', '侦查', '掠夺', '征服', '采集', '运输', '增援', '驻守采集', '派遣'],
       timer: null
     }
   },
@@ -2691,6 +2718,10 @@ export default {
     },
     nick () {
       return this.$store.state.user ? this.$store.state.user.nickname : ''
+    },
+    // 私聊里区分「我」和「对方」
+    myUserId () {
+      return this.$store.state.user ? this.$store.state.user.id : 0
     },
     freePop () {
       const used = this.troopsData.pop_used || 0
@@ -3103,7 +3134,7 @@ export default {
       else if (t === 'techs') this.loadTechs()
       else if (t === 'map') { this.loadMap(); this.loadStars() }
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
-      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates() }
+      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
       else if (t === 'friends') this.loadFriends()
       else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
@@ -3295,7 +3326,49 @@ export default {
           this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
           this.pmContent = ''
           this.loadMails()
+          // ★ 发完就把「和这个人」的聊天记录刷新出来（选中谁就聊谁）
+          if (this.pmPeer) {
+            this.selectPm(this.pmPeer.id)
+          } else {
+            api.get('/messages/conversations').then(r2 => {
+              if (r2.code === 0) {
+                this.pmConvs = (r2.data || []).slice(0, 50)
+                const hit = this.pmConvs.find(c => c.nickname === to || c.username === to)
+                if (hit) this.selectPm(hit.user_id)
+              }
+            })
+          }
         } else this.notify(r.msg || '发送失败')
+      })
+    },
+    // ★ 私聊：打开与某位玩家的聊天（选中谁就聊谁，并带出历史记录）
+    //   userId 为空时只进页面、显示会话列表。
+    openPm (userId) {
+      this.cur = 'mail'
+      this.pmPeer = null
+      this.pmChat = []
+      this.pmTo = ''
+      this.loadPmConvs()
+      if (userId) this.selectPm(userId)
+    },
+    loadPmConvs () {
+      api.get('/messages/conversations').then(r => {
+        if (r.code === 0) this.pmConvs = (r.data || []).slice(0, 50)
+      })
+    },
+    // 切换聊天对象：拉出「我和 TA」的全部历史记录，并把对方设为收件人
+    selectPm (userId) {
+      if (!userId) return
+      api.get('/messages/with/' + userId).then(r => {
+        if (r.code === 0) {
+          this.pmPeer = r.data.peer || null
+          this.pmChat = r.data.list || []
+          this.pmTo = this.pmPeer ? (this.pmPeer.nickname || this.pmPeer.username) : ''
+          this.loadMails()
+          this.loadPmConvs()
+        } else {
+          this.notify(r.msg || '打开会话失败')
+        }
       })
     },
     loadMails () {
@@ -3777,32 +3850,17 @@ export default {
         this.repPage = Math.min(this.repTotalPages, Math.max(1, this.repPage + delta))
       }
     },
-    // ★ 城市列表 [派遣]：把当前城市的军官调往自己另一座城
-    openDispatch (ct) {
-      this.dispatchTarget = ct
-      this.dispatchOfficers = []
-      api.get('/games/ezfy/officers').then(r => {
-        if (r.code === 0) {
-          const list = r.data.officers || []
-          // 只留可派遣的：不是俘虏、不在出征中、没有带职位
-          this.dispatchOfficers = list.filter(o =>
-            o.is_captive !== 1 && o.status !== 1 && !(o.position && o.position !== 0))
-        }
-      })
-    },
-    doDispatch (o) {
-      if (!this.dispatchTarget) return
-      api.post('/games/ezfy/officers/' + o.id + '/dispatch', {
-        city_id: this.city.id, target_id: this.dispatchTarget.id
-      }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.data.msg)
-          this.dispatchTarget = null
-          this.load()
-        } else {
-          this.notify(r.msg, 'error')
-        }
-      })
+    // ★ 城市列表 [派遣]：像出征一样，把当前城市的部队/军官/随军资源送到自己另一座城
+    doDispatchTo (ct) {
+      if (ct.id === this.city.id) { this.notify('不能派遣到当前所在城市'); return }
+      this.selCell = {
+        x: ct.x, y: ct.y, area_type: 3, city_id: ct.id, user_id: ct.user_id,
+        name: ct.name, level: ct.city_level, mine: true, occupied: true
+      }
+      this.selDetail = null
+      this.orderType = 8
+      this.orderCalc = null
+      this.go('orderpre')
     },
     async doDestroyCity (ct) {
       const cur = this.city && ct.id === this.city.id ? '（这是当前所在城市，弃城后会自动切换到其他城市）' : ''
@@ -4182,7 +4240,13 @@ export default {
       })
     },
     // 改集结令数量后立刻重算，让「本次出兵 / 上限」即时刷新
+    // ★ 手填数字：这里把输入夹到 [0, 单次上限] 且不超过背包实际持有量
     onGatherChange () {
+      let n = parseInt(this.orderGather) || 0
+      if (n < 0) n = 0
+      if (n > this.orderCapMax) n = this.orderCapMax
+      if (n > this.gatherCount) n = this.gatherCount
+      this.orderGather = n
       this.doCalc()
     },
     doOrder () {

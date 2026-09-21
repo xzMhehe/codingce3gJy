@@ -67,6 +67,8 @@ func (h *AdminHandler) AdminEzfyCities(c *gin.Context) {
 		OfficerNum  int64  `json:"officer_num"`
 		WildNum     int64  `json:"wild_num"`
 		TerrainName string `json:"terrain_name"`
+		// ★ 管理端「城市管理」展示列：玩家所在州（大洲/大洋名）
+		Continent string `json:"continent"`
 	}
 	out := []rowOut{}
 	for _, ct := range rows {
@@ -83,7 +85,8 @@ func (h *AdminHandler) AdminEzfyCities(c *gin.Context) {
 		}
 		out = append(out, rowOut{EzfyCity: ct, PlayerName: pn, HomeNum: hn, CampName: camp,
 			BuildingNum: bn, TroopNum: tn, OfficerNum: on, WildNum: wn,
-			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y)})
+			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
+			Continent:   ezfyRegionName(ct.X, ct.Y)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }

@@ -94,7 +94,7 @@
         <el-table-column label="时间" width="150" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="170" align="center">
+        <el-table-column label="操作" width="170" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openNoticeEdit(row)">编辑</el-button>
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delNotice(row)">删除</el-button>

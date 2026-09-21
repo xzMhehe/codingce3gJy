@@ -56,7 +56,7 @@
             <span :class="row.ticket_count > 0 ? 'td-blue' : 'td-muted'">{{ row.ticket_count }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center">
+        <el-table-column label="操作" width="230" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="单独设置" @click="openSet(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-refresh-left" title="重置今日已用次数"

@@ -41,7 +41,7 @@
             <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="90" align="center" />
-            <el-table-column label="操作" width="220" align="center">
+            <el-table-column label="操作" width="220" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
                 <el-button size="mini" type="success" plain icon="el-icon-check" title="立即完成"
@@ -98,7 +98,7 @@
             </el-table-column>
             <el-table-column prop="pre_building" label="前置建筑" width="130" show-overflow-tooltip />
             <el-table-column prop="des" label="说明" min-width="140" show-overflow-tooltip />
-            <el-table-column label="操作" width="185" align="center">
+            <el-table-column label="操作" width="185" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="warning" plain icon="el-icon-s-order" title="等级配置" @click="openLevels(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openCfgEdit(row)" />
@@ -225,7 +225,7 @@
         <el-table-column label="建造(秒)" width="80" align="center"><template slot-scope="{row}"><span class="td-mono">{{ row.build_time }}</span></template></el-table-column>
         <el-table-column label="容量" width="90" align="center"><template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.capacity) }}</span></template></el-table-column>
         <el-table-column prop="effect" label="效果" min-width="130" show-overflow-tooltip />
-        <el-table-column label="操作" width="130" align="center">
+        <el-table-column label="操作" width="130" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openLvEdit(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delLv(row)" />

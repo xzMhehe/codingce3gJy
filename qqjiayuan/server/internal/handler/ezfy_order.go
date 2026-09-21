@@ -80,6 +80,20 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
+	// ★ 同盟成员集合：只有同盟(同一军团)玩家的城市才允许「运输 / 增援」。
+	//   前端据此决定这两个按钮显不显示（宣战中一律不显示）。
+	allyUsers := map[uint]bool{}
+	var myMb model.EzfyCorpsMember
+	if err := h.DB.Where("user_id = ?", uid).First(&myMb).Error; err == nil && myMb.CorpsId > 0 {
+		var mbs []model.EzfyCorpsMember
+		h.DB.Where("corps_id = ?", myMb.CorpsId).Find(&mbs)
+		for _, m := range mbs {
+			if m.UserId != uid {
+				allyUsers[m.UserId] = true
+			}
+		}
+	}
+
 	// 已占领野地(一次性载入, 避免逐格查库)
 	var allWilds []model.EzfyWildland
 	h.DB.Select("x, y, city_id").Find(&allWilds)
@@ -106,6 +120,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["city_level"] = c.CityLevel
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid
+				cell["ally"] = allyUsers[c.UserID]
 			} else {
 				kou := h.ezfyIsKouCity(x, y)
 				switch {
@@ -264,6 +279,9 @@ func ezfyOrderTypeName(orderType int) string {
 	case 6:
 		return "增援"
 	case 7:
+		// ★ 7 = 驻守野地长期采集（一键采集用），8 = 城际调兵（城市列表的[派遣]）
+		return "驻守采集"
+	case 8:
 		return "派遣"
 	default:
 		return "未知"
@@ -593,6 +611,21 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			}
 		}
 	}
+	// 派遣(8): 城际调兵 —— 只能派往自己的城市，必须带部队
+	if orderType == 8 {
+		if targetType != 3 || targetId <= 0 {
+			return "派遣目标必须为自己的城市"
+		}
+		if !h.isOwnCity(uid, targetId) {
+			return "派遣只能派往自己的城市"
+		}
+		if targetId == int64(city.ID) {
+			return "不能派遣到当前所在城市"
+		}
+		if len(validTroops) == 0 {
+			return "派遣必须携带部队"
+		}
+	}
 	for _, t := range validTroops {
 		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil && cfg.Type == 4 {
 			return "城防部队不能出征"
@@ -694,8 +727,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "需先对对方宣战, 宣战生效后方可掠夺/征服"
 		}
 	}
-	// 运输: 扣减运输资源
-	if orderType == 5 && hasRes {
+	// 运输/派遣: 扣减随军资源
+	if (orderType == 5 || orderType == 8) && hasRes {
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
 		if f < 0 || s < 0 || o < 0 || r < 0 || g < 0 {
 			return "资源数量错误"
@@ -706,7 +739,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		}
 		cap := h.ezfyCarryCapOf(validTroops)
 		if total := f + s + o + r + g; total > cap {
-			return fmt.Sprintf("负重不足: 本次要运%d, 运输部队负重只有%d(多带卡车可提高)", total, cap)
+			return fmt.Sprintf("负重不足: 本次要携带%d, 部队负重只有%d(多带卡车可提高)", total, cap)
 		}
 		if city.Food < f || city.Steel < s || city.Oil < o || city.Rare < r || city.Gold < g {
 			return "资源不足,无法运输"
@@ -728,7 +761,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if int(marching) >= hq {
 		return fmt.Sprintf("司令部%d级, 同时只能出征%d支队伍", hq, hq)
 	}
-	if orderType != 5 {
+	if orderType != 5 && orderType != 8 {
 		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
 		carryCap := h.ezfyOrderTroopCap(city.ID, gather)
 		if total > carryCap {
@@ -1131,11 +1164,20 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			return
 		}
 		level := wl.Level
+		// ★ 用户规则：采集产出与带队军官属性挂钩 —— 后勤每 1 点 +1%，上限 +100%。
+		gainPct := 100
+		if o := h.officerByName(city.ID, order.Officer); o != nil {
+			gainPct += o.Logistics
+			if gainPct > 200 {
+				gainPct = 200
+			}
+		}
+		base := int64(level) * 800 * int64(gainPct) / 100
 		var food, steel, oil, rare, gold int64
 		if wl.WildType == 2 {
-			oil, rare, gold = int64(level)*800, int64(level)*800, int64(level)*800
+			oil, rare, gold = base, base, base
 		} else {
-			food, steel, oil, rare = int64(level)*800, int64(level)*800, int64(level)*800, int64(level)*800
+			food, steel, oil, rare = base, base, base, base
 		}
 		// ★ 采到的资源装在部队身上，返航到达才入城；超负重丢弃
 		loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
@@ -1148,9 +1190,23 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			Updates(map[string]interface{}{"status": 2, "result": order.Result,
 				"return_time": order.ReturnTime, "carry": order.Carry})
 		gdesc := fmt.Sprintf("我军在占领的野地采集了8小时\n产出: 粮%d 钢%d 油%d 稀矿%d 金%d\n", food, steel, oil, rare, gold)
+		if gainPct > 100 {
+			gdesc += fmt.Sprintf("军官后勤加成: +%d%%\n", gainPct-100)
+		}
 		gdesc += fmt.Sprintf("装入部队: %d（负重 %d/%d）\n", loaded, cur.total(), h.ezfyCarryCap(order))
 		if dropped > 0 {
 			gdesc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上\n", dropped)
+		}
+		// ★ 用户规则：宝物只能从「采集」获得 —— 每次采集有 1/10 概率捡到宝物(直接进背包, 不受负重限制)
+		if rand.Intn(ezfyDispatchTreasure) == 0 {
+			pool := []int{1, 4, 5, 6, 7, 8, 9}
+			cfgId := pool[rand.Intn(len(pool))]
+			if cfg := ezfyCfg.item(cfgId); cfg != nil {
+				h.addItem(uid, cfgId, 1)
+				gdesc += "运气爆棚! 获得宝物(已直接放入背包): " + cfg.Name + "\n"
+				h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物：%s",
+					h.ezfyProfileName(uid), level, wl.X, wl.Y, cfg.Name)
+			}
 		}
 		gdesc += "部队正在返回, 到达后资源入库。"
 		h.addReport(uid, 5, fmt.Sprintf("采集报告: 野地%d级(%d,%d)", wl.Level, wl.X, wl.Y), gdesc, "", order.ID)
@@ -1243,6 +1299,94 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		return
 	}
 
+	// 派遣(8): 把部队 / 军官 / 随军资源送到自己的另一座城市（城际调兵）
+	//
+	// ★ 用户规则：「派遣也是出征」—— 目标必须是自己名下的城市。
+	if order.OrderType == 8 {
+		var target model.EzfyCity
+		if err := h.DB.First(&target, order.TargetId).Error; err != nil || target.UserID != uid {
+			h.beginReturn(order, now, 0)
+			h.addReport(uid, 5, "派遣报告: 目标城市无效",
+				"派遣目标城市不存在或已不属于我方, 派遣部队与资源已原路带回。", "", order.ID)
+			return
+		}
+		troops := parseGroups(order.Troops)
+		desc := fmt.Sprintf("派遣部队已抵达%s(%d,%d)\n", target.Name, target.X, target.Y)
+		for _, g := range troops {
+			if g.Count <= 0 {
+				continue
+			}
+			h.addTroop(target.ID, g.TroopId, g.Count)
+			desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
+		}
+		// 随军资源入目标城（受仓储上限截断，装不下的部分随部队原路带回）
+		res := h.parseResMap(order.Resources)
+		back := ezfyCarry{}
+		total := res["food"] + res["steel"] + res["oil"] + res["rare"] + res["gold"]
+		if total > 0 {
+			// ★ 只做「资源懒结算」，**不能**调 refreshCity ——
+			//   refreshCity 会 processOrders(uid)，而本订单正是该 uid 下
+			//   status=0 且已到期的订单 → 会再次进到这里，无限递归把服务打死。
+			h.calcResource(&target)
+			room := func(cur, cap, v int64) (int64, int64) {
+				if cap <= 0 {
+					cap = cur
+				}
+				r := cap - cur
+				if r < 0 {
+					r = 0
+				}
+				if v > r {
+					return r, v - r
+				}
+				return v, 0
+			}
+			var put int64
+			put, back.Food = room(target.Food, target.FoodCap, res["food"])
+			target.Food += put
+			put, back.Steel = room(target.Steel, target.SteelCap, res["steel"])
+			target.Steel += put
+			put, back.Oil = room(target.Oil, target.OilCap, res["oil"])
+			target.Oil += put
+			put, back.Rare = room(target.Rare, target.RareCap, res["rare"])
+			target.Rare += put
+			put, back.Gold = room(target.Gold, target.GoldCap, res["gold"])
+			target.Gold += put
+			h.saveCityRes(&target)
+			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				res["food"]-back.Food, res["steel"]-back.Steel, res["oil"]-back.Oil,
+				res["rare"]-back.Rare, res["gold"]-back.Gold)
+			if back.total() > 0 {
+				desc += fmt.Sprintf("\n⚠ 目标城仓储已满, %d 资源随部队原路带回", back.total())
+			}
+		}
+		// 随军军官调任目标城市（清空职位）
+		if order.Officer != "" {
+			h.moveOfficerTo(city, order.Officer, target.ID)
+			desc += "\n军官 " + order.Officer + " 随军调往" + target.Name
+		}
+		if back.total() > 0 {
+			// 兵力已经进城，回程只带「装不下的资源」：Result 置空避免兵力重复入账
+			travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+			if travel <= 0 {
+				travel = 60000
+			}
+			order.Status = 2
+			order.Result = ""
+			order.Carry = carryJSON(back)
+			order.ReturnTime = now + travel
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Updates(map[string]interface{}{"status": 2, "result": "", "carry": order.Carry,
+					"return_time": order.ReturnTime})
+		} else {
+			order.Status = 3
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Updates(map[string]interface{}{"status": 3, "carry": ""})
+		}
+		h.addReport(uid, 5, "派遣报告: "+target.Name, desc, "", order.ID)
+		return
+	}
+
 	// ============ 战斗类: 侦查/掠夺/征服 ============
 	attacker := parseGroups(order.Troops)
 	atkTech := h.techMap(city.ID)
@@ -1326,6 +1470,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			return
 		}
 		target = &tc
+		// ★ 结算前先把防守方城市懒结算到当前（建筑完工/资源产出/民心回复/训练完成），
+		//   否则用的是「防守方上次登录时」的陈旧民心与资源 —— 民心偏低会让征服异常容易。
+		//   ★ 注意：防守方 == 自己时**不能**走 refreshCity —— 它会 processOrders(uid)，
+		//   把当前这条 status=0 的订单再喂回 processArrive，造成无限递归。
+		if target.UserID != uid {
+			h.refreshCity(target.UserID, target)
+		} else {
+			h.calcResource(target)
+		}
 		if order.OrderType == 2 || order.OrderType == 3 {
 			if target.UserID == uid || !h.isAtWar(uid, target.UserID) {
 				h.beginReturn(order, now, 0)
@@ -1376,6 +1529,20 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.buildMoveMap(city.ID, true), h.buildMoveMap(cityIdOf(target), false))
 	win = br.AttackerWin
 
+	// ★ 用户反馈修复：防守方军官(城守)原来打完一点经验都没有。
+	//   现在守方军官按「守军战损/10 + 30」拿经验，成功守住再 +20。
+	if cityGuard != nil && target != nil {
+		var defDead int64
+		for _, g := range br.DefenderLosses {
+			defDead += g.Count
+		}
+		defExp := defDead/10 + 30
+		if !win {
+			defExp += 20
+		}
+		h.addOfficerExp(target, cityGuard.ID, defExp)
+	}
+
 	reportType := "掠夺报告"
 	if order.OrderType == 3 {
 		reportType = "征服报告"
@@ -1388,6 +1555,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
+	// ★ 用户要求：战报里的兵种名用「阵营兵种名」(同盟国/轴心国各自的叫法)，
+	//   不再是笼统的大类名。攻方用攻方阵营，守方用守方阵营。
+	atkCamp := profile.Camp
+	defCamp := 0
+	if target != nil {
+		defCamp = h.ensureProfile(target.UserID).Camp
+	}
 	// 带队军官 / 城守军官
 	if leadOfficer != nil {
 		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
@@ -1399,7 +1573,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
 	report += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
-	report += troopChangeText(atkBefore, atkAfter)
+	report += troopChangeText(atkBefore, atkAfter, atkCamp)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), targetName)
 	defBefore := groupCounts(defender)
 	defAfter := map[int]int64{}
@@ -1411,7 +1585,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			defAfter[tid] = cnt
 		}
 	}
-	report += troopChangeText(defBefore, defAfter)
+	report += troopChangeText(defBefore, defAfter, defCamp)
 
 	detail := ""
 	for _, a := range br.Actions {
@@ -1419,9 +1593,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	detail += "\n[双方兵力]\n"
 	detail += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
-	detail += troopChangeText(atkBefore, atkAfter)
+	detail += troopChangeText(atkBefore, atkAfter, atkCamp)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), targetName)
-	detail += troopChangeText(defBefore, defAfter)
+	detail += troopChangeText(defBefore, defAfter, defCamp)
 	detail += "[双方兵力]"
 
 	// 攻方战损: 按修复率入伤兵营
@@ -1509,7 +1683,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		targetProtected = h.hasCityEffect(target.ID, 2)
 	}
 	wareNote := ""
-	recyclePct := 0 // 战报里的「回收比例」(玩家城按掠夺比例, 其余 0)
+	recyclePct := 0 // 战报里的「回收比例」(玩家城按掠夺比例)
+	// ★ 用户反馈：野地/寇城战报里「回收比例:0%」看着像 bug。
+	//   野地没有仓库保护额度，战利品是整份资源 → 回收比例就是 100%。
+	if win && (order.TargetType == 1 || order.TargetType == 2) {
+		recyclePct = 100
+	}
 	prestigeGain := 0
 
 	if win {
@@ -1644,6 +1823,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if feelingDrop < 1 {
 				feelingDrop = 1
 			}
+			// ★ 用户反馈修复：原来单次最高可打掉「幸存兵力 / 2000」点民心，
+			//   大兵团(几十万)一次就能把 80 民心清零 → 「打一次就变成自己的城市」。
+			//   现在单次最多打掉 ezfyConquerFeelingsMax 点，保证至少 4 次征服才能清零，
+			//   即「民心降到 0 才能占领」。
+			if feelingDrop > ezfyConquerFeelingsMax {
+				feelingDrop = ezfyConquerFeelingsMax
+			}
 			cur := target.Feelings - feelingDrop
 			if cur < 0 {
 				cur = 0
@@ -1686,6 +1872,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += "\n民心已失，征服成功!"
 			target.Feelings = 0
 			target.Grievance = minInt(100, target.Grievance+50)
+			// ★ 城破后按剩余资源的 50% 再掠夺一次，回收比例与之一致（原来显示的是普通掠夺比例）
+			recyclePct = 50
 			defRes := []int64{target.Food, target.Steel, target.Oil, target.Rare, target.Gold}
 			loot := make([]int64, 5)
 			for i := 0; i < 5; i++ {
@@ -1718,10 +1906,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			defReportBody := ""
 			if !lastCity {
 				defReportBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
 			} else {
 				defReportBody = fmt.Sprintf("敌方部队攻破了你的城市%s!\n民心清零, 但该城市是你的最后一座城, 无法被占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
 			}
 			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail)
 		}
@@ -1734,7 +1922,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
 			h.addReport(target.UserID, 2, "被掠夺报告: "+city.Name,
 				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-5 民怨+5\n%s\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses), wareNote),
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp), wareNote),
 				detail)
 		}
 		// 掠夺资源入账
@@ -1776,11 +1964,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		} else if order.TargetType == 2 {
 			h.taskProgress(uid, "battle_kou", 1)
 		}
-		// 野地/寇城掉宝：按等级概率掉装备 + 按地形掉珠宝；寇城/高等级野地有概率俘虏守将
+		// ★ 用户规则：**宝物只能通过「采集」获得** —— 打野地/寇城不再掉落装备与珠宝。
+		//   （原来这里调 wildlandLoot 掉宝，属于 bug；现只保留「俘虏守将」）
 		if (order.TargetType == 1 || order.TargetType == 2) && wildLevel >= 1 {
-			if loot := h.wildlandLoot(city, wildLevel, ezfyTerrain(order.TargetX, order.TargetY), false); loot != "" {
-				report += "\n战利品:" + loot
-			}
 			// 该野地/寇城配置里有军官才可能俘到(没军官就什么都没有)
 			wt := 1
 			if order.TargetType == 2 {
@@ -1854,7 +2040,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
 			h.addReport(target.UserID, 4, "守卫报告: "+city.Name,
-				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses)), detail)
+				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail)
 			h.addPrestige(target.UserID, 100)
 		}
 	}
@@ -1939,7 +2125,9 @@ func groupCounts(groups []ezfyUnitGroup) map[int]int64 {
 	return m
 }
 
-func troopChangeText(before, after map[int]int64) string {
+// troopChangeText 兵力变化文本；camp 为阵营(1 同盟国 / 2 轴心国)，
+// 用于取「阵营兵种名」(ezfy_cfg_troop.name_ally / name_axis)。
+func troopChangeText(before, after map[int]int64, camp int) string {
 	ids := []int{}
 	for tid := range before {
 		ids = append(ids, tid)
@@ -1948,9 +2136,9 @@ func troopChangeText(before, after map[int]int64) string {
 	sort.Ints(ids)
 	text := ""
 	for _, tid := range ids {
-		name := "兵种" + strconv.Itoa(tid)
-		if cfg := ezfyCfg.troop(tid); cfg != nil {
-			name = cfg.Name
+		name := ezfyCfg.troopName(tid, camp)
+		if name == "" {
+			name = "兵种" + strconv.Itoa(tid)
 		}
 		b := before[tid]
 		a := after[tid]
@@ -1964,15 +2152,16 @@ func troopChangeText(before, after map[int]int64) string {
 	return text
 }
 
-func lossText(groups []ezfyUnitGroup) string {
+// lossText 守军损失文本；camp 为守方阵营(1 同盟国 / 2 轴心国)
+func lossText(groups []ezfyUnitGroup, camp int) string {
 	if len(groups) == 0 {
 		return "守军无损失"
 	}
 	text := "守军损失: "
 	for _, g := range groups {
-		name := "兵种" + strconv.Itoa(g.TroopId)
-		if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
-			name = cfg.Name
+		name := ezfyCfg.troopName(g.TroopId, camp)
+		if name == "" {
+			name = "兵种" + strconv.Itoa(g.TroopId)
 		}
 		text += name + "×" + strconv.FormatInt(g.Count, 10) + " "
 	}

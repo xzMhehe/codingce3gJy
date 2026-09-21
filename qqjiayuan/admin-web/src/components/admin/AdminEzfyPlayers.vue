@@ -32,7 +32,7 @@
         <el-table-column label="更新时间" width="150" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center">
+        <el-table-column label="操作" width="230" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-view" title="详情" @click="openDetail(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />

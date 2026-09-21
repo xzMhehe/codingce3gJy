@@ -39,6 +39,10 @@ const (
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
 	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
+	// ★ 征服玩家城市时单次最多打掉多少民心。
+	//   原来 = 幸存兵力/2000（大兵团一次就能把 80 民心清零 → 一次征服直接占领），
+	//   现封顶 20 → 满民心(80~100)至少需要 4~5 次征服才能清零。
+	ezfyConquerFeelingsMax = 20
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -2296,8 +2300,27 @@ func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 		resp.ParamError(c, "野地不存在")
 		return
 	}
+	// ★ 用户反馈修复：原来直接删野地记录，**驻守/采集中的部队会凭空消失**。
+	//   现在先把这个野地上的采集(4)/驻守(7)命令改成返航，兵力与已采资源随部队回城。
+	now := time.Now().UnixMilli()
+	var orders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND target_id = ? AND order_type IN (4,7) AND status IN (0,1)", uid, w.ID).Find(&orders)
+	for i := range orders {
+		o := &orders[i]
+		travel := ezfyOneWayTravel(o)
+		o.Status = 2
+		o.Result = o.Troops
+		o.ReturnTime = now + travel
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", o.ID).
+			Updates(map[string]interface{}{"status": 2, "result": o.Result,
+				"return_time": o.ReturnTime, "carry": o.Carry})
+	}
 	h.DB.Delete(&w)
-	resp.OK(c, gin.H{"msg": "已放弃该野地"})
+	msg := "已放弃该野地"
+	if len(orders) > 0 {
+		msg += fmt.Sprintf("，%d 支采集/驻守部队已返航（到达后兵力与资源回城）", len(orders))
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 // Resources 资源详情

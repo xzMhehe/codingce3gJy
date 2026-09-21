@@ -45,7 +45,7 @@
             <el-table-column label="创建时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="170" align="center">
+            <el-table-column label="操作" width="170" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-view" @click="openOrderDetail(row)">详情</el-button>
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delOrder(row)">删除</el-button>
@@ -81,7 +81,7 @@
             <el-table-column label="时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="90" align="center">
+            <el-table-column label="操作" width="90" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delChat(row)">删除</el-button>
               </template>
@@ -134,7 +134,7 @@
             <el-table-column label="时间" width="150" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="90" align="center">
+            <el-table-column label="操作" width="90" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delExchange(row)">删除</el-button>
               </template>
