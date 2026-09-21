@@ -40,9 +40,27 @@ func (h *EzfyHandler) readCityReq(c *gin.Context) (*model.EzfyCity, bool) {
 	return city, true
 }
 
+// fail 把「空字符串 = 成功」的动作结果转成响应。
+//
+// ⚠️ 成功时只说「操作成功」——玩家看不出刚才干了什么。
+// 新代码请优先用 done() 传具体文案（用户要求：建造就说建造成功）。
 func (h *EzfyHandler) fail(c *gin.Context, msg string) {
 	if msg == "" {
-		resp.OK(c, gin.H{"msg": "ok"})
+		resp.OKMsg(c, "操作成功", nil)
+		return
+	}
+	resp.ParamError(c, msg)
+}
+
+// done 动作结果 → 响应：成功用调用方给的具体文案，失败用动作返回的错误文案。
+//
+// ★ 用户反馈「用户端消息提示还都是 ok」：这些动作原来走 fail()，
+// 成功时统一显示「ok」。现在每处都传具体文案，例如：
+//
+//	h.done(c, h.buildBuilding(city, id), "建造成功")
+func (h *EzfyHandler) done(c *gin.Context, msg, successMsg string) {
+	if msg == "" {
+		resp.OKMsg(c, successMsg, nil)
 		return
 	}
 	resp.ParamError(c, msg)
@@ -161,7 +179,7 @@ func (h *EzfyHandler) Build(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.buildBuilding(city, req.BuildingId))
+	h.done(c, h.buildBuilding(city, req.BuildingId), "建造命令已下达")
 }
 
 func (h *EzfyHandler) Upgrade(c *gin.Context) {
@@ -176,7 +194,7 @@ func (h *EzfyHandler) Upgrade(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.upgradeBuilding(city, req.RecordId))
+	h.done(c, h.upgradeBuilding(city, req.RecordId), "建筑已开始升级")
 }
 
 func (h *EzfyHandler) MaxLevel(c *gin.Context) {
@@ -191,7 +209,7 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.maxLevelBuilding(city, req.RecordId))
+	h.done(c, h.maxLevelBuilding(city, req.RecordId), "建筑已升到最高级")
 }
 
 func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
@@ -206,7 +224,7 @@ func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.deleteBuilding(city, req.RecordId))
+	h.done(c, h.deleteBuilding(city, req.RecordId), "建筑已拆除")
 }
 
 func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
@@ -225,7 +243,7 @@ func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
 	if req.Minutes <= 0 {
 		req.Minutes = 10
 	}
-	h.fail(c, h.speedUpBuilding(city, req.RecordId, req.Minutes))
+	h.done(c, h.speedUpBuilding(city, req.RecordId, req.Minutes), "建筑已加速完成")
 }
 
 // ============ 军队 ============
@@ -260,14 +278,13 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	woundViews := []gin.H{}
 	for _, w := range append(wounded, deserters...) {
 		woundViews = append(woundViews, gin.H{"id": w.ID, "troop_id": w.TroopId,
-			"name": ezfyCfg.troopName(w.TroopId, camp), "type": w.Type, "count": w.Count})
+			"name": ezfyCfg.troopName(w.TroopId, camp), "type": w.Type, "count": w.Count,
+			// ★ 用户要求「恢复伤兵需要黄金」：把单价一起下发，前端在[恢复]旁边显示要花多少钱
+			"heal_gold": ezfyWoundHealGoldPer(w.TroopId)})
 	}
-	var popUsed int64
-	for tid, count := range h.troopMap(city.ID) {
-		if cfg := ezfyCfg.troop(tid); cfg != nil && cfg.Type != 4 {
-			popUsed += int64(cfg.Pop) * count
-		}
-	}
+	// ★ 占用人口 = 只有「训练队列里还没出厂」的新兵占（用户规则：部队不占人口位置）。
+	//   统一走 troopPop，别再在这里手写一份，否则又会出现两处口径不一致的 bug。
+	popUsed := h.troopPop(city.ID)
 	// 兵种配置一览
 	cfgViews := []gin.H{}
 	var allTroops []model.EzfyCfgTroop
@@ -390,7 +407,7 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.trainTroop(city, req.TroopId, req.Count, req.Split))
+	h.done(c, h.trainTroop(city, req.TroopId, req.Count, req.Split), "征兵已开始")
 }
 
 // CancelTrain POST /games/ezfy/troops/train/cancel {queue_id}
@@ -565,10 +582,10 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
 	if req.All {
-		h.fail(c, h.recoverAllWounded(city, req.Type))
+		h.done(c, h.recoverAllWounded(city, req.Type), "伤兵已全部恢复")
 		return
 	}
-	h.fail(c, h.recoverWounded(city, req.TroopId, req.Type))
+	h.done(c, h.recoverWounded(city, req.TroopId, req.Type), "伤兵已恢复")
 }
 
 // ============ 科技 ============
@@ -621,7 +638,7 @@ func (h *EzfyHandler) Research(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.researchTech(city, req.TechId))
+	h.done(c, h.researchTech(city, req.TechId), "科技研究已开始")
 }
 
 func (h *EzfyHandler) SpeedTech(c *gin.Context) {
@@ -639,7 +656,7 @@ func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 	if req.Minutes <= 0 {
 		req.Minutes = 10
 	}
-	h.fail(c, h.speedUpTech(city, req.Minutes))
+	h.done(c, h.speedUpTech(city, req.Minutes), "科技研究已加速完成")
 }
 
 // CancelTech POST /games/ezfy/techs/cancel  {tech_id} —— 取消研究并全额退还消耗
@@ -655,7 +672,7 @@ func (h *EzfyHandler) CancelTech(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.fail(c, h.cancelTech(city, req.TechId))
+	h.done(c, h.cancelTech(city, req.TechId), "已取消研究, 消耗已全额退还")
 }
 
 // ============ 调整生产(开工率) ============
@@ -1508,7 +1525,8 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId)
 	if msg == "" {
-		resp.OK(c, gin.H{"msg": "ok"})
+		// ★ 原来这里是写死的 "ok"（用户反馈的「提示还都是 ok」）
+		resp.OKMsg(c, "道具使用成功", nil)
 		return
 	}
 	if strings.HasPrefix(msg, "使用成功") {
@@ -1603,7 +1621,7 @@ func (h *EzfyHandler) TaskAward(c *gin.Context) {
 		return
 	}
 	h.cfgs()
-	h.fail(c, h.taskAward(uid, req.TaskId))
+	h.done(c, h.taskAward(uid, req.TaskId), "奖励已领取")
 }
 
 // ============ 福利(签到/礼包) ============

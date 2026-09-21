@@ -464,6 +464,44 @@ func ezfyGatherMax() int {
 	return ezfyGatherMaxDefault
 }
 
+// ============ 战斗 / 经济数值（ezfy_cfg_limit，管理端可维护）============
+//
+// ★ 这几个值都「0 无意义」：0 = 不扣民心 / 军官免费 / 恢复免费，
+//   所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
+const (
+	ezfyConquerFeelingsDef  = 2   // 征服单次最多扣民心（默认 2）
+	ezfyLootFeelingsDef     = 2   // 掠夺每次扣民心（默认 2）
+	ezfyOfficerSalaryDef    = 2   // 军官工资：每级每小时黄金（默认 2）
+	ezfyWoundHealDivisorDef = 100 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 100）
+)
+
+func ezfyLimitOr(v, def int) int {
+	if v > 0 {
+		return v
+	}
+	return def
+}
+
+// ezfyConquerFeelingsCfg 征服(3) 单次最多扣目标多少民心
+func ezfyConquerFeelingsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.ConquerFeelingsMax, ezfyConquerFeelingsDef)
+}
+
+// ezfyLootFeelingsCfg 掠夺(2) 每次扣目标多少民心
+func ezfyLootFeelingsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.LootFeelings, ezfyLootFeelingsDef)
+}
+
+// ezfyOfficerSalaryPerLvCfg 军官工资：每名军官每小时消耗「等级 × 该值」黄金
+func ezfyOfficerSalaryPerLvCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.OfficerSalaryPerLevel, ezfyOfficerSalaryDef)
+}
+
+// ezfyWoundHealDivisorCfg 恢复伤兵单价系数：单价 = ceil(兵种总造价 / 该值)，最低 1 黄金
+func ezfyWoundHealDivisorCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.WoundHealDivisor, ezfyWoundHealDivisorDef)
+}
+
 // ezfyWords 取二战聊天敏感词
 func ezfyWords() []model.EzfyWordFilter {
 	return ezfyCfg.words

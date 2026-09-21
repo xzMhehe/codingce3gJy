@@ -232,6 +232,22 @@ type EzfyCfgLimit struct {
 	NoticeHomeCount int `gorm:"default:1" json:"notice_home_count"`
 	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」→ 单次出征最多用几个集结令（默认 50）
 	GatherMaxPerOrder int `gorm:"default:50" json:"gather_max_per_order"`
+
+	// ============ 战斗 / 经济数值（管理端「建筑上限配置」页可维护）============
+	//
+	// ★ 用户反馈「征服民心每次 -5 现在太多」→ 做成可配置，默认 2。
+	//   征服(3)：单次最多扣掉目标多少民心（原来写死 20，且按幸存兵力/2000 动态计算）。
+	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5）。
+	ConquerFeelingsMax int `gorm:"default:2" json:"conquer_feelings_max"`
+	LootFeelings       int `gorm:"default:2" json:"loot_feelings"`
+	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
+	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。默认 2 黄金/级/小时。
+	//   ⚠️ 字段名必须让 GORM 推出 officer_salary_per_level（与 seed 里补的列名一致），
+	//   否则 AutoMigrate 会另外建一列 officer_salary_per_lv，两个列各存各的。
+	OfficerSalaryPerLevel int `gorm:"default:2" json:"officer_salary_per_level"`
+	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
+	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 100。
+	WoundHealDivisor int `gorm:"default:100" json:"wound_heal_divisor"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

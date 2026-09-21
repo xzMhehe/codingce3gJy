@@ -944,8 +944,22 @@ func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
 	return 60000
 }
 
+// RecallOrder 取消出征命令（原「召回」，已放开到所有命令类型）
+//
+// ★ 用户要求「出征队列可以取消」：原来只允许 type=7(驻守采集) 召回，
+// 其余命令一律返回「该命令不支持召回」。现在所有**还在外面**的命令
+// （status 0 行军中 / 1 驻守中）都能取消，部队原路返回出发城市。
+//
+// 返程时间：
+//   - 行军中(0)：已经走了多久就花多久回去，最少 10 秒
+//   - 驻守中(1)：按单程行军时长返航
+//
+// 随军资源：运输(5)/派遣(8) 出发时已从城里扣掉，取消时写进 Carry，
+// 由 finishReturn 原样带回出发城市（受仓储上限截断，不会凭空多出资源）。
+// 宿营：取消时 WaitMin 清零，不再原地等待。
 func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	h.cfgs()
 	var req struct {
 		OrderId int64 `json:"order_id"`
 	}
@@ -958,23 +972,43 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 		resp.ParamError(c, "命令不存在")
 		return
 	}
-	if order.OrderType != 7 {
-		resp.ParamError(c, "该命令不支持召回")
-		return
-	}
 	if order.Status != 0 && order.Status != 1 {
-		resp.ParamError(c, "当前状态无法召回")
+		resp.ParamError(c, "该命令已在返航中或已结束, 无法取消")
 		return
 	}
-	travel := ezfyOneWayTravel(&order)
+	now := time.Now().UnixMilli()
+	oneWay := ezfyOneWayTravel(&order)
+	var back int64
+	if order.Status == 0 {
+		back = now - order.StartTime // 已走时长 ≈ 返程时长
+		if back > oneWay {
+			back = oneWay
+		}
+	} else {
+		back = oneWay
+	}
+	if back < 10000 {
+		back = 10000
+	}
+	// 运输(5)/派遣(8)：随军资源出发时就扣了，取消必须原样带回
+	carry := order.Carry
+	if (order.OrderType == 5 || order.OrderType == 8) && strings.TrimSpace(order.Resources) != "" {
+		carry = order.Resources
+	}
 	order.Status = 2
 	order.Result = order.Troops
-	order.ReturnTime = time.Now().UnixMilli() + travel
-	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
-	h.addReport(uid, 5, "派遣报告: 部队召回",
-		fmt.Sprintf("派遣部队已奉命返航, 预计%d分钟后返回出发城市, 部队将归队。", travel/1000/60), "", order.ID)
-	resp.OK(c, gin.H{"msg": "已召回"})
+	order.Carry = carry
+	order.WaitMin = 0
+	order.ReturnTime = now + back
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
+		"status": 2, "result": order.Result, "carry": carry,
+		"wait_min": 0, "return_time": order.ReturnTime,
+	})
+	name := ezfyOrderTypeName(order.OrderType)
+	h.addReport(uid, 5, name+"报告: 已取消",
+		fmt.Sprintf("%s命令已取消, 部队原路返回, 预计%s后抵达出发城市。", name, ezfyDurationText(back/1000)),
+		"", order.ID)
+	resp.OK(c, gin.H{"msg": name + "已取消, 部队正在返回"})
 }
 
 // ============ 订单结算 ============
@@ -1823,12 +1857,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if feelingDrop < 1 {
 				feelingDrop = 1
 			}
-			// ★ 用户反馈修复：原来单次最高可打掉「幸存兵力 / 2000」点民心，
-			//   大兵团(几十万)一次就能把 80 民心清零 → 「打一次就变成自己的城市」。
-			//   现在单次最多打掉 ezfyConquerFeelingsMax 点，保证至少 4 次征服才能清零，
-			//   即「民心降到 0 才能占领」。
-			if feelingDrop > ezfyConquerFeelingsMax {
-				feelingDrop = ezfyConquerFeelingsMax
+			// ★ 用户反馈「征服民心每次 -5 现在太多」→ 单次扣多少改为管理端可配
+			//   （ezfy_cfg_limit.conquer_feelings_max，默认 2）。
+			//   原来封顶写死 20，且按「幸存兵力/2000」动态算，大兵团一次就能清零民心。
+			//   现在既保留动态计算（小部队扣得少），又用配置值封顶。
+			if cm := ezfyConquerFeelingsCfg(); feelingDrop > cm {
+				feelingDrop = cm
 			}
 			cur := target.Feelings - feelingDrop
 			if cur < 0 {
@@ -1913,16 +1947,20 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail)
 		}
-		// 普通掠夺(含成功掠夺玩家城市): 民心-5 民怨+5
+		// 普通掠夺(含成功掠夺玩家城市): 民心-N 民怨+N
+		// ★ 用户反馈「民心每次 -5 现在太多」→ 扣多少改为管理端可配
+		//   （ezfy_cfg_limit.loot_feelings，默认 2）。
 		if order.OrderType == 2 && order.TargetType == 3 && target != nil {
-			target.Feelings = maxInt(0, target.Feelings-5)
-			target.Grievance = minInt(100, target.Grievance+5)
+			lootFeel := ezfyLootFeelingsCfg()
+			target.Feelings = maxInt(0, target.Feelings-lootFeel)
+			target.Grievance = minInt(100, target.Grievance+lootFeel)
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
 				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
 			h.addReport(target.UserID, 2, "被掠夺报告: "+city.Name,
-				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-5 民怨+5\n%s\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp), wareNote),
+				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-%d 民怨+%d\n%s\n%s",
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold,
+					lootFeel, lootFeel, lossText(br.DefenderLosses, defCamp), wareNote),
 				detail)
 		}
 		// 掠夺资源入账

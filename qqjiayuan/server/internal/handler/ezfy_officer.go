@@ -1255,6 +1255,10 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		"capacity":      h.buildingLevel(city.ID, ezfyBuildingStaff),
 		"used":          h.officerCount(city.ID),
 		"gold":          city.Gold,
+		// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资（黄金/小时）。
+		//   随 calcResource 懒结算一起扣，这里只负责让玩家看得见。
+		"salary":          h.officerSalaryPerHour(city.ID),
+		"salary_per_level": ezfyOfficerSalaryPerLvCfg(),
 	})
 }
 
@@ -1375,7 +1379,7 @@ func (h *EzfyHandler) AcadeRefresh(c *gin.Context) {
 		h.fail(c, "需要先建造军校")
 		return
 	}
-	h.fail(c, h.refreshRecruit(uid, academy))
+	h.done(c, h.refreshRecruit(uid, academy), "候选已刷新")
 }
 
 // AcadeRecruitDo POST /games/ezfy/acade/recruit/hire  {key}
@@ -1390,7 +1394,7 @@ func (h *EzfyHandler) AcadeRecruitDo(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	h.fail(c, h.hireOfficerDraft(&city, uid, req.Key))
+	h.done(c, h.hireOfficerDraft(&city, uid, req.Key), "军官雇佣成功")
 }
 
 // OfficerGrant POST /games/ezfy/officers/:id/grant
@@ -1399,7 +1403,7 @@ func (h *EzfyHandler) OfficerGrant(c *gin.Context) {
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	h.fail(c, h.grantOfficer(&city, id))
+	h.done(c, h.grantOfficer(&city, id), "赏赐成功, 忠诚已提升")
 }
 
 // OfficerSkill POST /games/ezfy/officers/:id/skill  {op: learn|forget, skill_id}
@@ -1417,10 +1421,10 @@ func (h *EzfyHandler) OfficerSkill(c *gin.Context) {
 		return
 	}
 	if req.Op == "forget" {
-		h.fail(c, h.forgetSkill(&city, id, req.SkillId))
+		h.done(c, h.forgetSkill(&city, id, req.SkillId), "技能已遗忘")
 		return
 	}
-	h.fail(c, h.learnSkill(&city, id, req.SkillId))
+	h.done(c, h.learnSkill(&city, id, req.SkillId), "技能学习成功")
 }
 
 // OfficerEquip POST /games/ezfy/officers/:id/equip  {equip_id, op: on|off}
@@ -1438,10 +1442,10 @@ func (h *EzfyHandler) OfficerEquip(c *gin.Context) {
 		return
 	}
 	if req.Op == "off" {
-		h.fail(c, h.unequipItem(&city, req.EquipId))
+		h.done(c, h.unequipItem(&city, req.EquipId), "装备已卸下")
 		return
 	}
-	h.fail(c, h.equipItem(&city, id, req.EquipId))
+	h.done(c, h.equipItem(&city, id, req.EquipId), "装备已穿上")
 }
 
 // OfficerPosition POST /games/ezfy/officers/:id/position  {position}
@@ -1457,7 +1461,7 @@ func (h *EzfyHandler) OfficerPosition(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	h.fail(c, h.setOfficerPosition(&city, id, req.Position))
+	h.done(c, h.setOfficerPosition(&city, id, req.Position), "任命成功")
 }
 
 // OfficerCaptive POST /games/ezfy/officers/:id/captive  {op: free|recruit}
@@ -1471,10 +1475,10 @@ func (h *EzfyHandler) OfficerCaptive(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 	if req.Op == "recruit" {
-		h.fail(c, h.recruitCaptive(&city, id))
+		h.done(c, h.recruitCaptive(&city, id), "收编成功, 军官已入列")
 		return
 	}
-	h.fail(c, h.freeOfficer(&city, id))
+	h.done(c, h.freeOfficer(&city, id), "已释放该武将")
 }
 
 // OfficerExile POST /games/ezfy/officers/:id/exile
@@ -1483,7 +1487,7 @@ func (h *EzfyHandler) OfficerExile(c *gin.Context) {
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	h.fail(c, h.exileOfficer(&city, id))
+	h.done(c, h.exileOfficer(&city, id), "已流放该军官")
 }
 
 // OfficerSkills GET /games/ezfy/officers/skills —— 技能总览 + 我的军官

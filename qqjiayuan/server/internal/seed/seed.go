@@ -183,6 +183,24 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_max_per_order = 50 WHERE gather_max_per_order IS NULL OR gather_max_per_order <= 0")
 	}
 
+	// 二战风云：战斗/经济数值补列（征服扣民心、掠夺扣民心、军官工资、伤兵恢复系数）
+	// ★ 用户反馈「征服民心每次 -5 太多」「军官是消耗黄金的，黄金现在消耗 0」「恢复伤兵需要黄金」。
+	//   老行该列是 NULL/0 时统一回填默认值（这几个值 0 都无意义：0 = 不扣民心 / 军官免费 / 恢复免费）。
+	if db.Migrator().HasTable("ezfy_cfg_limit") {
+		addLimitCol := func(col string, def int) {
+			d := fmt.Sprintf("%d", def)
+			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
+				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
+			}
+			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d +
+				" WHERE " + col + " IS NULL OR " + col + " <= 0")
+		}
+		addLimitCol("conquer_feelings_max", 2)
+		addLimitCol("loot_feelings", 2)
+		addLimitCol("officer_salary_per_level", 2)
+		addLimitCol("wound_heal_divisor", 100)
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")

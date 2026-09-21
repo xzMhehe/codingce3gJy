@@ -21,13 +21,29 @@ import (
 
 // AdminEzfyBuildLimitGet GET /admin/ezfy-build-limit
 func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0, GatherMaxPerOrder: ezfyGatherMaxDefault}
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+		GatherMaxPerOrder: ezfyGatherMaxDefault,
+		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
 	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 50（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
+	}
+	// ★ 战斗/经济数值兜底：这几个 0 同样无意义（0 = 不扣民心 / 军官免费 / 恢复免费）
+	if lim.ConquerFeelingsMax <= 0 {
+		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
+	}
+	if lim.LootFeelings <= 0 {
+		lim.LootFeelings = ezfyLootFeelingsDef
+	}
+	if lim.OfficerSalaryPerLevel <= 0 {
+		lim.OfficerSalaryPerLevel = ezfyOfficerSalaryDef
+	}
+	if lim.WoundHealDivisor <= 0 {
+		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
 	}
 	resp.OK(c, lim)
 }
@@ -38,18 +54,25 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（默认，符合用户规则）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax       *int `json:"military_max"`
-		ResourceMax       *int `json:"resource_max"`
-		HouseMax          *int `json:"house_max"`
-		FactoryMax        *int `json:"factory_max"`
-		NoticeHomeCount   *int `json:"notice_home_count"`
-		GatherMaxPerOrder *int `json:"gather_max_per_order"`
+		MilitaryMax        *int `json:"military_max"`
+		ResourceMax        *int `json:"resource_max"`
+		HouseMax           *int `json:"house_max"`
+		FactoryMax         *int `json:"factory_max"`
+		NoticeHomeCount    *int `json:"notice_home_count"`
+		GatherMaxPerOrder  *int `json:"gather_max_per_order"`
+		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
+		LootFeelings       *int `json:"loot_feelings"`
+		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
+		WoundHealDivisor   *int `json:"wound_heal_divisor"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0, GatherMaxPerOrder: ezfyGatherMaxDefault}
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+		GatherMaxPerOrder: ezfyGatherMaxDefault,
+		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -111,6 +134,43 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 集结令上限兜底：老数据可能是 0（该列刚加），保存时归一化到默认 50
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
+	}
+	// ★ 战斗/经济数值（用户要求「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
+	//   这几个值 0 无意义，所以只接受 >= 1。
+	setPos := func(v *int, dst *int, name string) bool {
+		if v == nil {
+			return true
+		}
+		if *v < 1 {
+			resp.ParamError(c, name+"至少为 1")
+			return false
+		}
+		*dst = *v
+		return true
+	}
+	if !setPos(in.ConquerFeelingsMax, &lim.ConquerFeelingsMax, "征服单次扣民心") {
+		return
+	}
+	if !setPos(in.LootFeelings, &lim.LootFeelings, "掠夺单次扣民心") {
+		return
+	}
+	if !setPos(in.OfficerSalaryPerLevel, &lim.OfficerSalaryPerLevel, "军官工资系数") {
+		return
+	}
+	if !setPos(in.WoundHealDivisor, &lim.WoundHealDivisor, "伤兵恢复系数") {
+		return
+	}
+	if lim.ConquerFeelingsMax <= 0 {
+		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
+	}
+	if lim.LootFeelings <= 0 {
+		lim.LootFeelings = ezfyLootFeelingsDef
+	}
+	if lim.OfficerSalaryPerLevel <= 0 {
+		lim.OfficerSalaryPerLevel = ezfyOfficerSalaryDef
+	}
+	if lim.WoundHealDivisor <= 0 {
+		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
 	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {

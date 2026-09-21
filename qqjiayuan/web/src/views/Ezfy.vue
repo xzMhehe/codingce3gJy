@@ -664,6 +664,11 @@
             节日活动·造兵打折：资源消耗 -{{ troopsData.train_discount }}%（下方为折后价）
           </div>
           <div class="old-line">人口:{{ troopsData.pop }} 空闲:{{ freePop }} | 围墙:{{ troopsData.wall_level }}级</div>
+          <!-- ★ 空闲人口 = 人口 - 占用；占用只算「训练中、还没出厂」的新兵。
+               已训练完成的部队（含出征在外的）不占人口位置 —— 用户 2026-09-21 明确的规则 -->
+          <div class="old-line gray" v-if="popUsed > 0">
+            训练中占用人口：{{ popUsed }}（出厂即归还，已训练完成的部队不占人口）
+          </div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
             <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
             消耗: {{ resShort.food }}{{ t.cost.food }} {{ resShort.steel }}{{ t.cost.steel }} {{ resShort.oil }}{{ t.cost.oil }} {{ resShort.rare }}{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
@@ -789,34 +794,44 @@
               <td>{{ orderStatusText(o) }}</td>
               <td>
                 <a href="javascript:;" @click="openOrder(o)">[详情]</a>
-                <a v-if="o.order_type === 7 && (o.status === 0 || o.status === 1)" class="red"
-                   href="javascript:;" @click="doRecall(o)">[召回]</a>
+                <!-- ★ 用户要求「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
+                <a v-if="o.status === 0 || o.status === 1" class="red"
+                   href="javascript:;" @click="doRecall(o)">[取消]</a>
               </td>
             </tr>
           </table>
           <div class="old-line" v-if="!orders.length">(暂无出征部队)</div>
           <br/>
           <div class="panel-title">伤兵营</div>
+          <div class="old-line gray">伤兵在营中<b>不消耗粮食</b>；恢复出厂需要黄金（按兵种造价折算）。</div>
           <table>
-            <tr><th>兵种</th><th>数量</th><th>操作</th></tr>
+            <tr><th>兵种</th><th>数量</th><th>恢复费用</th><th>操作</th></tr>
             <tr v-for="w in woundedList(0)" :key="'w' + w.id">
               <td>{{ w.name }}</td><td>{{ w.count }}</td>
+              <td>{{ fmtN((w.heal_gold || 0) * w.count) }} {{ resNames.gold }}</td>
               <td><a href="javascript:;" @click="doRecover(w)">[恢复]</a></td>
             </tr>
           </table>
           <div class="old-line" v-if="!woundedList(0).length">(伤兵营无伤兵)</div>
-          <div class="old-line" v-if="woundedList(0).length"><button @click="doRecoverAll(0)">[全部恢复]</button></div>
+          <div class="old-line" v-if="woundedList(0).length">
+            合计 <b>{{ fmtN(woundedHealCost(0)) }}</b> {{ resNames.gold }}
+            <button @click="doRecoverAll(0)">[全部恢复]</button>
+          </div>
           <br/>
           <div class="panel-title">逃兵营</div>
           <table>
-            <tr><th>兵种</th><th>数量</th><th>操作</th></tr>
+            <tr><th>兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
             <tr v-for="w in woundedList(1)" :key="'dsw' + w.id">
               <td>{{ w.name }}</td><td>{{ w.count }}</td>
+              <td>{{ fmtN((w.heal_gold || 0) * w.count) }} {{ resNames.gold }}</td>
               <td><a href="javascript:;" @click="doRecover(w)">[召回]</a></td>
             </tr>
           </table>
           <div class="old-line" v-if="!woundedList(1).length">(逃兵营无逃兵)</div>
-          <div class="old-line" v-if="woundedList(1).length"><button @click="doRecoverAll(1)">[全部召回]</button></div>
+          <div class="old-line" v-if="woundedList(1).length">
+            合计 <b>{{ fmtN(woundedHealCost(1)) }}</b> {{ resNames.gold }}
+            <button @click="doRecoverAll(1)">[全部召回]</button>
+          </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1137,27 +1152,42 @@
       </template>
 
       <!-- ============ 出征确认(orderpre) ============ -->
+      <!-- ★ 用户反馈「出征页面看着好乱」→ 按 ①兵力 ②军官 ③集结令 ④随军资源 ⑤宿营 ⑥计算 分区，
+           每区一个小标题，输入项改成两列网格，整体高度比原来短很多。 -->
       <template v-else-if="cur === 'orderpre'">
         <div class="panel" v-if="selCell">
+          <div class="panel-title">出征确认 · {{ orderNames[orderType] }}</div>
           <div class="old-line">
-            {{ selCell.name }}<span v-if="selCell.level">({{ selCell.level }})</span> ({{ selCell.x }},{{ selCell.y }})
+            目标：<b>{{ selCell.name }}</b><span v-if="selCell.level">({{ selCell.level }}级)</span>
+            ({{ selCell.x }},{{ selCell.y }})
           </div>
-          <div class="old-line">出征命令：{{ orderNames[orderType] }}</div>
-          <div class="old-line">
-            集结令：{{ gatherCount }}个
-            <!-- ★ 用户要求：不要下拉，玩家自己填写数字 -->
-            <input type="number" min="0" :max="orderCapMax" v-model.number="orderGather"
-                   :disabled="gatherCount <= 0" @change="onGatherChange" style="width:80px"/>
-            个
-            <span class="gray">（每个 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个；背包里有 {{ gatherCount }} 个）</span>
-            <br/>
-            <span v-if="orderCalc" :class="orderCalc.troop_over_cap ? 'red' : 'green'">
-              本次出兵 {{ fmtN(orderCalc.troop_total) }} / 上限 {{ fmtN(orderCalc.troop_cap) }}
+          <hr/>
+
+          <!-- ① 兵力 -->
+          <div class="of-sec">① 选择兵力 <span class="of-hint">（左列填出征数量，右侧灰字是城内现有）</span></div>
+          <div class="of-grid of-grid-troop">
+            <div class="of-cell" v-for="t in trainCfgs" :key="'at' + t.id"
+                 :class="{ 'of-off': troopCount(t.id) <= 0 }"
+                 :title="t.name + '（现有 ' + fmtN(troopCount(t.id)) + '）'">
+              <span class="of-name">{{ t.name }}</span>
+              <input type="number" min="0" :max="troopCount(t.id)"
+                     v-model="orderTroops[t.id]"
+                     placeholder="0"
+                     :disabled="troopCount(t.id) <= 0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(troopCount(t.id)) }}</span>
+            </div>
+          </div>
+          <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
+          <div class="old-line" v-if="orderCalc">
+            <span :class="orderCalc.troop_over_cap ? 'red' : 'green'">
+              本次出兵 <b>{{ fmtN(orderCalc.troop_total) }}</b> / 上限 <b>{{ fmtN(orderCalc.troop_cap) }}</b>
               <template v-if="orderCalc.troop_over_cap">—— 超出上限，请减少兵力或加用集结令</template>
             </span>
           </div>
+
+          <!-- ② 军官 -->
+          <div class="of-sec">② 指挥军官</div>
           <div class="old-line">
-            指挥军官：
             <select v-model="orderOfficer">
               <option value="0">未指定</option>
               <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
@@ -1169,55 +1199,77 @@
             <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
             <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
             <span v-else-if="orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
-            <br/>
-            <span v-if="curOfficerBonus" class="green">军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
+            <span v-if="curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
             <span v-if="!onDutyOfficers.length" class="gray">(暂无可用军官, 可前往军校招募)</span>
           </div>
+
+          <!-- ③ 集结令 -->
+          <div class="of-sec">③ 出征集结令</div>
           <div class="old-line">
-            <div v-for="t in trainCfgs" :key="'at' + t.id">
-              {{ t.name }}:<input type="number" min="0" :max="troopCount(t.id)"
-                                  v-model="orderTroops[t.id]"
-                                  :placeholder="'0~' + troopCount(t.id)"
-                                  :disabled="troopCount(t.id) <= 0" style="width:90px"/>
-            </div>
-            <span v-if="!attackTroops.length" class="red">城内无可出征部队</span>
+            使用
+            <input type="number" min="0" :max="gatherMax" v-model.number="orderGather"
+                   :disabled="gatherCount <= 0" @change="onGatherChange" style="width:80px"/>
+            个
+            <span class="gray">（背包里有 {{ gatherCount }} 个）</span>
           </div>
-          <div class="old-line">
-            <div>携带资源：</div>
-            <div>{{ resNames.gold }}：<input v-model="trGold" type="number" :placeholder="'0~' + city.gold" style="width:90px"/></div>
-            <div>{{ resNames.food }}：<input v-model="trFood" type="number" :placeholder="'0~' + city.food" style="width:90px"/></div>
-            <div>{{ resNames.steel }}：<input v-model="trSteel" type="number" :placeholder="'0~' + city.steel" style="width:90px"/></div>
-            <div>{{ resNames.oil }}：<input v-model="trOil" type="number" :placeholder="'0~' + city.oil" style="width:90px"/></div>
-            <div>{{ resNames.rare }}：<input v-model="trRare" type="number" :placeholder="'0~' + city.rare" style="width:90px"/></div>
-            <span class="gray" v-if="orderType === 5">
-              (运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
-              可以不带队军官；送完部队会返回出发城市)
-            </span>
-            <span class="gray" v-else-if="orderType === 7">(派遣必须选择带队军官)</span>
-            <span class="gray" v-else-if="orderType === 8">
-              (派遣：把自己的部队 / 军官 / 随军资源送到<b>自己的另一座城市</b>；必须带部队，
-              能带多少资源看<b>负重</b>，军官会随军调往目标城市)
-            </span>
+          <!-- ★ 用户要求：说明文字放到输入框下面，别挤在同一行 -->
+          <div class="old-line gray">
+            每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
+            司令部上限（含指挥艺术科技）与集结令加成<b>叠加</b>。
           </div>
+
+          <!-- ④ 随军资源 -->
+          <div class="of-sec">④ 随军资源 <span class="of-hint">（右侧灰字是城内现有）</span></div>
+          <div class="of-grid of-grid-res">
+            <div class="of-cell"><span class="of-name">{{ resNames.gold }}</span>
+              <input v-model="trGold" type="number" placeholder="0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(city.gold) }}</span></div>
+            <div class="of-cell"><span class="of-name">{{ resNames.food }}</span>
+              <input v-model="trFood" type="number" placeholder="0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(city.food) }}</span></div>
+            <div class="of-cell"><span class="of-name">{{ resNames.steel }}</span>
+              <input v-model="trSteel" type="number" placeholder="0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(city.steel) }}</span></div>
+            <div class="of-cell"><span class="of-name">{{ resNames.oil }}</span>
+              <input v-model="trOil" type="number" placeholder="0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(city.oil) }}</span></div>
+            <div class="of-cell"><span class="of-name">{{ resNames.rare }}</span>
+              <input v-model="trRare" type="number" placeholder="0" class="of-num"/>
+              <span class="of-avail">{{ fmtN(city.rare) }}</span></div>
+          </div>
+          <div class="old-line gray" v-if="orderType === 5">
+            运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
+            可以不带队军官；送完部队会返回出发城市。
+          </div>
+          <div class="old-line gray" v-else-if="orderType === 7">派遣必须选择带队军官。</div>
+          <div class="old-line gray" v-else-if="orderType === 8">
+            派遣：把自己的部队 / 军官 / 随军资源送到<b>自己的另一座城市</b>；必须带部队，
+            能带多少资源看<b>负重</b>，军官会随军调往目标城市。
+          </div>
+
+          <!-- ⑤ 宿营 -->
+          <div class="of-sec">⑤ 宿营（抵达后停留，可选）</div>
           <div class="old-line">
-            宿营：
             <input v-model="waitH" type="number" min="0" max="24" style="width:50px"/> 时
             <input v-model="waitM" type="number" min="0" max="60" style="width:50px"/> 分
-            (最多宿营24小时)
+            <span class="gray">(最多宿营 24 小时)</span>
           </div>
+
+          <!-- ⑥ 计算 / 出征 -->
+          <div class="of-sec">⑥ 消耗预览</div>
           <div class="old-line">
-            出征前请先计算消耗，否则可能无法出征成功
-            <div>
-              <button @click="doCalc">[计算]</button>
-              油耗：<span class="orange">{{ orderCalc ? orderCalc.oil_used : '' }}</span>
-              /负重：<span class="orange">{{ orderCalc ? orderCalc.carry : '' }}</span><br/>
-              耗时：<span class="orange">{{ orderCalc ? orderCalc.need_time : '' }}</span>
-              <span v-if="orderCalc" class="gray">(单程{{ orderCalc.travel_time }}<template v-if="orderCalc.wait_min">, 宿营{{ orderCalc.wait_min }}分</template>)</span>
-            </div>
-            <div v-if="orderCalc && !orderCalc.oil_enough" class="red">
-              {{ resNames.oil }}不足：需要{{ orderCalc.oil_used }}，当前只有{{ orderCalc.oil_have }}
-            </div>
+            <button @click="doCalc">[计算]</button>
+            油耗：<span class="orange">{{ orderCalc ? orderCalc.oil_used : '—' }}</span>
+            &nbsp;/&nbsp;负重：<span class="orange">{{ orderCalc ? orderCalc.carry : '—' }}</span>
+            &nbsp;/&nbsp;耗时：<span class="orange">{{ orderCalc ? orderCalc.need_time : '—' }}</span>
+            <span v-if="orderCalc" class="gray">
+              (单程{{ orderCalc.travel_time }}<template v-if="orderCalc.wait_min">, 宿营{{ orderCalc.wait_min }}分</template>)
+            </span>
           </div>
+          <div class="old-line red" v-if="orderCalc && !orderCalc.oil_enough">
+            {{ resNames.oil }}不足：需要{{ orderCalc.oil_used }}，当前只有{{ orderCalc.oil_have }}
+          </div>
+          <div class="old-line gray">出征前请先点 [计算] 确认油耗与负重，否则可能无法出征成功。</div>
           <hr/>
           <div class="old-line">
             <button @click="doOrder()">[出征]</button>
@@ -1254,8 +1306,8 @@
           <hr/>
           <div class="old-line">
             <a href="javascript:;" @click="go('hq')">[指挥(司令部)]</a>
-            <a v-if="curOrder.order_type === 7 && (curOrder.status === 0 || curOrder.status === 1)"
-               class="red" href="javascript:;" @click="doRecall(curOrder)">[召回]</a>
+            <a v-if="curOrder.status === 0 || curOrder.status === 1"
+               class="red" href="javascript:;" @click="doRecall(curOrder)">[取消出征]</a>
             <a v-if="curOrder.order_type === 7 && curOrder.status === 1"
                href="javascript:;" @click="go('wilds')">[采集]</a>
             <a v-if="curOrder.report_id" href="javascript:;" @click="jumpReport(curOrder.report_id)">[查看战报]</a>
@@ -1278,8 +1330,9 @@
               <td>{{ o.arrive_text }}</td>
               <td>
                 <a href="javascript:;" @click="openOrder(o)">[查看]</a>
-                <a v-if="o.order_type === 7 && (o.status === 0 || o.status === 1)" class="red"
-                   href="javascript:;" @click="doRecall(o)">[召回]</a>
+                <!-- ★ 出征队列取消：不限命令类型，行进中(0)/驻守中(1)都能取消 -->
+                <a v-if="o.status === 0 || o.status === 1" class="red"
+                   href="javascript:;" @click="doRecall(o)">[取消]</a>
               </td>
             </tr>
           </table>
@@ -2142,7 +2195,14 @@
             军校{{ officerData.academy_level }}级, 参谋部{{ officerData.staff_level }}级
             (容纳{{ officerData.capacity }}名军官), 当前{{ officerData.used }}名
           </div>
-          <div class="old-line">{{ resNames.gold }}:{{ officerData.gold }}</div>
+          <div class="old-line">
+            {{ resNames.gold }}:{{ fmtN(officerData.gold) }}
+            <!-- ★ 用户要求「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
+            <span class="gray" v-if="officerData.salary">
+              （军官工资 {{ fmtN(officerData.salary) }} {{ resNames.gold }}/小时，每级 {{ officerData.salary_per_level }} 金/小时）
+            </span>
+            <span class="gray" v-else>（暂无军官，不产生工资）</span>
+          </div>
           <hr/>
           <template v-for="o in myOfficers">
             <div class="old-line" :key="'of' + o.id">
@@ -2515,6 +2575,11 @@ export default {
       buildings: [],
       buildingPool: [],
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
+      // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
+      popUsed: 0,
+      // 与 popUsed 同一次响应里的「人口」，保证「空闲 = 人口 - 占用」恒成立
+      // （分开取 city.pop / troopsData.pop 会出现 1000-996=5 这种对不上的显示）
+      cityPop: 0,
       techsData: { techs: [], academy: 0 },
       wildlands: [],
       occupies: [],
@@ -2667,8 +2732,12 @@ export default {
       waitH: 0,
       waitM: 0,
       orderCalc: null,
-      // ★ 本次出征使用几个集结令（0~10）
+      // ★ 本次出征使用几个集结令（数量由管理端配置决定，不写死）
       orderGather: 0,
+      // ★ 集结令配置：随 /view 一起下发（一进页面就是准确值）。
+      //   原来只有 /order/preview 才返回 gather_max，前端在没点[计算]前兜底写死 50，
+      //   结果管理端配了 999 也只能填 50 —— 用户反馈的 bug。
+      gatherCfg: { max: 0, per: 0, have: 0 },
       jumpX: '',
       jumpY: '',
       mapStars: [],
@@ -2724,8 +2793,12 @@ export default {
       return this.$store.state.user ? this.$store.state.user.id : 0
     },
     freePop () {
-      const used = this.troopsData.pop_used || 0
-      const v = this.city.pop - used
+      // ★ 占用人口由后端统一算：只有「训练中、还没出厂」的新兵占人口。
+      //   已训练完成的部队（城内驻军 / 出征在外）都不占人口位置（用户 2026-09-21 的规则）。
+      //   原来只减 troopsData.pop_used（且只有进过「军队」页才有值）→ 首页空闲人口会显示成满人口。
+      const used = this.popUsed || 0
+      const pop = this.cityPop || this.city.pop || 0
+      const v = pop - used
       return v > 0 ? v : 0
     },
     queueNames () {
@@ -2787,22 +2860,25 @@ export default {
       const r = this.wareRatio
       return (parseInt(r.food) || 0) + (parseInt(r.steel) || 0) + (parseInt(r.oil) || 0) + (parseInt(r.rare) || 0)
     },
-    // 集结令数量(背包里查)
+    // 集结令数量(背包里查；背包还没加载时用 /view 下发的 gather_have 兜底)
     gatherCount () {
       const it = (this.bagItems || []).find(x => x.name === '集结令')
-      return it ? it.count : 0
+      const n = it ? it.count : 0
+      return n > 0 ? n : (this.gatherCfg.have || 0)
     },
-    // ★ 集结令相关：单次上限由后端 /order/preview 下发（读 ezfy_cfg_limit.gather_max_per_order，
-    //   管理端「建筑上限配置」页可维护，默认 50），同时不能超过背包里实际有的数量。
-    //   接口还没回来时用兜底 50，避免下拉框闪成 0 个。
+    // ★ 集结令单次上限：以 /view 下发的 gatherCfg.max 为准（读 ezfy_cfg_limit.gather_max_per_order，
+    //   管理端「建筑上限配置」页可维护，默认 50）。
+    //   ⚠️ 这里**不能**在没有数据时直接返回 50 去夹输入值 —— 那正是「配了 999 只能用 50」的 bug：
+    //   进页面时 orderCalc 还是 null，一改数字就被夹回 50，后面再点[计算]也救不回来了。
     orderCapMax () {
-      const m = this.orderCalc && this.orderCalc.gather_max
+      const m = this.gatherCfg.max || (this.orderCalc && this.orderCalc.gather_max)
       return m > 0 ? m : 50
     },
+    // 真正可用的上限 = min(管理端上限, 背包实际持有量)
     gatherMax () { return Math.min(this.orderCapMax, this.gatherCount) },
     // ★ 每个集结令提升的出征上限，同样以接口下发为准（读 ezfy_cfg_item.param1，缺省 10 万）
     orderCapPer () {
-      const p = this.orderCalc && this.orderCalc.gather_per
+      const p = this.gatherCfg.per || (this.orderCalc && this.orderCalc.gather_per)
       return p > 0 ? p : 100000
     },
     defenceCfgs () {
@@ -3089,7 +3165,7 @@ export default {
       if (!await this.ask(tip)) return
       api.post('/games/ezfy/profile/rename', { nickname: name }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.renameEditing = false
           this.loadSelfInfo()
           this.load()
@@ -3106,7 +3182,7 @@ export default {
       if (!await this.ask(tip)) return
       api.post('/games/ezfy/profile/camp', { camp: camp }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadSelfInfo()
           this.load()
         } else this.notify(r.msg)
@@ -3150,13 +3226,19 @@ export default {
       else if (t === 'notices') this.loadNotices()
       else if (t === 'wilds') this.loadWilds()
       else if (t === 'orderpre') {
-        // ★ 必须一起加载背包：出征页的「集结令」下拉要读 bagItems，
-        //   只进背包页才 loadBag 的话，出征页会永远显示「0个」且下拉被禁用。
-        this.orderCalc = null
-        this.orderGather = 0
+        // ★ 必须一起加载背包：出征页的「集结令」要读 bagItems，
+        //   只进背包页才 loadBag 的话，出征页会永远显示「0个」且输入框被禁用。
+        //
+        // ★ 用户反馈「出征还有上次留的数据」→ 每次进出征页都把上次填的东西清干净
+        //   （兵力/军官/携带资源/宿营/集结令），否则上一次的部队数量会残留，
+        //   很容易误发一支自己没打算派的队伍。
+        this.resetOrderForm()
         this.loadTroops()
         this.loadOnDutyOfficers()
         this.loadBag()
+        // 进来就先算一次：让「本次出兵 0 / 上限 N」和集结令上限立刻是准确值
+        // （原来要玩家自己点[计算]才会显示）
+        this.$nextTick(() => this.doCalc())
       }
       else if (t === 'acade') this.loadAcade()
       else if (t === 'wareset') this.loadWare()
@@ -3165,6 +3247,8 @@ export default {
       else if (t === 'activity') this.loadActivity()
       else if (t === 'info') this.loadSelfInfo()
       else if (t === 'factory') this.loadTroops()
+      // 城市状态页要显示「人口/空闲人口」，/view 才带 pop_used → 进页先拉一次
+      else if (t === 'citystatus') this.load()
     },
     // 节日活动
     loadActivity () {
@@ -3204,8 +3288,19 @@ export default {
           this.marching = d.marching
           this.occupying = d.occupying
           this.unreadReports = d.unread_reports
+          // ★ 占用人口随 /view 一起下发：首页/城市状态页的「空闲人口」不再依赖
+          //   「有没有进过军队页」（原来没进过就按 0 算，空闲人口显示成满人口）
+          this.popUsed = d.pop_used || 0
+          this.cityPop = d.city.pop || 0
           this.taxInput = d.city.tax_rate
           this.applyResNames(d.res_names)
+          // ★ 集结令配置（管理端可配，默认 50）：跟着 /view 一起下发，
+          //   这样一进页面（还没点[计算]）输入框的上限就是对的。
+          this.gatherCfg = {
+            max: d.gather_max > 0 ? d.gather_max : 0,
+            per: d.gather_per > 0 ? d.gather_per : 100000,
+            have: d.gather_have || 0
+          }
           // ★ 首页要显示「每日签到：已签到/签到」，但 /view 不下发 welfare。
           //   不补这一下，签到完回首页仍显示「签到」——用户反馈的 bug。
           if (this.cur === 'home') this.loadWelfare()
@@ -3234,6 +3329,9 @@ export default {
       return api.get('/games/ezfy/troops').then(r => {
         if (r.code === 0) {
           this.troopsData = r.data
+          // 占用人口（训练中；已训练完成的部队不占人口）
+          this.popUsed = r.data.pop_used || 0
+          this.cityPop = r.data.pop || 0
           if (r.data.cfgs.length && !this.trainSel) this.trainSel = null
           // 司令部配置表按兵种建键, 兵种数据后到时要补齐, 否则渲染会取到 undefined
           this.ensureTargetCfg()
@@ -3470,7 +3568,7 @@ export default {
     doCollectAll () {
       api.post('/games/ezfy/wild/collect-all', {}).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadDynamics()
         } else this.notify(r.msg)
       })
@@ -3480,7 +3578,7 @@ export default {
       if (!await this.ask('确定收获所有采集部队吗？（只把产出装进部队，资源要「召回」才会运回城里）')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadDynamics()
           this.load()
         } else this.notify(r.msg)
@@ -3491,7 +3589,7 @@ export default {
       if (!await this.ask('确定召回所有采集部队吗？部队返航到达后，待带回的资源才会入库。')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadDynamics()
           this.load()
         } else this.notify(r.msg)
@@ -3709,7 +3807,7 @@ export default {
       if (!await this.ask('确认使用【' + label + '】×1 ' + where + '吗？（当前持有 ' + have + ' 个）')) return
       api.post('/games/ezfy/city/move', body).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.load()
           this.loadMoveInfo()
         } else this.notify(r.msg || '迁城失败')
@@ -3758,7 +3856,7 @@ export default {
     doSpeedTrainAll () {
       api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.load()
         } else this.notify(r.msg)
       })
@@ -3767,7 +3865,7 @@ export default {
       if (!await this.ask('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
       api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.load()
         } else this.notify(r.msg)
       })
@@ -3869,7 +3967,7 @@ export default {
       if (!ok) return
       api.post('/games/ezfy/city/destroy', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           // 摧毁的是当前城时后端会自动切到别的城 → 整体重载
           this.load()
           this.loadTroops()
@@ -4083,8 +4181,14 @@ export default {
         if (item) item.is_read = 1
       })
     },
-    doRecall (o) {
-      api.post('/games/ezfy/order/recall', { order_id: o.id }).then(r => this.alert(r, '部队已召回'))
+    // ★ 取消出征命令（用户要求「出征队列可以取消」）
+    //   不限命令类型：行进中(0)/驻守中(1)都能取消，部队原路返回出发城市；
+    //   运输/派遣带出去的随军资源也会随部队一起带回来。
+    async doRecall (o) {
+      const name = (o && o.type_name) || '该命令'
+      if (!await this.ask('确定取消「' + name + '」吗？部队将原路返回出发城市。')) return
+      api.post('/games/ezfy/order/recall', { order_id: o.id })
+        .then(r => this.alert(r, name + '已取消', () => { this.loadOrders(); this.loadDynamics() }))
     },
     orderStatusText (o) {
       if (o.status === 0) return '行进中 ' + this.remain(o.arrive_time)
@@ -4239,13 +4343,29 @@ export default {
         else this.alert(r, '计算失败')
       })
     },
+    // ★ 清空出征表单（用户反馈「出征还有上次留的数据」）
+    //   每次进出征页都重置，避免上次的兵力/资源被误当成这次的出征内容。
+    resetOrderForm () {
+      this.orderTroops = {}
+      this.orderOfficer = '0'
+      this.orderGather = 0
+      this.orderCalc = null
+      this.trFood = 0
+      this.trSteel = 0
+      this.trOil = 0
+      this.trRare = 0
+      this.trGold = 0
+      this.waitH = 0
+      this.waitM = 0
+    },
     // 改集结令数量后立刻重算，让「本次出兵 / 上限」即时刷新
-    // ★ 手填数字：这里把输入夹到 [0, 单次上限] 且不超过背包实际持有量
+    // ★ 手填数字：夹到 [0, 可用上限]，可用上限 = min(管理端配置, 背包持有量)。
+    //   注意上限取自 orderCapMax（跟着 /view 下发），不再在没数据时硬夹 50。
     onGatherChange () {
       let n = parseInt(this.orderGather) || 0
-      if (n < 0) n = 0
-      if (n > this.orderCapMax) n = this.orderCapMax
-      if (n > this.gatherCount) n = this.gatherCount
+      if (isNaN(n) || n < 0) n = 0
+      const cap = this.gatherMax
+      if (n > cap) n = cap
       this.orderGather = n
       this.doCalc()
     },
@@ -4253,7 +4373,7 @@ export default {
       if (!this.selCell) return
       api.post('/games/ezfy/order', this.orderBody()).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.orderTroops = {}
           this.orderOfficer = '0'
           this.orderCalc = null
@@ -4298,7 +4418,7 @@ export default {
         rare: parseInt(this.wareRatio.rare) || 0
       }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadWare()
         } else this.notify(r.msg)
       })
@@ -4556,6 +4676,10 @@ export default {
     woundedList (type) {
       return (this.troopsData.wounded || []).filter(w => w.type === type)
     },
+    // ★ 恢复/召回全部伤兵需要的黄金合计（单价由后端下发 heal_gold）
+    woundedHealCost (type) {
+      return this.woundedList(type).reduce((s, w) => s + (w.heal_gold || 0) * (w.count || 0), 0)
+    },
     troopTypeName (t) {
       return { 1: '海军', 2: '陆军', 3: '空军', 4: '城防' }[t] || '部队'
     },
@@ -4731,7 +4855,7 @@ export default {
       if (!await this.ask('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每日次数）')) return
       api.post('/games/ezfy/acade/recruit/ticket', {}).then(r => {
         if (r.code === 0) {
-          this.notify(r.data.msg)
+          this.notify(r.msg)
           this.loadAcade()
           this.loadBag()
         } else this.notify(r.msg)
@@ -5018,6 +5142,74 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0 2px;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
+/* ★ 出征确认页(orderpre)分区：① ② ③ … 小标题 + 等宽列网格。
+   原来所有内容都是一串 .old-line 平铺，兵种/资源/宿营/计算混在一起，用户反馈「看着好乱」。
+   ★ 用户反馈「兵力还是竖着展示，整齐一点」→ 兵力改成 **CSS Grid 等宽列**：
+     - 用 grid（不是 flex-wrap）：同一列的宽度完全一致，纵向也对得齐；
+     - minmax 让窗口变窄时自动减列（窄屏也不会退化成一兵种一行）；
+     - 名称超长用省略号（完整名字放 title），输入框固定宽度，**现有数量独立一列右对齐** ——
+       原来是「输入框里塞占位符 0~59108」，框一窄就被截成 0-0，很难看。
+   注意：.of-cell 仍保持 .old-line 的 2px 上下 padding，整页行距节奏不变。 */
+.ezfy-page .of-sec {
+  font-size: 16px;
+  font-weight: bold;
+  color: #2f4156;
+  margin: 8px 0 2px;
+  padding-bottom: 1px;
+  border-bottom: 1px dashed #d8d5cc;
+}
+/* 分区标题里的补充说明（小一号、不抢视觉） */
+.ezfy-page .of-sec .of-hint { font-size: 14px; font-weight: normal; color: #8a8a8a; }
+.ezfy-page .of-grid {
+  display: grid;
+  gap: 0 16px;
+  align-items: center;
+}
+/* 兵力：等宽列，窄屏自动减列。
+   ★ 列宽取 330px：正文 17px 下最长的兵种名（「埃塞克斯级航空母舰」9 个汉字 ≈153px）
+     要能完整显示，不能截成「埃塞克…」——那样玩家根本认不出是哪个兵种。
+     330 = 名称定宽 9.6em(163) + 输入 70 + 现有 4.4em(75) + 间距 16。 */
+.ezfy-page .of-grid-troop { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+/* 随军资源：名称只有 2 个字，列可以窄一点 */
+.ezfy-page .of-grid-res { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.ezfy-page .of-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  line-height: 24px;
+  min-width: 0;
+}
+.ezfy-page .of-cell .of-name {
+  /* ★ 用户要求「文字左最起，按照第一列兵种那块」：
+     兵种名**定宽**（不再随名字长短伸缩），这样每行的输入框都从同一个 x 开始，
+     三列在所有行里纵向严格对齐 —— 这才是「左起对齐」。 */
+  flex: 0 0 auto;
+  width: 9.6em;      /* 放得下最长兵种名「埃塞克斯级航空母舰」= 9 个汉字 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: #555;
+}
+.ezfy-page .of-cell input.of-num {
+  flex: 0 0 auto;
+  width: 70px;
+  /* ★ 用户要求「二列三列文字右对齐」：第 2 列（输入框里的数字）右对齐 */
+  text-align: right;
+}
+/* 第 3 列「现有数量」：紧跟输入框、左起（不再 margin-left:auto 推到格子最右），
+   因为输入框是定宽，所以这一列在所有行也从同一个 x 开始，自然对齐 */
+.ezfy-page .of-cell .of-avail {
+  flex: 0 0 auto;
+  min-width: 4.4em;
+  text-align: left;
+  color: #8a8a8a;
+}
+/* 资源名只有 2 个字，定宽窄一点，别浪费横向空间 */
+.ezfy-page .of-grid-res .of-cell .of-name { width: 4em; }
+.ezfy-page .of-cell.of-off .of-name,
+.ezfy-page .of-cell.of-off .of-avail { color: #b3b3b3; }
 /* ★ 首页【置顶公告】区：公告行本身和其它 .old-line 一样是 28px 高，问题出在**上下留白不等**。
    上方那 4px 额外留白已由 .top-nav 去掉底部 padding 解决（见上），
    这里只需给下方补 2px，让公告行与上一行、下一行的留白相等。

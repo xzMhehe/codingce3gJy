@@ -39,10 +39,6 @@ const (
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
 	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
-	// ★ 征服玩家城市时单次最多打掉多少民心。
-	//   原来 = 幸存兵力/2000（大兵团一次就能把 80 民心清零 → 一次征服直接占领），
-	//   现封顶 20 → 满民心(80~100)至少需要 4~5 次征服才能清零。
-	ezfyConquerFeelingsMax = 20
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -642,6 +638,11 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
 	gold := city.Gold
 	gold += min64(int64(float64(goldProd)*hours)+int64(float64(wildGold)*hours),
 		max64(0, city.GoldCap-gold))
+	// ★ 军官工资：每名军官每小时消耗「等级 × ezfy_cfg_limit.officer_salary_per_level」黄金。
+	//   与「军队耗粮」同一套懒结算口径 —— 按小时累计，离线期间照样扣。
+	//   用户反馈「军官是消耗黄金的，黄金现在消耗 0」，这就是那笔消耗。
+	officerSalary := int64(float64(h.officerSalaryPerHour(city.ID)) * hours)
+	gold -= officerSalary
 	if gold < 0 {
 		gold = 0
 	}
@@ -1113,10 +1114,11 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 			}
 		}
 	}
+	// 人口校验：只跟「正在训练、还没出厂」的兵比 —— 已训练完成的部队不占人口（用户规则）
 	popUsed := h.troopPop(city.ID)
 	popAvailable := city.Pop - popUsed
 	if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
-		return fmt.Sprintf("人口不足(当前居民%d, 军队占用%d, 可用%d); 可召集人口突破民居上限",
+		return fmt.Sprintf("人口不足(当前居民%d, 训练中已占用%d, 可用%d); 可召集人口突破民居上限",
 			city.Pop, popUsed, popAvailable)
 	}
 	food := cfg.Food * int64(count)
@@ -1186,14 +1188,74 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	return ""
 }
 
+// troopPop 城市「已占用人口」= **训练队列里还没出厂的新兵**占用的人口。
+//
+// ★ 用户规则（2026-09-21 明确）：兵确实用人口训练，但**不占用人口位置**。
+//   即：已训练完成的部队（城内驻军 / 出征在外 / 返航途中）一律不再占人口，
+//       只有「正在训练、还没出厂」的新兵临时占用，出厂进城的瞬间人口就归还。
+//
+// 背景（用户反馈的 bug）：原实现只统计 ezfy_city_troop（城内部队表），于是
+//   - 部队一出征就从城内部队表扣掉 → 占用人口瞬间归零、空闲人口变回满值；
+//   - 训练队列里的新兵出厂前完全不占人口。
+//   两处口径都不对：前者让「出征=凭空多出人口」，后者让「训练不吃人口」。
+//   统一成「只看训练队列」后，空闲人口 = 人口 - 训练中占用，语义唯一。
+//
+// 注意：城防设施(type 4)不占人口，它走「城防空间」那一套（见 defenceSpaceUsed），
+//       这里必须排除，否则城防会被重复计一次。
 func (h *EzfyHandler) troopPop(cityId uint) int64 {
+	var qs []model.EzfyTrainQueue
+	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
 	pop := int64(0)
-	for tid, count := range h.troopMap(cityId) {
-		if cfg := ezfyCfg.troop(tid); cfg != nil && cfg.Type != 4 {
-			pop += int64(cfg.Pop) * count
+	for _, q := range qs {
+		if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
+			pop += int64(cfg.Pop) * q.Count
 		}
 	}
 	return pop
+}
+
+// ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
+//
+//	= ceil(兵种总造价 / ezfy_cfg_limit.wound_heal_divisor)，最低 1 黄金。
+//
+// ★ 用户规则：「伤兵不参与消耗粮食、恢复伤兵需要黄金」——
+// 伤兵在营里不耗粮（它们不在 ezfy_city_troop 里，calcResource 的耗粮只算在编部队），
+// 但恢复出厂要花钱。用「总造价 / 系数」而不是固定值，是为了让高级兵种恢复更贵。
+func ezfyWoundHealGoldPer(troopId int) int64 {
+	t := ezfyCfg.troop(troopId)
+	if t == nil {
+		return 1
+	}
+	total := int64(t.Food) + int64(t.Steel) + int64(t.Oil) + int64(t.Rare)
+	d := int64(ezfyWoundHealDivisorCfg())
+	if d < 1 {
+		d = 1
+	}
+	g := (total + d - 1) / d
+	if g < 1 {
+		g = 1
+	}
+	return g
+}
+
+// officerSalaryPerHour 本城军官每小时工资合计（黄金）
+//
+// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资。
+// 俘虏(IsCaptive=1)不发工资（还没收编，不算自己人）。
+func (h *EzfyHandler) officerSalaryPerHour(cityId uint) int64 {
+	var total int64
+	per := int64(ezfyOfficerSalaryPerLvCfg())
+	for _, o := range h.officerList(cityId) {
+		if o.IsCaptive == 1 {
+			continue
+		}
+		lv := int64(o.Level)
+		if lv < 1 {
+			lv = 1
+		}
+		total += lv * per
+	}
+	return total
 }
 
 func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) string {
@@ -1204,6 +1266,13 @@ func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) s
 	if w.Count <= 0 {
 		return "兵营中没有该兵种"
 	}
+	h.calcResource(city)
+	cost := ezfyWoundHealGoldPer(w.TroopId) * w.Count
+	if city.Gold < cost {
+		return fmt.Sprintf("黄金不足: 恢复%d个需要%d黄金, 当前只有%d", w.Count, cost, city.Gold)
+	}
+	city.Gold -= cost
+	h.saveCityRes(city)
 	h.addTroop(city.ID, w.TroopId, w.Count)
 	h.DB.Delete(&w)
 	return ""
@@ -1215,6 +1284,19 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 	if len(list) == 0 {
 		return "兵营中空空如也"
 	}
+	h.calcResource(city)
+	var cost int64
+	for _, w := range list {
+		if w.Count <= 0 {
+			continue
+		}
+		cost += ezfyWoundHealGoldPer(w.TroopId) * w.Count
+	}
+	if city.Gold < cost {
+		return fmt.Sprintf("黄金不足: 全部恢复需要%d黄金, 当前只有%d", cost, city.Gold)
+	}
+	city.Gold -= cost
+	h.saveCityRes(city)
 	for _, w := range list {
 		if w.Count <= 0 {
 			continue
@@ -1887,9 +1969,20 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"wildlands":       wildViews,
 		"marching":        marching,
 		"occupying":       occupying,
+		// ★ 占用人口（只有训练中、还没出厂的新兵占）：首页/城市状态页的「空闲人口」直接用它算，
+		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
+		"pop_used": h.troopPop(city.ID),
 		"unread_reports":  unreadReports,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),
+		// ★ 集结令配置：跟着 /view 一起下发，前端一进页面就是准确值。
+		//   原来只有 /order/preview 才返回 gather_max，前端在「还没点[计算]」时
+		//   兜底写死 50 → 管理端配了 999 也只能填 50（用户反馈的 bug）。
+		"gather_max":  ezfyGatherMax(),
+		"gather_per":  ezfyGatherBonusPer(),
+		"gather_have": h.itemCount(uid, ezfyGatherItemID),
+		// ★ 军官工资（黄金/小时）：军官页直接展示，让玩家看得见钱花在哪
+		"officer_salary": h.officerSalaryPerHour(city.ID),
 	})
 }
 
