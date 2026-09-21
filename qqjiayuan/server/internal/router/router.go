@@ -74,6 +74,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	api := r.Group("/api")
 	{
 		// 公开接口
+		api.GET("/auth/captcha", authH.Captcha) // 注册图形验证码
 		api.POST("/auth/register", authH.Register)
 		api.POST("/auth/login", authH.Login)
 		api.GET("/auth/find", authH.FindAccount)

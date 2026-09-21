@@ -24,6 +24,12 @@
             <div class="text">确认密码:</div>
             <input type="password" v-model.trim="pass2" maxlength="20" required>
           </div>
+          <div class="item">
+            <div class="text">验证码:</div>
+            <input type="text" v-model.trim="form.captcha" maxlength="6" placeholder="输入计算结果" style="width:100px">
+            <img v-if="captchaImg" :src="captchaImg" alt="验证码" title="点击切换" style="height:25px;vertical-align:middle;cursor:pointer" @click="loadCaptcha">
+            <span style="color:red;font-size:12px;cursor:pointer" @click="loadCaptcha">看不清？点击切换</span>
+          </div>
           <button type="button" @click="doReg">提交注册</button>
         </div>
       </form>
@@ -44,13 +50,39 @@ import api from '../api'
 export default {
   name: 'Register',
   data () {
-    return { form: { nickname: '', gender: 1, password: '' }, pass2: '', err: '', okNo: '' }
+    return {
+      form: { nickname: '', gender: 1, password: '', captcha_id: '', captcha: '' },
+      pass2: '',
+      captchaImg: '',
+      err: '',
+      okNo: ''
+    }
+  },
+  created () {
+    this.loadCaptcha()
   },
   methods: {
+    // 拉一张新的算式验证码（点图片/点“看不清”换一张）
+    loadCaptcha () {
+      this.form.captcha = ''
+      api.get('/auth/captcha').then(r => {
+        if (r.code === 0) {
+          this.captchaImg = r.data.img
+          this.form.captcha_id = r.data.id
+        } else {
+          this.captchaImg = ''
+          this.err = r.msg
+        }
+      })
+    },
     doReg () {
       this.err = ''
       if (this.form.password !== this.pass2) {
         this.err = '两次输入的密码不一样哦'
+        return
+      }
+      if (!this.form.captcha) {
+        this.err = '请输入验证码（图片算式的计算结果）'
         return
       }
       api.post('/auth/register', this.form).then(r => {
@@ -58,6 +90,7 @@ export default {
           this.okNo = r.data.username
         } else {
           this.err = r.msg
+          this.loadCaptcha() // 验证码一次性，失败后换一张
         }
       })
     }
