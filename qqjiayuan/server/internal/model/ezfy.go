@@ -248,6 +248,10 @@ type EzfyCfgLimit struct {
 	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
 	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 100。
 	WoundHealDivisor int `gorm:"default:100" json:"wound_heal_divisor"`
+	// ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」→
+	//   商城单次购买数量上限（下限恒为 1）。默认 9999。
+	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
+	MallBuyMax int `gorm:"default:9999" json:"mall_buy_max"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

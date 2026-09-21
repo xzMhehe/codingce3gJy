@@ -82,6 +82,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 
 	// ★ 同盟成员集合：只有同盟(同一军团)玩家的城市才允许「运输 / 增援」。
 	//   前端据此决定这两个按钮显不显示（宣战中一律不显示）。
+	//   ★ 用户规则：「同盟玩家不能宣战」→ 前端也用它把 [宣战] 按钮藏掉。
 	allyUsers := map[uint]bool{}
 	var myMb model.EzfyCorpsMember
 	if err := h.DB.Where("user_id = ?", uid).First(&myMb).Error; err == nil && myMb.CorpsId > 0 {
@@ -90,6 +91,35 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		for _, m := range mbs {
 			if m.UserId != uid {
 				allyUsers[m.UserId] = true
+			}
+		}
+	}
+
+	// ★ 用户要求「点击地图的出征 → 看到玩家城市 → 点进去 → 展示玩家同盟名字」。
+	//   一次性把所有涉及玩家的军团名载入（避免逐格查库），格子上带 corps_name。
+	corpsNames := map[uint]string{}
+	if len(userIDs) > 0 {
+		var allMb []model.EzfyCorpsMember
+		h.DB.Where("user_id IN ?", userIDs).Find(&allMb)
+		cids := []uint{}
+		seenCid := map[uint]bool{}
+		for _, m := range allMb {
+			if m.CorpsId > 0 && !seenCid[m.CorpsId] {
+				seenCid[m.CorpsId] = true
+				cids = append(cids, m.CorpsId)
+			}
+		}
+		if len(cids) > 0 {
+			var cs []model.EzfyCorps
+			h.DB.Select("id, name").Where("id IN ?", cids).Find(&cs)
+			corpsName := map[uint]string{}
+			for _, cp := range cs {
+				corpsName[cp.ID] = cp.Name
+			}
+			for _, m := range allMb {
+				if m.CorpsId > 0 {
+					corpsNames[m.UserId] = corpsName[m.CorpsId]
+				}
 			}
 		}
 	}
@@ -121,6 +151,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid
 				cell["ally"] = allyUsers[c.UserID]
+				// ★ 该城主的同盟（军团）名；没加入军团时为空串，前端显示「无」
+				cell["corps_name"] = corpsNames[c.UserID]
 			} else {
 				kou := h.ezfyIsKouCity(x, y)
 				switch {

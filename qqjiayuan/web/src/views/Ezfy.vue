@@ -1119,6 +1119,14 @@
             {{ selCell.name }}
             <span v-if="selCell.owner">城主:{{ selCell.owner }}</span>
           </div>
+          <!-- ★ 玩家城：展示城主的同盟（军团）名 —— 没加入军团显示「无」 -->
+          <div class="old-line" v-if="selCell.area_type === 3">
+            同盟：
+            <b :class="selCell.corps_name ? (selCell.ally ? 'green' : '') : 'gray'">
+              {{ selCell.corps_name || '无' }}
+            </b>
+            <span v-if="selCell.ally" class="green">（你的同盟成员）</span>
+          </div>
           <hr/>
           <!-- ★ 玩家城：侦查/掠夺/征服 常显；掠夺/征服 需宣战生效(status=2)才可点，
                未宣战/待生效时置灰并提示，宣战入口只在没宣战(status=0)时出现 -->
@@ -1133,8 +1141,13 @@
               <a href="javascript:;" @click="pickOrder(5)">运输</a>&nbsp;
               <a href="javascript:;" @click="pickOrder(6)">增援</a>&nbsp;
             </template>
-            <a v-if="warStatus === 0" href="javascript:;" @click="declareWar">[宣战]</a>
-            <span v-if="warText" class="orange">{{ warText }}</span>
+            <!-- ★ 用户规则「同盟玩家不能宣战」→ 同盟成员不出现 [宣战] 入口，只给提示 -->
+            <template v-if="selCell.ally">
+              <span class="green">同盟成员之间不能宣战</span>
+            </template>
+            <a v-else-if="warStatus === 0" href="javascript:;" @click="declareWar">[宣战]</a>
+            <!-- 同盟时不再叠「未宣战」这类状态文案，避免读成「不能宣战未宣战」 -->
+            <span v-if="warText && !selCell.ally" class="orange">{{ warText }}</span>
           </div>
           <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)'">
             <a href="javascript:;" @click="pickOrder(1)">侦查</a>&nbsp;
@@ -1881,9 +1894,9 @@
               <span class="gray">/</span>
               {{ it.price_gold }}{{ resNames.gold }}
             </template>
-            <!-- ★ 标价 0 = 免费发放（集结令就是这种），直接写「免费」比写「0钻石」更不容易被误解 -->
-            <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond > 0 ? it.price_diamond + '钻石' : '免费' }}</span>
-            <span v-else>{{ it.price_gold > 0 ? it.price_gold + resNames.gold : '免费' }}</span>
+            <!-- ★ 标价 0 = 限时免费发放（集结令就是这种），写「限时免费」比写「0钻石」更不容易被误解 -->
+            <span v-else-if="it.is_diamond" class="orange">{{ it.price_diamond > 0 ? it.price_diamond + '钻石' : '限时免费' }}</span>
+            <span v-else>{{ it.price_gold > 0 ? it.price_gold + resNames.gold : '限时免费' }}</span>
             <!-- ★ 库存（管理端「数据管理 → 道具配置」维护，默认 100；-1 = 无限） -->
             <span v-if="it.unlimited" class="green">库存无限</span>
             <span v-else :class="it.stock > 0 ? 'gray' : 'red'">库存{{ it.stock > 0 ? it.stock : '0(已售罄)' }}</span>
@@ -1893,8 +1906,10 @@
             <div v-if="buyItem && buyItem.id === it.id" class="use-box">
               数量:
               <input v-model="buyCount" type="number" min="1"
-                     :max="it.unlimited ? 999 : Math.max(1, it.stock)" style="width:60px"/>
-              <span class="gray">{{ it.unlimited ? '不限量' : ('最多 ' + it.stock) }}</span>
+                     :max="buyMaxOf(it)" style="width:70px"/>
+              <span class="gray">{{ it.unlimited
+                ? ('单次最多 ' + mallBuyMax + ' 个')
+                : ('最多 ' + buyMaxOf(it)) }}</span>
               <!-- ★ 双渠道：让玩家选付黄金还是付钻石 -->
               <template v-if="it.dual_pay">
                 支付方式:
@@ -1903,11 +1918,12 @@
                   <option value="diamond">钻石 {{ it.price_diamond * (parseInt(buyCount) || 0) }}</option>
                 </select>
               </template>
+              <!-- ★ 标价 0 的道具不显示「合计 0 钻石」，直接写「限时免费」 -->
               <span class="gray" v-else-if="it.is_diamond">
-                合计 {{ it.price_diamond * (parseInt(buyCount) || 0) }} 钻石{{ it.price_diamond > 0 ? '' : '（免费）' }}
+                {{ it.price_diamond > 0 ? ('合计 ' + it.price_diamond * (parseInt(buyCount) || 0) + ' 钻石') : '限时免费' }}
               </span>
               <span class="gray" v-else>
-                合计 {{ it.price_gold * (parseInt(buyCount) || 0) }} {{ resNames.gold }}{{ it.price_gold > 0 ? '' : '（免费）' }}
+                {{ it.price_gold > 0 ? ('合计 ' + it.price_gold * (parseInt(buyCount) || 0) + ' ' + resNames.gold) : '限时免费' }}
               </span>
               <button @click="doBuy(it)">[确认购买]</button>
               <a href="javascript:;" @click="buyItem = null">[取消]</a>
@@ -2225,7 +2241,7 @@
           <hr/>
           <template v-for="o in myOfficers">
             <div class="old-line" :key="'of' + o.id">
-              {{ o.name }}({{ o.level }}级)
+              {{ o.name }}({{ o.level }}级)<span class="green" v-if="o.level >= officerMaxLevel">[满级]</span>
               <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
               状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
               后勤/军事/学识/忠诚：<br/>
@@ -2290,7 +2306,7 @@
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
             <tr v-for="o in myOfficers" :key="'my' + o.id">
               <td>{{ o.name }}</td>
-              <td>{{ o.level }}</td>
+              <td>{{ o.level }}<span class="green" v-if="o.level >= officerMaxLevel">满级</span></td>
               <td>{{ o.loyalty }}</td>
               <td>{{ o.position_name }}</td>
               <td>
@@ -2439,8 +2455,8 @@
         <div class="panel" v-if="officerDetail.officer">
           <div class="panel-title">{{ officerDetail.officer.name }}</div>
           星级:{{ officerDetail.officer.star }}
-          等级:{{ officerDetail.officer.level }}
-          经验:{{ officerDetail.officer.exp }}/{{ officerDetail.officer.exp_need }}<br/>
+          等级:{{ officerDetail.officer.level }}<span class="green" v-if="officerDetail.officer.level >= officerMaxLevel">（已满级，最高 {{ officerMaxLevel }} 级）</span>
+          经验:{{ officerDetail.officer.level >= officerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}<br/>
           军事:{{ officerDetail.officer.military_total }}
           <span class="green" v-if="officerDetail.officer.equip_military">({{ officerDetail.officer.military }}+装备{{ officerDetail.officer.equip_military }})</span>
           后勤:{{ officerDetail.officer.logistics_total }}
@@ -2681,6 +2697,8 @@ export default {
       mallItems: [],
       // ★ 第九轮：商城分类 + 分页 + 钻石余额
       mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
+      // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 9999；原来写死 99）
+      mallBuyMax: 9999,
       bagItems: [],
       bagOfficers: [],
       bagSkills: [],
@@ -2857,6 +2875,11 @@ export default {
     // 正式军官(不含俘虏)
     myOfficers () {
       return (this.officerData.officers || []).filter(o => o.is_captive !== 1)
+    },
+    // ★ 军官最高等级（后端下发 max_level，默认 150）—— 达到即「满级」，不再升级
+    officerMaxLevel () {
+      const v = parseInt(this.officerData.max_level)
+      return v > 0 ? v : 150
     },
     // 战俘营: 未出征的俘虏
     captiveOfficers () {
@@ -3240,7 +3263,7 @@ export default {
       // 城市列表页要显示「军衔可建城数」，所以也拉一次军衔数据
       else if (t === 'cities') this.loadRank()
       else if (t === 'bag') this.loadBag()
-      else if (t === 'mall') this.loadMall()
+      else if (t === 'mall') this.loadMall(true)
       else if (t === 'exchange') this.loadExchange()
       else if (t === 'corps') this.loadCorps()
       else if (t === 'orders') this.loadOrders()
@@ -3644,15 +3667,20 @@ export default {
         }
       })
     },
-    loadMall () {
+    // ★ 拉商城数据。resetPage = true 时才回到第 1 页（进商城页签时用）。
+    //   买完道具的刷新**不能**重置页码 —— 否则玩家在第 3 页买个东西就被弹回第 1 页。
+    loadMall (resetPage) {
       api.get('/games/ezfy/mall').then(r => {
         if (r.code === 0) {
           this.mallItems = r.data.items
           // ★ 分类页签 + 钻石余额（钻石只能管理端充值）
           this.mallCatsList = r.data.categories || []
           this.mallDiamond = r.data.diamond || 0
+          // ★ 单次购买上限（管理端可配，默认 9999）
+          this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 9999
           if (this.mallCat && this.mallCatsList.indexOf(this.mallCat) < 0) this.mallCat = ''
-          this.mallPage = 1
+          if (resetPage) this.mallPage = 1
+          else if (this.mallPage > this.mallTotalPages) this.mallPage = this.mallTotalPages
         }
       })
     },
@@ -4302,6 +4330,8 @@ export default {
     },
     declareWar () {
       if (!this.selCell || !this.selCell.city_id) return
+      // ★ 用户规则「同盟玩家不能宣战」：按钮已经藏了，这里再兜一层，防止老页面缓存绕过
+      if (this.selCell.ally) { this.notify('同盟成员之间不能宣战'); return }
       api.post('/games/ezfy/war/declare', { city_id: this.selCell.city_id }).then(r => {
         this.alert(r, '宣战成功')
         this.checkWar()
@@ -4605,9 +4635,18 @@ export default {
       // ★ 双渠道道具默认用黄金（多数玩家手上黄金比钻石多）
       this.buyPayWith = it.dual_pay ? 'gold' : (it.is_diamond ? 'diamond' : 'gold')
     },
+    // ★ 单次可买上限 = min(管理端配置的单次上限, 库存)。
+    //   无限库存(-1)的道具只看配置值。原来这里写死 999，和 doBuy 里的 99 打架。
+    buyMaxOf (it) {
+      const cfgMax = parseInt(this.mallBuyMax) > 0 ? parseInt(this.mallBuyMax) : 9999
+      if (it.unlimited) return cfgMax
+      const st = parseInt(it.stock) || 0
+      return Math.max(1, Math.min(cfgMax, st))
+    },
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
-      if (n < 1 || n > 99) { this.notify('数量需在 1-99 之间'); return }
+      const maxBuy = this.buyMaxOf(it)
+      if (n < 1 || n > maxBuy) { this.notify('数量需在 1-' + maxBuy + ' 之间'); return }
       if (!it.unlimited && it.stock !== undefined && n > it.stock) {
         this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
         return
@@ -5203,7 +5242,7 @@ body.ezfy-immersive { margin: 0; }
 /* 兵力：★ 用户要求「分三列、对齐」→ **固定 3 列等宽**（原来是 auto-fill，
    宽屏会变成 4 列、窄屏 2 列，列数随窗口乱跳，用户觉得「丑、不齐」）。
    3 列等宽 ⇒ 每一格宽度完全一致 ⇒ 名称 / 输入框 / 现有数量 三列在所有行里 x 严格一致。
-   列宽下限 = 名称 9.6em(154) + 输入 70 + 现有 4.4em(70) + 间距 10 ≈ 304px，
+   列宽下限 = 名称 11em(176) + 输入 70 + 现有 4.4em(70) + 间距 10 ≈ 326px，
    所以窗口 < 1100px 时降到 2 列、< 700px 时降到 1 列，保证兵种名不会被截断
    （名字被截成「埃塞克…」玩家就认不出兵种了）。 */
 .ezfy-page .of-grid-troop { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -5213,8 +5252,11 @@ body.ezfy-immersive { margin: 0; }
 @media (max-width: 700px) {
   .ezfy-page .of-grid-troop { grid-template-columns: minmax(0, 1fr); }
 }
-/* 随军资源：名称只有 2 个字，列可以窄一点 */
-.ezfy-page .of-grid-res { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+/* 随军资源：名称只有 2 个字，列可以窄一点。
+   ★ 下限不能太小：线上资源是**十几位**的数（如 14,101,854,318 ≈ 119px），
+     230px 的格子装不下「名称+输入框+数量」，数字会顶到隔壁格子的名称上（看着像串行）。
+     300px = 名称 4em(64) + 输入 70 + 数量 119 + 间距 10 + 余量。 */
+.ezfy-page .of-grid-res { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .ezfy-page .of-cell {
   display: flex;
   align-items: center;
@@ -5230,9 +5272,10 @@ body.ezfy-immersive { margin: 0; }
      ★ 定宽还有一层必要性：第 3 列「现有数量」的数字长度是会变的
        （24,946,000 比 0 宽 15px）。名称若是弹性宽度，长数字会把输入框往左顶，
        同一列里输入框的 x 就不一致了（实测差 15px）—— 定宽才能钉死。
-     9.6em 放得下最长兵种名「埃塞克斯级航空母舰」= 9 个汉字(≈144px)。 */
+     11em 放得下线上最长的兵种名「齐柏林伯爵级航空母舰」= 10 个汉字(≈160px)，
+     原来的 9.6em(154px) 会把最后两个字截成省略号（实测线上就是这样）。 */
   flex: 0 0 auto;
-  width: 9.6em;
+  width: 11em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5407,7 +5450,8 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .ezfy-map-table a { font-size: 14px; }
   .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
-  /* 出征页格子（名称+输入框+现有）：320px 下单列也要放得下，收窄输入框与数量列 */
+  /* 出征页格子（名称+输入框+现有）：320px 下单列也要放得下，收窄名称/输入框/数量列 */
+  .ezfy-page .of-grid-troop .of-cell .of-name { width: 9em; }
   .ezfy-page .of-cell input.of-num { width: 56px; }
   .ezfy-page .of-cell .of-avail { min-width: 3.6em; }
 }

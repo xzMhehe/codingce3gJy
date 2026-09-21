@@ -199,6 +199,8 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("loot_feelings", 2)
 		addLimitCol("officer_salary_per_level", 2)
 		addLimitCol("wound_heal_divisor", 100)
+		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」）
+		addLimitCol("mall_buy_max", 9999)
 	}
 
 	// 福利院·慈善基金池（首行池金，已存在则跳过）

@@ -22,11 +22,15 @@ import (
 // AdminEzfyBuildLimitGet GET /admin/ezfy-build-limit
 func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
-		GatherMaxPerOrder: ezfyGatherMaxDefault,
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
+	}
+	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 9999
+	if lim.MallBuyMax <= 0 {
+		lim.MallBuyMax = ezfyMallBuyMaxDef
 	}
 	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 50（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
@@ -60,6 +64,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		FactoryMax         *int `json:"factory_max"`
 		NoticeHomeCount    *int `json:"notice_home_count"`
 		GatherMaxPerOrder  *int `json:"gather_max_per_order"`
+		MallBuyMax         *int `json:"mall_buy_max"`
 		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
 		LootFeelings       *int `json:"loot_feelings"`
 		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
@@ -70,7 +75,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
-		GatherMaxPerOrder: ezfyGatherMaxDefault,
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
 	h.DB.First(&lim, 1)
@@ -118,6 +123,16 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.GatherMaxPerOrder = *in.GatherMaxPerOrder
 	}
+	// ★ 商城单次购买上限：用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」。
+	//   下限恒为 1（0 = 谁都买不了，无意义），上限给个防呆值 999999，避免误填天文数字。
+	//   注意**不能**用上面的 check()——那个把上界卡在 999，装不下 9999 这个默认值。
+	if in.MallBuyMax != nil {
+		if *in.MallBuyMax < 1 || *in.MallBuyMax > 999999 {
+			resp.ParamError(c, "商城单次购买上限需要在 1~999999 之间")
+			return
+		}
+		lim.MallBuyMax = *in.MallBuyMax
+	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 33
 	}
@@ -134,6 +149,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 集结令上限兜底：老数据可能是 0（该列刚加），保存时归一化到默认 50
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
+	}
+	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 9999
+	if lim.MallBuyMax <= 0 {
+		lim.MallBuyMax = ezfyMallBuyMaxDef
 	}
 	// ★ 战斗/经济数值（用户要求「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。

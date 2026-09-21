@@ -1248,8 +1248,9 @@ func (h *AdminHandler) AdminEzfyGenOfficers(c *gin.Context) {
 	if in.MaxLevel <= 0 {
 		in.MaxLevel = 60
 	}
-	if in.MaxLevel > 200 {
-		in.MaxLevel = 200
+	// ★ 用户规则「军官最高等级 150」：生成上限也夹在 150 以内
+	if in.MaxLevel > ezfyOfficerMaxLevel {
+		in.MaxLevel = ezfyOfficerMaxLevel
 	}
 	var prof model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", in.UserID).First(&prof).Error; err != nil {

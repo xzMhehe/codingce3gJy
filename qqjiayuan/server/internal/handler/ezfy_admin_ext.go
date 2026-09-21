@@ -1198,6 +1198,10 @@ func (h *AdminHandler) AdminEzfyOfficerUpdate(c *gin.Context) {
 				if n < 0 {
 					n = 0
 				}
+				// ★ 用户规则「军官最高等级 150」：管理端也不能把等级改到 150 以上
+				if k == "level" && n > ezfyOfficerMaxLevel {
+					n = ezfyOfficerMaxLevel
+				}
 				updates[k] = n
 			}
 		}

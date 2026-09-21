@@ -41,6 +41,17 @@ const (
 	ezfyPositionGuard       = 2 // 城守
 )
 
+// ezfyOfficerMaxLevel 军官最高等级（用户规则：「军官最高等级 150」）
+//
+// 与名将配置 ezfy_cfg_general.level 的上限一致（现有名将就是 110~150 级）。
+// 所有会抬高军官等级的地方都要夹这个上限：
+//
+//	① 战斗加经验升级（addOfficerExp）
+//	② 军校招募候选（rollOfficerDrafts）
+//	③ 管理端一键生成军官（AdminEzfyGenOfficers）
+//	④ 管理端直接编辑军官（AdminEzfyOfficerUpdate）
+const ezfyOfficerMaxLevel = 150
+
 // ============ 基础查询 ============
 
 // officerList 城市军官列表（自愈：出征中但已无对应行军命令的军官解除出征态）
@@ -217,6 +228,10 @@ func rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft {
 		}
 		used[name] = true
 		lv := 5 + rand.Intn(span)
+		// ★ 用户规则「军官最高等级 150」
+		if lv > ezfyOfficerMaxLevel {
+			lv = ezfyOfficerMaxLevel
+		}
 		star := ezfyRollStar()
 		base := 20 + star*5
 		out = append(out, ezfyOfficerDraft{
@@ -894,6 +909,9 @@ func (h *EzfyHandler) moveOfficerTo(city *model.EzfyCity, name string, targetCit
 }
 
 // addOfficerExp 军官获得经验（升级经验 = 等级×200，每级随机 +2 属性）
+//
+// ★ 用户规则「军官最高等级 150」：到 150 级后不再升级，多余经验直接丢弃
+// （不丢的话经验会无限累积，将来放开上限会一次性跳很多级）。
 func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp int64) {
 	var o model.EzfyOfficer
 	if err := h.DB.First(&o, officerId).Error; err != nil {
@@ -901,7 +919,7 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 	}
 	o.Exp += exp
 	leveled := false
-	for o.Exp >= int64(o.Level)*200 {
+	for o.Level < ezfyOfficerMaxLevel && o.Exp >= int64(o.Level)*200 {
 		o.Exp -= int64(o.Level) * 200
 		o.Level++
 		switch rand.Intn(3) {
@@ -913,6 +931,10 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 			o.Learning += 2
 		}
 		leveled = true
+	}
+	// 满级后不保留经验
+	if o.Level >= ezfyOfficerMaxLevel {
+		o.Exp = 0
 	}
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
 		Updates(map[string]interface{}{"exp": o.Exp, "level": o.Level,
@@ -1146,9 +1168,11 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 		return ""
 	}
 	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级取自军官池）
+	//   等级同样夹在「军官最高等级 150」以内
+	captiveLv := maxInt(1, minInt(level, ezfyOfficerMaxLevel))
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
-		Level: maxInt(1, level), Exp: 0,
+		Level: captiveLv, Exp: 0,
 		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
 		Loyalty: 30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
@@ -1259,6 +1283,8 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		//   随 calcResource 懒结算一起扣，这里只负责让玩家看得见。
 		"salary":          h.officerSalaryPerHour(city.ID),
 		"salary_per_level": ezfyOfficerSalaryPerLvCfg(),
+		// ★ 用户规则「军官最高等级 150」：前端据此显示「满级」
+		"max_level": ezfyOfficerMaxLevel,
 	})
 }
 

@@ -141,7 +141,10 @@ func (h *EzfyHandler) CorpsSetTitle(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": msg, "title": title})
 }
 
-// sameCorps 两人是否在同一军团
+// sameCorps 两人是否在同一军团（同盟）
+//
+// ★ 注意：两边都没军团（CorpsId == 0）时**不算**同盟 ——
+// 原来直接 `ma.CorpsId == mb.CorpsId` 会让两个散人被判成同盟。
 func (h *EzfyHandler) sameCorps(a, b uint) bool {
 	var ma, mb model.EzfyCorpsMember
 	if err := h.DB.Where("user_id = ?", a).First(&ma).Error; err != nil {
@@ -150,7 +153,7 @@ func (h *EzfyHandler) sameCorps(a, b uint) bool {
 	if err := h.DB.Where("user_id = ?", b).First(&mb).Error; err != nil {
 		return false
 	}
-	return ma.CorpsId == mb.CorpsId
+	return ma.CorpsId > 0 && ma.CorpsId == mb.CorpsId
 }
 
 // Liaison GET /games/ezfy/liaison —— 联络中心信息

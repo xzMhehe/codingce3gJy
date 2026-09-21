@@ -33,6 +33,11 @@
           <el-input-number v-model.number="form.gather_max_per_order" :min="1" controls-position="right" style="width:180px" />
           <span class="td-sub"><b>默认 50 个</b>；玩家出征时单次最多使用的集结令个数（每个 +10 万出征上限）。<b>不设上限，填多少就多少</b></span>
         </el-form-item>
+        <el-form-item label="商城单次购买上限">
+          <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
+          <span class="td-sub"><b>默认 9999 个</b>（原来是写死的 1~99）；玩家在【商城】买道具时单次最多买几个，
+            下限恒为 1。<b>仍受道具库存限制</b>，所以实际能买多少是「本值」和「库存」里较小的那个</span>
+        </el-form-item>
 
         <el-divider content-position="left">战斗 / 经济数值</el-divider>
 
@@ -82,7 +87,7 @@ export default {
       saving: false,
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
-        notice_home_count: 1, gather_max_per_order: 50,
+        notice_home_count: 1, gather_max_per_order: 50, mall_buy_max: 9999,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100
       },
@@ -109,6 +114,7 @@ export default {
             notice_home_count: r.data.notice_home_count === undefined || r.data.notice_home_count === null
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),
+            mall_buy_max: pos(r.data.mall_buy_max, 9999),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),

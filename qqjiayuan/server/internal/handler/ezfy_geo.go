@@ -473,6 +473,8 @@ const (
 	ezfyLootFeelingsDef     = 2   // 掠夺每次扣民心（默认 2）
 	ezfyOfficerSalaryDef    = 2   // 军官工资：每级每小时黄金（默认 2）
 	ezfyWoundHealDivisorDef = 100 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 100）
+	// ★ 商城单次购买数量上限（默认 9999；原来前端写死 99）
+	ezfyMallBuyMaxDef = 9999
 )
 
 func ezfyLimitOr(v, def int) int {
@@ -500,6 +502,14 @@ func ezfyOfficerSalaryPerLvCfg() int {
 // ezfyWoundHealDivisorCfg 恢复伤兵单价系数：单价 = ceil(兵种总造价 / 该值)，最低 1 黄金
 func ezfyWoundHealDivisorCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.WoundHealDivisor, ezfyWoundHealDivisorDef)
+}
+
+// ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 9999）
+//
+// ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」。
+//   前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
+func ezfyMallBuyMaxCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.MallBuyMax, ezfyMallBuyMaxDef)
 }
 
 // ezfyWords 取二战聊天敏感词
@@ -661,7 +671,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	c.ranks = rks
 
 	// 建筑数量上限（单行；缺行时用默认 33/33/10/0）
-	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0}
+	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim

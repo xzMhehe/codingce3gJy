@@ -1092,6 +1092,13 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 		resp.ParamError(c, "不能对自己宣战")
 		return
 	}
+	// ★ 用户规则：「同盟玩家不能宣战」。
+	//   同盟 = 同一个军团（与地图上「运输/增援」的判定口径完全一致，见 ezfy_order.go）。
+	//   两边任一方没军团都不算同盟。
+	if h.sameCorps(uid, req.TargetUserId) {
+		resp.ParamError(c, "同盟成员之间不能宣战")
+		return
+	}
 	if h.getWar(uid, req.TargetUserId) != nil {
 		resp.ParamError(c, "已与该玩家宣战(待生效或交战中)")
 		return
@@ -1336,7 +1343,12 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 		})
 	}
 	prof := h.ensureProfile(uid)
-	resp.OK(c, gin.H{"items": views, "categories": cats, "diamond": prof.Diamond})
+	resp.OK(c, gin.H{
+		"items": views, "categories": cats, "diamond": prof.Diamond,
+		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 9999）
+		//   前端输入框 max / 前端校验都用它，避免和写死的 99 打架。
+		"buy_max": ezfyMallBuyMaxCfg(),
+	})
 }
 
 func (h *EzfyHandler) Buy(c *gin.Context) {
@@ -1355,6 +1367,12 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	h.cfgs()
 	if req.Count <= 0 {
 		resp.ParamError(c, "数量错误")
+		return
+	}
+	// ★ 单次购买数量上限（用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」）
+	//   上限读 ezfy_cfg_limit.mall_buy_max（管理端「建筑上限配置」页维护），默认 9999。
+	if mx := ezfyMallBuyMaxCfg(); req.Count > mx {
+		resp.ParamError(c, fmt.Sprintf("单次最多购买 %d 个", mx))
 		return
 	}
 	cfg := ezfyCfg.item(req.CfgId)
