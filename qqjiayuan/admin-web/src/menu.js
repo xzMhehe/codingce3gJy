@@ -6,6 +6,7 @@
  * 超级管理员（super_admin）或无 perm 的项永远展示。
  */
 import AdminUsers from './components/admin/AdminUsers.vue'
+import AdminOnline from './components/admin/AdminOnline.vue'
 import AdminHome from './components/admin/AdminHome.vue'
 import AdminUserDocu from './components/admin/AdminUserDocu.vue'
 import AdminUserContacts from './components/admin/AdminUserContacts.vue'
@@ -96,6 +97,7 @@ import AdminMenus from './components/admin/AdminMenus.vue'
 // 菜单树：最多两级分组（children 里还可带一层 children，如游戏管理下的各游戏）
 export const menu = [
   { key: 'dashboard', name: '数据概览', icon: 'el-icon-data-board', perm: 'module:dashboard' },
+  { key: 'online', name: '在线查看', icon: 'el-icon-view', component: AdminOnline, perm: 'module:online' },
   // 会员管理（诺哈 user/）
   {
     key: 'g-user', name: '会员管理', icon: 'el-icon-user',

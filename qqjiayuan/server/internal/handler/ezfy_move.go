@@ -129,7 +129,7 @@ func (h *EzfyHandler) MoveInfo(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"areas": areas, "gold_cost": ezfyMoveCityGoldCost, "gold": city.Gold,
-		"items":  items,
+		"items":             items,
 		"default_continent": ezfyDefaultMoveContinent,
 		"city": gin.H{"id": city.ID, "name": city.Name, "x": city.X, "y": city.Y,
 			"continent": ezfyRegionName(city.X, city.Y)},

@@ -17,6 +17,9 @@ import (
 func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 	r.Use(middleware.CORS())
+	// 全站 IP 封禁（命中封禁名单的请求 302 到服务不可用页）
+	banM := middleware.NewIPBan(db)
+	r.Use(banM.Handler())
 
 	authH := &handler.AuthHandler{DB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
 	userH := &handler.UserHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
@@ -31,7 +34,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	msgH := &handler.MessageHandler{DB: db}
 	chatH := &handler.ChatHandler{DB: db}
 	notifyH := &handler.NotifyHandler{DB: db}
-	adminH := &handler.AdminHandler{DB: db}
+	adminH := &handler.AdminHandler{DB: db, Ban: banM}
 	badgeH := &handler.BadgeHandler{DB: db}
 	gameH := &handler.GameHandler{DB: db}
 	resH := &handler.ResourceHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
@@ -847,6 +850,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			admin := authed.Group("/admin")
 			{
 				admin.GET("/stats", perm(db, "module:dashboard"), adminH.Stats)
+
+				// 在线查看 + IP 封禁
+				admin.GET("/online", perm(db, "module:online"), adminH.OnlineView)
+				admin.GET("/ip-bans", perm(db, "module:online"), adminH.IPBanList)
+				admin.POST("/ip-bans", perm(db, "module:online"), adminH.IPBanAdd)
+				admin.DELETE("/ip-bans/:id", perm(db, "module:online"), adminH.IPBanRemove)
 
 				// 举报管理
 				admin.GET("/reports", perm(db, "module:threads"), adminH.Reports)

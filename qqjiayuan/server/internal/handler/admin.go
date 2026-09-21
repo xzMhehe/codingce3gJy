@@ -2,6 +2,7 @@ package handler
 
 import (
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,17 +16,149 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
-type AdminHandler struct{ DB *gorm.DB }
+type AdminHandler struct {
+	DB  *gorm.DB
+	Ban *middleware.IPBan
+}
 
 // ---- 概览 ----
 func (h *AdminHandler) Stats(c *gin.Context) {
-	var users, threads, replies, boards, online int64
+	var users, threads, replies, boards int64
 	h.DB.Model(&model.User{}).Count(&users)
 	h.DB.Model(&model.Thread{}).Where("status = 1").Count(&threads)
 	h.DB.Model(&model.Reply{}).Where("status = 1").Count(&replies)
 	h.DB.Model(&model.Board{}).Count(&boards)
-	h.DB.Model(&model.User{}).Where("last_active_at > ?", time.Now().Add(-10*time.Minute)).Count(&online)
+	// 在线口径与「在线查看」/用户端 /online 对齐：登录用户 + 在线游客，30 分钟滑动窗口
+	halfHourAgo := time.Now().Add(-30 * time.Minute)
+	var onlineUsers, onlineGuests int64
+	h.DB.Model(&model.User{}).Where("last_active_at > ?", halfHourAgo).Count(&onlineUsers)
+	h.DB.Model(&model.OnlineGuest{}).Where("last_active_at > ?", halfHourAgo).Count(&onlineGuests)
+	online := onlineUsers + onlineGuests
 	resp.OK(c, gin.H{"users": users, "threads": threads, "replies": replies, "boards": boards, "online": online})
+}
+
+// ---- 在线查看 ----
+// OnlineView 在线查看：登录用户 + 在线游客混排（复刻用户端 /online 口径），带 IP 与封禁状态
+func (h *AdminHandler) OnlineView(c *gin.Context) {
+	page, offset, size := pageOf(c, 20)
+	since := time.Now().Add(-30 * time.Minute)
+
+	type uRow struct {
+		UserID       uint
+		Username     string
+		Nickname     string
+		Color        string
+		IP           string
+		LastActiveAt time.Time
+	}
+	var users []uRow
+	h.DB.Model(&model.User{}).
+		Select("id AS user_id, username, nickname, color, last_ip AS ip, last_active_at").
+		Where("last_active_at > ?", since).Find(&users)
+	var guests []model.OnlineGuest
+	h.DB.Where("last_active_at > ?", since).Find(&guests)
+
+	var banRows []model.IPBan
+	h.DB.Select("id, ip").Find(&banRows)
+	banID := map[string]uint{}
+	for _, b := range banRows {
+		banID[b.IP] = b.ID
+	}
+
+	type row struct {
+		IsGuest      bool      `json:"is_guest"`
+		UserID       uint      `json:"user_id"`
+		Username     string    `json:"username"`
+		Nickname     string    `json:"nickname"`
+		Color        string    `json:"color"`
+		IP           string    `json:"ip"`
+		LastActiveAt time.Time `json:"last_active_at"`
+		Banned       bool      `json:"banned"`
+		BanID        uint      `json:"ban_id"`
+	}
+	rows := make([]row, 0, len(users)+len(guests))
+	for _, u := range users {
+		rows = append(rows, row{UserID: u.UserID, Username: u.Username, Nickname: u.Nickname,
+			Color: u.Color, IP: u.IP, LastActiveAt: u.LastActiveAt, Banned: banID[u.IP] > 0, BanID: banID[u.IP]})
+	}
+	for _, g := range guests {
+		rows = append(rows, row{IsGuest: true, IP: g.IP, LastActiveAt: g.LastActiveAt,
+			Banned: banID[g.IP] > 0, BanID: banID[g.IP]})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].LastActiveAt.After(rows[j].LastActiveAt) })
+	total := len(rows)
+	start, end := offset, offset+size
+	if end > total {
+		end = total
+	}
+	if start > end {
+		start = end
+	}
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": rows[start:end]})
+}
+
+// ---- IP 封禁 ----
+// IPBanList 封禁名单（支持按 IP / 原因模糊搜索）
+func (h *AdminHandler) IPBanList(c *gin.Context) {
+	page, offset, size := pageOf(c, 20)
+	word := c.Query("word")
+	q := h.DB.Model(&model.IPBan{})
+	if word != "" {
+		q = q.Where("ip LIKE ? OR reason LIKE ?", "%"+word+"%", "%"+word+"%")
+	}
+	var total int64
+	q.Count(&total)
+	var list []model.IPBan
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&list)
+	resp.OK(c, gin.H{"total": total, "page": page, "size": size, "list": list})
+}
+
+// IPBanAdd 封禁 IP（已存在则更新原因，不报错）
+func (h *AdminHandler) IPBanAdd(c *gin.Context) {
+	var req struct {
+		IP     string `json:"ip" binding:"required"`
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "请填写要封禁的 IP")
+		return
+	}
+	req.IP = strings.TrimSpace(req.IP)
+	if req.IP == "" {
+		resp.ParamError(c, "请填写要封禁的 IP")
+		return
+	}
+	var admin model.User
+	h.DB.Select("id, nickname, username").First(&admin, middleware.GetUID(c))
+	name := admin.Nickname
+	if name == "" {
+		name = admin.Username
+	}
+	var old model.IPBan
+	if err := h.DB.Where("ip = ?", req.IP).First(&old).Error; err == nil {
+		h.DB.Model(&old).Updates(map[string]interface{}{"reason": req.Reason, "admin_id": admin.ID, "admin_name": name})
+	} else {
+		h.DB.Create(&model.IPBan{IP: req.IP, Reason: req.Reason, AdminID: admin.ID, AdminName: name})
+	}
+	if h.Ban != nil {
+		h.Ban.Refresh()
+	}
+	resp.OK(c, gin.H{"ip": req.IP})
+}
+
+// IPBanRemove 解封（按 id）
+func (h *AdminHandler) IPBanRemove(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var row model.IPBan
+	if err := h.DB.First(&row, id).Error; err != nil {
+		resp.NotFound(c, "封禁记录不存在")
+		return
+	}
+	h.DB.Delete(&row)
+	if h.Ban != nil {
+		h.Ban.Refresh()
+	}
+	resp.OK(c, gin.H{"ip": row.IP})
 }
 
 // ---- 用户管理 ----
@@ -58,7 +191,12 @@ func (h *AdminHandler) Users(c *gin.Context) {
 	for _, u := range users {
 		homeLv[u.ID] = homeLevelOf(u.ActiveDays)
 	}
-	out := gin.H{"total": total, "page": page, "size": size, "list": users, "old_nums": oldNums, "home_levels": homeLv}
+	// 最后登录IP（model 里 json:"-" 不随用户对象外泄，管理端按 id 单独给出）
+	lastIPs := map[uint]string{}
+	for _, u := range users {
+		lastIPs[u.ID] = u.LastIP
+	}
+	out := gin.H{"total": total, "page": page, "size": size, "list": users, "old_nums": oldNums, "home_levels": homeLv, "last_ips": lastIPs}
 	resp.OK(c, out)
 }
 
@@ -99,14 +237,14 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 			"created_at": u.CreatedAt, "last_login_at": u.LastLoginAt, "last_active_at": u.LastActiveAt,
 			"has_paypass": u.PayPass != "",
 		},
-		"address":     addr,
-		"document":    gin.H{"type": doc.Type, "real_name": doc.RealName, "number": num, "has_doc": doc.ID > 0},
-		"protection":  gin.H{"issue": prot.Issue, "has_protection": prot.ID > 0},
-		"contact":     gin.H{"qq": ct.QQ, "mail": ct.Mail, "phone": ct.Phone},
-		"logs":        logs,
+		"address":    addr,
+		"document":   gin.H{"type": doc.Type, "real_name": doc.RealName, "number": num, "has_doc": doc.ID > 0},
+		"protection": gin.H{"issue": prot.Issue, "has_protection": prot.ID > 0},
+		"contact":    gin.H{"qq": ct.QQ, "mail": ct.Mail, "phone": ct.Phone},
+		"logs":       logs,
 		// 角色与勋章（编辑弹窗回显，防止保存时被清空）
-		"roles":   u.Roles,
-		"badges":  u.Badges,
+		"roles":  u.Roles,
+		"badges": u.Badges,
 	})
 }
 
@@ -367,7 +505,7 @@ func (h *AdminHandler) FamilyReview(c *gin.Context) {
 			return
 		}
 		if u.Coins < familyCreateCost {
-			resp.ParamError(c, "族长G币不足 " + strconv.Itoa(familyCreateCost) + "，无法通过（可先给族长充值）")
+			resp.ParamError(c, "族长G币不足 "+strconv.Itoa(familyCreateCost)+"，无法通过（可先给族长充值）")
 			return
 		}
 		h.DB.Model(&u).Update("coins", gorm.Expr("coins - ?", familyCreateCost))
@@ -545,11 +683,11 @@ func (h *AdminHandler) WalletSet(c *gin.Context) {
 func (h *AdminHandler) UserHomeSet(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Level        int     `json:"level"`        // 论坛等级（users.level）
-		HomeLevel    int     `json:"home_level"`   // 家园等级（设定后按该级所需最低活跃天数校准 active_days）
-		ActiveDays   float64 `json:"active_days"`  // 家园活跃天数（家园等级的计算依据）
-		Achieve      int     `json:"achieve"`
-		City         string  `json:"city"`
+		Level      int     `json:"level"`       // 论坛等级（users.level）
+		HomeLevel  int     `json:"home_level"`  // 家园等级（设定后按该级所需最低活跃天数校准 active_days）
+		ActiveDays float64 `json:"active_days"` // 家园活跃天数（家园等级的计算依据）
+		Achieve    int     `json:"achieve"`
+		City       string  `json:"city"`
 		// 诺哈 wap_user 扩展字段（管理端可编辑）
 		Gender       *int    `json:"gender"`
 		Age          *int    `json:"age"`
