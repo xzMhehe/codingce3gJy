@@ -261,8 +261,6 @@ func seedEzfyMoveItems(db *gorm.DB) {
 // seedEzfyNotices 游戏内置公告（幂等：标题存在即跳过）
 func seedEzfyNotices(db *gorm.DB) {
 	rows := []model.EzfyNotice{
-		{UserId: 0, IsTop: 1, Title: "二战风云开服公告",
-			Content: "各位司令官，欢迎来到二战风云！建造城池、发展资源、训练部队，出征野地掠夺资源。攻占寇城可以获得丰厚战利品。掠夺/征服其他玩家城池需先宣战，宣战24小时后生效。祝各位武运昌隆！"},
 		{UserId: 0, IsTop: 0, Title: "新手提示",
 			Content: "进入游戏自动获得主城(市政厅/民居/农田各1级)。先用黄金召集人口，再建资源建筑。造兵需要军工厂，研究科技需要科研中心。市政厅等级决定可占领野地数量上限。"},
 	}
