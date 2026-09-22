@@ -194,9 +194,28 @@ func (h *GameHandler) Create(c *gin.Context) {
 	resp.OK(c, g)
 }
 
+// gameUpdateReq 后台「编辑游戏」的请求体。
+// ★ path(内部网址) / url(外部网址) 用指针：**没传该字段时保持库里原值**，传了（哪怕是空串）才覆盖。
+//   历史 bug：原来直接复用 gameReq，Update 里用 map 整体覆盖，
+//   而管理端表单早期只有「网址」没有「内部网址」→ 保存时 path 被写成空串
+//   → 游戏大厅点该游戏提示「正在建设中，敬请期待」。
+type gameUpdateReq struct {
+	Name     string  `json:"name" binding:"required,min=1,max=30"`
+	Category string  `json:"category" binding:"required,oneof=net com"`
+	Logo     string  `json:"logo" binding:"max=50"`
+	Stars    string  `json:"stars" binding:"max=10"`
+	Desc     string  `json:"desc" binding:"max=100"`
+	Intro    string  `json:"intro" binding:"max=200"`
+	Path     *string `json:"path" binding:"omitempty,max=100"`
+	Url      *string `json:"url" binding:"omitempty,max=200"`
+	BoardID  uint    `json:"board_id"`
+	Sort     int     `json:"sort"`
+	Status   int     `json:"status"`
+}
+
 func (h *GameHandler) Update(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	var req gameReq
+	var req gameUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "游戏名必填，类型必须是 net 或 com")
 		return
@@ -210,11 +229,19 @@ func (h *GameHandler) Update(c *gin.Context) {
 		resp.NotFound(c, "游戏不存在")
 		return
 	}
-	h.DB.Model(&g).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"name": req.Name, "category": req.Category, "logo": req.Logo,
-		"stars": req.Stars, "desc": req.Desc, "intro": req.Intro, "path": req.Path, "url": req.Url,
+		"stars": req.Stars, "desc": req.Desc, "intro": req.Intro,
 		"board_id": req.BoardID, "sort": req.Sort, "status": req.Status,
-	})
+	}
+	if req.Path != nil {
+		updates["path"] = *req.Path
+	}
+	if req.Url != nil {
+		updates["url"] = *req.Url
+	}
+	h.DB.Model(&g).Updates(updates)
+	h.DB.First(&g, id) // 回读，保证响应里是更新后的值（map 更新不会回写结构体）
 	resp.OK(c, g)
 }
 

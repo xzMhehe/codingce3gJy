@@ -154,9 +154,15 @@ export default {
         this.toast('「' + name + '」板块暂未开放')
       })
     },
+    // 进入游戏：内部网址(path)=本站路由，直接跳转；外部网址(url)=外站，新窗口打开
+    // url 里若被误填成站内路由（以 / 或 #/ 开头）也按站内路由走，避免开出一个空白页
     play (g) {
       if (g.path) { this.$router.push(g.path); return }
-      if (g.url) { window.open(g.url); return }
+      const u = g.url || ''
+      if (u) {
+        if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(u.replace(/^#/, '')); return }
+        window.open(u); return
+      }
       this.toast('「' + g.name + '」正在建设中，敬请期待')
     },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('游戏·' + title)) }

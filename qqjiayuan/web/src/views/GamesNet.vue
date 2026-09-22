@@ -57,9 +57,14 @@ export default {
       if (g) this.play(g)
       else alert('「' + label + '」游戏开发中，敬请期待！')
     },
+    // 内部网址(path)=本站路由；外部网址(url)=外站（误填站内路由时也按站内跳）
     play (g) {
       if (g.path) { this.$router.push(g.path); return }
-      if (g.url) { window.open(g.url); return }
+      const u = g.url || ''
+      if (u) {
+        if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(u.replace(/^#/, '')); return }
+        window.open(u); return
+      }
       alert('「' + g.name + '」游戏开发中，敬请期待！先去游戏论坛和大家聊聊吧')
     },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('游戏·' + title)) }

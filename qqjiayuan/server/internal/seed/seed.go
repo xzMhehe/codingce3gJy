@@ -2373,6 +2373,15 @@ func seedGames(db *gorm.DB) {
 		var exist int64
 		db.Model(&model.Game{}).Where("name = ?", games[i].Name).Count(&exist)
 		if exist == 0 {
+			// 改名保护：管理端可能已把内置游戏改名（此时按名字找不到），
+			// 若已有同 path 的行（path 是站内入口，等价于游戏身份），就不要再建一个同名的新游戏。
+			if games[i].Path != "" {
+				var samePath int64
+				db.Model(&model.Game{}).Where("path = ?", games[i].Path).Count(&samePath)
+				if samePath > 0 {
+					continue
+				}
+			}
 			if placeholder {
 				continue
 			}
@@ -2383,13 +2392,19 @@ func seedGames(db *gorm.DB) {
 			// 早期版本曾把"幻想西游"存成 net，若这里不同步，老库会永远留在错误的分区里。
 			updates := map[string]interface{}{
 				"category": games[i].Category,
-				"intro":    games[i].Intro, "path": games[i].Path, "sort": games[i].Sort,
+				"intro":    games[i].Intro, "sort": games[i].Sort,
 			}
-			// logo 幂等补齐：老库 logo 为空才带上（手动设过的不覆盖）
-			if games[i].Logo != "" {
-				var cur struct{ Logo string }
-				if err := db.Model(&model.Game{}).Select("logo").Where("name = ?", games[i].Name).Scan(&cur).Error; err == nil && cur.Logo == "" {
-					updates["logo"] = games[i].Logo
+			// logo / path 幂等补齐：老库为空才带上（管理端手动设过的不覆盖）
+			// ★ path 就是管理端的「内部网址」，管理端可改，这里只补缺、不覆盖。
+			if games[i].Logo != "" || games[i].Path != "" {
+				var cur struct{ Logo, Path string }
+				if err := db.Model(&model.Game{}).Select("logo", "path").Where("name = ?", games[i].Name).Scan(&cur).Error; err == nil {
+					if games[i].Logo != "" && cur.Logo == "" {
+						updates["logo"] = games[i].Logo
+					}
+					if games[i].Path != "" && cur.Path == "" {
+						updates["path"] = games[i].Path
+					}
 				}
 			}
 			if placeholder {

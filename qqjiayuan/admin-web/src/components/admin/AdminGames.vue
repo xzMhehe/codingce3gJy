@@ -23,7 +23,10 @@
           <template slot-scope="{row}">{{ row.category === 'net' ? '网络游戏' : '社区游戏' }}</template>
         </el-table-column>
         <el-table-column prop="stars" label="星级" width="110" />
-        <el-table-column label="网址" min-width="170" show-overflow-tooltip>
+        <el-table-column label="内部网址" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.path || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="外部网址" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.url || '—' }}</template>
         </el-table-column>
         <el-table-column label="论坛板块" min-width="100" show-overflow-tooltip>
@@ -70,8 +73,16 @@
           </el-select>
           <img v-if="form.logo" :src="'/static/image/' + form.logo" class="logo-prev" alt="预览" style="margin-top:4px">
         </el-form-item>
-        <el-form-item label="网址">
-          <el-input v-model.trim="form.url" maxlength="200" placeholder="游戏官网/入口地址，未开发留空" />
+        <!-- [说明·不显示在界面] 网址分两个字段：
+             内部网址(path)=本站路由，家园自研的游戏都填这里（如 /games/ezfy），大厅点进去直接进游戏；
+             外部网址(url)=外站推广位，目前预留，家园侧不填。两者都空时大厅会提示「正在建设中，敬请期待」。
+             ★ 历史 bug：这个表单原来只有「网址」一个字段（对应 url），保存时不带 path，
+               后端 Update 用 map 整体覆盖 → path 被写成空串 → 改名保存后游戏就进不去了。 -->
+        <el-form-item label="内部网址">
+          <el-input v-model.trim="form.path" maxlength="100" placeholder="/games/ezfy" />
+        </el-form-item>
+        <el-form-item label="外部网址">
+          <el-input v-model.trim="form.url" maxlength="200" placeholder="http://（预留）" />
         </el-form-item>
         <el-form-item label="星级">
           <el-rate v-model="starsNum" style="margin-top:6px" />
@@ -147,7 +158,7 @@ export default {
       if (row) {
         this.form = {
           id: row.id, name: row.name, category: row.category, logo: row.logo,
-          stars: row.stars, desc: row.desc, url: row.url || '',
+          stars: row.stars, desc: row.desc, path: row.path || '', url: row.url || '',
           board_id: row.board_id, sort: row.sort, status: row.status
         }
         this.starsNum = (row.stars || '').split('').filter(c => c === '★').length
