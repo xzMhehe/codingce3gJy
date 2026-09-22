@@ -1,9 +1,9 @@
 <template>
   <div class="ezfy-page">
     <div class="home-wrap">
-      <div class="title-bar">二战风云-红色警戒【1区】</div>
+      <div class="title-bar">二战钢铁公约【1区】</div>
 
-      <!-- 顶部导航(每页都有, 复刻原版) -->
+      <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
         <a href="javascript:;" @click="go('chat')">聊天</a>
         <a href="javascript:;" @click="openPm()">邮箱</a>
@@ -145,7 +145,7 @@
           <a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
         <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">进入</a></div>
-        <!-- 复刻: [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
+        <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
           <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
@@ -168,7 +168,7 @@
             <a href="javascript:;" @click="openPm()">私聊</a>
           </div>
 
-          <!-- ★ 发言框移到聊天列表**上方**（用户要求），列表按时间降序、最新在最上面 -->
+          <!-- ★ 发言框移到聊天列表**上方** 列表按时间降序、最新在最上面 -->
           <div class="old-line ezfy-chat-send">
             <template v-if="chatCanSend">
               <input v-model="chatMsg" class="ezfy-chat-input" maxlength="25" @keyup.enter="doChatSend"/>
