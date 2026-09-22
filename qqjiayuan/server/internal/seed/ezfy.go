@@ -164,18 +164,24 @@ func seedEzfyActivities(db *gorm.DB) {
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
 //	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万，单次上限由管理端配置)
 func seedEzfyOfficerItems(db *gorm.DB) {
+	// ★★ 2026-09-21 用户反馈「道具商城上架军官技能书」的根因：
+	//   这几条种子**没有显式写 Stock**，而 GORM 创建时会把 Go 的零值 `0` 一起写进去
+	//   （结构体字段的 `gorm:"default:100"` 标签只在「完全省略该列」时才生效），
+	//   结果 14 经验书 / 15 军官技能书 / 16 重修书 / 18 阵营转换道具 全部库存 = 0，
+	//   玩家买的时候被 `Buy` 里的库存校验拦成「已售罄」—— 看着就是「没上架」。
+	//   军官类道具定位是**常驻消耗品**（跟迁城道具一样），统一给 -1 = 无限库存。
 	rows := []model.EzfyCfgItem{
-		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500,
+		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
-		{ID: 14, Name: "经验书", ItemType: 10, Param1: 1000, PriceGold: 300,
+		{ID: 14, Name: "经验书", ItemType: 10, Param1: 1000, PriceGold: 300, Stock: -1,
 			Description: "指定军官获得1000点经验"},
-		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 1000,
+		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 1000, Stock: -1,
 			Description: "指定军官免费学习1个技能(不消耗黄金)"},
-		{ID: 16, Name: "重修书", ItemType: 12, Param1: 0, PriceGold: 800,
+		{ID: 16, Name: "重修书", ItemType: 12, Param1: 0, PriceGold: 800, Stock: -1,
 			Description: "重置军官属性成长并清空已学技能(等级与经验保留)"},
-		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500,
+		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
-		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800,
+		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800, Stock: -1,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
 		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
@@ -195,6 +201,15 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
 				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
 					"param1": it.Param1, "description": it.Description, "category": it.Category})
+			// ★ 库存修复（只补 bug、不覆盖运营）：
+			//   老库里这几条军官道具因为种子漏写 Stock 而落成 0（= 售罄，玩家买不了）。
+			//   仅当库存**恰为 0** 时才补成 -1（无限）；-1 与 >0 一律不动，
+			//   所以管理员手工设过的库存不会被冲掉。
+			if it.Stock == -1 {
+				db.Model(&model.EzfyCfgItem{}).
+					Where("id = ? AND stock = 0", it.ID).
+					Update("stock", -1)
+			}
 			continue
 		}
 		db.Create(&it)

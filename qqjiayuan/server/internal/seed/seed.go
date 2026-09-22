@@ -83,7 +83,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.ThreadReward{}, &model.ThreadRewardLog{}, &model.ThreadFloor{},
 		&model.ThreadAttachment{}, &model.WordFilter{},
 		&model.CityManager{},
-		&model.OnlineGuest{},
+		&model.OnlineGuest{}, &model.IPBan{},
 		&model.UserBadge{},
 		&model.JwtPlayer{}, &model.JwtItem{}, &model.JwtBag{},
 		&model.JwtSkill{}, &model.JwtLearnedSkill{},
@@ -1400,6 +1400,7 @@ func seedRBAC(db *gorm.DB) {
 	}
 	modulePerms := []model.Permission{
 		mod("概览", "数据概览", "dashboard"),
+		mod("概览", "在线查看", "online"),
 		// 会员管理
 		mod("会员", "会员列表", "users"), mod("会员", "个性昵称", "nickName"), mod("会员", "会员资料", "home"),
 		mod("会员", "会员证件", "userDocu"), mod("会员", "会员联系", "userContact"), mod("会员", "会员地址", "userAddress"),

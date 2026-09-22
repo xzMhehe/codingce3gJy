@@ -10,7 +10,14 @@ api.interceptors.request.use(cfg => {
 })
 
 api.interceptors.response.use(
-  resp => resp.data,
+  resp => {
+    // 被 IP 封禁时后端 302 到 /admin-ui/503.html，axios 跟随重定向后拿到的是 HTML 字符串
+    if (typeof resp.data === 'string' && /<html/i.test(resp.data)) {
+      window.location.href = '/admin-ui/503.html'
+      return { code: 503, msg: '服务不可用', data: null }
+    }
+    return resp.data
+  },
   err => {
     if (err.response && err.response.data) {
       const body = err.response.data

@@ -1045,7 +1045,25 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 
 // ============ 订单结算 ============
 
+// processOrders 结算该 uid 名下所有到期的行军命令。
+//
+// ★★ 重入守卫（2026-09-21 线上性能事故）：本函数与 refreshCity 构成闭环 ——
+//
+//	refreshCity → processOrders → processArrive → refreshCity(防守方) → processOrders …
+//
+// 战斗时懒结算防守方是必要的（否则用陈旧民心算征服），但必须防自喂。
+// 原来只在两处写了 `target.UserID == uid` 的判断，覆盖不了 A↔B 互打、
+// 以及「同一轮内订单对象还是 status=0、未落库改状态」被重复进 processArrive 的情况。
+// 现在统一在这里加 per-uid 守卫：同一个 uid 已经在结算中，第二次调用直接返回。
+//
+// 注意：守卫只在**订单结算**这一层加，cityViews / calcResource 等纯展示逻辑不受影响。
 func (h *EzfyHandler) processOrders(uid uint) {
+	if !h.enterProcess(uid) {
+		// 已在结算中（递归回调）→ 跳过，交回上层继续处理，避免无限自喂
+		return
+	}
+	defer h.exitProcess(uid)
+
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&orders)
@@ -1393,7 +1411,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 只做「资源懒结算」，**不能**调 refreshCity ——
 			//   refreshCity 会 processOrders(uid)，而本订单正是该 uid 下
 			//   status=0 且已到期的订单 → 会再次进到这里，无限递归把服务打死。
-			h.calcResource(&target)
+			//   （processOrders 现在另有 per-uid 重入守卫，这里是第二道防线。）
+			//   军官列表显式传入，工资才扣得对（calcResource 自己不查库）。
+			h.calcResource(&target, h.officerList(target.ID))
 			room := func(cur, cap, v int64) (int64, int64) {
 				if cap <= 0 {
 					cap = cur
@@ -1538,12 +1558,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		target = &tc
 		// ★ 结算前先把防守方城市懒结算到当前（建筑完工/资源产出/民心回复/训练完成），
 		//   否则用的是「防守方上次登录时」的陈旧民心与资源 —— 民心偏低会让征服异常容易。
-		//   ★ 注意：防守方 == 自己时**不能**走 refreshCity —— 它会 processOrders(uid)，
-		//   把当前这条 status=0 的订单再喂回 processArrive，造成无限递归。
+		//   ★ 防递归：refreshCity → processOrders 现在有 per-uid 重入守卫
+		//   （见 processOrders 函数头），防守方正在结算中会直接返回，不会自喂。
+		//   防守方 == 自己时仍然只做资源懒结算，少绕一圈。
 		if target.UserID != uid {
 			h.refreshCity(target.UserID, target)
 		} else {
-			h.calcResource(target)
+			h.calcResource(target, h.officerList(target.ID))
 		}
 		if order.OrderType == 2 || order.OrderType == 3 {
 			if target.UserID == uid || !h.isAtWar(uid, target.UserID) {
@@ -1595,18 +1616,33 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.buildMoveMap(city.ID, true), h.buildMoveMap(cityIdOf(target), false))
 	win = br.AttackerWin
 
-	// ★ 用户反馈修复：防守方军官(城守)原来打完一点经验都没有。
-	//   现在守方军官按「守军战损/10 + 30」拿经验，成功守住再 +20。
+	// ★★ 军官经验结算（2026-09-21 重做）
+	//
+	// 用户规则：
+	//   ① 出征的**攻方**与**守方**军官都要拿到经验（原来攻方只在打赢时给）；
+	//   ② **胜利一方拿得更多**（胜负加成拉开差距，鼓励打胜仗）；
+	//   ③ 战损也算贡献（打得多、损耗大，经验相应多）。
+	//
+	// 统一口径（攻守共用同一个函数，避免两边公式再漂移）：
+	//
+	//	基础经验 = 击杀敌军数 / 10 + 参战基数 30
+	//	胜利加成 = +50%（赢的一方额外多拿一半）
+	//
+	// 注：攻方原来写死 myDead/10 + 50（按自己的战损算），语义是「越惨越有经验」，
+	// 与「胜利拿更多」相悖，这里一并改成按**击杀**计算（把对方打死才有战功）。
+	defExp := int64(0)
+	// 守方：拿到城守军官的城才有（野地/寇城无军官，自然跳过）
 	if cityGuard != nil && target != nil {
-		var defDead int64
-		for _, g := range br.DefenderLosses {
-			defDead += g.Count
-		}
-		defExp := defDead/10 + 30
-		if !win {
-			defExp += 20
-		}
+		defExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), !win)
 		h.addOfficerExp(target, cityGuard.ID, defExp)
+	}
+	// 攻方：带队军官无论胜负都给经验（原来只在 if win 分支里给，
+	// 打输的部队回来军官一点经验都没有，与用户规则①不符）。
+	// ★ 这里只算数值、不写库 —— 写库放在下面战报正文里做：
+	//   胜/败两个分支各自往战报追加「军官经验+N」后再调用 addOfficerExp。
+	atkExp := int64(0)
+	if leadOfficer != nil {
+		atkExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), win)
 	}
 
 	reportType := "掠夺报告"
@@ -2055,15 +2091,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if enemyDead > 0 {
 			h.taskProgress(uid, "kill_enemy", int(enemyDead))
 		}
-		// 带队军官战功经验: 我方战损/10 + 50
+		// 带队军官战功经验: 见函数开头的统一口径（攻守共用 ezfyOfficerBattleExp）。
+		// ★ 原来是 myDead/10 + 50（按自己战损算），语义是「越惨越有经验」，
+		//   与用户规则「胜利方拿更多」相悖，已改为按击杀数算并叠加胜利加成。
 		if leadOfficer != nil {
-			var myDead int64
-			for _, g := range br.AttackerLosses {
-				myDead += g.Count
-			}
-			exp := myDead/10 + 50
-			h.addOfficerExp(city, leadOfficer.ID, exp)
-			report += fmt.Sprintf("\n军官经验+%d", exp)
+			h.addOfficerExp(city, leadOfficer.ID, atkExp)
+			report += fmt.Sprintf("\n军官经验+%d", atkExp)
 		}
 		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
 		order.Status = 2
@@ -2104,6 +2137,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			h.officerLoseLoyalty(uid, city.ID, leadOfficer.Name, delta, "")
 			report += fmt.Sprintf("\n带队军官 %s 因战败忠诚度-%d", leadOfficer.Name, delta)
+		}
+		// ★ 用户规则①：**打输也要给经验**（原来只在 if win 分支给，
+		//   败仗回来军官经验一点不动）。数值已在函数开头按统一口径算好，
+		//   败方拿的是「无胜利加成」的基础经验，天然少于胜方。
+		if leadOfficer != nil && atkExp > 0 {
+			h.addOfficerExp(city, leadOfficer.ID, atkExp)
+			report += fmt.Sprintf("\n军官经验+%d", atkExp)
 		}
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
@@ -2379,6 +2419,44 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	b.WriteString("最后活动时间：" + lastActive + "\n")
 	b.WriteString("侦查完成。")
 	return b.String()
+}
+
+// enemyDeadOf 汇总一组战损里的兵力总数（击杀数）。
+func enemyDeadOf(losses []ezfyUnitGroup) int64 {
+	var n int64
+	for _, g := range losses {
+		n += g.Count
+	}
+	return n
+}
+
+// ezfyOfficerBattleExp 出征军官战斗经验（攻守双方**共用**同一个口径）。
+//
+// ★★ 2026-09-21 用户规则重做：
+//
+//	① 攻方与守方军官都要拿到经验（原来攻方只在打赢时给）；
+//	② 胜利的一方拿得更多；
+//	③ 战功按「击杀敌军数」衡量（把对方打死才有战功）。
+//
+// 公式：
+//
+//	基础 = 击杀数 / 10 + 参战基数 30
+//	胜方 = 基础 × 1.5（向下取整）
+//
+// 效果对比（击杀 100 → 基础 40）：胜方 60，败方 40。差距明显但不夸张，
+// 败方也确有收获，与「打赢更有价值」的直觉一致。
+//
+// 另：原实现是攻方按**自己战损**算（myDead/10 + 50），会造成
+// 「被全歼的经验反而最高」这种反直觉结果，故一并改掉。
+func ezfyOfficerBattleExp(enemyDead int64, won bool) int64 {
+	if enemyDead < 0 {
+		enemyDead = 0
+	}
+	exp := enemyDead/10 + 30
+	if won {
+		exp = exp * 3 / 2
+	}
+	return exp
 }
 
 // battleStatsTail 战报尾部的战果统计段

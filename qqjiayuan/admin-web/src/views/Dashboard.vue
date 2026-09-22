@@ -17,7 +17,7 @@
       <!-- 统计卡片 -->
       <div class="stat-row">
         <div class="stat-card"><div class="ico ico-users"><i class="el-icon-user"></i></div><div><div class="num">{{ stats.users || 0 }}</div><div class="lab">注册居民</div></div></div>
-        <div class="stat-card"><div class="ico ico-online"><i class="el-icon-cpu"></i></div><div><div class="num">{{ stats.online || 0 }}</div><div class="lab">当前在线</div></div></div>
+        <div class="stat-card stat-card-link" title="点击查看在线用户/游客" @click="go('online')"><div class="ico ico-online"><i class="el-icon-cpu"></i></div><div><div class="num">{{ stats.online || 0 }}</div><div class="lab">当前在线</div></div></div>
         <div class="stat-card"><div class="ico ico-threads"><i class="el-icon-document"></i></div><div><div class="num">{{ stats.threads || 0 }}</div><div class="lab">帖子</div></div></div>
         <div class="stat-card"><div class="ico ico-replies"><i class="el-icon-chat-dot-square"></i></div><div><div class="num">{{ stats.replies || 0 }}</div><div class="lab">回复</div></div></div>
         <div class="stat-card"><div class="ico ico-boards"><i class="el-icon-menu"></i></div><div><div class="num">{{ stats.boards || 0 }}</div><div class="lab">板块</div></div></div>
@@ -174,4 +174,8 @@ export default {
 }
 .quick-item .qt { font-size: 14px; color: #303133; font-weight: 600; }
 .quick-item .qd { font-size: 12px; color: #97a8be; margin-top: 2px; }
+
+/* 「当前在线」卡片可点击，进入在线查看 */
+.stat-card-link { cursor: pointer; }
+.stat-card-link:hover { border-color: #b3e19d; }
 </style>

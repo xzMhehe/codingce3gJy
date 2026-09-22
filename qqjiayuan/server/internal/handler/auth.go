@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/authutil"
+	"qqjiayuan/server/pkg/captcha"
 	"qqjiayuan/server/pkg/resp"
 )
 
@@ -26,10 +28,23 @@ type AuthHandler struct {
 }
 
 type regReq struct {
-	Nickname string `json:"nickname" binding:"required,min=1,max=20"`
-	Password string `json:"password" binding:"required,min=6,max=20"`
-	Gender   int    `json:"gender"`
-	Invite   string `json:"invite"` // 邀请码（邀请开通家园）
+	Nickname  string `json:"nickname" binding:"required,min=1,max=20"`
+	Password  string `json:"password" binding:"required,min=6,max=20"`
+	Gender    int    `json:"gender"`
+	Invite    string `json:"invite"`     // 邀请码（邀请开通家园）
+	CaptchaID string `json:"captcha_id"` // 图形验证码 ID
+	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
+}
+
+// 图形验证码：返回 {id, img}，img 为 data:image/png;base64 可直接给 <img src>
+// （复刻参考站 /captcha：算式图片，点图片换一张）
+func (h *AuthHandler) Captcha(c *gin.Context) {
+	id, png, err := captcha.New()
+	if err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	resp.OK(c, gin.H{"id": id, "img": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)})
 }
 
 // 注册：昵称+性别+密码，系统自动分配家园号码（靓号）
@@ -41,6 +56,25 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	if req.Gender != 1 && req.Gender != 2 {
 		req.Gender = 1
+	}
+	// 先验验证码，避免脚本不填验证码就批量探测昵称
+	if strings.TrimSpace(req.Captcha) == "" {
+		resp.ParamError(c, "请输入验证码（图片算式的计算结果）")
+		return
+	}
+	if !captcha.Verify(req.CaptchaID, req.Captcha) {
+		resp.ParamError(c, "验证码不对哦，请点击图片刷新后重试")
+		return
+	}
+	ip := c.ClientIP()
+	// 同一 IP 注册数量限制（系统配置 reg_ip_limit，默认 5，填 0 不限制）
+	if limit := settingInt(h.DB, "reg_ip_limit", 5, 0, 1000); limit > 0 {
+		var ipCount int64
+		h.DB.Model(&model.User{}).Where("add_ip = ?", ip).Count(&ipCount)
+		if ipCount >= int64(limit) {
+			resp.ParamError(c, fmt.Sprintf("同一个IP最多只能注册%d个家园账号哦，如有疑问请联系客服", limit))
+			return
+		}
 	}
 	var exists int64
 	h.DB.Model(&model.User{}).Where("nickname = ?", req.Nickname).Count(&exists)
@@ -54,29 +88,24 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 	// 注册配置：新人礼包金币（系统配置 reg_coins，默认 100）
-	regCoins := 100
-	var regCoinsStr string
-	h.DB.Raw("SELECT value FROM settings WHERE `key` = 'reg_coins'").Scan(&regCoinsStr)
-	if n, err := strconv.Atoi(strings.TrimSpace(regCoinsStr)); err == nil && n >= 0 && n <= 100000 {
-		regCoins = n
-	}
+	regCoins := settingInt(h.DB, "reg_coins", 100, 0, 100000)
 	user := model.User{
 		Nickname: req.Nickname,
 		Password: string(hash),
 		Gender:   req.Gender,
 		Coins:    regCoins,
 		Level:    1,
-		Color:    DefaultNickColor, // 普通用户昵称默认蓝色（诺哈用户昵称展示）
+		Color:    DefaultNickColor,      // 普通用户昵称默认蓝色（诺哈用户昵称展示）
 		Config:   "10,1200,1500,1200,0", // 诺哈 wap_user.config 默认值
-		AddIP:    c.ClientIP(),
-		LastIP:   c.ClientIP(),
+		AddIP:    ip,
+		LastIP:   ip,
 	}
 	if err := h.DB.Create(&user).Error; err != nil {
 		resp.ServerError(c, err)
 		return
 	}
 	h.DB.Model(&user).Update("username", fmt.Sprintf("%d", user.ID))
-	userLog(h.DB, user.ID, "注册成功", "家园号码 "+user.Username, c.ClientIP())
+	userLog(h.DB, user.ID, "注册成功", "家园号码 "+user.Username, ip)
 
 	var member model.Role
 	h.DB.Where("code = ?", "member").First(&member)
@@ -232,10 +261,10 @@ func (h *AuthHandler) RepassChannels(c *gin.Context) {
 		issue = model.ProtectionQuestions[p.Issue-1]
 	}
 	resp.OK(c, gin.H{
-		"nickname":       maskNickname(user.Nickname),
-		"has_qq":         ct.QQ != "", "qq": maskQQ(ct.QQ),
-		"has_mail":       ct.Mail != "", "mail": maskMail(ct.Mail),
-		"has_phone":      ct.Phone != "", "phone": maskPhone(ct.Phone),
+		"nickname": maskNickname(user.Nickname),
+		"has_qq":   ct.QQ != "", "qq": maskQQ(ct.QQ),
+		"has_mail": ct.Mail != "", "mail": maskMail(ct.Mail),
+		"has_phone": ct.Phone != "", "phone": maskPhone(ct.Phone),
 		"has_protection": p.ID > 0, "issue": issue,
 	})
 }
@@ -402,6 +431,17 @@ func randomPassword(n int) string {
 	return string(b)
 }
 
+// settingInt 读系统配置（settings 表）里的整数值；没配置或值非法时返回 def
+func settingInt(db *gorm.DB, key string, def, min, max int) int {
+	var s string
+	db.Raw("SELECT value FROM settings WHERE `key` = ?", key).Scan(&s)
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n < min || n > max {
+		return def
+	}
+	return n
+}
+
 func (h *AuthHandler) Me(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var user model.User
@@ -417,7 +457,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		"age": user.Age, "birth_year": user.BirthYear, "birth_month": user.BirthMonth, "birth_day": user.BirthDay,
 		"birth_type": user.BirthType, "solar": user.Solar, "lunar": user.Lunar,
 		"friend_policy": user.FriendPolicy, "config": user.Config, "hours": user.Hours,
-		"has_paypass": user.PayPass != "",
+		"has_paypass":  user.PayPass != "",
 		"introduction": user.Introduction, "city": user.City, "avatar_base64": user.AvatarBase64,
 		"level_icon": user.LevelIcon, "level_title": user.LevelTitle,
 		"noble": user.Noble, "qq_end": user.QqEnd, "qq_lv": user.QqLv,

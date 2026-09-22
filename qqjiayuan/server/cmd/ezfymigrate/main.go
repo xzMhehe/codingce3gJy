@@ -259,6 +259,9 @@ func main() {
 	//   预演的坐标只作「预计会迁到哪片区域」参考，不构成承诺。
 	fmt.Println()
 	used := make(map[[2]int]bool, len(plan))
+	// ★ 批次上下文：把「全城坐标」读一次，逐城复用（不再每城全表扫描）。
+	//   配合 ezfy_coastal_index.go 的沿海平原缓存，批量迁城的 DB 读量从 O(n·N) 降到 O(N)。
+	mctx := h.NewMoveCtx()
 	done, errs, nomove := 0, 0, 0
 	for _, p := range plan {
 		if p.Reason != "" {
@@ -266,9 +269,9 @@ func main() {
 		}
 		nx, ny, msg := 0, 0, ""
 		if *coastal {
-			nx, ny, msg = h.EzfyMoveOneCityCoastal(p.CityId, *continent, *coastalFallback, used)
+			nx, ny, msg = h.EzfyMoveOneCityCoastalC(p.CityId, *continent, *coastalFallback, used, mctx)
 		} else {
-			nx, ny, msg = h.EzfyMoveOneCity(p.CityId, *continent, used)
+			nx, ny, msg = h.EzfyMoveOneCityC(p.CityId, *continent, used, mctx)
 		}
 		if msg != "" {
 			fmt.Printf("  [失败] 城%-6d 玩家%-6d %s: %s\n", p.CityId, p.UserID, trimName(p.Name), msg)

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -38,6 +38,12 @@
         <el-table-column label="状态" width="80">
           <template slot-scope="{row}">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '正常' : '封禁' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="最后IP" width="130" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="lastIps[row.id]">{{ lastIps[row.id] }}</span>
+            <span v-else class="txt-none">—</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="430" fixed="right" header-align="center">
@@ -189,6 +195,7 @@ export default {
     return {
       list: [], total: 0, page: 1, pages: 1, size: 10, word: '', loading: false,
       oldNums: {},
+      lastIps: {},
       selection: [],
       allRoles: [], allBadges: [],
       dlg: false,
@@ -227,6 +234,7 @@ export default {
           this.total = r.data.total
           this.page = r.data.page
           this.oldNums = r.data.old_nums || {}
+          this.lastIps = r.data.last_ips || {}
         } else this.$message.error(r.msg)
       })
     },

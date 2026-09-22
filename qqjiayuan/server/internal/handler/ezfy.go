@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -50,7 +51,28 @@ var ezfyTechAcademy = map[int]int{
 	15: 7, 16: 8, 20: 9, 17: 10,
 }
 
-type EzfyHandler struct{ DB *gorm.DB }
+// EzfyHandler 二战风云处理器。
+//
+// ★★ processing 是「骚结算重入守卫」（2026-09-21 线上性能事故沉淀）：
+// refreshCity → processOrders → processArrive → refreshCity 是一条天然环：
+// 战斗结算时若懒结算防守方，而防守方也有到期订单、且该订单又指向我方，
+// 就会互相自喂 —— CPU 打满、订单无限写库。原来的守卫只判断
+// `target.UserID == uid`，覆盖不了「A↔B 互相打」和「同一轮订单未落库被重入」。
+// processOrders / refreshCity 进函数前抢锁，已在处理中的 uid 直接跳过。
+type EzfyHandler struct {
+	DB *gorm.DB
+	// processing 记录「正在被本 goroutine 懒结算的 uid」，防止订单结算递归重入
+	processing sync.Map
+}
+
+// enterProcess 标记 uid 进入结算；返回 false 表示已在结算中（调用方应立即返回）。
+func (h *EzfyHandler) enterProcess(uid uint) bool {
+	_, loaded := h.processing.LoadOrStore(uid, struct{}{})
+	return !loaded
+}
+
+// exitProcess 结算结束，释放标记。
+func (h *EzfyHandler) exitProcess(uid uint) { h.processing.Delete(uint(uid)) }
 
 func (h *EzfyHandler) cfgs() {
 	ezfyCfg.load(h.DB)
@@ -175,9 +197,10 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 // findFreePos 新玩家首次进游戏的落点
 //
 // ★ 第十二轮：默认落在**欧洲**（ezfyDefaultMoveContinent），
-//   内测玩家互相离得近才打得起仗（用户规则：「新玩家 默认 建城市也是默认欧洲城市」）。
-//   欧洲满员时按「亚洲 → 非洲 → 北美洲 → 南美洲 → 大洋洲 → 南极洲」依次兜底，
-//   最后再退回全世界随机（保证永远建得出城，不会卡住新玩家）。
+//
+//	内测玩家互相离得近才打得起仗（用户规则：「新玩家 默认 建城市也是默认欧洲城市」）。
+//	欧洲满员时按「亚洲 → 非洲 → 北美洲 → 南美洲 → 大洋洲 → 南极洲」依次兜底，
+//	最后再退回全世界随机（保证永远建得出城，不会卡住新玩家）。
 func (h *EzfyHandler) findFreePos() [2]int {
 	order := []int{ezfyDefaultMoveContinent}
 	for _, a := range ezfyMoveAreas {
@@ -386,7 +409,8 @@ func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
 // cityKind 城市类型文案
 //
 // ★ 用户要求统一口径：建在沿海平原上的叫「沿海城市」，其余叫「内陆城市」。
-//   （原来叫「海城 / 陆地城市」，与城市列表、城市状态页两处不一致）
+//
+//	（原来叫「海城 / 陆地城市」，与城市列表、城市状态页两处不一致）
 func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
 	if h.isSeaCity(city) {
 		return "沿海城市"
@@ -397,11 +421,34 @@ func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
 // ============ 懒结算五连（复刻 GameServiceImpl checkBuildingDone/collectTrainQueue/calcResource/processOrders） ============
 
 // refreshCity 每次进入游戏接口前统一懒结算
+//
+// ★ 军官工资所需的数据由 calcResource 内部**按需惰性加载**（见 officerSalaryOfCity），
+//
+//	所以这里不必预先查军官表：只有「确实要按小时扣工资」的那一次才查一次库，
+//	且同一请求内复用（request 级缓存），不会每个 callee 重复查。
 func (h *EzfyHandler) refreshCity(uid uint, city *model.EzfyCity) {
 	h.checkBuildingDone(city)
 	h.checkTechDone(city)
 	h.collectTrainQueue(city)
 	h.calcResource(city)
+	h.processOrders(uid)
+}
+
+// refreshCityWithOfficers 与 refreshCity 相同，但把「已经取到的军官列表」传给
+// calcResource 算工资，从而**省掉一次军官查询**。
+//
+// ★ 高频接口（View 等，尤其是被前端轮询的首页）应当走这个版本：
+//
+//	officers := h.officerList(city.ID)
+//	h.refreshCityWithOfficers(uid, &city, officers)
+//
+// 普通接口直接用 refreshCity 即可（calcResource 会兜底查一次，同样只查一次）。
+func (h *EzfyHandler) refreshCityWithOfficers(uid uint, city *model.EzfyCity,
+	officers []model.EzfyOfficer) {
+	h.checkBuildingDone(city)
+	h.checkTechDone(city)
+	h.collectTrainQueue(city)
+	h.calcResource(city, officers)
 	h.processOrders(uid)
 }
 
@@ -433,8 +480,20 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 	}
 }
 
-// calcResource 资源按小时懒结算（民心/民怨/科技/道具增产/野地产出/军队耗粮）
-func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
+// calcResource 资源按小时懒结算（民心/民怨/科技/道具增产/野地产出/军队耗粮/军官工资）
+//
+// ★★ 性能红线（2026-09-21 线上事故）：本函数是**所有接口的必经懒结算**，
+// 军官工资那一项**绝不能**在这里直接查库。之前写的是
+//
+//	gold -= officerSalaryPerHour(city.ID)   // → officerList → 2 条 SQL
+//
+// 每请求凭空多打 2 条 SQL，配合前端 30s 轮询把线上 1核1G 的 IO/CPU 打满。
+//
+// 现在的口径：工资用 officerSalaryOf 做**纯内存**计算。
+// 军官数据由调用方通过可选参数 officers 传入；不传则本函数**自己查一次**
+// （只在这一处、且只在真正要结算时查），保证「工资一定扣得到、且最多查一次」。
+// 高频路径（View / Officers / battle）请显式传 officers 以复用已有查询结果。
+func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.EzfyOfficer) {
 	now := time.Now().UnixMilli()
 	last := city.LastTime
 	if last <= 0 {
@@ -641,8 +700,21 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity) {
 	// ★ 军官工资：每名军官每小时消耗「等级 × ezfy_cfg_limit.officer_salary_per_level」黄金。
 	//   与「军队耗粮」同一套懒结算口径 —— 按小时累计，离线期间照样扣。
 	//   用户反馈「军官是消耗黄金的，黄金现在消耗 0」，这就是那笔消耗。
-	officerSalary := int64(float64(h.officerSalaryPerHour(city.ID)) * hours)
-	gold -= officerSalary
+	//
+	//   ⚡ 性能：officers 由调用方传入时（View / Officers / 战斗结算）用纯内存计算，
+	//   零额外 SQL；未传时**兜底查一次**，保证工资一定扣得到。
+	//   两种情形下本函数最多都只产生 1 次军官查询 —— 绝不会像事故版本那样重复触发。
+	//   注意兜底只在真正需要结算（hours 有意义）时才走，避免空转。
+	per := int64(ezfyOfficerSalaryPerLvCfg())
+	if per > 0 {
+		var salary int64
+		if len(officers) > 0 {
+			salary = officerSalaryOf(officers[0])
+		} else {
+			salary = officerSalaryOf(h.officerList(city.ID))
+		}
+		gold -= int64(float64(salary) * hours)
+	}
 	if gold < 0 {
 		gold = 0
 	}
@@ -1058,8 +1130,9 @@ func (h *EzfyHandler) speedUpBuilding(city *model.EzfyCity, recordId int64, minu
 // defenceSpaceUsed 城防空间已占用 = 已建成的城防 + **训练队列里还没出来的城防**。
 //
 // ★ 用户反馈「城防可以随便造」的根因：原来只统计已建成的城防，
-//   于是玩家可以连下多张训练单、每单都不超上限，最后总量突破围墙容量。
-//   把队列里的量也算进来才是真正的「占用」。
+//
+//	于是玩家可以连下多张训练单、每单都不超上限，最后总量突破围墙容量。
+//	把队列里的量也算进来才是真正的「占用」。
 func (h *EzfyHandler) defenceSpaceUsed(cityId uint) int64 {
 	var used int64
 	for tid, cnt := range h.troopMap(cityId) {
@@ -1191,17 +1264,19 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 // troopPop 城市「已占用人口」= **训练队列里还没出厂的新兵**占用的人口。
 //
 // ★ 用户规则（2026-09-21 明确）：兵确实用人口训练，但**不占用人口位置**。
-//   即：已训练完成的部队（城内驻军 / 出征在外 / 返航途中）一律不再占人口，
-//       只有「正在训练、还没出厂」的新兵临时占用，出厂进城的瞬间人口就归还。
+//
+//	即：已训练完成的部队（城内驻军 / 出征在外 / 返航途中）一律不再占人口，
+//	    只有「正在训练、还没出厂」的新兵临时占用，出厂进城的瞬间人口就归还。
 //
 // 背景（用户反馈的 bug）：原实现只统计 ezfy_city_troop（城内部队表），于是
 //   - 部队一出征就从城内部队表扣掉 → 占用人口瞬间归零、空闲人口变回满值；
 //   - 训练队列里的新兵出厂前完全不占人口。
-//   两处口径都不对：前者让「出征=凭空多出人口」，后者让「训练不吃人口」。
-//   统一成「只看训练队列」后，空闲人口 = 人口 - 训练中占用，语义唯一。
+//     两处口径都不对：前者让「出征=凭空多出人口」，后者让「训练不吃人口」。
+//     统一成「只看训练队列」后，空闲人口 = 人口 - 训练中占用，语义唯一。
 //
 // 注意：城防设施(type 4)不占人口，它走「城防空间」那一套（见 defenceSpaceUsed），
-//       这里必须排除，否则城防会被重复计一次。
+//
+//	这里必须排除，否则城防会被重复计一次。
 func (h *EzfyHandler) troopPop(cityId uint) int64 {
 	var qs []model.EzfyTrainQueue
 	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
@@ -1242,10 +1317,27 @@ func ezfyWoundHealGoldPer(troopId int) int64 {
 //
 // ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资。
 // 俘虏(IsCaptive=1)不发工资（还没收编，不算自己人）。
+//
+// ⚠️ 性能红线（2026-09-21 线上事故）：
+//
+//	本函数会查库（officerList 内部 2 条 SQL），**绝不能**放进 calcResource 之类的
+//	高频懒结算路径里 —— calcResource 是所有接口的必经之路，在里面查库 = 每个请求
+//	都多打一次 DB，1核1G 的线上库会被打满（IO/CPU 双飙升）。
+//	需要「随懒结算一起扣工资」时，请用 officerSalaryOf(list)，把已经取到的
+//	军官列表传进去（calcResource 已改为接收 officers 参数）。
 func (h *EzfyHandler) officerSalaryPerHour(cityId uint) int64 {
+	return officerSalaryOf(h.officerList(cityId))
+}
+
+// officerSalaryOf 按给定的军官列表算每小时工资合计（纯内存，不查库）。
+//
+// ★ 这是「性能红线」要求的安全出口：调用方自己把军官列表取一次，
+// 反复算多少次都不会再产生 SQL。calcResource / Officers / View 都走它。
+func officerSalaryOf(list []model.EzfyOfficer) int64 {
 	var total int64
 	per := int64(ezfyOfficerSalaryPerLvCfg())
-	for _, o := range h.officerList(cityId) {
+	for i := range list {
+		o := &list[i]
 		if o.IsCaptive == 1 {
 			continue
 		}
@@ -1844,7 +1936,11 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.cfgs()
 	profile := h.ensureProfile(uid)
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+
+	// ★ 军官列表在本请求内只读一次，供懒结算扣工资 + 下面的展示复用。
+	//   本接口是首页 30s 轮询的目标，重复查军官表曾是线上 IO 飙升的主因。
+	officers := h.officerList(city.ID)
+	h.refreshCityWithOfficers(uid, &city, officers)
 
 	var cities []model.EzfyCity
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
@@ -1937,11 +2033,13 @@ func (h *EzfyHandler) View(c *gin.Context) {
 
 	acct, ulv, uexp := h.ezfyUserBrief(uid)
 	resp.OK(c, gin.H{
-		"profile":       profile,
-		"account":       acct,
-		"user_level":    ulv,
-		"user_exp":      uexp,
-		"officer_count": h.officerCount(city.ID),
+		"profile":    profile,
+		"account":    acct,
+		"user_level": ulv,
+		"user_exp":   uexp,
+		// ★ 在职军官数：直接用本请求已取到的 officers 统计，
+		//   不要再调 h.officerCount（它内部又查一次 officerList）。
+		"officer_count": officerCountOf(officers),
 		"rank_name":     ezfyRankName(profile.Prestige),
 		"rank_post":     ezfyRankPost(profile.Prestige),
 		"cities":        h.cityViews(cities),
@@ -1971,8 +2069,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"occupying":       occupying,
 		// ★ 占用人口（只有训练中、还没出厂的新兵占）：首页/城市状态页的「空闲人口」直接用它算，
 		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
-		"pop_used": h.troopPop(city.ID),
-		"unread_reports":  unreadReports,
+		"pop_used":       h.troopPop(city.ID),
+		"unread_reports": unreadReports,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),
 		// ★ 集结令配置：跟着 /view 一起下发，前端一进页面就是准确值。
@@ -1982,7 +2080,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"gather_per":  ezfyGatherBonusPer(),
 		"gather_have": h.itemCount(uid, ezfyGatherItemID),
 		// ★ 军官工资（黄金/小时）：军官页直接展示，让玩家看得见钱花在哪
-		"officer_salary": h.officerSalaryPerHour(city.ID),
+		//   用上面已取到的 officers 做纯内存计算（勿改回 officerSalaryPerHour）
+		"officer_salary": officerSalaryOf(officers),
 	})
 }
 
