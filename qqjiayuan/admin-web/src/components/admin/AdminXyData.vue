@@ -57,7 +57,7 @@
                   X <el-input-number v-model="eff.goto_x" :min="0" size="mini" controls-position="right" style="width:90px" />
                   Y <el-input-number v-model="eff.goto_y" :min="0" size="mini" controls-position="right" style="width:90px" />
                 </div>
-                <em>填 0 / 不勾选 表示无此效果，保存后自动生成配置，无需手写格式</em>
+                <!-- [说明·不显示在界面] 填 0 / 不勾选 表示无此效果，保存后自动生成配置，无需手写格式 -->
               </div>
             </template>
             <!-- NPC掉落结构化编辑器 -->
@@ -80,7 +80,7 @@
                 <div>
                   <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="addDrop">添加掉落</el-button>
                 </div>
-                <em>概率为百分比（30 表示 30% 掉率），保存后自动换算存储</em>
+                <!-- [说明·不显示在界面] 概率为百分比（30 表示 30% 掉率），保存后自动换算存储 -->
               </div>
             </template>
             <!-- 功能NPC传送目的地结构化编辑器 -->
@@ -100,7 +100,7 @@
                 <div>
                   <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="addTele">添加传送目的地</el-button>
                 </div>
-                <em>可搜索选择地图节点自动填充名称和坐标，也可手动填写；玩家点击该NPC时会显示这些传送选项</em>
+                <!-- [说明·不显示在界面] 可搜索选择地图节点自动填充名称和坐标，也可手动填写；玩家点击该NPC时会显示这些传送选项 -->
               </div>
             </template>
             <el-select v-else-if="f.opts" v-model="form[f.k]" style="width:220px">

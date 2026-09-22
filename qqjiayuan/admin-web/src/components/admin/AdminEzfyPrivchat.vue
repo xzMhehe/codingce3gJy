@@ -67,7 +67,7 @@
           </el-radio-group>
         </el-form-item>
       </el-form>
-      <em>提示：此操作会物理删除私信记录，不可恢复</em>
+      <!-- [说明·不显示在界面] 提示：此操作会物理删除私信记录，不可恢复 -->
       <div slot="footer">
         <el-button @click="clearDlg = false">取 消</el-button>
         <el-button type="danger" :loading="saving" @click="doClear">清 空</el-button>

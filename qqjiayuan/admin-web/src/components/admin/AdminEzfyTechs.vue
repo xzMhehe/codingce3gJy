@@ -125,7 +125,7 @@
           <span class="td-sub">0 = 未掌握</span>
         </el-form-item>
       </el-form>
-      <em>提示：若该城池还没有此科技会自动创建，等级会被自动截断到配置上限</em>
+      <!-- [说明·不显示在界面] 提示：若该城池还没有此科技会自动创建，等级会被自动截断到配置上限 -->
       <div slot="footer">
         <el-button @click="setDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSet">设 置</el-button>
@@ -208,7 +208,7 @@
           <el-input v-model="cf.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
         </el-form-item>
       </el-form>
-      <em>保存后立即生效（后端会重载配置缓存，不用重启）</em>
+      <!-- [说明·不显示在界面] 保存后立即生效（后端会重载配置缓存，不用重启） -->
       <div slot="footer">
         <el-button @click="cfDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doCfgSave">保 存</el-button>

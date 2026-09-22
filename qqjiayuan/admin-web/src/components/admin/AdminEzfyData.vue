@@ -59,7 +59,7 @@
             <el-input v-else v-model="form[f.k]" :maxlength="f.max || 50" style="width:320px" />
           </el-form-item>
         </el-form>
-        <em v-if="table === 'cities'">提示：城池为玩家运行数据，修改后玩家下次进入游戏生效</em>
+        <!-- [说明·不显示在界面] 提示：城池为玩家运行数据，修改后玩家下次进入游戏生效 -->
         <div slot="footer">
           <el-button size="small" @click="showForm = false">取 消</el-button>
           <el-button size="small" type="primary" :loading="saving" @click="doSave">保 存</el-button>

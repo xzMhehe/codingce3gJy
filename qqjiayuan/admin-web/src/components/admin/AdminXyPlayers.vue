@@ -183,7 +183,7 @@
           <el-input-number v-model.number="grant.beans" :min="0" />
         </el-form-item>
       </el-form>
-      <em>提示：ID 可在「幻想西游 → 数据管理」中查询</em>
+      <!-- [说明·不显示在界面] 提示：ID 可在「幻想西游 → 数据管理」中查询 -->
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -211,7 +211,7 @@
           <el-tag v-if="!isBanned(punish.row || {}) && !isMuted(punish.row || {})" size="mini" type="success">正常</el-tag>
         </el-form-item>
       </el-form>
-      <em>提示：选择「解除」可立即恢复该角色的{{ punish.type === 'ban' ? '登录' : '发言' }}权限</em>
+      <!-- [说明·不显示在界面] 提示：选择「解除」可立即恢复该角色的{{ punish.type === 'ban' ? '登录' : '发言' }}权限 -->
       <div slot="footer">
         <el-button @click="punishDlg = false">取 消</el-button>
         <el-button :type="punish.mins === 0 ? 'success' : 'danger'" :loading="saving" @click="doPunish">

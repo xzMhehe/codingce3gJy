@@ -214,7 +214,7 @@
         <el-form-item label="石油"><el-input-number v-model.number="form.oil" :min="0" controls-position="right" style="width:180px" /></el-form-item>
         <el-form-item label="稀矿"><el-input-number v-model.number="form.rare" :min="0" controls-position="right" style="width:180px" /></el-form-item>
       </el-form>
-      <em>提示：资源直接写入，不受仓储上限限制（GM 专用）</em>
+      <!-- [说明·不显示在界面] 提示：资源直接写入，不受仓储上限限制（GM 专用） -->
       <div slot="footer">
         <el-button @click="editDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="save">保 存</el-button>

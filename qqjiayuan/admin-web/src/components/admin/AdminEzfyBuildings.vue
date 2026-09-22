@@ -196,7 +196,7 @@
           <el-input v-model="cfgForm.des" type="textarea" :rows="2" maxlength="500" />
         </el-form-item>
       </el-form>
-      <em>保存后立即生效（后端会重载配置缓存）</em>
+      <!-- [说明·不显示在界面] 保存后立即生效（后端会重载配置缓存） -->
       <div slot="footer">
         <el-button @click="cfgDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doCfgSave">保 存</el-button>

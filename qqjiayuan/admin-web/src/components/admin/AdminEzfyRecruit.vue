@@ -80,7 +80,7 @@
           <span class="td-sub" style="margin-left:8px">开启后跳过队列，兵力直接入库</span>
         </el-form-item>
       </el-form>
-      <em>提示：管理端新增征兵不扣除资源与人口</em>
+      <!-- [说明·不显示在界面] 提示：管理端新增征兵不扣除资源与人口 -->
       <div slot="footer">
         <el-button @click="createDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doCreate">确 定</el-button>

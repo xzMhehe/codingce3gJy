@@ -79,7 +79,9 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfyEquipSets(db)
 	backfillOfficerEquipSetBonus(db)
 	repairEquipSnapshots(db)
+	backfillLooseEquipPrice(db)
 	seedEzfyChests(db)
+	backfillEzfyChestPool(db)
 	seedEzfySchemes(db)
 	migrateOfficerAttrPoints(db)
 }

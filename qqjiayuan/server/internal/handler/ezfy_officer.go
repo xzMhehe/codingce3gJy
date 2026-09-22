@@ -1057,14 +1057,32 @@ func (h *EzfyHandler) officerAddAttr(city *model.EzfyCity, officerId int64, attr
 	return ""
 }
 
-// officerBaseBonus 军官基础战斗加成（军事属性 + 装备军事加成 + 套装军事加成）
+// ezfyAttrToBonus 属性 → 加成百分点：floor((属性 + 1) / 2)
+//
+// ★ 复刻《战斗机制（家园玩家必看）》§6「军事和学识怎样变成攻防加成」：
+//
+//	攻击加成百分点 = floor(有效军事 + 1) ÷ 2
+//	防御加成百分点 = floor(有效学识 + 1) ÷ 2
+//
+// 即**每 2 点属性 = 1 个百分点**（有效军事 300 → 150% 攻击加成）。
+// 注意口径是「有效属性」（自身 + 装备 + 套装），见 officerEffective。
+func ezfyAttrToBonus(attr int) int {
+	if attr <= 0 {
+		return 0
+	}
+	return (attr + 1) / 2
+}
+
+// officerBaseBonus 军官基础攻击加成（有效军事 ÷ 2，装备/套装军事已含在有效属性里）
+//
+// ★ 用户反馈（2026-09-22）：原来直接把军事值当百分点（军事 655 → 攻击+655%），
+//   比参考文档高了一倍；现按 §6 改为 floor((有效军事+1)/2)。
 func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
-	em, _, _ := h.officerEquipBonus(o)
-	sm, _, _, _ := h.officerSetBonus(o)
-	return o.Military + em + sm
+	mil, _, _ := h.officerEffective(o)
+	return ezfyAttrToBonus(mil)
 }
 
 // officerSkillBattleBonus 军官技能带来的攻击加成（复刻原版 getOfficerBattleBonus 的技能段）
@@ -1097,19 +1115,30 @@ func (h *EzfyHandler) officerSpeedSkill(o *model.EzfyOfficer) bool {
 	return h.officerHasSkill(o, "坦克突袭") || h.officerHasSkill(o, "闪电袭击") || h.officerHasSkill(o, "越岛战术")
 }
 
-// officerGuardBonus 城守守城防御加成（+10 及 防御/掩体+10、生命/鼓舞+5）
-// officerGuardBonus 军官防御加成（基础 10 + 学识/20 + 技能）
+// officerGuardAttrBonus 军官**属性部分**的防御加成（有效学识 ÷ 2）
 //
-// ★ 学识原来只展示、不参与任何计算（原版也是这样），加上装备的学识加成也没去处。
-//
-//	这里把学识接到「防御」上，让三项属性各有用途：
-//	军事→攻击、后勤→市长产量、学识→防御。
-func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
+// ★ 复刻《战斗机制（家园玩家必看）》§6：防御加成百分点 = floor(有效学识 + 1) ÷ 2。
+// 单独拆出来是给战报用的 —— officerBattleDesc 会自己再列技能，避免技能被算两遍。
+func (h *EzfyHandler) officerGuardAttrBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
 	_, _, lea := h.officerEffective(o)
-	bonus := 10 + lea/20
+	return ezfyAttrToBonus(lea)
+}
+
+// officerGuardBonus 军官防御加成（有效学识 ÷ 2 + 技能）
+//
+// ★ 三项属性各有用途：军事→攻击、后勤→市长产量、学识→防御。
+//
+// ★ 用户反馈（2026-09-22）：原来是 `10 + 学识/20`（学识 376 → 防御+58），
+//   比参考文档 §6 的 `floor((学识+1)/2)`（学识 376 → 防御+188）低了 3 倍多，
+//   已按文档重写；固定 +10 基础值一并去掉（文档里没有这一项）。
+func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
+	if o == nil {
+		return 0
+	}
+	bonus := h.officerGuardAttrBonus(o)
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "弧形防御":
@@ -1428,11 +1457,18 @@ func ezfyTierName(tier int) string {
 	}
 }
 
-// randomEquipment 随机取指定品质的非珠宝装备
+// randomEquipment 随机取指定品质的**非套装、非珠宝**装备
+//
+// ★ 用户规则（2026-09-22）：**套装军官装备只能通过宝箱开启**。
+//   战斗掉落（活动目标/野地）只出普通装备（武器/防具/饰品）与地形珠宝，
+//   套装件（set_id > 0）在这里被排除 —— 想让某套装能掉落，必须从这条规则外另开口子。
 func (h *EzfyHandler) randomEquipment(tier int) *model.EzfyCfgEquipment {
 	pool := []model.EzfyCfgEquipment{}
 	for _, e := range ezfyCfg.equipments {
-		if e.Type != "珠宝" && e.Tier == tier {
+		if e.Type == "珠宝" || e.SetId > 0 {
+			continue
+		}
+		if e.Tier == tier {
 			pool = append(pool, e)
 		}
 	}
@@ -2070,6 +2106,26 @@ func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCf
 		}
 		h.addItem(city.UserID, it.RefId, n)
 		return cfg.Name + "×" + strconv.Itoa(n)
+	case 3: // ★ 整套（RefId = 套装 id）：把该套装的**全部件**一次性发给玩家
+		//
+		// ★ 用户要求（2026-09-22）：「套装宝箱……开出来还是按套来吧」
+		// —— 免得玩家花 300~800 钻石开出一件，还得凑 10 次。
+		s := ezfyCfg.equipSet(it.RefId)
+		if s == nil {
+			return ""
+		}
+		cnt := 0
+		// 按 ID 升序发放，保证「同一次开箱给的件顺序稳定」（equipments 是 map，遍历顺序随机）
+		for _, id := range ezfyEquipIDsOfSet(it.RefId) {
+			e := ezfyCfg.equipments[id]
+			ee := e
+			h.addEquipment(city, &ee)
+			cnt++
+		}
+		if cnt == 0 {
+			return ""
+		}
+		return s.Name + " 整套（" + strconv.Itoa(cnt) + "件）"
 	default:
 		return ""
 	}
@@ -2099,6 +2155,10 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 			case 2:
 				if cfg := ezfyCfg.item(p.RefId); cfg != nil {
 					name = cfg.Name
+				}
+			case 3: // 整套（RefId = 套装 id）
+				if s := ezfyCfg.equipSet(p.RefId); s != nil {
+					name = s.Name + " 整套"
 				}
 			}
 			if name == "" {
@@ -2399,67 +2459,76 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 // ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家自己用黄金或钻石买。
 // 只卖「上架」的（price_gold>0 或 price_diamond>0），库存 -1 = 无上限。
 
-// equipShopList 商城在售装备（按套装分组）
+// ezfyEquipIDsOfSet 某套装的全部件 ID（升序）
+//
+// ★ ezfyCfg.equipments 是 map，遍历顺序随机；凡是要「稳定顺序」的地方都走这里
+// （开整套的发放顺序、商城的列顺序等）。
+func ezfyEquipIDsOfSet(setId int) []int {
+	ids := []int{}
+	for id, e := range ezfyCfg.equipments {
+		if e.SetId == setId {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	return ids
+}
+
+// ezfyEquipIDsAsc 全部装备 ID（升序）—— 商城按部位铺表格时保证顺序稳定
+func ezfyEquipIDsAsc() []int {
+	ids := make([]int, 0, len(ezfyCfg.equipments))
+	for id := range ezfyCfg.equipments {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	return ids
+}
+
+// equipShopList 商城在售装备（★ 按**部位**分组）
+//
+// ★ 用户要求（2026-09-22）：
+//   - 「散件也上吧，价格按加成 10 钻石到 50 钻石不等」→ 系列单件（可单穿）+ 纯散件都上架；
+//   - 「商城前端做好看点」→ 按 11 个部位分组，前端直接铺成表格。
+//
+// 上架范围 = **散件**（有系列名的单件 或 不属于任何套装的纯散件）。
+// ★ 第一批套装（set_id 1~17，Series 为空）仍**不上架** —— 它们只能开宝箱，
+//   否则「套装装备只能通过宝箱开启」这条规则就形同虚设。
 func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
-	sets := []gin.H{}
+	slots := []string{}
+	bySlot := map[string][]gin.H{}
 	items := []gin.H{}
-	// 套装分组：先按套装 id 升序，再按件序号
-	setIDs := []int{}
-	for _, s := range ezfyCfg.equipSets() {
-		setIDs = append(setIDs, s.ID)
-	}
-	for _, sid := range setIDs {
-		s := ezfyCfg.equipSet(sid)
-		if s == nil {
-			continue
-		}
-		pieces := []gin.H{}
-		for _, e := range ezfyCfg.equipments {
-			if e.SetId != sid {
-				continue
-			}
-			if e.PriceGold <= 0 && e.PriceDiamond <= 0 {
-				continue
-			}
-			pieces = append(pieces, h.equipShopItem(&e))
-			items = append(items, h.equipShopItem(&e))
-		}
-		sort.Slice(pieces, func(i, j int) bool {
-			return pieces[i]["id"].(int) < pieces[j]["id"].(int)
-		})
-		if len(pieces) == 0 {
-			continue
-		}
-		sets = append(sets, gin.H{
-			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
-			"military": s.Military, "logistics": s.Logistics, "learning": s.Learning,
-			// ★ 六项战斗属性也要下发：前端要显示「穿齐额外加成」，少一项就会 undefined
-			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp,
-			"move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,
-			"effect": s.Effect, "des": s.Des, "pieces": pieces,
-		})
-	}
-	// 非套装的散件（也可上架）
-	loose := []gin.H{}
-	for _, e := range ezfyCfg.equipments {
-		if e.SetId > 0 {
-			continue
-		}
+	// 按 ID 升序遍历（equipments 是 map，直接 range 顺序随机 → 部位分组顺序会乱跳）
+	for _, id := range ezfyEquipIDsAsc() {
+		e := ezfyCfg.equipments[id]
 		if e.PriceGold <= 0 && e.PriceDiamond <= 0 {
 			continue
 		}
-		loose = append(loose, h.equipShopItem(&e))
+		// ★ 只上架「军官装备」类的散件 —— 也就是《装备距离伤害表》里的 11 个部位。
+		//   老版的 武器/防具/饰品/珠宝（Type 是它们自己）不属于那张表，别混进来。
+		if e.Type != "军官装备" {
+			continue
+		}
+		if e.SetId > 0 && e.Series == "" {
+			continue // 第一批套装：只能开宝箱
+		}
+		slot := e.EquipSlot()
+		if _, ok := bySlot[slot]; !ok {
+			slots = append(slots, slot)
+		}
+		ee := e
+		it := h.equipShopItem(&ee)
+		bySlot[slot] = append(bySlot[slot], it)
+		items = append(items, it)
 	}
-	sort.Slice(loose, func(i, j int) bool { return loose[i]["id"].(int) < loose[j]["id"].(int) })
-	if len(loose) > 0 {
-		sets = append(sets, gin.H{
-			"id": 0, "name": "散件装备", "parts": 0, "effect": "不属于任何套装",
-			"military": 0, "logistics": 0, "learning": 0,
-			"dmg": 0, "def": 0, "hp": 0, "move": 0, "crit": 0, "crit_dmg": 0,
-			"pieces": loose,
+	out := []gin.H{}
+	for _, slot := range slots {
+		pieces := bySlot[slot]
+		sort.Slice(pieces, func(a, b int) bool {
+			return pieces[a]["id"].(int) < pieces[b]["id"].(int)
 		})
+		out = append(out, gin.H{"slot": slot, "count": len(pieces), "pieces": pieces})
 	}
-	return sets, items
+	return out, items
 }
 
 func (h *EzfyHandler) equipShopItem(e *model.EzfyCfgEquipment) gin.H {
@@ -2483,9 +2552,10 @@ func (h *EzfyHandler) EquipShop(c *gin.Context) {
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
-	sets, items := h.equipShopList()
+	slots, items := h.equipShopList()
 	resp.OK(c, gin.H{
-		"sets": sets, "items": items,
+		// ★ slots = 按部位分组（前端铺表格）；items = 扁平列表（检索/兼容用）
+		"slots": slots, "items": items,
 		"gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond,
 	})
 }
@@ -2517,6 +2587,12 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 	cfg := ezfyCfg.equipment(req.CfgId)
 	if cfg == nil {
 		h.fail(c, "装备不存在")
+		return
+	}
+	// ★ 商城只卖**散件**：系列单件（Series != ""，可单穿）与纯散件（SetId == 0）都能买；
+	//   第一批套装（set_id 1~17、Series 为空）只能开宝箱 —— 这里拦住被绕过前端直接传 cfg_id。
+	if cfg.SetId > 0 && cfg.Series == "" {
+		h.fail(c, "该套装装备只能通过宝箱开启，商城不出售")
 		return
 	}
 	useDiamond := req.Currency == "diamond"

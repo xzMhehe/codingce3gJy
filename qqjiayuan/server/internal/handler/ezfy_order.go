@@ -960,9 +960,28 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	var orders []model.EzfyOrder
-	// ★ 用户规则：出征队列只列**还在外面**的部队（行军中/驻守中/返航中）。
+	// ★ 用户规则：出征队列只列**还在外面**的部队（行军中/驻守中/返航中/战斗中）。
 	//   已结束(3已完成/4已终止)的命令不再常驻队列，战报里还能查到。
-	h.DB.Where("user_id = ? AND status IN (0,1,2)", uid).Order("id DESC").Limit(50).Find(&orders)
+	h.DB.Where("user_id = ? AND status IN (0,1,2,?)", uid, ezfyOrderStatusBattle).
+		Order("id DESC").Limit(50).Find(&orders)
+	// ★ 战斗中的订单要带上回合进度：**一次查出全部战场**再按 order_id 取，
+	//   别在循环里逐条查（性能红线：1核1G 机器上 N+1 会直接打满）。
+	//   而且**只在真的有战斗中订单时才查** —— 绝大多数请求没有战斗，不该多打一次 DB。
+	battleRounds := map[int64]int{}
+	hasBattle := false
+	for i := range orders {
+		if orders[i].Status == ezfyOrderStatusBattle {
+			hasBattle = true
+			break
+		}
+	}
+	if hasBattle {
+		var battles []model.EzfyBattle
+		h.DB.Where("user_id = ? AND status = 1", uid).Find(&battles)
+		for _, b := range battles {
+			battleRounds[b.OrderId] = b.Round
+		}
+	}
 	views := []gin.H{}
 	for _, o := range orders {
 		views = append(views, gin.H{
@@ -975,6 +994,10 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			"status":      o.Status, "status_name": ezfyOrderStatusName(o.Status),
 			"troops": parseGroups(o.Troops), "resources": o.Resources,
 			"result": o.Result, "oil_used": o.OilUsed, "officer": o.Officer,
+			// 指挥室：可指挥时前端显示 [指挥]
+			"can_command":  o.Status == ezfyOrderStatusBattle,
+			"battle_round": battleRounds[int64(o.ID)],
+			"battle_max":   ezfyBattleMaxRounds,
 		})
 	}
 	resp.OK(c, gin.H{"orders": views})
@@ -1023,6 +1046,11 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	var order model.EzfyOrder
 	if err := h.DB.Where("id = ? AND user_id = ?", req.OrderId, uid).First(&order).Error; err != nil {
 		resp.ParamError(c, "命令不存在")
+		return
+	}
+	// ★ 指挥室：战斗中的部队不能召回 —— 让它先打完（或点「自动战斗」一键打完）
+	if order.Status == ezfyOrderStatusBattle {
+		resp.ParamError(c, "部队正在战斗中, 不能取消；请到「军情 → 军队动态 → [指挥]」里打完或点[自动战斗]")
 		return
 	}
 	if order.Status != 0 && order.Status != 1 {
@@ -1090,6 +1118,27 @@ func (h *EzfyHandler) processOrders(uid uint) {
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&orders)
 	for i := range orders {
 		order := &orders[i]
+		// ★ 指挥室：战斗中的订单先推进战场（懒结算）。
+		//   刚打完 → 结果并回订单、状态回到「行进中」，紧接着走常规结算；
+		//   还在打 → 跳过，等玩家指挥或下一回合自动推进。
+		if order.Status == ezfyOrderStatusBattle {
+			b := h.ezfyBattleByOrder(int64(order.ID))
+			if b == nil {
+				// 战场记录缺失（异常）→ 兜底按老流程直接结算，绝不让部队卡住
+				order.Status = 0
+				h.processArrive(uid, order, now)
+				continue
+			}
+			if _, done := h.ezfyBattleTick(b, now); !done {
+				continue // 还在打，等玩家指挥或下一回合
+			}
+			order.BattleResult = h.ezfyBattleFinishToOrder(b, now)
+			order.Status = 0
+			// ★ 直接结算，**不依赖 arrive_time** —— 那个字段是「单程时长」的计算基准，
+			//   动它会让返航时间变成天文数字（见 ezfyBattleFinishToOrder 的注释）。
+			h.processArrive(uid, order, now)
+			continue
+		}
 		if order.Status == 0 && now >= order.ArriveTime {
 			h.processArrive(uid, order, now)
 		} else if order.Status == 1 && order.OrderType == 7 && now >= order.ArriveTime {
@@ -1166,7 +1215,9 @@ func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
 func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec int64) {
 	travel := travelSec * 1000
 	if travel <= 0 {
-		travel = order.ArriveTime - order.StartTime
+		// ★ 同 processArrive：单程时长只认 ezfyOneWayTravel，
+		//   别用 ArriveTime-StartTime（被改过就是天文数字）
+		travel = ezfyOneWayTravel(order)
 	}
 	if travel <= 0 {
 		travel = 60000
@@ -1293,7 +1344,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 采到的资源装在部队身上，返航到达才入城；超负重丢弃
 		loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
 		cur := parseCarry(order.Carry)
-		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.Result = order.Troops
 		order.ReturnTime = now + travel
@@ -1480,10 +1531,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		if back.total() > 0 {
 			// 兵力已经进城，回程只带「装不下的资源」：Result 置空避免兵力重复入账
-			travel := ezfyAbs64(order.ArriveTime - order.StartTime)
-			if travel <= 0 {
-				travel = 60000
-			}
+			// ★ 单程时长必须用 ezfyOneWayTravel（读 ReturnTime-StartTime）：
+			//   `ArriveTime - StartTime` 一旦被外部改过（测试、指挥室流程）就会算出天文数字，
+			//   玩家看到「20717 天才能回来」就是这么来的。
+			travel := ezfyOneWayTravel(order)
 			order.Status = 2
 			order.Result = ""
 			order.Carry = carryJSON(back)
@@ -1620,7 +1671,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
 		defEquip = h.officerBattleEquipBonus(cityGuard)
-		defOfficerDesc = h.officerBattleDesc(cityGuard, 10, "守军防御")
+		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
+		//   否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
+		defOfficerDesc = h.officerBattleDesc(cityGuard, h.officerGuardAttrBonus(cityGuard), "守军防御")
 	}
 
 	// 侦查: 不战斗只报告情报, 部队随即返航
@@ -1628,10 +1681,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//   玩家城市 → 资源数量/人口民心/建筑等级/城防数量/军队数量/将领等级/科技等级/最后活动时间
 	//   野地寇城 → 守军情况
 	if order.OrderType == 1 {
-		travel := order.ArriveTime - order.StartTime
-		if travel <= 0 {
-			travel = 60000
-		}
+		// ★ 侦查报告：返程时长同样只认 ezfyOneWayTravel
+		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.Result = order.Troops
 		order.ReturnTime = now + travel
@@ -1642,10 +1693,39 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		return
 	}
 
-	br := ezfySimulate(attacker, defender, atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
-		atkEquip, defEquip,
-		atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), h.buildTargetMap(cityIdOf(target), false),
-		h.buildMoveMap(city.ID, true), h.buildMoveMap(cityIdOf(target), false))
+	// ★★ 指挥室（2026-09-22 用户要求）：战斗类订单到达后**不立即结算**，
+	//   先开一场战场，玩家在「军情 → 军队动态 → [指挥]」里下达前进/暂停/后退；
+	//   每回合 30 秒、最多 40 回合，不下指令则按「前进」自动推进。
+	//   BattleResult 非空 = 这场仗已经在指挥室里打完了 → 直接用结果走下面的常规结算，
+	//   所以战报/掠夺/经验/征服这些战后逻辑全部复用，没有第二套实现。
+	atkTargets := h.buildTargetMap(city.ID, true)
+	defTargets := h.buildTargetMap(cityIdOf(target), false)
+	atkMoves := h.buildMoveMap(city.ID, true)
+	defMoves := h.buildMoveMap(cityIdOf(target), false)
+
+	var br ezfyBattleResult
+	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
+		br = done
+	} else {
+		st := ezfyNewBattleState(attacker, defender,
+			atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
+			atkTargets, defTargets, atkMoves, defMoves)
+		if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
+			order.Status = ezfyOrderStatusBattle
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusBattle)
+			// ★ 用户要求：「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
+			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
+			//   再发一条战报只会把战斗报告列表搅乱。
+			return
+		}
+		// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
+		for !st.Done {
+			st.Step(nil, "")
+		}
+		br = st.Result()
+	}
 	win = br.AttackerWin
 
 	// ★★ 军官经验结算（2026-09-21 重做）
@@ -1882,7 +1962,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				city.Rare += lootRare
 				city.Gold += lootGold
 				h.saveCityRes(city)
-				travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
 				report += fmt.Sprintf("\n我军胜利!但附属野地数量已达上限(%d块), 放弃占领.\n", hallLevel)
@@ -1894,7 +1974,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.addPrestige(uid, pg)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
 				report += h.battleStatsTail(uid, pg, 0)
-				h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
+				h.addReport(uid, 2, reportType+": "+targetName+
+			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -1973,7 +2054,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				target.Feelings = cur
 				h.saveCityRes(target)
 				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("feelings", target.Feelings)
-				travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
 				report += "\n民心尚存，征服失败"
@@ -1994,7 +2075,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				report += "\n民心已失，但目标处于免战保护期，无法征服!"
 				target.Feelings = cur
 				h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Update("feelings", target.Feelings)
-				travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
 				report += h.battleStatsTail(uid, 0, recyclePct)
@@ -2130,7 +2211,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.addOfficerExp(city, leadOfficer.ID, atkExp)
 			report += fmt.Sprintf("\n军官经验+%d", atkExp)
 		}
-		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.ReturnTime = now + travel
 		if wareNote != "" {
@@ -2141,11 +2222,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
 		}
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
-		h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
+		h.addReport(uid, 2, reportType+": "+targetName+
+			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 	} else {
 		// ★ 第九轮：打败仗 → 幸存部队撤退返航（原来 status=4 是终止态，
 		//   幸存兵力凭空消失、带队军官永远卡在「出征中」，属于 bug）。
-		travel := ezfyAbs64(order.ArriveTime - order.StartTime)
+		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.ReturnTime = now + travel
 		if repairedTotal > 0 {
@@ -2179,7 +2261,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
-		h.addReport(uid, 2, reportType+": "+targetName, report, detail, order.ID)
+		h.addReport(uid, 2, reportType+": "+targetName+
+			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
 			h.addReport(target.UserID, 4, "守卫报告: "+city.Name,
 				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail)

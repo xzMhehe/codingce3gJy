@@ -552,11 +552,55 @@ type EzfyOrder struct {
 	OilUsed   int64  `json:"oil_used"`
 	WaitMin   int    `json:"wait_min"` // 宿营分钟数(0~1440), 到达后停留该时长再返航
 
+	// ★ 指挥室（实时战斗）打完的结果（ezfyBattleResult 的 JSON）。
+	//   非空 = 这场仗已经由玩家在指挥室里打完 → processArrive 跳过模拟、直接拿它结算，
+	//   战报/掠夺/经验/征服等战后逻辑全部复用，不重复实现一套。
+	BattleResult string `gorm:"type:mediumtext" json:"battle_result"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (EzfyOrder) TableName() string { return "ezfy_order" }
+
+// EzfyBattle 战场（实时指挥室）
+//
+// ★ 2026-09-22 用户要求「实现指挥功能」（入口：军情 → 军队动态 → [指挥]）：
+// 出征部队到达目标后**不立即结算**，而是开一场战场；每回合 30 秒，
+// 前 25 秒玩家可下达前进/暂停/后退，后 5 秒锁定并由服务器结算一回合，最多 40 回合。
+// 战场结束时把结果写回 ezfy_order.battle_result，再走原有的战后结算逻辑。
+//
+// 推进方式是**懒结算**：State 里存整场快照，每次请求按「已经过去多少个回合时长」补算，
+// 所以不需要常驻定时器；玩家离线时战斗也会自然推进（默认前进，不会卡死）。
+type EzfyBattle struct {
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	OrderId    int64  `gorm:"index:idx_battle_order" json:"order_id"`
+	UserID     uint   `gorm:"index:idx_battle_user" json:"user_id"`
+	CityId     int64  `json:"city_id"`
+	TargetType int    `json:"target_type"` // 1野地 2寇城 3玩家城
+	TargetId   int64  `json:"target_id"`
+	TargetX    int    `json:"target_x"`
+	TargetY    int    `json:"target_y"`
+	TargetName string `gorm:"type:varchar(120);default:''" json:"target_name"`
+	// Status 1 进行中 / 2 已结束（结果已回写订单，等 processArrive 结算）
+	Status int `gorm:"index:idx_battle_status;default:1" json:"status"`
+	Round  int `gorm:"default:0" json:"round"`
+	// Win 0 未分胜负 / 1 攻方胜 / 2 攻方负
+	Win int `gorm:"default:0" json:"win"`
+	// AtkCmd 攻方**逐兵种**指令表，JSON: {"1":"advance","3":"hold"}（troopId → advance|hold|retreat）。
+	// ★ 用户要求「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
+	//   没给的兵种回落司令部「兵种战斗配置」；键 0 = 旧格式遗留的「全军统一指令」。
+	AtkCmd string `gorm:"type:varchar(500);default:''" json:"atk_cmd"`
+	// State 战场快照（ezfyBattleSnapshot 的 JSON，含双方兵力/位置/加成/日志）
+	State string `gorm:"type:mediumtext" json:"-"`
+	// RoundStart 本回合开始时间(ms)：过了回合时长就推进一回合
+	RoundStart int64 `json:"round_start"`
+
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (EzfyBattle) TableName() string { return "ezfy_battle" }
 
 type EzfyReport struct {
 	ID         uint   `gorm:"primaryKey" json:"id"`

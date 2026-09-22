@@ -117,7 +117,8 @@
             <el-input v-model="stWord" placeholder="套装名 / ID" clearable style="width:200px"
                       @keyup.enter.native="loadEquipSets" />
             <el-button type="primary" icon="el-icon-search" @click="loadEquipSets">查询</el-button>
-            <span class="td-sub">穿戴同套 N 件即触发套装加成；套装件在「军官装备列表」里配 set_id 和售价</span>
+            <!-- 套装件需在「军官装备列表」里配 set_id，并加入「宝箱」奖池才会产出（不写进界面） -->
+            <span class="td-sub">穿戴同套 N 件即触发套装加成</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openSetCreate">新增套装</el-button>
             <el-button type="primary" plain icon="el-icon-refresh" @click="loadEquipSets">刷新</el-button>
@@ -603,9 +604,7 @@
           <el-input-number v-model.number="genForm.max_level" :min="1" :max="200" controls-position="right" style="width:100%" />
         </el-form-item>
       </el-form>
-      <em>
-        随机生成名字 / 等级 / 星级；<b>属性上限取自同星级名将的最大值</b>，保证不会超过名将。
-      </em>
+      <!-- [说明·不显示在界面] 随机生成名字 / 等级 / 星级；<b>属性上限取自同星级名将的最大值</b>，保证不会超过名将。 -->
       <div slot="footer">
         <el-button @click="genDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGen">生 成</el-button>
@@ -626,7 +625,7 @@
           </el-select>
         </el-form-item>
       </el-form>
-      <em>提示：同名将不能重复发放给同一玩家；发放的是「军官池」里的模板（属性取自池子）</em>
+      <!-- [说明·不显示在界面] 提示：同名将不能重复发放给同一玩家；发放的是「军官池」里的模板（属性取自池子） -->
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -690,7 +689,7 @@
           <el-input v-model="gf.des" type="textarea" :rows="2" maxlength="500" />
         </el-form-item>
       </el-form>
-      <em>保存后立即生效（后端会重载配置缓存，不用重启）</em>
+      <!-- [说明·不显示在界面] 保存后立即生效（后端会重载配置缓存，不用重启） -->
       <div slot="footer">
         <el-button @click="gDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGeneralSave">保 存</el-button>
@@ -718,8 +717,8 @@
           <el-input v-model="sf.des" type="textarea" :rows="3" maxlength="500" />
         </el-form-item>
       </el-form>
-      <em v-if="sf.id">改名会同步更新所有已学该技能的军官</em>
-      <em v-else>新技能会立刻出现在玩家军校的技能学习列表里</em>
+      <!-- [说明·不显示在界面] 改名会同步更新所有已学该技能的军官 -->
+      <!-- [说明·不显示在界面] 新技能会立刻出现在玩家军校的技能学习列表里 -->
       <div slot="footer">
         <el-button @click="sDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSkillSave">保 存</el-button>
@@ -742,7 +741,7 @@
           </el-select>
         </el-form-item>
       </el-form>
-      <em>管理端加技能不消耗黄金、不受 3 个技能上限限制</em>
+      <!-- [说明·不显示在界面] 管理端加技能不消耗黄金、不受 3 个技能上限限制 -->
       <div slot="footer">
         <el-button @click="saDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSkillAssign">确 定</el-button>
@@ -862,12 +861,10 @@
           <el-input v-model="ef.des" maxlength="200" />
         </el-form-item>
       </el-form>
-      <em>
-        部位相同不能同时穿戴（珠宝可叠加）；库存 <b>-1 = 无上限</b>，<b>0 = 已售罄</b>；
+      <!-- [说明·不显示在界面] 部位相同不能同时穿戴（珠宝可叠加）；库存 <b>-1 = 无上限</b>，<b>0 = 已售罄</b>；
         售价为 0 表示该渠道不卖（两个都 0 就不上架商城）。<br/>
         战斗属性单位是<b>百分点</b>：填 125 就是「+125%」。它们会直接进战斗：
-        伤害→攻击、防御→防御、生命→有效生命、移动距离→行军/推进速度、暴击几率+暴击伤害→暴击结算。
-      </em>
+        伤害→攻击、防御→防御、生命→有效生命、移动距离→行军/推进速度、暴击几率+暴击伤害→暴击结算。 -->
       <div slot="footer">
         <el-button @click="eDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doEquipSave">保 存</el-button>
@@ -915,10 +912,7 @@
           <el-input v-model="stf.des" maxlength="300" />
         </el-form-item>
       </el-form>
-      <em>
-        穿戴同套 <b>{{ stf.parts || 3 }}</b> 件后，上面三项加成会直接叠加到军官属性上。
-        套装件请在「军官装备列表」里把 <b>set_id</b> 指到本套装，并填好售价才能上架商城。
-      </em>
+      <!-- [说明·不显示在界面] 穿戴同套 <b>{{ stf.parts || 3 }}</b> 件后，上面三项加成会直接叠加到军官属性上。 -->
       <div slot="footer">
         <el-button @click="stDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSetSave">保 存</el-button>
@@ -999,7 +993,7 @@
           <el-input v-model="chf.effect" maxlength="300" placeholder="例如：奖池：六大系列 66 件 + 散件" />
         </el-form-item>
       </el-form>
-      <em>库存 <b>-1 = 无上限</b>；售价为 0 表示该渠道不卖（两个都 0 就没法开箱）。</em>
+      <!-- [说明·不显示在界面] 库存 <b>-1 = 无上限</b>；售价为 0 表示该渠道不卖（两个都 0 就没法开箱）。 -->
       <div slot="footer">
         <el-button @click="chDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doChestSave">保 存</el-button>
@@ -1081,7 +1075,7 @@
           <el-input v-model="chif.des" maxlength="200" />
         </el-form-item>
       </el-form>
-      <em>权重越大越容易抽到；全部为 0 时按等概率。</em>
+      <!-- [说明·不显示在界面] 权重越大越容易抽到；全部为 0 时按等概率。 -->
       <div slot="footer">
         <el-button @click="chItemDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doChestItemSave">保 存</el-button>
@@ -1136,10 +1130,8 @@
           </el-row>
         </template>
       </el-form>
-      <em>
-        「信号弹」是道具配置里的 <b>ID 24</b>（ItemType 20），价格与上架在「数据管理 → 道具配置」里改。
-        先发制人按「发动方军官学识 = 可战争分钟数」计算，再按上限截断。
-      </em>
+      <!-- [说明·不显示在界面] 「信号弹」是道具配置里的 <b>ID 24</b>（ItemType 20），价格与上架在「数据管理 → 道具配置」里改。
+        先发制人按「发动方军官学识 = 可战争分钟数」计算，再按上限截断。 -->
       <div slot="footer">
         <el-button @click="scDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSchemeSave">保 存</el-button>
@@ -1165,7 +1157,7 @@
           <span class="td-sub" style="margin-left:8px">最多 50 件</span>
         </el-form-item>
       </el-form>
-      <em>装备会进入玩家主城背包，未穿戴</em>
+      <!-- [说明·不显示在界面] 装备会进入玩家主城背包，未穿戴 -->
       <div slot="footer">
         <el-button @click="egDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doEquipGrant">发 放</el-button>

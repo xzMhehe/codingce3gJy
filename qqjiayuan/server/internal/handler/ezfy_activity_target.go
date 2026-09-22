@@ -186,12 +186,32 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 
-	// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
-	// ★ 攻方装备六项加成照常生效
-	br := ezfySimulate(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
-		h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
-		atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
-		h.buildMoveMap(city.ID, true), map[int]int{})
+	// ★★ 指挥室（2026-09-22 用户要求）：活动目标也是战斗，同样先开战场等玩家指挥，
+	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。
+	//   BattleResult 非空 = 已在指挥室里打完，直接用结果结算。
+	var br ezfyBattleResult
+	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
+		br = done
+	} else {
+		// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
+		// ★ 攻方装备六项加成照常生效
+		st := ezfyNewBattleState(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
+			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
+			atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
+			h.buildMoveMap(city.ID, true), map[int]int{})
+		if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
+			order.Status = ezfyOrderStatusBattle
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusBattle)
+			// ★ 同普通战斗：「等待指挥」不发战报，避免污染战斗报告列表
+			return
+		}
+		// 开战场失败（极端情况）→ 兜底直接模拟，绝不让部队卡住
+		for !st.Done {
+			st.Step(nil, "")
+		}
+		br = st.Result()
+	}
 	win := br.AttackerWin
 
 	profile := h.ensureProfile(uid)

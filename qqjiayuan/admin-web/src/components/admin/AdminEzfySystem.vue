@@ -19,7 +19,7 @@
         <el-button size="mini" plain icon="el-icon-refresh" @click="loadServer">刷新状态</el-button>
         <el-button type="danger" :loading="savingSrv" @click="saveServer">{{ srvForm.on ? '开启维护' : '保存并开放' }}</el-button>
       </div>
-      <em>提示：开启维护后，玩家将无法进入二战风云（游戏内所有操作均被拦截并显示维护公告）</em>
+      <!-- [说明·不显示在界面] 提示：开启维护后，玩家将无法进入二战风云（游戏内所有操作均被拦截并显示维护公告） -->
     </el-card>
 
     <!-- 游戏统计 -->
@@ -109,7 +109,7 @@
                        @current-change="p => { noticePage = p; loadNotices() }"
                        @size-change="s => { noticeSize = s; noticePage = 1; loadNotices() }" />
       </div>
-      <em>提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长）</em>
+      <!-- [说明·不显示在界面] 提示：军团管理已独立为「二战风云 → 军团管理」模块（含成员/聊天/转让团长） -->
     </el-card>
     <!-- 编辑已发布的公告 -->
     <el-dialog title="编辑公告" :visible.sync="noticeEditDlg" width="680px" :close-on-click-modal="false">
@@ -125,7 +125,7 @@
           <el-checkbox v-model="noticeEdit.isTop">在游戏内公告栏置顶显示</el-checkbox>
         </el-form-item>
       </el-form>
-      <em>保存后玩家在游戏内公告栏立即看到最新内容</em>
+      <!-- [说明·不显示在界面] 保存后玩家在游戏内公告栏立即看到最新内容 -->
       <div slot="footer">
         <el-button @click="noticeEditDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doNoticeSave">保 存</el-button>

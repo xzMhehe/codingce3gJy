@@ -11,6 +11,7 @@ package seed
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 
 	"gorm.io/gorm"
@@ -479,7 +480,9 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				pieces = append(pieces, model.EzfyCfgEquipment{
 					ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
 					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
-					Level: s.Level, PriceDiamond: s.Diamond, Stock: -1, EnhanceMax: 20,
+					Level: s.Level, Stock: -1, EnhanceMax: 20,
+					// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
+					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
 					Dmg: p.Dmg, Def: p.Def, Hp: p.Hp, Move: p.Move, Crit: p.Crit, CritDmg: p.CritDmg,
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
@@ -495,7 +498,9 @@ func seedEzfyEquipSets(db *gorm.DB) {
 		for _, l := range ezfyOfficerEquipLooseSeeds {
 			pieces = append(pieces, model.EzfyCfgEquipment{
 				ID: l.ID, Name: l.Name, Type: "军官装备", Slot: l.Slot, SetId: 0, Tier: 2,
-				Level: l.Level, PriceGold: l.Gold, Stock: -1, EnhanceMax: 20,
+				Level: l.Level, Stock: -1, EnhanceMax: 20,
+				// ★ 纯散件同样按加成定价（10~50 钻）
+				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
 				Dmg: l.Dmg, Def: l.Def, Hp: l.Hp, Move: l.Move, Crit: l.Crit, CritDmg: l.CritDmg,
 				Military: 20, Logistics: 10, Learning: 10,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
@@ -518,91 +523,280 @@ type ezfyChestSeed struct {
 	Effect       string
 }
 
+// 宝箱（★ 用户要求：多分几档；名字**沿用原版的宝箱体系**）
+//
+// 原版出处：`参考材料/开发文档/QQ家园二战风云.txt`
+//
+//	「特殊城市 → 崛起宝箱（30级穿戴）/ 帝国宝箱（60级穿戴）/ 战神宝箱（90级穿戴），随机一件」
+//	「传说英雄套装的获取方式：刷第五师团、黄金箱子零件兑换」
+//
+// 所以命名沿用 黄金宝箱 / 崛起宝箱 / 帝国宝箱 / 战神宝箱，再补两档保持同一命名格式。
+// ★ 套装箱开出来是**整套**（Kind=3），不是单件。
 var ezfyChestSeeds = []ezfyChestSeed{
-	{ID: 1, Name: "新兵装备宝箱", PriceGold: 500000, OpenMax: 10,
-		Des:    "用黄金购买，开出散件军官装备（不属于套装）",
-		Effect: "奖池：13 种散件军官装备"},
-	{ID: 2, Name: "军官装备宝箱", PriceDiamond: 500, OpenMax: 10,
-		Des:    "用钻石购买，随机开出六大系列的一件军官装备（11 部位）",
-		Effect: "奖池：六大系列 66 件 + 散件；越稀有的系列权重越低"},
-	{ID: 3, Name: "顶级套装宝箱", PriceDiamond: 3000, OpenMax: 5,
-		Des:    "用钻石购买，高概率开出顶级系列装备",
-		Effect: "奖池：青天白日/赤色锤镰/革命者/渡鸦之魂 为主"},
+	{ID: 1, Name: "黄金宝箱", PriceGold: 500000, OpenMax: 10,
+		Des:    "用黄金购买，开出散件军官装备（单件，不属于套装）",
+		Effect: "奖池：13 种纯散件军官装备 + 道具"},
+	{ID: 2, Name: "崛起宝箱", PriceDiamond: 300, OpenMax: 10,
+		Des:    "开出**一整套**起步套装（9 件）",
+		Effect: "奖池：新兵套装 / 战士套装 整套"},
+	{ID: 3, Name: "帝国宝箱", PriceDiamond: 450, OpenMax: 10,
+		Des:    "开出**一整套**中级套装（9 件）",
+		Effect: "奖池：海军上将 / 传说英雄 / 名门征服 整套"},
+	{ID: 4, Name: "战神宝箱", PriceDiamond: 600, OpenMax: 10,
+		Des:    "开出**一整套**高级套装（9 件）",
+		Effect: "奖池：传说无畏 / 传说征服 整套"},
+	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 700, OpenMax: 10,
+		Des:    "开出**一整套**精锐套装（9 件）",
+		Effect: "奖池：精英守护者 / 传说守护者 / 暴君之怒 / 审判者 整套"},
+	{ID: 6, Name: "统帅宝箱", PriceDiamond: 800, OpenMax: 5,
+		Des:    "开出**一整套**顶级套装（9~11 件），含六大系列",
+		Effect: "奖池：混沌三件套 / 亡魂 / 遗失传说 / 隐秘宝藏 + 六大系列 整套"},
+}
+
+// ezfyChestSetPlan 套装宝箱 → 该箱能开出的套装（★ 开出来是**整套**，不是单件）
+//
+// ★ 用户要求（2026-09-22）：
+//   - 「套装宝箱 按品质 300-800 钻石不等，开出来还是按套来吧」；
+//   - 「宝箱种类少多分几套，名字起好听点叠合二战主题」。
+//
+// 六大系列（21~26）权重压低 —— 它们是 11 件套且属性最高。
+var ezfyChestSetPlan = []struct {
+	ChestID int
+	SetIDs  []int
+	Weight  int
+	Quality string
+}{
+	{2, []int{1, 2}, 100, "普通"},
+	{3, []int{3, 4, 7}, 100, "稀有"},
+	{4, []int{5, 6}, 100, "史诗"},
+	{5, []int{11, 12, 13, 14}, 100, "史诗"},
+	{6, []int{8, 9, 10, 15, 16, 17, 21, 22, 23, 24, 25, 26}, 100, "传说"},
+}
+
+// ezfyEquipDiamondPrice 散件单件的钻石售价：按「六项加成总和」映射到 10~50 钻
+//
+// ★ 用户要求（2026-09-22）：「价格按加成 10 钻石到 50 钻石不等，反正定价后面能改」。
+// 加成越低越便宜（和平使者 伤害106 → 10 钻；革命者[AWM] 155+130=285 → 40 钻）。
+func ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg int) int64 {
+	s := dmg + def + hp + move + crit + critDmg
+	switch {
+	case s <= 110:
+		return 10
+	case s <= 130:
+		return 15
+	case s <= 160:
+		return 20
+	case s <= 200:
+		return 25
+	case s <= 250:
+		return 30
+	case s <= 300:
+		return 40
+	default:
+		return 50
+	}
+}
+
+// backfillLooseEquipPrice 给**散件**补新定价（按加成 10~50 钻）
+//
+// ★ 老库里的价格是历史遗留：系列单件错填了整套价（1200~1500 钻）、纯散件是黄金价。
+// 只在「没定过价 或 还是旧的高价」时才改 —— 管理端已经调到 100 钻以内的不会被冲掉。
+func backfillLooseEquipPrice(db *gorm.DB) {
+	// 上一版 backfill 把老版 武器/防具/饰品/珠宝 也当成散件改了价（它们不属于那张表），
+	// 这里还原成「不上架」。幂等：只改「还是 10 钻且没有黄金价」的行，管理端定过价的不动。
+	db.Model(&model.EzfyCfgEquipment{}).
+		Where("type <> ? AND price_diamond = ? AND price_gold = 0", "军官装备", 10).
+		Update("price_diamond", 0)
+
+	var list []model.EzfyCfgEquipment
+	// 散件 = 《装备距离伤害表》里的「军官装备」类：有系列名的单件（可单穿）或纯散件。
+	// ★ 老版的 武器/防具/饰品/珠宝（Type 是它们自己）不属于那张表，别一起改价。
+	if err := db.Where("type = ? AND (series <> '' OR set_id = 0)", "军官装备").
+		Find(&list).Error; err != nil {
+		return
+	}
+	for i := range list {
+		e := &list[i]
+		if e.PriceDiamond > 0 && e.PriceDiamond <= 100 {
+			continue // 已是合理新价（管理端可能手动调过），不动
+		}
+		want := ezfyEquipDiamondPrice(e.Dmg, e.Def, e.Hp, e.Move, e.Crit, e.CritDmg)
+		db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", e.ID).
+			Updates(map[string]interface{}{"price_diamond": want, "price_gold": 0})
+	}
+}
+
+// ezfyChestSetWeight 套装件进宝箱奖池的权重（品质越低越容易出）
+func ezfyChestSetWeight(tier int) int {
+	switch tier {
+	case 1:
+		return 100
+	case 2:
+		return 60
+	case 3:
+		return 30
+	default:
+		return 10
+	}
+}
+
+// ezfyChestSetQuality 套装件进宝箱奖池的展示品质
+func ezfyChestSetQuality(tier int) string {
+	switch tier {
+	case 1:
+		return "普通"
+	case 2:
+		return "稀有"
+	case 3:
+		return "史诗"
+	default:
+		return "传说"
+	}
 }
 
 // buildEzfyChestItems 生成宝箱奖池
+//
+// ★ 用户规则（2026-09-22）：**套装军官装备只能通过宝箱开启** ——
+// 战斗掉落、采集都不产出套装件，商城也不再上架套装件（只留散件）。
+// 所以**每个套装都必须至少出现在一个宝箱奖池里**，否则规则一改就绝版了。
+//
+// 分池口径（按套装品质档位，低档进黄金箱、高档进钻石箱）：
+//
+//	宝箱1 新兵装备宝箱(黄金)  ：散件 + 套装 1~2（Tier1）
+//	宝箱2 军官装备宝箱(钻500) ：套装 3~7、11~12（Tier2~3）+ 六大系列 21~26
+//	宝箱3 顶级套装宝箱(钻3000)：套装 8~10、13~17（Tier4）+ 六大系列 21~26
 func buildEzfyChestItems() []model.EzfyCfgChestItem {
 	out := []model.EzfyCfgChestItem{}
+	// 每个宝箱内独立计数：ID = chestID*1000 + 序号（稳定、可重复生成）
+	seq := map[int]int{}
 	add := func(chestID, kind, ref, weight int, quality string) {
+		seq[chestID]++
 		out = append(out, model.EzfyCfgChestItem{
-			ID: chestID*1000 + len(out)%1000 + 1, ChestId: chestID,
+			ID: chestID*1000 + seq[chestID], ChestId: chestID,
 			Kind: kind, RefId: ref, Count: 1, Weight: weight, Quality: quality,
 			Des: "",
 		})
 	}
-	// 宝箱 1：散件（黄金）
+	// 宝箱 1：纯散件（黄金箱，**单件**）
 	for _, l := range ezfyOfficerEquipLooseSeeds {
 		add(1, 1, l.ID, 100, "普通")
 	}
-	// 宝箱 2：六大系列（钻石 500）
-	for _, s := range ezfyOfficerSeriesSeeds {
-		w, q := 30, "史诗"
-		switch s.ID {
-		case 24: // 巨匠（最低档）
-			w, q = 100, "稀有"
-		case 23: // 黑色幽灵
-			w, q = 60, "稀有"
-		case 25, 26: // 青天白日 / 赤色锤镰（最高档）
-			w, q = 8, "传说"
-		}
-		for i := 0; i < 11; i++ {
-			add(2, 1, s.ID*100+i+1, w, q)
+	// 宝箱 2/3/4：**整套**发放（Kind=3，RefId = 套装 id，开箱时把该套全部件一起给）
+	for _, plan := range ezfyChestSetPlan {
+		for _, sid := range plan.SetIDs {
+			w := plan.Weight
+			if sid >= 21 {
+				w = 30 // 六大系列（11 件套）更稀有
+			}
+			add(plan.ChestID, 3, sid, w, plan.Quality)
 		}
 	}
-	// 宝箱 3：顶级系列（钻石 3000）
-	for _, s := range ezfyOfficerSeriesSeeds {
-		w, q := 60, "史诗"
-		switch s.ID {
-		case 25, 26:
-			w, q = 100, "传说"
-		case 24:
-			w, q = 20, "稀有"
-		}
-		for i := 0; i < 11; i++ {
-			add(3, 1, s.ID*100+i+1, w, q)
-		}
-	}
-	// 三个宝箱都塞一点道具当安慰奖
-	for _, c := range []int{1, 2, 3} {
-		add(c, 2, 14, 40, "普通") // 经验书
-		add(c, 2, 16, 20, "稀有") // 重修书
-		add(c, 2, 23, 10, "史诗") // 军官升星卡
+	// 每个宝箱都塞一点道具当安慰奖
+	// ★ 直接遍历宝箱定义，别硬编码 ID 列表 —— 以前写死 1~4，新增宝箱就漏了。
+	for _, chest := range ezfyChestSeeds {
+		add(chest.ID, 2, 14, 40, "普通") // 经验书
+		add(chest.ID, 2, 16, 20, "稀有") // 重修书
+		add(chest.ID, 2, 23, 10, "史诗") // 军官升星卡
 	}
 	return out
 }
 
-// seedEzfyChests 宝箱 + 奖池（按 ID 段幂等，同装备套装那套闸门逻辑）
-func seedEzfyChests(db *gorm.DB) {
-	var cnt int64
-	if err := db.Model(&model.EzfyCfgChest{}).Count(&cnt).Error; err != nil {
-		return
+// backfillEzfyChestPool 给**已有库**补齐宝箱奖池（幂等，只补缺、不动已有行）
+//
+// ★ 为什么需要：宝箱种子是「表里有数据就整段跳过」的闸门式逻辑，
+// 所以规则变更（套装只能开宝箱）后线上库不会自动补进新奖池 →
+// 商城下架套装件的同时，套装就真的「无来源」了。
+// 这里按 (chest_id, kind, ref_id) 查缺补漏；已有的行（含管理端调过的权重）一律不碰。
+func backfillEzfyChestPool(db *gorm.DB) {
+	var chestCnt int64
+	if err := db.Model(&model.EzfyCfgChest{}).Count(&chestCnt).Error; err != nil || chestCnt == 0 {
+		return // 宝箱本身都还没有 → 交给 seedEzfyChests 灌
 	}
-	if cnt > 0 {
-		return
+
+	// ★ 宝箱改名 / 改价 / 改说明：只在「名字还是历史上用过的那些」时才动，
+	//   避免冲掉管理端自己起的名字与调过的价格。
+	//   （宝箱是「按 ID 补缺」的种子，老库里的名字停留在上一版）
+	oldNames := map[int][]string{
+		1: {"新兵装备宝箱", "散件装备宝箱", "战地补给箱"},
+		2: {"军官装备宝箱", "套装宝箱·精选", "铁血新兵箱"},
+		3: {"顶级套装宝箱", "套装宝箱·史诗", "雷霆突击箱"},
+		4: {"套装宝箱·传说", "装甲洪流箱"},
+		5: {"碧海怒涛箱"},
+		6: {"统帅部密藏"},
 	}
-	chests := []model.EzfyCfgChest{}
 	for _, c := range ezfyChestSeeds {
-		chests = append(chests, model.EzfyCfgChest{
+		for _, old := range oldNames[c.ID] {
+			db.Model(&model.EzfyCfgChest{}).Where("id = ? AND name = ?", c.ID, old).
+				Updates(map[string]interface{}{
+					"name": c.Name, "des": c.Des, "effect": c.Effect,
+					"price_gold": c.PriceGold, "price_diamond": c.PriceDiamond,
+					"open_max": c.OpenMax,
+				})
+		}
+	}
+
+	// ★★ 规则变更：套装宝箱改成「开整套」（Kind=3）。
+	//   旧的「单件套装件」奖池（Kind=1 且 ref_id 属于某个套装）必须清掉，
+	//   否则同一个箱子既能开出单件又能开出整套，玩家会白花钻石。
+	db.Exec("DELETE FROM ezfy_cfg_chest_item WHERE kind = 1 AND ref_id IN " +
+		"(SELECT id FROM ezfy_cfg_equipment WHERE set_id > 0)")
+	var rows []model.EzfyCfgChestItem
+	db.Find(&rows)
+	exist := map[string]bool{}
+	maxID := map[int]int{}
+	for _, r := range rows {
+		exist[fmt.Sprintf("%d|%d|%d", r.ChestId, r.Kind, r.RefId)] = true
+		if r.ID > maxID[r.ChestId] {
+			maxID[r.ChestId] = r.ID
+		}
+	}
+	missing := []model.EzfyCfgChestItem{}
+	for _, it := range buildEzfyChestItems() {
+		key := fmt.Sprintf("%d|%d|%d", it.ChestId, it.Kind, it.RefId)
+		if exist[key] {
+			continue
+		}
+		exist[key] = true
+		next := maxID[it.ChestId]
+		if next < it.ChestId*1000 {
+			next = it.ChestId * 1000 // 该宝箱还没有行时，从 ID 段起点续
+		}
+		next++
+		maxID[it.ChestId] = next
+		it.ID = next
+		missing = append(missing, it)
+	}
+	if len(missing) == 0 {
+		return
+	}
+	if err := db.CreateInBatches(missing, 200).Error; err != nil {
+		log.Printf("ezfy 宝箱奖池补齐失败: %v", err)
+		return
+	}
+	log.Printf("ezfy 宝箱奖池补齐 %d 条", len(missing))
+}
+
+// seedEzfyChests 宝箱（**按 ID 补缺**，不再整段跳过）
+//
+// ★ 原来是「表里有数据就整段跳过」，导致**新增宝箱进不了老库**
+// （「套装宝箱·传说」ID 4 就是这么补不进去的）。改成逐个 ID 判断：
+// 缺的补，已有的不动（管理端改过的价格/库存不会被冲掉）。
+// 奖池统一由 backfillEzfyChestPool 补缺 + 清理。
+func seedEzfyChests(db *gorm.DB) {
+	for _, c := range ezfyChestSeeds {
+		var cnt int64
+		if err := db.Model(&model.EzfyCfgChest{}).Where("id = ?", c.ID).Count(&cnt).Error; err != nil {
+			continue
+		}
+		if cnt > 0 {
+			continue
+		}
+		_ = db.Create(&model.EzfyCfgChest{
 			ID: c.ID, Name: c.Name, PriceDiamond: c.PriceDiamond, PriceGold: c.PriceGold,
 			Stock: -1, OpenMax: c.OpenMax, Enabled: 1, SortNo: c.ID,
 			Des: c.Des, Effect: c.Effect,
-		})
+		}).Error
 	}
-	if err := db.Create(&chests).Error; err != nil {
-		return
-	}
-	items := buildEzfyChestItems()
-	_ = db.CreateInBatches(items, 200).Error
 }
 
 // backfillOfficerEquipSetBonus 给已经灌过的军官装备系列补属性（幂等，只补「还是 0」的）

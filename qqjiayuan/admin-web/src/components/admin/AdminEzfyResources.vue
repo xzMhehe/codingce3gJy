@@ -110,7 +110,7 @@
           </template>
         </el-table-column>
       </el-table>
-      <em>提示：这是「预留」能力 —— 后期把「{{ resName('rare') }}」改成别的叫法，只改这里即可，不用改代码</em>
+      <!-- [说明·不显示在界面] 提示：这是「预留」能力 —— 后期把「{{ resName('rare') }}」改成别的叫法，只改这里即可，不用改代码 -->
     </el-card>
 
     <!-- 直接设置资源 -->
@@ -152,7 +152,7 @@
         <el-form-item :label="resName('oil')"><el-input-number v-model.number="grantForm.oil" :min="-999999999" :step="1000" controls-position="right" style="width:100%" /></el-form-item>
         <el-form-item :label="resName('rare')"><el-input-number v-model.number="grantForm.rare" :min="-999999999" :step="1000" controls-position="right" style="width:100%" /></el-form-item>
       </el-form>
-      <em>提示：发放<b>不受仓储上限限制</b>（可以超上限堆着，填负数即扣减），并会给玩家发送一条站内通知</em>
+      <!-- [说明·不显示在界面] 提示：发放<b>不受仓储上限限制</b>（可以超上限堆着，填负数即扣减），并会给玩家发送一条站内通知 -->
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -176,7 +176,7 @@
           <el-input-number v-model.number="resForm.sort" :min="0" controls-position="right" style="width:100%" />
         </el-form-item>
       </el-form>
-      <em>保存后游戏端资源栏、花费展示、交易所与管理端列头全部跟随新名字</em>
+      <!-- [说明·不显示在界面] 保存后游戏端资源栏、花费展示、交易所与管理端列头全部跟随新名字 -->
       <div slot="footer">
         <el-button @click="resDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doResSave">保 存</el-button>

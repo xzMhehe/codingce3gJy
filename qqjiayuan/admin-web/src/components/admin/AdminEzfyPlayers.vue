@@ -172,7 +172,7 @@
           </div>
         </el-form-item>
       </el-form>
-      <em>提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；道具ID 可在「二战风云 → 数据管理」中查询</em>
+      <!-- [说明·不显示在界面] 提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；道具ID 可在「二战风云 → 数据管理」中查询 -->
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>

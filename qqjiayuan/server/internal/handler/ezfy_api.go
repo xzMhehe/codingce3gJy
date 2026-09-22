@@ -1548,7 +1548,9 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 			continue
 		}
 		views = append(views, gin.H{"cfg_id": it.CfgId, "count": it.Count,
-			"name": cfg.Name, "item_type": cfg.ItemType, "description": cfg.Description, "param1": cfg.Param1})
+			"name": cfg.Name, "item_type": cfg.ItemType, "description": cfg.Description, "param1": cfg.Param1,
+			// ★ 背包也按分类展示（与商城同一套归类口径，见 ezfyItemCategory）
+			"category": ezfyItemCategory(cfg)})
 	}
 	// 军官类道具的目标选择需要军官列表与技能列表
 	city := h.getOrCreateCity(uid)
@@ -2059,7 +2061,31 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status IN (0,1,2)", uid).Order("id DESC").Limit(100).Find(&orders)
+	h.DB.Where("user_id = ? AND status IN (0,1,2,?)", uid, ezfyOrderStatusBattle).
+		Order("id DESC").Limit(100).Find(&orders)
+	// ★ 性能：战场进度**一次查完**再按 order_id 取。
+	//   原来在下面的循环里逐条 ezfyBattleByOrder = N+1（服务器只有 1 核，这条红线不能踩）。
+	battleRounds := map[int64]int{}
+	battleLeftMs := map[int64]int64{}
+	hasBattle := false
+	for i := range orders {
+		if orders[i].Status == ezfyOrderStatusBattle {
+			hasBattle = true
+			break
+		}
+	}
+	if hasBattle {
+		var battles []model.EzfyBattle
+		h.DB.Where("user_id = ? AND status = 1", uid).Find(&battles)
+		for _, b := range battles {
+			battleRounds[b.OrderId] = b.Round
+			left := b.RoundStart + ezfyBattleRoundMs - now
+			if left < 0 {
+				left = 0
+			}
+			battleLeftMs[b.OrderId] = left
+		}
+	}
 	views := []gin.H{}
 	for i := range orders {
 		o := &orders[i]
@@ -2078,6 +2104,21 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			statusName = "返回"
 			timeLabel = "返回时间"
 			timeText = ezfyDurationText((o.ReturnTime - now) / 1000)
+		case ezfyOrderStatusBattle:
+			statusName = "战斗中"
+			timeLabel = "本回合剩余"
+		}
+		// ★ 指挥室（2026-09-22 用户要求）：战斗中的部队带上回合进度与本回合倒计时，
+		//   前端据此在这一行显示 [指挥] 入口（军情 → 军队动态 → 指挥）。
+		battleRound, battleLeft := 0, int64(0)
+		if o.Status == ezfyOrderStatusBattle {
+			if left, ok := battleLeftMs[int64(o.ID)]; ok {
+				battleRound = battleRounds[int64(o.ID)]
+				battleLeft = left
+				timeText = ezfyDurationText(left / 1000)
+			} else {
+				timeText = "等待指挥"
+			}
 		}
 		// ★ 采集部队带上「待带回资源」与负重，前端可展示（资源要召回才入城）
 		c := parseCarry(o.Carry)
@@ -2089,6 +2130,11 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
 			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
 			"carry": c, "carry_total": c.total(), "carry_cap": h.ezfyCarryCap(o),
+			// 指挥室：可指挥时前端显示 [指挥]
+			"can_command":    o.Status == ezfyOrderStatusBattle,
+			"battle_round":   battleRound,
+			"battle_max":     ezfyBattleMaxRounds,
+			"battle_left_ms": battleLeft,
 		})
 	}
 	resp.OK(c, gin.H{"dynamics": views, "count": len(views)})

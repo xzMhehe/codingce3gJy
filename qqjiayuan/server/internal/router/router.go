@@ -641,6 +641,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
 				ezfyG.GET("/orders/:id", ezfyH.OrderView)
 
+				// ===== 战场指挥室（军情 → 军队动态 → [指挥]）=====
+				// 每回合 30 秒，前 25 秒可下前进/暂停/后退，后 5 秒锁定结算，最多 40 回合
+				ezfyG.GET("/battle", ezfyH.BattleState)
+				ezfyG.POST("/battle/cmd", ezfyH.BattleCmd)
+				ezfyG.POST("/battle/auto", ezfyH.BattleAuto)
+
 				// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====
 				ezfyG.GET("/officers", ezfyH.Officers)
 				ezfyG.GET("/officers/onduty", ezfyH.OfficersOnDuty)

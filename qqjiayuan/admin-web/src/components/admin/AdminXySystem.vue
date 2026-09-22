@@ -19,7 +19,7 @@
         <el-button size="mini" plain icon="el-icon-refresh" @click="loadServer">刷新状态</el-button>
         <el-button type="danger" :loading="savingSrv" @click="saveServer">{{ srvForm.on ? '开启维护' : '保存并开放' }}</el-button>
       </div>
-      <em>提示：开启维护后，所有玩家将无法进入幻想西游（游戏内所有操作均被拦截并显示维护公告）</em>
+      <!-- [说明·不显示在界面] 提示：开启维护后，所有玩家将无法进入幻想西游（游戏内所有操作均被拦截并显示维护公告） -->
     </el-card>
 
     <!-- 活动开关 -->
@@ -37,7 +37,7 @@
         <el-button size="mini" plain icon="el-icon-refresh" @click="loadServer">刷新状态</el-button>
         <el-button type="primary" :loading="savingExp2x" @click="saveExp2x">保存</el-button>
       </div>
-      <em>提示：开启后每日 12:00-14:00、19:00-21:00 战斗经验翻倍（游戏内活动中心可见）</em>
+      <!-- [说明·不显示在界面] 提示：开启后每日 12:00-14:00、19:00-21:00 战斗经验翻倍（游戏内活动中心可见） -->
     </el-card>
 
     <!-- 游戏统计 -->
@@ -115,7 +115,7 @@
               <el-input v-model="grantAll.reason" maxlength="50" placeholder="默认：全服奖励" style="width:220px" />
             </el-form-item>
           </el-form>
-          <em>提示：物品ID 可在「幻想西游 → 数据管理」中查询；发放直接入背包/钱包</em>
+          <!-- [说明·不显示在界面] 提示：物品ID 可在「幻想西游 → 数据管理」中查询；发放直接入背包/钱包 -->
           <div style="margin-top:12px;text-align:right">
             <el-button type="warning" :loading="granting" @click="doGrantAll">全服发放</el-button>
           </div>

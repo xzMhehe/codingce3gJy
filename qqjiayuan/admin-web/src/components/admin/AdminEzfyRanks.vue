@@ -123,7 +123,7 @@
           <el-input v-model="form.des" maxlength="200" />
         </el-form-item>
       </el-form>
-      <em>改完立即生效（后端会重载配置缓存，不用重启）</em>
+      <!-- [说明·不显示在界面] 改完立即生效（后端会重载配置缓存，不用重启） -->
       <div slot="footer">
         <el-button @click="dlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSave">保 存</el-button>
@@ -146,7 +146,7 @@
           </el-select>
         </el-form-item>
       </el-form>
-      <em>设置后会把该玩家声望写成对应门槛值，军衔与可建城数立即生效</em>
+      <!-- [说明·不显示在界面] 设置后会把该玩家声望写成对应门槛值，军衔与可建城数立即生效 -->
       <div slot="footer">
         <el-button @click="setDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSetRank">保 存</el-button>
