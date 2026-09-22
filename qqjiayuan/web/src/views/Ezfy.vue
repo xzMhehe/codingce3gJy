@@ -2514,38 +2514,35 @@
           </div>
           <div class="old-line">
             {{ resNames.gold }}:{{ fmtN(officerData.gold) }}
-            <!-- ★ 用户要求「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
-            <span class="gray" v-if="officerData.salary">
-              （军官工资 {{ fmtN(officerData.salary) }} {{ resNames.gold }}/小时，每级 {{ officerData.salary_per_level }} 金/小时）
-            </span>
-            <span class="gray" v-else>（暂无军官，不产生工资）</span>
+            <!-- 军官工资按小时扣（消耗黄金），这里只亮数字，不写解释 -->
+            <span class="gray" v-if="officerData.salary">工资 {{ fmtN(officerData.salary) }}/小时</span>
           </div>
-          <hr/>
-          <template v-for="o in myOfficers">
-            <div class="old-line" :key="'of' + o.id">
-              {{ o.name }}({{ o.level }}级)<span class="green" v-if="o.level >= officerMaxLevel">[满级]</span>
-              <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
-              状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
-              后勤/军事/学识/忠诚：<br/>
-              {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
-              <span class="green" v-if="equipTip(o)">{{ equipTip(o) }}</span><br/>
-              攻/防：{{ o.attack }}/{{ o.defence }}<br/>
-              <!-- ★ 军官装备的六项战斗加成（伤害/防御/生命/移动距离/暴击）——
-                   不给这一行的话，穿满一套六项属性的装备在列表里「看着像没加属性」 -->
-              <span v-if="officerBattleText(o.battle)" class="green">
-                装备战斗加成：{{ officerBattleText(o.battle) }}<br/>
-              </span>
-              <!-- ★ 可用属性点：升过级还没点的军官一眼能看见 -->
-              <span v-if="o.free_points > 0" class="red">
-                可分配属性点 {{ o.free_points }} 点
-                <a href="javascript:;" @click="openOfficer(o.id)">[去加点]</a><br/>
-              </span>
-              <span v-if="o.active_sets && o.active_sets.length" class="green">
-                套装：{{ o.active_sets.join('、') }}<br/>
-              </span>
-              ------------------------
-            </div>
-          </template>
+          <!-- 军官列表：表格化（原来是每个军官一大块平铺文本，很乱）
+               「备注」列 = 生效中的套装 / 装备提示 / 待分配属性点 -->
+          <table class="ezfy-plain-table">
+            <tr>
+              <th>名称</th><th>等级</th><th>星级</th><th>后/军/学</th><th>忠诚</th>
+              <th>攻/防</th><th>状态</th><th>备注</th><th>操作</th>
+            </tr>
+            <tr v-for="o in myOfficers" :key="'of' + o.id">
+              <td>{{ o.name }}<span class="green" v-if="o.level >= officerMaxLevel">满级</span></td>
+              <td>{{ o.level }}</td>
+              <td>{{ o.star }}</td>
+              <td>{{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}</td>
+              <td>{{ o.loyalty }}</td>
+              <td>{{ o.attack }}/{{ o.defence }}</td>
+              <td>
+                {{ o.status === 1 ? '出征' : '空闲' }}
+                <span class="gray" v-if="o.position_name">{{ o.position_name }}</span>
+              </td>
+              <td>
+                <span class="green" v-if="o.active_sets && o.active_sets.length">{{ o.active_sets.join('、') }}</span>
+                <span class="gray" v-else-if="equipTip(o)">{{ equipTip(o) }}</span>
+                <span class="red" v-if="o.free_points > 0">可加点 {{ o.free_points }}</span>
+              </td>
+              <td><a href="javascript:;" @click="openOfficer(o.id)">[查看]</a></td>
+            </tr>
+          </table>
           <div class="old-line gray" v-if="!myOfficers.length">(暂无军官, 先去招募吧)</div>
           <div class="old-line">
             前去<a href="javascript:;" @click="switchAcade('captive')">战俘营</a>
@@ -2652,19 +2649,20 @@
             <span class="gray">第 {{ Math.min(equipPage, equipTotalPages) }}/{{ equipTotalPages }} 页 · 共 {{ equipFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: equipPage >= equipTotalPages }" @click="equipGo(1)">[下一页]</a>
           </div>
-          <hr/>
-          <div class="old-line">套装总览({{ (equipData.sets || []).length }})</div>
-          <div class="old-line" v-for="s in (equipData.sets || [])" :key="'set' + s.id">
-            <b>{{ s.name }}</b>
-            <span class="gray">（{{ s.parts }}件触发）</span>
-            <span class="green" v-if="s.effect"> {{ s.effect }}</span>
-            <span class="gray" v-if="s.military || s.logistics || s.learning || s.dmg || s.def || s.hp || s.move || s.crit || s.crit_dmg">
-              · 穿齐额外加成 {{ equipAttrText(s) }}
-            </span>
+          <!-- 我的套装：只列**我拥有的**套装（从背包聚合），并显示还差几件才生效。
+               原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的。 -->
+          <div class="old-line" v-if="mySetProgress.length"><b>我的套装</b></div>
+          <!-- 只显示「进度 + 是否生效」，加成点 [加成] 才展开（原来把一长串效果全铺出来，很乱） -->
+          <div class="old-line" v-for="s in mySetProgress" :key="'ms' + s.id">
+            {{ s.name }}
+            <b :class="s.active ? 'green' : 'gray'">{{ s.have }}/{{ s.parts }}</b> 件
+            <span v-if="s.active" class="green">已生效</span>
+            <span v-else class="gray">还差 {{ s.need }} 件</span>
+            <a v-if="s.active && equipAttrText(s)" href="javascript:;" @click="toggleSetEffect(s.id)">[加成]</a>
+            <br v-if="setEffectId === s.id"/>
+            <span class="green" v-if="setEffectId === s.id">{{ equipAttrText(s) }}</span>
           </div>
-          <div class="old-line gray" v-if="!(equipData.sets || []).length">(暂无套装，等管理员在后台配置)</div>
-          <div class="old-line gray">说明：套装效果<b>必须穿齐整套才生效</b>；只穿其中几件，只算那几件装备本身的属性。</div>
-          <hr/>
+          <div class="old-line gray" v-if="!mySetProgress.length">(暂无套装装备)</div>
           <div class="old-line">装备图鉴({{ equipData.all.length }})</div>
           <div class="old-line">
             搜索:
@@ -2784,15 +2782,13 @@
         <!-- 名将图鉴 -->
         <div class="panel" v-else-if="acadeTab === 'generals'">
           <div class="old-line">名将图鉴(共{{ generalData.generals.length }}名, 按等级排序)</div>
-          <div class="old-line gray">军校招募的是普通军官。</div>
           <table class="ezfy-plain-table">
-            <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>获取渠道</th><th>状态</th></tr>
+            <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>状态</th></tr>
             <tr v-for="g in generalData.generals" :key="'gg' + g.id">
               <td>{{ g.name }}</td>
               <td>{{ g.level }}</td>
               <td>{{ g.star }}</td>
               <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
-              <td>{{ g.source }}</td>
               <td>
                 <span v-if="g.owned" class="green">已拥有</span>
                 <span v-else class="gray">未拥有</span>
@@ -2804,58 +2800,75 @@
 
       <!-- ============ 军官详情(officerdetail) ============ -->
       <template v-else-if="cur === 'officerdetail'">
+        <!-- ★ 军官详情：全部改成表格（.ezfy-plain-table = 水平+垂直居中）。
+             不用 <hr/> 分隔（项目约定复刻不要 hr），说明性文字一律去掉，只留字段与操作。 -->
         <div class="panel" v-if="officerDetail.officer">
           <div class="panel-title">{{ officerDetail.officer.name }}</div>
-          星级:{{ officerDetail.officer.star }}
-          等级:{{ officerDetail.officer.level }}<span class="green" v-if="officerDetail.officer.level >= officerMaxLevel">（已满级，最高 {{ officerMaxLevel }} 级）</span>
-          经验:{{ officerDetail.officer.level >= officerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}<br/>
-          军事:{{ officerDetail.officer.military_total }}
-          <span class="green" v-if="officerDetail.officer.equip_military">({{ officerDetail.officer.military }}+装备套装{{ officerDetail.officer.equip_military }})</span>
-          后勤:{{ officerDetail.officer.logistics_total }}
-          <span class="green" v-if="officerDetail.officer.equip_logistics">({{ officerDetail.officer.logistics }}+装备套装{{ officerDetail.officer.equip_logistics }})</span>
-          学识:{{ officerDetail.officer.learning_total }}
-          <span class="green" v-if="officerDetail.officer.equip_learning">({{ officerDetail.officer.learning }}+装备套装{{ officerDetail.officer.equip_learning }})</span><br/>
-          攻击加成:{{ officerDetail.officer.attack }} &nbsp; 防御加成:{{ officerDetail.officer.defence }}<br/>
-          <!-- ★ 套装进度：**穿齐整套才生效**，没穿齐的显示还差几件 -->
-          <template v-if="officerDetail.officer.set_progress && officerDetail.officer.set_progress.length">
-            <span v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
-              <span v-if="sp.active" class="green">
-                套装生效: {{ sp.name }}（{{ sp.worn }}/{{ sp.parts }}件）<br/>
-              </span>
-              <span v-else class="gray">
-                套装未生效: {{ sp.name }}（{{ sp.worn }}/{{ sp.parts }}件，还差 {{ sp.need }} 件才触发套装效果）<br/>
-              </span>
-            </span>
-          </template>
-          <!-- ★ 装备的六项战斗加成（直接进战斗计算：伤害→攻击、防御、生命、移动距离→速度、暴击） -->
-          <span class="green" v-if="officerBattleText(officerDetail.officer.battle)">
-            装备战斗加成: {{ officerBattleText(officerDetail.officer.battle) }}<br/>
-          </span>
-          <!-- ★ 升星（消耗「军官升星卡」；概率/加点/上限都由管理端配置） -->
-          <div class="old-line" v-if="officerDetail.officer.star_up_on">
-            星级: {{ officerDetail.officer.star }}/{{ officerDetail.officer.star_max }}
-            <span v-if="officerDetail.officer.star >= officerDetail.officer.star_max" class="gray">（已满星）</span>
-            <template v-else>
-              <span class="gray">
-                （每升 1 星 三维各 +{{ officerDetail.officer.star_attr_gain }}；
-                {{ officerDetail.officer.star_chance_on ? ('当前成功率 ' + officerDetail.officer.star_rate + '%') : '必成功' }}）
-              </span>
-              <span class="gray">升星卡: 持有 {{ officerDetail.officer.star_card }} 张</span>
-            </template>
-          </div>
-          忠诚:{{ officerDetail.officer.loyalty }}
-          职位:{{ officerDetail.officer.position_name }}
-          状态:{{ officerDetail.officer.status_name }}<br/>
-          <!-- ★ 属性加点（2026-09-22）：每升 1 级得 1 点，玩家自己分配；
-               只影响自己的军官，不影响军官池里的配置。 -->
-          <hr/>
+
+          <!-- 基础信息 -->
+          <table class="ezfy-plain-table">
+            <tr><th>星级</th><th>等级</th><th>经验</th><th>忠诚</th><th>职位</th><th>状态</th></tr>
+            <tr>
+              <td>
+                {{ officerDetail.officer.star }}<span
+                  class="gray" v-if="officerDetail.officer.star_max">/{{ officerDetail.officer.star_max }}</span>
+              </td>
+              <td>
+                {{ officerDetail.officer.level }}<span
+                  class="gray" v-if="officerDetail.officer.level >= officerMaxLevel">满级</span>
+              </td>
+              <td>
+                {{ officerDetail.officer.level >= officerMaxLevel ? '—'
+                   : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}
+              </td>
+              <td>{{ officerDetail.officer.loyalty }}</td>
+              <td>{{ officerDetail.officer.position_name }}</td>
+              <td>{{ officerDetail.officer.status_name }}</td>
+            </tr>
+          </table>
+
+          <!-- 三维属性 + 攻防（括号里的绿色数字是装备/套装加成） -->
+          <table class="ezfy-plain-table">
+            <tr><th>军事</th><th>后勤</th><th>学识</th><th>攻击加成</th><th>防御加成</th></tr>
+            <tr>
+              <td>
+                {{ officerDetail.officer.military_total }}<span
+                  class="green" v-if="officerDetail.officer.equip_military">+{{ officerDetail.officer.equip_military }}</span>
+              </td>
+              <td>
+                {{ officerDetail.officer.logistics_total }}<span
+                  class="green" v-if="officerDetail.officer.equip_logistics">+{{ officerDetail.officer.equip_logistics }}</span>
+              </td>
+              <td>
+                {{ officerDetail.officer.learning_total }}<span
+                  class="green" v-if="officerDetail.officer.equip_learning">+{{ officerDetail.officer.equip_learning }}</span>
+              </td>
+              <td>{{ officerDetail.officer.attack }}</td>
+              <td>{{ officerDetail.officer.defence }}</td>
+            </tr>
+          </table>
+
+          <!-- 套装进度（穿齐才生效）+ 装备六项战斗加成 -->
+          <table class="ezfy-plain-table"
+                 v-if="(officerDetail.officer.set_progress && officerDetail.officer.set_progress.length) ||
+                       officerBattleText(officerDetail.officer.battle)">
+            <tr><th>套装</th><th>进度</th><th>效果</th></tr>
+            <tr v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
+              <td>{{ sp.name }}</td>
+              <td>{{ sp.worn }}/{{ sp.parts }}</td>
+              <td :class="sp.active ? 'green' : 'gray'">{{ sp.active ? '已生效' : ('还差 ' + sp.need + ' 件') }}</td>
+            </tr>
+            <tr v-if="officerBattleText(officerDetail.officer.battle)">
+              <td>装备战斗加成</td>
+              <td colspan="2" class="green">{{ officerBattleText(officerDetail.officer.battle) }}</td>
+            </tr>
+          </table>
+
+          <!-- 属性加点（每升 1 级得 1 点） -->
           <div class="old-line">
-            可用属性点:
-            <b :class="officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ officerDetail.officer.free_points }}</b> 点
-            <span class="gray">
-              （每升 1 级得 1 点；已分配 {{ officerDetail.officer.used_points }} 点；
-              原始属性 军{{ officerDetail.officer.base_military }}/后{{ officerDetail.officer.base_logistics }}/学{{ officerDetail.officer.base_learning }}）
-            </span>
+            可用属性点
+            <b :class="officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ officerDetail.officer.free_points }}</b>
+            <span class="gray">（已分配 {{ officerDetail.officer.used_points }}）</span>
           </div>
           <div class="old-line" v-if="officerDetail.officer.free_points > 0">
             分配：
@@ -2863,43 +2876,43 @@
             &nbsp;后勤<a href="javascript:;" @click="doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="doAddAttrAll('logistics')">[全加]</a>
             &nbsp;学识<a href="javascript:;" @click="doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="doAddAttrAll('learning')">[全加]</a>
           </div>
-          <div class="old-line gray" v-else>
-            （暂无可用属性点：出征/使用经验书升级会获得；已分配的点可用「重修书」退回重新分配）
-          </div>
+
+          <!-- 操作 -->
           <div class="old-line officer-actions">
             <button @click="doGrant">[赏赐+10忠诚(1万金)]</button>
             <button v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
                     @click="doExile">[流放]</button>
             <button v-if="officerDetail.officer.star_up_on &&
                           officerDetail.officer.star < officerDetail.officer.star_max"
-                    @click="doStarUp">[升星]</button>
+                    @click="doStarUp">[升星{{ officerDetail.officer.star_chance_on ? (' ' + officerDetail.officer.star_rate + '%') : '' }}]</button>
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
+            <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
+                  class="gray">升星卡 {{ officerDetail.officer.star_card }} 张</span>
           </div>
-          <hr/>
-          已学技能({{ officerDetail.skills.length }}/3):
-          <table>
-            <tr><th>技能</th><th>效果</th><th>操作</th></tr>
+
+          <!-- 已学技能 / 可学技能 -->
+          <table class="ezfy-plain-table">
+            <tr><th colspan="3">已学技能（{{ officerDetail.skills.length }}/3）</th></tr>
             <tr v-for="s in officerDetail.skills" :key="'ds' + s.name">
               <td>{{ s.name }}</td>
               <td>{{ s.effect }}</td>
               <td><a href="javascript:;" @click="doForget(s.name)">[遗忘]</a></td>
             </tr>
+            <tr v-if="!officerDetail.skills.length"><td colspan="3" class="gray">(未学任何技能)</td></tr>
           </table>
-          <div class="old-line gray" v-if="!officerDetail.skills.length">(未学任何技能)</div>
-          <br/>
-          可学技能(1万金/个):
-          <table>
-            <tr><th>名称</th><th>效果</th><th>操作</th></tr>
+          <table class="ezfy-plain-table">
+            <tr><th colspan="3">可学技能（1万金/个）</th></tr>
             <tr v-for="s in officerDetail.all_skills" :key="'ls' + s.id">
               <td>{{ s.name }}</td>
               <td>{{ s.effect }}</td>
               <td><a href="javascript:;" @click="doLearn(s)">[学习]</a></td>
             </tr>
           </table>
-          <hr/>
-          已穿戴装备:
-          <table>
+
+          <!-- 已穿戴装备 -->
+          <table class="ezfy-plain-table">
+            <tr><th colspan="5">已穿戴装备</th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
               <td>{{ e.name }}</td>
@@ -2908,19 +2921,12 @@
               <td>{{ equipAttrText(e) || '—' }}</td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
             </tr>
+            <tr v-if="!officerDetail.equipped.length"><td colspan="5" class="gray">(未穿戴装备)</td></tr>
           </table>
-          <div class="old-line gray" v-if="!officerDetail.equipped.length">(未穿戴装备)</div>
-          <hr/>
-          装备背包:
-          <!-- ★ 检索框 + 分页（装备多的时候不用一页翻到底） -->
-          <div class="old-line">
-            搜索:
-            <input v-model="officerBagWord" type="text" placeholder="装备名 / 部位 / 套装"
-                   style="width:180px" @input="officerBagPage = 1"/>
-            <a href="javascript:;" @click="officerBagWord = ''; officerBagPage = 1">[清空]</a>
-            <span class="gray">共 {{ officerBagFiltered.length }} 件</span>
-          </div>
-          <table>
+
+          <!-- 装备背包（检索 + 分页） -->
+          <table class="ezfy-plain-table">
+            <tr><th colspan="7">装备背包</th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
             <tr v-for="e in officerBagPaged" :key="'db' + e.id">
               <td>{{ e.name }}</td>
@@ -2934,9 +2940,16 @@
                 <span v-else class="gray">已穿戴</span>
               </td>
             </tr>
+            <tr v-if="!officerDetail.bag.length"><td colspan="7" class="gray">(背包暂无装备)</td></tr>
+            <tr v-else-if="!officerBagFiltered.length"><td colspan="7" class="gray">(没有匹配「{{ officerBagWord }}」的装备)</td></tr>
           </table>
-          <div class="old-line gray" v-if="!officerDetail.bag.length">(背包暂无装备)</div>
-          <div class="old-line gray" v-else-if="!officerBagFiltered.length">(没有匹配「{{ officerBagWord }}」的装备)</div>
+          <div class="old-line">
+            搜索:
+            <input v-model="officerBagWord" type="text" placeholder="装备名 / 部位 / 套装"
+                   style="width:180px" @input="officerBagPage = 1"/>
+            <a href="javascript:;" @click="officerBagWord = ''; officerBagPage = 1">[清空]</a>
+            <span class="gray">共 {{ officerBagFiltered.length }} 件</span>
+          </div>
           <div class="ezfy-pager" v-if="officerBagFiltered.length > officerBagPageSize">
             <a href="javascript:;" :class="{ disabled: officerBagPage <= 1 }" @click="officerBagGo(-1)">[上一页]</a>
             <span class="gray">第 {{ Math.min(officerBagPage, officerBagTotalPages) }}/{{ officerBagTotalPages }} 页 · 共 {{ officerBagFiltered.length }} 件</span>
@@ -3118,6 +3131,7 @@ export default {
       // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
+      setEffectId: 0,                                        // 「我的套装」里点 [加成] 展开的那条
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       bagOfficers: [],
@@ -3468,6 +3482,20 @@ export default {
       return this.bagFiltered.slice((p - 1) * this.bagPageSize, p * this.bagPageSize)
     },
     // 我的装备（可按 名称 / 部位 / 套装 / 类型 检索）
+    // ★「我的套装」：只列**玩家已拥有**的套装（从背包聚合），并算还差几件才生效。
+    //   原来这里铺的是「全部套装」= 图鉴，玩家根本分不清哪个是自己有的。
+    mySetProgress () {
+      const bag = this.equipData.bag || []
+      const have = {}
+      bag.forEach(e => { if (e.set_id) have[e.set_id] = (have[e.set_id] || 0) + 1 })
+      return (this.equipData.sets || [])
+        .filter(s => have[s.id])
+        .map(s => Object.assign({}, s, {
+          have: have[s.id],
+          need: Math.max(0, (s.parts || 0) - have[s.id]),
+          active: (s.parts || 0) > 0 && have[s.id] >= s.parts
+        }))
+    },
     equipFiltered () {
       const w = (this.equipWord || '').trim().toLowerCase()
       const list = (this.equipData && this.equipData.bag) || []
@@ -4280,6 +4308,10 @@ export default {
     setBagCat (c) {
       this.bagCat = c
       this.bagPage = 1
+    },
+    // ★「我的套装」：点 [加成] 展开/收起该套装的穿齐加成
+    toggleSetEffect (setId) {
+      this.setEffectId = (this.setEffectId === setId) ? 0 : setId
     },
     // ★ 开箱快捷数量（[5]/[10] 不能超过单次上限）
     setChestCount (n) {

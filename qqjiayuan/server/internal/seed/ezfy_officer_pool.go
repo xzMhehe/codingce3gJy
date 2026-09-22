@@ -461,7 +461,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				Dmg: sum.dmg / 4, Def: sum.def / 4, Hp: sum.hp / 4,
 				Move: sum.mv / 4, Crit: sum.cr / 4, CritDmg: sum.cd / 4,
 				Military: sum.mi / 4, Logistics: sum.lo / 4, Learning: sum.le / 4,
-				Effect: fmt.Sprintf("穿齐%d件，**额外**再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%（各件本身属性另计）",
+				Effect: fmt.Sprintf("穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
 					len(s.Pieces), sum.mi/4, sum.lo/4, sum.le/4,
 					sum.dmg/4, sum.def/4, sum.hp/4, sum.mv/4, sum.cr/4, sum.cd/4),
 				Des: s.Series + "系列军官装备（11 部位各 1 件）",
@@ -866,11 +866,16 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 			continue
 		}
 		updates["effect"] = fmt.Sprintf(
-			"穿齐%d件，**额外**再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%（各件本身属性另计）",
+			"穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
 			st.Parts, mi/4, lo/4, le/4, d/4, df/4, hp/4, mv/4, cr/4, cd/4)
 		db.Model(&model.EzfyCfgEquipSet{}).Where("id = ?", st.ID).Updates(updates)
 	}
 
+	// ★ 清掉历史文案里的 markdown 星号与多余尾注（前端不渲染 markdown，
+	//   玩家会直接看到「**额外**」这种符号）。幂等：改完就不再命中。
+	db.Exec("UPDATE ezfy_cfg_equip_set SET effect = REPLACE(effect, '**', '') WHERE effect LIKE '%**%'")
+	db.Exec("UPDATE ezfy_cfg_equip_set SET effect = REPLACE(effect, '（各件本身属性另计）', '') " +
+		"WHERE effect LIKE '%（各件本身属性另计）%'")
 }
 
 // ============ 二·E、计谋（消耗信号弹） ============

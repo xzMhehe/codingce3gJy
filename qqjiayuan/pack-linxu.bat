@@ -59,8 +59,11 @@ for /f "tokens=3" %%v in ('"%GO_BIN%" version') do echo   [pack] go uses %%v
 
 call :log "STEP 1/5 build web"
 
-if not exist "%ROOT%\web\node_modules" (
-    echo   [pack] node_modules missing, running npm install ^(slow on first run^)
+REM NOTE: check .bin\vue-cli-service.cmd, not just node_modules/ -- an interrupted
+REM       npm install leaves node_modules/ present but without .bin, and the build
+REM       then dies silently ("'vue-cli-service' is not recognized").
+if not exist "%ROOT%\web\node_modules\.bin\vue-cli-service.cmd" (
+    echo   [pack] web deps missing/incomplete, running npm install ^(slow on first run^)
     pushd "%ROOT%\web"
     call npm install --registry="%NPMREG%"
     if errorlevel 1 (
@@ -80,8 +83,8 @@ echo   [pack] web\dist done
 
 call :log "STEP 2/5 build admin-web"
 
-if not exist "%ROOT%\admin-web\node_modules" (
-    echo   [pack] node_modules missing, running npm install ^(slow on first run^)
+if not exist "%ROOT%\admin-web\node_modules\.bin\vue-cli-service.cmd" (
+    echo   [pack] admin-web deps missing/incomplete, running npm install ^(slow on first run^)
     pushd "%ROOT%\admin-web"
     call npm install --registry="%NPMREG%"
     if errorlevel 1 (
@@ -262,14 +265,19 @@ echo   %~1
 echo ============================================================
 exit /b 0
 
+REM NOTE: pause here -- when the .bat is double-clicked the console closes on exit
+REM       and the whole reason for the failure scrolls away unseen.
+REM       Set PACK_NOPAUSE=1 to skip the pause (for CI / scripted runs).
 :die
 echo.
 echo   [FATAL] %~1
 echo.
+if not defined PACK_NOPAUSE pause
 exit /b 0
 
 :fatal
 echo.
 echo   [FATAL] %~1
 echo.
+if not defined PACK_NOPAUSE pause
 exit /b 0

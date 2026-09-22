@@ -2417,11 +2417,23 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg})
 	}
 	sort.Slice(cfgList, func(i, j int) bool { return cfgList[i]["id"].(int) < cfgList[j]["id"].(int) })
-	// 套装总览（商城/图鉴展示用）
+	// ★ 套装总览 = **我拥有的**套装（用户反馈：原来列的是全部套装配置，玩家以为是自己有的）
+	//   统计口径：背包 + 已穿戴的装备里出现过的 set_id，按套计数。
+	owned := map[int]int{}
+	for _, e := range h.equipmentList(uid) {
+		if e.SetId > 0 {
+			owned[e.SetId]++
+		}
+	}
 	setList := []gin.H{}
 	for _, s := range ezfyCfg.equipSets() {
+		have := owned[s.ID]
+		if have == 0 {
+			continue // 一件都没有的套装不展示（图鉴在下面「装备图鉴」里）
+		}
 		setList = append(setList, gin.H{
 			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
+			"have": have, "complete": have >= s.Parts,
 			"military": s.Military, "logistics": s.Logistics, "learning": s.Learning,
 			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp, "move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,
 			"effect": s.Effect, "des": s.Des,
