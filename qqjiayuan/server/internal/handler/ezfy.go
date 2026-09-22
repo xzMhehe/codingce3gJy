@@ -1569,15 +1569,26 @@ func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
 }
 
 func (h *EzfyHandler) consumeItem(uid uint, cfgId int) {
+	h.consumeItemN(uid, cfgId, 1)
+}
+
+// consumeItemN 一次扣掉 n 个道具（n <= 0 时什么都不做）。
+//
+// ★ 批量道具（如经验书一次用几千本）必须走这个 —— 原来循环里逐本调 consumeItem，
+// 一次请求就是几千条 SELECT + UPDATE。
+func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int) {
+	if n <= 0 {
+		return
+	}
 	var it model.EzfyItem
 	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
 		return
 	}
-	if it.Count <= 1 {
+	if n >= it.Count {
 		h.DB.Delete(&it)
-	} else {
-		h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count-1)
+		return
 	}
+	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count-n)
 }
 
 func (h *EzfyHandler) addCityEffect(cityId uint, effectType, param1 int, hours int64) {
@@ -1626,7 +1637,11 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	if count > have {
 		return fmt.Sprintf("道具数量不足(现有%d个)", have)
 	}
-	if count > 99 {
+	// ★ 用户要求「军官经验道具最大只能用 100 不对，没有上限卡控」→ 经验书取消单次数量上限
+	//   （真正的上限只剩「背包里有多少」，上面那条已经挡了）。
+	//   ⚠️ 只对经验书放开：其余道具是「一本一次」的循环实现（每本都要读写库），
+	//   放开会让一次请求打上万条 SQL，所以仍保留 99 的防呆上限。
+	if count > 99 && cfg.ItemType != 10 {
 		return "单次最多使用99个"
 	}
 	// 单次生效类道具不能批量
@@ -1640,6 +1655,44 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	}
 	if cfg.ItemType == 11 && skillId <= 0 {
 		return "请选择要学习的技能"
+	}
+	// ★ 经验书(ItemType 10)：整批一次结算，并且**只扣真正用得上**的本数。
+	//
+	//	用户两条要求：
+	//	  ① 「军官经验道具最大只能用 100 不对，没有上限卡控」→ 上面已取消 99 上限；
+	//	  ② 「150 级超了，退回没用的经验书就行」→ 满级后再用会白扔（addOfficerExp 会把
+	//	     满级后的经验直接清零），所以这里先算「升到满级还需要多少经验」，
+	//	     只消耗够用的本数，其余原样留在背包里。
+	if cfg.ItemType == 10 {
+		o := h.officerOf(city.ID, officerId)
+		if o == nil {
+			return "军官不存在"
+		}
+		per := cfg.Param1
+		if per <= 0 {
+			return "道具配置有误(经验为0)"
+		}
+		// 升到满级还差多少经验（升级需要 等级×200，与 addOfficerExp 同一口径）
+		var need int64
+		for lv, exp := o.Level, o.Exp; lv < ezfyOfficerMaxLevel; lv++ {
+			need += int64(lv)*200 - exp
+			exp = 0
+		}
+		if need <= 0 {
+			return fmt.Sprintf("%s 已达最高等级%d级, 经验书不消耗", o.Name, ezfyOfficerMaxLevel)
+		}
+		used := int64(count)
+		if maxBooks := (need + per - 1) / per; maxBooks < used {
+			used = maxBooks
+		}
+		h.addOfficerExp(city, o.ID, per*used)
+		h.consumeItemN(uid, cfgId, int(used))
+		msg := fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, per*used)
+		if used < int64(count) {
+			msg += fmt.Sprintf("（已达%d级上限，本次只消耗%d本，其余%d本留在背包）",
+				ezfyOfficerMaxLevel, used, int64(count)-used)
+		}
+		return msg
 	}
 
 	var lastMsg string

@@ -439,6 +439,18 @@ type ezfyConfigCache struct {
 	words []model.EzfyWordFilter
 }
 
+// ready 配置缓存是否已加载过。
+//
+// ★ 为什么需要它：开关类字段「0 = 关」是有意义的值，如果某个 handler 忘了先调 h.cfgs()
+// 就直接读 ezfyCfg.limit，读到的是零值结构体 → 开关被误判成「关」
+// （实测踩过：/war/status 不调 cfgs()，于是宣战开关默认开却显示成关）。
+// 所以开关类读取函数一律先问 ready()，没加载过就回落「默认值」。
+func (c *ezfyConfigCache) ready() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.loaded
+}
+
 // ezfyLimit 取建筑数量上限配置（带默认值兜底）
 func ezfyLimit() model.EzfyCfgLimit {
 	l := ezfyCfg.limit
@@ -526,26 +538,70 @@ const (
 	ezfyRecruitCostDef = 1 // 征兵消耗资源：默认开
 	ezfyFoodUpkeepDef  = 1 // 军队耗粮：默认开
 	ezfyMarchOilDef    = 1 // 出征油耗：默认开
+	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
+	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
 	ezfyWildMultDef    = 1 // 野地兵力倍数：默认 1
 )
 
-// ezfyRecruitCostOn 征兵是否消耗资源（关 = 不消耗资源、也无需空闲人口）
+// ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
+//
+// ★ 用户要求「再加个出征上限开关，默认开，关闭出征没有上限」。
+//
+//	关掉后 ezfyOrderTroopCap() 会返回 unlimited=true，出征校验与出征页提示一起放开。
+func ezfyMarchCapOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyMarchCapDef != 0
+	}
+	return ezfyCfg.limit.MarchCapOn != 0
+}
+
+// ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
+//
+// ★ 用户要求「加一个宣战功能开关，默认开启：开启 = 玩家之间需要宣战；
+//
+//	关闭 = 不需要宣战也能掠夺/征服」。
+//
+// 关掉后 isAtWar() 恒为 true（视为随时可交战），所以出征校验、战斗结算、
+//
+//	玩家端按钮状态三处会一起放开，不需要各自打补丁。
+//
+// 实现见下面那一份（带 ready() 兜底）—— 这里只留注释，别再写一份同名函数。
 func ezfyRecruitCostOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyRecruitCostDef != 0
+	}
 	return ezfyCfg.limit.RecruitCostOn != 0
 }
 
 // ezfyFoodUpkeepOn 城内军队是否每小时耗粮
 func ezfyFoodUpkeepOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyFoodUpkeepDef != 0
+	}
 	return ezfyCfg.limit.FoodUpkeepOn != 0
 }
 
 // ezfyMarchOilOn 出征是否消耗石油
 func ezfyMarchOilOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyMarchOilDef != 0
+	}
 	return ezfyCfg.limit.MarchOilOn != 0
+}
+
+// ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
+func ezfyWarRequireOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyWarRequireDef != 0
+	}
+	return ezfyCfg.limit.WarRequireOn != 0
 }
 
 // ezfyWildTroopMult 野地/海野/寇城守军兵力倍数（默认 1；0 或负数无意义 → 回落 1）
 func ezfyWildTroopMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyWildMultDef
+	}
 	if m := ezfyCfg.limit.WildTroopMult; m > 0 {
 		return m
 	}
@@ -732,7 +788,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		WildTroopMult: ezfyWildMultDef,
-		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim

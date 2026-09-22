@@ -267,9 +267,9 @@ export const menu = [
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
           { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
           { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
-          // ★ 用户要求菜单名由「建筑上限配置」改成「系统配置」（页面已不只管建筑上限，
-          //   还管各项数值与玩法开关）。key / perm 保持不变，避免动到已分配的权限。
-          { key: 'ezfyBuildLimit', name: '系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
+          // ★ 用户要求菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
+          //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
+          { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },

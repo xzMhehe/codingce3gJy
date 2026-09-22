@@ -367,7 +367,15 @@ func (h *EzfyHandler) warStatus(a, b uint) int {
 	return 1
 }
 
+// isAtWar 是否可以对该玩家发起掠夺/征服
+//
+// ★ 用户要求「加一个宣战功能开关，关闭后不需要宣战也能掠夺/征服」→
+// 开关关掉时恒为 true（视为随时可交战）。这样出征校验、战斗结算两处一起放开，
+// 不会出现「出征放行了、到达时又被判没宣战而返航」的不一致。
 func (h *EzfyHandler) isAtWar(a, b uint) bool {
+	if !ezfyWarRequireOn() {
+		return true
+	}
 	return h.warStatus(a, b) == 2
 }
 
@@ -493,6 +501,8 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	for _, t := range valid {
 		totalPreview += t.Count
 	}
+	// ★ 管理端「出征上限」开关关掉时 capUnlimited=true（前端显示「不限」）
+	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather)
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
@@ -506,14 +516,16 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		"travel_time": ezfyDurationText(travelSec),
 		"return_time": ezfyDurationText(travelSec),
 		// 出征上限相关
+		// ★ cap_unlimited = 管理端把「出征上限」开关关了 → 前端显示「不限」而不是一串巨大数字
 		"troop_total":    totalPreview,
-		"troop_cap":      h.ezfyOrderTroopCap(city.ID, gather),
+		"troop_cap":      capNow,
+		"cap_unlimited":  capUnlimited,
 		"hq_level":       h.buildingLevel(city.ID, 13),
 		"gather":         gather,
 		"gather_per":     ezfyGatherBonusPer(),
 		"gather_max":     gatherMax,
 		"gather_have":    h.itemCount(uid, ezfyGatherItemID),
-		"troop_over_cap": totalPreview > h.ezfyOrderTroopCap(city.ID, gather),
+		"troop_over_cap": !capUnlimited && totalPreview > capNow,
 	})
 }
 
@@ -571,13 +583,20 @@ func ezfyGatherBonusPer() int64 {
 //
 //	= 司令部等级 × 1万 × (1 + 指挥艺术科技等级 × 10%)   ← 原版规则（司令部「每次出征上限N人」）
 //	+ 集结令个数 × ezfyGatherBonusPer()                ← 用户规则：每个集结令 +10 万
-func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int) int64 {
+//
+// ★ 用户要求「再加个出征上限开关，默认开；关闭后出征没有上限」→
+//
+//	开关关掉时返回 (0, true)，调用方一律用 unlimited 判断，**不要**拿 0 去比大小。
+func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int) (cap int64, unlimited bool) {
+	if !ezfyMarchCapOn() {
+		return 0, true
+	}
 	hq := h.buildingLevel(cityId, 13)
-	cap := int64(10000*hq) * int64(100+h.techMap(cityId)[15]*ezfyCommandCarryPct) / 100
+	cap = int64(10000*hq) * int64(100+h.techMap(cityId)[15]*ezfyCommandCarryPct) / 100
 	if gather > 0 {
 		cap += int64(gather) * ezfyGatherBonusPer()
 	}
-	return cap
+	return cap, false
 }
 
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
@@ -796,8 +815,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	if orderType != 5 && orderType != 8 {
 		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
-		carryCap := h.ezfyOrderTroopCap(city.ID, gather)
-		if total > carryCap {
+		//   ★ 管理端「出征上限」开关关掉时 capUnlimited=true → 完全不做这个校验
+		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather)
+		if !capUnlimited && total > carryCap {
 			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
 			if gm := ezfyGatherMax(); gather < gm {
 				msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), gm)

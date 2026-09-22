@@ -271,6 +271,10 @@ type EzfyCfgLimit struct {
 	RecruitCostOn int `json:"recruit_cost_on"` // 征兵消耗资源（关 = 不消耗资源、也无需空闲人口）
 	FoodUpkeepOn  int `json:"food_upkeep_on"`  // 军队耗粮（关 = 城内军队每小时不扣粮）
 	MarchOilOn    int `json:"march_oil_on"`    // 出征油耗（关 = 出征不消耗石油）
+	// ★ 宣战功能（关 = 玩家之间不需要宣战，直接就能掠夺/征服别人城市）
+	WarRequireOn int `json:"war_require_on"`
+	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
+	MarchCapOn int `json:"march_cap_on"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

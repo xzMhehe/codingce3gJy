@@ -1100,6 +1100,12 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 		resp.ParamError(c, "不能对自己宣战")
 		return
 	}
+	// ★ 管理端「宣战功能」关掉时不需要宣战（掠夺/征服直接可打）→ 直接拒绝宣战请求，
+	//   免得老缓存的前端还能点出 [宣战]，在系统频道刷出没有意义的播报。
+	if !ezfyWarRequireOn() {
+		resp.ParamError(c, "当前不需要宣战，可直接掠夺/征服")
+		return
+	}
 	// ★ 用户规则：「同盟玩家不能宣战」。
 	//   同盟 = 同一个军团（与地图上「运输/增援」的判定口径完全一致，见 ezfy_order.go）。
 	//   两边任一方没军团都不算同盟。
@@ -1140,6 +1146,13 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 		defName, ezfyWarDelayHours, ezfyWarDurationHours)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})
 
+	// ★ 用户要求「首页世界聊天那块，谁向谁宣战也播报展示」→ 往**系统频道**写一条全服可见的播报。
+	//   ezfySysChat 写的是 channel=4 / talk_type=0，首页「世界聊天」预览与聊天页的系统频道都会显示，
+	//   所以这里不需要另开接口，玩家端不用改。
+	//   ⚠️ 注意：宣战本身没有次数上限（只挡了「对同一个人重复宣战」），
+	//   如果将来发现有人刷屏，可以在 ezfySysChat 外面加个节流/上限。
+	h.ezfySysChat("【宣战】%s 向 %s 宣战了，%d 小时后生效！", atkName, defName, ezfyWarDelayHours)
+
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("宣战成功, %d小时后生效, 生效后%d小时内可互相掠夺/征服", ezfyWarDelayHours, ezfyWarDurationHours)})
 }
 
@@ -1153,6 +1166,9 @@ func (h *EzfyHandler) ezfyPlayerName(uid uint) (string, error) {
 }
 
 func (h *EzfyHandler) WarStatus(c *gin.Context) {
+	// ★ 必须先 cfgs()：war_require 读的是配置缓存，不加载就只会拿到默认值
+	//   （踩过：这里漏了 cfgs()，开关明明是开，接口却回 false）
+	h.cfgs()
 	uid := middleware.GetUID(c)
 	targetUserId, _ := strconv.ParseUint(c.Query("target_user_id"), 10, 64)
 	tid := uint(targetUserId)
@@ -1168,7 +1184,11 @@ func (h *EzfyHandler) WarStatus(c *gin.Context) {
 			text = fmt.Sprintf("交战中(剩余约%d小时)", maxInt64(0, hs))
 		}
 	}
-	resp.OK(c, gin.H{"status": status, "text": text})
+	// ★ war_require：管理端「宣战功能」开关的当前值。玩家端用它决定
+	//   掠夺/征服按钮要不要「需先宣战」那套限制（false = 直接可点）。
+	//   注意这里**不**把 status 伪造成 2 —— 那样会让「同盟城市」的 运输/增援 按钮
+	//   被误判成交战中而消失，所以开关单独下发，由前端分别处理。
+	resp.OK(c, gin.H{"status": status, "text": text, "war_require": ezfyWarRequireOn()})
 }
 
 // ============ 排行榜 ============

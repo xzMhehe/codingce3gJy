@@ -1142,15 +1142,18 @@
             <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
           </div>
           <!-- ② 别人的城：侦查/掠夺/征服 常显；掠夺/征服 需宣战生效(status=2)才可点，
-               未宣战/待生效时置灰并提示，宣战入口只在没宣战(status=0)时出现 -->
+               未宣战/待生效时置灰并提示，宣战入口只在没宣战(status=0)时出现。
+               ★ 管理端「宣战功能」关掉时（warRequire=false）不需要宣战 → 掠夺/征服直接可点、
+                 不再出现 [宣战] 入口，也不再显示「未宣战」状态文案。 -->
           <div class="old-line" v-else-if="selCell.area_type === 3">
             <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
-            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
+            <a v-if="warStatus === 2 || !warRequire" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">[掠夺]</a>&nbsp;
-            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(3)">[征服]</a>
+            <a v-if="warStatus === 2 || !warRequire" href="javascript:;" @click="pickOrder(3)">[征服]</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('征服')">[征服]</a>&nbsp;
-            <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示 -->
-            <template v-if="selCell.ally && warStatus !== 2">
+            <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示
+                 （不需要宣战时「交战中」这个概念不成立，所以照常显示） -->
+            <template v-if="selCell.ally && (warStatus !== 2 || !warRequire)">
               <a href="javascript:;" @click="pickOrder(5)">[运输]</a>&nbsp;
               <a href="javascript:;" @click="pickOrder(6)">[增援]</a>&nbsp;
             </template>
@@ -1158,9 +1161,9 @@
             <template v-if="selCell.ally">
               <span class="green">同盟成员之间不能宣战</span>
             </template>
-            <a v-else-if="warStatus === 0" href="javascript:;" @click="declareWar">[宣战]</a>
+            <a v-else-if="warStatus === 0 && warRequire" href="javascript:;" @click="declareWar">[宣战]</a>
             <!-- 同盟时不再叠「未宣战」这类状态文案，避免读成「不能宣战未宣战」 -->
-            <span v-if="warText && !selCell.ally" class="orange">{{ warText }}</span>
+            <span v-if="warText && !selCell.ally && warRequire" class="orange">{{ warText }}</span>
           </div>
           <!-- ③ 野地/寇城/海洋 -->
           <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)'">
@@ -1214,8 +1217,10 @@
           </div>
           <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
           <div class="old-line" v-if="orderCalc">
+            <!-- ★ 管理端「出征上限」关掉时后端下发 cap_unlimited=true → 这里显示「不限」，
+                 不要显示后端占位的 0 -->
             <span :class="orderCalc.troop_over_cap ? 'red' : 'green'">
-              本次出兵 <b>{{ fmtN(orderCalc.troop_total) }}</b> / 上限 <b>{{ fmtN(orderCalc.troop_cap) }}</b>
+              本次出兵 <b>{{ fmtN(orderCalc.troop_total) }}</b> / 上限 <b>{{ orderCalc.cap_unlimited ? '不限' : fmtN(orderCalc.troop_cap) }}</b>
               <template v-if="orderCalc.troop_over_cap">—— 超出上限，请减少兵力或加用集结令</template>
             </span>
           </div>
@@ -2073,9 +2078,17 @@
       <template v-else-if="cur === 'notices'">
         <div class="panel">
           <div class="panel-title">公告</div>
-          <div class="old-line" v-for="n in notices" :key="'nn' + n.id">
+          <!-- ★ 用户要求「公告也变成分页，下一页上一页那种」→ 与军情三区同一套 .ezfy-pager 写法
+               （默认每页 5 条，见 noticeSize）。 -->
+          <div class="old-line" v-for="n in noticePaged" :key="'nn' + n.id">
             <span v-if="n.is_top" class="red">[置顶]</span>
             <a href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
+          </div>
+          <div class="old-line" v-if="!notices.length">(暂无公告)</div>
+          <div class="ezfy-pager" v-if="notices.length > noticeSize">
+            <a href="javascript:;" :class="{ gray: noticePage <= 1 }" @click="pagerGo('notice', -1)">上一页</a>
+            <span class="gray">第 {{ noticePage }}/{{ noticeTotalPages }} 页（共 {{ notices.length }} 条）</span>
+            <a href="javascript:;" :class="{ gray: noticePage >= noticeTotalPages }" @click="pagerGo('notice', 1)">下一页</a>
           </div>
           <template v-if="curNotice">
             <div class="panel-title">{{ curNotice.title }}</div>
@@ -2640,6 +2653,8 @@ export default {
       dynPage: 1, dynSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
+      // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」）：默认每页 5 条
+      noticePage: 1, noticeSize: 5,
       // ★ 首页外露公告（条数由管理端「建筑上限配置」里的「首页公告条数」决定，默认 1）
       homeNotices: [],
       curNotice: null,
@@ -2765,6 +2780,9 @@ export default {
       eliteCell: null,
       warText: '',
       warStatus: 0, // 0未宣战 / 1宣战待生效 / 2交战中
+      // ★ 管理端「宣战功能」开关（/war/status 下发 war_require）：
+      //   false = 不需要宣战，掠夺/征服直接可点。默认 true（开关默认开）。
+      warRequire: true,
       orderType: 2,
       orderTroops: {},
       onDutyOfficers: [],
@@ -3066,6 +3084,14 @@ export default {
     repPaged () {
       const p = Math.min(Math.max(1, this.repPage), this.repTotalPages)
       return this.reports.slice((p - 1) * this.repSize, p * this.repSize)
+    },
+    // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」），与军情同一套写法
+    noticeTotalPages () {
+      return Math.max(1, Math.ceil(this.notices.length / this.noticeSize))
+    },
+    noticePaged () {
+      const p = Math.min(Math.max(1, this.noticePage), this.noticeTotalPages)
+      return this.notices.slice((p - 1) * this.noticeSize, p * this.noticeSize)
     },
     // 翻页步长 = 一整屏(复刻原版: 向上 x-5 / 向右 y+5, 即 2r+1)
     mapStep () {
@@ -3733,6 +3759,8 @@ export default {
       api.get('/games/ezfy/notices').then(r => {
         if (r.code === 0) {
           this.notices = r.data.notices
+          // ★ 公告列表每次重新加载都回到第 1 页（否则刷新后可能停在超出范围的空页）
+          this.noticePage = 1
           // ★ 首页外露公告由管理端配置条数（默认 1 条），后端直接下发 home_notices
           this.homeNotices = r.data.home_notices || []
         }
@@ -4006,10 +4034,12 @@ export default {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
     // 摧毁自己的城市（至少保留一座；摧毁当前城会自动切到剩下的城）
-    // ★ 军情分页翻页（which: 'dyn' 军队动态 / 'rep' 战报列表）
+    // ★ 分页翻页（which: 'dyn' 军队动态 / 'rep' 战报列表 / 'notice' 公告）
     pagerGo (which, delta) {
       if (which === 'dyn') {
         this.dynPage = Math.min(this.dynTotalPages, Math.max(1, this.dynPage + delta))
+      } else if (which === 'notice') {
+        this.noticePage = Math.min(this.noticeTotalPages, Math.max(1, this.noticePage + delta))
       } else {
         this.repPage = Math.min(this.repTotalPages, Math.max(1, this.repPage + delta))
       }
@@ -4367,6 +4397,10 @@ export default {
         if (r.code === 0) {
           this.warText = r.data.text
           this.warStatus = r.data.status || 0
+          // ★ 管理端「宣战功能」开关：关掉时不需要宣战，掠夺/征服直接可点
+          //   （后端 isAtWar 同时恒为 true，两边口径一致）。
+          //   注意不能靠把 warStatus 伪造成 2 —— 那样同盟城市的 运输/增援 会被误判而消失。
+          this.warRequire = r.data.war_require !== false
         }
       })
     },
@@ -5403,9 +5437,9 @@ body.ezfy-immersive { margin: 0; }
   width: auto;
   max-width: 100%;
   border-collapse: separate;
-  /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px
-     （横向 8→12，纵向 3→6；格子变两行后纵向 3px 太挤） */
-  border-spacing: 12px 6px;
+  /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
+     随后又要求「上下间隔加一点」→ 纵向 6px → 10px（横向 12px 不动）。 */
+  border-spacing: 12px 10px;
   margin: 8px 0;             /* 表格本身靠左(不要整表居中) */
 }
 .ezfy-page .ezfy-map-table td {
@@ -5419,10 +5453,10 @@ body.ezfy-immersive { margin: 0; }
   display: inline-block;     /* 改成块级容器, 才能装上下两行 */
   padding: 0;
   margin: 0;
-  /* ★ 第一行(名称/等级，如「海(8)」)的字号：用户反馈「小 1 号」→ 16px → 15px
-     （原来是和正文 .old-line 同号的 16px；坐标行有自己独立的 11px，不受这里影响）。
-     窄屏同理 14px → 13px，见下面媒体查询。 */
-  font-size: 15px;
+  /* ★ 第一行(名称/等级，如「海(8)」)的字号：用户先要求「小 1 号」(16→15)，
+     看了效果又要求「再小 1 号」→ **14px**。坐标行有自己独立的值(13px)，不受这里影响。
+     窄屏同理 14 → 13 → 12，见下面媒体查询。 */
+  font-size: 14px;
   line-height: 1.3;
   /* ★ 用户要求「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
      本城(.ezfy-mine)与活动目标(.ezfy-act-*)的颜色是有含义的，下面单独覆盖，不受影响。 */
@@ -5435,12 +5469,14 @@ body.ezfy-immersive { margin: 0; }
 /* 第一行：名称(等级) */
 .ezfy-page .ezfy-map-table a .ezfy-cell-name { display: block; }
 /* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
-   ★ 用户反馈「坐标字体有点大」→ 桌面 12px → 11px（窄屏 11 → 10，见下面的媒体查询）；
-   随后又要求「第一行小 1 号、坐标这行不动」，所以这里保持 11px 不变。 */
+   字号定稿过程：12 → 11 →「坐标那行大 1 号」12 →「(272,227) 大 1 号」**13px**。
+   ★ margin-top 是用户要求「上下坐标之间再大一点点」——第一行缩到 14 后两行几乎一样大，
+   需要这点缝把它们分开，不然两行糊成一块。 */
 .ezfy-page .ezfy-map-table a .ezfy-cell-xy {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.25;
+  margin-top: 2px;
   font-weight: normal;       /* 本城/活动城名字加粗, 坐标不跟着加粗 */
   color: #0645ad;
 }
@@ -5495,10 +5531,11 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
   /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
      ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多；
-       第一行跟着桌面一起「小 1 号」(14 → 13)，坐标行保持 10px 不动。 */
-  .ezfy-page .ezfy-map-table a { font-size: 13px; line-height: 1.25; }
-  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 10px; }
-  .ezfy-page .ezfy-map-table { border-spacing: 6px 4px; }
+       第一行跟着桌面一起缩(14 → 13 → 12)，坐标行同样 +1(11 → 12)，两行之间留同样的缝。 */
+  .ezfy-page .ezfy-map-table a { font-size: 12px; line-height: 1.25; }
+  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 12px; }
+  /* 窄屏纵向间距同步收一档(桌面 10px → 窄屏 6px)，但比原来(4px)松一点 */
+  .ezfy-page .ezfy-map-table { border-spacing: 6px 6px; }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
   /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */

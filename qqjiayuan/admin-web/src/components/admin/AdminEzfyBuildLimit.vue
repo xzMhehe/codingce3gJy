@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <span>系统配置</span>
+        <span>二战系统配置</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <!-- ★ 用户要求「菜单名改成系统配置，并且把这个页面的解释去掉，哪个主流系统有这么多解释」
@@ -51,11 +51,20 @@
           <el-input-number v-model.number="form.wound_heal_divisor" :min="1" controls-position="right" style="width:180px" />
         </el-form-item>
         <el-form-item label="野地兵力倍数">
-          <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :max="100" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+          <!-- ★ 用户要求「没有上限，现在是 100」→ 去掉 :max（填多少就是多少，只挡 <= 0） -->
+          <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
           <span class="td-sub">野地 / 海野 / 寇城守军兵力倍数</span>
         </el-form-item>
 
         <el-divider content-position="left">玩法开关</el-divider>
+        <el-form-item label="宣战功能">
+          <el-switch v-model="form.war_require_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+          <span class="td-sub">开 = 掠夺/征服需先宣战；关 = 直接可打</span>
+        </el-form-item>
+        <el-form-item label="出征上限">
+          <el-switch v-model="form.march_cap_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+          <span class="td-sub">关 = 出征不限兵力</span>
+        </el-form-item>
         <el-form-item label="征兵消耗资源">
           <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
         </el-form-item>
@@ -88,7 +97,7 @@ export default {
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
         wild_troop_mult: 1,
-        recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1
+        recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1
       }
     }
   },
@@ -117,7 +126,9 @@ export default {
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
             recruit_cost_on: sw(r.data.recruit_cost_on),
             food_upkeep_on: sw(r.data.food_upkeep_on),
-            march_oil_on: sw(r.data.march_oil_on)
+            march_oil_on: sw(r.data.march_oil_on),
+            war_require_on: sw(r.data.war_require_on),
+            march_cap_on: sw(r.data.march_cap_on)
           }
         } else this.$message.error(r.msg)
       })

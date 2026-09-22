@@ -219,6 +219,8 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("recruit_cost_on", 1) // 征兵消耗资源：1 开（默认）/ 0 关
 		addSwitchCol("food_upkeep_on", 1)  // 军队耗粮：1 开（默认）/ 0 关
 		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
+		addSwitchCol("war_require_on", 1)  // 宣战功能：1 开（默认，掠夺/征服需先宣战生效）/ 0 关（直接可打）
+		addSwitchCol("march_cap_on", 1)    // 出征兵力上限：1 开（默认，司令部等级那套）/ 0 关（不限兵力）
 
 		// 野地兵力倍数（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {

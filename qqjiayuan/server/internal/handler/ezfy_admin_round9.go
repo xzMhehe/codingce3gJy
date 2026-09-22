@@ -29,7 +29,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
-		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -80,11 +81,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		LootFeelings       *int `json:"loot_feelings"`
 		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
 		WoundHealDivisor   *int `json:"wound_heal_divisor"`
-		// ★ 系统配置新增：野地兵力倍数 + 三个玩法开关
+		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
 		MarchOilOn    *int     `json:"march_oil_on"`
+		WarRequireOn  *int     `json:"war_require_on"`
+		MarchCapOn    *int     `json:"march_cap_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -95,7 +98,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
-		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -198,11 +202,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	// ★ 野地兵力倍数：允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
-	//   上界给 100 做防呆（100 倍 = 守军千万级，足够用了）。
+	//   ★ 用户要求「野地兵力倍数没有上限，现在是 100」→ **去掉上界**，填多少就是多少
+	//   （与「出征集结令单次上限」同一套处理：只挡 <= 0）。
 	if in.WildTroopMult != nil {
 		m := *in.WildTroopMult
-		if m <= 0 || m > 100 {
-			resp.ParamError(c, "野地兵力倍数需要在 0.01 ~ 100 之间")
+		if m <= 0 {
+			resp.ParamError(c, "野地兵力倍数必须大于 0")
 			return
 		}
 		lim.WildTroopMult = m
@@ -226,6 +231,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setSwitch(in.MarchOilOn, &lim.MarchOilOn, "出征油耗") {
+		return
+	}
+	if !setSwitch(in.WarRequireOn, &lim.WarRequireOn, "宣战功能") {
+		return
+	}
+	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
 		return
 	}
 	if lim.ConquerFeelingsMax <= 0 {
@@ -257,6 +268,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"recruit_cost_on": lim.RecruitCostOn,
 		"food_upkeep_on":  lim.FoodUpkeepOn,
 		"march_oil_on":    lim.MarchOilOn,
+		"war_require_on":  lim.WarRequireOn,
+		"march_cap_on":    lim.MarchCapOn,
 		"wild_troop_mult": lim.WildTroopMult,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
