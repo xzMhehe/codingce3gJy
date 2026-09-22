@@ -515,6 +515,56 @@ func ezfyMallBuyMaxCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.MallBuyMax, ezfyMallBuyMaxDef)
 }
 
+// ============ 系统配置：玩法开关 + 野地兵力倍数 ============
+//
+// ⚠️ 这三个开关是「0 有意义」的字段（0 = 关），所以**不能**用 ezfyLimitOr ——
+// 那个把 0 当「没配置」回落默认值，会把管理员关掉的开关又打开。
+// 直接用 `!= 0` 判断：只有显式存了 0 才算关。
+// 默认值靠两处保证：① DB 列默认值 1（seed 补列时 ALTER ... DEFAULT 1）；
+// ② 老行 NULL 由 seed 回填 1（只回填 NULL，不动 0）。
+const (
+	ezfyRecruitCostDef = 1 // 征兵消耗资源：默认开
+	ezfyFoodUpkeepDef  = 1 // 军队耗粮：默认开
+	ezfyMarchOilDef    = 1 // 出征油耗：默认开
+	ezfyWildMultDef    = 1 // 野地兵力倍数：默认 1
+)
+
+// ezfyRecruitCostOn 征兵是否消耗资源（关 = 不消耗资源、也无需空闲人口）
+func ezfyRecruitCostOn() bool {
+	return ezfyCfg.limit.RecruitCostOn != 0
+}
+
+// ezfyFoodUpkeepOn 城内军队是否每小时耗粮
+func ezfyFoodUpkeepOn() bool {
+	return ezfyCfg.limit.FoodUpkeepOn != 0
+}
+
+// ezfyMarchOilOn 出征是否消耗石油
+func ezfyMarchOilOn() bool {
+	return ezfyCfg.limit.MarchOilOn != 0
+}
+
+// ezfyWildTroopMult 野地/海野/寇城守军兵力倍数（默认 1；0 或负数无意义 → 回落 1）
+func ezfyWildTroopMult() float64 {
+	if m := ezfyCfg.limit.WildTroopMult; m > 0 {
+		return m
+	}
+	return ezfyWildMultDef
+}
+
+// ezfyScaleByWildMult 把守军兵力按倍数放大（最少 1 个，避免倍数 < 1 时把守军抹成 0）
+func ezfyScaleByWildMult(n int64) int64 {
+	m := ezfyWildTroopMult()
+	if m == 1 {
+		return n
+	}
+	v := int64(float64(n) * m)
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
 // ezfyWords 取二战聊天敏感词
 func ezfyWords() []model.EzfyWordFilter {
 	return ezfyCfg.words
@@ -677,8 +727,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	c.ranks = rks
 
 	// 建筑数量上限（单行；缺行时用默认 33/33/10/0）
+	// ★ 三个玩法开关的默认值也必须写在这里：缺行时如果留 0，会变成「全关」，
+	//   与「默认开」的语义相反（见 ezfyRecruitCostOn / ezfyFoodUpkeepOn / ezfyMarchOilOn）。
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
-		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef}
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		WildTroopMult: ezfyWildMultDef,
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim

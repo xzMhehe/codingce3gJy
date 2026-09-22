@@ -252,6 +252,25 @@ type EzfyCfgLimit struct {
 	//   商城单次购买数量上限（下限恒为 1）。默认 9999。
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
 	MallBuyMax int `gorm:"default:9999" json:"mall_buy_max"`
+
+	// ============ 系统配置（管理端「系统配置」页可维护）============
+	//
+	// ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 1。
+	//   预览(野地详情)与战斗结算(parseWildlandTroops)共用，避免「看到的」和「打到的」不一致。
+	//   允许小数（0.5 = 兵力减半，2 = 翻倍）。0 无意义 → 回落 1。
+	WildTroopMult float64 `gorm:"default:1" json:"wild_troop_mult"`
+
+	// ★ 下面三个是「开关」：1 = 开（按原规则消耗），0 = 关（不消耗）。
+	//   ⚠️ 语义陷阱（踩过）：
+	//     ① 开关字段**不能**带 `gorm:"default:x"` 标签 —— GORM 建 INSERT/ON DUPLICATE 时
+	//        会跳过零值字段，导致「关」(0) 永远写不进库。
+	//     ② seed 里**不能**走 addLimitCol()（那个 `WHERE col <= 0` 会在每次启动把 0 回填成默认值）。
+	//        开关的补列走单独的 addSwitchCol()，只回填 NULL。
+	//     ③ 读取端**不能**用 ezfyLimitOr(v, def)（它把 0 当「没配」回落默认值）——
+	//        这里 0 是有意义的值，直接 `!= 0` 判断。
+	RecruitCostOn int `json:"recruit_cost_on"` // 征兵消耗资源（关 = 不消耗资源、也无需空闲人口）
+	FoodUpkeepOn  int `json:"food_upkeep_on"`  // 军队耗粮（关 = 城内军队每小时不扣粮）
+	MarchOilOn    int `json:"march_oil_on"`    // 出征油耗（关 = 出征不消耗石油）
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -425,6 +444,12 @@ type EzfyTrainQueue struct {
 	Status    int   `gorm:"default:0" json:"status"` // 0训练中 1待领取 2已领取
 	StartTime int64 `json:"start_time"`
 	EndTime   int64 `json:"end_time"`
+	// ★ 免费征兵标记：1 = 建这条队列时「征兵消耗资源」开关是关的（没扣任何资源）。
+	//   取消训练时据此**不退还**资源 —— 否则玩家可以趁开关关着白嫖排队，
+	//   等管理员把开关打开后再取消，凭空换出从没付过的资源。
+	//   列名故意用 free_train（不叫 free，避开保留字风险）；无 gorm default 标签
+	//   （0 是有意义的值：正常扣费建的队列，GORM 不会跳过零值写入）。
+	FreeTrain int `json:"free"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }

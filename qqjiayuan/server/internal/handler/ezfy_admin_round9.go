@@ -20,11 +20,16 @@ import (
 // ============ 1. 建筑数量上限配置 ============
 
 // AdminEzfyBuildLimitGet GET /admin/ezfy-build-limit
+//
+// 管理端「系统配置」页：建筑上限 + 各项数值 + 玩法开关，一次全量返回。
 func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
+		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
+		WildTroopMult: ezfyWildMultDef,
+		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -49,6 +54,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.WoundHealDivisor <= 0 {
 		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
 	}
+	// ★ 野地兵力倍数：0 / 负数无意义 → 回落 1
+	if lim.WildTroopMult <= 0 {
+		lim.WildTroopMult = ezfyWildMultDef
+	}
+	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
+	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
 }
 
@@ -69,6 +80,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		LootFeelings       *int `json:"loot_feelings"`
 		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
 		WoundHealDivisor   *int `json:"wound_heal_divisor"`
+		// ★ 系统配置新增：野地兵力倍数 + 三个玩法开关
+		WildTroopMult *float64 `json:"wild_troop_mult"`
+		RecruitCostOn *int     `json:"recruit_cost_on"`
+		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
+		MarchOilOn    *int     `json:"march_oil_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -77,7 +93,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
-		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef}
+		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
+		WildTroopMult: ezfyWildMultDef,
+		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -179,6 +197,37 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !setPos(in.WoundHealDivisor, &lim.WoundHealDivisor, "伤兵恢复系数") {
 		return
 	}
+	// ★ 野地兵力倍数：允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
+	//   上界给 100 做防呆（100 倍 = 守军千万级，足够用了）。
+	if in.WildTroopMult != nil {
+		m := *in.WildTroopMult
+		if m <= 0 || m > 100 {
+			resp.ParamError(c, "野地兵力倍数需要在 0.01 ~ 100 之间")
+			return
+		}
+		lim.WildTroopMult = m
+	}
+	// ★ 三个玩法开关：0 = 关 / 1 = 开，两个值都合法，**不做** <=0 兜底（0 就是关）。
+	setSwitch := func(v *int, dst *int, name string) bool {
+		if v == nil {
+			return true
+		}
+		if *v != 0 && *v != 1 {
+			resp.ParamError(c, name+"只能是 0(关) 或 1(开)")
+			return false
+		}
+		*dst = *v
+		return true
+	}
+	if !setSwitch(in.RecruitCostOn, &lim.RecruitCostOn, "征兵资源消耗") {
+		return
+	}
+	if !setSwitch(in.FoodUpkeepOn, &lim.FoodUpkeepOn, "军队耗粮") {
+		return
+	}
+	if !setSwitch(in.MarchOilOn, &lim.MarchOilOn, "出征油耗") {
+		return
+	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
 	}
@@ -191,14 +240,28 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.WoundHealDivisor <= 0 {
 		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
 	}
+	// ★ 野地兵力倍数兜底（老行可能是 0 / NULL）
+	if lim.WildTroopMult <= 0 {
+		lim.WildTroopMult = ezfyWildMultDef
+	}
+	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
+	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
 		return
 	}
+	// ★ 开关再显式写一次：GORM 对「带 default 标签的零值字段」在部分路径会跳过写入，
+	//   用 map 形式的 Updates 兜底，保证「关」一定能落库（这是本页最容易出的坑）。
+	h.DB.Model(&model.EzfyCfgLimit{}).Where("id = 1").Updates(map[string]interface{}{
+		"recruit_cost_on": lim.RecruitCostOn,
+		"food_upkeep_on":  lim.FoodUpkeepOn,
+		"march_oil_on":    lim.MarchOilOn,
+		"wild_troop_mult": lim.WildTroopMult,
+	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()
-	resp.OK(c, gin.H{"msg": "建筑数量上限已保存并立即生效", "limit": lim})
+	resp.OK(c, gin.H{"msg": "系统配置已保存并立即生效", "limit": lim})
 }
 
 // ============ 2. 钻石充值 ============

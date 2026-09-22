@@ -258,9 +258,10 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	if err := json.Unmarshal([]byte(cfg.Troops), &ranges); err == nil {
 		for _, rg := range ranges {
 			if len(rg) >= 3 {
+				// ★ 守军预览同样乘「野地兵力倍数」，否则玩家看到的和实际打到的不一致
 				previews = append(previews, troopRange{
 					TroopId: int(rg[0]), Name: ezfyCfg.troopName(int(rg[0]), profile.Camp),
-					Min: rg[1], Max: rg[2],
+					Min: ezfyScaleByWildMult(rg[1]), Max: ezfyScaleByWildMult(rg[2]),
 				})
 			}
 		}
@@ -1121,8 +1122,14 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 
 // beginReturn 异常返航: 兵力无损带回
 // ezfyOilCost 出征耗油(运输按携带资源量计, 其余按兵种油耗×数量×距离计)
+//
+// ★ 用户要求「加个出征油耗开关，默认开；关了出征消耗油 0」→ 关掉时直接返回 0。
+// 出征预览(/order/preview)与真正下单(createOrder)都走这里，所以「看到的 0」就是「实扣的 0」。
 func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
 	troops []ezfyUnitGroup, resources map[string]int64) int64 {
+	if !ezfyMarchOilOn() {
+		return 0
+	}
 	if orderType == 5 {
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
 		return maxInt64(1, (f+s+o+r+g)/10000+int64(distance)/50)
@@ -2204,6 +2211,9 @@ func (h *EzfyHandler) buildMoveMap(cityId uint, atk bool) map[int]int {
 }
 
 // parseWildlandTroops 解析 [[兵种id,最小,最大],...] 生成守军(随机数量)
+//
+// ★ 用户要求「加个野地兵力倍数配置，默认 1，可以调整倍数」→ 随机出来的数量再乘倍数。
+// 野地详情里的守军预览走同一个倍数（见 MapWildland），保证「看到的」=「打到的」。
 func parseWildlandTroops(s string) []ezfyUnitGroup {
 	groups := []ezfyUnitGroup{}
 	var ranges [][]int64
@@ -2222,7 +2232,7 @@ func parseWildlandTroops(s string) []ezfyUnitGroup {
 		if hi > lo {
 			count = lo + rand.Int63n(hi-lo+1)
 		}
-		groups = append(groups, ezfyUnitGroup{TroopId: tid, Count: count})
+		groups = append(groups, ezfyUnitGroup{TroopId: tid, Count: ezfyScaleByWildMult(count)})
 	}
 	return groups
 }

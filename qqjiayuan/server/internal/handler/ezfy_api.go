@@ -445,6 +445,14 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 		resp.ParamError(c, "兵种配置不存在")
 		return
 	}
+	// ★ 免费征兵（开关关着建的队列）没扣过资源 → 取消时**不退还**，
+	//   否则「趁开关关着排队、等开关打开再取消」就能凭空换出资源。
+	//   注意这里用队列上的 Free 标记（建队列时的状态），而不是当前开关状态。
+	if q.FreeTrain != 0 {
+		h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练（免费征兵，不退还资源）", cfg.Name, q.Count)})
+		return
+	}
 	food := cfg.Food * q.Count
 	steel := cfg.Steel * q.Count
 	oil := cfg.Oil * q.Count

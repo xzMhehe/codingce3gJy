@@ -203,6 +203,38 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("mall_buy_max", 9999)
 	}
 
+	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（用户要求管理端可配）
+	//
+	// ★ 开关的列**不能**用上面的 addLimitCol —— 那个带 `WHERE col <= 0` 回填，
+	//   会在每次服务启动时把管理员关掉的开关（0）重新改成 1（开）。这里只回填 NULL。
+	// ★ 开关字段在 model 里也刻意**不带** gorm default 标签，否则 GORM 写 0 会被吞掉。
+	if db.Migrator().HasTable("ezfy_cfg_limit") {
+		addSwitchCol := func(col string, def int) {
+			d := fmt.Sprintf("%d", def)
+			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
+				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
+			}
+			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d + " WHERE " + col + " IS NULL")
+		}
+		addSwitchCol("recruit_cost_on", 1) // 征兵消耗资源：1 开（默认）/ 0 关
+		addSwitchCol("food_upkeep_on", 1)  // 军队耗粮：1 开（默认）/ 0 关
+		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
+
+		// 野地兵力倍数（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
+	}
+
+	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
+	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。
+	if db.Migrator().HasTable("ezfy_train_queue") {
+		if !db.Migrator().HasColumn("ezfy_train_queue", "free_train") {
+			db.Exec("ALTER TABLE ezfy_train_queue ADD COLUMN free_train int DEFAULT 0")
+		}
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")
@@ -1446,8 +1478,8 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战风云", "风云交易行", "ezfyExchange"),
 		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
 		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
-		// 第九轮新增：建筑数量上限配置 / 聊天敏感词（二战自己的独立维护页）
-		mod("游戏-二战风云", "风云建筑上限", "ezfyBuildLimit"),
+		// 第九轮新增：系统配置（原「建筑上限配置」，用户要求改名）/ 聊天敏感词（二战自己的独立维护页）
+		mod("游戏-二战风云", "风云系统配置", "ezfyBuildLimit"),
 		mod("游戏-二战风云", "风云敏感词", "ezfyWords"),
 		// 宣战管理（列表 + 一键生效/一键完成）
 		mod("游戏-二战风云", "风云宣战", "ezfyWars"),
@@ -1458,6 +1490,10 @@ func seedRBAC(db *gorm.DB) {
 	for _, p := range modulePerms {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
 	}
+	// ★ 权限名改过的，要把老行也刷一遍：上面是 FirstOrCreate（命中就不更新），
+	//   否则老库里这条权限永远显示旧名字（用户要求「建筑上限配置」改名「系统配置」）。
+	db.Model(&model.Permission{}).Where("code = ?", "module:ezfyBuildLimit").
+		Update("name", "风云系统配置")
 	// 清理旧粗粒度权限及其角色关联（全部改为 module:* 模块权限）
 	legacy := []string{"admin:access", "user:manage", "board:manage", "thread:manage", "announcement:manage", "role:manage", "badge:manage", "game:manage"}
 	// 清理此前测试临时权限（如 module:families 之前的旧测试角色等已随角色删除联动，无需单独处理）

@@ -672,14 +672,17 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 			city.Pop = city.PopMax
 		}
 	}
+	// ★ 用户要求「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	var troopFoodCost int64
-	for tid, count := range h.troopMap(city.ID) {
-		if cfg := ezfyCfg.troop(tid); cfg != nil {
-			troopFoodCost += int64(cfg.FoodKeep) * count
+	if ezfyFoodUpkeepOn() {
+		for tid, count := range h.troopMap(city.ID) {
+			if cfg := ezfyCfg.troop(tid); cfg != nil {
+				troopFoodCost += int64(cfg.FoodKeep) * count
+			}
 		}
+		troopFoodCost = troopFoodCost * int64(100-techSupply*2) / 100
+		troopFoodCost = int64(float64(troopFoodCost) * hours)
 	}
-	troopFoodCost = troopFoodCost * int64(100-techSupply*2) / 100
-	troopFoodCost = int64(float64(troopFoodCost) * hours)
 
 	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
@@ -867,9 +870,12 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		wildRare = wildRare * mult / 100
 	}
 	var troopFood int64
-	for tid, count := range h.troopMap(city.ID) {
-		if cfg := ezfyCfg.troop(tid); cfg != nil {
-			troopFood += int64(cfg.FoodKeep) * count
+	// ★ 耗粮开关关掉时这里也要显示 0，否则界面写着「每小时耗粮 N」，实际却不扣
+	if ezfyFoodUpkeepOn() {
+		for tid, count := range h.troopMap(city.ID) {
+			if cfg := ezfyCfg.troop(tid); cfg != nil {
+				troopFood += int64(cfg.FoodKeep) * count
+			}
 		}
 	}
 	// ★ 原始耗粮（未扣补给技巧）与实扣耗粮都下发：
@@ -1188,19 +1194,24 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 		}
 	}
 	// 人口校验：只跟「正在训练、还没出厂」的兵比 —— 已训练完成的部队不占人口（用户规则）
-	popUsed := h.troopPop(city.ID)
-	popAvailable := city.Pop - popUsed
-	if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
-		return fmt.Sprintf("人口不足(当前居民%d, 训练中已占用%d, 可用%d); 可召集人口突破民居上限",
-			city.Pop, popUsed, popAvailable)
+	// ★ 用户要求「征兵资源消耗开关关了的话，征兵不消耗资源，也无需空闲人口」→
+	//   开关关掉时整段跳过（不校验人口、不扣资源）。
+	recruitCost := ezfyRecruitCostOn()
+	if recruitCost {
+		popUsed := h.troopPop(city.ID)
+		popAvailable := city.Pop - popUsed
+		if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
+			return fmt.Sprintf("人口不足(当前居民%d, 训练中已占用%d, 可用%d); 可召集人口突破民居上限",
+				city.Pop, popUsed, popAvailable)
+		}
 	}
 	food := cfg.Food * int64(count)
 	steel := cfg.Steel * int64(count)
 	oil := cfg.Oil * int64(count)
 	rare := cfg.Rare * int64(count)
-	// 节日活动·造兵打折(福利.txt #4)
+	// 节日活动·造兵打折(福利.txt #4)；★ 征兵资源消耗开关关掉时这里会整体返回 0
 	food, steel, oil, rare = h.trainCostWithActivity(food, steel, oil, rare)
-	if city.Food < food || city.Steel < steel || city.Oil < oil || city.Rare < rare {
+	if recruitCost && (city.Food < food || city.Steel < steel || city.Oil < oil || city.Rare < rare) {
 		return "资源不足"
 	}
 	if cfg.Type == 4 {
@@ -1243,6 +1254,11 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	city.Rare -= rare
 	h.saveCityRes(city)
 	now := time.Now().UnixMilli()
+	// ★ 免费征兵标记：开关关着建的队列，取消时不退还资源（见 EzfyTrainQueue.FreeTrain）
+	freeFlag := 0
+	if !recruitCost {
+		freeFlag = 1
+	}
 	per := count / n
 	rem := count % n
 	for i := 0; i < n; i++ {
@@ -1254,7 +1270,7 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 			continue
 		}
 		q := model.EzfyTrainQueue{CityId: int64(city.ID), TroopId: troopId, Count: part, Status: 0,
-			StartTime: now, EndTime: now + int64(cfg.TrainTime)*1000*part}
+			StartTime: now, EndTime: now + int64(cfg.TrainTime)*1000*part, FreeTrain: freeFlag}
 		h.DB.Create(&q)
 	}
 	h.taskProgress(city.UserID, "train_troop", count)
@@ -1278,6 +1294,11 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 //
 //	这里必须排除，否则城防会被重复计一次。
 func (h *EzfyHandler) troopPop(cityId uint) int64 {
+	// ★ 用户要求「征兵资源消耗开关关了，征兵无需空闲人口」→ 关掉时人口占用恒为 0，
+	//   空闲人口 = 人口（与「训练不占人口」的语义一致，界面不会显示「被占满」）。
+	if !ezfyRecruitCostOn() {
+		return 0
+	}
 	var qs []model.EzfyTrainQueue
 	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
 	pop := int64(0)

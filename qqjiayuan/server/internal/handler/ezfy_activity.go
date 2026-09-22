@@ -68,7 +68,14 @@ func ezfyActTypeName(t int) string {
 
 // trainCostWithActivity 训练/建造部队的资源消耗(含节日活动·造兵打折)
 // 训练扣费与列表展示共用这一份计算, 避免两边算错。
+//
+// ★ 用户要求「加个征兵资源消耗开关，默认开；关了的话征兵不消耗资源」→
+// 开关关掉时直接返回 0，**扣费与所有展示**（兵种列表 cost / 兵种详情 / 训练确认页）
+// 都跟着变 0，不会出现「显示要 100 粮、实际不扣」的错位。
 func (h *EzfyHandler) trainCostWithActivity(food, steel, oil, rare int64) (int64, int64, int64, int64) {
+	if !ezfyRecruitCostOn() {
+		return 0, 0, 0, 0
+	}
 	pct := h.actPct(ezfyActTrain)
 	if pct <= 0 {
 		return food, steel, oil, rare

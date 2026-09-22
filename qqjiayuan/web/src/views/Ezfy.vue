@@ -1,7 +1,7 @@
 <template>
   <div class="ezfy-page">
     <div class="home-wrap">
-      <div class="title-bar">二战征程-【内测群: 431442049】</div>
+      <div class="title-bar">二战征途【内测群: 431442049】</div>
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
@@ -5085,7 +5085,7 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page a:hover { text-decoration: underline; }
 .ezfy-page .title-bar {
-  background: #2f4156;
+  background: #050709;
   color: #fff;
   font-size: 18px;
   font-weight: bold;
@@ -5419,7 +5419,10 @@ body.ezfy-immersive { margin: 0; }
   display: inline-block;     /* 改成块级容器, 才能装上下两行 */
   padding: 0;
   margin: 0;
-  font-size: 16px;           /* 和正文(.old-line)同号 */
+  /* ★ 第一行(名称/等级，如「海(8)」)的字号：用户反馈「小 1 号」→ 16px → 15px
+     （原来是和正文 .old-line 同号的 16px；坐标行有自己独立的 11px，不受这里影响）。
+     窄屏同理 14px → 13px，见下面媒体查询。 */
+  font-size: 15px;
   line-height: 1.3;
   /* ★ 用户要求「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
      本城(.ezfy-mine)与活动目标(.ezfy-act-*)的颜色是有含义的，下面单独覆盖，不受影响。 */
@@ -5432,10 +5435,11 @@ body.ezfy-immersive { margin: 0; }
 /* 第一行：名称(等级) */
 .ezfy-page .ezfy-map-table a .ezfy-cell-name { display: block; }
 /* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
-   字号比名称小一号，既表明可点、又不抢名称的视线。 */
+   ★ 用户反馈「坐标字体有点大」→ 桌面 12px → 11px（窄屏 11 → 10，见下面的媒体查询）；
+   随后又要求「第一行小 1 号、坐标这行不动」，所以这里保持 11px 不变。 */
 .ezfy-page .ezfy-map-table a .ezfy-cell-xy {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
   font-weight: normal;       /* 本城/活动城名字加粗, 坐标不跟着加粗 */
   color: #0645ad;
@@ -5489,10 +5493,11 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .acade-tab { font-size: 14px; }
   .ezfy-page .ezfy-subnav a { font-size: 15px; }
   .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
-  /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出
-     ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多 */
-  .ezfy-page .ezfy-map-table a { font-size: 14px; line-height: 1.25; }
-  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 11px; }
+  /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
+     ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多；
+       第一行跟着桌面一起「小 1 号」(14 → 13)，坐标行保持 10px 不动。 */
+  .ezfy-page .ezfy-map-table a { font-size: 13px; line-height: 1.25; }
+  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 10px; }
   .ezfy-page .ezfy-map-table { border-spacing: 6px 4px; }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
