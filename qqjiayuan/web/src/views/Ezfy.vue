@@ -1,7 +1,7 @@
 <template>
   <div class="ezfy-page">
     <div class="home-wrap">
-      <div class="title-bar">二战钢铁公约【1区】</div>
+      <div class="title-bar">二战征程-【内测群: 431442049】</div>
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
@@ -872,11 +872,10 @@
             输入坐标查找：
             <a href="javascript:;" @click="toggleStars">收藏列表</a>
           </div>
-          <div class="old-line">
-            横坐标：<input v-model="jumpX" type="number" placeholder="(1~500)" style="width:80px"/>
-          </div>
-          <div class="old-line">
-            纵坐标：<input v-model="jumpY" type="number" placeholder="(1~500)" style="width:80px"/>
+          <!-- ★ 用户要求「横坐标、纵坐标 一行」：两个输入框合并同一行，[查找] 跟在行末 -->
+          <div class="old-line ezfy-map-jump">
+            横坐标：<input v-model="jumpX" type="number" placeholder="(1~500)"/>
+            纵坐标：<input v-model="jumpY" type="number" placeholder="(1~500)"/>
             <button @click="doJump">[查找]</button>
           </div>
           <div class="old-line" v-if="eliteCell">
@@ -891,15 +890,22 @@
             </div>
             <div class="old-line gray" v-if="!mapStars.length">(收藏列表为空, 在地图上选中目标后可收藏)</div>
           </template>
+          <!-- ★ 用户要求「格子下面加个坐标，排列整齐一点」：
+               每格两行 —— 第一行名称(等级)，第二行 (x,y)；
+               第二行用站内链接蓝 #0645ad，让玩家一眼知道格子能点。 -->
           <table class="ezfy-map-table">
             <tr v-for="(row, ri) in mapRows" :key="'mr' + ri">
               <td v-for="cell in row" :key="cell.x + '_' + cell.y">
-                <a href="javascript:;" :class="cellClass(cell)" :title="cellTip(cell)" @click="openCell(cell)">{{ cellText(cell) }}</a>
+                <a href="javascript:;" :class="cellClass(cell)" :title="cellTip(cell)" @click="openCell(cell)">
+                  <span class="ezfy-cell-name">{{ cellText(cell) }}</span>
+                  <span class="ezfy-cell-xy">({{ cell.x }},{{ cell.y }})</span>
+                </a>
               </td>
             </tr>
           </table>
           <div class="old-line">当前坐标中心:({{ mapCx }} , {{ mapCy }})</div>
-          <div class="old-line">
+          <!-- ★ 用户要求「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
+          <div class="old-line ezfy-dir-nav">
             <a href="javascript:;" @click="moveMap(-mapStep, 0)">向上</a>
             <a href="javascript:;" @click="moveMap(0, mapStep)">向右</a>
             <a href="javascript:;" @click="moveMap(mapStep, 0)">向下</a>
@@ -1128,18 +1134,25 @@
             <span v-if="selCell.ally" class="green">（你的同盟成员）</span>
           </div>
           <hr/>
-          <!-- ★ 玩家城：侦查/掠夺/征服 常显；掠夺/征服 需宣战生效(status=2)才可点，
+          <!-- ★ 按钮文案统一加方括号（用户要求「侦查 掠夺 征服 也加上 []」），
+               与已有的 [宣战]/[返回地图]/[查找] 保持同一种「按钮」写法。
+               同一行里的 运输/增援/采集 同属动作按钮，一并统一，免得一行里两种写法。 -->
+          <!-- ① 本城：不给侦查/掠夺/征服（自己的城市不能打自己），只提示一句 -->
+          <div class="old-line" v-if="selCell.area_type === 3 && selCell.mine">
+            <a href="javascript:;" @click="go('citystatus')">[城市状态]</a>
+          </div>
+          <!-- ② 别人的城：侦查/掠夺/征服 常显；掠夺/征服 需宣战生效(status=2)才可点，
                未宣战/待生效时置灰并提示，宣战入口只在没宣战(status=0)时出现 -->
-          <div class="old-line" v-if="selCell.area_type === 3 && !selCell.mine">
-            <a href="javascript:;" @click="pickOrder(1)">侦查</a>&nbsp;
-            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(2)">掠夺</a>
-            <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">掠夺</a>&nbsp;
-            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(3)">征服</a>
-            <a v-else href="javascript:;" class="gray" @click="warBlock('征服')">征服</a>&nbsp;
+          <div class="old-line" v-else-if="selCell.area_type === 3">
+            <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
+            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
+            <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">[掠夺]</a>&nbsp;
+            <a v-if="warStatus === 2" href="javascript:;" @click="pickOrder(3)">[征服]</a>
+            <a v-else href="javascript:;" class="gray" @click="warBlock('征服')">[征服]</a>&nbsp;
             <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示 -->
             <template v-if="selCell.ally && warStatus !== 2">
-              <a href="javascript:;" @click="pickOrder(5)">运输</a>&nbsp;
-              <a href="javascript:;" @click="pickOrder(6)">增援</a>&nbsp;
+              <a href="javascript:;" @click="pickOrder(5)">[运输]</a>&nbsp;
+              <a href="javascript:;" @click="pickOrder(6)">[增援]</a>&nbsp;
             </template>
             <!-- ★ 用户规则「同盟玩家不能宣战」→ 同盟成员不出现 [宣战] 入口，只给提示 -->
             <template v-if="selCell.ally">
@@ -1149,11 +1162,12 @@
             <!-- 同盟时不再叠「未宣战」这类状态文案，避免读成「不能宣战未宣战」 -->
             <span v-if="warText && !selCell.ally" class="orange">{{ warText }}</span>
           </div>
+          <!-- ③ 野地/寇城/海洋 -->
           <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)'">
-            <a href="javascript:;" @click="pickOrder(1)">侦查</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(2)">掠夺</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(3)">征服</a>&nbsp;
-            <a v-if="selCell.occupied" href="javascript:;" @click="pickOrder(4)">采集</a>
+            <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
+            <a href="javascript:;" @click="pickOrder(2)">[掠夺]</a>&nbsp;
+            <a href="javascript:;" @click="pickOrder(3)">[征服]</a>&nbsp;
+            <a v-if="selCell.occupied" href="javascript:;" @click="pickOrder(4)">[采集]</a>
             <span v-else-if="!selDetail || !selDetail.act_type" class="gray">(占领该野地后可采集)</span>
           </div>
           <a href="javascript:;" @click="go('map')">[返回地图]</a>
@@ -2044,13 +2058,12 @@
             第{{ r.day }}天:{{ r.reward }}
           </div>
           <div class="panel-title">礼包</div>
+          <!-- ★ 用户要求「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
+               只保留 新手 / 每周 / 市政厅10级 三个入口（后端 Gift 同步去掉 20/30/40 分支）。 -->
           <div class="old-line">
             <a href="javascript:;" @click="doGift('newbie')">{{ welfare.gifts.newbie ? '[新手礼包已领]' : '[新手礼包]' }}</a>
             <a href="javascript:;" @click="doGift('weekly')">{{ welfare.gifts.weekly ? '[每周福利已领]' : '[每周福利]' }}</a><br/>
             <a href="javascript:;" @click="doGift('level10')">{{ welfare.gifts.level10 ? '[市政厅10级礼包已领]' : '[市政厅10级礼包]' }}</a>
-            <a href="javascript:;" @click="doGift('level20')">{{ welfare.gifts.level20 ? '[市政厅20级礼包已领]' : '[市政厅20级礼包]' }}</a><br/>
-            <a href="javascript:;" @click="doGift('level30')">{{ welfare.gifts.level30 ? '[市政厅30级礼包已领]' : '[市政厅30级礼包]' }}</a>
-            <a href="javascript:;" @click="doGift('level40')">{{ welfare.gifts.level40 ? '[市政厅40级礼包已领]' : '[市政厅40级礼包]' }}</a>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -4256,8 +4269,9 @@ export default {
     },
     // ---- 地图/出征 ----
     cellText (cell) {
-      // 复刻 map/index.html: 格子文案为「名称(等级)」, 本城显示「城名(x,y)」
-      if (cell.mine) return this.city.name + '(' + cell.x + ',' + cell.y + ')'
+      // 复刻 map/index.html: 格子文案为「名称(等级)」；★ 现在每格第二行统一显示坐标，
+      //   所以这里一律只返回「名称」部分，本城也不再拼 (x,y)，避免和下面那行重复。
+      if (cell.mine) return this.city.name
       // ★ 用户反馈：地图上别人的城市原来一律显示「城」，看不出是谁的城。
       //   后端已下发 name(城市名) + owner(城主昵称)，这里直接展示。
       if (cell.area_type === 3) {
@@ -4274,13 +4288,14 @@ export default {
       // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/山地)
       return (cell.terrain_name || '野') + '(' + cell.level + ')'
     },
-    // ★ 格子悬浮提示：城市名字在 36px 格子里会被截断，鼠标悬停看全称
+    // ★ 格子悬浮提示：城市名字在格子里会被截断，鼠标悬停看全称。
+    //   坐标已固定显示在格子第二行，这里不再重复拼。
     cellTip (cell) {
       if (cell.area_type === 3 && !cell.mine) {
         return (cell.name || '城市') + (cell.owner ? ' · 城主 ' + cell.owner : '') +
           ' (' + cell.x + ',' + cell.y + ')'
       }
-      return this.cellText(cell) + ' (' + cell.x + ',' + cell.y + ')'
+      return this.cellText(cell)
     },
     cellClass (cell) {
       if (cell.mine) return 'ezfy-mine'
@@ -5380,39 +5395,67 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-map-row { white-space: nowrap; }
 /* 复刻 map/index.html 的 5×5 <table>:
    参考**没有任何表格 CSS**, 就是浏览器默认样式 —— 单元格按内容自适应宽度、
-   无底色、无边框、每个格子一行。所以这里只做三件事:
-   ① 抵消全局 `.ezfy-page table td` 的虚线下边框  ② 单元格紧凑  ③ 不折行 */
+   无底色、无边框。所以这里只做三件事:
+   ① 抵消全局 `.ezfy-page table td` 的虚线下边框  ② 单元格紧凑  ③ 不折行
+   ★ 用户要求「格子下面加个坐标，排列整齐一点」→ 每格变成**两行**：
+     第一行 名称(等级)，第二行 (x,y)；见下面的 .ezfy-cell-name / .ezfy-cell-xy。 */
 .ezfy-page .ezfy-map-table {
   width: auto;
   max-width: 100%;
   border-collapse: separate;
-  border-spacing: 8px 3px;   /* 格子之间留出间隔, 不挤在一起 */
+  /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px
+     （横向 8→12，纵向 3→6；格子变两行后纵向 3px 太挤） */
+  border-spacing: 12px 6px;
   margin: 8px 0;             /* 表格本身靠左(不要整表居中) */
 }
 .ezfy-page .ezfy-map-table td {
   padding: 0;
   border: 0;
   text-align: center;        /* 居中指的是「表格里的内容」居中 */
-  vertical-align: middle;    /* 垂直居中 */
+  vertical-align: top;       /* 两行格子按顶对齐, 免得行高不一导致上下抖动 */
   white-space: nowrap;
 }
 .ezfy-page .ezfy-map-table a {
-  display: inline;
+  display: inline-block;     /* 改成块级容器, 才能装上下两行 */
   padding: 0;
   margin: 0;
   font-size: 16px;           /* 和正文(.old-line)同号 */
-  line-height: 1.5;
-  color: #333;
+  line-height: 1.3;
+  /* ★ 用户要求「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
+     本城(.ezfy-mine)与活动目标(.ezfy-act-*)的颜色是有含义的，下面单独覆盖，不受影响。 */
+  color: #0645ad;
   background: none;
   border: 0;
   text-decoration: none;
+  text-align: center;        /* 两行都相对格子中心对齐 */
 }
-/* 本城加粗标一下(参考里就是「城名(x,y)」), 其余一律朴素文字 */
+/* 第一行：名称(等级) */
+.ezfy-page .ezfy-map-table a .ezfy-cell-name { display: block; }
+/* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
+   字号比名称小一号，既表明可点、又不抢名称的视线。 */
+.ezfy-page .ezfy-map-table a .ezfy-cell-xy {
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: normal;       /* 本城/活动城名字加粗, 坐标不跟着加粗 */
+  color: #0645ad;
+}
+/* 本城加粗标一下, 其余一律朴素文字 */
 .ezfy-page .ezfy-map-table a.ezfy-mine { font-weight: bold; color: #c0392b; }
 /* 活动目标配色照 mapView.html: 活动野地橙 / 活动寇城品红 / 特殊城市红 */
 .ezfy-page .ezfy-map-table a.ezfy-act-wild { font-weight: bold; color: #ff6600; }
 .ezfy-page .ezfy-map-table a.ezfy-act-kou { font-weight: bold; color: #ff00ff; }
 .ezfy-page .ezfy-map-table a.ezfy-act-city { font-weight: bold; color: #d00000; }
+/* ★ 地图方向导航「向上/向右/向下/向左/回到本城」：
+   全局 .ezfy-page a 只有 margin: 0 1px, 五个词挤成一串。用户要求「间隙稍微大一点」
+   → 每个链接右侧留 8px（含标签间空格约 12px 一档），末项不留，右侧不至于飘出去。 */
+.ezfy-page .ezfy-dir-nav a {
+  display: inline-block;
+  margin: 0 8px 0 0;
+}
+.ezfy-page .ezfy-dir-nav a:last-child { margin-right: 0; }
+/* ★ 坐标查找行：横坐标/纵坐标同一行，[查找] 跟行末；窄屏由下面的媒体查询收窄输入框 */
+.ezfy-page .ezfy-map-jump input { width: 80px; margin-right: 4px; }
 .ezfy-cell {
   display: inline-block;
   width: 36px;
@@ -5446,9 +5489,15 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .acade-tab { font-size: 14px; }
   .ezfy-page .ezfy-subnav a { font-size: 15px; }
   .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
-  /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出 */
-  .ezfy-page .ezfy-map-table a { font-size: 14px; }
-  .ezfy-page .ezfy-map-table { border-spacing: 4px 2px; }
+  /* 地图格子: 字号跟正文一致, 间距按窄屏收紧, 保证 320px 下 5 列不溢出
+     ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多 */
+  .ezfy-page .ezfy-map-table a { font-size: 14px; line-height: 1.25; }
+  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 11px; }
+  .ezfy-page .ezfy-map-table { border-spacing: 6px 4px; }
+  /* 坐标查找行在 320px 下也要待在一行内 */
+  .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
+  /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */
+  .ezfy-page .ezfy-dir-nav a { margin-right: 6px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
   /* 出征页格子（名称+输入框+现有）：320px 下单列也要放得下，收窄名称/输入框/数量列 */
   .ezfy-page .of-grid-troop .of-cell .of-name { width: 9em; }

@@ -1737,8 +1737,9 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 		rewards = append(rewards, gin.H{"day": i + 1, "reward": text})
 	}
 	// 礼包状态
+	// ★ 用户要求删掉「市政厅20/30/40级礼包」→ 这里只保留 新手/每周/市政厅10级
 	gifts := gin.H{}
-	for _, t := range []string{"newbie", "weekly", "level10", "level20", "level30", "level40"} {
+	for _, t := range []string{"newbie", "weekly", "level10"} {
 		var n int64
 		h.DB.Model(&model.EzfyGift{}).Where("user_id = ? AND gift_type = ?", uid, t).Count(&n)
 		gifts[t] = n > 0
@@ -1808,18 +1809,10 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 		h.giveResourcesNoCap(uid, 20000, 20000, 20000, 20000, 2000)
 		recordGift("weekly")
 		resp.OK(c, gin.H{"msg": "每周福利领取成功"})
-	case "level10", "level20", "level30", "level40":
-		needLevel, gold, res := 0, int64(0), int64(0)
-		switch giftType {
-		case "level10":
-			needLevel, gold, res = 10, 5000, 50000
-		case "level20":
-			needLevel, gold, res = 20, 10000, 100000
-		case "level30":
-			needLevel, gold, res = 30, 20000, 200000
-		case "level40":
-			needLevel, gold, res = 40, 50000, 500000
-		}
+	// ★ 用户要求删掉「市政厅20/30/40级礼包」→ 只剩 市政厅10级礼包。
+	//   注意：老的 ezfy_gifts 里 level20/30/40 的历史领取记录不删（只是不再有入口）。
+	case "level10":
+		needLevel, gold, res := 10, int64(5000), int64(50000)
 		if hasGift(giftType) {
 			resp.ParamError(c, "该礼包已领取")
 			return

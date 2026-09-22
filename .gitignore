@@ -45,3 +45,7 @@ tmp/
 tmp
 qqjiayuan/Linuxbushu.zip
 templates
+qqjiayuan/Linuxbushu.tar.gz
+qqjiayuan/Linuxbushu/server/dbinit
+qqjiayuan/Linuxbushu/server/server
+qqjiayuan/Linuxbushu/server/ezfymigrate
