@@ -75,6 +75,39 @@
           <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
         </el-form-item>
 
+        <el-divider content-position="left">军官升星</el-divider>
+        <el-form-item label="升星功能">
+          <el-switch v-model="form.officer_star_up_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+          <span class="td-sub">关 = 升星卡不能用</span>
+        </el-form-item>
+        <el-form-item label="升星按概率">
+          <el-switch v-model="form.officer_star_chance_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+          <span class="td-sub">关 = 必定成功</span>
+        </el-form-item>
+        <el-form-item label="失败保留升星卡">
+          <el-switch v-model="form.officer_star_keep_on_fail" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
+          <span class="td-sub">否 = 失败也扣 1 张</span>
+        </el-form-item>
+        <el-form-item label="基础成功率">
+          <el-input-number v-model.number="form.officer_star_chance" :min="1" :max="100" controls-position="right" style="width:180px" />
+          <span class="td-sub">%</span>
+        </el-form-item>
+        <el-form-item label="每高 1 星递减">
+          <el-input-number v-model.number="form.officer_star_chance_step" :min="0" :max="100" controls-position="right" style="width:180px" />
+          <span class="td-sub">%</span>
+        </el-form-item>
+        <el-form-item label="成功率下限">
+          <el-input-number v-model.number="form.officer_star_chance_min" :min="1" :max="100" controls-position="right" style="width:180px" />
+          <span class="td-sub">%</span>
+        </el-form-item>
+        <el-form-item label="每星三维加成">
+          <el-input-number v-model.number="form.officer_star_attr_gain" :min="1" controls-position="right" style="width:180px" />
+          <span class="td-sub">军事 / 后勤 / 学识 各 +N</span>
+        </el-form-item>
+        <el-form-item label="军官星级上限">
+          <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
         </el-form-item>
@@ -97,7 +130,11 @@ export default {
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
         wild_troop_mult: 1,
-        recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1
+        recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
+        // ★ 军官升星（开关 + 数值）
+        officer_star_up_on: 1, officer_star_chance_on: 1, officer_star_keep_on_fail: 0,
+        officer_star_chance: 80, officer_star_chance_step: 5, officer_star_chance_min: 20,
+        officer_star_attr_gain: 10, officer_star_max: 10
       }
     }
   },
@@ -128,7 +165,17 @@ export default {
             food_upkeep_on: sw(r.data.food_upkeep_on),
             march_oil_on: sw(r.data.march_oil_on),
             war_require_on: sw(r.data.war_require_on),
-            march_cap_on: sw(r.data.march_cap_on)
+            march_cap_on: sw(r.data.march_cap_on),
+            // ★ 军官升星
+            officer_star_up_on: sw(r.data.officer_star_up_on),
+            officer_star_chance_on: sw(r.data.officer_star_chance_on),
+            officer_star_keep_on_fail: sw(r.data.officer_star_keep_on_fail),
+            officer_star_chance: pos(r.data.officer_star_chance, 80),
+            officer_star_chance_step: (r.data.officer_star_chance_step === undefined ||
+              r.data.officer_star_chance_step === null) ? 5 : r.data.officer_star_chance_step,
+            officer_star_chance_min: pos(r.data.officer_star_chance_min, 20),
+            officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
+            officer_star_max: pos(r.data.officer_star_max, 10)
           }
         } else this.$message.error(r.msg)
       })

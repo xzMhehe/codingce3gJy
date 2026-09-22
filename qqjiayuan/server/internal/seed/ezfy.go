@@ -71,6 +71,17 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfyActivities(db)
 	seedEzfyResources(db)
 	seedEzfyRanks(db)
+
+	// —— 军官池（普通军官 1000 名）/ 装备套装 / 存量军官属性点迁移 ——
+	// ★ 必须在 batchKeep(ezfy_cfg_general) 之后：名将已入库，再补普通军官不会互相覆盖。
+	normalizeEzfyNewCols(db)
+	seedEzfyOfficerPool(db)
+	seedEzfyEquipSets(db)
+	backfillOfficerEquipSetBonus(db)
+	repairEquipSnapshots(db)
+	seedEzfyChests(db)
+	seedEzfySchemes(db)
+	migrateOfficerAttrPoints(db)
 }
 
 // seedEzfyRanks 军衔配置（复刻原版 rankIndex.html 的「军衔等级/职位要求/可建城数」）
@@ -163,6 +174,8 @@ func seedEzfyActivities(db *gorm.DB) {
 //	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
 //	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万，单次上限由管理端配置)
+//	23 军官升星卡 ItemType 19 指定军官升 1 星(成功率/每星加点/星级上限走管理端「系统配置」)
+//	24 信号弹     ItemType 20 计谋消耗品(黄金/钻石双渠道，发动计谋时消耗)
 func seedEzfyOfficerItems(db *gorm.DB) {
 	// ★★ 2026-09-21 用户反馈「道具商城上架军官技能书」的根因：
 	//   这几条种子**没有显式写 Stock**，而 GORM 创建时会把 Go 的零值 `0` 一起写进去
@@ -192,6 +205,18 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
 			PriceGold: 0, PriceDiamond: 0, Stock: -1, Category: "钻石道具",
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
+		// ★ 2026-09-22 用户要求「玩家自己的军官可以用升星卡升级星级，属性增加」。
+		//   升星是否按概率、每星加多少属性、星级上限，全部走管理端「系统配置」页。
+		{ID: 23, Name: "军官升星卡", ItemType: 19, Param1: 1, PriceGold: 5000, Stock: -1,
+			Category:    "军官道具",
+			Description: "指定军官升 1 星: 三维各+若干点(数值与成功率由管理端配置)"},
+		// ★ 2026-09-22 用户要求「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
+		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
+		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
+		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
+		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 500, PriceDiamond: 5, Stock: -1,
+			Category:    "计谋道具",
+			Description: "计谋消耗品: 发动计谋时消耗, 每条计谋需要的数量不同"},
 	}
 	for _, it := range rows {
 		var count int64
@@ -219,11 +244,12 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 // seedEzfyMoveItems 迁城类道具（第十二轮新增）
 //
 // 用户规则：「迁城计划 是道具 可以用黄金 和 钻石 购买 单独的 但是功能是一样的」
-//          「用 迁城计划、高级迁城计划、沿海迁城计划 …… 可以灵活批量迁移城池」
 //
-//	20 迁城计划     ItemType 16 选洲迁城（落该洲随机空平原）
-//	21 高级迁城计划 ItemType 17 指定坐标迁城（平原）
-//	22 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
+//	         「用 迁城计划、高级迁城计划、沿海迁城计划 …… 可以灵活批量迁移城池」
+//
+//		20 迁城计划     ItemType 16 选洲迁城（落该洲随机空平原）
+//		21 高级迁城计划 ItemType 17 指定坐标迁城（平原）
+//		22 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
 //
 // ★ 价格分档（黄金+钻石双渠道，管理端随时可改）：
 //

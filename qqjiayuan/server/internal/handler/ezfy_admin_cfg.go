@@ -57,11 +57,15 @@ var ezfyBuildingLevelFields = map[string]string{
 	"build_time": "int", "capacity": "int64", "effect": "string",
 }
 
-// 名将配置可改字段（ezfy_cfg_general）
+// 军官池可改字段（ezfy_cfg_general）
+//
+// ★ 2026-09-22：加 kind（1=普通军官 2=名将）+ weight（军校抽取权重）。
+// kind 是 0/1/2 有意义的值，前端必须显式传，否则 Create 会走库默认值 2。
 var ezfyGeneralFields = map[string]string{
 	"name": "string", "level": "int", "military": "int", "logistics": "int", "learning": "int",
 	"star": "int", "source": "string", "get_condition": "string",
 	"skill": "string", "des": "string", "recruit": "int",
+	"kind": "int", "weight": "int",
 }
 
 // 技能配置可改字段（ezfy_cfg_skill）
@@ -70,9 +74,47 @@ var ezfySkillFields = map[string]string{
 }
 
 // 装备配置可改字段（ezfy_cfg_equipment）
+//
+// ★ 2026-09-22：加 slot（部位）/ set_id（套装）/ price_gold / price_diamond（商城售价）
+// / stock（库存，-1 无上限）/ effect（额外效果说明）。
+// ★ 第二批（参照 装备距离伤害表.xlsx）：series / enhance / enhance_max +
+// 六项战斗属性 dmg / def / hp / move / crit / crit_dmg（单位百分点，125 = +125%）。
 var ezfyEquipFields = map[string]string{
-	"name": "string", "type": "string", "tier": "int",
+	"name": "string", "type": "string", "tier": "int", "slot": "string",
 	"military": "int", "logistics": "int", "learning": "int", "level": "int", "des": "string",
+	"set_id": "int", "price_gold": "int64", "price_diamond": "int64",
+	"stock": "int", "effect": "string",
+	"series": "string", "enhance": "int", "enhance_max": "int",
+	"dmg": "int", "def": "int", "hp": "int", "move": "int", "crit": "int", "crit_dmg": "int",
+}
+
+// 套装配置可改字段（ezfy_cfg_equip_set）
+var ezfyEquipSetFields = map[string]string{
+	"name": "string", "parts": "int",
+	"military": "int", "logistics": "int", "learning": "int",
+	"effect": "string", "des": "string",
+	"series": "string",
+	"dmg":    "int", "def": "int", "hp": "int", "move": "int", "crit": "int", "crit_dmg": "int",
+}
+
+// 宝箱可改字段（ezfy_cfg_chest）
+var ezfyChestFields = map[string]string{
+	"name": "string", "price_gold": "int64", "price_diamond": "int64",
+	"stock": "int", "open_max": "int", "enabled": "int", "sort_no": "int",
+	"des": "string", "effect": "string",
+}
+
+// 宝箱奖池可改字段（ezfy_cfg_chest_item）
+var ezfyChestItemFields = map[string]string{
+	"kind": "int", "ref_id": "int", "count": "int", "weight": "int",
+	"quality": "string", "des": "string",
+}
+
+// 计谋配置可改字段（ezfy_cfg_scheme）
+var ezfySchemeFields = map[string]string{
+	"name": "string", "des": "string", "bullet": "int",
+	"kind": "int", "war_minutes": "int", "war_max_minutes": "int",
+	"enabled": "int", "sort_no": "int",
 }
 
 func ezfyBuildTypeName(t int) string {
@@ -383,7 +425,7 @@ func (h *AdminHandler) AdminEzfyOfficerOverview(c *gin.Context) {
 
 // ---------- 4.1 名将列表（ezfy_cfg_general，可增删改 + 分发） ----------
 
-// AdminEzfyGenerals 名将列表
+// AdminEzfyGenerals 军官池列表（kind=1 普通军官 / kind=2 名将）
 func (h *AdminHandler) AdminEzfyGenerals(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyCfgGeneral{})
@@ -394,8 +436,25 @@ func (h *AdminHandler) AdminEzfyGenerals(c *gin.Context) {
 			q = q.Where("name LIKE ?", "%"+word+"%")
 		}
 	}
+	// ★ kind=1 只看普通军官，kind=2 只看名将，不传 = 全部
+	if ks := strings.TrimSpace(c.Query("kind")); ks != "" {
+		if v, err := strconv.Atoi(ks); err == nil {
+			q = q.Where("kind = ?", v)
+		}
+	}
+	// ★ 分页（普通军官有 1000 条，一次全下发会卡）
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 500 {
+		size = 50
+	}
+	var total int64
+	q.Count(&total)
 	var rows []model.EzfyCfgGeneral
-	q.Order("id").Find(&rows)
+	q.Order("id").Offset((page - 1) * size).Limit(size).Find(&rows)
 
 	// 每名将已被多少玩家拥有（用于「分发」时判断重复）
 	type cntAgg struct {
@@ -418,7 +477,21 @@ func (h *AdminHandler) AdminEzfyGenerals(c *gin.Context) {
 	for _, g := range rows {
 		out = append(out, rowOut{EzfyCfgGeneral: g, OwnedCount: ownOf[g.ID]})
 	}
-	resp.OK(c, gin.H{"list": out, "total": len(out)})
+	// 两类各多少（前端 tab 上显示）
+	type kindAgg struct {
+		Kind int
+		Cnt  int64
+	}
+	kindCounts := map[int]int64{}
+	var kcs []kindAgg
+	h.DB.Model(&model.EzfyCfgGeneral{}).Select("kind, COUNT(*) as cnt").Group("kind").Scan(&kcs)
+	for _, k := range kcs {
+		kindCounts[k.Kind] = k.Cnt
+	}
+	resp.OK(c, gin.H{
+		"list": out, "total": total, "page": page, "size": size,
+		"kind_counts": gin.H{"normal": kindCounts[1], "general": kindCounts[2]},
+	})
 }
 
 // AdminEzfyGeneralCreate 新增名将
@@ -439,12 +512,23 @@ func (h *AdminHandler) AdminEzfyGeneralCreate(c *gin.Context) {
 	if _, ok := vals["recruit"]; !ok {
 		vals["recruit"] = 1
 	}
+	// ★ 2026-09-22：kind 不传时默认按「名将(2)」建（老前端行为不变）
+	if _, ok := vals["kind"]; !ok {
+		vals["kind"] = 2
+	}
+	if _, ok := vals["weight"]; !ok {
+		vals["weight"] = 100
+	}
 	if err := h.DB.Model(&model.EzfyCfgGeneral{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
 	}
 	h.ezfyReload()
-	resp.OK(c, gin.H{"msg": "名将已新增"})
+	kindName := "名将"
+	if k, _ := vals["kind"].(int); k == 1 {
+		kindName = "普通军官"
+	}
+	resp.OK(c, gin.H{"msg": kindName + "已新增"})
 }
 
 // AdminEzfyGeneralUpdate 修改名将
@@ -808,7 +892,13 @@ func (h *AdminHandler) AdminEzfyEquipments(c *gin.Context) {
 		if id, err := strconv.Atoi(word); err == nil {
 			q = q.Where("id = ?", id)
 		} else {
-			q = q.Where("name LIKE ? OR type LIKE ?", "%"+word+"%", "%"+word+"%")
+			q = q.Where("name LIKE ? OR type LIKE ? OR slot LIKE ?", "%"+word+"%", "%"+word+"%", "%"+word+"%")
+		}
+	}
+	// ★ 按套装筛选：set_id=0 只看散件；set_id>0 只看该套装
+	if sid := strings.TrimSpace(c.Query("set_id")); sid != "" {
+		if v, err := strconv.Atoi(sid); err == nil {
+			q = q.Where("set_id = ?", v)
 		}
 	}
 	var rows []model.EzfyCfgEquipment
@@ -826,15 +916,26 @@ func (h *AdminHandler) AdminEzfyEquipments(c *gin.Context) {
 	for _, a := range aggs {
 		ownOf[a.CfgId] = a.Cnt
 	}
+	// 套装名
+	setNames := map[int]string{}
+	var sets []model.EzfyCfgEquipSet
+	h.DB.Find(&sets)
+	for _, s := range sets {
+		setNames[s.ID] = s.Name
+	}
 
 	type rowOut struct {
 		model.EzfyCfgEquipment
 		TierName   string `json:"tier_name"`
+		SetName    string `json:"set_name"`
 		OwnedCount int64  `json:"owned_count"`
 	}
 	out := []rowOut{}
 	for _, e := range rows {
-		out = append(out, rowOut{EzfyCfgEquipment: e, TierName: ezfyEquipTierName(e.Tier), OwnedCount: ownOf[e.ID]})
+		out = append(out, rowOut{
+			EzfyCfgEquipment: e, TierName: ezfyEquipTierName(e.Tier),
+			SetName: setNames[e.SetId], OwnedCount: ownOf[e.ID],
+		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out)})
 }
@@ -859,6 +960,10 @@ func (h *AdminHandler) AdminEzfyEquipmentCreate(c *gin.Context) {
 	}
 	if _, ok := vals["level"]; !ok {
 		vals["level"] = 1
+	}
+	// ★ 库存不传 = -1（无上限）；不显式写的话 GORM 会走库默认值，行为一致但这里写清楚
+	if _, ok := vals["stock"]; !ok {
+		vals["stock"] = -1
 	}
 	if err := h.DB.Model(&model.EzfyCfgEquipment{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
@@ -914,6 +1019,432 @@ func (h *AdminHandler) AdminEzfyEquipmentDelete(c *gin.Context) {
 		msg += fmt.Sprintf("，同时清除了玩家背包里的 %d 件", used)
 	}
 	resp.OK(c, gin.H{"msg": msg})
+}
+
+// ---------- 4.4b 军官装备套装（ezfy_cfg_equip_set，可增删改） ----------
+//
+// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家用黄金或钻石在商城购买。
+// 一件装备属于哪个套装由 ezfy_cfg_equipment.set_id 指向这里。
+
+// AdminEzfyEquipSets 套装列表（带每个套装已配的件数）
+func (h *AdminHandler) AdminEzfyEquipSets(c *gin.Context) {
+	word := strings.TrimSpace(c.Query("word"))
+	q := h.DB.Model(&model.EzfyCfgEquipSet{})
+	if word != "" {
+		if id, err := strconv.Atoi(word); err == nil {
+			q = q.Where("id = ?", id)
+		} else {
+			q = q.Where("name LIKE ?", "%"+word+"%")
+		}
+	}
+	var rows []model.EzfyCfgEquipSet
+	q.Order("id").Find(&rows)
+
+	// 每个套装已配多少件装备 / 多少件已上架
+	type cntAgg struct {
+		SetId int
+		Cnt   int64
+	}
+	var aggs []cntAgg
+	h.DB.Model(&model.EzfyCfgEquipment{}).Select("set_id, COUNT(*) as cnt").
+		Where("set_id > 0").Group("set_id").Scan(&aggs)
+	cntOf := map[int]int64{}
+	for _, a := range aggs {
+		cntOf[a.SetId] = a.Cnt
+	}
+	var onSale []cntAgg
+	h.DB.Model(&model.EzfyCfgEquipment{}).Select("set_id, COUNT(*) as cnt").
+		Where("set_id > 0 AND (price_gold > 0 OR price_diamond > 0)").Group("set_id").Scan(&onSale)
+	saleOf := map[int]int64{}
+	for _, a := range onSale {
+		saleOf[a.SetId] = a.Cnt
+	}
+
+	type rowOut struct {
+		model.EzfyCfgEquipSet
+		PieceCount int64 `json:"piece_count"`
+		SaleCount  int64 `json:"sale_count"`
+		// ★ 各件之和（玩家穿满整套本来就拿到的）+ 套装的额外加成 = 实际总加成
+		PieceSumDmg     int `json:"piece_sum_dmg"`
+		PieceSumDef     int `json:"piece_sum_def"`
+		PieceSumHp      int `json:"piece_sum_hp"`
+		PieceSumMove    int `json:"piece_sum_move"`
+		PieceSumCrit    int `json:"piece_sum_crit"`
+		PieceSumCritDmg int `json:"piece_sum_crit_dmg"`
+		PieceSumMil     int `json:"piece_sum_military"`
+		PieceSumLog     int `json:"piece_sum_logistics"`
+		PieceSumLea     int `json:"piece_sum_learning"`
+	}
+	out := []rowOut{}
+	for _, s := range rows {
+		// 该套装下所有件的属性之和
+		var pieces []model.EzfyCfgEquipment
+		h.DB.Where("set_id = ?", s.ID).Find(&pieces)
+		sum := rowOut{EzfyCfgEquipSet: s, PieceCount: cntOf[s.ID], SaleCount: saleOf[s.ID]}
+		for _, e := range pieces {
+			sum.PieceSumDmg += e.Dmg
+			sum.PieceSumDef += e.Def
+			sum.PieceSumHp += e.Hp
+			sum.PieceSumMove += e.Move
+			sum.PieceSumCrit += e.Crit
+			sum.PieceSumCritDmg += e.CritDmg
+			sum.PieceSumMil += e.Military
+			sum.PieceSumLog += e.Logistics
+			sum.PieceSumLea += e.Learning
+		}
+		out = append(out, sum)
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// AdminEzfyEquipSetCreate 新增套装
+func (h *AdminHandler) AdminEzfyEquipSetCreate(c *gin.Context) {
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyEquipSetFields)
+	if vals["name"] == nil {
+		resp.ParamError(c, "请填写套装名称")
+		return
+	}
+	if _, ok := vals["parts"]; !ok {
+		vals["parts"] = 3
+	}
+	if err := h.DB.Model(&model.EzfyCfgEquipSet{}).Create(vals).Error; err != nil {
+		resp.ParamError(c, "新增失败："+err.Error())
+		return
+	}
+	h.ezfyReload()
+	resp.OK(c, gin.H{"msg": "套装已新增（记得去「装备列表」把 set_id 填上，并把件上架）"})
+}
+
+// AdminEzfyEquipSetUpdate 修改套装
+func (h *AdminHandler) AdminEzfyEquipSetUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var s model.EzfyCfgEquipSet
+	if err := h.DB.First(&s, id).Error; err != nil {
+		resp.NotFound(c, "套装不存在")
+		return
+	}
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyEquipSetFields)
+	if len(vals) == 0 {
+		resp.ParamError(c, "无可修改字段")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCfgEquipSet{}).Where("id = ?", id).Updates(vals).Error; err != nil {
+		resp.ParamError(c, "修改失败："+err.Error())
+		return
+	}
+	h.ezfyReload()
+	resp.OK(c, gin.H{"msg": "套装「" + s.Name + "」已保存"})
+}
+
+// AdminEzfyEquipSetDelete 删除套装（该套装下的装备 set_id 清 0，不删装备本身）
+func (h *AdminHandler) AdminEzfyEquipSetDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var s model.EzfyCfgEquipSet
+	if err := h.DB.First(&s, id).Error; err != nil {
+		resp.NotFound(c, "套装不存在")
+		return
+	}
+	var used int64
+	h.DB.Model(&model.EzfyCfgEquipment{}).Where("set_id = ?", id).Count(&used)
+	if used > 0 {
+		h.DB.Model(&model.EzfyCfgEquipment{}).Where("set_id = ?", id).Update("set_id", 0)
+	}
+	h.DB.Delete(&model.EzfyCfgEquipSet{}, id)
+	h.ezfyReload()
+	msg := "套装「" + s.Name + "」已删除"
+	if used > 0 {
+		msg += fmt.Sprintf("，%d 件装备已解除套装归属（装备本身保留）", used)
+	}
+	resp.OK(c, gin.H{"msg": msg})
+}
+
+// AdminEzfyEquipSetPieces 查看某个套装下的所有装备件
+func (h *AdminHandler) AdminEzfyEquipSetPieces(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var rows []model.EzfyCfgEquipment
+	h.DB.Where("set_id = ?", id).Order("id").Find(&rows)
+	out := []gin.H{}
+	for _, e := range rows {
+		out = append(out, gin.H{
+			"id": e.ID, "name": e.Name, "slot": e.EquipSlot(), "level": e.Level,
+			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"price_gold": e.PriceGold, "price_diamond": e.PriceDiamond, "stock": e.Stock,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// ---------- 4.4c 宝箱（ezfy_cfg_chest + ezfy_cfg_chest_item，可增删改） ----------
+//
+// ★ 2026-09-22 用户要求：「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
+
+// AdminEzfyChests 宝箱列表（含奖池条数）
+func (h *AdminHandler) AdminEzfyChests(c *gin.Context) {
+	word := strings.TrimSpace(c.Query("word"))
+	q := h.DB.Model(&model.EzfyCfgChest{})
+	if word != "" {
+		if id, err := strconv.Atoi(word); err == nil {
+			q = q.Where("id = ?", id)
+		} else {
+			q = q.Where("name LIKE ?", "%"+word+"%")
+		}
+	}
+	var rows []model.EzfyCfgChest
+	q.Order("sort_no, id").Find(&rows)
+
+	type cntAgg struct {
+		ChestId int
+		Cnt     int64
+	}
+	var aggs []cntAgg
+	h.DB.Model(&model.EzfyCfgChestItem{}).Select("chest_id, COUNT(*) as cnt").
+		Group("chest_id").Scan(&aggs)
+	cntOf := map[int]int64{}
+	for _, a := range aggs {
+		cntOf[a.ChestId] = a.Cnt
+	}
+
+	type rowOut struct {
+		model.EzfyCfgChest
+		PoolCount int64 `json:"pool_count"`
+	}
+	out := []rowOut{}
+	for _, ch := range rows {
+		out = append(out, rowOut{EzfyCfgChest: ch, PoolCount: cntOf[ch.ID]})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// AdminEzfyChestCreate 新增宝箱
+func (h *AdminHandler) AdminEzfyChestCreate(c *gin.Context) {
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyChestFields)
+	if vals["name"] == nil {
+		resp.ParamError(c, "请填写宝箱名称")
+		return
+	}
+	if _, ok := vals["stock"]; !ok {
+		vals["stock"] = -1
+	}
+	if _, ok := vals["open_max"]; !ok {
+		vals["open_max"] = 10
+	}
+	if _, ok := vals["enabled"]; !ok {
+		vals["enabled"] = 1
+	}
+	if err := h.DB.Model(&model.EzfyCfgChest{}).Create(vals).Error; err != nil {
+		resp.ParamError(c, "新增失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "宝箱已新增（接着去配置奖池）"})
+}
+
+// AdminEzfyChestUpdate 修改宝箱
+func (h *AdminHandler) AdminEzfyChestUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var ch model.EzfyCfgChest
+	if err := h.DB.First(&ch, id).Error; err != nil {
+		resp.NotFound(c, "宝箱不存在")
+		return
+	}
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyChestFields)
+	if len(vals) == 0 {
+		resp.ParamError(c, "无可修改字段")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCfgChest{}).Where("id = ?", id).Updates(vals).Error; err != nil {
+		resp.ParamError(c, "修改失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "宝箱「" + ch.Name + "」已保存"})
+}
+
+// AdminEzfyChestDelete 删除宝箱（奖池一起删）
+func (h *AdminHandler) AdminEzfyChestDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var ch model.EzfyCfgChest
+	if err := h.DB.First(&ch, id).Error; err != nil {
+		resp.NotFound(c, "宝箱不存在")
+		return
+	}
+	var used int64
+	h.DB.Model(&model.EzfyCfgChestItem{}).Where("chest_id = ?", id).Count(&used)
+	h.DB.Where("chest_id = ?", id).Delete(&model.EzfyCfgChestItem{})
+	h.DB.Delete(&model.EzfyCfgChest{}, id)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("宝箱「%s」已删除（同时清掉 %d 条奖池）", ch.Name, used)})
+}
+
+// AdminEzfyChestPool 宝箱奖池列表
+func (h *AdminHandler) AdminEzfyChestPool(c *gin.Context) {
+	// ★ 必须先加载配置缓存：下面要用 ezfyCfg.equipment/item 把 cfg_id 翻成名字，
+	//   缓存没加载过的话会全部显示成空（管理端先点这个页就会踩到）。
+	h.ezfyH()
+	id, _ := strconv.Atoi(c.Param("id"))
+	var rows []model.EzfyCfgChestItem
+	h.DB.Where("chest_id = ?", id).Order("id").Find(&rows)
+	out := []gin.H{}
+	total := 0
+	for _, it := range rows {
+		if it.Weight > 0 {
+			total += it.Weight
+		}
+	}
+	for _, it := range rows {
+		name, kindName := "", ""
+		switch it.Kind {
+		case 1:
+			kindName = "装备"
+			if cfg := ezfyCfg.equipment(it.RefId); cfg != nil {
+				name = cfg.Name
+			}
+		case 2:
+			kindName = "道具"
+			if cfg := ezfyCfg.item(it.RefId); cfg != nil {
+				name = cfg.Name
+			}
+		default:
+			kindName = "其他"
+		}
+		rate := 0.0
+		if total > 0 && it.Weight > 0 {
+			rate = float64(it.Weight) * 100 / float64(total)
+		}
+		out = append(out, gin.H{
+			"id": it.ID, "chest_id": it.ChestId, "kind": it.Kind, "kind_name": kindName,
+			"ref_id": it.RefId, "name": name, "count": it.Count,
+			"weight": it.Weight, "rate": fmt.Sprintf("%.2f", rate),
+			"quality": it.Quality, "des": it.Des,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out), "weight_sum": total})
+}
+
+// AdminEzfyChestPoolCreate 新增奖池条目
+func (h *AdminHandler) AdminEzfyChestPoolCreate(c *gin.Context) {
+	chestId, _ := strconv.Atoi(c.Param("id"))
+	var ch model.EzfyCfgChest
+	if err := h.DB.First(&ch, chestId).Error; err != nil {
+		resp.NotFound(c, "宝箱不存在")
+		return
+	}
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyChestItemFields)
+	vals["chest_id"] = chestId
+	if vals["ref_id"] == nil {
+		resp.ParamError(c, "请填写奖品 ID（装备/道具的配置 ID）")
+		return
+	}
+	if _, ok := vals["kind"]; !ok {
+		vals["kind"] = 1
+	}
+	if _, ok := vals["count"]; !ok {
+		vals["count"] = 1
+	}
+	if _, ok := vals["weight"]; !ok {
+		vals["weight"] = 100
+	}
+	if err := h.DB.Model(&model.EzfyCfgChestItem{}).Create(vals).Error; err != nil {
+		resp.ParamError(c, "新增失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "奖池条目已新增"})
+}
+
+// AdminEzfyChestPoolUpdate 修改奖池条目
+func (h *AdminHandler) AdminEzfyChestPoolUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var it model.EzfyCfgChestItem
+	if err := h.DB.First(&it, id).Error; err != nil {
+		resp.NotFound(c, "奖池条目不存在")
+		return
+	}
+	var in map[string]interface{}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	vals := xyPickVals(in, ezfyChestItemFields)
+	if len(vals) == 0 {
+		resp.ParamError(c, "无可修改字段")
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCfgChestItem{}).Where("id = ?", id).Updates(vals).Error; err != nil {
+		resp.ParamError(c, "修改失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "奖池条目已保存"})
+}
+
+// AdminEzfyChestPoolDelete 删除奖池条目
+func (h *AdminHandler) AdminEzfyChestPoolDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	h.DB.Delete(&model.EzfyCfgChestItem{}, id)
+	resp.OK(c, gin.H{"msg": "奖池条目已删除"})
+}
+
+// AdminEzfyChestPoolBulkAdd 批量把某个套装/系列的全部件加进奖池
+//
+// 省得管理员一件一件手填 —— 开箱类玩法基本都是「按系列随机出一件」。
+func (h *AdminHandler) AdminEzfyChestPoolBulkAdd(c *gin.Context) {
+	chestId, _ := strconv.Atoi(c.Param("id"))
+	var ch model.EzfyCfgChest
+	if err := h.DB.First(&ch, chestId).Error; err != nil {
+		resp.NotFound(c, "宝箱不存在")
+		return
+	}
+	var in struct {
+		SetId  int `json:"set_id"`
+		Weight int `json:"weight"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.SetId <= 0 {
+		resp.ParamError(c, "请选择套装")
+		return
+	}
+	if in.Weight <= 0 {
+		in.Weight = 100
+	}
+	var pieces []model.EzfyCfgEquipment
+	h.DB.Where("set_id = ?", in.SetId).Order("id").Find(&pieces)
+	if len(pieces) == 0 {
+		resp.ParamError(c, "该套装下还没有装备件")
+		return
+	}
+	rows := make([]model.EzfyCfgChestItem, 0, len(pieces))
+	for _, e := range pieces {
+		rows = append(rows, model.EzfyCfgChestItem{
+			ChestId: chestId, Kind: 1, RefId: e.ID, Count: 1,
+			Weight: in.Weight, Quality: ezfyEquipTierName(e.Tier),
+			Des: e.Name,
+		})
+	}
+	if err := h.DB.CreateInBatches(rows, 100).Error; err != nil {
+		resp.ParamError(c, "批量加入失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把 %d 件装备加入奖池（每件权重 %d）", len(rows), in.Weight)})
 }
 
 // ---------- 4.5 玩家军官装备列表（ezfy_equipment） ----------
@@ -1012,6 +1543,7 @@ func (h *AdminHandler) AdminEzfyEquipmentOwnedCreate(c *gin.Context) {
 			UserId: p.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
 			Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 			Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0,
+			Slot: cfg.EquipSlot(), SetId: cfg.SetId,
 		})
 	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给「%s」发放 %s ×%d", p.Nickname, cfg.Name, in.Count)})
@@ -1031,9 +1563,9 @@ func (h *AdminHandler) AdminEzfyEquipmentOwnedUpdate(c *gin.Context) {
 		return
 	}
 	fields := map[string]string{
-		"name": "string", "type": "string", "tier": "int",
+		"name": "string", "type": "string", "tier": "int", "slot": "string",
 		"military": "int", "logistics": "int", "learning": "int", "level": "int",
-		"officer_id": "int64", "cfg_id": "int",
+		"officer_id": "int64", "cfg_id": "int", "set_id": "int",
 	}
 	vals := xyPickVals(in, fields)
 	if len(vals) == 0 {
@@ -1077,10 +1609,11 @@ func (h *AdminHandler) AdminEzfyOfficerPickers(c *gin.Context) {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
 		Star int    `json:"star"`
+		Kind int    `json:"kind"` // 1=普通军官 2=名将
 	}
 	gs := []gOut{}
 	for _, g := range generals {
-		gs = append(gs, gOut{ID: g.ID, Name: g.Name, Star: g.Star})
+		gs = append(gs, gOut{ID: g.ID, Name: g.Name, Star: g.Star, Kind: g.Kind})
 	}
 
 	h.ezfyH()
@@ -1111,9 +1644,9 @@ func (h *AdminHandler) AdminEzfyOfficerPickers(c *gin.Context) {
 // 一键把**所有玩家、所有城市**的科技升到满级。
 //
 // ★ 「不要产生脏数据」的三道保障：
-//   1. 先按 (city_id, tech_id) **去重**（历史脏数据兜底，只保留 id 最小的那行）；
-//   2. 用 `ON DUPLICATE KEY UPDATE` **upsert**（唯一索引 uk_city_tech），不会插重复行；
-//   3. 把 status/end_time 一并归零，避免留下「研究中」的半截状态。
+//  1. 先按 (city_id, tech_id) **去重**（历史脏数据兜底，只保留 id 最小的那行）；
+//  2. 用 `ON DUPLICATE KEY UPDATE` **upsert**（唯一索引 uk_city_tech），不会插重复行；
+//  3. 把 status/end_time 一并归零，避免留下「研究中」的半截状态。
 func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 	var techs []model.EzfyCfgTech
 	h.DB.Order("id").Find(&techs)
@@ -1185,8 +1718,9 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 // ezfyGeneralCapByStar 每个星级下「名将」的属性上限 [军事,后勤,学识]
 //
 // ★ 用户要求：随机生成的军官属性不能超过名将。
-//   同名将星级里取最大值作为上限；该星级没有名将就往下借一档；
-//   都没有就用 星级×20 兜底（比同星级名将保守）。
+//
+//	同名将星级里取最大值作为上限；该星级没有名将就往下借一档；
+//	都没有就用 星级×20 兜底（比同星级名将保守）。
 func (h *AdminHandler) ezfyGeneralCapByStar() map[int][3]int {
 	var gs []model.EzfyCfgGeneral
 	h.DB.Find(&gs)
@@ -1307,7 +1841,10 @@ func (h *AdminHandler) AdminEzfyGenOfficers(c *gin.Context) {
 			CityId: int64(city.ID), GeneralId: 0, Name: name, Star: star,
 			Level: level, Exp: 0,
 			Military: mil, Logistics: log, Learning: lea,
-			Loyalty: 80 + rand.Intn(21), Skill: "", Equipment: "",
+			// ★ 原始属性 = 生成时的值；按「每级 1 点」补上该等级应有的可用点数
+			BaseMilitary: mil, BaseLogistics: log, BaseLearning: lea,
+			FreePoints: maxInt(0, level-1),
+			Loyalty:    80 + rand.Intn(21), Skill: "", Equipment: "",
 			Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 		}
 		if err := h.DB.Create(&o).Error; err != nil {

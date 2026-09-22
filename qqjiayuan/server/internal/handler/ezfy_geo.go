@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 
@@ -427,6 +428,7 @@ type ezfyConfigCache struct {
 	skills         map[int]model.EzfyCfgSkill
 	skillByName    map[string]int
 	equipments     map[int]model.EzfyCfgEquipment
+	equipSetMap    map[int]model.EzfyCfgEquipSet
 	buildingByName map[string]int
 	techByName     map[string]int
 	// 地图格子覆盖（key = x*100000+y），管理端改完走 cfgsReload 生效
@@ -553,6 +555,83 @@ func ezfyMarchCapOn() bool {
 		return ezfyMarchCapDef != 0
 	}
 	return ezfyCfg.limit.MarchCapOn != 0
+}
+
+// ============ 军官升星配置（2026-09-22 用户要求）============
+
+const (
+	ezfyStarChanceDef     = 80 // 基础成功率%
+	ezfyStarChanceStepDef = 5  // 每高 1 星成功率 -N%
+	ezfyStarChanceMinDef  = 20 // 成功率下限%
+	ezfyStarAttrGainDef   = 10 // 每升 1 星三维各 +N
+	// ★ 用户规则「军官最多 5 星」→ 星级上限默认 5
+	//   （军官池里的星级本来就只发 1~5 星，升星也不该超过 5）
+	ezfyStarMaxDef = 5
+	// 三个开关的默认值（1 = 开 / 0 = 关）
+	ezfyStarUpDef       = 1 // 升星功能：默认开
+	ezfyStarChanceOnDef = 1 // 按概率：默认开
+	ezfyStarKeepDef     = 0 // 失败保留升星卡：默认不保留（扣卡）
+)
+
+// ezfyStarUpOn 升星功能是否开启（关 = 升星卡不能用）
+func ezfyStarUpOn() bool {
+	if !ezfyCfg.ready() {
+		return true
+	}
+	return ezfyCfg.limit.OfficerStarUpOn != 0
+}
+
+// ezfyStarChanceOn 是否按概率升星（关 = 必成功，方便先放开玩）
+func ezfyStarChanceOn() bool {
+	if !ezfyCfg.ready() {
+		return true
+	}
+	return ezfyCfg.limit.OfficerStarChanceOn != 0
+}
+
+// ezfyStarKeepOnFail 升星失败时是否保留升星卡（默认 0 = 扣掉）
+func ezfyStarKeepOnFail() bool {
+	if !ezfyCfg.ready() {
+		return false
+	}
+	return ezfyCfg.limit.OfficerStarKeepOnFail != 0
+}
+
+func ezfyStarChanceBase() int { return ezfyLimitOr(ezfyCfg.limit.OfficerStarChance, ezfyStarChanceDef) }
+func ezfyStarChanceStep() int {
+	return ezfyLimitOr(ezfyCfg.limit.OfficerStarChanceStep, ezfyStarChanceStepDef)
+}
+func ezfyStarChanceMin() int {
+	return ezfyLimitOr(ezfyCfg.limit.OfficerStarChanceMin, ezfyStarChanceMinDef)
+}
+func ezfyStarAttrGain() int {
+	return ezfyLimitOr(ezfyCfg.limit.OfficerStarAttrGain, ezfyStarAttrGainDef)
+}
+func ezfyStarMax() int { return ezfyLimitOr(ezfyCfg.limit.OfficerStarMax, ezfyStarMaxDef) }
+
+// ezfyStarSuccessRate 当前星级下的升星成功率（%）
+//
+// 基础值 - (当前星级-1) × 递减，夹在 [下限, 100] 之间。
+// 概率开关关掉时恒为 100（必成功）。
+func ezfyStarSuccessRate(star int) int {
+	if !ezfyStarChanceOn() {
+		return 100
+	}
+	if star < 1 {
+		star = 1
+	}
+	rate := ezfyStarChanceBase() - (star-1)*ezfyStarChanceStep()
+	min := ezfyStarChanceMin()
+	if min < 1 {
+		min = 1
+	}
+	if rate < min {
+		rate = min
+	}
+	if rate > 100 {
+		rate = 100
+	}
+	return rate
 }
 
 // ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
@@ -693,6 +772,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	c.skills = map[int]model.EzfyCfgSkill{}
 	c.skillByName = map[string]int{}
 	c.equipments = map[int]model.EzfyCfgEquipment{}
+	c.equipSetMap = map[int]model.EzfyCfgEquipSet{}
 	c.buildingByName = map[string]int{}
 	c.techByName = map[string]int{}
 
@@ -763,6 +843,11 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	db.Find(&eqs)
 	for _, e := range eqs {
 		c.equipments[e.ID] = e
+	}
+	var esets []model.EzfyCfgEquipSet
+	db.Find(&esets)
+	for _, s := range esets {
+		c.equipSetMap[s.ID] = s
 	}
 
 	// 地图格子覆盖（改地形 / 设寇城·活动寇城；管理端可维护）
@@ -846,6 +931,41 @@ func (c *ezfyConfigCache) equipment(id int) *model.EzfyCfgEquipment {
 		return &e
 	}
 	return nil
+}
+
+// equipSet 取套装配置（nil = 该 id 不是套装）
+func (c *ezfyConfigCache) equipSet(id int) *model.EzfyCfgEquipSet {
+	if id <= 0 {
+		return nil
+	}
+	if s, ok := c.equipSetMap[id]; ok {
+		return &s
+	}
+	return nil
+}
+
+// poolOfficers 军官池里的**普通军官**（kind=1 且 recruit=1），按 id 升序。
+//
+// ★ 2026-09-22 用户要求：军校招募/刷新**从池子里抽**，不再纯随机生成。
+func (c *ezfyConfigCache) poolOfficers() []model.EzfyCfgGeneral {
+	out := []model.EzfyCfgGeneral{}
+	for _, g := range c.generals {
+		if g.Kind == 1 && g.Recruit != 0 {
+			out = append(out, g)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// equipSets 全部套装配置（按 id 升序）
+func (c *ezfyConfigCache) equipSets() []model.EzfyCfgEquipSet {
+	out := []model.EzfyCfgEquipSet{}
+	for _, s := range c.equipSetMap {
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
 }
 
 func (c *ezfyConfigCache) building(id int) *model.EzfyCfgBuilding {

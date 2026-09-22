@@ -1851,7 +1851,15 @@
       <template v-else-if="cur === 'bag'">
         <div class="panel">
           <div class="panel-title">背包 <button @click="loadBag">刷新</button></div>
-          <div class="old-line" v-for="it in bagItems" :key="'bi' + it.cfg_id">
+          <!-- ★ 检索框：道具多的时候按名字/说明筛 -->
+          <div class="old-line">
+            搜索:
+            <input v-model="bagWord" type="text" placeholder="道具名 / 说明关键字"
+                   style="width:180px" @input="bagPage = 1"/>
+            <a href="javascript:;" @click="bagWord = ''; bagPage = 1">[清空]</a>
+            <span class="gray">共 {{ bagFiltered.length }} 种 / 全部 {{ bagItems.length }} 种</span>
+          </div>
+          <div class="old-line" v-for="it in bagPaged" :key="'bi' + it.cfg_id">
             <b>{{ it.name }}</b>×{{ it.count }}
             <a href="javascript:;" @click="openUse(it)">[使用]</a><br/>
             <span class="gray">{{ it.description }}</span>
@@ -1886,6 +1894,13 @@
             </div>
           </div>
           <div class="old-line" v-if="!bagItems.length">(背包空空如也)</div>
+          <div class="old-line gray" v-else-if="!bagFiltered.length">(没有匹配「{{ bagWord }}」的道具)</div>
+          <!-- ★ 分页 -->
+          <div class="ezfy-pager" v-if="bagFiltered.length > bagPageSize">
+            <a href="javascript:;" :class="{ disabled: bagPage <= 1 }" @click="bagGo(-1)">[上一页]</a>
+            <span class="gray">第 {{ Math.min(bagPage, bagTotalPages) }}/{{ bagTotalPages }} 页 · 共 {{ bagFiltered.length }} 种</span>
+            <a href="javascript:;" :class="{ disabled: bagPage >= bagTotalPages }" @click="bagGo(1)">[下一页]</a>
+          </div>
           <a href="javascript:;" @click="go('mall')">[前往商城]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -1895,6 +1910,13 @@
       <template v-else-if="cur === 'mall'">
         <div class="panel">
           <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }} · 钻石{{ mallDiamond }})</div>
+          <!-- ★ 商城分栏：道具 / 装备套装（套装件用黄金或钻石买，买完可穿到军官身上） -->
+          <div class="old-line">
+            <a href="javascript:;" :class="{ on: mallTab === 'item' }" @click="switchMallTab('item')">[道具]</a>
+            <a href="javascript:;" :class="{ on: mallTab === 'equipment' }" @click="switchMallTab('equipment')">[装备套装]</a>
+            <a href="javascript:;" :class="{ on: mallTab === 'chest' }" @click="switchMallTab('chest')">[宝箱]</a>
+          </div>
+          <template v-if="mallTab === 'item'">
           <!-- ★ 分类页签（分类由管理端维护，未填时按道具类型自动归类） -->
           <div class="old-line">
             <a href="javascript:;" :class="{ on: mallCat === '' }" @click="setMallCat('')">[全部]</a>
@@ -1955,6 +1977,112 @@
             <span class="gray">第 {{ Math.min(mallPage, mallTotalPages) }}/{{ mallTotalPages }} 页 · 共 {{ mallFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: mallPage >= mallTotalPages }" @click="mallGo(1)">[下一页]</a>
           </div>
+          </template>
+          <!-- ★ 装备套装（管理端在「装备列表 / 套装」里维护，这里按套装分组售卖） -->
+          <template v-else-if="mallTab === 'equipment'">
+            <div class="old-line gray">
+              装备用{{ resNames.gold }}或钻石购买；买入后到「军官 → 军官详情」穿到军官身上。
+              同一套穿戴满 N 件会额外触发<b>套装加成</b>（属性直接计入军官）。
+            </div>
+            <div class="old-line" v-for="s in equipShop.sets" :key="'es' + s.id">
+              <b>{{ s.name }}</b>
+              <span class="gray" v-if="s.parts > 0">（{{ s.parts }}件触发套装效果）</span>
+              <span class="green" v-if="s.effect"> {{ s.effect }}</span>
+              <span class="gray" v-if="s.military || s.logistics || s.learning || s.dmg || s.def || s.hp || s.move || s.crit || s.crit_dmg">
+                · 穿齐额外加成 {{ equipAttrText(s) }}
+              </span>
+              <br/>
+              <div class="old-line" v-for="p in s.pieces" :key="'ep' + p.id">
+                &nbsp;&nbsp;{{ p.name }}
+                <span class="gray">{{ p.slot }} 需{{ p.level }}级</span>
+                <span class="green">{{ equipAttrText(p) }}</span>
+                <template v-if="p.price_diamond > 0 && p.price_gold > 0">
+                  <span class="orange">{{ p.price_diamond }}钻石</span>/{{ p.price_gold }}{{ resNames.gold }}
+                </template>
+                <span v-else-if="p.price_diamond > 0" class="orange">{{ p.price_diamond }}钻石</span>
+                <span v-else>{{ p.price_gold }}{{ resNames.gold }}</span>
+                <span v-if="p.stock < 0" class="green">库存无限</span>
+                <span v-else :class="p.stock > 0 ? 'gray' : 'red'">库存{{ p.stock > 0 ? p.stock : '0(已售罄)' }}</span>
+                <a v-if="!p.sold_out" href="javascript:;" @click="openEquipBuy(p)">[购买]</a>
+                <span v-else class="gray">[已售罄]</span>
+                <div v-if="equipShopBuy && equipShopBuy.id === p.id" class="use-box">
+                  数量:
+                  <input v-model="equipShopCount" type="number" min="1" style="width:70px"/>
+                  <template v-if="p.price_diamond > 0 && p.price_gold > 0">
+                    支付方式:
+                    <select v-model="equipShopPay">
+                      <option value="gold">黄金 {{ p.price_gold * (parseInt(equipShopCount) || 0) }}</option>
+                      <option value="diamond">钻石 {{ p.price_diamond * (parseInt(equipShopCount) || 0) }}</option>
+                    </select>
+                  </template>
+                  <span class="gray">
+                    合计 {{ (equipShopPay === 'diamond' ? p.price_diamond : p.price_gold) * (parseInt(equipShopCount) || 0) }}
+                    {{ equipShopPay === 'diamond' ? '钻石' : resNames.gold }}
+                  </span>
+                  <button @click="doBuyEquip(p)">[确认购买]</button>
+                  <a href="javascript:;" @click="equipShopBuy = null">[取消]</a>
+                </div>
+              </div>
+            </div>
+            <div class="old-line gray" v-if="!equipShop.sets.length">(暂无上架装备，请等管理员在后台配置)</div>
+            <div class="old-line gray">
+              当前余额：{{ resNames.gold }}{{ fmtN(equipShop.gold) }} · 钻石{{ equipShop.diamond }}
+            </div>
+          </template>
+          <!-- ★ 宝箱（用钻石/黄金买，开箱按权重出套装件；奖池由管理端维护） -->
+          <template v-else>
+            <div class="old-line gray">
+              宝箱用{{ resNames.gold }}或钻石购买；开箱按奖池权重随机出装备（直接进装备背包，可穿到军官身上）或道具。
+            </div>
+            <div class="old-line" v-for="ch in chestData.chests" :key="'ch' + ch.id">
+              <b>{{ ch.name }}</b>
+              <template v-if="ch.price_diamond > 0 && ch.price_gold > 0">
+                <span class="orange">{{ ch.price_diamond }}钻石</span>/{{ ch.price_gold }}{{ resNames.gold }}
+              </template>
+              <span v-else-if="ch.price_diamond > 0" class="orange">{{ ch.price_diamond }}钻石</span>
+              <span v-else>{{ ch.price_gold }}{{ resNames.gold }}</span>
+              <span v-if="ch.stock < 0" class="green">库存无限</span>
+              <span v-else :class="ch.stock > 0 ? 'gray' : 'red'">库存{{ ch.stock > 0 ? ch.stock : '0(已售罄)' }}</span>
+              <a v-if="!ch.sold_out" href="javascript:;" @click="openChestBuy(ch)">[开箱]</a>
+              <span v-else class="gray">[已售罄]</span><br/>
+              <span class="gray">{{ ch.des }}</span><br/>
+              <span class="green" v-if="ch.effect">{{ ch.effect }}</span>
+              <div class="old-line gray">
+                奖池({{ ch.pool.length }}种)：
+                <span v-for="(p, i) in ch.pool" :key="'cp' + ch.id + '_' + i">
+                  {{ p.name }}<span class="gray">({{ p.quality }})</span><span v-if="i < ch.pool.length - 1">、</span>
+                </span>
+              </div>
+              <div v-if="chestOpen && chestOpen.id === ch.id" class="use-box">
+                开箱数量:
+                <input v-model="chestCount" type="number" min="1" :max="ch.open_max" style="width:70px"/>
+                <span class="gray">单次最多 {{ ch.open_max }} 个</span>
+                <template v-if="ch.price_diamond > 0 && ch.price_gold > 0">
+                  支付方式:
+                  <select v-model="chestPay">
+                    <option value="diamond">钻石 {{ ch.price_diamond * (parseInt(chestCount) || 0) }}</option>
+                    <option value="gold">黄金 {{ ch.price_gold * (parseInt(chestCount) || 0) }}</option>
+                  </select>
+                </template>
+                <span class="gray">
+                  合计 {{ (chestPay === 'gold' ? ch.price_gold : ch.price_diamond) * (parseInt(chestCount) || 0) }}
+                  {{ chestPay === 'gold' ? resNames.gold : '钻石' }}
+                </span>
+                <button @click="doOpenChest(ch)">[确认开箱]</button>
+                <a href="javascript:;" @click="chestOpen = null">[取消]</a>
+              </div>
+            </div>
+            <div class="old-line gray" v-if="!chestData.chests.length">(暂无上架宝箱，请等管理员在后台配置)</div>
+            <div class="old-line gray">
+              当前余额：{{ resNames.gold }}{{ fmtN(chestData.gold) }} · 钻石{{ chestData.diamond }}
+            </div>
+            <div class="old-line" v-if="chestResult && chestResult.length">
+              <b>上次开箱结果：</b>
+              <span v-for="(r, i) in chestResult" :key="'cr' + i">
+                {{ r.name }}<span class="gray">({{ r.quality }})</span><span v-if="i < chestResult.length - 1">、</span>
+              </span>
+            </div>
+          </template>
           <a href="javascript:;" @click="go('bag')">[背包]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -2274,6 +2402,19 @@
               {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
               <span class="green" v-if="equipTip(o)">{{ equipTip(o) }}</span><br/>
               攻/防：{{ o.attack }}/{{ o.defence }}<br/>
+              <!-- ★ 军官装备的六项战斗加成（伤害/防御/生命/移动距离/暴击）——
+                   不给这一行的话，穿满一套六项属性的装备在列表里「看着像没加属性」 -->
+              <span v-if="officerBattleText(o.battle)" class="green">
+                装备战斗加成：{{ officerBattleText(o.battle) }}<br/>
+              </span>
+              <!-- ★ 可用属性点：升过级还没点的军官一眼能看见 -->
+              <span v-if="o.free_points > 0" class="red">
+                可分配属性点 {{ o.free_points }} 点
+                <a href="javascript:;" @click="openOfficer(o.id)">[去加点]</a><br/>
+              </span>
+              <span v-if="o.active_sets && o.active_sets.length" class="green">
+                套装：{{ o.active_sets.join('、') }}<br/>
+              </span>
               ------------------------
             </div>
           </template>
@@ -2347,18 +2488,26 @@
 
         <!-- 装备 -->
         <div class="panel" v-else-if="acadeTab === 'equip'">
-          <div class="old-line">我的装备({{ equipData.bag.length }})</div>
+          <div class="old-line">
+            我的装备({{ equipData.bag.length }})
+            <a href="javascript:;" @click="switchMallTab('equipment'); go('mall')">[去商城买套装]</a>
+          </div>
+          <!-- ★ 检索框 -->
+          <div class="old-line">
+            搜索:
+            <input v-model="equipWord" type="text" placeholder="装备名 / 部位 / 套装"
+                   style="width:180px" @input="equipPage = 1"/>
+            <a href="javascript:;" @click="equipWord = ''; equipPage = 1">[清空]</a>
+            <span class="gray">共 {{ equipFiltered.length }} 件</span>
+          </div>
           <table class="ezfy-plain-table">
-            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
-            <tr v-for="e in equipData.bag" :key="'eq' + e.id">
+            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
+            <tr v-for="e in equipPaged" :key="'eq' + e.id">
               <td>{{ e.name }}</td>
-              <td>{{ e.type }}</td>
+              <td>{{ e.slot || e.type }}</td>
+              <td>{{ e.set_name || '—' }}</td>
               <td>{{ e.tier_name }}</td>
-              <td>
-                <span v-if="e.military">军事+{{ e.military }} </span>
-                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
-                <span v-if="e.learning">学习+{{ e.learning }}</span>
-              </td>
+              <td>{{ equipAttrText(e) }}</td>
               <td>{{ e.level }}</td>
               <td>
                 <span v-if="e.worn" class="gray">{{ e.worn_by }}已穿戴</span>
@@ -2366,23 +2515,53 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备, 战胜野地/寇城有概率掉落)</div>
+          <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备，战胜野地/寇城有概率掉落，也可到商城→装备套装购买)</div>
+          <div class="old-line gray" v-else-if="!equipFiltered.length">(没有匹配「{{ equipWord }}」的装备)</div>
+          <!-- ★ 分页 -->
+          <div class="ezfy-pager" v-if="equipFiltered.length > equipPageSize">
+            <a href="javascript:;" :class="{ disabled: equipPage <= 1 }" @click="equipGo(-1)">[上一页]</a>
+            <span class="gray">第 {{ Math.min(equipPage, equipTotalPages) }}/{{ equipTotalPages }} 页 · 共 {{ equipFiltered.length }} 件</span>
+            <a href="javascript:;" :class="{ disabled: equipPage >= equipTotalPages }" @click="equipGo(1)">[下一页]</a>
+          </div>
+          <hr/>
+          <div class="old-line">套装总览({{ (equipData.sets || []).length }})</div>
+          <div class="old-line" v-for="s in (equipData.sets || [])" :key="'set' + s.id">
+            <b>{{ s.name }}</b>
+            <span class="gray">（{{ s.parts }}件触发）</span>
+            <span class="green" v-if="s.effect"> {{ s.effect }}</span>
+            <span class="gray" v-if="s.military || s.logistics || s.learning || s.dmg || s.def || s.hp || s.move || s.crit || s.crit_dmg">
+              · 穿齐额外加成 {{ equipAttrText(s) }}
+            </span>
+          </div>
+          <div class="old-line gray" v-if="!(equipData.sets || []).length">(暂无套装，等管理员在后台配置)</div>
+          <div class="old-line gray">说明：套装效果<b>必须穿齐整套才生效</b>；只穿其中几件，只算那几件装备本身的属性。</div>
           <hr/>
           <div class="old-line">装备图鉴({{ equipData.all.length }})</div>
+          <div class="old-line">
+            搜索:
+            <input v-model="equipAllWord" type="text" placeholder="装备名 / 部位 / 套装"
+                   style="width:180px" @input="equipAllPage = 1"/>
+            <a href="javascript:;" @click="equipAllWord = ''; equipAllPage = 1">[清空]</a>
+            <span class="gray">共 {{ equipAllFiltered.length }} 件</span>
+          </div>
           <table class="ezfy-plain-table">
-            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
-            <tr v-for="e in equipData.all" :key="'ea' + e.id">
+            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
+            <tr v-for="e in equipAllPaged" :key="'ea' + e.id">
               <td>{{ e.name }}</td>
-              <td>{{ e.type }}</td>
+              <td>{{ e.slot || e.type }}</td>
+              <td>{{ e.set_name || '—' }}</td>
               <td>{{ e.tier_name }}</td>
-              <td>
-                <span v-if="e.military">军事+{{ e.military }} </span>
-                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
-                <span v-if="e.learning">学习+{{ e.learning }}</span>
-              </td>
+              <td>{{ equipAttrText(e) }}</td>
               <td>{{ e.level }}</td>
             </tr>
           </table>
+          <div class="old-line gray" v-if="!equipAllFiltered.length">(没有匹配「{{ equipAllWord }}」的装备)</div>
+          <!-- ★ 分页 -->
+          <div class="ezfy-pager" v-if="equipAllFiltered.length > equipAllPageSize">
+            <a href="javascript:;" :class="{ disabled: equipAllPage <= 1 }" @click="equipAllGo(-1)">[上一页]</a>
+            <span class="gray">第 {{ Math.min(equipAllPage, equipAllTotalPages) }}/{{ equipAllTotalPages }} 页 · 共 {{ equipAllFiltered.length }} 件</span>
+            <a href="javascript:;" :class="{ disabled: equipAllPage >= equipAllTotalPages }" @click="equipAllGo(1)">[下一页]</a>
+          </div>
         </div>
 
         <!-- 技能: 复刻 acade/skill.html 的编号列表(带完整说明) -->
@@ -2409,15 +2588,33 @@
           <div class="old-line gray" v-if="!skillData.officers.length">(暂无军官)</div>
         </div>
 
-        <!-- 计谋(复刻原版 acade/scheme.html: 12 条计谋说明, 各需信号弹) -->
+        <!-- 计谋(复刻原版 acade/scheme.html: 12 条计谋, 发动消耗信号弹)
+             ★ 2026-09-22：计谋配置改由后端下发（管理端可维护消耗数量/上下架），
+               页面显示持有的信号弹数量，够了才能发动。 -->
         <div class="panel" v-else-if="acadeTab === 'scheme'">
           <div class="old-line">说明：计谋需要进入相应界面才可以使用</div>
-          <div class="old-line" v-for="(s, i) in schemes" :key="'sc' + i">
+          <div class="old-line">
+            持有「{{ schemeData.bullet_name }}」：
+            <b :class="schemeData.bullet_have > 0 ? 'green' : 'red'">{{ schemeData.bullet_have }}</b> 个
+            <a href="javascript:;" @click="switchMallTab('item'); go('mall')">[去商城购买]</a>
+            <span class="gray">（黄金或钻石都能买）</span>
+          </div>
+          <div class="old-line" v-for="(s, i) in schemeData.schemes" :key="'sc' + s.id">
             {{ i + 1 }}.{{ s.name }}：<br/>
             {{ s.des }}<br/>
-            需要信号弹：{{ s.bullet }}
+            需要{{ schemeData.bullet_name }}：{{ s.bullet }}
+            <span class="gray">（持有 {{ schemeData.bullet_have }}）</span>
+            <!-- 先发制人：要选目标城市坐标 -->
+            <template v-if="s.kind === 1">
+              <span class="gray"> 目标坐标:</span>
+              <input v-model="schemeX" type="text" placeholder="x" style="width:56px"/>
+              <input v-model="schemeY" type="text" placeholder="y" style="width:56px"/>
+            </template>
+            <a v-if="s.enough" href="javascript:;" @click="doScheme(s)">[发动]</a>
+            <span v-else class="red">[{{ schemeData.bullet_name }}不足]</span>
             <br/>--------------------
           </div>
+          <div class="old-line gray" v-if="!schemeData.schemes.length">(暂无计谋，等管理员在后台配置)</div>
           <div class="old-line">
             <a href="javascript:;" @click="go('bag')">[背包(信号弹)]</a>
             <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -2484,19 +2681,69 @@
           等级:{{ officerDetail.officer.level }}<span class="green" v-if="officerDetail.officer.level >= officerMaxLevel">（已满级，最高 {{ officerMaxLevel }} 级）</span>
           经验:{{ officerDetail.officer.level >= officerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}<br/>
           军事:{{ officerDetail.officer.military_total }}
-          <span class="green" v-if="officerDetail.officer.equip_military">({{ officerDetail.officer.military }}+装备{{ officerDetail.officer.equip_military }})</span>
+          <span class="green" v-if="officerDetail.officer.equip_military">({{ officerDetail.officer.military }}+装备套装{{ officerDetail.officer.equip_military }})</span>
           后勤:{{ officerDetail.officer.logistics_total }}
-          <span class="green" v-if="officerDetail.officer.equip_logistics">({{ officerDetail.officer.logistics }}+装备{{ officerDetail.officer.equip_logistics }})</span>
+          <span class="green" v-if="officerDetail.officer.equip_logistics">({{ officerDetail.officer.logistics }}+装备套装{{ officerDetail.officer.equip_logistics }})</span>
           学识:{{ officerDetail.officer.learning_total }}
-          <span class="green" v-if="officerDetail.officer.equip_learning">({{ officerDetail.officer.learning }}+装备{{ officerDetail.officer.equip_learning }})</span><br/>
+          <span class="green" v-if="officerDetail.officer.equip_learning">({{ officerDetail.officer.learning }}+装备套装{{ officerDetail.officer.equip_learning }})</span><br/>
           攻击加成:{{ officerDetail.officer.attack }} &nbsp; 防御加成:{{ officerDetail.officer.defence }}<br/>
+          <!-- ★ 套装进度：**穿齐整套才生效**，没穿齐的显示还差几件 -->
+          <template v-if="officerDetail.officer.set_progress && officerDetail.officer.set_progress.length">
+            <span v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
+              <span v-if="sp.active" class="green">
+                套装生效: {{ sp.name }}（{{ sp.worn }}/{{ sp.parts }}件）<br/>
+              </span>
+              <span v-else class="gray">
+                套装未生效: {{ sp.name }}（{{ sp.worn }}/{{ sp.parts }}件，还差 {{ sp.need }} 件才触发套装效果）<br/>
+              </span>
+            </span>
+          </template>
+          <!-- ★ 装备的六项战斗加成（直接进战斗计算：伤害→攻击、防御、生命、移动距离→速度、暴击） -->
+          <span class="green" v-if="officerBattleText(officerDetail.officer.battle)">
+            装备战斗加成: {{ officerBattleText(officerDetail.officer.battle) }}<br/>
+          </span>
+          <!-- ★ 升星（消耗「军官升星卡」；概率/加点/上限都由管理端配置） -->
+          <div class="old-line" v-if="officerDetail.officer.star_up_on">
+            星级: {{ officerDetail.officer.star }}/{{ officerDetail.officer.star_max }}
+            <span v-if="officerDetail.officer.star >= officerDetail.officer.star_max" class="gray">（已满星）</span>
+            <template v-else>
+              <span class="gray">
+                （每升 1 星 三维各 +{{ officerDetail.officer.star_attr_gain }}；
+                {{ officerDetail.officer.star_chance_on ? ('当前成功率 ' + officerDetail.officer.star_rate + '%') : '必成功' }}）
+              </span>
+              <span class="gray">升星卡: 持有 {{ officerDetail.officer.star_card }} 张</span>
+            </template>
+          </div>
           忠诚:{{ officerDetail.officer.loyalty }}
           职位:{{ officerDetail.officer.position_name }}
           状态:{{ officerDetail.officer.status_name }}<br/>
+          <!-- ★ 属性加点（2026-09-22）：每升 1 级得 1 点，玩家自己分配；
+               只影响自己的军官，不影响军官池里的配置。 -->
+          <hr/>
           <div class="old-line">
+            可用属性点:
+            <b :class="officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ officerDetail.officer.free_points }}</b> 点
+            <span class="gray">
+              （每升 1 级得 1 点；已分配 {{ officerDetail.officer.used_points }} 点；
+              原始属性 军{{ officerDetail.officer.base_military }}/后{{ officerDetail.officer.base_logistics }}/学{{ officerDetail.officer.base_learning }}）
+            </span>
+          </div>
+          <div class="old-line" v-if="officerDetail.officer.free_points > 0">
+            分配：
+            军事<a href="javascript:;" @click="doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="doAddAttrAll('military')">[全加]</a>
+            &nbsp;后勤<a href="javascript:;" @click="doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="doAddAttrAll('logistics')">[全加]</a>
+            &nbsp;学识<a href="javascript:;" @click="doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="doAddAttrAll('learning')">[全加]</a>
+          </div>
+          <div class="old-line gray" v-else>
+            （暂无可用属性点：出征/使用经验书升级会获得；已分配的点可用「重修书」退回重新分配）
+          </div>
+          <div class="old-line officer-actions">
             <button @click="doGrant">[赏赐+10忠诚(1万金)]</button>
             <button v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
                     @click="doExile">[流放]</button>
+            <button v-if="officerDetail.officer.star_up_on &&
+                          officerDetail.officer.star < officerDetail.officer.star_max"
+                    @click="doStarUp">[升星]</button>
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
           </div>
@@ -2524,30 +2771,34 @@
           <hr/>
           已穿戴装备:
           <table>
-            <tr><th>名称</th><th>类型</th><th>军事</th><th>后勤</th><th>学习</th><th>操作</th></tr>
+            <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
               <td>{{ e.name }}</td>
-              <td>{{ e.type }}</td>
-              <td>{{ e.military }}</td>
-              <td>{{ e.logistics }}</td>
-              <td>{{ e.learning }}</td>
+              <td>{{ e.slot || e.type }}</td>
+              <td>{{ e.set_name || (e.set_id ? '套装' + e.set_id : '—') }}</td>
+              <td>{{ equipAttrText(e) || '—' }}</td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
             </tr>
           </table>
           <div class="old-line gray" v-if="!officerDetail.equipped.length">(未穿戴装备)</div>
           <hr/>
           装备背包:
+          <!-- ★ 检索框 + 分页（装备多的时候不用一页翻到底） -->
+          <div class="old-line">
+            搜索:
+            <input v-model="officerBagWord" type="text" placeholder="装备名 / 部位 / 套装"
+                   style="width:180px" @input="officerBagPage = 1"/>
+            <a href="javascript:;" @click="officerBagWord = ''; officerBagPage = 1">[清空]</a>
+            <span class="gray">共 {{ officerBagFiltered.length }} 件</span>
+          </div>
           <table>
-            <tr><th>名称</th><th>类型</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
-            <tr v-for="e in officerDetail.bag" :key="'db' + e.id">
+            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
+            <tr v-for="e in officerBagPaged" :key="'db' + e.id">
               <td>{{ e.name }}</td>
-              <td>{{ e.type }}</td>
+              <td>{{ e.slot || e.type }}</td>
+              <td>{{ e.set_name || '—' }}</td>
               <td>{{ e.tier_name }}</td>
-              <td>
-                <span v-if="e.military">军事+{{ e.military }} </span>
-                <span v-if="e.logistics">后勤+{{ e.logistics }} </span>
-                <span v-if="e.learning">学习+{{ e.learning }}</span>
-              </td>
+              <td>{{ equipAttrText(e) }}</td>
               <td>{{ e.level }}</td>
               <td>
                 <a v-if="!e.worn" href="javascript:;" @click="doEquip(e)">[穿戴]</a>
@@ -2555,7 +2806,13 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray" v-if="!officerDetail.bag.length">(背包暂无装备)</div>
+          <div class="old-line gray" v-if="!officerDetail.bag.length">(背包暂无装备，可到商城→装备套装购买)</div>
+          <div class="old-line gray" v-else-if="!officerBagFiltered.length">(没有匹配「{{ officerBagWord }}」的装备)</div>
+          <div class="ezfy-pager" v-if="officerBagFiltered.length > officerBagPageSize">
+            <a href="javascript:;" :class="{ disabled: officerBagPage <= 1 }" @click="officerBagGo(-1)">[上一页]</a>
+            <span class="gray">第 {{ Math.min(officerBagPage, officerBagTotalPages) }}/{{ officerBagTotalPages }} 页 · 共 {{ officerBagFiltered.length }} 件</span>
+            <a href="javascript:;" :class="{ disabled: officerBagPage >= officerBagTotalPages }" @click="officerBagGo(1)">[下一页]</a>
+          </div>
           <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官]</a></div>
         </div>
       </template>
@@ -2686,21 +2943,9 @@ export default {
       friendSearchDone: false,
       friendApplies: { inbox: [], outbox: [] },
       taskGroups: [],
-      // 计谋(复刻原版 acade/scheme.html, 共 12 条, 消耗信号弹)
-      schemes: [
-        { name: '恫疑虚喝', des: '恫疑虚喝', bullet: 4 },
-        { name: '隐真示假', des: '隐真示假', bullet: 4 },
-        { name: '十面埋伏', des: '十面埋伏', bullet: 7 },
-        { name: '欲擒故纵', des: '欲擒故纵', bullet: 7 },
-        { name: '偷梁换柱', des: '偷梁换柱', bullet: 6 },
-        { name: '反客为主', des: '反客为主', bullet: 6 },
-        { name: '先发制人', des: '使我军与敌军城市直接进入可战争状态，可战争时间为军官学识×1分钟，最多持续6小时，中计城市6小时内不再中计', bullet: 12 },
-        { name: '未雨绸缪', des: '未雨绸缪', bullet: 12 },
-        { name: '虚实相乱', des: '虚实相乱', bullet: 4 },
-        { name: '调虎离山', des: '调虎离山', bullet: 4 },
-        { name: '各个击破', des: '各个击破', bullet: 8 },
-        { name: '舍车保帅', des: '舍车保帅', bullet: 8 }
-      ],
+      // ★ 计谋（配置由后端下发，发动消耗「信号弹」）
+      schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
+      schemeX: '', schemeY: '',
       welfare: { rewards: [], gifts: {} },
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       orders: [],
@@ -2725,9 +2970,16 @@ export default {
       mallItems: [],
       // ★ 第九轮：商城分类 + 分页 + 钻石余额
       mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
+      // ★ 商城分栏：item=道具（原有） equipment=装备套装（用黄金/钻石买）
+      mallTab: 'item',
       // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 9999；原来写死 99）
       mallBuyMax: 9999,
       bagItems: [],
+      // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
+      bagWord: '', bagPage: 1, bagPageSize: 10,
+      equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
+      equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
+      officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       bagOfficers: [],
       bagSkills: [],
       useItem: null,
@@ -2744,9 +2996,17 @@ export default {
       officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
       skillData: { skills: [], officers: [], gold: 0 },
-      equipData: { bag: [], all: [] },
+      equipData: { bag: [], all: [], sets: [] },
       generalData: { generals: [] },
       officerDetail: { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 },
+      // ★ 装备商城（套装用黄金/钻石购买）
+      equipShop: { sets: [], items: [], gold: 0, diamond: 0 },
+      equipShopBuy: null,     // 正在填写购买数量的商品
+      equipShopCount: 1,
+      equipShopPay: 'gold',   // gold | diamond
+      // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
+      chestData: { chests: [], gold: 0, diamond: 0 },
+      chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [],
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
@@ -3038,6 +3298,61 @@ export default {
       const list = this.mallItems || []
       return cat ? list.filter(i => i.category === cat) : list
     },
+    // ============ ★ 通用「检索 + 分页」小工具（背包 / 装备列表共用） ============
+    // 后端一次性把列表下发，检索与分页都在前端做（这些列表不会大到需要服务端分页）。
+    bagFiltered () {
+      const w = (this.bagWord || '').trim().toLowerCase()
+      const list = this.bagItems || []
+      if (!w) return list
+      return list.filter(i => String(i.name || '').toLowerCase().includes(w) ||
+        String(i.description || '').toLowerCase().includes(w))
+    },
+    bagTotalPages () { return Math.max(1, Math.ceil(this.bagFiltered.length / this.bagPageSize)) },
+    bagPaged () {
+      const p = Math.min(Math.max(1, this.bagPage), this.bagTotalPages)
+      return this.bagFiltered.slice((p - 1) * this.bagPageSize, p * this.bagPageSize)
+    },
+    // 我的装备（可按 名称 / 部位 / 套装 / 类型 检索）
+    equipFiltered () {
+      const w = (this.equipWord || '').trim().toLowerCase()
+      const list = (this.equipData && this.equipData.bag) || []
+      if (!w) return list
+      return list.filter(e => [e.name, e.slot, e.type, e.set_name, e.series, e.tier_name]
+        .some(v => String(v || '').toLowerCase().includes(w)))
+    },
+    equipTotalPages () { return Math.max(1, Math.ceil(this.equipFiltered.length / this.equipPageSize)) },
+    equipPaged () {
+      const p = Math.min(Math.max(1, this.equipPage), this.equipTotalPages)
+      return this.equipFiltered.slice((p - 1) * this.equipPageSize, p * this.equipPageSize)
+    },
+    // 装备图鉴
+    equipAllFiltered () {
+      const w = (this.equipAllWord || '').trim().toLowerCase()
+      const list = (this.equipData && this.equipData.all) || []
+      if (!w) return list
+      return list.filter(e => [e.name, e.slot, e.type, e.set_name, e.series, e.tier_name]
+        .some(v => String(v || '').toLowerCase().includes(w)))
+    },
+    equipAllTotalPages () { return Math.max(1, Math.ceil(this.equipAllFiltered.length / this.equipAllPageSize)) },
+    equipAllPaged () {
+      const p = Math.min(Math.max(1, this.equipAllPage), this.equipAllTotalPages)
+      return this.equipAllFiltered.slice((p - 1) * this.equipAllPageSize, p * this.equipAllPageSize)
+    },
+    // 军官详情里的装备背包
+    officerBagFiltered () {
+      const w = (this.officerBagWord || '').trim().toLowerCase()
+      const list = (this.officerDetail && this.officerDetail.bag) || []
+      if (!w) return list
+      return list.filter(e => [e.name, e.slot, e.type, e.set_name, e.series, e.tier_name]
+        .some(v => String(v || '').toLowerCase().includes(w)))
+    },
+    officerBagTotalPages () {
+      return Math.max(1, Math.ceil(this.officerBagFiltered.length / this.officerBagPageSize))
+    },
+    officerBagPaged () {
+      const p = Math.min(Math.max(1, this.officerBagPage), this.officerBagTotalPages)
+      return this.officerBagFiltered.slice((p - 1) * this.officerBagPageSize, p * this.officerBagPageSize)
+    },
     mallTotalPages () {
       return Math.max(1, Math.ceil(this.mallFiltered.length / this.mallPageSize))
     },
@@ -3302,7 +3617,11 @@ export default {
       // 城市列表页要显示「军衔可建城数」，所以也拉一次军衔数据
       else if (t === 'cities') this.loadRank()
       else if (t === 'bag') this.loadBag()
-      else if (t === 'mall') this.loadMall(true)
+      else if (t === 'mall') {
+        this.loadMall(true)
+        if (this.mallTab === 'equipment') this.loadEquipShop()
+        if (this.mallTab === 'chest') this.loadChests()
+      }
       else if (t === 'exchange') this.loadExchange()
       else if (t === 'corps') this.loadCorps()
       else if (t === 'orders') this.loadOrders()
@@ -3704,6 +4023,68 @@ export default {
           this.bagOfficers = r.data.officers || []
           this.bagSkills = r.data.skills || []
         }
+      })
+    },
+    // ★ 商城分栏切换（item 道具 / equipment 装备套装 / chest 宝箱）
+    switchMallTab (tab) {
+      this.mallTab = tab
+      if (tab === 'equipment') this.loadEquipShop()
+      if (tab === 'chest') this.loadChests()
+    },
+    // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
+    loadChests () {
+      api.get('/games/ezfy/chest').then(r => {
+        if (r.code === 0) this.chestData = r.data
+      })
+    },
+    openChestBuy (ch) {
+      this.chestOpen = ch
+      this.chestCount = 1
+      this.chestPay = ch.price_diamond > 0 ? 'diamond' : 'gold'
+    },
+    async doOpenChest (ch) {
+      const n = parseInt(this.chestCount) || 0
+      if (n <= 0) { this.notify('请填写开箱数量'); return }
+      if (n > ch.open_max) { this.notify('单次最多开 ' + ch.open_max + ' 个'); return }
+      const cur = (ch.price_diamond > 0 && ch.price_gold > 0) ? this.chestPay : (ch.price_diamond > 0 ? 'diamond' : 'gold')
+      const unit = cur === 'diamond' ? '钻石' : this.resNames.gold
+      const price = cur === 'diamond' ? ch.price_diamond : ch.price_gold
+      if (!await this.ask('确认用 ' + (price * n) + unit + ' 开 ' + ch.name + '×' + n + ' 吗？')) return
+      api.post('/games/ezfy/chest/open', { chest_id: ch.id, count: n, currency: cur }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
+        this.notify(r.msg || '开箱成功')
+        this.chestResult = (r.data && r.data.results) || []
+        this.chestOpen = null
+        this.loadChests()
+        this.loadEquipShop()
+        this.loadBag()
+        this.loadView()
+      })
+    },
+    // ★ 装备商城（套装件，黄金/钻石购买）
+    loadEquipShop () {
+      api.get('/games/ezfy/equipshop').then(r => {
+        if (r.code === 0) this.equipShop = r.data
+      })
+    },
+    openEquipBuy (p) {
+      this.equipShopBuy = p
+      this.equipShopCount = 1
+      this.equipShopPay = p.price_gold > 0 ? 'gold' : 'diamond'
+    },
+    async doBuyEquip (p) {
+      const n = parseInt(this.equipShopCount) || 0
+      if (n <= 0) { this.notify('请填写购买数量'); return }
+      const cur = (p.price_diamond > 0 && p.price_gold > 0) ? this.equipShopPay : (p.price_diamond > 0 ? 'diamond' : 'gold')
+      const unit = cur === 'diamond' ? '钻石' : this.resNames.gold
+      const price = cur === 'diamond' ? p.price_diamond : p.price_gold
+      if (!await this.ask('确认用 ' + (price * n) + unit + ' 购买 ' + p.name + '×' + n + ' 吗？')) return
+      api.post('/games/ezfy/equipshop/buy', { cfg_id: p.id, count: n, currency: cur }).then(r => {
+        if (r.code !== 0) this.notify(r.msg || '购买失败')
+        this.equipShopBuy = null
+        this.loadEquipShop()
+        this.loadView()
+        this.loadBag()
       })
     },
     // ★ 拉商城数据。resetPage = true 时才回到第 1 页（进商城页签时用）。
@@ -4228,6 +4609,34 @@ export default {
       if (o.equip_learning) parts.push('学识+' + o.equip_learning)
       return parts.length ? '(装备 ' + parts.join(' ') + ')' : ''
     },
+    // ★ 装备六项战斗属性的展示文案（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
+    equipAttrText (e) {
+      if (!e) return ''
+      const parts = []
+      if (e.dmg) parts.push('伤害+' + e.dmg + '%')
+      if (e.def) parts.push('防御+' + e.def + '%')
+      if (e.hp) parts.push('生命+' + e.hp + '%')
+      if (e.move) parts.push('移动距离+' + e.move + '%')
+      if (e.crit) parts.push('暴击几率+' + e.crit + '%')
+      if (e.crit_dmg) parts.push('暴击伤害+' + e.crit_dmg + '%')
+      // 老装备（军/后/学 三维）走另一套展示
+      if (e.military) parts.push('军事+' + e.military)
+      if (e.logistics) parts.push('后勤+' + e.logistics)
+      if (e.learning) parts.push('学识+' + e.learning)
+      return parts.join(' ')
+    },
+    // 军官详情里「装备战斗加成」一行
+    officerBattleText (b) {
+      if (!b) return ''
+      const parts = []
+      if (b.dmg) parts.push('伤害+' + b.dmg + '%')
+      if (b.def) parts.push('防御+' + b.def + '%')
+      if (b.hp) parts.push('生命+' + b.hp + '%')
+      if (b.move) parts.push('移动距离+' + b.move + '%')
+      if (b.crit) parts.push('暴击几率+' + b.crit + '%')
+      if (b.crit_dmg) parts.push('暴击伤害+' + b.crit_dmg + '%')
+      return parts.join(' ')
+    },
     // 防御兵种（城防 type=4：碉堡/榴弹炮/反坦克炮/防空炮…）固定阵地
     isDefenceTroop (t) {
       return !!t && t.type === 4
@@ -4678,6 +5087,17 @@ export default {
       const p = this.mallPage + d
       if (p >= 1 && p <= this.mallTotalPages) this.mallPage = p
     },
+    // ★ 通用翻页（检索条件变了要把页码归 1，见各处的 setXxxWord）
+    pagerGo (d, cur, total) {
+      const p = cur + d
+      return (p >= 1 && p <= total) ? p : cur
+    },
+    bagGo (d) { this.bagPage = this.pagerGo(d, this.bagPage, this.bagTotalPages) },
+    equipGo (d) { this.equipPage = this.pagerGo(d, this.equipPage, this.equipTotalPages) },
+    equipAllGo (d) { this.equipAllPage = this.pagerGo(d, this.equipAllPage, this.equipAllTotalPages) },
+    officerBagGo (d) {
+      this.officerBagPage = this.pagerGo(d, this.officerBagPage, this.officerBagTotalPages)
+    },
     openBuy (it) {
       this.buyItem = it
       this.buyCount = 1
@@ -4727,7 +5147,8 @@ export default {
       })
     },
     needOfficer (it) {
-      return it.item_type === 10 || it.item_type === 11 || it.item_type === 12
+      // ★ 19 = 军官升星卡，也要选军官（漏了它会没有「军官:」下拉，玩家没法用）
+      return it.item_type === 10 || it.item_type === 11 || it.item_type === 12 || it.item_type === 19
     },
     openUse (it) {
       this.useItem = it
@@ -4933,14 +5354,51 @@ export default {
     },
     switchAcade (tab) {
       this.acadeTab = tab
+      // ★ 进装备页时把检索/分页复位，避免上次的搜索词把列表筛空（看着像「装备没了」）
+      if (tab === 'equip') {
+        this.equipWord = ''
+        this.equipPage = 1
+        this.equipAllWord = ''
+        this.equipAllPage = 1
+      }
       if (tab === 'officer' || tab === 'mayor' || tab === 'captive') {
         api.get('/games/ezfy/officers').then(r => {
           if (r.code === 0) this.officerData = r.data
         })
-      } else if (tab === 'search') this.loadRecruit()
+      }       else if (tab === 'search') this.loadRecruit()
       else if (tab === 'skill') this.loadAcadeSkills()
       else if (tab === 'equip') this.loadAcadeEquip()
+      else if (tab === 'scheme') this.loadSchemes()
       else if (tab === 'generals') this.loadAcadeGenerals()
+    },
+    // ★ 计谋列表（配置由后端下发，含持有信号弹数量）
+    loadSchemes () {
+      api.get('/games/ezfy/schemes').then(r => {
+        if (r.code === 0) this.schemeData = r.data
+      })
+    },
+    async doScheme (s) {
+      const b = this.schemeData
+      if (b.bullet_have < s.bullet) { this.notify('「' + b.bullet_name + '」不足'); return }
+      const body = { scheme_id: s.id }
+      if (s.kind === 1) {
+        const x = parseInt(this.schemeX)
+        const y = parseInt(this.schemeY)
+        if (!x || !y) { this.notify('「' + s.name + '」需要填写目标城市坐标（x / y）'); return }
+        body.target_x = x
+        body.target_y = y
+      }
+      const tip = s.kind === 1
+        ? ('确认对 (' + body.target_x + ',' + body.target_y + ') 发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
+        : ('确认发动「' + s.name + '」吗？消耗 ' + b.bullet_name + '×' + s.bullet)
+      if (!await this.ask(tip)) return
+      api.post('/games/ezfy/scheme/use', body).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '发动失败'); return }
+        this.notify(r.msg || '计谋已发动')
+        this.loadSchemes()
+        this.loadBag()
+        this.loadView()
+      })
     },
     loadRecruit () {
       api.get('/games/ezfy/acade/recruit').then(r => {
@@ -4964,6 +5422,9 @@ export default {
     },
     openOfficer (id) {
       this.cur = 'officerdetail'
+      // ★ 换军官时把背包装备的检索/分页复位
+      this.officerBagWord = ''
+      this.officerBagPage = 1
       this.loadOfficerDetail(id)
     },
     loadOfficerDetail (id) {
@@ -5008,6 +5469,42 @@ export default {
       api.post('/games/ezfy/officers/' + id + '/grant', {}).then(r => {
         if (r.code !== 0) this.notify(r.msg || '赏赐失败')
         this.loadOfficerDetail(id)
+      })
+    },
+    // ★ 属性加点（每升 1 级得 1 点，只影响自己的军官）
+    doAddAttr (attr, count) {
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/attr', { attr, count }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '加点失败'); return }
+        this.notify(r.msg || '加点成功')
+        this.loadOfficerDetail(id)
+      })
+    },
+    async doAddAttrAll (attr) {
+      const free = this.officerDetail.officer.free_points
+      const name = { military: '军事', logistics: '后勤', learning: '学识' }[attr] || attr
+      if (!await this.ask('把剩余 ' + free + ' 点全部加到「' + name + '」吗？')) return
+      const id = this.officerDetail.officer.id
+      api.post('/games/ezfy/officers/' + id + '/attr/all', { attr }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '加点失败'); return }
+        this.notify(r.msg || '加点成功')
+        this.loadOfficerDetail(id)
+      })
+    },
+    // ★ 升星（消耗「军官升星卡」）
+    async doStarUp () {
+      const o = this.officerDetail.officer
+      if (o.star >= o.star_max) { this.notify('星级已达上限'); return }
+      if (o.star_card <= 0) { this.notify('没有「军官升星卡」，可在商城购买或开宝箱获得'); return }
+      const rate = o.star_chance_on ? ('成功率 ' + o.star_rate + '%') : '必成功'
+      if (!await this.ask('使用 1 张「军官升星卡」给 ' + o.name + ' 升星吗？\n' + rate +
+        '，成功后三维各 +' + o.star_attr_gain + '（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
+      const id = o.id
+      api.post('/games/ezfy/officers/' + id + '/starup', {}).then(r => {
+        this.notify(r.msg || (r.code === 0 ? '升星成功' : '升星失败'))
+        this.loadOfficerDetail(id)
+        this.loadBag()
+        this.loadAcade()
       })
     },
     doLearn (s) {
@@ -5265,6 +5762,10 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0 2px;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
+/* ★ 用户反馈「[赏赐…][流放] 这俩按钮之间来点间距」→ 军官详情的操作按钮行统一拉开间距。
+   只作用在带 .officer-actions 的行上，不动其它页面的按钮。 */
+.ezfy-page .old-line.officer-actions button { margin-right: 10px; margin-top: 3px; }
+.ezfy-page .old-line.officer-actions button:last-child { margin-right: 0; }
 /* ★ 出征确认页(orderpre)分区：① ② ③ … 小标题 + 等宽列网格。
    原来所有内容都是一串 .old-line 平铺，兵种/资源/宿营/计算混在一起，用户反馈「看着好乱」。
    ★ 用户反馈「兵力还是竖着展示，整齐一点」→ 兵力改成 **CSS Grid 等宽列**：

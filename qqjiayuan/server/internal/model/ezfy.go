@@ -116,10 +116,11 @@ func (EzfyCfgWildland) TableName() string { return "ezfy_cfg_wildland" }
 // EzfyMapTile 地图格子覆盖（管理端维护）
 //
 // ★ 用户要求：管理端要能维护**所有**野地（不只是玩家已占领的），能改土地类型，
-//   也能把某格设成 寇城 / 活动寇城。
 //
-//   地图本身是「坐标哈希推导」出来的（地形、野地等级、寇城、活动目标全都不落库），
-//   所以这里做一张**覆盖表**：命中就覆盖哈希结果，没命中就照旧走哈希。
+//	也能把某格设成 寇城 / 活动寇城。
+//
+//	地图本身是「坐标哈希推导」出来的（地形、野地等级、寇城、活动目标全都不落库），
+//	所以这里做一张**覆盖表**：命中就覆盖哈希结果，没命中就照旧走哈希。
 type EzfyMapTile struct {
 	ID uint `gorm:"primaryKey" json:"id"`
 	X  int  `gorm:"uniqueIndex:uk_map_tile" json:"x"`
@@ -275,6 +276,23 @@ type EzfyCfgLimit struct {
 	WarRequireOn int `json:"war_require_on"`
 	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
 	MarchCapOn int `json:"march_cap_on"`
+
+	// ============ 军官升星（2026-09-22 用户要求）============
+	//
+	// 「玩家自己的军官可以用升星卡升级星级，属性增加；概率的最好也能有个开关控制，
+	//   属性加多少也要可配。」
+	//
+	// ⚠️ 下面三个是**开关**（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
+	OfficerStarUpOn       int `json:"officer_star_up_on"`        // 升星功能：1 开 / 0 关（关了不能用升星卡）
+	OfficerStarChanceOn   int `json:"officer_star_chance_on"`    // 概率开关：1 按概率 / 0 必成功
+	OfficerStarKeepOnFail int `json:"officer_star_keep_on_fail"` // 失败是否保留升星卡：1 保留 / 0 扣掉
+
+	// 下面四个是**数值**（0 无意义 → 回落默认值）
+	OfficerStarChance     int `gorm:"default:80" json:"officer_star_chance"`     // 基础成功率%（默认 80）
+	OfficerStarChanceStep int `gorm:"default:5" json:"officer_star_chance_step"` // 每高 1 星成功率 -N%（默认 5）
+	OfficerStarChanceMin  int `gorm:"default:20" json:"officer_star_chance_min"` // 成功率下限%（默认 20）
+	OfficerStarAttrGain   int `gorm:"default:10" json:"officer_star_attr_gain"`  // 每升 1 星三维各 +N（默认 10）
+	OfficerStarMax        int `gorm:"default:10" json:"officer_star_max"`        // 星级上限（默认 10）
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -284,10 +302,10 @@ func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
 // 用户规则：二战的聊天敏感词走自己的单独维护页面。
 // Type: 1 = 替换（用 Replace 覆盖），2 = 拦截（直接拒绝发言）。
 type EzfyWordFilter struct {
-	ID      uint      `gorm:"primaryKey" json:"id"`
-	Word    string    `gorm:"type:varchar(50);uniqueIndex:uk_ezfy_word" json:"word"`
-	Replace string    `gorm:"type:varchar(50)" json:"replace"`
-	Type    int       `gorm:"default:1" json:"type"`
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Word      string    `gorm:"type:varchar(50);uniqueIndex:uk_ezfy_word" json:"word"`
+	Replace   string    `gorm:"type:varchar(50)" json:"replace"`
+	Type      int       `gorm:"default:1" json:"type"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -753,15 +771,15 @@ func (EzfyChat) TableName() string { return "ezfy_chat" }
 
 // EzfyExchange 交易所挂单：玩家卖资源换黄金；系统挂单可定价黄金或钻石
 type EzfyExchange struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	SellerId   uint      `gorm:"index:idx_seller" json:"seller_id"`
-	SellerName string    `gorm:"type:varchar(20)" json:"seller_name"`
-	EsType     int       `json:"es_type"` // 1粮 2钢 3油 4稀矿
-	EsCount    int64     `json:"es_count"`
-	TotalPrice int64     `json:"total_price"`                              // 总价(货币见 Currency)
-	Status     int       `gorm:"index:idx_status;default:0" json:"status"` // 0在售 1成交 2下架
-	BuyerId    uint      `json:"buyer_id"`
-	IsSystem   int       `gorm:"default:0" json:"is_system"` // 1系统挂单
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	SellerId   uint   `gorm:"index:idx_seller" json:"seller_id"`
+	SellerName string `gorm:"type:varchar(20)" json:"seller_name"`
+	EsType     int    `json:"es_type"` // 1粮 2钢 3油 4稀矿
+	EsCount    int64  `json:"es_count"`
+	TotalPrice int64  `json:"total_price"`                              // 总价(货币见 Currency)
+	Status     int    `gorm:"index:idx_status;default:0" json:"status"` // 0在售 1成交 2下架
+	BuyerId    uint   `json:"buyer_id"`
+	IsSystem   int    `gorm:"default:0" json:"is_system"` // 1系统挂单
 	// ★ 计价货币：1 黄金 2 钻石。
 	//   用户规则：**玩家挂单只能用黄金**；系统挂单（管理端新增）可以用黄金或钻石定价。
 	Currency  int       `gorm:"default:1" json:"currency"`
@@ -773,11 +791,18 @@ func (EzfyExchange) TableName() string { return "ezfy_exchange" }
 
 // ============ 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命） ============
 
-// EzfyCfgGeneral 名将配置（源自 inithebing.sql cfg_general 31 条）
+// EzfyCfgGeneral 军官池（源自 inithebing.sql cfg_general 31 条名将 + 管理端可新增普通军官）
+//
+// ★ 2026-09-22 用户要求：军官分两类，**都在这张池子里**，由管理端统一维护：
+//   - kind=1 普通军官：军校招募/刷新时**从池子里按权重抽**（不再纯随机生成）
+//   - kind=2 名将    ：只由管理端发放，不进招募池
+//
+// Level 的语义 = 该军官的**等级上限**（名将就是 110~150，普通军官一般也填 150）。
+// Military/Logistics/Learning = 该军官的**原始属性**（玩家实例的 base_*，升级加点只改实例）。
 type EzfyCfgGeneral struct {
 	ID           int    `gorm:"primaryKey" json:"id"`
 	Name         string `gorm:"type:varchar(100)" json:"name"`
-	Level        int    `json:"level"` // 名将等级(决定招募费用=等级×500黄金)
+	Level        int    `json:"level"` // 等级上限(名将决定招募费用=等级×1000黄金)
 	Military     int    `json:"military"`
 	Logistics    int    `json:"logistics"`
 	Learning     int    `json:"learning"`
@@ -786,7 +811,11 @@ type EzfyCfgGeneral struct {
 	GetCondition string `gorm:"type:varchar(255)" json:"get_condition"`
 	Skill        string `gorm:"type:varchar(500)" json:"skill"`
 	Des          string `gorm:"type:varchar(500)" json:"des"`
-	Recruit      int    `gorm:"default:1" json:"recruit"` // 1=可入军校候选 0=停用
+	Recruit      int    `gorm:"default:1" json:"recruit"` // 1=可招募 0=停用
+	// ★ 2026-09-22 新增：1=普通军官（军校池） 2=名将（管理端发放）
+	Kind int `gorm:"default:2" json:"kind"`
+	// ★ 普通军官在军校刷新时的抽取权重（越大越容易刷到），名将不用
+	Weight int `gorm:"default:100" json:"weight"`
 }
 
 func (EzfyCfgGeneral) TableName() string { return "ezfy_cfg_general" }
@@ -802,45 +831,196 @@ type EzfyCfgSkill struct {
 
 func (EzfyCfgSkill) TableName() string { return "ezfy_cfg_skill" }
 
-// EzfyCfgEquipment 装备配置（26 件：18 装备 + 8 地形珠宝）
+// EzfyCfgEquipment 装备池（管理端维护：可新增装备/套装件、定价、上架商城）
 type EzfyCfgEquipment struct {
 	ID        int    `gorm:"primaryKey" json:"id"`
 	Name      string `gorm:"type:varchar(50)" json:"name"`
-	Type      string `gorm:"type:varchar(20);default:武器" json:"type"` // 武器/防具/饰品/珠宝
+	Type      string `gorm:"type:varchar(20);default:武器" json:"type"` // 武器/防具/饰品/珠宝/套装
 	Tier      int    `gorm:"default:1" json:"tier"`                   // 1初级 2中级 3高级 4特殊
 	Military  int    `json:"military"`
 	Logistics int    `json:"logistics"`
 	Learning  int    `json:"learning"`
 	Level     int    `gorm:"default:1" json:"level"` // 穿戴等级需求
 	Des       string `gorm:"type:varchar(200)" json:"des"`
+	// ★ 2026-09-22 新增（装备池「大池子」+ 套装 + 商城上架）
+	// Slot 穿戴部位（头/肩/胸/腰/手/足/饰品/挂件/勋章/左槽/右槽/武器/防具/珠宝…）
+	// 留空则回落到 Type（老数据兼容）。同部位唯一靠它判定。
+	Slot string `gorm:"type:varchar(20);default:''" json:"slot"`
+	// SetId 所属套装（ezfy_cfg_equip_set.id），0=非套装
+	SetId int `gorm:"default:0" json:"set_id"`
+	// PriceGold / PriceDiamond 商城售价，0 = 该渠道不卖
+	PriceGold    int64 `gorm:"default:0" json:"price_gold"`
+	PriceDiamond int64 `gorm:"default:0" json:"price_diamond"`
+	// Stock 商城库存，-1 = 无上限；0 = 已售罄
+	Stock int `gorm:"default:-1" json:"stock"`
+	// Effect 额外效果说明（如「攻速+40%」），仅展示 + 战斗加成文本
+	Effect string `gorm:"type:varchar(200);default:''" json:"effect"`
+	// ===== ★ 2026-09-22 第二批：参照 装备距离伤害表.xlsx =====
+	//
+	// 原版军官装备是 **11 个部位 + 6 项战斗属性（全部是百分比加成）**，
+	// 集齐同一系列 11 件就是一套「套装」（套装属性 = 各件之和，另外可再配额外加成）。
+	//
+	// Series 系列名（革命者 / 渡鸦之魂 / 黑色幽灵 / 巨匠 / 青天白日 / 赤色锤镰 / 空=普通散件）
+	Series string `gorm:"type:varchar(30);default:''" json:"series"`
+	// Enhance / EnhanceMax 强化等级与上限（表里写「装备+20」，数值就是 +20 时的值）
+	Enhance    int `gorm:"default:0" json:"enhance"`
+	EnhanceMax int `gorm:"default:20" json:"enhance_max"`
+	// 六项战斗属性，单位「百分点」：125 = 伤害+125%
+	Dmg     int `gorm:"default:0" json:"dmg"`      // 伤害加成%
+	Def     int `gorm:"default:0" json:"def"`      // 防御加成%
+	Hp      int `gorm:"default:0" json:"hp"`       // 生命加成%
+	Move    int `gorm:"default:0" json:"move"`     // 移动距离加成%
+	Crit    int `gorm:"default:0" json:"crit"`     // 暴击几率加成%
+	CritDmg int `gorm:"default:0" json:"crit_dmg"` // 暴击伤害加成%
 }
 
 func (EzfyCfgEquipment) TableName() string { return "ezfy_cfg_equipment" }
 
-// EzfyOfficer 武将实例（军官）
+// EquipSlot 实际穿戴部位（Slot 为空时回落到 Type，兼容老数据）
+func (e EzfyCfgEquipment) EquipSlot() string {
+	if e.Slot != "" {
+		return e.Slot
+	}
+	return e.Type
+}
+
+// EzfyCfgEquipSet 军官装备套装（穿戴同套 N 件触发套装加成）
+//
+// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家用黄金或钻石在商城购买。
+type EzfyCfgEquipSet struct {
+	ID        int    `gorm:"primaryKey" json:"id"`
+	Name      string `gorm:"type:varchar(100)" json:"name"`
+	Parts     int    `gorm:"default:3" json:"parts"` // 触发套装效果所需件数
+	Military  int    `gorm:"default:0" json:"military"`
+	Logistics int    `gorm:"default:0" json:"logistics"`
+	Learning  int    `gorm:"default:0" json:"learning"`
+	Effect    string `gorm:"type:varchar(300);default:''" json:"effect"` // 额外效果说明(展示)
+	Des       string `gorm:"type:varchar(300);default:''" json:"des"`
+	// ★ 2026-09-22：系列套装（11 件）的六项战斗属性加成。
+	// 注意：装备距离伤害表里的「套装属性」= 11 件之和，**各件本身已经加了**，
+	// 这里填的是**额外**加成（默认 0，管理端可加）。
+	Series  string `gorm:"type:varchar(30);default:''" json:"series"`
+	Dmg     int    `gorm:"default:0" json:"dmg"`
+	Def     int    `gorm:"default:0" json:"def"`
+	Hp      int    `gorm:"default:0" json:"hp"`
+	Move    int    `gorm:"default:0" json:"move"`
+	Crit    int    `gorm:"default:0" json:"crit"`
+	CritDmg int    `gorm:"default:0" json:"crit_dmg"`
+}
+
+func (EzfyCfgEquipSet) TableName() string { return "ezfy_cfg_equip_set" }
+
+// ============ 宝箱（2026-09-22 用户要求）============
+//
+// 「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
+//
+// 玩法：宝箱用钻石（或黄金）买 → 开箱按奖池权重随机出一件奖品 →
+// 装备直接进玩家背包（可就地穿到军官身上），道具进道具背包。
+
+// EzfyCfgChest 宝箱配置（管理端维护）
+type EzfyCfgChest struct {
+	ID           int    `gorm:"primaryKey" json:"id"`
+	Name         string `gorm:"type:varchar(100)" json:"name"`
+	PriceDiamond int64  `gorm:"default:0" json:"price_diamond"` // 钻石价，0=不卖钻石
+	PriceGold    int64  `gorm:"default:0" json:"price_gold"`    // 黄金价，0=不卖黄金
+	// Stock 库存：-1 = 无上限，0 = 已售罄
+	Stock int `gorm:"default:-1" json:"stock"`
+	// OpenMax 单次最多开几个（防误点把钻石全花了）
+	OpenMax int `gorm:"default:10" json:"open_max"`
+	// Enabled 是否上架：1 上架 / 0 下架（管理端用 map 写，0 能写进去）
+	Enabled int    `gorm:"default:1" json:"enabled"`
+	SortNo  int    `gorm:"default:0" json:"sort_no"`
+	Des     string `gorm:"type:varchar(300);default:''" json:"des"`
+	// Effect 奖池说明（展示用，如「必出军官装备一件」）
+	Effect string `gorm:"type:varchar(300);default:''" json:"effect"`
+}
+
+func (EzfyCfgChest) TableName() string { return "ezfy_cfg_chest" }
+
+// EzfyCfgChestItem 宝箱奖池（一条 = 一个奖品 + 权重）
+type EzfyCfgChestItem struct {
+	ID      int `gorm:"primaryKey" json:"id"`
+	ChestId int `gorm:"index:idx_chest" json:"chest_id"`
+	// Kind 奖品类型：1=装备(ezfy_cfg_equipment) 2=道具(ezfy_cfg_item) 3=资源
+	Kind  int `gorm:"default:1" json:"kind"`
+	RefId int `gorm:"default:0" json:"ref_id"` // 装备/道具的 cfg_id；资源时填 0
+	Count int `gorm:"default:1" json:"count"`
+	// Weight 权重（越大越容易抽到）；全部为 0 时按等概率
+	Weight int `gorm:"default:100" json:"weight"`
+	// Quality 展示用品质标签（普通/稀有/史诗/传说），纯展示
+	Quality string `gorm:"type:varchar(20);default:''" json:"quality"`
+	Des     string `gorm:"type:varchar(200);default:''" json:"des"`
+}
+
+func (EzfyCfgChestItem) TableName() string { return "ezfy_cfg_chest_item" }
+
+// EzfyCfgScheme 计谋配置（2026-09-22 用户要求）
+//
+// 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗。」
+//
+// 原版 acade/scheme.html 有 12 条计谋，每条消耗不同数量的信号弹。
+// 这里做成管理端可维护的配置表，不再写死在前端。
+type EzfyCfgScheme struct {
+	ID   int    `gorm:"primaryKey" json:"id"`
+	Name string `gorm:"type:varchar(50)" json:"name"`
+	Des  string `gorm:"type:varchar(500);default:''" json:"des"`
+	// Bullet 发动一次消耗几个信号弹
+	Bullet int `gorm:"default:1" json:"bullet"`
+	// Kind 计谋类型：
+	//   0 = 纯说明（原版就是「需要进入相应界面才可以使用」，这里只做消耗 + 战报记录）
+	//   1 = 先发制人（使双方立即进入可战争状态 N 分钟）
+	Kind int `gorm:"default:0" json:"kind"`
+	// WarMinutes Kind=1 时的可战争时长（分钟）；实际还会被军官学识夹一次
+	WarMinutes int `gorm:"default:60" json:"war_minutes"`
+	// WarMaxMinutes 可战争时长上限（分钟，原版 6 小时 = 360）
+	WarMaxMinutes int `gorm:"default:360" json:"war_max_minutes"`
+	Enabled       int `gorm:"default:1" json:"enabled"`
+	SortNo        int `gorm:"default:0" json:"sort_no"`
+}
+
+func (EzfyCfgScheme) TableName() string { return "ezfy_cfg_scheme" }
+
+// EzfyOfficer 玩家拥有的军官实例（从军官池 ezfy_cfg_general 复制而来）
+//
+// ★ 2026-09-22 用户要求：**加点与升级只影响玩家自己的军官实例，绝不回写军官池**。
+//   - Base* = 从池子复制来的**原始属性**（重修书洗点后回退到这个值）
+//   - Military/Logistics/Learning = **当前属性** = Base* + 玩家加点 + 装备/套装加成另算
+//   - FreePoints = 还没分配的属性点，每升 1 级 +1
 type EzfyOfficer struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	CityId     int64     `gorm:"index:idx_city" json:"city_id"`
-	GeneralId  int       `json:"general_id"`
-	Name       string    `gorm:"type:varchar(100)" json:"name"`
-	Star       int       `gorm:"default:1" json:"star"`
-	Level      int       `gorm:"default:1" json:"level"`
-	Exp        int64     `json:"exp"`
-	Military   int       `json:"military"`
-	Logistics  int       `json:"logistics"`
-	Learning   int       `json:"learning"`
-	Loyalty    int       `gorm:"default:100" json:"loyalty"`         // 0-100，归零离职
-	Skill      string    `gorm:"type:varchar(500)" json:"skill"`     // 技能名 JSON 数组
-	Equipment  string    `gorm:"type:varchar(500)" json:"equipment"` // 已穿戴装备 JSON 数组
-	Position   int       `gorm:"default:0" json:"position"`          // 0无 1市长 2城守
-	Status     int       `gorm:"default:0" json:"status"`            // 0在职 1出征中 2被俘
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	CityId    int64  `gorm:"index:idx_city" json:"city_id"`
+	GeneralId int    `json:"general_id"`
+	Name      string `gorm:"type:varchar(100)" json:"name"`
+	Star      int    `gorm:"default:1" json:"star"`
+	Level     int    `gorm:"default:1" json:"level"`
+	Exp       int64  `json:"exp"`
+	Military  int    `json:"military"`
+	Logistics int    `json:"logistics"`
+	Learning  int    `json:"learning"`
+	Loyalty   int    `gorm:"default:100" json:"loyalty"`     // 0-100，归零离职
+	Skill     string `gorm:"type:varchar(500)" json:"skill"` // 技能名 JSON 数组
+	// ★ Equipment 存的是已穿戴装备的 JSON 数组，**一条 ~200 字符**，
+	//   11 件套（军官装备）就要 ~2200 字符 —— 用 varchar 很容易被 MySQL
+	//   **静默截断/报 1406**（实测 varchar(500) 只存进 4 件，玩家看到「穿了但没效果」）。
+	//   直接上 text，别再算边界了。
+	Equipment  string    `gorm:"type:text" json:"equipment"`
+	Position   int       `gorm:"default:0" json:"position"` // 0无 1市长 2城守
+	Status     int       `gorm:"default:0" json:"status"`   // 0在职 1出征中 2被俘
 	IsCaptive  int       `gorm:"default:0" json:"is_captive"`
 	UpdateTime time.Time `json:"update_time"`
+	// ★ 2026-09-22 新增：原始属性 + 可用属性点
+	//
+	// 带 default:0 是为了让 AutoMigrate 建出 `NOT NULL DEFAULT 0` 的列
+	// （不带 default 时建出来是 NULL，老行会读到 NULL → JSON 里出现 null）。
+	BaseMilitary  int `gorm:"default:0" json:"base_military"`
+	BaseLogistics int `gorm:"default:0" json:"base_logistics"`
+	BaseLearning  int `gorm:"default:0" json:"base_learning"`
+	FreePoints    int `gorm:"default:0" json:"free_points"`
 }
 
 func (EzfyOfficer) TableName() string { return "ezfy_officer" }
 
-// EzfyEquipment 玩家装备背包（野地掉宝入库，可穿戴到军官）
+// EzfyEquipment 玩家装备背包（野地掉宝 / 商城购买入库，可穿戴到军官）
 type EzfyEquipment struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserId    uint      `gorm:"index:idx_user" json:"user_id"`
@@ -855,9 +1035,29 @@ type EzfyEquipment struct {
 	Level     int       `json:"level"`
 	OfficerId int64     `gorm:"index:idx_officer" json:"officer_id"` // 0=未穿戴
 	CreatedAt time.Time `json:"created_at"`
+	// ★ 2026-09-22 新增：穿戴部位 + 所属套装（从装备池复制，供套装效果判定）
+	Slot  string `gorm:"type:varchar(20);default:''" json:"slot"`
+	SetId int    `gorm:"default:0" json:"set_id"`
+	// ★ 六项战斗属性（从装备池复制，直接进战斗计算）
+	Series  string `gorm:"type:varchar(30);default:''" json:"series"`
+	Enhance int    `gorm:"default:0" json:"enhance"`
+	Dmg     int    `gorm:"default:0" json:"dmg"`
+	Def     int    `gorm:"default:0" json:"def"`
+	Hp      int    `gorm:"default:0" json:"hp"`
+	Move    int    `gorm:"default:0" json:"move"`
+	Crit    int    `gorm:"default:0" json:"crit"`
+	CritDmg int    `gorm:"default:0" json:"crit_dmg"`
 }
 
 func (EzfyEquipment) TableName() string { return "ezfy_equipment" }
+
+// EquipSlot 实际穿戴部位（Slot 为空时回落到 Type，兼容老数据）
+func (e EzfyEquipment) EquipSlot() string {
+	if e.Slot != "" {
+		return e.Slot
+	}
+	return e.Type
+}
 
 // EzfyRecruit 军校每日候选名将 / 刷新次数（每日 0 点重置，限刷 5 次）
 type EzfyRecruit struct {

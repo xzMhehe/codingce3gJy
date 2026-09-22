@@ -2,7 +2,9 @@ package handler
 
 import (
 	"fmt"
+	"math/rand"
 	"sort"
+	"strings"
 )
 
 // 二战风云 多回合战斗引擎（忠实移植 BattleEngine.java）
@@ -61,10 +63,12 @@ type ezfyBattleResult struct {
 // attackerUnits/defenderUnits: [troopId, count]
 // atkBonus: 攻方攻击加成%(科技)  defBonus: 守方防御加成%(城墙+科技)
 // atkSpeedBonus/defSpeedBonus: 速度加成%
+// atkEquip/defEquip: 装备六项加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害，单位百分点）
 // atkTargets/defTargets: 兵种ID->优先攻击兵种ID(0=最近, 司令部配置)
 // atkMoves/defMoves: 兵种ID->1前进 0停止
 func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
+	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int) ezfyBattleResult {
@@ -77,8 +81,20 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defOfficerDesc != "" {
 		actions = append(actions, "【守方军官】"+defOfficerDesc)
 	}
+	// ★ 装备六项加成并入基础加成：伤害→攻击、防御→防御、移动距离→速度
+	//   （生命/暴击几率/暴击伤害在伤害结算里单独算，见 ezfyCalcDamage）
+	atkBonus += atkEquip.Dmg
+	defBonus += defEquip.Def
+	atkSpeedBonus += atkEquip.Move
+	defSpeedBonus += defEquip.Move
 	actions = append(actions, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 速度+%d%% | 守方 防御+%d%% 速度+%d%%",
 		atkBonus, atkSpeedBonus, defBonus, defSpeedBonus))
+	if atkEquip != (ezfyBattleBonus{}) {
+		actions = append(actions, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
+	}
+	if defEquip != (ezfyBattleBonus{}) {
+		actions = append(actions, "【守方装备】"+ezfyEquipBonusDesc(defEquip))
+	}
 	actions = append(actions, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
 
 	attackers := []*ezfyFightUnit{}
@@ -178,12 +194,33 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 				baseAtk := ezfyPickAttack(unit.cfg, target.cfg)
 				unitAtkBonus := 0
 				unitDefBonus := defBonus
+				equip := defEquip
 				if isAtk {
 					unitAtkBonus = atkBonus
 					unitDefBonus = 0
+					equip = atkEquip
+				}
+				// ★ 生命加成：守方装备的生命%让同一发伤害打掉的兵更少
+				//   （等价于「有效生命 = 兵种生命 × (1 + 生命加成%)」）
+				hpMul := 100
+				if equip.Hp != 0 {
+					hpMul = 100 + equip.Hp
+					if hpMul < 1 {
+						hpMul = 1
+					}
 				}
 				damage := ezfyCalcDamage(baseAtk, target.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
-				killed := damage / int64(maxInt(1, target.cfg.Health))
+				// ★ 暴击：按暴击几率 roll，命中则乘 (1 + 暴击伤害加成)
+				crit := false
+				if equip.Crit > 0 && rand.Intn(100) < equip.Crit {
+					crit = true
+					damage = damage * int64(100+equip.CritDmg) / 100
+				}
+				effHealth := target.cfg.Health * hpMul / 100
+				if effHealth < 1 {
+					effHealth = 1
+				}
+				killed := damage / int64(effHealth)
 				if killed < 1 {
 					killed = 1
 				}
@@ -192,7 +229,12 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 				}
 				if killed > 0 {
 					target.count -= killed
-					actions = append(actions, fmt.Sprintf("%s%s攻击%s%s, 消灭%d个", side, unit.cfg.Name, enemySide, target.cfg.Name, killed))
+					critTxt := ""
+					if crit {
+						critTxt = "【暴击】"
+					}
+					actions = append(actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
+						side, unit.cfg.Name, critTxt, enemySide, target.cfg.Name, killed))
 				}
 			}
 			if len(ezfyAliveList(enemies)) == 0 {
@@ -311,4 +353,31 @@ func ezfyToGroups(units []*ezfyFightUnit, losses bool) []ezfyUnitGroup {
 		}
 	}
 	return groups
+}
+
+// ezfyEquipBonusDesc 把装备六项加成写成战报里的一行
+func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
+	parts := []string{}
+	if b.Dmg != 0 {
+		parts = append(parts, fmt.Sprintf("伤害+%d%%", b.Dmg))
+	}
+	if b.Def != 0 {
+		parts = append(parts, fmt.Sprintf("防御+%d%%", b.Def))
+	}
+	if b.Hp != 0 {
+		parts = append(parts, fmt.Sprintf("生命+%d%%", b.Hp))
+	}
+	if b.Move != 0 {
+		parts = append(parts, fmt.Sprintf("移动距离+%d%%", b.Move))
+	}
+	if b.Crit != 0 {
+		parts = append(parts, fmt.Sprintf("暴击几率+%d%%", b.Crit))
+	}
+	if b.CritDmg != 0 {
+		parts = append(parts, fmt.Sprintf("暴击伤害+%d%%", b.CritDmg))
+	}
+	if len(parts) == 0 {
+		return "无"
+	}
+	return strings.Join(parts, "，")
 }

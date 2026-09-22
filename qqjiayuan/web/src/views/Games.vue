@@ -63,7 +63,7 @@
 
     <!-- 广告条（演示站 index3.html 底部 login-tips） -->
     <div class="login-tips">
-      <ul><li class="wid"><img src="/static/picture/notice.gif" alt="广告"><a href="javascript:;" @click="$router.push('/games/hxxy')">[虎年新区]古典神话西游！</a></li></ul>
+      <ul><li class="wid"><img src="/static/picture/notice.gif" alt="广告"><a href="javascript:;" @click="$router.push('/games/hxxy')">[马年新区]古典神话西游！</a></li></ul>
     </div>
 
     <!-- 未实现游戏的轻提示 -->

@@ -187,7 +187,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 
 	// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
+	// ★ 攻方装备六项加成照常生效
 	br := ezfySimulate(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
+		h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 		atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
 		h.buildMoveMap(city.ID, true), map[int]int{})
 	win := br.AttackerWin

@@ -1146,7 +1146,10 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
 		Level: 1, Exp: 0,
 		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
-		Loyalty: 100, Skill: "", Equipment: "",
+		// ★ 原始属性 = 军官池里的值（重修书洗点回退目标）；名将发放时不额外给点数，靠升级得
+		BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
+		FreePoints: 0,
+		Loyalty:    100, Skill: "", Equipment: "",
 		Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
@@ -1191,7 +1194,9 @@ func (h *AdminHandler) AdminEzfyOfficerUpdate(c *gin.Context) {
 		}
 	}
 	for _, k := range []string{"level", "star", "exp", "military", "logistics", "learning",
-		"loyalty", "position", "status", "is_captive"} {
+		"loyalty", "position", "status", "is_captive",
+		// ★ 2026-09-22：原始属性 + 可用属性点（管理端也能改）
+		"base_military", "base_logistics", "base_learning", "free_points"} {
 		if v, ok := in[k]; ok {
 			if f, err := strconv.ParseFloat(fmt.Sprint(v), 64); err == nil {
 				n := int64(f)

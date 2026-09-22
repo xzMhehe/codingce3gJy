@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -51,6 +52,9 @@ const (
 //	③ 管理端一键生成军官（AdminEzfyGenOfficers）
 //	④ 管理端直接编辑军官（AdminEzfyOfficerUpdate）
 const ezfyOfficerMaxLevel = 150
+
+// ezfyStarItemID 「军官升星卡」的道具 cfg_id（ItemType 19）
+const ezfyStarItemID = 23
 
 // ============ 基础查询 ============
 
@@ -176,11 +180,28 @@ func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 
 // ============ 军校招募 ============
 
-// ============ 军校招募：随机普通军官 ============
+// ============ 军校招募：从军官池抽普通军官 ============
 //
-// 按用户要求: 军校招募给的是**随机生成的普通军官**(参考 conquer.html 的 Jeremy·Lee 26级 1星 31/52/38 26000),
-// 名将(cfg_general 的 31 位)**只能由管理端发放**, 不再出现在招募池里。
+// ★ 2026-09-22 用户要求：
+//   - 军官池 ezfy_cfg_general 里同时维护「普通军官(kind=1)」和「名将(kind=2)」；
+//   - 军校招募/刷新**从池子里抽普通军官**（按 Weight 加权、不重复），
+//     不再是每次现编随机名字 —— 管理端改了池子，玩家刷新出来的列表就跟着变；
+//   - 名将仍然只能由管理端发放，不进招募池。
 
+// ezfyOfficerDraft 军校招募候选（来自军官池的普通军官）
+type ezfyOfficerDraft struct {
+	Key       string `json:"key"`
+	PoolId    int    `json:"pool_id"` // 军官池里的 ID（追溯/对账用）
+	Name      string `json:"name"`
+	Level     int    `json:"level"`
+	Star      int    `json:"star"`
+	Logistics int    `json:"logistics"`
+	Military  int    `json:"military"`
+	Learning  int    `json:"learning"`
+	Cost      int64  `json:"cost"`
+}
+
+// ezfyOfficerFirstNames / ezfyOfficerLastNames 兜底随机名（军官池被清空时用）
 var ezfyOfficerFirstNames = []string{
 	"Pater", "Jeremy", "David", "Michael", "John", "Robert", "James", "William", "Charles", "Henry",
 	"George", "Edward", "Frank", "Albert", "Arthur", "Walter", "Harold", "Ralph", "Roy", "Earl",
@@ -190,18 +211,6 @@ var ezfyOfficerLastNames = []string{
 	"Robinson", "Lee", "Smith", "Brown", "Wilson", "Taylor", "Clark", "Hall", "Young", "Wright",
 	"King", "Scott", "Green", "Baker", "Adams", "Nelson", "Carter", "Mitchell", "Perez", "Roberts",
 	"Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards", "Collins", "Stewart", "Morris", "Murphy",
-}
-
-// ezfyOfficerDraft 军校招募候选(随机普通军官)
-type ezfyOfficerDraft struct {
-	Key       string `json:"key"`
-	Name      string `json:"name"`
-	Level     int    `json:"level"`
-	Star      int    `json:"star"`
-	Logistics int    `json:"logistics"`
-	Military  int    `json:"military"`
-	Learning  int    `json:"learning"`
-	Cost      int64  `json:"cost"`
 }
 
 // ezfyRollStar 星级概率: 5星3% 4星7% 3星20% 2星30% 1星40%
@@ -221,8 +230,78 @@ func ezfyRollStar() int {
 	}
 }
 
-// rollOfficerDrafts 生成 n 个随机军官候选; 等级/属性随军校等级提高
-func rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft {
+// rollOfficerDrafts 从军官池抽 n 名普通军官当候选
+//
+// 抽不到（池子为空/池子被停用）时回落到「现场随机生成」，保证军校永远不空转。
+func (h *EzfyHandler) rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft {
+	h.cfgs()
+	if n <= 0 {
+		n = 1
+	}
+	pool := ezfyCfg.poolOfficers()
+	if len(pool) == 0 {
+		return ezfyRandomDrafts(academyLevel, n)
+	}
+	// 加权前缀和（权重 <=0 按 1 算）
+	cum := make([]int, len(pool))
+	sum := 0
+	for i, g := range pool {
+		w := g.Weight
+		if w <= 0 {
+			w = 1
+		}
+		sum += w
+		cum[i] = sum
+	}
+	pickOne := func() int {
+		r := rand.Intn(sum)
+		return sort.Search(len(cum), func(i int) bool { return cum[i] > r })
+	}
+	used := map[int]bool{}
+	out := make([]ezfyOfficerDraft, 0, n)
+	span := maxInt(1, academyLevel*8)
+	for i := 0; i < n; i++ {
+		idx := -1
+		for try := 0; try < 60; try++ {
+			cand := pickOne()
+			if cand >= 0 && cand < len(pool) && !used[cand] {
+				idx = cand
+				break
+			}
+		}
+		if idx < 0 {
+			// 池子太小抽不出新的了，允许重复
+			idx = pickOne()
+			if idx < 0 || idx >= len(pool) {
+				break
+			}
+		}
+		used[idx] = true
+		g := pool[idx]
+		// 等级：随军校等级提高，但不超过该军官在池子里配的等级上限
+		maxLv := g.Level
+		if maxLv <= 0 || maxLv > ezfyOfficerMaxLevel {
+			maxLv = ezfyOfficerMaxLevel
+		}
+		lv := 5 + rand.Intn(span)
+		if lv > maxLv {
+			lv = maxLv
+		}
+		if lv < 1 {
+			lv = 1
+		}
+		out = append(out, ezfyOfficerDraft{
+			Key:    g.Name + "-" + strconv.Itoa(g.ID) + "-" + strconv.FormatInt(time.Now().UnixNano()+int64(i), 10),
+			PoolId: g.ID, Name: g.Name, Level: lv, Star: g.Star,
+			Logistics: g.Logistics, Military: g.Military, Learning: g.Learning,
+			Cost: int64(lv) * ezfyRecruitCostPerLevel,
+		})
+	}
+	return out
+}
+
+// ezfyRandomDrafts 兜底：军官池为空时现场随机生成（老逻辑，保留避免军校空转）
+func ezfyRandomDrafts(academyLevel, n int) []ezfyOfficerDraft {
 	out := make([]ezfyOfficerDraft, 0, n)
 	used := map[string]bool{}
 	span := maxInt(1, academyLevel*8)
@@ -237,7 +316,6 @@ func rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft {
 		}
 		used[name] = true
 		lv := 5 + rand.Intn(span)
-		// ★ 用户规则「军官最高等级 150」
 		if lv > ezfyOfficerMaxLevel {
 			lv = ezfyOfficerMaxLevel
 		}
@@ -278,7 +356,7 @@ func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraf
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	if err != nil {
-		drafts := rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
+		drafts := h.rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0,
 			Candidates: joinDrafts(drafts)}
 		h.DB.Create(&rec)
@@ -301,7 +379,7 @@ func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 		return "今日刷新次数已用完(每天限" + strconv.Itoa(limit) +
 			"次, 明天0点重置；也可以在军校直接使用「招生简章」刷新)"
 	}
-	drafts := rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
+	drafts := h.rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 	if err != nil {
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date}
 	}
@@ -353,11 +431,16 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	}
 	city.Gold -= pick.Cost
 	h.saveCityRes(city)
+	// ★ 2026-09-22：原始属性写进 base_*（重修书洗点回退到这个值），
+	//   并按「每级 1 点」补上该等级应有的可用属性点。
+	//   普通军官的 GeneralId 保持 0（general_id>0 全站都当「名将」用，别混）。
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: 0, Name: pick.Name, Star: pick.Star,
 		Level: pick.Level, Exp: 0,
 		Military: pick.Military, Logistics: pick.Logistics, Learning: pick.Learning,
-		Loyalty: ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
+		BaseMilitary: pick.Military, BaseLogistics: pick.Logistics, BaseLearning: pick.Learning,
+		FreePoints: maxInt(0, pick.Level-1),
+		Loyalty:    ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
@@ -379,7 +462,7 @@ func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 	date := time.Now().Format("2006-01-02")
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
-	drafts := rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
+	drafts := h.rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
 	if err != nil {
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0}
 	}
@@ -492,11 +575,18 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 		UserId: city.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
 		Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 		Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
+		Slot: cfg.EquipSlot(), SetId: cfg.SetId,
+		// ★ 六项战斗属性随实例带走（进战斗计算用）
+		Series: cfg.Series, Enhance: cfg.Enhance,
+		Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
 	}
 	h.DB.Create(&e)
 }
 
-// equipItem 穿戴装备：等级达标 + 同部位唯一（珠宝不限）
+// equipItem 穿戴装备：等级达标 + 同部位唯一（珠宝不限，可以叠）
+//
+// ★ 2026-09-22：同部位判定改用「Slot（留空回落 Type）」，
+// 这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
 func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) string {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
@@ -513,20 +603,35 @@ func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) 
 	if o.Level < e.Level {
 		return "武将等级不足(需要" + strconv.Itoa(e.Level) + "级)"
 	}
+	slot := e.EquipSlot()
 	equipped := officerEquipped(o)
-	if e.Type != "珠宝" {
+	if slot != "珠宝" {
 		for _, m := range equipped {
-			if t, _ := m["type"].(string); t == e.Type {
-				return "已穿戴同类型装备"
+			if t, _ := m["slot"].(string); t == slot {
+				return "已穿戴同部位装备(" + slot + ")"
+			}
+			// 老数据没有 slot 字段 → 回落到 type
+			if t, _ := m["slot"].(string); t == "" {
+				if ot, _ := m["type"].(string); ot == slot {
+					return "已穿戴同部位装备(" + slot + ")"
+				}
 			}
 		}
 	}
-	h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", e.ID).Update("officer_id", int64(o.ID))
+	// ★ 顺序很重要：先把军官身上的装备列表写成功，再改装备行的 officer_id。
+	//   反过来的话（先改 officer_id 再写 JSON），一旦 JSON 写失败就会留下
+	//   「装备显示已穿戴、但军官身上没有」的半截状态 —— 实测踩过（varchar(500) 截断）。
 	equipped = append(equipped, map[string]interface{}{
-		"id": e.ID, "name": e.Name, "type": e.Type,
+		"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
 		"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+		// ★ 六项战斗属性（进战斗计算）
+		"series": e.Series, "enhance": e.Enhance,
+		"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 	})
-	h.saveOfficerEquipment(o, equipped)
+	if msg := h.saveOfficerEquipment(o, equipped); msg != "" {
+		return msg
+	}
+	h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", e.ID).Update("officer_id", int64(o.ID))
 	return ""
 }
 
@@ -547,15 +652,29 @@ func (h *EzfyHandler) unequipItem(city *model.EzfyCity, equipId int64) string {
 			}
 			kept = append(kept, m)
 		}
-		h.saveOfficerEquipment(o, kept)
+		if msg := h.saveOfficerEquipment(o, kept); msg != "" {
+			return msg
+		}
 	}
 	h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", e.ID).Update("officer_id", 0)
 	return ""
 }
 
-func (h *EzfyHandler) saveOfficerEquipment(o *model.EzfyOfficer, list []map[string]interface{}) {
-	b, _ := json.Marshal(list)
-	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("equipment", string(b))
+// saveOfficerEquipment 写回军官的已穿戴装备 JSON
+//
+// ★ 返回错误字符串（而不是静默忽略）：这一列曾经是 varchar(500)，
+// 穿到第 5 件就写不进去（MySQL 1406），当时没人看返回值 →
+// 装备行已标成「已穿戴」但军官身上没有，玩家看到「穿了没效果」。现在会直接报错。
+func (h *EzfyHandler) saveOfficerEquipment(o *model.EzfyOfficer, list []map[string]interface{}) string {
+	b, err := json.Marshal(list)
+	if err != nil {
+		return "装备数据序列化失败：" + err.Error()
+	}
+	if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
+		Update("equipment", string(b)).Error; err != nil {
+		return "保存已穿戴装备失败：" + err.Error()
+	}
+	return ""
 }
 
 // equipmentOwnerId 查询某装备穿戴者（卸下后跳转详情用）
@@ -657,7 +776,7 @@ func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 		return 0
 	}
 	// ★ 用有效后勤（自身 + 装备），否则给市长穿后勤装备没有任何效果
-	_, log, _ := officerEffective(&o)
+	_, log, _ := h.officerEffective(&o)
 	return 10 + log/20
 }
 
@@ -711,7 +830,7 @@ func (h *EzfyHandler) officerHasSkill(o *model.EzfyOfficer, skill string) bool {
 // ★ 之前装备只算了「军事」一项，后勤/学识的加成**完全没有任何去处**，
 //
 //	玩家穿上带后勤/学识的装备后数字一动不动，看起来就是「穿装备没效果」。
-func officerEquipBonus(o *model.EzfyOfficer) (mil, log, lea int) {
+func (h *EzfyHandler) officerEquipBonus(o *model.EzfyOfficer) (mil, log, lea int) {
 	for _, m := range officerEquipped(o) {
 		mil += jsonInt(m["military"])
 		log += jsonInt(m["logistics"])
@@ -720,22 +839,232 @@ func officerEquipBonus(o *model.EzfyOfficer) (mil, log, lea int) {
 	return
 }
 
-// officerEffective 军官的**有效属性**（自身 + 装备）
-func officerEffective(o *model.EzfyOfficer) (mil, log, lea int) {
+// officerSetBonus 套装加成：统计已穿戴装备里各套装的件数，达到 parts 就触发
+//
+// ★ 用户规则（2026-09-22）：**套装效果只有穿齐才生效**；只穿一件或几件，
+// 只算那几件装备本身的属性加成，不给任何套装加成。所以这里的门槛是 `cnt >= s.Parts`。
+//
+// 返回 (军事, 后勤, 学识, 已触发套装说明)。装备里的 set_id 由 equipItem 写入；
+// 老数据没有 set_id → 计 0，不会误触发。
+func (h *EzfyHandler) officerSetBonus(o *model.EzfyOfficer) (mil, log, lea int, active []string) {
 	if o == nil {
 		return
 	}
-	em, el, ee := officerEquipBonus(o)
-	return o.Military + em, o.Logistics + el, o.Learning + ee
+	for _, s := range h.officerSetProgress(o) {
+		if s.Active {
+			mil += s.Set.Military
+			log += s.Set.Logistics
+			lea += s.Set.Learning
+			active = append(active, s.Set.Name+"("+strconv.Itoa(s.Worn)+"/"+strconv.Itoa(s.Set.Parts)+"件)")
+		}
+	}
+	return
 }
 
-// officerBaseBonus 军官基础战斗加成（军事属性 + 装备军事加成）
+// ezfySetProgress 某套装的穿戴进度（用于界面展示「还差几件」）
+type ezfySetProgress struct {
+	Set    *model.EzfyCfgEquipSet
+	Worn   int  // 已穿件数
+	Active bool // 是否已穿齐（套装效果是否生效）
+}
+
+// officerSetProgress 军官身上各套装的穿戴进度（只列至少穿了 1 件的套装）
+func (h *EzfyHandler) officerSetProgress(o *model.EzfyOfficer) []ezfySetProgress {
+	out := []ezfySetProgress{}
+	if o == nil {
+		return out
+	}
+	h.cfgs()
+	cnt := map[int]int{}
+	for _, m := range officerEquipped(o) {
+		if sid := jsonInt(m["set_id"]); sid > 0 {
+			cnt[sid]++
+		}
+	}
+	ids := make([]int, 0, len(cnt))
+	for sid := range cnt {
+		ids = append(ids, sid)
+	}
+	sort.Ints(ids)
+	for _, sid := range ids {
+		s := ezfyCfg.equipSet(sid)
+		if s == nil || s.Parts <= 0 {
+			continue
+		}
+		out = append(out, ezfySetProgress{Set: s, Worn: cnt[sid], Active: cnt[sid] >= s.Parts})
+	}
+	return out
+}
+
+// officerEffective 军官的**有效属性**（自身 + 装备 + 套装）
+func (h *EzfyHandler) officerEffective(o *model.EzfyOfficer) (mil, log, lea int) {
+	if o == nil {
+		return
+	}
+	em, el, ee := h.officerEquipBonus(o)
+	sm, sl, se, _ := h.officerSetBonus(o)
+	return o.Military + em + sm, o.Logistics + el + sl, o.Learning + ee + se
+}
+
+// ezfyBattleBonus 一方在战斗中的六项加成（单位：百分点，100 = +100%）
+//
+// ★ 2026-09-22 参照 装备距离伤害表.xlsx：
+//
+//	基础攻击力 = 基础攻击属性 × (1 + 科技加成) × (1 + 装备伤害加成)
+//	总攻击力   = 基础攻击力 × (1 + 暴击伤害加成)
+//
+// 装备的「伤害/防御/生命/移动距离/暴击几率/暴击伤害」全部是**百分比加成**。
+type ezfyBattleBonus struct {
+	Dmg     int // 伤害加成%
+	Def     int // 防御加成%
+	Hp      int // 生命加成%
+	Move    int // 移动距离加成%
+	Crit    int // 暴击几率加成%
+	CritDmg int // 暴击伤害加成%
+}
+
+// officerBattleEquipBonus 汇总军官身上装备 + 已触发套装的六项战斗加成
+//
+// ★ 用户规则：**套装效果只有穿齐才生效**。
+//   - 每一件装备自身的六项属性 → **永远生效**（穿一件就加一件）
+//   - 套装配置里的额外加成 → 只有穿齐 `parts` 件才叠加
+//
+// 只算「已经穿在军官身上」的装备（老数据的 JSON 里没有这些字段 → 记 0，不会算错）。
+func (h *EzfyHandler) officerBattleEquipBonus(o *model.EzfyOfficer) ezfyBattleBonus {
+	b := ezfyBattleBonus{}
+	if o == nil {
+		return b
+	}
+	h.cfgs()
+	for _, m := range officerEquipped(o) {
+		b.Dmg += jsonInt(m["dmg"])
+		b.Def += jsonInt(m["def"])
+		b.Hp += jsonInt(m["hp"])
+		b.Move += jsonInt(m["move"])
+		b.Crit += jsonInt(m["crit"])
+		b.CritDmg += jsonInt(m["crit_dmg"])
+	}
+	// 套装额外加成（★ 只有**穿齐**才加；只穿几件只算各件自身属性）
+	for _, p := range h.officerSetProgress(o) {
+		if !p.Active {
+			continue
+		}
+		b.Dmg += p.Set.Dmg
+		b.Def += p.Set.Def
+		b.Hp += p.Set.Hp
+		b.Move += p.Set.Move
+		b.Crit += p.Set.Crit
+		b.CritDmg += p.Set.CritDmg
+	}
+	return b
+}
+
+// officerBattleView 六项战斗加成的下发格式（列表/详情共用）
+func (h *EzfyHandler) officerBattleView(o *model.EzfyOfficer) gin.H {
+	b := h.officerBattleEquipBonus(o)
+	return gin.H{
+		"dmg": b.Dmg, "def": b.Def, "hp": b.Hp,
+		"move": b.Move, "crit": b.Crit, "crit_dmg": b.CritDmg,
+	}
+}
+
+// officerSetProgressView 套装穿戴进度（给前端展示「还差几件才生效」）
+func (h *EzfyHandler) officerSetProgressView(o *model.EzfyOfficer) []gin.H {
+	out := []gin.H{}
+	for _, p := range h.officerSetProgress(o) {
+		out = append(out, gin.H{
+			"set_id": p.Set.ID, "name": p.Set.Name, "parts": p.Set.Parts,
+			"worn": p.Worn, "active": p.Active, "need": maxInt(0, p.Set.Parts-p.Worn),
+			"military": p.Set.Military, "logistics": p.Set.Logistics, "learning": p.Set.Learning,
+			"dmg": p.Set.Dmg, "def": p.Set.Def, "hp": p.Set.Hp,
+			"move": p.Set.Move, "crit": p.Set.Crit, "crit_dmg": p.Set.CritDmg,
+			"effect": p.Set.Effect,
+		})
+	}
+	return out
+}
+
+// officerBaseAttr 军官的**原始属性**（重修书洗点回退的目标）
+//
+// 优先用实例上的 base_*（招募时的快照，管理端改池子也不会影响已发出的军官）；
+// 老数据 base_* 全 0 时，能对上军官池就用池子里的值，否则回落到当前属性。
+func officerBaseAttr(o *model.EzfyOfficer) (int, int, int) {
+	if o == nil {
+		return 0, 0, 0
+	}
+	if o.BaseMilitary > 0 || o.BaseLogistics > 0 || o.BaseLearning > 0 {
+		return o.BaseMilitary, o.BaseLogistics, o.BaseLearning
+	}
+	if g := ezfyCfg.general(o.GeneralId); g != nil && g.Military+g.Logistics+g.Learning > 0 {
+		return g.Military, g.Logistics, g.Learning
+	}
+	return o.Military, o.Logistics, o.Learning
+}
+
+// officerAllocatedPoints 已经分配到三属性上的点数（当前 − 原始）
+func officerAllocatedPoints(o *model.EzfyOfficer) int {
+	bm, bl, be := officerBaseAttr(o)
+	n := (o.Military - bm) + (o.Logistics - bl) + (o.Learning - be)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// officerAddAttr 分配属性点：只写玩家自己的军官实例，**绝不回写军官池**
+//
+// attr: military / logistics / learning（也接受中文「军事/后勤/学识」）
+func (h *EzfyHandler) officerAddAttr(city *model.EzfyCity, officerId int64, attr string, count int) string {
+	o := h.officerOf(city.ID, officerId)
+	if o == nil {
+		return "军官不存在"
+	}
+	if o.IsCaptive == 1 {
+		return "俘虏不能加点, 请先在军校收编"
+	}
+	if count <= 0 {
+		count = 1
+	}
+	if count > 1000 {
+		return "单次最多分配 1000 点"
+	}
+	if o.FreePoints <= 0 {
+		return "没有可用属性点(每升 1 级得 1 点, 可用「重修书」重置已分配的点)"
+	}
+	if count > o.FreePoints {
+		return "可用属性点不足(剩余" + strconv.Itoa(o.FreePoints) + "点)"
+	}
+	col := ""
+	switch attr {
+	case "military", "军事", "军":
+		col = "military"
+	case "logistics", "后勤", "后":
+		col = "logistics"
+	// ★ 第三项统一叫「学识」（别再叫「学习」—— 学习是「学技能」那个动作，容易混）
+	case "learning", "学识", "学":
+		col = "learning"
+	default:
+		return "属性类型错误(可选 军事/后勤/学识)"
+	}
+	if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
+		Updates(map[string]interface{}{
+			"free_points": o.FreePoints - count,
+			col:           gorm.Expr(col+" + ?", count),
+			"update_time": time.Now(),
+		}).Error; err != nil {
+		return "加点失败：" + err.Error()
+	}
+	return ""
+}
+
+// officerBaseBonus 军官基础战斗加成（军事属性 + 装备军事加成 + 套装军事加成）
 func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
-	em, _, _ := officerEquipBonus(o)
-	return o.Military + em
+	em, _, _ := h.officerEquipBonus(o)
+	sm, _, _, _ := h.officerSetBonus(o)
+	return o.Military + em + sm
 }
 
 // officerSkillBattleBonus 军官技能带来的攻击加成（复刻原版 getOfficerBattleBonus 的技能段）
@@ -779,7 +1108,7 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
-	_, _, lea := officerEffective(o)
+	_, _, lea := h.officerEffective(o)
 	bonus := 10 + lea/20
 	for _, s := range officerSkills(o) {
 		switch s {
@@ -919,7 +1248,11 @@ func (h *EzfyHandler) moveOfficerTo(city *model.EzfyCity, name string, targetCit
 		Updates(map[string]interface{}{"city_id": int64(targetCityId), "position": 0, "status": 0, "update_time": time.Now()})
 }
 
-// addOfficerExp 军官获得经验（升级经验 = 等级×200，每级随机 +2 属性）
+// addOfficerExp 军官获得经验（升级经验 = 等级×200）
+//
+// ★ 2026-09-22 用户规则：**每升 1 级给 1 点可用属性点，由玩家自己分配**
+// （原来每级随机 +2 属性 → 玩家没得选，洗点后还会「都堆到学识上」，已废）。
+// 加点只写玩家自己的军官实例，绝不回写军官池。
 //
 // ★ 用户规则「军官最高等级 150」：到 150 级后不再升级，多余经验直接丢弃
 // （不丢的话经验会无限累积，将来放开上限会一次性跳很多级）。
@@ -929,30 +1262,23 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 		return
 	}
 	o.Exp += exp
-	leveled := false
+	gained := 0
 	for o.Level < ezfyOfficerMaxLevel && o.Exp >= int64(o.Level)*200 {
 		o.Exp -= int64(o.Level) * 200
 		o.Level++
-		switch rand.Intn(3) {
-		case 0:
-			o.Military += 2
-		case 1:
-			o.Logistics += 2
-		default:
-			o.Learning += 2
-		}
-		leveled = true
+		gained++
 	}
 	// 满级后不保留经验
 	if o.Level >= ezfyOfficerMaxLevel {
 		o.Exp = 0
 	}
+	o.FreePoints += gained
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
-		Updates(map[string]interface{}{"exp": o.Exp, "level": o.Level,
-			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning})
-	if leveled {
+		Updates(map[string]interface{}{"exp": o.Exp, "level": o.Level, "free_points": o.FreePoints})
+	if gained > 0 {
 		h.addReport(city.UserID, 6, "将领升级: "+o.Name,
-			o.Name+"在战斗中成长, 升到了"+strconv.Itoa(o.Level)+"级!", "")
+			o.Name+"在战斗中成长, 升到了"+strconv.Itoa(o.Level)+"级, 获得"+strconv.Itoa(gained)+
+				"点属性点(可前往 [军官] 详情页分配)!", "")
 	}
 }
 
@@ -1185,7 +1511,10 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
 		Level: captiveLv, Exp: 0,
 		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
-		Loyalty: 30, Skill: "", Equipment: "",
+		// ★ 原始属性 = 军官池里的值
+		BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
+		FreePoints: maxInt(0, captiveLv-1),
+		Loyalty:    30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
@@ -1237,7 +1566,10 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				CityId: int64(atkCity.ID), GeneralId: o.GeneralId, Name: o.Name, Star: o.Star,
 				Level: o.Level, Exp: o.Exp,
 				Military: o.Military, Logistics: o.Logistics, Learning: o.Learning,
-				Loyalty: 30, Skill: o.Skill, Equipment: o.Equipment,
+				// ★ 原始属性与可用点数一起带走，别让被俘/归降把玩家点过的点吞掉
+				BaseMilitary: o.BaseMilitary, BaseLogistics: o.BaseLogistics, BaseLearning: o.BaseLearning,
+				FreePoints: o.FreePoints,
+				Loyalty:    30, Skill: o.Skill, Equipment: o.Equipment,
 				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 			}
 			h.DB.Create(&cap)
@@ -1266,15 +1598,26 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	for i := range list {
 		o := &list[i]
 		skills := officerSkills(o)
-		em, el, ee := officerEffective(o)
+		em, el, ee := h.officerEffective(o)
+		sm, sl, se, activeSets := h.officerSetBonus(o)
+		bm, bl, be := officerBaseAttr(o)
 		views = append(views, gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
-			// ★ 含装备加成的有效属性（前端展示「基础(+装备)」）
+			// ★ 含装备/套装加成的有效属性（前端展示「基础(+装备)」）
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
 			"equip_learning": ee - o.Learning,
-			"loyalty":        o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
+			// ★ 2026-09-22：原始属性 / 可用属性点 / 已分配点数（前端加点用）
+			"base_military": bm, "base_logistics": bl, "base_learning": be,
+			"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
+			"set_military": sm, "set_logistics": sl, "set_learning": se,
+			"active_sets":  activeSets,
+			"set_progress": h.officerSetProgressView(o),
+			// ★ 军官装备的六项战斗加成（伤害/防御/生命/移动距离/暴击）——
+			//   列表里也要下发，否则玩家会以为「穿了装备没加属性」
+			"battle":  h.officerBattleView(o),
+			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o),
 			"is_captive": o.IsCaptive, "skills": skills,
 			"equip_count": len(officerEquipped(o)),
@@ -1298,6 +1641,10 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		"salary_per_level": ezfyOfficerSalaryPerLvCfg(),
 		// ★ 用户规则「军官最高等级 150」：前端据此显示「满级」
 		"max_level": ezfyOfficerMaxLevel,
+		// ★ 升星配置（前端据此显示星级上限/成功率/每星加点）
+		"star_up_on": ezfyStarUpOn(), "star_chance_on": ezfyStarChanceOn(),
+		"star_max": ezfyStarMax(), "star_attr_gain": ezfyStarAttrGain(),
+		"star_card": h.itemCount(uid, ezfyStarItemID),
 	})
 }
 
@@ -1351,7 +1698,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	sort.Slice(allSkills, func(i, j int) bool {
 		return allSkills[i]["id"].(int) < allSkills[j]["id"].(int)
 	})
-	em, el, ee := officerEffective(o)
+	em, el, ee := h.officerEffective(o)
 	bag := []gin.H{}
 	for _, e := range h.equipmentList(uid) {
 		bag = append(bag, gin.H{
@@ -1359,24 +1706,74 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"tier_name": ezfyTierName(e.Tier),
 			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0,
+			"slot": e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"series": e.Series, "enhance": e.Enhance,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 		})
 	}
+	sm, sl, se, activeSets := h.officerSetBonus(o)
+	bm, bl, be := officerBaseAttr(o)
 	resp.OK(c, gin.H{
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
-			// ★ 有效属性（基础 + 装备），前端展示成「33 (+5) = 38」
+			// ★ 有效属性（基础 + 装备 + 套装），前端展示成「33 (+5) = 38」
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
 			"equip_learning": ee - o.Learning,
-			"attack":         h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
+			// ★ 2026-09-22：加点用
+			"base_military": bm, "base_logistics": bl, "base_learning": be,
+			"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
+			"set_military": sm, "set_logistics": sl, "set_learning": se,
+			"active_sets": activeSets,
+			// ★ 套装穿戴进度（穿齐才生效；这里让前端能显示「还差 N 件」）
+			"set_progress": h.officerSetProgressView(o),
+			// ★ 装备六项战斗加成（直接进战斗计算）
+			"battle": h.officerBattleView(o),
+			// ★ 升星：星级上限 / 当前成功率 / 每星加多少 / 持有升星卡数
+			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
+			"star_chance_on": ezfyStarChanceOn(), "star_rate": ezfyStarSuccessRate(o.Star),
+			"star_attr_gain": ezfyStarAttrGain(), "star_card": h.itemCount(uid, ezfyStarItemID),
+			"attack": h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
 			"exp_need": o.Level * 200,
 		},
 		"skills": skillViews, "all_skills": allSkills,
-		"equipped": officerEquipped(o), "bag": bag, "gold": city.Gold,
+		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
+		"equipped": h.officerEquippedView(o), "bag": bag, "gold": city.Gold,
 	})
+}
+
+// officerEquippedView 已穿戴装备的下发格式（补套装名，前端直接用）
+func (h *EzfyHandler) officerEquippedView(o *model.EzfyOfficer) []gin.H {
+	out := []gin.H{}
+	for _, m := range officerEquipped(o) {
+		sid := jsonInt(m["set_id"])
+		slot, _ := m["slot"].(string)
+		typ, _ := m["type"].(string)
+		if slot == "" {
+			slot = typ
+		}
+		out = append(out, gin.H{
+			"id": jsonInt(m["id"]), "name": m["name"], "type": typ, "slot": slot,
+			"set_id": sid, "set_name": h.ezfySetName(sid),
+			"military": jsonInt(m["military"]), "logistics": jsonInt(m["logistics"]),
+			"learning": jsonInt(m["learning"]),
+			"series":   m["series"], "enhance": jsonInt(m["enhance"]),
+			"dmg": jsonInt(m["dmg"]), "def": jsonInt(m["def"]), "hp": jsonInt(m["hp"]),
+			"move": jsonInt(m["move"]), "crit": jsonInt(m["crit"]), "crit_dmg": jsonInt(m["crit_dmg"]),
+		})
+	}
+	return out
+}
+
+// ezfySetName 套装名（0 / 查不到返回空串）
+func (h *EzfyHandler) ezfySetName(setId int) string {
+	if s := ezfyCfg.equipSet(setId); s != nil {
+		return s.Name
+	}
+	return ""
 }
 
 // AcadeRecruit GET /games/ezfy/acade/recruit —— 军校候选名将
@@ -1443,6 +1840,383 @@ func (h *EzfyHandler) OfficerGrant(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	h.done(c, h.grantOfficer(&city, id), "赏赐成功, 忠诚已提升")
+}
+
+// OfficerAttr POST /games/ezfy/officers/:id/attr  {attr: military|logistics|learning, count}
+//
+// ★ 2026-09-22 用户要求：每升 1 级得 1 点可用属性点，玩家自己分配；
+// 只写玩家自己的军官实例，**绝不回写军官池**。
+func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req struct {
+		Attr  string `json:"attr"`
+		Count int    `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	if msg := h.officerAddAttr(&city, id, req.Attr, req.Count); msg != "" {
+		h.fail(c, msg)
+		return
+	}
+	// 回读最新状态，省掉前端一次请求
+	var now model.EzfyOfficer
+	h.DB.First(&now, o.ID)
+	sm, sl, se, activeSets := h.officerSetBonus(&now)
+	em, el, ee := h.officerEffective(&now)
+	resp.OK(c, gin.H{
+		"msg": "加点成功",
+		"officer": gin.H{
+			"id": now.ID, "military": now.Military, "logistics": now.Logistics, "learning": now.Learning,
+			"base_military": now.BaseMilitary, "base_logistics": now.BaseLogistics, "base_learning": now.BaseLearning,
+			"free_points": now.FreePoints, "used_points": officerAllocatedPoints(&now),
+			"military_total": em, "logistics_total": el, "learning_total": ee,
+			"set_military": sm, "set_logistics": sl, "set_learning": se, "active_sets": activeSets,
+		},
+	})
+}
+
+// OfficerAttrAll POST /games/ezfy/officers/:id/attr/all  {attr}
+//
+// 把当前**全部**可用属性点一次性加到某一项（懒人按钮）。
+func (h *EzfyHandler) OfficerAttrAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req struct {
+		Attr string `json:"attr"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	if o.FreePoints <= 0 {
+		h.fail(c, "没有可用属性点")
+		return
+	}
+	h.done(c, h.officerAddAttr(&city, id, req.Attr, o.FreePoints), "加点成功")
+}
+
+// officerStarUp 执行一次升星判定（**不扣升星卡**，扣卡由调用方按「失败是否保留」决定）
+//
+// ★ 2026-09-22 用户要求：「玩家自己的军官可以用升星卡升级星级，属性增加；
+// 概率的最好也能有个开关控制，属性加多少也要可配。」
+//
+//   - 概率开关 `officer_star_chance_on`：关 = 必成功
+//   - 成功率 = 基础 − (当前星级−1)×递减，夹在 [下限, 100]
+//   - 每升 1 星三维各 +`officer_star_attr_gain`（**base_* 一起加**，重修书洗点不会把它洗掉）
+//   - 星级上限 `officer_star_max`
+//
+// 只写玩家自己的军官实例，绝不回写军官池。
+func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (string, bool) {
+	o := h.officerOf(city.ID, officerId)
+	if o == nil {
+		return "军官不存在", false
+	}
+	if o.IsCaptive == 1 {
+		return "俘虏不能升星, 请先在军校收编", false
+	}
+	max := ezfyStarMax()
+	if max < 1 {
+		max = 1
+	}
+	if o.Star >= max {
+		return fmt.Sprintf("星级已达上限(%d星)", max), false
+	}
+	rate := ezfyStarSuccessRate(o.Star)
+	if rand.Intn(100) >= rate {
+		if ezfyStarChanceOn() {
+			return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
+		}
+		return "升星失败", false
+	}
+	gain := ezfyStarAttrGain()
+	bm, bl, be := officerBaseAttr(o)
+	if bm <= 0 {
+		bm = o.Military
+	}
+	if bl <= 0 {
+		bl = o.Logistics
+	}
+	if be <= 0 {
+		be = o.Learning
+	}
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
+		"star":     o.Star + 1,
+		"military": o.Military + gain, "logistics": o.Logistics + gain, "learning": o.Learning + gain,
+		"base_military": bm + gain, "base_logistics": bl + gain, "base_learning": be + gain,
+		"update_time": time.Now(),
+	})
+	h.addReport(city.UserID, 6, "军官升星: "+o.Name,
+		fmt.Sprintf("%s 升星成功: %d星→%d星, 军事/后勤/学识各+%d。", o.Name, o.Star, o.Star+1, gain), "")
+	return fmt.Sprintf("升星成功: %s %d星→%d星, 三维各+%d", o.Name, o.Star, o.Star+1, gain), true
+}
+
+// OfficerStarUp POST /games/ezfy/officers/:id/starup
+//
+// 在军官详情页直接点「升星」：消耗背包里的 1 张「军官升星卡」。
+// 失败是否退卡由 `officer_star_keep_on_fail` 控制。
+func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if !ezfyStarUpOn() {
+		h.fail(c, "升星功能已关闭")
+		return
+	}
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	if h.itemCount(uid, ezfyStarItemID) <= 0 {
+		h.fail(c, "没有「军官升星卡」，可在商城购买或开宝箱获得")
+		return
+	}
+	msg, ok := h.officerStarUp(&city, id)
+	// ★ 失败时按配置决定要不要退卡（keep=1 则本次不消耗）
+	if ok || !ezfyStarKeepOnFail() {
+		h.consumeItem(uid, ezfyStarItemID)
+	}
+	if !ok {
+		h.fail(c, msg)
+		return
+	}
+	h.done(c, "", msg)
+}
+
+// ============ 宝箱（钻石/黄金购买，开箱按权重出套装件） ============
+//
+// ★ 2026-09-22 用户要求：「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
+//
+// 奖池 ezfy_cfg_chest_item：kind 1=装备（进 ezfy_equipment 背包，可就地穿）、2=道具（进道具背包）。
+
+// ezfyChestPool 取某宝箱的奖池（按 id 升序，保证抽奖顺序稳定）
+func (h *EzfyHandler) ezfyChestPool(chestId int) []model.EzfyCfgChestItem {
+	var list []model.EzfyCfgChestItem
+	h.DB.Where("chest_id = ?", chestId).Order("id").Find(&list)
+	return list
+}
+
+// ezfyDrawChest 按权重从奖池抽一条（全部权重为 0 时等概率）
+func ezfyDrawChest(pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
+	if len(pool) == 0 {
+		return nil
+	}
+	sum := 0
+	for i := range pool {
+		w := pool[i].Weight
+		if w < 0 {
+			w = 0
+		}
+		sum += w
+	}
+	if sum <= 0 {
+		p := pool[rand.Intn(len(pool))]
+		return &p
+	}
+	r := rand.Intn(sum)
+	acc := 0
+	for i := range pool {
+		w := pool[i].Weight
+		if w < 0 {
+			w = 0
+		}
+		acc += w
+		if r < acc {
+			return &pool[i]
+		}
+	}
+	p := pool[len(pool)-1]
+	return &p
+}
+
+// ezfyGrantChestPrize 发放一件奖品，返回展示文案
+func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCfgChestItem) string {
+	if it == nil {
+		return "空箱"
+	}
+	n := it.Count
+	if n <= 0 {
+		n = 1
+	}
+	switch it.Kind {
+	case 1: // 装备 → 玩家装备背包
+		cfg := ezfyCfg.equipment(it.RefId)
+		if cfg == nil {
+			return ""
+		}
+		for i := 0; i < n; i++ {
+			h.addEquipment(city, cfg)
+		}
+		return cfg.Name + "×" + strconv.Itoa(n)
+	case 2: // 道具 → 道具背包
+		cfg := ezfyCfg.item(it.RefId)
+		if cfg == nil {
+			return ""
+		}
+		h.addItem(city.UserID, it.RefId, n)
+		return cfg.Name + "×" + strconv.Itoa(n)
+	default:
+		return ""
+	}
+}
+
+// ChestList GET /games/ezfy/chest —— 宝箱列表（含奖池展示）
+func (h *EzfyHandler) ChestList(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	h.refreshCity(uid, &city)
+	var chests []model.EzfyCfgChest
+	h.DB.Where("enabled <> 0").Order("sort_no, id").Find(&chests)
+	out := []gin.H{}
+	for _, c2 := range chests {
+		pool := []gin.H{}
+		for _, p := range h.ezfyChestPool(c2.ID) {
+			name, quality := "", p.Quality
+			switch p.Kind {
+			case 1:
+				if cfg := ezfyCfg.equipment(p.RefId); cfg != nil {
+					name = cfg.Name
+					if quality == "" {
+						quality = ezfyTierName(cfg.Tier)
+					}
+				}
+			case 2:
+				if cfg := ezfyCfg.item(p.RefId); cfg != nil {
+					name = cfg.Name
+				}
+			}
+			if name == "" {
+				continue
+			}
+			pool = append(pool, gin.H{
+				"kind": p.Kind, "ref_id": p.RefId, "name": name,
+				"count": p.Count, "weight": p.Weight, "quality": quality,
+			})
+		}
+		out = append(out, gin.H{
+			"id": c2.ID, "name": c2.Name,
+			"price_gold": c2.PriceGold, "price_diamond": c2.PriceDiamond,
+			"stock": c2.Stock, "sold_out": c2.Stock == 0, "open_max": c2.OpenMax,
+			"des": c2.Des, "effect": c2.Effect, "pool": pool,
+		})
+	}
+	resp.OK(c, gin.H{"chests": out, "gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond})
+}
+
+// ChestOpen POST /games/ezfy/chest/open  {chest_id, count, currency: gold|diamond}
+func (h *EzfyHandler) ChestOpen(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	h.calcResource(&city)
+	var req struct {
+		ChestId  int    `json:"chest_id"`
+		Count    int    `json:"count"`
+		Currency string `json:"currency"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.Count <= 0 {
+		req.Count = 1
+	}
+	var chest model.EzfyCfgChest
+	if err := h.DB.First(&chest, req.ChestId).Error; err != nil || chest.Enabled == 0 {
+		h.fail(c, "宝箱不存在或已下架")
+		return
+	}
+	maxOpen := chest.OpenMax
+	if maxOpen <= 0 {
+		maxOpen = 1
+	}
+	if req.Count > maxOpen {
+		h.fail(c, fmt.Sprintf("单次最多开%d个", maxOpen))
+		return
+	}
+	if chest.Stock == 0 {
+		h.fail(c, "该宝箱已售罄")
+		return
+	}
+	if chest.Stock > 0 && req.Count > chest.Stock {
+		h.fail(c, fmt.Sprintf("库存不足(剩余%d个)", chest.Stock))
+		return
+	}
+	useDiamond := req.Currency == "diamond"
+	price := chest.PriceGold
+	unit := "黄金"
+	if useDiamond {
+		price = chest.PriceDiamond
+		unit = "钻石"
+	}
+	if price <= 0 {
+		h.fail(c, "该宝箱不支持用"+unit+"购买")
+		return
+	}
+	total := price * int64(req.Count)
+	if useDiamond {
+		prof := h.ensureProfile(uid)
+		if prof.Diamond < total {
+			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
+			return
+		}
+		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
+			Update("diamond", prof.Diamond-total).Error; err != nil {
+			h.fail(c, "扣钻石失败："+err.Error())
+			return
+		}
+	} else {
+		if city.Gold < total {
+			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))
+			return
+		}
+		city.Gold -= total
+		h.saveCityRes(&city)
+	}
+	pool := h.ezfyChestPool(chest.ID)
+	if len(pool) == 0 {
+		h.fail(c, "该宝箱还没配置奖池，请联系管理员")
+		return
+	}
+	results := []gin.H{}
+	for i := 0; i < req.Count; i++ {
+		prize := ezfyDrawChest(pool)
+		desc := h.ezfyGrantChestPrize(&city, prize)
+		if desc == "" {
+			continue
+		}
+		results = append(results, gin.H{"name": desc, "quality": prize.Quality})
+	}
+	if chest.Stock > 0 {
+		h.DB.Model(&model.EzfyCfgChest{}).Where("id = ?", chest.ID).
+			Update("stock", gorm.Expr("stock - ?", req.Count))
+		h.cfgsReload()
+	}
+	names := []string{}
+	for _, r := range results {
+		names = append(names, fmt.Sprint(r["name"]))
+	}
+	// resp.OK 会把 data 里的 msg 提升到顶层（前端读 r.msg）
+	resp.OK(c, gin.H{
+		"msg":     fmt.Sprintf("开箱成功: 花费%d%s, 获得 %s", total, unit, strings.Join(names, "、")),
+		"results": results, "gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond,
+	})
 }
 
 // OfficerSkill POST /games/ezfy/officers/:id/skill  {op: learn|forget, skill_id}
@@ -1567,25 +2341,48 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			"tier_name": ezfyTierName(e.Tier),
 			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0, "worn_by": wornBy,
+			"slot": e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"series": e.Series, "enhance": e.Enhance,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 		})
 	}
 	cfgList := []gin.H{}
 	for _, e := range ezfyCfg.equipments {
 		cfgList = append(cfgList, gin.H{"id": e.ID, "name": e.Name, "type": e.Type, "tier": e.Tier,
 			"tier_name": ezfyTierName(e.Tier), "military": e.Military, "logistics": e.Logistics,
-			"learning": e.Learning, "level": e.Level, "des": e.Des})
+			"learning": e.Learning, "level": e.Level, "des": e.Des,
+			"slot": e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"price_gold": e.PriceGold, "price_diamond": e.PriceDiamond, "stock": e.Stock,
+			"effect": e.Effect, "series": e.Series,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg})
 	}
 	sort.Slice(cfgList, func(i, j int) bool { return cfgList[i]["id"].(int) < cfgList[j]["id"].(int) })
-	resp.OK(c, gin.H{"bag": bag, "all": cfgList})
+	// 套装总览（商城/图鉴展示用）
+	setList := []gin.H{}
+	for _, s := range ezfyCfg.equipSets() {
+		setList = append(setList, gin.H{
+			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
+			"military": s.Military, "logistics": s.Logistics, "learning": s.Learning,
+			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp, "move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,
+			"effect": s.Effect, "des": s.Des,
+		})
+	}
+	resp.OK(c, gin.H{"bag": bag, "all": cfgList, "sets": setList})
 }
 
 // OfficerGenerals GET /games/ezfy/officers/generals —— 名将图鉴（按等级倒序）
+//
+// ★ 2026-09-22：军官池里现在还有 1000 名普通军官，图鉴**只列名将（kind=2）**，
+// 否则玩家会看到一千多条。
 func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	owned := h.ownedGeneralIds(uid)
 	list := []gin.H{}
 	for _, g := range ezfyCfg.generals {
+		if g.Kind == 1 {
+			continue
+		}
 		// 名将只由管理端发放, 获取渠道统一显示为「管理端发放」
 		list = append(list, gin.H{
 			"id": g.ID, "name": g.Name, "level": g.Level, "star": g.Star,
@@ -1595,4 +2392,179 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i]["level"].(int) > list[j]["level"].(int) })
 	resp.OK(c, gin.H{"generals": list})
+}
+
+// ============ 装备商城（套装用黄金/钻石购买） ============
+//
+// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家自己用黄金或钻石买。
+// 只卖「上架」的（price_gold>0 或 price_diamond>0），库存 -1 = 无上限。
+
+// equipShopList 商城在售装备（按套装分组）
+func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
+	sets := []gin.H{}
+	items := []gin.H{}
+	// 套装分组：先按套装 id 升序，再按件序号
+	setIDs := []int{}
+	for _, s := range ezfyCfg.equipSets() {
+		setIDs = append(setIDs, s.ID)
+	}
+	for _, sid := range setIDs {
+		s := ezfyCfg.equipSet(sid)
+		if s == nil {
+			continue
+		}
+		pieces := []gin.H{}
+		for _, e := range ezfyCfg.equipments {
+			if e.SetId != sid {
+				continue
+			}
+			if e.PriceGold <= 0 && e.PriceDiamond <= 0 {
+				continue
+			}
+			pieces = append(pieces, h.equipShopItem(&e))
+			items = append(items, h.equipShopItem(&e))
+		}
+		sort.Slice(pieces, func(i, j int) bool {
+			return pieces[i]["id"].(int) < pieces[j]["id"].(int)
+		})
+		if len(pieces) == 0 {
+			continue
+		}
+		sets = append(sets, gin.H{
+			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
+			"military": s.Military, "logistics": s.Logistics, "learning": s.Learning,
+			// ★ 六项战斗属性也要下发：前端要显示「穿齐额外加成」，少一项就会 undefined
+			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp,
+			"move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,
+			"effect": s.Effect, "des": s.Des, "pieces": pieces,
+		})
+	}
+	// 非套装的散件（也可上架）
+	loose := []gin.H{}
+	for _, e := range ezfyCfg.equipments {
+		if e.SetId > 0 {
+			continue
+		}
+		if e.PriceGold <= 0 && e.PriceDiamond <= 0 {
+			continue
+		}
+		loose = append(loose, h.equipShopItem(&e))
+	}
+	sort.Slice(loose, func(i, j int) bool { return loose[i]["id"].(int) < loose[j]["id"].(int) })
+	if len(loose) > 0 {
+		sets = append(sets, gin.H{
+			"id": 0, "name": "散件装备", "parts": 0, "effect": "不属于任何套装",
+			"military": 0, "logistics": 0, "learning": 0,
+			"dmg": 0, "def": 0, "hp": 0, "move": 0, "crit": 0, "crit_dmg": 0,
+			"pieces": loose,
+		})
+	}
+	return sets, items
+}
+
+func (h *EzfyHandler) equipShopItem(e *model.EzfyCfgEquipment) gin.H {
+	sold := e.Stock == 0
+	return gin.H{
+		"id": e.ID, "name": e.Name, "type": e.Type, "slot": e.EquipSlot(), "tier": e.Tier,
+		"tier_name": ezfyTierName(e.Tier), "level": e.Level,
+		"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+		"set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+		"price_gold": e.PriceGold, "price_diamond": e.PriceDiamond,
+		"stock": e.Stock, "sold_out": sold, "effect": e.Effect, "des": e.Des,
+		// ★ 六项战斗属性（军官装备）
+		"series": e.Series, "enhance": e.Enhance, "enhance_max": e.EnhanceMax,
+		"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+	}
+}
+
+// EquipShop GET /games/ezfy/equipshop —— 装备商城（套装分组）
+func (h *EzfyHandler) EquipShop(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	h.refreshCity(uid, &city)
+	sets, items := h.equipShopList()
+	resp.OK(c, gin.H{
+		"sets": sets, "items": items,
+		"gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond,
+	})
+}
+
+// EquipShopBuy POST /games/ezfy/equipshop/buy  {cfg_id, count, currency: gold|diamond}
+//
+// 用黄金或钻石买装备（套装件），买入直接进玩家背包，可就地穿到军官身上。
+func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	h.calcResource(&city)
+	var req struct {
+		CfgId    int    `json:"cfg_id"`
+		Count    int    `json:"count"`
+		Currency string `json:"currency"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.Count <= 0 {
+		req.Count = 1
+	}
+	if req.Count > 999 {
+		resp.ParamError(c, "单次最多购买 999 件")
+		return
+	}
+	cfg := ezfyCfg.equipment(req.CfgId)
+	if cfg == nil {
+		h.fail(c, "装备不存在")
+		return
+	}
+	useDiamond := req.Currency == "diamond"
+	price := cfg.PriceGold
+	unit := "黄金"
+	if useDiamond {
+		price = cfg.PriceDiamond
+		unit = "钻石"
+	}
+	if price <= 0 {
+		h.fail(c, "该装备不支持用"+unit+"购买")
+		return
+	}
+	if cfg.Stock == 0 {
+		h.fail(c, "该装备已售罄")
+		return
+	}
+	if cfg.Stock > 0 && req.Count > cfg.Stock {
+		h.fail(c, fmt.Sprintf("库存不足(剩余%d件)", cfg.Stock))
+		return
+	}
+	total := price * int64(req.Count)
+	if useDiamond {
+		prof := h.ensureProfile(uid)
+		if prof.Diamond < total {
+			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
+			return
+		}
+		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
+			Update("diamond", prof.Diamond-total).Error; err != nil {
+			h.fail(c, "扣钻石失败："+err.Error())
+			return
+		}
+	} else {
+		if city.Gold < total {
+			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))
+			return
+		}
+		city.Gold -= total
+		h.saveCityRes(&city)
+	}
+	for i := 0; i < req.Count; i++ {
+		h.addEquipment(&city, cfg)
+	}
+	if cfg.Stock > 0 {
+		h.DB.Model(&model.EzfyCfgEquipment{}).Where("id = ?", cfg.ID).
+			Update("stock", gorm.Expr("stock - ?", req.Count))
+		h.cfgsReload()
+	}
+	h.done(c, "", fmt.Sprintf("购买成功: %s×%d，花费%d%s", cfg.Name, req.Count, total, unit))
 }

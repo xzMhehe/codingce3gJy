@@ -121,6 +121,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyChat{}, &model.EzfyExchange{},
 		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
 		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
+		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
+		&model.EzfyCfgScheme{},
 		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 		&model.EzfyMapStar{},
 		&model.EzfyActivity{},
@@ -221,6 +223,24 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
 		addSwitchCol("war_require_on", 1)  // 宣战功能：1 开（默认，掠夺/征服需先宣战生效）/ 0 关（直接可打）
 		addSwitchCol("march_cap_on", 1)    // 出征兵力上限：1 开（默认，司令部等级那套）/ 0 关（不限兵力）
+		// ★ 军官升星（2026-09-22）：三个开关 + 四个数值
+		addSwitchCol("officer_star_up_on", 1)        // 升星功能：1 开（默认）/ 0 关
+		addSwitchCol("officer_star_chance_on", 1)    // 概率开关：1 按概率（默认）/ 0 必成功
+		addSwitchCol("officer_star_keep_on_fail", 0) // 失败是否保留升星卡：0 扣掉（默认）/ 1 保留
+		// 数值类（0 无意义 → 回落默认值），用只回填 NULL 的写法，别覆盖管理端改过的值
+		addNumCol := func(col string, def int) {
+			d := fmt.Sprintf("%d", def)
+			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
+				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
+			}
+			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d + " WHERE " + col + " IS NULL")
+		}
+		addNumCol("officer_star_chance", 80)
+		addNumCol("officer_star_chance_step", 5)
+		addNumCol("officer_star_chance_min", 20)
+		addNumCol("officer_star_attr_gain", 10)
+		// ★ 用户规则「军官最多 5 星」
+		addNumCol("officer_star_max", 5)
 
 		// 野地兵力倍数（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {
@@ -2191,7 +2211,7 @@ func seedGameBoards(db *gorm.DB) {
 		{"精武堂", "【精武堂】第二届武林大会报名帖", "第二届武林大会即日起开放报名！\n赛制：32进16单败淘汰，每天3场，周日决赛。\n奖励：冠军专属马甲+500金币，亚军300金币。\n回帖格式：【报名】游戏ID+常用武器。", []string{"【报名】云起，常用长枪！", "已报名，求虐"}},
 		{"魔法花园", "晒花大赛第3期：谁的花最惊艳", "本周主题：玫瑰！\n把你的花园截图发上来，点赞最高的送高级花种×10。", []string{"我的蓝玫瑰呢，先占楼"}},
 		{"狂抢车位", "车神争霸赛：谁的车最贵", "晒出你的座驾！劳斯莱斯幻影镇楼，不服来战。", []string{"楼主的幻影被我贴条了哈哈"}},
-		{"幻想西游", "【新区】虎年新区开服公告", "虎年新区正式开服！\n开服前3天经验翻倍，冲级榜前10名送神兵利器。", []string{"新区见！老玩家回归"}},
+		{"幻想西游", "【新区】马年新区开服公告", "马年新区正式开服！\n开服前3天经验翻倍，冲级榜前10名送神兵利器。", []string{"新区见！老玩家回归"}},
 	}
 	for _, sp := range samples {
 		bid := ids[sp.game]

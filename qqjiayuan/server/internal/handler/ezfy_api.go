@@ -786,8 +786,9 @@ func (h *EzfyHandler) SaveTarget(c *gin.Context) {
 // corpsMemberCount 军团**实时**成员数（以 ezfy_corps_member 为准）
 //
 // ★ 不要用 ezfy_corps.member_count 这个计数字段：它是「加入 +1 / 退出 -1」维护的，
-//   任何一次异常中断（例如加入成功但计数更新失败）都会让它永久漂移。
-//   实测出现过「表里 3 人、字段写 2 人」，玩家看到的人数就是错的。
+//
+//	任何一次异常中断（例如加入成功但计数更新失败）都会让它永久漂移。
+//	实测出现过「表里 3 人、字段写 2 人」，玩家看到的人数就是错的。
 func (h *EzfyHandler) corpsMemberCount(corpsId int64) int64 {
 	var n int64
 	h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", corpsId).Count(&n)
@@ -1330,6 +1331,12 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "增益道具"
 	case 9, 10, 11, 12:
 		return "军官道具"
+	// ★ 19 = 军官升星卡（用户要求放到「军官道具」分类下）
+	case 19:
+		return "军官道具"
+	// ★ 20 = 信号弹（计谋消耗品）
+	case 20:
+		return "计谋道具"
 	case 13, 14:
 		return "身份道具"
 	case 15:
@@ -1933,8 +1940,9 @@ func ezfyReportCategory(title string) int {
 // ezfyReportTypeName 战报标签(前端列表里的 [xxx] 前缀)
 //
 // ★ 不能只看 report_type：老代码把「掠夺/战斗/被掠夺」都写成 2，
-//   导致战报列表里清一色显示 [掠夺]（用户反馈「都是掠夺」）。
-//   这里优先按**标题前缀**判定，标题没有可识别前缀时才退回 report_type。
+//
+//	导致战报列表里清一色显示 [掠夺]（用户反馈「都是掠夺」）。
+//	这里优先按**标题前缀**判定，标题没有可识别前缀时才退回 report_type。
 func ezfyReportTypeName(reportType int, title string) string {
 	switch {
 	case strings.HasPrefix(title, "被掠夺报告"):
@@ -1990,7 +1998,8 @@ func ezfyReportTypeName(reportType int, title string) string {
 	return "战报"
 }
 
-func ezfyReportCategoryName(cat int) string {	switch cat {
+func ezfyReportCategoryName(cat int) string {
+	switch cat {
 	case 1:
 		return "军情警讯"
 	case 2:

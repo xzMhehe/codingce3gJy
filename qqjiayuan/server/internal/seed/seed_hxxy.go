@@ -54,18 +54,18 @@ var hxxyBossesJSON []byte
 var hxxyTitlesJSON []byte
 
 type hxxyMapRaw struct {
-	NodeID uint   `json:"node_id"`
-	Dtx    int    `json:"dtx"`
-	Dty    int    `json:"dty"`
-	Name   string `json:"name"`
-	Desc   string `json:"desc"`
-	Up     string `json:"up"`
-	Down   string `json:"down"`
-	Left   string `json:"left"`
-	Right  string `json:"right"`
-	UpJump string `json:"up_jump"`
-	DownJump string `json:"down_jump"`
-	LeftJump string `json:"left_jump"`
+	NodeID    uint   `json:"node_id"`
+	Dtx       int    `json:"dtx"`
+	Dty       int    `json:"dty"`
+	Name      string `json:"name"`
+	Desc      string `json:"desc"`
+	Up        string `json:"up"`
+	Down      string `json:"down"`
+	Left      string `json:"left"`
+	Right     string `json:"right"`
+	UpJump    string `json:"up_jump"`
+	DownJump  string `json:"down_jump"`
+	LeftJump  string `json:"left_jump"`
 	RightJump string `json:"right_jump"`
 }
 
@@ -99,13 +99,13 @@ type hxxySpawnRaw struct {
 }
 
 type hxxyMapNpcRaw struct {
-	Dtx      int    `json:"dtx"`
-	Dty      int    `json:"dty"`
-	NpcID    uint   `json:"npc_id"`
-	Name     string `json:"name"`
-	Img      string `json:"img"`
-	Dialogue string `json:"dialogue"`
-	Shop     string `json:"shop"`
+	Dtx      int           `json:"dtx"`
+	Dty      int           `json:"dty"`
+	NpcID    uint          `json:"npc_id"`
+	Name     string        `json:"name"`
+	Img      string        `json:"img"`
+	Dialogue string        `json:"dialogue"`
+	Shop     string        `json:"shop"`
 	Teles    []hxxyTeleRaw `json:"teles"`
 }
 
@@ -639,8 +639,8 @@ func hxxySeedQuests(db *gorm.DB) {
 		count, minLv    int
 		exp             int
 		money           int64
-		next            int  // 同列表下标（1起）
-		cat             int  // 1主线 2支线 3日常
+		next            int // 同列表下标（1起）
+		cat             int // 1主线 2支线 3日常
 		from            string
 	}
 	specs := []qd{

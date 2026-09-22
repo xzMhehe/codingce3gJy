@@ -1515,8 +1515,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		atkSpeedBonus += 10
 	}
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
+	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	// 城守(仅玩家城市防守方)
 	var cityGuard *model.EzfyOfficer
+	defEquip := ezfyBattleBonus{}
 	defOfficerDesc := ""
 
 	defender := []ezfyUnitGroup{}
@@ -1616,6 +1619,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
+		defEquip = h.officerBattleEquipBonus(cityGuard)
 		defOfficerDesc = h.officerBattleDesc(cityGuard, 10, "守军防御")
 	}
 
@@ -1639,6 +1643,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	br := ezfySimulate(attacker, defender, atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+		atkEquip, defEquip,
 		atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), h.buildTargetMap(cityIdOf(target), false),
 		h.buildMoveMap(city.ID, true), h.buildMoveMap(cityIdOf(target), false))
 	win = br.AttackerWin

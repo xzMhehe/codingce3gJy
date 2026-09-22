@@ -647,8 +647,22 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/officers/skills", ezfyH.OfficerSkills)
 				ezfyG.GET("/officers/equipments", ezfyH.OfficerEquipments)
 				ezfyG.GET("/officers/generals", ezfyH.OfficerGenerals)
+				// ★ 装备商城（套装用黄金/钻石购买）
+				ezfyG.GET("/equipshop", ezfyH.EquipShop)
+				ezfyG.POST("/equipshop/buy", ezfyH.EquipShopBuy)
+				// ★ 宝箱（钻石/黄金买，开箱按权重出套装件）
+				ezfyG.GET("/chest", ezfyH.ChestList)
+				ezfyG.POST("/chest/open", ezfyH.ChestOpen)
+				// ★ 计谋（消耗信号弹）
+				ezfyG.GET("/schemes", ezfyH.Schemes)
+				ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
 				ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
 				ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
+				// ★ 属性加点（每级 1 点，只影响玩家自己的军官）
+				ezfyG.POST("/officers/:id/attr", ezfyH.OfficerAttr)
+				ezfyG.POST("/officers/:id/attr/all", ezfyH.OfficerAttrAll)
+				// ★ 升星（消耗军官升星卡）
+				ezfyG.POST("/officers/:id/starup", ezfyH.OfficerStarUp)
 				ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
 				ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
 				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
@@ -1113,6 +1127,27 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-equipments", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentCreate)
 				admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentUpdate)
 				admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentDelete)
+				// ★ 装备套装（穿戴同套 N 件触发套装加成；玩家在商城买）
+				admin.GET("/ezfy-equip-sets", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSets)
+				admin.POST("/ezfy-equip-sets", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetCreate)
+				admin.PUT("/ezfy-equip-sets/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetUpdate)
+				admin.DELETE("/ezfy-equip-sets/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetDelete)
+				admin.GET("/ezfy-equip-sets/:id/pieces", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetPieces)
+				// ★ 宝箱 + 奖池
+				admin.GET("/ezfy-chests", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChests)
+				admin.POST("/ezfy-chests", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestCreate)
+				admin.PUT("/ezfy-chests/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestUpdate)
+				admin.DELETE("/ezfy-chests/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestDelete)
+				admin.GET("/ezfy-chests/:id/pool", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPool)
+				admin.POST("/ezfy-chests/:id/pool", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolCreate)
+				admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolBulkAdd)
+				admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolUpdate)
+				admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolDelete)
+				// ★ 计谋配置（消耗信号弹）
+				admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemes)
+				admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemeCreate)
+				admin.PUT("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemeUpdate)
+				admin.DELETE("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemeDelete)
 				// 玩家军官装备列表（ezfy_equipment）
 				admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentsOwned)
 				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentOwnedCreate)

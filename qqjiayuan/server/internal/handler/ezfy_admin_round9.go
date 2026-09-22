@@ -30,7 +30,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
-		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		// ★ 军官升星（开关 + 数值）
+		OfficerStarUpOn: ezfyStarUpDef, OfficerStarChanceOn: ezfyStarChanceOnDef,
+		OfficerStarKeepOnFail: ezfyStarKeepDef,
+		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
+		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
+		OfficerStarMax: ezfyStarMaxDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -59,6 +65,22 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.WildTroopMult <= 0 {
 		lim.WildTroopMult = ezfyWildMultDef
 	}
+	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
+	if lim.OfficerStarChance <= 0 {
+		lim.OfficerStarChance = ezfyStarChanceDef
+	}
+	if lim.OfficerStarChanceStep < 0 {
+		lim.OfficerStarChanceStep = ezfyStarChanceStepDef
+	}
+	if lim.OfficerStarChanceMin <= 0 {
+		lim.OfficerStarChanceMin = ezfyStarChanceMinDef
+	}
+	if lim.OfficerStarAttrGain <= 0 {
+		lim.OfficerStarAttrGain = ezfyStarAttrGainDef
+	}
+	if lim.OfficerStarMax <= 0 {
+		lim.OfficerStarMax = ezfyStarMaxDef
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -70,17 +92,17 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（默认，符合用户规则）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax        *int `json:"military_max"`
-		ResourceMax        *int `json:"resource_max"`
-		HouseMax           *int `json:"house_max"`
-		FactoryMax         *int `json:"factory_max"`
-		NoticeHomeCount    *int `json:"notice_home_count"`
-		GatherMaxPerOrder  *int `json:"gather_max_per_order"`
-		MallBuyMax         *int `json:"mall_buy_max"`
-		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
-		LootFeelings       *int `json:"loot_feelings"`
+		MilitaryMax           *int `json:"military_max"`
+		ResourceMax           *int `json:"resource_max"`
+		HouseMax              *int `json:"house_max"`
+		FactoryMax            *int `json:"factory_max"`
+		NoticeHomeCount       *int `json:"notice_home_count"`
+		GatherMaxPerOrder     *int `json:"gather_max_per_order"`
+		MallBuyMax            *int `json:"mall_buy_max"`
+		ConquerFeelingsMax    *int `json:"conquer_feelings_max"`
+		LootFeelings          *int `json:"loot_feelings"`
 		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
-		WoundHealDivisor   *int `json:"wound_heal_divisor"`
+		WoundHealDivisor      *int `json:"wound_heal_divisor"`
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
@@ -88,6 +110,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MarchOilOn    *int     `json:"march_oil_on"`
 		WarRequireOn  *int     `json:"war_require_on"`
 		MarchCapOn    *int     `json:"march_cap_on"`
+		// ★ 军官升星（开关 + 数值）
+		OfficerStarUpOn       *int `json:"officer_star_up_on"`
+		OfficerStarChanceOn   *int `json:"officer_star_chance_on"`
+		OfficerStarKeepOnFail *int `json:"officer_star_keep_on_fail"`
+		OfficerStarChance     *int `json:"officer_star_chance"`
+		OfficerStarChanceStep *int `json:"officer_star_chance_step"`
+		OfficerStarChanceMin  *int `json:"officer_star_chance_min"`
+		OfficerStarAttrGain   *int `json:"officer_star_attr_gain"`
+		OfficerStarMax        *int `json:"officer_star_max"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -99,7 +130,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
-		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		OfficerStarUpOn: ezfyStarUpDef, OfficerStarChanceOn: ezfyStarChanceOnDef,
+		OfficerStarKeepOnFail: ezfyStarKeepDef,
+		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
+		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
+		OfficerStarMax: ezfyStarMaxDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -239,6 +275,62 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
 		return
 	}
+	// ★ 军官升星的三个开关（0/1 都合法）
+	if !setSwitch(in.OfficerStarUpOn, &lim.OfficerStarUpOn, "军官升星功能") {
+		return
+	}
+	if !setSwitch(in.OfficerStarChanceOn, &lim.OfficerStarChanceOn, "升星概率") {
+		return
+	}
+	if !setSwitch(in.OfficerStarKeepOnFail, &lim.OfficerStarKeepOnFail, "升星失败保留升星卡") {
+		return
+	}
+	// ★ 军官升星的数值项：0 无意义，只接受 >= 1；成功率与上限不超过 100
+	if v, ok := check(in.OfficerStarChance, "升星基础成功率"); !ok {
+		return
+	} else if in.OfficerStarChance != nil {
+		if v < 1 || v > 100 {
+			resp.ParamError(c, "升星基础成功率需要在 1~100 之间")
+			return
+		}
+		lim.OfficerStarChance = v
+	}
+	if v, ok := check(in.OfficerStarChanceStep, "升星成功率递减"); !ok {
+		return
+	} else if in.OfficerStarChanceStep != nil {
+		if v > 100 {
+			resp.ParamError(c, "升星成功率递减需要在 0~100 之间")
+			return
+		}
+		lim.OfficerStarChanceStep = v
+	}
+	if v, ok := check(in.OfficerStarChanceMin, "升星成功率下限"); !ok {
+		return
+	} else if in.OfficerStarChanceMin != nil {
+		if v < 1 || v > 100 {
+			resp.ParamError(c, "升星成功率下限需要在 1~100 之间")
+			return
+		}
+		lim.OfficerStarChanceMin = v
+	}
+	if v, ok := check(in.OfficerStarAttrGain, "升星每星加点"); !ok {
+		return
+	} else if in.OfficerStarAttrGain != nil {
+		if v < 1 {
+			resp.ParamError(c, "升星每星加点至少为 1")
+			return
+		}
+		lim.OfficerStarAttrGain = v
+	}
+	if v, ok := check(in.OfficerStarMax, "军官星级上限"); !ok {
+		return
+	} else if in.OfficerStarMax != nil {
+		if v < 1 || v > 100 {
+			resp.ParamError(c, "军官星级上限需要在 1~100 之间")
+			return
+		}
+		lim.OfficerStarMax = v
+	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
 	}
@@ -254,6 +346,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 野地兵力倍数兜底（老行可能是 0 / NULL）
 	if lim.WildTroopMult <= 0 {
 		lim.WildTroopMult = ezfyWildMultDef
+	}
+	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
+	if lim.OfficerStarChance <= 0 {
+		lim.OfficerStarChance = ezfyStarChanceDef
+	}
+	if lim.OfficerStarChanceMin <= 0 {
+		lim.OfficerStarChanceMin = ezfyStarChanceMinDef
+	}
+	if lim.OfficerStarAttrGain <= 0 {
+		lim.OfficerStarAttrGain = ezfyStarAttrGainDef
+	}
+	if lim.OfficerStarMax <= 0 {
+		lim.OfficerStarMax = ezfyStarMaxDef
 	}
 	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
 	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
@@ -271,6 +376,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"war_require_on":  lim.WarRequireOn,
 		"march_cap_on":    lim.MarchCapOn,
 		"wild_troop_mult": lim.WildTroopMult,
+		// ★ 军官升星的三个开关同样要显式写（0 = 关 必须落库）
+		"officer_star_up_on":        lim.OfficerStarUpOn,
+		"officer_star_chance_on":    lim.OfficerStarChanceOn,
+		"officer_star_keep_on_fail": lim.OfficerStarKeepOnFail,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()
