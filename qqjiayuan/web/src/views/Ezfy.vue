@@ -2755,7 +2755,16 @@
             <a href="javascript:;" @click="switchMallTab('equipment'); go('mall')">[去商城买散件]</a>
             <a href="javascript:;" @click="switchMallTab('chest'); go('mall')">[去开宝箱]</a>
           </div>
-          <!-- ★ 检索框 -->
+
+          <!-- 装备页子 tab：我的装备 / 我的套装 / 装备图鉴 -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: equipTab === 'my' }" @click="equipTab = 'my'">装备</a>|
+            <a href="javascript:;" :class="{ on: equipTab === 'set' }" @click="equipTab = 'set'">套装</a>|
+            <a href="javascript:;" :class="{ on: equipTab === 'all' }" @click="equipTab = 'all'">装备图鉴</a>
+          </div>
+
+          <!-- 我的装备（背包散件 + 检索 + 分页） -->
+          <div v-if="equipTab === 'my'">
           <div class="old-line">
             搜索:
             <input v-model="equipWord" type="text" placeholder="装备名 / 部位 / 套装"
@@ -2786,8 +2795,11 @@
             <span class="gray">第 {{ Math.min(equipPage, equipTotalPages) }}/{{ equipTotalPages }} 页 · 共 {{ equipFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: equipPage >= equipTotalPages }" @click="equipGo(1)">[下一页]</a>
           </div>
+          </div>
+
           <!-- 我的套装：只列**我拥有的**套装（从背包聚合），并显示还差几件才生效。
                原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的。 -->
+          <div v-if="equipTab === 'set'">
           <div class="old-line" v-if="mySetProgress.length"><b>我的套装</b></div>
           <!-- 只显示「进度 + 是否生效」，加成点 [加成] 才展开（原来把一长串效果全铺出来，很乱） -->
           <div class="old-line" v-for="s in mySetProgress" :key="'ms' + s.id">
@@ -2800,6 +2812,10 @@
             <span class="green" v-if="setEffectId === s.id">{{ equipAttrText(s) }}</span>
           </div>
           <div class="old-line gray" v-if="!mySetProgress.length">(暂无套装装备)</div>
+          </div>
+
+          <!-- 装备图鉴（全部装备 + 检索 + 分页） -->
+          <div v-if="equipTab === 'all'">
           <div class="old-line">装备图鉴({{ equipData.all.length }})</div>
           <div class="old-line">
             搜索:
@@ -2825,6 +2841,7 @@
             <a href="javascript:;" :class="{ disabled: equipAllPage <= 1 }" @click="equipAllGo(-1)">[上一页]</a>
             <span class="gray">第 {{ Math.min(equipAllPage, equipAllTotalPages) }}/{{ equipAllTotalPages }} 页 · 共 {{ equipAllFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: equipAllPage >= equipAllTotalPages }" @click="equipAllGo(1)">[下一页]</a>
+          </div>
           </div>
         </div>
 
@@ -3287,6 +3304,7 @@ export default {
       // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
+      equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
       setEffectId: 0,                                        // 「我的套装」里点 [加成] 展开的那条
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
@@ -6071,6 +6089,7 @@ export default {
       this.acadeTab = tab
       // ★ 进装备页时把检索/分页复位，避免上次的搜索词把列表筛空（看着像「装备没了」）
       if (tab === 'equip') {
+        this.equipTab = 'my'
         this.equipWord = ''
         this.equipPage = 1
         this.equipAllWord = ''
