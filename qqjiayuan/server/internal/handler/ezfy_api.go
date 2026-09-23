@@ -126,6 +126,10 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
+	// ★ 军事区/资源区各自有**硬上限**（默认各 33，管理端可维护）：
+	//   即使军工厂/民居设了「不限数量」，也不能超过所属区域的总数上限（用户规则）。
+	//   pool 这里必须和 buildBuilding 一致地按区域卡，否则会出现「队列里能点、一建就报已达上限」。
+	mil, res := h.areaCounts(city.ID)
 	pool := []gin.H{}
 	for _, id := range ids {
 		cfg := ezfyCfg.buildings[id]
@@ -143,12 +147,20 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 			// 资源建筑可重复建造(原版资源区 can = true)
 			can = true
 		case id == ezfyFactoryBuildingID:
-			// ★ 第九轮用户规则：军工厂**不限数量**（只要军事区建筑上限没到就能一直建）
+			// ★ 第九轮用户规则：军工厂**不限数量**（但受军事区总数上限约束）
 			can = true
 		case id == 2:
 			can = cntOf[id] < lim.HouseMax
 		default:
 			can = cntOf[id] == 0
+		}
+		// ★ 区域总数硬上限：满了就不再出现在可建队列里（与 buildBuilding 口径一致）
+		if can {
+			if cfg.Type == 1 {
+				can = res < lim.ResourceMax
+			} else {
+				can = mil < lim.MilitaryMax
+			}
 		}
 		// ★ 第九轮：航海协会(19) 只能建在【海城】(沿海平原)，陆城不得建造
 		if id == 19 && !h.isSeaCity(city) {

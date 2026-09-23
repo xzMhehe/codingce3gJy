@@ -3687,11 +3687,15 @@ export default {
     // 沉浸式卡控①: 游戏内任何 <a href="/..."> 都不允许跳出 /games/ezfy 回到家园站点
     // (捕获阶段拦截, 只拦站内绝对路径链接)
     document.addEventListener('click', this.blockEscape, true)
-    // ★ 记录最近一次点击位置（页面内导航、按钮、格子的鼠标落点）：
-    //   操作结果的提示要浮现在「刚才点的那个地方」附近，而不是固定在页面顶部。
-    //   捕获阶段监听，任意元素被点到都能拿到坐标。
+    // ★ 记录最近点击的**元素**（页面内导航、按钮、格子的鼠标落点）：
+    //   操作结果的提示要浮现在「刚才点的那个控件」附近，而不是固定页面顶部或原始鼠标坐标。
+    //   存元素引用而非 clientX/Y —— API 响应是异步的，回来时页面可能已滚动，
+    //   用元素 getBoundingClientRect() 实时取位置不会飘走。
     this._capClick = (e) => {
-      this._lastClick = { x: e.clientX || 0, y: e.clientY || 0 }
+      const el = e.target && e.target.closest
+        ? e.target.closest('a,button,[@click]')
+        : null
+      this._lastClicked = el || null
     }
     document.addEventListener('click', this._capClick, true)
     // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏上一页(与幻想西游 Xiyou.vue 一致)
@@ -5704,29 +5708,38 @@ export default {
       if (!t) return
       this._msgSeq = (this._msgSeq || 0) + 1
       const id = this._msgSeq
-      // ★ 提示浮现位置 = 最近一次点击的屏幕坐标（点哪提示就贴着哪出现）。
-      //   还没有任何点击时（如页面刚加载的回调）兜底放到页面顶部居中，别挡操作。
-      const pos = this._lastClick || { x: null, y: null }
-      this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t), x: pos.x, y: pos.y })
+      this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
       if (this.msgs.length > 6) this.msgs.shift()
       // ★ 用户要求：不需要玩家确定的提示 3 秒后自动消失（也可点 [关闭] 手动收起）
       setTimeout(() => this.closeMsg(id), 3000)
     },
-    // 提示条样式：fixed 定位在点击位置附近（固定定位用视口坐标，正好对上 clientX/Y）。
-    // 多条时按索引向下轻微错开；靠右/靠下时向内收敛，避免超出视口被切掉。
+    // 提示条样式：fixed 定位在刚才点击的**控件正下方居中**（留 12px 间隙），
+    // 不再用原始鼠标坐标，避免盖住按钮本身。元素已滚出视口时兜底顶部居中。
+    // 多条时向下错开 36px，防重叠。
     msgStyle (m, i) {
       const vw = window.innerWidth
       const vh = window.innerHeight
       const w = Math.min(320, vw - 16)
-      const step = 22
+      const step = 36
       let left, top
-      if (m.x == null || m.y == null) {
-        // 无点击记录：顶部水平居中
+      const el = this._lastClicked
+      const rect = el && typeof el.getBoundingClientRect === 'function' ? el.getBoundingClientRect() : null
+      // 元素在视口内（横向不越界、纵向可见）才按它定位；否则退到顶部居中
+      const inView = rect && rect.left < vw && rect.right > 0 && rect.top < vh && rect.bottom > 0
+      if (rect && inView) {
+        let cx = rect.left + rect.width / 2
+        left = Math.round(cx - w / 2)
+        left = Math.max(8, Math.min(left, vw - w - 8))
+        let below = rect.bottom + 12 + i * step
+        if (below + 40 > vh) {
+          // 元素靠底：改成出现在元素上方
+          top = Math.max(8, rect.top - 12 - 40)
+        } else {
+          top = Math.round(below)
+        }
+      } else {
         left = Math.round((vw - w) / 2)
         top = 8
-      } else {
-        left = Math.min(m.x + 10, vw - w - 8)
-        top = Math.min(m.y + 14 + i * step, vh - 60)
       }
       return { position: 'fixed', left: left + 'px', top: top + 'px',
         maxWidth: w + 'px', zIndex: 9999, boxShadow: '0 2px 8px rgba(0,0,0,.25)' }
