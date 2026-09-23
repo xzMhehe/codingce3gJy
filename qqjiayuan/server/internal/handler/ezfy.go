@@ -2248,6 +2248,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&unreadReports)
 
 	acct, ulv, uexp := h.ezfyUserBrief(uid)
+	// ★ 军事区/资源区上限（各 33，管理端可维护）：随 /view 下发，前端不再硬编码
+	lim := ezfyLimit()
 	resp.OK(c, gin.H{
 		"profile":    profile,
 		"account":    acct,
@@ -2276,6 +2278,9 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"boost":           h.hasCityEffect(city.ID, 1),
 		"buildings":       buildingViews,
 		"building_pool":   buildingPool,
+		// ★ 军事区/资源区各自上限（分开下发）
+		"military_cap":   lim.MilitaryMax,
+		"resource_cap":   lim.ResourceMax,
 		"troops":          troopViews,
 		"wounded":         wounded,
 		"queues":          queues,

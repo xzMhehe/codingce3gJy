@@ -240,9 +240,6 @@
       <template v-else-if="cur === 'mail'">
         <div class="panel">
           <div class="panel-title">私聊 · 会话列表</div>
-          <div class="old-line gray">
-            点一个会话就切到和那个人的聊天；在「世界聊天 / 好友 / 统帅信息」里点玩家名字也会直接进到和他的私聊。
-          </div>
           <div class="old-line" v-for="c in pmConvs" :key="'cv' + c.user_id">
             <a href="javascript:;" @click="selectPm(c.user_id)">
               <span :class="{ red: pmPeer && pmPeer.id === c.user_id }">
@@ -587,7 +584,7 @@
           <br/>
           <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
           <div class="old-line">
-            数量/最大：{{ areaCount }}/{{ areaCap }}
+            数量/最大：{{ zoneCount }}/{{ zoneCap }}
             <a href="javascript:;" @click="openBuildPre(cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->
@@ -921,7 +918,7 @@
           </div>
           <div class="old-line gray">
             <span class="orange">活动</span>=活动野地 <span style="color:#ff00ff">活动寇</span>=活动寇城
-            <span class="red">特殊</span>=特殊城市 (活动目标无法占领, 战胜只结算奖励)
+            <span class="red">特殊</span>=特殊城市
           </div>
           <div class="old-line">
             <a href="javascript:;" @click="go('orders')">出征队列</a>
@@ -2213,7 +2210,7 @@
               </b>
             </div>
             <div class="old-line">
-              <button @click="doBuy(buyItem)">确认购买</button>
+              <a href="javascript:;" @click="doBuy(buyItem)">[确认购买]</a>
               <a href="javascript:;" @click="buyItem = null; go('mall')">[取消]</a>
             </div>
           </template>
@@ -2243,7 +2240,7 @@
               合计：<b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
             </div>
             <div class="old-line">
-              <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
+              <a href="javascript:;" @click="doBuyEquip(equipShopBuy)">[确认购买]</a>
               <a href="javascript:;" @click="equipShopBuy = null; go('mall')">[取消]</a>
             </div>
           </template>
@@ -2267,10 +2264,11 @@
             </div>
             <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）：</div>
             <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th></tr>
+              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
               <tr v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
                 <td>{{ p.name }}</td>
                 <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
+                <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
               </tr>
             </table>
             <div class="old-line">
@@ -2286,7 +2284,7 @@
               <b class="bb-total">{{ (chestOpen.price_diamond > 0 ? chestOpen.price_diamond : chestOpen.price_gold) * (parseInt(chestCount) || 0) }} {{ chestOpen.price_diamond > 0 ? '钻石' : resNames.gold }}</b>
             </div>
             <div class="old-line">
-              <button @click="doOpenChest(chestOpen)">确认开箱</button>
+              <a href="javascript:;" @click="doOpenChest(chestOpen)">[确认开箱]</a>
               <a href="javascript:;" @click="chestOpen = null; go('mall')">[取消]</a>
             </div>
           </template>
@@ -2656,7 +2654,6 @@
             军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
             雇佣费用 = 军官等级 × 1000 {{ resNames.gold }}
           </div>
-          <div class="old-line gray">军校招募的是普通军官; 名将只能由管理端发放(见[名将图鉴])</div>
           <div class="old-line red" v-if="recruitData.academy_level && officerFull">
             参谋部容量已满({{ recruitData.used }}/{{ recruitData.capacity }}), 请先
             <a href="javascript:;" @click="go('buildm')">[升级参谋部]</a>
@@ -3122,6 +3119,9 @@ export default {
       boostUntil: false,
       buildings: [],
       buildingPool: [],
+      // ★ 军事区/资源区各自上限（/view 下发，默认各 33）
+      militaryCap: 33,
+      resourceCap: 33,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
@@ -3516,10 +3516,20 @@ export default {
       return sum
     },
     areaCount () {
-      return this.buildings.filter(b => b.type === 1 || b.type === 2 || b.type === 3).length
+      return this.buildings.filter(b => b.type >= 1 && b.type <= 4).length
     },
     areaCap () {
-      return 33
+      return 66
+    },
+    // ★ 当前分区（军事区/资源区）各自的建筑数（分开统计，不再混用 areaCount）
+    zoneCount () {
+      const isM = this.zone === 'm'
+      const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
+      return this.buildings.filter(b => inZone(b.type)).length
+    },
+    // ★ 当前分区上限：军事区/资源区各 33（与后端 ezfy_cfg_limit 默认一致）
+    zoneCap () {
+      return this.zone === 'm' ? this.militaryCap : this.resourceCap
     },
     factoryTotal () {
       return this.buildings.filter(b => b.building_id === 14).reduce((s, b) => s + b.level, 0)
@@ -4034,6 +4044,8 @@ export default {
           this.boostUntil = d.boost
           this.buildings = d.buildings
           this.buildingPool = d.building_pool || []
+          this.militaryCap = d.military_cap || 33
+          this.resourceCap = d.resource_cap || 33
           this.wildlands = d.wildlands
           this.queues = d.queues
           this.marching = d.marching
