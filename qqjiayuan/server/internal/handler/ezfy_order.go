@@ -158,8 +158,15 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				switch {
 				case terrain == ezfyTerrainSea:
 					cell["area_type"] = 1
-					cell["name"] = ezfyTerrainName(terrain) // 海洋
-					cell["level"] = ezfyWildlandLevel(x, y)
+					lvl := ezfyWildlandLevel(x, y)
+					if lvl == 0 {
+						// 纯海洋: 无野地, 详情页不显示守军/军官/出征按钮
+						cell["name"] = ezfyTerrainName(terrain) // 海洋
+						cell["is_ocean"] = true
+					} else {
+						cell["name"] = "海底森林"
+						cell["level"] = lvl
+					}
 				case kou:
 					cell["area_type"] = 2
 					cell["name"] = "寇城"
@@ -237,6 +244,12 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 			ttype = 1
 		}
 	}
+	// ★ 纯海洋(海野等级0): 只显示「地形：海洋」, 无守军/军官/出征按钮
+	if ttype == 2 && ezfyWildlandLevel(x, y) == 0 {
+		resp.OK(c, gin.H{"x": x, "y": y, "type": 0, "is_ocean": true,
+			"terrain": 8, "terrain_name": "海洋", "continent": ezfyRegionName(x, y)})
+		return
+	}
 	level := ezfyWildlandLevel(x, y)
 	if ttype == 3 {
 		level = ezfyKouLevel(x, y)
@@ -266,10 +279,23 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 			}
 		}
 	}
-	// 采集可获得的珠宝(按地形固定, 复刻 cfg_equipment 的「珠宝(地形)」)
-	jewelName := ""
-	if j := h.randomJewel(ezfyTerrain(x, y)); j != nil {
-		jewelName = j.Name
+	// ★ 采集可获得(按地形固定): 资源名 + 宝物池（平原/沿海平原无珠宝）
+	var treasures []string
+	gatherRes := ""
+	if ttype == 1 || ttype == 2 {
+		te := ezfyTerrainEx(x, y)
+		treasures = ezfyTerrainTreasureNames[te]
+		gatherRes = ezfyGatherResName(te)
+	}
+	if treasures == nil {
+		treasures = []string{}
+	}
+	// 地形显示名: 海野→海底森林, 寇城→平原(用户规范)
+	terrainName := ezfyTerrainNameEx(x, y)
+	if ttype == 2 {
+		terrainName = "海底森林"
+	} else if ttype == 3 {
+		terrainName = "平原"
 	}
 	// 归属: 已占领该野地的玩家(复刻 mapView 的【归属: xxx】)
 	owner := ""
@@ -287,10 +313,12 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
-		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrain(x, y),
-		"terrain_name": ezfyTerrainNameEx(x, y),
-		"continent":    ezfyContinentName(x, y),
-		"jewel":        jewelName,
+		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrainEx(x, y),
+		"terrain_name": terrainName,
+		"continent":    ezfyRegionName(x, y),
+		"treasures":    treasures,
+		"gather_res":   gatherRes,
+		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
 		"owner":        owner,
 	})
 }
@@ -1276,33 +1304,41 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		return
 	}
 	level := wl.Level
+	// ★ 采集产出按地形单一资源（总量与原先四种合计持平: 每级 800×4）
+	amt := int64(level) * 800 * 4
+	resName := ezfyGatherResName(ezfyTerrainEx(wl.X, wl.Y))
 	var food, steel, oil, rare, gold int64
-	if wl.WildType == 2 {
-		oil, rare, gold = int64(level)*800, int64(level)*800, int64(level)*800
-	} else {
-		food, steel, oil, rare = int64(level)*800, int64(level)*800, int64(level)*800, int64(level)*800
+	switch resName {
+	case "粮食":
+		food = amt
+	case "钢铁":
+		steel = amt
+	case "石油":
+		oil = amt
+	case "稀矿":
+		rare = amt
 	}
 	// ★ 采集产出**先记在部队身上**（待带回），不直接入城；超出负重的部分丢弃。
 	//   只有「召回并返航到达」才会入城（见 finishReturn）。
 	loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
 	cur := parseCarry(order.Carry)
-	desc := fmt.Sprintf("派遣部队在野地%d级(%d,%d)完成一次采集结算\n产出: 粮%d 钢%d 油%d 稀矿%d 金%d\n",
-		level, wl.X, wl.Y, food, steel, oil, rare, gold)
+	desc := fmt.Sprintf("派遣部队在野地%d级(%d,%d)完成一次采集结算\n产出: %s%d\n",
+		level, wl.X, wl.Y, resName, amt)
 	desc += fmt.Sprintf("本次装入部队: %d（负重 %d/%d）\n", loaded, cur.total(), h.ezfyCarryCap(order))
 	if dropped > 0 {
 		desc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上（多带运输兵/卡车可提高负重）\n", dropped)
 	}
 	desc += "资源要**召回部队**才能带回城里。\n"
 	if rand.Intn(ezfyDispatchTreasure) == 0 {
-		pool := []int{1, 4, 5, 6, 7, 8, 9}
-		cfgId := pool[rand.Intn(len(pool))]
-		if cfg := ezfyCfg.item(cfgId); cfg != nil {
-			h.addItem(uid, cfgId, 1)
-			// ★ 宝物不受负重限制，直接进背包
-			desc += "运气爆棚! 获得宝物(已直接放入背包): " + cfg.Name + "\n"
-			// ★ 系统消息（用户要求：采集出宝物要能看到）
-			h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物：%s",
-				h.ezfyProfileName(uid), level, wl.X, wl.Y, cfg.Name)
+		if eq := h.randomTerrainTreasure(ezfyTerrainEx(wl.X, wl.Y)); eq != nil {
+			if city := h.cityOfOrder(order, uid); city != nil {
+				h.addEquipment(city, eq)
+				// ★ 宝物不受负重限制，直接进背包
+				desc += "运气爆棚! 获得宝物(已直接放入背包): " + eq.Name + "\n"
+				// ★ 系统消息（用户要求：采集出宝物要能看到）
+				h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物：%s",
+					h.ezfyProfileName(uid), level, wl.X, wl.Y, eq.Name)
+			}
 		}
 	}
 	desc += "部队继续驻守采集, 可随时召回。"
@@ -1382,11 +1418,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		base := int64(level) * 800 * int64(gainPct) / 100
+		// ★ 采集产出按地形单一资源（总量与原四种合计持平: base×4）
+		amt := base * 4
+		resName := ezfyGatherResName(ezfyTerrainEx(wl.X, wl.Y))
 		var food, steel, oil, rare, gold int64
-		if wl.WildType == 2 {
-			oil, rare, gold = base, base, base
-		} else {
-			food, steel, oil, rare = base, base, base, base
+		switch resName {
+		case "粮食":
+			food = amt
+		case "钢铁":
+			steel = amt
+		case "石油":
+			oil = amt
+		case "稀矿":
+			rare = amt
 		}
 		// ★ 采到的资源装在部队身上，返航到达才入城；超负重丢弃
 		loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, gold)
@@ -1398,7 +1442,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": order.Result,
 				"return_time": order.ReturnTime, "carry": order.Carry})
-		gdesc := fmt.Sprintf("我军在占领的野地采集了8小时\n产出: 粮%d 钢%d 油%d 稀矿%d 金%d\n", food, steel, oil, rare, gold)
+		gdesc := fmt.Sprintf("我军在占领的野地采集了8小时\n产出: %s%d\n", resName, amt)
 		if gainPct > 100 {
 			gdesc += fmt.Sprintf("军官后勤加成: +%d%%\n", gainPct-100)
 		}
@@ -1406,15 +1450,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if dropped > 0 {
 			gdesc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上\n", dropped)
 		}
-		// ★ 用户规则：宝物只能从「采集」获得 —— 每次采集有 1/10 概率捡到宝物(直接进背包, 不受负重限制)
+		// ★ 用户规则：宝物只能从「采集」获得 —— 每次采集有 1/10 概率按地形捡到宝物(直接进背包, 不受负重限制)
 		if rand.Intn(ezfyDispatchTreasure) == 0 {
-			pool := []int{1, 4, 5, 6, 7, 8, 9}
-			cfgId := pool[rand.Intn(len(pool))]
-			if cfg := ezfyCfg.item(cfgId); cfg != nil {
-				h.addItem(uid, cfgId, 1)
-				gdesc += "运气爆棚! 获得宝物(已直接放入背包): " + cfg.Name + "\n"
+			if eq := h.randomTerrainTreasure(ezfyTerrainEx(wl.X, wl.Y)); eq != nil {
+				h.addEquipment(city, eq)
+				gdesc += "运气爆棚! 获得宝物(已直接放入背包): " + eq.Name + "\n"
 				h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物：%s",
-					h.ezfyProfileName(uid), level, wl.X, wl.Y, cfg.Name)
+					h.ezfyProfileName(uid), level, wl.X, wl.Y, eq.Name)
 			}
 		}
 		gdesc += "部队正在返回, 到达后资源入库。"

@@ -1536,6 +1536,24 @@ func (h *EzfyHandler) randomJewel(terrain int) *model.EzfyCfgEquipment {
 	return &j
 }
 
+// randomTerrainTreasure 从地形对应的「采集宝物池」随机取一件(用户规范, 2026-09-23)。
+//
+// 平原/沿海平原没有珠宝 → 返回 nil, 采集不掉宝。
+// 宝物只在采集中掉落; 战斗不再掉装备/珠宝。
+func (h *EzfyHandler) randomTerrainTreasure(terrain int) *model.EzfyCfgEquipment {
+	names := ezfyTerrainTreasureNames[terrain]
+	if len(names) == 0 {
+		return nil
+	}
+	name := names[rand.Intn(len(names))]
+	for _, e := range ezfyCfg.equipments {
+		if e.Name == name {
+			return &e
+		}
+	}
+	return nil
+}
+
 // captureWildlandOfficer 战胜野地/寇城后俘虏守将
 //
 // 规则(用户明确):

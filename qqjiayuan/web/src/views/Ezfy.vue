@@ -1090,17 +1090,9 @@
       <!-- ============ 目标详情(wildview) 复刻 map/mapView.html ============ -->
       <template v-else-if="cur === 'wildview'">
         <div class="panel" v-if="selCell">
-          <div class="old-line">
-            所属区域：{{ selDetail ? selDetail.continent : (selCell.continent || '未知') }}
-          </div>
-          <div class="old-line">
-            Lv{{ selCell.act_level || selCell.level || selCell.city_level || 0 }}({{ selCell.x }},{{ selCell.y }})
-            <a href="javascript:;" @click="addStar">收藏</a>
-            <a href="javascript:;" @click="toggleStars">收藏列表</a>
-          </div>
-          <div class="old-line">
-            {{ selCell.name }}<template v-if="selCell.level && !selCell.act_type">({{ selCell.level }})</template>
-            <span v-if="selCell.city_level">({{ selCell.city_level }}级)</span>
+          <div class="old-line" v-if="selDetail">
+            所属区域：{{ selDetail.continent }}
+            <a href="javascript:;" @click="addStar">{{ isCellStarred ? '已收藏' : '收藏' }}</a>
           </div>
           <template v-if="selDetail">
             <!-- 活动目标(活动野地/活动寇城/特殊城市): 复刻 activityIndex.html 的说明 + 守军/奖励预览 -->
@@ -1119,21 +1111,22 @@
               <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
               <div class="old-line red">活动目标无法占领，战胜只结算奖励(不占附属野地上限)</div>
             </template>
+            <!-- 纯海洋: 无野地/守军/出征按钮 -->
+            <template v-else-if="selDetail.is_ocean">
+              <div class="old-line">【海洋】({{ selCell.x }},{{ selCell.y }})</div>
+              <div class="old-line">地形：海洋</div>
+            </template>
+            <!-- 陆地野地/海底森林/寇城 -->
             <template v-else>
-              <div class="old-line" v-if="selDetail.type === 1">
-                {{ selDetail.terrain_name }}中可以产出{{ resNames.food }}、{{ resNames.steel }}、{{ resNames.oil }}、{{ resNames.rare }}
+              <div class="old-line">【{{ selDetail.type === 3 ? '寇城' : selDetail.terrain_name }}({{ selDetail.level }}级)】({{ selCell.x }},{{ selCell.y }})</div>
+              <div class="old-line">地形：{{ selDetail.terrain_name }}</div>
+              <div class="old-line" v-if="selDetail.type === 3">地块：寇城</div>
+              <div class="old-line" v-else>野地等级：{{ selDetail.level }}级</div>
+              <div class="old-line" v-if="selDetail.type === 3">
+                掉落宝物：{{ selDetail.treasure || '普通宝物' }}
               </div>
-              <div class="old-line" v-else-if="selDetail.type === 2">
-                海洋中可以产出{{ resNames.oil }}、{{ resNames.rare }}、{{ resNames.gold }}
-              </div>
-              <div class="old-line" v-else>寇城中囤积了大量资源与宝物</div>
-              <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>
-              <div class="old-line">【归属: {{ selDetail.owner || '无' }}】</div>
-              <div class="old-line">
-                守军情况：<span v-for="tp in selDetail.troops" :key="'sp' + tp.troop_id">{{ tp.name }}约{{ tp.min }}-{{ tp.max }} </span>
-                <span v-if="!selDetail.troops.length" class="gray">(无守军)</span>
-              </div>
-              <div class="old-line">掠夺资源约：{{ selDetail.res_min }}-{{ selDetail.res_max }}</div>
+              <div class="old-line" v-else>归属：{{ selDetail.owner || '中立' }}</div>
+              <div class="old-line" v-if="selDetail.gather_res">采集可以获得{{ selDetail.gather_res }}，可能获得{{ (selDetail.treasures || []).join('、') }}。</div>
             </template>
           </template>
           <div class="old-line" v-else>
@@ -1181,7 +1174,7 @@
             <span v-if="warText && !selCell.ally && warRequire" class="orange">{{ warText }}</span>
           </div>
           <!-- ③ 野地/寇城/海洋 -->
-          <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)'">
+          <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)' && !(selDetail && selDetail.is_ocean)">
             <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
             <a href="javascript:;" @click="pickOrder(2)">[掠夺]</a>&nbsp;
             <a href="javascript:;" @click="pickOrder(3)">[征服]</a>&nbsp;
@@ -4795,6 +4788,9 @@ export default {
     },
     async addStar () {
       if (!this.selCell) return
+      // ★ 已收藏 → 再点一次取消收藏
+      const hit = this.mapStars.find(s => s.x === this.selCell.x && s.y === this.selCell.y)
+      if (hit) { this.delStar(hit); return }
       // 备注名用「地形名(等级)」, 坐标由列表模板统一拼, 别在这里重复带上
       const def = this.cellText(this.selCell)
       const name = await this.ask('备注名（最多16字）', { input: true, value: def })
@@ -5335,6 +5331,10 @@ export default {
       return '全队阵亡'
     },
     // ---- 地图/出征 ----
+    isCellStarred () {
+      // ★ 已收藏的格子显示「已收藏」(再次点击取消收藏)
+      return this.selCell && this.mapStars.some(s => s.x === this.selCell.x && s.y === this.selCell.y)
+    },
     cellText (cell) {
       // 复刻 map/index.html: 格子文案为「名称(等级)」；★ 现在每格第二行统一显示坐标，
       //   所以这里一律只返回「名称」部分，本城也不再拼 (x,y)，避免和下面那行重复。
@@ -5351,8 +5351,12 @@ export default {
       if (cell.act_type === 3) return '特殊(' + cell.act_level + ')'
       if (cell.name === '寇城(废墟)') return '墟'
       if (cell.area_type === 2) return '寇(' + cell.level + ')'
-      if (cell.terrain === 8) return '海(' + cell.level + ')'
-      // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/山地)
+      if (cell.terrain === 8) {
+        // ★ 纯海洋/海底森林分开显示(用户规范): 海洋不带等级, 海野显示海底森林(N级)
+        if (cell.is_ocean) return '海洋'
+        return '海底森林(' + cell.level + ')'
+      }
+      // 陆地野地按地形名显示(平原/草原/森林/盆地/丘陵/沼泽/岛屿)
       return (cell.terrain_name || '野') + '(' + cell.level + ')'
     },
     // ★ 格子悬浮提示：城市名字在格子里会被截断，鼠标悬停看全称。

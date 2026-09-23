@@ -242,8 +242,8 @@ func ezfyMarkLevelAt(x, y int) int {
 }
 
 // ezfyTerrainNames 地形名（复刻原版 MapController.TERRAIN_NAMES，索引即地形 id）
-// 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7山地 8海洋 9沿海平原(本项目扩展)
-var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "山地", "海洋", "沿海平原"}
+// 1平原 2草原 3森林 4盆地 5丘陵 6沼泽 7岛屿 8海洋 9沿海平原(本项目扩展)
+var ezfyTerrainNames = []string{"", "平原", "草原", "森林", "盆地", "丘陵", "沼泽", "岛屿", "海洋", "沿海平原"}
 
 // ezfyTerrainName 地形 id → 中文名
 func ezfyTerrainName(t int) string {
@@ -256,6 +256,36 @@ func ezfyTerrainName(t int) string {
 // ezfyTerrainNameEx 按坐标取实际地形名（含沿海平原）
 func ezfyTerrainNameEx(x, y int) string {
 	return ezfyTerrainName(ezfyTerrainEx(x, y))
+}
+
+// ============ 野地采集: 按地形的产出资源 + 宝物池（用户规范, 2026-09-23） ============
+//
+// 平原(1)/沿海平原(9)没有珠宝; 岛屿按原版「海岛」宝物列表。
+// 宝物只在采集中掉落, 战斗中不掉宝物。
+
+// ezfyTerrainTreasureNames 地形 id → 可采集宝物名称列表（展示按此顺序）
+var ezfyTerrainTreasureNames = map[int][]string{
+	2: {"玛瑙项坠", "翡翠项链", "祖母绿"},    // 草原 → 粮食
+	3: {"黑曜石戒指", "黄金手镯", "红宝石戒指"}, // 森林 → 粮食
+	4: {"黑曜石戒指", "琥珀项链", "铂金戒指"},  // 盆地 → 稀矿
+	5: {"黄金手镯", "玛瑙项坠", "红宝石戒指"},  // 丘陵 → 钢铁
+	6: {"琥珀项链", "黄金手镯", "蓝宝石戒指"},  // 沼泽 → 石油
+	7: {"琥珀项链", "红宝石戒指", "祖母绿"},    // 岛屿 → 钢铁
+	8: {"翡翠项链", "蓝宝石戒指", "祖母绿"},   // 海底森林 → 石油
+}
+
+// ezfyGatherResName 地形 → 采集产出的资源名（粮食/钢铁/石油/稀矿）
+func ezfyGatherResName(t int) string {
+	switch t {
+	case 4:
+		return "稀矿"
+	case 5, 7:
+		return "钢铁"
+	case 6, 8:
+		return "石油"
+	default:
+		return "粮食" // 平原/草原/森林/沿海平原
+	}
 }
 
 // ============ 一次性数据迁移：旧版海城 → 沿海平原 ============

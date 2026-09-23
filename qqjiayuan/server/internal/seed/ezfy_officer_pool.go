@@ -264,87 +264,87 @@ type ezfyOfficerSeries struct {
 var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 1500, Mi: 60, Lo: 30, Le: 30,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "围巾", Dmg: 125, Def: 120},
-			{Sub: "头盔", Def: 130, Hp: 135},
-			{Sub: "折扇", Dmg: 115, Crit: 125, CritDmg: 135},
-			{Sub: "卫衣", Hp: 135},
-			{Sub: "腰部", Def: 120, Move: 115},
-			{Sub: "勋章", Dmg: 130},
-			{Sub: "AWM", Dmg: 155, CritDmg: 130},
-			{Sub: "指环", Def: 110, Hp: 125, Move: 110},
-			{Sub: "八一", Def: 155},
-			{Sub: "草鞋", Hp: 125, Move: 135},
-			{Sub: "史册", Def: 135},
+			{Sub: "围巾", Dmg: 53, Def: 50},
+			{Sub: "头盔", Def: 55, Hp: 57},
+			{Sub: "折扇", Dmg: 48, Crit: 45, CritDmg: 57},
+			{Sub: "卫衣", Hp: 57},
+			{Sub: "腰部", Def: 50, Move: 40},
+			{Sub: "勋章", Dmg: 55},
+			{Sub: "AWM", Dmg: 65, CritDmg: 55},
+			{Sub: "指环", Def: 46, Hp: 53, Move: 40},
+			{Sub: "八一", Def: 65},
+			{Sub: "草鞋", Hp: 53, Move: 40},
+			{Sub: "史册", Def: 57},
 		}},
 	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 1500, Mi: 60, Lo: 30, Le: 30,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "肩章", Def: 125, Hp: 120},
-			{Sub: "帽子", Def: 130},
-			{Sub: "挂件", Dmg: 125, CritDmg: 115},
-			{Sub: "夹克", Hp: 130},
-			{Sub: "工装", Def: 135, Hp: 125},
-			{Sub: "勋章", Dmg: 130},
-			{Sub: "手枪", Dmg: 120, Crit: 120, CritDmg: 135},
-			{Sub: "饰品", Dmg: 115, Crit: 125, CritDmg: 130},
-			{Sub: "徽章", Dmg: 115, Move: 120, Crit: 120},
-			{Sub: "鞋子", Def: 115, Move: 120},
-			{Sub: "名册", Crit: 115, CritDmg: 120},
+			{Sub: "肩章", Def: 53, Hp: 50},
+			{Sub: "帽子", Def: 55},
+			{Sub: "挂件", Dmg: 53, CritDmg: 48},
+			{Sub: "夹克", Hp: 55},
+			{Sub: "工装", Def: 57, Hp: 53},
+			{Sub: "勋章", Dmg: 55},
+			{Sub: "手枪", Dmg: 50, Crit: 45, CritDmg: 57},
+			{Sub: "饰品", Dmg: 48, Crit: 45, CritDmg: 55},
+			{Sub: "徽章", Dmg: 48, Move: 40, Crit: 45},
+			{Sub: "鞋子", Def: 48, Move: 40},
+			{Sub: "名册", Crit: 45, CritDmg: 50},
 		}},
 	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 1200, Mi: 50, Lo: 25, Le: 25,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "盾牌", Def: 110, Hp: 115},
-			{Sub: "帽子", Def: 125},
-			{Sub: "沙漏", Dmg: 110, Def: 110},
-			{Sub: "钢笔", Hp: 125},
-			{Sub: "夹克", Dmg: 125},
-			{Sub: "徽章", Dmg: 135, Crit: 125},
-			{Sub: "手套", Dmg: 115, Def: 115, Hp: 115, Move: 115, Crit: 115},
-			{Sub: "西裤", Def: 125},
-			{Sub: "勋章", Move: 110},
-			{Sub: "足靴", Def: 110, Move: 120},
-			{Sub: "名册", Crit: 125},
+			{Sub: "盾牌", Def: 39, Hp: 40},
+			{Sub: "帽子", Def: 44},
+			{Sub: "沙漏", Dmg: 39, Def: 39},
+			{Sub: "钢笔", Hp: 44},
+			{Sub: "夹克", Dmg: 44},
+			{Sub: "徽章", Dmg: 47, Crit: 44},
+			{Sub: "手套", Dmg: 40, Def: 40, Hp: 40, Move: 40, Crit: 40},
+			{Sub: "西裤", Def: 44},
+			{Sub: "勋章", Move: 39},
+			{Sub: "足靴", Def: 39, Move: 40},
+			{Sub: "名册", Crit: 44},
 		}},
 	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 800, Mi: 40, Lo: 20, Le: 20,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "对讲机", Def: 120},
-			{Sub: "头盔", Crit: 125},
-			{Sub: "FMJ05A面具", Def: 110, Hp: 110, Move: 110},
-			{Sub: "防化服", Def: 130, Hp: 130},
-			{Sub: "腰带", CritDmg: 155},
-			{Sub: "农业勋章", Dmg: 110, Crit: 110, CritDmg: 110},
-			{Sub: "喷雾器", Def: 135},
-			{Sub: "扳手", Move: 125},
-			{Sub: "名将勋章", Dmg: 135},
-			{Sub: "雨靴", Hp: 130},
-			{Sub: "史册", CritDmg: 135},
+			{Sub: "对讲机", Def: 30},
+			{Sub: "头盔", Crit: 31},
+			{Sub: "FMJ05A面具", Def: 28, Hp: 28, Move: 28},
+			{Sub: "防化服", Def: 33, Hp: 33},
+			{Sub: "腰带", CritDmg: 39},
+			{Sub: "农业勋章", Dmg: 28, Crit: 28, CritDmg: 28},
+			{Sub: "喷雾器", Def: 34},
+			{Sub: "扳手", Move: 31},
+			{Sub: "名将勋章", Dmg: 34},
+			{Sub: "雨靴", Hp: 33},
+			{Sub: "史册", CritDmg: 34},
 		}},
 	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000, Mi: 70, Lo: 35, Le: 35,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "肩部", Dmg: 120},
-			{Sub: "头部", Def: 120},
-			{Sub: "挂件", Hp: 130},
-			{Sub: "胸部", Hp: 115, CritDmg: 130},
-			{Sub: "腰部", Crit: 130, CritDmg: 130},
-			{Sub: "勋章", Hp: 115, Crit: 125},
-			{Sub: "手部", Dmg: 155, Crit: 125, CritDmg: 125},
-			{Sub: "饰品", Dmg: 120, Def: 120},
-			{Sub: "名将勋章", Def: 135, Hp: 135},
-			{Sub: "足部", Def: 115, Hp: 115, Move: 140},
-			{Sub: "名将史册", Crit: 115, CritDmg: 130},
+			{Sub: "肩部", Dmg: 60},
+			{Sub: "头部", Def: 60},
+			{Sub: "挂件", Hp: 60},
+			{Sub: "胸部", Hp: 58, CritDmg: 65},
+			{Sub: "腰部", Crit: 45, CritDmg: 65},
+			{Sub: "勋章", Hp: 58, Crit: 45},
+			{Sub: "手部", Dmg: 78, Crit: 45, CritDmg: 63},
+			{Sub: "饰品", Dmg: 60, Def: 60},
+			{Sub: "名将勋章", Def: 68, Hp: 60},
+			{Sub: "足部", Def: 58, Hp: 58, Move: 40},
+			{Sub: "名将史册", Crit: 45, CritDmg: 65},
 		}},
 	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 2000, Mi: 70, Lo: 35, Le: 35,
 		Pieces: []ezfyOfficerEquipPiece{
-			{Sub: "肩部", Dmg: 120},
-			{Sub: "头部", Def: 120},
-			{Sub: "挂件", Hp: 130},
-			{Sub: "胸部", Hp: 115, CritDmg: 130},
-			{Sub: "腰部", Crit: 130, CritDmg: 130},
-			{Sub: "勋章", Hp: 115, Crit: 125},
-			{Sub: "手部", Dmg: 155, Crit: 125, CritDmg: 125},
-			{Sub: "饰品", Dmg: 120, Def: 120},
-			{Sub: "名将勋章", Def: 135, Hp: 135},
-			{Sub: "足部", Def: 115, Hp: 115, Move: 140},
-			{Sub: "名将史册", Crit: 115, CritDmg: 130},
+			{Sub: "肩部", Dmg: 60},
+			{Sub: "头部", Def: 60},
+			{Sub: "挂件", Hp: 60},
+			{Sub: "胸部", Hp: 58, CritDmg: 65},
+			{Sub: "腰部", Crit: 45, CritDmg: 65},
+			{Sub: "勋章", Hp: 58, Crit: 45},
+			{Sub: "手部", Dmg: 78, Crit: 45, CritDmg: 63},
+			{Sub: "饰品", Dmg: 60, Def: 60},
+			{Sub: "名将勋章", Def: 68, Hp: 60},
+			{Sub: "足部", Def: 58, Hp: 58, Move: 40},
+			{Sub: "名将史册", Crit: 45, CritDmg: 65},
 		}},
 }
 
@@ -362,73 +362,34 @@ var ezfyOfficerEquipLooseSeeds = []struct {
 	Gold    int64
 	Level   int
 }{
-	{ID: 3001, Name: "和平使者", Slot: "肩部", Dmg: 106, Gold: 2000000, Level: 60},
-	{ID: 3002, Name: "军帽", Slot: "头部", Dmg: 106, Gold: 2000000, Level: 60},
-	{ID: 3003, Name: "智能机器人头盔", Slot: "头部", Dmg: 107, Gold: 3000000, Level: 80},
-	{ID: 3004, Name: "怀表", Slot: "挂件", Def: 107, Gold: 2000000, Level: 60},
-	{ID: 3005, Name: "马甲", Slot: "胸部", Def: 110, Gold: 3000000, Level: 80},
-	{ID: 3006, Name: "功守道", Slot: "腰部", Def: 108, Gold: 2500000, Level: 70},
-	{ID: 3007, Name: "鬼才设计师", Slot: "腰部", Def: 106, Gold: 2000000, Level: 60},
-	{ID: 3008, Name: "战无不胜勋章", Slot: "勋章", Dmg: 110, Def: 110, Gold: 5000000, Level: 100},
-	{ID: 3009, Name: "开山斧", Slot: "左手", Dmg: 106, Gold: 2000000, Level: 60},
-	{ID: 3010, Name: "项链", Slot: "饰品", Crit: 106, Gold: 2000000, Level: 60},
-	{ID: 3011, Name: "五星勋章", Slot: "名将勋章", Hp: 115, Gold: 4000000, Level: 90},
-	{ID: 3012, Name: "忍者足具", Slot: "足部", Def: 108, Move: 115, Gold: 3000000, Level: 80},
-	{ID: 3013, Name: "杜工部集", Slot: "名将史册", Dmg: 115, Def: 115, Gold: 6000000, Level: 100},
+	{ID: 3001, Name: "和平使者", Slot: "肩部", Dmg: 19, Gold: 2000000, Level: 60},
+	{ID: 3002, Name: "军帽", Slot: "头部", Dmg: 19, Gold: 2000000, Level: 60},
+	{ID: 3003, Name: "智能机器人头盔", Slot: "头部", Dmg: 19, Gold: 3000000, Level: 80},
+	{ID: 3004, Name: "怀表", Slot: "挂件", Def: 19, Gold: 2000000, Level: 60},
+	{ID: 3005, Name: "马甲", Slot: "胸部", Def: 20, Gold: 3000000, Level: 80},
+	{ID: 3006, Name: "功守道", Slot: "腰部", Def: 19, Gold: 2500000, Level: 70},
+	{ID: 3007, Name: "鬼才设计师", Slot: "腰部", Def: 19, Gold: 2000000, Level: 60},
+	{ID: 3008, Name: "战无不胜勋章", Slot: "勋章", Dmg: 20, Def: 20, Gold: 5000000, Level: 100},
+	{ID: 3009, Name: "开山斧", Slot: "左手", Dmg: 19, Gold: 2000000, Level: 60},
+	{ID: 3010, Name: "项链", Slot: "饰品", Crit: 19, Gold: 2000000, Level: 60},
+	{ID: 3011, Name: "五星勋章", Slot: "名将勋章", Hp: 21, Gold: 4000000, Level: 90},
+	{ID: 3012, Name: "忍者足具", Slot: "足部", Def: 19, Move: 21, Gold: 3000000, Level: 80},
+	{ID: 3013, Name: "杜工部集", Slot: "名将史册", Dmg: 21, Def: 21, Gold: 6000000, Level: 100},
 }
 
-// ezfyNerfEquipPct 装备百分比加成「按品质压降」：原版单件 110~155%（见装备距离伤害表.xlsx）
-// 太变态，玩家要求压到 100% 以下、按品质 10%~100% 分档（2026-09-23）。
+// ★ 2026-09-23 装备百分比压降：原版单件 110~155%（见装备距离伤害表.xlsx）太变态，
+// 玩家要求压到 100% 以下、按品质 10%~100% 分档。压降已经**直接落在下面种子的字面量里**
+// （ezfyOfficerSeriesSeeds / ezfyOfficerEquipLooseSeeds 写的就是压降后的最终值），
+// 新库初始化灌种即得正确数据，不再有运行时转换。
 //
 // 系数分档（参考部分名将及装备属性.xlsx 里原版套装 70%~100% 的品质梯度推算到单件）：
 //
-//	T4(Lv130 顶级) 0.50 | T4(Lv120) 0.42 | T4 其余 0.35 | T3 0.25 | 散件(T2) 0.18
+//	T4(Lv130 顶级) f=0.50 | T4(Lv120) f=0.42 | T4 其余 f=0.35 | T3 f=0.25 | 散件(T2) f=0.18
 //
-// 各字段另设上限（全部 <100）：伤害80 防御70 生命60 移动距离40 暴击几率45 暴击伤害85；
-// 压降后最小值不低于 10。种子里新灌的装备与存量迁移（nerfEquipSetPct）共用本函数，口径一致。
-func ezfyNerfEquipPct(field string, v, tier, level int) int {
-	if v <= 0 {
-		return 0
-	}
-	var f float64
-	switch {
-	case tier >= 4 && level >= 130:
-		f = 0.50
-	case tier >= 4 && level >= 120:
-		f = 0.42
-	case tier >= 4:
-		f = 0.35
-	case tier >= 3:
-		f = 0.25
-	default:
-		f = 0.18
-	}
-	capV := 90
-	switch field {
-	case "dmg":
-		capV = 80
-	case "def":
-		capV = 70
-	case "hp":
-		capV = 60
-	case "move":
-		capV = 40
-	case "crit":
-		capV = 45
-	case "crit_dmg":
-		capV = 85
-	}
-	nv := int(float64(v)*f + 0.5)
-	if nv < 10 {
-		nv = 10
-	}
-	if nv > capV {
-		nv = capV
-	}
-	return nv
-}
+// 各字段上限（全部 <100）：伤害80 防御70 生命60 移动距离40 暴击几率45 暴击伤害85；
+// 压降后最小值不低于 10。老库兜底迁移见 nerfEquipSetPct（把 >100 的旧行对齐成种子字面量）。
 
-// ezfySetBonusPct 套装行六项的取值：各件（压降后）之和 ÷ 4，封顶 90（<100）。
+// ezfySetBonusPct 套装行六项的取值：各件（已是压降后最终值）之和 ÷ 4，封顶 90（<100）。
 // 三维（军/后/学）是平面数值不算百分比，仍按「各件之和 ÷ 4」。
 func ezfySetBonusPct(sum int) int {
 	v := sum / 4
@@ -497,17 +458,17 @@ func seedEzfyEquipSets(db *gorm.DB) {
 		pieces := []model.EzfyCfgEquipment{}
 		for _, s := range ezfyOfficerSeriesSeeds {
 			// ★ 套装是**额外**加成（穿齐才生效）：
-			//   - 六项战斗属性：各件（百分比已按品质压降，见 ezfyNerfEquipPct）之和 ÷ 4，封顶 90
+			//   - 六项战斗属性：各件（字面量已是压降后最终值）之和 ÷ 4，封顶 90
 			//   - 三维属性：各件之和 ÷ 4（+25%，平面数值不算百分比）
 			//   所以「穿齐整套」的实际总加成 ≈ 各件之和 × 1.25。
 			sum := struct{ dmg, def, hp, mv, cr, cd, mi, lo, le int }{}
 			for _, p := range s.Pieces {
-				sum.dmg += ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level)
-				sum.def += ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level)
-				sum.hp += ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level)
-				sum.mv += ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level)
-				sum.cr += ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level)
-				sum.cd += ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level)
+				sum.dmg += p.Dmg
+				sum.def += p.Def
+				sum.hp += p.Hp
+				sum.mv += p.Move
+				sum.cr += p.Crit
+				sum.cd += p.CritDmg
 				// 三维：每件用系列统一值（件上没单独写就用系列的）
 				mi, lo, le := p.Mi, p.Lo, p.Le
 				if mi == 0 && lo == 0 && le == 0 {
@@ -540,18 +501,18 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					mi, lo, le = s.Mi, s.Lo, s.Le
 				}
 				pieces = append(pieces, model.EzfyCfgEquipment{
-					ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
-					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
-					Level: s.Level, Stock: -1, EnhanceMax: 20,
-					// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
-					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
-					// ★ 六项百分比按品质压降（2026-09-23，见 ezfyNerfEquipPct）
-					Dmg:      ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level),
-					Def:      ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level),
-					Hp:       ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level),
-					Move:     ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level),
-					Crit:     ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level),
-					CritDmg:  ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level),
+						ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
+						Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
+						Level: s.Level, Stock: -1, EnhanceMax: 20,
+						// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
+						PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
+						// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
+						Dmg:      p.Dmg,
+						Def:      p.Def,
+						Hp:       p.Hp,
+						Move:     p.Move,
+						Crit:     p.Crit,
+						CritDmg:  p.CritDmg,
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
 				})
@@ -568,14 +529,14 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				ID: l.ID, Name: l.Name, Type: "军官装备", Slot: l.Slot, SetId: 0, Tier: 2,
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
 				// ★ 纯散件同样按加成定价（10~50 钻）
-				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
-				// ★ 六项百分比按品质压降（T2 散件档，见 ezfyNerfEquipPct）
-				Dmg:      ezfyNerfEquipPct("dmg", l.Dmg, 2, l.Level),
-				Def:      ezfyNerfEquipPct("def", l.Def, 2, l.Level),
-				Hp:       ezfyNerfEquipPct("hp", l.Hp, 2, l.Level),
-				Move:     ezfyNerfEquipPct("move", l.Move, 2, l.Level),
-				Crit:     ezfyNerfEquipPct("crit", l.Crit, 2, l.Level),
-				CritDmg:  ezfyNerfEquipPct("crit_dmg", l.CritDmg, 2, l.Level),
+					PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
+					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
+					Dmg:      l.Dmg,
+					Def:      l.Def,
+					Hp:       l.Hp,
+					Move:     l.Move,
+					Crit:     l.Crit,
+					CritDmg:  l.CritDmg,
 				Military: 20, Logistics: 10, Learning: 10,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
@@ -1009,16 +970,16 @@ func seedEzfySchemes(db *gorm.DB) {
 //     整套穿齐后六项全部上千，玩家受不了。
 //   - 要求：所有套装百分比加成压到 100% 以下，按品质 10%~100% 不等。
 //
-// 压降公式见 ezfyNerfEquipPct —— 种子里**新灌**的装备已直接按压降后的值写入，
-// 本函数负责把**老库已存在**的配置行、套装行和玩家已买装备的快照对齐到同一口径。
+// 种子字面量（ezfyOfficerSeriesSeeds / ezfyOfficerEquipLooseSeeds）已是压降后的最终值，
+// 本函数负责兜底**老库**：把还有 >100% 旧值的配置行、套装行直接对齐成种子字面量。
 //
 // 幂等：压完后不再有 >100% 的字段，条件不再命中；哪一行被改回 >100%，
-// 下次启动会再压一次（正合「全部 ≤100%」的规则）。
+// 下次启动会再对齐一次（正合「全部 ≤100%」的规则）。
 func nerfEquipSetPct(db *gorm.DB) {
 	over := func(d, df, hp, mv, cr, cd int) bool {
 		return d > 100 || df > 100 || hp > 100 || mv > 100 || cr > 100 || cd > 100
 	}
-	// ① 军官装备 11 件套的件（ID 2101~2611）：六项 >100 的按品质压降
+	// ① 军官装备 11 件套的件（ID 2101~2611）：六项 >100 的旧行 → 对齐成种子字面量
 	for _, s := range ezfyOfficerSeriesSeeds {
 		pieceChanged := false
 		for i := range s.Pieces {
@@ -1029,17 +990,18 @@ func nerfEquipSetPct(db *gorm.DB) {
 			if !over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
 				continue
 			}
+			p := s.Pieces[i]
 			db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
-				"dmg":      ezfyNerfEquipPct("dmg", row.Dmg, s.Tier, s.Level),
-				"def":      ezfyNerfEquipPct("def", row.Def, s.Tier, s.Level),
-				"hp":       ezfyNerfEquipPct("hp", row.Hp, s.Tier, s.Level),
-				"move":     ezfyNerfEquipPct("move", row.Move, s.Tier, s.Level),
-				"crit":     ezfyNerfEquipPct("crit", row.Crit, s.Tier, s.Level),
-				"crit_dmg": ezfyNerfEquipPct("crit_dmg", row.CritDmg, s.Tier, s.Level),
+				"dmg":      p.Dmg,
+				"def":      p.Def,
+				"hp":       p.Hp,
+				"move":     p.Move,
+				"crit":     p.Crit,
+				"crit_dmg": p.CritDmg,
 			})
 			pieceChanged = true
 		}
-		// ③ 套装行（21~26）：件被压过（或行上还有 >100 的旧值）→ 按压降后的各件之和重算
+		// ③ 套装行（21~26）：件被压过（或行上还有 >100 的旧值）→ 按种子字面量之和重算
 		var st model.EzfyCfgEquipSet
 		if err := db.First(&st, s.ID).Error; err != nil {
 			continue
@@ -1049,12 +1011,12 @@ func nerfEquipSetPct(db *gorm.DB) {
 		}
 		var d, df, hp, mv, cr, cd, mi, lo, le int
 		for _, p := range s.Pieces {
-			d += ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level)
-			df += ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level)
-			hp += ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level)
-			mv += ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level)
-			cr += ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level)
-			cd += ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level)
+			d += p.Dmg
+			df += p.Def
+			hp += p.Hp
+			mv += p.Move
+			cr += p.Crit
+			cd += p.CritDmg
 			m, l, e := p.Mi, p.Lo, p.Le
 			if m == 0 && l == 0 && e == 0 {
 				m, l, e = s.Mi, s.Lo, s.Le
@@ -1073,7 +1035,7 @@ func nerfEquipSetPct(db *gorm.DB) {
 				ezfySetBonusPct(mv), ezfySetBonusPct(cr), ezfySetBonusPct(cd)),
 		})
 	}
-	// ② 散件（3001+）：T2 档压降
+	// ② 散件（3001+）：六项 >100 的旧行 → 对齐成种子字面量
 	for _, l := range ezfyOfficerEquipLooseSeeds {
 		var row model.EzfyCfgEquipment
 		if err := db.First(&row, l.ID).Error; err != nil {
@@ -1083,12 +1045,12 @@ func nerfEquipSetPct(db *gorm.DB) {
 			continue
 		}
 		db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
-			"dmg":      ezfyNerfEquipPct("dmg", row.Dmg, 2, row.Level),
-			"def":      ezfyNerfEquipPct("def", row.Def, 2, row.Level),
-			"hp":       ezfyNerfEquipPct("hp", row.Hp, 2, row.Level),
-			"move":     ezfyNerfEquipPct("move", row.Move, 2, row.Level),
-			"crit":     ezfyNerfEquipPct("crit", row.Crit, 2, row.Level),
-			"crit_dmg": ezfyNerfEquipPct("crit_dmg", row.CritDmg, 2, row.Level),
+			"dmg":      l.Dmg,
+			"def":      l.Def,
+			"hp":       l.Hp,
+			"move":     l.Move,
+			"crit":     l.Crit,
+			"crit_dmg": l.CritDmg,
 		})
 	}
 	// ★ 玩家已买/已穿装备的快照（ezfy_equipment / 军官 equipment JSON）不走启动迁移，
