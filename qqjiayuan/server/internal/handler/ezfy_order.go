@@ -1328,7 +1328,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if dropped > 0 {
 		desc += fmt.Sprintf("⚠ 负重已满, %d 资源没能装上（多带运输兵/卡车可提高负重）\n", dropped)
 	}
-	desc += "资源要**召回部队**才能带回城里。\n"
+	desc += "资源要召回部队才能带回城里。\n"
 	if rand.Intn(ezfyDispatchTreasure) == 0 {
 		if eq := h.randomTerrainTreasure(ezfyTerrainEx(wl.X, wl.Y)); eq != nil {
 			if city := h.cityOfOrder(order, uid); city != nil {

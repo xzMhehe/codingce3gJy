@@ -384,7 +384,7 @@
               战报查询:
               <input v-model="reportWord" placeholder="输入关键字" style="width:110px"
                      @keyup.enter="loadReports"/>
-              <button @click="loadReports">[查询]</button>
+              <a href="javascript:;" @click="loadReports">[查询]</a>
               <a v-if="reportWord" href="javascript:;" @click="reportWord = ''; loadReports()">[清空]</a>
             </div>
             <div class="old-line" v-for="r in repPaged" :key="'rb' + r.id">
@@ -2655,35 +2655,33 @@
           </div>
           <div class="old-line">
             {{ resNames.gold }}:{{ fmtN(officerData.gold) }}
-            <!-- 军官工资按小时扣（消耗黄金），这里只亮数字，不写解释 -->
-            <span class="gray" v-if="officerData.salary">工资 {{ fmtN(officerData.salary) }}/小时</span>
+            <!-- ★ 用户要求「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
+            <span class="gray" v-if="officerData.salary">
+              （军官工资 {{ fmtN(officerData.salary) }} {{ resNames.gold }}/小时，每级 {{ officerData.salary_per_level }} 金/小时）
+            </span>
+            <span class="gray" v-else>（暂无军官，不产生工资）</span>
           </div>
-          <!-- 军官列表：表格化（原来是每个军官一大块平铺文本，很乱）
-               「备注」列 = 生效中的套装 / 装备提示 / 待分配属性点 -->
-          <table class="ezfy-plain-table">
-            <tr>
-              <th>名称</th><th>等级</th><th>星级</th><th>后/军/学</th><th>忠诚</th>
-              <th>攻/防</th><th>状态</th><th>备注</th><th>操作</th>
-            </tr>
-            <tr v-for="o in myOfficers" :key="'of' + o.id">
-              <td>{{ o.name }}<span class="green" v-if="o.level >= officerMaxLevel">满级</span></td>
-              <td>{{ o.level }}</td>
-              <td>{{ o.star }}</td>
-              <td>{{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}</td>
-              <td>{{ o.loyalty }}</td>
-              <td>{{ o.attack }}/{{ o.defence }}</td>
-              <td>
-                {{ o.status === 1 ? '出征' : '空闲' }}
-                <span class="gray" v-if="o.position_name">{{ o.position_name }}</span>
-              </td>
-              <td>
-                <span class="green" v-if="o.active_sets && o.active_sets.length">{{ o.active_sets.join('、') }}</span>
-                <span class="gray" v-else-if="equipTip(o)">{{ equipTip(o) }}</span>
-                <span class="red" v-if="o.free_points > 0">可加点 {{ o.free_points }}</span>
-              </td>
-              <td><a href="javascript:;" @click="openOfficer(o.id)">[查看]</a></td>
-            </tr>
-          </table>
+          <hr/>
+          <template v-for="o in myOfficers">
+            <div class="old-line" :key="'of' + o.id">
+              {{ o.name }}({{ o.level }}级)<span class="green" v-if="o.level >= officerMaxLevel">[满级]</span>
+              <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
+              状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
+              后勤/军事/学识/忠诚：<br/>
+              {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
+              <span class="green" v-if="equipTip(o)">{{ equipTip(o) }}</span><br/>
+              攻/防：{{ o.attack }}/{{ o.defence }}<br/>
+              <!-- ★ 可用属性点：升过级还没点的军官一眼能看见 -->
+              <span v-if="o.free_points > 0" class="red">
+                可分配属性点 {{ o.free_points }} 点
+                <a href="javascript:;" @click="openOfficer(o.id)">[去加点]</a><br/>
+              </span>
+              <span v-if="o.active_sets && o.active_sets.length" class="green">
+                套装：{{ o.active_sets.join('、') }}<br/>
+              </span>
+              ------------------------
+            </div>
+          </template>
           <div class="old-line gray" v-if="!myOfficers.length">(暂无军官, 先去招募吧)</div>
           <div class="old-line">
             前去<a href="javascript:;" @click="switchAcade('captive')">战俘营</a>

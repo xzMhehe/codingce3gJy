@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -256,13 +257,14 @@ type ezfyOfficerSeries struct {
 	Diamond int64 // 每件钻石价
 	Gold    int64 // 每件黄金价
 	// ★ 每件的三维属性（军事/后勤/学识）；11 件套 = 该值 × 11。
-	//   量级参考 `部分名将及装备属性与获取方式（最新）.xlsx`：整套 700~900 军 / 300~460 后 / 300~460 学。
+	//   ★ 2026-09-23 原版量级（整套 700~900 军）太高，已按品质同比压降（与百分比同档系数）：
+	//     顶级(T4-130) 35 | T4-120 25 | T4-110 18 | T3 10，后/学约为军的一半。
 	Mi, Lo, Le int
 	Pieces     []ezfyOfficerEquipPiece
 }
 
 var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
-	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 1500, Mi: 60, Lo: 30, Le: 30,
+	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 1500, Mi: 25, Lo: 13, Le: 13,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "围巾", Dmg: 53, Def: 50},
 			{Sub: "头盔", Def: 55, Hp: 57},
@@ -276,7 +278,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "草鞋", Hp: 53, Move: 40},
 			{Sub: "史册", Def: 57},
 		}},
-	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 1500, Mi: 60, Lo: 30, Le: 30,
+	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 1500, Mi: 25, Lo: 13, Le: 13,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩章", Def: 53, Hp: 50},
 			{Sub: "帽子", Def: 55},
@@ -290,7 +292,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "鞋子", Def: 48, Move: 40},
 			{Sub: "名册", Crit: 45, CritDmg: 50},
 		}},
-	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 1200, Mi: 50, Lo: 25, Le: 25,
+	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 1200, Mi: 18, Lo: 9, Le: 9,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "盾牌", Def: 39, Hp: 40},
 			{Sub: "帽子", Def: 44},
@@ -304,7 +306,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足靴", Def: 39, Move: 40},
 			{Sub: "名册", Crit: 44},
 		}},
-	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 800, Mi: 40, Lo: 20, Le: 20,
+	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 800, Mi: 10, Lo: 5, Le: 5,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "对讲机", Def: 30},
 			{Sub: "头盔", Crit: 31},
@@ -318,7 +320,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "雨靴", Hp: 33},
 			{Sub: "史册", CritDmg: 34},
 		}},
-	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000, Mi: 70, Lo: 35, Le: 35,
+	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000, Mi: 35, Lo: 18, Le: 18,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
 			{Sub: "头部", Def: 60},
@@ -332,7 +334,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足部", Def: 58, Hp: 58, Move: 40},
 			{Sub: "名将史册", Crit: 45, CritDmg: 65},
 		}},
-	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 2000, Mi: 70, Lo: 35, Le: 35,
+	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 2000, Mi: 35, Lo: 18, Le: 18,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
 			{Sub: "头部", Def: 60},
@@ -537,7 +539,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Move:     l.Move,
 					Crit:     l.Crit,
 					CritDmg:  l.CritDmg,
-				Military: 20, Logistics: 10, Learning: 10,
+				Military: 10, Logistics: 5, Learning: 5,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
 		}
@@ -844,8 +846,8 @@ func seedEzfyChests(db *gorm.DB) {
 //   - 管理端改过的值不会被冲掉
 //   - 跑过一次之后条件不再命中，天然幂等
 func backfillOfficerEquipSetBonus(db *gorm.DB) {
-	// ① 散件的三维（ID 3001+）
-	db.Exec("UPDATE ezfy_cfg_equipment SET military = 20, logistics = 10, learning = 10 " +
+	// ① 散件的三维（ID 3001+）：★ 2026-09-23 由 20/10/10 同比压降到 10/5/5
+	db.Exec("UPDATE ezfy_cfg_equipment SET military = 10, logistics = 5, learning = 5 " +
 		"WHERE id BETWEEN 3001 AND 4000 AND military = 0 AND logistics = 0 AND learning = 0")
 
 	// ② 各系列的「件」：补三维（每件用系列统一值）
@@ -911,6 +913,19 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 	db.Exec("UPDATE ezfy_cfg_equip_set SET effect = REPLACE(effect, '**', '') WHERE effect LIKE '%**%'")
 	db.Exec("UPDATE ezfy_cfg_equip_set SET effect = REPLACE(effect, '（各件本身属性另计）', '') " +
 		"WHERE effect LIKE '%（各件本身属性另计）%'")
+
+	// ★ 2026-09-23 用户反馈：宝箱说明里的「**一整套**」等星号原样显示、没生效。
+	//   任何前端展示的配置文案列都统一去掉 markdown 星号（种子字面量已无星号，
+	//   这里只兜底老库）。截至当前实测命中的是 ezfy_cfg_chest.des（ID 2~6）。
+	stripStars := func(table, cols string) {
+		for _, col := range strings.Split(cols, ",") {
+			db.Exec("UPDATE "+table+" SET "+col+" = REPLACE("+col+", '**', '') WHERE "+col+" LIKE '%**%'")
+		}
+	}
+	stripStars("ezfy_cfg_chest", "des,effect")
+	stripStars("ezfy_cfg_equipment", "des,effect")
+	stripStars("ezfy_cfg_equip_set", "des,effect")
+	stripStars("ezfy_cfg_item", "description")
 }
 
 // ============ 二·E、计谋（消耗信号弹） ============
@@ -979,7 +994,12 @@ func nerfEquipSetPct(db *gorm.DB) {
 	over := func(d, df, hp, mv, cr, cd int) bool {
 		return d > 100 || df > 100 || hp > 100 || mv > 100 || cr > 100 || cd > 100
 	}
-	// ① 军官装备 11 件套的件（ID 2101~2611）：六项 >100 的旧行 → 对齐成种子字面量
+	// ① 军官装备 11 件套的件（ID 2101~2611）：
+	//   六项 >100 的旧行 → 对齐成种子字面量；三维仍是压降前旧值（且没人改过）→ 同步为新值。
+	old3D := map[int][3]int{
+		21: {60, 30, 30}, 22: {60, 30, 30}, 23: {50, 25, 25},
+		24: {40, 20, 20}, 25: {70, 35, 35}, 26: {70, 35, 35},
+	}
 	for _, s := range ezfyOfficerSeriesSeeds {
 		pieceChanged := false
 		for i := range s.Pieces {
@@ -987,18 +1007,25 @@ func nerfEquipSetPct(db *gorm.DB) {
 			if err := db.First(&row, s.ID*100+i+1).Error; err != nil {
 				continue
 			}
-			if !over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
+			p := s.Pieces[i]
+			up := map[string]interface{}{}
+			if over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
+				up["dmg"] = p.Dmg
+				up["def"] = p.Def
+				up["hp"] = p.Hp
+				up["move"] = p.Move
+				up["crit"] = p.Crit
+				up["crit_dmg"] = p.CritDmg
+			}
+			if o := old3D[s.ID]; row.Military == o[0] && row.Logistics == o[1] && row.Learning == o[2] {
+				up["military"] = s.Mi
+				up["logistics"] = s.Lo
+				up["learning"] = s.Le
+			}
+			if len(up) == 0 {
 				continue
 			}
-			p := s.Pieces[i]
-			db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
-				"dmg":      p.Dmg,
-				"def":      p.Def,
-				"hp":       p.Hp,
-				"move":     p.Move,
-				"crit":     p.Crit,
-				"crit_dmg": p.CritDmg,
-			})
+			db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(up)
 			pieceChanged = true
 		}
 		// ③ 套装行（21~26）：件被压过（或行上还有 >100 的旧值）→ 按种子字面量之和重算
@@ -1035,27 +1062,32 @@ func nerfEquipSetPct(db *gorm.DB) {
 				ezfySetBonusPct(mv), ezfySetBonusPct(cr), ezfySetBonusPct(cd)),
 		})
 	}
-	// ② 散件（3001+）：六项 >100 的旧行 → 对齐成种子字面量
+	// ② 散件（3001+）：旧行（六项 >100 或三维还是 20/10/10）→ 对齐成种子字面量
 	for _, l := range ezfyOfficerEquipLooseSeeds {
 		var row model.EzfyCfgEquipment
 		if err := db.First(&row, l.ID).Error; err != nil {
 			continue
 		}
-		if !over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
-			continue
+		up := map[string]interface{}{}
+		if over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
+			up["dmg"] = l.Dmg
+			up["def"] = l.Def
+			up["hp"] = l.Hp
+			up["move"] = l.Move
+			up["crit"] = l.Crit
+			up["crit_dmg"] = l.CritDmg
 		}
-		db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
-			"dmg":      l.Dmg,
-			"def":      l.Def,
-			"hp":       l.Hp,
-			"move":     l.Move,
-			"crit":     l.Crit,
-			"crit_dmg": l.CritDmg,
-		})
+		if row.Military == 20 && row.Logistics == 10 && row.Learning == 10 {
+			up["military"] = 10
+			up["logistics"] = 5
+			up["learning"] = 5
+		}
+		if len(up) > 0 {
+			db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(up)
+		}
 	}
-	// ★ 玩家已买/已穿装备的快照（ezfy_equipment / 军官 equipment JSON）不走启动迁移，
-	//   按用户要求用本地 SQL 脚本处理：tools/fix-equip-pct-20260923.sql。
-	//   脚本只改 ezfy_equipment；再重启一次由 repairEquipSnapshots 重建军官装备 JSON。
+	// ★ 玩家已买/已穿装备的快照（ezfy_equipment / 军官 equipment JSON）不在这里改，
+	//   由紧随其后的 repairEquipSnapshots 统一池子同步（六项+三维始终对齐 cfg、JSON 重建）。
 }
 
 // ============ 二·D、装备快照自愈 ============
