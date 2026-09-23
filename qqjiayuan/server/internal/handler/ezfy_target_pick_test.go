@@ -73,7 +73,7 @@ func TestStepHitsConfiguredTarget(t *testing.T) {
 		AtkTargets: map[int]int{1: 7}, // 攻方兵种 1 优先打兵种 7
 		Head:       []string{}, Actions: []string{},
 	}
-	st.Step(nil, "")
+	st.Step(nil, nil)
 
 	if far.count >= far.initialCount {
 		t.Fatalf("配置的优先目标（兵种 7）应该挨打，实际剩余 %d/%d", far.count, far.initialCount)

@@ -2155,6 +2155,40 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			"battle_left_ms": battleLeft,
 		})
 	}
+
+	// ★ 防守方视角（2026-09-23 用户要求「敌人打自己，自己也能指挥」）：
+	//   战场/订单属于**攻方**，上面的军队动态按 user_id 查不到守方要防守的这场战斗。
+	//   这里单独把「正在被攻打(def_user_id = 我方)」的战场拼进列表，让守方也有 [指挥] 入口。
+	var defBattles []model.EzfyBattle
+	h.DB.Where("def_user_id = ? AND status = 1", uid).Find(&defBattles)
+	for _, b := range defBattles {
+		// 来袭敌军来源：攻击方城市（查不到就兜底显示玩家 uID）
+		atkName := "玩家" + strconv.FormatUint(uint64(b.UserID), 10)
+		atkX, atkY := b.TargetX, b.TargetY
+		var atkCity model.EzfyCity
+		if err := h.DB.Where("user_id = ?", b.UserID).Order("id ASC").First(&atkCity).Error; err == nil {
+			atkName = atkCity.Name
+			atkX, atkY = atkCity.X, atkCity.Y
+		}
+		left := b.RoundStart + ezfyBattleRoundMs - now
+		if left < 0 {
+			left = 0
+		}
+		views = append(views, gin.H{
+			"id": b.OrderId, "order_type": 0, "type_name": "防御",
+			"target_type": b.TargetType, "target_name": atkName,
+			"target_x": atkX, "target_y": atkY,
+			"status": ezfyOrderStatusBattle, "status_name": "战斗中",
+			"officer": "", "time_label": "本回合剩余", "time_text": ezfyDurationText(left / 1000),
+			"arrive_time": 0, "return_time": 0,
+			"carry": nil, "carry_total": 0, "carry_cap": 0,
+			"can_command":    true,
+			"battle_round":   b.Round,
+			"battle_max":     ezfyBattleMaxRounds,
+			"battle_left_ms": left,
+			"is_defend":      true,
+		})
+	}
 	resp.OK(c, gin.H{"dynamics": views, "count": len(views)})
 }
 

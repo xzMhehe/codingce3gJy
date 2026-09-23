@@ -198,7 +198,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		st := ezfyNewBattleState(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 			atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
-			h.buildMoveMap(city.ID, true), map[int]int{})
+			h.buildMoveMap(city.ID, true), map[int]int{},
+			h.officerHasSkill(leadOfficer, "绝地反击"), false)
 		if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
@@ -208,7 +209,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 		// 开战场失败（极端情况）→ 兜底直接模拟，绝不让部队卡住
 		for !st.Done {
-			st.Step(nil, "")
+			st.Step(nil, nil)
 		}
 		br = st.Result()
 	}

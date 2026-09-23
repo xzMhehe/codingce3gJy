@@ -108,6 +108,36 @@ func (h *EzfyHandler) ezfyBattleByOrder(orderId int64) *model.EzfyBattle {
 	return &b
 }
 
+// ezfyBattleDefenderUid 取战场守方玩家 uid（仅 target_type=3 攻击玩家城时有值，0 = AI/野地/寇城）。
+// 优先读 DefUserID（新开战场已落库），旧战场没写时回落按 target_id 查城市归属。
+func (h *EzfyHandler) ezfyBattleDefenderUid(b *model.EzfyBattle) uint {
+	if b == nil || b.TargetType != 3 {
+		return 0
+	}
+	if b.DefUserID > 0 {
+		return b.DefUserID
+	}
+	var city model.EzfyCity
+	if err := h.DB.First(&city, b.TargetId).Error; err == nil {
+		return city.UserID
+	}
+	return 0
+}
+
+// ezfyBattleSide 返回 viewer 相对战场是 "atk"(攻方) / "def"(守方) / ""(无关人员)。
+func (h *EzfyHandler) ezfyBattleSide(b *model.EzfyBattle, uid uint) string {
+	if b == nil {
+		return ""
+	}
+	if b.UserID == uid {
+		return "atk"
+	}
+	if h.ezfyBattleDefenderUid(b) == uid {
+		return "def"
+	}
+	return ""
+}
+
 // ezfyBattleStart 为订单开一场战场（幂等：已有进行中的直接返回）
 func (h *EzfyHandler) ezfyBattleStart(uid uint, order *model.EzfyOrder,
 	st *ezfyBattleState, targetName string, now int64) *model.EzfyBattle {
@@ -115,12 +145,20 @@ func (h *EzfyHandler) ezfyBattleStart(uid uint, order *model.EzfyOrder,
 	if b := h.ezfyBattleByOrder(int64(order.ID)); b != nil && b.Status == 1 {
 		return b
 	}
+	defUID := uint(0)
+	if order.TargetType == 3 {
+		var tc model.EzfyCity
+		if err := h.DB.First(&tc, order.TargetId).Error; err == nil {
+			defUID = tc.UserID
+		}
+	}
 	b := &model.EzfyBattle{
 		OrderId: int64(order.ID), UserID: uid, CityId: order.CityId,
 		TargetType: order.TargetType, TargetId: order.TargetId,
 		TargetX: order.TargetX, TargetY: order.TargetY, TargetName: targetName,
 		// AtkCmd 留空 = 各兵种沿用司令部「兵种战斗配置」（玩家在司令部设过「停止」的兵种不该被强制前进）
-		Status: 1, Round: 0, Win: 0, AtkCmd: "",
+		Status: 1, Round: 0, Win: 0, AtkCmd: "", DefCmd: "",
+		DefUserID:  defUID,
 		State:      ezfyBattleSnapshotEncode(st.Snapshot()),
 		RoundStart: now,
 	}
@@ -132,8 +170,8 @@ func (h *EzfyHandler) ezfyBattleStart(uid uint, order *model.EzfyOrder,
 
 // ezfyBattleTick 懒推进：把「已经到点」的回合逐回合结算掉。
 //
-// 返回最新快照 + 是否已结束。守方不下指令（按司令部兵种配置行动），
-// 攻方用 b.AtkCmd（玩家在指令窗口内下达的）。
+// 返回最新快照 + 是否已结束。守方无指令时按司令部兵种配置行动，
+// 攻守双方各自的逐兵种指令（玩家能指挥）分别取 b.AtkCmd / b.DefCmd。
 func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattleSnapshot, bool) {
 	snap, ok := ezfyBattleSnapshotDecode(b.State)
 	if !ok {
@@ -146,10 +184,11 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 
 	// 逐兵种指令表解析一次，整个补算过程复用
 	cmds := ezfyAtkCmdsParse(b.AtkCmd)
+	defCmds := ezfyAtkCmdsParse(b.DefCmd)
 
 	steps := 0
 	for !st.Done && now-b.RoundStart >= ezfyBattleRoundMs {
-		st.Step(cmds, "")
+		st.Step(cmds, defCmds)
 		b.RoundStart += ezfyBattleRoundMs
 		steps++
 		// 防御性上限：即使时间戳异常（比如系统时钟跳变）也绝不死循环
@@ -216,8 +255,10 @@ func ezfyBattleResultDecode(s string) (ezfyBattleResult, bool) {
 	return res, true
 }
 
-// ezfyBattleView 下发给前端的战场视图
-func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, atkCamp int) gin.H {
+// ezfyBattleView 下发给前端的战场视图。
+// viewerCamp / viewerIsAtk：观察方自己的阵营与攻守身份 —— 观察方只能指挥「自己这一方」，
+// 兵种名也按自己阵营解析；另一方（敌方）用快照里的通用名、不下发指令。
+func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, viewerCamp int, viewerIsAtk bool) gin.H {
 	// 本回合剩余时间：过了就是 0（等待下一次请求推进）
 	left := b.RoundStart + ezfyBattleRoundMs - now
 	if left < 0 {
@@ -228,16 +269,22 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		phase = "cmd" // 指令期（前 25 秒）
 	}
 
-	// ★ 逐兵种指令：攻方每个兵种各自带自己的指令，前端每行单独显示/下达
-	cmds := ezfyAtkCmdsParse(b.AtkCmd)
+	// ★ 逐兵种指令：攻守双方各自带自己的指令，前端每行单独显示/下达
+	atkCmds := ezfyAtkCmdsParse(b.AtkCmd)
+	defCmds := ezfyAtkCmdsParse(b.DefCmd)
 
-	// ★ 逐兵种「优先攻击目标」（2026-09-23 用户要求）：默认来自司令部兵种战斗配置
-	//   （开战时抄进快照的 AtkTargets），玩家在指挥室可逐兵种改。
-	tgtOf := func(troopId int) int {
+	// 攻守双方各自「优先攻击目标」快照
+	atkTgtOf := func(troopId int) int {
 		if snap.AtkTargets == nil {
 			return 0
 		}
 		return snap.AtkTargets[troopId]
+	}
+	defTgtOf := func(troopId int) int {
+		if snap.DefTargets == nil {
+			return 0
+		}
+		return snap.DefTargets[troopId]
 	}
 	troopName := func(id int) string {
 		if id == 0 {
@@ -249,11 +296,20 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		return "兵种" + strconv.Itoa(id)
 	}
 
-	// ★ 守方**还活着**的兵种(剩余>0)：目标已打光(剩余0)的兵种不算，页面自动改显「最近目标」。
-	aliveDef := map[int]bool{}
-	for _, du := range snap.Defenders {
-		if du.Count > 0 {
-			aliveDef[du.TroopId] = true
+	// 观察方自己的指令/目标表，以及他要瞄准的「敌方」兵种表
+	myCmds := atkCmds
+	myTgtOf := atkTgtOf
+	enemySnaps := snap.Defenders
+	if !viewerIsAtk {
+		myCmds = defCmds
+		myTgtOf = defTgtOf
+		enemySnaps = snap.Attackers
+	}
+	// 敌方**还活着**的兵种(剩余>0)：目标已打光(剩余0)的兵种不算，页面自动改显「最近目标」。
+	aliveEnemy := map[int]bool{}
+	for _, eu := range enemySnaps {
+		if eu.Count > 0 {
+			aliveEnemy[eu.TroopId] = true
 		}
 	}
 
@@ -262,23 +318,21 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		for _, u := range list {
 			cmd := ""
 			tgt := 0
-			if isAtk {
-				cmd = ezfyAtkCmdOf(cmds, u.TroopId)
-				tgt = tgtOf(u.TroopId)
+			// 只给「自己这一方」的兵种下发指令/目标，另一方（敌方）显示为 AI/近况
+			if isAtk == viewerIsAtk {
+				cmd = ezfyAtkCmdOf(myCmds, u.TroopId)
+				tgt = myTgtOf(u.TroopId)
 				// ★ 2026-09-23 修复「目标剩余0 不自动切换」：
-				//   引擎里优先目标没了会自动打最近（ezfyPickTarget ②），但页面把存的目标原样展示，
-				//   玩家就会看到目标已 0 却还指着一个残兵。这里把已经打光(剩余0)的目标
-				//   改成显示「最近目标」，和引擎的实战行为一致。
-				if tgt != 0 && !aliveDef[tgt] {
+				//   引擎里优先目标没了会自动打最近（ezfyPickTarget ②），页面把已打光(剩余0)
+				//   的目标改成显示「最近目标」，和引擎的实战行为一致。
+				if tgt != 0 && !aliveEnemy[tgt] {
 					tgt = 0
 				}
 			}
-			// ★ 攻方兵种名展示玩家**自己阵营**的叫法（2026-09-23 用户要求），
-			//   同盟国/轴心国各自的兵种名统一在这里按攻方阵营解析。
-			//   守方(AI/野地)没有阵营概念，继续用快照里的通用名。
+			// 兵种名按「自己这一方」的阵营解析（另一方用快照里的通用名）
 			name := u.Name
-			if isAtk && atkCamp != 0 {
-				if cn := ezfyCfg.troopName(u.TroopId, atkCamp); cn != "" {
+			if isAtk == viewerIsAtk && viewerCamp != 0 {
+				if cn := ezfyCfg.troopName(u.TroopId, viewerCamp); cn != "" {
 					name = cn
 				}
 			}
@@ -292,28 +346,35 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		return out
 	}
 
-	// 目标下拉框的可选项 = 最近目标 + 守方兵种（去重）；
-	// 再把攻方当前已配的目标补进去 —— 守方没有该兵种时（已全灭/司令部配的别的兵种）
-	// 下拉框也要能显示当前值，否则会显示成空白。
+	// 目标下拉框 = 最近目标 + 敌方兵种（去重）；再把己方当前已配但敌方没有的目标补进去
+	// （敌方全灭/司令部配了别的兵种时，下拉框也要能显示当前值，否则会显示空白）。
 	optSeen := map[int]bool{0: true}
 	opts := []gin.H{{"id": 0, "name": "最近目标"}}
-	for _, u := range snap.Defenders {
+	for _, u := range enemySnaps {
 		if optSeen[u.TroopId] {
 			continue
 		}
 		optSeen[u.TroopId] = true
 		opts = append(opts, gin.H{"id": u.TroopId, "name": u.Name})
 	}
-	for _, u := range snap.Attackers {
-		t := tgtOf(u.TroopId)
+	myList := snap.Attackers
+	if !viewerIsAtk {
+		myList = snap.Defenders
+	}
+	for _, u := range myList {
+		t := myTgtOf(u.TroopId)
 		if t != 0 && !optSeen[t] {
 			optSeen[t] = true
 			opts = append(opts, gin.H{"id": t, "name": troopName(t)})
 		}
 	}
-	atkTargets := snap.AtkTargets
-	if atkTargets == nil {
-		atkTargets = map[int]int{}
+	myTargets := map[int]int{}
+	if viewerIsAtk {
+		if snap.AtkTargets != nil {
+			myTargets = snap.AtkTargets
+		}
+	} else if snap.DefTargets != nil {
+		myTargets = snap.DefTargets
 	}
 
 	// 日志只下发尾部若干条（含每回合标题行，够玩家看战况）
@@ -334,16 +395,25 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		defTotal += u.Count
 	}
 
+	// PvP（攻击玩家城）→ 双方都能指挥，一键[自动战斗]对另一方不公平，禁用
+	pvp := b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0
+
 	return gin.H{
 		"order_id": b.OrderId, "target_name": b.TargetName,
 		"target_x": b.TargetX, "target_y": b.TargetY, "target_type": b.TargetType,
 		"round": maxInt(b.Round, 1), "max_round": ezfyBattleMaxRounds,
 		"status": b.Status, "win": b.Win,
 		"atk_cmd":  b.AtkCmd, // 原始 JSON（前端不用，调试用）
-		"atk_cmds": cmds,     // troopId -> 指令，前端每行按钮高亮用
-		// troopId -> 优先攻击目标（0=最近），前端每行下拉框的当前值
-		"atk_targets": atkTargets,
-		// 目标下拉框可选：最近目标 + 守方兵种（含当前值兜底）
+		"atk_cmds": atkCmds,  // troopId -> 指令，前端每行按钮高亮用
+		"def_cmd":  b.DefCmd, "def_cmds": defCmds,
+		// 观察方是不是攻方（守方视角时前端把指挥按钮渲染到守方行上）
+		"is_atk": viewerIsAtk,
+		// PvP 真人对抗时禁用[自动战斗]
+		"pvp":      pvp,
+		"can_auto": !pvp,
+		// 观察方自己的逐兵种优先攻击目标（0=最近）
+		"my_targets": myTargets,
+		// 目标下拉框可选：最近目标 + 敌方兵种（含当前值兜底）
 		"target_options": opts,
 		"phase":          phase, "round_left_ms": left,
 		"round_ms": ezfyBattleRoundMs, "cmd_window_ms": ezfyBattleCmdMs,
@@ -362,14 +432,14 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var order model.EzfyOrder
-	if err := h.DB.First(&order, orderId).Error; err != nil || order.UserID != uid {
-		resp.NotFound(c, "出征部队不存在")
-		return
-	}
 	b := h.ezfyBattleByOrder(orderId)
 	if b == nil {
 		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	side := h.ezfyBattleSide(b, uid)
+	if side == "" {
+		resp.NotFound(c, "出征部队不存在")
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -378,7 +448,7 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 		// 战斗刚结束 → 结果回写订单（下一次 processOrders 就会出战报）
 		h.ezfyBattleFinishToOrder(b, now)
 	}
-	resp.OK(c, h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp))
+	resp.OK(c, h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk"))
 }
 
 // BattleCmd POST /games/ezfy/battle/cmd  {order_id, troop_id, cmd: advance|hold|retreat}
@@ -403,14 +473,14 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 		resp.ParamError(c, "指令只能是 前进/停止/后退")
 		return
 	}
-	var order model.EzfyOrder
-	if err := h.DB.First(&order, req.OrderId).Error; err != nil || order.UserID != uid {
-		resp.NotFound(c, "出征部队不存在")
-		return
-	}
 	b := h.ezfyBattleByOrder(req.OrderId)
 	if b == nil {
 		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	side := h.ezfyBattleSide(b, uid)
+	if side == "" {
+		resp.NotFound(c, "出征部队不存在")
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -419,15 +489,22 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	snap, done := h.ezfyBattleTick(b, now)
 	if done && b.Status == 2 {
 		h.ezfyBattleFinishToOrder(b, now)
-		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 		return
 	}
-	// 逐兵种指令表
-	cmds := ezfyAtkCmdsParse(b.AtkCmd)
 	st := ezfyBattleStateFromSnapshot(snap)
+	// 攻方写 AtkCmd、守方写 DefCmd —— 各自指挥自己这一边的兵种
+	cmds := ezfyAtkCmdsParse(b.AtkCmd)
+	myUnits := st.Attackers
+	field := "atk_cmd"
+	if side != "atk" {
+		cmds = ezfyAtkCmdsParse(b.DefCmd)
+		myUnits = st.Defenders
+		field = "def_cmd"
+	}
 	// 旧格式的「全军统一」指令先摊到各兵种，再删掉 0 号键（一次性平滑迁移）
 	if v, ok := cmds[0]; ok {
-		for _, u := range st.Attackers {
+		for _, u := range myUnits {
 			if _, has := cmds[u.cfg.ID]; !has {
 				cmds[u.cfg.ID] = v
 			}
@@ -437,7 +514,7 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	if req.TroopId > 0 {
 		// 指定兵种：必须真的在这支部队里
 		found := false
-		for _, u := range st.Attackers {
+		for _, u := range myUnits {
 			if u.cfg.ID == req.TroopId {
 				found = true
 				break
@@ -449,13 +526,18 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 		}
 		cmds[req.TroopId] = req.Cmd
 	} else {
-		for _, u := range st.Attackers {
+		for _, u := range myUnits {
 			cmds[u.cfg.ID] = req.Cmd
 		}
 	}
-	b.AtkCmd = ezfyAtkCmdsEncode(cmds)
-	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("atk_cmd", b.AtkCmd)
-	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
+	enc := ezfyAtkCmdsEncode(cmds)
+	if side == "atk" {
+		b.AtkCmd = enc
+	} else {
+		b.DefCmd = enc
+	}
+	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, enc)
+	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 }
 
 // BattleTarget POST /games/ezfy/battle/target  {order_id, troop_id, target_troop}
@@ -484,14 +566,14 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var order model.EzfyOrder
-	if err := h.DB.First(&order, req.OrderId).Error; err != nil || order.UserID != uid {
-		resp.NotFound(c, "出征部队不存在")
-		return
-	}
 	b := h.ezfyBattleByOrder(req.OrderId)
 	if b == nil {
 		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	side := h.ezfyBattleSide(b, uid)
+	if side == "" {
+		resp.NotFound(c, "出征部队不存在")
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -500,12 +582,18 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 	snap, done := h.ezfyBattleTick(b, now)
 	if done && b.Status == 2 {
 		h.ezfyBattleFinishToOrder(b, now)
-		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 		return
 	}
-	// 只能指挥**自己带了的**兵种（与逐兵种指令同一口径）
+	// 只能指挥**自己带了**的兵种（攻方改 AtkTargets、守方改 DefTargets）
+	mySnaps := snap.Attackers
+	targets := snap.AtkTargets
+	if side != "atk" {
+		mySnaps = snap.Defenders
+		targets = snap.DefTargets
+	}
 	found := false
-	for _, u := range snap.Attackers {
+	for _, u := range mySnaps {
 		if u.TroopId == req.TroopId {
 			found = true
 			break
@@ -520,13 +608,18 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 		resp.ParamError(c, "目标兵种不存在")
 		return
 	}
-	if snap.AtkTargets == nil {
-		snap.AtkTargets = map[int]int{}
+	if targets == nil {
+		targets = map[int]int{}
 	}
-	snap.AtkTargets[req.TroopId] = req.TargetTroop
+	targets[req.TroopId] = req.TargetTroop
+	if side == "atk" {
+		snap.AtkTargets = targets
+	} else {
+		snap.DefTargets = targets
+	}
 	b.State = ezfyBattleSnapshotEncode(snap)
 	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("state", b.State)
-	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
+	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 }
 
 // BattleAuto POST /games/ezfy/battle/auto  {order_id} —— 自动战斗：按当前指令一口气打完
@@ -542,14 +635,20 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var order model.EzfyOrder
-	if err := h.DB.First(&order, req.OrderId).Error; err != nil || order.UserID != uid {
-		resp.NotFound(c, "出征部队不存在")
-		return
-	}
 	b := h.ezfyBattleByOrder(req.OrderId)
 	if b == nil {
 		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	side := h.ezfyBattleSide(b, uid)
+	if side == "" {
+		resp.NotFound(c, "出征部队不存在")
+		return
+	}
+	// ★ 2026-09-23 用户要求「两个人都在指挥的话不能点击[自动战斗]」：
+	//   攻击玩家城（PvP，双方都能指挥）时，一键打完对另一方不公平，禁用。
+	if b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0 {
+		resp.OK(c, gin.H{"done": false, "msg": "真人对抗无法自动战斗，请逐回合指挥"})
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -568,7 +667,7 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		advance[u.cfg.ID] = ezfyCmdAdvance
 	}
 	for !st.Done {
-		st.Step(advance, "")
+		st.Step(advance, nil)
 	}
 	b.Status = 2
 	if st.AttackerWin {
@@ -583,5 +682,5 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 	})
 	h.ezfyBattleFinishToOrder(b, now)
 	out, _ := ezfyBattleSnapshotDecode(b.State)
-	resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, out, now, h.ensureProfile(uid).Camp)})
+	resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, out, now, h.ensureProfile(uid).Camp, side == "atk")})
 }

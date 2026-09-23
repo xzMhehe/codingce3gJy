@@ -605,6 +605,11 @@ type EzfyBattle struct {
 	// ★ 用户要求「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
 	//   没给的兵种回落司令部「兵种战斗配置」；键 0 = 旧格式遗留的「全军统一指令」。
 	AtkCmd string `gorm:"type:varchar(500);default:''" json:"atk_cmd"`
+	// DefUserID 守方玩家 uid（仅 target_type=3 攻击玩家城时有值，0 = 野地/寇城无玩家守方）。
+	// ★ 2026-09-23 用户要求「敌人打自己，自己也能指挥」—— 防守方据此找回并进入战场。
+	DefUserID uint `gorm:"index:idx_battle_def" json:"def_user_id"`
+	// DefCmd 守方**逐兵种**指令表，JSON 同 AtkCmd（玩家守城时指挥守军用；AI 为空）。
+	DefCmd string `gorm:"type:varchar(500);default:''" json:"def_cmd"`
 	// State 战场快照（ezfyBattleSnapshot 的 JSON，含双方兵力/位置/加成/日志）
 	State string `gorm:"type:mediumtext" json:"-"`
 	// RoundStart 本回合开始时间(ms)：过了回合时长就推进一回合

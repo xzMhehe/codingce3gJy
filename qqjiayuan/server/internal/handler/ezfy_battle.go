@@ -110,6 +110,10 @@ type ezfyBattleState struct {
 	AtkOfficerDesc string
 	DefOfficerDesc string
 
+	// 军官技能「绝地反击」：第1回合被攻击后存活可立即反击攻击者
+	AtkCounter bool // 攻方带队军官有「绝地反击」
+	DefCounter bool // 守方城守军官有「绝地反击」
+
 	Round       int  // 已结算回合数
 	Done        bool // 是否已分胜负 / 回合耗尽
 	AttackerWin bool
@@ -130,7 +134,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
-	atkMoves, defMoves map[int]int) *ezfyBattleState {
+	atkMoves, defMoves map[int]int,
+	atkCounter, defCounter bool) *ezfyBattleState {
 
 	st := &ezfyBattleState{
 		AtkBonus: atkBonus, DefBonus: defBonus,
@@ -139,6 +144,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkTargets: atkTargets, DefTargets: defTargets,
 		AtkMoves: atkMoves, DefMoves: defMoves,
 		AtkOfficerDesc: atkOfficerDesc, DefOfficerDesc: defOfficerDesc,
+		AtkCounter: atkCounter, DefCounter: defCounter,
 		Head: []string{}, Actions: []string{},
 	}
 
@@ -224,10 +230,11 @@ func ezfyMoveDir(unit *ezfyFightUnit, moveMap map[int]int, cmd string) int {
 // Step 结算**一个回合**。返回 true 表示战斗已结束。
 //
 // atkCmds: 攻方**逐兵种**的指令（troopId → advance|hold|retreat）。
+// defCmds: 守方**逐兵种**的指令（2026-09-23 用户要求「敌人打自己，自己也能指挥」——
+//   玩家守城时与攻方一样逐兵种指挥，AI/野地不下指令时传 nil）。
 // ★ 用户要求（2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 // —— 所以指令是按兵种存的，没给的兵种回落到司令部兵种配置。
-// defCmd: 守方统一指令（AI 不下指令，一般传空串）。
-func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
+func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	if st.Done {
 		return true
 	}
@@ -272,20 +279,22 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 		dist := ezfyAbs(target.pos - unit.pos)
 
 		moveMap := st.DefMoves
-		cmd := defCmd
+		cmd := ""
 		speedBonus := defSpeedBonus
+		cmds := defCmds
 		if isAtk {
 			moveMap = st.AtkMoves
 			speedBonus = atkSpeedBonus
-			// ★ 按兵种取指令（缺省 = 空串 → 回落司令部兵种配置）
-			//   0 号键是旧格式遗留的「全军统一指令」，老战场记录也能正常打
-			cmd = ""
-			if atkCmds != nil {
-				if v, ok := atkCmds[unit.cfg.ID]; ok {
-					cmd = v
-				} else if v, ok := atkCmds[0]; ok {
-					cmd = v
-				}
+			cmds = atkCmds
+		}
+		// ★ 按兵种取指令（缺省 = 空串 → 回落司令部兵种配置）
+		//   0 号键是旧格式遗留的「全军统一指令」，老战场记录也能正常打。
+		//   攻守双方同口径：玩家守城时守军也能逐兵种指挥。
+		if cmds != nil {
+			if v, ok := cmds[unit.cfg.ID]; ok {
+				cmd = v
+			} else if v, ok := cmds[0]; ok {
+				cmd = v
 			}
 		}
 
@@ -375,33 +384,94 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 					damage = damage * int64(100+critBonus) / 100
 				}
 			}
-			effHealth := target.cfg.Health * hpMul / 100
-			if effHealth < 1 {
-				effHealth = 1
+			// ★ 伤害按「剩余伤害」逐目标结算：先把本次全部伤害打在首选目标上；
+			//   若全歼且伤害还有溢出 → 触发【势不可挡】，溢出伤害继续打下一个存活目标，
+			//   若仍未全歼且还有溢出则继续级联，直到伤害耗尽或对方全灭。
+			critTxt := ""
+			if crit {
+				// 把实际生效的暴击倍率写进战报，玩家一眼能看出暴击有没有生效
+				critTxt = fmt.Sprintf("【暴击+%d%%】", critBonus)
 			}
-			killed := damage / int64(effHealth)
-			// ★ 暴击向上取整（有余数就多杀 1 个）：
-			//   暴击后的伤害往往不是目标血量的整数倍，老写法直接向下取整会把暴击的增益
-			//   整个抹掉 —— 伤害明明放大到 1.5 倍，killed 还是 1，玩家看到的就是
-			//   「暴击打了 1 个单位」（2026-09-23 用户反馈）。这里把零头补成 1 个。
-			if crit && damage%int64(effHealth) != 0 {
-				killed++
-			}
-			if killed < 1 {
-				killed = 1
-			}
-			if killed > target.count {
-				killed = target.count
-			}
-			if killed > 0 {
-				target.count -= killed
-				critTxt := ""
-				if crit {
-					// 把实际生效的暴击倍率写进战报，玩家一眼能看出暴击有没有生效
-					critTxt = fmt.Sprintf("【暴击+%d%%】", critBonus)
+			remaining := damage
+			first := true
+			for remaining > 0 {
+				live := ezfyAliveList(enemies)
+				if len(live) == 0 {
+					break
 				}
-				st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
-					side, unit.cfg.Name, critTxt, enemySide, target.cfg.Name, killed))
+				cur := target
+				if !first || !cur.alive() {
+					cur = ezfyPickTarget(unit, live, targetMap)
+					if cur == nil {
+						break
+					}
+				}
+				chp := cur.cfg.Health * hpMul / 100
+				if chp < 1 {
+					chp = 1
+				}
+				killed := remaining / int64(chp)
+				if first {
+					// ★ 暴击向上取整（有余数就多杀 1 个）：
+					//   暴击后的伤害往往不是目标血量的整数倍，老写法直接向下取整会把暴击的增益
+					//   整个抹掉 —— 伤害明明放大到 1.5 倍，killed 还是 1，玩家看到的就是
+					//   「暴击打了 1 个单位」（2026-09-23 用户反馈）。这里把零头补成 1 个。
+					if crit && remaining%int64(chp) != 0 {
+						killed++
+					}
+					if killed < 1 {
+						killed = 1
+					}
+				} else {
+					// 溢出伤害不足以再消灭一个单位 → 停，不再多打
+					if killed < 1 {
+						break
+					}
+				}
+				overflow := int64(0)
+				if killed >= cur.count {
+					killed = cur.count
+					overflow = remaining - cur.count*int64(chp)
+					if overflow < 0 {
+						overflow = 0
+					}
+				}
+				cur.count -= killed
+				if first {
+					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
+						side, unit.cfg.Name, critTxt, enemySide, cur.cfg.Name, killed))
+				} else {
+					st.Actions = append(st.Actions, fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 消灭%d个",
+						side, unit.cfg.Name, enemySide, cur.cfg.Name, killed))
+				}
+				remaining = overflow
+				first = false
+			}
+		}
+		// ★ 军官技能「绝地反击」：第1回合被打且存活 → 立即反击本次攻击者。
+		if dist <= rangeD && st.Round == 1 && target.alive() {
+			counter := st.AtkCounter // target 是攻方时用攻方旗
+			if isAtk {
+				counter = st.DefCounter // 攻方在打 → 被打方是守方，用守方旗
+			}
+			if counter {
+				// 反击方(target)攻击加成 / 被反击方(unit)防御加成 —— 与常规攻击同一口径
+				cbAtk, cbDef := 0, 0
+				if !isAtk { // target 是攻方，反击守方(unit)
+					cbAtk = atkBonus
+					cbDef = defBonus
+				}
+				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg), unit.cfg.Defence, target.count, cbAtk, cbDef)
+				kCnt := dmg / int64(unit.cfg.Health)
+				if kCnt < 1 {
+					kCnt = 1
+				}
+				if kCnt > unit.count {
+					kCnt = unit.count
+				}
+				unit.count -= kCnt
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【反击】还击%s%s, 消灭%d个",
+					enemySide, target.cfg.Name, side, unit.cfg.Name, kCnt))
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {
@@ -450,10 +520,10 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
-		atkTargets, defTargets, atkMoves, defMoves)
+		atkTargets, defTargets, atkMoves, defMoves, false, false)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
-		st.Step(nil, "")
+		st.Step(nil, nil)
 	}
 	return st.Result()
 }
@@ -502,6 +572,9 @@ type ezfyBattleSnapshot struct {
 	AtkOfficerDesc string          `json:"atk_officer_desc"`
 	DefOfficerDesc string          `json:"def_officer_desc"`
 
+	AtkCounter bool `json:"atk_counter"`
+	DefCounter bool `json:"def_counter"`
+
 	Round       int      `json:"round"`
 	Done        bool     `json:"done"`
 	AttackerWin bool     `json:"attacker_win"`
@@ -541,6 +614,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkTargets: st.AtkTargets, DefTargets: st.DefTargets,
 		AtkMoves: st.AtkMoves, DefMoves: st.DefMoves,
 		AtkOfficerDesc: st.AtkOfficerDesc, DefOfficerDesc: st.DefOfficerDesc,
+		AtkCounter:     st.AtkCounter, DefCounter: st.DefCounter,
 
 		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin,
 		Head: st.Head, Actions: actions,
@@ -556,6 +630,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkTargets: snap.AtkTargets, DefTargets: snap.DefTargets,
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,
 		AtkOfficerDesc: snap.AtkOfficerDesc, DefOfficerDesc: snap.DefOfficerDesc,
+		AtkCounter:     snap.AtkCounter, DefCounter: snap.DefCounter,
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin,
 		Head: snap.Head, Actions: snap.Actions,
 	}

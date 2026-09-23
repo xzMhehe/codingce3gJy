@@ -1155,6 +1155,29 @@ func (h *EzfyHandler) processOrders(uid uint) {
 			h.finishReturn(uid, order)
 		}
 	}
+	// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
+	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
+	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。
+	h.processIncoming(uid, now)
+}
+
+// processIncoming 把「正在攻打 uid 名下城市、已到点」的敌方订单结算掉（开战场 / 发军情警讯）。
+// 只处理 target_type=3（玩家城）且 status=0（行进中，到点）的订单，交给 processArrive 走统一流程。
+func (h *EzfyHandler) processIncoming(uid uint, now int64) {
+	var cities []int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &cities)
+	if len(cities) == 0 {
+		return
+	}
+	var orders []model.EzfyOrder
+	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", cities, now).
+		Order("id ASC").Find(&orders)
+	for i := range orders {
+		o := &orders[i]
+		// processArrive 用 uid 参数定位**攻方**城市（cityOfOrder 拿 order.CityId），
+		// 所以这里必须传 o.UserID（攻方），不是当前轮询的 uid（守方）。
+		h.processArrive(o.UserID, o, now)
+	}
 }
 
 func (h *EzfyHandler) cityOfOrder(order *model.EzfyOrder, uid uint) *model.EzfyCity {
@@ -1734,7 +1757,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		st := ezfyNewBattleState(attacker, defender,
 			atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
-			atkTargets, defTargets, atkMoves, defMoves)
+			atkTargets, defTargets, atkMoves, defMoves,
+			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）
+			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"))
 		// ★ 2026-09-23 用户要求：目标被别的玩家抢先指挥时，本部队改为「等待」，
 		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
 		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
@@ -1747,6 +1772,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Update("status", ezfyOrderStatusBattle)
+			// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
+			//   敌军**到达**我方城市开战时，立即给守方发一条「军情警讯」。
+			//   （「敌军来袭」预警已在 createOrder 时发；这里补「已抵达」的实时消息，
+			//   不依赖雷达站 —— 结果类消息不受雷达限制。）
+			if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
+				h.addReport(target.UserID, 6, "军情警报: 敌军已抵达",
+					fmt.Sprintf("敌方部队已抵达我方城市「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s\n请到「军情 → 军队动态」进入[指挥]部署守军。",
+						target.Name, order.TargetX, order.TargetY, city.Name))
+			}
 			// ★ 用户要求：「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
 			//   再发一条战报只会把战斗报告列表搅乱。
@@ -1754,7 +1788,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
 		for !st.Done {
-			st.Step(nil, "")
+			st.Step(nil, nil)
 		}
 		br = st.Result()
 	}

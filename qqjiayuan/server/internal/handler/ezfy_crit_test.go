@@ -34,7 +34,7 @@ func ezfyCritTestState(crit, critDmg int) *ezfyBattleState {
 func TestCritZeroCritDmgStillAmplifies(t *testing.T) {
 	st := ezfyCritTestState(125, 0) // crit_dmg = 0 的典型老装备
 	for !st.Done && st.Round < ezfyBattleMaxRounds {
-		st.Step(nil, "")
+		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")
 	if !strings.Contains(log, "【暴击+") {
@@ -52,7 +52,7 @@ func TestCritZeroCritDmgStillAmplifies(t *testing.T) {
 func TestCritChanceCappedAt100(t *testing.T) {
 	st := ezfyCritTestState(100, 60)
 	for !st.Done && st.Round < ezfyBattleMaxRounds {
-		st.Step(nil, "")
+		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")
 	if !strings.Contains(log, "【暴击+60%】") {
@@ -64,7 +64,7 @@ func TestCritChanceCappedAt100(t *testing.T) {
 func TestCritBonusUsedAsIs(t *testing.T) {
 	st := ezfyCritTestState(50, 135)
 	for !st.Done && st.Round < ezfyBattleMaxRounds {
-		st.Step(nil, "")
+		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")
 	// crit=50 是概率暴击，40 回合内基本必中；命中的话倍率必须是配置的 135

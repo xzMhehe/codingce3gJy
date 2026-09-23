@@ -47,7 +47,7 @@ func TestBattleStepAdvancesOneRound(t *testing.T) {
 		if st.Round != i-1 {
 			t.Fatalf("推进前回合数应为 %d，实际 %d", i-1, st.Round)
 		}
-		st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance)
+		st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance))
 		if st.Round != i {
 			t.Fatalf("Step 后回合数应为 %d，实际 %d", i, st.Round)
 		}
@@ -58,7 +58,7 @@ func TestBattleStepAdvancesOneRound(t *testing.T) {
 func TestBattleHoldStopsMovement(t *testing.T) {
 	st := ezfyTestState()
 	startPos := st.Attackers[0].pos
-	st.Step(ezfyCmd1(ezfyCmdHold), ezfyCmdHold)
+	st.Step(ezfyCmd1(ezfyCmdHold), ezfyCmd1(ezfyCmdHold))
 	if st.Attackers[0].pos != startPos {
 		t.Fatalf("暂停指令下攻方不该移动：%d → %d", startPos, st.Attackers[0].pos)
 	}
@@ -71,7 +71,7 @@ func TestBattleHoldStopsMovement(t *testing.T) {
 func TestBattleAdvanceMovesForward(t *testing.T) {
 	st := ezfyTestState()
 	atkBefore, defBefore := st.Attackers[0].pos, st.Defenders[0].pos
-	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance)
+	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance))
 	if st.Attackers[0].pos <= atkBefore {
 		t.Fatalf("攻方前进后位置应变大：%d → %d", atkBefore, st.Attackers[0].pos)
 	}
@@ -84,7 +84,7 @@ func TestBattleAdvanceMovesForward(t *testing.T) {
 func TestBattleRetreatMovesBackward(t *testing.T) {
 	st := ezfyTestState()
 	atkBefore := st.Attackers[0].pos
-	st.Step(ezfyCmd1(ezfyCmdRetreat), ezfyCmdHold)
+	st.Step(ezfyCmd1(ezfyCmdRetreat), ezfyCmd1(ezfyCmdHold))
 	if st.Attackers[0].pos >= atkBefore {
 		t.Fatalf("后退指令下攻方位置应变小：%d → %d", atkBefore, st.Attackers[0].pos)
 	}
@@ -105,7 +105,7 @@ func TestBattleRoundCapIsForty(t *testing.T) {
 	// 双方都暂停 → 永远不进射程 → 打满上限后结束（平局按守方守住）
 	st := ezfyTestState()
 	for !st.Done {
-		st.Step(ezfyCmd1(ezfyCmdHold), ezfyCmdHold)
+		st.Step(ezfyCmd1(ezfyCmdHold), ezfyCmd1(ezfyCmdHold))
 	}
 	if st.Round != ezfyBattleMaxRounds {
 		t.Fatalf("打满后回合数应为 %d，实际 %d", ezfyBattleMaxRounds, st.Round)
@@ -124,7 +124,7 @@ func TestBattleFinishWhenOneSideWiped(t *testing.T) {
 	st.Defenders[0].pos = 100
 	st.Attackers[0].pos = 100
 	for !st.Done {
-		st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance)
+		st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance))
 	}
 	if !st.AttackerWin {
 		t.Fatal("守方全灭时应判攻方胜")
@@ -153,7 +153,7 @@ func TestBattlePerTroopCommand(t *testing.T) {
 		Head:      []string{}, Actions: []string{},
 	}
 	// 步兵前进、坦克暂停
-	st.Step(map[int]string{1: ezfyCmdAdvance, 3: ezfyCmdHold}, "")
+	st.Step(map[int]string{1: ezfyCmdAdvance, 3: ezfyCmdHold}, nil)
 	if st.Attackers[0].pos == 0 {
 		t.Fatal("步兵下了「前进」却没移动")
 	}
@@ -167,7 +167,7 @@ func TestBattlePerTroopCommand(t *testing.T) {
 		Defenders: []*ezfyFightUnit{mk("D1", "守军", 2, ezfyBattleStartDist, 100)},
 		Head:      []string{}, Actions: []string{},
 	}
-	st2.Step(map[int]string{1: ezfyCmdHold, 3: ezfyCmdRetreat}, "")
+	st2.Step(map[int]string{1: ezfyCmdHold, 3: ezfyCmdRetreat}, nil)
 	if st2.Attackers[0].pos != 2000 {
 		t.Fatalf("步兵下了「暂停」却移动了：pos=%d", st2.Attackers[0].pos)
 	}
@@ -201,8 +201,8 @@ func TestAtkCmdsParseCompat(t *testing.T) {
 // 所以往返必须无损，否则回合数/兵力/位置会在存取之间漂移。
 func TestBattleSnapshotRoundTrip(t *testing.T) {
 	st := ezfyTestState()
-	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance)
-	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdHold)
+	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance))
+	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdHold))
 
 	encoded := ezfyBattleSnapshotEncode(st.Snapshot())
 	if encoded == "" {
@@ -237,11 +237,11 @@ func TestBattleSnapshotRoundTrip(t *testing.T) {
 // TestBattleSnapshotKeepsGoingAfterRestore —— 重建后还能继续推进（不是死状态）
 func TestBattleSnapshotKeepsGoingAfterRestore(t *testing.T) {
 	st := ezfyTestState()
-	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance)
+	st.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance))
 	snap, _ := ezfyBattleSnapshotDecode(ezfyBattleSnapshotEncode(st.Snapshot()))
 	back := ezfyBattleStateFromSnapshot(snap)
 	before := back.Round
-	if back.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmdAdvance) && back.Round != before+1 {
+	if back.Step(ezfyCmd1(ezfyCmdAdvance), ezfyCmd1(ezfyCmdAdvance)) && back.Round != before+1 {
 		t.Fatalf("重建后推进异常：回合 %d → %d", before, back.Round)
 	}
 }
@@ -250,7 +250,7 @@ func TestBattleSnapshotKeepsGoingAfterRestore(t *testing.T) {
 func TestBattleSimulateStillWorks(t *testing.T) {
 	st := ezfyTestState()
 	for !st.Done {
-		st.Step(nil, "") // 空指令 = 沿用司令部兵种配置
+		st.Step(nil, nil) // 空指令 = 沿用司令部兵种配置
 	}
 	res := st.Result()
 	if res.Rounds <= 0 {

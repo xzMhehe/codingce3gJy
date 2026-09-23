@@ -39,10 +39,10 @@ func TestDefenderDefenceBonusAppliesWhenAttacked(t *testing.T) {
 	base := ezfyDefBonusState(0)
 	withDef := ezfyDefBonusState(100)
 	for !base.Done && base.Round < ezfyBattleMaxRounds {
-		base.Step(nil, "")
+		base.Step(nil, nil)
 	}
 	for !withDef.Done && withDef.Round < ezfyBattleMaxRounds {
-		withDef.Step(nil, "")
+		withDef.Step(nil, nil)
 	}
 	baseLoss := base.Defenders[0].initialCount - base.Defenders[0].count
 	withLoss := withDef.Defenders[0].initialCount - withDef.Defenders[0].count

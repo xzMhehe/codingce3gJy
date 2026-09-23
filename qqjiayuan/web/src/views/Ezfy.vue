@@ -325,8 +325,9 @@
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
             <div class="old-line" v-for="o in dynPaged" :key="'dy' + o.id">
-              命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
-              目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
+              命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
+              目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
+              <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
               状态：{{ o.status_name }}
               <template v-if="o.can_command">
                 <a href="javascript:;" class="red" @click="openBattle(o.id)">[指挥]</a>
@@ -596,7 +597,7 @@
             ({{ b.level }}级)
             <template v-if="b.status !== 0">
               <span class="orange">施工中 {{ remain(b.end_time) }}</span>
-              <a href="javascript:;" @click="doSpeedBuilding()">加速</a>
+              <a href="javascript:;" @click="doSpeedBuilding(b)">加速</a>
             </template>
             <template v-else-if="b.level > 0 && b.level < b.max_level">
               <a href="javascript:;" @click="doUpgrade(b)">升级</a>
@@ -607,6 +608,10 @@
               <a v-if="b.level === 0" href="javascript:;" @click="doUpgrade(b)">建成中待完成</a>
               <a v-else-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
             </template>
+            <div v-if="inlineTip && inlineTip.bid === b.id" class="build-tip" :class="inlineTip.type">
+              <span>{{ inlineTip.text }}</span>
+              <a href="javascript:;" @click="inlineTip = null">[关闭]</a>
+            </div>
           </div>
           <div class="old-line gray" v-if="!zoneBuilt.length">(本区还没有建筑, 点上面的「建造」)</div>
           <br/>
@@ -748,10 +753,6 @@
       <template v-else-if="cur === 'hq'">
         <div class="panel">
           <div class="panel-title">司令部: 兵种战斗配置</div>
-          <div class="old-line gray">
-            每个兵种可分别设置 进攻/防守 的默认攻击对象与前进停止。
-            窄屏下改成「一兵种一块」，避免下拉框互相遮盖。
-          </div>
           <!-- ★ 一个兵种一块（原来 5 列固定宽度表格在手机上会互相遮盖） -->
           <div class="ezfy-tgt-block" v-for="t in troopsData.cfgs" :key="'cfg' + t.id">
             <div class="ezfy-tgt-name">
@@ -1360,7 +1361,7 @@
             <a href="javascript:;" @click="sendBattleCmd('advance')">[全军前进]</a>
             <a href="javascript:;" @click="sendBattleCmd('hold')">[全军停止]</a>
             <a href="javascript:;" @click="sendBattleCmd('retreat')">[全军后退]</a>
-            <a href="javascript:;" @click="doBattleAuto">[自动战斗]</a>
+            <a v-if="battleData.can_auto" href="javascript:;" @click="doBattleAuto">[自动战斗]</a>
           </div>
           <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->
           <table class="ezfy-plain-table">
@@ -1373,27 +1374,52 @@
               <td class="red">攻</td><td>{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
-                   指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的） -->
+                   指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的）。
+                   ★ 守方视角(is_atk=false)时这里显示 AI，指挥控件渲染到守方行上。 -->
               <td v-if="!battleData.done">
-                <select :value="u.target_troop"
-                        @change="sendBattleTarget(u.troop_id, $event)"
-                        style="width:96px">
-                  <option v-for="op in (battleData.target_options || [])"
-                          :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
-                </select>
+                <template v-if="battleData.is_atk">
+                  <select :value="u.target_troop"
+                          @change="sendBattleTarget(u.troop_id, $event)"
+                          style="width:96px">
+                    <option v-for="op in (battleData.target_options || [])"
+                            :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
+                  </select>
+                </template>
+                <span v-else class="gray">-</span>
               </td>
               <td v-if="!battleData.done">
-                <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
-                <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
-                <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="sendBattleCmd('retreat', u.troop_id)">[后退]</a>
-                <span class="gray">{{ u.cmd_name }}</span>
+                <template v-if="battleData.is_atk">
+                  <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
+                  <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
+                  <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="sendBattleCmd('retreat', u.troop_id)">[后退]</a>
+                  <span class="gray">{{ u.cmd_name }}</span>
+                </template>
+                <span v-else class="gray">AI</span>
               </td>
             </tr>
             <tr v-for="u in battleData.defenders" :key="'bd' + u.troop_id">
               <td>守</td><td>{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
-              <td v-if="!battleData.done" class="gray">-</td>
-              <td v-if="!battleData.done" class="gray">AI</td>
+              <td v-if="!battleData.done">
+                <template v-if="!battleData.is_atk">
+                  <select :value="u.target_troop"
+                          @change="sendBattleTarget(u.troop_id, $event)"
+                          style="width:96px">
+                    <option v-for="op in (battleData.target_options || [])"
+                            :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
+                  </select>
+                </template>
+                <span v-else class="gray">-</span>
+              </td>
+              <td v-if="!battleData.done">
+                <template v-if="!battleData.is_atk">
+                  <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
+                  <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
+                  <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="sendBattleCmd('retreat', u.troop_id)">[后退]</a>
+                  <span class="gray">{{ u.cmd_name }}</span>
+                </template>
+                <span v-else class="gray">AI</span>
+              </td>
             </tr>
           </table>
           <div class="old-line">
@@ -1642,15 +1668,23 @@
           <div class="panel-title">全部建筑总览</div>
           <table>
             <tr><th>建筑</th><th>等级</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="b in buildings" :key="'hb' + b.id">
-              <td>{{ b.name }}</td>
-              <td>{{ b.level }}/{{ b.max_level }}</td>
-              <td>{{ b.status === 0 ? '空闲' : '施工中 ' + remain(b.end_time) }}</td>
-              <td>
-                <a v-if="b.status === 0 && b.level > 0 && b.level < b.max_level" href="javascript:;" @click="doUpgrade(b)">[升级]</a>
-                <span v-if="b.status !== 0"><a href="javascript:;" @click="doSpeedBuilding()">[加速]</a></span>
-              </td>
-            </tr>
+            <template v-for="b in buildings">
+              <tr :key="'hb' + b.id">
+                <td>{{ b.name }}</td>
+                <td>{{ b.level }}/{{ b.max_level }}</td>
+                <td>{{ b.status === 0 ? '空闲' : '施工中 ' + remain(b.end_time) }}</td>
+                <td>
+                  <a v-if="b.status === 0 && b.level > 0 && b.level < b.max_level" href="javascript:;" @click="doUpgrade(b)">[升级]</a>
+                  <span v-if="b.status !== 0"><a href="javascript:;" @click="doSpeedBuilding(b)">[加速]</a></span>
+                </td>
+              </tr>
+              <tr v-if="inlineTip && inlineTip.bid === b.id" :key="'hbt' + b.id">
+                <td colspan="4" class="build-tip" :class="inlineTip.type">
+                  <span>{{ inlineTip.text }}</span>
+                  <a href="javascript:;" @click="inlineTip = null">[关闭]</a>
+                </td>
+              </tr>
+            </template>
           </table>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -3194,6 +3228,7 @@ export default {
         round: 0, max_round: 40, status: 1, win: 0, atk_cmd: '', atk_cmds: {},
         phase: 'cmd', round_left_ms: 0, round_ms: 30000, cmd_window_ms: 25000,
         attackers: [], defenders: [], atk_total: 0, def_total: 0,
+        is_atk: true, pvp: false, can_auto: true,
         head: [], actions: [], done: false
       },
       battleOrderId: 0,     // 正在指挥的出征订单 id
@@ -3228,6 +3263,7 @@ export default {
       useCount: 1,
       useOfficerId: 0,
       useSkillId: 0,
+      inlineTip: null, // 建筑区操作的内联提示 { bid, text, type }
       buyItem: null,
       buyCount: 1,
       buyPayWith: 'gold', // ★ 双渠道道具的支付方式选择（gold / diamond）
@@ -4855,39 +4891,46 @@ export default {
     },
     doUpgrade (b) {
       api.post('/games/ezfy/building/upgrade', { record_id: b.id }).then(r => {
-        this.alert(r, '建筑已开始升级')
-        if (r.code === 0) this.load()
+        if (r.code === 0) {
+          this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '建筑已开始升级', type: 'ok' }
+          this.load()
+        } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
     doMaxLevel (b) {
       api.post('/games/ezfy/building/max-level', { record_id: b.id }).then(r => {
-        this.alert(r, '已升到最高级')
-        if (r.code === 0) this.load()
+        if (r.code === 0) {
+          this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '已升到最高级', type: 'ok' }
+          this.load()
+        } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
     doDeleteBuilding (b) {
       api.post('/games/ezfy/building/delete', { record_id: b.id }).then(r => {
-        this.alert(r, '建筑已拆除')
-        if (r.code === 0) this.load()
+        if (r.code === 0) {
+          this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '建筑已拆除', type: 'ok' }
+          this.load()
+        } else this.inlineTip = { bid: b.id, text: r.msg || '拆除失败', type: 'error' }
       })
     },
-    async doSpeedBuilding () {
+    async doSpeedBuilding (b) {
       // ★ 建筑加速必须消耗「建筑加速道具」(item_type=3)，没有道具则无法加速
+      const bid = b && b.id
       await this.loadBag()
       const acc = (this.bagItems || [])
         .filter(i => i.item_type === 3 && i.count > 0)
-        .sort((a, b) => (a.param1 || 0) - (b.param1 || 0))
+        .sort((a, x) => (a.param1 || 0) - (x.param1 || 0))
       if (!acc.length) {
-        this.notify('没有建筑加速道具，无法加速', 'error')
+        this.inlineTip = { bid, text: '没有建筑加速道具，无法加速', type: 'error' }
         return
       }
       const it = acc[0]
       api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1 }).then(r => {
         if (r.code === 0) {
-          this.notify(r.data && r.data.msg ? r.data.msg : '加速成功')
+          this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '加速成功', type: 'ok' }
           this.load()
           this.loadBag()
-        } else this.notify(r.msg || '加速失败', 'error')
+        } else this.inlineTip = { bid, text: r.msg || '加速失败', type: 'error' }
       })
     },
     // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
@@ -6406,6 +6449,24 @@ body.ezfy-immersive { margin: 0; }
   border-left: 2px solid #d8d5cc;
   line-height: 1.9;
 }
+/* ★ 建筑区操作的内联提示：独占一行贴在所点建筑行下方，带 [关闭]，不自动消失 */
+.ezfy-page .build-tip {
+  display: block;
+  width: 100%;
+  margin: 3px 0 4px;
+  padding: 3px 8px;
+  border-left: 3px solid #c0392b;
+  background: #fbf3f2;
+  color: #c0392b;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+.ezfy-page .build-tip.ok {
+  border-left-color: #2e7d32;
+  background: #eef7ee;
+  color: #2e7d32;
+}
+.ezfy-page .build-tip a { margin-left: 8px; color: #999; }
 .ezfy-page .panel-title {
   /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18。原先 17 与正文同级, 会看不出层级 */
   font-size: 17px;
