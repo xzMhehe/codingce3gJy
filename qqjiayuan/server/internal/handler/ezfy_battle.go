@@ -387,6 +387,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			// ★ 伤害按「剩余伤害」逐目标结算：先把本次全部伤害打在首选目标上；
 			//   若全歼且伤害还有溢出 → 触发【势不可挡】，溢出伤害继续打下一个存活目标，
 			//   若仍未全歼且还有溢出则继续级联，直到伤害耗尽或对方全灭。
+			//   ★ 2026-09-23 用户要求：溢出打新目标时要**按新目标重新算伤害** ——
+			//   兵种类型不同要重选攻击属性(对海/对陆/对空)，防御不同要重算减免，
+			//   「B 比 A 防御高，对 B 的伤害要按 B 的防御重新折算」，以此类推。
+			//   实现：剩余伤害按「对原目标满额伤害 / 对新目标满额伤害」等比折算。
 			critTxt := ""
 			if crit {
 				// 把实际生效的暴击倍率写进战报，玩家一眼能看出暴击有没有生效
@@ -394,6 +398,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			}
 			remaining := damage
 			first := true
+			lastTarget := target // 当前 remaining 是按 lastTarget 的防御/兵种类型算出的
 			for remaining > 0 {
 				live := ezfyAliveList(enemies)
 				if len(live) == 0 {
@@ -405,6 +410,15 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					if cur == nil {
 						break
 					}
+				}
+				// ★ 命中新目标：按新目标重选攻击属性、重算防御减免，折算剩余伤害
+				if cur != lastTarget {
+					dFrom := ezfyCalcDamage(ezfyPickAttack(unit.cfg, lastTarget.cfg), lastTarget.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
+					dTo := ezfyCalcDamage(ezfyPickAttack(unit.cfg, cur.cfg), cur.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
+					if dFrom > 0 {
+						remaining = int64(float64(remaining) * float64(dTo) / float64(dFrom))
+					}
+					lastTarget = cur
 				}
 				chp := cur.cfg.Health * hpMul / 100
 				if chp < 1 {

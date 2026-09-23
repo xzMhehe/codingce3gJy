@@ -1936,6 +1936,9 @@
             </span>
           </div>
           <table class="ezfy-rank-table">
+            <colgroup>
+              <col style="width: 12%"><col style="width: 26%"><col style="width: 18%"><col style="width: 26%"><col style="width: 18%">
+            </colgroup>
             <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>可建城数</th></tr>
             <tr v-for="(r, i) in rankData.ranks" :key="'rk' + i">
               <td>{{ i + 1 }}</td>
@@ -1950,6 +1953,9 @@
           </table>
           <div class="panel-title">军衔声望榜</div>
           <table class="ezfy-rank-table">
+            <colgroup>
+              <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
+            </colgroup>
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
             <tr v-for="r in rankData.prestige" :key="'rp' + r.rank" :class="rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
@@ -1959,6 +1965,9 @@
           </table>
           <div class="panel-title">兵力榜 <span class="gray">（每人取兵力最多的那座城）</span></div>
           <table class="ezfy-rank-table">
+            <colgroup>
+              <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
+            </colgroup>
             <tr><th>名次</th><th>统帅</th><th>城市</th><th>兵力</th></tr>
             <tr v-for="r in rankData.troops" :key="'rt' + r.rank" :class="rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
@@ -1968,6 +1977,9 @@
           </table>
           <div class="panel-title">军团榜</div>
           <table class="ezfy-rank-table">
+            <colgroup>
+              <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
+            </colgroup>
             <tr><th>名次</th><th>军团</th><th>人数</th><th>战力</th></tr>
             <tr v-for="r in rankData.corps" :key="'rc' + r.rank" :class="rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
@@ -6373,10 +6385,19 @@ body.ezfy-immersive { margin: 0; }
    两者父容器(.old-line / .top-nav)左右 padding 都是 0，归零后文字左边缘必定对齐。 */
 .ezfy-page .ezfy-subnav a:first-child { margin-left: 0; padding-left: 0; }
 /* 军衔/排行页所有表格：数据水平 + 垂直居中（用户要求）*/
+/* ★ 排行页四个表格统一宽度（用户要求「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
+   width:50% 占 panel 一半宽度，table-layout:fixed 配合各表 colgroup 比例分列，长文本自动折行 */
+.ezfy-page .ezfy-rank-table {
+  width: 50%;
+  min-width: 360px;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
 .ezfy-page .ezfy-rank-table th,
 .ezfy-page .ezfy-rank-table td {
   text-align: center;
   vertical-align: middle;
+  overflow-wrap: break-word;
 }
 /* ★ 排行榜优化（用户要求「榜单太单调、没有追榜动力」）：
    名次做成奖牌徽章，前三名金/银/铜；冠亚季军整行按金/银/铜着色 + 冠军皇冠；
