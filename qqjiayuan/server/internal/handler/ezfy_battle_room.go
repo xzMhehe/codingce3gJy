@@ -228,20 +228,66 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 
 	// ★ 逐兵种指令：攻方每个兵种各自带自己的指令，前端每行单独显示/下达
 	cmds := ezfyAtkCmdsParse(b.AtkCmd)
+
+	// ★ 逐兵种「优先攻击目标」（2026-09-23 用户要求）：默认来自司令部兵种战斗配置
+	//   （开战时抄进快照的 AtkTargets），玩家在指挥室可逐兵种改。
+	tgtOf := func(troopId int) int {
+		if snap.AtkTargets == nil {
+			return 0
+		}
+		return snap.AtkTargets[troopId]
+	}
+	troopName := func(id int) string {
+		if id == 0 {
+			return "最近目标"
+		}
+		if c := ezfyCfg.troop(id); c != nil {
+			return c.Name
+		}
+		return "兵种" + strconv.Itoa(id)
+	}
+
 	units := func(list []ezfyBattleUnitSnap, isAtk bool) []gin.H {
 		out := []gin.H{}
 		for _, u := range list {
 			cmd := ""
+			tgt := 0
 			if isAtk {
 				cmd = ezfyAtkCmdOf(cmds, u.TroopId)
+				tgt = tgtOf(u.TroopId)
 			}
 			out = append(out, gin.H{
 				"troop_id": u.TroopId, "name": u.Name,
 				"count": u.Count, "initial": u.InitialCount, "pos": u.Pos,
 				"cmd": cmd, "cmd_name": ezfyBattleCmdName(cmd),
+				"target_troop": tgt, "target_name": troopName(tgt),
 			})
 		}
 		return out
+	}
+
+	// 目标下拉框的可选项 = 最近目标 + 守方兵种（去重）；
+	// 再把攻方当前已配的目标补进去 —— 守方没有该兵种时（已全灭/司令部配的别的兵种）
+	// 下拉框也要能显示当前值，否则会显示成空白。
+	optSeen := map[int]bool{0: true}
+	opts := []gin.H{{"id": 0, "name": "最近目标"}}
+	for _, u := range snap.Defenders {
+		if optSeen[u.TroopId] {
+			continue
+		}
+		optSeen[u.TroopId] = true
+		opts = append(opts, gin.H{"id": u.TroopId, "name": u.Name})
+	}
+	for _, u := range snap.Attackers {
+		t := tgtOf(u.TroopId)
+		if t != 0 && !optSeen[t] {
+			optSeen[t] = true
+			opts = append(opts, gin.H{"id": t, "name": troopName(t)})
+		}
+	}
+	atkTargets := snap.AtkTargets
+	if atkTargets == nil {
+		atkTargets = map[int]int{}
 	}
 
 	// 日志只下发尾部若干条（含每回合标题行，够玩家看战况）
@@ -269,6 +315,10 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		"status": b.Status, "win": b.Win,
 		"atk_cmd":  b.AtkCmd,   // 原始 JSON（前端不用，调试用）
 		"atk_cmds": cmds,       // troopId -> 指令，前端每行按钮高亮用
+		// troopId -> 优先攻击目标（0=最近），前端每行下拉框的当前值
+		"atk_targets": atkTargets,
+		// 目标下拉框可选：最近目标 + 守方兵种（含当前值兜底）
+		"target_options": opts,
 		"phase":    phase, "round_left_ms": left,
 		"round_ms": ezfyBattleRoundMs, "cmd_window_ms": ezfyBattleCmdMs,
 		"attackers": units(snap.Attackers, true), "defenders": units(snap.Defenders, false),
@@ -379,6 +429,77 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	}
 	b.AtkCmd = ezfyAtkCmdsEncode(cmds)
 	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("atk_cmd", b.AtkCmd)
+	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now)})
+}
+
+// BattleTarget POST /games/ezfy/battle/target  {order_id, troop_id, target_troop}
+//
+// ★ 2026-09-23 用户要求：「指挥战场的时候兵种目标带过来，指挥的时候玩家也能配置，
+// 默认是司令部配置的，敌对没有目标则默认攻击距离最近的」。
+//
+// 语义：
+//   - 指挥室每行兵种的**默认目标** = 开战时从司令部「兵种战斗配置」抄进快照的 AtkTargets；
+//   - 玩家在指挥室可以逐兵种改（target_troop = 0 表示「最近目标」）；
+//   - 改的是**本场战斗**，不回写司令部配置（司令部的改动只影响之后新开的战场）。
+//
+// 存法：直接改战场快照 ezfy_battle.state 里的 AtkTargets —— 与 AtkCmd 不同，
+// 这里不额外加列：快照本来就带 AtkTargets（ezfyBattleSnapshot.AtkTargets），
+// 每回合重建时 `ezfyBattleStateFromSnapshot` 会原样读回来，所以改快照即持久化，
+// 且「tick 没推进回合时不写库」也不会丢（改完当场就写了一次）。
+func (h *EzfyHandler) BattleTarget(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		OrderId     int64 `json:"order_id"`
+		TroopId     int   `json:"troop_id"`
+		TargetTroop int   `json:"target_troop"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var order model.EzfyOrder
+	if err := h.DB.First(&order, req.OrderId).Error; err != nil || order.UserID != uid {
+		resp.NotFound(c, "出征部队不存在")
+		return
+	}
+	b := h.ezfyBattleByOrder(req.OrderId)
+	if b == nil {
+		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	now := time.Now().UnixMilli()
+	// 先把「已经到点」的回合按**旧目标**结算掉，再改目标 ——
+	// 否则玩家能在锁定后才改目标去篡改已经打完的回合。
+	snap, done := h.ezfyBattleTick(b, now)
+	if done && b.Status == 2 {
+		h.ezfyBattleFinishToOrder(b, now)
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now)})
+		return
+	}
+	// 只能指挥**自己带了的**兵种（与逐兵种指令同一口径）
+	found := false
+	for _, u := range snap.Attackers {
+		if u.TroopId == req.TroopId {
+			found = true
+			break
+		}
+	}
+	if !found {
+		resp.ParamError(c, "该兵种不在这支部队里")
+		return
+	}
+	// 0 = 最近目标；其余必须是合法兵种
+	if req.TargetTroop != 0 && ezfyCfg.troop(req.TargetTroop) == nil {
+		resp.ParamError(c, "目标兵种不存在")
+		return
+	}
+	if snap.AtkTargets == nil {
+		snap.AtkTargets = map[int]int{}
+	}
+	snap.AtkTargets[req.TroopId] = req.TargetTroop
+	b.State = ezfyBattleSnapshotEncode(snap)
+	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("state", b.State)
 	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now)})
 }
 

@@ -645,6 +645,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// 每回合 30 秒，前 25 秒可下前进/暂停/后退，后 5 秒锁定结算，最多 40 回合
 				ezfyG.GET("/battle", ezfyH.BattleState)
 				ezfyG.POST("/battle/cmd", ezfyH.BattleCmd)
+				// ★ 指挥时逐兵种改「优先攻击目标」（默认值来自司令部兵种战斗配置）
+				ezfyG.POST("/battle/target", ezfyH.BattleTarget)
 				ezfyG.POST("/battle/auto", ezfyH.BattleAuto)
 
 				// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====

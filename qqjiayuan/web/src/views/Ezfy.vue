@@ -1351,6 +1351,8 @@
                  · 每回合 30 秒，前 25 秒（cmd_window_ms）可下达指令，后 5 秒锁定由服务器结算；
                  · 指令是**逐兵种**的（用户要求「自己带的兵种都能指挥，就是单独指挥」）；
                  · 没下指令的兵种按司令部「兵种战斗配置」行动；
+                 · 兵种目标同样是**逐兵种**的：默认取司令部配置，指挥时可改（0 = 最近目标），
+                   守方没有该兵种时服务器自动回落打最近的（2026-09-23 用户要求）；
                  · [自动战斗] = 自己全部军队前进，一口气打完。 -->
           <div class="old-line" v-if="!battleData.done">
             {{ battleData.time_label || '本回合剩余' }}：<b>{{ battleLeftText }}</b>
@@ -1364,15 +1366,26 @@
             <a href="javascript:;" @click="sendBattleCmd('retreat')">[全军后退]</a>
             <a href="javascript:;" @click="doBattleAuto">[自动战斗]</a>
           </div>
-          <!-- 双方兵力 + 逐兵种指挥 -->
+          <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->
           <table class="ezfy-plain-table">
             <tr>
               <th>方</th><th>兵种</th><th>剩余</th><th>初始</th><th>位置</th>
+              <th v-if="!battleData.done">目标</th>
               <th v-if="!battleData.done">指挥</th>
             </tr>
             <tr v-for="u in battleData.attackers" :key="'ba' + u.troop_id">
               <td class="red">攻</td><td>{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
+              <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
+                   指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的） -->
+              <td v-if="!battleData.done">
+                <select :value="u.target_troop"
+                        @change="sendBattleTarget(u.troop_id, $event)"
+                        style="width:96px">
+                  <option v-for="op in (battleData.target_options || [])"
+                          :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
+                </select>
+              </td>
               <td v-if="!battleData.done">
                 <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
                 <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[暂停]</a>
@@ -1383,6 +1396,7 @@
             <tr v-for="u in battleData.defenders" :key="'bd' + u.troop_id">
               <td>守</td><td>{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
+              <td v-if="!battleData.done" class="gray">-</td>
               <td v-if="!battleData.done" class="gray">AI</td>
             </tr>
           </table>
@@ -4254,6 +4268,26 @@ export default {
           this.battleLeftMs = st.round_left_ms || 0
         }
         this.notify((troopId ? '该兵种已' : '全军已') + this.battleCmdName(cmd))
+        if (r.data && r.data.done) this.stopBattleTimer()
+      })
+    },
+    // ★ 指挥时逐兵种改「优先攻击目标」（2026-09-23 用户要求）：
+    //   默认值来自司令部「兵种战斗配置」，这里改的只是**本场战斗**，不回写司令部。
+    //   target = 0 表示「最近目标」；守方没有该兵种时服务器会自动回落打最近的。
+    sendBattleTarget (troopId, ev) {
+      if (!this.battleOrderId) return
+      const target = parseInt(ev.target.value, 10) || 0
+      const opt = (this.battleData.target_options || []).find(o => o.id === target)
+      api.post('/games/ezfy/battle/target', {
+        order_id: this.battleOrderId, troop_id: troopId, target_troop: target
+      }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '目标设置失败'); return }
+        const st = r.data && r.data.state
+        if (st) {
+          this.battleData = st
+          this.battleLeftMs = st.round_left_ms || 0
+        }
+        this.notify('该兵种目标已设为' + (opt ? opt.name : '最近目标'))
         if (r.data && r.data.done) this.stopBattleTimer()
       })
     },

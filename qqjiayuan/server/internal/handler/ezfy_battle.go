@@ -607,30 +607,49 @@ func ezfyContains(list []*ezfyFightUnit, u *ezfyFightUnit) bool {
 	return false
 }
 
-// ezfyPickTarget 选择攻击目标: 司令部配置的优先兵种(取最近), 否则最近目标
+// ezfyPickTarget 选择攻击目标：**优先兵种**（取该兵种里最近的），没有则取最近目标。
+//
+// ★★ 2026-09-23 修复（用户要求「指挥战场时兵种目标带过来…敌对没有目标则默认攻击距离最近的」）：
+//
+//	老实现把「全局最近距离」先算进 minDist，再拿配置兵种的距离去比 `d < minDist` ——
+//	配置兵种的距离**永远不可能小于全局最小值**（顶多相等，而相等也不满足 `<`），
+//	所以「司令部 → 兵种战斗配置 → 优先攻击目标」**实际上完全不生效**，永远是打最近的。
+//	现在改成：配了优先兵种且敌方**还有该兵种存活** → 取该兵种里最近的；
+//	否则（没配 / 该兵种已全灭）→ 回落全局最近，正是用户要的语义。
+//
+// ⚠️ 这是**平衡性改动**：修好后「优先攻击目标」会真的生效 ——
+// 配了某兵种的单位会去追那个兵种，哪怕近处还有别的敌人（打不打得到看射程）。
 func ezfyPickTarget(unit *ezfyFightUnit, enemies []*ezfyFightUnit, targetMap map[int]int) *ezfyFightUnit {
 	targetTroop := 0
 	if targetMap != nil {
 		targetTroop = targetMap[unit.cfg.ID]
 	}
+
+	// ① 配了优先兵种 → 在该兵种里取最近的（找不到 = 该兵种已全灭 → 走 ②）
+	if targetTroop > 0 {
+		pref := (*ezfyFightUnit)(nil)
+		prefDist := int(^uint(0) >> 1)
+		for _, e := range enemies {
+			if e.cfg.ID != targetTroop {
+				continue
+			}
+			if d := ezfyAbs(e.pos - unit.pos); d < prefDist {
+				prefDist = d
+				pref = e
+			}
+		}
+		if pref != nil {
+			return pref
+		}
+	}
+
+	// ② 默认：攻击距离最近的
 	best := (*ezfyFightUnit)(nil)
 	minDist := int(^uint(0) >> 1)
 	for _, e := range enemies {
-		d := ezfyAbs(e.pos - unit.pos)
-		if d < minDist {
+		if d := ezfyAbs(e.pos - unit.pos); d < minDist {
 			minDist = d
 			best = e
-		}
-	}
-	if targetTroop > 0 {
-		for _, e := range enemies {
-			if e.cfg.ID == targetTroop {
-				d := ezfyAbs(e.pos - unit.pos)
-				if d < minDist {
-					minDist = d
-					best = e
-				}
-			}
 		}
 	}
 	return best
