@@ -1993,7 +1993,7 @@ func ezfyReportTypeName(reportType int, title string) string {
 	case strings.HasPrefix(title, "军情警报"):
 		return "警报"
 	case strings.HasPrefix(title, "侦查报告"):
-		return "侦察"
+		return "侦查"
 	case strings.HasPrefix(title, "掠夺报告"):
 		return "掠夺"
 	case strings.HasPrefix(title, "征服报告"):
@@ -2016,11 +2016,35 @@ func ezfyReportTypeName(reportType int, title string) string {
 		return "叛离"
 	case strings.HasPrefix(title, "城市归还"):
 		return "归还"
+	case strings.HasPrefix(title, "部队返航"):
+		return "返航"
+	case strings.HasPrefix(title, "运输到达"):
+		return "运输"
+	case strings.HasPrefix(title, "增援到达"):
+		return "增援"
+	case strings.HasPrefix(title, "新城建成"), strings.HasPrefix(title, "建城成功"):
+		return "建城"
+	case strings.HasPrefix(title, "城市已摧毁"), strings.HasPrefix(title, "摧毁城市"):
+		return "摧毁"
+	case strings.HasPrefix(title, "城市被占领"):
+		return "占领"
+	case strings.HasPrefix(title, "城市迁移完成"):
+		return "迁移"
+	case strings.HasPrefix(title, "计谋发动"), strings.HasPrefix(title, "计谋:"):
+		return "计谋"
+	case strings.HasPrefix(title, "军官调遣"):
+		return "调遣"
+	case strings.HasPrefix(title, "将领离职"):
+		return "离职"
+	case strings.HasPrefix(title, "将领升级"):
+		return "升级"
+	case strings.HasPrefix(title, "交易成交"):
+		return "交易"
 	}
 	// 兜底：按 report_type
 	switch reportType {
 	case 1:
-		return "侦察"
+		return "侦查"
 	case 2:
 		return "战斗"
 	case 3:

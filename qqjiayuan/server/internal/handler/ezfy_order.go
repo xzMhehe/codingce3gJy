@@ -1460,7 +1460,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		gdesc += "部队正在返回, 到达后资源入库。"
-		h.addReport(uid, 5, fmt.Sprintf("采集报告: 野地%d级(%d,%d)", wl.Level, wl.X, wl.Y), gdesc, "", order.ID)
+		gname := "野地"
+		if ezfyTerrain(wl.X, wl.Y) == 8 {
+			gname = "海底森林"
+		} else {
+			gname = ezfyTerrainName(ezfyTerrain(wl.X, wl.Y))
+		}
+		h.addReport(uid, 5, fmt.Sprintf("采集报告: %s%d级(%d,%d)", gname, wl.Level, wl.X, wl.Y), gdesc, "", order.ID)
 		return
 	}
 
@@ -1707,7 +1713,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 2 {
 			name = "寇城"
 		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
-			name = "海野"
+			name = "海底森林"
 		}
 		targetName = name + strconv.Itoa(level) + "级"
 		rnd := cfg.ResMin + rand.Int63n(cfg.ResMax-cfg.ResMin+1)

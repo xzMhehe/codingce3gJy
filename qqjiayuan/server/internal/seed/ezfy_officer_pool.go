@@ -1060,15 +1060,14 @@ func nerfEquipSetPct(db *gorm.DB) {
 
 // ============ 二·D、装备快照自愈 ============
 //
-// ★ 为什么需要它：装备属性是**穿戴时的快照** ——
+// ★ 2026-09-23 用户确认「装备是统一池子」：池子（ezfy_cfg_equipment）里改了属性，
+//   玩家已买到 / 已穿上的应该跟着变。本函数每次启动时把快照对齐到池子：
 //
-//	`ezfy_equipment`（买到时从装备池抄一份）→ 军官 `equipment` JSON（穿戴时再从背包抄一份）。
-//	管理端后来在装备池里补了属性（比如给军官装备补三维），已经买到/已经穿上的不会跟着变，
-//	玩家看到的就是「穿了一整套，属性一点没加」（这次踩到的就是这个）。
-//
-// 两步都只在「快照是 0 / 两边不一致」时才写，稳态下是 no-op（幂等）。
+//	`ezfy_equipment`（买到时抄的快照）→ 军官 `equipment` JSON（穿戴时抄的快照）。
+//	两层都从池子/背包重建，稳态下是 no-op（幂等）。
 func repairEquipSnapshots(db *gorm.DB) {
-	// ① 玩家背包里的装备：从装备池补齐「还是 0」的字段（不覆盖非 0 值 = 不动管理端单独改过的）
+	// ① 玩家背包里的装备：六项百分比 + 三维「始终」对齐池子当前值（统一池子语义）；
+	//    enhance（玩家自己的强化等级）与 slot/set_id/series（身份字段）仍只补缺。
 	var owned []model.EzfyEquipment
 	db.Where("cfg_id > 0").Find(&owned)
 	for _, e := range owned {
@@ -1077,20 +1076,25 @@ func repairEquipSnapshots(db *gorm.DB) {
 			continue
 		}
 		up := map[string]interface{}{}
+		syncI := func(cur, val int, col string) {
+			if val != 0 && cur != val {
+				up[col] = val
+			}
+		}
 		fillI := func(cur, val int, col string) {
 			if cur == 0 && val != 0 {
 				up[col] = val
 			}
 		}
-		fillI(e.Military, cfg.Military, "military")
-		fillI(e.Logistics, cfg.Logistics, "logistics")
-		fillI(e.Learning, cfg.Learning, "learning")
-		fillI(e.Dmg, cfg.Dmg, "dmg")
-		fillI(e.Def, cfg.Def, "def")
-		fillI(e.Hp, cfg.Hp, "hp")
-		fillI(e.Move, cfg.Move, "move")
-		fillI(e.Crit, cfg.Crit, "crit")
-		fillI(e.CritDmg, cfg.CritDmg, "crit_dmg")
+		syncI(e.Military, cfg.Military, "military")
+		syncI(e.Logistics, cfg.Logistics, "logistics")
+		syncI(e.Learning, cfg.Learning, "learning")
+		syncI(e.Dmg, cfg.Dmg, "dmg")
+		syncI(e.Def, cfg.Def, "def")
+		syncI(e.Hp, cfg.Hp, "hp")
+		syncI(e.Move, cfg.Move, "move")
+		syncI(e.Crit, cfg.Crit, "crit")
+		syncI(e.CritDmg, cfg.CritDmg, "crit_dmg")
 		fillI(e.Enhance, cfg.Enhance, "enhance")
 		if e.Slot == "" && cfg.EquipSlot() != "" {
 			up["slot"] = cfg.EquipSlot()

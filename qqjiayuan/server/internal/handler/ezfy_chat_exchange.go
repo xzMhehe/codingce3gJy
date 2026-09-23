@@ -923,9 +923,12 @@ func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
 		}
 	}
 	switch tt {
-	case 1: // 野地(含海野): 地形名 + 等级
-		return ezfyTerrainNameEx(o.TargetX, o.TargetY) +
-			"(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
+	case 1: // 野地: 地形名 + 等级(海上的野地用「海底森林」)
+		tn := ezfyTerrainNameEx(o.TargetX, o.TargetY)
+		if ezfyTerrain(o.TargetX, o.TargetY) == 8 {
+			tn = "海底森林"
+		}
+		return tn + "(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
 	case 2: // 寇城
 		return "寇城(" + strconv.Itoa(ezfyKouLevel(o.TargetX, o.TargetY)) + ")"
 	case 4: // 特殊目标(活动野地/特殊城市)
