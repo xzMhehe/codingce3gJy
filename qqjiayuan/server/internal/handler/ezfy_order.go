@@ -2398,7 +2398,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
-			h.addReport(target.UserID, 4, "守卫报告: "+city.Name,
+			// ★ 2026-09-24 用户要求：军情列表展示 [防守报告] 城市名(坐标)，标题需携带守方城名+坐标
+			h.addReport(target.UserID, 4, "守卫报告: "+targetName+
+				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail)
 			h.addPrestige(target.UserID, 100)
 		}

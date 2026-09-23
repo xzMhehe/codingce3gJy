@@ -534,7 +534,8 @@ func (h *EzfyHandler) DisbandTroops(c *gin.Context) {
 
 // ezfySpeedGoldPerSec 训练一键加速原价: 每剩余 1 秒 10 黄金
 // ★ 实际收费再乘管理端「二战系统配置 → 训练加速黄金倍率」(speed_train_rate)，
-//   节假日想便宜点就把倍率调低（见 ezfySpeedTrainRate）。
+//
+//	节假日想便宜点就把倍率调低（见 ezfySpeedTrainRate）。
 const ezfySpeedGoldPerSec = 10
 
 // SpeedTrainAll POST /games/ezfy/troops/speed-all —— 训练一键加速
@@ -1994,9 +1995,9 @@ func ezfyReportTypeName(reportType int, title string) string {
 	case strings.HasPrefix(title, "城破报告"):
 		return "城破"
 	case strings.HasPrefix(title, "守卫报告"):
-		return "守卫"
+		return "防守报告"
 	case strings.HasPrefix(title, "军情警报"):
-		return "警报"
+		return "预警"
 	case strings.HasPrefix(title, "侦查报告"):
 		return "侦查"
 	case strings.HasPrefix(title, "掠夺报告"):

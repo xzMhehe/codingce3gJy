@@ -367,7 +367,8 @@
             </div>
             <div class="old-line" v-for="r in repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="openReport(r)">
-                <span v-if="r.is_read === 0" class="red">[新]</span>{{ r.title }}</a>
+                <span v-if="r.is_read === 0" class="red">[新]</span>
+                <span v-if="intelTag(r)" class="orange">[{{ intelTag(r) }}]</span>{{ intelTitle(r) }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!reports.length">(暂无军情警讯)</div>
@@ -390,7 +391,7 @@
             <div class="old-line" v-for="r in repPaged" :key="'rb' + r.id">
               <a href="javascript:;" @click="openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
-                <span class="orange">[{{ r.type_name }}]</span>{{ r.title }}</a>
+                <span class="orange">[{{ r.type_name }}]</span> {{ r.title }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!reports.length">(暂无战斗报告)</div>
@@ -4397,6 +4398,19 @@ export default {
           this.repPage = 1
         }
       })
+    },
+    // ★ 2026-09-24 用户要求：军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
+    intelTag (r) {
+      const t = (r && r.title) || ''
+      if (t.indexOf('守卫报告') === 0) return '防守报告'
+      if (t.indexOf('军情警报') === 0) return '预警'
+      return ''
+    },
+    // 守卫报告标题去掉冗余的「守卫报告: 」前缀，保留 城市名(坐标)
+    intelTitle (r) {
+      const t = (r && r.title) || ''
+      if (t.indexOf('守卫报告: ') === 0) return t.slice('守卫报告: '.length)
+      return t
     },
     // ---- 军队动态 ----
     loadDynamics () {

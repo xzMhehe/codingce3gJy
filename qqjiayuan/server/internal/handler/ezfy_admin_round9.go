@@ -14,7 +14,7 @@ import (
 // 二战风云 管理端（第九轮新增）
 //
 //	1. 建筑数量上限配置（军事区/资源区各 33，管理端可维护）
-//	2. 钻石充值（钻石只能管理端充值，玩家端只读余额）
+//	2. 钻石发放（钻石只能管理端发放，玩家端只读余额）
 //	3. 二战聊天敏感词（独立维护页，与社区「黑名单榜」分开）
 
 // ============ 1. 建筑数量上限配置 ============
@@ -427,13 +427,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "系统配置已保存并立即生效", "limit": lim})
 }
 
-// ============ 2. 钻石充值 ============
+// ============ 2. 钻石发放 ============
 
-// AdminEzfyDiamondRecharge POST /admin/ezfy-players/:id/diamond
+// AdminEzfyDiamondGrant POST /admin/ezfy-players/:id/diamond
 //
-// 用户规则：钻石**只能管理端充值**（玩家端只读余额）。
+// ★ 2026-09-23 用户要求：钻石字段在管理端「发放资源」处应叫**发放**而非「充值」。
 // mode = add(默认，可负数扣减) | set(直接设为某值)
-func (h *AdminHandler) AdminEzfyDiamondRecharge(c *gin.Context) {
+func (h *AdminHandler) AdminEzfyDiamondGrant(c *gin.Context) {
 	uid, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || uid == 0 {
 		resp.ParamError(c, "玩家ID错误")
@@ -458,7 +458,7 @@ func (h *AdminHandler) AdminEzfyDiamondRecharge(c *gin.Context) {
 		prof.Diamond = in.Amount
 	} else {
 		if in.Amount == 0 {
-			resp.ParamError(c, "请填写充值数量")
+			resp.ParamError(c, "请填写发放数量")
 			return
 		}
 		prof.Diamond = prof.Diamond + in.Amount
@@ -468,17 +468,17 @@ func (h *AdminHandler) AdminEzfyDiamondRecharge(c *gin.Context) {
 	}
 	if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
 		Update("diamond", prof.Diamond).Error; err != nil {
-		resp.ParamError(c, "充值失败："+err.Error())
+		resp.ParamError(c, "发放失败："+err.Error())
 		return
 	}
-	note := fmt.Sprintf("管理员为你充值钻石 %+d，当前余额 %d", in.Amount, prof.Diamond)
+	note := fmt.Sprintf("管理员为你发放钻石 %+d，当前余额 %d", in.Amount, prof.Diamond)
 	if in.Mode == "set" {
 		note = fmt.Sprintf("管理员将你的钻石余额设为 %d", prof.Diamond)
 	}
 	if strings.TrimSpace(in.Remark) != "" {
 		note += "（" + strings.TrimSpace(in.Remark) + "）"
 	}
-	h.DB.Create(&model.EzfyNotice{UserId: uint(uid), Title: "钻石充值", Content: note})
+	h.DB.Create(&model.EzfyNotice{UserId: uint(uid), Title: "钻石发放", Content: note})
 	resp.OK(c, gin.H{"msg": note, "diamond": prof.Diamond})
 }
 

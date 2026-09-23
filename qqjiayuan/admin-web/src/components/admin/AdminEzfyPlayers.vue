@@ -154,10 +154,10 @@
         <el-form-item label="稀矿">
           <el-input-number v-model.number="grant.rare" :min="0" :step="1000" />
         </el-form-item>
-        <!-- ★ 第九轮：钻石只能由管理端充值（可负数扣减；玩家端只读余额） -->
+        <!-- ★ 钻石由管理端发放（可负数扣减；玩家端只读余额） -->
         <el-form-item label="钻石">
           <el-input-number v-model.number="grant.diamond" :min="-9999999" :max="9999999" :step="100" />
-          <el-button size="mini" type="warning" plain :loading="diamondSaving" @click="doDiamond">充 值</el-button>
+          <el-button size="mini" type="warning" plain :loading="diamondSaving" @click="doDiamond">发 放</el-button>
           <span class="td-mono" style="margin-left:8px">当前：{{ grantDiamond }}</span>
         </el-form-item>
         <el-form-item label="道具">
@@ -245,18 +245,18 @@ export default {
         if (r.code === 0 && r.data && r.data.player) this.grantDiamond = r.data.player.diamond || 0
       })
     },
-    // ★ 第九轮：钻石充值（独立接口，可正可负；走「钻石充值」公告通知玩家）
+    // ★ 钻石发放（独立接口，可正可负；走「钻石发放」公告通知玩家）
     doDiamond () {
       const n = parseInt(this.grant.diamond) || 0
-      if (!n) { this.$message.warning('请填写充值数量（可为负数扣减）'); return }
+      if (!n) { this.$message.warning('请填写发放数量（可为负数扣减）'); return }
       this.diamondSaving = true
       api.post('/admin/ezfy-players/' + this.grantId + '/diamond', { amount: n, mode: 'add' }).then(r => {
         this.diamondSaving = false
         if (r.code === 0) {
-          this.$message.success(r.data.msg || '充值成功')
+          this.$message.success(r.data.msg || '发放成功')
           this.grantDiamond = r.data.diamond
           this.grant.diamond = 0
-        } else this.$message.error(r.msg || '充值失败')
+        } else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.diamondSaving = false })
     },
     doGrant () {

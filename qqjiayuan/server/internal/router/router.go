@@ -1232,8 +1232,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterUpdate)
 				admin.DELETE("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), adminH.AdminEzfyWordFilterDelete)
 
-				// ---- 钻石充值（钻石只能管理端充值） ----
-				admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyDiamondRecharge)
+				// ---- 钻石发放（钻石只能管理端发放/扣减） ----
+				admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyDiamondGrant)
 
 				// ---- 宣战管理（列表 / 一键生效 / 一键完成 / 代建 / 删除） ----
 				// ★ 批量接口必须注册在 /:id 路由**之前**，否则 gin 会把 "finish-all"
