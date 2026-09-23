@@ -335,7 +335,7 @@
               状态：{{ o.status_name }}
               <template v-if="o.can_command">
                 <a href="javascript:;" class="red" @click="openBattle(o.id)">[指挥]</a>
-                <span class="gray">第{{ o.battle_round }}/{{ o.battle_max }}回合</span>
+                <span class="gray">第{{ o.battle_round || 1 }}/{{ o.battle_max }}回合</span>
               </template>
               <br/>
               军官：{{ o.officer || '无' }}<br/>
@@ -5099,7 +5099,7 @@ export default {
       if (o.status === 1) return (o.order_type === 7 ? '驻守采集' : '已到达')
       if (o.status === 2) return '返回中 ' + this.remain(o.return_time)
       if (o.status === 3) return '已完成'
-      if (o.status === 5) return '战斗中 第' + (o.battle_round || 0) + '回合'
+      if (o.status === 5) return '战斗中 第' + (o.battle_round || 1) + '回合'
       return '全队阵亡'
     },
     // ---- 地图/出征 ----

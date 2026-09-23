@@ -573,9 +573,10 @@ func (h *EzfyHandler) equipmentList(uid uint) []model.EzfyEquipment {
 // ezfySlotCanon 部位别名归一（2026-09-23 用户反馈「同部位能穿多件」）
 //
 // ★ 根本原因：不同的套装对同一个身体部位用了**不同的字符串**——「头盔」和「头部」
-//   都指头、「胸甲」和「胸部」都指胸、「手套/左手/手部」都指手…… 老代码只做**精确字符串**
-//   判重，于是玩家能同时穿「传说英雄[头盔]」和「赤色锤镰[头部]」两件头装 → 同部位穿了两件。
-//   这里把所有同名部位的书写统一成一个规范词，判重和落库都走它，才能真正做到「同部位唯一」。
+//
+//	都指头、「胸甲」和「胸部」都指胸、「手套/左手/手部」都指手…… 老代码只做**精确字符串**
+//	判重，于是玩家能同时穿「传说英雄[头盔]」和「赤色锤镰[头部]」两件头装 → 同部位穿了两件。
+//	这里把所有同名部位的书写统一成一个规范词，判重和落库都走它，才能真正做到「同部位唯一」。
 func ezfySlotCanon(s string) string {
 	switch s {
 	case "头盔":
@@ -1105,7 +1106,8 @@ func ezfyAttrToBonus(attr int) int {
 // officerBaseBonus 军官基础攻击加成（有效军事 ÷ 2，装备/套装军事已含在有效属性里）
 //
 // ★ 用户反馈（2026-09-22）：原来直接把军事值当百分点（军事 655 → 攻击+655%），
-//   比参考文档高了一倍；现按 §6 改为 floor((有效军事+1)/2)。
+//
+//	比参考文档高了一倍；现按 §6 改为 floor((有效军事+1)/2)。
 func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
@@ -1161,8 +1163,9 @@ func (h *EzfyHandler) officerGuardAttrBonus(o *model.EzfyOfficer) int {
 // ★ 三项属性各有用途：军事→攻击、后勤→市长产量、学识→防御。
 //
 // ★ 用户反馈（2026-09-22）：原来是 `10 + 学识/20`（学识 376 → 防御+58），
-//   比参考文档 §6 的 `floor((学识+1)/2)`（学识 376 → 防御+188）低了 3 倍多，
-//   已按文档重写；固定 +10 基础值一并去掉（文档里没有这一项）。
+//
+//	比参考文档 §6 的 `floor((学识+1)/2)`（学识 376 → 防御+188）低了 3 倍多，
+//	已按文档重写；固定 +10 基础值一并去掉（文档里没有这一项）。
 func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
@@ -1489,8 +1492,9 @@ func ezfyTierName(tier int) string {
 // randomEquipment 随机取指定品质的**非套装、非珠宝**装备
 //
 // ★ 用户规则（2026-09-22）：**套装军官装备只能通过宝箱开启**。
-//   战斗掉落（活动目标/野地）只出普通装备（武器/防具/饰品）与地形珠宝，
-//   套装件（set_id > 0）在这里被排除 —— 想让某套装能掉落，必须从这条规则外另开口子。
+//
+//	战斗掉落（活动目标/野地）只出普通装备（武器/防具/饰品）与地形珠宝，
+//	套装件（set_id > 0）在这里被排除 —— 想让某套装能掉落，必须从这条规则外另开口子。
 func (h *EzfyHandler) randomEquipment(tier int) *model.EzfyCfgEquipment {
 	pool := []model.EzfyCfgEquipment{}
 	for _, e := range ezfyCfg.equipments {
@@ -2533,7 +2537,8 @@ func ezfyEquipIDsAsc() []int {
 //
 // 上架范围 = **散件**（有系列名的单件 或 不属于任何套装的纯散件）。
 // ★ 第一批套装（set_id 1~17，Series 为空）仍**不上架** —— 它们只能开宝箱，
-//   否则「套装装备只能通过宝箱开启」这条规则就形同虚设。
+//
+//	否则「套装装备只能通过宝箱开启」这条规则就形同虚设。
 func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 	slots := []string{}
 	bySlot := map[string][]gin.H{}

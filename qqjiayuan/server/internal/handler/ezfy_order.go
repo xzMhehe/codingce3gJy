@@ -979,7 +979,8 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 		var battles []model.EzfyBattle
 		h.DB.Where("user_id = ? AND status = 1", uid).Find(&battles)
 		for _, b := range battles {
-			battleRounds[b.OrderId] = b.Round
+			// ★ 回合从 1 开始展示（第 1 回合不得显示 0），与指挥室口径一致
+			battleRounds[b.OrderId] = maxInt(b.Round, 1)
 		}
 	}
 	views := []gin.H{}
@@ -1295,9 +1296,10 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 // ezfyOrderTargetBusy 目标是否已被别的玩家「抢先指挥」。
 //
 // ★ 2026-09-23 用户要求：A、B 出征同一个目标，A 已经在指挥(战斗中)的话，
-//   B 应当「等待」，不能再同时开一个指挥室。
-//   判断口径：同目标(target_type + 坐标)下存在**其他**订单处于「战斗中」(status=5)。
-//   这里的 status=5 即「有进行中的战场在等玩家指挥」，把它当成目标被占用。
+//
+//	B 应当「等待」，不能再同时开一个指挥室。
+//	判断口径：同目标(target_type + 坐标)下存在**其他**订单处于「战斗中」(status=5)。
+//	这里的 status=5 即「有进行中的战场在等玩家指挥」，把它当成目标被占用。
 func ezfyOrderTargetBusy(h *EzfyHandler, o *model.EzfyOrder, exceptID int64) bool {
 	var n int64
 	h.DB.Model(&model.EzfyOrder{}).
@@ -2010,7 +2012,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
 				report += h.battleStatsTail(uid, pg, 0)
 				h.addReport(uid, 2, reportType+": "+targetName+
-			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
+					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return

@@ -19,7 +19,11 @@ import (
 const (
 	// 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
 	ezfyBattleMaxRounds = 40
-	ezfyBattleStartDist = 6000 // 战场初始距离
+	ezfyBattleStartDist = 6000 // 战场初始距离（攻方 0，守方 6000，相距 6000）
+	// ★ 2026-09-23 用户要求：双方后退不能无限制，最多各退 10000。
+	//   战场坐标空间约「10000 / 6000 / 10000」：
+	//   攻方起点 0 只能退到 -10000；守方起点 6000 只能退到 16000。超过夹回。
+	ezfyBattleRetreatMax = 10000
 
 	// ★ 暴击基础伤害加成%：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时的兜底倍率。
 	//
@@ -296,6 +300,17 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 				unit.pos += move
 			} else {
 				unit.pos -= move
+			}
+			// ★ 2026-09-23 用户要求：后退最多 10000，不能无限制后退。
+			//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
+			if isAtk {
+				if unit.pos < -ezfyBattleRetreatMax {
+					unit.pos = -ezfyBattleRetreatMax
+				}
+			} else {
+				if unit.pos > ezfyBattleStartDist+ezfyBattleRetreatMax {
+					unit.pos = ezfyBattleStartDist + ezfyBattleRetreatMax
+				}
 			}
 			dist = ezfyAbs(target.pos - unit.pos)
 			verb := "前进"

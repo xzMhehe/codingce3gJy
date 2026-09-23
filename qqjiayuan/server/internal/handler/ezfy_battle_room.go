@@ -337,15 +337,15 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	return gin.H{
 		"order_id": b.OrderId, "target_name": b.TargetName,
 		"target_x": b.TargetX, "target_y": b.TargetY, "target_type": b.TargetType,
-		"round": b.Round, "max_round": ezfyBattleMaxRounds,
+		"round": maxInt(b.Round, 1), "max_round": ezfyBattleMaxRounds,
 		"status": b.Status, "win": b.Win,
-		"atk_cmd":  b.AtkCmd,   // 原始 JSON（前端不用，调试用）
-		"atk_cmds": cmds,       // troopId -> 指令，前端每行按钮高亮用
+		"atk_cmd":  b.AtkCmd, // 原始 JSON（前端不用，调试用）
+		"atk_cmds": cmds,     // troopId -> 指令，前端每行按钮高亮用
 		// troopId -> 优先攻击目标（0=最近），前端每行下拉框的当前值
 		"atk_targets": atkTargets,
 		// 目标下拉框可选：最近目标 + 守方兵种（含当前值兜底）
 		"target_options": opts,
-		"phase":    phase, "round_left_ms": left,
+		"phase":          phase, "round_left_ms": left,
 		"round_ms": ezfyBattleRoundMs, "cmd_window_ms": ezfyBattleCmdMs,
 		"attackers": units(snap.Attackers, true), "defenders": units(snap.Defenders, false),
 		"atk_total": atkTotal, "def_total": defTotal,
