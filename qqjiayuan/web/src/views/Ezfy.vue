@@ -368,7 +368,7 @@
             <div class="old-line" v-for="r in repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
-                <span v-if="intelTag(r)" class="orange">[{{ intelTag(r) }}]</span>{{ intelTitle(r) }}</a>
+                <span v-if="intelTag(r)" class="orange">[{{ intelTag(r) }}] </span>{{ intelTitle(r) }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!reports.length">(暂无军情警讯)</div>
