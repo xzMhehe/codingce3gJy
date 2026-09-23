@@ -2162,9 +2162,9 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			timeLabel = "抵达时间"
 			timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
 		case 1:
-			statusName = "采集"
-			timeLabel = "已驻守"
-			timeText = ezfyDurationText((now - o.ArriveTime) / 1000)
+			statusName = "驻守采集"
+			timeLabel = "下次结算"
+			timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
 		case 2:
 			statusName = "返回"
 			timeLabel = "返回时间"

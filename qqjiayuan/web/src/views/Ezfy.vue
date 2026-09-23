@@ -308,23 +308,23 @@
       <!-- ============ 情报/军情(reports) ============ -->
       <template v-else-if="cur === 'reports'">
         <div class="panel">
-          <!-- 复刻 report/index.html: 军队动态 . 军情警讯 . 战斗报告 -->
+          <!-- 复刻 report/index.html: 军队动态 . 驻军 . 军情警讯 . 战斗报告 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="switchReportTab(1)">军队动态</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="switchReportTab(2)">军情警讯</a><span
+            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="switchReportTab(2)">驻军</a><span
+              v-if="dynStation.length" class="green">({{ dynStation.length }})</span>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="switchReportTab(3)">军情警讯</a><span
               v-if="reportCounts[1]" class="red">({{ reportCounts[1] }})</span>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="switchReportTab(3)">战斗报告</a><span
+            <a href="javascript:;" :class="{ on: reportTab === 4 }" @click="switchReportTab(4)">战斗报告</a><span
               v-if="reportCounts[2]" class="red">({{ reportCounts[2] }})</span>
           </div>
 
-          <!-- ===== 军队动态: 所有在外的部队(出征/采集/派遣/侦查/掠夺/运输/增援) ===== -->
+          <!-- ===== 军队动态: 行进/战斗/返航中的部队(出征/侦查/掠夺/运输/增援等) ===== -->
           <template v-if="reportTab === 1">
             <div class="old-line">
               <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
-              <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
-              <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
-            <div class="old-line" v-for="o in dynPaged" :key="'dy' + o.id">
+            <div class="old-line" v-for="o in dynMarchPaged" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
               <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
@@ -340,20 +340,47 @@
                 待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
                 （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
               </span>
-              <span v-else-if="o.order_type === 7 || o.order_type === 4" class="gray">待带回：暂无</span>
               <br/>
               --------------------
             </div>
-            <div class="old-line" v-if="!dynamics.length">(当前没有在外的部队)</div>
-            <div class="ezfy-pager" v-if="dynamics.length > dynSize">
+            <div class="old-line" v-if="!dynMarch.length">(当前没有在外的部队)</div>
+            <div class="ezfy-pager" v-if="dynMarch.length > dynSize">
               <a href="javascript:;" :class="{ gray: dynPage <= 1 }" @click="sectionPagerGo('dyn', -1)">上一页</a>
-              <span class="gray">第 {{ dynPage }}/{{ dynTotalPages }} 页（共 {{ dynamics.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: dynPage >= dynTotalPages }" @click="sectionPagerGo('dyn', 1)">下一页</a>
+              <span class="gray">第 {{ dynPage }}/{{ dynMarchTotalPages }} 页（共 {{ dynMarch.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: dynPage >= dynMarchTotalPages }" @click="sectionPagerGo('dyn', 1)">下一页</a>
+            </div>
+          </template>
+
+          <!-- ===== 驻军: 到达野地后常驻采集的部队(满12小时结算一期) ===== -->
+          <template v-else-if="reportTab === 2">
+            <div class="old-line">
+              <span class="gray">满12小时结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
+              <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
+              <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
+            </div>
+            <div class="old-line" v-for="o in dynStationPaged" :key="'st' + o.id">
+              命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
+              目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
+              军官：{{ o.officer || '无' }}<br/>
+              {{ o.time_label }}：{{ o.time_text }}<br/>
+              <span v-if="o.carry_total > 0" class="green">
+                待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
+                （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
+              </span>
+              <span v-else class="gray">待带回：暂无</span>
+              <br/>
+              --------------------
+            </div>
+            <div class="old-line" v-if="!dynStation.length">(当前没有驻守采集的部队)</div>
+            <div class="ezfy-pager" v-if="dynStation.length > dynStationSize">
+              <a href="javascript:;" :class="{ gray: dynStationPage <= 1 }" @click="sectionPagerGo('sta', -1)">上一页</a>
+              <span class="gray">第 {{ dynStationPage }}/{{ dynStationTotalPages }} 页（共 {{ dynStation.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: dynStationPage >= dynStationTotalPages }" @click="sectionPagerGo('sta', 1)">下一页</a>
             </div>
           </template>
 
           <!-- ===== 军情警讯: 别人打我 ===== -->
-          <template v-else-if="reportTab === 2">
+          <template v-else-if="reportTab === 3">
             <div class="old-line">
               <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
               <a href="javascript:;" @click="loadReports">[刷新]</a>
@@ -410,11 +437,12 @@
       <!-- ============ 战报详情(reportview) ============ -->
       <template v-else-if="cur === 'reportview'">
         <div class="panel" v-if="curReport">
-          <!-- ★ 用户要求：战报详情页也保留「军队动态 . 军情警讯 . 战斗报告」导航 -->
+          <!-- ★ 用户要求：战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="goReportTab(1)">军队动态</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">军情警讯</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="goReportTab(3)">战斗报告</a>
+            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">驻军</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="goReportTab(3)">军情警讯</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: reportTab === 4 }" @click="goReportTab(4)">战斗报告</a>
           </div>
           <div class="panel-title">{{ curReport.title }}</div>
           <pre class="report-pre">{{ curReport.content }}</pre>
@@ -1535,7 +1563,7 @@
             <tr><th>坐标</th><th>地形</th><th>所属洲</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="w in wildlands" :key="'wd' + w.id">
               <td>({{ w.x }},{{ w.y }})</td>
-              <td>{{ w.terrain_name }}<span class="gray" v-if="w.wild_type === 2">(海野)</span></td>
+              <td>{{ w.terrain === 8 ? '海底森林' : w.terrain_name }}</td>
               <td>{{ w.continent || '—' }}</td>
               <td>{{ w.level }}</td>
               <td>{{ w.status === 0 ? '空闲' : '采集中' }}</td>
@@ -3221,8 +3249,9 @@ export default {
       occupying: 0,
       unreadReports: 0,
       reports: [],
-      // ★ 军情三区分页：默认每页 5 条
+      // ★ 军情分区分页：默认每页 5 条
       dynPage: 1, dynSize: 5,
+      dynStationPage: 1, dynStationSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
       // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」）：默认每页 5 条
@@ -3755,9 +3784,19 @@ export default {
     chatTotalPages () {
       return Math.max(1, Math.ceil(this.chatTotal / this.chatSize))
     },
-    // ★ 军情三区分页（默认每页 5 条，可上一页/下一页）
-    dynTotalPages () {
-      return Math.max(1, Math.ceil(this.dynamics.length / this.dynSize))
+    // ★ 军队动态 = 行进/战斗/返航中的部队(不含驻守采集); 驻军 = 常驻采集(status=1)
+    dynMarch () {
+      return this.dynamics.filter(o => o.status !== 1)
+    },
+    dynStation () {
+      return this.dynamics.filter(o => o.status === 1)
+    },
+    // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
+    dynMarchTotalPages () {
+      return Math.max(1, Math.ceil(this.dynMarch.length / this.dynSize))
+    },
+    dynStationTotalPages () {
+      return Math.max(1, Math.ceil(this.dynStation.length / this.dynStationSize))
     },
     // ★ 战场指挥室：本回合剩余秒数 / 倒计时条百分比（最后 5 秒条变红）
     battleLeftText () {
@@ -3806,9 +3845,13 @@ export default {
       const p = Math.min(Math.max(1, this.chestPoolPage), this.chestPoolTotalPages)
       return this.chestPoolAll.slice((p - 1) * this.chestPoolSize, p * this.chestPoolSize)
     },
-    dynPaged () {
-      const p = Math.min(Math.max(1, this.dynPage), this.dynTotalPages)
-      return this.dynamics.slice((p - 1) * this.dynSize, p * this.dynSize)
+    dynMarchPaged () {
+      const p = Math.min(Math.max(1, this.dynPage), this.dynMarchTotalPages)
+      return this.dynMarch.slice((p - 1) * this.dynSize, p * this.dynSize)
+    },
+    dynStationPaged () {
+      const p = Math.min(Math.max(1, this.dynStationPage), this.dynStationTotalPages)
+      return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize)
     },
     repTotalPages () {
       return Math.max(1, Math.ceil(this.reports.length / this.repSize))
@@ -4387,7 +4430,7 @@ export default {
     },
     loadReports () {
       // category: 1 军情警讯 2 战斗报告(战报查询)
-      const cat = this.reportTab === 2 ? 1 : 2
+      const cat = this.reportTab === 3 ? 1 : 2
       let url = '/games/ezfy/reports?category=' + cat
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       api.get(url).then(r => {
@@ -4564,7 +4607,8 @@ export default {
       // ★ 切换分区时回到第 1 页，避免停在上一次的分页位置看到空白
       this.repPage = 1
       this.dynPage = 1
-      if (t === 1) this.loadDynamics()
+      this.dynStationPage = 1
+      if (t === 1 || t === 2) this.loadDynamics()
       else this.loadReports()
     },
     // ★ 战报详情页(reportview)顶部的分区导航：先回列表页再切到对应分区，
@@ -4583,9 +4627,9 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 一键收获：只结算产出装进部队，**不召回**
+    // ★ 一键收获：满12小时结算一期(宝物直接进背包), 资源装进部队待带回, **不召回**
     async doHarvestAll () {
-      if (!await this.ask('确定收获所有采集部队吗？（只把产出装进部队，资源要「召回」才会运回城里）')) return
+      if (!await this.ask('确定收获所有驻守采集部队吗？（每满12小时结算一期，宝物直接进背包，资源要「召回」才会运回城里）')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -4594,9 +4638,9 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 一键召回：部队返航，到达时把待带回资源运回城里
+    // ★ 一键召回：先结算已满期产出, 部队返航, 到达时把待带回资源运回城里
     async doRecallAll () {
-      if (!await this.ask('确定召回所有采集部队吗？部队返航到达后，待带回的资源才会入库。')) return
+      if (!await this.ask('确定召回所有驻守采集部队吗？（满12小时的结算资源+宝物：宝物进背包；不满12小时的按驻守时长折算资源、无宝物；部队返航到达后资源才入库）')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -5056,12 +5100,14 @@ export default {
     doCreateCity () {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
-    // ★ 分页翻页（which: 'dyn' 军队动态 / 'rep' 战报列表 / 'notice' 公告）
+    // ★ 分页翻页（which: 'dyn' 军队动态 / 'sta' 驻军 / 'rep' 战报列表 / 'notice' 公告）
     //   ⚠️ 方法名必须与下方通用 pagerGo 不同：同名时对象字面量后定义会覆盖先定义，
     //   曾导致网易/公告「下一页」点到的是通用版 pagerGo（cur 传字符串 → 返回原值 → 无反应）。
     sectionPagerGo (which, delta) {
       if (which === 'dyn') {
-        this.dynPage = Math.min(this.dynTotalPages, Math.max(1, this.dynPage + delta))
+        this.dynPage = Math.min(this.dynMarchTotalPages, Math.max(1, this.dynPage + delta))
+      } else if (which === 'sta') {
+        this.dynStationPage = Math.min(this.dynStationTotalPages, Math.max(1, this.dynStationPage + delta))
       } else if (which === 'notice') {
         this.noticePage = Math.min(this.noticeTotalPages, Math.max(1, this.noticePage + delta))
       } else {

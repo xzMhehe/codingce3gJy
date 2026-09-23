@@ -145,21 +145,24 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	}
 
 	settled := 0
+	skipped := 0
 	var loadedTotal int64
 	for i := range orders {
 		order := &orders[i]
 		before := parseCarry(order.Carry).total()
-		// 结算一个周期：产出记进「待带回」，宝物直接进背包（不召回）
-		h.settleDispatch(uid, order, now)
-		// settleDispatch 只改了内存里的 order.Carry，这里落库
-		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"carry": order.Carry, "arrive_time": order.ArriveTime,
-				"result": order.Result})
-		loadedTotal += parseCarry(order.Carry).total() - before
-		settled++
+		if periods, ok := h.settleDispatch(uid, order, now); ok {
+			loadedTotal += parseCarry(order.Carry).total() - before
+			settled += periods
+		} else {
+			skipped++ // 未满 12 小时或野地已丢失(已自动返航)
+		}
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获 %d 支采集部队，共装入待带回资源 %d（资源需「召回」才会运回城里）",
-		settled, loadedTotal)})
+	msg := fmt.Sprintf("已收获 %d 支采集部队，共装入待带回资源 %d（资源需「召回」才会运回城里）",
+		settled, loadedTotal)
+	if skipped > 0 {
+		msg += fmt.Sprintf("；%d 支驻守尚不满 12 小时（可[一键召回]按驻守时长折算资源，无宝物）", skipped)
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 // RecallAll POST /games/ezfy/wild/recall-all —— 一键召回
@@ -181,6 +184,11 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	var back int64
 	for i := range orders {
 		order := &orders[i]
+		// 召回前先结算产出: 满12小时给资源+宝物, 提前召回只有按比例的资源(无宝物)
+		h.settleDispatchOnRecall(uid, order, now)
+		if order.Status != 1 {
+			continue // 野地已丢失, settleDispatch 已把部队自动改成返航
+		}
 		travel := ezfyOneWayTravel(order)
 		back += parseCarry(order.Carry).total()
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

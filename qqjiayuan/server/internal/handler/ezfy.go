@@ -29,8 +29,8 @@ const (
 	ezfyConvenePopGain    = 100000                 // 召集获得人口
 	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
 	ezfyOilDivGrid        = 300                    // 出征耗油: 每格耗油 = 总兵力/300
-	ezfyDispatchPeriod    = int64(8 * 3600 * 1000) // 派遣采集结算周期 8小时
-	ezfyDispatchTreasure  = 10                     // 派遣结算宝物概率 1/10
+	ezfyDispatchPeriod    = int64(12 * 3600 * 1000) // 常驻采集结算一期 12 小时
+	ezfyTreasureExtraPct  = 20                     // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
 	ezfyCommandCarryPct   = 10                     // 指挥艺术: 出征携带上限+%/级
 	ezfyMaxUpgradeSeconds = 10                     // 一键满级: 每级升级时间(秒)
 	ezfyDeserterRate      = 30                     // 守军战败溃逃比例%
@@ -2309,11 +2309,24 @@ func (h *EzfyHandler) View(c *gin.Context) {
 
 	var wildlands []model.EzfyWildland
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
+	// ★ 采集中状态按该野地上是否有「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
+	var gatherIds []int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("user_id = ? AND status = 1 AND order_type = 7", uid).
+		Pluck("target_id", &gatherIds)
+	gathering := map[int64]bool{}
+	for _, id := range gatherIds {
+		gathering[id] = true
+	}
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
+		sts := w.Status
+		if gathering[int64(w.ID)] {
+			sts = 1
+		}
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
-			"wild_type": w.WildType, "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
-			"continent": ezfyRegionName(w.X, w.Y)})
+			"wild_type": w.WildType, "terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+			"status": sts, "continent": ezfyRegionName(w.X, w.Y)})
 	}
 
 	var marching, occupying int64
