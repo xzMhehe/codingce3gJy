@@ -1392,14 +1392,14 @@
               <i :class="battleData.phase === 'cmd' ? 'on' : 'lock'" :style="{ width: battleBarPct + '%' }"></i>
             </div>
           </div>
-          <div class="old-line" v-if="!battleData.done">
+          <div class="old-line ezfy-battle-cmds" v-if="!battleData.done">
             <a href="javascript:;" @click="sendBattleCmd('advance')">[全军前进]</a>
             <a href="javascript:;" @click="sendBattleCmd('hold')">[全军停止]</a>
             <a href="javascript:;" @click="sendBattleCmd('retreat')">[全军后退]</a>
             <a v-if="battleData.can_auto" href="javascript:;" @click="doBattleAuto">[自动战斗]</a>
           </div>
           <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->
-          <table class="ezfy-plain-table">
+          <table class="ezfy-plain-table ezfy-battle-tbl">
             <tr>
               <th>方</th><th>兵种</th><th>剩余</th><th>初始</th><th>位置</th>
               <th v-if="!battleData.done">目标</th>
@@ -1422,7 +1422,7 @@
                 </template>
                 <span v-else class="gray">-</span>
               </td>
-              <td v-if="!battleData.done">
+              <td v-if="!battleData.done" class="ezfy-cmd">
                 <template v-if="battleData.is_atk">
                   <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
                   <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
@@ -1446,7 +1446,7 @@
                 </template>
                 <span v-else class="gray">-</span>
               </td>
-              <td v-if="!battleData.done">
+              <td v-if="!battleData.done" class="ezfy-cmd">
                 <template v-if="!battleData.is_atk">
                   <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
                   <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
@@ -7017,6 +7017,36 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
 .ezfy-page .panel { max-width: 100%; overflow-x: auto; }
+/* ============ 战场指挥室 WAP 适配 ============
+   指挥室表格 7 列（方/兵种/剩余/初始/位置/目标/指挥）在手机上挤成一坨，
+   窄屏逐步收缩：≤700px 藏「初始」、指挥按钮竖排加大触点；≤420px 再藏「位置」、下拉收紧。 */
+@media (max-width: 700px) {
+  .ezfy-page .ezfy-battle-tbl th:nth-child(4),
+  .ezfy-page .ezfy-battle-tbl td:nth-child(4) { display: none; }
+  .ezfy-page .ezfy-battle-tbl td.ezfy-cmd a {
+    display: block;
+    margin: 4px 0;
+    font-size: 15px;
+  }
+  .ezfy-page .ezfy-battle-cmds a {
+    display: inline-block;
+    margin: 4px 10px 4px 0;
+    font-size: 15px;
+  }
+  .ezfy-page .ezfy-battle-tbl th,
+  .ezfy-page .ezfy-battle-tbl td { padding: 6px 5px; }
+}
+@media (max-width: 420px) {
+  .ezfy-page .ezfy-battle-tbl th:nth-child(5),
+  .ezfy-page .ezfy-battle-tbl td:nth-child(5) { display: none; }
+  .ezfy-page .ezfy-battle-tbl { font-size: 12px; }
+  .ezfy-page .ezfy-battle-tbl select {
+    width: 76px !important; /* 覆盖内联 width:96px */
+    max-width: 24vw;
+    font-size: 12px;
+    padding: 1px 0;
+  }
+}
 /* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
 .ezfy-page .ezfy-pager {
   margin: 8px 0 4px;

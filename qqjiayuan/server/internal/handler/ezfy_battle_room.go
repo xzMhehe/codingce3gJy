@@ -43,6 +43,9 @@ const (
 	ezfyOrderStatusBattle = 5
 	// ezfyOrderStatusWaiting 订单状态：等待（目标已被别的玩家抢先开始指挥，排队等上一场打完）
 	ezfyOrderStatusWaiting = 6
+	// ezfyOrderStatusProcessing 结算中（processArrive 的 CAS 占位：同一订单只允许一个入口结算，
+	// 防攻方 processOrders 与守方 processIncoming 双入口重复结算 → 用户反馈「征服报告出现两封」）
+	ezfyOrderStatusProcessing = 98
 )
 
 // ============ 攻方逐兵种指令表 ============
@@ -504,22 +507,21 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 		return
 	}
 	now := time.Now().UnixMilli()
-	// ★ 先把「已经到点」的回合结算掉：这样玩家在锁定后才下的指令
-	//   只会影响**下一回合**，而不是篡改已经打完的回合。
-	snap, done := h.ezfyBattleTick(b, now)
-	if done && b.Status == 2 {
-		h.ezfyBattleFinishToOrder(b, now)
-		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
-		return
+	// ★ 2026-09-24 用户反馈「之前选了后退、改成停止后部队还在后退」：
+	//   老顺序是**先结算到期回合、再写指令** —— 懒结算会把积压的回合一次性按
+	//   旧指令跑完，玩家点了停止却看到部队连续后撤好几步，像指令失灵。
+	//   改成**先写指令、后结算**：只要回合还没被结算，新指令立即生效。
+	prevSnap, _ := ezfyBattleSnapshotDecode(b.State)
+	prevSt := ezfyBattleStateFromSnapshot(prevSnap)
+	myUnits := prevSt.Attackers
+	if side != "atk" {
+		myUnits = prevSt.Defenders
 	}
-	st := ezfyBattleStateFromSnapshot(snap)
 	// 攻方写 AtkCmd、守方写 DefCmd —— 各自指挥自己这一边的兵种
 	cmds := ezfyAtkCmdsParse(b.AtkCmd)
-	myUnits := st.Attackers
 	field := "atk_cmd"
 	if side != "atk" {
 		cmds = ezfyAtkCmdsParse(b.DefCmd)
-		myUnits = st.Defenders
 		field = "def_cmd"
 	}
 	// 旧格式的「全军统一」指令先摊到各兵种，再删掉 0 号键（一次性平滑迁移）
@@ -557,6 +559,13 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 		b.DefCmd = enc
 	}
 	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, enc)
+
+	snap, done := h.ezfyBattleTick(b, now)
+	if done && b.Status == 2 {
+		h.ezfyBattleFinishToOrder(b, now)
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
+		return
+	}
 	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 }
 

@@ -1151,6 +1151,12 @@ func (h *EzfyHandler) processOrders(uid uint) {
 	defer h.exitProcess(uid)
 
 	now := time.Now().UnixMilli()
+	// ★ 死单自愈：status=98(结算中) 超过 60 秒没被写回正常状态的订单，
+	//   说明结算过程异常退出（老部署强杀进程等），重置回「行进」，下次到达再结算。
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
+			time.Now().Add(-60*time.Second)).
+		Updates(map[string]interface{}{"status": 0})
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&orders)
 	for i := range orders {
@@ -1479,6 +1485,18 @@ func ezfyOrderTargetBusy(h *EzfyHandler, o *model.EzfyOrder, exceptID int64) boo
 }
 
 func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64) {
+	// ★ 2026-09-24 用户反馈「征服报告出现两封」：
+	//   同一订单有两个结算入口 —— 攻方 processOrders 的战斗分支、守方 processIncoming。
+	//   并发/先后到达时会重复调用 processArrive，战报写两遍、掠夺结算两遍。
+	//   入口用 CAS 抢占「结算权」：status 0(行进)/5(战斗中) → 98(结算中)，
+	//   抢不到说明已有对方入口在结算，直接返回。
+	res := h.DB.Model(&model.EzfyOrder{}).
+		Where("id = ? AND user_id = ? AND status IN (0, ?, ?)", order.ID, uid,
+			ezfyOrderStatusBattle, ezfyOrderStatusWaiting).
+		Updates(map[string]interface{}{"status": ezfyOrderStatusProcessing})
+	if res.RowsAffected == 0 {
+		return
+	}
 	city := h.cityOfOrder(order, uid)
 
 	// 活动目标(活动野地/活动寇城/特殊城市): 掠夺/征服走独立的活动战斗结算
