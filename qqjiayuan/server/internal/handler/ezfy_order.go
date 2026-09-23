@@ -2256,7 +2256,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		report += fmt.Sprintf("\n战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
 		if repairedTotal > 0 {
-			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
+			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 		}
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		h.addReport(uid, 2, reportType+": "+targetName+
@@ -2268,7 +2268,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.Status = 2
 		order.ReturnTime = now + travel
 		if repairedTotal > 0 {
-			report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
+			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 		}
 		// ★ 军官忠诚：只有打败仗才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
 		if leadOfficer != nil {

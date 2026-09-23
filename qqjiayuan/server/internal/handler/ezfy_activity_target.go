@@ -321,7 +321,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		report = "我军战败!\n" + report
 	}
 	if repairedTotal > 0 {
-		report += fmt.Sprintf("\n伤兵入营: %d(可前往司令部伤兵营恢复)", repairedTotal)
+		report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 	}
 	report += h.battleStatsTail(uid, prestigeGain, 50)
 

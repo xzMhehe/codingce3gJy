@@ -2027,8 +2027,7 @@
                · 库存 -1 = 无限（管理端「数据管理 → 道具配置」维护）。 -->
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>价格</th><th>库存</th><th>操作</th></tr>
-            <template v-for="it in mallPaged">
-            <tr :key="'mi' + it.id">
+            <tr v-for="it in mallPaged" :key="'mi' + it.id">
               <td>{{ it.name }}</td>
               <td>
                 <template v-if="it.dual_pay">
@@ -2046,32 +2045,6 @@
                 <span v-else class="gray">[已售罄]</span>
               </td>
             </tr>
-            <!-- ★ 购买确认直接展开在**该道具自己行下面**（用户要求「在购买按钮附近确认」，
-                 不再甩到表格底下一个独立面板，避免「购买在下面、确认却在上面」的割裂感） -->
-            <tr v-if="buyItem && buyItem.id === it.id" :key="'mib' + it.id" class="ezfy-buy-inline">
-              <td colspan="4">
-                <span class="gray">数量</span>
-                <input v-model="buyCount" type="number" min="1" :max="buyMaxOf(buyItem)"
-                       style="width:60px"/>
-                <span class="gray">{{ buyItem.unlimited ? ('单次最多 ' + mallBuyMax + ' 个') : ('最多 ' + buyMaxOf(buyItem)) }}</span>
-                <template v-if="buyItem.dual_pay">
-                  <span class="gray">支付</span>
-                  <select v-model="buyPayWith">
-                    <option value="gold">黄金 {{ buyItem.price_gold * (parseInt(buyCount) || 0) }}</option>
-                    <option value="diamond">钻石 {{ buyItem.price_diamond * (parseInt(buyCount) || 0) }}</option>
-                  </select>
-                </template>
-                <template v-else-if="buyItem.is_diamond">
-                  <b class="bb-total">{{ buyItem.price_diamond > 0 ? (buyItem.price_diamond * (parseInt(buyCount) || 0) + ' 钻石') : '限时免费' }}</b>
-                </template>
-                <template v-else>
-                  <b class="bb-total">{{ buyItem.price_gold > 0 ? (buyItem.price_gold * (parseInt(buyCount) || 0) + ' ' + resNames.gold) : '限时免费' }}</b>
-                </template>
-                <button @click="doBuy(buyItem)">确认购买</button>
-                <a href="javascript:;" @click="buyItem = null">取消</a>
-              </td>
-            </tr>
-            </template>
           </table>
           <div class="old-line gray" v-if="!mallPaged.length">(该分类下暂无道具)</div>
           <!-- ★ 分页（每页 10 件） -->
@@ -2102,8 +2075,7 @@
             </div>
             <table class="ezfy-plain-table">
               <tr><th>部位</th><th>名称</th><th>等级</th><th>属性</th><th>价格</th><th>操作</th></tr>
-              <template v-for="p in shopPaged">
-              <tr :key="'eq' + p.id">
+              <tr v-for="p in shopPaged" :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
                 <td>{{ p.name }}</td>
                 <td>{{ p.level }}</td>
@@ -2114,17 +2086,6 @@
                   <span v-else class="gray">[售罄]</span>
                 </td>
               </tr>
-              <!-- ★ 装备购买确认也内联展开在**该行下面**（与道具一致，贴近购买按钮） -->
-              <tr v-if="equipShopBuy && equipShopBuy.id === p.id" :key="'eqb' + p.id" class="ezfy-buy-inline">
-                <td colspan="6">
-                  <span class="gray">数量</span>
-                  <input v-model="equipShopCount" type="number" min="1" style="width:60px"/>
-                  <b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
-                  <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
-                  <a href="javascript:;" @click="equipShopBuy = null">取消</a>
-              </td>
-            </tr>
-            </template>
             </table>
             <div class="old-line gray" v-if="!shopAll.length">(没有匹配的装备)</div>
             <div class="ezfy-pager" v-if="shopAll.length > shopSize">
@@ -2182,7 +2143,7 @@
                 <tr><th>奖品</th><th>品质</th><th>数量</th><th>权重</th></tr>
                 <tr v-for="(p, i) in chestPoolPaged" :key="'cp' + p.kind + '_' + p.ref_id + '_' + i">
                   <td>{{ p.name }}</td>
-                  <td>{{ p.quality }}</td>
+                  <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
                   <td class="gray">{{ p.weight }}</td>
                 </tr>
@@ -2194,36 +2155,151 @@
                 <a href="javascript:;" :class="{ gray: chestPoolPage >= chestPoolTotalPages }" @click="chestPoolPage++">下一页</a>
               </div>
             </template>
-            <!-- 开箱面板：卡片式 + 快捷数量（原来挤成一行很难看） -->
-            <div class="ezfy-buy-box" v-if="chestOpen">
-              <div class="bb-title">{{ chestOpen.name }} · {{ chestOpen.price_diamond }} 钻石/个</div>
-              <div class="bb-row">
-                数量
-                <a href="javascript:;" @click="chestCount = 1">[1]</a>
-                <a href="javascript:;" @click="setChestCount(5)">[5]</a>
-                <a href="javascript:;" @click="setChestCount(10)">[10]</a>
-                <input v-model="chestCount" type="number" min="1" :max="chestOpen.open_max"/>
-                <span class="gray">最多 {{ chestOpen.open_max }} 个</span>
-              </div>
-              <div class="bb-row">
-                合计 <b class="bb-total">{{ chestOpen.price_diamond * (parseInt(chestCount) || 0) }} 钻石</b>
-                <button @click="doOpenChest(chestOpen)">确认开箱</button>
-                <a href="javascript:;" @click="chestOpen = null">取消</a>
-              </div>
-            </div>
             <div class="old-line gray" v-if="!chestData.chests.length">(暂无上架宝箱，请等管理员在后台配置)</div>
             <div class="old-line gray">
               当前余额：{{ resNames.gold }}{{ fmtN(chestData.gold) }} · 钻石{{ chestData.diamond }}
             </div>
-            <div class="old-line" v-if="chestResult && chestResult.length">
-              <b>上次开箱结果：</b>
-              <span v-for="(r, i) in chestResult" :key="'cr' + i">
-                {{ r.name }}<span class="gray">({{ r.quality }})</span><span v-if="i < chestResult.length - 1">、</span>
-              </span>
+            <div class="old-line" v-if="chestResult && chestResult.length"><b>上次开箱结果：</b></div>
+            <div class="old-line" v-for="(r, i) in chestResult" :key="'cr' + i">
+              {{ r.name }}<span :class="qualityClass(r.quality)">[{{ r.quality }}]</span>
             </div>
           </template>
           <a href="javascript:;" @click="go('bag')">[背包]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 商城·道具购买详情页（跳转新页面确认） ============ -->
+      <template v-else-if="cur === 'mallbuy'">
+        <div class="panel">
+          <div class="panel-title">购买道具</div>
+          <div class="old-line gray">当前余额：{{ resNames.gold }}{{ fmtN(city.gold) }} · 钻石{{ mallDiamond }}</div>
+          <template v-if="buyItem">
+            <div class="old-line">
+              <b>{{ buyItem.name }}</b>
+              <span v-if="buyItem.category" class="gray">[{{ buyItem.category }}]</span>
+            </div>
+            <div class="old-line" v-if="buyItem.description">{{ buyItem.description }}</div>
+            <div class="old-line">
+              价格：
+              <template v-if="buyItem.dual_pay">
+                <span class="orange">{{ buyItem.price_diamond }}钻</span>/{{ buyItem.price_gold }}{{ resNames.gold }}
+              </template>
+              <span v-else-if="buyItem.is_diamond" class="orange">{{ buyItem.price_diamond > 0 ? buyItem.price_diamond + '钻' : '限时免费' }}</span>
+              <span v-else>{{ buyItem.price_gold > 0 ? buyItem.price_gold + resNames.gold : '限时免费' }}</span>
+            </div>
+            <div class="old-line">
+              库存：
+              <span v-if="buyItem.unlimited" class="green">无限</span>
+              <span v-else :class="buyItem.stock > 0 ? 'gray' : 'red'">{{ buyItem.stock > 0 ? buyItem.stock : '已售罄' }}</span>
+            </div>
+            <div class="old-line">
+              数量：<input v-model="buyCount" type="number" min="1" :max="buyMaxOf(buyItem)" style="width:70px"/>
+              <span class="gray">{{ buyItem.unlimited ? ('单次最多 ' + mallBuyMax + ' 个') : ('最多 ' + buyMaxOf(buyItem)) }}</span>
+            </div>
+            <div class="old-line" v-if="buyItem.dual_pay">
+              支付方式：
+              <select v-model="buyPayWith">
+                <option value="gold">黄金 {{ buyItem.price_gold * (parseInt(buyCount) || 0) }}</option>
+                <option value="diamond">钻石 {{ buyItem.price_diamond * (parseInt(buyCount) || 0) }}</option>
+              </select>
+            </div>
+            <div class="old-line">
+              合计：
+              <b class="bb-total">
+                <template v-if="buyItem.dual_pay">{{ (buyPayWith === 'diamond' ? buyItem.price_diamond : buyItem.price_gold) * (parseInt(buyCount) || 0) }} {{ buyPayWith === 'diamond' ? '钻石' : resNames.gold }}</template>
+                <template v-else-if="buyItem.is_diamond">{{ buyItem.price_diamond > 0 ? (buyItem.price_diamond * (parseInt(buyCount) || 0) + ' 钻石') : '限时免费' }}</template>
+                <template v-else>{{ buyItem.price_gold > 0 ? (buyItem.price_gold * (parseInt(buyCount) || 0) + ' ' + resNames.gold) : '限时免费' }}</template>
+              </b>
+            </div>
+            <div class="old-line">
+              <button @click="doBuy(buyItem)">确认购买</button>
+              <a href="javascript:;" @click="buyItem = null; go('mall')">[取消]</a>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(未选择道具)</div>
+          <a href="javascript:;" @click="go('mall')">[返回商城]</a>
+        </div>
+      </template>
+
+      <!-- ============ 商城·装备散件购买详情页 ============ -->
+      <template v-else-if="cur === 'equipbuy'">
+        <div class="panel">
+          <div class="panel-title">购买装备散件</div>
+          <div class="old-line gray">当前余额：钻石{{ equipShop.diamond }}</div>
+          <template v-if="equipShopBuy">
+            <div class="old-line">
+              <b>{{ equipShopBuy.name }}</b>
+              <span class="gray">[{{ equipShopBuy.slot }}]</span>
+              <span v-if="equipShopBuy.sold_out" class="red">[已售罄]</span>
+            </div>
+            <div class="old-line">等级：{{ equipShopBuy.level }}</div>
+            <div class="old-line">属性：{{ equipAttrText(equipShopBuy) || '—' }}</div>
+            <div class="old-line">价格：<span class="orange">{{ equipShopBuy.price_diamond }}钻</span>/件</div>
+            <div class="old-line">
+              数量：<input v-model="equipShopCount" type="number" min="1" style="width:70px"/>
+            </div>
+            <div class="old-line">
+              合计：<b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
+            </div>
+            <div class="old-line">
+              <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
+              <a href="javascript:;" @click="equipShopBuy = null; go('mall')">[取消]</a>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(未选择装备)</div>
+          <a href="javascript:;" @click="go('mall')">[返回商城]</a>
+        </div>
+      </template>
+
+      <!-- ============ 商城·宝箱开箱详情页 ============ -->
+      <template v-else-if="cur === 'chestopen'">
+        <div class="panel">
+          <div class="panel-title">开宝箱</div>
+          <div class="old-line gray">当前余额：{{ resNames.gold }}{{ fmtN(chestData.gold) }} · 钻石{{ chestData.diamond }}</div>
+          <template v-if="chestOpen">
+            <div class="old-line"><b>{{ chestOpen.name }}</b></div>
+            <div class="old-line" v-if="chestOpen.des">{{ chestOpen.des }}</div>
+            <div class="old-line">
+              价格：
+              <span v-if="chestOpen.price_diamond > 0" class="orange">{{ chestOpen.price_diamond }}钻/个</span>
+              <span v-else>{{ chestOpen.price_gold }}{{ resNames.gold }}/个</span>
+            </div>
+            <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）：</div>
+            <table class="ezfy-plain-table">
+              <tr><th>奖品</th><th>品质</th></tr>
+              <tr v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
+                <td>{{ p.name }}</td>
+                <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
+              </tr>
+            </table>
+            <div class="old-line">
+              数量
+              <a href="javascript:;" @click="chestCount = 1">[1]</a>
+              <a href="javascript:;" @click="setChestCount(5)">[5]</a>
+              <a href="javascript:;" @click="setChestCount(10)">[10]</a>
+              <input v-model="chestCount" type="number" min="1" :max="chestOpen.open_max" style="width:70px"/>
+              <span class="gray">单次最多 {{ chestOpen.open_max }} 个</span>
+            </div>
+            <div class="old-line">
+              合计：
+              <b class="bb-total">{{ (chestOpen.price_diamond > 0 ? chestOpen.price_diamond : chestOpen.price_gold) * (parseInt(chestCount) || 0) }} {{ chestOpen.price_diamond > 0 ? '钻石' : resNames.gold }}</b>
+            </div>
+            <div class="old-line">
+              <button @click="doOpenChest(chestOpen)">确认开箱</button>
+              <a href="javascript:;" @click="chestOpen = null; go('mall')">[取消]</a>
+            </div>
+          </template>
+          <template v-else-if="chestResult && chestResult.length">
+            <div class="old-line"><b>开箱结果：</b></div>
+            <div class="old-line" v-for="(r, i) in chestResult" :key="'cres' + i">
+              {{ r.name }}<span class="gray">({{ r.quality }})</span>
+            </div>
+            <div class="old-line">
+              <a href="javascript:;" @click="chestResult = []; go('mall')">[返回商城]</a>
+            </div>
+          </template>
+          <a href="javascript:;" @click="go('mall')">[返回商城]</a>
         </div>
       </template>
 
@@ -2607,7 +2683,6 @@
 
         <!-- 任命市长: 复刻 acade/setMayor.html -->
         <div class="panel" v-else-if="acadeTab === 'mayor'">
-          <div class="old-line gray">参谋部: 市长(产量+10%+后勤属性)、城守(守城防御+10%+学识)。军官身上的装备加成同样计入。</div>
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
             <tr v-for="o in myOfficers" :key="'my' + o.id">
@@ -2738,7 +2813,6 @@
             持有「{{ schemeData.bullet_name }}」：
             <b :class="schemeData.bullet_have > 0 ? 'green' : 'red'">{{ schemeData.bullet_have }}</b> 个
             <a href="javascript:;" @click="switchMallTab('item'); go('mall')">[去商城购买]</a>
-            <span class="gray">（黄金或钻石都能买）</span>
           </div>
           <div class="old-line" v-for="(s, i) in schemeData.schemes" :key="'sc' + s.id">
             {{ i + 1 }}.{{ s.name }}：<br/>
@@ -4449,24 +4523,24 @@ export default {
       this.chestOpen = ch
       this.chestCount = 1
       this.chestPay = ch.price_diamond > 0 ? 'diamond' : 'gold'
+      // ★ 跳转到独立开箱详情页确认
+      this.chestResult = []
+      this.cur = 'chestopen'
     },
-    async doOpenChest (ch) {
+    doOpenChest (ch) {
       const n = parseInt(this.chestCount) || 0
       if (n <= 0) { this.notify('请填写开箱数量'); return }
       if (n > ch.open_max) { this.notify('单次最多开 ' + ch.open_max + ' 个'); return }
       const cur = (ch.price_diamond > 0 && ch.price_gold > 0) ? this.chestPay : (ch.price_diamond > 0 ? 'diamond' : 'gold')
-      const unit = cur === 'diamond' ? '钻石' : this.resNames.gold
-      const price = cur === 'diamond' ? ch.price_diamond : ch.price_gold
-      if (!await this.ask('确认用 ' + (price * n) + unit + ' 开 ' + ch.name + '×' + n + ' 吗？')) return
       api.post('/games/ezfy/chest/open', { chest_id: ch.id, count: n, currency: cur }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
         this.notify(r.msg || '开箱成功')
         this.chestResult = (r.data && r.data.results) || []
         this.chestOpen = null
-        this.loadChests()
-        this.loadEquipShop()
         this.loadBag()
         this.load()
+        // ★ 开完直接回商城宝箱分类页，结果在「上次开箱结果」展示（go('mall') 会自动刷新宝箱）
+        this.go('mall')
       })
     },
     // ★ 装备商城（套装件，黄金/钻石购买）
@@ -4480,20 +4554,21 @@ export default {
       this.equipShopCount = 1
       // 散件统一钻石结算（定价 10~50 钻）；只有管理端把钻石价清 0 时才回落黄金
       this.equipShopPay = p.price_diamond > 0 ? 'diamond' : 'gold'
+      // ★ 跳转到独立购买详情页确认
+      this.cur = 'equipbuy'
     },
-    async doBuyEquip (p) {
+    doBuyEquip (p) {
       const n = parseInt(this.equipShopCount) || 0
       if (n <= 0) { this.notify('请填写购买数量'); return }
       const cur = p.price_diamond > 0 ? 'diamond' : 'gold'
-      const unit = cur === 'diamond' ? '钻石' : this.resNames.gold
-      const price = cur === 'diamond' ? p.price_diamond : p.price_gold
-      if (!await this.ask('确认用 ' + (price * n) + unit + ' 购买 ' + p.name + '×' + n + ' 吗？')) return
       api.post('/games/ezfy/equipshop/buy', { cfg_id: p.id, count: n, currency: cur }).then(r => {
-        if (r.code !== 0) this.notify(r.msg || '购买失败')
+        if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
+        this.notify(r.msg || '购买成功')
         this.equipShopBuy = null
-        this.loadEquipShop()
         this.load()
         this.loadBag()
+        // ★ 购买成功后返回商城（go('mall') 会自动刷新装备商城）
+        this.go('mall')
       })
     },
     // ★ 拉商城数据。resetPage = true 时才回到第 1 页（进商城页签时用）。
@@ -5528,6 +5603,8 @@ export default {
       this.buyCount = 1
       // ★ 双渠道道具默认用黄金（多数玩家手上黄金比钻石多）
       this.buyPayWith = it.dual_pay ? 'gold' : (it.is_diamond ? 'diamond' : 'gold')
+      // ★ 跳转到独立购买详情页确认（不再行内展开）
+      this.cur = 'mallbuy'
     },
     // ★ 单次可买上限 = min(管理端配置的单次上限, 库存)。
     //   无限库存(-1)的道具只看配置值。原来这里写死 999，和 doBuy 里的 99 打架。
@@ -5566,8 +5643,9 @@ export default {
           this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
           this.buyItem = null
           this.load()
-          this.loadMall()
           this.loadBag()
+          // ★ 购买成功后返回商城（go('mall') 会自动刷新商城数据）
+          this.go('mall')
         } else this.notify(r.msg || '购买失败')
       })
     },
@@ -5675,6 +5753,13 @@ export default {
       const v = Number(n)
       if (!isFinite(v)) return '0'
       return v.toLocaleString('en-US')
+    },
+    // ★ 宝箱奖池/开箱结果的品质着色（普通/稀有/史诗/传说，给不同颜色区分）
+    qualityClass (q) {
+      if (q === '传说' || q === '传奇') return 'q-legend'
+      if (q === '史诗') return 'q-epic'
+      if (q === '稀有') return 'q-rare'
+      return 'q-normal'
     },
     // ★ 把后端下发的创建时间格式化成年-月-日（公告标题后的发布时间）。
     //   入参可能是 "2026-09-23T11:11:28+08:00" 或已是 "2006-01-02 15:04" 字符串。
@@ -6434,6 +6519,10 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .gray { color: #999; }
 .ezfy-page .green { color: #27763c; }
 .ezfy-page .orange { color: #b8860b; }
+.ezfy-page .q-normal { color: #999; }
+.ezfy-page .q-rare { color: #2e86de; }
+.ezfy-page .q-epic { color: #9b59b6; }
+.ezfy-page .q-legend { color: #e67e22; }
 .ezfy-page input[type="text"],
 .ezfy-page input[type="number"],
 .ezfy-page input:not([type]),
