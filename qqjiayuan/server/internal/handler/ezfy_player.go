@@ -54,7 +54,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		nickname = u.Nickname
 	}
 
-	// 城市 / 军官 / 兵力 / 野地
+	// 城市 / 军官 / 野地
 	var cities []model.EzfyCity
 	h.DB.Where("user_id = ?", target).Find(&cities)
 	cityIds := make([]uint, 0, len(cities))
@@ -62,13 +62,14 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		cityIds = append(cityIds, ct.ID)
 	}
 	var officerCount, wildCount int64
-	var troopTotal int64
 	if len(cityIds) > 0 {
 		h.DB.Model(&model.EzfyOfficer{}).Where("city_id IN ?", cityIds).Count(&officerCount)
 		h.DB.Model(&model.EzfyWildland{}).Where("city_id IN ?", cityIds).Count(&wildCount)
-		h.DB.Model(&model.EzfyCityTroop{}).Where("city_id IN ?", cityIds).
-			Select("COALESCE(SUM(count),0)").Scan(&troopTotal)
 	}
+	// ★ 2026-09-23 用户要求：不再跨城累加兵力(总兵力)。
+	//   累加值越大越容易把 int64 撑成负数(线上出过 -8843547888967622000)。
+	//   这里只返回单城兵力上限(城市最高兵力数)这一个常量，无累加、无溢出风险。
+	troopMax := ezfyTroopMaxCfg()
 
 	// 军团
 	corpsName := ""
@@ -99,7 +100,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"corps_name":    corpsName,
 		"city_count":    len(cities),
 		"officer_count": officerCount,
-		"troop_total":   troopTotal,
+		"troop_max":     troopMax,
 		"wild_count":    wildCount,
 		"is_self":       isSelf,
 		"is_friend":     isFriend,

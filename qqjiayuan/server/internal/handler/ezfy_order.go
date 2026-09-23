@@ -1789,15 +1789,20 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	report += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
 	report += troopChangeText(atkBefore, atkAfter, atkCamp)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), targetName)
-	defBefore := groupCounts(defender)
-	defAfter := map[int]int64{}
+	// ★★ 守方兵力(2026-09-23 修复报错)：原来 defBefore 直接取**野地配置满编兵力**，
+	//   再用它减去战斗损失得出「剩余」。但战斗实际打到的是**已经损耗过的守军**
+	//   （同一野地/城市被先前战斗打过、或指挥官中途换过），满编数 ≠ 战斗初始数，
+	//   一减就冒出「打了 701400，还剩 182100」这种从没存在过的假剩余，
+	//   让玩家误以为「战斗没打完就结束了」。
+	//   现在守方 before/after 都取战斗结果本身的真实兵力（防御损失 + 战前剩余 → before，
+	//   战后剩余 → after），与攻方口径一致，永远对得上。
+	defAfter := groupCounts(br.DefenderLeft)
+	defBefore := map[int]int64{}
 	for _, g := range br.DefenderLosses {
-		defAfter[g.TroopId] = maxInt64(0, defBefore[g.TroopId]-g.Count)
+		defBefore[g.TroopId] += g.Count
 	}
-	for tid, cnt := range defBefore {
-		if _, ok := defAfter[tid]; !ok {
-			defAfter[tid] = cnt
-		}
+	for tid, cnt := range defAfter {
+		defBefore[tid] += cnt
 	}
 	report += troopChangeText(defBefore, defAfter, defCamp)
 

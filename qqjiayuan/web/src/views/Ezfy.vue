@@ -1362,7 +1362,7 @@
           </div>
           <div class="old-line" v-if="!battleData.done">
             <a href="javascript:;" @click="sendBattleCmd('advance')">[全军前进]</a>
-            <a href="javascript:;" @click="sendBattleCmd('hold')">[全军暂停]</a>
+            <a href="javascript:;" @click="sendBattleCmd('hold')">[全军停止]</a>
             <a href="javascript:;" @click="sendBattleCmd('retreat')">[全军后退]</a>
             <a href="javascript:;" @click="doBattleAuto">[自动战斗]</a>
           </div>
@@ -1388,7 +1388,7 @@
               </td>
               <td v-if="!battleData.done">
                 <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="sendBattleCmd('advance', u.troop_id)">[前进]</a>
-                <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[暂停]</a>
+                <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="sendBattleCmd('hold', u.troop_id)">[停止]</a>
                 <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="sendBattleCmd('retreat', u.troop_id)">[后退]</a>
                 <span class="gray">{{ u.cmd_name }}</span>
               </td>
@@ -2474,7 +2474,7 @@
             军团：{{ playerInfo.corps_name || '无' }}<br/>
             城市数：{{ playerInfo.city_count }}<br/>
             军官数：{{ playerInfo.officer_count }}<br/>
-            总兵力：{{ playerInfo.troop_total }}<br/>
+            城市最高兵力数：{{ fmtN(playerInfo.troop_max) }}<br/>
             占领野地：{{ playerInfo.wild_count }}块
           </div>
           <div class="old-line">
@@ -4302,7 +4302,7 @@ export default {
       })
     },
     battleCmdName (c) {
-      return c === 'hold' ? '暂停' : (c === 'retreat' ? '后退' : '前进')
+      return c === 'hold' ? '停止' : (c === 'retreat' ? '后退' : '前进')
     },
     // resumeBattle 刷新页面后从后端找回「进行中的战斗」（订单 id 没存在 URL 里）
     resumeBattle () {

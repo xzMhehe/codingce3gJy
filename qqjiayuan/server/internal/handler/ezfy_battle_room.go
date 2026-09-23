@@ -55,7 +55,7 @@ func ezfyBattleCmdName(cmd string) string {
 	case ezfyCmdAdvance:
 		return "前进"
 	case ezfyCmdHold:
-		return "暂停"
+		return "停止"
 	case ezfyCmdRetreat:
 		return "后退"
 	}
@@ -215,7 +215,7 @@ func ezfyBattleResultDecode(s string) (ezfyBattleResult, bool) {
 }
 
 // ezfyBattleView 下发给前端的战场视图
-func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64) gin.H {
+func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, atkCamp int) gin.H {
 	// 本回合剩余时间：过了就是 0（等待下一次请求推进）
 	left := b.RoundStart + ezfyBattleRoundMs - now
 	if left < 0 {
@@ -256,8 +256,17 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 				cmd = ezfyAtkCmdOf(cmds, u.TroopId)
 				tgt = tgtOf(u.TroopId)
 			}
+			// ★ 攻方兵种名展示玩家**自己阵营**的叫法（2026-09-23 用户要求），
+			//   同盟国/轴心国各自的兵种名统一在这里按攻方阵营解析。
+			//   守方(AI/野地)没有阵营概念，继续用快照里的通用名。
+			name := u.Name
+			if isAtk && atkCamp != 0 {
+				if cn := ezfyCfg.troopName(u.TroopId, atkCamp); cn != "" {
+					name = cn
+				}
+			}
 			out = append(out, gin.H{
-				"troop_id": u.TroopId, "name": u.Name,
+				"troop_id": u.TroopId, "name": name,
 				"count": u.Count, "initial": u.InitialCount, "pos": u.Pos,
 				"cmd": cmd, "cmd_name": ezfyBattleCmdName(cmd),
 				"target_troop": tgt, "target_name": troopName(tgt),
@@ -352,7 +361,7 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 		// 战斗刚结束 → 结果回写订单（下一次 processOrders 就会出战报）
 		h.ezfyBattleFinishToOrder(b, now)
 	}
-	resp.OK(c, h.ezfyBattleView(b, snap, now))
+	resp.OK(c, h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp))
 }
 
 // BattleCmd POST /games/ezfy/battle/cmd  {order_id, troop_id, cmd: advance|hold|retreat}
@@ -374,7 +383,7 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	switch req.Cmd {
 	case ezfyCmdAdvance, ezfyCmdHold, ezfyCmdRetreat:
 	default:
-		resp.ParamError(c, "指令只能是 前进/暂停/后退")
+		resp.ParamError(c, "指令只能是 前进/停止/后退")
 		return
 	}
 	var order model.EzfyOrder
@@ -393,7 +402,7 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	snap, done := h.ezfyBattleTick(b, now)
 	if done && b.Status == 2 {
 		h.ezfyBattleFinishToOrder(b, now)
-		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now)})
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
 		return
 	}
 	// 逐兵种指令表
@@ -429,7 +438,7 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	}
 	b.AtkCmd = ezfyAtkCmdsEncode(cmds)
 	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("atk_cmd", b.AtkCmd)
-	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now)})
+	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
 }
 
 // BattleTarget POST /games/ezfy/battle/target  {order_id, troop_id, target_troop}
@@ -474,7 +483,7 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 	snap, done := h.ezfyBattleTick(b, now)
 	if done && b.Status == 2 {
 		h.ezfyBattleFinishToOrder(b, now)
-		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now)})
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
 		return
 	}
 	// 只能指挥**自己带了的**兵种（与逐兵种指令同一口径）
@@ -500,7 +509,7 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 	snap.AtkTargets[req.TroopId] = req.TargetTroop
 	b.State = ezfyBattleSnapshotEncode(snap)
 	h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("state", b.State)
-	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now)})
+	resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp)})
 }
 
 // BattleAuto POST /games/ezfy/battle/auto  {order_id} —— 自动战斗：按当前指令一口气打完
@@ -557,5 +566,5 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 	})
 	h.ezfyBattleFinishToOrder(b, now)
 	out, _ := ezfyBattleSnapshotDecode(b.State)
-	resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, out, now)})
+	resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, out, now, h.ensureProfile(uid).Camp)})
 }

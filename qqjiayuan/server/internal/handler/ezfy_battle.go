@@ -78,6 +78,7 @@ type ezfyBattleResult struct {
 	AttackerLosses []ezfyUnitGroup
 	DefenderLosses []ezfyUnitGroup
 	AttackerLeft   []ezfyUnitGroup
+	DefenderLeft   []ezfyUnitGroup
 }
 
 // ============ 战场状态机（实时指挥用） ============
@@ -419,6 +420,7 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 		AttackerLosses: ezfyToGroups(st.Attackers, true),
 		DefenderLosses: ezfyToGroups(st.Defenders, true),
 		AttackerLeft:   ezfyToGroups(st.Attackers, false),
+		DefenderLeft:   ezfyToGroups(st.Defenders, false),
 	}
 }
 
