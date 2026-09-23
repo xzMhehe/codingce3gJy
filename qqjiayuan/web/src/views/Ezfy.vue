@@ -149,7 +149,7 @@
         <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
-          <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
+          <a v-if="ch.user_id" href="javascript:;" @click="openPlayer(ch.user_id)"><span
              v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
              :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
         </div>
@@ -178,7 +178,7 @@
               <span class="gray">每次发言消耗一个喇叭(最大25个字)</span>
             </template>
             <span v-else class="gray">(系统频道仅系统可发言)</span>
-            <button @click="loadChats">刷新</button>
+            <button @click="loadChats">[刷新]</button>
           </div>
 
           <!-- 系统频道: 系统公告 + 系统消息(只读) -->
@@ -194,7 +194,7 @@
             <div class="old-line" v-for="ch in worldChats" :key="'cs' + ch.id">
               [<span class="orange">系统</span>]
               <span class="gray">{{ fmtTime(ch.created_at) }}</span>
-              {{ ch.user_name }}：{{ ch.content }}
+              ：{{ ch.content }}
             </div>
             <div class="old-line gray" v-if="!worldChats.length">(暂无系统消息)</div>
             <div class="ezfy-pager" v-if="chatTotalPages > 1">
@@ -301,7 +301,7 @@
           </div>
           <div class="old-line" v-if="!mails.length">(暂无私信)</div>
           <br/>
-          <button @click="loadMails">刷新</button>
+          <button @click="loadMails">[刷新]</button>
         </div>
       </template>
 
@@ -355,7 +355,7 @@
           <template v-else-if="reportTab === 2">
             <div class="old-line">
               <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
-              <button @click="loadReports">刷新</button>
+              <button @click="loadReports">[刷新]</button>
             </div>
             <!-- ★ 雷达站决定「事前预警」能不能收到（事后结果战报不受影响） -->
             <div class="old-line" v-if="reportRadar > 0">
@@ -1864,7 +1864,7 @@
           <div class="old-line">
             <input v-model="corpsMsg" style="width:15%"/>
             <button @click="doCorpsChat">发送</button>
-            <button @click="loadCorps">刷新</button>
+            <button @click="loadCorps">[刷新]</button>
           </div>
         </div>
         <div class="panel" v-if="!myCorps">
@@ -1933,7 +1933,7 @@
       <!-- ============ 背包(bag) ============ -->
       <template v-else-if="cur === 'bag'">
         <div class="panel">
-          <div class="panel-title">背包 <button @click="loadBag">刷新</button></div>
+          <div class="panel-title">背包 <button @click="loadBag">[刷新]</button></div>
           <!-- ★ 检索框：道具多的时候按名字/说明筛 -->
           <div class="old-line">
             搜索:
