@@ -1231,7 +1231,12 @@ func (h *EzfyHandler) deleteBuilding(city *model.EzfyCity, recordId int64) strin
 	if b.Status != 0 {
 		return "施工中不可拆除"
 	}
-	h.DB.Delete(&b)
+	// ★ 用户要求：拆除是一级一级拆，而不是直接整栋拆没；降到 0 级才彻底移除
+	if b.Level <= 1 {
+		h.DB.Delete(&b)
+	} else {
+		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).Update("level", b.Level-1)
+	}
 	return ""
 }
 

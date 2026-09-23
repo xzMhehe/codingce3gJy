@@ -178,7 +178,7 @@
               <span class="gray">每次发言消耗一个喇叭(最大25个字)</span>
             </template>
             <span v-else class="gray">(系统频道仅系统可发言)</span>
-            <button @click="loadChats">[刷新]</button>
+            <a href="javascript:;" @click="loadChats">[刷新]</a>
           </div>
 
           <!-- 系统频道: 系统公告 + 系统消息(只读) -->
@@ -301,7 +301,7 @@
           </div>
           <div class="old-line" v-if="!mails.length">(暂无私信)</div>
           <br/>
-          <button @click="loadMails">[刷新]</button>
+          <a href="javascript:;" @click="loadMails">[刷新]</a>
         </div>
       </template>
 
@@ -355,7 +355,7 @@
           <template v-else-if="reportTab === 2">
             <div class="old-line">
               <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
-              <button @click="loadReports">[刷新]</button>
+              <a href="javascript:;" @click="loadReports">[刷新]</a>
             </div>
             <!-- ★ 雷达站决定「事前预警」能不能收到（事后结果战报不受影响） -->
             <div class="old-line" v-if="reportRadar > 0">
@@ -1864,7 +1864,7 @@
           <div class="old-line">
             <input v-model="corpsMsg" style="width:15%"/>
             <button @click="doCorpsChat">发送</button>
-            <button @click="loadCorps">[刷新]</button>
+            <a href="javascript:;" @click="loadCorps">[刷新]</a>
           </div>
         </div>
         <div class="panel" v-if="!myCorps">
@@ -1933,7 +1933,7 @@
       <!-- ============ 背包(bag) ============ -->
       <template v-else-if="cur === 'bag'">
         <div class="panel">
-          <div class="panel-title">背包 <button @click="loadBag">[刷新]</button></div>
+          <div class="panel-title">背包 <a href="javascript:;" @click="loadBag">[刷新]</a></div>
           <!-- ★ 检索框：道具多的时候按名字/说明筛 -->
           <div class="old-line">
             搜索:
@@ -4511,7 +4511,7 @@ export default {
       })
     },
     loadBag () {
-      api.get('/games/ezfy/bag').then(r => {
+      return api.get('/games/ezfy/bag').then(r => {
         if (r.code === 0) {
           this.bagItems = r.data.items
           this.bagOfficers = r.data.officers || []
@@ -4842,12 +4842,14 @@ export default {
       })
     },
     doBuild (b) {
-      // ★ 用户要求：建造成功后不再弹「建造命令已下达」提示，静默刷新即可；失败仍提示原因
+      // ★ 用户要求：建造成功后跳回对应分区（资源区→资源区、军事区→军事区），并刷新建筑列表
       // ★ 用户反馈「连点会出现多条」→ 防抖：一次点击只下达一条建造命令
       this.once('build', () =>
         api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
-          if (r.code === 0) this.load()
-          else this.notify(r.msg || '建造失败', 'error')
+          if (r.code === 0) {
+            this.load()
+            this.go(this.buildZone === 'm' ? 'buildm' : 'builds')
+          } else this.notify(r.msg || '建造失败', 'error')
         })
       )
     },
@@ -4869,10 +4871,23 @@ export default {
         if (r.code === 0) this.load()
       })
     },
-    doSpeedBuilding () {
-      api.post('/games/ezfy/building/speed', { minutes: 10 }).then(r => {
-        this.alert(r, '当前没有正在施工的建筑')
-        if (r.code === 0) this.load()
+    async doSpeedBuilding () {
+      // ★ 建筑加速必须消耗「建筑加速道具」(item_type=3)，没有道具则无法加速
+      await this.loadBag()
+      const acc = (this.bagItems || [])
+        .filter(i => i.item_type === 3 && i.count > 0)
+        .sort((a, b) => (a.param1 || 0) - (b.param1 || 0))
+      if (!acc.length) {
+        this.notify('没有建筑加速道具，无法加速', 'error')
+        return
+      }
+      const it = acc[0]
+      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1 }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '加速成功')
+          this.load()
+          this.loadBag()
+        } else this.notify(r.msg || '加速失败', 'error')
       })
     },
     // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
