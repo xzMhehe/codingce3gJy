@@ -247,6 +247,19 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 1")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
+
+		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
+		//   troop_max 单城兵力上限（默认 10 亿）+ wound_expire_days 伤兵存活天数（默认 5）。
+		//   两个值 0 都无意义 → 回落默认值，所以用 `IS NULL OR <= 0` 回填。
+		//   ⚠️ troop_max 必须用 **bigint**：int 在 MySQL 只有 21 亿，装不下 10 亿以上的配置。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "troop_max") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN troop_max bigint DEFAULT 1000000000")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 1000000000 WHERE troop_max IS NULL OR troop_max <= 0")
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_expire_days") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
 	}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）

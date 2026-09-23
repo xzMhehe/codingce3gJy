@@ -4703,10 +4703,14 @@ export default {
       })
     },
     doBuild (b) {
-      api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
-        this.alert(r, '建造命令已下达')
-        if (r.code === 0) this.load()
-      })
+      // ★ 用户要求：建造成功后不再弹「建造命令已下达」提示，静默刷新即可；失败仍提示原因
+      // ★ 用户反馈「连点会出现多条」→ 防抖：一次点击只下达一条建造命令
+      this.once('build', () =>
+        api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
+          if (r.code === 0) this.load()
+          else this.notify(r.msg || '建造失败', 'error')
+        })
+      )
     },
     doUpgrade (b) {
       api.post('/games/ezfy/building/upgrade', { record_id: b.id }).then(r => {
@@ -5246,7 +5250,8 @@ export default {
     },
     doOrder () {
       if (!this.selCell) return
-      api.post('/games/ezfy/order', this.orderBody()).then(r => {
+      // ★ 用户反馈「连点会出现多条」→ 防抖：一次点击只下达一条出征命令
+      this.once('order', () => api.post('/games/ezfy/order', this.orderBody()).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
           this.orderTroops = {}
@@ -5260,7 +5265,7 @@ export default {
           this.cur = 'orders'
           this.loadOrders()
         } else this.notify(r.msg)
-      })
+      }))
     },
     loadOnDutyOfficers () {
       api.get('/games/ezfy/officers/onduty').then(r => {
@@ -5691,6 +5696,24 @@ export default {
       } else {
         this.notify((r && r.msg) ? r.msg : '操作失败', 'error')
       }
+    },
+    // ★ 用户反馈「连点会出现多条」→ 「一次点击 = 一条命令」的操作统一走这里防抖：
+    //   同一个 key 的请求还没返回时，后续点击直接忽略（不会重复下单）。
+    //   fn 需要返回 Promise（api.post/get 都是），请求结束（无论成败）自动解锁。
+    once (key, fn) {
+      if (!this._onceMap) this._onceMap = {}
+      if (this._onceMap[key]) return
+      this._onceMap[key] = true
+      const release = () => { this._onceMap[key] = false }
+      let ret
+      try {
+        ret = fn()
+      } catch (e) {
+        release()
+        throw e
+      }
+      if (ret && typeof ret.then === 'function') ret.then(release, release)
+      else release()
     },
     // ---- 军官/学院 ----
     loadAcade () {

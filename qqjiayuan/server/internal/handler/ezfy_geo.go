@@ -491,7 +491,54 @@ const (
 	ezfyWoundHealDivisorDef = 100 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 100）
 	// ★ 商城单次购买数量上限（默认 9999；原来前端写死 99）
 	ezfyMallBuyMaxDef = 9999
+	// ★ 单城兵力上限：默认 10 亿。2026-09-23 线上「负数兵力」事故后新增 ——
+	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
+	ezfyTroopMaxDef = int64(1000000000)
+	// ★ 伤兵在营存活天数：默认 5 天，超时未恢复自动消失。
+	ezfyWoundExpireDaysDef = 5
+	// ★ 资源数值安全上限：任何路径写入资源都不得超过它（约 1 万亿）。
+	//   远小于 int64 上限，仅用于兜底防溢出；游戏内实际生效的仍是各城「仓储上限」。
+	ezfyResSafeMax = int64(1000000000000)
 )
+
+// ezfyTroopMaxCfg 单城兵力上限（读 ezfy_cfg_limit.troop_max，默认 10 亿）
+//
+// ★ 2026-09-23 线上事故：玩家总兵力显示 -8843547888967622000 —— int64 正向溢出翻负。
+// 根因是训练/伤兵恢复累加无上限。本值是唯一的「兵力上限」收敛点：
+// trainTroop（训练前校验）、recoverWounded/recoverAllWounded（恢复前校验）、
+// addTroop（落库前夹取）三处都读它。
+func ezfyTroopMaxCfg() int64 {
+	if v := ezfyCfg.limit.TroopMax; v > 0 {
+		return v
+	}
+	return ezfyTroopMaxDef
+}
+
+// ezfyWoundExpireDaysCfg 伤兵在营存活天数（默认 5 天）
+//
+// 0 / 未配置无意义（等于伤兵永不过期）→ 回落默认 5 天。
+func ezfyWoundExpireDaysCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.WoundExpireDays, ezfyWoundExpireDaysDef)
+}
+
+// ezfyClampRes 资源数值夹取：负数归 0，超过安全上限则截断。
+//
+// ★ 只做「防溢出」兜底，**不**替代各城仓储上限（cap）逻辑 ——
+// 正常产出的截断仍在 calcResource 里按 FoodCap/SteelCap/... 处理。
+func ezfyClampRes(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	if v > ezfyResSafeMax {
+		return ezfyResSafeMax
+	}
+	return v
+}
+
+// ezfyAddRes 资源加法（安全版）：先夹取当前值，再做不会溢出的加法，结果恒在 [0, ezfyResSafeMax]。
+func ezfyAddRes(cur, delta int64) int64 {
+	return ezfySafeAdd(ezfyClampRes(cur), delta, ezfyResSafeMax)
+}
 
 func ezfyLimitOr(v, def int) int {
 	if v > 0 {
@@ -874,7 +921,9 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		WildTroopMult: ezfyWildMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
-		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef}
+		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 10 亿 / 5 天）
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim

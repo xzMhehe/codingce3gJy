@@ -293,6 +293,20 @@ type EzfyCfgLimit struct {
 	OfficerStarChanceMin  int `gorm:"default:20" json:"officer_star_chance_min"` // 成功率下限%（默认 20）
 	OfficerStarAttrGain   int `gorm:"default:10" json:"officer_star_attr_gain"`  // 每升 1 星三维各 +N（默认 10）
 	OfficerStarMax        int `gorm:"default:10" json:"officer_star_max"`        // 星级上限（默认 10）
+
+	// ============ 数值安全卡控（2026-09-23 线上「负数兵力」事故）============
+	//
+	// ★ 事故现象：玩家「总兵力」显示 -8843547888967622000 —— int64 正向溢出翻负。
+	//   根因：训练 / 伤兵恢复累加**没有任何上限**，单兵种 count 加到超过 int64 上限就翻负。
+	//
+	// troop_max：单城兵力上限（口径 = 城内现有部队 + 训练队列里还没出厂的新兵）。
+	//   训练与伤兵恢复前先校验，超出直接拒绝并提示「超过限额」；
+	//   addTroop 落库前再夹取一次作为最后保险，保证任何路径都写不进负数/溢出值。
+	//   默认 10 亿 —— 远小于 int64 上限，正常玩法摸不到，纯防溢出与数值膨胀。
+	TroopMax int64 `gorm:"default:1000000000" json:"troop_max"`
+	// wound_expire_days：伤兵在营存活天数，超过则自动消失（默认 5 天）。
+	//   口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算，持续有新伤兵入营会顺延。
+	WoundExpireDays int `gorm:"default:5" json:"wound_expire_days"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

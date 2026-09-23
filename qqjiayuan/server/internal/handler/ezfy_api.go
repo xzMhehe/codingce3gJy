@@ -275,6 +275,9 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	var wounded, deserters []model.EzfyWounded
 	h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded)
 	h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters)
+	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
+	wounded = h.filterExpiredWounded(wounded)
+	deserters = h.filterExpiredWounded(deserters)
 	woundViews := []gin.H{}
 	for _, w := range append(wounded, deserters...) {
 		woundViews = append(woundViews, gin.H{"id": w.ID, "troop_id": w.TroopId,
@@ -1699,11 +1702,12 @@ var ezfySignRewards = [7][6]int64{
 
 func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
-	city.Food = min64(city.FoodCap, city.Food+food)
-	city.Steel = min64(city.SteelCap, city.Steel+steel)
-	city.Oil = min64(city.OilCap, city.Oil+oil)
-	city.Rare = min64(city.RareCap, city.Rare+rare)
-	city.Gold = min64(city.GoldCap, city.Gold+gold)
+	// ★ 2026-09-23：先做不会溢出的加法，再按仓储上限截断（原来的 city.Food+food 在极端值下会溢出翻负）
+	city.Food = min64(ezfyClampRes(city.FoodCap), ezfyAddRes(city.Food, food))
+	city.Steel = min64(ezfyClampRes(city.SteelCap), ezfyAddRes(city.Steel, steel))
+	city.Oil = min64(ezfyClampRes(city.OilCap), ezfyAddRes(city.Oil, oil))
+	city.Rare = min64(ezfyClampRes(city.RareCap), ezfyAddRes(city.Rare, rare))
+	city.Gold = min64(ezfyClampRes(city.GoldCap), ezfyAddRes(city.Gold, gold))
 	h.saveCityRes(&city)
 }
 
@@ -1712,11 +1716,12 @@ func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64
 // 用于退还类操作（取消训练/取消研究），避免玩家觉得「退少了」。
 // 负数是合法的，结果不会低于 0。
 func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare, gold int64) {
-	city.Food = max64(0, city.Food+food)
-	city.Steel = max64(0, city.Steel+steel)
-	city.Oil = max64(0, city.Oil+oil)
-	city.Rare = max64(0, city.Rare+rare)
-	city.Gold = max64(0, city.Gold+gold)
+	// ★ 2026-09-23：改用安全加法，结果恒在 [0, ezfyResSafeMax]，不会溢出翻负
+	city.Food = ezfyAddRes(city.Food, food)
+	city.Steel = ezfyAddRes(city.Steel, steel)
+	city.Oil = ezfyAddRes(city.Oil, oil)
+	city.Rare = ezfyAddRes(city.Rare, rare)
+	city.Gold = ezfyAddRes(city.Gold, gold)
 	h.saveCityRes(city)
 }
 
@@ -1728,11 +1733,12 @@ func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare,
 // 负数是合法的（可用来扣减），但结果不会低于 0。
 func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
-	city.Food = max64(0, city.Food+food)
-	city.Steel = max64(0, city.Steel+steel)
-	city.Oil = max64(0, city.Oil+oil)
-	city.Rare = max64(0, city.Rare+rare)
-	city.Gold = max64(0, city.Gold+gold)
+	// ★ 2026-09-23：安全加法（不按仓储上限截断，但仍受数值安全上限保护，不会溢出翻负）
+	city.Food = ezfyAddRes(city.Food, food)
+	city.Steel = ezfyAddRes(city.Steel, steel)
+	city.Oil = ezfyAddRes(city.Oil, oil)
+	city.Rare = ezfyAddRes(city.Rare, rare)
+	city.Gold = ezfyAddRes(city.Gold, gold)
 	h.saveCityRes(&city)
 }
 

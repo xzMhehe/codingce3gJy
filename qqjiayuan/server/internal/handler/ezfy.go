@@ -361,27 +361,130 @@ func (h *EzfyHandler) troopMap(cityId uint) map[int]int64 {
 	return m
 }
 
+// ezfySafeAdd 安全加法：结果恒落在 [0, max]，绝不溢出成负数。
+//
+// ★ 2026-09-23 线上事故（玩家总兵力 -8843547888967622000）的最后一道保险：
+//
+//	即使上层某处漏了校验，兵力也绝不会被写到 int64 溢出。
+func ezfySafeAdd(a, b, max int64) int64 {
+	if b > 0 {
+		if a > max-b { // max-b 不会溢出（b > 0 且 max 恒正）
+			return max
+		}
+		return a + b
+	}
+	if c := a + b; c > 0 { // b <= 0 时 a+b 只会变小，不会上溢
+		return c
+	}
+	return 0
+}
+
+// cityTroopTotal 城市当前兵力合计
+//
+// 口径 = 城内现有部队 + 训练队列里还没出厂的新兵（与前端「总兵力」展示口径一致）。
+// 城防(type 4)也计入 —— 它同样存在 ezfy_city_troop 里，同样会溢出。
+func (h *EzfyHandler) cityTroopTotal(cityId uint) int64 {
+	var total int64
+	for _, t := range h.troopList(cityId) {
+		if t.Count > 0 {
+			total = ezfySafeAdd(total, t.Count, ezfyTroopMaxCfg())
+		}
+	}
+	var qs []model.EzfyTrainQueue
+	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
+	for _, q := range qs {
+		if q.Count > 0 {
+			total = ezfySafeAdd(total, q.Count, ezfyTroopMaxCfg())
+		}
+	}
+	return total
+}
+
+// checkTroopCap 训练 / 伤兵恢复前的「兵力上限」校验。
+//
+// ★ 2026-09-23 用户要求：「超过限制不能训练，提示超过限额」。
+//
+//	口径：当前兵力(城内 + 训练队列) + 本次要加的量 > troop_max → 拒绝。
+//	返回空串表示通过，否则返回可直接展示给玩家的提示文案。
+func (h *EzfyHandler) checkTroopCap(cityId uint, add int64) string {
+	if add <= 0 {
+		return "数量错误"
+	}
+	max := ezfyTroopMaxCfg()
+	cur := h.cityTroopTotal(cityId)
+	if cur >= max || add > max-cur {
+		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d)", max, cur)
+	}
+	return ""
+}
+
 func (h *EzfyHandler) addTroop(cityId uint, troopId int, count int64) {
+	if count == 0 {
+		return
+	}
+	max := ezfyTroopMaxCfg()
 	var t model.EzfyCityTroop
 	if err := h.DB.Where("city_id = ? AND troop_id = ?", cityId, troopId).First(&t).Error; err != nil {
-		t = model.EzfyCityTroop{CityId: int64(cityId), TroopId: troopId, Count: count}
+		// ★ 新建行也夹取：负数直接不建行，超上限截断（防溢出兜底）
+		n := ezfySafeAdd(0, count, max)
+		if n <= 0 {
+			return
+		}
+		t = model.EzfyCityTroop{CityId: int64(cityId), TroopId: troopId, Count: n}
 		h.DB.Create(&t)
 		return
 	}
-	h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", t.ID).Update("count", t.Count+count)
+	h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", t.ID).
+		Update("count", ezfySafeAdd(t.Count, count, max))
 }
 
 func (h *EzfyHandler) addWounded(cityId uint, troopId, wtype int, count int64) {
 	if count <= 0 {
 		return
 	}
+	max := ezfyTroopMaxCfg()
 	var w model.EzfyWounded
 	if err := h.DB.Where("city_id = ? AND troop_id = ? AND type = ?", cityId, troopId, wtype).First(&w).Error; err != nil {
-		w = model.EzfyWounded{CityId: int64(cityId), TroopId: troopId, Type: wtype, Count: count}
+		w = model.EzfyWounded{CityId: int64(cityId), TroopId: troopId, Type: wtype,
+			Count: ezfySafeAdd(0, count, max)}
 		h.DB.Create(&w)
 		return
 	}
-	h.DB.Model(&model.EzfyWounded{}).Where("id = ?", w.ID).Update("count", w.Count+count)
+	// ★ 2026-09-23：伤兵数量同样夹取，防止「恢复时一次性加回城里」把兵力撑溢出。
+	h.DB.Model(&model.EzfyWounded{}).Where("id = ?", w.ID).
+		Update("count", ezfySafeAdd(w.Count, count, max))
+}
+
+// filterExpiredWounded 从「已经查出来的伤兵列表」里剔除过期项，并把过期记录删库。
+//
+// ★ 2026-09-23 用户要求：「伤兵 5 天不救治直接消失」。
+//
+//	口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算 ——
+//	addWounded 累加时会自动刷新 updated_at，所以玩家持续有伤兵入营会顺延；
+//	超过 wound_expire_days（默认 5 天）既没恢复也没新增的，直接消失。
+//
+// ⚠️ 刻意**复用调用方已查到的列表**做内存过滤，不额外发 SELECT；
+// 只有确实存在过期项时才发一次按主键的 DELETE。这样即使被首页轮询接口
+// （View，30s 一次）调用，稳态下也几乎零额外开销 —— 性能红线。
+func (h *EzfyHandler) filterExpiredWounded(list []model.EzfyWounded) []model.EzfyWounded {
+	days := ezfyWoundExpireDaysCfg()
+	if days <= 0 || len(list) == 0 {
+		return list
+	}
+	deadline := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+	kept := make([]model.EzfyWounded, 0, len(list))
+	var ids []uint
+	for _, w := range list {
+		if w.UpdatedAt.Before(deadline) {
+			ids = append(ids, w.ID)
+			continue
+		}
+		kept = append(kept, w)
+	}
+	if len(ids) > 0 {
+		h.DB.Where("id IN ?", ids).Delete(&model.EzfyWounded{})
+	}
+	return kept
 }
 
 func (h *EzfyHandler) wildlandList(cityId uint) []model.EzfyWildland {
@@ -731,6 +834,21 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		city.RareCap *= capBonus / 100
 		city.GoldCap *= capBonus / 100
 	}
+	// ★ 2026-09-23：资源 / 人口 / 仓储上限统一夹取到 [0, ezfyResSafeMax]。
+	//   原有的「按仓储上限截断」逻辑在上面（资源累加处）已经生效，这里只是最后兜一层底，
+	//   保证**任何**路径都不会把资源字段写溢出成负数（线上事故的同类风险）。
+	city.Food = ezfyClampRes(city.Food)
+	city.Steel = ezfyClampRes(city.Steel)
+	city.Oil = ezfyClampRes(city.Oil)
+	city.Rare = ezfyClampRes(city.Rare)
+	city.Gold = ezfyClampRes(city.Gold)
+	city.Pop = ezfyClampRes(city.Pop)
+	city.PopMax = ezfyClampRes(city.PopMax)
+	city.FoodCap = ezfyClampRes(city.FoodCap)
+	city.SteelCap = ezfyClampRes(city.SteelCap)
+	city.OilCap = ezfyClampRes(city.OilCap)
+	city.RareCap = ezfyClampRes(city.RareCap)
+	city.GoldCap = ezfyClampRes(city.GoldCap)
 	city.LastTime = now
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 		"feelings": city.Feelings, "grievance": city.Grievance,
@@ -923,6 +1041,14 @@ func (h *EzfyHandler) pay(city *model.EzfyCity, lv *model.EzfyCfgBuildingLevel) 
 }
 
 func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
+	// ★ 2026-09-23 线上「负数兵力」事故后加的统一防线：
+	//   资源落库前一律夹取到 [0, ezfyResSafeMax]，任何调用方都不可能写出负数/溢出值。
+	//   内存对象同步回写，保证「库里存的」和「本次请求后续用的」一致。
+	city.Gold = ezfyClampRes(city.Gold)
+	city.Food = ezfyClampRes(city.Food)
+	city.Steel = ezfyClampRes(city.Steel)
+	city.Oil = ezfyClampRes(city.Oil)
+	city.Rare = ezfyClampRes(city.Rare)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 		"gold": city.Gold, "food": city.Food, "steel": city.Steel,
 		"oil": city.Oil, "rare": city.Rare,
@@ -1205,6 +1331,14 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 				city.Pop, popUsed, popAvailable)
 		}
 	}
+	// ★ 2026-09-23 用户要求「超过限制不能训练，提示超过限额」：
+	//   兵力累加没有任何上限，单兵种 count 撑爆 int64 就翻成负数
+	//   （线上事故：玩家总兵力 -8843547888967622000）。
+	//   这里按 ezfy_cfg_limit.troop_max 统一卡控（城内现有 + 训练队列 + 本次）。
+	//   城防(type 4)同样存在 ezfy_city_troop 里、同样会溢出，所以一并卡。
+	if msg := h.checkTroopCap(city.ID, int64(count)); msg != "" {
+		return msg
+	}
 	food := cfg.Food * int64(count)
 	steel := cfg.Steel * int64(count)
 	oil := cfg.Oil * int64(count)
@@ -1376,8 +1510,17 @@ func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) s
 	if err := h.DB.Where("city_id = ? AND troop_id = ? AND type = ?", city.ID, troopId, wtype).First(&w).Error; err != nil {
 		return "兵营中没有该兵种"
 	}
+	// ★ 已过期的伤兵不可恢复（列表里早已消失，这里防直接调接口绕过）
+	if len(h.filterExpiredWounded([]model.EzfyWounded{w})) == 0 {
+		return "兵营中没有该兵种"
+	}
 	if w.Count <= 0 {
 		return "兵营中没有该兵种"
+	}
+	// ★ 2026-09-23 用户要求：「恢复的数量导致负数的情况也卡控，不能恢复」。
+	//   恢复 = 往城里加兵，所以和训练共用同一个兵力上限校验。
+	if msg := h.checkTroopCap(city.ID, w.Count); msg != "" {
+		return msg
 	}
 	h.calcResource(city)
 	cost := ezfyWoundHealGoldPer(w.TroopId) * w.Count
@@ -1394,8 +1537,26 @@ func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) s
 func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string {
 	var list []model.EzfyWounded
 	h.DB.Where("city_id = ? AND type = ?", city.ID, wtype).Find(&list)
+	// ★ 过期的伤兵不可恢复（顺便把过期记录清掉）
+	list = h.filterExpiredWounded(list)
 	if len(list) == 0 {
 		return "兵营中空空如也"
+	}
+	// ★ 2026-09-23：一键恢复 = 一次性把全部伤兵加回城里，所以按「总量」做一次上限校验
+	//   （逐个校验会漏掉「每个都不超、加起来超了」的情况，且叠加后同样能溢出）。
+	max := ezfyTroopMaxCfg()
+	cur := h.cityTroopTotal(city.ID)
+	var pending int64
+	for _, w := range list {
+		if w.Count > 0 {
+			pending = ezfySafeAdd(pending, w.Count, max)
+		}
+	}
+	if pending <= 0 {
+		return "兵营中空空如也"
+	}
+	if cur >= max || pending > max-cur {
+		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d, 待恢复%d)", max, cur, pending)
 	}
 	h.calcResource(city)
 	var cost int64
@@ -2043,6 +2204,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	}
 	var wounded []model.EzfyWounded
 	h.DB.Where("city_id = ?", city.ID).Order("type ASC, troop_id ASC").Find(&wounded)
+	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
+	wounded = h.filterExpiredWounded(wounded)
 
 	queues := []gin.H{}
 	var qs []model.EzfyTrainQueue

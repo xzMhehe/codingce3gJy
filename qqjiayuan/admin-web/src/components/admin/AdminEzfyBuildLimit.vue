@@ -35,6 +35,15 @@
         <el-form-item label="商城单次购买上限">
           <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
         </el-form-item>
+        <!-- ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数 -->
+        <el-form-item label="单城兵力上限">
+          <el-input-number v-model.number="form.troop_max" :min="1" controls-position="right" style="width:180px" />
+          <span class="td-sub">超过则无法训练 / 恢复伤兵</span>
+        </el-form-item>
+        <el-form-item label="伤兵存活天数">
+          <el-input-number v-model.number="form.wound_expire_days" :min="1" :max="3650" controls-position="right" style="width:180px" />
+          <span class="td-sub">天，超时未恢复自动消失</span>
+        </el-form-item>
 
         <el-divider content-position="left">战斗 / 经济数值</el-divider>
         <el-form-item label="征服单次扣民心">
@@ -127,6 +136,7 @@ export default {
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
         notice_home_count: 1, gather_max_per_order: 50, mall_buy_max: 9999,
+        troop_max: 1000000000, wound_expire_days: 5,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
         wild_troop_mult: 1,
@@ -156,6 +166,9 @@ export default {
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),
             mall_buy_max: pos(r.data.mall_buy_max, 9999),
+            // ★ 2026-09-23：兵力上限 / 伤兵存活天数（0 无意义 → 回落默认）
+            troop_max: pos(r.data.troop_max, 1000000000),
+            wound_expire_days: pos(r.data.wound_expire_days, 5),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),

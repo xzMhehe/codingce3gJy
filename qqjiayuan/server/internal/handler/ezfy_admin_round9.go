@@ -36,7 +36,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerStarKeepOnFail: ezfyStarKeepDef,
 		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
 		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
-		OfficerStarMax: ezfyStarMaxDef}
+		OfficerStarMax: ezfyStarMaxDef,
+		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -81,6 +83,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
 	}
+	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
+	if lim.TroopMax <= 0 {
+		lim.TroopMax = ezfyTroopMaxDef
+	}
+	if lim.WoundExpireDays <= 0 {
+		lim.WoundExpireDays = ezfyWoundExpireDaysDef
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -119,6 +128,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarChanceMin  *int `json:"officer_star_chance_min"`
 		OfficerStarAttrGain   *int `json:"officer_star_attr_gain"`
 		OfficerStarMax        *int `json:"officer_star_max"`
+		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
+		TroopMax        *int64 `json:"troop_max"`
+		WoundExpireDays *int   `json:"wound_expire_days"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -135,7 +147,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarKeepOnFail: ezfyStarKeepDef,
 		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
 		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
-		OfficerStarMax: ezfyStarMaxDef}
+		OfficerStarMax: ezfyStarMaxDef,
+		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -331,6 +345,23 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.OfficerStarMax = v
 	}
+	// ★ 2026-09-23 线上「负数兵力」事故：
+	//   单城兵力上限（至少 1，0 等于把训练全禁了，无意义）+ 伤兵存活天数（1~3650 天）。
+	//   ⚠️ 不能用上面的 check() —— 那个把上界卡在 999，装不下「10 亿」这个默认值。
+	if in.TroopMax != nil {
+		if *in.TroopMax < 1 {
+			resp.ParamError(c, "单城兵力上限至少为 1")
+			return
+		}
+		lim.TroopMax = *in.TroopMax
+	}
+	if in.WoundExpireDays != nil {
+		if *in.WoundExpireDays < 1 || *in.WoundExpireDays > 3650 {
+			resp.ParamError(c, "伤兵存活天数需要在 1~3650 之间")
+			return
+		}
+		lim.WoundExpireDays = *in.WoundExpireDays
+	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
 	}
@@ -360,6 +391,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
 	}
+	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
+	if lim.TroopMax <= 0 {
+		lim.TroopMax = ezfyTroopMaxDef
+	}
+	if lim.WoundExpireDays <= 0 {
+		lim.WoundExpireDays = ezfyWoundExpireDaysDef
+	}
 	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
 	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
 	lim.ID = 1
@@ -380,6 +418,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"officer_star_up_on":        lim.OfficerStarUpOn,
 		"officer_star_chance_on":    lim.OfficerStarChanceOn,
 		"officer_star_keep_on_fail": lim.OfficerStarKeepOnFail,
+		// ★ 2026-09-23：兵力上限（bigint）/ 伤兵存活天数，同样用 map 显式写，避开零值被吞的坑
+		"troop_max":         lim.TroopMax,
+		"wound_expire_days": lim.WoundExpireDays,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

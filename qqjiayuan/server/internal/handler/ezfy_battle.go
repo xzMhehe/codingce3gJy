@@ -20,6 +20,13 @@ const (
 	// 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
 	ezfyBattleMaxRounds = 40
 	ezfyBattleStartDist = 6000 // 战场初始距离
+
+	// ★ 暴击基础伤害加成%：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时的兜底倍率。
+	//
+	// 2026-09-23 用户反馈「暴击打了 1 个单位」—— 根因就是这类装备：
+	// 例「黑色幽灵[徽章]」crit=125 / crit_dmg=0，按老公式 伤害×(100+0)/100 = 伤害不变，
+	// 于是「出了【暴击】但一点没多打」，玩家看到的就成了「暴击跟没暴一样」。
+	ezfyCritBaseBonusPct = 50
 )
 
 // 战场指挥指令（玩家每回合可下达）
@@ -299,12 +306,21 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 		}
 		if dist <= rangeD {
 			baseAtk := ezfyPickAttack(unit.cfg, target.cfg)
+			// ★ 攻守参数取值（2026-09-23 修复「守方防御加成完全不生效」）：
+			//   ezfyCalcDamage 的第 5 个参数是**被攻击方(target)的防御加成**，
+			//   而 target 是谁取决于本回合哪一方在行动：
+			//     · 攻方行动 → target 是守方 → 该传守方防御加成 defBonus
+			//     · 守方行动 → target 是攻方 → 攻方没有防御加成，传 0
+			//   老实现恰好写反了（攻方传 0、守方传 defBonus），后果是
+			//   **城墙 / 城守 / 防御装备在被打时完全不起作用**，反而在守方反击时
+			//   把守方自己的防御加成算到了攻方身上。
+			//   回归测试：ezfy_defbonus_test.go（修复前 +100% 防御与 +0% 损失完全相同）。
 			unitAtkBonus := 0
-			unitDefBonus := defBonus
+			unitDefBonus := 0
 			equip := st.DefEquip
 			if isAtk {
 				unitAtkBonus = atkBonus
-				unitDefBonus = 0
+				unitDefBonus = defBonus
 				equip = st.AtkEquip
 			}
 			// ★ 生命加成：守方装备的生命%让同一发伤害打掉的兵更少
@@ -317,17 +333,44 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 				}
 			}
 			damage := ezfyCalcDamage(baseAtk, target.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
-			// ★ 暴击：按暴击几率 roll，命中则乘 (1 + 暴击伤害加成)
+			// ★ 暴击：按暴击几率 roll（几率封顶 100%），命中则乘 (1 + 暴击伤害加成)
+			//
+			// ⚠️ 2026-09-23 用户反馈「暴击打了 1 个单位」→ 老实现有两个坑：
+			//   ① 暴击几率是装备累加值，可以超过 100（如「革命者[折扇]」crit=125），
+			//      老写法 `rand.Intn(100) < 125` 恒真 = 必定暴击，几率形同虚设；
+			//   ② 暴击伤害加成可能是 0（如「黑色幽灵[徽章]」crit=125 / crit_dmg=0），
+			//      老写法伤害 ×(100+0)/100 = 原样不变 → 出了【暴击】却一点没多打，
+			//      看起来就是「暴击只打了 1 个」。
+			//   现在：几率封顶 100%；暴击伤害加成 <= 0 时按基础倍率兜底，
+			//   保证「只要出了暴击，就一定要比不暴击打得更疼」。
 			crit := false
-			if equip.Crit > 0 && rand.Intn(100) < equip.Crit {
-				crit = true
-				damage = damage * int64(100+equip.CritDmg) / 100
+			critBonus := 0
+			if equip.Crit > 0 {
+				chance := equip.Crit
+				if chance > 100 {
+					chance = 100
+				}
+				if rand.Intn(100) < chance {
+					crit = true
+					critBonus = equip.CritDmg
+					if critBonus <= 0 {
+						critBonus = ezfyCritBaseBonusPct
+					}
+					damage = damage * int64(100+critBonus) / 100
+				}
 			}
 			effHealth := target.cfg.Health * hpMul / 100
 			if effHealth < 1 {
 				effHealth = 1
 			}
 			killed := damage / int64(effHealth)
+			// ★ 暴击向上取整（有余数就多杀 1 个）：
+			//   暴击后的伤害往往不是目标血量的整数倍，老写法直接向下取整会把暴击的增益
+			//   整个抹掉 —— 伤害明明放大到 1.5 倍，killed 还是 1，玩家看到的就是
+			//   「暴击打了 1 个单位」（2026-09-23 用户反馈）。这里把零头补成 1 个。
+			if crit && damage%int64(effHealth) != 0 {
+				killed++
+			}
 			if killed < 1 {
 				killed = 1
 			}
@@ -338,7 +381,8 @@ func (st *ezfyBattleState) Step(atkCmds map[int]string, defCmd string) bool {
 				target.count -= killed
 				critTxt := ""
 				if crit {
-					critTxt = "【暴击】"
+					// 把实际生效的暴击倍率写进战报，玩家一眼能看出暴击有没有生效
+					critTxt = fmt.Sprintf("【暴击+%d%%】", critBonus)
 				}
 				st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
 					side, unit.cfg.Name, critTxt, enemySide, target.cfg.Name, killed))
