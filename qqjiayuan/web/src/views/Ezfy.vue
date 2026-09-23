@@ -6381,14 +6381,13 @@ body.ezfy-immersive { margin: 0; }
   vertical-align: top;
   padding: 2px 10px 2px 0;
 }
-/* ★ 军队总览「城内军队」表：数据左右居中 + 垂直居中（用户要求） */
+/* ★ 军队总览「城内军队」表：只把单元格内容里左右居中 + 垂直居中（用户要求），表格本身不居中 */
 .ezfy-page table.ezfy-center-tbl th,
 .ezfy-page table.ezfy-center-tbl td {
   text-align: center;
   vertical-align: middle;
 }
 .ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
-.ezfy-page table.ezfy-center-tbl { margin: 0 auto; }
 .ezfy-page table th {
   color: #2f4156;
   font-weight: bold;
