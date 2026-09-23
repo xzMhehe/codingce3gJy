@@ -286,12 +286,19 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		}
 		return snap.DefTargets[troopId]
 	}
+	// ★ 2026-09-23 用户要求：攻守双方兵种名都展示「阵营兵种名」。
+	// 敌方（目标兵种）的阵营：攻方视角→守方阵营；守方视角→攻方阵营。
+	enemyCamp := snap.AtkCamp
+	if viewerIsAtk {
+		enemyCamp = snap.DefCamp
+	}
+
 	troopName := func(id int) string {
 		if id == 0 {
 			return "最近目标"
 		}
-		if c := ezfyCfg.troop(id); c != nil {
-			return c.Name
+		if cn := ezfyCfg.troopName(id, enemyCamp); cn != "" {
+			return cn
 		}
 		return "兵种" + strconv.Itoa(id)
 	}
@@ -329,12 +336,18 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 					tgt = 0
 				}
 			}
-			// 兵种名按「自己这一方」的阵营解析（另一方用快照里的通用名）
+			// ★ 2026-09-23 用户要求：攻守**双方**兵种名都显示阵营兵种名。
+			// 新战场快照自带 atk_camp/def_camp；老快照没有 → 己方回落 viewerCamp、敌方通用名。
+			camp := snap.DefCamp
+			if isAtk {
+				camp = snap.AtkCamp
+			}
+			if camp == 0 && isAtk == viewerIsAtk {
+				camp = viewerCamp
+			}
 			name := u.Name
-			if isAtk == viewerIsAtk && viewerCamp != 0 {
-				if cn := ezfyCfg.troopName(u.TroopId, viewerCamp); cn != "" {
-					name = cn
-				}
+			if cn := ezfyCfg.troopName(u.TroopId, camp); cn != "" {
+				name = cn
 			}
 			out = append(out, gin.H{
 				"troop_id": u.TroopId, "name": name,
@@ -355,7 +368,12 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 			continue
 		}
 		optSeen[u.TroopId] = true
-		opts = append(opts, gin.H{"id": u.TroopId, "name": u.Name})
+		// ★ 目标下拉里的敌方兵种也用敌方阵营兵种名
+		name := u.Name
+		if cn := ezfyCfg.troopName(u.TroopId, enemyCamp); cn != "" {
+			name = cn
+		}
+		opts = append(opts, gin.H{"id": u.TroopId, "name": name})
 	}
 	myList := snap.Attackers
 	if !viewerIsAtk {

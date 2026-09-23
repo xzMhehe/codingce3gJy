@@ -114,6 +114,11 @@ type ezfyBattleState struct {
 	AtkCounter bool // 攻方带队军官有「绝地反击」
 	DefCounter bool // 守方城守军官有「绝地反击」
 
+	// ★ 2026-09-23 用户要求：指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
+	// 攻方=出征方阵营；守方只有玩家城才有值，野地/AI/寇城为 0（通用名）。
+	AtkCamp int
+	DefCamp int
+
 	Round       int  // 已结算回合数
 	Done        bool // 是否已分胜负 / 回合耗尽
 	AttackerWin bool
@@ -135,7 +140,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
-	atkCounter, defCounter bool) *ezfyBattleState {
+	atkCounter, defCounter bool, atkCamp, defCamp int) *ezfyBattleState {
 
 	st := &ezfyBattleState{
 		AtkBonus: atkBonus, DefBonus: defBonus,
@@ -145,6 +150,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkMoves: atkMoves, DefMoves: defMoves,
 		AtkOfficerDesc: atkOfficerDesc, DefOfficerDesc: defOfficerDesc,
 		AtkCounter: atkCounter, DefCounter: defCounter,
+		AtkCamp: atkCamp, DefCamp: defCamp,
 		Head: []string{}, Actions: []string{},
 	}
 
@@ -231,7 +237,9 @@ func ezfyMoveDir(unit *ezfyFightUnit, moveMap map[int]int, cmd string) int {
 //
 // atkCmds: 攻方**逐兵种**的指令（troopId → advance|hold|retreat）。
 // defCmds: 守方**逐兵种**的指令（2026-09-23 用户要求「敌人打自己，自己也能指挥」——
-//   玩家守城时与攻方一样逐兵种指挥，AI/野地不下指令时传 nil）。
+//
+//	玩家守城时与攻方一样逐兵种指挥，AI/野地不下指令时传 nil）。
+//
 // ★ 用户要求（2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 // —— 所以指令是按兵种存的，没给的兵种回落到司令部兵种配置。
 func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
@@ -239,6 +247,18 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		return true
 	}
 	st.Round++
+
+	// ★ 2026-09-23 用户要求：日志里的兵种名按攻守双方**各自的阵营**显示（玩家城守方用守方阵营，野地/AI 为通用名）
+	stName := func(u *ezfyFightUnit, isAtk bool) string {
+		camp := st.DefCamp
+		if isAtk {
+			camp = st.AtkCamp
+		}
+		if n := ezfyCfg.troopName(u.cfg.ID, camp); n != "" {
+			return n
+		}
+		return u.cfg.Name
+	}
 
 	// 装备加成在这里叠加（快照里存的是不含装备的基础值）
 	atkBonus := st.AtkBonus + st.AtkEquip.Dmg
@@ -327,7 +347,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				verb = "后撤"
 			}
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
-				side, unit.cfg.Name, verb, ezfyAbs(move), enemySide, target.cfg.Name, dist))
+				side, stName(unit, isAtk), verb, ezfyAbs(move), enemySide, stName(target, !isAtk), dist))
 		}
 		if dist <= rangeD {
 			baseAtk := ezfyPickAttack(unit.cfg, target.cfg)
@@ -453,10 +473,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				cur.count -= killed
 				if first {
 					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
-						side, unit.cfg.Name, critTxt, enemySide, cur.cfg.Name, killed))
+						side, stName(unit, isAtk), critTxt, enemySide, stName(cur, !isAtk), killed))
 				} else {
 					st.Actions = append(st.Actions, fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 消灭%d个",
-						side, unit.cfg.Name, enemySide, cur.cfg.Name, killed))
+						side, stName(unit, isAtk), enemySide, stName(cur, !isAtk), killed))
 				}
 				remaining = overflow
 				first = false
@@ -485,7 +505,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				unit.count -= kCnt
 				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【反击】还击%s%s, 消灭%d个",
-					enemySide, target.cfg.Name, side, unit.cfg.Name, kCnt))
+					enemySide, stName(target, !isAtk), side, stName(unit, isAtk), kCnt))
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {
@@ -534,7 +554,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
-		atkTargets, defTargets, atkMoves, defMoves, false, false)
+		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
 		st.Step(nil, nil)
@@ -589,6 +609,9 @@ type ezfyBattleSnapshot struct {
 	AtkCounter bool `json:"atk_counter"`
 	DefCounter bool `json:"def_counter"`
 
+	AtkCamp int `json:"atk_camp"`
+	DefCamp int `json:"def_camp"`
+
 	Round       int      `json:"round"`
 	Done        bool     `json:"done"`
 	AttackerWin bool     `json:"attacker_win"`
@@ -628,7 +651,8 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkTargets: st.AtkTargets, DefTargets: st.DefTargets,
 		AtkMoves: st.AtkMoves, DefMoves: st.DefMoves,
 		AtkOfficerDesc: st.AtkOfficerDesc, DefOfficerDesc: st.DefOfficerDesc,
-		AtkCounter:     st.AtkCounter, DefCounter: st.DefCounter,
+		AtkCounter: st.AtkCounter, DefCounter: st.DefCounter,
+		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 
 		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin,
 		Head: st.Head, Actions: actions,
@@ -644,7 +668,8 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkTargets: snap.AtkTargets, DefTargets: snap.DefTargets,
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,
 		AtkOfficerDesc: snap.AtkOfficerDesc, DefOfficerDesc: snap.DefOfficerDesc,
-		AtkCounter:     snap.AtkCounter, DefCounter: snap.DefCounter,
+		AtkCounter: snap.AtkCounter, DefCounter: snap.DefCounter,
+		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin,
 		Head: snap.Head, Actions: snap.Actions,
 	}

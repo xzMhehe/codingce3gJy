@@ -1804,12 +1804,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
+		// ★ 阵营兵种名：攻方=出征方阵营；守方是玩家城时用守方阵营，野地/AI 为 0(通用名)
+		defCamp := 0
+		if target != nil {
+			defCamp = h.ensureProfile(target.UserID).Camp
+		}
 		st := ezfyNewBattleState(attacker, defender,
 			atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）
-			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"))
+			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"),
+			h.ensureProfile(uid).Camp, defCamp)
 		// ★ 2026-09-23 用户要求：目标被别的玩家抢先指挥时，本部队改为「等待」，
 		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
 		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {

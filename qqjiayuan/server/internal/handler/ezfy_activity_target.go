@@ -194,12 +194,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		br = done
 	} else {
 		// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
-		// ★ 攻方装备六项加成照常生效
+		// ★ 攻方装备六项加成照常生效；阵营：攻方=出征方阵营，守方 AI 为 0(通用名)
 		st := ezfyNewBattleState(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 			atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
-			h.officerHasSkill(leadOfficer, "绝地反击"), false)
+			h.officerHasSkill(leadOfficer, "绝地反击"), false,
+			h.ensureProfile(uid).Camp, 0)
 		if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

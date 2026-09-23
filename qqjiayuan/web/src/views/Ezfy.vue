@@ -6301,6 +6301,10 @@ export default {
         api.get('/games/ezfy/officers').then(rr => {
           if (rr.code === 0) this.officerData = rr.data
         })
+        // ★ 任命/卸任后同步刷新出征页的带队军官列表：若玩家随后立即出征，
+        //   下拉里必须是最新的可选军官（避免「刚任命的市长/城守不出现在下拉」的观感）
+        this.loadOnDutyOfficers()
+        this.loadCityOfficers()
       })
     },
     async doCaptive (o, op) {
