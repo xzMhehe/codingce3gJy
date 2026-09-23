@@ -5,7 +5,7 @@
         <!-- ================= 玩家科技 ================= -->
         <el-tab-pane label="玩家科技" name="list">
           <div class="toolbar">
-            <el-input v-model="word" placeholder="城名 / 城池ID" clearable style="width:200px"
+            <el-input v-model="word" placeholder="玩家名 / 家园号 / 玩家ID" clearable style="width:200px"
                       @keyup.enter.native="page = 1; load()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
@@ -34,7 +34,7 @@
                 <span v-else class="td-muted">—</span>
               </template>
             </el-table-column>
-            <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
+            <el-table-column prop="city_name" label="主城" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="90" align="center" />
             <el-table-column label="操作" width="220" align="center" fixed="right">
@@ -109,11 +109,11 @@
       </el-tabs>
     </el-card>
 
-    <!-- 设置科技等级 -->
-    <el-dialog title="设置城池科技等级" :visible.sync="setDlg" width="560px" :close-on-click-modal="false">
+    <!-- 设置玩家科技等级 -->
+    <el-dialog title="设置玩家科技等级" :visible.sync="setDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
-        <el-form-item label="城池ID" required>
-          <el-input-number v-model.number="setForm.city_id" :min="1" controls-position="right" style="width:100%" />
+        <el-form-item label="玩家ID" required>
+          <el-input-number v-model.number="setForm.user_id" :min="1" controls-position="right" style="width:100%" />
         </el-form-item>
         <el-form-item label="科技" required>
           <el-select v-model="setForm.tech_id" filterable style="width:100%">
@@ -125,7 +125,7 @@
           <span class="td-sub">0 = 未掌握</span>
         </el-form-item>
       </el-form>
-      <!-- [说明·不显示在界面] 提示：若该城池还没有此科技会自动创建，等级会被自动截断到配置上限 -->
+      <!-- [说明·不显示在界面] 提示：该玩家科技数据自动落在其主城（科技城），主城无此科技时会自动创建，等级会被自动截断到配置上限 -->
       <div slot="footer">
         <el-button @click="setDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doSet">设 置</el-button>
@@ -136,7 +136,7 @@
     <el-dialog title="修改科技" :visible.sync="editDlg" width="520px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
         <el-form-item label="科技">
-          <span class="td-main">{{ editRow.cfg_name }}（{{ editRow.city_name }}）</span>
+          <span class="td-main">{{ editRow.cfg_name }}（{{ editRow.owner_name }}）</span>
         </el-form-item>
         <el-form-item label="等级">
           <el-input-number v-model.number="editLevel" :min="0" controls-position="right" style="width:100%" />
@@ -327,7 +327,7 @@ export default {
       allTechs: [],
       techTypes: { 1: '生产', 2: '军事', 3: '辅助' },
       resNames: {},
-      setDlg: false, setForm: { city_id: 1, tech_id: 0, level: 1 },
+      setDlg: false, setForm: { user_id: 1, tech_id: 0, level: 1 },
       editDlg: false, editRow: {}, editLevel: 0, editStatus: 0,
       cfDlg: false, cf: emptyCf(),
       lvDlg: false, lvTech: {}, lvRows: [], loadingLv: false,
@@ -476,7 +476,7 @@ export default {
     // ---- 玩家科技 ----
     // 一键把所有玩家所有城市的科技升到满级（后端幂等：先去重再 upsert）
     maxAll () {
-      this.$confirm('确定把所有玩家、所有城市的科技**全部升到满级**吗？此操作会覆盖玩家已有的科技等级。',
+      this.$confirm('确定把所有玩家的科技**全部升到满级**吗？此操作会覆盖玩家已有的科技等级。',
         '一键满级', { type: 'warning', confirmButtonText: '确定满级', cancelButtonText: '取消' }).then(() => {
         this.saving = true
         api.post('/admin/ezfy-techs/max-all', {}).then(r => {
@@ -492,10 +492,11 @@ export default {
     },
     openSet () {
       if (!this.allTechs.length) this.loadAllTechs()
-      this.setForm = { city_id: 1, tech_id: this.allTechs.length ? this.allTechs[0].id : 0, level: 1 }
+      this.setForm = { user_id: 1, tech_id: this.allTechs.length ? this.allTechs[0].id : 0, level: 1 }
       this.setDlg = true
     },
     doSet () {
+      if (!this.setForm.user_id) { this.$message.warning('请填写玩家ID'); return }
       if (!this.setForm.tech_id) { this.$message.warning('请选择科技'); return }
       this.saving = true
       api.post('/admin/ezfy-techs/set', this.setForm).then(r => {
@@ -524,7 +525,7 @@ export default {
       })
     },
     del (row) {
-      this.$confirm('重置后「' + row.city_name + '」的【' + row.cfg_name + '】将被删除（等级归零），确认？', '提示', { type: 'warning' }).then(() => {
+      this.$confirm('重置后玩家「' + row.owner_name + '」的【' + row.cfg_name + '】将被删除（等级归零），确认？', '提示', { type: 'warning' }).then(() => {
         api.delete('/admin/ezfy-techs/' + row.id).then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已重置'); this.load() } else this.$message.error(r.msg)
         })

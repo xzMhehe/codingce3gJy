@@ -1403,25 +1403,41 @@ func (h *AdminHandler) AdminEzfyResourceSummary(c *gin.Context) {
 // ============ 8. 科技管理 ============
 
 // AdminEzfyTechs 玩家科技列表
+//
+// ★ 第九轮后科技跟玩家走：所有城市共享同一份科技，数据统一落在该玩家的
+//   「科技城」(主城 = MIN(city.id))。本接口只列出主城行（即游戏内实际生效的科技），
+//   非主城的历史脏行不展示（可用 tools/fix-tech-per-player-20260923.sql 归并清理）。
 func (h *AdminHandler) AdminEzfyTechs(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	word := strings.TrimSpace(c.Query("word"))
 	cityId := int64(atoiOr(c.Query("city_id"), 0))
-	q := h.DB.Model(&model.EzfyCityTech{})
+	// 只保留每个玩家的科技城（主城）行
+	q := h.DB.Model(&model.EzfyCityTech{}).
+		Where("city_id IN (SELECT MIN(id) FROM ezfy_city GROUP BY user_id)")
 	if cityId > 0 {
-		q = q.Where("city_id = ?", cityId)
+		// 城市详情页跳转入口：落到该城所属玩家的主城行
+		var uid uint
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).Select("user_id").Scan(&uid)
+		var mid uint
+		if uid > 0 {
+			h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Select("MIN(id)").Scan(&mid)
+		}
+		q = q.Where("city_id = ?", mid)
 	} else if word != "" {
+		var uids []uint
 		if id, err := strconv.Atoi(word); err == nil {
-			q = q.Where("city_id = ?", id)
+			// 数字：匹配 玩家ID 或 家园号(账号)
+			h.DB.Model(&model.User{}).
+				Where("id = ? OR username LIKE ?", id, "%"+word+"%").Pluck("id", &uids)
 		} else {
-			var cids []uint
-			h.DB.Model(&model.EzfyCity{}).Select("id").
-				Where("name LIKE ?", "%"+word+"%").Scan(&cids)
-			if len(cids) > 0 {
-				q = q.Where("city_id IN ?", cids)
-			} else {
-				q = q.Where("1 = 0")
-			}
+			// 文本：匹配玩家昵称
+			h.DB.Model(&model.EzfyProfile{}).
+				Where("nickname LIKE ?", "%"+word+"%").Pluck("user_id", &uids)
+		}
+		if len(uids) > 0 {
+			q = q.Where("city_id IN (SELECT MIN(id) FROM ezfy_city WHERE user_id IN ? GROUP BY user_id)", uids)
+		} else {
+			q = q.Where("1 = 0")
 		}
 	}
 	var total int64
@@ -1473,15 +1489,18 @@ func (h *AdminHandler) AdminEzfyTechsCfg(c *gin.Context) {
 	resp.OK(c, gin.H{"list": rows, "total": len(rows)})
 }
 
-// AdminEzfyTechSet 设置城池科技等级（存在则改，不存在则建）
+// AdminEzfyTechSet 设置玩家科技等级（存在则改，不存在则建）
+//
+// ★ 科技跟玩家走：入参按「玩家 + 科技」，内部自动落到该玩家主城(科技城)的那一行，
+//   与游戏内 techCityId 口径一致，保证设置后玩家立即看到。
 func (h *AdminHandler) AdminEzfyTechSet(c *gin.Context) {
 	var in struct {
-		CityId int64 `json:"city_id"`
-		TechId int   `json:"tech_id"`
-		Level  int   `json:"level"`
+		UserId uint `json:"user_id"`
+		TechId int  `json:"tech_id"`
+		Level  int  `json:"level"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || in.CityId <= 0 || in.TechId <= 0 {
-		resp.ParamError(c, "请填写城池与科技")
+	if err := c.ShouldBindJSON(&in); err != nil || in.UserId <= 0 || in.TechId <= 0 {
+		resp.ParamError(c, "请填写玩家与科技")
 		return
 	}
 	if in.Level < 0 {
@@ -1495,19 +1514,25 @@ func (h *AdminHandler) AdminEzfyTechSet(c *gin.Context) {
 	if cfg.MaxLevel > 0 && in.Level > cfg.MaxLevel {
 		in.Level = cfg.MaxLevel
 	}
-	var ct model.EzfyCity
-	if err := h.DB.First(&ct, in.CityId).Error; err != nil {
-		resp.NotFound(c, "城池不存在")
+	var mid uint
+	if err := h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", in.UserId).
+		Select("MIN(id)").Scan(&mid).Error; err != nil || mid == 0 {
+		resp.NotFound(c, "该玩家还没有城市")
 		return
 	}
 	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND tech_id = ?", in.CityId, in.TechId).First(&t).Error; err != nil {
-		h.DB.Create(&model.EzfyCityTech{CityId: in.CityId, TechId: in.TechId, Level: in.Level, Status: 0})
+	if err := h.DB.Where("city_id = ? AND tech_id = ?", mid, in.TechId).First(&t).Error; err != nil {
+		h.DB.Create(&model.EzfyCityTech{CityId: int64(mid), TechId: in.TechId, Level: in.Level, Status: 0})
 	} else {
 		h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
 			Updates(map[string]interface{}{"level": in.Level, "status": 0, "end_time": 0})
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("【%s】已设为 Lv.%d", cfg.Name, in.Level)})
+	nick := ""
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", in.UserId).Select("nickname").Scan(&nick)
+	if nick == "" {
+		nick = fmt.Sprintf("玩家%d", in.UserId)
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("玩家【%s】的【%s】已设为 Lv.%d", nick, cfg.Name, in.Level)})
 }
 
 // AdminEzfyTechUpdate 修改科技记录（等级/状态）
