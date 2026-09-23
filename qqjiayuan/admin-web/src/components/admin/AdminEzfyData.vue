@@ -248,7 +248,7 @@ const FORMS = {
   taskTypes: [
     { k: 'name', n: '类型名', t: 'input', req: true, max: 50 },
     { k: 'code', n: '代码', t: 'input', max: 30 },
-    { k: 'reset_type', n: '重置方式', t: 'num', opts: [{ v: 0, n: '0 一次性' }, { v: 1, n: '1 每日' }] },
+    { k: 'reset_type', n: '重置方式', t: 'num', opts: [{ v: 0, n: '0 一次性' }, { v: 1, n: '1 每日' }, { v: 2, n: '2 每周' }] },
     { k: 'sort_no', n: '排序', t: 'num' },
     { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '1 启用' }, { v: 0, n: '0 停用' }] }
   ],

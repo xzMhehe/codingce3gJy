@@ -62,8 +62,10 @@ func seedEzfy(db *gorm.DB) {
 	batch(ezfyEzfyCfgTechLevel, "ezfy_cfg_tech_level")
 	batch(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
-	batch(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
-	batch(ezfyEzfyCfgTask, "ezfy_cfg_task")
+	// ★ 任务类型/任务：改「只补缺不覆盖」—— 管理端在「数据管理」里调的奖励(数值)
+	//   不能被下次启动的种子悄悄改回去（用户要求「后台能灵活配置奖励」）。
+	batchKeep(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
+	batchKeep(ezfyEzfyCfgTask, "ezfy_cfg_task")
 
 	seedEzfyNotices(db)
 	seedEzfyOfficerItems(db)

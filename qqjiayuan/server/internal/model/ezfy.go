@@ -329,7 +329,7 @@ type EzfyCfgTaskType struct {
 	ID        int    `gorm:"primaryKey" json:"id"`
 	Name      string `gorm:"type:varchar(50)" json:"name"`
 	Code      string `gorm:"type:varchar(30)" json:"code"`
-	ResetType int    `json:"reset_type"` // 0一次性 1每日
+	ResetType int    `json:"reset_type"` // 0一次性 1每日 2每周
 	SortNo    int    `json:"sort_no"`
 	Status    int    `gorm:"default:1" json:"status"`
 }

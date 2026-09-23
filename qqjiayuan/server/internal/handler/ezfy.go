@@ -2041,28 +2041,48 @@ func (h *EzfyHandler) initTasks(uid uint) {
 	}
 }
 
-func (h *EzfyHandler) resetDailyTasks(uid uint) {
-	today := time.Now().Format("2006-01-02")
+func (h *EzfyHandler) resetPeriodTasks(uid uint) {
+	now := time.Now()
 	var mine []model.EzfyTask
 	h.DB.Where("user_id = ?", uid).Find(&mine)
 	for _, t := range mine {
-		if t.TaskDate == today {
-			continue
-		}
 		var c model.EzfyCfgTask
 		if err := h.DB.First(&c, t.CfgId).Error; err != nil || c.TypeId <= 0 {
 			continue
 		}
 		var tp model.EzfyCfgTaskType
-		if err := h.DB.First(&tp, c.TypeId).Error; err != nil || tp.ResetType != 1 {
+		if err := h.DB.First(&tp, c.TypeId).Error; err != nil {
 			continue
 		}
-		updates := map[string]interface{}{"task_date": today}
+		key := ezfyPeriodKey(tp.ResetType, now)
+		if key == "" || t.TaskDate == key {
+			continue
+		}
+		updates := map[string]interface{}{"task_date": key}
 		if t.Current > 0 {
 			updates["current"] = 0
 			updates["status"] = 0
 		}
 		h.DB.Model(&model.EzfyTask{}).Where("id = ?", t.ID).Updates(updates)
+	}
+}
+
+// ezfyPeriodKey 返回任务当前所属周期的标识（用于跨周期重置判断）：
+//   - 每日(reset_type=1)：当天日期
+//   - 每周(reset_type=2)：本周周一所在日期
+//   - 一次性(reset_type=0)：返回空串（永不跨期重置）
+func ezfyPeriodKey(resetType int, now time.Time) string {
+	switch resetType {
+	case 1:
+		return now.Format("2006-01-02")
+	case 2:
+		wd := int(now.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		return now.AddDate(0, 0, -(wd - 1)).Format("2006-01-02")
+	default:
+		return ""
 	}
 }
 

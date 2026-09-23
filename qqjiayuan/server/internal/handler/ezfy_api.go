@@ -1618,7 +1618,7 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	h.initTasks(uid)
-	h.resetDailyTasks(uid)
+	h.resetPeriodTasks(uid)
 	today := time.Now().Format("2006-01-02")
 	var cfgs []model.EzfyCfgTask
 	h.DB.Where("status = 1").Order("sort_no ASC").Find(&cfgs)

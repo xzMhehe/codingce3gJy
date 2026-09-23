@@ -479,7 +479,7 @@
       <!-- ============ 任务(tasks) ============ -->
       <template v-else-if="cur === 'tasks'">
         <template v-for="g in taskGroups">
-          <div class="panel-title" :key="'tg' + g.id">{{ g.name }}<span v-if="g.reset_type === 1">(每日)</span></div>
+          <div class="panel-title" :key="'tg' + g.id">{{ g.name }}<span v-if="g.reset_type === 1">(每日)</span><span v-else-if="g.reset_type === 2">(每周)</span></div>
           <div class="panel" :key="'gl' + g.id">
             <div class="old-line" v-for="t in g.tasks" :key="t.id">
               <b>{{ t.name }}</b> {{ t.current }}/{{ t.target }}
@@ -5704,7 +5704,11 @@ export default {
     },
     // ---- 任务/福利 ----
     doAward (t) {
-      api.post('/games/ezfy/tasks/award', { task_id: t.id }).then(r => this.alert(r, '奖励已领取'))
+      api.post('/games/ezfy/tasks/award', { task_id: t.id }).then(r => {
+        // ★ 领奖成功后本地把状态置为「已领取」，否则按钮一直停在 [领奖]（用户反馈的 bug）
+        if (r && r.code === 0) t.status = 2
+        this.alert(r, '奖励已领取')
+      })
     },
     doSign () {
       // ★ 签到后必须重新拉 welfare 与资源，否则：

@@ -565,6 +565,7 @@ var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{
 	{ID: 1, Name: "新手任务", Code: "newbie", ResetType: 0, SortNo: 1, Status: 1},
 	{ID: 2, Name: "日常任务", Code: "daily", ResetType: 1, SortNo: 2, Status: 1},
 	{ID: 3, Name: "节日任务", Code: "festival", ResetType: 0, SortNo: 3, Status: 1},
+	{ID: 4, Name: "每周任务", Code: "weekly", ResetType: 2, SortNo: 4, Status: 1},
 }
 
 var ezfyEzfyCfgTask = []model.EzfyCfgTask{
@@ -583,4 +584,9 @@ var ezfyEzfyCfgTask = []model.EzfyCfgTask{
 	{ID: 13, Name: "占领野地5块", TaskType: "occupy_wild", Target: 5, RewardGold: 5000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 10000, RewardPrestige: 0, SortNo: 13, TypeId: 1, Status: 1},
 	{ID: 14, Name: "攻打野地胜利10次", TaskType: "battle_wild", Target: 10, RewardGold: 5000, RewardFood: 0, RewardSteel: 0, RewardOil: 10000, RewardRare: 0, RewardPrestige: 50, SortNo: 14, TypeId: 2, Status: 1},
 	{ID: 15, Name: "消灭敌军5000", TaskType: "kill_enemy", Target: 5000, RewardGold: 10000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 10000, RewardPrestige: 100, SortNo: 15, TypeId: 2, Status: 1},
+	// ★ 每周任务(type_id=4)：目标量比日常大，奖励也更丰厚（可在后台改数值）
+	{ID: 16, Name: "本周升级建筑20次", TaskType: "build_upgrade", Target: 20, RewardGold: 20000, RewardFood: 100000, RewardSteel: 0, RewardOil: 0, RewardRare: 0, RewardPrestige: 0, SortNo: 16, TypeId: 4, Status: 1},
+	{ID: 17, Name: "本周训练部队3000", TaskType: "train_troop", Target: 3000, RewardGold: 30000, RewardFood: 0, RewardSteel: 50000, RewardOil: 20000, RewardRare: 0, RewardPrestige: 0, SortNo: 17, TypeId: 4, Status: 1},
+	{ID: 18, Name: "本周攻打野地胜利50次", TaskType: "battle_wild", Target: 50, RewardGold: 50000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 30000, RewardPrestige: 200, SortNo: 18, TypeId: 4, Status: 1},
+	{ID: 19, Name: "本周消灭敌军50000", TaskType: "kill_enemy", Target: 50000, RewardGold: 100000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 50000, RewardPrestige: 500, SortNo: 19, TypeId: 4, Status: 1},
 }
