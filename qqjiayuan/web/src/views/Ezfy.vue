@@ -409,6 +409,12 @@
       <!-- ============ 战报详情(reportview) ============ -->
       <template v-else-if="cur === 'reportview'">
         <div class="panel" v-if="curReport">
+          <!-- ★ 用户要求：战报详情页也保留「军队动态 . 军情警讯 . 战斗报告」导航 -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="goReportTab(1)">军队动态</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">军情警讯</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="goReportTab(3)">战斗报告</a>
+          </div>
           <div class="panel-title">{{ curReport.title }}</div>
           <pre class="report-pre">{{ curReport.content }}</pre>
           <template v-if="curReport.detail">
@@ -1945,26 +1951,27 @@
           <div class="panel-title">军衔声望榜</div>
           <table class="ezfy-rank-table">
             <tr><th>名次</th><th>统帅</th><th>声望</th><th>军衔</th></tr>
-            <tr v-for="r in rankData.prestige" :key="'rp' + r.rank">
-              <td>{{ r.rank }}</td>
-              <td><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.name }}</a></td>
+            <tr v-for="r in rankData.prestige" :key="'rp' + r.rank" :class="rankRowCls(r.rank)">
+              <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+              <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.name }}</a></td>
               <td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
             </tr>
           </table>
-          <div class="panel-title">兵力榜</div>
+          <div class="panel-title">兵力榜 <span class="gray">（每人取兵力最多的那座城）</span></div>
           <table class="ezfy-rank-table">
             <tr><th>名次</th><th>统帅</th><th>城市</th><th>兵力</th></tr>
-            <tr v-for="r in rankData.troops" :key="'rt' + r.rank">
-              <td>{{ r.rank }}</td>
-              <td><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
+            <tr v-for="r in rankData.troops" :key="'rt' + r.rank" :class="rankRowCls(r.rank)">
+              <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+              <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
               <td>{{ r.city_name }}</td><td>{{ r.count }}</td>
             </tr>
           </table>
           <div class="panel-title">军团榜</div>
           <table class="ezfy-rank-table">
             <tr><th>名次</th><th>军团</th><th>人数</th><th>战力</th></tr>
-            <tr v-for="r in rankData.corps" :key="'rc' + r.rank">
-              <td>{{ r.rank }}</td><td>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
+            <tr v-for="r in rankData.corps" :key="'rc' + r.rank" :class="rankRowCls(r.rank)">
+              <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+              <td><span v-if="r.rank === 1" class="rank-crown">♛</span>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
             </tr>
           </table>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -2931,7 +2938,7 @@
         <div class="panel" v-if="officerDetail.officer">
           <div class="panel-title">
             {{ officerDetail.officer.name }}
-            <a href="javascript:;" @click="doRename">[改名]</a>
+            <a href="javascript:;" @click="doOfficerRename">[改名]</a>
             <span class="gray">军官改名卡 {{ officerDetail.officer.rename_card }} 张</span>
           </div>
 
@@ -4512,6 +4519,14 @@ export default {
       if (t === 1) this.loadDynamics()
       else this.loadReports()
     },
+    // ★ 战报详情页(reportview)顶部的分区导航：先回列表页再切到对应分区，
+    //   直接调 switchReportTab 会停在 reportview 页面上。
+    goReportTab (t) {
+      this.stopBattleTimer()
+      this.cur = 'reports'
+      this.syncUrl()
+      this.switchReportTab(t)
+    },
     doCollectAll () {
       api.post('/games/ezfy/wild/collect-all', {}).then(r => {
         if (r.code === 0) {
@@ -4556,6 +4571,13 @@ export default {
       api.get('/games/ezfy/rank').then(r => {
         if (r.code === 0) this.rankData = r.data
       })
+    },
+    // ★ 榜单前三名奖台化：给冠/亚/季军整行上色，超出三名的行不加类
+    rankRowCls (rank) {
+      if (rank === 1) return 'rank-1'
+      if (rank === 2) return 'rank-2'
+      if (rank === 3) return 'rank-3'
+      return ''
     },
     loadBag () {
       return api.get('/games/ezfy/bag').then(r => {
@@ -6174,7 +6196,9 @@ export default {
       })
     },
     // ★ 军官改名（消耗「军官改名卡」，只改玩家自己的军官）
-    async doRename () {
+    //   ⚠️ 方法名不能叫 doRename：城市改名已用该名，对象字面量后定义会覆盖先定义，
+    //   导致城市改名的 [确定] 跑到军官改名逻辑（读 officerDetail 报错）。
+    async doOfficerRename () {
       const o = this.officerDetail.officer
       if (o.is_captive === 1) { this.notify('俘虏不能改名, 请先在军校收编'); return }
       if (o.rename_card <= 0) { this.notify('没有「军官改名卡」，可在商城购买'); return }
@@ -6354,6 +6378,63 @@ body.ezfy-immersive { margin: 0; }
   text-align: center;
   vertical-align: middle;
 }
+/* ★ 排行榜优化（用户要求「榜单太单调、没有追榜动力」）：
+   名次做成奖牌徽章，前三名金/银/铜；冠亚季军整行按金/银/铜着色 + 冠军皇冠；
+   普通行斑马纹 + 悬停。军衔晋升表是静态参照表（无奖牌徽章、无 rank 类），
+   不受这些榜单高亮影响。 */
+.ezfy-page .rank-medal {
+  display: inline-block;
+  min-width: 24px;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: #dedede;
+  color: #666;
+  font-weight: bold;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+.ezfy-page .rank-medal.m1 {                          /* 金 */
+  background: linear-gradient(180deg, #ffe08a, #f2c94c);
+  color: #7a4b00;
+  border-color: #e0b93c;
+  box-shadow: 0 0 6px rgba(242, 201, 76, .8);
+  font-size: 15px;
+  min-width: 26px; height: 26px; line-height: 24px; border-radius: 13px;
+}
+.ezfy-page .rank-medal.m2 {                          /* 银 */
+  background: linear-gradient(180deg, #f2f5f7, #cbd4da);
+  color: #455a64;
+  border-color: #b9c4cb;
+  font-size: 14px;
+}
+.ezfy-page .rank-medal.m3 {                          /* 铜 */
+  background: linear-gradient(180deg, #f2cdab, #e0a370);
+  color: #5d3a1a;
+  border-color: #c88a58;
+  font-size: 14px;
+}
+/* 冠军皇冠 */
+.ezfy-page .rank-crown {
+  display: inline-block;
+  margin-right: 4px;
+  color: #e6a817;
+  font-size: 18px;
+  vertical-align: middle;
+  text-shadow: 0 1px 2px rgba(122, 75, 0, .35);
+}
+.ezfy-page .ezfy-rank-table tr:nth-child(even) td { background: #faf8f2; }
+.ezfy-page .ezfy-rank-table tr:hover td { background: #f0ecdf; }
+/* 冠/亚/季军整行着色（置于悬停/斑马纹之后，确保三者之上仍保持奖牌底色） */
+.ezfy-page .ezfy-rank-table tr.rank-1 td { background: #fdeebb; }
+.ezfy-page .ezfy-rank-table tr.rank-2 td { background: #eef2f5; }
+.ezfy-page .ezfy-rank-table tr.rank-3 td { background: #f6e3d0; }
+.ezfy-page .ezfy-rank-table tr.rank-1 td:first-child,
+.ezfy-page .ezfy-rank-table tr.rank-2 td:first-child,
+.ezfy-page .ezfy-rank-table tr.rank-3 td:first-child { font-weight: bold; }
 /* 学院(acade)页所有表格：数据水平 + 垂直居中（用户要求）*/
 .ezfy-page .ezfy-plain-table th,
 .ezfy-page .ezfy-plain-table td {

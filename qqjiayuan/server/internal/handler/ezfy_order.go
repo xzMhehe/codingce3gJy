@@ -2580,17 +2580,22 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	}
 	b.WriteString("\n")
 
-	// 城防 / 军队分列
+	// 城防 / 军队分列（★ 兵种名用被侦查方的阵营兵种名，与战报口径一致）
 	defText, armyText := "", ""
+	defCamp := h.ensureProfile(target.UserID).Camp
 	for tid, cnt := range h.troopMap(target.ID) {
 		cfg := ezfyCfg.troop(tid)
 		if cfg == nil || cnt <= 0 {
 			continue
 		}
+		name := ezfyCfg.troopName(tid, defCamp)
+		if name == "" {
+			name = cfg.Name
+		}
 		if cfg.Type == 4 {
-			defText += fmt.Sprintf("%s×%d ", cfg.Name, cnt)
+			defText += fmt.Sprintf("%s×%d ", name, cnt)
 		} else {
-			armyText += fmt.Sprintf("%s%d ", cfg.Name, cnt)
+			armyText += fmt.Sprintf("%s%d ", name, cnt)
 		}
 	}
 	b.WriteString("城防数量：" + defText + "\n")

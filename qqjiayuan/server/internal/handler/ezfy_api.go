@@ -1218,20 +1218,39 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
 			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige)})
 	}
-	// 兵力榜(不含城防)
+	// 兵力榜(不含城防)——★ 每个玩家只出现一次，取他兵力最多的那座城
 	var troops []model.EzfyCityTroop
 	h.DB.Where("troop_id < 17").Find(&troops)
 	sumByCity := map[int64]int64{}
 	for _, t := range troops {
 		sumByCity[t.CityId] += t.Count
 	}
+	// 城市 → 归属玩家 / 城市名
+	var cities []model.EzfyCity
+	h.DB.Find(&cities)
+	cityUser := map[int64]int64{}
+	cityName := map[int64]string{}
+	for _, c := range cities {
+		cityUser[int64(c.ID)] = int64(c.UserID)
+		cityName[int64(c.ID)] = c.Name
+	}
+	// 每人取兵力最多的那座城
+	bestCount := map[int64]int64{}
+	bestCity := map[int64]int64{}
+	for cityID, cnt := range sumByCity {
+		uid := cityUser[cityID]
+		if cnt > bestCount[uid] {
+			bestCount[uid] = cnt
+			bestCity[uid] = cityID
+		}
+	}
 	type kv struct {
 		k int64
 		v int64
 	}
 	arr := []kv{}
-	for k, v := range sumByCity {
-		arr = append(arr, kv{k, v})
+	for uid, cnt := range bestCount {
+		arr = append(arr, kv{k: uid, v: cnt})
 	}
 	for i := 0; i < len(arr); i++ {
 		for j := i + 1; j < len(arr); j++ {
@@ -1245,13 +1264,9 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		if i >= 20 {
 			break
 		}
-		var city model.EzfyCity
-		if err := h.DB.First(&city, e.k).Error; err != nil {
-			continue
-		}
-		p := h.ensureProfile(city.UserID)
-		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": city.Name,
-			"role_name": p.Nickname, "user_id": city.UserID, "count": e.v})
+		p := h.ensureProfile(uint(e.k))
+		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": cityName[bestCity[e.k]],
+			"role_name": p.Nickname, "user_id": e.k, "count": e.v})
 	}
 	// 军团榜
 	var corps []model.EzfyCorps
