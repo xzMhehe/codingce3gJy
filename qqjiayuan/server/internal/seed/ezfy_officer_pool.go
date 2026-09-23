@@ -377,6 +377,67 @@ var ezfyOfficerEquipLooseSeeds = []struct {
 	{ID: 3013, Name: "杜工部集", Slot: "名将史册", Dmg: 115, Def: 115, Gold: 6000000, Level: 100},
 }
 
+// ezfyNerfEquipPct 装备百分比加成「按品质压降」：原版单件 110~155%（见装备距离伤害表.xlsx）
+// 太变态，玩家要求压到 100% 以下、按品质 10%~100% 分档（2026-09-23）。
+//
+// 系数分档（参考部分名将及装备属性.xlsx 里原版套装 70%~100% 的品质梯度推算到单件）：
+//
+//	T4(Lv130 顶级) 0.50 | T4(Lv120) 0.42 | T4 其余 0.35 | T3 0.25 | 散件(T2) 0.18
+//
+// 各字段另设上限（全部 <100）：伤害80 防御70 生命60 移动距离40 暴击几率45 暴击伤害85；
+// 压降后最小值不低于 10。种子里新灌的装备与存量迁移（nerfEquipSetPct）共用本函数，口径一致。
+func ezfyNerfEquipPct(field string, v, tier, level int) int {
+	if v <= 0 {
+		return 0
+	}
+	var f float64
+	switch {
+	case tier >= 4 && level >= 130:
+		f = 0.50
+	case tier >= 4 && level >= 120:
+		f = 0.42
+	case tier >= 4:
+		f = 0.35
+	case tier >= 3:
+		f = 0.25
+	default:
+		f = 0.18
+	}
+	capV := 90
+	switch field {
+	case "dmg":
+		capV = 80
+	case "def":
+		capV = 70
+	case "hp":
+		capV = 60
+	case "move":
+		capV = 40
+	case "crit":
+		capV = 45
+	case "crit_dmg":
+		capV = 85
+	}
+	nv := int(float64(v)*f + 0.5)
+	if nv < 10 {
+		nv = 10
+	}
+	if nv > capV {
+		nv = capV
+	}
+	return nv
+}
+
+// ezfySetBonusPct 套装行六项的取值：各件（压降后）之和 ÷ 4，封顶 90（<100）。
+// 三维（军/后/学）是平面数值不算百分比，仍按「各件之和 ÷ 4」。
+func ezfySetBonusPct(sum int) int {
+	v := sum / 4
+	if v > 90 {
+		v = 90
+	}
+	return v
+}
+
 // seedEzfyEquipSetFamily 按「ID 段」幂等灌一套装备配置
 //
 // ★ 用 ID 段做闸门而不是「整表为空」：老库已经有第一批套装了，
@@ -436,17 +497,17 @@ func seedEzfyEquipSets(db *gorm.DB) {
 		pieces := []model.EzfyCfgEquipment{}
 		for _, s := range ezfyOfficerSeriesSeeds {
 			// ★ 套装是**额外**加成（穿齐才生效）：
-			//   - 六项战斗属性：各件之和 ÷ 4（+25%）
-			//   - 三维属性：各件之和 ÷ 4（+25%）
+			//   - 六项战斗属性：各件（百分比已按品质压降，见 ezfyNerfEquipPct）之和 ÷ 4，封顶 90
+			//   - 三维属性：各件之和 ÷ 4（+25%，平面数值不算百分比）
 			//   所以「穿齐整套」的实际总加成 ≈ 各件之和 × 1.25。
 			sum := struct{ dmg, def, hp, mv, cr, cd, mi, lo, le int }{}
 			for _, p := range s.Pieces {
-				sum.dmg += p.Dmg
-				sum.def += p.Def
-				sum.hp += p.Hp
-				sum.mv += p.Move
-				sum.cr += p.Crit
-				sum.cd += p.CritDmg
+				sum.dmg += ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level)
+				sum.def += ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level)
+				sum.hp += ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level)
+				sum.mv += ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level)
+				sum.cr += ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level)
+				sum.cd += ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level)
 				// 三维：每件用系列统一值（件上没单独写就用系列的）
 				mi, lo, le := p.Mi, p.Lo, p.Le
 				if mi == 0 && lo == 0 && le == 0 {
@@ -458,12 +519,13 @@ func seedEzfyEquipSets(db *gorm.DB) {
 			}
 			sets = append(sets, model.EzfyCfgEquipSet{
 				ID: s.ID, Name: s.SetName, Parts: len(s.Pieces), Series: s.Series,
-				Dmg: sum.dmg / 4, Def: sum.def / 4, Hp: sum.hp / 4,
-				Move: sum.mv / 4, Crit: sum.cr / 4, CritDmg: sum.cd / 4,
+				Dmg: ezfySetBonusPct(sum.dmg), Def: ezfySetBonusPct(sum.def), Hp: ezfySetBonusPct(sum.hp),
+				Move: ezfySetBonusPct(sum.mv), Crit: ezfySetBonusPct(sum.cr), CritDmg: ezfySetBonusPct(sum.cd),
 				Military: sum.mi / 4, Logistics: sum.lo / 4, Learning: sum.le / 4,
 				Effect: fmt.Sprintf("穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
 					len(s.Pieces), sum.mi/4, sum.lo/4, sum.le/4,
-					sum.dmg/4, sum.def/4, sum.hp/4, sum.mv/4, sum.cr/4, sum.cd/4),
+					ezfySetBonusPct(sum.dmg), ezfySetBonusPct(sum.def), ezfySetBonusPct(sum.hp),
+					ezfySetBonusPct(sum.mv), ezfySetBonusPct(sum.cr), ezfySetBonusPct(sum.cd)),
 				Des: s.Series + "系列军官装备（11 部位各 1 件）",
 			})
 			for i, p := range s.Pieces {
@@ -483,7 +545,13 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Level: s.Level, Stock: -1, EnhanceMax: 20,
 					// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
 					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
-					Dmg:          p.Dmg, Def: p.Def, Hp: p.Hp, Move: p.Move, Crit: p.Crit, CritDmg: p.CritDmg,
+					// ★ 六项百分比按品质压降（2026-09-23，见 ezfyNerfEquipPct）
+					Dmg:      ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level),
+					Def:      ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level),
+					Hp:       ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level),
+					Move:     ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level),
+					Crit:     ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level),
+					CritDmg:  ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level),
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
 				})
@@ -501,7 +569,13 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
 				// ★ 纯散件同样按加成定价（10~50 钻）
 				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
-				Dmg:          l.Dmg, Def: l.Def, Hp: l.Hp, Move: l.Move, Crit: l.Crit, CritDmg: l.CritDmg,
+				// ★ 六项百分比按品质压降（T2 散件档，见 ezfyNerfEquipPct）
+				Dmg:      ezfyNerfEquipPct("dmg", l.Dmg, 2, l.Level),
+				Def:      ezfyNerfEquipPct("def", l.Def, 2, l.Level),
+				Hp:       ezfyNerfEquipPct("hp", l.Hp, 2, l.Level),
+				Move:     ezfyNerfEquipPct("move", l.Move, 2, l.Level),
+				Crit:     ezfyNerfEquipPct("crit", l.Crit, 2, l.Level),
+				CritDmg:  ezfyNerfEquipPct("crit_dmg", l.CritDmg, 2, l.Level),
 				Military: 20, Logistics: 10, Learning: 10,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
@@ -926,6 +1000,100 @@ func seedEzfySchemes(db *gorm.DB) {
 		rows = append(rows, s)
 	}
 	_ = db.CreateInBatches(rows, 50).Error
+}
+
+// ============ 二·D^、装备百分比压降（存量迁移） ============
+//
+// ★ 2026-09-23 用户反馈「军官套装装备加成太变态」：
+//   - 原版资料（装备距离伤害表.xlsx）里的单件百分比本来就是 110~155%，
+//     整套穿齐后六项全部上千，玩家受不了。
+//   - 要求：所有套装百分比加成压到 100% 以下，按品质 10%~100% 不等。
+//
+// 压降公式见 ezfyNerfEquipPct —— 种子里**新灌**的装备已直接按压降后的值写入，
+// 本函数负责把**老库已存在**的配置行、套装行和玩家已买装备的快照对齐到同一口径。
+//
+// 幂等：压完后不再有 >100% 的字段，条件不再命中；哪一行被改回 >100%，
+// 下次启动会再压一次（正合「全部 ≤100%」的规则）。
+func nerfEquipSetPct(db *gorm.DB) {
+	over := func(d, df, hp, mv, cr, cd int) bool {
+		return d > 100 || df > 100 || hp > 100 || mv > 100 || cr > 100 || cd > 100
+	}
+	// ① 军官装备 11 件套的件（ID 2101~2611）：六项 >100 的按品质压降
+	for _, s := range ezfyOfficerSeriesSeeds {
+		pieceChanged := false
+		for i := range s.Pieces {
+			var row model.EzfyCfgEquipment
+			if err := db.First(&row, s.ID*100+i+1).Error; err != nil {
+				continue
+			}
+			if !over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
+				continue
+			}
+			db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+				"dmg":      ezfyNerfEquipPct("dmg", row.Dmg, s.Tier, s.Level),
+				"def":      ezfyNerfEquipPct("def", row.Def, s.Tier, s.Level),
+				"hp":       ezfyNerfEquipPct("hp", row.Hp, s.Tier, s.Level),
+				"move":     ezfyNerfEquipPct("move", row.Move, s.Tier, s.Level),
+				"crit":     ezfyNerfEquipPct("crit", row.Crit, s.Tier, s.Level),
+				"crit_dmg": ezfyNerfEquipPct("crit_dmg", row.CritDmg, s.Tier, s.Level),
+			})
+			pieceChanged = true
+		}
+		// ③ 套装行（21~26）：件被压过（或行上还有 >100 的旧值）→ 按压降后的各件之和重算
+		var st model.EzfyCfgEquipSet
+		if err := db.First(&st, s.ID).Error; err != nil {
+			continue
+		}
+		if !pieceChanged && !over(st.Dmg, st.Def, st.Hp, st.Move, st.Crit, st.CritDmg) {
+			continue
+		}
+		var d, df, hp, mv, cr, cd, mi, lo, le int
+		for _, p := range s.Pieces {
+			d += ezfyNerfEquipPct("dmg", p.Dmg, s.Tier, s.Level)
+			df += ezfyNerfEquipPct("def", p.Def, s.Tier, s.Level)
+			hp += ezfyNerfEquipPct("hp", p.Hp, s.Tier, s.Level)
+			mv += ezfyNerfEquipPct("move", p.Move, s.Tier, s.Level)
+			cr += ezfyNerfEquipPct("crit", p.Crit, s.Tier, s.Level)
+			cd += ezfyNerfEquipPct("crit_dmg", p.CritDmg, s.Tier, s.Level)
+			m, l, e := p.Mi, p.Lo, p.Le
+			if m == 0 && l == 0 && e == 0 {
+				m, l, e = s.Mi, s.Lo, s.Le
+			}
+			mi += m
+			lo += l
+			le += e
+		}
+		db.Model(&model.EzfyCfgEquipSet{}).Where("id = ?", s.ID).Updates(map[string]interface{}{
+			"dmg": ezfySetBonusPct(d), "def": ezfySetBonusPct(df), "hp": ezfySetBonusPct(hp),
+			"move": ezfySetBonusPct(mv), "crit": ezfySetBonusPct(cr), "crit_dmg": ezfySetBonusPct(cd),
+			"military": mi / 4, "logistics": lo / 4, "learning": le / 4,
+			"effect": fmt.Sprintf("穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
+				len(s.Pieces), mi/4, lo/4, le/4,
+				ezfySetBonusPct(d), ezfySetBonusPct(df), ezfySetBonusPct(hp),
+				ezfySetBonusPct(mv), ezfySetBonusPct(cr), ezfySetBonusPct(cd)),
+		})
+	}
+	// ② 散件（3001+）：T2 档压降
+	for _, l := range ezfyOfficerEquipLooseSeeds {
+		var row model.EzfyCfgEquipment
+		if err := db.First(&row, l.ID).Error; err != nil {
+			continue
+		}
+		if !over(row.Dmg, row.Def, row.Hp, row.Move, row.Crit, row.CritDmg) {
+			continue
+		}
+		db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+			"dmg":      ezfyNerfEquipPct("dmg", row.Dmg, 2, row.Level),
+			"def":      ezfyNerfEquipPct("def", row.Def, 2, row.Level),
+			"hp":       ezfyNerfEquipPct("hp", row.Hp, 2, row.Level),
+			"move":     ezfyNerfEquipPct("move", row.Move, 2, row.Level),
+			"crit":     ezfyNerfEquipPct("crit", row.Crit, 2, row.Level),
+			"crit_dmg": ezfyNerfEquipPct("crit_dmg", row.CritDmg, 2, row.Level),
+		})
+	}
+	// ★ 玩家已买/已穿装备的快照（ezfy_equipment / 军官 equipment JSON）不走启动迁移，
+	//   按用户要求用本地 SQL 脚本处理：tools/fix-equip-pct-20260923.sql。
+	//   脚本只改 ezfy_equipment；再重启一次由 repairEquipSnapshots 重建军官装备 JSON。
 }
 
 // ============ 二·D、装备快照自愈 ============
