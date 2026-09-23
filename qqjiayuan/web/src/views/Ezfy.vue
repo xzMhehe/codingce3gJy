@@ -13,12 +13,13 @@
         <a href="javascript:;" @click="go('home')">首页</a>
       </div>
 
-      <!-- 页面内操作结果（代替 alert 弹窗；原版本来就没有弹窗交互） -->
-      <div class="ezfy-msgs" v-if="msgs.length">
-        <div v-for="m in msgs" :key="m.id" class="ezfy-msg" :class="'ezfy-msg-' + m.type">
-          {{ m.text }}
-          <a href="javascript:;" class="ezfy-msg-close" @click="closeMsg(m.id)">[关闭]</a>
-        </div>
+      <!-- 页面内操作结果（代替 alert 弹窗；原版本来就没有弹窗交互）
+           ★ 用户反馈「提示都堆在页面顶部，看不出点了哪」→ 改为浮现在最近一次点击的附近，
+           不再占一整行置顶。多条目向下轻微错开避免完全重叠。 -->
+      <div v-for="(m, i) in msgs" :key="m.id" class="ezfy-msg" :class="'ezfy-msg-' + m.type"
+           :style="msgStyle(m, i)">
+        {{ m.text }}
+        <a href="javascript:;" class="ezfy-msg-close" @click="closeMsg(m.id)">[关闭]</a>
       </div>
 
       <!-- 页面内确认条（代替 confirm/prompt 弹窗） -->
@@ -322,9 +323,9 @@
           <!-- ===== 军队动态: 所有在外的部队(出征/采集/派遣/侦查/掠夺/运输/增援) ===== -->
           <template v-if="reportTab === 1">
             <div class="old-line">
-              <a href="javascript:;" @click="doCollectAll">一键采集</a>
-              <a href="javascript:;" @click="doHarvestAll">一键收获</a>
-              <a href="javascript:;" @click="doRecallAll">一键召回</a>
+              <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
+              <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
+              <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
             <div class="old-line gray">
               「收获」只把产出装进部队；资源要「召回」并返航到达才会运回城里（受负重限制）。宝物直接进背包。
@@ -722,13 +723,18 @@
       <template v-else-if="cur === 'troops'">
         <div class="panel">
           <div class="panel-title">城内军队</div>
-          <table>
+          <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
+          <table class="ezfy-center-tbl">
             <tr><th>兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
             <tr v-for="t in troopsData.troops" :key="'tv' + t.troop_id">
               <td><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
               <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
-              <!-- ★ 解散：数量由玩家自己输入（用户要求） -->
-              <td><a class="red" href="javascript:;" @click="doDisband(t)">[解散]</a></td>
+              <td>
+                <!-- ★ 训练：快捷训练当前兵种（按住城军队里的每个兵种可直接开练） -->
+                <a href="javascript:;" @click="quickTrain(t)">[训练]</a>
+                <!-- ★ 解散：数量由玩家自己输入（用户要求） -->
+                <a class="red" href="javascript:;" @click="doDisband(t)">[解散]</a>
+              </td>
             </tr>
           </table>
           <div class="old-line" v-if="!troopsData.troops.length">(城内无部队)</div>
@@ -3681,6 +3687,13 @@ export default {
     // 沉浸式卡控①: 游戏内任何 <a href="/..."> 都不允许跳出 /games/ezfy 回到家园站点
     // (捕获阶段拦截, 只拦站内绝对路径链接)
     document.addEventListener('click', this.blockEscape, true)
+    // ★ 记录最近一次点击位置（页面内导航、按钮、格子的鼠标落点）：
+    //   操作结果的提示要浮现在「刚才点的那个地方」附近，而不是固定在页面顶部。
+    //   捕获阶段监听，任意元素被点到都能拿到坐标。
+    this._capClick = (e) => {
+      this._lastClick = { x: e.clientX || 0, y: e.clientY || 0 }
+    }
+    document.addEventListener('click', this._capClick, true)
     // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏上一页(与幻想西游 Xiyou.vue 一致)
     history.pushState({ __ezfyGuard: true }, '')
     this._onBack = () => {
@@ -3708,6 +3721,7 @@ export default {
   beforeDestroy () {
     document.body.classList.remove('ezfy-immersive')
     document.removeEventListener('click', this.blockEscape, true)
+    if (this._capClick) document.removeEventListener('click', this._capClick, true)
     if (this._onBack) window.removeEventListener('popstate', this._onBack)
     if (this.timer) clearInterval(this.timer)
     this.stopBattleTimer()
@@ -4910,6 +4924,15 @@ export default {
       this.trainSplit = false
       this.go('trainpre')
     },
+    // ★ 军队总览「城内军队」表的 [训练] 快捷入口（用户要求）：
+    //   城内军队行只带 troop_id/name/type/count，训练需要完整兵种配置（成本/耗时），
+    //   所以按 troop_id 去 cfgs 里找完整配置，找不到不允许（防御兵种走「建造」）。
+    quickTrain (t) {
+      const cfg = (this.troopsData.cfgs || []).find(c => c.id === t.troop_id)
+      if (!cfg) { this.notify('该兵种配置不存在, 无法训练', 'error'); return }
+      if (cfg.type === 4) { this.notify('防御兵种走「城防」页建造', 'error'); return }
+      this.openTrainPre(cfg, 'troop')
+    },
     doTrainPre () {
       if (!this.trainSel) return
       const n = parseInt(this.trainCount) || 0
@@ -5681,10 +5704,32 @@ export default {
       if (!t) return
       this._msgSeq = (this._msgSeq || 0) + 1
       const id = this._msgSeq
-      this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
+      // ★ 提示浮现位置 = 最近一次点击的屏幕坐标（点哪提示就贴着哪出现）。
+      //   还没有任何点击时（如页面刚加载的回调）兜底放到页面顶部居中，别挡操作。
+      const pos = this._lastClick || { x: null, y: null }
+      this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t), x: pos.x, y: pos.y })
       if (this.msgs.length > 6) this.msgs.shift()
       // ★ 用户要求：不需要玩家确定的提示 3 秒后自动消失（也可点 [关闭] 手动收起）
       setTimeout(() => this.closeMsg(id), 3000)
+    },
+    // 提示条样式：fixed 定位在点击位置附近（固定定位用视口坐标，正好对上 clientX/Y）。
+    // 多条时按索引向下轻微错开；靠右/靠下时向内收敛，避免超出视口被切掉。
+    msgStyle (m, i) {
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const w = Math.min(320, vw - 16)
+      const step = 22
+      let left, top
+      if (m.x == null || m.y == null) {
+        // 无点击记录：顶部水平居中
+        left = Math.round((vw - w) / 2)
+        top = 8
+      } else {
+        left = Math.min(m.x + 10, vw - w - 8)
+        top = Math.min(m.y + 14 + i * step, vh - 60)
+      }
+      return { position: 'fixed', left: left + 'px', top: top + 'px',
+        maxWidth: w + 'px', zIndex: 9999, boxShadow: '0 2px 8px rgba(0,0,0,.25)' }
     },
     guessMsgType (t) {
       if (/失败|不足|错误|不能|无法|没有|请先|需要/.test(t)) return 'error'
@@ -6159,21 +6204,15 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-tgt-name { font-weight: bold; color: #2f4156; margin-bottom: 2px; }
 .ezfy-page .ezfy-tgt-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
 .ezfy-page .ezfy-tgt-lab { color: #666; min-width: 56px; display: inline-block; }
-/* 页面内消息区（替代 alert 弹窗） */
-.ezfy-page .ezfy-msgs { margin: 4px 0 2px; }
-/* ★ 第九轮：用户端通用分页条（商城等列表页） */
-.ezfy-page .ezfy-pager { margin: 6px 0 2px; }
-.ezfy-page .ezfy-pager a { margin-right: 8px; }
-.ezfy-page .ezfy-pager a.disabled { color: #bbb; text-decoration: none; cursor: default; }
-.ezfy-page .ezfy-pager span { margin-right: 8px; }
+/* 页面内消息（替代 alert 弹窗）：现在由 msgStyle 固定定位在点击点附近 */
 .ezfy-page .ezfy-msg {
-  padding: 4px 6px; margin: 3px 0; border-radius: 3px;
+  padding: 4px 8px; border-radius: 3px;
   font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
 }
+
 .ezfy-page .ezfy-msg-ok { border-left-color: #27763c; background: #eef7f0; color: #1d5c2e; }
 .ezfy-page .ezfy-msg-error { border-left-color: #c0392b; background: #fdeeec; color: #a02a1e; }
 .ezfy-page .ezfy-msg-info { border-left-color: #2f6f9f; background: #eef4fa; color: #235b85; }
-.ezfy-page .ezfy-msg-close { margin-left: 6px; color: #888; }
 /* 页面内确认条（替代 confirm / prompt 弹窗） */
 .ezfy-page .ezfy-ask {
   margin: 6px 0; padding: 8px; border: 1px solid #d8c890;
@@ -6319,7 +6358,7 @@ body.ezfy-immersive { margin: 0; }
    上方那 4px 额外留白已由 .top-nav 去掉底部 padding 解决（见上），
    这里只需给下方补 2px，让公告行与上一行、下一行的留白相等。
    注意: 用 margin-bottom 而不是「抵消上方」的负 margin —— 因为导航和公告行之间还可能插入
-   .ezfy-msgs / .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
+   .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
 .ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
@@ -6342,6 +6381,14 @@ body.ezfy-immersive { margin: 0; }
   vertical-align: top;
   padding: 2px 10px 2px 0;
 }
+/* ★ 军队总览「城内军队」表：数据左右居中 + 垂直居中（用户要求） */
+.ezfy-page table.ezfy-center-tbl th,
+.ezfy-page table.ezfy-center-tbl td {
+  text-align: center;
+  vertical-align: middle;
+}
+.ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
+.ezfy-page table.ezfy-center-tbl { margin: 0 auto; }
 .ezfy-page table th {
   color: #2f4156;
   font-weight: bold;
