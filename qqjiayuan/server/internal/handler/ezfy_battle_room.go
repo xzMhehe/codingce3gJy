@@ -249,6 +249,14 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		return "兵种" + strconv.Itoa(id)
 	}
 
+	// ★ 守方**还活着**的兵种(剩余>0)：目标已打光(剩余0)的兵种不算，页面自动改显「最近目标」。
+	aliveDef := map[int]bool{}
+	for _, du := range snap.Defenders {
+		if du.Count > 0 {
+			aliveDef[du.TroopId] = true
+		}
+	}
+
 	units := func(list []ezfyBattleUnitSnap, isAtk bool) []gin.H {
 		out := []gin.H{}
 		for _, u := range list {
@@ -257,6 +265,13 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 			if isAtk {
 				cmd = ezfyAtkCmdOf(cmds, u.TroopId)
 				tgt = tgtOf(u.TroopId)
+				// ★ 2026-09-23 修复「目标剩余0 不自动切换」：
+				//   引擎里优先目标没了会自动打最近（ezfyPickTarget ②），但页面把存的目标原样展示，
+				//   玩家就会看到目标已 0 却还指着一个残兵。这里把已经打光(剩余0)的目标
+				//   改成显示「最近目标」，和引擎的实战行为一致。
+				if tgt != 0 && !aliveDef[tgt] {
+					tgt = 0
+				}
 			}
 			// ★ 攻方兵种名展示玩家**自己阵营**的叫法（2026-09-23 用户要求），
 			//   同盟国/轴心国各自的兵种名统一在这里按攻方阵营解析。
