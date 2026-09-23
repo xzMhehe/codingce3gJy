@@ -248,6 +248,18 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
 
+		// 训练一键加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金；0 / NULL 无意义 → 回落 1）
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 1 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
+
+		// 伤兵恢复黄金折扣率（默认 1 = 原价；0 / NULL 无意义 → 回落 1）
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_heal_rate") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_heal_rate double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 1 WHERE wound_heal_rate IS NULL OR wound_heal_rate <= 0")
+
 		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
 		//   troop_max 单城兵力上限（默认 10 亿）+ wound_expire_days 伤兵存活天数（默认 5）。
 		//   两个值 0 都无意义 → 回落默认值，所以用 `IS NULL OR <= 0` 回填。

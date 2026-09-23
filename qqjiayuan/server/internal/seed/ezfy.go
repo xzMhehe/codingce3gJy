@@ -316,7 +316,7 @@ func seedEzfyMoveItems(db *gorm.DB) {
 func seedEzfyNotices(db *gorm.DB) {
 	rows := []model.EzfyNotice{
 		{UserId: 0, IsTop: 0, Title: "新手提示",
-			Content: "进入游戏自动获得主城(市政厅/民居/农田各1级)。先用黄金召集人口，再建资源建筑。造兵需要军工厂，研究科技需要科研中心。市政厅等级决定可占领野地数量上限。"},
+			Content: "进入游戏自动获得主城(市政厅/民居/农田各1级)。先用粮食召集人口，再建资源建筑。造兵需要军工厂，研究科技需要科研中心。市政厅等级决定可占领野地数量上限。"},
 	}
 	for _, n := range rows {
 		var count int64

@@ -25,7 +25,7 @@ const (
 	ezfyFactoryBuildingID = 14 // 军工厂（★ 不限数量，只受军事区建筑上限约束）
 	// ★ 建筑数量上限（军事区/资源区各 33、民居 10）已迁到 ezfy_cfg_limit 表，
 	//   管理端「二战风云 → 建筑上限配置」可维护，见 ezfyLimit()。
-	ezfyConveneGoldCost   = 100000                 // 召集人口消耗黄金
+	ezfyConveneFoodCost   = 100000                 // 召集人口消耗粮食
 	ezfyConvenePopGain    = 100000                 // 召集获得人口
 	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
 	ezfyOilDivGrid        = 300                    // 出征耗油: 每格耗油 = 总兵力/300
@@ -1496,11 +1496,12 @@ func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
 
 // ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
 //
-//	= ceil(兵种总造价 / ezfy_cfg_limit.wound_heal_divisor)，最低 1 黄金。
+//	= ceil(兵种总造价 / ezfy_cfg_limit.wound_heal_divisor) × 折扣率，最低 1 黄金。
 //
 // ★ 用户规则：「伤兵不参与消耗粮食、恢复伤兵需要黄金」——
 // 伤兵在营里不耗粮（它们不在 ezfy_city_troop 里，calcResource 的耗粮只算在编部队），
 // 但恢复出厂要花钱。用「总造价 / 系数」而不是固定值，是为了让高级兵种恢复更贵。
+// ★ 2026-09-23：再乘管理端「伤兵恢复黄金折扣率」(wound_heal_rate)，节假日调低 = 恢复便宜。
 func ezfyWoundHealGoldPer(troopId int) int64 {
 	t := ezfyCfg.troop(troopId)
 	if t == nil {
@@ -1512,6 +1513,7 @@ func ezfyWoundHealGoldPer(troopId int) int64 {
 		d = 1
 	}
 	g := (total + d - 1) / d
+	g = int64(float64(g)*ezfyWoundHealRate() + 0.5)
 	if g < 1 {
 		g = 1
 	}
@@ -2043,7 +2045,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		return fmt.Sprintf("使用成功: %s 重修完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n"+
 			"退回可用属性点 +%d（当前 %d 点，去军官详情分配）\n（技能已清空，等级与经验保留）",
 			o.Name, o.Military, bm, o.Logistics, bl, o.Learning, be, refund, free)
-	case 19: // 军官升星卡：星级 +1，三维各 +N（概率/加多少/上限都走管理端配置）
+	case 19: // 星级徽章：按固定概率升 1 星，三维各 +N（概率/加多少/上限都走管理端配置）
 		if !ezfyStarUpOn() {
 			return "升星功能已关闭"
 		}
@@ -2051,11 +2053,12 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if o == nil {
 			return "军官不存在"
 		}
-		msg, ok := h.officerStarUp(city, officerId)
-		// ★ 失败时按配置决定退不退卡（keep=1 则本次不消耗）
-		if ok || !ezfyStarKeepOnFail() {
-			h.consumeItem(uid, cfgId)
+		// ★ 简化后：无论成功失败都消耗 1 枚徽章；已达上限则提前拦住，不白白扣卡
+		if o.Star >= ezfyStarMax() {
+			return fmt.Sprintf("星级已达上限(%d星)", ezfyStarMax())
 		}
+		msg, ok := h.officerStarUp(city, officerId)
+		h.consumeItem(uid, cfgId)
 		if !ok {
 			return msg
 		}
@@ -2706,7 +2709,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "税率已调整"})
 }
 
-// Convene 召集人口（黄金召集不受民居上限限制）
+// Convene 召集人口（粮食召集不受民居上限限制）
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -2722,11 +2725,11 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		return
 	}
 	h.calcResource(city)
-	if city.Gold < ezfyConveneGoldCost {
-		resp.ParamError(c, fmt.Sprintf("黄金不足, 召集10万人口需要%d黄金", ezfyConveneGoldCost))
+	if city.Food < ezfyConveneFoodCost {
+		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集10万人口需要%d粮食", ezfyConveneFoodCost))
 		return
 	}
-	city.Gold -= ezfyConveneGoldCost
+	city.Food -= ezfyConveneFoodCost
 	city.Pop += ezfyConvenePopGain
 	h.saveCityRes(city)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("pop", city.Pop)

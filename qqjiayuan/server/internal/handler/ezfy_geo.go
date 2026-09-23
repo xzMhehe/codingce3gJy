@@ -598,6 +598,17 @@ func ezfyWoundHealDivisorCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.WoundHealDivisor, ezfyWoundHealDivisorDef)
 }
 
+// ezfyWoundHealRate 伤兵恢复黄金折扣率（默认 1 = 原价）。
+//
+// ★ 2026-09-23 用户要求：伤兵恢复黄金也有「折扣率数」，放管理端「二战系统配置」配，
+//   节假日调低 = 恢复便宜。0 无意义 → 回落 1。
+func ezfyWoundHealRate() float64 {
+	if v := ezfyCfg.limit.WoundHealRate; v > 0 {
+		return v
+	}
+	return 1
+}
+
 // ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 9999）
 //
 // ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」。
@@ -635,22 +646,20 @@ func ezfyMarchCapOn() bool {
 	return ezfyCfg.limit.MarchCapOn != 0
 }
 
-// ============ 军官升星配置（2026-09-22 用户要求）============
+// ============ 军官升星配置（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
 
 const (
-	// ★ 2026-09-23 用户要求「星级徽章每枚固定 20% 概率升 1 星」：
-	//   基础成功率 20%、每高 1 星递减 0（即固定 20%），下限 20。
-	ezfyStarChanceDef     = 20 // 基础成功率%
-	ezfyStarChanceStepDef = 0  // 每高 1 星成功率 -N%
-	ezfyStarChanceMinDef  = 20 // 成功率下限%
-	ezfyStarAttrGainDef   = 10 // 每升 1 星三维各 +N
+	// ★ 2026-09-23 用户要求「军官升星做得太复杂，优化简约点」：
+	//   去掉概率开关 / 每高 1 星递减 / 成功率下限 / 失败保留徽章四个配置，
+	//   只留「功能开关 + 固定成功率 + 每星加成 + 星级上限」。
+	//   规则：每次升星消耗 1 枚星级徽章，按固定概率判定，失败星级不变（徽章照扣）。
+	ezfyStarChanceDef   = 20 // 升星成功率%（固定值）
+	ezfyStarAttrGainDef = 10 // 每升 1 星三维各 +N
 	// ★ 用户规则「军官最多 5 星」→ 星级上限默认 5
 	//   （军官池里的星级本来就只发 1~5 星，升星也不该超过 5）
 	ezfyStarMaxDef = 5
-	// 三个开关的默认值（1 = 开 / 0 = 关）
-	ezfyStarUpDef       = 1 // 升星功能：默认开
-	ezfyStarChanceOnDef = 1 // 按概率：默认开
-	ezfyStarKeepDef     = 0 // 失败保留升星卡：默认不保留（扣卡）
+	// 升星功能开关默认值（1 = 开 / 0 = 关）
+	ezfyStarUpDef = 1
 )
 
 // ezfyStarUpOn 升星功能是否开启（关 = 升星卡不能用）
@@ -661,57 +670,35 @@ func ezfyStarUpOn() bool {
 	return ezfyCfg.limit.OfficerStarUpOn != 0
 }
 
-// ezfyStarChanceOn 是否按概率升星（关 = 必成功，方便先放开玩）
-func ezfyStarChanceOn() bool {
-	if !ezfyCfg.ready() {
-		return true
-	}
-	return ezfyCfg.limit.OfficerStarChanceOn != 0
-}
-
-// ezfyStarKeepOnFail 升星失败时是否保留升星卡（默认 0 = 扣掉）
-func ezfyStarKeepOnFail() bool {
-	if !ezfyCfg.ready() {
-		return false
-	}
-	return ezfyCfg.limit.OfficerStarKeepOnFail != 0
-}
-
 func ezfyStarChanceBase() int { return ezfyLimitOr(ezfyCfg.limit.OfficerStarChance, ezfyStarChanceDef) }
-func ezfyStarChanceStep() int {
-	return ezfyLimitOr(ezfyCfg.limit.OfficerStarChanceStep, ezfyStarChanceStepDef)
-}
-func ezfyStarChanceMin() int {
-	return ezfyLimitOr(ezfyCfg.limit.OfficerStarChanceMin, ezfyStarChanceMinDef)
-}
 func ezfyStarAttrGain() int {
 	return ezfyLimitOr(ezfyCfg.limit.OfficerStarAttrGain, ezfyStarAttrGainDef)
 }
 func ezfyStarMax() int { return ezfyLimitOr(ezfyCfg.limit.OfficerStarMax, ezfyStarMaxDef) }
 
-// ezfyStarSuccessRate 当前星级下的升星成功率（%）
-//
-// 基础值 - (当前星级-1) × 递减，夹在 [下限, 100] 之间。
-// 概率开关关掉时恒为 100（必成功）。
-func ezfyStarSuccessRate(star int) int {
-	if !ezfyStarChanceOn() {
-		return 100
-	}
-	if star < 1 {
-		star = 1
-	}
-	rate := ezfyStarChanceBase() - (star-1)*ezfyStarChanceStep()
-	min := ezfyStarChanceMin()
-	if min < 1 {
-		min = 1
-	}
-	if rate < min {
-		rate = min
+// ezfyStarSuccessRate 升星成功率（%）：固定值，不再有按星级递减/下限那一套。
+func ezfyStarSuccessRate() int {
+	rate := ezfyStarChanceBase()
+	if rate < 1 {
+		rate = 1
 	}
 	if rate > 100 {
 		rate = 100
 	}
 	return rate
+}
+
+// ============ 训练一键加速黄金倍率 ============
+
+// ezfySpeedTrainRate 训练一键加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金的原价）。
+//
+// ★ 2026-09-23 用户要求：黄金消耗太多，价格倍率放管理端「二战系统配置」配，
+//   节假日想便宜点就把倍率调低（如 0.5 = 半价）。0 无意义 → 回落 1。
+func ezfySpeedTrainRate() float64 {
+	if v := ezfyCfg.limit.SpeedTrainRate; v > 0 {
+		return v
+	}
+	return 1
 }
 
 // ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
@@ -955,6 +942,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		WildTroopMult: ezfyWildMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		SpeedTrainRate: 1, WoundHealRate: 1,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 10 亿 / 5 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	var lim model.EzfyCfgLimit

@@ -5,10 +5,7 @@
         <span>二战系统配置</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
-      <!-- ★ 用户要求「菜单名改成系统配置，并且把这个页面的解释去掉，哪个主流系统有这么多解释」
-           → 只留「名称 + 控件」，不再写「默认 N」「填 0 表示…」这类长说明。
-           值的语义如果确实不直观（如 0 = 不限），靠控件自身范围/开关文案表达。 -->
-      <el-form label-width="150px" size="small" style="max-width:620px">
+      <el-form label-width="180px" size="small" style="max-width:620px">
         <el-divider content-position="left">建筑数量上限</el-divider>
         <el-form-item label="军事区数量上限">
           <el-input-number v-model.number="form.military_max" :min="1" :max="999" controls-position="right" style="width:180px" />
@@ -21,13 +18,11 @@
         </el-form-item>
         <el-form-item label="军工厂数量上限">
           <el-input-number v-model.number="form.factory_max" :min="0" :max="999" controls-position="right" style="width:180px" />
-          <span class="td-sub">0 = 不限</span>
         </el-form-item>
 
         <el-divider content-position="left">其他上限</el-divider>
         <el-form-item label="首页公告展示条数">
           <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
-          <span class="td-sub">0 = 首页不展示</span>
         </el-form-item>
         <el-form-item label="出征集结令单次上限">
           <el-input-number v-model.number="form.gather_max_per_order" :min="1" controls-position="right" style="width:180px" />
@@ -35,14 +30,11 @@
         <el-form-item label="商城单次购买上限">
           <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
         </el-form-item>
-        <!-- ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数 -->
         <el-form-item label="单城兵力上限">
           <el-input-number v-model.number="form.troop_max" :min="1" controls-position="right" style="width:180px" />
-          <span class="td-sub">超过则无法训练 / 恢复伤兵</span>
         </el-form-item>
         <el-form-item label="伤兵存活天数">
           <el-input-number v-model.number="form.wound_expire_days" :min="1" :max="3650" controls-position="right" style="width:180px" />
-          <span class="td-sub">天，超时未恢复自动消失</span>
         </el-form-item>
 
         <el-divider content-position="left">战斗 / 经济数值</el-divider>
@@ -54,25 +46,26 @@
         </el-form-item>
         <el-form-item label="军官工资系数">
           <el-input-number v-model.number="form.officer_salary_per_level" :min="1" controls-position="right" style="width:180px" />
-          <span class="td-sub">黄金 / 每级 / 每小时</span>
         </el-form-item>
         <el-form-item label="伤兵恢复系数">
           <el-input-number v-model.number="form.wound_heal_divisor" :min="1" controls-position="right" style="width:180px" />
         </el-form-item>
+        <el-form-item label="伤兵恢复黄金折扣率">
+          <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+        </el-form-item>
         <el-form-item label="野地兵力倍数">
-          <!-- ★ 用户要求「没有上限，现在是 100」→ 去掉 :max（填多少就是多少，只挡 <= 0） -->
           <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
-          <span class="td-sub">野地 / 海野 / 寇城守军兵力倍数</span>
+        </el-form-item>
+        <el-form-item label="训练加速黄金倍率">
+          <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
         </el-form-item>
 
         <el-divider content-position="left">玩法开关</el-divider>
         <el-form-item label="宣战功能">
           <el-switch v-model="form.war_require_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-          <span class="td-sub">开 = 掠夺/征服需先宣战；关 = 直接可打</span>
         </el-form-item>
         <el-form-item label="出征上限">
           <el-switch v-model="form.march_cap_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-          <span class="td-sub">关 = 出征不限兵力</span>
         </el-form-item>
         <el-form-item label="征兵消耗资源">
           <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
@@ -87,31 +80,12 @@
         <el-divider content-position="left">军官升星</el-divider>
         <el-form-item label="升星功能">
           <el-switch v-model="form.officer_star_up_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-          <span class="td-sub">关 = 升星卡不能用</span>
         </el-form-item>
-        <el-form-item label="升星按概率">
-          <el-switch v-model="form.officer_star_chance_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-          <span class="td-sub">关 = 必定成功</span>
-        </el-form-item>
-        <el-form-item label="失败保留升星卡">
-          <el-switch v-model="form.officer_star_keep_on_fail" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
-          <span class="td-sub">否 = 失败也扣 1 张</span>
-        </el-form-item>
-        <el-form-item label="基础成功率">
+        <el-form-item label="升星成功率(%)">
           <el-input-number v-model.number="form.officer_star_chance" :min="1" :max="100" controls-position="right" style="width:180px" />
-          <span class="td-sub">%</span>
-        </el-form-item>
-        <el-form-item label="每高 1 星递减">
-          <el-input-number v-model.number="form.officer_star_chance_step" :min="0" :max="100" controls-position="right" style="width:180px" />
-          <span class="td-sub">%</span>
-        </el-form-item>
-        <el-form-item label="成功率下限">
-          <el-input-number v-model.number="form.officer_star_chance_min" :min="1" :max="100" controls-position="right" style="width:180px" />
-          <span class="td-sub">%</span>
         </el-form-item>
         <el-form-item label="每星三维加成">
           <el-input-number v-model.number="form.officer_star_attr_gain" :min="1" controls-position="right" style="width:180px" />
-          <span class="td-sub">军事 / 后勤 / 学识 各 +N</span>
         </el-form-item>
         <el-form-item label="军官星级上限">
           <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
@@ -139,12 +113,11 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
-        wild_troop_mult: 1,
+        wild_troop_mult: 1, speed_train_rate: 1, wound_heal_rate: 1,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
-        // ★ 军官升星（开关 + 数值）
-        officer_star_up_on: 1, officer_star_chance_on: 1, officer_star_keep_on_fail: 0,
-        officer_star_chance: 80, officer_star_chance_step: 5, officer_star_chance_min: 20,
-        officer_star_attr_gain: 10, officer_star_max: 10
+        officer_star_up_on: 1,
+        officer_star_chance: 20,
+        officer_star_attr_gain: 10, officer_star_max: 5
       }
     }
   },
@@ -153,9 +126,7 @@ export default {
     load () {
       api.get('/admin/ezfy-build-limit').then(r => {
         if (r.code === 0) {
-          // 0 / null 一律回落默认值（这些值 0 都无意义）
           const pos = (v, def) => (v === undefined || v === null || v <= 0) ? def : v
-          // ★ 开关：0 是合法值（关），**不能**走 pos —— 只有 null/undefined 才算没配过，默认开
           const sw = (v) => (v === undefined || v === null) ? 1 : (Number(v) === 0 ? 0 : 1)
           this.form = {
             military_max: r.data.military_max,
@@ -166,7 +137,6 @@ export default {
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),
             mall_buy_max: pos(r.data.mall_buy_max, 9999),
-            // ★ 2026-09-23：兵力上限 / 伤兵存活天数（0 无意义 → 回落默认）
             troop_max: pos(r.data.troop_max, 1000000000),
             wound_expire_days: pos(r.data.wound_expire_days, 5),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
@@ -174,21 +144,17 @@ export default {
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
+            speed_train_rate: pos(Number(r.data.speed_train_rate), 1),
+            wound_heal_rate: pos(Number(r.data.wound_heal_rate), 1),
             recruit_cost_on: sw(r.data.recruit_cost_on),
             food_upkeep_on: sw(r.data.food_upkeep_on),
             march_oil_on: sw(r.data.march_oil_on),
             war_require_on: sw(r.data.war_require_on),
             march_cap_on: sw(r.data.march_cap_on),
-            // ★ 军官升星
             officer_star_up_on: sw(r.data.officer_star_up_on),
-            officer_star_chance_on: sw(r.data.officer_star_chance_on),
-            officer_star_keep_on_fail: sw(r.data.officer_star_keep_on_fail),
-            officer_star_chance: pos(r.data.officer_star_chance, 80),
-            officer_star_chance_step: (r.data.officer_star_chance_step === undefined ||
-              r.data.officer_star_chance_step === null) ? 5 : r.data.officer_star_chance_step,
-            officer_star_chance_min: pos(r.data.officer_star_chance_min, 20),
+            officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
-            officer_star_max: pos(r.data.officer_star_max, 10)
+            officer_star_max: pos(r.data.officer_star_max, 5)
           }
         } else this.$message.error(r.msg)
       })
@@ -197,7 +163,6 @@ export default {
       this.saving = true
       api.put('/admin/ezfy-build-limit', this.form).then(r => {
         this.saving = false
-        // ★ resp.OK 现在会把 data.msg 提到顶层，优先读顶层
         if (r.code === 0) this.$message.success(r.msg || (r.data && r.data.msg) || '已保存')
         else this.$message.error(r.msg)
       })

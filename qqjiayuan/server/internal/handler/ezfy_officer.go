@@ -1733,7 +1733,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		// ★ 用户规则「军官最高等级 150」：前端据此显示「满级」
 		"max_level": ezfyOfficerMaxLevel,
 		// ★ 升星配置（前端据此显示星级上限/成功率/每星加点）
-		"star_up_on": ezfyStarUpOn(), "star_chance_on": ezfyStarChanceOn(),
+		"star_up_on": ezfyStarUpOn(), "star_rate": ezfyStarSuccessRate(),
 		"star_max": ezfyStarMax(), "star_attr_gain": ezfyStarAttrGain(),
 		"star_card": h.itemCount(uid, ezfyStarItemID),
 	})
@@ -1821,9 +1821,9 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"set_progress": h.officerSetProgressView(o),
 			// ★ 装备六项战斗加成（直接进战斗计算）
 			"battle": h.officerBattleView(o),
-			// ★ 升星：星级上限 / 当前成功率 / 每星加多少 / 持有升星卡数
+			// ★ 升星：星级上限 / 固定成功率 / 每星加多少 / 持有升星卡数
 			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
-			"star_chance_on": ezfyStarChanceOn(), "star_rate": ezfyStarSuccessRate(o.Star),
+			"star_rate": ezfyStarSuccessRate(),
 			"star_attr_gain": ezfyStarAttrGain(), "star_card": h.itemCount(uid, ezfyStarItemID),
 			// ★ 军官改名卡 / 军官技能书 持有数（前端改名按钮与可学技能表头展示）
 			"rename_card": h.itemCount(uid, ezfyOfficerRenameCardItemID),
@@ -2003,13 +2003,11 @@ func (h *EzfyHandler) OfficerAttrAll(c *gin.Context) {
 	h.done(c, h.officerAddAttr(&city, id, req.Attr, o.FreePoints), "加点成功")
 }
 
-// officerStarUp 执行一次升星判定（**不扣升星卡**，扣卡由调用方按「失败是否保留」决定）
+// officerStarUp 执行一次升星判定（**不扣升星卡**，扣卡由调用方决定）
 //
-// ★ 2026-09-22 用户要求：「玩家自己的军官可以用升星卡升级星级，属性增加；
-// 概率的最好也能有个开关控制，属性加多少也要可配。」
-//
-//   - 概率开关 `officer_star_chance_on`：关 = 必成功
-//   - 成功率 = 基础 − (当前星级−1)×递减，夹在 [下限, 100]
+// ★ 2026-09-23 用户要求「军官升星做得太复杂，优化简约点」→ 简化后规则：
+//   - 成功率 = 管理端配置的固定值（officer_star_chance，默认 20%），不再有按星级递减/下限
+//   - 失败星级不变、消耗 1 枚星级徽章（调用方统一扣）
 //   - 每升 1 星三维各 +`officer_star_attr_gain`（**base_* 一起加**，重修书洗点不会把它洗掉）
 //   - 星级上限 `officer_star_max`
 //
@@ -2029,12 +2027,9 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 	if o.Star >= max {
 		return fmt.Sprintf("星级已达上限(%d星)", max), false
 	}
-	rate := ezfyStarSuccessRate(o.Star)
+	rate := ezfyStarSuccessRate()
 	if rand.Intn(100) >= rate {
-		if ezfyStarChanceOn() {
-			return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
-		}
-		return "升星失败", false
+		return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
 	}
 	gain := ezfyStarAttrGain()
 	bm, bl, be := officerBaseAttr(o)
@@ -2080,11 +2075,13 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		h.fail(c, "没有「星级徽章」，可在商城购买或开宝箱获得")
 		return
 	}
-	msg, ok := h.officerStarUp(&city, id)
-	// ★ 失败时按配置决定要不要退卡（keep=1 则本次不消耗）
-	if ok || !ezfyStarKeepOnFail() {
-		h.consumeItem(uid, ezfyStarItemID)
+	// ★ 简化后：无论成功失败都消耗 1 枚徽章；已达上限则提前拦住，不白白扣卡
+	if o.Star >= ezfyStarMax() {
+		h.fail(c, fmt.Sprintf("星级已达上限(%d星)", ezfyStarMax()))
+		return
 	}
+	msg, ok := h.officerStarUp(&city, id)
+	h.consumeItem(uid, ezfyStarItemID)
 	if !ok {
 		h.fail(c, msg)
 		return

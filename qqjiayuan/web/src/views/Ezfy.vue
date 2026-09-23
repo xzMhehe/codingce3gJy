@@ -1345,7 +1345,7 @@
         <div class="panel">
           <div class="old-line">
             第 {{ battleData.round }}/{{ battleData.max_round }} 回合
-            <span v-if="battleData.done" class="red">（战斗已结束）</span>
+            <span v-if="battleData.done" class="red">（战斗已结束<span v-if="battleData.draw"> · 40回合平局</span>）</span>
             <span v-else-if="battleData.phase === 'cmd'" class="green">（指令期，可下达命令）</span>
             <span v-else class="red">（已锁定，等待结算）</span>
           </div>
@@ -1574,8 +1574,8 @@
         <div class="panel">
           <div class="panel-title">召集人口</div>
           当前人口: {{ city.pop }} / 民居容纳: {{ city.pop_max }}<br/>
-          花费 10万{{ resNames.gold }} 召集 10万人口(不受民居容纳上限限制, 可突破上限)<br/>
-          <div class="old-line">{{ resNames.gold }}: {{ city.gold }}</div>
+          花费 10万{{ resNames.food }} 召集 10万人口(不受民居容纳上限限制, 可突破上限)<br/>
+          <div class="old-line">{{ resNames.food }}: {{ city.food }}</div>
           <button @click="doConvene">[召集]</button>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -3047,7 +3047,7 @@
                     @click="doExile">[流放]</button>
             <button v-if="officerDetail.officer.star_up_on &&
                           officerDetail.officer.star < officerDetail.officer.star_max"
-                    @click="doStarUp">[升星{{ officerDetail.officer.star_chance_on ? (' ' + officerDetail.officer.star_rate + '%') : '' }}]</button>
+                    @click="doStarUp">[升星 {{ officerDetail.officer.star_rate }}%]</button>
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
             <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
@@ -6226,14 +6226,13 @@ export default {
         this.loadOfficerDetail(id)
       })
     },
-    // ★ 升星（消耗「星级徽章」）
+    // ★ 升星（消耗「星级徽章」；成功率/每星加点/上限均可后台配置）
     async doStarUp () {
       const o = this.officerDetail.officer
       if (o.star >= o.star_max) { this.notify('星级已达上限'); return }
       if (o.star_card <= 0) { this.notify('没有「星级徽章」，可在商城购买或开宝箱获得'); return }
-      const rate = o.star_chance_on ? ('成功率 ' + o.star_rate + '%') : '必成功'
-      if (!await this.ask('使用 1 枚「星级徽章」给 ' + o.name + ' 升星吗？\n' + rate +
-        '，成功后三维各 +' + o.star_attr_gain + '（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
+      if (!await this.ask('使用 1 枚「星级徽章」给 ' + o.name + ' 升星吗？\n成功率 ' + o.star_rate +
+        '%，成功后三维各 +' + o.star_attr_gain + '（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
       const id = o.id
       api.post('/games/ezfy/officers/' + id + '/starup', {}).then(r => {
         this.notify(r.msg || (r.code === 0 ? '升星成功' : '升星失败'))

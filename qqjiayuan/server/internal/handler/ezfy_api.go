@@ -532,7 +532,9 @@ func (h *EzfyHandler) DisbandTroops(c *gin.Context) {
 		"remain": remain})
 }
 
-// ezfySpeedGoldPerSec 训练一键加速收费: 每剩余 1 秒 10 黄金
+// ezfySpeedGoldPerSec 训练一键加速原价: 每剩余 1 秒 10 黄金
+// ★ 实际收费再乘管理端「二战系统配置 → 训练加速黄金倍率」(speed_train_rate)，
+//   节假日想便宜点就把倍率调低（见 ezfySpeedTrainRate）。
 const ezfySpeedGoldPerSec = 10
 
 // SpeedTrainAll POST /games/ezfy/troops/speed-all —— 训练一键加速
@@ -573,7 +575,10 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 			totalSec += s
 		}
 	}
-	cost := totalSec * ezfySpeedGoldPerSec
+	cost := int64(float64(totalSec)*float64(ezfySpeedGoldPerSec)*ezfySpeedTrainRate() + 0.5)
+	if totalSec > 0 && cost < 1 {
+		cost = 1
+	}
 	main := h.getOrCreateCity(uid)
 	if main.Gold < cost {
 		resp.ParamError(c, fmt.Sprintf("黄金不足: 一键加速需%d黄金(剩余%d秒), 当前只有%d", cost, totalSec, main.Gold))

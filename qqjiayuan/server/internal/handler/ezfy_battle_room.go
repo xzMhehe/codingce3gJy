@@ -201,6 +201,8 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 		b.Status = 2
 		if st.AttackerWin {
 			b.Win = 1
+		} else if st.Draw {
+			b.Win = 3 // 平局（40 回合未分胜负，守方视为守住）
 		} else {
 			b.Win = 2
 		}
@@ -420,7 +422,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		"order_id": b.OrderId, "target_name": b.TargetName,
 		"target_x": b.TargetX, "target_y": b.TargetY, "target_type": b.TargetType,
 		"round": maxInt(b.Round, 1), "max_round": ezfyBattleMaxRounds,
-		"status": b.Status, "win": b.Win,
+		"status": b.Status, "win": b.Win, "draw": snap.Draw,
 		"atk_cmd":  b.AtkCmd, // 原始 JSON（前端不用，调试用）
 		"atk_cmds": atkCmds,  // troopId -> 指令，前端每行按钮高亮用
 		"def_cmd":  b.DefCmd, "def_cmds": defCmds,
@@ -690,6 +692,8 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 	b.Status = 2
 	if st.AttackerWin {
 		b.Win = 1
+	} else if st.Draw {
+		b.Win = 3 // 平局（40 回合未分胜负，守方视为守住）
 	} else {
 		b.Win = 2
 	}

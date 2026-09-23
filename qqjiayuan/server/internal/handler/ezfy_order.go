@@ -1849,6 +1849,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		br = st.Result()
 	}
 	win = br.AttackerWin
+	draw := br.Draw
 
 	// ★★ 军官经验结算（2026-09-21 重做）
 	//
@@ -1887,7 +1888,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		reportType, city.Name, city.X, city.Y, targetName, order.TargetX, order.TargetY,
 		time.UnixMilli(now).Format("2006-01-02 15:04"), reportType,
 		targetName, order.TargetX, order.TargetY,
-		ezfyOrderTypeName(order.OrderType), br.Rounds, winResultText(win))
+		ezfyOrderTypeName(order.OrderType), br.Rounds, battleOutcomeText(win, draw))
 
 	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
@@ -1908,9 +1909,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
-	report += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
+	// ★ 2026-09-24 用户要求：40 回合平局时双方标签都显示 [平] 而不是胜/败
+	atkTag, defTag := winText(win), winText(!win)
+	if draw {
+		atkTag, defTag = "平", "平"
+	}
+	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
 	report += troopChangeText(atkBefore, atkAfter, atkCamp)
-	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), targetName)
+	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
 	// ★★ 守方兵力(2026-09-23 修复报错)：原来 defBefore 直接取**野地配置满编兵力**，
 	//   再用它减去战斗损失得出「剩余」。但战斗实际打到的是**已经损耗过的守军**
 	//   （同一野地/城市被先前战斗打过、或指挥官中途换过），满编数 ≠ 战斗初始数，
@@ -1933,9 +1939,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		detail += a + "\n"
 	}
 	detail += "\n[双方兵力]\n"
-	detail += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
+	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
 	detail += troopChangeText(atkBefore, atkAfter, atkCamp)
-	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), targetName)
+	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
 	detail += troopChangeText(defBefore, defAfter, defCamp)
 	detail += "[双方兵力]"
 
@@ -2360,8 +2366,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if repairedTotal > 0 {
 			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 		}
-		// ★ 军官忠诚：只有打败仗才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
-		if leadOfficer != nil {
+		// ★ 军官忠诚：只有**打败仗**才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
+		//   平局不算败仗，不掉忠诚。
+		if leadOfficer != nil && !draw {
 			var myDead, myTotal int64
 			for _, g := range br.AttackerLosses {
 				myDead += g.Count
@@ -2551,6 +2558,14 @@ func winResultText(win bool) string {
 		return "胜利！"
 	}
 	return "失败！"
+}
+
+// battleOutcomeText 战报结局文案（★ 2026-09-24 用户要求：40 回合未分胜负显示平局而非失败）
+func battleOutcomeText(win, draw bool) string {
+	if draw {
+		return "与敌方打成平局！"
+	}
+	return winResultText(win)
 }
 
 func cityIdOf(c *model.EzfyCity) uint {

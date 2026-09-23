@@ -277,22 +277,27 @@ type EzfyCfgLimit struct {
 	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
 	MarchCapOn int `json:"march_cap_on"`
 
-	// ============ 军官升星（2026-09-22 用户要求）============
+	// ============ 军官升星（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
 	//
-	// 「玩家自己的军官可以用升星卡升级星级，属性增加；概率的最好也能有个开关控制，
-	//   属性加多少也要可配。」
+	// ★ 简化后的规则：升星按固定概率（officer_star_chance），失败也消耗 1 枚星级徽章，
+	//   每升 1 星三维各 +officer_star_attr_gain，星级上限 officer_star_max。
+	//   原先的「概率开关/每高 1 星递减/成功率下限/失败保留徽章」四个配置已按用户要求去掉。
 	//
-	// ⚠️ 下面三个是**开关**（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
-	OfficerStarUpOn       int `json:"officer_star_up_on"`        // 升星功能：1 开 / 0 关（关了不能用升星卡）
-	OfficerStarChanceOn   int `json:"officer_star_chance_on"`    // 概率开关：1 按概率 / 0 必成功
-	OfficerStarKeepOnFail int `json:"officer_star_keep_on_fail"` // 失败是否保留升星卡：1 保留 / 0 扣掉
+	// ⚠️ OfficerStarUpOn 是**开关**（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
+	OfficerStarUpOn int `json:"officer_star_up_on"` // 升星功能：1 开 / 0 关（关了不能用升星卡）
 
-	// 下面四个是**数值**（0 无意义 → 回落默认值）
-	OfficerStarChance     int `gorm:"default:20" json:"officer_star_chance"`     // 基础成功率%（默认 20，星级徽章固定 20%）
-	OfficerStarChanceStep int `gorm:"default:0" json:"officer_star_chance_step"` // 每高 1 星成功率 -N%（默认 0，即固定 20%）
-	OfficerStarChanceMin  int `gorm:"default:20" json:"officer_star_chance_min"` // 成功率下限%（默认 20）
-	OfficerStarAttrGain   int `gorm:"default:10" json:"officer_star_attr_gain"`  // 每升 1 星三维各 +N（默认 10）
-	OfficerStarMax        int `gorm:"default:10" json:"officer_star_max"`        // 星级上限（默认 10）
+	// 下面是**数值**（0 无意义 → 回落默认值）
+	OfficerStarChance   int     `gorm:"default:20" json:"officer_star_chance"`   // 升星成功率%（固定值，默认 20）
+	OfficerStarAttrGain int     `gorm:"default:10" json:"officer_star_attr_gain"` // 每升 1 星三维各 +N（默认 10）
+	OfficerStarMax      int     `gorm:"default:5" json:"officer_star_max"`        // 星级上限（默认 5）
+
+	// ★ 训练一键加速黄金倍率：实际费用 = 剩余秒数 × 10 × 该倍率（默认 1 = 原价）。
+	//   节假日想便宜点就把倍率调低（如 0.5 = 半价）。0 无意义 → 回落 1。
+	SpeedTrainRate float64 `gorm:"default:1" json:"speed_train_rate"`
+
+	// ★ 伤兵恢复黄金折扣率：恢复费用 = 兵种总造价 / wound_heal_divisor × 该折扣率（默认 1 = 原价）。
+	//   与训练加速倍率同款：节假日调低 = 恢复便宜。0 无意义 → 回落 1。
+	WoundHealRate float64 `gorm:"default:1" json:"wound_heal_rate"`
 
 	// ============ 数值安全卡控（2026-09-23 线上「负数兵力」事故）============
 	//

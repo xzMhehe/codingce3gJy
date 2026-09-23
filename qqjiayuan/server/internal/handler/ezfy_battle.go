@@ -77,6 +77,7 @@ func (u *ezfyFightUnit) alive() bool { return u.count > 0 }
 
 type ezfyBattleResult struct {
 	AttackerWin    bool
+	Draw           bool
 	Rounds         int
 	Actions        []string
 	AttackerLosses []ezfyUnitGroup
@@ -122,6 +123,7 @@ type ezfyBattleState struct {
 	Round       int  // 已结算回合数
 	Done        bool // 是否已分胜负 / 回合耗尽
 	AttackerWin bool
+	Draw        bool // ★ 2026-09-24 用户要求：打到 40 回合未分胜负 = 平局（守方仍算守住）
 
 	Head    []string // 开局描述（军官/加成/初始距离），只写一次
 	Actions []string // 每回合的行动日志
@@ -319,9 +321,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 
 		dir := ezfyMoveDir(unit, moveMap, cmd)
-		if dir != 0 && dist > rangeD {
+		// ★ 2026-09-24 用户反馈「战斗打起来后点后退没反应」：
+		//   老条件是 dist > rangeD 才移动 —— 接战后（已在射程内）后退被直接跳过，
+		//   位置不动、看起来像指令失灵。后退应随时可执行（拉开距离）；
+		//   前进保持「进射程即停」，「move 截断到 rangeD」只对前进有意义。
+		if dir != 0 && (dist > rangeD || dir < 0) {
 			move := unit.cfg.Speed * (100 + speedBonus) / 100
-			if move > dist-rangeD {
+			if dir > 0 && move > dist-rangeD {
 				move = dist - rangeD
 			}
 			move *= dir
@@ -521,8 +527,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		} else if len(ezfyAliveList(st.Attackers)) == 0 {
 			st.Done, st.AttackerWin = true, false
 		} else if st.Round >= ezfyBattleMaxRounds {
-			// 回合耗尽按平局处理（复刻文档：平局时守方视为守住）
-			st.Done, st.AttackerWin = true, false
+			// ★ 2026-09-24 用户要求：40 回合未分胜负按**平局**描述（守方视为守住，攻方无胜果）
+			st.Done, st.Draw = true, true
 		}
 	}
 	return st.Done
@@ -534,6 +540,7 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 	actions = append(actions, st.Actions...)
 	return ezfyBattleResult{
 		AttackerWin:    st.AttackerWin,
+		Draw:           st.Draw,
 		Rounds:         st.Round,
 		Actions:        actions,
 		AttackerLosses: ezfyToGroups(st.Attackers, true),
@@ -615,6 +622,7 @@ type ezfyBattleSnapshot struct {
 	Round       int      `json:"round"`
 	Done        bool     `json:"done"`
 	AttackerWin bool     `json:"attacker_win"`
+	Draw        bool     `json:"draw"`
 	Head        []string `json:"head"`
 	Actions     []string `json:"actions"`
 }
@@ -654,7 +662,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkCounter: st.AtkCounter, DefCounter: st.DefCounter,
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 
-		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin,
+		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin, Draw: st.Draw,
 		Head: st.Head, Actions: actions,
 	}
 }
@@ -670,7 +678,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkOfficerDesc: snap.AtkOfficerDesc, DefOfficerDesc: snap.DefOfficerDesc,
 		AtkCounter: snap.AtkCounter, DefCounter: snap.DefCounter,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
-		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin,
+		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin, Draw: snap.Draw,
 		Head: snap.Head, Actions: snap.Actions,
 	}
 	rebuild := func(list []ezfyBattleUnitSnap) []*ezfyFightUnit {

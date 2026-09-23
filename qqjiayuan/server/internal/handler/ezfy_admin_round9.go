@@ -31,12 +31,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		// ★ 军官升星（开关 + 数值）
-		OfficerStarUpOn: ezfyStarUpDef, OfficerStarChanceOn: ezfyStarChanceOnDef,
-		OfficerStarKeepOnFail: ezfyStarKeepDef,
-		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
-		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
+		// ★ 军官升星（简化后：功能开关 + 固定成功率 + 每星加成 + 星级上限）
+		OfficerStarUpOn:   ezfyStarUpDef,
+		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
+		// ★ 训练加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金的原价）+ 伤兵恢复黄金折扣率（默认 1 = 原价）
+		SpeedTrainRate: 1, WoundHealRate: 1,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
@@ -71,17 +71,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
 	}
-	if lim.OfficerStarChanceStep < 0 {
-		lim.OfficerStarChanceStep = ezfyStarChanceStepDef
-	}
-	if lim.OfficerStarChanceMin <= 0 {
-		lim.OfficerStarChanceMin = ezfyStarChanceMinDef
-	}
 	if lim.OfficerStarAttrGain <= 0 {
 		lim.OfficerStarAttrGain = ezfyStarAttrGainDef
 	}
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
+	}
+	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 1（纯倍率，只有管理员会填）
+	if lim.SpeedTrainRate <= 0 {
+		lim.SpeedTrainRate = 1
+	}
+	// ★ 伤兵恢复黄金折扣率：0 / 负数无意义 → 回落 1
+	if lim.WoundHealRate <= 0 {
+		lim.WoundHealRate = 1
 	}
 	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
 	if lim.TroopMax <= 0 {
@@ -119,15 +121,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MarchOilOn    *int     `json:"march_oil_on"`
 		WarRequireOn  *int     `json:"war_require_on"`
 		MarchCapOn    *int     `json:"march_cap_on"`
-		// ★ 军官升星（开关 + 数值）
-		OfficerStarUpOn       *int `json:"officer_star_up_on"`
-		OfficerStarChanceOn   *int `json:"officer_star_chance_on"`
-		OfficerStarKeepOnFail *int `json:"officer_star_keep_on_fail"`
-		OfficerStarChance     *int `json:"officer_star_chance"`
-		OfficerStarChanceStep *int `json:"officer_star_chance_step"`
-		OfficerStarChanceMin  *int `json:"officer_star_chance_min"`
-		OfficerStarAttrGain   *int `json:"officer_star_attr_gain"`
-		OfficerStarMax        *int `json:"officer_star_max"`
+		// ★ 军官升星（简化后：功能开关 + 数值）
+		OfficerStarUpOn    *int `json:"officer_star_up_on"`
+		OfficerStarChance  *int `json:"officer_star_chance"`
+		OfficerStarAttrGain *int `json:"officer_star_attr_gain"`
+		OfficerStarMax     *int `json:"officer_star_max"`
+		// ★ 训练加速黄金倍率 + 伤兵恢复黄金折扣率（允许小数，节假日调低 = 便宜）
+		SpeedTrainRate *float64 `json:"speed_train_rate"`
+		WoundHealRate  *float64 `json:"wound_heal_rate"`
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax        *int64 `json:"troop_max"`
 		WoundExpireDays *int   `json:"wound_expire_days"`
@@ -143,11 +144,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		OfficerStarUpOn: ezfyStarUpDef, OfficerStarChanceOn: ezfyStarChanceOnDef,
-		OfficerStarKeepOnFail: ezfyStarKeepDef,
-		OfficerStarChance:     ezfyStarChanceDef, OfficerStarChanceStep: ezfyStarChanceStepDef,
-		OfficerStarChanceMin: ezfyStarChanceMinDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
+		OfficerStarUpOn:   ezfyStarUpDef,
+		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
+		SpeedTrainRate: 1, WoundHealRate: 1,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	h.DB.First(&lim, 1)
@@ -289,43 +289,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
 		return
 	}
-	// ★ 军官升星的三个开关（0/1 都合法）
+	// ★ 军官升星的功能开关（0/1 都合法）
 	if !setSwitch(in.OfficerStarUpOn, &lim.OfficerStarUpOn, "军官升星功能") {
 		return
 	}
-	if !setSwitch(in.OfficerStarChanceOn, &lim.OfficerStarChanceOn, "升星概率") {
-		return
-	}
-	if !setSwitch(in.OfficerStarKeepOnFail, &lim.OfficerStarKeepOnFail, "升星失败保留升星卡") {
-		return
-	}
 	// ★ 军官升星的数值项：0 无意义，只接受 >= 1；成功率与上限不超过 100
-	if v, ok := check(in.OfficerStarChance, "升星基础成功率"); !ok {
+	if v, ok := check(in.OfficerStarChance, "升星成功率"); !ok {
 		return
 	} else if in.OfficerStarChance != nil {
 		if v < 1 || v > 100 {
-			resp.ParamError(c, "升星基础成功率需要在 1~100 之间")
+			resp.ParamError(c, "升星成功率需要在 1~100 之间")
 			return
 		}
 		lim.OfficerStarChance = v
-	}
-	if v, ok := check(in.OfficerStarChanceStep, "升星成功率递减"); !ok {
-		return
-	} else if in.OfficerStarChanceStep != nil {
-		if v > 100 {
-			resp.ParamError(c, "升星成功率递减需要在 0~100 之间")
-			return
-		}
-		lim.OfficerStarChanceStep = v
-	}
-	if v, ok := check(in.OfficerStarChanceMin, "升星成功率下限"); !ok {
-		return
-	} else if in.OfficerStarChanceMin != nil {
-		if v < 1 || v > 100 {
-			resp.ParamError(c, "升星成功率下限需要在 1~100 之间")
-			return
-		}
-		lim.OfficerStarChanceMin = v
 	}
 	if v, ok := check(in.OfficerStarAttrGain, "升星每星加点"); !ok {
 		return
@@ -344,6 +320,24 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.OfficerStarMax = v
+	}
+	// ★ 训练加速黄金倍率：允许小数（0.5 = 半价），0 及负数无意义；上界 100 防呆
+	if in.SpeedTrainRate != nil {
+		m := *in.SpeedTrainRate
+		if m <= 0 || m > 100 {
+			resp.ParamError(c, "训练加速黄金倍率需要在 0~100 之间")
+			return
+		}
+		lim.SpeedTrainRate = m
+	}
+	// ★ 伤兵恢复黄金折扣率：与训练加速倍率同规则
+	if in.WoundHealRate != nil {
+		m := *in.WoundHealRate
+		if m <= 0 || m > 100 {
+			resp.ParamError(c, "伤兵恢复黄金折扣率需要在 0~100 之间")
+			return
+		}
+		lim.WoundHealRate = m
 	}
 	// ★ 2026-09-23 线上「负数兵力」事故：
 	//   单城兵力上限（至少 1，0 等于把训练全禁了，无意义）+ 伤兵存活天数（1~3650 天）。
@@ -382,14 +376,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
 	}
-	if lim.OfficerStarChanceMin <= 0 {
-		lim.OfficerStarChanceMin = ezfyStarChanceMinDef
-	}
 	if lim.OfficerStarAttrGain <= 0 {
 		lim.OfficerStarAttrGain = ezfyStarAttrGainDef
 	}
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
+	}
+	// ★ 训练加速黄金倍率兜底（老行可能是 0 / NULL）
+	if lim.SpeedTrainRate <= 0 {
+		lim.SpeedTrainRate = 1
+	}
+	// ★ 伤兵恢复黄金折扣率兜底（老行可能是 0 / NULL）
+	if lim.WoundHealRate <= 0 {
+		lim.WoundHealRate = 1
 	}
 	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
 	if lim.TroopMax <= 0 {
@@ -414,10 +413,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"war_require_on":  lim.WarRequireOn,
 		"march_cap_on":    lim.MarchCapOn,
 		"wild_troop_mult": lim.WildTroopMult,
-		// ★ 军官升星的三个开关同样要显式写（0 = 关 必须落库）
-		"officer_star_up_on":        lim.OfficerStarUpOn,
-		"officer_star_chance_on":    lim.OfficerStarChanceOn,
-		"officer_star_keep_on_fail": lim.OfficerStarKeepOnFail,
+		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
+		"officer_star_up_on": lim.OfficerStarUpOn,
+		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写
+		"speed_train_rate": lim.SpeedTrainRate,
+		"wound_heal_rate":  lim.WoundHealRate,
 		// ★ 2026-09-23：兵力上限（bigint）/ 伤兵存活天数，同样用 map 显式写，避开零值被吞的坑
 		"troop_max":         lim.TroopMax,
 		"wound_expire_days": lim.WoundExpireDays,

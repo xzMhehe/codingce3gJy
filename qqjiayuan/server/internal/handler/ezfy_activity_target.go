@@ -215,12 +215,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		br = st.Result()
 	}
 	win := br.AttackerWin
+	draw := br.Draw
 
 	profile := h.ensureProfile(uid)
 	report := fmt.Sprintf("主题:战斗报告\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:战斗报告\n我方一支部队对%s[ %d，%d ]发起了进攻。战斗共持续 %d 回合，我方战斗%s\n",
 		city.Name, city.X, city.Y, label, order.TargetX, order.TargetY,
 		time.UnixMilli(now).Format("2006-01-02 15:04"), label,
-		order.TargetX, order.TargetY, br.Rounds, winResultText(win))
+		order.TargetX, order.TargetY, br.Rounds, battleOutcomeText(win, draw))
 	report += fmt.Sprintf("统帅声望:%d\n", profile.Prestige)
 	report += fmt.Sprintf("军官经验:%d\n", officerExpOf(leadOfficer))
 	if leadOfficer != nil {
@@ -229,9 +230,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
-	report += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
+	// ★ 2026-09-24 用户要求：40 回合平局时双方标签都显示 [平]
+	atkTag, defTag := winText(win), winText(!win)
+	if draw {
+		atkTag, defTag = "平", "平"
+	}
+	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
 	report += troopChangeText(atkBefore, atkAfter, profile.Camp)
-	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), label)
+	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
 	defBefore := groupCounts(defender)
 	defAfter := map[int]int64{}
 	for _, g := range br.DefenderLosses {
@@ -250,12 +256,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		detail += a + "\n"
 	}
 	detail += "\n[双方兵力]\n"
-	detail += fmt.Sprintf("[%s]攻方:%s\n", winText(win), city.Name)
+	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
 	if leadOfficer != nil {
 		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
 	detail += troopChangeText(atkBefore, atkAfter, profile.Camp)
-	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", winText(!win), label)
+	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
 	detail += troopChangeText(defBefore, defAfter, 0)
 	detail += "[双方兵力]"
 
@@ -318,6 +324,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
 		order.Status = 2
 		report = "我军胜利!\n" + report
+	} else if draw {
+		// ★ 2026-09-24 用户要求：40 回合平局——残部返航（不是阵亡，不能 status=4 吃掉幸存部队）
+		order.Status = 2
+		report = "我军与敌军打成平局!\n" + report
 	} else {
 		order.Status = 4 // 全队阵亡
 		report = "我军战败!\n" + report
