@@ -1956,7 +1956,7 @@
               <td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
             </tr>
           </table>
-          <div class="panel-title">兵力榜 <span class="gray">（每人取兵力最多的那座城）</span></div>
+          <div class="panel-title">兵力榜</div>
           <table class="ezfy-rank-table">
             <colgroup>
               <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
