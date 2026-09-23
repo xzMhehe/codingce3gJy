@@ -2936,8 +2936,7 @@
 
       <!-- ============ 军官详情(officerdetail) ============ -->
       <template v-else-if="cur === 'officerdetail'">
-        <!-- ★ 军官详情：全部改成表格（.ezfy-plain-table = 水平+垂直居中）。
-             不用 <hr/> 分隔（项目约定复刻不要 hr），说明性文字一律去掉，只留字段与操作。 -->
+        <!-- ★ 军官详情：按 tab 分「属性 / 技能 / 装备」三块（同 acade 页 .acade-tab 写法） -->
         <div class="panel" v-if="officerDetail.officer">
           <div class="panel-title">
             {{ officerDetail.officer.name }}
@@ -2945,7 +2944,14 @@
             <span class="gray">军官改名卡 {{ officerDetail.officer.rename_card }} 张</span>
           </div>
 
-          <!-- 基础信息 -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: officerDetailTab === 'attr' }" @click="officerDetailTab = 'attr'">属性</a>|
+            <a href="javascript:;" :class="{ on: officerDetailTab === 'skill' }" @click="officerDetailTab = 'skill'">技能</a>|
+            <a href="javascript:;" :class="{ on: officerDetailTab === 'equip' }" @click="officerDetailTab = 'equip'">装备</a>
+          </div>
+
+          <!-- 属性 tab -->
+          <div v-if="officerDetailTab === 'attr'">
           <table class="ezfy-plain-table">
             <tr><th>星级</th><th>等级</th><th>经验</th><th>忠诚</th><th>职位</th><th>状态</th></tr>
             <tr>
@@ -2967,7 +2973,7 @@
             </tr>
           </table>
 
-          <!-- 三维属性 + 攻防（括号里的绿色数字是装备/套装加成） -->
+          <!-- 属性与攻防（绿字为装备/套装加成） -->
           <table class="ezfy-plain-table">
             <tr><th>军事</th><th>后勤</th><th>学识</th><th>攻击加成</th><th>防御加成</th></tr>
             <tr>
@@ -2988,7 +2994,7 @@
             </tr>
           </table>
 
-          <!-- 套装进度（穿齐才生效）+ 装备六项战斗加成 -->
+          <!-- 套装与战斗加成（套装穿齐才生效） -->
           <table class="ezfy-plain-table"
                  v-if="(officerDetail.officer.set_progress && officerDetail.officer.set_progress.length) ||
                        officerBattleText(officerDetail.officer.battle)">
@@ -3030,8 +3036,10 @@
             <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
                   class="gray">星级徽章 {{ officerDetail.officer.star_card }} 枚</span>
           </div>
+          </div>
 
-          <!-- 已学技能 / 可学技能 -->
+          <!-- 技能 tab（已学 / 可学） -->
+          <div v-if="officerDetailTab === 'skill'">
           <table class="ezfy-plain-table">
             <tr><th colspan="3">已学技能（{{ officerDetail.skills.length }}/3）</th></tr>
             <tr v-for="s in officerDetail.skills" :key="'ds' + s.name">
@@ -3049,8 +3057,10 @@
               <td><a href="javascript:;" @click="doLearn(s)">[学习]</a></td>
             </tr>
           </table>
+          </div>
 
-          <!-- 已穿戴装备 -->
+          <!-- 装备 tab（已穿戴 + 背包装备） -->
+          <div v-if="officerDetailTab === 'equip'">
           <table class="ezfy-plain-table">
             <tr><th colspan="5">已穿戴装备</th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
@@ -3095,6 +3105,8 @@
             <span class="gray">第 {{ Math.min(officerBagPage, officerBagTotalPages) }}/{{ officerBagTotalPages }} 页 · 共 {{ officerBagFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: officerBagPage >= officerBagTotalPages }" @click="officerBagGo(1)">[下一页]</a>
           </div>
+          </div>
+
           <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官]</a></div>
         </div>
       </template>
@@ -3278,6 +3290,7 @@ export default {
       setEffectId: 0,                                        // 「我的套装」里点 [加成] 展开的那条
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
+      officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备
       bagOfficers: [],
       bagSkills: [],
       useItem: null,
@@ -6124,7 +6137,8 @@ export default {
     },
     openOfficer (id) {
       this.cur = 'officerdetail'
-      // ★ 换军官时把背包装备的检索/分页复位
+      // ★ 换军官时把详情页签、背包装备的检索/分页复位
+      this.officerDetailTab = 'attr'
       this.officerBagWord = ''
       this.officerBagPage = 1
       this.loadOfficerDetail(id)
