@@ -327,9 +327,6 @@
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
-            <div class="old-line gray">
-              「收获」只把产出装进部队；资源要「召回」并返航到达才会运回城里（受负重限制）。宝物直接进背包。
-            </div>
             <div class="old-line" v-for="o in dynPaged" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
@@ -360,7 +357,7 @@
           <!-- ===== 军情警讯: 别人打我 ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；能不能提前看见、能看见多少细节，取决于自己城市的雷达站等级。</span>
+              <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
               <button @click="loadReports">刷新</button>
             </div>
             <!-- ★ 雷达站决定「事前预警」能不能收到（事后结果战报不受影响） -->
@@ -426,11 +423,7 @@
       <!-- ============ 好友(friends) ============ -->
       <template v-else-if="cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">游戏内好友（与社区好友分开）</div>
-          <div class="old-line gray">
-            这里只是「二战风云」里的好友关系，不影响社区的亲友列表。
-          </div>
-
+          <div class="panel-title">游戏内好友</div>
           <div class="panel-title">搜索玩家（按游戏ID / 玩家号码 / 昵称）</div>
           <div class="old-line">
             <input v-model="friendKeyword" placeholder="输入游戏ID / 玩家号码 / 昵称" style="width:170px"/>
@@ -2034,7 +2027,8 @@
                · 库存 -1 = 无限（管理端「数据管理 → 道具配置」维护）。 -->
           <table class="ezfy-plain-table">
             <tr><th>名称</th><th>价格</th><th>库存</th><th>操作</th></tr>
-            <tr v-for="it in mallPaged" :key="'mi' + it.id">
+            <template v-for="it in mallPaged">
+            <tr :key="'mi' + it.id">
               <td>{{ it.name }}</td>
               <td>
                 <template v-if="it.dual_pay">
@@ -2054,7 +2048,7 @@
             </tr>
             <!-- ★ 购买确认直接展开在**该道具自己行下面**（用户要求「在购买按钮附近确认」，
                  不再甩到表格底下一个独立面板，避免「购买在下面、确认却在上面」的割裂感） -->
-            <tr v-if="buyItem && buyItem.id === it.id" class="ezfy-buy-inline">
+            <tr v-if="buyItem && buyItem.id === it.id" :key="'mib' + it.id" class="ezfy-buy-inline">
               <td colspan="4">
                 <span class="gray">数量</span>
                 <input v-model="buyCount" type="number" min="1" :max="buyMaxOf(buyItem)"
@@ -2077,6 +2071,7 @@
                 <a href="javascript:;" @click="buyItem = null">取消</a>
               </td>
             </tr>
+            </template>
           </table>
           <div class="old-line gray" v-if="!mallPaged.length">(该分类下暂无道具)</div>
           <!-- ★ 分页（每页 10 件） -->
@@ -2084,7 +2079,6 @@
             <a href="javascript:;" :class="{ disabled: mallPage <= 1 }" @click="mallGo(-1)">[上一页]</a>
             <span class="gray">第 {{ Math.min(mallPage, mallTotalPages) }}/{{ mallTotalPages }} 页 · 共 {{ mallFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: mallPage >= mallTotalPages }" @click="mallGo(1)">[下一页]</a>
-          </div>
           </div>
           </template>
           <!-- ★ 装备散件（管理端在「装备列表」里维护）
@@ -2108,7 +2102,8 @@
             </div>
             <table class="ezfy-plain-table">
               <tr><th>部位</th><th>名称</th><th>等级</th><th>属性</th><th>价格</th><th>操作</th></tr>
-              <tr v-for="p in shopPaged" :key="'eq' + p.id">
+              <template v-for="p in shopPaged">
+              <tr :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
                 <td>{{ p.name }}</td>
                 <td>{{ p.level }}</td>
@@ -2120,15 +2115,16 @@
                 </td>
               </tr>
               <!-- ★ 装备购买确认也内联展开在**该行下面**（与道具一致，贴近购买按钮） -->
-              <tr v-if="equipShopBuy && equipShopBuy.id === p.id" class="ezfy-buy-inline">
+              <tr v-if="equipShopBuy && equipShopBuy.id === p.id" :key="'eqb' + p.id" class="ezfy-buy-inline">
                 <td colspan="6">
                   <span class="gray">数量</span>
                   <input v-model="equipShopCount" type="number" min="1" style="width:60px"/>
                   <b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
                   <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
                   <a href="javascript:;" @click="equipShopBuy = null">取消</a>
-                </td>
-              </tr>
+              </td>
+            </tr>
+            </template>
             </table>
             <div class="old-line gray" v-if="!shopAll.length">(没有匹配的装备)</div>
             <div class="ezfy-pager" v-if="shopAll.length > shopSize">
@@ -3690,10 +3686,16 @@ export default {
     //   存元素引用而非 clientX/Y —— API 响应是异步的，回来时页面可能已滚动，
     //   用元素 getBoundingClientRect() 实时取位置不会飘走。
     this._capClick = (e) => {
-      const el = e.target && e.target.closest
-        ? e.target.closest('a,button,[@click]')
-        : null
-      this._lastClicked = el || null
+      // 注意：Vue 的 @click 编译后不会在 DOM 上留下任何属性，因此不能用
+      // 属性选择器去找"绑了点击事件的元素"（'[@click]' 还是非法选择器，
+      // 会让 closest 直接抛 SyntaxError）。合法做法：a/button 用 closest 命中；
+      // 其余情况退回点击目标元素本身（同样有 getBoundingClientRect 可定位）。
+      const t = e.target
+      let el = null
+      if (t && typeof t.closest === 'function') {
+        el = t.closest('a,button')
+      }
+      this._lastClicked = el || (t && t.tagName ? t : null)
     }
     document.addEventListener('click', this._capClick, true)
     // 沉浸式卡控②: 浏览器后退不退出游戏, 而是回到游戏上一页(与幻想西游 Xiyou.vue 一致)
@@ -4464,7 +4466,7 @@ export default {
         this.loadChests()
         this.loadEquipShop()
         this.loadBag()
-        this.loadView()
+        this.load()
       })
     },
     // ★ 装备商城（套装件，黄金/钻石购买）
@@ -4490,7 +4492,7 @@ export default {
         if (r.code !== 0) this.notify(r.msg || '购买失败')
         this.equipShopBuy = null
         this.loadEquipShop()
-        this.loadView()
+        this.load()
         this.loadBag()
       })
     },
@@ -5877,7 +5879,7 @@ export default {
         this.notify(r.msg || '计谋已发动')
         this.loadSchemes()
         this.loadBag()
-        this.loadView()
+        this.load()
       })
     },
     loadRecruit () {
