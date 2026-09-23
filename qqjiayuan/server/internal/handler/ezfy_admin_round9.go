@@ -35,8 +35,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
-		// ★ 训练加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金的原价）+ 伤兵恢复黄金折扣率（默认 1 = 原价）
-		SpeedTrainRate: 1, WoundHealRate: 1,
+		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价）+ 伤兵恢复黄金折扣率
+		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
@@ -77,13 +77,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
 	}
-	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 1（纯倍率，只有管理员会填）
+	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 100（100 = 100% = 原价）
 	if lim.SpeedTrainRate <= 0 {
-		lim.SpeedTrainRate = 1
+		lim.SpeedTrainRate = 100
 	}
-	// ★ 伤兵恢复黄金折扣率：0 / 负数无意义 → 回落 1
+	// ★ 伤兵恢复黄金折扣率：0 / 负数无意义 → 回落 100
 	if lim.WoundHealRate <= 0 {
-		lim.WoundHealRate = 1
+		lim.WoundHealRate = 100
 	}
 	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
 	if lim.TroopMax <= 0 {
@@ -126,7 +126,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarChance  *int `json:"officer_star_chance"`
 		OfficerStarAttrGain *int `json:"officer_star_attr_gain"`
 		OfficerStarMax     *int `json:"officer_star_max"`
-		// ★ 训练加速黄金倍率 + 伤兵恢复黄金折扣率（允许小数，节假日调低 = 便宜）
+		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径，100 = 100% = 原价，节假日调低 = 便宜）
 		SpeedTrainRate *float64 `json:"speed_train_rate"`
 		WoundHealRate  *float64 `json:"wound_heal_rate"`
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
@@ -147,7 +147,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
-		SpeedTrainRate: 1, WoundHealRate: 1,
+		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	h.DB.First(&lim, 1)
@@ -325,7 +325,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if in.SpeedTrainRate != nil {
 		m := *in.SpeedTrainRate
 		if m <= 0 || m > 100 {
-			resp.ParamError(c, "训练加速黄金倍率需要在 0~100 之间")
+			resp.ParamError(c, "训练加速黄金倍率需要在 0~100 之间（100 = 原价）")
 			return
 		}
 		lim.SpeedTrainRate = m
@@ -334,7 +334,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if in.WoundHealRate != nil {
 		m := *in.WoundHealRate
 		if m <= 0 || m > 100 {
-			resp.ParamError(c, "伤兵恢复黄金折扣率需要在 0~100 之间")
+			resp.ParamError(c, "伤兵恢复黄金折扣率需要在 0~100 之间（100 = 原价）")
 			return
 		}
 		lim.WoundHealRate = m
@@ -384,11 +384,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	// ★ 训练加速黄金倍率兜底（老行可能是 0 / NULL）
 	if lim.SpeedTrainRate <= 0 {
-		lim.SpeedTrainRate = 1
+		lim.SpeedTrainRate = 100
 	}
 	// ★ 伤兵恢复黄金折扣率兜底（老行可能是 0 / NULL）
 	if lim.WoundHealRate <= 0 {
-		lim.WoundHealRate = 1
+		lim.WoundHealRate = 100
 	}
 	// ★ 2026-09-23：单城兵力上限 / 伤兵存活天数（0 无意义 → 回落默认值）
 	if lim.TroopMax <= 0 {

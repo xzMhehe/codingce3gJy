@@ -606,12 +606,14 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 			h.saveCityRes(&sellerCity)
 		}
 	}
-	h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).
-		Updates(map[string]interface{}{"status": 1, "buyer_id": uid})
 	if e.IsSystem != 1 {
+		h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).
+			Updates(map[string]interface{}{"status": 1, "buyer_id": uid})
 		h.addReport(e.SellerId, 6, "交易成交",
 			fmt.Sprintf("你挂单出售的%s×%d已被%s以%d%s购得。", ezfyResNames[e.EsType], e.EsCount, h.ensureProfile(uid).Nickname, e.TotalPrice, money))
 	}
+	// ★ 系统挂单不写成交状态、不通知卖家：保持 status=0 恒在售，
+	//   玩家可以反复购买（用户要求：资源大/中/小包是「买不完」的无限库存）。
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（花费%d%s）", ezfyResNames[e.EsType], e.EsCount, e.TotalPrice, money)})
 }
 

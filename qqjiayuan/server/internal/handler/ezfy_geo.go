@@ -598,15 +598,16 @@ func ezfyWoundHealDivisorCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.WoundHealDivisor, ezfyWoundHealDivisorDef)
 }
 
-// ezfyWoundHealRate 伤兵恢复黄金折扣率（默认 1 = 原价）。
+// ezfyWoundHealRate 伤兵恢复黄金折扣率（百分比口径：配置 100 = 100% = 原价）。
 //
 // ★ 2026-09-23 用户要求：伤兵恢复黄金也有「折扣率数」，放管理端「二战系统配置」配，
-//   节假日调低 = 恢复便宜。0 无意义 → 回落 1。
+//   节假日调低 = 恢复便宜。★ 2026-09-24 修正：默认 100 = 现在的正常值，0/负数 → 回落 100。
 func ezfyWoundHealRate() float64 {
-	if v := ezfyCfg.limit.WoundHealRate; v > 0 {
-		return v
+	v := ezfyCfg.limit.WoundHealRate
+	if v <= 0 {
+		v = 100
 	}
-	return 1
+	return v / 100
 }
 
 // ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 9999）
@@ -690,15 +691,18 @@ func ezfyStarSuccessRate() int {
 
 // ============ 训练一键加速黄金倍率 ============
 
-// ezfySpeedTrainRate 训练一键加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金的原价）。
+// ezfySpeedTrainRate 训练一键加速黄金倍率（百分比口径：配置 100 = 100% = 原价）。
 //
 // ★ 2026-09-23 用户要求：黄金消耗太多，价格倍率放管理端「二战系统配置」配，
-//   节假日想便宜点就把倍率调低（如 0.5 = 半价）。0 无意义 → 回落 1。
+//   节假日想便宜点就把倍率调低（如 50 = 半价、10 = 一折）。
+//   ★ 2026-09-24 用户修正：默认值 100 才是正常值（而不是 1），设置 0.01 时仍觉得贵、
+//   说明要按「百分比」理解 —— 100 = 现在的正常消耗。0/负数无意义 → 回落 100。
 func ezfySpeedTrainRate() float64 {
-	if v := ezfyCfg.limit.SpeedTrainRate; v > 0 {
-		return v
+	v := ezfyCfg.limit.SpeedTrainRate
+	if v <= 0 {
+		v = 100
 	}
-	return 1
+	return v / 100
 }
 
 // ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
@@ -942,7 +946,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		WildTroopMult: ezfyWildMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
-		SpeedTrainRate: 1, WoundHealRate: 1,
+		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径，默认 100 = 100% = 原价
+		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 10 亿 / 5 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	var lim model.EzfyCfgLimit

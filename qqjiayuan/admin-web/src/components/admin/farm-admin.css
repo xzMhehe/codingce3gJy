@@ -28,6 +28,7 @@
 .td-blue { color: #2e9cd3; font-weight: 600; }
 .td-gold { color: #fb8c00; margin-right: 3px; }
 .td-red { color: #e6a23c; font-weight: 600; }
+.td-green { color: #67c23a; font-weight: 600; }
 .td-small { font-size: 12px; }
 /* 弹窗内容超高时内部滚动，避免页脚被顶出视口 */
 .farm-admin .el-dialog__body { max-height: 72vh; overflow-y: auto; }
@@ -44,7 +45,10 @@
    1) 分页控件自身允许换行，窄屏不会把「前往 N 页」挤出卡片；
    2) 小屏时把分页条改成整行铺开（信息一行、分页一行），不再左右挤在一起；
    3) 分页条下方留出空间，让「每页 N 条」下拉**向下展开**，不遮挡上面的表格内容。 */
-.pager-bar .el-pagination { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
+/* ★ 分页「铺满整行」修复（用户反馈：任务类型/任务配置等短表分页右侧有一大段空白）
+   让分页控件占满信息条之后的剩余宽度，元素两端散开（每页条数在左、前往 N 页在右），
+   不再聚集在最右留出一片中空区 */
+.pager-bar .el-pagination { flex: 1 1 auto; flex-wrap: wrap; row-gap: 6px; justify-content: space-between; }
 .pager-bar { padding-bottom: 6px; }
 @media (max-width: 1280px) {
   .pager-bar { flex-direction: column; align-items: stretch; row-gap: 10px; }

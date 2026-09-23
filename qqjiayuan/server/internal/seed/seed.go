@@ -248,17 +248,22 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
 
-		// 训练一键加速黄金倍率（默认 1 = 每剩余 1 秒 10 黄金；0 / NULL 无意义 → 回落 1）
+		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 1")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 100")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 1 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
+		// ★ 2026-09-24 迁移：把旧口径的默认值 1 一次性升级为 100（语义从「倍率」改为「百分比」）。
+		//   注意副作用：以后想把倍率故意设成 1（=1%）会在重启时被改回 100 —— 运营不会用到 1% 这么极端的值。
+		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate = 1")
 
-		// 伤兵恢复黄金折扣率（默认 1 = 原价；0 / NULL 无意义 → 回落 1）
+		// 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_heal_rate") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_heal_rate double DEFAULT 1")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_heal_rate double DEFAULT 100")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 1 WHERE wound_heal_rate IS NULL OR wound_heal_rate <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate IS NULL OR wound_heal_rate <= 0")
+		// ★ 2026-09-24 迁移：同上，旧默认值 1 → 100
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate = 1")
 
 		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
 		//   troop_max 单城兵力上限（默认 10 亿）+ wound_expire_days 伤兵存活天数（默认 5）。

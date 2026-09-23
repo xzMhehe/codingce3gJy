@@ -291,13 +291,14 @@ type EzfyCfgLimit struct {
 	OfficerStarAttrGain int     `gorm:"default:10" json:"officer_star_attr_gain"` // 每升 1 星三维各 +N（默认 10）
 	OfficerStarMax      int     `gorm:"default:5" json:"officer_star_max"`        // 星级上限（默认 5）
 
-	// ★ 训练一键加速黄金倍率：实际费用 = 剩余秒数 × 10 × 该倍率（默认 1 = 原价）。
-	//   节假日想便宜点就把倍率调低（如 0.5 = 半价）。0 无意义 → 回落 1。
-	SpeedTrainRate float64 `gorm:"default:1" json:"speed_train_rate"`
+	// ★ 训练一键加速黄金倍率（百分比口径）：实际费用 = 剩余秒数 × 10 × 倍率/100。
+	//   默认 100 = 100% = 原价；节假日调低 = 便宜（50 = 半价、10 = 一折）。
+	//   0 无意义 → 回落 100。
+	SpeedTrainRate float64 `gorm:"default:100" json:"speed_train_rate"`
 
-	// ★ 伤兵恢复黄金折扣率：恢复费用 = 兵种总造价 / wound_heal_divisor × 该折扣率（默认 1 = 原价）。
-	//   与训练加速倍率同款：节假日调低 = 恢复便宜。0 无意义 → 回落 1。
-	WoundHealRate float64 `gorm:"default:1" json:"wound_heal_rate"`
+	// ★ 伤兵恢复黄金折扣率（百分比口径）：恢复费用 = 兵种总造价 / wound_heal_divisor × 折扣率/100。
+	//   默认 100 = 100% = 原价；调低 = 恢复便宜。0 无意义 → 回落 100。
+	WoundHealRate float64 `gorm:"default:100" json:"wound_heal_rate"`
 
 	// ============ 数值安全卡控（2026-09-23 线上「负数兵力」事故）============
 	//

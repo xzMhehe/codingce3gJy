@@ -65,6 +65,12 @@
         <el-table-column label="数量" width="110" align="right">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.es_count) }}</span></template>
         </el-table-column>
+        <el-table-column label="库存" width="90" align="center">
+          <template slot-scope="{row}">
+            <span v-if="row.is_system === 1" class="td-green">∞ 无限</span>
+            <span v-else class="td-mono">{{ row.status === 0 ? fmtN(row.es_count) : 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="总价" width="120" align="right">
           <template slot-scope="{row}">
             <span :class="row.currency === 2 ? 'td-blue' : 'td-gold'">{{ fmtN(row.total_price) }}</span>
@@ -105,8 +111,17 @@
     </el-card>
 
     <!-- 新增系统挂单 -->
-    <el-dialog title="新增系统挂单（卖方：系统）" :visible.sync="dlg" width="560px" :close-on-click-modal="false">
+    <el-dialog title="新增系统挂单（卖方：系统 · 买不完）" :visible.sync="dlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
+        <el-form-item label="资源包模板">
+          <el-select v-model="pack" style="width:100%" placeholder="选一个模板自动填数量/价格，也可选自定义" @change="onPack">
+            <el-option value="" label="自定义（手动填写）" />
+            <el-option v-for="p in packOptions" :key="p.v" :label="p.n" :value="p" />
+          </el-select>
+          <div class="td-sub" style="margin-top:4px">
+            模板只做快速填充，上架前仍可改数量/价格；系统挂单<b>无限库存</b>，玩家可反复购买
+          </div>
+        </el-form-item>
         <el-form-item label="资源类型" required>
           <el-select v-model="form.es_type" style="width:100%">
             <el-option v-for="(n, t) in resNames" :key="'rt' + t" :label="n" :value="Number(t)" />
@@ -124,7 +139,7 @@
             <el-radio :label="2">钻石</el-radio>
           </el-radio-group>
           <div class="td-sub" style="margin-top:4px">
-            钻石定价的挂单，玩家需要用档案上的钻石余额购买（钻石由管理员充值）
+            钻石定价的挂单，玩家需要用档案上的钻石余额购买（钻石由管理员发放）
           </div>
         </el-form-item>
         <el-form-item label="单价预览">
@@ -157,11 +172,28 @@ export default {
       status: -1, word: '',
       systemOn: 0, playerOn: 0,
       dlg: false, saving: false,
+      pack: '',
       form: { es_type: 1, es_count: 10000, total_price: 1000, currency: 1 },
       resCfgList: []
     }
   },
   computed: {
+    // ★ 资源包模板：粮/钢/油/矿 × 小/中/大包，运营一键填充（价格可再改）
+    packOptions () {
+      const sizes = [
+        { k: '小包', count: 10000, price: 100 },
+        { k: '中包', count: 100000, price: 900 },
+        { k: '大包', count: 1000000, price: 8000 }
+      ]
+      const opts = []
+      Object.keys(ES_KEY).forEach(t => {
+        const name = this.resNames[t] || RES_FALLBACK[t]
+        sizes.forEach(s => {
+          opts.push({ v: 'p' + t + '_' + s.k, n: `${name} · ${s.k}（${s.count.toLocaleString()}）≈${s.price.toLocaleString()}黄金`, type: Number(t), ...s })
+        })
+      })
+      return opts
+    },
     resNames () {
       const m = Object.assign({}, RES_FALLBACK)
       const byKey = {}
@@ -230,8 +262,16 @@ export default {
       })
     },
     openCreate () {
+      this.pack = ''
       this.form = { es_type: 1, es_count: 10000, total_price: 1000, currency: 1 }
       this.dlg = true
+    },
+    onPack (p) {
+      if (!p) return
+      this.form.es_type = p.type
+      this.form.es_count = p.count
+      this.form.total_price = p.price
+      this.form.currency = 1
     },
     doCreate () {
       if (!(this.form.es_count > 0)) { this.$message.warning('数量必须大于 0'); return }

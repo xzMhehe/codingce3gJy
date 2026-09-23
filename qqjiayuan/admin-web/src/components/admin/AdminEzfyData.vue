@@ -21,8 +21,8 @@
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
-        <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w"
-                         :align="col.w ? 'center' : 'left'" show-overflow-tooltip>
+        <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w" :min-width="col.minW"
+                         :align="(col.w || col.minW) ? 'center' : 'left'" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span v-if="col.fmt === 'stock'" :class="row[col.k] < 0 ? 'unlimited' : ''">
               {{ row[col.k] < 0 ? '无上限' : row[col.k] }}
@@ -126,12 +126,16 @@ const COLS = {
   ],
   taskTypes: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
-    { k: 'reset_type', n: '重置', w: 70 }, { k: 'sort_no', n: '排序', w: 60 }, { k: 'status', n: '状态', w: 60 }
+    { k: 'reset_type', n: '重置', w: 70 }, { k: 'sort_no', n: '排序', w: 60 },
+    // ★ 最后一列不固定宽、只给最小宽，让表格自动铺满整个卡片（用户反馈右侧大空白）
+    { k: 'status', n: '状态', minW: 90 }
   ],
   tasks: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '任务名', w: 120 }, { k: 'task_type', n: '类型', w: 96 },
     { k: 'target', n: '目标数', w: 70 }, { k: 'reward_gold', n: '黄金', w: 76 }, { k: 'reward_food', n: '粮食', w: 70 },
-    { k: 'reward_prestige', n: '声望', w: 60 }, { k: 'sort_no', n: '排序', w: 56 }, { k: 'status', n: '状态', w: 56 }
+    { k: 'reward_prestige', n: '声望', w: 60 }, { k: 'sort_no', n: '排序', w: 56 },
+    // ★ 同上：最后一列弹性铺满
+    { k: 'status', n: '状态', minW: 90 }
   ],
   cities: [
     { k: 'id', n: '城池ID', w: 80 }, { k: 'user_id', n: '用户ID', w: 80 }, { k: 'name', n: '城名', w: 110 },

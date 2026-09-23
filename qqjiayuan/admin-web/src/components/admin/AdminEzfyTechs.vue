@@ -4,6 +4,9 @@
       <el-tabs v-model="tab">
         <!-- ================= 玩家科技 ================= -->
         <el-tab-pane label="玩家科技" name="list">
+          <div class="td-sub" style="margin-bottom:8px">
+            科技归玩家所有、与城市无关；城市需建设「科研中心」后，科技加成才会生效
+          </div>
           <div class="toolbar">
             <el-input v-model="word" placeholder="玩家名 / 家园号 / 玩家ID" clearable style="width:200px"
                       @keyup.enter.native="page = 1; load()" />
@@ -34,7 +37,6 @@
                 <span v-else class="td-muted">—</span>
               </template>
             </el-table-column>
-            <el-table-column prop="city_name" label="主城" width="120" show-overflow-tooltip />
             <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="90" align="center" />
             <el-table-column label="操作" width="220" align="center" fixed="right">

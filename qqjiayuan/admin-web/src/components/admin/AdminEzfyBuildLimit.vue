@@ -50,14 +50,14 @@
         <el-form-item label="伤兵恢复系数">
           <el-input-number v-model.number="form.wound_heal_divisor" :min="1" controls-position="right" style="width:180px" />
         </el-form-item>
-        <el-form-item label="伤兵恢复黄金折扣率">
-          <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+        <el-form-item label="伤兵恢复黄金折扣率(%)">
+          <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
         </el-form-item>
         <el-form-item label="野地兵力倍数">
           <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
         </el-form-item>
-        <el-form-item label="训练加速黄金倍率">
-          <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+        <el-form-item label="训练加速黄金倍率(%)">
+          <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
         </el-form-item>
 
         <el-divider content-position="left">玩法开关</el-divider>
@@ -113,7 +113,7 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
-        wild_troop_mult: 1, speed_train_rate: 1, wound_heal_rate: 1,
+        wild_troop_mult: 1, speed_train_rate: 100, wound_heal_rate: 100,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         officer_star_up_on: 1,
         officer_star_chance: 20,
@@ -144,8 +144,8 @@ export default {
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
-            speed_train_rate: pos(Number(r.data.speed_train_rate), 1),
-            wound_heal_rate: pos(Number(r.data.wound_heal_rate), 1),
+            speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
+            wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             recruit_cost_on: sw(r.data.recruit_cost_on),
             food_upkeep_on: sw(r.data.food_upkeep_on),
             march_oil_on: sw(r.data.march_oil_on),
