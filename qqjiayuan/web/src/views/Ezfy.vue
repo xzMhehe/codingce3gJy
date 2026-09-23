@@ -2052,6 +2052,31 @@
                 <span v-else class="gray">[已售罄]</span>
               </td>
             </tr>
+            <!-- ★ 购买确认直接展开在**该道具自己行下面**（用户要求「在购买按钮附近确认」，
+                 不再甩到表格底下一个独立面板，避免「购买在下面、确认却在上面」的割裂感） -->
+            <tr v-if="buyItem && buyItem.id === it.id" class="ezfy-buy-inline">
+              <td colspan="4">
+                <span class="gray">数量</span>
+                <input v-model="buyCount" type="number" min="1" :max="buyMaxOf(buyItem)"
+                       style="width:60px"/>
+                <span class="gray">{{ buyItem.unlimited ? ('单次最多 ' + mallBuyMax + ' 个') : ('最多 ' + buyMaxOf(buyItem)) }}</span>
+                <template v-if="buyItem.dual_pay">
+                  <span class="gray">支付</span>
+                  <select v-model="buyPayWith">
+                    <option value="gold">黄金 {{ buyItem.price_gold * (parseInt(buyCount) || 0) }}</option>
+                    <option value="diamond">钻石 {{ buyItem.price_diamond * (parseInt(buyCount) || 0) }}</option>
+                  </select>
+                </template>
+                <template v-else-if="buyItem.is_diamond">
+                  <b class="bb-total">{{ buyItem.price_diamond > 0 ? (buyItem.price_diamond * (parseInt(buyCount) || 0) + ' 钻石') : '限时免费' }}</b>
+                </template>
+                <template v-else>
+                  <b class="bb-total">{{ buyItem.price_gold > 0 ? (buyItem.price_gold * (parseInt(buyCount) || 0) + ' ' + resNames.gold) : '限时免费' }}</b>
+                </template>
+                <button @click="doBuy(buyItem)">确认购买</button>
+                <a href="javascript:;" @click="buyItem = null">取消</a>
+              </td>
+            </tr>
           </table>
           <div class="old-line gray" v-if="!mallPaged.length">(该分类下暂无道具)</div>
           <!-- ★ 分页（每页 10 件） -->
@@ -2060,33 +2085,6 @@
             <span class="gray">第 {{ Math.min(mallPage, mallTotalPages) }}/{{ mallTotalPages }} 页 · 共 {{ mallFiltered.length }} 件</span>
             <a href="javascript:;" :class="{ disabled: mallPage >= mallTotalPages }" @click="mallGo(1)">[下一页]</a>
           </div>
-          <!-- 购买面板：卡片式（与开箱面板同款） -->
-          <div class="ezfy-buy-box" v-if="buyItem">
-            <div class="bb-title">{{ buyItem.name }}</div>
-            <div class="bb-row">
-              数量
-              <input v-model="buyCount" type="number" min="1" :max="buyMaxOf(buyItem)"/>
-              <span class="gray">{{ buyItem.unlimited ? ('单次最多 ' + mallBuyMax + ' 个') : ('最多 ' + buyMaxOf(buyItem)) }}</span>
-            </div>
-            <div class="bb-row">
-              <template v-if="buyItem.dual_pay">
-                支付
-                <select v-model="buyPayWith">
-                  <option value="gold">黄金 {{ buyItem.price_gold * (parseInt(buyCount) || 0) }}</option>
-                  <option value="diamond">钻石 {{ buyItem.price_diamond * (parseInt(buyCount) || 0) }}</option>
-                </select>
-              </template>
-              <span v-else-if="buyItem.is_diamond">
-                合计 <b class="bb-total">{{ buyItem.price_diamond > 0 ? (buyItem.price_diamond * (parseInt(buyCount) || 0) + ' 钻石') : '限时免费' }}</b>
-              </span>
-              <span v-else>
-                合计 <b class="bb-total">{{ buyItem.price_gold > 0 ? (buyItem.price_gold * (parseInt(buyCount) || 0) + ' ' + resNames.gold) : '限时免费' }}</b>
-              </span>
-            </div>
-            <div class="bb-row">
-              <button @click="doBuy(buyItem)">确认购买</button>
-              <a href="javascript:;" @click="buyItem = null">取消</a>
-            </div>
           </div>
           </template>
           <!-- ★ 装备散件（管理端在「装备列表」里维护）
@@ -2121,25 +2119,22 @@
                   <span v-else class="gray">[售罄]</span>
                 </td>
               </tr>
+              <!-- ★ 装备购买确认也内联展开在**该行下面**（与道具一致，贴近购买按钮） -->
+              <tr v-if="equipShopBuy && equipShopBuy.id === p.id" class="ezfy-buy-inline">
+                <td colspan="6">
+                  <span class="gray">数量</span>
+                  <input v-model="equipShopCount" type="number" min="1" style="width:60px"/>
+                  <b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
+                  <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
+                  <a href="javascript:;" @click="equipShopBuy = null">取消</a>
+                </td>
+              </tr>
             </table>
             <div class="old-line gray" v-if="!shopAll.length">(没有匹配的装备)</div>
             <div class="ezfy-pager" v-if="shopAll.length > shopSize">
               <a href="javascript:;" :class="{ gray: shopPage <= 1 }" @click="shopPage--">上一页</a>
               <span class="gray">第 {{ shopPage }}/{{ shopTotalPages }} 页（共 {{ shopAll.length }} 件）</span>
               <a href="javascript:;" :class="{ gray: shopPage >= shopTotalPages }" @click="shopPage++">下一页</a>
-            </div>
-            <!-- 购买面板：卡片式（与开箱面板同款） -->
-            <div class="ezfy-buy-box" v-if="equipShopBuy">
-              <div class="bb-title">{{ equipShopBuy.name }} · {{ equipShopBuy.price_diamond }} 钻石/件</div>
-              <div class="bb-row">
-                数量
-                <input v-model="equipShopCount" type="number" min="1"/>
-              </div>
-              <div class="bb-row">
-                合计 <b class="bb-total">{{ equipShopBuy.price_diamond * (parseInt(equipShopCount) || 0) }} 钻石</b>
-                <button @click="doBuyEquip(equipShopBuy)">确认购买</button>
-                <a href="javascript:;" @click="equipShopBuy = null">取消</a>
-              </div>
             </div>
             <div class="old-line gray">
               当前余额：{{ resNames.gold }}{{ fmtN(equipShop.gold) }} · 钻石{{ equipShop.diamond }}
@@ -6207,6 +6202,16 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-buy-box .bb-row { line-height: 2.2; }
 .ezfy-page .ezfy-buy-box .bb-row input[type="number"] { width: 70px; }
 .ezfy-page .ezfy-buy-box .bb-total { color: #c0392b; }
+/* ★ 商城购买确认内联行：直接展开在「购买」按钮所在行的正下方，淡色背景区分
+     （用户要求「确认在购买按钮附近」，不再用表格底部那个独立面板） */
+.ezfy-page .ezfy-buy-inline td {
+  background: #faf8f2;
+  text-align: left;
+  line-height: 2.3;
+}
+.ezfy-page .ezfy-buy-inline > td > span { margin: 0 4px; }
+.ezfy-page .ezfy-buy-inline select { margin-right: 12px; }
+.ezfy-page .ezfy-buy-inline button { margin: 0 8px 0 12px; }
 /* 自适应高度文本域（私聊等） */
 .ezfy-page .ezfy-auto-textarea {
   width: 100%;
