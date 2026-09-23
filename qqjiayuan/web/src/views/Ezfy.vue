@@ -351,9 +351,9 @@
             </div>
             <div class="old-line" v-if="!dynamics.length">(当前没有在外的部队)</div>
             <div class="ezfy-pager" v-if="dynamics.length > dynSize">
-              <a href="javascript:;" :class="{ gray: dynPage <= 1 }" @click="pagerGo('dyn', -1)">上一页</a>
+              <a href="javascript:;" :class="{ gray: dynPage <= 1 }" @click="sectionPagerGo('dyn', -1)">上一页</a>
               <span class="gray">第 {{ dynPage }}/{{ dynTotalPages }} 页（共 {{ dynamics.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: dynPage >= dynTotalPages }" @click="pagerGo('dyn', 1)">下一页</a>
+              <a href="javascript:;" :class="{ gray: dynPage >= dynTotalPages }" @click="sectionPagerGo('dyn', 1)">下一页</a>
             </div>
           </template>
 
@@ -377,9 +377,9 @@
             </div>
             <div class="old-line" v-if="!reports.length">(暂无军情警讯)</div>
             <div class="ezfy-pager" v-if="reports.length > repSize">
-              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="pagerGo('rep', -1)">上一页</a>
+              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="sectionPagerGo('rep', -1)">上一页</a>
               <span class="gray">第 {{ repPage }}/{{ repTotalPages }} 页（共 {{ reports.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="pagerGo('rep', 1)">下一页</a>
+              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>
 
@@ -400,9 +400,9 @@
             </div>
             <div class="old-line" v-if="!reports.length">(暂无战斗报告)</div>
             <div class="ezfy-pager" v-if="reports.length > repSize">
-              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="pagerGo('rep', -1)">上一页</a>
+              <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="sectionPagerGo('rep', -1)">上一页</a>
               <span class="gray">第 {{ repPage }}/{{ repTotalPages }} 页（共 {{ reports.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="pagerGo('rep', 1)">下一页</a>
+              <a href="javascript:;" :class="{ gray: repPage >= repTotalPages }" @click="sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>
 
@@ -2359,12 +2359,15 @@
           <div class="old-line" v-for="n in noticePaged" :key="'nn' + n.id">
             <span v-if="n.is_top" class="red">[置顶]</span>
             <a href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
+            <!-- ★ 用户要求：公告标题后展示发布时间（年-月-日）。CreatedAt(time.Time) JSON 序列化为
+                 "2026-09-23T11:11:28+08:00"，前端只取 "年-月-日" 并加 [] 色弱化。 -->
+            <span class="gray">[{{ fmtDate(n.created_at) }}]</span>
           </div>
           <div class="old-line" v-if="!notices.length">(暂无公告)</div>
           <div class="ezfy-pager" v-if="notices.length > noticeSize">
-            <a href="javascript:;" :class="{ gray: noticePage <= 1 }" @click="pagerGo('notice', -1)">上一页</a>
+            <a href="javascript:;" :class="{ gray: noticePage <= 1 }" @click="sectionPagerGo('notice', -1)">上一页</a>
             <span class="gray">第 {{ noticePage }}/{{ noticeTotalPages }} 页（共 {{ notices.length }} 条）</span>
-            <a href="javascript:;" :class="{ gray: noticePage >= noticeTotalPages }" @click="pagerGo('notice', 1)">下一页</a>
+            <a href="javascript:;" :class="{ gray: noticePage >= noticeTotalPages }" @click="sectionPagerGo('notice', 1)">下一页</a>
           </div>
           <template v-if="curNotice">
             <div class="panel-title">{{ curNotice.title }}</div>
@@ -4827,9 +4830,10 @@ export default {
     doCreateCity () {
       api.post('/games/ezfy/city/create', { x: parseInt(this.newCityX) || 0, y: parseInt(this.newCityY) || 0 }).then(r => this.alert(r, '新城建造成功'))
     },
-    // 摧毁自己的城市（至少保留一座；摧毁当前城会自动切到剩下的城）
     // ★ 分页翻页（which: 'dyn' 军队动态 / 'rep' 战报列表 / 'notice' 公告）
-    pagerGo (which, delta) {
+    //   ⚠️ 方法名必须与下方通用 pagerGo 不同：同名时对象字面量后定义会覆盖先定义，
+    //   曾导致网易/公告「下一页」点到的是通用版 pagerGo（cur 传字符串 → 返回原值 → 无反应）。
+    sectionPagerGo (which, delta) {
       if (which === 'dyn') {
         this.dynPage = Math.min(this.dynTotalPages, Math.max(1, this.dynPage + delta))
       } else if (which === 'notice') {
@@ -5674,6 +5678,14 @@ export default {
       const v = Number(n)
       if (!isFinite(v)) return '0'
       return v.toLocaleString('en-US')
+    },
+    // ★ 把后端下发的创建时间格式化成年-月-日（公告标题后的发布时间）。
+    //   入参可能是 "2026-09-23T11:11:28+08:00" 或已是 "2006-01-02 15:04" 字符串。
+    fmtDate (s) {
+      if (!s) return ''
+      // 取 ISO 字符串最前面一段 yyyy-MM-dd；兼容已格式化的 "2006-01-02 ..."
+      const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/)
+      return m ? m[1] + '-' + m[2] + '-' + m[3] : ''
     },
     // ★ 大数加单位（万/亿），资源详情里动辄十几位数字，不缩一下没法看
     fmtBig (n) {
