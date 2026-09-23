@@ -2067,7 +2067,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status IN (0,1,2,?)", uid, ezfyOrderStatusBattle).
+	h.DB.Where("user_id = ? AND status IN (0,1,2,?,?)", uid, ezfyOrderStatusBattle, ezfyOrderStatusWaiting).
 		Order("id DESC").Limit(100).Find(&orders)
 	// ★ 性能：战场进度**一次查完**再按 order_id 取。
 	//   原来在下面的循环里逐条 ezfyBattleByOrder = N+1（服务器只有 1 核，这条红线不能踩）。

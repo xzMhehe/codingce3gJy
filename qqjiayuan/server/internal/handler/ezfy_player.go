@@ -68,8 +68,13 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	}
 	// ★ 2026-09-23 用户要求：不再跨城累加兵力(总兵力)。
 	//   累加值越大越容易把 int64 撑成负数(线上出过 -8843547888967622000)。
-	//   这里只返回单城兵力上限(城市最高兵力数)这一个常量，无累加、无溢出风险。
-	troopMax := ezfyTroopMaxCfg()
+	//   改为展示玩家**单城最高兵力**（他最有兵的那个城），不跨城累加，无溢出风险。
+	var maxCityTroop int64
+	if len(cityIds) > 0 {
+		h.DB.Raw(`SELECT COALESCE(MAX(tot),0) FROM (
+				SELECT city_id, SUM(count) tot FROM ezfy_city_troop
+				WHERE city_id IN ? GROUP BY city_id) t`, cityIds).Scan(&maxCityTroop)
+	}
 
 	// 军团
 	corpsName := ""
@@ -100,7 +105,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"corps_name":    corpsName,
 		"city_count":    len(cities),
 		"officer_count": officerCount,
-		"troop_max":     troopMax,
+		"troop_max":     maxCityTroop,
 		"wild_count":    wildCount,
 		"is_self":       isSelf,
 		"is_friend":     isFriend,

@@ -39,8 +39,10 @@ const (
 	// 这里只防异常情况下快照无限膨胀。
 	ezfyBattleLogMax = 1000
 	// ezfyOrderStatusBattle 订单状态：战斗中（指挥室进行中，等玩家指挥）
-	// 0 行进 / 1 驻守中 / 2 返回 / 3 完成 / 4 阵亡 / 5 战斗中
+	// 0 行进 / 1 驻守中 / 2 返回 / 3 完成 / 4 阵亡 / 5 战斗中 / 6 等待
 	ezfyOrderStatusBattle = 5
+	// ezfyOrderStatusWaiting 订单状态：等待（目标已被别的玩家抢先开始指挥，排队等上一场打完）
+	ezfyOrderStatusWaiting = 6
 )
 
 // ============ 攻方逐兵种指令表 ============

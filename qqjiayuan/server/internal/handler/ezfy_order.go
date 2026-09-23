@@ -960,9 +960,9 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	var orders []model.EzfyOrder
-	// ★ 用户规则：出征队列只列**还在外面**的部队（行军中/驻守中/返航中/战斗中）。
+	// ★ 用户规则：出征队列只列**还在外面**的部队（行军中/驻守中/返航中/战斗中/等待）。
 	//   已结束(3已完成/4已终止)的命令不再常驻队列，战报里还能查到。
-	h.DB.Where("user_id = ? AND status IN (0,1,2,?)", uid, ezfyOrderStatusBattle).
+	h.DB.Where("user_id = ? AND status IN (0,1,2,?,?)", uid, ezfyOrderStatusBattle, ezfyOrderStatusWaiting).
 		Order("id DESC").Limit(50).Find(&orders)
 	// ★ 战斗中的订单要带上回合进度：**一次查出全部战场**再按 order_id 取，
 	//   别在循环里逐条查（性能红线：1核1G 机器上 N+1 会直接打满）。
@@ -1141,6 +1141,13 @@ func (h *EzfyHandler) processOrders(uid uint) {
 		}
 		if order.Status == 0 && now >= order.ArriveTime {
 			h.processArrive(uid, order, now)
+		} else if order.Status == ezfyOrderStatusWaiting {
+			// ★ 2026-09-23 用户要求：目标已被抢占 → 部队「等待」。
+			//   目标不再忙碌(上一场打完、订单不再是战斗中)时，放行重新进指挥。
+			if !ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+				order.Status = 0
+				h.processArrive(uid, order, now)
+			}
 		} else if order.Status == 1 && order.OrderType == 7 && now >= order.ArriveTime {
 			h.settleDispatch(uid, order, now)
 		} else if order.Status == 2 && now >= order.ReturnTime {
@@ -1283,6 +1290,21 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		Updates(map[string]interface{}{"arrive_time": order.ArriveTime,
 			"result": order.Result, "carry": order.Carry})
 	h.addReport(uid, 5, "派遣报告: 采集结算", desc, "", order.ID)
+}
+
+// ezfyOrderTargetBusy 目标是否已被别的玩家「抢先指挥」。
+//
+// ★ 2026-09-23 用户要求：A、B 出征同一个目标，A 已经在指挥(战斗中)的话，
+//   B 应当「等待」，不能再同时开一个指挥室。
+//   判断口径：同目标(target_type + 坐标)下存在**其他**订单处于「战斗中」(status=5)。
+//   这里的 status=5 即「有进行中的战场在等玩家指挥」，把它当成目标被占用。
+func ezfyOrderTargetBusy(h *EzfyHandler, o *model.EzfyOrder, exceptID int64) bool {
+	var n int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("target_type = ? AND target_x = ? AND target_y = ? AND status = ? AND id <> ?",
+			o.TargetType, o.TargetX, o.TargetY, ezfyOrderStatusBattle, exceptID).
+		Count(&n)
+	return n > 0
 }
 
 func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64) {
@@ -1711,6 +1733,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 			atkTargets, defTargets, atkMoves, defMoves)
+		// ★ 2026-09-23 用户要求：目标被别的玩家抢先指挥时，本部队改为「等待」，
+		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
+		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+			order.Status = ezfyOrderStatusWaiting
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusWaiting)
+			return
+		}
 		if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

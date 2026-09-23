@@ -570,12 +570,38 @@ func (h *EzfyHandler) equipmentList(uid uint) []model.EzfyEquipment {
 	return list
 }
 
+// ezfySlotCanon 部位别名归一（2026-09-23 用户反馈「同部位能穿多件」）
+//
+// ★ 根本原因：不同的套装对同一个身体部位用了**不同的字符串**——「头盔」和「头部」
+//   都指头、「胸甲」和「胸部」都指胸、「手套/左手/手部」都指手…… 老代码只做**精确字符串**
+//   判重，于是玩家能同时穿「传说英雄[头盔]」和「赤色锤镰[头部]」两件头装 → 同部位穿了两件。
+//   这里把所有同名部位的书写统一成一个规范词，判重和落库都走它，才能真正做到「同部位唯一」。
+func ezfySlotCanon(s string) string {
+	switch s {
+	case "头盔":
+		return "头部"
+	case "护肩":
+		return "肩部"
+	case "胸甲":
+		return "胸部"
+	case "手套", "左手":
+		return "手部"
+	case "战靴":
+		return "足部"
+	case "腰带":
+		return "腰部"
+	}
+	return s
+}
+
+// addEquipment 生成装备实例进背包
 func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) {
 	e := model.EzfyEquipment{
 		UserId: city.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
 		Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 		Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
-		Slot: cfg.EquipSlot(), SetId: cfg.SetId,
+		// ★ 部位统一存归一后的规范名，老实例的原始字符串由判重时归一兜底
+		Slot: ezfySlotCanon(cfg.EquipSlot()), SetId: cfg.SetId,
 		// ★ 六项战斗属性随实例带走（进战斗计算用）
 		Series: cfg.Series, Enhance: cfg.Enhance,
 		Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
@@ -603,16 +629,19 @@ func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) 
 	if o.Level < e.Level {
 		return "武将等级不足(需要" + strconv.Itoa(e.Level) + "级)"
 	}
-	slot := e.EquipSlot()
+	slot := ezfySlotCanon(e.EquipSlot())
 	equipped := officerEquipped(o)
 	if slot != "珠宝" {
 		for _, m := range equipped {
-			if t, _ := m["slot"].(string); t == slot {
+			// ★ 2026-09-23 修复「同部位能穿多件」：判重前先把**双方**的部位别名归一。
+			//   否则「传说英雄[头盔]」(部位'头盔') 和 「赤色锤镰[头部]」(部位'头部')
+			//   这种同名部位不同写法会同时通过，导致一个部位穿了两件。
+			if t, _ := m["slot"].(string); ezfySlotCanon(t) == slot {
 				return "已穿戴同部位装备(" + slot + ")"
 			}
 			// 老数据没有 slot 字段 → 回落到 type
 			if t, _ := m["slot"].(string); t == "" {
-				if ot, _ := m["type"].(string); ot == slot {
+				if ot, _ := m["type"].(string); ezfySlotCanon(ot) == slot {
 					return "已穿戴同部位装备(" + slot + ")"
 				}
 			}

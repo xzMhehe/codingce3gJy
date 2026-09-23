@@ -896,6 +896,8 @@ func ezfyOrderStatusName(s int) string {
 		return "已终止"
 	case ezfyOrderStatusBattle:
 		return "战斗中"
+	case ezfyOrderStatusWaiting:
+		return "等待"
 	default:
 		return "未知"
 	}
