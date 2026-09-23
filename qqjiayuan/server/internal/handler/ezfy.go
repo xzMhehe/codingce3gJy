@@ -40,6 +40,10 @@ const (
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
 	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
+	// ★ 建筑图纸道具 cfg_id（ezfy_cfg_item 表 ID=10，ItemType=6），升级到 10 级及以上必需
+	ezfyBlueprintItemID = 10
+	// ★ 司令部兵种战斗配置「防守」第三种状态：不参与防御（被攻击时防御战斗兵种不含它）
+	ezfyDefMoveNone = -1
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
@@ -653,6 +657,9 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	var foodProd, steelProd, oilProd, rareProd, goldProd int64
 	var popMax int64
 	var goldCap, resCap int64
+	// ★ 资源建筑(农田3/炼钢4/石油5/稀矿6)自带「增加容量」，需累加到对应资源上限
+	//   （此前只取仓库容量 resCap，农田/炼钢/石油/稀矿的容量没算进去 → 上限 bug）
+	var foodCap, steelCap, oilCap, rareCap int64
 	for _, b := range h.buildingList(city.ID) {
 		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
 		if lv == nil {
@@ -670,14 +677,18 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 				popMax += lv.Capacity
 			case 3:
 				foodProd += prod
+				foodCap += lv.Capacity
 			case 4:
 				steelProd += prod
+				steelCap += lv.Capacity
 			case 5:
 				oilProd += prod
+				oilCap += lv.Capacity
 			case 6:
 				rareProd += prod
+				rareCap += lv.Capacity
 			case 12:
-				resCap = lv.Capacity
+				resCap += lv.Capacity
 			}
 		} else if b.BuildingId == 1 {
 			goldCap = lv.Capacity
@@ -687,10 +698,10 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	if resCap <= 0 {
 		resCap = 100000
 	}
-	city.FoodCap = resCap
-	city.SteelCap = resCap
-	city.OilCap = resCap
-	city.RareCap = resCap
+	city.FoodCap = resCap + foodCap
+	city.SteelCap = resCap + steelCap
+	city.OilCap = resCap + oilCap
+	city.RareCap = resCap + rareCap
 	city.GoldCap = goldCap
 
 	foodProd = foodProd * int64(100+techFood*10) / 100
@@ -1151,14 +1162,17 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	if lv == nil {
 		return "配置缺失"
 	}
-	if target >= 10 && h.itemCount(city.UserID, 6) <= 0 {
+	// ★ 建筑图纸道具 cfg_id = 10（ItemType=6），不是 6 —— 6 是「训练加速30分钟」。
+	//   规则（2026-09-23 用户修正）：**所有建筑 9→10 级**都需图纸；民居(2) 10→11、11→12 也要。
+	needBlueprint := target == 10 || (b.BuildingId == 2 && target >= 11)
+	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID) <= 0 {
 		return fmt.Sprintf("升级到%d级需要建筑图纸", target)
 	}
 	if !h.pay(city, lv) {
 		return "资源不足"
 	}
-	if target >= 10 {
-		h.consumeItem(city.UserID, 6)
+	if needBlueprint {
+		h.consumeItem(city.UserID, ezfyBlueprintItemID)
 	}
 	buildTech := h.techMap(city.ID)[11]
 	now := time.Now().UnixMilli()
@@ -1194,7 +1208,12 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 		return "该建筑已满级"
 	}
 	var needFood, needSteel, needOil, needRare, needGold int64
+	needBlueprint := 0
 	for lv := b.Level + 1; lv <= maxLv; lv++ {
+		// ★ 与 upgradeBuilding 同口径：所有建筑 9→10、民居(2) 10→11 / 11→12 需图纸
+		if lv == 10 || (b.BuildingId == 2 && lv >= 11) {
+			needBlueprint++
+		}
 		if l := ezfyCfg.buildingLevel(b.BuildingId, lv); l != nil {
 			needFood += l.Food
 			needSteel += l.Steel
@@ -1202,6 +1221,9 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 			needRare += l.Rare
 			needGold += l.Gold
 		}
+	}
+	if needBlueprint > 0 && h.itemCount(city.UserID, ezfyBlueprintItemID) < needBlueprint {
+		return fmt.Sprintf("一键满级需要%d张建筑图纸(当前不足)", needBlueprint)
 	}
 	if city.Food < needFood || city.Steel < needSteel || city.Oil < needOil ||
 		city.Rare < needRare || city.Gold < needGold {
@@ -1213,6 +1235,9 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 	city.Rare -= needRare
 	city.Gold -= needGold
 	h.saveCityRes(city)
+	if needBlueprint > 0 {
+		h.consumeItemN(city.UserID, ezfyBlueprintItemID, needBlueprint)
+	}
 	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
 		Updates(map[string]interface{}{"status": 2, "start_time": 0, "end_time": now + ezfyMaxUpgradeSeconds*1000})
@@ -1329,10 +1354,10 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	//   开关关掉时整段跳过（不校验人口、不扣资源）。
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
-		popUsed := h.troopPop(city.ID)
+		popUsed := h.cityPopUsed(city.ID)
 		popAvailable := city.Pop - popUsed
 		if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
-			return fmt.Sprintf("人口不足(当前居民%d, 训练中已占用%d, 可用%d); 可召集人口突破民居上限",
+			return fmt.Sprintf("人口不足(当前居民%d, 建筑及训练已占用%d, 可用%d); 可召集人口突破民居上限",
 				city.Pop, popUsed, popAvailable)
 		}
 	}
@@ -1447,6 +1472,26 @@ func (h *EzfyHandler) troopPop(cityId uint) int64 {
 		}
 	}
 	return pop
+}
+
+// buildingPop 城市「已占用人口」中的**建筑占用**部分：每栋已建建筑的「占用人口」(lv.Pop) 累加。
+//
+// ★ 用户反馈（2026-09-23）：建筑的「占用人口」此前完全没计入，导致空闲人口虚高。
+//
+//	每家建筑（市政厅/资源建筑/军事建筑/城防等）升级后都有「占用人口」，统一在此累加。
+func (h *EzfyHandler) buildingPop(cityId uint) int64 {
+	pop := int64(0)
+	for _, b := range h.buildingList(cityId) {
+		if lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level); lv != nil {
+			pop += int64(lv.Pop)
+		}
+	}
+	return pop
+}
+
+// cityPopUsed 城市「已占用人口」= 建筑占用 + 训练队列占用。
+func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
+	return h.buildingPop(cityId) + h.troopPop(cityId)
 }
 
 // ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
@@ -2023,6 +2068,8 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		//   所以这里只做「引导」，道具的消耗在 MoveCity 里完成
 		//   （否则玩家在背包里误点一下就把道具用掉了、城却没动 —— 会被当成 bug 报上来）。
 		return fmt.Sprintf("【%s】请在「市政厅 → 城市迁移」页面使用", cfg.Name)
+	case 21: // 军官改名卡：在军官详情页使用（不在背包直接点）
+		return fmt.Sprintf("【%s】请在「军官 → 军官详情」页面使用", cfg.Name)
 	default:
 		return "道具类型错误"
 	}
@@ -2304,18 +2351,18 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"buildings":       buildingViews,
 		"building_pool":   buildingPool,
 		// ★ 军事区/资源区各自上限（分开下发）
-		"military_cap":   lim.MilitaryMax,
-		"resource_cap":   lim.ResourceMax,
-		"troops":          troopViews,
-		"wounded":         wounded,
-		"queues":          queues,
-		"techs":           techViews,
-		"wildlands":       wildViews,
-		"marching":        marching,
-		"occupying":       occupying,
-		// ★ 占用人口（只有训练中、还没出厂的新兵占）：首页/城市状态页的「空闲人口」直接用它算，
+		"military_cap": lim.MilitaryMax,
+		"resource_cap": lim.ResourceMax,
+		"troops":       troopViews,
+		"wounded":      wounded,
+		"queues":       queues,
+		"techs":        techViews,
+		"wildlands":    wildViews,
+		"marching":     marching,
+		"occupying":    occupying,
+		// ★ 占用人口 = 建筑占用人口 + 训练中未出厂的新兵占用（部队不占人口位置）。
 		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
-		"pop_used":       h.troopPop(city.ID),
+		"pop_used":       h.cityPopUsed(city.ID),
 		"unread_reports": unreadReports,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),

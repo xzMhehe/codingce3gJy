@@ -401,20 +401,25 @@
             </div>
           </template>
 
-          <!-- ===== 战报详情 ===== -->
-          <template v-if="curReport">
-            <hr/>
-            <div class="panel-title">{{ curReport.title }}</div>
-            <pre class="report-pre">{{ curReport.content }}</pre>
-            <template v-if="curReport.detail">
-              <div class="old-line"><a href="javascript:;" @click="showDetail = !showDetail">[展开/收起逐回合详情]</a></div>
-              <pre class="report-pre" v-if="showDetail">{{ curReport.detail }}</pre>
-            </template>
-            <div class="old-line">
-              <a href="javascript:;" @click="curReport = null">[收起]</a>
-            </div>
-          </template>
+          <!-- ===== 战报详情（已改为独立页面 reportview，不再行内展开） ===== -->
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 战报详情(reportview) ============ -->
+      <template v-else-if="cur === 'reportview'">
+        <div class="panel" v-if="curReport">
+          <div class="panel-title">{{ curReport.title }}</div>
+          <pre class="report-pre">{{ curReport.content }}</pre>
+          <template v-if="curReport.detail">
+            <div class="old-line"><a href="javascript:;" @click="showDetail = !showDetail">[展开/收起逐回合详情]</a></div>
+            <pre class="report-pre" v-if="showDetail">{{ curReport.detail }}</pre>
+          </template>
+          <div class="old-line">
+            <a href="javascript:;" class="red" @click="delReport(curReport)">[删除]</a>
+            <a href="javascript:;" @click="go('reports')">[返回]</a>
+            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          </div>
         </div>
       </template>
 
@@ -600,9 +605,11 @@
               <a href="javascript:;" @click="doSpeedBuilding(b)">加速</a>
             </template>
             <template v-else-if="b.level > 0 && b.level < b.max_level">
-              <a href="javascript:;" @click="doUpgrade(b)">升级</a>
-              <a href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
-              <a v-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
+              <span class="build-act">
+                <a href="javascript:;" @click="doUpgrade(b)">升级</a>
+                <a href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
+                <a v-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
+              </span>
             </template>
             <template v-else>
               <a v-if="b.level === 0" href="javascript:;" @click="doUpgrade(b)">建成中待完成</a>
@@ -778,9 +785,9 @@
                 <option v-for="tt in troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">防守</span>
-              <select v-model="targetCfg[t.id].defMove" style="width:80px"
+              <select v-model="targetCfg[t.id].defMove" style="width:110px"
                       :disabled="isDefenceTroop(t)">
-                <option :value="1">前进</option><option :value="0">停止</option>
+                <option :value="1">前进</option><option :value="0">停止</option><option :value="-1">不参与防御</option>
               </select>
             </div>
           </div>
@@ -2922,7 +2929,11 @@
         <!-- ★ 军官详情：全部改成表格（.ezfy-plain-table = 水平+垂直居中）。
              不用 <hr/> 分隔（项目约定复刻不要 hr），说明性文字一律去掉，只留字段与操作。 -->
         <div class="panel" v-if="officerDetail.officer">
-          <div class="panel-title">{{ officerDetail.officer.name }}</div>
+          <div class="panel-title">
+            {{ officerDetail.officer.name }}
+            <a href="javascript:;" @click="doRename">[改名]</a>
+            <span class="gray">军官改名卡 {{ officerDetail.officer.rename_card }} 张</span>
+          </div>
 
           <!-- 基础信息 -->
           <table class="ezfy-plain-table">
@@ -3007,7 +3018,7 @@
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
             <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
-                  class="gray">升星卡 {{ officerDetail.officer.star_card }} 张</span>
+                  class="gray">星级徽章 {{ officerDetail.officer.star_card }} 枚</span>
           </div>
 
           <!-- 已学技能 / 可学技能 -->
@@ -3021,7 +3032,7 @@
             <tr v-if="!officerDetail.skills.length"><td colspan="3" class="gray">(未学任何技能)</td></tr>
           </table>
           <table class="ezfy-plain-table">
-            <tr><th colspan="3">可学技能（1万金/个）</th></tr>
+            <tr><th colspan="3">可学技能（技能书 {{ officerDetail.officer.skill_book }} 本 / 学一个消耗1本）</th></tr>
             <tr v-for="s in officerDetail.all_skills" :key="'ls' + s.id">
               <td>{{ s.name }}</td>
               <td>{{ s.effect }}</td>
@@ -5239,11 +5250,11 @@ export default {
         if (res.code === 0) {
           this.curReport = res.data.report
           this.showDetail = false
-          this.cur = 'reports'
+          this.go('reportview')
         }
       })
     },
-    // 点开战报: 拉详情 + 标已读(原缺失该方法, 导致战报点不开)
+    // 点开战报: 拉详情 + 标已读，跳转独立「战报详情」页（不再行内展开）
     openReport (r) {
       if (!r) return
       api.get('/games/ezfy/reports/' + r.id).then(res => {
@@ -5256,6 +5267,20 @@ export default {
         this.showDetail = false
         const item = this.reports.find(x => x.id === r.id)
         if (item) item.is_read = 1
+        this.go('reportview')
+      })
+    },
+    // ★ 删除战报：不需要二次确认（用户要求）
+    delReport (r) {
+      if (!r) return
+      api.post('/games/ezfy/reports/' + r.id + '/delete', {}).then(res => {
+        if (res.code === 0) {
+          this.notify('战报已删除')
+          this.curReport = null
+          this.go('reports')
+        } else {
+          this.notify(res.msg || '删除失败')
+        }
       })
     },
     // ★ 取消出征命令（用户要求「出征队列可以取消」）
@@ -5720,7 +5745,7 @@ export default {
       })
     },
     needOfficer (it) {
-      // ★ 19 = 军官升星卡，也要选军官（漏了它会没有「军官:」下拉，玩家没法用）
+      // ★ 19 = 星级徽章，也要选军官（漏了它会没有「军官:」下拉，玩家没法用）
       return it.item_type === 10 || it.item_type === 11 || it.item_type === 12 || it.item_type === 19
     },
     openUse (it) {
@@ -6132,13 +6157,13 @@ export default {
         this.loadOfficerDetail(id)
       })
     },
-    // ★ 升星（消耗「军官升星卡」）
+    // ★ 升星（消耗「星级徽章」）
     async doStarUp () {
       const o = this.officerDetail.officer
       if (o.star >= o.star_max) { this.notify('星级已达上限'); return }
-      if (o.star_card <= 0) { this.notify('没有「军官升星卡」，可在商城购买或开宝箱获得'); return }
+      if (o.star_card <= 0) { this.notify('没有「星级徽章」，可在商城购买或开宝箱获得'); return }
       const rate = o.star_chance_on ? ('成功率 ' + o.star_rate + '%') : '必成功'
-      if (!await this.ask('使用 1 张「军官升星卡」给 ' + o.name + ' 升星吗？\n' + rate +
+      if (!await this.ask('使用 1 枚「星级徽章」给 ' + o.name + ' 升星吗？\n' + rate +
         '，成功后三维各 +' + o.star_attr_gain + '（星级 ' + o.star + '→' + (o.star + 1) + '）')) return
       const id = o.id
       api.post('/games/ezfy/officers/' + id + '/starup', {}).then(r => {
@@ -6146,6 +6171,22 @@ export default {
         this.loadOfficerDetail(id)
         this.loadBag()
         this.loadAcade()
+      })
+    },
+    // ★ 军官改名（消耗「军官改名卡」，只改玩家自己的军官）
+    async doRename () {
+      const o = this.officerDetail.officer
+      if (o.is_captive === 1) { this.notify('俘虏不能改名, 请先在军校收编'); return }
+      if (o.rename_card <= 0) { this.notify('没有「军官改名卡」，可在商城购买'); return }
+      const name = await this.ask('给 ' + o.name + ' 改个新名字？', {
+        input: true, placeholder: '2~12 个字符', value: o.name
+      })
+      if (!name) return
+      const id = o.id
+      api.post('/games/ezfy/officers/' + id + '/rename', { name }).then(r => {
+        if (r.code !== 0) this.notify(r.msg || '改名失败')
+        this.loadOfficerDetail(id)
+        this.loadBag()
       })
     },
     doLearn (s) {
@@ -6475,6 +6516,9 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0 2px;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
+/* ★ 建筑行「升级 / 一键满级 / 拆除」三个操作间隔再大一点（用户要求） */
+.ezfy-page .build-act { display: inline-block; }
+.ezfy-page .build-act a { margin: 0 5px; }
 /* ★ 用户反馈「[赏赐…][流放] 这俩按钮之间来点间距」→ 军官详情的操作按钮行统一拉开间距。
    只作用在带 .officer-actions 的行上，不动其它页面的按钮。 */
 .ezfy-page .old-line.officer-actions button { margin-right: 10px; margin-top: 3px; }

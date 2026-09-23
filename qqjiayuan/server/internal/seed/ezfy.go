@@ -172,14 +172,15 @@ func seedEzfyActivities(db *gorm.DB) {
 // 原工程这批道具标为「未实现」，这里补齐；按 ID 幂等 upsert，老库也能补上。
 //
 //	13 招生简章   ItemType 9  立即刷新军校候选名将(不占每日 5 次)
-//	14 经验书     ItemType 10 指定军官获得经验
-//	15 军官技能书 ItemType 11 指定军官免费学习 1 个技能
-//	16 重修书     ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
+//	14 荣誉史记   ItemType 10 指定军官获得经验(每本 27,068,000 经验)
+//	15 军官技能书 ItemType 11 指定军官消耗技能书学习 1 个技能
+//	16 军官洗点卡 ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
 //	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
 //	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万，单次上限由管理端配置)
-//	23 军官升星卡 ItemType 19 指定军官升 1 星(成功率/每星加点/星级上限走管理端「系统配置」)
+//	23 星级徽章   ItemType 19 对军官使用, 20% 概率升 1 星(最高五星, 失败不降星级属性)
 //	24 信号弹     ItemType 20 计谋消耗品(黄金/钻石双渠道，发动计谋时消耗)
+//	25 军官改名卡 ItemType 21 在军官管理页面改名玩家自己的军官(消耗 1 张, 不影响军官池)
 func seedEzfyOfficerItems(db *gorm.DB) {
 	// ★★ 2026-09-21 用户反馈「道具商城上架军官技能书」的根因：
 	//   这几条种子**没有显式写 Stock**，而 GORM 创建时会把 Go 的零值 `0` 一起写进去
@@ -190,11 +191,14 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
-		{ID: 14, Name: "经验书", ItemType: 10, Param1: 1000, PriceGold: 300, Stock: -1,
-			Description: "指定军官获得1000点经验"},
-		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 1000, Stock: -1,
-			Description: "指定军官免费学习1个技能(不消耗黄金)"},
-		{ID: 16, Name: "重修书", ItemType: 12, Param1: 0, PriceGold: 800, Stock: -1,
+		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 27068000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+			Category:    "军官道具",
+			Description: "在军官管理页面使用, 每本增加 27,068,000 经验"},
+		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+			Category:    "军官道具",
+			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
+		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 0, PriceDiamond: 1, Stock: -1,
+			Category:    "军官道具",
 			Description: "重置军官属性成长并清空已学技能(等级与经验保留)"},
 		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
@@ -209,11 +213,16 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
 			PriceGold: 0, PriceDiamond: 0, Stock: -1, Category: "钻石道具",
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
-		// ★ 2026-09-22 用户要求「玩家自己的军官可以用升星卡升级星级，属性增加」。
-		//   升星是否按概率、每星加多少属性、星级上限，全部走管理端「系统配置」页。
-		{ID: 23, Name: "军官升星卡", ItemType: 19, Param1: 1, PriceGold: 5000, Stock: -1,
+		// ★ 2026-09-23 用户要求「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
+		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
+		{ID: 23, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: -1,
 			Category:    "军官道具",
-			Description: "指定军官升 1 星: 三维各+若干点(数值与成功率由管理端配置)"},
+			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
+		// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗「军官改名卡」，
+		//   在军官管理页面使用，成功改名消耗 1 张，不改动军官池里的原军官。
+		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 0, PriceDiamond: 1, Stock: -1,
+			Category:    "军官道具",
+			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 用户要求「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
 		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
 		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
@@ -242,6 +251,20 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			continue
 		}
 		db.Create(&it)
+	}
+
+	// ★ 2026-09-23 用户要求：军官道具改为钻石定价（荣誉史记/军官技能书/军官洗点卡/星级徽章）。
+	//   循环里的价格保护「不动价格」是为后台调价留的余地，但这次是明确重新定价，
+	//   所以对这 4 个道具额外强制对齐价格（黄金清零 + 钻石价）。
+	priceFix := map[int]int64{
+		14: 100, // 荣誉史记   100 钻石
+		15: 100, // 军官技能书 100 钻石
+		16: 1,   // 军官洗点卡 1 钻石
+		23: 50,  // 星级徽章   50 钻石
+	}
+	for id, diamond := range priceFix {
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", id).
+			Updates(map[string]interface{}{"price_gold": 0, "price_diamond": diamond})
 	}
 }
 

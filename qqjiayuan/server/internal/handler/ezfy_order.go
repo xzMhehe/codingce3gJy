@@ -1706,8 +1706,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		targetName = target.Name
+		// ★ 排除「不参与防御」的兵种：被攻击时防御战斗兵种列表不含它们
+		defExclude := h.defExcludeSet(target.ID)
 		for tid, count := range h.troopMap(target.ID) {
-			if count > 0 {
+			if count > 0 && !defExclude[tid] {
 				defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: count})
 			}
 		}
@@ -2385,6 +2387,22 @@ func (h *EzfyHandler) buildMoveMap(cityId uint, atk bool) map[int]int {
 		} else {
 			m[t.TroopId] = t.DefMove
 		}
+	}
+	return m
+}
+
+// defExcludeSet 城市「不参与防御」的兵种集合（司令部「防守」= 不参与防御，def_move = -1）。
+//
+// ★ 用户要求（2026-09-23）：被攻击时，防御战斗的兵种列表**不包含**标记了「不参与防御」的兵种。
+func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
+	m := map[int]bool{}
+	if cityId <= 0 {
+		return m
+	}
+	var list []model.EzfyCityTarget
+	h.DB.Where("city_id = ? AND def_move = ?", cityId, ezfyDefMoveNone).Find(&list)
+	for _, t := range list {
+		m[t.TroopId] = true
 	}
 	return m
 }

@@ -31,7 +31,6 @@ const (
 	ezfyRecruitRefreshLimit = 5     // 军校每日刷新次数上限
 	ezfyRecruitCostPerLevel = 1000  // 招募费用 = 军官等级 × 该值(参考 conquer.html: 26级→26000)
 	ezfyGrantCost           = 10000 // 赏赐一次消耗黄金
-	ezfyLearnSkillCost      = 10000 // 学习技能消耗黄金
 	ezfyOfficerMaxSkill     = 3     // 军官技能上限
 	ezfyOfficerLoyaltyMax   = 100   // 忠诚上限
 	ezfyCaptiveMinLoyalty   = 40    // 收编俘虏后的最低忠诚
@@ -53,8 +52,14 @@ const (
 //	④ 管理端直接编辑军官（AdminEzfyOfficerUpdate）
 const ezfyOfficerMaxLevel = 150
 
-// ezfyStarItemID 「军官升星卡」的道具 cfg_id（ItemType 19）
+// ezfyStarItemID 「星级徽章」的道具 cfg_id（ItemType 19）
 const ezfyStarItemID = 23
+
+// ezfySkillBookItemID 「军官技能书」的道具 cfg_id（ItemType 11）
+const ezfySkillBookItemID = 15
+
+// ezfyOfficerRenameCardItemID 「军官改名卡」的道具 cfg_id（ItemType 21）
+const ezfyOfficerRenameCardItemID = 25
 
 // ============ 基础查询 ============
 
@@ -497,7 +502,7 @@ func (h *EzfyHandler) grantOfficer(city *model.EzfyCity, officerId int64) string
 	return ""
 }
 
-// learnSkill 学习技能：1万黄金/个，最多 3 个，出征中不可学
+// learnSkill 学习技能：消耗 1 本「军官技能书」（道具 15），最多 3 个，出征中不可学
 func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId int) string {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
@@ -520,11 +525,10 @@ func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId 
 			return "已学习该技能"
 		}
 	}
-	if city.Gold < ezfyLearnSkillCost {
-		return "黄金不足(学习技能需要1万黄金)"
+	if h.itemCount(city.UserID, ezfySkillBookItemID) <= 0 {
+		return "没有「军官技能书」，可在商城购买"
 	}
-	city.Gold -= ezfyLearnSkillCost
-	h.saveCityRes(city)
+	h.consumeItem(city.UserID, ezfySkillBookItemID)
 	skills = append(skills, cfg.Name)
 	h.saveOfficerSkills(o, skills)
 	return ""
@@ -1803,7 +1807,10 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
 			"star_chance_on": ezfyStarChanceOn(), "star_rate": ezfyStarSuccessRate(o.Star),
 			"star_attr_gain": ezfyStarAttrGain(), "star_card": h.itemCount(uid, ezfyStarItemID),
-			"attack": h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
+			// ★ 军官改名卡 / 军官技能书 持有数（前端改名按钮与可学技能表头展示）
+			"rename_card": h.itemCount(uid, ezfyOfficerRenameCardItemID),
+			"skill_book":  h.itemCount(uid, ezfySkillBookItemID),
+			"attack":      h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
 			"exp_need": o.Level * 200,
@@ -2052,7 +2059,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		return
 	}
 	if h.itemCount(uid, ezfyStarItemID) <= 0 {
-		h.fail(c, "没有「军官升星卡」，可在商城购买或开宝箱获得")
+		h.fail(c, "没有「星级徽章」，可在商城购买或开宝箱获得")
 		return
 	}
 	msg, ok := h.officerStarUp(&city, id)
@@ -2065,6 +2072,56 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		return
 	}
 	h.done(c, "", msg)
+}
+
+// OfficerRename POST /games/ezfy/officers/:id/rename  {name}
+//
+// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗 1 张「军官改名卡」。
+//
+//	只改玩家自己的军官实例（ezfy_officer.name），绝不回写军官池（ezfy_cfg_general）。
+func (h *EzfyHandler) OfficerRename(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	if o.IsCaptive == 1 {
+		resp.ParamError(c, "俘虏不能改名, 请先在军校收编")
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		resp.ParamError(c, "请填写新的军官名")
+		return
+	}
+	if len([]rune(name)) < 2 || len([]rune(name)) > 12 {
+		resp.ParamError(c, "军官名长度需在 2~12 个字符之间")
+		return
+	}
+	if name == o.Name {
+		resp.ParamError(c, "新名字与当前名字相同")
+		return
+	}
+	if h.itemCount(uid, ezfyOfficerRenameCardItemID) <= 0 {
+		resp.ParamError(c, "没有「军官改名卡」，可在商城购买")
+		return
+	}
+	h.consumeItem(uid, ezfyOfficerRenameCardItemID)
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
+		"name": name, "update_time": time.Now(),
+	})
+	resp.OK(c, gin.H{"msg": "改名成功：「" + name + "」（消耗军官改名卡 ×1）", "name": name})
 }
 
 // ============ 宝箱（钻石/黄金购买，开箱按权重出套装件） ============

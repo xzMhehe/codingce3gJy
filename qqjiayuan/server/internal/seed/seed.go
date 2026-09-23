@@ -235,8 +235,8 @@ func Run(db *gorm.DB, staticDir string) {
 			}
 			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d + " WHERE " + col + " IS NULL")
 		}
-		addNumCol("officer_star_chance", 80)
-		addNumCol("officer_star_chance_step", 5)
+		addNumCol("officer_star_chance", 20)
+		addNumCol("officer_star_chance_step", 0)
 		addNumCol("officer_star_chance_min", 20)
 		addNumCol("officer_star_attr_gain", 10)
 		// ★ 用户规则「军官最多 5 星」

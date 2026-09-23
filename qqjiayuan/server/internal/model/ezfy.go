@@ -288,8 +288,8 @@ type EzfyCfgLimit struct {
 	OfficerStarKeepOnFail int `json:"officer_star_keep_on_fail"` // 失败是否保留升星卡：1 保留 / 0 扣掉
 
 	// 下面四个是**数值**（0 无意义 → 回落默认值）
-	OfficerStarChance     int `gorm:"default:80" json:"officer_star_chance"`     // 基础成功率%（默认 80）
-	OfficerStarChanceStep int `gorm:"default:5" json:"officer_star_chance_step"` // 每高 1 星成功率 -N%（默认 5）
+	OfficerStarChance     int `gorm:"default:20" json:"officer_star_chance"`     // 基础成功率%（默认 20，星级徽章固定 20%）
+	OfficerStarChanceStep int `gorm:"default:0" json:"officer_star_chance_step"` // 每高 1 星成功率 -N%（默认 0，即固定 20%）
 	OfficerStarChanceMin  int `gorm:"default:20" json:"officer_star_chance_min"` // 成功率下限%（默认 20）
 	OfficerStarAttrGain   int `gorm:"default:10" json:"officer_star_attr_gain"`  // 每升 1 星三维各 +N（默认 10）
 	OfficerStarMax        int `gorm:"default:10" json:"officer_star_max"`        // 星级上限（默认 10）
@@ -615,8 +615,8 @@ type EzfyBattle struct {
 	// RoundStart 本回合开始时间(ms)：过了回合时长就推进一回合
 	RoundStart int64 `json:"round_start"`
 
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (EzfyBattle) TableName() string { return "ezfy_battle" }

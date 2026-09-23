@@ -297,9 +297,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			// ★ 用户要求「恢复伤兵需要黄金」：把单价一起下发，前端在[恢复]旁边显示要花多少钱
 			"heal_gold": ezfyWoundHealGoldPer(w.TroopId)})
 	}
-	// ★ 占用人口 = 只有「训练队列里还没出厂」的新兵占（用户规则：部队不占人口位置）。
-	//   统一走 troopPop，别再在这里手写一份，否则又会出现两处口径不一致的 bug。
-	popUsed := h.troopPop(city.ID)
+	// ★ 占用人口 = 建筑占用人口 + 训练中未出厂的新兵占用（部队不占人口位置）。
+	popUsed := h.cityPopUsed(city.ID)
 	// 兵种配置一览
 	cfgViews := []gin.H{}
 	var allTroops []model.EzfyCfgTroop
@@ -1346,8 +1345,11 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "增益道具"
 	case 9, 10, 11, 12:
 		return "军官道具"
-	// ★ 19 = 军官升星卡（用户要求放到「军官道具」分类下）
+	// ★ 19 = 星级徽章（用户要求放到「军官道具」分类下）
 	case 19:
+		return "军官道具"
+	// ★ 21 = 军官改名卡（军官道具）
+	case 21:
 		return "军官道具"
 	// ★ 20 = 信号弹（计谋消耗品）
 	case 20:
@@ -2203,4 +2205,17 @@ func (h *EzfyHandler) ReportView(c *gin.Context) {
 	}
 	h.DB.Model(&model.EzfyReport{}).Where("id = ?", r.ID).Update("is_read", 1)
 	resp.OK(c, gin.H{"report": r})
+}
+
+// ReportDelete POST /games/ezfy/reports/:id/delete
+// ★ 用户要求「战斗报告展开后可删除，不需要二次确认」：只允许删除自己名下的一条战报。
+func (h *EzfyHandler) ReportDelete(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	res := h.DB.Where("id = ? AND user_id = ?", id, uid).Delete(&model.EzfyReport{})
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "战报不存在")
+		return
+	}
+	resp.OK(c, gin.H{"msg": "已删除"})
 }

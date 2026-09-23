@@ -483,7 +483,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Level: s.Level, Stock: -1, EnhanceMax: 20,
 					// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
 					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
-					Dmg: p.Dmg, Def: p.Def, Hp: p.Hp, Move: p.Move, Crit: p.Crit, CritDmg: p.CritDmg,
+					Dmg:          p.Dmg, Def: p.Def, Hp: p.Hp, Move: p.Move, Crit: p.Crit, CritDmg: p.CritDmg,
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
 				})
@@ -501,7 +501,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
 				// ★ 纯散件同样按加成定价（10~50 钻）
 				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
-				Dmg: l.Dmg, Def: l.Def, Hp: l.Hp, Move: l.Move, Crit: l.Crit, CritDmg: l.CritDmg,
+				Dmg:          l.Dmg, Def: l.Def, Hp: l.Hp, Move: l.Move, Crit: l.Crit, CritDmg: l.CritDmg,
 				Military: 20, Logistics: 10, Learning: 10,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
@@ -1061,6 +1061,10 @@ func normalizeEzfyNewCols(db *gorm.DB) {
 	//   条件写 `= 10`（而不是 `> 5`）是为了**只修这一次**——
 	//   管理端后来自己调过的值（比如 8）不会在每次启动被打回去。
 	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_max = 5 WHERE id = 1 AND officer_star_max = 10")
+	// ★ 2026-09-23 用户要求「星级徽章每枚固定 20% 概率升 1 星」：早期默认灌成 80/5，
+	//   这里对**没被后台手动改过**的值做一次幂等迁移（条件写旧默认值，改过的不动）。
+	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_chance = 20 WHERE id = 1 AND officer_star_chance = 80")
+	db.Exec("UPDATE ezfy_cfg_limit SET officer_star_chance_step = 0 WHERE id = 1 AND officer_star_chance_step = 5")
 	// 超过 5 星的存量军官夹回 5 星（幂等：夹过之后没有行再匹配）
 	db.Exec("UPDATE ezfy_officer SET star = 5 WHERE star > 5")
 	db.Exec("UPDATE ezfy_cfg_equipment SET slot = COALESCE(slot,''), set_id = COALESCE(set_id,0), " +

@@ -608,8 +608,10 @@ func ezfyMarchCapOn() bool {
 // ============ 军官升星配置（2026-09-22 用户要求）============
 
 const (
-	ezfyStarChanceDef     = 80 // 基础成功率%
-	ezfyStarChanceStepDef = 5  // 每高 1 星成功率 -N%
+	// ★ 2026-09-23 用户要求「星级徽章每枚固定 20% 概率升 1 星」：
+	//   基础成功率 20%、每高 1 星递减 0（即固定 20%），下限 20。
+	ezfyStarChanceDef     = 20 // 基础成功率%
+	ezfyStarChanceStepDef = 0  // 每高 1 星成功率 -N%
 	ezfyStarChanceMinDef  = 20 // 成功率下限%
 	ezfyStarAttrGainDef   = 10 // 每升 1 星三维各 +N
 	// ★ 用户规则「军官最多 5 星」→ 星级上限默认 5

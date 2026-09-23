@@ -583,6 +583,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/reports", ezfyH.Reports)
 				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
 				ezfyG.GET("/reports/:id", ezfyH.ReportView)
+				ezfyG.POST("/reports/:id/delete", ezfyH.ReportDelete)
 				ezfyG.GET("/targets", ezfyH.Targets)
 				ezfyG.POST("/targets", ezfyH.SaveTarget)
 				ezfyG.GET("/corps/list", ezfyH.CorpsList)
@@ -669,8 +670,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 属性加点（每级 1 点，只影响玩家自己的军官）
 				ezfyG.POST("/officers/:id/attr", ezfyH.OfficerAttr)
 				ezfyG.POST("/officers/:id/attr/all", ezfyH.OfficerAttrAll)
-				// ★ 升星（消耗军官升星卡）
+				// ★ 升星（消耗星级徽章）
 				ezfyG.POST("/officers/:id/starup", ezfyH.OfficerStarUp)
+				// ★ 军官改名（消耗军官改名卡，只改玩家自己的军官）
+				ezfyG.POST("/officers/:id/rename", ezfyH.OfficerRename)
 				ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
 				ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
 				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
