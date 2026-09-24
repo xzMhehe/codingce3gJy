@@ -2533,6 +2533,13 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			owned[e.SetId]++
 		}
 	}
+	// ★ 套装品质：取该套装各件的最高 Tier（系列 21~26 为 Tier 3/4，第一批套装 Tier 1~4）
+	pieceTier := map[int]int{}
+	for _, e := range ezfyCfg.equipments {
+		if e.SetId > 0 && e.Tier > pieceTier[e.SetId] {
+			pieceTier[e.SetId] = e.Tier
+		}
+	}
 	setList := []gin.H{}
 	for _, s := range ezfyCfg.equipSets() {
 		have := owned[s.ID]
@@ -2540,7 +2547,7 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			continue // 一件都没有的套装不展示（图鉴在下面「装备图鉴」里）
 		}
 		setList = append(setList, gin.H{
-			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
+			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series, "tier_name": ezfyTierName(pieceTier[s.ID]),
 			"have": have, "complete": have >= s.Parts,
 			"military": s.Military, "logistics": s.Logistics, "learning": s.Learning,
 			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp, "move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,

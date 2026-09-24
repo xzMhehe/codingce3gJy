@@ -34,10 +34,11 @@
         </div>
       </div>
 
-      <!-- 二级导航（资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
+      <!-- 二级导航（军事/资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
       <div class="old-line ezfy-subnav" v-if="showSubnav">
+        <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>.
         <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>.
-        <a href="javascript:;" :class="{ on: cur === 'acade' }" @click="go('acade')">军官</a>.
+        <a href="javascript:;" :class="{ on: cur === 'acade' || cur === 'officerdetail' || cur === 'equipdetail' }" @click="go('acade')">军官</a>.
         <a href="javascript:;" :class="{ on: isArmyPage }" @click="go('troops')">军队</a>.
         <a href="javascript:;" :class="{ on: cur === 'techs' }" @click="go('techs')">科技</a>.
         <a href="javascript:;" :class="{ on: cur === 'defence' }" @click="go('defence')">城防</a>.
@@ -73,6 +74,7 @@
         <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line">
+          <a href="javascript:;" @click="go('buildm')">军事</a>.
           <a href="javascript:;" @click="go('builds')">资源</a>.
           <a href="javascript:;" @click="go('acade')">军官</a>.
           <a href="javascript:;" @click="go('troops')">军队</a>.
@@ -626,9 +628,10 @@
             {{ city.name }}({{ city.x }},{{ city.y }})
             <a href="javascript:;" @click="go('cities')">切换城市</a>
           </div>
-          <div class="old-line">
-            {{ cur === 'buildm' ? '军事区' : '资源区' }}.
-            <a href="javascript:;" @click="go(cur === 'buildm' ? 'builds' : 'buildm')">{{ cur === 'buildm' ? '资源区' : '军事区' }}</a>
+          <!-- ★ 军事区/资源区导航固定顺序「军事区. 资源区」，当前项加粗高亮；不再谁当前谁排第一 -->
+          <div class="old-line ezfy-subnav">
+            <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事区</a>.
+            <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源区</a>
           </div>
           <br/>
           <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
@@ -2174,7 +2177,7 @@
                 <td>{{ p.slot }}</td>
                 <td>{{ p.name }}</td>
                 <td>{{ p.level }}</td>
-                <td>{{ equipAttrText(p) }}</td>
+                <td><a href="javascript:;" @click="openEquipDetail(p, '商城在售')">[查看]</a></td>
                 <td><span class="orange">{{ p.price_diamond }}钻</span></td>
                 <td>
                   <a v-if="!p.sold_out" href="javascript:;" @click="openEquipBuy(p)">[购买]</a>
@@ -2837,13 +2840,16 @@
             <span class="gray">共 {{ equipFiltered.length }} 件</span>
           </div>
           <table class="ezfy-plain-table">
+            <colgroup>
+              <col style="width:24%"><col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:10%"><col style="width:18%">
+            </colgroup>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
             <tr v-for="e in equipPaged" :key="'eq' + e.id">
               <td>{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
-              <td>{{ e.tier_name }}</td>
-              <td>{{ equipAttrText(e) }}</td>
+              <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
+              <td><a href="javascript:;" @click="openEquipDetail(e, e.worn ? '已穿戴' : '背包中(未装备)')">[查看]</a></td>
               <td>{{ e.level }}</td>
               <td>
                 <span v-if="e.worn" class="gray">{{ e.worn_by }}已穿戴</span>
@@ -2867,13 +2873,14 @@
           <div class="old-line" v-if="mySetProgress.length"><b>我的套装</b></div>
           <!-- 只显示「进度 + 是否生效」，加成点 [加成] 才展开（原来把一长串效果全铺出来，很乱） -->
           <div class="old-line" v-for="s in mySetProgress" :key="'ms' + s.id">
-            {{ s.name }}
+            <b :class="qualityClass(s.tier_name)">{{ s.name }}</b>
+            <span class="gray">[{{ s.tier_name || '特殊' }}]</span>
             <b :class="s.active ? 'green' : 'gray'">{{ s.have }}/{{ s.parts }}</b> 件
             <span v-if="s.active" class="green">已生效</span>
             <span v-else class="gray">还差 {{ s.need }} 件</span>
             <a v-if="s.active && equipAttrText(s)" href="javascript:;" @click="toggleSetEffect(s.id)">[加成]</a>
             <br v-if="setEffectId === s.id"/>
-            <span class="green" v-if="setEffectId === s.id">{{ equipAttrText(s) }}</span>
+            <span :class="qualityClass(s.tier_name)" v-if="setEffectId === s.id">{{ equipAttrText(s) }}</span>
           </div>
           <div class="old-line gray" v-if="!mySetProgress.length">(暂无套装装备)</div>
           </div>
@@ -2889,13 +2896,16 @@
             <span class="gray">共 {{ equipAllFiltered.length }} 件</span>
           </div>
           <table class="ezfy-plain-table">
+            <colgroup>
+              <col style="width:28%"><col style="width:12%"><col style="width:17%"><col style="width:10%"><col style="width:12%"><col style="width:21%">
+            </colgroup>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
             <tr v-for="e in equipAllPaged" :key="'ea' + e.id">
               <td>{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
-              <td>{{ e.tier_name }}</td>
-              <td>{{ equipAttrText(e) }}</td>
+              <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
+              <td><a href="javascript:;" @click="openEquipDetail(e, '图鉴收录')">[查看]</a></td>
               <td>{{ e.level }}</td>
             </tr>
           </table>
@@ -3122,6 +3132,7 @@
           <!-- 技能 tab（已学 / 可学） -->
           <div v-if="officerDetailTab === 'skill'">
           <table class="ezfy-plain-table">
+            <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
             <tr><th colspan="3">已学技能（{{ officerDetail.skills.length }}/3）</th></tr>
             <tr v-for="s in officerDetail.skills" :key="'ds' + s.name">
               <td>{{ s.name }}</td>
@@ -3131,6 +3142,7 @@
             <tr v-if="!officerDetail.skills.length"><td colspan="3" class="gray">(未学任何技能)</td></tr>
           </table>
           <table class="ezfy-plain-table">
+            <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
             <tr><th colspan="3">可学技能（技能书 {{ officerDetail.officer.skill_book }} 本 / 学一个消耗1本）</th></tr>
             <tr v-for="s in officerDetail.all_skills" :key="'ls' + s.id">
               <td>{{ s.name }}</td>
@@ -3143,13 +3155,16 @@
           <!-- 装备 tab（已穿戴 + 背包装备） -->
           <div v-if="officerDetailTab === 'equip'">
           <table class="ezfy-plain-table">
+            <colgroup>
+              <col style="width:28%"><col style="width:14%"><col style="width:19%"><col style="width:11%"><col style="width:28%">
+            </colgroup>
             <tr><th colspan="5">已穿戴装备</th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
               <td>{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || (e.set_id ? '套装' + e.set_id : '—') }}</td>
-              <td>{{ equipAttrText(e) || '—' }}</td>
+              <td><a href="javascript:;" @click="openEquipDetail(e, '已穿戴')">[查看]</a></td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
             </tr>
             <tr v-if="!officerDetail.equipped.length"><td colspan="5" class="gray">(未穿戴装备)</td></tr>
@@ -3157,14 +3172,17 @@
 
           <!-- 装备背包（检索 + 分页） -->
           <table class="ezfy-plain-table">
+            <colgroup>
+              <col style="width:24%"><col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:24%">
+            </colgroup>
             <tr><th colspan="7">装备背包</th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
             <tr v-for="e in officerBagPaged" :key="'db' + e.id">
               <td>{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
-              <td>{{ e.tier_name }}</td>
-              <td>{{ equipAttrText(e) }}</td>
+              <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
+              <td><a href="javascript:;" @click="openEquipDetail(e, e.worn ? '已穿戴' : '未装备')">[查看]</a></td>
               <td>{{ e.level }}</td>
               <td>
                 <a v-if="!e.worn" href="javascript:;" @click="doEquip(e)">[穿戴]</a>
@@ -3189,6 +3207,17 @@
           </div>
 
           <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官]</a></div>
+        </div>
+      </template>
+
+      <!-- 装备详情页（各装备表 [查看] 跳转：展示装备名字/状态/属性） -->
+      <template v-else-if="cur === 'equipdetail'">
+        <div class="panel">
+          <div class="old-line"><a href="javascript:;" @click="go(equipDetailBack)">[返回]</a></div>
+          <div class="old-line"><b>{{ equipDetail.name }}</b></div>
+          <div class="old-line">状态：{{ equipDetail.status }}</div>
+          <div class="old-line">装备属性：<br/>{{ equipDetail.attrs }}</div>
+          <div class="old-line"><a href="javascript:;" @click="go(equipDetailBack)">[返回]</a></div>
         </div>
       </template>
 
@@ -3381,6 +3410,8 @@ export default {
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备
+      equipDetail: { name: '', status: '', attrs: '' }, // 装备详情页数据
+      equipDetailBack: 'acade', // 装备详情页返回去向
       bagOfficers: [],
       bagSkills: [],
       useItem: null,
@@ -3516,7 +3547,7 @@ export default {
       return ['troops', 'troop', 'troopview', 'trainpre', 'factory'].indexOf(this.cur) >= 0
     },
     showSubnav () {
-      return ['builds', 'acade', 'techs', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
+      return ['buildm', 'builds', 'acade', 'officerdetail', 'equipdetail', 'techs', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
     },
     // 改名提示：首次免费 / 之后消耗改名卡
     renameHint () {
@@ -5410,6 +5441,12 @@ export default {
       if (o.equip_learning) parts.push('学识+' + o.equip_learning)
       return parts.length ? '(装备 ' + parts.join(' ') + ')' : ''
     },
+    // ★ 打开装备详情页（装备表 [查看] 跳转，展示名字/状态/属性）
+    openEquipDetail (e, status) {
+      this.equipDetail = { name: e.name, status: status || '—', attrs: this.equipAttrText(e) || '—' }
+      this.equipDetailBack = this.cur
+      this.cur = 'equipdetail'
+    },
     // ★ 装备六项战斗属性的展示文案（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
     equipAttrText (e) {
       if (!e) return ''
@@ -6091,10 +6128,11 @@ export default {
       return v.toLocaleString('en-US')
     },
     // ★ 宝箱奖池/开箱结果的品质着色（普通/稀有/史诗/传说，给不同颜色区分）
+    // ★ 军官装备品质同套配色：初级→灰 / 中级→蓝 / 高级→紫 / 特殊→橙（一眼看出哪个好）
     qualityClass (q) {
-      if (q === '传说' || q === '传奇') return 'q-legend'
-      if (q === '史诗') return 'q-epic'
-      if (q === '稀有') return 'q-rare'
+      if (q === '传说' || q === '传奇' || q === '特殊') return 'q-legend'
+      if (q === '史诗' || q === '高级') return 'q-epic'
+      if (q === '稀有' || q === '中级') return 'q-rare'
       return 'q-normal'
     },
     // ★ 把后端下发的创建时间格式化成年-月-日（公告标题后的发布时间）。
@@ -6695,6 +6733,8 @@ body.ezfy-immersive { margin: 0; }
   flex-wrap: wrap;
   gap: 2px 10px;
   margin: 2px 0;
+  /* ★ 商城「二级分类」(如道具分类/装备部位) 比一级分类(acade-tab 16px) 小一号 */
+  font-size: 15px;
 }
 .ezfy-page .ezfy-slot-grid > a { white-space: nowrap; }
 /* ★ 购买 / 开箱面板：卡片式，和上方表格拉开层次（原来只是行内一条左边框，挤成一坨） */
@@ -6927,15 +6967,27 @@ body.ezfy-immersive { margin: 0; }
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
 .ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
-/* ★ 表格默认用「原版模板的朴素样式」: 宽度按内容自适应(不 width:100%)、无边框。
-   原版 templates 里绝大多数表格都没有任何 CSS, 就是浏览器默认样式;
-   之前统一 width:100% + 虚线下边框, 会把表格拉满整行, 用户会觉得「太长 / 还是表格」。 */
+/* ★ 表格默认用「原版模板的朴素样式」: 无边框、字号对齐正文。
+   ★ 2026-09-24 用户要求「表格固定宽度、切 tab 不因字数不一样变动」：
+     table-layout:fixed + width:100% → 列宽按列数均分固定，与单元格内容完全无关，
+     切换页面/翻页时列不跳；长文本由下方 th/td 的 word-break 自动折行。
+     地图格子与战场指挥室两表内容结构特殊，保持原来自适应（见下方覆盖规则）。 */
 .ezfy-page table {
-  width: auto;
-  max-width: 100%;
+  table-layout: fixed;
+  width: 100%;
+  /* ★ 2026-09-24 用户要求「表格靠左展示」：封顶 920px 左对齐，桌面不铺满整行 */
+  max-width: 920px;
+  margin: 0;
   border-collapse: collapse;
   /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小 */
   font-size: 15px;
+}
+/* 地图 5×5 格子 / 战场指挥室：恢复按内容自适应，不参与全局固定均分 */
+.ezfy-page .ezfy-map-table,
+.ezfy-page .ezfy-battle-tbl {
+  table-layout: auto;
+  width: auto;
+  max-width: 100%;
 }
 .ezfy-page table th,
 .ezfy-page table td {
@@ -6981,6 +7033,10 @@ body.ezfy-immersive { margin: 0; }
   white-space: nowrap;
   padding-bottom: 4px;
 }
+/* ★ WAP 窄屏：固定均分后列会变窄，表头放开折行，长表头（如「装备战斗加成」）不被截断/溢出 */
+@media (max-width: 700px) {
+  .ezfy-page table th { white-space: normal; word-break: break-word; }
+}
 /* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
 .ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
@@ -6990,7 +7046,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .green { color: #27763c; }
 .ezfy-page .orange { color: #b8860b; }
 .ezfy-page .q-normal { color: #999; }
-.ezfy-page .q-rare { color: #2e86de; }
+.ezfy-page .q-rare { color: #4dabff; }
 .ezfy-page .q-epic { color: #9b59b6; }
 .ezfy-page .q-legend { color: #e67e22; }
 .ezfy-page input[type="text"],
