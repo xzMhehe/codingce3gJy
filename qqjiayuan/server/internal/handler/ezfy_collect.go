@@ -73,6 +73,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 		if o.Status == 1 || o.IsCaptive == 1 {
 			continue
 		}
+		if o.Position != 0 {
+			continue // 市长/城守有城务在身，不能带队出征采集
+		}
 		if h.officerBusyOrder(city.ID, o.Name) {
 			continue
 		}

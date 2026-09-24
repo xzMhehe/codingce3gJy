@@ -841,7 +841,8 @@ func (h *EzfyHandler) officerOnDutyList(cityId uint) []model.EzfyOfficer {
 	for _, o := range h.officerList(cityId) {
 		// ★ 2026-09-24 俘虏出征 bug 加固：与出征入口 createOrder 同一套口径，
 		//   Status 必须为 0(在职) 且不是俘虏、也没有带未归队的命令。
-		if o.Status == 0 && o.IsCaptive != 1 && !h.officerBusyOrder(cityId, o.Name) {
+		//   ★ 市长/城守有城务在身，不出现在可选出征军官列表。
+		if o.Status == 0 && o.IsCaptive != 1 && o.Position == 0 && !h.officerBusyOrder(cityId, o.Name) {
 			out = append(out, o)
 		}
 	}

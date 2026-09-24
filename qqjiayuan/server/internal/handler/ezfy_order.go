@@ -805,6 +805,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if lead.IsCaptive == 1 {
 			return "俘虏不能带队出征, 请先在军校收编"
 		}
+		// ★ 市长/城守不得带队出征（城务在身），需先卸任
+		if lead.Position != 0 {
+			return "「" + ezfyPositionName(lead.Position) + "」" + lead.Name + "有城务在身, 请先卸任再出征"
+		}
 	}
 	// 掠夺/征服玩家城: 需先宣战且已生效
 	if (orderType == 2 || orderType == 3) && targetType == 3 && targetId > 0 {
