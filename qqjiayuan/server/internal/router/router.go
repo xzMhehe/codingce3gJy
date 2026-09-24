@@ -577,6 +577,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/orders", ezfyH.OrderList)
 				ezfyG.POST("/order/recall", ezfyH.RecallOrder)
 				ezfyG.POST("/wild/collect-all", ezfyH.CollectAll)
+				// 单支空闲驻军开始采集（2026-09-24 采集空闲化）
+				ezfyG.POST("/wild/start-collect", ezfyH.StartCollect)
 				ezfyG.POST("/wild/harvest-all", ezfyH.HarvestAll)
 				// 一键召回（资源随返航带回）
 				ezfyG.POST("/wild/recall-all", ezfyH.RecallAll)

@@ -321,9 +321,6 @@
 
           <!-- ===== 军队动态: 行进/战斗/返航中的部队(出征/侦查/掠夺/运输/增援等) ===== -->
           <template v-if="reportTab === 1">
-            <div class="old-line">
-              <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
-            </div>
             <div class="old-line" v-for="o in dynMarchPaged" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
@@ -354,7 +351,8 @@
           <!-- ===== 驻军: 到达野地后常驻采集的部队(满一个采集周期结算一期) ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">满一个采集周期结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
+              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
+              <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
@@ -362,7 +360,8 @@
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
-              {{ o.time_label }}：{{ o.time_text }}<br/>
+              {{ o.time_label }}：{{ o.time_text }}<span v-if="o.status === 1 && !o.arrive_time">
+                <a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span><br/>
               <span v-if="o.carry_total > 0" class="green">
                 待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
                 （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
@@ -1477,7 +1476,7 @@
           命令:{{ curOrder.type_name }}<br/>
           军官:{{ curOrder.officer || '无(未带军官)' }}<br/>
           统帅:{{ nick }}<br/>
-          状态:{{ curOrder.status_name || orderStatusText(curOrder) }}<br/>
+          状态:{{ (curOrder.order_type === 7 && curOrder.status === 1) ? orderStatusText(curOrder) : (curOrder.status_name || orderStatusText(curOrder)) }}<br/>
           出发时间:{{ curOrder.start_text }}<br/>
           到达时间:{{ curOrder.arrive_text }}<br/>
           <template v-if="curOrder.return_text">返航时间:{{ curOrder.return_text }}<br/></template>
@@ -1495,8 +1494,10 @@
             <a href="javascript:;" @click="go('hq')">[指挥(司令部)]</a>
             <a v-if="curOrder.status === 0 || curOrder.status === 1"
                class="red" href="javascript:;" @click="doRecall(curOrder)">[取消出征]</a>
-            <a v-if="curOrder.order_type === 7 && curOrder.status === 1"
-               href="javascript:;" @click="go('wilds')">[采集]</a>
+            <a v-if="curOrder.order_type === 7 && curOrder.status === 1 && !curOrder.arrive_time"
+               class="red" href="javascript:;" @click="startCollect(curOrder)">[采集]</a>
+            <a v-if="curOrder.order_type === 7 && curOrder.status === 1 && curOrder.arrive_time"
+               href="javascript:;" @click="go('wilds')">[查看野地]</a>
             <a v-if="curOrder.report_id" href="javascript:;" @click="jumpReport(curOrder.report_id)">[查看战报]</a>
           </div>
           <a href="javascript:;" @click="go('orders')">[返回出征队列]</a>
@@ -1566,10 +1567,15 @@
               <td>{{ w.terrain === 8 ? '海底森林' : w.terrain_name }}</td>
               <td>{{ w.continent || '—' }}</td>
               <td>{{ w.level }}</td>
-              <td>{{ w.status === 0 ? '空闲' : '采集中' }}</td>
               <td>
-                <a v-if="w.status === 0" href="javascript:;" @click="openWildGather(w)">[采集]</a>
-                <span v-else class="gray">采集中</span>
+                <template v-if="w.status === 1">采集中</template>
+                <template v-else-if="w.idle_order_id">驻守(空闲)</template>
+                <template v-else>空闲</template>
+              </td>
+              <td>
+                <a v-if="w.status === 0 && !w.idle_order_id" href="javascript:;" @click="openWildGather(w)">[采集]</a>
+                <a v-else-if="w.idle_order_id" class="red" href="javascript:;" @click="startCollect(w.idle_order_id)">[开始采集]</a>
+                <span v-if="w.status === 1" class="gray">采集中</span>
                 <a class="red" href="javascript:;" @click="doAbandon(w)">[放弃]</a>
               </td>
             </tr>
@@ -2389,6 +2395,15 @@
           <div class="panel-title">资源交易行({{ resNames.gold }}{{ exchangeGold }})</div>
           <div class="old-line gray">购买他人挂单的资源; 也可挂单出售资源换取{{ resNames.gold }}。</div>
           <div class="panel-title">卖家挂单</div>
+          <div class="old-line">
+            类别:
+            <select v-model="exFilter" style="width:80px" @change="onExFilter">
+              <option :value="0">全部</option>
+              <option value="1">{{ resNames.food }}</option><option value="2">{{ resNames.steel }}</option>
+              <option value="3">{{ resNames.oil }}</option><option value="4">{{ resNames.rare }}</option>
+            </select>
+            <a v-if="exFilter" href="javascript:;" @click="exFilter = 0; onExFilter()">[全部]</a>
+          </div>
           <table class="ezfy-ex-tbl">
             <tr><th>卖家</th><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
             <tr v-for="e in exchangeOrders" :key="'eo' + e.id">
@@ -2431,7 +2446,6 @@
             数量: <input v-model="sellCount" type="number" style="width:90px"/><br/>
             总价({{ resNames.gold }}): <input v-model="sellPrice" type="number" style="width:90px"/><br/>
             <button @click="doExchangeSell">[挂单出售]</button>
-            <span class="gray">（玩家挂单只能用{{ resNames.gold }}计价）</span>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -3087,7 +3101,7 @@
                     @click="doExile">[流放]</button>
             <button v-if="officerDetail.officer.star_up_on &&
                           officerDetail.officer.star < officerDetail.officer.star_max"
-                    @click="doStarUp">[升星 {{ officerDetail.officer.star_rate }}%]</button>
+                    @click="doStarUp">[升星]</button>
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
             <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
@@ -3188,7 +3202,8 @@
         <a href="javascript:;" :class="{ on: cur === 'liaison' }" @click="go('liaison')">联络</a>
         <a href="javascript:;" :class="{ on: cur === 'cityhall' }" @click="go('cityhall')">市政</a>
         <a href="javascript:;" :class="{ on: cur === 'chat' }" @click="go('chat')">聊天</a>
-        <a href="javascript:;" :class="{ on: cur === 'home' }" @click="go('home')">首页</a>
+        <!-- ★ 2026-09-24 用户要求: 底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
+        <a href="javascript:;" :class="{ on: cur === 'home' }" @click="exitToHome()">家园</a>
       </div>
     </div>
   </div>
@@ -3366,6 +3381,7 @@ export default {
       // ★ 交易行双分页：卖家挂单(exchangePage/exchangeSize/exchangeTotal)、我的挂单(exchangeMPage/...)
       exchangePage: 1, exchangeSize: 10, exchangeTotal: 0,
       exchangeMPage: 1, exchangeMSize: 10, exchangeMTotal: 0,
+      exFilter: 0, // ★ 2026-09-24 卖家挂单资源类别检索(0=全部 1粮食 2钢铁 3石油 4稀矿)
       acadeTab: 'officer',
       officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
@@ -3968,7 +3984,7 @@ export default {
     this.stopBattleTimer()
   },
   methods: {
-    // 退出游戏回家园 —— 游戏内唯一的合法出口(顶部导航的「家园」)。
+    // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
     // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
     exitToHome () {
       this.$router.push('/home')
@@ -3985,7 +4001,7 @@ export default {
       if (path.indexOf('/games/ezfy') === 0) return         // 游戏内: 放行
       e.preventDefault()
       e.stopPropagation()
-      this.notify('游戏内不能跳回家园。如需离开游戏, 请点顶部导航。')
+      this.notify('游戏内不能跳回家园。如需离开游戏, 请点底部导航「家园」。')
     },
     notOpen (what) {
       this.notify(what + '暂未开放, 敬请期待')
@@ -4648,6 +4664,17 @@ export default {
         } else this.notify(r.msg)
       })
     },
+    // ★ 单支空闲驻军开始采集（2026-09-24 采集空闲化）
+    startCollect (o) {
+      const oid = (o && typeof o === 'object') ? o.id : o
+      api.post('/games/ezfy/wild/start-collect', { order_id: oid }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg)
+          this.loadDynamics()
+          this.load()
+        } else this.notify(r.msg)
+      })
+    },
     // ★ 一键收获：满一个采集周期结算一期(宝物直接进背包), 资源装进部队待带回, **不召回**
     async doHarvestAll () {
       if (!await this.ask('确定收获所有驻守采集部队吗？（每满一个采集周期结算一期，宝物直接进背包，资源要「召回」才会运回城里）')) return
@@ -4786,7 +4813,8 @@ export default {
       api.get('/games/ezfy/exchange', {
         params: {
           page: this.exchangePage, size: this.exchangeSize,
-          mpage: this.exchangeMPage, msize: this.exchangeMSize
+          mpage: this.exchangeMPage, msize: this.exchangeMSize,
+          es_type: this.exFilter
         }
       }).then(r => {
         if (r.code === 0) {
@@ -4801,6 +4829,11 @@ export default {
           this.exchangeGold = r.data.gold
         }
       })
+    },
+    // ★ 2026-09-24 卖家挂单类别检索: 切换类别回到第一页再加载
+    onExFilter () {
+      this.exchangePage = 1
+      this.loadExchange()
     },
     loadCorps () {
       api.get('/games/ezfy/corps/list').then(r => {
@@ -5451,7 +5484,8 @@ export default {
     },
     orderStatusText (o) {
       if (o.status === 0) return '行进中 ' + this.remain(o.arrive_time)
-      if (o.status === 1) return (o.order_type === 7 ? '驻守采集' : '已到达')
+      // ★ 2026-09-24 采集空闲化: 到达野地后空闲待命(需手工[采集]), 开始采集才显示「驻守采集」
+      if (o.status === 1) return (o.order_type === 7 ? (o.arrive_time > 0 ? '驻守采集' : '驻守(空闲)') : '已到达')
       if (o.status === 2) return '返回中 ' + this.remain(o.return_time)
       if (o.status === 3) return '已完成'
       if (o.status === 6) return '等待中(目标已被进攻, 排队等待交战)'

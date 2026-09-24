@@ -473,11 +473,19 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 		size = 50
 	}
 	// 卖家挂单(在售、非自己的)
+	// ★ 2026-09-24 用户要求: 卖家挂单加「资源类别」检索(单多了得一页页翻)
+	esType, _ := strconv.Atoi(c.DefaultQuery("es_type", "0"))
+	base := h.DB.Model(&model.EzfyExchange{}).
+		Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid)
+	if esType >= 1 && esType <= 4 {
+		if _, ok := ezfyResNames[esType]; ok {
+			base = base.Where("es_type = ?", esType)
+		}
+	}
 	var total int64
-	h.DB.Model(&model.EzfyExchange{}).Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid).Count(&total)
+	base.Count(&total)
 	var list []model.EzfyExchange
-	h.DB.Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid).
-		Order("is_system DESC, id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
+	base.Order("is_system DESC, id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
 	views := []gin.H{}
 	for _, e := range list {
 		seller := e.SellerName

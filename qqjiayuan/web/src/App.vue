@@ -32,9 +32,9 @@
     <router-view />
 
     <!-- 页脚（复刻诺哈 Page_Bottom：家园社区-广场-导航-聊天室-管理-退出 / 超Q.空间.家园.微博 / 小Q报时）
-         二战风云是沉浸式游戏页：只隐藏顶部个人导航与主导航条，
-         页脚**保留**（玩家要求：底部导航要跟着游戏页一起显示）。 -->
-    <div class="footer">
+         二战风云是沉浸式游戏页：顶部个人导航、主导航条与页脚全部隐藏
+         （2026-09-24 用户要求：去掉二战下面的家园导航，离开游戏走游戏内底部导航的「家园」）。 -->
+    <div class="footer" v-if="!immersive">
       <p>
         <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" @click="goAdmin">管理</a><a v-if="isLogin" href="javascript:;" @click="logoutOut">-退出</a><br>
         <template v-if="isLogin"><a href="javascript:;" @click="$router.push('/noble')">超Q({{ noble }})</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博({{ noticeUnread }})</a><br></template>

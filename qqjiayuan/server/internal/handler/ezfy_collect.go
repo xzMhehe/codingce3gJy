@@ -2,7 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,116 +17,85 @@ import (
 
 // CollectAll POST /games/ezfy/wild/collect-all —— 一键采集
 //
-// 对本城所有空闲的已占领野地下达「派遣驻守采集」命令(命令类型 7)：
-// 每块野地派 1 支采集队 + 1 名空闲军官，部队常驻野地每 8 小时结算一次产出，
-// 可随时用「一键收获 / 一键召回」处理。
-//
-// ★ 修复记录：
-//   - 原来把命令类型写成 4(一次性采集)、且 officer 传空串，
-//     而 createOrder 对 4/7 都要求「必须携带军官」→ 一键采集**永远失败**；
-//   - 现在自动挑选空闲军官带队（一名军官同时只能带一支部队），
-//     并覆盖 4/7 两类命令，与「一键收获 / 一键召回」口径一致。
+// ★ 2026-09-24 用户规则: 采集部队到达野地后驻守**空闲**, 需手工点[采集]才开始。
+//   「一键采集」= 对本城所有**空闲驻军**(status=1, arrive_time=0)批量下达采集命令;
+//   派新部队到未驻守的野地走「附属野地 → [采集]」。
 func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	var req struct {
-		CityId int64 `json:"city_id"`
-	}
-	_ = c.ShouldBindJSON(&req)
-	city := h.bodyCity(uid, req.CityId)
-	h.refreshCity(uid, city)
+	h.processOrders(uid)
+	now := time.Now().UnixMilli()
 
-	var wls []model.EzfyWildland
-	h.DB.Where("city_id = ? AND status = 0", city.ID).Order("id ASC").Find(&wls)
-	if len(wls) == 0 {
-		resp.ParamError(c, "没有可采集的野地(先在「附属野地」占领野地)")
+	var orders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
+		Order("id ASC").Find(&orders)
+	if len(orders) == 0 {
+		resp.ParamError(c, "没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)")
 		return
 	}
-
-	// 采集队: 城内最弱的一个非城防兵种（负重决定能装多少，所以按野地产量配数量）
-	troopId, weakest, carryPer := 0, 0, 0
-	tm := h.troopMap(city.ID)
-	for id, cnt := range tm {
-		if cnt <= 0 {
+	ok, fail := 0, 0
+	for i := range orders {
+		order := &orders[i]
+		var wl model.EzfyWildland
+		if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+			h.beginReturn(order, now, 0)
+			fail++
 			continue
 		}
-		cfg := ezfyCfg.troop(id)
-		if cfg == nil || cfg.Type == 4 {
-			continue
-		}
-		if troopId == 0 || cfg.AtkGround < weakest {
-			troopId, weakest, carryPer = id, cfg.AtkGround, cfg.Carry
-		}
-	}
-	if troopId == 0 {
-		resp.ParamError(c, "城内没有可派出的部队")
-		return
-	}
-	if carryPer <= 0 {
-		carryPer = 1
-	}
-
-	// 空闲军官池（不在出征中、不是俘虏、没有带未结束的命令）
-	idleOfficers := []model.EzfyOfficer{}
-	for _, o := range h.officerList(city.ID) {
-		if o.Status == 1 || o.IsCaptive == 1 {
-			continue
-		}
-		if o.Position != 0 {
-			continue // 市长/城守有城务在身，不能带队出征采集
-		}
-		if h.officerBusyOrder(city.ID, o.Name) {
-			continue
-		}
-		idleOfficers = append(idleOfficers, o)
-	}
-	if len(idleOfficers) == 0 {
-		resp.ParamError(c, "采集必须由军官带队，城内没有空闲军官(可在军校招募或先召回出征部队)")
-		return
-	}
-
-	ok, fail := 0, []string{}
-	oi := 0
-	for _, wl := range wls {
-		if oi >= len(idleOfficers) {
-			fail = append(fail, "空闲军官不足")
-			break
-		}
-		// 一块野地一次产出 ≈ 等级 × 800 × 4(陆地) / ×3(海野)，按此配够负重的兵
-		need := int64(wl.Level) * 800 * 4
-		if wl.WildType == 2 {
-			need = int64(wl.Level) * 800 * 3
-		}
-		want := (need + int64(carryPer) - 1) / int64(carryPer)
-		if want < 1 {
-			want = 1
-		}
-		avail := h.troopMap(city.ID)[troopId]
-		if avail <= 0 {
-			fail = append(fail, "部队不足")
-			break
-		}
-		if want > avail {
-			want = avail
-		}
-		msg := h.createOrder(uid, city, 7, wl.X, wl.Y, 1, int64(wl.ID),
-			[]ezfyUnitGroup{{TroopId: troopId, Count: want}}, nil, idleOfficers[oi].Name, 0, 0)
-		if msg != "" {
-			fail = append(fail, msg)
-			continue
-		}
-		oi++
+		order.ArriveTime = now + ezfyDispatchPeriod()
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+			Update("arrive_time", order.ArriveTime)
 		ok++
 	}
-	if ok == 0 {
-		resp.ParamError(c, "一键采集失败: "+strings.Join(dedupStrings(fail), "; "))
-		return
-	}
-	msg := fmt.Sprintf("已对 %d 块野地下达驻守采集命令(每块 1 名军官带队)", ok)
-	if len(fail) > 0 {
-		msg += fmt.Sprintf("(%d 块跳过: %s)", len(fail), strings.Join(dedupStrings(fail), "; "))
+	msg := fmt.Sprintf("已对 %d 支空闲驻军下达采集命令(每满一个采集周期结算一期)", ok)
+	if fail > 0 {
+		msg += fmt.Sprintf("(%d 支野地已丢失, 部队自动返航)", fail)
 	}
 	resp.OK(c, gin.H{"msg": msg})
+}
+
+// StartCollect POST /games/ezfy/wild/start-collect —— 单支空闲驻军开始采集
+//
+// ★ 2026-09-24 用户规则: 驻军没采集就是「空闲」状态, 手工点[采集]才进入采集状态。
+//   驻军趋(情报→驻军)/野地列表/出征队列上的 [采集] 都走本接口。
+func (h *EzfyHandler) StartCollect(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		OrderId int64 `json:"order_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.OrderId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.processOrders(uid)
+	now := time.Now().UnixMilli()
+	var order model.EzfyOrder
+	if err := h.DB.Where("id = ? AND user_id = ?", req.OrderId, uid).First(&order).Error; err != nil {
+		resp.ParamError(c, "命令不存在")
+		return
+	}
+	if order.Status != 1 || order.OrderType != 7 {
+		resp.ParamError(c, "该部队不是驻守采集部队")
+		return
+	}
+	if order.ArriveTime > 0 {
+		resp.ParamError(c, "该部队已在采集中")
+		return
+	}
+	var wl model.EzfyWildland
+	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+		resp.ParamError(c, "采集野地已丢失")
+		return
+	}
+	next := now + ezfyDispatchPeriod()
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"arrive_time": next})
+	h.addReport(uid, 5, "采集报告: 开始采集",
+		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期: 资源装进部队待召回(军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。",
+			wl.Level, wl.X, wl.Y), "", order.ID)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("采集开始, 一个采集周期后首次结算(野地%d级 %d,%d)",
+		wl.Level, wl.X, wl.Y)})
 }
 
 // HarvestAll POST /games/ezfy/wild/harvest-all —— 一键收获

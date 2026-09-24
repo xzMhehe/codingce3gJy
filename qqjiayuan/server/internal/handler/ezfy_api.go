@@ -2164,9 +2164,16 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			timeLabel = "抵达时间"
 			timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
 		case 1:
-			statusName = "驻守采集"
-			timeLabel = "下次结算"
-			timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
+			if o.OrderType == 7 && o.ArriveTime <= 0 {
+				// ★ 2026-09-24 用户规则: 采集部队到达后驻守**空闲**, 手工点[采集]才进入采集
+				statusName = "驻守(空闲)"
+				timeLabel = "待机"
+				timeText = "空闲待命, 点[采集]开始采集"
+			} else {
+				statusName = "驻守采集"
+				timeLabel = "下次结算"
+				timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
+			}
 		case 2:
 			statusName = "返回"
 			timeLabel = "返回时间"

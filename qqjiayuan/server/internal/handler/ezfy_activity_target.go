@@ -189,18 +189,23 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// ★★ 指挥室（2026-09-22 用户要求）：活动目标也是战斗，同样先开战场等玩家指挥，
 	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。
 	//   BattleResult 非空 = 已在指挥室里打完，直接用结果结算。
+	// ★ 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国(战报兵种名按阵营显示)
+	defCamp := 1
+	if actType == ezfyActKou || actType == ezfyActCity {
+		defCamp = 2
+	}
 	var br ezfyBattleResult
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
 		// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
-		// ★ 攻方装备六项加成照常生效；阵营：攻方=出征方阵营，守方 AI 为 0(通用名)
+		// ★ 攻方装备六项加成照常生效；守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
 		st := ezfyNewBattleState(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 			atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerHasSkill(leadOfficer, "绝地反击"), false,
-			h.ensureProfile(uid).Camp, 0)
+			h.ensureProfile(uid).Camp, defCamp)
 		if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
@@ -248,7 +253,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			defAfter[tid] = cnt
 		}
 	}
-	report += troopChangeText(defBefore, defAfter, 0)
+	report += troopChangeText(defBefore, defAfter, defCamp)
 
 	// 详细战报：逐回合过程 + 双方兵力变化
 	detail := ""
@@ -262,7 +267,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	detail += troopChangeText(atkBefore, atkAfter, profile.Camp)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
-	detail += troopChangeText(defBefore, defAfter, 0)
+	detail += troopChangeText(defBefore, defAfter, defCamp)
 	detail += "[双方兵力]"
 
 	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技 2%/级 + 机械改造 10%

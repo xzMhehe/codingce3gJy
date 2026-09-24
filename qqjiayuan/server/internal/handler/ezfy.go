@@ -727,6 +727,10 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	oilProd = int64(float64(oilProd) * morale)
 	rareProd = int64(float64(rareProd) * morale)
 	goldProd = int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
+	// ★ 2026-09-24 修复「黄金 加成产量0 但显示[市长加成+23%]」: 市长加成同样作用于黄金
+	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
+		goldProd = goldProd * int64(100+mayorBonus) / 100
+	}
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	wildlands := h.wildlandList(city.ID)
@@ -959,6 +963,10 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	oilProd := applyProd(oilBaseTech, rateOil)
 	rareProd := applyProd(rareBaseTech, rateRare)
 	goldProd := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
+	// ★ 2026-09-24 与 calcResource 对齐: 市长加成同样作用于黄金(否则加成产量恒 0)
+	if mayor > 0 {
+		goldProd = goldProd * (100 + mayor) / 100
+	}
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	for _, w := range h.wildlandList(city.ID) {
@@ -2321,24 +2329,37 @@ func (h *EzfyHandler) View(c *gin.Context) {
 
 	var wildlands []model.EzfyWildland
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
-	// ★ 采集中状态按该野地上是否有「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
+	// ★ 采集中/空闲驻守状态按该野地上的「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
+	//   ★ 2026-09-24 用户规则: 到达后**空闲驻守**(arrive_time=0, 不算采集中), 手工点[采集]才进入采集。
 	var gatherIds []int64
 	h.DB.Model(&model.EzfyOrder{}).
-		Where("user_id = ? AND status = 1 AND order_type = 7", uid).
+		Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
 		Pluck("target_id", &gatherIds)
 	gathering := map[int64]bool{}
 	for _, id := range gatherIds {
 		gathering[id] = true
 	}
+	// 空闲驻军: arrive_time=0 的驻守采集订单 → 野地列表显示「驻守(空闲)」+[开始采集]
+	var idleOrders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
+		Find(&idleOrders)
+	idleOrderByWild := map[int64]uint{}
+	for _, o := range idleOrders {
+		idleOrderByWild[o.TargetId] = o.ID
+	}
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
 		sts := w.Status
+		idleOrderId := uint(0)
 		if gathering[int64(w.ID)] {
 			sts = 1
+		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
+			sts = 0
+			idleOrderId = oid
 		}
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
 			"wild_type": w.WildType, "terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
-			"status": sts, "continent": ezfyRegionName(w.X, w.Y)})
+			"status": sts, "continent": ezfyRegionName(w.X, w.Y), "idle_order_id": idleOrderId})
 	}
 
 	var marching, occupying int64
