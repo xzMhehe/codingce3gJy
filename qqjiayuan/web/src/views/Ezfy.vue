@@ -2564,7 +2564,7 @@
           <div class="old-line">
             1级联络中心可以 加入联盟，<br/>
             2级联络中心可以 创建联盟<br/>
-            创建联盟需消耗{{ liaison.create_cost }}{{ resNames.gold }}（原版为 50 钻石）<br/>
+            创建联盟需消耗{{ liaison.create_cost }}{{ resNames.gold }}<br/>
             每级联络中心可以多一支盟友驻军、多{{ liaison.member_per_level }}人联盟人数上限
           </div>
           <div class="old-line gray">使用同盟密令1个可以将联络中心升级至11级（原版道具，本项目未开放）</div>
