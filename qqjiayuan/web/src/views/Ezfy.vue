@@ -1,7 +1,7 @@
 <template>
   <div class="ezfy-page">
     <div class="home-wrap">
-      <div class="title-bar">二战征途【内测群: 431442049】</div>
+      <div class="title-bar">二战征途-【1区】红色警戒</div>
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
@@ -145,7 +145,7 @@
           <a href="javascript:;" @click="go('citystatus')">城市状态</a>
           <a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
-        <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">进入</a></div>
+        <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">[进入]</a></div>
         <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
@@ -3203,8 +3203,12 @@
         <a href="javascript:;" :class="{ on: cur === 'cityhall' }" @click="go('cityhall')">市政</a>
         <a href="javascript:;" :class="{ on: cur === 'chat' }" @click="go('chat')">聊天</a>
         <!-- ★ 2026-09-24 用户要求: 底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
-        <a href="javascript:;" :class="{ on: cur === 'home' }" @click="exitToHome()">家园</a>
+        <a href="javascript:;" @click="exitToHome()">家园</a>
       </div>
+      <br/>
+      <hr/>
+      <div>小Q报时：{{ nowText }}</div>
+      <div>联系我们：QQ群 431442049</div>
     </div>
   </div>
 </template>
@@ -3239,6 +3243,7 @@ export default {
   data () {
     return {
       cur: 'home',
+      nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       resNames: RES_NAMES,
       resShort: RES_SHORT,
       resDes: buildResDes(RES_NAMES),
@@ -3974,6 +3979,9 @@ export default {
       if (this.cur === 'home') { this.load(); this.loadResCfg(); this.loadHomeChats() }
       if (this.cur === 'chat') this.loadChats()
     }, 30000)
+    // ★ 页脚小Q报时: 每秒刷新(与 App.vue 页脚同一格式)
+    this.tickClock()
+    this.clockTimer = setInterval(this.tickClock, 1000)
   },
   beforeDestroy () {
     document.body.classList.remove('ezfy-immersive')
@@ -3981,9 +3989,16 @@ export default {
     if (this._capClick) document.removeEventListener('click', this._capClick, true)
     if (this._onBack) window.removeEventListener('popstate', this._onBack)
     if (this.timer) clearInterval(this.timer)
+    if (this.clockTimer) clearInterval(this.clockTimer)
     this.stopBattleTimer()
   },
   methods: {
+    // 页脚小Q报时(与 App.vue tick 同款格式)
+    tickClock () {
+      const d = new Date()
+      const p = n => (n < 10 ? '0' + n : '' + n)
+      this.nowText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+    },
     // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
     // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
     exitToHome () {
