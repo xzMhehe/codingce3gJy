@@ -678,6 +678,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/officers/:id/rename", ezfyH.OfficerRename)
 				ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
 				ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
+				ezfyG.POST("/officers/:id/unequip-all", ezfyH.OfficerUnequipAll)
+				ezfyG.POST("/officers/:id/equip-set", ezfyH.OfficerEquipSet)
 				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
 				ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
 				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)

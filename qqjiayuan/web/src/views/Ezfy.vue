@@ -3032,74 +3032,48 @@
           <div class="panel-title">
             {{ officerDetail.officer.name }}
             <a href="javascript:;" @click="doOfficerRename">[改名]</a>
-            <span class="gray">军官改名卡 {{ officerDetail.officer.rename_card }} 张</span>
           </div>
 
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: officerDetailTab === 'attr' }" @click="officerDetailTab = 'attr'">属性</a>|
             <a href="javascript:;" :class="{ on: officerDetailTab === 'skill' }" @click="officerDetailTab = 'skill'">技能</a>|
-            <a href="javascript:;" :class="{ on: officerDetailTab === 'equip' }" @click="officerDetailTab = 'equip'">装备</a>
+            <a href="javascript:;" :class="{ on: officerDetailTab === 'equip' }" @click="officerDetailTab = 'equip'">装备</a>|
+            <a href="javascript:;" :class="{ on: officerDetailTab === 'bag' }" @click="officerDetailTab = 'bag'">装备背包</a>
           </div>
 
           <!-- 属性 tab -->
           <div v-if="officerDetailTab === 'attr'">
-          <table class="ezfy-plain-table">
-            <tr><th>星级</th><th>等级</th><th>经验</th><th>忠诚</th><th>职位</th><th>状态</th></tr>
-            <tr>
-              <td>
-                {{ officerDetail.officer.star }}<span
-                  class="gray" v-if="officerDetail.officer.star_max">/{{ officerDetail.officer.star_max }}</span>
-              </td>
-              <td>
-                {{ officerDetail.officer.level }}<span
-                  class="gray" v-if="officerDetail.officer.level >= officerMaxLevel">满级</span>
-              </td>
-              <td>
-                {{ officerDetail.officer.level >= officerMaxLevel ? '—'
-                   : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}
-              </td>
-              <td>{{ officerDetail.officer.loyalty }}</td>
-              <td>{{ officerDetail.officer.position_name }}</td>
-              <td>{{ officerDetail.officer.status_name }}</td>
-            </tr>
-          </table>
-
-          <!-- 属性与攻防（绿字为装备/套装加成） -->
-          <table class="ezfy-plain-table">
-            <tr><th>军事</th><th>后勤</th><th>学识</th><th>攻击加成</th><th>防御加成</th></tr>
-            <tr>
-              <td>
-                {{ officerDetail.officer.military_total }}<span
-                  class="green" v-if="officerDetail.officer.equip_military">+{{ officerDetail.officer.equip_military }}</span>
-              </td>
-              <td>
-                {{ officerDetail.officer.logistics_total }}<span
-                  class="green" v-if="officerDetail.officer.equip_logistics">+{{ officerDetail.officer.equip_logistics }}</span>
-              </td>
-              <td>
-                {{ officerDetail.officer.learning_total }}<span
-                  class="green" v-if="officerDetail.officer.equip_learning">+{{ officerDetail.officer.equip_learning }}</span>
-              </td>
-              <td>{{ officerDetail.officer.attack }}</td>
-              <td>{{ officerDetail.officer.defence }}</td>
-            </tr>
-          </table>
+          <div class="old-line">
+            星级：<b>{{ officerDetail.officer.star }}</b><span class="gray" v-if="officerDetail.officer.star_max">/{{ officerDetail.officer.star_max }}</span>
+            &nbsp;等级：<b>{{ officerDetail.officer.level }}</b><span class="green" v-if="officerDetail.officer.level >= officerMaxLevel"> [满级]</span>
+            &nbsp;经验：<span class="gray">{{ officerDetail.officer.level >= officerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}</span>
+            &nbsp;忠诚：<b>{{ officerDetail.officer.loyalty }}</b>
+            <br/>
+            职位：<b>{{ officerDetail.officer.position_name }}</b>
+            &nbsp;状态：<b :class="officerDetail.officer.status_name === '出征中' ? 'red' : ''">{{ officerDetail.officer.status_name }}</b>
+          </div>
+          <hr/>
+          <div class="old-line">
+            军事：{{ officerDetail.officer.military_total }}<span class="green" v-if="officerDetail.officer.equip_military">(+{{ officerDetail.officer.equip_military }})</span>
+            &nbsp;后勤：{{ officerDetail.officer.logistics_total }}<span class="green" v-if="officerDetail.officer.equip_logistics">(+{{ officerDetail.officer.equip_logistics }})</span>
+            &nbsp;学识：{{ officerDetail.officer.learning_total }}<span class="green" v-if="officerDetail.officer.equip_learning">(+{{ officerDetail.officer.equip_learning }})</span>
+            <br/>
+            攻击加成：{{ officerDetail.officer.attack }}
+            &nbsp;防御加成：{{ officerDetail.officer.defence }}
+          </div>
 
           <!-- 套装与战斗加成（套装穿齐才生效） -->
-          <table class="ezfy-plain-table"
-                 v-if="(officerDetail.officer.set_progress && officerDetail.officer.set_progress.length) ||
-                       officerBattleText(officerDetail.officer.battle)">
-            <tr><th>套装</th><th>进度</th><th>效果</th></tr>
-            <tr v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
-              <td>{{ sp.name }}</td>
-              <td>{{ sp.worn }}/{{ sp.parts }}</td>
-              <td :class="sp.active ? 'green' : 'gray'">{{ sp.active ? '已生效' : ('还差 ' + sp.need + ' 件') }}</td>
-            </tr>
-            <tr v-if="officerBattleText(officerDetail.officer.battle)">
-              <td>装备战斗加成</td>
-              <td colspan="2" class="green">{{ officerBattleText(officerDetail.officer.battle) }}</td>
-            </tr>
-          </table>
+          <template v-if="(officerDetail.officer.set_progress && officerDetail.officer.set_progress.length) ||
+                           officerBattleText(officerDetail.officer.battle)">
+            <hr/>
+            <div class="old-line" v-if="officerBattleText(officerDetail.officer.battle)">
+              装备战斗加成：<span class="green">{{ officerBattleText(officerDetail.officer.battle) }}</span>
+            </div>
+            <div class="old-line" v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
+              套装「{{ sp.name }}」：{{ sp.worn }}/{{ sp.parts }} 件
+              <span :class="sp.active ? 'green' : 'gray'">{{ sp.active ? '已生效' : ('还差 ' + sp.need + ' 件') }}</span>
+            </div>
+          </template>
 
           <!-- 属性加点（每升 1 级得 1 点） -->
           <div class="old-line">
@@ -3152,13 +3126,15 @@
           </table>
           </div>
 
-          <!-- 装备 tab（已穿戴 + 背包装备） -->
+          <!-- 装备 tab（已穿戴 + 一键卸下 + 一键穿套装） -->
           <div v-if="officerDetailTab === 'equip'">
           <table class="ezfy-plain-table">
             <colgroup>
               <col style="width:28%"><col style="width:14%"><col style="width:19%"><col style="width:11%"><col style="width:28%">
             </colgroup>
-            <tr><th colspan="5">已穿戴装备</th></tr>
+            <tr><th colspan="5">已穿戴装备
+              <a v-if="officerDetail.equipped.length" href="javascript:;" @click="doUnequipAll">[一键卸下]</a>
+            </th></tr>
             <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
               <td>{{ e.name }}</td>
@@ -3170,7 +3146,23 @@
             <tr v-if="!officerDetail.equipped.length"><td colspan="5" class="gray">(未穿戴装备)</td></tr>
           </table>
 
-          <!-- 装备背包（检索 + 分页） -->
+          <!-- 一键穿戴套装（背包里有件的套装） -->
+          <table class="ezfy-plain-table" v-if="officerDetail.bag_sets && officerDetail.bag_sets.length">
+            <colgroup>
+              <col style="width:44%"><col style="width:28%"><col style="width:28%">
+            </colgroup>
+            <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
+            <tr><th>套装</th><th>背包件数</th><th>操作</th></tr>
+            <tr v-for="s in officerDetail.bag_sets" :key="'bs' + s.set_id">
+              <td>{{ s.name }}</td>
+              <td>{{ s.bag_count }} 件</td>
+              <td><a href="javascript:;" @click="doEquipSet(s)">[一键穿戴]</a></td>
+            </tr>
+          </table>
+          </div>
+
+          <!-- 装备背包 tab（检索 + 分页） -->
+          <div v-if="officerDetailTab === 'bag'">
           <table class="ezfy-plain-table">
             <colgroup>
               <col style="width:24%"><col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:24%">
@@ -3408,7 +3400,7 @@ export default {
       setEffectId: 0,                                        // 「我的套装」里点 [加成] 展开的那条
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
-      officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备
+      officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
       equipDetail: { name: '', status: '', attrs: '' }, // 装备详情页数据
       equipDetailBack: 'acade', // 装备详情页返回去向
       bagOfficers: [],
@@ -6498,6 +6490,24 @@ export default {
       const id = this.officerDetail.officer.id
       api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: equipId, op: 'off' }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '卸下失败')
+        this.loadOfficerDetail(id)
+      })
+    },
+    async doUnequipAll () {
+      const id = this.officerDetail.officer.id
+      if (!await this.ask('确定卸下该军官身上全部 ' + this.officerDetail.equipped.length + ' 件装备吗?')) return
+      api.post('/games/ezfy/officers/' + id + '/unequip-all', {}).then(r => {
+        if (r.code !== 0) this.notify(r.msg || '卸下失败')
+        else this.notify(r.msg || '已卸下全部装备')
+        this.loadOfficerDetail(id)
+      })
+    },
+    async doEquipSet (s) {
+      const id = this.officerDetail.officer.id
+      if (!await this.ask('确定一键穿戴「' + s.name + '」整套吗?（同部位已穿戴的会自动卸下让位）')) return
+      api.post('/games/ezfy/officers/' + id + '/equip-set', { set_id: s.set_id }).then(r => {
+        if (r.code !== 0) this.notify(r.msg || '穿戴失败')
+        else this.notify(r.msg || '穿戴成功')
         this.loadOfficerDetail(id)
       })
     },

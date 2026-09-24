@@ -1794,7 +1794,12 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	})
 	em, el, ee := h.officerEffective(o)
 	bag := []gin.H{}
+	// ★ 一键穿套装：背包里每个套装分别有件未穿戴的（officer_id=0 才在背包）
+	bagSetCnt := map[int]int{}
 	for _, e := range h.equipmentList(uid) {
+		if e.OfficerId == 0 && e.SetId > 0 {
+			bagSetCnt[e.SetId]++
+		}
 		bag = append(bag, gin.H{
 			"id": e.ID, "name": e.Name, "type": e.Type, "tier": e.Tier,
 			"tier_name": ezfyTierName(e.Tier),
@@ -1807,6 +1812,20 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	}
 	sm, sl, se, activeSets := h.officerSetBonus(o)
 	bm, bl, be := officerBaseAttr(o)
+	// 背包里有哪些套装可以一键穿戴（给前端「一键穿戴套装」按钮用）
+	bagSets := []gin.H{}
+	bSetIds := make([]int, 0, len(bagSetCnt))
+	for sid := range bagSetCnt {
+		bSetIds = append(bSetIds, sid)
+	}
+	sort.Ints(bSetIds)
+	for _, sid := range bSetIds {
+		name := h.ezfySetName(sid)
+		if name == "" {
+			continue
+		}
+		bagSets = append(bagSets, gin.H{"set_id": sid, "name": name, "bag_count": bagSetCnt[sid]})
+	}
 	resp.OK(c, gin.H{
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
@@ -1837,8 +1856,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"exp_need": o.Level * 200,
 		},
 		"skills": skillViews, "all_skills": allSkills,
-		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
-		"equipped": h.officerEquippedView(o), "bag": bag, "gold": city.Gold,
+			// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
+			"equipped": h.officerEquippedView(o), "bag": bag, "bag_sets": bagSets, "gold": city.Gold,
 	})
 }
 
@@ -2427,6 +2446,152 @@ func (h *EzfyHandler) OfficerEquip(c *gin.Context) {
 		return
 	}
 	h.done(c, h.equipItem(&city, id, req.EquipId), "装备已穿上")
+}
+
+// OfficerUnequipAll POST /games/ezfy/officers/:id/unequip-all —— 一键卸下该军官全部装备
+func (h *EzfyHandler) OfficerUnequipAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.ParamError(c, "武将不存在")
+		return
+	}
+	equipped := officerEquipped(o)
+	if len(equipped) == 0 {
+		h.done(c, "", "该军官未穿戴装备")
+		return
+	}
+	ids := make([]int64, 0, len(equipped))
+	for _, m := range equipped {
+		if i := jsonInt(m["id"]); i > 0 {
+			ids = append(ids, int64(i))
+		}
+	}
+	// ★ 顺序与 equipItem 一致：先把军官身上的装备列表写空，再把装备行 officer_id 置 0
+	if msg := h.saveOfficerEquipment(o, []map[string]interface{}{}); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	h.DB.Model(&model.EzfyEquipment{}).Where("id IN ?", ids).Update("officer_id", 0)
+	h.done(c, "", fmt.Sprintf("已卸下 %d 件装备到背包", len(ids)))
+}
+
+// OfficerEquipSet POST /games/ezfy/officers/:id/equip-set  {set_id} —— 一键穿整套
+//
+// ★ 把背包里该套装所有件穿上；目标部位被其他套装的件占用时先卸下让位（珠宝可叠不受限）。
+func (h *EzfyHandler) OfficerEquipSet(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var req struct {
+		SetId int `json:"set_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	o := h.officerOf(city.ID, id)
+	if o == nil {
+		resp.ParamError(c, "武将不存在")
+		return
+	}
+	worn, swapped, skipped, emsg := h.equipSet(&city, o, req.SetId)
+	if emsg != "" {
+		resp.ParamError(c, emsg)
+		return
+	}
+	if worn == 0 {
+		if skipped > 0 {
+			resp.ParamError(c, "背包里该套装装备的佩戴等级都不够")
+		} else {
+			resp.ParamError(c, "背包里没有该套装的装备")
+		}
+		return
+	}
+	txt := fmt.Sprintf("已一键穿上整套 %d 件", worn)
+	if swapped > 0 {
+		txt += fmt.Sprintf("，另卸下 %d 件同部位装备让位", swapped)
+	}
+	if skipped > 0 {
+		txt += fmt.Sprintf("，%d 件等级不足已跳过", skipped)
+	}
+	h.done(c, "", txt)
+}
+
+// equipSet 一键穿套装的内部实现：返回 (穿上件数, 让位卸下件数, 等级不足跳过件数, 错误信息)
+func (h *EzfyHandler) equipSet(city *model.EzfyCity, o *model.EzfyOfficer, setId int) (int, int, int, string) {
+	h.calcResource(city)
+	s := ezfyCfg.equipSet(setId)
+	if s == nil {
+		return 0, 0, 0, "该套装不存在"
+	}
+	var items []model.EzfyEquipment
+	h.DB.Where("user_id = ? AND set_id = ? AND officer_id = 0", city.UserID, setId).Order("id ASC").Find(&items)
+	if len(items) == 0 {
+		return 0, 0, 0, ""
+	}
+	equipped := officerEquipped(o)
+	// 已穿戴集合：slot -> id，让位与同件判定用
+	bySlot := map[string]int64{}
+	for _, m := range equipped {
+		slot, _ := m["slot"].(string)
+		if slot == "" {
+			slot, _ = m["type"].(string)
+		}
+		bySlot[ezfySlotCanon(slot)] = int64(jsonInt(m["id"]))
+	}
+	worn, swapped, skipped := 0, 0, 0
+	wornIds := []int64{}
+	dismountIds := []int64{}
+	for _, e := range items {
+		if o.Level < e.Level {
+			skipped++
+			continue
+		}
+		slot := ezfySlotCanon(e.EquipSlot())
+		// 同部位让位：先卸下占位的其他装备（珠宝不限件数，不占位）
+		if slot != "珠宝" {
+			if oldId, ok := bySlot[slot]; ok && oldId > 0 {
+				kept := []map[string]interface{}{}
+				for _, m := range equipped {
+					if int64(jsonInt(m["id"])) == oldId {
+						continue
+					}
+					kept = append(kept, m)
+				}
+				equipped = kept
+				dismountIds = append(dismountIds, oldId)
+				swapped++
+			}
+		}
+		equipped = append(equipped, map[string]interface{}{
+			"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
+			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"series": e.Series, "enhance": e.Enhance,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+		})
+		bySlot[slot] = int64(e.ID)
+		wornIds = append(wornIds, int64(e.ID))
+		worn++
+	}
+	if worn == 0 {
+		return 0, 0, skipped, ""
+	}
+	// ★ 顺序同 equipItem：先写军官身上装备 JSON 成功，再改装备行的 officer_id
+	if msg := h.saveOfficerEquipment(o, equipped); msg != "" {
+		return 0, 0, 0, msg
+	}
+	if len(wornIds) > 0 {
+		h.DB.Model(&model.EzfyEquipment{}).Where("id IN ?", wornIds).Update("officer_id", int64(o.ID))
+	}
+	if len(dismountIds) > 0 {
+		h.DB.Model(&model.EzfyEquipment{}).Where("id IN ?", dismountIds).Update("officer_id", 0)
+	}
+	return worn, swapped, skipped, ""
 }
 
 // OfficerPosition POST /games/ezfy/officers/:id/position  {position}
