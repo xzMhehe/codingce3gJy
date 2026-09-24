@@ -1967,7 +1967,16 @@
       <!-- ============ 排行(rank) ============ -->
       <template v-else-if="cur === 'rank'">
         <div class="panel">
-          <!-- 军衔晋升表放最上面, 三个榜单在下面(用户要求) -->
+          <!-- ★ 2026-09-24 用户要求：军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: rankTab === 'ranks' }" @click="rankTab = 'ranks'">军衔晋升表</a>|
+            <a href="javascript:;" :class="{ on: rankTab === 'prestige' }" @click="rankTab = 'prestige'">军衔声望榜</a>|
+            <a href="javascript:;" :class="{ on: rankTab === 'troops' }" @click="rankTab = 'troops'">兵力榜</a>|
+            <a href="javascript:;" :class="{ on: rankTab === 'corps' }" @click="rankTab = 'corps'">军团榜</a>
+          </div>
+
+          <!-- 军衔晋升表 tab（静态参照表） -->
+          <template v-if="rankTab === 'ranks'">
           <div class="panel-title">军衔晋升表</div>
           <div class="old-line">
             军衔等级 / 职位 / 需要声望 / <b>可建城数</b>
@@ -1991,6 +2000,10 @@
               <td>{{ r.city_max }}</td>
             </tr>
           </table>
+          </template>
+
+          <!-- 军衔声望榜 tab -->
+          <template v-if="rankTab === 'prestige'">
           <div class="panel-title">军衔声望榜</div>
           <table class="ezfy-rank-table">
             <colgroup>
@@ -2003,6 +2016,10 @@
               <td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
             </tr>
           </table>
+          </template>
+
+          <!-- 兵力榜 tab -->
+          <template v-if="rankTab === 'troops'">
           <div class="panel-title">兵力榜</div>
           <table class="ezfy-rank-table">
             <colgroup>
@@ -2015,6 +2032,10 @@
               <td>{{ r.city_name }}</td><td>{{ r.count }}</td>
             </tr>
           </table>
+          </template>
+
+          <!-- 军团榜 tab -->
+          <template v-if="rankTab === 'corps'">
           <div class="panel-title">军团榜</div>
           <table class="ezfy-rank-table">
             <colgroup>
@@ -2026,6 +2047,8 @@
               <td><span v-if="r.rank === 1" class="rank-crown">♛</span>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
             </tr>
           </table>
+          </template>
+
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3360,6 +3383,8 @@ export default {
       schemeX: '', schemeY: '',
       welfare: { rewards: [], gifts: {} },
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
+      // ★ 排行页 tab: ranks军衔晋升表 / prestige军衔声望榜 / troops兵力榜 / corps军团榜
+      rankTab: 'ranks',
       orders: [],
       buildZone: 'm',
       buildSel: null,
