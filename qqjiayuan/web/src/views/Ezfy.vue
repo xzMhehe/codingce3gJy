@@ -521,10 +521,12 @@
         <div class="panel">
           <!-- ★ 2026-09-24 用户要求: 任务按分类 tab 分别展示(新手/日常/每周) -->
           <div class="acade-tab">
-            <a v-for="(g, i) in taskGroups" :key="'tgt' + g.id" href="javascript:;"
-               :class="{ on: taskGroupCur.id === g.id }" @click="taskTab = g.id">
-              <span v-if="i > 0">|</span>{{ g.name }}<span v-if="g.reset_type === 1">(每日)</span><span v-else-if="g.reset_type === 2">(每周)</span>
-            </a>
+            <template v-for="(g, i) in taskGroups">
+              <!-- ★ 分隔竖线放 <a> 外: 选中态(加粗变色)不波及竖线 -->
+              <span v-if="i > 0" :key="'ts' + g.id"> | </span>
+              <a :key="'tgt' + g.id" href="javascript:;"
+                 :class="{ on: taskGroupCur.id === g.id }" @click="taskTab = g.id"><span>{{ g.name }}</span></a>
+            </template>
           </div>
           <div v-if="taskGroupCur.tasks.length" style="margin-top:6px">
             <div class="old-line" v-for="t in taskGroupCur.tasks" :key="t.id">
