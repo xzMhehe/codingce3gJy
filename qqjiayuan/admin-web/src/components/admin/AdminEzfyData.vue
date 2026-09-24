@@ -1,14 +1,6 @@
 <template>
   <div class="farm-admin">
     <el-card shadow="never" class="box">
-      <el-alert type="info" :closable="false" show-icon style="margin-bottom:12px">
-        <template slot="title">
-          本页只维护「没有专属模块」的零散配置表。以下配置已迁到对应模块（避免两处重复维护）：
-          <span v-for="(m, i) in moved" :key="m.k">
-            <b>{{ m.n }}</b> → {{ m.to }}<span v-if="i < moved.length - 1">；</span>
-          </span>
-        </template>
-      </el-alert>
       <!-- ★ 数据表切换：下拉框改为 Tab（用户要求，切换更直观） -->
       <el-tabs v-model="table" class="cfg-tabs" @tab-click="onTabChange">
         <el-tab-pane v-for="t in tables" :key="t.k" :label="t.n" :name="t.k" />
@@ -37,10 +29,11 @@
             <span v-else>{{ fmt(row[col.k]) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="110" align="center" fixed="right">
+        <!-- ★ 操作按钮统一成图标按钮（与其他二战页面一致，原为「编辑/删除」文字按钮） -->
+        <el-table-column label="操作" width="100" align="center" fixed="right">
           <template slot-scope="{row}">
-            <el-button type="text" size="mini" @click="openEdit(row)">编辑</el-button>
-            <el-button type="text" size="mini" class="danger-btn" @click="doDelete(row)">删除</el-button>
+            <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="doDelete(row)" />
           </template>
         </el-table-column>
       </el-table>

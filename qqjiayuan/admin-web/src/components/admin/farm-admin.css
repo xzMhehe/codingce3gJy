@@ -54,8 +54,11 @@
   .pager-bar { flex-direction: column; align-items: stretch; row-gap: 10px; }
   .pager-bar .el-pagination { justify-content: flex-start; }
 }
-/* 页面底部留白：小屏下分页靠底时，下拉仍有空间向下展开（而不是翻上去盖住表格） */
-.farm-admin { padding-bottom: 120px; }
+/* 页面底部留白：原来给 120px（怕分页「每页 N 条」下拉向下展开时空间不够被裁），
+   但代价是「内容明明放得下」的页面也会凭空多出 120px 高度 → .el-main 出现不必要的纵向滚动
+   （用户反馈「每页 10 条明明撑得住还要上下滑」）。下拉是 body 级 popper，空间不足会自动翻转，
+   不需要这么多留白，收紧到 32px。 */
+.farm-admin { padding-bottom: 32px; }
 .lv { color: #409eff; font-weight: 700; margin-right: 2px; }
 .rank-no {
   display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center;
