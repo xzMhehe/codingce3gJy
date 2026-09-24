@@ -6587,12 +6587,13 @@ body.ezfy-immersive { margin: 0; }
      （3GQQ 时代 WAP 文字游戏的主流样式, 标题/正文统一宋体更有怀旧味）。
      回退链: Windows→宋体/SimSun, macOS→宋体-简(Songti SC), 其余→serif。 */
   font-family: '宋体', 'SimSun', 'Songti SC', 'NSimSun', '新宋体', serif;
-  /* ★ 16px 基准: 用户最终决定「原版 19px 太大，正文用 16px」。★ 不要再统一放大到 18px！
-     演变: 原版 ezfy.css `*{font-size:19px}` → 照搬 19px 用户嫌大 → 试过统一 18px
-           → 用户反馈「字体太大 看着笨笨的」→ 恢复「有层次」的小字阶梯(当前值)。
-     配套阶梯: 标题栏 18 / 小标题·导航 17 / 正文·表格·表单 16 / 次要信息·页脚 13~15 /
-     提示条·确认条·战报·按钮 14 / 地图格 11(固定格尺寸,勿动)。 */
-  font-size: 16px;
+  /* ★ 17px 基准(2026-09-24 用户要求「标准文字微调 +1 看看效果」, 从 16px 整体上调一档)：
+     演变: 原版 19px 嫌大 → 18px 嫌笨 → 16px 小字阶梯 → 今次 16 → 17。
+     配套阶梯: 标题栏 18(用户点名「二战征途-【1区】红色警戒」勿动) / 小标题 18 /
+     导航 17(用户要求与正文同号) / 正文·表格 17 / 表单 16 / 按钮·战报·聊天框 15 /
+     次要信息·页脚·提示条 13~14 / 地图格 11 / 商城分类 15(地图、商城有特殊交互,
+     不参与全局调整)。 */
+  font-size: 17px;
   line-height: 1.5;
   /* 根容器左右不再用负 margin: 会溢出 #app 产生横向滚动条.
      铺满由内部 .title-bar 的 margin:0 -8px 抵消 padding 实现 */
@@ -6607,7 +6608,7 @@ body.ezfy-immersive { margin: 0; }
   font-family: inherit;
 }
 .ezfy-page .home-wrap {
-  font-size: 16px;
+  font-size: 17px;
 }
 .ezfy-page a {
   text-decoration: none;
@@ -6809,7 +6810,7 @@ body.ezfy-immersive { margin: 0; }
   min-height: 44px;
   max-height: 160px;
   padding: 4px 6px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   font-family: inherit;
   border: 1px solid #c8c8c8;
@@ -6867,7 +6868,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
-  font-size: 16px;   /* 与正文同号 */
+  font-size: 17px;   /* 与正文同号(2026-09-24 正文 16→17 同步) */
   color: #666;
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
@@ -6897,8 +6898,8 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .build-tip a { margin-left: 8px; color: #999; }
 .ezfy-page .panel-title {
-  /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18。原先 17 与正文同级, 会看不出层级 */
-  font-size: 17px;
+  /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18(勿动)。2026-09-24 正文 16→17 后小标题同步 +1 */
+  font-size: 18px;
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
@@ -6920,7 +6921,7 @@ body.ezfy-immersive { margin: 0; }
        原来是「输入框里塞占位符 0~59108」，框一窄就被截成 0-0，很难看。
    注意：.of-cell 仍保持 .old-line 的 2px 上下 padding，整页行距节奏不变。 */
 .ezfy-page .of-sec {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: bold;
   color: #2f4156;
   margin: 8px 0 2px;
@@ -7002,7 +7003,7 @@ body.ezfy-immersive { margin: 0; }
    .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
-.ezfy-page .city-name { font-size: 16px; font-weight: bold; color: #2f4156; }
+.ezfy-page .city-name { font-size: 17px; font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 无边框、字号对齐正文。
    ★ 2026-09-24 用户要求「表格固定宽度、切 tab 不因字数不一样变动」：
      table-layout:fixed + width:100% → 列宽按列数均分固定，与单元格内容完全无关，
@@ -7015,8 +7016,9 @@ body.ezfy-immersive { margin: 0; }
   max-width: 920px;
   margin: 0;
   border-collapse: collapse;
-  /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小 */
-  font-size: 15px;
+  /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小
+     ★ 2026-09-24 正文 16→17, 表格按注释原意落实为 17 与正文同号 */
+  font-size: 17px;
 }
 /* 地图 5×5 格子 / 战场指挥室：恢复按内容自适应，不参与全局固定均分 */
 .ezfy-page .ezfy-map-table,
@@ -7093,8 +7095,8 @@ body.ezfy-immersive { margin: 0; }
   border: 1px solid #999;
   border-radius: 0;
   padding: 3px 4px;
-  /* ★ 表单 15px：比正文(16px)小一号，避免输入框把行撑高 */
-  font-size: 15px;
+  /* ★ 表单 16px：比正文(17px)小一号，避免输入框把行撑高 */
+  font-size: 16px;
   background: #fff;
   color: #333;
 }
@@ -7103,8 +7105,8 @@ body.ezfy-immersive { margin: 0; }
   border-radius: 0;
   background: #e8e5dd;
   color: #333;
-  /* ★ 按钮 14px：比正文小一号，视觉上不抢正文 */
-  font-size: 14px;
+  /* ★ 按钮 15px：比正文小二号，视觉上不抢正文 */
+  font-size: 15px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -7113,7 +7115,7 @@ body.ezfy-immersive { margin: 0; }
   white-space: pre-wrap;
   word-wrap: break-word;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 15px;
   background: #fff;
   border: 1px solid #ddd;
   padding: 6px;
@@ -7215,14 +7217,15 @@ body.ezfy-immersive { margin: 0; }
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
    实测基准: iPhone SE 320、常见安卓 360/390。
-   ★ 窄屏整体缩一档(表格 13 / 正文 14 / 标题 15)，与桌面端保持同一层次关系。 */
+   ★ 窄屏整体缩一档(表格 14 / 正文 15 / 标题 16)，与桌面端保持同一层次关系。
+     （2026-09-24 桌面正文 16→17 后窄屏同步 +1；导航 subnav/bottom-nav 15px 与窄屏正文同号, 不随动） */
 @media (max-width: 420px) {
-  .ezfy-page table { font-size: 13px; }
+  .ezfy-page table { font-size: 14px; }
   .ezfy-page table th,
   .ezfy-page table td { padding: 4px 4px; }
-  .ezfy-page .old-line { font-size: 14px; line-height: 1.7; }
-  .ezfy-page .panel-title { font-size: 15px; }
-  .ezfy-page .acade-tab { font-size: 14px; }
+  .ezfy-page .old-line { font-size: 15px; line-height: 1.7; }
+  .ezfy-page .panel-title { font-size: 16px; }
+  .ezfy-page .acade-tab { font-size: 15px; }
   .ezfy-page .ezfy-subnav a { font-size: 15px; }
   .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
   /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
