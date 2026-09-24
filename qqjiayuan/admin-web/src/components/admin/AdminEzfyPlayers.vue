@@ -8,31 +8,34 @@
         <div class="grow" />
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
+      <!-- ★ 列宽按实测内容宽度定：ID 类 8 位数字需 74px+，留足余量到 100；
+           昵称类设 min-width 作弹性列分摊宽屏多余宽度（只留 1 个弹性列时会被拉到 600px+）。
+           注：小屏/pad 上横向滚动是既有适配行为，不靠压缩列宽去消除。 -->
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="user_id" label="用户ID" width="70" align="center" />
-        <el-table-column prop="home_num" label="家园号" width="75" align="center" />
-        <el-table-column label="家园昵称" width="100" show-overflow-tooltip>
+        <el-table-column prop="user_id" label="用户ID" width="100" align="center" />
+        <el-table-column prop="home_num" label="家园号" width="100" align="center" />
+        <el-table-column label="家园昵称" min-width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.home_nick || '—' }}</template>
         </el-table-column>
-        <el-table-column label="玩家昵称" min-width="100" show-overflow-tooltip>
+        <el-table-column label="玩家昵称" min-width="130" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.nickname }}</span></template>
         </el-table-column>
-        <el-table-column label="阵营" width="80" align="center">
+        <el-table-column label="阵营" width="85" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="row.camp === 2 ? 'danger' : 'primary'">{{ row.camp_name }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="军功声望" width="95" align="center">
+        <el-table-column label="军功声望" width="100" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ row.prestige }}</span></template>
         </el-table-column>
-        <el-table-column label="军衔" width="95" align="center">
+        <el-table-column label="军衔" width="100" align="center">
           <template slot-scope="{row}">{{ row.rank_name }}</template>
         </el-table-column>
-        <el-table-column prop="city_count" label="城池" width="65" align="center" />
-        <el-table-column label="更新时间" width="150" align="center">
+        <el-table-column prop="city_count" label="城池" width="70" align="center" />
+        <el-table-column label="更新时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center" fixed="right">
+        <el-table-column label="操作" width="175" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-view" title="详情" @click="openDetail(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />

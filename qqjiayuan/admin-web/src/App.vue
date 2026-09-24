@@ -242,6 +242,22 @@ body {
 .el-table .cell .el-button + .el-button { margin-left: 6px; }
 .el-table .cell .el-button--mini { padding: 6px 8px; }
 
+/* ★ 固定列（如「操作」列）的分隔边界：
+   Element 只在表格「需要横向滚动」时才给 .el-table__fixed-right 加阴影；
+   大屏（不滚动）时没有任何分隔，固定列与左侧内容列看起来"没边界"。
+   这里统一改成一条带颜色的实线边框（不要黑边阴影），大屏小屏视觉一致。 */
+.el-table__fixed-right {
+  border-left: 1px solid #dcdfe6;
+  box-sizing: border-box;
+  box-shadow: none !important;
+}
+/* 左侧固定列同理（若以后用到 fixed="left"） */
+.el-table__fixed {
+  border-right: 1px solid #dcdfe6;
+  box-sizing: border-box;
+  box-shadow: none !important;
+}
+
 /* ===== 标签页导航（TagsView） ===== */
 .tags-bar {
   position: relative;

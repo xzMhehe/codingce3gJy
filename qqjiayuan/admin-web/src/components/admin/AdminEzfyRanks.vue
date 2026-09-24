@@ -15,20 +15,20 @@
           </div>
           <el-table :data="ranks" v-loading="loadingRank" stripe border>
             <el-table-column prop="level" label="等级" width="70" align="center" />
-            <el-table-column prop="name" label="军衔" min-width="120">
+            <el-table-column prop="name" label="军衔" min-width="150">
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column prop="post" label="职位" width="110" align="center" />
-            <el-table-column label="需要声望" width="110" align="center">
+            <el-table-column label="需要声望" width="120" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.need_prestige }}</span></template>
             </el-table-column>
-            <el-table-column label="可建城数" width="110" align="center">
+            <el-table-column label="可建城数" width="120" align="center">
               <template slot-scope="{row}"><span class="td-blue">{{ row.city_max }}</span></template>
             </el-table-column>
-            <el-table-column label="该军衔玩家" width="120" align="center">
+            <el-table-column label="该军衔玩家" width="130" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.player_count }}</span></template>
             </el-table-column>
-            <el-table-column prop="des" label="说明" min-width="150" show-overflow-tooltip />
+            <el-table-column prop="des" label="说明" min-width="200" show-overflow-tooltip />
             <el-table-column label="操作" width="110" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
@@ -52,10 +52,10 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id }}</span></template>
             </el-table-column>
             <el-table-column prop="home_num" label="家园号码" width="100" align="center" />
-            <el-table-column label="玩家" min-width="130" show-overflow-tooltip>
+            <el-table-column label="玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.nickname || row.player_name || '—' }}</span></template>
             </el-table-column>
-            <el-table-column label="军衔" width="120" align="center">
+            <el-table-column label="军衔" width="130" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" type="warning">{{ row.rank_name }}</el-tag>
                 <span class="td-sub">({{ row.rank_post }})</span>

@@ -10,17 +10,17 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="620">
         <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column label="军团名" min-width="120" show-overflow-tooltip>
+        <el-table-column label="军团名" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
         </el-table-column>
         <el-table-column prop="leader_name" label="军团长" width="110" show-overflow-tooltip />
         <el-table-column prop="leader_user_id" label="团长ID" width="80" align="center" />
         <el-table-column prop="member_count" label="成员数" width="80" align="center" />
-        <el-table-column prop="notice" label="军团公告" min-width="150" show-overflow-tooltip />
-        <el-table-column label="创建时间" width="150" align="center">
+        <el-table-column prop="notice" label="军团公告" min-width="200" show-overflow-tooltip />
+        <el-table-column label="创建时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="250" align="center" fixed="right">
+        <el-table-column label="操作" width="210" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-user" title="成员" @click="openMembers(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-chat-dot-round" title="军团聊天" @click="openChats(row)" />
@@ -42,7 +42,7 @@
     <el-dialog :title="'军团成员 · ' + (cur.name || '')" :visible.sync="memberDlg" width="720px" :close-on-click-modal="false">
       <el-table :data="members" v-loading="loadingMember" stripe border max-height="420">
         <el-table-column prop="id" label="记录ID" width="80" align="center" />
-        <el-table-column prop="player_name" label="玩家" min-width="120" show-overflow-tooltip>
+        <el-table-column prop="player_name" label="玩家" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.player_name || '—' }}</span></template>
         </el-table-column>
         <el-table-column prop="home_num" label="家园号" width="90" align="center" />
@@ -75,8 +75,8 @@
         <el-table-column prop="id" label="ID" width="80" align="center" />
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
         <el-table-column prop="user_name" label="玩家" width="130" show-overflow-tooltip />
-        <el-table-column prop="content" label="内容" min-width="240" show-overflow-tooltip />
-        <el-table-column label="时间" width="150" align="center">
+        <el-table-column prop="content" label="内容" min-width="300" show-overflow-tooltip />
+        <el-table-column label="时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="90" align="center" fixed="right">

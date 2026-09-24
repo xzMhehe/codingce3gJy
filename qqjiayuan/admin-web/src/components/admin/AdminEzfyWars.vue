@@ -29,33 +29,33 @@
 
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column label="宣战方" min-width="150" show-overflow-tooltip>
+        <el-table-column label="宣战方" min-width="160" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.atk_nick || '—' }}</span>
             <span class="td-sub"> #{{ row.atk_num || row.atk_user_id }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="被宣战方" min-width="150" show-overflow-tooltip>
+        <el-table-column label="被宣战方" min-width="160" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.def_nick || '—' }}</span>
             <span class="td-sub"> #{{ row.def_num || row.def_user_id }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column label="状态" width="120" align="center">
           <template slot-scope="{row}">
             <el-tag :type="statusTag(row.live_status)" size="mini">{{ row.state_text }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="剩余" width="130" align="center">
+        <el-table-column label="剩余" width="140" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ row.left_text }}</span></template>
         </el-table-column>
-        <el-table-column label="宣战时间" width="150" align="center">
+        <el-table-column label="宣战时间" width="170" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ row.declare_at_text }}</span></template>
         </el-table-column>
-        <el-table-column label="生效时间" width="150" align="center">
+        <el-table-column label="生效时间" width="170" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ row.effect_at_text }}</span></template>
         </el-table-column>
-        <el-table-column label="到期时间" width="150" align="center">
+        <el-table-column label="到期时间" width="170" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ row.expire_at_text }}</span></template>
         </el-table-column>
         <el-table-column label="操作" width="200" align="center" fixed="right">

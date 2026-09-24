@@ -18,29 +18,29 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="620">
         <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="cfg_name" label="兵种" min-width="105" show-overflow-tooltip>
+        <el-table-column prop="cfg_name" label="兵种" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.troop_id) }}</span></template>
         </el-table-column>
-        <el-table-column label="数量" width="100" align="center">
+        <el-table-column label="数量" width="145" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.count) }}</span></template>
         </el-table-column>
-        <el-table-column label="占用人口" width="90" align="center">
+        <el-table-column label="占用人口" width="110" align="center">
           <template slot-scope="{row}">{{ fmtN(row.pop_need) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="85" align="center">
+        <el-table-column label="状态" width="95" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="statusTag(row.status)">{{ row.status_txt }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="剩余时间" width="100" align="center">
+        <el-table-column label="剩余时间" width="120" align="center">
           <template slot-scope="{row}">
             <span :class="row.status === 0 && row.remain_sec <= 0 ? 'td-blue' : ''">{{ fmtRemain(row.remain_sec) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="city_name" label="所属城池" width="105" show-overflow-tooltip />
-        <el-table-column prop="owner_name" label="归属玩家" width="100" show-overflow-tooltip />
-        <el-table-column prop="home_num" label="家园号" width="80" align="center" />
-        <el-table-column label="操作" width="235" align="center" fixed="right">
+        <el-table-column prop="city_name" label="所属城池" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+        <el-table-column label="操作" width="190" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="success" plain :disabled="row.status === 2" @click="finish(row)">完成</el-button>
             <el-button size="mini" type="primary" plain :disabled="row.status === 2" @click="openSpeed(row)">加速</el-button>

@@ -51,47 +51,48 @@
         <div class="grow" />
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
+      <!-- ★ 列宽按实测内容宽度定：数量/总价/单价 列要装得下千分位大数（如 100,000,000,000,000） -->
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column label="卖家" width="140" show-overflow-tooltip>
+        <el-table-column prop="id" label="ID" width="75" align="center" />
+        <el-table-column label="卖家" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span v-if="row.is_system === 1" class="td-red">系统</span>
             <span v-else class="td-main">{{ row.seller_name || '—' }}（{{ row.seller_id }}）</span>
           </template>
         </el-table-column>
-        <el-table-column label="资源" width="90" align="center">
+        <el-table-column label="资源" width="95" align="center">
           <template slot-scope="{row}">{{ row.type_name }}</template>
         </el-table-column>
-        <el-table-column label="数量" width="110" align="right">
+        <el-table-column label="数量" width="150" align="right">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.es_count) }}</span></template>
         </el-table-column>
-        <el-table-column label="库存" width="90" align="center">
+        <el-table-column label="库存" width="120" align="center">
           <template slot-scope="{row}">
             <span v-if="row.is_system === 1" class="td-green">∞ 无限</span>
             <span v-else class="td-mono">{{ row.status === 0 ? fmtN(row.es_count) : 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="总价" width="120" align="right">
+        <el-table-column label="总价" width="150" align="right">
           <template slot-scope="{row}">
             <span :class="row.currency === 2 ? 'td-blue' : 'td-gold'">{{ fmtN(row.total_price) }}</span>
             <span class="td-sub">{{ row.currency_name }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="单价" width="100" align="right">
+        <el-table-column label="单价" width="130" align="right">
           <template slot-scope="{row}"><span class="td-muted">{{ fmtUnit(row) }}</span></template>
         </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
+        <el-table-column label="状态" width="100" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="statusTag(row.status)">{{ row.status_name }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="买家ID" width="90" align="center">
+        <el-table-column label="买家ID" width="100" align="center">
           <template slot-scope="{row}">
             <span v-if="row.buyer_id">{{ row.buyer_id }}</span>
             <span v-else class="td-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="挂单时间" width="160" align="center">
+        <el-table-column label="挂单时间" width="170" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ fmtTime(row.created_at) }}</span></template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="center" fixed="right">

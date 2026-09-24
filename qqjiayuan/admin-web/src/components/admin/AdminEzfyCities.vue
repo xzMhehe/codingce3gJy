@@ -8,41 +8,43 @@
         <div class="grow" />
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
+      <!-- ★ 列宽按实测内容宽度定：原「人口」60px 装不下 17 位数字、「归属玩家」120px 被截断；
+           城名/归属玩家/所在州 三个弹性列分摊多余宽度（原只城名一个弹性列，被拉到 680px） -->
       <el-table :data="list" v-loading="loading" stripe border max-height="620">
-        <el-table-column prop="id" label="城池ID" width="60" align="center" />
-        <el-table-column label="城名" min-width="90" show-overflow-tooltip>
+        <el-table-column prop="id" label="城池ID" width="70" align="center" />
+        <el-table-column label="城名" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
         </el-table-column>
-        <el-table-column label="坐标 / 地形" width="90" align="center">
+        <el-table-column label="坐标 / 地形" width="95" align="center">
           <template slot-scope="{row}">
             <div class="td-mono">{{ row.x }},{{ row.y }}</div>
             <div class="td-sub">{{ row.terrain_name }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="归属玩家（家园号）" width="120" show-overflow-tooltip>
+        <el-table-column label="归属玩家（家园号）" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.player_name || '—' }}</span>
             <span class="td-muted">（{{ row.home_num || '—' }}）</span>
           </template>
         </el-table-column>
         <!-- ★ 用户要求：新增「所在州」，去掉「阵营」列 -->
-        <el-table-column label="所在州" width="90" align="center" show-overflow-tooltip>
+        <el-table-column label="所在州" min-width="110" align="center" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-sub">{{ row.continent || '—' }}</span></template>
         </el-table-column>
-        <el-table-column prop="city_level" label="市政厅" width="60" align="center" />
-        <el-table-column prop="pop" label="人口" width="60" align="center" />
+        <el-table-column prop="city_level" label="市政厅" width="70" align="center" />
+        <el-table-column prop="pop" label="人口" width="135" align="center" />
         <!-- ★ 用户要求：资源、建筑/部队 不在列表里罗列，改为点击弹模态框查看 -->
-        <el-table-column label="资源" width="80" align="center">
+        <el-table-column label="资源" width="85" align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="text" @click="openRes(row)">[查看]</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="建筑 / 部队" width="110" align="center">
+        <el-table-column label="建筑 / 部队" width="115" align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="text" @click="openBT(row)">[查看]</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="军官/野地" width="76" align="center">
+        <el-table-column label="军官/野地" width="85" align="center">
           <template slot-scope="{row}">
             <span class="td-mono">{{ row.officer_num }}/{{ row.wild_num }}</span>
           </template>

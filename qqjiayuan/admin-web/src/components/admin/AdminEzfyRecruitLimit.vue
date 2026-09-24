@@ -33,30 +33,30 @@
           <template slot-scope="{row}"><span class="td-mono">{{ row.game_uid || row.user_id }}</span></template>
         </el-table-column>
         <el-table-column prop="home_num" label="家园号码" width="100" align="center" />
-        <el-table-column label="玩家" min-width="130" show-overflow-tooltip>
+        <el-table-column label="玩家" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.nickname || row.player_name || '—' }}</span></template>
         </el-table-column>
-        <el-table-column label="生效次数/天" width="115" align="center">
+        <el-table-column label="生效次数/天" width="130" align="center">
           <template slot-scope="{row}">
             <span class="td-mono">{{ row.limit }}</span>
             <el-tag v-if="row.override > 0" size="mini" type="warning" style="margin-left:4px">覆盖</el-tag>
             <el-tag v-else size="mini" type="info" style="margin-left:4px">默认</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="今日已用" width="95" align="center">
+        <el-table-column label="今日已用" width="110" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ row.used_today }}</span></template>
         </el-table-column>
-        <el-table-column label="今日剩余" width="95" align="center">
+        <el-table-column label="今日剩余" width="110" align="center">
           <template slot-scope="{row}">
             <span :class="row.left_today > 0 ? 'td-mono' : 'td-muted'">{{ row.left_today }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="招生简章" width="95" align="center">
+        <el-table-column label="招生简章" width="110" align="center">
           <template slot-scope="{row}">
             <span :class="row.ticket_count > 0 ? 'td-blue' : 'td-muted'">{{ row.ticket_count }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230" align="center" fixed="right">
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="单独设置" @click="openSet(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-refresh-left" title="重置今日已用次数"

@@ -19,30 +19,31 @@
             <div class="grow" />
             <el-button type="primary" plain icon="el-icon-refresh" @click="loadOrders">刷新</el-button>
           </div>
+          <!-- ★ 列宽按实测内容宽度定：「耗油」原 90px 装不下 2,446,000,177（需 106px） -->
           <el-table :data="orders" v-loading="orderLoading" stripe border max-height="560">
-            <el-table-column prop="id" label="订单ID" width="80" align="center" />
-            <el-table-column prop="user_id" label="用户ID" width="80" align="center" />
-            <el-table-column label="玩家" width="110" show-overflow-tooltip>
+            <el-table-column prop="id" label="订单ID" width="85" align="center" />
+            <el-table-column prop="user_id" label="用户ID" width="85" align="center" />
+            <el-table-column label="玩家" min-width="120" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.player_name || '—' }}</span></template>
             </el-table-column>
-            <el-table-column prop="home_num" label="家园号" width="85" align="center" />
-            <el-table-column label="类型" width="80" align="center">
+            <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+            <el-table-column label="类型" width="90" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini">{{ row.type_name }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="目标" width="90" align="center">
+            <el-table-column label="目标" width="100" align="center">
               <template slot-scope="{row}">{{ row.target_x }},{{ row.target_y }}</template>
             </el-table-column>
-            <el-table-column label="状态" width="85" align="center">
+            <el-table-column label="状态" width="95" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="orderTag(row.status)">{{ statusNames[row.status] || row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="耗油" width="90" align="center">
+            <el-table-column label="耗油" width="115" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.oil_used) }}</span></template>
             </el-table-column>
-            <el-table-column label="创建时间" width="150" align="center">
+            <el-table-column label="创建时间" width="170" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="170" align="center" fixed="right">
@@ -111,27 +112,28 @@
             <div class="grow" />
             <el-button type="primary" plain icon="el-icon-refresh" @click="loadExchanges">刷新</el-button>
           </div>
+          <!-- ★ 同上：数量列原 110px 装不下千分位大数 -->
           <el-table :data="exchanges" v-loading="exLoading" stripe border max-height="560">
-            <el-table-column prop="id" label="挂单ID" width="85" align="center" />
-            <el-table-column prop="seller_name" label="卖家" width="120" show-overflow-tooltip />
-            <el-table-column label="资源" width="90" align="center">
+            <el-table-column prop="id" label="挂单ID" width="90" align="center" />
+            <el-table-column prop="seller_name" label="卖家" min-width="130" show-overflow-tooltip />
+            <el-table-column label="资源" width="95" align="center">
               <template slot-scope="{row}">{{ row.type_name }}</template>
             </el-table-column>
-            <el-table-column label="数量" width="110" align="center">
+            <el-table-column label="数量" width="150" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.es_count) }}</span></template>
             </el-table-column>
-            <el-table-column label="总价(黄金)" width="120" align="center">
+            <el-table-column label="总价(黄金)" width="150" align="center">
               <template slot-scope="{row}"><span class="td-gold">{{ fmtN(row.total_price) }}</span></template>
             </el-table-column>
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column label="状态" width="100" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.status === 0 ? 'success' : 'info'">{{ row.status_name }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="系统单" width="85" align="center">
+            <el-table-column label="系统单" width="90" align="center">
               <template slot-scope="{row}">{{ row.is_system === 1 ? '是' : '否' }}</template>
             </el-table-column>
-            <el-table-column label="时间" width="150" align="center">
+            <el-table-column label="时间" width="170" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="90" align="center" fixed="right">

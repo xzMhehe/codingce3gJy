@@ -16,28 +16,28 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="640">
         <el-table-column prop="id" label="ID" width="80" align="center" />
-        <el-table-column label="发送方" min-width="150" show-overflow-tooltip>
+        <el-table-column label="发送方" min-width="160" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.sender_name || ('用户' + row.sender_id) }}</span>
             <span class="td-muted">（{{ row.sender_num || row.sender_id }}）</span>
           </template>
         </el-table-column>
-        <el-table-column label="接收方" min-width="150" show-overflow-tooltip>
+        <el-table-column label="接收方" min-width="160" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span class="td-main">{{ row.receiver_name || ('用户' + row.receiver_id) }}</span>
             <span class="td-muted">（{{ row.receiver_num || row.receiver_id }}）</span>
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="内容" min-width="280" show-overflow-tooltip />
-        <el-table-column label="状态" width="90" align="center">
+        <el-table-column prop="content" label="内容" min-width="320" show-overflow-tooltip />
+        <el-table-column label="状态" width="100" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="row.is_read === 1 ? 'success' : 'warning'">{{ row.is_read === 1 ? '已读' : '未读' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="时间" width="150" align="center">
+        <el-table-column label="时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center" fixed="right">
+        <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="del(row)" />
           </template>

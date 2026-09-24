@@ -9,10 +9,11 @@
           </span>
         </template>
       </el-alert>
+      <!-- ★ 数据表切换：下拉框改为 Tab（用户要求，切换更直观） -->
+      <el-tabs v-model="table" class="cfg-tabs" @tab-click="onTabChange">
+        <el-tab-pane v-for="t in tables" :key="t.k" :label="t.n" :name="t.k" />
+      </el-tabs>
       <div class="toolbar">
-        <el-select v-model="table" style="width:150px" @change="page = 1; load()">
-          <el-option v-for="t in tables" :key="t.k" :label="t.n" :value="t.k" />
-        </el-select>
         <el-input v-model="word" placeholder="名称 / ID 搜索" clearable style="width:200px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
@@ -27,6 +28,12 @@
             <span v-if="col.fmt === 'stock'" :class="row[col.k] < 0 ? 'unlimited' : ''">
               {{ row[col.k] < 0 ? '无上限' : row[col.k] }}
             </span>
+            <!-- ★ 状态 / 枚举列：1、0 这种编码玩家看不懂，统一渲染成文字标签 -->
+            <el-tag v-else-if="col.dict" size="mini" :type="dictOf(col, row[col.k]).t">
+              {{ dictOf(col, row[col.k]).n }}
+            </el-tag>
+            <!-- ★ 时间列：库里是毫秒时间戳，格式化成日期时间 -->
+            <span v-else-if="col.fmt === 'time'">{{ fmtTime(row[col.k]) }}</span>
             <span v-else>{{ fmt(row[col.k]) }}</span>
           </template>
         </el-table-column>
@@ -55,6 +62,10 @@
             </el-select>
             <el-input-number v-else-if="f.t === 'num'" v-model="form[f.k]"
                              :min="f.min === undefined ? 0 : f.min" style="width:180px" />
+            <!-- ★ 时间字段用日期选择器（value-format=timestamp → 表单值仍是毫秒时间戳，后端不用改） -->
+            <el-date-picker v-else-if="f.t === 'time'" v-model="form[f.k]" type="datetime"
+                            placeholder="选择日期时间" value-format="timestamp"
+                            :picker-options="{ firstDayOfWeek: 1 }" style="width:240px" />
             <el-input v-else-if="f.t === 'text'" v-model="form[f.k]" type="textarea" :rows="2" />
             <el-input v-else v-model="form[f.k]" :maxlength="f.max || 50" style="width:320px" />
           </el-form-item>
@@ -72,16 +83,69 @@
 <script>
 import api from '../../api'
 
-// 各数据表的展示列（k=字段, n=列名, w=列宽）
+// ★ 枚举列的展示口径：库里存的是 1 / 0 这种编码，直接显示出来没人看得懂。
+//   统一在这里转成文字标签（n = 文字，t = el-tag 颜色，缺省为默认蓝）。
+//   口径与下方 FORMS 里的下拉选项保持一致，改一处即可。
+const DICTS = {
+  // 任务类型 / 任务配置的 status
+  onoff: {
+    1: { n: '启用', t: 'success' },
+    0: { n: '停用', t: 'info' }
+  },
+  // 节日活动的 status
+  actStatus: {
+    1: { n: '开启', t: 'success' },
+    0: { n: '关闭', t: 'info' }
+  },
+  // 节日活动类型
+  actType: {
+    1: { n: '资源增产' }, 2: { n: '造兵打折' }, 3: { n: '建造加速' },
+    4: { n: '研究加速' }, 5: { n: '声望加成' }
+  },
+  // 任务类型重置方式
+  resetType: {
+    0: { n: '一次性', t: 'info' }, 1: { n: '每日', t: 'success' }, 2: { n: '每周', t: 'warning' }
+  },
+  // 道具类型
+  itemType: {
+    1: { n: '资源包' }, 2: { n: '黄金包' }, 3: { n: '建筑加速' }, 4: { n: '训练加速' },
+    5: { n: '科技加速' }, 6: { n: '建筑图纸' }, 7: { n: '增产' }, 8: { n: '免战' },
+    9: { n: '招生简章' }, 10: { n: '经验书' }, 11: { n: '军官技能书' }, 12: { n: '重修书' },
+    13: { n: '改名卡' }, 14: { n: '阵营转换道具' }, 15: { n: '出征道具' }, 16: { n: '迁城道具' }
+  },
+  // 任务行为（库里的 task_type 是 build_upgrade 这种英文代码，列表直接显示没人看得懂）
+  taskAction: {
+    build_upgrade: { n: '升级建筑' },
+    train_troop: { n: '训练部队' },
+    tech_research: { n: '研究科技' },
+    occupy_wild: { n: '占领野地' },
+    battle_wild: { n: '攻打野地' },
+    battle_kou: { n: '攻打寇城' },
+    kill_enemy: { n: '消灭敌军' },
+    city_level: { n: '市政厅等级' },
+    army_count: { n: '总兵力' },
+    wild_count: { n: '野地数量' }
+  }
+}
+
+// 任务行为下拉选项（与上面 taskAction 同一份文案，避免两处口径不一致）
+const TASK_ACTIONS = Object.keys(DICTS.taskAction).map(k => ({ v: k, n: DICTS.taskAction[k].n }))
+// 道具类型下拉选项（同理，与 DICTS.itemType 同源）
+const ITEM_TYPES = Object.keys(DICTS.itemType).map(k => ({ v: Number(k), n: DICTS.itemType[k].n }))
+
+// 各数据表的展示列（k=字段, n=列名, w=列宽, dict=枚举文字映射）
 const COLS = {
   activities: [
     { k: 'id', n: 'ID', w: 60 },
     { k: 'name', n: '活动名', w: 150 },
-    { k: 'type_name', n: '类型', w: 110 },
+    // ★ 原为 type_name / status_txt —— 表里根本没有这两列，列表一直显示「—」，
+    //   改成真实字段 type / status + 文字映射
+    { k: 'type', n: '类型', w: 110, dict: 'actType' },
     { k: 'param', n: '参数', w: 90 },
-    { k: 'start_time', n: '开始', w: 160 },
-    { k: 'end_time', n: '结束', w: 160 },
-    { k: 'status_txt', n: '状态', w: 90 },
+    // ★ 库里存的是毫秒时间戳（如 1758652800000），直接显示没人看得懂 → 格式化成日期时间
+    { k: 'start_time', n: '开始时间', w: 160, fmt: 'time' },
+    { k: 'end_time', n: '结束时间', w: 160, fmt: 'time' },
+    { k: 'status', n: '状态', w: 90, dict: 'actStatus' },
     { k: 'des', n: '说明' }
   ],
   buildings: [
@@ -118,7 +182,7 @@ const COLS = {
     { k: 'troops', n: '守军' }, { k: 'des', n: '描述' }
   ],
   items: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '道具名', w: 110 }, { k: 'item_type', n: '类型', w: 70 },
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '道具名', w: 110 }, { k: 'item_type', n: '类型', w: 90, dict: 'itemType' },
     { k: 'category', n: '分类/货币', w: 96 }, { k: 'param1', n: '参数', w: 70 },
     { k: 'price_gold', n: '黄金价', w: 80 }, { k: 'price_diamond', n: '钻石价', w: 80 },
     { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'icon', n: '图标', w: 66 },
@@ -126,16 +190,18 @@ const COLS = {
   ],
   taskTypes: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
-    { k: 'reset_type', n: '重置', w: 70 }, { k: 'sort_no', n: '排序', w: 60 },
+    { k: 'reset_type', n: '重置', w: 80, dict: 'resetType' }, { k: 'sort_no', n: '排序', w: 60 },
     // ★ 最后一列不固定宽、只给最小宽，让表格自动铺满整个卡片（用户反馈右侧大空白）
-    { k: 'status', n: '状态', minW: 90 }
+    { k: 'status', n: '状态', minW: 90, dict: 'onoff' }
   ],
   tasks: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '任务名', w: 120 }, { k: 'task_type', n: '类型', w: 96 },
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '任务名', w: 120 },
+    // ★ task_type 存的是 build_upgrade 这类英文代码 → 列表里转成中文
+    { k: 'task_type', n: '任务行为', w: 110, dict: 'taskAction' },
     { k: 'target', n: '目标数', w: 70 }, { k: 'reward_gold', n: '黄金', w: 76 }, { k: 'reward_food', n: '粮食', w: 70 },
-    { k: 'reward_prestige', n: '声望', w: 60 }, { k: 'sort_no', n: '排序', w: 56 },
+    { k: 'reward_prestige', n: '声望', w: 60 },     { k: 'sort_no', n: '排序', w: 56 },
     // ★ 同上：最后一列弹性铺满
-    { k: 'status', n: '状态', minW: 90 }
+    { k: 'status', n: '状态', minW: 90, dict: 'onoff' }
   ],
   cities: [
     { k: 'id', n: '城池ID', w: 80 }, { k: 'user_id', n: '用户ID', w: 80 }, { k: 'name', n: '城名', w: 110 },
@@ -220,18 +286,19 @@ const FORMS = {
   activities: [
     { k: 'name', n: '活动名', t: 'input', req: true, max: 50 },
     { k: 'type', n: '类型', t: 'num', opts: [
-      { v: 1, n: '1 资源增产' }, { v: 2, n: '2 造兵打折' }, { v: 3, n: '3 建造加速' },
-      { v: 4, n: '4 研究加速' }, { v: 5, n: '5 声望加成' }] },
+      { v: 1, n: '资源增产' }, { v: 2, n: '造兵打折' }, { v: 3, n: '建造加速' },
+      { v: 4, n: '研究加速' }, { v: 5, n: '声望加成' }] },
     { k: 'param', n: '参数(%)', t: 'num' },
-    { k: 'start_time', n: '开始时间(毫秒)', t: 'num' },
-    { k: 'end_time', n: '结束时间(毫秒)', t: 'num' },
-    { k: 'status', n: '状态', t: 'num', opts: [{ v: 0, n: '0 关闭' }, { v: 1, n: '1 开启' }] },
+    // ★ 时间字段用日期选择器（原来要手填毫秒时间戳，运营没法用）
+    { k: 'start_time', n: '开始时间', t: 'time' },
+    { k: 'end_time', n: '结束时间', t: 'time' },
+    { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '开启' }, { v: 0, n: '关闭' }] },
     { k: 'des', n: '说明', t: 'text' }
   ],
   items: [
     { k: 'name', n: '道具名', t: 'input', req: true, max: 50 },
     { k: 'stock', n: '库存（-1 = 无上限，可随便买；0 = 售罄）', t: 'num', min: -1 },
-    { k: 'item_type', n: '类型', t: 'num', opts: [{ v: 1, n: '1 资源包' }, { v: 2, n: '2 黄金包' }, { v: 3, n: '3 建筑加速' }, { v: 4, n: '4 训练加速' }, { v: 5, n: '5 科技加速' }, { v: 6, n: '6 建筑图纸' }, { v: 7, n: '7 增产' }, { v: 8, n: '8 免战' }, { v: 9, n: '9 招生简章' }, { v: 10, n: '10 经验书' }, { v: 11, n: '11 军官技能书' }, { v: 12, n: '12 重修书' }, { v: 13, n: '13 改名卡' }, { v: 14, n: '14 阵营转换道具' }, { v: 15, n: '15 出征道具' }, { v: 16, n: '16 迁城道具' }] },
+    { k: 'item_type', n: '类型', t: 'num', opts: ITEM_TYPES },
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
@@ -252,21 +319,22 @@ const FORMS = {
   taskTypes: [
     { k: 'name', n: '类型名', t: 'input', req: true, max: 50 },
     { k: 'code', n: '代码', t: 'input', max: 30 },
-    { k: 'reset_type', n: '重置方式', t: 'num', opts: [{ v: 0, n: '0 一次性' }, { v: 1, n: '1 每日' }, { v: 2, n: '2 每周' }] },
+    { k: 'reset_type', n: '重置方式', t: 'num', opts: [{ v: 1, n: '每日' }, { v: 2, n: '每周' }, { v: 0, n: '一次性' }] },
     { k: 'sort_no', n: '排序', t: 'num' },
-    { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '1 启用' }, { v: 0, n: '0 停用' }] }
+    { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '启用' }, { v: 0, n: '停用' }] }
   ],
   tasks: [
     { k: 'name', n: '任务名', t: 'input', req: true, max: 100 },
-    { k: 'task_type', n: '任务类型代码', t: 'input', max: 30 },
+    { k: 'task_type', n: '任务行为', t: 'input', opts: TASK_ACTIONS },
     { k: 'target', n: '目标数量', t: 'num' },
     { k: 'reward_gold', n: '黄金奖励', t: 'num' }, { k: 'reward_food', n: '粮食奖励', t: 'num' },
     { k: 'reward_steel', n: '钢铁奖励', t: 'num' }, { k: 'reward_oil', n: '石油奖励', t: 'num' },
     { k: 'reward_rare', n: '稀矿奖励', t: 'num' },
     { k: 'reward_prestige', n: '声望奖励', t: 'num' },
     { k: 'sort_no', n: '排序', t: 'num' },
-    { k: 'type_id', n: '分类ID', t: 'num' },
-    { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '1 启用' }, { v: 0, n: '0 停用' }] }
+    // ★ 分类原来填数字 ID，人看不懂 → 由 computed 注入任务类型下拉（选项名来自任务类型表）
+    { k: 'type_id', n: '任务分类', t: 'num' },
+    { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '启用' }, { v: 0, n: '停用' }] }
   ],
   cities: [
     { k: 'name', n: '城名', t: 'input', req: true, max: 50 },
@@ -306,18 +374,27 @@ export default {
       table: 'items', word: '',
       rows: [], total: 0, page: 1, size: 5, loading: false,
       showForm: false, saving: false,
-      form: {}, formId: 0
+      form: {}, formId: 0,
+      // ★ 动态字典：任务分类名来自「任务类型」表，不能写死在前端
+      //   dynDicts.taskType = { id: { n: 类型名 } }，供 dictOf 兜底查询
+      dynDicts: { taskType: {} },
+      taskTypeOpts: []
     }
   },
   computed: {
     cols () { return COLS[this.table] || [] },
-    formFields () { return FORMS[this.table] || [] },
+    // 任务配置的「任务分类」要选类型名而不是填数字 ID → 动态注入任务类型下拉
+    formFields () {
+      const list = FORMS[this.table] || []
+      if (this.table !== 'tasks') return list
+      return list.map(f => f.k === 'type_id' ? { ...f, opts: this.taskTypeOpts } : f)
+    },
     tableName () {
       const t = this.tables.find(t => t.k === this.table)
       return t ? t.n : '数据'
     }
   },
-  mounted () { this.load() },
+  mounted () { this.load(); this.loadTaskTypeDict() },
   methods: {
     load () {
       this.loading = true
@@ -334,16 +411,61 @@ export default {
       if (v === null || v === undefined) return '—'
       return String(v)
     },
+    // 毫秒时间戳 → 本地日期时间（0 / 空 = 未设置）
+    fmtTime (v) {
+      const n = Number(v)
+      if (!n) return '—'
+      const d = new Date(n < 1e12 ? n * 1000 : n) // 兼容秒级时间戳
+      return d.toLocaleString('zh-CN', { hour12: false })
+    },
+    // 切换数据表 Tab：清空搜索词、回到第 1 页重新拉取
+    onTabChange (tab) {
+      this.table = tab.name
+      this.word = ''
+      this.page = 1
+      this.load()
+    },
+    // 枚举值 → { n: 文字, t: el-tag 颜色 }；先查静态字典再查动态字典，都没有就原样显示
+    dictOf (col, v) {
+      const d = DICTS[col.dict] || this.dynDicts[col.dict]
+      return (d && d[v]) || { n: this.fmt(v), t: '' }
+    },
+    // 任务分类的名字映射 + 编辑表单下拉选项（数据来自「任务类型」表，不能写死）
+    loadTaskTypeDict () {
+      api.get('/admin/ezfy-data/taskTypes', { params: { page: 1, size: 200 } }).then(r => {
+        if (r.code !== 0) return
+        const m = {}
+        const opts = []
+        const list = r.data.list || []
+        list.forEach(t => {
+          m[t.id] = { n: t.name }
+          opts.push({ v: t.id, n: t.name })
+        })
+        this.$set(this.dynDicts, 'taskType', m)
+        this.taskTypeOpts = opts
+      })
+    },
+    // 空值口径：数字用 0、日期用 null（日期选择器要 null 才显示占位）、其余空串
+    blankVal (fd) {
+      if (fd.t === 'num') return 0
+      if (fd.t === 'time') return null
+      return ''
+    },
     openCreate () {
       const f = {}
-      this.formFields.forEach(fd => { f[fd.k] = fd.t === 'num' ? 0 : '' })
+      this.formFields.forEach(fd => { f[fd.k] = this.blankVal(fd) })
       this.form = f
       this.formId = 0
       this.showForm = true
     },
     openEdit (row) {
       const f = {}
-      this.formFields.forEach(fd => { f[fd.k] = row[fd.k] === null || row[fd.k] === undefined ? (fd.t === 'num' ? 0 : '') : row[fd.k] })
+      this.formFields.forEach(fd => {
+        const v = row[fd.k]
+        if (v === null || v === undefined) f[fd.k] = this.blankVal(fd)
+        // 时间字段：库里 0 表示未设置，转成 null 才不会显示成 1970-01-01
+        else f[fd.k] = fd.t === 'time' ? (Number(v) > 0 ? Number(v) : null) : v
+      })
       this.form = f
       this.formId = row.id
       this.showForm = true
@@ -380,4 +502,6 @@ export default {
 @import './farm-admin.css';
 .danger-btn { color: #f56c6c; }
 .unlimited { color: #67c23a; font-weight: 600; }
+/* 数据表切换 Tab：与下方工具栏贴近一些，别留一大块空白 */
+.cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
 </style>

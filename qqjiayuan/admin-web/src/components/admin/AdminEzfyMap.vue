@@ -40,7 +40,7 @@
             <el-table-column prop="terrain_name" label="地形" width="85" align="center" />
             <el-table-column prop="continent" label="大陆" width="90" align="center" />
             <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
-            <el-table-column prop="player_name" label="归属玩家" min-width="125" show-overflow-tooltip />
+            <el-table-column prop="player_name" label="归属玩家" min-min-width="135" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="95" align="center" />
           </el-table>
           <div class="pager-bar">
@@ -152,8 +152,8 @@
                 <span v-else class="td-sub">无</span>
               </template>
             </el-table-column>
-            <el-table-column prop="des" label="备注" min-width="160" show-overflow-tooltip />
-            <el-table-column label="更新时间" width="160" align="center">
+            <el-table-column prop="des" label="备注" min-width="180" show-overflow-tooltip />
+            <el-table-column label="更新时间" width="170" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="160" align="center" fixed="right">
@@ -215,8 +215,8 @@
             <el-table-column prop="gain" label="产出" min-width="130" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-mono td-small">{{ row.gain || '—' }}</span></template>
             </el-table-column>
-            <el-table-column prop="city_name" label="占领城池" min-width="115" show-overflow-tooltip />
-            <el-table-column prop="owner_name" label="归属玩家" min-width="115" show-overflow-tooltip />
+            <el-table-column prop="city_name" label="占领城池" min-width="125" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-min-width="135" show-overflow-tooltip />
             <el-table-column label="操作" width="215" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="info" plain icon="el-icon-view" title="该等级野地配置" @click="openWildCfgOf(row)" />
@@ -307,18 +307,18 @@
           </div>
           <el-table :data="occupies" v-loading="loadingOcc" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="city_name" label="被占城池" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="city_name" label="被占城池" min-width="140" show-overflow-tooltip />
             <el-table-column label="坐标" width="105" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
             </el-table-column>
-            <el-table-column prop="atk_name" label="占领方" min-width="125" show-overflow-tooltip />
-            <el-table-column prop="def_name" label="原属方" min-width="125" show-overflow-tooltip />
+            <el-table-column prop="atk_name" label="占领方" min-width="135" show-overflow-tooltip />
+            <el-table-column prop="def_name" label="原属方" min-width="135" show-overflow-tooltip />
             <el-table-column label="状态" width="100" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.status === 1 ? 'danger' : 'success'">{{ row.status_txt }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="时间" width="150" align="center">
+            <el-table-column label="时间" width="170" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="210" align="center" fixed="right">
@@ -360,7 +360,7 @@
             <el-table-column prop="level" label="等级" width="65" align="center" />
             <el-table-column prop="owner_id" label="占领城市ID" width="110" align="center" />
             <el-table-column prop="hp" label="耐久" width="95" align="center" />
-            <el-table-column prop="troops" label="守军" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="troops" label="守军" min-width="180" show-overflow-tooltip />
             <el-table-column prop="resources" label="资源" min-width="140" show-overflow-tooltip />
             <el-table-column label="操作" width="100" align="center" fixed="right">
               <template slot-scope="{row}">
@@ -381,14 +381,14 @@
         <el-tab-pane label="坐标收藏" name="stars">
           <el-table :data="stars" v-loading="loadingStar" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="owner_name" label="玩家" min-width="125" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="玩家" min-width="140" show-overflow-tooltip />
             <el-table-column prop="home_num" label="家园号" width="100" align="center" />
             <el-table-column label="坐标" width="105" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
             </el-table-column>
             <el-table-column prop="terrain_name" label="地形" width="85" align="center" />
-            <el-table-column prop="name" label="备注名" min-width="140" show-overflow-tooltip />
-            <el-table-column label="收藏时间" width="150" align="center">
+            <el-table-column prop="name" label="备注名" min-width="150" show-overflow-tooltip />
+            <el-table-column label="收藏时间" width="170" align="center">
               <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="100" align="center" fixed="right">

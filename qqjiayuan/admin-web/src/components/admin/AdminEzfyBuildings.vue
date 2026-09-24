@@ -19,29 +19,29 @@
             <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="620">
-            <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="cfg_name" label="建筑" min-width="120" show-overflow-tooltip>
+            <el-table-column prop="id" label="ID" width="75" align="center" />
+            <el-table-column prop="cfg_name" label="建筑" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.building_id) }}</span></template>
             </el-table-column>
-            <el-table-column label="类型" width="80" align="center">
+            <el-table-column label="类型" width="85" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="typeTag(row.cfg_type)">{{ buildTypes[row.cfg_type] || '—' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="等级" width="100" align="center">
+            <el-table-column label="等级" width="105" align="center">
               <template slot-scope="{row}">
                 <span class="lv">Lv.</span>{{ row.level }}<span class="td-muted"> / {{ row.max_level }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="90" align="center">
+            <el-table-column label="状态" width="95" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.status === 0 ? 'success' : 'warning'">{{ row.status_txt }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
-            <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="90" align="center" />
-            <el-table-column label="操作" width="220" align="center" fixed="right">
+            <el-table-column prop="city_name" label="所属城池" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="home_num" label="家园号" width="95" align="center" />
+            <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
                 <el-button size="mini" type="success" plain icon="el-icon-check" title="立即完成"
@@ -70,8 +70,8 @@
             <el-button type="primary" plain icon="el-icon-refresh" @click="cfgPage = 1; loadCfgs">刷新</el-button>
           </div>
           <el-table :data="cfgPaged" v-loading="loadingCfg" stripe border max-height="620">
-            <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="建筑名" width="130" show-overflow-tooltip>
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="name" label="建筑名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column label="类型" width="75" align="center">
@@ -79,8 +79,8 @@
                 <el-tag size="mini" :type="typeTag(row.type)">{{ row.type_name || buildTypes[row.type] }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="max_level" label="最高等级" width="85" align="center" />
-            <el-table-column label="等级配置" width="95" align="center">
+            <el-table-column prop="max_level" label="最高等级" width="90" align="center" />
+            <el-table-column label="等级配置" width="100" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.level_count > 0 ? 'success' : 'danger'" style="cursor:pointer"
                         @click="openLevels(row)">
@@ -88,16 +88,16 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="唯一" width="65" align="center">
+            <el-table-column label="唯一" width="70" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.unique_flag === 1 ? 'warning' : 'info'">{{ row.unique_flag === 1 ? '是' : '否' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="可拆除" width="75" align="center">
+            <el-table-column label="可拆除" width="80" align="center">
               <template slot-scope="{row}">{{ row.can_delete === 1 ? '是' : '否' }}</template>
             </el-table-column>
             <el-table-column prop="pre_building" label="前置建筑" width="130" show-overflow-tooltip />
-            <el-table-column prop="des" label="说明" min-width="140" show-overflow-tooltip />
+            <el-table-column prop="des" label="说明" min-width="260" show-overflow-tooltip />
             <el-table-column label="操作" width="185" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="warning" plain icon="el-icon-s-order" title="等级配置" @click="openLevels(row)" />
@@ -212,7 +212,7 @@
         <span class="td-sub">建造耗时单位：秒；容量对仓储/农田等生效</span>
       </div>
       <el-table :data="lvRows" v-loading="loadingLv" size="mini" stripe border max-height="460">
-        <el-table-column prop="id" label="ID" width="55" align="center" />
+        <el-table-column prop="id" label="ID" width="60" align="center" />
         <el-table-column prop="level" label="等级" width="55" align="center">
           <template slot-scope="{row}"><span class="lv">Lv.</span>{{ row.level }}</template>
         </el-table-column>

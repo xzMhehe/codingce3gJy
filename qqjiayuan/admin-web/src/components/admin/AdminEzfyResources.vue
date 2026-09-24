@@ -38,36 +38,38 @@
         <el-button type="success" icon="el-icon-present" @click="openGrant">批量发放</el-button>
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
+      <!-- ★ 列宽按实测内容宽度定：资源列原 108px 装不下「99999.95万亿 / 55万」（需 131px）；
+           城名/归属玩家 两个弹性列分摊多余宽度 -->
       <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="城池ID" width="60" align="center" />
-        <el-table-column label="城名" min-width="95" show-overflow-tooltip>
+        <el-table-column prop="id" label="城池ID" width="70" align="center" />
+        <el-table-column label="城名" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
         </el-table-column>
-        <el-table-column label="归属玩家（家园号）" width="130" show-overflow-tooltip>
+        <el-table-column label="归属玩家（家园号）" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.player_name || '—' }}（{{ row.home_num || '—' }}）</template>
         </el-table-column>
-        <el-table-column :label="resName('gold') + ' / 上限'" width="108" align="center">
+        <el-table-column :label="resName('gold') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">
             <span class="td-gold">{{ fmtBig(row.gold) }}</span>
             <span class="td-muted"> / {{ fmtBig(row.gold_cap) }}</span>
           </template>
         </el-table-column>
-        <el-table-column :label="resName('food') + ' / 上限'" width="108" align="center">
+        <el-table-column :label="resName('food') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">{{ fmtBig(row.food) }}<span class="td-muted"> / {{ fmtBig(row.food_cap) }}</span></template>
         </el-table-column>
-        <el-table-column :label="resName('steel') + ' / 上限'" width="108" align="center">
+        <el-table-column :label="resName('steel') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">{{ fmtBig(row.steel) }}<span class="td-muted"> / {{ fmtBig(row.steel_cap) }}</span></template>
         </el-table-column>
-        <el-table-column :label="resName('oil') + ' / 上限'" width="108" align="center">
+        <el-table-column :label="resName('oil') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">{{ fmtBig(row.oil) }}<span class="td-muted"> / {{ fmtBig(row.oil_cap) }}</span></template>
         </el-table-column>
-        <el-table-column :label="resName('rare') + ' / 上限'" width="108" align="center">
+        <el-table-column :label="resName('rare') + ' / 上限'" width="145" align="center">
           <template slot-scope="{row}">{{ fmtBig(row.rare) }}<span class="td-muted"> / {{ fmtBig(row.rare_cap) }}</span></template>
         </el-table-column>
-        <el-table-column label="资源合计" width="105" align="center">
+        <el-table-column label="资源合计" width="130" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtBig(row.total_res) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="170" align="center" fixed="right">
+        <el-table-column label="操作" width="160" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain @click="openSet(row)">改资源</el-button>
             <el-button size="mini" type="success" plain @click="quickGrant(row)">发资源</el-button>

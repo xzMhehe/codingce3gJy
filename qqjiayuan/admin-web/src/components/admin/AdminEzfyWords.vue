@@ -16,20 +16,20 @@
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column label="敏感词" min-width="160" show-overflow-tooltip>
+        <el-table-column label="敏感词" min-width="170" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.word }}</span></template>
         </el-table-column>
-        <el-table-column label="替换词" min-width="160" show-overflow-tooltip>
+        <el-table-column label="替换词" min-width="170" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-mono">{{ row.replace || '（打 * ）' }}</span></template>
         </el-table-column>
-        <el-table-column label="类型" width="100" align="center">
+        <el-table-column label="类型" width="110" align="center">
           <template slot-scope="{row}">
             <el-tag :type="row.type === 2 ? 'danger' : 'warning'" size="mini">
               {{ row.type === 2 ? '拦截' : '替换' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" align="center" fixed="right">
+        <el-table-column label="操作" width="150" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="remove(row)" />

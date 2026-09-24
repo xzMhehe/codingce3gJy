@@ -14,19 +14,19 @@
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="cfg_name" label="兵种" min-width="120" show-overflow-tooltip>
+            <el-table-column prop="cfg_name" label="兵种" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.troop_id) }}</span></template>
             </el-table-column>
-            <el-table-column prop="type_name" label="类型" width="80" align="center" />
-            <el-table-column label="数量" width="120" align="center">
+            <el-table-column prop="type_name" label="类型" width="90" align="center" />
+            <el-table-column label="数量" width="145" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.count) }}</span></template>
             </el-table-column>
-            <el-table-column label="占用人口" width="100" align="center">
+            <el-table-column label="占用人口" width="110" align="center">
               <template slot-scope="{row}">{{ fmtN(row.total_pop) }}</template>
             </el-table-column>
-            <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
-            <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+            <el-table-column prop="city_name" label="所属城池" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="home_num" label="家园号" width="95" align="center" />
             <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改数量" @click="openEdit(row)" />
@@ -54,31 +54,32 @@
             <el-button type="primary" plain icon="el-icon-refresh" @click="loadCfgs">刷新</el-button>
           </div>
           <el-table :data="cfgPaged" v-loading="loadingCfg" stripe border>
-            <el-table-column prop="id" label="ID" width="48" align="center" />
-            <el-table-column prop="name" label="通用名" min-width="115" show-overflow-tooltip>
+            <!-- ★ 列宽按实测内容宽度定：属性列原 52px 只能装 4 位数，造价列 155px 装不下「2000/27000/11000/14500」 -->
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column prop="name" label="通用名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
-            <el-table-column prop="name_ally" label="同盟国名" min-width="110" show-overflow-tooltip>
+            <el-table-column prop="name_ally" label="同盟国名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-blue">{{ row.name_ally || '—' }}</span></template>
             </el-table-column>
-            <el-table-column prop="name_axis" label="轴心国名" min-width="110" show-overflow-tooltip>
+            <el-table-column prop="name_axis" label="轴心国名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-red">{{ row.name_axis || '—' }}</span></template>
             </el-table-column>
-            <el-table-column prop="type_name" label="类型" width="62" align="center" />
-            <el-table-column prop="health" label="生命" width="58" align="center" />
-            <el-table-column label="对地" width="52" align="center"><template slot-scope="{row}">{{ row.atk_ground }}</template></el-table-column>
-            <el-table-column label="对海" width="52" align="center"><template slot-scope="{row}">{{ row.atk_sea }}</template></el-table-column>
-            <el-table-column label="对空" width="52" align="center"><template slot-scope="{row}">{{ row.atk_air }}</template></el-table-column>
-            <el-table-column label="对防" width="52" align="center"><template slot-scope="{row}">{{ row.atk_def }}</template></el-table-column>
-            <el-table-column prop="defence" label="防御" width="52" align="center" />
-            <el-table-column prop="speed" label="速度" width="52" align="center" />
-            <el-table-column label="训练(秒)" width="68" align="center">
+            <el-table-column prop="type_name" label="类型" width="75" align="center" />
+            <el-table-column prop="health" label="生命" width="70" align="center" />
+            <el-table-column label="对地" width="65" align="center"><template slot-scope="{row}">{{ row.atk_ground }}</template></el-table-column>
+            <el-table-column label="对海" width="65" align="center"><template slot-scope="{row}">{{ row.atk_sea }}</template></el-table-column>
+            <el-table-column label="对空" width="65" align="center"><template slot-scope="{row}">{{ row.atk_air }}</template></el-table-column>
+            <el-table-column label="对防" width="65" align="center"><template slot-scope="{row}">{{ row.atk_def }}</template></el-table-column>
+            <el-table-column prop="defence" label="防御" width="65" align="center" />
+            <el-table-column prop="speed" label="速度" width="65" align="center" />
+            <el-table-column label="训练(秒)" width="80" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.train_time }}</span></template>
             </el-table-column>
-            <el-table-column :label="'造价(' + resShortText + ')'" width="155" align="center">
+            <el-table-column :label="'造价(' + resShortText + ')'" width="175" align="center">
               <template slot-scope="{row}"><span class="td-mono td-small">{{ row.food }}/{{ row.steel }}/{{ row.oil }}/{{ row.rare }}</span></template>
             </el-table-column>
-            <el-table-column label="操作" width="72" align="center" fixed="right">
+            <el-table-column label="操作" width="80" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openCfgEdit(row)" />
               </template>
@@ -109,17 +110,17 @@
           </div>
           <el-table :data="wounded" v-loading="loadingW" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="cfg_name" label="兵种" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="cfg_name" label="兵种" min-width="150" show-overflow-tooltip />
             <el-table-column label="类型" width="90" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.type === 1 ? 'info' : 'warning'">{{ row.type_name }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="数量" width="120" align="center">
+            <el-table-column label="数量" width="145" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.count) }}</span></template>
             </el-table-column>
-            <el-table-column prop="city_name" label="所属城池" width="120" show-overflow-tooltip />
-            <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
+            <el-table-column prop="city_name" label="所属城池" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
             <el-table-column label="操作" width="120" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="清除" @click="delWounded(row)" />

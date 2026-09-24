@@ -49,11 +49,11 @@
           <div class="sub-title">军衔声望排行（TOP10）</div>
           <el-table :data="stats.tops" size="mini" border max-height="300">
             <el-table-column type="index" label="#" width="50" align="center" />
-            <el-table-column prop="nickname" label="玩家" min-width="110" show-overflow-tooltip />
+            <el-table-column prop="nickname" label="玩家" min-width="120" show-overflow-tooltip />
             <el-table-column label="阵营" width="90" align="center">
               <template slot-scope="{row}">{{ campNames[row.camp] || '同盟国' }}</template>
             </el-table-column>
-            <el-table-column label="声望" width="100" align="center">
+            <el-table-column label="声望" width="110" align="center">
               <template slot-scope="{row}">{{ fmtBig(row.prestige) }}</template>
             </el-table-column>
           </el-table>
@@ -84,14 +84,14 @@
       </div>
       <el-table :data="notices" v-loading="loadingNotices" size="mini" stripe border max-height="320">
         <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip>
+        <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}">
             <el-tag v-if="row.is_top === 1" size="mini" type="warning" style="margin-right:4px">置顶</el-tag>
             <span class="td-main">{{ row.title }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
-        <el-table-column label="时间" width="150" align="center">
+        <el-table-column label="时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="170" align="center" fixed="right">

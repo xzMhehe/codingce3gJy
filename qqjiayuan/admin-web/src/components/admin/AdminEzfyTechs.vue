@@ -18,28 +18,28 @@
           </div>
           <el-table :data="list" v-loading="loading" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
-            <el-table-column prop="cfg_name" label="科技" min-width="130" show-overflow-tooltip>
+            <el-table-column prop="cfg_name" label="科技" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.tech_id) }}</span></template>
             </el-table-column>
-            <el-table-column label="等级" width="110" align="center">
+            <el-table-column label="等级" width="115" align="center">
               <template slot-scope="{row}">
                 <span class="lv">Lv.</span>{{ row.level }}<span class="td-muted"> / {{ row.max_level }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="100" align="center">
+            <el-table-column label="状态" width="110" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.status === 1 ? 'warning' : 'success'">{{ row.status_txt }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="剩余时间" width="120" align="center">
+            <el-table-column label="剩余时间" width="130" align="center">
               <template slot-scope="{row}">
                 <span v-if="row.status === 1" :class="row.remain_sec <= 0 ? 'td-blue' : ''">{{ fmtRemain(row.remain_sec) }}</span>
                 <span v-else class="td-muted">—</span>
               </template>
             </el-table-column>
-            <el-table-column prop="owner_name" label="归属玩家" width="120" show-overflow-tooltip />
-            <el-table-column prop="home_num" label="家园号" width="90" align="center" />
-            <el-table-column label="操作" width="220" align="center" fixed="right">
+            <el-table-column prop="owner_name" label="归属玩家" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="home_num" label="家园号" width="95" align="center" />
+            <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="改等级" @click="openEdit(row)" />
                 <el-button size="mini" type="success" plain icon="el-icon-check" title="立即完成研究"
@@ -69,7 +69,7 @@
           </div>
           <el-table :data="cfgs" v-loading="loadingCfg" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="科技名" min-width="130" show-overflow-tooltip>
+            <el-table-column prop="name" label="科技名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column label="类型" width="80" align="center">
@@ -91,8 +91,8 @@
             <el-table-column label="已研究" width="85" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
             </el-table-column>
-            <el-table-column prop="effect" label="效果" min-width="150" show-overflow-tooltip />
-            <el-table-column label="操作" width="230" align="center" fixed="right">
+            <el-table-column prop="effect" label="效果" min-width="250" show-overflow-tooltip />
+            <el-table-column label="操作" width="200" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="info" plain icon="el-icon-s-operation" title="等级配置" @click="openLvDlg(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openCfgEdit(row)" />
@@ -236,7 +236,7 @@
         <el-table-column label="稀" width="90" align="center"><template slot-scope="{row}"><span class="td-mono td-small">{{ fmtN(row.rare) }}</span></template></el-table-column>
         <el-table-column label="黄金" width="90" align="center"><template slot-scope="{row}"><span class="td-mono td-small">{{ fmtN(row.gold) }}</span></template></el-table-column>
         <el-table-column label="研究(秒)" width="85" align="center"><template slot-scope="{row}"><span class="td-mono">{{ row.research_time }}</span></template></el-table-column>
-        <el-table-column prop="effect" label="效果" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="effect" label="效果" min-width="250" show-overflow-tooltip />
         <el-table-column label="操作" width="130" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openLvEdit(row)" />

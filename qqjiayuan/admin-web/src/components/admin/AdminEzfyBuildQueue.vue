@@ -13,36 +13,38 @@
         <el-button type="success" icon="el-icon-s-claim" @click="finishAll">一键完成全部</el-button>
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
+      <!-- ★ 列宽按实测内容宽度定：「模式」原 95px 装不下「一键满级连锁」标签（需 113px）；
+           建筑/所属城池/归属玩家 三个弹性列分摊多余宽度，避免单列被拉到 600px+ -->
       <el-table :data="list" v-loading="loading" stripe border max-height="620">
-        <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="cfg_name" label="建筑" min-width="105" show-overflow-tooltip>
+        <el-table-column prop="id" label="ID" width="65" align="center" />
+        <el-table-column prop="cfg_name" label="建筑" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.cfg_name || ('#' + row.building_id) }}</span></template>
         </el-table-column>
-        <el-table-column label="等级" width="95" align="center">
+        <el-table-column label="等级" width="105" align="center">
           <template slot-scope="{row}">
             <span class="lv">Lv.</span>{{ row.level }} <span class="td-muted">→ {{ row.level + 1 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" type="warning">{{ row.status_txt }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="剩余时间" width="100" align="center">
+        <el-table-column label="剩余时间" width="110" align="center">
           <template slot-scope="{row}">
             <span :class="row.remain_sec <= 0 ? 'td-blue' : ''">{{ fmtRemain(row.remain_sec) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="模式" width="95" align="center">
+        <el-table-column label="模式" width="120" align="center">
           <template slot-scope="{row}">
             <el-tag v-if="row.chain_build === 1" size="mini" type="danger">一键满级连锁</el-tag>
             <span v-else class="td-sub">单次</span>
           </template>
         </el-table-column>
-        <el-table-column prop="city_name" label="所属城池" width="105" show-overflow-tooltip />
-        <el-table-column prop="owner_name" label="归属玩家" width="100" show-overflow-tooltip />
-        <el-table-column prop="home_num" label="家园号" width="80" align="center" />
-        <el-table-column label="操作" width="235" align="center" fixed="right">
+        <el-table-column prop="city_name" label="所属城池" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="owner_name" label="归属玩家" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="home_num" label="家园号" width="90" align="center" />
+        <el-table-column label="操作" width="190" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="success" plain @click="finish(row)">完成</el-button>
             <el-button size="mini" type="primary" plain @click="openSpeed(row)">加速</el-button>

@@ -61,7 +61,7 @@
           </div>
           <el-table :data="gPaged" v-loading="loadingG" stripe border>
             <el-table-column prop="id" label="ID" width="60" align="center" />
-            <el-table-column prop="name" label="军官" min-width="135" show-overflow-tooltip>
+            <el-table-column prop="name" label="军官" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column label="类型" width="88" align="center">
@@ -92,7 +92,7 @@
             <el-table-column label="拥有玩家" width="80" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
             </el-table-column>
-            <el-table-column prop="source" label="来源" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="source" label="来源" min-width="150" show-overflow-tooltip />
             <el-table-column prop="skill" label="组合技" min-width="120" show-overflow-tooltip />
             <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
@@ -125,7 +125,7 @@
           </div>
           <el-table :data="equipSets" v-loading="loadingSt" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="套装名" min-width="180" show-overflow-tooltip>
+            <el-table-column prop="name" label="套装名" min-width="190" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column prop="parts" label="触发件数" width="80" align="center" />
@@ -174,7 +174,7 @@
           </div>
           <el-table :data="chests" v-loading="loadingCh" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="宝箱名" min-width="150" show-overflow-tooltip>
+            <el-table-column prop="name" label="宝箱名" min-width="160" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column label="售价(金/钻)" width="130" align="center">
@@ -224,7 +224,7 @@
           </div>
           <el-table :data="schemes" v-loading="loadingSc" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="计谋" min-width="130" show-overflow-tooltip>
+            <el-table-column prop="name" label="计谋" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column prop="des" label="说明" min-width="280" show-overflow-tooltip />
@@ -278,10 +278,10 @@
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="45" align="center" />
-            <el-table-column prop="name" label="姓名" width="100" show-overflow-tooltip>
+            <el-table-column prop="name" label="姓名" min-width="115" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
-            <el-table-column label="星级" width="65" align="center">
+            <el-table-column label="星级" width="80" align="center">
               <template slot-scope="{row}">{{ '★'.repeat(row.star) }}</template>
             </el-table-column>
             <el-table-column prop="level" label="等级" width="48" align="center" />
@@ -296,7 +296,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="pos_name" label="任命" width="58" align="center" />
-            <el-table-column label="状态" width="68" align="center">
+            <el-table-column label="状态" width="85" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.is_captive === 1 ? 'danger' : 'success'">
                   {{ row.is_captive === 1 ? '俘虏' : row.status_name }}
@@ -304,7 +304,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="city_name" label="归属城池" width="100" show-overflow-tooltip />
-            <el-table-column label="归属玩家" width="130" show-overflow-tooltip>
+            <el-table-column label="归属玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span class="td-main">{{ row.owner_name || '—' }}</span>
                 <span class="td-muted">（{{ row.home_num || '—' }}）</span>
@@ -340,7 +340,7 @@
           </div>
           <el-table :data="sPaged" v-loading="loadingS" stripe border>
             <el-table-column prop="id" label="ID" width="45" align="center" />
-            <el-table-column prop="name" label="技能名" min-width="130" show-overflow-tooltip>
+            <el-table-column prop="name" label="技能名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column label="类型" width="85" align="center">
@@ -393,7 +393,7 @@
             </el-table-column>
             <el-table-column prop="effect" label="效果" min-width="180" show-overflow-tooltip />
             <el-table-column prop="city_name" label="归属城池" width="100" show-overflow-tooltip />
-            <el-table-column prop="owner_name" label="归属玩家" width="130" show-overflow-tooltip />
+            <el-table-column prop="owner_name" label="归属玩家" min-width="150" show-overflow-tooltip />
             <el-table-column label="操作" width="90" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="遗忘" @click="removeSkill(row)" />
@@ -426,7 +426,7 @@
           </div>
           <el-table :data="ePaged" v-loading="loadingE" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="装备名" min-width="160" show-overflow-tooltip>
+            <el-table-column prop="name" label="装备名" min-width="170" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column prop="type" label="类型" width="70" align="center" />
@@ -505,7 +505,7 @@
           </div>
           <el-table :data="ownedEquips" v-loading="loadingOE" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="60" align="center" />
-            <el-table-column prop="name" label="装备名" width="120" show-overflow-tooltip>
+            <el-table-column prop="name" label="装备名" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>
             <el-table-column prop="type" label="类型" width="65" align="center" />
