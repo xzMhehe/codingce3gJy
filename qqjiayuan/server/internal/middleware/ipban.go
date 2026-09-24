@@ -52,7 +52,18 @@ func (m *IPBan) Handler() gin.HandlerFunc {
 			return
 		}
 		set, _ := m.list.Load().(map[string]struct{})
-		if _, hit := set[c.ClientIP()]; hit {
+		ip := c.ClientIP()
+		if _, hit := set[ip]; hit {
+			// ★ bug 修复（「没有人封禁却展示 503」）：命中缓存名单后必须回库二次确认。
+			//   站长按 503 页提示直接在库上 DELETE FROM ip_bans 解封时，本中间件 30 秒
+			//   轮询窗口内仍持有旧名单，会把解封后的请求误判为封禁。回库确认后：
+			//   库里确无记录 → 同步清缓存并放行，从根上消除假阳性。
+			var n int64
+			if err := m.db.Model(&model.IPBan{}).Where("ip = ?", ip).Count(&n).Error; err == nil && n == 0 {
+				m.reload()
+				c.Next()
+				return
+			}
 			target := "/503.html"
 			if strings.HasPrefix(p, "/admin-ui") || strings.HasPrefix(p, "/api/admin") {
 				target = "/admin-ui/503.html"

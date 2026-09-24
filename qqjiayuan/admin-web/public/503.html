@@ -91,9 +91,9 @@
     <div class="title">服务不可用</div>
     <div class="sub">Service Unavailable</div>
     <div class="desc">您的访问请求已被拒绝，无法继续访问本管理端。</div>
-    <div class="tip">如认为属于误封，请联系站长处理（或直接在数据库执行 <b>DELETE FROM ip_bans</b> 解封）。</div>
+    <div class="tip">如认为属于误封，请联系站长处理，解封后点击下方按钮即可进入。</div>
     <div class="line"></div>
-    <button class="btn" onclick="location.reload()">刷新重试</button>
+    <button class="btn" onclick="location.href = location.pathname.indexOf('/admin-ui') === 0 ? '/admin-ui/' : '/'">返回首页</button>
     <div class="foot">家园社区管理系统</div>
   </div>
 </body>
