@@ -6583,11 +6583,10 @@ body.ezfy-immersive { margin: 0; }
   background: #fff;
   min-height: 100%;
   color: #333;
-  /* ★ 字体族: 完全照原版 ezfy.css 末尾那句
-     `body,button,input,select,textarea,h1..h6{font-family:'微软雅黑'}`。
-     之前本页从未声明 font-family → 一路继承到浏览器默认(serif), 与全站其它页字体分裂。
-     追加的中文回退只在用户机器没装微软雅黑时才会用到(Windows 默认都有)。 */
-  font-family: '微软雅黑', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
+  /* ★ 字体族: 2026-09-24 用户反馈「微软雅黑不好看」→ 改复古宋体风
+     （3GQQ 时代 WAP 文字游戏的主流样式, 标题/正文统一宋体更有怀旧味）。
+     回退链: Windows→宋体/SimSun, macOS→宋体-简(Songti SC), 其余→serif。 */
+  font-family: '宋体', 'SimSun', 'Songti SC', 'NSimSun', '新宋体', serif;
   /* ★ 16px 基准: 用户最终决定「原版 19px 太大，正文用 16px」。★ 不要再统一放大到 18px！
      演变: 原版 ezfy.css `*{font-size:19px}` → 照搬 19px 用户嫌大 → 试过统一 18px
            → 用户反馈「字体太大 看着笨笨的」→ 恢复「有层次」的小字阶梯(当前值)。
