@@ -1937,18 +1937,24 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	case 1:
 		// ★ 2026-09-24 用户反馈「资源包用了资源变少」：原来把 city 内存里的旧值 +param
 		//   整行写回( saveCityRes )，会覆盖掉这期间懒结算/运输/掠夺等并发写入的增量。
-		//   改成 DB 原子累加 LEAST(cap, col + param)，只基于库里最新值加，不丢任何存量。
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("LEAST(food_cap, food + ?)", param),
-			"steel": gorm.Expr("LEAST(steel_cap, steel + ?)", param),
-			"oil":   gorm.Expr("LEAST(oil_cap, oil + ?)", param),
-			"rare":  gorm.Expr("LEAST(rare_cap, rare + ?)", param),
-		})
+		//   改成 DB 原子累加 col + param，只基于库里最新值加，不丢任何存量。
+		//   ★ 2026-09-24 再修：不能套 LEAST(cap, ...)——道具是凭空发资源，截在上限会
+		//   把多出的部分丢掉（玩家反馈「用了资源又变成上限了」）。道具加资源一律无条件累加。
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"food":  gorm.Expr("food + ?", param),
+			"steel": gorm.Expr("steel + ?", param),
+			"oil":   gorm.Expr("oil + ?", param),
+			"rare":  gorm.Expr("rare + ?", param),
+		}).Error; err != nil {
+			return "资源累加失败: " + err.Error()
+		}
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 粮食/钢铁/石油/稀矿各+%d", param)
 	case 2:
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-			Update("gold", gorm.Expr("LEAST(gold_cap, gold + ?)", param))
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("gold", gorm.Expr("gold + ?", param)).Error; err != nil {
+			return "黄金累加失败: " + err.Error()
+		}
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
 	case 3:
