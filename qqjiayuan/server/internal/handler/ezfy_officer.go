@@ -173,14 +173,40 @@ func officerSkills(o *model.EzfyOfficer) []string {
 	return out
 }
 
-// officerEquipped 解析军官已穿戴装备
+// officerEquipped 解析军官已穿戴装备（按部位去重：同部位只保留**最后**穿上的那件）
+//
+// ★ 2026-09-24 用户反馈「同一个部位能穿戴多个」：老数据里已经存在同部位多件
+//   （管理端改「穿戴军官」不校验 + 老代码别名不归一），解析时统一兜底去重，
+//   保证展示/属性/套装进度计算都不会把重复件再算进去。
 func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 	out := []map[string]interface{}{}
 	if o == nil || o.Equipment == "" {
 		return out
 	}
 	_ = json.Unmarshal([]byte(o.Equipment), &out)
-	return out
+	if len(out) < 2 {
+		return out
+	}
+	// 从后往前扫：每个部位第一次碰到的一定是最后穿上的那件，前面重复的直接剔除
+	seen := map[string]bool{}
+	kept := make([]map[string]interface{}, 0, len(out))
+	for i := len(out) - 1; i >= 0; i-- {
+		m := out[i]
+		slot, _ := m["slot"].(string)
+		if slot == "" {
+			slot, _ = m["type"].(string)
+		}
+		if seen[model.EzfySlotCanon(slot)] {
+			continue
+		}
+		seen[model.EzfySlotCanon(slot)] = true
+		kept = append(kept, m)
+	}
+	// 倒回来，保持原来「先穿的在前」的相对顺序
+	for l, r := 0, len(kept)-1; l < r; l, r = l+1, r-1 {
+		kept[l], kept[r] = kept[r], kept[l]
+	}
+	return kept
 }
 
 // ============ 军校招募 ============
@@ -574,31 +600,6 @@ func (h *EzfyHandler) equipmentList(uid uint) []model.EzfyEquipment {
 	return list
 }
 
-// ezfySlotCanon 部位别名归一（2026-09-23 用户反馈「同部位能穿多件」）
-//
-// ★ 根本原因：不同的套装对同一个身体部位用了**不同的字符串**——「头盔」和「头部」
-//
-//	都指头、「胸甲」和「胸部」都指胸、「手套/左手/手部」都指手…… 老代码只做**精确字符串**
-//	判重，于是玩家能同时穿「传说英雄[头盔]」和「赤色锤镰[头部]」两件头装 → 同部位穿了两件。
-//	这里把所有同名部位的书写统一成一个规范词，判重和落库都走它，才能真正做到「同部位唯一」。
-func ezfySlotCanon(s string) string {
-	switch s {
-	case "头盔":
-		return "头部"
-	case "护肩":
-		return "肩部"
-	case "胸甲":
-		return "胸部"
-	case "手套", "左手":
-		return "手部"
-	case "战靴":
-		return "足部"
-	case "腰带":
-		return "腰部"
-	}
-	return s
-}
-
 // addEquipment 生成装备实例进背包
 func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) {
 	e := model.EzfyEquipment{
@@ -606,7 +607,7 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 		Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 		Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
 		// ★ 部位统一存归一后的规范名，老实例的原始字符串由判重时归一兜底
-		Slot: ezfySlotCanon(cfg.EquipSlot()), SetId: cfg.SetId,
+		Slot: model.EzfySlotCanon(cfg.EquipSlot()), SetId: cfg.SetId,
 		// ★ 六项战斗属性随实例带走（进战斗计算用）
 		Series: cfg.Series, Enhance: cfg.Enhance,
 		Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
@@ -614,10 +615,11 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 	h.DB.Create(&e)
 }
 
-// equipItem 穿戴装备：等级达标 + 同部位唯一（珠宝不限，可以叠）
+// equipItem 穿戴装备：等级达标 + 同部位唯一（含珠宝，任何部位都只能穿一件）
 //
 // ★ 2026-09-22：同部位判定改用「Slot（留空回落 Type）」，
-// 这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
+//   这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
+// ★ 2026-09-24：用户要求「同一个部位只能穿戴一个」，取消珠宝的叠穿例外。
 func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) string {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
@@ -634,21 +636,19 @@ func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) 
 	if o.Level < e.Level {
 		return "武将等级不足(需要" + strconv.Itoa(e.Level) + "级)"
 	}
-	slot := ezfySlotCanon(e.EquipSlot())
+	slot := model.EzfySlotCanon(e.EquipSlot())
 	equipped := officerEquipped(o)
-	if slot != "珠宝" {
-		for _, m := range equipped {
-			// ★ 2026-09-23 修复「同部位能穿多件」：判重前先把**双方**的部位别名归一。
-			//   否则「传说英雄[头盔]」(部位'头盔') 和 「赤色锤镰[头部]」(部位'头部')
-			//   这种同名部位不同写法会同时通过，导致一个部位穿了两件。
-			if t, _ := m["slot"].(string); ezfySlotCanon(t) == slot {
+	for _, m := range equipped {
+		// ★ 2026-09-23 修复「同部位能穿多件」：判重前先把**双方**的部位别名归一。
+		//   否则「传说英雄[头盔]」(部位'头盔') 和 「赤色锤镰[头部]」(部位'头部')
+		//   这种同名部位不同写法会同时通过，导致一个部位穿了两件。
+		if t, _ := m["slot"].(string); model.EzfySlotCanon(t) == slot {
+			return "已穿戴同部位装备(" + slot + ")"
+		}
+		// 老数据没有 slot 字段 → 回落到 type
+		if t, _ := m["slot"].(string); t == "" {
+			if ot, _ := m["type"].(string); model.EzfySlotCanon(ot) == slot {
 				return "已穿戴同部位装备(" + slot + ")"
-			}
-			// 老数据没有 slot 字段 → 回落到 type
-			if t, _ := m["slot"].(string); t == "" {
-				if ot, _ := m["type"].(string); ezfySlotCanon(ot) == slot {
-					return "已穿戴同部位装备(" + slot + ")"
-				}
 			}
 		}
 	}
@@ -657,6 +657,7 @@ func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) 
 	//   「装备显示已穿戴、但军官身上没有」的半截状态 —— 实测踩过（varchar(500) 截断）。
 	equipped = append(equipped, map[string]interface{}{
 		"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
+		"tier": e.Tier,
 		"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 		// ★ 六项战斗属性（进战斗计算）
 		"series": e.Series, "enhance": e.Enhance,
@@ -709,6 +710,48 @@ func (h *EzfyHandler) saveOfficerEquipment(o *model.EzfyOfficer, list []map[stri
 		return "保存已穿戴装备失败：" + err.Error()
 	}
 	return ""
+}
+
+// rebuildOfficerEquipJSON 按装备行重建某军官的已穿戴装备 JSON（同部位去重，重复件放回背包）
+//
+// ★ 2026-09-24 配套修复「同部位能穿戴多件」：管理端改「穿戴军官」后装备行与
+//   军官 JSON 会脱节（更别说可能直接穿出重复部位），统一用这个函数把两边状态拉齐：
+//   同一部位只留 id 最大（最后穿上）的那件，其余 officer_id 置 0 放回背包。
+func (h *EzfyHandler) rebuildOfficerEquipJSON(officerId int64) {
+	if officerId <= 0 {
+		return
+	}
+	var items []model.EzfyEquipment
+	h.DB.Where("officer_id = ?", officerId).Order("id").Find(&items)
+	seen := map[string]bool{}
+	list := []map[string]interface{}{}
+	drops := []int64{}
+	for i := len(items) - 1; i >= 0; i-- {
+		e := items[i]
+		if seen[model.EzfySlotCanon(e.EquipSlot())] {
+			drops = append(drops, int64(e.ID))
+			continue
+		}
+		seen[model.EzfySlotCanon(e.EquipSlot())] = true
+		list = append(list, map[string]interface{}{
+			"id": e.ID, "name": e.Name, "type": e.Type, "slot": model.EzfySlotCanon(e.EquipSlot()), "set_id": e.SetId,
+			"tier":    e.Tier,
+			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"series": e.Series, "enhance": e.Enhance,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+		})
+	}
+	for l, r := 0, len(list)-1; l < r; l, r = l+1, r-1 {
+		list[l], list[r] = list[r], list[l]
+	}
+	b, err := json.Marshal(list)
+	if err != nil {
+		return
+	}
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", officerId).Update("equipment", string(b))
+	if len(drops) > 0 {
+		h.DB.Model(&model.EzfyEquipment{}).Where("id IN ?", drops).Update("officer_id", 0)
+	}
 }
 
 // equipmentOwnerId 查询某装备穿戴者（卸下后跳转详情用）
@@ -1813,6 +1856,14 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	sm, sl, se, activeSets := h.officerSetBonus(o)
 	bm, bl, be := officerBaseAttr(o)
 	// 背包里有哪些套装可以一键穿戴（给前端「一键穿戴套装」按钮用）
+	// ★ 2026-09-24 用户要求「套装差了差多少生效看不出来」→ 每个套装带上
+	//   parts(总件数)/worn(该军官已穿件数)/need(还差几件生效)，前端直接展示进度。
+	wornBySet := map[int]int{}
+	for _, m := range officerEquipped(o) {
+		if sid := jsonInt(m["set_id"]); sid > 0 {
+			wornBySet[sid]++
+		}
+	}
 	bagSets := []gin.H{}
 	bSetIds := make([]int, 0, len(bagSetCnt))
 	for sid := range bagSetCnt {
@@ -1824,7 +1875,14 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		if name == "" {
 			continue
 		}
-		bagSets = append(bagSets, gin.H{"set_id": sid, "name": name, "bag_count": bagSetCnt[sid]})
+		parts := 0
+		if s := ezfyCfg.equipSet(sid); s != nil {
+			parts = s.Parts
+		}
+		bagSets = append(bagSets, gin.H{
+			"set_id": sid, "name": name, "bag_count": bagSetCnt[sid],
+			"parts": parts, "worn": wornBySet[sid], "need": maxInt(0, parts-wornBySet[sid]),
+		})
 	}
 	resp.OK(c, gin.H{
 		"officer": gin.H{
@@ -1864,6 +1922,15 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 // officerEquippedView 已穿戴装备的下发格式（补套装名，前端直接用）
 func (h *EzfyHandler) officerEquippedView(o *model.EzfyOfficer) []gin.H {
 	out := []gin.H{}
+	// ★ 老快照里没有 tier（上次重构前存的），回落到背包行取品质，保证详情页品质列不为空
+	tierOf := map[int64]int{}
+	if o != nil && o.ID > 0 {
+		var rows []model.EzfyEquipment
+		h.DB.Where("officer_id = ?", o.ID).Find(&rows)
+		for _, r := range rows {
+			tierOf[int64(r.ID)] = r.Tier
+		}
+	}
 	for _, m := range officerEquipped(o) {
 		sid := jsonInt(m["set_id"])
 		slot, _ := m["slot"].(string)
@@ -1871,8 +1938,14 @@ func (h *EzfyHandler) officerEquippedView(o *model.EzfyOfficer) []gin.H {
 		if slot == "" {
 			slot = typ
 		}
+		id := int64(jsonInt(m["id"]))
+		tier := jsonInt(m["tier"])
+		if tier == 0 {
+			tier = tierOf[id]
+		}
 		out = append(out, gin.H{
 			"id": jsonInt(m["id"]), "name": m["name"], "type": typ, "slot": slot,
+			"tier": tier, "tier_name": ezfyTierName(tier),
 			"set_id": sid, "set_name": h.ezfySetName(sid),
 			"military": jsonInt(m["military"]), "logistics": jsonInt(m["logistics"]),
 			"learning": jsonInt(m["learning"]),
@@ -2542,7 +2615,7 @@ func (h *EzfyHandler) equipSet(city *model.EzfyCity, o *model.EzfyOfficer, setId
 		if slot == "" {
 			slot, _ = m["type"].(string)
 		}
-		bySlot[ezfySlotCanon(slot)] = int64(jsonInt(m["id"]))
+		bySlot[model.EzfySlotCanon(slot)] = int64(jsonInt(m["id"]))
 	}
 	worn, swapped, skipped := 0, 0, 0
 	wornIds := []int64{}
@@ -2552,24 +2625,23 @@ func (h *EzfyHandler) equipSet(city *model.EzfyCity, o *model.EzfyOfficer, setId
 			skipped++
 			continue
 		}
-		slot := ezfySlotCanon(e.EquipSlot())
-		// 同部位让位：先卸下占位的其他装备（珠宝不限件数，不占位）
-		if slot != "珠宝" {
-			if oldId, ok := bySlot[slot]; ok && oldId > 0 {
-				kept := []map[string]interface{}{}
-				for _, m := range equipped {
-					if int64(jsonInt(m["id"])) == oldId {
-						continue
-					}
-					kept = append(kept, m)
+		slot := model.EzfySlotCanon(e.EquipSlot())
+		// ★ 同部位让位：先卸下占位的其他装备（2026-09-24 起珠宝同样只留一件，不叠穿）
+		if oldId, ok := bySlot[slot]; ok && oldId > 0 {
+			kept := []map[string]interface{}{}
+			for _, m := range equipped {
+				if int64(jsonInt(m["id"])) == oldId {
+					continue
 				}
-				equipped = kept
-				dismountIds = append(dismountIds, oldId)
-				swapped++
+				kept = append(kept, m)
 			}
+			equipped = kept
+			dismountIds = append(dismountIds, oldId)
+			swapped++
 		}
 		equipped = append(equipped, map[string]interface{}{
 			"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
+			"tier":      e.Tier,
 			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"series": e.Series, "enhance": e.Enhance,
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,

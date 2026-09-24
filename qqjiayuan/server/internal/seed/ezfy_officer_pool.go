@@ -1128,8 +1128,9 @@ func repairEquipSnapshots(db *gorm.DB) {
 		syncI(e.Crit, cfg.Crit, "crit")
 		syncI(e.CritDmg, cfg.CritDmg, "crit_dmg")
 		fillI(e.Enhance, cfg.Enhance, "enhance")
-		if e.Slot == "" && cfg.EquipSlot() != "" {
-			up["slot"] = cfg.EquipSlot()
+		// 部位落库统一走规范名（头盔→头部、手套/左手→手部……），老数据顺手归一
+		if canon := model.EzfySlotCanon(cfg.EquipSlot()); canon != "" && e.EquipSlot() != canon {
+			up["slot"] = canon
 		}
 		if e.SetId == 0 && cfg.SetId != 0 {
 			up["set_id"] = cfg.SetId
@@ -1143,6 +1144,8 @@ func repairEquipSnapshots(db *gorm.DB) {
 	}
 
 	// ② 军官身上的装备 JSON：从背包行重建，保证「穿在身上的」和「背包里的」永远一致
+	//    ★ 2026-09-24 配套「同部位只能穿一件」：同部位只留 id 最大（最后穿上）那件，
+	//      其余 officer_id 置 0 放回背包；部位与快照统一走规范名并补品质 tier。
 	var offs []model.EzfyOfficer
 	db.Where("equipment <> ''").Find(&offs)
 	for _, o := range offs {
@@ -1151,21 +1154,38 @@ func repairEquipSnapshots(db *gorm.DB) {
 		if len(items) == 0 {
 			continue // 一件都没有就别动（可能是历史脏数据，宁可留着让人排查）
 		}
+		seen := map[string]bool{}
+		drops := []int64{}
 		list := []map[string]interface{}{}
-		for _, e := range items {
+		for i := len(items) - 1; i >= 0; i-- {
+			e := items[i]
+			if seen[model.EzfySlotCanon(e.EquipSlot())] {
+				drops = append(drops, int64(e.ID))
+				continue
+			}
+			seen[model.EzfySlotCanon(e.EquipSlot())] = true
 			list = append(list, map[string]interface{}{
-				"id": e.ID, "name": e.Name, "type": e.Type, "slot": e.EquipSlot(), "set_id": e.SetId,
+				"id": e.ID, "name": e.Name, "type": e.Type, "slot": model.EzfySlotCanon(e.EquipSlot()), "set_id": e.SetId,
+				"tier":    e.Tier,
 				"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 				"series": e.Series, "enhance": e.Enhance,
 				"dmg": e.Dmg, "def": e.Def, "hp": e.Hp,
 				"move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 			})
 		}
+		for l, r := 0, len(list)-1; l < r; l, r = l+1, r-1 {
+			list[l], list[r] = list[r], list[l]
+		}
 		b, err := json.Marshal(list)
-		if err != nil || string(b) == o.Equipment {
+		if err != nil {
 			continue
 		}
-		db.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("equipment", string(b))
+		if string(b) != o.Equipment {
+			db.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("equipment", string(b))
+		}
+		if len(drops) > 0 {
+			db.Model(&model.EzfyEquipment{}).Where("id IN ?", drops).Update("officer_id", 0)
+		}
 	}
 }
 

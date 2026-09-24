@@ -1572,7 +1572,7 @@ func (h *AdminHandler) AdminEzfyEquipmentOwnedUpdate(c *gin.Context) {
 		resp.ParamError(c, "无可修改字段")
 		return
 	}
-	// 校验要穿戴的军官确实属于同一玩家
+	// 校验要穿戴的军官确实属于同一玩家；并查同部位唯一（2026-09-24 用户反馈「同一个部位能穿戴多个」）
 	if oid, ok := vals["officer_id"].(int64); ok && oid > 0 {
 		var o model.EzfyOfficer
 		if err := h.DB.First(&o, oid).Error; err != nil {
@@ -1584,10 +1584,29 @@ func (h *AdminHandler) AdminEzfyEquipmentOwnedUpdate(c *gin.Context) {
 			resp.ParamError(c, "该军官不属于这件装备的持有者")
 			return
 		}
+		// 目标军官已穿戴的装备里不能有同部位（别名归一后比较；部位留空回落 Type）
+		slot := model.EzfySlotCanon(e.EquipSlot())
+		var worn []model.EzfyEquipment
+		h.DB.Where("officer_id = ? AND id <> ?", oid, id).Find(&worn)
+		for _, w := range worn {
+			if model.EzfySlotCanon(w.EquipSlot()) == slot {
+				resp.ParamError(c, "该军官已穿戴同部位装备("+slot+")，请先卸下再操作")
+				return
+			}
+		}
 	}
 	if err := h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", id).Updates(vals).Error; err != nil {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
+	}
+	// ★ 改「穿戴军官」后同步重建双方军官的已穿戴装备 JSON（并顺带去重、把重复件放回背包），
+	//   避免装备行与军官身上的快照脱节（重启 repairEquipSnapshots 前一直不一致）。
+	ez := h.ezfyH()
+	if prev := e.OfficerId; prev > 0 {
+		ez.rebuildOfficerEquipJSON(prev)
+	}
+	if oid, ok := vals["officer_id"].(int64); ok && oid > 0 {
+		ez.rebuildOfficerEquipJSON(oid)
 	}
 	resp.OK(c, gin.H{"msg": "装备已保存"})
 }

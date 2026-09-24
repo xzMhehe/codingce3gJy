@@ -1156,6 +1156,32 @@ func (e EzfyEquipment) EquipSlot() string {
 	return e.Type
 }
 
+// EzfySlotCanon 装备部位别名归一（2026-09-23 用户反馈「同部位能穿多件」）
+//
+// ★ 根本原因：不同的套装对同一个身体部位用了**不同的字符串**——「头盔」和「头部」
+//
+//	都指头、「胸甲」和「胸部」都指胸、「手套/左手/手部」都指手…… 只做**精确字符串**
+//	判重时，玩家能同时穿「传说英雄[头盔]」和「赤色锤镰[头部]」两件头装 → 同部位穿了两件。
+//	这里把所有同名部位的书写统一成一个规范词，判重和落库都走它，才能真正做到「同部位唯一」。
+//	（函数放 model 包是为了 handler 与 seed 两处共用同一份归一逻辑，避免各写各的跑偏）
+func EzfySlotCanon(s string) string {
+	switch s {
+	case "头盔":
+		return "头部"
+	case "护肩":
+		return "肩部"
+	case "胸甲":
+		return "胸部"
+	case "手套", "左手":
+		return "手部"
+	case "战靴":
+		return "足部"
+	case "腰带":
+		return "腰部"
+	}
+	return s
+}
+
 // EzfyRecruit 军校每日候选名将 / 刷新次数（每日 0 点重置，限刷 5 次）
 type EzfyRecruit struct {
 	ID           uint      `gorm:"primaryKey;comment:主键ID" json:"id"`

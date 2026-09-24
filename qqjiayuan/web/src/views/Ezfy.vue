@@ -3130,32 +3130,38 @@
           <div v-if="officerDetailTab === 'equip'">
           <table class="ezfy-plain-table">
             <colgroup>
-              <col style="width:28%"><col style="width:14%"><col style="width:19%"><col style="width:11%"><col style="width:28%">
+              <col style="width:24%"><col style="width:12%"><col style="width:10%"><col style="width:15%"><col style="width:11%"><col style="width:28%">
             </colgroup>
-            <tr><th colspan="5">已穿戴装备
+            <tr><th colspan="6">已穿戴装备
               <a v-if="officerDetail.equipped.length" href="javascript:;" @click="doUnequipAll">[一键卸下]</a>
             </th></tr>
-            <tr><th>名称</th><th>部位</th><th>套装</th><th>属性</th><th>操作</th></tr>
+            <tr><th>名称</th><th>部位</th><th>品质</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
               <td>{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
+              <td :class="qualityClass(e.tier_name)">{{ e.tier_name || '—' }}</td>
               <td>{{ e.set_name || (e.set_id ? '套装' + e.set_id : '—') }}</td>
               <td><a href="javascript:;" @click="openEquipDetail(e, '已穿戴')">[查看]</a></td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
             </tr>
-            <tr v-if="!officerDetail.equipped.length"><td colspan="5" class="gray">(未穿戴装备)</td></tr>
+            <tr v-if="!officerDetail.equipped.length"><td colspan="6" class="gray">(未穿戴装备)</td></tr>
           </table>
 
           <!-- 一键穿戴套装（背包里有件的套装） -->
           <table class="ezfy-plain-table" v-if="officerDetail.bag_sets && officerDetail.bag_sets.length">
             <colgroup>
-              <col style="width:44%"><col style="width:28%"><col style="width:28%">
+              <col style="width:40%"><col style="width:36%"><col style="width:24%">
             </colgroup>
             <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
-            <tr><th>套装</th><th>背包件数</th><th>操作</th></tr>
+            <tr><th>套装</th><th>穿齐进度</th><th>操作</th></tr>
             <tr v-for="s in officerDetail.bag_sets" :key="'bs' + s.set_id">
               <td>{{ s.name }}</td>
-              <td>{{ s.bag_count }} 件</td>
+              <td>
+                <span :class="s.need > 0 ? 'gray' : 'green'">
+                  已穿 {{ s.worn }}/{{ s.parts }} 件{{ s.need > 0 ? (' · 还差 ' + s.need + ' 件生效') : ' · 已生效' }}
+                </span>
+                <span class="gray" v-if="s.need > 0 && s.bag_count > 0">（背包还有 {{ s.bag_count }} 件）</span>
+              </td>
               <td><a href="javascript:;" @click="doEquipSet(s)">[一键穿戴]</a></td>
             </tr>
           </table>
