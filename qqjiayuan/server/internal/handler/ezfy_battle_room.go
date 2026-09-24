@@ -180,7 +180,26 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 	if !ok {
 		return ezfyBattleSnapshot{}, true
 	}
-	if snap.Done || b.Status != 1 {
+	// ★ 2026-09-24 修复「军队动态里被攻击的动态打完了还一直显示」：
+	//   一方无兵时战场在 ezfyBattleStart 开局快照就是 done(round=0)、行状态却还是 1，
+	//   老代码这里直接 return，行永远卡在 status=1 → 守方军队动态一直显示「战斗中」。
+	//   发现「快照已结束但行状态没跟上」时顺手把行修好(win 从快照反推)。
+	if snap.Done {
+		if b.Status != 2 {
+			b.Status = 2
+			b.Win = 2 // 默认守方胜
+			if snap.AttackerWin {
+				b.Win = 1
+			} else if snap.Draw {
+				b.Win = 3
+			}
+			h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
+				"status": b.Status, "win": b.Win,
+			})
+		}
+		return snap, true
+	}
+	if b.Status != 1 {
 		return snap, true
 	}
 	st := ezfyBattleStateFromSnapshot(snap)

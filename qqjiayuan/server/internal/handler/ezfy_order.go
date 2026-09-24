@@ -1227,6 +1227,21 @@ func (h *EzfyHandler) processOrders(uid uint) {
 			h.finishReturn(uid, order)
 		}
 	}
+	// ★ 2026-09-24 修复「被攻击的动态打完了还一直显示」：攻方下线后没人 tick 战场，
+	//   守方自己的轮询也把「正在打我方城市」的战场懒推进：打完了立刻收尾
+	//   （finishToOrder 把订单重置回行进 status=0，随后 processIncoming 结算它）。
+	//   只处理订单仍处于「战斗中(5)」的战场 —— 已结算订单留下的僵尸行由 ezfyBattleTick
+	//   自愈 + 军队动态查询加状态过滤兜底，避免把已完成的订单重新拉回结算。
+	var defPending []model.EzfyBattle
+	h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
+		uid, ezfyOrderStatusBattle).Find(&defPending)
+	for i := range defPending {
+		b := &defPending[i]
+		if _, done := h.ezfyBattleTick(b, now); done {
+			h.ezfyBattleFinishToOrder(b, now)
+		}
+	}
+
 	// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
 	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
 	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。

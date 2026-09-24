@@ -2216,7 +2216,11 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	//   战场/订单属于**攻方**，上面的军队动态按 user_id 查不到守方要防守的这场战斗。
 	//   这里单独把「正在被攻打(def_user_id = 我方)」的战场拼进列表，让守方也有 [指挥] 入口。
 	var defBattles []model.EzfyBattle
-	h.DB.Where("def_user_id = ? AND status = 1", uid).Find(&defBattles)
+	// ★ 2026-09-24 修复「被攻击的动态打完了还一直显示」：只展示订单仍处于
+	//   「战斗中(5)」的战场。订单已结算(征服/返航)但战场行没更新(历史 bug 留下的
+	//   僵尸行)一律不再展示；这类行由 ezfyBattleTick 自愈 + 本次线上数据修复清理。
+	h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
+		uid, ezfyOrderStatusBattle).Find(&defBattles)
 	for _, b := range defBattles {
 		// 来袭敌军来源：攻击方城市（查不到就兜底显示玩家 uID）
 		atkName := "玩家" + strconv.FormatUint(uint64(b.UserID), 10)

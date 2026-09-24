@@ -3217,7 +3217,6 @@
           <div class="old-line"><b>{{ equipDetail.name }}</b></div>
           <div class="old-line">状态：{{ equipDetail.status }}</div>
           <div class="old-line">装备属性：<br/>{{ equipDetail.attrs }}</div>
-          <div class="old-line"><a href="javascript:;" @click="go(equipDetailBack)">[返回]</a></div>
         </div>
       </template>
 

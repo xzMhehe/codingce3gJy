@@ -25,8 +25,24 @@ import (
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "配置文件路径")
 	sqlText := flag.String("sql", "", "要执行的 SQL")
+	execSQL := flag.String("exec", "", "要执行的写 SQL(更新/修复, 谨慎使用)")
 	maxRows := flag.Int("n", 200, "最多打印多少行")
 	flag.Parse()
+
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		log.Fatalf("读取配置失败: %v", err)
+	}
+	db := database.Init(&cfg.Mysql)
+
+	if *execSQL != "" {
+		res := db.Exec(*execSQL)
+		if res.Error != nil {
+			log.Fatalf("执行失败: %v", res.Error)
+		}
+		fmt.Printf("执行成功, 影响行数: %d\n", res.RowsAffected)
+		return
+	}
 
 	query := strings.TrimSpace(*sqlText)
 	if query == "" {
@@ -37,13 +53,6 @@ func main() {
 	if query == "" {
 		log.Fatal("用法: go run ./cmd/dbq -sql \"SELECT ...\"")
 	}
-
-	cfg, err := config.Load(*cfgPath)
-	if err != nil {
-		log.Fatalf("读取配置失败: %v", err)
-	}
-	db := database.Init(&cfg.Mysql)
-
 	run(db, query, *maxRows)
 }
 
