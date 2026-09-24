@@ -1269,17 +1269,19 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 			h.addTroop(city.ID, g.TroopId, g.Count)
 		}
 	}
-	// ★ 部队带回的采集资源在这里入城（受仓储上限截断）
-	// ★ 2026-09-24 用户反馈「运输/采集资源变少」：同上，把整行写回改成
-	//   DB 原子累加 LEAST(cap, col + n)，不覆盖这期间其它写入的增量。
+	// ★ 部队带回的采集资源在这里入城
+	// ★ 2026-09-24 用户反馈「运输/采集资源变少」：同上，把整行写回改成 DB 原子累加，
+	//   不覆盖这期间其它写入的增量。
+	//   ★ 2026-09-24 规则修正（用户确认原版口径）：入城资源不受仓储上限截断，
+	//   只有超过数据库字段最大值才会溢出——去掉 LEAST(cap, ...)，改为无条件累加。
 	c := parseCarry(order.Carry)
 	if c.total() > 0 {
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("LEAST(food_cap, food + ?)", c.Food),
-			"steel": gorm.Expr("LEAST(steel_cap, steel + ?)", c.Steel),
-			"oil":   gorm.Expr("LEAST(oil_cap, oil + ?)", c.Oil),
-			"rare":  gorm.Expr("LEAST(rare_cap, rare + ?)", c.Rare),
-			"gold":  gorm.Expr("LEAST(gold_cap, gold + ?)", c.Gold),
+			"food":  gorm.Expr("food + ?", c.Food),
+			"steel": gorm.Expr("steel + ?", c.Steel),
+			"oil":   gorm.Expr("oil + ?", c.Oil),
+			"rare":  gorm.Expr("rare + ?", c.Rare),
+			"gold":  gorm.Expr("gold + ?", c.Gold),
 		})
 		h.addReport(uid, 5, "部队返航: 采集资源已入库",
 			fmt.Sprintf("采集部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
@@ -1591,31 +1593,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				fmt.Sprintf("运输目标城市已不存在, 运输部队已返航, 资源将随部队带回%s。", city.Name), "", order.ID)
 			return
 		}
-		// 超出目标城仓储上限的部分原路带回
-		overF := max64(0, target.Food+f-target.FoodCap)
-		overS := max64(0, target.Steel+s-target.SteelCap)
-		overO := max64(0, target.Oil+o-target.OilCap)
-		overR := max64(0, target.Rare+r-target.RareCap)
-		overG := max64(0, target.Gold+g-target.GoldCap)
-		// ★ 2026-09-24 用户反馈「运输资源两个城市资源都少了」：
-		//   原来把 target 的旧值整行写回( saveCityRes )，会覆盖目标城在这期间
-		//   懒结算/采集/其它运输等并发写入的增量。改成 DB 原子累加
-		//   LEAST(cap, col + n)：只基于库里最新值加，入库量不会丢、也不会超上限。
+		// ★ 2026-09-24 规则修正（用户确认原版口径）：运输到达入城**不受仓储上限截断**
+		//   （只有超过数据库字段最大值才溢出），全部入库、不再把超出部分原路带回。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("LEAST(food_cap, food + ?)", f),
-			"steel": gorm.Expr("LEAST(steel_cap, steel + ?)", s),
-			"oil":   gorm.Expr("LEAST(oil_cap, oil + ?)", o),
-			"rare":  gorm.Expr("LEAST(rare_cap, rare + ?)", r),
-			"gold":  gorm.Expr("LEAST(gold_cap, gold + ?)", g),
+			"food":  gorm.Expr("food + ?", f),
+			"steel": gorm.Expr("steel + ?", s),
+			"oil":   gorm.Expr("oil + ?", o),
+			"rare":  gorm.Expr("rare + ?", r),
+			"gold":  gorm.Expr("gold + ?", g),
 		})
-		order.Carry = carryJSON(ezfyCarry{Food: overF, Steel: overS, Oil: overO, Rare: overR, Gold: overG})
+		order.Carry = ""
 		desc := fmt.Sprintf("运输部队已到达%s\n", target.Name)
 		if f+s+o+r+g > 0 {
-			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f-overF, s-overS, o-overO, r-overR, g-overG)
-		}
-		if overF+overS+overO+overR+overG > 0 {
-			desc += fmt.Sprintf("⚠ 目标城仓储已满, 粮%d 钢%d 油%d 稀矿%d 金%d 将随部队带回\n",
-				overF, overS, overO, overR, overG)
+			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f, s, o, r, g)
 		}
 		desc += "护送部队正在返航, 到达后回到出发城市。"
 		h.beginReturn(order, now, 0)
@@ -1685,48 +1675,24 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.addTroop(target.ID, g.TroopId, g.Count)
 			desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
 		}
-		// 随军资源入目标城（受仓储上限截断，装不下的部分随部队原路带回）
+		// 随军资源入目标城
+		// ★ 2026-09-24 规则修正（用户确认原版口径）：不受仓储上限截断（只有超过
+		//   数据库字段最大值才溢出），装不下的不再原路带回；仍用 DB 原子累加，
+		//   不覆盖这期间其它写入的增量。
 		res := h.parseResMap(order.Resources)
 		back := ezfyCarry{}
 		total := res["food"] + res["steel"] + res["oil"] + res["rare"] + res["gold"]
 		if total > 0 {
-			// ★ 只做「资源懒结算」，**不能**调 refreshCity ——
-			//   refreshCity 会 processOrders(uid)，而本订单正是该 uid 下
-			//   status=0 且已到期的订单 → 会再次进到这里，无限递归把服务打死。
-			//   （processOrders 现在另有 per-uid 重入守卫，这里是第二道防线。）
-			//   军官列表显式传入，工资才扣得对（calcResource 自己不查库）。
 			h.calcResource(&target, h.officerList(target.ID))
-			room := func(cur, cap, v int64) (int64, int64) {
-				if cap <= 0 {
-					cap = cur
-				}
-				r := cap - cur
-				if r < 0 {
-					r = 0
-				}
-				if v > r {
-					return r, v - r
-				}
-				return v, 0
-			}
-			var put int64
-			put, back.Food = room(target.Food, target.FoodCap, res["food"])
-			target.Food += put
-			put, back.Steel = room(target.Steel, target.SteelCap, res["steel"])
-			target.Steel += put
-			put, back.Oil = room(target.Oil, target.OilCap, res["oil"])
-			target.Oil += put
-			put, back.Rare = room(target.Rare, target.RareCap, res["rare"])
-			target.Rare += put
-			put, back.Gold = room(target.Gold, target.GoldCap, res["gold"])
-			target.Gold += put
-			h.saveCityRes(&target)
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
+				"food":  gorm.Expr("food + ?", res["food"]),
+				"steel": gorm.Expr("steel + ?", res["steel"]),
+				"oil":   gorm.Expr("oil + ?", res["oil"]),
+				"rare":  gorm.Expr("rare + ?", res["rare"]),
+				"gold":  gorm.Expr("gold + ?", res["gold"]),
+			})
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
-				res["food"]-back.Food, res["steel"]-back.Steel, res["oil"]-back.Oil,
-				res["rare"]-back.Rare, res["gold"]-back.Gold)
-			if back.total() > 0 {
-				desc += fmt.Sprintf("\n⚠ 目标城仓储已满, %d 资源随部队原路带回", back.total())
-			}
+				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
 		}
 		// 随军军官调任目标城市（清空职位）
 		if order.Officer != "" {

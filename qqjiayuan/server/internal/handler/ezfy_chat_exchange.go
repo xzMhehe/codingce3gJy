@@ -625,14 +625,12 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 		city.Rare += e.EsCount
 	}
 	h.saveCityRes(&city)
-	// 黄金/钻石转给卖家（受其容量上限）；系统挂单不回款给任何玩家
+	// 黄金/钻石转给卖家；系统挂单不回款给任何玩家
+	// ★ 2026-09-24 规则修正：卖家收款同样不受仓储上限截断（只有数据库字段最大值才溢出）
 	if e.IsSystem != 1 {
 		var sellerCity model.EzfyCity
 		if err := h.DB.Where("user_id = ?", e.SellerId).Order("id ASC").First(&sellerCity).Error; err == nil {
-			sellerCity.Gold += e.TotalPrice
-			if sellerCity.Gold > sellerCity.GoldCap {
-				sellerCity.Gold = sellerCity.GoldCap
-			}
+			sellerCity.Gold = ezfyAddRes(sellerCity.Gold, e.TotalPrice)
 			h.saveCityRes(&sellerCity)
 		}
 	}

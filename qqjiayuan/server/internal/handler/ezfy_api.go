@@ -1737,12 +1737,14 @@ var ezfySignRewards = [7][6]int64{
 
 func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
-	// ★ 2026-09-23：先做不会溢出的加法，再按仓储上限截断（原来的 city.Food+food 在极端值下会溢出翻负）
-	city.Food = min64(ezfyClampRes(city.FoodCap), ezfyAddRes(city.Food, food))
-	city.Steel = min64(ezfyClampRes(city.SteelCap), ezfyAddRes(city.Steel, steel))
-	city.Oil = min64(ezfyClampRes(city.OilCap), ezfyAddRes(city.Oil, oil))
-	city.Rare = min64(ezfyClampRes(city.RareCap), ezfyAddRes(city.Rare, rare))
-	city.Gold = min64(ezfyClampRes(city.GoldCap), ezfyAddRes(city.Gold, gold))
+	// ★ 2026-09-24 规则修正（用户确认原版口径）：发放的资源**不受仓储上限截断**，
+	//   只有超过 ezfyResSafeMax(1e12, 数据库字段安全上限) 才夹取。
+	//   ezfyAddRes 本身会做不会溢出的安全加法，结果恒在 [0, ezfyResSafeMax]。
+	city.Food = ezfyAddRes(city.Food, food)
+	city.Steel = ezfyAddRes(city.Steel, steel)
+	city.Oil = ezfyAddRes(city.Oil, oil)
+	city.Rare = ezfyAddRes(city.Rare, rare)
+	city.Gold = ezfyAddRes(city.Gold, gold)
 	h.saveCityRes(&city)
 }
 
