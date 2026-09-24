@@ -50,6 +50,10 @@
           <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
           <el-input-number v-model.number="form.dispatch_period_h" :min="1" :max="720" controls-position="right" style="width:180px" />
         </el-form-item>
+        <el-form-item>
+          <template slot="label">出征速度加成(%)<el-tooltip placement="top" :content="tips.march_speed_bonus"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+          <el-input-number v-model.number="form.march_speed_bonus" :min="0" :max="1000" :step="10" :precision="1" controls-position="right" style="width:180px" />
+        </el-form-item>
 
         <el-divider content-position="left">战斗 / 经济数值</el-divider>
         <el-form-item>
@@ -141,6 +145,7 @@ export default {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
         notice_home_count: 1, gather_max_per_order: 50, mall_buy_max: 9999,
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
+        march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
         wild_troop_mult: 1, speed_train_rate: 100, wound_heal_rate: 100,
@@ -162,6 +167,7 @@ export default {
         troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 10 亿',
         wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 5 天',
         dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 4 小时',
+        march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 2',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 2',
         officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 2',
@@ -200,6 +206,8 @@ export default {
             troop_max: pos(r.data.troop_max, 1000000000),
             wound_expire_days: pos(r.data.wound_expire_days, 5),
             dispatch_period_h: pos(r.data.dispatch_period_h, 4),
+            march_speed_bonus: (r.data.march_speed_bonus === undefined || r.data.march_speed_bonus === null)
+              ? 0 : Number(r.data.march_speed_bonus),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),

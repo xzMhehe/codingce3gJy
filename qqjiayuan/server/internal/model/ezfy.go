@@ -258,6 +258,10 @@ type EzfyCfgLimit struct {
 	//   常驻采集结算一期的小时数（默认 4），由 ezfyDispatchPeriod() 读取。
 	DispatchPeriodH int `gorm:"default:4;comment:采集周期小时" json:"dispatch_period_h"`
 
+	// ★ 出征速度加成（百分比口径，0 = 无加成）：实际行军时间 = 原时间 × 100/(100+加成)。
+	//   ★ 2026-09-24 用户要求「节假日我好让玩家队伍走快点」。默认 0。
+	MarchSpeedBonus float64 `gorm:"default:0;comment:出征速度加成" json:"march_speed_bonus"`
+
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
 	// ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 1。
@@ -861,6 +865,26 @@ type EzfyExchange struct {
 }
 
 func (EzfyExchange) TableName() string { return "ezfy_exchange" }
+
+// EzfyExchangeTemplate 交易行挂单模板（管理端「维护模版」tab 维护）
+//
+// ★ 2026-09-24 用户要求：资源包模板原来硬编码在前端，选中还有「触发全选」的 bug；
+//
+//	改成数据库里的模板表，管理端可增删改；新增系统挂单时选模板只是快速填充，
+//	资源数量(EsCount)上架前**仍可二次修改**，挂单数量(Repeat)支持一次挂多单。
+type EzfyExchangeTemplate struct {
+	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name       string    `gorm:"type:varchar(50);comment:模板名" json:"name"`
+	EsType     int       `gorm:"comment:1粮 2钢 3油 4稀矿" json:"es_type"`
+	EsCount    int64     `gorm:"comment:资源数量" json:"es_count"`
+	TotalPrice int64     `gorm:"comment:总价" json:"total_price"`
+	Currency   int       `gorm:"default:1;comment:1黄金 2钻石" json:"currency"`
+	SortNo     int       `gorm:"default:0;comment:排序" json:"sort_no"`
+	CreatedAt  time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyExchangeTemplate) TableName() string { return "ezfy_exchange_tpl" }
 
 // ============ 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命） ============
 

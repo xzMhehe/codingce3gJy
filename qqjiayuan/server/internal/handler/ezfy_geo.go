@@ -519,6 +519,17 @@ func ezfyDispatchPeriod() int64 {
 	return 4 * 3600 * 1000
 }
 
+// ezfyMarchSpeedBonus 出征速度加成（百分比，0 = 无加成）。
+// ★ 2026-09-24 用户要求「节假日让玩家队伍走快点」：管理端可配。
+//   实际行军时间 = 原时间 × 100/(100+加成)；默认 0。
+//   加成 > 0 才生效，负值/未配置一律按 0（无加成）处理。
+func ezfyMarchSpeedBonus() float64 {
+	if b := ezfyCfg.limit.MarchSpeedBonus; b > 0 {
+		return b
+	}
+	return 0
+}
+
 // ============ 战斗 / 经济数值（ezfy_cfg_limit，管理端可维护）============
 //
 // ★ 这几个值都「0 无意义」：0 = 不扣民心 / 军官免费 / 恢复免费，
@@ -972,28 +983,29 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 }
 
 // ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）
+// ★ 2026-09-24 用户要求「军衔需要声望太少，统一在原来基础上 ×10」。
 func ezfyDefaultRanks() []model.EzfyCfgRank {
 	return []model.EzfyCfgRank{
 		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
-		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 100, CityMax: 2},
-		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 300, CityMax: 3},
-		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 600, CityMax: 4},
-		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 1000, CityMax: 5},
-		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 1500, CityMax: 6},
-		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 2200, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 3000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 4000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 5200, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 6600, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 8200, CityMax: 12},
-		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 10000, CityMax: 13},
-		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 12000, CityMax: 14},
-		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 14500, CityMax: 15},
-		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 17500, CityMax: 16},
-		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 21000, CityMax: 17},
-		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 25000, CityMax: 18},
-		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 30000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 40000, CityMax: 20},
+		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 1000, CityMax: 2},
+		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 3000, CityMax: 3},
+		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 6000, CityMax: 4},
+		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 15000, CityMax: 6},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 22000, CityMax: 7},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 30000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 40000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 52000, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 66000, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 82000, CityMax: 12},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 100000, CityMax: 13},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 120000, CityMax: 14},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 145000, CityMax: 15},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 175000, CityMax: 16},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 210000, CityMax: 17},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 250000, CityMax: 18},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 300000, CityMax: 19},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 400000, CityMax: 20},
 	}
 }
 

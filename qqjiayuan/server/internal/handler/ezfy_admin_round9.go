@@ -138,6 +138,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WoundExpireDays *int   `json:"wound_expire_days"`
 		// ★ 2026-09-24：采集结算一期小时数（默认 4）
 		DispatchPeriodH *int `json:"dispatch_period_h"`
+		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
+		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -369,6 +371,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.DispatchPeriodH = *in.DispatchPeriodH
+	}
+	// ★ 2026-09-24：出征速度加成（0 = 无加成，是合法值；上限 1000% 防呆）
+	if in.MarchSpeedBonus != nil {
+		m := *in.MarchSpeedBonus
+		if m < 0 || m > 1000 {
+			resp.ParamError(c, "出征速度加成需要在 0~1000 之间（0 = 无加成）")
+			return
+		}
+		lim.MarchSpeedBonus = m
 	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef

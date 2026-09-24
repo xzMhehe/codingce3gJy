@@ -460,13 +460,26 @@ func ezfyMoneyName(cur int) string {
 
 func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-09-24 用户要求：卖家挂单/我的挂单都做分页（默认每页 10 条）
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "10"))
+	if size < 1 {
+		size = 10
+	}
+	if size > 50 {
+		size = 50
+	}
+	// 卖家挂单(在售、非自己的)
+	var total int64
+	h.DB.Model(&model.EzfyExchange{}).Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid).Count(&total)
 	var list []model.EzfyExchange
-	h.DB.Where("status = 0").Order("is_system DESC, id DESC").Limit(100).Find(&list)
+	h.DB.Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid).
+		Order("is_system DESC, id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
 	views := []gin.H{}
 	for _, e := range list {
-		if e.SellerId == uid && e.IsSystem != 1 {
-			continue
-		}
 		seller := e.SellerName
 		if e.IsSystem == 1 {
 			seller = "系统"
@@ -477,8 +490,23 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency),
 			"unit_price": e.TotalPrice / maxInt64(1, e.EsCount), "mine": e.SellerId == uid})
 	}
+	// 我的挂单(分页)
+	mpage, _ := strconv.Atoi(c.DefaultQuery("mpage", "1"))
+	if mpage < 1 {
+		mpage = 1
+	}
+	msize, _ := strconv.Atoi(c.DefaultQuery("msize", "10"))
+	if msize < 1 {
+		msize = 10
+	}
+	if msize > 50 {
+		msize = 50
+	}
+	var mtotal int64
+	h.DB.Model(&model.EzfyExchange{}).Where("seller_id = ? AND status = 0", uid).Count(&mtotal)
 	var mine []model.EzfyExchange
-	h.DB.Where("seller_id = ? AND status = 0", uid).Order("id DESC").Find(&mine)
+	h.DB.Where("seller_id = ? AND status = 0", uid).Order("id DESC").
+		Offset((mpage - 1) * msize).Limit(msize).Find(&mine)
 	mineViews := []gin.H{}
 	for _, e := range mine {
 		mineViews = append(mineViews, gin.H{"id": e.ID, "type": e.EsType,
@@ -486,7 +514,9 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency)})
 	}
 	city := h.getOrCreateCity(uid)
-	resp.OK(c, gin.H{"orders": views, "mine": mineViews, "gold": city.Gold,
+	resp.OK(c, gin.H{"orders": views, "total": total, "page": page, "size": size,
+		"mine": mineViews, "mtotal": mtotal, "mpage": mpage, "msize": msize,
+		"gold":    city.Gold,
 		"diamond": h.ensureProfile(uid).Diamond})
 }
 
@@ -725,6 +755,17 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	}
 	switch op {
 	case "build":
+		// ★ 2026-09-24 军衔 ×10 后卡控：占城「建城」同样受军衔可建城数限制，
+		//   与 CreateCity 同一口径，防绕过军衔上限白嫖一座城。
+		prof := h.ensureProfile(uid)
+		var owned int64
+		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
+		maxCity := ezfyRankCityMax(prof.Prestige)
+		if int(owned) >= maxCity {
+			resp.ParamError(c, fmt.Sprintf("当前军衔「%s」最多只能拥有 %d 座城市（已有 %d 座），提升声望可解锁更多",
+				ezfyRankName(prof.Prestige), maxCity, owned))
+			return
+		}
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 4)
 		// ★ 修复：「建立城市」原来只改民心、**没有把城市归属改成自己**，
 		//   导致玩家点了建城、战报也说「已建立为自己的城市」，实际城市还是别人的。
@@ -741,9 +782,18 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		resp.OK(c, gin.H{"msg": "建城成功"})
 	case "destroy":
 		name := o.CityName
+		// ★ 2026-09-24 用户规则：占城摧毁 = 坐标变回原来的平原土地，建筑啥的都没了。
+		//   除了清掉城市数据，还要删掉该坐标的「玩家城」地图区域记录（与 ezfyDestroyCity 同口径），
+		//   否则地图上永远残留一块「已摧毁城市」的格子。
 		h.deleteCityData(int64(city.ID))
+		h.DB.Where("x = ? AND y = ?", city.X, city.Y).Delete(&model.EzfyMapArea{})
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 3)
-		h.addReport(uid, 5, "摧毁城市", fmt.Sprintf("你摧毁了占领的城市[%s]。", name))
+		h.addReport(uid, 5, "摧毁城市",
+			fmt.Sprintf("你摧毁了占领的城市[%s](%d,%d), 该坐标恢复为普通平原。", name, city.X, city.Y))
+		if o.DefUserId != 0 {
+			h.addReport(o.DefUserId, 5, "城市被摧毁",
+				fmt.Sprintf("你被占领的城市[%s](%d,%d)已被敌方摧毁, 该坐标恢复为普通平原。", name, city.X, city.Y))
+		}
 		resp.OK(c, gin.H{"msg": "摧毁成功"})
 	case "return":
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
@@ -771,6 +821,9 @@ func (h *EzfyHandler) deleteCityData(cityId int64) {
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyCityTarget{})
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyCityEffect{})
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyOrder{})
+	// ★ 2026-09-24：占城摧毁后军官/装备一并清理（对齐 ezfyDestroyCity，不留孤儿数据）
+	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyOfficer{})
+	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyEquipment{})
 	h.DB.Delete(&model.EzfyCity{}, cityId)
 }
 

@@ -1,7 +1,9 @@
 <template>
   <div class="farm-admin">
-    <!-- 概览 -->
-    <el-card shadow="never" class="box">
+    <el-tabs v-model="tab">
+      <el-tab-pane label="挂单维护" name="orders">
+        <!-- 概览 -->
+        <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <span>资源交易行 · 概览</span>
         <div>
@@ -112,15 +114,15 @@
     </el-card>
 
     <!-- 新增系统挂单 -->
-    <el-dialog title="新增系统挂单（卖方：系统 · 买不完）" :visible.sync="dlg" width="560px" :close-on-click-modal="false">
-      <el-form label-width="110px" size="small">
+    <el-dialog title="新增系统挂单（卖方：系统 · 买不完）" :visible.sync="dlg" width="600px" :close-on-click-modal="false">
+      <el-form label-width="150px" size="small">
         <el-form-item label="资源包模板">
-          <el-select v-model="pack" style="width:100%" placeholder="选一个模板自动填数量/价格，也可选自定义" @change="onPack">
-            <el-option value="" label="自定义（手动填写）" />
-            <el-option v-for="p in packOptions" :key="p.v" :label="p.n" :value="p" />
+          <el-select v-model="packId" style="width:100%" placeholder="选一个模板自动填数量/价格，也可选自定义" @change="onPack">
+            <el-option :value="0" label="自定义（手动填写）" />
+            <el-option v-for="p in templates" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
           <div class="td-sub" style="margin-top:4px">
-            模板只做快速填充，上架前仍可改数量/价格；系统挂单<b>无限库存</b>，玩家可反复购买
+            模板只做快速填充，上架前数量/价格仍可改；系统挂单<b>无限库存</b>，玩家可反复购买
           </div>
         </el-form-item>
         <el-form-item label="资源类型" required>
@@ -128,11 +130,16 @@
             <el-option v-for="(n, t) in resNames" :key="'rt' + t" :label="n" :value="Number(t)" />
           </el-select>
         </el-form-item>
-        <el-form-item label="数量" required>
+        <el-form-item label="数量（资源数量）" required>
           <el-input-number v-model.number="form.es_count" :min="1" :step="1000" controls-position="right" style="width:100%" />
+          <div class="td-sub" style="margin-top:4px">选中模板后仍可二次修改</div>
         </el-form-item>
         <el-form-item label="总价" required>
           <el-input-number v-model.number="form.total_price" :min="1" :step="100" controls-position="right" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="挂单数量">
+          <el-input-number v-model.number="form.repeat" :min="1" :max="500" controls-position="right" style="width:100%" />
+          <div class="td-sub" style="margin-top:4px">一次性挂多少单（同资源同数同价），不用一单一单配置</div>
         </el-form-item>
         <el-form-item label="计价货币" required>
           <el-radio-group v-model="form.currency">
@@ -155,6 +162,75 @@
         <el-button type="primary" :loading="saving" @click="doCreate">上 架</el-button>
       </div>
     </el-dialog>
+      </el-tab-pane>
+
+      <!-- ================= 维护模版 ================= -->
+      <el-tab-pane label="维护模版" name="tpls">
+        <el-card shadow="never" class="box">
+          <div class="toolbar">
+            <span class="td-sub">资源包模板：新增系统挂单时用来快速填充数量/价格（选中后仍可改）</span>
+            <div class="grow" />
+            <el-button size="mini" type="success" icon="el-icon-plus" @click="openTplCreate">新增模版</el-button>
+            <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="loadTpls">刷新</el-button>
+          </div>
+          <el-table :data="templates" v-loading="loadingTpl" stripe border>
+            <el-table-column prop="id" label="ID" width="70" align="center" />
+            <el-table-column prop="name" label="模版名" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="type_name" label="资源" width="90" align="center" />
+            <el-table-column label="数量" width="150" align="right">
+              <template slot-scope="{row}"><span class="td-mono">{{ fmtN(row.es_count) }}</span></template>
+            </el-table-column>
+            <el-table-column label="总价" width="150" align="right">
+              <template slot-scope="{row}">
+                <span :class="row.currency === 2 ? 'td-blue' : 'td-gold'">{{ fmtN(row.total_price) }}</span>
+                <span class="td-sub">{{ row.currency_name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="sort_no" label="排序" width="80" align="center" />
+            <el-table-column label="操作" width="150" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openTplEdit(row)">编辑</el-button>
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delTpl(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
+        <!-- 新增 / 编辑模版 -->
+        <el-dialog :title="tpl.id ? ('编辑模版 #' + tpl.id) : '新增模版'" :visible.sync="tplDlg"
+                   width="520px" :close-on-click-modal="false">
+          <el-form label-width="110px" size="small">
+            <el-form-item label="模版名" required>
+              <el-input v-model="tpl.name" maxlength="50" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="资源类型" required>
+              <el-select v-model="tpl.es_type" style="width:100%">
+                <el-option v-for="(n, t) in resNames" :key="'tt' + t" :label="n" :value="Number(t)" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="数量" required>
+              <el-input-number v-model.number="tpl.es_count" :min="1" :step="1000" controls-position="right" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="总价" required>
+              <el-input-number v-model.number="tpl.total_price" :min="1" :step="100" controls-position="right" style="width:100%" />
+            </el-form-item>
+            <el-form-item label="计价货币">
+              <el-radio-group v-model="tpl.currency">
+                <el-radio :label="1">黄金</el-radio>
+                <el-radio :label="2">钻石</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="排序">
+              <el-input-number v-model.number="tpl.sort_no" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-form>
+          <div slot="footer">
+            <el-button @click="tplDlg = false">取 消</el-button>
+            <el-button type="primary" :loading="savingTpl" @click="doTplSave">保 存</el-button>
+          </div>
+        </el-dialog>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -173,28 +249,15 @@ export default {
       status: -1, word: '',
       systemOn: 0, playerOn: 0,
       dlg: false, saving: false,
-      pack: '',
-      form: { es_type: 1, es_count: 10000, total_price: 1000, currency: 1 },
+      tab: 'orders',
+      packId: 0,
+      templates: [], loadingTpl: false, tplDlg: false, savingTpl: false,
+      tpl: {},
+      form: { es_type: 1, es_count: 10000, total_price: 1000, currency: 1, repeat: 1 },
       resCfgList: []
     }
   },
   computed: {
-    // ★ 资源包模板：粮/钢/油/矿 × 小/中/大包，运营一键填充（价格可再改）
-    packOptions () {
-      const sizes = [
-        { k: '小包', count: 10000, price: 100 },
-        { k: '中包', count: 100000, price: 900 },
-        { k: '大包', count: 1000000, price: 8000 }
-      ]
-      const opts = []
-      Object.keys(ES_KEY).forEach(t => {
-        const name = this.resNames[t] || RES_FALLBACK[t]
-        sizes.forEach(s => {
-          opts.push({ v: 'p' + t + '_' + s.k, n: `${name} · ${s.k}（${s.count.toLocaleString()}）≈${s.price.toLocaleString()}黄金`, type: Number(t), ...s })
-        })
-      })
-      return opts
-    },
     resNames () {
       const m = Object.assign({}, RES_FALLBACK)
       const byKey = {}
@@ -213,7 +276,7 @@ export default {
       return v >= 1 ? v.toFixed(2) : v.toFixed(4)
     }
   },
-  mounted () { this.load(); this.loadResCfgs() },
+  mounted () { this.load(); this.loadResCfgs(); this.loadTpls() },
   methods: {
     fmtN (v) {
       if (v === null || v === undefined) return '—'
@@ -263,16 +326,69 @@ export default {
       })
     },
     openCreate () {
-      this.pack = ''
-      this.form = { es_type: 1, es_count: 10000, total_price: 1000, currency: 1 }
+      this.packId = 0
+      this.form = { es_type: 1, es_count: 10000, total_price: 1000, currency: 1, repeat: 1 }
       this.dlg = true
     },
-    onPack (p) {
-      if (!p) return
-      this.form.es_type = p.type
-      this.form.es_count = p.count
-      this.form.total_price = p.price
-      this.form.currency = 1
+    // 选中模板（按数值 id 查找，避免对象比较导致的「勾选触发全选」bug）
+    onPack (id) {
+      if (!id) return
+      const t = this.templates.find(x => Number(x.id) === Number(id))
+      if (!t) return
+      this.form.es_type = t.es_type
+      this.form.es_count = t.es_count
+      this.form.total_price = t.total_price
+      this.form.currency = t.currency || 1
+    },
+    loadTpls () {
+      this.loadingTpl = true
+      api.get('/admin/ezfy-exchange-tpls').then(r => {
+        this.loadingTpl = false
+        if (r.code === 0) this.templates = r.data.list || []
+        else this.$message.error(r.msg)
+      })
+    },
+    openTplCreate () {
+      this.tpl = { name: '', es_type: 1, es_count: 10000, total_price: 1000, currency: 1, sort_no: 0 }
+      this.tplDlg = true
+    },
+    openTplEdit (row) {
+      this.tpl = {
+        id: row.id, name: row.name, es_type: row.es_type,
+        es_count: row.es_count, total_price: row.total_price,
+        currency: row.currency, sort_no: row.sort_no
+      }
+      this.tplDlg = true
+    },
+    doTplSave () {
+      if (!this.tpl.name || !String(this.tpl.name).trim()) { this.$message.warning('请填写模版名'); return }
+      if (!(this.tpl.es_count > 0)) { this.$message.warning('数量必须大于 0'); return }
+      if (!(this.tpl.total_price > 0)) { this.$message.warning('总价必须大于 0'); return }
+      this.savingTpl = true
+      const body = {
+        name: String(this.tpl.name).trim(), es_type: this.tpl.es_type,
+        es_count: this.tpl.es_count, total_price: this.tpl.total_price,
+        currency: this.tpl.currency, sort_no: this.tpl.sort_no
+      }
+      const req = this.tpl.id
+        ? api.put('/admin/ezfy-exchange-tpls/' + this.tpl.id, body)
+        : api.post('/admin/ezfy-exchange-tpls', body)
+      req.then(r => {
+        this.savingTpl = false
+        if (r.code === 0) {
+          this.tplDlg = false
+          this.$message.success(r.data.msg || '模板已保存')
+          this.loadTpls()
+        } else this.$message.error(r.msg)
+      })
+    },
+    delTpl (row) {
+      this.$confirm('确定删除模版「' + row.name + '」？', '提示', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-exchange-tpls/' + row.id).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '模板已删除'); this.loadTpls() }
+          else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
     },
     doCreate () {
       if (!(this.form.es_count > 0)) { this.$message.warning('数量必须大于 0'); return }

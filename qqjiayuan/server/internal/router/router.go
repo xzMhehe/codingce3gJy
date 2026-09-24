@@ -1200,6 +1200,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-exchange", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeCreate)
 				admin.POST("/ezfy-exchange/:id/off", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeOff)
 				admin.DELETE("/ezfy-exchange/:id", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeRemove)
+				// 挂单模板维护（2026-09-24：资源包模板落库，管理端可增删改）
+				admin.GET("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeTplList)
+				admin.POST("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeTplCreate)
+				admin.PUT("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeTplUpdate)
+				admin.DELETE("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), adminH.AdminEzfyExchangeTplDelete)
 
 				// ---- 科技管理 ----
 				admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechs)

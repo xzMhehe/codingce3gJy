@@ -106,12 +106,16 @@ func ezfyExchangeStatusName(s int) string {
 
 // AdminEzfyExchangeCreate POST /admin/ezfy-exchange
 // 新增**系统挂单**：卖方固定为系统，货币可选 1 黄金 / 2 钻石。
+// ★ 2026-09-24 用户要求：数量(es_count)是「资源数量」，选完模板后仍可二次修改；
+//
+//	新增 repeat(挂单数量) 支持一次上架多单，不用一单一单调。
 func (h *AdminHandler) AdminEzfyExchangeCreate(c *gin.Context) {
 	var in struct {
 		EsType     int   `json:"es_type"`
 		EsCount    int64 `json:"es_count"`
 		TotalPrice int64 `json:"total_price"`
 		Currency   int   `json:"currency"`
+		Repeat     int   `json:"repeat"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -132,14 +136,144 @@ func (h *AdminHandler) AdminEzfyExchangeCreate(c *gin.Context) {
 	if in.Currency != ezfyMoneyDiamond {
 		in.Currency = ezfyMoneyGold
 	}
+	repeat := in.Repeat
+	if repeat <= 0 {
+		repeat = 1
+	}
+	if repeat > 500 {
+		resp.ParamError(c, "单次最多挂 500 单")
+		return
+	}
 	// 系统挂单**不扣任何人的资源**（卖方是系统），只是往交易所里挂一批货
-	h.DB.Create(&model.EzfyExchange{
-		SellerId: 0, SellerName: "系统",
-		EsType: in.EsType, EsCount: in.EsCount, TotalPrice: in.TotalPrice,
-		Status: 0, IsSystem: 1, Currency: in.Currency,
-	})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已上架系统挂单: %s×%d 售%d%s",
-		ezfyResNames[in.EsType], in.EsCount, in.TotalPrice, ezfyMoneyName(in.Currency))})
+	var creates []model.EzfyExchange
+	for i := 0; i < repeat; i++ {
+		creates = append(creates, model.EzfyExchange{
+			SellerId: 0, SellerName: "系统",
+			EsType: in.EsType, EsCount: in.EsCount, TotalPrice: in.TotalPrice,
+			Status: 0, IsSystem: 1, Currency: in.Currency,
+		})
+	}
+	if err := h.DB.CreateInBatches(creates, 200).Error; err != nil {
+		resp.ParamError(c, "上架失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已上架 %d 单系统挂单: %s×%d 售%d%s/单",
+		repeat, ezfyResNames[in.EsType], in.EsCount, in.TotalPrice, ezfyMoneyName(in.Currency))})
+}
+
+// ============ 挂单模板维护（2026-09-24 用户要求） ============
+
+// AdminEzfyExchangeTplList GET /admin/ezfy-exchange-tpls
+func (h *AdminHandler) AdminEzfyExchangeTplList(c *gin.Context) {
+	var rows []model.EzfyExchangeTemplate
+	h.DB.Order("sort_no, id").Find(&rows)
+	out := make([]gin.H, 0, len(rows))
+	for _, t := range rows {
+		out = append(out, gin.H{
+			"id": t.ID, "name": t.Name,
+			"es_type": t.EsType, "type_name": ezfyResNames[t.EsType],
+			"es_count": t.EsCount, "total_price": t.TotalPrice,
+			"currency": t.Currency, "currency_name": ezfyMoneyName(t.Currency),
+			"sort_no": t.SortNo,
+		})
+	}
+	resp.OK(c, gin.H{"list": out})
+}
+
+// AdminEzfyExchangeTplCreate POST /admin/ezfy-exchange-tpls
+func (h *AdminHandler) AdminEzfyExchangeTplCreate(c *gin.Context) {
+	var in struct {
+		Name       string `json:"name"`
+		EsType     int    `json:"es_type"`
+		EsCount    int64  `json:"es_count"`
+		TotalPrice int64  `json:"total_price"`
+		Currency   int    `json:"currency"`
+		SortNo     int    `json:"sort_no"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if msg := ezfyCheckTpl(&in.Name, in.EsType, in.EsCount, in.TotalPrice); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if in.Currency != ezfyMoneyDiamond {
+		in.Currency = ezfyMoneyGold
+	}
+	if err := h.DB.Create(&model.EzfyExchangeTemplate{
+		Name: in.Name, EsType: in.EsType, EsCount: in.EsCount,
+		TotalPrice: in.TotalPrice, Currency: in.Currency, SortNo: in.SortNo,
+	}).Error; err != nil {
+		resp.ParamError(c, "新增失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "模板已新增"})
+}
+
+// AdminEzfyExchangeTplUpdate PUT /admin/ezfy-exchange-tpls/:id
+func (h *AdminHandler) AdminEzfyExchangeTplUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var t model.EzfyExchangeTemplate
+	if err := h.DB.First(&t, id).Error; err != nil {
+		resp.NotFound(c, "模板不存在")
+		return
+	}
+	var in struct {
+		Name       string `json:"name"`
+		EsType     int    `json:"es_type"`
+		EsCount    int64  `json:"es_count"`
+		TotalPrice int64  `json:"total_price"`
+		Currency   int    `json:"currency"`
+		SortNo     int    `json:"sort_no"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if msg := ezfyCheckTpl(&in.Name, in.EsType, in.EsCount, in.TotalPrice); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if in.Currency != ezfyMoneyDiamond {
+		in.Currency = ezfyMoneyGold
+	}
+	if err := h.DB.Model(&model.EzfyExchangeTemplate{}).Where("id = ?", t.ID).
+		Updates(map[string]interface{}{
+			"name": in.Name, "es_type": in.EsType, "es_count": in.EsCount,
+			"total_price": in.TotalPrice, "currency": in.Currency, "sort_no": in.SortNo,
+		}).Error; err != nil {
+		resp.ParamError(c, "修改失败："+err.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": "模板已保存"})
+}
+
+// AdminEzfyExchangeTplDelete DELETE /admin/ezfy-exchange-tpls/:id
+func (h *AdminHandler) AdminEzfyExchangeTplDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var t model.EzfyExchangeTemplate
+	if err := h.DB.First(&t, id).Error; err != nil {
+		resp.NotFound(c, "模板不存在")
+		return
+	}
+	h.DB.Delete(&model.EzfyExchangeTemplate{}, id)
+	resp.OK(c, gin.H{"msg": "模板已删除"})
+}
+
+// ezfyCheckTpl 校验模板字段
+func ezfyCheckTpl(name *string, esType int, esCount, totalPrice int64) string {
+	if strings.TrimSpace(*name) == "" {
+		return "请填写模板名"
+	}
+	*name = strings.TrimSpace(*name)
+	if _, ok := ezfyResNames[esType]; !ok {
+		return "资源类型错误"
+	}
+	if esCount <= 0 || totalPrice <= 0 {
+		return "数量与总价必须大于 0"
+	}
+	return ""
 }
 
 // AdminEzfyExchangeOff POST /admin/ezfy-exchange/:id/off

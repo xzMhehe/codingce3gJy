@@ -2388,28 +2388,39 @@
         <div class="panel">
           <div class="panel-title">资源交易行({{ resNames.gold }}{{ exchangeGold }})</div>
           <div class="old-line gray">购买他人挂单的资源; 也可挂单出售资源换取{{ resNames.gold }}。</div>
-          <div class="old-line gray">
-            「系统」挂单由管理员上架，可能用<b>{{ resNames.gold }}</b>或<b>钻石</b>定价（钻石需管理员充值）；玩家自己挂单一律按{{ resNames.gold }}买卖。
-          </div>
-          <table>
+          <div class="panel-title">卖家挂单</div>
+          <table class="ezfy-ex-tbl">
             <tr><th>卖家</th><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
             <tr v-for="e in exchangeOrders" :key="'eo' + e.id">
               <td>{{ e.seller_name }}</td>
               <td>{{ e.type_name }}</td>
-              <td>{{ e.count }}</td>
-              <td>{{ e.total_price }}{{ e.currency_name || resNames.gold }}</td>
+              <td>{{ fmtN(e.count) }}</td>
+              <td>{{ fmtN(e.total_price) }}{{ e.currency_name || resNames.gold }}</td>
               <td><a href="javascript:;" @click="doExchangeBuy(e)">[购买]</a></td>
             </tr>
           </table>
           <div class="old-line" v-if="!exchangeOrders.length">(暂无在售订单)</div>
-          <br/>
-          <div class="panel-title">我的挂单</div>
-          <div class="old-line" v-for="e in exchangeMine" :key="'em' + e.id">
-            {{ e.type_name }}×{{ e.count }} 售{{ e.total_price }}{{ e.currency_name || resNames.gold }}
-            <a href="javascript:;" @click="doExchangeCancel(e)">[下架]</a>
+          <div class="ezfy-pager" v-if="exchangeTotal > exchangeSize">
+            <a href="javascript:;" :class="{ gray: exchangePage <= 1 }" @click="sectionPagerGo('exo', -1)">上一页</a>
+            <span class="gray">第 {{ exchangePage }}/{{ exchangeTotalPages }} 页（共 {{ exchangeTotal }} 条）</span>
+            <a href="javascript:;" :class="{ gray: exchangePage >= exchangeTotalPages }" @click="sectionPagerGo('exo', 1)">下一页</a>
           </div>
+          <div class="panel-title">我的挂单</div>
+          <table class="ezfy-ex-tbl" v-if="exchangeMine.length">
+            <tr><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
+            <tr v-for="e in exchangeMine" :key="'em' + e.id">
+              <td>{{ e.type_name }}</td>
+              <td>{{ fmtN(e.count) }}</td>
+              <td>{{ fmtN(e.total_price) }}{{ e.currency_name || resNames.gold }}</td>
+              <td><a href="javascript:;" @click="doExchangeCancel(e)">[下架]</a></td>
+            </tr>
+          </table>
           <div class="old-line" v-if="!exchangeMine.length">(无在售挂单)</div>
-          <br/>
+          <div class="ezfy-pager" v-if="exchangeMTotal > exchangeMSize">
+            <a href="javascript:;" :class="{ gray: exchangeMPage <= 1 }" @click="sectionPagerGo('exm', -1)">上一页</a>
+            <span class="gray">第 {{ exchangeMPage }}/{{ exchangeMTotalPages }} 页（共 {{ exchangeMTotal }} 条）</span>
+            <a href="javascript:;" :class="{ gray: exchangeMPage >= exchangeMTotalPages }" @click="sectionPagerGo('exm', 1)">下一页</a>
+          </div>
           <div class="panel-title">挂单出售</div>
           <div class="old-line">
             资源:
@@ -3352,6 +3363,9 @@ export default {
       exchangeOrders: [],
       exchangeMine: [],
       exchangeGold: 0,
+      // ★ 交易行双分页：卖家挂单(exchangePage/exchangeSize/exchangeTotal)、我的挂单(exchangeMPage/...)
+      exchangePage: 1, exchangeSize: 10, exchangeTotal: 0,
+      exchangeMPage: 1, exchangeMSize: 10, exchangeMTotal: 0,
       acadeTab: 'officer',
       officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
@@ -3863,6 +3877,13 @@ export default {
     // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」），与军情同一套写法
     noticeTotalPages () {
       return Math.max(1, Math.ceil(this.notices.length / this.noticeSize))
+    },
+    // ★ 交易行分页（服务端分页：后端返回 total/page/size）
+    exchangeTotalPages () {
+      return Math.max(1, Math.ceil(this.exchangeTotal / this.exchangeSize))
+    },
+    exchangeMTotalPages () {
+      return Math.max(1, Math.ceil(this.exchangeMTotal / this.exchangeMSize))
     },
     noticePaged () {
       const p = Math.min(Math.max(1, this.noticePage), this.noticeTotalPages)
@@ -4762,10 +4783,21 @@ export default {
       })
     },
     loadExchange () {
-      api.get('/games/ezfy/exchange').then(r => {
+      api.get('/games/ezfy/exchange', {
+        params: {
+          page: this.exchangePage, size: this.exchangeSize,
+          mpage: this.exchangeMPage, msize: this.exchangeMSize
+        }
+      }).then(r => {
         if (r.code === 0) {
-          this.exchangeOrders = r.data.orders
-          this.exchangeMine = r.data.mine
+          this.exchangeOrders = r.data.orders || []
+          this.exchangeTotal = r.data.total || 0
+          this.exchangePage = r.data.page || 1
+          this.exchangeSize = r.data.size || 10
+          this.exchangeMine = r.data.mine || []
+          this.exchangeMTotal = r.data.mtotal || 0
+          this.exchangeMPage = r.data.mpage || 1
+          this.exchangeMSize = r.data.msize || 10
           this.exchangeGold = r.data.gold
         }
       })
@@ -5110,6 +5142,12 @@ export default {
         this.dynStationPage = Math.min(this.dynStationTotalPages, Math.max(1, this.dynStationPage + delta))
       } else if (which === 'notice') {
         this.noticePage = Math.min(this.noticeTotalPages, Math.max(1, this.noticePage + delta))
+      } else if (which === 'exo') {
+        this.exchangePage = Math.min(this.exchangeTotalPages, Math.max(1, this.exchangePage + delta))
+        this.loadExchange()
+      } else if (which === 'exm') {
+        this.exchangeMPage = Math.min(this.exchangeMTotalPages, Math.max(1, this.exchangeMPage + delta))
+        this.loadExchange()
       } else {
         this.repPage = Math.min(this.repTotalPages, Math.max(1, this.repPage + delta))
       }
@@ -5905,13 +5943,18 @@ export default {
       api.post('/games/ezfy/exchange/sell', {
         es_type: parseInt(this.sellType), es_count: parseInt(this.sellCount) || 0,
         total_price: parseInt(this.sellPrice) || 0
-      }).then(r => this.alert(r, '挂单已发布'))
+      }).then(r => this.alert(r, '挂单已发布', () => {
+        this.sellCount = 0
+        this.sellPrice = 0
+        this.exchangeMPage = 1
+        this.loadExchange()
+      }))
     },
     doExchangeBuy (e) {
-      api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r, '购买成功'))
+      api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r, '购买成功', () => this.loadExchange()))
     },
     doExchangeCancel (e) {
-      api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销'))
+      api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销', () => this.loadExchange()))
     },
     // ---- 任务/福利 ----
     doAward (t) {
@@ -6842,6 +6885,28 @@ body.ezfy-immersive { margin: 0; }
   vertical-align: middle;
 }
 .ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
+/* ★ 交易行表格美化（2026-09-24 用户要求「页面做好看点」）：细边框 + 表头底色 + 斑马纹 */
+.ezfy-page table.ezfy-ex-tbl {
+  border-collapse: collapse;
+  border: 1px solid #cfc9b6;
+  margin: 2px 0 4px;
+}
+.ezfy-page table.ezfy-ex-tbl th,
+.ezfy-page table.ezfy-ex-tbl td {
+  border: 0;
+  text-align: left;
+  vertical-align: middle;
+  padding: 3px 10px;
+  border-right: 1px solid #e3ded0;
+}
+.ezfy-page table.ezfy-ex-tbl th {
+  background: #efe9d9;
+  color: #2f4156;
+  border-bottom: 1px solid #d9d2bd;
+}
+.ezfy-page table.ezfy-ex-tbl td { border-bottom: 1px solid #eee9dc; }
+.ezfy-page table.ezfy-ex-tbl tr:last-child td { border-bottom: 0; }
+.ezfy-page table.ezfy-ex-tbl tr:nth-child(even) td { background: #faf7ee; }
 .ezfy-page table th {
   color: #2f4156;
   font-weight: bold;

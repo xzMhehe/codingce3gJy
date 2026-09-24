@@ -505,6 +505,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		if lead := h.officerByName(city.ID, req.Officer); h.officerSpeedSkill(lead) {
 			travelSec = travelSec * 100 / 110
 		}
+		// ★ 出征速度加成（与 createOrder 同口径，保证预览与实际一致）
+		if b := ezfyMarchSpeedBonus(); b > 0 {
+			travelSec = int64(float64(travelSec) * 100 / (100 + b))
+		}
 		if travelSec < 10 {
 			travelSec = 10
 		}
@@ -793,7 +797,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		// ★ 用户规则：同一座城市里，一个军官同时只能带一支队伍出征。
 		//   只要他还有未结束的命令（行军中/驻守中/返航中），就不能再接新命令。
 		//   这里查命令表而不是只看 officer.Status —— 后者可能因历史数据漂移不准。
-		if lead.Status == 1 || h.officerBusyOrder(city.ID, officer) {
+		// ★ 2026-09-24 俘虏出征 bug 加固：只有 Status=0(在职) 的军官才能带队，
+		//   Status=1(出征中)/2(被俘) 一律拒绝（历史数据里被俘军官可能 IsCaptive=0, 单看字段会漏拦）。
+		if lead.Status != 0 || h.officerBusyOrder(city.ID, officer) {
 			return "军官" + lead.Name + "正在出征中, 未归队前不能再次出征"
 		}
 		if lead.IsCaptive == 1 {
@@ -889,6 +895,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// 带队军官「移速」技能: 行军 +10%
 	if lead := h.officerByName(city.ID, officer); h.officerSpeedSkill(lead) {
 		travelSec = travelSec * 100 / 110
+	}
+	// ★ 出征速度加成（管理端「二战系统配置」可配）：节假日调高让队伍走快点
+	if b := ezfyMarchSpeedBonus(); b > 0 {
+		travelSec = int64(float64(travelSec) * 100 / (100 + b))
 	}
 	if travelSec < 10 {
 		travelSec = 10
@@ -1497,6 +1507,7 @@ func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, n
 //	这里的 status=5 即「有进行中的战场在等玩家指挥」，把它当成目标被占用。
 //
 // ★ 2026-09-24 用户要求「玩家城市被征服/被掠夺中时，后到的攻击队伍进等待队列」：
+//
 //	等待(6)也占位 —— 新到达者只认现存战斗(5)或等待(6)就排队；放行时只让**最早**的
 //	等待者先走（id 更小的优先），后面的继续等，形成 FIFO 队列。
 //	战斗(5)无条件阻塞（战场的 id 可能晚于排队者，不能用 id 比较），等待(6)按 id 排先来后到。
@@ -1555,7 +1566,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			Updates(map[string]interface{}{"status": 1, "order_type": 7, "result": order.Troops, "arrive_time": order.ArriveTime})
 		h.addReport(uid, 5, "采集报告: 部队已抵达",
 			fmt.Sprintf("采集部队已抵达野地(%d,%d)驻守采集\n每满一个采集周期结算一期: 资源装进部队待召回(等级越高越多, 军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。可随时召回。",
-					wl.X, wl.Y), "", order.ID)
+				wl.X, wl.Y), "", order.ID)
 		return
 	}
 
@@ -1769,6 +1780,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	defBonus := 0
 	defSpeedBonus := 0
 	wildLevel := 0
+	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
 	var target *model.EzfyCity
 
 	// ★ case 0：老数据/异常请求可能没带 target_type，按「野地」处理，
@@ -1801,6 +1813,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		wildLevel = level
 		defender = parseWildlandTroops(cfg.Troops)
+		// ★ 野地守将（2026-09-24 用户要求）：军官必须来自军官池(ezfy_cfg_general)、
+		//   每块野地最多 1 名，配在野地类型的 officer_id 上；守将的学识给守军提供防御加成。
+		wildDefCamp = 1 // 野地守军按盟军兵种名展示
+		if cfgType == 3 {
+			wildDefCamp = 2 // 寇城守军按轴心国兵种名展示
+		}
+		if cfg.OfficerId > 0 {
+			if g := ezfyCfg.general(cfg.OfficerId); g != nil {
+				guardAttr := ezfyAttrToBonus(g.Learning)
+				defBonus += guardAttr
+				defOfficerDesc = g.Name + " Lv." + strconv.Itoa(g.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
+			}
+		}
 		// ★ 用户要求：战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
 		//   原来一律写「野地N级」，看不出打的是什么地形。
 		name := ezfyTerrainName(ezfyTerrain(order.TargetX, order.TargetY))
@@ -1898,8 +1923,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
-		// ★ 阵营兵种名：攻方=出征方阵营；守方是玩家城时用守方阵营，野地/AI 为 0(通用名)
-		defCamp := 0
+		// ★ 阵营兵种名：守方是玩家城时用守方阵营；野地=盟军、寇城=轴心国，其余 0(通用名)
+		defCamp := wildDefCamp
 		if target != nil {
 			defCamp = h.ensureProfile(target.UserID).Camp
 		}
@@ -2708,9 +2733,30 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		if len(defender) == 0 {
 			b.WriteString("无敌军驻守")
 		}
+		// ★ 兵种名按阵营: 野地=盟军, 寇城=轴心国
+		camp := 1
+		cfgType := 1
+		level := ezfyWildlandLevel(order.TargetX, order.TargetY)
+		if order.TargetType == 2 {
+			camp = 2
+			cfgType = 3
+			level = ezfyKouLevel(order.TargetX, order.TargetY)
+		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+			cfgType = 2
+		}
 		for _, g := range defender {
 			if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
-				fmt.Fprintf(&b, "%s×%d ", cfg.Name, g.Count)
+				name := ezfyCfg.troopName(g.TroopId, camp)
+				if name == "" {
+					name = cfg.Name
+				}
+				fmt.Fprintf(&b, "%s×%d ", name, g.Count)
+			}
+		}
+		// ★ 守将（军官池配置，每块野地最多 1 名）
+		if cfg := ezfyCfg.wildland(cfgType, level); cfg != nil && cfg.OfficerId > 0 {
+			if g := ezfyCfg.general(cfg.OfficerId); g != nil {
+				fmt.Fprintf(&b, "\n守将: %s Lv.%d", g.Name, g.Level)
 			}
 		}
 		b.WriteString("\n侦查完成, 部队已返航。")

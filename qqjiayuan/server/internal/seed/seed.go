@@ -118,7 +118,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
 		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyCityEffect{},
 		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
-		&model.EzfyChat{}, &model.EzfyExchange{},
+		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
 		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
 		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
@@ -274,17 +274,24 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 1000000000 WHERE troop_max IS NULL OR troop_max <= 0")
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_expire_days") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
-	}
-	db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
 
-	// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 4 小时且可配置）。
-	//   0 无意义 → 回落默认 4。
-	if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 4")
+		// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 4 小时且可配置）。
+		//   0 无意义 → 回落默认 4。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 4")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 4 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
+
+		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
+		//   百分比口径，默认 0 = 无加成（0 是有意义的值，不做 <= 0 回填）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 0")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 0 WHERE march_speed_bonus IS NULL")
 	}
-	db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 4 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
-}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
 	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。

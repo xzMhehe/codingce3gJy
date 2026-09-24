@@ -60,7 +60,9 @@ func seedEzfy(db *gorm.DB) {
 	// —— 纯代码维护：每次对齐 ——
 	batch(ezfyEzfyCfgTech, "ezfy_cfg_tech")
 	batch(ezfyEzfyCfgTechLevel, "ezfy_cfg_tech_level")
-	batch(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
+	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
+	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
+	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	// ★ 任务类型/任务：改「只补缺不覆盖」—— 管理端在「数据管理」里调的奖励(数值)
 	//   不能被下次启动的种子悄悄改回去（用户要求「后台能灵活配置奖励」）。
@@ -78,6 +80,8 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 必须在 batchKeep(ezfy_cfg_general) 之后：名将已入库，再补普通军官不会互相覆盖。
 	normalizeEzfyNewCols(db)
 	seedEzfyOfficerPool(db)
+	seedEzfyWildOfficers(db)
+	seedEzfyExchangeTpls(db)
 	seedEzfyEquipSets(db)
 	backfillOfficerEquipSetBonus(db)
 	nerfEquipSetPct(db)
@@ -89,36 +93,108 @@ func seedEzfy(db *gorm.DB) {
 	migrateOfficerAttrPoints(db)
 }
 
+// seedEzfyWildOfficers 野地/寇城守将补缺（2026-09-24 用户要求）
+//
+// 野地军官必须来自「军官池」ezfy_cfg_general（每块野地最多 1 名，配在野地类型的
+// officer_id 上）。老库 ezfy_cfg_wildland 的 officer_id 全为 0 —— 玩家反馈
+// 「野地军官太少了，好像没见过」。这里做一次性补缺：只要还没有**任何**野地类型
+// 配过守将，就按「类型→等级」顺序从军官池依次分配一名守将。
+// 任意一行已有军官即视为「管理员已配置过」，不再动。
+func seedEzfyWildOfficers(db *gorm.DB) {
+	var had int64
+	db.Model(&model.EzfyCfgWildland{}).Where("officer_id > 0").Count(&had)
+	if had > 0 {
+		return
+	}
+	// 优先用普通军官池(kind=1)；池子被删空则回退到全部名将
+	var gens []model.EzfyCfgGeneral
+	db.Where("kind = 1").Order("id").Find(&gens)
+	if len(gens) == 0 {
+		db.Order("id").Find(&gens)
+	}
+	if len(gens) == 0 {
+		return
+	}
+	var rows []model.EzfyCfgWildland
+	db.Where("officer_min > 0").Order("type, level, id").Find(&rows)
+	for i, r := range rows {
+		g := gens[i%len(gens)]
+		if err := db.Model(&model.EzfyCfgWildland{}).Where("id = ? AND officer_id = 0", r.ID).
+			Update("officer_id", g.ID).Error; err != nil {
+			log.Printf("野地守将补缺失败 id=%d: %v", r.ID, err)
+		}
+	}
+}
+
+// ezfyExchangeTpls 交易行挂单模板（2026-09-24 用户要求：管理端「维护模版」tab 维护）
+var ezfyExchangeTpls = []model.EzfyExchangeTemplate{
+	{ID: 1, Name: "粮食 · 小包", EsType: 1, EsCount: 10000, TotalPrice: 100, Currency: 1, SortNo: 1},
+	{ID: 2, Name: "粮食 · 中包", EsType: 1, EsCount: 100000, TotalPrice: 900, Currency: 1, SortNo: 2},
+	{ID: 3, Name: "粮食 · 大包", EsType: 1, EsCount: 1000000, TotalPrice: 8000, Currency: 1, SortNo: 3},
+	{ID: 4, Name: "钢铁 · 小包", EsType: 2, EsCount: 10000, TotalPrice: 100, Currency: 1, SortNo: 4},
+	{ID: 5, Name: "钢铁 · 中包", EsType: 2, EsCount: 100000, TotalPrice: 900, Currency: 1, SortNo: 5},
+	{ID: 6, Name: "钢铁 · 大包", EsType: 2, EsCount: 1000000, TotalPrice: 8000, Currency: 1, SortNo: 6},
+	{ID: 7, Name: "石油 · 小包", EsType: 3, EsCount: 10000, TotalPrice: 100, Currency: 1, SortNo: 7},
+	{ID: 8, Name: "石油 · 中包", EsType: 3, EsCount: 100000, TotalPrice: 900, Currency: 1, SortNo: 8},
+	{ID: 9, Name: "石油 · 大包", EsType: 3, EsCount: 1000000, TotalPrice: 8000, Currency: 1, SortNo: 9},
+	{ID: 10, Name: "稀矿 · 小包", EsType: 4, EsCount: 10000, TotalPrice: 100, Currency: 1, SortNo: 10},
+	{ID: 11, Name: "稀矿 · 中包", EsType: 4, EsCount: 100000, TotalPrice: 900, Currency: 1, SortNo: 11},
+	{ID: 12, Name: "稀矿 · 大包", EsType: 4, EsCount: 1000000, TotalPrice: 8000, Currency: 1, SortNo: 12},
+}
+
+// seedEzfyExchangeTpls 交易行挂单模板种子（只补缺不覆盖，管理端增删改能活过重启）
+func seedEzfyExchangeTpls(db *gorm.DB) {
+	if err := db.Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(ezfyExchangeTpls, 50).Error; err != nil {
+		log.Printf("ezfy 交易行模板种子失败: %v", err)
+	}
+}
+
 // seedEzfyRanks 军衔配置（复刻原版 rankIndex.html 的「军衔等级/职位要求/可建城数」）
 //
 // 原版：1:列兵/士兵/1 ... 20:五星上将/司令/20 —— 可建城数 = 军衔等级。
 // ★ 只补缺不覆盖，管理端调过的值不会被启动打回。
+// ★ 2026-09-24 用户要求「军衔需要声望太少，统一在原来基础上 ×10」：
+//
+//	内置默认门槛已 ×10；老库已存在的行做一次 ×10 迁移
+//	（以「全表最大门槛 ≤ 40000（旧内置上限）」为标记，乘过后最大 400000 不再触发）。
 func seedEzfyRanks(db *gorm.DB) {
 	rows := []model.EzfyCfgRank{
 		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
-		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 100, CityMax: 2},
-		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 300, CityMax: 3},
-		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 600, CityMax: 4},
-		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 1000, CityMax: 5},
-		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 1500, CityMax: 6},
-		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 2200, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 3000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 4000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 5200, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 6600, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 8200, CityMax: 12},
-		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 10000, CityMax: 13},
-		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 12000, CityMax: 14},
-		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 14500, CityMax: 15},
-		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 17500, CityMax: 16},
-		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 21000, CityMax: 17},
-		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 25000, CityMax: 18},
-		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 30000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 40000, CityMax: 20},
+		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 1000, CityMax: 2},
+		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 3000, CityMax: 3},
+		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 6000, CityMax: 4},
+		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 15000, CityMax: 6},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 22000, CityMax: 7},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 30000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 40000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 52000, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 66000, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 82000, CityMax: 12},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 100000, CityMax: 13},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 120000, CityMax: 14},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 145000, CityMax: 15},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 175000, CityMax: 16},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 210000, CityMax: 17},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 250000, CityMax: 18},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 300000, CityMax: 19},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 400000, CityMax: 20},
 	}
 	if err := db.Clauses(clause.OnConflict{DoNothing: true}).
 		CreateInBatches(rows, 50).Error; err != nil {
 		log.Printf("ezfy 军衔种子失败: %v", err)
+	}
+	// ★ 一次性 ×10 迁移：老库旧规模（最大门槛 ≤ 40000）→ 全表 ×10。
+	//   乘过的库最大门槛是 400000 > 40000，后续启动不会再触发。
+	var maxP int
+	db.Model(&model.EzfyCfgRank{}).Select("COALESCE(MAX(need_prestige), 0)").Scan(&maxP)
+	if maxP > 0 && maxP <= 40000 {
+		if err := db.Exec("UPDATE ezfy_cfg_rank SET need_prestige = need_prestige * 10").Error; err != nil {
+			log.Printf("ezfy 军衔声望 ×10 迁移失败: %v", err)
+		} else {
+			log.Printf("ezfy 军衔声望门槛已统一 ×10（原最大门槛 %d）", maxP)
+		}
 	}
 }
 
