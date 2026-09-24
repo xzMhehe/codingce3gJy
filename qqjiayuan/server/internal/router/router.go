@@ -1504,6 +1504,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 			r.Static("/assets", cfg.Server.WebDir+"/assets")
 			r.NoRoute(func(c *gin.Context) {
 				path := c.Request.URL.Path
+				// ★ bug 修复：API 404 一律回 JSON，绝不给 index.html。
+				//   否则前端「交易行维护」等新接口在旧二进制上 404 时被兜底成 HTML，
+				//   管理端拦截器会误判成「被 IP 封禁」跳转到 503 页。
+				if strings.HasPrefix(path, "/api") {
+					c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "接口不存在", "data": nil})
+					return
+				}
 				if path == "/" || !strings.Contains(path, ".") {
 					c.File(cfg.Server.WebDir + "/index.html")
 					return

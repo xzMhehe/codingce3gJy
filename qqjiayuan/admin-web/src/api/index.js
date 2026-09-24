@@ -11,12 +11,19 @@ api.interceptors.request.use(cfg => {
 
 api.interceptors.response.use(
   resp => {
-    // 被 IP 封禁时后端 302 到 /admin-ui/503.html，axios 跟随重定向后拿到的是 HTML 字符串
-    if (typeof resp.data === 'string' && /<html/i.test(resp.data)) {
-      window.location.href = '/admin-ui/503.html'
-      return { code: 503, msg: '服务不可用', data: null }
+    const body = resp.data
+    // ★ 被 IP 封禁时后端 302 到 /admin-ui/503.html，axios 跟随重定向后拿到 HTML 字符串。
+    //   bug 教训：后端 404 时生产模式 NoRoute 也会兜底 index.html（同样是 HTML），
+    //   不能见 HTML 就跳 503，必须看最终 URL 是否真落在 503.html 上。
+    if (typeof body === 'string' && /<html/i.test(body)) {
+      const finalURL = resp.request && (resp.request.responseURL || '')
+      if (String(finalURL).indexOf('503.html') >= 0) {
+        window.location.href = '/admin-ui/503.html'
+        return { code: 503, msg: '服务不可用', data: null }
+      }
+      return { code: 404, msg: '请求的接口不存在或服务异常', data: null }
     }
-    return resp.data
+    return body
   },
   err => {
     if (err.response && err.response.data) {
