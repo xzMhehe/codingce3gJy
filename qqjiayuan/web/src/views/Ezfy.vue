@@ -518,10 +518,16 @@
 
       <!-- ============ 任务(tasks) ============ -->
       <template v-else-if="cur === 'tasks'">
-        <template v-for="g in taskGroups">
-          <div class="panel-title" :key="'tg' + g.id">{{ g.name }}<span v-if="g.reset_type === 1">(每日)</span><span v-else-if="g.reset_type === 2">(每周)</span></div>
-          <div class="panel" :key="'gl' + g.id">
-            <div class="old-line" v-for="t in g.tasks" :key="t.id">
+        <div class="panel">
+          <!-- ★ 2026-09-24 用户要求: 任务按分类 tab 分别展示(新手/日常/每周) -->
+          <div class="acade-tab">
+            <a v-for="(g, i) in taskGroups" :key="'tgt' + g.id" href="javascript:;"
+               :class="{ on: taskGroupCur.id === g.id }" @click="taskTab = g.id">
+              <span v-if="i > 0">|</span>{{ g.name }}<span v-if="g.reset_type === 1">(每日)</span><span v-else-if="g.reset_type === 2">(每周)</span>
+            </a>
+          </div>
+          <div v-if="taskGroupCur.tasks.length" style="margin-top:6px">
+            <div class="old-line" v-for="t in taskGroupCur.tasks" :key="t.id">
               <b>{{ t.name }}</b> {{ t.current }}/{{ t.target }}
               <span v-if="t.status === 2" class="gray">[已领取]</span>
               <a v-else-if="t.status === 1" href="javascript:;" @click="doAward(t)">[领奖]</a>
@@ -529,7 +535,8 @@
               <span class="gray">奖励:{{ rewardText(t.reward) }}</span>
             </div>
           </div>
-        </template>
+          <div class="old-line" v-else>(暂无任务)</div>
+        </div>
       </template>
 
       <!-- ============ 城市列表(cities) ============ -->
@@ -3318,6 +3325,7 @@ export default {
       friendSearchDone: false,
       friendApplies: { inbox: [], outbox: [] },
       taskGroups: [],
+      taskTab: 0, // ★ 任务分类 tab(0=默认第一个分类: 新手/日常/每周)
       // ★ 计谋（配置由后端下发，发动消耗「信号弹」）
       schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
       schemeX: '', schemeY: '',
@@ -3493,6 +3501,12 @@ export default {
     }
   },
   computed: {
+    // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
+    taskGroupCur () {
+      const gs = this.taskGroups || []
+      if (!gs.length) return { id: 0, name: '', reset_type: 0, tasks: [] }
+      return gs.find(g => g.id === this.taskTab) || gs[0]
+    },
     // ★ 二级导航（资源/军官/军队/科技/城防/统帅）：只在对应页面显示，位置固定在页面顶部
     //   军队的几个子页（兵种/兵种详情/训练/工厂）也算「军队」，一并显示，保持导航不中断
     isArmyPage () {
