@@ -2039,7 +2039,7 @@
             <a href="javascript:;" @click="bagWord = ''; bagPage = 1">[清空]</a>
             <span class="gray">共 {{ bagFiltered.length }} 种 / 全部 {{ bagItems.length }} 种</span>
           </div>
-          <!-- ★ 分类筛选：一行 6 个（与商城同款，口径也一致） -->
+          <!-- ★ 分类筛选：流式排列自动换行（与商城同款，口径也一致） -->
           <div class="ezfy-slot-grid" v-if="bagCats.length > 1">
             <a href="javascript:;" :class="{ on: bagCat === '' }" @click="setBagCat('')">[全部]</a>
             <a v-for="c in bagCats" :key="'bc' + c" href="javascript:;" :class="{ on: bagCat === c }"
@@ -2098,14 +2098,15 @@
       <template v-else-if="cur === 'mall'">
         <div class="panel">
           <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }} · 钻石{{ mallDiamond }})</div>
-          <!-- ★ 商城分栏：道具 / 装备散件 / 宝箱（套装件只能开宝箱，商城只卖散件） -->
-          <div class="old-line">
-            <a href="javascript:;" :class="{ on: mallTab === 'item' }" @click="switchMallTab('item')">[道具]</a>
-            <a href="javascript:;" :class="{ on: mallTab === 'equipment' }" @click="switchMallTab('equipment')">[装备]</a>
-            <a href="javascript:;" :class="{ on: mallTab === 'chest' }" @click="switchMallTab('chest')">[宝箱]</a>
+          <!-- ★ 商城分栏：道具 / 装备散件 / 宝箱（套装件只能开宝箱，商城只卖散件）
+               ★ 2026-09-24 用户要求: 三个分栏去掉 []、用 | 分隔并留间距 -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: mallTab === 'item' }" @click="switchMallTab('item')">道具</a><span> | </span>
+            <a href="javascript:;" :class="{ on: mallTab === 'equipment' }" @click="switchMallTab('equipment')">装备</a><span> | </span>
+            <a href="javascript:;" :class="{ on: mallTab === 'chest' }" @click="switchMallTab('chest')">宝箱</a>
           </div>
           <template v-if="mallTab === 'item'">
-          <!-- ★ 分类筛选：一行 6 个（与「装备」页的部位筛选同款，分类由管理端维护） -->
+          <!-- ★ 分类筛选：流式排列自动换行（分类由管理端维护，手机端超宽自动折到下一行） -->
           <div class="ezfy-slot-grid">
             <a href="javascript:;" :class="{ on: mallCat === '' }" @click="setMallCat('')">[全部]</a>
             <a v-for="c in mallCatsList" :key="'mc' + c" href="javascript:;" :class="{ on: mallCat === c }"
@@ -2155,7 +2156,7 @@
                  · 散件用钻石购买，定价按「六项加成总和」映射到 10~50 钻（见 seed 的 ezfyEquipDiamondPrice）；
                  · 买入后到「军官 → 军官详情」穿到军官身上；
                  · 第一批套装（新兵/战士/混沌…，无系列名）只能通过[宝箱]开启，商城不售。 -->
-            <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：一行 6 个，超出的自动换行 -->
+            <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行 -->
             <div class="ezfy-slot-grid">
               <a href="javascript:;" :class="{ on: shopSlot === '' }" @click="setShopSlot('')">[全部]</a>
               <a v-for="s in shopSlots" :key="'ss' + s" href="javascript:;" :class="{ on: shopSlot === s }"
@@ -6686,10 +6687,12 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .ezfy-battle-bar > i.on { background: #27763c; }
 .ezfy-page .ezfy-battle-bar > i.lock { background: #c0392b; }
-/* ★ 商城「装备 / 道具」的分类筛选：一行 6 个，列宽按内容（用 1fr 会把间距拉得很开） */
+/* ★ 商城「装备 / 道具」的分类筛选：flex 自动换行。
+   原 grid repeat(6, max-content) 固定 6 列，分类名较长时(手机端)整排溢出容器形成横向滑动；
+   2026-09-24 改为流式排列，超过一行宽度就换行(背包分类共用此类)。 */
 .ezfy-page .ezfy-slot-grid {
-  display: grid;
-  grid-template-columns: repeat(6, max-content);
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px 10px;
   margin: 2px 0;
 }
