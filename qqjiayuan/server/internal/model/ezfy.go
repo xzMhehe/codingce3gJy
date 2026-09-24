@@ -254,6 +254,10 @@ type EzfyCfgLimit struct {
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
 	MallBuyMax int `gorm:"default:9999;comment:Mall购买上限" json:"mall_buy_max"`
 
+	// ★ 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
+	//   常驻采集结算一期的小时数（默认 4），由 ezfyDispatchPeriod() 读取。
+	DispatchPeriodH int `gorm:"default:4;comment:采集周期小时" json:"dispatch_period_h"`
+
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
 	// ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 1。

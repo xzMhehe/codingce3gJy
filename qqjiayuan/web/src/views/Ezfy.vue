@@ -351,10 +351,10 @@
             </div>
           </template>
 
-          <!-- ===== 驻军: 到达野地后常驻采集的部队(满12小时结算一期) ===== -->
+          <!-- ===== 驻军: 到达野地后常驻采集的部队(满一个采集周期结算一期) ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">满12小时结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
+              <span class="gray">满一个采集周期结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
@@ -2695,7 +2695,7 @@
             <div class="old-line" :key="'of' + o.id">
               {{ o.name }}({{ o.level }}级)<span class="green" v-if="o.level >= officerMaxLevel">[满级]</span>
               <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
-              状态:{{ o.status === 1 ? '出征' : '空闲' }} &nbsp; 评价:{{ o.star }}星<br/>
+              状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 评价:{{ o.star }}星<br/>
               后勤/军事/学识/忠诚：<br/>
               {{ o.logistics_total }}/{{ o.military_total }}/{{ o.learning_total }}/{{ o.loyalty }}
               <span class="green" v-if="equipTip(o)">{{ equipTip(o) }}</span><br/>
@@ -4627,9 +4627,9 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 一键收获：满12小时结算一期(宝物直接进背包), 资源装进部队待带回, **不召回**
+    // ★ 一键收获：满一个采集周期结算一期(宝物直接进背包), 资源装进部队待带回, **不召回**
     async doHarvestAll () {
-      if (!await this.ask('确定收获所有驻守采集部队吗？（每满12小时结算一期，宝物直接进背包，资源要「召回」才会运回城里）')) return
+      if (!await this.ask('确定收获所有驻守采集部队吗？（每满一个采集周期结算一期，宝物直接进背包，资源要「召回」才会运回城里）')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -4640,7 +4640,7 @@ export default {
     },
     // ★ 一键召回：先结算已满期产出, 部队返航, 到达时把待带回资源运回城里
     async doRecallAll () {
-      if (!await this.ask('确定召回所有驻守采集部队吗？（满12小时的结算资源+宝物：宝物进背包；不满12小时的按驻守时长折算资源、无宝物；部队返航到达后资源才入库）')) return
+      if (!await this.ask('确定召回所有驻守采集部队吗？（满一个采集周期的结算资源+宝物：宝物进背包；不满一个采集周期的按驻守时长折算资源、无宝物；部队返航到达后资源才入库）')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -5416,6 +5416,7 @@ export default {
       if (o.status === 1) return (o.order_type === 7 ? '驻守采集' : '已到达')
       if (o.status === 2) return '返回中 ' + this.remain(o.return_time)
       if (o.status === 3) return '已完成'
+      if (o.status === 6) return '等待中(目标已被进攻, 排队等待交战)'
       if (o.status === 5) return '战斗中 第' + (o.battle_round || 1) + '回合'
       return '全队阵亡'
     },
@@ -5882,7 +5883,7 @@ export default {
       this.useSkillId = 0
     },
     doUse (it) {
-      const body = { cfg_id: it.cfg_id, count: parseInt(this.useCount) || 1 }
+      const body = { cfg_id: it.cfg_id, count: parseInt(this.useCount) || 1, city_id: this.city.id }
       if (this.needOfficer(it)) {
         if (!this.useOfficerId) { this.notify('请先选择要使用的军官'); return }
         body.officer_id = this.useOfficerId

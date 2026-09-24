@@ -509,6 +509,16 @@ func ezfyGatherMax() int {
 	return ezfyGatherMaxDefault
 }
 
+// ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
+// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
+//   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 4。
+func ezfyDispatchPeriod() int64 {
+	if h := ezfyCfg.limit.DispatchPeriodH; h > 0 {
+		return int64(h) * 3600 * 1000
+	}
+	return 4 * 3600 * 1000
+}
+
 // ============ 战斗 / 经济数值（ezfy_cfg_limit，管理端可维护）============
 //
 // ★ 这几个值都「0 无意义」：0 = 不扣民心 / 军官免费 / 恢复免费，

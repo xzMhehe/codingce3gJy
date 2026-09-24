@@ -92,6 +92,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.WoundExpireDays <= 0 {
 		lim.WoundExpireDays = ezfyWoundExpireDaysDef
 	}
+	// ★ 2026-09-24：采集周期小时数（0 无意义 → 回落默认 4 小时）
+	if lim.DispatchPeriodH <= 0 {
+		lim.DispatchPeriodH = 4
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -132,6 +136,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax        *int64 `json:"troop_max"`
 		WoundExpireDays *int   `json:"wound_expire_days"`
+		// ★ 2026-09-24：采集结算一期小时数（默认 4）
+		DispatchPeriodH *int `json:"dispatch_period_h"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -356,6 +362,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.WoundExpireDays = *in.WoundExpireDays
 	}
+	// ★ 2026-09-24：采集周期小时数（至少 1 小时；上限 720 防呆 = 30 天）
+	if in.DispatchPeriodH != nil {
+		if *in.DispatchPeriodH < 1 || *in.DispatchPeriodH > 720 {
+			resp.ParamError(c, "采集周期需要在 1~720 小时之间")
+			return
+		}
+		lim.DispatchPeriodH = *in.DispatchPeriodH
+	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
 	}
@@ -397,6 +411,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.WoundExpireDays <= 0 {
 		lim.WoundExpireDays = ezfyWoundExpireDaysDef
 	}
+	// ★ 2026-09-24：采集周期兜底（老行可能是 0 / NULL）
+	if lim.DispatchPeriodH <= 0 {
+		lim.DispatchPeriodH = 4
+	}
 	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
 	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
 	lim.ID = 1
@@ -421,6 +439,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-23：兵力上限（bigint）/ 伤兵存活天数，同样用 map 显式写，避开零值被吞的坑
 		"troop_max":         lim.TroopMax,
 		"wound_expire_days": lim.WoundExpireDays,
+		// ★ 2026-09-24：采集周期小时数，同样用 map 显式写
+		"dispatch_period_h": lim.DispatchPeriodH,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

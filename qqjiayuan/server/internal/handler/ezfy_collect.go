@@ -154,13 +154,13 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 			loadedTotal += parseCarry(order.Carry).total() - before
 			settled += periods
 		} else {
-			skipped++ // 未满 12 小时或野地已丢失(已自动返航)
+			skipped++ // 未满一个采集周期或野地已丢失(已自动返航)
 		}
 	}
 	msg := fmt.Sprintf("已收获 %d 支采集部队，共装入待带回资源 %d（资源需「召回」才会运回城里）",
 		settled, loadedTotal)
 	if skipped > 0 {
-		msg += fmt.Sprintf("；%d 支驻守尚不满 12 小时（可[一键召回]按驻守时长折算资源，无宝物）", skipped)
+		msg += fmt.Sprintf("；%d 支驻守尚不满一个采集周期（可[一键召回]按驻守时长折算资源，无宝物）", skipped)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }
@@ -184,7 +184,7 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	var back int64
 	for i := range orders {
 		order := &orders[i]
-		// 召回前先结算产出: 满12小时给资源+宝物, 提前召回只有按比例的资源(无宝物)
+		// 召回前先结算产出: 满一个采集周期给资源+宝物, 提前召回只有按比例的资源(无宝物)
 		h.settleDispatchOnRecall(uid, order, now)
 		if order.Status != 1 {
 			continue // 野地已丢失, settleDispatch 已把部队自动改成返航

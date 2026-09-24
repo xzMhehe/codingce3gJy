@@ -274,10 +274,17 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 1000000000 WHERE troop_max IS NULL OR troop_max <= 0")
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_expire_days") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
 	}
+	db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
+
+	// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 4 小时且可配置）。
+	//   0 无意义 → 回落默认 4。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 4")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 4 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
+}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
 	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。

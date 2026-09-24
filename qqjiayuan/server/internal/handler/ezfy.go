@@ -28,9 +28,11 @@ const (
 	ezfyConveneFoodCost   = 100000                 // 召集人口消耗粮食
 	ezfyConvenePopGain    = 100000                 // 召集获得人口
 	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
-	ezfyOilDivGrid        = 300                    // 出征耗油: 每格耗油 = 总兵力/300
-	ezfyDispatchPeriod    = int64(12 * 3600 * 1000) // 常驻采集结算一期 12 小时
-	ezfyTreasureExtraPct  = 20                     // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
+	ezfyOilDivGrid        = 300 // 出征耗油: 每格耗油 = 总兵力/300
+	// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
+	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
+	//   见 ezfyDispatchPeriod()。
+	ezfyTreasureExtraPct  = 20 // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
 	ezfyCommandCarryPct   = 10                     // 指挥艺术: 出征携带上限+%/级
 	ezfyMaxUpgradeSeconds = 10                     // 一键满级: 每级升级时间(秒)
 	ezfyDeserterRate      = 30                     // 守军战败溃逃比例%
@@ -1933,16 +1935,20 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 	var err string
 	switch cfg.ItemType {
 	case 1:
-		city.Food += param
-		city.Steel += param
-		city.Oil += param
-		city.Rare += param
-		h.saveCityRes(city)
+		// ★ 2026-09-24 用户反馈「资源包用了资源变少」：原来把 city 内存里的旧值 +param
+		//   整行写回( saveCityRes )，会覆盖掉这期间懒结算/运输/掠夺等并发写入的增量。
+		//   改成 DB 原子累加 LEAST(cap, col + param)，只基于库里最新值加，不丢任何存量。
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"food":  gorm.Expr("LEAST(food_cap, food + ?)", param),
+			"steel": gorm.Expr("LEAST(steel_cap, steel + ?)", param),
+			"oil":   gorm.Expr("LEAST(oil_cap, oil + ?)", param),
+			"rare":  gorm.Expr("LEAST(rare_cap, rare + ?)", param),
+		})
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 粮食/钢铁/石油/稀矿各+%d", param)
 	case 2:
-		city.Gold = min64(city.GoldCap, city.Gold+param)
-		h.saveCityRes(city)
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("gold", gorm.Expr("LEAST(gold_cap, gold + ?)", param))
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
 	case 3:
