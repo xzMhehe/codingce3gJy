@@ -4,30 +4,30 @@ import "time"
 
 // 道具商城商品（后台可管理，复刻诺哈商店中心：库存/销量/结束时间）
 type Good struct {
-	ID           uint       `gorm:"primaryKey" json:"id"`
-	Name         string     `gorm:"type:varchar(40)" json:"name"`
-	Desc         string     `gorm:"type:varchar(200)" json:"desc"`
-	Icon         string     `gorm:"type:varchar(50)" json:"icon"`
-	Category     string     `gorm:"type:varchar(20)" json:"category"` // 鲜花/道具/装扮/特权
-	Price        int        `gorm:"default:0" json:"price"`           // G币价
-	YouQuanPrice int        `gorm:"column:youquan_price;default:0" json:"youquan_price"` // 友友券价（0=不可用友友券购买）
-	Stock        int        `gorm:"default:0" json:"stock"`           // 库存数量（诺哈 wap_money_shop.stock）
-	Sales        int        `gorm:"default:0" json:"sales"`           // 销售数量
-	Status       int        `gorm:"default:1" json:"status"`          // 1上架 0下架
-	Sort         int        `gorm:"default:0" json:"sort"`
-	AddTime      time.Time  `json:"add_time"`              // 销售时间
-	EndTime      *time.Time `json:"end_time"`              // 结束时间（NULL=长期有效）
+	ID           uint       `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name         string     `gorm:"type:varchar(40);comment:名称" json:"name"`
+	Desc         string     `gorm:"type:varchar(200);comment:描述" json:"desc"`
+	Icon         string     `gorm:"type:varchar(50);comment:图标" json:"icon"`
+	Category     string     `gorm:"type:varchar(20);comment:鲜花/道具/装扮/特权" json:"category"`                         // 鲜花/道具/装扮/特权
+	Price        int        `gorm:"default:0;comment:G币价" json:"price"`                                           // G币价
+	YouQuanPrice int        `gorm:"column:youquan_price;default:0;comment:友友券价（0=不可用友友券购买）" json:"youquan_price"` // 友友券价（0=不可用友友券购买）
+	Stock        int        `gorm:"default:0;comment:库存数量（诺哈 wap_money_shop.stock）" json:"stock"`                 // 库存数量（诺哈 wap_money_shop.stock）
+	Sales        int        `gorm:"default:0;comment:销售数量" json:"sales"`                                          // 销售数量
+	Status       int        `gorm:"default:1;comment:1上架 0下架" json:"status"`                                      // 1上架 0下架
+	Sort         int        `gorm:"default:0;comment:排序值" json:"sort"`
+	AddTime      time.Time  `gorm:"comment:销售时间" json:"add_time"`            // 销售时间
+	EndTime      *time.Time `gorm:"comment:结束时间（NULL=长期有效）" json:"end_time"` // 结束时间（NULL=长期有效）
 }
 
 func (Good) TableName() string { return "goods" }
 
 // 我的道具（背包）：购买后入库，可叠加数量
 type UserGood struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"uniqueIndex:uk_ug" json:"user_id"`
-	GoodID    uint      `gorm:"uniqueIndex:uk_ug" json:"good_id"`
-	Count     int       `gorm:"default:0" json:"count"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_ug;comment:用户ID" json:"user_id"`
+	GoodID    uint      `gorm:"uniqueIndex:uk_ug;comment:GoodID" json:"good_id"`
+	Count     int       `gorm:"default:0;comment:数量" json:"count"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 	Good      *Good     `gorm:"foreignKey:GoodID" json:"good,omitempty"`
 }
 

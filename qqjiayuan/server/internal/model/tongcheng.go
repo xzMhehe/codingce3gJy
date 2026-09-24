@@ -4,12 +4,12 @@ import "time"
 
 // CityManager 同城城市管理（参考诺哈 wap_manage：bid=城市板块，uid=管理用户，name=职务名称）
 type CityManager struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	BoardID   uint      `gorm:"index" json:"board_id"`
-	UserID    uint      `gorm:"index" json:"user_id"`
-	Title     string    `gorm:"type:varchar(30)" json:"title"`
-	Sort      int       `gorm:"default:0" json:"sort"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	BoardID   uint      `gorm:"index;comment:版块ID" json:"board_id"`
+	UserID    uint      `gorm:"index;comment:用户ID" json:"user_id"`
+	Title     string    `gorm:"type:varchar(30);comment:标题" json:"title"`
+	Sort      int       `gorm:"default:0;comment:排序值" json:"sort"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 

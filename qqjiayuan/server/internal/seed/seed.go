@@ -102,7 +102,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.HxxyGang{}, &model.HxxyGangMember{}, &model.HxxyMarriage{},
 		&model.HxxyHouse{}, &model.HxxyFriend{}, &model.HxxyChat{},
 		&model.HxxyMsg{},
-		&model.HxxySignin{}, &model.HxxySigninClaim{}, &model.HxxyStall{}, &model.HxxyWalletLog{},
+		&model.HxxySignin{}, &model.HxxySigninClaim{}, &model.HxxyStall{}, &model.HxxyAuction{}, &model.HxxyWalletLog{},
 		&model.HxxyTeam{}, &model.HxxyTeamMember{}, &model.HxxyTeamInvite{},
 		&model.HxxyGangInvite{}, &model.HxxyHouseInvite{},
 		&model.HxxyGzWar{}, &model.HxxyGzScore{}, &model.HxxyGzPlayer{},
@@ -287,6 +287,26 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 	}
 
+	// 二战风云·实时战场：守方指挥列（2026-09-23「敌人打自己，自己也能指挥」新增）
+	//   def_user_id 守方玩家 uid（带索引 idx_battle_def，守方据此找回并进入战场；AI 守方为 0）
+	//   def_cmd     守方**逐兵种**指令表 JSON（口径同 atk_cmd，AI 守军为空串）
+	// ⚠️ 存量库 AutoMigrate 可能漏加列 → 显式补齐（幂等）。
+	//   且新加的列在老行上是 NULL，Go 侧 uint 扫描 NULL 会报
+	//   "converting NULL to uint is unsupported"，必须回填 0。
+	if db.Migrator().HasTable("ezfy_battle") {
+		if !db.Migrator().HasColumn("ezfy_battle", "def_user_id") {
+			db.Exec("ALTER TABLE ezfy_battle ADD COLUMN def_user_id bigint unsigned NULL")
+		}
+		if !db.Migrator().HasColumn("ezfy_battle", "def_cmd") {
+			db.Exec("ALTER TABLE ezfy_battle ADD COLUMN def_cmd varchar(500) DEFAULT ''")
+		}
+		if !db.Migrator().HasIndex(&model.EzfyBattle{}, "idx_battle_def") {
+			db.Exec("CREATE INDEX idx_battle_def ON ezfy_battle(def_user_id)")
+		}
+		db.Exec("UPDATE ezfy_battle SET def_user_id = 0 WHERE def_user_id IS NULL")
+		db.Exec("UPDATE ezfy_battle SET def_cmd = '' WHERE def_cmd IS NULL")
+	}
+
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
 	if !db.Migrator().HasTable("welfare_funds") || db.Exec("SELECT 1 FROM welfare_funds WHERE id = 1").RowsAffected == 0 {
 		db.Exec("REPLACE INTO welfare_funds(id, pool) VALUES (1, 500845400)")
@@ -309,7 +329,9 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE user_badges ADD COLUMN " + col + " datetime NULL")
 		}
 	}
-	db.Exec("ALTER TABLE user_badges MODIFY COLUMN sort int DEFAULT 0")
+	// ⚠️ 这条 MODIFY 每次启动都会执行，必须带上 COMMENT —— 否则会把列注释冲成空
+	//   （model.UserBadge.Sort 有 comment tag，但这里硬编码的 ALTER 覆盖了它）。
+	db.Exec("ALTER TABLE user_badges MODIFY COLUMN sort int DEFAULT 0 COMMENT '排序值'")
 	db.Exec("UPDATE user_badges SET granted_at = NOW() WHERE granted_at IS NULL")
 	// 清理已过期勋章（复刻诺哈：自动删除过期勋章）
 	db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")

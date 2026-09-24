@@ -5,10 +5,10 @@ import "time"
 // 贵宾等级配置（复刻诺哈三代 wap_vip_config）：升级经验 + 等级图标
 // id 即等级（1-8 级），point 为升到本级所需成长值，图标为 static/picture 下文件名
 type NobleLevel struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`                // 等级
-	Point    int    `gorm:"default:0" json:"point"`              // 升级经验（诺哈 vip_edit 的 point）
-	IconBlue string `gorm:"type:varchar(50)" json:"icon_blue"`   // 蓝钻等级图标
-	IconQQ   string `gorm:"type:varchar(50)" json:"icon_qq"`     // 超Q等级图标
+	ID       uint   `gorm:"primaryKey;comment:主键ID（等级）" json:"id"`                    // 等级
+	Point    int    `gorm:"default:0;comment:升级经验（诺哈 vip_edit 的 point）" json:"point"` // 升级经验（诺哈 vip_edit 的 point）
+	IconBlue string `gorm:"type:varchar(50);comment:蓝钻等级图标" json:"icon_blue"`         // 蓝钻等级图标
+	IconQQ   string `gorm:"type:varchar(50);comment:超Q等级图标" json:"icon_qq"`           // 超Q等级图标
 }
 
 func (NobleLevel) TableName() string { return "noble_levels" }
@@ -61,21 +61,21 @@ func NobleIconOf(levels []NobleLevel, lv int, typ string) string {
 // 特权开通方案（后台可管理）：type=blue 蓝钻 / qq 超Q
 // 复刻诺哈三代 wap_vip_shop：标题/周期/币种/价格/成长速度/赠送经验/限购/库存/销量/出售时间/结束时间/状态
 type NoblePlan struct {
-	ID     uint       `gorm:"primaryKey" json:"id"`
-	Type   string     `gorm:"type:varchar(10)" json:"type"` // blue/qq
-	Name   string     `gorm:"type:varchar(40)" json:"name"`
-	Cost   int        `gorm:"default:0" json:"cost"` // 订购价格（G币/月）
-	Gain   int        `gorm:"default:0" json:"gain"` // 成长赠送（开通时一次性）
-	Speed  int        `gorm:"default:0" json:"speed"` // 成长速度（点/天）
-	Days   int        `gorm:"default:0" json:"days"`  // 周期天数（30=包月，诺哈 cycle 销售几月）
-	Money  int        `gorm:"default:1" json:"money"` // 币种 1=G币（诺哈 money）
-	Limit  int        `gorm:"default:0" json:"limit"` // 每号限购（0=不限）
-	Stock  int        `gorm:"default:0" json:"stock"` // 库存（0=不限）
-	Sales  int        `gorm:"default:0" json:"sales"` // 销售数量（累计）
-	Stime  *time.Time `json:"stime"`                  // 出售时间
-	Etime  *time.Time `json:"etime"`                  // 结束时间
-	Status int        `gorm:"default:1" json:"status"` // 销售状态 1上架 0下架
-	Sort   int        `gorm:"default:0" json:"sort"`
+	ID     uint       `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Type   string     `gorm:"type:varchar(10);comment:blue/qq" json:"type"` // blue/qq
+	Name   string     `gorm:"type:varchar(40);comment:名称" json:"name"`
+	Cost   int        `gorm:"default:0;comment:订购价格（G币/月）" json:"cost"`                // 订购价格（G币/月）
+	Gain   int        `gorm:"default:0;comment:成长赠送（开通时一次性）" json:"gain"`              // 成长赠送（开通时一次性）
+	Speed  int        `gorm:"default:0;comment:成长速度（点/天）" json:"speed"`                // 成长速度（点/天）
+	Days   int        `gorm:"default:0;comment:周期天数（30=包月，诺哈 cycle 销售几月）" json:"days"` // 周期天数（30=包月，诺哈 cycle 销售几月）
+	Money  int        `gorm:"default:1;comment:币种 1=G币（诺哈 money）" json:"money"`        // 币种 1=G币（诺哈 money）
+	Limit  int        `gorm:"default:0;comment:每号限购（0=不限）" json:"limit"`               // 每号限购（0=不限）
+	Stock  int        `gorm:"default:0;comment:库存（0=不限）" json:"stock"`                 // 库存（0=不限）
+	Sales  int        `gorm:"default:0;comment:销售数量（累计）" json:"sales"`                 // 销售数量（累计）
+	Stime  *time.Time `gorm:"comment:出售时间" json:"stime"`                               // 出售时间
+	Etime  *time.Time `gorm:"comment:结束时间" json:"etime"`                               // 结束时间
+	Status int        `gorm:"default:1;comment:销售状态 1上架 0下架" json:"status"`            // 销售状态 1上架 0下架
+	Sort   int        `gorm:"default:0;comment:排序值" json:"sort"`
 }
 
 func (NoblePlan) TableName() string { return "noble_plans" }
