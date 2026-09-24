@@ -34,9 +34,8 @@
         </div>
       </div>
 
-      <!-- 二级导航（军事/资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
+      <!-- 二级导航（资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
       <div class="old-line ezfy-subnav" v-if="showSubnav">
-        <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>.
         <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>.
         <a href="javascript:;" :class="{ on: cur === 'acade' || cur === 'officerdetail' || cur === 'equipdetail' }" @click="go('acade')">军官</a>.
         <a href="javascript:;" :class="{ on: isArmyPage }" @click="go('troops')">军队</a>.
@@ -74,7 +73,6 @@
         <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line">
-          <a href="javascript:;" @click="go('buildm')">军事</a>.
           <a href="javascript:;" @click="go('builds')">资源</a>.
           <a href="javascript:;" @click="go('acade')">军官</a>.
           <a href="javascript:;" @click="go('troops')">军队</a>.
@@ -82,7 +80,6 @@
           <a href="javascript:;" @click="go('defence')">城防</a>.
           <a href="javascript:;" @click="go('info')">统帅</a>
         </div>
-
         <div class="old-line">现有资源/产量:
           <a href="javascript:;" @click="go('exchange')">购买</a>
           <a href="javascript:;" @click="go('mall')">增产</a>
