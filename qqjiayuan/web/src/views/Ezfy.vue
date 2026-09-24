@@ -1138,7 +1138,7 @@
             <!-- 活动目标(活动野地/活动寇城/特殊城市): 复刻 activityIndex.html 的说明 + 守军/奖励预览 -->
             <template v-if="selDetail.act_type">
               <div class="old-line orange">
-                {{ selDetail.act_name }}{{ selDetail.act_level }}级 —— {{ selDetail.act_desc }}
+                {{ selDetail.act_name }}{{ selDetail.act_level }}级 ({{ selCell.x }},{{ selCell.y }}) —— {{ selDetail.act_desc }}
               </div>
               <div class="old-line">
                 守军情况：<span v-for="tp in selDetail.troops" :key="'ap' + tp.troop_id">{{ tp.name }}×{{ tp.min }} </span>
@@ -1170,9 +1170,9 @@
             </template>
           </template>
           <div class="old-line" v-else>
-            {{ selCell.name }}
-            <span v-if="selCell.owner">城主:{{ selCell.owner }}</span>
+            {{ selCell.name }}({{ selCell.x }},{{ selCell.y }})
           </div>
+          <div class="old-line" v-if="!selDetail && selCell.owner">城主:{{ selCell.owner }}</div>
           <!-- ★ 玩家城：展示城主的同盟（军团）名 —— 没加入军团显示「无」 -->
           <div class="old-line" v-if="selCell.area_type === 3">
             同盟：
@@ -7106,8 +7106,9 @@ body.ezfy-immersive { margin: 0; }
   max-width: 100%;
   border-collapse: separate;
   /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
-     随后又要求「上下间隔加一点」→ 纵向 6px → 10px（横向 12px 不动）。 */
-  border-spacing: 12px 10px;
+     随后又要求「上下间隔加一点」→ 纵向 6px → 10px；再次要求「上下坐标间隔再大一些」
+     → 纵向 10px → 14px（横向 12px 不动）。 */
+  border-spacing: 12px 14px;
   margin: 8px 0;             /* 表格本身靠左(不要整表居中) */
 }
 .ezfy-page .ezfy-map-table td {
@@ -7144,7 +7145,7 @@ body.ezfy-immersive { margin: 0; }
   display: block;
   font-size: 13px;
   line-height: 1.25;
-  margin-top: 2px;
+  margin-top: 4px;
   font-weight: normal;       /* 本城/活动城名字加粗, 坐标不跟着加粗 */
   color: #0645ad;
 }
@@ -7202,8 +7203,8 @@ body.ezfy-immersive { margin: 0; }
        第一行跟着桌面一起缩(14 → 13 → 12)，坐标行同样 +1(11 → 12)，两行之间留同样的缝。 */
   .ezfy-page .ezfy-map-table a { font-size: 12px; line-height: 1.25; }
   .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 12px; }
-  /* 窄屏纵向间距同步收一档(桌面 10px → 窄屏 6px)，但比原来(4px)松一点 */
-  .ezfy-page .ezfy-map-table { border-spacing: 6px 6px; }
+  /* 窄屏纵向间距同步收一档(桌面 14px → 窄屏 8px)，但比原来(6px)松一点 */
+  .ezfy-page .ezfy-map-table { border-spacing: 6px 8px; }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
   /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */
