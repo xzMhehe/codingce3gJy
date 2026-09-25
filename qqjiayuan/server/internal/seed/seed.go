@@ -255,6 +255,13 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_res_mult = 1 WHERE wild_res_mult IS NULL OR wild_res_mult <= 0")
 
+		// ★ 2026-09-25：采集资源倍率（默认 1，允许小数；0 / NULL 无意义 → 回落 1）。
+		//   同样用 double，作用点 dispatchGatherYield 的采集产出。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_res_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_res_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 1 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
+
 		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 100")

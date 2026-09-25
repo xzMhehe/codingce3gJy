@@ -1514,6 +1514,10 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 	if ms > 0 && ms < ezfyDispatchPeriod() {
 		amt = amt * ms / ezfyDispatchPeriod()
 	}
+	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 产出 × 倍率（默认 1 = 原样）
+	if gm := ezfyGatherResMult(); gm != 1 {
+		amt = int64(float64(amt) * gm)
+	}
 	amt = max64(0, amt)
 	// ★ 2026-09-24 修复「提前采集资源0」: 驻守过就至少给 1 点资源
 	if ms > 0 && amt < 1 {

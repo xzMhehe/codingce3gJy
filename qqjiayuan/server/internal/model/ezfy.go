@@ -273,6 +273,10 @@ type EzfyCfgLimit struct {
 	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。
 	//   注意：只作用于「打赢的战利品」，不含驻守采集（采集另有自己的产出公式）。
 	WildResMult float64 `gorm:"default:1;comment:野地战利品资源倍率" json:"wild_res_mult"`
+	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
+	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
+	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。0 无意义 → 回落 1。
+	GatherResMult float64 `gorm:"default:1;comment:采集资源倍率" json:"gather_res_mult"`
 
 	// ★ 下面三个是「开关」：1 = 开（按原规则消耗），0 = 关（不消耗）。
 	//   ⚠️ 语义陷阱（踩过）：

@@ -7719,10 +7719,10 @@ body.ezfy-immersive { margin: 0; }
   display: inline-block;     /* 改成块级容器, 才能装上下两行 */
   padding: 0;
   margin: 0;
-  /* ★ 第一行(名称/等级，如「海(8)」)的字号：用户先要求「小 1 号」(16→15)，
-     看了效果又要求「再小 1 号」→ **14px**。坐标行有自己独立的值(13px)，不受这里影响。
-     窄屏同理 14 → 13 → 12，见下面媒体查询。 */
-  font-size: 14px;
+  /* ★ 第一行(名称/等级，如「海(8)」)的字号：历史 16→15→14，2026-09-25 用户反馈「地图看着小了」
+     → 加大 1 号回到 **15px**。坐标行有自己独立的值(14px)，不受这里影响。
+     窄屏同理 12 → 13，见下面媒体查询。 */
+  font-size: 15px;
   line-height: 1.3;
   /* ★ 用户要求「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
      本城(.ezfy-mine)与活动目标(.ezfy-act-*)的颜色是有含义的，下面单独覆盖，不受影响。 */
@@ -7735,12 +7735,13 @@ body.ezfy-immersive { margin: 0; }
 /* 第一行：名称(等级) */
 .ezfy-page .ezfy-map-table a .ezfy-cell-name { display: block; }
 /* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
-   字号定稿过程：12 → 11 →「坐标那行大 1 号」12 →「(272,227) 大 1 号」**13px**。
+   字号定稿过程：12 → 11 →「坐标那行大 1 号」12 →「(272,227) 大 1 号」13px；
+   2026-09-25 用户反馈「地图坐标看着小了」→ 加大 1 号到 **14px**。
    ★ margin-top 是用户要求「上下坐标之间再大一点点」——第一行缩到 14 后两行几乎一样大，
    需要这点缝把它们分开，不然两行糊成一块。 */
 .ezfy-page .ezfy-map-table a .ezfy-cell-xy {
   display: block;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.25;
   margin-top: 4px;
   font-weight: normal;       /* 本城/活动城名字加粗, 坐标不跟着加粗 */
@@ -7797,9 +7798,9 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page table td { padding: 4px 4px; }
   /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
      ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多；
-       第一行跟着桌面一起缩(14 → 13 → 12)，坐标行同样 +1(11 → 12)，两行之间留同样的缝。 */
-  .ezfy-page .ezfy-map-table a { font-size: 12px; line-height: 1.25; }
-  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 12px; }
+       第一行跟着桌面一起缩(15 → 13)，坐标行同样随桌面(14 → 13)，两行之间留同样的缝。 */
+  .ezfy-page .ezfy-map-table a { font-size: 13px; line-height: 1.25; }
+  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 13px; }
   /* 窄屏纵向间距同步收一档(桌面 22px → 窄屏 12px)：纵向间距只影响表格高度、不影响列宽，
      所以这里不需要像横向那样压到极限，留出和桌面接近的呼吸感 */
   .ezfy-page .ezfy-map-table { border-spacing: 6px 12px; }

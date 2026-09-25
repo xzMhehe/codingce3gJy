@@ -29,6 +29,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
+		GatherResMult: ezfyGatherResMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
@@ -71,6 +72,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 野地战利品资源倍率：0 / 负数无意义 → 回落 1
 	if lim.WildResMult <= 0 {
 		lim.WildResMult = ezfyWildResMultDef
+	}
+	// ★ 采集资源倍率：0 / 负数无意义 → 回落 1
+	if lim.GatherResMult <= 0 {
+		lim.GatherResMult = ezfyGatherResMultDef
 	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
@@ -126,17 +131,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
 		// ★ 2026-09-25：野地战利品资源倍率（默认 1，允许小数）
-		WildResMult   *float64 `json:"wild_res_mult"`
+		WildResMult *float64 `json:"wild_res_mult"`
+		// ★ 2026-09-25：采集资源倍率（默认 1，允许小数）
+		GatherResMult *float64 `json:"gather_res_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
 		MarchOilOn    *int     `json:"march_oil_on"`
 		WarRequireOn  *int     `json:"war_require_on"`
 		MarchCapOn    *int     `json:"march_cap_on"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
-		OfficerStarUpOn    *int `json:"officer_star_up_on"`
-		OfficerStarChance  *int `json:"officer_star_chance"`
+		OfficerStarUpOn     *int `json:"officer_star_up_on"`
+		OfficerStarChance   *int `json:"officer_star_chance"`
 		OfficerStarAttrGain *int `json:"officer_star_attr_gain"`
-		OfficerStarMax     *int `json:"officer_star_max"`
+		OfficerStarMax      *int `json:"officer_star_max"`
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径，100 = 100% = 原价，节假日调低 = 便宜）
 		SpeedTrainRate *float64 `json:"speed_train_rate"`
 		WoundHealRate  *float64 `json:"wound_heal_rate"`
@@ -158,6 +165,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
+		GatherResMult: ezfyGatherResMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		OfficerStarUpOn:   ezfyStarUpDef,
@@ -287,6 +295,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.WildResMult = m
+	}
+	// ★ 2026-09-25 采集资源倍率：同样允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
+	if in.GatherResMult != nil {
+		m := *in.GatherResMult
+		if m <= 0 {
+			resp.ParamError(c, "采集资源倍率必须大于 0")
+			return
+		}
+		lim.GatherResMult = m
 	}
 	// ★ 三个玩法开关：0 = 关 / 1 = 开，两个值都合法，**不做** <=0 兜底（0 就是关）。
 	setSwitch := func(v *int, dst *int, name string) bool {
@@ -419,6 +436,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.WildResMult <= 0 {
 		lim.WildResMult = ezfyWildResMultDef
 	}
+	// ★ 采集资源倍率兜底（老行可能是 0 / NULL）
+	if lim.GatherResMult <= 0 {
+		lim.GatherResMult = ezfyGatherResMultDef
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -465,6 +486,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"march_cap_on":    lim.MarchCapOn,
 		"wild_troop_mult": lim.WildTroopMult,
 		"wild_res_mult":   lim.WildResMult,
+		"gather_res_mult": lim.GatherResMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
 		"officer_star_up_on": lim.OfficerStarUpOn,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写

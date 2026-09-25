@@ -656,6 +656,8 @@ const (
 	ezfyWildMultDef    = 1 // 野地兵力倍数：默认 1
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 1
 	ezfyWildResMultDef = 1
+	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 1
+	ezfyGatherResMultDef = 1
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -821,6 +823,22 @@ func ezfyScaleByWildResMult(n int64) int64 {
 		v = 1
 	}
 	return v
+}
+
+// ezfyGatherResMult 常驻采集产出资源倍率（默认 1；0 或负数无意义 → 回落 1）
+//
+// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。
+//
+//	作用点只有一处：ezfy_order.go 的 dispatchGatherYield（采集产出 = 等级 × 800 × 后勤加成 × 陆海系数）。
+//	**不含**战斗战利品（那是 ezfyWildResMult）。
+func ezfyGatherResMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyGatherResMultDef
+	}
+	if m := ezfyCfg.limit.GatherResMult; m > 0 {
+		return m
+	}
+	return ezfyGatherResMultDef
 }
 
 // ezfyWords 取二战聊天敏感词
@@ -997,6 +1015,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
+		GatherResMult: ezfyGatherResMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径，默认 100 = 100% = 原价

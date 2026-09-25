@@ -76,6 +76,10 @@
               <el-input-number v-model.number="form.wild_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
+              <template slot="label">采集资源倍率<el-tooltip placement="top" :content="tips.gather_res_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.gather_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
               <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.dispatch_period_h" :min="1" :max="720" controls-position="right" style="width:180px" />
             </el-form-item>
@@ -176,8 +180,8 @@ export default {
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
-        // ★ 野地兵力倍数 / 野地获取资源倍率（都允许小数，默认 1 = 原样）
-        wild_troop_mult: 1, wild_res_mult: 1,
+        // ★ 野地兵力倍数 / 野地获取资源倍率 / 采集资源倍率（都允许小数，默认 1 = 原样）
+        wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         officer_star_up_on: 1,
@@ -206,6 +210,8 @@ export default {
         wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 1',
         wild_res_mult: '野地 / 海野 / 寇城**战斗胜利后的战利品**资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 1。' +
           '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
+        gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
+          '只影响「采集产出」；战斗胜利的战利品另见上面的「野地获取资源倍率」。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 100',
         war_require_on: '开 = 必须向对方宣战才能掠夺 / 征服其城市；关 = 无需宣战即可直接进攻',
         march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力，随便带多少',
@@ -246,6 +252,7 @@ export default {
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
             wild_res_mult: pos(Number(r.data.wild_res_mult), 1),
+            gather_res_mult: pos(Number(r.data.gather_res_mult), 1),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             recruit_cost_on: sw(r.data.recruit_cost_on),
