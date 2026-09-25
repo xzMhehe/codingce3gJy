@@ -574,7 +574,8 @@
             坐标Y: <input v-model="newCityY" type="number" style="width:70px"/>
             <button @click="doCreateCity">建新城</button>
           </div>
-          <div class="gray" style="font-size:14px">
+          <!-- ★ 2026-09-25 去掉内联 font-size:14px，改为继承全站统一字号（--fs） -->
+          <div class="gray">
             <b>平原</b> → 内陆城市; <b>沿海平原</b> → 沿海城市(可建航海协会、训练海军)。<br/>
             其他地形(含海洋)不能建城; 新城自带基础建筑(市政厅/民居/农田1级), 建造后可在上方列表切换操作。
           </div>
@@ -2665,11 +2666,13 @@
             <button @click="doPlayerRename">确定</button>
             <a href="javascript:;" @click="renameEditing = false">[取消]</a>
           </template>
-          <div class="gray" style="font-size:13px">{{ renameHint }}</div>
+          <!-- ★ 2026-09-25 去掉内联 font-size:13px，改为继承全站统一字号（--fs） -->
+          <div class="gray">{{ renameHint }}</div>
           阵营：{{ selfInfo.camp_name || (profile.camp === 2 ? '轴心国' : '同盟国') }}
           <a href="javascript:;" @click="doChangeCamp(1)">[转同盟国]</a>
           <a href="javascript:;" @click="doChangeCamp(2)">[转轴心国]</a>
-          <div class="gray" style="font-size:13px">{{ campHint }}</div>
+          <!-- ★ 2026-09-25 去掉内联 font-size:13px，改为继承全站统一字号（--fs） -->
+          <div class="gray">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
           军衔：{{ rankName }}({{ rankPost }})<br/>
           城市数：{{ cities.length }}<br/>
@@ -6650,20 +6653,55 @@ body.ezfy-immersive { margin: 0; }
   color: #333;
   /* ★ 字体族: 2026-09-24 用户反馈「微软雅黑不好看」→ 改复古宋体风
      （3GQQ 时代 WAP 文字游戏的主流样式, 标题/正文统一宋体更有怀旧味）。
-     回退链: Windows→宋体/SimSun, macOS→宋体-简(Songti SC), 其余→serif。 */
+     回退链: Windows→宋体/SimSun, macOS→宋体-简(Songti SC), 其余→serif。
+     ★ 2026-09-25：**只保留在桌面**。手机上换成系统黑体，见下面的 @supports 段。 */
   font-family: '宋体', 'SimSun', 'Songti SC', 'NSimSun', '新宋体', serif;
-  /* ★ 17px 基准(2026-09-24 用户要求「标准文字微调 +1 看看效果」, 从 16px 整体上调一档)：
-     演变: 原版 19px 嫌大 → 18px 嫌笨 → 16px 小字阶梯 → 今次 16 → 17。
-     配套阶梯: 标题栏 18(用户点名「二战征途-【1区】红色警戒」勿动) / 小标题 18 /
-     导航 17(用户要求与正文同号) / 正文·表格 17 / 表单 16 / 按钮·战报·聊天框 15 /
-     次要信息·页脚·提示条 13~14 / 地图格 11 / 商城分类 15(地图、商城有特殊交互,
-     不参与全局调整)。 */
-  font-size: 17px;
+  /* ★ 2026-09-25 用户要求「页面文字大小除了地图，全部改成和首页导航(聊天/邮箱/军情/任务/好友/首页)一样大」：
+     首页导航字号 17px 定为**全站唯一基准** —— 除地图格(.ezfy-map-table / .ezfy-cell)外，
+     页面所有文字都取这个变量。以后要整体调大小，只改这一行。
+     例外（都是「非正文」或布局硬约束，已在各自规则里注明）：
+       ① .title-bar 标题栏 18px —— 用户此前明确点名「勿动」；
+       ② .panel-title 小标题 18px —— 标题与正文拉开一档；
+       ③ 地图格 + 战场指挥室表格 —— 手机上列数太多，必须缩（见各自媒体查询）。 */
+  --fs: 17px;
+  font-size: var(--fs);
+  /* ★ 2026-09-25 iPhone 修复①：iOS Safari 会按视口宽度**自动放大/缩小正文**，
+     不锁死的话同一段文字在 iPhone 和桌面看到的字号不一致（用户反馈「手机上字体不好看」）。
+     100% = 完全按 CSS 里写的字号来，不做任何自动缩放。 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   line-height: 1.5;
   /* 根容器左右不再用负 margin: 会溢出 #app 产生横向滚动条.
      铺满由内部 .title-bar 的 margin:0 -8px 抵消 padding 实现 */
   margin: 0;
   padding: 0 8px 20px;
+}
+/* ★ 2026-09-25 iPhone 修复②（关键的一条）：**iOS 上没有「宋体 / SimSun」这两个字体**，
+   于是回退到系统自带的 **Songti SC（宋体-简）** —— 它是衬线体、笔画极细，
+   小字号在 Retina 屏上又细又灰、边缘发虚，观感比 Windows 的 SimSun 差一大截，
+   这就是用户说的「iPhone 上字体不好看」。
+   处理：**桌面保留复古宋体**（用户 2026-09-24 明确要的风格），
+        **iOS / 安卓手机改用系统黑体**（苹方 PingFang SC / 黑体），
+        与《镜花缘》(Jingwt.vue)、《西游记》(Xiyou.vue) 两个模块的字体族保持一致。
+   用 `-webkit-touch-callout` 圈定：这个属性**只有 iOS Safari 支持**，
+   Windows / macOS 桌面浏览器一律不匹配，所以桌面端完全不受影响。 */
+@supports (-webkit-touch-callout: none) {
+  .ezfy-page,
+  .ezfy-page button,
+  .ezfy-page input,
+  .ezfy-page select,
+  .ezfy-page textarea {
+    font-family: -apple-system, 'PingFang SC', 'Heiti SC', 'Hiragino Sans GB',
+                 'Microsoft YaHei', '微软雅黑', sans-serif;
+  }
+}
+/* 安卓同理：宋体在安卓上回退到 Noto Serif CJK，也是细衬线体，手机上不好看。
+   （`hover:none + pointer:coarse` = 触屏设备；带鼠标的触屏笔记本不匹配，不受影响。） */
+@media (hover: none) and (pointer: coarse) {
+  .ezfy-page {
+    font-family: -apple-system, 'PingFang SC', 'Heiti SC', 'Noto Sans CJK SC',
+                 'Source Han Sans SC', 'Microsoft YaHei', '微软雅黑', sans-serif;
+  }
 }
 /* 表单控件/按钮默认不继承字体族, 显式补上(原版也是 body,button,input,select,textarea 一起设) */
 .ezfy-page button,
@@ -6673,7 +6711,7 @@ body.ezfy-immersive { margin: 0; }
   font-family: inherit;
 }
 .ezfy-page .home-wrap {
-  font-size: 17px;
+  font-size: var(--fs);
 }
 .ezfy-page a {
   text-decoration: none;
@@ -6684,6 +6722,8 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .title-bar {
   background: #050709;
   color: #fff;
+  /* ★ 2026-09-25：用户此前明确点名「二战征途-【1区】红色警戒」这一行勿动 → 保留 18px，
+     没有跟着全站统一成 var(--fs)。要一起拉平说一声。 */
   font-size: 18px;
   font-weight: bold;
   text-align: left;
@@ -6706,8 +6746,9 @@ body.ezfy-immersive { margin: 0; }
      ★ 必须与下面 .ezfy-subnav a 保持同一个值，否则「点进去二级菜单变宽/变窄」。 */
   padding: 2px 3px;
   line-height: 1.35;
-  /* ★ 用户反馈「聊天/邮箱/军情/任务/好友/首页 字体有点小」→ 15 → 17 */
-  font-size: 17px;
+  /* ★★ 这一行就是全站字号基准（--fs）的来源：用户 2026-09-25 要求
+     「页面文字除了地图，全部和首页导航一样大」→ 其它地方一律写 var(--fs)。 */
+  font-size: var(--fs);
 }
 /* ★ 用户反馈「导航整体有点靠右」：每个链接自带 padding + 1px margin，
    于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移。
@@ -6723,8 +6764,8 @@ body.ezfy-immersive { margin: 0; }
   display: inline;
   padding: 0 1px;
   margin: 0 1px;
-  /* ★ 字号与 .top-nav a 统一为 17px */
-  font-size: 17px;
+  /* ★ 字号与 .top-nav a 统一（同一个变量，改一处两处一起变） */
+  font-size: var(--fs);
   color: #004299;
 }
 .ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
@@ -6761,7 +6802,8 @@ body.ezfy-immersive { margin: 0; }
   background: #dedede;
   color: #666;
   font-weight: bold;
-  font-size: 13px;
+  /* ★ 2026-09-25 随全站统一：13 → var(--fs)（奖牌里的名次数字也是页面文字） */
+  font-size: var(--fs);
   text-align: center;
   border: 1px solid transparent;
   box-sizing: border-box;
@@ -6771,20 +6813,21 @@ body.ezfy-immersive { margin: 0; }
   color: #7a4b00;
   border-color: #e0b93c;
   box-shadow: 0 0 6px rgba(242, 201, 76, .8);
-  font-size: 15px;
+  /* 冠军奖牌大一号，随基准同步 +2 */
+  font-size: calc(var(--fs) + 2px);
   min-width: 26px; height: 26px; line-height: 24px; border-radius: 13px;
 }
 .ezfy-page .rank-medal.m2 {                          /* 银 */
   background: linear-gradient(180deg, #f2f5f7, #cbd4da);
   color: #455a64;
   border-color: #b9c4cb;
-  font-size: 14px;
+  font-size: var(--fs);
 }
 .ezfy-page .rank-medal.m3 {                          /* 铜 */
   background: linear-gradient(180deg, #f2cdab, #e0a370);
   color: #5d3a1a;
   border-color: #c88a58;
-  font-size: 14px;
+  font-size: var(--fs);
 }
 /* 冠军皇冠 */
 .ezfy-page .rank-crown {
@@ -6835,8 +6878,8 @@ body.ezfy-immersive { margin: 0; }
   flex-wrap: wrap;
   gap: 2px 10px;
   margin: 2px 0;
-  /* ★ 商城「二级分类」(如道具分类/装备部位) 比一级分类(acade-tab 16px) 小一号 */
-  font-size: 15px;
+  /* ★ 2026-09-25 随全站统一：15 → var(--fs)（分类链接也是页面文字，不再单独小一号） */
+  font-size: var(--fs);
 }
 .ezfy-page .ezfy-slot-grid > a { white-space: nowrap; }
 /* ★ 购买 / 开箱面板：卡片式，和上方表格拉开层次（原来只是行内一条左边框，挤成一坨） */
@@ -6875,7 +6918,8 @@ body.ezfy-immersive { margin: 0; }
   min-height: 44px;
   max-height: 160px;
   padding: 4px 6px;
-  font-size: 15px;
+  /* ★ 2026-09-25 随全站统一：15 → var(--fs)（聊天框里的字和正文一样大） */
+  font-size: var(--fs);
   line-height: 1.5;
   font-family: inherit;
   border: 1px solid #c8c8c8;
@@ -6893,7 +6937,8 @@ body.ezfy-immersive { margin: 0; }
 /* 页面内消息（替代 alert 弹窗）：现在由 msgStyle 固定定位在点击点附近 */
 .ezfy-page .ezfy-msg {
   padding: 4px 8px; border-radius: 3px;
-  font-size: 14px; line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
+  /* ★ 2026-09-25 随全站统一：14 → var(--fs)（提示条也是页面文字） */
+  font-size: var(--fs); line-height: 1.5; border-left: 3px solid #999; background: #f5f5f5;
 }
 
 .ezfy-page .ezfy-msg-ok { border-left-color: #27763c; background: #eef7f0; color: #1d5c2e; }
@@ -6904,14 +6949,16 @@ body.ezfy-immersive { margin: 0; }
   margin: 6px 0; padding: 8px; border: 1px solid #d8c890;
   background: #fffbe8; border-radius: 4px;
 }
-.ezfy-page .ezfy-ask-text { font-size: 14px; color: #7a5c10; margin-bottom: 6px; }
+/* ★ 2026-09-25 随全站统一：14 → var(--fs) */
+.ezfy-page .ezfy-ask-text { font-size: var(--fs); color: #7a5c10; margin-bottom: 6px; }
 .ezfy-page .ezfy-ask-row { margin-top: 4px; }
 .ezfy-page .ezfy-ask-ok { font-weight: bold; color: #27763c; margin-right: 12px; }
 .ezfy-page .ezfy-ask-cancel { color: #999; }
 /* 底部 15 项导航(复刻原版 cityHome.html 的两行) */
 .ezfy-page .ezfy-bottom-nav {
   padding: 1px 0;
-  font-size: 17px;
+  /* ★ 2026-09-25 随全站统一：与首页导航同号（同一个变量） */
+  font-size: var(--fs);
   line-height: 1.75;
 }
 /* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
@@ -6933,7 +6980,7 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .panel { margin-top: 8px; padding: 2px; }
 .ezfy-page .acade-tab {
   padding: 3px 0;
-  font-size: 17px;   /* 与正文同号(2026-09-24 正文 16→17 同步) */
+  font-size: var(--fs);   /* ★ 2026-09-25 随全站统一（原来写死 17px） */
   color: #666;
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
@@ -6963,8 +7010,9 @@ body.ezfy-immersive { margin: 0; }
 }
 .ezfy-page .build-tip a { margin-left: 8px; color: #999; }
 .ezfy-page .panel-title {
-  /* ★ 统一字号阶梯: 正文 17 / 小标题 18 / 标题栏 18(勿动)。2026-09-24 正文 16→17 后小标题同步 +1 */
-  font-size: 18px;
+  /* ★ 2026-09-25：小标题比正文大一号（正文已统一为 var(--fs)）。
+     这是「标题 vs 正文」的层次，不是漏改 —— 要一起拉平说一声即可。 */
+  font-size: calc(var(--fs) + 1px);
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
@@ -6986,15 +7034,16 @@ body.ezfy-immersive { margin: 0; }
        原来是「输入框里塞占位符 0~59108」，框一窄就被截成 0-0，很难看。
    注意：.of-cell 仍保持 .old-line 的 2px 上下 padding，整页行距节奏不变。 */
 .ezfy-page .of-sec {
-  font-size: 17px;
+  /* ★ 2026-09-25 随全站统一：写死 17px → var(--fs)（靠加粗+下虚线区分层次） */
+  font-size: var(--fs);
   font-weight: bold;
   color: #2f4156;
   margin: 8px 0 2px;
   padding-bottom: 1px;
   border-bottom: 1px dashed #d8d5cc;
 }
-/* 分区标题里的补充说明（小一号、不抢视觉） */
-.ezfy-page .of-sec .of-hint { font-size: 14px; font-weight: normal; color: #8a8a8a; }
+/* 分区标题里的补充说明（★ 2026-09-25 随全站统一：14 → var(--fs)，靠颜色+不加粗弱化） */
+.ezfy-page .of-sec .of-hint { font-size: var(--fs); font-weight: normal; color: #8a8a8a; }
 .ezfy-page .of-grid {
   display: grid;
   gap: 0 16px;
@@ -7121,7 +7170,8 @@ body.ezfy-immersive { margin: 0; }
    .ezfy-ask（操作结果提示条），负 margin 会把这 4px 从提示条的下边距里扣掉，
    公告行就会贴住提示条（实测只剩 5px）。 */
 .ezfy-page .ezfy-notices { margin: 0 0 2px; }
-.ezfy-page .city-name { font-size: 17px; font-weight: bold; color: #2f4156; }
+/* ★ 2026-09-25 随全站统一：写死 17px → var(--fs) */
+.ezfy-page .city-name { font-size: var(--fs); font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 无边框、字号对齐正文。
    ★ 2026-09-24 用户要求「表格固定宽度、切 tab 不因字数不一样变动」：
      table-layout:fixed + width:100% → 列宽按列数均分固定，与单元格内容完全无关，
@@ -7134,9 +7184,8 @@ body.ezfy-immersive { margin: 0; }
   max-width: 920px;
   margin: 0;
   border-collapse: collapse;
-  /* ★ 表格字号对齐正文(17px): 之前 15px 比正文小两号, 表格密集的页面看起来字体忽大忽小
-     ★ 2026-09-24 正文 16→17, 表格按注释原意落实为 17 与正文同号 */
-  font-size: 17px;
+  /* ★ 表格字号对齐正文（2026-09-25 起 = var(--fs)，窄屏也不再单独缩一档） */
+  font-size: var(--fs);
 }
 /* 地图 5×5 格子 / 战场指挥室：恢复按内容自适应，不参与全局固定均分 */
 .ezfy-page .ezfy-map-table,
@@ -7195,7 +7244,7 @@ body.ezfy-immersive { margin: 0; }
 }
 /* 返回按钮与 [造兵]/[建防]/[退出军团] 等普通操作链接同款: 纯文字链接, 无填充 */
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
-.ezfy-page .footer { text-align: center; font-size: 13px; color: #999; padding: 4px 0 10px; }
+.ezfy-page .footer { text-align: center; font-size: var(--fs); color: #999; padding: 4px 0 10px; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }
@@ -7213,8 +7262,8 @@ body.ezfy-immersive { margin: 0; }
   border: 1px solid #999;
   border-radius: 0;
   padding: 3px 4px;
-  /* ★ 表单 16px：比正文(17px)小一号，避免输入框把行撑高 */
-  font-size: 16px;
+  /* ★ 2026-09-25 随全站统一：表单 16 → var(--fs)（用户要求所有文字一样大） */
+  font-size: var(--fs);
   background: #fff;
   color: #333;
 }
@@ -7223,8 +7272,8 @@ body.ezfy-immersive { margin: 0; }
   border-radius: 0;
   background: #e8e5dd;
   color: #333;
-  /* ★ 按钮 15px：比正文小二号，视觉上不抢正文 */
-  font-size: 15px;
+  /* ★ 2026-09-25 随全站统一：按钮 15 → var(--fs)（用户要求所有文字一样大） */
+  font-size: var(--fs);
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -7233,7 +7282,8 @@ body.ezfy-immersive { margin: 0; }
   white-space: pre-wrap;
   word-wrap: break-word;
   font-family: inherit;
-  font-size: 15px;
+  /* ★ 2026-09-25 随全站统一：战报正文 15 → var(--fs) */
+  font-size: var(--fs);
   background: #fff;
   border: 1px solid #ddd;
   padding: 6px;
@@ -7335,17 +7385,16 @@ body.ezfy-immersive { margin: 0; }
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
    实测基准: iPhone SE 320、常见安卓 360/390。
-   ★ 窄屏整体缩一档(表格 14 / 正文 15 / 标题 16)，与桌面端保持同一层次关系。
-     （2026-09-24 桌面正文 16→17 后窄屏同步 +1；导航 subnav/bottom-nav 15px 与窄屏正文同号, 不随动） */
+   ★ 2026-09-25 用户要求「页面文字除了地图全部和首页导航一样大」→
+     **这里不再整体缩一档**（原来 表格14/正文15/标题16/导航15 那套阶梯已删除），
+     正文·标题·导航·表格·按钮·表单一律沿用 var(--fs)。
+   仍然保留缩小的只有两类（属于布局硬约束，不缩就必然溢出）：
+     ① 地图格（5 列 × 两行文字）
+     ② 战场指挥室表格（7 列，见文件末尾它自己的媒体查询）
+   另保留表格单元格内边距（省空间，与字号无关）。 */
 @media (max-width: 420px) {
-  .ezfy-page table { font-size: 14px; }
   .ezfy-page table th,
   .ezfy-page table td { padding: 4px 4px; }
-  .ezfy-page .old-line { font-size: 15px; line-height: 1.7; }
-  .ezfy-page .panel-title { font-size: 16px; }
-  .ezfy-page .acade-tab { font-size: 15px; }
-  .ezfy-page .ezfy-subnav a { font-size: 15px; }
-  .ezfy-page .ezfy-bottom-nav { font-size: 15px; line-height: 2; }
   /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
      ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多；
        第一行跟着桌面一起缩(14 → 13 → 12)，坐标行同样 +1(11 → 12)，两行之间留同样的缝。 */
@@ -7358,8 +7407,10 @@ body.ezfy-immersive { margin: 0; }
   /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */
   .ezfy-page .ezfy-dir-nav a { margin-right: 6px; }
   .ezfy-page input, .ezfy-page select { max-width: 100%; }
-  /* 出征页格子（名称+输入框+现有）：320px 下单列也要放得下，收窄名称/输入框/数量列 */
-  .ezfy-page .of-grid-troop .of-cell .of-name { width: 9em; }
+  /* 出征页兵力行：320px 下名称列收窄，滑块才有拖动空间（字号不缩，仍 var(--fs)） */
+  .ezfy-page .of-row .of-name { width: 9em; }
+  .ezfy-page .of-row input.of-num { width: 64px; }
+  /* 随军资源格子：名称+输入框+现有数量在 320px 下要放得下 */
   .ezfy-page .of-cell input.of-num { width: 56px; }
   .ezfy-page .of-cell .of-avail { min-width: 3.6em; }
 }
@@ -7398,8 +7449,8 @@ body.ezfy-immersive { margin: 0; }
 /* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
 .ezfy-page .ezfy-pager {
   margin: 8px 0 4px;
-  /* ★ 分页条用「小字」档: 它是辅助信息, 不该和正文抢视线 */
-  font-size: 15px;
+  /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（用户要求所有文字一样大） */
+  font-size: var(--fs);
 }
 .ezfy-page .ezfy-pager a {
   margin: 0 4px;
@@ -7412,7 +7463,5 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .ezfy-pager span.gray {
   margin: 0 6px;
 }
-@media (max-width: 420px) {
-  .ezfy-page .ezfy-pager { font-size: 13px; }
-}
+/* ★ 2026-09-25 随全站统一：分页条窄屏也不缩（原来 13px） */
 </style>
