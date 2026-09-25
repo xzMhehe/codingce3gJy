@@ -209,11 +209,19 @@ func (h *EzfyHandler) Upgrade(c *gin.Context) {
 	h.done(c, h.upgradeBuilding(city, req.RecordId), "建筑已开始升级")
 }
 
+// MaxLevel 一键升级建筑
+//
+// ★ 2026-09-25 用户纠正「一键9级 不对，是一键升级到 9 级，而不是升级满」：
+//   按钮文案是「一键{{max_level-1}}级」，那就必须**升到那一级为止**（停在 9 级，
+//   不越过 9→10 这道要建筑图纸的坎、也不升到满级）。target_level 由前端下发，
+//   后端按「目标等级」结算资源与图纸；没带目标等级时仍按「升到满级」兼容。
 func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
+		// 目标等级（0 = 不带，按建筑上限升满）
+		TargetLevel int `json:"target_level"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -221,7 +229,14 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.done(c, h.maxLevelBuilding(city, req.RecordId), "建筑已升到最高级")
+	target, msg := h.maxLevelBuilding(city, req.RecordId, req.TargetLevel)
+	if msg == "" {
+		msg = "建筑已一键升级"
+		if target > 0 {
+			msg = fmt.Sprintf("建筑已一键升级到%d级", target)
+		}
+	}
+	h.done(c, msg, msg)
 }
 
 func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
@@ -1795,6 +1810,9 @@ func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare,
 func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
 	// ★ 2026-09-23：安全加法（不按仓储上限截断，但仍受数值安全上限保护，不会溢出翻负）
+	// ★ 2026-09-25 复查：这里**刻意不套**「资源最大值」—— 本函数是「NoCap」语义通道
+	//   （签到/任务/礼包 + 管理端 GM 发放共用，且 amount 允许为负做扣减），
+	//   管理端要能故意发出超过上限的量；玩家侧的入库累加都在 ezfyResAddExpr / addResToCityDB。
 	city.Food = ezfyAddRes(city.Food, food)
 	city.Steel = ezfyAddRes(city.Steel, steel)
 	city.Oil = ezfyAddRes(city.Oil, oil)

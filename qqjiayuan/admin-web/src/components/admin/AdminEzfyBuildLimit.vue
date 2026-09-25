@@ -107,6 +107,28 @@
               <template slot="label">训练加速黄金倍率(%)<el-tooltip placement="top" :content="tips.speed_train_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-25：资源最大值（每项资源的入库累加硬上限），5 项一组，默认 100 亿 -->
+            <el-divider content-position="left">资源最大值（每项资源的硬上限，默认 100 亿）</el-divider>
+            <el-form-item>
+              <template slot="label">粮食最大值<el-tooltip placement="top" :content="tips.res_max_food"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_max_food" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">钢铁最大值<el-tooltip placement="top" :content="tips.res_max_steel"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_max_steel" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">石油最大值<el-tooltip placement="top" :content="tips.res_max_oil"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_max_oil" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">稀有矿最大值<el-tooltip placement="top" :content="tips.res_max_rare"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_max_rare" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">黄金最大值<el-tooltip placement="top" :content="tips.res_max_gold"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_max_gold" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ⑤ 玩法开关 -->
@@ -183,6 +205,9 @@ export default {
         // ★ 野地兵力倍数 / 野地获取资源倍率 / 采集资源倍率（都允许小数，默认 1 = 原样）
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
+        // ★ 资源最大值：每项资源的入库累加硬上限，默认 100 亿 = 10000000000
+        res_max_food: 10000000000, res_max_steel: 10000000000, res_max_oil: 10000000000,
+        res_max_rare: 10000000000, res_max_gold: 10000000000,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         officer_star_up_on: 1,
         officer_star_chance: 20,
@@ -213,6 +238,22 @@ export default {
         gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
           '只影响「采集产出」；战斗胜利的战利品另见上面的「野地获取资源倍率」。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 100',
+        // ★ 资源最大值：文案统一口径 = 入库累加硬上限（不限制自动产量，自动产量仍看仓库上限）
+        res_max_food: '粮食的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
+          '累加到该值后不再增加；自动产量（农田等产出）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
+          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
+        res_max_steel: '钢铁的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的钢铁会无条件累加，' +
+          '累加到该值后不再增加；自动产量（炼钢厂等产出）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
+          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
+        res_max_oil: '石油的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的石油会无条件累加，' +
+          '累加到该值后不再增加；自动产量（石油基地等产出）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
+          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
+        res_max_rare: '稀有矿的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的稀有矿会无条件累加，' +
+          '累加到该值后不再增加；自动产量（稀矿厂等产出）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
+          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
+        res_max_gold: '黄金的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的黄金会无条件累加，' +
+          '累加到该值后不再增加；自动产出（如有）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
+          '可填范围 1 ~ 1000000000000（1 万亿），最小值 1（填 0 或负数会被后端拒绝）。',
         war_require_on: '开 = 必须向对方宣战才能掠夺 / 征服其城市；关 = 无需宣战即可直接进攻',
         march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力，随便带多少',
         recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 不消耗资源、也不占人口',
@@ -255,6 +296,12 @@ export default {
             gather_res_mult: pos(Number(r.data.gather_res_mult), 1),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
+            // ★ 资源最大值：int64，直接用 Number（1e15 内精确）；非数字 / 0 / 负数一律回落 100 亿
+            res_max_food: pos(Number(r.data.res_max_food) || 0, 10000000000),
+            res_max_steel: pos(Number(r.data.res_max_steel) || 0, 10000000000),
+            res_max_oil: pos(Number(r.data.res_max_oil) || 0, 10000000000),
+            res_max_rare: pos(Number(r.data.res_max_rare) || 0, 10000000000),
+            res_max_gold: pos(Number(r.data.res_max_gold) || 0, 10000000000),
             recruit_cost_on: sw(r.data.recruit_cost_on),
             food_upkeep_on: sw(r.data.food_upkeep_on),
             march_oil_on: sw(r.data.march_oil_on),

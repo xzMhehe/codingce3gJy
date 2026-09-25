@@ -658,7 +658,9 @@
             <template v-else-if="b.level > 0 && b.level < b.max_level">
               <span class="build-act">
                 <a href="javascript:;" @click="doUpgrade(b)">升级</a>
-                <a href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
+                <!-- ★ 2026-09-25 用户纠正：按钮语义是「一键升级到 max_level-1 级」，
+                     已经到达该等级就不再显示（原来会显示成 9 级但实际升满级） -->
+                <a v-if="b.level < b.max_level - 1" href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
                 <a v-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
               </span>
             </template>
@@ -1539,32 +1541,57 @@
           </div>
           <a href="javascript:;" @click="go('orders')">[返回出征队列]</a>
         </div>
+        <!-- ★ 2026-09-25：原来这里没有 v-else —— 刷新后 curOrder 丢了就整页空白（用户报「刷新页面消失」）。
+             现在给兜底提示 + 回队列的入口，任何情况下都不会白屏。 -->
+        <div class="panel" v-else>
+          <div class="old-line">命令不存在或已结束</div>
+          <div class="old-line gray">可能该命令已经完成/被取消，战报里仍可查到。</div>
+          <a href="javascript:;" @click="go('orders')">[返回出征队列]</a>
+        </div>
       </template>
 
       <!-- ============ 出征队列(orders) ============ -->
+      <!-- ★ 2026-09-25 用户要求「出征队列按照军队动态那种展示」：
+           数据源改成 /reports/dynamics（与「军情 → 军队动态」同一个接口、同一套字段），
+           渲染样式也照抄军队动态的竖排块（命令/目标/状态/军官/时间/待带回/操作），
+           比原来的 6 列表格信息全得多（原来没有待带回、没有指挥室入口）。
+           ★ 同时修「刷新后消失」：本页数据在 go('orders') 里重新拉，
+             不再依赖内存里的旧数组；命令详情页也带了 oid 到 URL（见 syncUrl/restoreFromUrl）。 -->
       <template v-else-if="cur === 'orders'">
         <div class="panel">
-          <div class="panel-title">出征队列({{ orders.length }})</div>
-          <table>
-            <tr><th>命令</th><th>目标</th><th>状态</th><th>军官</th><th>抵达时间</th><th>操作</th></tr>
-            <tr v-for="o in orders" :key="'odl' + o.id">
-              <td>{{ o.type_name }}</td>
-              <td>({{ o.target_x }},{{ o.target_y }})</td>
-              <td>{{ orderStatusText(o) }}</td>
-              <td>{{ o.officer || '无' }}</td>
-              <td>{{ o.arrive_text }}</td>
-              <td>
-                <a href="javascript:;" @click="openOrder(o)">[查看]</a>
-                <!-- ★ 指挥室：战斗中的部队在这里也能直接进指挥（与军情→军队动态同一个入口） -->
-                <a v-if="o.status === 5" class="red"
-                   href="javascript:;" @click="openBattle(o.id)">[指挥]</a>
-                <!-- ★ 出征队列取消：不限命令类型，行进中(0)/驻守中(1)都能取消 -->
-                <a v-if="o.status === 0 || o.status === 1" class="red"
-                   href="javascript:;" @click="doRecall(o)">[取消]</a>
-              </td>
-            </tr>
-          </table>
-          <div class="old-line" v-if="!orders.length">(暂无出征部队)</div>
+          <div class="panel-title">出征队列({{ queueItems.length }})</div>
+          <div class="old-line gray">
+            包含行军中 / 战斗中 / 返航中 / 驻守采集的全部部队；驻守空闲的部队需点 [采集] 才开始采集。
+          </div>
+          <div class="old-line" v-for="o in queueItems" :key="'oq' + o.id">
+            命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
+            目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
+            <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
+            状态：{{ o.status_name }}
+            <template v-if="o.can_command">
+              <a href="javascript:;" class="red" @click="openBattle(o.id)">[指挥]</a>
+              <span class="gray">第{{ o.battle_round || 1 }}/{{ o.battle_max }}回合</span>
+            </template>
+            <template v-else-if="o.status === 1 && !o.arrive_time">
+              <a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a>
+            </template>
+            <br/>
+            军官：{{ o.officer || '无' }}<br/>
+            {{ o.time_label }}：{{ o.time_text }}<br/>
+            <span v-if="o.carry_total > 0" class="green">
+              待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
+              （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
+            </span>
+            <br/>
+            <span v-if="o.status === 0 || o.status === 1">
+              <a href="javascript:;" class="red" @click="doRecall(o)">[取消]</a><br/>
+            </span>
+            --------------------
+          </div>
+          <div class="old-line" v-if="!queueItems.length">(暂无出征部队)</div>
+          <div class="old-line">
+            <a href="javascript:;" @click="loadDynamics">[刷新]</a>
+          </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -4412,6 +4439,10 @@ export default {
     dynStation () {
       return this.dynamics.filter(o => o.status === 1)
     },
+    // ★ 2026-09-25 出征队列页的数据 = 军队动态全集（行进/战斗/返航/驻守都在内，一次展示完）
+    queueItems () {
+      return this.dynamics || []
+    },
     // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
     dynMarchTotalPages () {
       return Math.max(1, Math.ceil(this.dynMarch.length / this.dynSize))
@@ -4631,6 +4662,10 @@ export default {
         params.set('cur', this.cur)
         if (this.cur === 'res' && this.resType) params.set('res', this.resType)
         else params.delete('res')
+        // ★ 2026-09-25：命令详情页的订单 id 也写进 URL，刷新后才能恢复（原来只在内存里）
+        if (this.cur === 'orderview' && this.curOrder && this.curOrder.id) {
+          params.set('oid', this.curOrder.id)
+        } else params.delete('oid')
         const qs = params.toString()
         const next = base + (qs ? '?' + qs : '')
         history.replaceState(history.state, '', location.pathname + location.search + next)
@@ -4641,6 +4676,7 @@ export default {
     restoreFromUrl () {
       let cur = ''
       let res = ''
+      let oid = ''
       try {
         const hash = location.hash || ''
         const qi = hash.indexOf('?')
@@ -4648,9 +4684,17 @@ export default {
           const params = new URLSearchParams(hash.slice(qi + 1))
           cur = params.get('cur') || ''
           res = params.get('res') || ''
+          oid = params.get('oid') || ''
         }
       } catch (e) {}
       if (res) this.resType = res
+      // ★ 2026-09-25 修复「命令详情页刷新后消失」：curOrder 不在 URL 里，
+      //   刷新时必须按 oid 重新拉一次详情；拉不到就退回出征队列（绝不留空白页）。
+      if (cur === 'orderview') {
+        if (parseInt(oid, 10) > 0) this.loadOrderView(oid)
+        else this.go('orders')
+        return
+      }
       // 没写 cur、或就是 home：保持默认首页即可（go('home') 会重复拉一遍数据）
       if (!cur || cur === 'home') return
       // ★ 复用 go()：所有页面分支的加载逻辑都在它里面，
@@ -4751,7 +4795,11 @@ export default {
         this.loadCorps()
         this.switchCorpsTab(this.corpsTab)
       }
-      else if (t === 'orders') this.loadOrders()
+      else if (t === 'orders') {
+        // ★ 2026-09-25 用户要求「出征队列按照军队动态那种展示」→ 数据源与军队动态统一：
+        //   每次进页都重新拉一遍（刷新页面后也是走这里），队列不会再「刷新就消失」。
+        this.loadDynamics()
+      }
       else if (t === 'battle') {
         // ★ 战场页刷新后不能只靠 URL 恢复：订单 id 只存在内存里，刷新就丢了。
         //   所以带 id 就直接拉，没带就从后端找回当前进行中的那场战斗。
@@ -5712,14 +5760,24 @@ export default {
       })
     },
     doMaxLevel (b) {
-      api.post('/games/ezfy/building/max-level', { record_id: b.id }).then(r => {
+      // ★ 2026-09-25 用户纠正「一键9级 = 一键升级到 9 级，而不是升级满」：
+      //   按钮文案是「一键{{max_level-1}}级」，就把目标等级一起发给后端（target_level），
+      //   后端按目标级结算资源/图纸并停在那一级（不越过 9→10 这道要建筑图纸的坎）。
+      const target = Math.max(1, (b.max_level || 1) - 1)
+      api.post('/games/ezfy/building/max-level', { record_id: b.id, target_level: target }).then(r => {
         if (r.code === 0) {
-          this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '已升到最高级', type: 'ok' }
+          this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : ('已一键升级到' + target + '级'), type: 'ok' }
           this.load()
         } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
-    doDeleteBuilding (b) {
+    // ★ 2026-09-25 用户要求「拆除询问下玩家是否拆除，玩家可能按错了」→ 先二次确认再拆
+    //   （拆除是逐级降级，降到 0 级才彻底移除，提示里把这个后果说清楚）
+    async doDeleteBuilding (b) {
+      const nm = (b && b.name) || '该建筑'
+      const lv = b && b.level ? ('' + b.level + '级') : ''
+      const ok = await this.ask('确定拆除「' + nm + '」' + lv + '吗？\n拆除是逐级降级（每次降 1 级），降到 0 级才彻底移除，且不退还建造资源。')
+      if (!ok) return
       api.post('/games/ezfy/building/delete', { record_id: b.id }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '建筑已拆除', type: 'ok' }
@@ -6054,10 +6112,22 @@ export default {
       Promise.all(list).then(() => this.notify('战斗配置已保存'))
     },
     openOrder (o) {
-      api.get('/games/ezfy/orders/' + o.id).then(r => {
+      this.loadOrderView(o.id)
+    },
+    // ★ 2026-09-25 统一进「命令详情」的入口：拉详情 + 用 go() 把页面写进 URL。
+    //   原来 openOrder 直接改 this.cur（不写 URL），刷新后就掉回上一个页面，
+    //   看起来就是「出征队列/详情刷新后消失」。现在带 oid 进 URL，
+    //   刷新时 restoreFromUrl 会按 oid 重新拉回来（见下方）。
+    loadOrderView (orderId) {
+      const oid = parseInt(orderId, 10)
+      if (!oid) return
+      api.get('/games/ezfy/orders/' + oid).then(r => {
         if (r.code === 0) {
           this.curOrder = r.data
-          this.cur = 'orderview'
+          this.go('orderview')
+        } else {
+          this.notify(r.msg || '命令不存在或已结束')
+          this.go('orders')
         }
       })
     },
@@ -8034,8 +8104,14 @@ body.ezfy-immersive { margin: 0; }
    ★ 用户要求「格子下面加个坐标，排列整齐一点」→ 每格变成**两行**：
      第一行 名称(等级)，第二行 (x,y)；见下面的 .ezfy-cell-name / .ezfy-cell-xy。 */
 .ezfy-page .ezfy-map-table {
-  width: auto;
-  max-width: 100%;
+  /* ★ 2026-09-25 用户反馈「点击地图表格列宽会变，向上/向下切换时因为字数不一样看着丑」：
+     原因 = 浏览器默认的 auto 布局按每格内容宽度分配列宽（「城市」1 格 vs 「海底森林(5)」6 字），
+     移动地图/内容一变列宽就跳。改成 table-layout: fixed → 5 列恒等宽，位置稳定。
+     min-width 保证窄屏（320~414px）不会把列压到装不下字，超出部分交给 .panel 横向滚动
+     （见本文件末尾 `.ezfy-page .panel { overflow-x: auto }`）。 */
+  table-layout: fixed;
+  width: 100%;
+  min-width: 660px;
   border-collapse: separate;
   /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
      随后又要求「上下间隔加一点」→ 纵向 6px → 10px；再次要求「上下坐标间隔再大一些」
@@ -8071,7 +8147,14 @@ body.ezfy-immersive { margin: 0; }
   text-align: center;        /* 两行都相对格子中心对齐 */
 }
 /* 第一行：名称(等级) */
-.ezfy-page .ezfy-map-table a .ezfy-cell-name { display: block; }
+/* ★ 2026-09-25：固定列宽后内容可能与列宽不等，加省略号防止长名字（海底森林(5)）压到邻格；
+   完整信息仍可看鼠标悬停的 title（cellTip）或点进详情页 */
+.ezfy-page .ezfy-map-table a .ezfy-cell-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
    字号定稿过程：12 → 11 →「坐标那行大 1 号」12 →「(272,227) 大 1 号」13px；
    2026-09-25 用户反馈「地图坐标看着小了」→ 加大 1 号到 **14px**。

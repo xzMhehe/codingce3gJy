@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -398,6 +397,40 @@ func (h *EzfyHandler) warStatus(a, b uint) int {
 		return 2
 	}
 	return 1
+}
+
+// addResToCityDB 把一笔资源原子累加进某座城（无条件累加，收敛到配置的「资源最大值」）。
+//
+// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」「各项资源有最大的配置」。
+//   - 之前战利品是在内存里 city.Food += n 再 saveCityRes(city)：整行写回，
+//     并发下会把别的请求刚写入的增量覆盖掉（同类事故在运输/采集那几处已经修过），
+//     野地/寇城战利品却漏了 —— 这就是「打野地的资源没累加」的根因。
+//   - 现在统一走 ezfyResAddExpr：DB 侧原子累加，且累加到「资源最大值」就不再增加。
+//   - 非正值直接跳过，避免拼无用 SQL。
+func (h *EzfyHandler) addResToCityDB(cityId uint, food, steel, oil, rare, gold int64) {
+	if cityId == 0 || food+steel+oil+rare+gold == 0 {
+		return
+	}
+	upd := map[string]interface{}{}
+	if food > 0 {
+		upd["food"] = ezfyResAddExpr("food", food)
+	}
+	if steel > 0 {
+		upd["steel"] = ezfyResAddExpr("steel", steel)
+	}
+	if oil > 0 {
+		upd["oil"] = ezfyResAddExpr("oil", oil)
+	}
+	if rare > 0 {
+		upd["rare"] = ezfyResAddExpr("rare", rare)
+	}
+	if gold > 0 {
+		upd["gold"] = ezfyResAddExpr("gold", gold)
+	}
+	if len(upd) == 0 {
+		return
+	}
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).Updates(upd)
 }
 
 // isAtWar 是否可以对该玩家发起掠夺/征服
@@ -1353,12 +1386,14 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	//   只有超过数据库字段最大值才会溢出——去掉 LEAST(cap, ...)，改为无条件累加。
 	c := parseCarry(order.Carry)
 	if c.total() > 0 {
+		// ★ 2026-09-25 用户要求「各项资源有最大的配置」→ 入库统一走 ezfyResAddExpr：
+		//   无条件累加，累加到配置的「资源最大值」（默认 100 亿）为止，且不拉低已有更大值。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("food + ?", c.Food),
-			"steel": gorm.Expr("steel + ?", c.Steel),
-			"oil":   gorm.Expr("oil + ?", c.Oil),
-			"rare":  gorm.Expr("rare + ?", c.Rare),
-			"gold":  gorm.Expr("gold + ?", c.Gold),
+			"food":  ezfyResAddExpr("food", c.Food),
+			"steel": ezfyResAddExpr("steel", c.Steel),
+			"oil":   ezfyResAddExpr("oil", c.Oil),
+			"rare":  ezfyResAddExpr("rare", c.Rare),
+			"gold":  ezfyResAddExpr("gold", c.Gold),
 		})
 		h.addReport(uid, 5, "部队返航: 采集资源已入库",
 			fmt.Sprintf("采集部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
@@ -1687,11 +1722,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-09-24 规则修正（用户确认原版口径）：运输到达入城**不受仓储上限截断**
 		//   （只有超过数据库字段最大值才溢出），全部入库、不再把超出部分原路带回。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("food + ?", f),
-			"steel": gorm.Expr("steel + ?", s),
-			"oil":   gorm.Expr("oil + ?", o),
-			"rare":  gorm.Expr("rare + ?", r),
-			"gold":  gorm.Expr("gold + ?", g),
+			"food":  ezfyResAddExpr("food", f),
+			"steel": ezfyResAddExpr("steel", s),
+			"oil":   ezfyResAddExpr("oil", o),
+			"rare":  ezfyResAddExpr("rare", r),
+			"gold":  ezfyResAddExpr("gold", g),
 		})
 		order.Carry = ""
 		desc := fmt.Sprintf("运输部队已到达%s\n", target.Name)
@@ -1776,11 +1811,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if total > 0 {
 			h.calcResource(&target, h.officerList(target.ID))
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  gorm.Expr("food + ?", res["food"]),
-				"steel": gorm.Expr("steel + ?", res["steel"]),
-				"oil":   gorm.Expr("oil + ?", res["oil"]),
-				"rare":  gorm.Expr("rare + ?", res["rare"]),
-				"gold":  gorm.Expr("gold + ?", res["gold"]),
+				"food":  ezfyResAddExpr("food", res["food"]),
+				"steel": ezfyResAddExpr("steel", res["steel"]),
+				"oil":   ezfyResAddExpr("oil", res["oil"]),
+				"rare":  ezfyResAddExpr("rare", res["rare"]),
+				"gold":  ezfyResAddExpr("gold", res["gold"]),
 			})
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
 				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
@@ -2286,12 +2321,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			hallLevel := h.buildingLevel(city.ID, 1)
 			owned := len(h.wildlandList(city.ID))
 			if owned >= hallLevel {
-				city.Food += lootFood
-				city.Steel += lootSteel
-				city.Oil += lootOil
-				city.Rare += lootRare
-				city.Gold += lootGold
-				h.saveCityRes(city)
+				// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」→ 战利品入账统一走
+				//   ezfyResAddExpr（DB 原子累加 + 资源最大值），不再「内存加完整行写回」：
+				//   原写法在并发下会被别的请求覆盖掉，且会连带写回其它陈旧字段。
+				h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
 				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
@@ -2390,12 +2423,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				order.ReturnTime = now + travel
 				report += "\n民心尚存，征服失败"
 				report += fmt.Sprintf("\n征服战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
-				city.Food += lootFood
-				city.Steel += lootSteel
-				city.Oil += lootOil
-				city.Rare += lootRare
-				city.Gold += lootGold
-				h.saveCityRes(city)
+				// ★ 2026-09-25：战利品入账改为 DB 原子累加 + 资源最大值（同下）
+				h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
 				report += h.battleStatsTail(uid, 0, recyclePct)
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
@@ -2477,12 +2506,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// 掠夺资源入账
 		if order.OrderType == 2 || order.OrderType == 3 {
-			city.Food += lootFood
-			city.Steel += lootSteel
-			city.Oil += lootOil
-			city.Rare += lootRare
-			city.Gold += lootGold
-			h.saveCityRes(city)
+			// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」→ 走 DB 原子累加 + 资源最大值：
+			//   原来在内存里 += 再 saveCityRes（整行写回），既可能覆盖并发写入的增量，
+			//   也把「无上限累加」这个规则散落在多处；现在统一到 addResToCityDB。
+			//   野地/海野/寇城的战利品就是从这里入账的（order 2/3 打 target_type 1/2）。
+			h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
 		}
 		// 攻打玩家城市: 目标城军官忠诚下降, 归零者弃城成为我方战俘
 		// (复刻用户说明的 PvP 战俘来源: 把对方军官忠诚打成 0)

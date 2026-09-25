@@ -568,18 +568,27 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 			b.Level++
 			h.addPrestige(city.UserID, b.Level*10)
 			cfg := ezfyCfg.building(b.BuildingId)
-			if b.StartTime == 0 && cfg != nil && b.Level < h.buildingMaxLevel(city.ID, b.BuildingId) {
+			// ★ 2026-09-25 用户纠正「一键9级 = 一键升级到 9 级，而不是升级满」：
+			//   连锁模式(StartTime=0) 每级自动接续，但**升到目标等级就停** ——
+			//   TargetLevel=0 的老数据仍按「升到该建筑上限」处理（旧行为）。
+			chainTarget := b.TargetLevel
+			if chainTarget <= 0 {
+				chainTarget = h.buildingMaxLevel(city.ID, b.BuildingId)
+			}
+			if b.StartTime == 0 && cfg != nil && b.Level < chainTarget {
 				b.Status = 2
 				b.EndTime = now + ezfyMaxUpgradeSeconds*1000
 			} else {
 				b.Status = 0
+				b.TargetLevel = 0 // 连锁结束, 清掉目标等级（下次普通升级不会误判）
 				if b.BuildingId == 1 {
 					city.CityLevel = b.Level
 				}
 				h.taskProgress(city.UserID, "build_upgrade", 1)
 			}
 			h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-				Updates(map[string]interface{}{"level": b.Level, "status": b.Status, "end_time": b.EndTime})
+				Updates(map[string]interface{}{"level": b.Level, "status": b.Status,
+					"end_time": b.EndTime, "target_level": b.TargetLevel})
 		}
 	}
 	var hall model.EzfyCityBuilding
@@ -804,22 +813,31 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		troopFoodCost = int64(float64(troopFoodCost) * hours)
 	}
 
+	// ★ 2026-09-25 用户要求「只有资源产量超过存储最大不会继续增加，其他获取方式均是累加，
+	//   各项资源有最大的配置」→ 产量仍按仓储上限收敛（原逻辑不变），
+	//   但再叠一道「资源最大值」天花板：管理端把资源最大值调到低于仓储上限时，
+	//   产量到资源最大值就停（仓储上限本身照旧展示给玩家看，不改 city.XxxCap）。
+	prodCapFood := min64(city.FoodCap, ezfyResMaxOf("food"))
+	prodCapSteel := min64(city.SteelCap, ezfyResMaxOf("steel"))
+	prodCapOil := min64(city.OilCap, ezfyResMaxOf("oil"))
+	prodCapRare := min64(city.RareCap, ezfyResMaxOf("rare"))
+	prodCapGold := min64(city.GoldCap, ezfyResMaxOf("gold"))
 	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
-	food += min64(prod, max64(0, city.FoodCap-food))
+	food += min64(prod, max64(0, prodCapFood-food))
 	if food < 0 {
 		food = 0
 	}
 	city.Food = food
 	city.Steel += min64(int64(float64(steelProd)*hours)+int64(float64(wildSteel)*hours),
-		max64(0, city.SteelCap-city.Steel))
+		max64(0, prodCapSteel-city.Steel))
 	city.Oil += min64(int64(float64(oilProd)*hours)+int64(float64(wildOil)*hours),
-		max64(0, city.OilCap-city.Oil))
+		max64(0, prodCapOil-city.Oil))
 	city.Rare += min64(int64(float64(rareProd)*hours)+int64(float64(wildRare)*hours),
-		max64(0, city.RareCap-city.Rare))
+		max64(0, prodCapRare-city.Rare))
 	gold := city.Gold
 	gold += min64(int64(float64(goldProd)*hours)+int64(float64(wildGold)*hours),
-		max64(0, city.GoldCap-gold))
+		max64(0, prodCapGold-gold))
 	// ★ 军官工资：每名军官每小时消耗「等级 × ezfy_cfg_limit.officer_salary_per_level」黄金。
 	//   与「军队耗粮」同一套懒结算口径 —— 按小时累计，离线期间照样扣。
 	//   用户反馈「军官是消耗黄金的，黄金现在消耗 0」，这就是那笔消耗。
@@ -1199,27 +1217,46 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	return ""
 }
 
-func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) string {
+// maxLevelBuilding 一键升级建筑：升到 targetLevel（0 = 升到该建筑上限）
+//
+// ★ 2026-09-25 用户纠正「一键9级 不对，是一键升级到 9 级，而不是升级满」：
+//   前端按钮文案是「一键{{max_level-1}}级」（市政厅 10 级 → 一键9级），
+//   语义就是「一键升到那一级为止」——**不能**越过它去升满级：
+//   9→10 是要建筑图纸的坎，玩家点「一键9级」本意就是只到 9 级。
+//   现在按 targetLevel 结算（资源/图纸都只算到目标级），并且施工一次到位。
+//   返回 (实际目标等级, 错误信息)；错误信息为空表示成功。
+func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, targetLevel int) (int, string) {
 	h.refreshCity(city.UserID, city)
 	var b model.EzfyCityBuilding
 	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
-		return "建筑不存在"
+		return 0, "建筑不存在"
 	}
 	if b.Status != 0 {
-		return "建筑正在施工中"
+		return 0, "建筑正在施工中"
 	}
 	cfg := ezfyCfg.building(b.BuildingId)
 	if cfg == nil {
-		return "建筑配置缺失"
+		return 0, "建筑配置缺失"
 	}
 	// ★ 第九轮等级规则（市政厅10 / 参谋部·司令部·民居12 / 其他10，民居 ≤ 市政厅+1）
 	maxLv := h.buildingMaxLevel(city.ID, b.BuildingId)
-	if b.Level >= maxLv {
-		return "该建筑已满级"
+	// ★ 2026-09-25：目标等级 = 前端下发的 target_level（缺省/越界时按建筑上限兜底）
+	target := maxLv
+	if targetLevel > 0 && targetLevel < maxLv {
+		target = targetLevel
+	}
+	if target > maxLv {
+		target = maxLv
+	}
+	if b.Level >= target {
+		if targetLevel > 0 && targetLevel < maxLv {
+			return 0, fmt.Sprintf("该建筑已是%d级", b.Level)
+		}
+		return 0, "该建筑已满级"
 	}
 	var needFood, needSteel, needOil, needRare, needGold int64
 	needBlueprint := 0
-	for lv := b.Level + 1; lv <= maxLv; lv++ {
+	for lv := b.Level + 1; lv <= target; lv++ {
 		// ★ 与 upgradeBuilding 同口径：所有建筑 9→10、民居(2) 10→11 / 11→12 需图纸
 		if lv == 10 || (b.BuildingId == 2 && lv >= 11) {
 			needBlueprint++
@@ -1233,11 +1270,12 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 		}
 	}
 	if needBlueprint > 0 && h.itemCount(city.UserID, ezfyBlueprintItemID) < needBlueprint {
-		return fmt.Sprintf("一键满级需要%d张建筑图纸(当前不足)", needBlueprint)
+		return 0, fmt.Sprintf("一键升到%d级需要%d张建筑图纸(当前不足)", target, needBlueprint)
 	}
 	if city.Food < needFood || city.Steel < needSteel || city.Oil < needOil ||
 		city.Rare < needRare || city.Gold < needGold {
-		return fmt.Sprintf("资源不足: 满级需 粮%d 钢%d 油%d 稀矿%d 金%d", needFood, needSteel, needOil, needRare, needGold)
+		return 0, fmt.Sprintf("资源不足: 升到%d级需 粮%d 钢%d 油%d 稀矿%d 金%d",
+			target, needFood, needSteel, needOil, needRare, needGold)
 	}
 	city.Food -= needFood
 	city.Steel -= needSteel
@@ -1250,8 +1288,9 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64) str
 	}
 	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-		Updates(map[string]interface{}{"status": 2, "start_time": 0, "end_time": now + ezfyMaxUpgradeSeconds*1000})
-	return ""
+		Updates(map[string]interface{}{"status": 2, "start_time": 0,
+			"end_time": now + ezfyMaxUpgradeSeconds*1000, "target_level": target})
+	return target, ""
 }
 
 func (h *EzfyHandler) deleteBuilding(city *model.EzfyCity, recordId int64) string {
@@ -1949,10 +1988,10 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		//   ★ 2026-09-24 再修：不能套 LEAST(cap, ...)——道具是凭空发资源，截在上限会
 		//   把多出的部分丢掉（玩家反馈「用了资源又变成上限了」）。道具加资源一律无条件累加。
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("food + ?", param),
-			"steel": gorm.Expr("steel + ?", param),
-			"oil":   gorm.Expr("oil + ?", param),
-			"rare":  gorm.Expr("rare + ?", param),
+			"food":  ezfyResAddExpr("food", param),
+			"steel": ezfyResAddExpr("steel", param),
+			"oil":   ezfyResAddExpr("oil", param),
+			"rare":  ezfyResAddExpr("rare", param),
 		}).Error; err != nil {
 			return "资源累加失败: " + err.Error()
 		}
@@ -1960,7 +1999,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		return fmt.Sprintf("使用成功: 粮食/钢铁/石油/稀矿各+%d", param)
 	case 2:
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-			Update("gold", gorm.Expr("gold + ?", param)).Error; err != nil {
+			Update("gold", ezfyResAddExpr("gold", param)).Error; err != nil {
 			return "黄金累加失败: " + err.Error()
 		}
 		h.consumeItem(uid, cfgId)

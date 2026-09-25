@@ -660,11 +660,11 @@ func (h *EzfyHandler) CorpsMallBuy(c *gin.Context) {
 	if item.Kind == 1 {
 		city := h.getOrCreateCity(uid)
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  gorm.Expr("food + ?", item.Food*int64(req.Count)),
-			"steel": gorm.Expr("steel + ?", item.Steel*int64(req.Count)),
-			"oil":   gorm.Expr("oil + ?", item.Oil*int64(req.Count)),
-			"rare":  gorm.Expr("rare + ?", item.Rare*int64(req.Count)),
-			"gold":  gorm.Expr("gold + ?", item.Gold*int64(req.Count)),
+			"food":  ezfyResAddExpr("food", item.Food*int64(req.Count)),
+			"steel": ezfyResAddExpr("steel", item.Steel*int64(req.Count)),
+			"oil":   ezfyResAddExpr("oil", item.Oil*int64(req.Count)),
+			"rare":  ezfyResAddExpr("rare", item.Rare*int64(req.Count)),
+			"gold":  ezfyResAddExpr("gold", item.Gold*int64(req.Count)),
 		})
 	} else {
 		h.addItem(uid, item.ItemId, item.ItemCount*req.Count)

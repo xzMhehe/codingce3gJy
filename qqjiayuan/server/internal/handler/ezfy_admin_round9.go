@@ -40,7 +40,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价）+ 伤兵恢复黄金折扣率
 		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
-		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
+		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 100 亿」
+		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
+		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -106,6 +109,22 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 4
 	}
+	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 100 亿）
+	if lim.ResMaxFood <= 0 {
+		lim.ResMaxFood = ezfyResMaxDef
+	}
+	if lim.ResMaxSteel <= 0 {
+		lim.ResMaxSteel = ezfyResMaxDef
+	}
+	if lim.ResMaxOil <= 0 {
+		lim.ResMaxOil = ezfyResMaxDef
+	}
+	if lim.ResMaxRare <= 0 {
+		lim.ResMaxRare = ezfyResMaxDef
+	}
+	if lim.ResMaxGold <= 0 {
+		lim.ResMaxGold = ezfyResMaxDef
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -154,6 +173,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		DispatchPeriodH *int `json:"dispatch_period_h"`
 		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
 		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
+		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 100 亿」
+		ResMaxFood  *int64 `json:"res_max_food"`
+		ResMaxSteel *int64 `json:"res_max_steel"`
+		ResMaxOil   *int64 `json:"res_max_oil"`
+		ResMaxRare  *int64 `json:"res_max_rare"`
+		ResMaxGold  *int64 `json:"res_max_gold"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -173,7 +198,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarMax: ezfyStarMaxDef,
 		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
-		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
+		// ★ 2026-09-25 各项资源的「资源最大值」（默认 100 亿）
+		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
+		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
 	h.DB.First(&lim, 1)
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
@@ -469,6 +497,54 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 4
 	}
+	// ★ 2026-09-25 各项资源的「资源最大值」：入参 > 0 才覆盖，且不超过数据库安全上限。
+	//   （1 ≤ 值 ≤ 1 万亿 = ezfyResSafeMax；不给 0 —— 0 会让玩家的入库累加全部失效。）
+	checkResMax := func(v *int64, dst *int64, name string) bool {
+		if v == nil {
+			return true
+		}
+		if *v < 1 {
+			resp.ParamError(c, name+"必须 ≥ 1（0 会让该资源的入库累加失效）")
+			return false
+		}
+		if *v > ezfyResSafeMax {
+			resp.ParamError(c, fmt.Sprintf("%s不能超过 %d（数据库安全上限）", name, ezfyResSafeMax))
+			return false
+		}
+		*dst = *v
+		return true
+	}
+	if !checkResMax(in.ResMaxFood, &lim.ResMaxFood, "粮食最大值") {
+		return
+	}
+	if !checkResMax(in.ResMaxSteel, &lim.ResMaxSteel, "钢铁最大值") {
+		return
+	}
+	if !checkResMax(in.ResMaxOil, &lim.ResMaxOil, "石油最大值") {
+		return
+	}
+	if !checkResMax(in.ResMaxRare, &lim.ResMaxRare, "稀有矿最大值") {
+		return
+	}
+	if !checkResMax(in.ResMaxGold, &lim.ResMaxGold, "黄金最大值") {
+		return
+	}
+	// 兜底：老行 / 被存成 0 时回落默认 100 亿
+	if lim.ResMaxFood <= 0 {
+		lim.ResMaxFood = ezfyResMaxDef
+	}
+	if lim.ResMaxSteel <= 0 {
+		lim.ResMaxSteel = ezfyResMaxDef
+	}
+	if lim.ResMaxOil <= 0 {
+		lim.ResMaxOil = ezfyResMaxDef
+	}
+	if lim.ResMaxRare <= 0 {
+		lim.ResMaxRare = ezfyResMaxDef
+	}
+	if lim.ResMaxGold <= 0 {
+		lim.ResMaxGold = ezfyResMaxDef
+	}
 	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
 	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
 	lim.ID = 1
@@ -497,6 +573,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"wound_expire_days": lim.WoundExpireDays,
 		// ★ 2026-09-24：采集周期小时数，同样用 map 显式写
 		"dispatch_period_h": lim.DispatchPeriodH,
+		// ★ 2026-09-25：各项资源的资源最大值（bigint，同样用 map 显式写）
+		"res_max_food":  lim.ResMaxFood,
+		"res_max_steel": lim.ResMaxSteel,
+		"res_max_oil":   lim.ResMaxOil,
+		"res_max_rare":  lim.ResMaxRare,
+		"res_max_gold":  lim.ResMaxGold,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

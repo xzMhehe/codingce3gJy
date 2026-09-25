@@ -278,6 +278,22 @@ type EzfyCfgLimit struct {
 	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。0 无意义 → 回落 1。
 	GatherResMult float64 `gorm:"default:1;comment:采集资源倍率" json:"gather_res_mult"`
 
+	// ★ 2026-09-25 用户要求「各项资源有最大的配置放到二战系统配置里面，默认 100 亿」：
+	//   每项资源的**硬上限**（入库累加的收敛点），默认 100 亿 = 10000000000。
+	//
+	//   规则（用户确认的原版口径）：
+	//     ① 资源**产量**（calcResource 自动产出）超过「仓储上限」就不再增加（原有逻辑，不动）；
+	//     ② 其它一切获取方式（战斗掠夺/野地战利品/采集返航/运输/派遣/资源包/签到福利/交易行/军团商城…）
+	//        **一律无条件累加**，只在这个「资源最大值」处停下来；
+	//     ③ 已经超过该值的老数据**不会被拉低**（读端用 GREATEST 保住较大值）。
+	//   ⚠️ 必须 BIGINT：100 亿超出 int32，seed 补列走的是 bigint。
+	//   0 无意义 → 回落默认 100 亿。
+	ResMaxFood int64 `gorm:"default:10000000000;comment:粮食最大值" json:"res_max_food"`
+	ResMaxSteel int64 `gorm:"default:10000000000;comment:钢铁最大值" json:"res_max_steel"`
+	ResMaxOil   int64 `gorm:"default:10000000000;comment:石油最大值" json:"res_max_oil"`
+	ResMaxRare  int64 `gorm:"default:10000000000;comment:稀矿最大值" json:"res_max_rare"`
+	ResMaxGold  int64 `gorm:"default:10000000000;comment:黄金最大值" json:"res_max_gold"`
+
 	// ★ 下面三个是「开关」：1 = 开（按原规则消耗），0 = 关（不消耗）。
 	//   ⚠️ 语义陷阱（踩过）：
 	//     ① 开关字段**不能**带 `gorm:"default:x"` 标签 —— GORM 建 INSERT/ON DUPLICATE 时
@@ -464,6 +480,10 @@ type EzfyCityBuilding struct {
 	Status     int   `gorm:"default:0;comment:0空闲 1建造中 2升级中" json:"status"` // 0空闲 1建造中 2升级中
 	StartTime  int64 `gorm:"comment:0=一键满级连锁模式" json:"start_time"`          // 0=一键满级连锁模式
 	EndTime    int64 `gorm:"comment:结束时间" json:"end_time"`
+	// ★ 2026-09-25 用户纠正「一键9级 = 一键升级到 9 级，而不是升级满」：
+	//   一键升级的目标等级。StartTime=0 的连锁模式每 10 秒升 1 级，
+	//   升到 TargetLevel 就停（0 = 老数据/未指定 → 升到该建筑的上限，保持旧行为）。
+	TargetLevel int `gorm:"default:0;comment:一键升级目标等级（0=升到上限）" json:"target_level"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

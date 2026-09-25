@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 )
@@ -590,6 +591,74 @@ func ezfyClampRes(v int64) int64 {
 // ezfyAddRes 资源加法（安全版）：先夹取当前值，再做不会溢出的加法，结果恒在 [0, ezfyResSafeMax]。
 func ezfyAddRes(cur, delta int64) int64 {
 	return ezfySafeAdd(ezfyClampRes(cur), delta, ezfyResSafeMax)
+}
+
+// ============ 资源最大值（二战系统配置，默认 100 亿）============
+//
+// ★ 2026-09-25 用户要求「各项资源有最大的配置放到二战系统配置里面，默认 100 亿」。
+//
+// 规则：
+//
+//	① 资源**产量**（calcResource 自动产出）超过仓储上限就不再增加 —— 原有逻辑不动；
+//	② 其它所有获取方式（野地/寇城战利品、掠夺/征服入账、采集返航、运输、派遣、
+//	   资源包、签到福利/任务奖励、交易行成交、军团商城…）**一律无条件累加**，
+//	   只在这个「资源最大值」处停下来；
+//	③ 老数据已经超过该值的**不会被拉低**（表达式里用 GREATEST 保住较大值）。
+const ezfyResMaxDef = int64(10000000000) // 默认 100 亿
+
+// ezfyResMaxOf 取某项资源的「资源最大值」配置（res ∈ food/steel/oil/rare/gold）
+//
+// 0 / 未配置 → 回落 100 亿；再兜一层数据库安全上限，任何配置都写不出溢出值。
+func ezfyResMaxOf(res string) int64 {
+	var v int64
+	if ezfyCfg.ready() {
+		switch res {
+		case "food":
+			v = ezfyCfg.limit.ResMaxFood
+		case "steel":
+			v = ezfyCfg.limit.ResMaxSteel
+		case "oil":
+			v = ezfyCfg.limit.ResMaxOil
+		case "rare":
+			v = ezfyCfg.limit.ResMaxRare
+		case "gold":
+			v = ezfyCfg.limit.ResMaxGold
+		}
+	}
+	if v <= 0 || v > ezfyResSafeMax {
+		if v > ezfyResSafeMax {
+			return ezfyResSafeMax
+		}
+		return ezfyResMaxDef
+	}
+	return v
+}
+
+// ezfyResAddExpr 生成「入库累加」SQL：无条件累加，但不越过配置的资源最大值。
+//
+// GREATEST(col, LEAST(max, col + n))：
+//   - 正常情况 → col + n（无条件累加，不看仓储上限）
+//   - 累加到 max 后 → 停在 max（不再增加）
+//   - 老值本来 > max → 保持原值（GREATEST 兜住，绝不被这次入库拉低）
+//
+// ⚠️ 所有「入库型」资源写入都应该走这里（配 resources 里的列名使用），
+// 这样「累加」与「最大值」两个规则只有一处实现。
+func ezfyResAddExpr(res string, n int64) clause.Expr {
+	return gorm.Expr("GREATEST(`"+res+"`, LEAST(?, `"+res+"` + ?))", ezfyResMaxOf(res), n)
+}
+
+// ezfyAddResMax 内存版「入库累加」：结果 = max(现值, min(资源最大值, 现值+增量))。
+// 与 ezfyResAddExpr 同一口径，供不便走 SQL 表达式的发放路径使用。
+func ezfyAddResMax(res string, cur, delta int64) int64 {
+	cur = ezfyClampRes(cur)
+	if delta <= 0 {
+		return cur
+	}
+	next := ezfySafeAdd(cur, delta, ezfyResSafeMax)
+	if mx := ezfyResMaxOf(res); next > mx && cur < mx {
+		return mx
+	}
+	return next
 }
 
 func ezfyLimitOr(v, def int) int {
