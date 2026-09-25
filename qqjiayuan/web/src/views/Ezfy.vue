@@ -7304,8 +7304,11 @@ body.ezfy-immersive { margin: 0; }
   border-collapse: separate;
   /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
      随后又要求「上下间隔加一点」→ 纵向 6px → 10px；再次要求「上下坐标间隔再大一些」
-     → 纵向 10px → 14px（横向 12px 不动）。 */
-  border-spacing: 12px 14px;
+     → 纵向 10px → 14px；2026-09-25 又反馈「地图区上下还是紧，上下间距再大一点点」
+     → 纵向 14px → 18px；当天看过对比图后**拍板用 22px 那档** → 18px → **22px**。
+     横向 12px 全程未动。改动史说明用户对「上下松一点」是持续加码的，
+     要再松就继续调**第二个数**（第一个数是横向）。 */
+  border-spacing: 12px 22px;
   margin: 8px 0;             /* 表格本身靠左(不要整表居中) */
 }
 .ezfy-page .ezfy-map-table td {
@@ -7400,8 +7403,9 @@ body.ezfy-immersive { margin: 0; }
        第一行跟着桌面一起缩(14 → 13 → 12)，坐标行同样 +1(11 → 12)，两行之间留同样的缝。 */
   .ezfy-page .ezfy-map-table a { font-size: 12px; line-height: 1.25; }
   .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 12px; }
-  /* 窄屏纵向间距同步收一档(桌面 14px → 窄屏 8px)，但比原来(6px)松一点 */
-  .ezfy-page .ezfy-map-table { border-spacing: 6px 8px; }
+  /* 窄屏纵向间距同步收一档(桌面 22px → 窄屏 12px)：纵向间距只影响表格高度、不影响列宽，
+     所以这里不需要像横向那样压到极限，留出和桌面接近的呼吸感 */
+  .ezfy-page .ezfy-map-table { border-spacing: 6px 12px; }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
   /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */
