@@ -1247,26 +1247,38 @@
           <hr/>
 
           <!-- ① 兵力 -->
-          <div class="of-sec">① 选择兵力 <span class="of-hint">（左列填出征数量，右侧灰字是城内现有）</span></div>
-          <div class="of-grid of-grid-troop">
-            <div class="of-cell" v-for="t in trainCfgs" :key="'at' + t.id"
+          <!-- ★ 2026-09-25 用户要求：兵种数量搭配**一个兵种一行**，滑动条 + 可手填 + [最大]，
+               滑块与数字框双向联动（拖滑块数字跟着变，填数字滑块跟着走）。 -->
+          <div class="of-sec">① 选择兵力
+            <span class="of-hint">（拖滑块或直接填数字，[最大] 一键带上该兵种全部现有）</span>
+          </div>
+          <div class="of-rows">
+            <div class="of-row" v-for="t in trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': troopCount(t.id) <= 0 }"
                  :title="t.name + '（现有 ' + fmtN(troopCount(t.id)) + '）'">
               <span class="of-name">{{ t.name }}</span>
-              <input type="number" min="0" :max="troopCount(t.id)"
-                     v-model="orderTroops[t.id]"
-                     placeholder="0"
-                     :disabled="troopCount(t.id) <= 0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(troopCount(t.id)) }}</span>
+              <span class="of-avail">现有 {{ fmtN(troopCount(t.id)) }}</span>
+              <span class="of-ctl">
+                <input type="range" class="of-range" min="0" step="1"
+                       :max="troopCount(t.id)" :value="orderQty(t.id)"
+                       :disabled="troopCount(t.id) <= 0"
+                       @input="onOrderQtyInput(t.id, $event)"/>
+                <input type="number" class="of-num" min="0" placeholder="0"
+                       :max="troopCount(t.id)" :value="orderQty(t.id)"
+                       :disabled="troopCount(t.id) <= 0"
+                       @input="onOrderQtyInput(t.id, $event)"/>
+                <a href="javascript:;" class="of-max"
+                   @click="setOrderQtyMax(t.id)">[最大]</a>
+              </span>
             </div>
           </div>
           <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
-          <div class="old-line" v-if="orderCalc">
-            <!-- ★ 管理端「出征上限」关掉时后端下发 cap_unlimited=true → 这里显示「不限」，
-                 不要显示后端占位的 0 -->
-            <span :class="orderCalc.troop_over_cap ? 'red' : 'green'">
-              本次出兵 <b>{{ fmtN(orderCalc.troop_total) }}</b> / 上限 <b>{{ orderCalc.cap_unlimited ? '不限' : fmtN(orderCalc.troop_cap) }}</b>
-              <template v-if="orderCalc.troop_over_cap">—— 超出上限，请减少兵力或加用集结令</template>
+          <!-- ★ 2026-09-25：兵力数字改成**本地实时合计**（拖滑块/填数字立刻跟着变），
+               不再等点 [计算] 才刷新；上限/是否超限仍用 [计算] 下发的口径。 -->
+          <div class="old-line" v-if="attackTroops.length">
+            <span :class="orderOverCap ? 'red' : 'green'">
+              本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
+              <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
             </span>
           </div>
 
@@ -3683,6 +3695,29 @@ export default {
       const p = this.gatherCfg.per || (this.orderCalc && this.orderCalc.gather_per)
       return p > 0 ? p : 100000
     },
+    // ★ 2026-09-25 出征页「兵种数量搭配」改成一行一个兵种 + 滑动条联动：
+    //   本地实时合计本次出兵数量（拖滑块/填数字立刻刷新，不用等点 [计算]）。
+    //   口径与后端一致：只算可出征兵种（trainCfgs 已滤掉城防 type=4），0 值不计。
+    orderTroopTotal () {
+      let sum = 0
+      for (const k in this.orderTroops) {
+        const n = parseInt(this.orderTroops[k], 10)
+        if (n > 0) sum += n
+      }
+      return sum
+    },
+    // 是否超出出征上限（口径同后端 troop_over_cap：管理端关掉上限开关时不判超）
+    orderOverCap () {
+      const c = this.orderCalc
+      if (!c || c.cap_unlimited) return false
+      return this.orderTroopTotal > (c.troop_cap || 0)
+    },
+    // 上限文案：开关关掉时显示「不限」，没算过时显示 —
+    orderCapText () {
+      const c = this.orderCalc
+      if (!c) return '—'
+      return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
+    },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
     },
@@ -5695,6 +5730,36 @@ export default {
         }
       })
     },
+    // 当前该兵种已填的出征数量（没填过 = 0）；滑块与数字框都绑它，保证两边显示一致
+    orderQty (id) {
+      const v = this.orderTroops[id]
+      if (v === undefined || v === null || v === '') return 0
+      const n = parseInt(v, 10)
+      return isNaN(n) || n < 0 ? 0 : n
+    },
+    // ★ 2026-09-25 出征页「兵种数量搭配」：滑块 + 数字框 **双向联动**
+    //   - 拖动滑块 → 数字框跟着变；填数字 → 滑块跟着走；两边共用 orderTroops[id] 一个值。
+    //   - 用 $set 写对象键：orderTroops 初始是 {}，直接赋值新键 Vue2 侦测不到，
+    //     滑块动完数字框不会刷新（这就是「联动」失效的原因）。
+    //   - 夹紧到 [0, 城内现有]：填超了按现有封顶。
+    //   - 夹紧后若数值没变（如本来已是上限又填了更大的数），Vue 不会重渲染，
+    //     DOM 里会留着用户填的非法数字 → 这里手动把输入框内容回写，保证「看到的 = 提交的」。
+    onOrderQtyInput (id, ev) {
+      const max = this.troopCount(id)
+      let n = parseInt(ev.target.value, 10)
+      if (isNaN(n) || n < 0) n = 0
+      if (n > max) n = max
+      this.$set(this.orderTroops, id, n)
+      if (ev && ev.target && String(n) !== String(ev.target.value)) {
+        ev.target.value = String(n)
+      }
+    },
+    // [最大] = 一键带上该兵种城内全部可用数量（滑到最后、数字框同步）
+    setOrderQtyMax (id) {
+      const max = this.troopCount(id)
+      if (max <= 0) return
+      this.$set(this.orderTroops, id, max)
+    },
     // 出征表单 → 请求体(部队/资源/军官/宿营)
     orderBody () {
       const body = {
@@ -6935,18 +7000,71 @@ body.ezfy-immersive { margin: 0; }
   gap: 0 16px;
   align-items: center;
 }
-/* 兵力：★ 用户要求「分三列、对齐」→ **固定 3 列等宽**（原来是 auto-fill，
-   宽屏会变成 4 列、窄屏 2 列，列数随窗口乱跳，用户觉得「丑、不齐」）。
-   3 列等宽 ⇒ 每一格宽度完全一致 ⇒ 名称 / 输入框 / 现有数量 三列在所有行里 x 严格一致。
-   列宽下限 = 名称 11em(176) + 输入 70 + 现有 4.4em(70) + 间距 10 ≈ 326px，
-   所以窗口 < 1100px 时降到 2 列、< 700px 时降到 1 列，保证兵种名不会被截断
-   （名字被截成「埃塞克…」玩家就认不出兵种了）。 */
-.ezfy-page .of-grid-troop { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 1100px) {
-  .ezfy-page .of-grid-troop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ★ 2026-09-25 用户要求「兵种数量搭配改成一行一个兵种」：
+   原来是 3 列网格（一个兵种占一个格子，得横向找），现在**每个兵种独占一行**，行内从左到右：
+     兵种名(定宽) │ 现有 N │ ————— 滑动条 ————— │ [数字框] │ [最大]
+   滑块与数字框双向联动（拖滑块数字跟着变 / 填数字滑块跟着走），[最大] 一键全带。
+   行内分两段：名称+现有（.of-name/.of-avail）与控件段（.of-ctl），
+   窄屏时控件段整段换行（不会把滑块挤成 10px 没法拖）。 */
+.ezfy-page .of-rows { display: block; }
+.ezfy-page .of-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+  line-height: 24px;
+  min-width: 0;
 }
+.ezfy-page .of-row .of-name {
+  /* 兵种名定宽 → 每行的「现有 N」和滑块都从同一个 x 开始，纵向严格对齐 */
+  flex: 0 0 auto;
+  width: 11em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  color: #555;
+}
+.ezfy-page .of-row .of-avail {
+  /* 定宽放得下「现有 24,946,000」（线上资源数是十几位） */
+  flex: 0 0 auto;
+  width: 9.5em;
+  text-align: left;
+  color: #8a8a8a;
+}
+.ezfy-page .of-row .of-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ezfy-page .of-row input.of-range {
+  flex: 1 1 auto;
+  min-width: 70px;
+  height: 20px;
+  margin: 0;
+  /* 现代浏览器直接给滑块上主题色，不必再手写 ::-webkit-slider-thumb */
+  accent-color: #2f6fb5;
+  cursor: pointer;
+}
+.ezfy-page .of-row input.of-num {
+  flex: 0 0 auto;
+  width: 76px;
+  text-align: right;
+}
+.ezfy-page .of-row .of-max { flex: 0 0 auto; white-space: nowrap; }
+/* 城内没有该兵种：整行灰掉（滑块也禁用） */
+.ezfy-page .of-row.of-off .of-name,
+.ezfy-page .of-row.of-off .of-avail,
+.ezfy-page .of-row.of-off .of-max { color: #b3b3b3; }
+.ezfy-page .of-row.of-off input.of-range { opacity: .45; }
 @media (max-width: 700px) {
-  .ezfy-page .of-grid-troop { grid-template-columns: minmax(0, 1fr); }
+  /* 窄屏：名称+现有占第一行，滑块/数字/[最大] 整段换到第二行 */
+  .ezfy-page .of-row { flex-wrap: wrap; row-gap: 0; }
+  .ezfy-page .of-row .of-name { width: auto; max-width: 60%; }
+  .ezfy-page .of-row .of-avail { width: auto; flex: 1 1 auto; }
+  .ezfy-page .of-row .of-ctl { flex: 1 1 100%; }
 }
 /* 随军资源：名称只有 2 个字，列可以窄一点。
    ★ 下限不能太小：线上资源是**十几位**的数（如 14,101,854,318 ≈ 119px），
