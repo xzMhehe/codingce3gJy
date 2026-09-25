@@ -657,6 +657,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/officers/onduty", ezfyH.OfficersOnDuty)
 				ezfyG.GET("/officers/skills", ezfyH.OfficerSkills)
 				ezfyG.GET("/officers/equipments", ezfyH.OfficerEquipments)
+				// ★ 全部套装配置（含加成/部位/我拥有几件）—— 装备页·商城页·军官页共用
+				ezfyG.GET("/equipsets", ezfyH.EquipSets)
 				ezfyG.GET("/officers/generals", ezfyH.OfficerGenerals)
 				// ★ 装备商城（套装用黄金/钻石购买）
 				ezfyG.GET("/equipshop", ezfyH.EquipShop)

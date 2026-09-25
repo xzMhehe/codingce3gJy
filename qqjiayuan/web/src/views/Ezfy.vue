@@ -2205,10 +2205,23 @@
               <span class="gray">共 {{ shopAll.length }} 件</span>
             </div>
             <table class="ezfy-plain-table">
+              <!-- ★ 2026-09-25：手机（390px）下 6 列均分只有 ~65px/列，兵种名/装备名会被折成 4~5 行，
+                   所以给「名称」列留宽一点（33%），其余列压窄；套装那行也尽量短。 -->
+              <colgroup>
+                <col style="width:14%"><col style="width:33%"><col style="width:9%"><col style="width:12%"><col style="width:13%"><col style="width:19%">
+              </colgroup>
               <tr><th>部位</th><th class="nm">名称</th><th>等级</th><th>属性</th><th>价格</th><th>操作</th></tr>
-              <tr v-for="p in shopPaged" :key="'eq' + p.id">
+              <!-- ★ 2026-09-25 用户反馈「不知道买完套装给军官用哪个」→ 商城这里**不加列**（手机上会挤），
+                   把「所属套装」放在名称下面一行，点它展开完整套装加成卡，买之前就能对比。 -->
+              <template v-for="p in shopPaged">
+              <tr :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
-                <td class="nm">{{ p.name }}</td>
+                <td class="nm">{{ p.name }}
+                  <!-- 手机列窄，套装这行尽量短：「需几件」放进展开卡里，不在这里重复 -->
+                  <div v-if="setOf(p.set_id)" class="set-mini">
+                    套装：<a href="javascript:;" @click="toggleSetCard(p.id)">{{ p.set_name }}</a>
+                  </div>
+                </td>
                 <td>{{ p.level }}</td>
                 <td><a href="javascript:;" @click="openEquipDetail(p, '商城在售')">[查看]</a></td>
                 <td><span class="orange">{{ p.price_diamond }}钻</span></td>
@@ -2217,6 +2230,24 @@
                   <span v-else class="gray">[售罄]</span>
                 </td>
               </tr>
+              <tr v-if="setCardId === p.id && setOf(p.set_id)" :key="'sc' + p.id" class="set-card-row">
+                <td :colspan="6">
+                  <div class="set-card">
+                    <div class="sc-h"><b>{{ setOf(p.set_id).name }}</b>
+                      <span :class="qualityClass(setOf(p.set_id).tier_name)">[{{ setOf(p.set_id).tier_name || '特殊' }}]</span>
+                      <span class="gray">穿齐 {{ setOf(p.set_id).parts }} 件才生效</span>
+                    </div>
+                    <div class="sc-b">套装加成：<b class="green">{{ setBonusText(p.set_id) || '（本套装无额外属性加成）' }}</b></div>
+                    <div class="sc-b gray" v-if="setOf(p.set_id).effect">额外效果：{{ setOf(p.set_id).effect }}</div>
+                    <div class="sc-b">我的进度：已拥有 <b>{{ setOf(p.set_id).owned || 0 }}</b>/{{ setOf(p.set_id).parts }} 件
+                      <span v-if="(setOf(p.set_id).owned || 0) >= setOf(p.set_id).parts" class="green">已够穿齐</span>
+                      <span v-else class="red">还差 {{ setOf(p.set_id).parts - (setOf(p.set_id).owned || 0) }} 件</span>
+                    </div>
+                    <div class="sc-b gray" v-if="setOf(p.set_id).slots && setOf(p.set_id).slots.length">部位：{{ setOf(p.set_id).slots.join(' / ') }}</div>
+                  </div>
+                </td>
+              </tr>
+              </template>
             </table>
             <div class="old-line gray" v-if="!shopAll.length">(没有匹配的装备)</div>
             <div class="ezfy-pager" v-if="shopAll.length > shopSize">
@@ -2879,10 +2910,18 @@
               <col style="width:24%"><col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:10%"><col style="width:18%">
             </colgroup>
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
-            <tr v-for="e in equipPaged" :key="'eq' + e.id">
+            <!-- ★ 2026-09-25：套装列可点 → 在该行下面展开「套装加成卡」。
+                 以前只知道套装名字+品质，看不出这套穿齐给什么；现在点一下就能看到
+                 加成 / 需几件 / 我拥有几件 / 包含哪些部位，买之前就能对比。 -->
+            <template v-for="e in equipPaged">
+            <tr :key="'eq' + e.id">
               <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
-              <td>{{ e.set_name || '—' }}</td>
+              <td>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleSetCard(e.id)">{{ e.set_name }}</a>
+                <span v-else class="gray">—</span>
+                <span v-if="setOf(e.set_id)" class="gray">({{ setOf(e.set_id).parts }}件)</span>
+              </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
               <td><a href="javascript:;" @click="openEquipDetail(e, e.worn ? '已穿戴' : '背包中(未装备)')">[查看]</a></td>
               <td>{{ e.level }}</td>
@@ -2891,6 +2930,24 @@
                 <a v-else href="javascript:;" @click="switchAcade('officer')">[去穿戴]</a>
               </td>
             </tr>
+            <tr v-if="setCardId === e.id && setOf(e.set_id)" :key="'sc' + e.id" class="set-card-row">
+              <td :colspan="7">
+                <div class="set-card">
+                  <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                    <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                    <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                  </div>
+                  <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                  <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
+                    <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
+                    <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
+                  </div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                </div>
+              </td>
+            </tr>
+            </template>
           </table>
           <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备)</div>
           <div class="old-line gray" v-else-if="!equipFiltered.length">(没有匹配「{{ equipWord }}」的装备)</div>
@@ -2902,22 +2959,29 @@
           </div>
           </div>
 
-          <!-- 我的套装：只列**我拥有的**套装（从背包聚合），并显示还差几件才生效。
-               原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的。 -->
+          <!-- 套装一览：默认只列**我拥有的**（原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的），
+               可以切到「全部套装」横向对比 —— ★ 2026-09-25 用户要求「方便玩家知晓、对比套装」。 -->
           <div v-if="equipTab === 'set'">
-          <div class="old-line" v-if="mySetProgress.length"><b>我的套装</b></div>
-          <!-- 只显示「进度 + 是否生效」，加成点 [加成] 才展开（原来把一长串效果全铺出来，很乱） -->
-          <div class="old-line" v-for="s in mySetProgress" :key="'ms' + s.id">
-            <b :class="qualityClass(s.tier_name)">{{ s.name }}</b>
-            <span class="gray">[{{ s.tier_name || '特殊' }}]</span>
-            <b :class="s.active ? 'green' : 'gray'">{{ s.have }}/{{ s.parts }}</b> 件
-            <span v-if="s.active" class="green">已生效</span>
-            <span v-else class="gray">还差 {{ s.need }} 件</span>
-            <a v-if="s.active && equipAttrText(s)" href="javascript:;" @click="toggleSetEffect(s.id)">[加成]</a>
-            <br v-if="setEffectId === s.id"/>
-            <span :class="qualityClass(s.tier_name)" v-if="setEffectId === s.id">{{ equipAttrText(s) }}</span>
+          <div class="old-line set-tab">
+            <a href="javascript:;" :class="{ on: !setShowAll }" @click="setShowAll = false">[只看我有的]</a>
+            <a href="javascript:;" :class="{ on: setShowAll }" @click="setShowAll = true">[全部套装·可对比]</a>
+            <span class="gray">共 {{ setListShown.length }} 套</span>
           </div>
-          <div class="old-line gray" v-if="!mySetProgress.length">(暂无套装装备)</div>
+          <!-- ★ 2026-09-25：加成**默认直接铺出来**（原来要点 [加成] 才看得到，用户反馈「不容易看到」）。
+               一套一块、竖排 —— 手机上不用横向找，也方便上下对比。 -->
+          <div class="set-block" v-for="s in setListShown" :key="'ms' + s.id">
+            <div class="sb-h">
+              <b :class="qualityClass(s.tier_name)">{{ s.name }}</b>
+              <span class="gray">[{{ s.tier_name || '特殊' }}]</span>
+              <b :class="s.active ? 'green' : 'red'">{{ s.have }}/{{ s.parts }}</b> 件
+              <span v-if="s.active" class="green">加成已生效</span>
+              <span v-else class="red">还差 {{ s.need }} 件才生效</span>
+            </div>
+            <div class="sb-b">套装加成：<b class="green">{{ equipAttrText(s) || '（本套装无额外属性加成）' }}</b></div>
+            <div class="sb-b gray" v-if="s.effect">额外效果：{{ s.effect }}</div>
+            <div class="sb-b gray" v-if="s.slots && s.slots.length">部位：{{ s.slots.join(' / ') }}</div>
+          </div>
+          <div class="old-line gray" v-if="!setListShown.length">(暂无套装装备)</div>
           </div>
 
           <!-- 装备图鉴（全部装备 + 检索 + 分页） -->
@@ -2935,14 +2999,37 @@
               <col style="width:28%"><col style="width:12%"><col style="width:17%"><col style="width:10%"><col style="width:12%"><col style="width:21%">
             </colgroup>
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
-            <tr v-for="e in equipAllPaged" :key="'ea' + e.id">
+            <template v-for="e in equipAllPaged">
+            <tr :key="'ea' + e.id">
               <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
-              <td>{{ e.set_name || '—' }}</td>
+              <td>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleSetCard(e.id)">{{ e.set_name }}</a>
+                <span v-else class="gray">—</span>
+                <span v-if="setOf(e.set_id)" class="gray">({{ setOf(e.set_id).parts }}件)</span>
+              </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
               <td><a href="javascript:;" @click="openEquipDetail(e, '图鉴收录')">[查看]</a></td>
               <td>{{ e.level }}</td>
             </tr>
+            <tr v-if="setCardId === e.id && setOf(e.set_id)" :key="'sc' + e.id" class="set-card-row">
+              <td :colspan="6">
+                <div class="set-card">
+                  <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                    <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                    <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                  </div>
+                  <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                  <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
+                    <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
+                    <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
+                  </div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                </div>
+              </td>
+            </tr>
+            </template>
           </table>
           <div class="old-line gray" v-if="!equipAllFiltered.length">(没有匹配「{{ equipAllWord }}」的装备)</div>
           <!-- ★ 分页 -->
@@ -3171,14 +3258,37 @@
               <a v-if="officerDetail.equipped.length" href="javascript:;" @click="doUnequipAll">[一键卸下]</a>
             </th></tr>
             <tr><th class="nm">名称</th><th>部位</th><th>品质</th><th>套装</th><th>属性</th><th>操作</th></tr>
-            <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
+            <template v-for="e in officerDetail.equipped">
+            <tr :key="'de' + e.id">
               <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name || '—' }}</td>
-              <td>{{ e.set_name || (e.set_id ? '套装' + e.set_id : '—') }}</td>
+              <td>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleSetCard(e.id)">{{ e.set_name || ('套装' + e.set_id) }}</a>
+                <span v-else class="gray">—</span>
+                <span v-if="setOf(e.set_id)" class="gray">({{ setOf(e.set_id).parts }}件)</span>
+              </td>
               <td><a href="javascript:;" @click="openEquipDetail(e, '已穿戴')">[查看]</a></td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
             </tr>
+            <tr v-if="setCardId === e.id && setOf(e.set_id)" :key="'sc' + e.id" class="set-card-row">
+              <td :colspan="6">
+                <div class="set-card">
+                  <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                    <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                    <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                  </div>
+                  <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                  <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
+                    <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
+                    <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
+                  </div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                </div>
+              </td>
+            </tr>
+            </template>
             <tr v-if="!officerDetail.equipped.length"><td colspan="6" class="gray">(未穿戴装备)</td></tr>
           </table>
 
@@ -3196,6 +3306,10 @@
                   已穿 {{ s.worn }}/{{ s.parts }} 件{{ s.need > 0 ? (' · 还差 ' + s.need + ' 件生效') : ' · 已生效' }}
                 </span>
                 <span class="gray" v-if="s.need > 0 && s.bag_count > 0">（背包还有 {{ s.bag_count }} 件）</span>
+                <!-- ★ 2026-09-25：一键穿戴这里也把套装加成写出来，玩家才知道穿齐能拿到什么 -->
+                <div class="set-mini" v-if="setBonusText(s.set_id)">
+                  套装加成：<b class="green">{{ setBonusText(s.set_id) }}</b>
+                </div>
               </td>
               <td><a href="javascript:;" @click="doEquipSet(s)">[一键穿戴]</a></td>
             </tr>
@@ -3210,10 +3324,15 @@
             </colgroup>
             <tr><th colspan="7">装备背包</th></tr>
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
-            <tr v-for="e in officerBagPaged" :key="'db' + e.id">
+            <template v-for="e in officerBagPaged">
+            <tr :key="'db' + e.id">
               <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
-              <td>{{ e.set_name || '—' }}</td>
+              <td>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleSetCard(e.id)">{{ e.set_name }}</a>
+                <span v-else class="gray">—</span>
+                <span v-if="setOf(e.set_id)" class="gray">({{ setOf(e.set_id).parts }}件)</span>
+              </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
               <td><a href="javascript:;" @click="openEquipDetail(e, e.worn ? '已穿戴' : '未装备')">[查看]</a></td>
               <td>{{ e.level }}</td>
@@ -3222,6 +3341,24 @@
                 <span v-else class="gray">已穿戴</span>
               </td>
             </tr>
+            <tr v-if="setCardId === e.id && setOf(e.set_id)" :key="'sc' + e.id" class="set-card-row">
+              <td :colspan="7">
+                <div class="set-card">
+                  <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                    <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                    <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                  </div>
+                  <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                  <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
+                    <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
+                    <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
+                  </div>
+                  <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                </div>
+              </td>
+            </tr>
+            </template>
             <tr v-if="!officerDetail.bag.length"><td colspan="7" class="gray">(背包暂无装备)</td></tr>
             <tr v-else-if="!officerBagFiltered.length"><td colspan="7" class="gray">(没有匹配「{{ officerBagWord }}」的装备)</td></tr>
           </table>
@@ -3440,7 +3577,14 @@ export default {
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
-      setEffectId: 0,                                        // 「我的套装」里点 [加成] 展开的那条
+      // ★ 2026-09-25：套装一览是否显示「全部套装」（含还没拥有的）—— 方便玩家横向对比
+      setShowAll: false,
+      // ★ 2026-09-25 用户反馈「套装的加成玩家看不到、不知道买完套装给军官用哪个」：
+      //   全部套装配置（含加成/部位/我拥有几件）单独拉一次并缓存，装备页·商城页·军官页共用。
+      //   setCardId = 装备表里正展开「套装加成卡」的那一**行**（存装备 id，不是 set_id！
+      //   存 set_id 的话同一套的每一行都会各自展开一张一样的卡 —— 实测 10 件套会蹦出 10 张）。
+      allSets: [],
+      setCardId: 0,
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
@@ -3838,6 +3982,29 @@ export default {
       return this.bagFiltered.slice((p - 1) * this.bagPageSize, p * this.bagPageSize)
     },
     // 我的装备（可按 名称 / 部位 / 套装 / 类型 检索）
+    // ★ 2026-09-25：set_id → 套装配置（含加成）。装备表/商城表/军官装备表都从这里查，
+    //   这样「没拥有的套装」也能看到穿齐给什么（原来只有 /officers/equipments 的 sets，
+    //   且只含我至少有一件的 → 商城里看不到加成，玩家不知道买哪套）。
+    setMap () {
+      const m = {}
+      for (const s of (this.allSets || [])) m[s.id] = s
+      return m
+    },
+    // ★ 2026-09-25 套装一览要显示的内容：默认「我有的」；切到全部时列**所有套装**（含没拥有的），
+    //   两种来源统一成同一形状（have/need/active/slots/effect + 加成字段），模板只认一套字段。
+    setListShown () {
+      if (!this.setShowAll) {
+        return this.mySetProgress.map(s => Object.assign({}, s, {
+          owned: s.have, have: s.have, need: s.need, active: s.active,
+          slots: (this.setOf(s.id) && this.setOf(s.id).slots) || []
+        }))
+      }
+      return (this.allSets || []).map(s => Object.assign({}, s, {
+        have: s.owned || 0,
+        need: Math.max(0, (s.parts || 0) - (s.owned || 0)),
+        active: (s.parts || 0) > 0 && (s.owned || 0) >= s.parts
+      }))
+    },
     // ★「我的套装」：只列**玩家已拥有**的套装（从背包聚合），并算还差几件才生效。
     //   原来这里铺的是「全部套装」= 图鉴，玩家根本分不清哪个是自己有的。
     mySetProgress () {
@@ -4749,10 +4916,6 @@ export default {
       this.bagCat = c
       this.bagPage = 1
     },
-    // ★「我的套装」：点 [加成] 展开/收起该套装的穿齐加成
-    toggleSetEffect (setId) {
-      this.setEffectId = (this.setEffectId === setId) ? 0 : setId
-    },
     // ★ 开箱快捷数量（[5]/[10] 不能超过单次上限）
     setChestCount (n) {
       const max = (this.chestOpen && this.chestOpen.open_max) || n
@@ -4886,6 +5049,7 @@ export default {
     },
     // ★ 装备商城（套装件，黄金/钻石购买）
     loadEquipShop () {
+      this.loadEquipSets()
       api.get('/games/ezfy/equipshop').then(r => {
         if (r.code === 0) this.equipShop = r.data
       })
@@ -6440,9 +6604,34 @@ export default {
       })
     },
     loadAcadeEquip () {
+      this.loadEquipSets()
       api.get('/games/ezfy/officers/equipments').then(r => {
         if (r.code === 0) this.equipData = r.data
       })
+    },
+    // ★ 2026-09-25：全部套装配置（含加成/部位/我拥有几件）—— 只拉一次，各页共用。
+    //   装备页/商城页/军官装备页都要「set_id → 这套穿齐给什么」，所以做成缓存。
+    loadEquipSets () {
+      if (this.allSets && this.allSets.length) return Promise.resolve()
+      return api.get('/games/ezfy/equipsets').then(r => {
+        if (r.code === 0) this.allSets = r.data.sets || []
+      }).catch(() => {})
+    },
+    // set_id → 套装配置（没有/散件返回 null）
+    setOf (setId) {
+      return (setId > 0 && this.setMap[setId]) ? this.setMap[setId] : null
+    },
+    // 套装加成文案（复用装备属性的展示口径：六项战斗属性 + 军事/后勤/学识）
+    setBonusText (setId) {
+      const s = this.setOf(setId)
+      return s ? this.equipAttrText(s) : ''
+    },
+    // 点套装名 → 在**这一行**下面展开/收起「套装加成卡」（再点收起）。
+    // ★ 参数是**这一行装备的 id**，不是 set_id：同一套会有 9~11 行，
+    //   按 set_id 展开的话每行都会各蹦一张一样的卡（实测 10 件套蹦 10 张）。
+    toggleSetCard (equipId) {
+      if (!equipId) return
+      this.setCardId = (this.setCardId === equipId) ? 0 : equipId
     },
     loadAcadeGenerals () {
       api.get('/games/ezfy/officers/generals').then(r => {
@@ -6458,6 +6647,8 @@ export default {
       this.loadOfficerDetail(id)
     },
     loadOfficerDetail (id) {
+      // ★ 军官详情的「已穿戴装备 / 装备背包」要显示套装加成 → 一并把套装配置拉上
+      this.loadEquipSets()
       api.get('/games/ezfy/officers/' + id).then(r => {
         if (r.code === 0) this.officerDetail = r.data
       })
@@ -6680,27 +6871,27 @@ body.ezfy-immersive { margin: 0; }
    于是回退到系统自带的 **Songti SC（宋体-简）** —— 它是衬线体、笔画极细，
    小字号在 Retina 屏上又细又灰、边缘发虚，观感比 Windows 的 SimSun 差一大截，
    这就是用户说的「iPhone 上字体不好看」。
-   处理：**桌面保留复古宋体**（用户 2026-09-24 明确要的风格），
-        **iOS / 安卓手机改用系统黑体**（苹方 PingFang SC / 黑体），
-        与《镜花缘》(Jingwt.vue)、《西游记》(Xiyou.vue) 两个模块的字体族保持一致。
-   用 `-webkit-touch-callout` 圈定：这个属性**只有 iOS Safari 支持**，
-   Windows / macOS 桌面浏览器一律不匹配，所以桌面端完全不受影响。 */
+   处理（★ 用户要求「iPhone 单独用 iPhone 自己的字体，其他设备不变」）：
+     · **桌面（Windows/macOS）保留复古宋体**，一行不动；
+     · **只有 iPhone / iPad 换成苹果自带的系统字体** —— 下面这份就是 iPhone 上的常驻字体：
+         `-apple-system` / `system-ui` → 苹果系统字体（西文 San Francisco + 中文 **苹方**）
+         `'PingFang SC'` 苹方（iOS 9+ 中文默认）｜ `'Heiti SC'` 黑体-简（更老的 iOS）
+         `'Hiragino Sans GB'` 冬青黑体简体中文（兜底）
+       与《镜花缘》(Jingwt.vue)、《西游记》(Xiyou.vue) 的字体族方向一致。
+   怎么只圈到苹果设备：用 `-webkit-touch-callout` —— 这个属性**只有苹果 WebKit 认**。
+   已实测（无头 Chrome）：桌面 `CSS.supports('-webkit-touch-callout','none') === false`，
+   所以 Windows / macOS 桌面浏览器一律不匹配、宋体不受影响；
+   iPhone 上的 Safari 与微信内置浏览器（都是 WebKit）都会命中。
+   ⚠️ 不要改成 `@media (hover:none) and (pointer:coarse)` —— 那会把安卓也一起改了，
+     用户明确要求「其他设备不变」。 */
 @supports (-webkit-touch-callout: none) {
   .ezfy-page,
   .ezfy-page button,
   .ezfy-page input,
   .ezfy-page select,
   .ezfy-page textarea {
-    font-family: -apple-system, 'PingFang SC', 'Heiti SC', 'Hiragino Sans GB',
-                 'Microsoft YaHei', '微软雅黑', sans-serif;
-  }
-}
-/* 安卓同理：宋体在安卓上回退到 Noto Serif CJK，也是细衬线体，手机上不好看。
-   （`hover:none + pointer:coarse` = 触屏设备；带鼠标的触屏笔记本不匹配，不受影响。） */
-@media (hover: none) and (pointer: coarse) {
-  .ezfy-page {
-    font-family: -apple-system, 'PingFang SC', 'Heiti SC', 'Noto Sans CJK SC',
-                 'Source Han Sans SC', 'Microsoft YaHei', '微软雅黑', sans-serif;
+    font-family: -apple-system, system-ui, 'PingFang SC', 'Heiti SC',
+                 'Hiragino Sans GB', 'Helvetica Neue', sans-serif;
   }
 }
 /* 表单控件/按钮默认不继承字体族, 显式补上(原版也是 body,button,input,select,textarea 一起设) */
@@ -6882,6 +7073,42 @@ body.ezfy-immersive { margin: 0; }
   font-size: var(--fs);
 }
 .ezfy-page .ezfy-slot-grid > a { white-space: nowrap; }
+/* ★ 2026-09-25 套装加成展示（用户反馈「套装的加成看不到，不知道买完套装给军官用哪个」）
+   三处展示，全部是**纯文本竖排**，窄屏不会横向溢出：
+     ① .set-card  —— 装备表里点套装名，在该行下面**跨整行**展开的加成卡
+        （刻意不新增表格列：手机上加一列就挤爆，跨整行展开才能完整显示）
+     ② .set-block —— 装备页「套装一览」里一套一块，方便上下对比
+     ③ .set-mini  —— 商城把「所属套装」塞在名称下面一行（商城表没有套装列） */
+.ezfy-page .set-card-row > td {
+  /* 表格单元格默认是居中/右对齐，加成卡必须左对齐才好读 */
+  text-align: left;
+  padding: 3px 6px 6px 0;
+}
+.ezfy-page .set-card {
+  background: #faf8f2;
+  border: 1px solid #d8d5cc;
+  border-left: 3px solid #2f6fb5;
+  border-radius: 3px;
+  padding: 4px 8px;
+  line-height: 1.7;
+}
+.ezfy-page .set-card .sc-h { margin-bottom: 2px; }
+.ezfy-page .set-card .sc-h .gray { margin-left: 4px; }
+.ezfy-page .set-card .sc-b { word-break: break-word; }
+.ezfy-page .set-mini { line-height: 1.6; color: #666; word-break: break-word; }
+.ezfy-page .set-block {
+  margin: 4px 0 6px;
+  padding: 4px 8px;
+  background: #faf8f2;
+  border-left: 3px solid #2f6fb5;
+  border-radius: 3px;
+}
+.ezfy-page .set-block .sb-h { line-height: 1.7; }
+.ezfy-page .set-block .sb-h .gray { margin: 0 2px; }
+.ezfy-page .set-block .sb-b { line-height: 1.7; word-break: break-word; }
+/* 「只看我有的 / 全部套装·可对比」切换（复用页面上的方括号链接风格，选中变红加粗） */
+.ezfy-page .set-tab a { margin-right: 8px; }
+.ezfy-page .set-tab a.on { color: #c0392b; font-weight: bold; }
 /* ★ 购买 / 开箱面板：卡片式，和上方表格拉开层次（原来只是行内一条左边框，挤成一坨） */
 .ezfy-page .ezfy-buy-box {
   margin: 8px 0;

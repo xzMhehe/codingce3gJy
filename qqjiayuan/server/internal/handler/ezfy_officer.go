@@ -1965,6 +1965,82 @@ func (h *EzfyHandler) ezfySetName(setId int) string {
 	return ""
 }
 
+// ezfySetSlots 各套装的部位清单（该套装下的装备配置聚合出来的，用于「这套都包含哪些部位」）
+func ezfySetSlots() map[int][]string {
+	out := map[int][]string{}
+	for _, id := range ezfyEquipIDsAsc() {
+		e := ezfyCfg.equipments[id]
+		if e.SetId <= 0 {
+			continue
+		}
+		slot := e.EquipSlot()
+		dup := false
+		for _, x := range out[e.SetId] {
+			if x == slot {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out[e.SetId] = append(out[e.SetId], slot)
+		}
+	}
+	return out
+}
+
+// ezfyAllSetsView 全部套装配置（玩家端「套装加成」展示用）
+//
+// ★ 2026-09-25 用户反馈「有些套装的加成玩家看不到、不容易看到，导致不知道买完套装给军官用哪个」：
+// 原来只有 /officers/equipments 的 sets 字段，而且**只含我至少有一件的套装** ——
+// 商城里看一件套装件，只知道名字和品质，根本不知道这套穿齐给什么，没法对比。
+// 这里给一份**全量**的（含还没拥有的），前端按 set_id 查表即可。
+//
+// owned = 我拥有该套装的件数（背包 + 已穿戴都算）；slots = 该套装包含哪些部位。
+// tier_name 取该套装各件的**最高品质**（套装表本身没有 tier 列）。
+func (h *EzfyHandler) ezfyAllSetsView(owned map[int]int, slotsOf map[int][]string) []gin.H {
+	pieceTier := map[int]int{}
+	for _, e := range ezfyCfg.equipments {
+		if e.SetId > 0 && e.Tier > pieceTier[e.SetId] {
+			pieceTier[e.SetId] = e.Tier
+		}
+	}
+	out := []gin.H{}
+	for _, s := range ezfyCfg.equipSets() {
+		slots := slotsOf[s.ID]
+		if slots == nil {
+			slots = []string{}
+		}
+		out = append(out, gin.H{
+			"id": s.ID, "name": s.Name, "parts": s.Parts, "series": s.Series,
+			"tier_name": ezfyTierName(pieceTier[s.ID]),
+			"military":  s.Military, "logistics": s.Logistics, "learning": s.Learning,
+			"dmg": s.Dmg, "def": s.Def, "hp": s.Hp,
+			"move": s.Move, "crit": s.Crit, "crit_dmg": s.CritDmg,
+			"effect": s.Effect, "des": s.Des,
+			"slots": slots, "owned": owned[s.ID],
+		})
+	}
+	return out
+}
+
+// EquipSets GET /games/ezfy/equipsets —— 全部套装配置（含加成、部位、我拥有几件）
+//
+// ★ 2026-09-25：装备页 / 商城页 / 军官装备页都要「set_id → 这套穿齐给什么」的映射。
+// 原来只有 /officers/equipments 里的 sets（且只含我有的），商城里根本没有加成数据。
+// 这里单独给一份全量的，前端拉一次缓存住、各页共用（体积很小）。
+func (h *EzfyHandler) EquipSets(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	// 我拥有各套装几件（背包 + 已穿戴都算，与 /officers/equipments 的统计口径一致）
+	owned := map[int]int{}
+	for _, e := range h.equipmentList(uid) {
+		if e.SetId > 0 {
+			owned[e.SetId]++
+		}
+	}
+	resp.OK(c, gin.H{"sets": h.ezfyAllSetsView(owned, ezfySetSlots())})
+}
+
 // AcadeRecruit GET /games/ezfy/acade/recruit —— 军校候选名将
 func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 	uid := middleware.GetUID(c)
