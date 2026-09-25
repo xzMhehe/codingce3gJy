@@ -1203,10 +1203,15 @@
                  不再出现 [宣战] 入口，也不再显示「未宣战」状态文案。 -->
           <div class="old-line" v-else-if="selCell.area_type === 3">
             <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
-            <a v-if="warStatus === 2 || !warRequire" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
+            <!-- ★ 2026-09-25 用户要求：军团交战期（atWar）无需个人宣战即可掠夺/征服 -->
+            <a v-if="warStatus === 2 || !warRequire || atWar" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">[掠夺]</a>&nbsp;
-            <a v-if="warStatus === 2 || !warRequire" href="javascript:;" @click="pickOrder(3)">[征服]</a>
+            <a v-if="warStatus === 2 || !warRequire || atWar" href="javascript:;" @click="pickOrder(3)">[征服]</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('征服')">[征服]</a>&nbsp;
+            <!-- ★ 2026-09-25 军团交战期绿色提示（文案可用后端下发的 corps_war.text） -->
+            <div class="old-line green" v-if="corpsWar && corpsWar.active">
+              军团交战期：{{ corpsWar.text || ('与【' + (corpsWar.corps_name || '敌方军团') + '】处于交战状态，无需个人宣战即可掠夺/征服') }}
+            </div>
             <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示
                  （不需要宣战时「交战中」这个概念不成立，所以照常显示） -->
             <template v-if="selCell.ally && (warStatus !== 2 || !warRequire)">
@@ -1900,10 +1905,24 @@
 
       <!-- ============ 军团(corps) ============ -->
       <template v-else-if="cur === 'corps'">
+        <!-- ★ 2026-09-25 用户要求：军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
+        <div class="panel">
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: corpsTab === 'info' }" @click="switchCorpsTab('info')">军团信息</a>|
+            <a href="javascript:;" :class="{ on: corpsTab === 'diplomacy' }" @click="switchCorpsTab('diplomacy')">军团外交</a>|
+            <a href="javascript:;" :class="{ on: corpsTab === 'war' }" @click="switchCorpsTab('war')">军团宣战</a>|
+            <a href="javascript:;" :class="{ on: corpsTab === 'mall' }" @click="switchCorpsTab('mall')">军团商城</a>
+          </div>
+        </div>
+
+        <!-- ========== ① 军团信息（原有内容整体移入，不删任何原功能） ========== -->
+        <template v-if="corpsTab === 'info'">
         <template v-if="myCorps">
           <div class="panel">
             <div class="panel-title">我的军团:{{ myCorps.name }}({{ myCorps.member_count }}人)</div>
             公告: {{ myCorps.notice || '无' }}<br/>
+            <!-- ★ 2026-09-25 用户要求：显示军团总积分（来自 /corps/members 的 corps_points） -->
+            <div class="old-line">军团总积分: <b>{{ corpsPoints }}</b></div>
             <div class="old-line">
               <template v-if="isLeader">
                 <a href="javascript:;" @click="openNoticeEdit()">[修改公告]</a>
@@ -1915,6 +1934,8 @@
             <table>
               <tr>
                 <th>成员</th><th>玩家号码</th><th>职位</th><th>声望</th><th>军衔</th>
+                <!-- ★ 2026-09-25 用户要求：成员表格新增「军团积分」列（m.points，个人军团积分） -->
+                <th>军团积分</th>
                 <!-- ★ 第九轮：军团长可任命副团长/参谋长 -->
                 <th v-if="isLeader" width="150">任命</th>
               </tr>
@@ -1924,6 +1945,8 @@
                 <td>{{ m.title || '成员' }}</td>
                 <td>{{ m.prestige }}</td>
                 <td>{{ m.rank_name }}</td>
+                <!-- ★ 2026-09-25：个人军团积分（用于军团商城兑换） -->
+                <td>{{ m.points }}</td>
                 <td v-if="isLeader">
                   <template v-if="!m.is_leader">
                     <a v-if="m.title !== '副团长'" href="javascript:;" @click="doSetCorpsTitle(m, '副团长')">[副团长]</a>
@@ -1981,6 +2004,169 @@
             <button @click="doCreateCorps">[创建]</button>
           </div>
         </div>
+        </template>
+        <!-- ========== ② 军团外交 ========== -->
+        <template v-else-if="corpsTab === 'diplomacy'">
+          <div class="panel" v-if="corpsRelations && corpsRelations.in_corps">
+            <div class="panel-title">我的军团(积分):{{ (corpsRelations.my_corps || {}).name }}({{ (corpsRelations.my_corps || {}).points || 0 }})</div>
+            <div class="old-line gray">友好/敌对军团均可宣战；关系标记只影响外交显示，不限制宣战。</div>
+            <div class="panel-title">已标记关系</div>
+            <table>
+              <tr><th>军团</th><th>关系</th><th v-if="corpsRelations.can_manage">操作</th></tr>
+              <tr v-for="rl in (corpsRelations.relations || [])" :key="'rl' + rl.corps_id">
+                <td>{{ rl.name }}</td>
+                <td :class="rl.type === 2 ? 'red' : 'green'">{{ rl.type_name }}</td>
+                <td v-if="corpsRelations.can_manage">
+                  <a href="javascript:;" @click="setCorpsRelation(rl.corps_id, 0)">[取消标记]</a>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="!(corpsRelations.relations || []).length">(暂无关系标记)</div>
+            <div class="panel-title">全部军团</div>
+            <table>
+              <tr>
+                <th>军团</th><th>团长</th><th>人数</th><th>积分</th><th>当前关系</th><th>宣战状态</th>
+                <th v-if="corpsRelations.can_manage">操作</th>
+              </tr>
+              <tr v-for="cp in (corpsRelations.corps_list || [])" :key="'cr' + cp.id">
+                <td>{{ cp.name }}</td>
+                <td>{{ cp.leader_name || '无' }}</td>
+                <td>{{ cp.member_count }}</td>
+                <td>{{ cp.points }}</td>
+                <td>
+                  <span v-if="cp.relation_type === 1" class="green">友好</span>
+                  <span v-else-if="cp.relation_type === 2" class="red">敌对</span>
+                  <span v-else class="gray">无</span>
+                </td>
+                <td>
+                  <span v-if="cp.war_status === 1 || cp.war_status === 2" class="orange">
+                    {{ cp.war_status === 1 ? '宣战待生效' : '交战中' }}<template v-if="cp.war_remaining_h">{{ '（' + cp.war_remaining_h + 'h）' }}</template>
+                  </span>
+                  <span v-else class="gray">未宣战</span>
+                </td>
+                <!-- ★ 仅军团长（can_manage）可标记；已是该关系时按钮变成 [取消标记] -->
+                <td v-if="corpsRelations.can_manage">
+                  <a v-if="cp.relation_type !== 1" href="javascript:;" @click="setCorpsRelation(cp.id, 1)">[标记友好]</a>
+                  <a v-else href="javascript:;" @click="setCorpsRelation(cp.id, 0)">[取消标记]</a>
+                  <a v-if="cp.relation_type !== 2" href="javascript:;" @click="setCorpsRelation(cp.id, 2)">[标记敌对]</a>
+                  <a v-else href="javascript:;" @click="setCorpsRelation(cp.id, 0)">[取消标记]</a>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="!(corpsRelations.corps_list || []).length">(暂无军团)</div>
+            <div class="old-line"><a href="javascript:;" @click="loadCorpsRelations">[刷新]</a></div>
+          </div>
+          <div class="panel" v-else-if="!corpsRelations"><div class="old-line">正在加载外交数据…</div></div>
+          <div class="panel" v-else>
+            <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="switchCorpsTab('info')">[去军团信息]</a></div>
+          </div>
+        </template>
+        <!-- ========== ③ 军团宣战 ========== -->
+        <template v-else-if="corpsTab === 'war'">
+          <div class="panel" v-if="corpsWars && corpsWars.in_corps">
+            <div class="panel-title">军团宣战</div>
+            <div class="old-line gray">
+              规则：宣战后 12 小时生效，48 小时整场结束；生效期间双方成员可互相掠夺/征服并获得军团战绩；友好/敌对军团均可宣战。
+            </div>
+            <table>
+              <tr>
+                <th>对方军团</th><th>我方身份</th><th>状态</th><th>宣告时间</th>
+                <th>我方战绩</th><th>对方战绩</th><th>操作</th>
+              </tr>
+              <tr v-for="w in (corpsWars.wars || [])" :key="'cw' + w.id">
+                <td>{{ w.opp_corps_name }}</td>
+                <td>{{ w.mine_is_atk ? '宣战方' : '应战方' }}</td>
+                <td>
+                  <span v-if="w.status === 1" class="orange">{{ w.status_name }}<template v-if="w.remaining_h">{{ '（' + w.remaining_h + 'h）' }}</template></span>
+                  <span v-else-if="w.status === 2" class="red">{{ w.status_name }}<template v-if="w.remaining_h">{{ '（' + w.remaining_h + 'h）' }}</template></span>
+                  <span v-else class="gray">{{ w.status_name }}</span>
+                </td>
+                <!-- ★ 后端下发的是毫秒时间戳，必须走 fmtTime 格式化（否则显示成一串数字） -->
+                <td>{{ fmtTime(w.declare_time) }}</td>
+                <td>{{ w.my_point }}</td>
+                <td>{{ w.opp_point }}</td>
+                <!-- 只有进行中(status 1/2)标注进行中；已结束(status 3)显示已结束 -->
+                <td>
+                  <span v-if="w.status === 1 || w.status === 2" class="gray">进行中</span>
+                  <span v-else class="gray">已结束</span>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="!(corpsWars.wars || []).length">(暂无宣战记录)</div>
+            <!-- ★ 军团长可对「未处于宣战中的军团」发起宣战：复用外交 tab 的军团列表，不重复拉接口 -->
+            <template v-if="corpsWars.can_manage && corpsRelations && corpsRelations.corps_list">
+              <div class="panel-title">全部军团(可宣战)</div>
+              <table>
+                <tr><th>军团</th><th>团长</th><th>人数</th><th>宣战状态</th><th>操作</th></tr>
+                <tr v-for="cp in (corpsRelations.corps_list || [])" :key="'wcp' + cp.id">
+                  <td>{{ cp.name }}</td>
+                  <td>{{ cp.leader_name || '无' }}</td>
+                  <td>{{ cp.member_count }}</td>
+                  <td>
+                    <span v-if="cp.war_status === 1 || cp.war_status === 2" class="orange">{{ cp.war_status === 1 ? '宣战待生效' : '交战中' }}</span>
+                    <span v-else class="gray">未宣战</span>
+                  </td>
+                  <td>
+                    <a v-if="cp.war_status !== 1 && cp.war_status !== 2" href="javascript:;" @click="declareCorpsWar(cp.id)">[宣战]</a>
+                    <span v-else class="gray">进行中</span>
+                  </td>
+                </tr>
+              </table>
+            </template>
+            <div class="old-line" v-if="corpsWars.can_manage && !(corpsRelations && corpsRelations.corps_list)">
+              <a href="javascript:;" @click="loadCorpsRelations">[加载可宣战军团列表]</a>
+            </div>
+            <div class="old-line"><a href="javascript:;" @click="loadCorpsWars">[刷新]</a></div>
+          </div>
+          <div class="panel" v-else-if="!corpsWars"><div class="old-line">正在加载宣战数据…</div></div>
+          <div class="panel" v-else>
+            <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="switchCorpsTab('info')">[去军团信息]</a></div>
+          </div>
+        </template>
+        <!-- ========== ④ 军团商城（用个人军团积分兑换） ========== -->
+        <template v-else-if="corpsTab === 'mall'">
+          <div class="panel" v-if="corpsMall.loaded && corpsMall.in_corps">
+            <div class="panel-title">军团商城</div>
+            <div class="old-line">我的军团积分 <b>{{ corpsMall.my_points }}</b> | 军团总积分 <b>{{ corpsMall.corps_points }}</b></div>
+            <table class="ezfy-plain-table">
+              <tr><th>商品</th><th>类型</th><th>内容</th><th>价格</th><th>限购/已购</th><th>库存</th><th>操作</th></tr>
+              <tr v-for="it in (corpsMall.items || [])" :key="'cmi' + it.id">
+                <td>{{ it.name }}</td>
+                <td>{{ it.kind_name }}</td>
+                <td>
+                  <template v-if="it.kind === 1">
+                    <span v-if="it.food">{{ resNames.food }}{{ it.food }}</span>
+                    <span v-if="it.steel">{{ ' ' + resNames.steel }}{{ it.steel }}</span>
+                    <span v-if="it.oil">{{ ' ' + resNames.oil }}{{ it.oil }}</span>
+                    <span v-if="it.rare">{{ ' ' + resNames.rare }}{{ it.rare }}</span>
+                    <span v-if="it.gold">{{ ' ' + resNames.gold }}{{ it.gold }}</span>
+                  </template>
+                  <template v-else>{{ it.item_name || it.name }} ×{{ it.item_count }}</template>
+                </td>
+                <td>{{ it.price }}(个人军团积分)</td>
+                <td>
+                  <span v-if="it.limit > 0">{{ corpsBought(it.id) }}/{{ it.limit }}</span>
+                  <span v-else class="gray">不限购</span>
+                </td>
+                <!-- ★ 后端下发的是「总库存 stock + 已售 sold」，这里显示剩余量（-1 = 无限） -->
+                <td>
+                  <span v-if="it.stock < 0" class="green">无限</span>
+                  <span v-else :class="(it.stock - it.sold) > 0 ? 'gray' : 'red'">{{ (it.stock - it.sold) > 0 ? (it.stock - it.sold) : '已售罄' }}</span>
+                </td>
+                <td>
+                  <a v-if="corpsMallCanBuy(it)" href="javascript:;" @click="doCorpsMallBuy(it)">[兑换]</a>
+                  <span v-else class="gray">[不可兑换]</span>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="!(corpsMall.items || []).length">(暂无商品)</div>
+            <div class="old-line"><a href="javascript:;" @click="loadCorpsMall">[刷新]</a></div>
+          </div>
+          <div class="panel" v-else-if="!corpsMall.loaded"><div class="old-line">正在加载商城数据…</div></div>
+          <div class="panel" v-else>
+            <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="switchCorpsTab('info')">[去军团信息]</a></div>
+          </div>
+        </template>
         <a href="javascript:;" @click="go('home')">[返回首页]</a>
       </template>
 
@@ -3642,6 +3828,14 @@ export default {
       corpsName: '',
       corpsMsg: '',
       kickUserId: 0,
+      // ★ 2026-09-25 用户要求：军团页拆成「军团信息 / 军团外交 / 军团宣战 / 军团商城」四个子栏，
+      //   纯前端 tab 切换（照抄 rank/acade 页的 .acade-tab 写法），数据按需懒加载。
+      corpsTab: 'info',        // info军团信息 / diplomacy军团外交 / war军团宣战 / mall军团商城
+      corpsPoints: 0,          // 军团总积分（/corps/members 或 /corps/relations 的 my_corps.points）
+      corpsRelations: null,    // /corps/relations 全量数据（null=还没拉过）
+      corpsWars: null,         // /corps/war 全量数据（null=还没拉过）
+      // 军团商城：loaded 标记避免每次切 tab 重复拉（兑换/宣战等操作后才会重新拉）
+      corpsMall: { loaded: false, my_points: 0, corps_points: 0, items: [], my_bought: {} },
       mallItems: [],
       // ★ 第九轮：商城分类 + 分页 + 钻石余额
       mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
@@ -3745,6 +3939,11 @@ export default {
       // ★ 管理端「宣战功能」开关（/war/status 下发 war_require）：
       //   false = 不需要宣战，掠夺/征服直接可点。默认 true（开关默认开）。
       warRequire: true,
+      // ★ 2026-09-25 用户要求：军团交战期也能掠夺/征服（无需个人宣战）。
+      //   atWar = /war/status 下发的 at_war（个人宣战已生效 或 管理端关掉宣战开关 或 军团交战期）；
+      //   corpsWar = /war/status 下发的 corps_war（{active, corps_name, text}）。
+      atWar: false,
+      corpsWar: null,
       orderType: 2,
       orderTroops: {},
       onDutyOfficers: [],
@@ -4543,7 +4742,15 @@ export default {
         if (this.mallTab === 'chest') this.loadChests()
       }
       else if (t === 'exchange') this.loadExchange()
-      else if (t === 'corps') this.loadCorps()
+      else if (t === 'corps') {
+        // ★ 2026-09-25 进入军团页重置子栏缓存 → 再次进入时拉到最新数据；
+        //   单纯切 tab 不会重复拉接口（见 switchCorpsTab）。
+        this.corpsRelations = null
+        this.corpsWars = null
+        this.corpsMall = { loaded: false, my_points: 0, corps_points: 0, items: [], my_bought: {} }
+        this.loadCorps()
+        this.switchCorpsTab(this.corpsTab)
+      }
       else if (t === 'orders') this.loadOrders()
       else if (t === 'battle') {
         // ★ 战场页刷新后不能只靠 URL 恢复：订单 id 只存在内存里，刷新就丢了。
@@ -5248,6 +5455,8 @@ export default {
           this.corpsMembers = r.data.members
           // ★ 后端下发「我在军团的职位」，副团长也能发军团邮件
           this.myCorpsTitle = r.data.my_title || ''
+          // ★ 2026-09-25 用户要求：军团信息 tab 显示军团总积分（新字段 corps_points）
+          this.corpsPoints = r.data.corps_points || 0
         }
       })
       api.get('/games/ezfy/corps/chats').then(r => {
@@ -6018,6 +6227,11 @@ export default {
           //   （后端 isAtWar 同时恒为 true，两边口径一致）。
           //   注意不能靠把 warStatus 伪造成 2 —— 那样同盟城市的 运输/增援 会被误判而消失。
           this.warRequire = r.data.war_require !== false
+          // ★ 2026-09-25 用户要求：接军团交战期字段
+          //   at_war = 可掠夺/征服（个人宣战已生效 或 管理端关掉宣战开关 或 军团交战期）；
+          //   corps_war = {active, corps_name, text}，active 时详情页显示绿色提示。
+          this.atWar = !!r.data.at_war
+          this.corpsWar = r.data.corps_war || null
         }
       })
     },
@@ -6314,6 +6528,119 @@ export default {
           this.corpsMsg = ''
           this.loadCorps()
         } else this.notify(r.msg)
+      })
+    },
+    // ---- ★ 2026-09-25 用户要求：军团外交 / 军团宣战 / 军团商城 ----
+    // 切子栏：只在数据还没拉过时才请求（避免每次切 tab 重复打接口）
+    switchCorpsTab (tab) {
+      this.corpsTab = tab
+      if (tab === 'diplomacy') {
+        if (!this.corpsRelations) this.loadCorpsRelations()
+      } else if (tab === 'war') {
+        if (!this.corpsWars) this.loadCorpsWars()
+        // 宣战 tab 复用外交的军团列表（[宣战] 入口），没拉过就补一次
+        if (!this.corpsRelations) this.loadCorpsRelations()
+      } else if (tab === 'mall') {
+        if (!this.corpsMall.loaded) this.loadCorpsMall()
+      }
+    },
+    loadCorpsRelations () {
+      return api.get('/games/ezfy/corps/relations').then(r => {
+        if (r.code === 0) {
+          this.corpsRelations = r.data
+          // ★ 外交数据也带 my_corps.points，顺手同步军团总积分（与 /corps/members 同源）
+          if (r.data && r.data.my_corps) this.corpsPoints = r.data.my_corps.points || 0
+        }
+      })
+    },
+    loadCorpsWars () {
+      return api.get('/games/ezfy/corps/war').then(r => {
+        if (r.code === 0) this.corpsWars = r.data
+      })
+    },
+    loadCorpsMall () {
+      return api.get('/games/ezfy/corps/mall').then(r => {
+        if (r.code === 0) {
+          this.corpsMall = {
+            loaded: true,
+            in_corps: !!r.data.in_corps,
+            my_points: r.data.my_points || 0,
+            corps_points: r.data.corps_points || 0,
+            items: r.data.items || [],
+            my_bought: r.data.my_bought || {}
+          }
+        }
+      })
+    },
+    // 某商品我已购数量（my_bought 以商品 id 为键）
+    corpsBought (id) {
+      const mb = this.corpsMall.my_bought || {}
+      return parseInt(mb[id]) || 0
+    },
+    // [兑换] 是否可点：未售罄 且 未超限购
+    // ★ stock 是「总库存」(-1=无限)，剩余要减掉已售 sold
+    corpsMallCanBuy (item) {
+      if (item.stock >= 0 && (item.stock - item.sold) <= 0) return false
+      const bought = this.corpsBought(item.id)
+      if (item.limit > 0 && bought >= item.limit) return false
+      return true
+    },
+    // 军团名查找（外交/宣战操作的确认文案用）
+    corpsNameOf (corpsId) {
+      const list = (this.corpsRelations && this.corpsRelations.corps_list) || []
+      const hit = list.filter(c => c.id === corpsId)[0]
+      return hit ? hit.name : ('#' + corpsId)
+    },
+    // 军团长标记关系：type 0取消 / 1友好 / 2敌对（后端也会校验权限）
+    async setCorpsRelation (corpsId, type) {
+      const name = this.corpsNameOf(corpsId)
+      const tip = type === 0 ? ('确定取消对「' + name + '」的关系标记吗？')
+        : ('确定把「' + name + '」标记为' + (type === 1 ? '友好' : '敌对') + '吗？\n（友好/敌对军团均可宣战）')
+      if (!await this.ask(tip)) return
+      api.post('/games/ezfy/corps/relation', { corps_id: corpsId, type: type }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg || '关系已更新')
+          this.loadCorpsRelations()
+        } else this.notify(r.msg || '操作失败')
+      })
+    },
+    // 军团长对某军团宣战（后端校验权限/是否已在宣战中）
+    async declareCorpsWar (corpsId) {
+      const name = this.corpsNameOf(corpsId)
+      const ok = await this.ask('确定对「' + name + '」宣战吗？\n宣战后 12 小时生效，48 小时后整场结束；生效期间双方成员可互相掠夺/征服。')
+      if (!ok) return
+      api.post('/games/ezfy/corps/war/declare', { corps_id: corpsId }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg || '宣战成功')
+          this.loadCorpsWars()
+          this.loadCorpsRelations()
+        } else this.notify(r.msg || '宣战失败')
+      })
+    },
+    // 军团商城兑换：数量用内联输入弹窗询问（参考 openNoticeEdit 的 ask({input:true}) 写法）
+    async doCorpsMallBuy (item) {
+      const bought = this.corpsBought(item.id)
+      const byLimit = item.limit > 0 ? (item.limit - bought) : 9999
+      const byStock = item.stock < 0 ? 9999 : (item.stock - item.sold)
+      const byPoint = item.price > 0 ? Math.floor((this.corpsMall.my_points || 0) / item.price) : 9999
+      const maxN = Math.max(0, Math.min(byLimit, byStock, byPoint))
+      if (maxN <= 0) {
+        if (byPoint <= 0) this.notify('军团积分不足：兑换 1 个需要 ' + item.price + ' 积分，我现有 ' + this.corpsMall.my_points)
+        else if (byStock <= 0) this.notify('该商品已售罄')
+        else this.notify('已达限购上限（' + item.limit + '）')
+        return
+      }
+      const input = await this.ask('兑换「' + item.name + '」数量（1-' + maxN + '，单价 ' + item.price +
+        ' 积分，我现有 ' + this.corpsMall.my_points + '）', { input: true, value: '1' })
+      if (input === null) return
+      const n = parseInt(input, 10)
+      if (isNaN(n) || n < 1 || n > maxN) { this.notify('数量需在 1-' + maxN + ' 之间'); return }
+      api.post('/games/ezfy/corps/mall/buy', { id: item.id, count: n }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg || '兑换成功')
+          this.loadCorpsMall()
+          this.load()
+        } else this.notify(r.msg || '兑换失败')
       })
     },
     // ---- 商城/背包/交易 ----

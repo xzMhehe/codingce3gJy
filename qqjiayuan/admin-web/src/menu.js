@@ -84,6 +84,9 @@ import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
 import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
 import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
 import AdminEzfyWars from './components/admin/AdminEzfyWars.vue'
+// ★ 2026-09-25 用户要求：新增军团宣战维护 / 军团商城维护两个页面
+import AdminEzfyCorpsWars from './components/admin/AdminEzfyCorpsWars.vue'
+import AdminEzfyCorpsMall from './components/admin/AdminEzfyCorpsMall.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
@@ -271,6 +274,10 @@ export const menu = [
           //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
           { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
+          // ★ 2026-09-25 用户要求：军团宣战维护（perm 复用个人宣战 module:ezfyWars）
+          { key: 'ezfyCorpsWars', name: '军团宣战维护', icon: 'el-icon-s-flag', component: AdminEzfyCorpsWars, perm: 'module:ezfyWars' },
+          // ★ 2026-09-25 用户要求：军团商城维护（perm 复用军团管理 module:ezfyCorps）
+          { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },

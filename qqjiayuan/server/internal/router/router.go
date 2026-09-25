@@ -600,6 +600,15 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// 军团任职（军团长任命副团长 / 参谋长）
 				ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
 				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
+				// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 用户要求）
+				// 外交关系标记 + 军团宣战（宣战后 12 小时生效、48 小时整场结束）
+				ezfyG.GET("/corps/relations", ezfyH.CorpsRelations)
+				ezfyG.POST("/corps/relation", ezfyH.CorpsRelationSet)
+				ezfyG.GET("/corps/war", ezfyH.CorpsWarList)
+				ezfyG.POST("/corps/war/declare", ezfyH.CorpsWarDeclare)
+				// 军团商城（货币 = 成员个人军团积分）
+				ezfyG.GET("/corps/mall", ezfyH.CorpsMallList)
+				ezfyG.POST("/corps/mall/buy", ezfyH.CorpsMallBuy)
 				ezfyG.GET("/liaison", ezfyH.Liaison)
 				ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
 				// 搜索玩家（按游戏ID / 家园号码 / 昵称）
@@ -1259,6 +1268,23 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-wars/:id/effect", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarEffect)
 				admin.POST("/ezfy-wars/:id/finish", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarFinish)
 				admin.DELETE("/ezfy-wars/:id", perm(db, "module:ezfyWars"), adminH.AdminEzfyWarDelete)
+
+				// ---- 军团宣战维护（列表 / 代宣战 / 强制结束 / 全部结束 / 删除）----
+				// ★ 批量接口 finish-all 注册在 /:id 之前，避免被 :id 匹配（同 ezfy-wars 的注意事项）。
+				//   权限复用 module:ezfyWars，不新增权限项。
+				admin.GET("/ezfy-corps-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWars)
+				admin.POST("/ezfy-corps-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarCreate)
+				admin.POST("/ezfy-corps-wars/finish-all", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarFinishAll)
+				admin.POST("/ezfy-corps-wars/:id/finish", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarFinish)
+				admin.DELETE("/ezfy-corps-wars/:id", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarDelete)
+
+				// ---- 军团商城维护（列表 / 新增或更新 / 上下架 / 删除 / 道具池）----
+				//   权限复用 module:ezfyCorps，不新增权限项。
+				admin.GET("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMallList)
+				admin.GET("/ezfy-corps-mall/items", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMallItems)
+				admin.POST("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMallSave)
+				admin.POST("/ezfy-corps-mall/:id/toggle", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMallToggle)
+				admin.DELETE("/ezfy-corps-mall/:id", perm(db, "module:ezfyCorps"), adminH.AdminEzfyCorpsMallDelete)
 
 				// ---- 地图管理 ----
 				admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapCities)

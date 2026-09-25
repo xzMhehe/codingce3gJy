@@ -701,13 +701,22 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 		p := h.ensureProfile(m.UserId)
 		var u model.User
 		h.DB.First(&u, m.UserId)
+		// ★ 2026-09-25 用户要求「军团页展示个人军团积分」：每项带 points
 		views = append(views, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
 			"is_leader": m.IsLeader, "title": m.Title,
-			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige)})
+			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige),
+			"points": m.Points})
+	}
+	// ★ 军团总积分（军团商城/军团页展示）
+	corpsPoints := int64(0)
+	var cp model.EzfyCorps
+	if err := h.DB.First(&cp, mb.CorpsId).Error; err == nil {
+		corpsPoints = cp.Points
 	}
 	resp.OK(c, gin.H{"members": views, "in_corps": true,
 		"can_manage": canManage, "can_mail": canMail,
-		"my_title": mb.Title, "is_leader": mb.IsLeader})
+		"my_title": mb.Title, "is_leader": mb.IsLeader,
+		"corps_points": corpsPoints})
 }
 
 // ============ 被占城市管理 ============

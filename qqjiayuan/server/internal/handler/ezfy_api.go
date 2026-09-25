@@ -862,7 +862,9 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 		}
 		views = append(views, gin.H{"id": cp.ID, "name": cp.Name, "notice": cp.Notice,
 			"member_count": counts[int64(cp.ID)], "leader": leaderName, "battle_score": score,
-			"camp": profile.Camp})
+			"camp": profile.Camp,
+			// ★ 2026-09-25 用户要求「军团积分」：军团总积分（原有字段不动，只补这一个）
+			"points": cp.Points})
 	}
 	// ★ 我的军团也带上实时人数（前端「我的军团(N人)」直接用它）
 	var myCorpsView interface{}
@@ -874,6 +876,7 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 				"id": cp.ID, "name": cp.Name, "notice": cp.Notice,
 				"leader_user_id": cp.LeaderUserId,
 				"member_count":   counts[int64(cp.ID)],
+				"points":         cp.Points,
 			}
 		}
 	}
@@ -1209,7 +1212,28 @@ func (h *EzfyHandler) WarStatus(c *gin.Context) {
 	//   掠夺/征服按钮要不要「需先宣战」那套限制（false = 直接可点）。
 	//   注意这里**不**把 status 伪造成 2 —— 那样会让「同盟城市」的 运输/增援 按钮
 	//   被误判成交战中而消失，所以开关单独下发，由前端分别处理。
-	resp.OK(c, gin.H{"status": status, "text": text, "war_require": ezfyWarRequireOn()})
+	//
+	// ★ 2026-09-25 用户要求「军团宣战生效期间成员之间可直接打」：新增两个字段（原有字段不变，前端已依赖）。
+	//   at_war    = 个人交战中 || 宣战开关关闭 || 军团交战生效；前端据此放开掠夺/征服按钮。
+	//   corps_war = {active, corps_name(对方军团名), text(军团交战期文案)}。
+	cw := h.corpsActiveWarBetween(uid, tid)
+	atWar := status == 2 || !ezfyWarRequireOn() || cw != nil
+	corpsWar := gin.H{"active": false, "corps_name": "", "text": ""}
+	if cw != nil {
+		now := time.Now().UnixMilli()
+		hs := (cw.ExpireTime - now + 3599999) / 3600000
+		if hs < 0 {
+			hs = 0
+		}
+		oppName := cw.DefCorpsName
+		if cw.DefCorpsId == h.corpsOfUser(uid) {
+			oppName = cw.AtkCorpsName
+		}
+		corpsWar = gin.H{"active": true, "corps_name": oppName,
+			"text": fmt.Sprintf("军团交战期(剩余约%d小时)", hs)}
+	}
+	resp.OK(c, gin.H{"status": status, "text": text, "war_require": ezfyWarRequireOn(),
+		"at_war": atWar, "corps_war": corpsWar})
 }
 
 // ============ 排行榜 ============

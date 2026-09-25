@@ -730,6 +730,8 @@ type EzfyCorps struct {
 	LeaderUserId uint   `gorm:"comment:首领用户ID" json:"leader_user_id"`
 	Notice       string `gorm:"type:varchar(200);comment:公告" json:"notice"`
 	MemberCount  int    `gorm:"default:1;comment:Member数量" json:"member_count"`
+	// ★ 2026-09-25 用户要求「军团积分」：军团战绩总积分（成员在军团交战期获胜累加，军团商城可查看）
+	Points int64 `gorm:"default:0;comment:军团总积分" json:"points"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
@@ -737,15 +739,98 @@ type EzfyCorps struct {
 func (EzfyCorps) TableName() string { return "ezfy_corps" }
 
 type EzfyCorpsMember struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	CorpsId   uint      `gorm:"index:idx_corps;comment:军团ID" json:"corps_id"`
-	UserId    uint      `gorm:"uniqueIndex:uk_user;comment:用户ID" json:"user_id"`
-	IsLeader  int       `gorm:"default:0;comment:是否首领" json:"is_leader"`
-	Title     string    `gorm:"type:varchar(20);comment:标题" json:"title"`
+	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CorpsId  uint   `gorm:"index:idx_corps;comment:军团ID" json:"corps_id"`
+	UserId   uint   `gorm:"uniqueIndex:uk_user;comment:用户ID" json:"user_id"`
+	IsLeader int    `gorm:"default:0;comment:是否首领" json:"is_leader"`
+	Title    string `gorm:"type:varchar(20);comment:标题" json:"title"`
+	// ★ 2026-09-25 用户要求「军团商城货币 = 成员个人军团积分」：成员个人战绩积分（商城消费用它扣）
+	Points    int64     `gorm:"default:0;comment:个人军团积分" json:"points"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
 
 func (EzfyCorpsMember) TableName() string { return "ezfy_corps_member" }
+
+// EzfyCorpsRelation 军团外交关系（军团长标记；友好/敌对均双向各写一条）
+//
+// ★ 2026-09-25 用户要求「军团之间可标记友好/敌对，双向记录，友好敌对都可以宣战」。
+type EzfyCorpsRelation struct {
+	ID            uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CorpsId       uint      `gorm:"uniqueIndex:uk_pair;comment:军团ID" json:"corps_id"`
+	TargetCorpsId uint      `gorm:"uniqueIndex:uk_pair;comment:目标军团ID" json:"target_corps_id"`
+	Type          int       `gorm:"comment:1友好 2敌对" json:"type"` // 1友好 2敌对
+	CreatedAt     time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt     time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyCorpsRelation) TableName() string { return "ezfy_corps_relation" }
+
+// EzfyCorpsWar 军团宣战记录：宣战后 12 小时生效、48 小时整场结束（生效窗口 = 第 12~48 小时，共 36 小时）
+//
+// ★ 2026-09-25 用户要求：生效期间双方**军团成员之间**可互相掠夺/征服，无需个人宣战；
+// 掠夺胜 +10、征服胜 +20 军团战绩（记到获胜方所属军团 AtkPoint/DefPoint 与攻击者个人积分）。
+type EzfyCorpsWar struct {
+	ID           uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	AtkCorpsId   uint   `gorm:"index:idx_pair;comment:攻方军团ID" json:"atk_corps_id"`
+	DefCorpsId   uint   `gorm:"index:idx_pair;comment:守方军团ID" json:"def_corps_id"`
+	AtkCorpsName string `gorm:"type:varchar(20);comment:攻方军团名快照" json:"atk_corps_name"`
+	DefCorpsName string `gorm:"type:varchar(20);comment:守方军团名快照" json:"def_corps_name"`
+	AtkUserId    uint   `gorm:"comment:发起宣战的军团长用户ID" json:"atk_user_id"`
+	Status       int    `gorm:"comment:1待生效 2交战中 3已结束" json:"status"` // 1待生效 2交战中 3已结束
+	AtkPoint     int64  `gorm:"default:0;comment:攻方本次战绩" json:"atk_point"`
+	DefPoint     int64  `gorm:"default:0;comment:守方本次战绩" json:"def_point"`
+	DeclareTime  int64  `gorm:"comment:宣战时间" json:"declare_time"`
+	EffectTime   int64  `gorm:"comment:生效时间" json:"effect_time"`
+	ExpireTime   int64  `gorm:"comment:整场结束时间" json:"expire_time"`
+	EndTime      int64  `gorm:"comment:实际结束时间(0=未结束)" json:"end_time"`
+
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyCorpsWar) TableName() string { return "ezfy_corps_war" }
+
+// EzfyCorpsMall 军团商城商品：货币 = 成员个人军团积分
+//
+// ★ 2026-09-25 用户要求：商品分两类 —— 资源包（food/steel/oil/rare/gold）与道具
+// （复用现有游戏道具配置 EzfyCfgItem，「道具池」= 现有道具表，发放走现有 addItem）。
+type EzfyCorpsMall struct {
+	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Kind       int    `gorm:"comment:1资源包 2道具" json:"kind"` // 1资源包 2道具
+	Name       string `gorm:"type:varchar(40);comment:名称" json:"name"`
+	Food       int64  `gorm:"default:0;comment:粮食" json:"food"`
+	Steel      int64  `gorm:"default:0;comment:钢铁" json:"steel"`
+	Oil        int64  `gorm:"default:0;comment:石油" json:"oil"`
+	Rare       int64  `gorm:"default:0;comment:稀矿" json:"rare"`
+	Gold       int64  `gorm:"default:0;comment:黄金" json:"gold"`
+	ItemId     int    `gorm:"default:0;comment:道具配置ID" json:"item_id"`
+	ItemCount  int    `gorm:"default:0;comment:道具数量" json:"item_count"`
+	Price      int64  `gorm:"default:0;comment:个人军团积分单价" json:"price"`
+	LimitCount int    `gorm:"default:0;comment:每人限购(0=不限)" json:"limit_count"`
+	Stock      int    `gorm:"default:-1;comment:总库存(-1=不限)" json:"stock"`
+	Sold       int    `gorm:"default:0;comment:已售数量" json:"sold"`
+	Sort       int    `gorm:"default:0;comment:排序" json:"sort"`
+	Enabled    int    `gorm:"default:1;comment:1上架 0下架" json:"enabled"`
+
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyCorpsMall) TableName() string { return "ezfy_corps_mall" }
+
+// EzfyCorpsMallLog 军团商城购买记录（每人限购统计用它按 user+mall 聚合）
+type EzfyCorpsMallLog struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CorpsId   uint      `gorm:"comment:军团ID" json:"corps_id"`
+	UserId    uint      `gorm:"index:idx_user_mall;comment:用户ID" json:"user_id"`
+	MallId    uint      `gorm:"index:idx_user_mall;comment:商品ID" json:"mall_id"`
+	Kind      int       `gorm:"comment:1资源包 2道具" json:"kind"`
+	Count     int       `gorm:"comment:购买数量" json:"count"`
+	Cost      int64     `gorm:"comment:消耗个人军团积分" json:"cost"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyCorpsMallLog) TableName() string { return "ezfy_corps_mall_log" }
 
 type EzfyCorpsChat struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`

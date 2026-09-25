@@ -409,6 +409,12 @@ func (h *EzfyHandler) isAtWar(a, b uint) bool {
 	if !ezfyWarRequireOn() {
 		return true
 	}
+	// ★ 2026-09-25 用户要求「军团宣战生效期间，双方军团成员之间可直接掠夺/征服，无需个人宣战」：
+	//   在原有个人宣战判断之外，新增「两人所属军团之间存在生效中的军团宣战 → 返回 true」。
+	//   这样出征校验与战斗结算两处口径一致（原注释就是要求两处一起放开）。
+	if h.corpsActiveWarBetween(a, b) != nil {
+		return true
+	}
 	return h.warStatus(a, b) == 2
 }
 
@@ -2222,6 +2228,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	prestigeGain := 0
 
 	if win {
+		// ★ 2026-09-25 用户要求「军团交战期掠夺/征服获胜可获得军团战绩积分（军团总积分 + 成员个人积分）」：
+		//   只在「掠夺(2)/征服(3) 攻打玩家城市 且 攻击方获胜」这一处发放，**只加一次**。
+		//   helper 内部自己判断是否处于生效中的军团交战期（不处于则什么都不做），
+		//   所以这里不需要再做军团判断。
+		if (order.OrderType == 2 || order.OrderType == 3) && order.TargetType == 3 &&
+			target != nil && target.UserID != 0 && target.UserID != uid {
+			h.ezfyCorpsWarAward(uid, target.UserID, order.OrderType)
+		}
 		if targetProtected && order.TargetType == 3 {
 			report += "\n目标城市处于免战保护期, 无法掠夺资源!"
 		}

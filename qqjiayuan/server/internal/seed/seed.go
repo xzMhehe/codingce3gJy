@@ -116,6 +116,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
+		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 用户要求）
+		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
 		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyCityEffect{},
 		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
 		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
@@ -333,6 +335,24 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_battle SET def_user_id = 0 WHERE def_user_id IS NULL")
 		db.Exec("UPDATE ezfy_battle SET def_cmd = '' WHERE def_cmd IS NULL")
+	}
+
+	// 二战风云·军团积分（★ 2026-09-25 用户要求「军团积分 + 军团商城」）
+	//   ezfy_corps.points / ezfy_corps_member.points 是 AutoMigrate 新加的列，
+	//   在**老行上是 NULL** —— Go 侧 int64 扫 NULL 会报
+	//   "converting NULL to int64 is unsupported"（军团列表/成员列表直接扫这两张表）。
+	//   显式补列 + 回填 0（幂等，跑过一次后条件不再命中）。
+	if db.Migrator().HasTable("ezfy_corps") {
+		if !db.Migrator().HasColumn("ezfy_corps", "points") {
+			db.Exec("ALTER TABLE ezfy_corps ADD COLUMN points bigint DEFAULT 0 COMMENT '军团总积分'")
+		}
+		db.Exec("UPDATE ezfy_corps SET points = 0 WHERE points IS NULL")
+	}
+	if db.Migrator().HasTable("ezfy_corps_member") {
+		if !db.Migrator().HasColumn("ezfy_corps_member", "points") {
+			db.Exec("ALTER TABLE ezfy_corps_member ADD COLUMN points bigint DEFAULT 0 COMMENT '个人军团积分'")
+		}
+		db.Exec("UPDATE ezfy_corps_member SET points = 0 WHERE points IS NULL")
 	}
 
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
