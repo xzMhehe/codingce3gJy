@@ -386,9 +386,13 @@
               <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
               <a href="javascript:;" @click="loadReports">[刷新]</a>
             </div>
-            <!-- ★ 雷达站决定「事前预警」能不能收到（事后结果战报不受影响） -->
+            <!-- ★ 雷达站 + 侦察技巧 决定「事前预警」能看到多少（事后结果战报不受影响）
+                 ★ 2026-09-25 用户要求「军情警讯要看到对面城市名字和地址」→ 这里明确写出
+                   还差多少才能看到「出发城市(坐标)」，否则玩家永远不知道该升什么。 -->
             <div class="old-line" v-if="reportRadar > 0">
-              <span class="gray">当前雷达站 {{ reportRadar }} 级：已开启「敌军来袭 / 被侦查」预警，等级越高情报越详细。</span>
+              <span class="gray">情报等级 <b>{{ reportIntel }}</b> = 雷达站 {{ reportRadar }} 级 + 侦察技巧 {{ reportRecon }} 级：</span>
+              <span v-if="reportIntel >= 2" class="gray">已能在预警里看到<b>来袭城市名称与坐标</b>，等级越高情报越详细。</span>
+              <span v-else class="orange">再升 1 级（雷达站或侦察技巧均可）就能看到<b>来袭城市名称与坐标</b>。</span>
             </div>
             <div class="old-line" v-else>
               <span class="red">尚未建造雷达站：收不到「敌军来袭 / 被侦查」预警；被掠夺、被征服的结果战报仍会记录在这里。</span>
@@ -3614,6 +3618,8 @@ export default {
       reportCounts: {},
       // ★ 自己城市的雷达站等级（决定「来袭/被侦查」预警能不能收到）
       reportRadar: 0,
+      // ★ 2026-09-25：情报等级 = 雷达站 + 侦察技巧（后端算好下发），前端据此提示还差多少
+      reportRecon: 0, reportIntel: 0,
       dynamics: [],
       // ★ 战场指挥室（军情 → 军队动态 → [指挥]）：每回合 30 秒，前 25 秒可下指令
       battleData: {
@@ -4871,6 +4877,8 @@ export default {
           this.reports = r.data.reports || []
           this.reportCounts = r.data.counts || {}
           this.reportRadar = r.data.radar || 0
+          this.reportRecon = r.data.recon || 0
+          this.reportIntel = r.data.intel || this.reportRadar
           this.repPage = 1
         }
       })

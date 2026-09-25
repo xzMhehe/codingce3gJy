@@ -959,27 +959,39 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// 雷达站预警：**能不能提前看见，取决于被攻击方自己城市的雷达站等级**。
 	//
 	//	侦查(1)      → 「被侦查报告」（军情警讯）
-	//	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随雷达等级递增
+	//	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随情报等级递增
+	//
+	// ★ 2026-09-25 用户要求「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
+	//
+	//	不然我只知道有人打我，不知道哪来的」：
+	//	情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10），见 h.ezfyIntelLevel。
+	//	「出发城市（名称+坐标）」门槛定在 **2 级**（雷达站1级 + 侦察技巧1级就能看到），
+	//	并且够等级时会**写进战报标题** —— 军情警讯列表只显示标题，不点进去也要看得见。
 	//
 	// 注意：这里只发**事前预警**；被掠夺/城破这类**事后结果**报告在 processArrive 里发，
 	// 不受雷达站限制 —— 否则玩家资源被抢光了却毫不知情。
 	if targetType == 3 && targetId > 0 && (orderType == 1 || orderType == 2 || orderType == 3) {
 		var target model.EzfyCity
 		if err := h.DB.First(&target, targetId).Error; err == nil && target.UserID > 0 {
-			radar := h.buildingLevel(target.ID, 21)
+			radar := h.ezfyIntelLevel(target.ID)
 			if radar >= 1 && orderType == 1 {
 				body := "有敌军对我方城市进行了侦查!\n"
 				if radar >= 3 {
-					body += "侦查方城市: " + city.Name + "\n"
+					body += fmt.Sprintf("侦查方城市: %s(%d,%d)\n", city.Name, city.X, city.Y)
 				}
 				if radar >= 5 {
 					body += fmt.Sprintf("侦查时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
-				body += fmt.Sprintf("(雷达站%d级: 等级越高, 情报越详细)", radar)
+				body += fmt.Sprintf("(情报等级%d: 雷达站等级越高、侦察技巧越高, 情报越详细)", radar)
 				h.addReport(target.UserID, 6, "被侦查报告: "+city.Name, body)
 			}
 			if radar >= 1 && orderType != 1 {
-				warn := "军情警报: 敌方部队正向我方城市进发!\n"
+				// ★ 出发城市（名称+坐标）放正文**最前面** —— 玩家最想知道的就是「谁、从哪来」
+				originLine := ""
+				if radar >= 2 {
+					originLine = fmt.Sprintf("出发城市: %s(%d,%d)\n", city.Name, city.X, city.Y)
+				}
+				warn := "军情警报: 敌方部队正向我方城市进发!\n" + originLine
 				if radar >= 2 {
 					warn += "进攻意图: " + ezfyOrderTypeName(orderType) + "\n"
 				}
@@ -994,9 +1006,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 					}
 				}
 				if radar >= 5 {
-					warn += "出发城市: " + city.Name + "\n"
-				}
-				if radar >= 6 {
 					warn += fmt.Sprintf("出发时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
 				if radar >= 7 && len(validTroops) > 0 {
@@ -1010,11 +1019,54 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 						warn += "兵力构成: " + tinfo + "(模糊数量)\n"
 					}
 				}
-				h.addReport(target.UserID, 6, "军情警报: 敌军来袭!", warn)
+				// ★ 把「还差什么才能看到出发城市」直接告诉玩家，否则他永远不知道该怎么解锁
+				if radar < 2 {
+					warn += fmt.Sprintf("(情报等级%d 不足: 雷达站+侦察技巧 合计到 2 级才能看到来袭城市与坐标)\n", radar)
+				}
+				warn += fmt.Sprintf("(情报等级%d = 雷达站%d级 + 侦察技巧%d级)", radar, h.buildingLevel(target.ID, 21), h.techMap(target.ID)[ezfyReconTechID])
+				title := "军情警报: 敌军来袭!"
+				if originLine != "" {
+					// 列表只显示标题 → 把来源也带上，不点进去就能看到
+					title += fmt.Sprintf(" 来自 %s(%d,%d)", city.Name, city.X, city.Y)
+				}
+				h.addReport(target.UserID, 6, title, warn)
 			}
 		}
 	}
 	return ""
+}
+
+// 雷达站预警相关常量
+const (
+	ezfyRadarBuildingID = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
+	ezfyReconTechID     = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
+	ezfyIntelMaxLevel   = 10 // 情报等级封顶
+)
+
+// ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 侦察技巧等级（合计封顶 10）。
+//
+// ★ 2026-09-25 用户要求：「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下
+//
+//	展示，不然我只知道有人打我，不知道哪来的」。
+//
+// 规则：
+//   - **雷达站（建筑 21）= 主渠道**：0 级收不到任何事前预警（保持原规则不变）
+//   - **侦察技巧（科技 12）= 加成**：每 1 级让情报等级 +1 —— 名字本来就叫「侦察」，
+//     原来只加行军速度，现在顺带加成情报，科技终于有用了
+//   - **「出发城市（名称+坐标）」门槛 = 2 级** → 雷达站 1 级 + 侦察技巧 1 级 就能看到；
+//     只有雷达站 1 级且没升科技时，正文会明确提示「合计到 2 级才能看到」
+//
+// 逐级解锁：2=出发城市+意图 / 3=预计到达 / 4=统帅 / 5=出发时间 / 7=兵力(模糊) / 9=兵力(精确)
+func (h *EzfyHandler) ezfyIntelLevel(cityID uint) int {
+	radar := h.buildingLevel(cityID, ezfyRadarBuildingID)
+	if radar <= 0 {
+		return 0
+	}
+	lv := radar + h.techMap(cityID)[ezfyReconTechID]
+	if lv > ezfyIntelMaxLevel {
+		lv = ezfyIntelMaxLevel
+	}
+	return lv
 }
 
 // OrderList 我的命令列表
@@ -1954,10 +2006,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   敌军**到达**我方城市开战时，立即给守方发一条「军情警讯」。
 			//   （「敌军来袭」预警已在 createOrder 时发；这里补「已抵达」的实时消息，
 			//   不依赖雷达站 —— 结果类消息不受雷达限制。）
+			// ★ 2026-09-25 用户要求「军情警讯里要看到对面城市名字和地址」→ 这里带上**坐标**，
+			//   并且写进标题（列表只显示标题，不点进去也要看得见）。这条是「人已经到了」的事后
+			//   消息，不受雷达站限制，所以来源一定给全 —— 保证玩家至少在这一步知道谁打了他。
 			if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
-				h.addReport(target.UserID, 6, "军情警报: 敌军已抵达",
-					fmt.Sprintf("敌方部队已抵达我方城市「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s\n请到「军情 → 军队动态」进入[指挥]部署守军。",
-						target.Name, order.TargetX, order.TargetY, city.Name))
+				h.addReport(target.UserID, 6,
+					fmt.Sprintf("军情警报: 敌军已抵达 来自 %s(%d,%d)", city.Name, city.X, city.Y),
+					fmt.Sprintf("敌方部队已抵达我方城市「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s(%d,%d)\n请到「军情 → 军队动态」进入[指挥]部署守军。",
+						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y))
 			}
 			// ★ 用户要求：「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，

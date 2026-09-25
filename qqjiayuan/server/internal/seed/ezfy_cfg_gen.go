@@ -285,7 +285,7 @@ var ezfyEzfyCfgTech = []model.EzfyCfgTech{
 	{ID: 9, Name: "重工技术", Type: 2, MaxLevel: 10, PreBuilding: 3, PreTech: 0, PreTechLevel: 0, Effect: "重装备攻防+2%", Des: "提高重型坦克/海军攻防,每级+2%"},
 	{ID: 10, Name: "燃烧引擎", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "部队速度+2%", Des: "提高部队速度,每级+2%"},
 	{ID: 11, Name: "建筑技术", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "建造时间-2%", Des: "减少建筑建造时间,每级-2%"},
-	{ID: 12, Name: "侦察技巧", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "行军速度+2%", Des: "提高军队行军速度,每级+2%"},
+	{ID: 12, Name: "侦察技巧", Type: 3, MaxLevel: 10, PreBuilding: 4, PreTech: 0, PreTechLevel: 0, Effect: "行军速度+2% · 情报+1级", Des: "提高军队行军速度,每级+2%;同时每级让军情情报等级+1(配合雷达站,更早看到来袭城市的名字与坐标)"},
 	{ID: 13, Name: "装载技术", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "部队负重+2%", Des: "提高部队负重,每级+2%"},
 	{ID: 14, Name: "储存技术", Type: 3, MaxLevel: 10, PreBuilding: 5, PreTech: 0, PreTechLevel: 0, Effect: "资源容量+2%", Des: "提高各资源容量上限,每级+2%"},
 	{ID: 15, Name: "指挥艺术", Type: 2, MaxLevel: 10, PreBuilding: 6, PreTech: 0, PreTechLevel: 0, Effect: "部队携带+10%", Des: "提高出征携带部队上限,每级+10%"},

@@ -2113,8 +2113,13 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	}
 	// ★ 军情警讯的可见范围由**自己城市的雷达站**决定：没有雷达站收不到「来袭预警/被侦查」，
 	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
+	// ★ 2026-09-25：同时下发**侦察技巧等级**与**合计情报等级** —— 现在「出发城市+坐标」
+	//   由「雷达站 + 侦察技巧」合计决定，前端要按这两个值告诉玩家还差多少才能看到来袭城市。
 	city := h.getOrCreateCity(uid)
-	resp.OK(c, gin.H{"reports": views, "counts": counts, "radar": h.buildingLevel(city.ID, 21)})
+	resp.OK(c, gin.H{"reports": views, "counts": counts,
+		"radar": h.buildingLevel(city.ID, ezfyRadarBuildingID),
+		"recon": h.techMap(city.ID)[ezfyReconTechID],
+		"intel": h.ezfyIntelLevel(city.ID)})
 }
 
 // ReportDynamics GET /games/ezfy/reports/dynamics
