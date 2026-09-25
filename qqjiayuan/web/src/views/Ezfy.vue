@@ -4526,7 +4526,7 @@ export default {
                t === 'troopview' || t === 'trainpre' || t === 'troopstat') this.loadTroops()
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
       else if (t === 'techs') this.loadTechs()
-      else if (t === 'map') { this.loadMap(); this.loadStars() }
+      else if (t === 'map') { this.backToMap(); this.loadStars() }
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
       else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
       else if (t === 'friends') this.loadFriends()
@@ -5313,6 +5313,14 @@ export default {
       //   整张网格会错位(本城就不在中心格了)
       api.get('/games/ezfy/map?r=' + this.mapR).then(r => { if (r.code === 0) this.applyMap(r.data) })
     },
+    // ★ 2026-09-25 用户反馈「[返回地图] 怎么都回到初始的地图页，我都移动好多次了」：
+    //   地图视野中心(mapCx/mapCy)一直存在内存里，进详情页再回来时要按**离开时的中心**刷新，
+    //   而不是重新 loadMap() 回本城；只有这次会话还没加载过地图(如刷新后直接进地图/详情)才回本城。
+    //   (「回到本城」按钮仍然走 loadMap()，保持原样)
+    backToMap () {
+      if (this.mapCells && this.mapCells.length) this.jumpTo(this.mapCx, this.mapCy)
+      else this.loadMap()
+    },
     moveMap (dx, dy) {
       this.jumpTo(this.mapCx + dx, this.mapCy + dy)
     },
@@ -5345,7 +5353,10 @@ export default {
       const hit = this.mapStars.find(s => s.x === this.selCell.x && s.y === this.selCell.y)
       if (hit) { this.delStar(hit); return }
       // 备注名用「地形名(等级)」, 坐标由列表模板统一拼, 别在这里重复带上
-      const def = this.cellText(this.selCell)
+      // ★ 2026-09-25：地图格子上城市统一显示「城市」，收藏备注名要用具体城市名，否则收藏列表分不清
+      const def = this.selCell.area_type === 3
+        ? ((this.selCell.name || '城市') + (this.selCell.owner ? '(' + this.selCell.owner + ')' : ''))
+        : this.cellText(this.selCell)
       const name = await this.ask('备注名（最多16字）', { input: true, value: def })
       if (name === null) return
       api.post('/games/ezfy/map/stars', { x: this.selCell.x, y: this.selCell.y, name: name }).then(r => {
@@ -5747,10 +5758,13 @@ export default {
       return hh + '小时' + (m % 60) + '分'
     },
     doRecover (w) {
-      api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type }).then(r => this.alert(r, '伤兵已恢复'))
+      // ★ 2026-09-25 用户反馈「伤兵救治后要手动刷新页面才显示」→ 成功后重拉军队数据(含伤兵营/逃兵营)
+      api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type })
+        .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
     },
     doRecoverAll (t) {
-      api.post('/games/ezfy/troops/recover', { all: true, type: t }).then(r => this.alert(r, '伤兵已恢复'))
+      api.post('/games/ezfy/troops/recover', { all: true, type: t })
+        .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
     },
     // ---- 科技 ----
     doResearch (t) {
@@ -5903,13 +5917,9 @@ export default {
     cellText (cell) {
       // 复刻 map/index.html: 格子文案为「名称(等级)」；★ 现在每格第二行统一显示坐标，
       //   所以这里一律只返回「名称」部分，本城也不再拼 (x,y)，避免和下面那行重复。
-      if (cell.mine) return this.city.name
-      // ★ 用户反馈：地图上别人的城市原来一律显示「城」，看不出是谁的城。
-      //   后端已下发 name(城市名) + owner(城主昵称)，这里直接展示。
-      if (cell.area_type === 3) {
-        const nm = cell.name || '城'
-        return cell.owner ? nm + '(' + cell.owner + ')' : nm
-      }
+      // ★ 2026-09-25 用户反馈：玩家城市名太长，格子会被撑变形 → 地图上（含本城）统一显示「城市」，
+      //   具体城市名/城主点进目标详情页再看（鼠标悬停的 title 里也有全称，见 cellTip）。
+      if (cell.area_type === 3) return '城市'
       // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
       if (cell.act_type === 1) return '活动(' + cell.act_level + ')'
       if (cell.act_type === 2) return '活动寇(' + cell.act_level + ')'
@@ -5926,8 +5936,9 @@ export default {
     },
     // ★ 格子悬浮提示：城市名字在格子里会被截断，鼠标悬停看全称。
     //   坐标已固定显示在格子第二行，这里不再重复拼。
+    //   ★ 2026-09-25：格子上一律显示「城市」(含本城)，所以本城也给出全称提示。
     cellTip (cell) {
-      if (cell.area_type === 3 && !cell.mine) {
+      if (cell.area_type === 3) {
         return (cell.name || '城市') + (cell.owner ? ' · 城主 ' + cell.owner : '') +
           ' (' + cell.x + ',' + cell.y + ')'
       }
