@@ -276,6 +276,88 @@ func (h *AdminHandler) AdminEzfyCorpsWarFinishAll(c *gin.Context) {
 		"count": len(rows)})
 }
 
+// AdminEzfyCorpsWarEffect POST /admin/ezfy-corps-wars/:id/effect
+//
+// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 与个人宣战同款：
+// 把「待生效」立即变成「交战中」，跳过剩余等待时间（到期时间若已过则按 48 小时整场续上，
+// 避免「刚点生效就立刻过期」）。
+func (h *AdminHandler) AdminEzfyCorpsWarEffect(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var w model.EzfyCorpsWar
+	if err := h.DB.First(&w, id).Error; err != nil {
+		resp.NotFound(c, "军团宣战记录不存在")
+		return
+	}
+	live := ezfyCorpsWarLiveStatus(&w)
+	if live == 2 {
+		resp.ParamError(c, "该军团宣战已经在交战中")
+		return
+	}
+	if live == 3 {
+		resp.ParamError(c, "该军团宣战已结束，不能再生效（如需重新开战请新建）")
+		return
+	}
+	now := time.Now().UnixMilli()
+	expire := w.ExpireTime
+	if expire <= now {
+		expire = now + ezfyCorpsWarTotalHours*3600000
+	}
+	if err := h.DB.Model(&model.EzfyCorpsWar{}).Where("id = ?", w.ID).
+		Updates(map[string]interface{}{"status": 2, "effect_time": now, "expire_time": expire}).Error; err != nil {
+		resp.ParamError(c, "操作失败："+err.Error())
+		return
+	}
+	msg := fmt.Sprintf("【军团宣战生效】%s 军团 与 %s 军团 的战争已由管理员立即生效，"+
+		"双方成员现在可以互相掠夺/征服（无需个人宣战），获胜可获得军团战绩积分。",
+		w.AtkCorpsName, w.DefCorpsName)
+	var members []model.EzfyCorpsMember
+	h.DB.Where("corps_id IN ?", []uint{w.AtkCorpsId, w.DefCorpsId}).Find(&members)
+	seen := map[uint]bool{}
+	for _, m := range members {
+		if m.UserId == 0 || seen[m.UserId] {
+			continue
+		}
+		seen[m.UserId] = true
+		h.DB.Create(&model.EzfyNotice{UserId: m.UserId, Title: "军团宣战生效", Content: msg})
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已让「%s → %s」立即进入交战状态", w.AtkCorpsName, w.DefCorpsName)})
+}
+
+// AdminEzfyCorpsWarEffectAll POST /admin/ezfy-corps-wars/effect-all
+//
+// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 把所有「待生效」的军团宣战
+// 一次推进到「交战中」（个人宣战 effect-all 的同口径实现）。
+func (h *AdminHandler) AdminEzfyCorpsWarEffectAll(c *gin.Context) {
+	now := time.Now().UnixMilli()
+	var rows []model.EzfyCorpsWar
+	h.DB.Where("status = 1 AND expire_time > ?", now).Find(&rows)
+	if len(rows) == 0 {
+		resp.OK(c, gin.H{"msg": "当前没有待生效的军团宣战", "count": 0})
+		return
+	}
+	if err := h.DB.Model(&model.EzfyCorpsWar{}).
+		Where("status = 1 AND expire_time > ?", now).
+		Updates(map[string]interface{}{"status": 2, "effect_time": now}).Error; err != nil {
+		resp.ParamError(c, "操作失败："+err.Error())
+		return
+	}
+	body := "【军团宣战生效】服务器已让所有待生效的军团宣战立即生效，双方成员可互相掠夺/征服。"
+	seen := map[uint]bool{}
+	for _, w := range rows {
+		var members []model.EzfyCorpsMember
+		h.DB.Where("corps_id IN ?", []uint{w.AtkCorpsId, w.DefCorpsId}).Find(&members)
+		for _, m := range members {
+			if m.UserId == 0 || seen[m.UserId] {
+				continue
+			}
+			seen[m.UserId] = true
+			h.DB.Create(&model.EzfyNotice{UserId: m.UserId, Title: "军团宣战生效", Content: body})
+		}
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已让 %d 条军团宣战立即生效，涉及 %d 名成员", len(rows), len(seen)),
+		"count": len(rows)})
+}
+
 // AdminEzfyCorpsWarDelete DELETE /admin/ezfy-corps-wars/:id
 func (h *AdminHandler) AdminEzfyCorpsWarDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

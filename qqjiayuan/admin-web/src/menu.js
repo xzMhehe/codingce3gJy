@@ -84,8 +84,9 @@ import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
 import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
 import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
 import AdminEzfyWars from './components/admin/AdminEzfyWars.vue'
-// ★ 2026-09-25 用户要求：新增军团宣战维护 / 军团商城维护两个页面
-import AdminEzfyCorpsWars from './components/admin/AdminEzfyCorpsWars.vue'
+// ★ 2026-09-25 用户要求：新增军团商城维护页面
+//   （军团宣战维护已按用户要求合并进「宣战管理」页的第二个 tab，这里不再单独挂菜单项，
+//   组件由 AdminEzfyWars.vue 内部 import，无需在 menu.js 引入）
 import AdminEzfyCorpsMall from './components/admin/AdminEzfyCorpsMall.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
 import AdminXySystem from './components/admin/AdminXySystem.vue'
@@ -273,9 +274,9 @@ export const menu = [
           // ★ 用户要求菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
           //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
           { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
+          // ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」→
+          //   不再单独挂菜单项，统一从「宣战管理」进去用 tab 切换（perm 复用 module:ezfyWars）
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
-          // ★ 2026-09-25 用户要求：军团宣战维护（perm 复用个人宣战 module:ezfyWars）
-          { key: 'ezfyCorpsWars', name: '军团宣战维护', icon: 'el-icon-s-flag', component: AdminEzfyCorpsWars, perm: 'module:ezfyWars' },
           // ★ 2026-09-25 用户要求：军团商城维护（perm 复用军团管理 module:ezfyCorps）
           { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },

@@ -1,85 +1,97 @@
 <template>
   <div class="farm-admin">
-    <el-card shadow="never" class="box">
-      <div slot="header" class="card-head">
-        <span>二战风云 · 宣战管理（待生效 / 交战中 / 已结束）</span>
-        <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
-      </div>
+    <!-- ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」：
+         一个页面两个 tab —— 个人宣战 / 军团宣战（军团那份直接复用 AdminEzfyCorpsWars 组件，
+         逻辑一份不复制）。tab2 加 lazyload，没切过去就不请求接口。 -->
+    <!-- 样式与「二战系统配置」页的 tab 保持一致（同为 el-tabs，不带 border-card） -->
+    <el-tabs v-model="tab">
+      <el-tab-pane label="个人宣战" name="player">
+        <el-card shadow="never" class="box">
+          <div slot="header" class="card-head">
+            <span>二战风云 · 宣战管理（待生效 / 交战中 / 已结束）</span>
+            <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+          </div>
 
-      <div class="toolbar">
-        <el-input v-model="word" placeholder="按昵称 / 家园号码搜索" clearable style="width:220px"
-                  @keyup.enter.native="page = 1; load()" />
-        <el-select v-model="status" style="width:150px" @change="page = 1; load()">
-          <el-option :value="0" label="全部状态" />
-          <el-option :value="1" label="宣战待生效" />
-          <el-option :value="2" label="交战中" />
-          <el-option :value="3" label="已结束" />
-        </el-select>
-        <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
-        <el-button type="success" icon="el-icon-plus" @click="openAdd">新建宣战</el-button>
-        <div class="grow" />
-        <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
-        <el-button type="danger" plain icon="el-icon-circle-close" :loading="acting" @click="finishAll">一键完成全部</el-button>
-      </div>
+          <div class="toolbar">
+            <el-input v-model="word" placeholder="按昵称 / 家园号码搜索" clearable style="width:220px"
+                      @keyup.enter.native="page = 1; load()" />
+            <el-select v-model="status" style="width:150px" @change="page = 1; load()">
+              <el-option :value="0" label="全部状态" />
+              <el-option :value="1" label="宣战待生效" />
+              <el-option :value="2" label="交战中" />
+              <el-option :value="3" label="已结束" />
+            </el-select>
+            <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
+            <el-button type="success" icon="el-icon-plus" @click="openAdd">新建宣战</el-button>
+            <div class="grow" />
+            <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
+            <el-button type="danger" plain icon="el-icon-circle-close" :loading="acting" @click="finishAll">一键完成全部</el-button>
+          </div>
 
-      <div class="td-sub" style="margin:4px 0 10px">
-        规则：宣战 <b>{{ delayHours }}</b> 小时后自动生效，生效后持续 <b>{{ durationHours }}</b> 小时；
-        「一键生效」可跳过等待直接开战，「一键完成」立即结束战争（双方恢复和平）。
-      </div>
+          <div class="td-sub" style="margin:4px 0 10px">
+            规则：宣战 <b>{{ delayHours }}</b> 小时后自动生效，生效后持续 <b>{{ durationHours }}</b> 小时；
+            「一键生效」可跳过等待直接开战，「一键完成」立即结束战争（双方恢复和平）。
+          </div>
 
-      <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column label="宣战方" min-width="160" show-overflow-tooltip>
-          <template slot-scope="{row}">
-            <span class="td-main">{{ row.atk_nick || '—' }}</span>
-            <span class="td-sub"> #{{ row.atk_num || row.atk_user_id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="被宣战方" min-width="160" show-overflow-tooltip>
-          <template slot-scope="{row}">
-            <span class="td-main">{{ row.def_nick || '—' }}</span>
-            <span class="td-sub"> #{{ row.def_num || row.def_user_id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="120" align="center">
-          <template slot-scope="{row}">
-            <el-tag :type="statusTag(row.live_status)" size="mini">{{ row.state_text }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="剩余" width="140" align="center">
-          <template slot-scope="{row}"><span class="td-sub">{{ row.left_text }}</span></template>
-        </el-table-column>
-        <el-table-column label="宣战时间" width="170" align="center">
-          <template slot-scope="{row}"><span class="td-sub">{{ row.declare_at_text }}</span></template>
-        </el-table-column>
-        <el-table-column label="生效时间" width="170" align="center">
-          <template slot-scope="{row}"><span class="td-sub">{{ row.effect_at_text }}</span></template>
-        </el-table-column>
-        <el-table-column label="到期时间" width="170" align="center">
-          <template slot-scope="{row}"><span class="td-sub">{{ row.expire_at_text }}</span></template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" align="center" fixed="right">
-          <template slot-scope="{row}">
-            <el-button v-if="row.live_status === 1" size="mini" type="warning" plain
-                       icon="el-icon-alarm-clock" title="立即生效（跳过等待）" @click="doEffect(row)" />
-            <el-button v-if="row.live_status !== 3" size="mini" type="success" plain
-                       icon="el-icon-check" title="一键完成（结束战争）" @click="doFinish(row)" />
-            <el-button size="mini" type="primary" plain icon="el-icon-edit"
-                       title="调整时间" @click="openEdit(row)" />
-            <el-button size="mini" type="danger" plain icon="el-icon-delete"
-                       title="删除记录" @click="remove(row)" />
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table :data="list" v-loading="loading" stripe border>
+            <el-table-column prop="id" label="ID" width="70" align="center" />
+            <el-table-column label="宣战方" min-width="160" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span class="td-main">{{ row.atk_nick || '—' }}</span>
+                <span class="td-sub"> #{{ row.atk_num || row.atk_user_id }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="被宣战方" min-width="160" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span class="td-main">{{ row.def_nick || '—' }}</span>
+                <span class="td-sub"> #{{ row.def_num || row.def_user_id }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="120" align="center">
+              <template slot-scope="{row}">
+                <el-tag :type="statusTag(row.live_status)" size="mini">{{ row.state_text }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="剩余" width="140" align="center">
+              <template slot-scope="{row}"><span class="td-sub">{{ row.left_text }}</span></template>
+            </el-table-column>
+            <el-table-column label="宣战时间" width="170" align="center">
+              <template slot-scope="{row}"><span class="td-sub">{{ row.declare_at_text }}</span></template>
+            </el-table-column>
+            <el-table-column label="生效时间" width="170" align="center">
+              <template slot-scope="{row}"><span class="td-sub">{{ row.effect_at_text }}</span></template>
+            </el-table-column>
+            <el-table-column label="到期时间" width="170" align="center">
+              <template slot-scope="{row}"><span class="td-sub">{{ row.expire_at_text }}</span></template>
+            </el-table-column>
+            <el-table-column label="操作" width="200" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button v-if="row.live_status === 1" size="mini" type="warning" plain
+                           icon="el-icon-alarm-clock" title="立即生效（跳过等待）" @click="doEffect(row)" />
+                <el-button v-if="row.live_status !== 3" size="mini" type="success" plain
+                           icon="el-icon-check" title="一键完成（结束战争）" @click="doFinish(row)" />
+                <el-button size="mini" type="primary" plain icon="el-icon-edit"
+                           title="调整时间" @click="openEdit(row)" />
+                <el-button size="mini" type="danger" plain icon="el-icon-delete"
+                           title="删除记录" @click="remove(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
 
-      <div class="pager-bar">
-        <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-        <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[10, 20, 50, 100]"
-                       @current-change="p => { page = p; load() }"
-                       @size-change="s => { size = s; page = 1; load() }" />
-      </div>
-    </el-card>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
+            <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                           :current-page="page" :page-sizes="[10, 20, 50, 100]"
+                           @current-change="p => { page = p; load() }"
+                           @size-change="s => { size = s; page = 1; load() }" />
+          </div>
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane label="军团宣战" name="corps" lazy>
+        <AdminEzfyCorpsWars />
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog title="新建宣战" :visible.sync="addDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="140px" size="small">
@@ -131,11 +143,15 @@
 
 <script>
 import api from '../../api'
+// ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」→ 作为第二个 tab 内嵌
+import AdminEzfyCorpsWars from './AdminEzfyCorpsWars'
 
 export default {
   name: 'AdminEzfyWars',
+  components: { AdminEzfyCorpsWars },
   data () {
     return {
+      tab: 'player',
       list: [], total: 0, page: 1, size: 10, word: '', status: 0,
       loading: false, saving: false, acting: false,
       delayHours: 24, durationHours: 48,

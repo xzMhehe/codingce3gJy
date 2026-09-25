@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <!-- ★ 2026-09-25 用户要求：新增「军团宣战维护」页面（军团对军团宣战） -->
-        <span>二战风云 · 军团宣战维护（待生效 / 交战中 / 已结束）</span>
+        <span>二战风云 · 军团宣战（待生效 / 交战中 / 已结束）</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
 
@@ -20,8 +20,16 @@
         <!-- 后台代宣战：管理员替两个军团直接发起宣战 -->
         <el-button type="success" icon="el-icon-plus" @click="openAdd">后台代宣战</el-button>
         <div class="grow" />
+        <!-- ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」：
+             把所有「待生效」的军团宣战立刻推进到「交战中」（与个人宣战的同款按钮同口径） -->
+        <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
         <!-- 危险操作：一次结束所有进行中（待生效 / 交战中）的军团宣战 -->
         <el-button type="danger" plain icon="el-icon-circle-close" :loading="acting" @click="finishAll">全部结束进行中宣战</el-button>
+      </div>
+
+      <div class="td-sub" style="margin:4px 0 10px">
+        规则：军团宣战后 <b>12</b> 小时生效，宣战后 <b>48</b> 小时整场结束；生效期间双方军团成员可互相掠夺/征服并获得军团战绩。
+        「一键生效」可跳过等待直接开战，「强制结束」立即停战（双方成员恢复和平）。
       </div>
 
       <el-table :data="list" v-loading="loading" stripe border>
@@ -61,10 +69,13 @@
         <el-table-column label="剩余" width="110" align="center">
           <template slot-scope="{row}"><span class="td-sub">{{ fmtRemain(row) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="170" align="center" fixed="right">
+        <el-table-column label="操作" width="210" align="center" fixed="right">
           <template slot-scope="{row}">
+            <!-- 「待生效」才可一键生效（跳过 12 小时等待直接开战） -->
+            <el-button v-if="row.status === 1" size="mini" type="warning" plain
+                       icon="el-icon-alarm-clock" title="一键生效（跳过等待，立即开战）" @click="doEffect(row)" />
             <!-- 进行中（待生效 / 交战中）才可强制结束 -->
-            <el-button v-if="row.status !== 3" size="mini" type="warning" plain
+            <el-button v-if="row.status !== 3" size="mini" type="success" plain
                        icon="el-icon-circle-close" title="强制结束" @click="doFinish(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete"
                        title="删除记录" @click="remove(row)" />
@@ -199,6 +210,26 @@ export default {
         if (r.code === 0) { this.addDlg = false; this.$message.success(r.data.msg || '已发起宣战'); this.load() }
         else this.$message.error(r.msg)
       }).catch(() => { this.saving = false })
+    },
+    // ★ 2026-09-25 用户要求「一键生效」：单条生效（跳过 12 小时等待，立即开战）
+    doEffect (row) {
+      this.$confirm('让「' + (row.atk_corps_name || row.atk_corps_id) + ' → ' +
+        (row.def_corps_name || row.def_corps_id) + '」立即进入交战状态（跳过等待）？', '一键生效', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-corps-wars/' + row.id + '/effect').then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已生效'); this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 2026-09-25 用户要求「一键生效」：全部待生效的军团宣战一次性生效
+    effectAll () {
+      this.$confirm('让当前所有「待生效」的军团宣战立即生效（双方成员马上可以互相掠夺/征服）？',
+        '一键生效全部', { type: 'warning' }).then(() => {
+        this.acting = true
+        api.post('/admin/ezfy-corps-wars/effect-all').then(r => {
+          this.acting = false
+          if (r.code === 0) { this.$message.success(r.data.msg || '已生效'); this.load() } else this.$message.error(r.msg)
+        }).catch(() => { this.acting = false })
+      }).catch(() => {})
     },
     doFinish (row) {
       this.$confirm('强制结束「' + (row.atk_corps_name || row.atk_corps_id) + ' → ' +

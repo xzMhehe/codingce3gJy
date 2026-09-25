@@ -1274,7 +1274,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				//   权限复用 module:ezfyWars，不新增权限项。
 				admin.GET("/ezfy-corps-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWars)
 				admin.POST("/ezfy-corps-wars", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarCreate)
+				admin.POST("/ezfy-corps-wars/effect-all", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarEffectAll)
 				admin.POST("/ezfy-corps-wars/finish-all", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarFinishAll)
+				// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 单条生效
+				admin.POST("/ezfy-corps-wars/:id/effect", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarEffect)
 				admin.POST("/ezfy-corps-wars/:id/finish", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarFinish)
 				admin.DELETE("/ezfy-corps-wars/:id", perm(db, "module:ezfyWars"), adminH.AdminEzfyCorpsWarDelete)
 
