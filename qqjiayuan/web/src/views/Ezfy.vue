@@ -752,7 +752,7 @@
           <div class="old-line gray" v-if="!defenceQueues.length">(无)</div>
           <table>
             <tr v-for="t in defenceCfgs" :key="'dt' + t.id">
-              <td><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>:</td>
+              <td class="nm"><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>:</td>
               <td>{{ troopCount(t.id) }}</td>
               <td>
                 <a href="javascript:;" @click="openTrainPre(t, 'defence')">[建造]</a>
@@ -771,9 +771,9 @@
           <div class="panel-title">城内军队</div>
           <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
           <table class="ezfy-center-tbl">
-            <tr><th>兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
+            <tr><th class="nm">兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
             <tr v-for="t in troopsData.troops" :key="'tv' + t.troop_id">
-              <td><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
+              <td class="nm"><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
               <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
               <td>
                 <!-- ★ 训练：快捷训练当前兵种（按住城军队里的每个兵种可直接开练） -->
@@ -858,9 +858,9 @@
           <div class="panel-title">伤兵营</div>
           <div class="old-line gray">伤兵在营中<b>不消耗粮食</b>；恢复出厂需要黄金（按兵种造价折算）。</div>
           <table>
-            <tr><th>兵种</th><th>数量</th><th>恢复费用</th><th>操作</th></tr>
+            <tr><th class="nm">兵种</th><th>数量</th><th>恢复费用</th><th>操作</th></tr>
             <tr v-for="w in woundedList(0)" :key="'w' + w.id">
-              <td>{{ w.name }}</td><td>{{ w.count }}</td>
+              <td class="nm">{{ w.name }}</td><td>{{ w.count }}</td>
               <td>{{ fmtN((w.heal_gold || 0) * w.count) }} {{ resNames.gold }}</td>
               <td><a href="javascript:;" @click="doRecover(w)">[恢复]</a></td>
             </tr>
@@ -873,9 +873,9 @@
           <br/>
           <div class="panel-title">逃兵营</div>
           <table>
-            <tr><th>兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
+            <tr><th class="nm">兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
             <tr v-for="w in woundedList(1)" :key="'dsw' + w.id">
-              <td>{{ w.name }}</td><td>{{ w.count }}</td>
+              <td class="nm">{{ w.name }}</td><td>{{ w.count }}</td>
               <td>{{ fmtN((w.heal_gold || 0) * w.count) }} {{ resNames.gold }}</td>
               <td><a href="javascript:;" @click="doRecover(w)">[召回]</a></td>
             </tr>
@@ -1422,12 +1422,12 @@
           <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->
           <table class="ezfy-plain-table ezfy-battle-tbl">
             <tr>
-              <th>方</th><th>兵种</th><th>剩余</th><th>初始</th><th>位置</th>
+              <th>方</th><th class="nm">兵种</th><th>剩余</th><th>初始</th><th>位置</th>
               <th v-if="!battleData.done">目标</th>
               <th v-if="!battleData.done">指挥</th>
             </tr>
             <tr v-for="u in battleData.attackers" :key="'ba' + u.troop_id">
-              <td class="red">攻</td><td>{{ u.name }}</td>
+              <td class="red">攻</td><td class="nm">{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
                    指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的）。
@@ -1454,7 +1454,7 @@
               </td>
             </tr>
             <tr v-for="u in battleData.defenders" :key="'bd' + u.troop_id">
-              <td>守</td><td>{{ u.name }}</td>
+              <td>守</td><td class="nm">{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <td v-if="!battleData.done">
                 <template v-if="!battleData.is_atk">
@@ -2205,10 +2205,10 @@
               <span class="gray">共 {{ shopAll.length }} 件</span>
             </div>
             <table class="ezfy-plain-table">
-              <tr><th>部位</th><th>名称</th><th>等级</th><th>属性</th><th>价格</th><th>操作</th></tr>
+              <tr><th>部位</th><th class="nm">名称</th><th>等级</th><th>属性</th><th>价格</th><th>操作</th></tr>
               <tr v-for="p in shopPaged" :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
-                <td>{{ p.name }}</td>
+                <td class="nm">{{ p.name }}</td>
                 <td>{{ p.level }}</td>
                 <td><a href="javascript:;" @click="openEquipDetail(p, '商城在售')">[查看]</a></td>
                 <td><span class="orange">{{ p.price_diamond }}钻</span></td>
@@ -2878,9 +2878,9 @@
             <colgroup>
               <col style="width:24%"><col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:12%"><col style="width:10%"><col style="width:18%">
             </colgroup>
-            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
+            <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>状态</th></tr>
             <tr v-for="e in equipPaged" :key="'eq' + e.id">
-              <td>{{ e.name }}</td>
+              <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -2934,9 +2934,9 @@
             <colgroup>
               <col style="width:28%"><col style="width:12%"><col style="width:17%"><col style="width:10%"><col style="width:12%"><col style="width:21%">
             </colgroup>
-            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
+            <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>需求等级</th></tr>
             <tr v-for="e in equipAllPaged" :key="'ea' + e.id">
-              <td>{{ e.name }}</td>
+              <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -3170,9 +3170,9 @@
             <tr><th colspan="6">已穿戴装备
               <a v-if="officerDetail.equipped.length" href="javascript:;" @click="doUnequipAll">[一键卸下]</a>
             </th></tr>
-            <tr><th>名称</th><th>部位</th><th>品质</th><th>套装</th><th>属性</th><th>操作</th></tr>
+            <tr><th class="nm">名称</th><th>部位</th><th>品质</th><th>套装</th><th>属性</th><th>操作</th></tr>
             <tr v-for="e in officerDetail.equipped" :key="'de' + e.id">
-              <td>{{ e.name }}</td>
+              <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name || '—' }}</td>
               <td>{{ e.set_name || (e.set_id ? '套装' + e.set_id : '—') }}</td>
@@ -3188,9 +3188,9 @@
               <col style="width:40%"><col style="width:36%"><col style="width:24%">
             </colgroup>
             <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
-            <tr><th>套装</th><th>穿齐进度</th><th>操作</th></tr>
+            <tr><th class="nm">套装</th><th>穿齐进度</th><th>操作</th></tr>
             <tr v-for="s in officerDetail.bag_sets" :key="'bs' + s.set_id">
-              <td>{{ s.name }}</td>
+              <td class="nm">{{ s.name }}</td>
               <td>
                 <span :class="s.need > 0 ? 'gray' : 'green'">
                   已穿 {{ s.worn }}/{{ s.parts }} 件{{ s.need > 0 ? (' · 还差 ' + s.need + ' 件生效') : ' · 已生效' }}
@@ -3209,9 +3209,9 @@
               <col style="width:24%"><col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:24%">
             </colgroup>
             <tr><th colspan="7">装备背包</th></tr>
-            <tr><th>名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
+            <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>属性</th><th>要求等级</th><th>操作</th></tr>
             <tr v-for="e in officerBagPaged" :key="'db' + e.id">
-              <td>{{ e.name }}</td>
+              <td class="nm">{{ e.name }}</td>
               <td>{{ e.slot || e.type }}</td>
               <td>{{ e.set_name || '—' }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -7210,6 +7210,26 @@ body.ezfy-immersive { margin: 0; }
   vertical-align: middle;
 }
 .ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
+/* ★ 2026-09-25 用户要求：「展示兵种名字的列」「军官装备名称的列」以前是整列居中，看着丑 →
+   **单元格内容改成左对齐 + 垂直居中**；**表头 th 保持居中不变**。
+   用法：给这些「名称类」单元格加 class="nm"（不是按列号，按语义，加列/挪列都不会失效）。
+   放置位置：紧跟在 .ezfy-center-tbl / .ezfy-plain-table 的居中规则之后 ——
+   选择器权重 (0,2,2) 与 .ezfy-center-tbl 相同、高于 .ezfy-plain-table 的 (0,2,1)，
+   靠顺序取胜；以后调那两张表的居中规则不会把这个覆盖掉。
+   ⚠️ 只加在「名称」列上（兵种名 / 装备名），数量·等级·属性·操作那些列保持原样，
+      别图省事用 td:first-child —— 战场指挥室表的兵种在第 2 列，商城装备表的名称也在第 2 列。 */
+.ezfy-page table td.nm {
+  text-align: left;
+  vertical-align: middle;
+}
+/* 名称列左对齐后，链接自带的左右 margin 会让文字比列边多缩 3px，去掉更齐 */
+.ezfy-page table td.nm a { margin-left: 0; margin-right: 0; }
+/* ★ 2026-09-25 当天追加：用户问「对应列标题是不是也居左更好」→ **是**。
+   列宽是靠左的（兵种名/装备名都从左边起），表头却居中悬在列中间，两者不在一条竖线上，
+   看着就是「标题和数据对不上」—— 表头对齐跟随列内容对齐是通行做法，这里也一样。
+   ⚠️ 只打在**该列自己的 th** 上；像「已穿戴装备」「装备背包」那种 colspan 跨列的段标题
+     保持居中不变（它是分节标题，不是列标题）。 */
+.ezfy-page table th.nm { text-align: left; }
 /* ★ 交易行表格美化（2026-09-24 用户要求「页面做好看点」）：细边框 + 表头底色 + 斑马纹 */
 .ezfy-page table.ezfy-ex-tbl {
   border-collapse: collapse;
