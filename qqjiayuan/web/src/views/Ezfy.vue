@@ -1146,7 +1146,10 @@
               </div>
               <div class="old-line">守军总兵力：{{ selDetail.act_total }}</div>
               <div class="old-line">
-                胜利奖励：{{ resShort.food }}/{{ resShort.steel }}/{{ resShort.oil }}/{{ resNames.rare }} 各{{ selDetail.res_min }}，{{ resNames.gold }}{{ selDetail.gold }}，
+                胜利奖励：{{ resShort.food }}/{{ resShort.steel }}/{{ resShort.oil }}/{{ resNames.rare }} 各{{ selDetail.res_min }}<!--
+                ★ 2026-09-25：管理端「野地获取资源倍率」>1 时标出来，让玩家知道为什么比平时多
+                （后端已把倍率乘进 res_min，这里只是加个说明；=1 时不显示，不占版面） -->
+                <span v-if="selDetail.res_mult && selDetail.res_mult > 1" class="green">（资源倍率×{{ selDetail.res_mult }}）</span>，{{ resNames.gold }}{{ selDetail.gold }}，
                 军功声望+{{ selDetail.prestige }}，必定掉落宝物
               </div>
               <div class="old-line" v-if="selDetail.jewel">采集可获得：{{ selDetail.jewel }}</div>

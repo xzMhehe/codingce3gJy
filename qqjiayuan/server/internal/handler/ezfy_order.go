@@ -314,7 +314,11 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
-		"res_min": cfg.ResMin, "res_max": cfg.ResMax, "terrain": ezfyTerrainEx(x, y),
+		// ★ 2026-09-25：这里下发的「胜利奖励」也要带上「野地获取资源倍率」——
+		//   前端会显示成「胜利奖励：粮/钢/油/稀矿 各N」，只在实际结算时放大就会
+		//   「预览 1 万、真打给 5 万」，玩家反而以为算错了。两边必须同一口径。
+		"res_min": ezfyScaleByWildResMult(cfg.ResMin), "res_max": ezfyScaleByWildResMult(cfg.ResMax),
+		"res_mult": ezfyWildResMult(), "terrain": ezfyTerrainEx(x, y),
 		"terrain_name": terrainName,
 		"continent":    ezfyRegionName(x, y),
 		"treasures":    treasures,
@@ -1836,6 +1840,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			lootTech += 10
 		}
 		rnd = rnd * int64(100+lootTech) / 100
+		// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置 → 野地获取资源倍率」。
+		//   放在**所有既有加成之后**做最后一道放大：掠夺技巧 / 黄金眼照旧生效，倍率再乘上去。
+		//   只影响这一处（野地/海野/寇城的战斗战利品），不含驻守采集。
+		rnd = ezfyScaleByWildResMult(rnd)
 		lootFood, lootSteel, lootOil, lootRare, lootGold = rnd, rnd, rnd, rnd, rnd
 	case 3:
 		var tc model.EzfyCity

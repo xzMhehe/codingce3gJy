@@ -268,6 +268,11 @@ type EzfyCfgLimit struct {
 	//   预览(野地详情)与战斗结算(parseWildlandTroops)共用，避免「看到的」和「打到的」不一致。
 	//   允许小数（0.5 = 兵力减半，2 = 翻倍）。0 无意义 → 回落 1。
 	WildTroopMult float64 `gorm:"default:1;comment:野地部队倍数" json:"wild_troop_mult"`
+	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 加「野地获取资源倍率」。
+	//   作用点：**野地/海野/寇城战斗胜利后的战利品**（ezfy_order.go 的 `rnd` 那一处），
+	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。
+	//   注意：只作用于「打赢的战利品」，不含驻守采集（采集另有自己的产出公式）。
+	WildResMult float64 `gorm:"default:1;comment:野地战利品资源倍率" json:"wild_res_mult"`
 
 	// ★ 下面三个是「开关」：1 = 开（按原规则消耗），0 = 关（不消耗）。
 	//   ⚠️ 语义陷阱（踩过）：

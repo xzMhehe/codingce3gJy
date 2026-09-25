@@ -654,6 +654,8 @@ const (
 	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
 	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
 	ezfyWildMultDef    = 1 // 野地兵力倍数：默认 1
+	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 1
+	ezfyWildResMultDef = 1
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -782,6 +784,35 @@ func ezfyWildTroopMult() float64 {
 // ezfyScaleByWildMult 把守军兵力按倍数放大（最少 1 个，避免倍数 < 1 时把守军抹成 0）
 func ezfyScaleByWildMult(n int64) int64 {
 	m := ezfyWildTroopMult()
+	if m == 1 {
+		return n
+	}
+	v := int64(float64(n) * m)
+	if v < 1 {
+		v = 1
+	}
+	return v
+}
+
+// ezfyWildResMult 野地/海野/寇城**战斗胜利后的战利品**资源倍率（默认 1；0 或负数无意义 → 回落 1）
+//
+// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置」可调。
+//
+//	作用点只有一处：ezfy_order.go 里算野地战利品 `rnd` 的那一步。
+//	**不含**驻守采集（采集产出是「野地等级 × 800 × 后勤加成」另一套公式）。
+func ezfyWildResMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyWildResMultDef
+	}
+	if m := ezfyCfg.limit.WildResMult; m > 0 {
+		return m
+	}
+	return ezfyWildResMultDef
+}
+
+// ezfyScaleByWildResMult 把战利品按倍率放大（保留至少 1，避免倍率 < 1 时把战利品抹成 0）
+func ezfyScaleByWildResMult(n int64) int64 {
+	m := ezfyWildResMult()
 	if m == 1 {
 		return n
 	}
@@ -965,6 +996,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		WildTroopMult: ezfyWildMultDef,
+		WildResMult:   ezfyWildResMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径，默认 100 = 100% = 原价

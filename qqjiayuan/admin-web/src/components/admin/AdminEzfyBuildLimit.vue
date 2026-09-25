@@ -3,132 +3,158 @@
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <span>二战系统配置</span>
-        <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        <div>
+          <span class="head-hint">按类别分了 tab，改完点右下角「保存并立即生效」</span>
+          <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        </div>
       </div>
-      <el-form label-width="180px" size="small" style="max-width:620px">
-        <!-- ★ 说明文字一律走「标题后 i 图标 + 悬停提示」，不再以正文形式占版面 -->
-        <el-divider content-position="left">建筑数量上限</el-divider>
-        <el-form-item>
-          <template slot="label">军事区数量上限<el-tooltip placement="top" :content="tips.military_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.military_max" :min="1" :max="999" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">资源区数量上限<el-tooltip placement="top" :content="tips.resource_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.resource_max" :min="1" :max="999" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">民居数量上限<el-tooltip placement="top" :content="tips.house_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.house_max" :min="1" :max="999" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">军工厂数量上限<el-tooltip placement="top" :content="tips.factory_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.factory_max" :min="0" :max="999" controls-position="right" style="width:180px" />
-        </el-form-item>
+      <!-- ★ 2026-09-25 用户要求「二战系统配置也做成 tab，相同类别的在同一个 tab」：
+           原来是一张长表单 + el-divider 分段，滚起来很长、找一项要翻半天。
+           现在按**类别**分成 6 个 tab；保存按钮**放在 tabs 外面**，任何 tab 下都能直接点。 -->
+      <el-form label-width="180px" size="small" style="max-width:660px">
+        <el-tabs v-model="activeTab">
+          <!-- ① 建筑与上限 -->
+          <el-tab-pane label="建筑与上限" name="build">
+            <el-form-item>
+              <template slot="label">军事区数量上限<el-tooltip placement="top" :content="tips.military_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.military_max" :min="1" :max="999" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">资源区数量上限<el-tooltip placement="top" :content="tips.resource_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.resource_max" :min="1" :max="999" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">民居数量上限<el-tooltip placement="top" :content="tips.house_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.house_max" :min="1" :max="999" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">军工厂数量上限<el-tooltip placement="top" :content="tips.factory_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.factory_max" :min="0" :max="999" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">首页公告展示条数<el-tooltip placement="top" :content="tips.notice_home_count"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">出征集结令单次上限<el-tooltip placement="top" :content="tips.gather_max_per_order"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.gather_max_per_order" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">商城单次购买上限<el-tooltip placement="top" :content="tips.mall_buy_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
+            </el-form-item>
+          </el-tab-pane>
 
-        <el-divider content-position="left">其他上限</el-divider>
-        <el-form-item>
-          <template slot="label">首页公告展示条数<el-tooltip placement="top" :content="tips.notice_home_count"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.notice_home_count" :min="0" :max="10" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">出征集结令单次上限<el-tooltip placement="top" :content="tips.gather_max_per_order"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.gather_max_per_order" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">商城单次购买上限<el-tooltip placement="top" :content="tips.mall_buy_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">单城兵力上限<el-tooltip placement="top" :content="tips.troop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.troop_max" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">伤兵存活天数<el-tooltip placement="top" :content="tips.wound_expire_days"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.wound_expire_days" :min="1" :max="3650" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.dispatch_period_h" :min="1" :max="720" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">出征速度加成(%)<el-tooltip placement="top" :content="tips.march_speed_bonus"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.march_speed_bonus" :min="0" :max="1000" :step="10" :precision="1" controls-position="right" style="width:180px" />
-        </el-form-item>
+          <!-- ② 兵力与伤兵 -->
+          <el-tab-pane label="兵力与伤兵" name="troop">
+            <el-form-item>
+              <template slot="label">单城兵力上限<el-tooltip placement="top" :content="tips.troop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.troop_max" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤兵存活天数<el-tooltip placement="top" :content="tips.wound_expire_days"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wound_expire_days" :min="1" :max="3650" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤兵恢复系数<el-tooltip placement="top" :content="tips.wound_heal_divisor"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wound_heal_divisor" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤兵恢复黄金折扣率(%)<el-tooltip placement="top" :content="tips.wound_heal_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+          </el-tab-pane>
 
-        <el-divider content-position="left">战斗 / 经济数值</el-divider>
-        <el-form-item>
-          <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">掠夺单次扣民心<el-tooltip placement="top" :content="tips.loot_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.loot_feelings" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">军官工资系数<el-tooltip placement="top" :content="tips.officer_salary_per_level"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.officer_salary_per_level" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">伤兵恢复系数<el-tooltip placement="top" :content="tips.wound_heal_divisor"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.wound_heal_divisor" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">伤兵恢复黄金折扣率(%)<el-tooltip placement="top" :content="tips.wound_heal_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">野地兵力倍数<el-tooltip placement="top" :content="tips.wild_troop_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">训练加速黄金倍率(%)<el-tooltip placement="top" :content="tips.speed_train_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
-        </el-form-item>
+          <!-- ③ 野地与行军 -->
+          <el-tab-pane label="野地与行军" name="wild">
+            <el-form-item>
+              <template slot="label">野地兵力倍数<el-tooltip placement="top" :content="tips.wild_troop_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wild_troop_mult" :min="0.01" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">野地获取资源倍率<el-tooltip placement="top" :content="tips.wild_res_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wild_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.dispatch_period_h" :min="1" :max="720" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">出征速度加成(%)<el-tooltip placement="top" :content="tips.march_speed_bonus"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.march_speed_bonus" :min="0" :max="1000" :step="10" :precision="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+          </el-tab-pane>
 
-        <el-divider content-position="left">玩法开关</el-divider>
-        <el-form-item>
-          <template slot="label">宣战功能<el-tooltip placement="top" :content="tips.war_require_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.war_require_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">出征上限<el-tooltip placement="top" :content="tips.march_cap_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.march_cap_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">征兵消耗资源<el-tooltip placement="top" :content="tips.recruit_cost_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">军队耗粮<el-tooltip placement="top" :content="tips.food_upkeep_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.food_upkeep_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">出征油耗<el-tooltip placement="top" :content="tips.march_oil_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
+          <!-- ④ 战斗与经济 -->
+          <el-tab-pane label="战斗与经济" name="battle">
+            <el-form-item>
+              <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">掠夺单次扣民心<el-tooltip placement="top" :content="tips.loot_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.loot_feelings" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">军官工资系数<el-tooltip placement="top" :content="tips.officer_salary_per_level"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_salary_per_level" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">训练加速黄金倍率(%)<el-tooltip placement="top" :content="tips.speed_train_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+          </el-tab-pane>
 
-        <el-divider content-position="left">军官升星</el-divider>
-        <el-form-item>
-          <template slot="label">升星功能<el-tooltip placement="top" :content="tips.officer_star_up_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-switch v-model="form.officer_star_up_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">升星成功率(%)<el-tooltip placement="top" :content="tips.officer_star_chance"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.officer_star_chance" :min="1" :max="100" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">每星三维加成<el-tooltip placement="top" :content="tips.officer_star_attr_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.officer_star_attr_gain" :min="1" controls-position="right" style="width:180px" />
-        </el-form-item>
-        <el-form-item>
-          <template slot="label">军官星级上限<el-tooltip placement="top" :content="tips.officer_star_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
-          <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
-        </el-form-item>
+          <!-- ⑤ 玩法开关 -->
+          <el-tab-pane label="玩法开关" name="switch">
+            <el-form-item>
+              <template slot="label">宣战功能<el-tooltip placement="top" :content="tips.war_require_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.war_require_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">出征上限<el-tooltip placement="top" :content="tips.march_cap_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.march_cap_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">征兵消耗资源<el-tooltip placement="top" :content="tips.recruit_cost_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.recruit_cost_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">军队耗粮<el-tooltip placement="top" :content="tips.food_upkeep_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.food_upkeep_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">出征油耗<el-tooltip placement="top" :content="tips.march_oil_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+          </el-tab-pane>
 
-        <el-form-item>
-          <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
-        </el-form-item>
+          <!-- ⑥ 军官升星 -->
+          <el-tab-pane label="军官升星" name="star">
+            <el-form-item>
+              <template slot="label">升星功能<el-tooltip placement="top" :content="tips.officer_star_up_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.officer_star_up_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">升星成功率(%)<el-tooltip placement="top" :content="tips.officer_star_chance"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_star_chance" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">每星三维加成<el-tooltip placement="top" :content="tips.officer_star_attr_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_star_attr_gain" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">军官星级上限<el-tooltip placement="top" :content="tips.officer_star_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+          </el-tab-pane>
+        </el-tabs>
       </el-form>
+      <!-- ★ 保存条放在 tabs **外面**：任何 tab 下都在，不用先切回去找按钮 -->
+      <div class="save-bar">
+        <span class="save-hint">所有 tab 共用一份配置，改完点这里一次保存即可</span>
+        <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
+      </div>
     </el-card>
   </div>
 </template>
@@ -141,6 +167,8 @@ export default {
   data () {
     return {
       saving: false,
+      // ★ 2026-09-25：配置按类别分了 tab，记住当前在哪个 tab（刷新页面回到第一个）
+      activeTab: 'build',
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
         notice_home_count: 1, gather_max_per_order: 50, mall_buy_max: 9999,
@@ -148,7 +176,9 @@ export default {
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
         officer_salary_per_level: 2, wound_heal_divisor: 100,
-        wild_troop_mult: 1, speed_train_rate: 100, wound_heal_rate: 100,
+        // ★ 野地兵力倍数 / 野地获取资源倍率（都允许小数，默认 1 = 原样）
+        wild_troop_mult: 1, wild_res_mult: 1,
+        speed_train_rate: 100, wound_heal_rate: 100,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         officer_star_up_on: 1,
         officer_star_chance: 20,
@@ -174,6 +204,8 @@ export default {
         wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 100',
         wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
         wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 1',
+        wild_res_mult: '野地 / 海野 / 寇城**战斗胜利后的战利品**资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 1。' +
+          '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 100',
         war_require_on: '开 = 必须向对方宣战才能掠夺 / 征服其城市；关 = 无需宣战即可直接进攻',
         march_cap_on: '开 = 出征兵力受司令部等级上限限制；关 = 不限兵力，随便带多少',
@@ -213,6 +245,7 @@ export default {
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
+            wild_res_mult: pos(Number(r.data.wild_res_mult), 1),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             recruit_cost_on: sw(r.data.recruit_cost_on),
@@ -246,4 +279,13 @@ export default {
 /* 配置标题后的说明图标：悬停显示提示，不占版面 */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
+/* ★ 2026-09-25 改成 tab 后新增的两个小样式 */
+.head-hint { font-size: 12px; color: #909399; margin-right: 10px; }
+/* 保存条放在 tabs 外面：任何 tab 下都看得到、点得到 */
+.save-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  max-width: 660px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed #dcdfe6;
+}
+.save-hint { font-size: 12px; color: #909399; }
 </style>

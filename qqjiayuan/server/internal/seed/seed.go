@@ -248,6 +248,13 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
 
+		// ★ 2026-09-25：野地战利品资源倍率（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
+		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_res_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_res_mult = 1 WHERE wild_res_mult IS NULL OR wild_res_mult <= 0")
+
 		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 100")
