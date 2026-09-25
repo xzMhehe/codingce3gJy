@@ -8107,11 +8107,23 @@ body.ezfy-immersive { margin: 0; }
   /* ★ 2026-09-25 用户反馈「点击地图表格列宽会变，向上/向下切换时因为字数不一样看着丑」：
      原因 = 浏览器默认的 auto 布局按每格内容宽度分配列宽（「城市」1 格 vs 「海底森林(5)」6 字），
      移动地图/内容一变列宽就跳。改成 table-layout: fixed → 5 列恒等宽，位置稳定。
-     min-width 保证窄屏（320~414px）不会把列压到装不下字，超出部分交给 .panel 横向滚动
-     （见本文件末尾 `.ezfy-page .panel { overflow-x: auto }`）。 */
+     ★★ 同一天用户二次纠正：「列宽固定对了，但表格变大了，表格还和之前一样只不过列宽固定」。
+        上一版写的是 width:100% + min-width:660px，表格被撑满整个面板（桌面实测 964px、
+        列宽 178px）—— 这就是「表格变大」的原因。现在改成**固定总宽 362px**：
+          改动前：325px(全是短文案) ~ 361px(出现「海底森林(9)」) ← 会随内容变宽变窄（用户不要）
+          现在：  恒定 362px，fixed 布局把 5 列均分成 58px/列     ← 和改动前最宽那档一样宽，但永不变
+        362px 这一档是量出来的：它正好等于改动前「最长文案那档」的宽度，所以视觉上和以前一致；
+        同时 58px 的列宽刚好装得下最长的常见文案（「平原(10)」53px、「寇(10)」51px），
+        只有「活动寇(9)」61px /「海底森林(10)」83px 这类三四个字的会走省略号
+        （见 .ezfy-cell-name 的 text-overflow；完整名字仍可悬停看 title 或点进详情页）。
+     ★ 列宽能真正定死，下面两条缺一不可（都是实测踩出来的）：
+       ① 表格宽度必须是**确定值**，不能 width:auto —— fixed 布局 + width:auto 时 Chrome 仍会
+          用内容的 min-content 把列撑宽（实测 325px 的表会被「海底森林(10)」涨到 436px），前功尽弃；
+       ② 格子里那个 <a> 必须是 display:block —— inline-block 的 shrink-to-fit 会取 min-content
+          （= 整串文字宽 83px），直接溢出格子压到邻格，省略号也不会生效（见下面 a 的规则）。 */
   table-layout: fixed;
-  width: 100%;
-  min-width: 660px;
+  width: 362px;
+  min-width: 0;
   border-collapse: separate;
   /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
      随后又要求「上下间隔加一点」→ 纵向 6px → 10px；再次要求「上下坐标间隔再大一些」
@@ -8130,7 +8142,11 @@ body.ezfy-immersive { margin: 0; }
   white-space: nowrap;
 }
 .ezfy-page .ezfy-map-table a {
-  display: inline-block;     /* 改成块级容器, 才能装上下两行 */
+  /* ★ 必须是 block，不能是 inline-block：fixed 布局下格子宽度是定死的，
+     inline-block 的 shrink-to-fit 会取 min-content(=整串文案宽，如「海底森林(10)」83px)，
+     结果 <a> 比格子还宽 → 文字压到邻格、省略号也不生效。改成 block 后宽度=格子宽，
+     里面的 .ezfy-cell-name 才能正常 overflow:hidden + 省略号。 */
+  display: block;            /* 块级容器, 才能装上下两行 + 按格子宽度截断 */
   padding: 0;
   margin: 0;
   /* ★ 第一行(名称/等级，如「海(8)」)的字号：历史 16→15→14，2026-09-25 用户反馈「地图看着小了」
@@ -8224,7 +8240,10 @@ body.ezfy-immersive { margin: 0; }
   .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 13px; }
   /* 窄屏纵向间距同步收一档(桌面 22px → 窄屏 12px)：纵向间距只影响表格高度、不影响列宽，
      所以这里不需要像横向那样压到极限，留出和桌面接近的呼吸感 */
-  .ezfy-page .ezfy-map-table { border-spacing: 6px 12px; }
+  /* ★ 表格总宽同步收一档(桌面 362px → 窄屏 300px)：窄屏字号降到 13px，58px 的列会显得空，
+     300px 让列宽回到 ~52px，和桌面观感一致；横向间距也收到 6px（6 个缝 = 36px），
+     320px 的机器上 300px 的表放得下、不触发 .panel 横向滚动。 */
+  .ezfy-page .ezfy-map-table { width: 300px; border-spacing: 6px 12px; }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
   /* 方向导航窄屏间距同步收一档(桌面 8px → 窄屏 6px) */
