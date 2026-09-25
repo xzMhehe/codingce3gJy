@@ -2214,14 +2214,14 @@
                 <col style="width:16%"><col style="width:38%"><col style="width:11%"><col style="width:15%"><col style="width:20%">
               </colgroup>
               <tr><th>部位</th><th class="nm">名称</th><th>等级</th><th>价格</th><th>操作</th></tr>
-              <!-- ★ 点装备名 / 套装名 → 该行下面展开「这件 + 所属套装」的详情卡（买之前就能对比）。 -->
+              <!-- ★ 点装备名看这件自己的加成 / 点套装名看套装加成（两个入口看不同内容，买之前就能对比）。 -->
               <template v-for="p in shopPaged">
               <tr :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
-                <td class="nm"><a href="javascript:;" @click="toggleDetail(p.id)">{{ p.name }}</a>
+                <td class="nm"><a href="javascript:;" @click="toggleDetail(p.id, 'item')">{{ p.name }}</a>
                   <!-- 手机列窄，套装这行尽量短：「需几件」放进展开卡里，不在这里重复 -->
                   <div v-if="setOf(p.set_id)" class="set-mini">
-                    套装：<a href="javascript:;" @click="toggleDetail(p.id)">{{ p.set_name }}</a>
+                    套装：<a href="javascript:;" @click="toggleDetail(p.id, 'set')">{{ p.set_name }}</a>
                   </div>
                 </td>
                 <td>{{ p.level }}</td>
@@ -2234,14 +2234,22 @@
               <tr v-if="detailRowId === p.id" :key="'dt' + p.id" class="set-card-row">
                 <td :colspan="5">
                   <div class="set-card">
-                    <div class="sc-h"><b>{{ p.name }}</b>
-                      <span :class="qualityClass(p.tier_name)">[{{ p.tier_name || '普通' }}]</span>
-                      <span class="gray">{{ p.slot }} · {{ p.level }}级 · 商城在售</span>
-                    </div>
-                    <div class="sc-b">装备属性：<b class="green">{{ equipAttrText(p) || '（这件没有额外属性加成）' }}</b></div>
-                    <template v-if="setOf(p.set_id)">
-                      <div class="sc-b">所属套装：<b :class="qualityClass(setOf(p.set_id).tier_name)">{{ setOf(p.set_id).name }}</b>
-                        <span class="gray">穿齐 {{ setOf(p.set_id).parts }} 件才生效</span></div>
+                    <!-- ① 点「装备名」→ 只看这件自己的加成 -->
+                    <template v-if="detailMode === 'item'">
+                      <div class="sc-h"><b>{{ p.name }}</b>
+                        <span :class="qualityClass(p.tier_name)">[{{ p.tier_name || '普通' }}]</span>
+                        <span class="gray">{{ p.slot }} · {{ p.level }}级 · 商城在售</span>
+                      </div>
+                      <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(p) || '（这件没有额外属性加成）' }}</b></div>
+                      <div class="sc-b gray" v-if="setOf(p.set_id)">所属套装：{{ setOf(p.set_id).name }}（点套装名看套装加成）</div>
+                      <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                    </template>
+                    <!-- ② 点「套装名」→ 只看套装加成 -->
+                    <template v-else-if="setOf(p.set_id)">
+                      <div class="sc-h"><b>{{ setOf(p.set_id).name }}</b>
+                        <span :class="qualityClass(setOf(p.set_id).tier_name)">[{{ setOf(p.set_id).tier_name || '特殊' }}]</span>
+                        <span class="gray">穿齐 {{ setOf(p.set_id).parts }} 件才生效</span>
+                      </div>
                       <div class="sc-b">套装加成：<b class="green">{{ setBonusText(p.set_id) || '（本套装无额外属性加成）' }}</b></div>
                       <div class="sc-b gray" v-if="setOf(p.set_id).effect">额外效果：{{ setOf(p.set_id).effect }}</div>
                       <div class="sc-b">我的进度：已拥有 <b>{{ setOf(p.set_id).owned || 0 }}</b>/{{ setOf(p.set_id).parts }} 件
@@ -2249,8 +2257,9 @@
                         <span v-else class="red">还差 {{ setOf(p.set_id).parts - (setOf(p.set_id).owned || 0) }} 件</span>
                       </div>
                       <div class="sc-b gray" v-if="setOf(p.set_id).slots && setOf(p.set_id).slots.length">部位：{{ setOf(p.set_id).slots.join(' / ') }}</div>
+                      <div class="sc-b gray">点装备名看这件自己的加成</div>
                     </template>
-                    <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                    <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
                   </div>
                 </td>
               </tr>
@@ -2918,17 +2927,17 @@
             </colgroup>
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>要求等级</th><th>状态</th></tr>
             <!-- ★ 2026-09-25 用户建议：「装备[查看]按钮去了也行，同时放到套装里面展开展示也可以」
-                 → 采纳：**砍掉「属性」列（原来只放一个 [查看] 按钮）**，
-                   点「装备名」或「套装名」都在该行下面展开一张卡，把原来 [查看] 跳转过去看的东西
-                   （这件自己的属性）和套装加成合并到一起显示。
+                 → 采纳：**砍掉「属性」列（原来只放一个 [查看] 按钮）**，改成在该行下面展开详情卡。
                  好处：少一列 → 手机上不再挤；少一次跳页 → 不用来回返回。
-                 （原来那个独立的「装备详情页」已经没人能进，一并删掉了。） -->
+                 （原来那个独立的「装备详情页」已经没人能进，一并删掉了。）
+                 ★ 用户进一步要求「点名称看该装备的加成，点套装看套装的加成」
+                 → 两个入口看**不同**内容，用 detailMode 区分。 -->
             <template v-for="e in equipPaged">
             <tr :key="'eq' + e.id">
-              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id)">{{ e.name }}</a></td>
+              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a></td>
               <td>{{ e.slot || e.type }}</td>
               <td>
-                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id)">{{ e.set_name }}</a>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id, 'set')">{{ e.set_name }}</a>
                 <span v-else class="gray">—</span>
               </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -2941,14 +2950,22 @@
             <tr v-if="detailRowId === e.id" :key="'dt' + e.id" class="set-card-row">
               <td :colspan="6">
                 <div class="set-card">
-                  <div class="sc-h"><b>{{ e.name }}</b>
-                    <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
-                  </div>
-                  <div class="sc-b">装备属性：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                  <template v-if="setOf(e.set_id)">
-                    <div class="sc-b">所属套装：<b :class="qualityClass(setOf(e.set_id).tier_name)">{{ setOf(e.set_id).name }}</b>
-                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span></div>
+                  <!-- ① 点「装备名」→ 只看这件自己的加成 -->
+                  <template v-if="detailMode === 'item'">
+                    <div class="sc-h"><b>{{ e.name }}</b>
+                      <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
+                      <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
+                    </div>
+                    <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  </template>
+                  <!-- ② 点「套装名」→ 只看套装加成 -->
+                  <template v-else-if="setOf(e.set_id)">
+                    <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                      <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                    </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
@@ -2956,8 +2973,9 @@
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
                     </div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                    <div class="sc-b gray">点装备名看这件自己的加成</div>
                   </template>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
                 </div>
               </td>
             </tr>
@@ -3015,10 +3033,10 @@
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>需求等级</th></tr>
             <template v-for="e in equipAllPaged">
             <tr :key="'ea' + e.id">
-              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id)">{{ e.name }}</a></td>
+              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a></td>
               <td>{{ e.slot || e.type }}</td>
               <td>
-                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id)">{{ e.set_name }}</a>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id, 'set')">{{ e.set_name }}</a>
                 <span v-else class="gray">—</span>
               </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -3027,14 +3045,20 @@
             <tr v-if="detailRowId === e.id" :key="'dt' + e.id" class="set-card-row">
               <td :colspan="5">
                 <div class="set-card">
-                  <div class="sc-h"><b>{{ e.name }}</b>
-                    <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
-                  </div>
-                  <div class="sc-b">装备属性：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                  <template v-if="setOf(e.set_id)">
-                    <div class="sc-b">所属套装：<b :class="qualityClass(setOf(e.set_id).tier_name)">{{ setOf(e.set_id).name }}</b>
-                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span></div>
+                  <template v-if="detailMode === 'item'">
+                    <div class="sc-h"><b>{{ e.name }}</b>
+                      <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
+                      <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级</span>
+                    </div>
+                    <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  </template>
+                  <template v-else-if="setOf(e.set_id)">
+                    <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                      <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                    </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
@@ -3042,8 +3066,9 @@
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
                     </div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                    <div class="sc-b gray">点装备名看这件自己的加成</div>
                   </template>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
                 </div>
               </td>
             </tr>
@@ -3277,14 +3302,14 @@
             </th></tr>
             <tr><th class="nm">名称</th><th>部位</th><th>品质</th><th>套装</th><th>操作</th></tr>
             <!-- ★ 2026-09-25：砍掉「属性」列（原来只放 [查看]）→ 手机上名称列从 24% 拿到 30%。
-                 点装备名 / 套装名 → 该行下面展开「这件 + 所属套装」的详情卡。 -->
+                 点装备名看这件自己的加成 / 点套装名看套装加成（两个入口看不同内容）。 -->
             <template v-for="e in officerDetail.equipped">
             <tr :key="'de' + e.id">
-              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id)">{{ e.name }}</a></td>
+              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a></td>
               <td>{{ e.slot || e.type }}</td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name || '—' }}</td>
               <td>
-                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id)">{{ e.set_name || ('套装' + e.set_id) }}</a>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id, 'set')">{{ e.set_name || ('套装' + e.set_id) }}</a>
                 <span v-else class="gray">—</span>
               </td>
               <td><a href="javascript:;" @click="doUnequip(e.id)">[卸下]</a></td>
@@ -3292,14 +3317,22 @@
             <tr v-if="detailRowId === e.id" :key="'dt' + e.id" class="set-card-row">
               <td :colspan="5">
                 <div class="set-card">
-                  <div class="sc-h"><b>{{ e.name }}</b>
-                    <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ e.slot || e.type }} · 已穿戴</span>
-                  </div>
-                  <div class="sc-b">装备属性：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                  <template v-if="setOf(e.set_id)">
-                    <div class="sc-b">所属套装：<b :class="qualityClass(setOf(e.set_id).tier_name)">{{ setOf(e.set_id).name }}</b>
-                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span></div>
+                  <!-- ① 点「装备名」→ 只看这件自己的加成 -->
+                  <template v-if="detailMode === 'item'">
+                    <div class="sc-h"><b>{{ e.name }}</b>
+                      <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
+                      <span class="gray">{{ e.slot || e.type }} · 已穿戴</span>
+                    </div>
+                    <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  </template>
+                  <!-- ② 点「套装名」→ 只看套装加成 -->
+                  <template v-else-if="setOf(e.set_id)">
+                    <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                      <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                    </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
@@ -3307,8 +3340,9 @@
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
                     </div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                    <div class="sc-b gray">点装备名看这件自己的加成</div>
                   </template>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
                 </div>
               </td>
             </tr>
@@ -3349,13 +3383,13 @@
             <tr><th colspan="6">装备背包</th></tr>
             <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>要求等级</th><th>操作</th></tr>
             <!-- ★ 2026-09-25：砍掉「属性」列（原来只放 [查看]）→ 手机上名称列从 24% 拿到 30%。
-                 点装备名 / 套装名 → 该行下面展开「这件 + 所属套装」的详情卡。 -->
+                 点装备名看这件自己的加成 / 点套装名看套装加成（两个入口看不同内容）。 -->
             <template v-for="e in officerBagPaged">
             <tr :key="'db' + e.id">
-              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id)">{{ e.name }}</a></td>
+              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a></td>
               <td>{{ e.slot || e.type }}</td>
               <td>
-                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id)">{{ e.set_name }}</a>
+                <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id, 'set')">{{ e.set_name }}</a>
                 <span v-else class="gray">—</span>
               </td>
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
@@ -3368,14 +3402,22 @@
             <tr v-if="detailRowId === e.id" :key="'dt' + e.id" class="set-card-row">
               <td :colspan="6">
                 <div class="set-card">
-                  <div class="sc-h"><b>{{ e.name }}</b>
-                    <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级 · {{ e.worn ? '已穿戴' : '背包中' }}</span>
-                  </div>
-                  <div class="sc-b">装备属性：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
-                  <template v-if="setOf(e.set_id)">
-                    <div class="sc-b">所属套装：<b :class="qualityClass(setOf(e.set_id).tier_name)">{{ setOf(e.set_id).name }}</b>
-                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span></div>
+                  <!-- ① 点「装备名」→ 只看这件自己的加成 -->
+                  <template v-if="detailMode === 'item'">
+                    <div class="sc-h"><b>{{ e.name }}</b>
+                      <span :class="qualityClass(e.tier_name)">[{{ e.tier_name || '普通' }}]</span>
+                      <span class="gray">{{ e.slot || e.type }} · {{ e.level }}级 · {{ e.worn ? '已穿戴' : '背包中' }}</span>
+                    </div>
+                    <div class="sc-b">装备加成：<b class="green">{{ equipAttrText(e) || '（这件没有额外属性加成）' }}</b></div>
+                    <div class="sc-b gray" v-if="setOf(e.set_id)">所属套装：{{ setOf(e.set_id).name }}（点套装名看套装加成）</div>
+                    <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  </template>
+                  <!-- ② 点「套装名」→ 只看套装加成 -->
+                  <template v-else-if="setOf(e.set_id)">
+                    <div class="sc-h"><b>{{ setOf(e.set_id).name }}</b>
+                      <span :class="qualityClass(setOf(e.set_id).tier_name)">[{{ setOf(e.set_id).tier_name || '特殊' }}]</span>
+                      <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
+                    </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
@@ -3383,8 +3425,9 @@
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
                     </div>
                     <div class="sc-b gray" v-if="setOf(e.set_id).slots && setOf(e.set_id).slots.length">部位：{{ setOf(e.set_id).slots.join(' / ') }}</div>
+                    <div class="sc-b gray">点装备名看这件自己的加成</div>
                   </template>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
+                  <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
                 </div>
               </td>
             </tr>
@@ -3606,10 +3649,13 @@ export default {
       setShowAll: false,
       // ★ 2026-09-25 用户反馈「套装的加成玩家看不到、不知道买完套装给军官用哪个」：
       //   全部套装配置（含加成/部位/我拥有几件）单独拉一次并缓存，装备页·商城页·军官页共用。
-      //   detailRowId = 装备表里正展开「套装加成卡」的那一**行**（存装备 id，不是 set_id！
+      //   detailRowId = 装备表里正展开详情卡的那一**行**（存装备 id，不是 set_id！
       //   存 set_id 的话同一套的每一行都会各自展开一张一样的卡 —— 实测 10 件套会蹦出 10 张）。
+      //   detailMode = 展开的是哪一份内容：'item' 这件自己的加成 / 'set' 套装加成
+      //   （用户要求「点名称看该装备的加成，点套装看套装的加成」）。
       allSets: [],
       detailRowId: 0,
+      detailMode: '',
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
@@ -6688,12 +6734,22 @@ export default {
       const s = this.setOf(setId)
       return s ? this.equipAttrText(s) : ''
     },
-    // 点套装名 → 在**这一行**下面展开/收起「套装加成卡」（再点收起）。
-    // ★ 参数是**这一行装备的 id**，不是 set_id：同一套会有 9~11 行，
+    // 点装备名 / 套装名 → 在**这一行**下面展开详情卡；再点同一个收起。
+    // ★ 参数 equipId 是**这一行装备的 id**，不是 set_id：同一套会有 9~11 行，
     //   按 set_id 展开的话每行都会各蹦一张一样的卡（实测 10 件套蹦 10 张）。
-    toggleDetail (equipId) {
+    // ★ 2026-09-25 用户要求「名称点击查看该装备的加成，点击套装显示套装的加成」：
+    //   两个入口看**不同**的内容，用 mode 区分（'item' 只看这件自己的加成 / 'set' 只看套装加成）。
+    //   同一个入口点两次 = 收起；点另一个入口 = 直接换成另一份内容（不收起）。
+    toggleDetail (equipId, mode) {
       if (!equipId) return
-      this.detailRowId = (this.detailRowId === equipId) ? 0 : equipId
+      const m = mode || 'item'
+      if (this.detailRowId === equipId && this.detailMode === m) {
+        this.detailRowId = 0
+        this.detailMode = ''
+        return
+      }
+      this.detailRowId = equipId
+      this.detailMode = m
     },
     loadAcadeGenerals () {
       api.get('/games/ezfy/officers/generals').then(r => {
