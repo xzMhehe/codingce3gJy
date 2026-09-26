@@ -251,7 +251,7 @@ func seedEzfyActivities(db *gorm.DB) {
 //	13 招生简章   ItemType 9  立即刷新军校候选名将(不占每日 5 次)
 //	14 荣誉史记   ItemType 10 指定军官获得经验(每本 27,068,000 经验)
 //	15 军官技能书 ItemType 11 指定军官消耗技能书学习 1 个技能
-//	16 军官洗点卡 ItemType 12 重置军官属性成长并清空技能(等级/经验保留)
+//	16 军官洗点卡 ItemType 12 重置军官属性为军官池初始属性 + 退回待分配点(等级/经验/技能保留)
 //	17 改名卡     ItemType 13 统帅页改昵称(首次免费, 之后每次消耗 1 张)
 //	18 阵营转换道具 ItemType 14 统帅页改阵营(首次免费, 之后每次消耗 1 个)
 //	19 集结令     ItemType 15 出征时提高本次出征兵力上限(每个 +10 万，单次上限由管理端配置)
@@ -274,9 +274,10 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
+		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
 		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 0, PriceDiamond: 1, Stock: -1,
 			Category:    "军官道具",
-			Description: "重置军官属性成长并清空已学技能(等级与经验保留)"},
+			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
 		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
 		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800, Stock: -1,

@@ -1064,21 +1064,47 @@ func (h *EzfyHandler) officerSetProgressView(o *model.EzfyOfficer) []gin.H {
 	return out
 }
 
-// officerBaseAttr 军官的**原始属性**（重修书洗点回退的目标）
+// officerBaseAttr 军官的**原始属性** —— 即洗点卡的重置目标
 //
-// 优先用实例上的 base_*（招募时的快照，管理端改池子也不会影响已发出的军官）；
-// 老数据 base_* 全 0 时，能对上军官池就用池子里的值，否则回落到当前属性。
+// ★ 用户规则（2026-09-26）：「原始属性 = 军官池里那名武将的属性」，
+//   升星加成同样算在「现代属性 − 原始属性」的差额里（洗点时一并退回），
+//   所以这里**优先回查军官池**；池子里查不到的（后台手工生成 / 历史随机生成的军官）
+//   才用实例上的 base_* 快照，最后兜底当前属性。
 func officerBaseAttr(o *model.EzfyOfficer) (int, int, int) {
 	if o == nil {
 		return 0, 0, 0
 	}
+	if bm, bl, be, ok := officerPoolAttr(o); ok {
+		return bm, bl, be
+	}
 	if o.BaseMilitary > 0 || o.BaseLogistics > 0 || o.BaseLearning > 0 {
 		return o.BaseMilitary, o.BaseLogistics, o.BaseLearning
 	}
-	if g := ezfyCfg.general(o.GeneralId); g != nil && g.Military+g.Logistics+g.Learning > 0 {
-		return g.Military, g.Logistics, g.Learning
-	}
 	return o.Military, o.Logistics, o.Learning
+}
+
+// officerPoolAttr 该军官对应的**军官池武将属性**（原始属性基准 / 洗点重置目标）
+//
+// ★ 用户规则：洗点 = 洗成「军官池里那名武将的属性」，而不是实例上的 base_* 快照 ——
+// 旧代码升星会把 base_* 一起加高，按快照洗点会洗不回池子初始值、退回的点数也少一截。
+// 所以这里直接回查池子：
+//   - 名将 / 后台发放的军官 general_id > 0，按 id 查；
+//   - 军校招来的普通军官 general_id 恒为 0（见 recruitOfficer），只能按名字回查。
+//
+// 查不到（后台手工生成、历史随机生成的军官）返回 ok=false，调用方回落到 base_*。
+func officerPoolAttr(o *model.EzfyOfficer) (int, int, int, bool) {
+	if o == nil {
+		return 0, 0, 0, false
+	}
+	if o.GeneralId > 0 {
+		if g := ezfyCfg.general(o.GeneralId); g != nil && g.Military+g.Logistics+g.Learning > 0 {
+			return g.Military, g.Logistics, g.Learning, true
+		}
+	}
+	if g := ezfyCfg.generalByName(o.Name); g != nil {
+		return g.Military, g.Logistics, g.Learning, true
+	}
+	return 0, 0, 0, false
 }
 
 // officerAllocatedPoints 已经分配到三属性上的点数（当前 − 原始）
@@ -2179,7 +2205,9 @@ func (h *EzfyHandler) OfficerAttrAll(c *gin.Context) {
 // ★ 2026-09-23 用户要求「军官升星做得太复杂，优化简约点」→ 简化后规则：
 //   - 成功率 = 管理端配置的固定值（officer_star_chance，默认 20%），不再有按星级递减/下限
 //   - 失败星级不变、消耗 1 枚星级徽章（调用方统一扣）
-//   - 每升 1 星三维各 +`officer_star_attr_gain`（**base_* 一起加**，重修书洗点不会把它洗掉）
+//   - 每升 1 星三维各 +`officer_star_attr_gain`，**只加当前属性、不动 base_***
+//     ★ 用户规则（2026-09-26）：「升星也是 现属性 − 原池子军官属性」——
+//     升星加成属于差额的一部分，洗点时和玩家手动加的点一起退回成待分配点数。
 //   - 星级上限 `officer_star_max`
 //
 // 只写玩家自己的军官实例，绝不回写军官池。
@@ -2203,20 +2231,13 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 		return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
 	}
 	gain := ezfyStarAttrGain()
-	bm, bl, be := officerBaseAttr(o)
-	if bm <= 0 {
-		bm = o.Military
-	}
-	if bl <= 0 {
-		bl = o.Logistics
-	}
-	if be <= 0 {
-		be = o.Learning
-	}
+	// ★ 用户规则（2026-09-26）：「升星也是 现属性 − 原池子军官属性」——
+	//   升星加成只加**当前属性**，**不动 base_***（原始属性恒等于军官池武将属性）。
+	//   这样「现代属性 − 原始属性」的差额里自然包含了升星加成，
+	//   洗点时会和玩家手动加的点一起退回成待分配点数。
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
 		"star":     o.Star + 1,
 		"military": o.Military + gain, "logistics": o.Logistics + gain, "learning": o.Learning + gain,
-		"base_military": bm + gain, "base_logistics": bl + gain, "base_learning": be + gain,
 		"update_time": time.Now(),
 	})
 	h.addReport(city.UserID, 6, "军官升星: "+o.Name,

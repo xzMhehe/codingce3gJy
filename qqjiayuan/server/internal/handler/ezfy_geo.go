@@ -1136,6 +1136,39 @@ func (c *ezfyConfigCache) general(id int) *model.EzfyCfgGeneral {
 	return nil
 }
 
+// generalByName 按名字回查军官池
+//
+// ★ 军校招来的普通军官实例 general_id 恒为 0（见 recruitOfficer），只能靠名字对上池子。
+// 同名多条时优先 kind=1（军校池），其次取 id 最小的，保证同一名军官每次查到的都一样。
+func (c *ezfyConfigCache) generalByName(name string) *model.EzfyCfgGeneral {
+	if name == "" {
+		return nil
+	}
+	var best *model.EzfyCfgGeneral
+	for id, g := range c.generals {
+		// 三维全 0 的池子条目没意义，跳过
+		if g.Name != name || g.Military+g.Logistics+g.Learning <= 0 {
+			continue
+		}
+		if best == nil {
+			cp := g
+			best = &cp
+			continue
+		}
+		var better bool
+		if (g.Kind == 1) != (best.Kind == 1) {
+			better = g.Kind == 1
+		} else {
+			better = id < best.ID
+		}
+		if better {
+			cp := g
+			best = &cp
+		}
+	}
+	return best
+}
+
 func (c *ezfyConfigCache) skill(id int) *model.EzfyCfgSkill {
 	if s, ok := c.skills[id]; ok {
 		return &s
