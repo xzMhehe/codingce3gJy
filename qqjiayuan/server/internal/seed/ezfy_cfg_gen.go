@@ -547,23 +547,25 @@ var ezfyEzfyCfgWildland = []model.EzfyCfgWildland{
 }
 
 // ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：以下 价格 / 库存 全部取线上库快照值。
+//   ★ 仅「商城道具」(ID 1~12)：按当前线上现价同步 —— 建筑/训练/科技加速 10/20→2/4，图纸 100→40，增产令 20→10，
+//   库存同步线上现值（ID 2 大资源包、11 增产令 已售罄 stock=0，ID 12 免战保护令 stock=81）。
 //
-//	Stock 写成 0（即「不写」，见 1 小资源包 / 2 大资源包）= 线上已售罄；
+//	Stock 写成 0（即「不写」，见 2 大资源包 / 11 增产令）= 线上已售罄；
 //	但 stock 列自带 DB 默认值 100 而 GORM 会跳过带 default 标签字段的零值，
 //	所以「售罄」这个状态要靠 seedEzfy 里紧跟 batch 之后那段显式 Update 落地。
 var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 1, Name: "小资源包", ItemType: 1, Param1: 10000, PriceGold: 10000, Stock: 100, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各1万"},
-	{ID: 2, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: 100, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
+	{ID: 2, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: 0, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
 	{ID: 3, Name: "黄金卡", ItemType: 2, Param1: 10000, PriceDiamond: 10, Stock: 100, Icon: "", Description: "使用后获得黄金1万"},
-	{ID: 4, Name: "建筑加速30分钟", ItemType: 3, Param1: 30, PriceDiamond: 10, Stock: 100, Icon: "", Description: "当前建筑升级立即减少30分钟"},
-	{ID: 5, Name: "建筑加速2小时", ItemType: 3, Param1: 120, PriceDiamond: 20, Stock: 100, Icon: "", Description: "当前建筑升级立即减少2小时"},
-	{ID: 6, Name: "训练加速30分钟", ItemType: 4, Param1: 30, PriceDiamond: 10, Stock: 100, Icon: "", Description: "当前训练队列立即减少30分钟"},
-	{ID: 7, Name: "训练加速2小时", ItemType: 4, Param1: 120, PriceDiamond: 20, Stock: 100, Icon: "", Description: "当前训练队列立即减少2小时"},
-	{ID: 8, Name: "科技加速30分钟", ItemType: 5, Param1: 30, PriceDiamond: 10, Stock: 100, Icon: "", Description: "当前科技研究立即减少30分钟"},
-	{ID: 9, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 20, Stock: 98, Icon: "", Description: "当前科技研究立即减少2小时"},
-	{ID: 10, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 100, Stock: 97, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
-	{ID: 11, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 20, Stock: 78, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
-	{ID: 12, Name: "免战保护令(24小时)", ItemType: 8, Param1: 24, PriceGold: 550000, Stock: 86, Icon: "", Description: "城市24小时内免遭掠夺与征服"},
+	{ID: 4, Name: "建筑加速30分钟", ItemType: 3, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前建筑升级立即减少30分钟"},
+	{ID: 5, Name: "建筑加速2小时", ItemType: 3, Param1: 120, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前建筑升级立即减少2小时"},
+	{ID: 6, Name: "训练加速30分钟", ItemType: 4, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前训练队列立即减少30分钟"},
+	{ID: 7, Name: "训练加速2小时", ItemType: 4, Param1: 120, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前训练队列立即减少2小时"},
+	{ID: 8, Name: "科技加速30分钟", ItemType: 5, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究立即减少30分钟"},
+	{ID: 9, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 4, Stock: 98, Icon: "", Description: "当前科技研究立即减少2小时"},
+	{ID: 10, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 40, Stock: 97, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
+	{ID: 11, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: 0, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
+	{ID: 12, Name: "免战保护令(24小时)", ItemType: 8, Param1: 24, PriceGold: 550000, Stock: 81, Icon: "", Description: "城市24小时内免遭掠夺与征服"},
 }
 
 var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{
