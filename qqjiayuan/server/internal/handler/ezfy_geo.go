@@ -940,6 +940,37 @@ func ezfyScaleByWildResMult(n int64) int64 {
 	return v
 }
 
+// ezfyResProdMultDef 城市资源产量倍率默认值
+const ezfyResProdMultDef = 1.0
+
+// ezfyResProdMult 城市每小时资源产量（粮/钢/油/稀矿/金）的整体倍率
+//
+// ★ 2026-09-26 用户要求：「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」。
+//
+//	⚠️ **0 是合法值**（= 产量归零），不是「未配置」——
+//	所以这里**故意不做 `<= 0 就回落默认`**（那套是 `ezfyWildResMult` 的口径，不适用于倍率）。
+//	「未配置」由 seed 补列时**只把 NULL 回填成 1** 来兜，不靠读取端猜。
+//	⚠️ 两个收敛点必须同时改：`calcResource`（实际入库）与 `getResourceCalc`（详情页展示），
+//	否则会出现「详情页显示 1 万、实际只入库 100」。
+func ezfyResProdMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyResProdMultDef
+	}
+	return ezfyCfg.limit.ResProdMult
+}
+
+// ezfyScaleResByProdMult 产量按倍率缩放（倍率 1 时原样返回，避免无谓的浮点误差）
+func ezfyScaleResByProdMult(n int64) int64 {
+	m := ezfyResProdMult()
+	if m == 1 {
+		return n
+	}
+	if m <= 0 {
+		return 0
+	}
+	return int64(float64(n) * m)
+}
+
 // ezfyGatherResMult 常驻采集产出资源倍率（默认 10；0 或负数无意义 → 回落 10）
 //
 // ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。

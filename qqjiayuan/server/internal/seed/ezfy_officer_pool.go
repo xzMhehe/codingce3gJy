@@ -40,13 +40,78 @@ var ezfyPoolLastNames = []string{
 // ezfyPoolOfficerCount 军官池里预置的普通军官数量（用户举例「比如有 1000 个军官」）
 const ezfyPoolOfficerCount = 1000
 
-// ezfyPoolStarCap 各星级的属性上限（与「一键生成军官」同口径：不超过同星级名将）
-var ezfyPoolStarCap = map[int][3]int{
-	1: {60, 60, 60},
-	2: {90, 90, 90},
-	3: {130, 130, 130},
-	4: {190, 190, 190},
-	5: {260, 260, 260},
+// ezfyCapStar5SideAttrs 五星军官的「主属性保护」
+//
+// ★ 2026-09-26 用户规则：「五星普通池子军官有一项 >= 170，那么另外两项只能 <= 100 >= 60」——
+// 目的是不让五星出现「三项都很高」的均衡怪（原来 focus==3 均衡型三项都走主属性公式，
+// 可能生成 212/198/237 这种）。
+// （阈值先定 180，同日用户改成 **170**。）
+//
+// 主属性按 **军事 > 后勤 > 学识** 的优先级确定（第一个 ≥170 的那项）：
+//
+//	军事 ≥170 → 军事保留，后勤/学识夹到 [60,100]
+//	否则 后勤 ≥170 → 后勤保留，军事/学识夹
+//	否则 学识 ≥170 → 学识保留，军事/后勤夹
+//	三项都 <170 → 原样返回
+//
+// ⚠️ 三项都 ≥170 时只有优先级最高的那项能保留（规则本身要求另两项 ≤100，
+// 不可能三项同时 ≥170 又都 ≤100）。
+func ezfyCapStar5SideAttrs(mil, log, lea int) (int, int, int) {
+	clamp := func(v int) int {
+		if v > 100 {
+			v = 100
+		}
+		if v < 60 {
+			v = 60
+		}
+		return v
+	}
+	switch {
+	case mil >= 170:
+		return mil, clamp(log), clamp(lea)
+	case log >= 170:
+		return clamp(mil), log, clamp(lea)
+	case lea >= 170:
+		return clamp(mil), clamp(log), lea
+	}
+	return mil, log, lea
+}
+
+// ezfyPoolStarCapOf 某星级下普通军官的三维上限 = 名将逐项最大值 × 星级系数
+//
+// ★ 2026-09-26 用户定的属性规则：
+//
+//	① 普通军官任何一项都不得超过同星级名将（逐项比较）；
+//	② 星级递减：一星 ≤ 二星 ≤ 三星 ≤ 四星 ≤ 五星。
+//
+// 统一走 `model.EzfyStarCap`（系数见 `model.EzfyStarCapPct`），
+// 与运行时的 `ezfyGeneralCapByStarDB`（管理端校验 / 玩家加点 / 升星夹取）**同一口径**。
+// ⚠️ 别再改回硬编码表 —— 那样会和运行时校验打架（生成出来的军官一保存就被夹）。
+func ezfyPoolStarCapOf(star int) [3]int {
+	gMil, gLog, gLea := 0, 0, 0
+	// ezfyEzfyCfgGeneral 里全是名将（kind 在结构体里是零值 0，靠 DB 默认值 2 落库），
+	// 所以这里不做 kind 过滤。
+	for _, g := range ezfyEzfyCfgGeneral {
+		if g.Military > gMil {
+			gMil = g.Military
+		}
+		if g.Logistics > gLog {
+			gLog = g.Logistics
+		}
+		if g.Learning > gLea {
+			gLea = g.Learning
+		}
+	}
+	if gMil <= 0 {
+		gMil = 100
+	}
+	if gLog <= 0 {
+		gLog = 100
+	}
+	if gLea <= 0 {
+		gLea = 100
+	}
+	return model.EzfyStarCap(star, gMil, gLog, gLea)
 }
 
 // ezfyPoolStarDist 星级分布：5星3% 4星7% 3星20% 2星30% 1星40%（与军校抽取概率一致）
@@ -66,6 +131,51 @@ func ezfyPoolStarRoll(r *rand.Rand) int {
 	}
 }
 
+// ezfyPoolOfficerLevel 普通军官的「原始等级」：按星级分层随机（星级越高等级越高）
+//
+// ★ 2026-09-26 用户要求：「军官池子普通军官等级不对，全变 150 了，要有等级差距」——
+// 原来 `Level` 一律写死 150（那时它的语义是「招募等级上限」）。
+// 现在语义改成**该军官的原始等级**，招募时直接沿用，属性也按这个等级同比缩放。
+//
+// 分层（覆盖 1~150，且星级间有重叠，避免「看星级就知等级」）：
+//
+//	1星 1~60 · 2星 30~90 · 3星 60~120 · 4星 90~140 · 5星 120~150
+func ezfyPoolOfficerLevel(r *rand.Rand, star int) int {
+	lo, hi := 1, 60
+	switch star {
+	case 2:
+		lo, hi = 30, 90
+	case 3:
+		lo, hi = 60, 120
+	case 4:
+		lo, hi = 90, 140
+	case 5:
+		lo, hi = 120, 150
+	}
+	return lo + r.Intn(hi-lo+1)
+}
+
+// ezfyScaleByLevel 把「150 级基准」的属性同比缩放到 lv 级（四舍五入，下限 1）
+//
+// ★ 用户原话：「就是军官A等级 50 级，变成 100 级后 总属性和现在 150 级总属性一样就行」——
+// 即属性总量与等级成正比，升级（每级 +1 点）能把差额补回来。
+func ezfyScaleByLevel(v, lv int) int {
+	if lv >= ezfyPoolBaseLevel {
+		return v
+	}
+	if lv < 1 {
+		lv = 1
+	}
+	out := (v*int(lv) + ezfyPoolBaseLevel/2) / ezfyPoolBaseLevel
+	if out < 1 {
+		out = 1
+	}
+	return out
+}
+
+// ezfyPoolBaseLevel 属性生成的「基准等级」= 150（军官最高等级）
+const ezfyPoolBaseLevel = 150
+
 // buildEzfyPoolOfficers 生成 1000 名普通军官（固定随机种子 → 每次生成结果一致，便于对账）
 //
 // ID 从 1001 开始，避开名将的 1~31，方便以后人工增删时互不干扰。
@@ -77,7 +187,7 @@ func buildEzfyPoolOfficers() []model.EzfyCfgGeneral {
 		for li := 0; li < len(ezfyPoolLastNames) && len(out) < ezfyPoolOfficerCount; li++ {
 			name := ezfyPoolFirstNames[fi] + "·" + ezfyPoolLastNames[li]
 			star := ezfyPoolStarRoll(r)
-			cap3 := ezfyPoolStarCap[star]
+			cap3 := ezfyPoolStarCapOf(star)
 			// 每名军官有一个随机「倾向」（0军事 1后勤 2学识 3均衡），让属性分布有差异
 			focus := r.Intn(4)
 			val := func(idx int) int {
@@ -101,8 +211,20 @@ func buildEzfyPoolOfficers() []model.EzfyCfgGeneral {
 			if lea < 5 {
 				lea = 5
 			}
+			// ★ 2026-09-26 用户规则：五星若有一项 ≥170（主属性很高），另外两项只能在 [60,100]
+			if star == 5 {
+				mil, log, lea = ezfyCapStar5SideAttrs(mil, log, lea)
+			}
+			// ★ 2026-09-26 用户要求「等级要有差距、属性同比减」：
+			//   上面算出来的是**150 级基准**的属性，这里按该军官的原始等级同比缩放。
+			lv := ezfyPoolOfficerLevel(r, star)
+			mil, log, lea = ezfyScaleByLevel(mil, lv), ezfyScaleByLevel(log, lv), ezfyScaleByLevel(lea, lv)
+			// 缩放后主属性可能仍 ≥170（如 5 星 120 级），另两项要重新夹回 [60,100]
+			if star == 5 {
+				mil, log, lea = ezfyCapStar5SideAttrs(mil, log, lea)
+			}
 			out = append(out, model.EzfyCfgGeneral{
-				ID: id, Name: name, Level: 150,
+				ID: id, Name: name, Level: lv,
 				Military: mil, Logistics: log, Learning: lea,
 				Star: star, Kind: 1, Weight: 100, Recruit: 1,
 				Source: "军校招募", Skill: "",

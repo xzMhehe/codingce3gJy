@@ -260,6 +260,15 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 10 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
 
+		// ★ 2026-09-26 城市资源产量倍率（默认 1，允许小数；**0 是合法值 = 产量归零**）
+		//   ⚠️ 只回填 NULL —— 千万不能写 `OR res_prod_mult <= 0`，
+		//   否则每次启动都会把管理端设的 0 改回 1（和「开关类字段」是同一个坑）。
+		//   ⚠️ 必须 double：addLimitCol 建的是 int，配不了 0.5 / 2.5。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "res_prod_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN res_prod_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET res_prod_mult = 1 WHERE res_prod_mult IS NULL")
+
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {

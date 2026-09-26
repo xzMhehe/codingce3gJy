@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
@@ -519,6 +520,8 @@ func (h *AdminHandler) AdminEzfyGeneralCreate(c *gin.Context) {
 	if _, ok := vals["weight"]; !ok {
 		vals["weight"] = 100
 	}
+	// ★ 2026-09-26：普通军官(kind=1) 的三维不得超过同星级名将（逐项），超了就地夹回
+	h.ezfyClampPoolOfficerVals(vals, 0, 0)
 	if err := h.DB.Model(&model.EzfyCfgGeneral{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
@@ -549,6 +552,8 @@ func (h *AdminHandler) AdminEzfyGeneralUpdate(c *gin.Context) {
 		resp.ParamError(c, "无可修改字段")
 		return
 	}
+	// ★ 2026-09-26：普通军官(kind=1) 的三维不得超过同星级名将（逐项），超了就地夹回
+	h.ezfyClampPoolOfficerVals(vals, g.Kind, g.Star)
 	if err := h.DB.Model(&model.EzfyCfgGeneral{}).Where("id = ?", id).Updates(vals).Error; err != nil {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
@@ -1734,49 +1739,137 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 	})
 }
 
-// ezfyGeneralCapByStar 每个星级下「名将」的属性上限 [军事,后勤,学识]
+// ezfyGeneralCapByStarDB 各星级下「普通军官」的属性上限 = 名将逐项 max × 星级系数
 //
-// ★ 用户要求：随机生成的军官属性不能超过名将。
+// ★ 2026-09-26 用户规则（两条）：
 //
-//	同名将星级里取最大值作为上限；该星级没有名将就往下借一档；
-//	都没有就用 星级×20 兜底（比同星级名将保守）。
-func (h *AdminHandler) ezfyGeneralCapByStar() map[int][3]int {
+//	① 普通军官的任何一项都不得超过同星级名将 —— 逐项比较，不是比总和
+//	   （「有的名将军事高、有的后勤高、有的学识高」）；
+//	② 星级递减：一星 ≤ 二星 ≤ 三星 ≤ 四星 ≤ 五星。
+//
+// 实现见 `model.EzfyStarCap`（名将逐项 max × `EzfyStarCapPct`）。
+// ⚠️ 旧实现是「该星级没名将就往下借一档」—— 名将只有 5 星，于是 1~4 星全借到 5 星上限，
+// 一星军官也能有五星属性，直接违反规则 ②，已废弃。
+func ezfyGeneralCapByStarDB(db *gorm.DB) map[int][3]int {
 	var gs []model.EzfyCfgGeneral
-	h.DB.Find(&gs)
-	cap := map[int][3]int{}
+	db.Where("kind = ?", 2).Find(&gs)
+	gMil, gLog, gLea := 0, 0, 0
 	for _, g := range gs {
-		st := g.Star
-		if st <= 0 {
-			st = 5
+		if g.Military > gMil {
+			gMil = g.Military
 		}
-		c := cap[st]
-		if g.Military > c[0] {
-			c[0] = g.Military
+		if g.Logistics > gLog {
+			gLog = g.Logistics
 		}
-		if g.Logistics > c[1] {
-			c[1] = g.Logistics
+		if g.Learning > gLea {
+			gLea = g.Learning
 		}
-		if g.Learning > c[2] {
-			c[2] = g.Learning
-		}
-		cap[st] = c
 	}
-	// 逐级往下借：该星级没有名将就用低一星的上限
+	// 名将池为空时给保守兜底（别让上限全 0 把军官卡死）
+	if gMil <= 0 {
+		gMil = 100
+	}
+	if gLog <= 0 {
+		gLog = 100
+	}
+	if gLea <= 0 {
+		gLea = 100
+	}
+	cap := map[int][3]int{}
 	for st := 1; st <= 5; st++ {
-		if _, ok := cap[st]; ok {
-			continue
-		}
-		for lower := st - 1; lower >= 1; lower-- {
-			if c, ok := cap[lower]; ok {
-				cap[st] = c
-				break
-			}
-		}
-		if _, ok := cap[st]; !ok {
-			cap[st] = [3]int{st * 20, st * 20, st * 20}
-		}
+		cap[st] = model.EzfyStarCap(st, gMil, gLog, gLea)
 	}
 	return cap
+}
+
+// ezfyGeneralCapByStar 管理端用法（复用包级实现）
+func (h *AdminHandler) ezfyGeneralCapByStar() map[int][3]int {
+	return ezfyGeneralCapByStarDB(h.DB)
+}
+
+// ezfyClampPoolOfficerAttrs 把「普通军官(kind=1)」的三维夹到「同星级名将的逐项最大值」以内
+//
+// ★ 2026-09-26 用户要求：「当前军官池子的五星军官比名将属性都好了，只能 <= 名将属性
+// （有的可能军事高、后勤高、学识高）」—— 注意是**逐项**比较，不是比总和：
+//
+//	军事 ≤ 该星级名将的最高军事、后勤 ≤ 最高后勤、学识 ≤ 最高学识。
+//
+// 名将只有 5 星，1~4 星没有可比对象时走 `ezfyGeneralCapByStar` 的「往下借一档」逻辑。
+// 名将本身(kind=2)不夹 —— 它就是基准。
+func (h *AdminHandler) ezfyClampPoolOfficerAttrs(kind, star, mil, log, lea int) (int, int, int) {
+	if kind != 1 {
+		return mil, log, lea
+	}
+	if star <= 0 {
+		star = 1
+	}
+	caps := h.ezfyGeneralCapByStar()
+	c, ok := caps[star]
+	if !ok {
+		return mil, log, lea
+	}
+	if mil > c[0] {
+		mil = c[0]
+	}
+	if log > c[1] {
+		log = c[1]
+	}
+	if lea > c[2] {
+		lea = c[2]
+	}
+	return mil, log, lea
+}
+
+// ezfyClampPoolOfficerVals 对管理端提交的军官池字段做「不超名将」夹取（就地改 vals）
+//
+// 只处理 kind=1（普通军官）；kind 缺省时看库里原值（修改场景）。
+func (h *AdminHandler) ezfyClampPoolOfficerVals(vals map[string]interface{}, oldKind, oldStar int) bool {
+	kind := oldKind
+	if v, ok := vals["kind"]; ok {
+		if n, err := strconv.Atoi(fmt.Sprint(v)); err == nil {
+			kind = n
+		}
+	}
+	if kind != 1 {
+		return false
+	}
+	star := oldStar
+	if v, ok := vals["star"]; ok {
+		if n, err := strconv.Atoi(fmt.Sprint(v)); err == nil {
+			star = n
+		}
+	}
+	get := func(k string, def int) int {
+		if v, ok := vals[k]; ok {
+			if n, err := strconv.Atoi(fmt.Sprint(v)); err == nil {
+				return n
+			}
+		}
+		return def
+	}
+	mil, log, lea := get("military", -1), get("logistics", -1), get("learning", -1)
+	if mil < 0 && log < 0 && lea < 0 {
+		return false // 没提交三维，不用管
+	}
+	caps := h.ezfyGeneralCapByStar()
+	c, ok := caps[star]
+	if !ok {
+		return false
+	}
+	changed := false
+	if mil >= 0 && mil > c[0] {
+		vals["military"] = c[0]
+		changed = true
+	}
+	if log >= 0 && log > c[1] {
+		vals["logistics"] = c[1]
+		changed = true
+	}
+	if lea >= 0 && lea > c[2] {
+		vals["learning"] = c[2]
+		changed = true
+	}
+	return changed
 }
 
 // AdminEzfyGenOfficers 一键生成军官（挂到指定玩家的主城下）

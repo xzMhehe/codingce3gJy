@@ -32,6 +32,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
+		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
+		ResProdMult: ezfyResProdMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
@@ -164,6 +166,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildResMult *float64 `json:"wild_res_mult"`
 		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数）
 		GatherResMult *float64 `json:"gather_res_mult"`
+		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
+		ResProdMult *float64 `json:"res_prod_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
 		MarchOilOn    *int     `json:"march_oil_on"`
@@ -210,6 +214,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
+		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
+		ResProdMult: ezfyResProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
@@ -377,6 +383,16 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.GatherResMult = m
+	}
+	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
+	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
+	if in.ResProdMult != nil {
+		m := *in.ResProdMult
+		if m < 0 {
+			resp.ParamError(c, "产量加成倍率不能为负数（0 表示产量归零）")
+			return
+		}
+		lim.ResProdMult = m
 	}
 	// ★ 三个玩法开关：0 = 关 / 1 = 开，两个值都合法，**不做** <=0 兜底（0 就是关）。
 	setSwitch := func(v *int, dst *int, name string) bool {
@@ -618,6 +634,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"wild_troop_mult":     lim.WildTroopMult,
 		"wild_res_mult":       lim.WildResMult,
 		"gather_res_mult":     lim.GatherResMult,
+		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
+		"res_prod_mult": lim.ResProdMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
 		"officer_star_up_on": lim.OfficerStarUpOn,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写

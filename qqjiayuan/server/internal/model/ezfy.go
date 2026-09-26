@@ -276,6 +276,12 @@ type EzfyCfgLimit struct {
 	//   默认 10 = 10 倍（线上现值）；2 = 翻倍；0.5 = 减半。允许小数。
 	//   注意：只作用于「打赢的战利品」，不含驻守采集（采集另有自己的产出公式）。
 	WildResMult float64 `gorm:"default:10;comment:野地战利品资源倍率" json:"wild_res_mult"`
+	// ★ 2026-09-26 用户要求「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」：
+	//   城市每小时资源产量（粮/钢/油/稀矿/金）整体乘这个倍率。
+	//   ⚠️ **0 是合法值**（= 产量归零），不是「未配置」——
+	//   所以读取端**不能**用「<= 0 就回落默认」那套（见 ezfyResProdMult）。
+	//   ⚠️ 老库补列时只能回填 NULL，别用 `WHERE col <= 0`（那样每次启动都会把玩家设的 0 改回 1）。
+	ResProdMult float64 `gorm:"default:1;comment:城市资源产量倍率" json:"res_prod_mult"`
 	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
 	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
 	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。
@@ -1028,6 +1034,54 @@ type EzfyExchangeTemplate struct {
 func (EzfyExchangeTemplate) TableName() string { return "ezfy_exchange_tpl" }
 
 // ============ 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命） ============
+
+// EzfyStarCapPct 各星级的属性上限系数（百分比），用于推导「普通军官不得超过同星级名将」
+//
+// ★ 2026-09-26 用户定的属性规则：
+//   - 普通军官的任何一项属性都**不得超过同星级名将**（有的名将军事高、有的后勤高、
+//     有的学识高 → **逐项**比较，不是比总和）；
+//   - 且**星级递减**：一星 ≤ 二星 ≤ 三星 ≤ 四星 ≤ 五星。
+//
+// 实现 = 「名将逐项最大值 × 本表系数%」，天然同时满足这两条：
+// 系数单调递增 → 上限随星级递增；五星 = 100% → 五星上限恰好等于名将。
+//
+// 代入线上名将 max（军事 300 / 后勤 336 / 学识 300）得到：
+//
+//	1星 60 /  67 /  60      2星 90 / 100 /  90
+//	3星 135/ 151 / 135      4星 210 / 235 / 210      5星 300 / 336 / 300
+//
+// （与原来的硬编码 60/90/130/190/260 基本一致，5 星由 260 放宽到名将水平。）
+var EzfyStarCapPct = map[int]int{
+	1: 20,
+	2: 30,
+	3: 45,
+	4: 70,
+	5: 100,
+}
+
+// EzfyStarCap 某星级下三维的上限 [军事,后勤,学识] = 名将逐项 max × 系数%
+//
+// gMil/gLog/gLea 传「名将(kind=2) 的逐项最大值」。取整后下限 1，避免出现 0 上限。
+func EzfyStarCap(star, gMil, gLog, gLea int) [3]int {
+	if star < 1 {
+		star = 1
+	}
+	if star > 5 {
+		star = 5
+	}
+	pct := EzfyStarCapPct[star]
+	if pct <= 0 {
+		pct = 100
+	}
+	one := func(v int) int {
+		r := v * pct / 100
+		if r < 1 {
+			r = 1
+		}
+		return r
+	}
+	return [3]int{one(gMil), one(gLog), one(gLea)}
+}
 
 // EzfyCfgGeneral 军官池（源自 inithebing.sql cfg_general 31 条名将 + 管理端可新增普通军官）
 //

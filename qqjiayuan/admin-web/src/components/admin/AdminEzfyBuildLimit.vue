@@ -79,6 +79,11 @@
               <template slot="label">采集资源倍率<el-tooltip placement="top" :content="tips.gather_res_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.gather_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-26 城市资源产量倍率：默认 1，**0 合法**（产量归零）→ :min="0" -->
+            <el-form-item>
+              <template slot="label">产量加成倍率<el-tooltip placement="top" :content="tips.res_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.res_prod_mult" :min="0" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.dispatch_period_h" :min="1" :max="720" controls-position="right" style="width:180px" />
@@ -222,6 +227,8 @@ export default {
         officer_salary_per_level: 20, wound_heal_divisor: 100,
         // ★ 野地兵力倍数 / 野地获取资源倍率 / 采集资源倍率（都允许小数，默认 1 = 原样）
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
+        // ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
+        res_prod_mult: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
         // ★ 资源最大值：每项资源的入库累加硬上限，默认 100 亿 = 10000000000
         res_max_food: 10000000000, res_max_steel: 10000000000, res_max_oil: 10000000000,
@@ -258,7 +265,10 @@ export default {
         wild_res_mult: '野地 / 海野 / 寇城**战斗胜利后的战利品**资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 10。' +
           '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
         gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 10。' +
-          '只影响「采集产出」；战斗胜利的战利品另见上面的「野地获取资源倍率」。',
+          '作用点是「驻守采集(4/7)」的采集产出，不含战斗战利品。',
+        // ★ 2026-09-26 城市资源产量倍率
+        res_prod_mult: '城市每小时产出的**粮/钢/油/稀矿/黄金**整体 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
+          '★ 填 0 表示**产量归零**（合法值）。资源详情页的「基础/加成/总产量」会同步按倍率显示。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 资源最大值：文案统一口径 = 入库累加硬上限（不限制自动产量，自动产量仍看仓库上限）
         res_max_food: '粮食的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
@@ -320,6 +330,9 @@ export default {
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
             wild_res_mult: pos(Number(r.data.wild_res_mult), 1),
             gather_res_mult: pos(Number(r.data.gather_res_mult), 1),
+            // ★ 2026-09-26 产量倍率：**不能用 pos()**（它把 <=0 回落成默认值，会把玩家设的 0 改回 1）
+            res_prod_mult: (r.data.res_prod_mult === undefined || r.data.res_prod_mult === null)
+              ? 1 : Number(r.data.res_prod_mult),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             // ★ 资源最大值：int64，直接用 Number（1e15 内精确）；非数字 / 0 / 负数一律回落 100 亿

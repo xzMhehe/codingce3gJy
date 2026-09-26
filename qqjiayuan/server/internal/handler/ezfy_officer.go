@@ -290,7 +290,9 @@ func (h *EzfyHandler) rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft 
 	}
 	used := map[int]bool{}
 	out := make([]ezfyOfficerDraft, 0, n)
-	span := maxInt(1, academyLevel*8)
+	// ★ 2026-09-26：等级改成「直接沿用池子里该军官的原始等级」后，
+	//   原来按军校等级算的随机跨度 `span` 就用不到了（academyLevel 参数保留给调用方，不再参与取值）。
+	_ = academyLevel
 	for i := 0; i < n; i++ {
 		idx := -1
 		for try := 0; try < 60; try++ {
@@ -309,17 +311,13 @@ func (h *EzfyHandler) rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft 
 		}
 		used[idx] = true
 		g := pool[idx]
-		// 等级：随军校等级提高，但不超过该军官在池子里配的等级上限
-		maxLv := g.Level
-		if maxLv <= 0 || maxLv > ezfyOfficerMaxLevel {
-			maxLv = ezfyOfficerMaxLevel
-		}
-		lv := 5 + rand.Intn(span)
-		if lv > maxLv {
-			lv = maxLv
-		}
-		if lv < 1 {
-			lv = 1
+		// ★ 2026-09-26 用户要求「军官池普通军官等级要有差距」：
+		//   池子里的 `level` 现在是该军官的**原始等级**（种子按星级分层随机 1~150，
+		//   属性也按这个等级同比缩放过了），招募时**直接沿用** ——
+		//   不再按「5 + 随机(军校等级×8)」现算（那样池子的等级就没意义了）。
+		lv := g.Level
+		if lv <= 0 || lv > ezfyOfficerMaxLevel {
+			lv = ezfyOfficerMaxLevel
 		}
 		out = append(out, ezfyOfficerDraft{
 			Key:    g.Name + "-" + strconv.Itoa(g.ID) + "-" + strconv.FormatInt(time.Now().UnixNano()+int64(i), 10),
@@ -1151,6 +1149,21 @@ func (h *EzfyHandler) officerAddAttr(city *model.EzfyCity, officerId int64, attr
 		col = "learning"
 	default:
 		return "属性类型错误(可选 军事/后勤/学识)"
+	}
+	// ★ 2026-09-26 用户规则：普通军官的**每一项**都不得超过同星级名将（且星级递减）。
+	//   光修池子和存量数据不够 —— 玩家还能用 free_points 把属性加回去，这里必须卡住。
+	//   名将实例（general_id>0）本身就是基准，不限制。
+	if o.GeneralId == 0 {
+		if c, ok := ezfyGeneralCapByStarDB(h.DB)[o.Star]; ok {
+			idx := map[string]int{"military": 0, "logistics": 1, "learning": 2}[col]
+			cur := map[string]int{"military": o.Military, "logistics": o.Logistics, "learning": o.Learning}[col]
+			if cur >= c[idx] {
+				return fmt.Sprintf("%s 已达%d星上限(%d)，无法再加", attr, o.Star, c[idx])
+			}
+			if cur+count > c[idx] {
+				count = c[idx] - cur // 只加得起的那部分，剩余点数留在账上
+			}
+		}
 	}
 	if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
 		Updates(map[string]interface{}{
@@ -2230,19 +2243,45 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 	if rand.Intn(100) >= rate {
 		return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
 	}
-	gain := ezfyStarAttrGain()
+	// ★ 2026-09-26 用户要求「每星三维加成 随机 1-配置的属性」：
+	//   三维**各自**随机 +[1, 配置值]（配置 = 管理端 `officer_star_attr_gain`，默认 10），
+	//   而不是固定加配置值 —— 这样每颗星涨多少有差异，不再千篇一律。
+	//   并且夹到「升星后那个星级」的属性上限（普通军官逐项不得超同星级名将；
+	//   名将实例 general_id>0 是基准，不夹）。
+	gainMax := ezfyStarAttrGain()
+	if gainMax < 1 {
+		gainMax = 1
+	}
+	newStar := o.Star + 1
+	newMil := o.Military + 1 + rand.Intn(gainMax)
+	newLog := o.Logistics + 1 + rand.Intn(gainMax)
+	newLea := o.Learning + 1 + rand.Intn(gainMax)
+	if o.GeneralId == 0 {
+		if c, ok := ezfyGeneralCapByStarDB(h.DB)[newStar]; ok {
+			if newMil > c[0] {
+				newMil = c[0]
+			}
+			if newLog > c[1] {
+				newLog = c[1]
+			}
+			if newLea > c[2] {
+				newLea = c[2]
+			}
+		}
+	}
+	dMil, dLog, dLea := newMil-o.Military, newLog-o.Logistics, newLea-o.Learning
 	// ★ 用户规则（2026-09-26）：「升星也是 现属性 − 原池子军官属性」——
 	//   升星加成只加**当前属性**，**不动 base_***（原始属性恒等于军官池武将属性）。
 	//   这样「现代属性 − 原始属性」的差额里自然包含了升星加成，
 	//   洗点时会和玩家手动加的点一起退回成待分配点数。
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
-		"star":     o.Star + 1,
-		"military": o.Military + gain, "logistics": o.Logistics + gain, "learning": o.Learning + gain,
+		"star":     newStar,
+		"military": newMil, "logistics": newLog, "learning": newLea,
 		"update_time": time.Now(),
 	})
 	h.addReport(city.UserID, 6, "军官升星: "+o.Name,
-		fmt.Sprintf("%s 升星成功: %d星→%d星, 军事/后勤/学识各+%d。", o.Name, o.Star, o.Star+1, gain), "")
-	return fmt.Sprintf("升星成功: %s %d星→%d星, 三维各+%d", o.Name, o.Star, o.Star+1, gain), true
+		fmt.Sprintf("%s 升星成功: %d星→%d星, 军事+%d 后勤+%d 学识+%d。", o.Name, o.Star, newStar, dMil, dLog, dLea), "")
+	return fmt.Sprintf("升星成功: %s %d星→%d星, 军事+%d 后勤+%d 学识+%d", o.Name, o.Star, newStar, dMil, dLog, dLea), true
 }
 
 // OfficerStarUp POST /games/ezfy/officers/:id/starup

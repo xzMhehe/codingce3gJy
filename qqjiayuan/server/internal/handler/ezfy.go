@@ -899,6 +899,19 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	prodCapOil := min64(city.OilCap, ezfyResMaxOf("oil"))
 	prodCapRare := min64(city.RareCap, ezfyResMaxOf("rare"))
 	prodCapGold := min64(city.GoldCap, ezfyResMaxOf("gold"))
+	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	//   乘在「城市产量 + 野地驻守产出」的**合计**上，即最终入库的那份产出。
+	//   ⚠️ 必须与 `getResourceCalc`（资源详情页展示）同口径，否则「详情页显示 1 万、实际入库 100」。
+	foodProd = ezfyScaleResByProdMult(foodProd)
+	steelProd = ezfyScaleResByProdMult(steelProd)
+	oilProd = ezfyScaleResByProdMult(oilProd)
+	rareProd = ezfyScaleResByProdMult(rareProd)
+	goldProd = ezfyScaleResByProdMult(goldProd)
+	wildFood = ezfyScaleResByProdMult(wildFood)
+	wildSteel = ezfyScaleResByProdMult(wildSteel)
+	wildOil = ezfyScaleResByProdMult(wildOil)
+	wildRare = ezfyScaleResByProdMult(wildRare)
+	wildGold = ezfyScaleResByProdMult(wildGold)
 	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
 	food += min64(prod, max64(0, prodCapFood-food))
@@ -1136,6 +1149,27 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		wildOil = wildOil * mult / 100
 		wildRare = wildRare * mult / 100
 	}
+	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	//   放在所有加成（市长/道具增产/节日活动）**之后**，与 `calcResource` 同口径。
+	//   ⚠️ **`base` 也要一起乘**：倍率是「产量系数」而不是「加成」——
+	//   只乘总产出的话，倍率 < 1 时 `bonus = 总产出 − base` 会变成**负数**
+	//   （实测倍率 0 时 base=1600 / bonus=-1600），违反「加成产量恒 ≥ 0」的既定口径。
+	//   一起乘之后：倍率 2 → base 翻倍、bonus 不变；倍率 0 → base 和 bonus 都归 0。
+	foodBaseReal = ezfyScaleResByProdMult(foodBaseReal)
+	steelBaseReal = ezfyScaleResByProdMult(steelBaseReal)
+	oilBaseReal = ezfyScaleResByProdMult(oilBaseReal)
+	rareBaseReal = ezfyScaleResByProdMult(rareBaseReal)
+	goldBaseReal = ezfyScaleResByProdMult(goldBaseReal)
+	foodProd = ezfyScaleResByProdMult(foodProd)
+	steelProd = ezfyScaleResByProdMult(steelProd)
+	oilProd = ezfyScaleResByProdMult(oilProd)
+	rareProd = ezfyScaleResByProdMult(rareProd)
+	goldProd = ezfyScaleResByProdMult(goldProd)
+	wildFood = ezfyScaleResByProdMult(wildFood)
+	wildSteel = ezfyScaleResByProdMult(wildSteel)
+	wildOil = ezfyScaleResByProdMult(wildOil)
+	wildRare = ezfyScaleResByProdMult(wildRare)
+	wildGold = ezfyScaleResByProdMult(wildGold)
 	var troopFood int64
 	// ★ 耗粮开关关掉时这里也要显示 0，否则界面写着「每小时耗粮 N」，实际却不扣
 	if ezfyFoodUpkeepOn() {
