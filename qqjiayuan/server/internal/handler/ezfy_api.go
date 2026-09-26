@@ -101,7 +101,7 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 	}
 	// 可建造池: 复刻原版 BuildingController.buildList
 	pool := h.buildPool(&city, list)
-	// ★ 第九轮：军事区 / 资源区数量上限分开（各 33，管理端可维护）
+	// ★ 第九轮：军事区 / 资源区数量上限分开（线上现值各 36，管理端可维护）
 	mil, res := h.areaCounts(city.ID)
 	lim := ezfyLimit()
 	resp.OK(c, gin.H{
@@ -126,7 +126,7 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
-	// ★ 军事区/资源区各自有**硬上限**（默认各 33，管理端可维护）：
+	// ★ 军事区/资源区各自有**硬上限**（线上现值各 36，管理端可维护）：
 	//   即使军工厂/民居设了「不限数量」，也不能超过所属区域的总数上限（用户规则）。
 	//   pool 这里必须和 buildBuilding 一致地按区域卡，否则会出现「队列里能点、一建就报已达上限」。
 	mil, res := h.areaCounts(city.ID)
@@ -1457,7 +1457,7 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 	prof := h.ensureProfile(uid)
 	resp.OK(c, gin.H{
 		"items": views, "categories": cats, "diamond": prof.Diamond,
-		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 9999）
+		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，线上现值 99）
 		//   前端输入框 max / 前端校验都用它，避免和写死的 99 打架。
 		"buy_max": ezfyMallBuyMaxCfg(),
 	})
@@ -1481,8 +1481,8 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		resp.ParamError(c, "数量错误")
 		return
 	}
-	// ★ 单次购买数量上限（用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」）
-	//   上限读 ezfy_cfg_limit.mall_buy_max（管理端「建筑上限配置」页维护），默认 9999。
+	// ★ 单次购买数量上限（管理端可配置）
+	//   上限读 ezfy_cfg_limit.mall_buy_max（管理端「建筑上限配置」页维护），线上现值 99。
 	if mx := ezfyMallBuyMaxCfg(); req.Count > mx {
 		resp.ParamError(c, fmt.Sprintf("单次最多购买 %d 个", mx))
 		return

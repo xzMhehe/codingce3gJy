@@ -162,6 +162,15 @@
               <template slot="label">召集人口灵活配置<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
+            <!-- ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」 -->
+            <el-form-item>
+              <template slot="label">召集消耗粮食<el-tooltip placement="top" :content="tips.convene_food_cost"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model="form.convene_food_cost" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">召集获得人口<el-tooltip placement="top" :content="tips.convene_pop_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model="form.convene_pop_gain" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ⑥ 军官升星 -->
@@ -220,6 +229,8 @@ export default {
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
         // ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（默认都开）
         house_pop_limit_on: 1, convene_flexible_on: 1,
+        // ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
+        convene_food_cost: 100000, convene_pop_gain: 100000,
         officer_star_up_on: 1,
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5
@@ -227,28 +238,28 @@ export default {
       // ★ 各配置项的悬停说明（鼠标移到标题后的 i 图标上显示）
       //   文案口径以后端 model/ezfy.go 的 EzfyCfgLimit 注释为准，改逻辑时同步改这里
       tips: {
-        military_max: '军事区建筑（司令部、参谋部、军工厂、围墙等）最多可建数量，默认 33',
-        resource_max: '资源区建筑（农田、炼钢厂、石油基地、稀矿厂）最多可建数量，默认 33',
-        house_max: '民居最多可建数量，默认 10',
-        factory_max: '军工厂最多可建数量，填 0 = 不限',
+        military_max: '军事区建筑（司令部、参谋部、军工厂、围墙等）最多可建数量，默认 36',
+        resource_max: '资源区建筑（农田、炼钢厂、石油基地、稀矿厂）最多可建数量，默认 36',
+        house_max: '民居最多可建数量，默认 33',
+        factory_max: '军工厂最多可建数量，填 0 = 不限（当前线上值 20）',
         notice_home_count: '游戏首页公告栏展示的公告条数，填 0 = 首页不展示，默认 1',
-        gather_max_per_order: '单次出征最多可使用几个集结令，默认 50',
-        mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 9999',
-        troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 10 亿',
-        wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 5 天',
-        dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 4 小时',
+        gather_max_per_order: '单次出征最多可使用几个集结令，默认 99',
+        mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 99',
+        troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
+        wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 3 天',
+        dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 1 小时',
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
-        conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 2',
-        loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 2',
-        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 2',
-        wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 100',
+        conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
+        loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
+        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 100',
+        wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 50',
         wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
-        wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 1',
-        wild_res_mult: '野地 / 海野 / 寇城**战斗胜利后的战利品**资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 1。' +
+        wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 10',
+        wild_res_mult: '野地 / 海野 / 寇城**战斗胜利后的战利品**资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 10。' +
           '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
-        gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
+        gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 10。' +
           '只影响「采集产出」；战斗胜利的战利品另见上面的「野地获取资源倍率」。',
-        speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 100',
+        speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 资源最大值：文案统一口径 = 入库累加硬上限（不限制自动产量，自动产量仍看仓库上限）
         res_max_food: '粮食的入库累加硬上限（默认 100 亿 = 10000000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
           '累加到该值后不再增加；自动产量（农田等产出）仍受仓库存储上限限制。换算参考：1 亿 = 100000000、100 亿 = 10000000000；' +
@@ -272,6 +283,8 @@ export default {
         march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
         house_pop_limit_on: '开 = 民居容量决定人口上限 pop_max，人口自然增长到上限就停；关 = 民居不限制人口，人口可无限增长',
         convene_flexible_on: '开 = 召集人口不受民居容量上限限制，可突破 pop_max；关 = 召集人口同样受民居上限约束（民居容量限制关掉时此项无意义）',
+        convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
+        convene_pop_gain: '玩家点一次「召集」获得的人口数，默认 10 万（=100000）',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
@@ -322,6 +335,8 @@ export default {
             march_cap_on: sw(r.data.march_cap_on),
             house_pop_limit_on: sw(r.data.house_pop_limit_on),
             convene_flexible_on: sw(r.data.convene_flexible_on),
+            convene_food_cost: pos(r.data.convene_food_cost, 100000),
+            convene_pop_gain: pos(r.data.convene_pop_gain, 100000),
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),

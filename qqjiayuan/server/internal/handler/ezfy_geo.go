@@ -501,7 +501,7 @@ func ezfyLimit() model.EzfyCfgLimit {
 
 // ezfyGatherMax 单次出征最多使用几个集结令（读 ezfy_cfg_limit.gather_max_per_order）
 //
-// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」，默认 50。
+// ★ 用户要求「出征集结令上限后台管理系统可维护」，默认 99（线上现值）。
 // 0 或未配置时回落默认值（集结令上限为 0 无意义 —— 等于禁用了这个道具）。
 func ezfyGatherMax() int {
 	if n := ezfyCfg.limit.GatherMaxPerOrder; n > 0 {
@@ -511,19 +511,18 @@ func ezfyGatherMax() int {
 }
 
 // ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
-// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
-//   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 4。
+// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 更短且可配置」：
+//   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。
 func ezfyDispatchPeriod() int64 {
 	if h := ezfyCfg.limit.DispatchPeriodH; h > 0 {
 		return int64(h) * 3600 * 1000
 	}
-	return 4 * 3600 * 1000
+	return 1 * 3600 * 1000
 }
 
 // ezfyMarchSpeedBonus 出征速度加成（百分比，0 = 无加成）。
 // ★ 2026-09-24 用户要求「节假日让玩家队伍走快点」：管理端可配。
-//   实际行军时间 = 原时间 × 100/(100+加成)；默认 0。
-//   加成 > 0 才生效，负值/未配置一律按 0（无加成）处理。
+//   实际行军时间 = 原时间 × 100/(100+加成)；默认 0（加成 > 0 才生效，负值/未配置按 0 处理）。
 func ezfyMarchSpeedBonus() float64 {
 	if b := ezfyCfg.limit.MarchSpeedBonus; b > 0 {
 		return b
@@ -537,18 +536,18 @@ func ezfyMarchSpeedBonus() float64 {
 //
 //	所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
 const (
-	ezfyConquerFeelingsDef  = 2   // 征服单次最多扣民心（默认 2）
-	ezfyLootFeelingsDef     = 2   // 掠夺每次扣民心（默认 2）
-	ezfyOfficerSalaryDef    = 2   // 军官工资：每级每小时黄金（默认 2）
-	ezfyWoundHealDivisorDef = 100 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 100）
-	// ★ 商城单次购买数量上限（默认 9999；原来前端写死 99）
-	ezfyMallBuyMaxDef = 9999
+	ezfyConquerFeelingsDef  = 5   // 征服单次最多扣民心（默认 5）
+	ezfyLootFeelingsDef     = 3   // 掠夺每次扣民心（默认 3）
+	ezfyOfficerSalaryDef    = 100 // 军官工资：每级每小时黄金（默认 100）
+	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
+	// ★ 商城单次购买数量上限（默认 99）
+	ezfyMallBuyMaxDef = 99
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
 	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
 	//   2026-09-23 用户要求「10 亿太少，上调到 50 亿」。
 	ezfyTroopMaxDef = int64(5000000000)
-	// ★ 伤兵在营存活天数：默认 5 天，超时未恢复自动消失。
-	ezfyWoundExpireDaysDef = 5
+	// ★ 伤兵在营存活天数：默认 3 天，超时未恢复自动消失。
+	ezfyWoundExpireDaysDef = 3
 	// ★ 资源数值安全上限：任何路径写入资源都不得超过它（约 1 万亿）。
 	//   远小于 int64 上限，仅用于兜底防溢出；游戏内实际生效的仍是各城「仓储上限」。
 	ezfyResSafeMax = int64(1000000000000)
@@ -700,9 +699,9 @@ func ezfyWoundHealRate() float64 {
 	return v / 100
 }
 
-// ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 9999）
+// ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 99）
 //
-// ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」。
+// ★ 用户要求「商城购买卡控改成可配置的」（2026-09-26 线上现值 = 99）。
 //
 //	前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
 func ezfyMallBuyMaxCfg() int {
@@ -724,12 +723,12 @@ const (
 	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
 	// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
 	ezfyHousePopLimitDef = 1 // 民居容量限制：默认开（民居容量决定人口上限）
-	ezfyConveneFlexDef   = 1 // 召集人口灵活配置：默认开（召集可突破民居上限）
-	ezfyWildMultDef      = 1 // 野地兵力倍数：默认 1
-	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 1
-	ezfyWildResMultDef = 1
-	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 1
-	ezfyGatherResMultDef = 1
+	ezfyConveneFlexDef   = 1  // 召集人口灵活配置：默认开（召集可突破民居上限）
+	ezfyWildMultDef      = 10 // 野地兵力倍数：默认 10
+	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 10
+	ezfyWildResMultDef = 10
+	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 10
+	ezfyGatherResMultDef = 10
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -765,6 +764,27 @@ func ezfyConveneFlexOn() bool {
 		return ezfyConveneFlexDef != 0
 	}
 	return ezfyCfg.limit.ConveneFlexibleOn != 0
+}
+
+// ============ 召集人口：消耗粮食 / 获得人口 ============
+//
+// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
+// 原来写死在 ezfy.go 的 const（ezfyConveneFoodCost / ezfyConvenePopGain），现迁到
+// ezfy_cfg_limit（convene_food_cost / convene_pop_gain），管理端「二战系统配置」可维护。
+// 0 / 未配置无意义 → 回落默认 10 万（seed 用 addLimitCol 只回填 NULL，不覆盖管理端的值）。
+const (
+	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
+	ezfyConvenePopGainDef  = 100000 // 召集一次获得人口，默认 10 万
+)
+
+// ezfyConveneFoodCostCfg 召集一次消耗的粮食（默认 10 万）
+func ezfyConveneFoodCostCfg() int64 {
+	return int64(ezfyLimitOr(ezfyCfg.limit.ConveneFoodCost, ezfyConveneFoodCostDef))
+}
+
+// ezfyConvenePopGainCfg 召集一次获得的人口（默认 10 万）
+func ezfyConvenePopGainCfg() int64 {
+	return int64(ezfyLimitOr(ezfyCfg.limit.ConvenePopGain, ezfyConvenePopGainDef))
 }
 
 // ============ 军官升星配置（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
@@ -867,7 +887,7 @@ func ezfyWarRequireOn() bool {
 	return ezfyCfg.limit.WarRequireOn != 0
 }
 
-// ezfyWildTroopMult 野地/海野/寇城守军兵力倍数（默认 1；0 或负数无意义 → 回落 1）
+// ezfyWildTroopMult 野地/海野/寇城守军兵力倍数（默认 10；0 或负数无意义 → 回落 10）
 func ezfyWildTroopMult() float64 {
 	if !ezfyCfg.ready() {
 		return ezfyWildMultDef
@@ -891,7 +911,7 @@ func ezfyScaleByWildMult(n int64) int64 {
 	return v
 }
 
-// ezfyWildResMult 野地/海野/寇城**战斗胜利后的战利品**资源倍率（默认 1；0 或负数无意义 → 回落 1）
+// ezfyWildResMult 野地/海野/寇城**战斗胜利后的战利品**资源倍率（默认 10；0 或负数无意义 → 回落 10）
 //
 // ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置」可调。
 //
@@ -920,7 +940,7 @@ func ezfyScaleByWildResMult(n int64) int64 {
 	return v
 }
 
-// ezfyGatherResMult 常驻采集产出资源倍率（默认 1；0 或负数无意义 → 回落 1）
+// ezfyGatherResMult 常驻采集产出资源倍率（默认 10；0 或负数无意义 → 回落 10）
 //
 // ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。
 //
@@ -1103,11 +1123,13 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	}
 	c.ranks = rks
 
-	// 建筑数量上限（单行；缺行时用默认 33/33/10/0）
+	// 建筑数量上限（单行；缺行时用线上现值 36/36/33/20）
 	// ★ 三个玩法开关的默认值也必须写在这里：缺行时如果留 0，会变成「全关」，
 	//   与「默认开」的语义相反（见 ezfyRecruitCostOn / ezfyFoodUpkeepOn / ezfyMarchOilOn）。
-	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+	c.limit = model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
@@ -1115,9 +1137,9 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时同样要显式给默认开）
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
-		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径，默认 100 = 100% = 原价
-		SpeedTrainRate: 100, WoundHealRate: 100,
-		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 10 亿 / 5 天）
+		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径（线上现值 0.1 = 训练近乎免费）
+		SpeedTrainRate: 0.1, WoundHealRate: 100,
+		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
@@ -1141,11 +1163,11 @@ func ezfyDefaultRanks() []model.EzfyCfgRank {
 		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
 		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 15000, CityMax: 6},
 		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 22000, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 30000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 40000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 52000, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 66000, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 82000, CityMax: 12},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 36000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 45000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 56000, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 76000, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 92000, CityMax: 12},
 		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 100000, CityMax: 13},
 		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 120000, CityMax: 14},
 		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 145000, CityMax: 15},
@@ -1153,7 +1175,7 @@ func ezfyDefaultRanks() []model.EzfyCfgRank {
 		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 210000, CityMax: 17},
 		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 250000, CityMax: 18},
 		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 300000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 400000, CityMax: 20},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 4000000, CityMax: 20},
 	}
 }
 

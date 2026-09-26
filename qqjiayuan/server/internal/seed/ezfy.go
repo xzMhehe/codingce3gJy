@@ -64,6 +64,17 @@ func seedEzfy(db *gorm.DB) {
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
+	// ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：
+	//   stock 列自带 DB 默认值 100，而 GORM 对「带 default 标签的字段」会跳过 Go 零值，
+	//   于是线上「0 = 已售罄」的道具（1~10、12）在库里会落成 100（非 0 库存不受影响，batch 正常写入）。
+	//   这里只对「快照库存为 0」的条目显式写一次，让售罄状态也能原样初始化。
+	for i := range ezfyEzfyCfgItem {
+		if ezfyEzfyCfgItem[i].Stock != 0 {
+			continue
+		}
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", ezfyEzfyCfgItem[i].ID).
+			Update("stock", 0)
+	}
 	// ★ 任务类型/任务：改「只补缺不覆盖」—— 管理端在「数据管理」里调的奖励(数值)
 	//   不能被下次启动的种子悄悄改回去（用户要求「后台能灵活配置奖励」）。
 	batchKeep(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
@@ -167,11 +178,11 @@ func seedEzfyRanks(db *gorm.DB) {
 		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
 		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 15000, CityMax: 6},
 		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 22000, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 30000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 40000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 52000, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 66000, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 82000, CityMax: 12},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 36000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 45000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 56000, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 76000, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 92000, CityMax: 12},
 		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 100000, CityMax: 13},
 		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 120000, CityMax: 14},
 		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 145000, CityMax: 15},
@@ -179,7 +190,7 @@ func seedEzfyRanks(db *gorm.DB) {
 		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 210000, CityMax: 17},
 		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 250000, CityMax: 18},
 		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 300000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 400000, CityMax: 20},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 4000000, CityMax: 20},
 	}
 	if err := db.Clauses(clause.OnConflict{DoNothing: true}).
 		CreateInBatches(rows, 50).Error; err != nil {
@@ -265,8 +276,9 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	//   结果 14 经验书 / 15 军官技能书 / 16 重修书 / 18 阵营转换道具 全部库存 = 0，
 	//   玩家买的时候被 `Buy` 里的库存校验拦成「已售罄」—— 看着就是「没上架」。
 	//   军官类道具定位是**常驻消耗品**（跟迁城道具一样），统一给 -1 = 无限库存。
+	// ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：下面价格/库存一律取线上库快照值。
 	rows := []model.EzfyCfgItem{
-		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 500, Stock: -1,
+		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 20, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
 		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 27068000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
@@ -275,37 +287,37 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
-		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 0, PriceDiamond: 1, Stock: -1,
+		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 0, PriceDiamond: 2, Stock: 97,
 			Category:    "军官道具",
 			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
 		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
-		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 800, Stock: -1,
+		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 500, Stock: -1,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
 		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
 		//   Param1 = 每个集结令提升的出征上限（10 万）。
 		// ★ 用户要求：说明里**不要**再写「单次最多使用10个」——
-		//   单次上限由管理端 `ezfy_cfg_limit.gather_max_per_order` 维护（默认 50），
+		//   单次上限由管理端 `ezfy_cfg_limit.gather_max_per_order` 维护（线上现值 99），
 		//   写死 10 会和管理端配置对不上，玩家会以为只能买 10 个。
 		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
-			PriceGold: 0, PriceDiamond: 0, Stock: -1, Category: "钻石道具",
+			PriceGold: 0, PriceDiamond: 20, Stock: -1, Category: "钻石道具",
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 		// ★ 2026-09-23 用户要求「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
 		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
-		{ID: 23, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: -1,
+		{ID: 23, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: 100,
 			Category:    "军官道具",
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗「军官改名卡」，
 		//   在军官管理页面使用，成功改名消耗 1 张，不改动军官池里的原军官。
-		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 0, PriceDiamond: 1, Stock: -1,
+		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: 100,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 用户要求「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
 		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
 		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
 		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
-		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 500, PriceDiamond: 5, Stock: -1,
+		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 20, Stock: 100,
 			Category:    "计谋道具",
 			Description: "计谋消耗品: 发动计谋时消耗, 每条计谋需要的数量不同"},
 	}
@@ -337,7 +349,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	priceFix := map[int]int64{
 		14: 100, // 荣誉史记   100 钻石
 		15: 100, // 军官技能书 100 钻石
-		16: 1,   // 军官洗点卡 1 钻石
+		16: 2,   // 军官洗点卡 2 钻石（线上现值）
 		23: 50,  // 星级徽章   50 钻石
 	}
 	for id, diamond := range priceFix {
@@ -356,23 +368,23 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 //		21 高级迁城计划 ItemType 17 指定坐标迁城（平原）
 //		22 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
 //
-// ★ 价格分档（黄金+钻石双渠道，管理端随时可改）：
+// ★ 价格（钻石单渠道，管理端随时可改；2026-09-26 按线上现值对齐）：
 //
-//	迁城计划     20 万黄金 / 200 钻石
-//	高级迁城计划 40 万黄金 / 400 钻石
-//	沿海迁城计划 40 万黄金 / 400 钻石
+//	迁城计划       200 钻石
+//	高级迁城计划   400 钻石
+//	沿海迁城计划   250 钻石
 //
-// 库存 -1 = 无限（迁城是刚需，不该被库存卡住）。
+// 库存按线上现值：迁城计划 / 高级 / 沿海 均为 100（-1 = 无限）。
 func seedEzfyMoveItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 20, Name: "迁城计划", ItemType: 16, Param1: 1,
-			PriceGold: 200000, PriceDiamond: 200, Stock: -1, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 200, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
 		{ID: 21, Name: "高级迁城计划", ItemType: 17, Param1: 1,
-			PriceGold: 400000, PriceDiamond: 400, Stock: -1, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 400, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 指定坐标迁移城市, 目标必须是未被占领的平原"},
 		{ID: 22, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
-			PriceGold: 400000, PriceDiamond: 400, Stock: -1, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 250, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
 	}
 	for _, it := range rows {
@@ -390,10 +402,16 @@ func seedEzfyMoveItems(db *gorm.DB) {
 }
 
 // seedEzfyNotices 游戏内置公告（幂等：标题存在即跳过）
+//
+// ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：
+//   - 新增线上第一条「《二战征途》开服公告」（置顶）；
+//   - 「新手提示」文案改为线上版（先用**黄金**召集人口）。
 func seedEzfyNotices(db *gorm.DB) {
 	rows := []model.EzfyNotice{
+		{UserId: 0, IsTop: 1, Title: "《二战征途》开服公告",
+			Content: "各位司令官，欢迎来到《二战征途》！建造城池、发展资源、训练部队，出征野地掠夺资源。攻占寇城可以获得丰厚战利品。掠夺/征服其他玩家城池需先宣战，宣战24小时后生效。祝各位武运昌隆！\n\n目前处于测试阶段，好的玩法、建议送资源包！\n\n官方QQ群：431442049\n\n为爱发电中，钻石用于共筹服务器运行以及代码开发。"},
 		{UserId: 0, IsTop: 0, Title: "新手提示",
-			Content: "进入游戏自动获得主城(市政厅/民居/农田各1级)。先用粮食召集人口，再建资源建筑。造兵需要军工厂，研究科技需要科研中心。市政厅等级决定可占领野地数量上限。"},
+			Content: "进入游戏自动获得主城(市政厅/民居/农田各1级)。先用黄金召集人口，再建资源建筑。造兵需要军工厂，研究科技需要科研中心。市政厅等级决定可占领野地数量上限。"},
 	}
 	for _, n := range rows {
 		var count int64
@@ -402,4 +420,9 @@ func seedEzfyNotices(db *gorm.DB) {
 			db.Create(&n)
 		}
 	}
+	// 老库里的「新手提示」还是旧文案（粮食召集人口）→ 只在「原文就是旧默认」时才改，
+	// 管理端改过的文案不会被冲掉。
+	db.Model(&model.EzfyNotice{}).
+		Where("title = ? AND user_id = 0 AND content LIKE ?", "新手提示", "%先用粮食召集人口%").
+		Update("content", rows[1].Content)
 }

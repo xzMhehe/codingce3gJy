@@ -13,7 +13,7 @@ import (
 
 // 二战风云 管理端（第九轮新增）
 //
-//	1. 建筑数量上限配置（军事区/资源区各 33，管理端可维护）
+//	1. 建筑数量上限配置（军事区/资源区各 36，管理端可维护）
 //	2. 钻石发放（钻石只能管理端发放，玩家端只读余额）
 //	3. 二战聊天敏感词（独立维护页，与社区「黑名单榜」分开）
 
@@ -23,8 +23,10 @@ import (
 //
 // 管理端「系统配置」页：建筑上限 + 各项数值 + 玩法开关，一次全量返回。
 func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
@@ -40,7 +42,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价）+ 伤兵恢复黄金折扣率
-		SpeedTrainRate: 100, WoundHealRate: 100,
+		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 100 亿」
@@ -49,11 +51,18 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
-	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 9999
+	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 99
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
 	}
-	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 50（0 无意义 = 禁用道具）
+	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底（0 无意义），默认各 10 万
+	if lim.ConveneFoodCost <= 0 {
+		lim.ConveneFoodCost = ezfyConveneFoodCostDef
+	}
+	if lim.ConvenePopGain <= 0 {
+		lim.ConvenePopGain = ezfyConvenePopGainDef
+	}
+	// ★ 集结令上限兜底：老行没这列时可能是 0，回落到默认 99（0 无意义 = 禁用道具）
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
@@ -70,15 +79,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.WoundHealDivisor <= 0 {
 		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
 	}
-	// ★ 野地兵力倍数：0 / 负数无意义 → 回落 1
+	// ★ 野地兵力倍数：0 / 负数无意义 → 回落 10
 	if lim.WildTroopMult <= 0 {
 		lim.WildTroopMult = ezfyWildMultDef
 	}
-	// ★ 野地战利品资源倍率：0 / 负数无意义 → 回落 1
+	// ★ 野地战利品资源倍率：0 / 负数无意义 → 回落 10
 	if lim.WildResMult <= 0 {
 		lim.WildResMult = ezfyWildResMultDef
 	}
-	// ★ 采集资源倍率：0 / 负数无意义 → 回落 1
+	// ★ 采集资源倍率：0 / 负数无意义 → 回落 10
 	if lim.GatherResMult <= 0 {
 		lim.GatherResMult = ezfyGatherResMultDef
 	}
@@ -92,9 +101,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
 	}
-	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 100（100 = 100% = 原价）
+	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 0.1（线上现值；100 = 100% = 原价）
 	if lim.SpeedTrainRate <= 0 {
-		lim.SpeedTrainRate = 100
+		lim.SpeedTrainRate = 0.1
 	}
 	// ★ 伤兵恢复黄金折扣率：0 / 负数无意义 → 回落 100
 	if lim.WoundHealRate <= 0 {
@@ -107,9 +116,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.WoundExpireDays <= 0 {
 		lim.WoundExpireDays = ezfyWoundExpireDaysDef
 	}
-	// ★ 2026-09-24：采集周期小时数（0 无意义 → 回落默认 4 小时）
+	// ★ 2026-09-24：采集周期小时数（0 无意义 → 回落默认 1 小时）
 	if lim.DispatchPeriodH <= 0 {
-		lim.DispatchPeriodH = 4
+		lim.DispatchPeriodH = 1
 	}
 	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 100 亿）
 	if lim.ResMaxFood <= 0 {
@@ -134,8 +143,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 
 // AdminEzfyBuildLimitUpdate PUT /admin/ezfy-build-limit
 //
-// 军事区(type 2/3/4) 与 资源区(type 1) 的数量上限**分开**维护，默认各 33。
-// factory_max = 0 表示军工厂不限数量（默认，符合用户规则）。
+// 军事区(type 2/3/4) 与 资源区(type 1) 的数量上限**分开**维护，默认各 36。
+// factory_max = 0 表示军工厂不限数量（线上现值为 20）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
 		MilitaryMax           *int `json:"military_max"`
@@ -151,9 +160,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WoundHealDivisor      *int `json:"wound_heal_divisor"`
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
-		// ★ 2026-09-25：野地战利品资源倍率（默认 1，允许小数）
+		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数）
 		WildResMult *float64 `json:"wild_res_mult"`
-		// ★ 2026-09-25：采集资源倍率（默认 1，允许小数）
+		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数）
 		GatherResMult *float64 `json:"gather_res_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
@@ -163,6 +172,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 开关）
 		HousePopLimitOn   *int `json:"house_pop_limit_on"`
 		ConveneFlexibleOn *int `json:"convene_flexible_on"`
+		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
+		ConveneFoodCost *int `json:"convene_food_cost"`
+		ConvenePopGain  *int `json:"convene_pop_gain"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -189,8 +201,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 33, ResourceMax: 33, HouseMax: 10, FactoryMax: 0,
+	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
+		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
@@ -203,7 +217,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
-		SpeedTrainRate: 100, WoundHealRate: 100,
+		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-09-25 各项资源的「资源最大值」（默认 100 亿）
@@ -245,7 +259,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	} else if in.NoticeHomeCount != nil {
 		lim.NoticeHomeCount = v
 	}
-	// ★ 集结令单次使用上限：用户要求「设置的时候不要加上限，我设置多少都可以，默认 50」。
+	// ★ 集结令单次使用上限：用户要求「设置的时候不要加上限，我设置多少都可以」（线上现值 99）。
 	//   只校验 > 0（0 等于把道具禁用，真要禁用请把道具下架），不再限制上界。
 	if in.GatherMaxPerOrder != nil {
 		if *in.GatherMaxPerOrder < 1 {
@@ -254,9 +268,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.GatherMaxPerOrder = *in.GatherMaxPerOrder
 	}
-	// ★ 商城单次购买上限：用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」。
+	// ★ 商城单次购买上限：可配置，线上现值为 99。
 	//   下限恒为 1（0 = 谁都买不了，无意义），上限给个防呆值 999999，避免误填天文数字。
-	//   注意**不能**用上面的 check()——那个把上界卡在 999，装不下 9999 这个默认值。
+	//   注意**不能**用上面的 check()——那个把上界卡在 999，装不下 999999 这个防呆值。
 	if in.MallBuyMax != nil {
 		if *in.MallBuyMax < 1 || *in.MallBuyMax > 999999 {
 			resp.ParamError(c, "商城单次购买上限需要在 1~999999 之间")
@@ -264,26 +278,50 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.MallBuyMax = *in.MallBuyMax
 	}
+	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
+	//   两个值 0 都无意义（召集不要钱 / 召集不给人口），所以只接受 >= 1；
+	//   上界卡在 10 亿（MySQL int 上限约 21 亿），避免误填天文数字把列写溢出。
+	if in.ConveneFoodCost != nil {
+		if *in.ConveneFoodCost < 1 || *in.ConveneFoodCost > 1000000000 {
+			resp.ParamError(c, "召集消耗粮食需要在 1~1000000000 之间")
+			return
+		}
+		lim.ConveneFoodCost = *in.ConveneFoodCost
+	}
+	if in.ConvenePopGain != nil {
+		if *in.ConvenePopGain < 1 || *in.ConvenePopGain > 1000000000 {
+			resp.ParamError(c, "召集获得人口需要在 1~1000000000 之间")
+			return
+		}
+		lim.ConvenePopGain = *in.ConvenePopGain
+	}
 	if lim.MilitaryMax <= 0 {
-		lim.MilitaryMax = 33
+		lim.MilitaryMax = 36
 	}
 	if lim.ResourceMax <= 0 {
-		lim.ResourceMax = 33
+		lim.ResourceMax = 36
 	}
 	if lim.HouseMax <= 0 {
-		lim.HouseMax = 10
+		lim.HouseMax = 33
 	}
 	// ★ 首页公告条数允许 0（= 首页不展示公告），但不允许负数；未配过时默认 1
 	if lim.NoticeHomeCount < 0 {
 		lim.NoticeHomeCount = 1
 	}
-	// ★ 集结令上限兜底：老数据可能是 0（该列刚加），保存时归一化到默认 50
+	// ★ 集结令上限兜底：老数据可能是 0（该列刚加），保存时归一化到默认 99
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
-	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 9999
+	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 99
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
+	}
+	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底：老数据/新列可能是 0，归一化到默认 10 万
+	if lim.ConveneFoodCost <= 0 {
+		lim.ConveneFoodCost = ezfyConveneFoodCostDef
+	}
+	if lim.ConvenePopGain <= 0 {
+		lim.ConvenePopGain = ezfyConvenePopGainDef
 	}
 	// ★ 战斗/经济数值（用户要求「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。
@@ -494,7 +532,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	// ★ 训练加速黄金倍率兜底（老行可能是 0 / NULL）
 	if lim.SpeedTrainRate <= 0 {
-		lim.SpeedTrainRate = 100
+		lim.SpeedTrainRate = 0.1
 	}
 	// ★ 伤兵恢复黄金折扣率兜底（老行可能是 0 / NULL）
 	if lim.WoundHealRate <= 0 {
@@ -509,7 +547,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	// ★ 2026-09-24：采集周期兜底（老行可能是 0 / NULL）
 	if lim.DispatchPeriodH <= 0 {
-		lim.DispatchPeriodH = 4
+		lim.DispatchPeriodH = 1
 	}
 	// ★ 2026-09-25 各项资源的「资源最大值」：入参 > 0 才覆盖，且不超过数据库安全上限。
 	//   （1 ≤ 值 ≤ 1 万亿 = ezfyResSafeMax；不给 0 —— 0 会让玩家的入库累加全部失效。）
@@ -596,6 +634,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"res_max_oil":   lim.ResMaxOil,
 		"res_max_rare":  lim.ResMaxRare,
 		"res_max_gold":  lim.ResMaxGold,
+		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口，同样用 map 显式写
+		"convene_food_cost": lim.ConveneFoodCost,
+		"convene_pop_gain":  lim.ConvenePopGain,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

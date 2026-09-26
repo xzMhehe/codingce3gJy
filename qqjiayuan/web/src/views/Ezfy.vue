@@ -1605,7 +1605,7 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="cityIsSea ? 'green' : 'gray'">[{{ cityKindLabel }}]</span><br/>
           市政厅: {{ city.city_level }}级<br/>
-          人口: {{ city.pop }}/{{ city.pop_max }} (空闲{{ freePop }})<br/>
+          人口: {{ city.pop }}/{{ housePopLimitOn ? city.pop_max : '不限' }} (空闲{{ freePop }})<br/>
           民心/民怨: {{ city.feelings }}/{{ city.grievance }} 税率: {{ city.tax_rate }}%<br/>
           建筑: {{ buildings.length }}座 (军事+资源区 {{ areaCount }}/{{ areaCap }})<br/>
           军队: {{ totalTroops }} (城外{{ marching }}支队伍行进, {{ occupying }}支驻守)<br/>
@@ -1672,10 +1672,21 @@
       <template v-else-if="cur === 'convene'">
         <div class="panel">
           <div class="panel-title">召集人口</div>
-          当前人口: {{ city.pop }} / 民居容纳: {{ city.pop_max }}<br/>
-          花费 10万{{ resNames.food }} 召集 10万人口(不受民居容纳上限限制, 可突破上限)<br/>
+          当前人口: {{ city.pop }} / 民居容纳: {{ housePopLimitOn ? city.pop_max : '不限' }}<br/>
+          <!-- ★ 2026-09-26：提示文案随「民居容量限制 / 召集人口灵活配置」两个开关变化，
+               花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
+          <template v-if="!housePopLimitOn">
+            花费 {{ fmtBig(conveneFoodCost) }}{{ resNames.food }} 召集 {{ fmtBig(convenePopGain) }}人口(民居容量限制已关闭, 人口无上限)<br/>
+          </template>
+          <template v-else-if="conveneFlexibleOn">
+            花费 {{ fmtBig(conveneFoodCost) }}{{ resNames.food }} 召集 {{ fmtBig(convenePopGain) }}人口(不受民居容纳上限限制, 可突破上限)<br/>
+          </template>
+          <template v-else>
+            花费 {{ fmtBig(conveneFoodCost) }}{{ resNames.food }} 召集 {{ fmtBig(convenePopGain) }}人口(受民居容纳上限限制, 满员后无法召集)<br/>
+          </template>
           <div class="old-line">{{ resNames.food }}: {{ city.food }}</div>
-          <button @click="doConvene">[召集]</button>
+          <button @click="doConvene" :disabled="conveneBlocked">[召集]</button>
+          <span v-if="conveneBlocked" class="gray">人口已达民居容纳上限</span>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3759,9 +3770,15 @@ export default {
       boostUntil: false,
       buildings: [],
       buildingPool: [],
-      // ★ 军事区/资源区各自上限（/view 下发，默认各 33）
-      militaryCap: 33,
-      resourceCap: 33,
+      // ★ 军事区/资源区各自上限（/view 下发，默认各 36）
+      militaryCap: 36,
+      resourceCap: 36,
+      // ★ 2026-09-26 民居容量限制 / 召集人口灵活配置（/view 下发，默认都开）
+      housePopLimitOn: true,
+      conveneFlexibleOn: true,
+      // ★ 2026-09-26 召集消耗粮食 / 召集获得人口（/view 下发，默认各 10 万；原来写死）
+      conveneFoodCost: 100000,
+      convenePopGain: 100000,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
@@ -3868,8 +3885,8 @@ export default {
       mallCatsList: [], mallCat: '', mallPage: 1, mallPageSize: 10, mallDiamond: 0,
       // ★ 商城分栏：item=道具（原有） equipment=装备套装（用黄金/钻石买）
       mallTab: 'item',
-      // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 9999；原来写死 99）
-      mallBuyMax: 9999,
+      // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 99）
+      mallBuyMax: 99,
       bagItems: [],
       // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
@@ -4068,6 +4085,15 @@ export default {
     queueNames () {
       return this.queues
     },
+    // ★ 2026-09-26：召集是否被民居容量上限挡住
+    //   仅当「民居容量限制」开 且「召集人口灵活配置」关 时，召集才受上限约束。
+    //   单次召集 +convenePopGain 人口（管理端可配，默认 10 万），加完超上限就禁用按钮。
+    conveneBlocked () {
+      if (!this.housePopLimitOn || this.conveneFlexibleOn) return false
+      // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
+      const pop = (this.city && this.city.pop) || this.cityPop || 0
+      return pop + this.convenePopGain > ((this.city && this.city.pop_max) || 0)
+    },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1
     zone () {
@@ -4136,12 +4162,12 @@ export default {
       return n > 0 ? n : (this.gatherCfg.have || 0)
     },
     // ★ 集结令单次上限：以 /view 下发的 gatherCfg.max 为准（读 ezfy_cfg_limit.gather_max_per_order，
-    //   管理端「建筑上限配置」页可维护，默认 50）。
-    //   ⚠️ 这里**不能**在没有数据时直接返回 50 去夹输入值 —— 那正是「配了 999 只能用 50」的 bug：
-    //   进页面时 orderCalc 还是 null，一改数字就被夹回 50，后面再点[计算]也救不回来了。
+    //   管理端「建筑上限配置」页可维护，默认 99）。
+    //   ⚠️ 这里**不能**在没有数据时直接返回 99 去夹输入值 —— 那正是「配了 999 只能用 99」的 bug：
+    //   进页面时 orderCalc 还是 null，一改数字就被夹回 99，后面再点[计算]也救不回来了。
     orderCapMax () {
       const m = this.gatherCfg.max || (this.orderCalc && this.orderCalc.gather_max)
-      return m > 0 ? m : 50
+      return m > 0 ? m : 99
     },
     // 真正可用的上限 = min(管理端上限, 背包实际持有量)
     gatherMax () { return Math.min(this.orderCapMax, this.gatherCount) },
@@ -4237,7 +4263,7 @@ export default {
       const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
       return this.buildings.filter(b => inZone(b.type)).length
     },
-    // ★ 当前分区上限：军事区/资源区各 33（与后端 ezfy_cfg_limit 默认一致）
+    // ★ 当前分区上限：军事区/资源区各 36（与后端 ezfy_cfg_limit 现值一致）
     zoneCap () {
       return this.zone === 'm' ? this.militaryCap : this.resourceCap
     },
@@ -4872,6 +4898,14 @@ export default {
           this.buildingPool = d.building_pool || []
           this.militaryCap = d.military_cap || 33
           this.resourceCap = d.resource_cap || 33
+          // ★ 2026-09-26 两个开关：后端未下发（老版本）时按「开」处理，与后端默认一致
+          this.housePopLimitOn = d.house_pop_limit_on === undefined || d.house_pop_limit_on === null
+            ? true : !!Number(d.house_pop_limit_on)
+          this.conveneFlexibleOn = d.convene_flexible_on === undefined || d.convene_flexible_on === null
+            ? true : !!Number(d.convene_flexible_on)
+          // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
+          this.conveneFoodCost = Number(d.convene_food_cost) || 100000
+          this.convenePopGain = Number(d.convene_pop_gain) || 100000
           this.wildlands = d.wildlands
           this.queues = d.queues
           this.marching = d.marching
@@ -4883,7 +4917,7 @@ export default {
           this.cityPop = d.city.pop || 0
           this.taxInput = d.city.tax_rate
           this.applyResNames(d.res_names)
-          // ★ 集结令配置（管理端可配，默认 50）：跟着 /view 一起下发，
+          // ★ 集结令配置（管理端可配，默认 99）：跟着 /view 一起下发，
           //   这样一进页面（还没点[计算]）输入框的上限就是对的。
           this.gatherCfg = {
             max: d.gather_max > 0 ? d.gather_max : 0,
@@ -5457,8 +5491,8 @@ export default {
           // ★ 分类页签 + 钻石余额（钻石只能管理端充值）
           this.mallCatsList = r.data.categories || []
           this.mallDiamond = r.data.diamond || 0
-          // ★ 单次购买上限（管理端可配，默认 9999）
-          this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 9999
+          // ★ 单次购买上限（管理端可配，默认 99）
+          this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 99
           if (this.mallCat && this.mallCatsList.indexOf(this.mallCat) < 0) this.mallCat = ''
           if (resetPage) this.mallPage = 1
           else if (this.mallPage > this.mallTotalPages) this.mallPage = this.mallTotalPages

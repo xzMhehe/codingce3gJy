@@ -222,61 +222,61 @@ func (EzfyCfgItem) TableName() string { return "ezfy_cfg_item" }
 
 // EzfyCfgLimit 二战风云「建筑数量上限」全局配置（单行，id = 1）
 //
-// 用户规则：军事区与资源区数量上限**分开**，各 33；管理端可维护，默认 33。
+// 用户规则：军事区与资源区数量上限**分开**，各 36；管理端可维护，默认 36。
 type EzfyCfgLimit struct {
 	ID          int `gorm:"primaryKey;comment:主键ID" json:"id"`
-	MilitaryMax int `gorm:"default:33;comment:军事区建筑数量上限（type 2/3/4）" json:"military_max"` // 军事区建筑数量上限（type 2/3/4）
-	ResourceMax int `gorm:"default:33;comment:资源区建筑数量上限（type 1）" json:"resource_max"`     // 资源区建筑数量上限（type 1）
-	HouseMax    int `gorm:"default:10;comment:民居数量上限" json:"house_max"`                   // 民居数量上限
-	FactoryMax  int `gorm:"default:0;comment:军工厂数量上限（0 = 不限）" json:"factory_max"`         // 军工厂数量上限（0 = 不限）
+	MilitaryMax int `gorm:"default:36;comment:军事区建筑数量上限（type 2/3/4）" json:"military_max"` // 军事区建筑数量上限（type 2/3/4）
+	ResourceMax int `gorm:"default:36;comment:资源区建筑数量上限（type 1）" json:"resource_max"`     // 资源区建筑数量上限（type 1）
+	HouseMax    int `gorm:"default:33;comment:民居数量上限" json:"house_max"`                   // 民居数量上限
+	FactoryMax  int `gorm:"default:20;comment:军工厂数量上限（0 = 不限）" json:"factory_max"`        // 军工厂数量上限（0 = 不限）
 	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
 	NoticeHomeCount int `gorm:"default:1;comment:公告家园数量" json:"notice_home_count"`
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」→ 单次出征最多用几个集结令（默认 50）
-	GatherMaxPerOrder int `gorm:"default:50;comment:集结上限每订单" json:"gather_max_per_order"`
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」→ 单次出征最多用几个集结令（默认 99）
+	GatherMaxPerOrder int `gorm:"default:99;comment:集结上限每订单" json:"gather_max_per_order"`
 
 	// ============ 战斗 / 经济数值（管理端「建筑上限配置」页可维护）============
 	//
-	// ★ 用户反馈「征服民心每次 -5 现在太多」→ 做成可配置，默认 2。
+	// ★ 用户反馈「征服民心每次 -5 现在太多」→ 做成可配置（线上现值 5）。
 	//   征服(3)：单次最多扣掉目标多少民心（原来写死 20，且按幸存兵力/2000 动态计算）。
-	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5）。
-	ConquerFeelingsMax int `gorm:"default:2;comment:Conquer民心上限" json:"conquer_feelings_max"`
-	LootFeelings       int `gorm:"default:2;comment:掠夺民心" json:"loot_feelings"`
+	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5，线上现值 3）。
+	ConquerFeelingsMax int `gorm:"default:5;comment:Conquer民心上限" json:"conquer_feelings_max"`
+	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
 	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
-	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。默认 2 黄金/级/小时。
+	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。默认 100 黄金/级/小时。
 	//   ⚠️ 字段名必须让 GORM 推出 officer_salary_per_level（与 seed 里补的列名一致），
 	//   否则 AutoMigrate 会另外建一列 officer_salary_per_lv，两个列各存各的。
-	OfficerSalaryPerLevel int `gorm:"default:2;comment:军官Salary每等级" json:"officer_salary_per_level"`
+	OfficerSalaryPerLevel int `gorm:"default:100;comment:军官Salary每等级" json:"officer_salary_per_level"`
 	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
-	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 100。
-	WoundHealDivisor int `gorm:"default:100;comment:伤兵治疗Divisor" json:"wound_heal_divisor"`
-	// ★ 用户要求「商城购买现在卡控 1-99，改成可配置的，默认 1-9999」→
-	//   商城单次购买数量上限（下限恒为 1）。默认 9999。
+	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 50。
+	WoundHealDivisor int `gorm:"default:50;comment:伤兵治疗Divisor" json:"wound_heal_divisor"`
+	// ★ 用户要求「商城购买卡控改成可配置的」→
+	//   商城单次购买数量上限（下限恒为 1）。线上现值 99。
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
-	MallBuyMax int `gorm:"default:9999;comment:Mall购买上限" json:"mall_buy_max"`
+	MallBuyMax int `gorm:"default:99;comment:Mall购买上限" json:"mall_buy_max"`
 
-	// ★ 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
-	//   常驻采集结算一期的小时数（默认 4），由 ezfyDispatchPeriod() 读取。
-	DispatchPeriodH int `gorm:"default:4;comment:采集周期小时" json:"dispatch_period_h"`
+	// ★ 用户要求「采集 12 小时才有宝物 → 可配置」：
+	//   常驻采集结算一期的小时数（默认 1），由 ezfyDispatchPeriod() 读取。
+	DispatchPeriodH int `gorm:"default:1;comment:采集周期小时" json:"dispatch_period_h"`
 
 	// ★ 出征速度加成（百分比口径，0 = 无加成）：实际行军时间 = 原时间 × 100/(100+加成)。
-	//   ★ 2026-09-24 用户要求「节假日我好让玩家队伍走快点」。默认 0。
-	MarchSpeedBonus float64 `gorm:"default:0;comment:出征速度加成" json:"march_speed_bonus"`
+	//   ★ 2026-09-24 用户要求「节假日我好让玩家队伍走快点」。默认 100。
+	MarchSpeedBonus float64 `gorm:"default:100;comment:出征速度加成" json:"march_speed_bonus"`
 
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
-	// ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 1。
+	//   ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 10。
 	//   预览(野地详情)与战斗结算(parseWildlandTroops)共用，避免「看到的」和「打到的」不一致。
-	//   允许小数（0.5 = 兵力减半，2 = 翻倍）。0 无意义 → 回落 1。
-	WildTroopMult float64 `gorm:"default:1;comment:野地部队倍数" json:"wild_troop_mult"`
+	//   允许小数（0.5 = 兵力减半，2 = 翻倍）。0 无意义 → 回落 10。
+	WildTroopMult float64 `gorm:"default:10;comment:野地部队倍数" json:"wild_troop_mult"`
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 加「野地获取资源倍率」。
 	//   作用点：**野地/海野/寇城战斗胜利后的战利品**（ezfy_order.go 的 `rnd` 那一处），
-	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。
+	//   默认 10 = 10 倍（线上现值）；2 = 翻倍；0.5 = 减半。允许小数。
 	//   注意：只作用于「打赢的战利品」，不含驻守采集（采集另有自己的产出公式）。
-	WildResMult float64 `gorm:"default:1;comment:野地战利品资源倍率" json:"wild_res_mult"`
+	WildResMult float64 `gorm:"default:10;comment:野地战利品资源倍率" json:"wild_res_mult"`
 	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
 	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
-	//   默认 1 = 原样；2 = 翻倍；0.5 = 减半。允许小数。0 无意义 → 回落 1。
-	GatherResMult float64 `gorm:"default:1;comment:采集资源倍率" json:"gather_res_mult"`
+	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。
+	GatherResMult float64 `gorm:"default:10;comment:采集资源倍率" json:"gather_res_mult"`
 
 	// ★ 2026-09-25 用户要求「各项资源有最大的配置放到二战系统配置里面，默认 100 亿」：
 	//   每项资源的**硬上限**（入库累加的收敛点），默认 100 亿 = 10000000000。
@@ -319,6 +319,11 @@ type EzfyCfgLimit struct {
 	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
 	ConveneFlexibleOn int `gorm:"comment:召集人口灵活配置（关 = 召集同样受民居上限约束）" json:"convene_flexible_on"`
 
+	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
+	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
+	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
+	ConvenePopGain  int `gorm:"comment:召集获得人口" json:"convene_pop_gain"`
+
 	// ============ 军官升星（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
 	//
 	// ★ 简化后的规则：升星按固定概率（officer_star_chance），失败也消耗 1 枚星级徽章，
@@ -334,9 +339,9 @@ type EzfyCfgLimit struct {
 	OfficerStarMax      int `gorm:"default:5;comment:星级上限（默认 5）" json:"officer_star_max"`                 // 星级上限（默认 5）
 
 	// ★ 训练一键加速黄金倍率（百分比口径）：实际费用 = 剩余秒数 × 10 × 倍率/100。
-	//   默认 100 = 100% = 原价；节假日调低 = 便宜（50 = 半价、10 = 一折）。
-	//   0 无意义 → 回落 100。
-	SpeedTrainRate float64 `gorm:"default:100;comment:速度训练比率" json:"speed_train_rate"`
+	//   默认 0.1 = 0.1% = 几乎免费（线上现值）；100 = 原价；50 = 半价。
+	//   0 无意义 → 回落 0.1。
+	SpeedTrainRate float64 `gorm:"default:0.1;comment:速度训练比率" json:"speed_train_rate"`
 
 	// ★ 伤兵恢复黄金折扣率（百分比口径）：恢复费用 = 兵种总造价 / wound_heal_divisor × 折扣率/100。
 	//   默认 100 = 100% = 原价；调低 = 恢复便宜。0 无意义 → 回落 100。
@@ -350,11 +355,11 @@ type EzfyCfgLimit struct {
 	// troop_max：单城兵力上限（口径 = 城内现有部队 + 训练队列里还没出厂的新兵）。
 	//   训练与伤兵恢复前先校验，超出直接拒绝并提示「超过限额」；
 	//   addTroop 落库前再夹取一次作为最后保险，保证任何路径都写不进负数/溢出值。
-	//   默认 10 亿 —— 远小于 int64 上限，正常玩法摸不到，纯防溢出与数值膨胀。
-	TroopMax int64 `gorm:"default:1000000000;comment:部队上限" json:"troop_max"`
-	// wound_expire_days：伤兵在营存活天数，超过则自动消失（默认 5 天）。
+	//   默认 50 亿 —— 远小于 int64 上限，正常玩法摸不到，纯防溢出与数值膨胀。
+	TroopMax int64 `gorm:"default:5000000000;comment:部队上限" json:"troop_max"`
+	// wound_expire_days：伤兵在营存活天数，超过则自动消失（默认 3 天）。
 	//   口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算，持续有新伤兵入营会顺延。
-	WoundExpireDays int `gorm:"default:5;comment:伤兵过期天数" json:"wound_expire_days"`
+	WoundExpireDays int `gorm:"default:3;comment:伤兵过期天数" json:"wound_expire_days"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -1031,7 +1036,10 @@ type EzfyCfgGeneral struct {
 	GetCondition string `gorm:"type:varchar(255);comment:GetCondition" json:"get_condition"`
 	Skill        string `gorm:"type:varchar(500);comment:技能" json:"skill"`
 	Des          string `gorm:"type:varchar(500);comment:描述" json:"des"`
-	Recruit      int    `gorm:"default:1;comment:1=可招募 0=停用" json:"recruit"` // 1=可招募 0=停用
+	// Recruit 1=可招募 0=停用
+	// ★ 2026-09-26 默认值改为 0（线上名将全部 recruit=0）：名将只由管理端发放，
+	//   「可招募」只对 kind=1 的军官池生效（kind=2 无功能影响）。
+	Recruit int `gorm:"default:0;comment:1=可招募 0=停用" json:"recruit"`
 	// ★ 2026-09-22 新增：1=普通军官（军校池） 2=名将（管理端发放）
 	Kind int `gorm:"default:2;comment:种类" json:"kind"`
 	// ★ 普通军官在军校刷新时的抽取权重（越大越容易刷到），名将不用

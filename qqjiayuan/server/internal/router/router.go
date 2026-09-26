@@ -1241,7 +1241,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelUpdate)
 				admin.DELETE("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), adminH.AdminEzfyTechLevelDelete)
 
-				// ---- 建筑数量上限配置（军事区/资源区各 33，默认 33） ----
+				// ---- 建筑数量上限配置（军事区/资源区各 36，默认 36） ----
 				admin.GET("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), adminH.AdminEzfyBuildLimitGet)
 				admin.PUT("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), adminH.AdminEzfyBuildLimitUpdate)
 

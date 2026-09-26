@@ -360,7 +360,7 @@ func (h *AdminHandler) AdminEzfyBuildingCreate(c *gin.Context) {
 		resp.ParamError(c, "该城池已有此建筑，请直接修改等级")
 		return
 	}
-	// ★ 用户规则：军事区 / 资源区各有数量上限（默认各 33，见 ezfy_cfg_limit）。
+	// ★ 用户规则：军事区 / 资源区各有数量上限（默认各 36，见 ezfy_cfg_limit）。
 	//   管理端「添加建筑」原来完全绕过这个校验，是玩家「军事区 36 个」超限的来源。
 	//   这里按 cfg.Type 分区计数后再拦一道，玩家端与管理端口径一致。
 	lim := ezfyLimit()

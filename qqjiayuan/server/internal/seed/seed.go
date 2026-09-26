@@ -136,7 +136,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgRank{},
 		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
 		&model.EzfyMapTile{},
-		// 建筑数量上限配置（军事区/资源区各 33，管理端可维护）
+		// 建筑数量上限配置（军事区/资源区各 36，管理端可维护）
 		&model.EzfyCfgLimit{},
 		// 二战聊天敏感词（独立维护页）
 		&model.EzfyWordFilter{},
@@ -155,10 +155,11 @@ func Run(db *gorm.DB, staticDir string) {
 	if db.Migrator().HasTable("ezfy_profile") {
 		db.Exec("UPDATE ezfy_profile SET diamond = 0 WHERE diamond IS NULL")
 	}
-	// 二战风云：建筑数量上限配置（单行，军事区/资源区各 33）
+	// 二战风云：建筑数量上限配置（单行，军事区/资源区各 36）
+	// ★ 2026-09-26 按线上现值对齐：36/36/33/20。
 	if db.Migrator().HasTable("ezfy_cfg_limit") {
 		db.Exec("INSERT INTO ezfy_cfg_limit(id, military_max, resource_max, house_max, factory_max) " +
-			"VALUES(1, 33, 33, 10, 0) ON DUPLICATE KEY UPDATE id = id")
+			"VALUES(1, 36, 36, 33, 20) ON DUPLICATE KEY UPDATE id = id")
 	}
 
 	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
@@ -177,14 +178,14 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
 	}
 
-	// 二战风云：出征集结令单次上限（默认 50）—— 存量表补列 + 老行回填
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」。
-	//   老行该列是 NULL/0 时统一回填 50（0 无意义 = 等于禁用集结令道具）。
+	// 二战风云：出征集结令单次上限（默认 99）—— 存量表补列 + 老行回填
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」（2026-09-26 按线上现值对齐）。
+	//   老行该列是 NULL/0 时统一回填 99（0 无意义 = 等于禁用集结令道具）。
 	if db.Migrator().HasTable("ezfy_cfg_limit") {
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_max_per_order") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_max_per_order int DEFAULT 50")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_max_per_order int DEFAULT 99")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_max_per_order = 50 WHERE gather_max_per_order IS NULL OR gather_max_per_order <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_max_per_order = 99 WHERE gather_max_per_order IS NULL OR gather_max_per_order <= 0")
 	}
 
 	// 二战风云：战斗/经济数值补列（征服扣民心、掠夺扣民心、军官工资、伤兵恢复系数）
@@ -199,12 +200,15 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d +
 				" WHERE " + col + " IS NULL OR " + col + " <= 0")
 		}
-		addLimitCol("conquer_feelings_max", 2)
-		addLimitCol("loot_feelings", 2)
-		addLimitCol("officer_salary_per_level", 2)
-		addLimitCol("wound_heal_divisor", 100)
-		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的，默认 1-9999」）
-		addLimitCol("mall_buy_max", 9999)
+		addLimitCol("conquer_feelings_max", 5)
+		addLimitCol("loot_feelings", 3)
+		addLimitCol("officer_salary_per_level", 100)
+		addLimitCol("wound_heal_divisor", 50)
+		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
+		addLimitCol("mall_buy_max", 99)
+		// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
+		addLimitCol("convene_food_cost", 100000)
+		addLimitCol("convene_pop_gain", 100000)
 	}
 
 	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（用户要求管理端可配）
@@ -247,25 +251,25 @@ func Run(db *gorm.DB, staticDir string) {
 		// ★ 用户规则「军官最多 5 星」
 		addNumCol("officer_star_max", 5)
 
-		// 野地兵力倍数（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
+		// 野地兵力倍数（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 1")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 10")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 1 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 10 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
 
-		// ★ 2026-09-25：野地战利品资源倍率（默认 1，允许小数；0 / NULL 无意义 → 回落 1）
+		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_res_mult double DEFAULT 1")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_res_mult double DEFAULT 10")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wild_res_mult = 1 WHERE wild_res_mult IS NULL OR wild_res_mult <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_res_mult = 10 WHERE wild_res_mult IS NULL OR wild_res_mult <= 0")
 
-		// ★ 2026-09-25：采集资源倍率（默认 1，允许小数；0 / NULL 无意义 → 回落 1）。
+		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）。
 		//   同样用 double，作用点 dispatchGatherYield 的采集产出。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_res_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_res_mult double DEFAULT 1")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_res_mult double DEFAULT 10")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 1 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 10 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
 
 		// ★ 2026-09-25 用户要求「各项资源有最大的配置放到二战系统配置里面，默认 100 亿」：
 		//   每项资源的入库累加硬上限。⚠️ 必须 **bigint** —— 100 亿超出 int（MySQL int 只有 21 亿）。
@@ -280,11 +284,12 @@ func Run(db *gorm.DB, staticDir string) {
 			}
 		}
 
-		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
+		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 0.1）
+		// ★ 2026-09-26 按线上现值对齐：默认 0.1（= 0.1%，几乎免费）。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 100")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 0.1")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 0.1 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
 		// ★ 2026-09-24 迁移：把旧口径的默认值 1 一次性升级为 100（语义从「倍率」改为「百分比」）。
 		//   注意副作用：以后想把倍率故意设成 1（=1%）会在重启时被改回 100 —— 运营不会用到 1% 这么极端的值。
 		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate = 1")
@@ -298,31 +303,31 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate = 1")
 
 		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
-		//   troop_max 单城兵力上限（默认 10 亿）+ wound_expire_days 伤兵存活天数（默认 5）。
+		//   troop_max 单城兵力上限（默认 50 亿）+ wound_expire_days 伤兵存活天数（默认 3）。
 		//   两个值 0 都无意义 → 回落默认值，所以用 `IS NULL OR <= 0` 回填。
-		//   ⚠️ troop_max 必须用 **bigint**：int 在 MySQL 只有 21 亿，装不下 10 亿以上的配置。
+		//   ⚠️ troop_max 必须用 **bigint**：int 在 MySQL 只有 21 亿，装不下 50 亿的配置。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "troop_max") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN troop_max bigint DEFAULT 1000000000")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN troop_max bigint DEFAULT 5000000000")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 1000000000 WHERE troop_max IS NULL OR troop_max <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 5000000000 WHERE troop_max IS NULL OR troop_max <= 0")
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_expire_days") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 5")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 3")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 5 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 3 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
 
-		// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 4 小时且可配置）。
-		//   0 无意义 → 回落默认 4。
+		// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 可配置；2026-09-26 按线上现值 1）。
+		//   0 无意义 → 回落默认 1。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 4")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 1")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 4 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 1 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
 
 		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
-		//   百分比口径，默认 0 = 无加成（0 是有意义的值，不做 <= 0 回填）。
+		//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 0")
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 0 WHERE march_speed_bonus IS NULL")
+		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
 	}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）

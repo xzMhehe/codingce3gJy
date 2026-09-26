@@ -555,9 +555,11 @@ type ezfyChestSeed struct {
 	Name         string
 	PriceDiamond int64
 	PriceGold    int64
-	OpenMax      int
-	Des          string
-	Effect       string
+	// Stock 库存：-1 = 无上限，0 = 已售罄（★ 2026-09-26 按线上现值加入）
+	Stock   int
+	OpenMax int
+	Des     string
+	Effect  string
 }
 
 // 宝箱（★ 用户要求：多分几档；名字**沿用原版的宝箱体系**）
@@ -569,23 +571,24 @@ type ezfyChestSeed struct {
 //
 // 所以命名沿用 黄金宝箱 / 崛起宝箱 / 帝国宝箱 / 战神宝箱，再补两档保持同一命名格式。
 // ★ 套装箱开出来是**整套**（Kind=3），不是单件。
+// ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：价格/库存/单次上限一律取线上库快照值。
 var ezfyChestSeeds = []ezfyChestSeed{
-	{ID: 1, Name: "黄金宝箱", PriceGold: 500000, OpenMax: 10,
+	{ID: 1, Name: "黄金宝箱", PriceDiamond: 100, Stock: 30, OpenMax: 10,
 		Des:    "用黄金购买，开出散件军官装备（单件，不属于套装）",
 		Effect: "奖池：13 种纯散件军官装备 + 道具"},
-	{ID: 2, Name: "崛起宝箱", PriceDiamond: 300, OpenMax: 10,
+	{ID: 2, Name: "崛起宝箱", PriceDiamond: 500, Stock: -1, OpenMax: 10,
 		Des:    "开出一整套起步套装（9 件）",
 		Effect: "奖池：新兵套装 / 战士套装 整套"},
-	{ID: 3, Name: "帝国宝箱", PriceDiamond: 450, OpenMax: 10,
+	{ID: 3, Name: "帝国宝箱", PriceDiamond: 500, Stock: 30, OpenMax: 10,
 		Des:    "开出一整套中级套装（9 件）",
 		Effect: "奖池：海军上将 / 传说英雄 / 名门征服 整套"},
-	{ID: 4, Name: "战神宝箱", PriceDiamond: 600, OpenMax: 10,
+	{ID: 4, Name: "战神宝箱", PriceDiamond: 800, Stock: -1, OpenMax: 10,
 		Des:    "开出一整套高级套装（9 件）",
 		Effect: "奖池：传说无畏 / 传说征服 整套"},
-	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 700, OpenMax: 10,
+	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 1000, Stock: 10, OpenMax: 10,
 		Des:    "开出一整套精锐套装（9 件）",
 		Effect: "奖池：精英守护者 / 传说守护者 / 暴君之怒 / 审判者 整套"},
-	{ID: 6, Name: "统帅宝箱", PriceDiamond: 800, OpenMax: 5,
+	{ID: 6, Name: "统帅宝箱", PriceDiamond: 2000, Stock: 30, OpenMax: 1,
 		Des:    "开出一整套顶级套装（9~11 件），含六大系列",
 		Effect: "奖池：混沌三件套 / 亡魂 / 遗失传说 / 隐秘宝藏 + 六大系列 整套"},
 }
@@ -830,7 +833,7 @@ func seedEzfyChests(db *gorm.DB) {
 		}
 		_ = db.Create(&model.EzfyCfgChest{
 			ID: c.ID, Name: c.Name, PriceDiamond: c.PriceDiamond, PriceGold: c.PriceGold,
-			Stock: -1, OpenMax: c.OpenMax, Enabled: 1, SortNo: c.ID,
+			Stock: c.Stock, OpenMax: c.OpenMax, Enabled: 1, SortNo: c.ID,
 			Des: c.Des, Effect: c.Effect,
 		}).Error
 	}

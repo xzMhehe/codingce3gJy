@@ -640,11 +640,11 @@ const (
 	// ezfyGatherDefaultPer 每个集结令提升的出征上限（配置表 param1 优先）
 	ezfyGatherDefaultPer = 100000
 	// ezfyGatherMaxDefault 单次出征最多使用多少个集结令的**默认值**。
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 50」→ 默认 50。
+	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」→ 默认 99（线上现值）。
 	//   真正的上限由 ezfyGatherMax() 从 ezfy_cfg_limit.gather_max_per_order 读取，
 	//   管理端「建筑上限配置」页可改，改完 cfgsReload() 即时生效。
 	//   这个常量只在配置行缺失/为 0 时兜底。
-	ezfyGatherMaxDefault = 50
+	ezfyGatherMaxDefault = 99
 )
 
 // ezfyGatherBonusPer 每个集结令提升的出征上限（读配置 param1，缺省 10 万）

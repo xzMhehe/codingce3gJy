@@ -23,10 +23,11 @@ import (
 
 const (
 	ezfyFactoryBuildingID = 14 // 军工厂（★ 不限数量，只受军事区建筑上限约束）
-	// ★ 建筑数量上限（军事区/资源区各 33、民居 10）已迁到 ezfy_cfg_limit 表，
+	// ★ 建筑数量上限（军事区/资源区各 36、民居 33）已迁到 ezfy_cfg_limit 表，
 	//   管理端「二战风云 → 建筑上限配置」可维护，见 ezfyLimit()。
-	ezfyConveneFoodCost   = 100000                 // 召集人口消耗粮食
-	ezfyConvenePopGain    = 100000                 // 召集获得人口
+	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
+	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
+	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
 	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
 	ezfyOilDivGrid        = 300 // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
@@ -315,7 +316,7 @@ func (h *EzfyHandler) areaBuildingCount(cityId uint) int {
 
 // areaCounts 分别统计「军事区」与「资源区」的建筑数量。
 //
-// ★ 第九轮用户规则：军事区与资源区数量上限**分开**，各 33（管理端可维护，见 ezfy_cfg_limit）。
+// ★ 第九轮用户规则：军事区与资源区数量上限**分开**，各 36（线上现值，管理端可维护，见 ezfy_cfg_limit）。
 // 分区判据与前端 buildZone 一致：军事区 = type 2/3/4，资源区 = type 1。
 func (h *EzfyHandler) areaCounts(cityId uint) (military, resource int) {
 	for _, b := range h.buildingList(cityId) {
@@ -1165,7 +1166,7 @@ func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string
 			return "该建筑已存在"
 		}
 	}
-	// ★ 军事区 / 资源区数量上限**分开**（各 33，管理端可维护）
+	// ★ 军事区 / 资源区数量上限**分开**（线上现值各 36，管理端可维护）
 	mil, res := h.areaCounts(city.ID)
 	if cfg.Type == 1 {
 		if res >= lim.ResourceMax {
@@ -2449,7 +2450,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&unreadReports)
 
 	acct, ulv, uexp := h.ezfyUserBrief(uid)
-	// ★ 军事区/资源区上限（各 33，管理端可维护）：随 /view 下发，前端不再硬编码
+	// ★ 军事区/资源区上限（线上现值各 36，管理端可维护）：随 /view 下发，前端不再硬编码
 	lim := ezfyLimit()
 	resp.OK(c, gin.H{
 		"profile":    profile,
@@ -2507,6 +2508,9 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置两个开关，前端「召集人口」页按它提示与禁用按钮
 		"house_pop_limit_on":  ezfyHousePopLimitOn(),
 		"convene_flexible_on": ezfyConveneFlexOn(),
+		// ★ 2026-09-26：召集消耗粮食 / 获得人口（前端文案与按钮禁用都要用，勿再写死 10 万）
+		"convene_food_cost": ezfyConveneFoodCostCfg(),
+		"convene_pop_gain":  ezfyConvenePopGainCfg(),
 	})
 }
 
@@ -2865,22 +2869,26 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		return
 	}
 	h.calcResource(city)
-	if city.Food < ezfyConveneFoodCost {
-		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集10万人口需要%d粮食", ezfyConveneFoodCost))
+	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
+	//   消耗/收益都读管理端配置（默认各 10 万），本地变量兜住避免中途配置变化导致前后不一致。
+	foodCost := ezfyConveneFoodCostCfg()
+	popGain := ezfyConvenePopGainCfg()
+	if city.Food < foodCost {
+		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
 		return
 	}
 	// ★ 2026-09-26 用户要求加「民居容量限制 / 召集人口灵活配置」两个开关：
 	//   只有「民居容量限制」开着（民居上限才存在）且「召集人口灵活配置」关着时，
 	//   召集才受民居容量上限约束；任一条件不满足都维持原有的「可突破上限」行为。
-	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.Pop+ezfyConvenePopGain > city.PopMax {
+	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.Pop+popGain > city.PopMax {
 		resp.ParamError(c, fmt.Sprintf("人口已达民居容纳上限(%d), 无法继续召集", city.PopMax))
 		return
 	}
-	city.Food -= ezfyConveneFoodCost
-	city.Pop += ezfyConvenePopGain
+	city.Food -= foodCost
+	city.Pop += popGain
 	h.saveCityRes(city)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("pop", city.Pop)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", ezfyConvenePopGain), "pop": city.Pop, "pop_max": city.PopMax})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", popGain), "pop": city.Pop, "pop_max": city.PopMax})
 }
 
 // Placate 安抚民心（花费黄金降低民怨）
