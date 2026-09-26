@@ -1889,7 +1889,16 @@ func (h *EzfyHandler) Sign(c *gin.Context) {
 	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&y).Error; err == nil {
 		count = y.SignCount + 1
 	}
-	h.DB.Create(&model.EzfySign{UserId: uid, SignDate: today, SignCount: count})
+	// ★ 2026-09-26 线上「无限签到刷资源」事故：必须**先落库、落库成功才发奖**。
+	//   旧代码 `h.DB.Create(...)` 不看 error，而 ezfy_sign 早期又只有 sign_date 单列唯一索引
+	//   （全服每天只放行一条），于是除第一个玩家外所有人的 INSERT 都静默失败、奖励却照发
+	//   → 反复请求即可无限刷资源，且自己的记录从未入库，前端一直显示「未签到」。
+	//   现在 (user_id, sign_date) 复合唯一索引 + 这里校验 error，双保险：
+	//   并发重复请求也只会有一次插入成功，其余一律拒绝、不发奖。
+	if err := h.DB.Create(&model.EzfySign{UserId: uid, SignDate: today, SignCount: count}).Error; err != nil {
+		resp.ParamError(c, "今天已经签到过了")
+		return
+	}
 	r := ezfySignRewards[(count-1)%7]
 	// ★ 签到奖励不受仓储上限截断（用户要求：签到/任务/礼包领到的资源不能被上限吃掉）
 	h.giveResourcesNoCap(uid, r[1], r[2], r[3], r[4], r[0])

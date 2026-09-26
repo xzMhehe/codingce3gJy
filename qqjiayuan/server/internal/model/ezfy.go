@@ -887,10 +887,20 @@ type EzfyItem struct {
 
 func (EzfyItem) TableName() string { return "ezfy_item" }
 
+// ★ 2026-09-26 线上「无限签到刷资源」事故根因：
+//
+//	`uniqueIndex:uk_user_date` 早期只写在 SignDate 一个字段上 → AutoMigrate 建出的是
+//	`UNIQUE KEY uk_user_date (sign_date)` 单列唯一索引，等于**全服每天只允许一条签到记录**。
+//	除了当天第一个玩家，其余人的 INSERT 全部撞重复键失败；而旧 Sign 处理器又忽略了
+//	Create 的 error、照样发奖励 → 有人反复请求就能一直领资源，自己的签到记录还从没落库
+//	（前端因此永远显示「未签到」）。
+//
+//	现在把索引标签同时挂到 UserId + SignDate 上，建出 (user_id, sign_date) 复合唯一索引；
+//	老库上那个建错的同名索引由 seed 的 fixEzfySignIndex 显式 DROP 再重建。
 type EzfySign struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserId    uint      `gorm:"comment:用户ID" json:"user_id"`
-	SignDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_user_date;comment:签到日期" json:"sign_date"`
+	UserId    uint      `gorm:"uniqueIndex:uk_user_date,priority:1;comment:用户ID" json:"user_id"`
+	SignDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_user_date,priority:2;comment:签到日期" json:"sign_date"`
 	SignCount int       `gorm:"comment:连续签到天数" json:"sign_count"` // 连续签到天数
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }

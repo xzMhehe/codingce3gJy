@@ -94,6 +94,33 @@ func seedEzfy(db *gorm.DB) {
 	backfillEzfyChestPool(db)
 	seedEzfySchemes(db)
 	migrateOfficerAttrPoints(db)
+	fixEzfySignIndex(db)
+}
+
+// fixEzfySignIndex 修复 ezfy_sign 建错的唯一索引（2026-09-26 线上「无限签到刷资源」事故）
+//
+// 旧标签只把 `uniqueIndex:uk_user_date` 挂在 SignDate 上，AutoMigrate 建出来的是
+// `UNIQUE KEY uk_user_date (sign_date)` —— 全服每天只放行一条签到记录。
+// GORM 的 AutoMigrate 见到同名索引就直接跳过、不会改成复合索引，所以要显式修：
+// 按 information_schema 判断该索引有没有包含 user_id，没有就 DROP 再按
+// (user_id, sign_date) 重建。幂等：修好后再启动直接 return。
+func fixEzfySignIndex(db *gorm.DB) {
+	var hasUser int64
+	if err := db.Raw(`SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ezfy_sign'
+		  AND INDEX_NAME = 'uk_user_date' AND COLUMN_NAME = 'user_id'`).Scan(&hasUser).Error; err != nil {
+		log.Printf("ezfy 签到索引检查失败: %v", err)
+		return
+	}
+	if hasUser > 0 {
+		return
+	}
+	if err := db.Exec("ALTER TABLE ezfy_sign DROP INDEX uk_user_date").Error; err != nil {
+		log.Printf("ezfy 签到索引删除失败(可能本来就没有): %v", err)
+	}
+	if err := db.Exec("ALTER TABLE ezfy_sign ADD UNIQUE KEY uk_user_date (user_id, sign_date)").Error; err != nil {
+		log.Printf("ezfy 签到索引重建失败: %v", err)
+	}
 }
 
 // seedEzfyWildOfficers 野地/寇城守将补缺（2026-09-24 用户要求）
