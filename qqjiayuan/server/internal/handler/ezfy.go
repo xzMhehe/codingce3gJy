@@ -1266,27 +1266,45 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 //     会把已到结束时间的建筑**直接结算成完工**，status 置 0、level+1），随后才读建筑，
 //     于是读到 status==0 就返回「该建筑没有在施工」→ 一分不退，而玩家 UI 还显示施工中，
 //     看起来就像「取消失败了」。
-//   - 现在把「本次请求内刚好完工」的建筑单独提示（玩家保留新等级，本就无需退还），
-//     其余仍在施工中的照常全额退还。
+//   - 建筑单次升级耗时很短（BuildTime 秒级，下限 1 秒），玩家点取消时往往**已完工**。
+//     只要建筑在**本次取消请求开始时**还在施工（原 status != 0），就算恰在这步被
+//     `checkBuildingDone` 结算成完工，也一律按「取消」处理：**撤销这次升级**、
+//     等级回退到原级并全额退还资源/图纸（与前端确认弹窗承诺一致）。
+//   - 撤销给刚完工升级加的声望（checkBuildingDone 加过 newLevel*10），防刷声望。
 //   - 退还资源改用 `giveResNoCap`（与 CancelTrain 同口径）：不受仓储上限/资源最大值截断，
 //     避免玩家某项资源临近上限时「退少了/没退到」。refreshCity 已先结算过当前值，内存 city 是准的。
 func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64) string {
 	// 1) 先读建筑；如果本来就空闲，直接返回（不提前刷资源）
+	var b0 model.EzfyCityBuilding
+	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b0).Error; err != nil {
+		return "建筑不存在"
+	}
+	if b0.Status == 0 {
+		return "该建筑没有在施工"
+	}
+	origLevel := b0.Level
+	// 2) refreshCity：把「已到结束时间」的建筑懒结算掉，避免卡死在施工中
+	h.refreshCity(city.UserID, city)
 	var b model.EzfyCityBuilding
 	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
 		return "建筑不存在"
 	}
+	// 3) 本次取消请求里刚完工（原本施工中 → 现在 status=0）：
+	//    玩家点取消时它仍在建，即使恰在这步走完，也应按「取消」处理 ——
+	//    撤销这次升级、等级回退到 origLevel，并全额退还资源/图纸。
+	//    否则会出现「升级时长太短(秒级)，点取消时已完工 → 一分不退」的假 bug。
+	//    ★ 完工时 checkBuildingDone 已加过一次声望(newLevel*10)，撤销时要扣回，防刷声望。
 	if b.Status == 0 {
-		return "该建筑没有在施工"
-	}
-	// 2) 再 refreshCity：把「已到结束时间」的建筑懒结算掉，避免卡死在施工中
-	h.refreshCity(city.UserID, city)
-	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
-		return "建筑不存在"
-	}
-	// 3) 若恰好在这步完工（status 回到 0）：玩家已保留新等级，属于「已经建好」，无需退还
-	if b.Status == 0 {
-		return "该建筑已完成建造，已保留当前等级，无需取消退还"
+		from := origLevel + 1
+		to := b.Level
+		if b.StartTime == 0 && b.TargetLevel > 0 {
+			to = b.TargetLevel
+		}
+		if b.Level > origLevel {
+			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", city.UserID).
+				UpdateColumn("prestige", gorm.Expr("GREATEST(prestige - ?, 0)", b.Level*10))
+		}
+		return h.doCancelRefund(city, &b, origLevel, from, to)
 	}
 	// 4) 仍在施工中 → 退「还没建成」的部分。from 用 refresh 之后的 level，
 	//    保证连锁升级已推进过的级不重复退（否则会双倍退款刷资源）。
@@ -1300,6 +1318,12 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 			to = maxInt(from-1, h.buildingMaxLevel(city.ID, b.BuildingId))
 		}
 	}
+	return h.doCancelRefund(city, &b, b.Level, from, to)
+}
+
+// doCancelRefund 计算 from~to 的升级消耗并**全额退还**（资源走 giveResNoCap 不受仓储/资源上限
+// 截断、图纸走 addItem 入背包），随后把建筑回到空闲；level 固定为 keepLevel（<1 直接撤掉记录）。
+func (h *EzfyHandler) doCancelRefund(city *model.EzfyCity, b *model.EzfyCityBuilding, keepLevel, from, to int) string {
 	var food, steel, oil, rare, gold int64
 	blueprint := 0
 	for lv := from; lv <= to; lv++ {
@@ -1315,19 +1339,19 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 			gold += l.Gold
 		}
 	}
-	// 5) 全额退还（不按仓储上限/资源最大值截断）。refreshCity 已结算过 city 现值，内存是准的。
+	// 全额退还（不按仓储上限/资源最大值截断）。refreshCity 已结算过 city 现值，内存是准的。
 	if food+steel+oil+rare+gold > 0 {
 		h.giveResNoCap(city, food, steel, oil, rare, gold)
 	}
 	if blueprint > 0 {
 		h.addItem(city.UserID, ezfyBlueprintItemID, blueprint)
 	}
-	// 6) 回到空闲；没建成的（level==0）直接撤掉这条记录
-	if b.Level <= 0 {
+	// 回到空闲；没建成的（level<=0）直接撤掉这条记录
+	if keepLevel <= 0 {
 		h.DB.Delete(&model.EzfyCityBuilding{}, b.ID)
 	} else {
 		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-			Updates(map[string]interface{}{"status": 0, "target_level": 0, "start_time": 0})
+			Updates(map[string]interface{}{"level": keepLevel, "status": 0, "target_level": 0, "start_time": 0, "end_time": 0})
 	}
 	extra := ""
 	if blueprint > 0 {
