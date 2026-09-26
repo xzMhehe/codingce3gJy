@@ -242,10 +242,13 @@ type EzfyCfgLimit struct {
 	ConquerFeelingsMax int `gorm:"default:5;comment:Conquer民心上限" json:"conquer_feelings_max"`
 	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
 	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
-	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。默认 100 黄金/级/小时。
+	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。
+	//   ★ 2026-09-26 用户要求「现值 2000 改成 20」：默认值 100 → **20**。
+	//   起因：名将发放等级修好之后（原来被发成 1 级），150 级名将的工资按 2000/级
+	//   高达 30 万黄金/小时，远超玩家产出（人口 × 税率 ≈ 4 万/小时）→ 会直接破产。
 	//   ⚠️ 字段名必须让 GORM 推出 officer_salary_per_level（与 seed 里补的列名一致），
 	//   否则 AutoMigrate 会另外建一列 officer_salary_per_lv，两个列各存各的。
-	OfficerSalaryPerLevel int `gorm:"default:100;comment:军官Salary每等级" json:"officer_salary_per_level"`
+	OfficerSalaryPerLevel int `gorm:"default:20;comment:军官Salary每等级" json:"officer_salary_per_level"`
 	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
 	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 50。
 	WoundHealDivisor int `gorm:"default:50;comment:伤兵治疗Divisor" json:"wound_heal_divisor"`

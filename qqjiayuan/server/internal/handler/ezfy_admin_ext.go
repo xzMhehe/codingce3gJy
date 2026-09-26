@@ -1142,11 +1142,26 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 	if star <= 0 {
 		star = 5
 	}
+	// ★★ 2026-09-26 修复「发放名将后变成 1 级」：
+	//
+	//	原来这里写死 `Level: 1`，发放出来的名将全是 1 级 —— 而名将池
+	//	`ezfy_cfg_general.level` 配的就是该名将的**原始等级**（现役名将 110~150）。
+	//	现在等级取自池子，夹在 1 ~ ezfyOfficerMaxLevel。
+	//	★ 待分配点数仍为 0：名将池里的 military/logistics/learning 就是该等级下的最终属性
+	//	  （普通军官池的 level 语义不同 —— 那是「招募等级上限」，属性是基础值，
+	//	   所以军校招募那条路径才给 level-1 点）。
+	lv := g.Level
+	if lv <= 0 {
+		lv = 1
+	}
+	if lv > ezfyOfficerMaxLevel {
+		lv = ezfyOfficerMaxLevel
+	}
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
-		Level: 1, Exp: 0,
+		Level: lv, Exp: 0,
 		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
-		// ★ 原始属性 = 军官池里的值（重修书洗点回退目标）；名将发放时不额外给点数，靠升级得
+		// ★ 原始属性 = 军官池里的值（重修书洗点回退目标）
 		BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
 		FreePoints: 0,
 		Loyalty:    100, Skill: "", Equipment: "",

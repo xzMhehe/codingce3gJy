@@ -538,7 +538,7 @@ func ezfyMarchSpeedBonus() float64 {
 const (
 	ezfyConquerFeelingsDef  = 5   // 征服单次最多扣民心（默认 5）
 	ezfyLootFeelingsDef     = 3   // 掠夺每次扣民心（默认 3）
-	ezfyOfficerSalaryDef    = 100 // 军官工资：每级每小时黄金（默认 100）
+	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 用户要求由 100 改成 20）
 	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 99）
 	ezfyMallBuyMaxDef = 99

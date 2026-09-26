@@ -219,7 +219,7 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
-        officer_salary_per_level: 2, wound_heal_divisor: 100,
+        officer_salary_per_level: 20, wound_heal_divisor: 100,
         // ★ 野地兵力倍数 / 野地获取资源倍率 / 采集资源倍率（都允许小数，默认 1 = 原样）
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
@@ -251,7 +251,7 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
-        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 100',
+        officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 20',
         wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 50',
         wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
         wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 10',

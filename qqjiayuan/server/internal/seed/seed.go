@@ -202,7 +202,10 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		addLimitCol("conquer_feelings_max", 5)
 		addLimitCol("loot_feelings", 3)
-		addLimitCol("officer_salary_per_level", 100)
+		// ★ 2026-09-26 用户要求「军官工资现值改成 20」：默认 100 → 20
+		//   ⚠️ addLimitCol 只在「列不存在 / 值为 NULL 或 <= 0」时回填，
+		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。
+		addLimitCol("officer_salary_per_level", 20)
 		addLimitCol("wound_heal_divisor", 50)
 		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
 		addLimitCol("mall_buy_max", 99)
