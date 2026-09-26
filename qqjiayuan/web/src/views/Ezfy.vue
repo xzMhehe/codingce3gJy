@@ -4078,6 +4078,15 @@ export default {
       timer: null
     }
   },
+  // ★ 2026-09-27 建筑操作的内联提示自动消失：设置后过几秒清掉，
+  //   避免「已取消升级/已开始升级」这类提示一直挂在建筑行上不消失。
+  //   [关闭] 仍然可用（直接置 null）。
+  watch: {
+    inlineTip (n) {
+      if (this._tipTimer) { clearTimeout(this._tipTimer); this._tipTimer = null }
+      if (n) this._tipTimer = setTimeout(() => { this.inlineTip = null }, 5000)
+    }
+  },
   computed: {
     // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
     taskGroupCur () {
@@ -4678,6 +4687,7 @@ export default {
     if (this._onBack) window.removeEventListener('popstate', this._onBack)
     if (this.timer) clearInterval(this.timer)
     if (this.clockTimer) clearInterval(this.clockTimer)
+    if (this._tipTimer) clearTimeout(this._tipTimer)
     this.stopBattleTimer()
   },
   methods: {
