@@ -547,9 +547,13 @@ var ezfyEzfyCfgWildland = []model.EzfyCfgWildland{
 }
 
 // ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：以下 价格 / 库存 全部取线上库快照值。
+//
+//	Stock 写成 0（即「不写」，见 1 小资源包 / 2 大资源包）= 线上已售罄；
+//	但 stock 列自带 DB 默认值 100 而 GORM 会跳过带 default 标签字段的零值，
+//	所以「售罄」这个状态要靠 seedEzfy 里紧跟 batch 之后那段显式 Update 落地。
 var ezfyEzfyCfgItem = []model.EzfyCfgItem{
-	{ID: 1, Name: "小资源包", ItemType: 1, Param1: 10000, PriceGold: 10000, Stock: 97, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各1万"},
-	{ID: 2, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: 12, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
+	{ID: 1, Name: "小资源包", ItemType: 1, Param1: 10000, PriceGold: 10000, Stock: 100, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各1万"},
+	{ID: 2, Name: "大资源包", ItemType: 1, Param1: 100000, PriceGold: 50000, Stock: 100, Icon: "", Description: "使用后获得粮食/钢铁/石油/稀矿各10万"},
 	{ID: 3, Name: "黄金卡", ItemType: 2, Param1: 10000, PriceDiamond: 10, Stock: 100, Icon: "", Description: "使用后获得黄金1万"},
 	{ID: 4, Name: "建筑加速30分钟", ItemType: 3, Param1: 30, PriceDiamond: 10, Stock: 100, Icon: "", Description: "当前建筑升级立即减少30分钟"},
 	{ID: 5, Name: "建筑加速2小时", ItemType: 3, Param1: 120, PriceDiamond: 20, Stock: 100, Icon: "", Description: "当前建筑升级立即减少2小时"},

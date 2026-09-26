@@ -65,8 +65,17 @@ func seedEzfy(db *gorm.DB) {
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	// ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：
-	//   1~12 的价格/库存一律取线上快照值，且线上这些道具的库存都不是 0（最低 10），
-	//   非 0 值 batch 会正常写入，不会踩 GORM 跳过零值那个坑。
+	//   stock 列自带 DB 默认值 100，而 GORM 对「带 default 标签的字段」会跳过 Go 零值，
+	//   于是线上「0 = 已售罄」的道具（小资源包 / 大资源包）在库里会落成 100
+	//   （非 0 库存不受影响，上面的 batch 正常写入）。
+	//   这里只对「快照库存为 0」的条目补一次显式写，让售罄状态也能原样初始化。
+	for i := range ezfyEzfyCfgItem {
+		if ezfyEzfyCfgItem[i].Stock != 0 {
+			continue
+		}
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", ezfyEzfyCfgItem[i].ID).
+			Update("stock", 0)
+	}
 	// ★ 任务类型/任务：改「只补缺不覆盖」—— 管理端在「数据管理」里调的奖励(数值)
 	//   不能被下次启动的种子悄悄改回去（用户要求「后台能灵活配置奖励」）。
 	batchKeep(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
@@ -306,10 +315,10 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
-		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: 97,
+		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: 96,
 			Category:    "军官道具",
 			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
-		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
+		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 250000, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
 		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 500, Stock: -1,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
