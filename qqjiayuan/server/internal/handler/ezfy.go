@@ -1258,9 +1258,20 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 //	  · 普通升级（`start_time != 0`）：只扣过 `b.Level+1` 这一级 → 只退这一级
 //	  · 连锁升级（`start_time == 0`，一键 N 级）：`maxLevelBuilding` 是**一次性扣了
 //	    `b.Level+1 ~ target_level` 的全部费用与图纸** → 要全退
+//	  · 旧数据连锁（`target_level == 0`，一键升满）：退未建成部分 `当前Level+1 ~ 建筑上限`
 //	  · 建筑还没建成（`level == 0`）：取消 = 撤销建造（删记录 + 退 1 级费用）
+//
+// ★★ 2026-09-26 修复「取消不退换资源」：
+//   - **先读建筑再 refreshCity**。原来先 `refreshCity()`（其内部 `checkBuildingDone`
+//     会把已到结束时间的建筑**直接结算成完工**，status 置 0、level+1），随后才读建筑，
+//     于是读到 status==0 就返回「该建筑没有在施工」→ 一分不退，而玩家 UI 还显示施工中，
+//     看起来就像「取消失败了」。
+//   - 现在把「本次请求内刚好完工」的建筑单独提示（玩家保留新等级，本就无需退还），
+//     其余仍在施工中的照常全额退还。
+//   - 退还资源改用 `giveResNoCap`（与 CancelTrain 同口径）：不受仓储上限/资源最大值截断，
+//     避免玩家某项资源临近上限时「退少了/没退到」。refreshCity 已先结算过当前值，内存 city 是准的。
 func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64) string {
-	h.refreshCity(city.UserID, city)
+	// 1) 先读建筑；如果本来就空闲，直接返回（不提前刷资源）
 	var b model.EzfyCityBuilding
 	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
 		return "建筑不存在"
@@ -1268,9 +1279,26 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 	if b.Status == 0 {
 		return "该建筑没有在施工"
 	}
-	from, to := b.Level+1, b.Level+1
-	if b.StartTime == 0 && b.TargetLevel > 0 {
-		to = b.TargetLevel
+	// 2) 再 refreshCity：把「已到结束时间」的建筑懒结算掉，避免卡死在施工中
+	h.refreshCity(city.UserID, city)
+	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
+		return "建筑不存在"
+	}
+	// 3) 若恰好在这步完工（status 回到 0）：玩家已保留新等级，属于「已经建好」，无需退还
+	if b.Status == 0 {
+		return "该建筑已完成建造，已保留当前等级，无需取消退还"
+	}
+	// 4) 仍在施工中 → 退「还没建成」的部分。from 用 refresh 之后的 level，
+	//    保证连锁升级已推进过的级不重复退（否则会双倍退款刷资源）。
+	from := b.Level + 1
+	to := b.Level + 1
+	if b.StartTime == 0 {
+		if b.TargetLevel > 0 {
+			to = b.TargetLevel
+		} else {
+			// 旧数据连锁（一键升满，target_level==0）：开局已一次性扣到建筑上限
+			to = maxInt(from-1, h.buildingMaxLevel(city.ID, b.BuildingId))
+		}
 	}
 	var food, steel, oil, rare, gold int64
 	blueprint := 0
@@ -1287,20 +1315,14 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 			gold += l.Gold
 		}
 	}
-	// 退回资源：走 DB 原子累加（别用内存 city 整行写回，会覆盖并发的懒结算增量）
+	// 5) 全额退还（不按仓储上限/资源最大值截断）。refreshCity 已结算过 city 现值，内存是准的。
 	if food+steel+oil+rare+gold > 0 {
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  ezfyResAddExpr("food", food),
-			"steel": ezfyResAddExpr("steel", steel),
-			"oil":   ezfyResAddExpr("oil", oil),
-			"rare":  ezfyResAddExpr("rare", rare),
-			"gold":  ezfyResAddExpr("gold", gold),
-		})
+		h.giveResNoCap(city, food, steel, oil, rare, gold)
 	}
 	if blueprint > 0 {
 		h.addItem(city.UserID, ezfyBlueprintItemID, blueprint)
 	}
-	// 回到空闲；没建成的（level==0）直接撤掉这条记录
+	// 6) 回到空闲；没建成的（level==0）直接撤掉这条记录
 	if b.Level <= 0 {
 		h.DB.Delete(&model.EzfyCityBuilding{}, b.ID)
 	} else {

@@ -257,7 +257,8 @@ func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	// ⚠️ 不能直接用 h.done：它把「非空 msg」一律当错误 → 退还文案会被当成失败返回 400。
 	msg := h.cancelBuildingUpgrade(city, req.RecordId)
-	if strings.HasPrefix(msg, "已取消升级") {
+	// 「已取消升级」「该建筑已完成…」都算成功路径（后者=建筑刚好完工、保留了新等级）
+	if strings.HasPrefix(msg, "已取消升级") || strings.HasPrefix(msg, "该建筑已完成") {
 		resp.OK(c, gin.H{"msg": msg})
 		return
 	}
