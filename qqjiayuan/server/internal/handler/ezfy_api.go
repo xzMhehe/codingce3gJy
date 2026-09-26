@@ -687,8 +687,7 @@ func (h *EzfyHandler) Research(c *gin.Context) {
 func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
-		CityId  int64 `json:"city_id"`
-		Minutes int64 `json:"minutes"`
+		CityId int64 `json:"city_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -696,10 +695,25 @@ func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	if req.Minutes <= 0 {
-		req.Minutes = 10
+	// ★ 2026-09-26 修复「加速道具买完实际使用不生效」：
+	//
+	//	原来这里直接 `h.speedUpTech(city, req.Minutes)` —— **不校验道具、不扣任何东西**，
+	//	而且 Minutes 由客户端传（传 999999 就能把研究瞬间刷完）：
+	//	  ① 是个经济漏洞（免费无限加速）；
+	//	  ② 商城卖的「科技加速30分钟/2小时」(item_type=5) 因此**根本没有被消耗的地方**，
+	//	     玩家买完在科技页点 [加速] 看着减了 10 分钟、道具却一个没少 →「买完用了不生效」。
+	//	现在统一走「消耗科技加速道具」，与建筑页 [加速] 同一口径。
+	cfgID := h.ezfyBestSpeedItem(uid, ezfyItemTypeTechSpeed)
+	if cfgID == 0 {
+		resp.ParamError(c, "没有科技加速道具，请到商城购买")
+		return
 	}
-	h.done(c, h.speedUpTech(city, req.Minutes), "科技研究已加速完成")
+	msg := h.useItem(uid, city, cfgID, 1, 0, 0)
+	if !strings.HasPrefix(msg, "使用成功") {
+		resp.ParamError(c, msg)
+		return
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 // CancelTech POST /games/ezfy/techs/cancel  {tech_id} —— 取消研究并全额退还消耗

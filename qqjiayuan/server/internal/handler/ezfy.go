@@ -1870,6 +1870,27 @@ func (h *EzfyHandler) consumeItem(uid uint, cfgId int) {
 	h.consumeItemN(uid, cfgId, 1)
 }
 
+// ezfyBestSpeedItem 背包里某类加速道具（ezfyItemTypeBuildSpeed / TrainSpeed / TechSpeed）中
+// **加速时长最短**那一个的 cfg_id（返回 0 = 一个都没有）。
+//
+// ★ 2026-09-26 加：给「服务端自己挑道具」的场景用（如 /techs/speed），
+// 口径必须和前端 accItems()[0] 一致 —— 优先消耗最短的，免得误吃玩家花钱买的 2 小时道具。
+func (h *EzfyHandler) ezfyBestSpeedItem(uid uint, itemType int) int {
+	var items []model.EzfyItem
+	h.DB.Where("user_id = ? AND count > 0", uid).Find(&items)
+	best, bestMin := 0, int64(0)
+	for _, it := range items {
+		cfg := ezfyCfg.item(it.CfgId)
+		if cfg == nil || cfg.ItemType != itemType {
+			continue
+		}
+		if best == 0 || cfg.Param1 < bestMin {
+			best, bestMin = cfg.ID, cfg.Param1
+		}
+	}
+	return best
+}
+
 // consumeItemN 一次扣掉 n 个道具（n <= 0 时什么都不做）。
 //
 // ★ 批量道具（如经验书一次用几千本）必须走这个 —— 原来循环里逐本调 consumeItem，

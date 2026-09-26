@@ -653,7 +653,12 @@
             ({{ b.level }}级)
             <template v-if="b.status !== 0">
               <span class="orange">施工中 {{ remain(b.end_time) }}</span>
-              <a href="javascript:;" @click="doSpeedBuilding(b)">加速</a>
+              <!-- ★ 2026-09-26 修复「加速道具买完实际使用不生效」：按背包里**实际拥有**的
+                   建筑加速道具(item_type=3)逐档渲染，点哪档就用哪档（原来是自动挑最短的，
+                   玩家买了 2 小时却只减 30 分钟，看着就像「买了没用上」）。 -->
+              <a v-for="a in accItems(3)" :key="'sb' + b.id + '_' + a.cfg_id" href="javascript:;"
+                 @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
+              <span class="gray" v-if="!accItems(3).length">(无建筑加速道具)</span>
             </template>
             <template v-else-if="b.level > 0 && b.level < b.max_level">
               <span class="build-act">
@@ -676,8 +681,15 @@
           <div class="old-line gray" v-if="!zoneBuilt.length">(本区还没有建筑, 点上面的「建造」)</div>
           <br/>
           <div class="old-line">
-            <a href="javascript:;" @click="doSpeedTrainAll">[训练一键加速]</a>|
-            <a href="javascript:;" @click="doSpeedTrainAllCity">[所有城市训练一键加速]</a>
+            <a href="javascript:;" @click="doSpeedTrainAll">[训练一键加速(消耗黄金)]</a>|
+            <a href="javascript:;" @click="doSpeedTrainAllCity">[所有城市训练一键加速(消耗黄金)]</a>
+          </div>
+          <!-- ★ 训练加速道具(item_type=4)的入口：上面两个是「花黄金一键完成」，
+               这里才是商城买的「训练加速30分钟/2小时」真正被消耗的地方。 -->
+          <div class="old-line" v-if="accItems(4).length">
+            训练加速道具:
+            <a v-for="a in accItems(4)" :key="'stb' + a.cfg_id" href="javascript:;"
+               @click="doSpeedTrain(null, a)">[加速{{ accLabel(a) }}]×{{ a.count }}</a>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
@@ -740,6 +752,10 @@
           <div class="old-line" v-for="q in queues" :key="'q' + q.id">
             {{ q.name }}×{{ q.count }} 剩余{{ remain(q.end_time) }}
             <!-- 接口只返回 status=0（训练中）的队列，所以这里不需要再判断状态 -->
+            <!-- ★ 2026-09-26 修复：训练页原来只有 [取消]，商城买的「训练加速」道具无处可用 -->
+            <a v-for="a in accItems(4)" :key="'sq' + q.id + '_' + a.cfg_id" href="javascript:;"
+               @click="doSpeedTrain(q, a)">[加速{{ accLabel(a) }}]</a>
+            <span class="gray" v-if="!accItems(4).length">(无训练加速道具)</span>
             <a href="javascript:;" @click="doCancelTrain(q)">[取消]</a>
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
@@ -907,7 +923,12 @@
             <span class="gray">[需科研中心{{ t.academy_need }}级]</span><br/>
             {{ t.effect }}<br/>
             <span v-if="t.researching" class="orange">研究中 {{ remain(t.end_time) }}
-              <a href="javascript:;" @click="doSpeedTech()">[加速]</a>
+              <!-- ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：原来这里的 [加速]
+                   调的是 /techs/speed，是**免费减 10 分钟**（minutes 还能由前端随便传），
+                   商城买的「科技加速30分钟/2小时」根本没被消耗。现在改为消耗道具。 -->
+              <a v-for="a in accItems(5)" :key="'st' + t.tech_id + '_' + a.cfg_id" href="javascript:;"
+                 @click="doSpeedTech(a)">[加速{{ accLabel(a) }}]</a>
+              <span class="gray" v-if="!accItems(5).length">(无科技加速道具)</span>
               <a href="javascript:;" @click="doCancelTech(t)">[取消]</a></span>
             <span v-else-if="t.level < t.max_level">
               <a href="javascript:;" @click="doResearch(t)">[研究{{ t.level + 1 }}级]</a>
@@ -1791,7 +1812,12 @@
                 <td>{{ b.status === 0 ? '空闲' : '施工中 ' + remain(b.end_time) }}</td>
                 <td>
                   <a v-if="b.status === 0 && b.level > 0 && b.level < b.max_level" href="javascript:;" @click="doUpgrade(b)">[升级]</a>
-                  <span v-if="b.status !== 0"><a href="javascript:;" @click="doSpeedBuilding(b)">[加速]</a></span>
+                  <!-- ★ 与建筑页同一口径：按背包里的建筑加速道具档位渲染 -->
+                  <template v-if="b.status !== 0">
+                    <a v-for="a in accItems(3)" :key="'hsb' + b.id + '_' + a.cfg_id" href="javascript:;"
+                       @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
+                    <span class="gray" v-if="!accItems(3).length">(无加速道具)</span>
+                  </template>
                 </td>
               </tr>
               <tr v-if="inlineTip && inlineTip.bid === b.id" :key="'hbt' + b.id">
@@ -4792,9 +4818,16 @@ export default {
       this.syncUrl()
       if (t === 'home') { this.load(); this.loadWelfare(); this.loadHomeChats() }
       else if (t === 'troops' || t === 'troop' || t === 'defence' ||
-               t === 'troopview' || t === 'trainpre' || t === 'troopstat') this.loadTroops()
+               t === 'troopview' || t === 'trainpre' || t === 'troopstat') {
+        this.loadTroops()
+        // ★ 训练页(troop)的队列行要按背包里的训练加速道具档位渲染 [加速] 按钮
+        if (t === 'troop' || t === 'troops') this.loadBag()
+      }
       else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
-      else if (t === 'techs') this.loadTechs()
+      // ★ 2026-09-26 修复「加速道具买完实际使用不生效」：科技/建筑/训练页的 [加速]
+      //   现在按「背包里实际拥有的加速道具档位」渲染按钮，所以进页时要拿到背包数据。
+      else if (t === 'techs') { this.loadTechs(); this.loadBag() }
+      else if (t === 'buildm' || t === 'builds' || t === 'cityhall') this.loadBag()
       else if (t === 'map') { this.backToMap(); this.loadStars() }
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
       else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
@@ -5819,25 +5852,63 @@ export default {
         } else this.inlineTip = { bid: b.id, text: r.msg || '拆除失败', type: 'error' }
       })
     },
-    async doSpeedBuilding (b) {
+    // ============ 加速道具（建筑 3 / 训练 4 / 科技 5）============
+    // ★ 2026-09-26 修复「加速道具买完实际使用不生效」：
+    //   根因是**训练页 / 科技页的加速入口根本没接这些道具** ——
+    //   训练页只有 [训练一键加速]（花黄金），科技页的 [加速] 调 /techs/speed
+    //   （免费减 10 分钟，minutes 还能由前端随便传），于是商城买的
+    //   「训练加速30分钟/2小时」「科技加速30分钟/2小时」买完在游戏里无处可用。
+    //   现在三个页面统一口径：按**背包里实际拥有**的档位渲染 [加速30分钟]/[加速2小时]，
+    //   点哪档就用哪档（顺带解决「买了 2 小时却自动用了 30 分钟」的困惑）。
+    accItems (type) {
+      return (this.bagItems || [])
+        .filter(i => i.item_type === type && i.count > 0)
+        .sort((a, x) => (a.param1 || 0) - (x.param1 || 0))
+    },
+    // 加速道具的档位名：120 →「2小时」，30 →「30分钟」
+    accLabel (a) {
+      const m = (a && a.param1) || 0
+      if (m >= 60 && m % 60 === 0) return (m / 60) + '小时'
+      return m + '分钟'
+    },
+    // 统一的「用道具加速」调用（cfg_id 走 /bag/use，后端按 item_type 决定加速目标）
+    //   done：成功后的回调（刷新对应页面的数据）
+    async useSpeedItem (item, type, done) {
+      await this.loadBag()
+      const it = (item && item.cfg_id) ? item : this.accItems(type)[0]
+      if (!it) {
+        this.notify('没有对应的加速道具，去商城购买后再加速', 'error')
+        return
+      }
+      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }).then(r => {
+        if (r.code === 0) {
+          this.notify((r.data && r.data.msg) ? r.data.msg : '加速成功', 'ok')
+          this.loadBag()
+          if (typeof done === 'function') done()
+        } else this.notify(r.msg || '加速失败', 'error')
+      })
+    },
+    async doSpeedBuilding (b, item) {
       // ★ 建筑加速必须消耗「建筑加速道具」(item_type=3)，没有道具则无法加速
       const bid = b && b.id
       await this.loadBag()
-      const acc = (this.bagItems || [])
-        .filter(i => i.item_type === 3 && i.count > 0)
-        .sort((a, x) => (a.param1 || 0) - (x.param1 || 0))
-      if (!acc.length) {
-        this.inlineTip = { bid, text: '没有建筑加速道具，无法加速', type: 'error' }
+      const it = (item && item.cfg_id) ? item : this.accItems(3)[0]
+      if (!it) {
+        this.inlineTip = { bid, text: '没有建筑加速道具，去商城购买后再加速', type: 'error' }
         return
       }
-      const it = acc[0]
-      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1 }).then(r => {
+      // ★ 带上 city_id：多城时「不传 city_id 走当前城」容易和玩家正在看的城错位
+      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '加速成功', type: 'ok' }
           this.load()
           this.loadBag()
         } else this.inlineTip = { bid, text: r.msg || '加速失败', type: 'error' }
       })
+    },
+    // 训练加速（训练页队列行 / 建筑页底部的「训练加速道具」入口）
+    doSpeedTrain (q, item) {
+      this.useSpeedItem(item, 4, () => { this.loadTroops(); this.load() })
     },
     // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
     bEntry (bid) {
@@ -6071,11 +6142,13 @@ export default {
     doResearch (t) {
       api.post('/games/ezfy/techs/research', { tech_id: t.tech_id }).then(r => this.alert(r, '科技研究已开始'))
     },
-    doSpeedTech () {
-      api.post('/games/ezfy/techs/speed', { minutes: 10 }).then(r => {
-        this.alert(r, '没有研究中的科技')
-        if (r.code === 0) this.loadTechs()
-      })
+    // ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：
+    //   原来这里调 POST /techs/speed {minutes:10} —— 后端既不校验道具也不扣任何东西，
+    //   等于「免费无限减 10 分钟」（minutes 还能被改成任意值，直接把研究刷完）。
+    //   商城卖的「科技加速30分钟/2小时」因此完全没有使用入口。
+    //   现在改成消耗科技加速道具(item_type=5)，与建筑页 [加速] 同一口径。
+    doSpeedTech (item) {
+      this.useSpeedItem(item, 5, () => { this.loadTechs() })
     },
     async doCancelTech (t) {
       if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return

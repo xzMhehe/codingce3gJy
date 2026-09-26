@@ -44,6 +44,13 @@ const (
 	ezfyItemTypeMoveCity    = 16
 	ezfyItemTypeMoveCityAdv = 17
 	ezfyItemTypeMoveCitySea = 18
+	// ★ 2026-09-26 三种加速道具（种子 ezfyEzfyCfgItem 的 4~9 号）：
+	//   4 建筑加速30分 / 5 建筑加速2小时 → ItemType 3
+	//   6 训练加速30分 / 7 训练加速2小时 → ItemType 4
+	//   8 科技加速30分 / 9 科技加速2小时 → ItemType 5
+	ezfyItemTypeBuildSpeed = 3
+	ezfyItemTypeTrainSpeed = 4
+	ezfyItemTypeTechSpeed  = 5
 )
 
 // ezfyMoveKinds 三种迁城方式 → 所需道具 cfgId + 展示名
