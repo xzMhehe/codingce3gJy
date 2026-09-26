@@ -58,10 +58,10 @@ DATABASES = {
     },
     # 线上库：测试通过后，把下面几项换成线上真实连接信息
     "prod": {
-        "host": "127.0.0.1",  # ← 改成线上服务器 IP
+        "host": "39.105.151.141",
         "port": 3306,
         "user": "root",
-        "password": "",  # ← 改成线上库 MySQL 密码
+        "password": "Mzd980625@@..",
         "dbname": "qq_jiayuan",
         "charset": "utf8mb4",
     },

@@ -138,14 +138,38 @@ func (h *EzfyHandler) currentCity(uid uint) model.EzfyCity {
 	return h.createMainCity(uid)
 }
 
+// anyCity 取玩家已有的任意一座城（id 最小 = 主城），不会建城。
+func (h *EzfyHandler) anyCity(uid uint) (model.EzfyCity, bool) {
+	var city model.EzfyCity
+	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err != nil {
+		return city, false
+	}
+	return city, true
+}
+
 // mainCity 主城（id 最小，建城扣费/城市列表基准用，不受切换影响）
 func (h *EzfyHandler) mainCity(uid uint) model.EzfyCity {
-	var city model.EzfyCity
-	if err := h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city).Error; err == nil {
+	if city, ok := h.anyCity(uid); ok {
 		return city
 	}
 	return h.createMainCity(uid)
 }
+
+// ezfyCityInitLocks 懒建城串行锁（按 uid 分片成固定 64 把，不用 map 以免无限增长）。
+//
+// ★ 用户反馈「玩家一进游戏就有两座城」的根因：
+//
+//	前端 mounted 会**并发**打好几个都要走 getOrCreateCity 的接口
+//	（/view、/troops、/techs、/res-cfg…），每个请求都是「查不到城 → 建一座」，
+//	于是同一毫秒各建一座。线上实测两座城的 created_at 只差 4~8ms，
+//	且 3 个「声望 0（列兵，可建城数=1）」的玩家都有 2 座城 ——
+//	说明不是军衔/升衔带来的，就是并发重复建城。
+//
+// 修法：建城前先抢「本玩家的锁」，进锁后二次确认，真的没有城才建；
+// 抢到锁时发现别人已建好，直接复用它，绝不多建。
+var ezfyCityInitLocks [64]sync.Mutex
+
+func ezfyCityInitLock(uid uint) *sync.Mutex { return &ezfyCityInitLocks[uid%64] }
 
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
@@ -166,9 +190,17 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	}
 }
 
-// getOrCreateCity 懒创建主城（随机平原空位，初始建筑 市政厅/民居/农田 各1级）
-// createMainCity 建主城（首次进游戏）
+// createMainCity 建主城（首次进游戏，随机平原空位，初始建筑 市政厅/民居/农田 各1级）
+//
+// ★ 并发调用下只会建出一座：抢到本玩家的建城锁后二次确认，
+// 别人已经建好了就直接复用（首个请求建城，其余请求拿到同一座城）。
 func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
+	mu := ezfyCityInitLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
+	if exist, ok := h.anyCity(uid); ok {
+		return exist
+	}
 	pos := h.findFreePos()
 	city := model.EzfyCity{
 		UserID: uid, Name: "新城市",
@@ -2639,6 +2671,11 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		return
 	}
 	// ★ 军衔限制分城数量（可建城数见 ezfy_cfg_rank.city_max）
+	// ★ 同时防「连点两下[建新城]」：配额判断 + 建城整段拿本玩家的建城锁，
+	//   否则两次请求会同时看到「还没到上限」各建一座（与首次进游戏重复建城同一根因）。
+	mu := ezfyCityInitLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
 	prof := h.ensureProfile(uid)
 	var owned int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
@@ -2650,7 +2687,13 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	}
 
 	// 扣费走主城（不受当前切换影响）
-	main := h.mainCity(uid)
+	// ★ 用户规则：新城市只能由玩家自己点[建新城]创建 —— 主城不存在就直接报错，
+	//   绝不在这里顺手替玩家建一座（原来调 mainCity 会自动建主城，点一下变两座城）。
+	main, ok := h.anyCity(uid)
+	if !ok {
+		resp.ParamError(c, "请先进入游戏创建主城")
+		return
+	}
 	if main.Gold < ezfyNewCityGoldCost {
 		resp.ParamError(c, fmt.Sprintf("建造新城需要%d黄金", ezfyNewCityGoldCost))
 		return
