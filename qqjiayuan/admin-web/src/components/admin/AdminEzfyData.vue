@@ -11,6 +11,8 @@
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <el-button type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
+        <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 用户要求从玩家信息管理移到这里 -->
+        <el-button v-if="table === 'items'" type="warning" plain icon="el-icon-present" @click="openItemGrant">发放道具</el-button>
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
@@ -67,6 +69,42 @@
         <div slot="footer">
           <el-button size="small" @click="showForm = false">取 消</el-button>
           <el-button size="small" type="primary" :loading="saving" @click="doSave">保 存</el-button>
+        </div>
+      </el-dialog>
+
+      <!-- ★ 发放道具：目标玩家按昵称/游戏ID搜索选择，道具入背包，2026-09-26 用户要求从玩家信息管理移来 -->
+      <el-dialog title="发放道具" :visible.sync="grantDlg" width="580px" :close-on-click-modal="false">
+        <el-form label-width="90px" size="small">
+          <el-form-item label="发放对象">
+            <div>
+              <el-input v-model="grantPlayer" placeholder="玩家昵称 / 游戏ID" clearable style="width:210px"
+                        @keyup.enter.native="searchGrantPlayer" />
+              <el-button size="small" type="primary" plain icon="el-icon-search" @click="searchGrantPlayer">搜索</el-button>
+            </div>
+            <el-select v-if="grantPlayers.length" v-model="grantUserId" placeholder="在搜索结果中选择玩家"
+                       style="margin-top:6px;width:100%"
+                       :filterable="grantPlayers.length > 1" default-first-option>
+              <el-option v-for="p in grantPlayers" :key="p.user_id"
+                         :label="p.nickname + '（ID:' + p.user_id + (p.home_num ? ' / 家园:' + p.home_num : '') + '）'"
+                         :value="p.user_id" />
+            </el-select>
+            <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>
+          </el-form-item>
+          <el-form-item label="道具">
+            <div v-for="(it, i) in grantItems" :key="i" class="grant-item-row">
+              <el-select v-model="it.cfg_id" filterable placeholder="选择道具" style="width:230px">
+                <el-option v-for="o in grantItemOpts" :key="o.id" :label="o.id + ' — ' + o.name" :value="o.id" />
+              </el-select>
+              <span class="grant-x">×</span>
+              <el-input-number v-model.number="it.count" :min="1" :max="9999" controls-position="right" style="width:110px" />
+              <el-button type="text" class="danger-btn" @click="grantItems.splice(i, 1)">删除</el-button>
+            </div>
+            <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="grantItems.push({ cfg_id: '', count: 1 })">添加道具</el-button>
+          </el-form-item>
+        </el-form>
+        <div slot="footer">
+          <el-button size="small" @click="grantDlg = false">取 消</el-button>
+          <el-button size="small" type="primary" :loading="grantSaving" @click="doItemGrant">发 放</el-button>
         </div>
       </el-dialog>
     </el-card>
@@ -371,7 +409,11 @@ export default {
       // ★ 动态字典：任务分类名来自「任务类型」表，不能写死在前端
       //   dynDicts.taskType = { id: { n: 类型名 } }，供 dictOf 兜底查询
       dynDicts: { taskType: {} },
-      taskTypeOpts: []
+      taskTypeOpts: [],
+      // ★ 发放道具对话框状态
+      grantDlg: false, grantSaving: false,
+      grantPlayer: '', grantPlayers: [], grantUserId: 0,
+      grantItemOpts: [], grantItems: []
     }
   },
   computed: {
@@ -385,6 +427,11 @@ export default {
     tableName () {
       const t = this.tables.find(t => t.k === this.table)
       return t ? t.n : '数据'
+    },
+    // 发放对象选中后的展示（昵称 + ID），来自搜索列表
+    grantTargetName () {
+      const p = this.grantPlayers.find(p => p.user_id === this.grantUserId)
+      return p ? (p.nickname + '（ID:' + p.user_id + '）') : ''
     }
   },
   mounted () { this.load(); this.loadTaskTypeDict() },
@@ -486,6 +533,42 @@ export default {
           else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ============ 道具配置 → 发放道具（2026-09-26 用户要求从玩家信息管理移到这里） ============
+    openItemGrant () {
+      this.grantDlg = true
+      this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0
+      this.grantItems = [{ cfg_id: '', count: 1 }]
+      // 道具下拉选项：拉一遍道具表（一次最多 200 条，够用）
+      if (!this.grantItemOpts.length) {
+        api.get('/admin/ezfy-data/items', { params: { page: 1, size: 200 } }).then(r => {
+          if (r.code === 0) this.grantItemOpts = r.data.list || []
+        })
+      }
+    },
+    // 按昵称 / 游戏ID 搜索目标玩家（昵称模糊、ID 精确，后端返回最多 20 条）
+    searchGrantPlayer () {
+      const word = (this.grantPlayer || '').trim()
+      if (!word) { this.$message.warning('请输入玩家昵称或游戏ID'); return }
+      api.get('/admin/ezfy-item-grant/players', { params: { word } }).then(r => {
+        if (r.code !== 0) { this.$message.error(r.msg); this.grantPlayers = []; return }
+        this.grantPlayers = r.data.list || []
+        // 只有一条结果时自动选中
+        this.grantUserId = this.grantPlayers.length === 1 ? this.grantPlayers[0].user_id : 0
+        if (!this.grantPlayers.length) this.$message.warning('未找到匹配的玩家')
+      })
+    },
+    doItemGrant () {
+      const target = this.grantUserId || ((this.grantPlayer || '').trim())
+      if (!target) { this.$message.warning('请先搜索并选择要发放的玩家'); return }
+      const items = this.grantItems.filter(it => it.cfg_id && it.count > 0)
+      if (!items.length) { this.$message.warning('请添加要发放的道具'); return }
+      this.grantSaving = true
+      api.post('/admin/ezfy-item-grant', { player: String(target), items }).then(r => {
+        this.grantSaving = false
+        if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.grantDlg = false }
+        else this.$message.error(r.msg || '发放失败')
+      }).catch(() => { this.grantSaving = false })
     }
   }
 }
@@ -497,4 +580,8 @@ export default {
 .unlimited { color: #67c23a; font-weight: 600; }
 /* 数据表切换 Tab：与下方工具栏贴近一些，别留一大块空白 */
 .cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
+/* 发放道具：已选玩家提示 + 道具行 */
+.grant-target { margin-top: 6px; color: #67c23a; font-size: 12px; }
+.grant-item-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.grant-x { color: #909399; }
 </style>

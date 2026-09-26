@@ -140,7 +140,7 @@
     </el-dialog>
 
     <!-- 发放 -->
-    <el-dialog title="发放资源/道具" :visible.sync="grantDlg" width="540px" :close-on-click-modal="false">
+    <el-dialog title="发放资源" :visible.sync="grantDlg" width="540px" :close-on-click-modal="false">
       <el-form label-width="90px">
         <el-form-item label="黄金">
           <el-input-number v-model.number="grant.gold" :min="0" :step="1000" />
@@ -163,19 +163,9 @@
           <el-button size="mini" type="warning" plain :loading="diamondSaving" @click="doDiamond">发 放</el-button>
           <span class="td-mono" style="margin-left:8px">当前：{{ grantDiamond }}</span>
         </el-form-item>
-        <el-form-item label="道具">
-          <div class="grant-items">
-            <div v-for="(it, i) in grant.items" :key="i" class="grant-item-row">
-              <el-input-number v-model.number="it.cfg_id" :min="1" controls-position="right" style="width:120px" />
-              <span class="grant-x">×</span>
-              <el-input-number v-model.number="it.count" :min="1" :max="9999" controls-position="right" style="width:110px" />
-              <el-button type="text" class="danger-btn" @click="grant.items.splice(i, 1)">删除</el-button>
-            </div>
-            <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="grant.items.push({ cfg_id: 1, count: 1 })">添加道具</el-button>
-          </div>
-        </el-form-item>
       </el-form>
-      <!-- [说明·不显示在界面] 提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；道具ID 可在「二战风云 → 数据管理」中查询 -->
+      <!-- [说明·不显示在界面] 提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；
+           道具发放已移至「二战风云 → 数据管理 → 道具配置」 -->
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -194,7 +184,7 @@ export default {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       detailDlg: false, detail: null,
       editDlg: false, saving: false, editId: 0, form: {},
-      grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0, items: [] },
+      grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       diamondSaving: false, grantDiamond: 0,
       typeNames: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
       statusNames: { 0: '行进中', 1: '驻守中', 2: '返回中', 3: '已完成', 4: '已阵亡' }
@@ -240,7 +230,7 @@ export default {
     },
     openGrant (row) {
       this.grantId = row.user_id
-      this.grant = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0, items: [] }
+      this.grant = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 }
       this.grantDiamond = 0
       this.grantDlg = true
       // 拉一下当前钻石余额（玩家端只读，这里给管理员做参考）
@@ -265,7 +255,7 @@ export default {
     doGrant () {
       const hasRes = this.grant.gold > 0 || this.grant.food > 0 || this.grant.steel > 0 ||
         this.grant.oil > 0 || this.grant.rare > 0
-      if (!hasRes && this.grant.items.length === 0) {
+      if (!hasRes) {
         this.$message.warning('请先填写发放内容')
         return
       }
@@ -293,6 +283,5 @@ export default {
 <style scoped>
 @import './farm-admin.css';
 .sub-title { font-size: 13px; font-weight: 600; color: #1f2d3d; margin: 12px 0 8px; padding-left: 6px; border-left: 3px solid #409eff; }
-.grant-item-row { display: flex; align-items: center; margin-bottom: 6px; }
-.grant-x { margin: 0 6px; }
+.danger-btn { color: #f56c6c; }
 </style>

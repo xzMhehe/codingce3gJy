@@ -233,6 +233,96 @@ func (h *AdminHandler) AdminEzfyGrant(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": msg})
 }
 
+// AdminEzfyItemGrantPlayers 道具发放目标玩家搜索（昵称 LIKE / 游戏ID 精确，供发放对话框选择）
+func (h *AdminHandler) AdminEzfyItemGrantPlayers(c *gin.Context) {
+	word := strings.TrimSpace(c.Query("word"))
+	if word == "" {
+		resp.ParamError(c, "请输入玩家昵称或游戏ID")
+		return
+	}
+	q := h.DB.Model(&model.EzfyProfile{})
+	if uid, err := strconv.Atoi(word); err == nil {
+		q = q.Where("user_id = ?", uid)
+	} else {
+		q = q.Where("nickname LIKE ?", "%"+word+"%")
+	}
+	var rows []model.EzfyProfile
+	q.Order("prestige DESC, id ASC").Limit(20).Find(&rows)
+	type out struct {
+		UserID   uint   `json:"user_id"`
+		Nickname string `json:"nickname"`
+		HomeNum  string `json:"home_num"`
+	}
+	list := []out{}
+	for _, p := range rows {
+		homeNum := ""
+		var u model.User
+		if err := h.DB.First(&u, p.UserID).Error; err == nil {
+			homeNum = u.Username
+		}
+		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNum})
+	}
+	resp.OK(c, gin.H{"list": list})
+}
+
+// AdminEzfyItemGrant POST /admin/ezfy-item-grant {player, items[]} —— 数据管理→道具配置的「发放道具」。
+// player 支持玩家昵称或游戏ID(user_id)；道具入背包并站内通知。
+func (h *AdminHandler) AdminEzfyItemGrant(c *gin.Context) {
+	var in struct {
+		Player string `json:"player"`
+		Items  []struct {
+			CfgID int `json:"cfg_id"`
+			Count int `json:"count"`
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	player := strings.TrimSpace(in.Player)
+	if player == "" {
+		resp.ParamError(c, "请填写玩家昵称或游戏ID")
+		return
+	}
+	if len(in.Items) == 0 {
+		resp.ParamError(c, "请添加要发放的道具")
+		return
+	}
+	var p model.EzfyProfile
+	if uid, err := strconv.Atoi(player); err == nil {
+		if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err != nil {
+			resp.NotFound(c, "未找到该游戏ID对应的玩家，请先搜索确认")
+			return
+		}
+	} else {
+		if err := h.DB.Where("nickname = ?", player).First(&p).Error; err != nil {
+			resp.NotFound(c, "未找到该昵称对应的玩家，请先搜索确认")
+			return
+		}
+	}
+	ez := &EzfyHandler{DB: h.DB}
+	items := ""
+	for _, it := range in.Items {
+		if it.CfgID <= 0 || it.Count <= 0 {
+			continue
+		}
+		var cfg model.EzfyCfgItem
+		if err := h.DB.First(&cfg, it.CfgID).Error; err != nil {
+			resp.ParamError(c, "道具不存在："+strconv.Itoa(it.CfgID))
+			return
+		}
+		ez.addItem(p.UserID, it.CfgID, it.Count)
+		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
+	}
+	if items == "" {
+		resp.ParamError(c, "请添加要发放的道具")
+		return
+	}
+	h.DB.Create(&model.EzfyNotice{UserId: p.UserID, Title: "管理员发放道具",
+		Content: "管理员发放道具：" + strings.TrimSpace(items) + "，请查收。"})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发放给玩家「%s」(ID:%d)%s", p.Nickname, p.UserID, items)})
+}
+
 // AdminEzfyPlayerDelete 删除玩家（档案+城池+全部游戏数据）
 func (h *AdminHandler) AdminEzfyPlayerDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

@@ -1058,6 +1058,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyGrant)
 				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyGrantOfficer)
 				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), adminH.AdminEzfyPlayerDelete)
+				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrantPlayers)
+				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrant)
 				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyData)
 				admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyDataCreate)
 				admin.PUT("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyDataUpdate)
