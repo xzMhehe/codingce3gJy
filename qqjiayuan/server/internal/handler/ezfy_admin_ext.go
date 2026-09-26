@@ -1133,8 +1133,21 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 		return "", "名将不存在"
 	}
 	city := ez.getOrCreateCity(p.UserID)
+	// ★★ 2026-09-26 修复「同一名将可以被重复发放」：
+	//
+	//	原来只查 `city_id = 当前城` —— 玩家有分城时，把名将发到 A 城后再切到 B 城发一次，
+	//	B 城查不到记录就放行了，同一个名将能刷出 N 个。
+	//	现在改成按**玩家**查（`city_id IN 该玩家名下所有城`），规则是
+	//	**「每名玩家同一名将只能持有 1 个」**。
+	//	★ 判定依据是 `general_id`（军官池主键），不是名字 ——
+	//	  玩家用改名卡把军官改成任何名字都不影响查重（改名只改实例的 name，
+	//	  绝不回写/清空 general_id，见 officerRename）。
+	//	★ 不过滤 `is_captive`/`status`：被俘、出征中的名将仍然算「已拥有」。
 	var dup int64
-	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ? AND general_id = ?", city.ID, g.ID).Count(&dup)
+	h.DB.Model(&model.EzfyOfficer{}).
+		Where("general_id = ? AND city_id IN (?)", g.ID,
+			h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
+		Count(&dup)
 	if dup > 0 {
 		return "", "该玩家已拥有" + g.Name
 	}
