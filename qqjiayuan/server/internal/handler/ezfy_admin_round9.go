@@ -33,6 +33,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时默认开，见 ezfyHousePopLimitOn）
+		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 军官升星（简化后：功能开关 + 固定成功率 + 每星加成 + 星级上限）
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
@@ -158,6 +160,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MarchOilOn    *int     `json:"march_oil_on"`
 		WarRequireOn  *int     `json:"war_require_on"`
 		MarchCapOn    *int     `json:"march_cap_on"`
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 开关）
+		HousePopLimitOn   *int `json:"house_pop_limit_on"`
+		ConveneFlexibleOn *int `json:"convene_flexible_on"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -193,6 +198,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GatherResMult: ezfyGatherResMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
+		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
@@ -358,6 +365,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setSwitch(in.MarchCapOn, &lim.MarchCapOn, "出征上限") {
+		return
+	}
+	// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 都合法）
+	if !setSwitch(in.HousePopLimitOn, &lim.HousePopLimitOn, "民居容量限制") {
+		return
+	}
+	if !setSwitch(in.ConveneFlexibleOn, &lim.ConveneFlexibleOn, "召集人口灵活配置") {
 		return
 	}
 	// ★ 军官升星的功能开关（0/1 都合法）
@@ -560,9 +574,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"march_oil_on":    lim.MarchOilOn,
 		"war_require_on":  lim.WarRequireOn,
 		"march_cap_on":    lim.MarchCapOn,
-		"wild_troop_mult": lim.WildTroopMult,
-		"wild_res_mult":   lim.WildResMult,
-		"gather_res_mult": lim.GatherResMult,
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0 = 关 必须落库）
+		"house_pop_limit_on":  lim.HousePopLimitOn,
+		"convene_flexible_on": lim.ConveneFlexibleOn,
+		"wild_troop_mult":     lim.WildTroopMult,
+		"wild_res_mult":       lim.WildResMult,
+		"gather_res_mult":     lim.GatherResMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
 		"officer_star_up_on": lim.OfficerStarUpOn,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写

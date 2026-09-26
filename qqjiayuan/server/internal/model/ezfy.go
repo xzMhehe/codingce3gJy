@@ -310,6 +310,15 @@ type EzfyCfgLimit struct {
 	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
 	MarchCapOn int `gorm:"comment:出征上限开启" json:"march_cap_on"`
 
+	// ★ 2026-09-26 用户要求「召集人口那里加『民居容量限制』『召集人口灵活配置』两个开关」：
+	//   ① HousePopLimitOn 民居容量限制：1 开（默认）= 民居容量决定人口上限 pop_max，
+	//      人口自然增长到 pop_max 封顶；0 关 = 民居不再限制人口，人口可无限增长。
+	//   ② ConveneFlexibleOn 召集人口灵活配置：1 开（默认）= 召集人口不受民居上限限制、
+	//      可突破 pop_max（原有行为）；0 关 = 召集同样受民居容量上限约束。
+	//   ⚠️ 两个都是开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
+	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
+	ConveneFlexibleOn int `gorm:"comment:召集人口灵活配置（关 = 召集同样受民居上限约束）" json:"convene_flexible_on"`
+
 	// ============ 军官升星（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
 	//
 	// ★ 简化后的规则：升星按固定概率（officer_star_chance），失败也消耗 1 枚星级徽章，

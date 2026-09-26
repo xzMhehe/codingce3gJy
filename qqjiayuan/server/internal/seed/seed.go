@@ -225,6 +225,9 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
 		addSwitchCol("war_require_on", 1)  // 宣战功能：1 开（默认，掠夺/征服需先宣战生效）/ 0 关（直接可打）
 		addSwitchCol("march_cap_on", 1)    // 出征兵力上限：1 开（默认，司令部等级那套）/ 0 关（不限兵力）
+		// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
+		addSwitchCol("house_pop_limit_on", 1)  // 民居容量限制：1 开（默认，民居容量决定人口上限）/ 0 关（不限人口）
+		addSwitchCol("convene_flexible_on", 1) // 召集人口灵活配置：1 开（默认，可突破民居上限）/ 0 关（受上限约束）
 		// ★ 军官升星（2026-09-22）：三个开关 + 四个数值
 		addSwitchCol("officer_star_up_on", 1)        // 升星功能：1 开（默认）/ 0 关
 		addSwitchCol("officer_star_chance_on", 1)    // 概率开关：1 按概率（默认）/ 0 必成功

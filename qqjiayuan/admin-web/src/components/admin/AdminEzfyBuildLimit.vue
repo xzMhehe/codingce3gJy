@@ -153,6 +153,15 @@
               <template slot="label">出征油耗<el-tooltip placement="top" :content="tips.march_oil_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
+            <!-- ★ 2026-09-26 用户要求「召集人口那里加民居容量限制、召集人口灵活配置两个开关」 -->
+            <el-form-item>
+              <template slot="label">民居容量限制<el-tooltip placement="top" :content="tips.house_pop_limit_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.house_pop_limit_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">召集人口灵活配置<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ⑥ 军官升星 -->
@@ -209,6 +218,8 @@ export default {
         res_max_food: 10000000000, res_max_steel: 10000000000, res_max_oil: 10000000000,
         res_max_rare: 10000000000, res_max_gold: 10000000000,
         recruit_cost_on: 1, food_upkeep_on: 1, march_oil_on: 1, war_require_on: 1, march_cap_on: 1,
+        // ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（默认都开）
+        house_pop_limit_on: 1, convene_flexible_on: 1,
         officer_star_up_on: 1,
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5
@@ -259,6 +270,8 @@ export default {
         recruit_cost_on: '开 = 征兵消耗资源并占用空闲人口；关 = 不消耗资源、也不占人口',
         food_upkeep_on: '开 = 城内军队每小时扣除粮食；关 = 不扣',
         march_oil_on: '开 = 出征消耗石油；关 = 不消耗',
+        house_pop_limit_on: '开 = 民居容量决定人口上限 pop_max，人口自然增长到上限就停；关 = 民居不限制人口，人口可无限增长',
+        convene_flexible_on: '开 = 召集人口不受民居容量上限限制，可突破 pop_max；关 = 召集人口同样受民居上限约束（民居容量限制关掉时此项无意义）',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
@@ -307,6 +320,8 @@ export default {
             march_oil_on: sw(r.data.march_oil_on),
             war_require_on: sw(r.data.war_require_on),
             march_cap_on: sw(r.data.march_cap_on),
+            house_pop_limit_on: sw(r.data.house_pop_limit_on),
+            convene_flexible_on: sw(r.data.convene_flexible_on),
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),

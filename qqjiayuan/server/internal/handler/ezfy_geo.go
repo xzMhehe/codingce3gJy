@@ -722,7 +722,10 @@ const (
 	ezfyMarchOilDef    = 1 // 出征油耗：默认开
 	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
 	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
-	ezfyWildMultDef    = 1 // 野地兵力倍数：默认 1
+	// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
+	ezfyHousePopLimitDef = 1 // 民居容量限制：默认开（民居容量决定人口上限）
+	ezfyConveneFlexDef   = 1 // 召集人口灵活配置：默认开（召集可突破民居上限）
+	ezfyWildMultDef      = 1 // 野地兵力倍数：默认 1
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 1
 	ezfyWildResMultDef = 1
 	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 1
@@ -739,6 +742,29 @@ func ezfyMarchCapOn() bool {
 		return ezfyMarchCapDef != 0
 	}
 	return ezfyCfg.limit.MarchCapOn != 0
+}
+
+// ezfyHousePopLimitOn 民居容量是否限制人口上限（关 = 民居不限制人口，人口可无限增长）
+//
+// ★ 2026-09-26 用户要求「召集人口那里加个民居容量限制开关，默认开」。
+//
+//	关掉后 calcResource 里的人口自然增长不再按 pop_max 封顶（pop_max 仍照常计算/展示）。
+func ezfyHousePopLimitOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyHousePopLimitDef != 0
+	}
+	return ezfyCfg.limit.HousePopLimitOn != 0
+}
+
+// ezfyConveneFlexOn 召集人口是否可突破民居上限（关 = 召集同样受民居容量约束）
+//
+// ★ 2026-09-26 用户要求「召集人口灵活配置，默认开（现有行为：可突破上限）」。
+// 注意：只有在「民居容量限制」也开着时，民居上限才存在；两者都开时才需要在 Convene 里卡上限。
+func ezfyConveneFlexOn() bool {
+	if !ezfyCfg.ready() {
+		return ezfyConveneFlexDef != 0
+	}
+	return ezfyCfg.limit.ConveneFlexibleOn != 0
 }
 
 // ============ 军官升星配置（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
@@ -1087,6 +1113,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		GatherResMult: ezfyGatherResMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时同样要显式给默认开）
+		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径，默认 100 = 100% = 原价
 		SpeedTrainRate: 100, WoundHealRate: 100,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 10 亿 / 5 天）

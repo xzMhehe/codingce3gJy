@@ -823,13 +823,16 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		wildRare = wildRare * mult / 100
 	}
 
-	if city.Pop < city.PopMax {
+	// ★ 2026-09-26 用户要求：「民居容量限制」开关关掉时，民居不再限制人口 —— 自然增长
+	//   不再按 pop_max 封顶（人口可无限增长）；开着时保持原行为（增长到 pop_max 就停）。
+	housePopLimited := ezfyHousePopLimitOn()
+	if !housePopLimited || city.Pop < city.PopMax {
 		grow := int64(float64(city.PopMax) * 0.02 * hours)
 		if grow < 1 {
 			grow = 1
 		}
 		city.Pop += grow
-		if city.Pop > city.PopMax {
+		if housePopLimited && city.Pop > city.PopMax {
 			city.Pop = city.PopMax
 		}
 	}
@@ -2501,6 +2504,9 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		// ★ 军官工资（黄金/小时）：军官页直接展示，让玩家看得见钱花在哪
 		//   用上面已取到的 officers 做纯内存计算（勿改回 officerSalaryPerHour）
 		"officer_salary": officerSalaryOf(officers),
+		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置两个开关，前端「召集人口」页按它提示与禁用按钮
+		"house_pop_limit_on":  ezfyHousePopLimitOn(),
+		"convene_flexible_on": ezfyConveneFlexOn(),
 	})
 }
 
@@ -2863,11 +2869,18 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集10万人口需要%d粮食", ezfyConveneFoodCost))
 		return
 	}
+	// ★ 2026-09-26 用户要求加「民居容量限制 / 召集人口灵活配置」两个开关：
+	//   只有「民居容量限制」开着（民居上限才存在）且「召集人口灵活配置」关着时，
+	//   召集才受民居容量上限约束；任一条件不满足都维持原有的「可突破上限」行为。
+	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.Pop+ezfyConvenePopGain > city.PopMax {
+		resp.ParamError(c, fmt.Sprintf("人口已达民居容纳上限(%d), 无法继续召集", city.PopMax))
+		return
+	}
 	city.Food -= ezfyConveneFoodCost
 	city.Pop += ezfyConvenePopGain
 	h.saveCityRes(city)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("pop", city.Pop)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", ezfyConvenePopGain)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", ezfyConvenePopGain), "pop": city.Pop, "pop_max": city.PopMax})
 }
 
 // Placate 安抚民心（花费黄金降低民怨）
