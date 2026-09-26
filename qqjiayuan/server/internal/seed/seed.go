@@ -212,6 +212,10 @@ func Run(db *gorm.DB, staticDir string) {
 		// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
 		addLimitCol("convene_food_cost", 100000)
 		addLimitCol("convene_pop_gain", 100000)
+		// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
+		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。
+		addLimitCol("convene_pop_max", 0)
 	}
 
 	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（用户要求管理端可配）

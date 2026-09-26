@@ -775,6 +775,9 @@ func ezfyConveneFlexOn() bool {
 const (
 	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
 	ezfyConvenePopGainDef  = 100000 // 召集一次获得人口，默认 10 万
+	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	//   全局硬性人口上限，默认 0 = 不限。⚠️ 0 是有效值（不限），不能用 ezfyLimitOr 兜底。
+	ezfyConvenePopMaxDef = 0
 )
 
 // ezfyConveneFoodCostCfg 召集一次消耗的粮食（默认 10 万）
@@ -785,6 +788,16 @@ func ezfyConveneFoodCostCfg() int64 {
 // ezfyConvenePopGainCfg 召集一次获得的人口（默认 10 万）
 func ezfyConvenePopGainCfg() int64 {
 	return int64(ezfyLimitOr(ezfyCfg.limit.ConvenePopGain, ezfyConvenePopGainDef))
+}
+
+// ezfyConvenePopMaxCfg 召集硬性人口上限（0 = 不限）。
+//
+// ⚠️ 0 是有效值（= 不限上限），直接返回配置值，不能用 ezfyLimitOr（那会把它兜底成别的数）。
+func ezfyConvenePopMaxCfg() int64 {
+	if !ezfyCfg.ready() {
+		return ezfyConvenePopMaxDef
+	}
+	return int64(ezfyCfg.limit.ConvenePopMax)
 }
 
 // ============ 军官升星配置（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
@@ -1161,6 +1174,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
+		ConvenePopMax: ezfyConvenePopMaxDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,

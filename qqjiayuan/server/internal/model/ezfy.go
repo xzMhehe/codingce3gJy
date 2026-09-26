@@ -332,6 +332,10 @@ type EzfyCfgLimit struct {
 	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
 	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
 	ConvenePopGain  int `gorm:"comment:召集获得人口" json:"convene_pop_gain"`
+	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	//   全局硬性人口上限（0 = 不限/不额外封顶；>0 时召集后人口不得超过它）。
+	//   ⚠️ 0 是有意义的（= 不限），不能带 gorm:"default:x" 标签，seed 走 addLimitCol 且别用 <=0 回填覆盖正向值。
+	ConvenePopMax int `gorm:"comment:召集硬性人口上限（0 = 不限，超过禁止召集）" json:"convene_pop_max"`
 
 	// ============ 军官升星（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
 	//

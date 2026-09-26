@@ -1701,6 +1701,10 @@
         <div class="panel">
           <div class="panel-title">召集人口</div>
           当前人口: {{ city.pop }} / 民居容纳: {{ housePopLimitOn ? city.pop_max : '不限' }}<br/>
+          <!-- ★ 2026-09-26：全局硬性人口上限（管理端配置，0 表示不限），超过则禁止召集 -->
+          <template v-if="convenePopMax > 0">
+            召集人口上限: {{ fmtBig(convenePopMax) }}<br/>
+          </template>
           <!-- ★ 2026-09-26：提示文案随「民居容量限制 / 召集人口灵活配置」两个开关变化，
                花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
           <template v-if="!housePopLimitOn">
@@ -1714,7 +1718,7 @@
           </template>
           <div class="old-line">{{ resNames.food }}: {{ city.food }}</div>
           <button @click="doConvene" :disabled="conveneBlocked">[召集]</button>
-          <span v-if="conveneBlocked" class="gray">人口已达民居容纳上限</span>
+          <span v-if="conveneBlocked" class="gray">已达人口上限, 无法召集</span>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3814,6 +3818,8 @@ export default {
       // ★ 2026-09-26 召集消耗粮食 / 召集获得人口（/view 下发，默认各 10 万；原来写死）
       conveneFoodCost: 100000,
       convenePopGain: 100000,
+      // ★ 2026-09-26 全局硬性人口上限（/view 下发，0 = 不限），超过禁止召集
+      convenePopMax: 0,
       troopsData: { troops: [], queues: [], wounded: [], cfgs: [], pop: 0, pop_used: 0, wall_level: 0, train_discount: 0 },
       // ★ 占用人口（只有训练队列里没出厂的新兵占）：/view 与 /troops 都会下发，谁后到用谁
       popUsed: 0,
@@ -4124,9 +4130,13 @@ export default {
     //   仅当「民居容量限制」开 且「召集人口灵活配置」关 时，召集才受上限约束。
     //   单次召集 +convenePopGain 人口（管理端可配，默认 10 万），加完超上限就禁用按钮。
     conveneBlocked () {
-      if (!this.housePopLimitOn || this.conveneFlexibleOn) return false
       // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
       const pop = (this.city && this.city.pop) || this.cityPop || 0
+      // ★ 2026-09-26 全局硬性人口上限（管理端配置，0 = 不限）：对召集永远生效
+      if (this.convenePopMax > 0 && pop + this.convenePopGain > this.convenePopMax) return true
+      // ★ 2026-09-26 民居上限：仅当「民居容量限制」开 且「召集人口灵活配置」关 时生效
+      //   单次召集 +convenePopGain 人口（管理端可配，默认 10 万），加完超上限就禁用按钮。
+      if (!this.housePopLimitOn || this.conveneFlexibleOn) return false
       return pop + this.convenePopGain > ((this.city && this.city.pop_max) || 0)
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
@@ -4948,6 +4958,8 @@ export default {
           // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
           this.conveneFoodCost = Number(d.convene_food_cost) || 100000
           this.convenePopGain = Number(d.convene_pop_gain) || 100000
+          // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
+          this.convenePopMax = Number(d.convene_pop_max) || 0
           this.wildlands = d.wildlands
           this.queues = d.queues
           this.marching = d.marching
@@ -5959,7 +5971,7 @@ export default {
     },
     // ---- 城市操作 ----
     doConvene () {
-      api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r, '部队已集合'))
+      api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r, '召集完成'))
     },
     doPlacate () {
       api.post('/games/ezfy/city/placate', {}).then(r => this.alert(r, '安抚完成'))

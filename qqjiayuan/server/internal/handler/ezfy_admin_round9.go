@@ -27,6 +27,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
+		ConvenePopMax: ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
@@ -179,6 +181,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
 		ConveneFoodCost *int `json:"convene_food_cost"`
 		ConvenePopGain  *int `json:"convene_pop_gain"`
+		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，可配置为 0 关闭限制）
+		ConvenePopMax *int `json:"convene_pop_max"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -209,6 +213,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
+		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
+		ConvenePopMax: ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
@@ -300,6 +306,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.ConvenePopGain = *in.ConvenePopGain
+	}
+	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	//   全局硬性人口上限。0 = 不限（关闭限制），1~10 亿为有效封顶值。
+	if in.ConvenePopMax != nil {
+		if *in.ConvenePopMax < 0 || *in.ConvenePopMax > 1000000000 {
+			resp.ParamError(c, "人口上限需要在 0~1000000000 之间（0 = 不限）")
+			return
+		}
+		lim.ConvenePopMax = *in.ConvenePopMax
 	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 36
@@ -655,6 +670,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_gain":  lim.ConvenePopGain,
+		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
+		"convene_pop_max": lim.ConvenePopMax,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

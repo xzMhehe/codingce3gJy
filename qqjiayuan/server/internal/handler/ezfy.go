@@ -878,6 +878,11 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 			city.Pop = city.PopMax
 		}
 	}
+	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限」：
+	//   全局硬性上限（管理端可配，0 = 不限）同样封顶自然增长，与召集门同一口径。
+	if hardCap := ezfyConvenePopMaxCfg(); hardCap > 0 && city.Pop > hardCap {
+		city.Pop = hardCap
+	}
 	// ★ 用户要求「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	var troopFoodCost int64
 	if ezfyFoodUpkeepOn() {
@@ -1300,11 +1305,11 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 		if b.StartTime == 0 && b.TargetLevel > 0 {
 			to = b.TargetLevel
 		}
+		undoPrestige := 0
 		if b.Level > origLevel {
-			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", city.UserID).
-				UpdateColumn("prestige", gorm.Expr("GREATEST(prestige - ?, 0)", b.Level*10))
+			undoPrestige = b.Level * 10
 		}
-		return h.doCancelRefund(city, &b, origLevel, from, to)
+		return h.doCancelRefund(city, &b, origLevel, from, to, undoPrestige)
 	}
 	// 4) 仍在施工中 → 退「还没建成」的部分。from 用 refresh 之后的 level，
 	//    保证连锁升级已推进过的级不重复退（否则会双倍退款刷资源）。
@@ -1318,12 +1323,37 @@ func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64
 			to = maxInt(from-1, h.buildingMaxLevel(city.ID, b.BuildingId))
 		}
 	}
-	return h.doCancelRefund(city, &b, b.Level, from, to)
+	return h.doCancelRefund(city, &b, b.Level, from, to, 0)
 }
 
 // doCancelRefund 计算 from~to 的升级消耗并**全额退还**（资源走 giveResNoCap 不受仓储/资源上限
 // 截断、图纸走 addItem 入背包），随后把建筑回到空闲；level 固定为 keepLevel（<1 直接撤掉记录）。
-func (h *EzfyHandler) doCancelRefund(city *model.EzfyCity, b *model.EzfyCityBuilding, keepLevel, from, to int) string {
+func (h *EzfyHandler) doCancelRefund(city *model.EzfyCity, b *model.EzfyCityBuilding, keepLevel, from, to, undoPrestige int) string {
+	// ★★ 2026-09-27 修复「取消退款可以无限刷资源」：并发/重复取消会**双退**。
+	//   原来没有任何原子保护，两个并发取消都能读到 status!=0 而各自退款一次。
+	//   现在先用 CAS 抢占「把 status 从非 0 置 0 / 删除」：只有抢到的那一方才退款，
+	//   其余直接返回（同 checkBuildingDone 用 Where(status<>0)+RowsAffected==0 防重结的手段）。
+	var res *gorm.DB
+	if keepLevel <= 0 {
+		res = h.DB.Where("id = ? AND status <> 0", b.ID).Delete(&model.EzfyCityBuilding{})
+	} else {
+		res = h.DB.Model(&model.EzfyCityBuilding{}).
+			Where("id = ? AND status <> 0", b.ID).
+			Updates(map[string]interface{}{"level": keepLevel, "status": 0,
+				"target_level": 0, "start_time": 0, "end_time": 0})
+	}
+	if res.Error != nil {
+		return "取消失败，请重试"
+	}
+	if res.RowsAffected == 0 {
+		// 没抢到：说明已被别的取消/结算抢先，避免重复退款
+		return "该建筑没有在施工"
+	}
+	// 抢到取消资格后才扣回「刚完工加的声望」，防止并发下把声望扣两次
+	if undoPrestige > 0 {
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", city.UserID).
+			UpdateColumn("prestige", gorm.Expr("GREATEST(prestige - ?, 0)", undoPrestige))
+	}
 	var food, steel, oil, rare, gold int64
 	blueprint := 0
 	for lv := from; lv <= to; lv++ {
@@ -1345,13 +1375,6 @@ func (h *EzfyHandler) doCancelRefund(city *model.EzfyCity, b *model.EzfyCityBuil
 	}
 	if blueprint > 0 {
 		h.addItem(city.UserID, ezfyBlueprintItemID, blueprint)
-	}
-	// 回到空闲；没建成的（level<=0）直接撤掉这条记录
-	if keepLevel <= 0 {
-		h.DB.Delete(&model.EzfyCityBuilding{}, b.ID)
-	} else {
-		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-			Updates(map[string]interface{}{"level": keepLevel, "status": 0, "target_level": 0, "start_time": 0, "end_time": 0})
 	}
 	extra := ""
 	if blueprint > 0 {
@@ -2769,6 +2792,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（前端文案与按钮禁用都要用，勿再写死 10 万）
 		"convene_food_cost": ezfyConveneFoodCostCfg(),
 		"convene_pop_gain":  ezfyConvenePopGainCfg(),
+		// ★ 2026-09-26：召集硬性人口上限（0 = 不限），前端提示与按钮禁用都要用
+		"convene_pop_max": ezfyConvenePopMaxCfg(),
 	})
 }
 
@@ -3111,7 +3136,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "税率已调整"})
 }
 
-// Convene 召集人口（粮食召集不受民居上限限制）
+// Convene 召集人口（只消耗粮食，夜间只 +人口）
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -3126,13 +3151,20 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		resp.ParamError(c, "城市不存在")
 		return
 	}
-	h.calcResource(city)
-	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
-	//   消耗/收益都读管理端配置（默认各 10 万），本地变量兜住避免中途配置变化导致前后不一致。
+	// ★★ 2026-09-26 修复「召集只该耗粮食，结果其他/更多粮食也被一起扣了」：
+	//   注意这里**不再调 h.calcResource(city)** —— calcResource 是懒结算，会顺带扣
+	//   「军队耗粮 + 军官工资」并回写全部资源，导致玩家一点召集就看到粮食(及其它)一起掉。
+	//   召集是即时操作，只用当前已落库的粮食/人口判断与扣减，只写 food 和 pop 两列即可。
 	foodCost := ezfyConveneFoodCostCfg()
 	popGain := ezfyConvenePopGainCfg()
 	if city.Food < foodCost {
 		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
+		return
+	}
+	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	//   全局硬性上限（管理端「二战系统配置」可配，0 = 不限），对召集**永远**生效。
+	if popCap := ezfyConvenePopMaxCfg(); popCap > 0 && city.Pop+popGain > popCap {
+		resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
 		return
 	}
 	// ★ 2026-09-26 用户要求加「民居容量限制 / 召集人口灵活配置」两个开关：
@@ -3144,8 +3176,11 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	}
 	city.Food -= foodCost
 	city.Pop += popGain
-	h.saveCityRes(city)
-	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("pop", city.Pop)
+	// 只写 food / pop 两列，绝不回写其它资源（这就是上面那句「只耗粮食」的落点）。
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+		"food": city.Food,
+		"pop":  city.Pop,
+	})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", popGain), "pop": city.Pop, "pop_max": city.PopMax})
 }
 

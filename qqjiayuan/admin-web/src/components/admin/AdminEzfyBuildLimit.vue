@@ -176,6 +176,11 @@
               <template slot="label">召集获得人口<el-tooltip placement="top" :content="tips.convene_pop_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.convene_pop_gain" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
             </el-form-item>
+            <!-- ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
+            <el-form-item>
+              <template slot="label">召集人口上限<el-tooltip placement="top" :content="tips.convene_pop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model="form.convene_pop_max" :min="0" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ⑥ 军官升星 -->
@@ -238,6 +243,8 @@ export default {
         house_pop_limit_on: 1, convene_flexible_on: 1,
         // ★ 2026-09-26：召集消耗粮食 / 召集获得人口（原来写死 10 万）
         convene_food_cost: 100000, convene_pop_gain: 100000,
+        // ★ 2026-09-26：召集硬性人口上限（0 = 不限）
+        convene_pop_max: 0,
         officer_star_up_on: 1,
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5
@@ -295,6 +302,7 @@ export default {
         convene_flexible_on: '开 = 召集人口不受民居容量上限限制，可突破 pop_max；关 = 召集人口同样受民居上限约束（民居容量限制关掉时此项无意义）',
         convene_food_cost: '玩家点一次「召集」消耗的粮食数，默认 10 万（=100000）',
         convene_pop_gain: '玩家点一次「召集」获得的人口数，默认 10 万（=100000）',
+        convene_pop_max: '玩家城市人口硬性上限，超过则禁止召集（0 = 不限）。即使「召集人口灵活配置」开着也受此限制',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
@@ -350,6 +358,7 @@ export default {
             convene_flexible_on: sw(r.data.convene_flexible_on),
             convene_food_cost: pos(r.data.convene_food_cost, 100000),
             convene_pop_gain: pos(r.data.convene_pop_gain, 100000),
+            convene_pop_max: pos(r.data.convene_pop_max, 0),
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
