@@ -6552,8 +6552,12 @@ export default {
           this.orderGather = 0
           this.load()
           this.loadBag()
-          this.cur = 'orders'
-          this.loadOrders()
+          // ★★ 2026-09-26 修复「点出征后跳转出征队列是空的」：
+          //   出征队列页（cur==='orders'）的数据源是 `queueItems` → `this.dynamics`，
+          //   由 `loadDynamics()` 填充；而这里原来直接 `cur='orders'` + `loadOrders()`
+          //   （loadOrders 填的是另一份数据，orders 页根本不读它）→ 页面永远空。
+          //   改成走 `go('orders')`，它内部就是 `loadDynamics()`，以后再加数据源也不会漏。
+          this.go('orders')
         } else this.notify(r.msg)
       }))
     },

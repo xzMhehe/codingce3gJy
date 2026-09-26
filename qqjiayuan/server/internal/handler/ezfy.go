@@ -952,12 +952,15 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	city.Gold = gold
 
 	if techStore > 0 {
+		// ★★ 2026-09-26 同类修复（与下面 getResourceCalc 的增产令是同一个坑）：
+		//   `x *= capBonus / 100` 会**先算整数除法** `110/100 = 1` → 容量纹丝不动。
+		//   改成先乘后除。
 		capBonus := int64(100 + techStore*2)
-		city.FoodCap *= capBonus / 100
-		city.SteelCap *= capBonus / 100
-		city.OilCap *= capBonus / 100
-		city.RareCap *= capBonus / 100
-		city.GoldCap *= capBonus / 100
+		city.FoodCap = city.FoodCap * capBonus / 100
+		city.SteelCap = city.SteelCap * capBonus / 100
+		city.OilCap = city.OilCap * capBonus / 100
+		city.RareCap = city.RareCap * capBonus / 100
+		city.GoldCap = city.GoldCap * capBonus / 100
 	}
 	// ★ 2026-09-23：资源 / 人口 / 仓储上限统一夹取到 [0, ezfyResSafeMax]。
 	//   原有的「按仓储上限截断」逻辑在上面（资源累加处）已经生效，这里只是最后兜一层底，
@@ -1125,17 +1128,25 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	}
 	var boost model.EzfyCityEffect
 	if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&boost).Error; err == nil && boost.UntilTime > time.Now().UnixMilli() {
+		// ★★ 2026-09-26 修复「增产令用了没加成（详情页不显示）」：
+		//
+		//	原来这里写的是 `foodProd *= mult / 100` —— Go 里这等价于
+		//	`foodProd = foodProd * (mult / 100)`，**先算 `mult/100`**，
+		//	而 `150/100` 是**整数除法 = 1** → 乘了个 1，产量纹丝不动。
+		//	（`calcResource` 里写的是 `foodProd = foodProd * mult / 100`，先乘后除 = 2400 ✓，
+		//	 所以「实际入库有 +50%、详情页显示没有」——用户看到界面没变，报「没加成」。）
+		//	⚠️ 凡是 `x * pct / 100` 一律**先乘后除**，别写 `x *= pct / 100`。
 		mult := int64(100 + boost.Param1)
-		foodProd *= mult / 100
-		steelProd *= mult / 100
-		oilProd *= mult / 100
-		rareProd *= mult / 100
-		goldProd *= mult / 100
-		wildFood *= mult / 100
-		wildSteel *= mult / 100
-		wildOil *= mult / 100
-		wildRare *= mult / 100
-		wildGold *= mult / 100
+		foodProd = foodProd * mult / 100
+		steelProd = steelProd * mult / 100
+		oilProd = oilProd * mult / 100
+		rareProd = rareProd * mult / 100
+		goldProd = goldProd * mult / 100
+		wildFood = wildFood * mult / 100
+		wildSteel = wildSteel * mult / 100
+		wildOil = wildOil * mult / 100
+		wildRare = wildRare * mult / 100
+		wildGold = wildGold * mult / 100
 	}
 	// 节日活动·资源增产(福利.txt #3) —— 与 calcResource 保持一致
 	if pct := h.actPct(ezfyActProduce); pct > 0 {
