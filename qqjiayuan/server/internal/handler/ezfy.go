@@ -1022,6 +1022,28 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		goldProd = goldProd * (100 + mayor) / 100
 	}
 
+	// ★★ 2026-09-26 修复「加成产量(每小时) 全是负数」：
+	//
+	//	原来 base 只到「建筑 × 科技」，而 bonus 用「总产出 − 建筑×科技」算 ——
+	//	`foodProd` 里已经乘过**开工率**和**民心**，`foodBaseTech` 没有，
+	//	于是「开工率不满 / 民心不满造成的减产」被算进了「加成」：
+	//	  民心 80% → bonus = baseTech×0.8 − baseTech = **−20% × baseTech**（负的）
+	//	所有资源都受同一套系数影响，玩家看到的就是「所有资源加成产量都是负的」。
+	//
+	//	现在的口径（界面 4 行仍自洽：基础 + 加成 − 耗量 = 总产量）：
+	//	  · base  = 建筑 × 科技 × 开工率 × 民心   ← 实际基础产出（不含市长/道具/活动）
+	//	  · bonus = 总产出 − base + 野地          ← 只剩真正的**正向加成**，恒 ≥ 0
+	//	  · total 不变（本次只改拆分，不改实际产量）
+	realBase := func(base, rate int64) int64 {
+		return int64(float64(base*rate/100) * morale)
+	}
+	foodBaseReal := realBase(foodBaseTech, rateFood)
+	steelBaseReal := realBase(steelBaseTech, rateSteel)
+	oilBaseReal := realBase(oilBaseTech, rateOil)
+	rareBaseReal := realBase(rareBaseTech, rateRare)
+	// 黄金没有开工率，只有民心
+	goldBaseReal := int64(float64(goldBase) * morale)
+
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	for _, w := range h.wildlandList(city.ID) {
 		base := int64(w.Level) * 100
@@ -1084,18 +1106,25 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		}
 		return m
 	}
+	// moralePct = 民心系数百分比（民怨 ≥50 时会折半），前端 base 行用它解释「为什么基础产量不是满的」
+	moralePct := int64(morale * 100)
 	return gin.H{
-		"food": item(city.Food, city.FoodCap, foodBaseTech, foodProd-foodBaseTech+wildFood, troopFood, foodProd+wildFood-troopFood,
+		"food": item(city.Food, city.FoodCap, foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
-				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
-		"steel": item(city.Steel, city.SteelCap, steelBaseTech, steelProd-steelBaseTech+wildSteel, 0, steelProd+wildSteel,
-			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor}),
-		"oil": item(city.Oil, city.OilCap, oilBaseTech, oilProd-oilBaseTech+wildOil, 0, oilProd+wildOil,
-			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor}),
-		"rare": item(city.Rare, city.RareCap, rareBaseTech, rareProd-rareBaseTech+wildRare, 0, rareProd+wildRare,
-			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor}),
-		"gold": item(city.Gold, city.GoldCap, goldBase, goldProd-goldBase+wildGold, 0, goldProd+wildGold,
-			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor}),
+				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor,
+				"morale_pct": moralePct}),
+		"steel": item(city.Steel, city.SteelCap, steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
+			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor,
+				"morale_pct": moralePct}),
+		"oil": item(city.Oil, city.OilCap, oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
+			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor,
+				"morale_pct": moralePct}),
+		"rare": item(city.Rare, city.RareCap, rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
+			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor,
+				"morale_pct": moralePct}),
+		"gold": item(city.Gold, city.GoldCap, goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
+			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor,
+				"morale_pct": moralePct}),
 	}
 }
 
@@ -2994,6 +3023,11 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 		CityId int64 `json:"city_id"`
 	}
 	_ = c.ShouldBindJSON(&req)
+	// ★ 2026-09-26 补：本接口原来没调 h.cfgs()，而 getResourceCalc / calcResource 都依赖
+	//   ezfyCfg（建筑等级表、兵种表）。若它是本次进程里第一个「要用配置」的请求，
+	//   ezfyCfg 还是零值 → 建筑产量全算 0（表现为「基础产量 0」）。
+	//   正常流程下前端会先打 /view（那里有 cfgs），所以平时不暴露，但不能靠别人兜底。
+	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	if req.CityId > 0 {
 		if cc := h.cityOf(uid, req.CityId); cc != nil {

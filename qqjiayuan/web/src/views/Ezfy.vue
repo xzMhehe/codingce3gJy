@@ -599,13 +599,17 @@
           <br/>
           基础产量(每小时): {{ resDetail.base }}
           <span v-if="resDetail.tech_prod > 0"> [{{ resTechName }}Lv{{ resDetail.tech_prod }}: +{{ resDetail.tech_prod * 10 }}%]</span>
+          <!-- ★ 2026-09-26：「开工率 / 民心」属于**基础产量**的系数（原来是挂在「加成产量」那行，
+               民心不满时会把加成算成负数）。这里把完整算式写出来，玩家一眼能看出基础产量为什么不是满的。 -->
           <span class="gray" v-if="resDetail.base_building !== undefined">
-            （建筑{{ resDetail.base_building }} × 科技{{ 100 + (resDetail.tech_prod || 0) * 10 }}%）
+            （建筑{{ resDetail.base_building }} × 科技{{ 100 + (resDetail.tech_prod || 0) * 10 }}%<template
+              v-if="resDetail.rate !== undefined && resDetail.rate !== 100"> × 开工率{{ resDetail.rate }}%</template><template
+              v-if="resDetail.morale_pct !== undefined && resDetail.morale_pct !== 100"> × 民心{{ resDetail.morale_pct }}%</template>）
           </span>
           <br/>
           加成产量(每小时): {{ resDetail.bonus }}
-          <span class="gray" v-if="resDetail.rate !== undefined && resDetail.rate !== 100"> [开工率{{ resDetail.rate }}%]</span>
           <span class="gray" v-if="resDetail.mayor_bonus > 0"> [市长加成+{{ resDetail.mayor_bonus }}%]</span>
+          <span class="gray" v-if="resDetail.bonus === 0"> [暂无加成]</span>
           <br/>
           耗量(每小时): {{ resDetail.consume }}<br/>
           <template v-if="resType === 'food'">
