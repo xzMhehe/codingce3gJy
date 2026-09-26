@@ -664,7 +664,7 @@
               <a v-for="a in accItems(3)" :key="'sb' + b.id + '_' + a.cfg_id" href="javascript:;"
                  @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
               <span class="gray" v-if="!accItems(3).length">(无建筑加速道具)</span>
-              <!-- ★ 2026-09-26 用户要求：升级状态时加 [取消]（取消施工并全额退还已扣资源/图纸） -->
+              <!-- ★ 2026-09-27：升级状态时加 [取消]（取消零退还，建筑保留当前等级，防刷资源/图纸） -->
               <a href="javascript:;" class="red" @click="doCancelUpgrade(b)">[取消]</a>
             </template>
             <template v-else-if="b.level > 0 && b.level < b.max_level">
@@ -1828,7 +1828,7 @@
                     <a v-for="a in accItems(3)" :key="'hsb' + b.id + '_' + a.cfg_id" href="javascript:;"
                        @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
                     <span class="gray" v-if="!accItems(3).length">(无加速道具)</span>
-                    <!-- ★ 2026-09-26：施工中可取消（全额退还） -->
+                    <!-- ★ 2026-09-27：施工中可取消（零退还，建筑保留当前等级） -->
                     <a href="javascript:;" class="red" @click="doCancelUpgrade(b)">[取消]</a>
                   </template>
                 </td>
@@ -5927,13 +5927,13 @@ export default {
         } else this.inlineTip = { bid, text: r.msg || '加速失败', type: 'error' }
       })
     },
-    // ★ 2026-09-26 用户要求「升级状态时加 [取消] 功能」：
-    //   取消施工，**全额退还**已扣资源与建筑图纸（一键 N 级也会把后续各级一起退）。
+    // ★ 2026-09-27 严重漏洞修复：取消建筑升级**零退还**（资源与建筑图纸不退，建筑保留当前等级）。
+    //   旧逻辑「全额退还」会让人「一键升满→取消」反复刷资源/图纸。
     async doCancelUpgrade (b) {
       if (!b || b.status === 0) return
       const bid = b.id
       if (!await this.ask('确定取消「' + (b.name || '该建筑') + '」的升级吗？\n' +
-        '已消耗的资源与建筑图纸会全额退还，建筑保持当前等级。')) return
+        '已消耗的资源与建筑图纸将不会退还，建筑保留当前等级。')) return
       api.post('/games/ezfy/building/cancel', { record_id: bid, city_id: this.city.id }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '已取消升级', type: 'ok' }
