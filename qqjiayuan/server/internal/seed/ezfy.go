@@ -65,16 +65,8 @@ func seedEzfy(db *gorm.DB) {
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	// ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：
-	//   stock 列自带 DB 默认值 100，而 GORM 对「带 default 标签的字段」会跳过 Go 零值，
-	//   于是线上「0 = 已售罄」的道具（1~10、12）在库里会落成 100（非 0 库存不受影响，batch 正常写入）。
-	//   这里只对「快照库存为 0」的条目显式写一次，让售罄状态也能原样初始化。
-	for i := range ezfyEzfyCfgItem {
-		if ezfyEzfyCfgItem[i].Stock != 0 {
-			continue
-		}
-		db.Model(&model.EzfyCfgItem{}).Where("id = ?", ezfyEzfyCfgItem[i].ID).
-			Update("stock", 0)
-	}
+	//   1~12 的价格/库存一律取线上快照值，且线上这些道具的库存都不是 0（最低 10），
+	//   非 0 值 batch 会正常写入，不会踩 GORM 跳过零值那个坑。
 	// ★ 任务类型/任务：改「只补缺不覆盖」—— 管理端在「数据管理」里调的奖励(数值)
 	//   不能被下次启动的种子悄悄改回去（用户要求「后台能灵活配置奖励」）。
 	batchKeep(ezfyEzfyCfgTaskType, "ezfy_cfg_task_type")
@@ -280,14 +272,14 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 20, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
-		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 27068000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 20000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
-			Description: "在军官管理页面使用, 每本增加 27,068,000 经验"},
+			Description: "在军官管理页面使用, 每本增加 20000 经验"},
 		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
-		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 0, PriceDiamond: 2, Stock: 97,
+		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: 97,
 			Category:    "军官道具",
 			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
 		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 500, Stock: -1,
@@ -310,7 +302,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗「军官改名卡」，
 		//   在军官管理页面使用，成功改名消耗 1 张，不改动军官池里的原军官。
-		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: 100,
+		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: 79,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 用户要求「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
@@ -343,18 +335,19 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		db.Create(&it)
 	}
 
-	// ★ 2026-09-23 用户要求：军官道具改为钻石定价（荣誉史记/军官技能书/军官洗点卡/星级徽章）。
+	// ★ 2026-09-23 用户要求：军官道具改为钻石定价（荣誉史记/军官技能书/星级徽章）。
 	//   循环里的价格保护「不动价格」是为后台调价留的余地，但这次是明确重新定价，
-	//   所以对这 4 个道具额外强制对齐价格（黄金清零 + 钻石价）。
-	priceFix := map[int]int64{
-		14: 100, // 荣誉史记   100 钻石
-		15: 100, // 军官技能书 100 钻石
-		16: 2,   // 军官洗点卡 2 钻石（线上现值）
-		23: 50,  // 星级徽章   50 钻石
+	//   所以对这 4 个道具额外强制对齐价格。
+	// ★ 2026-09-26 按线上现值：军官洗点卡改回**黄金**渠道 80000（原为 2 钻石）→ 值成 {黄金, 钻石}。
+	priceFix := map[int][2]int64{
+		14: {0, 100},   // 荣誉史记   100 钻石
+		15: {0, 100},   // 军官技能书 100 钻石
+		16: {80000, 0}, // 军官洗点卡 80000 黄金
+		23: {0, 50},    // 星级徽章   50 钻石
 	}
-	for id, diamond := range priceFix {
+	for id, p := range priceFix {
 		db.Model(&model.EzfyCfgItem{}).Where("id = ?", id).
-			Updates(map[string]interface{}{"price_gold": 0, "price_diamond": diamond})
+			Updates(map[string]interface{}{"price_gold": p[0], "price_diamond": p[1]})
 	}
 }
 
