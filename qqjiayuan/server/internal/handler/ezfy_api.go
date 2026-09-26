@@ -239,6 +239,31 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	h.done(c, msg, msg)
 }
 
+// CancelBuilding POST /games/ezfy/building/cancel
+//
+// ★ 2026-09-26 用户要求：「已升级的建筑（施工中）用户端去掉（多余的升级按钮），
+// 加个升级状态时 [取消] 功能」——取消施工并**全额退还**已扣资源与图纸。
+func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId   int64 `json:"city_id"`
+		RecordId int64 `json:"record_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.cfgs()
+	city := h.bodyCity(uid, req.CityId)
+	// ⚠️ 不能直接用 h.done：它把「非空 msg」一律当错误 → 退还文案会被当成失败返回 400。
+	msg := h.cancelBuildingUpgrade(city, req.RecordId)
+	if strings.HasPrefix(msg, "已取消升级") {
+		resp.OK(c, gin.H{"msg": msg})
+		return
+	}
+	resp.ParamError(c, msg)
+}
+
 func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {

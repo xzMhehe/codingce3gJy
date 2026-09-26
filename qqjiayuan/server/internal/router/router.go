@@ -551,6 +551,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/building/upgrade", ezfyH.Upgrade)
 				ezfyG.POST("/building/max-level", ezfyH.MaxLevel)
 				ezfyG.POST("/building/delete", ezfyH.DeleteBuilding)
+				// ★ 2026-09-26：施工中可取消升级（全额退还已扣资源与图纸）
+				ezfyG.POST("/building/cancel", ezfyH.CancelBuilding)
 				ezfyG.POST("/building/speed", ezfyH.SpeedBuilding)
 				ezfyG.GET("/troops", ezfyH.Troops)
 				ezfyG.POST("/troops/train", ezfyH.Train)

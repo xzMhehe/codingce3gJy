@@ -1250,6 +1250,70 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 	})
 }
 
+// cancelBuildingUpgrade 取消施工中的建筑升级，并**全额退还**已扣的资源与图纸
+//
+// ★ 2026-09-26 用户要求：「已升级的建筑用户端去掉（多余的升级按钮），加个升级状态时 [取消] 功能」。
+//
+//	退还口径与扣费口径**严格对称**（否则会变成刷资源漏洞）：
+//	  · 普通升级（`start_time != 0`）：只扣过 `b.Level+1` 这一级 → 只退这一级
+//	  · 连锁升级（`start_time == 0`，一键 N 级）：`maxLevelBuilding` 是**一次性扣了
+//	    `b.Level+1 ~ target_level` 的全部费用与图纸** → 要全退
+//	  · 建筑还没建成（`level == 0`）：取消 = 撤销建造（删记录 + 退 1 级费用）
+func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64) string {
+	h.refreshCity(city.UserID, city)
+	var b model.EzfyCityBuilding
+	if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&b).Error; err != nil {
+		return "建筑不存在"
+	}
+	if b.Status == 0 {
+		return "该建筑没有在施工"
+	}
+	from, to := b.Level+1, b.Level+1
+	if b.StartTime == 0 && b.TargetLevel > 0 {
+		to = b.TargetLevel
+	}
+	var food, steel, oil, rare, gold int64
+	blueprint := 0
+	for lv := from; lv <= to; lv++ {
+		// 与 upgradeBuilding / maxLevelBuilding 同口径：9→10、民居 10→11/11→12 要图纸
+		if lv == 10 || (b.BuildingId == 2 && lv >= 11) {
+			blueprint++
+		}
+		if l := ezfyCfg.buildingLevel(b.BuildingId, lv); l != nil {
+			food += l.Food
+			steel += l.Steel
+			oil += l.Oil
+			rare += l.Rare
+			gold += l.Gold
+		}
+	}
+	// 退回资源：走 DB 原子累加（别用内存 city 整行写回，会覆盖并发的懒结算增量）
+	if food+steel+oil+rare+gold > 0 {
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"food":  ezfyResAddExpr("food", food),
+			"steel": ezfyResAddExpr("steel", steel),
+			"oil":   ezfyResAddExpr("oil", oil),
+			"rare":  ezfyResAddExpr("rare", rare),
+			"gold":  ezfyResAddExpr("gold", gold),
+		})
+	}
+	if blueprint > 0 {
+		h.addItem(city.UserID, ezfyBlueprintItemID, blueprint)
+	}
+	// 回到空闲；没建成的（level==0）直接撤掉这条记录
+	if b.Level <= 0 {
+		h.DB.Delete(&model.EzfyCityBuilding{}, b.ID)
+	} else {
+		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
+			Updates(map[string]interface{}{"status": 0, "target_level": 0, "start_time": 0})
+	}
+	extra := ""
+	if blueprint > 0 {
+		extra = fmt.Sprintf(" + 建筑图纸×%d", blueprint)
+	}
+	return fmt.Sprintf("已取消升级, 退还 粮%d 钢%d 油%d 稀矿%d 金%d%s", food, steel, oil, rare, gold, extra)
+}
+
 func (h *EzfyHandler) buildBuilding(city *model.EzfyCity, buildingId int) string {
 	h.refreshCity(city.UserID, city)
 	cfg := ezfyCfg.building(buildingId)
