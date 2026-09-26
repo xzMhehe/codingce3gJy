@@ -506,7 +506,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 						ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
 						Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
 						Level: s.Level, Stock: -1, EnhanceMax: 20,
-						// ★ 单件可当散件买：价格按自身加成算（10~50 钻）
+						// ★ 单件可当散件买：价格按自身加成算（100~500 钻）
 						PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
 						// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
 						Dmg:      p.Dmg,
@@ -530,7 +530,7 @@ func seedEzfyEquipSets(db *gorm.DB) {
 			pieces = append(pieces, model.EzfyCfgEquipment{
 				ID: l.ID, Name: l.Name, Type: "军官装备", Slot: l.Slot, SetId: 0, Tier: 2,
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
-				// ★ 纯散件同样按加成定价（10~50 钻）
+				// ★ 纯散件同样按加成定价（100~500 钻）
 					PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
 					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
 					Dmg:      l.Dmg,
@@ -613,37 +613,49 @@ var ezfyChestSetPlan = []struct {
 	{6, []int{8, 9, 10, 15, 16, 17, 21, 22, 23, 24, 25, 26}, 100, "传说"},
 }
 
-// ezfyEquipDiamondPrice 散件单件的钻石售价：按「六项加成总和」映射到 10~50 钻
+// ezfyEquipDiamondPrice 散件单件的钻石售价：按「六项加成总和」映射到 100~500 钻
 //
 // ★ 用户要求（2026-09-22）：「价格按加成 10 钻石到 50 钻石不等，反正定价后面能改」。
 // 加成越低越便宜（和平使者 伤害106 → 10 钻；革命者[AWM] 155+130=285 → 40 钻）。
+//
+// ★ 2026-09-26 用户要求「商城装备页卖的太低了，现钻石 × 10，初始化也一样」：
+//
+//	上面每一档**整体 ×10**（10/15/20/25/30/40/50 → 100/150/200/250/300/400/500）。
+//	档位边界（s <= 110 / 130 / 160 / 200 / 250 / 300）**保持不变**，
+//	所以「新函数算出来的价 = 老库里的价 × 10」，种子初始化与线上 ×10 的结果一致。
 func ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg int) int64 {
 	s := dmg + def + hp + move + crit + critDmg
 	switch {
 	case s <= 110:
-		return 10
+		return 100
 	case s <= 130:
-		return 15
+		return 150
 	case s <= 160:
-		return 20
+		return 200
 	case s <= 200:
-		return 25
+		return 250
 	case s <= 250:
-		return 30
+		return 300
 	case s <= 300:
-		return 40
+		return 400
 	default:
-		return 50
+		return 500
 	}
 }
 
-// backfillLooseEquipPrice 给**散件**补新定价（按加成 10~50 钻）
+// backfillLooseEquipPrice 给**散件**补新定价（按加成 100~500 钻）
 //
 // ★ 老库里的价格是历史遗留：系列单件错填了整套价（1200~1500 钻）、纯散件是黄金价。
-// 只在「没定过价 或 还是旧的高价」时才改 —— 管理端已经调到 100 钻以内的不会被冲掉。
+// 只在「没定过价 或 还是旧价」时才改 —— 管理端已经手动调过的不会被冲掉。
+//
+// ★ 2026-09-26 整体涨价 ×10 后，这里的「已定过价」阈值必须一起抬高到 1000，
+//
+//	否则线上刚被 ×10 刷成 100~500 的行会在下次启动时被判成「旧价」而重算
+//	（重算结果恰好也等于 ×10，但管理端手改过的那几件会被冲掉，例如 100→1000 的会被打回 150）。
 func backfillLooseEquipPrice(db *gorm.DB) {
 	// 上一版 backfill 把老版 武器/防具/饰品/珠宝 也当成散件改了价（它们不属于那张表），
 	// 这里还原成「不上架」。幂等：只改「还是 10 钻且没有黄金价」的行，管理端定过价的不动。
+	// ★ 涨价后新散件最低 100 钻，这条只会命中历史遗留的 10 钻行，保留无害。
 	db.Model(&model.EzfyCfgEquipment{}).
 		Where("type <> ? AND price_diamond = ? AND price_gold = 0", "军官装备", 10).
 		Update("price_diamond", 0)
@@ -657,7 +669,7 @@ func backfillLooseEquipPrice(db *gorm.DB) {
 	}
 	for i := range list {
 		e := &list[i]
-		if e.PriceDiamond > 0 && e.PriceDiamond <= 100 {
+		if e.PriceDiamond > 0 && e.PriceDiamond <= 1000 {
 			continue // 已是合理新价（管理端可能手动调过），不动
 		}
 		want := ezfyEquipDiamondPrice(e.Dmg, e.Def, e.Hp, e.Move, e.Crit, e.CritDmg)

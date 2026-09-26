@@ -2452,7 +2452,7 @@
                ★ 用户规则：套装装备只能通过宝箱开启，商城不再上架套装件 -->
           <template v-else-if="mallTab === 'equipment'">
             <!-- ★ 说明一律不写进界面（用户要求：别在用户能看见的地方加提示），信息记在这里：
-                 · 散件用钻石购买，定价按「六项加成总和」映射到 10~50 钻（见 seed 的 ezfyEquipDiamondPrice）；
+                 · 散件用钻石购买，定价按「六项加成总和」映射到 100~500 钻（见 seed 的 ezfyEquipDiamondPrice）；
                  · 买入后到「军官 → 军官详情」穿到军官身上；
                  · 第一批套装（新兵/战士/混沌…，无系列名）只能通过[宝箱]开启，商城不售。 -->
             <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行 -->
@@ -5499,7 +5499,7 @@ export default {
     openEquipBuy (p) {
       this.equipShopBuy = p
       this.equipShopCount = 1
-      // 散件统一钻石结算（定价 10~50 钻）；只有管理端把钻石价清 0 时才回落黄金
+      // 散件统一钻石结算（定价 100~500 钻）；只有管理端把钻石价清 0 时才回落黄金
       this.equipShopPay = p.price_diamond > 0 ? 'diamond' : 'gold'
       // ★ 跳转到独立购买详情页确认
       this.cur = 'equipbuy'
