@@ -586,6 +586,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
 				ezfyG.GET("/reports/:id", ezfyH.ReportView)
 				ezfyG.POST("/reports/:id/delete", ezfyH.ReportDelete)
+				// ★ 2026-09-26：战报「一键删除」（物理删除自己名下全部战报）
+				ezfyG.POST("/reports/clear", ezfyH.ReportClear)
 				ezfyG.GET("/targets", ezfyH.Targets)
 				ezfyG.POST("/targets", ezfyH.SaveTarget)
 				ezfyG.GET("/corps/list", ezfyH.CorpsList)
