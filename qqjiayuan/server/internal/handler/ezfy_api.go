@@ -2347,3 +2347,17 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
+
+// ReportClear POST /games/ezfy/reports/clear
+//
+// ★ 2026-09-26 用户要求「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
+//
+//	只清**自己名下**的战报（`WHERE user_id = ?`），GORM 走 DELETE 真删行、不软删。
+//	⚠️ 不带 user_id 的批量 Delete 会清全表 —— 这里必须带，且只认 middleware 里的 uid。
+//	⚠️ 路由用 `/reports/clear` 而不是 `/reports/:id/delete` 的同级形式：
+//	   路径段数不同（2 段 vs 3 段），Gin 不会和 `:id` 冲突。
+func (h *EzfyHandler) ReportClear(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	res := h.DB.Where("user_id = ?", uid).Delete(&model.EzfyReport{})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
+}

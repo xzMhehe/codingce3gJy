@@ -418,6 +418,8 @@
               <input v-model="reportWord" placeholder="输入关键字" style="width:110px"
                      @keyup.enter="loadReports"/>
               <a href="javascript:;" @click="loadReports">[查询]</a>
+              <!-- ★ 2026-09-26 用户要求：查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源） -->
+              <a href="javascript:;" @click="doClearReports">[一键删除]</a>
               <a v-if="reportWord" href="javascript:;" @click="reportWord = ''; loadReports()">[清空]</a>
             </div>
             <div class="old-line" v-for="r in repPaged" :key="'rb' + r.id">
@@ -6267,6 +6269,24 @@ export default {
       })
     },
     // ★ 删除战报：不需要二次确认（用户要求）
+    // ★ 2026-09-26 用户要求「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
+    //   删的是**自己名下全部战报**（后端 DELETE，不软删），不可恢复 → 先走页面内确认条问一次。
+    //   ⚠️ 有搜索词时列表只是筛选，删除范围仍是全部 —— 文案里写清楚，别让玩家以为只删列表里那几条。
+    async doClearReports () {
+      if (!this.reports.length) {
+        this.notify('暂无战报可删除')
+        return
+      }
+      if (!await this.ask('确定删除【全部】战报吗？\n（物理删除，不可恢复；' +
+        (this.reportWord ? '当前只是搜索筛选，删除范围仍是全部' : '共 ' + this.reports.length + ' 条') + '）')) return
+      api.post('/games/ezfy/reports/clear', {}).then(r => {
+        if (r.code === 0) {
+          this.notify((r.data && r.data.msg) ? r.data.msg : '战报已全部删除')
+          this.repPage = 1
+          this.loadReports()
+        } else this.notify(r.msg || '删除失败')
+      })
+    },
     delReport (r) {
       if (!r) return
       api.post('/games/ezfy/reports/' + r.id + '/delete', {}).then(res => {

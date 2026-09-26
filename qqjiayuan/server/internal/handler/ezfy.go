@@ -172,6 +172,9 @@ var ezfyCityInitLocks [64]sync.Mutex
 
 func ezfyCityInitLock(uid uint) *sync.Mutex { return &ezfyCityInitLocks[uid%64] }
 
+// ezfyPrestigeLocks 军衔晋升播报的并发锁（见 addPrestige 里的说明）
+var ezfyPrestigeLocks [64]sync.Mutex
+
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
 		return
@@ -180,6 +183,21 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if pct := h.actPct(ezfyActPrestige); pct > 0 {
 		amount = amount * (100 + pct) / 100
 	}
+	// ★★ 2026-09-26 修复「军衔晋升播报重复 N 次」：
+	//
+	//	前端 mounted 会**并发**打好几个接口（/view、/troops、/techs…），每个请求都会触发
+	//	懒结算 → addPrestige 并发进入，各自读到**同一个旧 prestige**，于是 `after != before`
+	//	同时成立、同一个军衔被播报多次。
+	//	线上实测：id 104/105/106 三条一模一样的「恭喜玩家 小哥哥 军衔晋升至 军士长！」，
+	//	时间戳 14:58:25.508 / .544 / .552 —— 只差 8~36ms，典型并发重复写入。
+	//	顺带：`p.Prestige + amount` 是读-改-写，并发时还会**丢更新**（几次只加到 1 次）。
+	//
+	//	修法：按玩家加锁把同一玩家的 addPrestige 串行化，并在锁内重新读库拿最新值 ——
+	//	第 2、3 个请求读到的已是更新后的 prestige，`after == before`，自然不再播报。
+	mu := &ezfyPrestigeLocks[uid%64]
+	mu.Lock()
+	defer mu.Unlock()
+
 	p := h.ensureProfile(uid)
 	before := ezfyRankName(p.Prestige)
 	after := ezfyRankName(p.Prestige + amount)
@@ -598,8 +616,18 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 	now := time.Now().UnixMilli()
 	for _, b := range h.buildingList(city.ID) {
 		if b.Status != 0 && now >= b.EndTime {
-			b.Level++
-			h.addPrestige(city.UserID, b.Level*10)
+			// ★★ 2026-09-26 修复「建筑完成被并发重复结算」：
+			//
+			//	前端 mounted 会**并发**打好几个接口（/view、/troops、/techs…），每个请求都跑
+			//	懒结算 → 同一栋楼被多个请求同时判定为「已完成」，于是
+			//	  · `addPrestige` 被重复调用（实测 5 个并发 = 声望 +300 而不是 +60）
+			//	  · `taskProgress("build_upgrade")` 被重复 +1
+			//	  · 军衔播报也跟着重复（用户报的「播报 3 次」就是这个的冰山一角）
+			//	（level 本身是幂等的 —— 各请求都写同一个 `b.Level+1`，所以看不出来。）
+			//
+			//	修法：**先算好完成后的状态，再用「status <> 0」做条件更新抢占**，
+			//	只有 RowsAffected=1 的那个请求才算真正完成结算，其余直接跳过。
+			newLevel := b.Level + 1
 			cfg := ezfyCfg.building(b.BuildingId)
 			// ★ 2026-09-25 用户纠正「一键9级 = 一键升级到 9 级，而不是升级满」：
 			//   连锁模式(StartTime=0) 每级自动接续，但**升到目标等级就停** ——
@@ -608,20 +636,28 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 			if chainTarget <= 0 {
 				chainTarget = h.buildingMaxLevel(city.ID, b.BuildingId)
 			}
-			if b.StartTime == 0 && cfg != nil && b.Level < chainTarget {
-				b.Status = 2
-				b.EndTime = now + ezfyMaxUpgradeSeconds*1000
-			} else {
-				b.Status = 0
-				b.TargetLevel = 0 // 连锁结束, 清掉目标等级（下次普通升级不会误判）
+			newStatus, newEnd, newTarget := 0, b.EndTime, 0
+			if b.StartTime == 0 && cfg != nil && newLevel < chainTarget {
+				// 连锁：自动接下一级（target_level 保持，别清）
+				newStatus = 2
+				newEnd = now + ezfyMaxUpgradeSeconds*1000
+				newTarget = b.TargetLevel
+			}
+			res := h.DB.Model(&model.EzfyCityBuilding{}).
+				Where("id = ? AND status <> 0", b.ID).
+				Updates(map[string]interface{}{"level": newLevel, "status": newStatus,
+					"end_time": newEnd, "target_level": newTarget})
+			if res.Error != nil || res.RowsAffected == 0 {
+				continue // 已被其他并发请求结算过，别再重复加声望/任务进度
+			}
+			// ↓ 以下副作用只在「真正抢到结算权」时执行
+			h.addPrestige(city.UserID, newLevel*10)
+			if newStatus == 0 {
 				if b.BuildingId == 1 {
-					city.CityLevel = b.Level
+					city.CityLevel = newLevel
 				}
 				h.taskProgress(city.UserID, "build_upgrade", 1)
 			}
-			h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-				Updates(map[string]interface{}{"level": b.Level, "status": b.Status,
-					"end_time": b.EndTime, "target_level": b.TargetLevel})
 		}
 	}
 	var hall model.EzfyCityBuilding
@@ -959,10 +995,22 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity) {
 	var list []model.EzfyTrainQueue
 	h.DB.Where("city_id = ? AND status = 0", city.ID).Find(&list)
 	for _, q := range list {
-		if q.EndTime <= now {
-			h.addTroop(city.ID, q.TroopId, q.Count)
-			h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).Update("status", 2)
+		if q.EndTime > now {
+			continue
 		}
+		// ★★ 2026-09-26 修复「训练完成被并发重复入库」：
+		//
+		//	`addTroop` 是**累加**、而 `status` 写回是**幂等**的（都写 2），
+		//	所以并发请求各自跑懒结算时，同一个队列的兵会被入库 N 次 ——
+		//	表面看不出异常（status 还是 2），实际兵凭空翻了 N 倍。
+		//	改成条件更新抢占：只有把 status 从 0 改成 2 的那个请求才入库。
+		res := h.DB.Model(&model.EzfyTrainQueue{}).
+			Where("id = ? AND status = 0", q.ID).
+			Update("status", 2)
+		if res.Error != nil || res.RowsAffected == 0 {
+			continue // 已被其他并发请求收走
+		}
+		h.addTroop(city.ID, q.TroopId, q.Count)
 	}
 }
 
@@ -1833,11 +1881,18 @@ func (h *EzfyHandler) checkTechDone(city *model.EzfyCity) {
 	var list []model.EzfyCityTech
 	h.DB.Where("city_id = ? AND status = 1", tid).Find(&list)
 	for _, t := range list {
-		if now >= t.EndTime {
-			h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
-				Updates(map[string]interface{}{"level": t.Level + 1, "status": 0})
-			h.taskProgress(city.UserID, "tech_research", 1)
+		if now < t.EndTime {
+			continue
 		}
+		// ★ 2026-09-26 同 checkBuildingDone：条件更新抢占，避免并发重复结算
+		//   （`level` 写的是同一个值所以幂等，但 `taskProgress` 会被重复 +1）。
+		res := h.DB.Model(&model.EzfyCityTech{}).
+			Where("id = ? AND status = 1", t.ID).
+			Updates(map[string]interface{}{"level": t.Level + 1, "status": 0})
+		if res.Error != nil || res.RowsAffected == 0 {
+			continue
+		}
+		h.taskProgress(city.UserID, "tech_research", 1)
 	}
 }
 
