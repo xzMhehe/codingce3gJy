@@ -4166,7 +4166,13 @@ export default {
     zoneBuilt () {
       const isM = this.zone === 'm'
       const inZone = t => (isM ? (t === 2 || t === 3 || t === 4) : t === 1)
-      return this.buildings.filter(b => inZone(b.type))
+      const built = this.buildings.filter(b => inZone(b.type))
+      // ★ 军事区：民居(building_id=2)固定排到列表最下面（其余顺序不变）
+      if (isM) {
+        const res = built.filter(b => b.building_id === 2)
+        if (res.length) return built.filter(b => b.building_id !== 2).concat(res)
+      }
+      return built
     },
     // 可建造的建筑(「建造」按钮进去的那一页)
     zonePool () {

@@ -49,7 +49,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 100 亿」
+		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
@@ -124,7 +124,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 1
 	}
-	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 100 亿）
+	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 21 亿）
 	if lim.ResMaxFood <= 0 {
 		lim.ResMaxFood = ezfyResMaxDef
 	}
@@ -198,7 +198,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		DispatchPeriodH *int `json:"dispatch_period_h"`
 		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
 		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 100 亿」
+		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood  *int64 `json:"res_max_food"`
 		ResMaxSteel *int64 `json:"res_max_steel"`
 		ResMaxOil   *int64 `json:"res_max_oil"`
@@ -232,7 +232,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
-		// ★ 2026-09-25 各项资源的「资源最大值」（默认 100 亿）
+		// ★ 2026-09-25 各项资源的「资源最大值」（默认 21 亿）
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
 	h.DB.First(&lim, 1)
@@ -612,7 +612,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !checkResMax(in.ResMaxGold, &lim.ResMaxGold, "黄金最大值") {
 		return
 	}
-	// 兜底：老行 / 被存成 0 时回落默认 100 亿
+	// 兜底：老行 / 被存成 0 时回落默认 21 亿
 	if lim.ResMaxFood <= 0 {
 		lim.ResMaxFood = ezfyResMaxDef
 	}

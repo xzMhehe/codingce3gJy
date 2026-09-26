@@ -287,16 +287,15 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 10 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
 
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置放到二战系统配置里面，默认 100 亿」：
-		//   每项资源的入库累加硬上限。⚠️ 必须 **bigint** —— 100 亿超出 int（MySQL int 只有 21 亿）。
-		//   0 / NULL 无意义 → 回填默认 100 亿。
+		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
+		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {
 			for _, col := range []string{"res_max_food", "res_max_steel", "res_max_oil",
 				"res_max_rare", "res_max_gold"} {
 				if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-					db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " bigint DEFAULT 10000000000")
+					db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " bigint DEFAULT 2100000000")
 				}
-				db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = 10000000000 WHERE " + col + " IS NULL OR " + col + " <= 0")
+				db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = 2100000000 WHERE " + col + " IS NULL OR " + col + " <= 0")
 			}
 		}
 

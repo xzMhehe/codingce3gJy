@@ -801,7 +801,7 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	steelProd = steelProd * int64(ezfyRate(city.RateSteel)) / 100
 	oilProd = oilProd * int64(ezfyRate(city.RateOil)) / 100
 	rareProd = rareProd * int64(ezfyRate(city.RateRare)) / 100
-	// 市长加成：产量 +10% + 后勤属性/20（复刻原版 mayorBonus）
+	// 市长加成：产量 +(10 + 后勤/20)*3 %（★ 2026-09-27 翻三倍；复刻原版 mayorBonus）
 	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
 		foodProd = foodProd * int64(100+mayorBonus) / 100
 		steelProd = steelProd * int64(100+mayorBonus) / 100
@@ -895,15 +895,14 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		troopFoodCost = int64(float64(troopFoodCost) * hours)
 	}
 
-	// ★ 2026-09-25 用户要求「只有资源产量超过存储最大不会继续增加，其他获取方式均是累加，
-	//   各项资源有最大的配置」→ 产量仍按仓储上限收敛（原逻辑不变），
-	//   但再叠一道「资源最大值」天花板：管理端把资源最大值调到低于仓储上限时，
-	//   产量到资源最大值就停（仓储上限本身照旧展示给玩家看，不改 city.XxxCap）。
-	prodCapFood := min64(city.FoodCap, ezfyResMaxOf("food"))
-	prodCapSteel := min64(city.SteelCap, ezfyResMaxOf("steel"))
-	prodCapOil := min64(city.OilCap, ezfyResMaxOf("oil"))
-	prodCapRare := min64(city.RareCap, ezfyResMaxOf("rare"))
-	prodCapGold := min64(city.GoldCap, ezfyResMaxOf("gold"))
+	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**唯一上限 = 资源最大值**。
+	//   产量不再被仓储上限（city.FoodCap 等）卡住，与其它获取方式一样无条件累加到「资源最大值」为止。
+	//   ⚠️ city.XxxCap（仓储）仅保留展示，不再作为产量收敛点 —— 永不参与计算。
+	prodCapFood := ezfyResMaxOf("food")
+	prodCapSteel := ezfyResMaxOf("steel")
+	prodCapOil := ezfyResMaxOf("oil")
+	prodCapRare := ezfyResMaxOf("rare")
+	prodCapGold := ezfyResMaxOf("gold")
 	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
 	//   乘在「城市产量 + 野地驻守产出」的**合计**上，即最终入库的那份产出。
 	//   ⚠️ 必须与 `getResourceCalc`（资源详情页展示）同口径，否则「详情页显示 1 万、实际入库 100」。
@@ -1209,17 +1208,18 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		return m
 	}
 	// ★ 2026-09-26 起不再下发 morale_pct：民心/民怨已不参与产量，前端 base 行不再显示民心
+	// ★ 2026-09-27 唯一上限 = 资源最大值：cap 下发 ezfyResMaxOf，不再用仓储 city.XxxCap。
 	return gin.H{
-		"food": item(city.Food, city.FoodCap, foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
+		"food": item(city.Food, ezfyResMaxOf("food"), foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
 				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, 				"mayor_bonus": mayor}),
-		"steel": item(city.Steel, city.SteelCap, steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
+		"steel": item(city.Steel, ezfyResMaxOf("steel"), steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
 			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, 				"mayor_bonus": mayor}),
-		"oil": item(city.Oil, city.OilCap, oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
+		"oil": item(city.Oil, ezfyResMaxOf("oil"), oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
 			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, 				"mayor_bonus": mayor}),
-		"rare": item(city.Rare, city.RareCap, rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
+		"rare": item(city.Rare, ezfyResMaxOf("rare"), rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
 			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, 				"mayor_bonus": mayor}),
-		"gold": item(city.Gold, city.GoldCap, goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
+		"gold": item(city.Gold, ezfyResMaxOf("gold"), goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
 			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, 				"mayor_bonus": mayor}),
 	}
 }

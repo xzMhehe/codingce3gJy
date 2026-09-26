@@ -25,7 +25,7 @@ import (
 //   - 忠诚：出征 -5、赏赐 +10(1万黄金)、归零自动离职
 //   - 技能：最多 3 个，学习 1 万黄金/个，遗忘免费
 //   - 装备：同部位唯一（珠宝不限），需军官等级 ≥ 装备需求等级
-//   - 职位：市长(产量+10%+后勤/20)、城守(守城防御+10%)
+//   - 职位：市长(产量+(10+后勤/20)*3%)、城守(守城防御+10%)
 
 const (
 	ezfyRecruitRefreshLimit = 5     // 军校每日刷新次数上限
@@ -843,7 +843,8 @@ func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string
 
 // ============ 加成接入 ============
 
-// mayorBonusPct 市长产量加成 %（10 + 后勤/20）
+// mayorBonusPct 市长产量加成 %（★ 2026-09-27 用户要求「太少，在现有基础上翻三倍」：
+//   (10 + 后勤/20) × 3 —— 实际产量与详情页展示都走本函数，改一处即全生效）
 func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 	var o model.EzfyOfficer
 	if err := h.DB.Where("city_id = ? AND position = ? AND is_captive = 0", cityId, ezfyPositionMayor).
@@ -852,7 +853,7 @@ func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 	}
 	// ★ 用有效后勤（自身 + 装备），否则给市长穿后勤装备没有任何效果
 	_, log, _ := h.officerEffective(&o)
-	return 10 + log/20
+	return (10 + log/20) * 3
 }
 
 // officerByName 按名字取本城军官
