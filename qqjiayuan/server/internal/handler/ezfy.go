@@ -631,7 +631,11 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity) {
 	}
 }
 
-// calcResource 资源按小时懒结算（民心/民怨/科技/道具增产/野地产出/军队耗粮/军官工资）
+// calcResource 资源按小时懒结算（科技/开工率/市长后勤加成/道具增产/野地产出/军队耗粮/军官工资）
+//
+// ★ 2026-09-26 用户要求：**民心/民怨不再影响产量**（原来 5 种产量都 × 民心系数，
+// 民心不满时全体减产，还会把资源详情页的「加成产量」算成负数）。
+// 民心/民怨本身仍然有效：决定能否被征服、被掠夺时扣减、安抚花费。
 //
 // ★★ 性能红线（2026-09-21 线上事故）：本函数是**所有接口的必经懒结算**，
 // 军官工资那一项**绝不能**在这里直接查库。之前写的是
@@ -693,10 +697,14 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	city.Feelings = feelings
 	city.Grievance = grievance
 
-	morale := float64(feelings) / 100.0
-	if grievance >= 50 {
-		morale *= 0.5
-	}
+	// ★★ 2026-09-26 用户要求「民心不该影响产量」：
+	//
+	//	原来这里有一段 `morale := feelings/100`（民怨 ≥50 再折半），
+	//	然后 5 种产量全部 `× morale` —— 民心不满时所有资源一起减产，
+	//	而资源详情页的「加成产量」是按「总产出 − 基础」算的，于是被算成负数
+	//	（用户报「加成产量都是负的」）。
+	//	**现在产量不再受民心/民怨影响**：产量只由「建筑 × 科技 × 开工率 × 市长后勤加成」
+	//	决定。民心/民怨仍然保留原有作用（决定能否被征服、掠夺扣减、安抚），只是不再扣产量。
 
 	var foodProd, steelProd, oilProd, rareProd, goldProd int64
 	var popMax int64
@@ -764,11 +772,8 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		oilProd = oilProd * int64(100+mayorBonus) / 100
 		rareProd = rareProd * int64(100+mayorBonus) / 100
 	}
-	foodProd = int64(float64(foodProd) * morale)
-	steelProd = int64(float64(steelProd) * morale)
-	oilProd = int64(float64(oilProd) * morale)
-	rareProd = int64(float64(rareProd) * morale)
-	goldProd = int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
+	// ★ 2026-09-26：不再 × morale（民心/民怨不扣产量，见上方说明）
+	goldProd = int64(float64(city.Pop) * float64(city.TaxRate) / 100.0)
 	// ★ 2026-09-24 修复「黄金 加成产量0 但显示[市长加成+23%]」: 市长加成同样作用于黄金
 	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
 		goldProd = goldProd * int64(100+mayorBonus) / 100
@@ -966,10 +971,7 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	tech := h.techMap(city.ID)
 	techFood, techSteel, techOil, techRare := tech[1], tech[2], tech[3], tech[4]
 	techSupply, techStore := tech[18], tech[14]
-	morale := float64(city.Feelings) / 100.0
-	if city.Grievance >= 50 {
-		morale *= 0.5
-	}
+	// ★ 2026-09-26 用户要求「民心不该影响产量」→ 这里不再算 morale，产量与民心/民怨无关
 	var foodBase, steelBase, oilBase, rareBase int64
 	for _, b := range h.buildingList(city.ID) {
 		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
@@ -998,7 +1000,7 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	oilBaseTech := oilBase * int64(100+techOil*10) / 100
 	rareBaseTech := rareBase * int64(100+techRare*10) / 100
 
-	// ★ 与 calcResource 对齐：开工率 → 市长加成 → 民心
+	// ★ 与 calcResource 对齐：开工率 → 市长加成（2026-09-26 起不再乘民心）
 	//   （原来详情页漏了开工率与市长加成，导致「详情页的数字」和「实际每小时产量」对不上）
 	rateFood := int64(ezfyRate(city.RateFood))
 	rateSteel := int64(ezfyRate(city.RateSteel))
@@ -1010,13 +1012,13 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		if mayor > 0 {
 			v = v * (100 + mayor) / 100
 		}
-		return int64(float64(v) * morale)
+		return v
 	}
 	foodProd := applyProd(foodBaseTech, rateFood)
 	steelProd := applyProd(steelBaseTech, rateSteel)
 	oilProd := applyProd(oilBaseTech, rateOil)
 	rareProd := applyProd(rareBaseTech, rateRare)
-	goldProd := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0 * morale)
+	goldProd := int64(float64(city.Pop) * float64(city.TaxRate) / 100.0)
 	// ★ 2026-09-24 与 calcResource 对齐: 市长加成同样作用于黄金(否则加成产量恒 0)
 	if mayor > 0 {
 		goldProd = goldProd * (100 + mayor) / 100
@@ -1031,18 +1033,20 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	//	所有资源都受同一套系数影响，玩家看到的就是「所有资源加成产量都是负的」。
 	//
 	//	现在的口径（界面 4 行仍自洽：基础 + 加成 − 耗量 = 总产量）：
-	//	  · base  = 建筑 × 科技 × 开工率 × 民心   ← 实际基础产出（不含市长/道具/活动）
-	//	  · bonus = 总产出 − base + 野地          ← 只剩真正的**正向加成**，恒 ≥ 0
-	//	  · total 不变（本次只改拆分，不改实际产量）
+	//	  · base  = 建筑 × 科技 × 开工率     ← 实际基础产出（不含市长/道具/活动）
+	//	  · bonus = 总产出 − base + 野地      ← 只剩真正的**正向加成**，恒 ≥ 0
+	//	★ 另按用户 2026-09-26 要求：**民心/民怨不再影响产量**（原来 base 里还有 × 民心），
+	//	  产量只由「建筑 × 科技 × 开工率 × 市长后勤加成」决定。
+	//	  · total 与 calcResource 同口径（本次只改拆分，不改实际产量公式）
 	realBase := func(base, rate int64) int64 {
-		return int64(float64(base*rate/100) * morale)
+		return base * rate / 100
 	}
 	foodBaseReal := realBase(foodBaseTech, rateFood)
 	steelBaseReal := realBase(steelBaseTech, rateSteel)
 	oilBaseReal := realBase(oilBaseTech, rateOil)
 	rareBaseReal := realBase(rareBaseTech, rateRare)
-	// 黄金没有开工率，只有民心
-	goldBaseReal := int64(float64(goldBase) * morale)
+	// 黄金没有开工率
+	goldBaseReal := goldBase
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
 	for _, w := range h.wildlandList(city.ID) {
@@ -1106,25 +1110,19 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		}
 		return m
 	}
-	// moralePct = 民心系数百分比（民怨 ≥50 时会折半），前端 base 行用它解释「为什么基础产量不是满的」
-	moralePct := int64(morale * 100)
+	// ★ 2026-09-26 起不再下发 morale_pct：民心/民怨已不参与产量，前端 base 行不再显示民心
 	return gin.H{
 		"food": item(city.Food, city.FoodCap, foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
-				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor,
-				"morale_pct": moralePct}),
+				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, 				"mayor_bonus": mayor}),
 		"steel": item(city.Steel, city.SteelCap, steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
-			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor,
-				"morale_pct": moralePct}),
+			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, 				"mayor_bonus": mayor}),
 		"oil": item(city.Oil, city.OilCap, oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
-			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor,
-				"morale_pct": moralePct}),
+			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, 				"mayor_bonus": mayor}),
 		"rare": item(city.Rare, city.RareCap, rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
-			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor,
-				"morale_pct": moralePct}),
+			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, 				"mayor_bonus": mayor}),
 		"gold": item(city.Gold, city.GoldCap, goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
-			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor,
-				"morale_pct": moralePct}),
+			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, 				"mayor_bonus": mayor}),
 	}
 }
 
