@@ -1475,6 +1475,10 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 	seen := map[string]bool{}
 	for i := range items {
 		it := items[i]
+		// ★ 2026-09-27 为爱发电卡：管理端发放专用，不进商城（避免裸奔成 0 价可购）
+		if isLoveCardItem(it.ItemType) {
+			continue
+		}
 		cat := ezfyItemCategory(&it)
 		if !seen[cat] {
 			seen[cat] = true
@@ -1798,7 +1802,8 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 		groups = append(groups, gin.H{"id": tp.ID, "name": tp.Name, "reset_type": tp.ResetType, "tasks": byType[typeId]})
 	}
 	_ = today
-	resp.OK(c, gin.H{"groups": groups})
+	// ★ 为爱发电卡：未发放时 love_cards 为空数组（前端不显示该 tab）
+	resp.OK(c, gin.H{"groups": groups, "love_cards": h.loveCardsView(uid), "love_total_claimable": h.loveCardTotalClaimable(uid)})
 }
 
 func (h *EzfyHandler) TaskAward(c *gin.Context) {

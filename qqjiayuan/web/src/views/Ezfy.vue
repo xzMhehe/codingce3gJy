@@ -532,20 +532,46 @@
             <template v-for="(g, i) in taskGroups">
               <!-- ★ 分隔竖线放 <a> 外: 选中态(加粗变色)不波及竖线 -->
               <span v-if="i > 0" :key="'ts' + g.id"> | </span>
+              <!-- ★ 2026-09-27 fix: 选中判断需 taskTab !== -1, 否则停在"为爱发电卡"时会高亮"新手任务" -->
               <a :key="'tgt' + g.id" href="javascript:;"
-                 :class="{ on: taskGroupCur.id === g.id }" @click="taskTab = g.id"><span>{{ g.name }}</span></a>
+                 :class="{ on: taskTab !== -1 && taskGroupCur.id === g.id }" @click="selectTaskTab(g.id)"><span>{{ g.name }}</span></a>
             </template>
+            <!-- ★ 2026-09-27 为爱发电卡 tab: 管理端未发放(love_cards 为空)时不显示 -->
+            <span v-if="loveCards.length && taskGroups.length"> | </span>
+            <a v-if="loveCards.length" href="javascript:;"
+               :class="{ on: taskTab === -1 }" @click="selectTaskTab(-1)"><span>为爱发电卡</span></a>
           </div>
-          <div v-if="taskGroupCur.tasks.length" style="margin-top:6px">
-            <div class="old-line" v-for="t in taskGroupCur.tasks" :key="t.id">
-              <b>{{ t.name }}</b> {{ t.current }}/{{ t.target }}
-              <span v-if="t.status === 2" class="gray">[已领取]</span>
-              <a v-else-if="t.status === 1" href="javascript:;" @click="doAward(t)">[领奖]</a>
-              <br/>
-              <span class="gray">奖励:{{ rewardText(t.reward) }}</span>
+
+          <!-- ★ 为爱发电卡内容（多卡可叠加领取） -->
+          <template v-if="taskTab === -1 && loveCards.length">
+            <div style="margin-top:6px">
+              <div class="old-line" v-for="c in loveCards" :key="c.id">
+                <b>{{ c.name }}</b> 每日 <b>{{ c.daily_diamond }}</b> 钻石 · 已 <b>{{ c.claimed_days }}/{{ c.total_days }}</b> 天
+                <span v-if="c.remaining > 0" class="gray">（剩{{ c.remaining }}天）</span>
+                <span v-else class="green">（已领完）</span>
+                <span v-if="c.claimable > 0"> · 可领 <b>{{ c.claimable }}</b> 天</span>
+              </div>
+              <div class="old-line">
+                <a v-if="loveTotalClaimable > 0" href="javascript:;" @click="doLoveCardClaim">[领取每日钻石]</a>
+                <span v-else class="gray">[今日暂无可领取, 明天再来]</span>
+              </div>
+              <div class="sub gray">漏领的天数会在之后领取时累加补齐（每卡封顶 {{ 30 }} 天）</div>
             </div>
-          </div>
-          <div class="old-line" v-else>(暂无任务)</div>
+          </template>
+
+          <!-- 普通分类任务 -->
+          <template v-else-if="taskTab !== -1">
+            <div v-if="taskGroupCur.tasks.length" style="margin-top:6px">
+              <div class="old-line" v-for="t in taskGroupCur.tasks" :key="t.id">
+                <b>{{ t.name }}</b> {{ t.current }}/{{ t.target }}
+                <span v-if="t.status === 2" class="gray">[已领取]</span>
+                <a v-else-if="t.status === 1" href="javascript:;" @click="doAward(t)">[领奖]</a>
+                <br/>
+                <span class="gray">奖励:{{ rewardText(t.reward) }}</span>
+              </div>
+            </div>
+            <div class="old-line" v-else>(暂无任务)</div>
+          </template>
         </div>
       </template>
 
@@ -3875,7 +3901,11 @@ export default {
       friendSearchDone: false,
       friendApplies: { inbox: [], outbox: [] },
       taskGroups: [],
-      taskTab: 0, // ★ 任务分类 tab(0=默认第一个分类: 新手/日常/每周)
+      // ★ 任务分类 tab(0=默认第一个分类: 新手/日常/每周); -1=为爱发电卡。
+      //   2026-09-27 fix: 刷新后记住上次所在 tab（localStorage 恢复）
+      taskTab: this.restoreTaskTab(),
+      // ★ 2026-09-27 为爱发电卡（管理端未发放时为空数组，对应 tab 不显示；多卡可叠加）
+      loveCards: [],
       // ★ 计谋（配置由后端下发，发动消耗「信号弹」）
       schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
       schemeX: '', schemeY: '',
@@ -4096,6 +4126,13 @@ export default {
       const gs = this.taskGroups || []
       if (!gs.length) return { id: 0, name: '', reset_type: 0, tasks: [] }
       return gs.find(g => g.id === this.taskTab) || gs[0]
+    },
+    // ★ 2026-09-27 为爱发电卡合计可领天数（多卡叠加），>0 才有「领取」按钮
+    loveTotalClaimable () {
+      const cs = this.loveCards || []
+      let n = 0
+      for (const c of cs) n += (c.claimable || 0)
+      return n
     },
     // ★ 二级导航（资源/军官/军队/科技/城防/统帅）：只在对应页面显示，位置固定在页面顶部
     //   军队的几个子页（兵种/兵种详情/训练/工厂）也算「军队」，一并显示，保持导航不中断
@@ -5494,7 +5531,40 @@ export default {
     },
     loadTasks () {
       api.get('/games/ezfy/tasks').then(r => {
-        if (r.code === 0) this.taskGroups = r.data.groups
+        if (r.code === 0) {
+          this.taskGroups = r.data.groups || []
+          // ★ 为爱发电卡：未发放时 love_cards 为空数组 → 隐藏对应 tab；若点过想去但被删除/清空则回落
+          this.loveCards = r.data.love_cards || []
+          if (this.taskTab === -1 && !this.loveCards.length) this.taskTab = 0
+          this.selectTaskTab(this.taskTab)
+        }
+      })
+    },
+    // ★ 2026-09-27 任务 tab 选择并持久化（重启/刷新后仍在原 tab）
+    selectTaskTab (v) {
+      this.taskTab = v
+      try { window.localStorage.setItem('ezfy_task_tab', String(v)) } catch (e) {}
+    },
+    // ★ 2026-09-27 恢复上次任务 tab（localStorage）
+    restoreTaskTab () {
+      try {
+        const v = parseInt(window.localStorage.getItem('ezfy_task_tab') || '0', 10)
+        return isNaN(v) ? 0 : v
+      } catch (e) { return 0 }
+    },
+    // ★ 2026-09-27 为爱发电卡领取（多卡叠加、漏领累加、封顶30天）
+    doLoveCardClaim () {
+      api.post('/games/ezfy/love-card/claim', {}).then(r => {
+        if (r && r.code === 0) {
+          if (r.data) {
+            if (r.data.love_cards) this.loveCards = r.data.love_cards
+            if (this.loveCards.length === 0) this.taskTab = 0
+            this.notify(r.data.msg || '已领取')
+          }
+          this.load()
+        } else {
+          this.notify(r && r.msg ? r.msg : '领取失败')
+        }
       })
     },
     loadWelfare () {

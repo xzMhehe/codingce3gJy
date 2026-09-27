@@ -76,6 +76,8 @@ import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
 // ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
 //   装备/宝箱价格定义迁到「数据管理」（装备道具配置/套装装备配置 tab），军官管理不再管装备。
 import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
+// ★ 2026-09-27 用户需求：为爱发电卡维护（发放 + 领取情况）
+import AdminEzfyLoveCard from './components/admin/AdminEzfyLoveCard.vue'
 import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
 import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
 import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
@@ -269,6 +271,8 @@ export const menu = [
           // ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab），
           //   独立权限 module:ezfyEquips，可在权限管理里单独分配给角色
           { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: AdminEzfyEquips, perm: 'module:ezfyEquips' },
+          // ★ 2026-09-27 为爱发电卡维护（发放 + 领取情况）；perm 复用数据管理
+          { key: 'ezfyLoveCard', name: '为爱发电卡', icon: 'el-icon-present', component: AdminEzfyLoveCard, perm: 'module:ezfyData' },
           { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
           { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
           { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },

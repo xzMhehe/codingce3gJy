@@ -297,7 +297,7 @@ type EzfyCfgLimit struct {
 	//     ③ 已经超过该值的老数据**不会被拉低**（读端用 GREATEST 保住较大值）。
 	//   ⚠️ 存库够用即可（21 亿在 int32 内），seed 补列走 bigint。
 	//   0 无意义 → 回落默认 21 亿。
-	ResMaxFood int64 `gorm:"default:2100000000;comment:粮食最大值" json:"res_max_food"`
+	ResMaxFood  int64 `gorm:"default:2100000000;comment:粮食最大值" json:"res_max_food"`
 	ResMaxSteel int64 `gorm:"default:2100000000;comment:钢铁最大值" json:"res_max_steel"`
 	ResMaxOil   int64 `gorm:"default:2100000000;comment:石油最大值" json:"res_max_oil"`
 	ResMaxRare  int64 `gorm:"default:2100000000;comment:稀矿最大值" json:"res_max_rare"`
@@ -970,6 +970,26 @@ type EzfyTask struct {
 }
 
 func (EzfyTask) TableName() string { return "ezfy_task" }
+
+// EzfyLoveCard 为爱发电卡 激活/领取记录
+// 卡由管理端发放即生效，有效期 30 天，每天可领固定钻石（普通 150 / 高级 200）。
+// 领取按「完整天数累加、封顶总天数」：漏领的天数会在之后领取时一次性补齐，
+// 总领取天数不超过 TotalDays(30)。
+type EzfyLoveCard struct {
+	ID            uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId        uint      `gorm:"index:idx_love_user;comment:用户ID" json:"user_id"`
+	CfgId         int       `gorm:"comment:卡类型(ezfy_cfg_item.id)" json:"cfg_id"`
+	Name          string    `gorm:"type:varchar(50);comment:卡片名称快照" json:"name"`
+	DailyDiamond  int64     `gorm:"default:150;comment:每日钻石数量" json:"daily_diamond"`
+	StartTime     int64     `gorm:"comment:生效开始时间戳(ms)" json:"start_time"`
+	EndTime       int64     `gorm:"comment:失效时间戳(ms, Start+30天)" json:"end_time"`
+	TotalDays     int       `gorm:"default:30;comment:总天数" json:"total_days"`
+	ClaimedDays   int       `gorm:"default:0;comment:已领取天数" json:"claimed_days"`
+	LastClaimTime int64     `gorm:"comment:上次领取时间戳(ms)" json:"last_claim_time"`
+	CreatedAt     time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyLoveCard) TableName() string { return "ezfy_love_card" }
 
 // EzfyNotice 公告/通知（0=全员公告）
 type EzfyNotice struct {

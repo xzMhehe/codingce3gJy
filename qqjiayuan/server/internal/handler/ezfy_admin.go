@@ -327,7 +327,12 @@ func (h *AdminHandler) AdminEzfyItemGrant(c *gin.Context) {
 			resp.ParamError(c, "道具不存在："+strconv.Itoa(it.CfgID))
 			return
 		}
-		ez.addItem(p.UserID, it.CfgID, it.Count)
+		// ★ 2026-09-27 为爱发电卡：发放即生效，不走背包（创建激活记录），其余道具照常入背包。
+		if isLoveCardItem(cfg.ItemType) {
+			ez.createLoveCard(p.UserID, &cfg, it.Count)
+		} else {
+			ez.addItem(p.UserID, it.CfgID, it.Count)
+		}
 		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
 	}
 	if items == "" {
@@ -364,6 +369,7 @@ func (h *AdminHandler) AdminEzfyPlayerDelete(c *gin.Context) {
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyOrder{})
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyReport{})
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyItem{})
+	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyLoveCard{})
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfySign{})
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyGift{})
 	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyTask{})

@@ -84,6 +84,7 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfyNotices(db)
 	seedEzfyOfficerItems(db)
 	seedEzfyMoveItems(db)
+	seedEzfyLoveCardItems(db)
 	seedEzfyActivities(db)
 	seedEzfyResources(db)
 	seedEzfyRanks(db)
@@ -416,6 +417,35 @@ func seedEzfyMoveItems(db *gorm.DB) {
 		{ID: 22, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
 			PriceGold: 0, PriceDiamond: 250, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
+	}
+	for _, it := range rows {
+		var count int64
+		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
+		if count > 0 {
+			// 已存在则只同步名称/类型/说明/分类, 不动价格与库存(避免覆盖后台调价)
+			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
+				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
+					"param1": it.Param1, "description": it.Description, "category": it.Category})
+			continue
+		}
+		db.Create(&it)
+	}
+}
+
+// seedEzfyLoveCardItems 为爱发电卡道具配置
+//
+// 用户规则：为爱发电卡 30 天、每天领 150 钻石；为爱发电高级卡 30 天、每天领 200 钻石。
+//
+//	卡片本身不投入商城（管理端「发放道具」专用），Param1 存每日钻石数量。
+//	ItemType 22 普通 / 23 高级 —— 管理端发放时据此识别并激活卡片（创建 ezfy_love_card 记录）。
+func seedEzfyLoveCardItems(db *gorm.DB) {
+	rows := []model.EzfyCfgItem{
+		{ID: 26, Name: "为爱发电卡", ItemType: 22, Param1: 150, PriceGold: 0, PriceDiamond: 0, Stock: -1,
+			Category:    "为爱发电卡",
+			Description: "管理端发放即生效: 有效期30天, 每天可领150钻石(漏领的天数之后会累加补齐)"},
+		{ID: 27, Name: "为爱发电高级卡", ItemType: 23, Param1: 200, PriceGold: 0, PriceDiamond: 0, Stock: -1,
+			Category:    "为爱发电卡",
+			Description: "管理端发放即生效: 有效期30天, 每天可领200钻石(漏领的天数之后会累加补齐)"},
 	}
 	for _, it := range rows {
 		var count int64

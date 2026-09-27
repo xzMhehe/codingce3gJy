@@ -140,6 +140,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgLimit{},
 		// 二战聊天敏感词（独立维护页）
 		&model.EzfyWordFilter{},
+		// 二战风云·为爱发电卡（管理端发放、玩家每日领钻石）
+		&model.EzfyLoveCard{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)

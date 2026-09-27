@@ -640,6 +640,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/bag/use", ezfyH.UseItem)
 				ezfyG.GET("/tasks", ezfyH.Tasks)
 				ezfyG.POST("/tasks/award", ezfyH.TaskAward)
+				// ★ 2026-09-27 为爱发电卡（管理端发放即生效，每天领钻石，漏领累加封顶30天）
+				ezfyG.GET("/love-card", ezfyH.LoveCard)
+				ezfyG.POST("/love-card/claim", ezfyH.LoveCardClaim)
 				ezfyG.GET("/welfare", ezfyH.Welfare)
 				ezfyG.POST("/welfare/sign", ezfyH.Sign)
 				ezfyG.POST("/welfare/gift/:type", ezfyH.Gift)
@@ -1062,6 +1065,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrantPlayers)
 				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrantOptions)
 				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrant)
+				// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
+				admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), adminH.AdminEzfyLoveCards)
+				admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyLoveCardDelete)
 				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyData)
 				admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyDataCreate)
 				admin.PUT("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyDataUpdate)
