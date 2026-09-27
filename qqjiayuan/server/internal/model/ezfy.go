@@ -555,6 +555,18 @@ type EzfyCityTech struct {
 
 func (EzfyCityTech) TableName() string { return "ezfy_city_tech" }
 
+// EzfyUserTech 科技等级（用户级）：等级全城共用、无主城概念，所有城市操作平等。
+// 研究队列仍存 ezfy_city_tech（status=1，按发起城市），等级记录统一存本表。
+type EzfyUserTech struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint      `gorm:"uniqueIndex:uk_user_tech;comment:用户ID" json:"user_id"`
+	TechId    int       `gorm:"uniqueIndex:uk_user_tech;comment:科技ID" json:"tech_id"`
+	Level     int       `gorm:"comment:等级" json:"level"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyUserTech) TableName() string { return "ezfy_user_tech" }
+
 type EzfyTrainQueue struct {
 	ID        uint  `gorm:"primaryKey;comment:主键ID" json:"id"`
 	CityId    int64 `gorm:"index:idx_city;comment:城市ID" json:"city_id"`

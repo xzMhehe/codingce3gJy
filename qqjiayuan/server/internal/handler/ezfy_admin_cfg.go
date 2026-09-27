@@ -1687,7 +1687,7 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id")
 	removed := dedup.RowsAffected
 
-	// ★ 第九轮：科技**所有城池公用** —— 每个玩家只写「科技城」(主城) 一份，
+	// ★ 2026-09-28 科技等级用户级共用 —— 每个玩家写一份 ezfy_user_tech，
 	//   不再按城市各写一份（否则城市越多行数越多，且分城的行是无效数据）。
 	var cities []model.EzfyCity
 	h.DB.Select("id", "user_id").Find(&cities)
@@ -1696,33 +1696,37 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 		return
 	}
 	mainOf := map[uint]uint{}
+	uidOf := map[uint]uint{} // main city id -> uid
 	for _, ct := range cities {
 		if m, ok := mainOf[ct.UserID]; !ok || ct.ID < m {
 			mainOf[ct.UserID] = ct.ID
 		}
 	}
-	cities = cities[:0]
+	for _, ct := range cities {
+		uidOf[mainOf[ct.UserID]] = ct.UserID
+	}
+	uids := make([]uint, 0, len(mainOf))
 	for _, mid := range mainOf {
-		cities = append(cities, model.EzfyCity{ID: mid})
+		uids = append(uids, uidOf[mid])
 	}
 	now := time.Now()
-	rows := make([]model.EzfyCityTech, 0, len(cities)*len(techs))
-	for _, ct := range cities {
+	rows := make([]model.EzfyUserTech, 0, len(uids)*len(techs))
+	for _, uid := range uids {
 		for _, t := range techs {
 			lv := t.MaxLevel
 			if lv <= 0 {
 				lv = 10
 			}
-			rows = append(rows, model.EzfyCityTech{
-				CityId: int64(ct.ID), TechId: t.ID, Level: lv,
-				Status: 0, EndTime: 0, UpdatedAt: now,
+			rows = append(rows, model.EzfyUserTech{
+				UserId: uid, TechId: t.ID, Level: lv,
+				UpdatedAt: now,
 			})
 		}
 	}
 	// 2) 分批 upsert
 	err := h.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "city_id"}, {Name: "tech_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"level", "status", "end_time", "updated_at"}),
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "tech_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"level", "updated_at"}),
 	}).CreateInBatches(rows, 200).Error
 	if err != nil {
 		resp.ParamError(c, "满级失败："+err.Error())
@@ -1730,14 +1734,14 @@ func (h *AdminHandler) AdminEzfyTechMaxAll(c *gin.Context) {
 	}
 	// 3) 回读校验：确认没有重复行、且全部达到满级
 	var dupCnt int64
-	h.DB.Raw("SELECT COUNT(*) FROM (SELECT city_id, tech_id FROM ezfy_city_tech " +
-		"GROUP BY city_id, tech_id HAVING COUNT(*) > 1) t").Scan(&dupCnt)
+	h.DB.Raw("SELECT COUNT(*) FROM (SELECT user_id, tech_id FROM ezfy_user_tech " +
+		"GROUP BY user_id, tech_id HAVING COUNT(*) > 1) t").Scan(&dupCnt)
 	var maxLevel int64
-	h.DB.Raw("SELECT COALESCE(MAX(level), 0) FROM ezfy_city_tech").Scan(&maxLevel)
+	h.DB.Raw("SELECT COALESCE(MAX(level), 0) FROM ezfy_user_tech").Scan(&maxLevel)
 
 	resp.OK(c, gin.H{
-		"msg": fmt.Sprintf("已把 %d 座城市 × %d 项科技升到满级（清理重复行 %d 条）",
-			len(cities), len(techs), removed),
+		"msg": fmt.Sprintf("已把 %d 位玩家 × %d 项科技升到满级（清理重复行 %d 条）",
+			len(uids), len(techs), removed),
 		"cities": len(cities), "techs": len(techs),
 		"dedup_removed": removed, "dup_left": dupCnt, "max_level": maxLevel,
 	})

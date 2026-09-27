@@ -141,7 +141,7 @@
           出征
         </div>
         <div class="old-line">
-          <a href="javascript:;" @click="go('techs')">研究科技</a>
+          <a href="javascript:;" @click="go('techs')">科研中心</a>
         </div>
         <div class="old-line">
           <a href="javascript:;" @click="go('citystatus')">城市状态</a>
@@ -981,7 +981,7 @@
             <span v-else class="gray">[已满级]</span>
             <br/>
           </div>
-          <div class="old-line gray">同一时间只能研究一项科技；[取消] 会全额退还本次研究消耗。</div>
+          <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 会全额退还本次研究消耗。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -992,7 +992,8 @@
           <div class="panel-title">研究「{{ techSel.name }}」{{ techSel.level + 1 }}级</div>
           <div class="old-line">当前等级：{{ techSel.level }}/{{ techSel.max_level }}级</div>
           <div class="old-line">效果：{{ techSel.effect }}</div>
-          <div class="old-line">前提：科研中心{{ techSel.academy_need }}级</div>
+          <div class="old-line">前提：科研中心{{ techSel.academy_need }}级
+            <span class="gray">(本城 {{ techSel.academy }} 级)</span></div>
           <div class="old-line">
             所需资源：{{ resNames.food }}{{ techSel.next_cost.food }} {{ resNames.steel }}{{ techSel.next_cost.steel }}
             {{ resNames.oil }}{{ techSel.next_cost.oil }} {{ resNames.rare }}{{ techSel.next_cost.rare }}
@@ -5162,7 +5163,8 @@ export default {
       this.targetCfg = cfg
     },
     loadTechs () {
-      api.get('/games/ezfy/techs').then(r => {
+      // ★ 2026-09-28 多城研究：科技页按**当前城**视角加载（科研中心等级/研究限制）
+      api.get('/games/ezfy/techs?city_id=' + (this.city ? this.city.id : 0)).then(r => {
         if (r.code === 0) this.techsData = r.data
       })
     },
@@ -6391,7 +6393,8 @@ export default {
     },
     doTechPre () {
       if (!this.techSel) return
-      api.post('/games/ezfy/techs/research', { tech_id: this.techSel.tech_id }).then(r => {
+      // ★ 2026-09-28 多城研究：带上当前城（研究限制/扣资源都在当前城）
+      api.post('/games/ezfy/techs/research', { tech_id: this.techSel.tech_id, city_id: this.city ? this.city.id : 0 }).then(r => {
         if (r.code === 0) {
           this.notify((r.data && r.data.msg) ? r.data.msg : '科技研究已开始', 'ok')
           this.go('techs')
@@ -6409,7 +6412,8 @@ export default {
     },
     async doCancelTech (t) {
       if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
-      api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id }).then(r => {
+      // ★ 2026-09-28 多城研究：取消只作用于**当前城**的研究队列
+      api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id, city_id: this.city ? this.city.id : 0 }).then(r => {
         this.alert(r, '研究已取消，消耗已全额退还')
         if (r.code === 0) this.loadTechs()
       })

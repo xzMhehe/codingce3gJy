@@ -662,23 +662,38 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 func (h *EzfyHandler) Techs(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
-	// ★ 第九轮：科技所有城池公用 —— 等级取科技城，科研中心取玩家所有城的最高等级
-	techCity := h.techCityId(city.ID)
+	// ★ 2026-09-28 多城研究：GET ?city_id= 指定查看的城市，0/缺省 = 主城
+	city, _ := h.readCityReq(c)
+	if city == nil {
+		m := h.getOrCreateCity(uid)
+		city = &m
+	}
+	h.refreshCity(uid, city)
+	// ★ 2026-09-28 多城研究：等级存用户级(全城共用、无主城)；科研中心等级取**当前城**；
+	//   研究中的判断 = 该科技在玩家**任一城市**是否有进行中记录（不同城不能研究同一科技）
 	techMap := h.techMap(city.ID)
-	academy := h.maxAcademyLevel(uid)
+	academy := h.buildingLevel(city.ID, 8) // 当前城科研中心等级
+	cityIds := h.ezfyCityIds(uid)
 	var all []model.EzfyCfgTech
 	h.DB.Order("id ASC").Find(&all)
 	views := []gin.H{}
 	for _, t := range all {
 		level := techMap[t.ID]
-		var rec model.EzfyCityTech
-		if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", techCity, t.ID).First(&rec).Error; err == nil {
+		researching := false
+		var endTime int64
+		for _, cid := range cityIds {
+			var rec model.EzfyCityTech
+			if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", cid, t.ID).First(&rec).Error; err == nil {
+				researching = true
+				endTime = rec.EndTime
+				break
+			}
+		}
+		if researching {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": t.Effect,
 				"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": true,
-				"end_time": rec.EndTime})
+				"end_time": endTime})
 			continue
 		}
 		next := ezfyCfg.techLevel(t.ID, level+1)

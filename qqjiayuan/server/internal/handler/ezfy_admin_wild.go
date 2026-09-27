@@ -428,7 +428,8 @@ func (h *AdminHandler) AdminEzfyTechCfgList(c *gin.Context) {
 		lvOf[a.TechId] = a.Cnt
 	}
 	var ownAgg []agg
-	h.DB.Model(&model.EzfyCityTech{}).Select("tech_id, COUNT(*) as cnt").
+	// ★ 2026-09-28 科技等级用户级共用：按玩家数统计
+	h.DB.Model(&model.EzfyUserTech{}).Select("tech_id, COUNT(*) as cnt").
 		Group("tech_id").Scan(&ownAgg)
 	ownOf := map[int]int64{}
 	for _, a := range ownAgg {
@@ -506,9 +507,10 @@ func (h *AdminHandler) AdminEzfyTechCfgDelete(c *gin.Context) {
 		return
 	}
 	var owned int64
-	h.DB.Model(&model.EzfyCityTech{}).Where("tech_id = ?", id).Count(&owned)
+	// ★ 2026-09-28 科技等级用户级共用：按玩家数统计
+	h.DB.Model(&model.EzfyUserTech{}).Where("tech_id = ?", id).Count(&owned)
 	if owned > 0 {
-		resp.ParamError(c, "该科技已被 "+strconv.FormatInt(owned, 10)+" 个玩家城池研究，不能删除")
+		resp.ParamError(c, "该科技已被 "+strconv.FormatInt(owned, 10)+" 位玩家掌握，不能删除")
 		return
 	}
 	h.DB.Delete(&model.EzfyCfgTechLevel{}, "tech_id = ?", id)

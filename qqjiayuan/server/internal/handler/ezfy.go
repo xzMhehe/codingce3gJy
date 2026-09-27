@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -427,14 +428,19 @@ func (h *EzfyHandler) buildingMaxLevel(cityId uint, buildingId int) int {
 	return ezfyBuildingMaxLevel(buildingId, h.hallLevelOf(cityId))
 }
 
-// techMap 某城的科技等级表。
+// techMap 玩家科技等级表（用户级）。
 //
-// ★ 第九轮：科技**所有城池公用** —— 内部先换算成「科技城」(玩家主城)，
-// 所以所有调用点（结算/展示/加成）自动变成全账号共用，不用逐个改。
+// ★ 2026-09-28 用户要求「没有主城概念，所有城市都是一样的」：等级存 ezfy_user_tech
+// （按 user_id），所有调用点（结算/展示/加成）自动变成全账号共用，不用逐个改。
 func (h *EzfyHandler) techMap(cityId uint) map[int]int {
-	var list []model.EzfyCityTech
-	h.DB.Where("city_id = ?", h.techCityId(cityId)).Find(&list)
+	var uid uint
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).Select("user_id").Scan(&uid)
 	m := map[int]int{}
+	if uid == 0 {
+		return m
+	}
+	var list []model.EzfyUserTech
+	h.DB.Where("user_id = ?", uid).Find(&list)
 	for _, t := range list {
 		m[t.TechId] = t.Level
 	}
@@ -1954,9 +1960,9 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	if v, ok := ezfyTechAcademy[techId]; ok {
 		academyNeed = v
 	}
-	// ★ 科技全城公用 → 科研中心等级取玩家所有城的最高值
-	if h.maxAcademyLevel(city.UserID) < academyNeed {
-		return fmt.Sprintf("需要科研中心%d级才能研究%s", academyNeed, cfg.Name)
+	// ★ 2026-09-28 研究限制来自**当前城市**的科研中心等级（不再取全城最高）
+	if h.buildingLevel(city.ID, 8) < academyNeed {
+		return fmt.Sprintf("本城需要科研中心%d级才能研究%s（当前%d级）", academyNeed, cfg.Name, h.buildingLevel(city.ID, 8))
 	}
 	curLevel := h.techMap(city.ID)[techId]
 	if curLevel >= cfg.MaxLevel {
@@ -1976,12 +1982,14 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 			return fmt.Sprintf("需要先研究%s %d级", preName, cfg.PreTechLevel)
 		}
 	}
-	// ★ 科技全城公用：读写都落到「科技城」（玩家主城）
-	techCity := h.techCityId(city.ID)
-	var researching int64
-	h.DB.Model(&model.EzfyCityTech{}).Where("city_id = ? AND status = 1", techCity).Count(&researching)
-	if researching > 0 {
-		return "已有科技研究中"
+	// ★ 2026-09-28 多城研究互斥：**同一科技**同一时刻只能在一个城市研究。
+	//   不同城市可以各研究各的（互不抢槽），但同一科技撞了就拦下。
+	var dup int64
+	h.DB.Model(&model.EzfyCityTech{}).
+		Where("tech_id = ? AND status = 1 AND city_id IN ?", techId, h.ezfyCityIds(city.UserID)).
+		Count(&dup)
+	if dup > 0 {
+		return fmt.Sprintf("%s 已在其他城市研究中, 不能重复研究", cfg.Name)
 	}
 	if city.Food < lv.Food || city.Steel < lv.Steel || city.Oil < lv.Oil ||
 		city.Rare < lv.Rare || city.Gold < lv.Gold {
@@ -1994,15 +2002,10 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	city.Gold -= lv.Gold
 	h.saveCityRes(city)
 	now := time.Now().UnixMilli()
-	// ★ 科技写入「科技城」（全城公用）
-	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND tech_id = ?", techCity, techId).First(&t).Error; err != nil {
-		t = model.EzfyCityTech{CityId: int64(techCity), TechId: techId, Level: 0, Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)}
-		h.DB.Create(&t)
-		return ""
-	}
-	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
-		Updates(map[string]interface{}{"status": 1, "end_time": now + h.techResearchMs(lv.ResearchTime)})
+	// ★ 2026-09-28 等级记录在用户级（ezfy_user_tech），研究队列记录落在**发起城市**。
+	//   Level 存开始时的全局等级，结算时按它 +1 写回用户级等级。
+	h.DB.Create(&model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: curLevel,
+		Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)})
 	return ""
 }
 
@@ -2010,7 +2013,8 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
 	h.refreshCity(city.UserID, city)
 	var t model.EzfyCityTech
-	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", h.techCityId(city.ID), techId).First(&t).Error; err != nil {
+	// ★ 2026-09-28 研究队列记录在「发起城市」；取消按当前城 + 该科技查进行中记录
+	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", city.ID, techId).First(&t).Error; err != nil {
 		return "该科技没有在研究中"
 	}
 	if lv := ezfyCfg.techLevel(techId, t.Level+1); lv != nil {
@@ -2024,31 +2028,34 @@ func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
 
 func (h *EzfyHandler) checkTechDone(city *model.EzfyCity) {
 	now := time.Now().UnixMilli()
-	// ★ 第九轮：科技所有城池公用 —— 研究状态统一落在「科技城」(主城)，
-	//   所以在任意城进入游戏都能结算完成，不会再出现「切城后研究卡住/加成没生效」。
-	tid := h.techCityId(city.ID)
+	// ★ 2026-09-28 多城研究：进行中的队列记录分布在玩家各城，全部都要结算；
+	//   等级 +1 写到用户级 ezfy_user_tech（全城共用、无主城概念）。
 	var list []model.EzfyCityTech
-	h.DB.Where("city_id = ? AND status = 1", tid).Find(&list)
+	h.DB.Where("city_id IN ? AND status = 1", h.ezfyCityIds(city.UserID)).Find(&list)
 	for _, t := range list {
 		if now < t.EndTime {
 			continue
 		}
 		// ★ 2026-09-26 同 checkBuildingDone：条件更新抢占，避免并发重复结算
-		//   （`level` 写的是同一个值所以幂等，但 `taskProgress` 会被重复 +1）。
 		res := h.DB.Model(&model.EzfyCityTech{}).
 			Where("id = ? AND status = 1", t.ID).
-			Updates(map[string]interface{}{"level": t.Level + 1, "status": 0})
+			Updates(map[string]interface{}{"status": 0})
 		if res.Error != nil || res.RowsAffected == 0 {
 			continue
 		}
+		// 等级 +1 写用户级（无记录则建）
+		h.DB.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "tech_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"level"}),
+		}).Create(&model.EzfyUserTech{UserId: city.UserID, TechId: t.TechId, Level: t.Level + 1})
 		h.taskProgress(city.UserID, "tech_research", 1)
 	}
 }
 
 func (h *EzfyHandler) speedUpTech(city *model.EzfyCity, minutes int64) string {
 	var t model.EzfyCityTech
-	// ★ 科技所有城池公用 → 研究中的记录在「科技城」(主城)
-	if err := h.DB.Where("city_id = ? AND status = 1", h.techCityId(city.ID)).First(&t).Error; err != nil {
+	// ★ 2026-09-28 研究队列记录在「发起城市」，加速按当前城查
+	if err := h.DB.Where("city_id = ? AND status = 1", city.ID).First(&t).Error; err != nil {
 		return "没有研究中的科技"
 	}
 	end := time.Now().UnixMilli()
@@ -2367,7 +2374,8 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		return fmt.Sprintf("使用成功: 当前训练队列剩余时间减少%d%%", param)
 	case 26: // 科技加速%
 		var t model.EzfyCityTech
-		if err := h.DB.Where("city_id = ? AND status = 1", h.techCityId(city.ID)).
+		// ★ 2026-09-28 研究队列记录在「发起城市」
+		if err := h.DB.Where("city_id = ? AND status = 1", city.ID).
 			First(&t).Error; err != nil {
 			return "没有研究中的科技"
 		}
@@ -3092,14 +3100,7 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 // 并抹掉该坐标的「玩家城」地图区域记录（于是变回普通平原，不属于任何玩家）。
 func (h *EzfyHandler) ezfyDestroyCity(uid uint, ct *model.EzfyCity) string {
 	cid := ct.ID
-	// ★ 科技是全城公用的：如果拆的正好是「科技城」(主城)，先把科技搬到剩下的第一座城，
-	//   否则科技会跟着一起消失。
-	if h.techCityId(cid) == cid {
-		var next model.EzfyCity
-		if err := h.DB.Where("user_id = ? AND id <> ?", uid, cid).Order("id ASC").First(&next).Error; err == nil {
-			h.ezfyMoveTechTo(cid, next.ID)
-		}
-	}
+	// ★ 2026-09-28 科技等级存用户级(ezfy_user_tech)，拆城无需搬家、等级不随城消失。
 	// 还在外面的部队/采集队：一并撤掉（否则会留下指向已删城市的孤儿订单）
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOrder{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityBuilding{})
