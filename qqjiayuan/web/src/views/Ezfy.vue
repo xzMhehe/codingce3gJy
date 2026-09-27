@@ -838,18 +838,19 @@
           <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
           <table class="ezfy-center-tbl">
             <tr><th class="nm">兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
-            <tr v-for="t in troopsData.troops" :key="'tv' + t.troop_id">
-              <td class="nm"><a href="javascript:;" @click="openTroopView(t.troop_id)">{{ t.name }}</a></td>
+            <!-- ★ 2026-09-28 用户要求：首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
+            <tr v-for="t in armyRows" :key="'tv' + t.id">
+              <td class="nm"><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
               <td>
-                <!-- ★ 训练：快捷训练当前兵种（按住城军队里的每个兵种可直接开练） -->
-                <a href="javascript:;" @click="quickTrain(t)">[训练]</a>
-                <!-- ★ 解散：数量由玩家自己输入（用户要求） -->
-                <a class="red" href="javascript:;" @click="doDisband(t)">[解散]</a>
+                <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
+                <a href="javascript:;" @click="openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
+                <!-- 解散：数量由玩家自己输入（用户要求），数量为 0 时无意义、不显示 -->
+                <a v-if="t.count > 0" class="red" href="javascript:;" @click="doDisband(t)">[解散]</a>
               </td>
             </tr>
           </table>
-          <div class="old-line" v-if="!troopsData.troops.length">(城内无部队)</div>
+          <div class="old-line" v-if="!armyRows.length">(暂无兵种配置)</div>
           <br/>
           <div class="panel-title">训练队列({{ queues.length }})</div>
           <div class="old-line" v-for="q in queues" :key="'tq' + q.id">
@@ -4284,6 +4285,15 @@ export default {
     trainCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type !== 4)
     },
+    // ★ 2026-09-28 用户要求：首页点「军队」看到全部兵种（数量为 0 的也显示）+ 训练操作。
+    //   城内军队表遍历全部兵种配置，数量从 troops 里取（没有=0），行动行自带 troop_id。
+    armyRows () {
+      const troops = this.troopsData.troops || []
+      return (this.troopsData.cfgs || []).map(c => {
+        const row = troops.find(x => x.troop_id === c.id)
+        return Object.assign({}, c, { count: row ? row.count : 0, troop_id: c.id })
+      })
+    },
     curOfficerBonus () {
       for (const o of this.onDutyOfficers) {
         if (o.name === this.orderOfficer) return o.battle_bonus
@@ -6300,15 +6310,7 @@ export default {
       this.trainSplit = false
       this.go('trainpre')
     },
-    // ★ 军队总览「城内军队」表的 [训练] 快捷入口（用户要求）：
-    //   城内军队行只带 troop_id/name/type/count，训练需要完整兵种配置（成本/耗时），
-    //   所以按 troop_id 去 cfgs 里找完整配置，找不到不允许（防御兵种走「建造」）。
-    quickTrain (t) {
-      const cfg = (this.troopsData.cfgs || []).find(c => c.id === t.troop_id)
-      if (!cfg) { this.notify('该兵种配置不存在, 无法训练', 'error'); return }
-      if (cfg.type === 4) { this.notify('防御兵种走「城防」页建造', 'error'); return }
-      this.openTrainPre(cfg, 'troop')
-    },
+    // ★ 2026-09-28 城内军队表改为遍历 armyRows（全兵种含 0 数量），原 quickTrain 已无引用，移除。
     doTrainPre () {
       if (!this.trainSel) return
       const n = parseInt(this.trainCount) || 0
