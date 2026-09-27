@@ -332,13 +332,17 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if win {
 		// 奖励：资源（档位基础值 × 类型倍数）+ 黄金（元宝）+ 必定掉宝 + 大量声望
 		res := ezfyActRewardBase(actType, level)
-		// 复刻原版：活动奖励可突破常规上限的 3 倍
-		city.Food = min64(city.FoodCap*3, city.Food+res)
-		city.Steel = min64(city.SteelCap*3, city.Steel+res)
-		city.Oil = min64(city.OilCap*3, city.Oil+res)
-		city.Rare = min64(city.RareCap*3, city.Rare+res)
+		// ★ 2026-09-27 活动城奖励必须「累加」到「资源最大值」，不能按仓储上限 clamp：
+		//   旧写法 min64(city.XxxCap*3, old+res) 会把「已超过仓储 3 倍」的存量直接拉低，
+		//   导致打一次活动城资源反而变少（用户反馈「资源会掉」）。
+		//   统一走 ezfyAddResMax（结果 = max(现值, min(资源最大值, 现值+增量))），与生产/入库同口径：
+		//   无条件累加、只受资源最大值约束、老值超出也不被拉低。
+		city.Food = ezfyAddResMax("food", city.Food, res)
+		city.Steel = ezfyAddResMax("steel", city.Steel, res)
+		city.Oil = ezfyAddResMax("oil", city.Oil, res)
+		city.Rare = ezfyAddResMax("rare", city.Rare, res)
 		gold := ezfyActGoldReward(actType, level)
-		city.Gold = min64(city.GoldCap, city.Gold+gold)
+		city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 		h.saveCityRes(city)
 
 		report += fmt.Sprintf("\n战利品: 粮%d 钢%d 油%d 稀矿%d 黄金%d", res, res, res, res, gold)

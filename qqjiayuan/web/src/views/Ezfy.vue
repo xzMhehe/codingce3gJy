@@ -8509,8 +8509,8 @@ body.ezfy-ios .ezfy-page textarea {
   /* 地图格子: 间距按窄屏收紧, 保证 320px 下 5 列不溢出
      ★ 格子已是两行(名称 + 坐标)，窄屏两行都缩一档，行高收紧免得整表变高太多；
        第一行跟着桌面一起缩(15 → 13)，坐标行同样随桌面(14 → 13)，两行之间留同样的缝。 */
-  .ezfy-page .ezfy-map-table a { font-size: 13px; line-height: 1.25; }
-  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 13px; }
+  .ezfy-page .ezfy-map-table a { font-size: 12px; line-height: 1.25; }
+  .ezfy-page .ezfy-map-table a .ezfy-cell-xy { font-size: 12px; }
   /* 窄屏纵向间距同步收一档(桌面 22px → 窄屏 12px)：纵向间距只影响表格高度、不影响列宽，
      所以这里不需要像横向那样压到极限，留出和桌面接近的呼吸感 */
   /* ★ 2026-09-26 桌面把横向间距加大后，用户反馈「手机端没同步，适配一下」：
@@ -8526,8 +8526,12 @@ body.ezfy-ios .ezfy-page textarea {
          好处是地名整条显示（不再省略）、间距更松；代价是窄屏要看全 5 列需左右滑动。
          （若更希望窄屏不滑动、整表一屏放下，则必须接受地名省略，二选一。） */
   .ezfy-page .ezfy-map-table { width: 440px; border-spacing: 10px 12px; margin-left: -4px; }
+  /* ★★ 2026-09-27 地名还是被省略号截掉(「海底森…」)：根本原因是上面的 ellipsis 规则在
+     窄屏仍生效，而「海底森林(9/10)」≈73~80px，卡在 76px 列宽边界内会因 padding 超宽被截。
+     这里在窄屏直接覆盖成**不省略、格子内能折行**：宁可折行也绝不丢字；
+     配合字体 13→12px 后「海底森林(10)」仅约 64px，可一行放下、基本不会触发折行。 */
   .ezfy-page .ezfy-map-table a .ezfy-cell-name {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    overflow: visible; text-overflow: clip; white-space: normal; word-break: break-all;
   }
   /* 坐标查找行在 320px 下也要待在一行内 */
   .ezfy-page .ezfy-map-jump input { width: 62px; margin-right: 2px; }
