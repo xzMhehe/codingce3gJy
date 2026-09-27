@@ -2991,7 +2991,7 @@
           <!-- ★ 2026-09-25 去掉内联 font-size:13px，改为继承全站统一字号（--fs） -->
           <div class="gray">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
-          <span style="float:right"><span v-html="rankIcon(myRankId)"></span></span>军衔：{{ rankName }}({{ rankPost }})<br/>
+          军衔：{{ rankName }}({{ rankPost }})<span style="margin-left:4px"><span v-html="rankIcon(myRankId)"></span></span>
           军团：{{ (myCorps && myCorps.name) || '无' }}<br/>
           <!-- ★ 2026-09-27 用户要求：统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
           <template v-if="myCorpsTitle">职务：{{ myCorpsTitle }}<br/></template>
@@ -3019,7 +3019,7 @@
           <div class="old-line">
             阵营：{{ playerInfo.camp_name }}<br/>
             声望：{{ playerInfo.prestige }}<br/>
-            <span v-html="rankIcon(rankIdByName(playerInfo.rank_name))"></span>军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<br/>
+            军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<span style="margin-left:4px"><span v-html="rankIcon(rankIdByName(playerInfo.rank_name))"></span></span>
             军团：{{ playerInfo.corps_name || '无' }}<br/>
             城市数：{{ playerInfo.city_count }}<br/>
             军官数：{{ playerInfo.officer_count }}<br/>
@@ -4768,6 +4768,11 @@ export default {
         if (this.cur === 'orderview' && this.curOrder && this.curOrder.id) {
           params.set('oid', this.curOrder.id)
         } else params.delete('oid')
+        // ★ 2026-09-27 他人统帅信息要查看的玩家 user_id 也写进 URL（同 orderview），
+        //   否则刷新后 playerInfo 拿不到 pid 会一直卡「正在加载统帅信息…」。
+        if (this.cur === 'playerinfo' && this.playerInfo && this.playerInfo.user_id) {
+          params.set('pid', this.playerInfo.user_id)
+        } else params.delete('pid')
         const qs = params.toString()
         const next = base + (qs ? '?' + qs : '')
         history.replaceState(history.state, '', location.pathname + location.search + next)
@@ -4779,6 +4784,7 @@ export default {
       let cur = ''
       let res = ''
       let oid = ''
+      let pid = ''
       try {
         const hash = location.hash || ''
         const qi = hash.indexOf('?')
@@ -4787,6 +4793,7 @@ export default {
           cur = params.get('cur') || ''
           res = params.get('res') || ''
           oid = params.get('oid') || ''
+          pid = params.get('pid') || ''
         }
       } catch (e) {}
       if (res) this.resType = res
@@ -4795,6 +4802,19 @@ export default {
       if (cur === 'orderview') {
         if (parseInt(oid, 10) > 0) this.loadOrderView(oid)
         else this.go('orders')
+        return
+      }
+      // ★ 2026-09-27 修复「他人统帅信息刷新后丢失」：按 pid 重新拉一次；
+      //   拿不到 pid 就退回首页（同 orderview，绝不留空白/卡加载页）。
+      if (cur === 'playerinfo') {
+        const u = parseInt(pid, 10)
+        if (u > 0) {
+          this.playerInfo = { user_id: u } // 先占位，syncUrl 才会保留 pid
+          this.go('playerinfo')
+          this.loadPlayerInfo(u)
+        } else {
+          this.go('home')
+        }
         return
       }
       // 没写 cur、或就是 home：保持默认首页即可（go('home') 会重复拉一遍数据）
