@@ -734,7 +734,7 @@ func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 		resp.ParamError(c, "没有科技加速道具，请到商城购买")
 		return
 	}
-	msg := h.useItem(uid, city, cfgID, 1, 0, 0)
+	msg := h.useItem(uid, city, cfgID, 1, 0, 0, 0)
 	if !strings.HasPrefix(msg, "使用成功") {
 		resp.ParamError(c, msg)
 		return
@@ -1710,6 +1710,7 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 		Count     int   `json:"count"`
 		OfficerId int64 `json:"officer_id"`
 		SkillId   int   `json:"skill_id"`
+		RecordId  int64 `json:"record_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1717,7 +1718,7 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId)
+	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId, req.RecordId)
 	if msg == "" {
 		// ★ 原来这里是写死的 "ok"（用户反馈的「提示还都是 ok」）
 		resp.OKMsg(c, "道具使用成功", nil)

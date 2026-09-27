@@ -6067,15 +6067,18 @@ export default {
       return m + '分钟'
     },
     // 统一的「用道具加速」调用（cfg_id 走 /bag/use，后端按 item_type 决定加速目标）
+    //   targetId：指定目标（建筑升级记录 id / 训练队列 id），0/undefined = 后端自动挑最早一条
     //   done：成功后的回调（刷新对应页面的数据）
-    async useSpeedItem (item, type, done) {
+    async useSpeedItem (item, type, targetId, done) {
       await this.loadBag()
       const it = (item && item.cfg_id) ? item : this.accItems(type)[0]
       if (!it) {
         this.notify('没有对应的加速道具，去商城购买后再加速', 'error')
         return
       }
-      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }).then(r => {
+      const body = { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }
+      if (targetId) body.record_id = targetId
+      api.post('/games/ezfy/bag/use', body).then(r => {
         if (r.code === 0) {
           this.notify((r.data && r.data.msg) ? r.data.msg : '加速成功', 'ok')
           this.loadBag()
@@ -6093,7 +6096,8 @@ export default {
         return
       }
       // ★ 带上 city_id：多城时「不传 city_id 走当前城」容易和玩家正在看的城错位
-      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }).then(r => {
+      // ★ 2026-09-27 带上 record_id：点哪条建筑就减哪条，避免后端总是挑最早结束的一条
+      api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id, record_id: bid }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '加速成功', type: 'ok' }
           this.load()
@@ -6117,8 +6121,10 @@ export default {
       })
     },
     // 训练加速（训练页队列行 / 建筑页底部的「训练加速道具」入口）
+    // ★ 2026-09-27 修复「没有按指定目标扣减」：训练页队列行带上 q.id，点哪条减哪条；
+    //   建筑页底部入口 q 为 null → record_id=0，后端自动挑最早的一条
     doSpeedTrain (q, item) {
-      this.useSpeedItem(item, 4, () => { this.loadTroops(); this.load() })
+      this.useSpeedItem(item, 4, q ? q.id : 0, () => { this.loadTroops(); this.load() })
     },
     // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
     bEntry (bid) {
@@ -6358,7 +6364,7 @@ export default {
     //   商城卖的「科技加速30分钟/2小时」因此完全没有使用入口。
     //   现在改成消耗科技加速道具(item_type=5)，与建筑页 [加速] 同一口径。
     doSpeedTech (item) {
-      this.useSpeedItem(item, 5, () => { this.loadTechs() })
+      this.useSpeedItem(item, 5, 0, () => { this.loadTechs() })
     },
     async doCancelTech (t) {
       if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return

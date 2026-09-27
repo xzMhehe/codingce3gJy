@@ -2169,10 +2169,10 @@ func (h *EzfyHandler) hasCityEffect(cityId uint, effectType int) bool {
 	return true
 }
 
-// useItem 使用道具（type 3/4/5 加速优先选最早结束的目标）
-// useItem 使用道具（支持批量：count 个；军官类道具需指定 officerId/skillId）
+// useItem 使用道具（支持批量：count 个；军官类道具需指定 officerId/skillId；
+// recordId：加速类道具指定目标（建筑升级记录 id / 训练队列 id），0 = 由后端自动挑最早的一条）
 // 复刻设计文档《QQ家园二战风云.txt》道具 #7 招生简章 / #8 经验书 / #9 军官技能书·重修书
-func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, officerId int64, skillId int) string {
+func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, officerId int64, skillId int, recordId int64) string {
 	cfg := ezfyCfg.item(cfgId)
 	if cfg == nil {
 		return "道具不存在"
@@ -2247,7 +2247,7 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 
 	var lastMsg string
 	for i := 0; i < count; i++ {
-		msg := h.useItemOnce(uid, city, cfg, officerId, skillId)
+		msg := h.useItemOnce(uid, city, cfg, officerId, skillId, recordId)
 		if !strings.HasPrefix(msg, "使用成功") {
 			if i == 0 {
 				return msg
@@ -2273,8 +2273,9 @@ func pctSpeedEnd(now, endTime, pct int64) int64 {
 	return now + remain*(100-pct)/100
 }
 
-// useItemOnce 单个道具生效（内部函数, 由 useItem 调用）
-func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.EzfyCfgItem, officerId int64, skillId int) string {
+// useItemOnce 单个道具生效（内部函数, 由 useItem 调用；
+// recordId：加速类道具指定目标（建筑升级记录 id / 训练队列 id），0 = 自动挑最早的一条）
+func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.EzfyCfgItem, officerId int64, skillId int, recordId int64) string {
 	cfgId := cfg.ID
 	param := cfg.Param1
 	var err string
@@ -2303,14 +2304,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
 	case 3:
-		err = h.speedUpBuilding(city, 0, param)
+		err = h.speedUpBuilding(city, recordId, param)
 		if err != "" {
 			return err
 		}
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 当前建筑升级-%d分钟", param)
 	case 4:
-		err = h.speedUpTrain(city, 0, param)
+		err = h.speedUpTrain(city, recordId, param)
 		if err != "" {
 			return err
 		}
@@ -2331,6 +2332,17 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			Order("end_time ASC").First(&b).Error; err != nil {
 			return "没有正在施工的建筑"
 		}
+		if recordId > 0 {
+			// ★ 2026-09-27 修复「没有按指定目标扣减」：点哪条建筑就减哪条
+			var target model.EzfyCityBuilding
+			if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&target).Error; err != nil {
+				return "没有正在施工的建筑"
+			}
+			if target.Status == 0 {
+				return "建筑没有在施工"
+			}
+			b = target
+		}
 		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
 			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), b.EndTime, param))
 		h.consumeItem(uid, cfgId)
@@ -2340,6 +2352,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if err := h.DB.Where("city_id = ? AND status = 0", city.ID).
 			Order("start_time ASC").First(&q).Error; err != nil {
 			return "没有训练中的队列"
+		}
+		if recordId > 0 {
+			// ★ 2026-09-27 修复「没有按指定目标扣减」：点哪条队列就减哪条
+			var target model.EzfyTrainQueue
+			if err := h.DB.Where("id = ? AND city_id = ?", recordId, city.ID).First(&target).Error; err != nil {
+				return "没有训练中的队列"
+			}
+			q = target
 		}
 		h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).
 			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), q.EndTime, param))
