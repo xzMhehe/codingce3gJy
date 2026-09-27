@@ -779,11 +779,11 @@
           <!-- ★ 空闲人口 = 人口 - 占用；占用只算「训练中、还没出厂」的新兵。
                已训练完成的部队（含出征在外的）不占人口位置 —— 用户 2026-09-21 明确的规则 -->
           <div class="old-line gray" v-if="popUsed > 0">
-            训练中占用人口：{{ popUsed }}（出厂即归还，已训练完成的部队不占人口）
+            训练中占用人口：{{ popUsed }}
           </div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
-            <!-- ★ 2026-09-28 用户要求：军队列表不再显示资源消耗/前提条件，点[训练]进详情页查看 -->
-            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}
+            <!-- ★ 2026-09-28 用户要求：军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
+            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }})
             <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
           <div class="panel-title">训练队列({{ queues.length }})</div>
@@ -3591,6 +3591,8 @@
           <!-- 操作 -->
           <div class="old-line officer-actions">
             <button @click="doGrant">[赏赐+10忠诚(1万金)]</button>
+            <button @click="doRespec">[洗点]</button>
+            <span v-if="bagCount(16) > 0" class="gray">(持有军官洗点卡 {{ bagCount(16) }} 张)</span>
             <button v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
                     @click="doExile">[流放]</button>
             <button v-if="officerDetail.officer.star_up_on &&
@@ -7611,6 +7613,22 @@ export default {
         if (r.code !== 0) this.notify(r.msg || '雇佣失败')
         this.loadRecruit()
         this.loadAcade()
+      })
+    },
+    // ★ 2026-09-28 用户要求：洗点入口放到军官详情页（原来要背包里翻「军官洗点卡」使用）。
+    //   对当前军官直接消耗 1 张洗点卡；后端 case 12 兜底校验（出征中/无卡等）。
+    async doRespec () {
+      const o = this.officerDetail.officer
+      if (!o) return
+      await this.loadBag() // 军官详情页不常驻背包数据，先拉一次再判断持有量
+      const card = this.bagItems.find(x => x.item_type === 12)
+      if (!card) { this.notify('背包没有「军官洗点卡」，可在商城购买'); return }
+      if (!await this.ask('确认对 ' + o.name + ' 使用「军官洗点卡」×1 吗？\n属性将重置为军官池初始属性，已分配的点退回待分配点（等级/经验/技能保留）')) return
+      api.post('/games/ezfy/bag/use', { cfg_id: card.cfg_id, count: 1, city_id: this.city.id, officer_id: o.id }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '洗点完成')
+          this.loadOfficerDetail(o.id)
+        } else this.notify(r.msg || '洗点失败')
       })
     },
     doGrant () {
