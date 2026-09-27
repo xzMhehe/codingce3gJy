@@ -460,15 +460,17 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	}
 	city.Gold -= pick.Cost
 	h.saveCityRes(city)
-	// ★ 2026-09-22：原始属性写进 base_*（重修书洗点回退到这个值），
-	//   并按「每级 1 点」补上该等级应有的可用属性点。
+	// ★ 2026-09-22：原始属性写进 base_*（重修书洗点回退到这个值）。
+	// ★★ 2026-09-27 用户规则修正：军官池里的初始属性已包含该等级的全部加点，
+	//   招募时**不再**按「每级 1 点」发可用属性点（旧逻辑 99 级会多给 98 点），
+	//   只有招募后打架升级（每升 1 级 +1 点，见 L1404）才积累可用点。
 	//   普通军官的 GeneralId 保持 0（general_id>0 全站都当「名将」用，别混）。
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: 0, Name: pick.Name, Star: pick.Star,
 		Level: pick.Level, Exp: 0,
 		Military: pick.Military, Logistics: pick.Logistics, Learning: pick.Learning,
 		BaseMilitary: pick.Military, BaseLogistics: pick.Logistics, BaseLearning: pick.Learning,
-		FreePoints: maxInt(0, pick.Level-1),
+		FreePoints: 0,
 		Loyalty:    ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 	}
@@ -1690,7 +1692,9 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 		Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
 		// ★ 原始属性 = 军官池里的值
 		BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
-		FreePoints: maxInt(0, captiveLv-1),
+		// ★★ 2026-09-27 用户规则：军官池属性已含该等级加点，俘虏时不再按「每级 1 点」发可用点，
+		//   只有后续升级（每升 1 级 +1 点）才积累
+		FreePoints: 0,
 		Loyalty:    30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 	}

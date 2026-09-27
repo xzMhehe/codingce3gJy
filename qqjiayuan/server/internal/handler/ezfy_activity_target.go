@@ -206,6 +206,19 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerHasSkill(leadOfficer, "绝地反击"), false,
 			h.ensureProfile(uid).Camp, defCamp)
+		// ★★ 2026-09-27 用户反馈「活动野地不能指挥/没有战报/资源不累加」：
+		//   根因是活动流程缺少普通野地的「目标被抢先指挥 → 等待」机制（见 ezfyOrderTargetBusy）。
+		//   多支部队打同一活动目标时，后到部队复用先到部队的战场（b.OrderId 是别人的订单），
+		//   自己查不到战场 → 点[指挥]报「没有战斗记录」；
+		//   且每次结算 battle_result 解码为空 → 重新开新战场 → 永远打不完（无战报、资源不加）。
+		//   这里与普通野地流程(L2043)同款：目标正忙 → 进入「等待(6)」，上一场打完后
+		//   processOrders 自动放行重进指挥。
+		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+			order.Status = ezfyOrderStatusWaiting
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusWaiting)
+			return
+		}
 		if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

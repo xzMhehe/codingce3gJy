@@ -7131,8 +7131,8 @@ export default {
       const id = this._msgSeq
       this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
       if (this.msgs.length > 6) this.msgs.shift()
-      // ★ 用户要求：不需要玩家确定的提示 3 秒后自动消失（也可点 [关闭] 手动收起）
-      setTimeout(() => this.closeMsg(id), 3000)
+      // ★ 2026-09-27 用户要求：不需要玩家确定的提示 3 秒→1.5 秒后自动消失（也可点 [关闭] 手动收起）
+      setTimeout(() => this.closeMsg(id), 1500)
     },
     // 提示条样式：fixed 定位在刚才点击的**控件正下方居中**（留 12px 间隙），
     // 不再用原始鼠标坐标，避免盖住按钮本身。元素已滚出视口时兜底顶部居中。

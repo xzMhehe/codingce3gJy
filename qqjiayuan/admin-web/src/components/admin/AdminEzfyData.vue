@@ -539,10 +539,11 @@ export default {
       this.grantDlg = true
       this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0
       this.grantItems = [{ cfg_id: '', count: 1 }]
-      // ★ 2026-09-27 用户要求「商城 - 道具分类下的都要能发放」：
-      //   每次打开都**全量**刷新道具表（一次取到 total，避免 200 上限截断），
-      //   不依赖一次性缓存，新增/修改商城道具后无需强刷管理端即同步进下拉。
-      api.get('/admin/ezfy-data/items', { params: { page: 1, size: 100000 } }).then(r => {
+      // ★ 2026-09-27 修复「发放道具不全 / 检索迁城无匹配」：
+      //   旧实现走 /admin/ezfy-data/items 分页接口，pageOf 会把 size>100 钳制回落 10，
+      //   下拉永远只拿到前 10 件道具（迁城计划等选不到）。
+      //   改为专用全量接口 /admin/ezfy-item-grant/options（id+name 全量返回，不走分页钳制）。
+      api.get('/admin/ezfy-item-grant/options').then(r => {
         if (r.code === 0) this.grantItemOpts = r.data.list || []
       })
     },

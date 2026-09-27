@@ -265,6 +265,22 @@ func (h *AdminHandler) AdminEzfyItemGrantPlayers(c *gin.Context) {
 	resp.OK(c, gin.H{"list": list})
 }
 
+// AdminEzfyItemGrantOptions GET /admin/ezfy-item-grant/options —— 「发放道具」弹窗的道具下拉选项。
+// ★ 2026-09-27 修复「发放道具不全 / 检索迁城无匹配」：
+//   旧实现复用 /admin/ezfy-data/items 分页接口，pageOf() 会把 size>100 钳制回落 10，
+//   导致下拉永远只拿到前 10 件道具（迁城计划等 13 号以后的道具选不到）。
+//   这里直接全量返回 ezfy_cfg_item（id + name），不走分页钳制。
+func (h *AdminHandler) AdminEzfyItemGrantOptions(c *gin.Context) {
+	var items []model.EzfyCfgItem
+	h.DB.Order("id ASC").Find(&items)
+	opts := make([]gin.H, 0, len(items))
+	for i := range items {
+		it := items[i]
+		opts = append(opts, gin.H{"id": it.ID, "name": it.Name})
+	}
+	resp.OK(c, gin.H{"list": opts, "total": len(opts)})
+}
+
 // AdminEzfyItemGrant POST /admin/ezfy-item-grant {player, items[]} —— 数据管理→道具配置的「发放道具」。
 // player 支持玩家昵称或游戏ID(user_id)；道具入背包并站内通知。
 func (h *AdminHandler) AdminEzfyItemGrant(c *gin.Context) {

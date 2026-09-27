@@ -175,6 +175,15 @@ func ezfyCityInitLock(uid uint) *sync.Mutex { return &ezfyCityInitLocks[uid%64] 
 // ezfyPrestigeLocks 军衔晋升播报的并发锁（见 addPrestige 里的说明）
 var ezfyPrestigeLocks [64]sync.Mutex
 
+// ezfyOccupyLocks 征服「最终一城」判定的并发锁：按**守方** uid 分片，
+// 串行化同一守方的多路并发征服。征服结算既能由攻方轮询(processOrders)触发、
+// 也能由守方轮询(processIncoming)触发，多个进攻方可能同时在 processArrive 里
+// 对同一守方做「统计现城数→建占领记录」的读-改-写；不加锁会集体判定通过、把守方打到 0 城。
+// 锁内先按「未被占领的自由城」计数，只允许守方在占掉这座后仍至少剩 1 城时才建占领记录。
+var ezfyOccupyLocks [64]sync.Mutex
+
+func ezfyOccupyLock(uid uint) *sync.Mutex { return &ezfyOccupyLocks[uid%64] }
+
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
 		return
@@ -236,6 +245,34 @@ func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
 	// 当前城市指向主城
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+		Update("current_city_id", int64(city.ID))
+	return city
+}
+
+// replenishCity 守方被征服占光后，系统补给一座随机新城市（保底，保证玩家永远有城）。
+//
+// ★ 为什么不能复用 createMainCity：createMainCity 开头有 anyCity 复用检查——
+// 被占的 EzfyCity 行并没有删除/过户（只建了占领记录），anyCity 会误判「还有城」而拒绝补新城。
+// 补给场景由征服结算判定「自由城已清零」后才调用，直接建一座新城即可。
+// 落点 / 初始资源 / 基础建筑 / 当前城市指向 均与 createMainCity 一致。
+func (h *EzfyHandler) replenishCity(uid uint) model.EzfyCity {
+	pos := h.findFreePos()
+	city := model.EzfyCity{
+		UserID: uid, Name: "新城市",
+		Feelings: 80, Grievance: 0, TaxRate: 20,
+		Pop: 0, PopMax: 100,
+		Gold: 20000, Food: 5000, Steel: 5000, Oil: 5000, Rare: 5000,
+		GoldCap: 1000000, FoodCap: 100000, SteelCap: 100000, OilCap: 100000, RareCap: 100000,
+		CityLevel: 1, LastTime: time.Now().UnixMilli(),
+		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
+		X: pos[0], Y: pos[1],
+	}
+	h.DB.Create(&city)
+	h.initBuilding(city.ID, 1, 1)
+	h.initBuilding(city.ID, 2, 1)
+	h.initBuilding(city.ID, 3, 1)
+	// 当前城市指向新城（守方原当前城已被占，切到新城避免操作报错）
 	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
 		Update("current_city_id", int64(city.ID))
 	return city

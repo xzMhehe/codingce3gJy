@@ -865,6 +865,11 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if h.isAllyCity(uid, targetId) {
 			return "不能攻击同盟成员的城市"
 		}
+		// ★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
+		//   目标城市处于免战保护期时直接拦截出征，避免部队白跑一趟。
+		if h.hasCityEffect(uint(targetId), 2) {
+			return "该玩家使用了免战保护, 无法出征"
+		}
 		if !h.isAtWar(uid, tc.UserID) {
 			if w := h.getWar(uid, tc.UserID); w != nil {
 				waitH := (w.EffectTime - time.Now().UnixMilli() + 3599999) / 3600000
@@ -2263,6 +2268,26 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	prestigeGain := 0
 
 	if win {
+		// ★★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
+		//   目标城市处于免战保护期时本次战斗不结算：无战利品、不扣民心、武将不被俘，
+		//   部队到达后直接返航，战报提示「该玩家使用免战道具, 无法结算」。
+		if targetProtected && order.TargetType == 3 {
+			report += "\n该玩家使用了免战道具, 无法结算!"
+			travel := ezfyOneWayTravel(order)
+			order.Status = 2
+			order.ReturnTime = now + travel
+			report += h.battleStatsTail(uid, 0, 0)
+			repTitle := "出征报告: " + targetName
+			if order.OrderType == 2 {
+				repTitle = "掠夺报告: " + targetName
+			} else if order.OrderType == 3 {
+				repTitle = "征服报告: " + targetName
+			}
+			h.addReport(uid, 3, repTitle, report, detail, order.ID)
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
+			return
+		}
 		// ★ 2026-09-25 用户要求「军团交战期掠夺/征服获胜可获得军团战绩积分（军团总积分 + 成员个人积分）」：
 		//   只在「掠夺(2)/征服(3) 攻打玩家城市 且 攻击方获胜」这一处发放，**只加一次**。
 		//   helper 内部自己判断是否处于生效中的军团交战期（不处于则什么都不做），
@@ -2280,6 +2305,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if h.officerHasSkill(leadOfficer, "黄金眼") {
 				lootRate += 10
 			}
+			// 免战保护（含宣战）期间掠夺量为 0；早退分支已统一 return，此处为防御保留
 			if targetProtected || order.OrderType != 2 && order.OrderType != 3 {
 				lootRate = 0
 			}
@@ -2431,6 +2457,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
 			}
+			// 免战保护绝对生效（含宣战）：民心已失也无法征服；早退分支已统一 return，此处为防御保留
 			if targetProtected {
 				report += "\n民心已失，但目标处于免战保护期，无法征服!"
 				target.Feelings = cur
@@ -2460,20 +2487,49 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			target.Oil = defRes[2] - lootOil
 			target.Rare = defRes[3] - lootRare
 			target.Gold = defRes[4] - lootGold
+			// ★★ 2026-09-27 用户要求「仅剩一城不可被占领」→ 后又改口：**允许占光**，
+			//   守方自由城被占光后由系统补给一座随机新城市（保证玩家永远有城）。
+			//   征服结算既能由攻方轮询(processOrders)触发、也能由守方轮询(processIncoming)触发，
+			//   多个进攻方可能同时对同一守方做「统计现城数→建占领记录」的读-改-写；
+			//   不加锁会集体判定通过、重复建占领记录。这里按守方 uid 分片加锁，
+			//   锁内重查「未被占领的自由城数」（排除已有 status=1 占领记录的城），
+			//   并单独防「重复攻打同一座已占城」。
+			lock := ezfyOccupyLock(target.UserID)
+			lock.Lock()
+			// 该城是否已被占走（防重复攻打同一座城）
+			var dupOccupy int64
+			h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", target.ID).Count(&dupOccupy)
+			// 守方「未被占领的自由城数」：user_id 是他的城 且 没有 status=1(占走未处理) 的占领记录
+			var freeCount int64
+			h.DB.Model(&model.EzfyCity{}).
+				Where("user_id = ? AND id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)", target.UserID).
+				Count(&freeCount)
+			// 补给标记：占掉这座后守方自由城清零 → 解锁后补一座新城
+			needReplenish := false
 			lastCity := false
-			var cityCount int64
-			h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", target.UserID).Count(&cityCount)
-			if cityCount <= 1 {
+			switch {
+			case dupOccupy > 0:
+				// 这座城已被先到的队伍占走，本次不能重复占
 				lastCity = true
-			}
-			if !lastCity {
+				report += "\n该城市已被其他部队占领, 无法重复占领!"
+			default:
 				occ := model.EzfyOccupy{CityId: int64(target.ID), CityName: targetName,
 					AtkUserId: uid, AtkCityId: int64(city.ID), DefUserId: target.UserID,
 					X: target.X, Y: target.Y, Status: 1}
 				h.DB.Create(&occ)
 				report += "\n占领成功! 城市已归入你的附属, 可在[附属野地]中摧毁/归还"
-			} else {
-				report += "\n该玩家仅剩最后一座城市, 无法占领!"
+				if freeCount <= 1 {
+					// 占掉这座后守方已无自由城 → 系统补给
+					needReplenish = true
+				}
+			}
+			lock.Unlock()
+			// 补给在解锁后执行（不占用守方锁；建城自带 findFreePos 找空位）
+			if needReplenish {
+				newCity := h.replenishCity(target.UserID)
+				report += fmt.Sprintf("\n守方城市已全部被占, 系统已补给新城市[%s](%d,%d)", newCity.Name, newCity.X, newCity.Y)
+				h.addReport(target.UserID, 5, "系统补偿新城市",
+					fmt.Sprintf("你的全部城市已被敌方占领!\n系统已补偿一座新城市[%s](%d,%d), 请重新发展。", newCity.Name, newCity.X, newCity.Y))
 			}
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
@@ -2483,7 +2539,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defReportBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
 			} else {
-				defReportBody = fmt.Sprintf("敌方部队攻破了你的城市%s!\n民心清零, 但该城市是你的最后一座城, 无法被占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
+				// 该城已被先到的队伍占走（本次重复攻打）
+				defReportBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
 			}
 			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail)

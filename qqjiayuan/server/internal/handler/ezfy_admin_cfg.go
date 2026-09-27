@@ -1953,9 +1953,10 @@ func (h *AdminHandler) AdminEzfyGenOfficers(c *gin.Context) {
 			CityId: int64(city.ID), GeneralId: 0, Name: name, Star: star,
 			Level: level, Exp: 0,
 			Military: mil, Logistics: log, Learning: lea,
-			// ★ 原始属性 = 生成时的值；按「每级 1 点」补上该等级应有的可用点数
+			// ★ 原始属性 = 生成时的值；★★ 2026-09-27 用户规则：只有升级才加点，
+			//   生成时不再按「每级 1 点」发可用点（与招募/俘虏一致）
 			BaseMilitary: mil, BaseLogistics: log, BaseLearning: lea,
-			FreePoints: maxInt(0, level-1),
+			FreePoints: 0,
 			Loyalty:    80 + rand.Intn(21), Skill: "", Equipment: "",
 			Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 		}

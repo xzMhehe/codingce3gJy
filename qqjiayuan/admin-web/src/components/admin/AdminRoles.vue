@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -54,12 +54,22 @@
     </el-dialog>
 
     <!-- 分配权限 模态框 -->
-    <el-dialog :title="'分配权限：' + (permRole ? permRole.name : '')" :visible.sync="permDlg" width="520px" :close-on-click-modal="false">
-      <el-checkbox-group v-model="permIds">
-        <el-checkbox v-for="p in perms" :key="p.id" :label="p.id" style="display:block;margin:6px 0">
-          {{ p.name }}（{{ p.code }}）<span class="help-line"> {{ p.remark }}</span>
-        </el-checkbox>
-      </el-checkbox-group>
+    <el-dialog :title="'分配权限：' + (permRole ? permRole.name : '')" :visible.sync="permDlg" width="560px" :close-on-click-modal="false">
+      <el-input v-model.trim="permSearch" size="small" clearable placeholder="搜索权限名 / 权限码 / 分组（如：二战、风云、ezfy）"
+                style="margin-bottom:8px" />
+      <div style="max-height:420px;overflow-y:auto;padding-right:6px">
+        <template v-for="(g, gi) in permGroups">
+          <div :key="'g'+gi" style="margin:8px 0 4px;font-weight:600;color:#606266">
+            {{ g.name }}（{{ g.items.length }}）
+          </div>
+          <el-checkbox-group v-model="permIds" :key="'c'+gi" style="padding-left:6px">
+            <el-checkbox v-for="p in g.items" :key="p.id" :label="p.id" style="display:inline-block;margin:4px 14px 4px 0;width:47%">
+              {{ p.name }}（{{ p.code }}）
+            </el-checkbox>
+          </el-checkbox-group>
+        </template>
+        <div v-if="!permGroups.length" class="help-line" style="padding:8px 4px">没有匹配的权限</div>
+      </div>
       <div slot="footer">
         <el-button @click="permDlg = false">取 消</el-button>
         <el-button type="primary" @click="savePerms">保存权限</el-button>
@@ -77,11 +87,31 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 10, loading: false,
       perms: [], dlg: false,
-      permDlg: false, permRole: null, permIds: [],
+      permDlg: false, permRole: null, permIds: [], permSearch: '',
       form: { id: 0, name: '', code: '', remark: '' }
     }
   },
   mounted () { this.load() },
+  computed: {
+    // ★ 2026-09-27 「二战游戏分配权限的菜单不全」：按分组（permissions.remark）分组展示，
+    //   支持按权限名/权限码/分组关键词搜索，二战（风云/ezfy）权限一目了然。
+    permGroups () {
+      const kw = (this.permSearch || '').trim().toLowerCase()
+      const hits = kw ? this.perms.filter(p => {
+        return (p.name || '').toLowerCase().includes(kw) ||
+               (p.code || '').toLowerCase().includes(kw) ||
+               (p.remark || '').toLowerCase().includes(kw)
+      }) : this.perms
+      const groups = []
+      const map = {}
+      hits.forEach(p => {
+        const g = p.remark || '其他'
+        if (!map[g]) { map[g] = { name: g, items: [] }; groups.push(map[g]) }
+        map[g].items.push(p)
+      })
+      return groups
+    }
+  },
   methods: {
     load () {
       this.loading = true
