@@ -66,9 +66,10 @@ func seedEzfy(db *gorm.DB) {
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	// ★ 2026-09-26 用户要求「道具配置按现在线上跑的初始化」：
 	//   stock 列自带 DB 默认值 100，而 GORM 对「带 default 标签的字段」会跳过 Go 零值，
-	//   于是线上「0 = 已售罄」的道具（小资源包 / 大资源包）在库里会落成 100
+	//   于是线上「0 = 已售罄」的道具（大资源包 / 增产令）在库里会落成 100
 	//   （非 0 库存不受影响，上面的 batch 正常写入）。
 	//   这里只对「快照库存为 0」的条目补一次显式写，让售罄状态也能原样初始化。
+	// ★ 2026-09-27 快照里商城道具（ID 1~12）已无售罄项，这段循环暂不生效，保留备用。
 	for i := range ezfyEzfyCfgItem {
 		if ezfyEzfyCfgItem[i].Stock != 0 {
 			continue
@@ -307,8 +308,11 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	//   玩家买的时候被 `Buy` 里的库存校验拦成「已售罄」—— 看着就是「没上架」。
 	//   军官类道具定位是**常驻消耗品**（跟迁城道具一样），统一给 -1 = 无限库存。
 	// ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：下面价格/库存一律取线上库快照值。
+	// ★ 2026-09-27 用户要求按线上现值更新种子：招生简章 20→2 钻石、改名卡 250000 黄金→10 钻石、
+	//   阵营转换道具 500→10 钻石、集结令 20→1 钻石、信号弹 20→2 钻石；
+	//   库存：军官洗点卡 96→-1、信号弹 100→0、军官改名卡 79→-1。
 	rows := []model.EzfyCfgItem{
-		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 20, Stock: -1,
+		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
 		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 20000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
@@ -317,12 +321,12 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
-		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: 96,
+		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: -1,
 			Category:    "军官道具",
 			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
-		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 250000, Stock: -1,
+		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
-		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 500, Stock: -1,
+		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
 		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
@@ -331,7 +335,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		//   单次上限由管理端 `ezfy_cfg_limit.gather_max_per_order` 维护（线上现值 99），
 		//   写死 10 会和管理端配置对不上，玩家会以为只能买 10 个。
 		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
-			PriceGold: 0, PriceDiamond: 20, Stock: -1, Category: "钻石道具",
+			PriceGold: 0, PriceDiamond: 1, Stock: -1, Category: "钻石道具",
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 		// ★ 2026-09-23 用户要求「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
 		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
@@ -340,14 +344,14 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗「军官改名卡」，
 		//   在军官管理页面使用，成功改名消耗 1 张，不改动军官池里的原军官。
-		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: 79,
+		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 用户要求「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
 		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
 		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
 		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
-		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 20, Stock: 100,
+		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: 0,
 			Category:    "计谋道具",
 			Description: "计谋消耗品: 发动计谋时消耗, 每条计谋需要的数量不同"},
 	}
@@ -399,23 +403,23 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 //		21 高级迁城计划 ItemType 17 指定坐标迁城（平原）
 //		22 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
 //
-// ★ 价格（钻石单渠道，管理端随时可改；2026-09-26 按线上现值对齐）：
+// ★ 价格（钻石单渠道，管理端随时可改；2026-09-27 按线上现值对齐）：
 //
-//	迁城计划       200 钻石
-//	高级迁城计划   400 钻石
-//	沿海迁城计划   250 钻石
+//	迁城计划       10 钻石
+//	高级迁城计划   30 钻石
+//	沿海迁城计划   30 钻石
 //
-// 库存按线上现值：迁城计划 / 高级 / 沿海 均为 100（-1 = 无限）。
+// 库存按线上现值：迁城计划 / 高级迁城计划 100，沿海迁城计划 99（-1 = 无限）。
 func seedEzfyMoveItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 20, Name: "迁城计划", ItemType: 16, Param1: 1,
-			PriceGold: 0, PriceDiamond: 200, Stock: 100, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 10, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
 		{ID: 21, Name: "高级迁城计划", ItemType: 17, Param1: 1,
-			PriceGold: 0, PriceDiamond: 400, Stock: 100, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 30, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 指定坐标迁移城市, 目标必须是未被占领的平原"},
 		{ID: 22, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
-			PriceGold: 0, PriceDiamond: 250, Stock: 100, Category: "迁城道具",
+			PriceGold: 0, PriceDiamond: 30, Stock: 99, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
 	}
 	for _, it := range rows {

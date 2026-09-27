@@ -1066,6 +1066,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrantOptions)
 				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), adminH.AdminEzfyItemGrant)
 				// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
+				admin.GET("/ezfy-love-cards/options", perm(db, "module:ezfyData"), adminH.AdminEzfyLoveCardOptions)
 				admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), adminH.AdminEzfyLoveCards)
 				admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyLoveCardDelete)
 				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), adminH.AdminEzfyData)

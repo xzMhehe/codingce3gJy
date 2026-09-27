@@ -31,6 +31,20 @@ func (h *AdminHandler) AdminEzfyLoveCardDelete(c *gin.Context) {
 
 // ============ 二战风云管理端 · 为爱发电卡（发放/领取情况）============
 
+// AdminEzfyLoveCardOptions GET /admin/ezfy-love-cards/options —— 专属维护页的卡片下拉选项
+// （卡片不在通用「数据管理→道具配置 / 发放道具」面展示，这里单独取）。
+func (h *AdminHandler) AdminEzfyLoveCardOptions(c *gin.Context) {
+	var items []model.EzfyCfgItem
+	h.DB.Where("item_type IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro}).
+		Order("id ASC").Find(&items)
+	opts := make([]gin.H, 0, len(items))
+	for i := range items {
+		it := items[i]
+		opts = append(opts, gin.H{"id": it.ID, "name": it.Name, "daily_diamond": it.Param1})
+	}
+	resp.OK(c, gin.H{"list": opts, "total": len(opts)})
+}
+
 // AdminEzfyLoveCards GET /admin/ezfy-love-cards/list —— 查看为爱发电卡发放与领取情况。
 // word 可按玩家昵称 / 游戏ID 过滤；返回卡片激活记录（含领取进度）。
 func (h *AdminHandler) AdminEzfyLoveCards(c *gin.Context) {

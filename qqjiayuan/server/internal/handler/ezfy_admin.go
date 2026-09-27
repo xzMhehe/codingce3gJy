@@ -276,6 +276,10 @@ func (h *AdminHandler) AdminEzfyItemGrantOptions(c *gin.Context) {
 	opts := make([]gin.H, 0, len(items))
 	for i := range items {
 		it := items[i]
+		// ★ 2026-09-27 为爱发电卡：只在专属「为爱发电卡维护」页发放，不进通用发放道具下拉
+		if isLoveCardItem(it.ItemType) {
+			continue
+		}
 		opts = append(opts, gin.H{"id": it.ID, "name": it.Name})
 	}
 	resp.OK(c, gin.H{"list": opts, "total": len(opts)})
@@ -480,6 +484,11 @@ func (h *AdminHandler) AdminEzfyData(c *gin.Context) {
 		mallCond := "(price_gold > 0 OR price_diamond > 0) AND type = '军官装备' AND NOT (set_id > 0 AND (series IS NULL OR series = ''))"
 		q = q.Where(mallCond)
 		lq = lq.Where(mallCond)
+	}
+	// ★ 2026-09-27 为爱发电卡：不进「数据管理→道具配置」通用列表（由专属维护页负责）
+	if c.Param("table") == "items" {
+		q = q.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
+		lq = lq.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
 	}
 	q.Count(&total)
 	var rows []map[string]interface{}

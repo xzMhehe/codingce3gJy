@@ -144,11 +144,11 @@ export default {
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
         p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
-    // 卡片下拉选项（只选「为爱发电卡」类，ID 26 / 27）
+    // 卡片下拉选项（专属接口，自动带每日钻石数）
     loadCardOpts () {
-      api.get('/admin/ezfy-item-grant/options').then(r => {
+      api.get('/admin/ezfy-love-cards/options').then(r => {
         const all = (r.code === 0 && r.data.list) ? r.data.list : []
-        this.cardOpts = all.filter(o => (o.name || '').indexOf('为爱发电') !== -1)
+        this.cardOpts = all
       })
     },
     openGrant () {
