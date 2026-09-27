@@ -1593,7 +1593,7 @@
           </div>
           <div class="old-line" v-for="o in queueItems" :key="'oq' + o.id">
             命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
-            目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
+            目标：<span v-if="o.act_type" class="red">[{{ actTag(o.act_type) }}]</span>{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
             <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
             状态：{{ o.status_name }}
             <template v-if="o.can_command">
