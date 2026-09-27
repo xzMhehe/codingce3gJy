@@ -2991,7 +2991,7 @@
           <!-- ★ 2026-09-25 去掉内联 font-size:13px，改为继承全站统一字号（--fs） -->
           <div class="gray">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
-          <span v-html="rankIcon(myRankId)"></span>军衔：{{ rankName }}({{ rankPost }})<br/>
+          <span style="float:right"><span v-html="rankIcon(myRankId)"></span></span>军衔：{{ rankName }}({{ rankPost }})<br/>
           军团：{{ (myCorps && myCorps.name) || '无' }}<br/>
           <!-- ★ 2026-09-27 用户要求：统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
           <template v-if="myCorpsTitle">职务：{{ myCorpsTitle }}<br/></template>
@@ -4644,6 +4644,15 @@ export default {
   mounted () {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
+    // ★ 2026-09-27 iPhone 字体再修复：旧方案用 `@supports (-webkit-touch-callout: none)`
+    //   只在桌面(无头 Chrome)测过为 false，但 iOS Safari 的 @supports 解析器并不认识
+    //   -webkit-touch-callout 这个属性 → 条件永远不成立 → iPhone 一直回落到宋体-简
+    //   (Songti SC)，细灰发虚。改为 JS 判 iOS 加 body.ezfy-ios，再靠 CSS 切苹方/系统字体。
+    //   iPadOS 桌面模式 UA 是 Macintosh + 带触摸，用 onTouchEnd 一并圈进来。
+    const ua = navigator.userAgent
+    if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document)) {
+      document.body.classList.add('ezfy-ios')
+    }
     // 沉浸式卡控①: 游戏内任何 <a href="/..."> 都不允许跳出 /games/ezfy 回到家园站点
     // (捕获阶段拦截, 只拦站内绝对路径链接)
     document.addEventListener('click', this.blockEscape, true)
@@ -4693,6 +4702,7 @@ export default {
   },
   beforeDestroy () {
     document.body.classList.remove('ezfy-immersive')
+    document.body.classList.remove('ezfy-ios')
     document.removeEventListener('click', this.blockEscape, true)
     if (this._capClick) document.removeEventListener('click', this._capClick, true)
     if (this._onBack) window.removeEventListener('popstate', this._onBack)
@@ -7648,21 +7658,19 @@ body.ezfy-immersive { margin: 0; }
          `'PingFang SC'` 苹方（iOS 9+ 中文默认）｜ `'Heiti SC'` 黑体-简（更老的 iOS）
          `'Hiragino Sans GB'` 冬青黑体简体中文（兜底）
        与《镜花缘》(Jingwt.vue)、《西游记》(Xiyou.vue) 的字体族方向一致。
-   怎么只圈到苹果设备：用 `-webkit-touch-callout` —— 这个属性**只有苹果 WebKit 认**。
-   已实测（无头 Chrome）：桌面 `CSS.supports('-webkit-touch-callout','none') === false`，
-   所以 Windows / macOS 桌面浏览器一律不匹配、宋体不受影响；
-   iPhone 上的 Safari 与微信内置浏览器（都是 WebKit）都会命中。
-   ⚠️ 不要改成 `@media (hover:none) and (pointer:coarse)` —— 那会把安卓也一起改了，
-     用户明确要求「其他设备不变」。 */
-@supports (-webkit-touch-callout: none) {
-  .ezfy-page,
-  .ezfy-page button,
-  .ezfy-page input,
-  .ezfy-page select,
-  .ezfy-page textarea {
-    font-family: -apple-system, system-ui, 'PingFang SC', 'Heiti SC',
-                 'Hiragino Sans GB', 'Helvetica Neue', sans-serif;
-  }
+   怎么只圈到苹果设备：JS 判 iOS（mounted 里给 body 挂 .ezfy-ios），Apple 专属、绝不漏判。
+   ⚠️ 不要用 `@media (hover:none) and (pointer:coarse)` —— 那会把安卓也一起改了,
+     用户明确要求「其他设备不变」。
+   ★ 2026-09-27：旧实现用 `@supports (-webkit-touch-callout: none)`，但 iOS Safari 的
+     @supports 解析器不认 -webkit-touch-callout → 条件永不成立 → iPhone 一直回落宋体-简
+     (Songti SC) 细灰发虚。故改用 JS 判定（见 mounted），比 @supports 可靠。 */
+body.ezfy-ios .ezfy-page,
+body.ezfy-ios .ezfy-page button,
+body.ezfy-ios .ezfy-page input,
+body.ezfy-ios .ezfy-page select,
+body.ezfy-ios .ezfy-page textarea {
+  font-family: -apple-system, system-ui, 'PingFang SC', 'Heiti SC',
+               'Hiragino Sans GB', 'Helvetica Neue', sans-serif;
 }
 /* 表单控件/按钮默认不继承字体族, 显式补上(原版也是 body,button,input,select,textarea 一起设) */
 .ezfy-page button,
