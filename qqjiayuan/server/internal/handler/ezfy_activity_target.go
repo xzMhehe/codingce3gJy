@@ -235,13 +235,21 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	win := br.AttackerWin
 	draw := br.Draw
 
+	// ★ 带队军官战功经验（2026-09-27 用户反馈「战败军官经验是 0」）：
+	//   活动流程原来完全没给军官经验（打赢打输都是 0）。统一走普通战斗同款口径
+	//   ezfyOfficerBattleExp —— 基础经验 = 击杀数/10 + 30，**即便战败、0 击杀也有 30 点**，
+	//   胜利再多拿 50%。写在函数开头只算数值，战报正文与写库放在结果判定后统一处理。
+	atkExp := int64(0)
+	if leadOfficer != nil {
+		atkExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), win)
+	}
+
 	profile := h.ensureProfile(uid)
 	report := fmt.Sprintf("主题:战斗报告\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:战斗报告\n我方一支部队对%s[ %d，%d ]发起了进攻。战斗共持续 %d 回合，我方战斗%s\n",
 		city.Name, city.X, city.Y, label, order.TargetX, order.TargetY,
 		time.UnixMilli(now).Format("2006-01-02 15:04"), label,
 		order.TargetX, order.TargetY, br.Rounds, battleOutcomeText(win, draw))
 	report += fmt.Sprintf("统帅声望:%d\n", profile.Prestige)
-	report += fmt.Sprintf("军官经验:%d\n", officerExpOf(leadOfficer))
 	if leadOfficer != nil {
 		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
@@ -350,6 +358,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		order.Status = 4 // 全队阵亡
 		report = "我军战败!\n" + report
 	}
+	// ★ 带队军官经验：胜负平局**都给**（用户要求「战败也有经验」），与普通战斗同款口径。
+	//   即便战败/0 击杀也有基数 30 点；写库放这里统一处理（函数开头只算了数值）。
+	if leadOfficer != nil && atkExp > 0 {
+		h.addOfficerExp(city, leadOfficer.ID, atkExp)
+		report += fmt.Sprintf("\n军官经验+%d", atkExp)
+	}
 	if repairedTotal > 0 {
 		report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 	}
@@ -439,13 +453,4 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"jewel":        jewelName,
 		"owner":        "",
 	}
-}
-
-// officerExpOf 取军官经验（无军官返回 0）
-// 军官的出征/归位状态由 createOrder(出发置1) 与 finishReturn(返航置0) 统一维护, 此处不改状态。
-func officerExpOf(o *model.EzfyOfficer) int64 {
-	if o == nil {
-		return 0
-	}
-	return o.Exp
 }
