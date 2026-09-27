@@ -101,7 +101,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"home_num": u.Username,
 		"name":     u.Nickname, "nickname": nickname, "color": u.Color,
 		"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
-		"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige), "rank_post": ezfyRankPost(p.Prestige),
+		"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)), "rank_post": ezfyRankPostAt(ezfyProfileRank(&p)),
 		"corps_name":    corpsName,
 		"city_count":    len(cities),
 		"officer_count": officerCount,
@@ -150,7 +150,7 @@ func (h *EzfyHandler) PlayerSearch(c *gin.Context) {
 			"user_id": p.UserID, "game_uid": p.GameUID,
 			"home_num": u.Username, "nickname": nick,
 			"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
-			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige),
+			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)),
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out)})

@@ -157,6 +157,8 @@ type EzfyCfgRank struct {
 	NeedPrestige int    `gorm:"comment:需要的声望" json:"need_prestige"`          // 需要的声望
 	CityMax      int    `gorm:"comment:可建城数" json:"city_max"`                // 可建城数
 	Des          string `gorm:"type:varchar(200);comment:描述" json:"des"`
+	// ★ 2026-09-28 军衔晋升所需宝物（JSON 数组 [{name,count}]，管理端军衔配置可维护）
+	Treasures string `gorm:"type:text;comment:晋升所需宝物JSON" json:"treasures"`
 }
 
 func (EzfyCfgRank) TableName() string { return "ezfy_cfg_rank" }
@@ -429,6 +431,10 @@ type EzfyProfile struct {
 	Nickname string `gorm:"type:varchar(20);comment:昵称" json:"nickname"`
 	Prestige int    `gorm:"default:0;comment:军功声望" json:"prestige"`  // 军功声望
 	Camp     int    `gorm:"default:1;comment:1同盟国 2轴心国" json:"camp"` // 1同盟国 2轴心国
+
+	// ★ 2026-09-28 军衔不再自动跟随声望：声望达标只是前提，还需提交对应宝物（见 handler.ezfyRankTreasures）。
+	//   Rank > 0 = 实际已晋升军衔等级；Rank = 0 = 老玩家未晋升过（展示时回落声望推导，保证旧账不缩水）。
+	Rank int `gorm:"default:0;comment:已晋升军衔等级(0=跟随声望旧规则)" json:"rank"`
 
 	// ★ 游戏ID：与家园ID 解耦，**首次 = 家园ID，之后永不随家园ID变化**
 	//   游戏内所有业务交互都以它为准（为「游戏单独运行」预留）。

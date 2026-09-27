@@ -92,6 +92,8 @@ func (h *EzfyHandler) cfgs() {
 	ezfyReportMigrateOnce.Do(func() { ezfyMigrateReportTitles(h.DB) })
 	// 一次性迁移：城防兵超城墙容量 → 按比例缩回（幂等，见 ezfy_migrate_troop_cap.go）
 	ezfyTroopCapOnce.Do(func() { ezfyMigrateTroopCap(h.DB) })
+	// 一次性迁移：老玩家已晋升军衔落位（不用补宝物）+ 军衔宝物需求落表（幂等，见 ezfy_rank_treasure.go）
+	ezfyRankInitOnce.Do(func() { ezfyMigrateRankInit(h.DB) })
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
@@ -119,7 +121,8 @@ func (h *EzfyHandler) ensureProfile(uid uint) model.EzfyProfile {
 		nickname = u.Nickname
 	}
 	// ★ 游戏ID 首次 = 家园ID，之后永不随家园ID变化
-	p = model.EzfyProfile{UserID: uid, GameUID: int64(uid), Nickname: nickname, Prestige: 0, Camp: 1}
+	// ★ 2026-09-28 新玩家军衔从 1 级（列兵）起步，晋升需声望+宝物（见 ezfy_rank_treasure.go）
+	p = model.EzfyProfile{UserID: uid, GameUID: int64(uid), Nickname: nickname, Prestige: 0, Camp: 1, Rank: 1}
 	h.DB.Create(&p)
 	return p
 }
@@ -217,13 +220,19 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	defer mu.Unlock()
 
 	p := h.ensureProfile(uid)
-	before := ezfyRankName(p.Prestige)
-	after := ezfyRankName(p.Prestige + amount)
+	// ★ 2026-09-28 军衔不再自动跟随声望：声望只涨数值，不直接晋升。
+	//   新玩家（Rank>0）的军衔固定，这里不会触发播报；晋升播报在 /promote 提交宝物时发。
+	//   老玩家（Rank=0）仍回落声望推导，跨过门槛继续按旧规则播报。
+	beforeLv := ezfyProfileRank(&p)
+	afterLv := beforeLv
+	if p.Rank <= 0 {
+		afterLv = ezfyRankIndex(p.Prestige+amount) + 1
+	}
 	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 		Update("prestige", p.Prestige+amount)
 	// ★ 军衔晋升写一条系统消息（用户要求：首页世界聊天要能看到「恭喜玩家晋升XX」）
-	if after != before {
-		h.ezfySysChat("恭喜玩家 %s 军衔晋升至 %s！", h.ezfyProfileName(uid), after)
+	if afterLv != beforeLv {
+		h.ezfySysChat("恭喜玩家 %s 军衔晋升至 %s！", h.ezfyProfileName(uid), ezfyRankNameAt(afterLv))
 	}
 }
 
@@ -2799,8 +2808,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		// ★ 在职军官数：直接用本请求已取到的 officers 统计，
 		//   不要再调 h.officerCount（它内部又查一次 officerList）。
 		"officer_count": officerCountOf(officers),
-		"rank_name":     ezfyRankName(profile.Prestige),
-		"rank_post":     ezfyRankPost(profile.Prestige),
+		"rank_name":     ezfyRankNameAt(ezfyProfileRank(&profile)),
+		"rank_post":     ezfyRankPostAt(ezfyProfileRank(&profile)),
 		"cities":        h.cityViews(cities),
 		"diamond":       profile.Diamond,
 		"city":          city,
@@ -3030,10 +3039,11 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	prof := h.ensureProfile(uid)
 	var owned int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
-	maxCity := ezfyRankCityMax(prof.Prestige)
+	profLv := ezfyProfileRank(&prof)
+	maxCity := ezfyRankCityMaxAt(profLv)
 	if int(owned) >= maxCity {
 		resp.ParamError(c, fmt.Sprintf("当前军衔「%s」最多只能拥有 %d 座城市（已有 %d 座），提升声望可解锁更多",
-			ezfyRankName(prof.Prestige), maxCity, owned))
+			ezfyRankNameAt(profLv), maxCity, owned))
 		return
 	}
 

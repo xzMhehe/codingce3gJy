@@ -54,7 +54,7 @@ func (h *AdminHandler) AdminEzfyPlayers(c *gin.Context) {
 		var cities int64
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cities)
 		out = append(out, rowOut{EzfyProfile: p, HomeNick: u.Nickname, HomeNum: u.Username,
-			CityCount: cities, CampName: ezfyCampName(p.Camp), RankName: ezfyRankName(p.Prestige)})
+			CityCount: cities, CampName: ezfyCampName(p.Camp), RankName: ezfyRankNameAt(ezfyProfileRank(&p))})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -116,7 +116,7 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
 		"cities": cities, "bag": bagViews, "corps": corpsViews, "orders": orders,
-		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankName(p.Prestige)})
+		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }
 
 // AdminEzfyPlayerUpdate 修改玩家（昵称/声望/阵营）

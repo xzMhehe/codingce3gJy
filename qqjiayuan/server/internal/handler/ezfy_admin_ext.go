@@ -1882,16 +1882,18 @@ func (h *AdminHandler) AdminEzfyCorpsMembers(c *gin.Context) {
 	for _, m := range rows {
 		pn, hn := h.ezfyAdminName(m.UserId)
 		prestige := 0
+		rankLv := 1
 		var p model.EzfyProfile
 		if err := h.DB.Where("user_id = ?", m.UserId).First(&p).Error; err == nil {
 			prestige = p.Prestige
+			rankLv = ezfyProfileRank(&p)
 		}
 		role := "成员"
 		if m.IsLeader == 1 {
 			role = "军团长"
 		}
 		out = append(out, rowOut{EzfyCorpsMember: m, PlayerName: pn, HomeNum: hn,
-			Prestige: prestige, RankName: ezfyRankName(prestige), RoleName: role})
+			Prestige: prestige, RankName: ezfyRankNameAt(rankLv), RoleName: role})
 	}
 	resp.OK(c, gin.H{"corps": cp, "list": out, "total": len(out)})
 }

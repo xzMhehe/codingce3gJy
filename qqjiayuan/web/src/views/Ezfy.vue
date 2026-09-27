@@ -1267,7 +1267,11 @@
                 掉落宝物：{{ selDetail.treasure || '普通宝物' }}
               </div>
               <div class="old-line" v-else>归属：{{ selDetail.owner || '中立' }}</div>
-              <div class="old-line" v-if="selDetail.gather_res">采集可以获得{{ selDetail.gather_res }}，可能获得{{ (selDetail.treasures || []).join('、') }}。</div>
+              <div class="old-line" v-if="selDetail.gather_res">
+                <!-- ★ 2026-09-28 用户反馈：平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
+                <template v-if="selDetail.terrain === 1 || selDetail.terrain === 9">采集可以获得{{ selDetail.gather_res }}，可建立城市。</template>
+                <template v-else>采集可以获得{{ selDetail.gather_res }}，可能获得{{ (selDetail.treasures || []).join('、') }}。</template>
+              </div>
             </template>
           </template>
           <div class="old-line" v-else>
@@ -2073,7 +2077,7 @@
             <div class="panel-title">军团成员</div>
             <table>
               <tr>
-                <th>成员</th><th>玩家号码</th><th>职位</th><th>声望</th><th>军衔</th>
+                <th>成员</th><th>职位</th><th>军衔</th>
                 <!-- ★ 2026-09-25 用户要求：成员表格新增「军团积分」列（m.points，个人军团积分） -->
                 <th>军团积分</th>
                 <!-- ★ 第九轮：军团长可任命副团长/参谋长 -->
@@ -2081,9 +2085,7 @@
               </tr>
               <tr v-for="m in corpsMembers" :key="'cm' + m.user_id">
                 <td><a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.name }}</a></td>
-                <td><span class="td-mono">{{ m.game_uid || m.user_id }}</span></td>
                 <td>{{ m.title || '成员' }}</td>
-                <td>{{ m.prestige }}</td>
                 <td>{{ m.rank_name }}</td>
                 <!-- ★ 2026-09-25：个人军团积分（用于军团商城兑换） -->
                 <td>{{ m.points }}</td>
@@ -2321,30 +2323,52 @@
             <a href="javascript:;" :class="{ on: rankTab === 'corps' }" @click="rankTab = 'corps'">军团榜</a>
           </div>
 
-          <!-- 军衔晋升表 tab（静态参照表） -->
+          <!-- 军衔晋升表 tab（静态参照表 + 我的晋升，★ 2026-09-28 加宝物门槛） -->
           <template v-if="rankTab === 'ranks'">
-          <div class="panel-title">军衔晋升表</div>
-          <div class="old-line">
-            军衔等级 / 职位 / 需要声望 / <b>可建城数</b>
-            <span v-if="rankData.mine" class="gray">
-              （我当前「{{ rankData.mine.rank_name }}」：可建 {{ rankData.mine.city_max }} 座，已有 {{ rankData.mine.city_count }} 座）
-            </span>
+          <div class="panel-title">我的晋升</div>
+          <div v-if="rankData.mine" class="old-line">
+            当前军衔：<b>{{ rankData.mine.rank_name }}</b>（可建 {{ rankData.mine.city_max }} 座，已有 {{ rankData.mine.city_count }} 座）
           </div>
+          <div v-if="rankData.mine && rankData.mine.next" class="old-line">
+            下一军衔：<b>{{ rankData.mine.next.name }}</b>（需要声望 <b>{{ rankData.mine.next.need }}</b>，当前 {{ rankData.mine.prestige }}）
+            <div class="gray">
+              需要宝物：
+              <span v-for="t in rankData.mine.next.treasures" :key="'tr' + t.name">
+                {{ t.name }}×{{ t.count }}（背包{{ t.have }}）
+                <span :class="t.have >= t.count ? 'green' : 'red'">{{ t.have >= t.count ? '足够' : '不足' }}</span>；
+              </span>
+            </div>
+            <button v-if="canPromote()" @click="doPromote">[晋升]</button>
+            <span v-else class="gray">声望达标且宝物足够后才能晋升（宝物通过野地采集获得）</span>
+          </div>
+          <div v-else-if="rankData.mine" class="old-line green">已晋升至最高军衔「{{ rankData.mine.rank_name }}」！</div>
+
+          <div class="panel-title">军衔晋升表</div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 12%"><col style="width: 26%"><col style="width: 18%"><col style="width: 26%"><col style="width: 18%">
+              <col style="width: 10%"><col style="width: 20%"><col style="width: 14%"><col style="width: 18%"><col style="width: 12%"><col style="width: 8%">
             </colgroup>
-            <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>可建城数</th></tr>
-            <tr v-for="(r, i) in rankData.ranks" :key="'rk' + i">
-              <td>{{ i + 1 }}</td>
-              <td>
-                <span v-html="rankIcon(r.id)"></span>{{ r.name }}
-                <span v-if="r.name === rankName" class="red">[当前]</span>
-              </td>
-              <td>{{ r.post }}</td>
-              <td>{{ r.need }}</td>
-              <td>{{ r.city_max }}</td>
-            </tr>
+            <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>宝物</th><th>可建城数</th></tr>
+            <template v-for="(r, i) in rankData.ranks">
+              <tr :key="'rk' + i">
+                <td>{{ i + 1 }}</td>
+                <td>
+                  <span v-html="rankIcon(r.id)"></span>
+                  <span :class="r.name === (rankData.mine ? rankData.mine.rank_name : rankName) ? 'red' : ''">{{ r.name }}</span>
+                </td>
+                <td>{{ r.post }}</td>
+                <td>{{ r.need }}</td>
+                <td>
+                  <a href="javascript:;" @click="showTreasureRow = showTreasureRow === i ? -1 : i">[宝物]</a>
+                </td>
+                <td>{{ r.city_max }}</td>
+              </tr>
+              <tr v-if="showTreasureRow === i" :key="'rt' + i" class="rank-treasure-row">
+                <td>所需宝物</td>
+                <td colspan="4" class="gray">{{ r.treasures || '该军衔无需宝物' }}</td>
+                <td></td>
+              </tr>
+            </template>
           </table>
           </template>
 
@@ -3973,6 +3997,8 @@ export default {
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       // ★ 排行页 tab: ranks军衔晋升表 / prestige军衔声望榜 / troops兵力榜 / corps军团榜
       rankTab: 'ranks',
+      // ★ 军衔晋升表中「宝物」点击展开的行下标（-1 = 收起）
+      showTreasureRow: -1,
       orders: [],
       buildZone: 'm',
       buildSel: null,
@@ -5651,6 +5677,28 @@ export default {
     loadRank () {
       api.get('/games/ezfy/rank').then(r => {
         if (r.code === 0) this.rankData = r.data
+      })
+    },
+    // ★ 2026-09-28 军衔晋升：声望达标 + 背包宝物足够才能点[晋升]
+    canPromote () {
+      const m = this.rankData.mine
+      if (!m || !m.next || !m.next.treasures) return false
+      if (m.prestige < m.next.need) return false
+      return m.next.treasures.every(t => t.have >= t.count)
+    },
+    doPromote () {
+      if (!this.canPromote()) return
+      const next = this.rankData.mine.next
+      const req = next.treasures.map(t => t.name + '×' + t.count).join('、')
+      if (!window.confirm('确认消耗宝物「' + req + '」晋升至「' + next.name + '」？')) return
+      api.post('/games/ezfy/promote', {}).then(r => {
+        if (r.code === 0) {
+          alert('恭喜晋升至「' + r.data.rank_name + '」！')
+          this.loadRank()
+          this.load()
+        } else {
+          alert(r.msg || '晋升失败')
+        }
       })
     },
     // ★ 军衔名 → 军衔等级 id：优先取军衔表，军衔表未加载时回落内置 20 级（与后端种子一致）
@@ -8030,6 +8078,9 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .ezfy-rank-table tr:nth-child(even) td { background: #faf8f2; }
 .ezfy-page .ezfy-rank-table tr:hover td { background: #f0ecdf; }
+/* 军衔晋升表「宝物」点击展开行（★ 2026-09-28 宝物列改为点击展示，展开行做浅色底色区分） */
+.ezfy-page .ezfy-rank-table tr.rank-treasure-row td { background: #fffbe8; font-weight: normal; }
+.ezfy-page .ezfy-rank-table tr.rank-treasure-row:hover td { background: #fffbe8; }
 /* 冠/亚/季军整行着色（置于悬停/斑马纹之后，确保三者之上仍保持奖牌底色） */
 .ezfy-page .ezfy-rank-table tr.rank-1 td { background: #fdeebb; }
 .ezfy-page .ezfy-rank-table tr.rank-2 td { background: #eef2f5; }

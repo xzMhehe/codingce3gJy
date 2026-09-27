@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -17,8 +18,9 @@ import (
 
 // ============ 军衔配置 ============
 
-// AdminEzfyRanks 军衔配置列表
+// AdminEzfyRanks 军衔配置列表（含该军衔玩家数与晋升宝物）
 func (h *AdminHandler) AdminEzfyRanks(c *gin.Context) {
+	ezfyCfg.load(h.DB) // 晋升宝物从配置缓存读（玩家端口径一致；改过配置的 Update 会 reload）
 	var rows []model.EzfyCfgRank
 	h.DB.Order("id").Find(&rows)
 	if len(rows) == 0 {
@@ -30,21 +32,22 @@ func (h *AdminHandler) AdminEzfyRanks(c *gin.Context) {
 		Cnt     int64
 	}
 	var profs []model.EzfyProfile
-	h.DB.Select("prestige").Find(&profs)
+	h.DB.Select("prestige", "rank").Find(&profs)
 	cnt := map[int]int64{}
 	for _, p := range profs {
-		cnt[ezfyRankIndex(p.Prestige)]++
+		cnt[ezfyProfileRank(&p)]++
 	}
 	out := make([]gin.H, 0, len(rows))
 	for i, r := range rows {
 		out = append(out, gin.H{
 			"id": r.ID, "level": i + 1, "name": r.Name, "post": r.Post,
 			"need_prestige": r.NeedPrestige, "city_max": r.CityMax, "des": r.Des,
+			"treasures":    ezfyRankTreasureReqs(r.ID), // 该军衔晋升所需宝物（管理端可维护）
 			"player_count": cnt[i],
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out),
-		"usage": "「可建城数」即该军衔下玩家能拥有的城市数量上限"})
+		"usage": "「可建城数」即该军衔下玩家能拥有的城市数量上限；「晋升宝物」为声望达标后需提交的宝物（野地采集掉落，管理端可维护）"})
 }
 
 // AdminEzfyRankUpdate 修改军衔配置
@@ -56,11 +59,12 @@ func (h *AdminHandler) AdminEzfyRankUpdate(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Name         string `json:"name"`
-		Post         string `json:"post"`
-		NeedPrestige *int   `json:"need_prestige"`
-		CityMax      *int   `json:"city_max"`
-		Des          string `json:"des"`
+		Name         string             `json:"name"`
+		Post         string             `json:"post"`
+		NeedPrestige *int               `json:"need_prestige"`
+		CityMax      *int               `json:"city_max"`
+		Des          string             `json:"des"`
+		Treasures    []ezfyRankTreasure `json:"treasures"` // 晋升所需宝物（空数组=该军衔无需宝物）
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -90,6 +94,12 @@ func (h *AdminHandler) AdminEzfyRankUpdate(c *gin.Context) {
 	if in.Des != "" {
 		updates["des"] = trimStr(in.Des, 200)
 	}
+	// 晋升宝物（前端提交数组，空数组 = 该军衔晋升无需宝物）
+	if in.Treasures != nil {
+		if b, err := json.Marshal(in.Treasures); err == nil {
+			updates["treasures"] = string(b)
+		}
+	}
 	if len(updates) == 0 {
 		resp.ParamError(c, "无可修改字段")
 		return
@@ -102,17 +112,25 @@ func (h *AdminHandler) AdminEzfyRankUpdate(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "军衔「" + r.Name + "」已保存"})
 }
 
-// AdminEzfyRankReset 恢复内置默认军衔表
+// AdminEzfyRankReset 恢复内置默认军衔表（含晋升宝物需求）
 func (h *AdminHandler) AdminEzfyRankReset(c *gin.Context) {
 	for _, d := range ezfyDefaultRanks() {
-		h.DB.Model(&model.EzfyCfgRank{}).Where("id = ?", d.ID).
-			Updates(map[string]interface{}{
-				"name": d.Name, "post": d.Post,
-				"need_prestige": d.NeedPrestige, "city_max": d.CityMax,
-			})
+		updates := map[string]interface{}{
+			"name": d.Name, "post": d.Post,
+			"need_prestige": d.NeedPrestige, "city_max": d.CityMax,
+		}
+		// 宝物需求一并恢复内置默认（无内置默认的军衔清空，如列兵无需宝物）
+		if reqs, ok := ezfyRankTreasures[d.ID]; ok && len(reqs) > 0 {
+			if b, err := json.Marshal(reqs); err == nil {
+				updates["treasures"] = string(b)
+			}
+		} else {
+			updates["treasures"] = ""
+		}
+		h.DB.Model(&model.EzfyCfgRank{}).Where("id = ?", d.ID).Updates(updates)
 	}
 	h.ezfyReload()
-	resp.OK(c, gin.H{"msg": "军衔表已恢复默认"})
+	resp.OK(c, gin.H{"msg": "军衔表已恢复默认（含晋升宝物）"})
 }
 
 // ============ 玩家军衔 ============
@@ -139,14 +157,15 @@ func (h *AdminHandler) AdminEzfyRankPlayers(c *gin.Context) {
 		var cityCount int64
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cityCount)
 		name, homeNum := h.ezfyAdminName(p.UserID)
-		rank := ezfyRankOf(p.Prestige)
+		lv := ezfyProfileRank(&p)
+		rank := ezfyRankAt(lv)
 		out = append(out, gin.H{
 			"user_id": p.UserID, "game_uid": p.GameUID,
 			"nickname": p.Nickname, "player_name": name, "home_num": homeNum,
 			"prestige": p.Prestige,
 			"rank_id":  rank.ID, "rank_name": rank.Name, "rank_post": rank.Post,
-			"city_max": ezfyRankCityMax(p.Prestige), "city_count": cityCount,
-			"over_limit": cityCount > int64(ezfyRankCityMax(p.Prestige)),
+			"city_max": ezfyRankCityMaxAt(lv), "city_count": cityCount,
+			"over_limit": cityCount > int64(ezfyRankCityMaxAt(lv)),
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -179,7 +198,10 @@ func (h *AdminHandler) AdminEzfyRankSetPlayer(c *gin.Context) {
 		resp.ParamError(c, "军衔不存在")
 		return
 	}
-	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("prestige", rank.NeedPrestige)
+	// ★ 2026-09-28 军衔改为声望+宝物手动晋升：管理端直接设军衔时同步写 rank，
+	//   否则玩家展示仍停在旧军衔（prestige 只是前提不再自动晋升）。
+	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
+		Updates(map[string]interface{}{"prestige": rank.NeedPrestige, "rank": rank.ID})
 	resp.OK(c, gin.H{"msg": "已将军衔设为「" + rank.Name + "」（声望 " +
 		strconv.Itoa(rank.NeedPrestige) + "，可建城 " + strconv.Itoa(rank.CityMax) + " 座）"})
 }
@@ -200,6 +222,7 @@ func (h *AdminHandler) AdminEzfyRankSetPrestige(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("prestige", in.Prestige)
+	p.Prestige = in.Prestige // 同步内存值，方便下面按新声望推导军衔名（老玩家 Rank=0 回落声望）
 	resp.OK(c, gin.H{"msg": "声望已设为 " + strconv.Itoa(in.Prestige) +
-		"，当前军衔「" + ezfyRankName(in.Prestige) + "」"})
+		"，当前军衔「" + ezfyRankNameAt(ezfyProfileRank(&p)) + "」"})
 }

@@ -28,6 +28,12 @@
             <el-table-column label="该军衔玩家" width="130" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.player_count }}</span></template>
             </el-table-column>
+            <el-table-column label="晋升宝物" min-width="220" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.treasures && row.treasures.length" class="td-gold">{{ treasureText(row.treasures) }}</span>
+                <span v-else class="td-sub">—（无需宝物）</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="des" label="说明" min-width="200" show-overflow-tooltip />
             <el-table-column label="操作" width="110" align="center" fixed="right">
               <template slot-scope="{row}">
@@ -122,6 +128,24 @@
         <el-form-item label="说明">
           <el-input v-model="form.des" maxlength="200" />
         </el-form-item>
+        <el-form-item label="晋升宝物">
+          <div class="treasure-editor">
+            <div v-for="(t, i) in form.treasures" :key="i" class="treasure-row">
+              <el-select v-model="t.name" placeholder="选择宝物" size="small" style="width:170px">
+                <el-option v-for="n in treasureNames" :key="n" :label="n" :value="n" />
+              </el-select>
+              <el-input-number v-model.number="t.count" :min="1" size="small" controls-position="right"
+                               style="width:120px; margin-left:8px" />
+              <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除"
+                         @click="form.treasures.splice(i, 1)" />
+            </div>
+            <el-button size="mini" type="primary" plain icon="el-icon-plus"
+                       @click="form.treasures.push({ name: '', count: 1 })">添加宝物</el-button>
+            <div class="td-sub" style="margin-top:4px">
+              声望达标后提交这些宝物才能晋升该军衔；宝物来自野地采集掉落。留空则该军衔晋升无需宝物。
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
       <!-- [说明·不显示在界面] 改完立即生效（后端会重载配置缓存，不用重启） -->
       <div slot="footer">
@@ -185,11 +209,17 @@ export default {
       players: [], total: 0, page: 1, size: 5, word: '', loading: false,
       dlg: false, form: {}, saving: false,
       setDlg: false, setRow: {}, setRankId: 0,
-      preDlg: false, preRow: {}, preValue: 0
+      preDlg: false, preRow: {}, preValue: 0,
+      // 晋升宝物 = 野地采集掉落的 9 种珠宝（与 ezfyTerrainTreasureNames 一致）
+      treasureNames: ['黄金手镯', '玛瑙项坠', '红宝石戒指', '黑曜石戒指', '琥珀项链',
+        '铂金戒指', '翡翠项链', '祖母绿', '蓝宝石戒指']
     }
   },
   mounted () { this.loadRanks(); this.loadPlayers() },
   methods: {
+    treasureText (tr) {
+      return (tr || []).map(t => t.name + '×' + t.count).join('、')
+    },
     onTab () { if (this.tab === 'players') this.loadPlayers(); else this.loadRanks() },
     loadRanks () {
       this.loadingRank = true
@@ -207,7 +237,9 @@ export default {
       }).catch(() => {})
     },
     openEdit (row) {
-      this.form = Object.assign({}, row)
+      this.form = Object.assign({}, row, {
+        treasures: (row.treasures || []).map(t => ({ name: t.name, count: t.count }))
+      })
       this.dlg = true
     },
     doSave () {
@@ -215,7 +247,8 @@ export default {
       api.put('/admin/ezfy-ranks/' + this.form.id, {
         name: this.form.name, post: this.form.post,
         need_prestige: this.form.need_prestige, city_max: this.form.city_max,
-        des: this.form.des || ''
+        des: this.form.des || '',
+        treasures: (this.form.treasures || []).filter(t => t.name)
       }).then(r => {
         this.saving = false
         if (r.code === 0) { this.dlg = false; this.$message.success(r.data.msg || '已保存'); this.loadRanks() }

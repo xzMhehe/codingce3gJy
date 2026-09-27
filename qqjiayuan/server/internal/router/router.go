@@ -634,6 +634,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)
+				// ★ 2026-09-28 军衔晋升：声望达标 + 提交宝物（参考原版晋升军衔宝物参考.xlsx）
+				ezfyG.POST("/promote", ezfyH.Promote)
 				ezfyG.GET("/mall", ezfyH.Mall)
 				ezfyG.POST("/mall/buy", ezfyH.Buy)
 				ezfyG.GET("/bag", ezfyH.Bag)

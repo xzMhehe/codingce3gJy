@@ -434,6 +434,44 @@ func ezfyRankOf(prestige int) model.EzfyCfgRank {
 func ezfyRankName(prestige int) string { return ezfyRankOf(prestige).Name }
 func ezfyRankPost(prestige int) string { return ezfyRankOf(prestige).Post }
 
+// ============ 军衔等级（2026-09-28 用户要求：军衔不再自动跟随声望） ============
+//
+// 现在声望达标只是晋升前提，还要提交宝物（见 ezfy_rank_treasure.go）。
+// 玩家实际军衔以 profile.Rank 为准；老玩家 Rank 还没写（=0）时回落声望推导，
+// 保证旧账不缩水（已有军衔不被扣回去）。
+
+// ezfyProfileRank 玩家当前军衔等级（1..N）
+func ezfyProfileRank(p *model.EzfyProfile) int {
+	if p.Rank > 0 {
+		return p.Rank
+	}
+	return ezfyRankIndex(p.Prestige) + 1
+}
+
+// ezfyRankAt 军衔等级（1..N，等级 = 列表下标 + 1，列表按 id 升序）→ 配置
+func ezfyRankAt(level int) model.EzfyCfgRank {
+	ranks := ezfyCfg.rankList()
+	if level < 1 {
+		level = 1
+	}
+	if level > len(ranks) {
+		level = len(ranks)
+	}
+	return ranks[level-1]
+}
+
+func ezfyRankNameAt(level int) string { return ezfyRankAt(level).Name }
+func ezfyRankPostAt(level int) string { return ezfyRankAt(level).Post }
+
+// ezfyRankCityMaxAt 该军衔等级下最多能拥有几座城（★ 军衔限制分城数量）
+func ezfyRankCityMaxAt(level int) int {
+	m := ezfyRankAt(level).CityMax
+	if m <= 0 {
+		m = 1
+	}
+	return m
+}
+
 // ezfyRankCityMax 该声望下最多能拥有几座城（★ 军衔限制分城数量）
 func ezfyRankCityMax(prestige int) int {
 	m := ezfyRankOf(prestige).CityMax

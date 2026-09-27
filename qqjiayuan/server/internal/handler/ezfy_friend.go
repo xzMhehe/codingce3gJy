@@ -51,7 +51,7 @@ func (h *EzfyHandler) ezfyFriendBrief(uid uint) gin.H {
 		"user_id": uid, "game_uid": gu,
 		"home_num": u.Username, "nickname": nick,
 		"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
-		"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige),
+		"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)),
 	}
 }
 

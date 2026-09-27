@@ -712,7 +712,7 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 		// ★ 2026-09-25 用户要求「军团页展示个人军团积分」：每项带 points
 		views = append(views, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
 			"is_leader": m.IsLeader, "title": m.Title,
-			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige),
+			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)),
 			"points": m.Points})
 	}
 	// ★ 军团总积分（军团商城/军团页展示）
@@ -783,10 +783,11 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		prof := h.ensureProfile(uid)
 		var owned int64
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&owned)
-		maxCity := ezfyRankCityMax(prof.Prestige)
+		profLv := ezfyProfileRank(&prof)
+		maxCity := ezfyRankCityMaxAt(profLv)
 		if int(owned) >= maxCity {
 			resp.ParamError(c, fmt.Sprintf("当前军衔「%s」最多只能拥有 %d 座城市（已有 %d 座），提升声望可解锁更多",
-				ezfyRankName(prof.Prestige), maxCity, owned))
+				ezfyRankNameAt(profLv), maxCity, owned))
 			return
 		}
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 4)

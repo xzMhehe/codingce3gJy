@@ -1316,7 +1316,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	prestigeRank := []gin.H{}
 	for i, p := range profiles {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
-			"prestige": p.Prestige, "rank_name": ezfyRankName(p.Prestige)})
+			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 	}
 	// 兵力榜(不含城防)——★ 每个玩家只出现一次，取他兵力最多的那座城
 	var troops []model.EzfyCityTroop
@@ -1388,12 +1388,13 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name,
 			"member_count": rankCounts[int64(cp.ID)], "battle_score": score})
 	}
-	// 军衔表（★ 含「可建城数」一列，与 model.EzfyCfgRank 一致）
+	// 军衔表（★ 含「可建城数」一列，与 model.EzfyCfgRank 一致；2026-09-28 新增「宝物」列）
 	ranks := []gin.H{}
 	for _, r := range ezfyCfg.rankList() {
 		ranks = append(ranks, gin.H{
 			"id": r.ID, "name": r.Name, "post": r.Post,
 			"need": r.NeedPrestige, "city_max": r.CityMax,
+			"treasures": ezfyTreasureListText(ezfyRankTreasureReqs(r.ID)),
 		})
 	}
 	// 当前玩家的军衔与建城额度（军衔限制分城数量）
@@ -1401,9 +1402,26 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	me := h.ensureProfile(uid)
 	var myCities int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&myCities)
+	meLv := ezfyProfileRank(&me)
 	mine := gin.H{
-		"rank_name": ezfyRankName(me.Prestige), "rank_post": ezfyRankPost(me.Prestige),
-		"prestige": me.Prestige, "city_max": ezfyRankCityMax(me.Prestige), "city_count": myCities,
+		"rank_id": ezfyRankAt(meLv).ID, "rank_name": ezfyRankNameAt(meLv), "rank_post": ezfyRankPostAt(meLv),
+		"prestige": me.Prestige, "city_max": ezfyRankCityMaxAt(meLv), "city_count": myCities,
+		"rank_level": meLv,
+	}
+	// ★ 下一级晋升信息（声望门槛 + 所需宝物 + 背包现有量），供前端[晋升]按钮展示与校验
+	if meLv < len(ezfyCfg.rankList()) {
+		nr := ezfyCfg.rankList()[meLv]
+		tr := []gin.H{}
+		for _, r := range ezfyRankTreasureReqs(nr.ID) {
+			cfg := ezfyEquipCfgByName(r.Name)
+			have := int64(0)
+			if cfg != nil {
+				have = h.ezfyTreasureOwned(uid, cfg.ID)
+			}
+			tr = append(tr, gin.H{"name": r.Name, "count": r.Count, "have": have})
+		}
+		mine["next"] = gin.H{"id": nr.ID, "name": nr.Name, "post": nr.Post,
+			"need": nr.NeedPrestige, "treasures": tr}
 	}
 	resp.OK(c, gin.H{"prestige": prestigeRank, "troops": troopRank, "corps": corpsRank,
 		"ranks": ranks, "mine": mine})
@@ -1946,7 +1964,7 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"signed_today": signedToday > 0, "sign_count": signCount,
 		"rewards": rewards, "gifts": gifts, "city_level": city.CityLevel,
-		"prestige": profile.Prestige, "rank_name": ezfyRankName(profile.Prestige),
+		"prestige": profile.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&profile)),
 	})
 }
 
