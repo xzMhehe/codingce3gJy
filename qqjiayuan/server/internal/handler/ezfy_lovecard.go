@@ -40,8 +40,21 @@ func isLoveCardItem(itemType int) bool {
 // addDiamond 给玩家钻石累计（无条件累加，仅依赖 ezfy_profile.diamond）。
 func (h *EzfyHandler) addDiamond(uid uint, amount int64) error {
 	prof := h.ensureProfile(uid)
-	return h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+	err := h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
 		Update("diamond", prof.Diamond+amount).Error
+	if err == nil {
+		// ★ 2026-09-28 钻石流水：为爱发电卡发放（含每日领取）
+		h.logDiamond(uid, amount, "为爱发电卡发放钻石")
+	}
+	return err
+}
+
+// logDiamond 记录玩家钻石流水（2026-09-28 新增：管理端「数据管理 → 钻石流水」的数据来源，
+// 所有钻石变动点都应先落库钻石变动、再调这里记一条流水）。
+func (h *EzfyHandler) logDiamond(uid uint, change int64, reason string) {
+	var bal int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck("diamond", &bal)
+	h.DB.Create(&model.EzfyDiamondLog{UserId: uid, Change: change, Balance: bal, Reason: reason})
 }
 
 // createLoveCard 管理端发放为爱发电卡。
@@ -85,12 +98,23 @@ func (h *EzfyHandler) createLoveCard(uid uint, cfg *model.EzfyCfgItem, count int
 	}
 }
 
-// loveCardClaimable 某张卡当前可领天数（发放当天即可领第1天，之后每天+1，封顶总天数）。
+// ezfyDayStart 取某时间戳所在自然日 0 点（跟随服务器时区，与项目 time.Local 约定一致）。
+func ezfyDayStart(ms int64) int64 {
+	t := time.UnixMilli(ms).In(time.Local)
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local).UnixMilli()
+}
+
+// loveCardClaimable 某张卡当前可领天数。
+//
+// ★ 2026-09-28 用户口径修正：按「自然日/天」结算，而非滚动 24 小时——
+//
+//	发放当天算第 1 天可领；跨过当天零点（无论距发放几小时）即可领第 2 天；
+//	总领取天数封顶 TotalDays(30)，漏领的天数在之后领取时累加补齐。
 func loveCardClaimable(c *model.EzfyLoveCard, nowMS int64) int {
 	if c.TotalDays <= 0 {
 		return 0
 	}
-	slots := int((nowMS-c.StartTime)/ezfyLoveCardDayMS) + 1 // 当天算第1天
+	slots := int((ezfyDayStart(nowMS)-ezfyDayStart(c.StartTime))/ezfyLoveCardDayMS) + 1 // 发放日=第1天
 	if slots < 0 {
 		slots = 0
 	}

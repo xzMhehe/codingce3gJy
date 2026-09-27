@@ -458,6 +458,30 @@ func (h *AdminHandler) ezfyTableOf(c *gin.Context) (ezfyTableDef, bool) {
 
 // AdminEzfyData 数据分页查询（table=buildings/buildingLevels/troops/techs/techLevels/wildlands/items/taskTypes/tasks/cities）
 func (h *AdminHandler) AdminEzfyData(c *gin.Context) {
+	// ★ 2026-09-28 玩家钻石流水（数据管理 → 钻石流水，只读）：
+	//   按「玩家ID」或「昵称」搜索，附昵称列，倒序展示最近流水。
+	if c.Param("table") == "diamondLogs" {
+		page, offset, size := pageOf(c, 10)
+		word := strings.TrimSpace(c.Query("word"))
+		base := h.DB.Table("ezfy_diamond_logs").
+			Select("ezfy_diamond_logs.id, ezfy_diamond_logs.user_id, ezfy_diamond_logs.change, " +
+				"ezfy_diamond_logs.balance, ezfy_diamond_logs.reason, " +
+				"DATE_FORMAT(ezfy_diamond_logs.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, ezfy_profile.nickname").
+			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.uid = ezfy_diamond_logs.user_id")
+		if word != "" {
+			if id, err := strconv.Atoi(word); err == nil && id > 0 {
+				base = base.Where("ezfy_diamond_logs.user_id = ?", id)
+			} else {
+				base = base.Where("ezfy_profile.nickname LIKE ?", "%"+word+"%")
+			}
+		}
+		var total int64
+		base.Count(&total)
+		var rows []map[string]interface{}
+		base.Order("ezfy_diamond_logs.id DESC").Offset(offset).Limit(size).Find(&rows)
+		resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
+		return
+	}
 	def, ok := h.ezfyTableOf(c)
 	if !ok {
 		return

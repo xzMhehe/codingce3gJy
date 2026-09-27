@@ -1613,6 +1613,8 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 				resp.ParamError(c, "扣钻石失败："+err.Error())
 				return
 			}
+			// ★ 2026-09-28 钻石流水
+			h.logDiamond(uid, -cost, "商城购买: "+cfg.Name)
 		}
 		if !unlimited {
 			h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).

@@ -657,7 +657,7 @@ func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) 
 	//   「装备显示已穿戴、但军官身上没有」的半截状态 —— 实测踩过（varchar(500) 截断）。
 	equipped = append(equipped, map[string]interface{}{
 		"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
-		"tier": e.Tier,
+		"tier":     e.Tier,
 		"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 		// ★ 六项战斗属性（进战斗计算）
 		"series": e.Series, "enhance": e.Enhance,
@@ -735,7 +735,7 @@ func (h *EzfyHandler) rebuildOfficerEquipJSON(officerId int64) {
 		seen[model.EzfySlotCanon(e.EquipSlot())] = true
 		list = append(list, map[string]interface{}{
 			"id": e.ID, "name": e.Name, "type": e.Type, "slot": model.EzfySlotCanon(e.EquipSlot()), "set_id": e.SetId,
-			"tier":    e.Tier,
+			"tier":     e.Tier,
 			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"series": e.Series, "enhance": e.Enhance,
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
@@ -1947,7 +1947,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"battle": h.officerBattleView(o),
 			// ★ 升星：星级上限 / 固定成功率 / 每星加多少 / 持有升星卡数
 			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
-			"star_rate": ezfyStarSuccessRate(),
+			"star_rate":      ezfyStarSuccessRate(),
 			"star_attr_gain": ezfyStarAttrGain(), "star_card": h.itemCount(uid, ezfyStarItemID),
 			// ★ 军官改名卡 / 军官技能书 持有数（前端改名按钮与可学技能表头展示）
 			"rename_card": h.itemCount(uid, ezfyOfficerRenameCardItemID),
@@ -1958,8 +1958,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"exp_need": o.Level * 200,
 		},
 		"skills": skillViews, "all_skills": allSkills,
-			// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
-			"equipped": h.officerEquippedView(o), "bag": bag, "bag_sets": bagSets, "gold": city.Gold,
+		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
+		"equipped": h.officerEquippedView(o), "bag": bag, "bag_sets": bagSets, "gold": city.Gold,
 	})
 }
 
@@ -2582,6 +2582,8 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 			h.fail(c, "扣钻石失败："+err.Error())
 			return
 		}
+		// ★ 2026-09-28 钻石流水
+		h.logDiamond(uid, -total, "购买宝箱: "+chest.Name)
 	} else {
 		if city.Gold < total {
 			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))
@@ -2782,7 +2784,7 @@ func (h *EzfyHandler) equipSet(city *model.EzfyCity, o *model.EzfyOfficer, setId
 		}
 		equipped = append(equipped, map[string]interface{}{
 			"id": e.ID, "name": e.Name, "type": e.Type, "slot": slot, "set_id": e.SetId,
-			"tier":      e.Tier,
+			"tier":     e.Tier,
 			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"series": e.Series, "enhance": e.Enhance,
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
@@ -3132,6 +3134,8 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 			h.fail(c, "扣钻石失败："+err.Error())
 			return
 		}
+		// ★ 2026-09-28 钻石流水
+		h.logDiamond(uid, -total, "商城购买装备")
 	} else {
 		if city.Gold < total {
 			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))

@@ -782,9 +782,8 @@
             训练中占用人口：{{ popUsed }}（出厂即归还，已训练完成的部队不占人口）
           </div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
-            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}<br/>
-            消耗: {{ resShort.food }}{{ t.cost.food }} {{ resShort.steel }}{{ t.cost.steel }} {{ resShort.oil }}{{ t.cost.oil }} {{ resShort.rare }}{{ t.cost.rare }} 训练{{ t.train_time }}秒/个<br/>
-            前提: {{ t.require || '无' }}<template v-if="t.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template>
+            <!-- ★ 2026-09-28 用户要求：军队列表不再显示资源消耗/前提条件，点[训练]进详情页查看 -->
+            <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }}) 血{{ t.health }} 防{{ t.defence }} 速{{ t.speed }} 射程{{ t.attack_range }} 负重{{ t.carry }}
             <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
           <div class="panel-title">训练队列({{ queues.length }})</div>
@@ -961,8 +960,8 @@
         <div class="panel">
           <div class="panel-title">【科技中心】:{{ techsData.academy }}级</div>
           <div class="old-line" v-for="t in techsData.techs" :key="'te' + t.tech_id">
-            <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
-            <span class="gray">[需科研中心{{ t.academy_need }}级]</span><br/>
+            <!-- ★ 2026-09-28 用户要求：科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
+            <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级<br/>
             {{ t.effect }}<br/>
             <span v-if="t.researching" class="orange">研究中 {{ remain(t.end_time) }}
               <!-- ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：原来这里的 [加速]
@@ -976,14 +975,36 @@
               <span class="gray" v-if="!accItems(5).length && !accItems(26).length">(无科技加速道具)</span>
               <a href="javascript:;" @click="doCancelTech(t)">[取消]</a></span>
             <span v-else-if="t.level < t.max_level">
-              <a href="javascript:;" @click="doResearch(t)">[研究{{ t.level + 1 }}级]</a>
-              <span class="gray">耗: {{ resShort.food }}{{ t.next_cost.food }} {{ resShort.steel }}{{ t.next_cost.steel }} {{ resShort.oil }}{{ t.next_cost.oil }} {{ resShort.rare }}{{ t.next_cost.rare }} {{ resShort.gold }}{{ t.next_cost.gold }} 需{{ Math.ceil(t.next_time / 60) }}分钟</span>
+              <a href="javascript:;" @click="openTechPre(t)">[研究{{ t.level + 1 }}级]</a>
             </span>
             <span v-else class="gray">[已满级]</span>
             <br/>
           </div>
           <div class="old-line gray">同一时间只能研究一项科技；[取消] 会全额退还本次研究消耗。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 科技详情(techpre) 2026-09-28 用户要求：点[研究]进详情页查看资源/条件再确认 ============ -->
+      <template v-else-if="cur === 'techpre'">
+        <div class="panel" v-if="techSel">
+          <div class="panel-title">研究「{{ techSel.name }}」{{ techSel.level + 1 }}级</div>
+          <div class="old-line">当前等级：{{ techSel.level }}/{{ techSel.max_level }}级</div>
+          <div class="old-line">效果：{{ techSel.effect }}</div>
+          <div class="old-line">前提：科研中心{{ techSel.academy_need }}级</div>
+          <div class="old-line">
+            所需资源：{{ resNames.food }}{{ techSel.next_cost.food }} {{ resNames.steel }}{{ techSel.next_cost.steel }}
+            {{ resNames.oil }}{{ techSel.next_cost.oil }} {{ resNames.rare }}{{ techSel.next_cost.rare }}
+            {{ resNames.gold }}{{ techSel.next_cost.gold }}
+          </div>
+          <div class="old-line">耗时：{{ Math.ceil(techSel.next_time / 60) }}分钟</div>
+          <div class="old-line">
+            <button @click="doTechPre()">[开始研究]</button>
+          </div>
+          <a href="javascript:;" @click="go('techs')">[返回科技列表]</a>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line">请先选择科技 <a href="javascript:;" @click="go('techs')">[科技列表]</a></div>
         </div>
       </template>
 
@@ -1165,6 +1186,8 @@
             <template v-if="trainMode !== 'defence'">吃粮：{{ trainSel.food_keep }}<br/></template>
             时间：{{ durText(trainSel.train_time) }}<br/>
             <template v-if="trainMode !== 'defence'">需要军工厂：{{ trainSel.need_factory }}级<br/></template>
+            <!-- ★ 2026-09-28 用户要求：资源/前提条件移到这里（训练详情页）展示 -->
+            前提：{{ trainSel.require || '无' }}<template v-if="trainSel.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template><br/>
           </div>
           <div class="old-line green" v-if="troopsData.train_discount > 0 && trainMode !== 'defence'">
             节日活动·造兵打折：资源消耗 -{{ troopsData.train_discount }}%（上方为折后价）
@@ -2845,7 +2868,7 @@
               <option value="3">{{ resNames.oil }}</option><option value="4">{{ resNames.rare }}</option>
             </select><br/>
             数量: <input v-model="sellCount" type="number" style="width:90px"/><br/>
-            总价({{ resNames.gold }}): <input v-model="sellPrice" type="number" style="width:90px"/><br/>
+            总价({{ resNames.gold }}): <input v-model="sellPrice" type="number" style="width:90px" max="1000000000" placeholder="≤10亿"/><br/>
             <button @click="doExchangeSell">[挂单出售]</button>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -3868,6 +3891,8 @@ export default {
       // （分开取 city.pop / troopsData.pop 会出现 1000-996=5 这种对不上的显示）
       cityPop: 0,
       techsData: { techs: [], academy: 0 },
+      // ★ 2026-09-28 科技详情页选中的科技（列表点[研究]进入 techpre 时赋值）
+      techSel: null,
       wildlands: [],
       occupies: [],
       queues: [],
@@ -4152,7 +4177,7 @@ export default {
       return ['troops', 'troop', 'troopview', 'trainpre', 'factory'].indexOf(this.cur) >= 0
     },
     showSubnav () {
-      return ['buildm', 'builds', 'acade', 'officerdetail', 'techs', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
+      return ['buildm', 'builds', 'acade', 'officerdetail', 'techs', 'techpre', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
     },
     // ★ 玩家当前军衔等级 id（用于首页/统帅信息展示对应军衔星级图标）
     myRankId () { return this.rankIdByName(this.rankName) },
@@ -6355,8 +6380,20 @@ export default {
         .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
     },
     // ---- 科技 ----
-    doResearch (t) {
-      api.post('/games/ezfy/techs/research', { tech_id: t.tech_id }).then(r => this.alert(r, '科技研究已开始'))
+    // ★ 2026-09-28 用户要求：科技列表不显示资源消耗/前置条件，点[研究]进详情页(techpre)查看后再确认
+    openTechPre (t) {
+      this.techSel = t
+      this.go('techpre')
+    },
+    doTechPre () {
+      if (!this.techSel) return
+      api.post('/games/ezfy/techs/research', { tech_id: this.techSel.tech_id }).then(r => {
+        if (r.code === 0) {
+          this.notify((r.data && r.data.msg) ? r.data.msg : '科技研究已开始', 'ok')
+          this.go('techs')
+          this.loadTechs()
+        } else this.notify(r.msg || '研究失败', 'error')
+      })
     },
     // ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：
     //   原来这里调 POST /techs/speed {minutes:10} —— 后端既不校验道具也不扣任何东西，

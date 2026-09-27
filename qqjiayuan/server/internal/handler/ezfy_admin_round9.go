@@ -28,7 +28,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax: ezfyConvenePopMaxDef,
+		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
@@ -169,7 +169,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数）
 		GatherResMult *float64 `json:"gather_res_mult"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
-		ResProdMult *float64 `json:"res_prod_mult"`
+		ResProdMult   *float64 `json:"res_prod_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
 		MarchOilOn    *int     `json:"march_oil_on"`
@@ -214,14 +214,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax: ezfyConvenePopMaxDef,
+		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
-		ResProdMult: ezfyResProdMultDef,
+		ResProdMult:   ezfyResProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
@@ -701,6 +701,7 @@ func (h *AdminHandler) AdminEzfyDiamondGrant(c *gin.Context) {
 	}
 	ez := h.ezfyH()
 	prof := ez.ensureProfile(uint(uid))
+	before := prof.Diamond
 	if in.Mode == "set" {
 		if in.Amount < 0 {
 			resp.ParamError(c, "钻石不能为负数")
@@ -722,6 +723,8 @@ func (h *AdminHandler) AdminEzfyDiamondGrant(c *gin.Context) {
 		resp.ParamError(c, "发放失败："+err.Error())
 		return
 	}
+	// ★ 2026-09-28 钻石流水（管理端调整，set=置为固定值 / add=增减）
+	ez.logDiamond(uint(uid), prof.Diamond-before, "管理端调整钻石("+in.Mode+")")
 	note := fmt.Sprintf("管理员为你发放钻石 %+d，当前余额 %d", in.Amount, prof.Diamond)
 	if in.Mode == "set" {
 		note = fmt.Sprintf("管理员将你的钻石余额设为 %d", prof.Diamond)

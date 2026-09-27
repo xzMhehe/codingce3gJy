@@ -547,6 +547,12 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 		resp.ParamError(c, "数量或价格错误")
 		return
 	}
+	// ★ 2026-09-28 用户要求：玩家挂单出售的黄金价格上限卡控到 10 亿，防止标天价
+	const sellGoldMax = int64(1000000000) // 10 亿
+	if req.TotalPrice > sellGoldMax {
+		resp.ParamError(c, fmt.Sprintf("出售价格不能超过%d黄金", sellGoldMax))
+		return
+	}
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
 	var stock int64
@@ -614,6 +620,8 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 		}
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 			Update("diamond", p.Diamond-e.TotalPrice)
+		// ★ 2026-09-28 钻石流水
+		h.logDiamond(uid, -e.TotalPrice, "交易所购买挂单")
 	} else {
 		if city.Gold < e.TotalPrice {
 			resp.ParamError(c, fmt.Sprintf("黄金不足(需%d)", e.TotalPrice))
