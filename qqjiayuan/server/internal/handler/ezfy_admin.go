@@ -466,6 +466,15 @@ func (h *AdminHandler) AdminEzfyData(c *gin.Context) {
 			lq = lq.Where("name LIKE ?", "%"+word+"%")
 		}
 	}
+	// ★ 2026-09-27 用户要求：「装备道具配置」能过滤出「用户商城在售」的装备（前端默认开启）。
+	//   过滤条件与用户端 equipShopList 保持一致：
+	//   ① 有价格（黄金/钻石 > 0）；② 类型为「军官装备」；③ 非第一批套装件
+	//   （set_id>0 且无系列号的只能开宝箱，不直购）。
+	if c.Param("table") == "equipments" && c.Query("mall") == "1" {
+		mallCond := "(price_gold > 0 OR price_diamond > 0) AND type = '军官装备' AND NOT (set_id > 0 AND (series IS NULL OR series = ''))"
+		q = q.Where(mallCond)
+		lq = lq.Where(mallCond)
+	}
 	q.Count(&total)
 	var rows []map[string]interface{}
 	lq.Order("id").Offset(offset).Limit(size).Find(&rows)

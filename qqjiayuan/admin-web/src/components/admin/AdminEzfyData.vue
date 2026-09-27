@@ -6,6 +6,18 @@
         <el-tab-pane v-for="t in tables" :key="t.k" :label="t.n" :name="t.k" />
       </el-tabs>
       <div class="toolbar">
+        <!-- ★ 2026-09-27 用户要求：装备道具配置默认只展示「用户商城在售」的装备，可切换查看全部 -->
+        <el-switch v-if="table === 'equipments'" v-model="mallOnly" active-text="仅看商城上架"
+                   @change="page = 1; load()" />
+        <el-tooltip v-if="table === 'equipments'" placement="top">
+          <div slot="content" style="max-width:340px;line-height:1.6">
+            展示到用户商城需同时满足：<br>
+            ① 有价格（黄金或钻石 > 0）；<br>
+            ② 类型为「军官装备」；<br>
+            ③ 非第一批套装件（set_id&gt;0 且无系列号的只能开宝箱，不直购）
+          </div>
+          <i class="el-icon-question" style="margin-left:6px;color:#909399;cursor:pointer" />
+        </el-tooltip>
         <el-input v-model="word" placeholder="名称 / ID 搜索" clearable style="width:200px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
@@ -547,6 +559,8 @@ export default {
         { k: 'cities', n: '玩家城池', to: '城市管理' }
       ],
       table: 'items', word: '',
+      // ★ 2026-09-27 用户要求：装备道具配置默认只展示用户商城上架的装备
+      mallOnly: true,
       rows: [], total: 0, page: 1, size: 5, loading: false,
       showForm: false, saving: false,
       form: {}, formId: 0,
@@ -586,7 +600,10 @@ export default {
   methods: {
     load () {
       this.loading = true
-      api.get('/admin/ezfy-data/' + this.table, { params: { page: this.page, size: this.size, word: this.word } }).then(r => {
+      const params = { page: this.page, size: this.size, word: this.word }
+      // ★ 装备道具配置：默认只展示用户商城上架的装备（mall=1 后端按商城条件过滤）
+      if (this.table === 'equipments' && this.mallOnly) params.mall = 1
+      api.get('/admin/ezfy-data/' + this.table, { params }).then(r => {
         this.loading = false
         if (r.code === 0) {
           this.rows = r.data.list

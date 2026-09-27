@@ -2067,7 +2067,11 @@ func ezfyReportCategory(title string) int {
 	case strings.HasPrefix(title, "侦查报告"),
 		strings.HasPrefix(title, "掠夺报告"),
 		strings.HasPrefix(title, "战斗报告"),
-		strings.HasPrefix(title, "征服报告"):
+		strings.HasPrefix(title, "征服报告"),
+		// ★ 活动目标战报标题形如「活动野地3级战斗报告: 活动野地3级(323,69)」，
+		//   不是以「战斗报告」开头，老逻辑把它误归到「其他(3)」→ 战斗报告页查不到
+		//   （用户反馈「打活动城市没有战报」）。这里按标题**包含**「战斗报告」兜底归入。
+		strings.Contains(title, "战斗报告"):
 		return 2
 	}
 	return 3
@@ -2292,10 +2296,16 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		}
 		// ★ 采集部队带上「待带回资源」与负重，前端可展示（资源要召回才入城）
 		c := parseCarry(o.Carry)
+		// ★ 活动目标标识：攻击/征服(掠夺)部队目的地在活动格时下发 act_type，
+		//   前端据此在坐标旁加「活动」标示（用户要求「打活动坐标要有标识」）。
+		actType := 0
+		if o.OrderType == 2 || o.OrderType == 3 {
+			actType = h.ezfyActTargetType(o.TargetX, o.TargetY)
+		}
 		views = append(views, gin.H{
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 			"target_type": o.TargetType, "target_name": h.ezfyTargetName(o),
-			"target_x": o.TargetX, "target_y": o.TargetY,
+			"target_x": o.TargetX, "target_y": o.TargetY, "act_type": actType,
 			"status": o.Status, "status_name": statusName,
 			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
 			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
