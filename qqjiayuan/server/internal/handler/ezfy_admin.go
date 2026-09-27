@@ -400,6 +400,20 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 		"reward_food": "int64", "reward_steel": "int64", "reward_oil": "int64",
 		"reward_rare": "int64", "reward_prestige": "int", "sort_no": "int", "type_id": "int", "status": "int",
 	}},
+	// ★ 2026-09-27 用户要求：商城「装备|宝箱」价格定义迁到「数据管理」。
+	//   装备（散件+套装件）价格/库存在这维护；**战斗属性/三维属性不在白名单里**，
+	//   那些字段由「军官装备管理」菜单（散件装备/套装管理 tab）单独维护，避免两处能改同一字段。
+	"equipments": {&model.EzfyCfgEquipment{}, map[string]string{
+		"name": "string", "type": "string", "tier": "int", "level": "int",
+		"slot": "string", "set_id": "int", "series": "string",
+		"price_gold": "int64", "price_diamond": "int64", "stock": "int",
+	}},
+	// ★ 宝箱（套装装备唯一产出渠道）价格/库存/上架 + 奖池由前端「套装装备配置」tab 的奖池弹窗维护。
+	"chests": {&model.EzfyCfgChest{}, map[string]string{
+		"name": "string", "price_gold": "int64", "price_diamond": "int64",
+		"stock": "int", "open_max": "int", "enabled": "int", "sort_no": "int",
+		"des": "string", "effect": "string",
+	}},
 }
 
 // ezfyDataMoved 已经从「数据管理」迁到专属模块的表 → 提示去哪改

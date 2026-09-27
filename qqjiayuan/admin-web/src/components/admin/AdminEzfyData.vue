@@ -31,9 +31,11 @@
             <span v-else>{{ fmt(row[col.k]) }}</span>
           </template>
         </el-table-column>
-        <!-- ★ 操作按钮统一成图标按钮（与其他二战页面一致，原为「编辑/删除」文字按钮） -->
-        <el-table-column label="操作" width="100" align="center" fixed="right">
+        <!-- ★ 操作按钮统一成图标按钮（与其他二战页面一致，原为「编辑/删除」文字按钮）；
+             ★ 2026-09-27 套装装备配置（宝箱）专属：加「奖池」按钮，开箱奖池在弹窗里维护（宝箱是套装装备唯一产出渠道） -->
+        <el-table-column label="操作" width="160" align="center" fixed="right">
           <template slot-scope="{row}">
+            <el-button v-if="table === 'chests'" size="mini" type="success" plain icon="el-icon-s-grid" title="配置奖池" @click="openChestPool(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="doDelete(row)" />
           </template>
@@ -107,6 +109,88 @@
           <el-button size="small" type="primary" :loading="grantSaving" @click="doItemGrant">发 放</el-button>
         </div>
       </el-dialog>
+
+      <!-- ★ 套装装备配置 → 宝箱奖池：开箱按奖池权重随机出装备/道具（2026-09-27 从「军官管理 → 宝箱」迁来） -->
+      <el-dialog :title="'奖池 · ' + chPoolChest.name" :visible.sync="chPoolDlg" width="1000px">
+        <div class="toolbar">
+          <span class="td-sub">共 {{ chPool.length }} 条 · 权重合计 {{ chWeightSum }}（每条的「概率」= 权重 ÷ 合计）</span>
+          <div class="grow" />
+          <el-select v-model.number="chBulkSetId" filterable clearable placeholder="按套装批量加入" style="width:240px">
+            <el-option v-for="s in equipSets" :key="'bs' + s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
+          </el-select>
+          <el-input-number v-model.number="chBulkWeight" :min="1" controls-position="right" style="width:110px" />
+          <el-button type="success" plain icon="el-icon-plus" :loading="saving" @click="doChestBulkAdd">批量加入</el-button>
+          <el-button type="primary" icon="el-icon-plus" @click="openChestItemCreate">加一条</el-button>
+          <el-button plain icon="el-icon-refresh" @click="loadChestPool">刷新</el-button>
+        </div>
+        <el-table :data="chPool" size="mini" border stripe max-height="460">
+          <el-table-column prop="id" label="ID" width="60" align="center" />
+          <el-table-column prop="kind_name" label="类型" width="65" align="center" />
+          <el-table-column prop="name" label="奖品" min-width="170" show-overflow-tooltip>
+            <template slot-scope="{row}">
+              <span class="td-main">{{ row.name || ('#' + row.ref_id) }}</span>
+              <span class="td-sub">（cfg_id {{ row.ref_id }}）</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="quality" label="品质" width="75" align="center" />
+          <el-table-column prop="count" label="数量" width="60" align="center" />
+          <el-table-column prop="weight" label="权重" width="70" align="center" />
+          <el-table-column label="概率" width="80" align="center">
+            <template slot-scope="{row}">{{ row.rate }}%</template>
+          </el-table-column>
+          <el-table-column label="操作" width="130" align="center">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openChestItemEdit(row)" />
+              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delChestItem(row)" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pager-info" style="margin-top:8px">
+          提示：装备类奖品的「cfg_id」在「军官装备管理 → 散件装备」里查；道具类在「数据管理 → 道具配置」里查。
+        </div>
+      </el-dialog>
+
+      <!-- ★ 新增/编辑 奖池条目 -->
+      <el-dialog :title="chif.id ? '编辑奖池条目' : '新增奖池条目'" :visible.sync="chItemDlg"
+                 width="620px" :close-on-click-modal="false">
+        <el-form label-width="110px" size="small">
+          <el-form-item label="奖品类型">
+            <el-radio-group v-model.number="chif.kind">
+              <el-radio :label="1">装备</el-radio>
+              <el-radio :label="2">道具</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="奖品 cfg_id" required>
+            <el-input-number v-model.number="chif.ref_id" :min="1" controls-position="right" style="width:200px" />
+            <span class="td-sub" style="margin-left:8px">装备看「军官装备管理 → 散件装备」的 ID；道具看「道具配置」的 ID</span>
+          </el-form-item>
+          <el-row :gutter="10">
+            <el-col :span="8">
+              <el-form-item label="数量">
+                <el-input-number v-model.number="chif.count" :min="1" controls-position="right" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="权重">
+                <el-input-number v-model.number="chif.weight" :min="0" controls-position="right" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="品质标签">
+                <el-input v-model="chif.quality" maxlength="20" placeholder="普通/稀有/史诗/传说" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="备注">
+            <el-input v-model="chif.des" maxlength="200" />
+          </el-form-item>
+        </el-form>
+        <!-- [说明·不显示在界面] 权重越大越容易抽到；全部为 0 时按等概率。 -->
+        <div slot="footer">
+          <el-button @click="chItemDlg = false">取 消</el-button>
+          <el-button type="primary" :loading="saving" @click="doChestItemSave">保 存</el-button>
+        </div>
+      </el-dialog>
     </el-card>
   </div>
 </template>
@@ -137,6 +221,15 @@ const DICTS = {
   resetType: {
     0: { n: '一次性', t: 'info' }, 1: { n: '每日', t: 'success' }, 2: { n: '每周', t: 'warning' }
   },
+  // ★ 2026-09-27 装备品质（口径与军官装备管理一致：1灰/2蓝/3紫/4橙）
+  tier: {
+    1: { n: '初级', t: 'info' }, 2: { n: '中级', t: 'primary' },
+    3: { n: '高级', t: 'warning' }, 4: { n: '特殊', t: 'danger' }
+  },
+  // 宝箱上架状态
+  chestOn: {
+    1: { n: '上架', t: 'success' }, 0: { n: '下架', t: 'info' }
+  },
   // 道具类型
   itemType: {
     1: { n: '资源包' }, 2: { n: '黄金包' }, 3: { n: '建筑加速' }, 4: { n: '训练加速' },
@@ -163,6 +256,8 @@ const DICTS = {
 const TASK_ACTIONS = Object.keys(DICTS.taskAction).map(k => ({ v: k, n: DICTS.taskAction[k].n }))
 // 道具类型下拉选项（同理，与 DICTS.itemType 同源）
 const ITEM_TYPES = Object.keys(DICTS.itemType).map(k => ({ v: Number(k), n: DICTS.itemType[k].n }))
+// ★ 宝箱奖池条目可改字段（走专用接口 /admin/ezfy-chests/:id/pool，宝箱是套装装备唯一产出渠道）
+const CI_KEYS = ['kind', 'ref_id', 'count', 'weight', 'quality', 'des']
 
 // 各数据表的展示列（k=字段, n=列名, w=列宽, dict=枚举文字映射）
 const COLS = {
@@ -218,6 +313,26 @@ const COLS = {
     { k: 'price_gold', n: '黄金价', w: 80 }, { k: 'price_diamond', n: '钻石价', w: 80 },
     { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'icon', n: '图标', w: 66 },
     { k: 'description', n: '描述' }
+  ],
+  // ★ 2026-09-27 用户要求：商城「装备」的价格定义迁到这里维护（「装备道具配置」）。
+  //   这里只改价格/库存/身份字段，**不包含**军事/后勤/学识/战斗属性 ——
+  //   属性由「军官装备管理 → 散件装备 / 套装管理」单独维护，避免同一字段两处能改。
+  equipments: [
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '装备名', w: 140 }, { k: 'type', n: '类型', w: 70 },
+    { k: 'tier', n: '品质', w: 76, dict: 'tier' }, { k: 'slot', n: '部位', w: 76 },
+    { k: 'set_id', n: '套装ID', w: 80 }, { k: 'level', n: '需求等级', w: 80 },
+    { k: 'series', n: '系列', w: 90 },
+    { k: 'price_gold', n: '黄金价', w: 90 }, { k: 'price_diamond', n: '钻石价', w: 90 },
+    { k: 'stock', n: '库存', w: 76, fmt: 'stock' }
+  ],
+  // ★ 2026-09-27 用户要求：商城「宝箱」的价格定义 + 上架/库存 + 奖池迁到这里维护（「套装装备配置」）。
+  //   宝箱是套装装备的唯一产出渠道，奖池在行内「奖池」按钮的弹窗里维护。
+  chests: [
+    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '宝箱名', w: 140 },
+    { k: 'price_gold', n: '黄金价', w: 90 }, { k: 'price_diamond', n: '钻石价', w: 90 },
+    { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'open_max', n: '单次上限', w: 80 },
+    { k: 'enabled', n: '上架', w: 76, dict: 'chestOn' }, { k: 'sort_no', n: '排序', w: 60 },
+    { k: 'des', n: '说明', minW: 90 }, { k: 'effect', n: '奖池说明', minW: 150 }
   ],
   taskTypes: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
@@ -347,6 +462,32 @@ const FORMS = {
     { k: 'icon', n: '图标', t: 'input', max: 50 },
     { k: 'description', n: '描述', t: 'text' }
   ],
+  // ★ 2026-09-27 装备道具配置：只维护价格/库存/身份字段（属性在军官装备管理改）
+  equipments: [
+    { k: 'name', n: '装备名', t: 'input', req: true, max: 50 },
+    { k: 'type', n: '类型（武器/防具/饰品/套装）', t: 'input', max: 20 },
+    { k: 'tier', n: '品质', t: 'num', opts: [
+      { v: 1, n: '1 初级' }, { v: 2, n: '2 中级' }, { v: 3, n: '3 高级' }, { v: 4, n: '4 特殊' }] },
+    { k: 'slot', n: '部位', t: 'input', max: 20 },
+    { k: 'set_id', n: '所属套装ID（0=散件）', t: 'num' },
+    { k: 'level', n: '需求等级', t: 'num' },
+    { k: 'series', n: '系列', t: 'input', max: 30 },
+    { k: 'price_gold', n: '黄金售价', t: 'num' },
+    { k: 'price_diamond', n: '钻石售价', t: 'num' },
+    { k: 'stock', n: '库存（-1 = 无上限）', t: 'num', min: -1 }
+  ],
+  // ★ 2026-09-27 套装装备配置（宝箱）：价格/库存/上架 + 说明；奖池走行内「奖池」按钮弹窗
+  chests: [
+    { k: 'name', n: '宝箱名', t: 'input', req: true, max: 100 },
+    { k: 'price_gold', n: '黄金售价', t: 'num' },
+    { k: 'price_diamond', n: '钻石售价', t: 'num' },
+    { k: 'stock', n: '库存（-1 = 无上限）', t: 'num', min: -1 },
+    { k: 'open_max', n: '单次开箱上限', t: 'num', min: 1 },
+    { k: 'enabled', n: '上架状态', t: 'num', opts: [{ v: 1, n: '上架' }, { v: 0, n: '下架' }] },
+    { k: 'sort_no', n: '排序', t: 'num' },
+    { k: 'des', n: '说明', t: 'text' },
+    { k: 'effect', n: '奖池说明', t: 'text' }
+  ],
   taskTypes: [
     { k: 'name', n: '类型名', t: 'input', req: true, max: 50 },
     { k: 'code', n: '代码', t: 'input', max: 30 },
@@ -389,6 +530,9 @@ export default {
       //   已在各自模块里维护，放这里会和那些模块重复（同一个字段两处能改）。
       tables: [
         { k: 'items', n: '道具配置' },
+        // ★ 2026-09-27 用户要求：商城「装备 | 宝箱」的价格定义迁到这里
+        { k: 'equipments', n: '装备道具配置' },
+        { k: 'chests', n: '套装装备配置' },
         { k: 'activities', n: '节日活动' },
         { k: 'taskTypes', n: '任务类型' },
         { k: 'tasks', n: '任务配置' }
@@ -413,7 +557,11 @@ export default {
       // ★ 发放道具对话框状态
       grantDlg: false, grantSaving: false,
       grantPlayer: '', grantPlayers: [], grantUserId: 0,
-      grantItemOpts: [], grantItems: []
+      grantItemOpts: [], grantItems: [],
+      // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
+      chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
+      chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
+      equipSets: []
     }
   },
   computed: {
@@ -570,6 +718,65 @@ export default {
         if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.grantDlg = false }
         else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.grantSaving = false })
+    },
+    // ============ 套装装备配置（宝箱）→ 奖池管理（2026-09-27 从「军官管理 → 宝箱」迁来） ============
+    openChestPool (row) {
+      this.chPoolChest = row
+      this.chBulkSetId = 0
+      this.chBulkWeight = 100
+      // 批量加入需要「套装列表」下拉（套装件 = 套装装备，宝箱是其唯一产出渠道）；懒加载即可
+      if (!this.equipSets.length) {
+        api.get('/admin/ezfy-equip-sets').then(r => { if (r.code === 0) this.equipSets = r.data.list })
+      }
+      this.loadChestPool()
+      this.chPoolDlg = true
+    },
+    loadChestPool () {
+      api.get('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool').then(r => {
+        if (r.code === 0) {
+          this.chPool = r.data.list
+          this.chWeightSum = r.data.weight_sum
+        } else this.$message.error(r.msg)
+      })
+    },
+    openChestItemCreate () {
+      this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '' }
+      this.chItemDlg = true
+    },
+    openChestItemEdit (row) {
+      const f = { id: row.id }
+      CI_KEYS.forEach(k => { f[k] = row[k] })
+      this.chif = f
+      this.chItemDlg = true
+    },
+    doChestItemSave () {
+      if (!this.chif.ref_id) { this.$message.warning('请填写奖品 ID（装备/道具的配置 ID）'); return }
+      const body = {}
+      CI_KEYS.forEach(k => { body[k] = this.chif[k] })
+      const isNew = !this.chif.id
+      this.saving = true
+      const req = isNew
+        ? api.post('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool', body)
+        : api.put('/admin/ezfy-chest-items/' + this.chif.id, body)
+      req.then(r => {
+        this.saving = false
+        if (r.code === 0) { this.chItemDlg = false; this.$message.success(r.msg || '已保存'); this.loadChestPool() }
+        else this.$message.error(r.msg)
+      })
+    },
+    delChestItem (row) {
+      api.delete('/admin/ezfy-chest-items/' + row.id).then(r => {
+        if (r.code === 0) { this.$message.success(r.msg || '已删除'); this.loadChestPool() } else this.$message.error(r.msg)
+      })
+    },
+    doChestBulkAdd () {
+      if (!this.chBulkSetId) { this.$message.warning('请选择要批量加入的套装'); return }
+      this.saving = true
+      api.post('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool/bulk',
+        { set_id: this.chBulkSetId, weight: this.chBulkWeight }).then(r => {
+        this.saving = false
+        if (r.code === 0) { this.$message.success(r.msg || '已加入'); this.loadChestPool() } else this.$message.error(r.msg)
+      })
     }
   }
 }

@@ -1173,7 +1173,8 @@ func (h *AdminHandler) AdminEzfyEquipSetDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": msg})
 }
 
-// AdminEzfyEquipSetPieces 查看某个套装下的所有装备件
+// AdminEzfyEquipSetPieces 查看某个套装下的所有装备件（★ 2026-09-27 改为返回完整属性字段，
+// 支撑「军官装备管理 → 套装管理」tab 里直接编辑套装件属性）
 func (h *AdminHandler) AdminEzfyEquipSetPieces(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var rows []model.EzfyCfgEquipment
@@ -1181,9 +1182,12 @@ func (h *AdminHandler) AdminEzfyEquipSetPieces(c *gin.Context) {
 	out := []gin.H{}
 	for _, e := range rows {
 		out = append(out, gin.H{
-			"id": e.ID, "name": e.Name, "slot": e.EquipSlot(), "level": e.Level,
-			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
-			"price_gold": e.PriceGold, "price_diamond": e.PriceDiamond, "stock": e.Stock,
+			"id": e.ID, "name": e.Name, "type": e.Type, "slot": e.EquipSlot(), "tier": e.Tier,
+			"level": e.Level, "military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"set_id": e.SetId, "price_gold": e.PriceGold, "price_diamond": e.PriceDiamond, "stock": e.Stock,
+			"effect": e.Effect, "series": e.Series, "enhance": e.Enhance, "enhance_max": e.EnhanceMax,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+			"des": e.Des,
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out)})

@@ -73,6 +73,9 @@ import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
 import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
 import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
 import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
+// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
+//   装备/宝箱价格定义迁到「数据管理」（装备道具配置/套装装备配置 tab），军官管理不再管装备。
+import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
 import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
 import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
 import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
@@ -263,6 +266,9 @@ export const menu = [
           { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: AdminEzfyTroops, perm: 'module:ezfyTroops' },
           { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
           { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
+          // ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）
+          //   perm 复用军官管理的 module:ezfyOfficers（装备接口共用同一权限）
+          { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: AdminEzfyEquips, perm: 'module:ezfyOfficers' },
           { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
           { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
           { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },

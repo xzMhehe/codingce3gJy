@@ -111,106 +111,6 @@
           </div>
         </el-tab-pane>
 
-        <!-- ============ 2b. 装备套装（ezfy_cfg_equip_set） ============ -->
-        <el-tab-pane label="装备套装" name="equipSets">
-          <div class="toolbar">
-            <el-input v-model="stWord" placeholder="套装名 / ID" clearable style="width:200px"
-                      @keyup.enter.native="loadEquipSets" />
-            <el-button type="primary" icon="el-icon-search" @click="loadEquipSets">查询</el-button>
-            <!-- 套装件需在「军官装备列表」里配 set_id，并加入「宝箱」奖池才会产出（不写进界面） -->
-            <span class="td-sub">穿戴同套 N 件即触发套装加成</span>
-            <div class="grow" />
-            <el-button type="success" icon="el-icon-plus" @click="openSetCreate">新增套装</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadEquipSets">刷新</el-button>
-          </div>
-          <el-table :data="equipSets" v-loading="loadingSt" stripe border>
-            <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="套装名" min-width="190" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
-            </el-table-column>
-            <el-table-column prop="parts" label="触发件数" width="80" align="center" />
-            <el-table-column prop="military" label="军事" width="60" align="center" />
-            <el-table-column prop="logistics" label="后勤" width="60" align="center" />
-            <el-table-column prop="learning" label="学识" width="60" align="center" />
-            <el-table-column label="额外战斗属性" min-width="170" show-overflow-tooltip>
-              <template slot-scope="{row}">{{ equipAttrText(row) }}</template>
-            </el-table-column>
-            <el-table-column label="各件之和（另计）" min-width="170" show-overflow-tooltip>
-              <template slot-scope="{row}">
-                {{ equipAttrText({
-                  dmg: row.piece_sum_dmg, def: row.piece_sum_def, hp: row.piece_sum_hp,
-                  move: row.piece_sum_move, crit: row.piece_sum_crit, crit_dmg: row.piece_sum_crit_dmg,
-                  military: row.piece_sum_military, logistics: row.piece_sum_logistics, learning: row.piece_sum_learning
-                }) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="已配件数" width="80" align="center">
-              <template slot-scope="{row}">
-                <el-tag size="mini" :type="row.piece_count >= row.parts ? 'success' : 'warning'">{{ row.piece_count }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="sale_count" label="已上架" width="70" align="center" />
-            <el-table-column prop="effect" label="套装效果" min-width="180" show-overflow-tooltip />
-            <el-table-column label="操作" width="190" align="center" fixed="right">
-              <template slot-scope="{row}">
-                <el-button size="mini" type="success" plain icon="el-icon-view" title="查看套装件" @click="openSetPieces(row)" />
-                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openSetEdit(row)" />
-                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delSet(row)" />
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-
-        <!-- ============ 2c. 宝箱（ezfy_cfg_chest + 奖池） ============ -->
-        <el-tab-pane label="宝箱" name="chests">
-          <div class="toolbar">
-            <el-input v-model="chWord" placeholder="宝箱名 / ID" clearable style="width:200px"
-                      @keyup.enter.native="loadChests" />
-            <el-button type="primary" icon="el-icon-search" @click="loadChests">查询</el-button>
-            <span class="td-sub">宝箱用钻石/黄金买，开箱按奖池权重随机出装备或道具（装备进玩家背包，可直接穿到军官身上）</span>
-            <div class="grow" />
-            <el-button type="success" icon="el-icon-plus" @click="openChestCreate">新增宝箱</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadChests">刷新</el-button>
-          </div>
-          <el-table :data="chests" v-loading="loadingCh" stripe border>
-            <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="宝箱名" min-width="160" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
-            </el-table-column>
-            <el-table-column label="售价(金/钻)" width="130" align="center">
-              <template slot-scope="{row}">
-                <span class="td-mono">{{ row.price_gold }} / {{ row.price_diamond }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="库存" width="70" align="center">
-              <template slot-scope="{row}">
-                <span v-if="row.stock < 0" class="td-sub">无限</span>
-                <span v-else :class="row.stock > 0 ? 'td-mono' : 'td-danger'">{{ row.stock }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="open_max" label="单次上限" width="80" align="center" />
-            <el-table-column label="上架" width="70" align="center">
-              <template slot-scope="{row}">
-                <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '已上架' : '已下架' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="奖池" width="70" align="center">
-              <template slot-scope="{row}">
-                <el-tag size="mini" :type="row.pool_count > 0 ? 'success' : 'danger'">{{ row.pool_count }} 条</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="effect" label="奖池说明" min-width="180" show-overflow-tooltip />
-            <el-table-column label="操作" width="230" align="center" fixed="right">
-              <template slot-scope="{row}">
-                <el-button size="mini" type="success" plain icon="el-icon-s-grid" title="配置奖池" @click="openChestPool(row)">奖池</el-button>
-                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openChestEdit(row)" />
-                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delChest(row)" />
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="pager-info" style="margin-top:8px">共 <b>{{ chests.length }}</b> 个宝箱</div>
-        </el-tab-pane>
-
         <!-- ============ 2d. 计谋（ezfy_cfg_scheme，发动消耗信号弹） ============ -->
         <el-tab-pane label="计谋" name="schemes">
           <div class="toolbar">
@@ -406,78 +306,6 @@
                            :current-page="osPage" :page-sizes="[5, 10, 20, 50, 100]"
                            @current-change="p => { osPage = p; loadOwnedSkills() }"
                            @size-change="s => { osSize = s; osPage = 1; loadOwnedSkills() }" />
-          </div>
-        </el-tab-pane>
-
-        <!-- ============ 6. 军官装备列表（ezfy_cfg_equipment） ============ -->
-        <el-tab-pane label="军官装备列表" name="equips">
-          <div class="toolbar">
-            <el-input v-model="eWord" placeholder="装备名 / 部位 / 类型 / ID" clearable style="width:220px"
-                      @keyup.enter.native="loadEquips" />
-            <el-select v-model="eSetFilter" style="width:180px" clearable placeholder="按套装筛选"
-                       @change="loadEquips">
-              <el-option label="（只看散件）" :value="0" />
-              <el-option v-for="s in equipSets" :key="s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
-            </el-select>
-            <el-button type="primary" icon="el-icon-search" @click="loadEquips">查询</el-button>
-            <div class="grow" />
-            <el-button type="success" icon="el-icon-plus" @click="openEquipCreate">新增装备</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadEquips">刷新</el-button>
-          </div>
-          <el-table :data="ePaged" v-loading="loadingE" stripe border>
-            <el-table-column prop="id" label="ID" width="55" align="center" />
-            <el-table-column prop="name" label="装备名" min-width="170" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
-            </el-table-column>
-            <el-table-column prop="type" label="类型" width="70" align="center" />
-            <el-table-column label="部位" width="70" align="center">
-              <template slot-scope="{row}">{{ row.slot || row.type }}</template>
-            </el-table-column>
-            <el-table-column label="套装" width="140" show-overflow-tooltip>
-              <template slot-scope="{row}">
-                <span v-if="row.set_id" class="td-main">{{ row.set_name || ('套装' + row.set_id) }}</span>
-                <span v-else class="td-sub">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="品质" width="70" align="center">
-              <template slot-scope="{row}">
-                <el-tag size="mini" :type="tierTag(row.tier)">{{ row.tier_name }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="military" label="军事" width="60" align="center" />
-            <el-table-column prop="logistics" label="后勤" width="55" align="center" />
-            <el-table-column prop="learning" label="学识" width="55" align="center" />
-            <el-table-column label="战斗属性" min-width="180" show-overflow-tooltip>
-              <template slot-scope="{row}">{{ equipAttrText(row) }}</template>
-            </el-table-column>
-            <el-table-column prop="level" label="需求等级" width="80" align="center" />
-            <el-table-column label="售价(金/钻)" width="110" align="center">
-              <template slot-scope="{row}">
-                <span class="td-mono">{{ row.price_gold || 0 }} / {{ row.price_diamond || 0 }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="库存" width="70" align="center">
-              <template slot-scope="{row}">
-                <span v-if="row.stock < 0" class="td-sub">无限</span>
-                <span v-else :class="row.stock > 0 ? 'td-mono' : 'td-danger'">{{ row.stock }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="持有数" width="70" align="center">
-              <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
-            </el-table-column>
-            <el-table-column label="操作" width="140" align="center" fixed="right">
-              <template slot-scope="{row}">
-                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEquipEdit(row)" />
-                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delEquip(row)" />
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="pager-bar">
-            <div class="pager-info">共 <b>{{ equips.length }}</b> 条 · 每页 {{ eSize }} 条</div>
-            <el-pagination v-show="equips.length > 0" small background layout="sizes, prev, pager, next, jumper" :total="equips.length"
-                           :page-size="eSize" :current-page="ePage" :page-sizes="[5, 10, 20, 50, 100]"
-                           @current-change="p => { ePage = p }"
-                           @size-change="s => { eSize = s; ePage = 1 }" />
           </div>
         </el-tab-pane>
 
@@ -748,340 +576,6 @@
       </div>
     </el-dialog>
 
-    <!-- ============ 新增/编辑 装备配置 ============ -->
-    <el-dialog :title="ef.id ? ('编辑装备 · ' + ef.name) : '新增装备'" :visible.sync="eDlg"
-               width="880px" :close-on-click-modal="false">
-      <el-form label-width="100px" size="small">
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <el-form-item label="装备名称" required>
-              <el-input v-model="ef.name" maxlength="50" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="类型">
-              <el-select v-model="ef.type" style="width:100%">
-                <el-option label="武器" value="武器" />
-                <el-option label="防具" value="防具" />
-                <el-option label="饰品" value="饰品" />
-                <el-option label="珠宝" value="珠宝" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <el-form-item label="品质">
-              <el-select v-model.number="ef.tier" style="width:100%">
-                <el-option label="初级" :value="1" />
-                <el-option label="中级" :value="2" />
-                <el-option label="高级" :value="3" />
-                <el-option label="特殊" :value="4" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="穿戴等级需求">
-              <el-input-number v-model.number="ef.level" :min="1" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="8"><el-form-item label="军事加成"><el-input-number v-model.number="ef.military" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="后勤加成"><el-input-number v-model.number="ef.logistics" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="学识加成"><el-input-number v-model.number="ef.learning" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-        </el-row>
-        <!-- ★ 2026-09-22：部位 / 套装 / 商城售价 / 库存 / 额外效果 -->
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <el-form-item label="穿戴部位">
-              <el-select v-model="ef.slot" filterable allow-create default-first-option style="width:100%"
-                         placeholder="留空则用「类型」当部位">
-                <el-option v-for="s in slotOptions" :key="s" :label="s" :value="s" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="所属套装">
-              <el-select v-model.number="ef.set_id" clearable style="width:100%" placeholder="不选 = 散件">
-                <el-option v-for="s in equipSets" :key="s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="8">
-            <el-form-item label="售价(黄金)">
-              <el-input-number v-model.number="ef.price_gold" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="售价(钻石)">
-              <el-input-number v-model.number="ef.price_diamond" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="库存">
-              <el-input-number v-model.number="ef.stock" :min="-1" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="额外效果">
-          <el-input v-model="ef.effect" maxlength="200" placeholder="例如：攻速+40% / 装备+20" />
-        </el-form-item>
-        <!-- ★ 军官装备：系列 + 强化 + 六项战斗属性（参照 装备距离伤害表.xlsx） -->
-        <el-row :gutter="10">
-          <el-col :span="8">
-            <el-form-item label="系列">
-              <el-input v-model="ef.series" maxlength="30" placeholder="革命者 / 渡鸦之魂 / 空=散件" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="强化等级">
-              <el-input-number v-model.number="ef.enhance" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="强化上限">
-              <el-input-number v-model.number="ef.enhance_max" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="战斗属性(%)">
-          <div class="attr-row">
-            伤害 <el-input-number v-model.number="ef.dmg" :min="0" size="mini" controls-position="right" style="width:96px" />
-            防御 <el-input-number v-model.number="ef.def" :min="0" size="mini" controls-position="right" style="width:96px" />
-            生命 <el-input-number v-model.number="ef.hp" :min="0" size="mini" controls-position="right" style="width:96px" />
-            移动距离 <el-input-number v-model.number="ef.move" :min="0" size="mini" controls-position="right" style="width:96px" />
-            暴击几率 <el-input-number v-model.number="ef.crit" :min="0" size="mini" controls-position="right" style="width:96px" />
-            暴击伤害 <el-input-number v-model.number="ef.crit_dmg" :min="0" size="mini" controls-position="right" style="width:96px" />
-          </div>
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="ef.des" maxlength="200" />
-        </el-form-item>
-      </el-form>
-      <!-- [说明·不显示在界面] 部位相同不能同时穿戴（珠宝可叠加）；库存 <b>-1 = 无上限</b>，<b>0 = 已售罄</b>；
-        售价为 0 表示该渠道不卖（两个都 0 就不上架商城）。<br/>
-        战斗属性单位是<b>百分点</b>：填 125 就是「+125%」。它们会直接进战斗：
-        伤害→攻击、防御→防御、生命→有效生命、移动距离→行军/推进速度、暴击几率+暴击伤害→暴击结算。 -->
-      <div slot="footer">
-        <el-button @click="eDlg = false">取 消</el-button>
-        <el-button type="primary" :loading="saving" @click="doEquipSave">保 存</el-button>
-      </div>
-    </el-dialog>
-
-    <!-- ============ 新增/编辑 装备套装 ============ -->
-    <el-dialog :title="stf.id ? ('编辑套装 · ' + stf.name) : '新增套装'" :visible.sync="stDlg"
-               width="720px" :close-on-click-modal="false">
-      <el-form label-width="110px" size="small">
-        <el-row :gutter="10">
-          <el-col :span="14">
-            <el-form-item label="套装名称" required>
-              <el-input v-model="stf.name" maxlength="100" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="10">
-            <el-form-item label="触发件数">
-              <el-input-number v-model.number="stf.parts" :min="1" :max="20" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="8"><el-form-item label="军事加成"><el-input-number v-model.number="stf.military" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="后勤加成"><el-input-number v-model.number="stf.logistics" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="学识加成"><el-input-number v-model.number="stf.learning" :min="0" controls-position="right" style="width:100%" /></el-form-item></el-col>
-        </el-row>
-        <el-form-item label="额外战斗属性(%)">
-          <div class="attr-row">
-            伤害 <el-input-number v-model.number="stf.dmg" :min="0" size="mini" controls-position="right" style="width:96px" />
-            防御 <el-input-number v-model.number="stf.def" :min="0" size="mini" controls-position="right" style="width:96px" />
-            生命 <el-input-number v-model.number="stf.hp" :min="0" size="mini" controls-position="right" style="width:96px" />
-            移动距离 <el-input-number v-model.number="stf.move" :min="0" size="mini" controls-position="right" style="width:96px" />
-            暴击几率 <el-input-number v-model.number="stf.crit" :min="0" size="mini" controls-position="right" style="width:96px" />
-            暴击伤害 <el-input-number v-model.number="stf.crit_dmg" :min="0" size="mini" controls-position="right" style="width:96px" />
-          </div>
-        </el-form-item>
-        <el-form-item label="系列">
-          <el-input v-model="stf.series" maxlength="30" placeholder="革命者 / 渡鸦之魂 …（可空）" />
-        </el-form-item>
-        <el-form-item label="套装效果">
-          <el-input v-model="stf.effect" maxlength="300" placeholder="例如：9件：攻击+2984，防御+2890" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="stf.des" maxlength="300" />
-        </el-form-item>
-      </el-form>
-      <!-- [说明·不显示在界面] 穿戴同套 <b>{{ stf.parts || 3 }}</b> 件后，上面三项加成会直接叠加到军官属性上。 -->
-      <div slot="footer">
-        <el-button @click="stDlg = false">取 消</el-button>
-        <el-button type="primary" :loading="saving" @click="doSetSave">保 存</el-button>
-      </div>
-    </el-dialog>
-
-    <!-- ============ 查看套装件 ============ -->
-    <el-dialog :title="'套装件 · ' + setPiecesTitle" :visible.sync="stPiecesDlg" width="760px">
-      <el-table :data="setPieces" size="mini" border stripe>
-        <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="name" label="装备名" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="slot" label="部位" width="80" align="center" />
-        <el-table-column prop="level" label="需求等级" width="80" align="center" />
-        <el-table-column prop="military" label="军事" width="60" align="center" />
-        <el-table-column prop="logistics" label="后勤" width="60" align="center" />
-        <el-table-column prop="learning" label="学识" width="60" align="center" />
-        <el-table-column label="战斗属性" min-width="190" show-overflow-tooltip>
-          <template slot-scope="{row}">{{ equipAttrText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="售价(金/钻)" width="120" align="center">
-          <template slot-scope="{row}">{{ row.price_gold }} / {{ row.price_diamond }}</template>
-        </el-table-column>
-        <el-table-column label="库存" width="70" align="center">
-          <template slot-scope="{row}">
-            <span v-if="row.stock < 0">无限</span>
-            <span v-else>{{ row.stock }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pager-info" style="margin-top:8px">
-        共 <b>{{ setPieces.length }}</b> 件（少于触发件数就永远触发不了套装效果）
-      </div>
-    </el-dialog>
-
-    <!-- ============ 新增/编辑 宝箱 ============ -->
-    <el-dialog :title="chf.id ? ('编辑宝箱 · ' + chf.name) : '新增宝箱'" :visible.sync="chDlg"
-               width="700px" :close-on-click-modal="false">
-      <el-form label-width="120px" size="small">
-        <el-form-item label="宝箱名称" required>
-          <el-input v-model="chf.name" maxlength="100" />
-        </el-form-item>
-        <el-row :gutter="10">
-          <el-col :span="12">
-            <el-form-item label="钻石价">
-              <el-input-number v-model.number="chf.price_diamond" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="黄金价">
-              <el-input-number v-model.number="chf.price_gold" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="10">
-          <el-col :span="8">
-            <el-form-item label="库存">
-              <el-input-number v-model.number="chf.stock" :min="-1" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="单次开箱上限">
-              <el-input-number v-model.number="chf.open_max" :min="1" :max="999" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="排序">
-              <el-input-number v-model.number="chf.sort_no" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="上架">
-          <el-switch v-model="chf.enabled" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" />
-        </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="chf.des" type="textarea" :rows="2" maxlength="300" />
-        </el-form-item>
-        <el-form-item label="奖池说明">
-          <el-input v-model="chf.effect" maxlength="300" placeholder="例如：奖池：六大系列 66 件 + 散件" />
-        </el-form-item>
-      </el-form>
-      <!-- [说明·不显示在界面] 库存 <b>-1 = 无上限</b>；售价为 0 表示该渠道不卖（两个都 0 就没法开箱）。 -->
-      <div slot="footer">
-        <el-button @click="chDlg = false">取 消</el-button>
-        <el-button type="primary" :loading="saving" @click="doChestSave">保 存</el-button>
-      </div>
-    </el-dialog>
-
-    <!-- ============ 宝箱奖池 ============ -->
-    <el-dialog :title="'奖池 · ' + chPoolChest.name" :visible.sync="chPoolDlg" width="1000px">
-      <div class="toolbar">
-        <span class="td-sub">共 {{ chPool.length }} 条 · 权重合计 {{ chWeightSum }}（每条的「概率」= 权重 ÷ 合计）</span>
-        <div class="grow" />
-        <el-select v-model.number="chBulkSetId" filterable clearable placeholder="按套装批量加入" style="width:240px">
-          <el-option v-for="s in equipSets" :key="'bs' + s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
-        </el-select>
-        <el-input-number v-model.number="chBulkWeight" :min="1" controls-position="right" style="width:110px" />
-        <el-button type="success" plain icon="el-icon-plus" :loading="saving" @click="doChestBulkAdd">批量加入</el-button>
-        <el-button type="primary" icon="el-icon-plus" @click="openChestItemCreate">加一条</el-button>
-        <el-button plain icon="el-icon-refresh" @click="loadChestPool">刷新</el-button>
-      </div>
-      <el-table :data="chPool" size="mini" border stripe max-height="460">
-        <el-table-column prop="id" label="ID" width="60" align="center" />
-        <el-table-column prop="kind_name" label="类型" width="65" align="center" />
-        <el-table-column prop="name" label="奖品" min-width="170" show-overflow-tooltip>
-          <template slot-scope="{row}">
-            <span class="td-main">{{ row.name || ('#' + row.ref_id) }}</span>
-            <span class="td-sub">（cfg_id {{ row.ref_id }}）</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="quality" label="品质" width="75" align="center" />
-        <el-table-column prop="count" label="数量" width="60" align="center" />
-        <el-table-column prop="weight" label="权重" width="70" align="center" />
-        <el-table-column label="概率" width="80" align="center">
-          <template slot-scope="{row}">{{ row.rate }}%</template>
-        </el-table-column>
-        <el-table-column label="操作" width="130" align="center">
-          <template slot-scope="{row}">
-            <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openChestItemEdit(row)" />
-            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delChestItem(row)" />
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pager-info" style="margin-top:8px">
-        提示：装备类奖品的「cfg_id」在「军官装备列表」里查；道具类在「数据管理 → 道具配置」里查。
-      </div>
-    </el-dialog>
-
-    <!-- ============ 新增/编辑 奖池条目 ============ -->
-    <el-dialog :title="chif.id ? '编辑奖池条目' : '新增奖池条目'" :visible.sync="chItemDlg"
-               width="620px" :close-on-click-modal="false">
-      <el-form label-width="110px" size="small">
-        <el-form-item label="奖品类型">
-          <el-radio-group v-model.number="chif.kind">
-            <el-radio :label="1">装备</el-radio>
-            <el-radio :label="2">道具</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="奖品 cfg_id" required>
-          <el-input-number v-model.number="chif.ref_id" :min="1" controls-position="right" style="width:200px" />
-          <span class="td-sub" style="margin-left:8px">装备看「军官装备列表」的 ID；道具看「道具配置」的 ID</span>
-        </el-form-item>
-        <el-row :gutter="10">
-          <el-col :span="8">
-            <el-form-item label="数量">
-              <el-input-number v-model.number="chif.count" :min="1" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="权重">
-              <el-input-number v-model.number="chif.weight" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="品质标签">
-              <el-input v-model="chif.quality" maxlength="20" placeholder="普通/稀有/史诗/传说" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="备注">
-          <el-input v-model="chif.des" maxlength="200" />
-        </el-form-item>
-      </el-form>
-      <!-- [说明·不显示在界面] 权重越大越容易抽到；全部为 0 时按等概率。 -->
-      <div slot="footer">
-        <el-button @click="chItemDlg = false">取 消</el-button>
-        <el-button type="primary" :loading="saving" @click="doChestItemSave">保 存</el-button>
-      </div>
-    </el-dialog>
-
     <!-- ============ 新增/编辑 计谋 ============ -->
     <el-dialog :title="scf.id ? ('编辑计谋 · ' + scf.name) : '新增计谋'" :visible.sync="scDlg"
                width="680px" :close-on-click-modal="false">
@@ -1222,15 +716,6 @@ import api from '../../api'
 
 const G_KEYS = ['name', 'level', 'military', 'logistics', 'learning', 'star', 'source', 'get_condition', 'skill', 'des', 'recruit', 'kind', 'weight']
 const S_KEYS = ['name', 'effect', 'type', 'des']
-const E_KEYS = ['name', 'type', 'tier', 'military', 'logistics', 'learning', 'level', 'des',
-  'slot', 'set_id', 'price_gold', 'price_diamond', 'stock', 'effect',
-  // ★ 军官装备（参照 装备距离伤害表.xlsx）：系列 / 强化 / 六项战斗属性
-  'series', 'enhance', 'enhance_max', 'dmg', 'def', 'hp', 'move', 'crit', 'crit_dmg']
-const ST_KEYS = ['name', 'parts', 'military', 'logistics', 'learning', 'effect', 'des',
-  'series', 'dmg', 'def', 'hp', 'move', 'crit', 'crit_dmg']
-// ★ 宝箱 / 宝箱奖池
-const CH_KEYS = ['name', 'price_gold', 'price_diamond', 'stock', 'open_max', 'enabled', 'sort_no', 'des', 'effect']
-const CI_KEYS = ['kind', 'ref_id', 'count', 'weight', 'quality', 'des']
 // ★ 计谋（消耗信号弹）
 const SC_KEYS = ['name', 'des', 'bullet', 'kind', 'war_minutes', 'war_max_minutes', 'enabled', 'sort_no']
 const OE_KEYS = ['name', 'type', 'tier', 'military', 'logistics', 'learning', 'level', 'officer_id']
@@ -1250,13 +735,6 @@ export default {
       generals: [], gTotal: 0, loadingG: false, gWord: '', gKind: 0, gKindCounts: { normal: 0, general: 0 },
       gPage: 1, gSize: 20,
       gDlg: false, gf: {},
-      // 2b 装备套装
-      equipSets: [], loadingSt: false, stWord: '', stDlg: false, stf: {},
-      stPiecesDlg: false, setPieces: [], setPiecesTitle: '',
-      // 2c 宝箱 + 奖池
-      chests: [], loadingCh: false, chWord: '', chDlg: false, chf: {},
-      chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
-      chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
       // 2d 计谋
       schemes: [], loadingSc: false, scWord: '', scDlg: false, scf: {},
       // 3 玩家军官
@@ -1271,8 +749,7 @@ export default {
       osWord: '', osSkill: '',
       saDlg: false, saForm: { officer_id: 0, skill_name: '' },
       // 6 装备
-      equips: [], loadingE: false, eWord: '', ePage: 1, eSize: 10, eSetFilter: '',
-      eDlg: false, ef: {},
+      equips: [], loadingE: false,
       // 7 玩家装备
       ownedEquips: [], oeTotal: 0, oePage: 1, oeSize: 5, loadingOE: false,
       oeWord: '', oeType: '', oeEquipped: -1,
@@ -1288,11 +765,6 @@ export default {
     gPaged () { return this.generals },
     // 配置表类列表（后端一次给全）在前端分页
     sPaged () { const st = (this.sPage - 1) * this.sSize; return this.skills.slice(st, st + this.sSize) },
-    ePaged () { const st = (this.ePage - 1) * this.eSize; return this.equips.slice(st, st + this.eSize) },
-    // 穿戴部位候选项（可自定义，这里给常用值）
-    slotOptions () {
-      return ['武器', '防具', '饰品', '珠宝', '头盔', '护肩', '胸甲', '腰带', '手套', '战靴', '挂件', '勋章', '左槽', '右槽']
-    },
     // ★ 发放军官时的候选：优先用下拉数据（含 kind），退回到当前列表
     grantCandidates () {
       if (this.pickers.generals && this.pickers.generals.length) return this.pickers.generals
@@ -1303,7 +775,6 @@ export default {
       return [
         { label: '军官池', val: o.generals, hint: 'ezfy_cfg_general', tab: 'generals' },
         { label: '技能配置', val: o.skills, hint: 'ezfy_cfg_skill', tab: 'skills' },
-        { label: '装备配置', val: o.equipments, hint: 'ezfy_cfg_equipment', tab: 'equips' },
         { label: '玩家军官', val: o.officers, hint: 'ezfy_officer', tab: 'officers' },
         { label: '已学技能', val: o.owned_skills, hint: '军官技能 JSON 展开', tab: 'ownedSkills' },
         { label: '玩家装备', val: o.owned_equipments, hint: 'ezfy_equipment', tab: 'ownedEquips' },
@@ -1316,8 +787,6 @@ export default {
       return [
         { key: 'generals', tab: '军官池', table: 'ezfy_cfg_general', kind: '配置表', count: o.generals, des: '普通军官（军校招募从池子抽）+ 名将（只能发放），可增删改' },
         { key: 'skills', tab: '军官技能列表', table: 'ezfy_cfg_skill', kind: '配置表', count: o.skills, des: '技能（每名军官最多学 3 个），可增删改' },
-        { key: 'equipSets', tab: '装备套装', table: 'ezfy_cfg_equip_set', kind: '配置表', count: (this.equipSets || []).length, des: '套装（穿戴同套 N 件触发加成），套装件在装备列表里配 set_id' },
-        { key: 'equips', tab: '军官装备列表', table: 'ezfy_cfg_equipment', kind: '配置表', count: o.equipments, des: '装备池：含部位 / 套装 / 商城售价 / 库存，可增删改' },
         { key: 'officers', tab: '玩家军官列表', table: 'ezfy_officer', kind: '实例表', count: o.officers, des: '玩家拥有的军官，含属性/原始属性/可用点数/忠诚/任命/俘虏状态' },
         { key: 'ownedSkills', tab: '玩家军官技能列表', table: 'ezfy_officer.skill', kind: '实例表', count: o.owned_skills, des: '把每名军官的 skill JSON 摊平成一行一条技能' },
         { key: 'ownedEquips', tab: '玩家军官装备列表', table: 'ezfy_equipment', kind: '实例表', count: o.owned_equipments, des: '玩家背包里的装备，可穿戴到军官' }
@@ -1326,13 +795,11 @@ export default {
   },
   watch: {
     gWord () { this.gPage = 1 },
-    sWord () { this.sPage = 1 },
-    eWord () { this.ePage = 1 }
+    sWord () { this.sPage = 1 }
   },
   mounted () {
     this.loadOverview()
     this.loadGenerals()
-    this.loadEquipSets()
   },
   methods: {
     fmtN (v) {
@@ -1342,24 +809,6 @@ export default {
     skillTag (t) {
       return ({ 1: 'danger', 2: 'primary', 3: 'warning' })[t] || 'info'
     },
-    tierTag (t) {
-      return ({ 1: 'info', 2: 'primary', 3: 'warning', 4: 'danger' })[t] || 'info'
-    },
-    // ★ 装备六项战斗属性的展示文案
-    equipAttrText (e) {
-      if (!e) return ''
-      const parts = []
-      if (e.dmg) parts.push('伤害+' + e.dmg + '%')
-      if (e.def) parts.push('防御+' + e.def + '%')
-      if (e.hp) parts.push('生命+' + e.hp + '%')
-      if (e.move) parts.push('移动距离+' + e.move + '%')
-      if (e.crit) parts.push('暴击几率+' + e.crit + '%')
-      if (e.crit_dmg) parts.push('暴击伤害+' + e.crit_dmg + '%')
-      if (e.military) parts.push('军事+' + e.military)
-      if (e.logistics) parts.push('后勤+' + e.logistics)
-      if (e.learning) parts.push('学识+' + e.learning)
-      return parts.length ? parts.join(' ') : '—'
-    },
     goTab (k) {
       this.tab = k
       this.onTab()
@@ -1367,13 +816,10 @@ export default {
     onTab () {
       if (this.tab === 'overview') this.loadOverview()
       if (this.tab === 'generals') this.loadGenerals()
-      if (this.tab === 'equipSets') this.loadEquipSets()
-      if (this.tab === 'chests') this.loadChests()
       if (this.tab === 'schemes') this.loadSchemes()
       if (this.tab === 'officers') this.load()
       if (this.tab === 'skills') this.loadSkills()
       if (this.tab === 'ownedSkills') this.loadOwnedSkills()
-      if (this.tab === 'equips') this.loadEquips()
       if (this.tab === 'ownedEquips') this.loadOwnedEquips()
     },
     // ---------- 1 总览 ----------
@@ -1437,152 +883,6 @@ export default {
           if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadGenerals(); this.loadOverview() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
-    },
-    // ---------- 2b 装备套装 ----------
-    loadEquipSets () {
-      this.loadingSt = true
-      api.get('/admin/ezfy-equip-sets', { params: { word: this.stWord } }).then(r => {
-        this.loadingSt = false
-        if (r.code === 0) this.equipSets = r.data.list
-        else this.$message.error(r.msg)
-      })
-    },
-    openSetCreate () {
-      this.stf = {
-        name: '', parts: 3, military: 0, logistics: 0, learning: 0, effect: '', des: '',
-        series: '', dmg: 0, def: 0, hp: 0, move: 0, crit: 0, crit_dmg: 0
-      }
-      this.stDlg = true
-    },
-    openSetEdit (row) {
-      const f = { id: row.id }
-      ST_KEYS.forEach(k => { f[k] = row[k] })
-      this.stf = f
-      this.stDlg = true
-    },
-    doSetSave () {
-      if (!String(this.stf.name || '').trim()) { this.$message.warning('套装名称不能为空'); return }
-      const isNew = !this.stf.id
-      const body = {}
-      ST_KEYS.forEach(k => { body[k] = this.stf[k] })
-      this.saving = true
-      const req = isNew ? api.post('/admin/ezfy-equip-sets', body) : api.put('/admin/ezfy-equip-sets/' + this.stf.id, body)
-      req.then(r => {
-        this.saving = false
-        if (r.code === 0) { this.stDlg = false; this.$message.success(r.data.msg || '已保存'); this.loadEquipSets() }
-        else this.$message.error(r.msg)
-      })
-    },
-    delSet (row) {
-      this.$confirm('删除套装「' + row.name + '」？该套装下的装备会解除归属（装备本身保留）。',
-        '危险操作', { type: 'warning' }).then(() => {
-        api.delete('/admin/ezfy-equip-sets/' + row.id).then(r => {
-          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadEquipSets(); this.loadEquips() } else this.$message.error(r.msg)
-        })
-      }).catch(() => {})
-    },
-    openSetPieces (row) {
-      this.setPiecesTitle = row.name
-      api.get('/admin/ezfy-equip-sets/' + row.id + '/pieces').then(r => {
-        if (r.code === 0) { this.setPieces = r.data.list; this.stPiecesDlg = true } else this.$message.error(r.msg)
-      })
-    },
-    // ---------- 2c 宝箱 + 奖池 ----------
-    loadChests () {
-      this.loadingCh = true
-      api.get('/admin/ezfy-chests', { params: { word: this.chWord } }).then(r => {
-        this.loadingCh = false
-        if (r.code === 0) this.chests = r.data.list
-        else this.$message.error(r.msg)
-      })
-    },
-    openChestCreate () {
-      this.chf = {
-        name: '', price_gold: 0, price_diamond: 500, stock: -1, open_max: 10,
-        enabled: 1, sort_no: 0, des: '', effect: ''
-      }
-      this.chDlg = true
-    },
-    openChestEdit (row) {
-      const f = { id: row.id }
-      CH_KEYS.forEach(k => { f[k] = row[k] })
-      this.chf = f
-      this.chDlg = true
-    },
-    doChestSave () {
-      if (!String(this.chf.name || '').trim()) { this.$message.warning('宝箱名称不能为空'); return }
-      const body = {}
-      CH_KEYS.forEach(k => { body[k] = this.chf[k] })
-      const isNew = !this.chf.id
-      this.saving = true
-      const req = isNew ? api.post('/admin/ezfy-chests', body) : api.put('/admin/ezfy-chests/' + this.chf.id, body)
-      req.then(r => {
-        this.saving = false
-        if (r.code === 0) { this.chDlg = false; this.$message.success(r.msg || '已保存'); this.loadChests() }
-        else this.$message.error(r.msg)
-      })
-    },
-    delChest (row) {
-      this.$confirm('删除宝箱「' + row.name + '」会同时清掉它的 ' + row.pool_count + ' 条奖池，确认删除？',
-        '危险操作', { type: 'warning' }).then(() => {
-        api.delete('/admin/ezfy-chests/' + row.id).then(r => {
-          if (r.code === 0) { this.$message.success(r.msg || '已删除'); this.loadChests() } else this.$message.error(r.msg)
-        })
-      }).catch(() => {})
-    },
-    openChestPool (row) {
-      this.chPoolChest = row
-      this.chBulkSetId = 0
-      this.chBulkWeight = 100
-      this.loadChestPool()
-      this.chPoolDlg = true
-    },
-    loadChestPool () {
-      api.get('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool').then(r => {
-        if (r.code === 0) {
-          this.chPool = r.data.list
-          this.chWeightSum = r.data.weight_sum
-        } else this.$message.error(r.msg)
-      })
-    },
-    openChestItemCreate () {
-      this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '' }
-      this.chItemDlg = true
-    },
-    openChestItemEdit (row) {
-      const f = { id: row.id }
-      CI_KEYS.forEach(k => { f[k] = row[k] })
-      this.chif = f
-      this.chItemDlg = true
-    },
-    doChestItemSave () {
-      if (!this.chif.ref_id) { this.$message.warning('请填写奖品 ID（装备/道具的配置 ID）'); return }
-      const body = {}
-      CI_KEYS.forEach(k => { body[k] = this.chif[k] })
-      const isNew = !this.chif.id
-      this.saving = true
-      const req = isNew
-        ? api.post('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool', body)
-        : api.put('/admin/ezfy-chest-items/' + this.chif.id, body)
-      req.then(r => {
-        this.saving = false
-        if (r.code === 0) { this.chItemDlg = false; this.$message.success(r.msg || '已保存'); this.loadChestPool(); this.loadChests() }
-        else this.$message.error(r.msg)
-      })
-    },
-    delChestItem (row) {
-      api.delete('/admin/ezfy-chest-items/' + row.id).then(r => {
-        if (r.code === 0) { this.$message.success(r.msg || '已删除'); this.loadChestPool(); this.loadChests() } else this.$message.error(r.msg)
-      })
-    },
-    doChestBulkAdd () {
-      if (!this.chBulkSetId) { this.$message.warning('请选择要批量加入的套装'); return }
-      this.saving = true
-      api.post('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool/bulk',
-        { set_id: this.chBulkSetId, weight: this.chBulkWeight }).then(r => {
-        this.saving = false
-        if (r.code === 0) { this.$message.success(r.msg || '已加入'); this.loadChestPool(); this.loadChests() } else this.$message.error(r.msg)
-      })
     },
     // ---------- 2d 计谋（消耗信号弹） ----------
     loadSchemes () {
@@ -1788,52 +1088,15 @@ export default {
       }).catch(() => {})
     },
     // ---------- 6 装备配置（装备池） ----------
+    // ★ 2026-09-27 配置/属性已迁到「数据管理 → 装备道具配置」和「军官装备管理」，
+    //   这里只保留 loadEquips 给「给玩家发装备」下拉用（全量拉取，不做散件/套装筛选）
     loadEquips () {
       this.loadingE = true
-      const params = { word: this.eWord }
-      // set_id=0 是「只看散件」，要显式传
-      if (this.eSetFilter !== '' && this.eSetFilter !== null && this.eSetFilter !== undefined) params.set_id = this.eSetFilter
-      api.get('/admin/ezfy-equipments', { params }).then(r => {
+      api.get('/admin/ezfy-equipments').then(r => {
         this.loadingE = false
         if (r.code === 0) this.equips = r.data.list
         else this.$message.error(r.msg)
       })
-    },
-    openEquipCreate () {
-      this.ef = {
-        name: '', type: '武器', tier: 1, military: 0, logistics: 0, learning: 0, level: 1, des: '',
-        slot: '', set_id: 0, price_gold: 0, price_diamond: 0, stock: -1, effect: '',
-        series: '', enhance: 0, enhance_max: 20,
-        dmg: 0, def: 0, hp: 0, move: 0, crit: 0, crit_dmg: 0
-      }
-      this.eDlg = true
-    },
-    openEquipEdit (row) {
-      const f = { id: row.id }
-      E_KEYS.forEach(k => { f[k] = row[k] })
-      this.ef = f
-      this.eDlg = true
-    },
-    doEquipSave () {
-      if (!String(this.ef.name || '').trim()) { this.$message.warning('装备名称不能为空'); return }
-      const isNew = !this.ef.id
-      const body = {}
-      E_KEYS.forEach(k => { body[k] = this.ef[k] })
-      this.saving = true
-      const req = isNew ? api.post('/admin/ezfy-equipments', body) : api.put('/admin/ezfy-equipments/' + this.ef.id, body)
-      req.then(r => {
-        this.saving = false
-        if (r.code === 0) { this.eDlg = false; this.$message.success(r.data.msg || '已保存'); this.loadEquips(); this.loadOverview() }
-        else this.$message.error(r.msg)
-      })
-    },
-    delEquip (row) {
-      this.$confirm('删除装备配置「' + row.name + '」会同时清掉玩家背包里的 ' + row.owned_count +
-        ' 件。确认删除？', '危险操作', { type: 'warning' }).then(() => {
-        api.delete('/admin/ezfy-equipments/' + row.id).then(r => {
-          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadEquips(); this.loadOverview() } else this.$message.error(r.msg)
-        })
-      }).catch(() => {})
     },
     // ---------- 7 玩家装备 ----------
     loadOwnedEquips () {
