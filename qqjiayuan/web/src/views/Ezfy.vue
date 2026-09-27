@@ -8518,8 +8518,14 @@ body.ezfy-ios .ezfy-page textarea {
      这样**第一列左边距仍是 6px**、和以前一致，只有列与列之间变宽。
      总宽 = 6×8 + 5×52 = 308px（320px 的机器上仍放得下，不触发 .panel 横向滚动）。
      ★ 窄屏名称行仍是「不折行 + 省略号」：列宽只有 ~52px，装不下「海底森林(10)」
-       （13px 下约 75px），硬折行会折在名字中间（「海底森」/「林(10)」）反而更难看。 */
-  .ezfy-page .ezfy-map-table { width: 308px; border-spacing: 8px 12px; margin-left: -2px; }
+       （13px 下约 75px），硬折行会折在名字中间（「海底森」/「林(10)」）反而更难看。
+     ★★ 2026-09-27 用户反馈「手机端进海底森林地名展示不全」：name 被省略号截成「海底森…」。
+         根因是 5 列 @52px 在 320px 宽的窄屏上无论如何都装不下「海底森林(10)」。
+         这次把列宽提到能装下名字的一档（~76px），并顺手把左右间距 8px → **10px**：
+         总宽 = 6×10 + 5×76 = 440px > 屏幕宽，由 .panel 的 overflow-x:auto 兜底横向滑动，
+         好处是地名整条显示（不再省略）、间距更松；代价是窄屏要看全 5 列需左右滑动。
+         （若更希望窄屏不滑动、整表一屏放下，则必须接受地名省略，二选一。） */
+  .ezfy-page .ezfy-map-table { width: 440px; border-spacing: 10px 12px; margin-left: -4px; }
   .ezfy-page .ezfy-map-table a .ezfy-cell-name {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
