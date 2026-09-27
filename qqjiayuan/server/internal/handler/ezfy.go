@@ -185,6 +185,14 @@ var ezfyOccupyLocks [64]sync.Mutex
 
 func ezfyOccupyLock(uid uint) *sync.Mutex { return &ezfyOccupyLocks[uid%64] }
 
+// ezfyTrainLocks 训练/建造的并发锁：按**城市** id 分片。
+// ★ 2026-09-28 修复「城防数量超过城防空间」并发漏洞：
+//   原来 trainTroop 里「读已占用量(defenceSpaceUsed) → 校验空间 → 建队列」不是原子的，
+//   两个并发请求同时读到同一个已占用量、双双通过校验，城防总量最终超过围墙容量。
+var ezfyTrainLocks [64]sync.Mutex
+
+func ezfyTrainLock(cityID uint) *sync.Mutex { return &ezfyTrainLocks[cityID%64] }
+
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
 		return
@@ -1627,7 +1635,16 @@ func (h *EzfyHandler) defenceSpaceUsed(cityId uint) int64 {
 	return used
 }
 
+// trainTroop 训练/建造入口：先按城市分片加锁，再执行真正的训练逻辑。
+// 锁保证「读已占用 → 校验城防空间 → 建队列」原子化，杜绝并发超容。
 func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split bool) string {
+	lock := ezfyTrainLock(uint(city.ID))
+	lock.Lock()
+	defer lock.Unlock()
+	return h.trainTroopLocked(city, troopId, count, split)
+}
+
+func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int, split bool) string {
 	h.refreshCity(city.UserID, city)
 	if count <= 0 {
 		return "数量错误"

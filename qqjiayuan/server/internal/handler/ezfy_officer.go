@@ -528,6 +528,40 @@ func (h *EzfyHandler) grantOfficer(city *model.EzfyCity, officerId int64) string
 	return ""
 }
 
+// ezfyTreasureLoyalty 赏赐宝物加的忠诚：按品质档位（tier 1~4：初级/中级/高级/特殊），最高 +50
+var ezfyTreasureLoyalty = []int{0, 10, 20, 35, 50}
+
+// treasureGrantOfficer 赏赐宝物：消耗 1 件背包未穿戴的宝物，按品质加忠诚（最高 +50）
+func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64, equipId uint) string {
+	h.calcResource(city)
+	o := h.officerOf(city.ID, officerId)
+	if o == nil {
+		return "武将不存在"
+	}
+	if o.Loyalty >= ezfyOfficerLoyaltyMax {
+		return "忠诚已满"
+	}
+	var e model.EzfyEquipment
+	if err := h.DB.First(&e, equipId).Error; err != nil {
+		return "宝物不存在"
+	}
+	if e.UserId != city.UserID {
+		return "宝物不属于你"
+	}
+	if e.OfficerId != 0 {
+		return "这件宝物已穿戴, 请先卸下"
+	}
+	gain := 10
+	if e.Tier > 0 && e.Tier < len(ezfyTreasureLoyalty) {
+		gain = ezfyTreasureLoyalty[e.Tier]
+	}
+	// 消耗宝物 + 加忠诚（上限 100）
+	h.DB.Delete(&model.EzfyEquipment{}, e.ID)
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
+		Update("loyalty", minInt(ezfyOfficerLoyaltyMax, o.Loyalty+gain))
+	return fmt.Sprintf("赏赐【%s】(品质%d), 忠诚 +%d", e.Name, e.Tier, gain)
+}
+
 // learnSkill 学习技能：消耗 1 本「军官技能书」（道具 15），最多 3 个，出征中不可学
 func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId int) string {
 	h.calcResource(city)
@@ -2149,6 +2183,20 @@ func (h *EzfyHandler) OfficerGrant(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	h.done(c, h.grantOfficer(&city, id), "赏赐成功, 忠诚已提升")
+}
+
+// OfficerTreasureGrant POST /games/ezfy/officers/:id/treasure-grant  {equip_id}
+// 赏赐宝物：消耗 1 件背包未穿戴的宝物，按品质加忠诚（最高 +50）
+func (h *EzfyHandler) OfficerTreasureGrant(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	city := h.getOrCreateCity(uid)
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var in struct {
+		EquipId uint `json:"equip_id"`
+	}
+	c.ShouldBindJSON(&in)
+	h.done(c, h.treasureGrantOfficer(&city, id, in.EquipId), "赏赐成功, 忠诚已提升")
 }
 
 // OfficerAttr POST /games/ezfy/officers/:id/attr  {attr: military|logistics|learning, count}

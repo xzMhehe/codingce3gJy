@@ -688,6 +688,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
 				ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
 				ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
+				// ★ 赏赐宝物加忠诚（按品质 +10/+20/+35/+50）
+				ezfyG.POST("/officers/:id/treasure-grant", ezfyH.OfficerTreasureGrant)
 				// ★ 属性加点（每级 1 点，只影响玩家自己的军官）
 				ezfyG.POST("/officers/:id/attr", ezfyH.OfficerAttr)
 				ezfyG.POST("/officers/:id/attr/all", ezfyH.OfficerAttrAll)

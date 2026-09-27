@@ -3591,18 +3591,37 @@
 
           <!-- 操作 -->
           <div class="old-line officer-actions">
-            <button @click="doGrant">[赏赐+10忠诚(1万金)]</button>
-            <button @click="doRespec">[洗点]</button>
+            <a href="javascript:;" @click="doGrant">[赏赐+10忠诚(1万金)]</a>
+            <a href="javascript:;" @click="doTreasureGrant">[赏赐宝物]</a>
+            <a href="javascript:;" @click="doRespec">[洗点]</a>
             <span v-if="bagCount(16) > 0" class="gray">(持有军官洗点卡 {{ bagCount(16) }} 张)</span>
-            <button v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
-                    @click="doExile">[流放]</button>
-            <button v-if="officerDetail.officer.star_up_on &&
-                          officerDetail.officer.star < officerDetail.officer.star_max"
-                    @click="doStarUp">[升星]</button>
+            <a v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
+               href="javascript:;" @click="doExile">[流放]</a>
+            <a v-if="officerDetail.officer.star_up_on &&
+                     officerDetail.officer.star < officerDetail.officer.star_max"
+               href="javascript:;" @click="doStarUp">[升星]</a>
             <span v-if="officerDetail.officer.status === 1" class="gray">(出征中, 归来后才能流放)</span>
             <span v-else-if="officerDetail.officer.position !== 0" class="gray">(市长/城守, 卸任后才能流放)</span>
             <span v-if="officerDetail.officer.star_up_on && officerDetail.officer.star < officerDetail.officer.star_max"
                   class="gray">星级徽章 {{ officerDetail.officer.star_card }} 枚</span>
+          </div>
+
+          <!-- 赏赐宝物：展开可选宝物列表（只列背包未穿戴的，按品质 +10/+20/+35/+50 忠诚） -->
+          <div v-if="officerTreasureOpen" class="old-line">
+            <div class="gray">选择要赏赐的宝物（消耗该件宝物, 忠诚按品质提升, 最高 +50）:</div>
+            <table class="ezfy-plain-table">
+              <colgroup><col style="width:40%"><col style="width:25%"><col style="width:20%"><col style="width:15%"></colgroup>
+              <tr><th class="nm">宝物</th><th>品质</th><th>忠诚</th><th>操作</th></tr>
+              <template v-for="e in officerTreasures">
+                <tr :key="'tg' + e.id">
+                  <td class="nm">{{ e.name }}</td>
+                  <td :class="qualityClass(e.tier_name)">{{ e.tier_name || '普通' }}</td>
+                  <td class="green">+{{ treasureLoyaltyGain(e.tier) }}</td>
+                  <td><a href="javascript:;" @click="doTreasureGrant(e)">[赏赐]</a></td>
+                </tr>
+              </template>
+              <tr v-if="!officerTreasures.length"><td colspan="4" class="gray">(背包没有未穿戴的宝物, 可去商城买或开宝箱)</td></tr>
+            </table>
           </div>
           </div>
 
@@ -4021,6 +4040,7 @@ export default {
       equipAllWord: '', equipAllPage: 1, equipAllPageSize: 10, // 装备图鉴
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
+      officerTreasureOpen: false, // ★ 2026-09-28 赏赐宝物：展开的未穿戴宝物列表
       // ★ 2026-09-25：equipDetail / equipDetailBack 已随「装备详情页」一起删除
       bagOfficers: [],
       bagSkills: [],
@@ -4162,6 +4182,10 @@ export default {
     }
   },
   computed: {
+    // ★ 2026-09-28 赏赐宝物：背包里未穿戴的宝物（可在军官详情操作区展开选择）
+    officerTreasures () {
+      return (this.equipData.bag || []).filter(e => !e.worn)
+    },
     // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
     taskGroupCur () {
       const gs = this.taskGroups || []
@@ -4289,10 +4313,11 @@ export default {
       return (this.troopsData.cfgs || []).filter(t => t.type !== 4)
     },
     // ★ 2026-09-28 用户要求：首页点「军队」看到全部兵种（数量为 0 的也显示）+ 训练操作。
-    //   城内军队表遍历全部兵种配置，数量从 troops 里取（没有=0），行动行自带 troop_id。
+    //   城内军队表遍历全部兵种配置（**不含城防兵种 type 4**，城防只在「城防」页展示），
+    //   数量从 troops 里取（没有=0），行动行自带 troop_id。
     armyRows () {
       const troops = this.troopsData.troops || []
-      return (this.troopsData.cfgs || []).map(c => {
+      return (this.troopsData.cfgs || []).filter(c => c.type !== 4).map(c => {
         const row = troops.find(x => x.troop_id === c.id)
         return Object.assign({}, c, { count: row ? row.count : 0, troop_id: c.id })
       })
@@ -7642,6 +7667,32 @@ export default {
         this.loadOfficerDetail(id)
       })
     },
+    // ★ 2026-09-28 用户要求：宝物可赏赐给军官加忠诚，品质不同加的不同（最高 +50）。
+    //   点 [赏赐宝物] 展开可选列表（equipData.bag 里未穿戴的）；点某件 [赏赐] 确认后消耗该件并加忠诚。
+    treasureLoyaltyGain (tier) {
+      // 与后端 ezfyTreasureLoyalty 对齐：tier 1~4（初级/中级/高级/特殊）→ +10/+20/+35/+50
+      return [0, 10, 20, 35, 50][tier] || 0
+    },
+    async doTreasureGrant (e) {
+      const o = this.officerDetail.officer
+      if (!o) return
+      if (o.loyalty >= 100) { this.notify('忠诚已满, 无需赏赐'); return }
+      if (!e) {
+        // 点「赏赐宝物」按钮：先拉最新背包再展开选择列表
+        this.loadAcadeEquip()
+        this.officerTreasureOpen = !this.officerTreasureOpen
+        return
+      }
+      const gain = this.treasureLoyaltyGain(e.tier) || 10
+      if (!await this.ask('赏赐「' + e.name + '」(' + (e.tier_name || '普通') + ') 给 ' + o.name + ' 吗？\n消耗这件宝物, 忠诚 +' + gain)) return
+      api.post('/games/ezfy/officers/' + o.id + '/treasure-grant', { equip_id: e.id }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '赏赐失败'); return }
+        this.notify(r.data && r.data.msg ? r.data.msg : ('赏赐成功, 忠诚 +' + gain))
+        this.officerTreasureOpen = false
+        this.loadOfficerDetail(o.id)
+        this.loadAcadeEquip()
+      })
+    },
     // ★ 属性加点（每升 1 级得 1 点，只影响自己的军官）
     doAddAttr (attr, count) {
       const id = this.officerDetail.officer.id
@@ -8218,9 +8269,10 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .build-act { display: inline-block; }
 .ezfy-page .build-act a { margin: 0 5px; }
 /* ★ 用户反馈「[赏赐…][流放] 这俩按钮之间来点间距」→ 军官详情的操作按钮行统一拉开间距。
-   只作用在带 .officer-actions 的行上，不动其它页面的按钮。 */
-.ezfy-page .old-line.officer-actions button { margin-right: 10px; margin-top: 3px; }
-.ezfy-page .old-line.officer-actions button:last-child { margin-right: 0; }
+   只作用在带 .officer-actions 的行上，不动其它页面的按钮。
+   ★ 2026-09-28 用户要求「按钮样式去掉」→ 全部改文字链接，这里跟着改为 <a> 的间距。 */
+.ezfy-page .old-line.officer-actions a { margin-right: 10px; }
+.ezfy-page .old-line.officer-actions a:last-child { margin-right: 0; }
 /* ★ 出征确认页(orderpre)分区：① ② ③ … 小标题 + 等宽列网格。
    原来所有内容都是一串 .old-line 平铺，兵种/资源/宿营/计算混在一起，用户反馈「看着好乱」。
    ★ 用户反馈「兵力还是竖着展示，整齐一点」→ 兵力改成 **CSS Grid 等宽列**：
