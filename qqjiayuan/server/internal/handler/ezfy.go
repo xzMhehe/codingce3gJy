@@ -28,17 +28,17 @@ const (
 	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
 	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
-	ezfyNewCityGoldCost   = 100000                 // 平原起新城消耗黄金
-	ezfyOilDivGrid        = 300 // 出征耗油: 每格耗油 = 总兵力/300
+	ezfyNewCityGoldCost = 100000 // 平原起新城消耗黄金
+	ezfyOilDivGrid      = 300    // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
 	//   见 ezfyDispatchPeriod()。
 	ezfyTreasureExtraPct  = 20 // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
-	ezfyCommandCarryPct   = 10                     // 指挥艺术: 出征携带上限+%/级
-	ezfyMaxUpgradeSeconds = 10                     // 一键满级: 每级升级时间(秒)
-	ezfyDeserterRate      = 30                     // 守军战败溃逃比例%
-	ezfyWarDelayHours     = 24                     // 宣战生效延迟(小时)
-	ezfyWarDurationHours  = 48                     // 宣战有效期(小时)
+	ezfyCommandCarryPct   = 10 // 指挥艺术: 出征携带上限+%/级
+	ezfyMaxUpgradeSeconds = 10 // 一键满级: 每级升级时间(秒)
+	ezfyDeserterRate      = 30 // 守军战败溃逃比例%
+	ezfyWarDelayHours     = 24 // 宣战生效延迟(小时)
+	ezfyWarDurationHours  = 48 // 宣战有效期(小时)
 	// ★ 第九轮：取消训练手续费（%），按常见游戏取 10%
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
@@ -1249,15 +1249,15 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	return gin.H{
 		"food": item(city.Food, ezfyResMaxOf("food"), foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
-				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, 				"mayor_bonus": mayor}),
+				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
 		"steel": item(city.Steel, ezfyResMaxOf("steel"), steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
-			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, 				"mayor_bonus": mayor}),
+			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor}),
 		"oil": item(city.Oil, ezfyResMaxOf("oil"), oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
-			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, 				"mayor_bonus": mayor}),
+			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor}),
 		"rare": item(city.Rare, ezfyResMaxOf("rare"), rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
-			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, 				"mayor_bonus": mayor}),
+			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor}),
 		"gold": item(city.Gold, ezfyResMaxOf("gold"), goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
-			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, 				"mayor_bonus": mayor}),
+			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor}),
 	}
 }
 
@@ -2263,6 +2263,16 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	return lastMsg
 }
 
+// pctSpeedEnd 百分比加速后的新结束时间：剩余时长直接减 pct%（保留毫秒级精度）。
+// remain <= 0（已到点/超时未结算）时不改，原样返回。
+func pctSpeedEnd(now, endTime, pct int64) int64 {
+	remain := endTime - now
+	if remain <= 0 {
+		return endTime
+	}
+	return now + remain*(100-pct)/100
+}
+
 // useItemOnce 单个道具生效（内部函数, 由 useItem 调用）
 func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.EzfyCfgItem, officerId int64, skillId int) string {
 	cfgId := cfg.ID
@@ -2313,6 +2323,38 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 当前科技研究-%d分钟", param)
+	// ★ 2026-09-27 百分比加速道具（ItemType 24/25/26，Param1 = 30/60/80）：
+	//   按「剩余时间」直接减 param%，每次使用都基于最新剩余时长（可叠加）。
+	case 24: // 建筑加速%
+		var b model.EzfyCityBuilding
+		if err := h.DB.Where("city_id = ? AND status != 0", city.ID).
+			Order("end_time ASC").First(&b).Error; err != nil {
+			return "没有正在施工的建筑"
+		}
+		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
+			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), b.EndTime, param))
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 当前建筑升级剩余时间减少%d%%", param)
+	case 25: // 训练加速%
+		var q model.EzfyTrainQueue
+		if err := h.DB.Where("city_id = ? AND status = 0", city.ID).
+			Order("start_time ASC").First(&q).Error; err != nil {
+			return "没有训练中的队列"
+		}
+		h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).
+			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), q.EndTime, param))
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 当前训练队列剩余时间减少%d%%", param)
+	case 26: // 科技加速%
+		var t model.EzfyCityTech
+		if err := h.DB.Where("city_id = ? AND status = 1", h.techCityId(city.ID)).
+			First(&t).Error; err != nil {
+			return "没有研究中的科技"
+		}
+		h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
+			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), t.EndTime, param))
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 当前科技研究剩余时间减少%d%%", param)
 	case 6:
 		return "建筑图纸将在建筑升级到10级时自动消耗"
 	case 7:

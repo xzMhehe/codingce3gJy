@@ -51,6 +51,13 @@ const (
 	ezfyItemTypeBuildSpeed = 3
 	ezfyItemTypeTrainSpeed = 4
 	ezfyItemTypeTechSpeed  = 5
+	// ★ 2026-09-27 百分比加速道具（种子 ezfyEzfyCfgItem 的 28~36 号，Param1 = 百分比）：
+	//   28~30 建筑加速30%/60%/80% → ItemType 24
+	//   31~33 训练加速30%/60%/80% → ItemType 25
+	//   34~36 科技加速30%/60%/80% → ItemType 26
+	ezfyItemTypeBuildSpeedPct = 24
+	ezfyItemTypeTrainSpeedPct = 25
+	ezfyItemTypeTechSpeedPct  = 26
 )
 
 // ezfyMoveKinds 三种迁城方式 → 所需道具 cfgId + 展示名

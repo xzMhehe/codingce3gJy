@@ -568,6 +568,18 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 10, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 10, Stock: 97, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
 	{ID: 11, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: 100, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
 	{ID: 12, Name: "免战保护令(24小时)", ItemType: 8, Param1: 24, PriceGold: 550000, Stock: 81, Icon: "", Description: "城市24小时内免遭掠夺与征服"},
+	// ★ 2026-09-27 百分比加速道具（用户要求「时间减少 30/60/80%」，价格 2/4/6 钻石）：
+	//   ItemType 24 建筑加速% / 25 训练加速% / 26 科技加速%，Param1 = 百分比，
+	//   使用时按「剩余时间」直接减对应百分比。价格/库存与线上一致，库存 100。
+	{ID: 28, Name: "建筑加速30%", ItemType: 24, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少30%"},
+	{ID: 29, Name: "建筑加速60%", ItemType: 24, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少60%"},
+	{ID: 30, Name: "建筑加速80%", ItemType: 24, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少80%"},
+	{ID: 31, Name: "训练加速30%", ItemType: 25, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少30%"},
+	{ID: 32, Name: "训练加速60%", ItemType: 25, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少60%"},
+	{ID: 33, Name: "训练加速80%", ItemType: 25, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前训练队列剩余时间减少80%"},
+	{ID: 34, Name: "科技加速30%", ItemType: 26, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少30%"},
+	{ID: 35, Name: "科技加速60%", ItemType: 26, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少60%"},
+	{ID: 36, Name: "科技加速80%", ItemType: 26, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少80%"},
 }
 
 var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{

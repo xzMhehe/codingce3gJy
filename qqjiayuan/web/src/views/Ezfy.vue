@@ -689,7 +689,10 @@
                    玩家买了 2 小时却只减 30 分钟，看着就像「买了没用上」）。 -->
               <a v-for="a in accItems(3)" :key="'sb' + b.id + '_' + a.cfg_id" href="javascript:;"
                  @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
-              <span class="gray" v-if="!accItems(3).length">(无建筑加速道具)</span>
+              <!-- ★ 2026-09-27 百分比加速道具(item_type=24)：剩余时间减 30%/60%/80% -->
+              <a v-for="a in accItems(24)" :key="'sbp' + b.id + '_' + a.cfg_id" href="javascript:;"
+                 @click="doSpeedBuilding(b, a)">[加速{{ accLabel(a) }}]</a>
+              <span class="gray" v-if="!accItems(3).length && !accItems(24).length">(无建筑加速道具)</span>
               <!-- ★ 2026-09-27：升级状态时加 [取消]（取消零退还，建筑保留当前等级，防刷资源/图纸） -->
               <a href="javascript:;" class="red" @click="doCancelUpgrade(b)">[取消]</a>
             </template>
@@ -719,9 +722,12 @@
           </div>
           <!-- ★ 训练加速道具(item_type=4)的入口：上面两个是「花黄金一键完成」，
                这里才是商城买的「训练加速30分钟/2小时」真正被消耗的地方。 -->
-          <div class="old-line" v-if="accItems(4).length">
+          <div class="old-line" v-if="accItems(4).length || accItems(25).length">
             训练加速道具:
             <a v-for="a in accItems(4)" :key="'stb' + a.cfg_id" href="javascript:;"
+               @click="doSpeedTrain(null, a)">[加速{{ accLabel(a) }}]×{{ a.count }}</a>
+            <!-- ★ 2026-09-27 百分比训练加速(item_type=25)：剩余时间减 30%/60%/80% -->
+            <a v-for="a in accItems(25)" :key="'stbp' + a.cfg_id" href="javascript:;"
                @click="doSpeedTrain(null, a)">[加速{{ accLabel(a) }}]×{{ a.count }}</a>
           </div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -788,7 +794,10 @@
             <!-- ★ 2026-09-26 修复：训练页原来只有 [取消]，商城买的「训练加速」道具无处可用 -->
             <a v-for="a in accItems(4)" :key="'sq' + q.id + '_' + a.cfg_id" href="javascript:;"
                @click="doSpeedTrain(q, a)">[加速{{ accLabel(a) }}]</a>
-            <span class="gray" v-if="!accItems(4).length">(无训练加速道具)</span>
+            <!-- ★ 2026-09-27 百分比训练加速(item_type=25) -->
+            <a v-for="a in accItems(25)" :key="'sqp' + q.id + '_' + a.cfg_id" href="javascript:;"
+               @click="doSpeedTrain(q, a)">[加速{{ accLabel(a) }}]</a>
+            <span class="gray" v-if="!accItems(4).length && !accItems(25).length">(无训练加速道具)</span>
             <a href="javascript:;" @click="doCancelTrain(q)">[取消]</a>
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
@@ -961,7 +970,10 @@
                    商城买的「科技加速30分钟/2小时」根本没被消耗。现在改为消耗道具。 -->
               <a v-for="a in accItems(5)" :key="'st' + t.tech_id + '_' + a.cfg_id" href="javascript:;"
                  @click="doSpeedTech(a)">[加速{{ accLabel(a) }}]</a>
-              <span class="gray" v-if="!accItems(5).length">(无科技加速道具)</span>
+              <!-- ★ 2026-09-27 百分比科技加速(item_type=26)：剩余时间减 30%/60%/80% -->
+              <a v-for="a in accItems(26)" :key="'stp' + t.tech_id + '_' + a.cfg_id" href="javascript:;"
+                 @click="doSpeedTech(a)">[加速{{ accLabel(a) }}]</a>
+              <span class="gray" v-if="!accItems(5).length && !accItems(26).length">(无科技加速道具)</span>
               <a href="javascript:;" @click="doCancelTech(t)">[取消]</a></span>
             <span v-else-if="t.level < t.max_level">
               <a href="javascript:;" @click="doResearch(t)">[研究{{ t.level + 1 }}级]</a>
@@ -6047,9 +6059,10 @@ export default {
         .filter(i => i.item_type === type && i.count > 0)
         .sort((a, x) => (a.param1 || 0) - (x.param1 || 0))
     },
-    // 加速道具的档位名：120 →「2小时」，30 →「30分钟」
+    // 加速道具的档位名：120 →「2小时」，30 →「30分钟」；百分比档(24/25/26) →「30%」
     accLabel (a) {
       const m = (a && a.param1) || 0
+      if (a && (a.item_type === 24 || a.item_type === 25 || a.item_type === 26)) return m + '%'
       if (m >= 60 && m % 60 === 0) return (m / 60) + '小时'
       return m + '分钟'
     },
