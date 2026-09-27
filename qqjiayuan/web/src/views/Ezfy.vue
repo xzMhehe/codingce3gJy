@@ -63,14 +63,14 @@
           <a href="javascript:;" @click="go('cities')">切换城市</a>
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/corps.png" title="军团" alt="."/>
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>军团</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#2F5D8A"/><path d="M10 3.3 L15.4 5.2 V10.4 C15.4 13.5 13.2 15.6 10 16.5 C6.8 15.6 4.6 13.5 4.6 10.4 V5.2 Z" fill="#fff"/><path d="M10 7.4 L11.2 9.6 L13.6 9.8 L12 11.3 L12.5 13.6 L10 12.3 L7.5 13.6 L8 11.3 L6.4 9.8 L8.8 9.6 Z" fill="#2F5D8A"/></svg>
           军团：
           <a href="javascript:;" @click="go('corps')" v-if="!myCorps">加入军团</a>
           <a href="javascript:;" @click="go('corps')" v-else>[{{ myCorps.name }}]</a>
         </div>
         <div class="old-line">声望：{{ profile.prestige }}</div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/jx.png" title="军衔" alt="."/>
+          <span v-html="rankIcon(myRankId)"></span>
           <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
         </div>
         <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
@@ -88,37 +88,37 @@
           <a href="javascript:;" @click="go('mall')">增产</a>
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/gold.png" :title="resNames.gold" alt="."/>
+          <span :title="resNames.gold"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#D99A1F"/><g stroke="#fff" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6.4 5.8 L10 10.3 L13.6 5.8" stroke-width="1.6"/><path d="M10 6 V14.2" stroke-width="1.6"/><path d="M7.6 8.9 H12.4" stroke-width="1.4"/><path d="M7.6 11.7 H12.4" stroke-width="1.4"/></g></svg></span>
           <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/{{ city.gold_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/rice.png" :title="resNames.food" alt="."/>
+          <span :title="resNames.food"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#7BA544"/><g stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M7.2 6.2 C6.7 5.4 7.3 4.1 7.9 3.5"/><path d="M12.8 6.2 C13.3 5.4 12.7 4.1 12.1 3.5"/></g><path d="M5 8.6 H15 C15 8.6 14.7 12.2 13.3 13.7 C12.2 14.8 10.9 15.4 10 15.4 C9.1 15.4 7.8 14.8 6.7 13.7 C5.3 12.2 5 8.6 5 8.6 Z" fill="#fff"/></svg></span>
           <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/{{ city.food_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/steel.png" :title="resNames.steel" alt="."/>
+          <span :title="resNames.steel"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6E7B8B"/><path d="M4.2 8.4 L6.6 15.6 H13.4 L15.8 8.4 Z" fill="#fff"/><path d="M5.6 10.2 H14.4" stroke="#6E7B8B" stroke-width="1.3" stroke-linecap="round"/></svg></span>
           <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/{{ city.steel_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/oil.png" :title="resNames.oil" alt="."/>
+          <span :title="resNames.oil"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#45545F"/><path d="M10 3.6 C10 3.6 6.1 8.1 6.1 11.2 C6.1 13.5 7.8 15.3 10 15.3 C12.2 15.3 13.9 13.5 13.9 11.2 C13.9 8.1 10 3.6 10 3.6 Z" fill="#fff"/><circle cx="8.6" cy="11.4" r="0.9" fill="#45545F"/></svg></span>
           <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/{{ city.oil_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/mine.png" :title="resNames.rare" alt="."/>
+          <span :title="resNames.rare"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#8A63C9"/><path d="M5.8 6.4 H14.2 L11.7 9.2 L10 15.6 L8.3 9.2 Z" fill="#fff"/><path d="M5.8 6.4 H10 L8.3 9.2 Z" fill="#C9AFF0"/></svg></span>
           <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/{{ city.rare_cap }}
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/person.png" title="人口" alt="."/>
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>人口</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#D87A32"/><circle cx="7" cy="7.4" r="1.6" fill="#fff"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#fff"/><circle cx="13" cy="6.6" r="1.5" fill="#fff"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#fff"/></svg>
           人口/空闲:{{ city.pop }}/{{ freePop }}
           <a href="javascript:;" @click="go('convene')">召集</a>
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/feelings.png" title="民心" alt="."/>
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>民心</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#C0392B"/><path d="M10 15.5 C5.3 12.6 4.1 9.6 4.1 7.6 C4.1 5.9 5.4 4.7 7 4.7 C8.1 4.7 9.2 5.3 10 6.3 C10.8 5.3 11.9 4.7 13 4.7 C14.6 4.7 15.9 5.9 15.9 7.6 C15.9 9.6 14.7 12.6 10 15.5 Z" fill="#fff"/></svg>
           民心/民怨:{{ city.feelings }}/{{ city.grievance }}
           <a href="javascript:;" @click="go('placate')">安抚</a>
         </div>
         <div class="old-line">
-          <img class="logo-title" src="/static/ezfy/tax.png" title="税率" alt="."/>
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>税率</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#2F6F9F"/><path d="M14.6 5.4 L5.4 14.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/><circle cx="6.9" cy="5.9" r="1.8" fill="#fff"/><circle cx="13.1" cy="14.1" r="1.8" fill="#fff"/></svg>
           <a href="javascript:;" @click="go('taxset')">税率:</a>{{ city.tax_rate }}%
         </div>
 
@@ -2275,7 +2275,7 @@
             <tr v-for="(r, i) in rankData.ranks" :key="'rk' + i">
               <td>{{ i + 1 }}</td>
               <td>
-                {{ r.name }}
+                <span v-html="rankIcon(r.id)"></span>{{ r.name }}
                 <span v-if="r.name === rankName" class="red">[当前]</span>
               </td>
               <td>{{ r.post }}</td>
@@ -2991,7 +2991,7 @@
           <!-- ★ 2026-09-25 去掉内联 font-size:13px，改为继承全站统一字号（--fs） -->
           <div class="gray">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
-          军衔：{{ rankName }}({{ rankPost }})<br/>
+          <span v-html="rankIcon(myRankId)"></span>军衔：{{ rankName }}({{ rankPost }})<br/>
           城市数：{{ cities.length }}<br/>
           人口数：{{ city.pop }}<br/>
           军官数：{{ officerCount }}<br/>
@@ -3016,7 +3016,7 @@
           <div class="old-line">
             阵营：{{ playerInfo.camp_name }}<br/>
             声望：{{ playerInfo.prestige }}<br/>
-            军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<br/>
+            <span v-html="rankIcon(rankIdByName(playerInfo.rank_name))"></span>军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<br/>
             军团：{{ playerInfo.corps_name || '无' }}<br/>
             城市数：{{ playerInfo.city_count }}<br/>
             军官数：{{ playerInfo.officer_count }}<br/>
@@ -4102,6 +4102,8 @@ export default {
     showSubnav () {
       return ['buildm', 'builds', 'acade', 'officerdetail', 'techs', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
     },
+    // ★ 玩家当前军衔等级 id（用于首页/统帅信息展示对应军衔星级图标）
+    myRankId () { return this.rankIdByName(this.rankName) },
     // 改名提示：首次免费 / 之后消耗改名卡
     renameHint () {
       const d = this.selfInfo || {}
@@ -4955,6 +4957,7 @@ export default {
           this.officerCount = d.officer_count || 0
           this.rankName = d.rank_name
           this.rankPost = d.rank_post
+          this.loadRank()
           this.city = d.city
           this.cities = d.cities
           this.continent = d.continent
@@ -5470,6 +5473,45 @@ export default {
       api.get('/games/ezfy/rank').then(r => {
         if (r.code === 0) this.rankData = r.data
       })
+    },
+    // ★ 军衔名 → 军衔等级 id：优先取军衔表，军衔表未加载时回落内置 20 级（与后端种子一致）
+    rankIdByName (name) {
+      if (!name) return 1
+      const arr = this.rankData.ranks || []
+      const hit = arr.find(x => x.name === name)
+      if (hit) return hit.id
+      const builtin = ['列兵', '上等兵', '下士', '中士', '上士', '军士长', '准尉', '少尉', '中尉', '上尉',
+        '大尉', '少校', '中校', '上校', '大校', '少将', '中将', '上将', '大将', '五星上将']
+      const i = builtin.indexOf(name)
+      return i >= 0 ? i + 1 : 1
+    },
+    // ★ 军衔星级图标（20 级）：圆角徽章 + 金星，底色按 兵/士/尉/校/将 五大类区分，星数类内递增
+    rankIcon (id) {
+      const idn = Number(id) || 1
+      const tiers = [[1, '#7BA544'], [3, '#6E7B8B'], [7, '#2F6F9F'], [12, '#8A63C9'], [16, '#C0392B']]
+      let color = '#999'
+      let from = 1
+      for (const t of tiers) { if (idn >= t[0]) { color = t[1]; from = t[0] } }
+      const stars = Math.max(1, Math.min(5, idn - from + 1))
+      let layout
+      if (stars === 1) layout = [[10, 10, 4.0]]
+      else if (stars === 2) layout = [[6.9, 10, 2.9], [13.1, 10, 2.9]]
+      else if (stars === 3) layout = [[5.6, 10, 2.4], [10, 10, 2.4], [14.4, 10, 2.4]]
+      else if (stars === 4) layout = [[5.0, 10, 2.0], [8.3, 10, 2.0], [11.7, 10, 2.0], [15.0, 10, 2.0]]
+      else layout = [[5.6, 7.6, 2.0], [10, 7.6, 2.0], [14.4, 7.6, 2.0], [7.9, 12.8, 2.0], [12.1, 12.8, 2.0]]
+      const star = (cx, cy, R) => {
+        const r = R * 0.42
+        const p = []
+        for (let k = 0; k < 10; k++) {
+          const a = (Math.PI / 5) * k - Math.PI / 2
+          const rad = (k % 2 === 0) ? R : r
+          p.push((cx + rad * Math.cos(a)).toFixed(2) + ',' + (cy + rad * Math.sin(a)).toFixed(2))
+        }
+        return '<polygon points="' + p.join(' ') + '" fill="#FFD34E"/>'
+      }
+      const polys = layout.map(s => star(s[0], s[1], s[2])).join('')
+      return '<svg class="ezfy-rank-ico" viewBox="0 0 20 20" width="18" height="18" style="vertical-align:-4px;margin-right:4px" role="img">' +
+        '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="' + color + '"/>' + polys + '</svg>'
     },
     // ★ 榜单前三名奖台化：给冠/亚/季军整行上色，超出三名的行不加类
     rankRowCls (rank) {
@@ -8232,6 +8274,8 @@ body.ezfy-immersive { margin: 0; }
 .ezfy-page .bottom-nav { margin-top: 10px; padding: 4px 0; text-align: left; }
 .ezfy-page .footer { text-align: center; font-size: var(--fs); color: #999; padding: 4px 0 10px; }
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
+/* ★ 首页功能图标(军团/军衔/资源/人口/民心/税率)：统一用内联 SVG 圆角徽章，替换原来风格杂乱的 PNG */
+.ezfy-page .ezfy-ico { width: 18px; height: 18px; vertical-align: -4px; margin-right: 3px; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }
 .ezfy-page .green { color: #27763c; }

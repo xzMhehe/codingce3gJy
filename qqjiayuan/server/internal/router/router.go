@@ -73,6 +73,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
+	permAny := middleware.RequireAnyPerm
 
 	api := r.Group("/api")
 	{
@@ -1155,27 +1156,32 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillsOwned)
 				admin.POST("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillAdd)
 				admin.DELETE("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerSkillRemove)
-				// 军官装备列表（配置表 CRUD）
-				admin.GET("/ezfy-equipments", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipments)
-				admin.POST("/ezfy-equipments", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentCreate)
-				admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentUpdate)
-				admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipmentDelete)
+				// 军官装备配置表 CRUD
+				// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（module:ezfyEquips）。
+				//   GET 列表是「军官管理→给玩家发装备」下拉和「军官装备管理」共用的，两个权限任一放行；
+				//   增删改只归军官装备管理。
+				admin.GET("/ezfy-equipments", permAny(db, "module:ezfyOfficers", "module:ezfyEquips"), adminH.AdminEzfyEquipments)
+				admin.POST("/ezfy-equipments", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipmentCreate)
+				admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipmentUpdate)
+				admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipmentDelete)
 				// ★ 装备套装（穿戴同套 N 件触发套装加成；玩家在商城买）
-				admin.GET("/ezfy-equip-sets", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSets)
-				admin.POST("/ezfy-equip-sets", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetCreate)
-				admin.PUT("/ezfy-equip-sets/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetUpdate)
-				admin.DELETE("/ezfy-equip-sets/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetDelete)
-				admin.GET("/ezfy-equip-sets/:id/pieces", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyEquipSetPieces)
-				// ★ 宝箱 + 奖池
-				admin.GET("/ezfy-chests", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChests)
-				admin.POST("/ezfy-chests", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestCreate)
-				admin.PUT("/ezfy-chests/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestUpdate)
-				admin.DELETE("/ezfy-chests/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestDelete)
-				admin.GET("/ezfy-chests/:id/pool", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPool)
-				admin.POST("/ezfy-chests/:id/pool", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolCreate)
-				admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolBulkAdd)
-				admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolUpdate)
-				admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyChestPoolDelete)
+				//   GET 列表是「数据管理→套装装备配置」批量加入下拉和「军官装备管理」共用的，两个权限任一放行；
+				//   增删改只归军官装备管理。
+				admin.GET("/ezfy-equip-sets", permAny(db, "module:ezfyData", "module:ezfyEquips"), adminH.AdminEzfyEquipSets)
+				admin.POST("/ezfy-equip-sets", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipSetCreate)
+				admin.PUT("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipSetUpdate)
+				admin.DELETE("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipSetDelete)
+				admin.GET("/ezfy-equip-sets/:id/pieces", perm(db, "module:ezfyEquips"), adminH.AdminEzfyEquipSetPieces)
+				// ★ 宝箱 + 奖池（宝箱是套装装备唯一产出渠道；价格/库存/上架与奖池都在「数据管理→套装装备配置」维护）
+				admin.GET("/ezfy-chests", perm(db, "module:ezfyData"), adminH.AdminEzfyChests)
+				admin.POST("/ezfy-chests", perm(db, "module:ezfyData"), adminH.AdminEzfyChestCreate)
+				admin.PUT("/ezfy-chests/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyChestUpdate)
+				admin.DELETE("/ezfy-chests/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyChestDelete)
+				admin.GET("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), adminH.AdminEzfyChestPool)
+				admin.POST("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), adminH.AdminEzfyChestPoolCreate)
+				admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyData"), adminH.AdminEzfyChestPoolBulkAdd)
+				admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyChestPoolUpdate)
+				admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), adminH.AdminEzfyChestPoolDelete)
 				// ★ 计谋配置（消耗信号弹）
 				admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemes)
 				admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), adminH.AdminEzfySchemeCreate)

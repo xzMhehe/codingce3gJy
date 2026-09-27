@@ -28,6 +28,27 @@ WHERE ur.user_id = ? AND p.code = ?`, uid, permCode).Scan(&count)
 	}
 }
 
+// RequireAnyPerm 校验当前用户拥有任一指定权限码（多个菜单共用同一接口时用）
+// 用法：router.GET("/x", JWTAuth(...), RequireAnyPerm(db, "module:a", "module:b"), handler)
+func RequireAnyPerm(db *gorm.DB, codes ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := GetUID(c)
+		var count int64
+		db.Raw(`
+SELECT COUNT(DISTINCT p.id)
+FROM permissions p
+JOIN role_permissions rp ON rp.permission_id = p.id
+JOIN user_roles ur ON ur.role_id = rp.role_id
+WHERE ur.user_id = ? AND p.code IN ?`, uid, codes).Scan(&count)
+		if count == 0 {
+			resp.Forbidden(c, "你没有权限进入！")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // UserPermissionCodes 返回用户全部权限码
 func UserPermissionCodes(db *gorm.DB, uid uint) []string {
 	var codes []string

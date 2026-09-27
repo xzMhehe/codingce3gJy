@@ -1631,6 +1631,8 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战风云", "风云城市", "ezfyCities"), mod("游戏-二战风云", "风云建筑", "ezfyBuildings"),
 		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
 		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"), mod("游戏-二战风云", "风云军衔", "ezfyRankCfg"),
+		// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」，可单独分配给角色
+		mod("游戏-二战风云", "军官装备管理", "ezfyEquips"),
 		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
 		// 资源交易行维护（系统挂单定价黄金/钻石）
 		mod("游戏-二战风云", "风云交易行", "ezfyExchange"),
