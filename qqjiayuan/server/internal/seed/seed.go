@@ -112,7 +112,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgTech{}, &model.EzfyCfgTechLevel{}, &model.EzfyCfgWildland{},
 		&model.EzfyCfgItem{}, &model.EzfyCfgTaskType{}, &model.EzfyCfgTask{},
 		&model.EzfyProfile{}, &model.EzfyCity{}, &model.EzfyCityBuilding{},
-		&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyTrainQueue{},
+		&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},
 		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
