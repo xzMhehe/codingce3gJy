@@ -271,7 +271,7 @@ var ezfyTerrainTreasureNames = map[int][]string{
 	4: {"黑曜石戒指", "琥珀项链", "铂金戒指"},  // 盆地 → 稀矿
 	5: {"黄金手镯", "玛瑙项坠", "红宝石戒指"},  // 丘陵 → 钢铁
 	6: {"琥珀项链", "黄金手镯", "蓝宝石戒指"},  // 沼泽 → 石油
-	7: {"琥珀项链", "红宝石戒指", "祖母绿"},    // 岛屿 → 钢铁
+	7: {"琥珀项链", "红宝石戒指", "祖母绿"},   // 岛屿 → 钢铁
 	8: {"翡翠项链", "蓝宝石戒指", "祖母绿"},   // 海底森林 → 石油
 }
 
@@ -536,10 +536,10 @@ func ezfyMarchSpeedBonus() float64 {
 //
 //	所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
 const (
-	ezfyConquerFeelingsDef  = 5   // 征服单次最多扣民心（默认 5）
-	ezfyLootFeelingsDef     = 3   // 掠夺每次扣民心（默认 3）
+	ezfyConquerFeelingsDef  = 5  // 征服单次最多扣民心（默认 5）
+	ezfyLootFeelingsDef     = 3  // 掠夺每次扣民心（默认 3）
 	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 用户要求由 100 改成 20）
-	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
+	ezfyWoundHealDivisorDef = 50 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 99）
 	ezfyMallBuyMaxDef = 99
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
@@ -722,7 +722,7 @@ const (
 	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
 	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
 	// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
-	ezfyHousePopLimitDef = 1 // 民居容量限制：默认开（民居容量决定人口上限）
+	ezfyHousePopLimitDef = 1  // 民居容量限制：默认开（民居容量决定人口上限）
 	ezfyConveneFlexDef   = 1  // 召集人口灵活配置：默认开（召集可突破民居上限）
 	ezfyWildMultDef      = 10 // 野地兵力倍数：默认 10
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 10
@@ -1201,27 +1201,28 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 // ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）
 // ★ 2026-09-24 用户要求「军衔需要声望太少，统一在原来基础上 ×10」。
 func ezfyDefaultRanks() []model.EzfyCfgRank {
+	// ★ 2026-09-27 军衔门槛按**线上 ezfy_cfg_rank 现值**对齐（与 seed.seedEzfyRanks 口径一致）
 	return []model.EzfyCfgRank{
 		{ID: 1, Name: "列兵", Post: "士兵", NeedPrestige: 0, CityMax: 1},
 		{ID: 2, Name: "上等兵", Post: "班长", NeedPrestige: 1000, CityMax: 2},
 		{ID: 3, Name: "下士", Post: "排长", NeedPrestige: 3000, CityMax: 3},
 		{ID: 4, Name: "中士", Post: "排长", NeedPrestige: 6000, CityMax: 4},
 		{ID: 5, Name: "上士", Post: "连长", NeedPrestige: 10000, CityMax: 5},
-		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 15000, CityMax: 6},
-		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 22000, CityMax: 7},
-		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 36000, CityMax: 8},
-		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 45000, CityMax: 9},
-		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 56000, CityMax: 10},
-		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 76000, CityMax: 11},
-		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 92000, CityMax: 12},
-		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 100000, CityMax: 13},
-		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 120000, CityMax: 14},
-		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 145000, CityMax: 15},
-		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 175000, CityMax: 16},
-		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 210000, CityMax: 17},
-		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 250000, CityMax: 18},
-		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 300000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 4000000, CityMax: 20},
+		{ID: 6, Name: "军士长", Post: "连长", NeedPrestige: 30000, CityMax: 6},
+		{ID: 7, Name: "准尉", Post: "营长", NeedPrestige: 50000, CityMax: 7},
+		{ID: 8, Name: "少尉", Post: "营长", NeedPrestige: 80000, CityMax: 8},
+		{ID: 9, Name: "中尉", Post: "营长", NeedPrestige: 120000, CityMax: 9},
+		{ID: 10, Name: "上尉", Post: "团长", NeedPrestige: 200000, CityMax: 10},
+		{ID: 11, Name: "大尉", Post: "团长", NeedPrestige: 300000, CityMax: 11},
+		{ID: 12, Name: "少校", Post: "旅长", NeedPrestige: 500000, CityMax: 12},
+		{ID: 13, Name: "中校", Post: "旅长", NeedPrestige: 1000000, CityMax: 13},
+		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 2000000, CityMax: 14},
+		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 4000000, CityMax: 15},
+		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 8000000, CityMax: 16},
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 16000000, CityMax: 17},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 32000000, CityMax: 18},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 19},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 20},
 	}
 }
 

@@ -1656,6 +1656,11 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 	var items []model.EzfyItem
 	h.DB.Where("user_id = ?", uid).Find(&items)
 	views := []gin.H{}
+	// ★ 2026-09-27 修复「背包相同道具分开显示太多」：
+	//   同一道具(cfg_id)的 ezfy_item 可能存在多行(历史/分次获得)，原来逐行展示会铺满一页。
+	//   这里按 cfg_id 合并求和，展示为统一的「道具名×总数」，保序取首次出现顺序。
+	aggCount := map[int]int{}
+	aggOrder := []int{}
 	for _, it := range items {
 		if it.Count <= 0 {
 			continue
@@ -1664,7 +1669,14 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		if cfg == nil {
 			continue
 		}
-		views = append(views, gin.H{"cfg_id": it.CfgId, "count": it.Count,
+		if _, seen := aggCount[it.CfgId]; !seen {
+			aggOrder = append(aggOrder, it.CfgId)
+		}
+		aggCount[it.CfgId] += it.Count
+	}
+	for _, cid := range aggOrder {
+		cfg := ezfyCfg.item(cid)
+		views = append(views, gin.H{"cfg_id": cid, "count": aggCount[cid],
 			"name": cfg.Name, "item_type": cfg.ItemType, "description": cfg.Description, "param1": cfg.Param1,
 			// ★ 背包也按分类展示（与商城同一套归类口径，见 ezfyItemCategory）
 			"category": ezfyItemCategory(cfg)})

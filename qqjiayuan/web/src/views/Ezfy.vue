@@ -2992,6 +2992,9 @@
           <div class="gray">{{ campHint }}</div>
           声望：{{ profile.prestige }}<br/>
           <span v-html="rankIcon(myRankId)"></span>军衔：{{ rankName }}({{ rankPost }})<br/>
+          军团：{{ (myCorps && myCorps.name) || '无' }}<br/>
+          <!-- ★ 2026-09-27 用户要求：统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
+          <template v-if="myCorpsTitle">职务：{{ myCorpsTitle }}<br/></template>
           城市数：{{ cities.length }}<br/>
           人口数：{{ city.pop }}<br/>
           军官数：{{ officerCount }}<br/>
