@@ -251,6 +251,11 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	}
 	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：停止采集 = 取回部队负重入城
 	gained := h.harvestCarryToCity(&order)
+	// ★★ 修复「停止没停」：结算/入城后必须把采集状态清零(原地待命)。
+	//   否则 arrive_time 仍 >0（满一期时 settleDispatch 还会推进到下一期），
+	//   部队会一直处于采集中、可被反复[停止]/[收获]刷资源。
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 负重资源 %d 已入库, 部队原地待命(可再[采集]继续或[召回]撤兵)",
 		gained)})
 }
