@@ -48,6 +48,11 @@ const (
 	ezfyBlueprintItemID = 10
 	// ★ 司令部兵种战斗配置「防守」第三种状态：不参与防御（被攻击时防御战斗兵种不含它）
 	ezfyDefMoveNone = -1
+	// ★ 2026-09-28 科技 13「装载技术」：部队负重 +2%/级。
+	//   原来这条科技只在 ezfy_cfg_tech.effect 里写着，**代码里从没读过** →
+	//   玩家研到满级负重也不涨，就是反馈的「科技没实际作用」。见 ezfyCarryCapOf。
+	ezfyLoadTechID  = 13
+	ezfyLoadTechPct = 2
 )
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)

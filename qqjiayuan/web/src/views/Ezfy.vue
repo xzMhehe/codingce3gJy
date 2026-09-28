@@ -123,17 +123,14 @@
         </div>
 
         <div class="old-line">
-          <a href="javascript:;" @click="go('buildm')">军事区</a>&nbsp;
-          <a href="javascript:;" @click="openBuildPre('m')">建造</a>
+          <a href="javascript:;" @click="go('buildm')">军事区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('m')">建造</a>
         </div>
         <div class="old-line">
-          <a href="javascript:;" @click="go('builds')">资源区</a>&nbsp;
-          <a href="javascript:;" @click="openBuildPre('s')">建造</a>
+          <a href="javascript:;" @click="go('builds')">资源区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('s')">建造</a>
         </div>
         <div class="old-line">
           训练军队
-          <a href="javascript:;" @click="go('troop')">[造兵]</a>&nbsp;
-          <a href="javascript:;" @click="go('defence')">[建防]</a>
+          <a href="javascript:;" @click="go('troop')">[造兵]</a><span class="home-gap"></span><a href="javascript:;" @click="go('defence')">[建防]</a>
         </div>
         <div class="old-line">
           前往
@@ -144,8 +141,7 @@
           <a href="javascript:;" @click="go('techs')">科研中心</a>
         </div>
         <div class="old-line">
-          <a href="javascript:;" @click="go('citystatus')">城市状态</a>
-          <a href="javascript:;" @click="go('wilds')">附属野地</a>
+          <a href="javascript:;" @click="go('citystatus')">城市状态</a><span class="home-gap"></span><a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
         <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">[进入]</a></div>
         <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
@@ -978,8 +974,9 @@
           <div class="panel-title">【科技中心】:{{ techsData.academy }}级</div>
           <div class="old-line" v-for="t in techsData.techs" :key="'te' + t.tech_id">
             <!-- ★ 2026-09-28 用户要求：科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
-            <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级<br/>
-            {{ t.effect }}<br/>
+            <!-- ★ 2026-09-28 用户要求版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
+                 原来 [研究N级] 被挤在效果下面第三行，扫一眼看不出「这条能不能升」。 -->
+            <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
             <span v-if="t.researching" class="orange">研究中 {{ remain(t.end_time) }}
               <!-- ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：原来这里的 [加速]
                    调的是 /techs/speed，是**免费减 10 分钟**（minutes 还能由前端随便传），
@@ -996,6 +993,7 @@
             </span>
             <span v-else class="gray">[已满级]</span>
             <br/>
+            {{ t.effect }}<br/>
           </div>
           <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 只停止研究，不退还已消耗资源。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
@@ -1214,6 +1212,10 @@
             建造数量：
             <input v-model="trainCount" type="number" min="1" :placeholder="'(1~' + maxTrainable + ')'" style="width:90px"/>
             <span class="gray">(最多 {{ maxTrainable }})</span>
+            <!-- ★ 2026-09-28 用户要求：在「(最多 N)」后面加 [最大]，一键把数量填成上限 -->
+            <a href="javascript:;" class="train-max"
+               :class="{ 'train-max-off': maxTrainable <= 0 }"
+               @click="setTrainMax()">[最大]</a>
           </div>
           <div class="old-line red" v-if="maxTrainable <= 0">
             当前无法{{ trainMode === 'defence' ? '建造' : '训练' }}：资源或{{ trainMode === 'defence' ? '城防空间' : '人口' }}不足
@@ -1341,9 +1343,12 @@
           </div>
           <!-- ③ 野地/寇城/海洋 -->
           <div class="old-line" v-else-if="selCell.name !== '寇城(废墟)' && !(selDetail && selDetail.is_ocean)">
-            <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(2)">[掠夺]</a>&nbsp;
-            <a href="javascript:;" @click="pickOrder(3)">[征服]</a>&nbsp;
+            <!-- ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服（要先[放弃]）→
+                 三个命令灰掉、点了给提示（判据 isOwnWild 取后端下发的 selDetail.mine，
+                 与「归属：我」同源，不靠前端猜）；[采集] 不受影响。 -->
+            <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(1)">[侦查]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(3)">[征服]</a><span class="home-gap"></span>
             <a v-if="selCell.occupied" href="javascript:;" @click="pickOrder(4)">[采集]</a>
             <span v-else-if="!selDetail || !selDetail.act_type" class="gray">(占领该野地后可采集)</span>
           </div>
@@ -4502,6 +4507,14 @@ export default {
     orderCapApplies () {
       return this.orderType !== 5 && this.orderType !== 8
     },
+    // ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服（要先在「附属野地」页[放弃]）。
+    //   判据取后端 WildlandView 下发的 mine —— 它与详情页显示的「归属：我」是同一个来源
+    //   （野地记录 → 城市 → UserID），前端不自己猜归属，避免两边口径漂移。
+    //   area_type === 3 是玩家城市，走另一套规则（宣战/同盟），这里排除掉。
+    isOwnWild () {
+      return !!(this.selDetail && this.selDetail.mine &&
+        this.selCell && this.selCell.area_type !== 3)
+    },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
     },
@@ -6640,6 +6653,15 @@ export default {
       this.go('trainpre')
     },
     // ★ 2026-09-28 城内军队表改为遍历 armyRows（全兵种含 0 数量），原 quickTrain 已无引用，移除。
+    // ★ 2026-09-28 用户要求：训练页「(最多 N)」后面加 [最大]，一键填成上限。
+    //   上限口径与页面上显示的「(最多 N)」完全一致（maxTrainable computed：
+    //   资源 / 人口（城防为城防空间）取最小），点了不会填出个填不下的数。
+    //   上限为 0 时不可点（灰掉），与出征页 [最大] 的处理保持一致。
+    setTrainMax () {
+      const max = this.maxTrainable
+      if (max <= 0) return
+      this.trainCount = max
+    },
     doTrainPre () {
       if (!this.trainSel) return
       const n = parseInt(this.trainCount) || 0
@@ -7049,6 +7071,14 @@ export default {
     },
     // 详情页里选命令 → 进出征页(复刻 mapView 的 [侦查][掠夺][征服])
     pickOrder (t) {
+      // ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服 ——
+      //   要先到「附属野地」页把这块地[放弃]（放弃后该坐标恢复为中立野地，才能再打）。
+      //   按钮已灰掉，这里再兜一层（防老页面缓存/键盘操作绕过）；后端 createOrder 有同样校验。
+      if ((t === 1 || t === 2 || t === 3) && this.isOwnWild) {
+        this.notify('这是你自己的附属野地, 不能' + (this.orderNames[t] || '') +
+          '; 请先在「附属野地」里[放弃]该野地')
+        return
+      }
       this.orderType = t
       this.orderCalc = null
       this.go('orderpre')
@@ -8700,6 +8730,14 @@ body.ezfy-ios .ezfy-page textarea {
   display: inline-block;
   margin: 0 4px;
 }
+/* ★ 2026-09-28 首页同一行里两个文字链接的间隔。
+   ⚠️ 不能用空格字符控制间隔：`&nbsp;`(U+00A0) 在 Windows 宋体下是**全角**(约 16px)、
+   在 macOS(Songti SC / 苹方) 下是**半角**(约 4px)，同一份代码两端差 4 倍；
+   而源码里的换行只会折叠成 1 个半角空格(约 4px)，又太挤。
+   统一改用定宽 span，任何平台/字体下宽度完全一致。
+   用户反馈：「[造兵] [建防] 之间少一点点」（原来 &nbsp; 太宽）、
+   「城市状态 / 附属野地 之间大一点点」（原来只有一个折叠空格，太挤）。 */
+.ezfy-page .home-gap { display: inline-block; width: 10px; height: 1em; }
 .ezfy-page .use-box {
   margin: 4px 0 6px 8px;
   padding: 4px 6px;
@@ -8827,6 +8865,10 @@ body.ezfy-ios .ezfy-page textarea {
 /* ★ 2026-09-28 出征上限额度已用尽（本兵种本次最多可派 0）：[最大] 点了也没用 → 灰掉，
    与同时被 :disabled 禁用的滑块/数字框保持一致，避免「点了没反应」的困惑。 */
 .ezfy-page .of-row .of-max.of-max-off { color: #b3b3b3; cursor: default; }
+/* ★ 2026-09-28 训练页 [最大]（紧跟在「(最多 N)」后面）：一键把建造数量填成上限。
+   上限为 0 时同样灰掉 —— 与出征页 [最大] 的处理保持一致，避免「点了没反应」的困惑。 */
+.ezfy-page .train-max { white-space: nowrap; margin-left: 6px; }
+.ezfy-page .train-max.train-max-off { color: #b3b3b3; cursor: default; }
 @media (max-width: 700px) {
   /* 窄屏：名称+现有占第一行，滑块/数字/[最大] 整段换到第二行 */
   .ezfy-page .of-row { flex-wrap: wrap; row-gap: 0; }

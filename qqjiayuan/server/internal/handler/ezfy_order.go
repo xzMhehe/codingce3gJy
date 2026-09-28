@@ -299,13 +299,17 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		terrainName = "平原"
 	}
 	// 归属: 已占领该野地的玩家(复刻 mapView 的【归属: xxx】)
-	owner := ""
+	// ★ 2026-09-28 用户规则「自己的附属野地不能侦查/掠夺/征服，除非先放弃」→
+	//   这里顺带下发布尔 mine（口径与 owner 完全同源），前端据此灰掉那三个命令；
+	//   后端 createOrder 里也有同样校验，防止绕过前端直接下单。
+	owner, isMine := "", false
 	var w model.EzfyWildland
 	if err := h.DB.Where("x = ? AND y = ?", x, y).First(&w).Error; err == nil && w.CityId > 0 {
 		var oc model.EzfyCity
 		if err := h.DB.First(&oc, w.CityId).Error; err == nil {
 			if oc.UserID == uid {
 				owner = "我"
+				isMine = true
 			} else {
 				owner = h.ensureProfile(oc.UserID).Nickname
 			}
@@ -325,6 +329,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"gather_res":   gatherRes,
 		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
 		"owner":        owner,
+		"mine":         isMine, // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
 	})
 }
 
@@ -516,7 +521,6 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	h.refreshCity(uid, city)
 
 	valid := []ezfyUnitGroup{}
-	var carry int64
 	slowest := 0
 	for _, t := range req.Troops {
 		if t.Count <= 0 {
@@ -531,11 +535,14 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 			continue
 		}
 		valid = append(valid, t)
-		carry += int64(cfg.Carry) * t.Count
 		if slowest == 0 || cfg.Speed < slowest {
 			slowest = cfg.Speed
 		}
 	}
+	// ★ 2026-09-28 负重统一走 ezfyCarryCapOf（含「装载技术」加成）。
+	//   原来这里手写 `carry += cfg.Carry * count`，与 ezfyCarryCapOf 是**两套实现** ——
+	//   加了科技加成后如果只改一处，出征页预览的负重就会和实际出征时校验的负重对不上。
+	carry := h.ezfyCarryCapOf(valid, city.ID)
 	distance := ezfyAbs(city.X-req.TargetX) + ezfyAbs(city.Y-req.TargetY)
 	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources)
 
@@ -821,6 +828,23 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		}
 	}
 	// ★ 出征兵力上限见下面的司令部限制（含集结令加成），这里不再重复校验
+	// ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服 ——
+	//   要先到「附属野地」页把这块地[放弃]（放弃后该坐标恢复为中立野地，才能再打）。
+	//   ⚠️ 野地类目标的 targetType 是 1/2，**3 才是玩家城市**（城市那边由下面
+	//   「掠夺/征服玩家城需先宣战」那段管，别在这里重复拦）。
+	//   归属判定与 WildlandView 下发的 owner/mine 同源：野地记录 → 城市 → UserID。
+	if orderType == 1 || orderType == 2 || orderType == 3 {
+		if targetType != 3 {
+			var w model.EzfyWildland
+			if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).First(&w).Error; err == nil && w.CityId > 0 {
+				var oc model.EzfyCity
+				if err := h.DB.First(&oc, w.CityId).Error; err == nil && oc.UserID == uid {
+					return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
+						"; 如要攻打请先在「附属野地」里[放弃]该野地"
+				}
+			}
+		}
+	}
 	if orderType == 4 {
 		var wl model.EzfyWildland
 		if err := h.DB.Where("id = ? AND city_id = ?", targetId, city.ID).First(&wl).Error; err != nil {
@@ -900,7 +924,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if len(validTroops) == 0 {
 			return "运输需要携带部队来装载资源(卡车负重最高)"
 		}
-		cap := h.ezfyCarryCapOf(validTroops)
+		// ★ 2026-09-28 传 city.ID：负重上限含「装载技术」加成（与出征/采集同一口径）
+		cap := h.ezfyCarryCapOf(validTroops, city.ID)
 		if total := f + s + o + r + g; total > cap {
 			return fmt.Sprintf("负重不足: 本次要携带%d, 部队负重只有%d(多带卡车可提高)", total, cap)
 		}
@@ -1913,11 +1938,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 带队军官(军事属性 + 装备 + 技能)与科技加成
 	leadOfficer := h.officerByName(city.ID, order.Officer)
 	officerBonus := h.officerBattleBonus(leadOfficer)
+	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 弹道学(8)+3%/级 · 重工技术(9)+2%/级
 	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
+	// 速度加成：燃烧引擎(10)+2%/级 · 喷气引擎(19)+3%/级
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
-	if h.officerSpeedSkill(leadOfficer) {
-		atkSpeedBonus += 10
-	}
+	// ★★ 2026-09-28 修复：这里原来是**两段一模一样的 if**，军官「移速」技能被加了两次 +10
+	//   （活动目标那条路径 ezfy_activity_target.go 只加一次）。
+	//   后果：带移速技能的军官出征，速度加成虚高 10%，与活动战、与界面描述都不一致。
 	if h.officerSpeedSkill(leadOfficer) {
 		atkSpeedBonus += 10
 	}
@@ -2041,7 +2068,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		defTech := h.techMap(target.ID)
-		defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2
+		// 守方防御加成：城墙(建筑7) + 装甲科技(7)+3%/级 + 掩体防御(16)+2%/级
+		// ★ 2026-09-28 补上重工技术(9)+2%/级：该科技描述是「重装备**攻防**+2%」，
+		//   攻方那条路径已加(atkBonus)，守方这条原来漏了 → 被攻击时这 2%/级 完全不生效。
+		defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2 + defTech[9]*2
 		defSpeedBonus = defTech[10]*2 + defTech[19]*3
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
@@ -2302,12 +2332,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 携带容量(剩余部队负重)
-	var carry int64
-	for _, g := range left {
-		if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
-			carry += int64(cfg.Carry) * g.Count
-		}
-	}
+	// ★ 2026-09-28 同样统一走 ezfyCarryCapOf（含「装载技术」加成），
+	//   否则掠夺时「能搬走多少」会比部队真实负重少，玩家看到战利品被无理由截断。
+	carry := h.ezfyCarryCapOf(left, city.ID)
 
 	targetProtected := false
 	if order.TargetType == 3 && target != nil {
