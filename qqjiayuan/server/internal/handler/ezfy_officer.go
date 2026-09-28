@@ -2501,6 +2501,104 @@ func ezfyDrawChest(pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
 	return &p
 }
 
+// ezfyEquipAttrText 装备六项战斗属性说明（伤害/防御/生命/移动/暴击几率/暴击伤害 + 老三维军事/后勤/学识）
+func ezfyEquipAttrText(e *model.EzfyCfgEquipment) string {
+	var parts []string
+	if e.Dmg != 0 {
+		parts = append(parts, "伤害+"+strconv.Itoa(e.Dmg)+"%")
+	}
+	if e.Def != 0 {
+		parts = append(parts, "防御+"+strconv.Itoa(e.Def)+"%")
+	}
+	if e.Hp != 0 {
+		parts = append(parts, "生命+"+strconv.Itoa(e.Hp)+"%")
+	}
+	if e.Move != 0 {
+		parts = append(parts, "移动距离+"+strconv.Itoa(e.Move)+"%")
+	}
+	if e.Crit != 0 {
+		parts = append(parts, "暴击几率+"+strconv.Itoa(e.Crit)+"%")
+	}
+	if e.CritDmg != 0 {
+		parts = append(parts, "暴击伤害+"+strconv.Itoa(e.CritDmg)+"%")
+	}
+	if e.Military != 0 {
+		parts = append(parts, "军事+"+strconv.Itoa(e.Military))
+	}
+	if e.Logistics != 0 {
+		parts = append(parts, "后勤+"+strconv.Itoa(e.Logistics))
+	}
+	if e.Learning != 0 {
+		parts = append(parts, "学识+"+strconv.Itoa(e.Learning))
+	}
+	return strings.Join(parts, " ")
+}
+
+// ezfyChestPrizeDetail 生成宝箱奖品详情说明（供玩家点奖品名查看具体内容）
+func (h *EzfyHandler) ezfyChestPrizeDetail(p *model.EzfyCfgChestItem) string {
+	switch p.Kind {
+	case 1: // 装备
+		cfg := ezfyCfg.equipment(p.RefId)
+		if cfg == nil {
+			return ""
+		}
+		var parts []string
+		if cfg.EquipSlot() != "" {
+			parts = append(parts, "部位:"+cfg.EquipSlot())
+		}
+		if cfg.Tier > 0 {
+			parts = append(parts, "品质:"+ezfyTierName(cfg.Tier))
+		}
+		if cfg.Level > 0 {
+			parts = append(parts, "等级"+strconv.Itoa(cfg.Level))
+		}
+		if a := ezfyEquipAttrText(cfg); a != "" {
+			parts = append(parts, a)
+		}
+		if cfg.Effect != "" {
+			parts = append(parts, "额外效果:"+cfg.Effect)
+		}
+		if cfg.Des != "" {
+			parts = append(parts, cfg.Des)
+		}
+		return strings.Join(parts, " · ")
+	case 2: // 道具
+		cfg := ezfyCfg.item(p.RefId)
+		if cfg == nil {
+			return ""
+		}
+		if cfg.Description != "" {
+			return cfg.Description
+		}
+		return ""
+	case 3: // 整套（RefId = 套装 id）
+		s := ezfyCfg.equipSet(p.RefId)
+		if s == nil {
+			return ""
+		}
+		var parts []string
+		if s.Effect != "" {
+			parts = append(parts, "套装效果:"+s.Effect)
+		}
+		if s.Des != "" {
+			parts = append(parts, s.Des)
+		}
+		ids := ezfyEquipIDsOfSet(p.RefId)
+		if len(ids) > 0 {
+			var names []string
+			for _, id := range ids {
+				if e := ezfyCfg.equipments[id]; e.Name != "" {
+					names = append(names, e.Name)
+				}
+			}
+			parts = append(parts, "包含"+strconv.Itoa(len(names))+"件："+strings.Join(names, "、"))
+		}
+		return strings.Join(parts, " · ")
+	default:
+		return ""
+	}
+}
+
 // ezfyGrantChestPrize 发放一件奖品，返回展示文案
 func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCfgChestItem) string {
 	if it == nil {
@@ -2588,6 +2686,7 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 			pool = append(pool, gin.H{
 				"kind": p.Kind, "ref_id": p.RefId, "name": name,
 				"count": p.Count, "weight": p.Weight, "quality": quality,
+				"detail": h.ezfyChestPrizeDetail(&p),
 			})
 		}
 		out = append(out, gin.H{

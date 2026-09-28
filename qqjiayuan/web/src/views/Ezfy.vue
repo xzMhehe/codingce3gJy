@@ -2838,14 +2838,23 @@
               <span v-if="chestOpen.price_diamond > 0" class="orange">{{ chestOpen.price_diamond }}钻/个</span>
               <span v-else>{{ chestOpen.price_gold }}{{ resNames.gold }}/个</span>
             </div>
-            <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）：</div>
+            <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）<span class="gray">（点奖品名可查看具体属性）</span>：</div>
             <table class="ezfy-plain-table">
               <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
-              <tr v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
-                <td>{{ p.name }}</td>
-                <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
-                <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-              </tr>
+              <template v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
+                <tr>
+                  <td>
+                    <a href="javascript:;"
+                       :class="{ on: chestOpenDetailIdx === i }"
+                       @click="chestOpenDetailIdx = chestOpenDetailIdx === i ? -1 : i">{{ p.name }}</a>
+                  </td>
+                  <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
+                  <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
+                </tr>
+                <tr v-if="chestOpenDetailIdx === i">
+                  <td colspan="3" class="gray">{{ p.detail || '（无更多说明）' }}</td>
+                </tr>
+              </template>
             </table>
             <div class="old-line">
               数量
@@ -4199,6 +4208,7 @@ export default {
       // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
       chestData: { chests: [], gold: 0, diamond: 0 },
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [],
+      chestOpenDetailIdx: -1,   // 开箱详情页「点奖品名查看具体」：当前展开的奖品下标（-1 = 均收起）
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
@@ -6027,6 +6037,7 @@ export default {
       this.chestOpen = ch
       this.chestCount = 1
       this.chestPay = ch.price_diamond > 0 ? 'diamond' : 'gold'
+      this.chestOpenDetailIdx = -1
       // ★ 跳转到独立开箱详情页确认
       this.chestResult = []
       this.cur = 'chestopen'
