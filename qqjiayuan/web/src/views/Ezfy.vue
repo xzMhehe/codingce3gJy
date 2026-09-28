@@ -359,7 +359,7 @@
           <!-- ===== 驻军: 到达野地后常驻采集的部队(满一个采集周期结算一期) ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源直接入库到出发城市 + 宝物(宝物直接进背包, 每期至少1件); 不满一个采集周期只有按驻守时长折算的资源、无宝物; 负重装满会自动停止采集。</span><br/>
+              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源累积进部队负重(负重满后不再增加、兵力不自动停止) + 宝物(宝物直接进背包, 每期至少1件); 不满一个采集周期只有按驻守时长折算的资源、无宝物; 点[停止采集]/[一键收获]取回负重入城或用[召回]带资源返航。</span><br/>
               <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
@@ -378,7 +378,7 @@
               <template v-if="o.status === 1 && o.arrive_time">
                 <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
-                <span v-if="o._lg.full" class="red">负重已满, 将自动停止采集</span>
+                <span v-if="o._lg.full" class="red">负重已满, 请点击停止或收获。</span>
               </template>
               <span v-else class="gray">本期已采：暂无(未在采集中)</span>
               <br/>
@@ -1695,7 +1695,7 @@
             <template v-if="o.status === 1 && o.arrive_time">
               <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ fmtN(o._lg.total) }}（负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
-              <span v-if="o._lg.full" class="red">负重已满, 将自动停止采集</span><br/>
+              <span v-if="o._lg.full" class="red">负重已满, 请点击停止或收获。</span><br/>
             </template>
             <br/>
             <span v-if="o.status === 0 || o.status === 1">
@@ -6725,8 +6725,7 @@ export default {
     // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
     //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
     //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计产出的资源」。
-    //   ★ 2026-09-28 规则修正：产出**直接入起点城市**、不再有「超负重丢弃」，
-    //     所以这里不再按 carry_cap 折算封顶；cap 只用于算「还能收多少」的提示。
+    //   ★ 2026-09-28 用户规则：本期已采按负重上限展示，超负重部分丢弃（total 封顶到 carry_cap）。
     liveGather (o) {
       const g = o && o.gather
       if (!g || !g.period_ms) return null
@@ -6735,15 +6734,25 @@ export default {
       if (elapsed <= 0) return null
       const frac = elapsed / g.period_ms
       const mk = v => Math.floor((v || 0) * frac)
-      const food = mk(g.per_food)
-      const steel = mk(g.per_steel)
-      const oil = mk(g.per_oil)
-      const rare = mk(g.per_rare)
+      let food = mk(g.per_food)
+      let steel = mk(g.per_steel)
+      let oil = mk(g.per_oil)
+      let rare = mk(g.per_rare)
       const gold = 0
-      const total = food + steel + oil + rare
+      let total = food + steel + oil + rare
       const cap = o.carry_cap || 0
-      // 装满负重会自动停止采集（与后端 ezfyCarryFull 口径一致）
-      const full = cap > 0 && total >= cap
+      // ★ 2026-09-28 用户反馈：装满负重后「本期已采」不能超过负重，超负重部分丢弃。
+      //   把各分项等比收敛，使 total 封顶到负重 cap（total == cap，负重叠满）。
+      let full = cap > 0 && total >= cap
+      if (cap > 0 && total > cap) {
+        const scale = cap / total
+        food = Math.floor(food * scale)
+        steel = Math.floor(steel * scale)
+        oil = Math.floor(oil * scale)
+        rare = Math.floor(rare * scale)
+        total = Math.min(cap, food + steel + oil + rare)
+        full = total >= cap
+      }
       return { timeText: this.durText(elapsed / 1000), food, steel, oil, rare, gold, total, cap, full }
     },
     // ★ 2026-09-28 给单条军队动态附上实时采集视图 _lg（有 gather 才算采集中）；复用来避免模板算两遍。

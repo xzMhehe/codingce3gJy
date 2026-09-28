@@ -105,10 +105,10 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "采集野地已丢失")
 		return
 	}
-	// ★ 2026-09-28 用户规则「超过负重继续采集那么就不会再采集」：
-	//   上一次装满了负重被自动停止的部队，不补运输兵就点[采集]没意义，直接拦住。
+	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：负重满了多采部分丢弃、不再增加。
+	//   已装满负重的部队不用补运输兵就点[采集]没意义，直接拦住。
 	if h.ezfyCarryFull(&order) {
-		resp.ParamError(c, "本部队负重已满, 需先[召回]清空或增派运输兵, 才能继续采集")
+		resp.ParamError(c, "本部队负重已满, 可先[停止采集]取回负重或[召回]清空, 再继续采集")
 		return
 	}
 	// ★★ 2026-09-28 采集资源已满的守卫：采了也入不了库，发起前就明确告知（别让玩家白等一轮）。
@@ -150,17 +150,17 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	var gained int64
 	for i := range orders {
 		order := &orders[i]
-		before := h.ezfyCityResTotal(order.CityId)
-		// 满一个采集周期 → 完整结算(资源+宝物); 不满 → 按采集时长折算资源(无宝物)
+		// 满一个采集周期 → 完整结算(资源进负重+宝物); 不满 → 按采集时长折算资源(无宝物)
 		if now >= order.ArriveTime {
 			h.settleDispatch(uid, order, now)
 		} else {
 			h.settlePartialCollect(uid, order, now, "收获")
 		}
+		// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：结算后把部队负重**入城**再原地待命。
+		gained += h.harvestCarryToCity(order)
 		// ★ 统一收口：收获后一律「停止采集」原地待命（与 [停止] 同一个语义）
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
-		gained += h.ezfyCityResTotal(order.CityId) - before
 		n++
 	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获 %d 支采集部队, 资源已直接入库(共 %d), 部队原地待命", n, gained)})
@@ -188,11 +188,13 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	var gained int64
 	for i := range orders {
 		order := &orders[i]
-		// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源）
+		var before int64
+		// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源），
+		// 产出入负重(carry)，随返航到达时由 finishReturn 入城。
 		if order.ArriveTime > 0 {
-			before := h.ezfyCityResTotal(order.CityId)
+			before = parseCarry(order.Carry).total()
 			h.settleDispatchOnRecall(uid, order, now)
-			gained += h.ezfyCityResTotal(order.CityId) - before
+			gained += parseCarry(order.Carry).total() - before
 		}
 		if order.Status != 1 {
 			continue // 野地已丢失, settleDispatch 已把部队自动改成返航
@@ -200,12 +202,12 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 		travel := ezfyOneWayTravel(order)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": order.Troops,
-				"return_time": now + travel, "carry": ""})
+				"return_time": now + travel, "carry": order.Carry})
 		n++
 	}
 	msg := fmt.Sprintf("已召回 %d 支采集部队返航", n)
 	if gained > 0 {
-		msg += fmt.Sprintf(", 召回前结算资源 %d 已入库", gained)
+		msg += fmt.Sprintf(", 召回前结算负重 %d(随返航入城)", gained)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }
@@ -242,18 +244,14 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		resp.ParamError(c, "该部队已在待命(未在采集中)")
 		return
 	}
-	before := h.ezfyCityResTotal(order.CityId)
 	if now >= order.ArriveTime {
 		h.settleDispatch(uid, &order, now) // 满一期: 完整结算(资源+宝物)
 	} else {
 		h.settlePartialCollect(uid, &order, now, "停止采集") // 未满一期: 只有资源
 	}
-	gained := h.ezfyCityResTotal(order.CityId) - before
-	// 原地待命: arrive_time=0 表示驻守空闲, 部队不回城
-	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0,
-			"result": order.Result})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 资源 %d 已入库, 部队原地待命(可再[采集]继续或[召回]撤兵)",
+	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：停止采集 = 取回部队负重入城
+	gained := h.harvestCarryToCity(&order)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 负重资源 %d 已入库, 部队原地待命(可再[采集]继续或[召回]撤兵)",
 		gained)})
 }
 
