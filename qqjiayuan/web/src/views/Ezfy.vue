@@ -1449,24 +1449,38 @@
           <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
 
           <!-- ④ 随军资源 -->
-          <div class="of-sec">④ 随军资源 <span class="of-hint">（右侧灰字是城内现有）</span></div>
-          <div class="of-grid of-grid-res">
-            <div class="of-cell"><span class="of-name">{{ resNames.gold }}</span>
-              <input v-model="trGold" type="number" placeholder="0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(city.gold) }}</span></div>
-            <div class="of-cell"><span class="of-name">{{ resNames.food }}</span>
-              <input v-model="trFood" type="number" placeholder="0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(city.food) }}</span></div>
-            <div class="of-cell"><span class="of-name">{{ resNames.steel }}</span>
-              <input v-model="trSteel" type="number" placeholder="0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(city.steel) }}</span></div>
-            <div class="of-cell"><span class="of-name">{{ resNames.oil }}</span>
-              <input v-model="trOil" type="number" placeholder="0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(city.oil) }}</span></div>
-            <div class="of-cell"><span class="of-name">{{ resNames.rare }}</span>
-              <input v-model="trRare" type="number" placeholder="0" class="of-num"/>
-              <span class="of-avail">{{ fmtN(city.rare) }}</span></div>
+           <!-- （右侧灰字是城内现有；上限 = 所带兵种负重之和 × 装载技术加成，没带部队时不能填） -->
+          <div class="of-sec">④ 随军资源
+            <span class="of-hint">（每行拖滑块或直接填数字；上限 = 所带兵种负重之和 × 装载技术加成；没选部队时禁用）</span>
           </div>
+          <div class="of-rows">
+            <div class="of-row" v-for="res in resFields" :key="res.key"
+                 :class="{ 'of-off': orderResDisabled }"
+                 :title="res.name + '（城内现有 ' + fmtN(resAvail(res.key)) + '，本次最多 ' + fmtN(resQtyMax(res.key)) + '）'">
+              <span class="of-name">{{ res.name }}</span>
+              <span class="of-avail">现有 {{ fmtN(resAvail(res.key)) }}</span>
+              <span class="of-ctl">
+                <input type="range" class="of-range" min="0" step="1"
+                       :max="resQtyMax(res.key)" :value="resQty(res.key)"
+                       :disabled="orderResDisabled"
+                       @input="onResInput(res.key, $event)"/>
+                <input type="number" class="of-num" min="0" placeholder="0"
+                       :max="resQtyMax(res.key)" :value="resQty(res.key)"
+                       :disabled="orderResDisabled"
+                       @input="onResInput(res.key, $event)"/>
+                <a href="javascript:;" class="of-max"
+                   :class="{ 'of-max-off': orderResDisabled || resQtyMax(res.key) <= 0 }"
+                   @click="setResMax(res.key)">[最大]</a>
+              </span>
+            </div>
+          </div>
+          <div class="old-line" v-if="!orderResDisabled">
+            随军总量：<b :class="orderResOver ? 'red' : 'green'">{{ fmtN(orderResTotal) }}</b>
+            / 负重上限 <b>{{ fmtN(orderResCap) }}</b>
+            <span v-if="orderResOver" class="red">—— 超出负重上限，请减少资源或多带部队</span>
+            <span v-else class="gray">（负重含「装载技术」加成）</span>
+          </div>
+          <div class="old-line gray" v-else>（未选择部队，随军资源不可填写）</div>
           <div class="old-line gray" v-if="orderType === 5">
             运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
             可以不带队军官；送完部队会返回出发城市。
@@ -1478,7 +1492,8 @@
           </div>
 
           <!-- ⑤ 宿营 -->
-          <div class="of-sec">⑤ 宿营（抵达后停留，可选）</div>
+           <!-- （抵达后停留，可选） -->
+          <div class="of-sec">⑤ 宿营</div>
           <div class="old-line">
             <input v-model="waitH" type="number" min="0" max="24" style="width:50px"/> 时
             <input v-model="waitM" type="number" min="0" max="60" style="width:50px"/> 分
@@ -4309,6 +4324,18 @@ export default {
     inlineTip (n) {
       if (this._tipTimer) { clearTimeout(this._tipTimer); this._tipTimer = null }
       if (n) this._tipTimer = setTimeout(() => { this.inlineTip = null }, 5000)
+    },
+    // ★ 2026-09-28 随军资源上限跟随所选兵种：兵力变化时防抖重算负重(orderCalc.carry)，
+    //   让 resQtyMax 的上限(=负重×装载技术加成)始终与当前部队一致。
+    //   没选任何部队(归零)时把随军资源一并清空，配合 orderResDisabled 整块禁用。
+    orderTroopTotal (n) {
+      if (n <= 0) {
+        if (this._resCalcT) { clearTimeout(this._resCalcT); this._resCalcT = null }
+        this.trFood = 0; this.trSteel = 0; this.trOil = 0; this.trRare = 0; this.trGold = 0
+        return
+      }
+      if (this._resCalcT) clearTimeout(this._resCalcT)
+      this._resCalcT = setTimeout(() => this.doCalc(), 300)
     }
   },
   computed: {
@@ -4515,6 +4542,36 @@ export default {
     //   ⚠️ 必须与后端同一口径，否则会出现「前端卡着不让填、后端其实允许」或反过来的假拦截。
     orderCapApplies () {
       return this.orderType !== 5 && this.orderType !== 8
+    },
+    // ★ 2026-09-28 随军资源：负重上限 = 所带兵种负重之和 × 装载技术加成。
+    //   直接采用 [计算]（orderCalc.carry，后端 ezfyCarryCapOf 已含科技加成）作为唯一口径，
+    //   与出征/运输/采集的负重校验一致；选兵种变化时由 orderTroopTotal watcher 重算。
+    orderResCap () {
+      const c = this.orderCalc
+      return c ? (c.carry || 0) : 0
+    },
+    // 随军资源五项之和（重量 = 占用负重）
+    orderResTotal () {
+      return ['gold', 'food', 'steel', 'oil', 'rare'].reduce((s, k) => s + this.resQty(k), 0)
+    },
+    // 没选任何部队 → 随军资源整块禁用（滑块/数字/[最大] 都灰掉，也不能填写）
+    orderResDisabled () {
+      return this.orderTroopTotal <= 0
+    },
+    // 是否超出负重上限（红了要玩家减资源或多带部队）
+    orderResOver () {
+      return !this.orderResDisabled && this.orderResTotal > this.orderResCap
+    },
+    // 随军资源行列表（沿用兵力行的渲染结构：名称+现有+滑块+数字+[最大]）
+    resFields () {
+      const r = this.resNames || {}
+      return [
+        { key: 'gold', name: r.gold },
+        { key: 'food', name: r.food },
+        { key: 'steel', name: r.steel },
+        { key: 'oil', name: r.oil },
+        { key: 'rare', name: r.rare }
+      ]
     },
     // ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服（要先在「附属野地」页[放弃]）。
     //   判据取后端 WildlandView 下发的 mine —— 它与详情页显示的「归属：我」是同一个来源
@@ -7215,6 +7272,68 @@ export default {
       const max = this.orderQtyMax(id)
       if (max <= 0) return
       this.$set(this.orderTroops, id, max)
+    },
+    // 随军资源：当前已填数值（任何一行都校验成非负整数）
+    resQty (key) {
+      const v = this.resVal(key)
+      if (v === undefined || v === null || v === '') return 0
+      const n = parseInt(v, 10)
+      return isNaN(n) || n < 0 ? 0 : n
+    },
+    // ★ 随军资源：单行上限 = min(城内现有, 当前值 + 负重剩余自由额度)
+    //   选取兵种对应负重 orderResCap（= Σ兵种负重 × 装载技术加成）后，
+    //   让「这行填满 + 其它行照旧」恰好等于负重上限，保证总量不会超负重又能一次拖到顶。
+    //   超负重时 allowed < 当前值 → max 比当前小，拖一下就能收回去（不会因为红着而拖不动）。
+    resQtyMax (key) {
+      if (this.orderResDisabled) return 0
+      const avail = this.resAvail(key)
+      const cur = this.resQty(key)
+      const others = this.orderResTotal - cur              // 其它四项的当前重量
+      const allowed = cur + (this.orderResCap - others)    // 本行最多能到多少（扣掉别行的占用）
+      let mx = Math.min(avail, allowed)
+      if (mx < 0) mx = 0
+      return Math.floor(mx)
+    },
+    // 该资源行单个输入：夹到 [0, resQtyMax]，并双向联动（滑块/数字框共用 trXxx 一个值）
+    onResInput (key, ev) {
+      const max = this.resQtyMax(key)
+      let n = parseInt(ev.target.value, 10)
+      if (isNaN(n) || n < 0) n = 0
+      if (n > max) n = max
+      this.setResVal(key, n)
+      if (ev && ev.target && String(n) !== String(ev.target.value)) {
+        ev.target.value = String(n)
+      }
+    },
+    // [最大]：这行一次拖到「当前负重剩余还能塞下的最大值」（仍不超城内现有）
+    setResMax (key) {
+      const max = this.resQtyMax(key)
+      if (max <= 0) return
+      this.setResVal(key, max)
+    },
+    // 取/写随军资源五项（gold/food/steel/oil/rare → trXxx）
+    resVal (key) {
+      if (key === 'gold') return this.trGold
+      if (key === 'food') return this.trFood
+      if (key === 'steel') return this.trSteel
+      if (key === 'oil') return this.trOil
+      return this.trRare
+    },
+    setResVal (key, n) {
+      if (key === 'gold') this.trGold = n
+      else if (key === 'food') this.trFood = n
+      else if (key === 'steel') this.trSteel = n
+      else if (key === 'oil') this.trOil = n
+      else this.trRare = n
+    },
+    // 城内现有该资源数量
+    resAvail (key) {
+      const c = this.city || {}
+      if (key === 'gold') return c.gold || 0
+      if (key === 'food') return c.food || 0
+      if (key === 'steel') return c.steel || 0
+      if (key === 'oil') return c.oil || 0
+      return c.rare || 0
     },
     // 出征表单 → 请求体(部队/资源/军官/宿营)
     orderBody () {
