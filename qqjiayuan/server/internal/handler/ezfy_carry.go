@@ -113,14 +113,34 @@ func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, food, steel, oil, 
 
 // ezfyCarryFull 该订单部队的「待带回」是否已装满负重。
 //
-// ★ 2026-09-28 用户规则：「超过负重继续采集那么就不会再采集」——
-//   采到装满之后自动停下(arrive_time=0 原地待命)，不再空转累积、也不再报「资源丢弃」。
+// ★ 2026-09-28 用户规则：采集产出累积进负重，**到了负重上限就不再增加（多采部分丢弃）**，
+//   但部队**不自动停止**、持续采集；由玩家手动[停止]/[收获]/[召回]取回负重资源。
 func (h *EzfyHandler) ezfyCarryFull(order *model.EzfyOrder) bool {
 	capTotal := h.ezfyCarryCap(order)
 	if capTotal <= 0 {
 		return false
 	}
 	return parseCarry(order.Carry).total() >= capTotal
+}
+
+// harvestCarryToCity 把部队「待带回负重(carry)」累加进起点城市，并清空负重。
+//
+// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：采集产出累积进负重，由玩家手动
+//   [停止采集]/[一键收获]/[召回]取回。本函数负责把取回的负重入城（走 harvestToCity，
+//   前后无差值——carry 就是本次真正到账的量），同时把订单负重清零。
+//   返回实际入城总量。
+func (h *EzfyHandler) harvestCarryToCity(order *model.EzfyOrder) int64 {
+	c := parseCarry(order.Carry)
+	if c.total() <= 0 {
+		return 0
+	}
+	got := h.harvestToCity(int64(order.CityId), c.Food, c.Steel, c.Oil, c.Rare, c.Gold)
+	if got > 0 {
+		order.Carry = carryJSON(ezfyCarry{})
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+			Updates(map[string]interface{}{"carry": ""})
+	}
+	return got
 }
 
 // harvestToCity 把一次采集产出**直接累加进「起点城市」**(order.CityId)。
