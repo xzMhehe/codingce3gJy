@@ -647,6 +647,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/love-card/claim", ezfyH.LoveCardClaim)
 				ezfyG.GET("/welfare", ezfyH.Welfare)
 				ezfyG.POST("/welfare/sign", ezfyH.Sign)
+				ezfyG.POST("/welfare/treasure-sign", ezfyH.TreasureSign)
 				ezfyG.POST("/welfare/gift/:type", ezfyH.Gift)
 				ezfyG.GET("/notices", ezfyH.Notices)
 				ezfyG.GET("/activity", ezfyH.ActivityInfo)

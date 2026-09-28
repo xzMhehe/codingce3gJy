@@ -858,13 +858,40 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	h.refreshCity(uid, &city)
 	var wildlands []model.EzfyWildland
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
+	// ★ 2026-09-28 修复：附属野地页状态必须与 /view 同一套实时判定（常驻制下野地表 status 恒为 0），
+	//   原来这里直接返回 w.Status + 不传 idle_order_id，导致「明明在采集却显示空闲」、
+	//   「驻守空闲的野地不显示[开始采集]」（用户反馈 bug）。
+	var gatherIds []int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
+		Pluck("target_id", &gatherIds)
+	gathering := map[int64]bool{}
+	for _, id := range gatherIds {
+		gathering[id] = true
+	}
+	var idleOrders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
+		Find(&idleOrders)
+	idleOrderByWild := map[int64]uint{}
+	for _, o := range idleOrders {
+		idleOrderByWild[o.TargetId] = o.ID
+	}
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
+		sts := w.Status
+		idleOrderId := uint(0)
+		if gathering[int64(w.ID)] {
+			sts = 1
+		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
+			sts = 0
+			idleOrderId = oid
+		}
 		// ★ 必须带 terrain_name：前端 loadWilds() 会用这里的返回**整体覆盖** wildlands，
 		//   之前漏了这个字段，导致「附属野地」页面的【地形】列永远是空的。
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
-			"wild_type": w.WildType, "level": w.Level, "status": w.Status,
-			"terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+			"wild_type": w.WildType, "level": w.Level, "status": sts,
+			"idle_order_id": idleOrderId,
+			"terrain":       ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
 			"continent": ezfyRegionName(w.X, w.Y)})
 	}
 	var occupies []model.EzfyOccupy

@@ -118,7 +118,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
 		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 用户要求）
 		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
-		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyCityEffect{},
+		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyTreasureSign{}, &model.EzfyCityEffect{},
 		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
 		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
 		// ★ 2026-09-28 玩家钻石流水（管理端「数据管理 → 钻石流水」查看）

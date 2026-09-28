@@ -89,23 +89,23 @@
         </div>
         <div class="old-line">
           <span :title="resNames.gold"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6.4 5.8 L10 10.3 L13.6 5.8" stroke-width="1.6"/><path d="M10 6 V14.2" stroke-width="1.6"/><path d="M7.6 8.9 H12.4" stroke-width="1.4"/><path d="M7.6 11.7 H12.4" stroke-width="1.4"/></g></svg></span>
-          <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/<span :title="resShort.gold + '每小时产量'">{{ fmtN(resProd.gold) }}</span>
+          <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/<span :title="resShort.gold + '每小时产量'">{{ fmtProd(resProd.gold) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.food"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M7.2 6.2 C6.7 5.4 7.3 4.1 7.9 3.5"/><path d="M12.8 6.2 C13.3 5.4 12.7 4.1 12.1 3.5"/></g><path d="M5 8.6 H15 C15 8.6 14.7 12.2 13.3 13.7 C12.2 14.8 10.9 15.4 10 15.4 C9.1 15.4 7.8 14.8 6.7 13.7 C5.3 12.2 5 8.6 5 8.6 Z" fill="#FFD700"/></svg></span>
-          <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/<span :title="resShort.food + '每小时产量'">{{ fmtN(resProd.food) }}</span>
+          <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/<span :title="resShort.food + '每小时产量'">{{ fmtProd(resProd.food) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.steel"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M4.2 8.4 L6.6 15.6 H13.4 L15.8 8.4 Z" fill="#FFD700"/><path d="M5.6 10.2 H14.4" stroke="#C9AFF0" stroke-width="1.3" stroke-linecap="round"/></svg></span>
-          <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/<span :title="resShort.steel + '每小时产量'">{{ fmtN(resProd.steel) }}</span>
+          <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/<span :title="resShort.steel + '每小时产量'">{{ fmtProd(resProd.steel) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.oil"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 3.6 C10 3.6 6.1 8.1 6.1 11.2 C6.1 13.5 7.8 15.3 10 15.3 C12.2 15.3 13.9 13.5 13.9 11.2 C13.9 8.1 10 3.6 10 3.6 Z" fill="#FFD700"/><circle cx="8.6" cy="11.4" r="0.9" fill="#C9AFF0"/></svg></span>
-          <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/<span :title="resShort.oil + '每小时产量'">{{ fmtN(resProd.oil) }}</span>
+          <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/<span :title="resShort.oil + '每小时产量'">{{ fmtProd(resProd.oil) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.rare"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M5.8 6.4 H14.2 L11.7 9.2 L10 15.6 L8.3 9.2 Z" fill="#FFD700"/><path d="M5.8 6.4 H10 L8.3 9.2 Z" fill="#C9AFF0"/></svg></span>
-          <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/<span :title="resShort.rare + '每小时产量'">{{ fmtN(resProd.rare) }}</span>
+          <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/<span :title="resShort.rare + '每小时产量'">{{ fmtProd(resProd.rare) }}</span>
         </div>
         <div class="old-line">
           <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>人口</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><circle cx="7" cy="7.4" r="1.6" fill="#FFD700"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#FFD700"/><circle cx="13" cy="6.6" r="1.5" fill="#FFD700"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#FFD700"/></svg>
@@ -1359,10 +1359,45 @@
           </div>
           <hr/>
 
-          <!-- ① 兵力 -->
-          <!-- ★ 2026-09-25 用户要求：兵种数量搭配**一个兵种一行**，滑动条 + 可手填 + [最大]，
-               滑块与数字框双向联动（拖滑块数字跟着变，填数字滑块跟着走）。 -->
-          <div class="of-sec">① 选择兵力
+          <!-- ★ 2026-09-28 出征页顺序重排：①指挥军官 → ②出征集结令 → ③选择兵力
+               （用户要求军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚） -->
+          <!-- ① 军官 -->
+          <div class="of-sec">① 指挥军官</div>
+          <div class="old-line">
+            <select v-model="orderOfficer">
+              <option value="0">未指定</option>
+              <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
+                {{ o.name }}({{ o.level }}级) 军{{ o.military_total || o.military }}
+                <span class="green" v-if="o.equip_military">(装+{{ o.equip_military }})</span>
+                学{{ o.learning_total || o.learning }} 后{{ o.logistics_total || o.logistics }}
+              </option>
+            </select>
+            <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
+            <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
+            <span v-else-if="orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
+            <span v-if="curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
+            <span v-if="!onDutyOfficers.length" class="gray">
+              (「{{ city.name }}」暂无可带队军官<template v-if="cityOfficers.length">：本城 {{ cityOfficers.length }} 名军官都在出征中或为俘虏</template>；
+              军官跟着城市走，别的城的军官不能在这里出征，可前往军校招募)
+            </span>
+          </div>
+
+          <!-- ② 集结令 -->
+          <div class="of-sec">② 出征集结令</div>
+          <div class="old-line">
+            使用
+            <input type="number" min="0" :max="gatherMax" v-model.number="orderGather"
+                   :disabled="gatherCount <= 0" @change="onGatherChange" style="width:80px"/>
+            个
+            <span class="gray">（背包里有 {{ gatherCount }} 个）</span>
+          </div>
+          <div class="old-line gray">
+            每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
+            司令部上限（含指挥艺术科技）与集结令加成<b>叠加</b>。
+          </div>
+
+          <!-- ③ 兵力 -->
+          <div class="of-sec">③ 选择兵力
             <span class="of-hint">（拖滑块或直接填数字，[最大] 一键带上该兵种全部现有）</span>
           </div>
           <div class="of-rows">
@@ -1386,52 +1421,11 @@
             </div>
           </div>
           <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
-          <!-- ★ 2026-09-25：兵力数字改成**本地实时合计**（拖滑块/填数字立刻跟着变），
-               不再等点 [计算] 才刷新；上限/是否超限仍用 [计算] 下发的口径。 -->
           <div class="old-line" v-if="attackTroops.length">
             <span :class="orderOverCap ? 'red' : 'green'">
               本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
               <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
             </span>
-          </div>
-
-          <!-- ② 军官 -->
-          <div class="of-sec">② 指挥军官</div>
-          <div class="old-line">
-            <select v-model="orderOfficer">
-              <option value="0">未指定</option>
-              <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
-                {{ o.name }}({{ o.level }}级) 军事{{ o.military_total || o.military }}
-                <span class="green" v-if="o.equip_military">(装备+{{ o.equip_military }})</span>
-                忠诚{{ o.loyalty }}
-              </option>
-            </select>
-            <span v-if="orderType === 7" class="red">(派遣必须选择)</span>
-            <span v-else-if="orderType === 6" class="gray">(增援后军官调任目标城市)</span>
-            <span v-else-if="orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
-            <span v-if="curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ curOfficerBonus }}%</span>
-            <!-- ★ 用户反馈「新城市有军官，出征页却没有」→ 空列表时把**是哪座城**、**为什么空**写清楚，
-                 避免玩家误以为出征页在用切换前那座城的数据（军官是跟城走的，不跨城指挥）。
-                 若本城其实有军官（只是都在出征中/是俘虏），也直接说明，别让人白找。 -->
-            <span v-if="!onDutyOfficers.length" class="gray">
-              (「{{ city.name }}」暂无可带队军官<template v-if="cityOfficers.length">：本城 {{ cityOfficers.length }} 名军官都在出征中或为俘虏</template>；
-              军官跟着城市走，别的城的军官不能在这里出征，可前往军校招募)
-            </span>
-          </div>
-
-          <!-- ③ 集结令 -->
-          <div class="of-sec">③ 出征集结令</div>
-          <div class="old-line">
-            使用
-            <input type="number" min="0" :max="gatherMax" v-model.number="orderGather"
-                   :disabled="gatherCount <= 0" @change="onGatherChange" style="width:80px"/>
-            个
-            <span class="gray">（背包里有 {{ gatherCount }} 个）</span>
-          </div>
-          <!-- ★ 用户要求：说明文字放到输入框下面，别挤在同一行 -->
-          <div class="old-line gray">
-            每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
-            司令部上限（含指挥艺术科技）与集结令加成<b>叠加</b>。
           </div>
 
           <!-- ④ 随军资源 -->
@@ -2951,23 +2945,53 @@
       <!-- ============ 福利(welfare) ============ -->
       <template v-else-if="cur === 'welfare'">
         <div class="panel">
-          <div class="panel-title">每日签到</div>
-          <div class="old-line">
-            <span v-if="welfare.signed_today">今日已签到(连续{{ welfare.sign_count }}天)</span>
-            <a v-else href="javascript:;" @click="doSign">[签到领奖]</a>
-            | 声望:{{ welfare.prestige }}({{ welfare.rank_name }})
+          <!-- ★ 2026-09-28 用户要求：签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: welfareTab === 0 }" @click="setWelfareTab(0)">每日签到</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: welfareTab === 1 }" @click="setWelfareTab(1)">礼包</a>&nbsp;.&nbsp;
+            <a href="javascript:;" :class="{ on: welfareTab === 2 }" @click="setWelfareTab(2)">宝物签到</a>
           </div>
-          <div class="old-line" v-for="r in welfare.rewards" :key="'sr' + r.day">
-            第{{ r.day }}天:{{ r.reward }}
-          </div>
-          <div class="panel-title">礼包</div>
+
+          <!-- 每日签到 -->
+          <template v-if="welfareTab === 0">
+            <div class="old-line">
+              <span v-if="welfare.signed_today">今日已签到(连续{{ welfare.sign_count }}天)</span>
+              <a v-else href="javascript:;" @click="doSign">[签到领奖]</a>
+              | 声望:{{ welfare.prestige }}({{ welfare.rank_name }})
+            </div>
+            <div class="old-line" v-for="r in welfare.rewards" :key="'sr' + r.day">
+              第{{ r.day }}天:{{ r.reward }}
+            </div>
+          </template>
+
+          <!-- 礼包 -->
           <!-- ★ 用户要求「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
                只保留 新手 / 每周 / 市政厅10级 三个入口（后端 Gift 同步去掉 20/30/40 分支）。 -->
-          <div class="old-line">
-            <a href="javascript:;" @click="doGift('newbie')">{{ welfare.gifts.newbie ? '[新手礼包已领]' : '[新手礼包]' }}</a>
-            <a href="javascript:;" @click="doGift('weekly')">{{ welfare.gifts.weekly ? '[每周福利已领]' : '[每周福利]' }}</a><br/>
-            <a href="javascript:;" @click="doGift('level10')">{{ welfare.gifts.level10 ? '[市政厅10级礼包已领]' : '[市政厅10级礼包]' }}</a>
-          </div>
+          <template v-else-if="welfareTab === 1">
+            <div class="old-line">
+              <a href="javascript:;" @click="doGift('newbie')">{{ welfare.gifts.newbie ? '[新手礼包已领]' : '[新手礼包]' }}</a>
+              <a href="javascript:;" @click="doGift('weekly')">{{ welfare.gifts.weekly ? '[每周福利已领]' : '[每周福利]' }}</a><br/>
+              <a href="javascript:;" @click="doGift('level10')">{{ welfare.gifts.level10 ? '[市政厅10级礼包已领]' : '[市政厅10级礼包]' }}</a>
+            </div>
+          </template>
+
+          <!-- 宝物签到：7 天一轮，逢 5/6/7 天多给（懒人也能攒晋升宝物） -->
+          <template v-else>
+            <div class="old-line">
+              宝物签到
+              <span class="gray">每天领随机宝物，7天一轮：第1-4天×1、第5天×2、第6天×3、第7天×4</span>
+            </div>
+            <div class="old-line">
+              <span v-if="welfare.treasure_signed_today" class="green">今日已签(连续{{ welfare.treasure_count }}天)</span>
+              <a v-else href="javascript:;" @click="doTreasureSign">[宝物签到领奖]</a>
+              <span v-if="welfare.treasure_count" class="gray">| 连续{{ welfare.treasure_count }}天</span>
+            </div>
+            <!-- ★ 2026-09-28 用户要求：展示本轮已签到领到的具体宝物名, 每轮(每天签到)后更新 -->
+            <div class="old-line" v-if="welfare.treasure_signed_today && welfare.treasure_reward">
+              本轮已领宝物：<span class="green">{{ welfare.treasure_reward.split(',').join('、') }}</span>
+            </div>
+          </template>
+
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3996,6 +4020,8 @@ export default {
       schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
       schemeX: '', schemeY: '',
       welfare: { rewards: [], gifts: {} },
+      // ★ 2026-09-28 福利页 tab: 0每日签到 / 1礼包 / 2宝物签到
+      welfareTab: 0,
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       // ★ 排行页 tab: ranks军衔晋升表 / prestige军衔声望榜 / troops兵力榜 / corps军团榜
       rankTab: 'ranks',
@@ -7328,6 +7354,17 @@ export default {
     doGift (t) {
       api.post('/games/ezfy/welfare/gift/' + t, {}).then(r => this.alert(r, '礼包已领取'))
     },
+    setWelfareTab (n) {
+      this.welfareTab = n
+    },
+    doTreasureSign () {
+      // ★ 2026-09-28 宝物签到：领完刷新 welfare（更新连续天数与今日已签），宝物即时入背包
+      api.post('/games/ezfy/welfare/treasure-sign', {}).then(r => {
+        this.alert(r, '宝物签到成功', () => {
+          this.loadWelfare()
+        })
+      })
+    },
     rewardText (rw) {
       if (!rw) return ''
       const parts = []
@@ -7368,6 +7405,28 @@ export default {
     // ★ 数字千分位（军队动态的「待带回」和出征页的「本次出兵/上限」都用它）
     //   之前模板里引用了 fmtN 但方法从未定义 → Vue 渲染直接抛
     //   "TypeError: _vm.fmtN is not a function"，整页白掉，且只在对应分支被渲染时才暴露。
+    // ★ 2026-09-28 首页头部产量缩写：≥1万 时按「万」缩成紧凑形式, 保留负号; 不足1万显示原值
+    //   采用向下取整(截断), 不四舍五入——保证展示值≤真实值, 玩家不会被夸大误导
+    //   例如 -46393790 → -4639万, 113840 → 11.3万, 54566 → 5.4万
+    fmtProd (n) {
+      const v = Number(n)
+      if (!isFinite(v)) return '0'
+      const neg = v < 0
+      const a = Math.abs(v)
+      if (a >= 10000) {
+        const w = Math.floor(a / 10000)
+        const rem = a % 10000
+        // 非整整万但剩余≥千时补 1 位小数(百位截断), 否则整数万
+        let s = ''
+        if (rem >= 1000) {
+          s = w + '.' + Math.floor(rem / 1000) // 万分位→十分之一万, 只取1位(截断)
+        } else {
+          s = String(w)
+        }
+        return (neg ? '-' : '') + s + '万'
+      }
+      return (neg ? '-' : '') + a.toLocaleString('en-US')
+    },
     fmtN (n) {
       const v = Number(n)
       if (!isFinite(v)) return '0'

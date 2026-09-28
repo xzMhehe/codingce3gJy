@@ -961,6 +961,19 @@ type EzfyGift struct {
 
 func (EzfyGift) TableName() string { return "ezfy_gift" }
 
+// EzfyTreasureSign 宝物签到记录：独立于每日签到的宝物日签到。
+//   7 天一轮，逢第 5/6/7 天多给宝物（懒人不采集也能攒晋升宝物）。
+type EzfyTreasureSign struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint      `gorm:"uniqueIndex:uk_trs_user_date,priority:1;comment:用户ID" json:"user_id"`
+	SignDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_trs_user_date,priority:2;comment:签到日期" json:"sign_date"`
+	SignCount int       `gorm:"comment:连续宝物签到天数" json:"sign_count"` // 连续宝物签到天数
+	NReward   string    `gorm:"type:varchar(255);comment:本次签到获得的宝物名(逗号分隔)" json:"n_reward"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyTreasureSign) TableName() string { return "ezfy_treasure_sign" }
+
 // EzfyCityEffect 城市效果：1增产 2免战
 type EzfyCityEffect struct {
 	ID         uint  `gorm:"primaryKey;comment:主键ID" json:"id"`

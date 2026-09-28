@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -1867,6 +1868,22 @@ var ezfySignRewards = [7][6]int64{
 	{5000, 5000, 5000, 5000, 5000, 100},
 }
 
+// ★ 2026-09-28 宝物签到：7 天一轮；逢第 5/6/7 天多给（里程碑增量），方便不采集的懒人攒晋升宝物。
+//   抽取范围 = 9 种采集宝物（装备配置 ID 27-35，见 ezfyTerrainTreasureNames）。
+var ezfyTreasureSignRewards = [7]int{1, 1, 1, 1, 2, 3, 4} // position(1-7) → 当日宝物件数
+
+// ezfyTreasureSignQty 连续宝物签到天数 → 当天应得宝物件数（7 天循环）
+func ezfyTreasureSignQty(count int) int {
+	pos := (count-1)%7 + 1
+	return ezfyTreasureSignRewards[pos-1]
+}
+
+// ezfyTreasureSignNames 9 种采集宝物的配置名（用于展示与随机抽取）
+func ezfyTreasureSignNames() []string {
+	return []string{"黄金手镯", "玛瑙项坠", "红宝石戒指", "黑曜石戒指",
+		"琥珀项链", "铂金戒指", "翡翠项链", "祖母绿", "蓝宝石戒指"}
+}
+
 func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
 	// ★ 2026-09-24 规则修正（用户确认原版口径）：发放的资源**不受仓储上限截断**，
@@ -1961,10 +1978,25 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 	}
 	city := h.getOrCreateCity(uid)
 	profile := h.ensureProfile(uid)
+	// ★ 2026-09-28 宝物签到状态（独立 7 天循环）
+	var trsSignedToday, trsSignedYest int64
+	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).Count(&trsSignedToday)
+	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, yest).Count(&trsSignedYest)
+	trsCount := 1
+	if trsSignedYest > 0 {
+		var ts model.EzfyTreasureSign
+		if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&ts).Error; err == nil {
+			trsCount = ts.SignCount + 1
+		}
+	}
 	resp.OK(c, gin.H{
 		"signed_today": signedToday > 0, "sign_count": signCount,
 		"rewards": rewards, "gifts": gifts, "city_level": city.CityLevel,
 		"prestige": profile.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&profile)),
+		// ★ 2026-09-28 宝物签到
+		"treasure_signed_today": trsSignedToday > 0, "treasure_count": trsCount,
+		"treasure_qty":    ezfyTreasureSignQty(trsCount),
+		"treasure_reward": h.ezfyTreasureRewardToday(uid, today),
 	})
 }
 
@@ -1999,6 +2031,51 @@ func (h *EzfyHandler) Sign(c *gin.Context) {
 		h.addPrestige(uid, int(r[5]))
 	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("签到成功(连续%d天), 奖励已发放", count)})
+}
+
+// ezfyTreasureRewardToday 今日宝物签到已获得的宝物名（逗号分隔），未签则空串
+func (h *EzfyHandler) ezfyTreasureRewardToday(uid uint, today string) string {
+	var ts model.EzfyTreasureSign
+	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, today).First(&ts).Error; err != nil {
+		return ""
+	}
+	return ts.NReward
+}
+
+// TreasureSign POST /games/ezfy/welfare/treasure-sign —— 宝物签到（7 天一轮，逢 5/6/7 天多给）
+func (h *EzfyHandler) TreasureSign(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	today := time.Now().Format("2006-01-02")
+	// 与每日签到同款防刷：先落库（(user_id, sign_date) 复合唯一索引），成功才发奖
+	var exist model.EzfyTreasureSign
+	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, today).First(&exist).Error; err == nil {
+		resp.ParamError(c, "今天宝物已经签到过了")
+		return
+	}
+	yest := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	count := 1
+	var y model.EzfyTreasureSign
+	if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&y).Error; err == nil {
+		count = y.SignCount + 1
+	}
+	if err := h.DB.Create(&model.EzfyTreasureSign{UserId: uid, SignDate: today, SignCount: count}).Error; err != nil {
+		resp.ParamError(c, "今天宝物已经签到过了")
+		return
+	}
+	qty := ezfyTreasureSignQty(count)
+	names := ezfyTreasureSignNames()
+	var won []string
+	for i := 0; i < qty; i++ {
+		name := names[rand.Intn(len(names))]
+		if cfg := ezfyEquipCfgByName(name); cfg != nil {
+			h.addItem(uid, int(cfg.ID), 1) // 宝物等配置 ID 27-35
+			won = append(won, name)
+		}
+	}
+	// ★ 2026-09-28 用户要求展示签到领到的具体宝物名 → 落库, 前端已签时展示
+	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).
+		Update("n_reward", strings.Join(won, ","))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("宝物签到成功(连续%d天), 获得%d件宝物: %s", count, qty, strings.Join(won, ","))})
 }
 
 func (h *EzfyHandler) Gift(c *gin.Context) {
