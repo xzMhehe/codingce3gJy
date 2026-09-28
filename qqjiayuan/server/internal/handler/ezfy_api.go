@@ -1889,7 +1889,7 @@ var ezfySignRewards = [7][6]int64{
 
 // ★ 2026-09-28 宝物签到：7 天一轮；逢第 5/6/7 天多给（里程碑增量），方便不采集的懒人攒晋升宝物。
 //   抽取范围 = 9 种采集宝物（装备配置 ID 27-35，见 ezfyTerrainTreasureNames）。
-var ezfyTreasureSignRewards = [7]int{1, 1, 1, 1, 2, 3, 4} // position(1-7) → 当日宝物件数
+var ezfyTreasureSignRewards = [7]int{2, 2, 2, 2, 4, 6, 8} // position(1-7) → 当日宝物件数
 
 // ezfyTreasureSignQty 连续宝物签到天数 → 当天应得宝物件数（7 天循环）
 func ezfyTreasureSignQty(count int) int {

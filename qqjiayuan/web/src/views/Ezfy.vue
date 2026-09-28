@@ -184,7 +184,7 @@
               <input v-model="chatMsg" class="ezfy-chat-input" maxlength="25" @keyup.enter="doChatSend"/>
               <a v-if="chatCooldown <= 0" href="javascript:;" @click="doChatSend">[发送]</a>
               <span v-else class="gray">冷却中 {{ chatCooldown }}s</span>
-              <span class="gray">每次发言消耗一个喇叭(最大25个字)</span>
+              <span class="gray">(最大25个字)</span>
             </template>
             <span v-else class="gray">(系统频道仅系统可发言)</span>
             <a href="javascript:;" @click="loadChats">[刷新]</a>
@@ -2993,7 +2993,7 @@
           <template v-else>
             <div class="old-line">
               宝物签到
-              <span class="gray">每天领随机宝物，7天一轮：第1-4天×1、第5天×2、第6天×3、第7天×4</span>
+              <span class="gray">每天领随机宝物，7天一轮：第1-4天×2、第5天×4、第6天×6、第7天×8</span>
             </div>
             <div class="old-line">
               <span v-if="welfare.treasure_signed_today" class="green">今日已签(连续{{ welfare.treasure_count }}天)</span>
