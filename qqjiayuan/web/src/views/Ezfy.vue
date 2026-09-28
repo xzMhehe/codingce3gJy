@@ -151,9 +151,11 @@
         <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
+          <!-- ★ 2026-09-28 无发送者(如系统消息, 无 user_id)时补「系统：」读头, 否则正常显示昵称:内容 -->
           <a v-if="ch.user_id" href="javascript:;" @click="openPlayer(ch.user_id)"><span
              v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
              :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
+          <template v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}{{ ch.content }}</template>
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
@@ -175,8 +177,8 @@
           <div class="old-line ezfy-chat-send">
             <template v-if="chatCanSend">
               <input v-model="chatMsg" class="ezfy-chat-input" maxlength="25" @keyup.enter="doChatSend"/>
-              <button v-if="chatCooldown <= 0" @click="doChatSend">发送</button>
-              <button v-else disabled class="gray">冷却中 {{ chatCooldown }}s</button>
+              <a v-if="chatCooldown <= 0" href="javascript:;" @click="doChatSend">[发送]</a>
+              <span v-else class="gray">冷却中 {{ chatCooldown }}s</span>
               <span class="gray">每次发言消耗一个喇叭(最大25个字)</span>
             </template>
             <span v-else class="gray">(系统频道仅系统可发言)</span>
@@ -1001,7 +1003,7 @@
           </div>
           <div class="old-line">耗时：{{ Math.ceil(techSel.next_time / 60) }}分钟</div>
           <div class="old-line">
-            <button @click="doTechPre()">[开始研究]</button>
+            <a href="javascript:;" @click="doTechPre()">[开始研究]</a>
           </div>
           <a href="javascript:;" @click="go('techs')">[返回科技列表]</a>
         </div>
