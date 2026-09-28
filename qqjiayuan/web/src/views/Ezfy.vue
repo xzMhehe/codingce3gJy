@@ -593,10 +593,8 @@
           <div class="panel-title">我的城市列表</div>
           <div class="old-line" v-for="ct in cities" :key="'ct' + ct.id">
             <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
-            坐标({{ ct.x }},{{ ct.y }}) 城级{{ ct.city_level }}
-            <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ ct.city_kind || (isSeaAt(ct) ? '沿海城市' : '内陆城市') }}]</span>
-            <br/>
-            <span class="gray">所属洲: {{ ct.continent || '—' }}</span><br/>
+            坐标({{ ct.x }},{{ ct.y }}) 城{{ ct.city_level }} <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海' : '陆' }}]</span>
+            <span class="gray">{{ ct.continent || '—' }}</span><br/>
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
             <!-- ★ 运输：从当前城市把资源运到这座城（负重决定运量，可不带军官） -->
             <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
@@ -3274,7 +3272,8 @@
           <div class="old-line">
             军校({{ recruitData.academy_level }}级)：
             <span v-if="recruitData.refresh_left !== undefined">
-              今日刷新:{{ recruitData.refresh_left }}/{{ recruitData.refresh_limit }}次
+              本小时刷新:{{ recruitData.refresh_left }}/{{ recruitData.refresh_limit }}次
+              <span class="gray">(整点重置)</span>
             </span>
             <a href="javascript:;" @click="doRefreshRecruit">[刷新]</a>
             <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
@@ -3282,7 +3281,7 @@
             <span class="gray">(持有 {{ bagCount(13) }} 张)</span>
           </div>
           <div class="old-line">
-            军校等级决定每日候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
+            军校等级决定每小时候选数量, 参谋部{{ recruitData.staff_level }}级(已用{{ recruitData.used }}/{{ recruitData.capacity }}),
             雇佣费用 = 军官等级 × 1000 {{ resNames.gold }}
           </div>
           <div class="old-line red" v-if="recruitData.academy_level && officerFull">
@@ -3305,7 +3304,7 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray" v-if="recruitData.academy_level && !recruitData.candidates.length">(今日候选已全部招募或刷新)</div>
+          <div class="old-line gray" v-if="recruitData.academy_level && !recruitData.candidates.length">(本小时候选已全部招募或刷新)</div>
           <div class="old-line">前去<a href="javascript:;" @click="switchAcade('officer')">[军官]</a></div>
         </div>
 
@@ -8093,11 +8092,11 @@ export default {
         if (r.code === 0) this.officerDetail = r.data
       })
     },
-    // 军校直接使用招生简章刷新（不占每日次数；不用跳背包）
+    // 军校直接使用招生简章刷新（不占每小时次数；不用跳背包）
     async doUseRecruitTicket () {
       if (!this.recruitData.academy_level) { this.notify('需要先建造军校'); return }
       if (this.bagCount(13) <= 0) { this.notify('没有「招生简章」，可到商城购买'); return }
-      if (!await this.ask('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每日次数）')) return
+      if (!await this.ask('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每小时次数）')) return
       api.post('/games/ezfy/acade/recruit/ticket', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)

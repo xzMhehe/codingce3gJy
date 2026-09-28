@@ -278,7 +278,8 @@ var ezfyTerrainTreasureNames = map[int][]string{
 // ezfyCollectibleTreasureNames 可采集/可用于军衔晋升的宝物名集合（9 种珠宝）。
 //
 // ★ 2026-09-28 用户要求：只有「能采集的宝物」可以提交晋升军衔，
-//   普通装备（黑色幽灵[徽章]、合金装甲等）虽然同属装备表，但不算宝物。
+//
+//	普通装备（黑色幽灵[徽章]、合金装甲等）虽然同属装备表，但不算宝物。
 func ezfyCollectibleTreasureNames() map[string]bool {
 	set := map[string]bool{}
 	for _, names := range ezfyTerrainTreasureNames {
@@ -565,7 +566,9 @@ func ezfyGatherMax() int {
 // ezfySellPriceMax 挂单出售单价上限（黄金/单位）
 //
 // ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价：卖 1 粮食价格不能超过 100，
-//   数量随意（1/2/50/60），比例在二战系统配置可灵活配置」。
+//
+//	数量随意（1/2/50/60），比例在二战系统配置可灵活配置」。
+//
 // 0 或未配置时回落默认 100。
 func ezfySellPriceMax() int {
 	if n := ezfyCfg.limit.SellPriceMax; n > 0 {
@@ -592,7 +595,8 @@ func ezfyOfficerSpeedPerMil() float64 {
 
 // ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
 // ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 更短且可配置」：
-//   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。
+//
+//	读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。
 func ezfyDispatchPeriod() int64 {
 	if h := ezfyCfg.limit.DispatchPeriodH; h > 0 {
 		return int64(h) * 3600 * 1000
@@ -602,7 +606,8 @@ func ezfyDispatchPeriod() int64 {
 
 // ezfyMarchSpeedBonus 出征速度加成（百分比，0 = 无加成）。
 // ★ 2026-09-24 用户要求「节假日让玩家队伍走快点」：管理端可配。
-//   实际行军时间 = 原时间 × 100/(100+加成)；默认 0（加成 > 0 才生效，负值/未配置按 0 处理）。
+//
+//	实际行军时间 = 原时间 × 100/(100+加成)；默认 0（加成 > 0 才生效，负值/未配置按 0 处理）。
 func ezfyMarchSpeedBonus() float64 {
 	if b := ezfyCfg.limit.MarchSpeedBonus; b > 0 {
 		return b
@@ -681,7 +686,8 @@ func ezfyAddRes(cur, delta int64) int64 {
 // ============ 资源最大值（二战系统配置，默认 21 亿）============
 //
 // ★ 2026-09-27 用户要求「资源产量也做成累加」：**所有**资源统一只受「资源最大值」这一个硬上限，
-//   （默认 21 亿）。产量 / 其它一切获取方式都无条件累加到该值为止，不再被仓储上限卡住。
+//
+//	（默认 21 亿）。产量 / 其它一切获取方式都无条件累加到该值为止，不再被仓储上限卡住。
 //
 // 规则：
 //
@@ -843,7 +849,8 @@ func ezfyWoundHealDivisorCfg() int {
 // ezfyWoundHealRate 伤兵恢复黄金折扣率（百分比口径：配置 100 = 100% = 原价）。
 //
 // ★ 2026-09-23 用户要求：伤兵恢复黄金也有「折扣率数」，放管理端「二战系统配置」配，
-//   节假日调低 = 恢复便宜。★ 2026-09-24 修正：默认 100 = 现在的正常值，0/负数 → 回落 100。
+//
+//	节假日调低 = 恢复便宜。★ 2026-09-24 修正：默认 100 = 现在的正常值，0/负数 → 回落 100。
 func ezfyWoundHealRate() float64 {
 	v := ezfyCfg.limit.WoundHealRate
 	if v <= 0 {
@@ -889,6 +896,8 @@ const (
 	ezfyGatherLevelPowDef = 1.3
 	// ★ 2026-09-28 海野采集系数，默认 1.5（海野基础 3 × 1.5 = 4.5，比同级陆野 4 更高）
 	ezfyGatherSeaMultDef = 1.5
+	// ★ 2026-09-28 军校刷新周期模式，默认按小时（2）；1 = 按天
+	ezfyRecruitCycleHourlyDef = 2
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -1007,9 +1016,10 @@ func ezfyStarSuccessRate() int {
 // ezfySpeedTrainRate 训练一键加速黄金倍率（百分比口径：配置 100 = 100% = 原价）。
 //
 // ★ 2026-09-23 用户要求：黄金消耗太多，价格倍率放管理端「二战系统配置」配，
-//   节假日想便宜点就把倍率调低（如 50 = 半价、10 = 一折）。
-//   ★ 2026-09-24 用户修正：默认值 100 才是正常值（而不是 1），设置 0.01 时仍觉得贵、
-//   说明要按「百分比」理解 —— 100 = 现在的正常消耗。0/负数无意义 → 回落 100。
+//
+//	节假日想便宜点就把倍率调低（如 50 = 半价、10 = 一折）。
+//	★ 2026-09-24 用户修正：默认值 100 才是正常值（而不是 1），设置 0.01 时仍觉得贵、
+//	说明要按「百分比」理解 —— 100 = 现在的正常消耗。0/负数无意义 → 回落 100。
 func ezfySpeedTrainRate() float64 {
 	v := ezfyCfg.limit.SpeedTrainRate
 	if v <= 0 {
@@ -1210,6 +1220,16 @@ func ezfyGatherSeaMult() float64 {
 		return m
 	}
 	return ezfyGatherSeaMultDef
+}
+
+// ezfyRecruitCycleHourly 军校刷新周期是否按小时（默认按小时；1=按天 / 2=按小时，非法回落按小时）
+//
+// ★ 2026-09-28 用户要求：刷新周期可在二战系统配置切换按天/按小时，默认按小时。
+func ezfyRecruitCycleHourly() bool {
+	if !ezfyCfg.ready() {
+		return true
+	}
+	return ezfyCfg.limit.RecruitCycleMode != 1
 }
 
 // ezfyWords 取二战聊天敏感词

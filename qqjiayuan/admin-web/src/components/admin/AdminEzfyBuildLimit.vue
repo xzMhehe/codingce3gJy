@@ -57,6 +57,14 @@
               <template slot="label">商城单次购买上限<el-tooltip placement="top" :content="tips.mall_buy_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-28 军校刷新周期：按小时(默认)/按天 切换 -->
+            <el-form-item>
+              <template slot="label">军校刷新周期<el-tooltip placement="top" :content="tips.recruit_cycle_mode"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-select v-model="form.recruit_cycle_mode" style="width:180px">
+                <el-option :value="2" label="按小时" />
+                <el-option :value="1" label="按天" />
+              </el-select>
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ② 兵力与伤兵 -->
@@ -295,6 +303,8 @@ export default {
         gather_level_pow: 1.3,
         // ★ 2026-09-28 海野采集系数（默认 1.5）
         gather_sea_mult: 1.5,
+        // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
+        recruit_cycle_mode: 2,
         speed_train_rate: 100, wound_heal_rate: 100,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
@@ -358,6 +368,8 @@ export default {
         // ★ 2026-09-28 海野采集系数
         gather_sea_mult: '海野采集额外系数（可填小数，默认 1.5）。' +
           '海野基础产出系数比陆地低（海野 ×3、陆地 ×4），本系数让海野采得更多：默认 1.5 → 海野 3×1.5=4.5，比同级陆地 4 更高。填 1 = 海野与陆地拉平。建议 1~2。',
+        // ★ 2026-09-28 军校刷新周期
+        recruit_cycle_mode: '军校免费刷新次数的重置周期。按小时（默认）= 每小时重置；按天 = 每天 0 点重置。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
         res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
@@ -435,6 +447,8 @@ export default {
             gather_level_pow: pos(Number(r.data.gather_level_pow), 1.3),
             // ★ 2026-09-28 海野采集系数：0 无意义 → pos 回落默认 1.5
             gather_sea_mult: pos(Number(r.data.gather_sea_mult), 1.5),
+            // ★ 2026-09-28 军校刷新周期：1=按天 2=按小时，非法回落按小时
+            recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
             // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
             mayor_gain_mult: (r.data.mayor_gain_mult === undefined || r.data.mayor_gain_mult === null)
               ? 1 : Number(r.data.mayor_gain_mult),

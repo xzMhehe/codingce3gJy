@@ -3,7 +3,6 @@ package handler
 import (
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -25,13 +24,13 @@ const (
 	ezfyItemRenameCard = 17 // 改名卡
 	ezfyItemCampSwitch = 18 // 阵营转换道具
 
-	// 军校每日免费刷新次数的 settings key（管理端可改）
+	// 军校每小时免费刷新次数的 settings key（管理端可改；2026-09-28 从每日改每小时）
 	ezfySettingRecruitFreeLimit = "ezfy_recruit_free_limit"
 
 	ezfyRecruitFreeLimitDefault = 5
 )
 
-// ezfyRecruitFreeLimit 取某玩家的军校每日免费刷新次数（玩家覆盖 > 全局默认）
+// ezfyRecruitFreeLimit 取某玩家的军校每小时免费刷新次数（玩家覆盖 > 全局默认）
 func (h *EzfyHandler) ezfyRecruitFreeLimit(uid uint) int {
 	var p model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.RecruitFreeLimit > 0 {
@@ -176,7 +175,8 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 // ezfyRecruitLimitOf 读全局默认次数（settings 表，管理端可改）
 //
 // ★ `key` 是 MySQL 保留字，条件必须走结构体/Map 形式让 GORM 加反引号，
-//   直接写 Where("key = ?") 会报语法错。
+//
+//	直接写 Where("key = ?") 会报语法错。
 func ezfyRecruitLimitOf(db *gorm.DB) int {
 	var st model.Setting
 	if err := db.Where(&model.Setting{Key: ezfySettingRecruitFreeLimit}).First(&st).Error; err == nil {
@@ -207,7 +207,7 @@ func (h *EzfyHandler) RecruitUseTicket(c *gin.Context) {
 		return
 	}
 	h.consumeItem(uid, ezfyItemRecruitTicket)
-	resp.OK(c, gin.H{"msg": "已使用招生简章 ×1，军校候选名将已刷新（不占每日次数）"})
+	resp.OK(c, gin.H{"msg": "已使用招生简章 ×1，军校候选名将已刷新（不占每小时次数）"})
 }
 
 const ezfyItemRecruitTicket = 13 // 招生简章
@@ -216,10 +216,16 @@ const ezfyItemRecruitTicket = 13 // 招生简章
 
 // AdminEzfyRecruitLimitGet 读全局默认 + 玩家覆盖列表
 func (h *AdminHandler) AdminEzfyRecruitLimitGet(c *gin.Context) {
+	// 周期模式（1=按天 2=按小时）来自「二战系统配置」，前端据此显示「每日 / 每小时」
+	cycle := 2
+	if ezfyCfg.ready() {
+		cycle = ezfyCfg.limit.RecruitCycleMode
+	}
 	resp.OK(c, gin.H{
-		"global": ezfyRecruitLimitOf(h.DB),
-		"key":    ezfySettingRecruitFreeLimit,
-		"usage":  "玩家覆盖为 0 表示跟随全局默认；玩家次数用完可在军校直接使用招生简章刷新",
+		"global":     ezfyRecruitLimitOf(h.DB),
+		"key":        ezfySettingRecruitFreeLimit,
+		"cycle_mode": cycle,
+		"usage":      "玩家覆盖为 0 表示跟随全局默认；次数按周期重置；玩家次数用完可在军校直接使用招生简章刷新",
 	})
 }
 
@@ -234,10 +240,10 @@ func (h *AdminHandler) AdminEzfyRecruitLimitSet(c *gin.Context) {
 	}
 	h.DB.Clauses(clause.OnConflict{UpdateAll: true}).
 		Create(&model.Setting{Key: ezfySettingRecruitFreeLimit, Value: strconv.Itoa(in.Value)})
-	resp.OK(c, gin.H{"msg": "全局默认军校刷新次数已设为 " + strconv.Itoa(in.Value) + " 次/天"})
+	resp.OK(c, gin.H{"msg": "全局默认军校刷新次数已设为 " + strconv.Itoa(in.Value) + " 次/小时"})
 }
 
-// AdminEzfyRecruitLimitList 玩家覆盖列表（含今日已用次数）
+// AdminEzfyRecruitLimitList 玩家覆盖列表（含本小时已用次数）
 func (h *AdminHandler) AdminEzfyRecruitLimitList(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	word := strings.TrimSpace(c.Query("word"))
@@ -254,7 +260,7 @@ func (h *AdminHandler) AdminEzfyRecruitLimitList(c *gin.Context) {
 	var rows []model.EzfyProfile
 	q.Order("id").Offset(offset).Limit(size).Find(&rows)
 
-	today := time.Now().Format("2006-01-02")
+	cycle := recruitCycleKey()
 	global := ezfyRecruitLimitOf(h.DB)
 	out := make([]gin.H, 0, len(rows))
 	for _, p := range rows {
@@ -264,7 +270,7 @@ func (h *AdminHandler) AdminEzfyRecruitLimitList(c *gin.Context) {
 		if p.RecruitFreeLimit > 0 {
 			limit = p.RecruitFreeLimit
 		}
-		if err := h.DB.Where("user_id = ? AND recruit_date = ?", p.UserID, today).First(&rec).Error; err == nil {
+		if err := h.DB.Where("user_id = ? AND recruit_date = ?", p.UserID, cycle).First(&rec).Error; err == nil {
 			used = rec.RefreshCount
 			left = limit - used
 			if left < 0 {
@@ -275,6 +281,7 @@ func (h *AdminHandler) AdminEzfyRecruitLimitList(c *gin.Context) {
 		var ticket int64
 		h.DB.Model(&model.EzfyItem{}).Where("user_id = ? AND cfg_id = ?", p.UserID, ezfyItemRecruitTicket).
 			Select("COALESCE(SUM(`count`),0)").Scan(&ticket)
+		// 字段名沿用 used_today/left_today 以兼容管理端前端，语义已是「本小时」
 		out = append(out, gin.H{
 			"user_id": p.UserID, "game_uid": p.GameUID, "nickname": p.Nickname,
 			"player_name": name, "home_num": homeNum,
@@ -305,14 +312,14 @@ func (h *AdminHandler) AdminEzfyRecruitLimitSetUser(c *gin.Context) {
 		resp.OK(c, gin.H{"msg": "已改为跟随全局默认次数"})
 		return
 	}
-	resp.OK(c, gin.H{"msg": "已将该玩家的军校刷新次数设为 " + strconv.Itoa(in.Value) + " 次/天"})
+	resp.OK(c, gin.H{"msg": "已将该玩家的军校刷新次数设为 " + strconv.Itoa(in.Value) + " 次/小时"})
 }
 
-// AdminEzfyRecruitLimitReset 重置某玩家今日已用次数
+// AdminEzfyRecruitLimitReset 重置某玩家本小时已用次数
 func (h *AdminHandler) AdminEzfyRecruitLimitReset(c *gin.Context) {
 	uid, _ := strconv.Atoi(c.Param("id"))
-	today := time.Now().Format("2006-01-02")
-	h.DB.Model(&model.EzfyRecruit{}).Where("user_id = ? AND recruit_date = ?", uid, today).
+	cycle := recruitCycleKey()
+	h.DB.Model(&model.EzfyRecruit{}).Where("user_id = ? AND recruit_date = ?", uid, cycle).
 		Update("refresh_count", 0)
-	resp.OK(c, gin.H{"msg": "已重置该玩家今日的军校刷新次数"})
+	resp.OK(c, gin.H{"msg": "已重置该玩家本小时的军校刷新次数"})
 }

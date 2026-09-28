@@ -319,6 +319,8 @@ type EzfyCfgLimit struct {
 	//   海野采集产出在本公式得出后（陆海系数之前）再整体 × 本系数，让海城周边野地采集更划算。
 	//   默认 1.5（海野基础陆海系数 3×1.5=4.5，比同级陆野 4 更高）；1 = 跟陆野拉平；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1.5。
 	GatherSeaMult float64 `gorm:"default:1.5;comment:海野采集系数" json:"gather_sea_mult"`
+	// ★ 2026-09-28 用户要求：军校刷新周期可在二战系统配置切换按天/按小时（默认按小时）。
+	RecruitCycleMode int `gorm:"default:2;comment:军校刷新周期(1=按天 2=按小时)" json:"recruit_cycle_mode"`
 
 	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。
@@ -998,7 +1000,8 @@ type EzfyGift struct {
 func (EzfyGift) TableName() string { return "ezfy_gift" }
 
 // EzfyTreasureSign 宝物签到记录：独立于每日签到的宝物日签到。
-//   7 天一轮，逢第 5/6/7 天多给宝物（懒人不采集也能攒晋升宝物）。
+//
+//	7 天一轮，逢第 5/6/7 天多给宝物（懒人不采集也能攒晋升宝物）。
 type EzfyTreasureSign struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserId    uint      `gorm:"uniqueIndex:uk_trs_user_date,priority:1;comment:用户ID" json:"user_id"`
@@ -1484,11 +1487,14 @@ func EzfySlotCanon(s string) string {
 	return s
 }
 
-// EzfyRecruit 军校每日候选名将 / 刷新次数（每日 0 点重置，限刷 5 次）
+// ★ 2026-09-28 用户要求：军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
+//
+//	RecruitDate 存的是**小时周期 key**（time.Now().Format("2006010215")，10 位 YmdH，装得进 varchar(10)），
+//	整点窗口变化即视为新周期 → (user_id, recruit_date) 唯一索引天然按小时切分，无需扩列迁移。
 type EzfyRecruit struct {
 	ID           uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserId       uint      `gorm:"uniqueIndex:uk_role_date;comment:用户ID" json:"user_id"`
-	RecruitDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_role_date;comment:招募日期" json:"recruit_date"`
+	RecruitDate  string    `gorm:"type:varchar(10);uniqueIndex:uk_role_date;comment:招募周期(2006010215整点窗)" json:"recruit_date"`
 	RefreshCount int       `gorm:"comment:Refresh数量" json:"refresh_count"`
 	Candidates   string    `gorm:"type:text;comment:JSON: 随机军官候选" json:"candidates"` // JSON: 随机军官候选
 	CreatedAt    time.Time `gorm:"comment:创建时间" json:"created_at"`
