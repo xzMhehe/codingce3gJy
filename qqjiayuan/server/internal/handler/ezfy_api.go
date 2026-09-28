@@ -2429,6 +2429,28 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			gatherWl[int64(wp.ID)] = wp
 		}
 	}
+	// ★ 2026-09-28 用户要求「军队动态/驻军要显示这支部队是从哪个城出来的」：
+	//   订单表只存了 city_id（军队所在城 id），**没有下发城名/坐标**，前端看不出番号。
+	//   这里一次批量查出来（禁止在下面循环里逐条查 = N+1，1 核服务器红线），
+	//   下发 from_city / from_x / from_y 三个字段。
+	fromCity := map[int64]*model.EzfyCity{}
+	var fromCityIDs []int64
+	seenFrom := map[int64]bool{}
+	for i := range orders {
+		cid := orders[i].CityId
+		if cid > 0 && !seenFrom[cid] {
+			seenFrom[cid] = true
+			fromCityIDs = append(fromCityIDs, cid)
+		}
+	}
+	if len(fromCityIDs) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Where("id IN ?", fromCityIDs).Find(&cs)
+		for i := range cs {
+			cp := &cs[i]
+			fromCity[int64(cp.ID)] = cp
+		}
+	}
 	for i := range orders {
 		o := &orders[i]
 		timeLabel, timeText := "", ""
@@ -2502,10 +2524,16 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		if o.OrderType == 2 || o.OrderType == 3 {
 			actType = h.ezfyActTargetType(o.TargetX, o.TargetY)
 		}
+		// ★ 2026-09-28 出发地(军队所属城)：军情 → 驻军/军队动态 顶部显示「起点：城名(城x,城y)」
+		fromName, fromX, fromY := "", 0, 0
+		if cp := fromCity[int64(o.CityId)]; cp != nil {
+			fromName, fromX, fromY = cp.Name, cp.X, cp.Y
+		}
 		views = append(views, gin.H{
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 			"target_type": o.TargetType, "target_name": h.ezfyTargetName(o),
 			"target_x": o.TargetX, "target_y": o.TargetY, "act_type": actType,
+			"from_city": fromName, "from_x": fromX, "from_y": fromY,
 			"status": o.Status, "status_name": statusName,
 			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
 			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,

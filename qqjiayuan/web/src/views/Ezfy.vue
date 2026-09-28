@@ -332,6 +332,8 @@
           <template v-if="reportTab === 1">
             <div class="old-line" v-for="o in dynMarchPaged" :key="'dy' + o.id">
               命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="openOrder(o)">查看</a><br/>
+              <!-- ★ 2026-09-28 同驻军：外出部队也标出「哪个城出来的」(敌军来袭的防守视角无此字段, 故 v-if) -->
+              <span v-if="o.from_city">起点：{{ o.from_city }}({{ o.from_x }},{{ o.from_y }})<br/></span>
               目标：<span v-if="o.act_type" class="red">[{{ actTag(o.act_type) }}]</span>{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
               <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
               状态：{{ o.status_name }}
@@ -342,8 +344,9 @@
               <br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || o.time_text }}<br/>
+              <!-- ★ carry 现在只用于「运输」在途物资（采集资源已改为收获即入起点城市，不走 carry） -->
               <span v-if="o.carry_total > 0" class="green">
-                待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
+                在途物资：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
                 （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
               </span>
               <br/>
@@ -360,28 +363,28 @@
           <!-- ===== 驻军: 到达野地后常驻采集的部队(满一个采集周期结算一期) ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源+宝物(宝物直接进背包, 每期至少1件); 提前召回只有按驻守时长折算的资源, 无宝物; 资源需「召回」返航到达后入库。</span><br/>
+              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源直接入库到出发城市 + 宝物(宝物直接进背包, 每期至少1件); 不满一个采集周期只有按驻守时长折算的资源、无宝物; 负重装满会自动停止采集。</span><br/>
               <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
             </div>
             <div class="old-line" v-for="o in dynStationPaged" :key="'st' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
+              <!-- ★ 2026-09-28 用户要求：显示这支部队是「哪个城出来的」(辨识番号) -->
+              <span v-if="o.from_city">起点：{{ o.from_city }}({{ o.from_x }},{{ o.from_y }})<br/></span>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}
               <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span>
               <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a></span><br/>
-              <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
+              <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
+                   规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。 -->
               <template v-if="o.status === 1 && o.arrive_time">
-                <span class="green">采集资源：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span>
-                <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}，需召回返航后入库）</span>
+                <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span>
+                <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
+                <span v-if="o._lg.full" class="red">负重已满, 将自动停止采集</span>
               </template>
-              <span v-else-if="o.carry_total > 0" class="green">
-                待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
-                （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
-              </span>
-              <span v-else class="gray">待带回：暂无</span>
+              <span v-else class="gray">本期已采：暂无(未在采集中)</span>
               <br/>
               --------------------
             </div>
@@ -1683,15 +1686,13 @@
             <br/>
             军官：{{ o.officer || '无' }}<br/>
             {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}<br/>
-            <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
+            <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
+                 规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。 -->
             <template v-if="o.status === 1 && o.arrive_time">
-              <span class="green">采集资源：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
-              <span class="gray">总 {{ fmtN(o._lg.total) }}（负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}，需召回返航后入库）</span>
+              <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
+              <span class="gray">总 {{ fmtN(o._lg.total) }}（负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
+              <span v-if="o._lg.full" class="red">负重已满, 将自动停止采集</span><br/>
             </template>
-            <span v-else-if="o.carry_total > 0" class="green">
-              待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
-              （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
-            </span>
             <br/>
             <span v-if="o.status === 0 || o.status === 1">
               <a href="javascript:;" class="red" @click="doRecall(o)">[取消]</a><br/>
@@ -1750,8 +1751,16 @@
                 <!-- ★ 2026-09-28 平原/沿海平原可建城、采集无宝物, 附属野地列表不再提供采集, 仅保留[放弃] -->
                 <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" @click="openWildGather(w)">[采集]</a>
                 <a v-else-if="w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="startCollect(w.idle_order_id)">[开始采集]</a>
+                <!-- ★ 2026-09-28 用户反馈「采集中只能[放弃]，没法[停止]」：
+                     后端现在会下发 gather_order_id（见 ezfy.go 的 wildViews），
+                     这里据此构造一个最小的订单对象喂给 stopCollect（它只用到 id/target_* 拼提示文案）。 -->
+                <a v-if="w.status === 1 && w.gather_order_id" class="red" href="javascript:;"
+                   @click="stopCollect(wildOrderArg(w))">[停止]</a>
                 <span v-if="w.status === 1" class="gray">采集中</span>
-                <a class="red" href="javascript:;" @click="doAbandon(w)">[放弃]</a>
+                <!-- ★ 2026-09-28 用户反馈「采集中 别展示 放弃按钮」：
+                     采集中(status=1)时操作列只留 [停止]；[放弃] 会让整块野地连同采集部队一起处理掉，
+                     应当先停止采集再放弃，故采集中隐藏。 -->
+                <a v-if="w.status !== 1" class="red" href="javascript:;" @click="doAbandon(w)">[放弃]</a>
               </td>
             </tr>
           </table>
@@ -3958,6 +3967,15 @@ export default {
       // ★ 2026-09-28 「军队动态/出征队列」倒计时自动刷新：拉取 dynamics 时的本地时间戳，
       //   战斗中部队的本回合剩余是「相对剩余」，用它当基点往前推算。
       _dynAt: 0,
+      // ★ 2026-09-28 「倒计时归零 → 自动重拉」的三个运行态标记（详见 checkDueRefresh）：
+      //   _dynRefreshing  : 本轮重拉是否还在进行（防同波多次触发）
+      //   _dynRefreshedAt : 上次重拉的本地时刻（3 秒节流）
+      //   _dynFired       : 已触发过的「订单id@到点时刻」，防后端结算失败时每 3 秒无限重拉
+      //     ★ 用 Object.create(null) 而不是 {} —— 它只是个去重集合，不需要响应式，
+      //       用 {} 会让 Vue 递归侦听每个动态加的 key，纯属浪费。
+      _dynRefreshing: false,
+      _dynRefreshedAt: 0,
+      _dynFired: Object.create(null),
       resNames: RES_NAMES,
       // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -4921,6 +4939,75 @@ export default {
       const d = new Date()
       const p = n => (n < 10 ? '0' + n : '' + n)
       this.nowText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
+      // ★ 2026-09-28 修复「抵达时间归零后卡在 0 秒不动」：
+      //   后端是**懒结算**（请求进来才按时间补算），前端那个倒计时只是本地推算，
+      //   归零后如果没人去请求接口，状态就永远停在「抵达时间: 0秒」——
+      //   看起来像卡死，实际是少了一次「到点了，去拉最新状态」的触发。
+      //   这里每秒检查一次：只要**有部队的倒计时归零了**且当前在会走时间的页面上，
+      //   就主动重拉一次军队动态（后端顺手把该结算的结算掉）。
+      this.checkDueRefresh()
+    },
+    // ★ 倒计时归零 → 自动重拉军队动态（见 tickClock 里的说明）
+    //   为什么不用固定间隔轮询：大部分时间没有到点的部队，固定轮询纯浪费请求；
+    //   触发式只在「真的有部队到点」时打一次接口，1 核 1G 的线上更友好。
+    //   生效页面：军情(军队动态/驻军/军情警讯/战斗报告)、出征队列、战报详情。
+    //   节流：最少间隔 3 秒拉一次，避免多个部队同时到点时连环打接口。
+    //   ★ 去重：同一订单到点只补拉一次（记在 _dynFired 里）——
+    //     否则后端万一结算失败、仍返回 status=0 + 过去的 arrive_time，
+    //     就会每 3 秒无限打接口（1 核 1G 上这属于事故级浪费）。
+    checkDueRefresh () {
+      const onDynPage = this.cur === 'reports' || this.cur === 'reportview' || this.cur === 'orders'
+      if (!onDynPage || !this.dynamics || !this.dynamics.length) return
+      const now = Date.now()
+      // 上一轮刷新还没结束 / 距上次刷新不足 3 秒 → 跳过
+      if (this._dynRefreshing) return
+      if (this._dynRefreshedAt && now - this._dynRefreshedAt < 3000) return
+      if (!this._dynFired) this._dynFired = Object.create(null)
+      // 长时间挂机会往 _dynFired 里累积 key（每条订单每一轮倒计时一个），
+      // 超过 200 个就整体清空 —— 已完成的订单不会再出现在 dynamics 里，
+      // 清掉不会导致「重复触发」，只是给还在跑的订单重新计一次数。
+      const firedKeys = Object.keys(this._dynFired)
+      if (firedKeys.length > 200) this._dynFired = Object.create(null)
+      // 只认「还在走」的倒计时：出征(0)看 arrive_time，返航(2)看 return_time。
+      // 战斗中(5)的回合由 battleTimer 自己驱动，不在这里管。
+      // 用「订单id+到点时刻」当 key —— 这样同一订单后续新一轮倒计时（重新出征/返航）
+      // 能再次触发，而同一轮到点只触发一次。
+      let needRes = false
+      const due = this.dynamics.some(o => {
+        if (!o) return false
+        let at = 0
+        if (o.status === 0 && o.arrive_time > 0) at = o.arrive_time
+        else if (o.status === 2 && o.return_time > 0) at = o.return_time
+        if (!at || at > now) return false
+        const key = o.id + '@' + at
+        if (this._dynFired[key]) return false
+        this._dynFired[key] = 1
+        // 返航到达 = 待带回资源入库 → 资源栏要刷新；
+        // 出征抵达本身不改资源（只是状态变成驻守/进入战斗），不必刷。
+        if (o.status === 2) needRes = true
+        return true
+      })
+      if (!due) return
+      this._dynRefreshing = true
+      this._dynRefreshedAt = now
+      this.loadDynamics()
+      // ★ 只有「返航到达」这种真的会改动城市资源的情况才补一次资源刷新。
+      //   注意这里**不调整个 load()** —— load() 里会连带 loadRank()，太重；
+      //   资源栏只需要 /view 的增量，走下面这个轻量分支。
+      if (needRes) this.refreshRes()
+      // loadDynamics 是 promise 链，没有返回值可 await；用一个短定时器放开闸门，
+      // 保证同一波到点只触发一次（下一个 tick 不会重复打）。
+      setTimeout(() => { this._dynRefreshing = false }, 1500)
+    },
+    // ★ 轻量刷新头部资源栏（不触发 loadRank 等重查询）——返航物资入库后调用
+    refreshRes () {
+      api.get('/games/ezfy/view').then(r => {
+        if (r.code === 0) {
+          this.profile = r.data.profile
+          this.city = r.data.city
+          this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_prod || {})
+        }
+      })
     },
     // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
     // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
@@ -5694,9 +5781,10 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 一键收获：满一个采集周期结算一期(宝物直接进背包), 资源装进部队待带回, **不召回**
+    // ★ 一键收获：对每支采集中部队结算产出(资源直接入起点城市, 宝物进背包), 并停止采集原地待命
+    //   —— 与单支 [停止] 同一个功能，只是一个批量一个单个。
     async doHarvestAll () {
-      if (!await this.ask('确定收获所有驻守采集部队吗？（每满一个采集周期结算一期，宝物直接进背包，资源要「召回」才会运回城里）')) return
+      if (!await this.ask('确定收获所有采集中的部队吗？（每满一个采集周期结算一期，资源直接入库到部队出发的城市，宝物直接进背包；收获后部队停止采集、原地待命）')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -5705,9 +5793,9 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 一键召回：先结算已满期产出, 部队返航, 到达时把待带回资源运回城里
+    // ★ 一键召回：先结算未入城产出, 部队返航(资源已在收获/停止时入城, 召回只是撤兵)
     async doRecallAll () {
-      if (!await this.ask('确定召回所有驻守采集部队吗？（满一个采集周期的结算资源+宝物：宝物进背包；不满一个采集周期的按驻守时长折算资源、无宝物；部队返航到达后资源才入库）')) return
+      if (!await this.ask('确定召回所有驻守部队吗？（返航前会先结算未入城的产出：满一个采集周期给资源+宝物，不满一个采集周期只按驻守时长折算资源、无宝物；资源直接入库到出发城市，部队返航）')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -5716,10 +5804,11 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ★ 单支采集部队停止采集(原地待命): 满一个采集周期结算资源+宝物, 不满只结算按采集时长的资源(无宝物); 部队不回城
+    // ★ 单支采集部队「停止采集」(= 单支收获): 满一期结算资源+宝物, 不满只结算按采集时长的资源(无宝物);
+    //   资源直接入起点城市; 部队原地待命不回城。
     async stopCollect (o) {
       const name = o.target_name + '(' + (o.target_x || 0) + ',' + (o.target_y || 0) + ')'
-      if (!await this.ask('确定停止「' + name + '」采集吗？（部队停在原地待命；满一个采集周期的结算资源+宝物，不满一个采集周期的只按已采集时长结算资源、无宝物；已采集资源保留在部队，之后可再[采集]继续或[召回]运回城里）')) return
+      if (!await this.ask('确定停止「' + name + '」采集吗？（满一个采集周期的结算资源+宝物，不满一个采集周期的只按已采集时长结算资源、无宝物；资源直接入库到出发城市；部队停在原地待命，之后可再[采集]继续或[召回]撤兵）')) return
       api.post('/games/ezfy/wild/stop-collect', { order_id: o.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -6452,6 +6541,16 @@ export default {
     },
     doAbandon (w) {
       api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地'))    },
+    // ★ 2026-09-28 「附属野地」列表里 [停止] 用：野地记录 → stopCollect 需要的最小订单对象
+    //   stopCollect 只用 id 发请求、用 target_name/target_x/target_y 拼提示文案，故这里够了。
+    wildOrderArg (w) {
+      return {
+        id: w.gather_order_id,
+        target_name: w.terrain === 8 ? '海底森林' : (w.terrain_name || '野地'),
+        target_x: w.x,
+        target_y: w.y
+      }
+    },
     async doOccupy (op, o) {
       if (!await this.ask(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
@@ -6549,8 +6648,9 @@ export default {
     },
     // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
     //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
-    //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计到部队的资源」。
-    //   未满一期也按比例折算，让数字一直在涨；负重封顶取 carry_cap。
+    //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计产出的资源」。
+    //   ★ 2026-09-28 规则修正：产出**直接入起点城市**、不再有「超负重丢弃」，
+    //     所以这里不再按 carry_cap 折算封顶；cap 只用于算「还能收多少」的提示。
     liveGather (o) {
       const g = o && o.gather
       if (!g || !g.period_ms) return null
@@ -6558,24 +6658,17 @@ export default {
       const elapsed = Math.max(0, now - g.start_ms) // 毫秒
       if (elapsed <= 0) return null
       const frac = elapsed / g.period_ms
-      const mk = v => Math.floor(((v || 0) * frac))
+      const mk = v => Math.floor((v || 0) * frac)
       const food = mk(g.per_food)
       const steel = mk(g.per_steel)
       const oil = mk(g.per_oil)
       const rare = mk(g.per_rare)
       const gold = 0
-      let total = food + steel + oil + rare
+      const total = food + steel + oil + rare
       const cap = o.carry_cap || 0
-      // 超负重丢弃，与后端结算口径一致
-      if (cap > 0 && total > cap) {
-        const scale = cap / total
-        const f = Math.floor(food * scale)
-        const s = Math.floor(steel * scale)
-        const oi = Math.floor(oil * scale)
-        const ra = Math.floor(rare * scale)
-        return { timeText: this.durText(elapsed / 1000), food: f, steel: s, oil: oi, rare: ra, gold: 0, total: f + s + oi + ra, cap }
-      }
-      return { timeText: this.durText(elapsed / 1000), food, steel, oil, rare, gold, total, cap }
+      // 装满负重会自动停止采集（与后端 ezfyCarryFull 口径一致）
+      const full = cap > 0 && total >= cap
+      return { timeText: this.durText(elapsed / 1000), food, steel, oil, rare, gold, total, cap, full }
     },
     // ★ 2026-09-28 给单条军队动态附上实时采集视图 _lg（有 gather 才算采集中）；复用来避免模板算两遍。
     withLg (o) {
@@ -6588,6 +6681,12 @@ export default {
     //   前端每秒(由 gatherNow 驱动)本地重算剩余。
     //   覆盖三种会走的倒计时：status=0 抵达(arrive_time) / status=2 返回(return_time) /
     //   战斗中(5) 本回合剩余(battle_left_ms 基点)。驻守采集累计 / 空闲待机 / 等待指挥不动。
+    //
+    // ★★ 归零后必须「让位」给后端，否则会卡在 0 秒（2026-09-28 用户报的 bug）：
+    //   到点之后本地推算就失效了（后端该结算了），这时如果还继续返回「0秒」，
+    //   就会**盖住**后端刚下发的新状态文案（如「驻守(空闲) / 待机」），用户永远看到 0 秒。
+    //   处理：过了到点时刻再走一个 2 秒缓冲（等自动重拉把新数据换回来）就返回 ''，
+    //   让模板回落到 o.time_text —— 也就是后端说了算。
     liveLeft (o) {
       if (!o) return ''
       const now = this.gatherNow || Date.now()
@@ -6599,11 +6698,15 @@ export default {
       }
       // 出征中：距抵达还差多久
       if (o.status === 0 && o.arrive_time > 0) {
-        return this.durText((o.arrive_time - now) / 1000)
+        const left = o.arrive_time - now
+        if (left <= -2000) return ''   // 早过了 2 秒还没换状态 → 交回后端文案
+        return this.durText(left / 1000)
       }
       // 返航中：距回城还差多久
       if (o.status === 2 && o.return_time > 0) {
-        return this.durText((o.return_time - now) / 1000)
+        const left = o.return_time - now
+        if (left <= -2000) return ''
+        return this.durText(left / 1000)
       }
       return ''
     },

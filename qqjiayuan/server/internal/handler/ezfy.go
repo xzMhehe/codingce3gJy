@@ -2768,13 +2768,16 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
 	// ★ 采集中/空闲驻守状态按该野地上的「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
 	//   ★ 2026-09-24 用户规则: 到达后**空闲驻守**(arrive_time=0, 不算采集中), 手工点[采集]才进入采集。
-	var gatherIds []int64
-	h.DB.Model(&model.EzfyOrder{}).
-		Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
-		Pluck("target_id", &gatherIds)
-	gathering := map[int64]bool{}
-	for _, id := range gatherIds {
-		gathering[id] = true
+	//   ★ 2026-09-28 用户反馈「附属野地里采集中只能[放弃]，没法[停止]」：
+	//     原来只收集了 target_id 做「是否采集中」的布尔判定，**没有把订单 id 下发**，
+	//     前端拿不到 order_id 就调不了 /wild/stop-collect → 操作列只能显示[放弃]。
+	//     这里连订单 id 一起收(用 map 而不是 slice)，前端就能对采集中那行出[停止]。
+	gatherOrderByWild := map[int64]uint{}
+	var gatherOrders []model.EzfyOrder
+	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
+		Find(&gatherOrders)
+	for _, o := range gatherOrders {
+		gatherOrderByWild[o.TargetId] = o.ID
 	}
 	// 空闲驻军: arrive_time=0 的驻守采集订单 → 野地列表显示「驻守(空闲)」+[开始采集]
 	var idleOrders []model.EzfyOrder
@@ -2788,15 +2791,18 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	for _, w := range wildlands {
 		sts := w.Status
 		idleOrderId := uint(0)
-		if gathering[int64(w.ID)] {
+		gatherOrderId := uint(0)
+		if oid, ok := gatherOrderByWild[int64(w.ID)]; ok {
 			sts = 1
+			gatherOrderId = oid // 采集中：下发给前端，用于 [停止]
 		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
 			sts = 0
 			idleOrderId = oid
 		}
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
 			"wild_type": w.WildType, "terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
-			"status": sts, "continent": ezfyRegionName(w.X, w.Y), "idle_order_id": idleOrderId})
+			"status": sts, "continent": ezfyRegionName(w.X, w.Y),
+			"idle_order_id": idleOrderId, "gather_order_id": gatherOrderId})
 	}
 
 	var marching, occupying int64

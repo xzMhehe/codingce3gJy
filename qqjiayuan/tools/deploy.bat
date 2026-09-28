@@ -7,7 +7,7 @@ rem ============================================================================
 rem  deploy.bat —— 一键推送并部署「家园社区」到线上 Linux 服务器（Windows 版）
 rem
 rem  与 tools/deploy.sh 等价，逻辑与步骤完全一致，给 Win11 / Win2012 用。
-rem  依赖：node（tools/ssh-run.js 会调用 ssh/scp）+ curl(可选，仅本地预检用)
+rem  依赖：node（tools/ssh-run.js 会调用 ssh/scp）
 rem
 rem  用法（在本目录或项目根目录双击/命令行执行都行）：
 rem    tools\deploy.bat                     默认用 ..\Linuxbushu.tar.gz 全量部署
@@ -22,7 +22,7 @@ rem        set SSH_PASS=xxx && tools\deploy.bat
 rem
 rem  部署步骤（与线上既有约定一致）：
 rem    0. 预检   本地包存在 / 本地 md5 / 远端连通 / 磁盘余量 / 当前服务状态
-rem    1. 备份   打包当前 /opt/Linuxbushu -> /opt/Linuxbushu.bak.<MMDD-HHMM>.tar.gz
+rem    1. 备份   打包当前 /opt/Linuxbushu -> /opt/Linuxbushu.bak.<随机后缀>.tar.gz
 rem    2. 上传   scp 到 /opt/Linuxbushu.tar.gz，md5 双向校验（不一致立即中止）
 rem    3. 停服   chmod +x *.sh && ./stop.sh（必须先停再解压，否则 Text file busy）
 rem    4. 解压   tar -xzf ... --exclude=server/config.yaml（包里是模板配置）
@@ -35,6 +35,30 @@ rem    chmod +x /opt/Linuxbushu/*.sh; /opt/Linuxbushu/stop.sh
 rem    rm -rf /opt/Linuxbushu
 rem    tar -xzf /opt/Linuxbushu.bak.<时间戳>.tar.gz -C /opt
 rem    chmod +x /opt/Linuxbushu/server/*; /opt/Linuxbushu/start.sh
+rem
+rem  ★★ 维护须知（2026-09-28 重写，踩过的两个坑，改之前先读）：
+rem  【坑1】if / else 嵌套块里的**每一行都不能用裸小括号**：
+rem         `(跳过)` `XX 解压失败(线上没在跑)` 这种写法里的 `)` 会被 cmd 当成
+rem         「块结束」，把整个 if 块提前截断 → 后面每一行的 if/else 全部错位 →
+rem         cmd 报 "was unexpected at this time." 然后**整个脚本什么都不做就退出**。
+rem         块内必须写成 ^( ^) 转义。本脚本原来就是死在这里：深度累加后结尾还剩 3 个
+rem         未闭合的 `(`，连后面的 :rsh / :rsh_read / :usage 子过程都被困在块里。
+rem  【坑2】同一 if/else 块里**不能对同一个变量赋值并立刻用 !var! 取值**：
+rem         `for ... do ( if not defined RH_OUT set "RH_OUT=%%i" )` —— 整个 for 块在
+rem         执行前就被一次性展开，`if not defined RH_OUT` 永远看到的是块外旧值，
+rem         于是循环里每一次都会赋值，RH_OUT 最终等于**最后一行输出**而不是第一行。
+rem         rsh_read 要「取第一行」就绝不能放进 for 块，本脚本改用
+rem         `set /p RH_OUT=<文件` 直接读首行（无需延迟展开，也没有块展开问题）。
+rem  【坑3】`quit` 这类词不是 cmd 命令/标签，会被当成外部程序去找并报错 → 统一用 goto :eof。
+rem  【坑4】★★ 输出里**禁止写 `[!]`**（还有其他 `[!...]` 形式）：
+rem         本脚本的 echo 输出会被调用方 PS 控制台解析，而 PowerShell 把 `[!]` 当作
+rem         **通配符字符集**（`[!abc]` = 不匹配 a/b/c）。于是它把方括号吃掉，
+rem         右侧紧邻的字符被当成命令名去执行，报出一串莫名其妙的东西：
+rem           '.js' is not recognized as an internal or external command
+rem           'eploy.bat' is not recognized as an internal or external command
+rem         （`[!]` 前后的工具名/脚本名被截断，看起来像路径 bug，其实跟路径无关）。
+rem         统一改用 `WARN:` —— 纯字母方括号，PS 不当通配符，任何终端都安全。
+rem         ★ 同理别在输出里写 `[a-z]` `[0-9]` 这种范围形式。
 rem ============================================================================
 
 set "SCRIPT_DIR=%~dp0"
@@ -78,15 +102,16 @@ if not exist "%SSH_RUN%" (
 )
 
 echo ==^> 部署目标  %SSH_USER%@%SSH_HOST%:%REMOTE_DIR%
-if "%DRY_RUN%"=="1" echo   [!] DRY-RUN 模式: 只做预检, 不会改任何东西
+if "%DRY_RUN%"=="1" echo   WARN: DRY-RUN 模式: 只做预检, 不会改任何东西
 
 rem =========================================================
 rem 0. 预检
 rem =========================================================
 echo ==^> 0/7 预检
 
+rem ★ 这里的括号必须 ^( ^) 转义：它在 if( ) 块内，裸括号会把块提前截断（见文件头「坑1」）
 if "%SSH_PASS%"=="" (
-  set /p "SSH_PASS=SSH 密码 (%SSH_USER%@%SSH_HOST%, 直接回车用内置默认值): "
+  set /p "SSH_PASS=SSH 密码 ^(%SSH_USER%@%SSH_HOST%, 直接回车用内置默认值^): "
 )
 
 if not exist "%PKG%" (
@@ -96,11 +121,11 @@ if not exist "%PKG%" (
 for %%A in ("%PKG%") do set "LOCAL_SIZE=%%~zA"
 
 set "LOCAL_MD5="
-for /f "skip=1 delims=" %%i in ('certutil -hashfile "%PKG%" MD5') do (
+for /f "skip=1 delims=" %%i in ('certutil -hashfile "%PKG%" MD5 2^>nul') do (
   if not defined LOCAL_MD5 set "LOCAL_MD5=%%i"
 )
 set "LOCAL_MD5=%LOCAL_MD5: =%"
-if "!LOCAL_MD5!"=="" (
+if "%LOCAL_MD5%"=="" (
   echo   XX 算不出本地 md5（certutil 失败）
   exit /b 1
 )
@@ -108,7 +133,7 @@ if "!LOCAL_MD5!"=="" (
 set /a LOCAL_MB=%LOCAL_SIZE%/1048576
 echo   OK 部署包 %PKG% 约 %LOCAL_MB% MB  md5=%LOCAL_MD5%
 
-call :rsh_read "echo ping" 
+call :rsh_read "echo ping"
 if not "%RH_OUT%"=="ping" (
   echo   XX SSH 连不上 %SSH_USER%@%SSH_HOST% （密码错? 端口不通?）
   exit /b 1
@@ -130,32 +155,28 @@ if %AVAIL_MB% LSS %NEED_MB% (
 echo   OK /opt 剩余 %AVAIL_MB%MB ^(需约 %NEED_MB%MB^)
 
 call :rsh_read "test -d '%REMOTE_DIR%' && echo yes || echo no"
-if "%RH_OUT%"=="yes" (
+set "HAS_DIR=%RH_OUT%"
+if "%HAS_DIR%"=="yes" (
   call :rsh_read "cat %REMOTE_DIR%/logs/server.pid 2>/dev/null"
-  set "OLD_PID=!RH_OUT!"
+  set "OLD_PID=%RH_OUT%"
   call :rsh_read "ss -lntp 2>/dev/null | grep -c ':8080 ' || true"
-  echo   OK 线上已有部署, pid=!OLD_PID!（空=没在跑）, 8080 监听数=!RH_OUT!
+  echo   OK 线上已有部署, pid=%OLD_PID%^(空=没在跑^), 8080 监听数=%RH_OUT%
 ) else (
-  echo   [!] 线上没有 %REMOTE_DIR% —— 这是全新部署^(没有旧配置可保留^)
+  echo   WARN: 线上没有 %REMOTE_DIR% —— 这是全新部署^(没有旧配置可保留^)
 )
 
-if "%NO_RESTART%"=="1" echo   [!] --no-restart: 只上传 + 校验, 到此为止
+if "%NO_RESTART%"=="1" echo   WARN: --no-restart: 只上传 + 校验, 到此为止
 if "%DRY_RUN%"=="1" echo ==^> DRY-RUN 结束, 下面是完整计划:
 
 rem ---------- 1. 备份 ----------
 set "BAK_CONFIG="
 set "BAK_TGZ="
-for /f "tokens=1-4 delims=/-. " %%a in ("%DATE% %TIME%") do set "TS=%%a%%b-%%c%%d"
-rem 上面拿不到时退回随机后缀，保证备份名不重（Windows 区域设置差异很大）
-if "%TS%"=="" set "TS=%RANDOM%"
-
-call :rsh_read "test -d '%REMOTE_DIR%' && echo yes || echo no"
-set "HAS_DIR=%RH_OUT%"
+call :mktimestamp
 
 if "%NO_RESTART%"=="0" if "%HAS_DIR%"=="yes" (
   echo ==^> 1/7 备份线上现有部署
   if "%NO_BACKUP%"=="1" (
-    echo   [!] --no-backup: 跳过整包备份, 只留 server/config.yaml
+    echo   WARN: --no-backup: 跳过整包备份, 只留 server/config.yaml
     call :rsh "cp -a %REMOTE_DIR%/server/config.yaml %REMOTE_DIR%/server/config.yaml.bak.%TS%"
   ) else (
     rem ★ 必须排除 logs/: 服务正在写 server.log, 不排除 tar 会报 file changed as we read it
@@ -172,7 +193,7 @@ if "%NO_RESTART%"=="0" if "%HAS_DIR%"=="yes" (
 rem ---------- 2. 上传 + 校验 ----------
 echo ==^> 2/7 上传部署包
 if "%DRY_RUN%"=="1" (
-  echo      [dry-run] scp %PKG% -^> %SSH_USER%@%SSH_HOST%:%REMOTE_TGZ%
+  echo      dry-run: scp %PKG% -^> %SSH_USER%@%SSH_HOST%:%REMOTE_TGZ%
 ) else (
   node "%SSH_RUN%" put "%PKG%" "%REMOTE_TGZ%"
   if errorlevel 1 (
@@ -180,18 +201,18 @@ if "%DRY_RUN%"=="1" (
     goto fail_clean
   )
   call :rsh_read "md5sum '%REMOTE_TGZ%' | awk '{print $1}'"
-  set "REMOTE_MD5=!RH_OUT!"
+  set "REMOTE_MD5=%RH_OUT%"
   call :rsh_read "stat -c %%s '%REMOTE_TGZ%'"
-  set "REMOTE_SIZE=!RH_OUT!"
-  if not "!REMOTE_MD5!"=="!LOCAL_MD5!" (
-    echo   XX md5 不一致! 本地=!LOCAL_MD5! 远端=!REMOTE_MD5! ^(线上未改动^)
+  set "REMOTE_SIZE=%RH_OUT%"
+  if not "%REMOTE_MD5%"=="%LOCAL_MD5%" (
+    echo   XX md5 不一致! 本地=%LOCAL_MD5% 远端=%REMOTE_MD5% ^(线上未改动^)
     goto fail_clean
   )
-  if not "!REMOTE_SIZE!"=="!LOCAL_SIZE!" (
-    echo   XX 字节数不一致! 本地=!LOCAL_SIZE! 远端=!REMOTE_SIZE! ^(线上未改动^)
+  if not "%REMOTE_SIZE%"=="%LOCAL_SIZE%" (
+    echo   XX 字节数不一致! 本地=%LOCAL_SIZE% 远端=%REMOTE_SIZE% ^(线上未改动^)
     goto fail_clean
   )
-  echo   OK md5 + 字节数双向校验一致 ^(!REMOTE_MD5!^)
+  echo   OK md5 + 字节数双向校验一致 ^(%REMOTE_MD5%^)
 )
 
 if "%NO_RESTART%"=="1" (
@@ -209,12 +230,12 @@ rem ---------- 4. 解压 ----------
 echo ==^> 4/7 解压 ^(排除模板 config.yaml^)
 rem ★ 解压会把 tar 里的权限位盖回去(macOS 打包的 *.sh 常是 644), 解压完必须再补 chmod
 call :rsh "tar -xzf '%REMOTE_TGZ%' --exclude='Linuxbushu/server/config.yaml' -C /opt && echo 'extract ok'"
-if not "!RH_RC!"=="0" (
-  echo   XX 解压失败 —— 线上现在没在跑, 用备份回滚: tar -xzf !BAK_TGZ! -C /opt
+if not "%RH_RC%"=="0" (
+  echo   XX 解压失败 —— 线上现在没在跑, 用备份回滚: tar -xzf %BAK_TGZ% -C /opt
   goto fail_clean
 )
 call :rsh "chmod +x %REMOTE_DIR%/*.sh && echo 'chmod sh ok'"
-if not "!RH_RC!"=="0" (
+if not "%RH_RC%"=="0" (
   echo   XX chmod *.sh 失败
   goto fail_clean
 )
@@ -222,26 +243,31 @@ echo   OK 解压完成 + 补回 *.sh 执行位
 
 rem ---------- 5. 恢复配置 ----------
 echo ==^> 5/7 恢复真实配置
-if not "%BAK_CONFIG%"=="" (
-  call :rsh "cp -a '%BAK_CONFIG%' %REMOTE_DIR%/server/config.yaml && echo 'restored from backup'"
-  echo   OK 已用备份的真实配置覆盖模板
-) else (
-  call :rsh_read "test -f '%CONFIG_SEED%' && echo yes || echo no"
-  if "!RH_OUT!"=="yes" (
-    call :rsh "cp -a '%CONFIG_SEED%' %REMOTE_DIR%/server/config.yaml"
-    echo   OK 已用 %CONFIG_SEED% 覆盖模板
-  ) else (
-    echo   [!] 找不到真实配置! 包里的是模板^(占位密码 + 旧 web_dir^), 服务会起不来
-  )
-)
+if not "%BAK_CONFIG%"=="" goto restore_from_backup
+call :rsh_read "test -f '%CONFIG_SEED%' && echo yes || echo no"
+if "%RH_OUT%"=="yes" goto restore_from_seed
+echo   WARN: 找不到真实配置! 包里的是模板^(占位密码 + 旧 web_dir^), 服务会起不来
+goto after_restore
+
+:restore_from_backup
+call :rsh "cp -a '%BAK_CONFIG%' %REMOTE_DIR%/server/config.yaml && echo 'restored from backup'"
+echo   OK 已用备份的真实配置覆盖模板
+goto after_restore
+
+:restore_from_seed
+call :rsh "cp -a '%CONFIG_SEED%' %REMOTE_DIR%/server/config.yaml"
+echo   OK 已用 %CONFIG_SEED% 覆盖模板
+
+:after_restore
 call :rsh "chown -R root:root %REMOTE_DIR%"
 
 rem ---------- 6. 启动 ----------
 echo ==^> 6/7 启动
 call :rsh "chmod +x %REMOTE_DIR%/*.sh %REMOTE_DIR%/server/server %REMOTE_DIR%/server/dbinit %REMOTE_DIR%/server/ezfymigrate 2>/dev/null; cd %REMOTE_DIR% && ./start.sh"
-if not "!RH_RC!"=="0" (
+if not "%RH_RC%"=="0" (
   echo   XX 启动脚本失败, 看日志: %REMOTE_DIR%/logs/server.log
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
+  echo %RH_OUT%
   goto fail_clean
 )
 
@@ -249,34 +275,37 @@ rem ---------- 7. 验证 ----------
 echo ==^> 7/7 验证
 ping -n 7 127.0.0.1 >nul 2>&1
 call :rsh_read "ss -lntp 2>/dev/null | grep ':8080 ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL"
-if not "!RH_OUT!"=="LISTEN_OK" (
+if not "%RH_OUT%"=="LISTEN_OK" (
   echo   XX 8080 没在监听
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo !RH_OUT!
+  echo %RH_OUT%
   goto fail_clean
 )
 echo   OK 8080 已监听
 
 call :rsh_read "curl -s -o /dev/null -w 'HTTP=%%{http_code}' --max-time 8 http://127.0.0.1:8080/"
-if not "!RH_OUT!"=="HTTP=200" (
-  echo   XX 首页不是 200 ^(!RH_OUT!^)
+if not "%RH_OUT%"=="HTTP=200" (
+  echo   XX 首页不是 200 ^(%RH_OUT%^)
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
+  echo %RH_OUT%
   goto fail_clean
 )
 echo   OK 首页 HTTP 200
 
 rem 版本指纹: 未知路径会回落 index.html 返 200, 所以必须看响应体是不是 JSON
 call :rsh_read "curl -s --max-time 8 http://127.0.0.1:8080/api/games/ezfy/view | head -c 60"
-echo(!RH_OUT! | findstr /c:"code" >nul
-if errorlevel 1 (
-  echo   [!] 接口返回的不是 JSON^(可能是 index.html 回落^) —— 确认下版本
-  echo(!RH_OUT!
-) else (
-  echo   OK 接口返回 JSON —— 新版本已生效
-)
+echo %RH_OUT% | findstr /c:"code" >nul
+if errorlevel 1 goto verify_not_json
+echo   OK 接口返回 JSON —— 新版本已生效
+goto after_verify
 
+:verify_not_json
+echo   WARN: 接口返回的不是 JSON^(可能是 index.html 回落^) —— 确认下版本
+echo %RH_OUT%
+
+:after_verify
 call :rsh_read "tail -n 8 %REMOTE_DIR%/logs/server.log"
-echo(!RH_OUT!
+echo %RH_OUT%
 
 echo.
 echo 部署完成  http://%SSH_HOST%:8080
@@ -292,10 +321,31 @@ rem =========================================================
 rem 子过程
 rem =========================================================
 
+rem :mktimestamp —— 生成备份用的时间戳后缀，结果放 TS。
+rem
+rem ★★ 背景（都踩过，改之前先读）：
+rem   ① `for /f "tokens=1-4 delims=/-. " %%a in ("%DATE% %TIME%")`
+rem      —— 中文 Windows 的 %DATE% 是「2026/09/28 周一」，多出中文星期，
+rem      分词结果随区域设置漂移，可能拿到 "周一" 这种垃圾。
+rem   ② `wmic OS get LocalDateTime`
+rem      —— **Win11 24H2 起 wmic 已被微软移除**（实测本机 build 26200 上不存在），
+rem      用了只会静默失败。
+rem   ③ 各种「剔除非数字字符」的字符串体操
+rem      —— cmd 的延迟展开 + for 变量替换混用陷阱太多，写对了也很脆。
+rem
+rem ★ 最终方案：**只要一个「本次运行唯一」的后缀就够了，不追求好看的日期格式**。
+rem   备份文件名的作用只是「不和之前的备份撞车」，用 %RANDOM% 完全够用，
+rem   而且 100% 可靠、零依赖、不挑系统语言和版本。
+rem   （%TIME% 的百分秒段在个别区域设置下可能带非数字字符，一并避开不用。）
+rem   想让人看出时间也没关系 —— 备份完成后脚本会 echo 出备份包的完整路径和大小。
+:mktimestamp
+set "TS=%RANDOM%%RANDOM%"
+goto :eof
+
 rem :rsh "远端命令"  —— 有副作用的命令, DRY_RUN 时只打印
 :rsh
 if "%DRY_RUN%"=="1" (
-  echo      [dry-run] ssh %SSH_USER%@%SSH_HOST%: %~1
+  echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: %~1
   set "RH_RC=0"
   goto :eof
 )
@@ -304,14 +354,13 @@ set "RH_RC=%errorlevel%"
 goto :eof
 
 rem :rsh_read "远端命令" —— 只读命令, DRY_RUN 时也真执行^(预检需要真实结果^)
-rem 结果放进 RH_OUT^(取第一行^), 退出码放进 RH_RC
+rem ★ 结果只取**第一行**放进 RH_OUT，退出码放进 RH_RC。
+rem   这里必须用 set /p（见文件头「坑2」），不能用 for /f 循环包 if。
 :rsh_read
 node "%SSH_RUN%" exec "%~1" >"%TMPOUT%" 2>nul
 set "RH_RC=%errorlevel%"
 set "RH_OUT="
-for /f "usebackq delims=" %%i in ("%TMPOUT%") do (
-  if not defined RH_OUT set "RH_OUT=%%i"
-)
+set /p "RH_OUT="<"%TMPOUT%"
 goto :eof
 
 :usage

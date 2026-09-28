@@ -95,3 +95,57 @@ func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, food, steel, oil, 
 	order.Carry = carryJSON(cur)
 	return add, dropped
 }
+
+// ezfyCarryFull 该订单部队的「待带回」是否已装满负重。
+//
+// ★ 2026-09-28 用户规则：「超过负重继续采集那么就不会再采集」——
+//   采到装满之后自动停下(arrive_time=0 原地待命)，不再空转累积、也不再报「资源丢弃」。
+func (h *EzfyHandler) ezfyCarryFull(order *model.EzfyOrder) bool {
+	capTotal := h.ezfyCarryCap(order)
+	if capTotal <= 0 {
+		return false
+	}
+	return parseCarry(order.Carry).total() >= capTotal
+}
+
+// harvestToCity 把一次采集产出**直接累加进「起点城市」**(order.CityId)。
+//
+// ★ 2026-09-28 用户规则（本轮最大改动）：
+//
+//	原来产出是「装进部队 carry 待带回，召回返航到达才入城」，造成一串用户可见的 bug：
+//	  ① [一键收获] 后资源不进任何地方，玩家以为丢了；
+//	  ② [一键召回] 后要等返航，中途资源既不在城也不在产出里，看着像丢了；
+//	  ③ carry 超负重部分被静默丢弃（addCarryToOrder 的 dropped），到城确实少了。
+//	现在改为：**收获即入城**（入的是部队出发的那座城），carry 不再参与采集结算。
+//
+// 入库走 ezfyResAddExpr(原子累加 + 配置的资源最大值封顶)，与 finishReturn 同一套口径。
+func (h *EzfyHandler) harvestToCity(cityID int64, food, steel, oil, rare, gold int64) int64 {
+	amount := food + steel + oil + rare + gold
+	if amount <= 0 || cityID <= 0 {
+		return 0
+	}
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityID).Updates(map[string]interface{}{
+		"food":  ezfyResAddExpr("food", food),
+		"steel": ezfyResAddExpr("steel", steel),
+		"oil":   ezfyResAddExpr("oil", oil),
+		"rare":  ezfyResAddExpr("rare", rare),
+		"gold":  ezfyResAddExpr("gold", gold),
+	})
+	return amount
+}
+
+// ezfyCityResTotal 读一座城的资源总量(五项之和)。
+//
+// ★ 用途：采集改成「收获即入城」后，各接口用它做**前后差值**来报「本次入账多少」，
+//   比在内存里累加更准（入库会被配置的资源最大值封顶，内存累加会虚报）。
+func (h *EzfyHandler) ezfyCityResTotal(cityID int64) int64 {
+	if cityID <= 0 {
+		return 0
+	}
+	var c model.EzfyCity
+	if err := h.DB.Select("food", "steel", "oil", "rare", "gold").
+		First(&c, cityID).Error; err != nil {
+		return 0
+	}
+	return c.Food + c.Steel + c.Oil + c.Rare + c.Gold
+}

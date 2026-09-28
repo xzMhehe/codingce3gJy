@@ -89,20 +89,28 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "采集野地已丢失")
 		return
 	}
+	// ★ 2026-09-28 用户规则「超过负重继续采集那么就不会再采集」：
+	//   上一次装满了负重被自动停止的部队，不补运输兵就点[采集]没意义，直接拦住。
+	if h.ezfyCarryFull(&order) {
+		resp.ParamError(c, "本部队负重已满, 需先[召回]清空或增派运输兵, 才能继续采集")
+		return
+	}
 	order.ArriveTime = now + ezfyDispatchPeriod()
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
 	h.addReport(uid, 5, "采集报告: 开始采集",
-		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期: 资源装进部队待召回(军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。",
+		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期: 资源直接入库到出发城市(军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。负重装满会自动停止采集。",
 			wl.Level, wl.X, wl.Y), "", order.ID)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("采集开始, 一个采集周期后首次结算(野地%d级 %d,%d)",
 		wl.Level, wl.X, wl.Y)})
 }
 
-// HarvestAll POST /games/ezfy/wild/harvest-all —— 一键收获
+// HarvestAll POST /games/ezfy/wild/harvest-all —— 一键收获(批量)
 //
-// ★ 用户规则：「收获就是收获」—— 只把采集产出结算进部队的「待带回」池，
-//   **不召回**。资源只有「召回并返航到达」才会入城（见 finishReturn）。
+// ★ 2026-09-28 用户规则澄清：**「一键收获」与「停止采集」是同一个功能**，
+//   只是一个批量、一个单个 —— 都是「把已产出的资源收进起点城市」。
+//   所以本接口 = 对每支在采集的部队走一遍「结算 → 入起点城 → 停止采集(原地待命)」。
+//   （原实现只结算 carry 不落库、还要等召回返航，导致玩家以为资源丢了。）
 func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -110,36 +118,39 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	now := time.Now().UnixMilli()
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1", uid).Order("id ASC").Find(&orders)
+	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0", uid).
+		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
 		resp.ParamError(c, "没有正在采集的部队")
 		return
 	}
 
-	settled := 0
-	skipped := 0
-	var loadedTotal int64
+	n := 0
+	var gained int64
 	for i := range orders {
 		order := &orders[i]
-		before := parseCarry(order.Carry).total()
-		if periods, ok := h.settleDispatch(uid, order, now); ok {
-			loadedTotal += parseCarry(order.Carry).total() - before
-			settled += periods
+		before := h.ezfyCityResTotal(order.CityId)
+		// 满一个采集周期 → 完整结算(资源+宝物); 不满 → 按采集时长折算资源(无宝物)
+		if now >= order.ArriveTime {
+			h.settleDispatch(uid, order, now)
 		} else {
-			skipped++ // 未满一个采集周期或野地已丢失(已自动返航)
+			h.settlePartialCollect(uid, order, now, "收获")
 		}
+		// ★ 统一收口：收获后一律「停止采集」原地待命（与 [停止] 同一个语义）
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+			Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
+		gained += h.ezfyCityResTotal(order.CityId) - before
+		n++
 	}
-	msg := fmt.Sprintf("已收获 %d 支采集部队，共装入待带回资源 %d（资源需「召回」才会运回城里）",
-		settled, loadedTotal)
-	if skipped > 0 {
-		msg += fmt.Sprintf("；%d 支驻守尚不满一个采集周期（可[一键召回]按驻守时长折算资源，无宝物）", skipped)
-	}
-	resp.OK(c, gin.H{"msg": msg})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获 %d 支采集部队, 资源已直接入库(共 %d), 部队原地待命", n, gained)})
 }
 
 // RecallAll POST /games/ezfy/wild/recall-all —— 一键召回
 //
-// 把所有驻守中的采集部队改成返航；**返航到达时**才会把「待带回资源」运回城里。
+// ★ 2026-09-28 用户规则修正：资源在「收获/停止」时**已经直接入起点城市**，
+//   所以召回**只是撤兵返航**，不再有「待带回资源」要等到达才入库
+//   （原实现在这里既没落库 carry、又靠 finishReturn 清空 carry，造成「召回资源丢了」）。
+//   为稳妥起见，召回前仍先做一次结算，保证「还在采但没收获过」的那部分资源不丢。
 func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -153,31 +164,38 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 		return
 	}
 	n := 0
-	var back int64
+	var gained int64
 	for i := range orders {
 		order := &orders[i]
-		// 召回前先结算产出: 满一个采集周期给资源+宝物, 提前召回只有按比例的资源(无宝物)
-		h.settleDispatchOnRecall(uid, order, now)
+		// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源）
+		if order.ArriveTime > 0 {
+			before := h.ezfyCityResTotal(order.CityId)
+			h.settleDispatchOnRecall(uid, order, now)
+			gained += h.ezfyCityResTotal(order.CityId) - before
+		}
 		if order.Status != 1 {
 			continue // 野地已丢失, settleDispatch 已把部队自动改成返航
 		}
 		travel := ezfyOneWayTravel(order)
-		back += parseCarry(order.Carry).total()
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": order.Troops,
-				"return_time": now + travel})
+				"return_time": now + travel, "carry": ""})
 		n++
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已召回 %d 支采集部队，共带回资源 %d（到达后入库）", n, back)})
+	msg := fmt.Sprintf("已召回 %d 支采集部队返航", n)
+	if gained > 0 {
+		msg += fmt.Sprintf(", 召回前结算资源 %d 已入库", gained)
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
-// StopCollect POST /games/ezfy/wild/stop-collect —— 单支采集部队停止采集(原地待命)
+// StopCollect POST /games/ezfy/wild/stop-collect —— 单支采集部队「停止采集」
 //
-// ★ 2026-09-28 用户要求「随时停止采集」:
+// ★ 2026-09-28 用户规则澄清：**「停止采集」与「一键收获」是同一个功能**（一个单个、一个批量）：
 //   - 已满一个采集周期 → 完整结算(资源 + 宝物);
-//   - 未满一个采集周期 → 只按驻守时长折算资源(进「待带回」), **没有宝物**;
-//   - 停止后部队原地待命(驻守空闲 arrive_time=0), 保留已采集的「待带回」资源、不回城;
-//     之后可再点[采集]继续, 或[召回]把资源运回城里。
+//   - 未满一个采集周期 → 只按驻守时长折算资源, **没有宝物**;
+//   - 资源**直接入起点城市**（不再装进部队待带回）;
+//   - 停止后部队原地待命(驻守空闲 arrive_time=0)，之后可再点[采集]继续，或[召回]撤兵。
 func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -203,18 +221,19 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		resp.ParamError(c, "该部队已在待命(未在采集中)")
 		return
 	}
+	before := h.ezfyCityResTotal(order.CityId)
 	if now >= order.ArriveTime {
 		h.settleDispatch(uid, &order, now) // 满一期: 完整结算(资源+宝物)
 	} else {
 		h.settlePartialCollect(uid, &order, now, "停止采集") // 未满一期: 只有资源
 	}
-	// 原地待命: arrive_time=0 表示驻守空闲, 保留 carry(待带回资源), 部队不回城
-	cur := parseCarry(order.Carry)
+	gained := h.ezfyCityResTotal(order.CityId) - before
+	// 原地待命: arrive_time=0 表示驻守空闲, 部队不回城
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0,
-			"result": order.Result, "carry": order.Carry})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 部队原地待命(已采集资源 %d 保留在部队, 可再[采集]继续或[召回]运回城里)",
-		cur.total())})
+			"result": order.Result})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 资源 %d 已入库, 部队原地待命(可再[采集]继续或[召回]撤兵)",
+		gained)})
 }
 
 // dedupStrings 去重(保持顺序), 用于把重复的失败原因合并
