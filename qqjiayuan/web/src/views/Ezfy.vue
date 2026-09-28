@@ -341,7 +341,7 @@
               </template>
               <br/>
               军官：{{ o.officer || '无' }}<br/>
-              {{ o.time_label }}：{{ o.time_text }}<br/>
+              {{ o.time_label }}：{{ o._lt || o.time_text }}<br/>
               <span v-if="o.carry_total > 0" class="green">
                 待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
                 （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
@@ -369,7 +369,7 @@
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
-              {{ o.time_label }}：{{ o._lg ? o._lg.timeText : o.time_text }}
+              {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}
               <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span>
               <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a></span><br/>
               <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
@@ -1682,7 +1682,7 @@
             </template>
             <br/>
             军官：{{ o.officer || '无' }}<br/>
-            {{ o.time_label }}：{{ (o._lg ? o._lg.timeText : o.time_text) }}<br/>
+            {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}<br/>
             <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
             <template v-if="o.status === 1 && o.arrive_time">
               <span class="green">采集资源：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
@@ -3955,6 +3955,9 @@ export default {
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
       gatherNow: 0,
+      // ★ 2026-09-28 「军队动态/出征队列」倒计时自动刷新：拉取 dynamics 时的本地时间戳，
+      //   战斗中部队的本回合剩余是「相对剩余」，用它当基点往前推算。
+      _dynAt: 0,
       resNames: RES_NAMES,
       // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -4729,8 +4732,8 @@ export default {
     },
     // ★ 2026-09-25 出征队列页的数据 = 军队动态全集（行进/战斗/返航/驻守都在内，一次展示完）
     queueItems () {
-      // ★ 2026-09-28 针对采集中部队附上实时累加视图 _lg（依赖 gatherNow，每秒重算）
-      return (this.dynamics || []).map(o => this.withLg(o))
+      // ★ 2026-09-28 采集实况 _lg + 倒计时实况 _lt 都依赖 gatherNow，每秒一起重算
+      return (this.dynamics || []).map(o => this.withLg(this.withLive(o)))
     },
     // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
     dynMarchTotalPages () {
@@ -4788,11 +4791,11 @@ export default {
     },
     dynMarchPaged () {
       const p = Math.min(Math.max(1, this.dynPage), this.dynMarchTotalPages)
-      return this.dynMarch.slice((p - 1) * this.dynSize, p * this.dynSize)
+      return this.dynMarch.slice((p - 1) * this.dynSize, p * this.dynSize).map(o => this.withLive(o))
     },
     dynStationPaged () {
       const p = Math.min(Math.max(1, this.dynStationPage), this.dynStationTotalPages)
-      return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize).map(o => this.withLg(o))
+      return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize).map(o => this.withLg(this.withLive(o)))
     },
     repTotalPages () {
       return Math.max(1, Math.ceil(this.reports.length / this.repSize))
@@ -4974,6 +4977,12 @@ export default {
         if (this.cur === 'playerinfo' && this.playerInfo && this.playerInfo.user_id) {
           params.set('pid', this.playerInfo.user_id)
         } else params.delete('pid')
+        // ★ 2026-09-28 修复「在战斗报告页刷新后跳回军队动态」：
+        //   reportTab 原来只在内存里，刷新就回落到 data 默认值 1。
+        //   reports(列表页) / reportview(战报详情页) 两个页面都把分区 id 挂到 URL 上。
+        if ((this.cur === 'reports' || this.cur === 'reportview') && this.reportTab) {
+          params.set('rtab', this.reportTab)
+        } else params.delete('rtab')
         const qs = params.toString()
         const next = base + (qs ? '?' + qs : '')
         history.replaceState(history.state, '', location.pathname + location.search + next)
@@ -4986,6 +4995,7 @@ export default {
       let res = ''
       let oid = ''
       let pid = ''
+      let rtab = 0
       try {
         const hash = location.hash || ''
         const qi = hash.indexOf('?')
@@ -4995,9 +5005,13 @@ export default {
           res = params.get('res') || ''
           oid = params.get('oid') || ''
           pid = params.get('pid') || ''
+          rtab = parseInt(params.get('rtab') || '0', 10) || 0
         }
       } catch (e) {}
       if (res) this.resType = res
+      // ★ 2026-09-28 军情页的分区(军队动态/驻军/军情警讯/战斗报告)也随 URL 恢复，
+      //   必须在 go('reports') **之前**赋值：go() 里就是 `switchReportTab(this.reportTab)`。
+      if (rtab >= 1 && rtab <= 4) this.reportTab = rtab
       // ★ 2026-09-25 修复「命令详情页刷新后消失」：curOrder 不在 URL 里，
       //   刷新时必须按 oid 重新拉一次详情；拉不到就退回出征队列（绝不留空白页）。
       if (cur === 'orderview') {
@@ -5100,6 +5114,8 @@ export default {
       else if (t === 'techs') { this.loadTechs(); this.loadBag() }
       else if (t === 'buildm' || t === 'builds' || t === 'cityhall') this.loadBag()
       else if (t === 'map') { this.backToMap(); this.loadStars() }
+      // ★ 2026-09-28 军情页：分区由 reportTab 决定，且 switchReportTab 内部会 syncUrl，
+      //   刷新后 reportTab 已由 restoreFromUrl 从 ?rtab= 恢复，所以不会跳回「军队动态」。
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
       else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
       else if (t === 'friends') this.loadFriends()
@@ -5500,6 +5516,9 @@ export default {
       api.get('/games/ezfy/reports/dynamics').then(r => {
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
+          // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
+          //   战斗中的 battle_left_ms 是相对剩余，必须配上它才能每秒往前推算。
+          this._dynAt = Date.now()
           this.dynPage = 1
         }
       })
@@ -5644,6 +5663,8 @@ export default {
       this.repPage = 1
       this.dynPage = 1
       this.dynStationPage = 1
+      // ★ 2026-09-28 分区写进 URL，否则刷新后回落到默认的「军队动态」(t=1)
+      this.syncUrl()
       if (t === 1 || t === 2) this.loadDynamics()
       else this.loadReports()
     },
@@ -5652,8 +5673,7 @@ export default {
     goReportTab (t) {
       this.stopBattleTimer()
       this.cur = 'reports'
-      this.syncUrl()
-      this.switchReportTab(t)
+      this.switchReportTab(t)   // 内部已 syncUrl，会把 cur=reports 与 rtab 一起写回
     },
     doCollectAll () {
       api.post('/games/ezfy/wild/collect-all', {}).then(r => {
@@ -6562,6 +6582,36 @@ export default {
       const g = this.liveGather(o)
       return g ? Object.assign({}, o, { _lg: g }) : o
     },
+    // ★ 2026-09-28 用户要求「军队动态 / 出征队列的『抵达时间：12秒』也要自动刷新」：
+    //   倒计时原来是后端算好的一次性字符串(time_text)，只有重新拉接口才会变，
+    //   静止不动看起来像卡死。改法与采集实况一致 —— 后端下发**绝对到点时间戳**，
+    //   前端每秒(由 gatherNow 驱动)本地重算剩余。
+    //   覆盖三种会走的倒计时：status=0 抵达(arrive_time) / status=2 返回(return_time) /
+    //   战斗中(5) 本回合剩余(battle_left_ms 基点)。驻守采集累计 / 空闲待机 / 等待指挥不动。
+    liveLeft (o) {
+      if (!o) return ''
+      const now = this.gatherNow || Date.now()
+      // 战斗中：本回合剩余 = 拉数据那一刻的剩余 - 已过去的时间
+      if (o.status === 5) {
+        if (!o.battle_left_ms && o.battle_left_ms !== 0) return ''
+        const left = Math.max(0, (o.battle_left_ms || 0) - (now - (this._dynAt || now)))
+        return this.durText(left / 1000)
+      }
+      // 出征中：距抵达还差多久
+      if (o.status === 0 && o.arrive_time > 0) {
+        return this.durText((o.arrive_time - now) / 1000)
+      }
+      // 返航中：距回城还差多久
+      if (o.status === 2 && o.return_time > 0) {
+        return this.durText((o.return_time - now) / 1000)
+      }
+      return ''
+    },
+    // 有倒计时就附上实时视图 _lt（无则返回原样，模板回落到后端给的 time_text）
+    withLive (o) {
+      const t = this.liveLeft(o)
+      return t ? Object.assign({}, o, { _lt: t }) : o
+    },
     doRecover (w) {
       // ★ 2026-09-25 用户反馈「伤兵救治后要手动刷新页面才显示」→ 成功后重拉军队数据(含伤兵营/逃兵营)
       api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type })
@@ -6707,6 +6757,8 @@ export default {
         this.showDetail = false
         const item = this.reports.find(x => x.id === r.id)
         if (item) item.is_read = 1
+        // openReport 可能从「军情警讯」进也可能从「战斗报告」进，这里记录它来自哪个分区
+        this.reportTab = (r.category === 1) ? 3 : 4
         this.go('reportview')
       })
     },
