@@ -319,12 +319,12 @@
         <div class="panel">
           <!-- 复刻 report/index.html: 军队动态 . 驻军 . 军情警讯 . 战斗报告 -->
           <div class="acade-tab">
-            <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="switchReportTab(1)">军队动态</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="switchReportTab(2)">驻军</a><span
-              v-if="dynStation.length" class="green">({{ dynStation.length }})</span>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="switchReportTab(3)">军情警讯</a><span
-              v-if="reportCounts[1]" class="red">({{ reportCounts[1] }})</span>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 4 }" @click="switchReportTab(4)">战斗报告</a><span
+            <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="switchReportTab(1)">军队动态</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 2 }" @click="switchReportTab(2)">驻军</a><span
+              v-if="dynStation.length" class="green">({{ dynStation.length }})</span><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 3 }" @click="switchReportTab(3)">军情警讯</a><span
+              v-if="reportCounts[1]" class="red">({{ reportCounts[1] }})</span><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 4 }" @click="switchReportTab(4)">战斗报告</a><span
               v-if="reportCounts[2]" class="red">({{ reportCounts[2] }})</span>
           </div>
 
@@ -459,10 +459,10 @@
         <div class="panel" v-if="curReport">
           <!-- ★ 用户要求：战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
           <div class="acade-tab">
-            <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="goReportTab(1)">军队动态</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">驻军</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 3 }" @click="goReportTab(3)">军情警讯</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: reportTab === 4 }" @click="goReportTab(4)">战斗报告</a>
+            <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="goReportTab(1)">军队动态</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">驻军</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 3 }" @click="goReportTab(3)">军情警讯</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 4 }" @click="goReportTab(4)">战斗报告</a>
           </div>
           <div class="panel-title">{{ curReport.title }}</div>
           <pre class="report-pre">{{ curReport.content }}</pre>
@@ -2975,9 +2975,9 @@
         <div class="panel">
           <!-- ★ 2026-09-28 用户要求：签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
           <div class="acade-tab">
-            <a href="javascript:;" :class="{ on: welfareTab === 0 }" @click="setWelfareTab(0)">每日签到</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: welfareTab === 1 }" @click="setWelfareTab(1)">礼包</a>&nbsp;.&nbsp;
-            <a href="javascript:;" :class="{ on: welfareTab === 2 }" @click="setWelfareTab(2)">宝物签到</a>
+            <a href="javascript:;" :class="{ on: welfareTab === 0 }" @click="setWelfareTab(0)">每日签到</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: welfareTab === 1 }" @click="setWelfareTab(1)">礼包</a><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: welfareTab === 2 }" @click="setWelfareTab(2)">宝物签到</a>
           </div>
 
           <!-- 每日签到 -->
@@ -8429,6 +8429,17 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
 .ezfy-page .acade-tab a.on { color: #c0392b; font-weight: bold; }
+/* ★ 2026-09-28 tab 之间的「.」分隔符：原写法用 &nbsp;.&nbsp;（不换行空格 U+00A0），
+   Windows 中文宋体(SimSun) 里 U+00A0 占一个**全角字宽**(17px)，两个就 34px，
+   「军队动态 .  驻军 .  军情警讯」在 Win 上间隔拉到 40px+；
+   macOS 回退到 Songti SC / 苹方，其 U+00A0 是半角宽度(约 4~5px)，所以看着正常。
+   —— 根因是字形宽度差异，不是谁写错了数值。
+   修法：不再引入空格字符，改用 span 承载「.」并显式给左右 margin，
+   任何平台、任何字体下宽度都完全一致。 */
+.ezfy-page .acade-sep {
+  display: inline-block;
+  margin: 0 4px;
+}
 .ezfy-page .use-box {
   margin: 4px 0 6px 8px;
   padding: 4px 6px;
