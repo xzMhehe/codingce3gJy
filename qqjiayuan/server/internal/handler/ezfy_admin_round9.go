@@ -42,6 +42,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
+		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
@@ -130,6 +131,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.GatherSeaMult <= 0 {
 		lim.GatherSeaMult = ezfyGatherSeaMultDef
 	}
+	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
+	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
+		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
+	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -199,12 +204,12 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConquerFeelingsMax      *int     `json:"conquer_feelings_max"`
 		LootFeelings            *int     `json:"loot_feelings"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
-		PlacateGold        *int64 `json:"placate_gold"`
-		PlacateGrievance   *int   `json:"placate_grievance"`
-		PlacateFeelings    *int   `json:"placate_feelings"`
-		PlacateCooldownMin *int   `json:"placate_cooldown_min"`
-		OfficerSalaryPerLevel   *int     `json:"officer_salary_per_level"`
-		WoundHealDivisor        *int     `json:"wound_heal_divisor"`
+		PlacateGold           *int64 `json:"placate_gold"`
+		PlacateGrievance      *int   `json:"placate_grievance"`
+		PlacateFeelings       *int   `json:"placate_feelings"`
+		PlacateCooldownMin    *int   `json:"placate_cooldown_min"`
+		OfficerSalaryPerLevel *int   `json:"officer_salary_per_level"`
+		WoundHealDivisor      *int   `json:"wound_heal_divisor"`
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数）
@@ -219,6 +224,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GatherLevelPow *float64 `json:"gather_level_pow"`
 		// ★ 2026-09-28：海野采集系数（默认 1.5，1~2；越大海野采集收益越高）
 		GatherSeaMult *float64 `json:"gather_sea_mult"`
+		// ★ 2026-09-28：军校刷新周期（1=按天 2=按小时，默认按小时）
+		RecruitCycleMode *int `json:"recruit_cycle_mode"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult   *float64 `json:"res_prod_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
@@ -279,6 +286,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
+		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:   ezfyResProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
@@ -512,6 +520,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.GatherSeaMult = m
 	}
+	// ★ 2026-09-28 军校刷新周期：只允许 1=按天 2=按小时
+	if in.RecruitCycleMode != nil {
+		m := *in.RecruitCycleMode
+		if m != 1 && m != 2 {
+			resp.ParamError(c, "军校刷新周期只能为 1(按天) 或 2(按小时)")
+			return
+		}
+		lim.RecruitCycleMode = m
+	}
 	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
 	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
 	if in.ResProdMult != nil {
@@ -716,6 +733,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherSeaMult <= 0 {
 		lim.GatherSeaMult = ezfyGatherSeaMultDef
 	}
+	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
+	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
+		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -821,6 +842,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"gather_level_pow": lim.GatherLevelPow,
 		// ★ 2026-09-28 海野采集系数
 		"gather_sea_mult": lim.GatherSeaMult,
+		// ★ 2026-09-28 军校刷新周期（1=按天 2=按小时）
+		"recruit_cycle_mode": lim.RecruitCycleMode,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）

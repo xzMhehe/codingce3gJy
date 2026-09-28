@@ -7,12 +7,12 @@
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="loadAll">刷新</el-button>
       </div>
       <div class="toolbar">
-        <span class="td-sub">每日免费刷新次数：</span>
+        <span class="td-sub">每{{ cyc }}免费刷新次数：</span>
         <el-input-number v-model.number="globalLimit" :min="0" :max="999" controls-position="right" style="width:150px" />
         <el-button type="primary" icon="el-icon-check" :loading="saving" @click="saveGlobal">保存全局默认</el-button>
         <div class="grow" />
         <span class="td-sub">
-          玩家覆盖为 0 表示跟随全局默认；次数用完后，用户端可在
+          玩家覆盖为 0 表示跟随全局默认；次数按{{ cyc }}重置；次数用完后，用户端可在
           <b>军校直接使用「招生简章」</b>刷新（不用跳背包），每次消耗 1 张
         </span>
       </div>
@@ -36,17 +36,17 @@
         <el-table-column label="玩家" min-width="150" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-main">{{ row.nickname || row.player_name || '—' }}</span></template>
         </el-table-column>
-        <el-table-column label="生效次数/天" width="130" align="center">
+        <el-table-column :label="'生效次数/'+cyc" width="140" align="center">
           <template slot-scope="{row}">
             <span class="td-mono">{{ row.limit }}</span>
             <el-tag v-if="row.override > 0" size="mini" type="warning" style="margin-left:4px">覆盖</el-tag>
             <el-tag v-else size="mini" type="info" style="margin-left:4px">默认</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="今日已用" width="110" align="center">
+        <el-table-column :label="th+'已用'" width="120" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ row.used_today }}</span></template>
         </el-table-column>
-        <el-table-column label="今日剩余" width="110" align="center">
+        <el-table-column :label="th+'剩余'" width="120" align="center">
           <template slot-scope="{row}">
             <span :class="row.left_today > 0 ? 'td-mono' : 'td-muted'">{{ row.left_today }}</span>
           </template>
@@ -59,7 +59,7 @@
         <el-table-column label="操作" width="200" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="单独设置" @click="openSet(row)" />
-            <el-button size="mini" type="warning" plain icon="el-icon-refresh-left" title="重置今日已用次数"
+            <el-button size="mini" type="warning" plain icon="el-icon-refresh-left" :title="'重置'+th+'已用次数'"
                        @click="resetToday(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发招生简章" @click="giveTicket(row)" />
           </template>
@@ -79,12 +79,12 @@
                :visible.sync="setDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="130px" size="small">
         <el-form-item label="当前生效">
-          <span class="td-main">{{ setRow.limit }} 次/天</span>
-          <span class="td-sub">（今日已用 {{ setRow.used_today }}，剩余 {{ setRow.left_today }}）</span>
+          <span class="td-main">{{ setRow.limit }} 次/{{ cyc }}</span>
+          <span class="td-sub">（{{ th }}已用 {{ setRow.used_today }}，剩余 {{ setRow.left_today }}）</span>
         </el-form-item>
         <el-form-item label="单独设置">
           <el-input-number v-model.number="setValue" :min="0" :max="999" controls-position="right" style="width:100%" />
-          <span class="td-sub">填 0 = 跟随全局默认（当前 {{ globalLimit }} 次/天）</span>
+          <span class="td-sub">填 0 = 跟随全局默认（当前 {{ globalLimit }} 次/{{ cyc }}）</span>
         </el-form-item>
       </el-form>
       <div slot="footer">
@@ -103,15 +103,24 @@ export default {
   data () {
     return {
       globalLimit: 5, saving: false,
+      cycleMode: 2, // 周期模式 1=按天 2=按小时（来自二战系统配置）
       list: [], total: 0, page: 1, size: 5, word: '', loading: false,
       setDlg: false, setRow: {}, setValue: 0
     }
+  },
+  computed: {
+    // 周期文案：按天 → 天/今日；按小时 → 小时/本小时
+    cyc () { return this.cycleMode === 1 ? '天' : '小时' },
+    th () { return this.cycleMode === 1 ? '今日' : '本小时' }
   },
   mounted () { this.loadAll() },
   methods: {
     loadAll () {
       api.get('/admin/ezfy-recruit-limit').then(r => {
-        if (r.code === 0) this.globalLimit = r.data.global
+        if (r.code === 0) {
+          this.globalLimit = r.data.global
+          if (r.data.cycle_mode === 1 || r.data.cycle_mode === 2) this.cycleMode = r.data.cycle_mode
+        }
       })
       this.load()
     },
@@ -149,14 +158,14 @@ export default {
       })
     },
     resetToday (row) {
-      this.$confirm('把「' + (row.nickname || row.user_id) + '」今日已用的刷新次数清零？', '提示', { type: 'warning' }).then(() => {
+      this.$confirm('把「' + (row.nickname || row.user_id) + '」'+this.th+'已用的刷新次数清零？', '提示', { type: 'warning' }).then(() => {
         api.post('/admin/ezfy-recruit-limit-users/' + row.user_id + '/reset', {}).then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已重置'); this.load() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     },
     giveTicket (row) {
-      this.$prompt('发放「招生简章」数量（用户端可在军校直接使用，不占每日次数）', '发放招生简章', {
+      this.$prompt('发放「招生简章」数量（用户端可在军校直接使用，不占每'+this.cyc+'次数）', '发放招生简章', {
         inputValue: '1',
         inputPattern: /^[1-9]\d{0,3}$/,
         inputErrorMessage: '请填写 1~9999 的整数'

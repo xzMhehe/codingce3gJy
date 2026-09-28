@@ -325,6 +325,12 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_sea_mult = 1.5 WHERE gather_sea_mult IS NULL OR gather_sea_mult <= 0")
 
+		// ★ 2026-09-28：军校刷新周期模式（1=按天 2=按小时，默认按小时；0 / NULL 无意义 → 回落 2）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "recruit_cycle_mode") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN recruit_cycle_mode int DEFAULT 2")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET recruit_cycle_mode = 2 WHERE recruit_cycle_mode IS NULL OR recruit_cycle_mode <= 0")
+
 		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {

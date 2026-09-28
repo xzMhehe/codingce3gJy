@@ -28,7 +28,7 @@ import (
 //   - 职位：市长(产量+(10+后勤/20)*3%)、城守(守城防御+10%)
 
 const (
-	ezfyRecruitRefreshLimit = 5     // 军校每日刷新次数上限
+	ezfyRecruitRefreshLimit = 5     // 军校每小时刷新次数上限（2026-09-28 用户要求：每天5次 → 每1小时5次）
 	ezfyRecruitCostPerLevel = 1000  // 招募费用 = 军官等级 × 该值(参考 conquer.html: 26级→26000)
 	ezfyGrantCost           = 10000 // 赏赐一次消耗黄金
 	ezfyOfficerMaxSkill     = 3     // 军官技能上限
@@ -40,6 +40,21 @@ const (
 	ezfyPositionMayor       = 1 // 市长
 	ezfyPositionGuard       = 2 // 城守
 )
+
+// recruitCycleKey 军校刷新计数周期 key（**小时窗口**）。
+//
+// ★ 2026-09-28 用户要求：军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
+//
+//	用 "2006010215"（10 位 YmdH，如 2026092815 = 2026-09-28 第15点）作为周期标识，
+//	整点窗口变化即新周期，正好装进 ezfy_recruit.recruit_date 的 varchar(10)。
+func recruitCycleKey() string {
+	// ★ 2026-09-28 用户要求：刷新周期按「天 / 小时」可配（二战系统配置默认按小时）。
+	//   按小时用 10 位 YmdH（装得进 varchar(10)）；按天用 2006-01-02。
+	if ezfyRecruitCycleHourly() {
+		return time.Now().Format("2006010215")
+	}
+	return time.Now().Format("2006-01-02")
+}
 
 // ezfyOfficerMaxLevel 军官最高等级（用户规则：「军官最高等级 150」）
 //
@@ -176,8 +191,9 @@ func officerSkills(o *model.EzfyOfficer) []string {
 // officerEquipped 解析军官已穿戴装备（按部位去重：同部位只保留**最后**穿上的那件）
 //
 // ★ 2026-09-24 用户反馈「同一个部位能穿戴多个」：老数据里已经存在同部位多件
-//   （管理端改「穿戴军官」不校验 + 老代码别名不归一），解析时统一兜底去重，
-//   保证展示/属性/套装进度计算都不会把重复件再算进去。
+//
+//	（管理端改「穿戴军官」不校验 + 老代码别名不归一），解析时统一兜底去重，
+//	保证展示/属性/套装进度计算都不会把重复件再算进去。
 func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 	out := []map[string]interface{}{}
 	if o == nil || o.Equipment == "" {
@@ -378,10 +394,10 @@ func parseDrafts(raw string) []ezfyOfficerDraft {
 	return out
 }
 
-// recruitInfo 当日候选(首次访问生成并落库)
+// recruitInfo 当周期(小时)候选(首次访问生成并落库)
 func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraft, int, int) {
 	h.cfgs()
-	date := time.Now().Format("2006-01-02")
+	date := recruitCycleKey()
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	if err != nil {
@@ -396,7 +412,7 @@ func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraf
 }
 
 func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
-	date := time.Now().Format("2006-01-02")
+	date := recruitCycleKey()
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	used := 0
@@ -405,8 +421,8 @@ func (h *EzfyHandler) refreshRecruit(uid uint, academyLevel int) string {
 	}
 	limit := h.ezfyRecruitFreeLimit(uid)
 	if used >= limit {
-		return "今日刷新次数已用完(每天限" + strconv.Itoa(limit) +
-			"次, 明天0点重置；也可以在军校直接使用「招生简章」刷新)"
+		return "本小时刷新次数已用完(每小时限" + strconv.Itoa(limit) +
+			"次, 下一个整点重置；也可以在军校直接使用「招生简章」刷新)"
 	}
 	drafts := h.rollOfficerDrafts(academyLevel, maxInt(1, minInt(academyLevel, 10)))
 	if err != nil {
@@ -436,7 +452,7 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	if h.officerCount(city.ID) >= staff {
 		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(staff) + "名军官)"
 	}
-	date := time.Now().Format("2006-01-02")
+	date := recruitCycleKey()
 	var rec model.EzfyRecruit
 	if err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error; err != nil {
 		return "候选已失效, 请刷新"
@@ -483,14 +499,14 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	return ""
 }
 
-// refreshRecruitFree 免费刷新当日候选名将（招生简章用，不消耗每日刷新次数）
+// refreshRecruitFree 免费刷新当周期候选名将（招生简章用，不消耗每小时刷新次数）
 func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 	city := h.getOrCreateCity(uid)
 	academy := h.buildingLevel(city.ID, ezfyBuildingAcademy)
 	if academy < 1 {
 		return "需要先建造军校"
 	}
-	date := time.Now().Format("2006-01-02")
+	date := recruitCycleKey()
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	drafts := h.rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
@@ -659,7 +675,9 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 // equipItem 穿戴装备：等级达标 + 同部位唯一（含珠宝，任何部位都只能穿一件）
 //
 // ★ 2026-09-22：同部位判定改用「Slot（留空回落 Type）」，
-//   这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
+//
+//	这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
+//
 // ★ 2026-09-24：用户要求「同一个部位只能穿戴一个」，取消珠宝的叠穿例外。
 func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) string {
 	h.calcResource(city)
@@ -756,8 +774,9 @@ func (h *EzfyHandler) saveOfficerEquipment(o *model.EzfyOfficer, list []map[stri
 // rebuildOfficerEquipJSON 按装备行重建某军官的已穿戴装备 JSON（同部位去重，重复件放回背包）
 //
 // ★ 2026-09-24 配套修复「同部位能穿戴多件」：管理端改「穿戴军官」后装备行与
-//   军官 JSON 会脱节（更别说可能直接穿出重复部位），统一用这个函数把两边状态拉齐：
-//   同一部位只留 id 最大（最后穿上）的那件，其余 officer_id 置 0 放回背包。
+//
+//	军官 JSON 会脱节（更别说可能直接穿出重复部位），统一用这个函数把两边状态拉齐：
+//	同一部位只留 id 最大（最后穿上）的那件，其余 officer_id 置 0 放回背包。
 func (h *EzfyHandler) rebuildOfficerEquipJSON(officerId int64) {
 	if officerId <= 0 {
 		return
@@ -887,7 +906,8 @@ func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string
 // ============ 加成接入 ============
 
 // mayorBonusPct 市长产量加成 %（★ 2026-09-27 用户要求「太少，在现有基础上翻三倍」：
-//   (10 + 后勤/20) × 3 —— 实际产量与详情页展示都走本函数，改一处即全生效）
+//
+//	(10 + 后勤/20) × 3 —— 实际产量与详情页展示都走本函数，改一处即全生效）
 func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 	var o model.EzfyOfficer
 	if err := h.DB.Where("city_id = ? AND position = ? AND is_captive = 0", cityId, ezfyPositionMayor).
@@ -1110,9 +1130,10 @@ func (h *EzfyHandler) officerSetProgressView(o *model.EzfyOfficer) []gin.H {
 // officerBaseAttr 军官的**原始属性** —— 即洗点卡的重置目标
 //
 // ★ 用户规则（2026-09-26）：「原始属性 = 军官池里那名武将的属性」，
-//   升星加成同样算在「现代属性 − 原始属性」的差额里（洗点时一并退回），
-//   所以这里**优先回查军官池**；池子里查不到的（后台手工生成 / 历史随机生成的军官）
-//   才用实例上的 base_* 快照，最后兜底当前属性。
+//
+//	升星加成同样算在「现代属性 − 原始属性」的差额里（洗点时一并退回），
+//	所以这里**优先回查军官池**；池子里查不到的（后台手工生成 / 历史随机生成的军官）
+//	才用实例上的 base_* 快照，最后兜底当前属性。
 func officerBaseAttr(o *model.EzfyOfficer) (int, int, int) {
 	if o == nil {
 		return 0, 0, 0
