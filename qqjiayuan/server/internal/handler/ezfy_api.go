@@ -2410,10 +2410,47 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		}
 	}
 	views := []gin.H{}
+	// ★ 2026-09-28 用户要求「累计采集/采集资源要实时变化、累加展示，不能只靠刷新」：
+	//   先批量查出**采集中**部队的野地，后端据此下发「每期产出」，
+	//   前端拿到 accept 之后用本地下发时间实时 extrapolate 累加，不必等满一期才结算。
+	gatherWl := map[int64]*model.EzfyWildland{}
+	var gatherWlIDs []int64
+	for i := range orders {
+		o := &orders[i]
+		if o.Status == 1 && o.OrderType == 7 && o.ArriveTime > 0 {
+			gatherWlIDs = append(gatherWlIDs, o.TargetId)
+		}
+	}
+	if len(gatherWlIDs) > 0 {
+		var wls []model.EzfyWildland
+		h.DB.Where("id IN ?", gatherWlIDs).Find(&wls)
+		for i := range wls {
+			wp := &wls[i]
+			gatherWl[int64(wp.ID)] = wp
+		}
+	}
 	for i := range orders {
 		o := &orders[i]
 		timeLabel, timeText := "", ""
 		statusName := ""
+		// ★ 采集实况：采集中部队下发 per 每期产出 + 集 = 前置项，前端每秒本地累加展示
+		var gather *gin.H
+		if o.Status == 1 && o.OrderType == 7 && o.ArriveTime > 0 {
+			periodMs := ezfyDispatchPeriod()
+			var pf, ps, po, pr int64
+			if wl := gatherWl[o.TargetId]; wl != nil && wl.CityId == o.CityId {
+				// 单期产出（时长=整一个结算周期，抽掉「按比例折算」那部分）
+				pf, ps, po, pr, _, _ = h.dispatchGatherYield(o, wl, periodMs)
+			}
+			gather = &gin.H{
+				"start_ms":  o.CollectStart, // 本期从哪个时刻开始累计
+				"period_ms": periodMs,       // 一个结算周期的毫秒数
+				"per_food":  pf,
+				"per_steel": ps,
+				"per_oil":   po,
+				"per_rare":  pr,
+			}
+		}
 		switch o.Status {
 		case 0:
 			statusName = "出征"
@@ -2427,8 +2464,15 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 				timeText = "空闲待命, 点[采集]开始采集"
 			} else {
 				statusName = "驻守采集"
-				timeLabel = "下次结算"
-				timeText = ezfyDurationText((o.ArriveTime - now) / 1000)
+				// ★ 2026-09-28 用户要求: 采集不再显示「下次结算」倒计时,
+				//   改为「累计采集了多长时间」(按小时/分钟累计, 从 collect_start 起算)。
+				timeLabel = "累计采集"
+				accum := now - o.CollectStart
+				if o.CollectStart <= 0 || accum < 0 {
+					timeText = "刚采集"
+				} else {
+					timeText = ezfyDurationText(accum / 1000)
+				}
 			}
 		case 2:
 			statusName = "返回"
@@ -2466,6 +2510,8 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			"officer": o.Officer, "time_label": timeLabel, "time_text": timeText,
 			"arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
 			"carry": c, "carry_total": c.total(), "carry_cap": h.ezfyCarryCap(o),
+			// 采集实况（采集中部队才有）：每期产出 + 起算点，前端据此实时累加展示
+			"gather": gather,
 			// 指挥室：可指挥时前端显示 [指挥]
 			"can_command":    o.Status == ezfyOrderStatusBattle,
 			"battle_round":   battleRound,

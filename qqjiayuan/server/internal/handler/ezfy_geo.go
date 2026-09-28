@@ -812,6 +812,8 @@ const (
 	// ★ 2026-09-28 采集军官后勤属性加成率倍率 / 市长产量加成倍率，默认 1
 	ezfyOfficerGatherMultDef = 1
 	ezfyMayorGainMultDef     = 1
+	// ★ 2026-09-28 采集等级成长幂次，默认 1.3（高等级野地产出加速型增长）
+	ezfyGatherLevelPowDef = 1.3
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -1108,6 +1110,20 @@ func ezfyMayorGainMult() float64 {
 		return ezfyMayorGainMultDef
 	}
 	return ezfyCfg.limit.MayorGainMult
+}
+
+// ezfyGatherLevelPow 采集等级成长幂次（默认 1.3；0 / 负 / NULL → 回落 1.3）
+//
+// ★ 2026-09-28 用户要求「越高级的野地采集越多」：dispatchGatherYield 里
+// per = 800 × (野地等级 ^ 本幂次)。1.0 = 纯线性；>1 = 高等级加速增长。
+func ezfyGatherLevelPow() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyGatherLevelPowDef
+	}
+	if p := ezfyCfg.limit.GatherLevelPow; p > 0 {
+		return p
+	}
+	return ezfyGatherLevelPowDef
 }
 
 // ezfyWords 取二战聊天敏感词

@@ -369,9 +369,15 @@
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
-              {{ o.time_label }}：{{ o.time_text }}<span v-if="o.status === 1 && !o.arrive_time">
-                <a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span><br/>
-              <span v-if="o.carry_total > 0" class="green">
+              {{ o.time_label }}：{{ o._lg ? o._lg.timeText : o.time_text }}
+              <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span>
+              <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a></span><br/>
+              <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
+              <template v-if="o.status === 1 && o.arrive_time">
+                <span class="green">采集资源：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span>
+                <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}，需召回返航后入库）</span>
+              </template>
+              <span v-else-if="o.carry_total > 0" class="green">
                 待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
                 （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
               </span>
@@ -1399,7 +1405,7 @@
             <span class="gray">（背包里有 {{ gatherCount }} 个）</span>
           </div>
           <div class="old-line gray">
-            每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
+            每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个。
             司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
           </div>
           <div class="old-line" v-if="attackTroops.length">
@@ -1671,10 +1677,18 @@
             <template v-else-if="o.status === 1 && !o.arrive_time">
               <a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a>
             </template>
+            <template v-else-if="o.status === 1 && o.arrive_time">
+              <a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a>
+            </template>
             <br/>
             军官：{{ o.officer || '无' }}<br/>
-            {{ o.time_label }}：{{ o.time_text }}<br/>
-            <span v-if="o.carry_total > 0" class="green">
+            {{ o.time_label }}：{{ (o._lg ? o._lg.timeText : o.time_text) }}<br/>
+            <!-- ★ 2026-09-28 采集中部队: 实时累加显示采集资源明细 + 总资源(每秒由 liveGather 重算) -->
+            <template v-if="o.status === 1 && o.arrive_time">
+              <span class="green">采集资源：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
+              <span class="gray">总 {{ fmtN(o._lg.total) }}（负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}，需召回返航后入库）</span>
+            </template>
+            <span v-else-if="o.carry_total > 0" class="green">
               待带回：{{ fmtN(o.carry.food) }}粮/{{ fmtN(o.carry.steel) }}钢/{{ fmtN(o.carry.oil) }}油/{{ fmtN(o.carry.rare) }}稀/{{ fmtN(o.carry.gold) }}金
               （负重 {{ fmtN(o.carry_total) }}/{{ fmtN(o.carry_cap) }}）
             </span>
@@ -3939,6 +3953,8 @@ export default {
     return {
       cur: 'home',
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
+      // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
+      gatherNow: 0,
       resNames: RES_NAMES,
       // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -4713,7 +4729,8 @@ export default {
     },
     // ★ 2026-09-25 出征队列页的数据 = 军队动态全集（行进/战斗/返航/驻守都在内，一次展示完）
     queueItems () {
-      return this.dynamics || []
+      // ★ 2026-09-28 针对采集中部队附上实时累加视图 _lg（依赖 gatherNow，每秒重算）
+      return (this.dynamics || []).map(o => this.withLg(o))
     },
     // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
     dynMarchTotalPages () {
@@ -4775,7 +4792,7 @@ export default {
     },
     dynStationPaged () {
       const p = Math.min(Math.max(1, this.dynStationPage), this.dynStationTotalPages)
-      return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize)
+      return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize).map(o => this.withLg(o))
     },
     repTotalPages () {
       return Math.max(1, Math.ceil(this.reports.length / this.repSize))
@@ -4895,6 +4912,9 @@ export default {
   methods: {
     // 页脚小Q报时(与 App.vue tick 同款格式)
     tickClock () {
+      // ★ 2026-09-28 让「累计采集/采集资源」实时变化：tickClock 每秒已被 clockTimer 调用，
+      //   这里顺手把它升为一个响应式时间基准，模板上的 liveGather() 每秒重算。
+      this.gatherNow = Date.now()
       const d = new Date()
       const p = n => (n < 10 ? '0' + n : '' + n)
       this.nowText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
@@ -5669,6 +5689,18 @@ export default {
     async doRecallAll () {
       if (!await this.ask('确定召回所有驻守采集部队吗？（满一个采集周期的结算资源+宝物：宝物进背包；不满一个采集周期的按驻守时长折算资源、无宝物；部队返航到达后资源才入库）')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg)
+          this.loadDynamics()
+          this.load()
+        } else this.notify(r.msg)
+      })
+    },
+    // ★ 单支采集部队停止采集(原地待命): 满一个采集周期结算资源+宝物, 不满只结算按采集时长的资源(无宝物); 部队不回城
+    async stopCollect (o) {
+      const name = o.target_name + '(' + (o.target_x || 0) + ',' + (o.target_y || 0) + ')'
+      if (!await this.ask('确定停止「' + name + '」采集吗？（部队停在原地待命；满一个采集周期的结算资源+宝物，不满一个采集周期的只按已采集时长结算资源、无宝物；已采集资源保留在部队，之后可再[采集]继续或[召回]运回城里）')) return
+      api.post('/games/ezfy/wild/stop-collect', { order_id: o.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
           this.loadDynamics()
@@ -6494,6 +6526,41 @@ export default {
       if (m < 60) return m + '分' + (s % 60) + '秒'
       const hh = Math.floor(m / 60)
       return hh + '小时' + (m % 60) + '分'
+    },
+    // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
+    //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
+    //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计到部队的资源」。
+    //   未满一期也按比例折算，让数字一直在涨；负重封顶取 carry_cap。
+    liveGather (o) {
+      const g = o && o.gather
+      if (!g || !g.period_ms) return null
+      const now = this.gatherNow || Date.now()
+      const elapsed = Math.max(0, now - g.start_ms) // 毫秒
+      if (elapsed <= 0) return null
+      const frac = elapsed / g.period_ms
+      const mk = v => Math.floor(((v || 0) * frac))
+      const food = mk(g.per_food)
+      const steel = mk(g.per_steel)
+      const oil = mk(g.per_oil)
+      const rare = mk(g.per_rare)
+      const gold = 0
+      let total = food + steel + oil + rare
+      const cap = o.carry_cap || 0
+      // 超负重丢弃，与后端结算口径一致
+      if (cap > 0 && total > cap) {
+        const scale = cap / total
+        const f = Math.floor(food * scale)
+        const s = Math.floor(steel * scale)
+        const oi = Math.floor(oil * scale)
+        const ra = Math.floor(rare * scale)
+        return { timeText: this.durText(elapsed / 1000), food: f, steel: s, oil: oi, rare: ra, gold: 0, total: f + s + oi + ra, cap }
+      }
+      return { timeText: this.durText(elapsed / 1000), food, steel, oil, rare, gold, total, cap }
+    },
+    // ★ 2026-09-28 给单条军队动态附上实时采集视图 _lg（有 gather 才算采集中）；复用来避免模板算两遍。
+    withLg (o) {
+      const g = this.liveGather(o)
+      return g ? Object.assign({}, o, { _lg: g }) : o
     },
     doRecover (w) {
       // ★ 2026-09-25 用户反馈「伤兵救治后要手动刷新页面才显示」→ 成功后重拉军队数据(含伤兵营/逃兵营)

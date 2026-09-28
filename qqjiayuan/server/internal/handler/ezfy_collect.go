@@ -43,8 +43,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			continue
 		}
 		order.ArriveTime = now + ezfyDispatchPeriod()
+		order.CollectStart = now // ★ 2026-09-28 记录采集起始, 用于「累计采集时长」
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Update("arrive_time", order.ArriveTime)
+			Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
 		ok++
 	}
 	msg := fmt.Sprintf("已对 %d 支空闲驻军下达采集命令(每满一个采集周期结算一期)", ok)
@@ -88,9 +89,9 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "采集野地已丢失")
 		return
 	}
-	next := now + ezfyDispatchPeriod()
+	order.ArriveTime = now + ezfyDispatchPeriod()
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"arrive_time": next})
+		Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
 	h.addReport(uid, 5, "采集报告: 开始采集",
 		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期: 资源装进部队待召回(军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。",
 			wl.Level, wl.X, wl.Y), "", order.ID)
@@ -168,6 +169,52 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 		n++
 	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已召回 %d 支采集部队，共带回资源 %d（到达后入库）", n, back)})
+}
+
+// StopCollect POST /games/ezfy/wild/stop-collect —— 单支采集部队停止采集(原地待命)
+//
+// ★ 2026-09-28 用户要求「随时停止采集」:
+//   - 已满一个采集周期 → 完整结算(资源 + 宝物);
+//   - 未满一个采集周期 → 只按驻守时长折算资源(进「待带回」), **没有宝物**;
+//   - 停止后部队原地待命(驻守空闲 arrive_time=0), 保留已采集的「待带回」资源、不回城;
+//     之后可再点[采集]继续, 或[召回]把资源运回城里。
+func (h *EzfyHandler) StopCollect(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		OrderId int64 `json:"order_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.OrderId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.processOrders(uid)
+	now := time.Now().UnixMilli()
+	var order model.EzfyOrder
+	if err := h.DB.Where("id = ? AND user_id = ?", req.OrderId, uid).First(&order).Error; err != nil {
+		resp.ParamError(c, "命令不存在")
+		return
+	}
+	if order.Status != 1 || order.OrderType != 7 {
+		resp.ParamError(c, "该部队不是驻守采集部队")
+		return
+	}
+	if order.ArriveTime <= 0 {
+		resp.ParamError(c, "该部队已在待命(未在采集中)")
+		return
+	}
+	if now >= order.ArriveTime {
+		h.settleDispatch(uid, &order, now) // 满一期: 完整结算(资源+宝物)
+	} else {
+		h.settlePartialCollect(uid, &order, now, "停止采集") // 未满一期: 只有资源
+	}
+	// 原地待命: arrive_time=0 表示驻守空闲, 保留 carry(待带回资源), 部队不回城
+	cur := parseCarry(order.Carry)
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0,
+			"result": order.Result, "carry": order.Carry})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已停止采集, 部队原地待命(已采集资源 %d 保留在部队, 可再[采集]继续或[召回]运回城里)",
+		cur.total())})
 }
 
 // dedupStrings 去重(保持顺序), 用于把重复的失败原因合并

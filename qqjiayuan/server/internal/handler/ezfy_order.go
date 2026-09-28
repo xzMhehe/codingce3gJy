@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -1564,7 +1565,9 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 			gainPct = 200
 		}
 	}
-	per := int64(wl.Level) * 800 * int64(gainPct) / 100
+	// ★ 2026-09-28 用户要求「采集和野地等级有关，越高级采越多」：
+	//   每期基础 = 800 × (等级 ^ gatherLevelPow)，让高等级加速增长（默认幂次 1.3）；再乘后勤加成%。
+	per := int64(800 * math.Pow(float64(wl.Level), ezfyGatherLevelPow()) * float64(gainPct) / 100)
 	mult := int64(4)
 	if wl.WildType == 2 {
 		mult = 3
@@ -1613,37 +1616,47 @@ func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, n
 		h.settleDispatch(uid, order, now)
 		return
 	}
-	// 未满一期: 提前召回, 资源按已驻守时长比例结算, 宝物不给
-	if order.TargetId > 0 {
-		var wl model.EzfyWildland
-		if err := h.DB.First(&wl, order.TargetId).Error; err == nil && wl.CityId == order.CityId {
-			started := order.ArriveTime - ezfyDispatchPeriod() // 本期起算点(=上次结算或开始采集时间)
-			elapsed := max64(1, now-started)
-			if elapsed > ezfyDispatchPeriod() {
-				elapsed = ezfyDispatchPeriod()
-			}
-			food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed)
-			amt := food + steel + oil + rare
-			loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, 0)
-			cur := parseCarry(order.Carry)
-			desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)提前召回, 按驻守时长折算资源\n产出: %s%d",
-				wl.Level, wl.X, wl.Y, resName, amt)
-			if gainPct > 100 {
-				desc += fmt.Sprintf("(等级×%d分钟, 军官后勤加成 +%d%%)", max64(elapsed/60000, 1), gainPct-100)
-			} else {
-				desc += fmt.Sprintf("(等级×%d分钟)", max64(elapsed/60000, 1))
-			}
-			desc += fmt.Sprintf("\n本次装入部队: %d（负重 %d/%d）", loaded, cur.total(), h.ezfyCarryCap(order))
-			if dropped > 0 {
-				desc += fmt.Sprintf("\n⚠ 负重已满, %d 资源没能装上", dropped)
-			}
-			desc += "\n（提前召回不满一个采集周期, 本期没有宝物）"
-			order.Result = order.Troops
-			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-				Updates(map[string]interface{}{"result": order.Result, "carry": order.Carry})
-			h.addReport(uid, 5, "采集报告: 提前召回结算", desc, "", order.ID)
-		}
+	// 未满一期: 提前召回, 资源按已驻守时长比例结算, 不做宝物
+	h.settlePartialCollect(uid, order, now, "提前召回")
+}
+
+// settlePartialCollect 未满一个采集周期的部分结算(「停止采集」/「提前召回」共用):
+//   - 资源按已进入本期的时长比例折算进部队「待带回」, **不做宝物**(不满一个采集周期无宝物);
+//   - 只把结果写进 result 与 carry, **不接回** —— 是否返航由调用方决定。
+// label: 描述文案(「停止采集」/「提前召回」), 用于战报正文与标题。
+func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now int64, label string) {
+	if order.TargetId <= 0 {
+		return
 	}
+	var wl model.EzfyWildland
+	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+		return
+	}
+	started := order.ArriveTime - ezfyDispatchPeriod() // 本期起算点(=上次结算或开始采集时间)
+	elapsed := max64(1, now-started)
+	if elapsed > ezfyDispatchPeriod() {
+		elapsed = ezfyDispatchPeriod()
+	}
+	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed)
+	amt := food + steel + oil + rare
+	loaded, dropped := h.addCarryToOrder(order, food, steel, oil, rare, 0)
+	cur := parseCarry(order.Carry)
+	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
+		wl.Level, wl.X, wl.Y, label, resName, amt)
+	if gainPct > 100 {
+		desc += fmt.Sprintf("(等级×%d分钟, 军官后勤加成 +%d%%)", max64(elapsed/60000, 1), gainPct-100)
+	} else {
+		desc += fmt.Sprintf("(等级×%d分钟)", max64(elapsed/60000, 1))
+	}
+	desc += fmt.Sprintf("\n本次装入部队: %d（负重 %d/%d）", loaded, cur.total(), h.ezfyCarryCap(order))
+	if dropped > 0 {
+		desc += fmt.Sprintf("\n⚠ 负重已满, %d 资源没能装上", dropped)
+	}
+	desc += fmt.Sprintf("\n（%s不满一个采集周期, 本期没有宝物）", label)
+	order.Result = order.Troops
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"result": order.Result, "carry": order.Carry})
+	h.addReport(uid, 5, "采集报告: "+label+"结算", desc, "", order.ID)
 }
 
 // ezfyOrderTargetBusy 目标是否已被别的玩家「抢先指挥」。

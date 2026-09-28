@@ -585,6 +585,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/wild/harvest-all", ezfyH.HarvestAll)
 				// 一键召回（资源随返航带回）
 				ezfyG.POST("/wild/recall-all", ezfyH.RecallAll)
+				// ★ 2026-09-28 单支采集部队停止采集(原地待命, 结算资源: 满期有宝物/不满期无)
+				ezfyG.POST("/wild/stop-collect", ezfyH.StopCollect)
 				ezfyG.GET("/reports", ezfyH.Reports)
 				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
 				ezfyG.GET("/reports/:id", ezfyH.ReportView)

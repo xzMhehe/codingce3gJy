@@ -303,6 +303,11 @@ type EzfyCfgLimit struct {
 	//   作用点 mayorBonusPct：市长产量加成% 整体 × 该倍率（默认 1 = 现状）。
 	//   0 合法（关闭市长加成）；NULL 无意义 → 回落 1。
 	MayorGainMult float64 `gorm:"default:1;comment:市长加成倍率" json:"mayor_gain_mult"`
+	// ★ 2026-09-28 用户要求「采集和野地等级有关系，越高级采的越多，搞个合理的」：
+	//   采集每期基础 = 800 × (野地等级 ^ 本幂次)，让高等级野地产出加速型增长（比纯线性更拉开差距）。
+	//   默认 1.3：1级=800；5级≈6467；7级≈10160；9级≈13840（均未乘后勤/倍率/陆海）。
+	//   1.0 = 纯线性（历史行为）；>1 越高等级越发突出；<1 高等级收益递减。0 / 负 / NULL 无意义 → 回落 1.3。
+	GatherLevelPow float64 `gorm:"default:1.3;comment:采集等级成长幂次" json:"gather_level_pow"`
 
 	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。
@@ -679,8 +684,11 @@ type EzfyOrder struct {
 	//   容量上限 = 部队各兵种 carry 之和。JSON: {"food":..,"steel":..,"oil":..,"rare":..,"gold":..}
 	Carry     string `gorm:"type:varchar(500);comment:携带" json:"carry"`
 	Resources string `gorm:"type:varchar(500);comment:资源" json:"resources"`
-	OilUsed   int64  `gorm:"comment:石油已用" json:"oil_used"`
-	WaitMin   int    `gorm:"comment:宿营分钟数(0~1440), 到达后停留该时长再返航" json:"wait_min"` // 宿营分钟数(0~1440), 到达后停留该时长再返航
+	// ★ 2026-09-28 采集起始时间(ms, 0=未采集/空闲驻守): 用于「累计采集时长」展示。
+	//   每次开始采集(StartCollect/一键采集)时写入, 全周期累计算到现在(按小时/分钟累计)。
+	CollectStart int64 `gorm:"comment:采集起始时间(ms)" json:"collect_start"`
+	OilUsed      int64 `gorm:"comment:石油已用" json:"oil_used"`
+	WaitMin      int   `gorm:"comment:宿营分钟数(0~1440), 到达后停留该时长再返航" json:"wait_min"` // 宿营分钟数(0~1440), 到达后停留该时长再返航
 
 	// ★ 指挥室（实时战斗）打完的结果（ezfyBattleResult 的 JSON）。
 	//   非空 = 这场仗已经由玩家在指挥室里打完 → processArrive 跳过模拟、直接拿它结算，

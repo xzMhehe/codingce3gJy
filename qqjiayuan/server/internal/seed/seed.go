@@ -303,6 +303,12 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET mayor_gain_mult = 1 WHERE mayor_gain_mult IS NULL")
 
+		// ★ 2026-09-28：采集等级成长幂次（默认 1.3，允许小数；0 / NULL 无意义 → 回落 1.3）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_level_pow") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_level_pow double DEFAULT 1.3")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gather_level_pow = 1.3 WHERE gather_level_pow IS NULL OR gather_level_pow <= 0")
+
 		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {
