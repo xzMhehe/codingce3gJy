@@ -1508,7 +1508,12 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod())
 	amt := food + steel + oil + rare
 	// ★ 2026-09-28 规则修正：产出**直接入起点城市**（不再进部队 carry）
-	loaded := h.harvestToCity(int64(order.CityId), food, steel, oil, rare, 0)
+	// ★★ 战报里的「已入库」一律用**前后差值**而不是请求量：
+	//   2026-09-28 的「[一键收获] 资源没有入城市」事故就是「报了请求量、库里其实没加」。
+	//   差值口径与 HarvestAll/StopCollect 的反馈完全一致，玩家看到的数就是进账的数。
+	before := h.ezfyCityResTotal(int64(order.CityId))
+	h.harvestToCity(int64(order.CityId), food, steel, oil, rare, 0)
+	loaded := h.ezfyCityResTotal(int64(order.CityId)) - before
 	cur := parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守满%d期\n产出: %s%d",
 		level, wl.X, wl.Y, periods, resName, amt)
@@ -1664,7 +1669,10 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed)
 	amt := food + steel + oil + rare
 	// ★ 2026-09-28 规则修正：产出**直接入起点城市**
-	loaded := h.harvestToCity(int64(order.CityId), food, steel, oil, rare, 0)
+	// ★★ 同 settleDispatch：战报的「已入库」用前后差值，避免「报了数但库里没加」。
+	before := h.ezfyCityResTotal(int64(order.CityId))
+	h.harvestToCity(int64(order.CityId), food, steel, oil, rare, 0)
+	loaded := h.ezfyCityResTotal(int64(order.CityId)) - before
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
 		wl.Level, wl.X, wl.Y, label, resName, amt)
 	if gainPct > 100 {

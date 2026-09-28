@@ -719,31 +719,67 @@ func ezfyResMaxOf(res string) int64 {
 	return v
 }
 
-// ezfyResAddExpr 生成「入库累加」SQL：无条件累加，但不越过配置的资源最大值。
+// ezfyResAddExpr 生成「入库累加」SQL：原子累加，只防 int64 溢出，不看资源最大值。
 //
-// GREATEST(col, LEAST(max, col + n))：
-//   - 正常情况 → col + n（无条件累加，不看仓储上限）
-//   - 累加到 max 后 → 停在 max（不再增加）
-//   - 老值本来 > max → 保持原值（GREATEST 兜住，绝不被这次入库拉低）
+// ★★ 2026-09-28 线上事故修复「[一键收获]/停止 资源没有入城市」——
 //
-// ⚠️ 所有「入库型」资源写入都应该走这里（配 resources 里的列名使用），
-// 这样「累加」与「最大值」两个规则只有一处实现。
+//	原实现是 GREATEST(col, LEAST(resMax, col + n))，本意是「累加到资源最大值就停」。
+//	但它在「col 已经 ≥ resMax」时会**静默吞掉本次增量**：
+//
+//	    col = 9,339,001,029 (9.3 亿…实为 93 亿)  resMax = 2,100,000,000
+//	    LEAST(resMax, col+n) = 2,100,000,000     ← 增量连同上限一起被砍
+//	    GREATEST(col, 2,100,000,000) = col      ← 又取回原值 → 结果 = 原值，纹丝不动
+//
+//	而调用方（harvestToCity 等）返回给前端的是**请求量**，于是界面报「资源已入库(N)」，
+//	库里却一分没加 —— 玩家看到的就是「收获/停止 资源没有入城市」。
+//	线上 ezfy_city 148 城里，五项资源各有 118~135 城已 ≥ 21 亿，所以现象极其普遍。
+//
+//	修复后语义（与 finishReturn / giveResources 的「不受上限截断」口径统一）：
+//	  - 正常情况 → col + n（无条件累加）
+//	  - 一律只夹到 ezfyResSafeMax(1 万亿) 防溢出，**绝不再因资源最大值吞掉增量**
+//
+//	⚠️ 资源最大值（ezfyResMaxOf）不再在这里生效，改由**调用方**负责：
+//	  玩家主动发起的入库（采集 / 收获）应在操作前用 ezfyAtResMax 判定并明确报错，
+//	  而不是让玩家白等一次采集。见 harvestToCity 的守卫。
+//
+// ⚠️ 所有「入库型」资源写入都应该走这里（配 resources 里的列名使用）。
 func ezfyResAddExpr(res string, n int64) clause.Expr {
-	return gorm.Expr("GREATEST(`"+res+"`, LEAST(?, `"+res+"` + ?))", ezfyResMaxOf(res), n)
+	return gorm.Expr("LEAST(?, `"+res+"` + ?)", ezfyResSafeMax, n)
 }
 
-// ezfyAddResMax 内存版「入库累加」：结果 = max(现值, min(资源最大值, 现值+增量))。
-// 与 ezfyResAddExpr 同一口径，供不便走 SQL 表达式的发放路径使用。
+// ezfyAddResMax 内存版「入库累加」：结果 = min(现值 + 增量, ezfyResSafeMax)。
+//
+// ★ 与 ezfyResAddExpr 严格同口径（2026-09-28 起）：无条件累加，不再按资源最大值封顶。
+// 函数名保留以免大范围改名，但语义已是「安全累加」而非「累加到最大值」。
+// 供不便走 SQL 表达式的发放路径使用。
 func ezfyAddResMax(res string, cur, delta int64) int64 {
+	_ = res // 保留参数以保持调用点签名稳定；资源最大值已交由调用方判定
 	cur = ezfyClampRes(cur)
-	if delta <= 0 {
+	if delta == 0 {
 		return cur
 	}
-	next := ezfySafeAdd(cur, delta, ezfyResSafeMax)
-	if mx := ezfyResMaxOf(res); next > mx && cur < mx {
-		return mx
+	return ezfySafeAdd(cur, delta, ezfyResSafeMax)
+}
+
+// ezfyAtResMax 该城某项资源是否已到达「资源最大值」（= 满了，再采集也入不了库）。
+//
+// ★ 用途：采集 / 收获是玩家**主动发起、要等时间**的操作，到顶时必须在发起前就告知，
+// 否则玩家等完一轮才发现资源没进账 —— 这正是「资源没有入城市」的体感来源之一。
+func (h *EzfyHandler) ezfyAtResMax(cityID int64) bool {
+	if cityID <= 0 {
+		return false
 	}
-	return next
+	var c model.EzfyCity
+	if err := h.DB.Select("food", "steel", "oil", "rare", "gold").
+		First(&c, cityID).Error; err != nil {
+		return false
+	}
+	// 五项全满才算满 —— 采集产出五项都有，只要还有一项没满，收获就仍有意义。
+	return c.Food >= ezfyResMaxOf("food") &&
+		c.Steel >= ezfyResMaxOf("steel") &&
+		c.Oil >= ezfyResMaxOf("oil") &&
+		c.Rare >= ezfyResMaxOf("rare") &&
+		c.Gold >= ezfyResMaxOf("gold")
 }
 
 func ezfyLimitOr(v, def int) int {

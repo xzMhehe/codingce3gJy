@@ -118,7 +118,13 @@ func (h *EzfyHandler) ezfyCarryFull(order *model.EzfyOrder) bool {
 //	  ③ carry 超负重部分被静默丢弃（addCarryToOrder 的 dropped），到城确实少了。
 //	现在改为：**收获即入城**（入的是部队出发的那座城），carry 不再参与采集结算。
 //
-// 入库走 ezfyResAddExpr(原子累加 + 配置的资源最大值封顶)，与 finishReturn 同一套口径。
+// 入库走 ezfyResAddExpr（DB 侧原子累加 + ezfyResSafeMax 溢出兜底）。
+//
+// ★★ 2026-09-28 二次修复「资源没有入城市」：
+//
+//	ezfyResAddExpr 原带 LEAST(resMax, ...) 封顶，城市已超 21 亿时会把本次增量**吞掉**，
+//	而这里仍返回 amount → 前端显示「已入库(N)」但库里不变。现已改为无条件累加；
+//	「城市资源是否已满」由调用方在**发起采集前**用 ezfyAtResMax 判定并拦截。
 func (h *EzfyHandler) harvestToCity(cityID int64, food, steel, oil, rare, gold int64) int64 {
 	amount := food + steel + oil + rare + gold
 	if amount <= 0 || cityID <= 0 {

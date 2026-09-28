@@ -3681,7 +3681,7 @@
           <!-- 操作 -->
           <div class="old-line officer-actions">
             <a href="javascript:;" @click="doGrant">[赏赐+10忠诚(1万金)]</a>
-            <a href="javascript:;" @click="doTreasureGrant">[赏赐宝物]</a>
+            <a href="javascript:;" @click="doTreasureGrant()">[赏赐宝物]</a>
             <a href="javascript:;" @click="doRespec">[洗点]</a>
             <span v-if="bagCount(16) > 0" class="gray">(持有军官洗点卡 {{ bagCount(16) }} 张)</span>
             <a v-if="officerDetail.officer.status !== 1 && officerDetail.officer.position === 0"
@@ -3709,7 +3709,7 @@
                   <td><a href="javascript:;" @click="doTreasureGrant(e)">[赏赐]</a></td>
                 </tr>
               </template>
-              <tr v-if="!officerTreasures.length"><td colspan="4" class="gray">(背包没有未穿戴的宝物, 可去商城买或开宝箱)</td></tr>
+              <tr v-if="!officerTreasures.length"><td colspan="4" class="gray">(背包没有未穿戴的采集宝物, 可去野地采集或宝物签到获取)</td></tr>
             </table>
           </div>
           </div>
@@ -4297,9 +4297,12 @@ export default {
     }
   },
   computed: {
-    // ★ 2026-09-28 赏赐宝物：背包里未穿戴的宝物（可在军官详情操作区展开选择）
+    // ★ 2026-09-28 赏赐宝物：背包里未穿戴的**采集宝物**（可在军官详情操作区展开选择）
+    //   ★ 只认采集宝物（后端 bag 条目带 treasure 标记，名字取自 9 种野地珠宝）——
+    //     步枪/钢盔/合金装甲这类普通装备不能换忠诚；宝物签到抽的也是同一池，所以签到宝物可用。
     officerTreasures () {
-      return (this.equipData.bag || []).filter(e => !e.worn)
+      return ((this.officerDetail && this.officerDetail.bag) || [])
+        .filter(e => e.treasure && !e.worn)
     },
     // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
     taskGroupCur () {
@@ -5245,7 +5248,9 @@ export default {
       else if (t === 'welfare') this.loadWelfare()
       else if (t === 'rank') this.loadRank()
       // 城市列表页要显示「军衔可建城数」，所以也拉一次军衔数据
-      else if (t === 'cities') this.loadRank()
+      // ★ 2026-09-28 兜底：cities 只在 /view 里下发，万一初始化那次请求失败（或列表为空）
+      //   → 进页时补拉一次 /view，别让玩家看到一个空列表还不知道为什么。
+      else if (t === 'cities') { this.loadRank(); if (!this.cities.length) this.load() }
       else if (t === 'bag') this.loadBag()
       else if (t === 'mall') {
         this.loadMall(true)
@@ -5332,6 +5337,13 @@ export default {
           this.city = d.city
           // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
           this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
+          // ★★ 2026-09-28 修复「切换城市 → 城市列表空了」：
+          //   1bafa1a（格式、民心民怨）新增安抚参数时，把原本这一行 `this.cities = d.cities`
+          //   覆盖删掉了。而 cities 在 data 里初值就是 []，**全文件再无第二处赋值** ——
+          //   于是城市列表恒为空（「已有 0 座」、建城页也一直显示 0）。
+          //   后端 /view 一直在下发 cities（ezfy.go 的 View → h.cityViews），这里接住即可。
+          //   ⚠️ 改 load() 时别再把这一行弄丢：它是 cities 的唯一数据源。
+          this.cities = d.cities || []
           this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
           this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
           this.city = d.city
@@ -8061,9 +8073,13 @@ export default {
       const o = this.officerDetail.officer
       if (!o) return
       if (o.loyalty >= 100) { this.notify('忠诚已满, 无需赏赐'); return }
-      if (!e) {
-        // 点「赏赐宝物」按钮：先拉最新背包再展开选择列表
-        this.loadAcadeEquip()
+      // ★ 2026-09-28 修 bug：模板原来写 @click="doTreasureGrant"（不带括号），
+      //   Vue 会把**原生 MouseEvent** 当宝物对象传进来 —— 于是弹出
+      //   「赏赐「undefined」(普通) …」，点确认还会用 undefined 当 equip_id 提交。
+      //   现在按「有没有装备 id」判断：事件对象/空值一律走展开分支，彻底免疫。
+      if (!e || !e.id) {
+        // 点「赏赐宝物」按钮：先拉最新军官详情（背包随之刷新）再展开选择列表
+        this.loadOfficerDetail(o.id)
         this.officerTreasureOpen = !this.officerTreasureOpen
         return
       }
@@ -8074,7 +8090,6 @@ export default {
         this.notify(r.data && r.data.msg ? r.data.msg : ('赏赐成功, 忠诚 +' + gain))
         this.officerTreasureOpen = false
         this.loadOfficerDetail(o.id)
-        this.loadAcadeEquip()
       })
     },
     // ★ 属性加点（每升 1 级得 1 点，只影响自己的军官）

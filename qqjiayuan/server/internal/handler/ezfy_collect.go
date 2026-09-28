@@ -33,7 +33,9 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 		resp.ParamError(c, "没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)")
 		return
 	}
-	ok, fail := 0, 0
+	// ★★ 2026-09-28 资源已满的守卫：一键采集前逐城判定，避免「采完了收获却是 0」。
+	fullMsg := ""
+	ok, fail, skip := 0, 0, 0
 	for i := range orders {
 		order := &orders[i]
 		var wl model.EzfyWildland
@@ -42,15 +44,29 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 			fail++
 			continue
 		}
+		if h.ezfyAtResMax(order.CityId) {
+			// 起点城市五项资源全满 → 采集无意义，跳过（不报错，其它城照常采）
+			fullMsg = "出发城市资源已达上限, 采集产出无法入库; 请先消耗资源或提升资源最大值配置"
+			skip++
+			continue
+		}
 		order.ArriveTime = now + ezfyDispatchPeriod()
 		order.CollectStart = now // ★ 2026-09-28 记录采集起始, 用于「累计采集时长」
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
 		ok++
 	}
+	// 全部因为「资源满」被跳过 → 直接以业务错误回，前端才会提示原因
+	if ok == 0 && skip > 0 && fail == 0 {
+		resp.ParamError(c, fullMsg)
+		return
+	}
 	msg := fmt.Sprintf("已对 %d 支空闲驻军下达采集命令(每满一个采集周期结算一期)", ok)
 	if fail > 0 {
 		msg += fmt.Sprintf("(%d 支野地已丢失, 部队自动返航)", fail)
+	}
+	if skip > 0 {
+		msg += fmt.Sprintf("(%d 支跳过: 出发城市资源已达上限)", skip)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }
@@ -93,6 +109,11 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 	//   上一次装满了负重被自动停止的部队，不补运输兵就点[采集]没意义，直接拦住。
 	if h.ezfyCarryFull(&order) {
 		resp.ParamError(c, "本部队负重已满, 需先[召回]清空或增派运输兵, 才能继续采集")
+		return
+	}
+	// ★★ 2026-09-28 采集资源已满的守卫：采了也入不了库，发起前就明确告知（别让玩家白等一轮）。
+	if h.ezfyAtResMax(order.CityId) {
+		resp.ParamError(c, "出发城市的资源已达上限, 采集产出无法入库; 请先消耗资源或提升资源最大值配置")
 		return
 	}
 	order.ArriveTime = now + ezfyDispatchPeriod()

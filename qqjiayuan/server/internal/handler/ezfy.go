@@ -1001,11 +1001,16 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**唯一上限 = 资源最大值**。
 	//   产量不再被仓储上限（city.FoodCap 等）卡住，与其它获取方式一样无条件累加到「资源最大值」为止。
 	//   ⚠️ city.XxxCap（仓储）仅保留展示，不再作为产量收敛点 —— 永不参与计算。
-	prodCapFood := ezfyResMaxOf("food")
-	prodCapSteel := ezfyResMaxOf("steel")
-	prodCapOil := ezfyResMaxOf("oil")
-	prodCapRare := ezfyResMaxOf("rare")
-	prodCapGold := ezfyResMaxOf("gold")
+	//
+	// ★★ 2026-09-28 「[一键收获]/停止 资源没有入城市」事故同步修复：
+	//   原来这里用 min64(prod, max64(0, prodCap-cur)) 做产出封顶 —— 与 ezfyResAddExpr
+	//   的封顶**不是同一套语义**（一个「超出部分丢掉」，一个「原值不低于上限就整笔吞掉」）。
+	//   现在统一成「无条件累加、只防溢出」，资源最大值不再在这里做截断
+	//   —— 否则「产量正在涨、玩家又收获一笔」会互相打架。
+	//   注意：老数据已超上限的城市，产量照常累加（不再出现「停在 21 亿永远不动」）。
+	//
+	//   ⚡ 资源最大值仍旧下发到资源详情页（getResourceCalc 的 cap 字段）供展示，
+	//   玩家侧的「已满」判定统一走 ezfyAtResMax。
 	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
 	//   乘在「城市产量 + 野地驻守产出」的**合计**上，即最终入库的那份产出。
 	//   ⚠️ 必须与 `getResourceCalc`（资源详情页展示）同口径，否则「详情页显示 1 万、实际入库 100」。
@@ -1021,20 +1026,16 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	wildGold = ezfyScaleResByProdMult(wildGold)
 	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
-	food += min64(prod, max64(0, prodCapFood-food))
+	food += prod
 	if food < 0 {
 		food = 0
 	}
 	city.Food = food
-	city.Steel += min64(int64(float64(steelProd)*hours)+int64(float64(wildSteel)*hours),
-		max64(0, prodCapSteel-city.Steel))
-	city.Oil += min64(int64(float64(oilProd)*hours)+int64(float64(wildOil)*hours),
-		max64(0, prodCapOil-city.Oil))
-	city.Rare += min64(int64(float64(rareProd)*hours)+int64(float64(wildRare)*hours),
-		max64(0, prodCapRare-city.Rare))
+	city.Steel += int64(float64(steelProd)*hours) + int64(float64(wildSteel)*hours)
+	city.Oil += int64(float64(oilProd)*hours) + int64(float64(wildOil)*hours)
+	city.Rare += int64(float64(rareProd)*hours) + int64(float64(wildRare)*hours)
 	gold := city.Gold
-	gold += min64(int64(float64(goldProd)*hours)+int64(float64(wildGold)*hours),
-		max64(0, prodCapGold-gold))
+	gold += int64(float64(goldProd)*hours) + int64(float64(wildGold)*hours)
 	// ★ 军官工资：每名军官每小时消耗「等级 × ezfy_cfg_limit.officer_salary_per_level」黄金。
 	//   与「军队耗粮」同一套懒结算口径 —— 按小时累计，离线期间照样扣。
 	//   用户反馈「军官是消耗黄金的，黄金现在消耗 0」，这就是那笔消耗。

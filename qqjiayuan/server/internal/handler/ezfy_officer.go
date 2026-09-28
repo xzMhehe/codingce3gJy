@@ -551,6 +551,12 @@ func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64
 	if e.OfficerId != 0 {
 		return "这件宝物已穿戴, 请先卸下"
 	}
+	// ★ 2026-09-28 用户要求：只有「采集宝物」能赏赐 ——
+	//   装备表里还混着步枪/钢盔/合金装甲这类普通装备，它们不是宝物，不能拿来换忠诚。
+	//   宝物签到抽的也是同一池（9 种珠宝），所以签到领的宝物天然可赏赐。
+	if !ezfyCollectibleTreasureNames()[e.Name] {
+		return fmt.Sprintf("「%s」不是采集宝物, 不可用于赏赐", e.Name)
+	}
 	gain := 10
 	if e.Tier > 0 && e.Tier < len(ezfyTreasureLoyalty) {
 		gain = ezfyTreasureLoyalty[e.Tier]
@@ -559,7 +565,8 @@ func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64
 	h.DB.Delete(&model.EzfyEquipment{}, e.ID)
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
 		Update("loyalty", minInt(ezfyOfficerLoyaltyMax, o.Loyalty+gain))
-	return fmt.Sprintf("赏赐【%s】(品质%d), 忠诚 +%d", e.Name, e.Tier, gain)
+	// ★ 文案里不写机器码（原来写「品质1」玩家看不懂）→ 用中文档位名
+	return fmt.Sprintf("赏赐【%s】(品质%s), 忠诚 +%d", e.Name, ezfyTierName(e.Tier), gain)
 }
 
 // learnSkill 学习技能：消耗 1 本「军官技能书」（道具 15），最多 3 个，出征中不可学
@@ -1916,6 +1923,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	})
 	em, el, ee := h.officerEffective(o)
 	bag := []gin.H{}
+	// ★ 2026-09-28 赏赐宝物只认「采集宝物」：背包条目带上标记，前端据此过滤可选列表
+	treasureSet := ezfyCollectibleTreasureNames()
 	// ★ 一键穿套装：背包里每个套装分别有件未穿戴的（officer_id=0 才在背包）
 	bagSetCnt := map[int]int{}
 	for _, e := range h.equipmentList(uid) {
@@ -1927,7 +1936,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"tier_name": ezfyTierName(e.Tier),
 			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0,
-			"slot": e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"treasure": treasureSet[e.Name],
+			"slot":     e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
 			"series": e.Series, "enhance": e.Enhance,
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 		})
@@ -2926,6 +2936,8 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
 	bag := []gin.H{}
+	// ★ 2026-09-28 赏赐宝物只认「采集宝物」（与军官详情接口口径一致）
+	treasureSet := ezfyCollectibleTreasureNames()
 	for _, e := range h.equipmentList(uid) {
 		wornBy := ""
 		if e.OfficerId > 0 {
@@ -2938,7 +2950,8 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			"tier_name": ezfyTierName(e.Tier),
 			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0, "worn_by": wornBy,
-			"slot": e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"treasure": treasureSet[e.Name],
+			"slot":     e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
 			"series": e.Series, "enhance": e.Enhance,
 			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
 		})
