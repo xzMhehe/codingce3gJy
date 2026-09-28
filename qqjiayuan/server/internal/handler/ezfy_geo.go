@@ -814,6 +814,8 @@ const (
 	ezfyMayorGainMultDef     = 1
 	// ★ 2026-09-28 采集等级成长幂次，默认 1.3（高等级野地产出加速型增长）
 	ezfyGatherLevelPowDef = 1.3
+	// ★ 2026-09-28 海野采集系数，默认 1.5（海野基础 3 × 1.5 = 4.5，比同级陆野 4 更高）
+	ezfyGatherSeaMultDef = 1.5
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -1124,6 +1126,17 @@ func ezfyGatherLevelPow() float64 {
 		return p
 	}
 	return ezfyGatherLevelPowDef
+}
+
+// ezfyGatherSeaMult 海野采集系数（默认 1.5；0 / 负 / NULL → 回落 1.5）
+func ezfyGatherSeaMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyGatherSeaMultDef
+	}
+	if m := ezfyCfg.limit.GatherSeaMult; m > 0 {
+		return m
+	}
+	return ezfyGatherSeaMultDef
 }
 
 // ezfyWords 取二战聊天敏感词

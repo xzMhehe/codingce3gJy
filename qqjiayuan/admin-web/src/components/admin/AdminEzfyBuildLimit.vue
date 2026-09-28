@@ -103,6 +103,11 @@
               <template slot="label">采集等级成长幂次<el-tooltip placement="top" :content="tips.gather_level_pow"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.gather_level_pow" :min="0.1" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-28 海野采集系数：默认 1.5，1~2（海野采集收益更高） -->
+            <el-form-item>
+              <template slot="label">海野采集系数<el-tooltip placement="top" :content="tips.gather_sea_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.gather_sea_mult" :min="0.1" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-09-26 城市资源产量倍率：默认 1，**0 合法**（产量归零）→ :min="0" -->
             <el-form-item>
               <template slot="label">产量加成倍率<el-tooltip placement="top" :content="tips.res_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -268,6 +273,8 @@ export default {
         officer_gather_mult: 1, mayor_gain_mult: 1,
         // ★ 2026-09-28 采集等级成长幂次（默认 1.3，较高=高级野地收益越突出）
         gather_level_pow: 1.3,
+        // ★ 2026-09-28 海野采集系数（默认 1.5）
+        gather_sea_mult: 1.5,
         speed_train_rate: 100, wound_heal_rate: 100,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
@@ -323,6 +330,9 @@ export default {
         gather_level_pow: '采集产出与野地等级的关系曲线（幂次，可填小数，默认 1.3）。' +
           '公式：每期基础 = 800 × (野地等级 ^ 本幂次)。幂次 1.0 = 纯线性（历史行为）；>1 = 越高等级产出越多、高级野地更吃香。' +
           '例：默认 1.3 时 1级≈800、5级≈6467、7级≈10160、9级≈13840（未乘后勤/陆地/倍率）。',
+        // ★ 2026-09-28 海野采集系数
+        gather_sea_mult: '海野采集额外系数（可填小数，默认 1.5）。' +
+          '海野基础产出系数比陆地低（海野 ×3、陆地 ×4），本系数让海野采得更多：默认 1.5 → 海野 3×1.5=4.5，比同级陆地 4 更高。填 1 = 海野与陆地拉平。建议 1~2。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
         res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
@@ -393,6 +403,8 @@ export default {
             officer_gather_mult: pos(Number(r.data.officer_gather_mult), 1),
             // ★ 2026-09-28 采集等级成长幂次：0 无意义 → pos 回落默认 1.3
             gather_level_pow: pos(Number(r.data.gather_level_pow), 1.3),
+            // ★ 2026-09-28 海野采集系数：0 无意义 → pos 回落默认 1.5
+            gather_sea_mult: pos(Number(r.data.gather_sea_mult), 1.5),
             // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
             mayor_gain_mult: (r.data.mayor_gain_mult === undefined || r.data.mayor_gain_mult === null)
               ? 1 : Number(r.data.mayor_gain_mult),
