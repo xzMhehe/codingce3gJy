@@ -237,6 +237,10 @@ type EzfyCfgLimit struct {
 	GatherMaxPerOrder int `gorm:"default:99;comment:集结上限每订单" json:"gather_max_per_order"`
 	// ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价，比例系统可灵活配置」→ 挂单出售单价上限（黄金/单位，默认 100）
 	SellPriceMax int `gorm:"default:100;comment:挂单出售单价上限" json:"sell_price_max"`
+	// ★ 2026-09-28 用户要求「军官军事累加上限/加速出征，数值可配置」→ 每点军事累加的出征上限（默认 2000）
+	OfficerCapPerMilitary int `gorm:"default:2000;comment:军官军事每点出征上限" json:"officer_cap_per_military"`
+	// ★ 2026-09-28 军官军事加成出征速度（每点 %，默认 0.1）
+	OfficerSpeedPerMilitary float64 `gorm:"default:0.1;comment:军官军事每点速度加成" json:"officer_speed_per_military"`
 
 	// ============ 战斗 / 经济数值（管理端「建筑上限配置」页可维护）============
 	//

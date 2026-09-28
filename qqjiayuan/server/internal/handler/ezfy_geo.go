@@ -574,6 +574,22 @@ func ezfySellPriceMax() int {
 	return 100
 }
 
+// ezfyOfficerCapPerMil 出征军官每 1 点军事累加的出征上限（二战系统配置可调，默认 2000）
+func ezfyOfficerCapPerMil() int {
+	if n := ezfyCfg.limit.OfficerCapPerMilitary; n > 0 {
+		return n
+	}
+	return 2000
+}
+
+// ezfyOfficerSpeedPerMil 出征军官每 1 点军事加成的出征速度（%，二战系统配置可调，默认 0.1）
+func ezfyOfficerSpeedPerMil() float64 {
+	if n := ezfyCfg.limit.OfficerSpeedPerMilitary; n > 0 {
+		return n
+	}
+	return 0.1
+}
+
 // ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
 // ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 更短且可配置」：
 //   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。

@@ -44,6 +44,15 @@
               <template slot="label">挂单出售单价上限<el-tooltip placement="top" :content="tips.sell_price_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.sell_price_max" :min="0" :max="100000" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-28 军官军事加成：每点累加出征上限 + 每点加速（二战系统配置可调） -->
+            <el-form-item>
+              <template slot="label">军官军事每点上限<el-tooltip placement="top" :content="tips.officer_cap_per_military"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_cap_per_military" :min="0" :max="100000" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">军官军事每点加速<el-tooltip placement="top" :content="tips.officer_speed_per_military"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_speed_per_military" :min="0" :max="10" :step="0.1" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">商城单次购买上限<el-tooltip placement="top" :content="tips.mall_buy_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
@@ -231,6 +240,7 @@ export default {
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
         notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 9999,
+        officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
@@ -264,6 +274,8 @@ export default {
         notice_home_count: '游戏首页公告栏展示的公告条数，填 0 = 首页不展示，默认 1',
         gather_max_per_order: '单次出征最多可使用几个集结令，默认 99',
         sell_price_max: '玩家挂单出售资源的单价上限（黄金/单位）：1:100 = 卖 1 粮食价格不能超过 100，数量随意；默认 100，0 = 回落默认',
+        officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
+        officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
         mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 99',
         troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
         wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 3 天',
@@ -332,6 +344,9 @@ export default {
               ? 1 : r.data.notice_home_count,
             gather_max_per_order: pos(r.data.gather_max_per_order, 50),
             sell_price_max: pos(r.data.sell_price_max, 100),
+            officer_cap_per_military: pos(r.data.officer_cap_per_military, 2000),
+            officer_speed_per_military: (r.data.officer_speed_per_military === undefined || r.data.officer_speed_per_military === null)
+              ? 0.1 : r.data.officer_speed_per_military,
             mall_buy_max: pos(r.data.mall_buy_max, 9999),
             troop_max: pos(r.data.troop_max, 1000000000),
             wound_expire_days: pos(r.data.wound_expire_days, 5),

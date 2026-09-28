@@ -74,6 +74,13 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.SellPriceMax <= 0 {
 		lim.SellPriceMax = 100
 	}
+	// ★ 2026-09-28 军官军事加成兜底（0 回落默认：上限 +2000/点、速度 +0.1%/点）
+	if lim.OfficerCapPerMilitary <= 0 {
+		lim.OfficerCapPerMilitary = 2000
+	}
+	if lim.OfficerSpeedPerMilitary <= 0 {
+		lim.OfficerSpeedPerMilitary = 0.1
+	}
 	// ★ 战斗/经济数值兜底：这几个 0 同样无意义（0 = 不扣民心 / 军官免费 / 恢复免费）
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
@@ -155,18 +162,20 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 // factory_max = 0 表示军工厂不限数量（线上现值为 20）。
 func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	var in struct {
-		MilitaryMax           *int `json:"military_max"`
-		ResourceMax           *int `json:"resource_max"`
-		HouseMax              *int `json:"house_max"`
-		FactoryMax            *int `json:"factory_max"`
-		NoticeHomeCount       *int `json:"notice_home_count"`
-		GatherMaxPerOrder     *int `json:"gather_max_per_order"`
-		SellPriceMax          *int `json:"sell_price_max"`
-		MallBuyMax            *int `json:"mall_buy_max"`
-		ConquerFeelingsMax    *int `json:"conquer_feelings_max"`
-		LootFeelings          *int `json:"loot_feelings"`
-		OfficerSalaryPerLevel *int `json:"officer_salary_per_level"`
-		WoundHealDivisor      *int `json:"wound_heal_divisor"`
+		MilitaryMax             *int     `json:"military_max"`
+		ResourceMax             *int     `json:"resource_max"`
+		HouseMax                *int     `json:"house_max"`
+		FactoryMax              *int     `json:"factory_max"`
+		NoticeHomeCount         *int     `json:"notice_home_count"`
+		GatherMaxPerOrder       *int     `json:"gather_max_per_order"`
+		SellPriceMax            *int     `json:"sell_price_max"`
+		OfficerCapPerMilitary   *int     `json:"officer_cap_per_military"`
+		OfficerSpeedPerMilitary *float64 `json:"officer_speed_per_military"`
+		MallBuyMax              *int     `json:"mall_buy_max"`
+		ConquerFeelingsMax      *int     `json:"conquer_feelings_max"`
+		LootFeelings            *int     `json:"loot_feelings"`
+		OfficerSalaryPerLevel   *int     `json:"officer_salary_per_level"`
+		WoundHealDivisor        *int     `json:"wound_heal_divisor"`
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
 		WildTroopMult *float64 `json:"wild_troop_mult"`
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数）
@@ -522,6 +531,21 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.SellPriceMax = *in.SellPriceMax
+	}
+	// ★ 2026-09-28：军官军事每点累加的出征上限（默认 2000）/ 每点速度加成（默认 0.1，单位 %）
+	if in.OfficerCapPerMilitary != nil {
+		if *in.OfficerCapPerMilitary < 0 || *in.OfficerCapPerMilitary > 100000 {
+			resp.ParamError(c, "军官军事每点出征上限需要在 0~100000 之间")
+			return
+		}
+		lim.OfficerCapPerMilitary = *in.OfficerCapPerMilitary
+	}
+	if in.OfficerSpeedPerMilitary != nil {
+		if *in.OfficerSpeedPerMilitary < 0 || *in.OfficerSpeedPerMilitary > 10 {
+			resp.ParamError(c, "军官军事每点速度加成需要在 0~10 之间（0.1 = 每点 +0.1%）")
+			return
+		}
+		lim.OfficerSpeedPerMilitary = *in.OfficerSpeedPerMilitary
 	}
 	// ★ 2026-09-24：采集周期小时数（至少 1 小时；上限 720 防呆 = 30 天）
 	if in.DispatchPeriodH != nil {

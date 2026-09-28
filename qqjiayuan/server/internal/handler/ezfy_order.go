@@ -548,6 +548,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		if lead := h.officerByName(city.ID, req.Officer); h.officerSpeedSkill(lead) {
 			travelSec = travelSec * 100 / 110
 		}
+		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
+		if lead := h.officerByName(city.ID, req.Officer); lead != nil && lead.Military > 0 {
+			travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
+		}
 		// ★ 出征速度加成（与 createOrder 同口径，保证预览与实际一致）
 		if b := ezfyMarchSpeedBonus(); b > 0 {
 			travelSec = int64(float64(travelSec) * 100 / (100 + b))
@@ -578,7 +582,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		totalPreview += t.Count
 	}
 	// ★ 管理端「出征上限」开关关掉时 capUnlimited=true（前端显示「不限」）
-	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather)
+	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, req.Officer)
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
@@ -659,11 +663,12 @@ func ezfyGatherBonusPer() int64 {
 //
 //	= 司令部等级 × 1万 × (1 + 指挥艺术科技等级 × 10%)   ← 原版规则（司令部「每次出征上限N人」）
 //	+ 集结令个数 × ezfyGatherBonusPer()                ← 用户规则：每个集结令 +10 万
+//	+ 出征军官军事 × ezfyOfficerCapPerMil()            ← 2026-09-28 用户规则：军官军事累加上限（可配置）
 //
 // ★ 用户要求「再加个出征上限开关，默认开；关闭后出征没有上限」→
 //
 //	开关关掉时返回 (0, true)，调用方一律用 unlimited 判断，**不要**拿 0 去比大小。
-func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int) (cap int64, unlimited bool) {
+func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string) (cap int64, unlimited bool) {
 	if !ezfyMarchCapOn() {
 		return 0, true
 	}
@@ -671,6 +676,9 @@ func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int) (cap int64, unl
 	cap = int64(10000*hq) * int64(100+h.techMap(cityId)[15]*ezfyCommandCarryPct) / 100
 	if gather > 0 {
 		cap += int64(gather) * ezfyGatherBonusPer()
+	}
+	if lead := h.officerByName(cityId, officer); lead != nil && lead.Military > 0 {
+		cap += int64(lead.Military) * int64(ezfyOfficerCapPerMil())
 	}
 	return cap, false
 }
@@ -918,7 +926,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if orderType != 5 && orderType != 8 {
 		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
 		//   ★ 管理端「出征上限」开关关掉时 capUnlimited=true → 完全不做这个校验
-		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather)
+		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)
 		if !capUnlimited && total > carryCap {
 			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
 			if gm := ezfyGatherMax(); gather < gm {
@@ -947,6 +955,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// 带队军官「移速」技能: 行军 +10%
 	if lead := h.officerByName(city.ID, officer); h.officerSpeedSkill(lead) {
 		travelSec = travelSec * 100 / 110
+	}
+	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
+	if lead := h.officerByName(city.ID, officer); lead != nil && lead.Military > 0 {
+		travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
 	}
 	// ★ 出征速度加成（管理端「二战系统配置」可配）：节假日调高让队伍走快点
 	if b := ezfyMarchSpeedBonus(); b > 0 {

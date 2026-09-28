@@ -151,11 +151,16 @@
         <!-- [世界] 安珞：11111 / [军团] / [私聊] / [系统]; 昵称用实时昵称+个性颜色 -->
         <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
           [<span class="orange">{{ ch.tag }}</span>]
-          <!-- ★ 2026-09-28 无发送者(如系统消息, 无 user_id)时补「系统：」读头, 否则正常显示昵称:内容 -->
-          <a v-if="ch.user_id" href="javascript:;" @click="openPlayer(ch.user_id)"><span
-             v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
-             :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：{{ ch.content }}
-          <template v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}{{ ch.content }}</template>
+          <!-- ★ 2026-09-28 bug修复: 冒号+内容从 v-if/v-else 判断结构移出外层,
+               否则 Vue 会把紧跟 v-if 的「：{{content}}」静文并进 else 分支,
+               导致有 user_id 的玩家消息只出昵称不出内容。现在两层分支都只负责出「昵称：」/「系统：」头, 内容恒在 -->
+          <span v-if="ch.user_id">
+            <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
+               v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
+               :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：
+          </span>
+          <span v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}</span>
+          {{ ch.content }}
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
@@ -1395,7 +1400,7 @@
           </div>
           <div class="old-line gray">
             每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
-            司令部上限（含指挥艺术科技）与集结令加成<b>叠加</b>。
+            司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
           </div>
           <div class="old-line" v-if="attackTroops.length">
             <span :class="orderOverCap ? 'red' : 'green'">
@@ -1728,8 +1733,9 @@
                 <template v-else>空闲</template>
               </td>
               <td>
-                <a v-if="w.status === 0 && !w.idle_order_id" href="javascript:;" @click="openWildGather(w)">[采集]</a>
-                <a v-else-if="w.idle_order_id" class="red" href="javascript:;" @click="startCollect(w.idle_order_id)">[开始采集]</a>
+                <!-- ★ 2026-09-28 平原/沿海平原可建城、采集无宝物, 附属野地列表不再提供采集, 仅保留[放弃] -->
+                <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" @click="openWildGather(w)">[采集]</a>
+                <a v-else-if="w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="startCollect(w.idle_order_id)">[开始采集]</a>
                 <span v-if="w.status === 1" class="gray">采集中</span>
                 <a class="red" href="javascript:;" @click="doAbandon(w)">[放弃]</a>
               </td>
