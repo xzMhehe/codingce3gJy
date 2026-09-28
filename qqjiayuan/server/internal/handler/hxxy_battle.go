@@ -18,27 +18,27 @@ import (
 
 // hxEnemy 敌方快照
 type hxEnemy struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	Level int    `json:"level"`
-	HP    int    `json:"hp"`
-	MaxHP int    `json:"max_hp"`
-	MP    int    `json:"mp"`
-	MaxMP int    `json:"max_mp"`
-	Atk   int    `json:"atk"`
-	Mg    int    `json:"mg"`
-	Def   int    `json:"def"`
-	Mf    int    `json:"mf"`
-	Bg    int    `json:"bg"`
-	Hg    int    `json:"hg"`
-	Lg    int    `json:"lg"`
-	Bf    int    `json:"bf"`
-	Hf    int    `json:"hf"`
-	Lf    int    `json:"lf"`
-	Kind  int    `json:"kind"` // 1npc 2boss
-	Type  string `json:"type"` // npc/boss/dungeon
-	ExpReward   int   `json:"exp_reward"`
-	MoneyReward int64 `json:"money_reward"`
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Level       int    `json:"level"`
+	HP          int    `json:"hp"`
+	MaxHP       int    `json:"max_hp"`
+	MP          int    `json:"mp"`
+	MaxMP       int    `json:"max_mp"`
+	Atk         int    `json:"atk"`
+	Mg          int    `json:"mg"`
+	Def         int    `json:"def"`
+	Mf          int    `json:"mf"`
+	Bg          int    `json:"bg"`
+	Hg          int    `json:"hg"`
+	Lg          int    `json:"lg"`
+	Bf          int    `json:"bf"`
+	Hf          int    `json:"hf"`
+	Lf          int    `json:"lf"`
+	Kind        int    `json:"kind"` // 1npc 2boss
+	Type        string `json:"type"` // npc/boss/dungeon
+	ExpReward   int    `json:"exp_reward"`
+	MoneyReward int64  `json:"money_reward"`
 	Drops       string `json:"drops"`
 	Difficulty  string `json:"difficulty"`
 	// 副本信息
@@ -48,23 +48,23 @@ type hxEnemy struct {
 
 // hxSelf 我方快照
 type hxSelf struct {
-	Name  string `json:"name"`
-	Level int    `json:"level"`
-	HP    int    `json:"hp"`
-	MaxHP int    `json:"max_hp"`
-	MP    int    `json:"mp"`
-	MaxMP int    `json:"max_mp"`
-	Atk   int    `json:"atk"`
-	Mg    int    `json:"mg"`
-	Def   int    `json:"def"`
-	Mf    int    `json:"mf"`
-	Bg    int    `json:"bg"`
-	Hg    int    `json:"hg"`
-	Lg    int    `json:"lg"`
-	Bf    int    `json:"bf"`
-	Hf    int    `json:"hf"`
-	Lf    int    `json:"lf"`
-	Sect  int    `json:"sect"`
+	Name  string     `json:"name"`
+	Level int        `json:"level"`
+	HP    int        `json:"hp"`
+	MaxHP int        `json:"max_hp"`
+	MP    int        `json:"mp"`
+	MaxMP int        `json:"max_mp"`
+	Atk   int        `json:"atk"`
+	Mg    int        `json:"mg"`
+	Def   int        `json:"def"`
+	Mf    int        `json:"mf"`
+	Bg    int        `json:"bg"`
+	Hg    int        `json:"hg"`
+	Lg    int        `json:"lg"`
+	Bf    int        `json:"bf"`
+	Hf    int        `json:"hf"`
+	Lf    int        `json:"lf"`
+	Sect  int        `json:"sect"`
 	Pet   *hxPetSnap `json:"pet"`
 }
 
@@ -646,8 +646,8 @@ func (h *HxxyHandler) hxBattleUseItem(p *model.HxxyPlayer, self *hxSelf, bagID u
 		return false
 	}
 	var eff struct {
-		HP  int `json:"hp"`
-		MP  int `json:"mp"`
+		HP int `json:"hp"`
+		MP int `json:"mp"`
 	}
 	if it.Effect != "" {
 		json.Unmarshal([]byte(it.Effect), &eff)

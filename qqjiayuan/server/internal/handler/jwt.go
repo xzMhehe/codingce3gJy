@@ -1365,7 +1365,7 @@ func (h *JwtHandler) ForgeItem(c *gin.Context) {
 	// 校验材料
 	for _, mat := range jwtParseMats(it.Mats, uid, h) {
 		mn, _ := mat["name"].(string)
-		needArr := strings.Split(strconv.Itoa(mat["need"].(int))+ "_"+mn, "_")
+		needArr := strings.Split(strconv.Itoa(mat["need"].(int))+"_"+mn, "_")
 		needStr := needArr[0]
 		need, _ := strconv.Atoi(needStr)
 		have := mat["have"].(int)
@@ -1438,7 +1438,7 @@ func (h *JwtHandler) Sign(c *gin.Context) {
 	p := h.jwtPlayer(uid)
 	h.jwtRoll(p)
 	weekday := int(time.Now().Weekday()) // 0=周日
-	day := (weekday + 6) % 7 + 1         // 1-7 (周一开始)
+	day := (weekday+6)%7 + 1             // 1-7 (周一开始)
 	if jwtSignStatus(p.SignWeek)[strconv.Itoa(day)] {
 		resp.ParamError(c, "今天已签到")
 		return

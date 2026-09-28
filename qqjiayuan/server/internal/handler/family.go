@@ -198,7 +198,7 @@ func (h *FamilyHandler) Detail(c *gin.Context) {
 		"announcement": fam.Announcement, "owner_id": fam.OwnerID, "owner": fam.Owner,
 		"tree_level": fam.TreeLevel, "tree_exp": fam.TreeExp, "battle_score": fam.BattleScore,
 		"war_points": fam.WarPoints,
-		"members": members, "my_role": myRole, "member_count": len(members),
+		"members":    members, "my_role": myRole, "member_count": len(members),
 		"my_exp": myExp, "my_title": myTitle,
 		"signed_today": signed > 0, "tree_today": treeToday, "online": online, "created_at": fam.CreatedAt,
 		"forum_board_id": forumBoard.ID, "favored": favored, "visits_today": visitsToday,

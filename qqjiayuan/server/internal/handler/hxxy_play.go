@@ -51,8 +51,8 @@ func (h *HxxyHandler) ArenaInfo(c *gin.Context) {
 	var myWins int64
 	h.DB.Model(&model.HxxyBattleLog{}).Where("player_id = ? AND type = 'pvp' AND result = 2", p.ID).Count(&myWins)
 	resp.OK(c, gin.H{
-		"rank":   rank,
-		"me":     gin.H{"rank": myRank, "wins": myWins, "today": p.DayArena, "limit": hxArenaDaily},
+		"rank": rank,
+		"me":   gin.H{"rank": myRank, "wins": myWins, "today": p.DayArena, "limit": hxArenaDaily},
 	})
 }
 
@@ -278,7 +278,10 @@ func (h *HxxyHandler) FunRoll(c *gin.Context) {
 }
 
 // teyunDests 复刻原版 xy476.php 腾云目的地（区域名 → 传送坐标，坐标取自地图传送NPC teles）
-var teyunDests = []struct{ Cat, Name string; Dtx, Dty int }{
+var teyunDests = []struct {
+	Cat, Name string
+	Dtx, Dty  int
+}{
 	// 门派区域
 	{"门派区域", "龙宫", 2, 1}, {"门派区域", "月宫", 7, 0}, {"门派区域", "普陀", 13, 0},
 	{"门派区域", "方寸", 10, 0}, {"门派区域", "将军", 1, 72}, {"门派区域", "地府", 22, 0},
@@ -468,7 +471,7 @@ func (h *HxxyHandler) GiveMoney(c *gin.Context) {
 		resp.ParamError(c, "对方ID有误~~请重新赠送")
 		return
 	}
-	h.hxWallet(p, "money", -(in.Amount+fee), "赠银给"+t.Name)
+	h.hxWallet(p, "money", -(in.Amount + fee), "赠银给"+t.Name)
 	h.hxWallet(&t, "money", in.Amount, "收到"+p.Name+"赠银")
 	h.hxNotify(t.ID, "打赏了你"+hxSilverText(in.Amount)+"银两，快去抱抱大佬大腿求包养吧！！")
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("你成功赠送%s给了%s(%d)\n附带：（%s两手续费用）", hxSilverText(in.Amount), t.Name, t.ID, hxSilverText(fee))})

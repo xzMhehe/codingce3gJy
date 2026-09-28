@@ -372,7 +372,7 @@ func (h *ParkHandler) Buy(c *gin.Context) {
 	}
 	p := h.parkOf(uid)
 	if p.Cars >= parkMaxCars {
-		resp.ParamError(c, "您的车太多了，每人最多只能拥有" + strconv.Itoa(parkMaxCars) + "辆车哦！")
+		resp.ParamError(c, "您的车太多了，每人最多只能拥有"+strconv.Itoa(parkMaxCars)+"辆车哦！")
 		return
 	}
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("coins", gorm.Expr("coins - ?", car.Price))
@@ -409,7 +409,7 @@ func (h *ParkHandler) Send(c *gin.Context) {
 		return
 	}
 	if target.Cars >= parkMaxCars {
-		resp.ParamError(c, "TA的车太多了，每人最多只能拥有" + strconv.Itoa(parkMaxCars) + "辆车哦！")
+		resp.ParamError(c, "TA的车太多了，每人最多只能拥有"+strconv.Itoa(parkMaxCars)+"辆车哦！")
 		return
 	}
 	u := h.userBrief(uid)

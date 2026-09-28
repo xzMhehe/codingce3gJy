@@ -48,7 +48,7 @@ func TestOnlineSeaCities(t *testing.T) {
 
 	sc := bufio.NewScanner(f)
 	type row struct {
-		id, uid, x, y int
+		id, uid, x, y  int
 		oldSea, newSea bool
 		oldT, newT     int
 	}

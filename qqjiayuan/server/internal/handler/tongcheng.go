@@ -234,8 +234,8 @@ func (h *CityHandler) AdminTree(c *gin.Context) {
 	}
 	type cityNode struct {
 		model.Board
-		ThreadCount2 int64                  `json:"thread_count2"`
-		Managers     []model.CityManager    `json:"managers"`
+		ThreadCount2 int64               `json:"thread_count2"`
+		Managers     []model.CityManager `json:"managers"`
 	}
 	type provNode struct {
 		model.Board

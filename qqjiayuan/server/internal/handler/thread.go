@@ -462,7 +462,7 @@ func (h *ThreadHandler) Replies(c *gin.Context) {
 	}
 	var replies []model.Reply
 	h.DB.Preload("User").Preload("User.Badges").Where("thread_id = ? AND status = 1", th.ID).
-		Order("floor DESC").Offset((page-1)*10).Limit(10).Find(&replies)
+		Order("floor DESC").Offset((page - 1) * 10).Limit(10).Find(&replies)
 	var sticky *model.StickyReply
 	h.DB.Preload("User").Where("thread_id = ?", th.ID).First(&sticky)
 	if sticky != nil && sticky.ID == 0 {

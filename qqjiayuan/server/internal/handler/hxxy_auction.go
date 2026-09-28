@@ -18,9 +18,9 @@ import (
 
 // hxAuctionTabs 拍卖分类页签（复刻 xy489 页签顺序）
 var hxAuctionTabs = []struct {
-	K   string
-	N   string
-	Cat int // item category；equip=100 表示装备表；-1 表示空分类占位
+	K    string
+	N    string
+	Cat  int // item category；equip=100 表示装备表；-1 表示空分类占位
 	Kind string
 }{
 	{"scroll", "书卷", 1, "item"},
@@ -217,7 +217,7 @@ func (h *HxxyHandler) AuctionBuy(c *gin.Context) {
 		resp.ParamError(c, "对不起！！该物品已被买走或者下架了")
 		return
 	}
-	h.hxWallet(p, "money", -(total+fee), "拍卖购买【"+a.Name+"】x"+strconv.Itoa(in.Count)+"（含手续费）")
+	h.hxWallet(p, "money", -(total + fee), "拍卖购买【"+a.Name+"】x"+strconv.Itoa(in.Count)+"（含手续费）")
 	h.hxBagAdd(p, a.Kind, a.RefID, in.Count, b.Bind)
 	if in.Count >= a.Count {
 		h.DB.Delete(&model.HxxyBag{}, b.ID)

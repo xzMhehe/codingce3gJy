@@ -1854,9 +1854,13 @@
         <div class="panel">
           <div class="panel-title">安抚民心</div>
           当前民心: {{ city.feelings }} / 民怨: {{ city.grievance }}<br/>
-          安抚花费 民怨×100 {{ resNames.gold }}, 可清零民怨并回升民心。<br/>
-          <div class="old-line">{{ resNames.gold }}: {{ city.gold }} | 预计花费: {{ city.grievance * 100 }}</div>
-          <button @click="doPlacate">[安抚]</button>
+          <div class="old-line">{{ resNames.gold }}: {{ city.gold }} | 安抚花费: {{ placate.gold }}</div>
+          <!-- ★ 冷却用 placateNow 每秒本地重算，不靠重新拉接口（沿用全站倒计时同一套做法） -->
+          <template v-if="placateCdLeft > 0">
+            <span class="gray">冷却中，还需 {{ durText(placateCdLeft / 1000) }}</span><br/>
+            <button class="gray" disabled>[安抚]</button>
+          </template>
+          <button v-else @click="doPlacate">[安抚]</button>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1865,12 +1869,12 @@
       <template v-else-if="cur === 'taxset'">
         <div class="panel">
           <div class="panel-title">税率设置</div>
-          当前税率: {{ city.tax_rate }}%<br/>
-          <span class="gray">税率越高{{ resNames.gold }}收入越多, 但民心下降越快: ≤10%民心+2/时, ≤20%+1, ≤40%不变, ≤60%-1, 更高-2; 民怨≥50时产量减半。</span><br/>
+          当前税率: {{ city.tax_rate }}% / 民心: {{ city.feelings }}<br/>
           <div class="old-line">
             新税率: <input v-model="taxInput" type="number" min="0" max="100" style="width:70px"/>%
             <button @click="doTax">[设置]</button>
           </div>
+          <div class="old-line gray">设置后民心将联动为 {{ 100 - (parseInt(taxInput) || 0) }}</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3979,6 +3983,11 @@ export default {
       resNames: RES_NAMES,
       // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
+      // ★ 2026-09-28 安抚参数（后端下发，管理端可配：5 万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
+      placate: { gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 },
+      // ★ 安抚冷却的每秒时间基准（由 tickClock 驱动，供 placateCdLeft 计算属性用）
+      placateNow: 0,
+      _placateAt: 0, // 安抚冷却快照(/view 里的 cd_left)的取回时刻
       resShort: RES_SHORT,
       resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
@@ -4753,6 +4762,16 @@ export default {
       // ★ 2026-09-28 采集实况 _lg + 倒计时实况 _lt 都依赖 gatherNow，每秒一起重算
       return (this.dynamics || []).map(o => this.withLg(this.withLive(o)))
     },
+    // ★ 2026-09-28 安抚冷却剩余毫秒（依赖 placateNow 每秒重算，到点自动放行按钮）
+    //   后端的 cd_left 是拉 /view 那一刻的快照，这里用本地时间基准往前推，避免只靠刷新。
+    placateCdLeft () {
+      const total = (this.placate && this.placate.cooldown_min ? this.placate.cooldown_min : 15) * 60000
+      const snap = (this.placate && this.placate.cd_left) || 0
+      if (snap <= 0) return 0
+      // 快照剩余 = snap（拉接口的那一刻）；本地已经流逝的时间 = 从 load 到现在的差
+      const elapsed = this.placateNow && this._placateAt ? this.placateNow - this._placateAt : 0
+      return Math.max(0, Math.min(total, snap - elapsed))
+    },
     // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
     dynMarchTotalPages () {
       return Math.max(1, Math.ceil(this.dynMarch.length / this.dynSize))
@@ -4936,6 +4955,8 @@ export default {
       // ★ 2026-09-28 让「累计采集/采集资源」实时变化：tickClock 每秒已被 clockTimer 调用，
       //   这里顺手把它升为一个响应式时间基准，模板上的 liveGather() 每秒重算。
       this.gatherNow = Date.now()
+      // ★ 安抚冷却倒计时也复用这个每秒基准（避免再起一个定时器）
+      this.placateNow = this.gatherNow
       const d = new Date()
       const p = n => (n < 10 ? '0' + n : '' + n)
       this.nowText = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
@@ -5006,7 +5027,20 @@ export default {
           this.profile = r.data.profile
           this.city = r.data.city
           this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_prod || {})
+          this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, r.data.placate || {})
+          this._placateAt = Date.now() // 记住安抚冷却快照的取回时刻，供 placateCdLeft 本地推算
         }
+      })
+    },
+    // ★ 2026-09-28 安抚改为「固定花费 + 15 分钟冷却」后，旧口径不再适用：
+    //   原来文案写死「民怨×100」，现在花费/效果/冷却都以后端下发为准（见 View 的 placate 块）。
+    //   安抚后立刻重拉 /view 刷新冷却倒计时，避免连点。
+    async doPlacate () {
+      if (!await this.ask('确定安抚民心吗？（花费 ' + this.placate.gold + ' ' + this.resNames.gold +
+        '，民怨 -' + this.placate.grievance + '、民心 +' + this.placate.feelings +
+        '；每 ' + this.placate.cooldown_min + ' 分钟可安抚一次）')) return
+      api.post('/games/ezfy/city/placate', {}).then(r => {
+        this.alert(r, '安抚完成', () => { this.load() })
       })
     },
     // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
@@ -5298,7 +5332,9 @@ export default {
           this.city = d.city
           // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
           this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
-          this.cities = d.cities
+          this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
+          this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
+          this.city = d.city
           this.continent = d.continent
           this.cityKindRaw = d.city_kind || ''
           this.cityIsSea = !!d.is_sea
@@ -6452,11 +6488,10 @@ export default {
     doConvene () {
       api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r, '召集完成'))
     },
-    doPlacate () {
-      api.post('/games/ezfy/city/placate', {}).then(r => this.alert(r, '安抚完成'))
-    },
+    // doPlacate 已上移到 /view 加载处（那里有 placate 参数，用于拼确认文案），此处不再重复定义
     doTax () {
-      api.post('/games/ezfy/city/tax', { tax_rate: parseInt(this.taxInput) || 0 }).then(r => this.alert(r, '税率已调整'))
+      api.post('/games/ezfy/city/tax', { tax_rate: parseInt(this.taxInput) || 0 })
+        .then(r => this.alert(r, '税率已调整', () => { this.load() }))
     },
     doRename () {
       api.post('/games/ezfy/city/rename', { name: this.renameInput }).then(r => this.alert(r, '城市已更名'))

@@ -526,11 +526,11 @@ func (h *AdminHandler) AdminXyAnnounce(c *gin.Context) {
 // AdminXyGrantAll 全服发放（银两/金豆/物品）
 func (h *AdminHandler) AdminXyGrantAll(c *gin.Context) {
 	var in struct {
-		Kind    string `json:"kind"` // money/beans/item
-		Amount  int64  `json:"amount"`
-		ItemID  uint   `json:"item_id"`
-		Count   int    `json:"count"`
-		Reason  string `json:"reason"`
+		Kind   string `json:"kind"` // money/beans/item
+		Amount int64  `json:"amount"`
+		ItemID uint   `json:"item_id"`
+		Count  int    `json:"count"`
+		Reason string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")

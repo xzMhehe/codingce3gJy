@@ -135,13 +135,13 @@ func (h *HomeHandler) View(c *gin.Context) {
 
 	lv, need := homePointLevel(home.Point)
 	resp.OK(c, gin.H{
-		"home":     gin.H{"point": home.Point, "level": lv, "next_need": need, "visitors": home.Visitors, "messages": home.Messages, "moods": home.Moods},
+		"home":        gin.H{"point": home.Point, "level": lv, "next_need": need, "visitors": home.Visitors, "messages": home.Messages, "moods": home.Moods},
 		"today_first": home.LastActiveDate == time.Now().Format("2006-01-02"),
-		"user":     gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color, "level": u.Level, "noble": u.Noble, "coins": u.Coins},
-		"mood":     gin.H{"id": mood.ID, "content": mood.Content, "created_at": mood.CreatedAt},
-		"my_news":  h.newsBrief(myNews),
+		"user":        gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color, "level": u.Level, "noble": u.Noble, "coins": u.Coins},
+		"mood":        gin.H{"id": mood.ID, "content": mood.Content, "created_at": mood.CreatedAt},
+		"my_news":     h.newsBrief(myNews),
 		"friend_news": h.newsBrief(friendNews),
-		"visitors": visitors, "visitor_total": visitorTotal,
+		"visitors":    visitors, "visitor_total": visitorTotal,
 		"messages": msgs, "message_total": msgTotal,
 		"favorite_count": favCount,
 	})
@@ -197,10 +197,10 @@ func (h *HomeHandler) Other(c *gin.Context) {
 	}
 	online := u.LastActiveAt != nil && time.Since(*u.LastActiveAt) < 30*time.Minute
 	resp.OK(c, gin.H{
-		"home":  gin.H{"point": home.Point, "level": lv, "next_need": need, "visitors": home.Visitors, "messages": home.Messages},
-		"user":  gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color, "level": u.Level, "noble": u.Noble, "signature": u.Signature, "introduction": u.Introduction, "gender": u.Gender, "online": online, "is_friend": isFriend},
-		"mood":  gin.H{"id": mood.ID, "content": mood.Content, "created_at": mood.CreatedAt},
-		"news":  h.newsBrief(news),
+		"home":     gin.H{"point": home.Point, "level": lv, "next_need": need, "visitors": home.Visitors, "messages": home.Messages},
+		"user":     gin.H{"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color, "level": u.Level, "noble": u.Noble, "signature": u.Signature, "introduction": u.Introduction, "gender": u.Gender, "online": online, "is_friend": isFriend},
+		"mood":     gin.H{"id": mood.ID, "content": mood.Content, "created_at": mood.CreatedAt},
+		"news":     h.newsBrief(news),
 		"visitors": visitors, "visitor_total": visitorTotal,
 		"messages": msgs, "message_total": msgTotal,
 	})
@@ -215,7 +215,7 @@ func (h *HomeHandler) Visit(c *gin.Context) {
 	}
 	var u model.User
 	if err := h.DB.Where("username = ?", no).First(&u).Error; err != nil {
-		resp.ParamError(c, "找不到号码为 " + no + " 的居民，检查一下再试")
+		resp.ParamError(c, "找不到号码为 "+no+" 的居民，检查一下再试")
 		return
 	}
 	resp.OK(c, gin.H{"user_id": u.ID, "username": u.Username, "nickname": u.Nickname})
@@ -290,9 +290,8 @@ func (h *HomeHandler) InviteInfo(c *gin.Context) {
 	h.DB.Model(&model.User{}).Where("invited_by = ?", uid).Count(&total)
 	resp.OK(c, gin.H{
 		"code": code, "link": "/register?invite=" + code,
-		"invited":   out, "invited_count": total,
+		"invited": out, "invited_count": total,
 		"reward":    "每成功邀请 1 位新居民注册，你获得 50 G币 奖励；对方也额外得 50 G币 见面礼。",
 		"rule_text": "邀请你开通家园……用说说分享心情，用日志记录感悟，用照片记录生活。",
 	})
 }
-

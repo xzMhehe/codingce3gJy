@@ -123,7 +123,7 @@ func (h *InteractHandler) Gift(c *gin.Context) {
 		return
 	}
 	if sender.Coins < req.Coins {
-		resp.ParamError(c, "G币不足，打赏需要 " + strconv.Itoa(req.Coins) + " G币")
+		resp.ParamError(c, "G币不足，打赏需要 "+strconv.Itoa(req.Coins)+" G币")
 		return
 	}
 	h.DB.Model(&sender).Update("coins", gorm.Expr("coins - ?", req.Coins))

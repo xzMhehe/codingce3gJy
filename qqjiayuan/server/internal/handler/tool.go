@@ -153,10 +153,10 @@ func (h *ToolHandler) Weather(c *gin.Context) {
 			WindSpeed   float64 `json:"wind_speed_10m"`
 		} `json:"current"`
 		Daily struct {
-			Time   []string  `json:"time"`
-			Code   []int     `json:"weather_code"`
-			Max    []float64 `json:"temperature_2m_max"`
-			Min    []float64 `json:"temperature_2m_min"`
+			Time []string  `json:"time"`
+			Code []int     `json:"weather_code"`
+			Max  []float64 `json:"temperature_2m_max"`
+			Min  []float64 `json:"temperature_2m_min"`
 		} `json:"daily"`
 	}
 	if json.Unmarshal([]byte(fcBody), &fc) != nil {

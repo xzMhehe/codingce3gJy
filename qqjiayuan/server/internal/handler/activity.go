@@ -85,15 +85,15 @@ func (h *ActivityHandler) NoticeList(c *gin.Context) {
 	q.Order("id DESC").Offset((page - 1) * size).Limit(size).Find(&list)
 
 	type noticeRow struct {
-		ID          uint   `json:"id"`
-		Title       string `json:"title"`
-		UserID      uint   `json:"user_id"`
-		Username    string `json:"username"`
-		Nickname    string `json:"nickname"`
-		Avatar      string `json:"avatar"`
-		ReplyCount  int    `json:"reply_count"`
-		ViewCount   int    `json:"view_count"`
-		CreatedAt   time.Time `json:"created_at"`
+		ID         uint      `json:"id"`
+		Title      string    `json:"title"`
+		UserID     uint      `json:"user_id"`
+		Username   string    `json:"username"`
+		Nickname   string    `json:"nickname"`
+		Avatar     string    `json:"avatar"`
+		ReplyCount int       `json:"reply_count"`
+		ViewCount  int       `json:"view_count"`
+		CreatedAt  time.Time `json:"created_at"`
 	}
 	out := make([]noticeRow, 0, len(list))
 	for _, th := range list {

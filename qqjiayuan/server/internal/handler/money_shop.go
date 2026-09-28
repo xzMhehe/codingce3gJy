@@ -271,15 +271,15 @@ func (h *MoneyShopHandler) AdminList(c *gin.Context) {
 }
 
 type moneyShopReq struct {
-	Name     string     `json:"name" binding:"required"`
-	MType    string     `json:"mtype" binding:"required"`
-	Money    int        `json:"money"`
-	PType    string     `json:"ptype" binding:"required"`
-	Price    int        `json:"price"`
-	Stock    int        `json:"stock"`
-	Sales    int        `json:"sales"`
-	Status   int        `json:"status"`
-	EndTime  *time.Time `json:"end_time"`
+	Name    string     `json:"name" binding:"required"`
+	MType   string     `json:"mtype" binding:"required"`
+	Money   int        `json:"money"`
+	PType   string     `json:"ptype" binding:"required"`
+	Price   int        `json:"price"`
+	Stock   int        `json:"stock"`
+	Sales   int        `json:"sales"`
+	Status  int        `json:"status"`
+	EndTime *time.Time `json:"end_time"`
 }
 
 func (h *MoneyShopHandler) AdminCreate(c *gin.Context) {

@@ -631,6 +631,12 @@ const (
 	// ★ 资源数值安全上限：任何路径写入资源都不得超过它（约 1 万亿）。
 	//   远小于 int64 上限，仅用于兜底防溢出；游戏内实际生效的仍是各城「仓储上限」。
 	ezfyResSafeMax = int64(1000000000000)
+
+	// ★ 2026-09-28 用户规则：安抚每次花 5 万黄金、民怨 −2、民心 +1、15 分钟一次。
+	ezfyPlacateGoldDef      = int64(50000) // 安抚花费黄金（默认 5 万）
+	ezfyPlacateGrievanceDef = 2            // 安抚降低民怨（默认 2）
+	ezfyPlacateFeelingsDef  = 1            // 安抚提升民心（默认 1）
+	ezfyPlacateCooldownDef  = 15           // 安抚冷却分钟数（默认 15）
 )
 
 // ezfyTroopMaxCfg 单城兵力上限（读 ezfy_cfg_limit.troop_max，默认 50 亿）
@@ -755,6 +761,37 @@ func ezfyConquerFeelingsCfg() int {
 // ezfyLootFeelingsCfg 掠夺(2) 每次扣目标多少民心
 func ezfyLootFeelingsCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.LootFeelings, ezfyLootFeelingsDef)
+}
+
+// ezfyPlacateGoldCost 安抚花费的黄金（默认 5 万）
+func ezfyPlacateGoldCost() int64 {
+	if v := ezfyCfg.limit.PlacateGold; v > 0 {
+		return v
+	}
+	return ezfyPlacateGoldDef
+}
+
+// ezfyPlacateGrievanceDown 安抚降低的民怨点数（默认 2）
+func ezfyPlacateGrievanceDown() int {
+	return ezfyLimitOr(ezfyCfg.limit.PlacateGrievance, ezfyPlacateGrievanceDef)
+}
+
+// ezfyPlacateFeelingsUp 安抚提升的民心点数（默认 1）
+func ezfyPlacateFeelingsUp() int {
+	return ezfyLimitOr(ezfyCfg.limit.PlacateFeelings, ezfyPlacateFeelingsDef)
+}
+
+// ezfyPlacateCooldownMinutes 安抚冷却分钟数（默认 15）
+func ezfyPlacateCooldownMinutes() int {
+	if v := ezfyCfg.limit.PlacateCooldownMin; v > 0 {
+		return v
+	}
+	return ezfyPlacateCooldownDef
+}
+
+// ezfyPlacateCooldownMs 安抚冷却毫秒数
+func ezfyPlacateCooldownMs() int64 {
+	return int64(ezfyPlacateCooldownMinutes()) * 60000
 }
 
 // ezfyOfficerSalaryPerLvCfg 军官工资：每名军官每小时消耗「等级 × 该值」黄金

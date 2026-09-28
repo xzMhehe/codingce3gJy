@@ -286,7 +286,7 @@ func (h *FarmHandler) View(c *gin.Context) {
 
 	resp.OK(c, gin.H{
 		"farm": gin.H{"uid": uid, "name": f.Name, "level": f.Level, "point": f.Point,
-			"need": (f.Level+1)*farmPointStep, "mucks": f.Mucks, "csteal": f.CSteal,
+			"need": (f.Level + 1) * farmPointStep, "mucks": f.Mucks, "csteal": f.CSteal,
 			"coins": u.Coins, "lands": len(landViews), "nick": u.Nickname},
 		"lands": landViews, "msgs": msgViews, "recent": recentViews,
 	})
@@ -369,7 +369,7 @@ func (h *FarmHandler) Shop(c *gin.Context) {
 	for _, s := range seeds {
 		seedViews = append(seedViews, gin.H{"id": s.ID, "name": s.Name, "cycle": s.Cycle,
 			"aging": s.Aging, "again": s.Again, "yield": s.Yield, "price": s.Price,
-			"seed_price": s.Price*5*s.Cycle, "point": s.Point, "level": s.Level})
+			"seed_price": s.Price * 5 * s.Cycle, "point": s.Point, "level": s.Level})
 	}
 	var mucks []model.FarmMuck
 	h.DB.Where("status = 1").Order("id ASC").Find(&mucks)

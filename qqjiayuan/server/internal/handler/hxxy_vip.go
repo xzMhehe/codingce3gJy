@@ -19,10 +19,10 @@ import (
 
 // hxVipDef VIP 等级福利表：等级 → (万能果数量, 金豆数量, 所需银两)
 var hxVipDef = []struct {
-	Lv      int
-	Cute    int // 万能果
-	Beans   int // 金豆
-	Price   int64
+	Lv         int
+	Cute       int // 万能果
+	Beans      int // 金豆
+	Price      int64
 	ShowSilver string
 }{
 	{0, 1, 0, 20000000, "2000万"}, {1, 2, 1, 20000000, "2000万"},
@@ -85,12 +85,12 @@ func (h *HxxyHandler) VipInfo(c *gin.Context) {
 		}
 	}
 	resp.OK(c, gin.H{
-		"level": p.VipLv,
-		"lvl160": p.Level >= 160,
-		"exchanged": exchanged > 0,
-		"defs": defs,
+		"level":      p.VipLv,
+		"lvl160":     p.Level >= 160,
+		"exchanged":  exchanged > 0,
+		"defs":       defs,
 		"wanneng_id": h.hxVipItemID(),
-		"vip_exp": p.VipExp, "exp_diff": expDiff, "next_lv": nextLv,
+		"vip_exp":    p.VipExp, "exp_diff": expDiff, "next_lv": nextLv,
 		"cur_cute": cute, "cur_beans": beans, "cur_silver": silver,
 	})
 }

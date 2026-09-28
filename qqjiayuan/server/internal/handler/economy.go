@@ -47,9 +47,9 @@ func (h *EconomyHandler) BankView(c *gin.Context) {
 		rate = 0
 	}
 	resp.OK(c, gin.H{
-		"balance":       balance,
-		"coins":         u.Coins,
-		"rate":          rate,
+		"balance":        balance,
+		"coins":          u.Coins,
+		"rate":           rate,
 		"interest_today": interestToday,
 		"last_interest":  lastInterest,
 	})
@@ -124,7 +124,7 @@ func (h *EconomyHandler) BankInterest(c *gin.Context) {
 	}
 	now := time.Now()
 	h.DB.Model(&acc).Updates(map[string]interface{}{
-		"balance":         gorm.Expr("balance + ?", rate),
+		"balance":          gorm.Expr("balance + ?", rate),
 		"last_interest_at": now,
 	})
 	var u model.User
@@ -240,7 +240,7 @@ func (h *EconomyHandler) Wallet(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"coins": u.Coins, "yuanbao": u.YuanBao, "jinzuan": u.JinZuan, "youquan": u.YouQuan,
 		"nickname": u.Nickname, "username": u.Username,
-		"bank": balance,
+		"bank":      balance,
 		"donations": donat, "work_total": workTotal, "logs": logOut,
 		"money_shop": msList,
 	})

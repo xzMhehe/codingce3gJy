@@ -711,7 +711,7 @@ func (h *HxxyHandler) ShopBuy(c *gin.Context) {
 		for i := 0; i < in.Count; i++ {
 			h.DB.Create(&model.HxxyPet{PlayerID: p.ID, SpeciesID: sp.ID, Name: sp.Name, Level: sp.Level, Star: 1, Quality: 1})
 		}
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("失去：%s金豆", hxSilverText(int64(sp.Level*2+10) * int64(in.Count)))})
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("失去：%s金豆", hxSilverText(int64(sp.Level*2+10)*int64(in.Count)))})
 		return
 	default:
 		var name string

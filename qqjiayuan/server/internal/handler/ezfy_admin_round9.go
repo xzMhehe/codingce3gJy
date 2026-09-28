@@ -30,6 +30,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
+		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
+		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
@@ -195,6 +198,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MallBuyMax              *int     `json:"mall_buy_max"`
 		ConquerFeelingsMax      *int     `json:"conquer_feelings_max"`
 		LootFeelings            *int     `json:"loot_feelings"`
+		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
+		PlacateGold        *int64 `json:"placate_gold"`
+		PlacateGrievance   *int   `json:"placate_grievance"`
+		PlacateFeelings    *int   `json:"placate_feelings"`
+		PlacateCooldownMin *int   `json:"placate_cooldown_min"`
 		OfficerSalaryPerLevel   *int     `json:"officer_salary_per_level"`
 		WoundHealDivisor        *int     `json:"wound_heal_divisor"`
 		// ★ 系统配置新增：野地兵力倍数 + 四个玩法开关
@@ -259,6 +267,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
+		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
+		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
 		OfficerSalaryPerLevel: ezfyOfficerSalaryDef, WoundHealDivisor: ezfyWoundHealDivisorDef,
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
@@ -415,6 +426,24 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setPos(in.WoundHealDivisor, &lim.WoundHealDivisor, "伤兵恢复系数") {
+		return
+	}
+	// ★ 2026-09-28 安抚参数：四个都「0 无意义」→ 只接受 >= 1。
+	//   placate_gold 是 int64，单独判（setPos 只处理 int）。
+	if in.PlacateGold != nil {
+		if *in.PlacateGold < 1 {
+			resp.ParamError(c, "安抚花费黄金至少为 1")
+			return
+		}
+		lim.PlacateGold = *in.PlacateGold
+	}
+	if !setPos(in.PlacateGrievance, &lim.PlacateGrievance, "安抚降低民怨") {
+		return
+	}
+	if !setPos(in.PlacateFeelings, &lim.PlacateFeelings, "安抚提升民心") {
+		return
+	}
+	if !setPos(in.PlacateCooldownMin, &lim.PlacateCooldownMin, "安抚冷却分钟") {
 		return
 	}
 	// ★ 野地兵力倍数：允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
@@ -645,6 +674,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.WoundHealDivisor <= 0 {
 		lim.WoundHealDivisor = ezfyWoundHealDivisorDef
+	}
+	// ★ 2026-09-28 安抚参数兜底（老行可能是 0 / NULL）
+	if lim.PlacateGold <= 0 {
+		lim.PlacateGold = ezfyPlacateGoldDef
+	}
+	if lim.PlacateGrievance <= 0 {
+		lim.PlacateGrievance = ezfyPlacateGrievanceDef
+	}
+	if lim.PlacateFeelings <= 0 {
+		lim.PlacateFeelings = ezfyPlacateFeelingsDef
+	}
+	if lim.PlacateCooldownMin <= 0 {
+		lim.PlacateCooldownMin = ezfyPlacateCooldownDef
 	}
 	// ★ 野地兵力倍数兜底（老行可能是 0 / NULL）
 	if lim.WildTroopMult <= 0 {

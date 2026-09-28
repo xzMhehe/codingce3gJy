@@ -83,8 +83,8 @@ func (h *HxxyHandler) Activities(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"login7": gin.H{"day": loginDay, "money": rw[0], "beans": rw[1], "claimed": loginDone,
 			"days": hxLogin7Rewards},
-		"daily":    gin.H{"score": score, "tiers": daily, "signed": p.DaySignin > 0, "dungeon": p.DayDungeon > 0, "arena": p.DayArena > 0, "hunt": p.DayHunt},
-		"exp2x":    gin.H{"on": h.hxExp2xNow(), "windows": "12:00-14:00、19:00-21:00"},
+		"daily": gin.H{"score": score, "tiers": daily, "signed": p.DaySignin > 0, "dungeon": p.DayDungeon > 0, "arena": p.DayArena > 0, "hunt": p.DayHunt},
+		"exp2x": gin.H{"on": h.hxExp2xNow(), "windows": "12:00-14:00、19:00-21:00"},
 	})
 }
 

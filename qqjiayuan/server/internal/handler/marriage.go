@@ -96,7 +96,7 @@ func (h *MarriageHandler) Propose(c *gin.Context) {
 	}
 	// 扣除 G币
 	if me.Coins < marriageCost {
-		resp.ParamError(c, "G币不足，求婚需要 " + strconv.Itoa(marriageCost) + " G币")
+		resp.ParamError(c, "G币不足，求婚需要 "+strconv.Itoa(marriageCost)+" G币")
 		return
 	}
 	h.DB.Model(&me).UpdateColumn("coins", gorm.Expr("coins - ?", marriageCost))
@@ -110,7 +110,7 @@ func (h *MarriageHandler) Propose(c *gin.Context) {
 		Title:   me.Nickname + " 向您求婚！",
 		Content: "表白：" + left(req.Message, 80) + "（到「婚恋」页处理：同意/拒绝）",
 	})
-	resp.OK(c, "求婚成功，已扣除 " + strconv.Itoa(marriageCost) + " G币并把求婚信息发给对方")
+	resp.OK(c, "求婚成功，已扣除 "+strconv.Itoa(marriageCost)+" G币并把求婚信息发给对方")
 }
 
 type handleProposeReq struct {
@@ -169,7 +169,7 @@ func (h *MarriageHandler) Divorce(c *gin.Context) {
 		return
 	}
 	if me.Coins < marriageCost {
-		resp.ParamError(c, "G币不足，离婚需要 " + strconv.Itoa(marriageCost) + " G币")
+		resp.ParamError(c, "G币不足，离婚需要 "+strconv.Itoa(marriageCost)+" G币")
 		return
 	}
 	var m model.Marriage
@@ -201,9 +201,9 @@ func (h *MarriageHandler) List(c *gin.Context) {
 		h.DB.First(&a, m.Aid)
 		h.DB.First(&b, m.Bid)
 		out = append(out, gin.H{
-			"id": m.ID,
-			"a":  gin.H{"id": a.ID, "nickname": a.Nickname, "color": a.Color, "level": a.Level},
-			"b":  gin.H{"id": b.ID, "nickname": b.Nickname, "color": b.Color, "level": b.Level},
+			"id":         m.ID,
+			"a":          gin.H{"id": a.ID, "nickname": a.Nickname, "color": a.Color, "level": a.Level},
+			"b":          gin.H{"id": b.ID, "nickname": b.Nickname, "color": b.Color, "level": b.Level},
 			"created_at": m.EndTime,
 		})
 	}

@@ -578,7 +578,7 @@ func (h *HxxyHandler) hxGangReward(p *model.HxxyPlayer, contrib, exp, sw int64) 
 	}
 	if contrib > 0 {
 		h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).Updates(map[string]interface{}{
-			"contribution": gorm.Expr("contribution + ?", contrib),
+			"contribution":       gorm.Expr("contribution + ?", contrib),
 			"total_contribution": gorm.Expr("total_contribution + ?", contrib)})
 	}
 	if exp > 0 {
@@ -814,7 +814,7 @@ func (h *HxxyHandler) GangDonate(c *gin.Context) {
 	h.hxWallet(p, "money", -in.Amount, "捐献国家【"+g.Name+"】")
 	h.DB.Model(&model.HxxyGang{}).Where("id = ?", g.ID).UpdateColumn("money", gorm.Expr("money + ?", in.Amount))
 	h.DB.Model(&model.HxxyGangMember{}).Where("id = ?", mem.ID).Updates(map[string]interface{}{
-		"contribution": gorm.Expr("contribution + ?", contrib),
+		"contribution":       gorm.Expr("contribution + ?", contrib),
 		"total_contribution": gorm.Expr("total_contribution + ?", contrib)})
 	// 复刻 gjjx.php：恭喜你!为国家捐赠了X亿X万X两,获得国家贡献N点
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("恭喜你!为国家捐赠了%s,获得国家贡献%d点", hxSilverText(in.Amount), contrib)})
@@ -1636,7 +1636,7 @@ func (h *HxxyHandler) StallBuy(c *gin.Context) {
 		return
 	}
 	// 交割：买方付总价+手续费，入包
-	h.hxWallet(p, "money", -(total+fee), "摆摊购买【"+s.Name+"】x"+strconv.Itoa(in.Count)+"（含手续费）")
+	h.hxWallet(p, "money", -(total + fee), "摆摊购买【"+s.Name+"】x"+strconv.Itoa(in.Count)+"（含手续费）")
 	h.hxBagAdd(p, s.Kind, s.RefID, in.Count, sb.Bind)
 	if in.Count >= s.Count {
 		h.DB.Delete(&model.HxxyBag{}, sb.ID)

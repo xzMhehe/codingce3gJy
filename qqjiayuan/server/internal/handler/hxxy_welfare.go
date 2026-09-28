@@ -24,8 +24,8 @@ var hxGiftWaits = []int{1, 300, 300, 300, 300, 600, 600, 600, 1200, 1200}
 
 // hxNobleDef 贵族月卡定义
 var hxNobleDef = []struct {
-	Tier int
-	Name string
+	Tier  int
+	Name  string
 	Price string
 	Beans int
 	Box   string
@@ -113,9 +113,9 @@ func (h *HxxyHandler) Welfare(c *gin.Context) {
 			"box": nd.Box, "intro": nd.Intro, "owned": owned, "claimed": claimed > 0})
 	}
 	resp.OK(c, gin.H{
-		"gift":  gift,
+		"gift":   gift,
 		"active": gin.H{"score": score, "tasks": tasks, "tiers": daily, "total": 100},
-		"vip":   gin.H{"level": p.VipLv},
+		"vip":    gin.H{"level": p.VipLv},
 		"nobles": nobles,
 	})
 }

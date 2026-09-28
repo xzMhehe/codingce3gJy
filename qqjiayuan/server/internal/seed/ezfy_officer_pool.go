@@ -1405,4 +1405,16 @@ func normalizeEzfyNewCols(db *gorm.DB) {
 		"learning = COALESCE(learning,0), effect = COALESCE(effect,''), des = COALESCE(des,''), " +
 		"series = COALESCE(series,''), dmg = COALESCE(dmg,0), def = COALESCE(def,0), hp = COALESCE(hp,0), " +
 		"move = COALESCE(move,0), crit = COALESCE(crit,0), crit_dmg = COALESCE(crit_dmg,0)")
+
+	// ★ 2026-09-28 新增 ezfy_city.placate_time（安抚冷却时间戳）→ 老行是 NULL，回填 0。
+	db.Exec("UPDATE ezfy_city SET placate_time = 0 WHERE placate_time IS NULL")
+	// ★ 2026-09-28 民心/税率联动上线后的**存量数据对齐**（幂等）：
+	//   老库里民心是「独立漂移」出来的（税率 20% 民心还是 100），与新的
+	//   「民心 + 税率 = 100」口径不符。这里把**民心本就高于基准**的城拉回基准。
+	//
+	//   ⚠️ 只改 `feelings > 100 - tax_rate` 的行（即"民心虚高"的），
+	//   民心已被打低的（被征服/掠夺过）保持不动 —— 那不是脏数据，是正常游戏状态，
+	//   由 calcResource 的自然回归自己爬回去。
+	db.Exec("UPDATE ezfy_city SET feelings = 100 - tax_rate " +
+		"WHERE tax_rate BETWEEN 0 AND 100 AND feelings > 100 - tax_rate")
 }

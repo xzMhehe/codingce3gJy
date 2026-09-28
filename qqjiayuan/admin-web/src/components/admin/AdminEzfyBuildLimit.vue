@@ -138,6 +138,24 @@
               <template slot="label">掠夺单次扣民心<el-tooltip placement="top" :content="tips.loot_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.loot_feelings" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-28 用户规则：安抚固定花费 + 冷却，四个值都可配 -->
+            <el-divider content-position="left">安抚（民心/民怨）</el-divider>
+            <el-form-item>
+              <template slot="label">安抚花费黄金<el-tooltip placement="top" :content="tips.placate_gold"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.placate_gold" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">安抚降低民怨<el-tooltip placement="top" :content="tips.placate_grievance"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.placate_grievance" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">安抚提升民心<el-tooltip placement="top" :content="tips.placate_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.placate_feelings" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">安抚冷却(分钟)<el-tooltip placement="top" :content="tips.placate_cooldown_min"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.placate_cooldown_min" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">军官工资系数<el-tooltip placement="top" :content="tips.officer_salary_per_level"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.officer_salary_per_level" :min="1" controls-position="right" style="width:180px" />
@@ -264,6 +282,8 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2,
+        // ★ 2026-09-28 安抚参数（黄金 / 民怨- / 民心+ / 冷却分钟），默认 5万 / 2 / 1 / 15
+        placate_gold: 50000, placate_grievance: 2, placate_feelings: 1, placate_cooldown_min: 15,
         officer_salary_per_level: 20, wound_heal_divisor: 100,
         // ★ 野地兵力倍数 / 野地获取资源倍率 / 采集资源倍率（都允许小数，默认 1 = 原样）
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
@@ -309,6 +329,11 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
+        // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
+        placate_gold: '每次安抚消耗的黄金，默认 5 万',
+        placate_grievance: '每次安抚降低多少民怨（民怨 > 0 会持续掉人口），默认 2',
+        placate_feelings: '每次安抚提升多少民心（之后会以每分钟 1 点的速度回归到「100 − 税率」基准），默认 1',
+        placate_cooldown_min: '同一城市两次安抚之间的冷却分钟数，默认 15',
         officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 20',
         wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 50',
         wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
@@ -394,6 +419,11 @@ export default {
               ? 0 : Number(r.data.march_speed_bonus),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
+            // ★ 2026-09-28 安抚参数：0 无意义 → pos 各自回落默认
+            placate_gold: pos(Number(r.data.placate_gold) || 0, 50000),
+            placate_grievance: pos(r.data.placate_grievance, 2),
+            placate_feelings: pos(r.data.placate_feelings, 1),
+            placate_cooldown_min: pos(r.data.placate_cooldown_min, 15),
             officer_salary_per_level: pos(r.data.officer_salary_per_level, 2),
             wound_heal_divisor: pos(r.data.wound_heal_divisor, 100),
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),

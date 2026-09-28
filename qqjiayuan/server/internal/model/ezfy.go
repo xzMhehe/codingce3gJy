@@ -265,6 +265,13 @@ type EzfyCfgLimit struct {
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
 	MallBuyMax int `gorm:"default:99;comment:Mall购买上限" json:"mall_buy_max"`
 
+	// ★ 2026-09-28 用户规则：「安抚 消费黄金 5w 降低民怨 2 增加民心 1 15分钟可安抚一次」
+	//   四个值都可由管理端调整；<= 0 时回落默认（5 万 / 2 / 1 / 15 分钟）。
+	PlacateGold        int64 `gorm:"default:50000;comment:安抚花费黄金" json:"placate_gold"`
+	PlacateGrievance   int   `gorm:"default:2;comment:安抚降低民怨" json:"placate_grievance"`
+	PlacateFeelings    int   `gorm:"default:1;comment:安抚提升民心" json:"placate_feelings"`
+	PlacateCooldownMin int   `gorm:"default:15;comment:安抚冷却分钟" json:"placate_cooldown_min"`
+
 	// ★ 用户要求「采集 12 小时才有宝物 → 可配置」：
 	//   常驻采集结算一期的小时数（默认 1），由 ezfyDispatchPeriod() 读取。
 	DispatchPeriodH int `gorm:"default:1;comment:采集周期小时" json:"dispatch_period_h"`
@@ -508,19 +515,21 @@ type EzfyCity struct {
 	Feelings  int    `gorm:"comment:民心（民心）" json:"feelings"`            // 民心
 	Grievance int    `gorm:"default:0;comment:民怨" json:"grievance"`     // 民怨
 	TaxRate   int    `gorm:"comment:税率%" json:"tax_rate"`               // 税率%
-	Pop       int64  `gorm:"comment:人口" json:"pop"`
-	PopMax    int64  `gorm:"comment:人口上限" json:"pop_max"`
-	Gold      int64  `gorm:"comment:黄金" json:"gold"`
-	Food      int64  `gorm:"comment:粮食" json:"food"`
-	Steel     int64  `gorm:"comment:钢铁" json:"steel"`
-	Oil       int64  `gorm:"comment:石油" json:"oil"`
-	Rare      int64  `gorm:"comment:稀矿" json:"rare"`
-	GoldCap   int64  `gorm:"comment:黄金上限" json:"gold_cap"`
-	FoodCap   int64  `gorm:"comment:粮食上限" json:"food_cap"`
-	SteelCap  int64  `gorm:"comment:钢铁上限" json:"steel_cap"`
-	OilCap    int64  `gorm:"comment:石油上限" json:"oil_cap"`
-	RareCap   int64  `gorm:"comment:稀矿上限" json:"rare_cap"`
-	LastTime  int64  `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
+	// ★ 2026-09-28 用户要求「安抚 15 分钟可安抚一次」→ 记录上次安抚时间(ms)，0 = 从未安抚。
+	PlacateTime int64 `gorm:"comment:上次安抚时间戳(ms)" json:"placate_time"`
+	Pop         int64 `gorm:"comment:人口" json:"pop"`
+	PopMax      int64 `gorm:"comment:人口上限" json:"pop_max"`
+	Gold        int64 `gorm:"comment:黄金" json:"gold"`
+	Food        int64 `gorm:"comment:粮食" json:"food"`
+	Steel       int64 `gorm:"comment:钢铁" json:"steel"`
+	Oil         int64 `gorm:"comment:石油" json:"oil"`
+	Rare        int64 `gorm:"comment:稀矿" json:"rare"`
+	GoldCap     int64 `gorm:"comment:黄金上限" json:"gold_cap"`
+	FoodCap     int64 `gorm:"comment:粮食上限" json:"food_cap"`
+	SteelCap    int64 `gorm:"comment:钢铁上限" json:"steel_cap"`
+	OilCap      int64 `gorm:"comment:石油上限" json:"oil_cap"`
+	RareCap     int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
+	LastTime    int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
 
 	// 仓库保护配比(4 项资源的保护额度占比, 合计 ≤ 100; 默认各 25)
 	// 每项保护额度 = 仓库等级对应保护总量 × 该项占比 / 100

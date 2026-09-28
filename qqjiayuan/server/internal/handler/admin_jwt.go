@@ -55,7 +55,7 @@ func (h *AdminHandler) AdminJwtPlayers(c *gin.Context) {
 	for _, p := range list {
 		out = append(out, gin.H{
 			"id": p.ID, "user_id": p.UserID, "username": usernames[p.UserID], "nick": p.Nick, "sex": p.Sex,
-			"level": p.Level, "exp": p.Exp, "next_exp": p.Level*64,
+			"level": p.Level, "exp": p.Exp, "next_exp": p.Level * 64,
 			"title": p.Title, "title_name": jwtTitleName(p.Title),
 			"energy": p.Energy, "honor": p.Honor, "gang_id": p.GangID,
 			"e_hp": p.EHp, "e_mp": p.EMp, "e_spd": p.ESpd, "e_atk": p.EAtk, "e_def": p.EDef,

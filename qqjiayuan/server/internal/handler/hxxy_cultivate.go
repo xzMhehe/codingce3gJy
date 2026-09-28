@@ -24,11 +24,11 @@ func hxXlRealm(xldj int) (string, int, int64, int64, int64, bool) {
 		return "天尊", 20, 0, 0, 0, true
 	}
 	type realm struct {
-		lo, hi          int
-		name            string
-		silver          int64
-		swBase, swStep  int64
-		beanBase        int64
+		lo, hi         int
+		name           string
+		silver         int64
+		swBase, swStep int64
+		beanBase       int64
 	}
 	rs := []realm{
 		{1, 20, "炼气", 1000, 4000, 1000, 0},

@@ -30,16 +30,16 @@ SELECT DISTINCT user_id FROM friendships WHERE friend_id = ? AND status = 1`, ui
 
 	// 好友最近发帖
 	type newsItem struct {
-		ID         uint   `json:"id"`
-		Type       string `json:"type"` // thread 发帖 / reply 回帖
-		UserID     uint   `json:"user_id"`
-		Nickname   string `json:"nickname"`
-		Color      string `json:"color"`
-		Level      int    `json:"level"`
-		ThreadID   uint   `json:"thread_id"`
-		Title      string `json:"title"`
-		BoardName  string `json:"board_name"`
-		CreatedAt  string `json:"created_at"`
+		ID        uint   `json:"id"`
+		Type      string `json:"type"` // thread 发帖 / reply 回帖
+		UserID    uint   `json:"user_id"`
+		Nickname  string `json:"nickname"`
+		Color     string `json:"color"`
+		Level     int    `json:"level"`
+		ThreadID  uint   `json:"thread_id"`
+		Title     string `json:"title"`
+		BoardName string `json:"board_name"`
+		CreatedAt string `json:"created_at"`
 	}
 	var items []newsItem
 	h.DB.Raw(`

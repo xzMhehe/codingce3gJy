@@ -261,7 +261,8 @@ func (h *PlazaHandler) Online(c *gin.Context) {
 }
 
 // 公开：广场板块开关（前端按 enabled 显示）
-func (h *PlazaHandler) Sections(c *gin.Context) {	var list []model.PlazaSection
+func (h *PlazaHandler) Sections(c *gin.Context) {
+	var list []model.PlazaSection
 	h.DB.Order("sort ASC").Find(&list)
 	resp.OK(c, list)
 }

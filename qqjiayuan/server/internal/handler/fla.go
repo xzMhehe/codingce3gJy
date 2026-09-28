@@ -224,9 +224,9 @@ func (h *FlaHandler) AdminUpdate(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Amount    *int    `json:"amount"`
-		Word      *string `json:"word"`
-		Worships  *int    `json:"worships"`
+		Amount   *int    `json:"amount"`
+		Word     *string `json:"word"`
+		Worships *int    `json:"worships"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")

@@ -80,20 +80,20 @@ func hxMagicSect(sect int) bool { return sect == 3 || sect == 4 || sect == 5 }
 
 // hxCombatAttr 战斗属性（基础公式+装备+头衔+住宅家具）
 type hxCombatAttr struct {
-	Name    string `json:"name"`
-	Level   int    `json:"level"`
-	MaxHP   int    `json:"max_hp"`
-	MaxMP   int    `json:"max_mp"`
-	Atk     int    `json:"atk"`  // 攻击（法术门派=魔攻）
-	Mg      int    `json:"mg"`   // 魔攻
-	Def     int    `json:"def"`
-	Mf      int    `json:"mf"`
-	Bg      int    `json:"bg"` // 冰攻
-	Hg      int    `json:"hg"`
-	Lg      int    `json:"lg"`
-	Bf      int    `json:"bf"`
-	Hf      int    `json:"hf"`
-	Lf      int    `json:"lf"`
+	Name  string `json:"name"`
+	Level int    `json:"level"`
+	MaxHP int    `json:"max_hp"`
+	MaxMP int    `json:"max_mp"`
+	Atk   int    `json:"atk"` // 攻击（法术门派=魔攻）
+	Mg    int    `json:"mg"`  // 魔攻
+	Def   int    `json:"def"`
+	Mf    int    `json:"mf"`
+	Bg    int    `json:"bg"` // 冰攻
+	Hg    int    `json:"hg"`
+	Lg    int    `json:"lg"`
+	Bf    int    `json:"bf"`
+	Hf    int    `json:"hf"`
+	Lf    int    `json:"lf"`
 }
 
 // hxAttrs 计算玩家战斗属性（基础公式 + 装备 + 头衔 + 家具）
@@ -122,18 +122,18 @@ func (h *HxxyHandler) hxAttrs(p *model.HxxyPlayer) hxCombatAttr {
 		}
 		star := 0
 		var ex struct {
-			Star int     `json:"star"`
-			Gems []uint  `json:"gems"`
+			Star int    `json:"star"`
+			Gems []uint `json:"gems"`
 		}
 		if b.Extra != "" {
 			json.Unmarshal([]byte(b.Extra), &ex)
 			star = ex.Star
 		}
 		mul := 1.0 + 0.1*float64(star)
-		a.MaxHP += int(float64(e.HP)*mul)
-		a.Atk += int(float64(e.Atk)*mul)
-		a.Mg += int(float64(e.Mg)*mul)
-		a.Def += int(float64(e.Def)*mul)
+		a.MaxHP += int(float64(e.HP) * mul)
+		a.Atk += int(float64(e.Atk) * mul)
+		a.Mg += int(float64(e.Mg) * mul)
+		a.Def += int(float64(e.Def) * mul)
 		a.Bg += e.Bg
 		a.Hg += e.Hg
 		a.Lg += e.Lg
@@ -164,10 +164,10 @@ func (h *HxxyHandler) hxAttrs(p *model.HxxyPlayer) hxCombatAttr {
 	var house model.HxxyHouse
 	if err := h.DB.Where("player_id = ?", p.ID).First(&house).Error; err == nil && house.Furniture != "" {
 		var fs []struct {
-			ID   uint   `json:"id"`
-			Name string `json:"name"`
+			ID    uint   `json:"id"`
+			Name  string `json:"name"`
 			Bonus string `json:"bonus"`
-			Val  int    `json:"val"`
+			Val   int    `json:"val"`
 		}
 		if json.Unmarshal([]byte(house.Furniture), &fs) == nil {
 			for _, f := range fs {
@@ -407,7 +407,7 @@ func (h *HxxyHandler) Status(c *gin.Context) {
 	}
 	// 管理员封号检查
 	if p.BanUntil > time.Now().Unix() {
-		resp.ParamError(c, "你的账号已被封禁" + h.hxBanTip(p.BanUntil) + "，如有疑问请联系管理员")
+		resp.ParamError(c, "你的账号已被封禁"+h.hxBanTip(p.BanUntil)+"，如有疑问请联系管理员")
 		return
 	}
 	resp.OK(c, gin.H{"has_player": true, "player": h.hxPlayerBrief(&p)})
@@ -914,9 +914,9 @@ func (h *HxxyHandler) Attrs(c *gin.Context) {
 		equips = append(equips, entry)
 	}
 	resp.OK(c, gin.H{
-		"player": h.hxPlayerBrief(p),
-		"attrs":  a,
-		"equips": equips,
+		"player":    h.hxPlayerBrief(p),
+		"attrs":     a,
+		"equips":    equips,
 		"sect_name": hxSectNames[p.Sect],
 	})
 }

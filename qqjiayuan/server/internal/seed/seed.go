@@ -206,6 +206,16 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		addLimitCol("conquer_feelings_max", 5)
 		addLimitCol("loot_feelings", 3)
+		// ★ 2026-09-28 安抚参数（用户规则：花 5 万黄金 → 民怨 -2 / 民心 +1，15 分钟一次）
+		//   ⚠️ placate_gold 是 int64 → 列类型必须是 bigint，否则默认 50000 能存但
+		//   管理端以后调大值时会溢出（int 上限约 21 亿）。单独处理，不走 addLimitCol。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "placate_gold") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN placate_gold bigint DEFAULT 50000")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET placate_gold = 50000 WHERE placate_gold IS NULL OR placate_gold <= 0")
+		addLimitCol("placate_grievance", 2)
+		addLimitCol("placate_feelings", 1)
+		addLimitCol("placate_cooldown_min", 15)
 		// ★ 2026-09-26 用户要求「军官工资现值改成 20」：默认 100 → 20
 		//   ⚠️ addLimitCol 只在「列不存在 / 值为 NULL 或 <= 0」时回填，
 		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。

@@ -267,21 +267,21 @@ func (h *BoardHandler) CreateThread(c *gin.Context) {
 	boardID, _ := strconv.Atoi(c.Param("id"))
 	uid := middleware.GetUID(c)
 	var req struct {
-		Title    string `json:"title" binding:"required,min=1,max=100"`
-		Content  string `json:"content" binding:"required,min=1,max=20000"`
-		Type     int    `json:"type"`
-		PollQ    string `json:"poll_question"`
-		PollOpts []string `json:"poll_options"`
-		PollMulti bool  `json:"poll_multiple"`
-		RewardCoins int  `json:"reward_coins"`
-		RewardExp   int  `json:"reward_exp"`
-		RewardLimit int  `json:"reward_limit"`
-		Floors   []model.ThreadFloor `json:"floors"`
+		Title       string              `json:"title" binding:"required,min=1,max=100"`
+		Content     string              `json:"content" binding:"required,min=1,max=20000"`
+		Type        int                 `json:"type"`
+		PollQ       string              `json:"poll_question"`
+		PollOpts    []string            `json:"poll_options"`
+		PollMulti   bool                `json:"poll_multiple"`
+		RewardCoins int                 `json:"reward_coins"`
+		RewardExp   int                 `json:"reward_exp"`
+		RewardLimit int                 `json:"reward_limit"`
+		Floors      []model.ThreadFloor `json:"floors"`
 		Attachments []struct {
-			Name string `json:"name"`
-			Path string `json:"path"`
-			Size int64  `json:"size"`
-			Price int   `json:"price"`
+			Name  string `json:"name"`
+			Path  string `json:"path"`
+			Size  int64  `json:"size"`
+			Price int    `json:"price"`
 		} `json:"attachments"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -765,32 +765,52 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	techStore := tech[14]
 	techSupply := tech[18]
 
+	// ★★ 2026-09-28 用户规则大改：**民心与税率联动，「民心 + 税率 = 100」**。
+	//
+	//	- 基准民心 = 100 − 税率（税率 20% → 民心 80）。设税率时民心**立即**设为该值（见 SetTax）。
+	//	- 被征服/掠夺导致民心下降、民怨升高，**但税率不动**；民心之后**自动回归**，
+	//	  每小时朝 (100 − 税率) 靠拢，直到重新满足 民心 + 税率 = 100。
+	//	- 回归速度：民心低于基准时每分钟 +1（即每小时 +60 上限），温和且能在几小时内恢复。
+	//	- 民怨是**独立**的一条线：不再像原来那样「每小时自动 −1」（那会让民怨永远自动消失），
+	//	  只能靠安抚降低；民怨 > 0 会持续掉人口（见下方人口段）。
+	//
+	//	旧实现的问题（已废弃）：民心按「税率档位」每小时 ±1~2，与税率只是**间接**相关；
+	//	税 20% 时民心会停在 100 而不是 80，与用户的「民心+税率=100」口径不符。
 	feelings := city.Feelings
 	grievance := city.Grievance
-	var feelingsDelta int
-	if grievance >= 50 {
-		feelingsDelta = -1
-	} else if city.TaxRate <= 10 {
-		feelingsDelta = 2
-	} else if city.TaxRate <= 20 {
-		feelingsDelta = 1
-	} else if city.TaxRate <= 40 {
-		feelingsDelta = 0
-	} else if city.TaxRate <= 60 {
-		feelingsDelta = -1
-	} else {
-		feelingsDelta = -2
+	// 税率兜底到 [0,100]，避免脏数据把基准民心算成负数
+	tax := city.TaxRate
+	if tax < 0 {
+		tax = 0
 	}
-	feelings += int(float64(feelingsDelta)*hours + 0.5)
+	if tax > 100 {
+		tax = 100
+	}
+	baseFeelings := 100 - tax // 民心基准 = 100 − 税率
+	if feelings < baseFeelings {
+		// 民心低于基准（被征服/掠夺打下来）→ 自动回归，每分钟 +1
+		feelings += int(hours*60 + 0.5)
+		if feelings > baseFeelings {
+			feelings = baseFeelings
+		}
+	} else if feelings > baseFeelings {
+		// 民心高于基准（刚降过税率 / 安抚加过头）→ 同样回归，每分钟 −1
+		feelings -= int(hours*60 + 0.5)
+		if feelings < baseFeelings {
+			feelings = baseFeelings
+		}
+	}
 	if feelings < 0 {
 		feelings = 0
 	}
 	if feelings > 100 {
 		feelings = 100
 	}
-	grievance -= int(hours + 0.5)
 	if grievance < 0 {
 		grievance = 0
+	}
+	if grievance > 100 {
+		grievance = 100
 	}
 	city.Feelings = feelings
 	city.Grievance = grievance
@@ -938,6 +958,27 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		city.Pop += grow
 		if housePopLimited && city.Pop > city.PopMax {
 			city.Pop = city.PopMax
+		}
+	}
+	// ★★ 2026-09-28 用户规则：**民怨 > 0 就掉人口，民怨 = 0 不掉**。
+	//
+	//	速率设计（用户要求「合理掉下」，别太狠也别没感觉）：
+	//	  每小时流失 = pop_max × 民怨% × 2%
+	//	  → 民怨 10 时 0.2%/时（一天约 4.8%）；民怨 50 时 1%/时（一天约 24%）；
+	//	    民怨 100 时 2%/时（一天约 48%，很痛但不至于一夜清零）。
+	//	与自然增长（2%/时）放在一起看：民怨 100 时人口净流失趋近于 0（增长被流失吃掉），
+	//	民怨越高越明显 —— 既不会「毫无感觉」，也不会瞬间掏空。
+	//
+	//	★ 注意：流失基于 pop_max 而不是当前 pop，否则人口越低流失越慢、永远掉不干净。
+	if grievance > 0 {
+		lost := int64(float64(city.PopMax) * float64(grievance) / 100.0 * 0.02 * hours)
+		// 有民怨时至少按小时掉 1 人，否则短时间进入页面看不出变化
+		if lost < 1 && hours > 0 {
+			lost = 1
+		}
+		city.Pop -= lost
+		if city.Pop < 0 {
+			city.Pop = 0
 		}
 	}
 	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限」：
@@ -2836,6 +2877,15 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"diamond":       profile.Diamond,
 		"city":          city,
 		"res_prod":      resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
+		// ★ 2026-09-28 安抚参数(管理端可配)：前端安抚页直接展示，不再硬编码「民怨×100」。
+		//   cd_left = 距离下次可安抚的剩余毫秒(0 = 现在就能安抚)。
+		"placate": gin.H{
+			"gold":          ezfyPlacateGoldCost(),
+			"grievance":     ezfyPlacateGrievanceDown(),
+			"feelings":      ezfyPlacateFeelingsUp(),
+			"cooldown_min":  ezfyPlacateCooldownMinutes(),
+			"cd_left":       max64(0, city.PlacateTime+ezfyPlacateCooldownMs()-time.Now().UnixMilli()),
+		},
 		"continent":     ezfyContinentName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
 		"is_sea":       h.isSeaCity(&city),
@@ -3201,6 +3251,11 @@ func (h *EzfyHandler) RenameCity(c *gin.Context) {
 }
 
 // SetTax 设置税率
+// SetTax 调整税率
+//
+// ★ 2026-09-28 用户规则：**民心 + 税率 = 100**，设税率时民心**立即**联动到 (100 − 税率)。
+// 例如税率设成 20% → 民心立即变 80。之后被征服/掠夺把民心打下去时税率不动，
+// 民心由 calcResource 每小时自动回归到基准值（见那里的说明）。
 func (h *EzfyHandler) SetTax(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -3216,8 +3271,11 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 		resp.ParamError(c, "税率范围0-100")
 		return
 	}
-	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("tax_rate", req.TaxRate)
-	resp.OK(c, gin.H{"msg": "税率已调整"})
+	// ★ 民心立即联动：民心 = 100 − 税率
+	feelings := 100 - req.TaxRate
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+		Updates(map[string]interface{}{"tax_rate": req.TaxRate, "feelings": feelings})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("税率已调整为%d%%, 民心联动为%d", req.TaxRate, feelings)})
 }
 
 // Convene 召集人口（只消耗粮食，夜间只 +人口）
@@ -3268,7 +3326,15 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", popGain), "pop": city.Pop, "pop_max": city.PopMax})
 }
 
-// Placate 安抚民心（花费黄金降低民怨）
+// Placate 安抚民心
+//
+// ★ 2026-09-28 用户规则（本次改动）：
+//   - 花费固定 **5 万黄金**；
+//   - 效果：**民怨 −2、民心 +1**（原来是一次性花「民怨×100」黄金把民怨清零）；
+//   - **15 分钟只能安抚一次**（用 city.PlacateTime 记录上次安抚时间）。
+//
+// 注意：安抚把民心 +1 会让它暂时高于「100 − 税率」的基准，
+// 之后由 calcResource 的回归逻辑每分钟 −1 慢慢落回基准 —— 符合用户「安抚只是临时顶一下」的预期。
 func (h *EzfyHandler) Placate(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -3284,25 +3350,39 @@ func (h *EzfyHandler) Placate(c *gin.Context) {
 		return
 	}
 	h.calcResource(city)
-	if city.Grievance <= 0 {
-		resp.ParamError(c, "民怨为0, 无需安抚")
+	// 15 分钟冷却
+	now := time.Now().UnixMilli()
+	if city.PlacateTime > 0 {
+		left := city.PlacateTime + ezfyPlacateCooldownMs() - now
+		if left > 0 {
+			resp.ParamError(c, fmt.Sprintf("安抚冷却中, 还需 %d 秒", (left+999)/1000))
+			return
+		}
+	}
+	cost := ezfyPlacateGoldCost()
+	if city.Gold < cost {
+		resp.ParamError(c, fmt.Sprintf("黄金不足, 安抚需要%d黄金", cost))
 		return
 	}
-	cost := int64(city.Grievance) * 100
-	if city.Gold < cost {
-		resp.ParamError(c, fmt.Sprintf("黄金不足, 安抚需要%d黄金(民怨×100)", cost))
-		return
+	// 效果：民怨 −2、民心 +1（各自夹取到 [0,100]）
+	grievance := city.Grievance - ezfyPlacateGrievanceDown()
+	if grievance < 0 {
+		grievance = 0
+	}
+	feelings := city.Feelings + ezfyPlacateFeelingsUp()
+	if feelings > 100 {
+		feelings = 100
 	}
 	city.Gold -= cost
-	city.Feelings += city.Grievance
-	if city.Feelings > 100 {
-		city.Feelings = 100
-	}
-	city.Grievance = 0
+	city.Feelings = feelings
+	city.Grievance = grievance
+	city.PlacateTime = now
 	h.saveCityRes(city)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-		Updates(map[string]interface{}{"feelings": city.Feelings, "grievance": 0})
-	resp.OK(c, gin.H{"msg": "安抚成功, 民怨清零, 民心回升"})
+		Updates(map[string]interface{}{"feelings": feelings, "grievance": grievance,
+			"placate_time": now})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("安抚成功: 民怨 -%d → %d, 民心 +%d → %d",
+		ezfyPlacateGrievanceDown(), grievance, ezfyPlacateFeelingsUp(), feelings)})
 }
 
 // AbandonWildland 放弃野地

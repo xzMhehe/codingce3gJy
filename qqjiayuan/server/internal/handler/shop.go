@@ -36,8 +36,8 @@ func (h *ShopHandler) MyShop(c *gin.Context) {
 	var sellOrders []model.ShopOrder
 	h.DB.Where("seller_id = ?", uid).Order("created_at DESC").Limit(30).Find(&sellOrders)
 	resp.OK(c, gin.H{
-		"shop":  shop,
-		"goods": goods,
+		"shop":       shop,
+		"goods":      goods,
 		"buy_orders": myOrders, "sell_orders": sellOrders,
 	})
 }
@@ -67,9 +67,9 @@ func (h *ShopHandler) OpenShop(c *gin.Context) {
 
 type marketRow struct {
 	model.ShopGoods
-	Seller   string `json:"seller"`
-	CatName  string `json:"cat_name"`
-	HasShop  bool   `json:"has_shop"`
+	Seller  string `json:"seller"`
+	CatName string `json:"cat_name"`
+	HasShop bool   `json:"has_shop"`
 }
 
 // GoodsList 市场列表（上架中）
@@ -168,12 +168,12 @@ func (h *ShopHandler) GoodsAdd(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name    string `json:"name" binding:"required,max=60"`
-		CatID   uint   `json:"cat_id"`
-		Price   int    `json:"price" binding:"required,min=1"`
-		Amount  int    `json:"amount" binding:"required,min=1"`
-		Intro   string `json:"intro"`
-		Image   string `json:"image"`
+		Name   string `json:"name" binding:"required,max=60"`
+		CatID  uint   `json:"cat_id"`
+		Price  int    `json:"price" binding:"required,min=1"`
+		Amount int    `json:"amount" binding:"required,min=1"`
+		Intro  string `json:"intro"`
+		Image  string `json:"image"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "请填写完整商品信息")

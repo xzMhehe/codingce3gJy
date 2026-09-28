@@ -136,16 +136,16 @@ func (h *UserHandler) Profile(c *gin.Context) {
 	nobleInfo := gin.H{
 		"blue": gin.H{
 			"lv": blueLv, "exp": user.BlueExp, "speed": blueSpeed,
-			"active":  user.BlueEnd != nil && user.BlueEnd.After(now),
-			"icon":    iconOrEmpty(levels, blueLv, "blue"),
-			"start":   user.BlueStart, "end": user.BlueEnd,
+			"active": user.BlueEnd != nil && user.BlueEnd.After(now),
+			"icon":   iconOrEmpty(levels, blueLv, "blue"),
+			"start":  user.BlueStart, "end": user.BlueEnd,
 			"days_left": nobleDaysLeft(user.BlueEnd),
 		},
 		"qq": gin.H{
 			"lv": qqLv, "exp": user.QqExp, "speed": qqSpeed,
-			"active":  user.QqEnd != nil && user.QqEnd.After(now),
-			"icon":    iconOrEmpty(levels, qqLv, "qq"),
-			"start":   user.QqStart, "end": user.QqEnd,
+			"active": user.QqEnd != nil && user.QqEnd.After(now),
+			"icon":   iconOrEmpty(levels, qqLv, "qq"),
+			"start":  user.QqStart, "end": user.QqEnd,
 			"days_left": nobleDaysLeft(user.QqEnd),
 		},
 	}
@@ -161,7 +161,7 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"partner_id": user.PartnerID, "partner_name": partnerName,
 		"baby_name": user.BabyName, "achieve": user.Achieve, "achieve_level": user.AchieveLevel,
 		"priv_id": user.PrivID, "priv": user.Priv,
-		"online":     online,
+		"online":      online,
 		"active_days": user.ActiveDays, "home_level": hl, "home_next_days": nextDays,
 		"family": familyName, "mood": mood, "city": user.City,
 		// 诺哈 wap_user 字段
@@ -252,7 +252,7 @@ type profileReq struct {
 	BirthYear    int    `json:"birth_year"`
 	BirthMonth   int    `json:"birth_month"`
 	BirthDay     int    `json:"birth_day"`
-	BirthType    *int   `json:"birth_type"`  // 0阴历 1阳历（诺哈）
+	BirthType    *int   `json:"birth_type"` // 0阴历 1阳历（诺哈）
 	Solar        string `json:"solar" binding:"max=20"`
 	Lunar        string `json:"lunar" binding:"max=20"`
 	FriendPolicy *int   `json:"friend_policy"` // 0允许 1验证 2拒绝（诺哈）

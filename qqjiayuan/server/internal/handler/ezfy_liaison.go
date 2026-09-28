@@ -122,7 +122,7 @@ func (h *EzfyHandler) CorpsSetTitle(c *gin.Context) {
 	}
 	if err := h.DB.Model(&model.EzfyCorpsMember{}).Where("id = ?", mb.ID).
 		Update("title", title).Error; err != nil {
-		resp.ParamError(c, "任命失败：" + err.Error())
+		resp.ParamError(c, "任命失败："+err.Error())
 		return
 	}
 	p := h.ensureProfile(req.UserId)

@@ -42,7 +42,7 @@ func (h *ResourceHandler) List(c *gin.Context) {
 	}
 	var total int64
 	q.Count(&total)
-	if maxPage := int(total + int64(size) - 1) / size; maxPage < 1 {
+	if maxPage := int(total+int64(size)-1) / size; maxPage < 1 {
 		page = 1
 	} else if page > maxPage {
 		page = maxPage

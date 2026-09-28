@@ -23,8 +23,8 @@ func (h *ContactHandler) View(c *gin.Context) {
 }
 
 var (
-	qqRe   = regexp.MustCompile(`^[1-9][0-9]{4,10}$`)
-	mailRe = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+	qqRe    = regexp.MustCompile(`^[1-9][0-9]{4,10}$`)
+	mailRe  = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 	phoneRe = regexp.MustCompile(`^1[0-9]{10}$`)
 )
 

@@ -282,11 +282,11 @@ func (h *NobleHandler) Activate(c *gin.Context) {
 			end = u.QqEnd.AddDate(0, 0, days)
 		}
 		h.DB.Model(&u).Updates(map[string]interface{}{
-			"coins":     gorm.Expr("coins - ?", totalCost),
-			"qq_exp":    gorm.Expr("qq_exp + ?", totalGain),
-			"qq_lv":     nobleLv(levels, u.QqExp+totalGain),
-			"qq_speed":  plan.Speed,
-			"qq_start":  start, "qq_end": end, "qq_ptime": ptime,
+			"coins":    gorm.Expr("coins - ?", totalCost),
+			"qq_exp":   gorm.Expr("qq_exp + ?", totalGain),
+			"qq_lv":    nobleLv(levels, u.QqExp+totalGain),
+			"qq_speed": plan.Speed,
+			"qq_start": start, "qq_end": end, "qq_ptime": ptime,
 		})
 	}
 	// 销量 +1 方案
@@ -551,11 +551,11 @@ func (h *NobleHandler) AdminUsers(c *gin.Context) {
 			"id": u.ID, "username": u.Username, "nickname": u.Nickname, "color": u.Color,
 			"blue_lv": blueLv, "blue_exp": u.BlueExp, "blue_speed": u.BlueSpeed,
 			"blue_start": u.BlueStart, "blue_end": u.BlueEnd, "blue_ptime": u.BluePtime,
-			"blue_icon": model.NobleIconOf(levels, blueLv, "blue"),
+			"blue_icon":   model.NobleIconOf(levels, blueLv, "blue"),
 			"blue_active": u.BlueEnd != nil && u.BlueEnd.After(now),
-			"qq_lv": qqLv, "qq_exp": u.QqExp, "qq_speed": u.QqSpeed,
+			"qq_lv":       qqLv, "qq_exp": u.QqExp, "qq_speed": u.QqSpeed,
 			"qq_start": u.QqStart, "qq_end": u.QqEnd, "qq_ptime": u.QqPtime,
-			"qq_icon": model.NobleIconOf(levels, qqLv, "qq"),
+			"qq_icon":   model.NobleIconOf(levels, qqLv, "qq"),
 			"qq_active": u.QqEnd != nil && u.QqEnd.After(now),
 		})
 	}

@@ -114,12 +114,12 @@ func (h *AdminHandler) AdminEzfyWars(c *gin.Context) {
 		AtkNum    string `json:"atk_num"`
 		DefNick   string `json:"def_nick"`
 		DefNum    string `json:"def_num"`
-		LiveState int    `json:"live_status"`      // 按时间算出的真实状态
-		StateText string `json:"state_text"`       // 真实状态中文
-		LeftText  string `json:"left_text"`        // 剩余时间说明
-		DeclareAt string `json:"declare_at_text"`  // 宣战时间（可读）
-		EffectAt  string `json:"effect_at_text"`   // 生效时间（可读）
-		ExpireAt  string `json:"expire_at_text"`   // 到期时间（可读）
+		LiveState int    `json:"live_status"`     // 按时间算出的真实状态
+		StateText string `json:"state_text"`      // 真实状态中文
+		LeftText  string `json:"left_text"`       // 剩余时间说明
+		DeclareAt string `json:"declare_at_text"` // 宣战时间（可读）
+		EffectAt  string `json:"effect_at_text"`  // 生效时间（可读）
+		ExpireAt  string `json:"expire_at_text"`  // 到期时间（可读）
 	}
 	out := []rowOut{}
 	for i := range rows {

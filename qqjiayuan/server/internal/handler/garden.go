@@ -265,12 +265,12 @@ func mixSeedName(m model.GardenMix) string {
 
 // 播种、浇水、锄草、捉虫、收获的经验值
 const (
-	gardenExpSow   = 2
-	gardenExpCare  = 1
-	gardenExpMix   = 20
-	gardenExpNew   = 10 // 首次点亮普通图谱
+	gardenExpSow     = 2
+	gardenExpCare    = 1
+	gardenExpMix     = 20
+	gardenExpNew     = 10  // 首次点亮普通图谱
 	gardenExpNewRare = 100 // 首次点亮独特/珍稀图谱
-	gardenExpKnown = 1  // 已点亮图谱
+	gardenExpKnown   = 1   // 已点亮图谱
 )
 
 // 添置花圃花费：当前 lands → 所需等级/金币（对齐 ASP）
@@ -406,25 +406,25 @@ func (h *GardenHandler) addBottle(uid uint, flower string, n int) {
 // 判断成熟/推进生长：返回花圃当前状态信息
 // status: 0空 1生长中 2成熟
 type plotView struct {
-	ID     uint   `json:"id"`
-	Plot   int    `json:"plot"`
-	SeedID uint   `json:"seed_id"`
-	Seed   string `json:"seed"`    // 种子名
-	Name   string `json:"name"`    // 开花后的花名
-	MapID  uint   `json:"map_id"`  // 图鉴 id（开花后）
-	Stage  int    `json:"stage"`   // 0空 1种子期 2花苗期 3花蕾期 4成熟
+	ID        uint   `json:"id"`
+	Plot      int    `json:"plot"`
+	SeedID    uint   `json:"seed_id"`
+	Seed      string `json:"seed"`   // 种子名
+	Name      string `json:"name"`   // 开花后的花名
+	MapID     uint   `json:"map_id"` // 图鉴 id（开花后）
+	Stage     int    `json:"stage"`  // 0空 1种子期 2花苗期 3花蕾期 4成熟
 	StageName string `json:"stage_name"`
-	Remain int    `json:"remain"`  // 剩余秒
+	Remain    int    `json:"remain"` // 剩余秒
 	RemainTxt string `json:"remain_txt"`
-	Drys   int    `json:"drys"`
-	Weed   int    `json:"weed"`
-	Pest   int    `json:"pest"`
-	Yield  int    `json:"yield"`
-	Amount int    `json:"amount"`
-	NeedWater bool `json:"need_water"`
-	NeedWeed  bool `json:"need_weed"`
-	NeedPest  bool `json:"need_pest"`
-	CanPick   bool `json:"can_pick"` // 好友可采摘
+	Drys      int    `json:"drys"`
+	Weed      int    `json:"weed"`
+	Pest      int    `json:"pest"`
+	Yield     int    `json:"yield"`
+	Amount    int    `json:"amount"`
+	NeedWater bool   `json:"need_water"`
+	NeedWeed  bool   `json:"need_weed"`
+	NeedPest  bool   `json:"need_pest"`
+	CanPick   bool   `json:"can_pick"` // 好友可采摘
 }
 
 // 根据种子 id 查定义（数据库，空表回退内置）
@@ -622,11 +622,11 @@ func (h *GardenHandler) View(c *gin.Context) {
 			"common": g.Common, "festival": g.Festival, "scarce": g.Scarce,
 			"map_total": total, "map_got": logged,
 		},
-		"coins":      u.Coins,
-		"plots":      out,
-		"bag":        bagOut,
-		"msgs":       msgOut,
-		"unread":     unread,
+		"coins":       u.Coins,
+		"plots":       out,
+		"bag":         bagOut,
+		"msgs":        msgOut,
+		"unread":      unread,
 		"recent_maps": recent,
 	})
 }
@@ -684,8 +684,8 @@ func (h *GardenHandler) Shop(c *gin.Context) {
 		out = append(out, gin.H{"id": sd.ID, "dtype": sd.DType, "name": sd.Name, "level": sd.Level, "level_name": gardenLevelName(sd.Level), "price": sd.Price, "vip_price": sd.Price * 8 / 10,
 			"seed": sd.Seed, "ling": sd.Ling, "buds": sd.Buds, "less": sd.Less, "more": sd.More,
 			"yield_avg": (sd.Less + sd.More) / 2,
-			"hours": float64(int(float64(sd.Seed+sd.Ling+sd.Buds)/60*10)) / 10,
-			"remark": sd.Remark, "garden_level": g.Level})
+			"hours":     float64(int(float64(sd.Seed+sd.Ling+sd.Buds)/60*10)) / 10,
+			"remark":    sd.Remark, "garden_level": g.Level})
 	}
 	resp.OK(c, out)
 }
@@ -1111,11 +1111,11 @@ func (h *GardenHandler) Room(c *gin.Context) {
 	}
 	// 按产物种子聚合材料
 	type mixItem struct {
-		SeedID uint        `json:"seed_id"`
-		Name   string      `json:"name"`
-		Level  int         `json:"level"`
-		Mats   []gin.H     `json:"mats"`
-		Can    bool        `json:"can"`
+		SeedID uint    `json:"seed_id"`
+		Name   string  `json:"name"`
+		Level  int     `json:"level"`
+		Mats   []gin.H `json:"mats"`
+		Can    bool    `json:"can"`
 	}
 	out := []mixItem{}
 	seen := map[uint]int{}
