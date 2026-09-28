@@ -1571,6 +1571,11 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 	mult := int64(4)
 	if wl.WildType == 2 {
 		mult = 3
+		// ★ 2026-09-28 用户要求「海野采集更高些，给海野加个系数 1~2」：
+		//   海野基础陆海系数低(3 vs 陆地4)，乘上本系数拉高海野采集收益（默认 1.5 → 4.5，比陆地更高）。
+		if sm := ezfyGatherSeaMult(); sm != 1 {
+			mult = int64(float64(mult) * sm)
+		}
 	}
 	amt := per * mult
 	if ms > 0 && ms < ezfyDispatchPeriod() {

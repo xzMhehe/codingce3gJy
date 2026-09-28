@@ -38,6 +38,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerGatherMult: ezfyOfficerGatherMultDef,
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
+		GatherSeaMult:     ezfyGatherSeaMultDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
@@ -122,6 +123,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.GatherLevelPow <= 0 {
 		lim.GatherLevelPow = ezfyGatherLevelPowDef
 	}
+	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）
+	if lim.GatherSeaMult <= 0 {
+		lim.GatherSeaMult = ezfyGatherSeaMultDef
+	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -204,6 +209,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MayorGainMult *float64 `json:"mayor_gain_mult"`
 		// ★ 2026-09-28：采集等级成长幂次（默认 1.3，越高级采集越多）
 		GatherLevelPow *float64 `json:"gather_level_pow"`
+		// ★ 2026-09-28：海野采集系数（默认 1.5，1~2；越大海野采集收益越高）
+		GatherSeaMult *float64 `json:"gather_sea_mult"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult   *float64 `json:"res_prod_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
@@ -260,6 +267,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerGatherMult: ezfyOfficerGatherMultDef,
 		MayorGainMult:     ezfyMayorGainMultDef,
 		GatherLevelPow:    ezfyGatherLevelPowDef,
+		GatherSeaMult:     ezfyGatherSeaMultDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:   ezfyResProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
@@ -466,6 +474,15 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.GatherLevelPow = m
 	}
+	// ★ 2026-09-28 海野采集系数：允许小数，1~2 建议区间；只拦非正数
+	if in.GatherSeaMult != nil {
+		m := *in.GatherSeaMult
+		if m <= 0 {
+			resp.ParamError(c, "海野采集系数必须大于 0（建议 1~2）")
+			return
+		}
+		lim.GatherSeaMult = m
+	}
 	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
 	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
 	if in.ResProdMult != nil {
@@ -653,6 +670,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherLevelPow <= 0 {
 		lim.GatherLevelPow = ezfyGatherLevelPowDef
 	}
+	// ★ 2026-09-28 海野采集系数兜底（0 / 负 / NULL → 1.5）
+	if lim.GatherSeaMult <= 0 {
+		lim.GatherSeaMult = ezfyGatherSeaMultDef
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -756,6 +777,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"mayor_gain_mult":     lim.MayorGainMult,
 		// ★ 2026-09-28 采集等级成长幂次
 		"gather_level_pow": lim.GatherLevelPow,
+		// ★ 2026-09-28 海野采集系数
+		"gather_sea_mult": lim.GatherSeaMult,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
