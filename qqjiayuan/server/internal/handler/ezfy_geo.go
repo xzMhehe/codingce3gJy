@@ -562,6 +562,18 @@ func ezfyGatherMax() int {
 	return ezfyGatherMaxDefault
 }
 
+// ezfySellPriceMax 挂单出售单价上限（黄金/单位）
+//
+// ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价：卖 1 粮食价格不能超过 100，
+//   数量随意（1/2/50/60），比例在二战系统配置可灵活配置」。
+// 0 或未配置时回落默认 100。
+func ezfySellPriceMax() int {
+	if n := ezfyCfg.limit.SellPriceMax; n > 0 {
+		return n
+	}
+	return 100
+}
+
 // ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
 // ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 更短且可配置」：
 //   读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。

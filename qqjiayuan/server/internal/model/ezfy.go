@@ -235,6 +235,8 @@ type EzfyCfgLimit struct {
 	NoticeHomeCount int `gorm:"default:1;comment:公告家园数量" json:"notice_home_count"`
 	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」→ 单次出征最多用几个集结令（默认 99）
 	GatherMaxPerOrder int `gorm:"default:99;comment:集结上限每订单" json:"gather_max_per_order"`
+	// ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价，比例系统可灵活配置」→ 挂单出售单价上限（黄金/单位，默认 100）
+	SellPriceMax int `gorm:"default:100;comment:挂单出售单价上限" json:"sell_price_max"`
 
 	// ============ 战斗 / 经济数值（管理端「建筑上限配置」页可维护）============
 	//

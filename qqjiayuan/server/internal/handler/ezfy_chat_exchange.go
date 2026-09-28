@@ -553,6 +553,14 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("出售价格不能超过%d黄金", sellGoldMax))
 		return
 	}
+	// ★ 2026-09-28 用户要求：挂单出售单价按 1:100 卡控（卖 1 粮食单价不能超过 100 黄金），
+	//   数量随意（1/2/50/60 都行），比例在「二战系统配置」页可灵活配置。
+	unitPriceMax := ezfySellPriceMax()
+	if req.TotalPrice/req.EsCount > int64(unitPriceMax) {
+		resp.ParamError(c, fmt.Sprintf("挂单单价不能超过%d黄金/单位(当前%d)",
+			unitPriceMax, req.TotalPrice/req.EsCount))
+		return
+	}
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
 	var stock int64

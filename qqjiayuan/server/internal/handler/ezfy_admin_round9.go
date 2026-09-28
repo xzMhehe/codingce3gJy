@@ -70,6 +70,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.GatherMaxPerOrder <= 0 {
 		lim.GatherMaxPerOrder = ezfyGatherMaxDefault
 	}
+	// ★ 2026-09-28 挂单出售单价上限兜底（0 回落默认 100 = 1:100 卡控）
+	if lim.SellPriceMax <= 0 {
+		lim.SellPriceMax = 100
+	}
 	// ★ 战斗/经济数值兜底：这几个 0 同样无意义（0 = 不扣民心 / 军官免费 / 恢复免费）
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
@@ -157,6 +161,7 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		FactoryMax            *int `json:"factory_max"`
 		NoticeHomeCount       *int `json:"notice_home_count"`
 		GatherMaxPerOrder     *int `json:"gather_max_per_order"`
+		SellPriceMax          *int `json:"sell_price_max"`
 		MallBuyMax            *int `json:"mall_buy_max"`
 		ConquerFeelingsMax    *int `json:"conquer_feelings_max"`
 		LootFeelings          *int `json:"loot_feelings"`
@@ -509,6 +514,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.WoundExpireDays = *in.WoundExpireDays
+	}
+	// ★ 2026-09-28：挂单出售单价上限（黄金/单位，默认 100；0 回落默认，上限 100000 防呆）
+	if in.SellPriceMax != nil {
+		if *in.SellPriceMax < 0 || *in.SellPriceMax > 100000 {
+			resp.ParamError(c, "挂单出售单价上限需要在 0~100000 之间")
+			return
+		}
+		lim.SellPriceMax = *in.SellPriceMax
 	}
 	// ★ 2026-09-24：采集周期小时数（至少 1 小时；上限 720 防呆 = 30 天）
 	if in.DispatchPeriodH != nil {
