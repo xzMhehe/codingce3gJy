@@ -94,6 +94,8 @@ func (h *EzfyHandler) cfgs() {
 	ezfyTroopCapOnce.Do(func() { ezfyMigrateTroopCap(h.DB) })
 	// 一次性迁移：老玩家已晋升军衔落位（不用补宝物）+ 军衔宝物需求落表（幂等，见 ezfy_rank_treasure.go）
 	ezfyRankInitOnce.Do(func() { ezfyMigrateRankInit(h.DB) })
+	// 一次性迁移：历史「宝物签到」误发到道具表的宝物 → 装备表（幂等，见 ezfy_rank_treasure.go）
+	ezfyTreasureBagOnce.Do(func() { ezfyMigrateTreasureBag(h.DB) })
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，

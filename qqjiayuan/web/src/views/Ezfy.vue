@@ -1395,6 +1395,12 @@
             每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个（管理端可调）。
             司令部上限（含指挥艺术科技）与集结令加成<b>叠加</b>。
           </div>
+          <div class="old-line" v-if="attackTroops.length">
+            <span :class="orderOverCap ? 'red' : 'green'">
+              本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
+              <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
+            </span>
+          </div>
 
           <!-- ③ 兵力 -->
           <div class="of-sec">③ 选择兵力
@@ -1421,12 +1427,6 @@
             </div>
           </div>
           <div class="old-line red" v-if="!attackTroops.length">城内无可出征部队</div>
-          <div class="old-line" v-if="attackTroops.length">
-            <span :class="orderOverCap ? 'red' : 'green'">
-              本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
-              <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
-            </span>
-          </div>
 
           <!-- ④ 随军资源 -->
           <div class="of-sec">④ 随军资源 <span class="of-hint">（右侧灰字是城内现有）</span></div>
@@ -2471,7 +2471,13 @@
               <a href="javascript:;" @click="useItem = null">[取消]</a>
             </div>
           </div>
-          <div class="old-line" v-if="!bagItems.length">(背包空空如也)</div>
+          <!-- ★ 2026-09-28 背包展示宝物（用户要求）：相同宝物合并显示 ×数量 -->
+          <div class="panel-title" v-if="bagTreasures.length">宝物（未穿戴）</div>
+          <div class="old-line" v-for="t in bagTreasures" :key="'bt' + t.cfg_id">
+            <b class="orange">{{ t.name }}</b>×{{ t.count }}
+            <span class="gray">（可穿戴到军官，也可提交用于军衔晋升）</span>
+          </div>
+          <div class="old-line" v-if="!bagItems.length && !bagTreasures.length">(背包空空如也)</div>
           <div class="old-line gray" v-else-if="!bagFiltered.length">(没有匹配「{{ bagWord }}」的道具)</div>
           <!-- ★ 分页 -->
           <div class="ezfy-pager" v-if="bagFiltered.length > bagPageSize">
@@ -4076,6 +4082,7 @@ export default {
       // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 99）
       mallBuyMax: 99,
       bagItems: [],
+      bagTreasures: [],
       // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
@@ -5781,6 +5788,7 @@ export default {
       return api.get('/games/ezfy/bag').then(r => {
         if (r.code === 0) {
           this.bagItems = r.data.items
+          this.bagTreasures = r.data.treasures || []
           this.bagOfficers = r.data.officers || []
           this.bagSkills = r.data.skills || []
         }

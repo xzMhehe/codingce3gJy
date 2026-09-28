@@ -1735,7 +1735,25 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		skills = append(skills, gin.H{"id": s.ID, "name": s.Name, "effect": s.Effect})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["id"].(int) < skills[j]["id"].(int) })
-	resp.OK(c, gin.H{"items": views, "officers": officers, "skills": skills})
+	// ★ 2026-09-28 背包展示宝物（用户要求「背包也要展示宝物, 相同宝物×数量」）：
+	//   宝物 = 野地采集/宝物签到掉落的珠宝，存装备表(ezfy_equipment)且未穿戴(officer_id=0)，
+	//   按 cfg_id 合并成「宝物名×数量」与道具一起下发。
+	type trAgg struct {
+		CfgId int
+		Cnt   int64
+	}
+	var trAggs []trAgg
+	h.DB.Model(&model.EzfyEquipment{}).Where("user_id = ? AND officer_id = 0", uid).
+		Select("cfg_id, count(*) AS cnt").Group("cfg_id").Scan(&trAggs)
+	trViews := []gin.H{}
+	for _, a := range trAggs {
+		cfg, ok := ezfyCfg.equipments[a.CfgId]
+		if !ok {
+			continue
+		}
+		trViews = append(trViews, gin.H{"cfg_id": a.CfgId, "name": cfg.Name, "count": a.Cnt})
+	}
+	resp.OK(c, gin.H{"items": views, "treasures": trViews, "officers": officers, "skills": skills})
 }
 
 func (h *EzfyHandler) UseItem(c *gin.Context) {
@@ -2064,11 +2082,18 @@ func (h *EzfyHandler) TreasureSign(c *gin.Context) {
 	}
 	qty := ezfyTreasureSignQty(count)
 	names := ezfyTreasureSignNames()
+	// ★ 2026-09-28 修复「签到宝物没到账」：原来 addItem 发进道具表(ezfy_item)，
+	//   而宝物(装备配置 27-35)采集掉落是进装备表(ezfy_equipment)——两套库导致背包、军衔晋升都看不到。
+	//   统一改为 addEquipment 进装备表，与采集掉宝同一口径。
+	city, ok := h.anyCity(uid)
+	if !ok {
+		city = h.getOrCreateCity(uid) // 福利页必有游戏存档
+	}
 	var won []string
 	for i := 0; i < qty; i++ {
 		name := names[rand.Intn(len(names))]
 		if cfg := ezfyEquipCfgByName(name); cfg != nil {
-			h.addItem(uid, int(cfg.ID), 1) // 宝物等配置 ID 27-35
+			h.addEquipment(&city, cfg)
 			won = append(won, name)
 		}
 	}

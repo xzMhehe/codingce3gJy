@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -128,6 +129,43 @@ func ezfyMigrateRankInit(db *gorm.DB) {
 	}
 	if backfill > 0 {
 		log.Printf("ezfy 军衔迁移: %d 档军衔宝物需求已落表", backfill)
+	}
+}
+
+// ezfyTreasureBagOnce 一次性迁移：历史「宝物签到」误发到道具表(ezfy_item)的宝物 → 装备表(ezfy_equipment)
+//
+// ★ 2026-09-28 修复「签到宝物没到账」：签到原来用 addItem 发进道具表，
+//   而宝物配置 27-35 是装备配置（采集掉宝进的是装备表）——道具表里既没名字、
+//   军衔晋升也统计不到，玩家自然「感觉没到账」。这里把存量一次性转正，
+//   之后签到直接走 addEquipment，不会再产生这类脏数据。
+var ezfyTreasureBagOnce sync.Once
+
+func ezfyMigrateTreasureBag(db *gorm.DB) {
+	var items []model.EzfyItem
+	db.Where("cfg_id >= ? AND cfg_id <= ? AND count > 0", 27, 35).Find(&items)
+	moved := 0
+	for _, it := range items {
+		cfg, ok := ezfyCfg.equipments[it.CfgId]
+		if !ok {
+			continue
+		}
+		for i := 0; i < it.Count; i++ {
+			eq := model.EzfyEquipment{
+				UserId: it.UserId, CfgId: cfg.ID, Name: cfg.Name,
+				Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
+				Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
+				Slot: model.EzfySlotCanon(cfg.EquipSlot()), SetId: cfg.SetId,
+				Series: cfg.Series, Enhance: cfg.Enhance,
+				Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
+			}
+			if err := db.Create(&eq).Error; err == nil {
+				moved++
+			}
+		}
+		db.Where("id = ?", it.ID).Delete(&model.EzfyItem{})
+	}
+	if moved > 0 {
+		log.Printf("ezfy 宝物迁移: %d 件历史签到宝物已转入装备表(背包可见/可晋升)", moved)
 	}
 }
 
