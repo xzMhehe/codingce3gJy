@@ -1420,24 +1420,25 @@
 
           <!-- ③ 兵力 -->
           <div class="of-sec">③ 选择兵力
-            <span class="of-hint">（拖滑块或直接填数字，[最大] 一键带上该兵种全部现有）</span>
+            <span class="of-hint">（拖滑块或直接填数字；滑块与 [最大] 都按「城内现有」和「出征上限剩余」取小）</span>
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="t in trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': troopCount(t.id) <= 0 }"
-                 :title="t.name + '（现有 ' + fmtN(troopCount(t.id)) + '）'">
+                 :title="t.name + '（现有 ' + fmtN(troopCount(t.id)) + '，本次最多可派 ' + fmtN(orderQtyMax(t.id)) + '）'">
               <span class="of-name">{{ t.name }}</span>
               <span class="of-avail">现有 {{ fmtN(troopCount(t.id)) }}</span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
-                       :max="troopCount(t.id)" :value="orderQty(t.id)"
-                       :disabled="troopCount(t.id) <= 0"
+                       :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
+                       :disabled="orderQtyMax(t.id) <= 0"
                        @input="onOrderQtyInput(t.id, $event)"/>
                 <input type="number" class="of-num" min="0" placeholder="0"
-                       :max="troopCount(t.id)" :value="orderQty(t.id)"
-                       :disabled="troopCount(t.id) <= 0"
+                       :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
+                       :disabled="orderQtyMax(t.id) <= 0"
                        @input="onOrderQtyInput(t.id, $event)"/>
                 <a href="javascript:;" class="of-max"
+                   :class="{ 'of-max-off': orderQtyMax(t.id) <= 0 }"
                    @click="setOrderQtyMax(t.id)">[最大]</a>
               </span>
             </div>
@@ -4494,6 +4495,13 @@ export default {
       if (!c) return '—'
       return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
     },
+    // ★ 2026-09-28 用户要求「[最大] 与滑块都按『出征还剩多少』卡控」。
+    //   出征上限只约束「出征类」命令：后端 createOrder 里写的是 `orderType != 5 && orderType != 8`
+    //   → 运输(5) / 派遣(8) 不做兵力上限校验，这两个命令的滑块仍旧只按「城内现有」卡。
+    //   ⚠️ 必须与后端同一口径，否则会出现「前端卡着不让填、后端其实允许」或反过来的假拦截。
+    orderCapApplies () {
+      return this.orderType !== 5 && this.orderType !== 8
+    },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
     },
@@ -7086,6 +7094,46 @@ export default {
         }
       })
     },
+    // ★★ 2026-09-28 用户要求：「[最大] 按钮点的不是当前兵种最大兵力，应该是出征还剩多少的最大」，
+    //   且「滑动滚轮也加下剩余可出征兵种最大卡控」。
+    //
+    //   本兵种可填上限 = min(城内现有, 出征上限剩余)：
+    //     - 城内现有   = troopCount(id)（不能派出城里没有的兵）
+    //     - 上限剩余   = 出征上限 − **其它**兵种已填合计（把本兵种算作 0 时的剩余额度）
+    //
+    //   这样「每个兵种都拉满」正好凑满上限，总量天然不会超 —— 不需要事后校正。
+    //   例：上限 10000，A 已填 3000、B 已填 2000 → C 的上限 = 10000−5000 = 5000；
+    //       A 自己的上限 = 10000−2000 = 8000（再受城内现有封顶）。
+    //
+    //   下列情况只按「城内现有」卡（返回 troopCount）：
+    //     - 还没点过 [计算]（orderCalc 为空，上限未知）→ 不能凭空编一个上限；
+    //     - 管理端把「出征上限」开关关了（cap_unlimited）→ 本来就不限；
+    //     - 运输(5)/派遣(8) → 后端不校验兵力上限（见 orderCapApplies）。
+    orderQtyMax (id) {
+      const own = this.troopCount(id)
+      const c = this.orderCalc
+      if (!c || c.cap_unlimited || !this.orderCapApplies) return own
+      const remain = (c.troop_cap || 0) - (this.orderTroopTotal - this.orderQty(id))
+      // remain 可能为负（其它兵种已经把额度吃超了）→ 本兵种只能填 0
+      return Math.max(0, Math.min(own, remain))
+    },
+    // ★ 上限变小后（改集结令 / 换带队军官 / 换城市）把已填兵力重新夹进新上限，
+    //   否则「本次出兵」会一直红着超限，而滑块又因为 max 变成 0 和数字框显示不一致。
+    //   策略：按兵种 id 升序依次分配剩余额度（先到先得），结果稳定可预期。
+    clampOrderTroops () {
+      const c = this.orderCalc
+      if (!c || c.cap_unlimited || !this.orderCapApplies) return
+      if (this.orderTroopTotal <= (c.troop_cap || 0)) return
+      let left = c.troop_cap || 0
+      const ids = Object.keys(this.orderTroops)
+        .filter(k => this.orderQty(k) > 0)
+        .sort((a, b) => Number(a) - Number(b))
+      for (const id of ids) {
+        const give = Math.max(0, Math.min(this.orderQty(id), left))
+        left -= give
+        this.$set(this.orderTroops, id, give)
+      }
+    },
     // 当前该兵种已填的出征数量（没填过 = 0）；滑块与数字框都绑它，保证两边显示一致
     orderQty (id) {
       const v = this.orderTroops[id]
@@ -7097,11 +7145,12 @@ export default {
     //   - 拖动滑块 → 数字框跟着变；填数字 → 滑块跟着走；两边共用 orderTroops[id] 一个值。
     //   - 用 $set 写对象键：orderTroops 初始是 {}，直接赋值新键 Vue2 侦测不到，
     //     滑块动完数字框不会刷新（这就是「联动」失效的原因）。
-    //   - 夹紧到 [0, 城内现有]：填超了按现有封顶。
+    //   - ★ 2026-09-28 夹紧上限由「城内现有」改成 orderQtyMax(id)
+    //     = min(城内现有, 出征上限剩余) —— 用户要求滑块也要按「剩余可出征」卡控。
     //   - 夹紧后若数值没变（如本来已是上限又填了更大的数），Vue 不会重渲染，
     //     DOM 里会留着用户填的非法数字 → 这里手动把输入框内容回写，保证「看到的 = 提交的」。
     onOrderQtyInput (id, ev) {
-      const max = this.troopCount(id)
+      const max = this.orderQtyMax(id)
       let n = parseInt(ev.target.value, 10)
       if (isNaN(n) || n < 0) n = 0
       if (n > max) n = max
@@ -7110,9 +7159,11 @@ export default {
         ev.target.value = String(n)
       }
     },
-    // [最大] = 一键带上该兵种城内全部可用数量（滑到最后、数字框同步）
+    // [最大] = 一键带上「该兵种还能派出的最大数量」（滑到最后、数字框同步）
+    //   ★ 2026-09-28 用户纠正：「不是当前兵种最大兵力，应该是出征还剩多少的最大」。
+    //   所以取 orderQtyMax = min(城内现有, 出征上限剩余)，而不是城内现有。
     setOrderQtyMax (id) {
-      const max = this.troopCount(id)
+      const max = this.orderQtyMax(id)
       if (max <= 0) return
       this.$set(this.orderTroops, id, max)
     },
@@ -7159,8 +7210,12 @@ export default {
     doCalc () {
       if (!this.selCell) return
       api.post('/games/ezfy/order/preview', this.orderBody()).then(r => {
-        if (r.code === 0) this.orderCalc = r.data
-        else this.alert(r, '计算失败')
+        if (r.code === 0) {
+          this.orderCalc = r.data
+          // ★ 2026-09-28：上限可能因「集结令 / 带队军官 / 城市」变化而变小，
+          //   这里立刻把已填兵力夹回新上限内，保证滑块 max 与数字框始终一致、不会红着超限。
+          this.clampOrderTroops()
+        } else this.alert(r, '计算失败')
       })
     },
     // ★ 清空出征表单（用户反馈「出征还有上次留的数据」）
@@ -8769,6 +8824,9 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .of-row.of-off .of-avail,
 .ezfy-page .of-row.of-off .of-max { color: #b3b3b3; }
 .ezfy-page .of-row.of-off input.of-range { opacity: .45; }
+/* ★ 2026-09-28 出征上限额度已用尽（本兵种本次最多可派 0）：[最大] 点了也没用 → 灰掉，
+   与同时被 :disabled 禁用的滑块/数字框保持一致，避免「点了没反应」的困惑。 */
+.ezfy-page .of-row .of-max.of-max-off { color: #b3b3b3; cursor: default; }
 @media (max-width: 700px) {
   /* 窄屏：名称+现有占第一行，滑块/数字/[最大] 整段换到第二行 */
   .ezfy-page .of-row { flex-wrap: wrap; row-gap: 0; }

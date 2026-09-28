@@ -442,9 +442,18 @@
     <!-- ============ 发放名将 ============ -->
     <el-dialog title="发放名将" :visible.sync="grantDlg" width="520px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
-        <el-form-item label="玩家ID" required>
-          <el-input-number v-model.number="grantForm.user_id" :min="1" controls-position="right" />
-          <span class="td-sub" style="margin-left:8px">即用户ID（不是家园号）</span>
+        <el-form-item label="玩家" required>
+          <el-input v-model="grantWord" placeholder="玩家昵称 / 游戏ID" clearable style="width:200px"
+                    @keyup.enter.native="searchGrantPlayer" />
+          <el-button type="primary" plain icon="el-icon-search" @click="searchGrantPlayer">搜索</el-button>
+          <span v-if="grantPlayers.length" class="td-sub" style="margin-left:8px">找到 {{ grantPlayers.length }} 位</span>
+        </el-form-item>
+        <el-form-item v-if="grantPlayers.length" label="选择玩家" required>
+          <el-select v-model="grantForm.user_id" filterable style="width:320px" placeholder="选择玩家">
+            <el-option v-for="p in grantPlayers" :key="p.user_id"
+                       :label="p.nickname + '（ID ' + p.user_id + (p.home_num ? ' · 家园号 ' + p.home_num : '') + '）'"
+                       :value="p.user_id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="军官" required>
           <el-select v-model="grantForm.general_id" filterable style="width:320px">
@@ -740,7 +749,10 @@ export default {
       // 3 玩家军官
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', captive: -1,
       editDlg: false, editId: 0, form: {},
-      grantDlg: false, grantForm: { user_id: 1, general_id: 0 },
+      grantDlg: false, grantForm: { user_id: 0, general_id: 0 },
+      // ★ 2026-09-28 发放名将：玩家搜索（昵称/游戏ID）—— 原来只能手填用户ID，
+      //   而管理员手上通常只有玩家的昵称或游戏里看到的游戏ID，根本填不出来。
+      grantWord: '', grantPlayers: [],
       // 4 技能
       skills: [], loadingS: false, sWord: '', sPage: 1, sSize: 5,
       sDlg: false, sf: {},
@@ -989,10 +1001,27 @@ export default {
       this.loadPickers()
       const list = this.grantCandidates || []
       const gid = row && row.id ? row.id : (list.length ? list[0].id : 0)
-      this.grantForm = { user_id: 1, general_id: gid }
+      this.grantForm = { user_id: 0, general_id: gid }
+      // ★ 每次打开都清掉上一次的搜索结果，避免「看着选了玩家、其实还是上一位」
+      this.grantWord = ''
+      this.grantPlayers = []
       this.grantDlg = true
     },
+    // ★ 2026-09-28 按昵称 / 游戏ID 搜索目标玩家
+    //   （与「发放道具」用同一个后端 handler，返回最多 20 条：user_id + nickname + home_num）
+    searchGrantPlayer () {
+      const word = (this.grantWord || '').trim()
+      if (!word) { this.$message.warning('请输入玩家昵称或游戏ID'); return }
+      api.get('/admin/ezfy-officers/players', { params: { word } }).then(r => {
+        if (r.code !== 0) { this.$message.error(r.msg); this.grantPlayers = []; return }
+        this.grantPlayers = r.data.list || []
+        // 只有一条结果时自动选中，省一次点击
+        this.grantForm.user_id = this.grantPlayers.length === 1 ? this.grantPlayers[0].user_id : 0
+        if (!this.grantPlayers.length) this.$message.warning('未找到匹配的玩家')
+      })
+    },
     doGrant () {
+      if (!this.grantForm.user_id) { this.$message.warning('请先搜索并选择玩家'); return }
       if (!this.grantForm.general_id) { this.$message.warning('请选择名将'); return }
       this.saving = true
       api.post('/admin/ezfy-officers/grant', this.grantForm).then(r => {

@@ -1150,6 +1150,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-officers", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficers)
 				admin.GET("/ezfy-officers-cfg", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerCfg)
 				admin.POST("/ezfy-officers/grant", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerGrant)
+				// ★ 2026-09-28 「发放名将」支持按玩家昵称/游戏ID搜索目标玩家：
+				//   复用「发放道具」的同一个 handler（AdminEzfyItemGrantPlayers），
+				//   但权限挂在军官模块上 —— 否则只有军官管理权限、没有数据管理权限的管理员会 403。
+				admin.GET("/ezfy-officers/players", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyItemGrantPlayers)
 				admin.PUT("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerUpdate)
 				admin.POST("/ezfy-officers/:id/captive", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerCaptive)
 				admin.DELETE("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerDelete)

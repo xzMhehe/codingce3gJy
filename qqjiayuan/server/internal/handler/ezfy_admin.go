@@ -463,14 +463,23 @@ func (h *AdminHandler) AdminEzfyData(c *gin.Context) {
 	if c.Param("table") == "diamondLogs" {
 		page, offset, size := pageOf(c, 10)
 		word := strings.TrimSpace(c.Query("word"))
+		// ★★ 2026-09-28 修复「钻石流水不展示玩家流水」：
+		//   JOIN 条件原来写成 `ezfy_profile.uid` —— 但 ezfy_profile **根本没有 uid 列**
+		//   （列名是 user_id，见 model.EzfyProfile.UserID 的 gorm tag），SQL 直接报
+		//   `ERROR 1054 Unknown column 'ezfy_profile.uid' in 'on clause'`
+		//   → 接口 500 → 前端表格永远是空的（看起来像「没有流水」）。
+		//   实测：SHOW COLUMNS FROM ezfy_profile = id/user_id/nickname/prestige/camp/
+		//   updated_at/game_uid/current_city_id/rename_used/camp_used/recruit_free_limit/diamond/rank。
 		base := h.DB.Table("ezfy_diamond_logs").
 			Select("ezfy_diamond_logs.id, ezfy_diamond_logs.user_id, ezfy_diamond_logs.change, " +
 				"ezfy_diamond_logs.balance, ezfy_diamond_logs.reason, " +
 				"DATE_FORMAT(ezfy_diamond_logs.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, ezfy_profile.nickname").
-			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.uid = ezfy_diamond_logs.user_id")
+			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.user_id = ezfy_diamond_logs.user_id")
 		if word != "" {
 			if id, err := strconv.Atoi(word); err == nil && id > 0 {
-				base = base.Where("ezfy_diamond_logs.user_id = ?", id)
+				// ★ 数字既可能是「用户ID」也可能是玩家在游戏里看到的「游戏ID」(game_uid) → 两个都匹配，
+				//   否则管理员拿玩家报的游戏ID来查会查不到（game_uid 首次=家园ID，之后与 user_id 解耦）。
+				base = base.Where("ezfy_diamond_logs.user_id = ? OR ezfy_profile.game_uid = ?", id, id)
 			} else {
 				base = base.Where("ezfy_profile.nickname LIKE ?", "%"+word+"%")
 			}
