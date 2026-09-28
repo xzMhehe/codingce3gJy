@@ -880,7 +880,17 @@
       <!-- ============ 司令部(hq) ============ -->
       <template v-else-if="cur === 'hq'">
         <div class="panel">
-          <div class="panel-title">司令部: 兵种战斗配置</div>
+          <div class="panel-title">司令部</div>
+          <!-- ★ 2026-09-28 用户要求：司令部内部拆成 tab（兵种配置/出征队列/伤兵营/逃兵营），
+               刷新后记住上次所在 tab（localStorage, 照抄任务 tab 的 ezfy_task_tab 写法） -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: hqTab === 0 }" @click="selectHqTab(0)">兵种配置</a>
+            <a href="javascript:;" :class="{ on: hqTab === 1 }" @click="selectHqTab(1)">出征队列({{ orders.length }})</a>
+            <a href="javascript:;" :class="{ on: hqTab === 2 }" @click="selectHqTab(2)">伤兵营({{ woundedList(0).length }})</a>
+            <a href="javascript:;" :class="{ on: hqTab === 3 }" @click="selectHqTab(3)">逃兵营({{ woundedList(1).length }})</a>
+          </div>
+          <div class="panel-title" v-show="hqTab === 0">兵种战斗配置</div>
+          <div v-show="hqTab === 0">
           <!-- ★ 一个兵种一块（原来 5 列固定宽度表格在手机上会互相遮盖） -->
           <div class="ezfy-tgt-block" v-for="t in troopsData.cfgs" :key="'cfg' + t.id">
             <div class="ezfy-tgt-name">
@@ -913,7 +923,8 @@
             </div>
           </div>
           <div class="old-line"><button @click="doSaveTargets">[保存全部配置]</button></div>
-          <br/>
+          </div><!-- /兵种配置 tab -->
+          <div v-show="hqTab === 1">
           <div class="panel-title">出征队列({{ orders.length }})</div>
           <table>
             <tr><th>类型</th><th>目标</th><th>统帅</th><th>状态</th><th></th></tr>
@@ -931,7 +942,8 @@
             </tr>
           </table>
           <div class="old-line" v-if="!orders.length">(暂无出征部队)</div>
-          <br/>
+          </div><!-- /出征队列 tab -->
+          <div v-show="hqTab === 2">
           <div class="panel-title">伤兵营</div>
           <div class="old-line gray">伤兵在营中<b>不消耗粮食</b>；恢复出厂需要黄金（按兵种造价折算）。</div>
           <table>
@@ -947,7 +959,8 @@
             合计 <b>{{ fmtN(woundedHealCost(0)) }}</b> {{ resNames.gold }}
             <button @click="doRecoverAll(0)">[全部恢复]</button>
           </div>
-          <br/>
+          </div><!-- /伤兵营 tab -->
+          <div v-show="hqTab === 3">
           <div class="panel-title">逃兵营</div>
           <table>
             <tr><th class="nm">兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
@@ -962,6 +975,7 @@
             合计 <b>{{ fmtN(woundedHealCost(1)) }}</b> {{ resNames.gold }}
             <button @click="doRecoverAll(1)">[全部召回]</button>
           </div>
+          </div><!-- /逃兵营 tab -->
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1451,7 +1465,7 @@
           <!-- ④ 随军资源 -->
            <!-- （右侧灰字是城内现有；上限 = 所带兵种负重之和 × 装载技术加成，没带部队时不能填） -->
           <div class="of-sec">④ 随军资源
-            <span class="of-hint">（每行拖滑块或直接填数字；上限 = 所带兵种负重之和 × 装载技术加成；没选部队时禁用）</span>
+            <!-- <span class="of-hint">（每行拖滑块或直接填数字；上限 = 所带兵种负重之和 × 装载技术加成；没选部队时禁用）</span> -->
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="res in resFields" :key="res.key"
@@ -1476,9 +1490,9 @@
           </div>
           <div class="old-line" v-if="!orderResDisabled">
             随军总量：<b :class="orderResOver ? 'red' : 'green'">{{ fmtN(orderResTotal) }}</b>
-            / 负重上限 <b>{{ fmtN(orderResCap) }}</b>
-            <span v-if="orderResOver" class="red">—— 超出负重上限，请减少资源或多带部队</span>
-            <span v-else class="gray">（负重含「装载技术」加成）</span>
+            / 可用负重 <b>{{ fmtN(orderResUsableCap) }}</b>
+            <span v-if="orderResOver" class="red">—— 超出（负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}），请减少资源或多带部队</span>
+            <span v-else class="gray">（负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}，含装载技术加成）</span>
           </div>
           <div class="old-line gray" v-else>（未选择部队，随军资源不可填写）</div>
           <div class="old-line gray" v-if="orderType === 5">
@@ -4170,6 +4184,7 @@ export default {
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
+      hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 (localStorage 记忆)
       // ★ 2026-09-25：套装一览是否显示「全部套装」（含还没拥有的）—— 方便玩家横向对比
       setShowAll: false,
       // ★ 2026-09-25 用户反馈「套装的加成玩家看不到、不知道买完套装给军官用哪个」：
@@ -4550,6 +4565,16 @@ export default {
       const c = this.orderCalc
       return c ? (c.carry || 0) : 0
     },
+    // ★ 2026-09-28 用户补充：剩余负重还要扣掉「行军油耗」。随军资源最多能占 = 负重 - 油耗
+    //   （油耗 = orderCalc.oil_used，由 [计算] 返回；兵力/距离变化时 orderTroopTotal watcher 会触发 doCalc 刷新）
+    orderResUsableCap () {
+      return Math.max(0, this.orderResCap - this.oilUsed)
+    },
+    // 行军油耗（随军资源占用的负重需要从负重上限里先扣掉）
+    oilUsed () {
+      const c = this.orderCalc
+      return c ? (c.oil_used || 0) : 0
+    },
     // 随军资源五项之和（重量 = 占用负重）
     orderResTotal () {
       return ['gold', 'food', 'steel', 'oil', 'rare'].reduce((s, k) => s + this.resQty(k), 0)
@@ -4560,7 +4585,7 @@ export default {
     },
     // 是否超出负重上限（红了要玩家减资源或多带部队）
     orderResOver () {
-      return !this.orderResDisabled && this.orderResTotal > this.orderResCap
+      return !this.orderResDisabled && this.orderResTotal > this.orderResUsableCap
     },
     // 随军资源行列表（沿用兵力行的渲染结构：名称+现有+滑块+数字+[最大]）
     resFields () {
@@ -4972,6 +4997,8 @@ export default {
   mounted () {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
+    // ★ 2026-09-28 司令部子 tab: 刷新后仍是上次选中的 tab（localStorage）
+    this.hqTab = this.restoreHqTab()
     // ★ 2026-09-27 iPhone 字体再修复：旧方案用 `@supports (-webkit-touch-callout: none)`
     //   只在桌面(无头 Chrome)测过为 false，但 iOS Safari 的 @supports 解析器并不认识
     //   -webkit-touch-callout 这个属性 → 条件永远不成立 → iPhone 一直回落到宋体-简
@@ -5972,6 +5999,18 @@ export default {
     restoreTaskTab () {
       try {
         const v = parseInt(window.localStorage.getItem('ezfy_task_tab') || '0', 10)
+        return isNaN(v) ? 0 : v
+      } catch (e) { return 0 }
+    },
+    // ★ 2026-09-28 司令部子 tab 切换并持久化（刷新后仍在原 tab）
+    selectHqTab (v) {
+      this.hqTab = v
+      try { window.localStorage.setItem('ezfy_hq_tab', String(v)) } catch (e) {}
+    },
+    // ★ 2026-09-28 恢复上次司令部子 tab（localStorage）
+    restoreHqTab () {
+      try {
+        const v = parseInt(window.localStorage.getItem('ezfy_hq_tab') || '0', 10)
         return isNaN(v) ? 0 : v
       } catch (e) { return 0 }
     },
@@ -7280,16 +7319,16 @@ export default {
       const n = parseInt(v, 10)
       return isNaN(n) || n < 0 ? 0 : n
     },
-    // ★ 随军资源：单行上限 = min(城内现有, 当前值 + 负重剩余自由额度)
-    //   选取兵种对应负重 orderResCap（= Σ兵种负重 × 装载技术加成）后，
-    //   让「这行填满 + 其它行照旧」恰好等于负重上限，保证总量不会超负重又能一次拖到顶。
-    //   超负重时 allowed < 当前值 → max 比当前小，拖一下就能收回去（不会因为红着而拖不动）。
+    // ★ 随军资源：单行上限 = min(城内现有, 可用负重 - 其它行重量)
+    //   ★ 修正 2026-09-28：(cap - others) 是【绝对上限】，不能再加 cur（旧写法 = cur + (cap - others)，
+    //     满负重时反而 allowed=2*cur>cap 还能往右滑）。用绝对上限后：
+    //     满负重时 allowed = 本行当前值 → 只能左收不能右加，其它行同样被卡住 —— 实现「负重满了就滑不动」。
+    //   可用负重 = 负重 - 行军油耗（orderResUsableCap）。
     resQtyMax (key) {
       if (this.orderResDisabled) return 0
       const avail = this.resAvail(key)
-      const cur = this.resQty(key)
-      const others = this.orderResTotal - cur              // 其它四项的当前重量
-      const allowed = cur + (this.orderResCap - others)    // 本行最多能到多少（扣掉别行的占用）
+      const others = this.orderResTotal - this.resQty(key)   // 其它行当前重量
+      const allowed = this.orderResUsableCap - others          // 本行绝对上限（扣掉别行占用）
       let mx = Math.min(avail, allowed)
       if (mx < 0) mx = 0
       return Math.floor(mx)

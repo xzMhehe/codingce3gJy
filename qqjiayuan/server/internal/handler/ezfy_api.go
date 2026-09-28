@@ -1469,7 +1469,7 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "钻石道具"
 	}
 	switch it.ItemType {
-	case 1, 2:
+	case 1, 2, 27, 28, 29, 30:
 		return "资源道具"
 	case 3, 4, 5:
 		return "加速道具"

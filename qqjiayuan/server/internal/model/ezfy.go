@@ -206,7 +206,7 @@ func (EzfyCfgResource) TableName() string { return "ezfy_cfg_resource" }
 type EzfyCfgItem struct {
 	ID          int    `gorm:"primaryKey;comment:主键ID" json:"id"`
 	Name        string `gorm:"type:varchar(50);comment:名称" json:"name"`
-	ItemType    int    `gorm:"comment:1资源包 2黄金包 3建筑加速 4训练加速 5科技加速 6建筑图纸 7增产 8免战" json:"item_type"` // 1资源包 2黄金包 3建筑加速 4训练加速 5科技加速 6建筑图纸 7增产 8免战
+	ItemType    int    `gorm:"comment:1资源包 2黄金包 3建筑加速 4训练加速 5科技加速 6建筑图纸 7增产 8免战 27粮食包 28钢铁包 29石油包 30稀矿包" json:"item_type"` // 1资源包 2黄金包 3建筑加速 4训练加速 5科技加速 6建筑图纸 7增产 8免战 27粮食包 28钢铁包 29石油包 30稀矿包
 	Param1      int64  `gorm:"comment:参数1" json:"param1"`
 	PriceGold   int64  `gorm:"comment:黄金价格" json:"price_gold"`
 	Icon        string `gorm:"type:varchar(50);comment:图标" json:"icon"`

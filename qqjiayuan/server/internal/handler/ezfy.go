@@ -2391,6 +2391,36 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
+	// ★ 2026-09-28 单资源礼包（2钻礼包2~5，ItemType 27~30）：
+	//   与黄金包(ItemType 2)同款实现，各自只加一种资源，无条件累加不截上限。
+	case 27: // 粮食包
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("food", ezfyResAddExpr("food", param)).Error; err != nil {
+			return "粮食累加失败: " + err.Error()
+		}
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 粮食+%d", param)
+	case 28: // 钢铁包
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("steel", ezfyResAddExpr("steel", param)).Error; err != nil {
+			return "钢铁累加失败: " + err.Error()
+		}
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 钢铁+%d", param)
+	case 29: // 石油包
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("oil", ezfyResAddExpr("oil", param)).Error; err != nil {
+			return "石油累加失败: " + err.Error()
+		}
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 石油+%d", param)
+	case 30: // 稀矿包
+		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+			Update("rare", ezfyResAddExpr("rare", param)).Error; err != nil {
+			return "稀矿累加失败: " + err.Error()
+		}
+		h.consumeItem(uid, cfgId)
+		return fmt.Sprintf("使用成功: 稀矿+%d", param)
 	case 3:
 		err = h.speedUpBuilding(city, recordId, param)
 		if err != "" {
