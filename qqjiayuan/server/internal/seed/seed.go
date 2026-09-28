@@ -291,6 +291,18 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 10 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
 
+		// ★ 2026-09-28：采集军官后勤属性加成率倍率（默认 1，允许小数；0 / NULL → 回落 1）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "officer_gather_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN officer_gather_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET officer_gather_mult = 1 WHERE officer_gather_mult IS NULL OR officer_gather_mult <= 0")
+
+		// ★ 2026-09-28：市长产量加成倍率（默认 1，允许小数；NULL → 回落 1；**0 合法**=关闭市长加成）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "mayor_gain_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN mayor_gain_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET mayor_gain_mult = 1 WHERE mayor_gain_mult IS NULL")
+
 		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {

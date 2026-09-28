@@ -889,7 +889,8 @@ func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 	}
 	// ★ 用有效后勤（自身 + 装备），否则给市长穿后勤装备没有任何效果
 	_, log, _ := h.officerEffective(&o)
-	return (10 + log/20) * 3
+	// ★ 2026-09-28 用户要求「市长加成整体可调」→ 结果 × ezfyMayorGainMult（默认 1）；0 = 关闭。
+	return int(float64((10+log/20)*3) * ezfyMayorGainMult())
 }
 
 // officerByName 按名字取本城军官

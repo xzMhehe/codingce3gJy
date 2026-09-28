@@ -34,6 +34,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
+		// ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率（默认 1）
+		OfficerGatherMult: ezfyOfficerGatherMultDef,
+		MayorGainMult:     ezfyMayorGainMultDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
@@ -105,6 +108,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 采集资源倍率：0 / 负数无意义 → 回落 10
 	if lim.GatherResMult <= 0 {
 		lim.GatherResMult = ezfyGatherResMultDef
+	}
+	// ★ 2026-09-28 采集后勤加成倍率：0 / 负数无意义 → 回落 1
+	if lim.OfficerGatherMult <= 0 {
+		lim.OfficerGatherMult = ezfyOfficerGatherMultDef
+	}
+	// ★ 2026-09-28 市长加成倍率：**0 合法**（= 关闭），只对负数兜底回落 1
+	if lim.MayorGainMult < 0 {
+		lim.MayorGainMult = ezfyMayorGainMultDef
 	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
@@ -182,6 +193,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildResMult *float64 `json:"wild_res_mult"`
 		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数）
 		GatherResMult *float64 `json:"gather_res_mult"`
+		// ★ 2026-09-28：采集军官后勤属性加成倍率（默认 1）
+		OfficerGatherMult *float64 `json:"officer_gather_mult"`
+		// ★ 2026-09-28：市长产量加成倍率（默认 1；**0 合法 = 关闭市长加成**）
+		MayorGainMult *float64 `json:"mayor_gain_mult"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult   *float64 `json:"res_prod_mult"`
 		RecruitCostOn *int     `json:"recruit_cost_on"`
@@ -234,6 +249,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		WildTroopMult: ezfyWildMultDef,
 		WildResMult:   ezfyWildResMultDef,
 		GatherResMult: ezfyGatherResMultDef,
+		// ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率（默认 1）
+		OfficerGatherMult: ezfyOfficerGatherMultDef,
+		MayorGainMult:     ezfyMayorGainMultDef,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:   ezfyResProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
@@ -413,6 +431,24 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.GatherResMult = m
 	}
+	// ★ 2026-09-28 采集后勤加成倍率：0 及负数无意义（= 无加成），仅接受正数。
+	if in.OfficerGatherMult != nil {
+		m := *in.OfficerGatherMult
+		if m <= 0 {
+			resp.ParamError(c, "采集后勤加成倍率必须大于 0")
+			return
+		}
+		lim.OfficerGatherMult = m
+	}
+	// ★ 2026-09-28 市长加成倍率：**0 合法**（= 关闭市长加成），只拦负数。
+	if in.MayorGainMult != nil {
+		m := *in.MayorGainMult
+		if m < 0 {
+			resp.ParamError(c, "市长加成倍率不能为负数（0 表示关闭市长加成）")
+			return
+		}
+		lim.MayorGainMult = m
+	}
 	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
 	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
 	if in.ResProdMult != nil {
@@ -588,6 +624,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherResMult <= 0 {
 		lim.GatherResMult = ezfyGatherResMultDef
 	}
+	// ★ 2026-09-28 采集后勤加成倍率兜底（老行 0 / NULL → 1）
+	if lim.OfficerGatherMult <= 0 {
+		lim.OfficerGatherMult = ezfyOfficerGatherMultDef
+	}
+	// ★ 2026-09-28 市长加成倍率兜底（老行负数 → 1；**0 合法**不兜底）
+	if lim.MayorGainMult < 0 {
+		lim.MayorGainMult = ezfyMayorGainMultDef
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -686,6 +730,9 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"wild_troop_mult":     lim.WildTroopMult,
 		"wild_res_mult":       lim.WildResMult,
 		"gather_res_mult":     lim.GatherResMult,
+		// ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率
+		"officer_gather_mult": lim.OfficerGatherMult,
+		"mayor_gain_mult":     lim.MayorGainMult,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）

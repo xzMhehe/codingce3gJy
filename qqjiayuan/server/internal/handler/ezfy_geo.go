@@ -809,6 +809,9 @@ const (
 	ezfyWildResMultDef = 10
 	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 10
 	ezfyGatherResMultDef = 10
+	// ★ 2026-09-28 采集军官后勤属性加成率倍率 / 市长产量加成倍率，默认 1
+	ezfyOfficerGatherMultDef = 1
+	ezfyMayorGainMultDef     = 1
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -1078,6 +1081,33 @@ func ezfyGatherResMult() float64 {
 		return m
 	}
 	return ezfyGatherResMultDef
+}
+
+// ezfyOfficerGatherMult 采集「军官后勤属性」加成率倍率（默认 1；0 / 负 / NULL → 回落 1）
+//
+// ★ 2026-09-28 用户要求「采集后勤加成率可调」：dispatchGatherYield 里
+// gainPct = 100 + floor(后勤 × 本倍率)，封顶 200。
+func ezfyOfficerGatherMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyOfficerGatherMultDef
+	}
+	if m := ezfyCfg.limit.OfficerGatherMult; m > 0 {
+		return m
+	}
+	return ezfyOfficerGatherMultDef
+}
+
+// ezfyMayorGainMult 市长产量加成倍率（默认 1；NULL → 回落 1；0 合法 = 关闭市长加成）
+//
+// ★ 2026-09-28 用户要求「市长加成整体可调」：mayorBonusPct 结果 × 本倍率。
+func ezfyMayorGainMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyMayorGainMultDef
+	}
+	if m := ezfyCfg.limit.MayorGainMult; m < 0 {
+		return ezfyMayorGainMultDef
+	}
+	return ezfyCfg.limit.MayorGainMult
 }
 
 // ezfyWords 取二战聊天敏感词

@@ -1556,9 +1556,10 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 // 时长不足一期时按比例折算。返回 (粮食, 钢铁, 石油, 稀矿, 加成%, 资源名)。
 func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64) (int64, int64, int64, int64, int, string) {
 	// 军官后勤加成: 每 1 点 +1%, 上限 +100%
+	// ★ 2026-09-28 用户要求「采集后勤加成率可调」→ 后勤点数先乘 ezfyOfficerGatherMult 再折算百分比。
 	gainPct := 100
 	if officer := h.officerByName(uint(order.CityId), order.Officer); officer != nil {
-		gainPct += officer.Logistics
+		gainPct += int(float64(officer.Logistics) * ezfyOfficerGatherMult())
 		if gainPct > 200 {
 			gainPct = 200
 		}

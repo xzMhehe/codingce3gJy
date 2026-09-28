@@ -1371,7 +1371,7 @@
           <!-- ① 军官 -->
           <div class="of-sec">① 指挥军官</div>
           <div class="old-line">
-            <select v-model="orderOfficer">
+            <select v-model="orderOfficer" @change="doCalc">
               <option value="0">未指定</option>
               <option v-for="o in onDutyOfficers" :key="'od' + o.id" :value="o.name">
                 {{ o.name }}({{ o.level }}级) 军{{ o.military_total || o.military }}

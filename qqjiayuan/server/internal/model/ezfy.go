@@ -294,6 +294,15 @@ type EzfyCfgLimit struct {
 	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
 	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。
 	GatherResMult float64 `gorm:"default:10;comment:采集资源倍率" json:"gather_res_mult"`
+	// ★ 2026-09-28 用户要求「采集军官后勤加成率可调」：
+	//   开工斜率：采集产出里「军官后勤属性」的加成按该倍率缩放后再叠加。
+	//   公式 dispatchGatherYield：gainPct = 100 + floor(后勤 × 本倍率)，封顶 200（+100%）。
+	//   默认 1 = 现行为（每点后勤 +1%）；0.5 = 减半；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1。
+	OfficerGatherMult float64 `gorm:"default:1;comment:采集后勤加成倍率" json:"officer_gather_mult"`
+	// ★ 2026-09-28 用户要求「市长加成整体可调」：
+	//   作用点 mayorBonusPct：市长产量加成% 整体 × 该倍率（默认 1 = 现状）。
+	//   0 合法（关闭市长加成）；NULL 无意义 → 回落 1。
+	MayorGainMult float64 `gorm:"default:1;comment:市长加成倍率" json:"mayor_gain_mult"`
 
 	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。

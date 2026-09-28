@@ -93,10 +93,20 @@
               <template slot="label">采集资源倍率<el-tooltip placement="top" :content="tips.gather_res_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.gather_res_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-09-28 采集军官后勤属性加成率倍率：默认 1 现行为 -->
+            <el-form-item>
+              <template slot="label">采集后勤加成倍率<el-tooltip placement="top" :content="tips.officer_gather_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.officer_gather_mult" :min="0.01" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-09-26 城市资源产量倍率：默认 1，**0 合法**（产量归零）→ :min="0" -->
             <el-form-item>
               <template slot="label">产量加成倍率<el-tooltip placement="top" :content="tips.res_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.res_prod_mult" :min="0" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <!-- ★ 2026-09-28 市长产量加成倍率：默认 1，**0 合法**（关闭市长加成）→ :min="0" -->
+            <el-form-item>
+              <template slot="label">市长加成倍率<el-tooltip placement="top" :content="tips.mayor_gain_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.mayor_gain_mult" :min="0" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
               <template slot="label">采集结算周期(小时)<el-tooltip placement="top" :content="tips.dispatch_period_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -249,6 +259,8 @@ export default {
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
         // ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
         res_prod_mult: 1,
+        // ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率（默认 1；市长 0 合法 = 关闭）
+        officer_gather_mult: 1, mayor_gain_mult: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
@@ -294,6 +306,12 @@ export default {
         // ★ 2026-09-26 城市资源产量倍率
         res_prod_mult: '城市每小时产出的**粮/钢/油/稀矿/黄金**整体 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
           '★ 填 0 表示**产量归零**（合法值）。资源详情页的「基础/加成/总产量」会同步按倍率显示。',
+        // ★ 2026-09-28 采集后勤加成倍率
+        officer_gather_mult: '采集时军官「后勤」属性的加成率 × 该倍数（可填小数，默认 1 = 每 1 点后勤 +1%，封顶 +100%）。' +
+          '例：填 2 时每 1 点后勤 +2%；填 0.5 时每 1 点后勤 +0.5%。',
+        // ★ 2026-09-28 市长加成倍率
+        mayor_gain_mult: '市长产生的城市产量加成% 整体 × 该倍数（可填小数，默认 1 现状）。' +
+          '★ 填 0 表示**关闭市长加成**（合法值）。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
         res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
@@ -360,6 +378,11 @@ export default {
             wild_troop_mult: pos(Number(r.data.wild_troop_mult), 1),
             wild_res_mult: pos(Number(r.data.wild_res_mult), 1),
             gather_res_mult: pos(Number(r.data.gather_res_mult), 1),
+            // ★ 2026-09-28 采集后勤加成倍率：0 无意义 → pos 回落默认 1
+            officer_gather_mult: pos(Number(r.data.officer_gather_mult), 1),
+            // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
+            mayor_gain_mult: (r.data.mayor_gain_mult === undefined || r.data.mayor_gain_mult === null)
+              ? 1 : Number(r.data.mayor_gain_mult),
             // ★ 2026-09-26 产量倍率：**不能用 pos()**（它把 <=0 回落成默认值，会把玩家设的 0 改回 1）
             res_prod_mult: (r.data.res_prod_mult === undefined || r.data.res_prod_mult === null)
               ? 1 : Number(r.data.res_prod_mult),
