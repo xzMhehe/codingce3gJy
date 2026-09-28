@@ -679,6 +679,19 @@ type EzfyMapStar struct {
 
 func (EzfyMapStar) TableName() string { return "ezfy_map_star" }
 
+// EzfyPreset 预设编队(司令部保存的出征模板: 军官+集结令+兵力, 不含目标/随军资源/宿营)
+type EzfyPreset struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"index:idx_preset_user;comment:用户ID" json:"user_id"`
+	Name      string    `gorm:"type:varchar(50);comment:预设名称" json:"name"`
+	Officer   string    `gorm:"type:varchar(255);comment:军官名(空=未指定)" json:"officer"`
+	Gather    int       `gorm:"comment:集结令个数" json:"gather"`
+	Troops    string    `gorm:"type:varchar(2000);comment:[{\"troopId\":1,\"count\":100}]" json:"troops"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyPreset) TableName() string { return "ezfy_preset" }
+
 type EzfyOrder struct {
 	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID     uint   `gorm:"index:idx_user;comment:用户ID" json:"user_id"`

@@ -128,7 +128,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
 		&model.EzfyCfgScheme{},
 		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
-		&model.EzfyMapStar{},
+		&model.EzfyMapStar{}, &model.EzfyPreset{},
 		&model.EzfyActivity{},
 		// 资源显示名配置（管理端可改名，游戏端/管理端展示全部跟随）
 		&model.EzfyCfgResource{},

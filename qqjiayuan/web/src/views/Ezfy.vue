@@ -888,6 +888,7 @@
             <a href="javascript:;" :class="{ on: hqTab === 1 }" @click="selectHqTab(1)">出征队列({{ orders.length }})</a>
             <a href="javascript:;" :class="{ on: hqTab === 2 }" @click="selectHqTab(2)">伤兵营({{ woundedList(0).length }})</a>
             <a href="javascript:;" :class="{ on: hqTab === 3 }" @click="selectHqTab(3)">逃兵营({{ woundedList(1).length }})</a>
+            <a href="javascript:;" :class="{ on: hqTab === 4 }" @click="selectHqTab(4)">预设编队({{ presets.length }})</a>
           </div>
           <div class="panel-title" v-show="hqTab === 0">兵种战斗配置</div>
           <div v-show="hqTab === 0">
@@ -976,6 +977,101 @@
             <button @click="doRecoverAll(1)">[全部召回]</button>
           </div>
           </div><!-- /逃兵营 tab -->
+          <div v-show="hqTab === 4">
+          <!-- ★ 2026-09-28 用户要求：司令部新增「预设编队」tab —— 镜像出征页 ①②③⑥ 保存模板，
+               不含 ④随军资源 / ⑤宿营；⑥油耗计算保留（预设不含目标，按本城0距离估算）。 -->
+          <div class="panel-title">预设编队</div>
+          <div class="old-line gray">
+            预设 = 出征模板（指挥军官 + 集结令 + 兵力），不含随军资源/宿营。
+            保存后在<b>地图出征页</b>的「预设编队」下拉里选用，一键回填。
+          </div>
+          <template v-if="presetAdding">
+            <div class="of-sec">新增预设 · 名称
+              <input v-model="presetName" type="text" maxlength="20" placeholder="(最多20字)" style="width:140px"/>
+            </div>
+            <!-- ① 军官 -->
+            <div class="of-sec">① 指挥军官</div>
+            <div class="old-line">
+              <select v-model="orderOfficer" @change="presetCalc">
+                <option value="0">未指定</option>
+                <option v-for="o in onDutyOfficers" :key="'pd' + o.id" :value="o.name">
+                  {{ o.name }}({{ o.level }}级) 军{{ o.military_total || o.military }}
+                  <span class="green" v-if="o.equip_military">(装+{{ o.equip_military }})</span>
+                  学{{ o.learning_total || o.learning }} 后{{ o.logistics_total || o.logistics }}
+                </option>
+              </select>
+              <span v-if="!onDutyOfficers.length" class="gray">(「{{ city.name }}」暂无可带队军官)</span>
+            </div>
+            <!-- ② 集结令 -->
+            <div class="of-sec">② 出征集结令</div>
+            <div class="old-line">
+              使用
+              <input type="number" min="0" :max="gatherMax" v-model.number="orderGather"
+                     :disabled="gatherCount <= 0" @change="onPresetGatherChange" style="width:80px"/>
+              个 <span class="gray">（背包里有 {{ gatherCount }} 个，单次最多 {{ orderCapMax }} 个）</span>
+            </div>
+            <!-- ③ 兵力 -->
+            <div class="of-sec">③ 选择兵力
+              <span class="of-hint">（拖滑块或直接填数字；滑块与 [最大] 都按「城内现有」和「出征上限剩余」取小）</span>
+            </div>
+            <div class="of-rows">
+              <div class="of-row" v-for="t in trainCfgs" :key="'pt' + t.id"
+                   :class="{ 'of-off': troopCount(t.id) <= 0 }"
+                   :title="t.name + '（现有 ' + fmtN(troopCount(t.id)) + '，本次最多可派 ' + fmtN(orderQtyMax(t.id)) + '）'">
+                <span class="of-name">{{ t.name }}</span>
+                <span class="of-avail">现有 {{ fmtN(troopCount(t.id)) }}</span>
+                <span class="of-ctl">
+                  <input type="range" class="of-range" min="0" step="1"
+                         :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
+                         :disabled="orderQtyMax(t.id) <= 0"
+                         @input="onOrderQtyInput(t.id, $event)"/>
+                  <input type="number" class="of-num" min="0" placeholder="0"
+                         :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
+                         :disabled="orderQtyMax(t.id) <= 0"
+                         @input="onOrderQtyInput(t.id, $event)"/>
+                  <a href="javascript:;" class="of-max"
+                     :class="{ 'of-max-off': orderQtyMax(t.id) <= 0 }"
+                     @click="setOrderQtyMax(t.id)">[最大]</a>
+                </span>
+              </div>
+            </div>
+            <!-- ⑥ 消耗预览（不含目标 → 按本城 0 距离估算） -->
+            <div class="of-sec">⑥ 消耗预览</div>
+            <div class="old-line">
+              <button @click="presetCalc">[计算]</button>
+              油耗：<span class="orange">{{ orderCalc ? orderCalc.oil_used : '—' }}</span>
+              &nbsp;/&nbsp;负重：<span class="orange">{{ orderCalc ? orderCalc.carry : '—' }}</span>
+              &nbsp;/&nbsp;本次出兵：
+              <span :class="orderOverCap ? 'red' : 'green'">
+                <b>{{ fmtN(orderTroopTotal) }}</b> / <b>{{ orderCapText }}</b>
+              </span>
+              <span v-if="orderOverCap" class="red">（超出上限）</span>
+            </div>
+            <div class="old-line gray">
+              （预设不含目标，油耗/负重按本城 0 距离估算；实际油耗与耗时以出征页 [计算] 为准）
+            </div>
+            <div class="old-line">
+              <button @click="savePreset">[保存预设]</button>
+              <a href="javascript:;" @click="cancelPresetAdd">[取消]</a>
+            </div>
+          </template>
+          <div class="old-line" v-else>
+            <button @click="startPresetAdd">[新增预设编队]</button>
+            <span class="gray">（最多保存 {{ presetMax }} 个）</span>
+          </div>
+          <div class="panel-title">我的预设</div>
+          <table>
+            <tr><th class="nm">名称</th><th>军官</th><th>兵力</th><th>集结令</th><th></th></tr>
+            <tr v-for="p in presets" :key="'psl' + p.id">
+              <td class="nm">{{ p.name }}</td>
+              <td>{{ p.officer || '无' }}</td>
+              <td>{{ fmtN(p.troop_total) }}</td>
+              <td>{{ p.gather }}个</td>
+              <td><a href="javascript:;" class="red" @click="deletePreset(p)">[删除]</a></td>
+            </tr>
+          </table>
+          <div class="old-line" v-if="!presets.length">(还没有预设编队，点上方 [新增预设编队] 开始)</div>
+          </div><!-- /预设编队 tab -->
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -1393,7 +1489,20 @@
           <hr/>
 
           <!-- ★ 2026-09-28 出征页顺序重排：①指挥军官 → ②出征集结令 → ③选择兵力
-               （用户要求军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚） -->
+               （用户要求军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚）
+               预设编队下拉：选中后回填 军官/集结令/兵力（兵力夹到可出征上限，军官不在当前城则回填空） -->
+          <!-- 预设编队 -->
+          <div class="of-sec">预设编队</div>
+          <div class="old-line">
+            <select v-model="presetSel" @change="applyPreset" style="width:200px">
+              <option :value="0">不使用预设</option>
+              <option v-for="p in presets" :key="'ps' + p.id" :value="p.id">
+                {{ p.name }}({{ fmtN(p.troop_total) }}兵<template v-if="p.officer">·{{ p.officer }}</template>)
+              </option>
+            </select>
+            <span class="gray" v-if="!presets.length">(暂无预设，可到司令部「预设编队」添加)</span>
+            <a href="javascript:;" @click="go('hq'); $nextTick(() => selectHqTab(4))">[管理预设]</a>
+          </div>
           <!-- ① 军官 -->
           <div class="of-sec">① 指挥军官</div>
           <div class="old-line">
@@ -4184,7 +4293,13 @@ export default {
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
-      hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 (localStorage 记忆)
+      hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 / 4预设编队 (localStorage 记忆)
+      // ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力，不含目标/随军资源/宿营）
+      presets: [],                                       // 预设列表 [{id,name,officer,gather,troops,troop_total}]
+      presetSel: 0,                                      // 出征页「预设编队」下拉选中 id (0=不使用)
+      presetName: '',                                    // 新增预设的名称输入
+      presetAdding: false,                               // 预设编队 tab 是否正在「新增预设」表单模式
+      presetMax: 10,                                     // 单账号预设数量上限（与后端 ezfyPresetMax 一致）
       // ★ 2026-09-25：套装一览是否显示「全部套装」（含还没拥有的）—— 方便玩家横向对比
       setShowAll: false,
       // ★ 2026-09-25 用户反馈「套装的加成玩家看不到、不知道买完套装给军官用哪个」：
@@ -5346,7 +5461,17 @@ export default {
         // ★ 训练页(troop)的队列行要按背包里的训练加速道具档位渲染 [加速] 按钮
         if (t === 'troop' || t === 'troops') this.loadBag()
       }
-      else if (t === 'hq') { this.loadTroops().then(() => this.loadTargets()); this.loadOrders() }
+      else if (t === 'hq') {
+        // ★ 2026-09-28 预设编队 tab 需要：本城坐标(/view)、集结令(gatherMax)、军官(onDutyOfficers)、背包(集结令数量)
+        this.load()
+        this.loadTroops().then(() => this.loadTargets())
+        this.loadOrders()
+        this.loadPresets()
+        this.loadOnDutyOfficers()
+        this.loadBag()
+        // 进来就先算一次：让「油耗/负重/本次出兵上限」立刻是准确值（若正处在预设编队 tab）
+        this.$nextTick(() => { if (this.hqTab === 4) this.presetCalc() })
+      }
       // ★ 2026-09-26 修复「加速道具买完实际使用不生效」：科技/建筑/训练页的 [加速]
       //   现在按「背包里实际拥有的加速道具档位」渲染按钮，所以进页时要拿到背包数据。
       else if (t === 'techs') { this.loadTechs(); this.loadBag() }
@@ -5402,6 +5527,8 @@ export default {
         //   （兵力/军官/携带资源/宿营/集结令），否则上一次的部队数量会残留，
         //   很容易误发一支自己没打算派的队伍。
         this.resetOrderForm()
+        // ★ 2026-09-28 预设编队下拉：每次进出征页刷新预设列表（别人/别城新增的预设也能及时出现）
+        this.loadPresets()
         // ★ 出征页顶部要显示「出发城市」，随军资源的「城内现有」也取自 /view，
         //   所以这里必须连 /view 一起拉 —— 否则切换城市后出征页仍显示上一座城的名字/资源。
         this.load()
@@ -6006,6 +6133,11 @@ export default {
     selectHqTab (v) {
       this.hqTab = v
       try { window.localStorage.setItem('ezfy_hq_tab', String(v)) } catch (e) {}
+      // ★ 2026-09-28 预设编队 tab：拉预设 + 重算预览（预设页共享出征表单状态 orderOfficer/orderGather/orderTroops）
+      if (v === 4) {
+        this.loadPresets()
+        this.$nextTick(() => this.presetCalc())
+      }
     },
     // ★ 2026-09-28 恢复上次司令部子 tab（localStorage）
     restoreHqTab () {
@@ -7257,7 +7389,14 @@ export default {
     orderQtyMax (id) {
       const own = this.troopCount(id)
       const c = this.orderCalc
-      if (!c || c.cap_unlimited || !this.orderCapApplies) return own
+      // 运输(5)/派遣(8) 无出征上限 → 仍按「城内现有」卡
+      if (!this.orderCapApplies) return own
+      // 上司关了上限开关 → 不限
+      if (c && c.cap_unlimited) return own
+      // ★ 攻略 2026-09-28：还没拿到出征上限(troop_cap)时，不能退回「城内总数」(own)，
+      //   否则 orderCalc null 的首帧滑块会放开到整个城内量(如 98 万航母)而不是上限(如 12.9 万)。
+      //   直接返回 0 → 滑块在计算完成前保持禁用，等 doCalc 落地后自动放开到正确上限。
+      if (!c) return 0
       const remain = (c.troop_cap || 0) - (this.orderTroopTotal - this.orderQty(id))
       // remain 可能为负（其它兵种已经把额度吃超了）→ 本兵种只能填 0
       return Math.max(0, Math.min(own, remain))
@@ -7439,6 +7578,115 @@ export default {
       this.trGold = 0
       this.waitH = 0
       this.waitM = 0
+      this.presetSel = 0
+    },
+    // ---- 预设编队 ----
+    // 拉取我的预设列表（出征页下拉 + 司令部预设 tab 共用）
+    loadPresets () {
+      api.get('/games/ezfy/presets').then(r => {
+        if (r.code === 0) this.presets = r.data.presets || []
+      })
+    },
+    // ★ 预设页 [计算]：与 doCalc 的区别——预设不含目标，传本城坐标按 0 距离估算油耗/负重，
+    //   出兵上限（troop_cap）与集结令/军官加成照常生效，返回后照旧把已填兵力夹回新上限。
+    presetCalc () {
+      const c = this.city
+      if (!c || !c.x || !c.y) return
+      api.post('/games/ezfy/order/preview', {
+        // 与 orderBody() 同口径：不传 city_id（后端按主城/当前城结算）
+        order_type: 2,
+        target_x: c.x,
+        target_y: c.y,
+        troops: this.presetTroopGroups(),
+        resources: {},
+        officer: this.orderOfficer && this.orderOfficer !== '0' ? this.orderOfficer : '',
+        wait_min: 0,
+        gather: parseInt(this.orderGather) || 0
+      }).then(r => {
+        if (r.code === 0) {
+          this.orderCalc = r.data
+          this.clampOrderTroops()
+        } else this.alert(r, '计算失败')
+      })
+    },
+    // 预设页/出征页提交用的兵力数组（orderTroops → [{troopId,count}]，只带 >0 的）
+    presetTroopGroups () {
+      const out = []
+      for (const k in this.orderTroops) {
+        const n = parseInt(this.orderTroops[k]) || 0
+        if (n > 0) out.push({ troopId: parseInt(k), count: n })
+      }
+      return out
+    },
+    // 预设页集结令改动：夹到 [0, gatherMax] 后按 0 距离重算
+    onPresetGatherChange () {
+      let n = parseInt(this.orderGather) || 0
+      if (isNaN(n) || n < 0) n = 0
+      const cap = this.gatherMax
+      if (n > cap) n = cap
+      this.orderGather = n
+      this.presetCalc()
+    },
+    startPresetAdd () {
+      // 进入新增表单：清空共享表单状态，从当前城现有/军官起步
+      this.resetOrderForm()
+      this.presetName = ''
+      this.presetAdding = true
+    },
+    cancelPresetAdd () {
+      this.presetAdding = false
+      this.resetOrderForm()
+    },
+    // 保存预设：名称校验；军官 '0' → 空串；兵力 = 当前表单搭配
+    savePreset () {
+      const name = (this.presetName || '').trim()
+      if (!name) { this.alert({ code: 400, msg: '请填写预设名称' }); return }
+      if (name.length > 20) { this.alert({ code: 400, msg: '预设名称最多20字' }); return }
+      api.post('/games/ezfy/presets', {
+        name,
+        officer: this.orderOfficer && this.orderOfficer !== '0' ? this.orderOfficer : '',
+        gather: parseInt(this.orderGather) || 0,
+        troops: this.presetTroopGroups()
+      }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.msg)
+          this.presetAdding = false
+          this.presetName = ''
+          this.resetOrderForm()
+          this.loadPresets()
+        } else this.alert(r, '保存失败')
+      })
+    },
+    deletePreset (p) {
+      api.post('/games/ezfy/presets/delete', { id: p.id }).then(r => {
+        if (r.code === 0) {
+          if (this.presetSel === p.id) this.presetSel = 0
+          this.loadPresets()
+        } else this.alert(r, '删除失败')
+      })
+    },
+    // ★ 出征页选中预设 → 回填：
+    //   军官不在当前城可带队列表 → 回填空；兵力夹 min(预设, orderQtyMax)=可出征上限；
+    //   集结令夹 [0, gatherMax]；最后按真实目标 doCalc 重算（异步，clampOrderTroops 兜底夹回上限）。
+    applyPreset () {
+      const p = this.presets.find(x => x.id === this.presetSel)
+      if (!p) return
+      // ① 军官：不在 onDutyOfficers → 回填空
+      const has = p.officer && this.onDutyOfficers.some(o => o.name === p.officer)
+      this.orderOfficer = has ? p.officer : '0'
+      // ③ 兵力：逐个夹到当前可出征上限（兵力不够时只能填最大）
+      this.orderTroops = {}
+      for (const t of (p.troops || [])) {
+        const max = this.orderQtyMax(t.troopId)
+        if (max > 0) this.$set(this.orderTroops, t.troopId, Math.min(t.count, max))
+      }
+      // ② 集结令：夹到当前可用上限
+      let g = parseInt(p.gather) || 0
+      if (isNaN(g) || g < 0) g = 0
+      const cap = this.gatherMax
+      this.orderGather = g > cap ? cap : g
+      // ⑥ 用真实目标重算（异步；内部会把已填兵力夹回新上限）
+      this.doCalc()
     },
     // 改集结令数量后立刻重算，让「本次出兵 / 上限」即时刷新
     // ★ 手填数字：夹到 [0, 可用上限]，可用上限 = min(管理端配置, 背包持有量)。
