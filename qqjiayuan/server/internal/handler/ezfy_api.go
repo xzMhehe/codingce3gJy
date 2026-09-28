@@ -770,7 +770,7 @@ func (h *EzfyHandler) CancelTech(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.done(c, h.cancelTech(city, req.TechId), "已取消研究, 消耗已全额退还")
+	h.done(c, h.cancelTech(city, req.TechId), "已取消研究, 已消耗资源不退还")
 }
 
 // ============ 调整生产(开工率) ============
@@ -1882,7 +1882,7 @@ func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64
 
 // giveResNoCap 给「指定城市」加资源，**不按仓储上限截断**。
 //
-// 用于退还类操作（取消训练/取消研究），避免玩家觉得「退少了」。
+// 用于退还类操作（取消训练，2026-09-28 取消研究改为不退款），避免玩家觉得「退少了」。
 // 负数是合法的，结果不会低于 0。
 func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare, gold int64) {
 	// ★ 2026-09-23：改用安全加法，结果恒在 [0, ezfyResSafeMax]，不会溢出翻负

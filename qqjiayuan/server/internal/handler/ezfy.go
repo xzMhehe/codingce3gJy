@@ -29,8 +29,8 @@ const (
 	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
 	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
-	ezfyNewCityGoldCost = 100000 // 平原起新城消耗黄金
-	ezfyOilDivGrid      = 300    // 出征耗油: 每格耗油 = 总兵力/300
+	ezfyNewCityResCost = 50000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 5 万（★ 2026-09-28 原为 10 万黄金）
+	ezfyOilDivGrid     = 300   // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
 	//   见 ezfyDispatchPeriod()。
@@ -2017,6 +2017,12 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	if dup > 0 {
 		return fmt.Sprintf("%s 已在其他城市研究中, 不能重复研究", cfg.Name)
 	}
+	// ★ 2026-09-28 fix：每个城市同时只能有**一条**研究队列（无论什么科技），避免本城开多条队列。
+	var busy int64
+	h.DB.Model(&model.EzfyCityTech{}).Where("city_id = ? AND status = 1", city.ID).Count(&busy)
+	if busy > 0 {
+		return "本城已有科技在研究, 请先完成或取消后再研究"
+	}
 	if city.Food < lv.Food || city.Steel < lv.Steel || city.Oil < lv.Oil ||
 		city.Rare < lv.Rare || city.Gold < lv.Gold {
 		return "资源不足"
@@ -2030,25 +2036,25 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	now := time.Now().UnixMilli()
 	// ★ 2026-09-28 等级记录在用户级（ezfy_user_tech），研究队列记录落在**发起城市**。
 	//   Level 存开始时的全局等级，结算时按它 +1 写回用户级等级。
-	h.DB.Create(&model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: curLevel,
+	// ★ 2026-09-28 fix：ezfy_city_tech 上 (city_id, tech_id) 是唯一索引，升级/取消后再研究
+	//   会走到同一行 —— 必须 upsert（存在则复用激活），否则 Create 因唯一冲突静默失败且资源已扣。
+	h.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "city_id"}, {Name: "tech_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"level", "status", "end_time"}),
+	}).Create(&model.EzfyCityTech{CityId: int64(city.ID), TechId: techId, Level: curLevel,
 		Status: 1, EndTime: now + h.techResearchMs(lv.ResearchTime)})
 	return ""
 }
 
-// cancelTech 取消研究(复刻原版 techIndex 的 [取消]): 全额退还本次研究消耗, 等级不变
+// cancelTech 取消研究: 清除研究队列, 研究等级不变。
+// ★ 2026-09-28 用户口径：取消研究**不退还**已消耗资源（与建筑取消不同, 仅停止该研究）。
 func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
-	h.refreshCity(city.UserID, city)
 	var t model.EzfyCityTech
 	// ★ 2026-09-28 研究队列记录在「发起城市」；取消按当前城 + 该科技查进行中记录
 	if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", city.ID, techId).First(&t).Error; err != nil {
 		return "该科技没有在研究中"
 	}
-	if lv := ezfyCfg.techLevel(techId, t.Level+1); lv != nil {
-		// 退还也不受仓储上限截断（与取消训练一致）
-		h.giveResNoCap(city, lv.Food, lv.Steel, lv.Oil, lv.Rare, lv.Gold)
-	}
-	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
-		Updates(map[string]interface{}{"status": 0, "end_time": 0})
+	h.DB.Delete(&model.EzfyCityTech{}, t.ID)
 	return ""
 }
 
@@ -2798,6 +2804,14 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&unreadReports)
 
 	acct, ulv, uexp := h.ezfyUserBrief(uid)
+	// ★ 2026-09-28 用户要求：首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
+	//   复用 getResourceCalc 的 total（净产量：产出 − 军队耗粮），保证两边数字永远一致。
+	resProd := gin.H{}
+	for _, k := range []string{"gold", "food", "steel", "oil", "rare"} {
+		if it, ok := h.getResourceCalc(&city)[k].(gin.H); ok {
+			resProd[k] = it["total"]
+		}
+	}
 	// ★ 军事区/资源区上限（线上现值各 36，管理端可维护）：随 /view 下发，前端不再硬编码
 	lim := ezfyLimit()
 	resp.OK(c, gin.H{
@@ -2813,6 +2827,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"cities":        h.cityViews(cities),
 		"diamond":       profile.Diamond,
 		"city":          city,
+		"res_prod":      resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
 		"continent":     ezfyContinentName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
 		"is_sea":       h.isSeaCity(&city),
@@ -3047,20 +3062,20 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		return
 	}
 
-	// 扣费走主城（不受当前切换影响）
-	// ★ 用户规则：新城市只能由玩家自己点[建新城]创建 —— 主城不存在就直接报错，
-	//   绝不在这里顺手替玩家建一座（原来调 mainCity 会自动建主城，点一下变两座城）。
-	main, ok := h.anyCity(uid)
-	if !ok {
-		resp.ParamError(c, "请先进入游戏创建主城")
+	// 扣费走「当前操作的城市」（★ 用户规则 2026-09-28：起新城不再消耗黄金，
+	// 改为所有资源（粮食/钢铁/石油/稀矿/黄金）各 5 万，扣的是当前城市资源，任一不足都无法起新城）
+	cur := h.getOrCreateCity(uid)
+	cost := int64(ezfyNewCityResCost)
+	if cur.Gold < cost || cur.Food < cost || cur.Steel < cost || cur.Oil < cost || cur.Rare < cost {
+		resp.ParamError(c, fmt.Sprintf("建造新城需要粮食/钢铁/石油/稀矿/黄金各%d", cost))
 		return
 	}
-	if main.Gold < ezfyNewCityGoldCost {
-		resp.ParamError(c, fmt.Sprintf("建造新城需要%d黄金", ezfyNewCityGoldCost))
-		return
-	}
-	main.Gold -= ezfyNewCityGoldCost
-	h.saveCityRes(&main)
+	cur.Gold -= cost
+	cur.Food -= cost
+	cur.Steel -= cost
+	cur.Oil -= cost
+	cur.Rare -= cost
+	h.saveCityRes(&cur)
 	city := model.EzfyCity{
 		UserID: uid, Name: fmt.Sprintf("新城%d,%d", req.X, req.Y),
 		Feelings: 80, TaxRate: 20, Pop: 0, PopMax: 100,
@@ -3080,8 +3095,8 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		extra = "\n该城为【沿海城市】: 可建造航海协会并训练海军。"
 	}
 	h.addReport(uid, 5, "新城建成",
-		fmt.Sprintf("花费%d黄金在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: %s(1级), 可到[城市列表]切换操作。%s",
-			ezfyNewCityGoldCost, kind, req.X, req.Y, city.Name, ezfyBaseBuildingNames(h.DB), extra))
+		fmt.Sprintf("花费粮食/钢铁/石油/稀矿/黄金各%d在%s(%d,%d)建造了新城[%s]\n新城自带基础建筑: %s(1级), 可到[城市列表]切换操作。%s",
+			cost, kind, req.X, req.Y, city.Name, ezfyBaseBuildingNames(h.DB), extra))
 	resp.OK(c, gin.H{"msg": "新城建成", "city": city})
 }
 

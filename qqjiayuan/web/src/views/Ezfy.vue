@@ -89,23 +89,23 @@
         </div>
         <div class="old-line">
           <span :title="resNames.gold"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6.4 5.8 L10 10.3 L13.6 5.8" stroke-width="1.6"/><path d="M10 6 V14.2" stroke-width="1.6"/><path d="M7.6 8.9 H12.4" stroke-width="1.4"/><path d="M7.6 11.7 H12.4" stroke-width="1.4"/></g></svg></span>
-          <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/{{ city.gold_cap }}
+          <a href="javascript:;" @click="go('res/gold')">{{ resNames.gold }}:</a>{{ city.gold }}/<span :title="resShort.gold + '每小时产量'">{{ fmtN(resProd.gold) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.food"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M7.2 6.2 C6.7 5.4 7.3 4.1 7.9 3.5"/><path d="M12.8 6.2 C13.3 5.4 12.7 4.1 12.1 3.5"/></g><path d="M5 8.6 H15 C15 8.6 14.7 12.2 13.3 13.7 C12.2 14.8 10.9 15.4 10 15.4 C9.1 15.4 7.8 14.8 6.7 13.7 C5.3 12.2 5 8.6 5 8.6 Z" fill="#FFD700"/></svg></span>
-          <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/{{ city.food_cap }}
+          <a href="javascript:;" @click="go('res/food')">{{ resNames.food }}:</a>{{ city.food }}/<span :title="resShort.food + '每小时产量'">{{ fmtN(resProd.food) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.steel"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M4.2 8.4 L6.6 15.6 H13.4 L15.8 8.4 Z" fill="#FFD700"/><path d="M5.6 10.2 H14.4" stroke="#C9AFF0" stroke-width="1.3" stroke-linecap="round"/></svg></span>
-          <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/{{ city.steel_cap }}
+          <a href="javascript:;" @click="go('res/steel')">{{ resNames.steel }}:</a>{{ city.steel }}/<span :title="resShort.steel + '每小时产量'">{{ fmtN(resProd.steel) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.oil"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 3.6 C10 3.6 6.1 8.1 6.1 11.2 C6.1 13.5 7.8 15.3 10 15.3 C12.2 15.3 13.9 13.5 13.9 11.2 C13.9 8.1 10 3.6 10 3.6 Z" fill="#FFD700"/><circle cx="8.6" cy="11.4" r="0.9" fill="#C9AFF0"/></svg></span>
-          <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/{{ city.oil_cap }}
+          <a href="javascript:;" @click="go('res/oil')">{{ resNames.oil }}:</a>{{ city.oil }}/<span :title="resShort.oil + '每小时产量'">{{ fmtN(resProd.oil) }}</span>
         </div>
         <div class="old-line">
           <span :title="resNames.rare"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M5.8 6.4 H14.2 L11.7 9.2 L10 15.6 L8.3 9.2 Z" fill="#FFD700"/><path d="M5.8 6.4 H10 L8.3 9.2 Z" fill="#C9AFF0"/></svg></span>
-          <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/{{ city.rare_cap }}
+          <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a>{{ city.rare }}/<span :title="resShort.rare + '每小时产量'">{{ fmtN(resProd.rare) }}</span>
         </div>
         <div class="old-line">
           <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>人口</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><circle cx="7" cy="7.4" r="1.6" fill="#FFD700"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#FFD700"/><circle cx="13" cy="6.6" r="1.5" fill="#FFD700"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#FFD700"/></svg>
@@ -837,11 +837,11 @@
           <div class="panel-title">城内军队</div>
           <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
           <table class="ezfy-center-tbl">
-            <tr><th class="nm">兵种</th><th>类型</th><th>数量</th><th>操作</th></tr>
+            <tr><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
             <!-- ★ 2026-09-28 用户要求：首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in armyRows" :key="'tv' + t.id">
               <td class="nm"><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a></td>
-              <td>{{ troopTypeName(t.type) }}</td><td>{{ t.count }}</td>
+              <td>{{ t.count }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
                 <a href="javascript:;" @click="openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
@@ -981,7 +981,7 @@
             <span v-else class="gray">[已满级]</span>
             <br/>
           </div>
-          <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 会全额退还本次研究消耗。</div>
+          <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 只停止研究，不退还已消耗资源。</div>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -2075,7 +2075,7 @@
               <a v-else href="javascript:;" @click="doLeaveCorps()">[退出军团]</a>
             </div>
             <div class="panel-title">军团成员</div>
-            <table>
+            <table class="ezfy-corps-tbl ezfy-mem-tbl">
               <tr>
                 <th>成员</th><th>职位</th><th>军衔</th>
                 <!-- ★ 2026-09-25 用户要求：成员表格新增「军团积分」列（m.points，个人军团积分） -->
@@ -2101,7 +2101,7 @@
             </table>
             <div class="old-line" v-if="isLeader && corpsMembers.length > 1">
               踢人:
-              <select v-model="kickUserId" style="width:30%">
+              <select v-model="kickUserId" class="corps-kick-sel" style="width:30%">
                 <option v-for="m in corpsMembers" v-if="!m.is_leader" :key="'kc' + m.user_id" :value="m.user_id">{{ m.name }}</option>
               </select>
               <button @click="doKick">[踢出]</button>
@@ -2109,7 +2109,7 @@
             <!-- 军团邮件群发(复刻 CorpsController.mail): ★ 军团长与副团长都能发 -->
             <div class="panel-title" v-if="canMailCorps">军团邮件(群发全体成员)</div>
             <div class="old-line" v-if="canMailCorps">
-              <input v-model="corpsMailContent" placeholder="邮件内容(500字以内)" style="width:60%"/>
+              <input v-model="corpsMailContent" class="corps-mail-input" placeholder="邮件内容(500字以内)" style="width:60%"/>
               <button @click="doCorpsMail">[群发]</button>
             </div>
           </div>
@@ -2134,7 +2134,7 @@
           </div>
           <div class="old-line" v-if="!corpsChats.length">(暂无消息)</div>
           <div class="old-line">
-            <input v-model="corpsMsg" style="width:15%"/>
+            <input v-model="corpsMsg" class="corps-msg-input" style="width:15%"/>
             <button @click="doCorpsChat">发送</button>
             <a href="javascript:;" @click="loadCorps">[刷新]</a>
           </div>
@@ -2142,7 +2142,7 @@
         <div class="panel" v-if="!myCorps">
           <div class="panel-title">创建军团</div>
           <div class="old-line">
-            军团名: <input v-model="corpsName" style="width:10%"/>
+            军团名: <input v-model="corpsName" class="corps-name-input" style="width:10%"/>
             <button @click="doCreateCorps">[创建]</button>
           </div>
         </div>
@@ -2165,7 +2165,7 @@
             </table>
             <div class="old-line gray" v-if="!(corpsRelations.relations || []).length">(暂无关系标记)</div>
             <div class="panel-title">全部军团</div>
-            <table>
+            <table class="ezfy-corps-tbl ezfy-dip-tbl">
               <tr>
                 <th>军团</th><th>团长</th><th>人数</th><th>积分</th><th>当前关系</th><th>宣战状态</th>
                 <th v-if="corpsRelations.can_manage">操作</th>
@@ -2210,7 +2210,7 @@
             <div class="old-line gray">
               规则：宣战后 12 小时生效，48 小时整场结束；生效期间双方成员可互相掠夺/征服并获得军团战绩；友好/敌对军团均可宣战。
             </div>
-            <table>
+            <table class="ezfy-corps-tbl ezfy-war-tbl">
               <tr>
                 <th>对方军团</th><th>我方身份</th><th>状态</th><th>宣告时间</th>
                 <th>我方战绩</th><th>对方战绩</th><th>操作</th>
@@ -2238,7 +2238,7 @@
             <!-- ★ 军团长可对「未处于宣战中的军团」发起宣战：复用外交 tab 的军团列表，不重复拉接口 -->
             <template v-if="corpsWars.can_manage && corpsRelations && corpsRelations.corps_list">
               <div class="panel-title">全部军团(可宣战)</div>
-              <table>
+              <table class="ezfy-corps-tbl ezfy-war-list-tbl">
                 <tr><th>军团</th><th>团长</th><th>人数</th><th>宣战状态</th><th>操作</th></tr>
                 <tr v-for="cp in (corpsRelations.corps_list || [])" :key="'wcp' + cp.id">
                   <td>{{ cp.name }}</td>
@@ -2348,7 +2348,7 @@
             <colgroup>
               <col style="width: 10%"><col style="width: 20%"><col style="width: 14%"><col style="width: 18%"><col style="width: 12%"><col style="width: 8%">
             </colgroup>
-            <tr><th>等级</th><th>军衔</th><th>职位</th><th>需要声望</th><th>宝物</th><th>可建城数</th></tr>
+            <tr><th>等级</th><th>军衔</th><th>职位</th><th>声望</th><th>宝物</th><th>城数</th></tr>
             <template v-for="(r, i) in rankData.ranks">
               <tr :key="'rk' + i">
                 <td>{{ i + 1 }}</td>
@@ -3902,6 +3902,8 @@ export default {
       cur: 'home',
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       resNames: RES_NAMES,
+      // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
+      resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
       resShort: RES_SHORT,
       resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
@@ -5130,6 +5132,8 @@ export default {
           this.rankPost = d.rank_post
           this.loadRank()
           this.city = d.city
+          // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
+          this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
           this.cities = d.cities
           this.continent = d.continent
           this.cityKindRaw = d.city_kind || ''
@@ -6484,10 +6488,10 @@ export default {
       this.useSpeedItem(item, 5, 0, () => { this.loadTechs() })
     },
     async doCancelTech (t) {
-      if (!await this.ask('确定取消研究「' + t.name + '」吗？本次消耗将全额退还。')) return
-      // ★ 2026-09-28 多城研究：取消只作用于**当前城**的研究队列
+      if (!await this.ask('确定取消研究「' + t.name + '」吗？取消研究将不退还已消耗的资源。')) return
+      // ★ 2026-09-28 多城研究：取消只作用于**当前城**的研究队列；取消不退款
       api.post('/games/ezfy/techs/cancel', { tech_id: t.tech_id, city_id: this.city ? this.city.id : 0 }).then(r => {
-        this.alert(r, '研究已取消，消耗已全额退还')
+        this.alert(r, '研究已取消，已消耗资源不退还')
         if (r.code === 0) this.loadTechs()
       })
     },
@@ -8800,6 +8804,44 @@ body.ezfy-ios .ezfy-page textarea {
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
 .ezfy-page .panel { max-width: 100%; overflow-x: auto; }
+/* ============ 军团三页（军团信息 / 军团外交 / 军团宣战）WAP 适配（2026-09-28 用户要求） ============
+   手机上：宽表格（成员 5 列 / 外交 7 列 / 宣战 7 列）挤成一坨 → 隐藏次要列 + 收紧内边距；
+   输入框/下拉（内联 width 15%~60%）过宽 → 收窄并限制 max-width。 */
+@media (max-width: 700px) {
+  .ezfy-page .ezfy-corps-tbl th,
+  .ezfy-page .ezfy-corps-tbl td { padding: 4px 4px; }
+  /* 输入框/下拉：手机上一律收窄（!important 覆盖内联宽度） */
+  .ezfy-page select.corps-kick-sel { width: 55vw !important; max-width: 200px; }
+  .ezfy-page input.corps-mail-input { width: 55vw !important; max-width: 240px; }
+  .ezfy-page input.corps-msg-input { width: 40vw !important; max-width: 180px; }
+  .ezfy-page input.corps-name-input { width: 45vw !important; max-width: 180px; }
+  /* 外交「全部军团」7 列：藏次要列「团长」「积分」 */
+  .ezfy-page .ezfy-dip-tbl th:nth-child(2),
+  .ezfy-page .ezfy-dip-tbl td:nth-child(2),
+  .ezfy-page .ezfy-dip-tbl th:nth-child(4),
+  .ezfy-page .ezfy-dip-tbl td:nth-child(4) { display: none; }
+  /* 宣战「记录」7 列：藏次要列「我方身份」「宣告时间」 */
+  .ezfy-page .ezfy-war-tbl th:nth-child(2),
+  .ezfy-page .ezfy-war-tbl td:nth-child(2),
+  .ezfy-page .ezfy-war-tbl th:nth-child(4),
+  .ezfy-page .ezfy-war-tbl td:nth-child(4) { display: none; }
+  /* 宣战「全部军团(可宣战)」5 列：藏「团长」 */
+  .ezfy-page .ezfy-war-list-tbl th:nth-child(2),
+  .ezfy-page .ezfy-war-list-tbl td:nth-child(2) { display: none; }
+}
+@media (max-width: 420px) {
+  .ezfy-page .ezfy-corps-tbl { font-size: 12px; }
+  .ezfy-page .ezfy-corps-tbl th,
+  .ezfy-page .ezfy-corps-tbl td { padding: 3px 3px; }
+  /* 成员表「任命」列（军团长：[副团长][参谋长][撤职]）竖排，加大触点 */
+  .ezfy-page .ezfy-mem-tbl td a { display: inline-block; margin: 2px 0; }
+  /* 外交「全部军团」再藏「人数」 */
+  .ezfy-page .ezfy-dip-tbl th:nth-child(3),
+  .ezfy-page .ezfy-dip-tbl td:nth-child(3) { display: none; }
+  /* 宣战「记录」再藏「对方战绩」 */
+  .ezfy-page .ezfy-war-tbl th:nth-child(6),
+  .ezfy-page .ezfy-war-tbl td:nth-child(6) { display: none; }
+}
 /* ============ 战场指挥室 WAP 适配 ============
    指挥室表格 7 列（方/兵种/剩余/初始/位置/目标/指挥）在手机上挤成一坨，
    窄屏逐步收缩：≤700px 藏「初始」、指挥按钮竖排加大触点；≤420px 再藏「位置」、下拉收紧。 */
