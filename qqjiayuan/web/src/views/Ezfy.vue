@@ -2474,10 +2474,9 @@
             </div>
           </div>
           <!-- ★ 2026-09-28 背包展示宝物（用户要求）：相同宝物合并显示 ×数量 -->
-          <div class="panel-title" v-if="bagTreasures.length">宝物（未穿戴）</div>
+          <div class="panel-title" v-if="bagTreasures.length">宝物</div>
           <div class="old-line" v-for="t in bagTreasures" :key="'bt' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}
-            <span class="gray">（可穿戴到军官，也可提交用于军衔晋升）</span>
           </div>
           <div class="old-line" v-if="!bagItems.length && !bagTreasures.length">(背包空空如也)</div>
           <div class="old-line gray" v-else-if="!bagFiltered.length">(没有匹配「{{ bagWord }}」的道具)</div>
@@ -8879,11 +8878,41 @@ body.ezfy-ios .ezfy-page textarea {
 @media (max-width: 700px) {
   .ezfy-page .ezfy-corps-tbl th,
   .ezfy-page .ezfy-corps-tbl td { padding: 4px 4px; }
+  /* ★ 2026-09-28 军团信息/外交/宣战 多列表格：手机端改为横向滚动, 不再硬塞窄屏挤压错位;
+       单元格不换行, 超出面板左右滑动即可看全, 布局不乱 */
+  .ezfy-page .ezfy-corps-tbl,
+  .ezfy-page .ezfy-dip-tbl,
+  .ezfy-page .ezfy-war-tbl,
+  .ezfy-page .ezfy-war-list-tbl {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    width: 100%;
+  }
+  .ezfy-page .ezfy-corps-tbl th,
+  .ezfy-page .ezfy-corps-tbl td,
+  .ezfy-page .ezfy-dip-tbl th,
+  .ezfy-page .ezfy-dip-tbl td,
+  .ezfy-page .ezfy-war-tbl th,
+  .ezfy-page .ezfy-war-tbl td,
+  .ezfy-page .ezfy-war-list-tbl th,
+  .ezfy-page .ezfy-war-list-tbl td {
+    white-space: nowrap;
+  }
   /* 输入框/下拉：手机上一律收窄（!important 覆盖内联宽度） */
   .ezfy-page select.corps-kick-sel { width: 55vw !important; max-width: 200px; }
   .ezfy-page input.corps-mail-input { width: 55vw !important; max-width: 240px; }
   .ezfy-page input.corps-msg-input { width: 40vw !important; max-width: 180px; }
   .ezfy-page input.corps-name-input { width: 45vw !important; max-width: 180px; }
+  /* ★ 2026-09-28 军团信息/外交/宣战：手机端输入类占整行, 按钮自动换行, 不再窄屏挤一起 */
+  .ezfy-page input.corps-mail-input,
+  .ezfy-page input.corps-msg-input,
+  .ezfy-page input.corps-name-input,
+  .ezfy-page select.corps-kick-sel {
+    display: block;
+    margin: 3px 0;
+  }
   /* 外交「全部军团」7 列：藏次要列「团长」「积分」 */
   .ezfy-page .ezfy-dip-tbl th:nth-child(2),
   .ezfy-page .ezfy-dip-tbl td:nth-child(2),

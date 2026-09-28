@@ -1746,9 +1746,10 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 	h.DB.Model(&model.EzfyEquipment{}).Where("user_id = ? AND officer_id = 0", uid).
 		Select("cfg_id, count(*) AS cnt").Group("cfg_id").Scan(&trAggs)
 	trViews := []gin.H{}
+	treasureSet := ezfyCollectibleTreasureNames() // ★ 只展示可采集的宝物（9 种珠宝），黑色幽灵[徽章]等普通装备不算宝物
 	for _, a := range trAggs {
 		cfg, ok := ezfyCfg.equipments[a.CfgId]
-		if !ok {
+		if !ok || !treasureSet[cfg.Name] {
 			continue
 		}
 		trViews = append(trViews, gin.H{"cfg_id": a.CfgId, "name": cfg.Name, "count": a.Cnt})

@@ -50,8 +50,8 @@ var ezfyRankTreasures = map[int][]ezfyRankTreasure{
 
 // ezfyRankTreasure 单个宝物的晋升需求
 type ezfyRankTreasure struct {
-	Name  string
-	Count int
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // ezfyParseRankTreasures 解析军衔配置里的宝物 JSON（[{"name","count"}]）
@@ -223,11 +223,16 @@ func (h *EzfyHandler) Promote(c *gin.Context) {
 		return
 	}
 	reqs := ezfyRankTreasureReqs(next.ID)
+	treasureSet := ezfyCollectibleTreasureNames() // ★ 只有能采集的宝物（9 种珠宝）可以用于军衔晋升
 	// 先整体校验，任一宝物不足都不扣减（避免扣一半失败）
 	for _, r := range reqs {
 		cfg := ezfyEquipCfgByName(r.Name)
 		if cfg == nil {
 			resp.ServerError(c, fmt.Errorf("宝物配置缺失:%s", r.Name))
+			return
+		}
+		if !treasureSet[cfg.Name] {
+			resp.ParamError(c, fmt.Sprintf("「%s」不是采集宝物，不可用于军衔晋升", r.Name))
 			return
 		}
 		if h.ezfyTreasureOwned(uid, cfg.ID) < int64(r.Count) {

@@ -275,6 +275,20 @@ var ezfyTerrainTreasureNames = map[int][]string{
 	8: {"翡翠项链", "蓝宝石戒指", "祖母绿"},   // 海底森林 → 石油
 }
 
+// ezfyCollectibleTreasureNames 可采集/可用于军衔晋升的宝物名集合（9 种珠宝）。
+//
+// ★ 2026-09-28 用户要求：只有「能采集的宝物」可以提交晋升军衔，
+//   普通装备（黑色幽灵[徽章]、合金装甲等）虽然同属装备表，但不算宝物。
+func ezfyCollectibleTreasureNames() map[string]bool {
+	set := map[string]bool{}
+	for _, names := range ezfyTerrainTreasureNames {
+		for _, n := range names {
+			set[n] = true
+		}
+	}
+	return set
+}
+
 // ezfyGatherResName 地形 → 采集产出的资源名（粮食/钢铁/石油/稀矿）
 func ezfyGatherResName(t int) string {
 	switch t {
