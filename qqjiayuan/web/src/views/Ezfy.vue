@@ -76,8 +76,7 @@
         </div>
         <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
-        <div class="old-line">
-          <a href="javascript:;" @click="go('buildm')">军事</a>.
+        <div class="old-line home-nav2">
           <a href="javascript:;" @click="go('builds')">资源</a>.
           <a href="javascript:;" @click="go('acade')">军官</a>.
           <a href="javascript:;" @click="go('troops')">军队</a>.
@@ -8936,6 +8935,21 @@ body.ezfy-ios .ezfy-page textarea {
    首链接左侧 padding/margin 归零 —— 与 .top-nav a:first-child 同源。
    两者父容器(.old-line / .top-nav)左右 padding 都是 0，归零后文字左边缘必定对齐。 */
 .ezfy-page .ezfy-subnav a:first-child { margin-left: 0; padding-left: 0; }
+/* ★ 2026-09-29 首页那行「军事.资源.军官.军队.科技.城防.统帅」跨平台间距不一致：
+   win/mac/手机 渲染同一段 inline 换行空白，空格宽度因字体各不相同。
+   改成 flex（gap 固定 3px）+ 每个链接稳距，彻底消除换行空白导致的参差。 */
+.ezfy-page .old-line.home-nav2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 3px;
+}
+.ezfy-page .old-line.home-nav2 a {
+  color: #004299;
+  margin: 0;
+  padding: 0 1px;
+}
+.ezfy-page .old-line.home-nav2 a.on { color: #000; font-weight: bold; }
 /* 军衔/排行页所有表格：数据水平 + 垂直居中（用户要求）*/
 /* ★ 排行页四个表格统一宽度（用户要求「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
    width:50% 占 panel 一半宽度，table-layout:fixed 配合各表 colgroup 比例分列，长文本自动折行 */

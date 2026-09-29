@@ -673,12 +673,19 @@
           <el-input v-model="aw.jewel" maxlength="100" placeholder="可空（用默认地形宝石），例如：红宝石" />
         </el-form-item>
         <el-form-item label="守将军官">
-          <el-select v-model.number="aw.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="width:100%">
-            <el-option v-for="g in generals" :key="'awg' + g.id"
-                       :label="g.name + '（' + g.star + '星' + (g.kind === 2 ? '·名将' : '·普通') + '）'"
-                       :value="g.id" />
-          </el-select>
-          <span class="td-sub">普通军官 / 名将都可选；打赢后按星级概率俘虏</span>
+          <div style="display:flex;align-items:center;gap:10px;width:100%">
+            <el-radio-group v-model="awOfficerKind" size="small" @change="awOfficerKindChange">
+              <el-radio-button :label="1">普通</el-radio-button>
+              <el-radio-button :label="2">名将</el-radio-button>
+            </el-radio-group>
+            <el-select v-model.number="aw.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="flex:1"
+                       :disabled="awOfficerKind === 0">
+              <el-option v-for="g in awKindGenerals" :key="'awg' + g.id"
+                         :label="g.name + '（' + g.star + '星' + '）'"
+                         :value="g.id" />
+            </el-select>
+          </div>
+          <span class="td-sub">先选「普通/名将」，再在对应下拉里选军官；不设则打赢俘不到军官</span>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />
@@ -734,7 +741,8 @@ export default {
       wcDlg: false, wc: emptyWc(),
       // 活动野地配置（2026-09-29）
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '' },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' },
+      awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       saving: false
     }
   },
@@ -743,6 +751,12 @@ export default {
     wcTroops () {
       if (!this.wc.wcTroops) this.$set(this.wc, 'wcTroops', [])
       return this.wc.wcTroops
+    },
+    // 活动野地守将军官下拉：按类型(普通kind=1/名将kind=2)过滤军官池
+    awKindGenerals () {
+      const k = this.awOfficerKind
+      if (k !== 1 && k !== 2) return []
+      return (this.generals || []).filter(g => Number(g.kind) === k)
     }
   },
   mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles(); this.loadActWilds() },
@@ -937,11 +951,20 @@ export default {
     },
     openAwCreate () {
       this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' }
+      this.awOfficerKind = 1
       this.awDlg = true
     },
     openAwEdit (row) {
       this.aw = Object.assign({}, row)
+      // 根据已选军官推断类型（能查到该军官 -> 用其 kind）
+      const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
+      this.awOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1
       this.awDlg = true
+    },
+    // 切换普通/名将 时清空已选军官（不同类型不能保留旧选择）
+    awOfficerKindChange () {
+      this.aw.officer_id = 0
+      this.aw.officer_name = ''
     },
     saveAw () {
       const a = this.aw
