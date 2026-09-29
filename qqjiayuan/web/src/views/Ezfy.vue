@@ -585,8 +585,8 @@
           <div class="old-line" v-for="ct in cities" :key="'ct' + ct.id">
             <!-- ★ 2026-09-29 城市列表改版：一行一座城 = 城市名(坐标)；点城市名**切换**；
                  [运输][派遣][弃城] 只在非当前城显示（当前城无操作） -->
-            <a v-if="ct.id !== city.id" class="city-name" href="javascript:;" @click="doSwitch(ct)" title="切换为当前城市">{{ ct.name }}({{ ct.x }},{{ ct.y }})</a>
-            <span v-else class="city-name">{{ ct.name }}({{ ct.x }},{{ ct.y }})<span class="red">[当前]</span></span>
+            <a v-if="ct.id !== city.id" class="city-name" href="javascript:;" @click="doSwitch(ct)" title="切换为当前城市">{{ ct.name }}</a>({{ ct.x }},{{ ct.y }})
+            <span v-else class="city-name">{{ ct.name }}<span class="red">[当前]</span></span>({{ ct.x }},{{ ct.y }})
             <template v-if="ct.id !== city.id">
               <a href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
               <a href="javascript:;" @click="doDispatchTo(ct)">[派遣]</a>
@@ -6881,7 +6881,6 @@ export default {
           //   （用户反馈「切换城市后出征页的军官还是切换前那个城的」）。
           this.loadOnDutyOfficers()
           this.cur = 'home'
-          if (r.data && r.data.msg) this.alert(r.data)
         } else this.notify(r.msg)
       })
     },
