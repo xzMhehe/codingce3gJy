@@ -5,9 +5,9 @@ package seed
 import "qqjiayuan/server/internal/model"
 
 var ezfyEzfyCfgGeneral = []model.EzfyCfgGeneral{
-	{ID: 1, Name: "Stalin（斯大林）", Level: 150, Military: 300, Logistics: 150, Learning: 200, Star: 5, Source: "300充值凭证+15万砖石", GetCondition: "505", Skill: "活动中心换取", Des: "全技能+2，攻击+20％，出兵+20％", Recruit: 0},
-	{ID: 2, Name: "Churchill（丘吉尔）", Level: 140, Military: 85, Logistics: 336, Learning: 118, Star: 5, Source: "6万砖石", GetCondition: "203", Skill: "商店买", Des: "", Recruit: 0},
-	{ID: 3, Name: "阿诺德（Henry H Arnold）", Level: 140, Military: 145, Logistics: 56, Learning: 230, Star: 5, Source: "5万砖石", GetCondition: "375", Skill: "商店买", Des: "攻击防御速度+10％，英雄突击+2", Recruit: 0},
+	{ID: 1, Name: "Stalin(约瑟夫·斯大林)", Level: 150, Military: 300, Logistics: 150, Learning: 200, Star: 5, Source: "300充值凭证+15万砖石", GetCondition: "505", Skill: "活动中心换取", Des: "全技能+2，攻击+20％，出兵+20％", Recruit: 0},
+	{ID: 2, Name: "Churchill(温斯顿·丘吉尔)", Level: 140, Military: 85, Logistics: 336, Learning: 118, Star: 5, Source: "6万砖石", GetCondition: "203", Skill: "商店买", Des: "", Recruit: 0},
+	{ID: 3, Name: "Henry H Arnold(亨利·阿诺德)", Level: 140, Military: 145, Logistics: 56, Learning: 230, Star: 5, Source: "5万砖石", GetCondition: "375", Skill: "商店买", Des: "攻击防御速度+10％，英雄突击+2", Recruit: 0},
 	{ID: 4, Name: "邓尼茨（Donitz）", Level: 140, Military: 190, Logistics: 120, Learning: 120, Star: 5, Source: "10套地图+15亿金+10万潜艇送35％战列生命章", GetCondition: "310", Skill: "任务（soul of wolf）", Des: "", Recruit: 0},
 	{ID: 5, Name: "戴高乐（Charles）", Level: 140, Military: 230, Logistics: 70, Learning: 80, Star: 5, Source: "15亿金子", GetCondition: "310", Skill: "任务", Des: "", Recruit: 0},
 	{ID: 6, Name: "White Beard", Level: 150, Military: 264, Logistics: 113, Learning: 201, Star: 5, Source: "10万砖石", GetCondition: "465", Skill: "商店购买", Des: "英雄突击+2，攻速移速+20％", Recruit: 0},
