@@ -100,7 +100,14 @@ func (h *AdminHandler) AdminEzfyMapOptions(c *gin.Context) {
 		gviews = append(gviews, gin.H{"id": g.ID, "name": g.Name, "star": g.Star, "kind": g.Kind,
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning})
 	}
-	resp.OK(c, gin.H{"troops": tviews, "generals": gviews})
+	// ★ 2026-09-29 活动野地「必掉宝物」多行编辑器下拉：可采集的 9 种珠宝
+	var equips []model.EzfyCfgEquipment
+	h.DB.Where("type = ?", "珠宝").Order("id").Find(&equips)
+	jviews := make([]gin.H, 0, len(equips))
+	for _, e := range equips {
+		jviews = append(jviews, gin.H{"id": e.ID, "name": e.Name})
+	}
+	resp.OK(c, gin.H{"troops": tviews, "generals": gviews, "jewels": jviews})
 }
 
 // AdminEzfyWildCfgList 野地类型配置列表

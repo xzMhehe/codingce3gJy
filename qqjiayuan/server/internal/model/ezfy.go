@@ -161,9 +161,13 @@ type EzfyActWild struct {
 	Prestige int `gorm:"default:0;comment:声望奖励，0=用默认" json:"prestige"`
 	// Jewel 必掉宝物名，空=用默认地形宝石
 	Jewel string `gorm:"type:varchar(100);comment:必掉宝物，空=默认" json:"jewel"`
+	// ★ 2026-09-29 必掉宝物改为多行配置：JSON [[cfg_id,数量],...]，空=用默认地形珠宝
+	Treasures string `gorm:"type:varchar(500);comment:必掉宝物JSON [[cfg_id,count],...]" json:"treasures"`
 	// OfficerId 该坐标活动野地的守将军官（军官池 ID，0=不设守将）。普通军官/名将都可选。
-	OfficerId int  `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
-	Des       string `gorm:"type:varchar(200);comment:描述" json:"des"`
+	OfficerId int `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
+	// CaptureRate 守将被俘虏概率%（0=按星级默认；显式填 1~100 则覆盖，不受默认 60% 上限限制）
+	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=按星级默认" json:"capture_rate"`
+	Des         string `gorm:"type:varchar(200);comment:描述" json:"des"`
 }
 
 func (EzfyActWild) TableName() string { return "ezfy_act_wild" }

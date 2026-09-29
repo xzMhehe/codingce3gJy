@@ -30,6 +30,23 @@ func parseActWildTroops(raw string) []ezfyUnitGroup {
 	return out
 }
 
+// parseActWildTreasures 解析活动野地配置的必掉宝物 JSON [[cfg_id,count],...]
+// 失败/空串返回 nil。id<=0 或 count<=0 的行丢弃。
+func parseActWildTreasures(raw string) [][2]int {
+	var rows [][2]int
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := [][2]int{}
+	for _, r := range rows {
+		if r[0] <= 0 || r[1] <= 0 {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // 二战风云 活动目标：活动野地 / 活动寇城 / 特殊城市
 //
 // 复刻 GameServiceImpl：
@@ -406,12 +423,25 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		if loot := h.wildlandLoot(city, level*3, terrain, true); loot != "" {
 			report += "\n" + loot
 		}
+		// ★ 2026-09-29 必掉宝物多行配置 [[cfg_id,数量]]：胜利后按配置掉落多件（增强宝，保证进背包）
+		if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Treasures) != "" {
+			for _, tr := range parseActWildTreasures(aw.Treasures) {
+				if e := ezfyCfg.equipment(tr[0]); e != nil {
+					for k := 0; k < tr[1]; k++ {
+						h.addEquipment(city, e)
+					}
+					report += fmt.Sprintf("\n掉落宝物: %s ×%d", e.Name, tr[1])
+					h.ezfySysChat("恭喜玩家 %s 缴获宝物：%s", h.ezfyProfileName(city.UserID), e.Name)
+				}
+			}
+		}
 		h.addPrestige(uid, prestigeGain)
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
-		// ★ 2026-09-29 活动野地守将：若该坐标配置了军官，胜利后有概率俘虏（普通军官/名将都可选）
+		// ★ 2026-09-29 活动野地守将：若该坐标配置了军官，胜利后有概率俘虏（普通军官/名将都可选）。
+		//   aw.CaptureRate 显式配置时覆盖默认概率（0=按星级默认）。
 		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
 			if g := ezfyCfg.general(aw.OfficerId); g != nil {
-				if c := h.createCaptiveOfficer(city, g, level, true); c != "" {
+				if c := h.createCaptiveOfficer(city, g, level, true, aw.CaptureRate); c != "" {
 					report += "\n" + c
 				}
 			}

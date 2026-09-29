@@ -1856,14 +1856,15 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 	if g == nil {
 		return "" // 军官池里已没有这个军官（被删了）
 	}
-	return h.createCaptiveOfficer(city, g, level, special)
+	return h.createCaptiveOfficer(city, g, level, special, 0)
 }
 
 // createCaptiveOfficer 把指定军官池军官作为战俘抓到攻方城（概率/参谋部容量判定 + 写库）
 //
 // ★ 2026-09-29 活动野地也能配守将（普通军官/名将都可选），胜利后复用同一套俘虏逻辑。
-//   g 为军官池条目；level 决定俘虏等级（夹在名将350/普通150）；special 为特殊目标时概率翻倍。
-func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCfgGeneral, level int, special bool) string {
+//　 g 为军官池条目；level 决定俘虏等级（夹在名将350/普通150）；special 为特殊目标时概率翻倍；
+//　 rateOverride 为显式概率%（0=按星级默认；1~100 直接覆盖，不受默认 60% 上限限制）。
+func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCfgGeneral, level int, special bool, rateOverride int) string {
 	star := g.Star
 	if star <= 0 {
 		star = 1
@@ -1875,6 +1876,13 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 	}
 	if chance > 60 {
 		chance = 60
+	}
+	// 活动野地显式配置了被俘虏概率 → 覆盖默认（0~100，不受 60% 上限限制）
+	if rateOverride > 0 {
+		if rateOverride > 100 {
+			rateOverride = 100
+		}
+		chance = rateOverride
 	}
 	if rand.Intn(100) >= chance {
 		return ""

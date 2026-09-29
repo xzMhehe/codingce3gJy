@@ -210,26 +210,32 @@
             <el-table-column prop="level" label="等级" width="70" align="center">
               <template slot-scope="{row}">{{ row.level || '默认' }}</template>
             </el-table-column>
-            <el-table-column label="守军" min-width="180" show-overflow-tooltip>
+            <el-table-column label="守军" min-width="170" show-overflow-tooltip>
               <template slot-scope="{row}">
-                <span v-if="row.troops" class="td-mono">{{ row.troops }}</span>
+                <span v-if="row.troops" class="td-blue">{{ awTroopText(row.troops) }}</span>
                 <span v-else class="td-sub">默认</span>
               </template>
             </el-table-column>
-            <el-table-column label="资源/黄金/声望" width="170" align="center">
+            <el-table-column label="奖励" min-width="150">
               <template slot-scope="{row}">
-                <span class="td-mono">{{ row.res || '默认' }}/{{ row.gold || '默认' }}/{{ row.prestige || '默认' }}</span>
+                <div v-if="row.res" class="td-mono">资源: {{ fmtN(row.res) }}</div>
+                <div v-else class="td-sub">资源: 默认</div>
+                <div v-if="row.gold" class="td-mono">黄金: {{ fmtN(row.gold) }}</div>
+                <div v-else class="td-sub">黄金: 默认</div>
+                <div v-if="row.prestige" class="td-mono">声望: {{ fmtN(row.prestige) }}</div>
+                <div v-else class="td-sub">声望: 默认</div>
               </template>
             </el-table-column>
-            <el-table-column label="宝物" width="90" align="center">
+            <el-table-column label="宝物" min-width="110" show-overflow-tooltip>
               <template slot-scope="{row}">
-                <span v-if="row.jewel">{{ row.jewel }}</span>
+                <span v-if="row.treasures" class="td-blue">{{ awTreasureText(row.treasures) }}</span>
+                <span v-else-if="row.jewel">{{ row.jewel }}</span>
                 <span v-else class="td-sub">默认</span>
               </template>
             </el-table-column>
-            <el-table-column label="守将" width="130" show-overflow-tooltip>
+            <el-table-column label="守将" width="140" show-overflow-tooltip>
               <template slot-scope="{row}">
-                <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_id }}）</span>
+                <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_star }}★）</span>
                 <span v-else class="td-sub">无</span>
               </template>
             </el-table-column>
@@ -639,7 +645,8 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="启用">
-              <el-switch v-model="aw.enabled" active-text="活动野地" inactive-text="普通野地" />
+              <el-switch v-model="aw.enabled" :active-value="1" :inactive-value="0"
+                         active-text="活动野地" inactive-text="普通野地" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -682,22 +689,41 @@
           </el-col>
         </el-row>
         <el-form-item label="必掉宝物">
-          <el-input v-model="aw.jewel" maxlength="100" placeholder="可空（用默认地形宝石），例如：红宝石" />
+          <!-- ★ 2026-09-29 宝物配置优化：和守军一样支持多行（选宝物 + 数量），胜利后按配置掉落 -->
+          <div v-for="(tr, ti) in awTreasures" :key="'awj' + ti" class="wild-troop-row">
+            <el-select v-model.number="tr.treasure_id" filterable placeholder="选择宝物" style="width:220px">
+              <el-option v-for="j in jewels" :key="'awjc' + j.id" :label="j.name" :value="j.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="tr.count" :min="1" controls-position="right" style="width:120px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="awTreasures.splice(ti, 1)" />
+          </div>
+          <div class="old-line" v-if="!awTreasures.length">（未配置，用默认地形珠宝）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAwTreasure">添加宝物</el-button>
+          <span class="td-sub" style="margin-left:8px">胜利后按配置掉落多件；不填则用默认地形珠宝</span>
         </el-form-item>
         <el-form-item label="守将军官">
-          <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <div style="display:flex;align-items:center;gap:10px;width:100%;flex-wrap:wrap">
             <el-radio-group v-model="awOfficerKind" size="small" @change="awOfficerKindChange">
               <el-radio-button :label="1">普通</el-radio-button>
               <el-radio-button :label="2">名将</el-radio-button>
             </el-radio-group>
-            <el-select v-model.number="aw.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="flex:1"
+            <!-- ★ 2026-09-29 星级筛选：先选类型、再按星级缩小范围，方便检索 -->
+            <el-select v-model.number="awStarFilter" clearable placeholder="星级" style="width:90px">
+              <el-option v-for="s in awStarOptions" :key="'awst' + s" :label="s + '★'" :value="s" />
+            </el-select>
+            <el-select v-model.number="aw.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="flex:1;min-width:180px"
                        :disabled="awOfficerKind === 0">
-              <el-option v-for="g in awKindGenerals" :key="'awg' + g.id"
+              <el-option v-for="g in awGeneralsFiltered" :key="'awg' + g.id"
                          :label="g.name + '（' + g.star + '星' + '）'"
                          :value="g.id" />
             </el-select>
           </div>
-          <span class="td-sub">先选「普通/名将」，再在对应下拉里选军官；不设则打赢俘不到军官</span>
+          <span class="td-sub">先选「普通/名将」→ 可再按星级筛选；不设则打赢俘不到军官</span>
+        </el-form-item>
+        <el-form-item label="被俘概率%">
+          <el-input-number v-model.number="aw.capture_rate" :min="0" :max="100" controls-position="right" style="width:160px" />
+          <span class="td-sub">0 = 按星级默认（名将星级越高概率越高，上限60%）；填 1~100 直接覆盖</span>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />
@@ -753,9 +779,12 @@ export default {
       wcDlg: false, wc: emptyWc(),
       // 活动野地配置（2026-09-29）
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
+      awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
+      awTreasures: [], // 活动野地必掉宝物可视化行 [{treasure_id,count},...]（保存时序列化成 [[cfg_id,count]]）
+      jewels: [], // 可采集珠宝下拉（/admin/ezfy-map/options 返回）
       saving: false
     }
   },
@@ -770,6 +799,18 @@ export default {
       const k = this.awOfficerKind
       if (k !== 1 && k !== 2) return []
       return (this.generals || []).filter(g => Number(g.kind) === k)
+    },
+    // 星级筛选可选项：当前类型下出现的不同星级（去重、升序）
+    awStarOptions () {
+      const set = new Set(this.awKindGenerals.map(g => Number(g.star) || 1))
+      return Array.from(set).sort((a, b) => a - b)
+    },
+    // 守将军官下拉：类型 + 星级双重筛选
+    awGeneralsFiltered () {
+      let list = this.awKindGenerals
+      const s = Number(this.awStarFilter) || 0
+      if (s > 0) list = list.filter(g => (Number(g.star) || 1) === s)
+      return list
     }
   },
   mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles(); this.loadActWilds() },
@@ -963,9 +1004,11 @@ export default {
       })
     },
     openAwCreate () {
-      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' }
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0 }
       this.awOfficerKind = 1
+      this.awStarFilter = 0
       this.awTroops = []
+      this.awTreasures = []
       this.awDlg = true
     },
     openAwEdit (row) {
@@ -973,13 +1016,16 @@ export default {
       // 根据已选军官推断类型（能查到该军官 -> 用其 kind）
       const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
       this.awOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1
+      this.awStarFilter = 0
       this.awTroops = this.parseAwTroops(row.troops)
+      this.awTreasures = this.parseAwTreasures(row.treasures)
       this.awDlg = true
     },
-    // 切换普通/名将 时清空已选军官（不同类型不能保留旧选择）
+    // 切换普通/名将 时清空已选军官 + 星级筛选（不同类型不能保留旧选择）
     awOfficerKindChange () {
       this.aw.officer_id = 0
       this.aw.officer_name = ''
+      this.awStarFilter = 0
     },
     // 解析 [[兵种id,数量],...] JSON → 可视化行
     parseAwTroops (raw) {
@@ -1000,6 +1046,25 @@ export default {
       const first = this.troopCfgs[0]
       if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, count: 100 })
     },
+    // 解析 [[宝物cfg_id,数量],...] JSON → 可视化行
+    parseAwTreasures (raw) {
+      const out = []
+      try {
+        const arr = JSON.parse(raw || '[]')
+        if (Array.isArray(arr)) {
+          arr.forEach(r => {
+            if (Array.isArray(r) && r.length >= 2 && Number(r[0]) > 0) {
+              out.push({ treasure_id: Number(r[0]) || 0, count: Number(r[1]) || 1 })
+            }
+          })
+        }
+      } catch (e) { /* 历史脏数据忽略 */ }
+      return out
+    },
+    addAwTreasure () {
+      const first = this.jewels[0]
+      this.awTreasures.push({ treasure_id: first ? first.id : 0, count: 1 })
+    },
     saveAw () {
       const a = this.aw
       if (!(Number(a.x) > 0) || !(Number(a.y) > 0)) { this.$message.warning('请填写坐标 x/y'); return }
@@ -1007,9 +1072,13 @@ export default {
       const rows = (this.awTroops || []).filter(r => Number(r.troop_id) > 0 && Number(r.count) > 0)
         .map(r => [Number(r.troop_id), Number(r.count)].map(n => Number(n)))
       const troops = rows.length ? JSON.stringify(rows) : ''
+      // 宝物可视化行 → [[cfg_id,数量],...]
+      const tRows = (this.awTreasures || []).filter(r => Number(r.treasure_id) > 0 && Number(r.count) > 0)
+        .map(r => [Number(r.treasure_id), Number(r.count)].map(n => Number(n)))
+      const treasures = tRows.length ? JSON.stringify(tRows) : ''
       const payload = {
         x: Number(a.x), y: Number(a.y),
-        enabled: a.enabled ? 1 : 0,
+        enabled: a.enabled === 1 ? 1 : 0,
         level: Number(a.level) || 0,
         troops: troops,
         res: Number(a.res) || 0,
@@ -1017,7 +1086,9 @@ export default {
         prestige: Number(a.prestige) || 0,
         jewel: a.jewel || '',
         des: a.des || '',
-        officer_id: Number(a.officer_id) || 0
+        officer_id: Number(a.officer_id) || 0,
+        treasures: treasures,
+        capture_rate: Number(a.capture_rate) || 0
       }
       this.saving = true
       api.post('/admin/ezfy-act-wilds', payload).then(r => {
@@ -1042,14 +1113,33 @@ export default {
         })
       }).catch(() => {})
     },
-    // 下拉数据（兵种 + 军官池）
+    // 下拉数据（兵种 + 军官池 + 珠宝）
     loadMapOptions () {
       api.get('/admin/ezfy-map/options').then(r => {
         if (r.code === 0) {
           this.troopCfgs = r.data.troops || []
           this.generals = r.data.generals || []
+          this.jewels = r.data.jewels || []
         }
       })
+    },
+    // 活动野地列表：把守军 [[兵种id,数量]] 显示成「步兵 100、卡车 50」这种好读形式
+    awTroopText (raw) {
+      const rows = this.parseAwTroops(raw)
+      if (!rows.length) return ''
+      return rows.map(r => {
+        const t = (this.troopCfgs || []).find(x => Number(x.id) === Number(r.troop_id))
+        return (t ? t.name : ('兵种' + r.troop_id)) + ' ' + Number(r.count).toLocaleString()
+      }).join('、')
+    },
+    // 活动野地列表：把必掉宝物 [[cfg_id,数量]] 显示成「红宝石 x2、蓝宝石 x1」
+    awTreasureText (raw) {
+      const rows = this.parseAwTreasures(raw)
+      if (!rows.length) return ''
+      return rows.map(r => {
+        const j = (this.jewels || []).find(x => Number(x.id) === Number(r.treasure_id))
+        return (j ? j.name : ('宝物' + r.treasure_id)) + ' x' + Number(r.count).toLocaleString()
+      }).join('、')
     },
     // 把 troops JSON 串 [[tid,min,max],...] 解析成可视化行
     parseWcTroops (raw) {
