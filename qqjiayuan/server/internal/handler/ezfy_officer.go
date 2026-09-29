@@ -1604,21 +1604,20 @@ func (h *EzfyHandler) accrueDutyExp(city *model.EzfyCity, officers []model.EzfyO
 		if o.Status == 1 || o.IsCaptive == 1 {
 			continue // 出征中/俘虏不领在职经验
 		}
-		t := o.DutyExpAt
-		if t.IsZero() {
+		if o.DutyExpAt == nil {
 			// 老数据/未初始化：只打一次基准，不一次性补一大堆经验
 			h.DB.Model(&model.EzfyOfficer{}).Where("id = ? AND duty_exp_at IS NULL", o.ID).
 				Update("duty_exp_at", now)
 			continue
 		}
-		mins := int64(now.Sub(t).Minutes())
+		mins := int64(now.Sub(*o.DutyExpAt).Minutes())
 		if mins <= 0 {
 			continue
 		}
 		exp := mins * ezfyDutyExpPerMin
 		// 条件更新抢占：只有把基准从「旧值 t」推到 now 的请求才结算经验
 		res := h.DB.Model(&model.EzfyOfficer{}).
-			Where("id = ? AND duty_exp_at <= ?", o.ID, t).
+			Where("id = ? AND duty_exp_at <= ?", o.ID, *o.DutyExpAt).
 			Update("duty_exp_at", now)
 		if res.RowsAffected == 0 {
 			continue

@@ -802,6 +802,12 @@ export default {
       let list = this.awKindGenerals
       const s = Number(this.awStarFilter) || 0
       if (s > 0) list = list.filter(g => (Number(g.star) || 1) === s)
+      // ★ 已选中的守将即使不满足当前类型/星级筛选也保证可见，否则编辑时下拉里看不到已配军官（星级跟丢）
+      const sel = Number(this.aw.officer_id) || 0
+      if (sel > 0 && !list.some(g => Number(g.id) === sel)) {
+        const hit = (this.generals || []).find(g => Number(g.id) === sel)
+        if (hit) list = [hit].concat(list)
+      }
       return list
     }
   },
@@ -1012,7 +1018,9 @@ export default {
       // 根据已选军官推断类型（能查到该军官 -> 用其 kind）
       const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
       this.awOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1
-      this.awStarFilter = 0
+      // ★ 2026-09-29 修复「编辑活动野地 星级带不过来」：原来每次都重置为 0，
+      //   已配守将的星级不再随行进来。现在用列表下发的 officer_star 回填，让星级筛选带上。
+      this.awStarFilter = Number(row.officer_star) || 0
       this.awTroops = this.parseAwTroops(row.troops)
       this.awTreasures = this.parseAwTreasures(row.treasures)
       this.awDlg = true
