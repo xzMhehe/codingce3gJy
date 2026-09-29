@@ -655,10 +655,6 @@
           </div>
           <br/>
           <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
-          <div class="old-line">
-            数量/最大：{{ zoneCount }}/{{ zoneCap }}
-            <a href="javascript:;" @click="openBuildPre(cur === 'buildm' ? 'm' : 's')">建造</a>
-          </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->
           <div class="old-line" v-for="b in zoneBuilt" :key="'zb' + b.id">
             <span v-if="bEntry(b.building_id)">
