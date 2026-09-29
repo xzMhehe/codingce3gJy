@@ -617,7 +617,25 @@ func Run(db *gorm.DB, staticDir string) {
 	seedShop(db)
 	seedActivities(db)
 	seedFriendMigrate(db)
+	seedSettingsDefaults(db)
 	fmt.Println("数据初始化完成")
+}
+
+// seedSettingsDefaults 站点默认 KV 配置（只补缺，不覆盖管理端在「站点设置」里的修改）。
+//
+// ★ 2026-09-29 同一 IP 注册卡控维护到站点设置：默认 5（0 = 不限制），管理端可在
+//   「站点设置」里直接改 reg_ip_limit。后端 auth.Register 已按该值限流，这里建默认行让它在后台可见。
+func seedSettingsDefaults(db *gorm.DB) {
+	defaults := []struct{ k, v string }{
+		{"reg_ip_limit", "5"}, // 同一IP最多可注册账号数（默认5，填0不限制）
+	}
+	for _, d := range defaults {
+		var cnt int64
+		db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", d.k).Scan(&cnt)
+		if cnt == 0 {
+			db.Exec("INSERT INTO settings(`key`,`value`) VALUES (?, ?)", d.k, d.v)
+		}
+	}
 }
 
 // seedResources 资源库种子：勋章/头像/logo/特权8级 + 扫描 static 目录登记其余文件
