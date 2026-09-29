@@ -4635,7 +4635,12 @@ export default {
       return v > 0 ? v : this.officerMaxLevel
     },
     // 战俘营: 未出征的俘虏
+    // ★ 2026-09-29 跨城汇总：俘虏可能落在任一座城，战俘营不再只看当前城——
+    //   优先用后端下发的跨城 captives，没有(旧后端)再回落到当前城过滤。
     captiveOfficers () {
+      if (this.officerData && Array.isArray(this.officerData.captives)) {
+        return (this.officerData.captives || []).filter(o => o.status !== 1)
+      }
       return (this.officerData.officers || []).filter(o => o.is_captive === 1 && o.status !== 1)
     },
     // 参谋部军官位是否已满(招募前先拦一道, 避免点了才报「容量不足」)

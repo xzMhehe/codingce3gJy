@@ -1993,40 +1993,56 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
 	list := h.officerList(city.ID)
-	views := []gin.H{}
-	for i := range list {
-		o := &list[i]
-		skills := officerSkills(o)
-		em, el, ee := h.officerEffective(o)
-		sm, sl, se, activeSets := h.officerSetBonus(o)
-		bm, bl, be := officerBaseAttr(o)
-		views = append(views, gin.H{
-			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
-			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
-			// ★ 含装备/套装加成的有效属性（前端展示「基础(+装备)」）
-			"military_total": em, "logistics_total": el, "learning_total": ee,
-			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
-			"equip_learning": ee - o.Learning,
-			// ★ 2026-09-22：原始属性 / 可用属性点 / 已分配点数（前端加点用）
-			"base_military": bm, "base_logistics": bl, "base_learning": be,
-			"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
-			"set_military": sm, "set_logistics": sl, "set_learning": se,
-			"active_sets":  activeSets,
-			"set_progress": h.officerSetProgressView(o),
-			// ★ 军官装备的六项战斗加成（伤害/防御/生命/移动距离/暴击）——
-			//   列表里也要下发，否则玩家会以为「穿了装备没加属性」
-			"battle":  h.officerBattleView(o),
-			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
-			"status": o.Status, "status_name": ezfyOfficerStatusName(o),
-			"is_captive": o.IsCaptive, "skills": skills,
-			"equip_count": len(officerEquipped(o)),
-			// 攻/防(复刻原版军官卡片上的 攻/防 两项, 含技能与装备加成)
-			"attack":  h.officerBattleBonus(o),
-			"defence": h.officerGuardBonus(o),
-		})
+	// ★ 2026-09-29 战俘营跨城汇总：俘虏可能落在任一座城（从哪发兵落哪城），
+	//   而战俘营只看当前城 → 多城玩家「战报显示俘虏了，战俘营却看不到」。
+	//   故额外返回玩家**名下所有城市**的俘虏，前端战俘营直接用这个跨城列表。
+	var capList []model.EzfyOfficer
+	var myCityIDs []int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &myCityIDs)
+	if len(myCityIDs) > 0 {
+		h.DB.Where("city_id IN ? AND is_captive = 1", myCityIDs).Order("id DESC").Find(&capList)
 	}
+	// 把一批军官构造成展示视图（当前城军官 + 跨城俘虏共用同一套字段）
+	build := func(rows []model.EzfyOfficer) []gin.H {
+		out := []gin.H{}
+		for i := range rows {
+			o := &rows[i]
+			skills := officerSkills(o)
+			em, el, ee := h.officerEffective(o)
+			sm, sl, se, activeSets := h.officerSetBonus(o)
+			bm, bl, be := officerBaseAttr(o)
+			out = append(out, gin.H{
+				"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
+				"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+				// ★ 含装备/套装加成的有效属性（前端展示「基础(+装备)」）
+				"military_total": em, "logistics_total": el, "learning_total": ee,
+				"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
+				"equip_learning": ee - o.Learning,
+				// ★ 2026-09-22：原始属性 / 可用属性点 / 已分配点数（前端加点用）
+				"base_military": bm, "base_logistics": bl, "base_learning": be,
+				"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
+				"set_military": sm, "set_logistics": sl, "set_learning": se,
+				"active_sets":  activeSets,
+				"set_progress": h.officerSetProgressView(o),
+				// ★ 军官装备的六项战斗加成（伤害/防御/生命/移动距离/暴击）——
+				//   列表里也要下发，否则玩家会以为「穿了装备没加属性」
+				"battle":  h.officerBattleView(o),
+				"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
+				"status": o.Status, "status_name": ezfyOfficerStatusName(o),
+				"is_captive": o.IsCaptive, "skills": skills,
+				"equip_count": len(officerEquipped(o)),
+				// 攻/防(复刻原版军官卡片上的 攻/防 两项, 含技能与装备加成)
+				"attack":  h.officerBattleBonus(o),
+				"defence": h.officerGuardBonus(o),
+			})
+		}
+		return out
+	}
+	views := build(list)
+	capViews := build(capList)
 	resp.OK(c, gin.H{
 		"officers":      views,
+		"captives":      capViews, // ★ 跨城俘虏汇总（战俘营用）
 		"academy_level": h.buildingLevel(city.ID, ezfyBuildingAcademy),
 		"staff_level":   h.buildingLevel(city.ID, ezfyBuildingStaff),
 		"capacity":      h.buildingLevel(city.ID, ezfyBuildingStaff),
