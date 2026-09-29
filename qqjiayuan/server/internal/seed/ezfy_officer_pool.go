@@ -828,6 +828,20 @@ func ezfyChestSetQuality(tier int) string {
 	}
 }
 
+// ezfyChestOverrideWeight 个别套装的**定制开箱权重**（覆盖默认 `ezfyChestSetWeight` / 计划档位）。
+//
+// ★ 2026-09-29 用户调整「统帅宝箱(6)」概率：
+//
+//	调高：混沌套装一/二/三 + 亡魂（150）；
+//	调低：遗失传说 / 隐秘宝藏（40）、六大系列 21~26（20）。
+//	这些套装只出现在统帅宝箱奖池里，按 setID 覆盖即可。
+//	⭐ 管理端「宝箱奖池」里也能随时改权重，这里只是**新建/补齐库的种子初始值**（已有行不受影响）。
+var ezfyChestOverrideWeight = map[int]int{
+	8: 150, 9: 150, 10: 150, 15: 150, //  混沌套装一/二/三 + 亡魂（调高）
+	16: 40, 17: 40, // 遗失传说 / 隐秘宝藏（调低）
+	21: 20, 22: 20, 23: 20, 24: 20, 25: 20, 26: 20, //  六大系列（调低）
+}
+
 // buildEzfyChestItems 生成宝箱奖池
 //
 // ★ 用户规则（2026-09-22）：**套装军官装备只能通过宝箱开启** ——
@@ -855,12 +869,15 @@ func buildEzfyChestItems() []model.EzfyCfgChestItem {
 	for _, l := range ezfyOfficerEquipLooseSeeds {
 		add(1, 1, l.ID, 100, "普通")
 	}
-	// 宝箱 2/3/4：**整套**发放（Kind=3，RefId = 套装 id，开箱时把该套全部件一起给）
+	// 宝箱 2/3/4/5/6：**整套**发放（Kind=3，RefId = 套装 id，开箱时把该套全部件一起给）
 	for _, plan := range ezfyChestSetPlan {
 		for _, sid := range plan.SetIDs {
 			w := plan.Weight
-			if sid >= 21 {
-				w = 30 // 六大系列（11 件套）更稀有
+			// ★ 2026-09-29 用户定制权重优先；其余六大系列（11 件套）更稀有
+			if override, ok := ezfyChestOverrideWeight[sid]; ok {
+				w = override
+			} else if sid >= 21 {
+				w = 30
 			}
 			add(plan.ChestID, 3, sid, w, plan.Quality)
 		}

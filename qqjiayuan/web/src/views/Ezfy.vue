@@ -914,7 +914,7 @@
               </select>
             </div>
           </div>
-          <div class="old-line"><button @click="doSaveTargets">[保存全部配置]</button></div>
+          <div class="old-line"><a href="javascript:;" @click="doSaveTargets">[保存全部配置]</a></div>
           </div><!-- /兵种配置 tab -->
           <div v-show="hqTab === 1">
           <div class="panel-title">出征队列({{ orders.length }})</div>
@@ -1001,6 +1001,17 @@
                      :disabled="gatherCount <= 0" @change="onPresetGatherChange" style="width:80px"/>
               个 <span class="gray">（背包里有 {{ gatherCount }} 个，单次最多 {{ orderCapMax }} 个）</span>
             </div>
+            <div class="old-line gray">
+              每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个。
+              司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
+            </div>
+            <!-- ★ 2026-09-29 用户要求：预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
+            <div class="old-line" v-if="attackTroops.length">
+              <span :class="orderOverCap ? 'red' : 'green'">
+                本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
+                <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
+              </span>
+            </div>
             <!-- ③ 兵力 -->
             <div class="of-sec">③ 选择兵力
               <span class="of-hint">（拖滑块或直接填数字；滑块与 [最大] 都按「城内现有」和「出征上限剩余」取小）</span>
@@ -1032,11 +1043,6 @@
               <button @click="presetCalc">[计算]</button>
               油耗：<span class="orange">{{ orderCalc ? orderCalc.oil_used : '—' }}</span>
               &nbsp;/&nbsp;负重：<span class="orange">{{ orderCalc ? orderCalc.carry : '—' }}</span>
-              &nbsp;/&nbsp;本次出兵：
-              <span :class="orderOverCap ? 'red' : 'green'">
-                <b>{{ fmtN(orderTroopTotal) }}</b> / <b>{{ orderCapText }}</b>
-              </span>
-              <span v-if="orderOverCap" class="red">（超出上限）</span>
             </div>
             <div class="old-line gray">
               （预设不含目标，油耗/负重按本城 0 距离估算；实际油耗与耗时以出征页 [计算] 为准）
@@ -1047,7 +1053,7 @@
             </div>
           </template>
           <div class="old-line" v-else>
-            <button @click="startPresetAdd">[新增预设编队]</button>
+            <a href="javascript:;" @click="startPresetAdd">[新增预设编队]</a>
             <span class="gray">（最多保存 {{ presetMax }} 个）</span>
           </div>
           <div class="panel-title">我的预设</div>
@@ -2969,7 +2975,7 @@
             </div>
             <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）<span class="gray">（点奖品名可查看具体属性）</span>：</div>
             <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
+              <tr><th>奖品</th><th>品质</th><th>数量</th><th>权重</th></tr>
               <template v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
                 <tr>
                   <td>
@@ -2979,9 +2985,10 @@
                   </td>
                   <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
+                  <td class="gray">{{ p.weight }}</td>
                 </tr>
                 <tr v-if="chestOpenDetailIdx === i">
-                  <td colspan="3" class="gray">{{ p.detail || '（无更多说明）' }}</td>
+                  <td colspan="4" class="gray">{{ p.detail || '（无更多说明）' }}</td>
                 </tr>
               </template>
             </table>
@@ -4648,13 +4655,15 @@ export default {
     // 是否超出出征上限（口径同后端 troop_over_cap：管理端关掉上限开关时不判超）
     orderOverCap () {
       const c = this.orderCalc
-      if (!c || c.cap_unlimited) return false
+      if (!c || c.cap_unlimited || !this.orderCapApplies) return false
       return this.orderTroopTotal > (c.troop_cap || 0)
     },
     // 上限文案：开关关掉时显示「不限」，没算过时显示 —
     orderCapText () {
       const c = this.orderCalc
       if (!c) return '—'
+      // ★ 2026-09-29 运输(5)/派遣(8) 无出征上限 → 显示「不限」，别拿上限值误导滑块（滑块本就按城内总数卡）
+      if (!this.orderCapApplies) return '不限'
       return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
     },
     // ★ 2026-09-28 用户要求「[最大] 与滑块都按『出征还剩多少』卡控」。
@@ -7636,6 +7645,9 @@ export default {
     // ★ 预设页 [计算]：与 doCalc 的区别——预设不含目标，传本城坐标按 0 距离估算油耗/负重，
     //   出兵上限（troop_cap）与集结令/军官加成照常生效，返回后照旧把已填兵力夹回新上限。
     presetCalc () {
+      // ★ 2026-09-29 预设编队永远按「出征(掠夺)」口径预览：强制 orderType=2，
+      //   否则全局 orderType 若残留为运输(5)/派遣(8)（无出征上限），滑块上限会被放成城内总数
+      this.orderType = 2
       const c = this.city
       if (!c || !c.x || !c.y) return
       api.post('/games/ezfy/order/preview', {
@@ -7676,8 +7688,11 @@ export default {
     startPresetAdd () {
       // 进入新增表单：清空共享表单状态，从当前城现有/军官起步
       this.resetOrderForm()
+      this.orderType = 2   // ★ 2026-09-29 预设模板始终按「出征(掠夺)」口径，别继承运输/派遣的无上限状态
       this.presetName = ''
       this.presetAdding = true
+      // ★ 2026-09-29 立即按 0 距离算一次：让「本次出兵 / 上限」立刻显示准确值（如 0 / 99000），不用等玩家点 [计算]
+      this.$nextTick(() => this.presetCalc())
     },
     cancelPresetAdd () {
       this.presetAdding = false
