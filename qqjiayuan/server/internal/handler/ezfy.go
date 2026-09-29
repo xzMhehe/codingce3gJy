@@ -2628,7 +2628,7 @@ var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true,
 //
 // ★ 2026-09-29 用户要求资源奖励按任务类型加成：
 //     新手任务(type_id=1)：四种生产资源 ×1000；
-//     日常任务(type_id=2)：四种生产资源 ×10。
+//     日常任务(type_id=2)/ 每周任务(type_id=4)：四种生产资源 ×10。
 //   黄金/声望不改。任务列表展示与发奖都用同一口径，保证玩家看到多少、领到多少一致。
 //   注意这里只做展示/发奖加成，不改表里存的原始数值（管理端「数据管理」仍存基数）。
 func ezfyTaskRewardRes(cfg *model.EzfyCfgTask) (int64, int64, int64, int64) {
@@ -2639,7 +2639,7 @@ func ezfyTaskRewardRes(cfg *model.EzfyCfgTask) (int64, int64, int64, int64) {
 		steel *= 1000
 		oil *= 1000
 		rare *= 1000
-	case 2: // 日常任务
+	case 2, 4: // 日常任务、每周任务
 		food *= 10
 		steel *= 10
 		oil *= 10
