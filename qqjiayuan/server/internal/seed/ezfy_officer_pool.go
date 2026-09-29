@@ -828,18 +828,36 @@ func ezfyChestSetQuality(tier int) string {
 	}
 }
 
-// ezfyChestOverrideWeight 个别套装的**定制开箱权重**（覆盖默认 `ezfyChestSetWeight` / 计划档位）。
+// ezfyChestPoolOverride 单个宝箱奖品行在种子里的 权重/数量（覆盖默认生成值）
+type ezfyChestPoolOverride struct {
+	Weight int
+	Count  int
+}
+
+// ezfyChestOverride 各宝箱奖池行的**定制种子值**（权重 + 数量，覆盖默认生成）
 //
-// ★ 2026-09-29 用户调整「统帅宝箱(6)」概率：
+// key = "C{chest}K{kind}R{ref}"。
 //
-//	调高：混沌套装一/二/三 + 亡魂（150）；
-//	调低：遗失传说 / 隐秘宝藏（40）、六大系列 21~26（20）。
-//	这些套装只出现在统帅宝箱奖池里，按 setID 覆盖即可。
-//	⭐ 管理端「宝箱奖池」里也能随时改权重，这里只是**新建/补齐库的种子初始值**（已有行不受影响）。
-var ezfyChestOverrideWeight = map[int]int{
-	8: 150, 9: 150, 10: 150, 15: 150, //  混沌套装一/二/三 + 亡魂（调高）
-	16: 40, 17: 40, // 遗失传说 / 隐秘宝藏（调低）
-	21: 20, 22: 20, 23: 20, 24: 20, 25: 20, 26: 20, //  六大系列（调低）
+// ★ 2026-09-29 用户在**线上库**手动调完各宝箱权重/数量后要求并回初始化种子：
+//
+//	全新部署时装出的奖池要与线上一致。生成时优先查这里（weight/count 都覆盖），未命中的走默认。
+//	⭐ 管理端「宝箱奖池」里也能随时改，这里只是**新建/补齐库的种子初始值**（已有行不受影响）。
+var ezfyChestOverride = map[string]ezfyChestPoolOverride{
+	// 帝国宝箱(3)：套装 3/4/7 权重下调
+	"C3K3R3": {20, 1}, "C3K3R4": {10, 1}, "C3K3R7": {10, 1},
+	// 战神宝箱(4)
+	"C4K3R5": {20, 1}, "C4K3R6": {20, 1},
+	// 荣耀宝箱(5)
+	"C5K3R11": {20, 1}, "C5K3R12": {20, 1}, "C5K3R13": {20, 1}, "C5K3R14": {20, 1},
+	// 统帅宝箱(6)
+	"C6K3R8": {150, 1}, "C6K3R9": {150, 1}, "C6K3R10": {150, 1}, "C6K3R15": {150, 1},
+	"C6K3R16": {40, 1}, "C6K3R17": {40, 1}, "C6K3R21": {20, 1},
+	"C6K3R22": {1, 1}, "C6K3R23": {1, 1}, "C6K3R24": {1, 1}, "C6K3R25": {1, 1}, "C6K3R26": {1, 1},
+	// 道具安慰奖：各宝箱数量上探不一致（经验书14/重修书16/升星卡23）
+	"C3K2R14": {40, 10}, "C3K2R16": {20, 10}, "C3K2R23": {30, 10},
+	"C4K2R14": {40, 20}, "C4K2R16": {40, 20}, "C4K2R23": {10, 20},
+	"C5K2R14": {40, 50}, "C5K2R16": {40, 50}, "C5K2R23": {40, 50},
+	"C6K2R14": {40, 100}, "C6K2R16": {40, 100}, "C6K2R23": {10, 100},
 }
 
 // buildEzfyChestItems 生成宝箱奖池
@@ -858,10 +876,16 @@ func buildEzfyChestItems() []model.EzfyCfgChestItem {
 	// 每个宝箱内独立计数：ID = chestID*1000 + 序号（稳定、可重复生成）
 	seq := map[int]int{}
 	add := func(chestID, kind, ref, weight int, quality string) {
+		// ★ 2026-09-29 线上手动调过的权重/数量，种子生成时优先对齐
+		count := 1
+		if ov, ok := ezfyChestOverride[key3(chestID, kind, ref)]; ok {
+			weight = ov.Weight
+			count = ov.Count
+		}
 		seq[chestID]++
 		out = append(out, model.EzfyCfgChestItem{
 			ID: chestID*1000 + seq[chestID], ChestId: chestID,
-			Kind: kind, RefId: ref, Count: 1, Weight: weight, Quality: quality,
+			Kind: kind, RefId: ref, Count: count, Weight: weight, Quality: quality,
 			Des: "",
 		})
 	}
@@ -872,24 +896,23 @@ func buildEzfyChestItems() []model.EzfyCfgChestItem {
 	// 宝箱 2/3/4/5/6：**整套**发放（Kind=3，RefId = 套装 id，开箱时把该套全部件一起给）
 	for _, plan := range ezfyChestSetPlan {
 		for _, sid := range plan.SetIDs {
-			w := plan.Weight
-			// ★ 2026-09-29 用户定制权重优先；其余六大系列（11 件套）更稀有
-			if override, ok := ezfyChestOverrideWeight[sid]; ok {
-				w = override
-			} else if sid >= 21 {
-				w = 30
-			}
-			add(plan.ChestID, 3, sid, w, plan.Quality)
+			add(plan.ChestID, 3, sid, plan.Weight, plan.Quality)
 		}
 	}
 	// 每个宝箱都塞一点道具当安慰奖
 	// ★ 直接遍历宝箱定义，别硬编码 ID 列表 —— 以前写死 1~4，新增宝箱就漏了。
+	//   （各宝箱的数量/权重已由 ezfyChestOverride 按线上值定制）
 	for _, chest := range ezfyChestSeeds {
 		add(chest.ID, 2, 14, 40, "普通") // 经验书
 		add(chest.ID, 2, 16, 20, "稀有") // 重修书
 		add(chest.ID, 2, 23, 10, "史诗") // 军官升星卡
 	}
 	return out
+}
+
+// key3 宝箱奖品行在 ezfyChestOverride 里的 map key
+func key3(chestID, kind, ref int) string {
+	return fmt.Sprintf("C%dK%dR%d", chestID, kind, ref)
 }
 
 // backfillEzfyChestPool 给**已有库**补齐宝箱奖池（幂等，只补缺、不动已有行）
