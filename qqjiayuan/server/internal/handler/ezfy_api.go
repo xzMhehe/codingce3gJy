@@ -231,13 +231,19 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
 	target, msg := h.maxLevelBuilding(city, req.RecordId, req.TargetLevel)
+	// ★ 2026-09-29 修复：不能走 h.done(c, msg, msg) —— done 把「非空 msg」一律当错误，
+	//   会令**成功**的一键升级也返回 400（把成功文案显示成报错），前端因此不刷新。
+	//   成功走 OK，失败才 ParamError。
 	if msg == "" {
-		msg = "建筑已一键升级"
 		if target > 0 {
 			msg = fmt.Sprintf("建筑已一键升级到%d级", target)
+		} else {
+			msg = "建筑已一键升级"
 		}
+		resp.OKMsg(c, msg, nil)
+		return
 	}
-	h.done(c, msg, msg)
+	resp.ParamError(c, msg)
 }
 
 // CancelBuilding POST /games/ezfy/building/cancel

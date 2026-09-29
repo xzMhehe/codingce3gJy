@@ -451,10 +451,21 @@
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 4 }" @click="goReportTab(4)">战斗报告</a>
           </div>
           <div class="panel-title">{{ curReport.title }}</div>
-          <pre class="report-pre">{{ curReport.content }}</pre>
+          <!-- ★ 2026-09-29 战报上色：攻方绿色、守方红色，看不出谁是谁 → 视觉区分 -->
+          <div v-for="(seg, i) in reportNiceLines(curReport.content)" :key="'rc' + i" class="rpt-ln">
+            <template v-if="seg.mode === 'pair'">
+              <span :class="seg.left.cls">{{ seg.left.text }}</span><span :class="seg.right.cls">{{ seg.right.text }}</span>
+            </template>
+            <span v-else :class="seg.cls">{{ seg.text }}</span>
+          </div>
           <template v-if="curReport.detail">
             <div class="old-line"><a href="javascript:;" @click="showDetail = !showDetail">[展开/收起逐回合详情]</a></div>
-            <pre class="report-pre" v-if="showDetail">{{ curReport.detail }}</pre>
+            <div v-if="showDetail" class="rpt-ln" v-for="(seg, j) in reportNiceLines(curReport.detail)" :key="'rd' + j">
+              <template v-if="seg.mode === 'pair'">
+                <span :class="seg.left.cls">{{ seg.left.text }}</span><span :class="seg.right.cls">{{ seg.right.text }}</span>
+              </template>
+              <span v-else :class="seg.cls">{{ seg.text }}</span>
+            </div>
           </template>
           <div class="old-line">
             <a href="javascript:;" class="red" @click="delReport(curReport)">[删除]</a>
@@ -6123,6 +6134,36 @@ export default {
       if (isAtk) return mineAtk ? 'green' : 'red'
       return mineAtk ? 'red' : 'green'
     },
+    // ★ 战报详情/逐回合详情按行上色：攻方绿色、守方红色（看不清谁是谁 → 视觉区分）。
+    //   返回 [{mode:'line'|'pair', text?, cls?, left?, right?}]；「战斗加成」行攻守各半段分两段上色。
+    reportNiceLines (raw) {
+      return String(raw || '').split('\n').map(ln => {
+        const bi = ln.indexOf(' | ')
+        if (ln.indexOf('战斗加成') >= 0 && bi > 0) {
+          const left = ln.slice(0, bi + 1)
+          const right = ln.slice(bi + 1)
+          return {
+            mode: 'pair',
+            left: { text: left, cls: this.reportSideClass(left) },
+            right: { text: right, cls: this.reportSideClass(right) }
+          }
+        }
+        return { mode: 'line', text: ln, cls: this.reportLineClass(ln) }
+      })
+    },
+    reportLineClass (ln) {
+      const t = ln || ''
+      const isAtk = /【攻方】|\[胜]攻方|\[平]攻方|【攻方军官】/.test(t) || (t.indexOf('攻方:') >= 0 && t.indexOf('守方:') < 0)
+      const isDef = /【守方】|\[败]守方|\[平]守方|【守方军官】/.test(t) || (t.indexOf('守方:') >= 0 && t.indexOf('攻方:') < 0)
+      if (isAtk && !isDef) return 'rpt-atk'
+      if (isDef && !isAtk) return 'rpt-def'
+      return ''
+    },
+    reportSideClass (seg) {
+      if (seg.indexOf('守方') >= 0 && seg.indexOf('攻方') < 0) return 'rpt-def'
+      if (seg.indexOf('攻方') >= 0 && seg.indexOf('守方') < 0) return 'rpt-atk'
+      return ''
+    },
     // resumeBattle 刷新页面后从后端找回「进行中的战斗」（订单 id 没存在 URL 里）
     resumeBattle () {
       api.get('/games/ezfy/reports/dynamics').then(r => {
@@ -9158,6 +9199,11 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-round-line.green { color: #1d5c2e; }
 .ezfy-page .ezfy-round-line.red { color: #a02a1e; }
 .ezfy-page .ezfy-round-line.gray { color: #777; }
+/* ★ 战报详情/逐回合详情按行上色：攻方绿色、守方红色（看不清谁是谁 → 视觉区分） */
+.ezfy-page .rpt-ln { line-height: 1.6; }
+.ezfy-page .rpt-ln > span { display: inline; white-space: pre-wrap; }
+.ezfy-page .rpt-atk { color: #1d5c2e; }
+.ezfy-page .rpt-def { color: #a02a1e; }
 /* ★ 商城「装备 / 道具」的分类筛选：flex 自动换行。
    原 grid repeat(6, max-content) 固定 6 列，分类名较长时(手机端)整排溢出容器形成横向滑动；
    2026-09-24 改为流式排列，超过一行宽度就换行(背包分类共用此类)。 */

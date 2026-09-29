@@ -47,6 +47,57 @@ func parseActWildTreasures(raw string) [][2]int {
 	return out
 }
 
+// generalSkillList 解析军官池守将(general)的技能名列表（g.Skill 是 JSON 数组）
+func generalSkillList(g *model.EzfyCfgGeneral) []string {
+	out := []string{}
+	if g == nil || g.Skill == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(g.Skill), &out)
+	return out
+}
+
+// generalHasSkill 军官池守将是否带某个技能
+func generalHasSkill(g *model.EzfyCfgGeneral, name string) bool {
+	for _, s := range generalSkillList(g) {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ezfyActWildDefBonus 活动野地配置了守将时的守方加成（复刻玩家城「城守」口径）。
+//
+// ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
+//   （战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御、守将速度技能给速度。
+//   无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形防御+30 / 弹幕支援+10；
+//   速度 = 命中 坦克突袭 / 闪电袭击 / 越岛战术 任一 +10。
+// 返回 (防御加成, 速度加成)。
+func ezfyActWildDefBonus(g *model.EzfyCfgGeneral) (int, int) {
+	if g == nil {
+		return 0, 0
+	}
+	def := 0
+	speed := 0
+	hasSpeed := false
+	for _, s := range generalSkillList(g) {
+		switch s {
+		case "弧形防御":
+			def += 30
+		case "弹幕支援":
+			def += 10
+		case "坦克突袭", "闪电袭击", "越岛战术":
+			hasSpeed = true
+		}
+	}
+	def += ezfyAttrToBonus(g.Learning)
+	if hasSpeed {
+		speed = 10
+	}
+	return def, speed
+}
+
 // 二战风云 活动目标：活动野地 / 活动寇城 / 特殊城市
 //
 // 复刻 GameServiceImpl：
@@ -255,17 +306,37 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if actType == ezfyActKou || actType == ezfyActCity {
 		defCamp = 2
 	}
+	// ★ 2026-09-29 修复「守方军官加成恒为 0」：活动野地配置了守将时，把守将的
+	//   防御加成 / 速度加成 / 战报描述 接进战斗引擎（指挥室和战报都从这里生成）。
+	var defGeneral *model.EzfyCfgGeneral
+	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
+		defGeneral = ezfyCfg.general(aw.OfficerId)
+	}
+	defBonus, defSpeedBonus := ezfyActWildDefBonus(defGeneral)
+	defOfficerDesc := ""
+	if defGeneral != nil {
+		defOfficerDesc = defGeneral.Name
+		if b := ezfyAttrToBonus(defGeneral.Learning); b > 0 {
+			defOfficerDesc += " 守军防御+" + strconv.Itoa(b) + "%"
+		}
+		for _, s := range generalSkillList(defGeneral) {
+			if eff := ezfySkillEffectText(s); eff != "" {
+				defOfficerDesc += " " + s + "(" + eff + ")"
+			}
+		}
+	}
 	var br ezfyBattleResult
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
-		// 活动守军无城墙/无科技/无城守 → 防守方加成为 0（复刻原版传 0 与空 map）
-		// ★ 攻方装备六项加成照常生效；守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
-		st := ezfyNewBattleState(attacker, defender, atkBonus, 0, atkSpeedBonus, 0,
+		// 活动守军无城墙/无科技 → 只有守将的加成；攻方装备六项加成照常生效；
+		// 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
+		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
-			atkOfficerDesc, "", h.buildTargetMap(city.ID, true), map[int]int{},
+			atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
-			h.officerHasSkill(leadOfficer, "绝地反击"), false,
+			h.officerHasSkill(leadOfficer, "绝地反击"),
+			defGeneral != nil && generalHasSkill(defGeneral, "绝地反击"),
 			h.ensureProfile(uid).Camp, defCamp)
 		// ★★ 2026-09-27 用户反馈「活动野地不能指挥/没有战报/资源不累加」：
 		//   根因是活动流程缺少普通野地的「目标被抢先指挥 → 等待」机制（见 ezfyOrderTargetBusy）。
@@ -325,6 +396,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
 	report += troopChangeText(atkBefore, atkAfter, profile.Camp)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
+	// ★ 2026-09-29 配置了守将时展示守方军官（否则守方只有兵种看不到是谁）
+	if defGeneral != nil {
+		report += "军官:" + defGeneral.Name + "\n"
+	}
 	defBefore := groupCounts(defender)
 	defAfter := map[int]int64{}
 	for _, g := range br.DefenderLosses {
@@ -349,6 +424,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	detail += troopChangeText(atkBefore, atkAfter, profile.Camp)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
+	if defGeneral != nil {
+		detail += "军官:" + defGeneral.Name + "\n"
+	}
 	detail += troopChangeText(defBefore, defAfter, defCamp)
 	detail += "[双方兵力]"
 
