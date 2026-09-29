@@ -120,6 +120,16 @@
           <a href="javascript:;" @click="go('taxset')">税率:</a>{{ city.tax_rate }}%
         </div>
         <div class="old-line">
+          <a href="javascript:;" @click="go('buildm')">军事区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('m')">建造</a>
+        </div>
+        <div class="old-line">
+          <a href="javascript:;" @click="go('builds')">资源区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('s')">建造</a>
+        </div>
+        <div class="old-line">
+          训练军队
+          <a href="javascript:;" @click="go('troop')">[造兵]</a><span class="home-gap"></span><a href="javascript:;" @click="go('defence')">[建防]</a>
+        </div>
+        <div class="old-line">
           前往
           <a href="javascript:;" @click="go('map')">地图</a>
           出征
