@@ -2624,6 +2624,30 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 
 var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true, "wild_count": true}
 
+// ezfyTaskRewardRes 返回某任务结算用的「资源」奖励（粮/钢/油/稀）。
+//
+// ★ 2026-09-29 用户要求资源奖励按任务类型加成：
+//     新手任务(type_id=1)：四种生产资源 ×1000；
+//     日常任务(type_id=2)：四种生产资源 ×10。
+//   黄金/声望不改。任务列表展示与发奖都用同一口径，保证玩家看到多少、领到多少一致。
+//   注意这里只做展示/发奖加成，不改表里存的原始数值（管理端「数据管理」仍存基数）。
+func ezfyTaskRewardRes(cfg *model.EzfyCfgTask) (int64, int64, int64, int64) {
+	food, steel, oil, rare := cfg.RewardFood, cfg.RewardSteel, cfg.RewardOil, cfg.RewardRare
+	switch cfg.TypeId {
+	case 1: // 新手任务
+		food *= 1000
+		steel *= 1000
+		oil *= 1000
+		rare *= 1000
+	case 2: // 日常任务
+		food *= 10
+		steel *= 10
+		oil *= 10
+		rare *= 10
+	}
+	return food, steel, oil, rare
+}
+
 func (h *EzfyHandler) initTasks(uid uint) {
 	var cfgs []model.EzfyCfgTask
 	h.DB.Where("status = 1").Order("sort_no ASC").Find(&cfgs)
@@ -2749,7 +2773,9 @@ func (h *EzfyHandler) taskAward(uid uint, taskId int64) string {
 	city := h.getOrCreateCity(uid)
 	// ★ 任务奖励**不受仓储上限截断**（用户要求）。
 	//   原来走 min64(cap, ...)，仓储满了领奖就等于白发；只有「城市自身产量」才该被上限卡住。
-	h.giveResNoCap(&city, cfg.RewardFood, cfg.RewardSteel, cfg.RewardOil, cfg.RewardRare, cfg.RewardGold)
+	//   ★ 新手任务资源 ×1000（见 ezfyTaskRewardRes）
+	rf, rs, ro, rr := ezfyTaskRewardRes(&cfg)
+	h.giveResNoCap(&city, rf, rs, ro, rr, cfg.RewardGold)
 	if cfg.RewardPrestige > 0 {
 		h.addPrestige(uid, cfg.RewardPrestige)
 	}

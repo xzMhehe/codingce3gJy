@@ -1840,10 +1840,12 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 		if !ok {
 			continue
 		}
+		// ★ 新手任务资源 ×1000（见 ezfyTaskRewardRes），列表展示与发奖同口径
+		df, ds, do, dr := ezfyTaskRewardRes(&cfg)
 		row := gin.H{"id": t.ID, "cfg_id": cfg.ID, "name": cfg.Name, "target": cfg.Target,
 			"current": t.Current, "status": t.Status,
-			"reward": gin.H{"gold": cfg.RewardGold, "food": cfg.RewardFood, "steel": cfg.RewardSteel,
-				"oil": cfg.RewardOil, "rare": cfg.RewardRare, "prestige": cfg.RewardPrestige}}
+			"reward": gin.H{"gold": cfg.RewardGold, "food": df, "steel": ds,
+				"oil": do, "rare": dr, "prestige": cfg.RewardPrestige}}
 		typeId := cfg.TypeId
 		if _, exists := byType[typeId]; !exists {
 			order = append(order, typeId)
