@@ -200,9 +200,9 @@ func checkActWildVals(vals map[string]interface{}) string {
 			return "宝物配置格式不对，应为 [[宝物id,数量],...]"
 		}
 	}
-	// 守将被俘虏概率 0~100
+	// 守将被俘虏概率 0~100（0 = 不俘虏）
 	if v, ok := vals["capture_rate"].(int); ok && (v < 0 || v > 100) {
-		return "被俘虏概率只能是 0~100（0 = 按星级默认）"
+		return "被俘虏概率只能是 0~100（0 = 不俘虏，100 = 必俘虏）"
 	}
 	// 守将军官必须来自军官池（普通军官/名将都可选）
 	if v, ok := vals["officer_id"].(int); ok && v > 0 {

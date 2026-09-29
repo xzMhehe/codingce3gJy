@@ -723,7 +723,7 @@
         </el-form-item>
         <el-form-item label="被俘概率%">
           <el-input-number v-model.number="aw.capture_rate" :min="0" :max="100" controls-position="right" style="width:160px" />
-          <span class="td-sub">0 = 按星级默认（名将星级越高概率越高，上限60%）；填 1~100 直接覆盖</span>
+          <span class="td-sub">0 = 不俘虏；填 1~100 直接按该百分比（100 = 必俘虏）</span>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />

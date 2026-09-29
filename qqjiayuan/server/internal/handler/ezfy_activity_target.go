@@ -515,9 +515,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 		h.addPrestige(uid, prestigeGain)
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
-		// ★ 2026-09-29 活动野地守将：若该坐标配置了军官，胜利后有概率俘虏（普通军官/名将都可选）。
-		//   aw.CaptureRate 显式配置时覆盖默认概率（0=按星级默认）。
-		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
+		// ★ 2026-09-29 活动野地守将：是否被俘虏只看 **CaptureRate**。
+		//   aw.CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。不再回落「按星级默认」。
+		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 && aw.CaptureRate > 0 {
 			if g := ezfyCfg.general(aw.OfficerId); g != nil {
 				if c := h.createCaptiveOfficer(city, g, level, true, aw.CaptureRate); c != "" {
 					report += "\n" + c

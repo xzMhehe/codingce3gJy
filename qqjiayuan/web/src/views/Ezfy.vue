@@ -1403,6 +1403,8 @@
           </template>
           <div class="old-line" v-else>
             {{ selCell.name }}({{ selCell.x }},{{ selCell.y }})
+            <!-- ★ 2026-09-29 玩家城市也能收藏：玩家城不开 selDetail，原来的[收藏]被 selDetail 条件挡住了 -->
+            <a href="javascript:;" style="margin-left:8px" @click="addStar">{{ isCellStarred ? '已收藏' : '收藏' }}</a>
           </div>
           <div class="old-line" v-if="!selDetail && selCell.owner">城主:{{ selCell.owner }}</div>
           <!-- ★ 玩家城：展示城主的同盟（军团）名 —— 没加入军团显示「无」 -->
