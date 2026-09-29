@@ -949,7 +949,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if int(marching) >= hq {
 		return fmt.Sprintf("司令部%d级, 同时只能出征%d支队伍", hq, hq)
 	}
-	if orderType != 5 && orderType != 8 {
+	if orderType != 5 {
 		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
 		//   ★ 管理端「出征上限」开关关掉时 capUnlimited=true → 完全不做这个校验
 		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)

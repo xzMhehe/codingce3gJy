@@ -1590,8 +1590,13 @@
           <div class="old-line" v-if="!orderResDisabled">
             随军总量：<b :class="orderResOver ? 'red' : 'green'">{{ fmtN(orderResTotal) }}</b>
             / 可用负重 <b>{{ fmtN(orderResUsableCap) }}</b>
-            <span v-if="orderResOver" class="red">—— 超出（负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}），请减少资源或多带部队</span>
-            <span v-else class="gray">（负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}，含装载技术加成）</span>
+            <span v-if="orderResOver" class="red">
+              —— 超出（<template v-if="orderType !== 5">负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}</template><template v-else>负重{{ fmtN(orderResCap) }}</template>），请减少资源或多带部队
+            </span>
+            <span v-else class="gray">
+              <template v-if="orderType !== 5">（负重{{ fmtN(orderResCap) }} − 油耗{{ fmtN(oilUsed) }}，含装载技术加成）</template>
+              <template v-else>（负重{{ fmtN(orderResCap) }}，运输油耗另扣不占负重；含装载技术加成）</template>
+            </span>
           </div>
           <div class="old-line gray" v-else>（未选择部队，随军资源不可填写）</div>
           <div class="old-line gray" v-if="orderType === 5">
@@ -4675,16 +4680,14 @@ export default {
     orderCapText () {
       const c = this.orderCalc
       if (!c) return '—'
-      // ★ 2026-09-29 运输(5)/派遣(8) 无出征上限 → 显示「不限」，别拿上限值误导滑块（滑块本就按城内总数卡）
+      // ★ 2026-09-29 运输(5) 无出征上限 → 显示「不限」；派遣(8) 有上限，显示 troop_cap
       if (!this.orderCapApplies) return '不限'
       return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
     },
-    // ★ 2026-09-28 用户要求「[最大] 与滑块都按『出征还剩多少』卡控」。
-    //   出征上限只约束「出征类」命令：后端 createOrder 里写的是 `orderType != 5 && orderType != 8`
-    //   → 运输(5) / 派遣(8) 不做兵力上限校验，这两个命令的滑块仍旧只按「城内现有」卡。
-    //   ⚠️ 必须与后端同一口径，否则会出现「前端卡着不让填、后端其实允许」或反过来的假拦截。
+    // ★ 2026-09-29 修正：派遣(8)是城际调兵、要带部队，和普通出征一样有「出征兵力上限」卡控；
+    //   只有运输(5)是运货、无兵力上限（按城内现有）。前端/后端必须同一口径。
     orderCapApplies () {
-      return this.orderType !== 5 && this.orderType !== 8
+      return this.orderType !== 5
     },
     // ★ 2026-09-28 随军资源：负重上限 = 所带兵种负重之和 × 装载技术加成。
     //   直接采用 [计算]（orderCalc.carry，后端 ezfyCarryCapOf 已含科技加成）作为唯一口径，
@@ -4693,9 +4696,12 @@ export default {
       const c = this.orderCalc
       return c ? (c.carry || 0) : 0
     },
-    // ★ 2026-09-28 用户补充：剩余负重还要扣掉「行军油耗」。随军资源最多能占 = 负重 - 油耗
-    //   （油耗 = orderCalc.oil_used，由 [计算] 返回；兵力/距离变化时 orderTroopTotal watcher 会触发 doCalc 刷新）
+    // ★ 2026-09-29 修正：运输(5)油耗按携带资源量另算、直接从城里扣，**不占部队负重** ——
+    //   减油耗会形成回环（填资源→油耗变大→上限变小，但油又不随资源刷新），所以运输用满负重当上限。
+    //   其余（含派遣8）油耗按兵种计、需占负重 → 负重 − 油耗。
     orderResUsableCap () {
+      const c = this.orderCalc
+      if (this.orderType === 5) return Math.max(0, c ? (c.carry || 0) : 0)
       return Math.max(0, this.orderResCap - this.oilUsed)
     },
     // 行军油耗（随军资源占用的负重需要从负重上限里先扣掉）
