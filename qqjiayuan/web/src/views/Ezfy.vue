@@ -1454,8 +1454,8 @@
             <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(1)">[侦查]</a><span class="home-gap"></span>
             <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
             <a href="javascript:;" :class="{ gray: isOwnWild }" @click="pickOrder(3)">[征服]</a><span class="home-gap"></span>
-            <a v-if="selCell.occupied" href="javascript:;" @click="pickOrder(4)">[采集]</a>
-            <span v-else-if="!selDetail || !selDetail.act_type" class="gray">(占领该野地后可采集)</span>
+            <a v-if="selCell.occupied && isOwnWild" href="javascript:;" @click="pickOrder(4)">[采集]</a>
+            <span v-else-if="!selCell.occupied && (!selDetail || !selDetail.act_type)" class="gray">(占领该野地后可采集)</span>
           </div>
           <a href="javascript:;" @click="go('map')">[返回地图]</a>
           <a href="javascript:;" @click="go('home')">[返回首页]</a>
