@@ -39,7 +39,6 @@
 
       <!-- 二级导航（资源/军官/军队/科技/城防/统帅）—— 只在对应页面显示，位置固定在顶部，不再有的在底部 -->
       <div class="old-line ezfy-subnav" v-if="showSubnav">
-        <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>.
         <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>.
         <a href="javascript:;" :class="{ on: cur === 'acade' || cur === 'officerdetail' }" @click="go('acade')">军官</a>.
         <a href="javascript:;" :class="{ on: isArmyPage }" @click="go('troops')">军队</a>.
@@ -4926,10 +4925,6 @@ export default {
     // ★ 2026-09-29 用户要求：军官详情「装备背包 / 已穿戴装备」同一个装备叠加展示（名称 × N），
     //   有空余部位就能继续穿戴（对应部位没被占用），没空余就不能穿戴。
     //   分组 key = cfg_id（同配置的装备实例 = 同一件装备）；老数据没有 cfg_id 时兜底 name|slot|set_id|tier。
-    equipGroupKey (e) {
-      if (e && e.cfg_id) return 'c' + e.cfg_id
-      return 'n' + (e.name || '') + '|' + (e.slot || e.type || '') + '|' + (e.set_id || 0) + '|' + (e.tier || 0)
-    },
     // 已穿戴装备分组（装备 tab）：同 cfg 的叠加成一行，数量 >1 时显示 ×N
     officerEquipGroups () {
       const bag = (this.officerDetail && this.officerDetail.bag) || []
@@ -4966,13 +4961,14 @@ export default {
       const order = []
       const slots = this.officerEquipSlots
       for (const e of bag) {
+        if (!e) continue
         if (e.worn) continue
         const key = this.equipGroupKey(e)
         let g = groups[key]
         if (!g) {
-          g = { key: key, name: e.name, slot: e.slot || e.type || '', type: e.type,
-                set_id: e.set_id, set_name: e.set_name, series: e.series, tier: e.tier,
-                tier_name: e.tier_name, level: e.level, first: e, items: [], count: 0,
+          g = { key: key, name: e.name || '', slot: e.slot || e.type || '', type: e.type,
+                set_id: e.set_id || 0, set_name: e.set_name || '', series: e.series || '', tier: e.tier || 0,
+                tier_name: e.tier_name || '', level: e.level || 0, first: e, items: [], count: 0,
                 canEquip: false }
           groups[key] = g
           order.push(key)
@@ -5231,6 +5227,11 @@ export default {
     this.stopBattleTimer()
   },
   methods: {
+    // 装备分组 key：同 cfg 的装备实例视为同一件装备（老数据无 cfg_id 时兜底 name|slot|set_id|tier）
+    equipGroupKey (e) {
+      if (e && e.cfg_id) return 'c' + e.cfg_id
+      return 'n' + (e.name || '') + '|' + (e.slot || e.type || '') + '|' + (e.set_id || 0) + '|' + (e.tier || 0)
+    },
     // 页脚小Q报时(与 App.vue tick 同款格式)
     tickClock () {
       // ★ 2026-09-28 让「累计采集/采集资源」实时变化：tickClock 每秒已被 clockTimer 调用，
