@@ -1499,13 +1499,18 @@ func (h *AdminHandler) AdminEzfyChestPoolBulkAdd(c *gin.Context) {
 
 // ---------- 4.5 玩家军官装备列表（ezfy_equipment） ----------
 
-// AdminEzfyEquipmentsOwned 玩家装备列表（word=装备名/军官ID，type=类型，equipped=1 仅已穿戴）
+// AdminEzfyEquipmentsOwned 玩家装备列表（按「玩家 + 同一装备」聚合，同一装备只显示一条、带数量）
+//
+// ★ 2026-09-29 用户要求：同一个装备在一个玩家身上只展示一条，按数量展示；
+//   不再按城池拆分（装备归属以玩家为准，不展示城池）。
 func (h *AdminHandler) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	word := strings.TrimSpace(c.Query("word"))
 	typ := strings.TrimSpace(c.Query("type"))
 	equipped := atoiOr(c.Query("equipped"), -1)
 
+	// 先查出匹配的行（聚合依据 user_id + cfg_id + name + type + tier）
+	all := []model.EzfyEquipment{}
 	q := h.DB.Model(&model.EzfyEquipment{})
 	if typ != "" {
 		q = q.Where("type = ?", typ)
@@ -1517,40 +1522,101 @@ func (h *AdminHandler) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	}
 	if word != "" {
 		if id, err := strconv.Atoi(word); err == nil {
-			q = q.Where("id = ? OR officer_id = ? OR city_id = ?", id, id, id)
+			q = q.Where("id = ? OR user_id = ?", id, id)
 		} else {
-			q = q.Where("name LIKE ?", "%"+word+"%")
+			var uids []uint
+			h.DB.Model(&model.User{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("id", &uids)
+			if len(uids) > 0 {
+				q = q.Where("name LIKE ? OR user_id IN ?", "%"+word+"%", uids)
+			} else {
+				q = q.Where("name LIKE ?", "%"+word+"%")
+			}
 		}
 	}
-	var total int64
-	q.Count(&total)
-	var rows []model.EzfyEquipment
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	q.Order("id DESC").Find(&all)
+
+	// 内存聚合同一装备（key = user_id|cfg_id|name|type|tier），并记录该组 id 最大的一条作代表
+	// ★ all 已按 id DESC 排序，因此每组首次遇到的那条就是该组 id 最大的（代表）
+	type group struct {
+		id, officerID, userID, count int
+		tier                         int
+		rep                          int
+		items                        []int // 该组所有实例在 all 中的下标（用于查看详情）
+	}
+	gidx := map[string]int{} // key -> group index
+	groups := []*group{}
+	repByIdx := map[int]*model.EzfyEquipment{}
+	for i := range all {
+		e := all[i]
+		key := fmt.Sprintf("%d|%d|%s|%s|%d", e.UserId, e.CfgId, e.Name, e.Type, e.Tier)
+		gi, ok := gidx[key]
+		if !ok {
+			gi = len(groups)
+			gidx[key] = gi
+			g := &group{rep: i, id: int(e.ID), officerID: int(e.OfficerId), userID: int(e.UserId), tier: e.Tier}
+			groups = append(groups, g)
+			repByIdx[i] = &all[i]
+		}
+		groups[gi].count++
+		groups[gi].items = append(groups[gi].items, i)
+	}
+
+	// 分页：按代表行在 all 中的位置（已 id DESC）
+	total := len(groups)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
 
 	type rowOut struct {
 		model.EzfyEquipment
-		TierName   string `json:"tier_name"`
-		CityName   string `json:"city_name"`
-		OwnerName  string `json:"owner_name"`
-		HomeNum    string `json:"home_num"`
-		OfficerNam string `json:"officer_name"`
+		TierName  string `json:"tier_name"`
+		Count     int    `json:"count"`
+		OwnerName string `json:"owner_name"`
+		HomeNum   string `json:"home_num"`
+		OfficerNm string `json:"officer_name"`
+		// Details 该聚合组每个实例的明细（穿戴军官 + 所在城），给「查看」弹框用
+		Details []gin.H `json:"details"`
 	}
 	out := []rowOut{}
-	for _, e := range rows {
-		cityName, owner, home, offName := "", "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, e.CityId).Error; err == nil {
-			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
-		}
-		if e.OfficerId > 0 {
+	for gi := start; gi < end; gi++ {
+		g := groups[gi]
+		e := repByIdx[g.rep]
+		owner, home := h.ezfyAdminName(uint(g.userID))
+		offName := ""
+		if g.officerID > 0 {
 			var o model.EzfyOfficer
-			if err := h.DB.First(&o, e.OfficerId).Error; err == nil {
+			if err := h.DB.First(&o, g.officerID).Error; err == nil {
 				offName = o.Name
 			}
 		}
-		out = append(out, rowOut{EzfyEquipment: e, TierName: ezfyEquipTierName(e.Tier),
-			CityName: cityName, OwnerName: owner, HomeNum: home, OfficerNam: offName})
+		// 明细：逐个实例填 穿戴军官 + 所在城
+		details := []gin.H{}
+		for _, idx := range g.items {
+			it := all[idx]
+			dName := ""
+			if it.OfficerId > 0 {
+				var o model.EzfyOfficer
+				if err := h.DB.First(&o, it.OfficerId).Error; err == nil {
+					dName = o.Name
+				}
+			}
+			dCity := ""
+			var ct model.EzfyCity
+			if err := h.DB.First(&ct, it.CityId).Error; err == nil {
+				dCity = ct.Name
+			}
+			details = append(details, gin.H{
+				"equip_id": it.ID, "officer_id": it.OfficerId, "officer_name": dName,
+				"city_id": it.CityId, "city_name": dCity,
+			})
+		}
+		out = append(out, rowOut{EzfyEquipment: *e, TierName: ezfyEquipTierName(g.tier),
+			Count: g.count, OwnerName: owner, HomeNum: home, OfficerNm: offName, Details: details})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }

@@ -341,7 +341,10 @@
           <el-table :data="ownedEquips" v-loading="loadingOE" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="60" align="center" />
             <el-table-column prop="name" label="装备名" min-width="150" show-overflow-tooltip>
-              <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
+              <template slot-scope="{row}">
+                <span class="td-main">{{ row.name }}</span>
+                <span class="td-muted"> ×{{ row.count || 1 }}</span>
+              </template>
             </el-table-column>
             <el-table-column prop="type" label="类型" width="65" align="center" />
             <el-table-column label="品质" width="65" align="center">
@@ -350,16 +353,21 @@
             <el-table-column label="需求等级" width="75" align="center">
               <template slot-scope="{row}">{{ row.level }}</template>
             </el-table-column>
-            <el-table-column prop="owner_name" label="持有玩家" width="140" show-overflow-tooltip />
-            <el-table-column prop="city_name" label="归属城池" width="110" show-overflow-tooltip />
+            <el-table-column label="持有玩家" min-width="150" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span class="td-main">{{ row.owner_name || '—' }}</span>
+                <span class="td-sub">（{{ row.home_num || row.user_id || '—' }}）</span>
+              </template>
+            </el-table-column>
             <el-table-column label="穿戴军官" width="110" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_id }}）</span>
                 <span v-else class="td-muted">未穿戴</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center" fixed="right">
+            <el-table-column label="操作" width="230" align="center" fixed="right">
               <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-view" title="查看" @click="openEquipDetail(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑/穿戴" @click="openEquipOwnedEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delEquipOwned(row)" />
               </template>
@@ -375,6 +383,31 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
+
+    <!-- ============ 装备查看详情（穿戴军官 + 所在城） ============ -->
+    <el-dialog :title="eevDlg ? ('装备详情 · ' + eevName) : '装备详情'" :visible.sync="eevDlg" width="640px">
+      <div v-if="eevRow && eevRow.details && eevRow.details.length" class="td-sub" style="margin-bottom:8px">
+        该装备共 {{ eevRow.count }} 件，分布在以下位置：</div>
+      <el-table v-if="eevRow && eevRow.details && eevRow.details.length" :data="eevRow.details" size="mini" border stripe max-height="360">
+        <el-table-column prop="equip_id" label="装备ID" width="70" align="center" />
+        <el-table-column label="穿戴军官" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_id }}）</span>
+            <span v-else class="td-muted">未穿戴（在背包）</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="所在城" min-width="130" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="row.city_name">{{ row.city_name }}（{{ row.city_id }}）</span>
+            <span v-else class="td-muted">—</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="该装备没有实例明细" />
+      <div slot="footer">
+        <el-button @click="eevDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
 
     <!-- ============ 编辑军官 ============ -->
     <el-dialog title="编辑军官" :visible.sync="editDlg" width="560px" :close-on-click-modal="false">
@@ -771,6 +804,8 @@ export default {
       equips: [], loadingE: false,
       // 7 玩家装备
       ownedEquips: [], oeTotal: 0, oePage: 1, oeSize: 5, loadingOE: false,
+      // 装备查看详情（穿戴军官 + 所在城）
+      eevDlg: false, eevRow: null, eevName: '',
       oeWord: '', oeType: '', oeEquipped: -1,
       egDlg: false, egForm: { user_id: 1, cfg_id: 0, count: 1 },
       oeDlg: false, oef: {}, ownerOfficers: [],
@@ -1150,6 +1185,12 @@ export default {
           this.oePage = r.data.page
         } else this.$message.error(r.msg)
       })
+    },
+    // 装备查看详情（该装备各实例的穿戴军官 + 所在城）
+    openEquipDetail (row) {
+      this.eevRow = row || null
+      this.eevName = (row && row.name) || ''
+      this.eevDlg = true
     },
     openEquipGrant () {
       if (!this.equips.length) this.loadEquips()
