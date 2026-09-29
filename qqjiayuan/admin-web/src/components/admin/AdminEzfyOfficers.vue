@@ -93,7 +93,7 @@
               <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
             </el-table-column>
             <el-table-column prop="source" label="来源" min-width="150" show-overflow-tooltip />
-            <el-table-column prop="skill" label="组合技" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="des" label="组合技" min-width="120" show-overflow-tooltip />
             <el-table-column label="操作" width="190" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="warning" plain icon="el-icon-present" title="分发给玩家" @click="openGrant(row)" />
@@ -520,10 +520,10 @@
           <el-input v-model="gf.get_condition" maxlength="255" placeholder="例如：任务 / 505" />
         </el-form-item>
         <el-form-item label="组合技/技能">
-          <el-input v-model="gf.skill" maxlength="500" placeholder="例如：全技能+2，攻击+20%" />
+          <el-input v-model="gf.des" maxlength="500" placeholder="例如：全技能+2，攻击+20%" />
         </el-form-item>
         <el-form-item label="说明">
-          <el-input v-model="gf.des" type="textarea" :rows="2" maxlength="500" />
+          <el-input v-model="gf.skill" maxlength="500" placeholder="例如：任务 / 商店买 / 活动中心换取" />
         </el-form-item>
       </el-form>
       <!-- [说明·不显示在界面] 保存后立即生效（后端会重载配置缓存，不用重启） -->
