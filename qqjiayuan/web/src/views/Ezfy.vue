@@ -2854,12 +2854,11 @@
                 <span class="gray">共 {{ chestPoolAll.length }} 项</span>
               </div>
               <table class="ezfy-plain-table">
-                <tr><th>奖品</th><th>品质</th><th>数量</th><th>权重</th></tr>
+                <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
                 <tr v-for="(p, i) in chestPoolPaged" :key="'cp' + p.kind + '_' + p.ref_id + '_' + i">
                   <td>{{ p.name }}</td>
                   <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-                  <td class="gray">{{ p.weight }}</td>
                 </tr>
               </table>
               <div class="old-line gray" v-if="!chestPoolAll.length">(没有匹配的奖品)</div>
@@ -2981,7 +2980,7 @@
             </div>
             <div class="old-line">奖池（{{ chestOpen.pool.length }} 项）<span class="gray">（点奖品名可查看具体属性）</span>：</div>
             <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th><th>数量</th><th>权重</th></tr>
+              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
               <template v-for="(p, i) in chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
                 <tr>
                   <td>
@@ -2991,7 +2990,6 @@
                   </td>
                   <td :class="qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-                  <td class="gray">{{ p.weight }}</td>
                 </tr>
                 <tr v-if="chestOpenDetailIdx === i">
                   <td colspan="4" class="gray">{{ p.detail || '（无更多说明）' }}</td>
