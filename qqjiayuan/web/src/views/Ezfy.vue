@@ -440,7 +440,7 @@
           </template>
 
           <!-- ===== 战报详情（已改为独立页面 reportview，不再行内展开） ===== -->
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -652,7 +652,7 @@
           {{ resDes[resType] }}
           <br/>
           <a href="javascript:;" @click="go('builds')">[资源区]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -730,7 +730,7 @@
             <a v-for="a in accItems(25)" :key="'stbp' + a.cfg_id" href="javascript:;"
                @click="doSpeedTrain(null, a)">[加速{{ accLabel(a) }}]×{{ a.count }}</a>
           </div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -801,7 +801,7 @@
           </div>
           <div class="old-line" v-if="!queues.length">(队列为空)</div>
           <a href="javascript:;" @click="go('defence')">[去建城防]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -827,7 +827,7 @@
             </tr>
           </table>
           <div class="old-line gray">城防设施占用「城防空间」(围墙容量)，不占用人口。</div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -863,7 +863,7 @@
           <a href="javascript:;" @click="go('troop')">[造兵]</a>
           <a href="javascript:;" @click="go('defence')">[建防]</a>
           <a href="javascript:;" @click="go('hq')">[司令部]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1068,7 +1068,7 @@
           </table>
           <div class="old-line" v-if="!presets.length">(还没有预设编队，点上方 [新增预设编队] 开始)</div>
           </div><!-- /预设编队 tab -->
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1100,7 +1100,7 @@
             {{ t.effect }}<br/>
           </div>
           <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 只停止研究，不退还已消耗资源。</div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1191,7 +1191,7 @@
           <div class="old-line">
             <a href="javascript:;" @click="go('orders')">出征队列</a>
           </div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1214,7 +1214,7 @@
           <div class="old-line">
             <a href="javascript:;" @click="go('troops')">[城内军队]</a>
             <a href="javascript:;" @click="go('buildm')">[返回军事区]</a>
-            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+            <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
           </div>
         </div>
       </template>
@@ -1457,7 +1457,7 @@
             <span v-else-if="!selCell.occupied && (!selDetail || !selDetail.act_type)" class="gray">(占领该野地后可采集)</span>
           </div>
           <a href="javascript:;" @click="go('map')">[返回地图]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
         <div class="panel" v-else>
           <div class="old-line">请先在地图上选择目标 <a href="javascript:;" @click="go('map')">[前往地图]</a></div>
@@ -1841,7 +1841,7 @@
           <div class="old-line">
             <a href="javascript:;" @click="loadDynamics">[刷新]</a>
           </div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1865,7 +1865,7 @@
           <br/>
           <a href="javascript:;" @click="go('cityhall')">[市政厅]</a>
           <a href="javascript:;" @click="go('wareset')">[仓库调配]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1922,7 +1922,7 @@
             <br/>
           </template>
           <a href="javascript:;" @click="go('map')">[前往地图占领]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1949,7 +1949,7 @@
           <div class="old-line">{{ resNames.food }}: {{ city.food }}</div>
           <button @click="doConvene" :disabled="conveneBlocked">[召集]</button>
           <span v-if="conveneBlocked" class="gray">已达人口上限, 无法召集</span>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -1999,7 +1999,7 @@
             <button class="gray" disabled>[安抚]</button>
           </template>
           <button v-else @click="doPlacate">[安抚]</button>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2013,7 +2013,7 @@
             <button @click="doTax">[设置]</button>
           </div>
           <div class="old-line gray">设置后民心将联动为 {{ 100 - (parseInt(taxInput) || 0) }}</div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2025,7 +2025,7 @@
             新城市名: <input v-model="renameInput" style="width:60%"/>
             <button @click="doRename">[确定]</button>
           </div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2075,7 +2075,7 @@
               </tr>
             </template>
           </table>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2172,7 +2172,7 @@
             <a href="javascript:;" @click="go('bag')">[打开背包]</a>
           </div>
           <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2210,7 +2210,7 @@
             <button @click="doSaveRate">确认调整</button>
           </div>
           <a href="javascript:;" @click="go('cityhall')">[返回市政厅]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2476,7 +2476,7 @@
             <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="switchCorpsTab('info')">[去军团信息]</a></div>
           </div>
         </template>
-        <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
       </template>
 
       <!-- ============ 排行(rank) ============ -->
@@ -2586,7 +2586,7 @@
           </table>
           </template>
 
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2658,7 +2658,7 @@
             <a href="javascript:;" :class="{ disabled: bagPage >= bagTotalPages }" @click="bagGo(1)">[下一页]</a>
           </div>
           <a href="javascript:;" @click="go('mall')">[前往商城]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -2871,7 +2871,7 @@
             </div>
           </template>
           <a href="javascript:;" @click="go('bag')">[背包]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3078,7 +3078,7 @@
             <div class="old-line gray">单价不得超过 100 {{ resNames.gold }}/单位（可配，1:100 卡控）</div>
             <button @click="doExchangeSell">[挂单出售]</button>
           </div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3125,7 +3125,7 @@
           <div class="old-line">[开服活动] 新手礼包、每周福利、市政厅等级礼包持续发放中, 前往<a href="javascript:;" @click="go('welfare')">[福利]</a>领取。</div>
           <div class="old-line">[征战天下] 征服野地/寇城可获得军功声望, 声望晋升军衔!</div>
           <div class="old-line">[物资兑换] 交易所开放资源交易, 低买高卖赚{{ resNames.gold }}。</div>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3179,7 +3179,7 @@
             </div>
           </template>
 
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3206,7 +3206,7 @@
             <div class="panel-title">{{ curNotice.title }}</div>
             <div class="old-line">{{ curNotice.content }}</div>
           </template>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3261,7 +3261,7 @@
             联盟成员可用「增援」把部队派到你的城市协防。
           </div>
           <a href="javascript:;" @click="go('buildm')">[返回军事区]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3301,7 +3301,7 @@
           城外行进：{{ marching }}支 | 驻守采集：{{ occupying }}支<br/>
           占领野地：{{ wildlands.length }}块<br/>
           <a href="javascript:;" @click="go('friends')">[申请好友]</a>
-          <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
 
@@ -3710,7 +3710,7 @@
           <div class="old-line gray" v-if="!schemeData.schemes.length">(暂无计谋，等管理员在后台配置)</div>
           <div class="old-line">
             <a href="javascript:;" @click="go('bag')">[背包(信号弹)]</a>
-            <a href="javascript:;" @click="go('home')">[返回首页]</a>
+            <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
           </div>
         </div>
 
@@ -4113,6 +4113,7 @@ export default {
   data () {
     return {
       cur: 'home',
+      prevCur: 'home', // ★ 2026-09-29 上一页（各页 [返回] goBack 用）
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
       gatherNow: 0,
@@ -5497,6 +5498,8 @@ export default {
       this.switchAcade('equip')
     },
     go (t) {
+      // ★ 2026-09-29 各页 [返回]：回到上一页；无有效上一页则回首页
+      if (t === 'back') { this.go(this.prevCur && this.prevCur !== this.cur ? this.prevCur : 'home'); return }
       if (t.indexOf('res/') === 0) {
         this.resType = t.slice(4)
         this.cur = 'res'
@@ -5506,6 +5509,8 @@ export default {
       }
       // ★ 离开战场页就停掉倒计时轮询，避免在后台一直打接口
       if (t !== 'battle') this.stopBattleTimer()
+      // ★ 2026-09-29 记录上一页，供各页 [返回]（goBack）回到上一页
+      if (t !== this.cur) this.prevCur = this.cur
       this.cur = t
       this.syncUrl()
       if (t === 'home') { this.load(); this.loadWelfare(); this.loadHomeChats() }
