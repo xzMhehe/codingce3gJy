@@ -1064,6 +1064,13 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	}
 	city.Gold = gold
 
+	// ★ 2026-09-29 市长/城守在任被动经验：随懒结算一起按时间结算（复用已取到的军官列表，不额外查库）
+	var dutyOfficers []model.EzfyOfficer
+	if len(officers) > 0 {
+		dutyOfficers = officers[0]
+	}
+	h.accrueDutyExp(city, dutyOfficers)
+
 	if techStore > 0 {
 		// ★★ 2026-09-26 同类修复（与下面 getResourceCalc 的增产令是同一个坑）：
 		//   `x *= capBonus / 100` 会**先算整数除法** `110/100 = 1` → 容量纹丝不动。

@@ -39,6 +39,8 @@ const (
 	ezfyPositionNone        = 0
 	ezfyPositionMayor       = 1 // 市长
 	ezfyPositionGuard       = 2 // 城守
+	// ★ 2026-09-29 市长/城守在任期间每分钟获得被动经验（合理成长，避免职位军官等级定格）
+	ezfyDutyExpPerMin = 3
 )
 
 // recruitCycleKey 军校刷新计数周期 key（**小时窗口**）。
@@ -907,9 +909,17 @@ func (h *EzfyHandler) setOfficerPosition(city *model.EzfyCity, officerId int64, 
 	if position != ezfyPositionNone {
 		h.DB.Model(&model.EzfyOfficer{}).
 			Where("city_id = ? AND position = ? AND id <> ?", city.ID, position, o.ID).
-			Update("position", ezfyPositionNone)
+			Updates(map[string]interface{}{"position": ezfyPositionNone, "duty_exp_at": nil})
 	}
-	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("position", position)
+	// ★ 2026-09-29 市长/城守在任期间按时间结算被动经验：
+	//   任命时把结算基准时间设为当前，卸任(0)时清空基准(NULL) = 停止领取在职经验。
+	v := map[string]interface{}{"position": position}
+	if position != ezfyPositionNone {
+		v["duty_exp_at"] = time.Now()
+	} else {
+		v["duty_exp_at"] = nil // 清空为 NULL
+	}
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(v)
 	return ""
 }
 
@@ -1570,6 +1580,53 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 	}
 }
 
+// accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29 用户要求：
+// 「市长当久了等级一直不变」→ 让带职位的军官也能合理成长）。
+//
+// calcResource 懒结算时随军官列表一起结算：按自上次结算以来的分钟数 × 每分钟经验，
+// 通过 addOfficerExp 走统一的升级/加点逻辑。
+//
+// ⚡ 并发安全：结算基准时间只有「最先写进去的请求」能推前（条件更新抢占），
+// 后续并发请求 WHERE 命中不了旧基准 → 不计，避免重复发经验（与 checkBuildingDone 同款手法）。
+func (h *EzfyHandler) accrueDutyExp(city *model.EzfyCity, officers []model.EzfyOfficer) {
+	var list []model.EzfyOfficer
+	if len(officers) > 0 {
+		list = officers
+	} else {
+		list = h.officerList(city.ID)
+	}
+	now := time.Now()
+	for i := range list {
+		o := &list[i]
+		if o.Position != ezfyPositionMayor && o.Position != ezfyPositionGuard {
+			continue
+		}
+		if o.Status == 1 || o.IsCaptive == 1 {
+			continue // 出征中/俘虏不领在职经验
+		}
+		t := o.DutyExpAt
+		if t.IsZero() {
+			// 老数据/未初始化：只打一次基准，不一次性补一大堆经验
+			h.DB.Model(&model.EzfyOfficer{}).Where("id = ? AND duty_exp_at IS NULL", o.ID).
+				Update("duty_exp_at", now)
+			continue
+		}
+		mins := int64(now.Sub(t).Minutes())
+		if mins <= 0 {
+			continue
+		}
+		exp := mins * ezfyDutyExpPerMin
+		// 条件更新抢占：只有把基准从「旧值 t」推到 now 的请求才结算经验
+		res := h.DB.Model(&model.EzfyOfficer{}).
+			Where("id = ? AND duty_exp_at <= ?", o.ID, t).
+			Update("duty_exp_at", now)
+		if res.RowsAffected == 0 {
+			continue
+		}
+		h.addOfficerExp(city, o.ID, exp)
+	}
+}
+
 // OfficersOnDuty GET /games/ezfy/officers/onduty —— 出征界面可选的带队军官
 func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -2083,9 +2140,17 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		if s := ezfyCfg.equipSet(sid); s != nil {
 			parts = s.Parts
 		}
+		// ★ 2026-09-29 一键穿戴套装表要显示「等级」列：取该套装各件的穿戴等级需求最大值。
+		setLevel := 0
+		for _, e := range ezfyCfg.equipments {
+			if e.SetId == sid && e.Level > setLevel {
+				setLevel = e.Level
+			}
+		}
 		bagSets = append(bagSets, gin.H{
 			"set_id": sid, "name": name, "bag_count": bagSetCnt[sid],
 			"parts": parts, "worn": wornBySet[sid], "need": maxInt(0, parts-wornBySet[sid]),
+			"level": setLevel,
 		})
 	}
 	resp.OK(c, gin.H{

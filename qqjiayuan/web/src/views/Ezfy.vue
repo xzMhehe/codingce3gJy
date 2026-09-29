@@ -2497,10 +2497,10 @@
         <div class="panel">
           <!-- ★ 2026-09-24 用户要求：军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
           <div class="acade-tab">
-            <a href="javascript:;" :class="{ on: rankTab === 'ranks' }" @click="rankTab = 'ranks'">军衔晋升表</a>|
             <a href="javascript:;" :class="{ on: rankTab === 'prestige' }" @click="rankTab = 'prestige'">军衔声望榜</a>|
             <a href="javascript:;" :class="{ on: rankTab === 'troops' }" @click="rankTab = 'troops'">兵力榜</a>|
-            <a href="javascript:;" :class="{ on: rankTab === 'corps' }" @click="rankTab = 'corps'">军团榜</a>
+            <a href="javascript:;" :class="{ on: rankTab === 'corps' }" @click="rankTab = 'corps'">军团榜</a>|
+            <a href="javascript:;" :class="{ on: rankTab === 'ranks' }" @click="rankTab = 'ranks'">军衔晋升表</a>
           </div>
 
           <!-- 军衔晋升表 tab（静态参照表 + 我的晋升，★ 2026-09-28 加宝物门槛） -->
@@ -2671,6 +2671,21 @@
             <a href="javascript:;" :class="{ disabled: bagPage >= bagTotalPages }" @click="bagGo(1)">[下一页]</a>
           </div>
           <a href="javascript:;" @click="go('mall')">[前往商城]</a>
+          <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
+        </div>
+      </template>
+
+      <!-- ============ 宝物(treasure) ============ -->
+      <template v-else-if="cur === 'treasure'">
+        <div class="panel">
+          <div class="panel-title">宝物 <a href="javascript:;" @click="loadBag()">[刷新]</a></div>
+          <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚。</div>
+          <div class="old-line" v-for="t in bagTreasures" :key="'tr' + t.cfg_id">
+            <b class="orange">{{ t.name }}</b>×{{ t.count }}
+          </div>
+          <div class="old-line gray" v-if="!bagTreasures.length">(还没有采集到宝物，去野地采集或宝物签到吧)</div>
+          <a href="javascript:;" @click="go('map')">[去野地采集]</a>
+          <a href="javascript:;" @click="go('welfare')">[宝物签到]</a>
           <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3961,10 +3976,10 @@
           <!-- 一键穿戴套装（背包里有件的套装） -->
           <table class="ezfy-plain-table" v-if="officerDetail.bag_sets && officerDetail.bag_sets.length">
             <colgroup>
-              <col style="width:40%"><col style="width:36%"><col style="width:24%">
+              <col style="width:36%"><col style="width:32%"><col style="width:12%"><col style="width:20%">
             </colgroup>
-            <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
-            <tr><th class="nm">套装</th><th>穿齐进度</th><th>操作</th></tr>
+            <tr><th colspan="4">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
+            <tr><th class="nm">套装</th><th>穿齐进度</th><th>等级</th><th>操作</th></tr>
             <tr v-for="s in officerDetail.bag_sets" :key="'bs' + s.set_id">
               <td class="nm">{{ s.name }}</td>
               <td>
@@ -3977,6 +3992,7 @@
                   套装加成：<b class="green">{{ setBonusText(s.set_id) }}</b>
                 </div>
               </td>
+              <td>{{ s.level }}</td>
               <td><a href="javascript:;" @click="doEquipSet(s)">[一键穿戴]</a></td>
             </tr>
           </table>
@@ -4075,7 +4091,7 @@
         <a href="javascript:;" :class="{ on: cur === 'rank' }" @click="go('rank')">排行</a>
         <a href="javascript:;" :class="{ on: cur === 'bag' }" @click="go('bag')">背包</a>
         <a href="javascript:;" :class="{ on: cur === 'mall' }" @click="go('mall')">商城</a>
-        <a href="javascript:;" :class="{ on: cur === 'acade' }" @click="goTreasure()">宝物</a>
+        <a href="javascript:;" :class="{ on: cur === 'treasure' }" @click="go('treasure')">宝物</a>
       </div>
       <div class="old-line ezfy-bottom-nav">
         <a href="javascript:;" :class="{ on: cur === 'activity' }" @click="go('activity')">活动</a>
@@ -5548,11 +5564,6 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // 宝物：原版 /ezfy/acadeIndex，本项目对应「学院 → 装备」页（我的装备 + 装备图鉴）
-    goTreasure () {
-      this.cur = 'acade'
-      this.switchAcade('equip')
-    },
     go (t) {
       // ★ 2026-09-29 各页 [返回]：回到上一页；无有效上一页则回首页
       if (t === 'back') { this.go(this.prevCur && this.prevCur !== this.cur ? this.prevCur : 'home'); return }
@@ -5606,6 +5617,7 @@ export default {
       //   → 进页时补拉一次 /view，别让玩家看到一个空列表还不知道为什么。
       else if (t === 'cities') { this.loadRank(); if (!this.cities.length) this.load() }
       else if (t === 'bag') this.loadBag()
+      else if (t === 'treasure') this.loadBag()   // ★ 宝物页：展示采集宝物（bagTreasures）
       else if (t === 'mall') {
         this.loadMall(true)
         if (this.mallTab === 'equipment') this.loadEquipShop()

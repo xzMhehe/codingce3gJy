@@ -1454,6 +1454,8 @@ type EzfyOfficer struct {
 	Status     int       `gorm:"default:0;comment:0在职 1出征中 2被俘" json:"status"` // 0在职 1出征中 2被俘
 	IsCaptive  int       `gorm:"default:0;comment:是否Captive" json:"is_captive"`
 	UpdateTime time.Time `gorm:"comment:更新时间" json:"update_time"`
+	// ★ 2026-09-29 市长/城守在任期间被动经验结算基准时间（NULL = 未初始化/不领在职经验）
+	DutyExpAt time.Time `gorm:"index;comment:任职被动经验结算基准时间" json:"duty_exp_at"`
 	// ★ 2026-09-22 新增：原始属性 + 可用属性点
 	//
 	// 带 default:0 是为了让 AutoMigrate 建出 `NOT NULL DEFAULT 0` 的列
