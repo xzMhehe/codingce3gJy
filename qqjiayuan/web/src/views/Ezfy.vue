@@ -108,13 +108,11 @@
           <a href="javascript:;" @click="go('res/rare')">{{ resNames.rare }}:</a><span :title="'现有 ' + fmtN(city.rare)">{{ fmtProd(city.rare) }}</span>/<span :title="resShort.rare + '每小时产量'">{{ fmtProd(resProd.rare) }}</span>
         </div>
         <div class="old-line">
-          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>人口</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><circle cx="7" cy="7.4" r="1.6" fill="#FFD700"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#FFD700"/><circle cx="13" cy="6.6" r="1.5" fill="#FFD700"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#FFD700"/></svg>
-          人口/空闲:{{ city.pop }}/{{ freePop }}
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>人口</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><circle cx="7" cy="7.4" r="1.6" fill="#FFD700"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#FFD700"/><circle cx="13" cy="6.6" r="1.5" fill="#FFD700"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#FFD700"/></svg>人口/空闲:{{ city.pop }}/{{ freePop }}
           <a href="javascript:;" @click="go('convene')">召集</a>
         </div>
         <div class="old-line">
-          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>民心</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 15.5 C5.3 12.6 4.1 9.6 4.1 7.6 C4.1 5.9 5.4 4.7 7 4.7 C8.1 4.7 9.2 5.3 10 6.3 C10.8 5.3 11.9 4.7 13 4.7 C14.6 4.7 15.9 5.9 15.9 7.6 C15.9 9.6 14.7 12.6 10 15.5 Z" fill="#FFD700"/></svg>
-          民心/民怨:{{ city.feelings }}/{{ city.grievance }}
+          <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>民心</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 15.5 C5.3 12.6 4.1 9.6 4.1 7.6 C4.1 5.9 5.4 4.7 7 4.7 C8.1 4.7 9.2 5.3 10 6.3 C10.8 5.3 11.9 4.7 13 4.7 C14.6 4.7 15.9 5.9 15.9 7.6 C15.9 9.6 14.7 12.6 10 15.5 Z" fill="#FFD700"/></svg>民心/民怨:{{ city.feelings }}/{{ city.grievance }}
           <a href="javascript:;" @click="go('placate')">安抚</a>
         </div>
         <div class="old-line">
