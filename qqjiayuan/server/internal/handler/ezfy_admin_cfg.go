@@ -558,8 +558,44 @@ func (h *AdminHandler) AdminEzfyGeneralUpdate(c *gin.Context) {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
 	}
+	// ★ 2026-09-29 用户要求：改池子军官的三属性时，玩家若已招募，初始数据(三属性/原属性基准)要联动。
+	//   只有改到 military/logistics/learning 才回写已有实例；保留玩家分配的点数（当前−旧基准）。
+	if _, t1 := vals["military"]; t1 {
+		h.syncRecruitedOfficerBase(id)
+	} else if _, t1 := vals["logistics"]; t1 {
+		h.syncRecruitedOfficerBase(id)
+	} else if _, t1 := vals["learning"]; t1 {
+		h.syncRecruitedOfficerBase(id)
+	}
 	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "名将「" + g.Name + "」已保存"})
+}
+
+// syncRecruitedOfficerBase 把军官池(general_id) 新的三属性/初始值同步到已招募实例
+//
+// ★ 已招军官的 Military/BaseMilitary 等是三属性/原属性基准的快照（见 recruitOfficer/captive），
+//   管理端改池子后不更新的话面板一直显示旧值。这里按 general_id 找出所有已招实例：
+//   - ★ 2026-09-29 用户明确：玩家军官的初始值要和池子**保持一致**（军=军事/学=学识/后=后勤），
+//     即军事/后勤/学识 与 初始基准 Base* 全部覆盖为池子新值（不保留玩家加点）。
+func (h *AdminHandler) syncRecruitedOfficerBase(generalId int) {
+	var nu model.EzfyCfgGeneral
+	if err := h.DB.First(&nu, generalId).Error; err != nil {
+		return
+	}
+	var ofs []model.EzfyOfficer
+	if err := h.DB.Where("general_id = ?", generalId).Find(&ofs).Error; err != nil || len(ofs) == 0 {
+		return
+	}
+	for i := range ofs {
+		o := &ofs[i]
+		o.BaseMilitary = nu.Military
+		o.BaseLogistics = nu.Logistics
+		o.BaseLearning = nu.Learning
+		o.Military = nu.Military
+		o.Logistics = nu.Logistics
+		o.Learning = nu.Learning
+	}
+	h.DB.Save(&ofs)
 }
 
 // AdminEzfyGeneralDelete 删除名将（同时清掉玩家已拥有的该名将军官）
