@@ -121,7 +121,11 @@
           <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>税率</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M14.6 5.4 L5.4 14.6" stroke="#FFD700" stroke-width="1.4" stroke-linecap="round"/><circle cx="6.9" cy="5.9" r="1.8" fill="#FFD700"/><circle cx="13.1" cy="14.1" r="1.8" fill="#FFD700"/></svg>
           <a href="javascript:;" @click="go('taxset')">税率:</a>{{ city.tax_rate }}%
         </div>
-
+        <div class="old-line">
+          前往
+          <a href="javascript:;" @click="go('map')">地图</a>
+          出征
+        </div>
         <div class="old-line">
           <a href="javascript:;" @click="go('citystatus')">城市状态</a><span class="home-gap"></span><a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
