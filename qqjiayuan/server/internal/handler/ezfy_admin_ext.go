@@ -1214,7 +1214,12 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 		Loyalty:    100, Skill: "", Equipment: "",
 		Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
 	}
-	h.DB.Create(&o)
+	// ★ 2026-09-29 修复「发放名将显示成功、玩家却没收到」：原来 `h.DB.Create(&o)` 忽略写入错误，
+	//   一旦 INSERT 失败（如字段超长/DB 异常）仍返回「已发放」→ 玩家实际没拿到却显示成功。
+	//   现在把写入错误透传出去，发放失败会被管理端看到。
+	if err := h.DB.Create(&o).Error; err != nil {
+		return "", "发放名将入库失败: " + err.Error()
+	}
 	return "已发放名将: " + g.Name, ""
 }
 

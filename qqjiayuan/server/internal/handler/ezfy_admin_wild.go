@@ -100,7 +100,7 @@ func (h *AdminHandler) AdminEzfyMapOptions(c *gin.Context) {
 		gviews = append(gviews, gin.H{"id": g.ID, "name": g.Name, "star": g.Star, "kind": g.Kind,
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning})
 	}
-	// ★ 2026-09-29 活动野地「必掉宝物」多行编辑器下拉：可采集的 9 种珠宝
+	// ★ 2026-09-29 活动野地「必掉宝物」多行编辑器下拉：珠宝类装备（cfg_id 落到 ezfy_cfg_equipment）
 	var equips []model.EzfyCfgEquipment
 	h.DB.Where("type = ?", "珠宝").Order("id").Find(&equips)
 	jviews := make([]gin.H, 0, len(equips))

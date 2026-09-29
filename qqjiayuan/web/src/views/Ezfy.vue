@@ -3426,7 +3426,7 @@
           <hr/>
           <template v-for="o in myOfficers">
             <div class="old-line" :key="'of' + o.id">
-              {{ o.name }}({{ o.level }}级)<span class="green" v-if="o.level >= officerMaxLevel">[满级]</span>
+              {{ o.name }}({{ o.level }}级)
               <a href="javascript:;" @click="openOfficer(o.id)">查看</a><br/>
               状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 评价:{{ o.star }}星<br/>
               后勤/军事/学识/忠诚：<br/>
@@ -3498,7 +3498,7 @@
             <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
             <tr v-for="o in myOfficers" :key="'my' + o.id">
               <td>{{ o.name }}</td>
-              <td>{{ o.level }}<span class="green" v-if="o.level >= officerMaxLevel">满级</span></td>
+              <td>{{ o.level }}</td>
               <td>{{ o.loyalty }}</td>
               <td>{{ o.position_name }}</td>
               <td>
@@ -3824,7 +3824,7 @@
           <div v-if="officerDetailTab === 'attr'">
           <div class="old-line">
             星级：<b>{{ officerDetail.officer.star }}</b><span class="gray" v-if="officerDetail.officer.star_max">/{{ officerDetail.officer.star_max }}</span>
-            &nbsp;等级：<b>{{ officerDetail.officer.level }}</b><span class="green" v-if="officerDetail.officer.level >= detailOfficerMaxLevel && detailOfficerMaxLevel > 0"> [满级]</span>
+            &nbsp;等级：<b>{{ officerDetail.officer.level }}</b>
             &nbsp;经验：<span class="gray">{{ officerDetail.officer.level >= detailOfficerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}</span>
             &nbsp;忠诚：<b>{{ officerDetail.officer.loyalty }}</b>
             <br/>

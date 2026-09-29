@@ -89,8 +89,13 @@
                 <el-tag size="mini" :type="row.recruit === 1 ? 'success' : 'info'">{{ row.recruit === 1 ? '是' : '否' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="拥有玩家" width="80" align="center">
-              <template slot-scope="{row}"><span class="td-mono">{{ row.owned_count }}</span></template>
+            <el-table-column label="拥有玩家" width="90" align="center">
+              <template slot-scope="{row}">
+                <el-link v-if="row.owned_count > 0" type="primary" :underline="false" @click="openOwners(row)">
+                  {{ row.owned_count }}<i v-if="row.owned_count > 0" class="el-icon-view" style="margin-left:2px" />
+                </el-link>
+                <span v-else class="td-mono">0</span>
+              </template>
             </el-table-column>
             <el-table-column prop="source" label="来源" min-width="150" show-overflow-tooltip />
             <el-table-column prop="des" label="组合技" min-width="120" show-overflow-tooltip />
@@ -509,6 +514,33 @@
       </div>
     </el-dialog>
 
+    <!-- ============ 军官池「拥有玩家」查看（★ 2026-09-29 点击拥有数查看谁持有+在哪个城+状态） ============ -->
+    <el-dialog :title="ownerDlgTitle" :visible.sync="ownerDlg" width="680px" :close-on-click-modal="false">
+      <el-table :data="ownerRows" v-loading="loadingOwners" stripe border max-height="480">
+        <el-table-column prop="owner" label="玩家" min-width="110" show-overflow-tooltip />
+        <el-table-column prop="city_name" label="归属城市" width="110" show-overflow-tooltip />
+        <el-table-column label="等级" width="60" align="center">
+          <template slot-scope="{row}">{{ row.level }}</template>
+        </el-table-column>
+        <el-table-column label="星级" width="66" align="center">
+          <template slot-scope="{row}">★{{ row.star }}</template>
+        </el-table-column>
+        <el-table-column prop="position_name" label="任命" width="70" align="center" />
+        <el-table-column label="状态" width="80" align="center">
+          <template slot-scope="{row}">
+            <span v-if="row.is_captive === 1" class="td-main">俘虏</span>
+            <span v-else-if="row.status === 1" class="td-sub">出征中</span>
+            <span v-else>在职</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="loyalty" label="忠诚" width="60" align="center" />
+        <el-table-column prop="officer_id" label="军官ID" width="70" align="center" />
+      </el-table>
+      <div slot="footer">
+        <el-button @click="ownerDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
+
     <!-- ============ 新增/编辑 军官（军官池：普通军官 / 名将） ============ -->
     <el-dialog :title="gf.id ? ('编辑军官 · ' + gf.name) : '新增军官'" :visible.sync="gDlg"
                width="900px" :close-on-click-modal="false">
@@ -793,6 +825,8 @@ export default {
       // ★ 2026-09-28 发放名将：玩家搜索（昵称/游戏ID）—— 原来只能手填用户ID，
       //   而管理员手上通常只有玩家的昵称或游戏里看到的游戏ID，根本填不出来。
       grantWord: '', grantPlayers: [],
+      // ★ 2026-09-29 军官池「拥有玩家」查看
+      ownerDlg: false, ownerRows: [], loadingOwners: false, ownerDlgTitle: '',
       // 4 技能
       skills: [], loadingS: false, sWord: '', sPage: 1, sSize: 5,
       sDlg: false, sf: {},
@@ -1069,6 +1103,19 @@ export default {
       api.post('/admin/ezfy-officers/grant', this.grantForm).then(r => {
         this.saving = false
         if (r.code === 0) { this.grantDlg = false; this.$message.success(r.data.msg || '已发放'); this.load(); this.loadOverview() }
+        else this.$message.error(r.msg)
+      })
+    },
+    // ★ 2026-09-29 军官池「拥有玩家」点击查看：看是谁拥有、在哪个城市、军官状态
+    openOwners (row) {
+      if (!row || !row.id) return
+      this.ownerRows = []
+      this.ownerDlgTitle = '「' + row.name + '」拥有者列表'
+      this.ownerDlg = true
+      this.loadingOwners = true
+      api.get('/admin/ezfy-generals/' + row.id + '/owners').then(r => {
+        this.loadingOwners = false
+        if (r.code === 0) this.ownerRows = r.data.list || []
         else this.$message.error(r.msg)
       })
     },

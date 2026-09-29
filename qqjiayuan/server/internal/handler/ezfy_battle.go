@@ -354,6 +354,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			}
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
 				side, stName(unit, isAtk), verb, ezfyAbs(move), enemySide, stName(target, !isAtk), dist))
+		} else if dist > rangeD {
+			// ★ 2026-09-29 用户反馈「选了攻击目标但对方火箭不在射程内，就啥也没操作，玩家不知道咋回事」：
+			//   本回合单位既没移动（指令 hold / 已到射程边界停住）也没开火 → 完全静默。
+			//   追加一条行动日志说明「够不到目标、无法攻击」，让玩家明白不是 bug。
+			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 距目标%s%s%d，超出射程%d，无法攻击",
+				side, stName(unit, isAtk), enemySide, stName(target, !isAtk), dist, rangeD))
 		}
 		if dist <= rangeD {
 			baseAtk := ezfyPickAttack(unit.cfg, target.cfg)

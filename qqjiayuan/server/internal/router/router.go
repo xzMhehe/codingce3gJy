@@ -1167,6 +1167,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-officer-pickers", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyOfficerPickers)
 				// 名将列表（配置表 CRUD）
 				admin.GET("/ezfy-generals", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGenerals)
+				// ★ 2026-09-29 军官池「拥有玩家」点击查看：该名将/军官被哪些玩家以何种状态持有
+				admin.GET("/ezfy-generals/:id/owners", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralOwners)
 				admin.POST("/ezfy-generals", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralCreate)
 				admin.PUT("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralUpdate)
 				admin.DELETE("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), adminH.AdminEzfyGeneralDelete)

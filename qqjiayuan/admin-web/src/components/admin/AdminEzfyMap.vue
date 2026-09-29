@@ -659,9 +659,9 @@
         <el-form-item label="守军配置">
           <!-- ★ 2026-09-29 原来是裸 JSON 文本框（[[兵种id,数量],...]），对非程序员不友好，改成可视化行编辑 -->
           <div v-for="(r, i) in awTroops" :key="'awt' + i" class="wild-troop-row">
-            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:220px">
+            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:300px">
               <el-option v-for="t in troopCfgs" :key="'awtc' + t.id"
-                         :label="t.name + '（' + t.type_name + '）'" :value="t.id" />
+                         :label="t.name" :value="t.id" />
             </el-select>
             <span class="td-sub">数量</span>
             <el-input-number v-model.number="r.count" :min="0" controls-position="right" style="width:150px" />
@@ -671,27 +671,19 @@
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAwTroop">添加兵种</el-button>
           <span class="td-sub" style="margin-left:8px">不填则用默认活动守军</span>
         </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item label="资源奖励">
-              <el-input-number v-model.number="aw.res" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="黄金奖励">
-              <el-input-number v-model.number="aw.gold" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="声望奖励">
-              <el-input-number v-model.number="aw.prestige" :min="0" controls-position="right" style="width:100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <el-form-item label="资源奖励">
+          <el-input-number v-model.number="aw.res" :min="0" controls-position="right" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="黄金奖励">
+          <el-input-number v-model.number="aw.gold" :min="0" controls-position="right" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="声望奖励">
+          <el-input-number v-model.number="aw.prestige" :min="0" controls-position="right" style="width:100%" />
+        </el-form-item>
         <el-form-item label="必掉宝物">
           <!-- ★ 2026-09-29 宝物配置优化：和守军一样支持多行（选宝物 + 数量），胜利后按配置掉落 -->
           <div v-for="(tr, ti) in awTreasures" :key="'awj' + ti" class="wild-troop-row">
-            <el-select v-model.number="tr.treasure_id" filterable placeholder="选择宝物" style="width:220px">
+            <el-select v-model.number="tr.treasure_id" filterable placeholder="选择宝物" style="width:300px">
               <el-option v-for="j in jewels" :key="'awjc' + j.id" :label="j.name" :value="j.id" />
             </el-select>
             <span class="td-sub">数量</span>
@@ -1005,8 +997,12 @@ export default {
     },
     openAwCreate () {
       this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0 }
-      this.awOfficerKind = 1
-      this.awStarFilter = 0
+      this.awOfficerKind = 1 // ★ 默认守将类型 = 普通
+      this.awStarFilter = 5  // ★ 默认星级筛选 = 5 星
+      // ★ 默认直接选中一个「普通 5 星」守将（有就放进下拉）
+      const g = (this.generals || []).find(x => Number(x.kind) === 1 && (Number(x.star) || 1) === 5)
+      this.aw.officer_id = g ? Number(g.id) : 0
+      this.aw.officer_name = g ? g.name : ''
       this.awTroops = []
       this.awTreasures = []
       this.awDlg = true

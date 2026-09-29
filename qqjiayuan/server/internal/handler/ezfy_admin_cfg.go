@@ -495,6 +495,62 @@ func (h *AdminHandler) AdminEzfyGenerals(c *gin.Context) {
 	})
 }
 
+// AdminEzfyGeneralOwners GET /admin/ezfy-generals/:id/owners —— 军官池「拥有玩家」点击查看。
+//
+// ★ 2026-09-29 用户要求：拥有数可点开，看是谁拥有、在哪个城市、军官什么状态。
+// 返回该 general_id 被哪些玩家的军官实例持有，附 玩家/城市/等级/星级/经验/忠诚/任命/状态/是否俘虏。
+func (h *AdminHandler) AdminEzfyGeneralOwners(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	type row struct {
+		OfficerId uint
+		CityId    int64
+		CityName  string
+		UserId    uint
+		Nickname  string
+		Username  string
+		Level     int
+		Star      int
+		Exp       int64
+		Loyalty   int
+		Position  int
+		Status    int
+		IsCaptive int
+	}
+	var rows []row
+	h.DB.Table("ezfy_officer o").
+		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.user_id, u.nickname, u.username, "+
+			"o.level, o.star, o.exp, o.loyalty, o.position, o.status, o.is_captive").
+		Joins("LEFT JOIN ezfy_city c ON c.id = o.city_id").
+		Joins("LEFT JOIN users u ON u.id = c.user_id").
+		Where("o.general_id = ?", id).
+		Order("o.city_id").Scan(&rows)
+
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		owner := r.Nickname
+		if owner == "" {
+			owner = r.Username
+		}
+		if owner == "" {
+			owner = fmt.Sprintf("玩家%d", r.UserId)
+		}
+		statusName := "在职"
+		if r.IsCaptive == 1 {
+			statusName = "俘虏"
+		} else if r.Status == 1 {
+			statusName = "出征中"
+		}
+		out = append(out, gin.H{
+			"officer_id": r.OfficerId, "officer_city_id": r.CityId, "city_name": r.CityName,
+			"user_id": r.UserId, "owner": owner,
+			"level": r.Level, "star": r.Star, "exp": r.Exp, "loyalty": r.Loyalty,
+			"position": r.Position, "position_name": ezfyPositionName(r.Position),
+			"status": r.Status, "status_name": statusName, "is_captive": r.IsCaptive,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
 // AdminEzfyGeneralCreate 新增名将
 func (h *AdminHandler) AdminEzfyGeneralCreate(c *gin.Context) {
 	var in map[string]interface{}
