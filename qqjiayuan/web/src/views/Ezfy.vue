@@ -583,16 +583,15 @@
         <div class="panel">
           <div class="panel-title">我的城市列表</div>
           <div class="old-line" v-for="ct in cities" :key="'ct' + ct.id">
-            <b>{{ ct.name }}</b><span v-if="ct.id === city.id" class="red">[当前]</span><br/>
-            坐标({{ ct.x }},{{ ct.y }}) 城{{ ct.city_level }} <span :class="isSeaAt(ct) ? 'green' : 'gray'">[{{ isSeaAt(ct) ? '海' : '陆' }}]</span>
-            <span class="gray">{{ ct.continent || '—' }}</span><br/>
-            <a v-if="ct.id !== city.id" href="javascript:;" @click="doSwitch(ct)">[切换]</a>
-            <!-- ★ 运输：从当前城市把资源运到这座城（负重决定运量，可不带军官） -->
-            <a v-if="ct.id !== city.id" href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
-            <!-- ★ 派遣：像出征一样，把自己的部队/军官/随军资源送到自己的另一座城市 -->
-            <a v-if="ct.id !== city.id" href="javascript:;" @click="doDispatchTo(ct)">[派遣]</a>
-            <!-- ★ 弃城：只能弃「非当前所在」的城市；弃城后该坐标恢复为普通平原 -->
-            <a v-if="ct.id !== city.id" class="red" href="javascript:;" @click="doDestroyCity(ct)">[弃城]</a>
+            <!-- ★ 2026-09-29 城市列表改版：一行一座城 = 城市名(坐标)；点城市名**切换**；
+                 [运输][派遣][弃城] 只在非当前城显示（当前城无操作） -->
+            <a v-if="ct.id !== city.id" class="city-name" href="javascript:;" @click="doSwitch(ct)" title="切换为当前城市">{{ ct.name }}({{ ct.x }},{{ ct.y }})</a>
+            <span v-else class="city-name">{{ ct.name }}({{ ct.x }},{{ ct.y }})<span class="red">[当前]</span></span>
+            <template v-if="ct.id !== city.id">
+              <a href="javascript:;" @click="doTransportTo(ct)">[运输]</a>
+              <a href="javascript:;" @click="doDispatchTo(ct)">[派遣]</a>
+              <a class="red" href="javascript:;" @click="doDestroyCity(ct)">[弃城]</a>
+            </template>
           </div>
 
           <br/>
@@ -9237,6 +9236,19 @@ body.ezfy-ios .ezfy-page textarea {
   padding: 4px 6px;
   border-left: 2px solid #d8d5cc;
   line-height: 1.9;
+}
+/* ★ 2026-09-29 城市列表：城市名(坐标) 可点击切换；当前城无下划线但保留粗体 */
+.ezfy-page .old-line .city-name {
+  font-weight: bold;
+  color: var(--link, #004299);
+  text-decoration: underline;
+  cursor: pointer;
+  margin-right: 8px;
+}
+.ezfy-page .old-line span.city-name {
+  color: inherit;
+  text-decoration: none;
+  cursor: default;
 }
 /* ★ 建筑区操作的内联提示：独占一行贴在所点建筑行下方，带 [关闭]，不自动消失 */
 .ezfy-page .build-tip {
