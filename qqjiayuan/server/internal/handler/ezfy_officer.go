@@ -823,6 +823,55 @@ func (h *EzfyHandler) equipmentOwnerId(uid uint, equipId int64) int64 {
 	return e.OfficerId
 }
 
+// transferOfficerEquipsToCaptive 被俘军官的随身装备随俘虏转移（2026-09-29 用户规则）：
+//
+//	把原玩家军官身上的装备行解绑并挂到俘虏名下：
+//	  - user_id 改为攻方玩家（原玩家装备对应的减少，无法再卸下/查看）
+//	  - officer_id 改为俘虏 id（「装上俘虏官」）
+//	  - original_user_id 记下原归属玩家，供【收编归新玩家 / 释放返还旧玩家】
+func (h *EzfyHandler) transferOfficerEquipsToCaptive(captiveID int64, oldOfficerID int64, atkUid, origUid uint) {
+	var rows []model.EzfyEquipment
+	h.DB.Where("officer_id = ? AND user_id = ?", oldOfficerID, origUid).Find(&rows)
+	for i := range rows {
+		r := rows[i]
+		h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", r.ID).
+			Updates(map[string]interface{}{
+				"officer_id":       captiveID,
+				"user_id":          atkUid,
+				"original_user_id": origUid,
+			})
+	}
+}
+
+// returnCaptiveEquips 释放俘虏时，把随俘装备返还给原玩家（2026-09-29 用户规则）：
+//
+//	按 original_user_id 还原 user_id，并解绑 officer_id（回到原玩家背包）。
+func (h *EzfyHandler) returnCaptiveEquips(captiveID int64) {
+	var rows []model.EzfyEquipment
+	h.DB.Where("officer_id = ? AND original_user_id > 0", captiveID).Find(&rows)
+	for i := range rows {
+		r := rows[i]
+		h.DB.Model(&model.EzfyEquipment{}).Where("id = ?", r.ID).
+			Updates(map[string]interface{}{
+				"officer_id":       0,
+				"user_id":          r.OriginalUserId,
+				"original_user_id": 0,
+			})
+	}
+}
+
+// equipIsCaptiveWorn 判断某装备是否挂在「未收编的俘虏」身上
+func (h *EzfyHandler) equipIsCaptiveWorn(cityId uint, equipId int64) bool {
+	var e model.EzfyEquipment
+	if err := h.DB.First(&e, equipId).Error; err != nil || e.OfficerId <= 0 {
+		return false
+	}
+	if o := h.officerOf(cityId, e.OfficerId); o != nil && o.IsCaptive == 1 {
+		return true
+	}
+	return false
+}
+
 // ============ 任命 / 俘虏 / 流放 ============
 
 // setOfficerPosition 任命：1市长 2城守 0卸任（同职位唯一）
@@ -874,7 +923,7 @@ func (h *EzfyHandler) recruitCaptive(city *model.EzfyCity, officerId int64) stri
 	return ""
 }
 
-// freeOfficer 释放俘虏（删除记录）
+// freeOfficer 释放俘虏（删除记录）；★ 2026-09-29 释放时把随俘装备返还给原玩家。
 func (h *EzfyHandler) freeOfficer(city *model.EzfyCity, officerId int64) string {
 	o := h.officerOf(city.ID, officerId)
 	if o == nil {
@@ -882,6 +931,10 @@ func (h *EzfyHandler) freeOfficer(city *model.EzfyCity, officerId int64) string 
 	}
 	if o.Status == 1 {
 		return "出征中无法遣散"
+	}
+	// 释放俘虏：随身装备按 original_user_id 返还给原玩家
+	if o.IsCaptive == 1 {
+		h.returnCaptiveEquips(int64(o.ID))
 	}
 	h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 	return ""
@@ -1817,7 +1870,10 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
 			}
 			h.DB.Create(&cap)
-			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零, 弃城归降, 已收入我方战俘营")
+			// ★ 2026-09-29 用户规则：被俘军官的随身装备随俘虏转移——
+			//   原玩家装备行解绑挂到俘虏名下并记录原归属（收编归新玩家 / 释放返还旧玩家）
+			h.transferOfficerEquipsToCaptive(int64(cap.ID), int64(o.ID), atkCity.UserID, target.UserID)
+			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零, 弃城归降, 已收入我方战俘营(随身装备随俘转移)")
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
 				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "")
 		} else {
@@ -1949,11 +2005,15 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	// ★ 一键穿套装：背包里每个套装分别有件未穿戴的（officer_id=0 才在背包）
 	bagSetCnt := map[int]int{}
 	for _, e := range h.equipmentList(uid) {
+		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进背包（展示在俘虏的已穿戴里）
+		if h.equipIsCaptiveWorn(city.ID, int64(e.ID)) {
+			continue
+		}
 		if e.OfficerId == 0 && e.SetId > 0 {
 			bagSetCnt[e.SetId]++
 		}
 		bag = append(bag, gin.H{
-			"id": e.ID, "name": e.Name, "type": e.Type, "tier": e.Tier,
+			"id": e.ID, "cfg_id": e.CfgId, "name": e.Name, "type": e.Type, "tier": e.Tier,
 			"tier_name": ezfyTierName(e.Tier),
 			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
 			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0,
@@ -3059,6 +3119,10 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	// ★ 2026-09-28 赏赐宝物只认「采集宝物」（与军官详情接口口径一致）
 	treasureSet := ezfyCollectibleTreasureNames()
 	for _, e := range h.equipmentList(uid) {
+		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进入背包列表——只有收编后才归属本玩家
+		if h.equipIsCaptiveWorn(city.ID, int64(e.ID)) {
+			continue
+		}
 		wornBy := ""
 		if e.OfficerId > 0 {
 			if o := h.officerOf(city.ID, e.OfficerId); o != nil {

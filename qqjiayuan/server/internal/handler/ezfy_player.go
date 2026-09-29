@@ -76,10 +76,15 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 				WHERE city_id IN ? GROUP BY city_id) t`, cityIds).Scan(&maxCityTroop)
 	}
 
-	// 军团
+	// 军团（★ 2026-09-29 用户要求：他人统帅页也展示军团职务，与我的统帅页一致）
 	corpsName := ""
+	corpsTitle := ""
 	if cp := h.myCorpsOf(target); cp != nil {
 		corpsName = cp.Name
+		var mb model.EzfyCorpsMember
+		if err := h.DB.Where("user_id = ?", target).First(&mb).Error; err == nil {
+			corpsTitle = mb.Title
+		}
 	}
 
 	// 好友关系（复刻 infoOther 的 isShowAdd）
@@ -103,6 +108,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
 		"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)), "rank_post": ezfyRankPostAt(ezfyProfileRank(&p)),
 		"corps_name":    corpsName,
+		"corps_title":   corpsTitle,
 		"city_count":    len(cities),
 		"officer_count": officerCount,
 		"troop_max":     maxCityTroop,

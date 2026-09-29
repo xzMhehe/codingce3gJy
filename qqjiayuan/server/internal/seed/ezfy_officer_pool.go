@@ -1408,6 +1408,8 @@ func normalizeEzfyNewCols(db *gorm.DB) {
 
 	// ★ 2026-09-28 新增 ezfy_city.placate_time（安抚冷却时间戳）→ 老行是 NULL，回填 0。
 	db.Exec("UPDATE ezfy_city SET placate_time = 0 WHERE placate_time IS NULL")
+	// ★ 2026-09-29 新增 ezfy_equipment.original_user_id（被俘装备原归属）→ 老行 NULL 归 0。
+	db.Exec("UPDATE ezfy_equipment SET original_user_id = 0 WHERE original_user_id IS NULL")
 	// ★ 2026-09-28 民心/税率联动上线后的**存量数据对齐**（幂等）：
 	//   老库里民心是「独立漂移」出来的（税率 20% 民心还是 100），与新的
 	//   「民心 + 税率 = 100」口径不符。这里把**民心本就高于基准**的城拉回基准。

@@ -1453,6 +1453,9 @@ type EzfyEquipment struct {
 	// ★ 2026-09-22 新增：穿戴部位 + 所属套装（从装备池复制，供套装效果判定）
 	Slot  string `gorm:"type:varchar(20);default:'';comment:部位" json:"slot"`
 	SetId int    `gorm:"default:0;comment:套装ID" json:"set_id"`
+	// ★ 2026-09-29 被俘军官的随身装备：记录**原归属玩家**，
+	//   收编后归当前玩家、释放时按此返还给原玩家（>0 才参与返还；0=普通装备）。
+	OriginalUserId uint `gorm:"default:0;comment:被俘装备的原归属玩家" json:"original_user_id"`
 	// ★ 六项战斗属性（从装备池复制，直接进战斗计算）
 	Series  string `gorm:"type:varchar(30);default:'';comment:系列" json:"series"`
 	Enhance int    `gorm:"default:0;comment:强化等级" json:"enhance"`
