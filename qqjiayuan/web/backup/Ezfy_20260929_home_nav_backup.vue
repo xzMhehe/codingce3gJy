@@ -77,7 +77,6 @@
         <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line">
-          <a href="javascript:;" @click="go('military')">军事</a>.
           <a href="javascript:;" @click="go('builds')">资源</a>.
           <a href="javascript:;" @click="go('acade')">军官</a>.
           <a href="javascript:;" @click="go('troops')">军队</a>.
@@ -123,6 +122,24 @@
         </div>
 
         <div class="old-line">
+          <a href="javascript:;" @click="go('buildm')">军事区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('m')">建造</a>
+        </div>
+        <div class="old-line">
+          <a href="javascript:;" @click="go('builds')">资源区</a><span class="home-gap"></span><a href="javascript:;" @click="openBuildPre('s')">建造</a>
+        </div>
+        <div class="old-line">
+          训练军队
+          <a href="javascript:;" @click="go('troop')">[造兵]</a><span class="home-gap"></span><a href="javascript:;" @click="go('defence')">[建防]</a>
+        </div>
+        <div class="old-line">
+          前往
+          <a href="javascript:;" @click="go('map')">地图</a>
+          出征
+        </div>
+        <div class="old-line">
+          <a href="javascript:;" @click="go('techs')">科研中心</a>
+        </div>
+        <div class="old-line">
           <a href="javascript:;" @click="go('citystatus')">城市状态</a><span class="home-gap"></span><a href="javascript:;" @click="go('wilds')">附属野地</a>
         </div>
         <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">[进入]</a></div>
@@ -142,31 +159,6 @@
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
-      </template>
-
-      <!-- ============ 军事入口页(military) ============ -->
-      <template v-else-if="cur === 'military'">
-        <div class="panel">
-          <div class="panel-title">军事</div>
-          <div class="old-line">
-            <a href="javascript:;" @click="go('buildm')">军事区建造</a>
-          </div>
-          <div class="old-line">
-            <a href="javascript:;" @click="go('builds')">资源区建造</a>
-          </div>
-          <div class="old-line">
-            训练军队
-            <a href="javascript:;" @click="go('troop')">[造兵]</a><span class="home-gap"></span><a href="javascript:;" @click="go('defence')">[建防]</a>
-          </div>
-          <div class="old-line">
-            前往
-            <a href="javascript:;" @click="go('map')">地图</a>
-            出征
-          </div>
-          <div class="old-line">
-            <a href="javascript:;" @click="go('techs')">科研中心</a>
-          </div>
-        </div>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -4500,7 +4492,7 @@ export default {
       return ['troops', 'troop', 'troopview', 'trainpre', 'factory'].indexOf(this.cur) >= 0
     },
     showSubnav () {
-      return ['military', 'buildm', 'builds', 'acade', 'officerdetail', 'techs', 'techpre', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
+      return ['buildm', 'builds', 'acade', 'officerdetail', 'techs', 'techpre', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
     },
     // ★ 玩家当前军衔等级 id（用于首页/统帅信息展示对应军衔星级图标）
     myRankId () { return this.rankIdByName(this.rankName) },
