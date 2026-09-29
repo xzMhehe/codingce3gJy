@@ -1024,9 +1024,9 @@
                 <span class="of-avail">现有 {{ fmtN(troopCount(t.id)) }}</span>
                 <span class="of-ctl">
                   <input type="range" class="of-range" min="0" step="1"
-                         :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
-                         :disabled="orderQtyMax(t.id) <= 0"
-                         @input="onOrderQtyInput(t.id, $event)"/>
+                          :max="troopCount(t.id)" :value="orderQty(t.id)"
+                          :disabled="orderQtyMax(t.id) <= 0"
+                          @input="onOrderQtyInput(t.id, $event)"/>
                   <input type="number" class="of-num" min="0" placeholder="0"
                          :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
                          :disabled="orderQtyMax(t.id) <= 0"
@@ -1540,6 +1540,12 @@
               <template v-if="orderOverCap">—— 超出上限，请减少兵力或加用集结令</template>
             </span>
           </div>
+          <!-- ★ 临时调试 + 部署版本标记（确认后删除）：slider v9：轨道刻度=城内总数，可选值夹剩余配额 -->
+          <div class="old-line" v-if="attackTroops.length" style="color:#c33;font-size:12px">
+            [v9] orderType={{ orderType }} | capApplies={{ orderCapApplies }}
+            | troop_cap={{ orderCalc ? orderCalc.troop_cap : '—' }}
+            | cap_unlimited={{ orderCalc ? (orderCalc.cap_unlimited ? 'true' : 'false') : '—' }}
+          </div>
 
           <!-- ③ 兵力 -->
           <div class="of-sec">③ 选择兵力
@@ -1553,7 +1559,7 @@
               <span class="of-avail">现有 {{ fmtN(troopCount(t.id)) }}</span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
-                       :max="orderQtyMax(t.id)" :value="orderQty(t.id)"
+                       :max="troopCount(t.id)" :value="orderQty(t.id)"
                        :disabled="orderQtyMax(t.id) <= 0"
                        @input="onOrderQtyInput(t.id, $event)"/>
                 <input type="number" class="of-num" min="0" placeholder="0"
