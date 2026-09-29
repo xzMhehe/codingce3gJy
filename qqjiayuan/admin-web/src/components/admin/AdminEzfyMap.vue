@@ -650,7 +650,19 @@
           </el-col>
         </el-row>
         <el-form-item label="守军配置">
-          <el-input v-model="aw.troops" placeholder="[[兵种id,数量],...]  留空用默认，如 [[29,50000],[12,20000]]" />
+          <!-- ★ 2026-09-29 原来是裸 JSON 文本框（[[兵种id,数量],...]），对非程序员不友好，改成可视化行编辑 -->
+          <div v-for="(r, i) in awTroops" :key="'awt' + i" class="wild-troop-row">
+            <el-select v-model.number="r.troop_id" filterable placeholder="选择兵种" style="width:220px">
+              <el-option v-for="t in troopCfgs" :key="'awtc' + t.id"
+                         :label="t.name + '（' + t.type_name + '）'" :value="t.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="r.count" :min="0" controls-position="right" style="width:150px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="awTroops.splice(i, 1)" />
+          </div>
+          <div class="old-line" v-if="!awTroops.length">（未配置守军，用默认活动守军）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addAwTroop">添加兵种</el-button>
+          <span class="td-sub" style="margin-left:8px">不填则用默认活动守军</span>
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="8">
@@ -743,6 +755,7 @@ export default {
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
       awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
+      awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
       saving: false
     }
   },
@@ -952,6 +965,7 @@ export default {
     openAwCreate () {
       this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' }
       this.awOfficerKind = 1
+      this.awTroops = []
       this.awDlg = true
     },
     openAwEdit (row) {
@@ -959,6 +973,7 @@ export default {
       // 根据已选军官推断类型（能查到该军官 -> 用其 kind）
       const g = (this.generals || []).find(x => Number(x.id) === Number(row.officer_id))
       this.awOfficerKind = g ? (Number(g.kind) === 2 ? 2 : 1) : 1
+      this.awTroops = this.parseAwTroops(row.troops)
       this.awDlg = true
     },
     // 切换普通/名将 时清空已选军官（不同类型不能保留旧选择）
@@ -966,11 +981,32 @@ export default {
       this.aw.officer_id = 0
       this.aw.officer_name = ''
     },
+    // 解析 [[兵种id,数量],...] JSON → 可视化行
+    parseAwTroops (raw) {
+      const out = []
+      try {
+        const arr = JSON.parse(raw || '[]')
+        if (Array.isArray(arr)) {
+          arr.forEach(r => {
+            if (Array.isArray(r) && r.length >= 2 && Number(r[0]) > 0) {
+              out.push({ troop_id: Number(r[0]) || 0, count: Number(r[1]) || 0 })
+            }
+          })
+        }
+      } catch (e) { /* 历史脏数据忽略 */ }
+      return out
+    },
+    addAwTroop () {
+      const first = this.troopCfgs[0]
+      if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, count: 100 })
+    },
     saveAw () {
       const a = this.aw
       if (!(Number(a.x) > 0) || !(Number(a.y) > 0)) { this.$message.warning('请填写坐标 x/y'); return }
-      // 守军空串→留空用默认
-      let troops = (a.troops || '').trim().replace(/[^\d\[\],]/g, '')
+      // 可视化行 → [[兵种id,数量],...]（没配任何行 = 留空用默认守军）
+      const rows = (this.awTroops || []).filter(r => Number(r.troop_id) > 0 && Number(r.count) > 0)
+        .map(r => [Number(r.troop_id), Number(r.count)].map(n => Number(n)))
+      const troops = rows.length ? JSON.stringify(rows) : ''
       const payload = {
         x: Number(a.x), y: Number(a.y),
         enabled: a.enabled ? 1 : 0,

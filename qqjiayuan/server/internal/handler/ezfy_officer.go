@@ -1659,13 +1659,16 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 	desc := ""
 	roll := rand.Intn(100)
 	dropChance, tier := 80, 1
-	if level >= 3 && roll < 50 {
+	// ★ 2026-09-29 用户要求：先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
+	//   统一调低 → 中级17% (roll<25) / 高级6% (roll<8) / 特殊2% (roll<2)，
+	//   省出的概率全部归到 初级(初级散件变多)。要再调概率就改这三个阈值。
+	if level >= 3 && roll < 25 {
 		tier = 2
 	}
-	if level >= 6 && roll < 20 {
+	if level >= 6 && roll < 8 {
 		tier = 3
 	}
-	if level >= 9 && roll < 6 {
+	if level >= 9 && roll < 2 {
 		tier = 4
 	}
 	if special {

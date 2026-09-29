@@ -103,7 +103,6 @@
               </template>
             </el-table-column>
             <el-table-column prop="sale_count" label="已上架" width="70" align="center" />
-            <el-table-column prop="effect" label="套装效果" min-width="180" show-overflow-tooltip />
             <el-table-column label="操作" width="200" align="center" fixed="right">
               <template slot-scope="{row}">
                 <el-button size="mini" type="success" plain icon="el-icon-view" title="查看/编辑套装件" @click="openSetPieces(row)" />

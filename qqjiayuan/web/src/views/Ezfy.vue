@@ -1680,8 +1680,10 @@
               <th v-if="!battleData.done">目标</th>
               <th v-if="!battleData.done">指挥</th>
             </tr>
-            <tr v-for="u in battleData.attackers" :key="'ba' + u.troop_id">
-              <td class="red">攻</td><td class="nm">{{ u.name }}</td>
+            <tr v-for="u in battleData.attackers" :key="'ba' + u.troop_id"
+                :class="battleData.is_atk ? 'ezfy-row-self' : 'ezfy-row-enemy'">
+              <td class="ezfy-side-lbl"><span :class="battleData.is_atk ? 'green' : 'red'">攻</span></td>
+              <td class="nm">{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
                    指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的）。
@@ -1707,8 +1709,10 @@
                 <span v-else class="gray">AI</span>
               </td>
             </tr>
-            <tr v-for="u in battleData.defenders" :key="'bd' + u.troop_id">
-              <td>守</td><td class="nm">{{ u.name }}</td>
+            <tr v-for="u in battleData.defenders" :key="'bd' + u.troop_id"
+                :class="!battleData.is_atk ? 'ezfy-row-self' : 'ezfy-row-enemy'">
+              <td class="ezfy-side-lbl"><span :class="!battleData.is_atk ? 'green' : 'red'">守</span></td>
+              <td class="nm">{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <td v-if="!battleData.done">
                 <template v-if="!battleData.is_atk">
@@ -1735,8 +1739,18 @@
           <div class="old-line">
             战场态势：攻方 {{ fmtN(battleData.atk_total) }} · 守方 {{ fmtN(battleData.def_total) }}
           </div>
-          <!-- 行动日志 -->
-          <div class="old-line gray" v-for="(l, i) in battleData.actions" :key="'bl' + i">{{ l }}</div>
+          <!-- 行动日志：最新回合在最上、已过回合在下；我方绿色、敌军红色 -->
+          <div class="old-line ezfy-battle-legend">
+            <span class="green">■ 我方</span>&nbsp;<span class="red">■ 敌军</span>
+          </div>
+          <template v-if="battleRounds.length">
+            <div class="old-line ezfy-round-block" v-for="(g, gi) in battleRounds" :key="'bg' + gi">
+              <div v-if="g.line" class="ezfy-round-title">{{ g.line }}</div>
+              <div v-for="(li, idx) in g.items" :key="'bl' + gi + '_' + idx"
+                   class="ezfy-round-line" :class="battleLineClass(li)">{{ li }}</div>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(暂无行动)</div>
           <div class="old-line">
             <a href="javascript:;" @click="leaveBattle">[返回军队动态]</a>
           </div>
@@ -2774,7 +2788,6 @@
                         <span class="gray">穿齐 {{ setOf(p.set_id).parts }} 件才生效</span>
                       </div>
                       <div class="sc-b">套装加成：<b class="green">{{ setBonusText(p.set_id) || '（本套装无额外属性加成）' }}</b></div>
-                      <div class="sc-b gray" v-if="setOf(p.set_id).effect">额外效果：{{ setOf(p.set_id).effect }}</div>
                       <div class="sc-b">我的进度：已拥有 <b>{{ setOf(p.set_id).owned || 0 }}</b>/{{ setOf(p.set_id).parts }} 件
                         <span v-if="(setOf(p.set_id).owned || 0) >= setOf(p.set_id).parts" class="green">已够穿齐</span>
                         <span v-else class="red">还差 {{ setOf(p.set_id).parts - (setOf(p.set_id).owned || 0) }} 件</span>
@@ -3487,7 +3500,7 @@
             <input v-model="equipWord" type="text" placeholder="装备名 / 部位 / 套装"
                    style="width:180px" @input="equipPage = 1"/>
             <a href="javascript:;" @click="equipWord = ''; equipPage = 1">[清空]</a>
-            <span class="gray">共 {{ equipFiltered.length }} 件</span>
+            <span class="gray">共 {{ equipGroups.length }} 种</span>
           </div>
           <table class="ezfy-plain-table">
             <colgroup>
@@ -3501,8 +3514,8 @@
                  ★ 用户进一步要求「点名称看该装备的加成，点套装看套装的加成」
                  → 两个入口看**不同**内容，用 detailMode 区分。 -->
             <template v-for="e in equipPaged">
-            <tr :key="'eq' + e.id">
-              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a></td>
+            <tr :key="'eq' + e.key">
+              <td class="nm"><a href="javascript:;" @click="toggleDetail(e.id, 'item')">{{ e.name }}</a><span class="gray"> ×{{ e.count }}</span></td>
               <td>{{ e.slot || e.type }}</td>
               <td>
                 <a v-if="e.set_id" href="javascript:;" @click="toggleDetail(e.id, 'set')">{{ e.set_name }}</a>
@@ -3511,8 +3524,8 @@
               <td :class="qualityClass(e.tier_name)">{{ e.tier_name }}</td>
               <td>{{ e.level }}</td>
               <td>
-                <span v-if="e.worn" class="gray">{{ e.worn_by }}已穿戴</span>
-                <a v-else href="javascript:;" @click="switchAcade('officer')">[去穿戴]</a>
+                <span v-if="e.worn > 0" class="gray">已穿戴{{ e.worn }}{{ e.worn >= e.count ? ' · 全部' : '' }}</span>
+                <a v-if="e.count - e.worn > 0" href="javascript:;" @click="switchAcade('officer')">[去穿戴{{ e.count - e.worn }}]</a>
               </td>
             </tr>
             <tr v-if="detailRowId === e.id" :key="'dt' + e.id" class="set-card-row">
@@ -3535,7 +3548,7 @@
                       <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
                     </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                    
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
                       <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
@@ -3552,9 +3565,9 @@
           <div class="old-line gray" v-if="!equipData.bag.length">(背包暂无装备)</div>
           <div class="old-line gray" v-else-if="!equipFiltered.length">(没有匹配「{{ equipWord }}」的装备)</div>
           <!-- ★ 分页 -->
-          <div class="ezfy-pager" v-if="equipFiltered.length > equipPageSize">
+          <div class="ezfy-pager" v-if="equipGroups.length > equipPageSize">
             <a href="javascript:;" :class="{ disabled: equipPage <= 1 }" @click="equipGo(-1)">[上一页]</a>
-            <span class="gray">第 {{ Math.min(equipPage, equipTotalPages) }}/{{ equipTotalPages }} 页 · 共 {{ equipFiltered.length }} 件</span>
+            <span class="gray">第 {{ Math.min(equipPage, equipTotalPages) }}/{{ equipTotalPages }} 页 · 共 {{ equipGroups.length }} 种</span>
             <a href="javascript:;" :class="{ disabled: equipPage >= equipTotalPages }" @click="equipGo(1)">[下一页]</a>
           </div>
           </div>
@@ -3628,7 +3641,7 @@
                       <span class="gray">穿齐 {{ setOf(e.set_id).parts }} 件才生效</span>
                     </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(e.set_id) || '（本套装无额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(e.set_id).effect">额外效果：{{ setOf(e.set_id).effect }}</div>
+                    
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(e.set_id).owned || 0 }}</b>/{{ setOf(e.set_id).parts }} 件
                       <span v-if="(setOf(e.set_id).owned || 0) >= setOf(e.set_id).parts" class="green">已够穿齐</span>
                       <span v-else class="red">还差 {{ setOf(e.set_id).parts - (setOf(e.set_id).owned || 0) }} 件</span>
@@ -3805,6 +3818,7 @@
             <div class="old-line" v-for="sp in officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
               套装「{{ sp.name }}」：{{ sp.worn }}/{{ sp.parts }} 件
               <span :class="sp.active ? 'green' : 'gray'">{{ sp.active ? '已生效' : ('还差 ' + sp.need + ' 件') }}</span>
+              <span v-if="sp.active && equipAttrText(sp)" class="green">（{{ equipAttrText(sp) }}）</span>
             </div>
           </template>
 
@@ -3923,7 +3937,7 @@
                       <span class="gray">穿齐 {{ setOf(g.first.set_id).parts }} 件才生效</span>
                     </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(g.first.set_id) || '（本套装无额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(g.first.set_id).effect">额外效果：{{ setOf(g.first.set_id).effect }}</div>
+                    
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(g.first.set_id).owned || 0 }}</b>/{{ setOf(g.first.set_id).parts }} 件
                       <span v-if="(setOf(g.first.set_id).owned || 0) >= setOf(g.first.set_id).parts" class="green">已够穿齐</span>
                       <span v-else class="red">还差 {{ setOf(g.first.set_id).parts - (setOf(g.first.set_id).owned || 0) }} 件</span>
@@ -3972,7 +3986,7 @@
             <tr><th colspan="6">装备背包</th></tr>
             <!-- ★ 2026-09-29：同一件装备（同 cfg）叠加成一行「名称 ×N」；部位有空余才能 [穿戴]，
                  没空余（同部位已穿戴）显示「部位已满」不可穿戴。 -->
-            <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>数量</th><th>操作</th></tr>
+            <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>要求等级</th><th>操作</th></tr>
             <template v-for="g in officerBagPaged">
             <tr :key="'db' + g.key">
               <td class="nm"><a href="javascript:;" @click="toggleDetail(g.first.id, 'item')">{{ g.name }}</a><span class="gray"> ×{{ g.count }}</span></td>
@@ -3982,7 +3996,7 @@
                 <span v-else class="gray">—</span>
               </td>
               <td :class="qualityClass(g.tier_name)">{{ g.tier_name }}</td>
-              <td>{{ g.count }}</td>
+              <td>{{ g.first.level }}</td>
               <td>
                 <a v-if="g.canEquip" href="javascript:;" @click="doEquipGroup(g)">[穿戴]</a>
                 <span v-else class="gray">部位已满</span>
@@ -4008,7 +4022,7 @@
                       <span class="gray">穿齐 {{ setOf(g.first.set_id).parts }} 件才生效</span>
                     </div>
                     <div class="sc-b">套装加成：<b class="green">{{ setBonusText(g.first.set_id) || '（本套装无额外属性加成）' }}</b></div>
-                    <div class="sc-b gray" v-if="setOf(g.first.set_id).effect">额外效果：{{ setOf(g.first.set_id).effect }}</div>
+                    
                     <div class="sc-b">我的进度：已拥有 <b>{{ setOf(g.first.set_id).owned || 0 }}</b>/{{ setOf(g.first.set_id).parts }} 件
                       <span v-if="(setOf(g.first.set_id).owned || 0) >= setOf(g.first.set_id).parts" class="green">已够穿齐</span>
                       <span v-else class="red">还差 {{ setOf(g.first.set_id).parts - (setOf(g.first.set_id).owned || 0) }} 件</span>
@@ -4914,10 +4928,25 @@ export default {
       return list.filter(e => [e.name, e.slot, e.type, e.set_name, e.series, e.tier_name]
         .some(v => String(v || '').toLowerCase().includes(w)))
     },
-    equipTotalPages () { return Math.max(1, Math.ceil(this.equipFiltered.length / this.equipPageSize)) },
+    // ★ 2026-09-29 用户要求：「我的装备」按同名同件聚合展示（名称 ×N），减少分页数；
+    //   状态列判断还有几件可穿戴（未穿戴件数）。细节行沿用 first 的字段，无需改。
+    equipGroups () {
+      const map = {}, order = []
+      for (const e of this.equipFiltered) {
+        const k = [e.name, e.level, e.slot, e.type].join('|')
+        if (!map[k]) {
+          map[k] = Object.assign({}, e, { first: e, count: 0, worn: 0 })
+          order.push(map[k])
+        }
+        map[k].count++
+        if (e.worn) map[k].worn++
+      }
+      return order
+    },
+    equipTotalPages () { return Math.max(1, Math.ceil(this.equipGroups.length / this.equipPageSize)) },
     equipPaged () {
       const p = Math.min(Math.max(1, this.equipPage), this.equipTotalPages)
-      return this.equipFiltered.slice((p - 1) * this.equipPageSize, p * this.equipPageSize)
+      return this.equipGroups.slice((p - 1) * this.equipPageSize, p * this.equipPageSize)
     },
     // 装备图鉴
     equipAllFiltered () {
@@ -5070,6 +5099,22 @@ export default {
       const total = this.battleData.round_ms || 30000
       const pct = this.battleLeftMs * 100 / total
       return Math.max(0, Math.min(100, pct))
+    },
+    // ★ 战场指挥室：把行动日志按回合分组，并让**最新回合排最上**（旧回合往下沉）
+    battleRounds () {
+      const acts = (this.battleData && this.battleData.actions) || []
+      const groups = []
+      let cur = null
+      for (const a of acts) {
+        if (/^第\d+回合:/.test(a)) {
+          cur = { line: a, items: [] }
+          groups.push(cur)
+        } else {
+          if (!cur) { cur = { line: null, items: [] }; groups.push(cur) }
+          cur.items.push(a)
+        }
+      }
+      return groups.slice().reverse()
     },
     // ★ 商城散件：部位筛选 + 检索 + 分页
     shopSlots () {
@@ -6049,6 +6094,16 @@ export default {
     },
     battleCmdName (c) {
       return c === 'hold' ? '停止' : (c === 'retreat' ? '后退' : '前进')
+    },
+    // ★ 战场指挥室：行动日志按攻守上色 —— 我方绿色（跟随 is_atk），敌军红色
+    battleLineClass (text) {
+      const t = text || ''
+      const isAtk = /^【攻方】/.test(t)
+      const isDef = /^【守方】/.test(t)
+      if (!isAtk && !isDef) return 'gray'
+      const mineAtk = !!this.battleData.is_atk
+      if (isAtk) return mineAtk ? 'green' : 'red'
+      return mineAtk ? 'red' : 'green'
     },
     // resumeBattle 刷新页面后从后端找回「进行中的战斗」（订单 id 没存在 URL 里）
     resumeBattle () {
@@ -9061,6 +9116,30 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .ezfy-battle-bar > i.on { background: #27763c; }
 .ezfy-page .ezfy-battle-bar > i.lock { background: #c0392b; }
+/* ★ 战场指挥室：双方兵力表按攻守着色 —— 我方整行浅绿(enemy 浅红)、方标签加粗 */
+.ezfy-page .ezfy-battle-tbl tr.ezfy-row-self td { background: #eef7f0 !important; }
+.ezfy-page .ezfy-battle-tbl tr.ezfy-row-enemy td { background: #fdeeec !important; }
+.ezfy-page .ezfy-battle-tbl tr.ezfy-row-self td.ezfy-side-lbl { font-weight: bold; }
+.ezfy-page .ezfy-battle-tbl tr.ezfy-row-enemy td.ezfy-side-lbl { font-weight: bold; }
+/* ★ 战场指挥室：行动日志 —— 最新回合排最上，回合标题加粗，回合块间留白 */
+.ezfy-page .ezfy-battle-legend { font-size: var(--fs); }
+.ezfy-page .ezfy-round-block {
+  margin: 4px 0 6px;
+  padding-left: 6px;
+  border-left: 2px solid #ddd;
+}
+.ezfy-page .ezfy-round-title {
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 2px;
+}
+.ezfy-page .ezfy-round-line {
+  line-height: 1.6;
+  font-size: var(--fs);
+}
+.ezfy-page .ezfy-round-line.green { color: #1d5c2e; }
+.ezfy-page .ezfy-round-line.red { color: #a02a1e; }
+.ezfy-page .ezfy-round-line.gray { color: #777; }
 /* ★ 商城「装备 / 道具」的分类筛选：flex 自动换行。
    原 grid repeat(6, max-content) 固定 6 列，分类名较长时(手机端)整排溢出容器形成横向滑动；
    2026-09-24 改为流式排列，超过一行宽度就换行(背包分类共用此类)。 */
