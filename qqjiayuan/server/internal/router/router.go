@@ -1346,6 +1346,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 
 				// ---- 野地类型维护（ezfy_cfg_wildland） ----
 				admin.GET("/ezfy-map/options", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapOptions)
+				// 活动野地配置（地图管理「活动野地」tab，2026-09-29）
+				admin.GET("/ezfy-act-wilds", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildList)
+				admin.POST("/ezfy-act-wilds", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildSave)
+				admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildToggle)
+				admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildDelete)
 				// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
 				admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTiles)
 				admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTileCell)

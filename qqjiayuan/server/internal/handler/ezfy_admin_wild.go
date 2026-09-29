@@ -97,7 +97,7 @@ func (h *AdminHandler) AdminEzfyMapOptions(c *gin.Context) {
 	h.DB.Order("id").Find(&gens)
 	gviews := make([]gin.H, 0, len(gens))
 	for _, g := range gens {
-		gviews = append(gviews, gin.H{"id": g.ID, "name": g.Name, "star": g.Star,
+		gviews = append(gviews, gin.H{"id": g.ID, "name": g.Name, "star": g.Star, "kind": g.Kind,
 			"military": g.Military, "logistics": g.Logistics, "learning": g.Learning})
 	}
 	resp.OK(c, gin.H{"troops": tviews, "generals": gviews})

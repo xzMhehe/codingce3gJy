@@ -138,6 +138,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCfgRank{},
 		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
 		&model.EzfyMapTile{},
+		&model.EzfyActWild{},
 		// 建筑数量上限配置（军事区/资源区各 36，管理端可维护）
 		&model.EzfyCfgLimit{},
 		// 二战聊天敏感词（独立维护页）

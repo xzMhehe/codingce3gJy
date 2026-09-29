@@ -658,7 +658,9 @@
             <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源区</a>
           </div>
           <br/>
-          <div class="old-line">建造中队列数：{{ buildQueueCount }}</div>
+          <div class="old-line">建造中队列数：{{ buildQueueCount }}
+            <a href="javascript:;" @click="openBuildPre(cur === 'buildm' ? 'm' : 's')">建造</a>
+          </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->
           <div class="old-line" v-for="b in zoneBuilt" :key="'zb' + b.id">
             <span v-if="bEntry(b.building_id)">
@@ -5158,6 +5160,8 @@ export default {
   mounted () {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
+    // ★ 2026-09-29 浏览器标签页标题：二战征途改为游戏名（不再显示默认的「家园社区」）
+    document.title = '二战征途-文字游戏'
     // ★ 2026-09-28 司令部子 tab: 刷新后仍是上次选中的 tab（localStorage）
     this.hqTab = this.restoreHqTab()
     // ★ 2026-09-27 iPhone 字体再修复：旧方案用 `@supports (-webkit-touch-callout: none)`

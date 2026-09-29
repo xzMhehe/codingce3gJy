@@ -173,6 +173,83 @@
           </div>
         </el-tab-pane>
 
+        <!-- ================= 活动野地配置 ================= -->
+        <el-tab-pane label="活动野地" name="actwild">
+          <div class="toolbar">
+            <el-input v-model="awWord" placeholder="坐标 x,y 或备注" clearable style="width:180px"
+                      @keyup.enter.native="awPage = 1; loadActWilds()" />
+            <el-select v-model="awEnabled" style="width:130px" @change="awPage = 1; loadActWilds()">
+              <el-option label="全部" :value="-1" />
+              <el-option label="已启用" :value="1" />
+              <el-option label="已关闭" :value="0" />
+            </el-select>
+            <el-button type="primary" icon="el-icon-search" @click="awPage = 1; loadActWilds()">查询</el-button>
+            <span class="td-sub">活动野地 = 区别于普通野地、可打活动（守军/奖励可配）；关 = 普通野地</span>
+            <div class="grow" />
+            <el-button type="success" icon="el-icon-plus" @click="openAwCreate">新增活动野地</el-button>
+            <el-button type="primary" plain icon="el-icon-refresh" @click="loadActWilds">刷新</el-button>
+          </div>
+
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
+            <template slot="title">
+              给坐标设置活动野地配置：启用开关打开 = 该格按活动野地玩法（玩家可出征打活动、赢奖励但不占领）；
+              关闭或删除 = 该格按普通野地处理。等级/守军/奖励不填则用默认活动档。
+            </template>
+          </el-alert>
+
+          <el-table :data="actWilds" v-loading="loadingAw" stripe border>
+            <el-table-column prop="id" label="ID" width="60" align="center" />
+            <el-table-column label="坐标" width="110" align="center">
+              <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
+            </el-table-column>
+            <el-table-column label="启用" width="90" align="center">
+              <template slot-scope="{row}">
+                <el-switch :value="row.enabled === 1" @change="toggleAw(row)" />
+              </template>
+            </el-table-column>
+            <el-table-column prop="level" label="等级" width="70" align="center">
+              <template slot-scope="{row}">{{ row.level || '默认' }}</template>
+            </el-table-column>
+            <el-table-column label="守军" min-width="180" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.troops" class="td-mono">{{ row.troops }}</span>
+                <span v-else class="td-sub">默认</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="资源/黄金/声望" width="170" align="center">
+              <template slot-scope="{row}">
+                <span class="td-mono">{{ row.res || '默认' }}/{{ row.gold || '默认' }}/{{ row.prestige || '默认' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="宝物" width="90" align="center">
+              <template slot-scope="{row}">
+                <span v-if="row.jewel">{{ row.jewel }}</span>
+                <span v-else class="td-sub">默认</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="守将" width="130" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.officer_id > 0" class="td-blue">{{ row.officer_name }}（{{ row.officer_id }}）</span>
+                <span v-else class="td-sub">无</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="des" label="备注" min-width="140" show-overflow-tooltip />
+            <el-table-column label="操作" width="150" align="center" fixed="right">
+              <template slot-scope="{row}">
+                <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openAwEdit(row)" />
+                <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delAw(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="pager-bar">
+            <div class="pager-info">共 <b>{{ awTotal }}</b> 条 · 每页 {{ awSize }} 条</div>
+            <el-pagination v-show="awTotal > 0" small background layout="sizes, prev, pager, next, jumper" :total="awTotal" :page-size="awSize"
+                           :current-page="awPage" :page-sizes="[5, 10, 20, 50, 100]"
+                           @current-change="p => { awPage = p; loadActWilds() }"
+                           @size-change="s => { awSize = s; awPage = 1; loadActWilds() }" />
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="野地维护" name="wildlands">
           <div class="toolbar">
             <el-input v-model="wildWord" placeholder="城名 / 城池ID / 坐标" clearable style="width:190px"
@@ -542,6 +619,76 @@
         <el-button type="primary" :loading="saving" @click="doWcSave">保 存</el-button>
       </div>
     </el-dialog>
+
+    <!-- ============ 新增 / 编辑 活动野地配置 ============ -->
+    <el-dialog :title="aw.id ? ('编辑活动野地 · ' + aw.x + ',' + aw.y) : '新增活动野地'"
+               :visible.sync="awDlg" width="620px" :close-on-click-modal="false">
+      <el-form label-width="110px" size="small">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="X 坐标" required>
+              <el-input-number v-model.number="aw.x" :min="1" :max="500" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="Y 坐标" required>
+              <el-input-number v-model.number="aw.y" :min="1" :max="500" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="启用">
+              <el-switch v-model="aw.enabled" active-text="活动野地" inactive-text="普通野地" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="活动等级">
+              <el-input-number v-model.number="aw.level" :min="0" :max="3" controls-position="right" style="width:100%" />
+              <span class="td-sub">0 = 默认</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="守军配置">
+          <el-input v-model="aw.troops" placeholder="[[兵种id,数量],...]  留空用默认，如 [[29,50000],[12,20000]]" />
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="资源奖励">
+              <el-input-number v-model.number="aw.res" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="黄金奖励">
+              <el-input-number v-model.number="aw.gold" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="声望奖励">
+              <el-input-number v-model.number="aw.prestige" :min="0" controls-position="right" style="width:100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="必掉宝物">
+          <el-input v-model="aw.jewel" maxlength="100" placeholder="可空（用默认地形宝石），例如：红宝石" />
+        </el-form-item>
+        <el-form-item label="守将军官">
+          <el-select v-model.number="aw.officer_id" filterable clearable placeholder="不设守将（打赢也俘不到军官）" style="width:100%">
+            <el-option v-for="g in generals" :key="'awg' + g.id"
+                       :label="g.name + '（' + g.star + '星' + (g.kind === 2 ? '·名将' : '·普通') + '）'"
+                       :value="g.id" />
+          </el-select>
+          <span class="td-sub">普通军官 / 名将都可选；打赢后按星级概率俘虏</span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="aw.des" maxlength="200" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="awDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveAw">保 存</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -585,6 +732,9 @@ export default {
       terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '山地', 8: '海洋', 9: '沿海平原' },
       wildDlg: false, wf: emptyWild(), wildCfgMatch: null,
       wcDlg: false, wc: emptyWc(),
+      // 活动野地配置（2026-09-29）
+      actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '' },
       saving: false
     }
   },
@@ -595,7 +745,7 @@ export default {
       return this.wc.wcTroops
     }
   },
-  mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles() },
+  mounted () { this.loadCities(); this.loadMapOptions(); this.loadTiles(); this.loadActWilds() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     fmtN (v) {
@@ -615,6 +765,7 @@ export default {
       else if (this.tab === 'occupy') this.loadOccupy()
       else if (this.tab === 'areas') this.loadAreas()
       else if (this.tab === 'stars') this.loadStars()
+      else if (this.tab === 'actwild') this.loadActWilds()
     },
     loadCities () {
       this.loadingCity = true
@@ -768,6 +919,67 @@ export default {
         { type: 'warning' }).then(() => {
         api.delete('/admin/ezfy-map-tiles/' + row.id).then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadTiles() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ---- 活动野地配置（2026-09-29） ----
+    loadActWilds () {
+      this.loadingAw = true
+      api.get('/admin/ezfy-act-wilds', {
+        params: { page: this.awPage, size: this.awSize, word: this.awWord, enabled: this.awEnabled }
+      }).then(r => {
+        this.loadingAw = false
+        if (r.code === 0) {
+          this.actWilds = r.data.list || []
+          this.awTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
+      })
+    },
+    openAwCreate () {
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '' }
+      this.awDlg = true
+    },
+    openAwEdit (row) {
+      this.aw = Object.assign({}, row)
+      this.awDlg = true
+    },
+    saveAw () {
+      const a = this.aw
+      if (!(Number(a.x) > 0) || !(Number(a.y) > 0)) { this.$message.warning('请填写坐标 x/y'); return }
+      // 守军空串→留空用默认
+      let troops = (a.troops || '').trim().replace(/[^\d\[\],]/g, '')
+      const payload = {
+        x: Number(a.x), y: Number(a.y),
+        enabled: a.enabled ? 1 : 0,
+        level: Number(a.level) || 0,
+        troops: troops,
+        res: Number(a.res) || 0,
+        gold: Number(a.gold) || 0,
+        prestige: Number(a.prestige) || 0,
+        jewel: a.jewel || '',
+        des: a.des || '',
+        officer_id: Number(a.officer_id) || 0
+      }
+      this.saving = true
+      api.post('/admin/ezfy-act-wilds', payload).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已保存')
+          this.awDlg = false
+          this.loadActWilds()
+        } else this.$message.error(r.msg)
+      })
+    },
+    toggleAw (row) {
+      api.post('/admin/ezfy-act-wilds/' + row.id + '/toggle').then(r => {
+        if (r.code === 0) { this.$message.success(r.data.msg || '已切换'); this.loadActWilds() } else this.$message.error(r.msg)
+      })
+    },
+    delAw (row) {
+      this.$confirm('删除坐标 (' + row.x + ',' + row.y + ') 的活动野地配置？删除后该格按默认判定。', '提示',
+        { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-act-wilds/' + row.id).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadActWilds() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     },

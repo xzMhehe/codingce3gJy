@@ -27,8 +27,8 @@ const (
 	ezfyChatPageMax  = 50
 	// 系统消息比玩家发言长一点（「恭喜 xxx 晋升上校」这类），但也别长到刷屏
 	ezfySysChatMaxRune = 120
-	// 首页「世界聊天」预览条数（用户要求：默认展示 6 条）
-	ezfyHomeChatLimit = 6
+	// 首页「世界聊天」预览条数（用户要求：默认展示 4 条）
+	ezfyHomeChatLimit = 4
 )
 
 // ezfySysChat 往**系统频道**写一条消息（talk_type=0，只读）。
@@ -326,7 +326,7 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 //
 //	这样玩家改了个性昵称、换了昵称颜色, 聊天里也会跟着变。
 //
-// ★ 展示规则(用户要求)：取**最新 6 条**，按时间**升序**排列（最早的在上、最新的在下）。
+// ★ 展示规则(用户要求)：取**最新 4 条**，按时间**升序**排列（最早的在上、最新的在下）。
 func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()

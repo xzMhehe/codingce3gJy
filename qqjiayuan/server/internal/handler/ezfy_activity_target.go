@@ -1,14 +1,34 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"qqjiayuan/server/internal/model"
 )
+
+// parseActWildTroops 解析活动野地配置的守军 JSON [[兵种id,count],...]→ 战斗兵组列表
+//
+// 失败/空串返回 nil。count 不合法（<=0）的行丢弃。
+func parseActWildTroops(raw string) []ezfyUnitGroup {
+	var rows [][2]int
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := []ezfyUnitGroup{}
+	for _, r := range rows {
+		if r[0] <= 0 || r[1] <= 0 {
+			continue
+		}
+		out = append(out, ezfyUnitGroup{TroopId: r[0], Count: int64(r[1])})
+	}
+	return out
+}
 
 // 二战风云 活动目标：活动野地 / 活动寇城 / 特殊城市
 //
@@ -69,6 +89,15 @@ func ezfyActivityLevel(x, y int) int {
 //	actWild = !isKou                 && isActivityWildland
 //	actCity = !isKou && !actWild     && isSpecialCity
 func (h *EzfyHandler) ezfyActTargetType(x, y int) int {
+	// ★ 2026-09-29 活动野地「按坐标配置」优先：某格有 ezfy_act_wild 记录时，
+	//   enabled=1 → 强制活动野地；enabled=0 → 强制**不是**活动目标（区别于普通野地）。
+	//   无记录才回落 mark 覆盖 / 坐标哈希判定。
+	if aw := ezfyActWildAt(x, y); aw != nil {
+		if aw.Enabled == 1 {
+			return ezfyActWild
+		}
+		return ezfyActNone
+	}
 	// ★ 管理端「地图格子覆盖」优先：某格被显式标成活动目标就用它，
 	//   否则照旧按坐标哈希推导。
 	switch ezfyMarkKindAt(x, y) {
@@ -172,7 +201,22 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	terrain := ezfyTerrain(order.TargetX, order.TargetY)
 	label := ezfyActTargetLabel(actType, level)
 
+	// ★ 2026-09-29 活动野地「按坐标配置」：等级/守军/奖励 优先用 ezfy_act_wild 配置，缺省回退默认
+	aw := ezfyActWildAt(order.TargetX, order.TargetY)
+	if aw != nil && aw.Enabled == 1 {
+		if aw.Level >= 1 && aw.Level <= 3 {
+			level = aw.Level
+			label = ezfyActTargetLabel(actType, level)
+		}
+	}
+
 	defender := ezfyActivityDefender(actType, level, terrain)
+	// 配置里的守军优先（JSON [[兵种id,count],...]）
+	if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Troops) != "" {
+		if cfg := parseActWildTroops(aw.Troops); cfg != nil && len(cfg) > 0 {
+			defender = cfg
+		}
+	}
 	attacker := parseGroups(order.Troops)
 
 	// 攻方加成与普通出征完全一致（军官 + 科技 + 技能）
@@ -331,7 +375,21 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	prestigeGain := 0
 	if win {
 		// 奖励：资源（档位基础值 × 类型倍数）+ 黄金（元宝）+ 必定掉宝 + 大量声望
+		// ★ 2026-09-29 活动野地配置：奖励可配，缺省回退默认
 		res := ezfyActRewardBase(actType, level)
+		gold := ezfyActGoldReward(actType, level)
+		prestigeGain = ezfyActPrestigeReward(actType, level)
+		if aw != nil && aw.Enabled == 1 {
+			if aw.Res > 0 {
+				res = aw.Res
+			}
+			if aw.Gold > 0 {
+				gold = aw.Gold
+			}
+			if aw.Prestige > 0 {
+				prestigeGain = aw.Prestige
+			}
+		}
 		// ★ 2026-09-27 活动城奖励必须「累加」到「资源最大值」，不能按仓储上限 clamp：
 		//   旧写法 min64(city.XxxCap*3, old+res) 会把「已超过仓储 3 倍」的存量直接拉低，
 		//   导致打一次活动城资源反而变少（用户反馈「资源会掉」）。
@@ -341,7 +399,6 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		city.Steel = ezfyAddResMax("steel", city.Steel, res)
 		city.Oil = ezfyAddResMax("oil", city.Oil, res)
 		city.Rare = ezfyAddResMax("rare", city.Rare, res)
-		gold := ezfyActGoldReward(actType, level)
 		city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 		h.saveCityRes(city)
 
@@ -349,9 +406,16 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		if loot := h.wildlandLoot(city, level*3, terrain, true); loot != "" {
 			report += "\n" + loot
 		}
-		prestigeGain = ezfyActPrestigeReward(actType, level)
 		h.addPrestige(uid, prestigeGain)
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
+		// ★ 2026-09-29 活动野地守将：若该坐标配置了军官，胜利后有概率俘虏（普通军官/名将都可选）
+		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
+			if g := ezfyCfg.general(aw.OfficerId); g != nil {
+				if c := h.createCaptiveOfficer(city, g, level, true); c != "" {
+					report += "\n" + c
+				}
+			}
+		}
 		order.Status = 2
 		report = "我军胜利!\n" + report
 	} else if draw {
@@ -425,7 +489,17 @@ func ezfyActPrestigeReward(actType, level int) int {
 func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin.H {
 	level := ezfyActivityLevel(x, y)
 	terrain := ezfyTerrain(x, y)
+	// ★ 2026-09-29 活动野地配置：等级/守军/奖励 优先用 ezfy_act_wild（enabled=1）
+	aw := ezfyActWildAt(x, y)
+	if aw != nil && aw.Enabled == 1 && aw.Level >= 1 && aw.Level <= 3 {
+		level = aw.Level
+	}
 	defs := ezfyActivityDefender(actType, level, terrain)
+	if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Troops) != "" {
+		if cfg := parseActWildTroops(aw.Troops); cfg != nil && len(cfg) > 0 {
+			defs = cfg
+		}
+	}
 	troops := []gin.H{}
 	var total int64
 	for _, g := range defs {
@@ -435,9 +509,29 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 			"min": g.Count, "max": g.Count,
 		})
 	}
+	res := ezfyActRewardBase(actType, level)
+	gold := ezfyActGoldReward(actType, level)
+	prestige := ezfyActPrestigeReward(actType, level)
+	if aw != nil && aw.Enabled == 1 {
+		if aw.Res > 0 {
+			res = aw.Res
+		}
+		if aw.Gold > 0 {
+			gold = aw.Gold
+		}
+		if aw.Prestige > 0 {
+			prestige = aw.Prestige
+		}
+	}
 	jewelName := ""
 	if j := h.randomJewel(terrain); j != nil {
 		jewelName = j.Name
+	}
+	officerName := ""
+	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
+		if g := ezfyCfg.general(aw.OfficerId); g != nil {
+			officerName = g.Name
+		}
 	}
 	return gin.H{
 		"x": x, "y": y, "type": 1, "level": level,
@@ -447,14 +541,22 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"act_desc":     ezfyActTargetDesc(actType),
 		"act_total":    total,
 		"troops":       troops,
-		"res_min":      ezfyActRewardBase(actType, level),
-		"res_max":      ezfyActRewardBase(actType, level),
-		"gold":         ezfyActGoldReward(actType, level),
-		"prestige":     ezfyActPrestigeReward(actType, level),
+		"res_min":      res,
+		"res_max":      res,
+		"gold":         gold,
+		"prestige":     prestige,
 		"terrain":      terrain,
 		"terrain_name": ezfyTerrainName(ezfyTerrainEx(x, y)),
 		"continent":    ezfyContinentName(x, y),
 		"jewel":        jewelName,
+		// ★ 2026-09-29 活动野地守将（配置的军官池军官）
+		"officer_id": func() int {
+			if aw != nil && aw.Enabled == 1 {
+				return aw.OfficerId
+			}
+			return 0
+		}(),
+		"officer_name": officerName,
 		"owner":        "",
 	}
 }

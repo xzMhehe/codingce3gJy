@@ -137,6 +137,37 @@ type EzfyMapTile struct {
 
 func (EzfyMapTile) TableName() string { return "ezfy_map_tile" }
 
+// EzfyActWild 活动野地配置（地图管理「活动野地」tab）
+//
+// ★ 2026-09-29 用户要求：活动野地配置不友好，优化成「按坐标列表管理」。
+//   活动野地原有坐标由哈希 + mark 覆盖标记决定，这里给**每个活动野地坐标**挂一份可配置数据：
+//   - Enabled：启用开关。开 = 该格按活动野地玩法（守军/奖励/等级用本条配置，缺省回退默认）；
+//     关 = 该格**区别于普通野地**，按普通野地/无活动处理。
+//   - 守军/奖励 可配，留 0/空 = 用代码默认。
+type EzfyActWild struct {
+	ID uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	X  int `gorm:"uniqueIndex:uk_actwild;comment:X坐标" json:"x"`
+	Y  int `gorm:"uniqueIndex:uk_actwild;comment:Y坐标" json:"y"`
+	// Enabled 启用开关：1=启用活动（是活动野地） 0=关闭（该格按普通野地处理）
+	Enabled int  `gorm:"default:0;comment:启用开关 1启用 0关闭" json:"enabled"`
+	Level   int  `gorm:"default:0;comment:活动等级1-3，0=用默认" json:"level"`
+	// Troops 守军配置 JSON [[兵种id,数量],...]，空=用默认守军
+	Troops string `gorm:"type:varchar(1000);comment:守军JSON [[兵种id,count],...]" json:"troops"`
+	// Res 每次胜利资源奖励(粮/钢/油/稀矿各加)，0=用默认
+	Res int64 `gorm:"default:0;comment:资源奖励，0=用默认" json:"res"`
+	// Gold 黄金(元宝)奖励，0=用默认
+	Gold int64 `gorm:"default:0;comment:黄金奖励，0=用默认" json:"gold"`
+	// Prestige 声望奖励，0=用默认
+	Prestige int `gorm:"default:0;comment:声望奖励，0=用默认" json:"prestige"`
+	// Jewel 必掉宝物名，空=用默认地形宝石
+	Jewel string `gorm:"type:varchar(100);comment:必掉宝物，空=默认" json:"jewel"`
+	// OfficerId 该坐标活动野地的守将军官（军官池 ID，0=不设守将）。普通军官/名将都可选。
+	OfficerId int  `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
+	Des       string `gorm:"type:varchar(200);comment:描述" json:"des"`
+}
+
+func (EzfyActWild) TableName() string { return "ezfy_act_wild" }
+
 // 地图格子标记类型
 const (
 	EzfyMarkNone    = 0 // 无（按哈希）

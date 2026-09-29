@@ -226,6 +226,14 @@ func ezfyTileAt(x, y int) *model.EzfyMapTile {
 	return nil
 }
 
+// ezfyActWildAt 取某格的活动野地配置（没有则 nil）
+func ezfyActWildAt(x, y int) *model.EzfyActWild {
+	c := &ezfyCfg
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.actWilds[ezfyTileKey(x, y)]
+}
+
 // ezfyMarkKindAt 取某格的「标记类型」（0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市）
 func ezfyMarkKindAt(x, y int) int {
 	if t := ezfyTileAt(x, y); t != nil {
@@ -517,6 +525,8 @@ type ezfyConfigCache struct {
 	techByName     map[string]int
 	// 地图格子覆盖（key = x*100000+y），管理端改完走 cfgsReload 生效
 	tiles map[int64]model.EzfyMapTile
+	// 活动野地配置（key = x*100000+y），2026-09-29 地图管理「活动野地」tab 维护
+	actWilds map[int64]*model.EzfyActWild
 	// 军衔配置（按等级 1..N 排序）
 	ranks []model.EzfyCfgRank
 	// 建筑数量上限（军事区/资源区分开，管理端可维护）
@@ -1390,6 +1400,16 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		tm[ezfyTileKey(t.X, t.Y)] = t
 	}
 	c.tiles = tm
+
+	// 活动野地配置（地图管理「活动野地」tab 维护；key = x*100000+y）
+	var aws []model.EzfyActWild
+	db.Find(&aws)
+	awm := make(map[int64]*model.EzfyActWild, len(aws))
+	for _, a := range aws {
+		cp := a
+		awm[ezfyTileKey(a.X, a.Y)] = &cp
+	}
+	c.actWilds = awm
 
 	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
 	var rks []model.EzfyCfgRank
