@@ -178,6 +178,13 @@
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="45" align="center" />
+            <el-table-column label="是否名将" width="76" align="center">
+              <template slot-scope="{row}">
+                <el-tag size="mini" :type="row.is_general ? 'warning' : 'info'">
+                  {{ row.is_general ? '名将' : '普通' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="name" label="姓名" min-width="115" show-overflow-tooltip>
               <template slot-scope="{row}"><span class="td-main">{{ row.name }}</span></template>
             </el-table-column>

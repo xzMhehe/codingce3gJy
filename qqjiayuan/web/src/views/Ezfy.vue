@@ -3768,8 +3768,8 @@
           <div v-if="officerDetailTab === 'attr'">
           <div class="old-line">
             星级：<b>{{ officerDetail.officer.star }}</b><span class="gray" v-if="officerDetail.officer.star_max">/{{ officerDetail.officer.star_max }}</span>
-            &nbsp;等级：<b>{{ officerDetail.officer.level }}</b><span class="green" v-if="officerDetail.officer.level >= officerMaxLevel"> [满级]</span>
-            &nbsp;经验：<span class="gray">{{ officerDetail.officer.level >= officerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}</span>
+            &nbsp;等级：<b>{{ officerDetail.officer.level }}</b><span class="green" v-if="officerDetail.officer.level >= detailOfficerMaxLevel && detailOfficerMaxLevel > 0"> [满级]</span>
+            &nbsp;经验：<span class="gray">{{ officerDetail.officer.level >= detailOfficerMaxLevel ? '—' : (officerDetail.officer.exp + '/' + officerDetail.officer.exp_need) }}</span>
             &nbsp;忠诚：<b>{{ officerDetail.officer.loyalty }}</b>
             <br/>
             职位：<b>{{ officerDetail.officer.position_name }}</b>
@@ -4568,6 +4568,13 @@ export default {
     officerMaxLevel () {
       const v = parseInt(this.officerData.max_level)
       return v > 0 ? v : 150
+    },
+    // ★ 2026-09-29 军官详情页逐人上限：名将 350 / 普通军官 150（后端 officerDetail.max_level）
+    detailOfficerMaxLevel () {
+      const o = this.officerDetail && this.officerDetail.officer
+      if (!o) return 150
+      const v = parseInt(o.max_level)
+      return v > 0 ? v : this.officerMaxLevel
     },
     // 战俘营: 未出征的俘虏
     captiveOfficers () {

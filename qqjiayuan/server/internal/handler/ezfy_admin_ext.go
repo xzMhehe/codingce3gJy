@@ -1129,6 +1129,8 @@ func (h *AdminHandler) AdminEzfyOfficers(c *gin.Context) {
 		HomeNum    string `json:"home_num"`
 		PosName    string `json:"pos_name"`
 		StatusName string `json:"status_name"`
+		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「是否名将」列
+		IsGeneral bool `json:"is_general"`
 	}
 	out := []rowOut{}
 	for _, o := range rows {
@@ -1138,8 +1140,10 @@ func (h *AdminHandler) AdminEzfyOfficers(c *gin.Context) {
 			cityName = ct.Name
 			owner, home = h.ezfyAdminName(ct.UserID)
 		}
+		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
 		out = append(out, rowOut{EzfyOfficer: o, CityName: cityName, OwnerName: owner,
-			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status]})
+			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
+			IsGeneral: isGeneral})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1188,8 +1192,8 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 	// ★★ 2026-09-26 修复「发放名将后变成 1 级」：
 	//
 	//	原来这里写死 `Level: 1`，发放出来的名将全是 1 级 —— 而名将池
-	//	`ezfy_cfg_general.level` 配的就是该名将的**原始等级**（现役名将 110~150）。
-	//	现在等级取自池子，夹在 1 ~ ezfyOfficerMaxLevel。
+	//	`ezfy_cfg_general.level` 配的就是该名将的**原始等级**。
+	//	现在等级取自池子（2026-09-29 名将种子也统一为 1 级），夹在 1 ~ ezfyGeneralMaxLevel。
 	//	★ 待分配点数仍为 0：名将池里的 military/logistics/learning 就是该等级下的最终属性
 	//	  （普通军官池的 level 语义不同 —— 那是「招募等级上限」，属性是基础值，
 	//	   所以军校招募那条路径才给 level-1 点）。
@@ -1197,8 +1201,8 @@ func (h *AdminHandler) ezfyGrantGeneral(uid uint, generalID int) (string, string
 	if lv <= 0 {
 		lv = 1
 	}
-	if lv > ezfyOfficerMaxLevel {
-		lv = ezfyOfficerMaxLevel
+	if lv > ezfyGeneralMaxLevel {
+		lv = ezfyGeneralMaxLevel
 	}
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
@@ -1261,9 +1265,11 @@ func (h *AdminHandler) AdminEzfyOfficerUpdate(c *gin.Context) {
 				if n < 0 {
 					n = 0
 				}
-				// ★ 用户规则「军官最高等级 150」：管理端也不能把等级改到 150 以上
-				if k == "level" && n > ezfyOfficerMaxLevel {
-					n = ezfyOfficerMaxLevel
+				// ★ 2026-09-29 上限分档：名将 350 / 普通军官 150，管理端也不能改超
+				if k == "level" {
+					if mx := int64(officerMaxLevelOf(h.DB, &o)); n > mx {
+						n = mx
+					}
 				}
 				updates[k] = n
 			}

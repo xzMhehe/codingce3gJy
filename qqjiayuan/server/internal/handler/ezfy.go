@@ -2306,18 +2306,19 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 		if o == nil {
 			return "军官不存在"
 		}
+		maxLv := h.officerMaxLevelOf(o)
 		per := cfg.Param1
 		if per <= 0 {
 			return "道具配置有误(经验为0)"
 		}
 		// 升到满级还差多少经验（升级需要 等级×200，与 addOfficerExp 同一口径）
 		var need int64
-		for lv, exp := o.Level, o.Exp; lv < ezfyOfficerMaxLevel; lv++ {
+		for lv, exp := o.Level, o.Exp; lv < maxLv; lv++ {
 			need += int64(lv)*200 - exp
 			exp = 0
 		}
 		if need <= 0 {
-			return fmt.Sprintf("%s 已达最高等级%d级, 经验书不消耗", o.Name, ezfyOfficerMaxLevel)
+			return fmt.Sprintf("%s 已达最高等级%d级, 经验书不消耗", o.Name, maxLv)
 		}
 		used := int64(count)
 		if maxBooks := (need + per - 1) / per; maxBooks < used {
@@ -2328,7 +2329,7 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 		msg := fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, per*used)
 		if used < int64(count) {
 			msg += fmt.Sprintf("（已达%d级上限，本次只消耗%d本，其余%d本留在背包）",
-				ezfyOfficerMaxLevel, used, int64(count)-used)
+				maxLv, used, int64(count)-used)
 		}
 		return msg
 	}

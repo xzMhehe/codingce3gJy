@@ -1465,6 +1465,13 @@ func (c *ezfyConfigCache) general(id int) *model.EzfyCfgGeneral {
 	return nil
 }
 
+// isGeneral 该池子 ID 是否为名将（kind==2）。
+// ★ 2026-09-29 玩家军官列表据此打「是否名将」标。普通军官池（kind=1）不算。
+func (c *ezfyConfigCache) isGeneral(id int) bool {
+	g := c.general(id)
+	return g != nil && g.Kind == 2
+}
+
 // generalByName 按名字回查军官池
 //
 // ★ 军校招来的普通军官实例 general_id 恒为 0（见 recruitOfficer），只能靠名字对上池子。

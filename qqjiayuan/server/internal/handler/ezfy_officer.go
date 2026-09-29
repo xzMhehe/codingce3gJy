@@ -56,16 +56,34 @@ func recruitCycleKey() string {
 	return time.Now().Format("2006-01-02")
 }
 
-// ezfyOfficerMaxLevel 军官最高等级（用户规则：「军官最高等级 150」）
+// ezfyOfficerMaxLevel 普通军官最高等级（用户规则：「普通军官最高等级 150」）
+// ezfyGeneralMaxLevel 名将最高等级（2026-09-29 用户规则：「名将最高等级 350」）
 //
-// 与名将配置 ezfy_cfg_general.level 的上限一致（现有名将就是 110~150 级）。
-// 所有会抬高军官等级的地方都要夹这个上限：
+// 所有会抬高军官等级的地方都要夹对应上限：
 //
 //	① 战斗加经验升级（addOfficerExp）
 //	② 军校招募候选（rollOfficerDrafts）
 //	③ 管理端一键生成军官（AdminEzfyGenOfficers）
 //	④ 管理端直接编辑军官（AdminEzfyOfficerUpdate）
 const ezfyOfficerMaxLevel = 150
+const ezfyGeneralMaxLevel = 350
+
+// officerMaxLevelOf 该军官实例的最高等级：名将（general_id>0 且池子 kind=2）350，普通军官 150。
+func officerMaxLevelOf(db *gorm.DB, o *model.EzfyOfficer) int {
+	if o.GeneralId <= 0 {
+		return ezfyOfficerMaxLevel
+	}
+	var g model.EzfyCfgGeneral
+	if err := db.Where("id = ?", o.GeneralId).First(&g).Error; err != nil || g.Kind != 2 {
+		return ezfyOfficerMaxLevel
+	}
+	return ezfyGeneralMaxLevel
+}
+
+// （EzfyHandler 便捷封装，供游戏链路调用）
+func (h *EzfyHandler) officerMaxLevelOf(o *model.EzfyOfficer) int {
+	return officerMaxLevelOf(h.DB, o)
+}
 
 // ezfyStarItemID 「星级徽章」的道具 cfg_id（ItemType 19）
 const ezfyStarItemID = 23
@@ -1523,22 +1541,23 @@ func (h *EzfyHandler) moveOfficerTo(city *model.EzfyCity, name string, targetCit
 // （原来每级随机 +2 属性 → 玩家没得选，洗点后还会「都堆到学识上」，已废）。
 // 加点只写玩家自己的军官实例，绝不回写军官池。
 //
-// ★ 用户规则「军官最高等级 150」：到 150 级后不再升级，多余经验直接丢弃
+// ★ 用户规则「军官最高等级 150 / 名将最高等级 350」：满级后不再升级，多余经验直接丢弃
 // （不丢的话经验会无限累积，将来放开上限会一次性跳很多级）。
 func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp int64) {
 	var o model.EzfyOfficer
 	if err := h.DB.First(&o, officerId).Error; err != nil {
 		return
 	}
+	maxLv := h.officerMaxLevelOf(&o)
 	o.Exp += exp
 	gained := 0
-	for o.Level < ezfyOfficerMaxLevel && o.Exp >= int64(o.Level)*200 {
+	for o.Level < maxLv && o.Exp >= int64(o.Level)*200 {
 		o.Exp -= int64(o.Level) * 200
 		o.Level++
 		gained++
 	}
 	// 满级后不保留经验
-	if o.Level >= ezfyOfficerMaxLevel {
+	if o.Level >= maxLv {
 		o.Exp = 0
 	}
 	o.FreePoints += gained
@@ -1800,8 +1819,12 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 		return ""
 	}
 	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级取自军官池）
-	//   等级同样夹在「军官最高等级 150」以内
-	captiveLv := maxInt(1, minInt(level, ezfyOfficerMaxLevel))
+	//   等级同样夹在对应上限以内（名将 350 / 普通 150）
+	maxLv := ezfyOfficerMaxLevel
+	if g.Kind == 2 {
+		maxLv = ezfyGeneralMaxLevel
+	}
+	captiveLv := maxInt(1, minInt(level, maxLv))
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
 		Level: captiveLv, Exp: 0,
@@ -2082,6 +2105,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
 			"exp_need": o.Level * 200,
+			// ★ 2026-09-29 上限分档：名将 350 / 普通军官 150，前端按此显示「满级」
+			"max_level": h.officerMaxLevelOf(o),
 		},
 		"skills": skillViews, "all_skills": allSkills,
 		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）

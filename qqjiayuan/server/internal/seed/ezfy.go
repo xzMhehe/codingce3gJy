@@ -141,29 +141,76 @@ func fixEzfySignIndex(db *gorm.DB) {
 // 「野地军官太少了，好像没见过」。这里做一次性补缺：只要还没有**任何**野地类型
 // 配过守将，就按「类型→等级」顺序从军官池依次分配一名守将。
 // 任意一行已有军官即视为「管理员已配置过」，不再动。
+// ezfyWildOfficerStarOf 按野地等级决定守将星级
+//
+// ★ 2026-09-29 用户规则：高级野地守将星级高、低级野地守将星级低，用最新军官池里
+//   对应星级的**普通军官**（kind=1）。分档（按各自身形互补，覆盖 1~5 星）：
+//
+//	等级 0-1 → 1 星 · 2-3 → 2 星 · 4-6 → 3 星 · 7-8 → 4 星 · 9-10 → 5 星
+func ezfyWildOfficerStarOf(level int) int {
+	switch {
+	case level <= 1:
+		return 1
+	case level <= 3:
+		return 2
+	case level <= 6:
+		return 3
+	case level <= 8:
+		return 4
+	default:
+		return 5
+	}
+}
+
+// seedEzfyWildOfficers 一次性按「野地等级→星级」从普通军官池(kind=1)分配守将
+//
+// 野地军官必须来自「军官池」ezfy_cfg_general（每块野地最多 1 名，配在野地类型的
+// officer_id 上）。老库 ezfy_cfg_wildland 的 officer_id 全为 0 —— 玩家反馈
+// 「野地军官太少了，好像没见过」。这里做一次性补缺：只要还没有**任何**野地类型
+// 配过守将，就按「等级→星级」从普通军官池取对应星级的军官当守将。
+// 任意一行已有军官即视为「管理员已配置过」，不再动。
 func seedEzfyWildOfficers(db *gorm.DB) {
 	var had int64
 	db.Model(&model.EzfyCfgWildland{}).Where("officer_id > 0").Count(&had)
 	if had > 0 {
 		return
 	}
-	// 优先用普通军官池(kind=1)；池子被删空则回退到全部名将
+	// 只从普通军官池(kind=1)挑守将，按星级分桶（5星3% / 4星7% / 3星20% / 2星30% / 1星40%）
+	stars := map[int][]model.EzfyCfgGeneral{}
 	var gens []model.EzfyCfgGeneral
 	db.Where("kind = 1").Order("id").Find(&gens)
-	if len(gens) == 0 {
-		db.Order("id").Find(&gens)
+	for _, g := range gens {
+		s := g.Star
+		if s < 1 {
+			s = 1
+		}
+		if s > 5 {
+			s = 5
+		}
+		stars[s] = append(stars[s], g)
 	}
 	if len(gens) == 0 {
 		return
 	}
+	// 每个星级的轮转游标，让同一星级里也能换着用不同军官
+	cursor := map[int]int{}
 	var rows []model.EzfyCfgWildland
 	db.Where("officer_min > 0").Order("type, level, id").Find(&rows)
 	for i, r := range rows {
-		g := gens[i%len(gens)]
+		dst := ezfyWildOfficerStarOf(r.Level)
+		pool := stars[dst]
+		if len(pool) == 0 {
+			// 该星级没有普通军官 → 兜底用任意普通军官
+			pool = gens
+		}
+		idx := cursor[dst] % len(pool)
+		cursor[dst] = idx + 1
+		g := pool[idx]
 		if err := db.Model(&model.EzfyCfgWildland{}).Where("id = ? AND officer_id = 0", r.ID).
 			Update("officer_id", g.ID).Error; err != nil {
 			log.Printf("野地守将补缺失败 id=%d: %v", r.ID, err)
 		}
+		_ = i
 	}
 }
 
