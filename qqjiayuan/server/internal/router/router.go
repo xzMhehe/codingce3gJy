@@ -1130,6 +1130,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-build-queue/:id/speed", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueSpeed)
 				admin.POST("/ezfy-build-queue/:id/cancel", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueCancel)
 				admin.POST("/ezfy-build-queue/finish-all", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueFinishAll)
+				admin.POST("/ezfy-build-queue/finish-ready", perm(db, "module:ezfyBuildQueue"), adminH.AdminEzfyBuildQueueFinishReady)
 
 				// ---- 兵种管理 ----
 				admin.GET("/ezfy-troops", perm(db, "module:ezfyTroops"), adminH.AdminEzfyTroops)

@@ -632,6 +632,34 @@ func (h *AdminHandler) AdminEzfyBuildQueueFinishAll(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已立即完成 %d 个建筑", len(rows))})
 }
 
+// AdminEzfyBuildQueueFinishReady 完成所有「已到期」的建筑（管理端手动触发，替代原自动协程）
+//
+// ★ 2026-09-29 用户要求：去掉全局自动结算协程，改由管理端定期手动点按钮：
+//   只把「剩余时间已到（display 成可完成）」的建造/升级项完工，
+//   还没到时间的保持现状不动。与 "一键完成全部"(FinishAll，强制完成整个队列) 不同。
+func (h *AdminHandler) AdminEzfyBuildQueueFinishReady(c *gin.Context) {
+	now := time.Now().UnixMilli()
+	var rows []model.EzfyCityBuilding
+	if err := h.DB.Where("status IN ? AND end_time != 0 AND end_time <= ?", []int{1, 2}, now).
+		Find(&rows).Error; err != nil || len(rows) == 0 {
+		resp.OK(c, gin.H{"msg": "当前没有已到期的建筑"})
+		return
+	}
+	ez := h.ezfyH()
+	cityIds := map[uint]bool{}
+	for _, b := range rows {
+		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).Update("end_time", now-1)
+		cityIds[uint(b.CityId)] = true
+	}
+	for cid := range cityIds {
+		var ct model.EzfyCity
+		if err := h.DB.First(&ct, cid).Error; err == nil {
+			ez.checkBuildingDone(&ct)
+		}
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已完工 %d 个到期建筑", len(rows))})
+}
+
 // ============ 4. 兵种管理 ============
 
 // AdminEzfyTroops 玩家部队列表（city_id 精确筛选，word=城名/玩家）

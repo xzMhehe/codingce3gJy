@@ -1330,6 +1330,11 @@ func (h *AdminHandler) AdminEzfyChestPool(c *gin.Context) {
 			if cfg := ezfyCfg.item(it.RefId); cfg != nil {
 				name = cfg.Name
 			}
+		case 3: // ★ 整套套装（RefId = 套装 id），奖品名与商城宝箱保持一致：套装名 + 整套
+			kindName = "整套"
+			if s := ezfyCfg.equipSet(it.RefId); s != nil {
+				name = s.Name + " 整套"
+			}
 		default:
 			kindName = "其他"
 		}

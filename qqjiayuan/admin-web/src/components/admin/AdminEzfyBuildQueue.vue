@@ -10,6 +10,7 @@
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
+        <el-button type="warning" plain icon="el-icon-s-claim" @click="finishReady">完成可完成的</el-button>
         <el-button type="success" icon="el-icon-s-claim" @click="finishAll">一键完成全部</el-button>
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
@@ -147,6 +148,14 @@ export default {
       this.$confirm('将立即完成队列中全部 ' + this.total + ' 个建筑（每个完成一步），确认继续？', '一键完成', { type: 'warning' }).then(() => {
         api.post('/admin/ezfy-build-queue/finish-all').then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已全部完成'); this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 2026-09-29 完成所有「剩余时间已到(可完成)」的建筑 —— 定期手动点，替代自动协程
+    finishReady () {
+      this.$confirm('将立即完成所有「剩余时间已到」的建筑（未到时间的不动），确认继续？', '完成可完成的', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-build-queue/finish-ready').then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已完工'); this.load() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     }

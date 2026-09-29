@@ -172,11 +172,18 @@
             <el-radio-group v-model.number="chif.kind">
               <el-radio :label="1">装备</el-radio>
               <el-radio :label="2">道具</el-radio>
+              <el-radio :label="3">整套</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="奖品 cfg_id" required>
-            <el-input-number v-model.number="chif.ref_id" :min="1" controls-position="right" style="width:200px" />
-            <span class="td-sub" style="margin-left:8px">装备看「军官装备管理 → 散件装备」的 ID；道具看「道具配置」的 ID</span>
+          <el-form-item :label="chif.kind === 3 ? '套装' : '奖品 cfg_id'" required>
+            <el-select v-if="chif.kind === 3" v-model.number="chif.ref_id" filterable clearable
+                       placeholder="选择套装（开箱出整套）" style="width:360px">
+              <el-option v-for="s in equipSets" :key="'es' + s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
+            </el-select>
+            <template v-else>
+              <el-input-number v-model.number="chif.ref_id" :min="1" controls-position="right" style="width:200px" />
+              <span class="td-sub" style="margin-left:8px">装备看「军官装备管理 → 散件装备」的 ID；道具看「道具配置」的 ID</span>
+            </template>
           </el-form-item>
           <el-row :gutter="10">
             <el-col :span="8">
@@ -556,7 +563,7 @@ export default {
         { k: 'items', n: '道具配置' },
         // ★ 2026-09-27 用户要求：商城「装备 | 宝箱」的价格定义迁到这里
         { k: 'equipments', n: '装备道具配置' },
-        { k: 'chests', n: '套装装备配置' },
+        { k: 'chests', n: '宝箱配置' },
         { k: 'activities', n: '节日活动' },
         { k: 'taskTypes', n: '任务类型' },
         { k: 'tasks', n: '任务配置' },
@@ -771,6 +778,10 @@ export default {
       })
     },
     openChestItemCreate () {
+      // ★ 先确保套装下拉有数据（新增整套奖池时要用）
+      if (!this.equipSets.length) {
+        api.get('/admin/ezfy-equip-sets').then(r => { if (r.code === 0) this.equipSets = r.data.list })
+      }
       this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '' }
       this.chItemDlg = true
     },
