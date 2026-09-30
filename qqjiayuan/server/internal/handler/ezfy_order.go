@@ -324,6 +324,9 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 			}
 		}
 	}
+	// ★ 2026-09-30 详情直接下发收藏态，前端收藏按钮不用依赖异步 loadStars
+	var starCnt int64
+	h.DB.Model(&model.EzfyMapStar{}).Where("user_id = ? AND x = ? AND y = ?", uid, x, y).Count(&starCnt)
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
@@ -338,7 +341,8 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"gather_res":   gatherRes,
 		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
 		"owner":        owner,
-		"mine":         isMine, // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
+		"mine":        isMine, // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
+		"is_starred":  starCnt > 0, // ★ 2026-09-30 收藏态
 	})
 }
 
@@ -923,7 +927,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "需先对对方宣战, 宣战生效后方可掠夺/征服"
 		}
 	}
-	// 运输/派遣: 扣减随军资源
+	// 运输/派遣: 校验随军资源（★ 2026-09-30 扣减移到全部校验通过后，避免「已扣资源但后续
+	// 司令部上限/目标太近/石油不足 等失败」导致资源凭空消失 —— 用户反馈运输丢资源）
 	if (orderType == 5 || orderType == 8) && hasRes {
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
 		if f < 0 || s < 0 || o < 0 || r < 0 || g < 0 {
@@ -941,12 +946,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if city.Food < f || city.Steel < s || city.Oil < o || city.Rare < r || city.Gold < g {
 			return "资源不足,无法运输"
 		}
-		city.Food -= f
-		city.Steel -= s
-		city.Oil -= o
-		city.Rare -= r
-		city.Gold -= g
-		h.saveCityRes(city)
 	}
 	// 司令部限制
 	hq := h.buildingLevel(city.ID, 13)
@@ -981,6 +980,17 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	city.Oil -= oilCost
 	h.saveCityRes(city)
+
+	// ★ 2026-09-30 运输/派遣资源在**全部校验通过**后才扣（司令部上限/距离/耗油都过了，
+	//   不会再出现「失败但资源已扣」的丢资源 bug）
+	if (orderType == 5 || orderType == 8) && hasRes {
+		city.Food -= resources["food"]
+		city.Steel -= resources["steel"]
+		city.Oil -= resources["oil"]
+		city.Rare -= resources["rare"]
+		city.Gold -= resources["gold"]
+		h.saveCityRes(city)
+	}
 
 	tech := h.techMap(city.ID)
 	station := h.buildingLevel(city.ID, 20)

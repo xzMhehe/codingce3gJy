@@ -666,6 +666,10 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 			officerStar = g.Star
 		}
 	}
+	// ★ 2026-09-30 详情直接下发收藏态，避免前端依赖异步 loadStars 的时序导致初始态错
+	var starCnt int64
+	h.DB.Model(&model.EzfyMapStar{}).Where("user_id = ? AND x = ? AND y = ?", uid, x, y).Count(&starCnt)
+	isStarred := starCnt > 0
 	return gin.H{
 		"x": x, "y": y, "type": 1, "level": level,
 		"name":     ezfyActTargetLabel(actType, level),
@@ -692,6 +696,7 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"officer_name": officerName,
 		"officer_kind": officerKind, // ★ 2026-09-30 区分名将(2)/普通(1)
 		"officer_star": officerStar,
+		"is_starred":   isStarred, // ★ 2026-09-30 收藏态（前端收藏按钮直接用）
 		"owner":        "",
 	}
 }

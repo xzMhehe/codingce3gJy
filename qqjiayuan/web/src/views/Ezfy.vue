@@ -1365,19 +1365,10 @@
               <div class="old-line orange">
                 {{ selDetail.act_name }}{{ selDetail.act_level }}级 ({{ selCell.x }},{{ selCell.y }}) —— {{ selDetail.act_desc }}
               </div>
-              <div class="old-line">
-                守军情况：<template v-if="selDetail.troops && selDetail.troops.length">
-                  <span v-for="tp in selDetail.troops" :key="'ap' + tp.troop_id">{{ tp.name }}×{{ tp.min }} </span>
-                </template><span v-else class="gray">（未配置，用默认活动守军）</span>
-              </div>
-              <div class="old-line">
-                守军总兵力：{{ selDetail.act_total }}
-                <!-- ★ 2026-09-30 展示活动野地守将：名将(★★★★★)与普通军官区分 -->
-                <template v-if="selDetail.officer_name">
-                  ，守将：<span :class="selDetail.officer_kind === 2 ? 'orange' : ''"><b>{{ selDetail.officer_name }}</b></span>
-                  <span v-if="selDetail.officer_kind === 2" class="orange">（名将</span>
-                  <span v-else class="gray">（普通军官</span>{{ selDetail.officer_star }}★，可俘虏）
-                </template>
+              <div class="old-line" v-if="selDetail.officer_name">
+                守将：<span :class="selDetail.officer_kind === 2 ? 'orange' : ''"><b>{{ selDetail.officer_name }}</b></span>
+                <span v-if="selDetail.officer_kind === 2" class="orange">（名将</span>
+                <span v-else class="gray">（普通军官</span>{{ selDetail.officer_star }}★，可俘虏）
               </div>
               <div class="old-line">
                 胜利奖励：{{ resShort.food }}/{{ resShort.steel }}/{{ resShort.oil }}/{{ resNames.rare }} 各{{ selDetail.res_min }}<!--
@@ -7437,6 +7428,11 @@ export default {
     // ---- 地图/出征 ----
     isCellStarred () {
       // ★ 已收藏的格子显示「已收藏」(再次点击取消收藏)
+      // ★ 2026-09-30 优先用详情接口返回的 is_starred（同步、无异步时序问题），
+      //   拿不到/旧后端再回落 mapStars 判断。
+      if (this.selDetail && typeof this.selDetail.is_starred === 'boolean') {
+        return this.selDetail.is_starred
+      }
       return this.selCell && this.mapStars.some(s => s.x === this.selCell.x && s.y === this.selCell.y)
     },
     // ★ 军队动态里活动目标的坐标标识（打活动野地/活动寇/特殊城市的部队）
