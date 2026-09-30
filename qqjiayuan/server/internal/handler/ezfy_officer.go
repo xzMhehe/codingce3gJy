@@ -1925,13 +1925,22 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 	if h.officerCount(city.ID) >= h.buildingLevel(city.ID, ezfyBuildingStaff) {
 		return ""
 	}
-	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级取自军官池）
+	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级/等级取自军官池）
 	//   等级同样夹在对应上限以内（名将 350 / 普通 150）
+	// ★★ 2026-09-30 用户反馈「野地军官为什么还有等级」：原来用**野地等级**当俘虏等级
+	//   （野地10级→俘到10级守将），而军官池现在统一 1 级 → 战俘营出现 10级/6级 俘虏。
+	//   改为跟随军官池该军官的等级（g.Level，池子统一 1 级），不再跟野地等级。
 	maxLv := ezfyOfficerMaxLevel
 	if g.Kind == 2 {
 		maxLv = ezfyGeneralMaxLevel
 	}
-	captiveLv := maxInt(1, minInt(level, maxLv))
+	captiveLv := g.Level
+	if captiveLv < 1 {
+		captiveLv = 1
+	}
+	if captiveLv > maxLv {
+		captiveLv = maxLv
+	}
 	o := model.EzfyOfficer{
 		CityId: int64(city.ID), GeneralId: g.ID, Name: g.Name, Star: star,
 		Level: captiveLv, Exp: 0,
