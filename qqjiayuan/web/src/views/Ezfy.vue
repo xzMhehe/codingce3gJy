@@ -1366,9 +1366,19 @@
                 {{ selDetail.act_name }}{{ selDetail.act_level }}级 ({{ selCell.x }},{{ selCell.y }}) —— {{ selDetail.act_desc }}
               </div>
               <div class="old-line">
-                守军情况：<span v-for="tp in selDetail.troops" :key="'ap' + tp.troop_id">{{ tp.name }}×{{ tp.min }} </span>
+                守军情况：<template v-if="selDetail.troops && selDetail.troops.length">
+                  <span v-for="tp in selDetail.troops" :key="'ap' + tp.troop_id">{{ tp.name }}×{{ tp.min }} </span>
+                </template><span v-else class="gray">（未配置，用默认活动守军）</span>
               </div>
-              <div class="old-line">守军总兵力：{{ selDetail.act_total }}</div>
+              <div class="old-line">
+                守军总兵力：{{ selDetail.act_total }}
+                <!-- ★ 2026-09-30 展示活动野地守将：名将(★★★★★)与普通军官区分 -->
+                <template v-if="selDetail.officer_name">
+                  ，守将：<span :class="selDetail.officer_kind === 2 ? 'orange' : ''"><b>{{ selDetail.officer_name }}</b></span>
+                  <span v-if="selDetail.officer_kind === 2" class="orange">（名将</span>
+                  <span v-else class="gray">（普通军官</span>{{ selDetail.officer_star }}★，可俘虏）
+                </template>
+              </div>
               <div class="old-line">
                 胜利奖励：{{ resShort.food }}/{{ resShort.steel }}/{{ resShort.oil }}/{{ resNames.rare }} 各{{ selDetail.res_min }}<!--
                 ★ 2026-09-25：管理端「野地获取资源倍率」>1 时标出来，让玩家知道为什么比平时多
@@ -3860,6 +3870,7 @@
             可用属性点
             <b :class="officerDetail.officer.free_points > 0 ? 'red' : 'gray'">{{ officerDetail.officer.free_points }}</b>
             <span class="gray">（已分配 {{ officerDetail.officer.used_points }}）</span>
+            <span class="gray" v-if="officerDetail.officer.star_points > 0">（其中升星加点 {{ officerDetail.officer.star_points }}）</span>
           </div>
           <div class="old-line" v-if="officerDetail.officer.free_points > 0">
             分配：
@@ -7467,6 +7478,8 @@ export default {
     },
     cellClass (cell) {
       if (cell.mine) return 'ezfy-mine'
+      // ★ 2026-09-30 带名将守将的活动野地：特殊标识（优先于普通活动野地）
+      if (cell.act_type === 1 && cell.act_officer) return 'ezfy-act-named'
       if (cell.act_type === 1) return 'ezfy-act-wild'
       if (cell.act_type === 2) return 'ezfy-act-kou'
       if (cell.act_type === 3) return 'ezfy-act-city'
@@ -7488,6 +7501,8 @@ export default {
       this.warText = ''
       this.warStatus = 0
       this.cur = 'wildview'
+      // ★ 2026-09-30 进入详情刷新收藏状态：避免用旧地图星标的旧数据导致「没收藏却显示已收藏」
+      this.loadStars()
       if (cell.area_type === 3) {
         if (!cell.mine && cell.user_id) this.checkWar()
         return
@@ -9860,6 +9875,8 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-map-table a.ezfy-act-wild { font-weight: bold; color: #ff6600; }
 .ezfy-page .ezfy-map-table a.ezfy-act-kou { font-weight: bold; color: #ff00ff; }
 .ezfy-page .ezfy-map-table a.ezfy-act-city { font-weight: bold; color: #d00000; }
+/* ★ 2026-09-30 带名将守将的活动野地：紫红高亮，与普通活动野地(橙)区分 */
+.ezfy-page .ezfy-map-table a.ezfy-act-named { font-weight: bold; color: #cc22ff; text-decoration: underline; }
 /* ★ 地图方向导航「向上/向右/向下/向左/回到本城」：
    全局 .ezfy-page a 只有 margin: 0 1px, 五个词挤成一串。用户要求「间隙稍微大一点」
    → 每个链接右侧留 8px（含标签间空格约 12px 一档），末项不留，右侧不至于飘出去。 */

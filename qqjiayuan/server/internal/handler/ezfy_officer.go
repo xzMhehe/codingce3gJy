@@ -1558,6 +1558,11 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 	if err := h.DB.First(&o, officerId).Error; err != nil {
 		return
 	}
+	// ★ 2026-09-30 修复「野地军官/俘虏能升级」：俘虏(IsCaptive=1)未收编不能升级，
+	//   否则经验书/战斗经验会作用到野地守将身上。
+	if o.IsCaptive == 1 {
+		return
+	}
 	maxLv := h.officerMaxLevelOf(&o)
 	o.Exp += exp
 	gained := 0
@@ -2020,6 +2025,8 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 				// ★ 2026-09-22：原始属性 / 可用属性点 / 已分配点数（前端加点用）
 				"base_military": bm, "base_logistics": bl, "base_learning": be,
 				"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
+				// ★ 2026-09-30 升星累计加点（洗点前玩家能看懂多少点是升星来的）
+				"star_points": o.StarPoints,
 				"set_military": sm, "set_logistics": sl, "set_learning": se,
 				"active_sets":  activeSets,
 				"set_progress": h.officerSetProgressView(o),
@@ -2187,6 +2194,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			// ★ 2026-09-22：加点用
 			"base_military": bm, "base_logistics": bl, "base_learning": be,
 			"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
+				// ★ 2026-09-30 升星累计加点（洗点前玩家能看懂多少点是升星来的）
+				"star_points": o.StarPoints,
 			"set_military": sm, "set_logistics": sl, "set_learning": se,
 			"active_sets": activeSets,
 			// ★ 套装穿戴进度（穿齐才生效；这里让前端能显示「还差 N 件」）
@@ -2452,6 +2461,7 @@ func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
 			"id": now.ID, "military": now.Military, "logistics": now.Logistics, "learning": now.Learning,
 			"base_military": now.BaseMilitary, "base_logistics": now.BaseLogistics, "base_learning": now.BaseLearning,
 			"free_points": now.FreePoints, "used_points": officerAllocatedPoints(&now),
+				"star_points": now.StarPoints,
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"set_military": sm, "set_logistics": sl, "set_learning": se, "active_sets": activeSets,
 		},
@@ -2546,6 +2556,8 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
 		"star":     newStar,
 		"military": newMil, "logistics": newLog, "learning": newLea,
+		// ★ 2026-09-30 升星累计加点（三维之和累加，洗点前玩家能看懂多少点是升星来的）
+		"star_points": o.StarPoints + dMil + dLog + dLea,
 		"update_time": time.Now(),
 	})
 	h.addReport(city.UserID, 6, "军官升星: "+o.Name,

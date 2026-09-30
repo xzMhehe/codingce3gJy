@@ -1731,6 +1731,10 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	officers := []gin.H{}
 	for _, o := range h.officerList(city.ID) {
+		// ★ 2026-09-30 修复「野地军官/俘虏能被选为经验书目标」：俘虏不能作为军官类道具目标
+		if o.IsCaptive == 1 {
+			continue
+		}
 		officers = append(officers, gin.H{"id": o.ID, "name": o.Name, "level": o.Level,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
 			"status": o.Status, "status_name": ezfyOfficerStatusName(&o),

@@ -1471,6 +1471,10 @@ type EzfyOfficer struct {
 	BaseLogistics int `gorm:"default:0;comment:基础后勤" json:"base_logistics"`
 	BaseLearning  int `gorm:"default:0;comment:基础学识" json:"base_learning"`
 	FreePoints    int `gorm:"default:0;comment:免费点数" json:"free_points"`
+	// ★ 2026-09-30 升星累计加的点数（每次升星成功 军事+后勤+学识 之和累加）。
+	//   升星加的是当前属性、不动 base_*，洗点时差额会自动退回 ——
+	//   这里持久记录「其中多少点是升星来的」，玩家洗点前一眼能看懂。
+	StarPoints int `gorm:"default:0;comment:升星累计加点" json:"star_points"`
 }
 
 func (EzfyOfficer) TableName() string { return "ezfy_officer" }

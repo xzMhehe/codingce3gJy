@@ -657,9 +657,13 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		jewelName = j.Name
 	}
 	officerName := ""
+	officerKind := 0
+	officerStar := 0
 	if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 {
 		if g := ezfyCfg.general(aw.OfficerId); g != nil {
 			officerName = g.Name
+			officerKind = g.Kind // 1普通军官 2名将
+			officerStar = g.Star
 		}
 	}
 	return gin.H{
@@ -686,6 +690,8 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 			return 0
 		}(),
 		"officer_name": officerName,
+		"officer_kind": officerKind, // ★ 2026-09-30 区分名将(2)/普通(1)
+		"officer_star": officerStar,
 		"owner":        "",
 	}
 }

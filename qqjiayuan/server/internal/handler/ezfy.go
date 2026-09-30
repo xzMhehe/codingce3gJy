@@ -2585,9 +2585,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			"free_points": free, "update_time": time.Now(),
 		})
 		h.consumeItem(uid, cfgId)
+		starPts := 0
+		if o.StarPoints > 0 {
+			starPts = o.StarPoints
+		}
 		return fmt.Sprintf("使用成功: %s 洗点完成\n军事 %d→%d  后勤 %d→%d  学识 %d→%d\n"+
-			"待分配属性点 +%d（共 %d 点，去军官详情分配）\n（属性已重置为军官池初始属性；等级/经验/技能保留）",
-			o.Name, o.Military, bm, o.Logistics, bl, o.Learning, be, refund, free)
+			"待分配属性点 +%d（共 %d 点，去军官详情分配）\n（属性已重置为军官池初始属性；等级/经验/技能保留）"+
+			"\n其中升星加点 %d 点（含在待分配点内）",
+			o.Name, o.Military, bm, o.Logistics, bl, o.Learning, be, refund, free, starPts)
 	case 19: // 星级徽章：按固定概率升 1 星，三维各 +N（概率/加多少/上限都走管理端配置）
 		if !ezfyStarUpOn() {
 			return "升星功能已关闭"
