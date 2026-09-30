@@ -1029,11 +1029,18 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	wildOil = ezfyScaleResByProdMult(wildOil)
 	wildRare = ezfyScaleResByProdMult(wildRare)
 	wildGold = ezfyScaleResByProdMult(wildGold)
-	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
 	// ★ 2026-09-30 恢复「资源最大值唯一硬上限」：产量累加同样不得超过 21 亿。
-	//   负数扣减（军队耗粮）仍正常生效，最低 0。见 ezfyAddResMax。
-	city.Food = ezfyAddResMax("food", food, prod)
+	//
+	// ★★ 修复「军队耗粮亿级时粮食卡在产量附近」：
+	//   原来先算 `food := city.Food - troopFoodCost`（军队耗粮亿级 → 变成很大的负数），
+	//   再 `ezfyAddResMax("food", food, prod)` —— 其内部第一步 `ezfyClampRes(cur)`
+	//   就把这个负的 cur 直接夹成 0，于是那笔亿级耗粮被吞掉，只在 0 上叠了当期产量 prod。
+	//   结果：耗粮超过库存+产量时，粮食不会真的扣到 0，而是停在 prod 附近
+	//   （玩家体感「库存没了却一直卡在某个数」）。
+	//   正确做法：把「产量 − 耗粮」作为**净增量** delta 传进去，
+	//   负 delta 会让 ezfyAddResMax 正常把库存扣到 0（最低 0）。
+	city.Food = ezfyAddResMax("food", city.Food, prod-troopFoodCost)
 	city.Steel = ezfyAddResMax("steel", city.Steel,
 		int64(float64(steelProd)*hours)+int64(float64(wildSteel)*hours))
 	city.Oil = ezfyAddResMax("oil", city.Oil,
