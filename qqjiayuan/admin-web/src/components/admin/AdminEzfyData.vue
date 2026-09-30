@@ -269,7 +269,8 @@ const DICTS = {
     kill_enemy: { n: '消灭敌军' },
     city_level: { n: '市政厅等级' },
     army_count: { n: '总兵力' },
-    wild_count: { n: '野地数量' }
+    wild_count: { n: '野地数量' },
+    has_city: { n: '拥有首个城池' }
   }
 }
 

@@ -17,7 +17,7 @@ var ezfyEzfyCfgBuilding = []model.EzfyCfgBuilding{
 	{ID: 10, Name: "参谋部", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "军官居住、办公用地,进行城守任命"},
 	{ID: 11, Name: "交易所", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "进行资源交易"},
 	{ID: 12, Name: "仓库", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "储存资源,保护资源不被抢夺"},
-	{ID: 13, Name: "司令部", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "军队出征指挥中心"},
+	{ID: 13, Name: "司令部", Type: 2, MaxLevel: 12, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "军队出征指挥中心"},
 	{ID: 14, Name: "军工厂", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "生产现代化部队装备设施"},
 	{ID: 15, Name: "联络中心", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "允许盟友驻军"},
 	{ID: 16, Name: "轻工厂", Type: 2, MaxLevel: 10, UniqueFlag: 0, CanDelete: 1, PreBuilding: "", Des: "生产现代化部队装备设施"},
@@ -619,4 +619,8 @@ var ezfyEzfyCfgTask = []model.EzfyCfgTask{
 	{ID: 17, Name: "本周训练部队3000", TaskType: "train_troop", Target: 3000, RewardGold: 30000, RewardFood: 0, RewardSteel: 50000, RewardOil: 20000, RewardRare: 0, RewardPrestige: 0, SortNo: 17, TypeId: 4, Status: 1},
 	{ID: 18, Name: "本周攻打野地胜利50次", TaskType: "battle_wild", Target: 50, RewardGold: 50000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 30000, RewardPrestige: 200, SortNo: 18, TypeId: 4, Status: 1},
 	{ID: 19, Name: "本周消灭敌军50000", TaskType: "kill_enemy", Target: 50000, RewardGold: 100000, RewardFood: 0, RewardSteel: 0, RewardOil: 0, RewardRare: 50000, RewardPrestige: 500, SortNo: 19, TypeId: 4, Status: 1},
+	// ★ 2026-09-30 新手任务「首个城池·发展助力」：建出首个城池即可领，各资源 2000 万 + 黄金 2000 万，仅一次。
+	//   RewardFood/Steel/Oil/Rare 存 20000 → 新手任务 ×1000 后实得 2000 万；RewardGold 不乘，直接 2000 万。
+	//   发奖固定发到玩家最早(主)城池（见 taskAward 的 has_city 分支）。
+	{ID: 20, Name: "首个城池·发展助力", TaskType: "has_city", Target: 1, RewardFood: 20000, RewardSteel: 20000, RewardOil: 20000, RewardRare: 20000, RewardGold: 20000000, RewardPrestige: 0, SortNo: 0, TypeId: 1, Status: 1},
 }

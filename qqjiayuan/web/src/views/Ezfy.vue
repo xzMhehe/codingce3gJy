@@ -708,8 +708,10 @@
               <span class="build-act">
                 <a href="javascript:;" @click="doUpgrade(b)">升级</a>
                 <!-- ★ 2026-09-25 用户纠正：按钮语义是「一键升级到 max_level-1 级」，
-                     已经到达该等级就不再显示（原来会显示成 9 级但实际升满级） -->
-                <a v-if="b.level < b.max_level - 1" href="javascript:;" @click="doMaxLevel(b)">一键{{ b.max_level - 1 }}级</a>
+                     已经到达该等级就不再显示（原来会显示成 9 级但实际升满级）
+                     ★ 2026-09-30 用户要求：一键只到 9 级（司令部 12 级时原显示「一键11级」，
+                     现统一「一键9级」，10/11/12 级手动升级，每级都要建筑图纸） -->
+                <a v-if="b.level < 9" href="javascript:;" @click="doMaxLevel(b)">一键9级</a>
                 <a v-if="b.can_delete === 1" href="javascript:;" @click="doDeleteBuilding(b)">拆除</a>
               </span>
             </template>
@@ -6868,7 +6870,8 @@ export default {
       // ★ 2026-09-25 用户纠正「一键9级 = 一键升级到 9 级，而不是升级满」：
       //   按钮文案是「一键{{max_level-1}}级」，就把目标等级一起发给后端（target_level），
       //   后端按目标级结算资源/图纸并停在那一级（不越过 9→10 这道要建筑图纸的坎）。
-      const target = Math.max(1, (b.max_level || 1) - 1)
+      // ★ 2026-09-30 用户要求：一键固定只到 9 级（去掉「一键11级/一键12级」）。
+      const target = 9
       api.post('/games/ezfy/building/max-level', { record_id: b.id, target_level: target }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : ('已一键升级到' + target + '级'), type: 'ok' }

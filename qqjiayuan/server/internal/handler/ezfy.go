@@ -1538,8 +1538,11 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 		return "配置缺失"
 	}
 	// ★ 建筑图纸道具 cfg_id = 10（ItemType=6），不是 6 —— 6 是「训练加速30分钟」。
-	//   规则（2026-09-23 用户修正）：**所有建筑 9→10 级**都需图纸；民居(2) 10→11、11→12 也要。
-	needBlueprint := target == 10 || (b.BuildingId == 2 && target >= 11)
+	//   规则（2026-09-23 用户修正）：**所有建筑 9→10 级**都需图纸；
+	//   民居(2) 10→11、11→12 也要。
+	//   ★ 2026-09-30 用户追加：**司令部(13) 10级及以后每升一级都需要图纸**（9→10、10→11、11→12）。
+	needBlueprint := target == 10 ||
+		((b.BuildingId == 2 || b.BuildingId == 13) && target >= 11)
 	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID) <= 0 {
 		return fmt.Sprintf("升级到%d级需要建筑图纸", target)
 	}
@@ -1604,8 +1607,9 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 	var needFood, needSteel, needOil, needRare, needGold int64
 	needBlueprint := 0
 	for lv := b.Level + 1; lv <= target; lv++ {
-		// ★ 与 upgradeBuilding 同口径：所有建筑 9→10、民居(2) 10→11 / 11→12 需图纸
-		if lv == 10 || (b.BuildingId == 2 && lv >= 11) {
+		// ★ 与 upgradeBuilding 同口径：所有建筑 9→10、民居(2) 10→11 / 11→12 需图纸；
+		//   ★ 2026-09-30 司令部(13) 10级及以后每级都需图纸
+		if lv == 10 || ((b.BuildingId == 2 || b.BuildingId == 13) && lv >= 11) {
 			needBlueprint++
 		}
 		if l := ezfyCfg.buildingLevel(b.BuildingId, lv); l != nil {
@@ -2635,7 +2639,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 
 // ============ 任务 ============
 
-var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true, "wild_count": true}
+var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true, "wild_count": true, "has_city": true}
 
 // ezfyTaskRewardRes 返回某任务结算用的「资源」奖励（粮/钢/油/稀）。
 //
@@ -2733,6 +2737,10 @@ func (h *EzfyHandler) calcStateValue(uid uint, taskType string) int {
 		return int(sum)
 	case "wild_count":
 		return len(h.wildlandList(city.ID))
+	case "has_city":
+		// ★ 2026-09-30 新手任务「首个城池」：只要拥有首城即满足（目标 1）。
+		//   getOrCreateCity 保证玩家必有城池，故恒为 1。
+		return 1
 	default:
 		return 0
 	}
@@ -2784,6 +2792,12 @@ func (h *EzfyHandler) taskAward(uid uint, taskId int64) string {
 		return "任务已停用"
 	}
 	city := h.getOrCreateCity(uid)
+	// ★ 2026-09-30 用户要求「首个城池助力」补领时发到**最早(主)城池**：
+	//   老玩家当前城可能早已不是首城，奖励必须进 id 最小的主城，而不是当前操作城。
+	//   仅对 has_city（首个城池）任务生效；其它任务维持原逻辑（发到当前城）。
+	if cfg.TaskType == "has_city" {
+		city = h.mainCity(uid)
+	}
 	// ★ 任务奖励**不受仓储上限截断**（用户要求）。
 	//   原来走 min64(cap, ...)，仓储满了领奖就等于白发；只有「城市自身产量」才该被上限卡住。
 	//   ★ 新手任务资源 ×1000（见 ezfyTaskRewardRes）
