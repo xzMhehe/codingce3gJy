@@ -1967,6 +1967,14 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	var stayed []string
 	for i := range officers {
 		o := &officers[i]
+		// ★ 2026-09-30 修复「出征后自己城市的军官忠诚全掉」：
+		//   本函数只惩罚**正在城内防守**的军官。出征中(status=1)/被俘(is_captive)的军官
+		//   人根本不在城里、也不参与守城，不该被这次攻打扣忠诚甚至当战俘拉走。
+		//   （原来 officerList 未过滤 status=1，城被攻打时在外出征的军官也一起-10~-20，
+		//     归零还会被误当叛将收编 —— 玩家反馈的 bug。）
+		if o.Status == 1 || o.IsCaptive == 1 {
+			continue
+		}
 		drop := 10 + rand.Intn(11) // 每次被攻打 忠诚 -10~-20
 		loyalty := o.Loyalty - drop
 		if loyalty <= 0 {
