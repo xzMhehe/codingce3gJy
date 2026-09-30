@@ -94,6 +94,7 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 必须在 batchKeep(ezfy_cfg_general) 之后：名将已入库，再补普通军官不会互相覆盖。
 	normalizeEzfyNewCols(db)
 	seedEzfyOfficerPool(db)
+	seedEzfyEliteFiveStars(db) // ★ 2026-09-30 五星精英（后勤/学识 各50名）
 	seedEzfyWildOfficers(db)
 	seedEzfyExchangeTpls(db)
 	seedEzfyEquipSets(db)

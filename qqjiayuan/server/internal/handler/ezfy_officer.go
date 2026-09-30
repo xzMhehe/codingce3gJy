@@ -530,6 +530,9 @@ func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	drafts := h.rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
+	// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+	//   按配置概率把候选中的 1 名置为 5 星（100 = 必出），提高招生简章刷出 5 星的几率。
+	drafts = h.boostFiveStarDraft(drafts)
 	if err != nil {
 		rec = model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0}
 	}
@@ -540,6 +543,28 @@ func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 		h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", rec.Candidates)
 	}
 	return ""
+}
+
+// boostFiveStarDraft 招生简章刷新时，按配置概率把候选中的 1 名提升为 5 星。
+//
+// 概率 = ezfyRecruitFiveStarRate()（1~100，默认 1 = 1%）；100 = 100% 必出 5 星。
+// 提升前会先看已有候选是否含 5 星：含就不重复提升；不然挑最高的非 5 星置为 5 星。
+func (h *EzfyHandler) boostFiveStarDraft(drafts []ezfyOfficerDraft) []ezfyOfficerDraft {
+	rate := ezfyRecruitFiveStarRate()
+	if rate >= 100 || (len(drafts) > 0 && rand.Intn(100) < rate) {
+		for i := range drafts {
+			if drafts[i].Star >= 5 {
+				return drafts
+			}
+		}
+		for i := range drafts {
+			if drafts[i].Star < 5 {
+				drafts[i].Star = 5
+				break
+			}
+		}
+	}
+	return drafts
 }
 
 // ============ 军官操作 ============
@@ -1723,20 +1748,22 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 	// ★ 2026-09-29 用户要求：先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
 	//   统一调低 → 中级17% (roll<25) / 高级6% (roll<8) / 特殊2% (roll<2)，
 	//   省出的概率全部归到 初级(初级散件变多)。要再调概率就改这三个阈值。
-	if level >= 3 && roll < 25 {
+	// ★ 2026-09-30 玩家反馈高级地掉装备略多：中级 12%(roll<18) / 高级 4%(roll<4) / 特殊 1%(roll<1)
+	if level >= 3 && roll < 18 {
 		tier = 2
 	}
-	if level >= 6 && roll < 8 {
+	if level >= 6 && roll < 4 {
 		tier = 3
 	}
-	if level >= 9 && roll < 2 {
+	if level >= 9 && roll < 1 {
 		tier = 4
 	}
 	if special {
 		if tier < 3 {
 			tier = 3
 		}
-		dropChance = 100
+		// ★ 2026-09-30 玩家反馈高级地掉装备偏多：活动野地不再必定掉，降为 85%
+		dropChance = 85
 	}
 	if roll < dropChance {
 		if cfg := h.randomEquipment(tier); cfg != nil {

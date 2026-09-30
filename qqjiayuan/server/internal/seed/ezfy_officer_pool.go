@@ -131,6 +131,64 @@ func buildEzfyPoolOfficers() []model.EzfyCfgGeneral {
 	return out
 }
 
+// ============ 一·B、五星精英：后勤向 / 学识向 各 50 名 ============
+//
+// ★ 2026-09-30 用户要求：「军官池子加 50 个五星 后勤高的普通军官、50 个五星 学识高的普通军官」。
+//    原军官池里的 5 星普通军官全是「军事向」（military=100/logistics=60/learning=40），
+//    玩家需要后勤/学识两种配比，故各补 50 名精英（合计 100）。
+//
+// 数值规则（与 5 星普通军官一致）：三属性之和固定 200，主属性明显偏高：
+//   - 后勤向(50)：logistics=112, military=58~(58-3), learning=30~33
+//   - 学识向(50)：learning=112, military=58~(58-3), logistics=30~33
+//
+// ID 从 2002 开始（避开既有 1001~2001），名字复用军官池姓名库里**未使用**的组合
+// （firstNames 下标 25~，原池只用了下标 0~24 的前 1000 个），保证与既有军官不重名。
+func buildEzfyEliteFiveStars() []model.EzfyCfgGeneral {
+	out := make([]model.EzfyCfgGeneral, 0, 100)
+	for i := 0; i < 100; i++ {
+		fi := 25 + i/40 // 复用姓名库下标 25~/26~/27~ 的未用组合
+		li := i % 40
+		name := ezfyPoolFirstNames[fi] + "·" + ezfyPoolLastNames[li]
+		// 次属性小幅摆动，保证总和恒为 200
+		second := 58 - (i % 4)
+		third := 30 + (i % 4)
+		var mil, log, lea int
+		if i < 50 { // 后勤向
+			mil, log, lea = second, 112, third
+		} else { // 学识向
+			mil, log, lea = second, third, 112
+		}
+		out = append(out, model.EzfyCfgGeneral{
+			ID: 2002 + i, Name: name, Level: 1,
+			Military: mil, Logistics: log, Learning: lea,
+			Star: 5, Kind: 1, Weight: 100, Recruit: 1,
+			Source: "军校招募", Skill: "",
+			Des: "五星精英普通军官，可在军校招募获得",
+		})
+	}
+	return out
+}
+
+// seedEzfyEliteFiveStars 五星精英（幂等：id>=2002 的普通军官一个都没有时才灌）
+//
+// ★ 与主池分开：主池 seed 的闸门是「整个池子为空」，对已有数据不会重跑；
+//   精英用「id 2002~2101 是否存在」作为独立闸门，部署到线上已有池子也能补上。
+func seedEzfyEliteFiveStars(db *gorm.DB) {
+	var cnt int64
+	if err := db.Model(&model.EzfyCfgGeneral{}).Where("kind = ? AND id >= 2002", 1).Count(&cnt).Error; err != nil {
+		return
+	}
+	if cnt > 0 {
+		return
+	}
+	list := buildEzfyEliteFiveStars()
+	if err := db.CreateInBatches(list, 100).Error; err != nil {
+		for i := range list {
+			_ = db.Clauses().Create(&list[i]).Error
+		}
+	}
+}
+
 // seedEzfyOfficerPool 军官池普通军官（幂等：池子里已经**一个普通军官都没有**时才灌）
 //
 // ★ 不能用 batchKeep（按主键 DoNothing）—— 那样管理端删掉的军官会在下次启动又冒出来。

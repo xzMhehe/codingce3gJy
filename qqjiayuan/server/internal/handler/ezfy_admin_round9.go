@@ -50,6 +50,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（缺行时默认开，见 ezfyHousePopLimitOn）
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
+		// ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
+		RecruitFiveStarRate: ezfyRecruitFiveStarDef,
 		// ★ 军官升星（简化后：功能开关 + 固定成功率 + 每星加成 + 星级上限）
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
@@ -144,6 +146,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	}
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
+	}
+	// ★ 2026-09-30 招生简章出五星军官概率兜底（0 无意义 → 回落默认 1 = 1%）
+	if lim.RecruitFiveStarRate <= 0 {
+		lim.RecruitFiveStarRate = ezfyRecruitFiveStarDef
 	}
 	// ★ 训练加速黄金倍率：0 / 负数无意义 → 回落 0.1（线上现值；100 = 100% = 原价）
 	if lim.SpeedTrainRate <= 0 {
@@ -246,6 +252,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarChance   *int `json:"officer_star_chance"`
 		OfficerStarAttrGain *int `json:"officer_star_attr_gain"`
 		OfficerStarMax      *int `json:"officer_star_max"`
+		// ★ 2026-09-30 招生简章出五星军官概率（1~100，默认 1 = 1%，100 = 必出）
+		RecruitFiveStarRate *int `json:"recruit_five_star_rate"`
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径，100 = 100% = 原价，节假日调低 = 便宜）
 		SpeedTrainRate *float64 `json:"speed_train_rate"`
 		WoundHealRate  *float64 `json:"wound_heal_rate"`
@@ -296,6 +304,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerStarUpOn:   ezfyStarUpDef,
 		OfficerStarChance: ezfyStarChanceDef, OfficerStarAttrGain: ezfyStarAttrGainDef,
 		OfficerStarMax: ezfyStarMaxDef,
+		// ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
+		RecruitFiveStarRate: ezfyRecruitFiveStarDef,
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
@@ -605,6 +615,14 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.OfficerStarMax = v
 	}
+	// ★ 2026-09-30 招生简章出五星军官概率：1~100（0 无意义；100 = 必出 5 星）
+	if in.RecruitFiveStarRate != nil {
+		if *in.RecruitFiveStarRate < 1 || *in.RecruitFiveStarRate > 100 {
+			resp.ParamError(c, "招生简章出五星军官概率需要在 1~100 之间（100 = 必出 5 星）")
+			return
+		}
+		lim.RecruitFiveStarRate = *in.RecruitFiveStarRate
+	}
 	// ★ 训练加速黄金倍率：允许小数（0.5 = 半价），0 及负数无意义；上界 100 防呆
 	if in.SpeedTrainRate != nil {
 		m := *in.SpeedTrainRate
@@ -746,6 +764,10 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	if lim.OfficerStarMax <= 0 {
 		lim.OfficerStarMax = ezfyStarMaxDef
+	}
+	// ★ 2026-09-30 招生简章出五星军官概率兜底（0 无意义 → 回落默认 1 = 1%）
+	if lim.RecruitFiveStarRate <= 0 {
+		lim.RecruitFiveStarRate = ezfyRecruitFiveStarDef
 	}
 	// ★ 训练加速黄金倍率兜底（老行可能是 0 / NULL）
 	if lim.SpeedTrainRate <= 0 {

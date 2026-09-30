@@ -424,6 +424,12 @@ type EzfyCfgLimit struct {
 	OfficerStarAttrGain int `gorm:"default:10;comment:每升 1 星三维各 +N（默认 10）" json:"officer_star_attr_gain"` // 每升 1 星三维各 +N（默认 10）
 	OfficerStarMax      int `gorm:"default:5;comment:星级上限（默认 5）" json:"officer_star_max"`                 // 星级上限（默认 5）
 
+	// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+	//   招生简章刷新军校候选时，以 N% 概率把候选中的 1 名置为 5 星。
+	//   默认 1 = 1%（≈维持现状）；2 = 2 倍率；100 = 100% 必刷出 5 星军官。
+	//   （名将不参与：名将只由管理端发放，「名将开启才可刷到」暂不实现。）
+	RecruitFiveStarRate int `gorm:"default:1;comment:招生简章出五星军官概率（1~100，默认1；100=必出5星）" json:"recruit_five_star_rate"`
+
 	// ★ 训练一键加速黄金倍率（百分比口径）：实际费用 = 剩余秒数 × 10 × 倍率/100。
 	//   默认 0.1 = 0.1% = 几乎免费（线上现值）；100 = 原价；50 = 半价。
 	//   0 无意义 → 回落 0.1。

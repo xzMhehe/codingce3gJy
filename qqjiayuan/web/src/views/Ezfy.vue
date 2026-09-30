@@ -308,7 +308,8 @@
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 3 }" @click="switchReportTab(3)">军情警讯</a><span
               v-if="reportCounts[1]" class="red">({{ reportCounts[1] }})</span><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 4 }" @click="switchReportTab(4)">战斗报告</a><span
-              v-if="reportCounts[2]" class="red">({{ reportCounts[2] }})</span>
+              v-if="reportCounts[2]" class="red">({{ reportCounts[2] }})</span><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 5 }" @click="switchReportTab(5)">军团战报</a>
           </div>
 
           <!-- ===== 军队动态: 行进/战斗/返航中的部队(出征/侦查/掠夺/运输/增援等) ===== -->
@@ -417,17 +418,19 @@
               <input v-model="reportWord" placeholder="输入关键字" style="width:110px"
                      @keyup.enter="loadReports"/>
               <a href="javascript:;" @click="loadReports">[查询]</a>
-              <!-- ★ 2026-09-26 用户要求：查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源） -->
-              <a href="javascript:;" @click="doClearReports">[一键删除]</a>
+              <!-- ★ 2026-09-26 用户要求：查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源）
+                   ★ 2026-09-30 军团战报是团员的战报，不能一键删除 -->
+              <a v-if="reportTab !== 5" href="javascript:;" @click="doClearReports">[一键删除]</a>
               <a v-if="reportWord" href="javascript:;" @click="reportWord = ''; loadReports()">[清空]</a>
             </div>
             <div class="old-line" v-for="r in repPaged" :key="'rb' + r.id">
               <a href="javascript:;" @click="openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
+                <span v-if="reportTab === 5 && r.owner_name" class="blue">{{ r.owner_name }}：</span>
                 <span class="orange">[{{ r.type_name }}]</span> {{ r.title }}</a>
               <span class="gray">({{ fmtTime(r.created_at) }})</span>
             </div>
-            <div class="old-line" v-if="!reports.length">(暂无战斗报告)</div>
+            <div class="old-line" v-if="!reports.length">{{ reportTab === 5 ? '(暂无军团战报)' : '(暂无战斗报告)' }}</div>
             <div class="ezfy-pager" v-if="reports.length > repSize">
               <a href="javascript:;" :class="{ gray: repPage <= 1 }" @click="sectionPagerGo('rep', -1)">上一页</a>
               <span class="gray">第 {{ repPage }}/{{ repTotalPages }} 页（共 {{ reports.length }} 条）</span>
@@ -2382,9 +2385,9 @@
                 </td>
                 <!-- ★ 仅军团长（can_manage）可标记；已是该关系时按钮变成 [取消标记] -->
                 <td v-if="corpsRelations.can_manage">
-                  <a v-if="cp.relation_type !== 1" href="javascript:;" @click="setCorpsRelation(cp.id, 1)">[标记友好]</a>
+                  <a v-if="cp.relation_type !== 1" href="javascript:;" @click="setCorpsRelation(cp.id, 1)">[友好]</a>
                   <a v-else href="javascript:;" @click="setCorpsRelation(cp.id, 0)">[取消标记]</a>
-                  <a v-if="cp.relation_type !== 2" href="javascript:;" @click="setCorpsRelation(cp.id, 2)">[标记敌对]</a>
+                  <a v-if="cp.relation_type !== 2" href="javascript:;" @click="setCorpsRelation(cp.id, 2)">[敌对]</a>
                   <a v-else href="javascript:;" @click="setCorpsRelation(cp.id, 0)">[取消标记]</a>
                 </td>
               </tr>
@@ -4119,7 +4122,6 @@
         <!-- ★ 2026-09-24 用户要求: 底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
         <a href="javascript:;" @click="exitToHome()">家园</a>
       </div>
-      <br/>
       <hr/>
       <div>小Q报时：{{ nowText }}</div>
       <div>联系我们：QQ群 431442049</div>
@@ -5511,7 +5513,7 @@ export default {
       if (res) this.resType = res
       // ★ 2026-09-28 军情页的分区(军队动态/驻军/军情警讯/战斗报告)也随 URL 恢复，
       //   必须在 go('reports') **之前**赋值：go() 里就是 `switchReportTab(this.reportTab)`。
-      if (rtab >= 1 && rtab <= 4) this.reportTab = rtab
+      if (rtab >= 1 && rtab <= 5) this.reportTab = rtab
       // ★ 2026-09-25 修复「命令详情页刷新后消失」：curOrder 不在 URL 里，
       //   刷新时必须按 oid 重新拉一次详情；拉不到就退回出征队列（绝不留空白页）。
       if (cur === 'orderview') {
@@ -6004,9 +6006,11 @@ export default {
       })
     },
     loadReports () {
-      // category: 1 军情警讯 2 战斗报告(战报查询)
+      // category: 1 军情警讯 2 战斗报告(战报查询)；reportTab===5 → 军团战报(corps)
       const cat = this.reportTab === 3 ? 1 : 2
-      let url = '/games/ezfy/reports?category=' + cat
+      let url = '/games/ezfy/reports?'
+      if (this.reportTab === 5) url += 'corps=1'
+      else url += 'category=' + cat
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       api.get(url).then(r => {
         if (r.code === 0) {
@@ -6260,8 +6264,19 @@ export default {
     //   （玩法细则见代码注释：满一期结算资源+宝物；不满一期只按时长折算资源、无宝物；负重满后超出部分直接入城。）
     async doHarvestAll () {
       if (!await this.ask('确定收获所有采集中的部队吗？')) return
-      api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
+      this.harvestAllReq(false)
+    },
+    // ★ 2026-09-30 出发城市资源已达「配置的资源最大值」时，后端返回 confirm 标记;
+    //   弹确认框，玩家确认后带 force=true 重发才真正收获（否则批量产出入库会因资源上限被丢弃）。
+    harvestAllReq (force) {
+      api.post('/games/ezfy/wild/harvest-all', { force }).then(r => {
         if (r.code === 0) {
+          if (r.data && r.data.confirm) {
+            this.ask(r.data.msg).then(ok => {
+              if (ok) this.harvestAllReq(true)
+            })
+            return
+          }
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
@@ -6285,8 +6300,19 @@ export default {
     async stopCollect (o) {
       const name = o.target_name + '(' + (o.target_x || 0) + ',' + (o.target_y || 0) + ')'
       if (!await this.ask('确定停止「' + name + '」采集吗？')) return
-      api.post('/games/ezfy/wild/stop-collect', { order_id: o.id }).then(r => {
+      this.stopCollectReq(o, false)
+    },
+    // ★ 2026-09-30 出发城市资源已达「配置的资源最大值」时，后端返回 confirm 标记;
+    //   弹确认框，玩家确认后带 force=true 重发才真正停止结算。
+    stopCollectReq (o, force) {
+      api.post('/games/ezfy/wild/stop-collect', { order_id: o.id, force }).then(r => {
         if (r.code === 0) {
+          if (r.data && r.data.confirm) {
+            this.ask(r.data.msg).then(ok => {
+              if (ok) this.stopCollectReq(o, true)
+            })
+            return
+          }
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
@@ -7371,7 +7397,8 @@ export default {
         const item = this.reports.find(x => x.id === r.id)
         if (item) item.is_read = 1
         // openReport 可能从「军情警讯」进也可能从「战斗报告」进，这里记录它来自哪个分区
-        this.reportTab = (r.category === 1) ? 3 : 4
+        // ★ 2026-09-30 军团战报(category='corps')回到军团 tab
+        this.reportTab = (r.category === 1) ? 3 : (r.category === 'corps' ? 5 : 4)
         this.go('reportview')
       })
     },

@@ -37,7 +37,8 @@ const HINTS = {
   reg_coins: '注册新人礼包 G币 数量（0-100000）',
   reg_ip_limit: '同一IP最多可注册账号数（默认5，填0不限制）',
   site_announce: '广场顶部公告语（留空不显示）',
-  pretty_limit: '靓号转换次数（每人可转号次数，默认1，范围1-100）'
+  pretty_limit: '靓号转换次数（每人可转号次数，默认1，范围1-100）',
+  anti_copy: '防复制/防保存网页开关（默认开启，填0关闭；留空或1=开启，0=关闭）'
 }
 
 export default {

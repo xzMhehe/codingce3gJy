@@ -136,6 +136,10 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	h.cfgs()
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
+	var req struct {
+		Force bool `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 确认后 force=true 才真正结算
+	}
+	_ = c.ShouldBindJSON(&req)
 
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0", uid).
@@ -143,6 +147,26 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	if len(orders) == 0 {
 		resp.ParamError(c, "没有正在采集的部队")
 		return
+	}
+
+	// ★ 2026-09-30 用户要求：任一采集部队的出发城市资源已达「资源最大值」时，
+	//   一键收获产出入库会被资源上限封顶丢量，先整批确认一次。
+	if !req.Force {
+		var cityID int64
+		for i := range orders {
+			if h.ezfyAtResMax(orders[i].CityId) {
+				cityID = orders[i].CityId
+				break
+			}
+		}
+		if cityID > 0 {
+			resp.OK(c, gin.H{
+				"confirm": true,
+				"msg": "有采集部队的出发城市资源已达配置的资源最大值, 本批一键收获的产出入库时会超出上限而被丢弃" +
+					"(资源只会累加到资源最大值, 超出部分会消失)。确认仍要一键收获吗?",
+			})
+			return
+		}
 	}
 
 	n := 0
@@ -223,6 +247,7 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	h.cfgs()
 	var req struct {
 		OrderId int64 `json:"order_id"`
+		Force   bool `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 玩家确认后带 force=true 才真正结算
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.OrderId <= 0 {
 		resp.ParamError(c, "参数错误")
@@ -241,6 +266,17 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	}
 	if order.ArriveTime <= 0 {
 		resp.ParamError(c, "该部队已在待命(未在采集中)")
+		return
+	}
+	// ★ 2026-09-30 用户要求：出发城市资源已达到配置的「资源最大值」时，
+	//   本次收获产出入库会被资源上限封顶丢量（其余资源只会累加到资源最大值、超出的会消失）。
+	//   先向玩家确认：是否仍要停止/收获；确认后(force=true)才真正结算入库。
+	if !req.Force && h.ezfyAtResMax(order.CityId) {
+		resp.OK(c, gin.H{
+			"confirm": true,
+			"msg": "出发城市资源已达配置的资源最大值, 本次停止收获的产出入库时会超出上限而被丢弃" +
+				"(资源只会累加到资源最大值, 超出部分会消失)。确认仍要停止采集并取回吗?",
+		})
 		return
 	}
 	if now >= order.ArriveTime {

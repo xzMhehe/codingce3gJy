@@ -58,7 +58,7 @@ export default {
   data () {
     return {
       nowText: '', timer: null, pollTimer: null, spaceCount: 0, noticeUnread: 0, qqGroup: '',
-      antiTip: '', antiTimer: null,
+      antiTip: '', antiTimer: null, antiEnabled: false,
       navs: [
         { name: '家园', to: '/home', keys: ['/home', '/mood', '/sign', '/profile', '/wallet', '/bag', '/security', '/achieve', '/home-level', '/invite', '/favorites', '/medals', '/guestbook', '/youquan'] },
         { name: '好友', to: '/friends', keys: ['/friends', '/contacts'] },
@@ -86,7 +86,6 @@ export default {
     this.tick()
     this.timer = setInterval(this.tick, 1000)
     this.loadSiteInfo()
-    this.setupAntiCopy()
     if (this.isLogin) {
       this.pollUnread()
       this.pollTimer = setInterval(this.pollUnread, 30000)
@@ -135,9 +134,14 @@ export default {
       this.antiTimer = setTimeout(() => { this.antiTip = '' }, 2200)
     },
     // 页脚 QQ 群号（后台站点设置 qq_group，空则不展示）
+    // ★ 2026-09-30 防复制/防保存网页开关移到站点设置：anti_copy=0 关闭，未配置默认开启
     loadSiteInfo () {
       api.get('/site-info').then(r => {
-        if (r.code === 0 && r.data) this.qqGroup = (r.data.qq_group || '').trim()
+        if (r.code === 0 && r.data) {
+          this.qqGroup = (r.data.qq_group || '').trim()
+          this.antiEnabled = (r.data.anti_copy !== '0')
+          if (this.antiEnabled) this.setupAntiCopy()
+        }
       }).catch(() => {})
     },
     goNoble () {

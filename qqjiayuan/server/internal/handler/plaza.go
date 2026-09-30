@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +34,14 @@ func (h *PlazaHandler) Announcements(c *gin.Context) {
 func (h *PlazaHandler) SiteInfo(c *gin.Context) {
 	var qqGroup string
 	h.DB.Raw("SELECT `value` FROM settings WHERE `key` = 'qq_group'").Scan(&qqGroup)
-	resp.OK(c, gin.H{"qq_group": qqGroup})
+	// ★ 2026-09-30 防复制/防保存网页开关（后台站点设置 anti_copy=1 开启/0 关闭，未配置默认开启）
+	var antiCopy string
+	h.DB.Raw("SELECT `value` FROM settings WHERE `key` = 'anti_copy'").Scan(&antiCopy)
+	anti := "1"
+	if antiCopy == "0" || strings.EqualFold(antiCopy, "false") || strings.EqualFold(antiCopy, "off") {
+		anti = "0"
+	}
+	resp.OK(c, gin.H{"qq_group": qqGroup, "anti_copy": anti})
 }
 
 func (h *PlazaHandler) Index(c *gin.Context) {

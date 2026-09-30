@@ -261,6 +261,10 @@
               <template slot="label">军官星级上限<el-tooltip placement="top" :content="tips.officer_star_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.officer_star_max" :min="1" :max="100" controls-position="right" style="width:180px" />
             </el-form-item>
+            <el-form-item>
+              <template slot="label">招生简章出五星军官概率(%)<el-tooltip placement="top" :content="tips.recruit_five_star_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.recruit_five_star_rate" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
           </el-tab-pane>
         </el-tabs>
       </el-form>
@@ -318,7 +322,9 @@ export default {
         convene_pop_max: 0,
         officer_star_up_on: 1,
         officer_star_chance: 20,
-        officer_star_attr_gain: 10, officer_star_max: 5
+        officer_star_attr_gain: 10, officer_star_max: 5,
+        // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
+        recruit_five_star_rate: 1
       },
       // ★ 各配置项的悬停说明（鼠标移到标题后的 i 图标上显示）
       //   文案口径以后端 model/ezfy.go 的 EzfyCfgLimit 注释为准，改逻辑时同步改这里
@@ -400,7 +406,9 @@ export default {
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
-        officer_star_max: '军官最高可升到的星级，默认 5'
+        officer_star_max: '军官最高可升到的星级，默认 5',
+        // ★ 2026-09-30 招生简章出五星军官概率
+        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率：1 = 1%，100 = 100% 必刷出 5 星军官'
       }
     }
   },
@@ -476,7 +484,9 @@ export default {
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
-            officer_star_max: pos(r.data.officer_star_max, 5)
+            officer_star_max: pos(r.data.officer_star_max, 5),
+            // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%）
+            recruit_five_star_rate: pos(r.data.recruit_five_star_rate, 1)
           }
         } else this.$message.error(r.msg)
       })

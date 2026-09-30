@@ -741,6 +741,25 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			break
 		}
 	}
+	// ★ 2026-09-30 用户规则：侦察只有侦察机才能侦察。
+	//   侦察(orderType 1)必须携带侦察机(troopId 9)，且只能带侦察机；
+	//   其它部队不能混编侦察，防止用普通部队当炮灰探路。
+	const ezfyReconPlaneTroopID = 9
+	if orderType == 1 {
+		if len(validTroops) == 0 {
+			return "侦察必须携带侦察机(侦察机)"
+		}
+		for _, t := range validTroops {
+			if t.TroopId != ezfyReconPlaneTroopID {
+				c := ezfyCfg.troop(t.TroopId)
+				name := "该部队"
+				if c != nil {
+					name = c.Name
+				}
+				return "侦察只能派侦察机, 不能混编其它部队(如「" + name + "」)"
+			}
+		}
+	}
 	if orderType != 5 && len(validTroops) == 0 {
 		return "请选择出征部队"
 	}

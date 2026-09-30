@@ -273,6 +273,10 @@ func Run(db *gorm.DB, staticDir string) {
 		// ★ 用户规则「军官最多 5 星」
 		addNumCol("officer_star_max", 5)
 
+		// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+		//   招生简章刷新时按此概率出 5 星（默认 1 = 1%，100 = 必出）。
+		addNumCol("recruit_five_star_rate", 1)
+
 		// 野地兵力倍数（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 10")

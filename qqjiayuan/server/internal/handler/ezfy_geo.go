@@ -990,6 +990,8 @@ const (
 	ezfyStarMaxDef = 5
 	// 升星功能开关默认值（1 = 开 / 0 = 关）
 	ezfyStarUpDef = 1
+	// 招生简章出五星军官概率默认值（1 = 1%，用户要求默认 1 倍率）
+	ezfyRecruitFiveStarDef = 1
 )
 
 // ezfyStarUpOn 升星功能是否开启（关 = 升星卡不能用）
@@ -1005,6 +1007,12 @@ func ezfyStarAttrGain() int {
 	return ezfyLimitOr(ezfyCfg.limit.OfficerStarAttrGain, ezfyStarAttrGainDef)
 }
 func ezfyStarMax() int { return ezfyLimitOr(ezfyCfg.limit.OfficerStarMax, ezfyStarMaxDef) }
+
+// ezfyRecruitFiveStarRate 招生简章出五星军官概率（%）：默认 1%，范围 1~100。
+// 100 = 100% 必刷出 5 星军官。
+func ezfyRecruitFiveStarRate() int {
+	return clampInt(ezfyLimitOr(ezfyCfg.limit.RecruitFiveStarRate, ezfyRecruitFiveStarDef), 1, 100)
+}
 
 // ezfyStarSuccessRate 升星成功率（%）：固定值，不再有按星级递减/下限那一套。
 func ezfyStarSuccessRate() int {

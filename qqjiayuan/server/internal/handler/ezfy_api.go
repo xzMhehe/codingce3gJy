@@ -2342,6 +2342,11 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	category, _ := strconv.Atoi(c.DefaultQuery("category", "0"))
 	word := strings.TrimSpace(c.Query("word"))
+	// ★ 2026-09-30 军团战报：展示本军团团员的 PvP 战报（不含 NPC/野地/系统）
+	if c.Query("corps") == "1" {
+		h.corpsReports(c, uid, word)
+		return
+	}
 
 	q := h.DB.Where("user_id = ?", uid)
 	if word != "" {
@@ -2378,6 +2383,86 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		"radar": h.buildingLevel(city.ID, ezfyRadarBuildingID),
 		"recon": h.techMap(city.ID)[ezfyReconTechID],
 		"intel": h.ezfyIntelLevel(city.ID)})
+}
+
+// corpsReports 军团战报 —— 展示本军团团员的 PvP 战斗战报（对战玩家城，
+// 不含野地/寇城/活动目标/系统消息）。
+func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
+	empty := func() { resp.OK(c, gin.H{"reports": []gin.H{}, "counts": map[int]int{}, "corps": true}) }
+	myCorp := h.corpsOfUser(uid)
+	if myCorp == 0 {
+		empty()
+		return
+	}
+	var members []model.EzfyCorpsMember
+	h.DB.Where("corps_id = ?", myCorp).Find(&members)
+	uids := make([]uint, 0, len(members))
+	for _, m := range members {
+		uids = append(uids, m.UserId)
+	}
+	if len(uids) == 0 {
+		empty()
+		return
+	}
+	q := h.DB.Where("user_id IN ? AND report_type IN (1,2,3,4)", uids)
+	if word != "" {
+		q = q.Where("title LIKE ?", "%"+word+"%")
+	}
+	var reports []model.EzfyReport
+	q.Order("id DESC").Limit(500).Find(&reports)
+
+	// 判定 PvP：报告的 order 必须 target_type==3（玩家城）；野地(1)/寇城(2) 排除。
+	orderIds := []int64{}
+	for _, r := range reports {
+		if r.OrderId > 0 {
+			orderIds = append(orderIds, r.OrderId)
+		}
+	}
+	pvp := map[int64]bool{}
+	if len(orderIds) > 0 {
+		var orders []model.EzfyOrder
+		h.DB.Select("id, target_type").Where("id IN ?", orderIds).Find(&orders)
+		for _, o := range orders {
+			if o.TargetType == 3 {
+				pvp[int64(o.ID)] = true
+			}
+		}
+	}
+	// 归属团员昵称
+	ownerName := map[uint]string{}
+	ids := []uint{}
+	for _, r := range reports {
+		if _, ok := ownerName[r.UserID]; !ok {
+			ownerName[r.UserID] = ""
+			ids = append(ids, r.UserID)
+		}
+	}
+	if len(ids) > 0 {
+		var ps []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", ids).Find(&ps)
+		for _, p := range ps {
+			if p.Nickname != "" {
+				ownerName[p.UserID] = p.Nickname
+			}
+		}
+	}
+	counts := map[int]int{}
+	views := []gin.H{}
+	for _, r := range reports {
+		if r.ReportType == 6 || r.OrderId <= 0 || !pvp[r.OrderId] {
+			continue
+		}
+		cat := ezfyReportCategory(r.Title)
+		counts[cat]++
+		if len(views) >= 50 {
+			continue
+		}
+		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
+			"type_name": ezfyReportTypeName(r.ReportType, r.Title), "is_read": 1, "order_id": r.OrderId,
+			"owner_name": ownerName[r.UserID],
+			"category": "corps", "category_name": "军团战报", "created_at": r.CreatedAt})
+	}
+	resp.OK(c, gin.H{"reports": views, "counts": counts, "corps": true})
 }
 
 // ReportDynamics GET /games/ezfy/reports/dynamics
