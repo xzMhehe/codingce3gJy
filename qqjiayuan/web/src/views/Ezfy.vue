@@ -64,16 +64,16 @@
         </div>
         <div class="old-line">
           <svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><title>军团</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#2F5D8A"/><path d="M10 3.3 L15.4 5.2 V10.4 C15.4 13.5 13.2 15.6 10 16.5 C6.8 15.6 4.6 13.5 4.6 10.4 V5.2 Z" fill="#fff"/><path d="M10 7.4 L11.2 9.6 L13.6 9.8 L12 11.3 L12.5 13.6 L10 12.3 L7.5 13.6 L8 11.3 L6.4 9.8 L8.8 9.6 Z" fill="#2F5D8A"/></svg>
-          军团：
+          军团:
           <a href="javascript:;" @click="go('corps')" v-if="!myCorps">加入军团</a>
           <a href="javascript:;" @click="go('corps')" v-else>[{{ myCorps.name }}]</a>
         </div>
-        <div class="old-line">声望：{{ profile.prestige }}</div>
+        <div class="old-line">声望: {{ profile.prestige }}</div>
         <div class="old-line">
           <span v-html="rankIcon(myRankId)"></span>
           <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
         </div>
-        <div class="old-line">每日签到：<a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
+        <div class="old-line">每日签到: <a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line home-nav2">
           <a href="javascript:;" @click="go('builds')">资源</a>.
@@ -939,6 +939,13 @@
                 <!-- ★ 用户要求「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
                 <a v-if="o.status === 0 || o.status === 1" class="red"
                    href="javascript:;" @click="doRecall(o)">[取消]</a>
+                <!-- ★ 2026-09-30 行军计谋：神兵天降=去程减80%（行进中）、战略转移=回程减360分钟（返回中） -->
+                <a v-if="o.status === 0 && o.scheme_fast === 0" class="green"
+                   href="javascript:;" @click="doMarchScheme(o, 13)">[神兵天降]</a>
+                <a v-if="o.status === 0 && o.scheme_fast === 1" class="gray">[神兵天降·已用]</a>
+                <a v-if="o.status === 2 && o.scheme_back === 0" class="green"
+                   href="javascript:;" @click="doMarchScheme(o, 14)">[战略转移]</a>
+                <a v-if="o.status === 2 && o.scheme_back === 1" class="gray">[战略转移·已用]</a>
               </td>
             </tr>
           </table>
@@ -2252,6 +2259,8 @@
         <div class="panel">
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: corpsTab === 'info' }" @click="switchCorpsTab('info')">军团信息</a>|
+            <a href="javascript:;" :class="{ on: corpsTab === 'list' }" @click="switchCorpsTab('list')">军团列表</a>|
+            <a href="javascript:;" :class="{ on: corpsTab === 'chat' }" @click="switchCorpsTab('chat')">军团聊天</a>|
             <a href="javascript:;" :class="{ on: corpsTab === 'diplomacy' }" @click="switchCorpsTab('diplomacy')">军团外交</a>|
             <a href="javascript:;" :class="{ on: corpsTab === 'war' }" @click="switchCorpsTab('war')">军团宣战</a>|
             <a href="javascript:;" :class="{ on: corpsTab === 'mall' }" @click="switchCorpsTab('mall')">军团商城</a>
@@ -2313,31 +2322,26 @@
             </div>
           </div>
         </template>
-        <div class="panel">
-          <div class="panel-title">军团列表</div>
-          <table>
-            <tr><th>军团</th><th>人数</th><th>战力</th><th>操作</th></tr>
-            <tr v-for="cp in corpsList" :key="'cp' + cp.id">
-              <td>{{ cp.name }}</td>
-              <td>{{ cp.member_count }}</td>
-              <td>{{ cp.battle_score }}</td>
-              <td><a v-if="!myCorps" href="javascript:;" @click="doJoinCorps(cp)">[加入]</a></td>
-            </tr>
-          </table>
-          <div class="old-line" v-if="!corpsList.length">(暂无军团)</div>
-        </div>
-        <div class="panel" v-if="myCorps">
-          <div class="panel-title">军团聊天</div>
-          <div class="old-line" v-for="m in corpsChats" :key="'cc' + m.id">
-            [<a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.user_name }}</a>]:{{ m.content }}
-          </div>
-          <div class="old-line" v-if="!corpsChats.length">(暂无消息)</div>
+        <!-- ★ 2026-09-30 入团审核（仅军团长）：审核开关 + 待审申请列表 -->
+        <div class="panel" v-if="isLeader">
+          <div class="panel-title">入团审核</div>
           <div class="old-line">
-            <input v-model="corpsMsg" class="corps-msg-input" style="width:15%"/>
-            <button @click="doCorpsChat">发送</button>
-            <a href="javascript:;" @click="loadCorps">[刷新]</a>
+            <a href="javascript:;" @click="doToggleNeedReview()">
+              [{{ myCorpsNeedReview ? '关闭审核·无需审核直接入团' : '开启审核·需军团长审核' }}]
+            </a>
           </div>
+          <div class="old-line gray">开启后，未入团玩家申请需你在此通过/拒绝；未开启则直接入团。</div>
+          <div class="old-line" v-if="corpsApplies.length">
+            <div class="old-line" v-for="a in corpsApplies" :key="'ap' + a.apply_id">
+              <a href="javascript:;" @click="openPlayer(a.user_id)">{{ a.name }}</a>(id:{{ a.user_id }})
+              <a class="green" href="javascript:;" @click="doApplyHandle(a, 1)">[通过]</a>
+              <a class="red" href="javascript:;" @click="doApplyHandle(a, 2)">[拒绝]</a>
+            </div>
+          </div>
+          <div class="old-line gray" v-else>(暂无待审申请)</div>
         </div>
+        <!-- ★ 2026-09-30 未入团玩家若看的是开启审核的军团，提示需审核 -->
+        <div class="old-line gray" v-if="!myCorps && myApplyStatus === 1">你已提交入团申请, 等待军团长审核...</div>
         <div class="panel" v-if="!myCorps">
           <div class="panel-title">创建军团</div>
           <div class="old-line">
@@ -2346,6 +2350,47 @@
           </div>
         </div>
         </template>
+
+        <!-- ========== ★ 2026-09-30 军团列表（独立 tab） ========== -->
+        <template v-else-if="corpsTab === 'list'">
+          <div class="panel">
+            <div class="panel-title">军团列表</div>
+            <table>
+              <tr><th>军团</th><th>人数</th><th>战力</th><th>操作</th></tr>
+              <tr v-for="cp in corpsList" :key="'cp' + cp.id">
+                <td>{{ cp.name }}</td>
+                <td>{{ cp.member_count }}</td>
+                <td>{{ cp.battle_score }}</td>
+                <td>
+                  <template v-if="!myCorps">
+                    <a href="javascript:;" @click="doJoinCorps(cp)">{{ cp.need_review ? '[申请]' : '[加入]' }}</a>
+                  </template>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line" v-if="!corpsList.length">(暂无军团)</div>
+          </div>
+        </template>
+
+        <!-- ========== ★ 2026-09-30 军团聊天（独立 tab） ========== -->
+        <template v-else-if="corpsTab === 'chat'">
+          <div class="panel" v-if="myCorps">
+            <div class="panel-title">军团聊天</div>
+            <div class="old-line" v-for="m in corpsChats" :key="'cc' + m.id">
+              [<a href="javascript:;" @click="openPlayer(m.user_id)">{{ m.user_name }}</a>]:{{ m.content }}
+            </div>
+            <div class="old-line" v-if="!corpsChats.length">(暂无消息)</div>
+            <div class="old-line">
+              <input v-model="corpsMsg" class="corps-msg-input" style="width:15%"/>
+              <button @click="doCorpsChat">发送</button>
+              <a href="javascript:;" @click="loadCorps">[刷新]</a>
+            </div>
+          </div>
+          <div class="panel" v-else>
+            <div class="old-line">你还没有加入军团 <a href="javascript:;" @click="switchCorpsTab('list')">[去军团列表]</a></div>
+          </div>
+        </template>
+
         <!-- ========== ② 军团外交 ========== -->
         <template v-else-if="corpsTab === 'diplomacy'">
           <div class="panel" v-if="corpsRelations && corpsRelations.in_corps">
@@ -4332,7 +4377,12 @@ export default {
       kickUserId: 0,
       // ★ 2026-09-25 用户要求：军团页拆成「军团信息 / 军团外交 / 军团宣战 / 军团商城」四个子栏，
       //   纯前端 tab 切换（照抄 rank/acade 页的 .acade-tab 写法），数据按需懒加载。
-      corpsTab: 'info',        // info军团信息 / diplomacy军团外交 / war军团宣战 / mall军团商城
+      // ★ 2026-09-30 用户要求：再加「军团列表 / 军团聊天」独立 tab → 六个。
+      corpsTab: 'info',        // info军团信息 / list军团列表 / chat军团聊天 / diplomacy军团外交 / war军团宣战 / mall军团商城
+      // ★ 2026-09-30 入团审核：军团的待审申请 / 审核开关 / 我是否已提交申请
+      corpsApplies: [],
+      myCorpsNeedReview: 0,
+      myApplyStatus: 0,        // 0无申请 1待审 2通过 3拒绝
       corpsPoints: 0,          // 军团总积分（/corps/members 或 /corps/relations 的 my_corps.points）
       corpsRelations: null,    // /corps/relations 全量数据（null=还没拉过）
       corpsWars: null,         // /corps/war 全量数据（null=还没拉过）
@@ -6603,6 +6653,12 @@ export default {
         if (r.code === 0) {
           this.corpsList = r.data.corps
           this.myCorps = r.data.my_corps
+          // ★ 2026-09-30 入团审核开关（我的军团）
+          this.myCorpsNeedReview = (r.data.my_corps && r.data.my_corps.need_review) ? 1 : 0
+          // 未入团时：从列表里找「我是否已申请且待审」的军团状态
+          if (!this.myCorps) this.myApplyStatus = 0
+          // 团长：进入信息 tab 时拉待审申请
+          if (this.isLeader && this.corpsTab === 'info') this.loadCorpsApplies()
         }
       })
       api.get('/games/ezfy/corps/members').then(r => {
@@ -7470,6 +7526,19 @@ export default {
       api.post('/games/ezfy/order/recall', { order_id: o.id })
         .then(r => this.alert(r, name + '已取消', () => { this.loadOrders(); this.loadDynamics() }))
     },
+    // ★ 2026-09-30 行军计谋：神兵天降(13,去程减80%)/战略转移(14,回程减360分钟)，耗 7 信号弹
+    async doMarchScheme (o, schemeId) {
+      const schemeName = schemeId === 13 ? '神兵天降' : '战略转移'
+      if (!await this.ask('对这支部队使用「' + schemeName + '」吗？消耗信号弹×7，每种计谋每支部队限一次。')) return
+      api.post('/games/ezfy/scheme/use', { scheme_id: schemeId, order_id: o.id })
+        .then(r => {
+          if (r.code !== 0) { this.notify(r.msg || '发动失败'); return }
+          this.notify('「' + schemeName + '」已生效')
+          this.loadOrders()
+          this.loadDynamics()
+          this.loadBag()
+        })
+    },
     orderStatusText (o) {
       if (o.status === 0) return '行进中 ' + this.remain(o.arrive_time)
       // ★ 2026-09-24 采集空闲化: 到达野地后空闲待命(需手工[采集]), 开始采集才显示「驻守采集」
@@ -8115,9 +8184,14 @@ export default {
         .then(r => this.alert(r, '联盟已创建', () => this.loadCorps()))
     },
     doJoinCorps (cp) {
-      // ★ 加入成功后必须重新拉军团数据，否则页面还显示「未加入」
-      api.post('/games/ezfy/corps/join', { corps_id: cp.id })
-        .then(r => this.alert(r, '已加入联盟', () => this.loadCorps()))
+      // ★ 2026-09-30 入口改用 /corps/apply：open 军团直接入团，需审核军团落申请待审核
+      api.post('/games/ezfy/corps/apply', { corps_id: cp.id })
+        .then(r => {
+          this.alert(r, (r.data && r.data.need_review ? '申请已提交' : '已加入联盟'), () => {
+            if (r.data && r.data.need_review) this.myApplyStatus = 1
+            this.loadCorps()
+          })
+        })
     },
     async doLeaveCorps () {
       if (!await this.ask(this.isLeader ? '军团长退出将解散军团, 确定?' : '确定退出军团?')) return
@@ -8151,11 +8225,37 @@ export default {
         } else this.notify(r.msg)
       })
     },
+    // ★ 2026-09-30 入团审核：军团长查看待审申请
+    loadCorpsApplies () {
+      api.get('/games/ezfy/corps/apply').then(r => {
+        if (r.code === 0) {
+          this.corpsApplies = r.data.applies || []
+          this.myCorpsNeedReview = r.data.need_review ? 1 : 0
+        }
+      })
+    },
+    // op 1=通过 2=拒绝
+    doApplyHandle (a, op) {
+      api.post('/games/ezfy/corps/apply/handle', { apply_id: a.apply_id, op: op })
+        .then(r => this.alert(r, op === 1 ? '已通过' : '已拒绝', () => this.loadCorpsApplies()))
+    },
+    // 军团长开/关入团审核
+    doToggleNeedReview () {
+      api.post('/games/ezfy/corps/need-review', { need_review: this.myCorpsNeedReview ? 0 : 1 })
+        .then(r => this.alert(r, '已切换审核开关', () => {
+          this.loadCorps()
+        }))
+    },
     // ---- ★ 2026-09-25 用户要求：军团外交 / 军团宣战 / 军团商城 ----
     // 切子栏：只在数据还没拉过时才请求（避免每次切 tab 重复打接口）
     switchCorpsTab (tab) {
       this.corpsTab = tab
-      if (tab === 'diplomacy') {
+      if (tab === 'info') {
+        this.loadCorps()
+        if (this.isLeader) this.loadCorpsApplies()
+      } else if (tab === 'list' || tab === 'chat') {
+        this.loadCorps()
+      } else if (tab === 'diplomacy') {
         if (!this.corpsRelations) this.loadCorpsRelations()
       } else if (tab === 'war') {
         if (!this.corpsWars) this.loadCorpsWars()

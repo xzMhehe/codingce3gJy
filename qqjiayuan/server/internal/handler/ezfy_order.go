@@ -341,8 +341,8 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"gather_res":   gatherRes,
 		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
 		"owner":        owner,
-		"mine":        isMine, // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
-		"is_starred":  starCnt > 0, // ★ 2026-09-30 收藏态
+		"mine":         isMine,      // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
+		"is_starred":   starCnt > 0, // ★ 2026-09-30 收藏态
 	})
 }
 
@@ -1233,6 +1233,9 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			"can_command":  o.Status == ezfyOrderStatusBattle,
 			"battle_round": battleRounds[int64(o.ID)],
 			"battle_max":   ezfyBattleMaxRounds,
+			// ★ 2026-09-30 行军计谋使用标记：scheme_fast=神兵天降已用  scheme_back=战略转移已用
+			"scheme_fast": o.SchemeUsed & 1,
+			"scheme_back": (o.SchemeUsed >> 1) & 1,
 		})
 	}
 	resp.OK(c, gin.H{"orders": views})

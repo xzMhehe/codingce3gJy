@@ -602,6 +602,11 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/corps/list", ezfyH.CorpsList)
 				ezfyG.POST("/corps/create", ezfyH.CorpsCreate)
 				ezfyG.POST("/corps/join", ezfyH.CorpsJoin)
+				// ★ 2026-09-30 入团申请 / 审核
+				ezfyG.POST("/corps/apply", ezfyH.CorpsApply)
+				ezfyG.GET("/corps/apply", ezfyH.CorpsApplyList)
+				ezfyG.POST("/corps/apply/handle", ezfyH.CorpsApplyHandle)
+				ezfyG.POST("/corps/need-review", ezfyH.CorpsNeedReview)
 				ezfyG.POST("/corps/leave", ezfyH.CorpsLeave)
 				ezfyG.POST("/corps/kick", ezfyH.CorpsKick)
 				ezfyG.POST("/corps/notice", ezfyH.CorpsNotice)

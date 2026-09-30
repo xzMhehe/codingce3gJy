@@ -146,11 +146,11 @@ func (EzfyMapTile) TableName() string { return "ezfy_map_tile" }
 //   - 守军/奖励 可配，留 0/空 = 用代码默认。
 type EzfyActWild struct {
 	ID uint `gorm:"primaryKey;comment:主键ID" json:"id"`
-	X  int `gorm:"uniqueIndex:uk_actwild;comment:X坐标" json:"x"`
-	Y  int `gorm:"uniqueIndex:uk_actwild;comment:Y坐标" json:"y"`
+	X  int  `gorm:"uniqueIndex:uk_actwild;comment:X坐标" json:"x"`
+	Y  int  `gorm:"uniqueIndex:uk_actwild;comment:Y坐标" json:"y"`
 	// Enabled 启用开关：1=启用活动（是活动野地） 0=关闭（该格按普通野地处理）
-	Enabled int  `gorm:"default:0;comment:启用开关 1启用 0关闭" json:"enabled"`
-	Level   int  `gorm:"default:0;comment:活动等级1-3，0=用默认" json:"level"`
+	Enabled int `gorm:"default:0;comment:启用开关 1启用 0关闭" json:"enabled"`
+	Level   int `gorm:"default:0;comment:活动等级1-3，0=用默认" json:"level"`
 	// Troops 守军配置 JSON [[兵种id,数量],...]，空=用默认守军
 	Troops string `gorm:"type:varchar(1000);comment:守军JSON [[兵种id,count],...]" json:"troops"`
 	// Res 每次胜利资源奖励(粮/钢/油/稀矿各加)，0=用默认
@@ -169,7 +169,7 @@ type EzfyActWild struct {
 	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
 	// ★ 2026-09-30 同一玩家可抓守将次数上限（默认 1）。玩家已抓到上限后，
 	//   再次胜利抓取概率强制 0（详见 ezfy_activity_target.go 的结算判定）。
-	MaxCapture int `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	MaxCapture int    `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
 	Des        string `gorm:"type:varchar(200);comment:描述" json:"des"`
 }
 
@@ -776,6 +776,11 @@ type EzfyOrder struct {
 	//   战报/掠夺/经验/征服等战后逻辑全部复用，不重复实现一套。
 	BattleResult string `gorm:"type:mediumtext;comment:战斗结果" json:"battle_result"`
 
+	// ★ 2026-09-30 计谋「神兵天降/战略转移」使用标记（位标记，每支部队各计谋限一次）：
+	//   bit0 = 神兵天降已用（去程减时）
+	//   bit1 = 战略转移已用（回程减时）
+	SchemeUsed int `gorm:"default:0;comment:计谋使用位标记 bit0神兵天降 bit1战略转移" json:"scheme_used"`
+
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
@@ -914,11 +919,28 @@ type EzfyCorps struct {
 	MemberCount  int    `gorm:"default:1;comment:Member数量" json:"member_count"`
 	// ★ 2026-09-25 用户要求「军团积分」：军团战绩总积分（成员在军团交战期获胜累加，军团商城可查看）
 	Points int64 `gorm:"default:0;comment:军团总积分" json:"points"`
+	// ★ 2026-09-30 用户要求「入团需审核」：0=无需审核直接入团(默认)，1=需军团长审核。
+	NeedReview int `gorm:"default:0;comment:入团是否需审核(0=直接入团 1=需军团长审核)" json:"need_review"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
 
 func (EzfyCorps) TableName() string { return "ezfy_corps" }
+
+// EzfyCorpsApply 入团申请（军团长开启审核后，玩家申请入团走此表待审）
+//
+// ★ 2026-09-30 用户要求「进军团需要审核」：open 军团直接入团（不走本表），
+//   开启审核的军团，玩家申请先落这里，军团长 [通过]/[拒绝] 后入团或驳回。
+//   Status：0 待审 / 1 通过(已入团) / 2 拒绝。
+type EzfyCorpsApply struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CorpsId   uint      `gorm:"index:idx_apply_corps;comment:军团ID" json:"corps_id"`
+	UserId    uint      `gorm:"index:idx_apply_user;comment:申请用户ID" json:"user_id"`
+	Status    int       `gorm:"default:0;comment:0待审 1通过 2拒绝" json:"status"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyCorpsApply) TableName() string { return "ezfy_corps_apply" }
 
 type EzfyCorpsMember struct {
 	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
@@ -1437,6 +1459,8 @@ type EzfyCfgScheme struct {
 	// Kind 计谋类型：
 	//   0 = 纯说明（原版就是「需要进入相应界面才可以使用」，这里只做消耗 + 战报记录）
 	//   1 = 先发制人（使双方立即进入可战争状态 N 分钟）
+	//   2 = 神兵天降（队伍去程/行进中剩余时间减 80%）
+	//   3 = 战略转移（队伍回程减 360 分钟）
 	Kind int `gorm:"default:0;comment:种类" json:"kind"`
 	// WarMinutes Kind=1 时的可战争时长（分钟）；实际还会被军官学识夹一次
 	WarMinutes int `gorm:"default:60;comment:WarMinutes Kind=1 时的可战争时长（分钟）；实际还会被军官学识夹一次" json:"war_minutes"`

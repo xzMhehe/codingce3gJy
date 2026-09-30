@@ -134,8 +134,9 @@ func buildEzfyPoolOfficers() []model.EzfyCfgGeneral {
 // ============ 一·B、五星精英：后勤向 / 学识向 各 50 名 ============
 //
 // ★ 2026-09-30 用户要求：「军官池子加 50 个五星 后勤高的普通军官、50 个五星 学识高的普通军官」。
-//    原军官池里的 5 星普通军官全是「军事向」（military=100/logistics=60/learning=40），
-//    玩家需要后勤/学识两种配比，故各补 50 名精英（合计 100）。
+//
+//	原军官池里的 5 星普通军官全是「军事向」（military=100/logistics=60/learning=40），
+//	玩家需要后勤/学识两种配比，故各补 50 名精英（合计 100）。
 //
 // 数值规则（与 5 星普通军官一致）：三属性之和固定 200，主属性明显偏高：
 //   - 后勤向(50)：logistics=112, military=58~(58-3), learning=30~33
@@ -172,7 +173,8 @@ func buildEzfyEliteFiveStars() []model.EzfyCfgGeneral {
 // seedEzfyEliteFiveStars 五星精英（幂等：id>=2002 的普通军官一个都没有时才灌）
 //
 // ★ 与主池分开：主池 seed 的闸门是「整个池子为空」，对已有数据不会重跑；
-//   精英用「id 2002~2101 是否存在」作为独立闸门，部署到线上已有池子也能补上。
+//
+//	精英用「id 2002~2101 是否存在」作为独立闸门，部署到线上已有池子也能补上。
 func seedEzfyEliteFiveStars(db *gorm.DB) {
 	var cnt int64
 	if err := db.Model(&model.EzfyCfgGeneral{}).Where("kind = ? AND id >= 2002", 1).Count(&cnt).Error; err != nil {
@@ -578,18 +580,18 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					mi, lo, le = s.Mi, s.Lo, s.Le
 				}
 				pieces = append(pieces, model.EzfyCfgEquipment{
-						ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
-						Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
-						Level: s.Level, Stock: -1, EnhanceMax: 20,
-						// ★ 单件可当散件买：价格按自身加成算（100~500 钻）
-						PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
-						// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
-						Dmg:      p.Dmg,
-						Def:      p.Def,
-						Hp:       p.Hp,
-						Move:     p.Move,
-						Crit:     p.Crit,
-						CritDmg:  p.CritDmg,
+					ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
+					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
+					Level: s.Level, Stock: -1, EnhanceMax: 20,
+					// ★ 单件可当散件买：价格按自身加成算（100~500 钻）
+					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
+					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
+					Dmg:      p.Dmg,
+					Def:      p.Def,
+					Hp:       p.Hp,
+					Move:     p.Move,
+					Crit:     p.Crit,
+					CritDmg:  p.CritDmg,
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
 				})
@@ -606,14 +608,14 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				ID: l.ID, Name: l.Name, Type: "军官装备", Slot: l.Slot, SetId: 0, Tier: 2,
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
 				// ★ 纯散件同样按加成定价（100~500 钻）
-					PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
-					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
-					Dmg:      l.Dmg,
-					Def:      l.Def,
-					Hp:       l.Hp,
-					Move:     l.Move,
-					Crit:     l.Crit,
-					CritDmg:  l.CritDmg,
+				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
+				// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
+				Dmg:      l.Dmg,
+				Def:      l.Def,
+				Hp:       l.Hp,
+				Move:     l.Move,
+				Crit:     l.Crit,
+				CritDmg:  l.CritDmg,
 				Military: 10, Logistics: 5, Learning: 5,
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
@@ -1051,7 +1053,7 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 	//   这里只兜底老库）。截至当前实测命中的是 ezfy_cfg_chest.des（ID 2~6）。
 	stripStars := func(table, cols string) {
 		for _, col := range strings.Split(cols, ",") {
-			db.Exec("UPDATE "+table+" SET "+col+" = REPLACE("+col+", '**', '') WHERE "+col+" LIKE '%**%'")
+			db.Exec("UPDATE " + table + " SET " + col + " = REPLACE(" + col + ", '**', '') WHERE " + col + " LIKE '%**%'")
 		}
 	}
 	stripStars("ezfy_cfg_chest", "des,effect")
@@ -1070,6 +1072,10 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 // Kind：0 = 纯说明（原版就是「需要进入相应界面才可以使用」，这里只做消耗 + 战报记录）；
 //
 //	1 = 先发制人（使双方立即进入可战争状态）
+//	2 = 神兵天降（队伍去程/行进中剩余时间减 80%）
+//	3 = 战略转移（队伍回程减 360 分钟）
+//
+// 计谋常量
 var ezfySchemeSeeds = []model.EzfyCfgScheme{
 	{ID: 1, Name: "恫疑虚喝", Des: "恫疑虚喝", Bullet: 4, SortNo: 1},
 	{ID: 2, Name: "隐真示假", Des: "隐真示假", Bullet: 4, SortNo: 2},
@@ -1085,6 +1091,10 @@ var ezfySchemeSeeds = []model.EzfyCfgScheme{
 	{ID: 10, Name: "调虎离山", Des: "调虎离山", Bullet: 4, SortNo: 10},
 	{ID: 11, Name: "各个击破", Des: "各个击破", Bullet: 8, SortNo: 11},
 	{ID: 12, Name: "舍车保帅", Des: "舍车保帅", Bullet: 8, SortNo: 12},
+	// ★ 2026-09-30 用户要求新增两条行军计谋（作用于部队）：
+	//   神兵天降（去程剩余时间减 80%）/ 战略转移（回程减 360 分钟），各消耗 7 信号弹，每支部队各限一次。
+	{ID: 13, Name: "神兵天降", Des: "神兵天降", Bullet: 7, Kind: 2, SortNo: 13},
+	{ID: 14, Name: "战略转移", Des: "战略转移", Bullet: 7, Kind: 3, SortNo: 14},
 }
 
 // seedEzfySchemes 计谋配置（按 ID 段幂等，同装备套装那套闸门逻辑）
@@ -1298,7 +1308,7 @@ func repairEquipSnapshots(db *gorm.DB) {
 			seen[model.EzfySlotCanon(e.EquipSlot())] = true
 			list = append(list, map[string]interface{}{
 				"id": e.ID, "name": e.Name, "type": e.Type, "slot": model.EzfySlotCanon(e.EquipSlot()), "set_id": e.SetId,
-				"tier":    e.Tier,
+				"tier":     e.Tier,
 				"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
 				"series": e.Series, "enhance": e.Enhance,
 				"dmg": e.Dmg, "def": e.Def, "hp": e.Hp,

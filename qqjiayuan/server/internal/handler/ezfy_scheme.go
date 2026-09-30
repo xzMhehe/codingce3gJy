@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -84,18 +85,25 @@ func (h *EzfyHandler) ezfySchemeOfficerLearning(city *model.EzfyCity) (string, i
 	return best.Name, bestLea
 }
 
-// SchemeUse POST /games/ezfy/scheme/use  {scheme_id, target_x, target_y}
+// SchemeUse POST /games/ezfy/scheme/use  {scheme_id, target_x, target_y, order_id}
 //
-// 消耗信号弹发动计谋。Kind=1（先发制人）需要给目标城市坐标。
+// 消耗信号弹发动计谋。
+//
+//	Kind=1（先发制人）需要给目标城市坐标 target_x/target_y。
+//	Kind=2（神兵天降）/ Kind=3（战略转移）作用于「自己的某支部队」，需要给 order_id；
+//	   · 神兵天降：去程(行进中)剩余时间减 80%
+//	   · 战略转移：回程减 360 分钟
+//	  每种计谋每支部队各限一次（用 EzfyOrder.SchemeUsed 位标记）。
 func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
 	var req struct {
-		SchemeId int `json:"scheme_id"`
-		TargetX  int `json:"target_x"`
-		TargetY  int `json:"target_y"`
+		SchemeId int   `json:"scheme_id"`
+		TargetX  int   `json:"target_x"`
+		TargetY  int   `json:"target_y"`
+		OrderId  int64 `json:"order_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -152,6 +160,66 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 				return
 			}
 		}
+	}
+
+	// ===== Kind 2/3 行军计谋：神兵天降(去程减80%) / 战略转移(回程减360分钟) =====
+	// 作用于「自己的某支部队」，需 order_id；每种计谋每支部队各限一次。
+	if sc.Kind == 2 || sc.Kind == 3 {
+		if req.OrderId == 0 {
+			h.fail(c, "请选择要发动计谋的部队")
+			return
+		}
+		var order model.EzfyOrder
+		if err := h.DB.Where("id = ? AND user_id = ?", req.OrderId, uid).First(&order).Error; err != nil {
+			h.fail(c, "部队不存在")
+			return
+		}
+		now := time.Now().UnixMilli()
+		var flag int
+		var newVal int64
+		switch sc.Kind {
+		case 2: // 神兵天降：去程(行进中)剩余时间减 80%
+			if order.Status != 0 {
+				h.fail(c, "神兵天降只能对行进中的部队使用")
+				return
+			}
+			flag = 1 // bit0
+			newVal = pctSpeedEnd(now, order.ArriveTime, 80)
+		case 3: // 战略转移：回程减 360 分钟
+			if order.Status != 2 {
+				h.fail(c, "战略转移只能对返航中的部队使用")
+				return
+			}
+			flag = 2 // bit1
+			newVal = now + (order.ReturnTime - now) - 360*60000
+			if newVal < now {
+				newVal = now
+			}
+		}
+		if order.SchemeUsed&flag != 0 {
+			h.fail(c, "这支部队已经用过「"+sc.Name+"」了")
+			return
+		}
+		if newVal <= time.Now().UnixMilli() {
+			h.fail(c, "这支队伍已即将到达/返回，无需使用计谋")
+			return
+		}
+		// 扣信号弹 + 写位标记 + 改时间（一个事务里完成）
+		h.DB.Transaction(func(tx *gorm.DB) error {
+			h.consumeItemN(uid, ezfySchemeItemID, need)
+			if sc.Kind == 2 {
+				tx.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+					Updates(map[string]interface{}{"arrive_time": newVal, "scheme_used": order.SchemeUsed | flag})
+			} else {
+				tx.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+					Updates(map[string]interface{}{"return_time": newVal, "scheme_used": order.SchemeUsed | flag})
+			}
+			return nil
+		})
+		msg := fmt.Sprintf("已发动计谋「%s」，消耗%s×%d：%s", sc.Name, name, need, sc.Des)
+		h.addReport(uid, 6, "计谋发动: "+sc.Name, msg, "")
+		h.done(c, "", msg)
+		return
 	}
 
 	// ===== 扣信号弹 =====

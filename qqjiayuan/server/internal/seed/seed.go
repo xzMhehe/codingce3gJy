@@ -118,6 +118,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
 		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 用户要求）
 		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
+		// ★ 2026-09-30 入团申请（军团开启审核后玩家申请入团）
+		&model.EzfyCorpsApply{},
 		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyTreasureSign{}, &model.EzfyCityEffect{},
 		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
 		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
@@ -445,6 +447,11 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_corps ADD COLUMN points bigint DEFAULT 0 COMMENT '军团总积分'")
 		}
 		db.Exec("UPDATE ezfy_corps SET points = 0 WHERE points IS NULL")
+		// ★ 2026-09-30 入团审核开关（0=无需审核直接入团，1=需军团长审核）
+		if !db.Migrator().HasColumn("ezfy_corps", "need_review") {
+			db.Exec("ALTER TABLE ezfy_corps ADD COLUMN need_review int DEFAULT 0 COMMENT '入团是否需审核(0=直接入团 1=需军团长审核)'")
+		}
+		db.Exec("UPDATE ezfy_corps SET need_review = 0 WHERE need_review IS NULL")
 	}
 	if db.Migrator().HasTable("ezfy_corps_member") {
 		if !db.Migrator().HasColumn("ezfy_corps_member", "points") {

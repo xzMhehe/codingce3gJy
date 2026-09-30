@@ -941,7 +941,9 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 			"member_count": counts[int64(cp.ID)], "leader": leaderName, "battle_score": score,
 			"camp": profile.Camp,
 			// ★ 2026-09-25 用户要求「军团积分」：军团总积分（原有字段不动，只补这一个）
-			"points": cp.Points})
+			"points": cp.Points,
+			// ★ 2026-09-30 入团审核开关（前端列表展示 [申请]/[申请待审] 文案用）
+			"need_review": cp.NeedReview})
 	}
 	// ★ 我的军团也带上实时人数（前端「我的军团(N人)」直接用它）
 	var myCorpsView interface{}
@@ -954,6 +956,7 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 				"leader_user_id": cp.LeaderUserId,
 				"member_count":   counts[int64(cp.ID)],
 				"points":         cp.Points,
+				"need_review":    cp.NeedReview,
 			}
 		}
 	}
@@ -1018,30 +1021,176 @@ func (h *EzfyHandler) CorpsJoin(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	var exist model.EzfyCorpsMember
-	if err := h.DB.Where("user_id = ?", uid).First(&exist).Error; err == nil {
-		resp.ParamError(c, "你已在军团中")
+	// ★ 2026-09-30 入口统一走 CorpsApply（含审核开关分支），此处复用同一逻辑。
+	msg, data, errMsg := h.applyCorpsMember(uid, req.CorpsId)
+	if errMsg != "" {
+		resp.ParamError(c, errMsg)
 		return
 	}
+	d := gin.H{"msg": msg}
+	for k, v := range data {
+		d[k] = v
+	}
+	resp.OK(c, d)
+}
+
+// applyCorpsMember 处理「申请入团」：open 军团直接入团，需审核军团写申请待军团长审批。
+//
+// ★ 2026-09-30 用户要求「进军团需要审核」。返回：
+//   - errMsg != ""：校验失败信息（调用方回 resp.ParamError）
+//   - 否则 msg/data：成功信息 + 附带 need_review 标记
+func (h *EzfyHandler) applyCorpsMember(uid uint, corpsId uint) (string, gin.H, string) {
+	var exist model.EzfyCorpsMember
+	if err := h.DB.Where("user_id = ?", uid).First(&exist).Error; err == nil {
+		return "", nil, "你已在军团中"
+	}
 	var cp model.EzfyCorps
-	if err := h.DB.First(&cp, req.CorpsId).Error; err != nil {
-		resp.ParamError(c, "军团不存在")
-		return
+	if err := h.DB.First(&cp, corpsId).Error; err != nil {
+		return "", nil, "军团不存在"
 	}
 	// 联络中心: 1 级才能加入联盟, 且受人数上限限制
 	if h.liaisonLevel(uid) < 1 {
-		resp.ParamError(c, "需要 1 级联络中心才能加入联盟")
-		return
+		return "", nil, "需要 1 级联络中心才能加入联盟"
 	}
+	// 需审核军团：写申请（幂等），不直接入团
+	if cp.NeedReview == 1 {
+		var pending model.EzfyCorpsApply
+		if err := h.DB.Where("corps_id = ? AND user_id = ? AND status = 0", cp.ID, uid).First(&pending).Error; err == nil {
+			return "", nil, "已提交申请, 等待军团长审核"
+		}
+		var memberCount int64
+		h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", cp.ID).Count(&memberCount)
+		if cap := h.corpsMemberCap(cp.ID); int(memberCount) >= cap {
+			return "", nil, "该联盟人数已满(" + strconv.Itoa(int(memberCount)) + "/" + strconv.Itoa(cap) + ")"
+		}
+		h.DB.Create(&model.EzfyCorpsApply{CorpsId: cp.ID, UserId: uid, Status: 0})
+		return "申请已提交, 等待军团长审核", gin.H{"need_review": 1}, ""
+	}
+	// 无需审核：直接入团（原逻辑）
 	var memberCount int64
 	h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", cp.ID).Count(&memberCount)
 	if cap := h.corpsMemberCap(cp.ID); int(memberCount) >= cap {
-		resp.ParamError(c, "该联盟人数已满("+strconv.Itoa(int(memberCount))+"/"+strconv.Itoa(cap)+")")
-		return
+		return "", nil, "该联盟人数已满(" + strconv.Itoa(int(memberCount)) + "/" + strconv.Itoa(cap) + ")"
 	}
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 0, Title: "成员"})
 	h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).Update("member_count", cp.MemberCount+1)
-	resp.OK(c, gin.H{"msg": "加入军团成功"})
+	return "加入军团成功", gin.H{"need_review": 0}, ""
+}
+
+// CorpsApply POST /corps/apply {corps_id} —— 申请入团
+//
+// ★ 2026-09-30 用户要求「进军团需要审核」：open 直接入团；开启审核的军团落申请待团长审批。
+func (h *EzfyHandler) CorpsApply(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CorpsId uint `json:"corps_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	msg, data, errMsg := h.applyCorpsMember(uid, req.CorpsId)
+	if errMsg != "" {
+		resp.ParamError(c, errMsg)
+		return
+	}
+	d := gin.H{"msg": msg}
+	for k, v := range data {
+		d[k] = v
+	}
+	resp.OK(c, d)
+}
+
+// CorpsApplyList GET /corps/apply —— 军团长查看本人军团的待审入团申请
+func (h *EzfyHandler) CorpsApplyList(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var cp model.EzfyCorps
+	if err := h.DB.Where("leader_user_id = ?", uid).First(&cp).Error; err != nil {
+		resp.OK(c, gin.H{"applies": []gin.H{}})
+		return
+	}
+	var list []model.EzfyCorpsApply
+	h.DB.Where("corps_id = ? AND status = 0", cp.ID).Order("id ASC").Find(&list)
+	views := []gin.H{}
+	for _, a := range list {
+		p := h.ensureProfile(a.UserId)
+		views = append(views, gin.H{"apply_id": a.ID, "user_id": a.UserId,
+			"name": p.Nickname, "created_at": a.CreatedAt})
+	}
+	resp.OK(c, gin.H{"applies": views, "need_review": cp.NeedReview})
+}
+
+// CorpsApplyHandle POST /corps/apply/handle {apply_id, op} —— 军团长通过/拒绝入团申请（op 1=通过 2=拒绝）
+func (h *EzfyHandler) CorpsApplyHandle(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		ApplyId uint `json:"apply_id"`
+		Op      int  `json:"op"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var a model.EzfyCorpsApply
+	if err := h.DB.First(&a, req.ApplyId).Error; err != nil {
+		resp.ParamError(c, "申请不存在")
+		return
+	}
+	var cp model.EzfyCorps
+	if err := h.DB.Where("id = ? AND leader_user_id = ?", a.CorpsId, uid).First(&cp).Error; err != nil {
+		resp.ParamError(c, "只有军团长才能处理入团申请")
+		return
+	}
+	if a.Status != 0 {
+		resp.ParamError(c, "该申请已处理")
+		return
+	}
+	h.DB.Model(&model.EzfyCorpsApply{}).Where("id = ?", a.ID).Update("status", req.Op)
+	if req.Op == 2 {
+		resp.OK(c, gin.H{"msg": "已拒绝该申请"})
+		return
+	}
+	// 通过（op != 2 视为 1）：幂等建成员 + 人数+1；可能已在其它申请通过后加入
+	var mb model.EzfyCorpsMember
+	if err := h.DB.Where("user_id = ?", a.UserId).First(&mb).Error; err != nil {
+		var memberCount int64
+		h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ?", cp.ID).Count(&memberCount)
+		if cap := h.corpsMemberCap(cp.ID); int(memberCount) >= cap {
+			resp.ParamError(c, "该联盟人数已满("+strconv.Itoa(int(memberCount))+"/"+strconv.Itoa(cap)+")")
+			return
+		}
+		h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: a.UserId, IsLeader: 0, Title: "成员"})
+		h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).
+			Update("member_count", cp.MemberCount+1)
+	}
+	resp.OK(c, gin.H{"msg": "已通过申请, 该玩家已入团"})
+}
+
+// CorpsNeedReview POST /corps/need-review {need_review} —— 军团长设置入团审核开关
+func (h *EzfyHandler) CorpsNeedReview(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		NeedReview int `json:"need_review"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var cp model.EzfyCorps
+	if err := h.DB.Where("leader_user_id = ?", uid).First(&cp).Error; err != nil {
+		resp.ParamError(c, "只有军团长才能设置入团审核")
+		return
+	}
+	nr := 0
+	if req.NeedReview == 1 {
+		nr = 1
+	}
+	h.DB.Model(&model.EzfyCorps{}).Where("id = ?", cp.ID).Update("need_review", nr)
+	msg := "已设为无需审核, 新玩家可直接加入"
+	if nr == 1 {
+		msg = "已开启入团审核, 新玩家申请后需你在[军团信息]审核"
+	}
+	resp.OK(c, gin.H{"msg": msg, "need_review": nr})
 }
 
 func (h *EzfyHandler) CorpsLeave(c *gin.Context) {
