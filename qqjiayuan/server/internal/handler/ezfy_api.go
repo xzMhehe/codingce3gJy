@@ -1913,14 +1913,13 @@ func ezfyTreasureSignNames() []string {
 
 func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
-	// ★ 2026-09-24 规则修正（用户确认原版口径）：发放的资源**不受仓储上限截断**，
-	//   只有超过 ezfyResSafeMax(1e12, 数据库字段安全上限) 才夹取。
-	//   ezfyAddRes 本身会做不会溢出的安全加法，结果恒在 [0, ezfyResSafeMax]。
-	city.Food = ezfyAddRes(city.Food, food)
-	city.Steel = ezfyAddRes(city.Steel, steel)
-	city.Oil = ezfyAddRes(city.Oil, oil)
-	city.Rare = ezfyAddRes(city.Rare, rare)
-	city.Gold = ezfyAddRes(city.Gold, gold)
+	// ★ 2026-09-30 恢复「资源最大值唯一硬上限」：任何累加都不得超过 21 亿（见 ezfyAddResMax）。
+	//   （2026-09-24 曾放宽为只夹 1 万亿，导致资源能累加超上限，用户已反馈为 bug。）
+	city.Food = ezfyAddResMax("food", city.Food, food)
+	city.Steel = ezfyAddResMax("steel", city.Steel, steel)
+	city.Oil = ezfyAddResMax("oil", city.Oil, oil)
+	city.Rare = ezfyAddResMax("rare", city.Rare, rare)
+	city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 	h.saveCityRes(&city)
 }
 
@@ -1928,33 +1927,29 @@ func (h *EzfyHandler) giveResources(uid uint, food, steel, oil, rare, gold int64
 //
 // 用于退还类操作（取消训练，2026-09-28 取消研究改为不退款），避免玩家觉得「退少了」。
 // 负数是合法的，结果不会低于 0。
+// ★ 2026-09-30：仍受「资源最大值」硬上限约束（累计不得超过 21 亿），见 ezfyAddResMax。
 func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare, gold int64) {
-	// ★ 2026-09-23：改用安全加法，结果恒在 [0, ezfyResSafeMax]，不会溢出翻负
-	city.Food = ezfyAddRes(city.Food, food)
-	city.Steel = ezfyAddRes(city.Steel, steel)
-	city.Oil = ezfyAddRes(city.Oil, oil)
-	city.Rare = ezfyAddRes(city.Rare, rare)
-	city.Gold = ezfyAddRes(city.Gold, gold)
+	city.Food = ezfyAddResMax("food", city.Food, food)
+	city.Steel = ezfyAddResMax("steel", city.Steel, steel)
+	city.Oil = ezfyAddResMax("oil", city.Oil, oil)
+	city.Rare = ezfyAddResMax("rare", city.Rare, rare)
+	city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 	h.saveCityRes(city)
 }
 
 // giveResourcesNoCap 管理端专用发放：**不按仓储上限截断**。
 //
-// 游戏内正常产出走 giveResources（超上限就丢掉溢出部分），但 GM 发资源如果也被
-// 上限吃掉，就会出现「明明发了 100 万，玩家只收到 3 万」的困惑 —— 所以管理端
-// 的「送资源 / 批量发放」一律走这里，允许资源超上限堆着。
-// 负数是合法的（可用来扣减），但结果不会低于 0。
+// ★ 2026-09-30 用户要求「资源不能累加超过资源最大值（每项资源唯一硬上限，默认 21 亿）」：
+//   管理端发放同样封顶在 21 亿（老数据已超的不拉低、也不再增长）。
+//   如确需超过当前上限，请先在「二战系统配置」把对应 资源最大值 调高再发。
+//   负数是合法的（可用来扣减），但结果不会低于 0。
 func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) {
 	city := h.getOrCreateCity(uid)
-	// ★ 2026-09-23：安全加法（不按仓储上限截断，但仍受数值安全上限保护，不会溢出翻负）
-	// ★ 2026-09-25 复查：这里**刻意不套**「资源最大值」—— 本函数是「NoCap」语义通道
-	//   （签到/任务/礼包 + 管理端 GM 发放共用，且 amount 允许为负做扣减），
-	//   管理端要能故意发出超过上限的量；玩家侧的入库累加都在 ezfyResAddExpr / addResToCityDB。
-	city.Food = ezfyAddRes(city.Food, food)
-	city.Steel = ezfyAddRes(city.Steel, steel)
-	city.Oil = ezfyAddRes(city.Oil, oil)
-	city.Rare = ezfyAddRes(city.Rare, rare)
-	city.Gold = ezfyAddRes(city.Gold, gold)
+	city.Food = ezfyAddResMax("food", city.Food, food)
+	city.Steel = ezfyAddResMax("steel", city.Steel, steel)
+	city.Oil = ezfyAddResMax("oil", city.Oil, oil)
+	city.Rare = ezfyAddResMax("rare", city.Rare, rare)
+	city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 	h.saveCityRes(&city)
 }
 

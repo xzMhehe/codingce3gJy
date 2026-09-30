@@ -590,13 +590,13 @@ type ezfyChestSeed struct {
 // ★ 套装箱开出来是**整套**（Kind=3），不是单件。
 // ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：价格/库存/单次上限一律取线上库快照值。
 var ezfyChestSeeds = []ezfyChestSeed{
-	{ID: 1, Name: "黄金宝箱", PriceDiamond: 200, Stock: 30, OpenMax: 5,
+	{ID: 1, Name: "黄金宝箱", PriceDiamond: 200, Stock: 29, OpenMax: 5,
 		Des:    "用黄金购买，开出散件军官装备（单件，不属于套装）",
 		Effect: "奖池：13 种纯散件军官装备 + 道具"},
 	{ID: 2, Name: "崛起宝箱", PriceDiamond: 500, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套起步套装（9 件）",
 		Effect: "奖池：新兵套装 / 战士套装 整套"},
-	{ID: 3, Name: "帝国宝箱", PriceDiamond: 500, Stock: 30, OpenMax: 5,
+	{ID: 3, Name: "帝国宝箱", PriceDiamond: 600, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套中级套装（9 件）",
 		Effect: "奖池：海军上将 / 传说英雄 / 名门征服 整套"},
 	{ID: 4, Name: "战神宝箱", PriceDiamond: 800, Stock: 30, OpenMax: 5,
@@ -605,7 +605,7 @@ var ezfyChestSeeds = []ezfyChestSeed{
 	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 1000, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套精锐套装（9 件）",
 		Effect: "奖池：精英守护者 / 传说守护者 / 暴君之怒 / 审判者 整套"},
-	{ID: 6, Name: "统帅宝箱", PriceDiamond: 2000, Stock: 30, OpenMax: 1,
+	{ID: 6, Name: "统帅宝箱", PriceDiamond: 2000, Stock: 25, OpenMax: 1,
 		Des:    "开出一整套顶级套装（9~11 件），含六大系列",
 		Effect: "奖池：混沌三件套 / 亡魂 / 遗失传说 / 隐秘宝藏 + 六大系列 整套"},
 }
@@ -748,11 +748,13 @@ var ezfyChestOverride = map[string]ezfyChestPoolOverride{
 	"C6K3R8": {150, 1}, "C6K3R9": {150, 1}, "C6K3R10": {150, 1}, "C6K3R15": {150, 1},
 	"C6K3R16": {40, 1}, "C6K3R17": {40, 1}, "C6K3R21": {20, 1},
 	"C6K3R22": {1, 1}, "C6K3R23": {1, 1}, "C6K3R24": {1, 1}, "C6K3R25": {1, 1}, "C6K3R26": {1, 1},
-	// 道具安慰奖：各宝箱数量上探不一致（经验书14/重修书16/升星卡23）
+	// 道具安慰奖：各宝箱数量/权重按线上现值（经验书14/重修书16/升星卡23）
+	// ★ 2026-09-30 对齐线上库快照（含黄金箱 C1：14×2 / 16×5 / 23×5）
+	"C1K2R14": {40, 2}, "C1K2R16": {20, 5}, "C1K2R23": {10, 5},
 	"C3K2R14": {40, 10}, "C3K2R16": {20, 10}, "C3K2R23": {30, 10},
-	"C4K2R14": {40, 20}, "C4K2R16": {40, 20}, "C4K2R23": {10, 20},
-	"C5K2R14": {40, 50}, "C5K2R16": {40, 50}, "C5K2R23": {40, 50},
-	"C6K2R14": {40, 100}, "C6K2R16": {40, 100}, "C6K2R23": {10, 100},
+	"C4K2R14": {40, 6}, "C4K2R16": {40, 20}, "C4K2R23": {10, 20},
+	"C5K2R14": {40, 5}, "C5K2R16": {40, 30}, "C5K2R23": {40, 30},
+	"C6K2R14": {40, 10}, "C6K2R16": {40, 50}, "C6K2R23": {10, 50},
 }
 
 // buildEzfyChestItems 生成宝箱奖池

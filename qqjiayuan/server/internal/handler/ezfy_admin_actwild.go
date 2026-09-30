@@ -25,7 +25,7 @@ var ezfyActWildFields = map[string]string{
 	"x": "int", "y": "int", "enabled": "int",
 	"level": "int", "troops": "string", "res": "int64",
 	"gold": "int64", "prestige": "int", "jewel": "string", "des": "string",
-	"officer_id": "int", "treasures": "string", "capture_rate": "int",
+	"officer_id": "int", "treasures": "string", "capture_rate": "int", "max_capture": "int",
 }
 
 // AdminEzfyActWildList GET /admin/ezfy-act-wilds —— 活动野地配置列表（分页）
@@ -66,7 +66,7 @@ func (h *AdminHandler) AdminEzfyActWildList(c *gin.Context) {
 			"level": r.Level, "troops": r.Troops, "res": r.Res,
 			"gold": r.Gold, "prestige": r.Prestige, "jewel": r.Jewel, "des": r.Des,
 			"officer_id": r.OfficerId, "officer_name": oName, "officer_star": oStar,
-			"treasures": r.Treasures, "capture_rate": r.CaptureRate,
+			"treasures": r.Treasures, "capture_rate": r.CaptureRate, "max_capture": r.MaxCapture,
 			// 当前生效判定（enabled=1 才算活动目标）
 			"eff_act": (r.Enabled == 1),
 		})
@@ -126,11 +126,14 @@ func (h *AdminHandler) AdminEzfyActWildSave(c *gin.Context) {
 	if _, ok := vals["capture_rate"]; !ok {
 		vals["capture_rate"] = 0
 	}
+	if _, ok := vals["max_capture"]; !ok {
+		vals["max_capture"] = 1 // 默认同一玩家可抓 1 次
+	}
 	if err := h.DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "x"}, {Name: "y"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"enabled", "level", "troops", "res", "gold", "prestige", "jewel", "des", "officer_id",
-			"treasures", "capture_rate",
+			"treasures", "capture_rate", "max_capture",
 		}),
 	}).Model(&model.EzfyActWild{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
@@ -200,9 +203,13 @@ func checkActWildVals(vals map[string]interface{}) string {
 			return "宝物配置格式不对，应为 [[宝物id,数量],...]"
 		}
 	}
-	// 守将被俘虏概率 0~100（0 = 不俘虏）
+	// 守将被俘虏概率 0~100
 	if v, ok := vals["capture_rate"].(int); ok && (v < 0 || v > 100) {
 		return "被俘虏概率只能是 0~100（0 = 不俘虏，100 = 必俘虏）"
+	}
+	// 同一玩家可抓次数：0 = 不限；否则 >= 1
+	if v, ok := vals["max_capture"].(int); ok && v < 0 {
+		return "可抓次数不能为负（0 = 不限，>=1 为上限）"
 	}
 	// 守将军官必须来自军官池（普通军官/名将都可选）
 	if v, ok := vals["officer_id"].(int); ok && v > 0 {

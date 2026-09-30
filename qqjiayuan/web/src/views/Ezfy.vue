@@ -346,7 +346,7 @@
           <!-- ===== 驻军: 到达野地后常驻采集的部队(满一个采集周期结算一期) ===== -->
           <template v-else-if="reportTab === 2">
             <div class="old-line">
-              <span class="gray">驻军空闲时需手工点[采集]开始采集; 满一个采集周期结算一期: 资源累积进部队负重(负重满后不再增加、兵力不自动停止) + 宝物(宝物直接进背包, 每期至少1件); 不满一个采集周期只有按驻守时长折算的资源、无宝物; 点[停止采集]/[一键收获]取回负重入城或用[召回]带资源返航。</span><br/>
+              <!-- ★ 采集玩法说明：驻守空闲需点[采集]；满一个采集周期结算一期（资源+宝物）；负重满后超出部分直接入起点城市（2026-09-30 不再丢弃）；[停止采集]/[一键收获]取回负重，[召回]撤兵。 -->
               <a href="javascript:;" @click="doCollectAll">[一键采集]</a>
               <a href="javascript:;" @click="doHarvestAll">[一键收获]</a>
               <a href="javascript:;" @click="doRecallAll">[一键召回]</a>
@@ -365,7 +365,7 @@
               <template v-if="o.status === 1 && o.arrive_time">
                 <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
-                <span v-if="o._lg.full" class="red">负重已满, 请点击停止或收获。</span>
+                <span v-if="o._lg.full" class="red">负重已满, 超出部分会直接入库(可停止或收获)。</span>
               </template>
               <span v-else class="gray">本期已采：暂无(未在采集中)</span>
               <br/>
@@ -1855,7 +1855,7 @@
             <template v-if="o.status === 1 && o.arrive_time">
               <span class="green">本期已采：{{ fmtN(o._lg.food) }}粮/{{ fmtN(o._lg.steel) }}钢/{{ fmtN(o._lg.oil) }}油/{{ fmtN(o._lg.rare) }}稀/{{ fmtN(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ fmtN(o._lg.total) }}（负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
-              <span v-if="o._lg.full" class="red">负重已满, 请点击停止或收获。</span><br/>
+              <span v-if="o._lg.full" class="red">负重已满, 超出部分会直接入库(可停止或收获)。</span><br/>
             </template>
             <br/>
             <span v-if="o.status === 0 || o.status === 1">
@@ -6255,8 +6255,9 @@ export default {
     },
     // ★ 一键收获：对每支采集中部队结算产出(资源直接入起点城市, 宝物进背包), 并停止采集原地待命
     //   —— 与单支 [停止] 同一个功能，只是一个批量一个单个。
+    //   （玩法细则见代码注释：满一期结算资源+宝物；不满一期只按时长折算资源、无宝物；负重满后超出部分直接入城。）
     async doHarvestAll () {
-      if (!await this.ask('确定收获所有采集中的部队吗？（每满一个采集周期结算一期，资源直接入库到部队出发的城市，宝物直接进背包；收获后部队停止采集、原地待命）')) return
+      if (!await this.ask('确定收获所有采集中的部队吗？')) return
       api.post('/games/ezfy/wild/harvest-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -6266,8 +6267,9 @@ export default {
       })
     },
     // ★ 一键召回：先结算未入城产出, 部队返航(资源已在收获/停止时入城, 召回只是撤兵)
+    //   （玩法细则见代码注释：返航前结算未入城产出，满一期给资源+宝物，不满一期只按时长折算资源、无宝物。）
     async doRecallAll () {
-      if (!await this.ask('确定召回所有驻守部队吗？（返航前会先结算未入城的产出：满一个采集周期给资源+宝物，不满一个采集周期只按驻守时长折算资源、无宝物；资源直接入库到出发城市，部队返航）')) return
+      if (!await this.ask('确定召回所有驻守部队吗？')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -6280,7 +6282,7 @@ export default {
     //   资源直接入起点城市; 部队原地待命不回城。
     async stopCollect (o) {
       const name = o.target_name + '(' + (o.target_x || 0) + ',' + (o.target_y || 0) + ')'
-      if (!await this.ask('确定停止「' + name + '」采集吗？（满一个采集周期的结算资源+宝物，不满一个采集周期的只按已采集时长结算资源、无宝物；资源直接入库到出发城市；部队停在原地待命，之后可再[采集]继续或[召回]撤兵）')) return
+      if (!await this.ask('确定停止「' + name + '」采集吗？')) return
       api.post('/games/ezfy/wild/stop-collect', { order_id: o.id }).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)

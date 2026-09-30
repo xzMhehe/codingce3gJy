@@ -715,7 +715,11 @@
         </el-form-item>
         <el-form-item label="被俘概率%">
           <el-input-number v-model.number="aw.capture_rate" :min="0" :max="100" controls-position="right" style="width:160px" />
-          <span class="td-sub">0 = 不俘虏；填 1~100 直接按该百分比（100 = 必俘虏）</span>
+          <span class="td-sub">0 = 不俘虏；1~100 按该百分比（100=必俘虏）</span>
+        </el-form-item>
+        <el-form-item label="可抓次数">
+          <el-input-number v-model.number="aw.max_capture" :min="0" controls-position="right" style="width:160px" />
+          <span class="td-sub">同一玩家最多可抓该守将几次（默认1，抓满后概率归0）；0 = 不限</span>
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="aw.des" maxlength="200" show-word-limit />
@@ -771,7 +775,7 @@ export default {
       wcDlg: false, wc: emptyWc(),
       // 活动野地配置（2026-09-29）
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
-      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0 },
+      awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 },
       awOfficerKind: 1, // 活动野地守将类型：0未选 1普通 2名将（按下拉里军官的 kind 推断）
       awStarFilter: 0, // 活动野地守将星级筛选（0=全部）
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
@@ -1002,7 +1006,7 @@ export default {
       })
     },
     openAwCreate () {
-      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0 }
+      this.aw = { id: 0, x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 }
       this.awOfficerKind = 1 // ★ 默认守将类型 = 普通
       this.awStarFilter = 5  // ★ 默认星级筛选 = 5 星
       // ★ 默认直接选中一个「普通 5 星」守将（有就放进下拉）
@@ -1092,7 +1096,8 @@ export default {
         des: a.des || '',
         officer_id: Number(a.officer_id) || 0,
         treasures: treasures,
-        capture_rate: Number(a.capture_rate) || 0
+        capture_rate: Number(a.capture_rate) || 0,
+        max_capture: Number(a.max_capture) >= 0 ? Number(a.max_capture) : 1
       }
       this.saving = true
       api.post('/admin/ezfy-act-wilds', payload).then(r => {

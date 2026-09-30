@@ -516,11 +516,32 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		h.addPrestige(uid, prestigeGain)
 		report += fmt.Sprintf("\n军功声望+%d", prestigeGain)
 		// ★ 2026-09-29 活动野地守将：是否被俘虏只看 **CaptureRate**。
-		//   aw.CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。不再回落「按星级默认」。
+		//   aw.CaptureRate=0 → 不俘虏；>0 → 按该百分比（100=必俘虏）。
+		// ★ 2026-09-30 同一玩家可抓次数上限（aw.MaxCapture，默认 1）：
+		//   玩家已经抓到过该守将 ≥ 上限次数 → 本次概率强制 0（不再俘虏）。
+		//   判定口径：该玩家名下所有城里、general_id 为该守将、且是「真俘虏」（IsCaptive=1 或
+		//   已收编的也得算 —— 收编后 IsCaptive=0 但玩家已拥有，不能再抓）。
+		//   所以直接用「该玩家已拥有该守将的军官实例数」来算（含俘虏与收编，一次发放=1）。
 		if aw != nil && aw.Enabled == 1 && aw.OfficerId > 0 && aw.CaptureRate > 0 {
 			if g := ezfyCfg.general(aw.OfficerId); g != nil {
-				if c := h.createCaptiveOfficer(city, g, level, true, aw.CaptureRate); c != "" {
-					report += "\n" + c
+				captures := 0
+				if aw.MaxCapture > 0 {
+					var had int64
+					h.DB.Model(&model.EzfyOfficer{}).
+						Where("general_id = ? AND city_id IN (?)", g.ID,
+							h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
+						Count(&had)
+					captures = int(had)
+				}
+				rate := aw.CaptureRate
+				if captures >= aw.MaxCapture {
+					rate = 0 // 已达上限 → 概率 0
+					report += "\n" + g.Name + "已被你捕获达到上限，无法再次俘虏"
+				}
+				if rate > 0 {
+					if c := h.createCaptiveOfficer(city, g, level, true, rate); c != "" {
+						report += "\n" + c
+					}
 				}
 			}
 		}

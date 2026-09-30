@@ -735,46 +735,48 @@ func ezfyResMaxOf(res string) int64 {
 	return v
 }
 
-// ezfyResAddExpr 生成「入库累加」SQL：原子累加，只防 int64 溢出，不看资源最大值。
+// ezfyResAddExpr 生成「入库累加」SQL：原子累加，硬上限 = 该资源的「资源最大值」（默认 21 亿）。
 //
-// ★★ 2026-09-28 线上事故修复「[一键收获]/停止 资源没有入城市」——
+// ★★ 2026-09-30 修复「资源能累加超过资源最大值」：
 //
-//	原实现是 GREATEST(col, LEAST(resMax, col + n))，本意是「累加到资源最大值就停」。
-//	但它在「col 已经 ≥ resMax」时会**静默吞掉本次增量**：
-//
-//	    col = 9,339,001,029 (9.3 亿…实为 93 亿)  resMax = 2,100,000,000
-//	    LEAST(resMax, col+n) = 2,100,000,000     ← 增量连同上限一起被砍
-//	    GREATEST(col, 2,100,000,000) = col      ← 又取回原值 → 结果 = 原值，纹丝不动
-//
-//	而调用方（harvestToCity 等）返回给前端的是**请求量**，于是界面报「资源已入库(N)」，
-//	库里却一分没加 —— 玩家看到的就是「收获/停止 资源没有入城市」。
-//	线上 ezfy_city 148 城里，五项资源各有 118~135 城已 ≥ 21 亿，所以现象极其普遍。
-//
-//	修复后语义（与 finishReturn / giveResources 的「不受上限截断」口径统一）：
-//	  - 正常情况 → col + n（无条件累加）
-//	  - 一律只夹到 ezfyResSafeMax(1 万亿) 防溢出，**绝不再因资源最大值吞掉增量**
-//
-//	⚠️ 资源最大值（ezfyResMaxOf）不再在这里生效，改由**调用方**负责：
-//	  玩家主动发起的入库（采集 / 收获）应在操作前用 ezfyAtResMax 判定并明确报错，
-//	  而不是让玩家白等一次采集。见 harvestToCity 的守卫。
-//
-// ⚠️ 所有「入库型」资源写入都应该走这里（配 resources 里的列名使用）。
+//	2026-09-28 为修「[一键收获]/停止 资源没有入城市」事故，把封顶从「资源最大值」改成了
+//	「ezfyResSafeMax(1 万亿)」—— 于是玩家/管理端发资源都能一路累加到 1 万亿，超过 21 亿上限。
+//	现在恢复「每项资源唯一硬上限 = 资源最大值」：
+//	  - 正数累加 → LEAST(资源最大值, col + n)，封顶不超上限；
+//	  - 老数据已超上限的城不拉低（GREATEST 保住原值），但也不再增长；
+//	  - 负数扣减 → 正常减少，最低 0（不能因为 GREATEST 把扣减吞掉）。
 func ezfyResAddExpr(res string, n int64) clause.Expr {
-	return gorm.Expr("LEAST(?, `"+res+"` + ?)", ezfyResSafeMax, n)
+	max := ezfyResMaxOf(res)
+	if n < 0 {
+		return gorm.Expr("GREATEST(0, `"+res+"` + ?)", n)
+	}
+	return gorm.Expr("GREATEST(`"+res+"`, LEAST(?, `"+res+"` + ?))", max, n)
 }
 
-// ezfyAddResMax 内存版「入库累加」：结果 = min(现值 + 增量, ezfyResSafeMax)。
+// ezfyAddResMax 内存版「入库累加」：硬上限 = 该资源的「资源最大值」（默认 21 亿）。
 //
-// ★ 与 ezfyResAddExpr 严格同口径（2026-09-28 起）：无条件累加，不再按资源最大值封顶。
-// 函数名保留以免大范围改名，但语义已是「安全累加」而非「累加到最大值」。
+// ★ 与 ezfyResAddExpr 严格同口径（2026-09-30 起）：
+//   - 正数累加 → min(资源最大值, 现值 + 增量)，封顶不超上限；
+//   - 老数据已超上限的城不拉低（保住原值），但也不再增长；
+//   - 负数扣减 → 正常减少，最低 0。
 // 供不便走 SQL 表达式的发放路径使用。
 func ezfyAddResMax(res string, cur, delta int64) int64 {
-	_ = res // 保留参数以保持调用点签名稳定；资源最大值已交由调用方判定
+	max := ezfyResMaxOf(res)
 	cur = ezfyClampRes(cur)
 	if delta == 0 {
 		return cur
 	}
-	return ezfySafeAdd(cur, delta, ezfyResSafeMax)
+	if delta < 0 {
+		c := cur + delta
+		if c < 0 {
+			c = 0
+		}
+		return c
+	}
+	if cur >= max {
+		return cur // 已到/超过资源最大值：不再增长（也不拉低）
+	}
+	return ezfySafeAdd(cur, delta, max)
 }
 
 // ezfyAtResMax 该城某项资源是否已到达「资源最大值」（= 满了，再采集也入不了库）。

@@ -1534,8 +1534,38 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；待玩家[停止采集]/[一键收获]/[召回]时取回负重入城（见各入口）。
 	//   从负重取回仍走「前后差值」口径，保证反馈数=实际进账数。
-	_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+	//
+	// ★★ 2026-09-30 修复「达到负重还丢资源」：
+	//   原来负重满了仍照常推进 arrive_time，每次结算都把**整期产出丢弃**（addCarryToOrder
+	//   按比例折算只装进 room，多出的部分永久消失），玩家收益持续损失。
+	//   现在改成**装不下负重的部分直接入起点城市**（与「收获即入城」同一口径，走 harvestToCity）：
+	//   负重能装的进负重、超出的部分直接入库 —— 资源永远不会凭空消失，也不影响部队继续驻守采集。
+	//   做法：先按负重剩余空间算「能装多少」，剩下的拆出来直接入库。
+	city := h.cityOfOrder(order, uid)
 	cur := parseCarry(order.Carry)
+	room := h.ezfyCarryCap(order) - cur.total()
+	if room < 0 {
+		room = 0
+	}
+	direct := int64(0) // 超出负重、直接入城的资源量
+	if amt > room && room > 0 {
+		direct = amt - room
+		// 负重部分按比例装（食物/钢铁/石油/稀矿）
+		scale := func(v int64) int64 { return v * room / amt }
+		sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
+		h.addCarryToOrder(order, sf, ss, so, sr, 0)
+		// 超出部分按比例直接入起点城市（不丢）
+		dF := food - sf
+		dS := steel - ss
+		dO := oil - so
+		dR := rare - sr
+		if city != nil {
+			h.harvestToCity(int64(city.ID), dF, dS, dO, dR, 0)
+		}
+	} else {
+		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+	}
+	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守满%d期\n产出: %s%d",
 		level, wl.X, wl.Y, periods, resName, amt)
 	if gainPct > 100 {
@@ -1544,8 +1574,10 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		desc += fmt.Sprintf("(等级×%d期)", periods)
 	}
 	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.ezfyCarryCap(order))
+	if direct > 0 {
+		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
+	}
 	// 宝物: 每满一个采集周期(每期)至少 1 件, 直接进背包; 每期另有 20% 概率多 1 件
-	city := h.cityOfOrder(order, uid)
 	treasureNames := []string{}
 	for i := int64(0); i < periods; i++ {
 		n := 1
@@ -1682,9 +1714,29 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed)
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；取回负重入城由各入口（StopCollect/HarvestAll/RecallAll）负责。
-	_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+	// ★★ 2026-09-30 同 settleDispatch 的修复：负重满了的部分直接入起点城市，不丢弃。
+	//   这里入口（停止/收获/召回）随后都会 harvestCarryToCity，负重装不下就按比例拆出直接入库。
+	city := h.cityOfOrder(order, uid)
 	cur := parseCarry(order.Carry)
+	room := h.ezfyCarryCap(order) - cur.total()
+	if room < 0 {
+		room = 0
+	}
 	amt := food + steel + oil + rare
+	direct := int64(0)
+	if amt > room && room > 0 {
+		direct = amt - room
+		scale := func(v int64) int64 { return v * room / amt }
+		sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
+		h.addCarryToOrder(order, sf, ss, so, sr, 0)
+		dF, dS, dO, dR := food-sf, steel-ss, oil-so, rare-sr
+		if city != nil {
+			h.harvestToCity(int64(city.ID), dF, dS, dO, dR, 0)
+		}
+	} else {
+		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+	}
+	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
 		wl.Level, wl.X, wl.Y, label, resName, amt)
 	if gainPct > 100 {
@@ -1693,6 +1745,9 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 		desc += fmt.Sprintf("(等级×%d分钟)", max64(elapsed/60000, 1))
 	}
 	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.ezfyCarryCap(order))
+	if direct > 0 {
+		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
+	}
 	desc += fmt.Sprintf("\n（%s不满一个采集周期, 本期没有宝物, 取回负重需[停止采集]/[召回]入城）", label)
 	order.Result = order.Troops
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

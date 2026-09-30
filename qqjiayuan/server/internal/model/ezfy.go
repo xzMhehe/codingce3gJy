@@ -165,9 +165,12 @@ type EzfyActWild struct {
 	Treasures string `gorm:"type:varchar(500);comment:必掉宝物JSON [[cfg_id,count],...]" json:"treasures"`
 	// OfficerId 该坐标活动野地的守将军官（军官池 ID，0=不设守将）。普通军官/名将都可选。
 	OfficerId int `gorm:"default:0;comment:守将军官ID，0=不设" json:"officer_id"`
-	// CaptureRate 守将被俘虏概率%（0=按星级默认；显式填 1~100 则覆盖，不受默认 60% 上限限制）
-	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=按星级默认" json:"capture_rate"`
-	Des         string `gorm:"type:varchar(200);comment:描述" json:"des"`
+	// CaptureRate 守将被俘虏概率%（0=不俘虏；>0 按该百分比，100=必俘虏）
+	CaptureRate int `gorm:"default:0;comment:守将被俘虏概率%，0=不俘虏" json:"capture_rate"`
+	// ★ 2026-09-30 同一玩家可抓守将次数上限（默认 1）。玩家已抓到上限后，
+	//   再次胜利抓取概率强制 0（详见 ezfy_activity_target.go 的结算判定）。
+	MaxCapture int `gorm:"default:1;comment:同一玩家可抓该守将次数，默认1" json:"max_capture"`
+	Des        string `gorm:"type:varchar(200);comment:描述" json:"des"`
 }
 
 func (EzfyActWild) TableName() string { return "ezfy_act_wild" }

@@ -361,9 +361,9 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
-		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 20000, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 20000000, PriceGold: 0, PriceDiamond: 80, Stock: -1,
 			Category:    "军官道具",
-			Description: "在军官管理页面使用, 每本增加 20000 经验"},
+			Description: "在军官管理页面使用, 每本增加 20000000 经验"},
 		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
@@ -429,7 +429,7 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	//   所以对这 4 个道具额外强制对齐价格。
 	// ★ 2026-09-26 按线上现值：军官洗点卡改回**黄金**渠道 80000（原为 2 钻石）→ 值成 {黄金, 钻石}。
 	priceFix := map[int][2]int64{
-		14: {0, 100},   // 荣誉史记   100 钻石
+		14: {0, 80},    // 荣誉史记   80 钻石（2026-09-30 按线上现值）
 		15: {0, 100},   // 军官技能书 100 钻石
 		16: {80000, 0}, // 军官洗点卡 80000 黄金
 		23: {0, 50},    // 星级徽章   50 钻石

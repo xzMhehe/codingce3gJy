@@ -120,8 +120,7 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
 	h.addReport(uid, 5, "采集报告: 开始采集",
-		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期: 资源直接入库到出发城市(军官后勤每点+1%%), 宝物直接进背包(每期至少1件)。负重装满会自动停止采集。",
-			wl.Level, wl.X, wl.Y), "", order.ID)
+		fmt.Sprintf("驻守在野地%d级(%d,%d)的部队开始采集, 每满一个采集周期结算一期。", wl.Level, wl.X, wl.Y), "", order.ID)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("采集开始, 一个采集周期后首次结算(野地%d级 %d,%d)",
 		wl.Level, wl.X, wl.Y)})
 }
