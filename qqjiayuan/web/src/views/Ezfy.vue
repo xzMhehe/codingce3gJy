@@ -3122,6 +3122,20 @@
             <div class="old-line gray">单价不得超过 100 {{ resNames.gold }}/单位（可配，1:100 卡控）</div>
             <button @click="doExchangeSell">[挂单出售]</button>
           </div>
+          <div class="panel-title">向系统出售</div>
+          <div class="old-line">
+            资源:
+            <select v-model="sellSysType" style="width:70px">
+              <option value="1">{{ resNames.food }}</option><option value="2">{{ resNames.steel }}</option>
+              <option value="3">{{ resNames.oil }}</option><option value="4">{{ resNames.rare }}</option>
+            </select><br/>
+            数量: <input v-model="sellSysCount" type="number" style="width:90px"/><br/>
+            <div class="old-line gray">
+              每100单位 → {{ sysSellRatio[sellSysType] || 0 }} {{ resNames.gold }}，实得再扣 {{ sysSellFee }}%（应得 {{ sysSellPreview() }} {{ resNames.gold }}）
+            </div>
+            <button @click="doExchangeSysSell">[向系统出售]</button>
+            <div v-if="sysSellLostWarn" class="red">{{ sysSellLostWarn }}</div>
+          </div>
           <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -4399,6 +4413,13 @@ export default {
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
+      // ★ 2026-09-30 向系统出售资源：每100单位比例 / 手续费 / 丢量提示
+      sellSysType: '1',
+      sellSysCount: 0,
+      sysSellRatio: { 1: 10, 2: 10, 3: 20, 4: 25 },
+      sysSellFee: 10,
+      sysSellLostWarn: '',
+      goldMax: 0,
       trainSel: null,
       trainCount: 10,
       trainSplit: false,
@@ -6563,6 +6584,10 @@ export default {
           this.exchangeMPage = r.data.mpage || 1
           this.exchangeMSize = r.data.msize || 10
           this.exchangeGold = r.data.gold
+          // ★ 2026-09-30 向系统出售资源：读回回收比例 / 手续费 / 黄金上限
+          if (r.data.sys_sell_ratio) this.sysSellRatio = r.data.sys_sell_ratio
+          if (r.data.sys_sell_fee) this.sysSellFee = r.data.sys_sell_fee
+          if (r.data.gold_max != null) this.goldMax = r.data.gold_max
         }
       })
     },
@@ -8353,6 +8378,30 @@ export default {
     },
     doExchangeCancel (e) {
       api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销', () => this.loadExchange()))
+    },
+    // ★ 2026-09-30 向系统出售资源：预览应得黄金（与后端同口径整数除法）
+    sysSellPreview () {
+      const count = parseInt(this.sellSysCount) || 0
+      const ratio = this.sysSellRatio[this.sellSysType] || 0
+      if (count <= 0 || !ratio) return 0
+      const base = Math.floor(count * ratio / 100)
+      const fee = this.sysSellFee || 0
+      return Math.floor(base * (100 - fee) / 100)
+    },
+    doExchangeSysSell () {
+      this.sysSellLostWarn = ''
+      api.post('/games/ezfy/exchange/sys-sell', {
+        es_type: parseInt(this.sellSysType), es_count: parseInt(this.sellSysCount) || 0
+      }).then(r => {
+        if (r.code === 0 && r.data && r.data.gold_lost) {
+          this.sysSellLostWarn = '黄金累加超过黄金上限，超出 ' + (r.data.lost_gold || 0) + ' 已丢失'
+        }
+        this.alert(r, '已售出', () => {
+          this.sellSysCount = 0
+          this.exchangeMPage = 1
+          this.loadExchange()
+        })
+      })
     },
     // ---- 任务/福利 ----
     doAward (t) {

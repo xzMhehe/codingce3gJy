@@ -1,6 +1,6 @@
 <template>
   <div class="farm-admin">
-    <el-tabs v-model="tab">
+    <el-tabs v-model="tab" @tab-click="onTab">
       <el-tab-pane label="挂单维护" name="orders">
         <!-- 概览 -->
         <el-card shadow="never" class="box">
@@ -230,6 +230,37 @@
           </div>
         </el-dialog>
       </el-tab-pane>
+
+      <!-- ================= 系统回收比例 ================= -->
+      <el-tab-pane label="系统回收比例" name="syssell">
+        <el-card shadow="never" class="box">
+          <div class="toolbar">
+            <span class="td-sub">玩家把资源直接卖给系统回收黄金，不走挂单；每 100 单位资源 → 对应黄金，实得再扣 10% 手续费</span>
+            <div class="grow" />
+            <el-button size="mini" type="success" icon="el-icon-check" :loading="savingSys" @click="doSaveSysSell">保存</el-button>
+          </div>
+          <el-form :inline="true" size="small" label-width="150px">
+            <el-form-item label="粮食（每100单位）">
+              <el-input-number v-model.number="sysSell.food" :min="0" :max="100000" controls-position="right" style="width:180px" />
+              <span class="td-sub">黄金</span>
+            </el-form-item>
+            <el-form-item label="钢铁（每100单位）">
+              <el-input-number v-model.number="sysSell.steel" :min="0" :max="100000" controls-position="right" style="width:180px" />
+              <span class="td-sub">黄金</span>
+            </el-form-item>
+            <el-form-item label="石油（每100单位）">
+              <el-input-number v-model.number="sysSell.oil" :min="0" :max="100000" controls-position="right" style="width:180px" />
+              <span class="td-sub">黄金</span>
+            </el-form-item>
+            <el-form-item label="稀矿（每100单位）">
+              <el-input-number v-model.number="sysSell.rare" :min="0" :max="100000" controls-position="right" style="width:180px" />
+              <span class="td-sub">黄金</span>
+            </el-form-item>
+          </el-form>
+          <el-alert type="info" :closable="false" show-icon
+                    title="默认：粮食100:10、钢铁100:10、石油100:20、稀矿100:25；0 = 回落默认。玩家实得再扣 10% 手续费，黄金仍受「黄金资源最大值」上限约束。" />
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -254,7 +285,9 @@ export default {
       templates: [], loadingTpl: false, tplDlg: false, savingTpl: false,
       tpl: {},
       form: { es_type: 1, es_count: 10000, total_price: 1000, currency: 1, repeat: 1 },
-      resCfgList: []
+      resCfgList: [],
+      // ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金）
+      sysSell: { food: 10, steel: 10, oil: 20, rare: 25 }, savingSys: false
     }
   },
   computed: {
@@ -389,6 +422,41 @@ export default {
           else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    onTab (tab) {
+      // ★ 2026-09-30 进入「系统回收比例」tab 时拉取回收比例配置
+      if (tab && tab.name === 'syssell') this.loadSysSell()
+    },
+    loadSysSell () {
+      api.get('/admin/ezfy-build-limit').then(r => {
+        if (r.code === 0) {
+          const d = r.data
+          this.sysSell = {
+            food: this.pos(d.sys_sell_food, 10),
+            steel: this.pos(d.sys_sell_steel, 10),
+            oil: this.pos(d.sys_sell_oil, 20),
+            rare: this.pos(d.sys_sell_rare, 25)
+          }
+        } else this.$message.error(r.msg)
+      })
+    },
+    doSaveSysSell () {
+      const body = {
+        sys_sell_food: this.sysSell.food || 0,
+        sys_sell_steel: this.sysSell.steel || 0,
+        sys_sell_oil: this.sysSell.oil || 0,
+        sys_sell_rare: this.sysSell.rare || 0
+      }
+      this.savingSys = true
+      api.put('/admin/ezfy-build-limit', body).then(r => {
+        this.savingSys = false
+        if (r.code === 0) this.$message.success(r.data.msg || '系统回收比例已保存')
+        else this.$message.error(r.msg)
+      })
+    },
+    pos (v, def) {
+      const n = Number(v)
+      return isFinite(n) && n > 0 ? n : def
     },
     doCreate () {
       if (!(this.form.es_count > 0)) { this.$message.warning('数量必须大于 0'); return }

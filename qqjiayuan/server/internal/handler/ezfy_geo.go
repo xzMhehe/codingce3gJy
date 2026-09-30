@@ -587,6 +587,39 @@ func ezfySellPriceMax() int {
 	return 100
 }
 
+// ezfySysSellRatio 向系统出售资源的回收比例（每 100 单位 → 黄金）。
+//
+// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金，比例可配置」：
+//
+//	返回 es_type(1粮/2钢/3油/4稀) 对应的「每100单位黄金」数，0 或未配置时回落各自默认。
+//	玩家实得黄金还要在换算后再扣 10% 手续费（见 ExchangeSysSell）。
+func ezfySysSellRatio(esType int) int {
+	lim := ezfyCfg.limit
+	switch esType {
+	case 1:
+		if lim.SysSellFood > 0 {
+			return lim.SysSellFood
+		}
+		return 10
+	case 2:
+		if lim.SysSellSteel > 0 {
+			return lim.SysSellSteel
+		}
+		return 10
+	case 3:
+		if lim.SysSellOil > 0 {
+			return lim.SysSellOil
+		}
+		return 20
+	case 4:
+		if lim.SysSellRare > 0 {
+			return lim.SysSellRare
+		}
+		return 25
+	}
+	return 0
+}
+
 // ezfyOfficerCapPerMil 出征军官每 1 点军事累加的出征上限（二战系统配置可调，默认 2000）
 func ezfyOfficerCapPerMil() int {
 	if n := ezfyCfg.limit.OfficerCapPerMilitary; n > 0 {

@@ -452,6 +452,15 @@ type EzfyCfgLimit struct {
 	// wound_expire_days：伤兵在营存活天数，超过则自动消失（默认 3 天）。
 	//   口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算，持续有新伤兵入营会顺延。
 	WoundExpireDays int `gorm:"default:3;comment:伤兵过期天数" json:"wound_expire_days"`
+
+	// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金，比例可配置」：
+	//   玩家把资源**直接卖给系统**（不走挂单），每 100 单位 → N 黄金，实得再扣 10% 手续费。
+	//   默认：粮食 100:10、钢铁 100:10、石油 100:20、稀矿 100:25。
+	//   0 无意义 → 回落各自默认值（见 ezfySysSellRatio）。
+	SysSellFood  int `gorm:"default:10;comment:粮食回收比例(每100单位黄金)" json:"sys_sell_food"`
+	SysSellSteel int `gorm:"default:10;comment:钢铁回收比例(每100单位黄金)" json:"sys_sell_steel"`
+	SysSellOil   int `gorm:"default:20;comment:石油回收比例(每100单位黄金)" json:"sys_sell_oil"`
+	SysSellRare  int `gorm:"default:25;comment:稀矿回收比例(每100单位黄金)" json:"sys_sell_rare"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

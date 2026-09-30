@@ -525,7 +525,11 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	resp.OK(c, gin.H{"orders": views, "total": total, "page": page, "size": size,
 		"mine": mineViews, "mtotal": mtotal, "mpage": mpage, "msize": msize,
 		"gold":    city.Gold,
-		"diamond": h.ensureProfile(uid).Diamond})
+		"diamond": h.ensureProfile(uid).Diamond,
+		// ★ 2026-09-30 向系统出售资源：下发回收比例 / 手续费 / 黄金上限，供前端展示与判断
+		"sys_sell_ratio": ezfySysSellRatioMap(),
+		"sys_sell_fee":   ezfySysSellFeePct,
+		"gold_max":       ezfyResMaxOf("gold")})
 }
 
 func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
@@ -699,6 +703,98 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	h.saveCityRes(&city)
 	h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).Update("status", 2)
 	resp.OK(c, gin.H{"msg": "已下架, 资源退回"})
+}
+
+// ezfySysSellFeePct 向系统出售资源的手续费百分比（默认 10 = 10%）。
+//
+// ★ 2026-09-30 用户要求「玩家获得的黄金手续费：玩家获取的黄金价格 10% 扣除」。
+const ezfySysSellFeePct = 10
+
+// ezfySysSellRatioMap 向系统出售资源回收比例 map（es_type → 每100单位黄金），供前端展示。
+func ezfySysSellRatioMap() map[int]int {
+	return map[int]int{1: ezfySysSellRatio(1), 2: ezfySysSellRatio(2), 3: ezfySysSellRatio(3), 4: ezfySysSellRatio(4)}
+}
+
+// ExchangeSysSell POST /games/ezfy/exchange/sys-sell {es_type, es_count}
+//
+// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金」：
+//   - 把资源**直接卖给系统**（不走挂单，不产生订单行）；
+//   - 直接扣城市资源、加城市黄金；
+//   - 每 100 单位 → 按配置比例换黄金（默认粮10/钢10/油20/稀25，交易行维护可配）；
+//   - 玩家实得黄金再扣 10% 手续费；
+//   - 黄金仍受「黄金资源最大值」（res_max_gold）硬上限约束；若本次到账会超上限，
+//     超出部分会丢失，必须提醒玩家（gold_lost=true + lost_gold），没超过不提醒。
+func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		EsType  int   `json:"es_type"`
+		EsCount int64 `json:"es_count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if _, ok := ezfyResNames[req.EsType]; !ok {
+		resp.ParamError(c, "资源类型错误")
+		return
+	}
+	if req.EsCount <= 0 {
+		resp.ParamError(c, "数量必须大于 0")
+		return
+	}
+	city := h.getOrCreateCity(uid)
+	h.calcResource(&city)
+	var stock int64
+	switch req.EsType {
+	case 1:
+		stock = city.Food
+	case 2:
+		stock = city.Steel
+	case 3:
+		stock = city.Oil
+	case 4:
+		stock = city.Rare
+	}
+	if stock < req.EsCount {
+		resp.ParamError(c, fmt.Sprintf("%s不足(现有%d)", ezfyResNames[req.EsType], stock))
+		return
+	}
+	// 扣资源
+	switch req.EsType {
+	case 1:
+		city.Food -= req.EsCount
+	case 2:
+		city.Steel -= req.EsCount
+	case 3:
+		city.Oil -= req.EsCount
+	case 4:
+		city.Rare -= req.EsCount
+	}
+
+	// 换算黄金：每 100 单位 → N 黄金；实得再扣 10% 手续费
+	ratio := int64(ezfySysSellRatio(req.EsType))
+	base := req.EsCount * ratio / 100
+	received := base * (100 - ezfySysSellFeePct) / 100
+	fee := base - received
+
+	// 黄金封顶与丢量判断：受「黄金资源最大值」硬上限约束
+	before := city.Gold
+	goldMax := ezfyResMaxOf("gold")
+	after := before + received
+	if after > goldMax {
+		after = goldMax
+	}
+	lost := (before + received) - after
+	city.Gold = after
+	h.saveCityRes(&city)
+
+	msg := fmt.Sprintf("向系统出售 %s×%d 成功，获得 %d 黄金（手续费已扣 %d）",
+		ezfyResNames[req.EsType], req.EsCount, received, fee)
+	if lost > 0 {
+		msg += fmt.Sprintf("；因超过黄金上限丢失 %d", lost)
+	}
+	resp.OK(c, gin.H{"msg": msg, "received_gold": received, "fee": fee,
+		"gold_lost": lost > 0, "lost_gold": lost})
 }
 
 // CorpsMembers 军团成员列表

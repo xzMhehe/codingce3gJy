@@ -43,6 +43,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
 		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
+		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
+		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
@@ -186,6 +188,19 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.ResMaxGold <= 0 {
 		lim.ResMaxGold = ezfyResMaxDef
 	}
+	// ★ 2026-09-30：向系统出售资源回收比例（0 无意义 → 回落各自默认，粮10/钢10/油20/稀25）
+	if lim.SysSellFood <= 0 {
+		lim.SysSellFood = 10
+	}
+	if lim.SysSellSteel <= 0 {
+		lim.SysSellSteel = 10
+	}
+	if lim.SysSellOil <= 0 {
+		lim.SysSellOil = 20
+	}
+	if lim.SysSellRare <= 0 {
+		lim.SysSellRare = 25
+	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -270,6 +285,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ResMaxOil   *int64 `json:"res_max_oil"`
 		ResMaxRare  *int64 `json:"res_max_rare"`
 		ResMaxGold  *int64 `json:"res_max_gold"`
+		// ★ 2026-09-30：向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
+		SysSellFood  *int `json:"sys_sell_food"`
+		SysSellSteel *int `json:"sys_sell_steel"`
+		SysSellOil   *int `json:"sys_sell_oil"`
+		SysSellRare  *int `json:"sys_sell_rare"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -311,8 +331,23 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-09-25 各项资源的「资源最大值」（默认 21 亿）
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
-		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
+		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
+		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金）
+		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25}
 	h.DB.First(&lim, 1)
+	// ★ 2026-09-30 向系统出售资源回收比例兜底（0 无意义 → 回落各自默认）
+	if lim.SysSellFood <= 0 {
+		lim.SysSellFood = 10
+	}
+	if lim.SysSellSteel <= 0 {
+		lim.SysSellSteel = 10
+	}
+	if lim.SysSellOil <= 0 {
+		lim.SysSellOil = 20
+	}
+	if lim.SysSellRare <= 0 {
+		lim.SysSellRare = 25
+	}
 	check := func(v *int, name string) (int, bool) {
 		if v == nil {
 			return 0, true
@@ -666,6 +701,30 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.SellPriceMax = *in.SellPriceMax
 	}
+	// ★ 2026-09-30：向系统出售资源回收比例（每100单位黄金，上限 100000 防呆）
+	sysSellSet := func(v *int, dst *int, name string) bool {
+		if v == nil {
+			return true
+		}
+		if *v < 0 || *v > 100000 {
+			resp.ParamError(c, name+"需要在 0~100000 之间")
+			return false
+		}
+		*dst = *v
+		return true
+	}
+	if !sysSellSet(in.SysSellFood, &lim.SysSellFood, "粮食回收比例") {
+		return
+	}
+	if !sysSellSet(in.SysSellSteel, &lim.SysSellSteel, "钢铁回收比例") {
+		return
+	}
+	if !sysSellSet(in.SysSellOil, &lim.SysSellOil, "石油回收比例") {
+		return
+	}
+	if !sysSellSet(in.SysSellRare, &lim.SysSellRare, "稀矿回收比例") {
+		return
+	}
 	// ★ 2026-09-28：军官军事每点累加的出征上限（默认 2000）/ 每点速度加成（默认 0.1，单位 %）
 	if in.OfficerCapPerMilitary != nil {
 		if *in.OfficerCapPerMilitary < 0 || *in.OfficerCapPerMilitary > 100000 {
@@ -884,6 +943,11 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"res_max_oil":   lim.ResMaxOil,
 		"res_max_rare":  lim.ResMaxRare,
 		"res_max_gold":  lim.ResMaxGold,
+		// ★ 2026-09-30：向系统出售资源回收比例（每100单位黄金）
+		"sys_sell_food":  lim.SysSellFood,
+		"sys_sell_steel": lim.SysSellSteel,
+		"sys_sell_oil":   lim.SysSellOil,
+		"sys_sell_rare":  lim.SysSellRare,
 		// ★ 2026-09-26：召集消耗粮食 / 召集获得人口，同样用 map 显式写
 		"convene_food_cost": lim.ConveneFoodCost,
 		"convene_pop_gain":  lim.ConvenePopGain,

@@ -387,12 +387,25 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 1 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
 
 		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
-		//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
+	//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
 	}
+	db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
+
+	// ★ 向系统出售资源回收比例（2026-09-30 用户要求）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
+	//   0 无意义 → 回落各自默认；管理端可在「交易行维护」调整。
+	addSysSellCol := func(col, def string) {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + def)
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + def + " WHERE " + col + " IS NULL OR " + col + " <= 0")
+	}
+	addSysSellCol("sys_sell_food", "10")
+	addSysSellCol("sys_sell_steel", "10")
+	addSysSellCol("sys_sell_oil", "20")
+	addSysSellCol("sys_sell_rare", "25")
+}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
 	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。
