@@ -688,11 +688,6 @@ func ezfyClampRes(v int64) int64 {
 	return v
 }
 
-// ezfyAddRes 资源加法（安全版）：先夹取当前值，再做不会溢出的加法，结果恒在 [0, ezfyResSafeMax]。
-func ezfyAddRes(cur, delta int64) int64 {
-	return ezfySafeAdd(ezfyClampRes(cur), delta, ezfyResSafeMax)
-}
-
 // ============ 资源最大值（二战系统配置，默认 21 亿）============
 //
 // ★ 2026-09-27 用户要求「资源产量也做成累加」：**所有**资源统一只受「资源最大值」这一个硬上限，

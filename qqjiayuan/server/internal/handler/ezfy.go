@@ -1031,14 +1031,15 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	wildGold = ezfyScaleResByProdMult(wildGold)
 	food := city.Food - troopFoodCost
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
-	food += prod
-	if food < 0 {
-		food = 0
-	}
-	city.Food = food
-	city.Steel += int64(float64(steelProd)*hours) + int64(float64(wildSteel)*hours)
-	city.Oil += int64(float64(oilProd)*hours) + int64(float64(wildOil)*hours)
-	city.Rare += int64(float64(rareProd)*hours) + int64(float64(wildRare)*hours)
+	// ★ 2026-09-30 恢复「资源最大值唯一硬上限」：产量累加同样不得超过 21 亿。
+	//   负数扣减（军队耗粮）仍正常生效，最低 0。见 ezfyAddResMax。
+	city.Food = ezfyAddResMax("food", food, prod)
+	city.Steel = ezfyAddResMax("steel", city.Steel,
+		int64(float64(steelProd)*hours)+int64(float64(wildSteel)*hours))
+	city.Oil = ezfyAddResMax("oil", city.Oil,
+		int64(float64(oilProd)*hours)+int64(float64(wildOil)*hours))
+	city.Rare = ezfyAddResMax("rare", city.Rare,
+		int64(float64(rareProd)*hours)+int64(float64(wildRare)*hours))
 	gold := city.Gold
 	gold += int64(float64(goldProd)*hours) + int64(float64(wildGold)*hours)
 	// ★ 军官工资：每名军官每小时消耗「等级 × ezfy_cfg_limit.officer_salary_per_level」黄金。
@@ -1062,7 +1063,7 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	if gold < 0 {
 		gold = 0
 	}
-	city.Gold = gold
+	city.Gold = ezfyAddResMax("gold", gold, 0) // 只做上限夹取（gold 已含工资扣减）
 
 	// ★ 2026-09-29 市长/城守在任被动经验：随懒结算一起按时间结算（复用已取到的军官列表，不额外查库）
 	var dutyOfficers []model.EzfyOfficer

@@ -153,18 +153,22 @@ func (h *EzfyHandler) harvestCarryToCity(order *model.EzfyOrder) int64 {
 //	  ③ carry 超负重部分被静默丢弃（addCarryToOrder 的 dropped），到城确实少了。
 //	现在改为：**收获即入城**（入的是部队出发的那座城），carry 不再参与采集结算。
 //
-// 入库走 ezfyResAddExpr（DB 侧原子累加 + ezfyResSafeMax 溢出兜底）。
+// 入库走 ezfyResAddExpr（DB 侧原子累加 + 资源最大值 21 亿硬上限）。
 //
 // ★★ 2026-09-28 二次修复「资源没有入城市」：
 //
 //	ezfyResAddExpr 原带 LEAST(resMax, ...) 封顶，城市已超 21 亿时会把本次增量**吞掉**，
-//	而这里仍返回 amount → 前端显示「已入库(N)」但库里不变。现已改为无条件累加；
-//	「城市资源是否已满」由调用方在**发起采集前**用 ezfyAtResMax 判定并拦截。
+//	而这里仍返回 amount → 前端显示「已入库(N)」但库里不变。
+//	2026-09-28 曾改为「无条件累加（只防 1 万亿溢出）」来修这个问题 —— 但那样资源能累加
+//	超过 21 亿（用户 2026-09-30 反馈为 bug）。
+//	现在恢复「资源最大值唯一硬上限」，并且本函数**返回实际入账数**（前后差值），
+//	既封顶不超上限、又保证界面报的数字=库里真的加的量。
 func (h *EzfyHandler) harvestToCity(cityID int64, food, steel, oil, rare, gold int64) int64 {
 	amount := food + steel + oil + rare + gold
 	if amount <= 0 || cityID <= 0 {
 		return 0
 	}
+	before := h.ezfyCityResTotal(cityID)
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityID).Updates(map[string]interface{}{
 		"food":  ezfyResAddExpr("food", food),
 		"steel": ezfyResAddExpr("steel", steel),
@@ -172,7 +176,12 @@ func (h *EzfyHandler) harvestToCity(cityID int64, food, steel, oil, rare, gold i
 		"rare":  ezfyResAddExpr("rare", rare),
 		"gold":  ezfyResAddExpr("gold", gold),
 	})
-	return amount
+	after := h.ezfyCityResTotal(cityID)
+	got := after - before
+	if got < 0 {
+		got = 0
+	}
+	return got
 }
 
 // ezfyCityResTotal 读一座城的资源总量(五项之和)。

@@ -638,15 +638,16 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 		city.Gold -= e.TotalPrice
 	}
 	// ★ 买的资源**不受仓储上限截断**（用户确认：交易所买的资源超上限也能买到、不会凭空少）
+	// ★ 2026-09-30 仍受「资源最大值」硬上限（21 亿）约束
 	switch e.EsType {
 	case 1:
-		city.Food += e.EsCount
+		city.Food = ezfyAddResMax("food", city.Food, e.EsCount)
 	case 2:
-		city.Steel += e.EsCount
+		city.Steel = ezfyAddResMax("steel", city.Steel, e.EsCount)
 	case 3:
-		city.Oil += e.EsCount
+		city.Oil = ezfyAddResMax("oil", city.Oil, e.EsCount)
 	case 4:
-		city.Rare += e.EsCount
+		city.Rare = ezfyAddResMax("rare", city.Rare, e.EsCount)
 	}
 	h.saveCityRes(&city)
 	// 黄金/钻石转给卖家；系统挂单不回款给任何玩家
@@ -687,13 +688,13 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	city := h.getOrCreateCity(uid)
 	switch e.EsType {
 	case 1:
-		city.Food += e.EsCount
+		city.Food = ezfyAddResMax("food", city.Food, e.EsCount)
 	case 2:
-		city.Steel += e.EsCount
+		city.Steel = ezfyAddResMax("steel", city.Steel, e.EsCount)
 	case 3:
-		city.Oil += e.EsCount
+		city.Oil = ezfyAddResMax("oil", city.Oil, e.EsCount)
 	case 4:
-		city.Rare += e.EsCount
+		city.Rare = ezfyAddResMax("rare", city.Rare, e.EsCount)
 	}
 	h.saveCityRes(&city)
 	h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).Update("status", 2)

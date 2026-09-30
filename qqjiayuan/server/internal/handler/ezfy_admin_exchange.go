@@ -32,13 +32,13 @@ func (h *AdminHandler) ezfyExchangeRefund(e *model.EzfyExchange) {
 	}
 	switch e.EsType {
 	case 1:
-		city.Food += e.EsCount
+		city.Food = ezfyAddResMax("food", city.Food, e.EsCount)
 	case 2:
-		city.Steel += e.EsCount
+		city.Steel = ezfyAddResMax("steel", city.Steel, e.EsCount)
 	case 3:
-		city.Oil += e.EsCount
+		city.Oil = ezfyAddResMax("oil", city.Oil, e.EsCount)
 	case 4:
-		city.Rare += e.EsCount
+		city.Rare = ezfyAddResMax("rare", city.Rare, e.EsCount)
 	}
 	h.ezfyH().saveCityRes(&city)
 }
