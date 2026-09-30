@@ -71,7 +71,7 @@
         <div class="old-line">声望: {{ profile.prestige }}</div>
         <div class="old-line">
           <span v-html="rankIcon(myRankId)"></span>
-          <a href="javascript:;" @click="go('rank')">军衔</a>:{{ rankName }}
+          <a href="javascript:;" @click="go('rank')">军衔</a>: {{ rankName }}
         </div>
         <div class="old-line">每日签到: <a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
@@ -324,6 +324,17 @@
               <template v-if="o.can_command">
                 <a href="javascript:;" class="red" @click="openBattle(o.id)">[指挥]</a>
                 <span class="gray">第{{ o.battle_round || 1 }}/{{ o.battle_max }}回合</span>
+              </template>
+              <!-- ★ 2026-09-30 行军计谋（只在军队动态，适配神兵天降/战略转移两计谋）：
+                   出征中(0)可 [神兵天降] 去程剩余时间减80%；返回中(2)可 [战略转移] 回程减360分钟；
+                   每种计谋每支部队限一次，已用置灰 -->
+              <template v-if="o.status === 0 || o.status === 2">
+                <a v-if="o.status === 0 && o.scheme_fast === 0" class="green"
+                   href="javascript:;" @click="doMarchScheme(o, 13)">[计谋:神兵天降]</a>
+                <span v-else-if="o.status === 0 && o.scheme_fast === 1" class="gray">[神兵天降已用]</span>
+                <a v-if="o.status === 2 && o.scheme_back === 0" class="green"
+                   href="javascript:;" @click="doMarchScheme(o, 14)">[计谋:战略转移]</a>
+                <span v-else-if="o.status === 2 && o.scheme_back === 1" class="gray">[战略转移已用]</span>
               </template>
               <br/>
               军官：{{ o.officer || '无' }}<br/>
@@ -646,6 +657,10 @@
           <br/>
           加成产量(每小时): {{ resDetail.bonus }}
           <span class="gray" v-if="resDetail.mayor_bonus > 0"> [市长后勤加成+{{ resDetail.mayor_bonus }}%]</span>
+          <!-- ★ 2026-09-30 用户要求「增产令使用了要在资源详情简约体现」：有增产效果时显示幅度 + 剩余时长 -->
+          <span class="green" v-if="resDetail.boost_pct > 0">
+            [增产令+{{ resDetail.boost_pct }}% {{ fmtLeft(Math.floor((resDetail.boost_until - Date.now()) / 1000)) }}]
+          </span>
           <span class="gray" v-if="resDetail.bonus === 0"> [暂无加成]</span>
           <br/>
           耗量(每小时): {{ resDetail.consume }}<br/>
@@ -3791,7 +3806,7 @@
              ★ 2026-09-22：计谋配置改由后端下发（管理端可维护消耗数量/上下架），
                页面显示持有的信号弹数量，够了才能发动。 -->
         <div class="panel" v-else-if="acadeTab === 'scheme'">
-          <div class="old-line">说明：计谋需要进入相应界面才可以使用</div>
+          <div class="old-line">说明：计谋需要进入相应界面才可以使用；神兵天降/战略转移请到「军情→军队动态」对部队使用</div>
           <div class="old-line">
             持有「{{ schemeData.bullet_name }}」：
             <b :class="schemeData.bullet_have > 0 ? 'green' : 'red'">{{ schemeData.bullet_have }}</b> 个
@@ -3808,8 +3823,15 @@
               <input v-model="schemeX" type="text" placeholder="x" style="width:56px"/>
               <input v-model="schemeY" type="text" placeholder="y" style="width:56px"/>
             </template>
-            <a v-if="s.enough" href="javascript:;" @click="doScheme(s)">[发动]</a>
-            <span v-else class="red">[{{ schemeData.bullet_name }}不足]</span>
+            <!-- ★ 2026-09-30 行军计谋（神兵天降/战略转移）：作用于部队，不在军校页发动，
+                 引导玩家去「军情 → 军队动态」对出征中/返回中的部队使用 -->
+            <span v-if="s.kind === 2 || s.kind === 3" class="green">
+              [去「军情→军队动态」对出征中/返回中的部队使用]
+            </span>
+            <template v-else>
+              <a v-if="s.enough" href="javascript:;" @click="doScheme(s)">[发动]</a>
+              <span v-else class="red">[{{ schemeData.bullet_name }}不足]</span>
+            </template>
             <br/>--------------------
           </div>
           <div class="old-line gray" v-if="!schemeData.schemes.length">(暂无计谋，等管理员在后台配置)</div>

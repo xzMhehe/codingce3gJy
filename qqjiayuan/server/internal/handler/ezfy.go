@@ -1255,6 +1255,8 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		}
 	}
 	var boost model.EzfyCityEffect
+	boostPct := 0
+	boostUntil := int64(0)
 	if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&boost).Error; err == nil && boost.UntilTime > time.Now().UnixMilli() {
 		// ★★ 2026-09-26 修复「增产令用了没加成（详情页不显示）」：
 		//
@@ -1265,6 +1267,8 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 		//	 所以「实际入库有 +50%、详情页显示没有」——用户看到界面没变，报「没加成」。）
 		//	⚠️ 凡是 `x * pct / 100` 一律**先乘后除**，别写 `x *= pct / 100`。
 		mult := int64(100 + boost.Param1)
+		boostPct = boost.Param1
+		boostUntil = boost.UntilTime
 		foodProd = foodProd * mult / 100
 		steelProd = steelProd * mult / 100
 		oilProd = oilProd * mult / 100
@@ -1333,18 +1337,20 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	}
 	// ★ 2026-09-26 起不再下发 morale_pct：民心/民怨已不参与产量，前端 base 行不再显示民心
 	// ★ 2026-09-27 唯一上限 = 资源最大值：cap 下发 ezfyResMaxOf，不再用仓储 city.XxxCap。
+	// ★ 2026-09-30 用户要求「增产令使用了要在资源详情简约体现」：
+	//   把增产幅度/剩余时长透出到每种资源，前端在加成产量行显示 [增产令+N%]。
 	return gin.H{
 		"food": item(city.Food, ezfyResMaxOf("food"), foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
-				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor}),
+				"supply_tech": techSupply, "base_building": foodBase, "rate": rateFood, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 		"steel": item(city.Steel, ezfyResMaxOf("steel"), steelBaseReal, steelProd-steelBaseReal+wildSteel, 0, steelProd+wildSteel,
-			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor}),
+			gin.H{"tech_prod": techSteel, "base_building": steelBase, "rate": rateSteel, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 		"oil": item(city.Oil, ezfyResMaxOf("oil"), oilBaseReal, oilProd-oilBaseReal+wildOil, 0, oilProd+wildOil,
-			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor}),
+			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 		"rare": item(city.Rare, ezfyResMaxOf("rare"), rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
-			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor}),
+			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 		"gold": item(city.Gold, ezfyResMaxOf("gold"), goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
-			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor}),
+			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 	}
 }
 
