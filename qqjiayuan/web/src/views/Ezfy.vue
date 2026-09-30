@@ -325,16 +325,10 @@
                 <a href="javascript:;" class="red" @click="openBattle(o.id)">[指挥]</a>
                 <span class="gray">第{{ o.battle_round || 1 }}/{{ o.battle_max }}回合</span>
               </template>
-              <!-- ★ 2026-09-30 行军计谋（只在军队动态，适配神兵天降/战略转移两计谋）：
-                   出征中(0)可 [神兵天降] 去程剩余时间减80%；返回中(2)可 [战略转移] 回程减360分钟；
-                   每种计谋每支部队限一次，已用置灰 -->
+              <!-- ★ 2026-09-30 行军计谋：出征中(0)/返回中(2)只显示一个 [计谋]，
+                   点击进入计谋页选择 神兵天降(去程减80%)/战略转移(回程减360分钟) -->
               <template v-if="o.status === 0 || o.status === 2">
-                <a v-if="o.status === 0 && o.scheme_fast === 0" class="green"
-                   href="javascript:;" @click="doMarchScheme(o, 13)">[计谋:神兵天降]</a>
-                <span v-else-if="o.status === 0 && o.scheme_fast === 1" class="gray">[神兵天降已用]</span>
-                <a v-if="o.status === 2 && o.scheme_back === 0" class="green"
-                   href="javascript:;" @click="doMarchScheme(o, 14)">[计谋:战略转移]</a>
-                <span v-else-if="o.status === 2 && o.scheme_back === 1" class="gray">[战略转移已用]</span>
+                <a class="green" href="javascript:;" @click="openScheme(o)">[计谋]</a>
               </template>
               <br/>
               军官：{{ o.officer || '无' }}<br/>
@@ -1854,6 +1848,53 @@
            比原来的 6 列表格信息全得多（原来没有待带回、没有指挥室入口）。
            ★ 同时修「刷新后消失」：本页数据在 go('orders') 里重新拉，
              不再依赖内存里的旧数组；命令详情页也带了 oid 到 URL（见 syncUrl/restoreFromUrl）。 -->
+
+      <!-- ============ 计谋(scheme)：行军计谋专用页 ============ -->
+      <!-- ★ 2026-09-30 用户要求：军队动态/出征队列的 [计谋] 跳到这里，
+           展示信号弹持有量与神兵天降/战略转移说明，对当前部队去程/回程使用；
+           使用完返回「军情 → 军队动态」。 -->
+      <template v-else-if="cur === 'scheme'">
+        <div class="panel" v-if="schemeOrder">
+          <div class="panel-title">计谋</div>
+          <div class="old-line">
+            【信号弹】持有：
+            <b :class="schemeData.bullet_have > 0 ? 'green' : 'red'">{{ schemeData.bullet_have }}</b>
+            <a href="javascript:;" @click="go('mall')">[去商城购买]</a>
+          </div>
+          <div class="old-line gray">
+            神兵天降：去程剩余时间减少80%。战略转移：回程减少360分钟。每次消耗7枚信号弹，每支部队两种计谋各限一次。
+          </div>
+          <hr/>
+          部队：{{ schemeOrder.type_name }}（{{ schemeOrder.target_name }}({{ schemeOrder.target_x }},{{ schemeOrder.target_y }})）<br/>
+          状态：{{ schemeOrder.status_name }}<br/>
+          <!-- 出征中 → 去程用神兵天降；返回中 → 回程用战略转移 -->
+          <template v-if="schemeOrder.status === 0">
+            <div class="old-line">
+              ({{ schemeOrder.target_x }},{{ schemeOrder.target_y }}) 去程
+              <a v-if="schemeOrder.scheme_fast === 0" class="green"
+                 href="javascript:;" @click="doMarchScheme(schemeOrder, 13)">[神兵天降]</a>
+              <span v-else class="gray">[神兵天降·已用]</span>
+            </div>
+          </template>
+          <template v-else-if="schemeOrder.status === 2">
+            <div class="old-line">
+              ({{ schemeOrder.target_x }},{{ schemeOrder.target_y }}) 回程
+              <a v-if="schemeOrder.scheme_back === 0" class="green"
+                 href="javascript:;" @click="doMarchScheme(schemeOrder, 14)">[战略转移]</a>
+              <span v-else class="gray">[战略转移·已用]</span>
+            </div>
+          </template>
+          <div class="old-line">
+            <a href="javascript:;" @click="go('reports')">[返回军情-军队动态]</a>
+            <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
+          </div>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line">没有可使用的计谋部队</div>
+          <a href="javascript:;" @click="go('reports')">[返回军情-军队动态]</a>
+        </div>
+      </template>
+
       <template v-else-if="cur === 'orders'">
         <div class="panel">
           <div class="panel-title">出征队列({{ queueItems.length }})</div>
@@ -1874,6 +1915,10 @@
             </template>
             <template v-else-if="o.status === 1 && o.arrive_time">
               <a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a>
+            </template>
+            <!-- ★ 2026-09-30 行军计谋：出征中(0)/返回中(2)显示 [计谋]，进入计谋页选择神兵天降/战略转移 -->
+            <template v-if="o.status === 0 || o.status === 2">
+              <a class="green" href="javascript:;" @click="openScheme(o)">[计谋]</a>
             </template>
             <br/>
             军官：{{ o.officer || '无' }}<br/>
@@ -4355,6 +4400,8 @@ export default {
       loveCards: [],
       // ★ 计谋（配置由后端下发，发动消耗「信号弹」）
       schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
+      // ★ 2026-09-30 行军计谋页：当前选中的部队（军队动态/出征队列的 [计谋] 带入）
+      schemeOrder: null,
       schemeX: '', schemeY: '',
       welfare: { rewards: [], gifts: {} },
       // ★ 2026-09-28 福利页 tab: 0每日签到 / 1礼包 / 2宝物签到
@@ -5629,6 +5676,12 @@ export default {
         }
         return
       }
+      // ★ 2026-09-30 计谋页刷新兜底：schemeOrder 只在内存里，刷新后丢了就回军队动态
+      //   （绝不能停在空白的计谋页；信号弹持有量可以重新拉）。
+      if (cur === 'scheme' && !this.schemeOrder) {
+        this.go('reports')
+        return
+      }
       // 没写 cur、或就是 home：保持默认首页即可（go('home') 会重复拉一遍数据）
       if (!cur || cur === 'home') return
       // ★ 复用 go()：所有页面分支的加载逻辑都在它里面，
@@ -5723,6 +5776,8 @@ export default {
       // ★ 2026-09-28 军情页：分区由 reportTab 决定，且 switchReportTab 内部会 syncUrl，
       //   刷新后 reportTab 已由 restoreFromUrl 从 ?rtab= 恢复，所以不会跳回「军队动态」。
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
+      // ★ 2026-09-30 计谋页（行军计谋专用）：进页/刷新都重拉信号弹持有量
+      else if (t === 'scheme') this.loadSchemes()
       else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
       else if (t === 'friends') this.loadFriends()
       else if (t === 'liaison') this.loadLiaison()
@@ -7549,9 +7604,10 @@ export default {
         .then(r => this.alert(r, name + '已取消', () => { this.loadOrders(); this.loadDynamics() }))
     },
     // ★ 2026-09-30 行军计谋：神兵天降(13,去程减80%)/战略转移(14,回程减360分钟)，耗 7 信号弹
+    //   从计谋页(scheme)进入，使用后返回「军情 → 军队动态」。
     async doMarchScheme (o, schemeId) {
       const schemeName = schemeId === 13 ? '神兵天降' : '战略转移'
-      if (!await this.ask('对这支部队使用「' + schemeName + '」吗？消耗信号弹×7，每种计谋每支部队限一次。')) return
+      if (!await this.ask('对 (' + o.target_x + ',' + o.target_y + ') 这支部队使用「' + schemeName + '」吗？消耗信号弹×7，每种计谋每支部队限一次。')) return
       api.post('/games/ezfy/scheme/use', { scheme_id: schemeId, order_id: o.id })
         .then(r => {
           if (r.code !== 0) { this.notify(r.msg || '发动失败'); return }
@@ -7559,7 +7615,16 @@ export default {
           this.loadOrders()
           this.loadDynamics()
           this.loadBag()
+          this.loadSchemes() // 刷新信号弹持有量（计谋页顶部）
+          // ★ 2026-09-30 使用完返回军情军队动态页（用户要求）
+          this.go('reports')
         })
+    },
+    // ★ 2026-09-30 打开行军计谋页：记录目标部队并跳到「计谋」页
+    openScheme (o) {
+      this.schemeOrder = o
+      this.loadSchemes() // 拉最新信号弹持有量
+      this.go('scheme')
     },
     orderStatusText (o) {
       if (o.status === 0) return '行进中 ' + this.remain(o.arrive_time)

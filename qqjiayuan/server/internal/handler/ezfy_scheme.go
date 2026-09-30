@@ -200,7 +200,11 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 			h.fail(c, "这支部队已经用过「"+sc.Name+"」了")
 			return
 		}
-		if newVal <= time.Now().UnixMilli() {
+		// ★ 2026-09-30 用户反馈「返程剩 <360 分钟战略转移用不了」：
+		//   战略转移减 360 分钟，剩余不足 360 分钟时 newVal 已被夹到 now(立即返航)，
+		//   这是**期望效果**，不能当「即将返回」拒绝；只有神兵天降(去程)剩余时间
+		//   本来就耗尽(newVal==now)才提示无需使用。
+		if newVal <= time.Now().UnixMilli() && sc.Kind != 3 {
 			h.fail(c, "这支队伍已即将到达/返回，无需使用计谋")
 			return
 		}
