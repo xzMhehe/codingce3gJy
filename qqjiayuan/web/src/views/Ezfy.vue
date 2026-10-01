@@ -4220,6 +4220,13 @@
 
           <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官]</a></div>
         </div>
+        <!-- ★ 2026-10-01 修复「点击军官有时候空白」：加载失败 / 武将不在当前城时
+             不再静默留空，展示原因并引导返回军官列表（重新拉取后该行会消失/恢复） -->
+        <div class="panel" v-else>
+          <div class="panel-title">军官详情</div>
+          <div class="old-line red">{{ officerDetailError || '加载中...' }}</div>
+          <div class="old-line"><a href="javascript:;" @click="go('acade')">[返回军官列表]</a></div>
+        </div>
       </template>
 
       <!-- ★ 2026-09-25：独立的「装备详情页」已删除。
@@ -4517,6 +4524,9 @@ export default {
       equipData: { bag: [], all: [], sets: [] },
       generalData: { generals: [] },
       officerDetail: { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 },
+      // ★ 2026-10-01 修复「点击军官有时候空白」：加载失败/武将不在当前城时，
+      //   不再静默留空，页面展示该错误并引导返回军官列表
+      officerDetailError: '',
       // ★ 装备商城（套装用黄金/钻石购买）
       equipShop: { slots: [], items: [], gold: 0, diamond: 0 },
       // ★ 商城散件：部位筛选 + 检索 + 分页（用户要求「按部位分组表格 + 检索」）
@@ -8976,13 +8986,33 @@ export default {
       this.officerDetailTab = 'attr'
       this.officerBagWord = ''
       this.officerBagPage = 1
+      // ★ 2026-10-01 修复「点击军官有时候空白」：进页先清掉旧军官数据/错误，
+      //   加载完成前显示「加载中...」，避免残留上一名军官的详情或白屏
+      this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
+      this.officerDetailError = ''
       this.loadOfficerDetail(id)
     },
     loadOfficerDetail (id) {
+      // ★ 2026-10-01 防串数据：连续点多名军官时，只认最后一次请求的结果
+      const seq = (this._officerDetailSeq = (this._officerDetailSeq || 0) + 1)
       // ★ 军官详情的「已穿戴装备 / 装备背包」要显示套装加成 → 一并把套装配置拉上
       this.loadEquipSets()
       api.get('/games/ezfy/officers/' + id).then(r => {
-        if (r.code === 0) this.officerDetail = r.data
+        if (seq !== this._officerDetailSeq) return
+        if (r.code === 0) {
+          this.officerDetailError = ''
+          this.officerDetail = r.data
+        } else {
+          // 加载失败（如武将已调往别的城市 / 已被流放）→ 不再静默空白：
+          // 提示原因并刷新军官列表，让列表与后端状态一致
+          this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
+          this.officerDetailError = r.msg || '加载军官详情失败, 请重试'
+          this.loadAcade()
+        }
+      }).catch(() => {
+        if (seq !== this._officerDetailSeq) return
+        this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
+        this.officerDetailError = '网络开小差了, 请稍后重试'
       })
     },
     // 军校直接使用招生简章刷新（不占每小时次数；不用跳背包）

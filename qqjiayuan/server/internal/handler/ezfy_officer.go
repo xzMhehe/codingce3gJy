@@ -2143,6 +2143,15 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	o := h.officerOf(city.ID, id)
 	if o == nil {
+		// ★ 2026-10-01 修复「点击军官有时候空白」：军官在玩家**其他城市**
+		//   （派遣/增援订单结算后随军调任）时，提示准确原因，别让前端摸黑。
+		var any model.EzfyOfficer
+		var myCityIDs []int64
+		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &myCityIDs)
+		if len(myCityIDs) > 0 && h.DB.Where("id = ? AND city_id IN ?", id, myCityIDs).First(&any).Error == nil {
+			resp.ParamError(c, "该军官已调往其他城市, 请到对应城市查看")
+			return
+		}
 		resp.ParamError(c, "武将不存在")
 		return
 	}
