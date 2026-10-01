@@ -2022,11 +2022,11 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 			h.transferOfficerEquipsToCaptive(int64(cap.ID), int64(o.ID), atkCity.UserID, target.UserID)
 			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零, 弃城归降, 已收入我方战俘营(随身装备随俘转移)")
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
-				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "")
+				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "", 0, target.ID)
 		} else {
 			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方参谋部已满, 未能收押)")
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
-				o.Name+"因忠诚度归零而离开了你的城市。", "")
+				o.Name+"因忠诚度归零而离开了你的城市。", "", 0, target.ID)
 		}
 	}
 	return b.String()

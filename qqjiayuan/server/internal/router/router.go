@@ -595,6 +595,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 2026-09-28 单支采集部队停止采集(原地待命, 结算资源: 满期有宝物/不满期无)
 				ezfyG.POST("/wild/stop-collect", ezfyH.StopCollect)
 				ezfyG.GET("/reports", ezfyH.Reports)
+				// ★ 2026-10-01 军情页徽标数字专用轻量接口（不标记已读；须在 /reports/:id 之前注册）
+				ezfyG.GET("/reports/counts", ezfyH.ReportCounts)
 				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
 				ezfyG.GET("/reports/:id", ezfyH.ReportView)
 				ezfyG.POST("/reports/:id/delete", ezfyH.ReportDelete)

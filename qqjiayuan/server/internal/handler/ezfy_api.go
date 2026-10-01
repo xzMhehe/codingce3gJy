@@ -2486,11 +2486,49 @@ func ezfyReportCategoryName(cat int) string {
 	return "全部"
 }
 
-// Reports GET /games/ezfy/reports?category=1|2|3&word=xxx
+// ezfyReportCounts 统计军情警讯(1)/战斗报告(2)的**真实**数量（tab 徽标数字）。
+//
+// ★ 2026-10-01 修复「徽标数字时有时无/无故漂移」：原来在 Reports 里用
+//   「最近 200 条的窗口计数」——新报告把旧报告挤出窗口后，数字在玩家什么都没
+//   删的情况下自己变少甚至归零。这里改单条 SQL 按标题条件聚合全量，与
+//   ezfyReportCategory 的判定规则保持同步（改判定时这里要一起改）。
+// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只统计该城的战报
+//   （新战报带 city_id；老攻击战报 city_id=0 但能通过 order 关联回出发点城市）。
+func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
+	cityCond := ""
+	if cityId > 0 {
+		cityCond = fmt.Sprintf(" AND (city_id = %d OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = %d)))",
+			cityId, cityId)
+	}
+	row := h.DB.Raw(`SELECT
+		COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '被掠夺报告%'
+			OR title LIKE '城破报告%' OR title LIKE '守卫报告%' OR title LIKE '城市归还%'
+			OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
+			OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' THEN 1 ELSE 0 END), 0)
+		FROM ezfy_report WHERE user_id = ?`+cityCond, uid).Row()
+	var c1, c2 int
+	if row != nil {
+		row.Scan(&c1, &c2)
+	}
+	return map[int]int{1: c1, 2: c2}
+}
+
+// ReportCounts GET /games/ezfy/reports/counts?city_id=xx —— 只取 tab 徽标数字，不标记已读。
+// （军情页无论落在哪个分区都要刷新徽标，但不能因此把没看的战报标记成已读，
+//  所以从 Reports 里拆出独立接口。）
+func (h *EzfyHandler) ReportCounts(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
+	resp.OK(c, gin.H{"counts": h.ezfyReportCounts(uid, cityId)})
+}
+
+// Reports GET /games/ezfy/reports?category=1|2|3&word=xxx&city_id=xx
 func (h *EzfyHandler) Reports(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	category, _ := strconv.Atoi(c.DefaultQuery("category", "0"))
 	word := strings.TrimSpace(c.Query("word"))
+	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
 	// ★ 2026-09-30 军团战报：展示本军团团员的 PvP 战报（不含 NPC/野地/系统）
 	if c.Query("corps") == "1" {
 		h.corpsReports(c, uid, word)
@@ -2501,14 +2539,21 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	if word != "" {
 		q = q.Where("title LIKE ?", "%"+word+"%")
 	}
+	// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只拉当前城的战报。
+	//   新战报创建时已写 city_id；老攻击战报(city_id=0)通过 order 关联回出发点城市，
+	//   老防守战报无 order 关联、无法归属到城，不再展示（切到对应城市看新战报）。
+	if cityId > 0 {
+		q = q.Where("(city_id = ? OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = ?)))",
+			cityId, cityId)
+	}
 	var reports []model.EzfyReport
 	q.Order("id DESC").Limit(200).Find(&reports)
 
 	views := []gin.H{}
-	counts := map[int]int{}
+	// ★ 徽标数字用全量真实统计（不再受「最近 200 条窗口」影响，见 ezfyReportCounts）
+	counts := h.ezfyReportCounts(uid, cityId)
 	for _, r := range reports {
 		cat := ezfyReportCategory(r.Title)
-		counts[cat]++
 		if category > 0 && cat != category {
 			continue
 		}
@@ -2527,11 +2572,17 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
 	// ★ 2026-09-25：同时下发**侦察技巧等级**与**合计情报等级** —— 现在「出发城市+坐标」
 	//   由「雷达站 + 侦察技巧」合计决定，前端要按这两个值告诉玩家还差多少才能看到来袭城市。
-	city := h.getOrCreateCity(uid)
+	// ★ 2026-10-01 军情按当前城过滤：雷达/情报等级也取**所查看的城市**，不是主城
+	radarCity := h.getOrCreateCity(uid)
+	if cityId > 0 {
+		if ct := h.cityOf(uid, cityId); ct != nil {
+			radarCity = *ct
+		}
+	}
 	resp.OK(c, gin.H{"reports": views, "counts": counts,
-		"radar": h.buildingLevel(city.ID, ezfyRadarBuildingID),
-		"recon": h.techMap(city.ID)[ezfyReconTechID],
-		"intel": h.ezfyIntelLevel(city.ID)})
+		"radar": h.buildingLevel(radarCity.ID, ezfyRadarBuildingID),
+		"recon": h.techMap(radarCity.ID)[ezfyReconTechID],
+		"intel": h.ezfyIntelLevel(radarCity.ID)})
 }
 
 // corpsReports 军团战报 —— 展示本军团团员的 PvP 战斗战报（对战玩家城，
@@ -2614,19 +2665,25 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 	resp.OK(c, gin.H{"reports": views, "counts": counts, "corps": true})
 }
 
-// ReportDynamics GET /games/ezfy/reports/dynamics
+// ReportDynamics GET /games/ezfy/reports/dynamics?city_id=xx
 // 军队动态: 所有在外的部队(出征/采集/派遣/侦查/掠夺/运输/增援)
 // 复刻 `二战风云/templates/report/index.html` 的「军队动态」区
+// ★ 2026-10-01 军情按当前城过滤：city_id>0 时只展示当前城出发的部队，
+//   防守战场也只展示「正在攻打当前城」的（守方视角）。
 func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
 	h.cfgs()
 	// ★ 走统一懒结算：原来这里只处理了「抵达(0)」和「返航(2)」，
 	//   漏掉了「驻守采集(1) 到点结算」，导致军队动态页看到的采集进度/待带回资源是旧的。
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status IN (0,1,2,?,?)", uid, ezfyOrderStatusBattle, ezfyOrderStatusWaiting).
-		Order("id DESC").Limit(100).Find(&orders)
+	oq := h.DB.Where("user_id = ? AND status IN (0,1,2,?,?)", uid, ezfyOrderStatusBattle, ezfyOrderStatusWaiting)
+	if cityId > 0 {
+		oq = oq.Where("city_id = ?", cityId)
+	}
+	oq.Order("id DESC").Limit(100).Find(&orders)
 	// ★ 性能：战场进度**一次查完**再按 order_id 取。
 	//   原来在下面的循环里逐条 ezfyBattleByOrder = N+1（服务器只有 1 核，这条红线不能踩）。
 	battleRounds := map[int64]int{}
@@ -2800,8 +2857,13 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	// ★ 2026-09-24 修复「被攻击的动态打完了还一直显示」：只展示订单仍处于
 	//   「战斗中(5)」的战场。订单已结算(征服/返航)但战场行没更新(历史 bug 留下的
 	//   僵尸行)一律不再展示；这类行由 ezfyBattleTick 自愈 + 本次线上数据修复清理。
-	h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
-		uid, ezfyOrderStatusBattle).Find(&defBattles)
+	dbq := h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
+		uid, ezfyOrderStatusBattle)
+	// ★ 2026-10-01 防守战场按「被打的城市」过滤（battle.target_id = 守方城市 id）
+	if cityId > 0 {
+		dbq = dbq.Where("target_id = ?", cityId)
+	}
+	dbq.Find(&defBattles)
 	for _, b := range defBattles {
 		// 来袭敌军来源：攻击方城市（查不到就兜底显示玩家 uID）
 		atkName := "玩家" + strconv.FormatUint(uint64(b.UserID), 10)
@@ -2867,8 +2929,19 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 //	⚠️ 不带 user_id 的批量 Delete 会清全表 —— 这里必须带，且只认 middleware 里的 uid。
 //	⚠️ 路由用 `/reports/clear` 而不是 `/reports/:id/delete` 的同级形式：
 //	   路径段数不同（2 段 vs 3 段），Gin 不会和 `:id` 冲突。
+//
+// ★ 2026-10-01 军情按当前城过滤：city_id>0 时只删**当前城市**的战报（口径与 Reports 列表一致）。
 func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	res := h.DB.Where("user_id = ?", uid).Delete(&model.EzfyReport{})
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
+	c.ShouldBindJSON(&req)
+	q := h.DB.Where("user_id = ?", uid)
+	if req.CityId > 0 {
+		q = q.Where("(city_id = ? OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = ?)))",
+			req.CityId, req.CityId)
+	}
+	res := q.Delete(&model.EzfyReport{})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
 }

@@ -933,7 +933,7 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 		}
 		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 2)
 		h.addReport(o.DefUserId, 5, "城市归还",
-			fmt.Sprintf("你被占领的城市[%s]已由敌方归还!\n民心已恢复。", city.Name))
+			fmt.Sprintf("你被占领的城市[%s]已由敌方归还!\n民心已恢复。", city.Name), "", 0, city.ID)
 		resp.OK(c, gin.H{"msg": "已归还"})
 	default:
 		resp.ParamError(c, "未知操作")

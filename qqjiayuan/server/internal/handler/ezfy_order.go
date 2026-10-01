@@ -1103,7 +1103,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 					body += fmt.Sprintf("侦查时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
 				body += fmt.Sprintf("(情报等级%d: 雷达站等级越高、侦察技巧越高, 情报越详细)", radar)
-				h.addReport(target.UserID, 6, "被侦查报告: "+city.Name, body)
+				h.addReport(target.UserID, 6, "被侦查报告: "+city.Name, body, "", 0, target.ID)
 			}
 			if radar >= 1 && orderType != 1 {
 				// ★ 出发城市（名称+坐标）放正文**最前面** —— 玩家最想知道的就是「谁、从哪来」
@@ -1149,7 +1149,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 					// 列表只显示标题 → 把来源也带上，不点进去就能看到
 					title += fmt.Sprintf(" 来自 %s(%d,%d)", city.Name, city.X, city.Y)
 				}
-				h.addReport(target.UserID, 6, title, warn)
+				h.addReport(target.UserID, 6, title, warn, "", 0, target.ID)
 			}
 		}
 	}
@@ -1560,7 +1560,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
 		h.beginReturn(order, now, 0)
 		h.addReport(uid, 5, "采集报告: 野地丢失",
-			"所采集的野地已不属于我方, 采集部队已返航。", "", order.ID)
+			"所采集的野地已不属于我方, 采集部队已返航。", "", order.ID, order.CityId)
 		return 0, false
 	}
 	// 期数: 到点的那一期 + 玩家离线漏掉的整期; 上限 24 期防止长时间积压
@@ -1855,7 +1855,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
 			h.beginReturn(order, now, 0)
 			h.addReport(uid, 5, "采集报告: 野地丢失",
-				"采集目标野地已不属于我方, 采集部队已返航。", "", order.ID)
+				"采集目标野地已不属于我方, 采集部队已返航。", "", order.ID, order.CityId)
 			return
 		}
 		order.Status = 1
@@ -2231,7 +2231,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.addReport(target.UserID, 6,
 					fmt.Sprintf("军情警报: 敌军已抵达 来自 %s(%d,%d)", city.Name, city.X, city.Y),
 					fmt.Sprintf("敌方部队已抵达我方城市「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s(%d,%d)\n请到「军情 → 军队动态」进入[指挥]部署守军。",
-						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y))
+						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
+					"", 0, target.ID)
 			}
 			// ★ 用户要求：「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
@@ -2694,7 +2695,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				newCity := h.replenishCity(target.UserID)
 				report += fmt.Sprintf("\n守方城市已全部被占, 系统已补给新城市[%s](%d,%d)", newCity.Name, newCity.X, newCity.Y)
 				h.addReport(target.UserID, 5, "系统补偿新城市",
-					fmt.Sprintf("你的全部城市已被敌方占领!\n系统已补偿一座新城市[%s](%d,%d), 请重新发展。", newCity.Name, newCity.X, newCity.Y))
+					fmt.Sprintf("你的全部城市已被敌方占领!\n系统已补偿一座新城市[%s](%d,%d), 请重新发展。", newCity.Name, newCity.X, newCity.Y), "", 0, newCity.ID)
 			}
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
@@ -2708,7 +2709,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defReportBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
 			}
-			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail)
+			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail, 0, target.ID)
 		}
 		// 普通掠夺(含成功掠夺玩家城市): 民心-N 民怨+N
 		// ★ 用户反馈「民心每次 -5 现在太多」→ 扣多少改为管理端可配
@@ -2724,7 +2725,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-%d 民怨+%d\n%s\n%s",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold,
 					lootFeel, lootFeel, lossText(br.DefenderLosses, defCamp), wareNote),
-				detail)
+				detail, 0, target.ID)
 		}
 		// 掠夺资源入账
 		if order.OrderType == 2 || order.OrderType == 3 {
@@ -2849,7 +2850,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-09-24 用户要求：军情列表展示 [防守报告] 城市名(坐标)，标题需携带守方城名+坐标
 			h.addReport(target.UserID, 4, "守卫报告: "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail)
+				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)
 		}
 	}
@@ -3234,6 +3235,16 @@ func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string,
 				r.OrderId = n
 			case int:
 				r.OrderId = int64(n)
+			}
+		case 2:
+			// ★ 2026-10-01 军情按当前城过滤：战报创建处把所属城市 ID 带进来
+			switch n := v.(type) {
+			case int64:
+				r.CityId = n
+			case uint:
+				r.CityId = int64(n)
+			case int:
+				r.CityId = int64(n)
 			}
 		}
 	}

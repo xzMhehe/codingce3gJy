@@ -207,6 +207,28 @@ func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
 		}
 	}
 
+	// ★ 2026-10-01 补「有没有俘虏军官」：俘虏情况写在战报正文里
+	//   （capture 成功 → createCaptiveOfficer 返回「俘虏敌将:XXX(...)」，
+	//   已到上限 → 正文写「已被你捕获达到上限，无法再次俘虏」）。
+	//   按 battle.OrderId → ezfy_report.order_id 反查正文提取。
+	capText := map[int64]string{}
+	if len(rows) > 0 {
+		oids := make([]int64, 0, len(rows))
+		for _, b := range rows {
+			oids = append(oids, b.OrderId)
+		}
+		var rps []model.EzfyReport
+		h.DB.Select("order_id, content").Where("order_id IN ?", oids).Order("id DESC").Find(&rps)
+		seen := map[int64]bool{}
+		for _, r := range rps {
+			if seen[r.OrderId] {
+				continue
+			}
+			seen[r.OrderId] = true
+			capText[r.OrderId] = captiveTextOf(r.Content)
+		}
+	}
+
 	out := make([]gin.H, 0, len(rows))
 	for _, b := range rows {
 		result := "进行中"
@@ -220,6 +242,10 @@ func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
 				result = "平局"
 			}
 		}
+		captive := "未俘虏"
+		if t := capText[b.OrderId]; t != "" {
+			captive = t
+		}
 		out = append(out, gin.H{
 			"id":          b.ID,
 			"user_id":     b.UserID,
@@ -229,10 +255,29 @@ func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
 			"status":      b.Status,
 			"win":         b.Win,
 			"result":      result,
+			"captive":     captive,
 			"created_at":  b.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 	resp.OK(c, gin.H{"x": a.X, "y": a.Y, "list": out, "total": total, "page": page, "size": size})
+}
+
+// captiveTextOf 从战报正文提取活动野地守将的俘虏情况
+//
+//	成功 → 原样带回「俘虏敌将:XXX(星级, 忠诚30) 可前往军校收编」行
+//	已达上限 → 「已达捕获上限（无法再次俘虏）」
+//	其他（战败/平局/概率未中/无参谋部）→ 空字符串（前端显示「未俘虏」）
+func captiveTextOf(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "俘虏敌将:") {
+			return line
+		}
+	}
+	if strings.Contains(content, "无法再次俘虏") {
+		return "已达捕获上限（无法再次俘虏）"
+	}
+	return ""
 }
 
 // checkActWildVals 校验活动野地配置值

@@ -6170,7 +6170,7 @@ export default {
       const cat = this.reportTab === 3 ? 1 : 2
       let url = '/games/ezfy/reports?'
       if (this.reportTab === 5) url += 'corps=1'
-      else url += 'category=' + cat
+      else url += 'category=' + cat + '&city_id=' + (this.city ? this.city.id : 0)
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       api.get(url).then(r => {
         if (r.code === 0) {
@@ -6181,6 +6181,14 @@ export default {
           this.reportIntel = r.data.intel || this.reportRadar
           this.repPage = 1
         }
+      })
+    },
+    // ★ 2026-10-01 徽标数字专用轻量接口（独立于 loadReports：
+    //   军情页落在任意分区都要刷新徽标，但不能因此把没看的战报标记已读）
+    //   ★ 2026-10-01 军情按当前城过滤：徽标数字也只统计当前城的战报
+    loadReportCounts () {
+      api.get('/games/ezfy/reports/counts?city_id=' + (this.city ? this.city.id : 0)).then(r => {
+        if (r.code === 0) this.reportCounts = r.data.counts || {}
       })
     },
     // ★ 2026-09-24 用户要求：军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
@@ -6197,8 +6205,9 @@ export default {
       return t
     },
     // ---- 军队动态 ----
+    // ★ 2026-10-01 军情按当前城过滤：只拉当前城市出发/驻守的部队
     loadDynamics () {
-      api.get('/games/ezfy/reports/dynamics').then(r => {
+      api.get('/games/ezfy/reports/dynamics?city_id=' + (this.city ? this.city.id : 0)).then(r => {
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
           // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
@@ -6390,8 +6399,12 @@ export default {
       this.dynStationPage = 1
       // ★ 2026-09-28 分区写进 URL，否则刷新后回落到默认的「军队动态」(t=1)
       this.syncUrl()
-      if (t === 1 || t === 2) this.loadDynamics()
-      else this.loadReports()
+      // ★ 2026-10-01 修复「徽标数字时有时无」：原来落 tab 1/2 只拉 dynamics、
+      //   落 tab 3/4 只拉 reports —— 落在哪个分区决定徽标有没有数字。
+      //   现在无论落在哪都先刷徽标 + 军队动态/驻军数据；列表仅在对应分区拉取。
+      this.loadReportCounts()
+      this.loadDynamics()
+      if (t === 3 || t === 4 || t === 5) this.loadReports()
     },
     // ★ 战报详情页(reportview)顶部的分区导航：先回列表页再切到对应分区，
     //   直接调 switchReportTab 会停在 reportview 页面上。
@@ -7577,14 +7590,15 @@ export default {
     // ★ 2026-09-26 用户要求「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
     //   删的是**自己名下全部战报**（后端 DELETE，不软删），不可恢复 → 先走页面内确认条问一次。
     //   ⚠️ 有搜索词时列表只是筛选，删除范围仍是全部 —— 文案里写清楚，别让玩家以为只删列表里那几条。
+    // ★ 2026-10-01 军情按当前城过滤：一键删除也只删**当前城市**的战报
     async doClearReports () {
       if (!this.reports.length) {
         this.notify('暂无战报可删除')
         return
       }
-      if (!await this.ask('确定删除【全部】战报吗？\n（物理删除，不可恢复；' +
-        (this.reportWord ? '当前只是搜索筛选，删除范围仍是全部' : '共 ' + this.reports.length + ' 条') + '）')) return
-      api.post('/games/ezfy/reports/clear', {}).then(r => {
+      if (!await this.ask('确定删除【当前城市】的全部战报吗？\n（物理删除，不可恢复；' +
+        (this.reportWord ? '当前只是搜索筛选，删除范围仍是当前城市全部' : '共 ' + this.reports.length + ' 条') + '）')) return
+      api.post('/games/ezfy/reports/clear', { city_id: this.city ? this.city.id : 0 }).then(r => {
         if (r.code === 0) {
           this.notify((r.data && r.data.msg) ? r.data.msg : '战报已全部删除')
           this.repPage = 1

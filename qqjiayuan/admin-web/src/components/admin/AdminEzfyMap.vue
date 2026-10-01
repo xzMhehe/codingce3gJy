@@ -754,6 +754,13 @@
             <span :class="row.win === 1 ? 'td-green' : (row.win === 2 ? 'td-red' : 'td-sub')">{{ row.result }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="俘虏军官" min-width="150" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span v-if="row.captive && row.captive.indexOf('上限') >= 0" class="td-red">{{ row.captive }}</span>
+            <span v-else-if="row.captive && row.captive !== '未俘虏'" class="td-green">{{ row.captive }}</span>
+            <span v-else class="td-sub">未俘虏</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="created_at" label="时间" width="150" align="center" />
       </el-table>
       <div class="pager-bar" style="margin-top:10px">
