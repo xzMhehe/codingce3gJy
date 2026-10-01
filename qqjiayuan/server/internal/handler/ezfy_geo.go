@@ -785,13 +785,21 @@ func ezfyResAddExpr(res string, n int64) clause.Expr {
 //
 // ★ 与 ezfyResAddExpr 严格同口径（2026-09-30 起）：
 //   - 正数累加 → min(资源最大值, 现值 + 增量)，封顶不超上限；
-//   - 老数据已超上限的城不拉低（保住原值），但也不再增长；
+//   - delta=0（仅黄金产量结算使用）→ 现值超过资源最大值时拉回上限，老数据超限自动收敛；
 //   - 负数扣减 → 正常减少，最低 0。
 // 供不便走 SQL 表达式的发放路径使用。
 func ezfyAddResMax(res string, cur, delta int64) int64 {
 	max := ezfyResMaxOf(res)
 	cur = ezfyClampRes(cur)
 	if delta == 0 {
+		// ★ 2026-10-01 修复「黄金产量超过资源最大值」：
+		//   delta=0 的唯一调用点是 calcResource 的黄金产量结算（gold 先算好净增量再以 0 传入夹取）。
+		//   原实现直接 return cur，**完全跳过资源最大值** → 黄金产量每小时累加从未被配置上限截断，
+		//   一路涨到 77.67 亿（配置仅 61 亿）。这里 cur 超过资源最大值时拉回上限：
+		//   老数据超限的城在下次懒结算自动收敛到配置值，与 food/steel/oil/rare 产量路径口径一致。
+		if cur > max {
+			return max
+		}
 		return cur
 	}
 	if delta < 0 {
