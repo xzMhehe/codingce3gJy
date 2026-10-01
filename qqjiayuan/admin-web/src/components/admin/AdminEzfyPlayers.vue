@@ -92,7 +92,7 @@
               </el-table-column>
               <el-table-column label="类型" width="100" align="center">
                 <template slot-scope="{row}">
-                  <a v-if="row.general_id > 0" href="javascript:;" class="td-gen" @click="showGeneral(row)">名将[原名]</a>
+                  <a v-if="row.general_name" href="javascript:;" class="td-gen" @click="showGeneral(row)">名将[原名]</a>
                   <el-tag v-else size="mini" type="info" effect="plain">{{ row.type_name }}</el-tag>
                 </template>
               </el-table-column>
@@ -283,12 +283,15 @@ export default {
       }
       return Number(n).toLocaleString()
     },
-    // ★ 名将军官：点击「名将[原名]」查看该军官对应的原名将是哪个
+    // ★ 名将军官：点击「名将[原名]」查看原名将名字 + 获取时间 + 获取方式
     showGeneral (row) {
       const gid = row.general_id || 0
       const name = row.general_name || ('名将#' + gid)
       const star = row.general_star > 0 ? row.general_star + '星' : ''
-      this.$alert('原名将：' + name + (star ? '（' + star + '）' : ''), '军官「' + row.name + '」来源', { confirmButtonText: '知道了' })
+      const lines = ['原名将：' + name + (star ? '（' + star + '）' : '')]
+      if (row.get_way) lines.push('获取方式：' + row.get_way)
+      if (row.get_time) lines.push('获取时间：' + this.fmtTime(row.get_time))
+      this.$alert(lines.join('<br/>'), '军官「' + row.name + '」来源', { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' })
     },
     statusType (row) { return row.is_captive === 1 ? 'danger' : (row.status === 1 ? 'warning' : 'success') },
     load () {

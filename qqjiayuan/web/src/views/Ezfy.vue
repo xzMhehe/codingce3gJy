@@ -688,8 +688,7 @@
             <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事区</a>.
             <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源区</a>
           </div>
-          <br/>
-          <div class="old-line">建造中队列数：{{ buildQueueCount }}
+          <div class="old-line">建造中队列数：{{ buildQueueCount }} | 已有 {{ zoneCount }}/{{ zoneCap }}
             <a href="javascript:;" @click="openBuildPre(cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->

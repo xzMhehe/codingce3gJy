@@ -147,9 +147,11 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		CityName     string `json:"city_name"`
 		PositionName string `json:"position_name"`
 		StatusName   string `json:"status_name"`
-		TypeName     string `json:"type_name"`        // ★ 普通 / 名将（general_id>0 为名将）
-		GeneralName  string `json:"general_name"`     // ★ 原名将名称（general_id>0 时从配置表回填，供管理端点击查看）
-		GeneralStar  int    `json:"general_star"`     // ★ 原名将星级
+		TypeName     string `json:"type_name"`    // ★ 普通 / 名将（只有 kind=2 名将池的才算名将）
+		GeneralName  string `json:"general_name"` // ★ 原名将名称（名将池回填，供管理端点击查看）
+		GeneralStar  int    `json:"general_star"` // ★ 原名将星级
+		GetWay       string `json:"get_way"`      // ★ 获取方式（活动野地俘虏/战俘营/管理端发放）
+		GetTime      time.Time `json:"get_time"`  // ★ 获取时间（按战报反查；无战报回落到军官更新时间）
 	}
 	officersViews := []officerOut{}
 	if len(cities) > 0 {
@@ -162,7 +164,7 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		var officers []model.EzfyOfficer
 		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
 		// ★ 原名将信息：收集所有 general_id 一次查配置表，避免 N+1
-		gNameOf, gStarOf := map[int]string{}, map[int]int{}
+		gNameOf, gStarOf, gKindOf := map[int]string{}, map[int]int{}, map[int]int{}
 		{
 			generalIDs := make([]int, 0)
 			seen := map[int]bool{}
@@ -178,14 +180,73 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 				for _, g := range gs {
 					gNameOf[g.ID] = g.Name
 					gStarOf[g.ID] = g.Star
+					gKindOf[g.ID] = g.Kind
+				}
+			}
+		}
+		// ★ 获取时间/获取方式：名将(kind=2)按「俘虏敌将:<名字>」战报反查活动野地俘虏时间；
+		//   查不到且仍在战俘营 → 活动野地俘虏(战俘营)；否则视为管理端发放。
+		getWayOf, getTimeOf := map[uint]string{}, map[uint]time.Time{}
+		{
+			names := make([]string, 0)
+			for _, o := range officers {
+				if o.GeneralId > 0 && gKindOf[o.GeneralId] == 2 {
+					names = append(names, o.Name)
+				}
+			}
+			if len(names) > 0 {
+				conds := make([]string, 0, len(names))
+				args := make([]interface{}, 0, len(names)+1)
+				args = append(args, p.UserID)
+				for _, n := range names {
+					conds = append(conds, "content LIKE ?")
+					args = append(args, "%俘虏敌将:"+n+"%")
+				}
+				var rows []struct {
+					Content   string
+					CreatedAt time.Time
+				}
+				h.DB.Table("ezfy_report").
+					Select("content, created_at").
+					Where("user_id = ? AND ("+strings.Join(conds, " OR ")+")", args...).
+					Order("created_at ASC").
+					Scan(&rows)
+				for _, r := range rows {
+					for i := range officers {
+						o := &officers[i]
+						if o.GeneralId <= 0 || gKindOf[o.GeneralId] != 2 {
+							continue
+						}
+						if _, ok := getTimeOf[o.ID]; ok {
+							continue
+						}
+						if strings.Contains(r.Content, "俘虏敌将:"+o.Name) {
+							getWayOf[o.ID] = "活动野地俘虏"
+							getTimeOf[o.ID] = r.CreatedAt
+						}
+					}
 				}
 			}
 		}
 		for i := range officers {
 			o := officers[i]
+			isGeneral := o.GeneralId > 0 && gKindOf[o.GeneralId] == 2
 			typeName := "普通"
-			if o.GeneralId > 0 {
+			if isGeneral {
 				typeName = "名将"
+			}
+			// 获取方式/时间（仅名将展示；普通军官留空）
+			getWay, getTime := "", o.UpdateTime
+			generalName, generalStar := "", 0
+			if isGeneral {
+				generalName, generalStar = gNameOf[o.GeneralId], gStarOf[o.GeneralId]
+				if w, ok := getWayOf[o.ID]; ok {
+					getWay, getTime = w, getTimeOf[o.ID]
+				} else if o.IsCaptive == 1 {
+					getWay = "活动野地俘虏(战俘营)"
+				} else {
+					getWay = "管理端发放"
+				}
 			}
 			officersViews = append(officersViews, officerOut{
 				EzfyOfficer:  o,
@@ -193,8 +254,10 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 				PositionName: ezfyPositionName(o.Position),
 				StatusName:   ezfyOfficerStatusName(&o),
 				TypeName:     typeName,
-				GeneralName:  gNameOf[o.GeneralId],
-				GeneralStar:  gStarOf[o.GeneralId],
+				GeneralName:  generalName,
+				GeneralStar:  generalStar,
+				GetWay:       getWay,
+				GetTime:      getTime,
 			})
 		}
 	}
