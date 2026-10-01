@@ -66,7 +66,7 @@ func ezfyCampName(camp int) string {
 	return "同盟国"
 }
 
-// AdminEzfyPlayerDetail 玩家详情（档案+城池+背包+军团+最近出征）
+// AdminEzfyPlayerDetail 玩家详情（档案+军官+城池+背包+军团+最近出征）
 func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var p model.EzfyProfile
@@ -114,8 +114,37 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 	if err := h.DB.First(&u, p.UserID).Error; err == nil {
 		homeNick, homeNum = u.Nickname, u.Username
 	}
+	// ★ 军官：玩家名下所有城市的全部军官（含出征中/俘虏），带所属城市名/职位/状态
+	//   （管理端查看玩家信息用，数据口径与用户端军官列表一致）
+	type officerOut struct {
+		model.EzfyOfficer
+		CityName     string `json:"city_name"`
+		PositionName string `json:"position_name"`
+		StatusName   string `json:"status_name"`
+	}
+	officersViews := []officerOut{}
+	if len(cities) > 0 {
+		cityIDs := make([]int64, 0, len(cities))
+		cityNames := map[int64]string{}
+		for _, ct := range cities {
+			cityIDs = append(cityIDs, int64(ct.ID))
+			cityNames[int64(ct.ID)] = ct.Name
+		}
+		var officers []model.EzfyOfficer
+		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
+		for i := range officers {
+			o := officers[i]
+			officersViews = append(officersViews, officerOut{
+				EzfyOfficer:  o,
+				CityName:     cityNames[o.CityId],
+				PositionName: ezfyPositionName(o.Position),
+				StatusName:   ezfyOfficerStatusName(&o),
+			})
+		}
+	}
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
 		"cities": cities, "bag": bagViews, "corps": corpsViews, "orders": orders,
+		"officers": officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }
 

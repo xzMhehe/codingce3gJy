@@ -3235,6 +3235,9 @@ func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string,
 				r.OrderId = n
 			case int:
 				r.OrderId = int64(n)
+			case uint:
+				// ★ 2026-10-01 修复：EzfyOrder.ID 是 uint，缺此分支导致战报 order_id 全部落 0
+				r.OrderId = int64(n)
 			}
 		case 2:
 			// ★ 2026-10-01 军情按当前城过滤：战报创建处把所属城市 ID 带进来

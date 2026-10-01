@@ -2,8 +2,10 @@ package handler
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm/clause"
@@ -210,22 +212,98 @@ func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
 	// ★ 2026-10-01 补「有没有俘虏军官」：俘虏情况写在战报正文里
 	//   （capture 成功 → createCaptiveOfficer 返回「俘虏敌将:XXX(...)」，
 	//   已到上限 → 正文写「已被你捕获达到上限，无法再次俘虏」）。
-	//   按 battle.OrderId → ezfy_report.order_id 反查正文提取。
-	capText := map[int64]string{}
+	//   关联方式：优先按 battle.OrderId 精确匹配战报（修复 addReport 的 uint 分支后
+	//   新战报 order_id 都正确）；历史战报 order_id 全为 0，兜底按
+	//   (user_id + 标题含坐标 + 创建时间区间) 匹配。
+	capText := map[uint]string{} // key = battle.ID
 	if len(rows) > 0 {
+		// ① 精确匹配：order_id > 0 的战斗行
+		matched := map[uint]bool{}
 		oids := make([]int64, 0, len(rows))
 		for _, b := range rows {
-			oids = append(oids, b.OrderId)
-		}
-		var rps []model.EzfyReport
-		h.DB.Select("order_id, content").Where("order_id IN ?", oids).Order("id DESC").Find(&rps)
-		seen := map[int64]bool{}
-		for _, r := range rps {
-			if seen[r.OrderId] {
-				continue
+			if b.OrderId > 0 {
+				oids = append(oids, b.OrderId)
 			}
-			seen[r.OrderId] = true
-			capText[r.OrderId] = captiveTextOf(r.Content)
+		}
+		if len(oids) > 0 {
+			var rps []model.EzfyReport
+			h.DB.Select("id, order_id, user_id, title, content, created_at").
+				Where("order_id IN ?", oids).Order("id DESC").Find(&rps)
+			seen := map[int64]bool{}
+			for _, r := range rps {
+				if seen[r.OrderId] {
+					continue
+				}
+				seen[r.OrderId] = true
+				for _, b := range rows {
+					if b.OrderId == r.OrderId {
+						capText[b.ID] = captiveTextOf(r.Content)
+						matched[b.ID] = true
+						break
+					}
+				}
+			}
+		}
+		// ② 兜底：未匹配的战斗行按 (user_id, 标题坐标) 分组，时间两指针归并
+		var rest []model.EzfyBattle
+		for _, b := range rows {
+			if !matched[b.ID] {
+				rest = append(rest, b)
+			}
+		}
+		if len(rest) > 0 {
+			conds := make([]string, 0, len(rest))
+			args := make([]interface{}, 0, len(rest)*2)
+			for _, b := range rest {
+				conds = append(conds, "(user_id = ? AND title LIKE ?)")
+				args = append(args, b.UserID, fmt.Sprintf("%%(%d,%d)%%", b.TargetX, b.TargetY))
+			}
+			var rps []model.EzfyReport
+			h.DB.Select("id, user_id, title, content, created_at").
+				Where("report_type = 3 AND ("+strings.Join(conds, " OR ")+")", args...).
+				Order("created_at ASC").Find(&rps)
+			// 战报按 (user_id, 坐标) 归组；坐标从标题尾部取，如 "(258,100)"
+			repByKey := map[string][]model.EzfyReport{}
+			for _, r := range rps {
+				if k, ok := actWildCoordsKey(r.Title); ok {
+					key := fmt.Sprintf("%d:%s", r.UserID, k)
+					repByKey[key] = append(repByKey[key], r)
+				}
+			}
+			battleByKey := map[string][]model.EzfyBattle{}
+			var keyOrder []string
+			for _, b := range rest {
+				key := fmt.Sprintf("%d:(%d,%d)", b.UserID, b.TargetX, b.TargetY)
+				if _, ok := battleByKey[key]; !ok {
+					keyOrder = append(keyOrder, key)
+				}
+				battleByKey[key] = append(battleByKey[key], b)
+			}
+			for _, key := range keyOrder {
+				bs := battleByKey[key]
+				rs := repByKey[key]
+				if len(rs) == 0 {
+					continue
+				}
+				// 战斗与战报都按创建时间升序；战报 B 对应战斗 B：
+				// 取第一条 created_at 落在 [battle.CreatedAt, 下一场战斗.CreatedAt] 的战报
+				sort.Slice(bs, func(i, j int) bool { return bs[i].CreatedAt.Before(bs[j].CreatedAt) })
+				sort.Slice(rs, func(i, j int) bool { return rs[i].CreatedAt.Before(rs[j].CreatedAt) })
+				i := 0
+				for bi := range bs {
+					for i < len(rs) && rs[i].CreatedAt.Before(bs[bi].CreatedAt) {
+						i++
+					}
+					var nextStart time.Time
+					if bi+1 < len(bs) {
+						nextStart = bs[bi+1].CreatedAt
+					}
+					if i < len(rs) && (nextStart.IsZero() || !rs[i].CreatedAt.After(nextStart)) {
+						capText[bs[bi].ID] = captiveTextOf(rs[i].Content)
+						i++
+					}
+				}
+			}
 		}
 	}
 
@@ -243,7 +321,7 @@ func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
 			}
 		}
 		captive := "未俘虏"
-		if t := capText[b.OrderId]; t != "" {
+		if t := capText[b.ID]; t != "" {
 			captive = t
 		}
 		out = append(out, gin.H{
@@ -278,6 +356,15 @@ func captiveTextOf(content string) string {
 		return "已达捕获上限（无法再次俘虏）"
 	}
 	return ""
+}
+
+// actWildCoordsKey 从战报标题尾部提取坐标串（如 "(258,100)"），用于历史战报兜底匹配
+func actWildCoordsKey(title string) (string, bool) {
+	i := strings.LastIndex(title, "(")
+	if i < 0 || !strings.HasSuffix(title, ")") {
+		return "", false
+	}
+	return title[i:], true
 }
 
 // checkActWildVals 校验活动野地配置值

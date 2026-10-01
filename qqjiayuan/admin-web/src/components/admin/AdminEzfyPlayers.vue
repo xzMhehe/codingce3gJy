@@ -53,64 +53,125 @@
       </div>
     </el-card>
 
-    <!-- 详情（档案+城池+背包+军团+最近出征） -->
-    <el-dialog title="玩家详情" :visible.sync="detailDlg" width="760px" :close-on-click-modal="false">
+    <!-- 详情（档案+军官+城池+背包+军团+最近出征） -->
+    <el-dialog title="玩家详情" :visible.sync="detailDlg" width="940px" :close-on-click-modal="false">
       <template v-if="detail">
-        <el-descriptions :column="3" size="medium" border>
-          <el-descriptions-item label="家园号">{{ detail.home_num || detail.player.user_id }}</el-descriptions-item>
-          <el-descriptions-item label="家园昵称">{{ detail.home_nick || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="玩家昵称">{{ detail.player.nickname }}</el-descriptions-item>
-          <el-descriptions-item label="阵营">{{ detail.camp_name }}</el-descriptions-item>
-          <el-descriptions-item label="军功声望">{{ detail.player.prestige }}</el-descriptions-item>
-          <el-descriptions-item label="军衔">{{ detail.rank_name }}</el-descriptions-item>
-          <el-descriptions-item label="钻石余额">{{ detail.player.diamond || 0 }}</el-descriptions-item>
-        </el-descriptions>
-        <div class="sub-title">城池（{{ detail.cities.length }}）</div>
-        <el-table :data="detail.cities" size="mini" border max-height="220">
-          <el-table-column prop="id" label="城池ID" width="80" align="center" />
-          <el-table-column prop="name" label="城名" min-width="100" />
-          <el-table-column label="坐标" width="90" align="center">
-            <template slot-scope="{row}">{{ row.x }},{{ row.y }}</template>
-          </el-table-column>
-          <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
-          <el-table-column prop="gold" label="黄金" width="90" align="center" />
-          <el-table-column prop="food" label="粮食" width="90" align="center" />
-          <el-table-column prop="steel" label="钢铁" width="90" align="center" />
-          <el-table-column prop="oil" label="石油" width="90" align="center" />
-          <el-table-column prop="rare" label="稀矿" width="90" align="center" />
-        </el-table>
-        <div class="sub-title">背包（{{ detail.bag.length }} 行）</div>
-        <el-table :data="detail.bag" size="mini" border max-height="200">
-          <el-table-column prop="id" label="行ID" width="80" align="center" />
-          <el-table-column prop="cfg_id" label="道具ID" width="90" align="center" />
-          <el-table-column prop="item_name" label="道具名" min-width="120" />
-          <el-table-column prop="count" label="数量" width="90" align="center" />
-        </el-table>
-        <div class="sub-title">军团（{{ detail.corps.length }}）</div>
-        <el-table :data="detail.corps" size="mini" border max-height="160">
-          <el-table-column prop="id" label="记录ID" width="90" align="center" />
-          <el-table-column prop="corps_name" label="军团名" min-width="120" />
-          <el-table-column prop="title" label="职位" width="110" align="center" />
-          <el-table-column label="身份" width="90" align="center">
-            <template slot-scope="{row}">{{ row.is_leader === 1 ? '军团长' : '成员' }}</template>
-          </el-table-column>
-        </el-table>
-        <div class="sub-title">最近出征（{{ detail.orders.length }}）</div>
-        <el-table :data="detail.orders" size="mini" border max-height="200">
-          <el-table-column prop="id" label="订单ID" width="90" align="center" />
-          <el-table-column label="类型" width="80" align="center">
-            <template slot-scope="{row}">{{ typeNames[row.order_type] || row.order_type }}</template>
-          </el-table-column>
-          <el-table-column label="目标" width="100" align="center">
-            <template slot-scope="{row}">{{ row.target_x }},{{ row.target_y }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
-            <template slot-scope="{row}">{{ statusNames[row.status] || row.status }}</template>
-          </el-table-column>
-          <el-table-column label="时间" width="150" align="center">
-            <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
-          </el-table-column>
-        </el-table>
+        <!-- 玩家头卡 -->
+        <div class="player-head">
+          <div class="ph-avatar">{{ (detail.player.nickname || '?').slice(0, 1) }}</div>
+          <div class="ph-main">
+            <div class="ph-name">
+              {{ detail.player.nickname }}
+              <el-tag size="mini" :type="detail.player.camp === 2 ? 'danger' : 'primary'">{{ detail.camp_name }}</el-tag>
+              <el-tag size="mini" type="info" effect="plain">{{ detail.rank_name }}</el-tag>
+            </div>
+            <div class="ph-sub">
+              家园号 <span class="td-mono">{{ detail.home_num || '—' }}</span> · 家园昵称 {{ detail.home_nick || '—' }}
+            </div>
+          </div>
+          <div class="ph-stats">
+            <div class="ph-stat"><div class="ph-num">{{ fmtNum(detail.player.prestige) }}</div><div class="ph-lab">军功声望</div></div>
+            <div class="ph-stat"><div class="ph-num">{{ fmtNum(detail.player.diamond || 0) }}</div><div class="ph-lab">钻石余额</div></div>
+            <div class="ph-stat"><div class="ph-num">{{ detail.cities.length }}</div><div class="ph-lab">城池</div></div>
+            <div class="ph-stat"><div class="ph-num">{{ (detail.officers || []).length }}</div><div class="ph-lab">军官</div></div>
+          </div>
+        </div>
+        <el-tabs v-model="detailTab" class="detail-tabs">
+          <!-- 军官（默认展示） -->
+          <el-tab-pane :label="'军官 (' + (detail.officers || []).length + ')'" name="officers">
+            <el-table :data="detail.officers" size="mini" border max-height="360">
+              <el-table-column prop="id" label="ID" width="70" align="center" />
+              <el-table-column label="姓名" min-width="100">
+                <template slot-scope="{row}">
+                  <span class="td-main">{{ row.name }}</span>
+                  <span v-if="row.star > 1" class="star-mark">★{{ row.star }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="星级" width="80" align="center">
+                <template slot-scope="{row}">
+                  <el-tag size="mini" :type="starType(row.star)">{{ '★'.repeat(Math.min(row.star, 5)) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="level" label="等级" width="60" align="center" />
+              <el-table-column label="经验" width="90" align="center">
+                <template slot-scope="{row}">{{ fmtNum(row.exp) }}</template>
+              </el-table-column>
+              <el-table-column label="军/学/后" width="130" align="center">
+                <template slot-scope="{row}">
+                  <span class="td-attr">军{{ row.military }}</span>
+                  <span class="td-attr">学{{ row.learning }}</span>
+                  <span class="td-attr">后{{ row.logistics }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="忠诚" width="70" align="center">
+                <template slot-scope="{row}">
+                  <span :class="{ 'loyalty-low': row.loyalty <= 30 }">{{ row.loyalty }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="position_name" label="职位" width="70" align="center" />
+              <el-table-column label="状态" width="80" align="center">
+                <template slot-scope="{row}">
+                  <el-tag size="mini" :type="statusType(row)">{{ row.status_name }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="city_name" label="所属城市" min-width="90" show-overflow-tooltip />
+            </el-table>
+          </el-tab-pane>
+          <!-- 城池 -->
+          <el-tab-pane :label="'城池 (' + detail.cities.length + ')'" name="cities">
+            <el-table :data="detail.cities" size="mini" border max-height="360">
+              <el-table-column prop="id" label="城池ID" width="80" align="center" />
+              <el-table-column prop="name" label="城名" min-width="100" />
+              <el-table-column label="坐标" width="90" align="center">
+                <template slot-scope="{row}">{{ row.x }},{{ row.y }}</template>
+              </el-table-column>
+              <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
+              <el-table-column prop="gold" label="黄金" width="90" align="center" />
+              <el-table-column prop="food" label="粮食" width="90" align="center" />
+              <el-table-column prop="steel" label="钢铁" width="90" align="center" />
+              <el-table-column prop="oil" label="石油" width="90" align="center" />
+              <el-table-column prop="rare" label="稀矿" width="90" align="center" />
+            </el-table>
+          </el-tab-pane>
+          <!-- 背包 -->
+          <el-tab-pane :label="'背包 (' + detail.bag.length + ' 行)'" name="bag">
+            <el-table :data="detail.bag" size="mini" border max-height="360">
+              <el-table-column prop="id" label="行ID" width="80" align="center" />
+              <el-table-column prop="cfg_id" label="道具ID" width="90" align="center" />
+              <el-table-column prop="item_name" label="道具名" min-width="120" />
+              <el-table-column prop="count" label="数量" width="90" align="center" />
+            </el-table>
+          </el-tab-pane>
+          <!-- 军团 -->
+          <el-tab-pane :label="'军团 (' + detail.corps.length + ')'" name="corps">
+            <el-table :data="detail.corps" size="mini" border max-height="360">
+              <el-table-column prop="id" label="记录ID" width="90" align="center" />
+              <el-table-column prop="corps_name" label="军团名" min-width="120" />
+              <el-table-column prop="title" label="职位" width="110" align="center" />
+              <el-table-column label="身份" width="90" align="center">
+                <template slot-scope="{row}">{{ row.is_leader === 1 ? '军团长' : '成员' }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+          <!-- 最近出征 -->
+          <el-tab-pane :label="'最近出征 (' + detail.orders.length + ')'" name="orders">
+            <el-table :data="detail.orders" size="mini" border max-height="360">
+              <el-table-column prop="id" label="订单ID" width="90" align="center" />
+              <el-table-column label="类型" width="80" align="center">
+                <template slot-scope="{row}">{{ typeNames[row.order_type] || row.order_type }}</template>
+              </el-table-column>
+              <el-table-column label="目标" width="100" align="center">
+                <template slot-scope="{row}">{{ row.target_x }},{{ row.target_y }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="90" align="center">
+                <template slot-scope="{row}">{{ statusNames[row.status] || row.status }}</template>
+              </el-table-column>
+              <el-table-column label="时间" width="150" align="center">
+                <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
+        </el-tabs>
       </template>
       <div slot="footer">
         <el-button @click="detailDlg = false">关 闭</el-button>
@@ -182,7 +243,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
-      detailDlg: false, detail: null,
+      detailDlg: false, detail: null, detailTab: 'officers',
       editDlg: false, saving: false, editId: 0, form: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       diamondSaving: false, grantDiamond: 0,
@@ -193,6 +254,9 @@ export default {
   mounted () { this.load() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
+    fmtNum (n) { return n == null ? 0 : Number(n).toLocaleString() },
+    starType (s) { return s >= 5 ? 'warning' : (s >= 4 ? 'success' : 'info') },
+    statusType (row) { return row.is_captive === 1 ? 'danger' : (row.status === 1 ? 'warning' : 'success') },
     load () {
       this.loading = true
       api.get('/admin/ezfy-players', { params: { page: this.page, size: this.size, word: this.word } }).then(r => {
@@ -282,6 +346,17 @@ export default {
 
 <style scoped>
 @import './farm-admin.css';
-.sub-title { font-size: 13px; font-weight: 600; color: #1f2d3d; margin: 12px 0 8px; padding-left: 6px; border-left: 3px solid #409eff; }
-.danger-btn { color: #f56c6c; }
+/* 玩家详情头卡 */
+.player-head { display: flex; align-items: center; gap: 16px; background: #f5f7fa; border: 1px solid #ebeef5; border-radius: 6px; padding: 14px 16px; margin-bottom: 14px; }
+.ph-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #409eff, #7c5cf0); color: #fff; font-size: 24px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
+.ph-main { flex: 1; min-width: 0; }
+.ph-name { font-size: 18px; font-weight: 600; color: #1f2d3d; display: flex; align-items: center; gap: 8px; }
+.ph-sub { font-size: 12px; color: #909399; margin-top: 6px; }
+.ph-stats { display: flex; gap: 28px; flex: none; }
+.ph-stat { text-align: center; }
+.ph-num { font-size: 18px; font-weight: 600; color: #303133; }
+.ph-lab { font-size: 12px; color: #909399; margin-top: 2px; }
+.star-mark { color: #e6a23c; margin-left: 4px; font-size: 12px; }
+.td-attr { margin-right: 8px; color: #606266; font-size: 12px; }
+.loyalty-low { color: #f56c6c; font-weight: 600; }
 </style>
