@@ -2486,6 +2486,21 @@ func ezfyReportCategoryName(cat int) string {
 	return "全部"
 }
 
+// ezfyCityReportCond 军情按城市过滤的条件片段（cityId > 0 时拼到 WHERE 里）。
+//
+// ★ 2026-10-01 修复「按城市检索后战报看不见」：老战报因 addReport uint bug
+//   order_id 全为 0，原来 `city_id = 0 AND order_id IN (该城订单)` 永远匹配不上，
+//   导致历史战报从城市视角全部消失。改为**按标题坐标反查该城的出征订单**归属：
+//   标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对。
+//   新战报（city_id>0）仍走第一分支；无匹配订单的老防守战报无法归属城市，不展示。
+func ezfyCityReportCond(cityId int64) string {
+	return fmt.Sprintf(`(city_id = %d OR (city_id = 0 AND EXISTS (
+		SELECT 1 FROM ezfy_order o
+		WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
+		  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
+	)))`, cityId, cityId)
+}
+
 // ezfyReportCounts 统计军情警讯(1)/战斗报告(2)的**真实**数量（tab 徽标数字）。
 //
 // ★ 2026-10-01 修复「徽标数字时有时无/无故漂移」：原来在 Reports 里用
@@ -2493,12 +2508,11 @@ func ezfyReportCategoryName(cat int) string {
 //   删的情况下自己变少甚至归零。这里改单条 SQL 按标题条件聚合全量，与
 //   ezfyReportCategory 的判定规则保持同步（改判定时这里要一起改）。
 // ★ 2026-10-01 军情按当前城过滤：cityId>0 时只统计该城的战报
-//   （新战报带 city_id；老攻击战报 city_id=0 但能通过 order 关联回出发点城市）。
+//   （新战报带 city_id；老攻击战报 city_id=0 按标题坐标反查订单归属城市）。
 func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 	cityCond := ""
 	if cityId > 0 {
-		cityCond = fmt.Sprintf(" AND (city_id = %d OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = %d)))",
-			cityId, cityId)
+		cityCond = " AND " + ezfyCityReportCond(cityId)
 	}
 	row := h.DB.Raw(`SELECT
 		COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '被掠夺报告%'
@@ -2540,11 +2554,9 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		q = q.Where("title LIKE ?", "%"+word+"%")
 	}
 	// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只拉当前城的战报。
-	//   新战报创建时已写 city_id；老攻击战报(city_id=0)通过 order 关联回出发点城市，
-	//   老防守战报无 order 关联、无法归属到城，不再展示（切到对应城市看新战报）。
+	//   新战报已写 city_id；老战报(city_id=0)按标题坐标反查该城出征订单归属。
 	if cityId > 0 {
-		q = q.Where("(city_id = ? OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = ?)))",
-			cityId, cityId)
+		q = q.Where(ezfyCityReportCond(cityId))
 	}
 	var reports []model.EzfyReport
 	q.Order("id DESC").Limit(200).Find(&reports)
@@ -2939,8 +2951,9 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	c.ShouldBindJSON(&req)
 	q := h.DB.Where("user_id = ?", uid)
 	if req.CityId > 0 {
-		q = q.Where("(city_id = ? OR (city_id = 0 AND order_id IN (SELECT id FROM ezfy_order WHERE city_id = ?)))",
-			req.CityId, req.CityId)
+		// ★ 2026-10-01 修复：老战报 order_id 全为 0，不能靠 order_id 关联城市，
+		//   与 Reports/ezfyReportCounts 同口径按标题坐标反查该城出征订单
+		q = q.Where(ezfyCityReportCond(req.CityId))
 	}
 	res := q.Delete(&model.EzfyReport{})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
