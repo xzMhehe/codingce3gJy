@@ -60,6 +60,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	jwtH := &handler.JwtHandler{DB: db}
 	hxH := &handler.HxxyHandler{DB: db}
 	ezfyH := &handler.EzfyHandler{DB: db}
+	// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
+	// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
+	go ezfyH.BgTickBattles()
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
