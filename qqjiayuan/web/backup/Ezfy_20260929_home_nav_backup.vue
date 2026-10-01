@@ -3661,7 +3661,7 @@
 
         <!-- 技能: 复刻 acade/skill.html 的编号列表(带完整说明) -->
         <div class="panel" v-else-if="acadeTab === 'skill'">
-          <div class="old-line">军官技能(每名武将最多3个, 学习1万金/个):</div>
+          <div class="old-line">军官技能:</div>
           <div class="old-line" v-for="(sk, i) in skillData.skills" :key="'sk' + sk.id">
             {{ i + 1 }}、{{ sk.name }}:{{ sk.des || sk.effect }}<br/>
             <span class="gray">效果：{{ sk.effect }}</span>

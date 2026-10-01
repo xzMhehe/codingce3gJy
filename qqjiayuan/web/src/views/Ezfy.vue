@@ -1191,10 +1191,14 @@
           <table class="ezfy-map-table">
             <tr v-for="(row, ri) in mapRows" :key="'mr' + ri">
               <td v-for="cell in row" :key="cell.x + '_' + cell.y">
-                <a href="javascript:;" :class="cellClass(cell)" :title="cellTip(cell)" @click="openCell(cell)">
+                <!-- ★ 2026-10-01 修复「地图输入 1,1 跳转后还有负号坐标」：
+                     地图世界 500×500，有效坐标 1~499；视野中心靠边时周边格子会越界，
+                     这些不存在的格子不再显示负坐标地形，统一按「空地」展示（不可点）。 -->
+                <a v-if="!isMapOOB(cell)" href="javascript:;" :class="cellClass(cell)" :title="cellTip(cell)" @click="openCell(cell)">
                   <span class="ezfy-cell-name">{{ cellText(cell) }}</span>
                   <span class="ezfy-cell-xy">({{ cell.x }},{{ cell.y }})</span>
                 </a>
+                <span v-else class="ezfy-empty">{{ cellText(cell) }}</span>
               </td>
             </tr>
           </table>
@@ -3825,7 +3829,7 @@
 
         <!-- 技能: 复刻 acade/skill.html 的编号列表(带完整说明) -->
         <div class="panel" v-else-if="acadeTab === 'skill'">
-          <div class="old-line">军官技能(每名武将最多3个, 学习1万金/个):</div>
+          <div class="old-line">军官技能:</div>
           <div class="old-line" v-for="(sk, i) in skillData.skills" :key="'sk' + sk.id">
             {{ i + 1 }}、{{ sk.name }}:{{ sk.des || sk.effect }}<br/>
             <span class="gray">效果：{{ sk.effect }}</span>
@@ -7677,11 +7681,18 @@ export default {
       if (actType === 3) return '特殊城市'
       return ''
     },
+    // ★ 2026-10-01 地图世界 500×500（后端 ezfyWorldSize=500，有效坐标 1~499）：
+    //   视野中心靠边时周边会带出越界格（如跳 1,1 后出现 -1,-1），统一判定为「空地」。
+    isMapOOB (cell) {
+      return !cell || cell.x < 1 || cell.x > 499 || cell.y < 1 || cell.y > 499
+    },
     cellText (cell) {
       // 复刻 map/index.html: 格子文案为「名称(等级)」；★ 现在每格第二行统一显示坐标，
       //   所以这里一律只返回「名称」部分，本城也不再拼 (x,y)，避免和下面那行重复。
       // ★ 2026-09-25 用户反馈：玩家城市名太长，格子会被撑变形 → 地图上（含本城）统一显示「城市」，
       //   具体城市名/城主点进目标详情页再看（鼠标悬停的 title 里也有全称，见 cellTip）。
+      // ★ 2026-10-01 越界格（地图外不存在的地方）统一显示「空地」
+      if (this.isMapOOB(cell)) return '空地'
       if (cell.area_type === 3) return '城市'
       // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
       if (cell.act_type === 1) return '活动(' + cell.act_level + ')'
@@ -7701,6 +7712,7 @@ export default {
     //   坐标已固定显示在格子第二行，这里不再重复拼。
     //   ★ 2026-09-25：格子上一律显示「城市」(含本城)，所以本城也给出全称提示。
     cellTip (cell) {
+      if (this.isMapOOB(cell)) return '空地（地图外，不存在）'
       if (cell.area_type === 3) {
         return (cell.name || '城市') + (cell.owner ? ' · 城主 ' + cell.owner : '') +
           ' (' + cell.x + ',' + cell.y + ')'
@@ -7708,6 +7720,7 @@ export default {
       return this.cellText(cell)
     },
     cellClass (cell) {
+      if (this.isMapOOB(cell)) return 'ezfy-empty'
       if (cell.mine) return 'ezfy-mine'
       // ★ 2026-09-30 带名将守将的活动野地：特殊标识（优先于普通活动野地）
       if (cell.act_type === 1 && cell.act_officer) return 'ezfy-act-named'
@@ -7727,6 +7740,11 @@ export default {
       this.openCell({ x: c.x, y: c.y, area_type: 2, level: c.level || 0, name: '寇城' })
     },
     openCell (cell) {
+      // ★ 2026-10-01 越界「空地」格不可点（地图外没有目标详情）
+      if (this.isMapOOB(cell)) {
+        this.notify('该坐标在地图外（空地），没有目标')
+        return
+      }
       this.selCell = cell
       this.selDetail = null
       this.warText = ''
@@ -10212,6 +10230,17 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-kou { background: #f0d8d8; border-color: #c09090; }
 .ezfy-sea { background: #c8e0f0; border-color: #80a8c8; }
 .ezfy-wild { background: #e8f0d8; border-color: #b8c89a; }
+/* ★ 2026-10-01 地图外越界格：灰色「空地」（不可点），不再显示负坐标地形 */
+.ezfy-page .ezfy-map-table .ezfy-empty {
+  display: block;
+  padding: 0;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+  color: #b0b0a8;
+  background: #f4f4f0;
+  border: 0;
+}
 
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
