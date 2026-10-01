@@ -930,6 +930,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if h.isAllyCity(uid, targetId) {
 			return "不能攻击同盟成员的城市"
 		}
+		// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城；
+		//   海军兵种(驱逐舰/潜艇/战列舰/航母)只能用于海战，攻打陆城时出征前卡控提示。
+		if ezfyIsSeaCity(city) && !ezfyIsSeaCity(&tc) {
+			return "海城无法攻击陆城"
+		}
+		if ezfyHasNavalTroops(validTroops) && !ezfyIsSeaCity(&tc) {
+			return "海军部队无法攻击陆城"
+		}
 		// ★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
 		//   目标城市处于免战保护期时直接拦截出征，避免部队白跑一趟。
 		if h.hasCityEffect(uint(targetId), 2) {

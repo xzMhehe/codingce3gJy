@@ -267,6 +267,29 @@ func ezfyTerrainNameEx(x, y int) string {
 	return ezfyTerrainName(ezfyTerrainEx(x, y))
 }
 
+// ezfyIsSeaCity 该城是否「海城」：建在沿海平原(9)上的城市。
+//
+// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城。
+// 判定与建城选址同源（ezfyTerrainEx），管理端改地图地形后立即生效。
+func ezfyIsSeaCity(c *model.EzfyCity) bool {
+	if c == nil {
+		return false
+	}
+	return ezfyTerrainEx(c.X, c.Y) == ezfyTerrainCoastalPlain
+}
+
+// ezfyHasNavalTroops 出征部队里是否含有海军兵种（兵种 type=1：驱逐舰/潜艇/战列舰/航母）。
+//
+// ★ 2026-10-02 用户规则：海军兵种只能用于海战，出征攻打陆城时需卡控提示。
+func ezfyHasNavalTroops(units []ezfyUnitGroup) bool {
+	for _, u := range units {
+		if c := ezfyCfg.troop(u.TroopId); c != nil && c.Type == 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // ============ 野地采集: 按地形的产出资源 + 宝物池（用户规范, 2026-09-23） ============
 //
 // 平原(1)/沿海平原(9)没有珠宝; 岛屿按原版「海岛」宝物列表。
