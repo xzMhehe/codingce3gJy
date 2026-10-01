@@ -147,7 +147,9 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		CityName     string `json:"city_name"`
 		PositionName string `json:"position_name"`
 		StatusName   string `json:"status_name"`
-		TypeName     string `json:"type_name"` // ★ 普通 / 名将（general_id>0 为名将）
+		TypeName     string `json:"type_name"`        // ★ 普通 / 名将（general_id>0 为名将）
+		GeneralName  string `json:"general_name"`     // ★ 原名将名称（general_id>0 时从配置表回填，供管理端点击查看）
+		GeneralStar  int    `json:"general_star"`     // ★ 原名将星级
 	}
 	officersViews := []officerOut{}
 	if len(cities) > 0 {
@@ -159,6 +161,26 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		}
 		var officers []model.EzfyOfficer
 		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
+		// ★ 原名将信息：收集所有 general_id 一次查配置表，避免 N+1
+		gNameOf, gStarOf := map[int]string{}, map[int]int{}
+		{
+			generalIDs := make([]int, 0)
+			seen := map[int]bool{}
+			for _, o := range officers {
+				if o.GeneralId > 0 && !seen[o.GeneralId] {
+					seen[o.GeneralId] = true
+					generalIDs = append(generalIDs, o.GeneralId)
+				}
+			}
+			if len(generalIDs) > 0 {
+				var gs []model.EzfyCfgGeneral
+				h.DB.Where("id IN ?", generalIDs).Find(&gs)
+				for _, g := range gs {
+					gNameOf[g.ID] = g.Name
+					gStarOf[g.ID] = g.Star
+				}
+			}
+		}
 		for i := range officers {
 			o := officers[i]
 			typeName := "普通"
@@ -171,6 +193,8 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 				PositionName: ezfyPositionName(o.Position),
 				StatusName:   ezfyOfficerStatusName(&o),
 				TypeName:     typeName,
+				GeneralName:  gNameOf[o.GeneralId],
+				GeneralStar:  gStarOf[o.GeneralId],
 			})
 		}
 	}

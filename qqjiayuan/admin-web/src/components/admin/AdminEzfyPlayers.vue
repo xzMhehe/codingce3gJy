@@ -87,14 +87,13 @@
                   <span v-if="row.star > 1" class="star-mark">★{{ row.star }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="星级" width="80" align="center">
-                <template slot-scope="{row}">
-                  <el-tag size="mini" :type="starType(row.star)">{{ '★'.repeat(Math.min(row.star, 5)) }}</el-tag>
-                </template>
+              <el-table-column label="星级" width="70" align="center">
+                <template slot-scope="{row}">{{ row.star }}星</template>
               </el-table-column>
-              <el-table-column label="类型" width="70" align="center">
+              <el-table-column label="类型" width="100" align="center">
                 <template slot-scope="{row}">
-                  <el-tag size="mini" :type="row.general_id > 0 ? 'warning' : 'info'" effect="plain">{{ row.type_name }}</el-tag>
+                  <a v-if="row.general_id > 0" href="javascript:;" class="td-gen" @click="showGeneral(row)">名将[原名]</a>
+                  <el-tag v-else size="mini" type="info" effect="plain">{{ row.type_name }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="level" label="等级" width="60" align="center" />
@@ -103,9 +102,7 @@
               </el-table-column>
               <el-table-column label="军/学/后" width="130" align="center">
                 <template slot-scope="{row}">
-                  <span class="td-attr">军{{ row.military }}</span>
-                  <span class="td-attr">学{{ row.learning }}</span>
-                  <span class="td-attr">后{{ row.logistics }}</span>
+                  <span class="td-attr">{{ row.military }}/{{ row.learning }}/{{ row.logistics }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="忠诚" width="70" align="center">
@@ -273,15 +270,26 @@ export default {
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     fmtNum (n) { return n == null ? 0 : Number(n).toLocaleString() },
+    // 城市资源缩写：<1万原样；≥1万 万；万单位的整数位超过5位（即≥10亿）转亿
     fmtWan (n) {
       if (n == null) n = 0
+      if (n >= 1000000000) {
+        const y = n / 100000000
+        return (Number.isInteger(y) ? y : y.toFixed(1)) + '亿'
+      }
       if (n >= 10000) {
         const w = n / 10000
         return (Number.isInteger(w) ? w : w.toFixed(1)) + '万'
       }
       return Number(n).toLocaleString()
     },
-    starType (s) { return s >= 5 ? 'warning' : (s >= 4 ? 'success' : 'info') },
+    // ★ 名将军官：点击「名将[原名]」查看该军官对应的原名将是哪个
+    showGeneral (row) {
+      const gid = row.general_id || 0
+      const name = row.general_name || ('名将#' + gid)
+      const star = row.general_star > 0 ? row.general_star + '星' : ''
+      this.$alert('原名将：' + name + (star ? '（' + star + '）' : ''), '军官「' + row.name + '」来源', { confirmButtonText: '知道了' })
+    },
     statusType (row) { return row.is_captive === 1 ? 'danger' : (row.status === 1 ? 'warning' : 'success') },
     load () {
       this.loading = true
@@ -383,6 +391,7 @@ export default {
 .ph-num { font-size: 18px; font-weight: 600; color: #303133; }
 .ph-lab { font-size: 12px; color: #909399; margin-top: 2px; }
 .star-mark { color: #e6a23c; margin-left: 4px; font-size: 12px; }
+.td-gen { color: #e6a23c; cursor: pointer; text-decoration: underline; font-size: 12px; }
 .td-attr { margin-right: 8px; color: #606266; font-size: 12px; }
 .loyalty-low { color: #f56c6c; font-weight: 600; }
 </style>
