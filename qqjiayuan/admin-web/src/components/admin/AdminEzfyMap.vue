@@ -240,8 +240,9 @@
               </template>
             </el-table-column>
             <el-table-column prop="des" label="备注" min-width="140" show-overflow-tooltip />
-            <el-table-column label="操作" width="150" align="center" fixed="right">
+            <el-table-column label="操作" width="215" align="center" fixed="right">
               <template slot-scope="{row}">
+                <el-button size="mini" type="success" plain icon="el-icon-view" title="查看被打记录" @click="openAwAttacks(row)">记录</el-button>
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openAwEdit(row)" />
                 <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delAw(row)" />
               </template>
@@ -730,6 +731,42 @@
         <el-button type="primary" :loading="saving" @click="saveAw">保 存</el-button>
       </div>
     </el-dialog>
+
+    <!-- ============ 活动野地 · 被打记录（2026-10-01） ============ -->
+    <el-dialog title="活动野地被攻打记录" :visible.sync="awAttDlg" width="720px" :close-on-click-modal="false">
+      <div class="td-sub" style="margin-bottom:10px" v-if="awAttRow">
+        坐标：<b class="td-mono">{{ awAttRow.x }},{{ awAttRow.y }}</b>
+        <span v-if="awAttRow.des"> · 备注：{{ awAttRow.des }}</span>
+        <span v-if="awAttRow.enabled !== 1" style="color:#f56c6c">（当前已关闭，以下为历史记录）</span>
+      </div>
+      <el-table :data="awAttList" v-loading="awAttLoading" stripe border size="small">
+        <el-table-column prop="id" label="战场ID" width="90" align="center" />
+        <el-table-column label="攻打玩家" min-width="130" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span class="td-blue">{{ row.player_name || ('玩家' + row.user_id) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="目标" min-width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.target_name || '活动野地' }}</template>
+        </el-table-column>
+        <el-table-column label="结果" width="90" align="center">
+          <template slot-scope="{row}">
+            <span :class="row.win === 1 ? 'td-green' : (row.win === 2 ? 'td-red' : 'td-sub')">{{ row.result }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="时间" width="150" align="center" />
+      </el-table>
+      <div class="pager-bar" style="margin-top:10px">
+        <div class="pager-info">共 <b>{{ awAttTotal }}</b> 条</div>
+        <el-pagination v-show="awAttTotal > 0" small background layout="sizes, prev, pager, next" :total="awAttTotal"
+                       :page-size="awAttSize" :current-page="awAttPage" :page-sizes="[10, 20, 50]"
+                       @current-change="p => { awAttPage = p; loadAwAttacks() }"
+                       @size-change="s => { awAttSize = s; awAttPage = 1; loadAwAttacks() }" />
+      </div>
+      <div slot="footer">
+        <el-button @click="awAttDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -781,6 +818,8 @@ export default {
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
       awTreasures: [], // 活动野地必掉宝物可视化行 [{treasure_id,count},...]（保存时序列化成 [[cfg_id,count]]）
       jewels: [], // 可采集珠宝下拉（/admin/ezfy-map/options 返回）
+      // 活动野地 · 被打记录模态框（2026-10-01）
+      awAttDlg: false, awAttLoading: false, awAttRow: null, awAttList: [], awAttTotal: 0, awAttPage: 1, awAttSize: 10,
       saving: false
     }
   },
@@ -1016,6 +1055,26 @@ export default {
       this.awTroops = []
       this.awTreasures = []
       this.awDlg = true
+    },
+    // ★ 2026-10-01 活动野地 · 查看被打记录（模态框展示，分页）
+    openAwAttacks (row) {
+      this.awAttRow = row
+      this.awAttPage = 1
+      this.awAttDlg = true
+      this.loadAwAttacks()
+    },
+    loadAwAttacks () {
+      if (!this.awAttRow || !this.awAttRow.id) return
+      this.awAttLoading = true
+      api.get('/admin/ezfy-act-wilds/' + this.awAttRow.id + '/attacks', {
+        params: { page: this.awAttPage, size: this.awAttSize }
+      }).then(r => {
+        this.awAttLoading = false
+        if (r.code === 0) {
+          this.awAttList = r.data.list || []
+          this.awAttTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.awAttLoading = false })
     },
     openAwEdit (row) {
       this.aw = Object.assign({}, row)

@@ -174,6 +174,67 @@ func (h *AdminHandler) AdminEzfyActWildDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("坐标 (%d,%d) 的活动野地配置已删除，恢复默认判定", a.X, a.Y)})
 }
 
+// AdminEzfyActWildAttacks GET /admin/ezfy-act-wilds/:id/attacks —— 查看该活动野地（坐标）的被攻打记录（分页）
+//
+// ★ 2026-10-01 用户要求：活动野地配置页新增「查看被打记录」，模态框展示。
+//   攻打历史来自 ezfy_battle（活动野地/活动寇/特殊城市战斗都会 ezfyBattleStart 建行，
+//   行不删除，按 target_x / target_y 反查即可）。
+func (h *AdminHandler) AdminEzfyActWildAttacks(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var a model.EzfyActWild
+	if err := h.DB.First(&a, id).Error; err != nil {
+		resp.NotFound(c, "该活动野地配置不存在")
+		return
+	}
+	page, offset, size := pageOf(c, 15)
+	q := h.DB.Model(&model.EzfyBattle{}).Where("target_x = ? AND target_y = ?", a.X, a.Y)
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyBattle
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	// 攻打者昵称批量取（ezfy_profile.user_id → nickname，找不到用玩家ID兜底）
+	uids := make([]uint, 0, len(rows))
+	for _, b := range rows {
+		uids = append(uids, b.UserID)
+	}
+	names := map[uint]string{}
+	if len(uids) > 0 {
+		var ps []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&ps)
+		for _, p := range ps {
+			names[p.UserID] = p.Nickname
+		}
+	}
+
+	out := make([]gin.H, 0, len(rows))
+	for _, b := range rows {
+		result := "进行中"
+		if b.Status == 2 {
+			switch b.Win {
+			case 1:
+				result = "攻方胜"
+			case 2:
+				result = "攻方负"
+			case 3:
+				result = "平局"
+			}
+		}
+		out = append(out, gin.H{
+			"id":          b.ID,
+			"user_id":     b.UserID,
+			"player_name": names[b.UserID],
+			"target_name": b.TargetName,
+			"order_id":    b.OrderId,
+			"status":      b.Status,
+			"win":         b.Win,
+			"result":      result,
+			"created_at":  b.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	resp.OK(c, gin.H{"x": a.X, "y": a.Y, "list": out, "total": total, "page": page, "size": size})
+}
+
 // checkActWildVals 校验活动野地配置值
 func checkActWildVals(vals map[string]interface{}) string {
 	if v, ok := vals["enabled"].(int); ok && v != 0 && v != 1 {

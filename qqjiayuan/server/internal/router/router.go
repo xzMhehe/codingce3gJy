@@ -1358,6 +1358,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-act-wilds", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildList)
 				admin.POST("/ezfy-act-wilds", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildSave)
 				admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildToggle)
+				admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildAttacks)
 				admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), adminH.AdminEzfyActWildDelete)
 				// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
 				admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), adminH.AdminEzfyMapTiles)
