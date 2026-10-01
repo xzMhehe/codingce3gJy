@@ -1267,6 +1267,7 @@ func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
 // 返程时间：
 //   - 行军中(0)：已经走了多久就花多久回去，最少 10 秒
 //   - 驻守中(1)：按单程行军时长返航
+//   - 驻军(3, 增援到友军城)：按单程行军时长返航（★ 2026-10-02 允许单独召回驻军）
 //
 // 随军资源：运输(5)/派遣(8) 出发时已从城里扣掉，取消时写进 Carry，
 // 由 finishReturn 原样带回出发城市（受仓储上限截断，不会凭空多出资源）。
@@ -1291,7 +1292,21 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 		resp.ParamError(c, "部队正在战斗中, 不能取消；请到「军情 → 军队动态 → [指挥]」里打完或点[自动战斗]")
 		return
 	}
-	if order.Status != 0 && order.Status != 1 {
+	// ★ 2026-10-02 用户要求「自己也能单独召回驻守的军队」：
+	//   出站驻军(增援到友军城, status=3)允许单独召回, 按单程返航回出发城市。
+	//   仅允许「活跃驻军」(result 为空, 未返航过) 且目标城属于他人
+	//   —— 已归队的驻军(Result=兵力)与增援自己城市的订单召回会重复入兵, 一律拦截。
+	if order.Status == 3 && order.OrderType == 6 {
+		if order.Result != "" {
+			resp.ParamError(c, "该驻军已返航归队, 无法召回")
+			return
+		}
+		var tcity model.EzfyCity
+		if err := h.DB.First(&tcity, order.TargetId).Error; err != nil || tcity.UserID == uid {
+			resp.ParamError(c, "该部队不在盟友城市, 无法召回")
+			return
+		}
+	} else if order.Status != 0 && order.Status != 1 {
 		resp.ParamError(c, "该命令已在返航中或已结束, 无法取消")
 		return
 	}
@@ -1491,6 +1506,12 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	order.Carry = ""
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": 3, "carry": ""})
+	// ★ 2026-10-02 驻军(增援到盟友城)返航归队后订单已完结：兵力/军官已入城,
+	//   直接删除订单 —— 否则 status=3 常驻残留会被军情误判为「驻守中」、
+	//   且一直占用盟友城驻军槽位, 导致新驻军无法增援。
+	if order.OrderType == 6 && order.TargetType == 3 {
+		h.DB.Delete(&model.EzfyOrder{}, order.ID)
+	}
 }
 
 // beginReturn 异常返航: 兵力无损带回
@@ -1912,6 +1933,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 增援: 部队常驻目标城市协防
+	// ★ 2026-10-02 盟军驻军改造(用户要求):
+	//   · 增援**自己的城市** → 兵力并入目标城(部队调动, 行为不变);
+	//   · 增援**盟友城市** → **不送兵**, 兵力保留在订单 = 一个「驻军队列」;
+	//     敌军进攻该城时, 守方部队 = 驻军队列(按到达先后) + 友军自身部队(最后),
+	//     先打先驻守的队列, 全部驻军被消灭后才轮到友军自己的部队(见战斗结算守方部队构建)。
 	if order.OrderType == 6 {
 		var target model.EzfyCity
 		if err := h.DB.First(&target, order.TargetId).Error; err != nil {
@@ -1921,25 +1947,32 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			return
 		}
 		troops := parseGroups(order.Troops)
+		own := h.isOwnCity(uid, int64(target.ID))
 		desc := fmt.Sprintf("增援部队已抵达%s, 协助防守。\n", target.Name)
-		for _, g := range troops {
-			if g.Count <= 0 {
-				continue
+		if own {
+			for _, g := range troops {
+				if g.Count <= 0 {
+					continue
+				}
+				h.addTroop(target.ID, g.TroopId, g.Count)
+				desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
 			}
-			h.addTroop(target.ID, g.TroopId, g.Count)
-			desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
+		} else {
+			for _, g := range troops {
+				if g.Count <= 0 {
+					continue
+				}
+				desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
+			}
+			desc += "\n部队已编入驻防队列(不并入该城兵力): 敌军进攻时先攻击先到达的驻军, 驻军全部被消灭后才攻击我方部队。"
 		}
-		order.Status = 3
-		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
-		// 随军军官调任到目标城市(职位清空); 盟友驻军时军官留在本城
-		if order.Officer != "" {
-			if h.isOwnCity(uid, int64(target.ID)) {
-				h.moveOfficerTo(city, order.Officer, target.ID)
-				desc += "\n军官 " + order.Officer + " 随军抵达"
-			} else {
-				h.officerGoOut(city, order.Officer, false)
-				desc += "\n军官 " + order.Officer + " 护送完成后返回本城"
-			}
+		if own {
+			// ★ 2026-10-02 增援自己城市: 兵力/军官已并入目标城, 订单已完结 → 删除,
+			//   避免 status=3 僵尸订单被军情误判为驻军、占用驻军槽位。
+			h.DB.Delete(&model.EzfyOrder{}, order.ID)
+		} else {
+			order.Status = 3
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
 		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
@@ -2040,6 +2073,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	defOfficerDesc := ""
 
 	defender := []ezfyUnitGroup{}
+	var defExclude map[int]bool // 城市「不参与防御」兵种集合（case 3 里填充，驻军战块后构建友军守军时用）
 	targetName := ""
 	var lootFood, lootSteel, lootOil, lootRare, lootGold int64
 	win := false
@@ -2144,12 +2178,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		targetName = target.Name
 		// ★ 排除「不参与防御」的兵种：被攻击时防御战斗兵种列表不含它们
-		defExclude := h.defExcludeSet(target.ID)
-		for tid, count := range h.troopMap(target.ID) {
-			if count > 0 && !defExclude[tid] {
-				defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: count})
-			}
-		}
+		//   （友军自身守军在这里构建；盟友驻军队列在下方「驻军串行战」先打完）
+		defExclude = h.defExcludeSet(target.ID)
 		defTech := h.techMap(target.ID)
 		// 守方防御加成：城墙(建筑7) + 装甲科技(7)+3%/级 + 掩体防御(16)+2%/级
 		// ★ 2026-09-28 补上重工技术(9)+2%/级：该科技描述是「重装备**攻防**+2%」，
@@ -2191,6 +2221,154 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	defTargets := h.buildTargetMap(cityIdOf(target), false)
 	atkMoves := h.buildMoveMap(city.ID, true)
 	defMoves := h.buildMoveMap(cityIdOf(target), false)
+
+	// ★★ 2026-10-02 盟军驻军串行战斗（用户要求）：
+	//   目标为玩家城时，守方 = 盟友驻军队列（按到达先后，先到先被打）+ 友军自身部队（最后）。
+	//   **每个驻军队列是一场独立战斗、独立战报**：打驻守A → 自动打驻守B → 全部驻军被打完
+	//   才与友军自身部队进行主城战（主城战仍走指挥室）。
+	//   驻军战报（攻方 + 各驻军方）都是 PvP 报告（order_id>0 且 order target_type=3）
+	//   → 自动进入「军团战报」，友军、驻军方、全军团都能看到。
+	//   驻军战自动结算（纯驻守无人指挥，不走指挥室）。
+	garrisonStopped := false // 攻方被驻军挡住（平局或全灭）→ 主城战不进行
+	if target != nil && target.UserID != uid {
+		var garOrders []model.EzfyOrder
+		h.DB.Where("target_id = ? AND target_type = 3 AND order_type = 6 AND status = 3", target.ID).
+			Order("arrive_time ASC, id ASC").Find(&garOrders)
+		for gi := range garOrders {
+			go_ := &garOrders[gi]
+			garTroops := parseGroups(go_.Troops)
+			garTotal := int64(0)
+			for _, g := range garTroops {
+				garTotal += g.Count
+			}
+			if garTotal <= 0 {
+				// 空壳驻军订单（历史送兵遗留）直接清掉
+				h.DB.Delete(&model.EzfyOrder{}, go_.ID)
+				continue
+			}
+			atkTotal := int64(0)
+			for _, g := range attacker {
+				atkTotal += g.Count
+			}
+			if atkTotal <= 0 {
+				break
+			}
+			garCamp := 0
+			if go_.UserID > 0 {
+				garCamp = h.ensureProfile(go_.UserID).Camp
+			}
+			// ★ 2026-10-02 驻军战用「溃败撤退」：守方剩余兵力跌破阈值即判定战败、战斗提前结束，
+			//   剩余部队自动返航回出发城市 —— 这样「驻军战败 → 回到自己城市」才有兵可回。
+			gbr := ezfySimulateBreak(attacker, garTroops,
+				atkBonus, 0, atkSpeedBonus, 0, atkEquip, ezfyBattleBonus{},
+				atkOfficerDesc, "", atkTargets, defTargets, atkMoves, defMoves,
+				ezfyGarrisonBreakPct)
+			var gcity model.EzfyCity
+			gcityName := "友军"
+			if err := h.DB.First(&gcity, go_.CityId).Error; err == nil {
+				gcityName = gcity.Name
+			}
+			gDetail := ""
+			for _, a := range gbr.Actions {
+				gDetail += a + "\n"
+			}
+			// 驻军剩余兵力（gbr.DefenderLosses 全量保序，与 garTroops 对齐）
+			left := map[int]int64{}
+			for _, g := range garTroops {
+				left[g.TroopId] += g.Count
+			}
+			for i, lg := range gbr.DefenderLosses {
+				if lg.Count <= 0 {
+					continue
+				}
+				if i < len(garTroops) {
+					left[garTroops[i].TroopId] -= lg.Count
+					if left[garTroops[i].TroopId] < 0 {
+						left[garTroops[i].TroopId] = 0
+					}
+				}
+			}
+			gLeftStr := ""
+			for tid, cnt := range left {
+				if cnt > 0 {
+					gLeftStr += strconv.Itoa(tid) + ":" + strconv.FormatInt(cnt, 10) + ","
+				}
+			}
+			if len(gLeftStr) > 0 {
+				gLeftStr = gLeftStr[:len(gLeftStr)-1]
+			}
+			// ★ 2026-10-02 用户规则：打平/打赢继续留守；只有战败 → 剩余部队自动返航回出发城市。
+			endNote := ""
+			if gbr.AttackerWin {
+				if gLeftStr == "" {
+					endNote = "\n驻军全军覆没, 未留下剩余部队。"
+				} else {
+					endNote = "\n驻军战败, 剩余部队已自动返航回出发城市。"
+				}
+			}
+			// 驻军方战报（report_type=2 PvP → 军团战报可见）
+			h.addReport(go_.UserID, 2, "驻防战报: "+targetName,
+				fmt.Sprintf("你的驻军(来自%s)在%s(%d,%d)的驻防战斗已结束!\n%s\n%s%s",
+					gcityName, targetName, order.TargetX, order.TargetY,
+					battleOutcomeText(!gbr.AttackerWin, gbr.Draw), lossText(gbr.DefenderLosses, garCamp), endNote),
+				gDetail, int64(order.ID), target.ID)
+			// 攻方战报（对这支驻军）
+			h.addReport(uid, 2, "战斗报告: 击溃"+gcityName+"的驻军",
+				fmt.Sprintf("我方部队在%s(%d,%d)击溃了来自%s的盟军驻军!\n%s",
+					targetName, order.TargetX, order.TargetY, gcityName,
+					lossText(gbr.DefenderLosses, garCamp)),
+				gDetail, int64(order.ID), target.ID)
+			if gLeftStr == "" {
+				// 驻军全灭（未触发溃败撤退）→ 删除队列
+				h.DB.Delete(&model.EzfyOrder{}, go_.ID)
+			} else if gbr.AttackerWin {
+				// ★ 2026-10-02 用户要求：驻军战败 → 剩余部队自动返航回出发城市
+				//   （返航到达后兵力按 order.CityId 回到自己城市，finishReturn 入城）
+				back := now + ezfyOneWayTravel(go_)
+				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", go_.ID).
+					Updates(map[string]interface{}{"status": 2, "result": gLeftStr, "return_time": back})
+			} else {
+				// 打平 / 打赢 → 剩余部队继续留守驻守
+				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", go_.ID).Update("troops", gLeftStr)
+			}
+			// 攻方剩余兵力进入下一支驻军/主城战
+			attacker = gbr.AttackerLeft
+			if gbr.Draw {
+				// 平局 = 这支驻军守住，攻方未能突破，不再打后面的驻军
+				garrisonStopped = true
+				break
+			}
+		}
+		if !garrisonStopped {
+			// 驻军全部被打完后，才轮到友军自身部队
+			for tid, count := range h.troopMap(target.ID) {
+				if count > 0 && !defExclude[tid] {
+					defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: count})
+				}
+			}
+		}
+	}
+	// 攻方被驻军挡住或已无兵 → 返航，不进行主城战
+	if garrisonStopped {
+		resultStr := ""
+		for _, g := range attacker {
+			if g.Count > 0 {
+				resultStr += strconv.Itoa(g.TroopId) + ":" + strconv.FormatInt(g.Count, 10) + ","
+			}
+		}
+		if len(resultStr) > 0 {
+			resultStr = resultStr[:len(resultStr)-1]
+		}
+		order.Result = resultStr
+		order.Status = 2
+		order.ReturnTime = now + ezfyOneWayTravel(order)
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+			Updates(map[string]interface{}{"status": 2, "result": resultStr, "return_time": order.ReturnTime})
+		h.addReport(uid, 2, "战斗报告: 进攻受阻(驻军拦截)",
+			fmt.Sprintf("我方部队进攻%s(%d,%d)时被盟军驻军拦截, 未能攻入城市, 部队已返航。",
+				targetName, order.TargetX, order.TargetY), "", order.ID, target.ID)
+		return
+	}
 
 	var br ezfyBattleResult
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
@@ -2684,6 +2862,24 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					X: target.X, Y: target.Y, Status: 1}
 				h.DB.Create(&occ)
 				report += "\n占领成功! 城市已归入你的附属, 可在[附属野地]中摧毁/归还"
+				// ★ 2026-10-02 盟军驻军：城市被占领 → 该城盟军驻军全部失效（残余一并清除），
+				//   并给各驻军方发战报（report_type=4 PvP → 军团战报可见）
+				var gars []model.EzfyOrder
+				h.DB.Where("target_id = ? AND target_type = 3 AND order_type = 6 AND status = 3", target.ID).Find(&gars)
+				for _, go_ := range gars {
+					var gc model.EzfyCity
+					gcName := "友军城市"
+					if err := h.DB.First(&gc, go_.CityId).Error; err == nil {
+						gcName = gc.Name
+					}
+					h.addReport(go_.UserID, 4, "驻防战报: 驻防城市失守",
+						fmt.Sprintf("你驻守的%s(%d,%d)已被敌军占领!\n你的驻军(来自%s)已全部损失。",
+							targetName, order.TargetX, order.TargetY, gcName), "", int64(order.ID), target.ID)
+				}
+				if len(gars) > 0 {
+					h.DB.Where("target_id = ? AND target_type = 3 AND order_type = 6 AND status = 3", target.ID).
+						Delete(&model.EzfyOrder{})
+				}
 				if freeCount <= 1 {
 					// 占掉这座后守方已无自由城 → 系统补给
 					needReplenish = true
@@ -2988,6 +3184,9 @@ func lossText(groups []ezfyUnitGroup, camp int) string {
 	}
 	text := "守军损失: "
 	for _, g := range groups {
+		if g.Count <= 0 {
+			continue // ★ 全量保序的守方损失里含 count=0 的占位项，不能打印「×0」
+		}
 		name := ezfyCfg.troopName(g.TroopId, camp)
 		if name == "" {
 			name = "兵种" + strconv.Itoa(g.TroopId)

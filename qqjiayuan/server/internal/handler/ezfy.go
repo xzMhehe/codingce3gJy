@@ -3306,6 +3306,23 @@ func (h *EzfyHandler) ezfyDestroyCity(uid uint, ct *model.EzfyCity) string {
 	// ★ 2026-09-28 科技等级存用户级(ezfy_user_tech)，拆城无需搬家、等级不随城消失。
 	// 还在外面的部队/采集队：一并撤掉（否则会留下指向已删城市的孤儿订单）
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOrder{})
+	// ★ 2026-10-02 盟军驻军：驻守到这座城的盟友驻军订单 city_id 是**出发城市**（删不到），
+	//   必须按 target_id 清掉，并给各驻军方发战报
+	var gars []model.EzfyOrder
+	h.DB.Where("target_id = ? AND target_type = 3 AND order_type = 6 AND status = 3", cid).Find(&gars)
+	for _, go_ := range gars {
+		var gc model.EzfyCity
+		gcName := "友军城市"
+		if err := h.DB.First(&gc, go_.CityId).Error; err == nil {
+			gcName = gc.Name
+		}
+		h.addReport(go_.UserID, 5, "驻防战报: 驻防城市被摧毁",
+			fmt.Sprintf("你驻守的「%s」已被摧毁!\n你的驻军(来自%s)已全部损失。", ct.Name, gcName), "", 0, cid)
+	}
+	if len(gars) > 0 {
+		h.DB.Where("target_id = ? AND target_type = 3 AND order_type = 6 AND status = 3", cid).
+			Delete(&model.EzfyOrder{})
+	}
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityBuilding{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTroop{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTech{})

@@ -618,6 +618,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/corps/chats", ezfyH.CorpsChats)
 				ezfyG.POST("/corps/chat", ezfyH.CorpsChat)
 				ezfyG.POST("/corps/mail", ezfyH.CorpsMail)
+				// ★ 2026-10-02 城主遣返盟军驻军（驻军返航回出发城市）
+				ezfyG.POST("/liaison/expel-garrison", ezfyH.ExpelGarrison)
 				// 军团任职（军团长任命副团长 / 参谋长）
 				ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
 				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -204,6 +206,52 @@ func (h *EzfyHandler) Liaison(c *gin.Context) {
 	}
 	out["garrisons"] = views
 	resp.OK(c, out)
+}
+
+// ExpelGarrison POST /games/ezfy/liaison/expel-garrison —— 城主遣返盟军驻军
+//
+// ★ 2026-10-02 用户要求「自己城市被盟友驻军自己可以遣返」：
+//   只有目标城主人(uid == target 城 UserID)能遣返；遣返后驻军返航回出发城市(status=2),
+//   到达时由 finishReturn 把兵力入城并删除订单(释放该城驻军槽位)；
+//   驻军方收到「驻防战报: 驻军被遣返」(city_id 由订单回查, 归属其出发城市)。
+func (h *EzfyHandler) ExpelGarrison(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		OrderId int64 `json:"order_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.OrderId <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var order model.EzfyOrder
+	if err := h.DB.Where("id = ? AND order_type = 6 AND status = 3 AND target_type = 3 AND result = ''",
+		req.OrderId).First(&order).Error; err != nil {
+		resp.ParamError(c, "驻军不存在或已返航")
+		return
+	}
+	// 校验该驻军所在城市属于请求者
+	var city model.EzfyCity
+	if err := h.DB.First(&city, order.TargetId).Error; err != nil || city.UserID != uid {
+		resp.ParamError(c, "该驻军不属于你的城市, 无法遣返")
+		return
+	}
+	if order.UserID == uid {
+		resp.ParamError(c, "不能遣返自己的部队")
+		return
+	}
+	now := time.Now().UnixMilli()
+	back := ezfyOneWayTravel(&order)
+	if back < 10000 {
+		back = 10000
+	}
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+		Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": now + back})
+	// 通知驻军方：city_id 传 0, 由 addReport 按 order_id 回查出发城市归属军情
+	h.addReport(order.UserID, 5, "驻防战报: 驻军被遣返",
+		fmt.Sprintf("你在%s(%d,%d)的驻军已被城主遣返, 部队原路返回出发城市, 预计%s后抵达。",
+			city.Name, city.X, city.Y, ezfyDurationText(back/1000)), "", order.ID)
+	resp.OK(c, gin.H{"msg": "已遣返该驻军, 部队正在返回"})
 }
 
 // CorpsMail POST /games/ezfy/corps/mail —— 军团长给全体成员群发邮件

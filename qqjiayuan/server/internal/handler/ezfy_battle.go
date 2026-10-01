@@ -31,6 +31,12 @@ const (
 	// 例「黑色幽灵[徽章]」crit=125 / crit_dmg=0，按老公式 伤害×(100+0)/100 = 伤害不变，
 	// 于是「出了【暴击】但一点没多打」，玩家看到的就成了「暴击跟没暴一样」。
 	ezfyCritBaseBonusPct = 50
+
+	// ★ 2026-10-02 盟军驻军战「溃败撤退」阈值：守方剩余兵力跌破初始兵力的 50% 即判定战败，
+	//   战斗提前结束，剩余部队自动返航回出发城市（不再死战到全灭）。
+	//   —— 让「驻军战败 → 剩余部队回到自己城市」有兵可回（引擎里「战败」原本=全灭）。
+	//   后续如需可调，可挪进「二战系统配置」。
+	ezfyGarrisonBreakPct = 50
 )
 
 // 战场指挥指令（玩家每回合可下达）
@@ -124,6 +130,11 @@ type ezfyBattleState struct {
 	Done        bool // 是否已分胜负 / 回合耗尽
 	AttackerWin bool
 	Draw        bool // ★ 2026-09-24 用户要求：打到 40 回合未分胜负 = 平局（守方仍算守住）
+
+	// ★ 2026-10-02 盟军驻军战「溃败撤退」：守方剩余兵力跌破 DefBreak% 时判定战败，
+	//   战斗提前结束、守方剩余兵力返航回城（而不是死战到最后一兵）。
+	DefBreak        int   // 溃败阈值%（0 = 不启用）
+	DefInitialTotal int64 // 守方初始总兵力（DefBreak 的判断基准）
 
 	Head    []string // 开局描述（军官/加成/初始距离），只写一次
 	Actions []string // 每回合的行动日志
@@ -532,6 +543,17 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			st.Done, st.AttackerWin = true, true
 		} else if len(ezfyAliveList(st.Attackers)) == 0 {
 			st.Done, st.AttackerWin = true, false
+		} else if st.DefBreak > 0 && st.DefInitialTotal > 0 {
+			// ★ 2026-10-02 盟军驻军战：守方剩余兵力跌破阈值 → 溃败撤退（攻方突破、战斗提前结束，
+			//   守方剩余兵力返航回城）。放在 40 回合平局**之前**：被打到阈值以下算战败，
+			//   而不是拖到回合上限按平局处理。
+			defLeft := int64(0)
+			for _, d := range st.Defenders {
+				defLeft += d.count
+			}
+			if defLeft*100 < int64(st.DefBreak)*st.DefInitialTotal {
+				st.Done, st.AttackerWin = true, true
+			}
 		} else if st.Round >= ezfyBattleMaxRounds {
 			// ★ 2026-09-24 用户要求：40 回合未分胜负按**平局**描述（守方视为守住，攻方无胜果）
 			st.Done, st.Draw = true, true
@@ -550,7 +572,7 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 		Rounds:         st.Round,
 		Actions:        actions,
 		AttackerLosses: ezfyToGroups(st.Attackers, true),
-		DefenderLosses: ezfyToGroups(st.Defenders, true),
+		DefenderLosses: ezfyDefLossGroups(st.Defenders),
 		AttackerLeft:   ezfyToGroups(st.Attackers, false),
 		DefenderLeft:   ezfyToGroups(st.Defenders, false),
 	}
@@ -570,6 +592,35 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
+		st.Step(nil, nil)
+	}
+	return st.Result()
+}
+
+// ezfySimulateBreak 盟军驻军战专用：与 ezfySimulate 相同，但守方剩余兵力跌破 defBreakPct%
+// 时判定「溃败撤退」—— 战斗提前结束、守方剩余兵力返航回城（而非死战到最后一兵）。
+// 仅驻军战调用，其它战斗路径（指挥室/野地/活动）不受影响。
+func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
+	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
+	atkEquip, defEquip ezfyBattleBonus,
+	atkOfficerDesc, defOfficerDesc string,
+	atkTargets, defTargets map[int]int,
+	atkMoves, defMoves map[int]int,
+	defBreakPct int) ezfyBattleResult {
+
+	st := ezfyNewBattleState(attackerUnits, defenderUnits,
+		atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
+		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
+	if defBreakPct > 0 {
+		for _, d := range defenderUnits {
+			if d.Count > 0 {
+				st.DefInitialTotal += d.Count
+			}
+		}
+		st.DefBreak = defBreakPct
+	}
+	for !st.Done {
 		st.Step(nil, nil)
 	}
 	return st.Result()
@@ -836,6 +887,21 @@ func ezfyToGroups(units []*ezfyFightUnit, losses bool) []ezfyUnitGroup {
 		if count > 0 {
 			groups = append(groups, ezfyUnitGroup{TroopId: u.cfg.ID, Count: count})
 		}
+	}
+	return groups
+}
+
+// ezfyDefLossGroups 守方损失**全量保序**输出（与传入守方部队逐项对齐，可为 0）。
+//
+// ★ 2026-10-02 盟军驻军改造：
+//   守方部队 = 盟友驻军队列(先) + 友军自身部队(后)。战后要把损失按来源分扣
+//   （先扣驻军订单、再扣城市），必须保证 br.DefenderLosses[i] 与构建守方部队时的
+//   defender[i] 严格一一对应。ezfyToGroups(losses=true) 会跳过无损失的 group，
+//   顺序对不上；这里不过滤 count==0，让调用方按下标消费（消费处均已有 count<=0 跳过）。
+func ezfyDefLossGroups(units []*ezfyFightUnit) []ezfyUnitGroup {
+	groups := make([]ezfyUnitGroup, 0, len(units))
+	for _, u := range units {
+		groups = append(groups, ezfyUnitGroup{TroopId: u.cfg.ID, Count: u.initialCount - u.count})
 	}
 	return groups
 }

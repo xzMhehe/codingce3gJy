@@ -202,25 +202,32 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	now := time.Now().UnixMilli()
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1", uid).Order("id ASC").Find(&orders)
+	// ★ 2026-10-02 用户要求「一键召回」需覆盖出站驻军：
+	//   驻守盟友城市的驻军(增援, status=3)也一并召回返航回出发城市。
+	//   仅召回「活跃驻军」(result 为空 + 目标城属于他人)，避免旧僵尸/已归队订单重复入兵。
+	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
+	h.DB.Where("user_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND target_type = 3 AND result = '' AND target_id IN (?)))", uid, allyCity).
+		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "没有正在采集的部队")
+		resp.ParamError(c, "没有可召回的外出部队(采集/驻军)")
 		return
 	}
 	n := 0
 	var gained int64
 	for i := range orders {
 		order := &orders[i]
-		var before int64
-		// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源），
-		// 产出入负重(carry)，随返航到达时由 finishReturn 入城。
-		if order.ArriveTime > 0 {
-			before = parseCarry(order.Carry).total()
-			h.settleDispatchOnRecall(uid, order, now)
-			gained += parseCarry(order.Carry).total() - before
-		}
-		if order.Status != 1 {
-			continue // 野地已丢失, settleDispatch 已把部队自动改成返航
+		if order.OrderType == 7 {
+			var before int64
+			// 召回前先结算未入城的那部分产出（满一期给资源+宝物；不满一期只给按比例的资源），
+			// 产出入负重(carry)，随返航到达时由 finishReturn 入城。
+			if order.ArriveTime > 0 {
+				before = parseCarry(order.Carry).total()
+				h.settleDispatchOnRecall(uid, order, now)
+				gained += parseCarry(order.Carry).total() - before
+			}
+			if order.Status != 1 {
+				continue // 野地已丢失, settleDispatch 已把部队自动改成返航
+			}
 		}
 		travel := ezfyOneWayTravel(order)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
@@ -228,7 +235,7 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 				"return_time": now + travel, "carry": order.Carry})
 		n++
 	}
-	msg := fmt.Sprintf("已召回 %d 支采集部队返航", n)
+	msg := fmt.Sprintf("已召回 %d 支部队返航", n)
 	if gained > 0 {
 		msg += fmt.Sprintf(", 召回前结算负重 %d(随返航入城)", gained)
 	}

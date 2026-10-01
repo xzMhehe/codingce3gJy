@@ -365,7 +365,9 @@
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}
               <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="startCollect(o)">[采集]</a></span>
-              <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a></span><br/>
+              <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="stopCollect(o)">[停止]</a></span>
+              <!-- ★ 2026-10-02 出站驻军(增援盟友城): 不可采集, 只能[召回]撤兵 -->
+              <span v-else-if="o.status === 3"><a href="javascript:;" class="red" @click="doRecall(o)">[召回]</a></span><br/>
               <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
                    规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。 -->
               <template v-if="o.status === 1 && o.arrive_time">
@@ -373,11 +375,11 @@
                 <span class="gray">（总 {{ fmtN(o._lg.total) }}，负重 {{ fmtN(o._lg.total) }}/{{ fmtN(o.carry_cap) }}）</span>
                 <span v-if="o._lg.full" class="red">负重已满, 超出部分会直接入库(可停止或收获)。</span>
               </template>
-              <span v-else class="gray">本期已采：暂无(未在采集中)</span>
+              <span v-else-if="o.status === 1" class="gray">本期已采：暂无(未在采集中)</span>
               <br/>
               --------------------
             </div>
-            <div class="old-line" v-if="!dynStation.length">(当前没有驻守采集的部队)</div>
+            <div class="old-line" v-if="!dynStation.length">(当前没有驻守的部队(采集/驻军))</div>
             <div class="ezfy-pager" v-if="dynStation.length > dynStationSize">
               <a href="javascript:;" :class="{ gray: dynStationPage <= 1 }" @click="sectionPagerGo('sta', -1)">上一页</a>
               <span class="gray">第 {{ dynStationPage }}/{{ dynStationTotalPages }} 页（共 {{ dynStation.length }} 条）</span>
@@ -3414,13 +3416,15 @@
 
           <div class="old-line">盟军驻军：</div>
           <table>
-            <tr><th>来自城市</th><th>军官</th><th>驻军</th></tr>
+            <tr><th>来自城市</th><th>军官</th><th>驻军</th><th></th></tr>
             <tr v-for="g in liaison.garrisons" :key="'lg' + g.id">
               <td>{{ g.from_city }}</td>
               <td>{{ g.officer || '无' }}</td>
               <td>
                 <span v-for="(t, i) in g.troops" :key="'lgt' + i">{{ t.name }}×{{ t.count }} </span>
               </td>
+              <!-- ★ 2026-10-02 城主可遣返盟军驻军(驻军返航回出发城市) -->
+              <td><a href="javascript:;" class="red" @click="expelGarrison(g)">[遣返]</a></td>
             </tr>
           </table>
           <div class="old-line gray" v-if="!liaison.garrisons.length">(暂无盟军驻军)</div>
@@ -5261,12 +5265,13 @@ export default {
     chatTotalPages () {
       return Math.max(1, Math.ceil(this.chatTotal / this.chatSize))
     },
-    // ★ 军队动态 = 行进/战斗/返航中的部队(不含驻守采集); 驻军 = 常驻采集(status=1)
+    // ★ 军队动态 = 行进/战斗/返航中的部队(不含驻守采集/驻军);
+    //   驻军 = 驻守采集(status=1) + 出站驻军(status=3, 增援盟友城市, ★ 2026-10-02)
     dynMarch () {
-      return this.dynamics.filter(o => o.status !== 1)
+      return this.dynamics.filter(o => o.status !== 1 && o.status !== 3)
     },
     dynStation () {
-      return this.dynamics.filter(o => o.status === 1)
+      return this.dynamics.filter(o => o.status === 1 || o.status === 3)
     },
     // ★ 2026-09-25 出征队列页的数据 = 军队动态全集（行进/战斗/返航/驻守都在内，一次展示完）
     queueItems () {
@@ -7629,6 +7634,12 @@ export default {
       if (!await this.ask('确定取消「' + name + '」吗？部队将原路返回出发城市。')) return
       api.post('/games/ezfy/order/recall', { order_id: o.id })
         .then(r => this.alert(r, name + '已取消', () => { this.loadOrders(); this.loadDynamics() }))
+    },
+    // ★ 2026-10-02 城主遣返盟军驻军：驻军返航回出发城市（联络中心页）
+    async expelGarrison (g) {
+      if (!await this.ask('确定遣返来自「' + g.from_city + '」的这支驻军吗？部队将原路返回出发城市。')) return
+      api.post('/games/ezfy/liaison/expel-garrison', { order_id: g.id })
+        .then(r => this.alert(r, '已遣返', () => { this.loadLiaison(); this.loadDynamics() }))
     },
     // ★ 2026-09-30 行军计谋：神兵天降(13,去程减80%)/战略转移(14,回程减360分钟)，耗 7 信号弹
     //   从计谋页(scheme)进入，使用后返回「军情 → 军队动态」。
