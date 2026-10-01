@@ -92,6 +92,11 @@
                   <el-tag size="mini" :type="starType(row.star)">{{ '★'.repeat(Math.min(row.star, 5)) }}</el-tag>
                 </template>
               </el-table-column>
+              <el-table-column label="类型" width="70" align="center">
+                <template slot-scope="{row}">
+                  <el-tag size="mini" :type="row.general_id > 0 ? 'warning' : 'info'" effect="plain">{{ row.type_name }}</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column prop="level" label="等级" width="60" align="center" />
               <el-table-column label="经验" width="90" align="center">
                 <template slot-scope="{row}">{{ fmtNum(row.exp) }}</template>
@@ -126,11 +131,24 @@
                 <template slot-scope="{row}">{{ row.x }},{{ row.y }}</template>
               </el-table-column>
               <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
-              <el-table-column prop="gold" label="黄金" width="90" align="center" />
-              <el-table-column prop="food" label="粮食" width="90" align="center" />
-              <el-table-column prop="steel" label="钢铁" width="90" align="center" />
-              <el-table-column prop="oil" label="石油" width="90" align="center" />
-              <el-table-column prop="rare" label="稀矿" width="90" align="center" />
+              <el-table-column label="总兵力" width="90" align="center">
+                <template slot-scope="{row}">{{ fmtNum(row.troop_total || 0) }}</template>
+              </el-table-column>
+              <el-table-column label="黄金" width="80" align="center">
+                <template slot-scope="{row}"><span :title="fmtNum(row.gold)">{{ fmtWan(row.gold) }}</span></template>
+              </el-table-column>
+              <el-table-column label="粮食" width="80" align="center">
+                <template slot-scope="{row}"><span :title="fmtNum(row.food)">{{ fmtWan(row.food) }}</span></template>
+              </el-table-column>
+              <el-table-column label="钢铁" width="80" align="center">
+                <template slot-scope="{row}"><span :title="fmtNum(row.steel)">{{ fmtWan(row.steel) }}</span></template>
+              </el-table-column>
+              <el-table-column label="石油" width="80" align="center">
+                <template slot-scope="{row}"><span :title="fmtNum(row.oil)">{{ fmtWan(row.oil) }}</span></template>
+              </el-table-column>
+              <el-table-column label="稀矿" width="80" align="center">
+                <template slot-scope="{row}"><span :title="fmtNum(row.rare)">{{ fmtWan(row.rare) }}</span></template>
+              </el-table-column>
             </el-table>
           </el-tab-pane>
           <!-- 背包 -->
@@ -255,6 +273,14 @@ export default {
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     fmtNum (n) { return n == null ? 0 : Number(n).toLocaleString() },
+    fmtWan (n) {
+      if (n == null) n = 0
+      if (n >= 10000) {
+        const w = n / 10000
+        return (Number.isInteger(w) ? w : w.toFixed(1)) + '万'
+      }
+      return Number(n).toLocaleString()
+    },
     starType (s) { return s >= 5 ? 'warning' : (s >= 4 ? 'success' : 'info') },
     statusType (row) { return row.is_captive === 1 ? 'danger' : (row.status === 1 ? 'warning' : 'success') },
     load () {

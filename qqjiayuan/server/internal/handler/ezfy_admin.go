@@ -76,6 +76,32 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 	}
 	var cities []model.EzfyCity
 	h.DB.Where("user_id = ?", p.UserID).Find(&cities)
+	// ★ 城池总兵力：一次批量查所有城的兵力求和，避免每城一条 SQL（N+1）
+	type cityOut struct {
+		model.EzfyCity
+		TroopTotal int64 `json:"troop_total"` // 城池总兵力（ezfy_city_troop.count 求和）
+	}
+	citiesViews := make([]cityOut, 0, len(cities))
+	if len(cities) > 0 {
+		cityIDs := make([]uint, 0, len(cities))
+		for _, ct := range cities {
+			cityIDs = append(cityIDs, ct.ID)
+		}
+		var sums []struct {
+			CityID uint
+			Total  int64
+		}
+		h.DB.Model(&model.EzfyCityTroop{}).
+			Select("city_id, SUM(count) AS total").
+			Where("city_id IN ?", cityIDs).Group("city_id").Scan(&sums)
+		troopOf := map[uint]int64{}
+		for _, s := range sums {
+			troopOf[s.CityID] = s.Total
+		}
+		for _, ct := range cities {
+			citiesViews = append(citiesViews, cityOut{EzfyCity: ct, TroopTotal: troopOf[ct.ID]})
+		}
+	}
 	var bag []model.EzfyItem
 	h.DB.Where("user_id = ?", p.UserID).Find(&bag)
 	// 补道具名称
@@ -121,6 +147,7 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		CityName     string `json:"city_name"`
 		PositionName string `json:"position_name"`
 		StatusName   string `json:"status_name"`
+		TypeName     string `json:"type_name"` // ★ 普通 / 名将（general_id>0 为名将）
 	}
 	officersViews := []officerOut{}
 	if len(cities) > 0 {
@@ -134,16 +161,21 @@ func (h *AdminHandler) AdminEzfyPlayerDetail(c *gin.Context) {
 		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
 		for i := range officers {
 			o := officers[i]
+			typeName := "普通"
+			if o.GeneralId > 0 {
+				typeName = "名将"
+			}
 			officersViews = append(officersViews, officerOut{
 				EzfyOfficer:  o,
 				CityName:     cityNames[o.CityId],
 				PositionName: ezfyPositionName(o.Position),
 				StatusName:   ezfyOfficerStatusName(&o),
+				TypeName:     typeName,
 			})
 		}
 	}
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
-		"cities": cities, "bag": bagViews, "corps": corpsViews, "orders": orders,
+		"cities": citiesViews, "bag": bagViews, "corps": corpsViews, "orders": orders,
 		"officers": officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }
