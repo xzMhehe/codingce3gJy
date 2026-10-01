@@ -1602,6 +1602,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 					return
 				}
 				if path == "/" || !strings.Contains(path, ".") {
+					// ★ 2026-10-02 手机端"进去数据没刷新出来"根因修复：
+					//   index.html 之前无 Cache-Control 头被浏览器（尤其手机端）强缓存，
+					//   重部署后旧的带 hash JS 已被删除，旧 index.html 引用的 JS 全部 404，
+					//   导致页面能开但数据不渲染（电脑端缓存恰好较新所以正常）。
+					//   现在强制 no-cache：每次回源校验，要么 304 要么拿新 HTML，带 hash 资源不受影响。
+					c.Header("Cache-Control", "no-cache")
 					c.File(cfg.Server.WebDir + "/index.html")
 					return
 				}
@@ -1609,6 +1615,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 					c.File(cfg.Server.WebDir + path)
 					return
 				}
+				c.Header("Cache-Control", "no-cache")
 				c.File(cfg.Server.WebDir + "/index.html")
 			})
 		}
