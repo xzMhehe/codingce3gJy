@@ -3251,5 +3251,14 @@ func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string,
 			}
 		}
 	}
+	// ★ 2026-10-01 军情按当前城过滤：很多调用点没传 city_id（城市落 NULL/0），
+	//   集中兜底——有订单号就按订单回查出发点城市，让新战报都正确归属城市。
+	if r.CityId == 0 && r.OrderId > 0 {
+		var ocid int64
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", r.OrderId).Pluck("city_id", &ocid)
+		if ocid > 0 {
+			r.CityId = ocid
+		}
+	}
 	h.DB.Create(&r)
 }

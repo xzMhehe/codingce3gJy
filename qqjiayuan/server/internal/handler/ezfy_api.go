@@ -2490,11 +2490,13 @@ func ezfyReportCategoryName(cat int) string {
 //
 // ★ 2026-10-01 修复「按城市检索后战报看不见」：老战报因 addReport uint bug
 //   order_id 全为 0，原来 `city_id = 0 AND order_id IN (该城订单)` 永远匹配不上，
+//   且大量老战报 city_id 存的是 NULL（141 条）——`city_id = 0` 同样匹配不上，
 //   导致历史战报从城市视角全部消失。改为**按标题坐标反查该城的出征订单**归属：
-//   标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对。
-//   新战报（city_id>0）仍走第一分支；无匹配订单的老防守战报无法归属城市，不展示。
+//   标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对，
+//   city_id 为 0 或 NULL 的老战报都走这条路。新战报（city_id>0）仍走第一分支；
+//   无匹配订单的老防守/系统战报无法归属城市，仅在「全部」视图展示。
 func ezfyCityReportCond(cityId int64) string {
-	return fmt.Sprintf(`(city_id = %d OR (city_id = 0 AND EXISTS (
+	return fmt.Sprintf(`(city_id = %d OR ((city_id = 0 OR city_id IS NULL) AND EXISTS (
 		SELECT 1 FROM ezfy_order o
 		WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
 		  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
