@@ -822,6 +822,12 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "城防部队不能出征"
 		}
 	}
+	// ★ 2026-10-02 用户规则：海军兵种(驱逐舰/潜艇/战列舰/航母)只能出征
+	//   岛屿/海底森林(海洋)/沿海平原（含建在沿海平原上的城市）目标，
+	//   出征到其它地形时在出征前卡控提示（按目标坐标地形判定，覆盖野地/寇城/城市）。
+	if ezfyHasNavalTroops(validTroops) && !ezfyNavalTargetAllowed(targetX, targetY) {
+		return "海军部队只能出征岛屿/海底森林/沿海平原"
+	}
 	total := int64(0)
 	slowest := int(^uint(0) >> 1)
 	for _, t := range validTroops {
@@ -930,13 +936,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if h.isAllyCity(uid, targetId) {
 			return "不能攻击同盟成员的城市"
 		}
-		// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城；
-		//   海军兵种(驱逐舰/潜艇/战列舰/航母)只能用于海战，攻打陆城时出征前卡控提示。
+		// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城。
+		//   （海军兵种的地形卡控在上面统一校验，这里只管海城/陆城城池交战）
 		if ezfyIsSeaCity(city) && !ezfyIsSeaCity(&tc) {
 			return "海城无法攻击陆城"
-		}
-		if ezfyHasNavalTroops(validTroops) && !ezfyIsSeaCity(&tc) {
-			return "海军部队无法攻击陆城"
 		}
 		// ★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
 		//   目标城市处于免战保护期时直接拦截出征，避免部队白跑一趟。

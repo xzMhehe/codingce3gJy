@@ -290,6 +290,19 @@ func ezfyHasNavalTroops(units []ezfyUnitGroup) bool {
 	return false
 }
 
+// ezfyNavalTargetAllowed 海军兵种可出征的目标地形。
+//
+// ★ 2026-10-02 用户规则：海军只能用于「岛屿(7)/海底森林(海洋8)/沿海平原(9)」
+// 以及建在沿海平原上的城市（沿海平原地形已含城市坐标）的出征，其它地形一律卡控。
+// 用 ezfyTerrainEx 判定，管理端改地图地形后立即生效。
+func ezfyNavalTargetAllowed(x, y int) bool {
+	switch ezfyTerrainEx(x, y) {
+	case 7, ezfyTerrainSea, ezfyTerrainCoastalPlain:
+		return true
+	}
+	return false
+}
+
 // ============ 野地采集: 按地形的产出资源 + 宝物池（用户规范, 2026-09-23） ============
 //
 // 平原(1)/沿海平原(9)没有珠宝; 岛屿按原版「海岛」宝物列表。
