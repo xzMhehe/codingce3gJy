@@ -708,24 +708,27 @@ func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string)
 	return cap, false
 }
 
-// playerAtWar 玩家是否处于「战斗状态」（个人宣战待生效/交战 或 所属军团宣战待生效/交战）。
+// playerAtWar 玩家是否处于「战斗状态」（个人宣战交战中 或 所属军团宣战生效中）。
 // ★ 2026-10-02 用户规则：自城派遣在非战斗状态下不设携带上限（守城兵可以自由调动），
 //   处于战斗状态则恢复正常上限（避免被调走兵力守不住城）。
+// ★ 2026-10-02 修复：只认「交战中」(status=2 且生效中)，**待生效宣战(status=1)不算战斗状态**，
+//   否则刚宣战还没开打时派遣也会被卡上限（线上反馈「AI大本营派遣还是 144,000 上限」）。
 func (h *EzfyHandler) playerAtWar(uid uint) bool {
 	now := time.Now().UnixMilli()
 	var cnt int64
-	// 个人宣战：我方为攻/守方且状态 1(待生效)/2(交战) 且未过期
+	// 个人宣战交战中：status=2 且未过期（status 由 warStatus/tick 在到 EffectTime 时推进为 2）
 	h.DB.Model(&model.EzfyWar{}).
-		Where("status IN (1,2) AND expire_time > ? AND (atk_user_id = ? OR def_user_id = ?)", now, uid, uid).
+		Where("status = 2 AND expire_time > ? AND (atk_user_id = ? OR def_user_id = ?)", now, uid, uid).
 		Count(&cnt)
 	if cnt > 0 {
 		return true
 	}
-	// 军团宣战：我所在军团为攻/守方且状态 1(待生效)/2(交战) 且未过期
+	// 军团宣战生效中：status=2 且 now ∈ [effect_time, expire_time)（与 corpsActiveWarBetweenCorps 同口径）
 	if cid := h.corpsOfUser(uid); cid > 0 {
+		h.corpsWarTick()
 		var wc int64
 		h.DB.Model(&model.EzfyCorpsWar{}).
-			Where("status IN (1,2) AND expire_time > ? AND (atk_corps_id = ? OR def_corps_id = ?)", now, cid, cid).
+			Where("status = 2 AND effect_time <= ? AND expire_time > ? AND (atk_corps_id = ? OR def_corps_id = ?)", now, now, cid, cid).
 			Count(&wc)
 		if wc > 0 {
 			return true
