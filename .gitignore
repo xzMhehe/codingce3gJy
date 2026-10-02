@@ -50,7 +50,7 @@ qqjiayuan/Linuxbushu/server/dbinit
 qqjiayuan/Linuxbushu/server/server
 qqjiayuan/Linuxbushu/server/ezfymigrate
 
-**/__pycache__/**
+
 qqjiayuan/Linuxbushu.tar.gz
 qqjiayuan/Linuxbushu/server/dbinit
 qqjiayuan/Linuxbushu/server/ezfymigrate
@@ -59,3 +59,7 @@ qqjiayuan/Linuxbushu/server/server
 qqjiayuan/Linuxbushu/server/ezfymigrate
 qqjiayuan/Linuxbushu/server/dbinit
 qqjiayuan/Linuxbushu.tar.gz
+
+
+
+**/__pycache__/**
