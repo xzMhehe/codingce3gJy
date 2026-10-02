@@ -160,6 +160,12 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 				return
 			}
 		}
+		// ★ 2026-10-02 用户要求：先发制人**不能破免战保护令** ——
+		//   目标城市处于免战保护期时不能对其发动（与出征拦截同口径 hasCityEffect）。
+		if h.hasCityEffect(uint(t.ID), 2) {
+			h.fail(c, "该城市使用了免战保护, 无法对其发动先发制人")
+			return
+		}
 	}
 
 	// ===== Kind 2/3 行军计谋：神兵天降(去程减80%) / 战略转移(回程减360分钟) =====
