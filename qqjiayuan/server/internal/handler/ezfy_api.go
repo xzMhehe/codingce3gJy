@@ -1500,30 +1500,51 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		}
 		return 10
 	}
-	// 每城兵种战力（含城防 type=4）：Σ count^pow × 质量 + 兵种类型数 × 系数
+	// 城市 → 归属玩家 / 城市名
+	var cities []model.EzfyCity
+	h.DB.Find(&cities)
+	cityUser := map[int64]int64{}
+	cityName := map[int64]string{}
+	for _, c := range cities {
+		cityUser[int64(c.ID)] = int64(c.UserID)
+		cityName[int64(c.ID)] = c.Name
+	}
+	// 兵种战力按「玩家所有城市」聚合（含城防 type=4）：Σ count^pow × 质量 + 兵种类型数 × 系数。
+	// ★ 2026-10-02 用户反馈：只算最好城市会导致榜首建筑明细=2 的失真，量应取全城合计，
+	//   「最好城市」只用来选展示主城名。
 	var troops []model.EzfyCityTroop
 	h.DB.Find(&troops)
-	cityTroopScore := map[int64]float64{}
-	troopTypes := map[int64]map[int]bool{}
+	userTroopScore := map[int64]float64{}
+	userTroopTypes := map[int64]map[int]bool{}
 	for _, t := range troops {
 		if t.Count <= 0 {
 			continue
 		}
-		if troopTypes[t.CityId] == nil {
-			troopTypes[t.CityId] = map[int]bool{}
+		uid := cityUser[t.CityId]
+		if uid == 0 {
+			continue
 		}
-		if !troopTypes[t.CityId][t.TroopId] {
-			troopTypes[t.CityId][t.TroopId] = true
-			cityTroopScore[t.CityId] += float64(lim.PowerTroopType)
+		if userTroopTypes[uid] == nil {
+			userTroopTypes[uid] = map[int]bool{}
 		}
-		cityTroopScore[t.CityId] += math.Pow(float64(t.Count), pow) * troopQuality(t.TroopId)
+		if !userTroopTypes[uid][t.TroopId] {
+			userTroopTypes[uid][t.TroopId] = true
+			userTroopScore[uid] += float64(lim.PowerTroopType)
+		}
+		userTroopScore[uid] += math.Pow(float64(t.Count), pow) * troopQuality(t.TroopId)
 	}
-	// 每城建筑等级和 → 建筑战力
+	// 建筑战力按「玩家所有城市」聚合；cityBuildSum 用于选展示主城（建筑等级最高的城）
 	var builds []model.EzfyCityBuilding
 	h.DB.Find(&builds)
-	cityBuildScore := map[int64]float64{}
+	userBuildScore := map[int64]float64{}
+	cityBuildSum := map[int64]int{}
 	for _, b := range builds {
-		cityBuildScore[b.CityId] += float64(b.Level * lim.PowerBuildPerLevel)
+		uid := cityUser[b.CityId]
+		if uid == 0 {
+			continue
+		}
+		userBuildScore[uid] += float64(b.Level * lim.PowerBuildPerLevel)
+		cityBuildSum[b.CityId] += b.Level
 	}
 	// 用户级科技战力：Σ(等级×每级分) + 每项已研究 + 每项分
 	var userTechs []model.EzfyUserTech
@@ -1535,31 +1556,26 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		}
 		userTechScore[int64(ut.UserId)] += float64(ut.Level*lim.PowerTechPerLevel) + float64(lim.PowerTechPerTech)
 	}
-	// 城市 → 归属玩家 / 城市名
-	var cities []model.EzfyCity
-	h.DB.Find(&cities)
-	cityUser := map[int64]int64{}
-	cityName := map[int64]string{}
-	for _, c := range cities {
-		cityUser[int64(c.ID)] = int64(c.UserID)
-		cityName[int64(c.ID)] = c.Name
-	}
-	// 每人「最好城市」= 建筑+兵种综合得分最高的城
+	// 展示主城：建筑等级最高的城；没有建筑但有兵的玩家兜底取任一有兵城
 	bestCity := map[int64]int64{}
-	bestScore := map[int64]float64{}
-	allCityIDs := map[int64]bool{}
-	for cid := range cityBuildScore {
-		allCityIDs[cid] = true
-	}
-	for cid := range cityTroopScore {
-		allCityIDs[cid] = true
-	}
-	for cid := range allCityIDs {
+	bestLv := map[int64]int{}
+	for cid, lv := range cityBuildSum {
 		uid := cityUser[cid]
-		sc := cityBuildScore[cid] + cityTroopScore[cid]
-		if sc > bestScore[uid] {
-			bestScore[uid] = sc
+		if lv > bestLv[uid] {
+			bestLv[uid] = lv
 			bestCity[uid] = cid
+		}
+	}
+	for _, t := range troops {
+		if t.Count <= 0 {
+			continue
+		}
+		uid := cityUser[t.CityId]
+		if uid == 0 {
+			continue
+		}
+		if _, ok := bestCity[uid]; !ok {
+			bestCity[uid] = t.CityId
 		}
 	}
 	type pw struct {
@@ -1570,23 +1586,34 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		troop float64
 	}
 	all := map[int64]*pw{}
-	for uid, cid := range bestCity {
-		raw := userTechScore[uid] + cityBuildScore[cid] + cityTroopScore[cid]
+	uidSet := map[int64]bool{}
+	for uid := range userTechScore {
+		uidSet[uid] = true
+	}
+	for uid := range userBuildScore {
+		uidSet[uid] = true
+	}
+	for uid := range userTroopScore {
+		uidSet[uid] = true
+	}
+	for uid := range uidSet {
+		techRaw, buildRaw, troopRaw := userTechScore[uid], userBuildScore[uid], userTroopScore[uid]
+		raw := techRaw + buildRaw + troopRaw
 		e := &pw{uid: uid, power: math.Pow(raw, cp)}
 		if raw > 0 {
-			// 明细按原始占比拆分（凹函数下分项分别开根号会改变排序，这里对总量压缩保序）
-			e.tech = e.power * (userTechScore[uid] / raw)
-			e.build = e.power * (cityBuildScore[cid] / raw)
-			e.troop = e.power * (cityTroopScore[cid] / raw)
+			// 明细各自独立幂压缩后按比例归一化：总和 = power，且小分量不会被线性占比压成 0。
+			// （power 仍由 raw^cp 决定 → 排序与原始总和严格一致，不受明细拆分影响）
+			t2 := math.Pow(techRaw, cp)
+			b2 := math.Pow(buildRaw, cp)
+			o2 := math.Pow(troopRaw, cp)
+			sum2 := t2 + b2 + o2
+			if sum2 > 0 {
+				e.tech = e.power * t2 / sum2
+				e.build = e.power * b2 / sum2
+				e.troop = e.power * o2 / sum2
+			}
 		}
 		all[uid] = e
-	}
-	// 兜底：只有科技没有城的玩家（正常不会出现）
-	for uid, ts := range userTechScore {
-		if _, ok := all[uid]; !ok {
-			e := &pw{uid: uid, power: math.Pow(ts, cp), tech: math.Pow(ts, cp)}
-			all[uid] = e
-		}
 	}
 	arr := make([]*pw, 0, len(all))
 	for _, v := range all {
