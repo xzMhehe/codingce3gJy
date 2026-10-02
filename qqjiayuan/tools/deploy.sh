@@ -121,7 +121,7 @@ log "0/7 预检"
   printf 'SSH 密码 (%s@%s, 直接回车用内置默认值): ' "$SSH_USER" "$SSH_HOST"
   read -r -s SSH_PASS; echo
 }
-export SSH_PASS
+export SSH_PASS SSH_HOST SSH_USER
 
 [ -f "$PKG" ] || die "部署包不存在: $PKG"
 PKG="$(cd "$(dirname "$PKG")" && pwd)/$(basename "$PKG")"
