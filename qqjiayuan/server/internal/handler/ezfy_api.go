@@ -1487,6 +1487,12 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	if pow <= 0 {
 		pow = 0.8
 	}
+	// 总量压缩幂次：最终战力 = 原始总和^此值（默认 0.5）。幂次<1 时只缩大数、小数几乎不缩，
+	// 且严格单调递增 → 排名顺序不变（不像除法那样把低战力压成小数）。
+	cp := lim.PowerCompressPow
+	if cp <= 0 {
+		cp = 0.5
+	}
 	// 兵种质量 = 生命+防御+攻击(防/陆/空)+速度+射程, ÷100 → 每单位战力基数
 	troopQuality := func(id int) float64 {
 		if t := ezfyCfg.troop(id); t != nil {
@@ -1565,15 +1571,21 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 	}
 	all := map[int64]*pw{}
 	for uid, cid := range bestCity {
-		e := &pw{uid: uid, tech: userTechScore[uid],
-			build: cityBuildScore[cid], troop: cityTroopScore[cid]}
-		e.power = e.tech + e.build + e.troop
+		raw := userTechScore[uid] + cityBuildScore[cid] + cityTroopScore[cid]
+		e := &pw{uid: uid, power: math.Pow(raw, cp)}
+		if raw > 0 {
+			// 明细按原始占比拆分（凹函数下分项分别开根号会改变排序，这里对总量压缩保序）
+			e.tech = e.power * (userTechScore[uid] / raw)
+			e.build = e.power * (cityBuildScore[cid] / raw)
+			e.troop = e.power * (cityTroopScore[cid] / raw)
+		}
 		all[uid] = e
 	}
 	// 兜底：只有科技没有城的玩家（正常不会出现）
 	for uid, ts := range userTechScore {
 		if _, ok := all[uid]; !ok {
-			all[uid] = &pw{uid: uid, tech: ts, power: ts}
+			e := &pw{uid: uid, power: math.Pow(ts, cp), tech: math.Pow(ts, cp)}
+			all[uid] = e
 		}
 	}
 	arr := make([]*pw, 0, len(all))

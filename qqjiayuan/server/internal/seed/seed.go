@@ -348,6 +348,11 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN power_troop_pow double DEFAULT 0.8")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET power_troop_pow = 0.8 WHERE power_troop_pow IS NULL OR power_troop_pow <= 0")
+		// 总量压缩幂次：最终战力 = 原始总和^此值（默认 0.5 次方，只缩大数、排名不变；0/NULL 无意义 → 回落 0.5）
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "power_compress_pow") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN power_compress_pow double DEFAULT 0.5")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET power_compress_pow = 0.5 WHERE power_compress_pow IS NULL OR power_compress_pow <= 0")
 
 		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。

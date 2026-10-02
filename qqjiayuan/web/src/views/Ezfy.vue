@@ -2701,21 +2701,24 @@
           <!-- 战力榜 tab（★ 2026-10-02 兵力榜 → 战力榜：科技/建筑/兵种柔和折算） -->
           <template v-if="rankTab === 'troops'">
           <div class="panel-title">战力榜</div>
-          <div class="old-line gray">战力 = 科技 + 建筑 + 兵种</div>
+          <div class="old-line gray">战力 = 科技 + 建筑 + 兵种（按你的最好城市折算），点击战力查看明细</div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 13%"><col style="width: 25%"><col style="width: 22%"><col style="width: 13%"><col style="width: 9%"><col style="width: 9%"><col style="width: 9%">
+              <col style="width: 13%"><col style="width: 32%"><col style="width: 30%"><col style="width: 25%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>城市</th><th>战力</th><th>科技</th><th>建筑</th><th>兵种</th></tr>
-            <tr v-for="r in rankData.troops" :key="'rt' + r.rank" :class="rankRowCls(r.rank)">
-              <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
-              <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
-              <td>{{ r.city_name }}</td>
-              <td><b>{{ fmtN(r.power) }}</b></td>
-              <td>{{ fmtN(r.tech_power) }}</td>
-              <td>{{ fmtN(r.build_power) }}</td>
-              <td>{{ fmtN(r.troop_power) }}</td>
-            </tr>
+            <tr><th>名次</th><th>统帅</th><th>城市</th><th>战力</th></tr>
+            <template v-for="(r, i) in rankData.troops">
+              <tr :key="'rt' + r.rank" :class="rankRowCls(r.rank)">
+                <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+                <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
+                <td>{{ r.city_name }}</td>
+                <td><a href="javascript:;" @click="showPowerRow = showPowerRow === r.rank ? -1 : r.rank"><b>{{ fmtN(r.power) }}</b></a></td>
+              </tr>
+              <tr v-if="showPowerRow === r.rank" :key="'rp' + r.rank" class="rank-treasure-row">
+                <td>战力明细</td>
+                <td colspan="3" class="gray">科技 {{ fmtN(r.tech_power) }} / 建筑 {{ fmtN(r.build_power) }} / 兵种 {{ fmtN(r.troop_power) }}</td>
+              </tr>
+            </template>
           </table>
           </template>
 
@@ -4431,6 +4434,8 @@ export default {
       rankTab: 'ranks',
       // ★ 军衔晋升表中「宝物」点击展开的行下标（-1 = 收起）
       showTreasureRow: -1,
+      // ★ 战力榜中「战力」点击展开明细的行 rank（-1 = 收起）
+      showPowerRow: -1,
       orders: [],
       buildZone: 'm',
       buildSel: null,

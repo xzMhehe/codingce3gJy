@@ -478,11 +478,14 @@ type EzfyCfgLimit struct {
 	//   · 建筑每级 +power_build_per_level（默认 80）
 	//   · 每拥有一种兵种类型 +power_troop_type（默认 300）
 	//   · 兵种数量按 count^power_troop_pow × 兵种质量/100 折算（默认 0.8 次方, 软化新老差距）
-	PowerTechPerLevel  int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
-	PowerTechPerTech   int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
-	PowerBuildPerLevel int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
-	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
-	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
+	//   · 最终总战力 = 原始总和^power_compress_pow（默认 0.5 次方：只缩大数、小数几乎不缩、
+	//     严格单调保证排名不变；明细按原始占比拆分，三列之和仍等于总战力）
+	PowerTechPerLevel   int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
+	PowerTechPerTech    int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
+	PowerBuildPerLevel  int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
+	PowerTroopType      int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
+	PowerTroopPow       float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
+	PowerCompressPow    float64 `gorm:"default:0.5;comment:战力总量压缩幂次(总和^此值, 默认0.5)" json:"power_compress_pow"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

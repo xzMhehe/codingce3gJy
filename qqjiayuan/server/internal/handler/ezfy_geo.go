@@ -1522,7 +1522,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		ReconSuccessPct: ezfyReconSuccessPctDef,
 		// ★ 2026-10-02 战力榜权重缺行兜底（兵力榜 → 战力榜）
 		PowerTechPerLevel: 120, PowerTechPerTech: 100, PowerBuildPerLevel: 80,
-		PowerTroopType: 300, PowerTroopPow: 0.8}
+		PowerTroopType: 300, PowerTroopPow: 0.8, PowerCompressPow: 0.5}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim
