@@ -3867,7 +3867,6 @@
              ★ 2026-09-22：计谋配置改由后端下发（管理端可维护消耗数量/上下架），
                页面显示持有的信号弹数量，够了才能发动。 -->
         <div class="panel" v-else-if="acadeTab === 'scheme'">
-          <div class="old-line">说明：计谋需要进入相应界面才可以使用；神兵天降/战略转移请到「军情→军队动态」对部队使用</div>
           <div class="old-line">
             持有「{{ schemeData.bullet_name }}」：
             <b :class="schemeData.bullet_have > 0 ? 'green' : 'red'">{{ schemeData.bullet_have }}</b> 个
