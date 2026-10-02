@@ -210,7 +210,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		}
 		// 扣信号弹 + 写位标记 + 改时间（一个事务里完成）
 		h.DB.Transaction(func(tx *gorm.DB) error {
-			h.consumeItemN(uid, ezfySchemeItemID, need)
+			h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
 			if sc.Kind == 2 {
 				tx.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"arrive_time": newVal, "scheme_used": order.SchemeUsed | flag})
@@ -227,7 +227,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	}
 
 	// ===== 扣信号弹 =====
-	h.consumeItemN(uid, ezfySchemeItemID, need)
+	h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
 
 	// ===== 生效 + 写战报 =====
 	msg := fmt.Sprintf("已发动计谋「%s」，消耗%s×%d", sc.Name, name, need)

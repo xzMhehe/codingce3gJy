@@ -113,7 +113,7 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 			resp.ParamError(c, "首次免费改名已用掉，需要消耗 1 张「改名卡」（当前没有，可到商城购买）")
 			return
 		}
-		h.consumeItem(uid, ezfyItemRenameCard)
+		h.consumeItem(uid, ezfyItemRenameCard, "玩家改名")
 		usedCard = true
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("nickname", name)
 	}
@@ -157,7 +157,7 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 			resp.ParamError(c, "首次免费转换阵营已用掉，需要消耗 1 个「阵营转换道具」（当前没有，可到商城购买）")
 			return
 		}
-		h.consumeItem(uid, ezfyItemCampSwitch)
+		h.consumeItem(uid, ezfyItemCampSwitch, "阵营转换")
 		usedItem = true
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("camp", req.Camp)
 	}
@@ -206,7 +206,7 @@ func (h *EzfyHandler) RecruitUseTicket(c *gin.Context) {
 		resp.ParamError(c, msg)
 		return
 	}
-	h.consumeItem(uid, ezfyItemRecruitTicket)
+	h.consumeItem(uid, ezfyItemRecruitTicket, "军校招募")
 	resp.OK(c, gin.H{"msg": "已使用招生简章 ×1，军校候选名将已刷新（不占每小时次数）"})
 }
 

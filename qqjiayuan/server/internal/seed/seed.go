@@ -125,6 +125,8 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
 		// ★ 2026-09-28 玩家钻石流水（管理端「数据管理 → 钻石流水」查看）
 		&model.EzfyDiamondLog{},
+		// ★ 2026-10-02 玩家道具使用流水（管理端「数据管理 → 道具使用」查看）
+		&model.EzfyItemUseLog{},
 		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
 		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
 		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},

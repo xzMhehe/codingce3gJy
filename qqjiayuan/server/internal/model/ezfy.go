@@ -586,6 +586,22 @@ type EzfyDiamondLog struct {
 
 func (EzfyDiamondLog) TableName() string { return "ezfy_diamond_logs" }
 
+// EzfyItemUseLog 玩家道具使用流水（2026-10-02 新增：管理端「数据管理 → 道具使用」查看的数据来源，
+// 玩家任何消耗道具的行为（使用/出征集结令/建筑图纸/军校招募/改名等）都会写入一条，
+// 用于核实「道具莫名消失」类反馈——每条消耗都有据可查）。
+type EzfyItemUseLog struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint      `gorm:"index:idx_item_use_user;comment:玩家ID" json:"user_id"`
+	CfgId     int       `gorm:"comment:道具配置ID" json:"cfg_id"`
+	ItemName  string    `gorm:"type:varchar(50);comment:道具名" json:"item_name"`
+	ItemType  int       `gorm:"comment:道具类型" json:"item_type"`
+	Count     int       `gorm:"comment:消耗数量" json:"count"`
+	Reason    string    `gorm:"type:varchar(100);comment:消耗原因" json:"reason"`
+	CreatedAt time.Time `gorm:"comment:发生时间" json:"created_at"`
+}
+
+func (EzfyItemUseLog) TableName() string { return "ezfy_item_use_logs" }
+
 // ============ 运行时表 ============
 
 type EzfyCity struct {

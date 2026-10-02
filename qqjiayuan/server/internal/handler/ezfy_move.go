@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 
 	"github.com/gin-gonic/gin"
@@ -233,11 +234,21 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 
 	oldX, oldY := city.X, city.Y
 	oldRegion := ezfyRegionName(oldX, oldY)
-	// ★ 消耗道具（不是扣黄金）
-	h.consumeItem(uid, kind.ItemId)
+	// ★ 2026-10-02 修复「迁城后服务器部署坐标又变回去」：
+	//   原来坐标 Updates 失败会**静默吞掉**——接口照常返回「迁城成功」，
+	//   玩家以为迁好了，库里其实还是旧坐标，之后任意一次刷新/重启都显示旧坐标。
+	//   现在：① 先落库坐标（带错误检查+日志），成功才扣道具；
+	//         ② 写失败直接报错，不扣道具（避免道具被吃）。
+	if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+		Updates(map[string]interface{}{"x": tx, "y": ty}).Error; err != nil {
+		log.Printf("迁城落库失败 uid=%d city=%d (%d,%d)→(%d,%d): %v", uid, city.ID, oldX, oldY, tx, ty, err)
+		resp.ParamError(c, "迁城失败：坐标写入出错，请重试")
+		return
+	}
 	city.X, city.Y = tx, ty
 	h.saveCityRes(city)
-	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{"x": tx, "y": ty})
+	// ★ 消耗道具（不是扣黄金）
+	h.consumeItem(uid, kind.ItemId, "城市迁移")
 	// 旧坐标上的「玩家城」地图区域记录要清掉，否则地图还显示那里有城
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
 

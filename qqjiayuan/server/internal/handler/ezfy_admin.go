@@ -606,6 +606,32 @@ func (h *AdminHandler) ezfyTableOf(c *gin.Context) (ezfyTableDef, bool) {
 
 // AdminEzfyData 数据分页查询（table=buildings/buildingLevels/troops/techs/techLevels/wildlands/items/taskTypes/tasks/cities）
 func (h *AdminHandler) AdminEzfyData(c *gin.Context) {
+	// ★ 2026-10-02 玩家道具使用流水（数据管理 → 道具使用，只读）：
+	//   按「玩家ID / 昵称 / 道具名」搜索，附昵称列，倒序展示最近消耗记录。
+	if c.Param("table") == "itemUseLogs" {
+		page, offset, size := pageOf(c, 10)
+		word := strings.TrimSpace(c.Query("word"))
+		base := h.DB.Table("ezfy_item_use_logs").
+			Select("ezfy_item_use_logs.id, ezfy_item_use_logs.user_id, ezfy_item_use_logs.cfg_id, " +
+				"ezfy_item_use_logs.item_name, ezfy_item_use_logs.item_type, ezfy_item_use_logs.count, " +
+				"ezfy_item_use_logs.reason, " +
+				"DATE_FORMAT(ezfy_item_use_logs.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, ezfy_profile.nickname").
+			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.user_id = ezfy_item_use_logs.user_id")
+		if word != "" {
+			// 数字既可能是「用户ID」也可能是玩家在游戏里看到的「游戏ID」(game_uid)，或道具配置ID(cfg_id)
+			if id, err := strconv.Atoi(word); err == nil && id > 0 {
+				base = base.Where("ezfy_item_use_logs.user_id = ? OR ezfy_profile.game_uid = ? OR ezfy_item_use_logs.cfg_id = ?", id, id, id)
+			} else {
+				base = base.Where("(ezfy_profile.nickname LIKE ? OR ezfy_item_use_logs.item_name LIKE ?)", "%"+word+"%", "%"+word+"%")
+			}
+		}
+		var total int64
+		base.Count(&total)
+		var rows []map[string]interface{}
+		base.Order("ezfy_item_use_logs.id DESC").Offset(offset).Limit(size).Find(&rows)
+		resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
+		return
+	}
 	// ★ 2026-09-28 玩家钻石流水（数据管理 → 钻石流水，只读）：
 	//   按「玩家ID」或「昵称」搜索，附昵称列，倒序展示最近流水。
 	if c.Param("table") == "diamondLogs" {

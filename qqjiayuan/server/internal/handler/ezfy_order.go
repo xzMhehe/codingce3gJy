@@ -1098,7 +1098,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★ 走到这里所有校验都过了，才真正扣掉集结令（失败路径不能白扣玩家道具）
 	if gather > 0 {
 		for i := 0; i < gather; i++ {
-			h.consumeItem(uid, ezfyGatherItemID)
+			h.consumeItem(uid, ezfyGatherItemID, "出征集结令")
 		}
 	}
 	order := model.EzfyOrder{

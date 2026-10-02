@@ -656,7 +656,7 @@ func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId 
 	if h.itemCount(city.UserID, ezfySkillBookItemID) <= 0 {
 		return "没有「军官技能书」，可在商城购买"
 	}
-	h.consumeItem(city.UserID, ezfySkillBookItemID)
+	h.consumeItem(city.UserID, ezfySkillBookItemID, "军官学技能")
 	skills = append(skills, cfg.Name)
 	h.saveOfficerSkills(o, skills)
 	return ""
@@ -2646,7 +2646,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		return
 	}
 	msg, ok := h.officerStarUp(&city, id)
-	h.consumeItem(uid, ezfyStarItemID)
+	h.consumeItem(uid, ezfyStarItemID, "军官升星")
 	if !ok {
 		h.fail(c, msg)
 		return
@@ -2697,7 +2697,7 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 		resp.ParamError(c, "没有「军官改名卡」，可在商城购买")
 		return
 	}
-	h.consumeItem(uid, ezfyOfficerRenameCardItemID)
+	h.consumeItem(uid, ezfyOfficerRenameCardItemID, "军官改名")
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
 		"name": name, "update_time": time.Now(),
 	})

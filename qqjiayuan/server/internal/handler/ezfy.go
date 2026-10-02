@@ -1556,7 +1556,7 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 		return "资源不足"
 	}
 	if needBlueprint {
-		h.consumeItem(city.UserID, ezfyBlueprintItemID)
+		h.consumeItem(city.UserID, ezfyBlueprintItemID, "建筑升级")
 	}
 	buildTech := h.techMap(city.ID)[11]
 	now := time.Now().UnixMilli()
@@ -1641,7 +1641,7 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 	city.Gold -= needGold
 	h.saveCityRes(city)
 	if needBlueprint > 0 {
-		h.consumeItemN(city.UserID, ezfyBlueprintItemID, needBlueprint)
+		h.consumeItemN(city.UserID, ezfyBlueprintItemID, needBlueprint, "建筑升级")
 	}
 	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
@@ -2210,8 +2210,8 @@ func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
 	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count+count)
 }
 
-func (h *EzfyHandler) consumeItem(uid uint, cfgId int) {
-	h.consumeItemN(uid, cfgId, 1)
+func (h *EzfyHandler) consumeItem(uid uint, cfgId int, reason ...string) {
+	h.consumeItemN(uid, cfgId, 1, reason...)
 }
 
 // ezfyBestSpeedItem 背包里某类加速道具（ezfyItemTypeBuildSpeed / TrainSpeed / TechSpeed）中
@@ -2239,7 +2239,8 @@ func (h *EzfyHandler) ezfyBestSpeedItem(uid uint, itemType int) int {
 //
 // ★ 批量道具（如经验书一次用几千本）必须走这个 —— 原来循环里逐本调 consumeItem，
 // 一次请求就是几千条 SELECT + UPDATE。
-func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int) {
+// reason：消耗原因（写进「道具使用」流水，管理端可查），不传时默认「道具消耗」。
+func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int, reason ...string) {
 	if n <= 0 {
 		return
 	}
@@ -2249,9 +2250,29 @@ func (h *EzfyHandler) consumeItemN(uid uint, cfgId, n int) {
 	}
 	if n >= it.Count {
 		h.DB.Delete(&it)
+	} else {
+		h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count-n)
+	}
+	rs := "道具消耗"
+	if len(reason) > 0 && reason[0] != "" {
+		rs = reason[0]
+	}
+	h.logItemUse(uid, cfgId, n, rs)
+}
+
+// logItemUse 记录道具消耗流水（管理端「数据管理 → 道具使用」查看，用于核实「丢道具」反馈）
+func (h *EzfyHandler) logItemUse(uid uint, cfgId, count int, reason string) {
+	if count <= 0 {
 		return
 	}
-	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count-n)
+	itemName, itemType := "", 0
+	if cfg := ezfyCfg.item(cfgId); cfg != nil {
+		itemName, itemType = cfg.Name, cfg.ItemType
+	}
+	h.DB.Create(&model.EzfyItemUseLog{
+		UserId: uid, CfgId: cfgId, ItemName: itemName, ItemType: itemType,
+		Count: count, Reason: reason,
+	})
 }
 
 func (h *EzfyHandler) addCityEffect(cityId uint, effectType, param1 int, hours int64) {
@@ -2350,7 +2371,7 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 			used = maxBooks
 		}
 		h.addOfficerExp(city, o.ID, per*used)
-		h.consumeItemN(uid, cfgId, int(used))
+		h.consumeItemN(uid, cfgId, int(used), "使用道具")
 		msg := fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, per*used)
 		if used < int64(count) {
 			msg += fmt.Sprintf("（已达%d级上限，本次只消耗%d本，其余%d本留在背包）",
@@ -2408,14 +2429,14 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}).Error; err != nil {
 			return "资源累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 粮食/钢铁/石油/稀矿各+%d", param)
 	case 2:
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("gold", ezfyResAddExpr("gold", param)).Error; err != nil {
 			return "黄金累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 黄金+%d", param)
 	// ★ 2026-09-28 单资源礼包（2钻礼包2~5，ItemType 27~30）：
 	//   与黄金包(ItemType 2)同款实现，各自只加一种资源，无条件累加不截上限。
@@ -2424,49 +2445,49 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			Update("food", ezfyResAddExpr("food", param)).Error; err != nil {
 			return "粮食累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 粮食+%d", param)
 	case 28: // 钢铁包
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("steel", ezfyResAddExpr("steel", param)).Error; err != nil {
 			return "钢铁累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 钢铁+%d", param)
 	case 29: // 石油包
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("oil", ezfyResAddExpr("oil", param)).Error; err != nil {
 			return "石油累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 石油+%d", param)
 	case 30: // 稀矿包
 		if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
 			Update("rare", ezfyResAddExpr("rare", param)).Error; err != nil {
 			return "稀矿累加失败: " + err.Error()
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 稀矿+%d", param)
 	case 3:
 		err = h.speedUpBuilding(city, recordId, param)
 		if err != "" {
 			return err
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前建筑升级-%d分钟", param)
 	case 4:
 		err = h.speedUpTrain(city, recordId, param)
 		if err != "" {
 			return err
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前训练队列-%d分钟", param)
 	case 5:
 		err = h.speedUpTech(city, param)
 		if err != "" {
 			return err
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前科技研究-%d分钟", param)
 	// ★ 2026-09-27 百分比加速道具（ItemType 24/25/26，Param1 = 30/60/80）：
 	//   按「剩余时间」直接减 param%，每次使用都基于最新剩余时长（可叠加）。
@@ -2489,7 +2510,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
 			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), b.EndTime, param))
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前建筑升级剩余时间减少%d%%", param)
 	case 25: // 训练加速%
 		var q model.EzfyTrainQueue
@@ -2507,7 +2528,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).
 			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), q.EndTime, param))
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前训练队列剩余时间减少%d%%", param)
 	case 26: // 科技加速%
 		var t model.EzfyCityTech
@@ -2518,13 +2539,13 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
 			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), t.EndTime, param))
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前科技研究剩余时间减少%d%%", param)
 	case 6:
 		return "建筑图纸将在建筑升级到10级时自动消耗"
 	case 7:
 		h.addCityEffect(city.ID, 1, int(param), 24)
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
 		// ★ 2026-10-02 用户要求：免战保护令(24小时) 也要有 24 小时冷却
@@ -2535,7 +2556,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return fmt.Sprintf("免战保护令冷却中, 剩余%d小时", remainH)
 		}
 		h.addCityEffect(city.ID, 2, 0, param)
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", uid).Update("peace_cool_until", now+24*3600000)
 		return fmt.Sprintf("使用成功: 城市免战保护%d小时(冷却24小时)", param)
 	case 9: // 招生简章: 立即刷新军校候选(不占每日次数)
@@ -2545,7 +2566,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		if err := h.refreshRecruitFree(uid); err != "" {
 			return err
 		}
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return "使用成功: 军校候选名将已刷新"
 	case 10: // 经验书
 		o := h.officerOf(city.ID, officerId)
@@ -2553,7 +2574,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return "军官不存在"
 		}
 		h.addOfficerExp(city, o.ID, param)
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: %s 获得%d经验", o.Name, param)
 	case 11: // 军官技能书: 免费学一个技能
 		o := h.officerOf(city.ID, officerId)
@@ -2578,7 +2599,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		skills = append(skills, sk.Name)
 		h.saveOfficerSkills(o, skills)
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: %s 学会了「%s」", o.Name, sk.Name)
 	case 12: // 军官洗点卡（重修书）
 		// ★ 用户规则（原话）：「洗点就是洗点成原来军官池子武将的属性，等级不变；
@@ -2609,7 +2630,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			"base_military": bm, "base_logistics": bl, "base_learning": be,
 			"free_points": free, "update_time": time.Now(),
 		})
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		starPts := 0
 		if o.StarPoints > 0 {
 			starPts = o.StarPoints
@@ -2631,7 +2652,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			return fmt.Sprintf("星级已达上限(%d星)", ezfyStarMax())
 		}
 		msg, ok := h.officerStarUp(city, officerId)
-		h.consumeItem(uid, cfgId)
+		h.consumeItem(uid, cfgId, "使用道具")
 		if !ok {
 			return msg
 		}

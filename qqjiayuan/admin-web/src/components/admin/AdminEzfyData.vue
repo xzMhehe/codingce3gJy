@@ -18,12 +18,12 @@
           </div>
           <i class="el-icon-question" style="margin-left:6px;color:#909399;cursor:pointer" />
         </el-tooltip>
-        <el-input v-model="word" :placeholder="table === 'diamondLogs' ? '玩家ID / 昵称搜索' : '名称 / ID 搜索'" clearable style="width:200px"
+        <el-input v-model="word" :placeholder="searchPh" clearable style="width:200px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <!-- ★ 2026-09-28 钻石流水是只读视图，隐藏「新增」按钮 -->
-        <el-button v-if="table !== 'diamondLogs'" type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
+        <!-- ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，隐藏「新增」按钮 -->
+        <el-button v-if="!isReadOnly" type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
         <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 用户要求从玩家信息管理移到这里 -->
         <el-button v-if="table === 'items'" type="warning" plain icon="el-icon-present" @click="openItemGrant">发放道具</el-button>
         <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
@@ -46,8 +46,8 @@
         </el-table-column>
         <!-- ★ 操作按钮统一成图标按钮（与其他二战页面一致，原为「编辑/删除」文字按钮）；
              ★ 2026-09-27 套装装备配置（宝箱）专属：加「奖池」按钮，开箱奖池在弹窗里维护（宝箱是套装装备唯一产出渠道）；
-             ★ 2026-09-28 钻石流水是只读视图，不渲染操作列 -->
-        <el-table-column v-if="table !== 'diamondLogs'" label="操作" width="160" align="center" fixed="right">
+             ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，不渲染操作列 -->
+        <el-table-column v-if="!isReadOnly" label="操作" width="160" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button v-if="table === 'chests'" size="mini" type="success" plain icon="el-icon-s-grid" title="配置奖池" @click="openChestPool(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
@@ -389,6 +389,18 @@ const COLS = {
     { k: 'balance', n: '变动后余额', w: 110 },
     { k: 'reason', n: '变动原因', minW: 160 },
     { k: 'created_at', n: '发生时间', minW: 150 }
+  ],
+  // ★ 2026-10-02 玩家道具使用流水（只读）：按玩家ID/昵称/道具名搜索；created_at 由后端格式化好
+  itemUseLogs: [
+    { k: 'id', n: '记录ID', w: 80 },
+    { k: 'user_id', n: '玩家ID', w: 90 },
+    { k: 'nickname', n: '玩家昵称', w: 120 },
+    { k: 'cfg_id', n: '道具ID', w: 80 },
+    { k: 'item_name', n: '道具名', w: 120 },
+    { k: 'item_type', n: '道具类型', w: 90, dict: 'itemType' },
+    { k: 'count', n: '数量', w: 70 },
+    { k: 'reason', n: '消耗原因', minW: 140 },
+    { k: 'created_at', n: '发生时间', minW: 150 }
   ]
 }
 
@@ -571,7 +583,9 @@ export default {
         { k: 'taskTypes', n: '任务类型' },
         { k: 'tasks', n: '任务配置' },
         // ★ 2026-09-28 玩家钻石流水（只读查看，按玩家ID/昵称搜索）
-        { k: 'diamondLogs', n: '钻石流水' }
+        { k: 'diamondLogs', n: '钻石流水' },
+        // ★ 2026-10-02 玩家道具使用流水（只读查看，按玩家ID/昵称/道具名搜索）
+        { k: 'itemUseLogs', n: '道具使用' }
       ],
       moved: [
         { k: 'buildings', n: '建筑配置', to: '建筑管理 → 总建筑配置' },
@@ -604,6 +618,13 @@ export default {
   },
   computed: {
     cols () { return COLS[this.table] || [] },
+    // 只读视图（钻石流水 / 道具使用）：无新增、无编辑、无删除操作列
+    isReadOnly () { return this.table === 'diamondLogs' || this.table === 'itemUseLogs' },
+    searchPh () {
+      if (this.table === 'diamondLogs') return '玩家ID / 昵称搜索'
+      if (this.table === 'itemUseLogs') return '玩家ID / 昵称 / 道具名搜索'
+      return '名称 / ID 搜索'
+    },
     // 任务配置的「任务分类」要选类型名而不是填数字 ID → 动态注入任务类型下拉
     formFields () {
       const list = FORMS[this.table] || []
