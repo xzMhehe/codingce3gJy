@@ -2677,12 +2677,23 @@ func ezfyReportCategoryName(cat int) string {
 //   标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对，
 //   city_id 为 0 或 NULL 的老战报都走这条路。新战报（city_id>0）仍走第一分支；
 //   无匹配订单的老防守/系统战报无法归属城市，仅在「全部」视图展示。
+// ★ 2026-10-02 修复「本城战报看不到」：老防守战报（被侦查/被掠夺/城破/守卫等）
+//   city_id=0/NULL 且标题**只有城市名、无坐标**（如「被掠夺报告: 无忧」），
+//   上面两条路（city_id 直配、标题坐标反查出征订单）都匹配不上，从城市视角全部消失。
+//   这里加第三条路：按标题包含的**城名**反查我的 ezfy_city 归属该城。
 func ezfyCityReportCond(cityId int64) string {
-	return fmt.Sprintf(`(city_id = %d OR ((city_id = 0 OR city_id IS NULL) AND EXISTS (
-		SELECT 1 FROM ezfy_order o
-		WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
-		  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
-	)))`, cityId, cityId)
+	return fmt.Sprintf(`(city_id = %d OR ((city_id = 0 OR city_id IS NULL) AND (
+		EXISTS (
+			SELECT 1 FROM ezfy_order o
+			WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
+			  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
+		)
+		OR EXISTS (
+			SELECT 1 FROM ezfy_city ct
+			WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
+			  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
+		)
+	)))`, cityId, cityId, cityId)
 }
 
 // ezfyReportCounts 统计军情警讯(1)/战斗报告(2)的**真实**数量（tab 徽标数字）。
