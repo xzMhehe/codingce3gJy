@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -1147,11 +1149,40 @@ func (h *AdminHandler) AdminEzfyStats(c *gin.Context) {
 	})
 }
 
+// 维护开关内存缓存（5 秒）。
+// ★ 2026-10-02 线上 1核1G CPU 100% 优化：EzfyMaintGate 中间件挂在所有 /games/ezfy/* 路由上，
+//   原本每个请求都查 settings 表（~8 次/秒），与战力榜全表扫描叠加打满 MySQL 单核。
+//   维护开关极少变化，缓存 5 秒对「开关维护」的响应速度几乎无感知；AdminEzfyServerSet 写入后
+//   主动失效，下次请求立即重读。
+var (
+	maintCacheMu     sync.Mutex
+	maintCacheAt     int64
+	maintCacheOn     string
+	maintCacheNotice string
+)
+
+func ezfyMaintStatus(db *gorm.DB) (on, notice string) {
+	now := time.Now().UnixMilli()
+	maintCacheMu.Lock()
+	defer maintCacheMu.Unlock()
+	if maintCacheAt > 0 && now-maintCacheAt < 5000 {
+		return maintCacheOn, maintCacheNotice
+	}
+	maintCacheAt = now
+	db.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance'").Scan(&maintCacheOn)
+	db.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance_notice'").Scan(&maintCacheNotice)
+	return maintCacheOn, maintCacheNotice
+}
+
+func ezfyMaintInvalidate() {
+	maintCacheMu.Lock()
+	maintCacheAt = 0
+	maintCacheMu.Unlock()
+}
+
 // AdminEzfyServer 服务器维护状态
 func (h *AdminHandler) AdminEzfyServer(c *gin.Context) {
-	var on, notice string
-	h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance'").Scan(&on)
-	h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance_notice'").Scan(&notice)
+	on, notice := ezfyMaintStatus(h.DB)
 	var players, cities int64
 	h.DB.Model(&model.EzfyProfile{}).Count(&players)
 	h.DB.Model(&model.EzfyCity{}).Count(&cities)
@@ -1174,6 +1205,7 @@ func (h *AdminHandler) AdminEzfyServerSet(c *gin.Context) {
 	}
 	xySettingSet(h.DB, "ezfy_maintenance", val)
 	xySettingSet(h.DB, "ezfy_maintenance_notice", strings.TrimSpace(in.Notice))
+	ezfyMaintInvalidate() // 失效缓存，下次请求立即重读新值
 	if in.On {
 		resp.OK(c, gin.H{"msg": "二战风云已进入维护模式，玩家将无法进行游戏操作"})
 	} else {
@@ -1184,10 +1216,8 @@ func (h *AdminHandler) AdminEzfyServerSet(c *gin.Context) {
 // EzfyMaintGate 服务器维护拦截（维护中所有游戏接口统一返回维护公告）
 func (h *EzfyHandler) EzfyMaintGate() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var on, notice string
-		h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance'").Scan(&on)
+		on, notice := ezfyMaintStatus(h.DB)
 		if on == "1" {
-			h.DB.Model(&model.Setting{}).Select("`value`").Where("`key` = 'ezfy_maintenance_notice'").Scan(&notice)
 			if strings.TrimSpace(notice) == "" {
 				notice = "服务器维护中，请稍后再来"
 			}

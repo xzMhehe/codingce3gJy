@@ -4884,19 +4884,17 @@ export default {
       if (!c || c.cap_unlimited || !this.orderCapApplies) return false
       return this.orderTroopTotal > (c.troop_cap || 0)
     },
-    // 上限文案：开关关掉时显示「无上限」，没算过时显示 —
+    // 上限文案：没算过时显示 —；运输(5)也纳入携带上限（2026-10-02 用户反馈「运输无上限是bug」）
     orderCapText () {
       const c = this.orderCalc
       if (!c) return '—'
-      // ★ 2026-09-29 运输(5) 无出征上限 → 显示「无上限」；派遣(8) 有上限，显示 troop_cap
-      //   ★ 2026-10-02 派遣(8) 非战斗状态/免战期间由后端返回 cap_unlimited=true → 同样显示「无上限」
-      if (!this.orderCapApplies) return '无上限'
+      // ★ 2026-10-02 派遣(8) 非战斗状态/免战期间由后端返回 cap_unlimited=true → 显示「无上限」；其余显示 troop_cap
       return c.cap_unlimited ? '无上限' : this.fmtN(c.troop_cap)
     },
-    // ★ 2026-09-29 修正：派遣(8)是城际调兵、要带部队，和普通出征一样有「出征兵力上限」卡控；
-    //   只有运输(5)是运货、无兵力上限（按城内现有）。前端/后端必须同一口径。
+    // ★ 2026-10-02 所有出征类型（含运输5）都做携带上限判定；
+    //   只有派遣(8)在非战斗状态/免战期间由后端 cap_unlimited=true 放行。
     orderCapApplies () {
-      return this.orderType !== 5
+      return true
     },
     // ★ 2026-09-28 随军资源：负重上限 = 所带兵种负重之和 × 装载技术加成。
     //   直接采用 [计算]（orderCalc.carry，后端 ezfyCarryCapOf 已含科技加成）作为唯一口径，
@@ -7854,13 +7852,11 @@ export default {
     //
     //   下列情况只按「城内现有」卡（返回 troopCount）：
     //     - 还没点过 [计算]（orderCalc 为空，上限未知）→ 不能凭空编一个上限；
-    //     - 管理端把「出征上限」开关关了（cap_unlimited）→ 本来就不限；
-    //     - 运输(5)/派遣(8) → 后端不校验兵力上限（见 orderCapApplies）。
+    //     - 管理端把「出征上限」开关关了（cap_unlimited）→ 本来就不限。
+    //   ★ 2026-10-02 运输(5)/派遣(8)也参与携带上限判定（orderCapApplies 恒 true）。
     orderQtyMax (id) {
       const own = this.troopCount(id)
       const c = this.orderCalc
-      // 运输(5)/派遣(8) 无出征上限 → 仍按「城内现有」卡
-      if (!this.orderCapApplies) return own
       // 上司关了上限开关 → 不限
       if (c && c.cap_unlimited) return own
       // ★ 攻略 2026-09-28：还没拿到出征上限(troop_cap)时，不能退回「城内总数」(own)，

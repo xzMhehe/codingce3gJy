@@ -451,8 +451,14 @@ func Run(db *gorm.DB, staticDir string) {
 		if !db.Migrator().HasIndex(&model.EzfyBattle{}, "idx_battle_def") {
 			db.Exec("CREATE INDEX idx_battle_def ON ezfy_battle(def_user_id)")
 		}
-		db.Exec("UPDATE ezfy_battle SET def_user_id = 0 WHERE def_user_id IS NULL")
-		db.Exec("UPDATE ezfy_battle SET def_cmd = '' WHERE def_cmd IS NULL")
+		// ★ 回填前先探测是否存在 NULL 行（LIMIT 1 走 idx_battle_def 秒回），
+		//   避免每次启动都对整表跑 UPDATE（重启 CPU 尖峰来源之一）。
+		if db.Raw("SELECT 1 FROM ezfy_battle WHERE def_user_id IS NULL LIMIT 1").Scan(&struct{ V int }{}).Error == nil {
+			db.Exec("UPDATE ezfy_battle SET def_user_id = 0 WHERE def_user_id IS NULL")
+		}
+		if db.Raw("SELECT 1 FROM ezfy_battle WHERE def_cmd IS NULL LIMIT 1").Scan(&struct{ V int }{}).Error == nil {
+			db.Exec("UPDATE ezfy_battle SET def_cmd = '' WHERE def_cmd IS NULL")
+		}
 	}
 
 	// 二战风云·军团积分（★ 2026-09-25 用户要求「军团积分 + 军团商城」）
@@ -502,7 +508,12 @@ func Run(db *gorm.DB, staticDir string) {
 	}
 	// ⚠️ 这条 MODIFY 每次启动都会执行，必须带上 COMMENT —— 否则会把列注释冲成空
 	//   （model.UserBadge.Sort 有 comment tag，但这里硬编码的 ALTER 覆盖了它）。
-	db.Exec("ALTER TABLE user_badges MODIFY COLUMN sort int DEFAULT 0 COMMENT '排序值'")
+	// ★ 加守卫：列注释已是「排序值」则跳过，避免每次启动白跑一条 DDL（重启 CPU 尖峰来源之一）。
+	var sortComment string
+	db.Raw("SELECT COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_badges' AND COLUMN_NAME = 'sort'").Scan(&sortComment)
+	if sortComment != "排序值" {
+		db.Exec("ALTER TABLE user_badges MODIFY COLUMN sort int DEFAULT 0 COMMENT '排序值'")
+	}
 	db.Exec("UPDATE user_badges SET granted_at = NOW() WHERE granted_at IS NULL")
 	// 清理已过期勋章（复刻诺哈：自动删除过期勋章）
 	db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")

@@ -3,6 +3,7 @@ package middleware
 import (
 	"database/sql"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,12 @@ const (
 	CtxUID   = "uid"
 	CtxUName = "uname"
 )
+
+// badgeCleanLastMs 上次执行「过期勋章清理」的毫秒时间戳。
+// ★ 2026-10-02 线上 1核1G CPU 100%：这里原本每个请求都跑一次
+//   DELETE FROM user_badges ...（~8 次/秒），MySQL 饱和时单条被放大到 30ms+，
+//   累计算得上行 25% 单核。改为 60 秒节流：过期勋章晚 1 分钟消失，玩家无感知。
+var badgeCleanLastMs int64 = 0
 
 // CORS 跨域
 func CORS() gin.HandlerFunc {
@@ -82,8 +89,12 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 				db.Exec("UPDATE users SET active_days = active_days + ?, last_active_date = ? WHERE id = ?", base, today, claims.UserID)
 			}
 		}
-		// 清理已过期会员勋章（复刻诺哈：过期勋章自动消失，节流执行）
-		db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")
+		// 清理已过期会员勋章（复刻诺哈：过期勋章自动消失）。
+		// ★ 60 秒节流：不再每个请求都 DELETE（见 badgeCleanLastMs 注释）。
+		if now := time.Now().UnixMilli(); now-atomic.LoadInt64(&badgeCleanLastMs) >= 60000 {
+			atomic.StoreInt64(&badgeCleanLastMs, now)
+			db.Exec("DELETE FROM user_badges WHERE expire_at IS NOT NULL AND expire_at < NOW()")
+		}
 		c.Next()
 	}
 }

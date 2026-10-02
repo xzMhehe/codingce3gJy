@@ -2303,6 +2303,19 @@ func (h *EzfyHandler) hasCityEffect(cityId uint, effectType int) bool {
 	return true
 }
 
+// hasAnyPeaceEffect 玩家名下**任意**城市是否有生效中的免战保护令（effect_type=2）。
+// ★ 2026-10-02 用户要求：免战保护令改为**全账号生效**——任一城用了保护令，
+//   该玩家所有城的自城派遣都放开携带上限（与单城保护令的「出征拦截」语义区分开）。
+// 走索引：ezfy_city_effect 联合唯一索引 (city_id,effect_type) + ezfy_city idx_user。
+func (h *EzfyHandler) hasAnyPeaceEffect(uid uint) bool {
+	var one int
+	err := h.DB.Raw(
+		"SELECT EXISTS(SELECT 1 FROM ezfy_city_effect e JOIN ezfy_city c ON c.id = e.city_id "+
+			"WHERE c.user_id = ? AND e.effect_type = 2 AND e.until_time > ?) AS x",
+		uid, time.Now().UnixMilli()).Scan(&one).Error
+	return err == nil && one == 1
+}
+
 // useItem 使用道具（支持批量：count 个；军官类道具需指定 officerId/skillId；
 // recordId：加速类道具指定目标（建筑升级记录 id / 训练队列 id），0 = 由后端自动挑最早的一条）
 // 复刻设计文档《QQ家园二战风云.txt》道具 #7 招生简章 / #8 经验书 / #9 军官技能书·重修书

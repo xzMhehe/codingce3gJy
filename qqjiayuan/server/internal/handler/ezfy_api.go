@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -1465,8 +1466,106 @@ func (h *EzfyHandler) WarStatus(c *gin.Context) {
 
 // ============ 排行榜 ============
 
+// ★ 2026-10-02 1核1G 线上 CPU 100% 优化：战力榜每次请求都全表扫描 ezfy_city /
+//   ezfy_city_troop / ezfy_city_building / ezfy_user_tech 四张表，而前端首页每 30 秒
+//   轮询 /view 时又连带调一次 /rank → 单核 MySQL 被查询洪水打满，所有请求排队变慢
+//   （同一个 DELETE 语句从 0.4ms 恶化到 30ms+）。这些底层数据（声望/战力/军团/军衔表）
+//   变化缓慢，做 30 秒内存缓存；过期后第一个请求重算，其余并发请求复用。
+//   玩家本人「军衔/晋升」依赖请求 uid，每次现算（rankMine），不缓存。
+type ezfyRankHeavy struct {
+	prestige []gin.H
+	troops   []gin.H
+	corps    []gin.H
+	ranks    []gin.H
+}
+
+var (
+	ezfyRankHeavyMu   sync.Mutex
+	ezfyRankHeavyCond = sync.NewCond(&ezfyRankHeavyMu)
+	ezfyRankHeavyAt   int64
+	ezfyRankHeavyData *ezfyRankHeavy
+	ezfyRankHeavyBusy bool
+)
+
+// ezfyRankHeavyGet 取排行缓存。返回 (data, true)=直接复用；返回 (nil, false)=
+// 调用方成为**单飞 owner**，负责重算并调 ezfyRankHeavyFinish 交账。
+// ★ 单飞：重启后所有玩家首页同时命中缓存过期 → 只有第一个真正全表扫描，
+//   其余请求 Cond.Wait 等它算完复用，避免 N 个并发全表扫描把 1 核打爆。
+func ezfyRankHeavyGet() (*ezfyRankHeavy, bool) {
+	ezfyRankHeavyMu.Lock()
+	defer ezfyRankHeavyMu.Unlock()
+	for {
+		now := time.Now().UnixMilli()
+		if ezfyRankHeavyData != nil && now-ezfyRankHeavyAt < 30000 {
+			return ezfyRankHeavyData, true
+		}
+		if !ezfyRankHeavyBusy {
+			ezfyRankHeavyBusy = true
+			return nil, false
+		}
+		ezfyRankHeavyCond.Wait()
+	}
+}
+
+func ezfyRankHeavyFinish(pre, tr, cr, rk []gin.H) *ezfyRankHeavy {
+	hv := &ezfyRankHeavy{prestige: pre, troops: tr, corps: cr, ranks: rk}
+	ezfyRankHeavyMu.Lock()
+	ezfyRankHeavyData = hv
+	ezfyRankHeavyAt = time.Now().UnixMilli()
+	ezfyRankHeavyBusy = false
+	ezfyRankHeavyMu.Unlock()
+	ezfyRankHeavyCond.Broadcast()
+	return hv
+}
+
+// rankMine 玩家本人军衔/晋升信息（依赖请求 uid，每次现算，不参与 30s 缓存）
+func (h *EzfyHandler) rankMine(uid uint) gin.H {
+	me := h.ensureProfile(uid)
+	var myCities int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&myCities)
+	meLv := ezfyProfileRank(&me)
+	mine := gin.H{
+		"rank_id": ezfyRankAt(meLv).ID, "rank_name": ezfyRankNameAt(meLv), "rank_post": ezfyRankPostAt(meLv),
+		"prestige": me.Prestige, "city_max": ezfyRankCityMaxAt(meLv), "city_count": myCities,
+		"rank_level": meLv,
+	}
+	// ★ 下一级晋升信息（声望门槛 + 所需宝物 + 背包现有量），供前端[晋升]按钮展示与校验
+	if meLv < len(ezfyCfg.rankList()) {
+		nr := ezfyCfg.rankList()[meLv]
+		tr := []gin.H{}
+		for _, r := range ezfyRankTreasureReqs(nr.ID) {
+			cfg := ezfyEquipCfgByName(r.Name)
+			have := int64(0)
+			if cfg != nil {
+				have = h.ezfyTreasureOwned(uid, cfg.ID)
+			}
+			tr = append(tr, gin.H{"name": r.Name, "count": r.Count, "have": have})
+		}
+		mine["next"] = gin.H{"id": nr.ID, "name": nr.Name, "post": nr.Post,
+			"need": nr.NeedPrestige, "treasures": tr}
+	}
+	return mine
+}
+
 func (h *EzfyHandler) Rank(c *gin.Context) {
 	h.cfgs()
+	uid := middleware.GetUID(c)
+	// ★ 30s 缓存命中：跳过 4 张全表扫描，直接复用底层数据（mine 每次现算）
+	if hv, ok := ezfyRankHeavyGet(); ok {
+		resp.OK(c, gin.H{"prestige": hv.prestige, "troops": hv.troops, "corps": hv.corps,
+			"ranks": hv.ranks, "mine": h.rankMine(uid)})
+		return
+	}
+	// 单飞 owner 路径：即使重算过程异常退出也要交账，否则并发等待的请求会永久阻塞
+	defer func() {
+		if r := recover(); r != nil {
+			ezfyRankHeavyMu.Lock()
+			ezfyRankHeavyBusy = false
+			ezfyRankHeavyMu.Unlock()
+			ezfyRankHeavyCond.Broadcast()
+			panic(r)
+		}
+	}()
 	// 声望榜
 	var profiles []model.EzfyProfile
 	h.DB.Order("prestige DESC").Limit(20).Find(&profiles)
@@ -1660,34 +1759,10 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 			"treasures": ezfyTreasureListText(ezfyRankTreasureReqs(r.ID)),
 		})
 	}
-	// 当前玩家的军衔与建城额度（军衔限制分城数量）
-	uid := middleware.GetUID(c)
-	me := h.ensureProfile(uid)
-	var myCities int64
-	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Count(&myCities)
-	meLv := ezfyProfileRank(&me)
-	mine := gin.H{
-		"rank_id": ezfyRankAt(meLv).ID, "rank_name": ezfyRankNameAt(meLv), "rank_post": ezfyRankPostAt(meLv),
-		"prestige": me.Prestige, "city_max": ezfyRankCityMaxAt(meLv), "city_count": myCities,
-		"rank_level": meLv,
-	}
-	// ★ 下一级晋升信息（声望门槛 + 所需宝物 + 背包现有量），供前端[晋升]按钮展示与校验
-	if meLv < len(ezfyCfg.rankList()) {
-		nr := ezfyCfg.rankList()[meLv]
-		tr := []gin.H{}
-		for _, r := range ezfyRankTreasureReqs(nr.ID) {
-			cfg := ezfyEquipCfgByName(r.Name)
-			have := int64(0)
-			if cfg != nil {
-				have = h.ezfyTreasureOwned(uid, cfg.ID)
-			}
-			tr = append(tr, gin.H{"name": r.Name, "count": r.Count, "have": have})
-		}
-		mine["next"] = gin.H{"id": nr.ID, "name": nr.Name, "post": nr.Post,
-			"need": nr.NeedPrestige, "treasures": tr}
-	}
-	resp.OK(c, gin.H{"prestige": prestigeRank, "troops": troopRank, "corps": corpsRank,
-		"ranks": ranks, "mine": mine})
+	// ★ 重计算完成：写入 30s 缓存（下一个请求直接命中），响应组装与缓存命中路径完全一致
+	hv := ezfyRankHeavyFinish(prestigeRank, troopRank, corpsRank, ranks)
+	resp.OK(c, gin.H{"prestige": hv.prestige, "troops": hv.troops, "corps": hv.corps,
+		"ranks": hv.ranks, "mine": h.rankMine(uid)})
 }
 
 // ============ 商城/背包 ============

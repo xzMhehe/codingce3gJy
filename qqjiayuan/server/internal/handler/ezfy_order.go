@@ -737,10 +737,11 @@ func (h *EzfyHandler) playerAtWar(uid uint) bool {
 	return false
 }
 
-// dispatchNoCap 自城派遣(8)是否放开携带上限：玩家处于免战（当前操作城免战保护中）或
-// 不处于战斗状态 → 无上限（油照常消耗）；处于战斗状态 → 正常上限。
+// dispatchNoCap 自城派遣(8)是否放开携带上限：玩家名下任一城有生效中的免战保护令
+// （★ 2026-10-02 用户要求：保护令**全账号生效**）或 不处于战斗状态 → 无上限（油照常消耗）；
+// 处于战斗状态 → 正常上限。
 func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
-	if h.hasCityEffect(city.ID, 2) {
+	if h.hasAnyPeaceEffect(uid) {
 		return true
 	}
 	return !h.playerAtWar(uid)
@@ -1028,21 +1029,19 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if int(marching) >= hq {
 		return fmt.Sprintf("司令部%d级, 同时只能出征%d支队伍", hq, hq)
 	}
-	if orderType != 5 {
-		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
-		//   ★ 管理端「出征上限」开关关掉时 capUnlimited=true → 完全不做这个校验
-		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)
-		// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（油照常消耗）
-		if orderType == 8 && h.dispatchNoCap(uid, city) {
-			capUnlimited = true
+	// ★ 2026-10-02 用户反馈「运输无上限是bug」：运输(5)也纳入携带上限校验（和其他出征一致）。
+	//   仅派遣(8)在非战斗状态/免战期间无上限（油照常消耗）。
+	carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)
+	// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（油照常消耗）
+	if orderType == 8 && h.dispatchNoCap(uid, city) {
+		capUnlimited = true
+	}
+	if !capUnlimited && total > carryCap {
+		msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
+		if gm := ezfyGatherMax(); gather < gm {
+			msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), gm)
 		}
-		if !capUnlimited && total > carryCap {
-			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
-			if gm := ezfyGatherMax(); gather < gm {
-				msg += fmt.Sprintf("。可使用集结令提高上限: 每个+%d, 单次最多%d个", ezfyGatherBonusPer(), gm)
-			}
-			return msg
-		}
+		return msg
 	}
 	distance := ezfyAbs(city.X-targetX) + ezfyAbs(city.Y-targetY)
 	if distance == 0 {
