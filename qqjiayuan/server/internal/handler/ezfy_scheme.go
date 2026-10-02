@@ -114,6 +114,12 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		h.fail(c, "计谋不存在或已下架")
 		return
 	}
+	// ★ 2026-10-02 用户要求：未实现的计谋一律卡控，提示暂未实现，不允许发动。
+	//   目前已实现：Kind=1 先发制人 / Kind=2 神兵天降 / Kind=3 战略转移。
+	if sc.Kind < 1 || sc.Kind > 3 {
+		h.fail(c, "「"+sc.Name+"」暂未实现, 敬请期待")
+		return
+	}
 	need := sc.Bullet
 	if need <= 0 {
 		need = 1
