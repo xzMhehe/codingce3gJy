@@ -4275,7 +4275,7 @@
       </div>
       <hr/>
       <div>小Q报时：{{ nowText }}</div>
-      <div>联系我们：QQ群 431442049</div>
+      <!-- <div>联系我们：QQ群 431442049</div> -->
     </div>
   </div>
 </template>
