@@ -604,6 +604,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	}
 	// ★ 管理端「出征上限」开关关掉时 capUnlimited=true（前端显示「不限」）
 	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, req.Officer)
+	// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（预览与下单同口径）
+	if req.OrderType == 8 && h.dispatchNoCap(uid, city) {
+		capUnlimited = true
+	}
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
@@ -702,6 +706,41 @@ func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string)
 		cap += int64(lead.Military) * int64(ezfyOfficerCapPerMil())
 	}
 	return cap, false
+}
+
+// playerAtWar 玩家是否处于「战斗状态」（个人宣战待生效/交战 或 所属军团宣战待生效/交战）。
+// ★ 2026-10-02 用户规则：自城派遣在非战斗状态下不设携带上限（守城兵可以自由调动），
+//   处于战斗状态则恢复正常上限（避免被调走兵力守不住城）。
+func (h *EzfyHandler) playerAtWar(uid uint) bool {
+	now := time.Now().UnixMilli()
+	var cnt int64
+	// 个人宣战：我方为攻/守方且状态 1(待生效)/2(交战) 且未过期
+	h.DB.Model(&model.EzfyWar{}).
+		Where("status IN (1,2) AND expire_time > ? AND (atk_user_id = ? OR def_user_id = ?)", now, uid, uid).
+		Count(&cnt)
+	if cnt > 0 {
+		return true
+	}
+	// 军团宣战：我所在军团为攻/守方且状态 1(待生效)/2(交战) 且未过期
+	if cid := h.corpsOfUser(uid); cid > 0 {
+		var wc int64
+		h.DB.Model(&model.EzfyCorpsWar{}).
+			Where("status IN (1,2) AND expire_time > ? AND (atk_corps_id = ? OR def_corps_id = ?)", now, cid, cid).
+			Count(&wc)
+		if wc > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// dispatchNoCap 自城派遣(8)是否放开携带上限：玩家处于免战（当前操作城免战保护中）或
+// 不处于战斗状态 → 无上限（油照常消耗）；处于战斗状态 → 正常上限。
+func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
+	if h.hasCityEffect(city.ID, 2) {
+		return true
+	}
+	return !h.playerAtWar(uid)
 }
 
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
@@ -990,6 +1029,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		// ★ 携带上限 = 司令部等级 × 1万 × 指挥艺术加成 + 集结令加成（每个集结令 +10 万）
 		//   ★ 管理端「出征上限」开关关掉时 capUnlimited=true → 完全不做这个校验
 		carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)
+		// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（油照常消耗）
+		if orderType == 8 && h.dispatchNoCap(uid, city) {
+			capUnlimited = true
+		}
 		if !capUnlimited && total > carryCap {
 			msg := fmt.Sprintf("司令部%d级, 携带上限%d万部队", hq, carryCap/10000)
 			if gm := ezfyGatherMax(); gather < gm {

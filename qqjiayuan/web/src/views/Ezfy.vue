@@ -4884,13 +4884,14 @@ export default {
       if (!c || c.cap_unlimited || !this.orderCapApplies) return false
       return this.orderTroopTotal > (c.troop_cap || 0)
     },
-    // 上限文案：开关关掉时显示「不限」，没算过时显示 —
+    // 上限文案：开关关掉时显示「无上限」，没算过时显示 —
     orderCapText () {
       const c = this.orderCalc
       if (!c) return '—'
-      // ★ 2026-09-29 运输(5) 无出征上限 → 显示「不限」；派遣(8) 有上限，显示 troop_cap
-      if (!this.orderCapApplies) return '不限'
-      return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
+      // ★ 2026-09-29 运输(5) 无出征上限 → 显示「无上限」；派遣(8) 有上限，显示 troop_cap
+      //   ★ 2026-10-02 派遣(8) 非战斗状态/免战期间由后端返回 cap_unlimited=true → 同样显示「无上限」
+      if (!this.orderCapApplies) return '无上限'
+      return c.cap_unlimited ? '无上限' : this.fmtN(c.troop_cap)
     },
     // ★ 2026-09-29 修正：派遣(8)是城际调兵、要带部队，和普通出征一样有「出征兵力上限」卡控；
     //   只有运输(5)是运货、无兵力上限（按城内现有）。前端/后端必须同一口径。

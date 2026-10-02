@@ -2527,9 +2527,17 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId)
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
+		// ★ 2026-10-02 用户要求：免战保护令(24小时) 也要有 24 小时冷却
+		now := time.Now().UnixMilli()
+		var prof model.EzfyProfile
+		if err := h.DB.Select("peace_cool_until").First(&prof, uid).Error; err == nil && prof.PeaceCoolUntil > now {
+			remainH := (prof.PeaceCoolUntil - now + 3599999) / 3600000
+			return fmt.Sprintf("免战保护令冷却中, 剩余%d小时", remainH)
+		}
 		h.addCityEffect(city.ID, 2, 0, param)
 		h.consumeItem(uid, cfgId)
-		return fmt.Sprintf("使用成功: 城市免战保护%d小时", param)
+		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", uid).Update("peace_cool_until", now+24*3600000)
+		return fmt.Sprintf("使用成功: 城市免战保护%d小时(冷却24小时)", param)
 	case 9: // 招生简章: 立即刷新军校候选(不占每日次数)
 		if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
 			return "需要先建造军校"

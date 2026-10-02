@@ -565,6 +565,9 @@ type EzfyProfile struct {
 	//   用于购买「钻石道具」（ezfy_cfg_item.price_diamond > 0）。
 	Diamond int64 `gorm:"default:0;comment:钻石" json:"diamond"`
 
+	// ★ 2026-10-02 免战保护令冷却：使用后 24 小时内不能再次使用（时间戳, 0 = 无冷却）
+	PeaceCoolUntil int64 `gorm:"default:0;comment:免战保护令冷却截止时间戳(ms, 0=无冷却)" json:"peace_cool_until"`
+
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
 
