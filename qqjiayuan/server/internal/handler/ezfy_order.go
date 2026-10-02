@@ -3317,7 +3317,7 @@ func ezfyReconSucceed(order *model.EzfyOrder) bool {
 func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetName string,
 	target *model.EzfyCity, defender []ezfyUnitGroup) string {
 	// 侦查方侦察技巧等级（科技12，0-10），决定报告能看清多少细节
-	scoutLv := h.techMap(order.CityId)[ezfyReconTechID]
+	scoutLv := h.techMap(uint(order.CityId))[ezfyReconTechID]
 	var b strings.Builder
 	fmt.Fprintf(&b, "公文报告:侦查报告\n我方一支部队对%s[%d，%d]进行了侦查。侦查过程中未受到任何阻拦。\n",
 		targetName, order.TargetX, order.TargetY)

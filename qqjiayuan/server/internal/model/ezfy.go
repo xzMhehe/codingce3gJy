@@ -468,6 +468,21 @@ type EzfyCfgLimit struct {
 	SysSellSteel int `gorm:"default:10;comment:钢铁回收比例(每100单位黄金)" json:"sys_sell_steel"`
 	SysSellOil   int `gorm:"default:20;comment:石油回收比例(每100单位黄金)" json:"sys_sell_oil"`
 	SysSellRare  int `gorm:"default:25;comment:稀矿回收比例(每100单位黄金)" json:"sys_sell_rare"`
+
+	// ============ 战力榜权重（★ 2026-10-02 兵力榜 → 战力榜）============
+	//
+	// 战力 = 科技战力 + 建筑战力 + 兵种战力；科技等级存用户级(全城共用)，
+	// 建筑/兵种按玩家「最好城市」(综合得分最高)计算，管理端可调权重。
+	//   · 科技每级 +power_tech_per_level（默认 120）
+	//   · 每项已研究科技 +power_tech_per_tech（默认 100）
+	//   · 建筑每级 +power_build_per_level（默认 80）
+	//   · 每拥有一种兵种类型 +power_troop_type（默认 300）
+	//   · 兵种数量按 count^power_troop_pow × 兵种质量/100 折算（默认 0.8 次方, 软化新老差距）
+	PowerTechPerLevel  int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
+	PowerTechPerTech   int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
+	PowerBuildPerLevel int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
+	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
+	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

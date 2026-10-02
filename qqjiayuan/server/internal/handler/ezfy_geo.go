@@ -1519,7 +1519,10 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02：侦察机每架侦查成功率%（0 无意义 → 回落默认 20）
-		ReconSuccessPct: ezfyReconSuccessPctDef}
+		ReconSuccessPct: ezfyReconSuccessPctDef,
+		// ★ 2026-10-02 战力榜权重缺行兜底（兵力榜 → 战力榜）
+		PowerTechPerLevel: 120, PowerTechPerTech: 100, PowerBuildPerLevel: 80,
+		PowerTroopType: 300, PowerTroopPow: 0.8}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim

@@ -2627,7 +2627,7 @@
           <!-- ★ 2026-09-24 用户要求：军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: rankTab === 'prestige' }" @click="rankTab = 'prestige'">军衔声望榜</a>|
-            <a href="javascript:;" :class="{ on: rankTab === 'troops' }" @click="rankTab = 'troops'">兵力榜</a>|
+            <a href="javascript:;" :class="{ on: rankTab === 'troops' }" @click="rankTab = 'troops'">战力榜</a>|
             <a href="javascript:;" :class="{ on: rankTab === 'corps' }" @click="rankTab = 'corps'">军团榜</a>|
             <a href="javascript:;" :class="{ on: rankTab === 'ranks' }" @click="rankTab = 'ranks'">军衔晋升表</a>
           </div>
@@ -2698,18 +2698,23 @@
           </table>
           </template>
 
-          <!-- 兵力榜 tab -->
+          <!-- 战力榜 tab（★ 2026-10-02 兵力榜 → 战力榜：科技/建筑/兵种柔和折算） -->
           <template v-if="rankTab === 'troops'">
-          <div class="panel-title">兵力榜</div>
+          <div class="panel-title">战力榜</div>
+          <div class="old-line gray">战力 = 科技 + 建筑 + 兵种（按你的最好城市折算）</div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 15%"><col style="width: 35%"><col style="width: 25%"><col style="width: 25%">
+              <col style="width: 13%"><col style="width: 25%"><col style="width: 22%"><col style="width: 13%"><col style="width: 9%"><col style="width: 9%"><col style="width: 9%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>城市</th><th>兵力</th></tr>
+            <tr><th>名次</th><th>统帅</th><th>城市</th><th>战力</th><th>科技</th><th>建筑</th><th>兵种</th></tr>
             <tr v-for="r in rankData.troops" :key="'rt' + r.rank" :class="rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
               <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.role_name }}</a></td>
-              <td>{{ r.city_name }}</td><td>{{ r.count }}</td>
+              <td>{{ r.city_name }}</td>
+              <td><b>{{ fmtN(r.power) }}</b></td>
+              <td>{{ fmtN(r.tech_power) }}</td>
+              <td>{{ fmtN(r.build_power) }}</td>
+              <td>{{ fmtN(r.troop_power) }}</td>
             </tr>
           </table>
           </template>

@@ -338,6 +338,17 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET recruit_cycle_mode = 2 WHERE recruit_cycle_mode IS NULL OR recruit_cycle_mode <= 0")
 
+		// ★ 2026-10-02 战力榜权重（兵力榜 → 战力榜）：科技每级/每项、建筑每级、兵种类型为整数；
+		//   兵种数量幂次为小数（默认 0.8，软化新老差距；0 / NULL 无意义 → 回落 0.8）。
+		addNumCol("power_tech_per_level", 120)
+		addNumCol("power_tech_per_tech", 100)
+		addNumCol("power_build_per_level", 80)
+		addNumCol("power_troop_type", 300)
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "power_troop_pow") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN power_troop_pow double DEFAULT 0.8")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET power_troop_pow = 0.8 WHERE power_troop_pow IS NULL OR power_troop_pow <= 0")
+
 		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -1474,12 +1475,59 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
 			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 	}
-	// 兵力榜(不含城防)——★ 每个玩家只出现一次，取他兵力最多的那座城
+	// 战力榜（★ 2026-10-02 兵力榜 → 战力榜，用户要求柔和科技/建筑/兵种，避免纯兵力碾压吓到新人）
+	//   战力 = 科技战力(用户级, 等级全城共用) + 建筑战力 + 兵种战力；
+	//   建筑/兵种按玩家「最好城市」(综合得分最高的城)计算，展示城市名也用该城。
+	//   权重读 ezfy_cfg_limit（管理端「二战系统配置」可调）：
+	//   科技每级 power_tech_per_level、每项已研究 power_tech_per_tech、
+	//   建筑每级 power_build_per_level、每兵种类型 power_troop_type、
+	//   兵种数量按 count^power_troop_pow × 质量/100（软化新老差距）。
+	lim := ezfyCfg.limit
+	pow := lim.PowerTroopPow
+	if pow <= 0 {
+		pow = 0.8
+	}
+	// 兵种质量 = 生命+防御+攻击(防/陆/空)+速度+射程, ÷100 → 每单位战力基数
+	troopQuality := func(id int) float64 {
+		if t := ezfyCfg.troop(id); t != nil {
+			return float64(t.Health+t.Defence+t.AtkDef+t.AtkGround+t.AtkAir+t.Speed+t.AttackRange) / 100
+		}
+		return 10
+	}
+	// 每城兵种战力（含城防 type=4）：Σ count^pow × 质量 + 兵种类型数 × 系数
 	var troops []model.EzfyCityTroop
-	h.DB.Where("troop_id < 17").Find(&troops)
-	sumByCity := map[int64]int64{}
+	h.DB.Find(&troops)
+	cityTroopScore := map[int64]float64{}
+	troopTypes := map[int64]map[int]bool{}
 	for _, t := range troops {
-		sumByCity[t.CityId] += t.Count
+		if t.Count <= 0 {
+			continue
+		}
+		if troopTypes[t.CityId] == nil {
+			troopTypes[t.CityId] = map[int]bool{}
+		}
+		if !troopTypes[t.CityId][t.TroopId] {
+			troopTypes[t.CityId][t.TroopId] = true
+			cityTroopScore[t.CityId] += float64(lim.PowerTroopType)
+		}
+		cityTroopScore[t.CityId] += math.Pow(float64(t.Count), pow) * troopQuality(t.TroopId)
+	}
+	// 每城建筑等级和 → 建筑战力
+	var builds []model.EzfyCityBuilding
+	h.DB.Find(&builds)
+	cityBuildScore := map[int64]float64{}
+	for _, b := range builds {
+		cityBuildScore[b.CityId] += float64(b.Level * lim.PowerBuildPerLevel)
+	}
+	// 用户级科技战力：Σ(等级×每级分) + 每项已研究 + 每项分
+	var userTechs []model.EzfyUserTech
+	h.DB.Find(&userTechs)
+	userTechScore := map[int64]float64{}
+	for _, ut := range userTechs {
+		if ut.Level <= 0 {
+			continue
+		}
+		userTechScore[int64(ut.UserId)] += float64(ut.Level*lim.PowerTechPerLevel) + float64(lim.PowerTechPerTech)
 	}
 	// 城市 → 归属玩家 / 城市名
 	var cities []model.EzfyCity
@@ -1490,39 +1538,59 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		cityUser[int64(c.ID)] = int64(c.UserID)
 		cityName[int64(c.ID)] = c.Name
 	}
-	// 每人取兵力最多的那座城
-	bestCount := map[int64]int64{}
+	// 每人「最好城市」= 建筑+兵种综合得分最高的城
 	bestCity := map[int64]int64{}
-	for cityID, cnt := range sumByCity {
-		uid := cityUser[cityID]
-		if cnt > bestCount[uid] {
-			bestCount[uid] = cnt
-			bestCity[uid] = cityID
+	bestScore := map[int64]float64{}
+	allCityIDs := map[int64]bool{}
+	for cid := range cityBuildScore {
+		allCityIDs[cid] = true
+	}
+	for cid := range cityTroopScore {
+		allCityIDs[cid] = true
+	}
+	for cid := range allCityIDs {
+		uid := cityUser[cid]
+		sc := cityBuildScore[cid] + cityTroopScore[cid]
+		if sc > bestScore[uid] {
+			bestScore[uid] = sc
+			bestCity[uid] = cid
 		}
 	}
-	type kv struct {
-		k int64
-		v int64
+	type pw struct {
+		uid   int64
+		power float64
+		tech  float64
+		build float64
+		troop float64
 	}
-	arr := []kv{}
-	for uid, cnt := range bestCount {
-		arr = append(arr, kv{k: uid, v: cnt})
+	all := map[int64]*pw{}
+	for uid, cid := range bestCity {
+		e := &pw{uid: uid, tech: userTechScore[uid],
+			build: cityBuildScore[cid], troop: cityTroopScore[cid]}
+		e.power = e.tech + e.build + e.troop
+		all[uid] = e
 	}
-	for i := 0; i < len(arr); i++ {
-		for j := i + 1; j < len(arr); j++ {
-			if arr[j].v > arr[i].v {
-				arr[i], arr[j] = arr[j], arr[i]
-			}
+	// 兜底：只有科技没有城的玩家（正常不会出现）
+	for uid, ts := range userTechScore {
+		if _, ok := all[uid]; !ok {
+			all[uid] = &pw{uid: uid, tech: ts, power: ts}
 		}
 	}
+	arr := make([]*pw, 0, len(all))
+	for _, v := range all {
+		arr = append(arr, v)
+	}
+	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
 	troopRank := []gin.H{}
 	for i, e := range arr {
 		if i >= 20 {
 			break
 		}
-		p := h.ensureProfile(uint(e.k))
-		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": cityName[bestCity[e.k]],
-			"role_name": p.Nickname, "user_id": e.k, "count": e.v})
+		p := h.ensureProfile(uint(e.uid))
+		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": cityName[bestCity[e.uid]],
+			"role_name": p.Nickname, "user_id": e.uid,
+			"power": int64(e.power), "tech_power": int64(e.tech),
+			"build_power": int64(e.build), "troop_power": int64(e.troop)})
 	}
 	// 军团榜
 	var corps []model.EzfyCorps
