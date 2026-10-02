@@ -350,7 +350,10 @@ func ezfyMigrateSeaCities(db *gorm.DB) {
 	db.Find(&cities)
 	moved := 0
 	for _, ct := range cities {
-		if ezfyTerrain(ct.X, ct.Y) != 8 {
+		// ★ 2026-10-02 修复「重启后玩家城市坐标变」：判定必须用**带覆盖表**的 ezfyTerrainEx。
+		//   管理端在 ezfy_map_tile 覆盖成沿海平原的格（玩家可建海城），纯算法 ezfyTerrain
+		//   仍是海洋(8) → 旧逻辑每次重启都把这类城搬到别处，玩家坐标「自己变」。
+		if ezfyTerrainEx(ct.X, ct.Y) != 8 {
 			continue
 		}
 		pos, ok := ezfyNearestCoastalPlain(db, ct.X, ct.Y)
