@@ -62,6 +62,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitGet(c *gin.Context) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
+		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
+		ReconSuccessPct: ezfyReconSuccessPctDef,
 		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
@@ -329,6 +331,8 @@ func (h *AdminHandler) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
+		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
+		ReconSuccessPct: ezfyReconSuccessPctDef,
 		// ★ 2026-09-25 各项资源的「资源最大值」（默认 21 亿）
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,

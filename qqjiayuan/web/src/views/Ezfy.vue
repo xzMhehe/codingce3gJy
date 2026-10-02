@@ -2692,7 +2692,8 @@
             <tr v-for="r in rankData.prestige" :key="'rp' + r.rank" :class="rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
               <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="openPlayer(r.user_id)">{{ r.name }}</a></td>
-              <td>{{ r.prestige }}</td><td>{{ r.rank_name }}</td>
+              <td>{{ r.prestige }}</td>
+              <td>{{ r.rank_name }}<span style="margin-left:4px" v-html="rankIcon(rankIdByName(r.rank_name))"></span></td>
             </tr>
           </table>
           </template>

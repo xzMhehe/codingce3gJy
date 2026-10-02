@@ -936,11 +936,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if h.isAllyCity(uid, targetId) {
 			return "不能攻击同盟成员的城市"
 		}
-		// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城。
-		//   （海军兵种的地形卡控在上面统一校验，这里只管海城/陆城城池交战）
-		if ezfyIsSeaCity(city) && !ezfyIsSeaCity(&tc) {
-			return "海城无法攻击陆城"
-		}
+		// ★ 2026-10-02 用户规则澄清：**海城的陆军可以攻击陆地**（陆城/陆野均可），
+		//   不再按「海城/陆城」卡控城池交战；海军兵种的目标地形限制已由上方统一校验
+		//   （ezfyNavalTargetAllowed：岛屿/海底森林/沿海平原，含建在其上的城市）。
+		//   即：只有海军兵种受地形限制，陆军/空军不受海城出身影响。
 		// ★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
 		//   目标城市处于免战保护期时直接拦截出征，避免部队白跑一趟。
 		if h.hasCityEffect(uint(targetId), 2) {
@@ -2207,8 +2206,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 侦查: 不战斗只报告情报, 部队随即返航
-	// 报告格式复刻 `参考材料/开发文档/侦察报告1.txt`:
-	//   玩家城市 → 资源数量/人口民心/建筑等级/城防数量/军队数量/将领等级/科技等级/最后活动时间
+	// 报告细节按**侦查方侦察技巧(科技12)等级**分级（见 scoutReportBody 注释）：
+	//   玩家城市 → 资源/人口民心/建筑/军队/将领/科技/最后在线时间（逐级解锁）
 	//   野地寇城 → 守军情况
 	if order.OrderType == 1 {
 		// ★ 侦查报告：返程时长同样只认 ezfyOneWayTravel
@@ -2218,6 +2217,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.ReturnTime = now + travel
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
+		// ★ 2026-10-02 用户规则：侦查成功率按**侦察机数量**概率（一架必成不对），
+		//   失败只发失败战报、不获取任何情报（部队照常返航，不损兵）。
+		if !ezfyReconSucceed(order) {
+			h.addReport(uid, 1, "侦查失败: "+targetName,
+				fmt.Sprintf("公文报告:侦查失败\n我方一支部队对%s[%d，%d]的侦查未能成功，未获取到任何情报，部队已返航。\n",
+					targetName, order.TargetX, order.TargetY), "", order.ID)
+			return
+		}
 		h.addReport(uid, 1, "侦查报告: "+targetName,
 			h.scoutReportBody(uid, order, targetName, target, defender), "", order.ID)
 		return
@@ -3257,12 +3264,60 @@ func ezfyAbs64(v int64) int64 {
 	return v
 }
 
+// ezfyReconPlaneCount 本次侦查携带的侦察机数量（决定侦查成功率）。
+func ezfyReconPlaneCount(order *model.EzfyOrder) int64 {
+	var n int64
+	for _, g := range parseGroups(order.Troops) {
+		if g.TroopId == 9 { // 侦察机（createOrder 已校验侦查只能带侦察机）
+			n += g.Count
+		}
+	}
+	return n
+}
+
+// ezfyReconSucceed 侦查是否成功：按侦察机数量概率判定。
+//
+// ★ 2026-10-02 用户规则：侦查成功率按**侦察机数量**平滑上升，梯度要陡，按数量级拉开
+//   （原 1 架 20%、10 架 89% 的累乘曲线太浅，改成数量级曲线）。曲线为 logistic：
+//     成功率 = cap × 1/(1 + e^-k·(log10(n) - x0))，n = 携带侦察机数。
+//     n=10≈11%  n=100≈26%  n=1千≈48%  n=1万≈69%  n=5万≈80%  n=10万≈84%
+//     cap = ezfy_cfg_limit.recon_success_pct（默认 95 = 封顶 95%），可在二战系统配置调整。
+func ezfyReconSucceed(order *model.EzfyOrder) bool {
+	n := ezfyReconPlaneCount(order)
+	if n <= 0 {
+		return false
+	}
+	// 封顶百分比（默认 95，0 无意义 → 回落默认）
+	capPct := ezfyCfg.limit.ReconSuccessPct
+	if capPct <= 0 || capPct > 100 {
+		capPct = ezfyReconSuccessPctDef
+	}
+	// 按数量级平滑上升的 logistic 曲线：x = log10(n)，天然 ≤ 封顶
+	x := math.Log10(float64(n))
+	rate := (capPct / 100) / (1 + math.Exp(-ezfyReconK*(x-ezfyReconX0)))
+	return rand.Float64() < rate
+}
+
 // addReport 战报写入
 // scoutReportBody 侦查报告正文
-// 玩家城市给出完整情报(资源/人口民心/建筑等级/城防/军队/将领/科技/最后活动时间),
-// 野地与寇城只给守军情况。格式取自 `参考材料/开发文档/侦察报告1.txt`。
+//
+// ★★ 2026-10-02 用户规则重做：报告细节受**侦查方侦察技巧(科技12)等级**卡控，
+// 不再让低等级侦察把别人「看个精光」：
+//
+//	<6 级：建筑/科技只能模糊看到有哪些（等级不清晰）；兵种只能模糊看到类别
+//	      （陆军/海军/空军/城防），数量无法查清
+//	 6 级：建筑、科技等级精确
+//	 7 级：城防 + 陆军兵种名与精确数量
+//	 8 级：海军、空军兵种名与精确数量
+//	 9 级：该城所有军官、谁是城守、等级
+//	10 级：玩家最后在线时间
+//
+// 野地与寇城（无城市建筑）保持原样只给守军情况。
+// 城市报告格式取自 `参考材料/开发文档/侦察报告1.txt`。
 func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetName string,
 	target *model.EzfyCity, defender []ezfyUnitGroup) string {
+	// 侦查方侦察技巧等级（科技12，0-10），决定报告能看清多少细节
+	scoutLv := h.techMap(order.CityId)[ezfyReconTechID]
 	var b strings.Builder
 	fmt.Fprintf(&b, "公文报告:侦查报告\n我方一支部队对%s[%d，%d]进行了侦查。侦查过程中未受到任何阻拦。\n",
 		targetName, order.TargetX, order.TargetY)
@@ -3308,7 +3363,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		target.Food, target.Steel, target.Oil, target.Rare, target.Gold)
 	fmt.Fprintf(&b, "人口%d 民心%d\n", target.Pop, target.Feelings)
 
-	// 建筑等级: 按建筑 id 排序, 同类多座依次列出
+	// 建筑: 按建筑 id 排序, 同类多座依次列出
 	names := map[int]string{}
 	levels := map[int][]int{}
 	ids := []int{}
@@ -3322,18 +3377,28 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		levels[cb.BuildingId] = append(levels[cb.BuildingId], cb.Level)
 	}
 	sort.Ints(ids)
-	b.WriteString("建筑等级 ")
-	for _, id := range ids {
-		b.WriteString(names[id])
-		for _, lv := range levels[id] {
-			fmt.Fprintf(&b, "%d,", lv)
+	// ★ 侦察技巧<6级: 只能模糊看到已有的建筑, 建筑等级不清晰
+	if scoutLv < 6 {
+		b.WriteString("建筑(等级不详): ")
+		for _, id := range ids {
+			b.WriteString(names[id])
+			b.WriteString(" ")
+		}
+	} else {
+		b.WriteString("建筑等级 ")
+		for _, id := range ids {
+			b.WriteString(names[id])
+			for _, lv := range levels[id] {
+				fmt.Fprintf(&b, "%d,", lv)
+			}
 		}
 	}
 	b.WriteString("\n")
 
-	// 城防 / 军队分列（★ 兵种名用被侦查方的阵营兵种名，与战报口径一致）
-	defText, armyText := "", ""
+	// 军队/城防分列（★ 兵种名用被侦查方的阵营兵种名，与战报口径一致）
 	defCamp := h.ensureProfile(target.UserID).Camp
+	var defTxt, armyTxt, navyTxt, airTxt []string
+	var hasDef, hasArmy, hasNavy, hasAir bool
 	for tid, cnt := range h.troopMap(target.ID) {
 		cfg := ezfyCfg.troop(tid)
 		if cfg == nil || cnt <= 0 {
@@ -3343,43 +3408,123 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		if name == "" {
 			name = cfg.Name
 		}
-		if cfg.Type == 4 {
-			defText += fmt.Sprintf("%s×%d ", name, cnt)
-		} else {
-			armyText += fmt.Sprintf("%s%d ", name, cnt)
+		switch cfg.Type {
+		case 1: // 海军
+			hasNavy = true
+			navyTxt = append(navyTxt, fmt.Sprintf("%s%d ", name, cnt))
+		case 2: // 陆军
+			hasArmy = true
+			armyTxt = append(armyTxt, fmt.Sprintf("%s%d ", name, cnt))
+		case 3: // 空军
+			hasAir = true
+			airTxt = append(airTxt, fmt.Sprintf("%s%d ", name, cnt))
+		case 4: // 城防
+			hasDef = true
+			defTxt = append(defTxt, fmt.Sprintf("%s×%d ", name, cnt))
 		}
 	}
-	b.WriteString("城防数量：" + defText + "\n")
-	b.WriteString("军队数量：" + armyText + "\n")
-
-	// 将领等级
-	officers := h.officerList(target.ID)
-	offText := ""
-	for _, o := range officers {
-		offText += fmt.Sprintf("%s(%d级)、", o.Name, o.Level)
+	if scoutLv < 7 {
+		// ★ 侦察技巧<7级: 兵种类型只能模糊查看, 数量无法查清
+		var cats []string
+		if hasDef {
+			cats = append(cats, "城防")
+		}
+		if hasArmy {
+			cats = append(cats, "陆军")
+		}
+		if hasNavy {
+			cats = append(cats, "海军")
+		}
+		if hasAir {
+			cats = append(cats, "空军")
+		}
+		if len(cats) > 0 {
+			b.WriteString("兵力(数量不明): " + strings.Join(cats, "、") + "\n")
+		} else {
+			b.WriteString("兵力: 无驻军\n")
+		}
+	} else {
+		// 7级: 城防+陆军精确; 8级: 海军+空军精确
+		if len(defTxt) > 0 {
+			b.WriteString("城防数量：" + strings.Join(defTxt, "") + "\n")
+		}
+		if len(armyTxt) > 0 {
+			b.WriteString("军队数量(陆军)：" + strings.Join(armyTxt, "") + "\n")
+		}
+		if scoutLv >= 8 {
+			if len(navyTxt) > 0 {
+				b.WriteString("军队数量(海军)：" + strings.Join(navyTxt, "") + "\n")
+			}
+			if len(airTxt) > 0 {
+				b.WriteString("军队数量(空军)：" + strings.Join(airTxt, "") + "\n")
+			}
+		} else {
+			// 7级: 海/空军仍模糊, 只提示类别存在
+			var cats []string
+			if hasNavy {
+				cats = append(cats, "海军")
+			}
+			if hasAir {
+				cats = append(cats, "空军")
+			}
+			if len(cats) > 0 {
+				b.WriteString("兵力(数量不明)：" + strings.Join(cats, "、") + "\n")
+			}
+		}
 	}
-	b.WriteString("将领等级：" + offText + "\n")
 
-	// 科技等级
-	techText := ""
+	// ★ 侦察技巧≥9级: 才能看到该城所有军官、谁是城守、等级
+	if scoutLv >= 9 {
+		officers := h.officerList(target.ID)
+		offText := ""
+		for _, o := range officers {
+			tag := ""
+			if o.Position == ezfyPositionGuard {
+				tag = "城守"
+			}
+			offText += fmt.Sprintf("%s(%d级)%s、", o.Name, o.Level, tag)
+		}
+		if offText == "" {
+			offText = "无"
+		}
+		b.WriteString("将领等级：" + offText + "\n")
+	}
+
+	// 科技: <6级 只能模糊查看已有科技, ≥6级 精确等级
 	techIDs := []int{}
 	tm := h.techMap(target.ID)
 	for id := range tm {
 		techIDs = append(techIDs, id)
 	}
 	sort.Ints(techIDs)
-	for _, id := range techIDs {
-		if cfg := ezfyCfg.tech(id); cfg != nil {
-			techText += fmt.Sprintf("%s%d ", cfg.Name, tm[id])
+	techText := ""
+	if scoutLv < 6 {
+		for _, id := range techIDs {
+			if cfg := ezfyCfg.tech(id); cfg != nil {
+				techText += cfg.Name + " "
+			}
+		}
+		b.WriteString("科技(等级不详)：" + techText + "\n")
+	} else {
+		for _, id := range techIDs {
+			if cfg := ezfyCfg.tech(id); cfg != nil {
+				techText += fmt.Sprintf("%s%d ", cfg.Name, tm[id])
+			}
+		}
+		b.WriteString("科技等级：" + techText + "\n")
+	}
+
+	// ★ 侦察技巧≥10级: 才能看到玩家最后在线时间（取账号最近活跃时间）
+	if scoutLv >= 10 {
+		var owner model.User
+		if err := h.DB.First(&owner, target.UserID).Error; err == nil && owner.LastActiveAt != nil {
+			b.WriteString("最后在线时间：" + owner.LastActiveAt.Format("2006-01-02 15:04:05") + "\n")
 		}
 	}
-	b.WriteString("科技等级：" + techText + "\n")
 
-	lastActive := ""
-	if target.UpdatedAt.Unix() > 0 {
-		lastActive = target.UpdatedAt.Format("2006-01-02 15:04:05")
+	if scoutLv < 10 {
+		fmt.Fprintf(&b, "（侦察技巧%d级, 部分情报无法查清）\n", scoutLv)
 	}
-	b.WriteString("最后活动时间：" + lastActive + "\n")
 	b.WriteString("侦查完成。")
 	return b.String()
 }

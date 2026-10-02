@@ -267,17 +267,6 @@ func ezfyTerrainNameEx(x, y int) string {
 	return ezfyTerrainName(ezfyTerrainEx(x, y))
 }
 
-// ezfyIsSeaCity 该城是否「海城」：建在沿海平原(9)上的城市。
-//
-// ★ 2026-10-02 用户规则：海城不能攻击陆城、陆地城市可以攻击海城。
-// 判定与建城选址同源（ezfyTerrainEx），管理端改地图地形后立即生效。
-func ezfyIsSeaCity(c *model.EzfyCity) bool {
-	if c == nil {
-		return false
-	}
-	return ezfyTerrainEx(c.X, c.Y) == ezfyTerrainCoastalPlain
-}
-
 // ezfyHasNavalTroops 出征部队里是否含有海军兵种（兵种 type=1：驱逐舰/潜艇/战列舰/航母）。
 //
 // ★ 2026-10-02 用户规则：海军兵种只能用于海战，出征攻打陆城时需卡控提示。
@@ -712,6 +701,14 @@ const (
 	ezfyTroopMaxDef = int64(5000000000)
 	// ★ 伤兵在营存活天数：默认 3 天，超时未恢复自动消失。
 	ezfyWoundExpireDaysDef = 3
+	// ★ 侦查成功率封顶（百分比，默认 95）：0 无意义 → 回落该值。
+	//   配合下面两个曲线参数：成功率 = cap × 1/(1 + e^-k·(log10(n)-x0))，n = 侦察机数。
+	//   k/x0 为曲线陡度/中点（10 架≈11%、1 千架≈48%、1 万≈69%、5 万≈80%、10 万≈84%）。
+	ezfyReconSuccessPctDef = 95.0
+	// ★ 侦查成功率的数量级曲线参数（用户要求梯度陡、按 10/1千/1万/5万/10万 拉开）。
+	//   k 越大越陡（接近阶跃）；x0 越大曲线越右移（同数量级成功率越低）。
+	ezfyReconK  = 1.0
+	ezfyReconX0 = 3.0
 	// ★ 资源数值安全上限：任何路径写入资源都不得超过它（约 1 万亿）。
 	//   远小于 int64 上限，仅用于兜底防溢出；游戏内实际生效的仍是各城「仓储上限」。
 	ezfyResSafeMax = int64(1000000000000)
@@ -1520,7 +1517,9 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径（线上现值 0.1 = 训练近乎免费）
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）
-		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef}
+		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
+		// ★ 2026-10-02：侦察机每架侦查成功率%（0 无意义 → 回落默认 20）
+		ReconSuccessPct: ezfyReconSuccessPctDef}
 	var lim model.EzfyCfgLimit
 	if err := db.First(&lim, 1).Error; err == nil {
 		c.limit = lim
