@@ -632,6 +632,7 @@ func (h *AdminHandler) AdminEzfyResCfgUpdate(c *gin.Context) {
 	if v, ok := vals["name"].(string); ok && v != "" {
 		newName = v
 	}
+	h.ezfyH().cfgsReload() // 资源名进进程内缓存，改完即时生效
 	resp.OK(c, gin.H{"msg": "「" + r.Name + "」已改名为「" + newName + "」"})
 }
 
@@ -648,5 +649,6 @@ func (h *AdminHandler) AdminEzfyResCfgReset(c *gin.Context) {
 		h.DB.Model(&model.EzfyCfgResource{}).Where("id = ?", d.ID).
 			Updates(map[string]interface{}{"name": d.Name, "short": d.Short, "sort": d.Sort})
 	}
+	h.ezfyH().cfgsReload() // 恢复默认后刷新进程内缓存
 	resp.OK(c, gin.H{"msg": "资源名称已恢复默认"})
 }

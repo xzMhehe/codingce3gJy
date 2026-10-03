@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -356,31 +357,68 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	ids := []uint{}
 	push := func(id uint) { ids = append(ids, id) }
 
+	// ★ 2026-10-03 性能：四个来源 + 在线人数彼此独立，并行打 RDS，
+	//   把首页 30s 轮询 chat/home 的串行查询压成一次往返（顺带清掉了重复的军团查询）。
+	var (
+		sys    []model.EzfyChat
+		cs     []model.EzfyCorpsChat
+		pms    []model.PrivateMessage
+		pub    []model.EzfyChat
+		online int64
+	)
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { // 系统
+		defer wg.Done()
+		var m []model.EzfyChat
+		h.DB.Where("talk_type = 0").Order("id DESC").Limit(10).Find(&m)
+		sys = m
+	}()
+	go func() { // 我的军团 + 军团聊天
+		defer wg.Done()
+		mc := h.myCorpsOf(uid)
+		if mc == nil {
+			return
+		}
+		var m []model.EzfyCorpsChat
+		h.DB.Where("corps_id = ?", mc.ID).Order("id DESC").Limit(10).Find(&m)
+		cs = m
+	}()
+	go func() { // 私聊(发给我的)
+		defer wg.Done()
+		var m []model.PrivateMessage
+		h.DB.Where("receiver_id = ?", uid).Order("id DESC").Limit(10).Find(&m)
+		pms = m
+	}()
+	go func() { // 世界(公共频道)
+		defer wg.Done()
+		var m []model.EzfyChat
+		h.DB.Where("channel = ? AND talk_type = 1", ezfyChanPublic).Order("id DESC").Limit(10).Find(&m)
+		pub = m
+	}()
+	go func() { // 在线人数
+		defer wg.Done()
+		var n int64
+		h.DB.Model(&model.EzfyProfile{}).Count(&n)
+		online = n
+	}()
+	wg.Wait()
+
 	// 系统
-	var sys []model.EzfyChat
-	h.DB.Where("talk_type = 0").Order("id DESC").Limit(10).Find(&sys)
 	for _, m := range sys {
 		rows = append(rows, row{"sys-" + strconv.Itoa(int(m.ID)), "系统", m.UserName, "", m.Content, m.CreatedAt})
 	}
 	// 军团(我的军团)
-	if cp := h.myCorpsOf(uid); cp != nil {
-		var cs []model.EzfyCorpsChat
-		h.DB.Where("corps_id = ?", cp.ID).Order("id DESC").Limit(10).Find(&cs)
-		for _, m := range cs {
-			push(m.UserId)
-			rows = append(rows, row{"corps-" + strconv.Itoa(int(m.ID)), "军团", m.UserName, "", m.Content, m.CreatedAt})
-		}
+	for _, m := range cs {
+		push(m.UserId)
+		rows = append(rows, row{"corps-" + strconv.Itoa(int(m.ID)), "军团", m.UserName, "", m.Content, m.CreatedAt})
 	}
 	// 私聊(发给我的)
-	var pms []model.PrivateMessage
-	h.DB.Where("receiver_id = ?", uid).Order("id DESC").Limit(10).Find(&pms)
 	for _, m := range pms {
 		push(m.SenderID)
 		rows = append(rows, row{"pm-" + strconv.Itoa(int(m.ID)), "私聊", "", "", m.Content, m.CreatedAt})
 	}
 	// 世界(公共频道)
-	var pub []model.EzfyChat
-	h.DB.Where("channel = ? AND talk_type = 1", ezfyChanPublic).Order("id DESC").Limit(10).Find(&pub)
 	for _, m := range pub {
 		push(m.UserId)
 		rows = append(rows, row{"pub-" + strconv.Itoa(int(m.ID)), "世界", m.UserName, "", m.Content, m.CreatedAt})
@@ -404,12 +442,8 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	for _, m := range sys {
 		uidOf["sys-"+strconv.Itoa(int(m.ID))] = 0
 	}
-	if cp := h.myCorpsOf(uid); cp != nil {
-		var cs []model.EzfyCorpsChat
-		h.DB.Where("corps_id = ?", cp.ID).Order("id DESC").Limit(10).Find(&cs)
-		for _, m := range cs {
-			uidOf["corps-"+strconv.Itoa(int(m.ID))] = m.UserId
-		}
+	for _, m := range cs {
+		uidOf["corps-"+strconv.Itoa(int(m.ID))] = m.UserId
 	}
 	for _, m := range pms {
 		uidOf["pm-"+strconv.Itoa(int(m.ID))] = m.SenderID
@@ -436,8 +470,6 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 		views = append(views, gin.H{"key": r.key, "tag": r.tag, "user_id": uidOf[r.key],
 			"user_name": r.user, "color": r.color, "content": r.content, "created_at": r.at})
 	}
-	var online int64
-	h.DB.Model(&model.EzfyProfile{}).Count(&online)
 	resp.OK(c, gin.H{"chats": views, "players": online})
 }
 

@@ -562,6 +562,10 @@ type ezfyConfigCache struct {
 	limit model.EzfyCfgLimit
 	// 二战聊天敏感词（独立维护页）
 	words []model.EzfyWordFilter
+	// 资源显示名配置（管理端可改名，前端读它替代写死「粮食/钢铁/…」）
+	// 预组装成 ezfyResCfgOf 的返回结构，读请求零 SQL（热接口 /res-cfg、/view 都靠它）
+	// 用 map[string]interface{} 而非 gin.H，避免本包混入 gin 依赖
+	resCfg map[string]interface{}
 }
 
 // ready 配置缓存是否已加载过。
@@ -1565,6 +1569,12 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 	var wds []model.EzfyWordFilter
 	db.Order("id").Find(&wds)
 	c.words = wds
+
+	// 资源显示名配置（管理端「资源名称维护」可改名；表为空回落内置默认）
+	// 预组装成返回结构，读侧（/res-cfg、/view）零 SQL。
+	var resRows []model.EzfyCfgResource
+	db.Order("sort, id").Find(&resRows)
+	c.resCfg = buildResCfgView(resRows)
 }
 
 // ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）

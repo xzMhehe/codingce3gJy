@@ -2292,15 +2292,77 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	today := time.Now().Format("2006-01-02")
 	yest := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	var signedToday, signedYest int64
-	h.DB.Model(&model.EzfySign{}).Where("user_id = ? AND sign_date = ?", uid, today).Count(&signedToday)
-	h.DB.Model(&model.EzfySign{}).Where("user_id = ? AND sign_date = ?", uid, yest).Count(&signedYest)
+	// ★ 2026-10-03 性能：以下 8 组只读查询互不依赖，并行打 RDS，
+	//   把 welfare 页的串行查询压成一次往返。
+	var (
+		signedToday, signedYest             int64
+		yestSign                            model.EzfySign
+		gifts                               = gin.H{}
+		city                                model.EzfyCity
+		profile                             model.EzfyProfile
+		trsSignedToday, trsSignedYest       int64
+		yestTrs                             model.EzfyTreasureSign
+		trsReward                           string
+	)
+	var wg sync.WaitGroup
+	wg.Add(8)
+	go func() { // 今日是否已签到
+		defer wg.Done()
+		var n int64
+		h.DB.Model(&model.EzfySign{}).Where("user_id = ? AND sign_date = ?", uid, today).Count(&n)
+		signedToday = n
+	}()
+	go func() { // 昨日签到记录（决定连续签到天数 +1）
+		defer wg.Done()
+		var n int64
+		h.DB.Model(&model.EzfySign{}).Where("user_id = ? AND sign_date = ?", uid, yest).Count(&n)
+		signedYest = n
+		if n > 0 {
+			h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&yestSign)
+		}
+	}()
+	go func() { // 三个礼包是否已领取（新手/每周/市政厅10级）
+		defer wg.Done()
+		g := gin.H{}
+		for _, t := range []string{"newbie", "weekly", "level10"} {
+			var n int64
+			h.DB.Model(&model.EzfyGift{}).Where("user_id = ? AND gift_type = ?", uid, t).Count(&n)
+			g[t] = n > 0
+		}
+		gifts = g
+	}()
+	go func() { // 主城
+		defer wg.Done()
+		city = h.getOrCreateCity(uid)
+	}()
+	go func() { // 玩家档案
+		defer wg.Done()
+		profile = h.ensureProfile(uid)
+	}()
+	go func() { // 宝物签到：今日状态
+		defer wg.Done()
+		var n int64
+		h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).Count(&n)
+		trsSignedToday = n
+	}()
+	go func() { // 宝物签到：昨日记录（决定宝物连续天数 +1）
+		defer wg.Done()
+		var n int64
+		h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, yest).Count(&n)
+		trsSignedYest = n
+		if n > 0 {
+			h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&yestTrs)
+		}
+	}()
+	go func() { // 宝物签到：今日已获得宝物名
+		defer wg.Done()
+		trsReward = h.ezfyTreasureRewardToday(uid, today)
+	}()
+	wg.Wait()
+
 	signCount := 1
 	if signedYest > 0 {
-		var s model.EzfySign
-		if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&s).Error; err == nil {
-			signCount = s.SignCount + 1
-		}
+		signCount = yestSign.SignCount + 1
 	}
 	rewards := []gin.H{}
 	for i, r := range ezfySignRewards {
@@ -2325,26 +2387,10 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 		}
 		rewards = append(rewards, gin.H{"day": i + 1, "reward": text})
 	}
-	// 礼包状态
-	// ★ 用户要求删掉「市政厅20/30/40级礼包」→ 这里只保留 新手/每周/市政厅10级
-	gifts := gin.H{}
-	for _, t := range []string{"newbie", "weekly", "level10"} {
-		var n int64
-		h.DB.Model(&model.EzfyGift{}).Where("user_id = ? AND gift_type = ?", uid, t).Count(&n)
-		gifts[t] = n > 0
-	}
-	city := h.getOrCreateCity(uid)
-	profile := h.ensureProfile(uid)
-	// ★ 2026-09-28 宝物签到状态（独立 7 天循环）
-	var trsSignedToday, trsSignedYest int64
-	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).Count(&trsSignedToday)
-	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, yest).Count(&trsSignedYest)
+	// ★ 2026-10-03 性能：礼包/主城/档案/宝物签到状态已在上方 WaitGroup 并行取好，这里只剩纯计算。
 	trsCount := 1
 	if trsSignedYest > 0 {
-		var ts model.EzfyTreasureSign
-		if err := h.DB.Where("user_id = ? AND sign_date = ?", uid, yest).First(&ts).Error; err == nil {
-			trsCount = ts.SignCount + 1
-		}
+		trsCount = yestTrs.SignCount + 1
 	}
 	resp.OK(c, gin.H{
 		"signed_today": signedToday > 0, "sign_count": signCount,
@@ -2353,7 +2399,7 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 		// ★ 2026-09-28 宝物签到
 		"treasure_signed_today": trsSignedToday > 0, "treasure_count": trsCount,
 		"treasure_qty":    ezfyTreasureSignQty(trsCount),
-		"treasure_reward": h.ezfyTreasureRewardToday(uid, today),
+		"treasure_reward": trsReward,
 	})
 }
 

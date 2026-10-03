@@ -2958,18 +2958,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 			"pop": cfg.Pop, "food_keep": cfg.FoodKeep,
 		})
 	}
-	var wounded []model.EzfyWounded
-	h.DB.Where("city_id = ?", city.ID).Order("type ASC, troop_id ASC").Find(&wounded)
-	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
-	wounded = h.filterExpiredWounded(wounded)
-
-	queues := []gin.H{}
-	var qs []model.EzfyTrainQueue
-	h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
-	for _, q := range qs {
-		queues = append(queues, gin.H{"id": q.ID, "troop_id": q.TroopId,
-			"name": ezfyCfg.troopName(q.TroopId, camp), "count": q.Count, "end_time": q.EndTime})
-	}
+	// ★ 2026-10-03 性能：wounded/queues 移到 wildlands 之后的批量并行块一起查（见下）。
 
 	// ★ 已研究的科技列表（供首页/统帅页展示）
 	//   原实现 `for _, t := range h.techMap(city.ID)` 把 **value(等级)** 当成了 tech_id 去查配置，
@@ -2997,20 +2986,94 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	//     前端拿不到 order_id 就调不了 /wild/stop-collect → 操作列只能显示[放弃]。
 	//     这里连订单 id 一起收(用 map 而不是 slice)，前端就能对采集中那行出[停止]。
 	gatherOrderByWild := map[int64]uint{}
-	var gatherOrders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
-		Find(&gatherOrders)
-	for _, o := range gatherOrders {
-		gatherOrderByWild[o.TargetId] = o.ID
-	}
-	// 空闲驻军: arrive_time=0 的驻守采集订单 → 野地列表显示「驻守(空闲)」+[开始采集]
-	var idleOrders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
-		Find(&idleOrders)
 	idleOrderByWild := map[int64]uint{}
-	for _, o := range idleOrders {
-		idleOrderByWild[o.TargetId] = o.ID
-	}
+	var (
+		wounded       []model.EzfyWounded
+		queues        []gin.H
+		marching      int64
+		occupying     int64
+		unreadReports int64
+		popUsed       int64
+		protected     bool
+		boost         bool
+		acct          string
+		ulv, uexp     int
+	)
+	// ★ 2026-10-03 性能：以下 10 条只读查询互相独立、且不依赖上面的
+	//   buildings/troops/techs/wildlands 组装，用 sync.WaitGroup 并行打 RDS，
+	//   把 30s 轮询 /view 的串行往返(~300ms+) 压到接近一次往返量。
+	//   gorm v2 链式调用并发安全；wg.Wait() 提供 happens-before，无数据竞争。
+	var wg sync.WaitGroup
+	wg.Add(10)
+	go func() { // 伤兵列表（内部含过期清理）
+		defer wg.Done()
+		var r []model.EzfyWounded
+		h.DB.Where("city_id = ?", city.ID).Order("type ASC, troop_id ASC").Find(&r)
+		wounded = h.filterExpiredWounded(r)
+	}()
+	go func() { // 训练队列
+		defer wg.Done()
+		var qs []model.EzfyTrainQueue
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
+		v := make([]gin.H, 0, len(qs))
+		for _, q := range qs {
+			v = append(v, gin.H{"id": q.ID, "troop_id": q.TroopId,
+				"name": ezfyCfg.troopName(q.TroopId, camp), "count": q.Count, "end_time": q.EndTime})
+		}
+		queues = v
+	}()
+	go func() { // 采集中驻守采集订单 → 野地列表带 order_id，前端可[停止]
+		defer wg.Done()
+		var gs []model.EzfyOrder
+		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).Find(&gs)
+		m := make(map[int64]uint, len(gs))
+		for _, o := range gs {
+			m[o.TargetId] = o.ID
+		}
+		gatherOrderByWild = m
+	}()
+	go func() { // 空闲驻军订单 → 野地列表「驻守(空闲)」+[开始采集]
+		defer wg.Done()
+		var is []model.EzfyOrder
+		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).Find(&is)
+		m := make(map[int64]uint, len(is))
+		for _, o := range is {
+			m[o.TargetId] = o.ID
+		}
+		idleOrderByWild = m
+	}()
+	go func() { // 出征中 / 占领中数量
+		defer wg.Done()
+		var m, o int64
+		h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 0", uid).Count(&m)
+		h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 1", uid).Count(&o)
+		marching, occupying = m, o
+	}()
+	go func() { // 未读战报
+		defer wg.Done()
+		var c int64
+		h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&c)
+		unreadReports = c
+	}()
+	go func() { // 已占用人口
+		defer wg.Done()
+		popUsed = h.cityPopUsed(city.ID)
+	}()
+	go func() { // 免战保护令（effect_type=2）
+		defer wg.Done()
+		protected = h.hasCityEffect(city.ID, 2)
+	}()
+	go func() { // 加速效果（effect_type=1）
+		defer wg.Done()
+		boost = h.hasCityEffect(city.ID, 1)
+	}()
+	go func() { // 家园账号 / 等级 / 经验
+		defer wg.Done()
+		a, l, e := h.ezfyUserBrief(uid)
+		acct, ulv, uexp = a, l, e
+	}()
+	wg.Wait()
+
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
 		sts := w.Status
@@ -3029,13 +3092,6 @@ func (h *EzfyHandler) View(c *gin.Context) {
 			"idle_order_id": idleOrderId, "gather_order_id": gatherOrderId})
 	}
 
-	var marching, occupying int64
-	h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 0", uid).Count(&marching)
-	h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 1", uid).Count(&occupying)
-	var unreadReports int64
-	h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&unreadReports)
-
-	acct, ulv, uexp := h.ezfyUserBrief(uid)
 	// ★ 2026-09-28 用户要求：首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
 	//   复用 getResourceCalc 的 total（净产量：产出 − 军队耗粮），保证两边数字永远一致。
 	resProd := gin.H{}
@@ -3088,8 +3144,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"game_uid":        profile.GameUID,
 		"home_num":        acct,
 		"current_city_id": city.ID,
-		"protected":       h.hasCityEffect(city.ID, 2),
-		"boost":           h.hasCityEffect(city.ID, 1),
+		"protected":       protected,
+		"boost":           boost,
 		"buildings":       buildingViews,
 		"building_pool":   buildingPool,
 		// ★ 军事区/资源区各自上限（分开下发）
@@ -3104,7 +3160,7 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"occupying":    occupying,
 		// ★ 占用人口 = 建筑占用人口 + 训练中未出厂的新兵占用（部队不占人口位置）。
 		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
-		"pop_used":       h.cityPopUsed(city.ID),
+		"pop_used":       popUsed,
 		"unread_reports": unreadReports,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),
@@ -3132,6 +3188,21 @@ func (h *EzfyHandler) View(c *gin.Context) {
 // 返回 {"gold":"黄金","food":"粮食",...,"_short":{"gold":"金",...}}
 // 表为空时回落到内置默认值，保证前端永远拿得到名字。
 func ezfyResCfgOf(db *gorm.DB) gin.H {
+	// ★ 从内存配置缓存读（30s 周期收敛 / 管理端改完 cfgsReload 即时），请求零 SQL。
+	//   表为空时 buildResCfgView 已回落内置默认，前端永远拿得到名字。
+	c := &ezfyCfg
+	c.load(db) // 幂等：已加载直接返回，未加载先读库兜底
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.resCfg == nil {
+		return buildResCfgView(nil)
+	}
+	return c.resCfg
+}
+
+// buildResCfgView 把 ezfy_cfg_resource 行组装成 {key:name, "_short":{key:short}}。
+// rows 为空时回落到内置默认名字（黄金/粮食/…），保证前端永远拿得到名字。
+func buildResCfgView(rows []model.EzfyCfgResource) gin.H {
 	def := []model.EzfyCfgResource{
 		{Key: "gold", Name: "黄金", Short: "金"},
 		{Key: "food", Name: "粮食", Short: "粮"},
@@ -3139,8 +3210,6 @@ func ezfyResCfgOf(db *gorm.DB) gin.H {
 		{Key: "oil", Name: "石油", Short: "油"},
 		{Key: "rare", Name: "稀矿", Short: "稀"},
 	}
-	var rows []model.EzfyCfgResource
-	db.Order("sort, id").Find(&rows)
 	if len(rows) == 0 {
 		rows = def
 	}
