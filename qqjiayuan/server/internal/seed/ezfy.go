@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"fmt"
 	"log"
 
 	"gorm.io/gorm"
@@ -107,6 +108,45 @@ func seedEzfy(db *gorm.DB) {
 	seedEzfySchemes(db)
 	migrateOfficerAttrPoints(db)
 	fixEzfySignIndex(db)
+
+	// ★ 2026-10-03 MySQL 索引：首页 /view 30s 轮询的命令数/未读战报计数、装备检索，
+	//   都按 user_id + status/is_read 过滤。只靠单列 user_id 会在引擎层窄化后再筛，
+	//   这里补复合索引直接命中，省掉每一段的扫描。
+	//   双机共享同一个 MySQL，ensureEzfyIndex 幂等，先到先建，第二台启动自动跳过。
+	ensureEzfyIndex(db, "ezfy_order", "idx_order_user_status", "user_id,status,order_type", false)
+	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_read", "user_id,is_read", false)
+	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_user_cfg_off", "user_id,cfg_id,officer_id", false)
+
+	// ★ 2026-10-03 家园论坛索引：版块帖子列表(board_id+状态)、我的帖子/回复(user_id+状态)是高频查询。
+	//   Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。
+	//   GORM 默认表名 thread→threads、reply→replies；表名若逢差异只会少建、不会报错（helper 仅 log）。
+	ensureEzfyIndex(db, "threads", "idx_thread_board_status", "board_id,status,audit_status", false)
+	ensureEzfyIndex(db, "threads", "idx_thread_user_status", "user_id,status", false)
+	ensureEzfyIndex(db, "replies", "idx_reply_thread_status", "thread_id,status", false)
+	ensureEzfyIndex(db, "replies", "idx_reply_user_status", "user_id,status", false)
+}
+
+// ensureEzfyIndex 幂等补建普通索引。GORM AutoMigrate 对存量表只补列/主键，
+// 不保证补普通（尤其复合）索引，所以这里显式判存在再建。
+// unique=true 建 UNIQUE INDEX，否则普通 KEY。表/索引/列名都是内部常量，安全拼接。
+func ensureEzfyIndex(db *gorm.DB, table, index, cols string, unique bool) {
+	var n int64
+	if err := db.Raw(`SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+		table, index).Scan(&n).Error; err != nil {
+		log.Printf("ezfy 索引检查失败 %s.%s: %v", table, index, err)
+		return
+	}
+	if n > 0 {
+		return
+	}
+	kind := "INDEX"
+	if unique {
+		kind = "UNIQUE INDEX"
+	}
+	if err := db.Exec(fmt.Sprintf("ALTER TABLE `%s` ADD %s `%s` (%s)", table, kind, index, cols)).Error; err != nil {
+		log.Printf("ezfy 建索引失败 %s.%s(%s): %v", table, index, cols, err)
+	}
 }
 
 // fixEzfySignIndex 修复 ezfy_sign 建错的唯一索引（2026-09-26 线上「无限签到刷资源」事故）

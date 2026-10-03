@@ -1160,14 +1160,48 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity) {
 	}
 }
 
-// getResourceCalc 资源详情页数据（与 calcResource 同一套公式）
+// resCalcData 页面轮询(尤其 /view 30s)里**已经查好**的资源结算入参。
+// getResourceCalcWith 用它复用同一批数据，避免对 buildingList/techMap/wildlandList/troopMap
+// 一次次重复跨 WAN 打库（每张表 13~37ms）。字段为 nil 时节退回各自自查。
+type resCalcData struct {
+	buildings []model.EzfyCityBuilding
+	techs     map[int]int
+	wilds     []model.EzfyWildland
+	troops    map[int]int64
+}
+
+// getResourceCalc 资源详情结算（纯内存公式）。d 为 nil 时内部自查四张表；
+// 传 d（如 View 已载入同一批数据）则全部复用，只留 mayor/boost 两条小查询。
 func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
-	tech := h.techMap(city.ID)
+	return h.getResourceCalcWith(city, nil)
+}
+
+func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) gin.H {
+	var buildings []model.EzfyCityBuilding
+	var techs map[int]int
+	var wilds []model.EzfyWildland
+	var troops map[int]int64
+	if d != nil {
+		buildings, techs, wilds, troops = d.buildings, d.techs, d.wilds, d.troops
+	}
+	if techs == nil {
+		techs = h.techMap(city.ID)
+	}
+	if buildings == nil {
+		buildings = h.buildingList(city.ID)
+	}
+	if wilds == nil {
+		wilds = h.wildlandList(city.ID)
+	}
+	if troops == nil {
+		troops = h.troopMap(city.ID)
+	}
+	tech := techs
 	techFood, techSteel, techOil, techRare := tech[1], tech[2], tech[3], tech[4]
 	techSupply, techStore := tech[18], tech[14]
 	// ★ 2026-09-26 用户要求「民心不该影响产量」→ 这里不再算 morale，产量与民心/民怨无关
 	var foodBase, steelBase, oilBase, rareBase int64
-	for _, b := range h.buildingList(city.ID) {
+	for _, b := range buildings {
 		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
 		if lv == nil {
 			continue
@@ -1243,7 +1277,7 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	goldBaseReal := goldBase
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
-	for _, w := range h.wildlandList(city.ID) {
+	for _, w := range wilds {
 		base := int64(w.Level) * 100
 		if w.WildType == 2 {
 			wildOil += base
@@ -1318,7 +1352,7 @@ func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	var troopFood int64
 	// ★ 耗粮开关关掉时这里也要显示 0，否则界面写着「每小时耗粮 N」，实际却不扣
 	if ezfyFoodUpkeepOn() {
-		for tid, count := range h.troopMap(city.ID) {
+		for tid, count := range troops {
 			if cfg := ezfyCfg.troop(tid); cfg != nil {
 				troopFood += int64(cfg.FoodKeep) * count
 			}
@@ -2912,7 +2946,9 @@ func (h *EzfyHandler) View(c *gin.Context) {
 
 	camp := profile.Camp
 	troopViews := []gin.H{}
-	for tid, count := range h.troopMap(city.ID) {
+	// ★ 2026-10-03 军队表只查一次，troopViews 展示 + 下面 getResourceCalcWith 复用，避免重复查
+	troops := h.troopMap(city.ID)
+	for tid, count := range troops {
 		cfg := ezfyCfg.troop(tid)
 		if cfg == nil {
 			continue
@@ -3006,7 +3042,11 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	// ★ 2026-10-03 性能：getResourceCalc 内部会查 buildingList/techMap/wildlandList/boost/troopMap，
 	//   在 30s 轮询的 /view 上之前每次循环都重算 5 遍（5×6 条 SQL 跨 WAN 往返）。
 	//   改成只算一次，再从这里按资源键取值。
-	resCalc := h.getResourceCalc(&city)
+	//   ★ 2026-10-03 第二批：把这请求已查好的 buildings/tmap/wildlands/troops 传入，
+	//   让 getResourceCalc 变成纯内存，只剩 mayor/boost 两条小查询。
+	resCalc := h.getResourceCalcWith(&city, &resCalcData{
+		buildings: buildings, techs: tmap, wilds: wildlands, troops: troops,
+	})
 	for _, k := range []string{"gold", "food", "steel", "oil", "rare"} {
 		if it, ok := resCalc[k].(gin.H); ok {
 			resProd[k] = it["total"]

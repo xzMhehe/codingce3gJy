@@ -94,8 +94,10 @@ var ezfyRankInitOnce sync.Once
 //     之后管理端在「军衔配置」里可以直接维护。
 func ezfyMigrateRankInit(db *gorm.DB) {
 	// 1) 老玩家 rank 落位（保证展示与旧声望规则一致，不缩水、不补宝物）
+	// ★ `rank` 是 MySQL 保留字（窗口函数 RANK），WHERE 里必须用反引号包列名，否则启动报
+	//  "Error 1064 ... near '= 0'"，这条迁移永远跑不成功。
 	var profs []model.EzfyProfile
-	db.Select("id", "prestige", "rank").Where("rank = 0").Find(&profs)
+	db.Select("id", "prestige", "rank").Where("`rank` = 0").Find(&profs)
 	done := 0
 	for _, p := range profs {
 		lv := ezfyRankIndex(p.Prestige) + 1
