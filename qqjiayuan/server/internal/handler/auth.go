@@ -18,6 +18,7 @@ import (
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/authutil"
 	"qqjiayuan/server/pkg/captcha"
+	"qqjiayuan/server/pkg/loginlimiter"
 	"qqjiayuan/server/pkg/resp"
 )
 
@@ -126,8 +127,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 }
 
 type loginReq struct {
-	Name     string `json:"name" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Name      string `json:"name" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	CaptchaID string `json:"captcha_id"` // 图形验证码 ID（密码输错满3次后必填）
+	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -136,8 +139,20 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		resp.ParamError(c, "请输入账号和密码")
 		return
 	}
+	name := strings.TrimSpace(req.Name)
+	// 同一账号在窗口期内密码输错满 3 次后，登录必须过图形验证码（先验验证码，避免被脚本刷密码）
+	if loginlimiter.NeedCaptcha(name) {
+		if strings.TrimSpace(req.Captcha) == "" {
+			resp.ParamError(c, "密码错误次数较多，请输入验证码（图片算式的计算结果）")
+			return
+		}
+		if !captcha.Verify(req.CaptchaID, req.Captcha) {
+			resp.ParamError(c, "验证码不对哦，请点击图片刷新后重试")
+			return
+		}
+	}
 	var user model.User
-	if err := h.DB.Preload("Roles").Where("username = ? OR nickname = ?", req.Name, req.Name).First(&user).Error; err != nil {
+	if err := h.DB.Preload("Roles").Where("username = ? OR nickname = ?", name, name).First(&user).Error; err != nil {
 		resp.ParamError(c, "账号不存在，先免费注册一个吧")
 		return
 	}
@@ -148,9 +163,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
 		userLog(h.DB, user.ID, "登陆失败", "密码错误", c.ClientIP())
+		loginlimiter.Fail(name)
+		// 输错满 3 次：响应带 need_captcha 标记，前端立即弹出验证码框，下次起必须过验证码
+		if loginlimiter.NeedCaptcha(name) {
+			resp.FailData(c, 400, "密码错误次数较多，请先通过验证码再试", gin.H{"need_captcha": true})
+			return
+		}
 		resp.ParamError(c, "密码不对哦，再想想")
 		return
 	}
+	loginlimiter.Success(name)
 	token, err := authutil.GenerateToken(user.ID, user.Nickname, h.Secret, h.ExpH)
 	if err != nil {
 		resp.ServerError(c, err)

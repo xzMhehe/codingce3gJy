@@ -48,6 +48,11 @@ func ParamError(c *gin.Context, msg string) {
 	Fail(c, http.StatusOK, 400, msg)
 }
 
+// FailData 失败响应 + 额外 data（用于携带 need_captcha 等前端标记）
+func FailData(c *gin.Context, code int, msg string, data gin.H) {
+	c.JSON(http.StatusOK, gin.H{"code": code, "msg": msg, "data": data})
+}
+
 func Unauthorized(c *gin.Context, msg string) {
 	Fail(c, http.StatusOK, 401, msg)
 }

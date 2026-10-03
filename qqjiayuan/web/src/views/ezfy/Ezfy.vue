@@ -705,9 +705,8 @@ export default {
       exFilter: 0, // ★ 2026-09-24 卖家挂单资源类别检索(0=全部 1粮食 2钢铁 3石油 4稀矿)
       acadeTab: 'officer',
       // ★ 2026-10-04 军官模块 6 个 tab 的数据缓存（进页预取 + 切换秒开）。
-      //   缓存命中先渲染旧值、后台刷新覆盖；操作类接口显式失效对应 key 保证不脏。
-      _acadeCache: {},
-      _acadeLoading: {},
+      //   ⚠️ 注意：_ 开头的属性不能放 data()（Vue2 不会代理到 this，读了是 undefined），
+      //   改用 withAcadeCache 里的懒初始化（与 _onceMap 同一套模式）。
       officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
       skillData: { skills: [], officers: [], gold: 0 },
@@ -3433,9 +3432,10 @@ export default {
         if (r.code === 0) {
           this.notify(r.msg)
           // 摧毁的是当前城时后端会自动切到别的城 → 整体重载（含军官，军官跟城走）
+          // ★ 2026-10-04 与切城一致：只拉新城接口。loadTechs 在此时 this.city 仍是旧城 id，
+          //   会打到刚被摧毁的城；科技页进页时会按新城懒加载，这里不再预取。
           this.load()
           this.loadTroops()
-          this.loadTechs()
           this.loadOnDutyOfficers()
         } else this.notify(r.msg)
       })
@@ -3443,13 +3443,13 @@ export default {
     doSwitch (ct) {
       api.post('/games/ezfy/city/switch', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
-          // ★ 后端已把「当前城市」落库，这里必须整体重载，否则各页仍显示旧城数据
+          // ★ 2026-10-04 切城只调新城的接口（用户反馈「切城卡顿 + 切完还打旧城接口」）：
+          //   · 落地页是首页，只需 /view —— 它不带 city_id，后端按「当前城」取数据，
+          //     切城 POST 已把新城落库为 current_city_id，天然就是新城。
+          //   · 军队/科技/军官**不再切城时预取**：loadTechs 在此时 this.city 仍是旧城，
+          //     会拿旧城 id 打接口（白白触发一次旧城懒结算）；而各数据页进页时
+          //     go() 分支都会按新城懒加载（troops/techs/onduty…），不会残留旧城数据。
           this.load()
-          this.loadTroops()
-          this.loadTechs()
-          // ★ 军官也是跟城走的：不一起刷新，出征页会残留上一座城的军官列表
-          //   （用户反馈「切换城市后出征页的军官还是切换前那个城的」）。
-          this.loadOnDutyOfficers()
           this.cur = 'home'
         } else this.notify(r.msg)
       })
@@ -5138,6 +5138,9 @@ export default {
     // ★ 2026-10-04 缓存优先加载：命中先渲染缓存（切换秒开），后台刷新成功后覆盖。
     //   同一 key 的请求去重（_acadeLoading），连点不会重复打接口。
     withAcadeCache (key, fetcher, setter) {
+      // ★ _ 开头属性 Vue2 不代理 data()，必须懒初始化（与 _onceMap 同模式）
+      if (!this._acadeCache) this._acadeCache = {}
+      if (!this._acadeLoading) this._acadeLoading = {}
       const apply = d => { this._acadeCache[key] = d; setter(d) }
       if (this._acadeCache[key]) {
         setter(this._acadeCache[key])
