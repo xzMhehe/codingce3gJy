@@ -1568,12 +1568,34 @@ func (h *EzfyHandler) rankMine(uid uint) gin.H {
 	// ★ 下一级晋升信息（声望门槛 + 所需宝物 + 背包现有量），供前端[晋升]按钮展示与校验
 	if meLv < len(ezfyCfg.rankList()) {
 		nr := ezfyCfg.rankList()[meLv]
+		reqs := ezfyRankTreasureReqs(nr.ID)
+		// ★ 2026-10-03 性能：原实现每件宝物一条 COUNT（跨 WAN RDS），改成一次 GROUP BY 批量统计。
+		cfgIDs := make([]int, 0, len(reqs))
+		for _, r := range reqs {
+			if cfg := ezfyEquipCfgByName(r.Name); cfg != nil {
+				cfgIDs = append(cfgIDs, cfg.ID)
+			}
+		}
+		owned := map[int]int64{}
+		if len(cfgIDs) > 0 {
+			var rows []struct {
+				CfgID int
+				N     int64
+			}
+			h.DB.Model(&model.EzfyEquipment{}).
+				Select("cfg_id, COUNT(*) AS n").
+				Where("user_id = ? AND officer_id = 0 AND cfg_id IN ?", uid, cfgIDs).
+				Group("cfg_id").Scan(&rows)
+			for _, r := range rows {
+				owned[r.CfgID] = r.N
+			}
+		}
 		tr := []gin.H{}
-		for _, r := range ezfyRankTreasureReqs(nr.ID) {
+		for _, r := range reqs {
 			cfg := ezfyEquipCfgByName(r.Name)
 			have := int64(0)
 			if cfg != nil {
-				have = h.ezfyTreasureOwned(uid, cfg.ID)
+				have = owned[cfg.ID]
 			}
 			tr = append(tr, gin.H{"name": r.Name, "count": r.Count, "have": have})
 		}
@@ -1755,12 +1777,29 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		arr = append(arr, v)
 	}
 	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
+	// ★ 2026-10-03 性能：原实现逐条 ensureProfile（top20 = 20 次 RDS 往返），
+	//   改成一次 WHERE user_id IN 批量查档案（照搬 CorpsList 的批量模式）。
+	topUIDs := make([]uint, 0, 20)
+	for i, e := range arr {
+		if i >= 20 {
+			break
+		}
+		topUIDs = append(topUIDs, uint(e.uid))
+	}
+	profileByUID := map[uint]model.EzfyProfile{}
+	if len(topUIDs) > 0 {
+		var ps []model.EzfyProfile
+		h.DB.Where("user_id IN ?", topUIDs).Find(&ps)
+		for _, p := range ps {
+			profileByUID[p.UserID] = p
+		}
+	}
 	troopRank := []gin.H{}
 	for i, e := range arr {
 		if i >= 20 {
 			break
 		}
-		p := h.ensureProfile(uint(e.uid))
+		p := profileByUID[uint(e.uid)]
 		troopRank = append(troopRank, gin.H{"rank": i + 1, "city_name": cityName[bestCity[e.uid]],
 			"role_name": p.Nickname, "user_id": e.uid,
 			"power": int64(e.power), "tech_power": int64(e.tech),
@@ -1775,13 +1814,38 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		rankIds = append(rankIds, int64(cp.ID))
 	}
 	rankCounts := h.corpsMemberCountMap(rankIds)
+	// ★ 2026-10-03 性能：原实现逐军团查成员、逐成员 ensureProfile（N+1，数十次 RDS 往返），
+	//   照搬 CorpsList 的批量模式：一次查全部成员 + 一次批量查档案，固定 2 次往返。
+	memberByCorps := map[int64][]model.EzfyCorpsMember{}
+	needUIDs := map[uint]bool{}
+	if len(rankIds) > 0 {
+		var members []model.EzfyCorpsMember
+		h.DB.Where("corps_id IN ?", rankIds).Find(&members)
+		for _, m := range members {
+			memberByCorps[int64(m.CorpsId)] = append(memberByCorps[int64(m.CorpsId)], m)
+			needUIDs[m.UserId] = true
+		}
+	}
+	for _, cp := range corps {
+		needUIDs[cp.LeaderUserId] = true
+	}
+	corpsProfileByUID := map[uint]model.EzfyProfile{}
+	if len(needUIDs) > 0 {
+		uids := make([]uint, 0, len(needUIDs))
+		for u := range needUIDs {
+			uids = append(uids, u)
+		}
+		var ps []model.EzfyProfile
+		h.DB.Where("user_id IN ?", uids).Find(&ps)
+		for _, p := range ps {
+			corpsProfileByUID[p.UserID] = p
+		}
+	}
 	corpsRank := []gin.H{}
 	for i, cp := range corps {
 		score := 0
-		var members []model.EzfyCorpsMember
-		h.DB.Where("corps_id = ?", cp.ID).Find(&members)
-		for _, m := range members {
-			score += h.ensureProfile(m.UserId).Prestige
+		for _, m := range memberByCorps[int64(cp.ID)] {
+			score += corpsProfileByUID[m.UserId].Prestige
 		}
 		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name,
 			"member_count": rankCounts[int64(cp.ID)], "battle_score": score})

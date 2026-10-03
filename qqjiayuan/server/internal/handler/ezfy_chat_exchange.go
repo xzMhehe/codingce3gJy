@@ -843,10 +843,33 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	canManage := mb.IsLeader == 1
 	canMail := canManage || mb.Title == ezfyCorpsTitleVice
 	views := []gin.H{}
+	// ★ 2026-10-03 优化 /corps/members 到 1s 内：原来每个成员都单独查 2 次
+	//   （ensureProfile + First(user)），成员一多就是 2N 次 DB 查询。
+	//   改成按人批量拉 profile 和 user 各一次，N 再大也只有 2 次查询。
+	userIDs := make([]uint, 0, len(members))
 	for _, m := range members {
-		p := h.ensureProfile(m.UserId)
-		var u model.User
-		h.DB.First(&u, m.UserId)
+		userIDs = append(userIDs, m.UserId)
+	}
+	profMap := make(map[uint]model.EzfyProfile, len(members))
+	if len(userIDs) > 0 {
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id", "nickname", "prestige", "rank").Where("user_id IN ?", userIDs).Find(&profs)
+		for i := range profs {
+			profMap[profs[i].UserID] = profs[i]
+		}
+	}
+	userMap := make(map[uint]model.User, len(members))
+	if len(userIDs) > 0 {
+		var users []model.User
+		// 只取昵称：model.User 里 AvatarBase64 是 longtext，全员拉全量会很慢。
+		h.DB.Select("id", "nickname").Where("id IN ?", userIDs).Find(&users)
+		for i := range users {
+			userMap[users[i].ID] = users[i]
+		}
+	}
+	for _, m := range members {
+		p := profMap[m.UserId]
+		u := userMap[m.UserId]
 		// ★ 2026-09-25 用户要求「军团页展示个人军团积分」：每项带 points
 		views = append(views, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
 			"is_leader": m.IsLeader, "title": m.Title,
