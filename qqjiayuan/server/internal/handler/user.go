@@ -40,6 +40,19 @@ func pageOf(c *gin.Context, defSize int) (int, int, int) {
 	return page, (page - 1) * size, size
 }
 
+// trimSpace 去掉首尾空白（原定义随二战拆包移入 ezfy，social.go 仍需要，这里保留一份）
+func trimSpace(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
+		end--
+	}
+	return s[start:end]
+}
+
 // 他人主页：资料 + 最新发帖/回帖统计
 // 家园号码（username，转靓号后变化）优先匹配，找不到再按内部 id（兼容 /user/:id 旧链接）
 func (h *UserHandler) Profile(c *gin.Context) {

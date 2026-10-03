@@ -46,7 +46,7 @@ import (
 	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/config"
-	"qqjiayuan/server/internal/handler"
+	ezfy "qqjiayuan/server/internal/handler/ezfy"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/database"
 )
@@ -90,7 +90,7 @@ func main() {
 		log.Fatalf("读取配置失败: %v（当前目录下需要有 config.yaml，或用 -config 指定）", err)
 	}
 	db := database.Init(&cfg.Mysql)
-	h := &handler.EzfyHandler{DB: db}
+	h := &ezfy.EzfyHandler{DB: db}
 
 	continentName := ezfyContinentLabel(db, *continent)
 
@@ -158,12 +158,12 @@ func main() {
 	}
 	fmt.Printf("共查到 %d 座城池，开始生成迁移计划...\n\n", len(cities))
 
-	var plan []handler.EzfyMovePlanItem
+	var plan []ezfy.EzfyMovePlanItem
 	if *coastal {
-		plan = make([]handler.EzfyMovePlanItem, 0, len(cities))
+		plan = make([]ezfy.EzfyMovePlanItem, 0, len(cities))
 		for i := range cities {
 			ct := cities[i]
-			plan = append(plan, handler.EzfyMovePlanItem{
+			plan = append(plan, ezfy.EzfyMovePlanItem{
 				CityId: ct.ID, UserID: ct.UserID, Name: ct.Name,
 				OldX: ct.X, OldY: ct.Y, OldRegion: ezfyRegionLabel(ct.X, ct.Y),
 				IsSea: true,
@@ -179,7 +179,7 @@ func main() {
 	for _, p := range plan {
 		if *coastal {
 			// 沿海迁城计划：不在目标洲、或脚下不是沿海平原 → 需要迁
-			if !handler.EzfyCoastalNeedMoveAt(p.OldX, p.OldY, *continent) {
+			if !ezfy.EzfyCoastalNeedMoveAt(p.OldX, p.OldY, *continent) {
 				skipped++
 				continue
 			}
@@ -316,7 +316,7 @@ func printCoastalStats(db *gorm.DB) {
 	}
 	for x := 0; x < 500; x++ {
 		for y := 0; y < 500; y++ {
-			cont := handler.EzfyContinentOf(x, y)
+			cont := ezfy.EzfyContinentOf(x, y)
 			if cont <= 0 {
 				continue
 			}
@@ -326,12 +326,12 @@ func printCoastalStats(db *gorm.DB) {
 				m[cont] = s
 			}
 			free := !occupied[[2]int{x, y}]
-			if handler.EzfyTerrainAt(x, y) == handler.EzfyCoastalPlainValue {
+			if ezfy.EzfyTerrainAt(x, y) == ezfy.EzfyCoastalPlainValue {
 				s.coastAll++
 				if free {
 					s.coastFree++
 				}
-			} else if handler.EzfyTerrainAt(x, y) != 8 {
+			} else if ezfy.EzfyTerrainAt(x, y) != 8 {
 				s.landAll++
 				if free {
 					s.landFree++
@@ -395,5 +395,5 @@ func ezfyRegionLabel(x, y int) string {
 // 只用于 CLI 日志显示；**游戏逻辑一律以 handler 内部实现为准**。
 // 若哪天改了世界地图几何，记得同步这里（否则只是日志显示偏差，不影响数据）。
 func ezfyContinentOfExported(x, y int) int {
-	return handler.EzfyContinentOf(x, y)
+	return ezfy.EzfyContinentOf(x, y)
 }
