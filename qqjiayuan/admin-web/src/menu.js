@@ -59,42 +59,6 @@ import AdminGardenData from './components/admin/AdminGardenData.vue'
 import AdminFarmSeeds from './components/admin/AdminFarmSeeds.vue'
 import AdminFarmItems from './components/admin/AdminFarmItems.vue'
 import AdminFarmData from './components/admin/AdminFarmData.vue'
-import AdminParkCars from './components/admin/AdminParkCars.vue'
-import AdminParkData from './components/admin/AdminParkData.vue'
-import AdminXyPlayers from './components/admin/AdminXyPlayers.vue'
-import AdminXyData from './components/admin/AdminXyData.vue'
-import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
-import AdminEzfyData from './components/admin/AdminEzfyData.vue'
-import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
-import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
-import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
-import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
-import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
-import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
-import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
-import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
-// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
-//   装备/宝箱价格定义迁到「数据管理」（装备道具配置/套装装备配置 tab），军官管理不再管装备。
-import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
-// ★ 2026-09-27 用户需求：为爱发电卡维护（发放 + 领取情况）
-import AdminEzfyLoveCard from './components/admin/AdminEzfyLoveCard.vue'
-import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
-import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
-import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
-import AdminEzfyExchange from './components/admin/AdminEzfyExchange.vue'
-import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
-import AdminEzfyMap from './components/admin/AdminEzfyMap.vue'
-import AdminEzfyCorps from './components/admin/AdminEzfyCorps.vue'
-import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
-import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
-import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
-import AdminEzfyWars from './components/admin/AdminEzfyWars.vue'
-// ★ 2026-09-25 用户要求：新增军团商城维护页面
-//   （军团宣战维护已按用户要求合并进「宣战管理」页的第二个 tab，这里不再单独挂菜单项，
-//   组件由 AdminEzfyWars.vue 内部 import，无需在 menu.js 引入）
-import AdminEzfyCorpsMall from './components/admin/AdminEzfyCorpsMall.vue'
-import AdminXyLogs from './components/admin/AdminXyLogs.vue'
-import AdminXySystem from './components/admin/AdminXySystem.vue'
 import AdminSiteConfig from './components/admin/AdminSiteConfig.vue'
 import AdminFla from './components/admin/AdminFla.vue'
 import AdminWelfare from './components/admin/AdminWelfare.vue'
@@ -233,13 +197,6 @@ export const menu = [
         ]
       },
       {
-        key: 'g-park', name: '抢车位', icon: 'el-icon-truck',
-        children: [
-          { key: 'parkCars', name: '车市车辆', icon: 'el-icon-truck', component: AdminParkCars, perm: 'module:parkCars' },
-          { key: 'parkData', name: '车位数据管理', icon: 'el-icon-data-analysis', component: AdminParkData, perm: 'module:parkData' },
-        ]
-      },
-      {
         key: 'g-jwt', name: '精武堂', icon: 'el-icon-s-flag',
         children: [
           { key: 'jwtPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminJwtPlayers, perm: 'module:jwtPlayers' },
@@ -249,52 +206,6 @@ export const menu = [
           { key: 'jwtData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminJwtData, perm: 'module:jwtData' },
         ]
       },
-      {
-        key: 'g-xy', name: '幻想西游', icon: 'el-icon-s-custom',
-        children: [
-          { key: 'xyPlayers', name: '玩家管理', icon: 'el-icon-user', component: AdminXyPlayers, perm: 'module:xyPlayers' },
-          { key: 'xyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminXyLogs, perm: 'module:xyLogs' },
-          { key: 'xySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminXySystem, perm: 'module:xySystem' },
-          { key: 'xyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminXyData, perm: 'module:xyData' },
-        ]
-      },
-      {
-        key: 'g-ezfy', name: '二战风云', icon: 'el-icon-position',
-        children: [
-          { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
-          { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },
-          { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: AdminEzfyBuildings, perm: 'module:ezfyBuildings' },
-          { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: AdminEzfyBuildQueue, perm: 'module:ezfyBuildQueue' },
-          { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: AdminEzfyTroops, perm: 'module:ezfyTroops' },
-          { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
-          { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
-          // ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab），
-          //   独立权限 module:ezfyEquips，可在权限管理里单独分配给角色
-          { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: AdminEzfyEquips, perm: 'module:ezfyEquips' },
-          // ★ 2026-09-27 为爱发电卡维护（发放 + 领取情况）；perm 复用数据管理
-          { key: 'ezfyLoveCard', name: '为爱发电卡', icon: 'el-icon-present', component: AdminEzfyLoveCard, perm: 'module:ezfyData' },
-          { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
-          { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
-          { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },
-          { key: 'ezfyExchange', name: '交易行维护', icon: 'el-icon-s-shop', component: AdminEzfyExchange, perm: 'module:ezfyExchange' },
-          { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: AdminEzfyTechs, perm: 'module:ezfyTechs' },
-          { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
-          { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
-          { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
-          // ★ 用户要求菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
-          //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
-          { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
-          // ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」→
-          //   不再单独挂菜单项，统一从「宣战管理」进去用 tab 切换（perm 复用 module:ezfyWars）
-          { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
-          // ★ 2026-09-25 用户要求：军团商城维护（perm 复用军团管理 module:ezfyCorps）
-          { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
-          { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
-          { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
-          { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
-          { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
-        ]
-      }
     ]
   },
   // 系统配置（诺哈 config/ manage/ file/）

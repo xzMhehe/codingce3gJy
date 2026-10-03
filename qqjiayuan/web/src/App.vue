@@ -2,7 +2,7 @@
   <div id="app-shell">
     <!-- 顶部个人导航（复刻诺哈 Page_Login：号码 家信(N) 家园 空间）
          二战风云是沉浸式游戏页，进入时连同主导航一起隐藏 -->
-    <div class="top_nav" v-if="!immersive">
+    <div class="top_nav" >
       <template v-if="isLogin">
         <a href="javascript:;" @click="$router.push('/inbox')"><img :src="idIcon" alt="号码">{{ user.username }}</a>
         <a href="javascript:;" @click="$router.push('/messages')"><img src="/static/image/message.gif" alt="家信">家信({{ unread }})</a>
@@ -22,7 +22,7 @@
 
     <!-- 主导航（复刻诺哈 crumb-nav-large：深蓝条 #71afe3，家园 好友 家族 广场 游戏，当前项 #98d2ff 高亮）
          二战风云是沉浸式游戏页，进入时隐藏这条导航 -->
-    <div class="bar navbar" v-if="!immersive">
+    <div class="bar navbar" >
       <template v-for="n in navs">
         <span :key="n.name" v-if="isCurrent(n)" class="current">{{ n.name }}</span>
         <a :key="n.name + 'a'" v-else href="javascript:;" @click="$router.push(n.to)">{{ n.name }}</a>
@@ -37,7 +37,7 @@
     <!-- 页脚（复刻诺哈 Page_Bottom：家园社区-广场-导航-聊天室-管理-退出 / 超Q.空间.家园.微博 / 小Q报时）
          二战风云是沉浸式游戏页：顶部个人导航、主导航条与页脚全部隐藏
          （2026-09-24 用户要求：去掉二战下面的家园导航，离开游戏走游戏内底部导航的「家园」）。 -->
-    <div class="footer" v-if="!immersive">
+    <div class="footer" >
       <p>
         <a href="javascript:;" @click="$router.push('/')">家园社区</a>-<a href="javascript:;" @click="$router.push('/')">广场</a>-<a href="javascript:;" @click="$router.push('/nav')">导航</a>-<a href="javascript:;" @click="$router.push('/chat')">聊天室</a>-<a href="javascript:;" @click="goAdmin">管理</a><a v-if="isLogin" href="javascript:;" @click="logoutOut">-退出</a><br>
         <template v-if="isLogin"><a href="javascript:;" @click="$router.push('/noble')">超Q({{ noble }})</a>.<a href="javascript:;" @click="$router.push('/space/'+user.id)">空间({{ spaceCount }})</a>.<a href="javascript:;" @click="$router.push('/messages')">家园({{ unread }})</a>.<a href="javascript:;" @click="$router.push('/notices')">微博({{ noticeUnread }})</a><br></template>
@@ -70,8 +70,6 @@ export default {
   },
   computed: {
     isLogin () { return this.$store.getters.isLogin },
-    // 沉浸式页面（二战风云 /games/ezfy）：隐藏全局主导航条
-    immersive () { return this.$route.path.indexOf('/games/ezfy') === 0 },
     user () { return this.$store.state.user || {} },
     unread () { return this.$store.state.unread },
     noble () { return this.user.noble || 0 },

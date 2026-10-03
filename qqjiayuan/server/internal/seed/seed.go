@@ -61,7 +61,6 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.GardenSign{}, &model.GardenSignReward{},
 		&model.Farm{}, &model.FarmSeed{}, &model.FarmMuck{}, &model.FarmTrap{},
 		&model.FarmLand{}, &model.FarmBag{}, &model.FarmMsg{}, &model.FarmSlave{}, &model.FarmSteal{},
-		&model.ParkUser{}, &model.CarShop{}, &model.CarGarage{}, &model.CarStop{}, &model.CarLog{}, &model.CarMsg{},
 		&model.NoblePlan{}, &model.NobleLevel{}, &model.Good{}, &model.UserGood{}, &model.Setting{}, &model.AdminMenu{},
 		&model.MoneyShop{},
 		&model.WalletLog{},
@@ -89,399 +88,9 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.JwtSkill{}, &model.JwtLearnedSkill{},
 		&model.JwtGang{}, &model.JwtGangMember{}, &model.JwtGangApply{},
 		&model.JwtChat{}, &model.JwtLog{}, &model.JwtArenaRecord{},
-		// 幻想西游（复刻 wap 幻想西游：地图行走/回合战斗/装备/技能/宠物/副本/社交等）
-		&model.HxxyPlayer{}, &model.HxxyMapNode{}, &model.HxxyNpc{}, &model.HxxySpawn{}, &model.HxxyMapNpc{},
-		&model.HxxyMapGrid{},
-		&model.HxxyItem{}, &model.HxxyEquip{}, &model.HxxyBag{},
-		&model.HxxySkill{}, &model.HxxyPlayerSkill{},
-		&model.HxxyPetSpecies{}, &model.HxxyPet{},
-		&model.HxxyBattle{}, &model.HxxyBattleLog{},
-		&model.HxxyQuest{}, &model.HxxyPlayerQuest{},
-		&model.HxxyDungeon{}, &model.HxxyDungeonRun{},
-		&model.HxxyBoss{}, &model.HxxyTitle{}, &model.HxxyPlayerTitle{},
-		&model.HxxyGang{}, &model.HxxyGangMember{}, &model.HxxyMarriage{},
-		&model.HxxyHouse{}, &model.HxxyFriend{}, &model.HxxyChat{},
-		&model.HxxyMsg{},
-		&model.HxxySignin{}, &model.HxxySigninClaim{}, &model.HxxyStall{}, &model.HxxyAuction{}, &model.HxxyWalletLog{},
-		&model.HxxyTeam{}, &model.HxxyTeamMember{}, &model.HxxyTeamInvite{},
-		&model.HxxyGangInvite{}, &model.HxxyHouseInvite{},
-		&model.HxxyGzWar{}, &model.HxxyGzScore{}, &model.HxxyGzPlayer{},
-		&model.HxxyActivityLog{},
-		// 二战风云（复刻 stzb-fk 二战风云：城池建造/资源结算/造兵科技/地图出征/多回合战斗/军团）
-		&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgTroop{},
-		&model.EzfyCfgTech{}, &model.EzfyCfgTechLevel{}, &model.EzfyCfgWildland{},
-		&model.EzfyCfgItem{}, &model.EzfyCfgTaskType{}, &model.EzfyCfgTask{},
-		&model.EzfyProfile{}, &model.EzfyCity{}, &model.EzfyCityBuilding{},
-		&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},
-		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
-		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
-		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
-		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 用户要求）
-		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
-		// ★ 2026-09-30 入团申请（军团开启审核后玩家申请入团）
-		&model.EzfyCorpsApply{},
-		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyTreasureSign{}, &model.EzfyCityEffect{},
-		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
-		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
-		// ★ 2026-09-28 玩家钻石流水（管理端「数据管理 → 钻石流水」查看）
-		&model.EzfyDiamondLog{},
-		// ★ 2026-10-02 玩家道具使用流水（管理端「数据管理 → 道具使用」查看）
-		&model.EzfyItemUseLog{},
-		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
-		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
-		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
-		&model.EzfyCfgScheme{},
-		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
-		&model.EzfyMapStar{}, &model.EzfyPreset{},
-		&model.EzfyActivity{},
-		// 资源显示名配置（管理端可改名，游戏端/管理端展示全部跟随）
-		&model.EzfyCfgResource{},
-		// 游戏内好友（与家园好友分开）
-		&model.EzfyFriend{}, &model.EzfyFriendApply{},
-		// 军衔配置（可建城数）
-		&model.EzfyCfgRank{},
-		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
-		&model.EzfyMapTile{},
-		&model.EzfyActWild{},
-		// 建筑数量上限配置（军事区/资源区各 36，管理端可维护）
-		&model.EzfyCfgLimit{},
-		// 二战聊天敏感词（独立维护页）
-		&model.EzfyWordFilter{},
-		// 二战风云·为爱发电卡（管理端发放、玩家每日领钻石）
-		&model.EzfyLoveCard{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
-	}
-	// 二战风云：道具库存列是后加的，老行回填默认 100
-	if db.Migrator().HasTable("ezfy_cfg_item") {
-		db.Exec("UPDATE ezfy_cfg_item SET stock = 100 WHERE stock IS NULL")
-		// 钻石售价 / 商城分类（第九轮新增）
-		db.Exec("UPDATE ezfy_cfg_item SET price_diamond = 0 WHERE price_diamond IS NULL")
-		db.Exec("UPDATE ezfy_cfg_item SET category = '' WHERE category IS NULL")
-	}
-	// 二战风云：钻石余额列（第九轮新增，仅管理端充值）
-	if db.Migrator().HasTable("ezfy_profile") {
-		db.Exec("UPDATE ezfy_profile SET diamond = 0 WHERE diamond IS NULL")
-	}
-	// 二战风云：建筑数量上限配置（单行，军事区/资源区各 36）
-	// ★ 2026-09-26 按线上现值对齐：36/36/33/20。
-	if db.Migrator().HasTable("ezfy_cfg_limit") {
-		db.Exec("INSERT INTO ezfy_cfg_limit(id, military_max, resource_max, house_max, factory_max) " +
-			"VALUES(1, 36, 36, 33, 20) ON DUPLICATE KEY UPDATE id = id")
-	}
-
-	// 二战风云：游戏ID 首次 = 家园ID（老档案补数据；已有值的不动）
-	// ★ 游戏ID 之后永不随家园ID/家园号码变化，游戏内业务一律以它为准。
-	if db.Migrator().HasTable("ezfy_profile") {
-		db.Exec("UPDATE ezfy_profile SET game_uid = user_id WHERE game_uid = 0 OR game_uid IS NULL")
-		// AutoMigrate 新加的列在老行里是 NULL，扫描进 int 会出错，这里统一回填 0
-		db.Exec("UPDATE ezfy_profile SET rename_used = 0 WHERE rename_used IS NULL")
-		db.Exec("UPDATE ezfy_profile SET camp_used = 0 WHERE camp_used IS NULL")
-		db.Exec("UPDATE ezfy_profile SET current_city_id = 0 WHERE current_city_id IS NULL")
-		db.Exec("UPDATE ezfy_profile SET recruit_free_limit = 0 WHERE recruit_free_limit IS NULL")
-	}
-
-	// 二战风云：交易所挂单的计价货币（老行是 NULL，回填 1=黄金）
-	if db.Migrator().HasTable("ezfy_exchange") {
-		db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
-	}
-
-	// 二战风云：出征集结令单次上限（默认 99）—— 存量表补列 + 老行回填
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」（2026-09-26 按线上现值对齐）。
-	//   老行该列是 NULL/0 时统一回填 99（0 无意义 = 等于禁用集结令道具）。
-	if db.Migrator().HasTable("ezfy_cfg_limit") {
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_max_per_order") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_max_per_order int DEFAULT 99")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_max_per_order = 99 WHERE gather_max_per_order IS NULL OR gather_max_per_order <= 0")
-	}
-
-	// 二战风云：战斗/经济数值补列（征服扣民心、掠夺扣民心、军官工资、伤兵恢复系数）
-	// ★ 用户反馈「征服民心每次 -5 太多」「军官是消耗黄金的，黄金现在消耗 0」「恢复伤兵需要黄金」。
-	//   老行该列是 NULL/0 时统一回填默认值（这几个值 0 都无意义：0 = 不扣民心 / 军官免费 / 恢复免费）。
-	if db.Migrator().HasTable("ezfy_cfg_limit") {
-		addLimitCol := func(col string, def int) {
-			d := fmt.Sprintf("%d", def)
-			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
-			}
-			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d +
-				" WHERE " + col + " IS NULL OR " + col + " <= 0")
-		}
-		addLimitCol("conquer_feelings_max", 5)
-		addLimitCol("loot_feelings", 3)
-		// ★ 2026-09-28 安抚参数（用户规则：花 5 万黄金 → 民怨 -2 / 民心 +1，15 分钟一次）
-		//   ⚠️ placate_gold 是 int64 → 列类型必须是 bigint，否则默认 50000 能存但
-		//   管理端以后调大值时会溢出（int 上限约 21 亿）。单独处理，不走 addLimitCol。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "placate_gold") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN placate_gold bigint DEFAULT 50000")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET placate_gold = 50000 WHERE placate_gold IS NULL OR placate_gold <= 0")
-		addLimitCol("placate_grievance", 2)
-		addLimitCol("placate_feelings", 1)
-		addLimitCol("placate_cooldown_min", 15)
-		// ★ 2026-09-26 用户要求「军官工资现值改成 20」：默认 100 → 20
-		//   ⚠️ addLimitCol 只在「列不存在 / 值为 NULL 或 <= 0」时回填，
-		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。
-		addLimitCol("officer_salary_per_level", 20)
-		addLimitCol("wound_heal_divisor", 50)
-		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
-		addLimitCol("mall_buy_max", 99)
-		// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
-		addLimitCol("convene_food_cost", 100000)
-		addLimitCol("convene_pop_gain", 100000)
-		// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
-		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
-		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。
-		addLimitCol("convene_pop_max", 0)
-	}
-
-	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（用户要求管理端可配）
-	//
-	// ★ 开关的列**不能**用上面的 addLimitCol —— 那个带 `WHERE col <= 0` 回填，
-	//   会在每次服务启动时把管理员关掉的开关（0）重新改成 1（开）。这里只回填 NULL。
-	// ★ 开关字段在 model 里也刻意**不带** gorm default 标签，否则 GORM 写 0 会被吞掉。
-	if db.Migrator().HasTable("ezfy_cfg_limit") {
-		addSwitchCol := func(col string, def int) {
-			d := fmt.Sprintf("%d", def)
-			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
-			}
-			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d + " WHERE " + col + " IS NULL")
-		}
-		addSwitchCol("recruit_cost_on", 1) // 征兵消耗资源：1 开（默认）/ 0 关
-		addSwitchCol("food_upkeep_on", 1)  // 军队耗粮：1 开（默认）/ 0 关
-		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
-		addSwitchCol("war_require_on", 1)  // 宣战功能：1 开（默认，掠夺/征服需先宣战生效）/ 0 关（直接可打）
-		addSwitchCol("march_cap_on", 1)    // 出征兵力上限：1 开（默认，司令部等级那套）/ 0 关（不限兵力）
-		// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
-		addSwitchCol("house_pop_limit_on", 1)  // 民居容量限制：1 开（默认，民居容量决定人口上限）/ 0 关（不限人口）
-		addSwitchCol("convene_flexible_on", 1) // 召集人口灵活配置：1 开（默认，可突破民居上限）/ 0 关（受上限约束）
-		// ★ 军官升星（2026-09-22）：三个开关 + 四个数值
-		addSwitchCol("officer_star_up_on", 1)        // 升星功能：1 开（默认）/ 0 关
-		addSwitchCol("officer_star_chance_on", 1)    // 概率开关：1 按概率（默认）/ 0 必成功
-		addSwitchCol("officer_star_keep_on_fail", 0) // 失败是否保留升星卡：0 扣掉（默认）/ 1 保留
-		// 数值类（0 无意义 → 回落默认值），用只回填 NULL 的写法，别覆盖管理端改过的值
-		addNumCol := func(col string, def int) {
-			d := fmt.Sprintf("%d", def)
-			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + d)
-			}
-			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + d + " WHERE " + col + " IS NULL")
-		}
-		addNumCol("officer_star_chance", 20)
-		addNumCol("officer_star_chance_step", 0)
-		addNumCol("officer_star_chance_min", 20)
-		addNumCol("officer_star_attr_gain", 10)
-		// ★ 用户规则「军官最多 5 星」
-		addNumCol("officer_star_max", 5)
-
-		// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
-		//   招生简章刷新时按此概率出 5 星（默认 1 = 1%，100 = 必出）。
-		addNumCol("recruit_five_star_rate", 1)
-
-		// 野地兵力倍数（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_troop_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_troop_mult double DEFAULT 10")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wild_troop_mult = 10 WHERE wild_troop_mult IS NULL OR wild_troop_mult <= 0")
-
-		// ★ 2026-09-26 城市资源产量倍率（默认 1，允许小数；**0 是合法值 = 产量归零**）
-		//   ⚠️ 只回填 NULL —— 千万不能写 `OR res_prod_mult <= 0`，
-		//   否则每次启动都会把管理端设的 0 改回 1（和「开关类字段」是同一个坑）。
-		//   ⚠️ 必须 double：addLimitCol 建的是 int，配不了 0.5 / 2.5。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "res_prod_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN res_prod_mult double DEFAULT 1")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET res_prod_mult = 1 WHERE res_prod_mult IS NULL")
-
-		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
-		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_res_mult double DEFAULT 10")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wild_res_mult = 10 WHERE wild_res_mult IS NULL OR wild_res_mult <= 0")
-
-		// ★ 2026-09-25：采集资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）。
-		//   同样用 double，作用点 dispatchGatherYield 的采集产出。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_res_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_res_mult double DEFAULT 10")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_res_mult = 10 WHERE gather_res_mult IS NULL OR gather_res_mult <= 0")
-
-		// ★ 2026-09-28：采集军官后勤属性加成率倍率（默认 1，允许小数；0 / NULL → 回落 1）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "officer_gather_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN officer_gather_mult double DEFAULT 1")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET officer_gather_mult = 1 WHERE officer_gather_mult IS NULL OR officer_gather_mult <= 0")
-
-		// ★ 2026-09-28：市长产量加成倍率（默认 1，允许小数；NULL → 回落 1；**0 合法**=关闭市长加成）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "mayor_gain_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN mayor_gain_mult double DEFAULT 1")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET mayor_gain_mult = 1 WHERE mayor_gain_mult IS NULL")
-
-		// ★ 2026-09-28：采集等级成长幂次（默认 1.3，允许小数；0 / NULL 无意义 → 回落 1.3）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_level_pow") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_level_pow double DEFAULT 1.3")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_level_pow = 1.3 WHERE gather_level_pow IS NULL OR gather_level_pow <= 0")
-
-		// ★ 2026-09-28：海野采集系数（默认 1.5，允许小数；0 / NULL 无意义 → 回落 1.5）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_sea_mult") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gather_sea_mult double DEFAULT 1.5")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET gather_sea_mult = 1.5 WHERE gather_sea_mult IS NULL OR gather_sea_mult <= 0")
-
-		// ★ 2026-09-28：军校刷新周期模式（1=按天 2=按小时，默认按小时；0 / NULL 无意义 → 回落 2）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "recruit_cycle_mode") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN recruit_cycle_mode int DEFAULT 2")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET recruit_cycle_mode = 2 WHERE recruit_cycle_mode IS NULL OR recruit_cycle_mode <= 0")
-
-		// ★ 2026-10-02 战力榜权重（兵力榜 → 战力榜）：科技每级/每项、建筑每级、兵种类型为整数；
-		//   兵种数量幂次为小数（默认 0.8，软化新老差距；0 / NULL 无意义 → 回落 0.8）。
-		addNumCol("power_tech_per_level", 120)
-		addNumCol("power_tech_per_tech", 100)
-		addNumCol("power_build_per_level", 80)
-		addNumCol("power_troop_type", 300)
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "power_troop_pow") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN power_troop_pow double DEFAULT 0.8")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET power_troop_pow = 0.8 WHERE power_troop_pow IS NULL OR power_troop_pow <= 0")
-		// 总量压缩幂次：最终战力 = 原始总和^此值（默认 0.5 次方，只缩大数、排名不变；0/NULL 无意义 → 回落 0.5）
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "power_compress_pow") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN power_compress_pow double DEFAULT 0.5")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET power_compress_pow = 0.5 WHERE power_compress_pow IS NULL OR power_compress_pow <= 0")
-
-		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
-		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
-		if db.Migrator().HasTable("ezfy_cfg_limit") {
-			for _, col := range []string{"res_max_food", "res_max_steel", "res_max_oil",
-				"res_max_rare", "res_max_gold"} {
-				if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-					db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " bigint DEFAULT 2100000000")
-				}
-				db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = 2100000000 WHERE " + col + " IS NULL OR " + col + " <= 0")
-			}
-		}
-
-		// 训练一键加速黄金倍率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 0.1）
-		// ★ 2026-09-26 按线上现值对齐：默认 0.1（= 0.1%，几乎免费）。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "speed_train_rate") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN speed_train_rate double DEFAULT 0.1")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 0.1 WHERE speed_train_rate IS NULL OR speed_train_rate <= 0")
-		// ★ 2026-09-24 迁移：把旧口径的默认值 1 一次性升级为 100（语义从「倍率」改为「百分比」）。
-		//   注意副作用：以后想把倍率故意设成 1（=1%）会在重启时被改回 100 —— 运营不会用到 1% 这么极端的值。
-		db.Exec("UPDATE ezfy_cfg_limit SET speed_train_rate = 100 WHERE speed_train_rate = 1")
-
-		// 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价；0 / NULL 无意义 → 回落 100）
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_heal_rate") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_heal_rate double DEFAULT 100")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate IS NULL OR wound_heal_rate <= 0")
-		// ★ 2026-09-24 迁移：同上，旧默认值 1 → 100
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_heal_rate = 100 WHERE wound_heal_rate = 1")
-
-		// ★ 数值安全卡控（2026-09-23 线上「负数兵力」事故）：
-		//   troop_max 单城兵力上限（默认 50 亿）+ wound_expire_days 伤兵存活天数（默认 3）。
-		//   两个值 0 都无意义 → 回落默认值，所以用 `IS NULL OR <= 0` 回填。
-		//   ⚠️ troop_max 必须用 **bigint**：int 在 MySQL 只有 21 亿，装不下 50 亿的配置。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "troop_max") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN troop_max bigint DEFAULT 5000000000")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET troop_max = 5000000000 WHERE troop_max IS NULL OR troop_max <= 0")
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wound_expire_days") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wound_expire_days int DEFAULT 3")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 3 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
-
-		// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 可配置；2026-09-26 按线上现值 1）。
-		//   0 无意义 → 回落默认 1。
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 1")
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 1 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
-
-		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
-	//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
-	if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
-	}
-	db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
-
-	// ★ 向系统出售资源回收比例（2026-09-30 用户要求）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
-	//   0 无意义 → 回落各自默认；管理端可在「交易行维护」调整。
-	addSysSellCol := func(col, def string) {
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + def)
-		}
-		db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + def + " WHERE " + col + " IS NULL OR " + col + " <= 0")
-	}
-	addSysSellCol("sys_sell_food", "10")
-	addSysSellCol("sys_sell_steel", "10")
-	addSysSellCol("sys_sell_oil", "20")
-	addSysSellCol("sys_sell_rare", "25")
-}
-
-	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
-	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。
-	if db.Migrator().HasTable("ezfy_train_queue") {
-		if !db.Migrator().HasColumn("ezfy_train_queue", "free_train") {
-			db.Exec("ALTER TABLE ezfy_train_queue ADD COLUMN free_train int DEFAULT 0")
-		}
-	}
-
-	// 二战风云·实时战场：守方指挥列（2026-09-23「敌人打自己，自己也能指挥」新增）
-	//   def_user_id 守方玩家 uid（带索引 idx_battle_def，守方据此找回并进入战场；AI 守方为 0）
-	//   def_cmd     守方**逐兵种**指令表 JSON（口径同 atk_cmd，AI 守军为空串）
-	// ⚠️ 存量库 AutoMigrate 可能漏加列 → 显式补齐（幂等）。
-	//   且新加的列在老行上是 NULL，Go 侧 uint 扫描 NULL 会报
-	//   "converting NULL to uint is unsupported"，必须回填 0。
-	if db.Migrator().HasTable("ezfy_battle") {
-		if !db.Migrator().HasColumn("ezfy_battle", "def_user_id") {
-			db.Exec("ALTER TABLE ezfy_battle ADD COLUMN def_user_id bigint unsigned NULL")
-		}
-		if !db.Migrator().HasColumn("ezfy_battle", "def_cmd") {
-			db.Exec("ALTER TABLE ezfy_battle ADD COLUMN def_cmd varchar(500) DEFAULT ''")
-		}
-		if !db.Migrator().HasIndex(&model.EzfyBattle{}, "idx_battle_def") {
-			db.Exec("CREATE INDEX idx_battle_def ON ezfy_battle(def_user_id)")
-		}
-		// ★ 回填前先探测是否存在 NULL 行（LIMIT 1 走 idx_battle_def 秒回），
-		//   避免每次启动都对整表跑 UPDATE（重启 CPU 尖峰来源之一）。
-		if db.Raw("SELECT 1 FROM ezfy_battle WHERE def_user_id IS NULL LIMIT 1").Scan(&struct{ V int }{}).Error == nil {
-			db.Exec("UPDATE ezfy_battle SET def_user_id = 0 WHERE def_user_id IS NULL")
-		}
-		if db.Raw("SELECT 1 FROM ezfy_battle WHERE def_cmd IS NULL LIMIT 1").Scan(&struct{ V int }{}).Error == nil {
-			db.Exec("UPDATE ezfy_battle SET def_cmd = '' WHERE def_cmd IS NULL")
-		}
-	}
-
-	// 二战风云·军团积分（★ 2026-09-25 用户要求「军团积分 + 军团商城」）
-	//   ezfy_corps.points / ezfy_corps_member.points 是 AutoMigrate 新加的列，
-	//   在**老行上是 NULL** —— Go 侧 int64 扫 NULL 会报
-	//   "converting NULL to int64 is unsupported"（军团列表/成员列表直接扫这两张表）。
-	//   显式补列 + 回填 0（幂等，跑过一次后条件不再命中）。
-	if db.Migrator().HasTable("ezfy_corps") {
-		if !db.Migrator().HasColumn("ezfy_corps", "points") {
-			db.Exec("ALTER TABLE ezfy_corps ADD COLUMN points bigint DEFAULT 0 COMMENT '军团总积分'")
-		}
-		db.Exec("UPDATE ezfy_corps SET points = 0 WHERE points IS NULL")
-		// ★ 2026-09-30 入团审核开关（0=无需审核直接入团，1=需军团长审核）
-		if !db.Migrator().HasColumn("ezfy_corps", "need_review") {
-			db.Exec("ALTER TABLE ezfy_corps ADD COLUMN need_review int DEFAULT 0 COMMENT '入团是否需审核(0=直接入团 1=需军团长审核)'")
-		}
-		db.Exec("UPDATE ezfy_corps SET need_review = 0 WHERE need_review IS NULL")
-	}
-	if db.Migrator().HasTable("ezfy_corps_member") {
-		if !db.Migrator().HasColumn("ezfy_corps_member", "points") {
-			db.Exec("ALTER TABLE ezfy_corps_member ADD COLUMN points bigint DEFAULT 0 COMMENT '个人军团积分'")
-		}
-		db.Exec("UPDATE ezfy_corps_member SET points = 0 WHERE points IS NULL")
 	}
 
 	// 福利院·慈善基金池（首行池金，已存在则跳过）
@@ -654,10 +263,7 @@ func Run(db *gorm.DB, staticDir string) {
 	seedGardenData(db)
 	seedGardenSignRewards(db)
 	seedFarmData(db)
-	seedParkData(db)
 	seedJwt(db)
-	seedHxxy(db)
-	seedEzfy(db)
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)
@@ -1150,73 +756,6 @@ func seedFarmData(db *gorm.DB) {
 	}
 }
 
-// seedParkData 抢车位车辆数据（幂等：按名称逐条补齐）
-// 对齐诺哈 wap_car_shop：dtype 1普通车 2高级车 3酷族车 4贵族车 5试驾车
-// 盈利≈价格的0.5%/小时（停满12小时净收入约价5.4%，符合原版"停车一天回本一成"节奏）
-func seedParkData(db *gorm.DB) {
-	cars := []model.CarShop{
-		// 普通车
-		{Name: "奥拓", Icon: "gif", Price: 1200, Money: 6, DType: 1},
-		{Name: "奇瑞QQ", Icon: "gif", Price: 2000, Money: 10, DType: 1},
-		{Name: "夏利", Icon: "gif", Price: 2800, Money: 14, DType: 1},
-		{Name: "五菱之光", Icon: "gif", Price: 3600, Money: 18, DType: 1},
-		{Name: "长安之星", Icon: "gif", Price: 4500, Money: 22, DType: 1},
-		{Name: "捷达", Icon: "gif", Price: 6000, Money: 30, DType: 1},
-		{Name: "富康", Icon: "gif", Price: 6800, Money: 34, DType: 1},
-		{Name: "桑塔纳", Icon: "gif", Price: 8000, Money: 40, DType: 1},
-		{Name: "比亚迪F3", Icon: "gif", Price: 9000, Money: 45, DType: 1},
-		{Name: "爱丽舍", Icon: "gif", Price: 10000, Money: 50, DType: 1},
-		// 高级车
-		{Name: "伊兰特", Icon: "gif", Price: 15000, Money: 75, DType: 2},
-		{Name: "别克凯越", Icon: "gif", Price: 18000, Money: 90, DType: 2},
-		{Name: "骐达", Icon: "gif", Price: 22000, Money: 110, DType: 2},
-		{Name: "POLO", Icon: "gif", Price: 26000, Money: 130, DType: 2},
-		{Name: "卡罗拉", Icon: "gif", Price: 30000, Money: 150, DType: 2},
-		{Name: "思域", Icon: "gif", Price: 36000, Money: 180, DType: 2},
-		{Name: "福克斯", Icon: "gif", Price: 40000, Money: 200, DType: 2},
-		{Name: "速腾", Icon: "gif", Price: 45000, Money: 225, DType: 2},
-		{Name: "轩逸", Icon: "gif", Price: 50000, Money: 250, DType: 2},
-		{Name: "明锐", Icon: "gif", Price: 55000, Money: 275, DType: 2},
-		// 酷族车
-		{Name: "马自达3", Icon: "gif", Price: 68000, Money: 340, DType: 3},
-		{Name: "甲壳虫", Icon: "gif", Price: 88000, Money: 440, DType: 3},
-		{Name: "MINI COOPER", Icon: "gif", Price: 108000, Money: 540, DType: 3},
-		{Name: "马自达6", Icon: "gif", Price: 128000, Money: 640, DType: 3},
-		{Name: "天籁", Icon: "gif", Price: 158000, Money: 790, DType: 3},
-		{Name: "锐志", Icon: "gif", Price: 188000, Money: 940, DType: 3},
-		{Name: "君越", Icon: "gif", Price: 218000, Money: 1090, DType: 3},
-		{Name: "凯美瑞", Icon: "gif", Price: 248000, Money: 1240, DType: 3},
-		{Name: "雅阁", Icon: "gif", Price: 278000, Money: 1390, DType: 3},
-		{Name: "帕萨特领驭", Icon: "gif", Price: 308000, Money: 1540, DType: 3},
-		// 贵族车
-		{Name: "奥迪A4", Icon: "gif", Price: 400000, Money: 2000, DType: 4},
-		{Name: "宝马3系", Icon: "gif", Price: 500000, Money: 2500, DType: 4},
-		{Name: "奔驰C级", Icon: "gif", Price: 600000, Money: 3000, DType: 4},
-		{Name: "凯迪拉克CTS", Icon: "gif", Price: 700000, Money: 3500, DType: 4},
-		{Name: "奥迪A6L", Icon: "gif", Price: 800000, Money: 4000, DType: 4},
-		{Name: "宝马5系", Icon: "gif", Price: 1000000, Money: 5000, DType: 4},
-		{Name: "奔驰E级", Icon: "gif", Price: 1200000, Money: 6000, DType: 4},
-		{Name: "奥迪Q7", Icon: "gif", Price: 1600000, Money: 8000, DType: 4},
-		{Name: "宝马7系", Icon: "gif", Price: 2000000, Money: 10000, DType: 4},
-		{Name: "奔驰S级", Icon: "gif", Price: 2500000, Money: 12500, DType: 4},
-		{Name: "保时捷卡宴", Icon: "gif", Price: 3000000, Money: 15000, DType: 4},
-		{Name: "法拉利F430", Icon: "gif", Price: 5000000, Money: 25000, DType: 4},
-		{Name: "兰博基尼", Icon: "gif", Price: 8000000, Money: 40000, DType: 4},
-		{Name: "劳斯莱斯幻影", Icon: "gif", Price: 12000000, Money: 60000, DType: 4},
-		// 试驾车（低门槛高盈利彩蛋）
-		{Name: "试驾体验车", Icon: "gif", Price: 500, Money: 15, DType: 5},
-		{Name: "试驾跑车", Icon: "gif", Price: 2000, Money: 80, DType: 5},
-	}
-	for _, s := range cars {
-		var n int64
-		db.Model(&model.CarShop{}).Where("name = ?", s.Name).Count(&n)
-		if n == 0 {
-			db.Create(&s)
-		}
-	}
-}
-
-// seedPlazaSections 广场板块开关（幂等，默认全显示）
 func seedPlazaSections(db *gorm.DB) {
 	var n int64
 	db.Model(&model.PlazaSection{}).Count(&n)
@@ -1736,29 +1275,9 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-魔法花园", "花园数据管理", "gardenData"),
 		mod("游戏-开心农场", "农场种子", "farmSeeds"), mod("游戏-开心农场", "化肥陷阱", "farmItems"),
 		mod("游戏-开心农场", "农场数据管理", "farmData"),
-		mod("游戏-抢车位", "车市车辆", "parkCars"), mod("游戏-抢车位", "车位数据管理", "parkData"),
 		mod("游戏-精武堂", "玩家管理", "jwtPlayers"), mod("游戏-精武堂", "道具管理", "jwtItems"),
 		mod("游戏-精武堂", "技能管理", "jwtSkills"), mod("游戏-精武堂", "比武记录", "jwtRecords"),
 		mod("游戏-精武堂", "数据管理", "jwtData"),
-		mod("游戏-幻想西游", "西游玩家", "xyPlayers"), mod("游戏-幻想西游", "西游流水", "xyLogs"),
-		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
-		mod("游戏-二战风云", "风云玩家", "ezfyPlayers"), mod("游戏-二战风云", "风云流水", "ezfyLogs"),
-		mod("游戏-二战风云", "风云系统", "ezfySystem"), mod("游戏-二战风云", "风云数据", "ezfyData"),
-		mod("游戏-二战风云", "风云城市", "ezfyCities"), mod("游戏-二战风云", "风云建筑", "ezfyBuildings"),
-		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
-		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"), mod("游戏-二战风云", "风云军衔", "ezfyRankCfg"),
-		// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」，可单独分配给角色
-		mod("游戏-二战风云", "军官装备管理", "ezfyEquips"),
-		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
-		// 资源交易行维护（系统挂单定价黄金/钻石）
-		mod("游戏-二战风云", "风云交易行", "ezfyExchange"),
-		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
-		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
-		// 第九轮新增：系统配置（原「建筑上限配置」，用户要求改名）/ 聊天敏感词（二战自己的独立维护页）
-		mod("游戏-二战风云", "风云系统配置", "ezfyBuildLimit"),
-		mod("游戏-二战风云", "风云敏感词", "ezfyWords"),
-		// 宣战管理（列表 + 一键生效/一键完成）
-		mod("游戏-二战风云", "风云宣战", "ezfyWars"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
 		mod("系统", "菜单维护", "menus"),
@@ -1766,10 +1285,6 @@ func seedRBAC(db *gorm.DB) {
 	for _, p := range modulePerms {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
 	}
-	// ★ 权限名改过的，要把老行也刷一遍：上面是 FirstOrCreate（命中就不更新），
-	//   否则老库里这条权限永远显示旧名字（用户要求「建筑上限配置」改名「系统配置」）。
-	db.Model(&model.Permission{}).Where("code = ?", "module:ezfyBuildLimit").
-		Update("name", "风云系统配置")
 	// 清理旧粗粒度权限及其角色关联（全部改为 module:* 模块权限）
 	legacy := []string{"admin:access", "user:manage", "board:manage", "thread:manage", "announcement:manage", "role:manage", "badge:manage", "game:manage"}
 	// 清理此前测试临时权限（如 module:families 之前的旧测试角色等已随角色删除联动，无需单独处理）
@@ -2418,26 +1933,9 @@ func seedGameBoards(db *gorm.DB) {
 		db.Create(&ch)
 	}
 	games := []struct{ name, desc string }{
-		{"幻想西游", "经典wap游戏，古典神话网游，再梦西游"},
-		{"永恒修仙", "经典wap游戏，永恒修仙，欢迎体验"},
 		{"魔法花园", "花的世界，花的海洋，花的物语"},
-		{"婚礼殿堂", "闯荡社区快来：婚姻礼堂，寻找爱的另一半！"},
 		{"开心农场", "开心农场，播种开心，收获快乐"},
-		{"狂抢车位", "停放车辆，展现身价，乐趣无穷"},
 		{"精武堂", "江湖格斗，残酷厮杀，随死即生"},
-		{"家园宠物", "家园宠物，内测中"},
-		{"水果乐园", "轻松娱乐，点缀生活，水果乐园"},
-		{"全民猎马", "周二四六，包你赢够，尽在猎马"},
-		{"家园股市", "家园股市，一夜成名，瞬间暴富"},
-		{"大话吹牛", "大话吹牛，打打闹闹，更是乐哉"},
-		// 复刻诺哈 game 目录：slave/arena/apple/ball/guess/marksix/nabob
-		{"好友买卖", "买下好友，打工赚钱，奴隶翻身当主人"},
-		{"竞技场", "擂台争霸，比武切磋，胜者为王"},
-		{"砸金蛋", "金蛋一砸，好运连连"},
-		{"台球", "一杆进洞，桌上争雄"},
-		{"猜数", "猜数字赢大奖，试试你的运气"},
-		{"六合彩", "买马投注，一夜暴富"},
-		{"大富翁", "掷骰子走格子，买地收租当富豪"},
 		// 游戏论坛功能性板块（对齐诺哈 game 页底部 游戏综合反馈/游戏研发/游戏交流）
 		{"游戏综合反馈", "游戏中遇到的问题、建议与反馈专区"},
 		{"游戏研发", "游戏更新与研发动态专区"},
@@ -2464,8 +1962,6 @@ func seedGameBoards(db *gorm.DB) {
 	}{
 		{"精武堂", "【精武堂】第二届武林大会报名帖", "第二届武林大会即日起开放报名！\n赛制：32进16单败淘汰，每天3场，周日决赛。\n奖励：冠军专属马甲+500金币，亚军300金币。\n回帖格式：【报名】游戏ID+常用武器。", []string{"【报名】云起，常用长枪！", "已报名，求虐"}},
 		{"魔法花园", "晒花大赛第3期：谁的花最惊艳", "本周主题：玫瑰！\n把你的花园截图发上来，点赞最高的送高级花种×10。", []string{"我的蓝玫瑰呢，先占楼"}},
-		{"狂抢车位", "车神争霸赛：谁的车最贵", "晒出你的座驾！劳斯莱斯幻影镇楼，不服来战。", []string{"楼主的幻影被我贴条了哈哈"}},
-		{"幻想西游", "【新区】马年新区开服公告", "马年新区正式开服！\n开服前3天经验翻倍，冲级榜前10名送神兵利器。", []string{"新区见！老玩家回归"}},
 	}
 	for _, sp := range samples {
 		bid := ids[sp.game]
@@ -2590,29 +2086,11 @@ func seedGames(db *gorm.DB) {
 		return 0
 	}
 	// 复刻诺哈 wap_game：net 外站游戏 / com 社区游戏（path 为本站路由入口，空=未开发）
-	// 排序对齐诺哈游戏大厅：四大社交游戏(魔法花园/开心农场/狂抢车位/好友买卖)在前，
-	// 其余诺哈游戏(竞技场/台球/猜数/六合彩/大富翁/大话吹牛/砸金蛋)居中，非诺哈扩展游戏殿后
+	// 游戏大厅条目：仅内置并上架已开发的三个社区游戏
 	games := []model.Game{
 		{Name: "魔法花园", Category: "com", Logo: "mofahuayuan.gif", Stars: "★★★★★", Desc: "花的世界，花的海洋，花的物语", Intro: "播种·浇灌·收获，收集图谱点亮精灵，还可到好友花园采摘！", Path: "/games/garden", BoardID: bid("魔法花园"), Sort: 1},
 		{Name: "开心农场", Category: "com", Logo: "kaixinnongchang.gif", Stars: "★★★★★", Desc: "开心农场，播种开心，收获快乐", Intro: "翻地播种浇水施肥，偷菜设陷阱，还能卖果实赚G币！", Path: "/games/farm", BoardID: bid("开心农场"), Sort: 2},
-		{Name: "狂抢车位", Category: "com", Logo: "kuangqiangchewei.gif", Stars: "★★★☆☆", Desc: "停放车辆，展现身价，乐趣无穷", Intro: "买车停车抢车位，贴条没收罚金，超时收入入国库，还能赠好友豪车！", Path: "/games/park", BoardID: bid("狂抢车位"), Sort: 3},
-		{Name: "好友买卖", Category: "com", Logo: "", Stars: "★★★★★", Desc: "买下好友，打工赚钱，奴隶翻身当主人", Intro: "把好友买来做奴隶，让他打工赚钱，还可以身价翻倍转卖", BoardID: bid("好友买卖"), Sort: 4},
-		{Name: "竞技场", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "热血江湖，擂台争霸，胜者为王", Intro: "挑战好友擂台，胜场提升段位，冲击竞技之巅", BoardID: bid("竞技场"), Sort: 5},
-		{Name: "台球", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "一杆进洞，桌上争雄", Intro: "好友对战台球，展示你的杆法与技巧", BoardID: bid("台球"), Sort: 6},
-		{Name: "猜数", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "猜数字赢大奖，试试你的运气", Intro: "参与竞猜，猜中大奖抱回家", BoardID: bid("猜数"), Sort: 7},
-		{Name: "六合彩", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "买马投注，一夜暴富", Intro: "六合彩开奖，买中即赚", BoardID: bid("六合彩"), Sort: 8},
-		{Name: "大富翁", Category: "com", Logo: "", Stars: "★★★★☆", Desc: "超级富翁，掷骰子走格子，买地收租", Intro: "掷骰前进，买地建屋，收租致富", BoardID: bid("大富翁"), Sort: 9},
-		{Name: "大话吹牛", Category: "com", Logo: "dahuachuiniu.gif", Stars: "★★★☆☆", Desc: "大话吹牛，打打闹闹，更是乐哉", Intro: "吹牛打闹，好友互喷，乐在其中", BoardID: bid("大话吹牛"), Sort: 10},
-		{Name: "砸金蛋", Category: "com", Logo: "", Stars: "★★★☆☆", Desc: "金蛋一砸，好运连连", Intro: "花G币砸金蛋，砸出金币元宝惊喜不断", BoardID: bid("砸金蛋"), Sort: 11},
-		{Name: "婚礼殿堂", Category: "com", Logo: "hunli2.jpg", Stars: "★★★★★", Desc: "闯荡社区快来: 婚姻礼堂 寻找爱的另一半！", BoardID: bid("婚礼殿堂"), Sort: 12},
 		{Name: "精武堂", Category: "com", Logo: "jwt.png", Stars: "★★★★★", Desc: "江湖格斗，残酷厮杀，随死即生", Intro: "武侠格斗成长，练功比武，技能书店，锻造神兵，激活头衔，加入帮派！", Path: "/games/jwt", BoardID: bid("精武堂"), Sort: 13},
-		{Name: "家园宠物", Category: "com", Logo: "cwlogo.gif", Stars: "★★", Desc: "家园宠物，内测中", BoardID: bid("家园宠物"), Sort: 14},
-		{Name: "水果乐园", Category: "com", Logo: "shuiguoleyuan.gif", Stars: "★★☆☆☆", Desc: "轻松娱乐，点缀生活，水果乐园", BoardID: bid("水果乐园"), Sort: 15},
-		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
-		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 17},
-		{Name: "幻想西游", Category: "com", Logo: "hxxyth.png", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", Intro: "五门派闯荡西游世界：地图冒险、回合战斗、神兵装备、宠物捕捉、副本BOSS、帮派结婚。游戏内独立货币银两金豆！", Path: "/games/hxxy", BoardID: bid("幻想西游"), Sort: 1},
-		{Name: "二战风云", Category: "com", Logo: "", Stars: "★★★★★", Desc: "经典策略战争，运筹帷幄，决胜千里", Intro: "建造城池发展资源，训练部队研发科技，出征野地掠夺征服，多回合回合制战争！", Path: "/games/ezfy", BoardID: bid("二战风云"), Sort: 3},
-		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
 	}
 	for i := range games {
 		// 未上架规则（幂等）：初始化不入库，老库置为下架（status=0）

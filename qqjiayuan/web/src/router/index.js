@@ -70,10 +70,7 @@ const routes = [
   { path: '/groups', name: 'groups', component: () => import('../views/Group.vue'), meta: { auth: true } },
   { path: '/games/garden', name: 'garden', component: () => import('../views/Garden.vue'), meta: { auth: true } },
   { path: '/games/farm', name: 'farm', component: () => import('../views/Farm.vue'), meta: { auth: true } },
-  { path: '/games/park', name: 'park', component: () => import('../views/Park.vue'), meta: { auth: true } },
   { path: '/games/jwt', name: 'jwt', component: () => import('../views/Jingwt.vue'), meta: { auth: true } },
-  { path: '/games/hxxy', name: 'hxxy', component: () => import('../views/Xiyou.vue'), meta: { auth: true } },
-  { path: '/games/ezfy', name: 'ezfy', component: () => import('../views/Ezfy.vue'), meta: { auth: true } },
   { path: '/noble', name: 'noble', component: () => import('../views/Noble.vue'), meta: { auth: true } },
   // 个性昵称（复刻 3GQQ name.html）
   { path: '/name', name: 'nameCust', component: () => import('../views/Name.vue'), meta: { auth: true } },

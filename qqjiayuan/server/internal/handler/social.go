@@ -532,16 +532,10 @@ func (h *MessageHandler) Send(c *gin.Context) {
 	switch {
 	case trimSpace(req.ToName) != "":
 		kw := trimSpace(req.ToName)
-		// 玩家号码 → 游戏ID(二战) → 昵称 → 模糊昵称(唯一命中才认)
+		// 玩家号码 → 昵称 → 模糊昵称(唯一命中才认)
 		if u, err := h.resolveUser(kw); err == nil {
 			target = u
 		} else if err := h.DB.Where("nickname = ?", kw).First(&target).Error; err != nil {
-			// ★ 二战风云：允许用「游戏ID」(ezfy_profile.game_uid) 找人
-			var pid uint
-			if e := h.DB.Model(&model.EzfyProfile{}).Where("game_uid = ?", kw).
-				Select("user_id").Row().Scan(&pid); e == nil && pid > 0 {
-				h.DB.First(&target, pid)
-			}
 		}
 		if target.ID == 0 {
 			var cands []model.User
