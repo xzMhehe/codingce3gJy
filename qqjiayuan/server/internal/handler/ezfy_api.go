@@ -598,6 +598,12 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&req)
 	h.cfgs()
+
+	// 串行化整个「读剩余秒数→算钱→扣费→清空队列」，杜绝连点并发结算（见 ezfySpeedTrainLocks）。
+	lock := ezfySpeedTrainLock(uid)
+	lock.Lock()
+	defer lock.Unlock()
+
 	now := time.Now().UnixMilli()
 
 	targets := []model.EzfyCity{}
@@ -626,8 +632,13 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 			totalSec += s
 		}
 	}
+	// 连点第二发进来时队列已被上一发清零，剩余 0 秒：直接拒绝，不要走「扣 0 黄金」的成功分支。
+	if totalSec <= 0 {
+		resp.ParamError(c, "训练队列已全部完成，没有可加速的队列")
+		return
+	}
 	cost := int64(float64(totalSec)*float64(ezfySpeedGoldPerSec)*ezfySpeedTrainRate() + 0.5)
-	if totalSec > 0 && cost < 1 {
+	if cost < 1 {
 		cost = 1
 	}
 	main := h.getOrCreateCity(uid)

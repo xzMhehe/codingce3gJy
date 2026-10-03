@@ -205,6 +205,15 @@ var ezfyTrainLocks [64]sync.Mutex
 
 func ezfyTrainLock(cityID uint) *sync.Mutex { return &ezfyTrainLocks[cityID%64] }
 
+// ezfySpeedTrainLocks 训练一键加速的并发锁（按 **玩家** id 分片）。
+// ★ 2026-10-03 修复「频繁点击零消耗黄金」：SpeedTrainAll 里
+//   「读队列剩余秒数 → 算钱 → 校验黄金 → 扣黄金 → 清空队列剩余时间」不是原子的，
+//   连点会并发进入同一段结算：第二路看到已被清零的剩余时间（算成 0 秒），
+//   于是算出 0 黄金并返回「消耗0黄金」。串行化后一次只能有一个请求在结算扣费。
+var ezfySpeedTrainLocks [64]sync.Mutex
+
+func ezfySpeedTrainLock(uid uint) *sync.Mutex { return &ezfySpeedTrainLocks[uid%64] }
+
 func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	if amount <= 0 {
 		return

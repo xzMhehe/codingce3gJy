@@ -737,8 +737,8 @@
           <div class="old-line gray" v-if="!zoneBuilt.length">(本区还没有建筑, 点上面的「建造」)</div>
           <br/>
           <div class="old-line">
-            <a href="javascript:;" @click="doSpeedTrainAll">[训练一键加速(消耗黄金)]</a>|
-            <a href="javascript:;" @click="doSpeedTrainAllCity">[所有城市训练一键加速(消耗黄金)]</a>
+            <a href="javascript:;" @click="doSpeedTrainAll">[训练一键加速]</a>|
+            <a href="javascript:;" @click="doSpeedTrainAllCity">[所有城市训练一键加速]</a>
           </div>
           <!-- ★ 训练加速道具(item_type=4)的入口：上面两个是「花黄金一键完成」，
                这里才是商城买的「训练加速30分钟/2小时」真正被消耗的地方。 -->
@@ -7003,21 +7003,26 @@ export default {
     },
     // 训练一键加速(本城 / 所有城市)
     doSpeedTrainAll () {
-      api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.msg)
-          this.load()
-        } else this.notify(r.msg)
-      })
+      // ★ 2026-10-03 连点会并发打同一加速接口，后端第二发算成 0 秒/0 黄金 → 与建造一样走 once 防抖
+      this.once('speedTrain', () =>
+        api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
+          if (r.code === 0) {
+            this.notify(r.msg)
+            this.load()
+          } else this.notify(r.msg)
+        })
+      )
     },
     async doSpeedTrainAllCity () {
       if (!await this.ask('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
-      api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.msg)
-          this.load()
-        } else this.notify(r.msg)
-      })
+      this.once('speedTrain', () =>
+        api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
+          if (r.code === 0) {
+            this.notify(r.msg)
+            this.load()
+          } else this.notify(r.msg)
+        })
+      )
     },
     doBuild (b) {
       // ★ 用户要求：建造成功后跳回对应分区（资源区→资源区、军事区→军事区），并刷新建筑列表
