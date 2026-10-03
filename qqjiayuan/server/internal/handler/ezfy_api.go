@@ -925,18 +925,43 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 		ids = append(ids, int64(cp.ID))
 	}
 	counts := h.corpsMemberCountMap(ids)
+
+	// ★ 2026-10-03 性能：原实现 for 循环内逐军团查成员、逐成员 ensureProfile（N+1，
+	//   数百次 RDS 往返 → 4s）。改为批量查成员 + 批量查 profile，全程 2 次往返。
+	memberByCorps := map[int64][]model.EzfyCorpsMember{}
+	needUIDs := map[uint]bool{}
+	if len(ids) > 0 {
+		var members []model.EzfyCorpsMember
+		h.DB.Where("corps_id IN ?", ids).Find(&members)
+		for _, m := range members {
+			memberByCorps[int64(m.CorpsId)] = append(memberByCorps[int64(m.CorpsId)], m)
+			needUIDs[m.UserId] = true
+		}
+	}
+	for _, cp := range corps {
+		needUIDs[cp.LeaderUserId] = true
+	}
+	profileByUID := map[uint]model.EzfyProfile{}
+	if len(needUIDs) > 0 {
+		uids := make([]uint, 0, len(needUIDs))
+		for u := range needUIDs {
+			uids = append(uids, u)
+		}
+		var ps []model.EzfyProfile
+		h.DB.Where("user_id IN ?", uids).Find(&ps)
+		for _, p := range ps {
+			profileByUID[p.UserID] = p
+		}
+	}
+
 	views := []gin.H{}
 	for _, cp := range corps {
 		score := 0
-		var members []model.EzfyCorpsMember
-		h.DB.Where("corps_id = ?", cp.ID).Find(&members)
-		for _, m := range members {
-			p := h.ensureProfile(m.UserId)
-			score += p.Prestige
+		for _, m := range memberByCorps[int64(cp.ID)] {
+			score += profileByUID[m.UserId].Prestige
 		}
 		leaderName := "未知"
-		lp := h.ensureProfile(cp.LeaderUserId)
-		if lp.UserID == cp.LeaderUserId {
+		if lp, ok := profileByUID[cp.LeaderUserId]; ok && lp.UserID == cp.LeaderUserId {
 			leaderName = lp.Nickname
 		}
 		views = append(views, gin.H{"id": cp.ID, "name": cp.Name, "notice": cp.Notice,

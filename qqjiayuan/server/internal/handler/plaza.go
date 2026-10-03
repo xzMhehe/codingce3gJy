@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -46,28 +48,148 @@ func (h *PlazaHandler) SiteInfo(c *gin.Context) {
 
 func (h *PlazaHandler) Index(c *gin.Context) {
 	db := h.DB
+	uid := middleware.GetUID(c)
 
 	// 游客在线记录（30 分钟滑动窗口；登录用户走 users.last_active_at）
-	if middleware.GetUID(c) == 0 {
+	if uid == 0 {
 		since := time.Now().Add(-30 * time.Minute)
 		db.Exec("INSERT INTO online_guests (ip, last_active_at) VALUES (?, NOW()) ON DUPLICATE KEY UPDATE last_active_at = NOW()", c.ClientIP())
 		db.Delete(&model.OnlineGuest{}, "last_active_at < ?", since)
 	}
 
-	var announcements []model.Announcement
-	db.Where("type = ? AND status = 1", "notice").Order("created_at DESC").Limit(2).Find(&announcements)
-	var broadcasts []model.Announcement
-	db.Where("type = ? AND status = 1", "broadcast").Order("created_at DESC").Limit(1).Find(&broadcasts)
+	// 频道先取（子板块/最新帖按频道并行，避免 N+1 串行）
+	var channels []model.Board
+	db.Where("parent_id = 0").Order("sort ASC").Find(&channels)
 
-	var onlineCount, userCount, guestCount int64
+	var (
+		announcements []model.Announcement
+		broadcasts    []model.Announcement
+		onlineCount   int64
+		userCount     int64
+		newestUser    model.User
+		quickThreads  []model.Thread
+		activeThreads []model.Thread
+		fineThreads   []model.Thread
+		channelData   = make([]gin.H, len(channels))
+		newThreads    []model.Thread
+		newReplies    []model.Reply
+		ttouBlockOut  gin.H
+	)
+
+	// ★ 2026-10-03 性能：广场首页原为 25+ 次查询全串行打 RDS（一次渲染 ~3s+）。
+	//   以下互不依赖的查询全部并行执行，总耗时 ≈ 最慢一组 + 频道/游客两段串行。
 	halfHourAgo := time.Now().Add(-30 * time.Minute)
-	db.Model(&model.User{}).Where("last_active_at > ?", halfHourAgo).Count(&onlineCount)
-	db.Model(&model.OnlineGuest{}).Where("last_active_at > ?", halfHourAgo).Count(&guestCount)
-	onlineCount += guestCount
-	db.Model(&model.User{}).Count(&userCount)
-	var newestUser model.User
-	db.Order("id DESC").First(&newestUser)
+	var wg sync.WaitGroup
+	wg.Add(8 + len(channels))
 
+	go func() { // 公告 + 广播
+		defer wg.Done()
+		db.Where("type = ? AND status = 1", "notice").Order("created_at DESC").Limit(2).Find(&announcements)
+		db.Where("type = ? AND status = 1", "broadcast").Order("created_at DESC").Limit(1).Find(&broadcasts)
+	}()
+	go func() { // 在线人数 / 总人数 / 最新友友
+		defer wg.Done()
+		var guestCount int64
+		db.Model(&model.User{}).Where("last_active_at > ?", halfHourAgo).Count(&onlineCount)
+		db.Model(&model.OnlineGuest{}).Where("last_active_at > ?", halfHourAgo).Count(&guestCount)
+		onlineCount += guestCount
+		db.Model(&model.User{}).Count(&userCount)
+		db.Order("id DESC").First(&newestUser)
+	}()
+	go func() { // T台秀（秀主 / 膜拜数 / 我的上榜状态）
+		defer wg.Done()
+		ttouOut := h.ttouBlock(db, uid)
+		ttouBlockOut = ttouOut
+	}()
+	go func() { // 社区快报 = 最新发帖
+		defer wg.Done()
+		db.Preload("User").Preload("User.Badges").Where("status = 1").Order("created_at DESC").Limit(5).Find(&quickThreads)
+	}()
+	go func() { // 家园活跃 = 最新被回复
+		defer wg.Done()
+		db.Preload("User").Preload("User.Badges").Where("status = 1").Order("IFNULL(last_reply_at, created_at) DESC").Limit(5).Find(&activeThreads)
+	}()
+	go func() { // 社区头条 = 精华帖
+		defer wg.Done()
+		db.Preload("User").Preload("User.Badges").Where("status = 1 AND is_fine = 1").Order("created_at DESC").Limit(3).Find(&fineThreads)
+	}()
+	go func() { // 友友动态-最新发帖
+		defer wg.Done()
+		db.Preload("User").Preload("User.Badges").Where("status = 1").Order("created_at DESC").Limit(5).Find(&newThreads)
+	}()
+	go func() { // 友友动态-最新回帖
+		defer wg.Done()
+		db.Preload("User").Preload("User.Badges").Preload("Thread").Where("status = 1").Order("created_at DESC").Limit(10).Find(&newReplies)
+	}()
+	for i := range channels { // 各频道：子板块 + 最新帖（原串行 N+1 → 并行）
+		go func(idx int, ch model.Board) {
+			defer wg.Done()
+			var subs []model.Board
+			db.Where("parent_id = ?", ch.ID).Order("sort ASC").Find(&subs)
+			ids := []uint{ch.ID}
+			for _, s := range subs {
+				ids = append(ids, s.ID)
+			}
+			var latest []model.Thread
+			db.Preload("User").Preload("User.Badges").Where("board_id IN ? AND status = 1", ids).
+				Order("IFNULL(last_reply_at, created_at) DESC").Limit(5).Find(&latest)
+			channelData[idx] = gin.H{"channel": ch, "subs": subs, "threads": latest}
+		}(i, channels[i])
+	}
+	wg.Wait()
+
+	// 友友动态：合并最新发帖/回帖流，按时间倒序取前 8 条
+	type Dynamic struct {
+		ID        uint      `json:"id"`
+		UserID    uint      `json:"user_id"`
+		Nickname  string    `json:"nickname"`
+		Color     string    `json:"color"`
+		Action    string    `json:"action"`
+		ThreadID  uint      `json:"thread_id"`
+		Title     string    `json:"title"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	dynamics := []Dynamic{}
+	for _, t := range newThreads {
+		name, color := "神秘友友", ""
+		if t.User != nil {
+			name, color = t.User.Nickname, t.User.Color
+		}
+		dynamics = append(dynamics, Dynamic{ID: t.ID * 10, UserID: t.UserID, Nickname: name, Color: color,
+			Action: "发表了帖子", ThreadID: t.ID, Title: t.Title, CreatedAt: t.CreatedAt})
+	}
+	for _, r := range newReplies {
+		name, color := "神秘友友", ""
+		if r.User != nil {
+			name, color = r.User.Nickname, r.User.Color
+		}
+		title := "未知帖子"
+		if r.Thread != nil {
+			title = r.Thread.Title
+		}
+		dynamics = append(dynamics, Dynamic{ID: r.ID*10 + 1, UserID: r.UserID, Nickname: name, Color: color,
+			Action: "回复了帖子", ThreadID: r.ThreadID, Title: title, CreatedAt: r.CreatedAt})
+	}
+	sort.SliceStable(dynamics, func(i, j int) bool {
+		return dynamics[i].CreatedAt.After(dynamics[j].CreatedAt)
+	})
+	if len(dynamics) > 8 {
+		dynamics = dynamics[:8]
+	}
+
+	resp.OK(c, gin.H{
+		"announcements": announcements, "broadcasts": broadcasts,
+		"online_count": onlineCount, "user_count": userCount,
+		"newest_user":  gin.H{"id": newestUser.ID, "nickname": newestUser.Nickname},
+		"fine_threads": fineThreads, "channels": channelData, "dynamics": dynamics,
+		"quick_threads": quickThreads, "active_threads": activeThreads,
+		"ttou": ttouBlockOut,
+	})
+}
+
+// ttouBlock T台秀聚合：秀主（后台指定 / 今日捐款榜首 / 回退经验最高）、膜拜数、我的上榜/膜拜状态、待审人数。
+// 从 Index 抽出独立方法，供并发 goroutine 调用。
+func (h *PlazaHandler) ttouBlock(db *gorm.DB, uid uint) gin.H {
 	// T台秀：默认当日捐款最多者，后台可指定（settings.ttou_user_id），无人捐款则回退经验最高
 	var ttou model.User
 	var ttouID string
@@ -113,7 +235,6 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 			"priv": priv, "worship_count": worshipCount}
 	}
 	// 我的上榜/膜拜状态
-	uid := middleware.GetUID(c)
 	ttouOut["applied"] = false
 	ttouOut["worshiped_today"] = false
 	if uid > 0 {
@@ -130,90 +251,7 @@ func (h *PlazaHandler) Index(c *gin.Context) {
 	var applyCount int64
 	db.Model(&model.TtouApply{}).Where("status = 0").Count(&applyCount)
 	ttouOut["apply_count"] = applyCount
-
-	// 社区快报 = 最新发帖；家园活跃 = 最新被回复
-	var quickThreads []model.Thread
-	db.Preload("User").Preload("User.Badges").Where("status = 1").Order("created_at DESC").Limit(5).Find(&quickThreads)
-	var activeThreads []model.Thread
-	db.Preload("User").Preload("User.Badges").Where("status = 1").Order("IFNULL(last_reply_at, created_at) DESC").Limit(5).Find(&activeThreads)
-
-	// 社区头条 = 精华帖
-	var fineThreads []model.Thread
-	db.Preload("User").Preload("User.Badges").Where("status = 1 AND is_fine = 1").Order("created_at DESC").Limit(3).Find(&fineThreads)
-
-	// 频道最新帖：公共论坛 / 家族大厅 / 同城客栈
-	var channels []model.Board
-	db.Where("parent_id = 0").Order("sort ASC").Find(&channels)
-	channelData := []gin.H{}
-	for _, ch := range channels {
-		var subs []model.Board
-		db.Where("parent_id = ?", ch.ID).Order("sort ASC").Find(&subs)
-		ids := []uint{ch.ID}
-		for _, s := range subs {
-			ids = append(ids, s.ID)
-		}
-		var latest []model.Thread
-		db.Preload("User").Preload("User.Badges").Where("board_id IN ? AND status = 1", ids).
-			Order("IFNULL(last_reply_at, created_at) DESC").Limit(5).Find(&latest)
-		channelData = append(channelData, gin.H{"channel": ch, "subs": subs, "threads": latest})
-	}
-
-	// 友友动态：最新发帖/回帖流
-	type Dynamic struct {
-		ID        uint      `json:"id"`
-		UserID    uint      `json:"user_id"`
-		Nickname  string    `json:"nickname"`
-		Color     string    `json:"color"`
-		Action    string    `json:"action"`
-		ThreadID  uint      `json:"thread_id"`
-		Title     string    `json:"title"`
-		CreatedAt time.Time `json:"created_at"`
-	}
-	dynamics := []Dynamic{}
-	var newThreads []model.Thread
-	db.Preload("User").Preload("User.Badges").Where("status = 1").Order("created_at DESC").Limit(5).Find(&newThreads)
-	for _, t := range newThreads {
-		name, color := "神秘友友", ""
-		if t.User != nil {
-			name, color = t.User.Nickname, t.User.Color
-		}
-		dynamics = append(dynamics, Dynamic{ID: t.ID * 10, UserID: t.UserID, Nickname: name, Color: color,
-			Action: "发表了帖子", ThreadID: t.ID, Title: t.Title, CreatedAt: t.CreatedAt})
-	}
-	var newReplies []model.Reply
-	db.Preload("User").Preload("User.Badges").Preload("Thread").Where("status = 1").Order("created_at DESC").Limit(10).Find(&newReplies)
-	for _, r := range newReplies {
-		name, color := "神秘友友", ""
-		if r.User != nil {
-			name, color = r.User.Nickname, r.User.Color
-		}
-		title := "未知帖子"
-		if r.Thread != nil {
-			title = r.Thread.Title
-		}
-		dynamics = append(dynamics, Dynamic{ID: r.ID*10 + 1, UserID: r.UserID, Nickname: name, Color: color,
-			Action: "回复了帖子", ThreadID: r.ThreadID, Title: title, CreatedAt: r.CreatedAt})
-	}
-	// 按时间倒序取前 8 条
-	for i := 0; i < len(dynamics); i++ {
-		for j := i + 1; j < len(dynamics); j++ {
-			if dynamics[j].CreatedAt.After(dynamics[i].CreatedAt) {
-				dynamics[i], dynamics[j] = dynamics[j], dynamics[i]
-			}
-		}
-	}
-	if len(dynamics) > 8 {
-		dynamics = dynamics[:8]
-	}
-
-	resp.OK(c, gin.H{
-		"announcements": announcements, "broadcasts": broadcasts,
-		"online_count": onlineCount, "user_count": userCount,
-		"newest_user":  gin.H{"id": newestUser.ID, "nickname": newestUser.Nickname},
-		"fine_threads": fineThreads, "channels": channelData, "dynamics": dynamics,
-		"quick_threads": quickThreads, "active_threads": activeThreads,
-		"ttou": ttouOut,
-	})
+	return ttouOut
 }
 
 // Online 在线用户列表（复刻诺哈 online.html：用户点进个人资料，游客(家园社区游客)点进 IP 查询；10条/页，按最近活跃倒序）

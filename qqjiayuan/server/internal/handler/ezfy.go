@@ -2910,84 +2910,15 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	officers := h.officerList(city.ID)
 	h.refreshCityWithOfficers(uid, &city, officers)
 
-	var cities []model.EzfyCity
-	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
-
-	buildings := h.buildingList(city.ID)
-	buildingViews := make([]gin.H, 0, len(buildings))
-	for _, b := range buildings {
-		cfg := ezfyCfg.building(b.BuildingId)
-		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
-		next := ezfyCfg.buildingLevel(b.BuildingId, b.Level+1)
-		view := gin.H{
-			"id": b.ID, "building_id": b.BuildingId, "level": b.Level,
-			"status": b.Status, "end_time": b.EndTime, "start_time": b.StartTime,
-		}
-		if cfg != nil {
-			view["name"] = cfg.Name
-			view["type"] = cfg.Type
-			view["max_level"] = cfg.MaxLevel
-			view["des"] = cfg.Des
-			view["can_delete"] = cfg.CanDelete
-		}
-		if lv != nil {
-			view["effect"] = lv.Effect
-			view["capacity"] = lv.Capacity
-		}
-		if next != nil {
-			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}
-			view["next_time"] = next.BuildTime
-			view["next_effect"] = next.Effect
-		}
-		buildingViews = append(buildingViews, view)
-	}
-	// 可建造池(军事区 type2/3 + 资源区 type1), 供建筑页直接渲染, 前端不再硬编码
-	buildingPool := h.buildPool(&city, buildings)
-
-	camp := profile.Camp
-	troopViews := []gin.H{}
-	// ★ 2026-10-03 军队表只查一次，troopViews 展示 + 下面 getResourceCalcWith 复用，避免重复查
-	troops := h.troopMap(city.ID)
-	for tid, count := range troops {
-		cfg := ezfyCfg.troop(tid)
-		if cfg == nil {
-			continue
-		}
-		troopViews = append(troopViews, gin.H{
-			"troop_id": tid, "name": ezfyCfg.troopName(tid, camp), "count": count, "type": cfg.Type,
-			"pop": cfg.Pop, "food_keep": cfg.FoodKeep,
-		})
-	}
-	// ★ 2026-10-03 性能：wounded/queues 移到 wildlands 之后的批量并行块一起查（见下）。
-
-	// ★ 已研究的科技列表（供首页/统帅页展示）
-	//   原实现 `for _, t := range h.techMap(city.ID)` 把 **value(等级)** 当成了 tech_id 去查配置，
-	//   于是「炼钢5级」被显示成「军训艺术 0级」，且 map 遍历顺序随机 → 同一条重复出现。
-	//   现在按 tech_id 升序遍历，等级取 map 的 value。
-	techViews := []gin.H{}
-	tmap := h.techMap(city.ID)
-	techIds := make([]int, 0, len(tmap))
-	for id := range tmap {
-		techIds = append(techIds, id)
-	}
-	sort.Ints(techIds)
-	for _, id := range techIds {
-		if cfg := ezfyCfg.tech(id); cfg != nil {
-			techViews = append(techViews, gin.H{"tech_id": id, "name": cfg.Name, "level": tmap[id]})
-		}
-	}
-
-	var wildlands []model.EzfyWildland
-	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
-	// ★ 采集中/空闲驻守状态按该野地上的「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
-	//   ★ 2026-09-24 用户规则: 到达后**空闲驻守**(arrive_time=0, 不算采集中), 手工点[采集]才进入采集。
-	//   ★ 2026-09-28 用户反馈「附属野地里采集中只能[放弃]，没法[停止]」：
-	//     原来只收集了 target_id 做「是否采集中」的布尔判定，**没有把订单 id 下发**，
-	//     前端拿不到 order_id 就调不了 /wild/stop-collect → 操作列只能显示[放弃]。
-	//     这里连订单 id 一起收(用 map 而不是 slice)，前端就能对采集中那行出[停止]。
-	gatherOrderByWild := map[int64]uint{}
-	idleOrderByWild := map[int64]uint{}
+	// ★ 2026-10-03 性能：cities/buildings/troops/techs/wildlands 只依赖 uid/city.ID，
+	//   原为串行前缀 5 次 RDS 往返（每次 ~100-200ms），并入下方批量并行块一次打平。
 	var (
+		cities    []model.EzfyCity
+		buildings []model.EzfyCityBuilding
+		troops    map[int]int64
+		tmap      map[int]int
+		wildlands []model.EzfyWildland
+
 		wounded       []model.EzfyWounded
 		queues        []gin.H
 		marching      int64
@@ -2999,12 +2930,46 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		acct          string
 		ulv, uexp     int
 	)
-	// ★ 2026-10-03 性能：以下 10 条只读查询互相独立、且不依赖上面的
-	//   buildings/troops/techs/wildlands 组装，用 sync.WaitGroup 并行打 RDS，
-	//   把 30s 轮询 /view 的串行往返(~300ms+) 压到接近一次往返量。
+	camp := profile.Camp
+
+	// ★ 采集中/空闲驻守状态按该野地上的「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
+	//   ★ 2026-09-24 用户规则: 到达后**空闲驻守**(arrive_time=0, 不算采集中), 手工点[采集]才进入采集。
+	//   ★ 2026-09-28 用户反馈「附属野地里采集中只能[放弃]，没法[停止]」：
+	//     原来只收集了 target_id 做「是否采集中」的布尔判定，**没有把订单 id 下发**，
+	//     前端拿不到 order_id 就调不了 /wild/stop-collect → 操作列只能显示[放弃]。
+	//     这里连订单 id 一起收(用 map 而不是 slice)，前端就能对采集中那行出[停止]。
+	gatherOrderByWild := map[int64]uint{}
+	idleOrderByWild := map[int64]uint{}
+
+	// ★ 2026-10-03 性能：以下 15 条只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup
+	//   并行打 RDS，把 30s 轮询 /view 的串行往返(~1s+) 压到接近一次往返量。
 	//   gorm v2 链式调用并发安全；wg.Wait() 提供 happens-before，无数据竞争。
 	var wg sync.WaitGroup
-	wg.Add(10)
+	wg.Add(15)
+	go func() { // 城市列表
+		defer wg.Done()
+		var c []model.EzfyCity
+		h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&c)
+		cities = c
+	}()
+	go func() { // 建筑列表（供 buildingViews + getResourceCalcWith 复用）
+		defer wg.Done()
+		buildings = h.buildingList(city.ID)
+	}()
+	go func() { // 军队表（troopViews + getResourceCalcWith 复用）
+		defer wg.Done()
+		troops = h.troopMap(city.ID)
+	}()
+	go func() { // 科技表
+		defer wg.Done()
+		tmap = h.techMap(city.ID)
+	}()
+	go func() { // 野地列表
+		defer wg.Done()
+		var w []model.EzfyWildland
+		h.DB.Where("city_id = ?", city.ID).Find(&w)
+		wildlands = w
+	}()
 	go func() { // 伤兵列表（内部含过期清理）
 		defer wg.Done()
 		var r []model.EzfyWounded
@@ -3073,6 +3038,62 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		acct, ulv, uexp = a, l, e
 	}()
 	wg.Wait()
+
+	// 组装（纯内存，无 DB 往返）
+	buildingViews := make([]gin.H, 0, len(buildings))
+	for _, b := range buildings {
+		cfg := ezfyCfg.building(b.BuildingId)
+		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
+		next := ezfyCfg.buildingLevel(b.BuildingId, b.Level+1)
+		view := gin.H{
+			"id": b.ID, "building_id": b.BuildingId, "level": b.Level,
+			"status": b.Status, "end_time": b.EndTime, "start_time": b.StartTime,
+		}
+		if cfg != nil {
+			view["name"] = cfg.Name
+			view["type"] = cfg.Type
+			view["max_level"] = cfg.MaxLevel
+			view["des"] = cfg.Des
+			view["can_delete"] = cfg.CanDelete
+		}
+		if lv != nil {
+			view["effect"] = lv.Effect
+			view["capacity"] = lv.Capacity
+		}
+		if next != nil {
+			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}
+			view["next_time"] = next.BuildTime
+			view["next_effect"] = next.Effect
+		}
+		buildingViews = append(buildingViews, view)
+	}
+	// 可建造池(军事区 type2/3 + 资源区 type1), 供建筑页直接渲染, 前端不再硬编码
+	buildingPool := h.buildPool(&city, buildings)
+
+	troopViews := []gin.H{}
+	for tid, count := range troops {
+		cfg := ezfyCfg.troop(tid)
+		if cfg == nil {
+			continue
+		}
+		troopViews = append(troopViews, gin.H{
+			"troop_id": tid, "name": ezfyCfg.troopName(tid, camp), "count": count, "type": cfg.Type,
+			"pop": cfg.Pop, "food_keep": cfg.FoodKeep,
+		})
+	}
+
+	// ★ 已研究的科技列表（按 tech_id 升序，等级取 map value）
+	techViews := []gin.H{}
+	techIds := make([]int, 0, len(tmap))
+	for id := range tmap {
+		techIds = append(techIds, id)
+	}
+	sort.Ints(techIds)
+	for _, id := range techIds {
+		if cfg := ezfyCfg.tech(id); cfg != nil {
+			techViews = append(techViews, gin.H{"tech_id": id, "name": cfg.Name, "level": tmap[id]})
+		}
+	}
 
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
