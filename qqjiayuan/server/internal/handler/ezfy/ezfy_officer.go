@@ -3292,29 +3292,52 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["id"].(int) < skills[j]["id"].(int) })
 	list := []gin.H{}
 	for _, o := range h.officerList(city.ID) {
+		skills := officerSkills(&o)
 		list = append(list, gin.H{"id": o.ID, "name": o.Name, "level": o.Level,
-			"skills": officerSkills(&o), "skill_count": len(officerSkills(&o))})
+			"skills": skills, "skill_count": len(skills)})
 	}
 	resp.OK(c, gin.H{"skills": skills, "officers": list, "gold": city.Gold})
 }
 
 // OfficerEquipments GET /games/ezfy/officers/equipments —— 装备图鉴 + 我的背包
+//
+// ★ 2026-10-04 性能优化：原实现逐件装备查 `equipIsCaptiveWorn`（2 次库）+
+//   `officerOf`（1 次库），背包几百件装备就是上千次 SQL 往返（双机共 RDS 时更明显，
+//   装备页因此卡到 1s+）。现在装备只查一次、当前城军官只查一次，被俘穿戴判定/穿戴者
+//   名字全部走内存 map —— 总 SQL 从 O(3N) 降到常数。
 func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
+	items := h.equipmentList(uid)
+	// 当前城军官一次拉全：①被俘军官身上挂的装备不进背包 ②已穿戴装备显示穿戴者名字
+	cityOfficers := h.officerList(city.ID)
+	ofByName := map[int64]*model.EzfyOfficer{}
+	captive := map[int64]bool{}
+	for i := range cityOfficers {
+		o := &cityOfficers[i]
+		ofByName[int64(o.ID)] = o
+		if o.IsCaptive == 1 {
+			captive[int64(o.ID)] = true
+		}
+	}
+	// ★ 语义与旧 equipIsCaptiveWorn 完全一致：装备挂在本城某名「未收编俘虏」身上才跳过
+	isCaptiveWorn := func(e *model.EzfyEquipment) bool {
+		return e.OfficerId > 0 && captive[e.OfficerId]
+	}
 	bag := []gin.H{}
 	// ★ 2026-09-28 赏赐宝物只认「采集宝物」（与军官详情接口口径一致）
 	treasureSet := ezfyCollectibleTreasureNames()
-	for _, e := range h.equipmentList(uid) {
+	for i := range items {
+		e := &items[i]
 		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进入背包列表——只有收编后才归属本玩家
-		if h.equipIsCaptiveWorn(city.ID, int64(e.ID)) {
+		if isCaptiveWorn(e) {
 			continue
 		}
 		wornBy := ""
 		if e.OfficerId > 0 {
-			if o := h.officerOf(city.ID, e.OfficerId); o != nil {
+			if o := ofByName[e.OfficerId]; o != nil {
 				wornBy = o.Name
 			}
 		}
@@ -3342,10 +3365,11 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	sort.Slice(cfgList, func(i, j int) bool { return cfgList[i]["id"].(int) < cfgList[j]["id"].(int) })
 	// ★ 套装总览 = **我拥有的**套装（用户反馈：原来列的是全部套装配置，玩家以为是自己有的）
 	//   统计口径：背包 + 已穿戴的装备里出现过的 set_id，按套计数。
+	//   ★ 2026-10-04 直接复用上面已查的 items，不再二次全表查库。
 	owned := map[int]int{}
-	for _, e := range h.equipmentList(uid) {
-		if e.SetId > 0 {
-			owned[e.SetId]++
+	for i := range items {
+		if items[i].SetId > 0 {
+			owned[items[i].SetId]++
 		}
 	}
 	// ★ 套装品质：取该套装各件的最高 Tier（系列 21~26 为 Tier 3/4，第一批套装 Tier 1~4）

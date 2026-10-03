@@ -704,6 +704,10 @@ export default {
       exchangeMPage: 1, exchangeMSize: 10, exchangeMTotal: 0,
       exFilter: 0, // ★ 2026-09-24 卖家挂单资源类别检索(0=全部 1粮食 2钢铁 3石油 4稀矿)
       acadeTab: 'officer',
+      // ★ 2026-10-04 军官模块 6 个 tab 的数据缓存（进页预取 + 切换秒开）。
+      //   缓存命中先渲染旧值、后台刷新覆盖；操作类接口显式失效对应 key 保证不脏。
+      _acadeCache: {},
+      _acadeLoading: {},
       officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
       skillData: { skills: [], officers: [], gold: 0 },
@@ -5113,20 +5117,54 @@ export default {
     },
     // ---- 军官/学院 ----
     loadAcade () {
-      api.get('/games/ezfy/officers').then(r => {
-        if (r.code === 0) this.officerData = r.data
-      })
+      // ★ 2026-10-04 军官模块 tab 数据「缓存先行 + 后台刷新」：进页打当前 tab，
+      //   其余 5 个 tab 的数据并行预取，之后点哪个 tab 都是秒开。
+      this.loadAcadeOfficers()
       this.loadAcadeTab()
+      this.prefetchAcadeTabs()
     },
     loadAcadeTab () {
       if (this.acadeTab === 'search') this.loadRecruit()
       else if (this.acadeTab === 'skill') this.loadAcadeSkills()
       else if (this.acadeTab === 'equip') this.loadAcadeEquip()
-      else if (this.acadeTab === 'scheme') this.loadAcadeGenerals()
-      else {
-        api.get('/games/ezfy/officers').then(r => {
-          if (r.code === 0) this.officerData = r.data
-        })
+      else if (this.acadeTab === 'scheme') this.loadSchemes()
+      else if (this.acadeTab === 'generals') this.loadAcadeGenerals()
+      else this.loadAcadeOfficers()
+    },
+    // 军官 / 任命市长 / 战俘营 共用同一份军官列表数据
+    loadAcadeOfficers () {
+      this.withAcadeCache('officers', () => api.get('/games/ezfy/officers'), d => { this.officerData = d })
+    },
+    // ★ 2026-10-04 缓存优先加载：命中先渲染缓存（切换秒开），后台刷新成功后覆盖。
+    //   同一 key 的请求去重（_acadeLoading），连点不会重复打接口。
+    withAcadeCache (key, fetcher, setter) {
+      const apply = d => { this._acadeCache[key] = d; setter(d) }
+      if (this._acadeCache[key]) {
+        setter(this._acadeCache[key])
+        if (!this._acadeLoading[key]) {
+          this._acadeLoading[key] = true
+          fetcher().then(r => { if (r && r.code === 0) apply(r.data) })
+            .catch(() => {}).then(() => { this._acadeLoading[key] = false })
+        }
+        return
+      }
+      if (this._acadeLoading[key]) return
+      this._acadeLoading[key] = true
+      fetcher().then(r => { if (r && r.code === 0) apply(r.data) })
+        .catch(() => {}).then(() => { this._acadeLoading[key] = false })
+    },
+    // ★ 2026-10-04 进军官页时把其余 tab 的数据后台预取（只补没有缓存的 key，
+    //   已缓存的交给各自 tab 的「后台刷新」保新鲜），切换零等待。
+    prefetchAcadeTabs () {
+      const jobs = [
+        ['recruit', () => api.get('/games/ezfy/acade/recruit'), d => { this.recruitData = d }],
+        ['skill', () => api.get('/games/ezfy/officers/skills'), d => { this.skillData = d }],
+        ['equip', () => { this.loadEquipSets(); return api.get('/games/ezfy/officers/equipments') }, d => { this.equipData = d }],
+        ['scheme', () => api.get('/games/ezfy/schemes'), d => { this.schemeData = d }],
+        ['generals', () => api.get('/games/ezfy/officers/generals'), d => { this.generalData = d }]
+      ]
+      for (const [key, fetcher, setter] of jobs) {
+        if (!this._acadeCache[key] && !this._acadeLoading[key]) this.withAcadeCache(key, fetcher, setter)
       }
     },
     switchAcade (tab) {
@@ -5139,11 +5177,9 @@ export default {
         this.equipAllWord = ''
         this.equipAllPage = 1
       }
-      if (tab === 'officer' || tab === 'mayor' || tab === 'captive') {
-        api.get('/games/ezfy/officers').then(r => {
-          if (r.code === 0) this.officerData = r.data
-        })
-      }       else if (tab === 'search') this.loadRecruit()
+      // ★ 2026-10-04 全部走缓存优先加载：军官/市长/战俘营共用 officerData
+      if (tab === 'officer' || tab === 'mayor' || tab === 'captive') this.loadAcadeOfficers()
+      else if (tab === 'search') this.loadRecruit()
       else if (tab === 'skill') this.loadAcadeSkills()
       else if (tab === 'equip') this.loadAcadeEquip()
       else if (tab === 'scheme') this.loadSchemes()
@@ -5151,9 +5187,7 @@ export default {
     },
     // ★ 计谋列表（配置由后端下发，含持有信号弹数量）
     loadSchemes () {
-      api.get('/games/ezfy/schemes').then(r => {
-        if (r.code === 0) this.schemeData = r.data
-      })
+      this.withAcadeCache('scheme', () => api.get('/games/ezfy/schemes'), d => { this.schemeData = d })
     },
     async doScheme (s) {
       const b = this.schemeData
@@ -5173,26 +5207,21 @@ export default {
       api.post('/games/ezfy/scheme/use', body).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '发动失败'); return }
         this.notify(r.msg || '计谋已发动')
+        delete this._acadeCache['scheme'] // ★ 信号弹数量变了, 失效计谋缓存
         this.loadSchemes()
         this.loadBag()
         this.load()
       })
     },
     loadRecruit () {
-      api.get('/games/ezfy/acade/recruit').then(r => {
-        if (r.code === 0) this.recruitData = r.data
-      })
+      this.withAcadeCache('recruit', () => api.get('/games/ezfy/acade/recruit'), d => { this.recruitData = d })
     },
     loadAcadeSkills () {
-      api.get('/games/ezfy/officers/skills').then(r => {
-        if (r.code === 0) this.skillData = r.data
-      })
+      this.withAcadeCache('skill', () => api.get('/games/ezfy/officers/skills'), d => { this.skillData = d })
     },
     loadAcadeEquip () {
       this.loadEquipSets()
-      api.get('/games/ezfy/officers/equipments').then(r => {
-        if (r.code === 0) this.equipData = r.data
-      })
+      this.withAcadeCache('equip', () => api.get('/games/ezfy/officers/equipments'), d => { this.equipData = d })
     },
     // ★ 2026-09-25：全部套装配置（含加成/部位/我拥有几件）—— 只拉一次，各页共用。
     //   装备页/商城页/军官装备页都要「set_id → 这套穿齐给什么」，所以做成缓存。
@@ -5229,9 +5258,7 @@ export default {
       this.detailMode = m
     },
     loadAcadeGenerals () {
-      api.get('/games/ezfy/officers/generals').then(r => {
-        if (r.code === 0) this.generalData = r.data
-      })
+      this.withAcadeCache('generals', () => api.get('/games/ezfy/officers/generals'), d => { this.generalData = d })
     },
     openOfficer (id) {
       this.cur = 'officerdetail'
@@ -5289,6 +5316,7 @@ export default {
     doRefreshRecruit () {
       api.post('/games/ezfy/acade/recruit/refresh', {}).then(r => {
         if (r.code !== 0) this.notify(r.msg || '刷新失败')
+        delete this._acadeCache['recruit'] // ★ 候选已重刷, 失效招募缓存
         this.loadRecruit()
       })
     },
@@ -5296,6 +5324,8 @@ export default {
       if (!await this.ask('确定雇佣 ' + g.name + ' 吗? 需要 ' + g.cost + ' ' + this.resNames.gold)) return
       api.post('/games/ezfy/acade/recruit/hire', { key: g.key }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '雇佣失败')
+        delete this._acadeCache['recruit'] // ★ 候选被领走 + 军官数变化, 失效招募/军官缓存
+        delete this._acadeCache['officers']
         this.loadRecruit()
         this.loadAcade()
       })
