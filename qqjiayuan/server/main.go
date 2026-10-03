@@ -23,7 +23,11 @@ func main() {
 	}
 
 	db := database.Init(&cfg.Mysql)
-	seed.Run(db, cfg.Server.WebDir+"/static")
+	// 连接的是「已被别的实例灌好数据的共享库」时(seed.skip: true)，跳过全量初始化，
+	// 否则每台节点启动都会对已填充的表重跑配置 INSERT(重复主键/跨 WAN 挂起)。
+	if !cfg.Seed.Skip {
+		seed.Run(db, cfg.Server.WebDir+"/static")
+	}
 
 	gin.SetMode(gin.ReleaseMode)
 	r := router.Setup(db, cfg)

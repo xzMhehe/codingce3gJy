@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -1373,14 +1374,43 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 
 // reload 强制重新读库。管理端在「建筑总配置 / 兵种配置 / 名将 / 技能 / 装备」里
 // 改了参数后调用它，改动立刻生效，不用重启进程。
+//
+// ★ 2026-10-03 双机共享 RDS 后，这台苹果的是「谁改了配置」只有命中的那台进程知道，
+//   本机用 cfgsReload 显式刷新；另一台靠 ezfyPeriodicReload 周期刷新收敛。
+//   海岸索引只依赖「地图格子覆盖」(ezfy_map_tile 的 Terrain)，其它配置表不改变外形，
+//   所以只有当瓦片覆盖实际变化时才重建索引 —— 避免周期刷新把 500×500 全图扫描扛下来。
 func (c *ezfyConfigCache) reload(db *gorm.DB) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	oldTileFp := ezfyTilesFingerprint(c.tiles)
 	c.loadLocked(db)
 	c.loaded = true
-	// ★ 地图格子覆盖配置（ezfy_map_tile）可能改了地形 → 沿海平原索引必须重建，
-	//   否则管理端新配的沿海/陆地不被迁城逻辑看到。
-	ezfyInvalidateCoastalIndex()
+	if ezfyTilesFingerprint(c.tiles) != oldTileFp {
+		// ★ 地图格子覆盖配置可能改了地形 → 沿海平原索引必须重建，
+		//   否则管理端新配的沿海/陆地不被迁城逻辑看到。
+		ezfyInvalidateCoastalIndex()
+	}
+}
+
+// ezfyTilesFingerprint 对「地图格子覆盖」集合算一个指纹，用于判断这会刷新是否动了地形。
+// 只取影响沿海平原判定的字段(坐标 + Terrain)，避免轻微配置漂移触发海岸索引全图重建。
+func ezfyTilesFingerprint(m map[int64]model.EzfyMapTile) uint64 {
+	h := uint64(len(m)) * 104729
+	for k, t := range m {
+		h = h*31 + uint64(k) + uint64(t.Terrain)*131
+	}
+	return h
+}
+
+// ezfyStartConfigReloader 保证周期刷新只启动一次（按请求懒启动，拿到 db 引用）。
+var ezfyStartConfigReloader sync.Once
+
+// ezfyPeriodicReload 每 30s 从共享 RDS 重读二战配置，让两台服务器的进程内缓存收敛。
+// 只读小配置表，开销可忽略；海岸索引仅在瓦片覆盖变化时重建。
+func ezfyPeriodicReload(db *gorm.DB) {
+	for range time.Tick(30 * time.Second) {
+		ezfyCfg.reload(db)
+	}
 }
 
 // loadLocked 真正干活的部分，调用方必须已持有写锁
@@ -1682,6 +1712,23 @@ func (c *ezfyConfigCache) troop(id int) *model.EzfyCfgTroop {
 		return &t
 	}
 	return nil
+}
+
+// sortedTroops 返回按 id 升序的兵种配置切片（读进程内缓存，不发 SQL）。
+//
+// ★ 2026-10-03 性能：/troops 是 30s 轮询接口，之前每次全表 SELECT ezfy_cfg_troop
+//   经跨 WAN 到 RDS（单次 13~37ms）；配置早已整表载入缓存，直接读内存即可。
+func (c *ezfyConfigCache) sortedTroops() []model.EzfyCfgTroop {
+	ids := make([]int, 0, len(c.troops))
+	for id := range c.troops {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	out := make([]model.EzfyCfgTroop, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, c.troops[id])
+	}
+	return out
 }
 
 func (c *ezfyConfigCache) tech(id int) *model.EzfyCfgTech {

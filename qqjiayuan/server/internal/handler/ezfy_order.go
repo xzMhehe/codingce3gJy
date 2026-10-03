@@ -61,7 +61,11 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		r = v
 	}
 	var myCities []model.EzfyCity
-	h.DB.Find(&myCities)
+	// ★ 2026-10-03 性能：地图渲染只需要视野内的城市，别把整张地图所有城（含全部资源/兵力）
+	//   跨 WAN 拉回来。按视野(±r)裁剪，数据量从全表降到几十格。
+	h.DB.Select("id, x, y, user_id, name, city_level").
+		Where("x >= ? AND x <= ? AND y >= ? AND y <= ?", cx-r, cx+r, cy-r, cy+r).
+		Find(&myCities)
 	cityAt := map[string]*model.EzfyCity{}
 	for i := range myCities {
 		c := &myCities[i]
@@ -125,9 +129,11 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
-	// 已占领野地(一次性载入, 避免逐格查库)
+	// 已占领野地(一次载入视野内, 避免逐格查库; ★ 2026-10-03 按视野裁剪, 不再全表拉回)
 	var allWilds []model.EzfyWildland
-	h.DB.Select("x, y, city_id").Find(&allWilds)
+	h.DB.Select("x, y, city_id").
+		Where("x >= ? AND x <= ? AND y >= ? AND y <= ?", cx-r, cx+r, cy-r, cy+r).
+		Find(&allWilds)
 	wildAt := map[string]int64{}
 	for i := range allWilds {
 		if allWilds[i].CityId > 0 {

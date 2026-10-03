@@ -88,6 +88,8 @@ func (h *EzfyHandler) enterProcess(uid uint) bool {
 func (h *EzfyHandler) exitProcess(uid uint) { h.processing.Delete(uint(uid)) }
 
 func (h *EzfyHandler) cfgs() {
+	// ★ 2026-10-03 双机共享一个 RDS：周期刷新让两台进程内配置缓存收敛（30s）。
+	ezfyStartConfigReloader.Do(func() { go ezfyPeriodicReload(h.DB) })
 	ezfyCfg.load(h.DB)
 	// 一次性迁移：旧版「建在海洋上」的海城 → 沿海平原（幂等，进程内只跑一次）
 	ezfySeaMigrateOnce.Do(func() { ezfyMigrateSeaCities(h.DB) })
@@ -3001,8 +3003,12 @@ func (h *EzfyHandler) View(c *gin.Context) {
 	// ★ 2026-09-28 用户要求：首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
 	//   复用 getResourceCalc 的 total（净产量：产出 − 军队耗粮），保证两边数字永远一致。
 	resProd := gin.H{}
+	// ★ 2026-10-03 性能：getResourceCalc 内部会查 buildingList/techMap/wildlandList/boost/troopMap，
+	//   在 30s 轮询的 /view 上之前每次循环都重算 5 遍（5×6 条 SQL 跨 WAN 往返）。
+	//   改成只算一次，再从这里按资源键取值。
+	resCalc := h.getResourceCalc(&city)
 	for _, k := range []string{"gold", "food", "steel", "oil", "rare"} {
-		if it, ok := h.getResourceCalc(&city)[k].(gin.H); ok {
+		if it, ok := resCalc[k].(gin.H); ok {
 			resProd[k] = it["total"]
 		}
 	}

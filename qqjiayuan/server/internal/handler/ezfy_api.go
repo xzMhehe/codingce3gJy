@@ -351,8 +351,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	popUsed := h.cityPopUsed(city.ID)
 	// 兵种配置一览
 	cfgViews := []gin.H{}
-	var allTroops []model.EzfyCfgTroop
-	h.DB.Order("id ASC").Find(&allTroops)
+	// ★ 2026-10-03 性能：兵种配置在 cfgs() 已整表载入进程内缓存，改用内存缓存，省一次跨 WAN 全表查询。
+	allTroops := ezfyCfg.sortedTroops()
 	// 节日活动·造兵打折: 列表展示的就是打折后的实际消耗
 	discount := h.actPct(ezfyActTrain)
 	// 已训练数量(城内部队), 供兵种详情页显示「现有:N」

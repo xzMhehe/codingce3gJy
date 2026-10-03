@@ -25,10 +25,17 @@ type JwtConfig struct {
 	ExpireHours int    `yaml:"expire_hours"`
 }
 
+// SeedConfig：Seed.Skip 用于「这台节点连接的是已被别的实例灌好数据的共享库」时，
+// 跳过启动时的全量初始化(seed)，避免对已填充的表重复 INSERT / 跨 WAN 挂起。
+type SeedConfig struct {
+	Skip bool `yaml:"skip"`
+}
+
 type Config struct {
 	Server ServerConfig `yaml:"server"`
 	Mysql  MysqlConfig  `yaml:"mysql"`
 	Jwt    JwtConfig    `yaml:"jwt"`
+	Seed   SeedConfig   `yaml:"seed"`
 }
 
 func Load(path string) (*Config, error) {
@@ -51,14 +58,14 @@ func Load(path string) (*Config, error) {
 
 func (m *MysqlConfig) DSN() string {
 	return m.User + ":" + m.Password + "@tcp(" + m.Host + ":" + itoa(m.Port) + ")/" +
-		m.DBName + "?charset=utf8mb4&parseTime=True&loc=Local"
+		m.DBName + "?charset=utf8mb4&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s"
 }
 
 // DSNWithoutDB 不带库名的连接串。
 // 建库前目标库还不存在，必须用这个连到 MySQL 实例本身。
 func (m *MysqlConfig) DSNWithoutDB() string {
 	return m.User + ":" + m.Password + "@tcp(" + m.Host + ":" + itoa(m.Port) + ")/" +
-		"?charset=utf8mb4&parseTime=True&loc=Local"
+		"?charset=utf8mb4&parseTime=True&loc=Local&timeout=10s&readTimeout=30s&writeTimeout=30s"
 }
 
 func itoa(n int) string {
