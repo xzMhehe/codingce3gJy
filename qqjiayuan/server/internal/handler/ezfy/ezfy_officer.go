@@ -2086,7 +2086,9 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 			genStar, genLevel := 0, 0
 			if isGen {
 				if g := ezfyCfg.general(o.GeneralId); g != nil {
-					genName, genDes, genStar, genLevel = g.Name, g.Des, g.Star, g.Level
+					genName, genStar, genLevel = g.Name, g.Star, g.Level
+					// ★ 2026-10-04 功勋介绍用内置二战文案（未收录回落 des）
+					genDes = ezfyGeneralLoreOf(o.GeneralId, g.Des)
 				}
 			}
 			out = append(out, gin.H{
@@ -2296,7 +2298,9 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	genStar, genLevel := 0, 0
 	if isGen {
 		if g := ezfyCfg.general(o.GeneralId); g != nil {
-			genName, genDes, genStar, genLevel = g.Name, g.Des, g.Star, g.Level
+			genName, genStar, genLevel = g.Name, g.Star, g.Level
+			// ★ 2026-10-04 功勋介绍用内置二战文案（未收录回落 des）
+			genDes = ezfyGeneralLoreOf(o.GeneralId, g.Des)
 		}
 	}
 	resp.OK(c, gin.H{
