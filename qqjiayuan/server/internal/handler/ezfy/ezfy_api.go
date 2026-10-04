@@ -678,6 +678,22 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 	h.cfgs()
 
+	// ★ 2026-10-05 5 秒卡控（用户要求：前后端双保险，防连点/脚本反复刷黄金结算）
+	{
+		nowCd := time.Now().UnixMilli()
+		ezfySpeedTrainMu.Lock()
+		if last, ok := ezfySpeedTrainMemo[uid]; ok && nowCd-last < 5000 {
+			ezfySpeedTrainMu.Unlock()
+			resp.ParamError(c, "操作过于频繁, 请 5 秒后再试")
+			return
+		}
+		if len(ezfySpeedTrainMemo) > 16384 {
+			ezfySpeedTrainMemo = map[uint]int64{}
+		}
+		ezfySpeedTrainMemo[uid] = nowCd
+		ezfySpeedTrainMu.Unlock()
+	}
+
 	// 串行化整个「读剩余秒数→算钱→扣费→清空队列」，杜绝连点并发结算（见 ezfySpeedTrainLocks）。
 	lock := ezfySpeedTrainLock(uid)
 	lock.Lock()

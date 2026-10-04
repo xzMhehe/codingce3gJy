@@ -3251,10 +3251,13 @@ export default {
     },
     // 训练一键加速(本城 / 所有城市)
     doSpeedTrainAll () {
+      // ★ 2026-10-05 前端 5 秒卡控（与后端 /troops/speed-all 双保险）
+      if (Date.now() - (this.lastSpeedTrainAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
       // ★ 2026-10-03 连点会并发打同一加速接口，后端第二发算成 0 秒/0 黄金 → 与建造一样走 once 防抖
       this.once('speedTrain', () =>
         api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
           if (r.code === 0) {
+            this.lastSpeedTrainAt = Date.now()
             this.notify(r.msg)
             this.load()
             this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）
@@ -3264,9 +3267,12 @@ export default {
     },
     async doSpeedTrainAllCity () {
       if (!await this.ask('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
+      // ★ 2026-10-05 前端 5 秒卡控（与后端 /troops/speed-all 双保险）
+      if (Date.now() - (this.lastSpeedTrainAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
       this.once('speedTrain', () =>
         api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
           if (r.code === 0) {
+            this.lastSpeedTrainAt = Date.now()
             this.notify(r.msg)
             this.load()
             this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）

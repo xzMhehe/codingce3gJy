@@ -996,7 +996,10 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 			wildOil += base
 			wildRare += base
 		}
-		h.degradeWildland(w, now)
+		// ★ 2026-10-05 用户反馈「附属野地每次更新都会没/等级还会变」：
+		//   原来是 degradeWildland 按 UpdatedAt 每 2 天扣 1 级、扣到 0 直接删野地，
+		//   老野地/低级野地因此频繁消失、等级跳动。按用户要求移除该降级机制，
+		//   野地保持征服时的等级，不再随时间消失。
 	}
 
 	var boost model.EzfyCityEffect
@@ -1194,23 +1197,6 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		"steel_cap": city.SteelCap, "oil_cap": city.OilCap, "rare_cap": city.RareCap,
 		"last_time": city.LastTime,
 	})
-}
-
-func (h *EzfyHandler) degradeWildland(w *model.EzfyWildland, now int64) {
-	base := w.UpdatedAt.UnixMilli()
-	period := int64(2 * 24 * 3600000)
-	if now-base < period {
-		return
-	}
-	steps := (now - base) / period
-	lv := w.Level - int(steps)
-	if lv < 0 {
-		h.DB.Delete(&model.EzfyWildland{}, w.ID)
-		h.DB.Where("x = ? AND y = ?", w.X, w.Y).Delete(&model.EzfyMapArea{})
-		return
-	}
-	h.DB.Model(&model.EzfyWildland{}).Where("id = ?", w.ID).
-		Updates(map[string]interface{}{"level": lv, "updated_at": time.UnixMilli(base + steps*period)})
 }
 
 // collectTrainQueue 训练完成懒结算。reuse 传本请求已查好的队列时可省一次查询
@@ -3313,6 +3299,12 @@ func ezfyViewCacheDel(uid uint) {
 var (
 	ezfyPageCacheMu sync.Mutex
 	ezfyPageCache   = map[string]ezfyViewCacheItem{}
+)
+
+// ★ 2026-10-05 训练一键加速 5 秒卡控（用户要求：前后端都卡，防连点/脚本反复刷黄金结算）
+var (
+	ezfySpeedTrainMu   sync.Mutex
+	ezfySpeedTrainMemo = map[uint]int64{}
 )
 
 func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) {
