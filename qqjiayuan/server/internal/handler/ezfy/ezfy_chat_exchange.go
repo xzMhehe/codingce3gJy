@@ -1034,10 +1034,17 @@ func (h *EzfyHandler) deleteCityData(cityId int64) {
 }
 
 // WildlandFull 附属野地+被占城市(cityWild 页数据)
+//
+// ★ 2026-10-04 性能（用户反馈「/city/wildfull 线上 2s+」）：懒结算改走 refreshCityRead
+//   （跳过订单结算 3~4 条 RDS）；再加 3s 玩家级缓存，占领/放弃/采集等写操作统一失效。
 func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	if it, ok := ezfyPageCacheGet(uid, "wildfull"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：5 条独立查询并行（1 个 RTT）；
 	//   被占城市归属玩家的游戏昵称改为一次 IN 批量查，消除原来「每行 ensureProfile」的 N+1。
 	var (
@@ -1120,8 +1127,10 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
 			"city_name": o.CityName, "def_user": nick[o.DefUserId]})
 	}
-	resp.OK(c, gin.H{"city": city, "wildlands": wildViews, "occupies": occViews,
-		"hall_level": hallLevel})
+	data := gin.H{"city": city, "wildlands": wildViews, "occupies": occViews,
+		"hall_level": hallLevel}
+	ezfyPageCacheSet(uid, "wildfull", data)
+	resp.OK(c, data)
 }
 
 // OrderView 命令详情

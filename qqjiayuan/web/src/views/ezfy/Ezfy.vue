@@ -84,7 +84,7 @@
           <a href="javascript:;" @click="go('info')">统帅</a>
         </div>
         <div class="old-line">现有资源/产量:
-          <a href="javascript:;" @click="go('exchange')">购买</a>
+          <a href="javascript:;" @click="go('exchange')">购买</a><span class="home-gap"></span>
           <a href="javascript:;" @click="go('mall')">增产</a>
         </div>
         <div class="old-line">
@@ -1944,8 +1944,10 @@ export default {
     go (t) {
       // ★ 2026-09-29 各页 [返回]：回到上一页；无有效上一页则回首页
       if (t === 'back') { this.go(this.prevCur && this.prevCur !== this.cur ? this.prevCur : 'home'); return }
-      if (t.indexOf('res/') === 0) {
-        this.resType = t.slice(4)
+      // ★ 2026-10-04 修复「资源详情页刷新后丢了」：刷新时 URL 恢复的是 cur='res' + res=xxx，
+      //   原分支只认 'res/xxx'，cur='res' 落进 default 什么都不加载 → 页面空白。
+      if (t === 'res' || t.indexOf('res/') === 0) {
+        if (t.indexOf('res/') === 0) this.resType = t.slice(4)
         this.cur = 'res'
         this.syncUrl()
         this.loadRes()

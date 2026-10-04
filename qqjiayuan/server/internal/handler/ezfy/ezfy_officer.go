@@ -3636,17 +3636,25 @@ func (h *EzfyHandler) equipShopItem(e *model.EzfyCfgEquipment) gin.H {
 }
 
 // EquipShop GET /games/ezfy/equipshop —— 装备商城（套装分组）
+//
+// ★ 2026-10-04 性能（用户反馈「/equipshop 线上 2s+」）：展示页 + 3s 玩家级缓存
+//   （买装备在 EquipShopBuy 已统一失效），缓存命中零 SQL。
 func (h *EzfyHandler) EquipShop(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	if it, ok := ezfyPageCacheGet(uid, "equipshop"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
 	h.refreshCityRead(uid, &city)
 	slots, items := h.equipShopList()
-	resp.OK(c, gin.H{
-		// ★ slots = 按部位分组（前端铺表格）；items = 扁平列表（检索/兼容用）
+	data := gin.H{
 		"slots": slots, "items": items,
 		"gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond,
-	})
+	}
+	ezfyPageCacheSet(uid, "equipshop", data)
+	resp.OK(c, data)
 }
 
 // EquipShopBuy POST /games/ezfy/equipshop/buy  {cfg_id, count, currency: gold|diamond}

@@ -335,16 +335,46 @@ func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
 
 // ============ 军队 ============
 
+// ★ 2026-10-04 性能（用户反馈「/troops 线上 2s+」）：
+//   原来 20+ 条查询全部串行（refreshCity 订单结算 + 每处 buildingList/troopMap 重复查）。
+//   现在：懒结算改走 refreshCityRead（跳过订单结算）；只读查询并入并行块（1 个 RTT）；
+//   建筑相关（围墙等级/军工厂座数与总等级）与城防占用全部用已取数据纯内存算；
+//   再加 3s 玩家级缓存，训练/拆除/解散/伤兵恢复等写操作统一失效。
 func (h *EzfyHandler) Troops(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	if it, ok := ezfyPageCacheGet(uid, "troops"); ok {
+		resp.OK(c, it)
+		return
+	}
 	profile := h.ensureProfile(uid)
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	camp := profile.Camp
 
+	var (
+		troopMap map[int]int64
+		qs       []model.EzfyTrainQueue
+		wounded  []model.EzfyWounded
+		deserters []model.EzfyWounded
+		popUsed  int64
+		buildings []model.EzfyCityBuilding
+	)
+	var wg sync.WaitGroup
+	wg.Add(6)
+	go func() { defer wg.Done(); troopMap = h.troopMap(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters) }()
+	go func() { defer wg.Done(); popUsed = h.cityPopUsed(city.ID) }()
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	wg.Wait()
+	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
+	wounded = h.filterExpiredWounded(wounded)
+	deserters = h.filterExpiredWounded(deserters)
+
 	troopViews := []gin.H{}
-	for tid, count := range h.troopMap(city.ID) {
+	for tid, count := range troopMap {
 		cfg := ezfyCfg.troop(tid)
 		if cfg == nil {
 			continue
@@ -353,18 +383,10 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			"count": count, "type": cfg.Type})
 	}
 	queues := []gin.H{}
-	var qs []model.EzfyTrainQueue
-	h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
 	for _, q := range qs {
 		queues = append(queues, gin.H{"id": q.ID, "troop_id": q.TroopId,
 			"name": ezfyCfg.troopName(q.TroopId, camp), "count": q.Count, "end_time": q.EndTime})
 	}
-	var wounded, deserters []model.EzfyWounded
-	h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded)
-	h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters)
-	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
-	wounded = h.filterExpiredWounded(wounded)
-	deserters = h.filterExpiredWounded(deserters)
 	woundViews := []gin.H{}
 	for _, w := range append(wounded, deserters...) {
 		woundViews = append(woundViews, gin.H{"id": w.ID, "troop_id": w.TroopId,
@@ -372,8 +394,6 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 			// ★ 用户要求「恢复伤兵需要黄金」：把单价一起下发，前端在[恢复]旁边显示要花多少钱
 			"heal_gold": ezfyWoundHealGoldPer(w.TroopId)})
 	}
-	// ★ 占用人口 = 建筑占用人口 + 训练中未出厂的新兵占用（部队不占人口位置）。
-	popUsed := h.cityPopUsed(city.ID)
 	// 兵种配置一览
 	cfgViews := []gin.H{}
 	// ★ 2026-10-03 性能：兵种配置在 cfgs() 已整表载入进程内缓存，改用内存缓存，省一次跨 WAN 全表查询。
@@ -399,35 +419,51 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	}
 	// 城防空间(围墙容量)与已占用(复刻 troopDefence.html 的「围墙：N级 城防空间：(used/cap)」)
 	// ★ 已占用含训练队列里还没出来的城防，与 trainTroop 的校验口径保持一致
-	wallLevel := h.buildingLevel(city.ID, 7)
+	blv := buildingLevelsOf(buildings)
+	wallLevel := blv[7]
 	defSpace := int64(0)
 	if wall := ezfyCfg.buildingLevel(7, wallLevel); wall != nil {
 		defSpace = wall.Capacity
 	}
-	defUsed := h.defenceSpaceUsed(city.ID)
-	// 军工厂座数(复刻 createTroop.html 的「全部工厂 / 仅此工厂」)
-	factoryCount := 0
-	for _, b := range h.buildingList(city.ID) {
-		if b.BuildingId == ezfyFactoryBuildingID {
-			factoryCount++
+	// ★ 2026-10-04 城防占用直接用上面已取到的军队表+训练队列纯内存算（原来再查 2 遍）
+	defUsed := int64(0)
+	for tid, cnt := range troopMap {
+		if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
+			defUsed += cnt
 		}
 	}
-	resp.OK(c, gin.H{
+	for _, q := range qs {
+		if c := ezfyCfg.troop(q.TroopId); c != nil && c.Type == 4 {
+			defUsed += q.Count
+		}
+	}
+	// 军工厂座数与总等级（复刻 createTroop.html 的「全部工厂 / 仅此工厂」）——纯内存
+	factoryTotal, factoryCount := 0, 0
+	for _, b := range buildings {
+		if b.BuildingId == ezfyFactoryBuildingID {
+			factoryCount++
+			factoryTotal += b.Level
+		}
+	}
+	data := gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
 		"wall_level":         wallLevel,
 		"train_discount":     discount,
 		"defence_space":      defSpace,
 		"defence_space_used": defUsed,
-		"factory_total":      h.buildingTotalLevel(city.ID, ezfyFactoryBuildingID),
+		"factory_total":      factoryTotal,
 		"factory_count":      factoryCount,
-	})
+	}
+	ezfyPageCacheSet(uid, "troops", data)
+	resp.OK(c, data)
 }
 
 // DismissDefence POST /games/ezfy/troops/dismiss —— 拆除城防设施
 // 复刻 troopDefence.html 每行的 [拆除]（原版 Java 无对应接口, 模板里是失效的旧链接）
 func (h *EzfyHandler) DismissDefence(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 拆城防 → 军队页缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		TroopId int   `json:"troop_id"`
@@ -484,6 +520,7 @@ func ezfyNeedFactoryLevel(require string) int {
 
 func (h *EzfyHandler) Train(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 征兵 → 军队页缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		TroopId int   `json:"troop_id"`
@@ -504,6 +541,7 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 // 用户要求：征兵队列玩家可以自己取消。取消时把当初消耗的资源全额退还。
 func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 取消训练 → 军队页缓存失效
 	var req struct {
 		QueueId int64 `json:"queue_id"`
 	}
@@ -566,6 +604,7 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 // 解散直接销毁兵力（不退还任何资源），用于清理占地力的低级兵。
 func (h *EzfyHandler) DisbandTroops(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 解散部队 → 军队页缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		TroopId int   `json:"troop_id"`
@@ -617,6 +656,7 @@ const ezfySpeedGoldPerSec = 10
 // all_city=true 时对所有城市生效(复刻 militaryIndex.html 底部的两个按钮)
 func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 训练一键加速 → 军队页缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		AllCity bool  `json:"all_city"`
@@ -683,6 +723,7 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 
 func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 伤兵恢复 → 军队页缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		TroopId int   `json:"troop_id"`

@@ -44,12 +44,16 @@
                 <!-- ★ 2026-09-25：个人军团积分（用于军团商城兑换） -->
                 <td>{{ m.points }}</td>
                 <td v-if="ezfy.isLeader">
-                  <template v-if="!m.is_leader">
+                  <!-- ★ 2026-10-04 用户规则：非官职（无职位 title）的成员不展示操作列，
+                       只有已任官职（副团长/参谋长）或军团长本人才有内容 -->
+                  <template v-if="m.is_leader">
+                    <span class="gray">军团长</span>
+                  </template>
+                  <template v-else-if="m.title">
                     <a v-if="m.title !== '副团长'" href="javascript:;" @click="ezfy.doSetCorpsTitle(m, '副团长')">[副团长]</a>
                     <a v-if="m.title !== '参谋长'" href="javascript:;" @click="ezfy.doSetCorpsTitle(m, '参谋长')">[参谋长]</a>
                     <a v-if="m.title" class="gray" href="javascript:;" @click="ezfy.doSetCorpsTitle(m, '')">[撤职]</a>
                   </template>
-                  <span v-else class="gray">军团长</span>
                 </td>
               </tr>
             </table>

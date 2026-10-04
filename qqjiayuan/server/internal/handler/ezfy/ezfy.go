@@ -3552,6 +3552,8 @@ func (h *EzfyHandler) SwitchCity(c *gin.Context) {
 	//   ② 直接返回新城完整 view 数据 —— 前端一次请求完成「切城 + 全量刷新」，
 	//      不再 POST 后再 GET /view（省一次 round-trip 和一次重复懒结算）。
 	ezfyViewCacheDel(uid)
+	// ★ 2026-10-04 切城后军队/附属野地/装备商城等按城缓存也一并清掉（避免 3 秒内显示旧城数据）
+	ezfyPageCacheDel(uid)
 	data := h.viewPayload(uid)
 	data["msg"] = "已切换到「" + ct.Name + "」"
 	data["city_id"] = ct.ID
@@ -3887,6 +3889,7 @@ func (h *EzfyHandler) Placate(c *gin.Context) {
 // AbandonWildland 放弃野地
 func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 放弃野地 → 附属野地缓存失效
 	var req struct {
 		WildlandId int64 `json:"wildland_id"`
 	}

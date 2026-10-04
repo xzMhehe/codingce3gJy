@@ -77,6 +77,7 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 //   驻军趋(情报→驻军)/野地列表/出征队列上的 [采集] 都走本接口。
 func (h *EzfyHandler) StartCollect(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 开始采集 → 附属野地缓存失效
 	h.cfgs()
 	var req struct {
 		OrderId int64 `json:"order_id"`
@@ -251,6 +252,7 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 //   - 停止后部队原地待命(驻守空闲 arrive_time=0)，之后可再点[采集]继续，或[召回]撤兵。
 func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 停止采集 → 附属野地缓存失效
 	h.cfgs()
 	var req struct {
 		OrderId int64 `json:"order_id"`
