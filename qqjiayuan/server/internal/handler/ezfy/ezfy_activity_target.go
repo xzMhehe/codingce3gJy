@@ -271,7 +271,8 @@ func ezfyActivityDefender(actType, level, terrain int) []ezfyUnitGroup {
 		total = base * 5
 	}
 	ratio := [][2]int{{4, 50}, {5, 30}, {6, 20}} // 装甲车 / 轻型坦克 / 重型坦克
-	if terrain == 8 {
+	// ★ 2026-10-05 岛屿也属于海野 → 活动目标在岛屿/海底森林上守军按海军配比
+	if ezfyIsSeaWildTerrain(terrain) {
 		ratio = [][2]int{{13, 40}, {14, 30}, {15, 20}, {16, 10}} // 驱逐舰 / 潜艇 / 战列舰 / 航母
 	}
 	out := []ezfyUnitGroup{}

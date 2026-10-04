@@ -59,6 +59,17 @@ const ezfyLandScale = 150.0 / float64(ezfyWorldSize)
 // ezfyTerrainSea 海洋地形 id（与 ezfyTerrainNames 下标一致）
 const ezfyTerrainSea = 8
 
+// ezfyTerrainIsland 岛屿地形 id（1平原…7岛屿 8海洋 9沿海平原）
+const ezfyTerrainIsland = 7
+
+// ezfyIsSeaWildTerrain 该地形是否按「海野」处理：海底森林(8) + 岛屿(7)。
+//
+// ★ 2026-10-05 用户规则「岛屿也属于海野」——岛屿上的野地守军配置、采集系数、
+//   战报命名、占领记录 wild_type 一律按海野口径（原来只有地形 8 算海野）。
+func ezfyIsSeaWildTerrain(t int) bool {
+	return t == ezfyTerrainSea || t == ezfyTerrainIsland
+}
+
 func ezfyInShape(x, y int, s []int) bool {
 	// 大陆几何定义在 150×150 的坐标里，先把世界坐标缩回去再判形状
 	fx := float64(x) * ezfyLandScale

@@ -1113,7 +1113,14 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
 			"wild_type": w.WildType, "level": w.Level, "status": sts,
 			"idle_order_id": idleOrderId,
-			"terrain":       ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+			"terrain":       ezfyTerrainEx(w.X, w.Y),
+			// ★ 2026-10-05 岛屿也属于海野 → 附属野地列表里岛屿也显示「海底森林」（与地图/详情同口径）
+			"terrain_name": func() string {
+				if ezfyIsSeaWildTerrain(ezfyTerrainEx(w.X, w.Y)) {
+					return "海底森林"
+				}
+				return ezfyTerrainNameEx(w.X, w.Y)
+			}(),
 			"continent": ezfyRegionName(w.X, w.Y)})
 	}
 	// 被占城市归属玩家的游戏昵称（原每行 ensureProfile 一次库 → 改一次 IN 查询）
@@ -1274,7 +1281,8 @@ func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
 	switch tt {
 	case 1: // 野地: 地形名 + 等级(海上的野地用「海底森林」)
 		tn := ezfyTerrainNameEx(o.TargetX, o.TargetY)
-		if ezfyTerrain(o.TargetX, o.TargetY) == 8 {
+		// ★ 2026-10-05 岛屿也属于海野 → 岛屿野地同样叫「海底森林」
+		if ezfyIsSeaWildTerrain(ezfyTerrainEx(o.TargetX, o.TargetY)) {
 			tn = "海底森林"
 		}
 		return tn + "(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
