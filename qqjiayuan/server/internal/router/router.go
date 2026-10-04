@@ -1606,6 +1606,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 					return
 				}
 				if path == "/" || !strings.Contains(path, ".") {
+					// ★ 2026-10-04 二战独立入口：/games/ezfy 直接返回 ezfy.html
+					//   （独立构建的二战壳，不引家园 CSS、不走家园 SPA，刷新无家园影子）。
+					if strings.HasPrefix(path, "/games/ezfy") {
+						c.Header("Cache-Control", "no-cache")
+						c.File(cfg.Server.WebDir + "/ezfy.html")
+						return
+					}
 					// ★ 2026-10-02 手机端"进去数据没刷新出来"根因修复：
 					//   index.html 之前无 Cache-Control 头被浏览器（尤其手机端）强缓存，
 					//   重部署后旧的带 hash JS 已被删除，旧 index.html 引用的 JS 全部 404，

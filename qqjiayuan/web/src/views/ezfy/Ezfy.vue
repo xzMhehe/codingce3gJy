@@ -2079,70 +2079,73 @@ export default {
       if (hh > 0) return hh + '小时' + mm + '分'
       return mm + '分'
     },
+    // ★ 2026-10-04 拆出 applyView：/view 与切城接口返回同一份数据结构，
+    //   切城时直接 applyView(r.data) 完成全量刷新，不再二次请求 /view。
     load () {
       api.get('/games/ezfy/view').then(r => {
-        if (r.code === 0) {
-          const d = r.data
-          this.profile = d.profile
-          this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
-          this.officerCount = d.officer_count || 0
-          this.rankName = d.rank_name
-          this.rankPost = d.rank_post
-          this.city = d.city
-          // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
-          this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
-          // ★★ 2026-09-28 修复「切换城市 → 城市列表空了」：
-          //   1bafa1a（格式、民心民怨）新增安抚参数时，把原本这一行 `this.cities = d.cities`
-          //   覆盖删掉了。而 cities 在 data 里初值就是 []，**全文件再无第二处赋值** ——
-          //   于是城市列表恒为空（「已有 0 座」、建城页也一直显示 0）。
-          //   后端 /view 一直在下发 cities（ezfy.go 的 View → h.cityViews），这里接住即可。
-          //   ⚠️ 改 load() 时别再把这一行弄丢：它是 cities 的唯一数据源。
-          this.cities = d.cities || []
-          this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
-          this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
-          this.city = d.city
-          this.continent = d.continent
-          this.cityKindRaw = d.city_kind || ''
-          this.cityIsSea = !!d.is_sea
-          this.protectedUntil = d.protected
-          this.boostUntil = d.boost
-          this.buildings = d.buildings
-          this.buildingPool = d.building_pool || []
-          this.militaryCap = d.military_cap || 33
-          this.resourceCap = d.resource_cap || 33
-          // ★ 2026-09-26 两个开关：后端未下发（老版本）时按「开」处理，与后端默认一致
-          this.housePopLimitOn = d.house_pop_limit_on === undefined || d.house_pop_limit_on === null
-            ? true : !!Number(d.house_pop_limit_on)
-          this.conveneFlexibleOn = d.convene_flexible_on === undefined || d.convene_flexible_on === null
-            ? true : !!Number(d.convene_flexible_on)
-          // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
-          this.conveneFoodCost = Number(d.convene_food_cost) || 100000
-          this.convenePopGain = Number(d.convene_pop_gain) || 100000
-          // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
-          this.convenePopMax = Number(d.convene_pop_max) || 0
-          this.wildlands = d.wildlands
-          this.queues = d.queues
-          this.marching = d.marching
-          this.occupying = d.occupying
-          this.unreadReports = d.unread_reports
-          // ★ 占用人口随 /view 一起下发：首页/城市状态页的「空闲人口」不再依赖
-          //   「有没有进过军队页」（原来没进过就按 0 算，空闲人口显示成满人口）
-          this.popUsed = d.pop_used || 0
-          this.cityPop = d.city.pop || 0
-          this.taxInput = d.city.tax_rate
-          this.applyResNames(d.res_names)
-          // ★ 集结令配置（管理端可配，默认 99）：跟着 /view 一起下发，
-          //   这样一进页面（还没点[计算]）输入框的上限就是对的。
-          this.gatherCfg = {
-            max: d.gather_max > 0 ? d.gather_max : 0,
-            per: d.gather_per > 0 ? d.gather_per : 100000,
-            have: d.gather_have || 0
-          }
-          // ★ 首页要显示「每日签到：已签到/签到」，但 /view 不下发 welfare。
-          //   不补这一下，签到完回首页仍显示「签到」——用户反馈的 bug。
-          if (this.cur === 'home') this.loadWelfare()
-        }
+        if (r.code === 0) this.applyView(r.data)
       })
+    },
+    applyView (d) {
+      if (!d) return
+      this.profile = d.profile
+      this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
+      this.officerCount = d.officer_count || 0
+      this.rankName = d.rank_name
+      this.rankPost = d.rank_post
+      this.city = d.city
+      // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
+      this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
+      // ★★ 2026-09-28 修复「切换城市 → 城市列表空了」：
+      //   1bafa1a（格式、民心民怨）新增安抚参数时，把原本这一行 `this.cities = d.cities`
+      //   覆盖删掉了。而 cities 在 data 里初值就是 []，**全文件再无第二处赋值** ——
+      //   于是城市列表恒为空（「已有 0 座」、建城页也一直显示 0）。
+      //   后端 /view 一直在下发 cities（ezfy.go 的 View → h.cityViews），这里接住即可。
+      //   ⚠️ 改 load() 时别再把这一行弄丢：它是 cities 的唯一数据源。
+      this.cities = d.cities || []
+      this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
+      this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
+      this.city = d.city
+      this.continent = d.continent
+      this.cityKindRaw = d.city_kind || ''
+      this.cityIsSea = !!d.is_sea
+      this.protectedUntil = d.protected
+      this.boostUntil = d.boost
+      this.buildings = d.buildings
+      this.buildingPool = d.building_pool || []
+      this.militaryCap = d.military_cap || 33
+      this.resourceCap = d.resource_cap || 33
+      // ★ 2026-09-26 两个开关：后端未下发（老版本）时按「开」处理，与后端默认一致
+      this.housePopLimitOn = d.house_pop_limit_on === undefined || d.house_pop_limit_on === null
+        ? true : !!Number(d.house_pop_limit_on)
+      this.conveneFlexibleOn = d.convene_flexible_on === undefined || d.convene_flexible_on === null
+        ? true : !!Number(d.convene_flexible_on)
+      // ★ 2026-09-26 召集消耗/收益（后端保证 >= 1，兜底默认 10 万）
+      this.conveneFoodCost = Number(d.convene_food_cost) || 100000
+      this.convenePopGain = Number(d.convene_pop_gain) || 100000
+      // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
+      this.convenePopMax = Number(d.convene_pop_max) || 0
+      this.wildlands = d.wildlands
+      this.queues = d.queues
+      this.marching = d.marching
+      this.occupying = d.occupying
+      this.unreadReports = d.unread_reports
+      // ★ 占用人口随 /view 一起下发：首页/城市状态页的「空闲人口」不再依赖
+      //   「有没有进过军队页」（原来没进过就按 0 算，空闲人口显示成满人口）
+      this.popUsed = d.pop_used || 0
+      this.cityPop = d.city.pop || 0
+      this.taxInput = d.city.tax_rate
+      this.applyResNames(d.res_names)
+      // ★ 集结令配置（管理端可配，默认 99）：跟着 /view 一起下发，
+      //   这样一进页面（还没点[计算]）输入框的上限就是对的。
+      this.gatherCfg = {
+        max: d.gather_max > 0 ? d.gather_max : 0,
+        per: d.gather_per > 0 ? d.gather_per : 100000,
+        have: d.gather_have || 0
+      }
+      // ★ 首页要显示「每日签到：已签到/签到」，但 /view 不下发 welfare。
+      //   不补这一下，签到完回首页仍显示「签到」——用户反馈的 bug。
+      if (this.cur === 'home') this.loadWelfare()
     },
     // 资源显示名：把后端下发/读取到的名字合并进兜底值
     applyResNames (d) {
@@ -3444,12 +3447,11 @@ export default {
       api.post('/games/ezfy/city/switch', { city_id: ct.id }).then(r => {
         if (r.code === 0) {
           // ★ 2026-10-04 切城只调新城的接口（用户反馈「切城卡顿 + 切完还打旧城接口」）：
-          //   · 落地页是首页，只需 /view —— 它不带 city_id，后端按「当前城」取数据，
-          //     切城 POST 已把新城落库为 current_city_id，天然就是新城。
-          //   · 军队/科技/军官**不再切城时预取**：loadTechs 在此时 this.city 仍是旧城，
-          //     会拿旧城 id 打接口（白白触发一次旧城懒结算）；而各数据页进页时
-          //     go() 分支都会按新城懒加载（troops/techs/onduty…），不会残留旧城数据。
-          this.load()
+          //   · 后端切城接口现在直接返回新城完整 view 数据 → 一次请求完成
+          //     「切城 + 全量刷新」，资源栏同步更新，不再二次 GET /view（无 3s 延迟）。
+          //   · 旧后端没有 view 字段时回落到 load()。
+          if (r.data && r.data.city) this.applyView(r.data)
+          else this.load()
           this.cur = 'home'
         } else this.notify(r.msg)
       })

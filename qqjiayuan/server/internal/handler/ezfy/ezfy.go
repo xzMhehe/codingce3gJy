@@ -2972,7 +2972,15 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
+	// ★ 2026-10-04 数据构建抽成 viewPayload：切城等「需要即时刷新新城数据」的接口直接复用，
+	//   不再「切完再 GET /view」打第二遍（那会再跑一次完整懒结算 + 十几条查询）。
+	data := h.viewPayload(uid)
+	ezfyViewCacheSet(uid, data)
+	resp.OK(c, data)
+}
 
+// viewPayload 构建 /view 完整数据（纯构建不做缓存；调用方自行决定缓存/下发）。
+func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	h.cfgs()
 	profile := h.ensureProfile(uid)
 
@@ -3309,8 +3317,8 @@ func (h *EzfyHandler) View(c *gin.Context) {
 		"convene_pop_max": ezfyConvenePopMaxCfg(),
 	}
 	// ★ 2026-10-03 第三批：3 秒短 TTL 玩家级缓存。写操作后的刷新最多滞后 3 秒（可接受）。
-	ezfyViewCacheSet(uid, data)
-	resp.OK(c, data)
+	//   这里只负责「构建」，缓存/下发由 View（或切城等接口）决定。
+	return data
 }
 
 // ★ 2026-10-03 /view 玩家级短 TTL 缓存。
@@ -3350,6 +3358,15 @@ func ezfyViewCacheSet(uid uint, data gin.H) {
 		ezfyViewCache = map[uint]ezfyViewCacheItem{}
 	}
 	ezfyViewCache[uid] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
+}
+
+// ezfyViewCacheDel 清除某玩家的 /view 缓存。
+// ★ 2026-10-04 切城/弃城等「当前城市变化」的操作必须调它，否则 3s TTL 内 /view
+//   会继续返回旧城数据 —— 正是「切城后资源栏延迟 3 秒才刷新」的根因。
+func ezfyViewCacheDel(uid uint) {
+	ezfyViewCacheMu.Lock()
+	defer ezfyViewCacheMu.Unlock()
+	delete(ezfyViewCache, uid)
 }
 
 // ezfyViewCurrentCity 从本请求已取到的玩家城市列表里挑当前城市（与 currentCity 同口径）：
@@ -3528,7 +3545,15 @@ func (h *EzfyHandler) SwitchCity(c *gin.Context) {
 		resp.ParamError(c, "切换失败："+err.Error())
 		return
 	}
-	resp.OK(c, gin.H{"msg": "已切换到「" + ct.Name + "」", "city_id": ct.ID})
+	// ★ 2026-10-04 切城性能（用户反馈「切城卡 + 资源栏延迟 3s」）：
+	//   ① 3s TTL 的 /view 缓存里是旧城数据，必须清掉，否则切完 3 秒内 /view 仍返回旧城；
+	//   ② 直接返回新城完整 view 数据 —— 前端一次请求完成「切城 + 全量刷新」，
+	//      不再 POST 后再 GET /view（省一次 round-trip 和一次重复懒结算）。
+	ezfyViewCacheDel(uid)
+	data := h.viewPayload(uid)
+	data["msg"] = "已切换到「" + ct.Name + "」"
+	data["city_id"] = ct.ID
+	resp.OK(c, data)
 }
 
 // CreateCity 新建分城（平原 → 陆地城市；沿海平原 → 海城）
@@ -3646,6 +3671,8 @@ func (h *EzfyHandler) DestroyCity(c *gin.Context) {
 		resp.ParamError(c, msg)
 		return
 	}
+	// ★ 2026-10-04 与切城一致：清 /view 缓存，避免 3s TTL 内 cities 列表还带着已摧毁的城
+	ezfyViewCacheDel(uid)
 	resp.OK(c, gin.H{"msg": "城市「" + ct.Name + "」已摧毁，该坐标恢复为普通平原"})
 }
 
