@@ -43,9 +43,10 @@
                 <td>{{ m.rank_name }}</td>
                 <!-- ★ 2026-09-25：个人军团积分（用于军团商城兑换） -->
                 <td>{{ m.points }}</td>
-                <td v-if="ezfy.isLeader">
+                <td v-if="ezfy.isLeader && (m.is_leader || m.title)">
                   <!-- ★ 2026-10-04 用户规则：非官职（无职位 title）的成员不展示操作列，
-                       只有已任官职（副团长/参谋长）或军团长本人才有内容 -->
+                       只有已任官职（副团长/参谋长）或军团长本人才有内容；
+                       ★ 2026-10-05 无职位的成员连操作列单元格都不渲染 -->
                   <template v-if="m.is_leader">
                     <span class="gray">军团长</span>
                   </template>
@@ -145,7 +146,6 @@
         <template v-else-if="ezfy.corpsTab === 'diplomacy'">
           <div class="panel" v-if="ezfy.corpsRelations && ezfy.corpsRelations.in_corps">
             <div class="panel-title">我的军团(积分):{{ (ezfy.corpsRelations.my_corps || {}).name }}({{ (ezfy.corpsRelations.my_corps || {}).points || 0 }})</div>
-            <div class="old-line gray">友好/敌对军团均可宣战；关系标记只影响外交显示，不限制宣战。</div>
             <div class="panel-title">已标记关系</div>
             <table>
               <tr><th>军团</th><th>关系</th><th v-if="ezfy.corpsRelations.can_manage">操作</th></tr>
@@ -201,9 +201,6 @@
         <template v-else-if="ezfy.corpsTab === 'war'">
           <div class="panel" v-if="ezfy.corpsWars && ezfy.corpsWars.in_corps">
             <div class="panel-title">军团宣战</div>
-            <div class="old-line gray">
-              规则：宣战后 12 小时生效，48 小时整场结束；生效期间双方成员可互相掠夺/征服并获得军团战绩；友好/敌对军团均可宣战。
-            </div>
             <table class="ezfy-corps-tbl ezfy-war-tbl">
               <tr>
                 <th>对方军团</th><th>我方身份</th><th>状态</th><th>宣告时间</th>

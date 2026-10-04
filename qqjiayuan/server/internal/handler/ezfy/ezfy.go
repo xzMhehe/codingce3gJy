@@ -2286,9 +2286,12 @@ func (h *EzfyHandler) checkTechDone(city *model.EzfyCity, reuse ...[]uint) {
 }
 
 // checkTechDoneRows 对已查好的「进行中科技」做完成结算（写部分；list 由调用方预取可省 1 条串行 RTT）。
+// ★ 2026-10-05 结算成功的行把内存里的 Status 置 0，调用方（techs 页）据此直接从这批行
+//   构建「研究中」集合，不再多查一次 status=1 的记录。
 func (h *EzfyHandler) checkTechDoneRows(city *model.EzfyCity, list []model.EzfyCityTech) {
 	now := time.Now().UnixMilli()
-	for _, t := range list {
+	for i := range list {
+		t := &list[i]
 		if now < t.EndTime {
 			continue
 		}
@@ -2299,6 +2302,7 @@ func (h *EzfyHandler) checkTechDoneRows(city *model.EzfyCity, list []model.EzfyC
 		if res.Error != nil || res.RowsAffected == 0 {
 			continue
 		}
+		t.Status = 0 // 已结算完，内存同步标记（供调用方复用）
 		// 等级 +1 写用户级（无记录则建）
 		h.DB.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "user_id"}, {Name: "tech_id"}},

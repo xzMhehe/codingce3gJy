@@ -2,7 +2,7 @@
   <div>
     <template v-if="ezfy.cur === 'troop'">
         <div class="panel">
-          <div class="panel-title">训练军队(军工厂各座{{ ezfy.factoryLevels }}级, 队列{{ ezfy.queues.length }}/{{ ezfy.factoryTotal }})</div>
+          <div class="panel-title">训练军队(军工厂{{ ezfy.factoryLevels }}级, 队列{{ ezfy.queues.length }}/{{ ezfy.factoryTotal }})</div>
           <div class="old-line green" v-if="ezfy.troopsData.train_discount > 0">
             节日活动·造兵打折：资源消耗 -{{ ezfy.troopsData.train_discount }}%（下方为折后价）
           </div>
@@ -232,10 +232,6 @@
                      :disabled="ezfy.gatherCount <= 0" @change="ezfy.onPresetGatherChange" style="width:80px"/>
               个 <span class="gray">（背包里有 {{ ezfy.gatherCount }} 个，单次最多 {{ ezfy.orderCapMax }} 个）</span>
             </div>
-            <div class="old-line gray">
-              每个集结令 +{{ ezfy.fmtN(ezfy.orderCapPer) }} 出征上限，单次最多 {{ ezfy.orderCapMax }} 个。
-              司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
-            </div>
             <!-- ★ 2026-09-29 用户要求：预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
             <div class="old-line" v-if="ezfy.attackTroops.length">
               <span :class="ezfy.orderOverCap ? 'red' : 'green'">
@@ -244,9 +240,7 @@
               </span>
             </div>
             <!-- ③ 兵力 -->
-            <div class="of-sec">③ 选择兵力
-              <span class="of-hint">（拖滑块或直接填数字；滑块与 [最大] 都按「城内现有」和「出征上限剩余」取小）</span>
-            </div>
+            <div class="of-sec">③ 选择兵力</div>
             <div class="of-rows">
               <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'pt' + t.id"
                    :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
@@ -307,7 +301,7 @@
         <div class="panel">
           <div class="old-line">
             <a href="javascript:;" @click="ezfy.go('buildm')">军事区</a>
-            -&gt;军营(军工厂)(各座{{ ezfy.factoryLevels }}级)：
+            -&gt;军营(军工厂)({{ ezfy.factoryLevels }}级)：
           </div>
           <div class="old-line">正在训练：</div>
           <div class="old-line" v-for="q in ezfy.queues" :key="'fq' + q.id">
@@ -397,7 +391,7 @@
           </div>
           <div class="old-line" v-else>
             <a href="javascript:;" @click="ezfy.go('buildm')">军事区</a>
-            -&gt;军工厂(各座{{ ezfy.factoryLevels }}级)：
+            -&gt;军工厂({{ ezfy.factoryLevels }}级)：
           </div>
           <div class="old-line">{{ ezfy.trainSel.name }}{{ ezfy.trainMode === 'defence' ? '建造' : '训练' }}需求：</div>
           <div class="old-line">

@@ -779,36 +779,49 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	// ★ 2026-09-28 多城研究：GET ?city_id= 指定查看的城市，0/缺省 = 主城
-	city, _ := h.readCityReq(c)
-	if city == nil {
-		m := h.getOrCreateCity(uid)
-		city = &m
-	}
-	// ★ 2026-10-05 性能（用户反馈「/techs?city_id= 4s」）：3s 玩家级缓存（按城），
-	//   研究/加速写操作统一失效；缓存命中零 SQL。
-	cacheKey := fmt.Sprintf("techs:%d", city.ID)
-	if it, ok := ezfyPageCacheGet(uid, cacheKey); ok {
-		resp.OK(c, it)
-		return
-	}
-	h.refreshCityRead(uid, city)
-	// ★ 2026-09-28 多城研究：等级存用户级(全城共用、无主城)；科研中心等级取**当前城**；
-	//   研究中的判断 = 该科技在玩家**任一城市**是否有进行中记录（不同城不能研究同一科技）
-	techMap := h.techMap(city.ID)
-	academy := h.buildingLevel(city.ID, 8) // 当前城科研中心等级
-	cityIds := h.ezfyCityIds(uid)
+	// ★ 2026-10-05 修复「?city_id= 一直被忽略」：readCityReq 只绑 JSON body（GET 请求无效），
+	//   直接读 query 参数选城，与前端 loadTechs 的调用（?city_id=X）对上。
+	cityId, _ := strconv.ParseInt(c.Query("city_id"), 10, 64)
+	city := h.bodyCity(uid, cityId)
+	// ★ 2026-10-05 性能（用户反馈「/techs 还是 3s」）：原 refreshCityRead 串行跑
+	//   checkBuildingDone / collectTrainQueue / calcResource（建筑、训练队列、军官各查一遍 +
+	//   资源结算写库），跨 WAN RDS 就是 3s 的根源。科技页只需要「已完成科技」结算：
+	//   第一波并行取 城市id列表 / 科研中心等级 / 科技配置表（1 RTT）；
+	//   再一条 IN 查全部进行中科技行 → checkTechDoneRows（仅过期行写库，空闲零写）→
+	//   用户级科技等级与研究态都由这批数据纯内存构建，去掉全部无关懒结算。
+	var cityIds []uint
+	var academy int
 	var all []model.EzfyCfgTech
-	h.DB.Order("id ASC").Find(&all)
-	// ★ 2026-10-05 性能：研究中的记录一次 IN 查完并建 tech_id→记录 map，
-	//   原来每个科技 × 每座城一条 First 查询 = N×M 条串行 SQL（双机共 RDS 时就是 4s 的来源）。
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); cityIds = h.ezfyCityIds(uid) }()
+	go func() { defer wg.Done(); academy = h.buildingLevel(city.ID, 8) }() // 当前城科研中心等级
+	go func() { defer wg.Done(); h.DB.Order("id ASC").Find(&all) }()
+	wg.Wait()
+
+	// 进行中的科技记录：全玩家城市一次 IN 查完；完成结算 + 研究态都从这批行构建（零多余查询）
+	var techRows []model.EzfyCityTech
+	h.DB.Where("city_id IN ? AND status = 1", cityIds).Find(&techRows)
+	h.checkTechDoneRows(city, techRows)
+
+	// 用户级科技等级（全城共用）：checkTechDoneRows 已把完成的 +1 写库，这里取到新等级
+	var userTechs []model.EzfyUserTech
+	h.DB.Where("user_id = ?", uid).Find(&userTechs)
+	techMap := map[int]int{}
+	for _, t := range userTechs {
+		techMap[t.TechId] = t.Level
+	}
+
+	// 研究中的判断 = 该科技在玩家任一城市是否有进行中记录（不同城不能研究同一科技）
+	// ★ 刚被 checkTechDoneRows 结算完的行 Status=0 → 自动排除，不会还显示「研究中」
 	researchMap := map[int]model.EzfyCityTech{}
-	if len(cityIds) > 0 {
-		var recs []model.EzfyCityTech
-		h.DB.Where("city_id IN ? AND status = 1", cityIds).Find(&recs)
-		for _, r := range recs {
-			if _, ok := researchMap[r.TechId]; !ok {
-				researchMap[r.TechId] = r
-			}
+	for i := range techRows {
+		r := &techRows[i]
+		if r.Status != 1 {
+			continue
+		}
+		if _, ok := researchMap[r.TechId]; !ok {
+			researchMap[r.TechId] = *r
 		}
 	}
 	views := []gin.H{}
@@ -833,7 +846,6 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 		views = append(views, view)
 	}
 	data := gin.H{"techs": views, "academy": academy}
-	ezfyPageCacheSet(uid, cacheKey, data)
 	resp.OK(c, data)
 }
 

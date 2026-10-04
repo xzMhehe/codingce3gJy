@@ -92,20 +92,9 @@
           <!-- ===== 军情警讯: 别人打我 ===== -->
           <template v-else-if="ezfy.reportTab === 3">
             <div class="old-line">
-              <span class="gray">敌方来袭预警、被侦查、被掠夺、被征服都在这里看；</span>
               <a href="javascript:;" @click="ezfy.loadReports">[刷新]</a>
             </div>
-            <!-- ★ 雷达站 + 侦察技巧 决定「事前预警」能看到多少（事后结果战报不受影响）
-                 ★ 2026-09-25 用户要求「军情警讯要看到对面城市名字和地址」→ 这里明确写出
-                   还差多少才能看到「出发城市(坐标)」，否则玩家永远不知道该升什么。 -->
-            <div class="old-line" v-if="ezfy.reportRadar > 0">
-              <span class="gray">情报等级 <b>{{ ezfy.reportIntel }}</b> = 雷达站 {{ ezfy.reportRadar }} 级 + 侦察技巧 {{ ezfy.reportRecon }} 级：</span>
-              <span v-if="ezfy.reportIntel >= 2" class="gray">已能在预警里看到<b>来袭城市名称与坐标</b>，等级越高情报越详细。</span>
-              <span v-else class="orange">再升 1 级（雷达站或侦察技巧均可）就能看到<b>来袭城市名称与坐标</b>。</span>
-            </div>
-            <div class="old-line" v-else>
-              <span class="red">尚未建造雷达站：收不到「敌军来袭 / 被侦查」预警；被掠夺、被征服的结果战报仍会记录在这里。</span>
-            </div>
+            <!-- ★ 2026-10-05 用户要求「没用的页面提示去掉」：情报等级公式/还能看到什么 不再展示（文案保留注释里） -->
             <div class="old-line" v-for="r in ezfy.repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="ezfy.openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>

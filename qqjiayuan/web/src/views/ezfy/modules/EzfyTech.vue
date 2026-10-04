@@ -26,7 +26,6 @@
             <br/>
             {{ t.effect }}<br/>
           </div>
-          <div class="old-line gray">不同城市可同时研究不同科技；同一科技只能在一个城市研究；[取消] 只停止研究，不退还已消耗资源。</div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

@@ -1195,9 +1195,12 @@ export default {
     factories () {
       return this.buildings.filter(b => b.building_id === 14)
     },
-    // ★ 2026-10-05 军工厂各座自己的等级（不是合计）：显示如「3/5」
+    // ★ 2026-10-05 用户要求「只展示选中的军工厂等级」：不再列「各座9/9/9/...」，
+    //   只显示本城军工厂的最高等级（[仅此工厂] 训练用的那座，也是队列上限的直观值）。
     factoryLevels () {
-      return this.factories.map(f => f.level).sort((a, b) => a - b).join('/') || '0'
+      let m = 0
+      for (const f of this.factories) if (f.level > m) m = f.level
+      return m || 0
     },
     // ★ 2026-10-05 [全部工厂] 平分的分母 = 训练该兵种时可用的军工厂数（等级 ≥ 需求）
     eligibleFactories () {

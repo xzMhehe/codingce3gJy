@@ -178,7 +178,6 @@
             <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
             <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(3)">[征服]</a><span class="home-gap"></span>
             <a v-if="ezfy.selCell.occupied && ezfy.isOwnWild" href="javascript:;" @click="ezfy.pickOrder(4)">[采集]</a>
-            <span v-else-if="!ezfy.selCell.occupied && (!ezfy.selDetail || !ezfy.selDetail.act_type)" class="gray">(占领该野地后可采集)</span>
           </div>
           <a href="javascript:;" @click="ezfy.go('map')">[返回地图]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
@@ -196,7 +195,6 @@
           <div class="old-line">
             出发城市：<b>{{ ezfy.city.name }}</b>
             <span v-if="ezfy.city.x || ezfy.city.y">({{ ezfy.city.x }},{{ ezfy.city.y }})</span>
-            <span class="gray">（部队 / 军官 / 随军资源都从这座城市出发）</span>
           </div>
           <div class="old-line">
             目标：<b>{{ ezfy.selCell.name }}</b><span v-if="ezfy.selCell.level">({{ ezfy.selCell.level }}级)</span>
@@ -216,7 +214,6 @@
                 {{ p.name }}({{ ezfy.fmtN(p.troop_total) }}兵<template v-if="p.officer">·{{ p.officer }}</template>)
               </option>
             </select>
-            <span class="gray" v-if="!ezfy.presets.length">(暂无预设，可到司令部「预设编队」添加)</span>
             <a href="javascript:;" @click="ezfy.go('hq'); $nextTick(() => ezfy.selectHqTab(4))">[管理预设]</a>
           </div>
           <!-- ① 军官 -->
@@ -249,10 +246,6 @@
             个
             <span class="gray">（背包里有 {{ ezfy.gatherCount }} 个）</span>
           </div>
-          <div class="old-line gray">
-            每个集结令 +{{ ezfy.fmtN(ezfy.orderCapPer) }} 出征上限，单次最多 {{ ezfy.orderCapMax }} 个。
-            司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
-          </div>
           <div class="old-line" v-if="ezfy.attackTroops.length">
             <span :class="ezfy.orderOverCap ? 'red' : 'green'">
               本次出兵 <b>{{ ezfy.fmtN(ezfy.orderTroopTotal) }}</b> / 上限 <b>{{ ezfy.orderCapText }}</b>
@@ -261,9 +254,7 @@
           </div>
 
           <!-- ③ 兵力 -->
-          <div class="of-sec">③ 选择兵力
-            <span class="of-hint">（拖滑块或直接填数字；滑块与 [最大] 都按「城内现有」和「出征上限剩余」取小）</span>
-          </div>
+          <div class="of-sec">③ 选择兵力</div>
           <div class="of-rows">
             <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
@@ -324,7 +315,6 @@
               <template v-else>（负重{{ ezfy.fmtN(ezfy.orderResCap) }}，运输油耗另扣不占负重；含装载技术加成）</template>
             </span>
           </div>
-          <div class="old-line gray" v-else>（未选择部队，随军资源不可填写）</div>
           <div class="old-line gray" v-if="ezfy.orderType === 5">
             运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
             可以不带队军官；送完部队会返回出发城市。
@@ -341,7 +331,6 @@
           <div class="old-line">
             <input v-model="ezfy.waitH" type="number" min="0" max="24" style="width:50px"/> 时
             <input v-model="ezfy.waitM" type="number" min="0" max="60" style="width:50px"/> 分
-            <span class="gray">(最多宿营 24 小时)</span>
           </div>
 
           <!-- ⑥ 计算 / 出征 -->
@@ -351,14 +340,10 @@
             油耗：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.oil_used : '—' }}</span>
             &nbsp;/&nbsp;负重：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.carry : '—' }}</span>
             &nbsp;/&nbsp;耗时：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.need_time : '—' }}</span>
-            <span v-if="ezfy.orderCalc" class="gray">
-              (单程{{ ezfy.orderCalc.travel_time }}<template v-if="ezfy.orderCalc.wait_min">, 宿营{{ ezfy.orderCalc.wait_min }}分</template>)
-            </span>
           </div>
           <div class="old-line red" v-if="ezfy.orderCalc && !ezfy.orderCalc.oil_enough">
             {{ ezfy.resNames.oil }}不足：需要{{ ezfy.orderCalc.oil_used }}，当前只有{{ ezfy.orderCalc.oil_have }}
           </div>
-          <div class="old-line gray">出征前请先点 [计算] 确认油耗与负重，否则可能无法出征成功。</div>
           <hr/>
           <div class="old-line">
             <button @click="ezfy.doOrder()">[出征]</button>
