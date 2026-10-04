@@ -2248,6 +2248,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"level": setLevel,
 		})
 	}
+	// ★ 2026-10-04 升星卡/改名卡/技能书 一次查询（原来 3 条 itemCount SQL）
+	cnts := h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID)
 	resp.OK(c, gin.H{
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
@@ -2270,10 +2272,10 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			// ★ 升星：星级上限 / 固定成功率 / 每星加多少 / 持有升星卡数
 			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
 			"star_rate":      ezfyStarSuccessRate(),
-			"star_attr_gain": ezfyStarAttrGain(), "star_card": h.itemCount(uid, ezfyStarItemID),
+			"star_attr_gain": ezfyStarAttrGain(), "star_card": cnts[ezfyStarItemID],
 			// ★ 军官改名卡 / 军官技能书 持有数（前端改名按钮与可学技能表头展示）
-			"rename_card": h.itemCount(uid, ezfyOfficerRenameCardItemID),
-			"skill_book":  h.itemCount(uid, ezfySkillBookItemID),
+			"rename_card": cnts[ezfyOfficerRenameCardItemID],
+			"skill_book":  cnts[ezfySkillBookItemID],
 			"attack":      h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
@@ -2914,15 +2916,20 @@ func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCf
 // ChestList GET /games/ezfy/chest —— 宝箱列表（含奖池展示）
 func (h *EzfyHandler) ChestList(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-04 性能（用户反馈「/chest 线上 3s」）：展示页加 3s TTL 玩家级缓存
+	//   （开箱后失效），命中零 SQL；未命中走配置缓存 —— chests/pools 已并入 ezfyCfg，
+	//   原「查宝箱表 + 逐箱查奖池」的 N+1 全消。
+	if it, ok := ezfyChestCacheGet(uid); ok {
+		resp.OK(c, it)
+		return
+	}
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
-	var chests []model.EzfyCfgChest
-	h.DB.Where("enabled <> 0").Order("sort_no, id").Find(&chests)
 	out := []gin.H{}
-	for _, c2 := range chests {
+	for _, c2 := range ezfyCfg.chests {
 		pool := []gin.H{}
-		for _, p := range h.ezfyChestPool(c2.ID) {
+		for _, p := range ezfyCfg.chestPool(c2.ID) {
 			name, quality := "", p.Quality
 			switch p.Kind {
 			case 1:
@@ -2957,7 +2964,9 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 			"des": c2.Des, "effect": c2.Effect, "pool": pool,
 		})
 	}
-	resp.OK(c, gin.H{"chests": out, "gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond})
+	data := gin.H{"chests": out, "gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond}
+	ezfyChestCacheSet(uid, data)
+	resp.OK(c, data)
 }
 
 // ChestOpen POST /games/ezfy/chest/open  {chest_id, count, currency: gold|diamond}
@@ -3055,6 +3064,8 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	for _, r := range results {
 		names = append(names, fmt.Sprint(r["name"]))
 	}
+	// ★ 2026-10-04 库存/黄金/钻石都变了 → 失效宝箱缓存
+	ezfyChestCacheDel(uid)
 	// resp.OK 会把 data 里的 msg 提升到顶层（前端读 r.msg）
 	resp.OK(c, gin.H{
 		"msg":     fmt.Sprintf("开箱成功: 花费%d%s, 获得 %s", total, unit, strings.Join(names, "、")),

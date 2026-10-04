@@ -1442,8 +1442,13 @@ func (h *EzfyHandler) processOrders(uid uint) {
 		Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
 			time.Now().Add(-60*time.Second)).
 		Updates(map[string]interface{}{"status": 0})
+	// ★ 2026-10-04 性能（用户反馈「军官接口线上 3s 卡」）：原查询不带 status 过滤，
+	//   把玩家**全部历史订单**（含 3完成/4阵亡，行内还有 8KB+ 的 troops/result/battle_result
+	//   大字段）每次都从 RDS 全量拉回来 —— 活跃玩家几百上千行、一次几 MB，跨 WAN 必卡。
+	//   结算循环实际只处理 0/1/2/5/6/98 六种状态，历史行读回来也不参与，纯浪费。
+	//   idx_user 单列索引可快速定位该玩家，再按 status IN 过滤后行数骤降。
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&orders)
+	h.DB.Where("user_id = ? AND status IN (0,1,2,5,6,98)", uid).Order("id ASC").Find(&orders)
 	for i := range orders {
 		order := &orders[i]
 		// ★ 指挥室：战斗中的订单先推进战场（懒结算）。

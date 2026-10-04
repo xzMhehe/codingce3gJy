@@ -2296,6 +2296,22 @@ func (h *EzfyHandler) itemCount(uid uint, cfgId int) int {
 	return it.Count
 }
 
+// itemCounts 一次查询取该玩家多件道具的持有数（map[cfgId]count，缺省 0）。
+// ★ 2026-10-04 军官详情原来对升星卡/改名卡/技能书各查一次 itemCount（3 条 SQL），
+//   合并成一条「user_id + cfg_id IN」查询。
+func (h *EzfyHandler) itemCounts(uid uint, cfgIds ...int) map[int]int {
+	out := map[int]int{}
+	if len(cfgIds) == 0 {
+		return out
+	}
+	var items []model.EzfyItem
+	h.DB.Where("user_id = ? AND cfg_id IN ?", uid, cfgIds).Find(&items)
+	for _, it := range items {
+		out[it.CfgId] = it.Count
+	}
+	return out
+}
+
 func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
 	var it model.EzfyItem
 	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
@@ -2982,17 +2998,26 @@ func (h *EzfyHandler) View(c *gin.Context) {
 // viewPayload 构建 /view 完整数据（纯构建不做缓存；调用方自行决定缓存/下发）。
 func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	h.cfgs()
-	profile := h.ensureProfile(uid)
-
+	// ★ 2026-10-04 性能（用户反馈「/view 线上 3s」）：档案 + 城市列表是两条独立查询，
+	//   原来串行（2 个 RTT），拿到当前城后又串行查军官（2 个 RTT）——
+	//   跨 WAN 慢 RDS 下 /view 缓存未命中时偏慢。改为两波并行：
+	//   第一波 profile + cities（1 个 RTT）→ 定出当前城；
+	//   第二波 officerList + 其余 16 条只读查询（1 个 RTT）。
+	//   串行 RTT 从 4 降到 2，加上进程内缓存兜底，绝大多数请求零 SQL。
+	var profile model.EzfyProfile
+	var cities []model.EzfyCity
+	var wg0 sync.WaitGroup
+	wg0.Add(2)
+	go func() { defer wg0.Done(); profile = h.ensureProfile(uid) }()
+	go func() { defer wg0.Done(); h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities) }()
+	wg0.Wait()
 	// 城市列表提前同步取：供城市挑选 + 懒结算 checkTechDone(多城研究) 复用，
 	// 省掉 currentCity 里「重复查 profile + 单查 city」的两条串行 SQL。
-	var cities []model.EzfyCity
-	h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
 	city := h.ezfyViewCurrentCity(profile, cities)
 
 	// ★ 军官列表在本请求内只读一次，供懒结算扣工资 + 下面的展示复用。
 	//   本接口是首页 30s 轮询的目标，重复查军官表曾是线上 IO 飙升的主因。
-	officers := h.officerList(city.ID)
+	//   已并入下方第二波并行块（wg.Add(17) 里第一条）。
 
 	// ★ 2026-10-03 性能：以下只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup
 	//   并行打 RDS，把 30s 轮询 /view 的串行往返(~1s+) 压到接近一次往返量。
@@ -3002,6 +3027,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		troops    map[int]int64
 		tmap      map[int]int
 		wildlands []model.EzfyWildland
+		officers  []model.EzfyOfficer
 
 		wounded       []model.EzfyWounded
 		queues        []gin.H
@@ -3033,7 +3059,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   并行打 RDS，把 30s 轮询 /view 的串行往返(~1s+) 压到接近一次往返量。
 	//   gorm v2 链式调用并发安全；wg.Wait() 提供 happens-before，无数据竞争。
 	var wg sync.WaitGroup
-	wg.Add(16)
+	wg.Add(17)
+	go func() { // 军官列表（含出征态自愈 + 一次 orderListByCity 自愈判定）
+		defer wg.Done()
+		officers = h.officerList(city.ID)
+	}()
 	go func() { // 建筑列表（供 buildingViews + getResourceCalcWith + checkBuildingDone 复用）
 		defer wg.Done()
 		buildings = h.buildingList(city.ID)
@@ -3367,6 +3397,39 @@ func ezfyViewCacheDel(uid uint) {
 	ezfyViewCacheMu.Lock()
 	defer ezfyViewCacheMu.Unlock()
 	delete(ezfyViewCache, uid)
+}
+
+// ★ 2026-10-04 /chest 3s TTL 玩家级缓存（与 /view 同款结构，key 按 uid；开箱后失效）。
+//   宝箱页是展示页，缓存命中零 SQL，把线上 3s 降到 <1s。
+var (
+	ezfyChestCacheMu sync.Mutex
+	ezfyChestCache   = map[uint]ezfyViewCacheItem{}
+)
+
+func ezfyChestCacheGet(uid uint) (gin.H, bool) {
+	ezfyChestCacheMu.Lock()
+	defer ezfyChestCacheMu.Unlock()
+	it, ok := ezfyChestCache[uid]
+	if !ok || time.Now().UnixMilli()-it.at > ezfyViewCacheTTLMs {
+		delete(ezfyChestCache, uid)
+		return nil, false
+	}
+	return it.data, true
+}
+
+func ezfyChestCacheSet(uid uint, data gin.H) {
+	ezfyChestCacheMu.Lock()
+	defer ezfyChestCacheMu.Unlock()
+	if len(ezfyChestCache) > 16384 {
+		ezfyChestCache = map[uint]ezfyViewCacheItem{}
+	}
+	ezfyChestCache[uid] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
+}
+
+func ezfyChestCacheDel(uid uint) {
+	ezfyChestCacheMu.Lock()
+	defer ezfyChestCacheMu.Unlock()
+	delete(ezfyChestCache, uid)
 }
 
 // ezfyViewCurrentCity 从本请求已取到的玩家城市列表里挑当前城市（与 currentCity 同口径）：
@@ -3939,7 +4002,35 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 		}
 	}
 	h.calcResource(&city)
-	resp.OK(c, gin.H{"city": city, "calc": h.getResourceCalc(&city)})
+	// ★ 2026-10-04 性能（用户反馈「/resources 卡 2s」）：原来 getResourceCalc(nil)
+	//   内部**串行**查 techMap/buildingList/wildlandList/troopMap + mayor/boost 共 6 条 SQL，
+	//   跨 WAN 慢 RDS 下单请求 1-2s。改为 6 条独立查询**并行**预载，再走
+	//   getResourceCalcWith 纯内存版（零 SQL）。
+	var (
+		buildings []model.EzfyCityBuilding
+		techs     map[int]int
+		wilds     []model.EzfyWildland
+		troops    map[int]int64
+		boost     *model.EzfyCityEffect
+		mayor     int
+	)
+	var wg sync.WaitGroup
+	wg.Add(6)
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); techs = h.techMap(city.ID) }()
+	go func() { defer wg.Done(); wilds = h.wildlandList(city.ID) }()
+	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
+	go func() { // 增产令（effect_type=1，仅生效中传入；nil 时 With 版内部也不会再查）
+		defer wg.Done()
+		var e model.EzfyCityEffect
+		if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&e).Error; err == nil && e.UntilTime > time.Now().UnixMilli() {
+			boost = &e
+		}
+	}()
+	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
+	wg.Wait()
+	rd := resCalcData{buildings: buildings, techs: techs, wilds: wilds, troops: troops, boost: boost, mayor: mayor}
+	resp.OK(c, gin.H{"city": city, "calc": h.getResourceCalcWith(&city, &rd)})
 }
 
 // ============ 通用小工具 ============

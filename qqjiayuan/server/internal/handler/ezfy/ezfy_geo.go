@@ -566,6 +566,10 @@ type ezfyConfigCache struct {
 	// 预组装成 ezfyResCfgOf 的返回结构，读请求零 SQL（热接口 /res-cfg、/view 都靠它）
 	// 用 map[string]interface{} 而非 gin.H，避免本包混入 gin 依赖
 	resCfg map[string]interface{}
+	// 宝箱配置（上架宝箱 + 奖池；★ 2026-10-04 并入配置缓存，/chest 列表不再每次查这两张表
+	// 也顺带消除「逐箱查奖池」的 N+1）
+	chests     []model.EzfyCfgChest
+	chestPools map[int][]model.EzfyCfgChestItem
 }
 
 // ready 配置缓存是否已加载过。
@@ -1361,10 +1365,11 @@ var ezfyCfg ezfyConfigCache
 
 // load 首次调用时从库里加载全部配置；已加载过就直接返回（等价于原来的 sync.Once）
 func (c *ezfyConfigCache) load(db *gorm.DB) {
-	c.mu.RLock()
-	ok := c.loaded
-	c.mu.RUnlock()
-	if ok {
+	// ★ 2026-10-04 性能：快速路径**无锁**读 loaded（与既有无锁访问器同一约定）。
+	//   原来这里 RLock 查 loaded，而 reload（每 30s 周期 + 管理端保存）持**写锁**重读配置，
+	//   期间所有请求的 cfgs() 都会阻塞 —— 线上表现为「每隔 30s 所有接口一起卡一下」。
+	//   改无锁后 reload 期间请求直接跳过加载（读旧配置，行为不变）。
+	if c.loaded {
 		return
 	}
 	c.mu.Lock()
@@ -1372,7 +1377,7 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 	if c.loaded {
 		return
 	}
-	c.loadLocked(db)
+	c.loadLocked(db, false)
 	c.loaded = true
 }
 
@@ -1383,12 +1388,18 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 //   本机用 cfgsReload 显式刷新；另一台靠 ezfyPeriodicReload 周期刷新收敛。
 //   海岸索引只依赖「地图格子覆盖」(ezfy_map_tile 的 Terrain)，其它配置表不改变外形，
 //   所以只有当瓦片覆盖实际变化时才重建索引 —— 避免周期刷新把 500×500 全图扫描扛下来。
-func (c *ezfyConfigCache) reload(db *gorm.DB) {
+// ★ 2026-10-04 skipHeavy=true（周期刷新）：只刷小配置表，跳过 25 万行地图瓦片表与
+//   活动野地表 —— 这两张表是管理端**低频改动**，仍由 cfgsReload 全量刷新收敛。
+func (c *ezfyConfigCache) reload(db *gorm.DB, skipHeavy ...bool) {
+	skip := len(skipHeavy) > 0 && skipHeavy[0]
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	oldTileFp := ezfyTilesFingerprint(c.tiles)
-	c.loadLocked(db)
+	c.loadLocked(db, skip)
 	c.loaded = true
+	if skip {
+		return // 周期刷新：瓦片未动，无需指纹比对/海岸索引重建
+	}
 	if ezfyTilesFingerprint(c.tiles) != oldTileFp {
 		// ★ 地图格子覆盖配置可能改了地形 → 沿海平原索引必须重建，
 		//   否则管理端新配的沿海/陆地不被迁城逻辑看到。
@@ -1410,15 +1421,20 @@ func ezfyTilesFingerprint(m map[int64]model.EzfyMapTile) uint64 {
 var ezfyStartConfigReloader sync.Once
 
 // ezfyPeriodicReload 每 30s 从共享 RDS 重读二战配置，让两台服务器的进程内缓存收敛。
-// 只读小配置表，开销可忽略；海岸索引仅在瓦片覆盖变化时重建。
+// ★ 2026-10-04 skipHeavy=true：只刷小配置表（几十~几百行），跳过地图瓦片/活动野地
+//   两张重表 —— 原来每 30s 全图扫描 + 持写锁，期间全站请求被拖住（用户反馈「很卡」）。
+//   地图/活动野地是管理端低频改动，靠管理端保存时的 cfgsReload 全量收敛。
 func ezfyPeriodicReload(db *gorm.DB) {
 	for range time.Tick(30 * time.Second) {
-		ezfyCfg.reload(db)
+		ezfyCfg.reload(db, true)
 	}
 }
 
-// loadLocked 真正干活的部分，调用方必须已持有写锁
-func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
+// loadLocked 真正干活的部分，调用方必须已持有写锁。
+// ★ 2026-10-04 新增 skipHeavy：周期刷新时跳过「地图瓦片 / 活动野地」两张重表
+//   （25 万行全图扫描跨 WAN RDS 要几百毫秒~秒级，且期间持写锁拖住全站），
+//   这两张表只由管理端低频改动，全量刷新的 cfgsReload 仍会读取。
+func (c *ezfyConfigCache) loadLocked(db *gorm.DB, skipHeavy bool) {
 	c.buildings = map[int]model.EzfyCfgBuilding{}
 	c.buildingLvls = map[int]map[int]model.EzfyCfgBuildingLevel{}
 	c.troops = map[int]model.EzfyCfgTroop{}
@@ -1508,24 +1524,39 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB) {
 		c.equipSetMap[s.ID] = s
 	}
 
-	// 地图格子覆盖（改地形 / 设寇城·活动寇城；管理端可维护）
-	var tiles []model.EzfyMapTile
-	db.Find(&tiles)
-	tm := make(map[int64]model.EzfyMapTile, len(tiles))
-	for _, t := range tiles {
-		tm[ezfyTileKey(t.X, t.Y)] = t
+	// 宝箱配置 + 奖池（★ 2026-10-04 并入配置缓存：/chest 原每次请求查表 + 逐箱查奖池）
+	var chs []model.EzfyCfgChest
+	db.Where("enabled <> 0").Order("sort_no, id").Find(&chs)
+	c.chests = chs
+	var cps []model.EzfyCfgChestItem
+	db.Order("id").Find(&cps)
+	pm := make(map[int][]model.EzfyCfgChestItem, len(cps))
+	for _, p := range cps {
+		pm[p.ChestId] = append(pm[p.ChestId], p)
 	}
-	c.tiles = tm
+	c.chestPools = pm
 
-	// 活动野地配置（地图管理「活动野地」tab 维护；key = x*100000+y）
-	var aws []model.EzfyActWild
-	db.Find(&aws)
-	awm := make(map[int64]*model.EzfyActWild, len(aws))
-	for _, a := range aws {
-		cp := a
-		awm[ezfyTileKey(a.X, a.Y)] = &cp
+	if !skipHeavy {
+		// 地图格子覆盖（改地形 / 设寇城·活动寇城；管理端可维护）
+		// ★ 2026-10-04 周期刷新跳过：25 万行全图扫描太贵，管理端保存后 cfgsReload 才读
+		var tiles []model.EzfyMapTile
+		db.Find(&tiles)
+		tm := make(map[int64]model.EzfyMapTile, len(tiles))
+		for _, t := range tiles {
+			tm[ezfyTileKey(t.X, t.Y)] = t
+		}
+		c.tiles = tm
+
+		// 活动野地配置（地图管理「活动野地」tab 维护；key = x*100000+y）
+		var aws []model.EzfyActWild
+		db.Find(&aws)
+		awm := make(map[int64]*model.EzfyActWild, len(aws))
+		for _, a := range aws {
+			cp := a
+			awm[ezfyTileKey(a.X, a.Y)] = &cp
+		}
+		c.actWilds = awm
 	}
-	c.actWilds = awm
 
 	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
 	var rks []model.EzfyCfgRank
@@ -1603,6 +1634,11 @@ func ezfyDefaultRanks() []model.EzfyCfgRank {
 		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 19},
 		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 20},
 	}
+}
+
+// chestPool 某宝箱的奖池（按 id 升序，与「逐箱查库」同序；未配置返回空）
+func (c *ezfyConfigCache) chestPool(chestId int) []model.EzfyCfgChestItem {
+	return c.chestPools[chestId]
 }
 
 func (c *ezfyConfigCache) general(id int) *model.EzfyCfgGeneral {
