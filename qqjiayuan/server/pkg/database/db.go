@@ -84,9 +84,20 @@ func Init(cfg *config.MysqlConfig) *gorm.DB {
 	if err != nil {
 		log.Fatalf("获取底层连接失败: %v", err)
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	// ★ 2026-10-04 连接池（database/sql 标准池 = Go 生态主流）显式调优：
+	//   · 双机共享同一 RDS → 单机 MaxOpenConns 50（两台合计 100），避免合计打爆
+	//     RDS 的 max_connections（连接被拒 = 请求无限排队 = 页面「一直加载中」）；
+	//   · MaxIdleConns 20 减少连接抖动（原来 10 偏小，热接口并发高时会频繁新建连接）；
+	//   · ConnMaxLifetime 30m / ConnMaxIdleTime 10m 主动回收，避免 MySQL
+	//     wait_timeout 掐掉空闲连接导致「connection was killed」类报错。
+	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetMaxOpenConns(50)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
+	// 建连后立刻探活：把「DSN 能 Open 但实际连不上」的故障提前暴露，而不是等到首个请求卡住
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatalf("MySQL 探活失败: %v", err)
+	}
 	fmt.Println("MySQL 连接成功:", cfg.DBName)
 	return db
 }

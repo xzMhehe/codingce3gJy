@@ -5287,6 +5287,12 @@ export default {
         if (r.code === 0) {
           this.officerDetailError = ''
           this.officerDetail = r.data
+          // ★ 2026-10-04 兜底：接口成功但没带回军官（异常/旧后端）→ 明确提示，
+          //   别让页面永远停在「加载中...」
+          if (!r.data || !r.data.officer) {
+            this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
+            this.officerDetailError = '军官数据加载异常，请返回列表重试'
+          }
         } else {
           // 加载失败（如武将已调往别的城市 / 已被流放）→ 不再静默空白：
           // 提示原因并刷新军官列表，让列表与后端状态一致

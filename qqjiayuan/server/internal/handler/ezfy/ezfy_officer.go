@@ -2176,11 +2176,23 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	bag := []gin.H{}
 	// ★ 2026-09-28 赏赐宝物只认「采集宝物」：背包条目带上标记，前端据此过滤可选列表
 	treasureSet := ezfyCollectibleTreasureNames()
+	// ★ 2026-10-04 性能（用户反馈「军官详情一直加载中」）：原实现逐件装备调
+	//   equipIsCaptiveWorn（内部 2 次查库）—— 背包几百件装备就是上千次 SQL 往返，
+	//   双机共 RDS 时单次详情能卡到秒级。现在当前城军官只查一次，被俘判定走内存 map。
+	items := h.equipmentList(uid)
+	cityOfficers := h.officerList(city.ID)
+	captive := map[int64]bool{}
+	for i := range cityOfficers {
+		if cityOfficers[i].IsCaptive == 1 {
+			captive[int64(cityOfficers[i].ID)] = true
+		}
+	}
 	// ★ 一键穿套装：背包里每个套装分别有件未穿戴的（officer_id=0 才在背包）
 	bagSetCnt := map[int]int{}
-	for _, e := range h.equipmentList(uid) {
+	for i := range items {
+		e := &items[i]
 		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进背包（展示在俘虏的已穿戴里）
-		if h.equipIsCaptiveWorn(city.ID, int64(e.ID)) {
+		if e.OfficerId > 0 && captive[e.OfficerId] {
 			continue
 		}
 		if e.OfficerId == 0 && e.SetId > 0 {
