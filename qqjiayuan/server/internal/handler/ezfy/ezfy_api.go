@@ -891,6 +891,7 @@ func (h *EzfyHandler) ProduceInfo(c *gin.Context) {
 // ProduceSet POST /games/ezfy/city/produce  {rate_food,rate_steel,rate_oil,rate_rare}
 func (h *EzfyHandler) ProduceSet(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 改生产比例 → 资源详情缓存失效
 	var req struct {
 		CityId    int64 `json:"city_id"`
 		RateFood  int   `json:"rate_food"`

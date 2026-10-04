@@ -87,6 +87,7 @@ func (h *EzfyHandler) Warehouse(c *gin.Context) {
 // WarehouseSet POST /games/ezfy/city/warehouse —— 调配 4 项资源的保护比例
 func (h *EzfyHandler) WarehouseSet(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 调保护比例 → 资源详情缓存失效
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
 	var req struct {

@@ -2270,7 +2270,6 @@ func (h *EzfyHandler) cancelTech(city *model.EzfyCity, techId int) string {
 // checkTechDone 科技完成懒结算。reuse 传本请求已查好的「玩家城市 id 列表」时
 // 可省一次 ezfyCityIds 查询（/view 30s 轮询已把 cities 并入并行块，这里零重复 SQL）。
 func (h *EzfyHandler) checkTechDone(city *model.EzfyCity, reuse ...[]uint) {
-	now := time.Now().UnixMilli()
 	// ★ 2026-09-28 多城研究：进行中的队列记录分布在玩家各城，全部都要结算；
 	//   等级 +1 写到用户级 ezfy_user_tech（全城共用、无主城概念）。
 	var list []model.EzfyCityTech
@@ -2279,6 +2278,12 @@ func (h *EzfyHandler) checkTechDone(city *model.EzfyCity, reuse ...[]uint) {
 		cityIds = reuse[0]
 	}
 	h.DB.Where("city_id IN ? AND status = 1", cityIds).Find(&list)
+	h.checkTechDoneRows(city, list)
+}
+
+// checkTechDoneRows 对已查好的「进行中科技」做完成结算（写部分；list 由调用方预取可省 1 条串行 RTT）。
+func (h *EzfyHandler) checkTechDoneRows(city *model.EzfyCity, list []model.EzfyCityTech) {
+	now := time.Now().UnixMilli()
 	for _, t := range list {
 		if now < t.EndTime {
 			continue
@@ -3039,6 +3044,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		officers  []model.EzfyOfficer
 
 		trainQueues   []model.EzfyTrainQueue // 训练队列原始行：懒结算 collectTrainQueue 复用
+		techRows      []model.EzfyCityTech   // 进行中科技：懒结算 checkTechDoneRows 复用（★ 2026-10-04 并入第二波省 1 条串行 RTT）
 		marching      int64
 		occupying     int64
 		unreadReports int64
@@ -3058,10 +3064,14 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	// ★ 2026-10-04 瘦身：建筑/军队/科技/野地/队列/伤兵**不再随 /view 下发**（移到对应页面
 	//   进入时各自接口加载），但原数据仍要查回来供懒结算与首页产量(res_prod)计算复用。
 	var wg sync.WaitGroup
-	wg.Add(14)
+	wg.Add(15)
 	go func() { // 军官列表（含出征态自愈 + 一次 orderListByCity 自愈判定）
 		defer wg.Done()
 		officers = h.officerList(city.ID)
+	}()
+	go func() { // 进行中科技（懒结算 checkTechDoneRows 复用；写部分在并行块后串行跑）
+		defer wg.Done()
+		h.DB.Where("city_id IN ? AND status = 1", cityIdsOf(cities)).Find(&techRows)
 	}()
 	go func() { // 建筑列表（供 getResourceCalcWith + checkBuildingDone 复用）
 		defer wg.Done()
@@ -3142,7 +3152,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   必须最后写，避免覆盖返航/战斗入库的资源）。
 	//   calcResource 未到结算点(每小时)时为 0 查询，processOrders 保持串行链尾。
 	h.checkBuildingDone(&city, buildings)
-	h.checkTechDone(&city, cityIdsOf(cities))
+	// ★ 2026-10-04 科技行已在第二波并行取好，只跑写部分（省 1 条串行 RTT）
+	h.checkTechDoneRows(&city, techRows)
 	h.collectTrainQueue(&city, trainQueues)
 	h.calcResource(&city, officers)
 	// ★ 2026-10-04 传入已查好的城市列表：processIncoming 直接复用，省一次 Pluck 的 RTT
@@ -3776,6 +3787,7 @@ func (h *EzfyHandler) RenameCity(c *gin.Context) {
 // 民心由 calcResource 每小时自动回归到基准值（见那里的说明）。
 func (h *EzfyHandler) SetTax(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 改税率 → 资源详情缓存失效
 	var req struct {
 		CityId  int64 `json:"city_id"`
 		TaxRate int   `json:"tax_rate"`
@@ -3799,6 +3811,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 // Convene 召集人口（只消耗粮食，夜间只 +人口）
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
@@ -3855,6 +3868,7 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 // 之后由 calcResource 的回归逻辑每分钟 −1 慢慢落回基准 —— 符合用户「安抚只是临时顶一下」的预期。
 func (h *EzfyHandler) Placate(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 安抚 → 资源详情缓存失效
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
@@ -3943,18 +3957,25 @@ func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 }
 
 // Resources 资源详情
+//
+// ★ 2026-10-04 性能（用户反馈「/resources 2s+」）：第一波 档案+城市列表（1 RTT）定当前城，
+//   第二波 6 条计算数据并行（1 RTT）；加 3s 玩家级缓存（税率/增产/安抚等写操作会失效）。
 func (h *EzfyHandler) Resources(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
 	_ = c.ShouldBindJSON(&req)
+	if it, ok := ezfyPageCacheGet(uid, "resources"); ok {
+		resp.OK(c, it)
+		return
+	}
 	// ★ 2026-09-26 补：本接口原来没调 h.cfgs()，而 getResourceCalc / calcResource 都依赖
 	//   ezfyCfg（建筑等级表、兵种表）。若它是本次进程里第一个「要用配置」的请求，
 	//   ezfyCfg 还是零值 → 建筑产量全算 0（表现为「基础产量 0」）。
 	//   正常流程下前端会先打 /view（那里有 cfgs），所以平时不暴露，但不能靠别人兜底。
 	h.cfgs()
-	city := h.getOrCreateCity(uid)
+	_, city, _ := h.ezfyPageCity(uid)
 	if req.CityId > 0 {
 		if cc := h.cityOf(uid, req.CityId); cc != nil {
 			city = *cc
@@ -3989,7 +4010,9 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
 	rd := resCalcData{buildings: buildings, techs: techs, wilds: wilds, troops: troops, boost: boost, mayor: mayor}
-	resp.OK(c, gin.H{"city": city, "calc": h.getResourceCalcWith(&city, &rd)})
+	data := gin.H{"city": city, "calc": h.getResourceCalcWith(&city, &rd)}
+	ezfyPageCacheSet(uid, "resources", data)
+	resp.OK(c, data)
 }
 
 // ============ 通用小工具 ============

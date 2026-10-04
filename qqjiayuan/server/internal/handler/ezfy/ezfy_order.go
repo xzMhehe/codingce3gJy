@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -1541,7 +1542,22 @@ func hasBattleOrder(orders []model.EzfyOrder) bool {
 // processIncoming 把「正在攻打 uid 名下城市、已到点」的敌方订单结算掉（开战场 / 发军情警讯）。
 // 只处理 target_type=3（玩家城）且 status=0（行进中，到点）的订单，交给 processArrive 走统一流程。
 // ★ 2026-10-04 cities 可选：调用方（如 /view）已查好城市 id 时传入，省一次 Pluck 的 RTT。
+//
+// ★ 2026-10-04 性能（用户反馈「/view 2s+」）：3 秒内刚确认过「无来袭订单」就直接跳过，
+//   省一条串行 RDS（/view 每 3 秒一次 cache miss，常 idle 玩家这条 SELECT 每次空转）。
+//   敌军新出征的到达最多滞后 3 秒被发现（与 /view 缓存 TTL 同级，可接受）。
+var (
+	ezfyIncomingMemoMu sync.Mutex
+	ezfyIncomingMemo   = map[uint]int64{} // uid → 最近一次「确认无敌军来袭」的毫秒时间戳
+)
+
 func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
+	ezfyIncomingMemoMu.Lock()
+	last, ok := ezfyIncomingMemo[uid]
+	ezfyIncomingMemoMu.Unlock()
+	if ok && now-last < ezfyViewCacheTTLMs {
+		return
+	}
 	var ids []int64
 	if len(cities) > 0 && cities[0] != nil {
 		ids = cities[0]
@@ -1554,6 +1570,16 @@ func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
 	var orders []model.EzfyOrder
 	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", ids, now).
 		Order("id ASC").Find(&orders)
+	if len(orders) == 0 {
+		// 确认无来袭 → 记 memo（下次 3 秒内跳过）
+		ezfyIncomingMemoMu.Lock()
+		if len(ezfyIncomingMemo) > 16384 {
+			ezfyIncomingMemo = map[uint]int64{}
+		}
+		ezfyIncomingMemo[uid] = now
+		ezfyIncomingMemoMu.Unlock()
+		return
+	}
 	for i := range orders {
 		o := &orders[i]
 		// processArrive 用 uid 参数定位**攻方**城市（cityOfOrder 拿 order.CityId），
