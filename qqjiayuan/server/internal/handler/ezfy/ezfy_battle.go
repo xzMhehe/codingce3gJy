@@ -332,14 +332,32 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 
 		dir := ezfyMoveDir(unit, moveMap, cmd)
+		// ★ 2026-10-04 修复「双方前进相遇后不停、越跑越远」：前进不能越过**最近的敌人**。
+		//   原实现只按「优先攻击目标」截断到射程边缘 —— 优先目标被更近的敌人挡在后面时，
+		//   单位会穿过挡路的敌人继续冲（冲到敌军后方），而被穿过的敌人仍在向前推进，
+		//   于是双方距离越拉越大（用户反馈）。
+		//   现在前进上限 = min(目标射程边缘, 最近敌人射程边缘)：只要最近敌人已在射程内就停。
+		nearestDist := int(^uint(0) >> 1)
+		for _, e := range liveEnemies {
+			if d := ezfyAbs(e.pos - unit.pos); d < nearestDist {
+				nearestDist = d
+			}
+		}
 		// ★ 2026-09-24 用户反馈「战斗打起来后点后退没反应」：
 		//   老条件是 dist > rangeD 才移动 —— 接战后（已在射程内）后退被直接跳过，
 		//   位置不动、看起来像指令失灵。后退应随时可执行（拉开距离）；
 		//   前进保持「进射程即停」，「move 截断到 rangeD」只对前进有意义。
-		if dir != 0 && (dist > rangeD || dir < 0) {
+		if dir != 0 && ((dist > rangeD && nearestDist > rangeD) || dir < 0) {
 			move := unit.cfg.Speed * (100 + speedBonus) / 100
-			if dir > 0 && move > dist-rangeD {
-				move = dist - rangeD
+			if dir > 0 {
+				// 前进最多推进到「最近敌人射程边缘」；优先目标更近则到目标射程边缘
+				limit := dist - rangeD
+				if nl := nearestDist - rangeD; nl < limit {
+					limit = nl
+				}
+				if move > limit {
+					move = limit
+				}
 			}
 			move *= dir
 			if isAtk {
@@ -371,6 +389,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//   追加一条行动日志说明「够不到目标、无法攻击」，让玩家明白不是 bug。
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 距目标%s%s%d，超出射程%d，无法攻击",
 				side, stName(unit, isAtk), enemySide, stName(target, !isAtk), dist, rangeD))
+		}
+		// ★ 2026-10-04 优先目标被挡在射程外、但最近敌人在射程内 → 改打最近的（避免干站）。
+		//   配合上方「前进不越过最近敌人」的修复：停在最近敌人射程边缘后能立刻开火。
+		if dist > rangeD && nearestDist <= rangeD {
+			target = ezfyPickTarget(unit, liveEnemies, nil)
+			dist = ezfyAbs(target.pos - unit.pos)
 		}
 		if dist <= rangeD {
 			baseAtk := ezfyPickAttack(unit.cfg, target.cfg)
@@ -449,7 +473,19 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				cur := target
 				if !first || !cur.alive() {
-					cur = ezfyPickTarget(unit, live, targetMap)
+					// ★ 2026-10-04 修复「指挥模块溢出伤害有 bug」：势不可挡的溢出伤害只能继续打
+					//   **射程内**的敌人。原实现从全部存活敌人里挑下一个目标、无视射程，
+					//   短射程兵种能隔着半个战场溅射（用户反馈）。
+					inRange := make([]*ezfyFightUnit, 0, len(live))
+					for _, e := range live {
+						if ezfyAbs(e.pos-unit.pos) <= rangeD {
+							inRange = append(inRange, e)
+						}
+					}
+					if len(inRange) == 0 {
+						break // 射程内没有敌人了，溢出伤害到此为止
+					}
+					cur = ezfyPickTarget(unit, inRange, targetMap)
 					if cur == nil {
 						break
 					}

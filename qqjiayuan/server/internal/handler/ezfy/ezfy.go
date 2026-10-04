@@ -439,6 +439,24 @@ func (h *EzfyHandler) areaCounts(cityId uint) (military, resource int) {
 	return
 }
 
+// areaCountsOf 按已取到的建筑列表纯内存统计军事/资源区数量（免重复全表查询）。
+// ★ 2026-10-04 性能：/buildings 原来 areaCounts ×2 + 每栋建筑 buildingMaxLevel ×1
+//   都是「再查一次完整建筑列表」，几十栋楼 = 几十条 RDS 往返 → 4s。
+func areaCountsOf(list []model.EzfyCityBuilding) (military, resource int) {
+	for _, b := range list {
+		c := ezfyCfg.building(b.BuildingId)
+		if c == nil {
+			continue
+		}
+		if c.Type == 1 {
+			resource++
+		} else if c.Type == 2 || c.Type == 3 || c.Type == 4 {
+			military++
+		}
+	}
+	return
+}
+
 // ezfyBuildingMaxLevel 建筑等级上限（用户规则，覆盖配置表 max_level）
 //
 //	市政厅(1)            → 10

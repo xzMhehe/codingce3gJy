@@ -71,12 +71,28 @@ func (h *EzfyHandler) done(c *gin.Context, msg, successMsg string) {
 
 // ============ 建筑 ============
 
+// ★ 2026-10-04 性能（用户反馈「/buildings 线上 4s」）：
+//   原来每栋建筑调 buildingMaxLevel（内部再查一次完整建筑列表）= 几十条 RDS 往返，
+//   加上 areaCounts ×2、refreshCity 的订单结算 —— 单次请求 40+ 条查询。
+//   现在：建筑列表只查一次；市政厅等级内存取值；军事/资源区数量用 areaCountsOf 纯内存；
+//   懒结算改走 refreshCityRead（跳过订单结算）；再加 3s 玩家级缓存兜底。
 func (h *EzfyHandler) Buildings(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	if it, ok := ezfyPageCacheGet(uid, "buildings"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	list := h.buildingList(city.ID)
+	// ★ 市政厅等级一次内存取值（原每栋建筑各查一遍建筑列表）
+	hallLevel := 0
+	for _, b := range list {
+		if b.BuildingId == 1 && b.Level > hallLevel {
+			hallLevel = b.Level
+		}
+	}
 	views := []gin.H{}
 	for _, b := range list {
 		cfg := ezfyCfg.building(b.BuildingId)
@@ -88,7 +104,7 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 			view["name"] = cfg.Name
 			view["type"] = cfg.Type
 			// ★ 等级上限按用户规则（市政厅10 / 参谋部·司令部·民居12 / 其他10，民居受市政厅约束）
-			view["max_level"] = h.buildingMaxLevel(city.ID, b.BuildingId)
+			view["max_level"] = ezfyBuildingMaxLevel(b.BuildingId, hallLevel)
 			view["des"] = cfg.Des
 			view["can_delete"] = cfg.CanDelete
 		}
@@ -102,17 +118,19 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		}
 		views = append(views, view)
 	}
-	// 可建造池: 复刻原版 BuildingController.buildList
+	// 可建造池: 复刻原版 BuildingController.buildList（内部直接用传入的 list，不再重复查库）
 	pool := h.buildPool(&city, list)
 	// ★ 第九轮：军事区 / 资源区数量上限分开（线上现值各 36，管理端可维护）
-	mil, res := h.areaCounts(city.ID)
+	mil, res := areaCountsOf(list)
 	lim := ezfyLimit()
-	resp.OK(c, gin.H{
+	data := gin.H{
 		"buildings": views, "pool": pool,
 		"area_count": mil + res, "area_cap": lim.MilitaryMax + lim.ResourceMax,
 		"military_count": mil, "military_cap": lim.MilitaryMax,
 		"resource_count": res, "resource_cap": lim.ResourceMax,
-	})
+	}
+	ezfyPageCacheSet(uid, "buildings", data)
+	resp.OK(c, data)
 }
 
 // buildPool 返回该城当前可建造的建筑池(复刻原版 BuildingController.buildList)。
@@ -132,7 +150,8 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 	// ★ 军事区/资源区各自有**硬上限**（线上现值各 36，管理端可维护）：
 	//   即使军工厂/民居设了「不限数量」，也不能超过所属区域的总数上限（用户规则）。
 	//   pool 这里必须和 buildBuilding 一致地按区域卡，否则会出现「队列里能点、一建就报已达上限」。
-	mil, res := h.areaCounts(city.ID)
+	//   ★ 2026-10-04 性能：直接用传入的 list 纯内存统计（原来内部再查一次完整建筑列表）
+	mil, res := areaCountsOf(list)
 	pool := []gin.H{}
 	for _, id := range ids {
 		cfg := ezfyCfg.buildings[id]
@@ -184,6 +203,7 @@ func (h *EzfyHandler) buildPool(city *model.EzfyCity, list []model.EzfyCityBuild
 
 func (h *EzfyHandler) Build(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 建造 → 建筑列表/可建造池缓存失效
 	var req struct {
 		CityId     int64 `json:"city_id"`
 		BuildingId int   `json:"building_id"`
@@ -199,6 +219,7 @@ func (h *EzfyHandler) Build(c *gin.Context) {
 
 func (h *EzfyHandler) Upgrade(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 升级 → 建筑列表缓存失效
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
@@ -220,6 +241,7 @@ func (h *EzfyHandler) Upgrade(c *gin.Context) {
 //   后端按「目标等级」结算资源与图纸；没带目标等级时仍按「升到满级」兼容。
 func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 一键升级 → 建筑列表缓存失效
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
@@ -254,6 +276,7 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 // 加个升级状态时 [取消] 功能」——取消施工并**全额退还**已扣资源与图纸。
 func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 取消施工 → 建筑列表缓存失效
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
@@ -276,6 +299,7 @@ func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
 
 func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 拆除 → 建筑列表缓存失效
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
@@ -291,6 +315,7 @@ func (h *EzfyHandler) DeleteBuilding(c *gin.Context) {
 
 func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 加速 → 建筑列表缓存失效
 	var req struct {
 		CityId   int64 `json:"city_id"`
 		RecordId int64 `json:"record_id"`
