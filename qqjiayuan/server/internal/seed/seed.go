@@ -2836,3 +2836,20 @@ func seedShop(db *gorm.DB) {
 		}
 	}
 }
+
+// EnsureEzfyLimitColumns 幂等补 ezfy_cfg_limit 的新配置列。
+//
+// ★ 2026-10-05 多机共享库（config 里 seed.skip: true）启动会**跳过整个 seed.Run**，
+//   于是新加的配置列（如 gold_prod_mult）在共享库上永远不会被创建 →
+//   管理端「二战系统配置」保存报 `Unknown column 'gold_prod_mult'`、玩家黄金产量读到 0。
+//   server 启动的 skip 分支也要跑这一段（HasColumn 幂等，两台同时启动也不会冲突）。
+func EnsureEzfyLimitColumns(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_limit") {
+		return
+	}
+	// 黄金产量倍率（与 res_prod_mult 拆开，默认 1；0 合法 = 黄金产量归零）
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "gold_prod_mult") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+}

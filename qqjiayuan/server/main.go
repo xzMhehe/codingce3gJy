@@ -27,6 +27,10 @@ func main() {
 	// 否则每台节点启动都会对已填充的表重跑配置 INSERT(重复主键/跨 WAN 挂起)。
 	if !cfg.Seed.Skip {
 		seed.Run(db, cfg.Server.WebDir+"/static")
+	} else {
+		// ★ 2026-10-05 多机共享库跳过全量 seed 时，新配置列仍要幂等补上
+		//   （gold_prod_mult 等），否则管理端保存报 Unknown column / 黄金产量归零。
+		seed.EnsureEzfyLimitColumns(db)
 	}
 
 	gin.SetMode(gin.ReleaseMode)

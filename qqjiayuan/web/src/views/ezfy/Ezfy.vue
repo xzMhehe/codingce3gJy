@@ -3546,7 +3546,12 @@ export default {
       this.go('orderpre')
     },
     doAbandon (w) {
-      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地'))    },
+      api.post('/games/ezfy/city/abandon-wild', { wildland_id: w.id }).then(r => this.alert(r, '已放弃该野地', () => {
+        // ★ 2026-10-05 修复「放弃附属野地后列表不刷新」：成功后重拉附属野地列表
+        //   （含野地 + 占领城市两块，wildfull 接口返回）
+        this.loadWilds()
+      }))
+    },
     // ★ 2026-09-28 「附属野地」列表里 [停止] 用：野地记录 → stopCollect 需要的最小订单对象
     //   stopCollect 只用 id 发请求、用 target_name/target_x/target_y 拼提示文案，故这里够了。
     wildOrderArg (w) {

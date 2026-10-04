@@ -915,6 +915,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	// ★ 三个开关**不兜底**：0 = 关，是合法值，兜底会把它改回开。
 	//   （GORM 的 Save 走 UPDATE 全字段，零值会被写进去；下面 Save 后还会再核一遍。）
+	// ★ 2026-10-05 防御「Unknown column 'gold_prod_mult'」：seed.skip 的共享库节点
+	//   启动不会跑全量 seed，新配置列可能缺失 → 保存前幂等补列（HasColumn 探测，秒回）。
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", "gold_prod_mult") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
+		h.DB.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+	}
 	lim.ID = 1
 	if err := h.DB.Save(&lim).Error; err != nil {
 		resp.ParamError(c, "保存失败："+err.Error())
