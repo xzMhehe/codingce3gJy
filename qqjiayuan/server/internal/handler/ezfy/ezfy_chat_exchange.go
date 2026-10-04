@@ -1038,22 +1038,39 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	city := h.getOrCreateCity(uid)
 	h.refreshCity(uid, &city)
-	var wildlands []model.EzfyWildland
-	h.DB.Where("city_id = ?", city.ID).Find(&wildlands)
+	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：5 条独立查询并行（1 个 RTT）；
+	//   被占城市归属玩家的游戏昵称改为一次 IN 批量查，消除原来「每行 ensureProfile」的 N+1。
+	var (
+		wildlands  []model.EzfyWildland
+		gatherIds  []int64
+		idleOrders []model.EzfyOrder
+		occupies   []model.EzfyOccupy
+		hallLevel  int
+	)
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Model(&model.EzfyOrder{}).
+			Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
+			Pluck("target_id", &gatherIds)
+	}()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).Find(&idleOrders)
+	}()
+	go func() { defer wg.Done(); h.DB.Where("atk_city_id = ? AND status = 1", city.ID).Find(&occupies) }()
+	go func() { defer wg.Done(); hallLevel = h.buildingLevel(city.ID, 1) }()
+	wg.Wait()
+
 	// ★ 2026-09-28 修复：附属野地页状态必须与 /view 同一套实时判定（常驻制下野地表 status 恒为 0），
 	//   原来这里直接返回 w.Status + 不传 idle_order_id，导致「明明在采集却显示空闲」、
 	//   「驻守空闲的野地不显示[开始采集]」（用户反馈 bug）。
-	var gatherIds []int64
-	h.DB.Model(&model.EzfyOrder{}).
-		Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
-		Pluck("target_id", &gatherIds)
 	gathering := map[int64]bool{}
 	for _, id := range gatherIds {
 		gathering[id] = true
 	}
-	var idleOrders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
-		Find(&idleOrders)
 	idleOrderByWild := map[int64]uint{}
 	for _, o := range idleOrders {
 		idleOrderByWild[o.TargetId] = o.ID
@@ -1076,16 +1093,35 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 			"terrain":       ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
 			"continent": ezfyRegionName(w.X, w.Y)})
 	}
-	var occupies []model.EzfyOccupy
-	h.DB.Where("atk_city_id = ? AND status = 1", city.ID).Find(&occupies)
+	// 被占城市归属玩家的游戏昵称（原每行 ensureProfile 一次库 → 改一次 IN 查询）
+	nick := map[uint]string{}
+	ids := make([]uint, 0, len(occupies))
+	for _, o := range occupies {
+		dup := false
+		for _, id := range ids {
+			if id == o.DefUserId {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			ids = append(ids, o.DefUserId)
+		}
+	}
+	if len(ids) > 0 {
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id", "nickname").Where("user_id IN ?", ids).Find(&profs)
+		for _, p := range profs {
+			nick[p.UserID] = p.Nickname
+		}
+	}
 	occViews := []gin.H{}
 	for _, o := range occupies {
-		p := h.ensureProfile(o.DefUserId)
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
-			"city_name": o.CityName, "def_user": p.Nickname})
+			"city_name": o.CityName, "def_user": nick[o.DefUserId]})
 	}
 	resp.OK(c, gin.H{"city": city, "wildlands": wildViews, "occupies": occViews,
-		"hall_level": h.buildingLevel(city.ID, 1)})
+		"hall_level": hallLevel})
 }
 
 // OrderView 命令详情

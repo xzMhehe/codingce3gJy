@@ -3075,6 +3075,12 @@ export default {
       api.get('/games/ezfy/map?x=' + x + '&y=' + y + '&r=' + this.mapR)
         .then(r => { if (r.code === 0) this.applyMap(r.data) })
     },
+    // ★ 2026-10-04 附属野地坐标点击 → 进地图并居中到该坐标（跳坐标只打一次地图接口）
+    openMapAt (x, y) {
+      this.cur = 'map'
+      this.loadStars()
+      this.jumpTo(x, y)
+    },
     doJump () {
       const x = parseInt(this.jumpX)
       const y = parseInt(this.jumpY)

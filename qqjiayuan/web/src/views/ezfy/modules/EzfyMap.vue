@@ -579,7 +579,7 @@
           <table>
             <tr><th>坐标</th><th>地形</th><th>所属洲</th><th>等级</th><th>状态</th><th>操作</th></tr>
             <tr v-for="w in ezfy.wildlands" :key="'wd' + w.id">
-              <td>({{ w.x }},{{ w.y }})</td>
+              <td><a href="javascript:;" @click="ezfy.openMapAt(w.x, w.y)" title="点击查看地图位置">({{ w.x }},{{ w.y }})</a></td>
               <td>{{ w.terrain === 8 ? '海底森林' : w.terrain_name }}</td>
               <td>{{ w.continent || '—' }}</td>
               <td>{{ w.level }}</td>

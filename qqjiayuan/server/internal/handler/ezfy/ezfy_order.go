@@ -1428,7 +1428,9 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 // 现在统一在这里加 per-uid 守卫：同一个 uid 已经在结算中，第二次调用直接返回。
 //
 // 注意：守卫只在**订单结算**这一层加，cityViews / calcResource 等纯展示逻辑不受影响。
-func (h *EzfyHandler) processOrders(uid uint) {
+// processOrders 懒结算订单。★ 2026-10-04 cities 为可选参数：调用方（如 /view）已把
+// 玩家城市列表查好时传入，processIncoming 直接复用，省掉一次「重查城市 id」的 RTT。
+func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	if !h.enterProcess(uid) {
 		// 已在结算中（递归回调）→ 跳过，交回上层继续处理，避免无限自喂
 		return
@@ -1487,14 +1489,17 @@ func (h *EzfyHandler) processOrders(uid uint) {
 			h.finishReturn(uid, order)
 		}
 	}
-	// ★ 2026-09-24 修复「被攻击的动态打完了还一直显示」：攻方下线后没人 tick 战场，
+	// ★ 2026-10-04 修复「打完了还一直显示」：攻方下线后没人 tick 战场，
 	//   守方自己的轮询也把「正在打我方城市」的战场懒推进：打完了立刻收尾
 	//   （finishToOrder 把订单重置回行进 status=0，随后 processIncoming 结算它）。
 	//   只处理订单仍处于「战斗中(5)」的战场 —— 已结算订单留下的僵尸行由 ezfyBattleTick
 	//   自愈 + 军队动态查询加状态过滤兜底，避免把已完成的订单重新拉回结算。
+	//   ★ 2026-10-04 性能：上面过滤后的 orders 里没有战斗中订单就不查 defPending（省 1 次子查询）。
 	var defPending []model.EzfyBattle
-	h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
-		uid, ezfyOrderStatusBattle).Find(&defPending)
+	if hasBattleOrder(orders) {
+		h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
+			uid, ezfyOrderStatusBattle).Find(&defPending)
+	}
 	for i := range defPending {
 		b := &defPending[i]
 		if _, done := h.ezfyBattleTick(b, now); done {
@@ -1505,19 +1510,34 @@ func (h *EzfyHandler) processOrders(uid uint) {
 	// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
 	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
 	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。
-	h.processIncoming(uid, now)
+	h.processIncoming(uid, now, cities...)
+}
+
+// hasBattleOrder 给定订单列表里是否存在「战斗中」订单
+func hasBattleOrder(orders []model.EzfyOrder) bool {
+	for i := range orders {
+		if orders[i].Status == ezfyOrderStatusBattle {
+			return true
+		}
+	}
+	return false
 }
 
 // processIncoming 把「正在攻打 uid 名下城市、已到点」的敌方订单结算掉（开战场 / 发军情警讯）。
 // 只处理 target_type=3（玩家城）且 status=0（行进中，到点）的订单，交给 processArrive 走统一流程。
-func (h *EzfyHandler) processIncoming(uid uint, now int64) {
-	var cities []int64
-	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &cities)
-	if len(cities) == 0 {
+// ★ 2026-10-04 cities 可选：调用方（如 /view）已查好城市 id 时传入，省一次 Pluck 的 RTT。
+func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
+	var ids []int64
+	if len(cities) > 0 && cities[0] != nil {
+		ids = cities[0]
+	} else {
+		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &ids)
+	}
+	if len(ids) == 0 {
 		return
 	}
 	var orders []model.EzfyOrder
-	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", cities, now).
+	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", ids, now).
 		Order("id ASC").Find(&orders)
 	for i := range orders {
 		o := &orders[i]

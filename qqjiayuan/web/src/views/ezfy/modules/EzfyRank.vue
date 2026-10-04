@@ -33,12 +33,11 @@
           <div class="panel-title">军衔晋升表</div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 10%"><col style="width: 20%"><col style="width: 14%"><col style="width: 18%"><col style="width: 12%"><col style="width: 8%">
+              <col style="width: 22%"><col style="width: 16%"><col style="width: 20%"><col style="width: 14%"><col style="width: 10%">
             </colgroup>
-            <tr><th>等级</th><th>军衔</th><th>职位</th><th>声望</th><th>宝物</th><th>城数</th></tr>
+            <tr><th>军衔</th><th>职位</th><th>声望</th><th>宝物</th><th>城数</th></tr>
             <template v-for="(r, i) in ezfy.rankData.ranks">
               <tr :key="'rk' + i">
-                <td>{{ i + 1 }}</td>
                 <td>
                   <span v-html="ezfy.rankIcon(r.id)"></span>
                   <span :class="r.name === (ezfy.rankData.mine ? ezfy.rankData.mine.rank_name : ezfy.rankName) ? 'red' : ''">{{ r.name }}</span>
@@ -52,7 +51,7 @@
               </tr>
               <tr v-if="ezfy.showTreasureRow === i" :key="'rt' + i" class="rank-treasure-row">
                 <td>所需宝物</td>
-                <td colspan="4" class="gray">{{ r.treasures || '该军衔无需宝物' }}</td>
+                <td colspan="3" class="gray">{{ r.treasures || '该军衔无需宝物' }}</td>
                 <td></td>
               </tr>
             </template>

@@ -3,6 +3,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"regexp"
 	"sort"
@@ -3000,6 +3001,9 @@ func (h *EzfyHandler) View(c *gin.Context) {
 // viewPayload 构建 /view 完整数据（纯构建不做缓存；调用方自行决定缓存/下发）。
 func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	h.cfgs()
+	// ★ 2026-10-04 临时耗时日志：排查线上 /view 卡顿（确认后端计算 vs 传输层瓶颈），定位后移除
+	_vpStart := time.Now()
+	defer func() { log.Printf("ezfy viewPayload %dms uid=%d", time.Since(_vpStart).Milliseconds(), uid) }()
 	// ★ 2026-10-04 性能（用户反馈「/view 线上 3s」）：档案 + 城市列表是两条独立查询，
 	//   原来串行（2 个 RTT），拿到当前城后又串行查军官（2 个 RTT）——
 	//   跨 WAN 慢 RDS 下 /view 缓存未命中时偏慢。改为两波并行：
@@ -3180,7 +3184,12 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	h.checkTechDone(&city, cityIdsOf(cities))
 	h.collectTrainQueue(&city, trainQueues)
 	h.calcResource(&city, officers)
-	h.processOrders(uid)
+	// ★ 2026-10-04 传入已查好的城市列表：processIncoming 直接复用，省一次 Pluck 的 RTT
+	cids := make([]int64, 0, len(cities))
+	for _, c := range cities {
+		cids = append(cids, int64(c.ID))
+	}
+	h.processOrders(uid, cids)
 
 	// 组装（纯内存，无 DB 往返）
 	buildingViews := make([]gin.H, 0, len(buildings))
