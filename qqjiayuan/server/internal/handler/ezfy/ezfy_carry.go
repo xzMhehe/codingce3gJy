@@ -55,9 +55,11 @@ func (h *EzfyHandler) ezfyCarryCap(order *model.EzfyOrder) int64 {
 //	现在在这里统一加成（这是「负重上限」的唯一收敛点，采集/运输/出征全走它）：
 //	    负重上限 = Σ(carry × 数量) × (100 + 装载技术等级 × 2) / 100
 //
-//	⚠️ cityId 用来反查玩家（科技等级存用户级 ezfy_user_tech，见 techMap）。
-//	   cityId 传 0 时按「无加成」处理，方便调用方在没有城市上下文时降级。
-func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint) int64 {
+// ⚠️ cityId 用来反查玩家（科技等级存用户级 ezfy_user_tech，见 techMap）。
+//   cityId 传 0 时按「无加成」处理，方便调用方在没有城市上下文时降级。
+// ★ 2026-10-05 techs 可选：调用方已取好的科技等级 map（如 /order/preview 并行块）时传入，
+//   避免这里再查一次 techMap（2 条跨 WAN 查询）。
+func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint, techs ...map[int]int) int64 {
 	var base int64
 	for _, g := range groups {
 		if g.Count <= 0 {
@@ -68,7 +70,13 @@ func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint) int64 
 		}
 	}
 	if base > 0 && cityId > 0 {
-		if lv := h.techMap(cityId)[ezfyLoadTechID]; lv > 0 {
+		lv := 0
+		if len(techs) > 0 && techs[0] != nil {
+			lv = techs[0][ezfyLoadTechID]
+		} else {
+			lv = h.techMap(cityId)[ezfyLoadTechID]
+		}
+		if lv > 0 {
 			base = base * int64(100+lv*ezfyLoadTechPct) / 100
 		}
 	}

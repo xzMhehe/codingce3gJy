@@ -2089,10 +2089,12 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	}()
 	wg.Wait()
 	// 懒结算复用已取数据（建筑/城市ID/训练队列/军官全在手上，零额外查询）
+	// ★ 2026-10-05 性能（用户反馈「/officers 还是 1s+」）：原来这里还跑 checkTechDone +
+	//   calcResource（各 2~4 条串行跨 WAN 查询）。军官页不展示科技，资源/工资结算交给
+	//   /view 轮询照常推进（最多滞后一轮轮询）；这里只保留 建筑完工 + 训练队列出厂 两个
+	//   **纯内存、空闲零写**的结算。
 	h.checkBuildingDone(&city, buildings)
-	h.checkTechDone(&city, cityIdsOf(cities))
 	h.collectTrainQueue(&city, trainQueues)
-	h.calcResource(&city, list)
 	// ★ 2026-09-29 战俘营跨城汇总说明：俘虏可能落在任一座城（从哪发兵落哪城），
 	//   而战俘营只看当前城 → 多城玩家「战报显示俘虏了，战俘营却看不到」。
 	//   故额外返回玩家**名下所有城市**的俘虏，前端战俘营直接用这个跨城列表。

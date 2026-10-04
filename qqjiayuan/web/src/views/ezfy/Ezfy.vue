@@ -3611,10 +3611,10 @@ export default {
       if (n <= 0) { this.notify('请填写建造数量'); return }
       api.post('/games/ezfy/troops/train', {
         troop_id: this.trainSel.id, count: n, split: this.trainSplit
-      }).then(r => {
-        this.alert(r, '征兵已开始')
-        if (r.code === 0) this.loadTroops()
-      })
+      }).then(r => this.alert(r, '征兵已开始', () => {
+        // ★ 2026-10-05 训练完跳回军工厂页（不再停留在具体兵种/训练页）；城防则回城防页
+        this.go(this.trainMode === 'defence' ? 'defence' : 'factory')
+      }))
     },
     // 拆除城防设施(复刻 troopDefence.html 每行的 [拆除])
     async doDismiss (t) {

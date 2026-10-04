@@ -358,7 +358,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		return
 	}
 	// ★ 2026-10-04 第一波 档案+城市列表（1 RTT）定当前城，第二波下方并行
-	profile, city, cities := h.ezfyPageCity(uid)
+	profile, city, _ := h.ezfyPageCity(uid)
 	camp := profile.Camp
 
 	var (
@@ -379,10 +379,12 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	wg.Wait()
 	// 懒结算复用已取数据（零额外查询）
+	// ★ 2026-10-05 性能（用户反馈「/troops 还是 2s」）：原来这里还跑 checkTechDone +
+	//   calcResource（各 2~4 条串行跨 WAN 查询），是本页 2s 的根源。军队页不展示科技/资源，
+	//   科技/资源懒结算交给 /view 轮询照常推进（最多滞后一轮轮询），这里只保留
+	//   建筑完工 + 训练队列出厂两个**纯内存、空闲零写**的结算。
 	h.checkBuildingDone(&city, buildings)
-	h.checkTechDone(&city, cityIdsOf(cities))
 	h.collectTrainQueue(&city, qs)
-	h.calcResource(&city)
 	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
 	wounded = h.filterExpiredWounded(wounded)
 	deserters = h.filterExpiredWounded(deserters)

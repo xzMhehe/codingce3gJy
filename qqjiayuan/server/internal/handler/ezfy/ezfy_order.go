@@ -550,7 +550,27 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
-	h.refreshCity(uid, city)
+	// ★ 2026-10-05 性能（用户反馈「/order/preview 还是 2s」）：原 refreshCity 串行跑
+	//   建筑/科技/队列/资源懒结算 + processOrders（5+ 条跨 WAN RDS），是 2s 的根源。
+	//   预览是**纯只读计算**（不下达命令、不扣资源），订单/资源结算交给 /view 轮询照常
+	//   推进（资源数值最多滞后一轮轮询，可接受）。这里一个并行波把预览需要的
+	//   科技等级 / 指挥室 / 司令部 / 带队军官 / 集结令持有量 全部取完（1 RTT）。
+	var userTechs []model.EzfyUserTech
+	var stationLv, hqLv int
+	var lead *model.EzfyOfficer
+	var gatherHave int
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Find(&userTechs) }()
+	go func() { defer wg.Done(); stationLv = h.buildingLevel(city.ID, 20) }()
+	go func() { defer wg.Done(); hqLv = h.buildingLevel(city.ID, 13) }()
+	go func() { defer wg.Done(); if req.Officer != "" { lead = h.officerByName(city.ID, req.Officer) } }()
+	go func() { defer wg.Done(); gatherHave = h.itemCount(uid, ezfyGatherItemID) }()
+	wg.Wait()
+	techMap := map[int]int{}
+	for _, t := range userTechs {
+		techMap[t.TechId] = t.Level
+	}
 
 	valid := []ezfyUnitGroup{}
 	slowest := 0
@@ -574,22 +594,21 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	// ★ 2026-09-28 负重统一走 ezfyCarryCapOf（含「装载技术」加成）。
 	//   原来这里手写 `carry += cfg.Carry * count`，与 ezfyCarryCapOf 是**两套实现** ——
 	//   加了科技加成后如果只改一处，出征页预览的负重就会和实际出征时校验的负重对不上。
-	carry := h.ezfyCarryCapOf(valid, city.ID)
+	carry := h.ezfyCarryCapOf(valid, city.ID, techMap)
 	distance := ezfyAbs(city.X-req.TargetX) + ezfyAbs(city.Y-req.TargetY)
 	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources)
 
 	var travelSec int64
 	if distance > 0 && slowest > 0 {
-		tech := h.techMap(city.ID)
-		station := h.buildingLevel(city.ID, 20)
+		// ★ 2026-10-05 科技/指挥室/带队军官来自上方并行块（零额外查询）；带队军官只查一次
 		travelSec = int64(distance) * 60 * 300 / int64(slowest)
-		travelSec = travelSec * 100 / int64(100+tech[12]*2)
-		travelSec = travelSec * 100 / int64(100+station*3)
-		if lead := h.officerByName(city.ID, req.Officer); h.officerSpeedSkill(lead) {
+		travelSec = travelSec * 100 / int64(100+techMap[12]*2)
+		travelSec = travelSec * 100 / int64(100+stationLv*3)
+		if h.officerSpeedSkill(lead) {
 			travelSec = travelSec * 100 / 110
 		}
 		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
-		if lead := h.officerByName(city.ID, req.Officer); lead != nil && lead.Military > 0 {
+		if lead != nil && lead.Military > 0 {
 			travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
 		}
 		// ★ 出征速度加成（与 createOrder 同口径，保证预览与实际一致）
@@ -622,7 +641,8 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		totalPreview += t.Count
 	}
 	// ★ 管理端「出征上限」开关关掉时 capUnlimited=true（前端显示「不限」）
-	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, req.Officer)
+	capNow, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, req.Officer,
+		&ezfyTroopCapReuse{techs: techMap, hqLv: hqLv, lead: lead})
 	// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（预览与下单同口径）
 	if req.OrderType == 8 && h.dispatchNoCap(uid, city) {
 		capUnlimited = true
@@ -644,11 +664,11 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		"troop_total":    totalPreview,
 		"troop_cap":      capNow,
 		"cap_unlimited":  capUnlimited,
-		"hq_level":       h.buildingLevel(city.ID, 13),
+		"hq_level":       hqLv,
 		"gather":         gather,
 		"gather_per":     ezfyGatherBonusPer(),
 		"gather_max":     gatherMax,
-		"gather_have":    h.itemCount(uid, ezfyGatherItemID),
+		"gather_have":    gatherHave,
 		"troop_over_cap": !capUnlimited && totalPreview > capNow,
 	})
 }
@@ -712,16 +732,42 @@ func ezfyGatherBonusPer() int64 {
 // ★ 用户要求「再加个出征上限开关，默认开；关闭后出征没有上限」→
 //
 //	开关关掉时返回 (0, true)，调用方一律用 unlimited 判断，**不要**拿 0 去比大小。
-func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string) (cap int64, unlimited bool) {
+// ezfyTroopCapReuse 出征上限计算的预取数据（/order/preview 并行块已取好时传入，避免重复查库）
+type ezfyTroopCapReuse struct {
+	techs map[int]int
+	hqLv  int
+	lead  *model.EzfyOfficer
+}
+
+// ezfyOrderTroopCap 出征兵力上限：司令部等级 × 1万 × 指挥艺术科技 + 集结令加成 + 军官军事加成。
+// ★ 2026-10-05 reuse 可选：调用方已并行取好的 科技map/司令部等级/带队军官 时传入（预览接口），
+//   其余调用方（createOrder 等）不传，函数内部照旧自查。
+func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string,
+	reuse ...*ezfyTroopCapReuse) (cap int64, unlimited bool) {
 	if !ezfyMarchCapOn() {
 		return 0, true
 	}
-	hq := h.buildingLevel(cityId, 13)
-	cap = int64(10000*hq) * int64(100+h.techMap(cityId)[15]*ezfyCommandCarryPct) / 100
+	var tmap map[int]int
+	hqLv := 0
+	var lead *model.EzfyOfficer
+	if len(reuse) > 0 && reuse[0] != nil {
+		r := reuse[0]
+		tmap, hqLv, lead = r.techs, r.hqLv, r.lead
+	}
+	if tmap == nil {
+		tmap = h.techMap(cityId)
+	}
+	if hqLv <= 0 {
+		hqLv = h.buildingLevel(cityId, 13)
+	}
+	cap = int64(10000*hqLv) * int64(100+tmap[15]*ezfyCommandCarryPct) / 100
 	if gather > 0 {
 		cap += int64(gather) * ezfyGatherBonusPer()
 	}
-	if lead := h.officerByName(cityId, officer); lead != nil && lead.Military > 0 {
+	if lead == nil && officer != "" {
+		lead = h.officerByName(cityId, officer)
+	}
+	if lead != nil && lead.Military > 0 {
 		cap += int64(lead.Military) * int64(ezfyOfficerCapPerMil())
 	}
 	return cap, false
