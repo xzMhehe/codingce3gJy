@@ -1661,7 +1661,7 @@ func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	list := []gin.H{}
 	for _, o := range h.officerOnDutyList(city.ID) {
 		list = append(list, gin.H{
@@ -1682,6 +1682,7 @@ func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
 		CityId   int64 `json:"city_id"`   // 军官当前所在城（出发城）
@@ -2038,8 +2039,15 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 func (h *EzfyHandler) Officers(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	// ★ 2026-10-04 性能：3s 玩家级缓存，命中零 SQL（军官相关写操作已在入口统一 Del）
+	if it, ok := ezfyPageCacheGet(uid, "officers"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算的 3~4 条 RDS 往返），
+	//   订单事件仍由 /view 轮询与操作接口推进，滞后最长 3 秒（缓存 TTL 兜底）。
+	h.refreshCityRead(uid, &city)
 	list := h.officerList(city.ID)
 	// ★ 2026-09-29 战俘营跨城汇总：俘虏可能落在任一座城（从哪发兵落哪城），
 	//   而战俘营只看当前城 → 多城玩家「战报显示俘虏了，战俘营却看不到」。
@@ -2090,12 +2098,14 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	}
 	views := build(list)
 	capViews := build(capList)
-	resp.OK(c, gin.H{
+	// ★ 2026-10-04 性能：军校/参谋部等级一次查全建筑列表、内存取值（原 buildingLevel ×3 各查一遍全表）
+	blv := buildingLevelsOf(h.buildingList(city.ID))
+	data := gin.H{
 		"officers":      views,
 		"captives":      capViews, // ★ 跨城俘虏汇总（战俘营用）
-		"academy_level": h.buildingLevel(city.ID, ezfyBuildingAcademy),
-		"staff_level":   h.buildingLevel(city.ID, ezfyBuildingStaff),
-		"capacity":      h.buildingLevel(city.ID, ezfyBuildingStaff),
+		"academy_level": blv[ezfyBuildingAcademy],
+		"staff_level":   blv[ezfyBuildingStaff],
+		"capacity":      blv[ezfyBuildingStaff],
 		// ★ 用上面已取到的 list（勿改回 h.officerCount，那会再查一次库）
 		"used": officerCountOf(list),
 		"gold": city.Gold,
@@ -2110,7 +2120,9 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		"star_up_on": ezfyStarUpOn(), "star_rate": ezfyStarSuccessRate(),
 		"star_max": ezfyStarMax(), "star_attr_gain": ezfyStarAttrGain(),
 		"star_card": h.itemCount(uid, ezfyStarItemID),
-	})
+	}
+	ezfyPageCacheSet(uid, "officers", data)
+	resp.OK(c, data)
 }
 
 func ezfyPositionName(p int) string {
@@ -2139,7 +2151,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	o := h.officerOf(city.ID, id)
 	if o == nil {
@@ -2415,12 +2427,20 @@ func (h *EzfyHandler) EquipSets(c *gin.Context) {
 func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	// ★ 2026-10-04 性能：3s 玩家级缓存（刷新/雇佣操作已统一 Del）
+	if it, ok := ezfyPageCacheGet(uid, "recruit"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
-	academy := h.buildingLevel(city.ID, ezfyBuildingAcademy)
+	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
+	h.refreshCityRead(uid, &city)
+	// ★ 2026-10-04 性能：军校/参谋部等级一次查全建筑列表、内存取值（原 buildingLevel ×3 各查一遍全表）
+	blv := buildingLevelsOf(h.buildingList(city.ID))
+	academy := blv[ezfyBuildingAcademy]
 	out := gin.H{
-		"academy_level": academy, "staff_level": h.buildingLevel(city.ID, ezfyBuildingStaff),
-		"capacity": h.buildingLevel(city.ID, ezfyBuildingStaff), "used": h.officerCount(city.ID),
+		"academy_level": academy, "staff_level": blv[ezfyBuildingStaff],
+		"capacity": blv[ezfyBuildingStaff], "used": h.officerCount(city.ID),
 		"gold": city.Gold, "candidates": []gin.H{},
 	}
 	if academy >= 1 {
@@ -2437,6 +2457,7 @@ func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 		out["refresh_left"] = left
 		out["refresh_limit"] = limit
 	}
+	ezfyPageCacheSet(uid, "recruit", out)
 	resp.OK(c, out)
 }
 
@@ -2444,6 +2465,7 @@ func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 func (h *EzfyHandler) AcadeRefresh(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	academy := h.buildingLevel(city.ID, ezfyBuildingAcademy)
 	if academy < 1 {
@@ -2457,6 +2479,7 @@ func (h *EzfyHandler) AcadeRefresh(c *gin.Context) {
 func (h *EzfyHandler) AcadeRecruitDo(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	var req struct {
 		Key string `json:"key"`
@@ -2472,6 +2495,7 @@ func (h *EzfyHandler) AcadeRecruitDo(c *gin.Context) {
 func (h *EzfyHandler) OfficerGrant(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	h.done(c, h.grantOfficer(&city, id), "赏赐成功, 忠诚已提升")
@@ -2482,6 +2506,7 @@ func (h *EzfyHandler) OfficerGrant(c *gin.Context) {
 func (h *EzfyHandler) OfficerTreasureGrant(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var in struct {
@@ -2498,6 +2523,7 @@ func (h *EzfyHandler) OfficerTreasureGrant(c *gin.Context) {
 func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -2541,6 +2567,7 @@ func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
 func (h *EzfyHandler) OfficerAttrAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -2639,6 +2666,7 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	if !ezfyStarUpOn() {
@@ -2676,6 +2704,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	o := h.officerOf(city.ID, id)
@@ -2925,7 +2954,7 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	out := []gin.H{}
 	for _, c2 := range ezfyCfg.chests {
 		pool := []gin.H{}
@@ -3077,6 +3106,7 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 func (h *EzfyHandler) OfficerSkill(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -3098,6 +3128,7 @@ func (h *EzfyHandler) OfficerSkill(c *gin.Context) {
 func (h *EzfyHandler) OfficerEquip(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -3119,6 +3150,7 @@ func (h *EzfyHandler) OfficerEquip(c *gin.Context) {
 func (h *EzfyHandler) OfficerUnequipAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	o := h.officerOf(city.ID, id)
@@ -3152,6 +3184,7 @@ func (h *EzfyHandler) OfficerUnequipAll(c *gin.Context) {
 func (h *EzfyHandler) OfficerEquipSet(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -3264,6 +3297,7 @@ func (h *EzfyHandler) equipSet(city *model.EzfyCity, o *model.EzfyOfficer, setId
 func (h *EzfyHandler) OfficerPosition(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -3280,6 +3314,7 @@ func (h *EzfyHandler) OfficerPosition(c *gin.Context) {
 func (h *EzfyHandler) OfficerCaptive(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
@@ -3297,6 +3332,7 @@ func (h *EzfyHandler) OfficerCaptive(c *gin.Context) {
 func (h *EzfyHandler) OfficerExile(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid)
 	city := h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	h.done(c, h.exileOfficer(&city, id), "已流放该军官")
@@ -3306,8 +3342,14 @@ func (h *EzfyHandler) OfficerExile(c *gin.Context) {
 func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	// ★ 2026-10-04 性能：3s 玩家级缓存（学习/遗忘技能已统一 Del）
+	if it, ok := ezfyPageCacheGet(uid, "skills"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
+	h.refreshCityRead(uid, &city)
 	skills := []gin.H{}
 	for _, s := range ezfyCfg.skills {
 		skills = append(skills, gin.H{"id": s.ID, "name": s.Name, "effect": s.Effect, "type": s.Type, "des": s.Des})
@@ -3319,7 +3361,9 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 		list = append(list, gin.H{"id": o.ID, "name": o.Name, "level": o.Level,
 			"skills": skills, "skill_count": len(skills)})
 	}
-	resp.OK(c, gin.H{"skills": skills, "officers": list, "gold": city.Gold})
+	data := gin.H{"skills": skills, "officers": list, "gold": city.Gold}
+	ezfyPageCacheSet(uid, "skills", data)
+	resp.OK(c, data)
 }
 
 // OfficerEquipments GET /games/ezfy/officers/equipments —— 装备图鉴 + 我的背包
@@ -3331,8 +3375,14 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	// ★ 2026-10-04 性能：3s 玩家级缓存（穿/脱/套装操作已统一 Del）
+	if it, ok := ezfyPageCacheGet(uid, "equips"); ok {
+		resp.OK(c, it)
+		return
+	}
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
+	h.refreshCityRead(uid, &city)
 	items := h.equipmentList(uid)
 	// 当前城军官一次拉全：①被俘军官身上挂的装备不进背包 ②已穿戴装备显示穿戴者名字
 	cityOfficers := h.officerList(city.ID)
@@ -3416,7 +3466,9 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 			"effect": s.Effect, "des": s.Des,
 		})
 	}
-	resp.OK(c, gin.H{"bag": bag, "all": cfgList, "sets": setList})
+	data := gin.H{"bag": bag, "all": cfgList, "sets": setList}
+	ezfyPageCacheSet(uid, "equips", data)
+	resp.OK(c, data)
 }
 
 // OfficerGenerals GET /games/ezfy/officers/generals —— 名将图鉴（按等级倒序）
@@ -3541,7 +3593,7 @@ func (h *EzfyHandler) EquipShop(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	city := h.getOrCreateCity(uid)
-	h.refreshCity(uid, &city)
+	h.refreshCityRead(uid, &city)
 	slots, items := h.equipShopList()
 	resp.OK(c, gin.H{
 		// ★ slots = 按部位分组（前端铺表格）；items = 扁平列表（检索/兼容用）
@@ -3556,6 +3608,7 @@ func (h *EzfyHandler) EquipShop(c *gin.Context) {
 func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid) // 买装备 → 背包变化，装备页缓存失效
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
 	var req struct {

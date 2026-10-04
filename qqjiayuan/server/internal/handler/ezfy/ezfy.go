@@ -6,7 +6,6 @@ import (
 	"log"
 	"math/rand"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -393,6 +392,19 @@ func (h *EzfyHandler) buildingLevel(cityId uint, buildingId int) int {
 	return max
 }
 
+// buildingLevelsOf 一次性建筑列表 → 「building_id → 最高等级」内存 map。
+// ★ 2026-10-04 性能：展示接口多次调 buildingLevel（每次 = 一次完整 buildingList 查询）
+//   时改为一次查全、纯内存取值，省掉重复 RDS 往返。
+func buildingLevelsOf(list []model.EzfyCityBuilding) map[int]int {
+	m := map[int]int{}
+	for _, b := range list {
+		if b.Level > m[b.BuildingId] {
+			m[b.BuildingId] = b.Level
+		}
+	}
+	return m
+}
+
 func (h *EzfyHandler) buildingTotalLevel(cityId uint, buildingId int) int {
 	total := 0
 	for _, b := range h.buildingList(cityId) {
@@ -691,6 +703,19 @@ func (h *EzfyHandler) refreshCityWithOfficers(uid uint, city *model.EzfyCity,
 	h.collectTrainQueue(city)
 	h.calcResource(city, officers)
 	h.processOrders(uid)
+}
+
+// refreshCityRead 只读展示页的轻量懒结算：建筑/科技/训练队列/资源照跑，
+// 但**跳过订单结算**（processOrders 每次至少 3 条 RDS 往返，且串行在结算链尾）。
+//
+// 纯展示接口（军官/军校/技能/装备/任务）调用它，配合 3s 玩家级缓存把单次响应压到 <1s；
+// 订单事件（返航/战斗/敌军到达）仍由 /view 轮询与操作接口的完整 refreshCity 照常推进，
+// 展示页滞后最长 3 秒（缓存 TTL），可接受。
+func (h *EzfyHandler) refreshCityRead(uid uint, city *model.EzfyCity) {
+	h.checkBuildingDone(city)
+	h.checkTechDone(city)
+	h.collectTrainQueue(city)
+	h.calcResource(city)
 }
 
 // checkBuildingDone 建筑完成懒结算。reuse 传本请求已查好的建筑列表时可省一次 buildingList 查询
@@ -2827,46 +2852,6 @@ func ezfyTaskRewardRes(cfg *model.EzfyCfgTask) (int64, int64, int64, int64) {
 	return food, steel, oil, rare
 }
 
-func (h *EzfyHandler) initTasks(uid uint) {
-	var cfgs []model.EzfyCfgTask
-	h.DB.Where("status = 1").Order("sort_no ASC").Find(&cfgs)
-	today := time.Now().Format("2006-01-02")
-	for _, cfg := range cfgs {
-		var count int64
-		h.DB.Model(&model.EzfyTask{}).Where("user_id = ? AND cfg_id = ?", uid, cfg.ID).Count(&count)
-		if count > 0 {
-			continue
-		}
-		h.DB.Create(&model.EzfyTask{UserId: uid, CfgId: cfg.ID, Current: 0, Status: 0, TaskDate: today})
-	}
-}
-
-func (h *EzfyHandler) resetPeriodTasks(uid uint) {
-	now := time.Now()
-	var mine []model.EzfyTask
-	h.DB.Where("user_id = ?", uid).Find(&mine)
-	for _, t := range mine {
-		var c model.EzfyCfgTask
-		if err := h.DB.First(&c, t.CfgId).Error; err != nil || c.TypeId <= 0 {
-			continue
-		}
-		var tp model.EzfyCfgTaskType
-		if err := h.DB.First(&tp, c.TypeId).Error; err != nil {
-			continue
-		}
-		key := ezfyPeriodKey(tp.ResetType, now)
-		if key == "" || t.TaskDate == key {
-			continue
-		}
-		updates := map[string]interface{}{"task_date": key}
-		if t.Current > 0 {
-			updates["current"] = 0
-			updates["status"] = 0
-		}
-		h.DB.Model(&model.EzfyTask{}).Where("id = ?", t.ID).Updates(updates)
-	}
-}
-
 // ezfyPeriodKey 返回任务当前所属周期的标识（用于跨周期重置判断）：
 //   - 每日(reset_type=1)：当天日期
 //   - 每周(reset_type=2)：本周周一所在日期
@@ -3035,8 +3020,6 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		wildlands []model.EzfyWildland
 		officers  []model.EzfyOfficer
 
-		wounded       []model.EzfyWounded
-		queues        []gin.H
 		trainQueues   []model.EzfyTrainQueue // 训练队列原始行：懒结算 collectTrainQueue 复用
 		marching      int64
 		occupying     int64
@@ -3050,31 +3033,23 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		acct          string
 		ulv, uexp     int
 	)
-	camp := profile.Camp
 
-	// ★ 采集中/空闲驻守状态按该野地上的「驻守采集」订单实时判定(常驻制, 不再依赖野地表的 status 字段)
-	//   ★ 2026-09-24 用户规则: 到达后**空闲驻守**(arrive_time=0, 不算采集中), 手工点[采集]才进入采集。
-	//   ★ 2026-09-28 用户反馈「附属野地里采集中只能[放弃]，没法[停止]」：
-	//     原来只收集了 target_id 做「是否采集中」的布尔判定，**没有把订单 id 下发**，
-	//     前端拿不到 order_id 就调不了 /wild/stop-collect → 操作列只能显示[放弃]。
-	//     这里连订单 id 一起收(用 map 而不是 slice)，前端就能对采集中那行出[停止]。
-	gatherOrderByWild := map[int64]uint{}
-	idleOrderByWild := map[int64]uint{}
-
-	// ★ 2026-10-03 性能：以下 16 条只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup
+	// ★ 2026-10-03 性能：以下只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup
 	//   并行打 RDS，把 30s 轮询 /view 的串行往返(~1s+) 压到接近一次往返量。
 	//   gorm v2 链式调用并发安全；wg.Wait() 提供 happens-before，无数据竞争。
+	// ★ 2026-10-04 瘦身：建筑/军队/科技/野地/队列/伤兵**不再随 /view 下发**（移到对应页面
+	//   进入时各自接口加载），但原数据仍要查回来供懒结算与首页产量(res_prod)计算复用。
 	var wg sync.WaitGroup
-	wg.Add(17)
+	wg.Add(14)
 	go func() { // 军官列表（含出征态自愈 + 一次 orderListByCity 自愈判定）
 		defer wg.Done()
 		officers = h.officerList(city.ID)
 	}()
-	go func() { // 建筑列表（供 buildingViews + getResourceCalcWith + checkBuildingDone 复用）
+	go func() { // 建筑列表（供 getResourceCalcWith + checkBuildingDone 复用）
 		defer wg.Done()
 		buildings = h.buildingList(city.ID)
 	}()
-	go func() { // 军队表（troopViews + getResourceCalcWith 复用）
+	go func() { // 军队表（getResourceCalcWith 复用）
 		defer wg.Done()
 		troops = h.troopMap(city.ID)
 	}()
@@ -3088,43 +3063,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		h.DB.Where("city_id = ?", city.ID).Find(&w)
 		wildlands = w
 	}()
-	go func() { // 伤兵列表（内部含过期清理）
-		defer wg.Done()
-		var r []model.EzfyWounded
-		h.DB.Where("city_id = ?", city.ID).Order("type ASC, troop_id ASC").Find(&r)
-		wounded = h.filterExpiredWounded(r)
-	}()
-	go func() { // 训练队列（展示 + 懒结算 collectTrainQueue 复用原始行）
+	go func() { // 训练队列原始行（懒结算 collectTrainQueue 复用；列表展示由 /troops 提供）
 		defer wg.Done()
 		var qs []model.EzfyTrainQueue
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
 		trainQueues = qs
-		v := make([]gin.H, 0, len(qs))
-		for _, q := range qs {
-			v = append(v, gin.H{"id": q.ID, "troop_id": q.TroopId,
-				"name": ezfyCfg.troopName(q.TroopId, camp), "count": q.Count, "end_time": q.EndTime})
-		}
-		queues = v
-	}()
-	go func() { // 采集中驻守采集订单 → 野地列表带 order_id，前端可[停止]
-		defer wg.Done()
-		var gs []model.EzfyOrder
-		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).Find(&gs)
-		m := make(map[int64]uint, len(gs))
-		for _, o := range gs {
-			m[o.TargetId] = o.ID
-		}
-		gatherOrderByWild = m
-	}()
-	go func() { // 空闲驻军订单 → 野地列表「驻守(空闲)」+[开始采集]
-		defer wg.Done()
-		var is []model.EzfyOrder
-		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).Find(&is)
-		m := make(map[int64]uint, len(is))
-		for _, o := range is {
-			m[o.TargetId] = o.ID
-		}
-		idleOrderByWild = m
 	}()
 	go func() { // 出征中 / 占领中数量
 		defer wg.Done()
@@ -3191,79 +3134,9 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	}
 	h.processOrders(uid, cids)
 
-	// 组装（纯内存，无 DB 往返）
-	buildingViews := make([]gin.H, 0, len(buildings))
-	for _, b := range buildings {
-		cfg := ezfyCfg.building(b.BuildingId)
-		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
-		next := ezfyCfg.buildingLevel(b.BuildingId, b.Level+1)
-		view := gin.H{
-			"id": b.ID, "building_id": b.BuildingId, "level": b.Level,
-			"status": b.Status, "end_time": b.EndTime, "start_time": b.StartTime,
-		}
-		if cfg != nil {
-			view["name"] = cfg.Name
-			view["type"] = cfg.Type
-			view["max_level"] = cfg.MaxLevel
-			view["des"] = cfg.Des
-			view["can_delete"] = cfg.CanDelete
-		}
-		if lv != nil {
-			view["effect"] = lv.Effect
-			view["capacity"] = lv.Capacity
-		}
-		if next != nil {
-			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}
-			view["next_time"] = next.BuildTime
-			view["next_effect"] = next.Effect
-		}
-		buildingViews = append(buildingViews, view)
-	}
-	// 可建造池(军事区 type2/3 + 资源区 type1), 供建筑页直接渲染, 前端不再硬编码
-	buildingPool := h.buildPool(&city, buildings)
-
-	troopViews := []gin.H{}
-	for tid, count := range troops {
-		cfg := ezfyCfg.troop(tid)
-		if cfg == nil {
-			continue
-		}
-		troopViews = append(troopViews, gin.H{
-			"troop_id": tid, "name": ezfyCfg.troopName(tid, camp), "count": count, "type": cfg.Type,
-			"pop": cfg.Pop, "food_keep": cfg.FoodKeep,
-		})
-	}
-
-	// ★ 已研究的科技列表（按 tech_id 升序，等级取 map value）
-	techViews := []gin.H{}
-	techIds := make([]int, 0, len(tmap))
-	for id := range tmap {
-		techIds = append(techIds, id)
-	}
-	sort.Ints(techIds)
-	for _, id := range techIds {
-		if cfg := ezfyCfg.tech(id); cfg != nil {
-			techViews = append(techViews, gin.H{"tech_id": id, "name": cfg.Name, "level": tmap[id]})
-		}
-	}
-
-	wildViews := []gin.H{}
-	for _, w := range wildlands {
-		sts := w.Status
-		idleOrderId := uint(0)
-		gatherOrderId := uint(0)
-		if oid, ok := gatherOrderByWild[int64(w.ID)]; ok {
-			sts = 1
-			gatherOrderId = oid // 采集中：下发给前端，用于 [停止]
-		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
-			sts = 0
-			idleOrderId = oid
-		}
-		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y, "level": w.Level,
-			"wild_type": w.WildType, "terrain": ezfyTerrainEx(w.X, w.Y), "terrain_name": ezfyTerrainNameEx(w.X, w.Y),
-			"status": sts, "continent": ezfyRegionName(w.X, w.Y),
-			"idle_order_id": idleOrderId, "gather_order_id": gatherOrderId})
-	}
+	// ★ 2026-10-04 瘦身：建筑/可建造池/军队/科技/野地/训练队列/伤兵列表**不再由 /view 下发**，
+	//   对应页面进入时各自调 /buildings、/troops、/techs、/city/wildfull 懒加载（前端 go() 已接线）。
+	//   上面并行块仍把原始数据查回来，供懒结算与 res_prod 计算使用（零重复查询）。
 
 	// ★ 2026-09-28 用户要求：首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
 	//   复用 getResourceCalc 的 total（净产量：产出 − 军队耗粮），保证两边数字永远一致。
@@ -3319,18 +3192,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"game_uid":        profile.GameUID,
 		"home_num":        acct,
 		"current_city_id": city.ID,
-		"protected":       protected,
-		"boost":           boost,
-		"buildings":       buildingViews,
-		"building_pool":   buildingPool,
-		// ★ 军事区/资源区各自上限（分开下发）
+		"protected": protected,
+		"boost":     boost,
+		// ★ 军事区/资源区各自上限（分开下发；建筑列表/可建造池已移到 /buildings）
 		"military_cap": lim.MilitaryMax,
 		"resource_cap": lim.ResourceMax,
-		"troops":       troopViews,
-		"wounded":      wounded,
-		"queues":       queues,
-		"techs":        techViews,
-		"wildlands":    wildViews,
 		"marching":     marching,
 		"occupying":    occupying,
 		// ★ 占用人口 = 建筑占用人口 + 训练中未出厂的新兵占用（部队不占人口位置）。
@@ -3408,6 +3274,50 @@ func ezfyViewCacheDel(uid uint) {
 	ezfyViewCacheMu.Lock()
 	defer ezfyViewCacheMu.Unlock()
 	delete(ezfyViewCache, uid)
+}
+
+// ★ 2026-10-04 二战 5 个展示接口（军官 /officers、军校 /acade/recruit、技能 /officers/skills、
+//   装备 /officers/equipments、任务 /tasks）的 3s TTL 玩家级缓存。
+//   纯展示页缓存命中零 SQL，把线上 2s~4s 压到毫秒级；写操作后调 ezfyPageCacheDel(uid)
+//   一次性清掉该玩家全部页面缓存（3s 内刷新最多滞后 3 秒，可接受）。
+//   key = "{uid}:{页面名}"，同 uid 各页面互不串扰；同一 map 上限 16384 条防膨胀。
+var (
+	ezfyPageCacheMu sync.Mutex
+	ezfyPageCache   = map[string]ezfyViewCacheItem{}
+)
+
+func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) {
+	ezfyPageCacheMu.Lock()
+	defer ezfyPageCacheMu.Unlock()
+	k := fmt.Sprintf("%d:%s", uid, name)
+	it, ok := ezfyPageCache[k]
+	if !ok || time.Now().UnixMilli()-it.at > ezfyViewCacheTTLMs {
+		delete(ezfyPageCache, k)
+		return nil, false
+	}
+	return it.data, true
+}
+
+func ezfyPageCacheSet(uid uint, name string, data gin.H) {
+	ezfyPageCacheMu.Lock()
+	defer ezfyPageCacheMu.Unlock()
+	if len(ezfyPageCache) > 16384 {
+		ezfyPageCache = map[string]ezfyViewCacheItem{}
+	}
+	ezfyPageCache[fmt.Sprintf("%d:%s", uid, name)] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
+}
+
+// ezfyPageCacheDel 清除某玩家的全部页面缓存（军官/军校/技能/装备/任务）。
+// 军官/军校相关的写操作在入口统一调用，保证刷新后的展示接口不返回旧数据。
+func ezfyPageCacheDel(uid uint) {
+	ezfyPageCacheMu.Lock()
+	defer ezfyPageCacheMu.Unlock()
+	prefix := fmt.Sprintf("%d:", uid)
+	for k := range ezfyPageCache {
+		if strings.HasPrefix(k, prefix) {
+			delete(ezfyPageCache, k)
+		}
+	}
 }
 
 // ★ 2026-10-04 /chest 3s TTL 玩家级缓存（与 /view 同款结构，key 按 uid；开箱后失效）。

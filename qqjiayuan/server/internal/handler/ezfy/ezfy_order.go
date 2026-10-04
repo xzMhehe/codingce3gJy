@@ -1438,12 +1438,12 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	defer h.exitProcess(uid)
 
 	now := time.Now().UnixMilli()
-	// ★ 死单自愈：status=98(结算中) 超过 60 秒没被写回正常状态的订单，
-	//   说明结算过程异常退出（老部署强杀进程等），重置回「行进」，下次到达再结算。
-	h.DB.Model(&model.EzfyOrder{}).
-		Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
-			time.Now().Add(-60*time.Second)).
-		Updates(map[string]interface{}{"status": 0})
+	// ★ 2026-10-04 性能（用户反馈「军官/展示接口线上 2s~3s 卡」）：
+	//   快速路径 —— 先拉订单（含 status IN (0,1,2,5,6,98)）。列表为空说明该玩家
+	//   **没有任何未结算订单**（自然也没有 status=98 死单），此时死单自愈 UPDATE 和
+	//   战场推进都可以跳过，只查一次「敌军攻打我方」的订单后直接返回。
+	//   原实现先发死单自愈 UPDATE 再 SELECT，玩家空闲时那条 UPDATE 没有匹配行也要
+	//   白白跨 WAN 往返一次 —— 高频展示接口每次都被它拖慢。
 	// ★ 2026-10-04 性能（用户反馈「军官接口线上 3s 卡」）：原查询不带 status 过滤，
 	//   把玩家**全部历史订单**（含 3完成/4阵亡，行内还有 8KB+ 的 troops/result/battle_result
 	//   大字段）每次都从 RDS 全量拉回来 —— 活跃玩家几百上千行、一次几 MB，跨 WAN 必卡。
@@ -1451,6 +1451,17 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	//   idx_user 单列索引可快速定位该玩家，再按 status IN 过滤后行数骤降。
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ? AND status IN (0,1,2,5,6,98)", uid).Order("id ASC").Find(&orders)
+	if len(orders) == 0 {
+		h.processIncoming(uid, now, cities...)
+		return
+	}
+	// ★ 死单自愈：status=98(结算中) 超过 60 秒没被写回正常状态的订单，
+	//   说明结算过程异常退出（老部署强杀进程等），重置回「行进」，下次到达再结算。
+	//   （orders 非空时才可能有 98 死单，空列表跳过此 UPDATE）
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
+			time.Now().Add(-60*time.Second)).
+		Updates(map[string]interface{}{"status": 0})
 	for i := range orders {
 		order := &orders[i]
 		// ★ 指挥室：战斗中的订单先推进战场（懒结算）。

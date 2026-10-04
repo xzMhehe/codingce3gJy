@@ -1969,6 +1969,9 @@ export default {
       else if (t === 'troops' || t === 'troop' || t === 'defence' ||
                t === 'troopview' || t === 'trainpre' || t === 'troopstat') {
         this.loadTroops()
+        // ★ 2026-10-04 /view 瘦身：军队页顶部「军工厂合计N级」由 buildings 算，
+        //   建筑数据已移到 /buildings，进军队相关页面一并懒加载
+        this.loadBuildings()
         // ★ 训练页(troop)的队列行要按背包里的训练加速道具档位渲染 [加速] 按钮
         if (t === 'troop' || t === 'troops') this.loadBag()
       }
@@ -1986,8 +1989,10 @@ export default {
       // ★ 2026-09-26 修复「加速道具买完实际使用不生效」：科技/建筑/训练页的 [加速]
       //   现在按「背包里实际拥有的加速道具档位」渲染按钮，所以进页时要拿到背包数据。
       else if (t === 'techs') { this.loadTechs(); this.loadBag() }
-      else if (t === 'buildm' || t === 'builds' || t === 'cityhall') this.loadBag()
-      else if (t === 'map') { this.backToMap(); this.loadStars() }
+      // ★ 2026-10-04 /view 瘦身：建筑列表/可建造池移到 /buildings，进入建筑相关页懒加载
+      else if (t === 'buildm' || t === 'builds' || t === 'cityhall') { this.loadBuildings(); this.loadBag() }
+      // ★ 2026-10-04 /view 瘦身：地图页「占领野地」面板数据移到 /city/wildfull 懒加载
+      else if (t === 'map') { this.backToMap(); this.loadStars(); this.loadWilds() }
       // ★ 2026-09-28 军情页：分区由 reportTab 决定，且 switchReportTab 内部会 syncUrl，
       //   刷新后 reportTab 已由 restoreFromUrl 从 ?rtab= 恢复，所以不会跳回「军队动态」。
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
@@ -2056,15 +2061,18 @@ export default {
         // （原来要玩家自己点[计算]才会显示）
         this.$nextTick(() => this.doCalc())
       }
-      else if (t === 'acade') this.loadAcade()
+      // ★ 2026-10-04 /view 瘦身：军官页顶部「占领野地 N 块」移到 /city/wildfull 懒加载
+      else if (t === 'acade') { this.loadAcade(); this.loadWilds() }
       else if (t === 'wareset') this.loadWare()
       else if (t === 'citymove') this.loadMoveInfo()
       else if (t === 'sourceset') this.loadProduce()
       else if (t === 'activity') this.loadActivity()
       else if (t === 'info') this.loadSelfInfo()
-      else if (t === 'factory') this.loadTroops()
+      else if (t === 'factory') { this.loadTroops(); this.loadBuildings() }
       // 城市状态页要显示「人口/空闲人口」，/view 才带 pop_used → 进页先拉一次
-      else if (t === 'citystatus') this.load()
+      // ★ 2026-10-04 /view 瘦身：城市状态页的建筑列表/训练队列/野地计数/城内军队
+      //   分别移到 /buildings、/troops、/city/wildfull 懒加载（/view 不再下发这些字段）
+      else if (t === 'citystatus') { this.load(); this.loadBuildings(); this.loadTroops(); this.loadWilds() }
     },
     // 节日活动
     loadActivity () {
@@ -2113,7 +2121,7 @@ export default {
       this.cityIsSea = !!d.is_sea
       this.protectedUntil = d.protected
       this.boostUntil = d.boost
-      this.buildings = d.buildings
+      this.buildings = d.buildings || []
       this.buildingPool = d.building_pool || []
       this.militaryCap = d.military_cap || 33
       this.resourceCap = d.resource_cap || 33
@@ -2127,8 +2135,8 @@ export default {
       this.convenePopGain = Number(d.convene_pop_gain) || 100000
       // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
       this.convenePopMax = Number(d.convene_pop_max) || 0
-      this.wildlands = d.wildlands
-      this.queues = d.queues
+      this.wildlands = d.wildlands || []
+      this.queues = d.queues || []
       this.marching = d.marching
       this.occupying = d.occupying
       this.unreadReports = d.unread_reports
@@ -2171,12 +2179,27 @@ export default {
       return api.get('/games/ezfy/troops').then(r => {
         if (r.code === 0) {
           this.troopsData = r.data
+          // ★ 2026-10-04 /view 瘦身：训练队列列表随 /troops 下发（不再由 /view 提供）。
+          //   这里同步喂给 this.queues，军队页/城市状态页模板继续读 ezfy.queues 无需改动。
+          this.queues = r.data.queues || []
           // 占用人口（训练中；已训练完成的部队不占人口）
           this.popUsed = r.data.pop_used || 0
           this.cityPop = r.data.pop || 0
           if (r.data.cfgs.length && !this.trainSel) this.trainSel = null
           // 司令部配置表按兵种建键, 兵种数据后到时要补齐, 否则渲染会取到 undefined
           this.ensureTargetCfg()
+        }
+      })
+    },
+    // ★ 2026-10-04 /view 瘦身：建筑列表/可建造池移到 /buildings（进入建筑/军队等页面时懒加载）。
+    //   数据喂给 this.buildings / this.buildingPool，模板与 computed 无需改动。
+    loadBuildings () {
+      return api.get('/games/ezfy/buildings').then(r => {
+        if (r.code === 0) {
+          this.buildings = r.data.buildings || []
+          this.buildingPool = r.data.pool || []
+          if (r.data.military_cap) this.militaryCap = r.data.military_cap
+          if (r.data.resource_cap) this.resourceCap = r.data.resource_cap
         }
       })
     },
@@ -3079,6 +3102,8 @@ export default {
     openMapAt (x, y) {
       this.cur = 'map'
       this.loadStars()
+      // ★ 2026-10-04 /view 瘦身：地图页「占领野地」面板数据随进入一并懒加载
+      this.loadWilds()
       this.jumpTo(x, y)
     },
     doJump () {
@@ -3211,6 +3236,8 @@ export default {
     openBuildPre (zone) {
       this.buildZone = zone || (this.cur === 'builds' ? 's' : 'm')
       this.buildSel = null
+      // ★ 2026-10-04 /view 瘦身：可建造池已移到 /buildings，进建造页前懒加载
+      this.loadBuildings()
       this.cur = 'buildpre'
     },
     openBuildDetail (b) {
@@ -3256,6 +3283,7 @@ export default {
         if (r.code === 0) {
           this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '建筑已开始升级', type: 'ok' }
           this.load()
+          this.loadBuildings() // ★ 2026-10-04 /view 瘦身：建筑列表已由 /buildings 懒加载提供
         } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
@@ -3269,6 +3297,7 @@ export default {
         if (r.code === 0) {
           this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : ('已一键升级到' + target + '级'), type: 'ok' }
           this.load()
+          this.loadBuildings() // ★ 2026-10-04 /view 瘦身：建筑列表已由 /buildings 懒加载提供
         } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
@@ -3283,6 +3312,7 @@ export default {
         if (r.code === 0) {
           this.inlineTip = { bid: b.id, text: (r.data && r.data.msg) ? r.data.msg : '建筑已拆除', type: 'ok' }
           this.load()
+          this.loadBuildings() // ★ 2026-10-04 /view 瘦身：建筑列表已由 /buildings 懒加载提供
         } else this.inlineTip = { bid: b.id, text: r.msg || '拆除失败', type: 'error' }
       })
     },
@@ -3341,6 +3371,7 @@ export default {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '加速成功', type: 'ok' }
           this.load()
+          this.loadBuildings() // ★ 2026-10-04 /view 瘦身：建筑列表已由 /buildings 懒加载提供
           this.loadBag()
         } else this.inlineTip = { bid, text: r.msg || '加速失败', type: 'error' }
       })
@@ -3356,6 +3387,7 @@ export default {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '已取消升级', type: 'ok' }
           this.load()
+          this.loadBuildings() // ★ 2026-10-04 /view 瘦身：建筑列表已由 /buildings 懒加载提供
           this.loadBag()
         } else this.inlineTip = { bid, text: r.msg || '取消失败', type: 'error' }
       })

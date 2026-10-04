@@ -2229,21 +2229,84 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 
 // ============ 任务 ============
 
+// ★ 2026-10-04 性能（用户反馈「/tasks 线上 4s」）：整个 handler 重构为
+//   「一次并行取数 → 纯内存处理」：
+//   · 任务配置/我的任务/周期类型 三条独立查询并行打 RDS（原来串行 3 条）；
+//   · 补建缺失任务由「每条配置一条 COUNT」改为「一次 Pluck + 内存判重」（N 条 → 0~1 条）；
+//   · 周期重置由「每任务 2 条查询」改为「复用已取的配置/类型表」全内存判定；
+//   · 状态型任务的值只按 task_type 算一次（原来同名任务重复算 N 遍）。
+//   配合 3s 玩家级缓存（ezfyPageCacheGet/Set），命中时零 SQL。
 func (h *EzfyHandler) Tasks(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	h.initTasks(uid)
-	h.resetPeriodTasks(uid)
-	today := time.Now().Format("2006-01-02")
+	if it, ok := ezfyPageCacheGet(uid, "tasks"); ok {
+		resp.OK(c, it)
+		return
+	}
 	var cfgs []model.EzfyCfgTask
-	h.DB.Where("status = 1").Order("sort_no ASC").Find(&cfgs)
 	var mine []model.EzfyTask
-	h.DB.Where("user_id = ?", uid).Find(&mine)
+	var types []model.EzfyCfgTaskType
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); h.DB.Where("status = 1").Order("sort_no ASC").Find(&cfgs) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Find(&mine) }()
+	go func() { defer wg.Done(); h.DB.Order("sort_no ASC").Find(&types) }()
+	wg.Wait()
+	today := time.Now().Format("2006-01-02")
+	// 我的任务表（内存版）：补建缺失任务时同步写回，保证当次请求就能看到（与原 initTasks 行为一致）
 	myMap := map[int]model.EzfyTask{}
 	for _, t := range mine {
 		myMap[t.CfgId] = t
 	}
-	// 状态型任务同步
+	// 周期类型表（周期重置用，复用上面已取的数据）
+	typeMap := map[int]*model.EzfyCfgTaskType{}
+	for i := range types {
+		tp := &types[i]
+		typeMap[tp.ID] = tp
+	}
+	cfgMap := map[int]*model.EzfyCfgTask{}
+	for i := range cfgs {
+		cfgMap[cfgs[i].ID] = &cfgs[i]
+	}
+	// 周期重置（原 resetPeriodTasks）：只对「周期已切换」的任务写库
+	now := time.Now()
+	for cfgID, t := range myMap {
+		if t.ID == 0 { // 刚补建的，不可能跨周期，跳过重置
+			continue
+		}
+		cfg, ok := cfgMap[cfgID]
+		if !ok || cfg.TypeId <= 0 {
+			continue
+		}
+		tp, ok := typeMap[cfg.TypeId]
+		if !ok {
+			continue
+		}
+		key := ezfyPeriodKey(tp.ResetType, now)
+		if key == "" || t.TaskDate == key {
+			continue
+		}
+		updates := map[string]interface{}{"task_date": key}
+		if t.Current > 0 {
+			updates["current"] = 0
+			updates["status"] = 0
+			t.Current, t.Status = 0, 0
+		}
+		t.TaskDate = key
+		myMap[cfgID] = t
+		h.DB.Model(&model.EzfyTask{}).Where("id = ?", t.ID).Updates(updates)
+	}
+	// 补建缺失任务（原 initTasks）——放在周期重置之后，与旧顺序一致
+	for _, cfg := range cfgs {
+		if _, ok := myMap[cfg.ID]; ok {
+			continue
+		}
+		t := model.EzfyTask{UserId: uid, CfgId: cfg.ID, Current: 0, Status: 0, TaskDate: today}
+		h.DB.Create(&t)
+		myMap[cfg.ID] = t
+	}
+	// 状态型任务同步（原 calcStateValue 每任务查库，现按 task_type 去重只算一次）
+	stateCache := map[string]int{}
 	for _, cfg := range cfgs {
 		if !ezfyStateTaskTypes[cfg.TaskType] {
 			continue
@@ -2252,7 +2315,11 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 		if !ok || t.Status == 2 {
 			continue
 		}
-		cur := h.calcStateValue(uid, cfg.TaskType)
+		cur, ok := stateCache[cfg.TaskType]
+		if !ok {
+			cur = h.calcStateValue(uid, cfg.TaskType)
+			stateCache[cfg.TaskType] = cur
+		}
 		if cur != t.Current {
 			setCur := cur
 			if setCur > cfg.Target {
@@ -2267,12 +2334,6 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 		}
 	}
 	// 分组
-	var types []model.EzfyCfgTaskType
-	h.DB.Order("sort_no ASC").Find(&types)
-	typeMap := map[int]model.EzfyCfgTaskType{}
-	for _, tp := range types {
-		typeMap[tp.ID] = tp
-	}
 	groups := []gin.H{}
 	byType := map[int][]gin.H{}
 	order := []int{}
@@ -2300,9 +2361,19 @@ func (h *EzfyHandler) Tasks(c *gin.Context) {
 		}
 		groups = append(groups, gin.H{"id": tp.ID, "name": tp.Name, "reset_type": tp.ResetType, "tasks": byType[typeId]})
 	}
-	_ = today
-	// ★ 为爱发电卡：未发放时 love_cards 为空数组（前端不显示该 tab）
-	resp.OK(c, gin.H{"groups": groups, "love_cards": h.loveCardsView(uid), "love_total_claimable": h.loveCardTotalClaimable(uid)})
+	// ★ 为爱发电卡：未发放时 love_cards 为空数组（前端不显示该 tab）。
+	//   一次查库复用（原 loveCardsView + loveCardTotalClaimable 各查一次）。
+	loveCards := h.loveCards(uid)
+	loveViews := make([]gin.H, 0, len(loveCards))
+	loveTotal := 0
+	nowMS := time.Now().UnixMilli()
+	for i := range loveCards {
+		loveViews = append(loveViews, loveCardView(&loveCards[i]))
+		loveTotal += loveCardClaimable(&loveCards[i], nowMS)
+	}
+	data := gin.H{"groups": groups, "love_cards": loveViews, "love_total_claimable": loveTotal}
+	ezfyPageCacheSet(uid, "tasks", data)
+	resp.OK(c, data)
 }
 
 func (h *EzfyHandler) TaskAward(c *gin.Context) {
@@ -2315,6 +2386,7 @@ func (h *EzfyHandler) TaskAward(c *gin.Context) {
 		return
 	}
 	h.cfgs()
+	ezfyPageCacheDel(uid) // 任务状态变了，3s 内不再返回旧列表
 	h.done(c, h.taskAward(uid, req.TaskId), "奖励已领取")
 }
 
