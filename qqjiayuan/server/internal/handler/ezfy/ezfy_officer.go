@@ -1972,6 +1972,10 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	}
 	// 参谋部有空位才收得下战俘
 	room := h.buildingLevel(atkCity.ID, ezfyBuildingStaff) - h.officerCount(atkCity.ID)
+	// ★ 2026-10-04 用户规则「玩家抢玩家也要卡控名将数量」：
+	//   系统发放不再卡控 1 个（可重复），但 PvP 抢将仍要卡控 —— 攻击方**已经拥有**该名将时，
+	//   对方将领不会叛逃成俘（忠诚照扣但不归零拉走），避免同名名将靠抢无限堆积。
+	ownedGen := h.ownedGeneralIds(atkUid)
 
 	var defected []model.EzfyOfficer
 	var stayed []string
@@ -1987,6 +1991,15 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 		}
 		drop := 10 + rand.Intn(11) // 每次被攻打 忠诚 -10~-20
 		loyalty := o.Loyalty - drop
+		if o.GeneralId > 0 && ownedGen[o.GeneralId] {
+			// 攻击方已拥有同名将 → 卡控：不叛逃成俘，忠诚扣到最低 1 点
+			if loyalty <= 0 {
+				loyalty = 1
+			}
+			h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("loyalty", loyalty)
+			stayed = append(stayed, o.Name+"("+strconv.Itoa(loyalty)+", 你已拥有同名将)")
+			continue
+		}
 		if loyalty <= 0 {
 			defected = append(defected, *o)
 			continue
@@ -2067,8 +2080,23 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 			em, el, ee := h.officerEffective(o)
 			sm, sl, se, activeSets := h.officerSetBonus(o)
 			bm, bl, be := officerBaseAttr(o)
+			// ★ 2026-10-04 名将标识 + 原名（玩家改名后仍认得出来）
+			isGen := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
+			genName, genDes := "", ""
+			genStar, genLevel := 0, 0
+			if isGen {
+				if g := ezfyCfg.general(o.GeneralId); g != nil {
+					genName, genDes, genStar, genLevel = g.Name, g.Des, g.Star, g.Level
+				}
+			}
 			out = append(out, gin.H{
 				"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
+				// ★ 2026-10-04 名将标识（原名 + 二战功勋背景）
+				"is_general":    isGen,
+				"general_name":  genName,
+				"general_des":   genDes,
+				"general_star":  genStar,
+				"general_level": genLevel,
 				"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
 				// ★ 含装备/套装加成的有效属性（前端展示「基础(+装备)」）
 				"military_total": em, "logistics_total": el, "learning_total": ee,
@@ -2262,9 +2290,24 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	}
 	// ★ 2026-10-04 升星卡/改名卡/技能书 一次查询（原来 3 条 itemCount SQL）
 	cnts := h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID)
+	// ★ 2026-10-04 名将标识 + 二战功勋背景（玩家改名后仍能认出原名与身份）
+	isGen := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
+	genName, genDes := "", ""
+	genStar, genLevel := 0, 0
+	if isGen {
+		if g := ezfyCfg.general(o.GeneralId); g != nil {
+			genName, genDes, genStar, genLevel = g.Name, g.Des, g.Star, g.Level
+		}
+	}
 	resp.OK(c, gin.H{
 		"officer": gin.H{
 			"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level, "exp": o.Exp,
+			// ★ 2026-10-04 名将标识（原名 + 二战功勋背景，前端据此加「名将背景」tab）
+			"is_general":    isGen,
+			"general_name":  genName,
+			"general_des":   genDes,
+			"general_star":  genStar,
+			"general_level": genLevel,
 			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
 			// ★ 有效属性（基础 + 装备 + 套装），前端展示成「33 (+5) = 38」
 			"military_total": em, "logistics_total": el, "learning_total": ee,

@@ -252,7 +252,11 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	}
 	ttype, _ := strconv.Atoi(c.Query("type"))
 	if ttype != 1 && ttype != 2 && ttype != 3 {
-		if ezfyTerrain(x, y) == 8 {
+		// ★ 2026-10-04 修复「地图显示沿海平原、侦查显示海底深林」：地形判定必须与地图
+		//   （ezfyTerrainEx，含管理端格子覆盖 + 沿海平原派生）同口径。
+		//   原来用 ezfyTerrain(基础散列地形)：被覆盖成沿海平原/岛屿的海洋格，基础地形仍是 8，
+		//   会把 沿海平原(9)/岛屿(7) 误判成「海底森林」。
+		if ezfyTerrainEx(x, y) == ezfyTerrainSea {
 			ttype = 2
 		} else if h.ezfyIsKouCity(x, y) {
 			ttype = 3
@@ -2198,7 +2202,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		cfgType := 1
 		if order.TargetType == 2 {
 			cfgType = 3
-		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+		} else if ezfyTerrainEx(order.TargetX, order.TargetY) == ezfyTerrainSea {
+			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原），避免覆盖成岛屿/沿海平原的
+			//   海洋格被误当「海野」配置
 			cfgType = 2
 		}
 		cfg := ezfyCfg.wildland(cfgType, level)
@@ -2225,10 +2231,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// ★ 用户要求：战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
 		//   原来一律写「野地N级」，看不出打的是什么地形。
-		name := ezfyTerrainName(ezfyTerrain(order.TargetX, order.TargetY))
+		// ★ 2026-10-04 与地图同口径改用 Ex（覆盖表/沿海平原），修复「地图沿海平原、战报平原」不一致
+		name := ezfyTerrainName(ezfyTerrainEx(order.TargetX, order.TargetY))
 		if order.TargetType == 2 {
 			name = "寇城"
-		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+		} else if ezfyTerrainEx(order.TargetX, order.TargetY) == ezfyTerrainSea {
 			name = "海底森林"
 		}
 		targetName = name + strconv.Itoa(level) + "级"
@@ -2243,6 +2250,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   只影响这一处（野地/海野/寇城的战斗战利品），不含驻守采集。
 		rnd = ezfyScaleByWildResMult(rnd)
 		lootFood, lootSteel, lootOil, lootRare, lootGold = rnd, rnd, rnd, rnd, rnd
+		// ★ 2026-10-04 用户规则：掠夺不拿黄金，只有征服才能获得黄金（野地/寇城同样适用）
+		if order.OrderType == 2 {
+			lootGold = 0
+		}
 	case 3:
 		var tc model.EzfyCity
 		if err := h.DB.First(&tc, order.TargetId).Error; err != nil {
@@ -2767,6 +2778,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			var totalLoot int64
 			for i := 0; i < 5; i++ {
 				loot[i] = defRes[i] * int64(lootRate) / 100
+				// ★ 2026-10-04 用户规则：掠夺不拿黄金（只有征服才拿）。
+				//   黄金份额置 0 后再做负重缩放，腾出的负重让给其它四资源。
+				if order.OrderType == 2 && i == 4 {
+					loot[i] = 0
+				}
 				totalLoot += loot[i]
 			}
 			// 仓库保护: 目标仓库等级决定各项资源保护额度, 保护额度内的资源不可掠夺
@@ -2777,7 +2793,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				loot[0], loot[1], loot[2], loot[3] = prot[0], prot[1], prot[2], prot[3]
 				wareNote = note
 			}
-			if totalLoot > carry && carry > 0 {
+			// ★ 2026-10-04 负重上限加固：部队全灭(负重 0)时战利品一根也带不回去。
+			//   原来 `totalLoot > carry && carry > 0` 在 carry==0 时直接跳过缩放 → 全灭白拿全仓。
+			if carry <= 0 {
+				loot[0], loot[1], loot[2], loot[3], loot[4] = 0, 0, 0, 0, 0
+			} else if totalLoot > carry {
 				scale := float64(carry) / float64(totalLoot)
 				for i := 0; i < 5; i++ {
 					loot[i] = int64(float64(loot[i]) * scale)
@@ -2819,7 +2839,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				return
 			}
 			wildType := 1
-			if order.TargetType == 2 || ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原）
+			if order.TargetType == 2 || ezfyTerrainEx(order.TargetX, order.TargetY) == ezfyTerrainSea {
 				wildType = 2
 			}
 			wl := model.EzfyWildland{CityId: int64(city.ID), X: order.TargetX, Y: order.TargetY,
@@ -3423,7 +3444,8 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 			camp = 2
 			cfgType = 3
 			level = ezfyKouLevel(order.TargetX, order.TargetY)
-		} else if ezfyTerrain(order.TargetX, order.TargetY) == 8 {
+		} else if ezfyTerrainEx(order.TargetX, order.TargetY) == ezfyTerrainSea {
+			// ★ 2026-10-04 与地图同口径（Ex 含覆盖表/沿海平原）
 			cfgType = 2
 		}
 		for _, g := range defender {

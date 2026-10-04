@@ -121,7 +121,11 @@
         <hr/>
         <template v-for="o in ezfy.myOfficers">
           <div class="old-line" :key="'of' + o.id">
-            {{ o.name }}({{ o.level }}级)
+            {{ o.name }}
+            <!-- ★ 2026-10-04 名将标识：列表一眼认出名将（含改名后显示原名） -->
+            <span v-if="o.is_general" class="orange">【名将】</span>
+            <span v-if="o.is_general && o.general_name && o.general_name !== o.name" class="gray">(原名 {{ o.general_name }})</span>
+            ({{ o.level }}级)
             <a href="javascript:;" @click="ezfy.openOfficer(o.id)">查看</a><br/>
             状态:{{ o.status_name }}<span v-if="o.position_name !== '无'" class="blue">（{{ o.position_name }}）</span> &nbsp; 评价:{{ o.star }}星<br/>
             后勤/军事/学识/忠诚：<br/>
@@ -511,14 +515,40 @@
       <div class="panel" v-if="ezfy.officerDetail.officer">
         <div class="panel-title">
           {{ ezfy.officerDetail.officer.name }}
+          <!-- ★ 2026-10-04 名将标识：详情页头部徽标 + 改名后显示原名 -->
+          <span v-if="ezfy.officerDetail.officer.is_general" class="orange">【名将】</span>
+          <span v-if="ezfy.officerDetail.officer.is_general && ezfy.officerDetail.officer.general_name &&
+                       ezfy.officerDetail.officer.general_name !== ezfy.officerDetail.officer.name" class="gray">
+            （原名 {{ ezfy.officerDetail.officer.general_name }}）
+          </span>
           <a href="javascript:;" @click="ezfy.doOfficerRename">[改名]</a>
         </div>
 
         <div class="acade-tab">
+          <!-- ★ 2026-10-04 名将背景 tab（仅名将显示）：二战的功勋介绍 -->
+          <a v-if="ezfy.officerDetail.officer.is_general" href="javascript:;"
+             :class="{ on: ezfy.officerDetailTab === 'general' }" @click="ezfy.officerDetailTab = 'general'">名将背景</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'attr' }" @click="ezfy.officerDetailTab = 'attr'">属性</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'skill' }" @click="ezfy.officerDetailTab = 'skill'">技能</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.officerDetailTab = 'equip'">装备</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'bag' }" @click="ezfy.officerDetailTab = 'bag'">装备背包</a>
+        </div>
+
+        <!-- 名将背景 tab -->
+        <div v-if="ezfy.officerDetailTab === 'general' && ezfy.officerDetail.officer.is_general">
+          <div class="old-line">
+            名将：<b>{{ ezfy.officerDetail.officer.general_name || ezfy.officerDetail.officer.name }}</b>
+            <span class="gray" v-if="ezfy.officerDetail.officer.general_name && ezfy.officerDetail.officer.general_name !== ezfy.officerDetail.officer.name">
+              （当前已改名为「{{ ezfy.officerDetail.officer.name }}」）
+            </span>
+          </div>
+          <div class="old-line" v-if="ezfy.officerDetail.officer.general_star || ezfy.officerDetail.officer.general_level">
+            池中星级：{{ ezfy.officerDetail.officer.general_star || '—' }}星 &nbsp; 池中等级：{{ ezfy.officerDetail.officer.general_level || '—' }}级
+          </div>
+          <div class="old-line" v-if="ezfy.officerDetail.officer.general_des">
+            二战功勋：{{ ezfy.officerDetail.officer.general_des }}
+          </div>
+          <div class="old-line gray" v-else>(该名将暂无功勋介绍)</div>
         </div>
 
         <!-- 属性 tab -->
