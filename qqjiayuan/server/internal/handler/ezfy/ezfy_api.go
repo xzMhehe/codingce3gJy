@@ -784,7 +784,14 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 		m := h.getOrCreateCity(uid)
 		city = &m
 	}
-	h.refreshCity(uid, city)
+	// ★ 2026-10-05 性能（用户反馈「/techs?city_id= 4s」）：3s 玩家级缓存（按城），
+	//   研究/加速写操作统一失效；缓存命中零 SQL。
+	cacheKey := fmt.Sprintf("techs:%d", city.ID)
+	if it, ok := ezfyPageCacheGet(uid, cacheKey); ok {
+		resp.OK(c, it)
+		return
+	}
+	h.refreshCityRead(uid, city)
 	// ★ 2026-09-28 多城研究：等级存用户级(全城共用、无主城)；科研中心等级取**当前城**；
 	//   研究中的判断 = 该科技在玩家**任一城市**是否有进行中记录（不同城不能研究同一科技）
 	techMap := h.techMap(city.ID)
@@ -792,24 +799,26 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	cityIds := h.ezfyCityIds(uid)
 	var all []model.EzfyCfgTech
 	h.DB.Order("id ASC").Find(&all)
+	// ★ 2026-10-05 性能：研究中的记录一次 IN 查完并建 tech_id→记录 map，
+	//   原来每个科技 × 每座城一条 First 查询 = N×M 条串行 SQL（双机共 RDS 时就是 4s 的来源）。
+	researchMap := map[int]model.EzfyCityTech{}
+	if len(cityIds) > 0 {
+		var recs []model.EzfyCityTech
+		h.DB.Where("city_id IN ? AND status = 1", cityIds).Find(&recs)
+		for _, r := range recs {
+			if _, ok := researchMap[r.TechId]; !ok {
+				researchMap[r.TechId] = r
+			}
+		}
+	}
 	views := []gin.H{}
 	for _, t := range all {
 		level := techMap[t.ID]
-		researching := false
-		var endTime int64
-		for _, cid := range cityIds {
-			var rec model.EzfyCityTech
-			if err := h.DB.Where("city_id = ? AND tech_id = ? AND status = 1", cid, t.ID).First(&rec).Error; err == nil {
-				researching = true
-				endTime = rec.EndTime
-				break
-			}
-		}
-		if researching {
+		if rec, ok := researchMap[t.ID]; ok {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": t.Effect,
 				"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": true,
-				"end_time": endTime})
+				"end_time": rec.EndTime})
 			continue
 		}
 		next := ezfyCfg.techLevel(t.ID, level+1)
@@ -823,11 +832,14 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 		}
 		views = append(views, view)
 	}
-	resp.OK(c, gin.H{"techs": views, "academy": academy})
+	data := gin.H{"techs": views, "academy": academy}
+	ezfyPageCacheSet(uid, cacheKey, data)
+	resp.OK(c, data)
 }
 
 func (h *EzfyHandler) Research(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 开始研究 → 科技页缓存失效
 	var req struct {
 		CityId int64 `json:"city_id"`
 		TechId int   `json:"tech_id"`
@@ -843,6 +855,7 @@ func (h *EzfyHandler) Research(c *gin.Context) {
 
 func (h *EzfyHandler) SpeedTech(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	ezfyPageCacheDel(uid) // 科技加速 → 科技页缓存失效
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}

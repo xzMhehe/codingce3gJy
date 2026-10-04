@@ -1156,12 +1156,13 @@ export default {
       return Math.max(0, m)
     },
     // 训练确认页预计耗时(复刻 createTroop.html 的「时间」: 单个耗时 × 数量 ÷ 并行工厂数)
+    // ★ 2026-10-05 [全部工厂] 并行数 = 可用军工厂数（等级 ≥ 需求），与后端 trainTroop 口径一致
     trainEstimateText () {
       if (!this.trainSel) return '0秒'
       const n = parseInt(this.trainCount) || 0
       const par = this.trainMode === 'defence'
         ? 1
-        : (this.trainSplit ? Math.max(1, this.factoryFree) : 1)
+        : (this.trainSplit ? Math.max(1, this.eligibleFactories) : 1)
       return this.durText(Math.ceil(this.trainSel.train_time * n / par))
     },
     attackTroops () {
@@ -1190,6 +1191,18 @@ export default {
     },
     factoryTotal () {
       return this.buildings.filter(b => b.building_id === 14).reduce((s, b) => s + b.level, 0)
+    },
+    factories () {
+      return this.buildings.filter(b => b.building_id === 14)
+    },
+    // ★ 2026-10-05 军工厂各座自己的等级（不是合计）：显示如「3/5」
+    factoryLevels () {
+      return this.factories.map(f => f.level).sort((a, b) => a - b).join('/') || '0'
+    },
+    // ★ 2026-10-05 [全部工厂] 平分的分母 = 训练该兵种时可用的军工厂数（等级 ≥ 需求）
+    eligibleFactories () {
+      const need = this.trainSel ? (this.trainSel.need_factory || 0) : 0
+      return this.factories.filter(f => need <= 0 || f.level >= need).length
     },
     factoryFree () {
       return Math.max(1, this.factoryTotal - this.queues.length)
@@ -3437,7 +3450,12 @@ export default {
     },
     // ---- 城市操作 ----
     doConvene () {
-      api.post('/games/ezfy/city/convene', {}).then(r => this.alert(r, '召集完成'))
+      // ★ 2026-10-05 前端 5 秒卡控（与后端 /city/convene 双保险，防连点刷人口）
+      if (Date.now() - (this.lastConveneAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
+      api.post('/games/ezfy/city/convene', {}).then(r => {
+        if (r.code === 0) this.lastConveneAt = Date.now()
+        this.alert(r, '召集完成')
+      })
     },
     // doPlacate 已上移到 /view 加载处（那里有 placate 参数，用于拼确认文案），此处不再重复定义
     doTax () {

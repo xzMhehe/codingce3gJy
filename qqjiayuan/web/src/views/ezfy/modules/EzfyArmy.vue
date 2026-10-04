@@ -2,7 +2,7 @@
   <div>
     <template v-if="ezfy.cur === 'troop'">
         <div class="panel">
-          <div class="panel-title">训练军队(军工厂合计{{ ezfy.factoryTotal }}级, 队列{{ ezfy.queues.length }}/{{ ezfy.factoryTotal }})</div>
+          <div class="panel-title">训练军队(军工厂各座{{ ezfy.factoryLevels }}级, 队列{{ ezfy.queues.length }}/{{ ezfy.factoryTotal }})</div>
           <div class="old-line green" v-if="ezfy.troopsData.train_discount > 0">
             节日活动·造兵打折：资源消耗 -{{ ezfy.troopsData.train_discount }}%（下方为折后价）
           </div>
@@ -307,7 +307,7 @@
         <div class="panel">
           <div class="old-line">
             <a href="javascript:;" @click="ezfy.go('buildm')">军事区</a>
-            -&gt;军营(军工厂)({{ ezfy.factoryTotal }}级)：
+            -&gt;军营(军工厂)(各座{{ ezfy.factoryLevels }}级)：
           </div>
           <div class="old-line">正在训练：</div>
           <div class="old-line" v-for="q in ezfy.queues" :key="'fq' + q.id">
@@ -375,7 +375,7 @@
             </tr>
           </table>
           <div class="old-line">
-            {{ ezfy.troopView.type === 4 ? '围墙' : '军工厂' }}: {{ ezfy.troopView.type === 4 ? ezfy.troopsData.wall_level : ezfy.factoryTotal }}级
+            {{ ezfy.troopView.type === 4 ? '围墙' : '军工厂' }}: {{ ezfy.troopView.type === 4 ? ezfy.troopsData.wall_level : ezfy.factoryLevels }}级
             <template v-if="ezfy.troopView.require"><br/>前提: {{ ezfy.troopView.require }}</template>
           </div>
           <div class="old-line">
@@ -397,7 +397,7 @@
           </div>
           <div class="old-line" v-else>
             <a href="javascript:;" @click="ezfy.go('buildm')">军事区</a>
-            -&gt;军工厂({{ ezfy.factoryTotal }}级)：
+            -&gt;军工厂(各座{{ ezfy.factoryLevels }}级)：
           </div>
           <div class="old-line">{{ ezfy.trainSel.name }}{{ ezfy.trainMode === 'defence' ? '建造' : '训练' }}需求：</div>
           <div class="old-line">
@@ -437,6 +437,7 @@
             <span>操作选项：</span>
             <label><input type="radio" :value="true" v-model="ezfy.trainSplit"/>[全部工厂]</label>
             <label><input type="radio" :value="false" v-model="ezfy.trainSplit"/>[仅此工厂]</label>
+            <span class="gray" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence'">(可用{{ ezfy.eligibleFactories }}座军工厂平分)</span>
           </div>
           <div class="old-line">预计耗时：{{ ezfy.trainEstimateText }}</div>
           <div class="old-line">

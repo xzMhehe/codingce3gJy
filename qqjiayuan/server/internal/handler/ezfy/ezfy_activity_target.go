@@ -541,6 +541,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 				if rate > 0 {
 					if c := h.createCaptiveOfficer(city, g, level, true, rate); c != "" {
 						report += "\n" + c
+						// ★ 2026-10-05 用户规则：名将野地捉到名将后，该坐标变成普通野地
+						//   （活动野地配置失效 + 地图标记清掉；DB 与内存缓存同步，立即生效且持久）
+						h.DB.Model(&model.EzfyActWild{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
+							Update("enabled", 0)
+						h.DB.Model(&model.EzfyMapTile{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
+							Updates(map[string]interface{}{"mark_kind": 0, "mark_level": 0})
+						ezfyActWildDisable(order.TargetX, order.TargetY)
+						ezfyTileMarkClear(order.TargetX, order.TargetY)
 					}
 				}
 			}

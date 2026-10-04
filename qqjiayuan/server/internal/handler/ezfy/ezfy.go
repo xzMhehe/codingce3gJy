@@ -1928,25 +1928,39 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	factoryTotal := h.buildingTotalLevel(city.ID, ezfyFactoryBuildingID)
 	var activeCount int64
 	h.DB.Model(&model.EzfyTrainQueue{}).Where("city_id = ? AND status = 0", city.ID).Count(&activeCount)
-	var queueLimit int
+	// ★ 2026-10-05 军工厂机制（用户规则）：
+	//   每个军工厂最大队列数 = 自己等级；
+	//   训练某兵种时只有「等级 ≥ 需求(need_factory)」的军工厂可用，
+	//   队列上限 = 可用军工厂等级合计（原实现把不满足需求的厂也算进上限，虚高）；
+	//   [全部工厂] 模式 = 把数量平分给全部可用军工厂（各开一队列）→ 预计耗时 = 单个耗时×数量/可用厂数。
+	needFactory := 0
+	if cfg.Type != 4 {
+		needFactory = ezfyNeedFactoryLevel(cfg.Require)
+	}
+	queueLimit := 0
+	eligible := 0
 	if cfg.Type == 4 {
 		queueLimit = maxInt(1, factoryTotal)
 	} else {
-		queueLimit = factoryTotal
+		var factories []model.EzfyCityBuilding
+		h.DB.Where("city_id = ? AND building_id = ? AND status = 0", city.ID, ezfyFactoryBuildingID).Find(&factories)
+		for _, f := range factories {
+			if needFactory <= 0 || f.Level >= needFactory {
+				queueLimit += f.Level
+				eligible++
+			}
+		}
 	}
 	if queueLimit <= 0 {
 		return "请先建造军工厂"
 	}
 	if int(activeCount) >= queueLimit {
-		return fmt.Sprintf("训练队列已满(军工厂等级合计%d个队列)", queueLimit)
+		return fmt.Sprintf("训练队列已满(可用军工厂等级合计%d个队列)", queueLimit)
 	}
 	n := 1
 	if split && cfg.Type != 4 {
-		var factoryCount int64
-		h.DB.Model(&model.EzfyCityBuilding{}).
-			Where("city_id = ? AND building_id = ? AND status = 0", city.ID, ezfyFactoryBuildingID).Count(&factoryCount)
 		free := queueLimit - int(activeCount)
-		n = maxInt(1, minInt(int(factoryCount), free))
+		n = maxInt(1, minInt(eligible, free))
 	}
 	city.Food -= food
 	city.Steel -= steel
@@ -3307,6 +3321,12 @@ var (
 	ezfySpeedTrainMemo = map[uint]int64{}
 )
 
+// ★ 2026-10-05 人口召集 5 秒卡控（用户要求，与训练一键加速一致）
+var (
+	ezfyConveneMu   sync.Mutex
+	ezfyConveneMemo = map[uint]int64{}
+)
+
 func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) {
 	ezfyPageCacheMu.Lock()
 	defer ezfyPageCacheMu.Unlock()
@@ -3804,6 +3824,21 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
+	// ★ 2026-10-05 5 秒卡控（用户要求，防连点刷人口）
+	{
+		nowCd := time.Now().UnixMilli()
+		ezfyConveneMu.Lock()
+		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < 5000 {
+			ezfyConveneMu.Unlock()
+			resp.ParamError(c, "操作过于频繁, 请 5 秒后再试")
+			return
+		}
+		if len(ezfyConveneMemo) > 16384 {
+			ezfyConveneMemo = map[uint]int64{}
+		}
+		ezfyConveneMemo[uid] = nowCd
+		ezfyConveneMu.Unlock()
+	}
 	var req struct {
 		CityId int64 `json:"city_id"`
 	}
