@@ -481,6 +481,9 @@ var ezfyResNames = map[int]string{1: "粮食", 2: "钢铁", 3: "石油", 4: "稀
 const (
 	ezfyMoneyGold    = 1 // 黄金（玩家挂单只能用它）
 	ezfyMoneyDiamond = 2 // 钻石（只有系统挂单能用）
+	// ★ 2026-10-04 交易所建筑 ID（seed: {ID:11, Name:"交易所", MaxLevel:10}）。
+	//   玩家挂单上限 = 交易所等级 × 2（见 ExchangeSell / ExchangeList）。
+	ezfyBuildingExchange = 11
 )
 
 func ezfyMoneyName(cur int) string {
@@ -554,9 +557,12 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 			"currency": e.Currency, "currency_name": ezfyMoneyName(e.Currency)})
 	}
 	city := h.getOrCreateCity(uid)
+	// ★ 2026-10-04 玩家挂单上限 = 交易所等级×2（与 ExchangeSell 卡控同口径，前端展示用）
+	sellMax := h.buildingLevel(city.ID, ezfyBuildingExchange) * 2
 	resp.OK(c, gin.H{"orders": views, "total": total, "page": page, "size": size,
 		"mine": mineViews, "mtotal": mtotal, "mpage": mpage, "msize": msize,
-		"gold":    city.Gold,
+		"sell_max": sellMax,
+		"gold":     city.Gold,
 		"diamond": h.ensureProfile(uid).Diamond,
 		// ★ 2026-09-30 向系统出售资源：下发回收比例 / 手续费 / 黄金上限，供前端展示与判断
 		"sys_sell_ratio": ezfySysSellRatioMap(),
@@ -599,6 +605,21 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 	}
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
+	// ★ 2026-10-04 用户要求：玩家挂单上限 = 交易所等级 × 2（存量挂单不动，新挂单卡控）。
+	//   必须在扣资源**之前**校验，否则被拒的挂单会白扣一次资源。
+	exchangeLv := h.buildingLevel(city.ID, ezfyBuildingExchange)
+	orderLimit := exchangeLv * 2
+	if orderLimit <= 0 {
+		resp.ParamError(c, "需要先建造「交易所」才能挂单出售")
+		return
+	}
+	var active int64
+	h.DB.Model(&model.EzfyExchange{}).Where("seller_id = ? AND status = 0", uid).Count(&active)
+	if active >= int64(orderLimit) {
+		resp.ParamError(c, fmt.Sprintf("挂单已达上限：交易所%d级 → 最多%d单（当前%d单）。请升级交易所，或等现有挂单成交/下架后再挂",
+			exchangeLv, orderLimit, active))
+		return
+	}
 	var stock int64
 	switch req.EsType {
 	case 1:

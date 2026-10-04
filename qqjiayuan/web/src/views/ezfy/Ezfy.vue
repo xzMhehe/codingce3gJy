@@ -702,6 +702,8 @@ export default {
       // ★ 交易行双分页：卖家挂单(exchangePage/exchangeSize/exchangeTotal)、我的挂单(exchangeMPage/...)
       exchangePage: 1, exchangeSize: 10, exchangeTotal: 0,
       exchangeMPage: 1, exchangeMSize: 10, exchangeMTotal: 0,
+      // ★ 2026-10-04 交易行挂单上限（后端 ExchangeList 下发 sell_max = 交易所等级×2）
+      exchangeSellMax: 0,
       exFilter: 0, // ★ 2026-09-24 卖家挂单资源类别检索(0=全部 1粮食 2钢铁 3石油 4稀矿)
       acadeTab: 'officer',
       // ★ 2026-10-04 军官模块 6 个 tab 的数据缓存（进页预取 + 切换秒开）。
@@ -2943,6 +2945,8 @@ export default {
           this.exchangeMPage = r.data.mpage || 1
           this.exchangeMSize = r.data.msize || 10
           this.exchangeGold = r.data.gold
+          // ★ 2026-10-04 玩家挂单上限（交易所等级×2，ExchangeSell 同口径卡控）
+          if (r.data.sell_max != null) this.exchangeSellMax = r.data.sell_max
           // ★ 2026-09-30 向系统出售资源：读回回收比例 / 手续费 / 黄金上限
           if (r.data.sys_sell_ratio) this.sysSellRatio = r.data.sys_sell_ratio
           if (r.data.sys_sell_fee) this.sysSellFee = r.data.sys_sell_fee

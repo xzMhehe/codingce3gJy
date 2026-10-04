@@ -26,9 +26,11 @@ import (
 //   - 第 2~11 级（上等兵~大尉）直接沿用原版 10 档的**增量需求**数值；
 //   - 第 12 级起（少校~五星上将）在原版最高档（4 种×40）之上逐级加码，
 //     逐步把 9 种珠宝全部引入，直到五星上将九种各要 100。
+// ★ 2026-10-04 用户要求：上等兵(2)、下士(3) 晋升**不再需要珠宝**（声望达标即可）。
+//   内置默认同步置空；DB 里已回填的旧值由 ezfyMigrateRankNoJewel 一次性清成 []。
 var ezfyRankTreasures = map[int][]ezfyRankTreasure{
-	2:  {{Name: "蓝宝石戒指", Count: 10}, {Name: "红宝石戒指", Count: 5}},
-	3:  {{Name: "红宝石戒指", Count: 15}, {Name: "祖母绿", Count: 10}},
+	2:  {}, // 上等兵：无需珠宝
+	3:  {}, // 下士：无需珠宝
 	4:  {{Name: "黑曜石戒指", Count: 30}, {Name: "琥珀项链", Count: 20}},
 	5:  {{Name: "铂金戒指", Count: 30}, {Name: "黄金手镯", Count: 20}},
 	6:  {{Name: "玛瑙项坠", Count: 30}, {Name: "翡翠项链", Count: 30}},
@@ -131,6 +133,22 @@ func ezfyMigrateRankInit(db *gorm.DB) {
 	}
 	if backfill > 0 {
 		log.Printf("ezfy 军衔迁移: %d 档军衔宝物需求已落表", backfill)
+	}
+}
+
+// ezfyRankNoJewelOnce 一次性迁移（幂等，进程内只跑一次）：
+// ★ 2026-10-04 用户要求「上等兵、下士 无需珠宝」—— 早期 ezfyMigrateRankInit 已把
+//   内置默认（含 2/3 级珠宝需求）回填进 ezfy_cfg_rank.treasures，若只改内置默认，
+//   DB 里的旧值仍会优先（ezfyRankTreasureReqs 数据库优先）。这里把 2/3 级显式清成 []，
+//   管理端「军衔配置」页可见「[] = 无需宝物」。
+var ezfyRankNoJewelOnce sync.Once
+
+func ezfyMigrateRankNoJewel(db *gorm.DB) {
+	res := db.Model(&model.EzfyCfgRank{}).
+		Where("id IN (2,3) AND treasures IS NOT NULL AND treasures != '' AND treasures != '[]'").
+		Update("treasures", "[]")
+	if res.Error == nil && res.RowsAffected > 0 {
+		log.Printf("ezfy 军衔迁移: 上等兵/下士宝物需求已清空(%d 行)", res.RowsAffected)
 	}
 }
 
