@@ -3259,61 +3259,22 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 
 // ★ 2026-10-03 /view 玩家级短 TTL 缓存。
 //
-// /view 是首页 30s 轮询 + 进入游戏即时加载的目标接口，单次完整计算要跑懒结算 + 十几条
-// 读查询（跨 WAN RDS 可达数百毫秒~秒级）。这里用 3 秒 TTL 兜底：轮询/加载的绝大多数请求
-// 直接命中缓存返回（零 SQL），未命中才跑完整链路。TTL 很短，写操作后的刷新最多滞后 3 秒。
-// ⚠️ 响应只包含该玩家自身数据，按 uid 键控，不存在跨玩家串数据问题。
+// ★★ 2026-10-05 用户要求：目前两台机器、以后可能多台，进程内缓存会互相 miss、且每台机器的
+//   写操作只清了自己那台的缓存 → 跨机数据不一致。**三套缓存全部改为空操作**（Get 永远 miss、
+//   Set/Del 直通，保留签名让所有调用点照常编译），展示接口直查 DB，靠 SQL/索引/两波并行/
+//   页面懒加载把延迟压在目标内。TTL 常量仅供其它进程内 memo（行军结算快速路径）复用。
 const ezfyViewCacheTTLMs = 3000
 
-var (
-	ezfyViewCacheMu sync.Mutex
-	ezfyViewCache   = map[uint]ezfyViewCacheItem{}
-)
+func ezfyViewCacheGet(uid uint) (gin.H, bool) { return nil, false }
 
-type ezfyViewCacheItem struct {
-	data gin.H
-	at   int64
-}
+func ezfyViewCacheSet(uid uint, data gin.H) {}
 
-func ezfyViewCacheGet(uid uint) (gin.H, bool) {
-	ezfyViewCacheMu.Lock()
-	defer ezfyViewCacheMu.Unlock()
-	it, ok := ezfyViewCache[uid]
-	if !ok || time.Now().UnixMilli()-it.at > ezfyViewCacheTTLMs {
-		delete(ezfyViewCache, uid)
-		return nil, false
-	}
-	return it.data, true
-}
-
-func ezfyViewCacheSet(uid uint, data gin.H) {
-	ezfyViewCacheMu.Lock()
-	defer ezfyViewCacheMu.Unlock()
-	// 防极端在线人数导致的无限增长：超上限直接整体清空（重算成本可接受）
-	if len(ezfyViewCache) > 16384 {
-		ezfyViewCache = map[uint]ezfyViewCacheItem{}
-	}
-	ezfyViewCache[uid] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
-}
-
-// ezfyViewCacheDel 清除某玩家的 /view 缓存。
-// ★ 2026-10-04 切城/弃城等「当前城市变化」的操作必须调它，否则 3s TTL 内 /view
-//   会继续返回旧城数据 —— 正是「切城后资源栏延迟 3 秒才刷新」的根因。
-func ezfyViewCacheDel(uid uint) {
-	ezfyViewCacheMu.Lock()
-	defer ezfyViewCacheMu.Unlock()
-	delete(ezfyViewCache, uid)
-}
+// ezfyViewCacheDel 缓存已禁用（空操作）。
+func ezfyViewCacheDel(uid uint) {}
 
 // ★ 2026-10-04 二战 5 个展示接口（军官 /officers、军校 /acade/recruit、技能 /officers/skills、
-//   装备 /officers/equipments、任务 /tasks）的 3s TTL 玩家级缓存。
-//   纯展示页缓存命中零 SQL，把线上 2s~4s 压到毫秒级；写操作后调 ezfyPageCacheDel(uid)
-//   一次性清掉该玩家全部页面缓存（3s 内刷新最多滞后 3 秒，可接受）。
-//   key = "{uid}:{页面名}"，同 uid 各页面互不串扰；同一 map 上限 16384 条防膨胀。
-var (
-	ezfyPageCacheMu sync.Mutex
-	ezfyPageCache   = map[string]ezfyViewCacheItem{}
-)
+//   装备 /officers/equipments、任务 /tasks）的 3s TTL 玩家级缓存 —— ★ 2026-10-05 已禁用（空操作，
+//   见上注释：多机缓存不一致），调用点保留以兼容编译，写操作后的 Del 也无副作用。
 
 // ★ 2026-10-05 训练一键加速 5 秒卡控（用户要求：前后端都卡，防连点/脚本反复刷黄金结算）
 var (
@@ -3327,72 +3288,19 @@ var (
 	ezfyConveneMemo = map[uint]int64{}
 )
 
-func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) {
-	ezfyPageCacheMu.Lock()
-	defer ezfyPageCacheMu.Unlock()
-	k := fmt.Sprintf("%d:%s", uid, name)
-	it, ok := ezfyPageCache[k]
-	if !ok || time.Now().UnixMilli()-it.at > ezfyViewCacheTTLMs {
-		delete(ezfyPageCache, k)
-		return nil, false
-	}
-	return it.data, true
-}
+func ezfyPageCacheGet(uid uint, name string) (gin.H, bool) { return nil, false }
 
-func ezfyPageCacheSet(uid uint, name string, data gin.H) {
-	ezfyPageCacheMu.Lock()
-	defer ezfyPageCacheMu.Unlock()
-	if len(ezfyPageCache) > 16384 {
-		ezfyPageCache = map[string]ezfyViewCacheItem{}
-	}
-	ezfyPageCache[fmt.Sprintf("%d:%s", uid, name)] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
-}
+func ezfyPageCacheSet(uid uint, name string, data gin.H) {}
 
-// ezfyPageCacheDel 清除某玩家的全部页面缓存（军官/军校/技能/装备/任务）。
-// 军官/军校相关的写操作在入口统一调用，保证刷新后的展示接口不返回旧数据。
-func ezfyPageCacheDel(uid uint) {
-	ezfyPageCacheMu.Lock()
-	defer ezfyPageCacheMu.Unlock()
-	prefix := fmt.Sprintf("%d:", uid)
-	for k := range ezfyPageCache {
-		if strings.HasPrefix(k, prefix) {
-			delete(ezfyPageCache, k)
-		}
-	}
-}
+// ezfyPageCacheDel 缓存已禁用（空操作）。
+func ezfyPageCacheDel(uid uint) {}
 
-// ★ 2026-10-04 /chest 3s TTL 玩家级缓存（与 /view 同款结构，key 按 uid；开箱后失效）。
-//   宝箱页是展示页，缓存命中零 SQL，把线上 3s 降到 <1s。
-var (
-	ezfyChestCacheMu sync.Mutex
-	ezfyChestCache   = map[uint]ezfyViewCacheItem{}
-)
+// ★ 2026-10-04 /chest 3s TTL 玩家级缓存 —— ★ 2026-10-05 已禁用（空操作，见上方多机不一致注释）。
+func ezfyChestCacheGet(uid uint) (gin.H, bool) { return nil, false }
 
-func ezfyChestCacheGet(uid uint) (gin.H, bool) {
-	ezfyChestCacheMu.Lock()
-	defer ezfyChestCacheMu.Unlock()
-	it, ok := ezfyChestCache[uid]
-	if !ok || time.Now().UnixMilli()-it.at > ezfyViewCacheTTLMs {
-		delete(ezfyChestCache, uid)
-		return nil, false
-	}
-	return it.data, true
-}
+func ezfyChestCacheSet(uid uint, data gin.H) {}
 
-func ezfyChestCacheSet(uid uint, data gin.H) {
-	ezfyChestCacheMu.Lock()
-	defer ezfyChestCacheMu.Unlock()
-	if len(ezfyChestCache) > 16384 {
-		ezfyChestCache = map[uint]ezfyViewCacheItem{}
-	}
-	ezfyChestCache[uid] = ezfyViewCacheItem{data: data, at: time.Now().UnixMilli()}
-}
-
-func ezfyChestCacheDel(uid uint) {
-	ezfyChestCacheMu.Lock()
-	defer ezfyChestCacheMu.Unlock()
-	delete(ezfyChestCache, uid)
-}
+func ezfyChestCacheDel(uid uint) {}
 
 // ezfyViewCurrentCity 从本请求已取到的玩家城市列表里挑当前城市（与 currentCity 同口径）：
 // 优先 profile.current_city_id（须属于该玩家），其次最小 id 城市，都没有则建主城（首登一次性）。

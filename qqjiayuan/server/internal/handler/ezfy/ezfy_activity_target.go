@@ -229,6 +229,28 @@ func ezfyActTargetLabel(actType, level int) string {
 	return ezfyActTargetName(actType) + strconv.Itoa(level) + "级"
 }
 
+// playerOwnsActWildGeneral 该玩家是否已拥有此坐标活动野地的守将（名将野地按玩家判定）。
+//
+// ★ 2026-10-05 用户规则：名将野地对没抓到守将的玩家仍是名将野地；只有**已抓到该守将的玩家**，
+//   该坐标才是普通野地。判定口径 = 该玩家名下任一城市的军官里存在 general_id == 守将ID
+//   （收编后 IsCaptive=0 也算已拥有）。快速路径：非活动野地/没配守将 → 直接 false，零查询。
+func (h *EzfyHandler) playerOwnsActWildGeneral(uid uint, x, y int) bool {
+	aw := ezfyActWildAt(x, y)
+	if aw == nil || aw.Enabled != 1 || aw.OfficerId <= 0 {
+		return false
+	}
+	g := ezfyCfg.general(aw.OfficerId)
+	if g == nil {
+		return false
+	}
+	var n int64
+	h.DB.Model(&model.EzfyOfficer{}).
+		Where("general_id = ? AND city_id IN (?)", g.ID,
+			h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
+		Count(&n)
+	return n > 0
+}
+
 // ============ 活动守军（复刻 buildActivityDefender） ============
 
 // ezfyActivityDefender 活动目标守军
@@ -541,14 +563,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 				if rate > 0 {
 					if c := h.createCaptiveOfficer(city, g, level, true, rate); c != "" {
 						report += "\n" + c
-						// ★ 2026-10-05 用户规则：名将野地捉到名将后，该坐标变成普通野地
-						//   （活动野地配置失效 + 地图标记清掉；DB 与内存缓存同步，立即生效且持久）
-						h.DB.Model(&model.EzfyActWild{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
-							Update("enabled", 0)
-						h.DB.Model(&model.EzfyMapTile{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
-							Updates(map[string]interface{}{"mark_kind": 0, "mark_level": 0})
-						ezfyActWildDisable(order.TargetX, order.TargetY)
-						ezfyTileMarkClear(order.TargetX, order.TargetY)
+						// ★ 2026-10-05 名将野地**按玩家判定**（用户纠正）：只有**已抓到该守将的玩家**
+						//   该坐标才是普通野地；对没抓到的玩家仍是名将野地。所以这里**不再全局禁用**——
+						//   全局禁用会害得其他没抓到的玩家也打不到名将野地。
+						//   已抓到该守将的玩家在 出征结算/地图/详情 处都会按普通野地处理（见
+						//   playerOwnsActWildGeneral / processArrive / MapView / WildlandView）。
 					}
 				}
 			}

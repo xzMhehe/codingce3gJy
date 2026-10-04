@@ -194,7 +194,9 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				}
 				// 活动目标标记: 复刻 mapView.html 的 actWild/actKou/actCity
 				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
-				if act := h.ezfyActTargetType(x, y); act > 0 {
+				// ★ 2026-10-05 名将野地按玩家判定：该玩家已抓到守将 → 该格对其是普通野地，
+				//   不再标活动标记/守将标识（没抓到的玩家照常看到名将野地）。
+				if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
 					actLevel := ezfyMarkLevelAt(x, y)
 					cell["act_type"] = act
 					cell["act_level"] = actLevel
@@ -247,7 +249,8 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	y, _ := strconv.Atoi(c.Query("y"))
 	profile := h.ensureProfile(uid)
 	// 活动目标(活动野地/活动寇城/特殊城市): 守军/奖励/说明走活动配置, 不走普通野地配置表
-	if act := h.ezfyActTargetType(x, y); act > 0 {
+	// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家，该坐标对其是普通野地 → 走下面普通野地详情
+	if act := h.ezfyActTargetType(x, y); act > 0 && !h.playerOwnsActWildGeneral(uid, x, y) {
 		resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
 		return
 	}
@@ -1986,8 +1989,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	// 活动目标(活动野地/活动寇城/特殊城市): 掠夺/征服走独立的活动战斗结算
 	// (打赢只结算资源/黄金/宝物/声望, 不占领、不占附属野地上限)
+	// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，
+	//   跳过活动结算，走下面通用战斗分支（普通野地守军/可占领）。
 	if order.OrderType == 2 || order.OrderType == 3 {
-		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 {
+		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 &&
+			!h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) {
 			h.processActivityBattle(uid, city, order, now, act)
 			return
 		}
@@ -2215,7 +2221,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	switch order.TargetType {
 	case 0, 1, 2:
 		// 活动目标: 侦查时按活动守军回报情报(不走普通野地配置表)
-		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 {
+		// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，
+		//   这里与 processArrive 活动结算路由同口径，跳过活动守军走普通野地配置。
+		if act := h.ezfyActTargetType(order.TargetX, order.TargetY); act > 0 &&
+			!h.playerOwnsActWildGeneral(uid, order.TargetX, order.TargetY) {
 			wildLevel = ezfyActivityLevel(order.TargetX, order.TargetY)
 			defender = ezfyActivityDefender(act, wildLevel, ezfyTerrain(order.TargetX, order.TargetY))
 			targetName = ezfyActTargetLabel(act, wildLevel)

@@ -461,6 +461,40 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 	}
 
+	// ★ 2026-10-05 性能索引（用户反馈 /view /player /troops /officers 等 2s~3s 卡顿，要求
+	//   SQL/索引优化，且**放弃进程内缓存**避免多机不一致）：把高频查询最依赖的「复合索引」补齐。
+	//   全部幂等（HasIndex 探测 + CREATE INDEX），老库重启自动补、新库建表时已带单列索引也不冲突。
+	//   ⚠️ MySQL 8 的 CREATE INDEX（非 IF NOT EXISTS）重复执行会报错 → 一律先 HasIndex 探测。
+	ezfyIdx := []struct {
+		table string
+		name  string
+		sql   string
+	}{
+		// processOrders/军队动态/玩家页行军数：user_id 已有单列 idx_user，补 (user_id,status) 复合
+		{"ezfy_order", "idx_order_user_status", "CREATE INDEX idx_order_user_status ON ezfy_order(user_id, status)"},
+		// 训练队列懒结算 + /troops 队列：WHERE city_id=? AND status=0
+		{"ezfy_train_queue", "idx_trainq_city_status", "CREATE INDEX idx_trainq_city_status ON ezfy_train_queue(city_id, status)"},
+		// /view 科技行预取：WHERE city_id IN (...) AND status=1
+		{"ezfy_city_tech", "idx_citytech_city_status", "CREATE INDEX idx_citytech_city_status ON ezfy_city_tech(city_id, status)"},
+		// /troops 伤兵营：WHERE city_id=? AND type=0
+		{"ezfy_wounded", "idx_wounded_city_type", "CREATE INDEX idx_wounded_city_type ON ezfy_wounded(city_id, type)"},
+		// 名将野地按玩家判定 / 俘虏上限计数：WHERE general_id=? AND city_id IN (...)
+		{"ezfy_officer", "idx_officer_general", "CREATE INDEX idx_officer_general ON ezfy_officer(general_id)"},
+		// itemCount(uid,cfg_id) 背包计数：WHERE user_id=? AND cfg_id=?
+		{"ezfy_item", "idx_item_user_cfg", "CREATE INDEX idx_item_user_cfg ON ezfy_item(user_id, cfg_id)"},
+		// 背包未穿戴列表：WHERE user_id=? AND officer_id=0
+		{"ezfy_equipment", "idx_equip_user_officer", "CREATE INDEX idx_equip_user_officer ON ezfy_equipment(user_id, officer_id)"},
+		// 占领占用计数：WHERE city_id=? AND status=1（ezfy_occupy）
+		{"ezfy_occupy", "idx_occupy_city_status", "CREATE INDEX idx_occupy_city_status ON ezfy_occupy(city_id, status)"},
+	}
+	for _, ix := range ezfyIdx {
+		if db.Migrator().HasTable(ix.table) && !db.Migrator().HasIndex(ix.table, ix.name) {
+			if err := db.Exec(ix.sql).Error; err != nil {
+				log.Printf("[seed] 创建索引 %s 失败: %v", ix.name, err)
+			}
+		}
+	}
+
 	// 二战风云·军团积分（★ 2026-09-25 用户要求「军团积分 + 军团商城」）
 	//   ezfy_corps.points / ezfy_corps_member.points 是 AutoMigrate 新加的列，
 	//   在**老行上是 NULL** —— Go 侧 int64 扫 NULL 会报

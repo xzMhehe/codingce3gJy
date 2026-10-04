@@ -3364,9 +3364,13 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		c := parseCarry(o.Carry)
 		// ★ 活动目标标识：攻击/征服(掠夺)部队目的地在活动格时下发 act_type，
 		//   前端据此在坐标旁加「活动」标示（用户要求「打活动坐标要有标识」）。
+		// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，不标活动
 		actType := 0
 		if o.OrderType == 2 || o.OrderType == 3 {
-			actType = h.ezfyActTargetType(o.TargetX, o.TargetY)
+			if act := h.ezfyActTargetType(o.TargetX, o.TargetY); act > 0 &&
+				!h.playerOwnsActWildGeneral(uid, o.TargetX, o.TargetY) {
+				actType = act
+			}
 		}
 		// ★ 2026-09-28 出发地(军队所属城)：军情 → 驻军/军队动态 顶部显示「起点：城名(城x,城y)」
 		fromName, fromX, fromY := "", 0, 0

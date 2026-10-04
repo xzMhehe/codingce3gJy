@@ -235,28 +235,6 @@ func ezfyActWildAt(x, y int) *model.EzfyActWild {
 	return c.actWilds[ezfyTileKey(x, y)]
 }
 
-// ezfyActWildDisable 把某格活动野地的进程内缓存标记为失效（名将野地捉到名将后变普通野地）。
-// DB 侧 enabled=0 由调用方写；这里只同步内存，立即生效不等 reload。
-func ezfyActWildDisable(x, y int) {
-	c := &ezfyCfg
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if w := c.actWilds[ezfyTileKey(x, y)]; w != nil {
-		w.Enabled = 0
-	}
-}
-
-// ezfyTileMarkClear 清掉某格地图标记（mark_kind/mark_level），配合名将野地被捕获后恢复普通野地。
-func ezfyTileMarkClear(x, y int) {
-	c := &ezfyCfg
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if t, ok := c.tiles[ezfyTileKey(x, y)]; ok {
-		t.MarkKind = 0
-		t.MarkLevel = 0
-	}
-}
-
 // ezfyMarkKindAt 取某格的「标记类型」（0=无 1=寇城 2=活动寇城 3=活动野地 4=特殊城市）
 func ezfyMarkKindAt(x, y int) int {
 	if t := ezfyTileAt(x, y); t != nil {

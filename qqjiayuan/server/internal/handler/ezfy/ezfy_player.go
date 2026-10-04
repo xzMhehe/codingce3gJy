@@ -3,6 +3,7 @@ package ezfy
 import (
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -47,58 +48,68 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	}
 
 	// 档案：只读，不存在就按默认值展示（不给别人凭空建档案）
+	// ★ 2026-10-05 性能（用户反馈「/player/:id 2s+」）：原来 ~10 条查询全串行。
+	//   改为两波并行：第一波 档案+城市（1 RTT）→ 第二波 军官/野地/兵力/军团/好友（1 RTT）。
 	var p model.EzfyProfile
-	h.DB.Where("user_id = ?", target).First(&p)
+	var cities []model.EzfyCity
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", target).First(&p) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", target).Find(&cities) }()
+	wg.Wait()
 	nickname := p.Nickname
 	if nickname == "" {
 		nickname = u.Nickname
 	}
-
-	// 城市 / 军官 / 野地
-	var cities []model.EzfyCity
-	h.DB.Where("user_id = ?", target).Find(&cities)
 	cityIds := make([]uint, 0, len(cities))
 	for _, ct := range cities {
 		cityIds = append(cityIds, ct.ID)
 	}
-	var officerCount, wildCount int64
-	if len(cityIds) > 0 {
-		h.DB.Model(&model.EzfyOfficer{}).Where("city_id IN ?", cityIds).Count(&officerCount)
-		h.DB.Model(&model.EzfyWildland{}).Where("city_id IN ?", cityIds).Count(&wildCount)
-	}
-	// ★ 2026-09-23 用户要求：不再跨城累加兵力(总兵力)。
-	//   累加值越大越容易把 int64 撑成负数(线上出过 -8843547888967622000)。
-	//   改为展示玩家**单城最高兵力**（他最有兵的那个城），不跨城累加，无溢出风险。
-	var maxCityTroop int64
-	if len(cityIds) > 0 {
-		h.DB.Raw(`SELECT COALESCE(MAX(tot),0) FROM (
-				SELECT city_id, SUM(count) tot FROM ezfy_city_troop
-				WHERE city_id IN ? GROUP BY city_id) t`, cityIds).Scan(&maxCityTroop)
-	}
-
-	// 军团（★ 2026-09-29 用户要求：他人统帅页也展示军团职务，与我的统帅页一致）
-	corpsName := ""
-	corpsTitle := ""
-	if cp := h.myCorpsOf(target); cp != nil {
-		corpsName = cp.Name
-		var mb model.EzfyCorpsMember
-		if err := h.DB.Where("user_id = ?", target).First(&mb).Error; err == nil {
-			corpsTitle = mb.Title
-		}
-	}
-
-	// 好友关系（复刻 infoOther 的 isShowAdd）
-	// ★ 用「游戏内好友」表判定，与家园好友彻底分开
-	isSelf := target == uid
+	// ★ 2026-10-05 第二波并行（1 RTT）：军官/野地数、单城最高兵力、军团、好友关系
+	var officerCount, wildCount, maxCityTroop int64
+	corpsName, corpsTitle := "", ""
+	isSelf := target == uid // 好友关系判定前置（复刻 infoOther 的 isShowAdd）
 	isFriend, isApplied := false, false
-	if !isSelf {
+	var wg2 sync.WaitGroup
+	wg2.Add(4)
+	go func() { // 军官数 / 野地数（跨城）
+		defer wg2.Done()
+		if len(cityIds) > 0 {
+			h.DB.Model(&model.EzfyOfficer{}).Where("city_id IN ?", cityIds).Count(&officerCount)
+			h.DB.Model(&model.EzfyWildland{}).Where("city_id IN ?", cityIds).Count(&wildCount)
+		}
+	}()
+	go func() { // 单城最高兵力（★ 2026-09-23 不跨城累加，防 int64 溢出）
+		defer wg2.Done()
+		if len(cityIds) > 0 {
+			h.DB.Raw(`SELECT COALESCE(MAX(tot),0) FROM (
+					SELECT city_id, SUM(count) tot FROM ezfy_city_troop
+					WHERE city_id IN ? GROUP BY city_id) t`, cityIds).Scan(&maxCityTroop)
+		}
+	}()
+	go func() { // 军团名 / 军团职务（★ 2026-09-29 他人统帅页也展示军团职务）
+		defer wg2.Done()
+		if cp := h.myCorpsOf(target); cp != nil {
+			corpsName = cp.Name
+			var mb model.EzfyCorpsMember
+			if err := h.DB.Where("user_id = ?", target).First(&mb).Error; err == nil {
+				corpsTitle = mb.Title
+			}
+		}
+	}()
+	go func() { // 好友关系（游戏内好友表，与家园好友分开）
+		defer wg2.Done()
+		if isSelf {
+			return
+		}
 		var n int64
 		h.DB.Model(&model.EzfyFriend{}).Where("user_id = ? AND friend_id = ?", uid, target).Count(&n)
 		isFriend = n > 0
 		h.DB.Model(&model.EzfyFriendApply{}).
 			Where("user_id = ? AND target_id = ? AND status = 0", uid, target).Count(&n)
 		isApplied = n > 0
-	}
+	}()
+	wg2.Wait()
 
 	resp.OK(c, gin.H{
 		"user_id": target, "account": u.Username,
