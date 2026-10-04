@@ -2123,8 +2123,11 @@ export default {
       this.cityIsSea = !!d.is_sea
       this.protectedUntil = d.protected
       this.boostUntil = d.boost
-      this.buildings = d.buildings || []
-      this.buildingPool = d.building_pool || []
+      // ★ 2026-10-04 修复「一键加速后建筑没了」：/view 已不再下发 buildings，
+      //   这里若无条件赋空数组，会把页面已懒加载好的建筑列表整个清空。
+      //   改为「下发才覆盖、不下发保留」，建筑列表只由 /buildings 管理。
+      if (d.buildings !== undefined) this.buildings = d.buildings || []
+      if (d.building_pool !== undefined) this.buildingPool = d.building_pool || []
       this.militaryCap = d.military_cap || 33
       this.resourceCap = d.resource_cap || 33
       // ★ 2026-09-26 两个开关：后端未下发（老版本）时按「开」处理，与后端默认一致
@@ -2137,8 +2140,9 @@ export default {
       this.convenePopGain = Number(d.convene_pop_gain) || 100000
       // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
       this.convenePopMax = Number(d.convene_pop_max) || 0
-      this.wildlands = d.wildlands || []
-      this.queues = d.queues || []
+      // ★ 2026-10-04 同上：/view 不再下发 wildlands/queues，下发才覆盖、不下发保留
+      if (d.wildlands !== undefined) this.wildlands = d.wildlands || []
+      if (d.queues !== undefined) this.queues = d.queues || []
       this.marching = d.marching
       this.occupying = d.occupying
       this.unreadReports = d.unread_reports
@@ -3253,6 +3257,7 @@ export default {
           if (r.code === 0) {
             this.notify(r.msg)
             this.load()
+            this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）
           } else this.notify(r.msg)
         })
       )
@@ -3264,6 +3269,7 @@ export default {
           if (r.code === 0) {
             this.notify(r.msg)
             this.load()
+            this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）
           } else this.notify(r.msg)
         })
       )

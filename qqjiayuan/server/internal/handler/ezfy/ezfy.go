@@ -3387,6 +3387,23 @@ func (h *EzfyHandler) ezfyViewCurrentCity(p model.EzfyProfile, cities []model.Ez
 	return h.createMainCity(p.UserID)
 }
 
+// ezfyPageCity 展示接口统一取「档案 + 当前城 + 城市列表」：两波并行（第一波 1 个 RTT）。
+//
+// ★ 2026-10-04 性能（用户反馈军官/装备/野地等接口 cache 未命中仍 3s+）：
+//   原来 getOrCreateCity 串行查 profile → city（2 RTT），再跑 refreshCityRead 的
+//   建筑/科技/队列（3~4 RTT）…… miss 路径十几条串行 RTT。这里第一波把
+//   profile + 城市列表**并行**取出（1 RTT），懒结算数据由调用方第二波并行补齐。
+func (h *EzfyHandler) ezfyPageCity(uid uint) (model.EzfyProfile, model.EzfyCity, []model.EzfyCity) {
+	var profile model.EzfyProfile
+	var cities []model.EzfyCity
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); profile = h.ensureProfile(uid) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities) }()
+	wg.Wait()
+	return profile, h.ezfyViewCurrentCity(profile, cities), cities
+}
+
 // cityIdsOf 取城市 id 列表（懒结算 checkTechDone 复用，避免重复 ezfyCityIds 查询）。
 func cityIdsOf(cities []model.EzfyCity) []uint {
 	ids := make([]uint, 0, len(cities))

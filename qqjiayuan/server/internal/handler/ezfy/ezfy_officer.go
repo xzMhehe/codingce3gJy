@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -2049,6 +2050,10 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 // ============ HTTP 接口 ============
 
 // Officers GET /games/ezfy/officers —— 军官列表 + 军校/参谋部等级
+//
+// ★ 2026-10-04 性能（用户反馈「/officers cache 未命中仍 3s+」）：miss 路径改两波并行。
+//   第一波 档案+城市列表（1 RTT）定当前城；第二波 军官/俘虏/建筑/队列/科技/升星卡 并行（1 RTT）；
+//   懒结算全部复用已取数据（零额外查询），总串行 RTT 从 ~12 降到 ~2。
 func (h *EzfyHandler) Officers(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -2057,20 +2062,40 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算的 3~4 条 RDS 往返），
-	//   订单事件仍由 /view 轮询与操作接口推进，滞后最长 3 秒（缓存 TTL 兜底）。
-	h.refreshCityRead(uid, &city)
-	list := h.officerList(city.ID)
-	// ★ 2026-09-29 战俘营跨城汇总：俘虏可能落在任一座城（从哪发兵落哪城），
+	_, city, cities := h.ezfyPageCity(uid)
+	// 城市 id 列表（俘虏跨城汇总 + 懒结算 checkTechDone 复用）
+	myCityIDs := make([]int64, 0, len(cities))
+	for _, c := range cities {
+		myCityIDs = append(myCityIDs, int64(c.ID))
+	}
+	var (
+		list        []model.EzfyOfficer
+		capList     []model.EzfyOfficer
+		buildings   []model.EzfyCityBuilding
+		trainQueues []model.EzfyTrainQueue
+		starCard    int
+	)
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { defer wg.Done(); list = h.officerList(city.ID) }()
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	go func() { defer wg.Done(); starCard = h.itemCount(uid, ezfyStarItemID) }()
+	go func() { // 俘虏可能落在任一座城 → 玩家名下所有城市汇总
+		defer wg.Done()
+		if len(myCityIDs) > 0 {
+			h.DB.Where("city_id IN ? AND is_captive = 1", myCityIDs).Order("id DESC").Find(&capList)
+		}
+	}()
+	wg.Wait()
+	// 懒结算复用已取数据（建筑/城市ID/训练队列/军官全在手上，零额外查询）
+	h.checkBuildingDone(&city, buildings)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, trainQueues)
+	h.calcResource(&city, list)
+	// ★ 2026-09-29 战俘营跨城汇总说明：俘虏可能落在任一座城（从哪发兵落哪城），
 	//   而战俘营只看当前城 → 多城玩家「战报显示俘虏了，战俘营却看不到」。
 	//   故额外返回玩家**名下所有城市**的俘虏，前端战俘营直接用这个跨城列表。
-	var capList []model.EzfyOfficer
-	var myCityIDs []int64
-	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &myCityIDs)
-	if len(myCityIDs) > 0 {
-		h.DB.Where("city_id IN ? AND is_captive = 1", myCityIDs).Order("id DESC").Find(&capList)
-	}
 	// 把一批军官构造成展示视图（当前城军官 + 跨城俘虏共用同一套字段）
 	build := func(rows []model.EzfyOfficer) []gin.H {
 		out := []gin.H{}
@@ -2128,8 +2153,8 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	}
 	views := build(list)
 	capViews := build(capList)
-	// ★ 2026-10-04 性能：军校/参谋部等级一次查全建筑列表、内存取值（原 buildingLevel ×3 各查一遍全表）
-	blv := buildingLevelsOf(h.buildingList(city.ID))
+	// ★ 2026-10-04 性能：军校/参谋部等级用第二波已取建筑列表内存取值（零额外查询）
+	blv := buildingLevelsOf(buildings)
 	data := gin.H{
 		"officers":      views,
 		"captives":      capViews, // ★ 跨城俘虏汇总（战俘营用）
@@ -2149,7 +2174,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		// ★ 升星配置（前端据此显示星级上限/成功率/每星加点）
 		"star_up_on": ezfyStarUpOn(), "star_rate": ezfyStarSuccessRate(),
 		"star_max": ezfyStarMax(), "star_attr_gain": ezfyStarAttrGain(),
-		"star_card": h.itemCount(uid, ezfyStarItemID),
+		"star_card": starCard, // ★ 2026-10-04 第二波已并行查好
 	}
 	ezfyPageCacheSet(uid, "officers", data)
 	resp.OK(c, data)
@@ -2177,19 +2202,23 @@ func ezfyOfficerStatusName(o *model.EzfyOfficer) string {
 }
 
 // OfficerDetail GET /games/ezfy/officers/:id —— 军官详情（技能/装备/可学技能/背包装备）
+//
+// ★ 2026-10-04 性能（用户反馈「/officers/:id 3s+」）：miss 路径改两波并行，
+//   背包/本城军官/物品数/建筑/训练队列 第二波一次打齐，懒结算零额外查询。
 func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
+	_, city, cities := h.ezfyPageCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	o := h.officerOf(city.ID, id)
 	if o == nil {
 		// ★ 2026-10-01 修复「点击军官有时候空白」：军官在玩家**其他城市**
 		//   （派遣/增援订单结算后随军调任）时，提示准确原因，别让前端摸黑。
 		var any model.EzfyOfficer
-		var myCityIDs []int64
-		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &myCityIDs)
+		myCityIDs := make([]int64, 0, len(cities))
+		for _, c := range cities {
+			myCityIDs = append(myCityIDs, int64(c.ID))
+		}
 		if len(myCityIDs) > 0 && h.DB.Where("id = ? AND city_id IN ?", id, myCityIDs).First(&any).Error == nil {
 			resp.ParamError(c, "该军官已调往其他城市, 请到对应城市查看")
 			return
@@ -2197,6 +2226,27 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		resp.ParamError(c, "武将不存在")
 		return
 	}
+	// 第二波并行：背包装备 / 本城军官 / 物品持有数 / 建筑 / 训练队列
+	var (
+		items        []model.EzfyEquipment
+		cityOfficers []model.EzfyOfficer
+		cnts         map[int]int
+		buildings    []model.EzfyCityBuilding
+		trainQueues  []model.EzfyTrainQueue
+	)
+	var wg sync.WaitGroup
+	wg.Add(5)
+	go func() { defer wg.Done(); items = h.equipmentList(uid) }()
+	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
+	go func() { defer wg.Done(); cnts = h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID) }()
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	wg.Wait()
+	// 懒结算复用已取数据（零额外查询）
+	h.checkBuildingDone(&city, buildings)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, trainQueues)
+	h.calcResource(&city, cityOfficers)
 	skillViews := []gin.H{}
 	for _, s := range officerSkills(o) {
 		eff := ""
@@ -2221,8 +2271,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	// ★ 2026-10-04 性能（用户反馈「军官详情一直加载中」）：原实现逐件装备调
 	//   equipIsCaptiveWorn（内部 2 次查库）—— 背包几百件装备就是上千次 SQL 往返，
 	//   双机共 RDS 时单次详情能卡到秒级。现在当前城军官只查一次，被俘判定走内存 map。
-	items := h.equipmentList(uid)
-	cityOfficers := h.officerList(city.ID)
+	//   ★ 2026-10-04 items/cityOfficers 已在第二波并行取好，这里直接用。
 	captive := map[int64]bool{}
 	for i := range cityOfficers {
 		if cityOfficers[i].IsCaptive == 1 {
@@ -2290,8 +2339,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"level": setLevel,
 		})
 	}
-	// ★ 2026-10-04 升星卡/改名卡/技能书 一次查询（原来 3 条 itemCount SQL）
-	cnts := h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID)
+	// ★ 2026-10-04 升星卡/改名卡/技能书 已在第二波并行取好（原 3 条 itemCount SQL）
 	// ★ 2026-10-04 名将标识 + 二战功勋背景（玩家改名后仍能认出原名与身份）
 	isGen := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
 	genName, genDes := "", ""
@@ -3419,6 +3467,8 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 //   `officerOf`（1 次库），背包几百件装备就是上千次 SQL 往返（双机共 RDS 时更明显，
 //   装备页因此卡到 1s+）。现在装备只查一次、当前城军官只查一次，被俘穿戴判定/穿戴者
 //   名字全部走内存 map —— 总 SQL 从 O(3N) 降到常数。
+// ★ 2026-10-04 再优化（用户反馈「/equipments 3s+」）：miss 路径改两波并行，
+//   懒结算复用已取数据，总串行 RTT 从 ~10 降到 ~2。
 func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -3427,12 +3477,26 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
-	h.refreshCityRead(uid, &city)
-	items := h.equipmentList(uid)
+	_, city, cities := h.ezfyPageCity(uid)
+	var (
+		items        []model.EzfyEquipment
+		cityOfficers []model.EzfyOfficer
+		buildings    []model.EzfyCityBuilding
+		trainQueues  []model.EzfyTrainQueue
+	)
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() { defer wg.Done(); items = h.equipmentList(uid) }()
 	// 当前城军官一次拉全：①被俘军官身上挂的装备不进背包 ②已穿戴装备显示穿戴者名字
-	cityOfficers := h.officerList(city.ID)
+	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	wg.Wait()
+	// 懒结算复用已取数据（零额外查询）
+	h.checkBuildingDone(&city, buildings)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, trainQueues)
+	h.calcResource(&city, cityOfficers)
 	ofByName := map[int64]*model.EzfyOfficer{}
 	captive := map[int64]bool{}
 	for i := range cityOfficers {

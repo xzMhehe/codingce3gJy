@@ -83,9 +83,19 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
-	list := h.buildingList(city.ID)
+	_, city, cities := h.ezfyPageCity(uid)
+	var list []model.EzfyCityBuilding
+	var qs []model.EzfyTrainQueue
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); list = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
+	wg.Wait()
+	// 懒结算复用已取数据（零额外查询）
+	h.checkBuildingDone(&city, list)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, qs)
+	h.calcResource(&city)
 	// ★ 市政厅等级一次内存取值（原每栋建筑各查一遍建筑列表）
 	hallLevel := 0
 	for _, b := range list {
@@ -347,9 +357,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	profile := h.ensureProfile(uid)
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
+	// ★ 2026-10-04 第一波 档案+城市列表（1 RTT）定当前城，第二波下方并行
+	profile, city, cities := h.ezfyPageCity(uid)
 	camp := profile.Camp
 
 	var (
@@ -369,6 +378,11 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	go func() { defer wg.Done(); popUsed = h.cityPopUsed(city.ID) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	wg.Wait()
+	// 懒结算复用已取数据（零额外查询）
+	h.checkBuildingDone(&city, buildings)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, qs)
+	h.calcResource(&city)
 	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
 	wounded = h.filterExpiredWounded(wounded)
 	deserters = h.filterExpiredWounded(deserters)

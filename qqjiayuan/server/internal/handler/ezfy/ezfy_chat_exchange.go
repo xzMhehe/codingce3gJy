@@ -1043,19 +1043,21 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
-	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：5 条独立查询并行（1 个 RTT）；
+	// ★ 2026-10-04 再优化（用户反馈「wildfull 3s+」）：第一波 档案+城市列表（1 RTT）定当前城，
+	//   第二波 5 条查询 + 建筑列表并行（1 RTT），懒结算复用已取数据 → 串行 RTT 从 ~7 降到 ~2。
+	_, city, cities := h.ezfyPageCity(uid)
+	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：独立查询并行（1 个 RTT）；
 	//   被占城市归属玩家的游戏昵称改为一次 IN 批量查，消除原来「每行 ensureProfile」的 N+1。
 	var (
 		wildlands  []model.EzfyWildland
 		gatherIds  []int64
 		idleOrders []model.EzfyOrder
 		occupies   []model.EzfyOccupy
-		hallLevel  int
+		buildings  []model.EzfyCityBuilding
+		trainQueues []model.EzfyTrainQueue
 	)
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(7)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
 	go func() {
 		defer wg.Done()
@@ -1068,8 +1070,20 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).Find(&idleOrders)
 	}()
 	go func() { defer wg.Done(); h.DB.Where("atk_city_id = ? AND status = 1", city.ID).Find(&occupies) }()
-	go func() { defer wg.Done(); hallLevel = h.buildingLevel(city.ID, 1) }()
+	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
 	wg.Wait()
+	// 懒结算复用已取数据（零额外查询）
+	h.checkBuildingDone(&city, buildings)
+	h.checkTechDone(&city, cityIdsOf(cities))
+	h.collectTrainQueue(&city, trainQueues)
+	h.calcResource(&city)
+	hallLevel := 0
+	for _, b := range buildings {
+		if b.BuildingId == 1 && b.Level > hallLevel {
+			hallLevel = b.Level
+		}
+	}
 
 	// ★ 2026-09-28 修复：附属野地页状态必须与 /view 同一套实时判定（常驻制下野地表 status 恒为 0），
 	//   原来这里直接返回 w.Status + 不传 idle_order_id，导致「明明在采集却显示空闲」、
