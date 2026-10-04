@@ -1098,19 +1098,21 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	//
 	//   ⚡ 资源最大值仍旧下发到资源详情页（getResourceCalc 的 cap 字段）供展示，
 	//   玩家侧的「已满」判定统一走 ezfyAtResMax。
-	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	// ★ 2026-09-26 城市产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	// ★ 2026-10-05 拆成两个：粮/钢/油/稀矿 用 res_prod_mult，黄金用 gold_prod_mult。
 	//   乘在「城市产量 + 野地驻守产出」的**合计**上，即最终入库的那份产出。
 	//   ⚠️ 必须与 `getResourceCalc`（资源详情页展示）同口径，否则「详情页显示 1 万、实际入库 100」。
 	foodProd = ezfyScaleResByProdMult(foodProd)
 	steelProd = ezfyScaleResByProdMult(steelProd)
 	oilProd = ezfyScaleResByProdMult(oilProd)
 	rareProd = ezfyScaleResByProdMult(rareProd)
-	goldProd = ezfyScaleResByProdMult(goldProd)
+	// ★ 2026-10-05 产量倍率拆开：黄金走独立的 gold_prod_mult，不再跟资源共用 res_prod_mult
+	goldProd = ezfyScaleGoldByProdMult(goldProd)
 	wildFood = ezfyScaleResByProdMult(wildFood)
 	wildSteel = ezfyScaleResByProdMult(wildSteel)
 	wildOil = ezfyScaleResByProdMult(wildOil)
 	wildRare = ezfyScaleResByProdMult(wildRare)
-	wildGold = ezfyScaleResByProdMult(wildGold)
+	wildGold = ezfyScaleGoldByProdMult(wildGold)
 	prod := int64(float64(foodProd)*hours) + int64(float64(wildFood)*hours)
 	// ★ 2026-09-30 恢复「资源最大值唯一硬上限」：产量累加同样不得超过 21 亿。
 	//
@@ -1413,7 +1415,8 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 		wildOil = wildOil * mult / 100
 		wildRare = wildRare * mult / 100
 	}
-	// ★ 2026-09-26 城市资源产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	// ★ 2026-09-26 城市产量倍率（管理端「二战系统配置」可调，默认 1，**0 = 产量归零**）。
+	// ★ 2026-10-05 拆成两个：粮/钢/油/稀矿 用 res_prod_mult，黄金用 gold_prod_mult。
 	//   放在所有加成（市长/道具增产/节日活动）**之后**，与 `calcResource` 同口径。
 	//   ⚠️ **`base` 也要一起乘**：倍率是「产量系数」而不是「加成」——
 	//   只乘总产出的话，倍率 < 1 时 `bonus = 总产出 − base` 会变成**负数**
@@ -1423,17 +1426,18 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	steelBaseReal = ezfyScaleResByProdMult(steelBaseReal)
 	oilBaseReal = ezfyScaleResByProdMult(oilBaseReal)
 	rareBaseReal = ezfyScaleResByProdMult(rareBaseReal)
-	goldBaseReal = ezfyScaleResByProdMult(goldBaseReal)
+	goldBaseReal = ezfyScaleGoldByProdMult(goldBaseReal)
 	foodProd = ezfyScaleResByProdMult(foodProd)
 	steelProd = ezfyScaleResByProdMult(steelProd)
 	oilProd = ezfyScaleResByProdMult(oilProd)
 	rareProd = ezfyScaleResByProdMult(rareProd)
-	goldProd = ezfyScaleResByProdMult(goldProd)
+	// ★ 2026-10-05 产量倍率拆开：黄金走独立的 gold_prod_mult，不再跟资源共用 res_prod_mult
+	goldProd = ezfyScaleGoldByProdMult(goldProd)
 	wildFood = ezfyScaleResByProdMult(wildFood)
 	wildSteel = ezfyScaleResByProdMult(wildSteel)
 	wildOil = ezfyScaleResByProdMult(wildOil)
 	wildRare = ezfyScaleResByProdMult(wildRare)
-	wildGold = ezfyScaleResByProdMult(wildGold)
+	wildGold = ezfyScaleGoldByProdMult(wildGold)
 	var troopFood int64
 	// ★ 耗粮开关关掉时这里也要显示 0，否则界面写着「每小时耗粮 N」，实际却不扣
 	if ezfyFoodUpkeepOn() {

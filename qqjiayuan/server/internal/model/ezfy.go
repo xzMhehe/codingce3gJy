@@ -335,6 +335,10 @@ type EzfyCfgLimit struct {
 	//   所以读取端**不能**用「<= 0 就回落默认」那套（见 ezfyResProdMult）。
 	//   ⚠️ 老库补列时只能回填 NULL，别用 `WHERE col <= 0`（那样每次启动都会把玩家设的 0 改回 1）。
 	ResProdMult float64 `gorm:"default:1;comment:城市资源产量倍率" json:"res_prod_mult"`
+	// ★ 2026-10-05 用户要求「产量加成倍率」拆成两个：资源(粮/钢/油/稀矿)与黄金分开。
+	//   本字段只乘「粮/钢/油/稀矿」产量；黄金产量走 GoldProdMult。
+	//   ⚠️ 0 合法（黄金产量归零）；NULL → seed 回填 1。
+	GoldProdMult float64 `gorm:"default:1;comment:黄金产量倍率" json:"gold_prod_mult"`
 	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
 	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
 	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。

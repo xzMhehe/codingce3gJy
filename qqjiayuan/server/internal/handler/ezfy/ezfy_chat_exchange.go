@@ -1057,7 +1057,9 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		trainQueues []model.EzfyTrainQueue
 	)
 	var wg sync.WaitGroup
-	wg.Add(7)
+	// ★ 2026-10-05 修复「wildfull 调用失败」：原 wg.Add(7) 但下面只有 6 个 goroutine
+	//   （昵称查询早改成串行 IN 批量查），WaitGroup 永远等不到第 7 次 Done → 请求死锁挂死。
+	wg.Add(6)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
 	go func() {
 		defer wg.Done()

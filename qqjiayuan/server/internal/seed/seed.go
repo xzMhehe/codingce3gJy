@@ -296,6 +296,13 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET res_prod_mult = 1 WHERE res_prod_mult IS NULL")
 
+		// ★ 2026-10-05 黄金产量倍率（与 res_prod_mult 拆开，默认 1；**0 合法 = 黄金产量归零**）
+		//   口径同上：只回填 NULL，别用 <= 0 判定（会把管理端设的 0 改回 1）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gold_prod_mult") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {

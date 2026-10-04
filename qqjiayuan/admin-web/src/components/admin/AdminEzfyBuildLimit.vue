@@ -117,9 +117,14 @@
               <el-input-number v-model.number="form.gather_sea_mult" :min="0.1" :step="0.1" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
             <!-- ★ 2026-09-26 城市资源产量倍率：默认 1，**0 合法**（产量归零）→ :min="0" -->
+            <!-- ★ 2026-10-05 拆成「资源产量加成倍率」+「黄金产量加成倍率」两个独立配置 -->
             <el-form-item>
-              <template slot="label">产量加成倍率<el-tooltip placement="top" :content="tips.res_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <template slot="label">资源产量加成倍率<el-tooltip placement="top" :content="tips.res_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.res_prod_mult" :min="0" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">黄金产量加成倍率<el-tooltip placement="top" :content="tips.gold_prod_mult"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.gold_prod_mult" :min="0" :step="0.5" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
             <!-- ★ 2026-09-28 市长产量加成倍率：默认 1，**0 合法**（关闭市长加成）→ :min="0" -->
             <el-form-item>
@@ -301,6 +306,8 @@ export default {
         wild_troop_mult: 1, wild_res_mult: 1, gather_res_mult: 1,
         // ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
         res_prod_mult: 1,
+        // ★ 2026-10-05 黄金产量加成倍率（与资源倍率拆开，默认 1；0 合法 = 黄金产量归零）
+        gold_prod_mult: 1,
         // ★ 2026-09-28 采集后勤加成倍率 / 市长加成倍率（默认 1；市长 0 合法 = 关闭）
         officer_gather_mult: 1, mayor_gain_mult: 1,
         // ★ 2026-09-28 采集等级成长幂次（默认 1.3，较高=高级野地收益越突出）
@@ -359,8 +366,12 @@ export default {
         gather_res_mult: '驻守采集（野地/海野）每个采集周期结算出的资源 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 10。' +
           '作用点是「驻守采集(4/7)」的采集产出，不含战斗战利品。',
         // ★ 2026-09-26 城市资源产量倍率
-        res_prod_mult: '城市每小时产出的粮/钢/油/稀矿/黄金整体 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
-          '★ 填 0 表示产量归零（合法值）。资源详情页的「基础/加成/总产量」会同步按倍率显示。',
+        // ★ 2026-10-05 拆开：只作用于粮/钢/油/稀矿（黄金走 gold_prod_mult）
+        res_prod_mult: '城市每小时产出的粮/钢/油/稀矿 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
+          '★ 填 0 表示资源产量归零（合法值）。资源详情页的「基础/加成/总产量」会同步按倍率显示。黄金产量请调「黄金产量加成倍率」。',
+        // ★ 2026-10-05 黄金产量加成倍率（与资源倍率拆开）
+        gold_prod_mult: '城市每小时产出的黄金 × 该倍数（可填小数，2 = 翻倍、0.5 = 减半），默认 1。' +
+          '★ 填 0 表示黄金产量归零（合法值）。只影响黄金，粮/钢/油/稀矿走「资源产量加成倍率」。',
         // ★ 2026-09-28 采集后勤加成倍率
         officer_gather_mult: '采集时军官「后勤」属性的加成率 × 该倍数（可填小数，默认 1 = 每 1 点后勤 +1%，封顶 +100%）。' +
           '例：填 2 时每 1 点后勤 +2%；填 0.5 时每 1 点后勤 +0.5%。',
@@ -463,6 +474,9 @@ export default {
             // ★ 2026-09-26 产量倍率：**不能用 pos()**（它把 <=0 回落成默认值，会把玩家设的 0 改回 1）
             res_prod_mult: (r.data.res_prod_mult === undefined || r.data.res_prod_mult === null)
               ? 1 : Number(r.data.res_prod_mult),
+            // ★ 2026-10-05 黄金产量加成倍率：同样 0 合法，不能用 pos()
+            gold_prod_mult: (r.data.gold_prod_mult === undefined || r.data.gold_prod_mult === null)
+              ? 1 : Number(r.data.gold_prod_mult),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             // ★ 2026-09-27：资源最大值；非数字 / 0 / 负数一律回落 21 亿

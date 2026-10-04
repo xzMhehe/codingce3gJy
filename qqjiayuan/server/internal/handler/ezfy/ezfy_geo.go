@@ -1227,9 +1227,10 @@ func ezfyScaleByWildResMult(n int64) int64 {
 // ezfyResProdMultDef 城市资源产量倍率默认值
 const ezfyResProdMultDef = 1.0
 
-// ezfyResProdMult 城市每小时资源产量（粮/钢/油/稀矿/金）的整体倍率
+// ezfyResProdMult 城市每小时「资源」（粮/钢/油/稀矿）产量的整体倍率
 //
 // ★ 2026-09-26 用户要求：「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」。
+// ★ 2026-10-05 用户要求拆开：本倍率只作用于资源，黄金产量走 ezfyGoldProdMult。
 //
 //	⚠️ **0 是合法值**（= 产量归零），不是「未配置」——
 //	所以这里**故意不做 `<= 0 就回落默认`**（那套是 `ezfyWildResMult` 的口径，不适用于倍率）。
@@ -1243,9 +1244,34 @@ func ezfyResProdMult() float64 {
 	return ezfyCfg.limit.ResProdMult
 }
 
-// ezfyScaleResByProdMult 产量按倍率缩放（倍率 1 时原样返回，避免无谓的浮点误差）
+// ezfyScaleResByProdMult 资源产量按倍率缩放（倍率 1 时原样返回，避免无谓的浮点误差）
 func ezfyScaleResByProdMult(n int64) int64 {
 	m := ezfyResProdMult()
+	if m == 1 {
+		return n
+	}
+	if m <= 0 {
+		return 0
+	}
+	return int64(float64(n) * m)
+}
+
+// ezfyGoldProdMultDef 黄金产量倍率默认值
+const ezfyGoldProdMultDef = 1.0
+
+// ezfyGoldProdMult 城市每小时「黄金」产量的整体倍率（★ 2026-10-05 与资源倍率拆开）
+//
+//	口径与 ezfyResProdMult 一致：0 合法（黄金产量归零）；NULL 由 seed 回填 1。
+func ezfyGoldProdMult() float64 {
+	if !ezfyCfg.ready() {
+		return ezfyGoldProdMultDef
+	}
+	return ezfyCfg.limit.GoldProdMult
+}
+
+// ezfyScaleGoldByProdMult 黄金产量按倍率缩放（倍率 1 时原样返回）
+func ezfyScaleGoldByProdMult(n int64) int64 {
+	m := ezfyGoldProdMult()
 	if m == 1 {
 		return n
 	}
