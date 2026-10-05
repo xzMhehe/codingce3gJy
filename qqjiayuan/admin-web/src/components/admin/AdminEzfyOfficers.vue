@@ -57,7 +57,6 @@
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openGeneralCreate">新增军官</el-button>
             <el-button type="warning" icon="el-icon-present" @click="openGrant">分发给玩家</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadGenerals">刷新</el-button>
           </div>
           <el-table :data="gPaged" v-loading="loadingG" stripe border>
             <el-table-column prop="id" label="ID" width="60" align="center" />
@@ -125,7 +124,6 @@
             <span class="td-sub">发动计谋消耗「信号弹」（道具 ID 24，可在「道具配置」里改价与上架）</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openSchemeCreate">新增计谋</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadSchemes">刷新</el-button>
           </div>
           <el-table :data="schemes" v-loading="loadingSc" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
@@ -179,7 +177,6 @@
             <div class="grow" />
             <el-button type="success" icon="el-icon-magic-stick" @click="openGen">一键生成军官</el-button>
             <el-button type="warning" icon="el-icon-present" @click="openGrant">发放名将</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="45" align="center" />
@@ -248,7 +245,6 @@
             <el-button type="primary" icon="el-icon-search" @click="loadSkills">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openSkillCreate">新增技能</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadSkills">刷新</el-button>
           </div>
           <el-table :data="sPaged" v-loading="loadingS" stripe border>
             <el-table-column prop="id" label="ID" width="45" align="center" />
@@ -293,7 +289,6 @@
             <el-button type="primary" icon="el-icon-search" @click="osPage = 1; loadOwnedSkills()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openSkillAssign">给军官加技能</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadOwnedSkills">刷新</el-button>
           </div>
           <el-table :data="ownedSkills" v-loading="loadingOS" stripe border max-height="600">
             <el-table-column prop="officer_id" label="军官ID" width="70" align="center" />
@@ -341,7 +336,6 @@
             <el-button type="primary" icon="el-icon-search" @click="oePage = 1; loadOwnedEquips()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-present" @click="openEquipGrant">给玩家发装备</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadOwnedEquips">刷新</el-button>
           </div>
           <el-table :data="ownedEquips" v-loading="loadingOE" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="60" align="center" />

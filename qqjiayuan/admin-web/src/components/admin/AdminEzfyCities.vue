@@ -6,7 +6,6 @@
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <!-- ★ 列宽按实测内容宽度定：原「人口」60px 装不下 17 位数字、「归属玩家」120px 被截断；
            城名/归属玩家/所在州 三个弹性列分摊多余宽度（原只城名一个弹性列，被拉到 680px） -->

@@ -6,7 +6,6 @@
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
         <el-table-column prop="username" label="家园号" width="90" />

@@ -12,7 +12,6 @@
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <el-button type="warning" icon="el-icon-delete" @click="openClear">清空某玩家私聊</el-button>
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="640">
         <el-table-column prop="id" label="ID" width="80" align="center" />

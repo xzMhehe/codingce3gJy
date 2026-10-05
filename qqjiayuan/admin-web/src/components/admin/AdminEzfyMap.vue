@@ -8,7 +8,6 @@
         <el-input-number v-model.number="lookup.y" :min="0" :max="999" controls-position="right" style="width:130px" />
         <el-button type="primary" icon="el-icon-search" @click="doLookup">查询</el-button>
         <div class="grow" />
-        <el-button type="primary" plain icon="el-icon-refresh" @click="reload">刷新</el-button>
       </div>
       <el-alert v-if="lookupResult" type="info" :closable="true" @close="lookupResult = null" show-icon style="margin-bottom:12px">
         <template slot="title">
@@ -70,7 +69,6 @@
             </el-select>
             <el-input v-model="tileWord" placeholder="坐标 x,y 或备注" clearable style="width:170px"
                       @keyup.enter.native="tilePage = 1; loadTiles()" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadTiles">刷新</el-button>
           </div>
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
@@ -187,7 +185,6 @@
             <span class="td-sub">活动野地 = 区别于普通野地、可打活动（守军/奖励可配）；关 = 普通野地</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openAwCreate">新增活动野地</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadActWilds">刷新</el-button>
           </div>
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
@@ -275,7 +272,6 @@
             <el-button type="primary" icon="el-icon-search" @click="wildPage = 1; loadWilds()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openWildCreate">新增野地</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadWilds">刷新</el-button>
           </div>
           <el-table :data="wilds" v-loading="loadingWild" stripe border>
             <el-table-column prop="id" label="ID" width="65" align="center" />
@@ -334,7 +330,6 @@
             <span class="td-sub">等级填 0 = 不限</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openWcCreate">新增野地类型</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadWildCfgs">刷新</el-button>
           </div>
           <el-table :data="wildCfgs" v-loading="loadingWc" stripe border>
             <el-table-column prop="id" label="ID" width="60" align="center" />

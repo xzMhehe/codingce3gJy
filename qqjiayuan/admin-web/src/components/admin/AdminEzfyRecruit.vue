@@ -14,7 +14,6 @@
         <div class="grow" />
         <el-button type="success" icon="el-icon-plus" @click="openCreate">新增征兵</el-button>
         <el-button type="warning" icon="el-icon-finished" :loading="finishingAll" @click="finishAll">一键完成</el-button>
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border max-height="620">
         <el-table-column prop="id" label="ID" width="60" align="center" />

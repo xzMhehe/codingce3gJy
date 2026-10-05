@@ -14,7 +14,6 @@
             <span class="td-sub">散件商城售价 / 库存请到「数据管理 → 装备道具配置」维护</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openEquipCreate">新增散件</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadEquips">刷新</el-button>
           </div>
           <el-table :data="ePaged" v-loading="loadingE" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
@@ -74,7 +73,6 @@
             <span class="td-sub">穿戴同套 N 件即触发套装加成；套装件的商城售价 / 库存到「数据管理 → 装备道具配置」维护</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openSetCreate">新增套装</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadSets">刷新</el-button>
           </div>
           <el-table :data="sets" v-loading="loadingSt" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />

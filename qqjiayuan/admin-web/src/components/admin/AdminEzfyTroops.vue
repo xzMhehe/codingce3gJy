@@ -10,7 +10,6 @@
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openGrant">增 / 减兵力</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -51,7 +50,6 @@
             <el-button type="primary" icon="el-icon-search" @click="loadCfgs">查询</el-button>
             <div class="grow" />
             <span class="td-sub">共 {{ cfgs.length }} 种兵种，点「编辑」可改战斗参数与阵营名</span>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadCfgs">刷新</el-button>
           </div>
           <el-table :data="cfgPaged" v-loading="loadingCfg" stripe border>
             <!-- ★ 列宽按实测内容宽度定：属性列原 52px 只能装 4 位数，造价列 155px 装不下「2000/27000/11000/14500」 -->
@@ -106,7 +104,6 @@
             </el-select>
             <el-button type="primary" icon="el-icon-search" @click="wPage = 1; loadWounded()">查询</el-button>
             <div class="grow" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadWounded">刷新</el-button>
           </div>
           <el-table :data="wounded" v-loading="loadingW" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="70" align="center" />

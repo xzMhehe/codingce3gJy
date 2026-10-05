@@ -10,7 +10,6 @@
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <el-button type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w"

@@ -36,7 +36,6 @@
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <el-button type="success" icon="el-icon-present" @click="openGrant">批量发放</el-button>
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <!-- ★ 列宽按实测内容宽度定：资源列原 108px 装不下「99999.95万亿 / 55万」（需 131px）；
            城名/归属玩家 两个弹性列分摊多余宽度 -->

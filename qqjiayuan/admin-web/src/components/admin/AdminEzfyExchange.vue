@@ -51,7 +51,6 @@
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <!-- ★ 列宽按实测内容宽度定：数量/总价/单价 列要装得下千分位大数（如 100,000,000,000,000） -->
       <el-table :data="list" v-loading="loading" stripe border>
