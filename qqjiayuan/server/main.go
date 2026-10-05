@@ -31,6 +31,9 @@ func main() {
 		// ★ 2026-10-05 多机共享库跳过全量 seed 时，新配置列仍要幂等补上
 		//   （gold_prod_mult 等），否则管理端保存报 Unknown column / 黄金产量归零。
 		seed.EnsureEzfyLimitColumns(db)
+		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，
+		//   skip 分支不补 → 所有军官 INSERT 报 1054、战俘/招募全部静默失败。
+		seed.EnsureEzfyOfficerColumns(db)
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)

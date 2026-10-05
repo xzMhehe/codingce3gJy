@@ -716,7 +716,7 @@ export default {
       // ★ 2026-10-04 军官模块 6 个 tab 的数据缓存（进页预取 + 切换秒开）。
       //   ⚠️ 注意：_ 开头的属性不能放 data()（Vue2 不会代理到 this，读了是 undefined），
       //   改用 withAcadeCache 里的懒初始化（与 _onceMap 同一套模式）。
-      officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0 },
+      officerData: { officers: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, captive_capacity: 0, captive_used: 0, gold: 0 },
       recruitData: { candidates: [], academy_level: 0, staff_level: 0, capacity: 0, used: 0, gold: 0, refresh_left: 0, refresh_limit: 5 },
       skillData: { skills: [], officers: [], gold: 0 },
       equipData: { bag: [], all: [], sets: [] },
@@ -1001,8 +1001,9 @@ export default {
       return v > 0 ? v : this.officerMaxLevel
     },
     // 战俘营: 未出征的俘虏
-    // ★ 2026-09-29 跨城汇总：俘虏可能落在任一座城，战俘营不再只看当前城——
-    //   优先用后端下发的跨城 captives，没有(旧后端)再回落到当前城过滤。
+    // ★ 2026-10-06 用户规则：战俘营**按城市分**（绑在玩家城市上）——
+    //   后端下发的 captives 已经是「当前城」的俘虏，容量也只看当前城参谋部等级 × 4。
+    //   （2026-09-29 那版跨城汇总已取消；旧后端没有 captives 字段时回落到当前城过滤。）
     captiveOfficers () {
       if (this.officerData && Array.isArray(this.officerData.captives)) {
         return (this.officerData.captives || []).filter(o => o.status !== 1)

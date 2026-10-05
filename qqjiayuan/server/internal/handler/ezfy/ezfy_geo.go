@@ -1715,7 +1715,7 @@ func (c *ezfyConfigCache) isGeneral(id int) bool {
 
 // generalByName 按名字回查军官池
 //
-// ★ 军校招来的普通军官实例 general_id 恒为 0（见 recruitOfficer），只能靠名字对上池子。
+// ★ 2026-10-06 起军校招来的军官也写 general_id（= 军官池 id），所以名字回查只兜底历史老数据。
 // 同名多条时优先 kind=1（军校池），其次取 id 最小的，保证同一名军官每次查到的都一样。
 func (c *ezfyConfigCache) generalByName(name string) *model.EzfyCfgGeneral {
 	if name == "" {

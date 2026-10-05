@@ -3,6 +3,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -199,6 +200,63 @@ func officerCountOf(list []model.EzfyOfficer) int {
 		}
 	}
 	return n
+}
+
+// captiveCountOf 按给定军官列表统计俘虏数（纯内存，不查库）。
+func captiveCountOf(list []model.EzfyOfficer) int {
+	n := 0
+	for i := range list {
+		if list[i].IsCaptive == 1 {
+			n++
+		}
+	}
+	return n
+}
+
+// ezfyCaptivePerStaff 战俘营每级参谋部可关押的俘虏数
+//
+// ★★ 2026-10-06 用户规则：**参谋部容量 与 战俘营容量 是两套，分开算**——
+//   - 参谋部容量（在职军官位） = 参谋部等级           → officerCapacity
+//   - 战俘营容量（关押俘虏）   = 参谋部等级 × 4       → captiveCapacity
+//   两者各数各的：officerCount 只数在职（不含俘虏），captiveCount 只数俘虏。
+const ezfyCaptivePerStaff = 4
+
+// officerCapacity 参谋部容量 = 参谋部等级（在职军官位；没参谋部 = 0）。
+//
+// ★ 所有「军官位够不够」的判定（军校招募 / 收编俘虏）都必须走这里。
+func (h *EzfyHandler) officerCapacity(cityId uint) int {
+	return h.buildingLevel(cityId, ezfyBuildingStaff)
+}
+
+// captiveCapacity 战俘营容量 = **当前城市**的参谋部等级 × 4。
+//
+// ★★ 2026-10-06 用户规则：战俘营按城市算、绑在玩家城市上 ——
+// 容量看的是「俘虏所在那座城」的参谋部，而不是玩家全服所有城的总和。
+func (h *EzfyHandler) captiveCapacity(cityId uint) int {
+	return h.buildingLevel(cityId, ezfyBuildingStaff) * ezfyCaptivePerStaff
+}
+
+// captiveCount 该城关押的俘虏数（会查库；已有军官列表时用 captiveCountOf）。
+func (h *EzfyHandler) captiveCount(cityId uint) int {
+	return captiveCountOf(h.officerList(cityId))
+}
+
+// officerOfMine 取「该玩家名下任意城池」的军官（含跨城），并返回该军官真实所在的城。
+//
+// ★★ 2026-10-06 修「战俘不能释放」：原来 freeOfficer / recruitCaptive 用
+// `officerOf(当前城.ID, id)` 查，玩家切城 / 列表刷新与点击之间切换城市时会直接
+// 返回 nil → 报「武将不存在」，按钮点了没反应。
+// 这里改成按玩家找，并把军官真实所在城一起返回（容量按那座城算）。
+func (h *EzfyHandler) officerOfMine(uid uint, id int64) (*model.EzfyOfficer, *model.EzfyCity) {
+	var o model.EzfyOfficer
+	if err := h.DB.First(&o, id).Error; err != nil {
+		return nil, nil
+	}
+	var city model.EzfyCity
+	if err := h.DB.Where("id = ? AND user_id = ?", o.CityId, uid).First(&city).Error; err != nil {
+		return nil, nil
+	}
+	return &o, &city
 }
 
 // ownedGeneralIds 玩家已拥有的名将 ID（跨城统计，防重复招募）
@@ -497,8 +555,8 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	if staff < 1 {
 		return "需要先建造参谋部"
 	}
-	if h.officerCount(city.ID) >= staff {
-		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(staff) + "名军官)"
+	if cap := h.officerCapacity(city.ID); h.officerCount(city.ID) >= cap {
+		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(cap) + "名军官)"
 	}
 	date := recruitCycleKey()
 	var rec model.EzfyRecruit
@@ -528,9 +586,16 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	// ★★ 2026-09-27 用户规则修正：军官池里的初始属性已包含该等级的全部加点，
 	//   招募时**不再**按「每级 1 点」发可用属性点（旧逻辑 99 级会多给 98 点），
 	//   只有招募后打架升级（每升 1 级 +1 点，见 L1404）才积累可用点。
-	//   普通军官的 GeneralId 保持 0（general_id>0 全站都当「名将」用，别混）。
+	// ★★ 2026-10-06 用户规则「招募的军官也要把军官池 id 维护到库里」：
+	//   原来这里写死 `GeneralId: 0`（怕和名将混），后果是普通军官**无法回查军官池**
+	//   —— 改名后按名字也找不回来（`officerPoolAttr` 的兜底就是按名字查），
+	//   丢官/被俘后连"原本是池子里哪一条"都不知道，没法恢复。
+	//   现在直接落 `pick.PoolId`（候选就是从军官池抽的，见 rollOfficerDrafts）。
+	//   ⚠️ 「是不是名将」一律用 `ezfyCfg.isGeneral(id)`（池子 kind==2）判定，
+	//   别再用 `GeneralId > 0` 当名将标志 —— 普通军官现在也有 id 了。
+	//   （兜底随机生成的候选 PoolId=0，仍是 0，没有池子条目可对。）
 	o := model.EzfyOfficer{
-		CityId: int64(city.ID), GeneralId: 0, Name: pick.Name, Star: pick.Star,
+		CityId: int64(city.ID), GeneralId: pick.PoolId, Name: pick.Name, Star: pick.Star,
 		Level: pick.Level, Exp: 0,
 		Military: pick.Military, Logistics: pick.Logistics, Learning: pick.Learning,
 		BaseMilitary: pick.Military, BaseLogistics: pick.Logistics, BaseLearning: pick.Learning,
@@ -538,7 +603,14 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 		Loyalty:    ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, Source: model.EzfyOfficerSourceRecruit, UpdateTime: time.Now(),
 	}
-	h.DB.Create(&o)
+	// ★ 2026-10-06 事故加固：原来忽略 Create 的 error，写库失败会「扣了黄金却没军官」。
+	//   （线上 ezfy_officer.source 列缺失时就是这个表现。）失败要退款并如实告知。
+	if err := h.DB.Create(&o).Error; err != nil {
+		log.Printf("ezfy 军校招募写入失败 city=%d name=%s: %v", city.ID, pick.Name, err)
+		city.Gold += pick.Cost
+		h.saveCityRes(city)
+		return "招募失败, 请稍后重试"
+	}
 	h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", joinDrafts(kept))
 	// ★ 五星军官值得全服看一眼（）
 	if pick.Star >= 5 {
@@ -977,9 +1049,11 @@ func (h *EzfyHandler) setOfficerPosition(city *model.EzfyCity, officerId int64, 
 }
 
 // recruitCaptive 收编俘虏（忠诚至少 40，占用参谋部容量）
-func (h *EzfyHandler) recruitCaptive(city *model.EzfyCity, officerId int64) string {
-	o := h.officerOf(city.ID, officerId)
-	if o == nil {
+//
+// ★ 2026-10-06 改成按 uid 找军官（跨城）—— 见 officerOfMine 的说明。
+func (h *EzfyHandler) recruitCaptive(uid uint, officerId int64) string {
+	o, city := h.officerOfMine(uid, officerId)
+	if o == nil || city == nil {
 		return "武将不存在"
 	}
 	if o.IsCaptive != 1 {
@@ -992,8 +1066,8 @@ func (h *EzfyHandler) recruitCaptive(city *model.EzfyCity, officerId int64) stri
 	if staff < 1 {
 		return "需要先建造参谋部"
 	}
-	if h.officerCount(city.ID) >= staff {
-		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(staff) + "名军官)"
+	if cap := h.officerCapacity(city.ID); h.officerCount(city.ID) >= cap {
+		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(cap) + "名军官)"
 	}
 	loyalty := o.Loyalty
 	if loyalty < ezfyCaptiveMinLoyalty {
@@ -1004,9 +1078,12 @@ func (h *EzfyHandler) recruitCaptive(city *model.EzfyCity, officerId int64) stri
 	return ""
 }
 
-// freeOfficer 释放俘虏（删除记录）；★ 2026-09-29 释放时把随俘装备返还给原玩家。
-func (h *EzfyHandler) freeOfficer(city *model.EzfyCity, officerId int64) string {
-	o := h.officerOf(city.ID, officerId)
+// freeOfficer 释放俘虏（★ 2026-10-06 起是**逻辑删除**，行还在库里可追溯）；
+// ★ 2026-09-29 释放时把随俘装备返还给原玩家。
+//
+// ★ 2026-10-06 改成按 uid 找军官（跨城）—— 见 officerOfMine 的说明。
+func (h *EzfyHandler) freeOfficer(uid uint, officerId int64) string {
+	o, _ := h.officerOfMine(uid, officerId)
 	if o == nil {
 		return "武将不存在"
 	}
@@ -1286,8 +1363,8 @@ func officerBaseAttr(o *model.EzfyOfficer) (int, int, int) {
 // ★ 用户规则：洗点 = 洗成「军官池里那名武将的属性」，而不是实例上的 base_* 快照 ——
 // 旧代码升星会把 base_* 一起加高，按快照洗点会洗不回池子初始值、退回的点数也少一截。
 // 所以这里直接回查池子：
-//   - 名将 / 后台发放的军官 general_id > 0，按 id 查；
-//   - 军校招来的普通军官 general_id 恒为 0（见 recruitOfficer），只能按名字回查。
+//   - 名将 / 后台发放 / **军校招募**的军官 general_id > 0，按 id 查；
+//   - 只有历史老数据（2026-10-06 前招的、general_id=0）才按名字回查。
 //
 // 查不到（后台手工生成、历史随机生成的军官）返回 ok=false，调用方回落到 base_*。
 func officerPoolAttr(o *model.EzfyOfficer) (int, int, int, bool) {
@@ -2089,8 +2166,8 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 	if h.buildingLevel(city.ID, ezfyBuildingStaff) < 1 {
 		return "" // 没有参谋部, 无法收押
 	}
-	// 参谋部容量
-	if h.officerCount(city.ID) >= h.buildingLevel(city.ID, ezfyBuildingStaff) {
+	// 战俘营容量（★ 2026-10-06 用户规则：战俘营容量 = 参谋部等级 × 4，与在职军官位分开算）
+	if h.captiveCount(city.ID) >= h.captiveCapacity(city.ID) {
 		return ""
 	}
 	// ★ 俘虏到的就是配置里那位**军官池军官**（属性/星级/等级取自军官池）
@@ -2121,7 +2198,14 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 		Loyalty:    30, Skill: "", Equipment: "",
 		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: model.EzfyOfficerSourceWildland, UpdateTime: time.Now(),
 	}
-	h.DB.Create(&o)
+	// ★★ 2026-10-06 事故加固：原来这里忽略 Create 的 error。
+	//   线上 `ezfy_officer.source` 列缺失时 INSERT 报 1054，战俘被静默丢弃、
+	//   战报却照样写「已收入我方战俘营」→ 玩家反馈「将领没进战俘营」。
+	//   写入失败必须留下日志，且不要谎报成功。
+	if err := h.DB.Create(&o).Error; err != nil {
+		log.Printf("ezfy 野地战俘写入失败 city=%d general=%d name=%s: %v", city.ID, g.ID, g.Name, err)
+		return ""
+	}
 	return "俘虏敌将:" + o.Name + "(" + strconv.Itoa(star) + "星, 忠诚30) 可前往军校收编"
 }
 
@@ -2137,8 +2221,8 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	if len(officers) == 0 {
 		return ""
 	}
-	// 参谋部有空位才收得下战俘
-	room := h.buildingLevel(atkCity.ID, ezfyBuildingStaff) - h.officerCount(atkCity.ID)
+	// 战俘营还有空位才收得下战俘（★ 2026-10-06：战俘营容量 = 参谋部等级 × 4，只数俘虏）
+	room := h.captiveCapacity(atkCity.ID) - h.captiveCount(atkCity.ID)
 	// ★★ 2026-10-05 用户规则「玩家抢玩家的名将不受重复卡控」：
 	//   攻击方**已经拥有**该名将时，也不拦 —— 忠诚归零照样叛逃成俘（管理端标注「抢玩家获取」）。
 	//   （2026-10-04 的「PvP 也要卡控」规则已被推翻；系统发放 / PvP 抢将均不再卡控同名将数量。）
@@ -2172,10 +2256,7 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	}
 	for i := range defected {
 		o := &defected[i]
-		// 从原城移除
-		h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 		if room > 0 {
-			room--
 			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
 			// ★ 2026-10-05 Source=抢玩家获取：标记来源，管理端军官列表据此标注
 			cap := model.EzfyOfficer{
@@ -2188,7 +2269,19 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				Loyalty:    30, Skill: o.Skill, Equipment: o.Equipment,
 				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: model.EzfyOfficerSourcePvp, UpdateTime: time.Now(),
 			}
-			h.DB.Create(&cap)
+			// ★★ 2026-10-06 线上事故加固：**先建俘虏，建成功了再删原军官**。
+			//   原实现是「先 Delete 防守方军官、再 Create 俘虏」，且 Create 的 error 被忽略 ——
+			//   一旦 INSERT 失败（线上 `ezfy_officer.source` 列缺失报 ERROR 1054），
+			//   防守方军官已被删、攻方又没拿到 → 军官凭空消失（玩家反馈「将领没进战俘营」）。
+			if err := h.DB.Create(&cap).Error; err != nil {
+				log.Printf("ezfy PvP 战俘写入失败 atkCity=%d defCity=%d name=%s: %v",
+					atkCity.ID, target.ID, o.Name, err)
+				b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(收押失败, 请联系管理员)")
+				continue
+			}
+			room--
+			// 建俘虏成功后才把军官从原城移除
+			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 			// ★ 2026-09-29 用户规则：被俘军官的随身装备随俘虏转移——
 			//   原玩家装备行解绑挂到俘虏名下并记录原归属（收编归新玩家 / 释放返还旧玩家）
 			h.transferOfficerEquipsToCaptive(int64(cap.ID), int64(o.ID), atkCity.UserID, target.UserID)
@@ -2196,6 +2289,8 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
 				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "", 0, target.ID)
 		} else {
+			// 参谋部已满：按原规则军官忠诚归零后仍然离开原城
+			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方参谋部已满, 未能收押)")
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
 				o.Name+"因忠诚度归零而离开了你的城市。", "", 0, target.ID)
@@ -2220,12 +2315,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	_, city, cities := h.ezfyPageCity(uid)
-	// 城市 id 列表（俘虏跨城汇总 + 懒结算 checkTechDone 复用）
-	myCityIDs := make([]int64, 0, len(cities))
-	for _, c := range cities {
-		myCityIDs = append(myCityIDs, int64(c.ID))
-	}
+	_, city, _ := h.ezfyPageCity(uid)
 	var (
 		list        []model.EzfyOfficer
 		capList     []model.EzfyOfficer
@@ -2234,7 +2324,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		starCard    int
 	)
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(4)
 	go func() { defer wg.Done(); list = h.officerList(city.ID) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	go func() {
@@ -2242,13 +2332,18 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
 	}()
 	go func() { defer wg.Done(); starCard = h.itemCount(uid, ezfyStarItemID) }()
-	go func() { // 俘虏可能落在任一座城 → 玩家名下所有城市汇总
-		defer wg.Done()
-		if len(myCityIDs) > 0 {
-			h.DB.Where("city_id IN ? AND is_captive = 1", myCityIDs).Order("id DESC").Find(&capList)
-		}
-	}()
 	wg.Wait()
+	// ★★ 2026-10-06 用户规则：**战俘营按城市分**（绑在玩家城市上）——
+	//   只列**当前城**的俘虏，容量也只看当前城的参谋部等级 × 4。
+	//   （2026-09-29 那版「跨城汇总」已取消。）
+	//   当前城军官列表 list 本来就含俘虏，纯内存筛出来即可 —— 比原来还省一条 SQL。
+	for i := range list {
+		if list[i].IsCaptive == 1 {
+			capList = append(capList, list[i])
+		}
+	}
+	// 新的排前面（原实现是 `ORDER BY id DESC`）
+	sort.Slice(capList, func(a, b int) bool { return capList[a].ID > capList[b].ID })
 	// 懒结算复用已取数据（建筑/城市ID/训练队列/军官全在手上，零额外查询）
 	// ★ 2026-10-05 性能（用户反馈「/officers 还是 1s+」）：原来这里还跑 checkTechDone +
 	//   calcResource（各 2~4 条串行跨 WAN 查询）。军官页不展示科技，资源/工资结算交给
@@ -2256,10 +2351,9 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	//   **纯内存、空闲零写**的结算。
 	h.checkBuildingDone(&city, buildings)
 	h.collectTrainQueue(&city, trainQueues)
-	// ★ 2026-09-29 战俘营跨城汇总说明：俘虏可能落在任一座城（从哪发兵落哪城），
-	//   而战俘营只看当前城 → 多城玩家「战报显示俘虏了，战俘营却看不到」。
-	//   故额外返回玩家**名下所有城市**的俘虏，前端战俘营直接用这个跨城列表。
-	// 把一批军官构造成展示视图（当前城军官 + 跨城俘虏共用同一套字段）
+	// ★★ 2026-10-06 用户规则：战俘营**按城市分**（绑在玩家城市上），容量 = 当前城参谋部等级 × 4。
+	//   （2026-09-29 那版「俘虏跨城汇总」已取消：多城玩家请切到俘虏所在的那座城查看。）
+	// 把一批军官构造成展示视图（当前城军官 + 当前城俘虏共用同一套字段）
 	build := func(rows []model.EzfyOfficer) []gin.H {
 		out := []gin.H{}
 		for i := range rows {
@@ -2320,10 +2414,15 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	blv := buildingLevelsOf(buildings)
 	data := gin.H{
 		"officers":      views,
-		"captives":      capViews, // ★ 跨城俘虏汇总（战俘营用）
+		"captives":      capViews, // ★ 2026-10-06 起只含**当前城**的俘虏（战俘营按城市分）
 		"academy_level": blv[ezfyBuildingAcademy],
 		"staff_level":   blv[ezfyBuildingStaff],
-		"capacity":      blv[ezfyBuildingStaff],
+		// ★★ 2026-10-06 用户规则：**参谋部容量 与 战俘营容量是两套，分开算**
+		//   capacity         = 参谋部容量（在职军官位）= 参谋部等级
+		//   captive_capacity = 战俘营容量 = 参谋部等级 × 4（只数俘虏）
+		"capacity":         blv[ezfyBuildingStaff],
+		"captive_capacity": blv[ezfyBuildingStaff] * ezfyCaptivePerStaff,
+		"captive_used":     captiveCountOf(capList),
 		// ★ 用上面已取到的 list（勿改回 h.officerCount，那会再查一次库）
 		"used": officerCountOf(list),
 		"gold": city.Gold,
@@ -2705,6 +2804,8 @@ func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 	academy := blv[ezfyBuildingAcademy]
 	out := gin.H{
 		"academy_level": academy, "staff_level": blv[ezfyBuildingStaff],
+		// ★ 2026-10-06 这里是**军校招募页**，用的是「参谋部容量（在职军官位）= 参谋部等级」，
+		//   不是战俘营容量（战俘营容量 = ×4，只数俘虏，见 Officers 的 captive_capacity）。
 		"capacity": blv[ezfyBuildingStaff],
 		// ★ 2026-10-05 性能：复用懒结算已查到的军官列表统计在职人数（原 officerCount 内部又查一次军官表）
 		"used": officerCountOf(snap.officersOf(h, city.ID)),
@@ -3577,21 +3678,24 @@ func (h *EzfyHandler) OfficerPosition(c *gin.Context) {
 }
 
 // OfficerCaptive POST /games/ezfy/officers/:id/captive  {op: free|recruit}
+//
+// ★ 2026-10-06：战俘营是跨城汇总列表，所以这里**不能只按当前城找军官**，
+// 一律按 uid 找（见 officerOfMine）——修掉「俘虏在别的城时释放/收编报武将不存在」。
 func (h *EzfyHandler) OfficerCaptive(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	ezfyPageCacheDel(uid)
-	city := h.getOrCreateCity(uid)
+	h.getOrCreateCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var req struct {
 		Op string `json:"op"`
 	}
 	_ = c.ShouldBindJSON(&req)
 	if req.Op == "recruit" {
-		h.done(c, h.recruitCaptive(&city, id), "收编成功, 军官已入列")
+		h.done(c, h.recruitCaptive(uid, id), "收编成功, 军官已入列")
 		return
 	}
-	h.done(c, h.freeOfficer(&city, id), "已释放该武将")
+	h.done(c, h.freeOfficer(uid, id), "已释放该武将")
 }
 
 // OfficerExile POST /games/ezfy/officers/:id/exile

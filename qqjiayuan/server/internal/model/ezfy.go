@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // 二战风云（ezfy）—— 复刻 stzb-fk「二战风云」，全部数据表使用 ezfy_ 前缀
 
@@ -1582,6 +1586,14 @@ type EzfyOfficer struct {
 	// ★ 2026-10-05 获取途径：取值见下列 EzfyOfficerSource* 枚举（每种来源独立值，便于后续扩展）。
 	//   管理端军官列表据此标注来源（抢玩家获取、野地俘虏……）。
 	Source int `gorm:"default:0;comment:获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取" json:"source"`
+	// ★★ 2026-10-06 用户规则：军官一律**逻辑删除**，不要物理删除。
+	//
+	//	被俘 / 释放 / 流放 后原行仍留在库里（deleted_at 非空），等级与属性可追溯、可恢复 ——
+	//	否则 PvP 抢将「先删防守方、再建俘虏」一旦中间失败，原军官的等级就永远找不回来了
+	//	（2026-10-06 事故：11 名军官被物理删掉，只能靠 10-05 的全库备份还原）。
+	//	GORM 语义：`Delete` 自动变成 `UPDATE ... SET deleted_at=NOW()`，
+	//	所有 `Find/First/Count` 自动带 `deleted_at IS NULL`；要看已删行用 `.Unscoped()`。
+	DeletedAt gorm.DeletedAt `gorm:"index;comment:逻辑删除时间(NULL=有效)" json:"-"`
 }
 
 // 军官获取途径（ezfy_officer.source）—— 每种来源独立枚举值，新增来源往后追加即可（勿改旧值）。

@@ -550,8 +550,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 				captures := 0
 				if aw.MaxCapture > 0 {
 					var had int64
+					// ★ 2026-10-06：军校招募的军官现在也写 general_id（= 池子 id，便于丢官追溯），
+					//   所以这里必须**排掉「军校招募」来源**，否则「从军校招过同一个池子军官」会被
+					//   误判成「已经抓过这个守将」而抓不了 —— 保持本次改动前的口径不变。
 					h.DB.Model(&model.EzfyOfficer{}).
-						Where("general_id = ? AND city_id IN (?)", g.ID,
+						Where("general_id = ? AND source <> ? AND city_id IN (?)", g.ID,
+							model.EzfyOfficerSourceRecruit,
 							h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", uid)).
 						Count(&had)
 					captures = int(had)

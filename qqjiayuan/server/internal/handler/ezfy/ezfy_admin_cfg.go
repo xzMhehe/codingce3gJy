@@ -517,12 +517,14 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 		IsCaptive int
 	}
 	var rows []row
+	// ★ 2026-10-06 军官改逻辑删除：这里走的是 `Table()` 原生查询，
+	//   GORM 的软删除 scope 不会自动加，必须手写 `deleted_at IS NULL`，否则已删军官会漏出来。
 	h.DB.Table("ezfy_officer o").
 		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.user_id, u.nickname, u.username, "+
 			"o.level, o.star, o.exp, o.loyalty, o.position, o.status, o.is_captive").
 		Joins("LEFT JOIN ezfy_city c ON c.id = o.city_id").
 		Joins("LEFT JOIN users u ON u.id = c.user_id").
-		Where("o.general_id = ?", id).
+		Where("o.general_id = ? AND o.deleted_at IS NULL", id).
 		Order("o.city_id").Scan(&rows)
 
 	out := make([]gin.H, 0, len(rows))

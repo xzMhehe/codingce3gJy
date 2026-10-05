@@ -520,9 +520,10 @@ func Run(db *gorm.DB, staticDir string) {
 	// ★ 2026-10-05 军官获取途径列（见 model.EzfyOfficerSource* 枚举：0未标注 1系统发放
 	//   2军校招募 3野地俘虏 4抢玩家获取）——AutoMigrate 新加列在老行上是 NULL，
 	//   Go 侧 int 扫 NULL 会报错，显式补列兜底（幂等；带 NOT NULL DEFAULT 0，老行直接回填 0）。
-	if db.Migrator().HasTable("ezfy_officer") && !db.Migrator().HasColumn("ezfy_officer", "source") {
-		db.Exec("ALTER TABLE ezfy_officer ADD COLUMN source int NOT NULL DEFAULT 0 COMMENT '获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取'")
-	}
+	// ★★ 2026-10-06 统一收到 EnsureEzfyOfficerColumns 里：这段原来只写在**非 skip 分支**的
+	//   `Run` 里，多机共享库（seed.skip: true）永远跑不到 → 就是 10-05 事故的根因。
+	//   现在 skip 分支也会调同一个函数，两边口径一致（含后加的 deleted_at 软删除列）。
+	EnsureEzfyOfficerColumns(db)
 
 	// 二战风云·军团积分（★ 2026-09-25 「军团积分 + 军团商城」）
 	//   ezfy_corps.points / ezfy_corps_member.points 是 AutoMigrate 新加的列，
@@ -2899,5 +2900,45 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_wildland MODIFY COLUMN treasure varchar(500) DEFAULT ''")
 		db.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
 		db.Exec("UPDATE ezfy_cfg_wildland SET treasure = '' WHERE treasure IS NULL")
+	}
+}
+
+// EnsureEzfyOfficerColumns 幂等补 ezfy_officer 的后加列（skip 分支必须调用）。
+//
+// ★★ 2026-10-06 线上事故（玩家反馈「将领没有进自己的城市战俘营」）：
+//
+//	`ezfy_officer.source`（2026-10-05 新增，标注军官获取途径）**只靠 seed.Run 里的
+//	AutoMigrate 建列**；而多机共享库走 `seed.skip: true` 会跳过整个 seed.Run，
+//	于是共享库上这一列永远不会被创建 → 所有 `INSERT INTO ezfy_officer` 报
+//	`ERROR 1054 Unknown column 'source'`。
+//	后果：军校招募 / 野地俘虏 / 管理端发放 / PvP 抢将 **全部写不进库**；
+//	更严重的是 PvP 叛逃路径是「先删防守方军官、再建俘虏」且忽略 Create 的 error，
+//	导致防守方军官被删掉、攻方也没拿到 → 军官凭空消失。
+//	（判据：出问题期间 ezfy_officer 无任何新行，而战报/出征订单仍在大量写入。）
+//
+// 与 EnsureEzfyLimitColumns 同理：新增字段时**要么改这里，要么记得全量 seed 跑一次**。
+func EnsureEzfyOfficerColumns(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_officer") {
+		return
+	}
+	// 获取途径：0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取
+	if !db.Migrator().HasColumn("ezfy_officer", "source") {
+		if err := db.Exec("ALTER TABLE ezfy_officer ADD COLUMN source int NOT NULL DEFAULT 0 COMMENT '获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取'").Error; err != nil {
+			log.Printf("【严重】ezfy_officer.source 补列失败（军官写入会全部报 Unknown column）: %v", err)
+		}
+	}
+	db.Exec("UPDATE ezfy_officer SET source = 0 WHERE source IS NULL")
+	// ★★ 2026-10-06 军官逻辑删除列：军官不再物理删除，改软删（保留等级/属性可恢复）。
+	//   同样只靠 AutoMigrate 建列会在 seed.skip 的共享库上缺失 → 必须在这里幂等补。
+	//   ⚠️ 这一列是**硬依赖**：模型里加了 gorm.DeletedAt 后，GORM 会给所有军官查询
+	//   自动加 `deleted_at IS NULL`；列不存在的话**整个军官模块全挂**，所以补列失败必须吼出来。
+	if !db.Migrator().HasColumn("ezfy_officer", "deleted_at") {
+		if err := db.Exec("ALTER TABLE ezfy_officer ADD COLUMN deleted_at datetime(3) NULL DEFAULT NULL COMMENT '逻辑删除时间(NULL=有效)'").Error; err != nil {
+			log.Printf("【严重】ezfy_officer.deleted_at 补列失败（军官查询会全部报 Unknown column）: %v", err)
+		}
+	}
+	// GORM 软删除的查询条件是 `deleted_at IS NULL`，这个索引让它走索引而不是全表扫
+	if !db.Migrator().HasIndex("ezfy_officer", "idx_ezfy_officer_deleted_at") {
+		db.Exec("ALTER TABLE ezfy_officer ADD KEY idx_ezfy_officer_deleted_at (deleted_at)")
 	}
 }
