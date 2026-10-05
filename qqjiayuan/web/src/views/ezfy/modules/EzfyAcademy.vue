@@ -622,7 +622,7 @@
             <tr><th class="nm">宝物</th><th>品质</th><th>忠诚</th><th>操作</th></tr>
             <template v-for="e in ezfy.officerTreasures">
               <tr :key="'tg' + e.id">
-                <td class="nm">{{ e.name }}</td>
+                <td class="nm">{{ e.name }}<template v-if="e.count > 1"> ×{{ e.count }}</template></td>
                 <td :class="ezfy.qualityClass(e.tier_name)">{{ e.tier_name || '普通' }}</td>
                 <td class="green">+{{ ezfy.treasureLoyaltyGain(e.tier) }}</td>
                 <td><a href="javascript:;" @click="ezfy.doTreasureGrant(e)">[赏赐]</a></td>

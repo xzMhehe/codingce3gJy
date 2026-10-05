@@ -862,9 +862,21 @@ export default {
     // ★ 2026-09-28 赏赐宝物：背包里未穿戴的**采集宝物**（可在军官详情操作区展开选择）
     //   ★ 只认采集宝物（后端 bag 条目带 treasure 标记，名字取自 9 种野地珠宝）——
     //     步枪/钢盔/合金装甲这类普通装备不能换忠诚；宝物签到抽的也是同一池，所以签到宝物可用。
+    // ★ 2026-10-05 相同宝物按名称合并成一行带数量（原来逐件列出，背包几十件时列表太长）；
+    //   保留一个代表 id 供 [赏赐] 用（同组宝物任一件都可赏赐）。
     officerTreasures () {
-      return ((this.officerDetail && this.officerDetail.bag) || [])
+      const rows = ((this.officerDetail && this.officerDetail.bag) || [])
         .filter(e => e.treasure && !e.worn)
+      const byName = {}
+      for (const e of rows) {
+        const k = e.name || ('#' + (e.cfg_id || e.id))
+        if (!byName[k]) byName[k] = {
+          id: e.id, cfg_id: e.cfg_id, name: e.name,
+          tier: e.tier, tier_name: e.tier_name, count: 0
+        }
+        byName[k].count++
+      }
+      return Object.values(byName)
     },
     // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
     taskGroupCur () {
@@ -5492,10 +5504,19 @@ export default {
       })
     },
     doGrant () {
-      const id = this.officerDetail.officer.id
+      const o = this.officerDetail.officer
+      if (!o) return
+      const id = o.id
       api.post('/games/ezfy/officers/' + id + '/grant', {}).then(r => {
-        if (r.code !== 0) this.notify(r.msg || '赏赐失败')
-        this.loadOfficerDetail(id)
+        if (r.code !== 0) { this.notify(r.msg || '赏赐失败'); return }
+        this.notify('赏赐成功, 忠诚+10')
+        // ★ 2026-10-05 局部刷新（用户要求，别全页面刷新）：就地 忠诚+10、黄金-1万，零接口重拉
+        o.loyalty = Math.min(100, o.loyalty + 10)
+        if (this.officerDetail && this.officerDetail.gold !== undefined) {
+          this.officerDetail.gold = Math.max(0, this.officerDetail.gold - 10000)
+        }
+        const lst = (this.officerData && this.officerData.officers) || []
+        for (const m of lst) { if (m.id === id) { m.loyalty = o.loyalty; break } }
       })
     },
     // ★ 2026-09-28 用户要求：宝物可赏赐给军官加忠诚，品质不同加的不同（最高 +50）。
@@ -5524,7 +5545,17 @@ export default {
         if (r.code !== 0) { this.notify(r.msg || '赏赐失败'); return }
         this.notify(r.data && r.data.msg ? r.data.msg : ('赏赐成功, 忠诚 +' + gain))
         this.officerTreasureOpen = false
-        this.loadOfficerDetail(o.id)
+        // ★ 2026-10-05 局部刷新（用户要求，别全页面刷新）：就地更新、零接口重拉——
+        //   · 忠诚 +gain（封顶 100）
+        //   · 从详情背包里移除已赏赐的那件宝物（数量 -1，computed officerTreasures 自动刷新，
+        //     已赏赐的宝物不会再出现在列表里可点）
+        //   · 军官列表里同步该军官忠诚
+        o.loyalty = Math.min(100, o.loyalty + gain)
+        const bag = this.officerDetail.bag || []
+        const idx = bag.findIndex(x => x.id === e.id)
+        if (idx >= 0) bag.splice(idx, 1)
+        const lst = (this.officerData && this.officerData.officers) || []
+        for (const m of lst) { if (m.id === o.id) { m.loyalty = o.loyalty; break } }
       })
     },
     // ★ 属性加点（每升 1 级得 1 点，只影响自己的军官）
