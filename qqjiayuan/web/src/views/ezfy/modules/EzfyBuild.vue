@@ -52,7 +52,10 @@
             <a href="javascript:;" :class="{ on: ezfy.cur === 'buildm' }" @click="ezfy.go('buildm')">军事区</a>.
             <a href="javascript:;" :class="{ on: ezfy.cur === 'builds' }" @click="ezfy.go('builds')">资源区</a>
           </div>
-          <div class="old-line">建造中队列数：{{ ezfy.buildQueueCount }} | 已有 {{ ezfy.zoneCount }}/{{ ezfy.zoneCap }}
+          <div class="old-line">
+            已有 {{ ezfy.zoneCount }}/{{ ezfy.zoneCap }}
+          </div>
+          <div class="old-line">建造中队列数：{{ ezfy.buildQueueCount }}
             <a href="javascript:;" @click="ezfy.openBuildPre(ezfy.cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->

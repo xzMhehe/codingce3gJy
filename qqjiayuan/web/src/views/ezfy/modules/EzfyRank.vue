@@ -18,15 +18,7 @@
           </div>
           <div v-if="ezfy.rankData.mine && ezfy.rankData.mine.next" class="old-line">
             下一军衔：<b>{{ ezfy.rankData.mine.next.name }}</b>（需要声望 <b>{{ ezfy.rankData.mine.next.need }}</b>，当前 {{ ezfy.rankData.mine.prestige }}）
-            <div class="gray">
-              需要宝物：
-              <span v-for="t in ezfy.rankData.mine.next.treasures" :key="'tr' + t.name">
-                {{ t.name }}×{{ t.count }}（背包{{ t.have }}）
-                <span :class="t.have >= t.count ? 'green' : 'red'">{{ t.have >= t.count ? '足够' : '不足' }}</span>；
-              </span>
-            </div>
             <button v-if="ezfy.canPromote()" @click="ezfy.doPromote">[晋升]</button>
-            <span v-else class="gray">声望达标且宝物足够后才能晋升（宝物通过野地采集获得）</span>
           </div>
           <div v-else-if="ezfy.rankData.mine" class="old-line green">已晋升至最高军衔「{{ ezfy.rankData.mine.rank_name }}」！</div>
 

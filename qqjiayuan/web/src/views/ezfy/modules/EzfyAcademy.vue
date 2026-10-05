@@ -20,7 +20,7 @@
         <!-- ★ 2026-10-05 「没用的页面提示去掉」：改名/阵营提示不再展示（文案保留在代码里） -->
         阵营：{{ ezfy.selfInfo.camp_name || (ezfy.profile.camp === 2 ? '轴心国' : '同盟国') }}
         <a href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
-        <a href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a>
+        <a href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a><br/>
         声望：{{ ezfy.profile.prestige }}<br/>
         军衔：{{ ezfy.rankName }}({{ ezfy.rankPost }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.myRankId)"></span></span><br/>
         军团：{{ (ezfy.myCorps && ezfy.myCorps.name) || '无' }}<br/>
