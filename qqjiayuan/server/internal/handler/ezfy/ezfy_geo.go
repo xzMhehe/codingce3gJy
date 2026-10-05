@@ -1,7 +1,6 @@
 package ezfy
 
 import (
-	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -398,104 +397,19 @@ func ezfyGatherResName(t int) string {
 	}
 }
 
-// ============ 一次性数据迁移：旧版海城 → 沿海平原 ============
-
-var ezfySeaMigrateOnce sync.Once
-
-// ezfyMigrateSeaCities 把建在「海洋」上的旧海城搬到最近的「沿海平原」格。
+// ============ 城市自动迁移已停用（2026-10-05） ============
 //
-// 背景：旧版把海城定义成「建在海洋地形上」，现在按用户规则改成「只能建在沿海平原上」。
-// 幂等：迁完后不再有城市落在海洋地形，后续启动是空操作。
-func ezfyMigrateSeaCities(db *gorm.DB) {
-	var cities []model.EzfyCity
-	db.Find(&cities)
-	moved := 0
-	for _, ct := range cities {
-		// ★ 2026-10-02 修复「重启后玩家城市坐标变」：判定必须用**带覆盖表**的 ezfyTerrainEx。
-		//   管理端在 ezfy_map_tile 覆盖成沿海平原的格（玩家可建海城），纯算法 ezfyTerrain
-		//   仍是海洋(8) → 旧逻辑每次重启都把这类城搬到别处，玩家坐标「自己变」。
-		if ezfyTerrainEx(ct.X, ct.Y) != 8 {
-			continue
-		}
-		pos, ok := ezfyNearestCoastalPlain(db, ct.X, ct.Y)
-		if !ok {
-			log.Printf("ezfy 海城迁移: 城%d (%d,%d) 附近找不到沿海平原，跳过", ct.ID, ct.X, ct.Y)
-			continue
-		}
-		oldX, oldY := ct.X, ct.Y
-		updates := map[string]interface{}{"x": pos[0], "y": pos[1]}
-		// 自动命名的「新城X,Y」跟着新坐标走（玩家自己改过的名字不动）
-		if ct.Name == fmt.Sprintf("新城%d,%d", oldX, oldY) {
-			updates["name"] = fmt.Sprintf("新城%d,%d", pos[0], pos[1])
-		}
-		if err := db.Model(&model.EzfyCity{}).Where("id = ?", ct.ID).
-			Updates(updates).Error; err != nil {
-			log.Printf("ezfy 海城迁移失败 城%d: %v", ct.ID, err)
-			continue
-		}
-		// 清掉旧坐标上的「玩家城」地图区域记录（新坐标由后续逻辑重建）
-		db.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
-		log.Printf("ezfy 海城迁移: 城%d「%s」(%d,%d) → (%d,%d) 沿海平原", ct.ID, ct.Name, oldX, oldY, pos[0], pos[1])
-		moved++
-	}
-	if moved > 0 {
-		log.Printf("ezfy 海城迁移完成，共 %d 座", moved)
-	}
-}
-
-// ezfyNearestCoastalPlain 从 (x,y) 向外螺旋找最近的、无城市的沿海平原格
-func ezfyNearestCoastalPlain(db *gorm.DB, x, y int) ([2]int, bool) {
-	for r := 1; r <= 150; r++ {
-		for dx := -r; dx <= r; dx++ {
-			for dy := -r; dy <= r; dy++ {
-				// 只走外圈
-				if ezfyAbs(dx) != r && ezfyAbs(dy) != r {
-					continue
-				}
-				nx, ny := x+dx, y+dy
-				if nx < 0 || ny < 0 || nx > 499 || ny > 499 {
-					continue
-				}
-				if !ezfyIsCoastalPlainAt(nx, ny) {
-					continue
-				}
-				var n int64
-				db.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", nx, ny).Count(&n)
-				if n > 0 {
-					continue
-				}
-				return [2]int{nx, ny}, true
-			}
-		}
-	}
-	// ★ 兜底：实在找不到沿海平原（世界地图改版后，落在远洋上的城市可能离海岸很远），
-	//   退一步找一块「无城市的平原」，保证城市不会一直卡在海洋里。
-	//   宁可牺牲「海城」属性，也不能让玩家的城留在水里。
-	for r := 1; r <= 150; r++ {
-		for dx := -r; dx <= r; dx++ {
-			for dy := -r; dy <= r; dy++ {
-				if ezfyAbs(dx) != r && ezfyAbs(dy) != r {
-					continue
-				}
-				nx, ny := x+dx, y+dy
-				if nx < 0 || ny < 0 || nx > 499 || ny > 499 {
-					continue
-				}
-				if ezfyTerrain(nx, ny) != 1 {
-					continue
-				}
-				var n int64
-				db.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", nx, ny).Count(&n)
-				if n > 0 {
-					continue
-				}
-				return [2]int{nx, ny}, true
-			}
-		}
-	}
-	return [2]int{}, false
-}
-
+// 原「开机自动搬城」逻辑（ezfyMigrateSeaCities / ezfyNearestCoastalPlain，把落在海洋格
+// 的城搬到最近的沿海平原）已**整体删除**，原因：
+//
+//	它依赖 ezfyTerrainEx 的输入（地图格子覆盖 ezfy_map_tile）。启动瞬间若瓦片读取失败/
+//	抖动 → 地形整体翻转 → 一批本不该动的城被判成「海城」并整体位移，玩家看到的就是
+//	「重新部署后城市坐标又变了」。这是同一 bug 反复复发的根源。
+//
+// 现在城市坐标**只由**玩家操作（迁城）或**显式运维命令**改动，启动流程绝不自动搬城。
+// 需要一次性修数据时，跑运维命令：
+//
+//	./ezfymigrate --coastal --apply --yes   （把建有航海协会的城迁回沿海平原）
 func ezfyWildlandLevel(x, y int) int {
 	h := ezfyAbs(x*83492791 ^ y*6291469)
 	return h % 11
@@ -1671,12 +1585,20 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		// ★ 2026-10-04 周期刷新默认跳过（全表拉取太贵）；2026-10-05 起改为
 		//   「先算廉价指纹，只有真变了才拉」→ 多机也能收敛（见 ezfyHeavyFingerprint）。
 		var tiles []model.EzfyMapTile
-		db.Find(&tiles)
-		tm := make(map[int64]model.EzfyMapTile, len(tiles))
-		for _, t := range tiles {
-			tm[ezfyTileKey(t.X, t.Y)] = t
+		if err := db.Find(&tiles).Error; err != nil {
+			// ★★ 2026-10-05 修复「重启后地形整体翻转、玩家城市被误搬」：
+			//   读瓦片失败时**保留旧缓存**，绝不能用空表覆盖 ——
+			//   空表 = 所有覆盖消失 = 算法海洋重新变回海洋 = 建在覆盖格上的城
+			//   被判定成「海洋上的城」，触发（旧版）开机自动搬城 → 玩家坐标自己变。
+			//   即便现在已停用自动搬城，也不能让一次 WAN 抖动把整张地图地形翻掉。
+			log.Printf("ezfy 地图瓦片读取失败，保留旧缓存（%d 格）: %v", len(c.tiles), err)
+		} else {
+			tm := make(map[int64]model.EzfyMapTile, len(tiles))
+			for _, t := range tiles {
+				tm[ezfyTileKey(t.X, t.Y)] = t
+			}
+			c.tiles = tm
 		}
-		c.tiles = tm
 	}
 
 	// ★★ 2026-10-05 修复「活动野地配置了没生效」：这段原来和地图瓦片一起被放在

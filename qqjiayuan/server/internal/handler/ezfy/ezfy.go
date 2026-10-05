@@ -91,8 +91,17 @@ func (h *EzfyHandler) cfgs() {
 	// ★ 2026-10-03 双机共享一个 RDS：周期刷新让两台进程内配置缓存收敛（30s）。
 	ezfyStartConfigReloader.Do(func() { go ezfyPeriodicReload(h.DB) })
 	ezfyCfg.load(h.DB)
-	// 一次性迁移：旧版「建在海洋上」的海城 → 沿海平原（幂等，进程内只跑一次）
-	ezfySeaMigrateOnce.Do(func() { ezfyMigrateSeaCities(h.DB) })
+	// ★ 2026-10-05 永久停用「开机自动搬城」（用户明确要求）。
+	//
+	//   原来这里会调 ezfyMigrateSeaCities，在每次启动时把「地形判定=海洋」的城搬到最近的
+	//   沿海平原。问题：它依赖 ezfyTerrainEx 的输入（地图格子覆盖 ezfy_map_tile）。一旦
+	//   启动瞬间瓦片读取失败/抖动，地形整体翻转，就会把一批本不该动的城判成「海城」并整体
+	//   位移 —— 玩家看到的就是「重新部署后城市坐标又变了」。这是同一 bug 反复复发的根源。
+	//
+	//   现在：城市坐标**只由**玩家操作（迁城）或**显式运维命令**改动，启动流程绝不自动搬城。
+	//   需要一次性修数据时，跑运维命令：
+	//     ./ezfymigrate --coastal --apply --yes   （把建有航海协会的城迁回沿海平原）
+	// → 该自动迁移函数已整体删除（见 ezfy_geo.go 头部说明），不再随进程启动执行。
 	// 一次性迁移：科技从「按城各存」合并为「所有城池公用」（幂等，见 ezfy_tech_shared.go）
 	ezfySharedTechOnce.Do(func() { ezfyMigrateSharedTech(h.DB) })
 	// 一次性迁移：存量战报「野地N级」→ 具体地形名（幂等，见 ezfy_migrate_report.go）
