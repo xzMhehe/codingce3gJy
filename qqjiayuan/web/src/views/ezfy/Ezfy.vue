@@ -1674,6 +1674,10 @@ export default {
     this.timer = setInterval(() => {
       if (this.cur === 'home') { this.load(); this.loadResCfg(); this.loadHomeChats() }
       if (this.cur === 'chat') this.loadChats()
+      // ★ 2026-10-05 修复「建筑升级等级不动 / 训练不出厂 / 切城后页面串数据」：
+      //   /view 瘦身后这些列表不再由 /view 下发，非首页页面必须自己轮询刷新，
+      //   否则建筑完工/训练出厂在页面上永远不更新。
+      this.refreshPageData()
     }, 30000)
     // ★ 页脚小Q报时: 每秒刷新(与 App.vue 页脚同一格式)
     this.tickClock()
@@ -2121,6 +2125,10 @@ export default {
       this.officerCount = d.officer_count || 0
       this.rankName = d.rank_name
       this.rankPost = d.rank_post
+      // ★ 2026-10-05 修复「切城后页面串数据（感觉所有城市都一样）」：
+      //   城市真的变了（切城/弃城）就把按城缓存的页面数据清掉，避免渲染出上一座城的
+      //   建筑/军队/野地；页面重新进入时 go() 会各自重新拉取。首页轮询时城市没变不清。
+      const cityChanged = !!d.city && (!this.city || d.city.id !== this.city.id)
       this.city = d.city
       // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
       this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
@@ -2133,7 +2141,6 @@ export default {
       this.cities = d.cities || []
       this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
       this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
-      this.city = d.city
       this.continent = d.continent
       this.cityKindRaw = d.city_kind || ''
       this.cityIsSea = !!d.is_sea
@@ -2142,6 +2149,13 @@ export default {
       // ★ 2026-10-04 修复「一键加速后建筑没了」：/view 已不再下发 buildings，
       //   这里若无条件赋空数组，会把页面已懒加载好的建筑列表整个清空。
       //   改为「下发才覆盖、不下发保留」，建筑列表只由 /buildings 管理。
+      // ★ 2026-10-05 城市真变了 → 清掉按城数据（上面 cityChanged），防止串城显示。
+      if (cityChanged) {
+        this.buildings = []
+        this.buildingPool = []
+        this.wildlands = []
+        this.queues = []
+      }
       if (d.buildings !== undefined) this.buildings = d.buildings || []
       if (d.building_pool !== undefined) this.buildingPool = d.building_pool || []
       this.militaryCap = d.military_cap || 33
@@ -2215,6 +2229,22 @@ export default {
     },
     // ★ 2026-10-04 /view 瘦身：建筑列表/可建造池移到 /buildings（进入建筑/军队等页面时懒加载）。
     //   数据喂给 this.buildings / this.buildingPool，模板与 computed 无需改动。
+    // ★ 2026-10-05 30s 轮询按当前页刷新对应数据（建筑完工/训练出厂/科技完成/野地状态实时可见；
+    //   切城后停留在旧页时也会在 30s 内拉回新城数据，消除「所有城市都一样」的错觉）。
+    refreshPageData () {
+      const t = this.cur
+      if (t === 'buildm' || t === 'builds' || t === 'cityhall' || t === 'buildpre') {
+        this.loadBuildings()
+      } else if (t === 'troops' || t === 'troop' || t === 'defence' || t === 'factory' ||
+                 t === 'troopview' || t === 'trainpre' || t === 'troopstat') {
+        this.loadTroops()
+        this.loadBuildings()
+      } else if (t === 'techs' || t === 'techpre') {
+        this.loadTechs()
+      } else if (t === 'wilds') {
+        this.loadWilds()
+      }
+    },
     loadBuildings () {
       return api.get('/games/ezfy/buildings').then(r => {
         if (r.code === 0) {
@@ -5004,9 +5034,12 @@ export default {
       const t = (this.troopsData.troops || []).find(x => x.troop_id === tid)
       return t ? t.count : 0
     },
-    remain (endTime) {
+    // ★ 2026-10-05 修复「建筑/科技倒计时不自动减少」：tick 参数 = 父组件每秒刷新的
+    //   gatherNow（响应式），子组件模板里把 ezfy.gatherNow 传进来 → 子组件每秒随父组件
+    //   时钟重渲染，倒计时实时走动（原来只调 ezfy.remain() 无响应式依赖，子组件不重渲染）。
+    remain (endTime, tick) {
       if (!endTime) return ''
-      const ms = endTime - Date.now()
+      const ms = endTime - (tick || Date.now())
       if (ms <= 0) return '已完成'
       const s = Math.floor(ms / 1000)
       if (s < 60) return s + '秒'

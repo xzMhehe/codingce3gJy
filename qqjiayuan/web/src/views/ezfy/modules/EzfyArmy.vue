@@ -19,7 +19,7 @@
           </div>
           <div class="panel-title">训练队列({{ ezfy.queues.length }})</div>
           <div class="old-line" v-for="q in ezfy.queues" :key="'q' + q.id">
-            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time) }}
+            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
             <!-- 接口只返回 status=0（训练中）的队列，所以这里不需要再判断状态 -->
             <!-- ★ 2026-09-26 修复：训练页原来只有 [取消]，商城买的「训练加速」道具无处可用 -->
             <a v-for="a in ezfy.accItems(4)" :key="'sq' + q.id + '_' + a.cfg_id" href="javascript:;"
@@ -42,7 +42,7 @@
           </div>
           <div class="old-line">正在建造:</div>
           <div class="old-line" v-for="q in ezfy.defenceQueues" :key="'dq' + q.id">
-            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time) }}
+            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
           </div>
           <div class="old-line gray" v-if="!ezfy.defenceQueues.length">(无)</div>
           <table>
@@ -81,7 +81,7 @@
           <br/>
           <div class="panel-title">训练队列({{ ezfy.queues.length }})</div>
           <div class="old-line" v-for="q in ezfy.queues" :key="'tq' + q.id">
-            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time) }}
+            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
             <!-- 接口只返回 status=0（训练中）的队列，所以这里不需要再判断状态 -->
             <a href="javascript:;" @click="ezfy.doCancelTrain(q)">[取消]</a>
           </div>
@@ -305,7 +305,7 @@
           </div>
           <div class="old-line">正在训练：</div>
           <div class="old-line" v-for="q in ezfy.queues" :key="'fq' + q.id">
-            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time) }}
+            {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
           </div>
           <div class="old-line gray" v-if="!ezfy.queues.length">(无)</div>
           <div class="old-line" v-for="t in ezfy.trainCfgs" :key="'ft' + t.id">

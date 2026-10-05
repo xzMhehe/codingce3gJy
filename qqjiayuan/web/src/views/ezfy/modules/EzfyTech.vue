@@ -8,7 +8,7 @@
             <!-- ★ 2026-09-28 用户要求版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
                  原来 [研究N级] 被挤在效果下面第三行，扫一眼看不出「这条能不能升」。 -->
             <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
-            <span v-if="t.researching" class="orange">研究中 {{ ezfy.remain(t.end_time) }}
+            <span v-if="t.researching" class="orange">研究中 {{ ezfy.remain(t.end_time, ezfy.gatherNow) }}
               <!-- ★ 2026-09-26 修复「科技加速道具买完实际使用不生效」：原来这里的 [加速]
                    调的是 /techs/speed，是**免费减 10 分钟**（minutes 还能由前端随便传），
                    商城买的「科技加速30分钟/2小时」根本没被消耗。现在改为消耗道具。 -->

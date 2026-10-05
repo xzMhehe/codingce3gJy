@@ -746,7 +746,8 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity, reuse ...[]model.E
 	} else {
 		buildings = h.buildingList(city.ID)
 	}
-	for _, b := range buildings {
+	for i := range buildings {
+		b := &buildings[i]
 		if b.Status != 0 && now >= b.EndTime {
 			// ★★ 2026-09-26 修复「建筑完成被并发重复结算」：
 			//
@@ -782,6 +783,12 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity, reuse ...[]model.E
 			if res.Error != nil || res.RowsAffected == 0 {
 				continue // 已被其他并发请求结算过，别再重复加声望/任务进度
 			}
+			// ★ 2026-10-05 结算成功 → 同步内存里的行（建筑页/首页复用这份已取数据时
+			//   立刻拿到新等级，不再显示旧等级 —— 修「建筑升级等级不动」）
+			b.Level = newLevel
+			b.Status = newStatus
+			b.EndTime = newEnd
+			b.TargetLevel = newTarget
 			// ↓ 以下副作用只在「真正抢到结算权」时执行
 			h.addPrestige(city.UserID, newLevel*10)
 			if newStatus == 0 {

@@ -176,7 +176,7 @@
               <tr :key="'hb' + b.id">
                 <td>{{ b.name }}</td>
                 <td>{{ b.level }}/{{ b.max_level }}</td>
-                <td>{{ b.status === 0 ? '空闲' : '施工中 ' + ezfy.remain(b.end_time) }}</td>
+                <td>{{ b.status === 0 ? '空闲' : '施工中 ' + ezfy.remain(b.end_time, ezfy.gatherNow) }}</td>
                 <td>
                   <a v-if="b.status === 0 && b.level > 0 && b.level < b.max_level" href="javascript:;" @click="ezfy.doUpgrade(b)">[升级]</a>
                   <!-- ★ 与建筑页同一口径：按背包里的建筑加速道具档位渲染 -->

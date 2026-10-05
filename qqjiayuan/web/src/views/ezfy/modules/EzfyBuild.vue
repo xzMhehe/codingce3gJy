@@ -20,7 +20,7 @@
           <span class="gray" v-if="ezfy.resDetail.mayor_bonus > 0"> [市长后勤加成+{{ ezfy.resDetail.mayor_bonus }}%]</span>
           <!-- ★ 2026-09-30 用户要求「增产令使用了要在资源详情简约体现」：有增产效果时显示幅度 + 剩余时长 -->
           <span class="green" v-if="ezfy.resDetail.boost_pct > 0">
-            [增产令+{{ ezfy.resDetail.boost_pct }}% {{ ezfy.fmtLeft(Math.floor((ezfy.resDetail.boost_until - Date.now()) / 1000)) }}]
+            [增产令+{{ ezfy.resDetail.boost_pct }}% {{ ezfy.fmtLeft(Math.floor((ezfy.resDetail.boost_until - ezfy.gatherNow) / 1000)) }}]
           </span>
           <span class="gray" v-if="ezfy.resDetail.bonus === 0"> [暂无加成]</span>
           <br/>
@@ -63,7 +63,7 @@
             <span v-else>{{ b.name }}</span>
             ({{ b.level }}级)
             <template v-if="b.status !== 0">
-              <span class="orange">施工中 {{ ezfy.remain(b.end_time) }}</span>
+              <span class="orange">施工中 {{ ezfy.remain(b.end_time, ezfy.gatherNow) }}</span>
               <!-- ★ 2026-09-26 修复「加速道具买完实际使用不生效」：按背包里**实际拥有**的
                    建筑加速道具(item_type=3)逐档渲染，点哪档就用哪档（原来是自动挑最短的，
                    玩家买了 2 小时却只减 30 分钟，看着就像「买了没用上」）。 -->
