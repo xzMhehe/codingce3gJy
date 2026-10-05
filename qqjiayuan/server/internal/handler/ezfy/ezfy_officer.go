@@ -1903,15 +1903,20 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 	dropChance, tier := 80, 1
 	// ★ 2026-09-29 用户要求：先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
 	//   统一调低 → 中级17% (roll<25) / 高级6% (roll<8) / 特殊2% (roll<2)，
-	//   省出的概率全部归到 初级(初级散件变多)。要再调概率就改这三个阈值。
+	//   省出的概率全部归到 初级(初级散件变多)。
 	// ★ 2026-09-30 玩家反馈高级地掉装备略多：中级 12%(roll<18) / 高级 4%(roll<4) / 特殊 1%(roll<1)
-	if level >= 3 && roll < 18 {
+	// ★ 2026-10-05 用户要求「战斗掉落高级宝物（狙击步枪）概率可配」→ 三个阈值改读「二战系统配置」
+	//   （中级 drop_t2 / 高级 drop_t3 / 特殊 drop_t4，默认 18/4/1；0/负 → 回落默认）。
+	t2 := ezfyLimitOr(ezfyCfg.limit.DropT2, 18)
+	t3 := ezfyLimitOr(ezfyCfg.limit.DropT3, 4)
+	t4 := ezfyLimitOr(ezfyCfg.limit.DropT4, 1)
+	if level >= 3 && roll < t2 {
 		tier = 2
 	}
-	if level >= 6 && roll < 4 {
+	if level >= 6 && roll < t3 {
 		tier = 3
 	}
-	if level >= 9 && roll < 1 {
+	if level >= 9 && roll < t4 {
 		tier = 4
 	}
 	if special {
@@ -1919,7 +1924,14 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 			tier = 3
 		}
 		// ★ 2026-09-30 玩家反馈高级地掉装备偏多：活动野地不再必定掉，降为 85%
-		dropChance = 85
+		// ★ 2026-10-05 该概率改读配置（drop_act_pct，默认 85；0/负 → 回落 85）
+		dropChance = ezfyLimitOr(ezfyCfg.limit.DropActPct, 85)
+	} else if m := maxInt(maxInt(t2, t3), t4); m > dropChance {
+		// 非活动野地：阈值本身即掉率，避免把阈值配得 >80 时被 dropChance 卡掉
+		dropChance = m
+	}
+	if dropChance > 100 {
+		dropChance = 100
 	}
 	if roll < dropChance {
 		if cfg := h.randomEquipment(tier); cfg != nil {
@@ -2049,8 +2061,8 @@ func (h *EzfyHandler) captureWildlandOfficer(city *model.EzfyCity, wildType, lev
 // createCaptiveOfficer 把指定军官池军官作为战俘抓到攻方城（概率/参谋部容量判定 + 写库）
 //
 // ★ 2026-09-29 活动野地也能配守将（普通军官/名将都可选），胜利后复用同一套俘虏逻辑。
-//　 g 为军官池条目；level 决定俘虏等级（夹在名将350/普通150）；special 为特殊目标时概率翻倍；
-//　 rateOverride 为显式概率%（0=按星级默认；1~100 直接覆盖，不受默认 60% 上限限制）。
+// 　 g 为军官池条目；level 决定俘虏等级（夹在名将350/普通150）；special 为特殊目标时概率翻倍；
+// 　 rateOverride 为显式概率%（0=按星级默认；1~100 直接覆盖，不受默认 60% 上限限制）。
 func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCfgGeneral, level int, special bool, rateOverride int) string {
 	star := g.Star
 	if star <= 0 {
@@ -2206,8 +2218,9 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 // Officers GET /games/ezfy/officers —— 军官列表 + 军校/参谋部等级
 //
 // ★ 2026-10-04 性能（用户反馈「/officers cache 未命中仍 3s+」）：miss 路径改两波并行。
-//   第一波 档案+城市列表（1 RTT）定当前城；第二波 军官/俘虏/建筑/队列/科技/升星卡 并行（1 RTT）；
-//   懒结算全部复用已取数据（零额外查询），总串行 RTT 从 ~12 降到 ~2。
+//
+//	第一波 档案+城市列表（1 RTT）定当前城；第二波 军官/俘虏/建筑/队列/科技/升星卡 并行（1 RTT）；
+//	懒结算全部复用已取数据（零额外查询），总串行 RTT 从 ~12 降到 ~2。
 func (h *EzfyHandler) Officers(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -2233,7 +2246,10 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 	wg.Add(5)
 	go func() { defer wg.Done(); list = h.officerList(city.ID) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
+	}()
 	go func() { defer wg.Done(); starCard = h.itemCount(uid, ezfyStarItemID) }()
 	go func() { // 俘虏可能落在任一座城 → 玩家名下所有城市汇总
 		defer wg.Done()
@@ -2280,7 +2296,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 				"general_des":   genDes,
 				"general_star":  genStar,
 				"general_level": genLevel,
-				"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+				"military":      o.Military, "logistics": o.Logistics, "learning": o.Learning,
 				// ★ 含装备/套装加成的有效属性（前端展示「基础(+装备)」）
 				"military_total": em, "logistics_total": el, "learning_total": ee,
 				"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
@@ -2289,7 +2305,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 				"base_military": bm, "base_logistics": bl, "base_learning": be,
 				"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
 				// ★ 2026-09-30 升星累计加点（洗点前玩家能看懂多少点是升星来的）
-				"star_points": o.StarPoints,
+				"star_points":  o.StarPoints,
 				"set_military": sm, "set_logistics": sl, "set_learning": se,
 				"active_sets":  activeSets,
 				"set_progress": h.officerSetProgressView(o),
@@ -2360,7 +2376,8 @@ func ezfyOfficerStatusName(o *model.EzfyOfficer) string {
 // OfficerDetail GET /games/ezfy/officers/:id —— 军官详情（技能/装备/可学技能/背包装备）
 //
 // ★ 2026-10-04 性能（用户反馈「/officers/:id 3s+」）：miss 路径改两波并行，
-//   背包/本城军官/物品数/建筑/训练队列 第二波一次打齐，懒结算零额外查询。
+//
+//	背包/本城军官/物品数/建筑/训练队列 第二波一次打齐，懒结算零额外查询。
 func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -2394,9 +2411,15 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	wg.Add(5)
 	go func() { defer wg.Done(); items = h.equipmentList(uid) }()
 	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
-	go func() { defer wg.Done(); cnts = h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID) }()
+	go func() {
+		defer wg.Done()
+		cnts = h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID)
+	}()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
+	}()
 	wg.Wait()
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, buildings)
@@ -2516,7 +2539,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"general_des":   genDes,
 			"general_star":  genStar,
 			"general_level": genLevel,
-			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+			"military":      o.Military, "logistics": o.Logistics, "learning": o.Learning,
 			// ★ 有效属性（基础 + 装备 + 套装），前端展示成「33 (+5) = 38」
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,
@@ -2524,8 +2547,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			// ★ 2026-09-22：加点用
 			"base_military": bm, "base_logistics": bl, "base_learning": be,
 			"free_points": o.FreePoints, "used_points": officerAllocatedPoints(o),
-				// ★ 2026-09-30 升星累计加点（洗点前玩家能看懂多少点是升星来的）
-				"star_points": o.StarPoints,
+			// ★ 2026-09-30 升星累计加点（洗点前玩家能看懂多少点是升星来的）
+			"star_points":  o.StarPoints,
 			"set_military": sm, "set_logistics": sl, "set_learning": se,
 			"active_sets": activeSets,
 			// ★ 套装穿戴进度（穿齐才生效；这里让前端能显示「还差 N 件」）
@@ -2807,7 +2830,7 @@ func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
 			"id": now.ID, "military": now.Military, "logistics": now.Logistics, "learning": now.Learning,
 			"base_military": now.BaseMilitary, "base_logistics": now.BaseLogistics, "base_learning": now.BaseLearning,
 			"free_points": now.FreePoints, "used_points": officerAllocatedPoints(&now),
-				"star_points": now.StarPoints,
+			"star_points":    now.StarPoints,
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"set_military": sm, "set_logistics": sl, "set_learning": se, "active_sets": activeSets,
 		},
@@ -3621,11 +3644,14 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 // OfficerEquipments GET /games/ezfy/officers/equipments —— 装备图鉴 + 我的背包
 //
 // ★ 2026-10-04 性能优化：原实现逐件装备查 `equipIsCaptiveWorn`（2 次库）+
-//   `officerOf`（1 次库），背包几百件装备就是上千次 SQL 往返（双机共 RDS 时更明显，
-//   装备页因此卡到 1s+）。现在装备只查一次、当前城军官只查一次，被俘穿戴判定/穿戴者
-//   名字全部走内存 map —— 总 SQL 从 O(3N) 降到常数。
+//
+//	`officerOf`（1 次库），背包几百件装备就是上千次 SQL 往返（双机共 RDS 时更明显，
+//	装备页因此卡到 1s+）。现在装备只查一次、当前城军官只查一次，被俘穿戴判定/穿戴者
+//	名字全部走内存 map —— 总 SQL 从 O(3N) 降到常数。
+//
 // ★ 2026-10-04 再优化（用户反馈「/equipments 3s+」）：miss 路径改两波并行，
-//   懒结算复用已取数据，总串行 RTT 从 ~10 降到 ~2。
+//
+//	懒结算复用已取数据，总串行 RTT 从 ~10 降到 ~2。
 func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -3647,7 +3673,10 @@ func (h *EzfyHandler) OfficerEquipments(c *gin.Context) {
 	// 当前城军官一次拉全：①被俘军官身上挂的装备不进背包 ②已穿戴装备显示穿戴者名字
 	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
+	}()
 	wg.Wait()
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, buildings)
@@ -3859,7 +3888,8 @@ func (h *EzfyHandler) equipShopItem(e *model.EzfyCfgEquipment) gin.H {
 // EquipShop GET /games/ezfy/equipshop —— 装备商城（套装分组）
 //
 // ★ 2026-10-04 性能（用户反馈「/equipshop 线上 2s+」）：展示页 + 3s 玩家级缓存
-//   （买装备在 EquipShopBuy 已统一失效），缓存命中零 SQL。
+//
+//	（买装备在 EquipShopBuy 已统一失效），缓存命中零 SQL。
 func (h *EzfyHandler) EquipShop(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()

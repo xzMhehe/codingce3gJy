@@ -65,7 +65,8 @@ const ezfyTerrainIsland = 7
 // ezfyIsSeaWildTerrain 该地形是否按「海野」处理：海底森林(8) + 岛屿(7)。
 //
 // ★ 2026-10-05 用户规则「岛屿也属于海野」——岛屿上的野地守军配置、采集系数、
-//   战报命名、占领记录 wild_type 一律按海野口径（原来只有地形 8 算海野）。
+//
+//	战报命名、占领记录 wild_type 一律按海野口径（原来只有地形 8 算海野）。
 func ezfyIsSeaWildTerrain(t int) bool {
 	return t == ezfyTerrainSea || t == ezfyTerrainIsland
 }
@@ -95,7 +96,8 @@ func ezfyIsSeaWildTerrain(t int) bool {
 //
 // ⚠️ 采集产出另按**地形**区分（岛屿→钢铁、海底森林→石油），那是 `ezfyGatherResName` 的事，别在这里管。
 // ⚠️ 新增任何「海野」相关的展示文案时一律走这个函数，
-//   别自己写 `ezfyIsSeaWildTerrain(...) → "海底森林"`（那样纯海洋、以及岛屿都会变成海底森林）。
+//
+//	别自己写 `ezfyIsSeaWildTerrain(...) → "海底森林"`（那样纯海洋、以及岛屿都会变成海底森林）。
 func ezfyWildTerrainDisplayName(x, y int, knownWild bool) string {
 	if ezfyTerrainEx(x, y) != ezfyTerrainSea {
 		return ezfyTerrainNameEx(x, y)
@@ -893,6 +895,7 @@ func ezfyResAddExpr(res string, n int64) clause.Expr {
 //   - 正数累加 → min(资源最大值, 现值 + 增量)，封顶不超上限；
 //   - delta=0（仅黄金产量结算使用）→ 现值超过资源最大值时拉回上限，老数据超限自动收敛；
 //   - 负数扣减 → 正常减少，最低 0。
+//
 // 供不便走 SQL 表达式的发放路径使用。
 func ezfyAddResMax(res string, cur, delta int64) int64 {
 	max := ezfyResMaxOf(res)
@@ -1052,6 +1055,11 @@ const (
 	ezfyGatherSeaMultDef = 1.5
 	// ★ 2026-09-28 军校刷新周期模式，默认按小时（2）；1 = 按天
 	ezfyRecruitCycleHourlyDef = 2
+	// ★ 2026-10-05 战斗掉落宝物概率（wildlandLoot 可配）：中级/高级/特殊 roll 阈值 + 活动野地掉宝总概率
+	ezfyDropT2Def     = 18
+	ezfyDropT3Def     = 4
+	ezfyDropT4Def     = 1
+	ezfyDropActPctDef = 85
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
@@ -1472,11 +1480,14 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 // 改了参数后调用它，改动立刻生效，不用重启进程。
 //
 // ★ 2026-10-03 双机共享 RDS 后，这台苹果的是「谁改了配置」只有命中的那台进程知道，
-//   本机用 cfgsReload 显式刷新；另一台靠 ezfyPeriodicReload 周期刷新收敛。
-//   海岸索引只依赖「地图格子覆盖」(ezfy_map_tile 的 Terrain)，其它配置表不改变外形，
-//   所以只有当瓦片覆盖实际变化时才重建索引 —— 避免周期刷新把 500×500 全图扫描扛下来。
+//
+//	本机用 cfgsReload 显式刷新；另一台靠 ezfyPeriodicReload 周期刷新收敛。
+//	海岸索引只依赖「地图格子覆盖」(ezfy_map_tile 的 Terrain)，其它配置表不改变外形，
+//	所以只有当瓦片覆盖实际变化时才重建索引 —— 避免周期刷新把 500×500 全图扫描扛下来。
+//
 // ★ 2026-10-04 skipHeavy=true（周期刷新）：只刷小配置表，跳过 25 万行地图瓦片表与
-//   活动野地表 —— 这两张表是管理端**低频改动**，仍由 cfgsReload 全量刷新收敛。
+//
+//	活动野地表 —— 这两张表是管理端**低频改动**，仍由 cfgsReload 全量刷新收敛。
 func (c *ezfyConfigCache) reload(db *gorm.DB, skipHeavy ...bool) {
 	skip := len(skipHeavy) > 0 && skipHeavy[0]
 	// ★★ 2026-10-05：周期刷新改成「先算廉价指纹，只有真变了才拉地图瓦片」。
@@ -1539,8 +1550,9 @@ var ezfyStartConfigReloader sync.Once
 
 // ezfyPeriodicReload 每 30s 从共享 RDS 重读二战配置，让两台服务器的进程内缓存收敛。
 // ★ 2026-10-04 skipHeavy=true：只刷小配置表（几十~几百行），跳过地图瓦片/活动野地
-//   两张重表 —— 原来每 30s 全图扫描 + 持写锁，期间全站请求被拖住（用户反馈「很卡」）。
-//   地图/活动野地是管理端低频改动，靠管理端保存时的 cfgsReload 全量收敛。
+//
+//	两张重表 —— 原来每 30s 全图扫描 + 持写锁，期间全站请求被拖住（用户反馈「很卡」）。
+//	地图/活动野地是管理端低频改动，靠管理端保存时的 cfgsReload 全量收敛。
 func ezfyPeriodicReload(db *gorm.DB) {
 	for range time.Tick(30 * time.Second) {
 		ezfyCfg.reload(db, true)
@@ -1549,8 +1561,9 @@ func ezfyPeriodicReload(db *gorm.DB) {
 
 // loadLocked 真正干活的部分，调用方必须已持有写锁。
 // ★ 2026-10-04 新增 skipHeavy：周期刷新时跳过「地图瓦片 / 活动野地」两张重表
-//   （25 万行全图扫描跨 WAN RDS 要几百毫秒~秒级，且期间持写锁拖住全站），
-//   这两张表只由管理端低频改动，全量刷新的 cfgsReload 仍会读取。
+//
+//	（25 万行全图扫描跨 WAN RDS 要几百毫秒~秒级，且期间持写锁拖住全站），
+//	这两张表只由管理端低频改动，全量刷新的 cfgsReload 仍会读取。
 func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	c.buildings = map[int]model.EzfyCfgBuilding{}
 	c.buildingLvls = map[int]map[int]model.EzfyCfgBuildingLevel{}
@@ -1886,7 +1899,8 @@ func (c *ezfyConfigCache) troop(id int) *model.EzfyCfgTroop {
 // sortedTroops 返回按 id 升序的兵种配置切片（读进程内缓存，不发 SQL）。
 //
 // ★ 2026-10-03 性能：/troops 是 30s 轮询接口，之前每次全表 SELECT ezfy_cfg_troop
-//   经跨 WAN 到 RDS（单次 13~37ms）；配置早已整表载入缓存，直接读内存即可。
+//
+//	经跨 WAN 到 RDS（单次 13~37ms）；配置早已整表载入缓存，直接读内存即可。
 func (c *ezfyConfigCache) sortedTroops() []model.EzfyCfgTroop {
 	ids := make([]int, 0, len(c.troops))
 	for id := range c.troops {

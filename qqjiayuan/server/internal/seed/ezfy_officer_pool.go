@@ -60,8 +60,9 @@ func ezfyPoolStarRoll(r *rand.Rand) int {
 // ezfyPoolAttrSumOf 普通军官三属性之和的上限（按星级合理递减，最高 5 星也仅 200）
 //
 // ★ 2026-09-29 用户规则：「普通军官三属性之和 ≤200，按星级合理递减」+「所有池子军官 1 级」：
-//  1星~5星 三属性之和递减（5星≈200，逐级降）。
-//  这里返回的是「该星级下的三属性之和」，生成时据此拆成 军事/后勤/学识。
+//
+//	1星~5星 三属性之和递减（5星≈200，逐级降）。
+//	这里返回的是「该星级下的三属性之和」，生成时据此拆成 军事/后勤/学识。
 func ezfyPoolAttrSumOf(star int) int {
 	switch star {
 	case 1:
@@ -80,7 +81,8 @@ func ezfyPoolAttrSumOf(star int) int {
 // buildEzfyPoolOfficers 生成 1000 名普通军官（固定随机种子 → 每次生成结果一致，便于对账）
 //
 // ★ 2026-09-29 用户规则：所有池子军官统一 **1 级**；三属性之和 ≤200 且按星级递减。
-//    ID 从 1001 开始，避开名将的 1~31，方便以后人工增删时互不干扰。
+//
+//	ID 从 1001 开始，避开名将的 1~31，方便以后人工增删时互不干扰。
 func buildEzfyPoolOfficers() []model.EzfyCfgGeneral {
 	r := rand.New(rand.NewSource(20260922))
 	out := make([]model.EzfyCfgGeneral, 0, ezfyPoolOfficerCount)
@@ -649,23 +651,26 @@ type ezfyChestSeed struct {
 // 所以命名沿用 黄金宝箱 / 崛起宝箱 / 帝国宝箱 / 战神宝箱，再补两档保持同一命名格式。
 // ★ 套装箱开出来是**整套**（Kind=3），不是单件。
 // ★ 2026-09-26 用户要求「初始化数据按线上现值对齐」：价格/库存/单次上限一律取线上库快照值。
+// ★ 2026-10-05 用户在线上把六个宝箱单价**全部下调**（20/40/60/80/100/100），要求种子按线上对齐。
+//
+//	库存是**动态值**（开箱会递减，见 ezfy_officer.go 的 stock - count），故库存仍沿用初始快照，不随线上消耗值走。
 var ezfyChestSeeds = []ezfyChestSeed{
-	{ID: 1, Name: "黄金宝箱", PriceDiamond: 200, Stock: 29, OpenMax: 5,
+	{ID: 1, Name: "黄金宝箱", PriceDiamond: 20, Stock: 29, OpenMax: 5,
 		Des:    "用黄金购买，开出散件军官装备（单件，不属于套装）",
 		Effect: "奖池：13 种纯散件军官装备 + 道具"},
-	{ID: 2, Name: "崛起宝箱", PriceDiamond: 500, Stock: 30, OpenMax: 5,
+	{ID: 2, Name: "崛起宝箱", PriceDiamond: 40, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套起步套装（9 件）",
 		Effect: "奖池：新兵套装 / 战士套装 整套"},
-	{ID: 3, Name: "帝国宝箱", PriceDiamond: 600, Stock: 30, OpenMax: 5,
+	{ID: 3, Name: "帝国宝箱", PriceDiamond: 60, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套中级套装（9 件）",
 		Effect: "奖池：海军上将 / 传说英雄 / 名门征服 整套"},
-	{ID: 4, Name: "战神宝箱", PriceDiamond: 800, Stock: 30, OpenMax: 5,
+	{ID: 4, Name: "战神宝箱", PriceDiamond: 80, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套高级套装（9 件）",
 		Effect: "奖池：传说无畏 / 传说征服 整套"},
-	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 1000, Stock: 30, OpenMax: 5,
+	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 100, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套精锐套装（9 件）",
 		Effect: "奖池：精英守护者 / 传说守护者 / 暴君之怒 / 审判者 整套"},
-	{ID: 6, Name: "统帅宝箱", PriceDiamond: 2000, Stock: 25, OpenMax: 1,
+	{ID: 6, Name: "统帅宝箱", PriceDiamond: 100, Stock: 25, OpenMax: 1,
 		Des:    "开出一整套顶级套装（9~11 件），含六大系列",
 		Effect: "奖池：混沌三件套 / 亡魂 / 遗失传说 / 隐秘宝藏 + 六大系列 整套"},
 }
@@ -1235,10 +1240,11 @@ func nerfEquipSetPct(db *gorm.DB) {
 // ============ 二·D、装备快照自愈 ============
 //
 // ★ 2026-09-23 用户确认「装备是统一池子」：池子（ezfy_cfg_equipment）里改了属性，
-//   玩家已买到 / 已穿上的应该跟着变。本函数每次启动时把快照对齐到池子：
 //
-//	`ezfy_equipment`（买到时抄的快照）→ 军官 `equipment` JSON（穿戴时抄的快照）。
-//	两层都从池子/背包重建，稳态下是 no-op（幂等）。
+//	  玩家已买到 / 已穿上的应该跟着变。本函数每次启动时把快照对齐到池子：
+//
+//		`ezfy_equipment`（买到时抄的快照）→ 军官 `equipment` JSON（穿戴时抄的快照）。
+//		两层都从池子/背包重建，稳态下是 no-op（幂等）。
 func repairEquipSnapshots(db *gorm.DB) {
 	// ① 玩家背包里的装备：六项百分比 + 三维「始终」对齐池子当前值（统一池子语义）；
 	//    enhance（玩家自己的强化等级）与 slot/set_id/series（身份字段）仍只补缺。

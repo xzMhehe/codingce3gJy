@@ -106,7 +106,7 @@ type EzfyCfgWildland struct {
 	OfficerMax int    `gorm:"comment:旧字段，同上" json:"officer_max"`                        // 旧字段，同上
 	// ★ 守军军官：**最多 1 个**，且只能从「军官池」（ezfy_cfg_general）里选。
 	//   0 = 该野地没有守将（打下来也俘不到军官）。
-	OfficerId int    `gorm:"comment:军官ID" json:"officer_id"`
+	OfficerId int `gorm:"comment:军官ID" json:"officer_id"`
 	// ★ 2026-10-05 宝物掉落（管理端下拉编辑器生成）：JSON [{"name":"宝物名","count":数量,"pct":概率%},...]，
 	//   老文本值（如「珠宝(平原)」）保留兼容，解析失败不掉落。
 	Treasure string `gorm:"type:varchar(500);comment:宝物掉落JSON" json:"treasure"`
@@ -145,10 +145,11 @@ func (EzfyMapTile) TableName() string { return "ezfy_map_tile" }
 // EzfyActWild 活动野地配置（地图管理「活动野地」tab）
 //
 // ★ 2026-09-29 用户要求：活动野地配置不友好，优化成「按坐标列表管理」。
-//   活动野地原有坐标由哈希 + mark 覆盖标记决定，这里给**每个活动野地坐标**挂一份可配置数据：
-//   - Enabled：启用开关。开 = 该格按活动野地玩法（守军/奖励/等级用本条配置，缺省回退默认）；
-//     关 = 该格**区别于普通野地**，按普通野地/无活动处理。
-//   - 守军/奖励 可配，留 0/空 = 用代码默认。
+//
+//	活动野地原有坐标由哈希 + mark 覆盖标记决定，这里给**每个活动野地坐标**挂一份可配置数据：
+//	- Enabled：启用开关。开 = 该格按活动野地玩法（守军/奖励/等级用本条配置，缺省回退默认）；
+//	  关 = 该格**区别于普通野地**，按普通野地/无活动处理。
+//	- 守军/奖励 可配，留 0/空 = 用代码默认。
 type EzfyActWild struct {
 	ID uint `gorm:"primaryKey;comment:主键ID" json:"id"`
 	X  int  `gorm:"uniqueIndex:uk_actwild;comment:X坐标" json:"x"`
@@ -362,6 +363,15 @@ type EzfyCfgLimit struct {
 	//   默认 1.3：1级=800；5级≈6467；7级≈10160；9级≈13840（均未乘后勤/倍率/陆海）。
 	//   1.0 = 纯线性（历史行为）；>1 越高等级越发突出；<1 高等级收益递减。0 / 负 / NULL 无意义 → 回落 1.3。
 	GatherLevelPow float64 `gorm:"default:1.3;comment:采集等级成长幂次" json:"gather_level_pow"`
+	// ★ 2026-10-05 战斗掉落宝物概率阈值（wildlandLoot 高级宝物掉率可配）：roll 阈值
+	//   中级 默认 18（roll<18）、高级 默认 4、特殊 默认 1；0/负/NULL → 回落默认。
+	DropT2 int `gorm:"default:18;comment:中级宝物掉落roll阈值" json:"drop_t2"`
+	DropT3 int `gorm:"default:4;comment:高级宝物掉落roll阈值" json:"drop_t3"`
+	DropT4 int `gorm:"default:1;comment:特殊宝物掉落roll阈值" json:"drop_t4"`
+	// ★ 2026-10-05 活动野地（活动目标）战斗掉宝总概率%：命中后才按品质掉落（默认 85）。
+	//   用户要求「野地战斗掉落高级宝物（如狙击步枪）的概率要可配」→ 这里就是那个概率。
+	//   0 / 负 / NULL → 回落 85。
+	DropActPct int `gorm:"default:85;comment:活动野地战斗掉宝概率" json:"drop_act_pct"`
 	// ★ 2026-09-28 用户要求「海野采集更高些，给海野加个系数 1~2」：
 	//   海野采集产出在本公式得出后（陆海系数之前）再整体 × 本系数，让海城周边野地采集更划算。
 	//   默认 1.5（海野基础陆海系数 3×1.5=4.5，比同级陆野 4 更高）；1 = 跟陆野拉平；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1.5。
@@ -489,12 +499,12 @@ type EzfyCfgLimit struct {
 	//   · 兵种数量按 count^power_troop_pow × 兵种质量/100 折算（默认 0.8 次方, 软化新老差距）
 	//   · 最终总战力 = 原始总和^power_compress_pow（默认 0.5 次方：只缩大数、小数几乎不缩、
 	//     严格单调保证排名不变；明细按原始占比拆分，三列之和仍等于总战力）
-	PowerTechPerLevel   int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
-	PowerTechPerTech    int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
-	PowerBuildPerLevel  int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
-	PowerTroopType      int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
-	PowerTroopPow       float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
-	PowerCompressPow    float64 `gorm:"default:0.5;comment:战力总量压缩幂次(总和^此值, 默认0.5)" json:"power_compress_pow"`
+	PowerTechPerLevel  int     `gorm:"default:120;comment:战力科技每级" json:"power_tech_per_level"`
+	PowerTechPerTech   int     `gorm:"default:100;comment:战力每项科技" json:"power_tech_per_tech"`
+	PowerBuildPerLevel int     `gorm:"default:80;comment:战力建筑每级" json:"power_build_per_level"`
+	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
+	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
+	PowerCompressPow   float64 `gorm:"default:0.5;comment:战力总量压缩幂次(总和^此值, 默认0.5)" json:"power_compress_pow"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -984,8 +994,9 @@ func (EzfyCorps) TableName() string { return "ezfy_corps" }
 // EzfyCorpsApply 入团申请（军团长开启审核后，玩家申请入团走此表待审）
 //
 // ★ 2026-09-30 用户要求「进军团需要审核」：open 军团直接入团（不走本表），
-//   开启审核的军团，玩家申请先落这里，军团长 [通过]/[拒绝] 后入团或驳回。
-//   Status：0 待审 / 1 通过(已入团) / 2 拒绝。
+//
+//	开启审核的军团，玩家申请先落这里，军团长 [通过]/[拒绝] 后入团或驳回。
+//	Status：0 待审 / 1 通过(已入团) / 2 拒绝。
 type EzfyCorpsApply struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	CorpsId   uint      `gorm:"index:idx_apply_corps;comment:军团ID" json:"corps_id"`

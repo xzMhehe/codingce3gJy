@@ -143,7 +143,7 @@ func (h *EzfyAdmin) AdminEzfyWildCfgList(c *gin.Context) {
 			"officer_min": r.OfficerMin, "officer_max": r.OfficerMax,
 			// ★ 2026-10-05 性能：守将名走配置缓存（原 ezfyGeneralName 每行一条 SQL → 一页 20 条）
 			"officer_id": r.OfficerId, "officer_name": h.ezfyGeneralNameCached(r.OfficerId),
-			"treasure":   r.Treasure, "drop_items": r.DropItems, "des": r.Des,
+			"treasure": r.Treasure, "drop_items": r.DropItems, "des": r.Des,
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -180,8 +180,27 @@ func (h *EzfyAdmin) ezfyCheckWildOfficer(vals map[string]interface{}) string {
 	return ""
 }
 
+// ezfyEnsureWildlandCfgColumns 防御「Unknown column 'drop_items'」。
+//
+// ★ 2026-10-05 多机共享库（config 里 seed.skip: true）启动会跳过整个 seed.Run，
+//
+//	野地类型后加的列可能在共享库上缺失 → 管理端「野地类型」保存报 Unknown column。
+//	与 gold_prod_mult 同套路：保存前幂等补列（HasColumn 探测，秒回）。
+func (h *EzfyAdmin) ezfyEnsureWildlandCfgColumns() {
+	if !h.DB.Migrator().HasTable("ezfy_cfg_wildland") {
+		return
+	}
+	if !h.DB.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {
+		h.DB.Exec("ALTER TABLE ezfy_cfg_wildland ADD COLUMN drop_items varchar(500) DEFAULT ''")
+	}
+	h.DB.Exec("ALTER TABLE ezfy_cfg_wildland MODIFY COLUMN treasure varchar(500) DEFAULT ''")
+	h.DB.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
+	h.DB.Exec("UPDATE ezfy_cfg_wildland SET treasure = '' WHERE treasure IS NULL")
+}
+
 // AdminEzfyWildCfgCreate 新增野地类型配置
 func (h *EzfyAdmin) AdminEzfyWildCfgCreate(c *gin.Context) {
+	h.ezfyEnsureWildlandCfgColumns()
 	var in map[string]interface{}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -210,6 +229,7 @@ func (h *EzfyAdmin) AdminEzfyWildCfgCreate(c *gin.Context) {
 
 // AdminEzfyWildCfgUpdate 修改野地类型配置
 func (h *EzfyAdmin) AdminEzfyWildCfgUpdate(c *gin.Context) {
+	h.ezfyEnsureWildlandCfgColumns()
 	id, _ := strconv.Atoi(c.Param("id"))
 	var cfg model.EzfyCfgWildland
 	if err := h.DB.First(&cfg, id).Error; err != nil {
@@ -321,8 +341,9 @@ func (h *EzfyAdmin) AdminEzfyWildlandList(c *gin.Context) {
 // AdminEzfyWildlandBatchDelete POST /admin/ezfy-wildlands/batch-delete  {ids:[...]}
 //
 // ★ 2026-10-05 用户要求「管理端删除做好批量删除、没用的历史数据要做物理删除」。
-//   ⚠️ 全站 ezfy 模型**都没有 gorm.DeletedAt**，所以 `Delete` 本来就是**物理删除**（真 DELETE 行），
-//   不会留软删标记 —— 这里保持一致，批量删除也是物理删。
+//
+//	⚠️ 全站 ezfy 模型**都没有 gorm.DeletedAt**，所以 `Delete` 本来就是**物理删除**（真 DELETE 行），
+//	不会留软删标记 —— 这里保持一致，批量删除也是物理删。
 func (h *EzfyAdmin) AdminEzfyWildlandBatchDelete(c *gin.Context) {
 	ids := ezfyBatchIDs(c)
 	if len(ids) == 0 {

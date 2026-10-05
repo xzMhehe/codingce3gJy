@@ -139,6 +139,23 @@
               <template slot="label">出征速度加成(%)<el-tooltip placement="top" :content="tips.march_speed_bonus"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.march_speed_bonus" :min="0" :max="1000" :step="10" :precision="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-05 战斗掉落宝物概率（野地/活动野地战斗掉宝可配） -->
+            <el-form-item>
+              <template slot="label">战斗掉落·中级宝物概率(%)<el-tooltip placement="top" :content="tips.drop_t2"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.drop_t2" :min="1" :max="100" :step="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">战斗掉落·高级宝物概率(%)<el-tooltip placement="top" :content="tips.drop_t3"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.drop_t3" :min="1" :max="100" :step="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">战斗掉落·特殊宝物概率(%)<el-tooltip placement="top" :content="tips.drop_t4"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.drop_t4" :min="1" :max="100" :step="1" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">活动野地掉宝概率(%)<el-tooltip placement="top" :content="tips.drop_act_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.drop_act_pct" :min="1" :max="100" :step="5" controls-position="right" style="width:180px" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ④ 战斗与经济 -->
@@ -331,7 +348,9 @@ export default {
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5,
         // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
-        recruit_five_star_rate: 1
+        recruit_five_star_rate: 1,
+        // ★ 2026-10-05 战斗掉落宝物概率（中级/高级/特殊阈值 + 活动野地掉宝总概率）
+        drop_t2: 18, drop_t3: 4, drop_t4: 1, drop_act_pct: 85
       },
       // ★ 各配置项的悬停说明（鼠标移到标题后的 i 图标上显示）
       //   文案口径以后端 model/ezfy.go 的 EzfyCfgLimit 注释为准，改逻辑时同步改这里
@@ -419,7 +438,12 @@ export default {
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
         officer_star_max: '军官最高可升到的星级，默认 5',
         // ★ 2026-09-30 招生简章出五星军官概率
-        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率：1 = 1%，100 = 100% 必刷出 5 星军官'
+        recruit_five_star_rate: '使用「招生简章」刷新军校候选时出 5 星军官的概率：1 = 1%，100 = 100% 必刷出 5 星军官',
+        // ★ 2026-10-05 战斗掉落宝物概率
+        drop_t2: '普通野地（等级≥3）战斗胜利后掉落「中级宝物」的概率（%），默认 18。1 = 1%，100 = 必掉。',
+        drop_t3: '普通野地（等级≥6）战斗胜利后掉落「高级宝物」（如狙击步枪）的概率（%），默认 4。1 = 1%，100 = 必掉。',
+        drop_t4: '普通野地（等级≥9）战斗胜利后掉落「特殊宝物」的概率（%），默认 1。1 = 1%，100 = 必掉。',
+        drop_act_pct: '活动野地（活动目标）战斗胜利后的掉宝总概率（%），默认 85。修改它即可调整活动野地掉高级宝物（如狙击步枪）的概率；1 = 1%，100 = 必掉。'
       }
     }
   },
@@ -500,7 +524,12 @@ export default {
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),
             officer_star_max: pos(r.data.officer_star_max, 5),
             // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%）
-            recruit_five_star_rate: pos(r.data.recruit_five_star_rate, 1)
+            recruit_five_star_rate: pos(r.data.recruit_five_star_rate, 1),
+            // ★ 2026-10-05 战斗掉落宝物概率（0 / 空 → 回落默认）
+            drop_t2: pos(r.data.drop_t2, 18),
+            drop_t3: pos(r.data.drop_t3, 4),
+            drop_t4: pos(r.data.drop_t4, 1),
+            drop_act_pct: pos(r.data.drop_act_pct, 85)
           }
         } else this.$message.error(r.msg)
       })

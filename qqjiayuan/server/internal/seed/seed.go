@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -428,25 +429,25 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 1 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
 
 		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
-	//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
-	if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
-		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
-	}
-	db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
-
-	// ★ 向系统出售资源回收比例（2026-09-30 用户要求）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
-	//   0 无意义 → 回落各自默认；管理端可在「交易行维护」调整。
-	addSysSellCol := func(col, def string) {
-		if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
-			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + def)
+		//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
 		}
-		db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + def + " WHERE " + col + " IS NULL OR " + col + " <= 0")
+		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
+
+		// ★ 向系统出售资源回收比例（2026-09-30 用户要求）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
+		//   0 无意义 → 回落各自默认；管理端可在「交易行维护」调整。
+		addSysSellCol := func(col, def string) {
+			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
+				db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + col + " int DEFAULT " + def)
+			}
+			db.Exec("UPDATE ezfy_cfg_limit SET " + col + " = " + def + " WHERE " + col + " IS NULL OR " + col + " <= 0")
+		}
+		addSysSellCol("sys_sell_food", "10")
+		addSysSellCol("sys_sell_steel", "10")
+		addSysSellCol("sys_sell_oil", "20")
+		addSysSellCol("sys_sell_rare", "25")
 	}
-	addSysSellCol("sys_sell_food", "10")
-	addSysSellCol("sys_sell_steel", "10")
-	addSysSellCol("sys_sell_oil", "20")
-	addSysSellCol("sys_sell_rare", "25")
-}
 
 	// 二战风云：征兵队列的「免费征兵」标记（免费征兵期间建的队列，取消训练时不退还资源）
 	// 列名 free_train 避开保留字；老队列一律 0（都是正常扣费建的），无需回填。
@@ -732,7 +733,8 @@ func Run(db *gorm.DB, staticDir string) {
 // seedSettingsDefaults 站点默认 KV 配置（只补缺，不覆盖管理端在「站点设置」里的修改）。
 //
 // ★ 2026-09-29 同一 IP 注册卡控维护到站点设置：默认 5（0 = 不限制），管理端可在
-//   「站点设置」里直接改 reg_ip_limit。后端 auth.Register 已按该值限流，这里建默认行让它在后台可见。
+//
+//	「站点设置」里直接改 reg_ip_limit。后端 auth.Register 已按该值限流，这里建默认行让它在后台可见。
 func seedSettingsDefaults(db *gorm.DB) {
 	defaults := []struct{ k, v string }{
 		{"reg_ip_limit", "5"}, // 同一IP最多可注册账号数（默认5，填0不限制）
@@ -2854,9 +2856,12 @@ func seedShop(db *gorm.DB) {
 // EnsureEzfyLimitColumns 幂等补 ezfy_cfg_limit 的新配置列。
 //
 // ★ 2026-10-05 多机共享库（config 里 seed.skip: true）启动会**跳过整个 seed.Run**，
-//   于是新加的配置列（如 gold_prod_mult）在共享库上永远不会被创建 →
-//   管理端「二战系统配置」保存报 `Unknown column 'gold_prod_mult'`、玩家黄金产量读到 0。
-//   server 启动的 skip 分支也要跑这一段（HasColumn 幂等，两台同时启动也不会冲突）。
+//
+//	于是新加的配置列（如 gold_prod_mult）在共享库上永远不会被创建 →
+//	管理端「二战系统配置」保存报 `Unknown column 'gold_prod_mult'`、玩家黄金产量读到 0。
+//	server 启动的 skip 分支也要跑这一段（HasColumn 幂等，两台同时启动也不会冲突）。
+//	★ 2026-10-05 顺带把「野地类型」后加的列（drop_items / treasure 加长）也补上，
+//	否则 seed.skip 的机器上管理端「野地类型」保存会报 Unknown column 'drop_items'。
 func EnsureEzfyLimitColumns(db *gorm.DB) {
 	if !db.Migrator().HasTable("ezfy_cfg_limit") {
 		return
@@ -2866,4 +2871,26 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
+	// ★ 2026-10-05 战斗掉落概率可配置
+	//   中级/高级/特殊宝物掉率阈值（默认 18/4/1）+ 活动野地掉宝总概率（默认 85）
+	for _, c := range []struct {
+		col string
+		def int
+	}{
+		{"drop_t2", 18}, {"drop_t3", 4}, {"drop_t4", 1}, {"drop_act_pct", 85},
+	} {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
+	}
+	// 野地类型后加列（管理端「野地类型」保存依赖）
+	if db.Migrator().HasTable("ezfy_cfg_wildland") {
+		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {
+			db.Exec("ALTER TABLE ezfy_cfg_wildland ADD COLUMN drop_items varchar(500) DEFAULT ''")
+		}
+		db.Exec("ALTER TABLE ezfy_cfg_wildland MODIFY COLUMN treasure varchar(500) DEFAULT ''")
+		db.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
+		db.Exec("UPDATE ezfy_cfg_wildland SET treasure = '' WHERE treasure IS NULL")
+	}
 }
