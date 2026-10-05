@@ -115,7 +115,16 @@ func (h *EzfyAdmin) AdminEzfyMapOptions(c *gin.Context) {
 	for _, it := range items {
 		iviews = append(iviews, gin.H{"id": it.ID, "name": it.Name})
 	}
-	resp.OK(c, gin.H{"troops": tviews, "generals": gviews, "jewels": jviews, "items": iviews})
+	// ★ 2026-10-05 野地类型「宝物掉落」下拉：**全部装备**（武器/防具/饰品/珠宝）。
+	//   原来只列了「珠宝」类，运营选不到「狙击步枪（武器）/ 参谋指北针（饰品）」这类
+	//   高级/特殊宝物，也就没法给它们单独配掉落概率。掉落按**名称**匹配装备，名称唯一。
+	var treasures []model.EzfyCfgEquipment
+	h.DB.Order("id").Find(&treasures)
+	trviews := make([]gin.H, 0, len(treasures))
+	for _, e := range treasures {
+		trviews = append(trviews, gin.H{"id": e.ID, "name": e.Name, "type": e.Type, "tier": e.Tier})
+	}
+	resp.OK(c, gin.H{"troops": tviews, "generals": gviews, "jewels": jviews, "items": iviews, "treasures": trviews})
 }
 
 // AdminEzfyWildCfgList 野地类型配置列表

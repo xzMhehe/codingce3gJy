@@ -634,7 +634,8 @@
           <!-- ★ 2026-10-05 宝物也搞成下拉选择 + 可配概率（运营不用手写 JSON） -->
           <div v-for="(r, i) in wcTreasures" :key="'wtv' + i" class="wild-troop-row">
             <el-select v-model="r.name" filterable placeholder="选择宝物" style="width:220px">
-              <el-option v-for="j in jewels" :key="'wtvj' + j.id" :label="j.name" :value="j.name" />
+              <!-- ★ 2026-10-05 全部装备（含武器/防具/饰品），狙击步枪、参谋指北针等也能选并配概率 -->
+              <el-option v-for="j in treasures" :key="'wtvj' + j.id" :label="j.name + '（' + j.type + '）'" :value="j.name" />
             </el-select>
             <span class="td-sub">数量</span>
             <el-input-number v-model.number="r.count" :min="1" controls-position="right" style="width:90px" />
@@ -872,6 +873,7 @@ export default {
       awTreasures: [], // 活动野地必掉宝物可视化行 [{treasure_id,count},...]（保存时序列化成 [[cfg_id,count]]）
       jewels: [], // 可采集珠宝下拉（/admin/ezfy-map/options 返回）
       itemCfgs: [], // ★ 2026-10-05 商城道具下拉（/admin/ezfy-map/options 返回）
+      treasures: [], // ★ 2026-10-05 野地类型「宝物掉落」下拉：全部装备（武器/防具/饰品/珠宝）
       // 活动野地 · 被打记录模态框（2026-10-01）
       awAttDlg: false, awAttLoading: false, awAttRow: null, awAttList: [], awAttTotal: 0, awAttPage: 1, awAttSize: 10,
       saving: false
@@ -1288,6 +1290,7 @@ export default {
           this.generals = r.data.generals || []
           this.jewels = r.data.jewels || []
           this.itemCfgs = r.data.items || [] // ★ 2026-10-05 商城道具下拉
+          this.treasures = r.data.treasures || [] // ★ 2026-10-05 宝物掉落下拉（全部装备）
         }
       })
     },
@@ -1347,7 +1350,7 @@ export default {
     // ★ 2026-10-05 宝物掉落行：新增一行（默认概率 100%）
     addWcTreasure () {
       if (!this.wc.wcTreasures) this.$set(this.wc, 'wcTreasures', [])
-      this.wc.wcTreasures.push({ name: (this.jewels[0] || {}).name || '', count: 1, pct: 100 })
+      this.wc.wcTreasures.push({ name: (this.treasures[0] || {}).name || '', count: 1, pct: 100 })
     },
     openWcCreate () {
       this.wc = emptyWc()
