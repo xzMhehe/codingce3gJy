@@ -320,7 +320,9 @@ func ezfyBattleResultDecode(s string) (ezfyBattleResult, bool) {
 
 // ezfyBattleView 下发给前端的战场视图。
 // viewerCamp / viewerIsAtk：观察方自己的阵营与攻守身份 —— 观察方只能指挥「自己这一方」，
-// 兵种名也按自己阵营解析；另一方（敌方）用快照里的通用名、不下发指令。
+// 另一方（敌方）不下发指令。
+//
+// ★ 2026-10-05 用户要求：兵种名**统一用基础兵种名**（不带阵营前缀），viewerCamp 已不再参与取名。
 func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, viewerCamp int, viewerIsAtk bool) gin.H {
 	// 本回合剩余时间：过了就是 0（等待下一次请求推进）
 	left := b.RoundStart + ezfyBattleRoundMs - now
@@ -349,18 +351,13 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		}
 		return snap.DefTargets[troopId]
 	}
-	// ★ 2026-09-23 攻守双方兵种名都展示「阵营兵种名」。
-	// 敌方（目标兵种）的阵营：攻方视角→守方阵营；守方视角→攻方阵营。
-	enemyCamp := snap.AtkCamp
-	if viewerIsAtk {
-		enemyCamp = snap.DefCamp
-	}
-
+	// ★ 2026-10-05 用户要求：指挥模块兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	troopName := func(id int) string {
 		if id == 0 {
 			return "最近目标"
 		}
-		if cn := ezfyCfg.troopName(id, enemyCamp); cn != "" {
+		// camp 传 0 → 基础兵种名
+		if cn := ezfyCfg.troopName(id, 0); cn != "" {
 			return cn
 		}
 		return "兵种" + strconv.Itoa(id)
@@ -399,17 +396,9 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 					tgt = 0
 				}
 			}
-			// ★ 2026-09-23 攻守**双方**兵种名都显示阵营兵种名。
-			// 新战场快照自带 atk_camp/def_camp；老快照没有 → 己方回落 viewerCamp、敌方通用名。
-			camp := snap.DefCamp
-			if isAtk {
-				camp = snap.AtkCamp
-			}
-			if camp == 0 && isAtk == viewerIsAtk {
-				camp = viewerCamp
-			}
+			// ★ 2026-10-05 用户要求：指挥模块兵种名统一用基础兵种名（不带阵营前缀）
 			name := u.Name
-			if cn := ezfyCfg.troopName(u.TroopId, camp); cn != "" {
+			if cn := ezfyCfg.troopName(u.TroopId, 0); cn != "" {
 				name = cn
 			}
 			out = append(out, gin.H{
@@ -431,9 +420,9 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 			continue
 		}
 		optSeen[u.TroopId] = true
-		// ★ 目标下拉里的敌方兵种也用敌方阵营兵种名
+		// ★ 2026-10-05 用户要求：目标下拉里的兵种名统一用基础兵种名
 		name := u.Name
-		if cn := ezfyCfg.troopName(u.TroopId, enemyCamp); cn != "" {
+		if cn := ezfyCfg.troopName(u.TroopId, 0); cn != "" {
 			name = cn
 		}
 		opts = append(opts, gin.H{"id": u.TroopId, "name": name})
