@@ -2136,7 +2136,7 @@ func (h *EzfyAdmin) AdminEzfyGenOfficers(c *gin.Context) {
 			BaseMilitary: mil, BaseLogistics: log, BaseLearning: lea,
 			FreePoints: 0,
 			Loyalty:    80 + rand.Intn(21), Skill: "", Equipment: "",
-			Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
+			Position: 0, Status: 0, IsCaptive: 0, Source: model.EzfyOfficerSourceGrant, UpdateTime: time.Now(),
 		}
 		if err := h.DB.Create(&o).Error; err != nil {
 			continue

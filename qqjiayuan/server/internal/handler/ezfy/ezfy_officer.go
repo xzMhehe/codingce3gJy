@@ -536,7 +536,7 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 		BaseMilitary: pick.Military, BaseLogistics: pick.Logistics, BaseLearning: pick.Learning,
 		FreePoints: 0,
 		Loyalty:    ezfyOfficerLoyaltyMax, Skill: "", Equipment: "",
-		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
+		Position: ezfyPositionNone, Status: 0, IsCaptive: 0, Source: model.EzfyOfficerSourceRecruit, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
 	h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", joinDrafts(kept))
@@ -2119,7 +2119,7 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 		//   只有后续升级（每升 1 级 +1 点）才积累
 		FreePoints: 0,
 		Loyalty:    30, Skill: "", Equipment: "",
-		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
+		Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: model.EzfyOfficerSourceWildland, UpdateTime: time.Now(),
 	}
 	h.DB.Create(&o)
 	return "俘虏敌将:" + o.Name + "(" + strconv.Itoa(star) + "星, 忠诚30) 可前往军校收编"
@@ -2177,7 +2177,7 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 		if room > 0 {
 			room--
 			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
-			// ★ 2026-10-05 Source=1：标记「抢玩家获取」，管理端军官列表据此标注
+			// ★ 2026-10-05 Source=抢玩家获取：标记来源，管理端军官列表据此标注
 			cap := model.EzfyOfficer{
 				CityId: int64(atkCity.ID), GeneralId: o.GeneralId, Name: o.Name, Star: o.Star,
 				Level: o.Level, Exp: o.Exp,
@@ -2186,7 +2186,7 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				BaseMilitary: o.BaseMilitary, BaseLogistics: o.BaseLogistics, BaseLearning: o.BaseLearning,
 				FreePoints: o.FreePoints,
 				Loyalty:    30, Skill: o.Skill, Equipment: o.Equipment,
-				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: 1, UpdateTime: time.Now(),
+				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: model.EzfyOfficerSourcePvp, UpdateTime: time.Now(),
 			}
 			h.DB.Create(&cap)
 			// ★ 2026-09-29 用户规则：被俘军官的随身装备随俘虏转移——

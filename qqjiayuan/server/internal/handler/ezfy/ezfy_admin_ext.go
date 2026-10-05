@@ -1136,7 +1136,7 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 		StatusName string `json:"status_name"`
 		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「是否名将」列
 		IsGeneral bool `json:"is_general"`
-		// ★ 2026-10-05 获取途径标注：source=1（抢玩家获取）时显示「抢玩家获取」
+		// ★ 2026-10-05 获取途径标注：按 model.EzfyOfficerSource* 枚举翻译（未标注则为空串）
 		SourceName string `json:"source_name"`
 	}
 	out := []rowOut{}
@@ -1148,13 +1148,9 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 			owner, home = h.ezfyAdminName(ct.UserID)
 		}
 		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
-		srcName := ""
-		if o.Source == 1 {
-			srcName = "抢玩家获取"
-		}
 		out = append(out, rowOut{EzfyOfficer: o, CityName: cityName, OwnerName: owner,
 			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
-			IsGeneral: isGeneral, SourceName: srcName})
+			IsGeneral: isGeneral, SourceName: model.EzfyOfficerSourceName(o.Source)})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1209,7 +1205,7 @@ func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int) (string, string) {
 		BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
 		FreePoints: 0,
 		Loyalty:    100, Skill: "", Equipment: "",
-		Position: 0, Status: 0, IsCaptive: 0, UpdateTime: time.Now(),
+		Position: 0, Status: 0, IsCaptive: 0, Source: model.EzfyOfficerSourceGrant, UpdateTime: time.Now(),
 	}
 	// ★ 2026-09-29 修复「发放名将显示成功、玩家却没收到」：原来 `h.DB.Create(&o)` 忽略写入错误，
 	//   一旦 INSERT 失败（如字段超长/DB 异常）仍返回「已发放」→ 玩家实际没拿到却显示成功。

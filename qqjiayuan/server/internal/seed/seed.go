@@ -517,10 +517,11 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 	}
 
-	// ★ 2026-10-05 军官获取途径列（0=常规 1=抢玩家获取）——AutoMigrate 新加列在老行上是 NULL，
+	// ★ 2026-10-05 军官获取途径列（见 model.EzfyOfficerSource* 枚举：0未标注 1系统发放
+	//   2军校招募 3野地俘虏 4抢玩家获取）——AutoMigrate 新加列在老行上是 NULL，
 	//   Go 侧 int 扫 NULL 会报错，显式补列兜底（幂等；带 NOT NULL DEFAULT 0，老行直接回填 0）。
 	if db.Migrator().HasTable("ezfy_officer") && !db.Migrator().HasColumn("ezfy_officer", "source") {
-		db.Exec("ALTER TABLE ezfy_officer ADD COLUMN source int NOT NULL DEFAULT 0 COMMENT '获取途径 0常规 1抢玩家获取'")
+		db.Exec("ALTER TABLE ezfy_officer ADD COLUMN source int NOT NULL DEFAULT 0 COMMENT '获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取'")
 	}
 
 	// 二战风云·军团积分（★ 2026-09-25 「军团积分 + 军团商城」）

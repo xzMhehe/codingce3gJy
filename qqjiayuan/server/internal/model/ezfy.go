@@ -1579,9 +1579,33 @@ type EzfyOfficer struct {
 	//   升星加的是当前属性、不动 base_*，洗点时差额会自动退回 ——
 	//   这里持久记录「其中多少点是升星来的」，玩家洗点前一眼能看懂。
 	StarPoints int `gorm:"default:0;comment:升星累计加点" json:"star_points"`
-	// ★ 2026-10-05 获取途径：0=常规（系统发放/军校招募/野地俘虏），1=抢玩家获取
-	//   （PvP 打赢后敌方守将叛逃被收编）。管理端军官列表据此标注「抢玩家获取」。
-	Source int `gorm:"default:0;comment:获取途径 0常规 1抢玩家获取" json:"source"`
+	// ★ 2026-10-05 获取途径：取值见下列 EzfyOfficerSource* 枚举（每种来源独立值，便于后续扩展）。
+	//   管理端军官列表据此标注来源（抢玩家获取、野地俘虏……）。
+	Source int `gorm:"default:0;comment:获取途径 0未标注 1系统发放 2军校招募 3野地俘虏 4抢玩家获取" json:"source"`
+}
+
+// 军官获取途径（ezfy_officer.source）—— 每种来源独立枚举值，新增来源往后追加即可（勿改旧值）。
+const (
+	EzfyOfficerSourceUnknown  = 0 // 未标注（历史数据 / 其它途径）
+	EzfyOfficerSourceGrant    = 1 // 系统发放（管理端发放 / 一键生成）
+	EzfyOfficerSourceRecruit  = 2 // 军校招募
+	EzfyOfficerSourceWildland = 3 // 野地俘虏（野地 / 寇城 / 活动野地守将）
+	EzfyOfficerSourcePvp      = 4 // 抢玩家获取（PvP 打赢后敌方守将叛逃收编）
+)
+
+// EzfyOfficerSourceName 返回获取途径的中文标注（未标注 / 未知返回空串）
+func EzfyOfficerSourceName(src int) string {
+	switch src {
+	case EzfyOfficerSourceGrant:
+		return "系统发放"
+	case EzfyOfficerSourceRecruit:
+		return "军校招募"
+	case EzfyOfficerSourceWildland:
+		return "野地俘虏"
+	case EzfyOfficerSourcePvp:
+		return "抢玩家获取"
+	}
+	return ""
 }
 
 func (EzfyOfficer) TableName() string { return "ezfy_officer" }
