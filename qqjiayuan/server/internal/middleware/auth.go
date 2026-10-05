@@ -3,6 +3,7 @@ package middleware
 import (
 	"database/sql"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +24,35 @@ const (
 //   DELETE FROM user_badges ...（~8 次/秒），MySQL 饱和时单条被放大到 30ms+，
 //   累计算得上行 25% 单核。改为 60 秒节流：过期勋章晚 1 分钟消失，玩家无感知。
 var badgeCleanLastMs int64 = 0
+
+// ★★ 2026-10-05 性能：活跃时间「本次进程内已刷新」备忘（uid → 毫秒时间戳）。
+//
+//	原来每个请求都先 `SELECT last_active_at FROM users WHERE id = ?` 再判断要不要写 ——
+//	这条 SELECT 在**所有**接口上都是第 1 个跨 WAN 往返（60 秒节流只省了 UPDATE，没省 SELECT）。
+//	既然节流窗口就是 1 分钟，那就直接备忘「这个 uid 本进程 1 分钟内已刷新过」，
+//	窗口内连 SELECT 都省掉 —— 每个请求少 1 个 RDS 往返。
+//	多机部署下各进程独立刷新（活跃时间只是统计用途，允许各机各记一次）。
+var (
+	lastActiveMemoMu sync.Mutex
+	lastActiveMemo   = map[uint]int64{}
+)
+
+const lastActiveThrottleMs = 60 * 1000
+
+// lastActiveRecently 本进程 1 分钟内是否已为该 uid 刷新过活跃时间。
+func lastActiveRecently(uid uint, nowMs int64) bool {
+	lastActiveMemoMu.Lock()
+	defer lastActiveMemoMu.Unlock()
+	at, ok := lastActiveMemo[uid]
+	if ok && nowMs-at < lastActiveThrottleMs {
+		return true
+	}
+	if len(lastActiveMemo) > 65536 { // 防无限增长（与其它进程内备忘同一策略）
+		lastActiveMemo = map[uint]int64{}
+	}
+	lastActiveMemo[uid] = nowMs
+	return false
+}
 
 // CORS 跨域
 func CORS() gin.HandlerFunc {
@@ -59,34 +89,37 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 		c.Set(CtxUName, claims.Nickname)
 
 		// 节流更新活跃时间（10 分钟内活跃视为在线）
-		var last sql.NullTime
-		db.Raw("SELECT last_active_at FROM users WHERE id = ?", claims.UserID).Scan(&last)
-		if !last.Valid || time.Since(last.Time) > time.Minute {
-			now := time.Now()
-			db.Model(&struct{}{}).Table("users").
-				Where("id = ?", claims.UserID).
-				Updates(map[string]interface{}{"last_active_at": now, "last_login_at": now})
-			// 家园活跃天数：每天首次活跃 +1，连续登录 +0.2，超Q/蓝钻在有效期内每晚一天等级 +0.1/级（封顶 +1.0）
-			var lastDate sql.NullString
-			db.Raw("SELECT last_active_date FROM users WHERE id = ?", claims.UserID).Scan(&lastDate)
-			today := now.Format("2006-01-02")
-			lastDateStr := ""
-			if lastDate.Valid {
-				lastDateStr = lastDate.String
-			}
-			if lastDateStr != today {
-				base := 1.0
-				if lastDateStr == now.AddDate(0, 0, -1).Format("2006-01-02") {
-					base = 1.2
+		// ★ 2026-10-05 性能：本进程 1 分钟内已刷新过 → 连 SELECT 都跳过（见 lastActiveRecently）。
+		if !lastActiveRecently(claims.UserID, time.Now().UnixMilli()) {
+			var last sql.NullTime
+			db.Raw("SELECT last_active_at FROM users WHERE id = ?", claims.UserID).Scan(&last)
+			if !last.Valid || time.Since(last.Time) > time.Minute {
+				now := time.Now()
+				db.Model(&struct{}{}).Table("users").
+					Where("id = ?", claims.UserID).
+					Updates(map[string]interface{}{"last_active_at": now, "last_login_at": now})
+				// 家园活跃天数：每天首次活跃 +1，连续登录 +0.2，超Q/蓝钻在有效期内每晚一天等级 +0.1/级（封顶 +1.0）
+				var lastDate sql.NullString
+				db.Raw("SELECT last_active_date FROM users WHERE id = ?", claims.UserID).Scan(&lastDate)
+				today := now.Format("2006-01-02")
+				lastDateStr := ""
+				if lastDate.Valid {
+					lastDateStr = lastDate.String
 				}
-				var qqLv, blueLv int
-				db.Raw("SELECT IFNULL(qq_lv, 0) FROM users WHERE id = ? AND qq_end > NOW()", claims.UserID).Scan(&qqLv)
-				db.Raw("SELECT IFNULL(blue_lv, 0) FROM users WHERE id = ? AND blue_end > NOW()", claims.UserID).Scan(&blueLv)
-				base += 0.1*float64(qqLv) + 0.1*float64(blueLv)
-				if base > 2.2 {
-					base = 2.2
+				if lastDateStr != today {
+					base := 1.0
+					if lastDateStr == now.AddDate(0, 0, -1).Format("2006-01-02") {
+						base = 1.2
+					}
+					var qqLv, blueLv int
+					db.Raw("SELECT IFNULL(qq_lv, 0) FROM users WHERE id = ? AND qq_end > NOW()", claims.UserID).Scan(&qqLv)
+					db.Raw("SELECT IFNULL(blue_lv, 0) FROM users WHERE id = ? AND blue_end > NOW()", claims.UserID).Scan(&blueLv)
+					base += 0.1*float64(qqLv) + 0.1*float64(blueLv)
+					if base > 2.2 {
+						base = 2.2
+					}
+					db.Exec("UPDATE users SET active_days = active_days + ?, last_active_date = ? WHERE id = ?", base, today, claims.UserID)
 				}
-				db.Exec("UPDATE users SET active_days = active_days + ?, last_active_date = ? WHERE id = ?", base, today, claims.UserID)
 			}
 		}
 		// 清理已过期会员勋章（复刻诺哈：过期勋章自动消失）。

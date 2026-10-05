@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,16 +31,62 @@ const (
 	ezfyActPrestige = 5
 )
 
+// ★★ 2026-10-05 性能：活动查询进程内 5 秒 TTL 缓存（修 N+1）。
+//
+//	事故形态：`/troops` 的兵种一览对**每个兵种**都调 `trainCostWithActivity` →
+//	`actPct(ezfyActTrain)` → `activeActivity` → 一条 SQL。20 个兵种 = 20 条一模一样的
+//	`SELECT * FROM ezfy_activity WHERE type = 2 ...`，实测单请求 22 条（跨 WAN 就是 22 个 RTT）。
+//	`/view`、`/resources` 里 calcResource 与 getResourceCalc 也各查一次。
+//
+//	活动表是**全服共享、管理端低频改动**的数据，进程内缓存 5 秒完全安全：
+//	管理端改完最多 5 秒生效（与「配置 30s 周期收敛」同量级）。多机部署下各机独立收敛，无一致性问题。
+var (
+	ezfyActCacheMu sync.Mutex
+	ezfyActCache   = map[int]ezfyActCacheEntry{}
+)
+
+type ezfyActCacheEntry struct {
+	act *model.EzfyActivity
+	at  int64
+}
+
+const ezfyActCacheTTLMs = 5000
+
+// ezfyActCacheInvalidate 管理端改动活动后立即失效（可选，不调也会 5 秒内自然收敛）。
+func ezfyActCacheInvalidate() {
+	ezfyActCacheMu.Lock()
+	ezfyActCache = map[int]ezfyActCacheEntry{}
+	ezfyActCacheMu.Unlock()
+}
+
 // activeActivity 取当前进行中的某类活动(同类多个时取加成最大的)
+//
+// ★ 5 秒进程内缓存：同一请求里 20 个兵种只查 1 次库（见上方说明）。
+// 缓存的是「查询时刻的结论」，故把「是否已过期」也一并按 TTL 收敛 —— 活动起止最多滞后 5 秒。
 func (h *EzfyHandler) activeActivity(actType int) *model.EzfyActivity {
 	now := time.Now().UnixMilli()
+	ezfyActCacheMu.Lock()
+	if e, ok := ezfyActCache[actType]; ok && now-e.at < ezfyActCacheTTLMs {
+		ezfyActCacheMu.Unlock()
+		// 缓存命中的活动若刚好在这一瞬间过期，按「无活动」处理，避免多给 5 秒加成
+		if e.act != nil && e.act.EndTime > now {
+			return e.act
+		}
+		return nil
+	}
+	ezfyActCacheMu.Unlock()
+
 	var list []model.EzfyActivity
 	h.DB.Where("type = ? AND status = 1 AND start_time <= ? AND end_time > ?", actType, now, now).
 		Order("param DESC").Limit(1).Find(&list)
-	if len(list) == 0 {
-		return nil
+	var got *model.EzfyActivity
+	if len(list) > 0 {
+		got = &list[0]
 	}
-	return &list[0]
+	ezfyActCacheMu.Lock()
+	ezfyActCache[actType] = ezfyActCacheEntry{act: got, at: now}
+	ezfyActCacheMu.Unlock()
+	return got
 }
 
 // actPct 活动加成百分比(无活动返回 0)

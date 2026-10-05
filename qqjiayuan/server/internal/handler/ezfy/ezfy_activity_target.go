@@ -710,8 +710,9 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"res_max":      res,
 		"gold":         gold,
 		"prestige":     prestige,
-		"terrain":      terrain,
-		"terrain_name": ezfyTerrainName(ezfyTerrainEx(x, y)),
+		"terrain": terrain,
+		// ★ 2026-10-05：活动野地本身有野地 ⇒ knownWild=true（海里的叫「海底森林」，岛屿仍是「岛屿」）
+		"terrain_name": ezfyWildTerrainDisplayName(x, y, true),
 		"continent":    ezfyContinentName(x, y),
 		"jewel":        jewelName,
 		// ★ 2026-09-29 活动野地守将（配置的军官池军官）

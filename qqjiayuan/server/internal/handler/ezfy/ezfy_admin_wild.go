@@ -305,8 +305,9 @@ func (h *EzfyAdmin) ezfyWildlandRow(w model.EzfyWildland) gin.H {
 		"start_time":  w.StartTime, "end_time": w.EndTime,
 		"created_at": w.CreatedAt, "updated_at": w.UpdatedAt,
 		"city_name": cityName, "owner_name": owner, "home_num": home,
-		"terrain":      ezfyTerrain(w.X, w.Y),
-		"terrain_name": ezfyTerrainNameEx(w.X, w.Y),
+		"terrain": ezfyTerrain(w.X, w.Y),
+		// ★ 2026-10-05：野地记录行 ⇒ 确定有野地，海里那块叫「海底森林」（岛屿仍是「岛屿」）
+		"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),
 		"has_cfg":      hasCfg,
 	}
 	if hasCfg {

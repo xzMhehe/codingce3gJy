@@ -4097,6 +4097,10 @@ export default {
         if (!cell.mine && cell.user_id) this.checkWar()
         return
       }
+      // ★ 2026-10-05 这里传的 type 现在只是**兼容用**：服务端已改成按地形自己判定走哪套配置
+      //   （海洋 8 / 岛屿 7 → 海野；寇城 → 3；其余 → 陆地野地），传了也不影响结果。
+      //   ⚠️ 别再把服务端改回「以客户端 type 为准」—— 这个表达式会把岛屿(7) 推成 1（陆地野地），
+      //   导致详情页预览陆军守军、实际打起来却是海军（战报对不上）。
       const ttype = cell.area_type === 2 ? 3 : (cell.terrain === 8 ? 2 : 1)
       // 顺带记住这块地上「我的野地记录 id」，采集/派遣下单要用
       const mine = (this.wildlands || []).find(x => x.x === cell.x && x.y === cell.y)

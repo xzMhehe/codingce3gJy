@@ -1049,18 +1049,30 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：独立查询并行（1 个 RTT）；
 	//   被占城市归属玩家的游戏昵称改为一次 IN 批量查，消除原来「每行 ensureProfile」的 N+1。
 	var (
-		wildlands  []model.EzfyWildland
-		gatherIds  []int64
-		idleOrders []model.EzfyOrder
-		occupies   []model.EzfyOccupy
-		buildings  []model.EzfyCityBuilding
+		wildlands   []model.EzfyWildland
+		gatherIds   []int64
+		idleOrders  []model.EzfyOrder
+		occupies    []model.EzfyOccupy
+		buildings   []model.EzfyCityBuilding
 		trainQueues []model.EzfyTrainQueue
+		techRows    []model.EzfyCityTech
+		techs       map[int]int
+		troops      map[int]int64
+		boost       *model.EzfyCityEffect
+		mayor       int
 	)
 	var wg sync.WaitGroup
 	// ★ 2026-10-05 修复「wildfull 调用失败」：原 wg.Add(7) 但下面只有 6 个 goroutine
 	//   （昵称查询早改成串行 IN 批量查），WaitGroup 永远等不到第 7 次 Done → 请求死锁挂死。
-	wg.Add(6)
+	// ★ 2026-10-05 性能：并行块再补 5 条（科技行/科技表/部队/增产令/市长加成），
+	//   让下面的 calcResourceD 零额外查询（原来它自己又串行查了 6 遍）。
+	wg.Add(11)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id IN ? AND status = 1", cityIdsOf(cities)).Find(&techRows) }()
+	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
+	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
+	go func() { defer wg.Done(); boost = h.ezfyLoadActiveBoost(city.ID) }()
+	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	go func() {
 		defer wg.Done()
 		h.DB.Model(&model.EzfyOrder{}).
@@ -1077,9 +1089,10 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	wg.Wait()
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, buildings)
-	h.checkTechDone(&city, cityIdsOf(cities))
+	h.checkTechDoneRows(&city, techRows)
 	h.collectTrainQueue(&city, trainQueues)
-	h.calcResource(&city)
+	h.calcResourceD(&city, &resCalcData{buildings: buildings, techs: techs, wilds: wildlands, troops: troops,
+		boost: boost, boostDone: true, mayor: mayor})
 	hallLevel := 0
 	for _, b := range buildings {
 		if b.BuildingId == 1 && b.Level > hallLevel {
@@ -1113,15 +1126,11 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
 			"wild_type": w.WildType, "level": w.Level, "status": sts,
 			"idle_order_id": idleOrderId,
-			"terrain":       ezfyTerrainEx(w.X, w.Y),
-			// ★ 2026-10-05 岛屿也属于海野 → 附属野地列表里岛屿也显示「海底森林」（与地图/详情同口径）
-			"terrain_name": func() string {
-				if ezfyIsSeaWildTerrain(ezfyTerrainEx(w.X, w.Y)) {
-					return "海底森林"
-				}
-				return ezfyTerrainNameEx(w.X, w.Y)
-			}(),
-			"continent": ezfyRegionName(w.X, w.Y)})
+			"terrain": ezfyTerrainEx(w.X, w.Y),
+			// ★ 2026-10-05 用户纠正：① 海洋野地→海底森林、岛屿→岛屿（岛屿仍是海野玩法，只是名字不同）；
+			//   ② 表里有这一行 ⇒ 确定有野地 ⇒ knownWild=true（不看 level，避免 level=0 的海洋野地被显示成「海洋」）。
+			"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),
+			"continent":    ezfyRegionName(w.X, w.Y)})
 	}
 	// 被占城市归属玩家的游戏昵称（原每行 ensureProfile 一次库 → 改一次 IN 查询）
 	nick := map[uint]string{}
@@ -1279,12 +1288,9 @@ func (h *EzfyHandler) ezfyTargetName(o *model.EzfyOrder) string {
 		}
 	}
 	switch tt {
-	case 1: // 野地: 地形名 + 等级(海上的野地用「海底森林」)
-		tn := ezfyTerrainNameEx(o.TargetX, o.TargetY)
-		// ★ 2026-10-05 岛屿也属于海野 → 岛屿野地同样叫「海底森林」
-		if ezfyIsSeaWildTerrain(ezfyTerrainEx(o.TargetX, o.TargetY)) {
-			tn = "海底森林"
-		}
+	case 1: // 野地: 展示名 + 等级(海洋野地→海底森林；岛屿→岛屿；纯海洋→海洋)
+		// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName。target_type=1 就是野地 ⇒ knownWild=true。
+		tn := ezfyWildTerrainDisplayName(o.TargetX, o.TargetY, true)
 		return tn + "(" + strconv.Itoa(ezfyWildlandLevel(o.TargetX, o.TargetY)) + ")"
 	case 2: // 寇城
 		return "寇城(" + strconv.Itoa(ezfyKouLevel(o.TargetX, o.TargetY)) + ")"

@@ -70,6 +70,42 @@ func ezfyIsSeaWildTerrain(t int) bool {
 	return t == ezfyTerrainSea || t == ezfyTerrainIsland
 }
 
+// ezfyWildTerrainDisplayName 野地/海野的**展示**名。
+//
+// ★★ 2026-10-05 用户纠正（三个概念必须分清，之前混了）：
+//
+//	① **海洋** = 海里**没有野地**的那种格子（地形 id 8）。「海洋就是海洋」。
+//	② **海底森林** = 海里**有野地**的那一格 —— 它跟海洋不是一回事
+//	   （用户原话：「只有 海底森林 是海底森林啊，海洋就是海洋啊」「海洋上不会有野地」）。
+//	③ **岛屿** = 地形(7)。它**按海野玩法**处理（守军走海野配置、海军可打、占领后 wild_type=2），
+//	   但**展示名仍是「岛屿」**，也不能叫海底森林
+//	   （用户报的「海岛占领以后显示海底森林」就是这个 bug）。
+//
+// 规则：
+//
+//	地形 8 + 有野地 → "海底森林"
+//	地形 8 + 无野地 → "海洋"      ← 纯海洋，绝不是海底森林
+//	地形 7          → "岛屿"
+//	其它地形        → 各自地形名（丘陵/沼泽/平原…）
+//
+// knownWild 由调用方声明「该坐标上是否**确定**有野地」：
+//   - true  —— 已占领野地记录行（表里有行）/ 已判定为海野的详情 / 已匹配到野地配置的战斗目标；
+//   - false —— 不确定（地图格、订单目标预览），此时函数按 `ezfyWildlandLevel` 判「纯海洋 vs 海底森林」
+//     （与 `MapView` 里 `lvl == 0 → 海洋 / 否则海底森林` 完全同口径）。
+//
+// ⚠️ 采集产出另按**地形**区分（岛屿→钢铁、海底森林→石油），那是 `ezfyGatherResName` 的事，别在这里管。
+// ⚠️ 新增任何「海野」相关的展示文案时一律走这个函数，
+//   别自己写 `ezfyIsSeaWildTerrain(...) → "海底森林"`（那样纯海洋、以及岛屿都会变成海底森林）。
+func ezfyWildTerrainDisplayName(x, y int, knownWild bool) string {
+	if ezfyTerrainEx(x, y) != ezfyTerrainSea {
+		return ezfyTerrainNameEx(x, y)
+	}
+	if knownWild || ezfyWildlandLevel(x, y) > 0 {
+		return "海底森林"
+	}
+	return "海洋"
+}
+
 func ezfyInShape(x, y int, s []int) bool {
 	// 大陆几何定义在 150×150 的坐标里，先把世界坐标缩回去再判形状
 	fx := float64(x) * ezfyLandScale

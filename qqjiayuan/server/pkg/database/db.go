@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -53,11 +54,15 @@ func EnsureDatabase(cfg *config.MysqlConfig) error {
 }
 
 func Init(cfg *config.MysqlConfig) *gorm.DB {
+	lvl := logger.Warn
+	if os.Getenv("EZFY_SQL_LOG") != "" {
+		lvl = logger.Info
+	}
 	logCfg := logger.New(
 		log.New(log.Writer(), "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold: 500 * time.Millisecond,
-			LogLevel:      logger.Warn,
+			LogLevel:      lvl,
 			Colorful:      true,
 		},
 	)

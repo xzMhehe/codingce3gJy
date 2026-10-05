@@ -148,8 +148,11 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 			// ★ 用 Ex 地形：平原且靠海显示为「沿海平原」(9)；海洋仍是 8
 			terrain := ezfyTerrainEx(x, y)
 			// ★ 每一格都带上所属大洲 / 大洋，前端才能标注「这个城/野地在哪个州」
+			// ★ 2026-10-05 用户口径：**海洋=没有野地的海格；海底森林=海里有野地的那块**。
+			//   所以地形名也要走 ezfyWildTerrainDisplayName —— 纯海洋格给「海洋」，
+			//   有野地的海格给「海底森林」，与 name / 详情页 terrain_name 三处完全同口径。
 			cell := gin.H{"x": x, "y": y, "terrain": terrain,
-				"terrain_name": ezfyTerrainName(terrain), "continent": ezfyRegionName(x, y)}
+				"terrain_name": ezfyWildTerrainDisplayName(x, y, false), "continent": ezfyRegionName(x, y)}
 			if c, ok := cityAt[fmt.Sprintf("%d,%d", x, y)]; ok {
 				cell["area_type"] = 3
 				cell["city_id"] = c.ID
@@ -167,12 +170,12 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				case terrain == ezfyTerrainSea:
 					cell["area_type"] = 1
 					lvl := ezfyWildlandLevel(x, y)
+					// 纯海洋 → 「海洋」(详情页不显示守军/军官/出征按钮)；带野地 → 「海底森林」。
+					// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName（口径只有一处），这里 knownWild=false。
+					cell["name"] = ezfyWildTerrainDisplayName(x, y, false)
 					if lvl == 0 {
-						// 纯海洋: 无野地, 详情页不显示守军/军官/出征按钮
-						cell["name"] = ezfyTerrainName(terrain) // 海洋
 						cell["is_ocean"] = true
 					} else {
-						cell["name"] = "海底森林"
 						cell["level"] = lvl
 					}
 				case kou:
@@ -187,14 +190,12 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 						}
 					}
 				default:
-					// 陆地野地: 名称取地形名(平原/草原/森林/盆地/丘陵/沼泽/山地), 不再一律叫「野地」
+					// 陆地野地: 名称取地形名(平原/草原/森林/盆地/丘陵/沼泽/山地/岛屿), 不再一律叫「野地」
+					// ★ 2026-10-05 用户纠正：岛屿虽然按海野玩法处理，但**展示名仍是「岛屿」**，
+					//   不能显示成「海底森林」（原实现在这里把岛屿改成了海底森林，属 bug，已删）。
 					cell["area_type"] = 1
 					cell["name"] = ezfyTerrainName(terrain)
 					cell["level"] = ezfyWildlandLevel(x, y)
-					// ★ 2026-10-05 岛屿也属于海野 → 岛上的野地按「海底森林」显示（与详情/战报同口径）
-					if ezfyIsSeaWildTerrain(terrain) {
-						cell["name"] = "海底森林"
-					}
 				}
 				// 活动目标标记: 复刻 mapView.html 的 actWild/actKou/actCity
 				// (活动野地橙、活动寇城品红、特殊城市红, 三种都带活动等级 1~3)
@@ -258,23 +259,31 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		resp.OK(c, h.ezfyActWildlandView(uid, profile.Camp, x, y, act))
 		return
 	}
-	ttype, _ := strconv.Atoi(c.Query("type"))
-	if ttype != 1 && ttype != 2 && ttype != 3 {
-		// ★ 2026-10-04 修复「地图显示沿海平原、侦查显示海底深林」：地形判定必须与地图
-		//   （ezfyTerrainEx，含管理端格子覆盖 + 沿海平原派生）同口径。
-		//   原来用 ezfyTerrain(基础散列地形)：被覆盖成沿海平原/岛屿的海洋格，基础地形仍是 8，
-		//   会把 沿海平原(9)/岛屿(7) 误判成「海底森林」。
-		// ★ 2026-10-05 岛屿也属于海野 → 有野地的岛屿按海野详情（守军走海野配置）
-		if ezfyIsSeaWildTerrain(ezfyTerrainEx(x, y)) && ezfyWildlandLevel(x, y) > 0 {
-			ttype = 2
-		} else if h.ezfyIsKouCity(x, y) {
-			ttype = 3
-		} else {
-			ttype = 1
-		}
+	// ★★ 2026-10-05 用户口径 + 服务端权威：**走哪套野地配置一律按地形推断，不再信任客户端传的 type**。
+	//
+	//	原来只在「客户端没传合法 type」时才推断，而前端 openCell 一定会传：
+	//	  `const ttype = cell.areaType === 2 ? 3 : (cell.terrain === 8 ? 2 : 1)`
+	//	→ 岛屿(地形 7) 被推成 1（**陆地野地**），于是详情页预览的是陆军守军；
+	//	  而真正打起来时 processArrive 按 `ezfyIsSeaWildTerrain` 判成海野 → 用的是海军守军。
+	//	  实测 (10,15) 岛屿：type=1 预览「摩托化掷弹兵/虎式重型坦克」，type=2 才是「驱逐舰/潜艇」，
+	//	  与实际战斗口径（海野）不符 —— 玩家会按错误的情报备兵。
+	//
+	//	现在改成与 processArrive / MapView 完全同一套判定（顺序也一致：海洋分支在地图里优先于寇城）：
+	//	  海野(海洋 8 / 岛屿 7) → 2 ；寇城 → 3 ；其余 → 1（陆地野地）。
+	//	⚠️ 客户端的 `type` 查询参数已不再参与判定（传了也不影响结果），保留只是为了兼容旧前端。
+	ttype := 1
+	switch {
+	case ezfyIsSeaWildTerrain(ezfyTerrainEx(x, y)):
+		ttype = 2
+	case h.ezfyIsKouCity(x, y):
+		ttype = 3
 	}
-	// ★ 纯海洋(海野等级0): 只显示「地形：海洋」, 无守军/军官/出征按钮
-	if ttype == 2 && ezfyWildlandLevel(x, y) == 0 {
+	// ★ 纯海洋（地形 8 且**该格没有野地**）：只显示「地形：海洋」，无守军/军官/出征按钮。
+	//   用户口径「海洋上不会有野地」→ 纯海洋绝不能走进野地分支
+	//   （否则会显示「采集可获得石油」+ 野地宝物池，等于凭空造了一块野地）。
+	//   ⚠️ 判定必须看**地形**，不能看 ttype：早先写的是 `ttype == 2 && level == 0`，
+	//   一旦客户端传了 type=1 就绕过守卫、直接按陆地野地渲染纯海洋。
+	if ttype != 3 && ezfyTerrainEx(x, y) == ezfyTerrainSea && ezfyWildlandLevel(x, y) == 0 {
 		resp.OK(c, gin.H{"x": x, "y": y, "type": 0, "is_ocean": true,
 			"terrain": 8, "terrain_name": "海洋", "continent": ezfyRegionName(x, y)})
 		return
@@ -319,10 +328,14 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	if treasures == nil {
 		treasures = []string{}
 	}
-	// 地形显示名: 海野→海底森林, 寇城→平原(用户规范)
+	// 地形显示名: 海洋里的野地→海底森林, 岛屿→岛屿, 寇城→平原(用户规范)
+	// ★ 2026-10-05 用户纠正：① 纯海洋是「海洋」、海底森林是海洋里带野地的那块；② 岛屿(7) 也是海野玩法，
+	//   但展示名保留「岛屿」。走 ezfyWildTerrainDisplayName。
+	//   ttype==2 时上面已确认 `ezfyWildlandLevel(x,y) > 0`（纯海洋在更早的分支直接返回 is_ocean），
+	//   所以这里 knownWild=true。
 	terrainName := ezfyTerrainNameEx(x, y)
 	if ttype == 2 {
-		terrainName = "海底森林"
+		terrainName = ezfyWildTerrainDisplayName(x, y, true)
 	} else if ttype == 3 {
 		terrainName = "平原"
 	}
@@ -1517,10 +1530,16 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	// ★ 死单自愈：status=98(结算中) 超过 60 秒没被写回正常状态的订单，
 	//   说明结算过程异常退出（老部署强杀进程等），重置回「行进」，下次到达再结算。
 	//   （orders 非空时才可能有 98 死单，空列表跳过此 UPDATE）
-	h.DB.Model(&model.EzfyOrder{}).
-		Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
-			time.Now().Add(-60*time.Second)).
-		Updates(map[string]interface{}{"status": 0})
+	//
+	// ★ 2026-10-05 性能：再加一层「列表里根本没有 98 单就不发这条 UPDATE」——
+	//   活跃玩家的 orders 恒非空，于是每个请求都要白打一次跨 WAN 的写往返
+	//   （实测 rows:0，纯浪费）。98 是极罕见的异常态，绝大多数请求都能跳过。
+	if hasProcessingOrder(orders) {
+		h.DB.Model(&model.EzfyOrder{}).
+			Where("user_id = ? AND status = ? AND updated_at < ?", uid, ezfyOrderStatusProcessing,
+				time.Now().Add(-60*time.Second)).
+			Updates(map[string]interface{}{"status": 0})
+	}
 	for i := range orders {
 		order := &orders[i]
 		// ★ 指挥室：战斗中的订单先推进战场（懒结算）。
@@ -1581,6 +1600,17 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
 	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。
 	h.processIncoming(uid, now, cities...)
+}
+
+// hasProcessingOrder 给定订单列表里是否存在「结算中(98)」的异常残留订单。
+// 用于跳过「死单自愈 UPDATE」——没有 98 单时那条 UPDATE 恒 rows:0，纯浪费一次写往返。
+func hasProcessingOrder(orders []model.EzfyOrder) bool {
+	for i := range orders {
+		if orders[i].Status == ezfyOrderStatusProcessing {
+			return true
+		}
+	}
+	return false
 }
 
 // hasBattleOrder 给定订单列表里是否存在「战斗中」订单
@@ -2319,11 +2349,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 用户要求：战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
 		//   原来一律写「野地N级」，看不出打的是什么地形。
 		// ★ 2026-10-04 与地图同口径改用 Ex（覆盖表/沿海平原），修复「地图沿海平原、战报平原」不一致
-		name := ezfyTerrainName(ezfyTerrainEx(order.TargetX, order.TargetY))
+		// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName：海洋野地→海底森林、岛屿→岛屿、纯海洋→海洋。
+		//   能走到这里说明该等级匹配到了野地配置（cfg==nil 早已 return），所以 knownWild=true。
+		name := ezfyWildTerrainDisplayName(order.TargetX, order.TargetY, true)
 		if order.TargetType == 2 {
 			name = "寇城"
-		} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
-			name = "海底森林"
 		}
 		targetName = name + strconv.Itoa(level) + "级"
 		rnd := cfg.ResMin + rand.Int63n(cfg.ResMax-cfg.ResMin+1)

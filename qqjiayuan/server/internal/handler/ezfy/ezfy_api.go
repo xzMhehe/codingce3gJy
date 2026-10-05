@@ -84,18 +84,38 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		return
 	}
 	_, city, cities := h.ezfyPageCity(uid)
-	var list []model.EzfyCityBuilding
-	var qs []model.EzfyTrainQueue
+	// ★★ 2026-10-05 性能：并行块一次性取齐「展示 + 懒结算」所需的全部只读数据，
+	//   下面的懒结算（calcResourceD）因此零额外查询 —— 改造前 calcResource 会把
+	//   科技/野地/部队/增产令/市长加成**再串行查一遍**（跨 WAN 白打 6 个往返）。
+	var (
+		list     []model.EzfyCityBuilding
+		qs       []model.EzfyTrainQueue
+		techRows []model.EzfyCityTech
+		techs    map[int]int
+		wilds    []model.EzfyWildland
+		troops   map[int]int64
+		boost    *model.EzfyCityEffect
+		mayor    int
+	)
+	cids := cityIdsOf(cities)
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(8)
 	go func() { defer wg.Done(); list = h.buildingList(city.ID) }()
 	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
+	go func() { defer wg.Done(); h.DB.Where("city_id IN ? AND status = 1", cids).Find(&techRows) }()
+	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
+	go func() { defer wg.Done(); wilds = h.wildlandList(city.ID) }()
+	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
+	go func() { defer wg.Done(); boost = h.ezfyLoadActiveBoost(city.ID) }()
+	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
+	snap := &resCalcData{buildings: list, techs: techs, wilds: wilds, troops: troops,
+		boost: boost, boostDone: true, mayor: mayor}
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, list)
-	h.checkTechDone(&city, cityIdsOf(cities))
+	h.checkTechDoneRows(&city, techRows)
 	h.collectTrainQueue(&city, qs)
-	h.calcResource(&city)
+	h.calcResourceD(&city, snap)
 	// ★ 市政厅等级一次内存取值（原每栋建筑各查一遍建筑列表）
 	hallLevel := 0
 	for _, b := range list {
@@ -362,22 +382,24 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	camp := profile.Camp
 
 	var (
-		troopMap map[int]int64
-		qs       []model.EzfyTrainQueue
-		wounded  []model.EzfyWounded
+		troopMap  map[int]int64
+		qs        []model.EzfyTrainQueue
+		wounded   []model.EzfyWounded
 		deserters []model.EzfyWounded
-		popUsed  int64
+		popUsed   int64
 		buildings []model.EzfyCityBuilding
 	)
 	var wg sync.WaitGroup
-	wg.Add(6)
+	// ★ 2026-10-05 性能：已占用人口不再单独查库（原来 buildingPop/troopPop 各查一次），
+	//   wg.Wait() 之后用本请求已取到的 buildings + qs 纯内存算。
+	wg.Add(5)
 	go func() { defer wg.Done(); troopMap = h.troopMap(city.ID) }()
 	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
 	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded) }()
 	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters) }()
-	go func() { defer wg.Done(); popUsed = h.cityPopUsed(city.ID) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	wg.Wait()
+	popUsed = h.cityPopUsedD(city.ID, buildings, qs)
 	// 懒结算复用已取数据（零额外查询）
 	// ★ 2026-10-05 性能（用户反馈「/troops 还是 2s」）：原来这里还跑 checkTechDone +
 	//   calcResource（各 2~4 条串行跨 WAN 查询），是本页 2s 的根源。军队页不展示科技/资源，

@@ -103,6 +103,20 @@ const ezfyOfficerRenameCardItemID = 25
 func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 	var list []model.EzfyOfficer
 	h.DB.Where("city_id = ?", cityId).Order("id ASC").Find(&list)
+	// ★ 2026-10-05 性能：只有「存在出征中(status=1)的军官」时才需要拉命令表做自愈判定。
+	//   下面那个循环对 status != 1 的军官一律 continue，所以「全都在城里」时这条
+	//   `SELECT * FROM ezfy_order WHERE city_id IN (0,1,2)` 纯属白打（活跃玩家可达上百行）。
+	//   绝大多数请求都命中这个早退分支。
+	needHeal := false
+	for i := range list {
+		if list[i].Status == 1 {
+			needHeal = true
+			break
+		}
+	}
+	if !needHeal {
+		return list
+	}
 	orders := h.orderListByCity(cityId)
 	for i := range list {
 		o := &list[i]
@@ -131,7 +145,9 @@ func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 //	状态被自愈回 0 → 同一军官能被二次出征（用户反馈的 bug）。
 func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	var orders []model.EzfyOrder
-	h.DB.Where("city_id = ? AND status IN (0,1,2)", cityId).Find(&orders)
+	// ★ 2026-10-05 性能：两个调用方都只读 Officer 字段（判军官是否在外），
+	//   只取 id/officer，不再把 troops/result/battle_result 这些大字段拉回来。
+	h.DB.Select("id, officer").Where("city_id = ? AND status IN (0,1,2)", cityId).Find(&orders)
 	return orders
 }
 

@@ -109,13 +109,38 @@ func seedEzfy(db *gorm.DB) {
 	migrateOfficerAttrPoints(db)
 	fixEzfySignIndex(db)
 
-	// ★ 2026-10-03 MySQL 索引：首页 /view 30s 轮询的命令数/未读战报计数、装备检索，
-	//   都按 user_id + status/is_read 过滤。只靠单列 user_id 会在引擎层窄化后再筛，
-	//   这里补复合索引直接命中，省掉每一段的扫描。
-	//   双机共享同一个 MySQL，ensureEzfyIndex 幂等，先到先建，第二台启动自动跳过。
+	EnsureEzfyIndexes(db)
+}
+
+// EnsureEzfyIndexes 幂等补建高频查询所需的索引。
+//
+// ★ 为什么单独导出：多机部署时只有一台跑全量 seed，另一台走 `seed.skip: true` 路径
+// （main.go 只调 EnsureEzfyLimitColumns）—— 把索引也挂到那条路径上，
+// 保证任何一台启动都会把缺的索引补齐（ensureEzfyIndex 本身幂等，先到先建）。
+//
+// ★ 2026-10-03 起：首页 /view 30s 轮询的命令数/未读战报计数、装备检索，
+//   都按 user_id + status/is_read 过滤。只靠单列 user_id 会在引擎层窄化后再筛，
+//   补复合索引直接命中，省掉每一段的扫描。
+// ★ 2026-10-05 起（用户反馈「这些接口还是 2s+」）：跨 WAN 每次往返 13~37ms，
+//   慢接口的每一个**全表扫**都会被放大。以下三张表原先**只有主键**（或单列），
+//   而懒结算/展示每次都按这些条件过滤：
+//     · ezfy_occupy     —— cityOf() 查 `city_id + status=1`、wildfull 查 `atk_city_id + status=1`
+//     · ezfy_wildland   —— 地图/详情按 `x,y` 精确定位、地图按 x 区间裁剪
+//     · ezfy_order      —— processIncoming 按 `target_id IN (...) + status=0` 找来袭订单
+//     · ezfy_city_tech  —— 多城研究结算按 `city_id IN (...) + status=1`
+//     · ezfy_officer    —— 市长加成按 `city_id + position` 取 1 行
+func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_order", "idx_order_user_status", "user_id,status,order_type", false)
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_read", "user_id,is_read", false)
 	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_user_cfg_off", "user_id,cfg_id,officer_id", false)
+
+	// ★ 2026-10-05 二战风云慢接口补索引（见函数注释）
+	ensureEzfyIndex(db, "ezfy_occupy", "idx_occupy_city_status", "city_id,status", false)
+	ensureEzfyIndex(db, "ezfy_occupy", "idx_occupy_atkcity_status", "atk_city_id,status", false)
+	ensureEzfyIndex(db, "ezfy_wildland", "idx_wildland_xy", "x,y", false)
+	ensureEzfyIndex(db, "ezfy_order", "idx_order_target_status", "target_id,status", false)
+	ensureEzfyIndex(db, "ezfy_city_tech", "idx_city_tech_status", "city_id,status", false)
+	ensureEzfyIndex(db, "ezfy_officer", "idx_officer_city_position", "city_id,position", false)
 
 	// ★ 2026-10-03 家园论坛索引：版块帖子列表(board_id+状态)、我的帖子/回复(user_id+状态)是高频查询。
 	//   Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。

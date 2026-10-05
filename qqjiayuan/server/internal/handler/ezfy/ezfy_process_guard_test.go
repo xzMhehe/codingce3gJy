@@ -106,8 +106,10 @@ func TestCalcResourceSalaryDoesNotQueryDB(t *testing.T) {
 
 	// ① 静态守护：calcResource 内不得直接调用 officerList/officerSalaryPerHour，
 	//    必须走纯内存的 officerSalaryOf（否则每个请求都会多打 SQL）。
+	// ★ 2026-10-05：calcResource 现在是 `calcResourceD(city, nil, ...)` 的薄包装，
+	//   真正的实现体在 calcResourceD 里 —— 红线断言要打在**实现体**上。
 	src := readHandlerSource(t, "ezfy.go")
-	body := extractFuncBody(t, src, "func (h *EzfyHandler) calcResource(")
+	body := extractFuncBody(t, src, "func (h *EzfyHandler) calcResourceD(")
 	for _, forbidden := range []string{"officerSalaryPerHour("} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("calcResource 里出现了 %s —— 违反性能红线（每个请求都会多打 SQL）。"+

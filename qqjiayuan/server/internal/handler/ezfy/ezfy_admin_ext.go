@@ -1736,7 +1736,8 @@ func (h *EzfyAdmin) AdminEzfyMapWildlands(c *gin.Context) {
 			st = "采集中"
 		}
 		out = append(out, rowOut{EzfyWildland: w, CityName: cityName, OwnerName: owner,
-			HomeNum: home, TerrainName: ezfyTerrainNameEx(w.X, w.Y), StatusTxt: st})
+			// ★ 2026-10-05：野地记录行 ⇒ 确定有野地 → 海里那块叫「海底森林」（岛屿仍是「岛屿」）
+			HomeNum: home, TerrainName: ezfyWildTerrainDisplayName(w.X, w.Y, true), StatusTxt: st})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }

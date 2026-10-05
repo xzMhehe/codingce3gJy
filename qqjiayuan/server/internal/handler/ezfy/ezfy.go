@@ -503,6 +503,14 @@ func (h *EzfyHandler) buildingMaxLevel(cityId uint, buildingId int) int {
 func (h *EzfyHandler) techMap(cityId uint) map[int]int {
 	var uid uint
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).Select("user_id").Scan(&uid)
+	return h.techMapOf(uid)
+}
+
+// techMapOf 按 user_id 取科技等级表。
+//
+// ★ 2026-10-05 性能：调用方**已经知道 uid** 时（/view、/resources、/buildings…）直接用它，
+// 省掉 techMap 里那条 `SELECT user_id FROM ezfy_city WHERE id = ?`（跨 WAN 就是一次白跑往返）。
+func (h *EzfyHandler) techMapOf(uid uint) map[int]int {
 	m := map[int]int{}
 	if uid == 0 {
 		return m
@@ -838,6 +846,18 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity, reuse ...[]model.E
 // （只在这一处、且只在真正要结算时查），保证「工资一定扣得到、且最多查一次」。
 // 高频路径（View / Officers / battle）请显式传 officers 以复用已有查询结果。
 func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.EzfyOfficer) {
+	h.calcResourceD(city, nil, officers...)
+}
+
+// calcResourceD 与 calcResource 完全同口径，但可传入**本请求已查好的城市只读数据快照** d：
+// 科技/建筑/部队/野地/增产令/活动/市长全部走内存，函数内只剩最后一次资源写回（1 条 SQL）。
+//
+// ★ 2026-10-05 性能（用户反馈「/view /resources /troops /buildings 还是 2s+」）：
+//
+//	改造前 calcResource 自己串行查 8~9 条（techMap 还额外多一条 SELECT user_id），
+//	而调用方（/view 等）的并行块里**刚刚查过同一批数据** —— 等于每个请求白打 8~9 个跨 WAN 往返。
+//	d 为 nil 时行为与改造前逐字一致（各自自查），所以只有显式传快照的调用点才变快。
+func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, officers ...[]model.EzfyOfficer) {
 	now := time.Now().UnixMilli()
 	last := city.LastTime
 	if last <= 0 {
@@ -848,7 +868,7 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	}
 	hours := float64(now-last) / 3600000.0
 
-	tech := h.techMap(city.ID)
+	tech := d.techsOf(h, city.ID)
 	techFood := tech[1]
 	techSteel := tech[2]
 	techOil := tech[3]
@@ -921,7 +941,7 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	// ★ 资源建筑(农田3/炼钢4/石油5/稀矿6)自带「增加容量」，需累加到对应资源上限
 	//   （此前只取仓库容量 resCap，农田/炼钢/石油/稀矿的容量没算进去 → 上限 bug）
 	var foodCap, steelCap, oilCap, rareCap int64
-	for _, b := range h.buildingList(city.ID) {
+	for _, b := range d.buildingsOf(h, city.ID) {
 		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
 		if lv == nil {
 			continue
@@ -975,7 +995,9 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	oilProd = oilProd * int64(ezfyRate(city.RateOil)) / 100
 	rareProd = rareProd * int64(ezfyRate(city.RateRare)) / 100
 	// 市长加成：产量 +(10 + 后勤/20)*3 %（★ 2026-09-27 翻三倍；复刻原版 mayorBonus）
-	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
+	// ★ 2026-10-05 性能：原来这里调了**两次** mayorBonusPct（两次查库），改为只取一次。
+	mayorBonus := d.mayorOf(h, city.ID)
+	if mayorBonus > 0 {
 		foodProd = foodProd * int64(100+mayorBonus) / 100
 		steelProd = steelProd * int64(100+mayorBonus) / 100
 		oilProd = oilProd * int64(100+mayorBonus) / 100
@@ -984,12 +1006,12 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	// ★ 2026-09-26：不再 × morale（民心/民怨不扣产量，见上方说明）
 	goldProd = int64(float64(city.Pop) * float64(city.TaxRate) / 100.0)
 	// ★ 2026-09-24 修复「黄金 加成产量0 但显示[市长加成+23%]」: 市长加成同样作用于黄金
-	if mayorBonus := h.mayorBonusPct(city.ID); mayorBonus > 0 {
+	if mayorBonus > 0 {
 		goldProd = goldProd * int64(100+mayorBonus) / 100
 	}
 
 	var wildFood, wildSteel, wildOil, wildRare, wildGold int64
-	wildlands := h.wildlandList(city.ID)
+	wildlands := d.wildsOf(h, city.ID)
 	for i := range wildlands {
 		w := &wildlands[i]
 		base := int64(w.Level) * 100
@@ -1009,23 +1031,19 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 		//   野地保持征服时的等级，不再随时间消失。
 	}
 
-	var boost model.EzfyCityEffect
-	if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&boost).Error; err == nil {
-		if boost.UntilTime > now {
-			mult := int64(100 + boost.Param1)
-			foodProd = foodProd * mult / 100
-			steelProd = steelProd * mult / 100
-			oilProd = oilProd * mult / 100
-			rareProd = rareProd * mult / 100
-			goldProd = goldProd * mult / 100
-			wildFood = wildFood * mult / 100
-			wildSteel = wildSteel * mult / 100
-			wildOil = wildOil * mult / 100
-			wildRare = wildRare * mult / 100
-			wildGold = wildGold * mult / 100
-		} else {
-			h.DB.Delete(&boost)
-		}
+	// ★ 2026-10-05 性能：增产令走快照（d.boostDone 时零 SQL），过期清理仍在 boostOf 里做。
+	if boost := d.boostOf(h, city.ID, now); boost != nil {
+		mult := int64(100 + boost.Param1)
+		foodProd = foodProd * mult / 100
+		steelProd = steelProd * mult / 100
+		oilProd = oilProd * mult / 100
+		rareProd = rareProd * mult / 100
+		goldProd = goldProd * mult / 100
+		wildFood = wildFood * mult / 100
+		wildSteel = wildSteel * mult / 100
+		wildOil = wildOil * mult / 100
+		wildRare = wildRare * mult / 100
+		wildGold = wildGold * mult / 100
 	}
 
 	// 节日活动·资源增产(福利.txt #3)
@@ -1083,7 +1101,7 @@ func (h *EzfyHandler) calcResource(city *model.EzfyCity, officers ...[]model.Ezf
 	// ★ 用户要求「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	var troopFoodCost int64
 	if ezfyFoodUpkeepOn() {
-		for tid, count := range h.troopMap(city.ID) {
+		for tid, count := range d.troopsOf(h, city.ID) {
 			if cfg := ezfyCfg.troop(tid); cfg != nil {
 				troopFoodCost += int64(cfg.FoodKeep) * count
 			}
@@ -1238,46 +1256,122 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity, reuse ...[]model.E
 	}
 }
 
-// resCalcData 页面轮询(尤其 /view 30s)里**已经查好**的资源结算入参。
-// getResourceCalcWith 用它复用同一批数据，避免对 buildingList/techMap/wildlandList/troopMap
-// 一次次重复跨 WAN 打库（每张表 13~37ms）。字段为 nil 时节退回各自自查。
+// resCalcData 一次请求内**已经查好**的「城市只读数据快照」。
+//
+// ★★ 2026-10-05 性能（用户反馈「这几个接口还是 2s+」）：
+//
+//	本结构现在同时服务两个消费方 ——
+//	  · `getResourceCalcWith`（资源详情展示）
+//	  · `calcResourceD`（资源懒结算，真正入库的那一份）
+//	把「建筑 / 科技 / 部队 / 野地 / 训练队列 / 增产令 / 市长加成 / 节日增产」全部预取，
+//	懒结算就从「~9 条串行 RDS」变成「0 条读 + 1 条写」。
+//	跨 WAN 每次往返 13~37ms，去掉 9 次就是 ~200~350ms。
+//
+//	任一字段为 nil / 未加载时，消费方各自退化为「自己查一次」——与改造前行为完全一致，
+//	所以只有显式构造快照的调用点才会变快，其它调用点不受影响。
 type resCalcData struct {
 	buildings []model.EzfyCityBuilding
 	techs     map[int]int
 	wilds     []model.EzfyWildland
 	troops    map[int]int64
+
 	// ★ 2026-10-03 性能：/view 并行块已查好的增产令与市长加成，传入后
 	//   getResourceCalcWith 不再重复打库（原来 /view 每次轮询多 2 次 RDS 往返）。
-	boost *model.EzfyCityEffect // 生效中的增产令（effect_type=1）；nil 时内部自查
-	mayor int                   // 市长后勤加成 %；<0 表示未传入，内部自查
+	boost *model.EzfyCityEffect // 生效中的增产令（effect_type=1）
+	// ★ 2026-10-05：boostDone 区分「没查」与「查了确实没有」——
+	//   原来用 `boost == nil` 表示「没查」，于是「确认没有增产令」的请求每次都要再查一遍。
+	boostDone bool
+	mayor     int // 市长后勤加成 %；<0 表示未传入，内部自查
+}
+
+// ---- 统一取数入口：有快照用快照，没有就自查一次（旧行为）----
+
+func (d *resCalcData) buildingsOf(h *EzfyHandler, cityID uint) []model.EzfyCityBuilding {
+	if d != nil && d.buildings != nil {
+		return d.buildings
+	}
+	return h.buildingList(cityID)
+}
+
+func (d *resCalcData) techsOf(h *EzfyHandler, cityID uint) map[int]int {
+	if d != nil && d.techs != nil {
+		return d.techs
+	}
+	return h.techMap(cityID)
+}
+
+func (d *resCalcData) wildsOf(h *EzfyHandler, cityID uint) []model.EzfyWildland {
+	if d != nil && d.wilds != nil {
+		return d.wilds
+	}
+	return h.wildlandList(cityID)
+}
+
+func (d *resCalcData) troopsOf(h *EzfyHandler, cityID uint) map[int]int64 {
+	if d != nil && d.troops != nil {
+		return d.troops
+	}
+	return h.troopMap(cityID)
+}
+
+func (d *resCalcData) mayorOf(h *EzfyHandler, cityID uint) int {
+	if d != nil && d.mayor >= 0 {
+		return d.mayor
+	}
+	return h.mayorBonusPct(cityID)
+}
+
+// ezfyLoadActiveBoost 查「生效中的增产令」(effect_type=1)，已过期的顺手删除。
+//
+// 与 calcResource 旧行为一致（过期即清），供并行块预取用：
+//
+//	boost := h.ezfyLoadActiveBoost(city.ID)   // 1 条 SQL
+//	snap := &resCalcData{..., boost: boost, boostDone: true}
+//
+// 返回 nil = 确认没有生效中的增产令（配合 boostDone=true，后续消费方零查询）。
+func (h *EzfyHandler) ezfyLoadActiveBoost(cityID uint) *model.EzfyCityEffect {
+	var e model.EzfyCityEffect
+	if err := h.DB.Where("city_id = ? AND effect_type = 1", cityID).First(&e).Error; err != nil {
+		return nil
+	}
+	if e.UntilTime > time.Now().UnixMilli() {
+		return &e
+	}
+	h.DB.Delete(&e)
+	return nil
+}
+
+// boostOf 取生效中的增产令。boostDone=true 表示调用方已确认过（含「确实没有」）→ 不再查库。
+func (d *resCalcData) boostOf(h *EzfyHandler, cityID uint, now int64) *model.EzfyCityEffect {
+	if d != nil && d.boostDone {
+		if d.boost != nil && d.boost.UntilTime > now {
+			return d.boost
+		}
+		return nil
+	}
+	var e model.EzfyCityEffect
+	if err := h.DB.Where("city_id = ? AND effect_type = 1", cityID).First(&e).Error; err != nil {
+		return nil
+	}
+	if e.UntilTime > now {
+		return &e
+	}
+	// 已过期：顺手清掉（与旧 calcResource 行为一致）
+	h.DB.Delete(&e)
+	return nil
 }
 
 // getResourceCalc 资源详情结算（纯内存公式）。d 为 nil 时内部自查四张表；
-// 传 d（如 View 已载入同一批数据）则全部复用，只留 mayor/boost 两条小查询。
+// 传 d（如 View 已载入同一批数据）则全部复用，零额外查询。
 func (h *EzfyHandler) getResourceCalc(city *model.EzfyCity) gin.H {
 	return h.getResourceCalcWith(city, nil)
 }
 
 func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) gin.H {
-	var buildings []model.EzfyCityBuilding
-	var techs map[int]int
-	var wilds []model.EzfyWildland
-	var troops map[int]int64
-	if d != nil {
-		buildings, techs, wilds, troops = d.buildings, d.techs, d.wilds, d.troops
-	}
-	if techs == nil {
-		techs = h.techMap(city.ID)
-	}
-	if buildings == nil {
-		buildings = h.buildingList(city.ID)
-	}
-	if wilds == nil {
-		wilds = h.wildlandList(city.ID)
-	}
-	if troops == nil {
-		troops = h.troopMap(city.ID)
-	}
+	buildings := d.buildingsOf(h, city.ID)
+	techs := d.techsOf(h, city.ID)
+	wilds := d.wildsOf(h, city.ID)
+	troops := d.troopsOf(h, city.ID)
 	tech := techs
 	techFood, techSteel, techOil, techRare := tech[1], tech[2], tech[3], tech[4]
 	techSupply, techStore := tech[18], tech[14]
@@ -1316,10 +1410,9 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	rateSteel := int64(ezfyRate(city.RateSteel))
 	rateOil := int64(ezfyRate(city.RateOil))
 	rateRare := int64(ezfyRate(city.RateRare))
-	mayor := int64(h.mayorBonusPct(city.ID))
-	if d != nil && d.mayor >= 0 {
-		mayor = int64(d.mayor)
-	}
+	// ★ 2026-10-05 性能：原来无条件先查一次 mayorBonusPct（哪怕调用方已经把 mayor 传进来），
+	//   等于每个 /view 请求白打一条 SQL。现在由 mayorOf 决定「用快照还是自查」。
+	mayor := int64(d.mayorOf(h, city.ID))
 	applyProd := func(base, rate int64) int64 {
 		v := base * rate / 100
 		if mayor > 0 {
@@ -1375,19 +1468,12 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 			wildRare += base
 		}
 	}
-	var boost model.EzfyCityEffect
 	boostPct := 0
 	boostUntil := int64(0)
-	// ★ 2026-10-03 性能：/view 已把增产令并入并行块查好，这里直接复用（零 SQL）；
-	//   d.boost 为 nil（其它调用方）时才回退自查。
-	if d != nil && d.boost != nil && d.boost.UntilTime > time.Now().UnixMilli() {
-		boost = *d.boost
-	} else if d == nil || d.boost == nil {
-		if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&boost).Error; err != nil {
-			boost.ID = 0
-		}
-	}
-	if boost.ID > 0 && boost.UntilTime > time.Now().UnixMilli() {
+	// ★ 2026-10-05 性能：增产令统一走 boostOf —— 快照命中时零 SQL；
+	//   boostDone=true 让「已确认没有增产令」的请求也不再重复查库。
+	boost := d.boostOf(h, city.ID, time.Now().UnixMilli())
+	if boost != nil {
 		// ★★ 2026-09-26 修复「增产令用了没加成（详情页不显示）」：
 		//
 		//	原来这里写的是 `foodProd *= mult / 100` —— Go 里这等价于
@@ -2053,6 +2139,33 @@ func (h *EzfyHandler) buildingPop(cityId uint) int64 {
 // cityPopUsed 城市「已占用人口」= 建筑占用 + 训练队列占用。
 func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
 	return h.buildingPop(cityId) + h.troopPop(cityId)
+}
+
+// cityPopUsedD 与 cityPopUsed 同口径，但复用本请求已查好的建筑列表 / 训练队列：
+// 两者都非 nil 时零 SQL（原来各自再查一次 buildingList / train_queue）。
+func (h *EzfyHandler) cityPopUsedD(cityId uint, buildings []model.EzfyCityBuilding, trainQ []model.EzfyTrainQueue) int64 {
+	pop := int64(0)
+	if buildings != nil {
+		for _, b := range buildings {
+			if lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level); lv != nil {
+				pop += int64(lv.Pop)
+			}
+		}
+	} else {
+		pop += h.buildingPop(cityId)
+	}
+	if !ezfyRecruitCostOn() {
+		return pop
+	}
+	if trainQ == nil {
+		return pop + h.troopPop(cityId)
+	}
+	for _, q := range trainQ {
+		if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
+			pop += int64(cfg.Pop) * q.Count
+		}
+	}
+	return pop
 }
 
 // ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
@@ -3079,7 +3192,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	// ★ 2026-10-04 瘦身：建筑/军队/科技/野地/队列/伤兵**不再随 /view 下发**（移到对应页面
 	//   进入时各自接口加载），但原数据仍要查回来供懒结算与首页产量(res_prod)计算复用。
 	var wg sync.WaitGroup
-	wg.Add(15)
+	wg.Add(14)
 	go func() { // 军官列表（含出征态自愈 + 一次 orderListByCity 自愈判定）
 		defer wg.Done()
 		officers = h.officerList(city.ID)
@@ -3096,9 +3209,9 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		defer wg.Done()
 		troops = h.troopMap(city.ID)
 	}()
-	go func() { // 科技表
+	go func() { // 科技表（★ 2026-10-05 用 techMapOf(uid)，省掉 techMap 内部的 SELECT user_id 往返）
 		defer wg.Done()
-		tmap = h.techMap(city.ID)
+		tmap = h.techMapOf(uid)
 	}()
 	go func() { // 野地列表
 		defer wg.Done()
@@ -3125,10 +3238,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&c)
 		unreadReports = c
 	}()
-	go func() { // 已占用人口
-		defer wg.Done()
-		popUsed = h.cityPopUsed(city.ID)
-	}()
+	// ★ 2026-10-05 性能：已占用人口不再单独查库 —— wg.Wait() 之后用本请求已取到的
+	//   buildings + trainQueues 纯内存算（原来 buildingPop/troopPop 各自再查一次）。
 	go func() { // 免战保护令（effect_type=2）
 		defer wg.Done()
 		protected = h.hasCityEffect(city.ID, 2)
@@ -3166,11 +3277,23 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   顺序保持原样：calcResource 在 processOrders 之前（processOrders 可能向当前城市写资源，
 	//   必须最后写，避免覆盖返航/战斗入库的资源）。
 	//   calcResource 未到结算点(每小时)时为 0 查询，processOrders 保持串行链尾。
+	// ★ 2026-10-05 性能：已占用人口用已取数据纯内存算（零 SQL）。
+	popUsed = h.cityPopUsedD(city.ID, buildings, trainQueues)
+
+	// ★★ 2026-10-05 性能（用户反馈「这几个接口还是 2s+」）：
+	//   把本请求并行块已取到的「城市只读数据」打包成快照，交给懒结算与资源详情复用 ——
+	//   calcResource 由「8~9 条串行 RDS」变成「0 读 + 1 写」，getResourceCalcWith 也零额外查询。
+	//   这两个消费方原来会把 buildingList / techMap / wildlandList / troopMap / 增产令 /
+	//   市长加成 / 节日活动**全部再查一遍**（跨 WAN 每个请求白打 ~8 个往返）。
+	snap := &resCalcData{
+		buildings: buildings, techs: tmap, wilds: wildlands, troops: troops,
+		boost: boostEff, boostDone: true, mayor: mayorPct,
+	}
 	h.checkBuildingDone(&city, buildings)
 	// ★ 2026-10-04 科技行已在第二波并行取好，只跑写部分（省 1 条串行 RTT）
 	h.checkTechDoneRows(&city, techRows)
 	h.collectTrainQueue(&city, trainQueues)
-	h.calcResource(&city, officers)
+	h.calcResourceD(&city, snap, officers)
 	// ★ 2026-10-04 传入已查好的城市列表：processIncoming 直接复用，省一次 Pluck 的 RTT
 	cids := make([]int64, 0, len(cities))
 	for _, c := range cities {
@@ -3191,10 +3314,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   ★ 2026-10-03 第二批：把这请求已查好的 buildings/tmap/wildlands/troops 传入，
 	//   让 getResourceCalc 变成纯内存，只剩 mayor/boost 两条小查询。
 	//   ★ 2026-10-03 第三批：mayor/增产令也并入并行块查好传入，getResourceCalcWith 完全零 SQL。
-	resCalc := h.getResourceCalcWith(&city, &resCalcData{
-		buildings: buildings, techs: tmap, wilds: wildlands, troops: troops,
-		boost: boostEff, mayor: mayorPct,
-	})
+	resCalc := h.getResourceCalcWith(&city, snap)
 	for _, k := range []string{"gold", "food", "steel", "oil", "rare"} {
 		if it, ok := resCalc[k].(gin.H); ok {
 			resProd[k] = it["total"]
@@ -3931,11 +4051,12 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 			city = *cc
 		}
 	}
-	h.calcResource(&city)
 	// ★ 2026-10-04 性能（用户反馈「/resources 卡 2s」）：原来 getResourceCalc(nil)
 	//   内部**串行**查 techMap/buildingList/wildlandList/troopMap + mayor/boost 共 6 条 SQL，
 	//   跨 WAN 慢 RDS 下单请求 1-2s。改为 6 条独立查询**并行**预载，再走
 	//   getResourceCalcWith 纯内存版（零 SQL）。
+	// ★ 2026-10-05：同一份快照**同时**喂给懒结算 calcResourceD —— 原来 calcResource 自己又把这
+	//   6 张表串行查了一遍（每请求白打 6 个跨 WAN 往返），现在整条链只剩 1 次写回。
 	var (
 		buildings []model.EzfyCityBuilding
 		techs     map[int]int
@@ -3947,20 +4068,17 @@ func (h *EzfyHandler) Resources(c *gin.Context) {
 	var wg sync.WaitGroup
 	wg.Add(6)
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); techs = h.techMap(city.ID) }()
+	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
 	go func() { defer wg.Done(); wilds = h.wildlandList(city.ID) }()
 	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
-	go func() { // 增产令（effect_type=1，仅生效中传入；nil 时 With 版内部也不会再查）
-		defer wg.Done()
-		var e model.EzfyCityEffect
-		if err := h.DB.Where("city_id = ? AND effect_type = 1", city.ID).First(&e).Error; err == nil && e.UntilTime > time.Now().UnixMilli() {
-			boost = &e
-		}
-	}()
+	go func() { defer wg.Done(); boost = h.ezfyLoadActiveBoost(city.ID) }()
 	go func() { defer wg.Done(); mayor = h.mayorBonusPct(city.ID) }()
 	wg.Wait()
-	rd := resCalcData{buildings: buildings, techs: techs, wilds: wilds, troops: troops, boost: boost, mayor: mayor}
-	data := gin.H{"city": city, "calc": h.getResourceCalcWith(&city, &rd)}
+	snap := &resCalcData{buildings: buildings, techs: techs, wilds: wilds, troops: troops,
+		boost: boost, boostDone: true, mayor: mayor}
+	// 先结算（把资源推进到当前时刻），再按同一份快照出详情 —— 顺序与改造前一致。
+	h.calcResourceD(&city, snap)
+	data := gin.H{"city": city, "calc": h.getResourceCalcWith(&city, snap)}
 	ezfyPageCacheSet(uid, "resources", data)
 	resp.OK(c, data)
 }
