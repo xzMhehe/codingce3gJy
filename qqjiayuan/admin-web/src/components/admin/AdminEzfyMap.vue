@@ -1342,15 +1342,15 @@ export default {
       const first = this.troopCfgs[0]
       this.wc.wcTroops.push({ troop_id: first ? first.id : 0, min: 100, max: 200 })
     },
-    // ★ 2026-10-05 商城道具掉落行：新增一行（默认概率 100%）
+    // ★ 2026-10-05 商城道具掉落行：新增一行（默认概率 5%，用户要求；原来默认 100%）
     addWcDrop () {
       if (!this.wc.wcDrops) this.$set(this.wc, 'wcDrops', [])
-      this.wc.wcDrops.push({ cfg_id: (this.itemCfgs[0] || {}).id || 0, count: 1, pct: 100 })
+      this.wc.wcDrops.push({ cfg_id: (this.itemCfgs[0] || {}).id || 0, count: 1, pct: 5 })
     },
-    // ★ 2026-10-05 宝物掉落行：新增一行（默认概率 100%）
+    // ★ 2026-10-05 宝物掉落行：新增一行（默认概率 10%，用户要求；原来默认 100%）
     addWcTreasure () {
       if (!this.wc.wcTreasures) this.$set(this.wc, 'wcTreasures', [])
-      this.wc.wcTreasures.push({ name: (this.treasures[0] || {}).name || '', count: 1, pct: 100 })
+      this.wc.wcTreasures.push({ name: (this.treasures[0] || {}).name || '', count: 1, pct: 10 })
     },
     openWcCreate () {
       this.wc = emptyWc()
