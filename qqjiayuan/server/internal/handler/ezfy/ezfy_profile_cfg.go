@@ -3,6 +3,8 @@ package ezfy
 import (
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -34,6 +36,15 @@ const (
 func (h *EzfyHandler) ezfyRecruitFreeLimit(uid uint) int {
 	var p model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.RecruitFreeLimit > 0 {
+		return p.RecruitFreeLimit
+	}
+	return ezfyRecruitLimitOf(h.DB)
+}
+
+// ezfyRecruitFreeLimitWith 同上，但用**本请求已经取到的档案**（省一次跨 WAN 的 profile 查询）。
+// ★ 2026-10-05 性能：/acade/recruit 原来在懒结算里刚查过 profile，这里又查一次。
+func (h *EzfyHandler) ezfyRecruitFreeLimitWith(p *model.EzfyProfile) int {
+	if p != nil && p.RecruitFreeLimit > 0 {
 		return p.RecruitFreeLimit
 	}
 	return ezfyRecruitLimitOf(h.DB)
@@ -177,14 +188,39 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 // ★ `key` 是 MySQL 保留字，条件必须走结构体/Map 形式让 GORM 加反引号，
 //
 //	直接写 Where("key = ?") 会报语法错。
+// ★ 2026-10-05 性能：全局默认值进程内缓存 30 秒。
+//
+//	这条 `SELECT * FROM settings WHERE key='ezfy_recruit_free_limit'` 是**每个**军校接口的
+//	必经一步（跨 WAN ~120ms），而它是管理端低频改动的一个全局开关 —— 30 秒收敛完全够。
+var (
+	ezfyRecruitLimitMu  sync.Mutex
+	ezfyRecruitLimitVal int
+	ezfyRecruitLimitAt  int64
+)
+
+const ezfyRecruitLimitTTLMs = 30000
+
 func ezfyRecruitLimitOf(db *gorm.DB) int {
+	now := time.Now().UnixMilli()
+	ezfyRecruitLimitMu.Lock()
+	if ezfyRecruitLimitAt > 0 && now-ezfyRecruitLimitAt < ezfyRecruitLimitTTLMs {
+		v := ezfyRecruitLimitVal
+		ezfyRecruitLimitMu.Unlock()
+		return v
+	}
+	ezfyRecruitLimitMu.Unlock()
+
+	v := ezfyRecruitFreeLimitDefault
 	var st model.Setting
 	if err := db.Where(&model.Setting{Key: ezfySettingRecruitFreeLimit}).First(&st).Error; err == nil {
 		if n, e := strconv.Atoi(strings.TrimSpace(st.Value)); e == nil && n >= 0 {
-			return n
+			v = n
 		}
 	}
-	return ezfyRecruitFreeLimitDefault
+	ezfyRecruitLimitMu.Lock()
+	ezfyRecruitLimitVal, ezfyRecruitLimitAt = v, now
+	ezfyRecruitLimitMu.Unlock()
+	return v
 }
 
 // RecruitUseTicket POST /games/ezfy/acade/recruit/ticket

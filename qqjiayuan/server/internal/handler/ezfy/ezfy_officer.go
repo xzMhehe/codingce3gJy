@@ -84,8 +84,19 @@ func officerMaxLevelOf(db *gorm.DB, o *model.EzfyOfficer) int {
 }
 
 // （EzfyHandler 便捷封装，供游戏链路调用）
+//
+// ★ 2026-10-05 性能：改走**进程内配置缓存** ezfyCfg.general()（该表本来就在缓存里），
+// 不再每个军官查一次 `SELECT * FROM ezfy_cfg_general WHERE id = ?`。
+// 语义不变：名将实例(kind=2) → 名将上限；查不到/非名将 → 普通军官上限。
+// 配置改动最多滞后 30 秒（与全站其它取配置的地方同一口径）。
 func (h *EzfyHandler) officerMaxLevelOf(o *model.EzfyOfficer) int {
-	return officerMaxLevelOf(h.DB, o)
+	if o.GeneralId <= 0 {
+		return ezfyOfficerMaxLevel
+	}
+	if g := ezfyCfg.general(int(o.GeneralId)); g != nil && g.Kind == 2 {
+		return ezfyGeneralMaxLevel
+	}
+	return ezfyOfficerMaxLevel
 }
 
 // ezfyStarItemID 「星级徽章」的道具 cfg_id（ItemType 19）
@@ -102,22 +113,15 @@ const ezfyOfficerRenameCardItemID = 25
 // officerList 城市军官列表（自愈：出征中但已无对应行军命令的军官解除出征态）
 func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 	var list []model.EzfyOfficer
-	h.DB.Where("city_id = ?", cityId).Order("id ASC").Find(&list)
-	// ★ 2026-10-05 性能：只有「存在出征中(status=1)的军官」时才需要拉命令表做自愈判定。
-	//   下面那个循环对 status != 1 的军官一律 continue，所以「全都在城里」时这条
-	//   `SELECT * FROM ezfy_order WHERE city_id IN (0,1,2)` 纯属白打（活跃玩家可达上百行）。
-	//   绝大多数请求都命中这个早退分支。
-	needHeal := false
-	for i := range list {
-		if list[i].Status == 1 {
-			needHeal = true
-			break
-		}
-	}
-	if !needHeal {
-		return list
-	}
-	orders := h.orderListByCity(cityId)
+	var orders []model.EzfyOrder
+	// ★ 2026-10-05 性能：军官表与「命令表（自愈判定用）」**并行**取 —— 原来必须先拿军官列表、
+	//   发现有出征态(status=1)的军官才去查命令表，两条**串行**跨 WAN 往返（线上 ~250ms）。
+	//   命令表只取 id/officer 两列，代价很小；并行后固定 1 个 RTT。
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); h.DB.Where("city_id = ?", cityId).Order("id ASC").Find(&list) }()
+	go func() { defer wg.Done(); orders = h.orderListByCity(cityId) }()
+	wg.Wait()
 	for i := range list {
 		o := &list[i]
 		if o.Status != 1 {
@@ -432,7 +436,10 @@ func parseDrafts(raw string) []ezfyOfficerDraft {
 }
 
 // recruitInfo 当周期(小时)候选(首次访问生成并落库)
-func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraft, int, int) {
+//
+// p 可选：调用方（/acade/recruit）已取到玩家档案时传入 → 省一次 profile 查询
+// （军校刷新次数上限要读 profile.recruit_free_limit，原来是再查一次 profile）。
+func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int, p ...*model.EzfyProfile) ([]ezfyOfficerDraft, int, int) {
 	h.cfgs()
 	date := recruitCycleKey()
 	var rec model.EzfyRecruit
@@ -444,7 +451,11 @@ func (h *EzfyHandler) recruitInfo(uid uint, academyLevel int) ([]ezfyOfficerDraf
 		h.DB.Create(&rec)
 	}
 	// ★ 上限支持按玩家覆盖（管理端「军校免费刷次数」维护）
-	limit := h.ezfyRecruitFreeLimit(uid)
+	var prof *model.EzfyProfile
+	if len(p) > 0 {
+		prof = p[0]
+	}
+	limit := h.ezfyRecruitFreeLimitWith(prof)
 	return parseDrafts(rec.Candidates), maxInt(0, limit-rec.RefreshCount), limit
 }
 
@@ -1545,13 +1556,22 @@ func (h *EzfyHandler) officerGoOut(city *model.EzfyCity, name string, goOut bool
 	if o == nil {
 		return
 	}
+	h.officerGoOutByID(o.ID, goOut)
+}
+
+// officerGoOutByID 同上，但调用方**已经有军官对象**时用它 —— 省掉一次
+// `SELECT * FROM ezfy_officer WHERE city_id = ? AND name = ?`（跨 WAN ~120ms）。
+func (h *EzfyHandler) officerGoOutByID(officerID uint, goOut bool) {
+	if officerID == 0 {
+		return
+	}
 	if goOut {
 		// ★ 第九轮用户规则：**派遣/出征不掉忠心**（原来每次 -5，归零就离职，玩家很反感）。
 		//   只有打了败仗才掉，且掉的量按战损合理计算（见 officerLoseLoyalty / 战斗结算）。
-		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("status", 1)
+		h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", officerID).Update("status", 1)
 		return
 	}
-	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("status", 0)
+	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", officerID).Update("status", 0)
 }
 
 // officerLoseLoyalty 扣军官忠心（归零自动离职）。
@@ -1635,6 +1655,16 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 //
 // ⚡ 并发安全：结算基准时间只有「最先写进去的请求」能推前（条件更新抢占），
 // 后续并发请求 WHERE 命中不了旧基准 → 不计，避免重复发经验（与 checkBuildingDone 同款手法）。
+// ★★ 2026-10-05 性能（线上实测：这是 /buildings、/view 里**最大的单笔开销**）：
+//
+//	改造前**每个**在任军官串行跑 4 条查询 ——
+//	  UPDATE duty_exp_at(写 240ms) → SELECT officer(读 120ms) → SELECT cfg_general(读 120ms)
+//	  → UPDATE officer exp(写 240ms) ≈ 720ms/人；市长 + 城守就是 **~1.5s**，
+//	  占 /buildings 总耗时（线上实测 2.6s）的一半以上。
+//
+//	现在改成「按旧基准分组 → 一组一条 CAS UPDATE → 一条批量 CASE UPDATE 写经验/等级」：
+//	  N 个军官从 4N 条降到 **2 条**（且 2 条里 1 条是写、1 条是写）。
+//	  CAS 语义完全保留（只有把基准推前的请求才结算经验，不会并发重复发经验）。
 func (h *EzfyHandler) accrueDutyExp(city *model.EzfyCity, officers []model.EzfyOfficer) {
 	var list []model.EzfyOfficer
 	if len(officers) > 0 {
@@ -1643,6 +1673,14 @@ func (h *EzfyHandler) accrueDutyExp(city *model.EzfyCity, officers []model.EzfyO
 		list = h.officerList(city.ID)
 	}
 	now := time.Now()
+
+	// ① 分组：键 = 该军官当前的 duty_exp_at（同一批里通常只有一组）
+	type dutyGroup struct {
+		base int64
+		idx  []int
+	}
+	var groups []*dutyGroup
+	byBase := map[int64]*dutyGroup{}
 	for i := range list {
 		o := &list[i]
 		if o.Position != ezfyPositionMayor && o.Position != ezfyPositionGuard {
@@ -1657,28 +1695,128 @@ func (h *EzfyHandler) accrueDutyExp(city *model.EzfyCity, officers []model.EzfyO
 				Update("duty_exp_at", now)
 			continue
 		}
-		mins := int64(now.Sub(*o.DutyExpAt).Minutes())
-		if mins <= 0 {
+		if now.Sub(*o.DutyExpAt) < time.Minute {
 			continue
 		}
-		exp := mins * ezfyDutyExpPerMin
-		// 条件更新抢占：只有把基准从「旧值 t」推到 now 的请求才结算经验
+		b := o.DutyExpAt.UnixMilli()
+		g := byBase[b]
+		if g == nil {
+			g = &dutyGroup{base: b}
+			byBase[b] = g
+			groups = append(groups, g)
+		}
+		g.idx = append(g.idx, i)
+	}
+	for _, g := range groups {
+		ids := make([]uint, 0, len(g.idx))
+		for _, i := range g.idx {
+			ids = append(ids, list[i].ID)
+		}
+		// ② 一组一条 CAS：把基准从旧值推到 now，只有抢到的请求继续结算经验
 		res := h.DB.Model(&model.EzfyOfficer{}).
-			Where("id = ? AND duty_exp_at <= ?", o.ID, *o.DutyExpAt).
+			Where("id IN ? AND duty_exp_at <= ?", ids, time.UnixMilli(g.base)).
 			Update("duty_exp_at", now)
-		if res.RowsAffected == 0 {
+		if res.Error != nil || res.RowsAffected == 0 {
 			continue
 		}
-		h.addOfficerExp(city, o.ID, exp)
+		exp := int64(now.Sub(time.UnixMilli(g.base)).Minutes()) * ezfyDutyExpPerMin
+		if exp <= 0 {
+			continue
+		}
+		if int(res.RowsAffected) != len(ids) {
+			// 罕见：同组里有行被并发请求先推走了 → 退回逐行 CAS 兜底，绝不重复发经验
+			for _, i := range g.idx {
+				o := list[i]
+				r := h.DB.Model(&model.EzfyOfficer{}).
+					Where("id = ? AND duty_exp_at <= ?", o.ID, time.UnixMilli(g.base)).
+					Update("duty_exp_at", now)
+				if r.Error == nil && r.RowsAffected > 0 {
+					h.addOfficerExp(city, o.ID, exp)
+				}
+			}
+			continue
+		}
+		h.accrueDutyExpBatch(city, list, g.idx, exp)
+	}
+}
+
+// accrueDutyExpBatch 把一组军官的 exp/level/free_points 用**一条 CASE UPDATE** 落库。
+//
+// 等级/加点在内存里算（与 addOfficerExp 同一套公式），升级播报只给真正升级的人发。
+func (h *EzfyHandler) accrueDutyExpBatch(city *model.EzfyCity, list []model.EzfyOfficer, idx []int, exp int64) {
+	type rowRes struct {
+		id     uint
+		exp    int64
+		lv     int
+		free   int
+		gained int
+		name   string
+	}
+	rows := make([]rowRes, 0, len(idx))
+	for _, i := range idx {
+		o := &list[i]
+		if o.IsCaptive == 1 {
+			continue
+		}
+		maxLv := h.officerMaxLevelOf(o)
+		ne, lv, gained := o.Exp+exp, o.Level, 0
+		for lv < maxLv && ne >= int64(lv)*200 {
+			ne -= int64(lv) * 200
+			lv++
+			gained++
+		}
+		if lv >= maxLv {
+			ne = 0 // 满级后不保留经验
+		}
+		rows = append(rows, rowRes{id: o.ID, exp: ne, lv: lv, free: o.FreePoints + gained,
+			gained: gained, name: o.Name})
+		// ★ 2026-10-05：把新值同步回内存行 —— 调用方（/officers/skills、/acade/recruit 等）
+		//   可以直接复用这份列表展示，不必为了「展示最新等级」再查一次军官表。
+		o.Exp, o.Level, o.FreePoints = ne, lv, o.FreePoints+gained
+	}
+	if len(rows) == 0 {
+		return
+	}
+	ids := make([]uint, 0, len(rows))
+	var expCase, lvCase, freeCase strings.Builder
+	expCase.WriteString("CASE id")
+	lvCase.WriteString("CASE id")
+	freeCase.WriteString("CASE id")
+	expArgs := make([]interface{}, 0, len(rows)*2)
+	lvArgs := make([]interface{}, 0, len(rows)*2)
+	freeArgs := make([]interface{}, 0, len(rows)*2)
+	for _, r := range rows {
+		ids = append(ids, r.id)
+		expCase.WriteString(" WHEN ? THEN ?")
+		lvCase.WriteString(" WHEN ? THEN ?")
+		freeCase.WriteString(" WHEN ? THEN ?")
+		expArgs = append(expArgs, r.id, r.exp)
+		lvArgs = append(lvArgs, r.id, r.lv)
+		freeArgs = append(freeArgs, r.id, r.free)
+	}
+	expCase.WriteString(" END")
+	lvCase.WriteString(" END")
+	freeCase.WriteString(" END")
+	h.DB.Model(&model.EzfyOfficer{}).Where("id IN ?", ids).Updates(map[string]interface{}{
+		"exp":         gorm.Expr(expCase.String(), expArgs...),
+		"level":       gorm.Expr(lvCase.String(), lvArgs...),
+		"free_points": gorm.Expr(freeCase.String(), freeArgs...),
+	})
+	for _, r := range rows {
+		if r.gained <= 0 {
+			continue
+		}
+		h.addReport(city.UserID, 6, "将领升级: "+r.name,
+			r.name+"在战斗中成长, 升到了"+strconv.Itoa(r.lv)+"级, 获得"+
+				strconv.Itoa(r.gained)+"点属性点(可前往 [军官] 详情页分配)!", "")
 	}
 }
 
 // OfficersOnDuty GET /games/ezfy/officers/onduty —— 出征界面可选的带队军官
 func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	h.cfgs()
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
+	// ★ 2026-10-05 性能：ezfyPageSettle = 档案+城市列表 + 一次并行取数 + 快照懒结算（~3 个 RTT 封顶）
+	city, snap := h.ezfyPageSettle(uid)
 	list := []gin.H{}
 	for _, o := range h.officerOnDutyList(city.ID) {
 		list = append(list, gin.H{
@@ -1689,7 +1827,7 @@ func (h *EzfyHandler) OfficersOnDuty(c *gin.Context) {
 			"skills": officerSkills(&o),
 		})
 	}
-	resp.OK(c, gin.H{"officers": list, "hq_level": h.buildingLevel(city.ID, 13)})
+	resp.OK(c, gin.H{"officers": list, "hq_level": snap.buildingLevelsOf(h, city.ID)[13]})
 }
 
 // OfficerDispatch POST /games/ezfy/officers/:id/dispatch
@@ -2545,19 +2683,21 @@ func (h *EzfyHandler) AcadeRecruit(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
-	h.refreshCityRead(uid, &city)
-	// ★ 2026-10-04 性能：军校/参谋部等级一次查全建筑列表、内存取值（原 buildingLevel ×3 各查一遍全表）
-	blv := buildingLevelsOf(h.buildingList(city.ID))
+	// ★★ 2026-10-05 性能（用户反馈「/acade/recruit 3s」）：ezfyPageSettle 一次并行取数
+	//   （建筑/科技/野地/部队/训练队列/科技行/增产令/市长）+ 快照懒结算，全部零额外读；
+	//   建筑等级直接复用快照，不再单独 buildingList 一次。
+	city, snap := h.ezfyPageSettle(uid)
+	blv := snap.buildingLevelsOf(h, city.ID)
 	academy := blv[ezfyBuildingAcademy]
 	out := gin.H{
 		"academy_level": academy, "staff_level": blv[ezfyBuildingStaff],
-		"capacity": blv[ezfyBuildingStaff], "used": h.officerCount(city.ID),
+		"capacity": blv[ezfyBuildingStaff],
+		// ★ 2026-10-05 性能：复用懒结算已查到的军官列表统计在职人数（原 officerCount 内部又查一次军官表）
+		"used": officerCountOf(snap.officersOf(h, city.ID)),
 		"gold": city.Gold, "candidates": []gin.H{},
 	}
 	if academy >= 1 {
-		drafts, left, limit := h.recruitInfo(uid, academy)
+		drafts, left, limit := h.recruitInfo(uid, academy, snap.profile)
 		views := []gin.H{}
 		for _, d := range drafts {
 			views = append(views, gin.H{
@@ -3065,9 +3205,8 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	h.cfgs()
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
+	// ★ 2026-10-05 性能：ezfyPageSettle（并行取数 + 快照懒结算）
+	city, _ := h.ezfyPageSettle(uid)
 	out := []gin.H{}
 	for _, c2 := range ezfyCfg.chests {
 		pool := []gin.H{}
@@ -3460,16 +3599,16 @@ func (h *EzfyHandler) OfficerSkills(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	// ★ 2026-10-04 性能：展示页改走 refreshCityRead（跳过订单结算）
-	h.refreshCityRead(uid, &city)
+	// ★★ 2026-10-05 性能（用户反馈「/officers/skills 2s」）：ezfyPageSettle 一次并行取数 + 快照懒结算；
+	//   军官列表直接复用懒结算已经查过的那份（exp/level 已同步为结算后），不再查第二次军官表。
+	city, snap := h.ezfyPageSettle(uid)
 	skills := []gin.H{}
 	for _, s := range ezfyCfg.skills {
 		skills = append(skills, gin.H{"id": s.ID, "name": s.Name, "effect": s.Effect, "type": s.Type, "des": s.Des})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["id"].(int) < skills[j]["id"].(int) })
 	list := []gin.H{}
-	for _, o := range h.officerList(city.ID) {
+	for _, o := range snap.officersOf(h, city.ID) {
 		skills := officerSkills(&o)
 		list = append(list, gin.H{"id": o.ID, "name": o.Name, "level": o.Level,
 			"skills": skills, "skill_count": len(skills)})
@@ -3728,8 +3867,8 @@ func (h *EzfyHandler) EquipShop(c *gin.Context) {
 		resp.OK(c, it)
 		return
 	}
-	city := h.getOrCreateCity(uid)
-	h.refreshCityRead(uid, &city)
+	// ★ 2026-10-05 性能：ezfyPageSettle（并行取数 + 快照懒结算）
+	city, _ := h.ezfyPageSettle(uid)
 	slots, items := h.equipShopList()
 	data := gin.H{
 		"slots": slots, "items": items,

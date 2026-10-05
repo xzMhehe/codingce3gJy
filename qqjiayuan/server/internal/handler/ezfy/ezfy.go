@@ -364,13 +364,19 @@ func (h *EzfyHandler) findFreePos() [2]int {
 
 // cityOf 按归属取城市（含被占领不可进入校验）
 func (h *EzfyHandler) cityOf(uid uint, cityId int64) *model.EzfyCity {
+	// ★ 2026-10-05 性能：两条查询互不依赖（被占判定用的就是入参 cityId），改**并行** ——
+	//   原来串行 2 个跨 WAN 往返（线上 ~220ms），而 bodyCity 是所有操作接口的第一步。
 	var city model.EzfyCity
-	if err := h.DB.Where("user_id = ? AND id = ?", uid, cityId).First(&city).Error; err != nil {
-		return nil
-	}
 	var oc int64
-	h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", city.ID).Count(&oc)
-	if oc > 0 {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); h.DB.Where("user_id = ? AND id = ?", uid, cityId).First(&city) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", cityId).Count(&oc)
+	}()
+	wg.Wait()
+	if city.ID == 0 || oc > 0 {
 		return nil
 	}
 	return &city
@@ -582,12 +588,42 @@ func (h *EzfyHandler) cityTroopTotal(cityId uint) int64 {
 //
 //	口径：当前兵力(城内 + 训练队列) + 本次要加的量 > troop_max → 拒绝。
 //	返回空串表示通过，否则返回可直接展示给玩家的提示文案。
+// cityTroopTotalD 同 cityTroopTotal，但复用已查好的部队表 + 训练队列（两者都非 nil 时零 SQL）。
+func (h *EzfyHandler) cityTroopTotalD(troops map[int]int64, trainQ []model.EzfyTrainQueue) int64 {
+	max := ezfyTroopMaxCfg()
+	var total int64
+	for _, cnt := range troops {
+		if cnt > 0 {
+			total = ezfySafeAdd(total, cnt, max)
+		}
+	}
+	for _, q := range trainQ {
+		if q.Count > 0 {
+			total = ezfySafeAdd(total, q.Count, max)
+		}
+	}
+	return total
+}
+
 func (h *EzfyHandler) checkTroopCap(cityId uint, add int64) string {
 	if add <= 0 {
 		return "数量错误"
 	}
 	max := ezfyTroopMaxCfg()
 	cur := h.cityTroopTotal(cityId)
+	if cur >= max || add > max-cur {
+		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d)", max, cur)
+	}
+	return ""
+}
+
+// checkTroopCapD 同 checkTroopCap，但用快照里的部队表/训练队列纯内存算（省 2 条跨 WAN 往返）。
+func (h *EzfyHandler) checkTroopCapD(add int64, troops map[int]int64, trainQ []model.EzfyTrainQueue) string {
+	if add <= 0 {
+		return "数量错误"
+	}
+	max := ezfyTroopMaxCfg()
+	cur := h.cityTroopTotalD(troops, trainQ)
 	if cur >= max || add > max-cur {
 		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d)", max, cur)
 	}
@@ -706,11 +742,19 @@ func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
 //	所以这里不必预先查军官表：只有「确实要按小时扣工资」的那一次才查一次库，
 //	且同一请求内复用（request 级缓存），不会每个 callee 重复查。
 func (h *EzfyHandler) refreshCity(uid uint, city *model.EzfyCity) {
-	h.checkBuildingDone(city)
-	h.checkTechDone(city)
-	h.collectTrainQueue(city)
-	h.calcResource(city)
-	h.processOrders(uid)
+	h.refreshCityD(uid, city)
+}
+
+// refreshCityD 同 refreshCity，但**把快照返回给调用方**。
+//
+// ★★ 2026-10-05 性能：需要「结算完还要继续用建筑等级/科技/部队」的接口（如出征下单）
+// 用它，可以省掉后面 N 次重复查询（buildingLevel/techMap/troopMap 每次都是一整条跨 WAN 往返）。
+func (h *EzfyHandler) refreshCityD(uid uint, city *model.EzfyCity) *resCalcData {
+	// 原来是 5 步各自查库（~15 条串行跨 WAN = 1s+）。
+	// 现在先一次并行取齐（1 个 RTT），再全部走快照结算 —— 读 0 条，只留资源落库 1 条写。
+	d := h.ezfyLoadCityData(uid, city, nil)
+	h.ezfySettleCity(uid, city, d, true)
+	return d
 }
 
 // refreshCityWithOfficers 与 refreshCity 相同，但把「已经取到的军官列表」传给
@@ -724,11 +768,13 @@ func (h *EzfyHandler) refreshCity(uid uint, city *model.EzfyCity) {
 // 普通接口直接用 refreshCity 即可（calcResource 会兜底查一次，同样只查一次）。
 func (h *EzfyHandler) refreshCityWithOfficers(uid uint, city *model.EzfyCity,
 	officers []model.EzfyOfficer) {
-	h.checkBuildingDone(city)
-	h.checkTechDone(city)
-	h.collectTrainQueue(city)
-	h.calcResource(city, officers)
-	h.processOrders(uid)
+	// ★ 2026-10-05 性能：同 refreshCity，一次并行取数 + 快照结算（军官列表由调用方传入复用）。
+	d := h.ezfyLoadCityData(uid, city, nil)
+	h.checkBuildingDone(city, d.buildingsOf(h, city.ID))
+	h.checkTechDoneRows(city, d.techRows)
+	h.collectTrainQueue(city, d.trainQOf(h, city.ID))
+	h.calcResourceD(city, d, officers)
+	h.processOrders(uid, d.cityIDIntsOf(h, uid))
 }
 
 // refreshCityRead 只读展示页的轻量懒结算：建筑/科技/训练队列/资源照跑，
@@ -738,10 +784,13 @@ func (h *EzfyHandler) refreshCityWithOfficers(uid uint, city *model.EzfyCity,
 // 订单事件（返航/战斗/敌军到达）仍由 /view 轮询与操作接口的完整 refreshCity 照常推进，
 // 展示页滞后最长 3 秒（缓存 TTL），可接受。
 func (h *EzfyHandler) refreshCityRead(uid uint, city *model.EzfyCity) {
-	h.checkBuildingDone(city)
-	h.checkTechDone(city)
-	h.collectTrainQueue(city)
-	h.calcResource(city)
+	// ★★ 2026-10-05 性能（用户反馈「军校招募/军官技能 2~3s」）：
+	//   原来 4 步各自查库（建筑/科技/队列/资源共 ~15 条**串行**跨 WAN 往返）→ 2~3s。
+	//   现在一次并行取齐（1 个 RTT）+ 快照结算（读 0 条）。展示页的 5 个调用点
+	//   （军官列表 / 军校招募 / 装备图鉴 / 军官技能 / 招募详情）全部受益。
+	//   ⚠️ 需要**复用这份快照**的接口请改用 `ezfyPageSettle`（它把快照返回给调用方），
+	//      否则调用方还会再查一次建筑列表（那又是一条跨 WAN 往返）。
+	h.ezfySettleCity(uid, city, h.ezfyLoadCityData(uid, city, nil), false)
 }
 
 // checkBuildingDone 建筑完成懒结算。reuse 传本请求已查好的建筑列表时可省一次 buildingList 查询
@@ -1166,27 +1215,32 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//   零额外 SQL；未传时**兜底查一次**，保证工资一定扣得到。
 	//   两种情形下本函数最多都只产生 1 次军官查询 —— 绝不会像事故版本那样重复触发。
 	//   注意兜底只在真正需要结算（hours 有意义）时才走，避免空转。
+	// ★ 2026-10-05 性能：军官列表在本函数里**只查一次**（工资与在职经验共用）。
+	//   原来工资那一支查一次 officerList、下面 accrueDutyExp 又自己查一次 ——
+	//   officerList 内部是 2 条 SQL（军官表 + 出征态自愈的命令表），跨 WAN 一次 ~230ms。
+	var offList []model.EzfyOfficer
+	if len(officers) > 0 {
+		offList = officers[0]
+	}
 	per := int64(ezfyOfficerSalaryPerLvCfg())
 	if per > 0 {
-		var salary int64
-		if len(officers) > 0 {
-			salary = officerSalaryOf(officers[0])
-		} else {
-			salary = officerSalaryOf(h.officerList(city.ID))
+		if offList == nil {
+			offList = h.officerList(city.ID)
 		}
-		gold -= int64(float64(salary) * hours)
+		gold -= int64(float64(officerSalaryOf(offList)) * hours)
 	}
 	if gold < 0 {
 		gold = 0
 	}
 	city.Gold = ezfyAddResMax("gold", gold, 0) // 只做上限夹取（gold 已含工资扣减）
 
-	// ★ 2026-09-29 市长/城守在任被动经验：随懒结算一起按时间结算（复用已取到的军官列表，不额外查库）
-	var dutyOfficers []model.EzfyOfficer
-	if len(officers) > 0 {
-		dutyOfficers = officers[0]
+	// ★ 2026-09-29 市长/城守在任被动经验：随懒结算一起按时间结算
+	// ★ 2026-10-05 性能：直接复用上面**同一个** offList（原来是再查一次 officerList）
+	h.accrueDutyExp(city, offList)
+	// 把这份（已被结算同步过的）军官列表挂进快照，展示接口可直接复用
+	if d != nil && offList != nil {
+		d.officers = offList
 	}
-	h.accrueDutyExp(city, dutyOfficers)
 
 	if techStore > 0 {
 		// ★★ 2026-09-26 同类修复（与下面 getResourceCalc 的增产令是同一个坑）：
@@ -1215,16 +1269,34 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	city.RareCap = ezfyClampRes(city.RareCap)
 	city.GoldCap = ezfyClampRes(city.GoldCap)
 	city.LastTime = now
-	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-		"feelings": city.Feelings, "grievance": city.Grievance,
-		"pop": city.Pop, "pop_max": city.PopMax,
-		"gold": city.Gold, "food": city.Food, "steel": city.Steel,
-		"oil": city.Oil, "rare": city.Rare,
-		"gold_cap": city.GoldCap, "food_cap": city.FoodCap,
-		"steel_cap": city.SteelCap, "oil_cap": city.OilCap, "rare_cap": city.RareCap,
-		"last_time": city.LastTime,
-	})
+	// ★★ 2026-10-05 性能：**资源结算的「写合并」**。
+	//
+	//	线上一次 `UPDATE ezfy_city ...` 实测 ~250ms（Aurora 提交 + 跨 WAN），而前端每 30 秒就轮询一次
+	//	/view —— 等于每个请求都白付一次写。但资源结算本身是**按小时**的增量，
+	//	30 秒内那点产出（几万分之一小时）根本不需要立刻落库。
+	//
+	//	做法：距上次落库不足 `ezfyResWriteCoalesceMs` 时**只更新内存 city、不写库**。
+	//	 · 本次响应仍是最新值（前端看到的资源、人口、民心都是结算后的）✔
+	//	 · 下次结算从**更早的 last_time** 把这段时间一并算上 → **不会丢产出** ✔
+	//	 · 进程崩溃/重启也只回退到「上次落库」那一刻，之后照常补算 ✔
+	//	实测把 /view、/buildings、/officers/skills 等每请求省掉一个 ~250ms 的写往返。
+	if now-last >= ezfyResWriteCoalesceMs {
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"feelings": city.Feelings, "grievance": city.Grievance,
+			"pop": city.Pop, "pop_max": city.PopMax,
+			"gold": city.Gold, "food": city.Food, "steel": city.Steel,
+			"oil": city.Oil, "rare": city.Rare,
+			"gold_cap": city.GoldCap, "food_cap": city.FoodCap,
+			"steel_cap": city.SteelCap, "oil_cap": city.OilCap, "rare_cap": city.RareCap,
+			"last_time": city.LastTime,
+		})
+	}
 }
+
+// ezfyResWriteCoalesceMs 资源结算落库的最小间隔（见 calcResourceD 的写合并说明）。
+//
+//	60 秒：与前端 30 秒轮询错开一档，既不丢产出、又把写往返从「每请求一次」降到「每分钟一次」。
+const ezfyResWriteCoalesceMs = 60 * 1000
 
 // collectTrainQueue 训练完成懒结算。reuse 传本请求已查好的队列时可省一次查询
 // （/view 30s 轮询已把 trainQueues 并入并行块，这里零重复 SQL）。
@@ -1282,6 +1354,22 @@ type resCalcData struct {
 	//   原来用 `boost == nil` 表示「没查」，于是「确认没有增产令」的请求每次都要再查一遍。
 	boostDone bool
 	mayor     int // 市长后勤加成 %；<0 表示未传入，内部自查
+
+	// ★★ 2026-10-05：懒结算的另外三份输入（之前每步都各自重查一遍，跨 WAN 白打往返）
+	//   · cities   —— 玩家城市列表：checkTechDoneRows（多城研究）+ processOrders 都要用
+	//   · trainQ   —— 训练队列：collectTrainQueue / 人口占用 / 兵力上限 / 城防空间
+	//   · techRows —— 进行中科技行：checkTechDoneRows 复用
+	cities   []model.EzfyCity
+	trainQ   []model.EzfyTrainQueue
+	techRows []model.EzfyCityTech
+
+	// ★ 2026-10-05：懒结算里查到的军官列表（工资 + 在职经验共用），
+	//   结算时会把新的 exp/level 同步回内存 → 展示接口可直接复用，不用再查一次军官表。
+	officers []model.EzfyOfficer
+
+	// ★ 2026-10-05：本请求已取到的玩家档案（ezfyPageSettle 填）。
+	//   军校刷新次数上限要读 profile.recruit_free_limit，原来为此又查了一次 profile。
+	profile *model.EzfyProfile
 }
 
 // ---- 统一取数入口：有快照用快照，没有就自查一次（旧行为）----
@@ -1319,6 +1407,135 @@ func (d *resCalcData) mayorOf(h *EzfyHandler, cityID uint) int {
 		return d.mayor
 	}
 	return h.mayorBonusPct(cityID)
+}
+
+func (d *resCalcData) trainQOf(h *EzfyHandler, cityID uint) []model.EzfyTrainQueue {
+	if d != nil && d.trainQ != nil {
+		return d.trainQ
+	}
+	var qs []model.EzfyTrainQueue
+	h.DB.Where("city_id = ? AND status = 0", cityID).Order("start_time ASC").Find(&qs)
+	return qs
+}
+
+// officersOf 该城军官列表：懒结算已经查过就复用（且 exp/level 已同步为结算后的值），
+// 否则自查一次。展示接口用它替代 `h.officerList(cityID)`，省一次跨 WAN 往返（officerList 内部 2 条 SQL）。
+func (d *resCalcData) officersOf(h *EzfyHandler, cityID uint) []model.EzfyOfficer {
+	if d != nil && d.officers != nil {
+		return d.officers
+	}
+	return h.officerList(cityID)
+}
+
+// buildingLevelsOf 该城「building_id → 最高等级」内存 map（有快照用快照，没有就查一次）。
+// 用于替代 `h.buildingLevel(cityID, id)` 的逐次查库（每次都是一条完整 buildingList 查询）。
+func (d *resCalcData) buildingLevelsOf(h *EzfyHandler, cityID uint) map[int]int {
+	return buildingLevelsOf(d.buildingsOf(h, cityID))
+}
+
+// cityIDsOf 快照里的玩家城市 id 列表（懒结算 processOrders / checkTechDoneRows 用）。
+// 快照没带城市列表时回退查一次，保证行为与改造前一致。
+func (d *resCalcData) cityIDsOf(h *EzfyHandler, uid uint) []uint {
+	if d != nil && d.cities != nil {
+		return cityIdsOf(d.cities)
+	}
+	return h.ezfyCityIds(uid)
+}
+
+// cityIDIntsOf 同上，但转成 processOrders 要的 []int64（避免每个调用点各写一遍循环）。
+func (d *resCalcData) cityIDIntsOf(h *EzfyHandler, uid uint) []int64 {
+	ids := d.cityIDsOf(h, uid)
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, int64(id))
+	}
+	return out
+}
+
+// ★★ 2026-10-05 性能：展示/操作接口统一的「取数 + 懒结算」两步走。
+//
+// 背景：线上库跨 WAN 每次往返 40~55ms（实测 20 条串行 SELECT = 1.08s），而这些接口原来是
+// 「getOrCreateCity 串行 2 条 → refreshCityRead/refreshCity 内部再串行 ~15 条」，
+// 一个页面就是 1.5~3s。现在改成：
+//
+//	第一波并行（1 个 RTT）：城市列表 / 建筑 / 科技 / 野地 / 部队 / 训练队列 / 进行中科技 / 增产令 / 市长
+//	第二波懒结算：全部走快照 → **零额外读**，只留资源落库那 1 条写
+//
+// 所以 `refreshCity*` 三个函数现在都是「并行取数 + 快照结算」的薄封装 ——
+// 它们被 ~30 处调用，改这里等于全部提速。
+func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []model.EzfyCity) *resCalcData {
+	d := &resCalcData{}
+	// ⚠️ 城市列表必须**先**拿到：下面的 techRows 要用它拼 `city_id IN (...)`。
+	//   曾经把这条查询塞进并行块 → 与 techRows 的 goroutine 竞争读 `cities`，
+	//   结果拼出 `IN (NULL)`、techRows 恒为空 → **科技完成结算与「本城是否已在研究」全失效**。
+	if cities == nil {
+		h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
+	}
+	var wg sync.WaitGroup
+	wg.Add(8)
+	go func() { defer wg.Done(); d.buildings = h.buildingList(city.ID) }()
+	go func() { defer wg.Done(); d.techs = h.techMapOf(uid) }()
+	go func() { defer wg.Done(); d.wilds = h.wildlandList(city.ID) }()
+	go func() { defer wg.Done(); d.troops = h.troopMap(city.ID) }()
+	go func() {
+		defer wg.Done()
+		var qs []model.EzfyTrainQueue
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
+		d.trainQ = qs
+	}()
+	go func() {
+		defer wg.Done()
+		// 进行中科技行：全玩家城市一次 IN 查完（多城研究）
+		var rows []model.EzfyCityTech
+		h.DB.Where("city_id IN ? AND status = 1", cityIdsOf(cities)).Find(&rows)
+		d.techRows = rows
+	}()
+	go func() { defer wg.Done(); d.boost = h.ezfyLoadActiveBoost(city.ID) }()
+	go func() { defer wg.Done(); d.mayor = h.mayorBonusPct(city.ID) }()
+	wg.Wait()
+	d.boostDone = true // 已确认过（含「确实没有增产令」），消费方零查询
+	d.cities = cities
+	return d
+}
+
+// ezfySettleCity 用快照跑懒结算。withOrders=true 时额外跑订单结算（操作接口用）；
+// 展示页传 false（processOrders 每次至少 3 条串行 RDS，订单事件交给 /view 轮询推进）。
+func (h *EzfyHandler) ezfySettleCity(uid uint, city *model.EzfyCity, d *resCalcData, withOrders bool) {
+	h.checkBuildingDone(city, d.buildingsOf(h, city.ID))
+	h.checkTechDoneRows(city, d.techRows)
+	h.collectTrainQueue(city, d.trainQOf(h, city.ID))
+	h.calcResourceD(city, d)
+	if withOrders {
+		h.processOrders(uid, d.cityIDIntsOf(h, uid))
+	}
+}
+
+// ezfyPageSettle 展示页标准流程：档案 + 城市列表（1 RTT）→ 并行取数（1 RTT）→ 只读懒结算。
+// 返回当前城与快照 —— 调用方**直接复用快照**（建筑等级/科技/人口/兵力上限…都别再查库）。
+func (h *EzfyHandler) ezfyPageSettle(uid uint) (model.EzfyCity, *resCalcData) {
+	h.cfgs()
+	var profile model.EzfyProfile
+	var cities []model.EzfyCity
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); profile = h.ensureProfile(uid) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities) }()
+	wg.Wait()
+	city := h.ezfyViewCurrentCity(profile, cities)
+	if len(cities) == 0 {
+		cities = []model.EzfyCity{city} // 首次进游戏刚建的主城，补进列表供后续复用
+	}
+	d := h.ezfyLoadCityData(uid, &city, cities)
+	d.profile = &profile // 供「军校刷新次数上限」等复用，省一次 profile 查询
+	h.ezfySettleCity(uid, &city, d, false)
+	return city, d
+}
+
+// ezfyActionSettle 操作接口标准流程：同 ezfyPageSettle，但**跑完整懒结算（含订单）**。
+func (h *EzfyHandler) ezfyActionSettle(uid uint, city *model.EzfyCity) *resCalcData {
+	d := h.ezfyLoadCityData(uid, city, nil)
+	h.ezfySettleCity(uid, city, d, true)
+	return d
 }
 
 // ezfyLoadActiveBoost 查「生效中的增产令」(effect_type=1)，已过期的顺手删除。
@@ -1597,9 +1814,14 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 	city.Steel = ezfyClampRes(city.Steel)
 	city.Oil = ezfyClampRes(city.Oil)
 	city.Rare = ezfyClampRes(city.Rare)
+	// ★ 2026-10-05 必须连 `last_time` 一起写：calcResourceD 做了「写合并」（不足 1 分钟不落库），
+	//   这里若只写资源不写 last_time，下次结算会从**旧的 last_time** 再把这段时间的产出算一遍
+	//   → 资源凭空翻倍。带上 last_time 表示「截止该时刻的产出已落库」。
+	//   （city.LastTime 未经过懒结算时就是库里的原值，写回等于空操作，安全。）
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 		"gold": city.Gold, "food": city.Food, "steel": city.Steel,
 		"oil": city.Oil, "rare": city.Rare,
+		"last_time": city.LastTime,
 	})
 }
 
@@ -1920,20 +2142,30 @@ func (h *EzfyHandler) speedUpBuilding(city *model.EzfyCity, recordId int64, minu
 //	于是玩家可以连下多张训练单、每单都不超上限，最后总量突破围墙容量。
 //	把队列里的量也算进来才是真正的「占用」。
 func (h *EzfyHandler) defenceSpaceUsed(cityId uint) int64 {
+	return h.defenceSpaceUsedD(h.troopMap(cityId), h.trainQOfRaw(cityId))
+}
+
+// defenceSpaceUsedD 同 defenceSpaceUsed，但复用已查好的部队表 + 训练队列（零 SQL）。
+func (h *EzfyHandler) defenceSpaceUsedD(troops map[int]int64, trainQ []model.EzfyTrainQueue) int64 {
 	var used int64
-	for tid, cnt := range h.troopMap(cityId) {
+	for tid, cnt := range troops {
 		if c := ezfyCfg.troop(tid); c != nil && c.Type == 4 {
 			used += cnt
 		}
 	}
-	var qs []model.EzfyTrainQueue
-	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
-	for _, q := range qs {
+	for _, q := range trainQ {
 		if c := ezfyCfg.troop(q.TroopId); c != nil && c.Type == 4 {
 			used += q.Count
 		}
 	}
 	return used
+}
+
+// trainQOfRaw 该城进行中的训练队列（无快照时的兜底查询）。
+func (h *EzfyHandler) trainQOfRaw(cityId uint) []model.EzfyTrainQueue {
+	var qs []model.EzfyTrainQueue
+	h.DB.Where("city_id = ? AND status = 0", cityId).Order("start_time ASC").Find(&qs)
+	return qs
 }
 
 // trainTroop 训练/建造入口：先按城市分片加锁，再执行真正的训练逻辑。
@@ -1945,8 +2177,29 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 	return h.trainTroopLocked(city, troopId, count, split)
 }
 
-func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int, split bool) string {
-	h.refreshCity(city.UserID, city)
+// trainTroopLocked 训练/建造城防的真正逻辑。
+//
+// ★★ 2026-10-05 性能（用户反馈「/troops/train 3s」）：改造前本函数 = refreshCity（~15 条串行）
+//
+//	+ 需求里的 buildingLevel / techMap（每个需求各查一次）+ cityPopUsed（2 条）
+//	+ checkTroopCap（2 条）+ 围墙等级（1 条）+ defenceSpaceUsed（2 条）≈ **30 条几乎全串行**。
+//	现在先一次并行取数（ezfyActionSettle 里 1 个 RTT），下面全部走内存 map/切片：
+//	  · 建筑等级 → blv（一次 buildingList 的产物）    · 科技等级 → tech
+//	  · 人口占用 → cityPopUsedD（建筑 + 训练队列）    · 兵力上限 → checkTroopCapD
+//	  · 城防空间 → defenceSpaceUsedD
+//	d 为空时兜底自己建一份（行为不变，只是慢）。
+func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int, split bool, d ...*resCalcData) string {
+	var snap *resCalcData
+	if len(d) > 0 && d[0] != nil {
+		snap = d[0]
+	} else {
+		snap = h.ezfyActionSettle(city.UserID, city)
+	}
+	blv := snap.buildingLevelsOf(h, city.ID)
+	tech := snap.techsOf(h, city.ID)
+	troops := snap.troopsOf(h, city.ID)
+	trainQ := snap.trainQOf(h, city.ID)
+
 	if count <= 0 {
 		return "数量错误"
 	}
@@ -1965,19 +2218,19 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 				name := m[1]
 				need, _ := strconv.Atoi(m[2])
 				if bid, ok := ezfyCfg.buildingByName[name]; ok {
-					if h.buildingLevel(city.ID, bid) < need {
+					if blv[bid] < need {
 						return fmt.Sprintf("需要%s %d级", name, need)
 					}
 					continue
 				}
 				if tid, ok := ezfyCfg.techByName[name]; ok {
-					if h.techMap(city.ID)[tid] < need {
+					if tech[tid] < need {
 						return fmt.Sprintf("需要科技%s %d级", name, need)
 					}
 				}
 			}
 		} else {
-			if bid, ok := ezfyCfg.buildingByName[cfg.Require]; ok && h.buildingLevel(city.ID, bid) < 1 {
+			if bid, ok := ezfyCfg.buildingByName[cfg.Require]; ok && blv[bid] < 1 {
 				return fmt.Sprintf("需要%s 1级", cfg.Require)
 			}
 		}
@@ -1987,7 +2240,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	//   开关关掉时整段跳过（不校验人口、不扣资源）。
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
-		popUsed := h.cityPopUsed(city.ID)
+		popUsed := h.cityPopUsedD(city.ID, snap.buildingsOf(h, city.ID), trainQ)
 		popAvailable := city.Pop - popUsed
 		if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
 			return fmt.Sprintf("人口不足(当前居民%d, 建筑及训练已占用%d, 可用%d); 可召集人口突破民居上限",
@@ -1999,7 +2252,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	//   （线上事故：玩家总兵力 -8843547888967622000）。
 	//   这里按 ezfy_cfg_limit.troop_max 统一卡控（城内现有 + 训练队列 + 本次）。
 	//   城防(type 4)同样存在 ezfy_city_troop 里、同样会溢出，所以一并卡。
-	if msg := h.checkTroopCap(city.ID, int64(count)); msg != "" {
+	if msg := h.checkTroopCapD(int64(count), troops, trainQ); msg != "" {
 		return msg
 	}
 	food := cfg.Food * int64(count)
@@ -2012,12 +2265,12 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 		return "资源不足"
 	}
 	if cfg.Type == 4 {
-		wallLevel := h.buildingLevel(city.ID, 7)
+		wallLevel := blv[7]
 		space := int64(0)
 		if wall := ezfyCfg.buildingLevel(7, wallLevel); wall != nil {
 			space = wall.Capacity
 		}
-		used := h.defenceSpaceUsed(city.ID)
+		used := h.defenceSpaceUsedD(troops, trainQ)
 		if used+int64(count) > space {
 			return fmt.Sprintf("城防空间不足(围墙%d级, 上限%d, 已占用%d)", wallLevel, space, used)
 		}
@@ -2309,8 +2562,27 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 
 // ============ 科技 ============
 
-func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
-	h.refreshCity(city.UserID, city)
+// researchTech 开始研究。
+//
+// ★★ 2026-10-05 性能（用户反馈「/techs/research 3s」）：改造前本函数 = refreshCity（~15 条串行）
+//
+//	+ buildingLevel ×2（每次一条完整 buildingList）+ techMap ×2（每次 2 条）+ ezfyCityIds
+//	+ dup/busy 两个 Count ≈ **30 条几乎全串行的跨 WAN 往返** → 1.5~3s。
+//	现在：可选传入调用方已建好的快照 d（ezfyActionSettle），全部改走内存：
+//	  · 建筑等级 → d.buildingLevelsOf（一次 buildingList 的产物）
+//	  · 科技等级 → d.techsOf
+//	  · 「本城/同科技是否已在研究」→ 直接用 d.techRows（checkTechDoneRows 已把完成的行置 0）
+//	d 为空时兜底自己建一份（行为不变，只是慢）。
+func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int, d ...*resCalcData) string {
+	var snap *resCalcData
+	if len(d) > 0 && d[0] != nil {
+		snap = d[0]
+	} else {
+		snap = h.ezfyActionSettle(city.UserID, city)
+	}
+	blv := snap.buildingLevelsOf(h, city.ID)
+	tech := snap.techsOf(h, city.ID)
+
 	cfg := ezfyCfg.tech(techId)
 	if cfg == nil {
 		return "科技不存在"
@@ -2320,10 +2592,10 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 		academyNeed = v
 	}
 	// ★ 2026-09-28 研究限制来自**当前城市**的科研中心等级（不再取全城最高）
-	if h.buildingLevel(city.ID, 8) < academyNeed {
-		return fmt.Sprintf("本城需要科研中心%d级才能研究%s（当前%d级）", academyNeed, cfg.Name, h.buildingLevel(city.ID, 8))
+	if blv[8] < academyNeed {
+		return fmt.Sprintf("本城需要科研中心%d级才能研究%s（当前%d级）", academyNeed, cfg.Name, blv[8])
 	}
-	curLevel := h.techMap(city.ID)[techId]
+	curLevel := tech[techId]
 	if curLevel >= cfg.MaxLevel {
 		return "已达到最高等级"
 	}
@@ -2332,7 +2604,7 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 		return "配置缺失"
 	}
 	if cfg.PreTech > 0 {
-		if h.techMap(city.ID)[cfg.PreTech] < cfg.PreTechLevel {
+		if tech[cfg.PreTech] < cfg.PreTechLevel {
 			pre := ezfyCfg.tech(cfg.PreTech)
 			preName := ""
 			if pre != nil {
@@ -2343,18 +2615,24 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int) string {
 	}
 	// ★ 2026-09-28 多城研究互斥：**同一科技**同一时刻只能在一个城市研究。
 	//   不同城市可以各研究各的（互不抢槽），但同一科技撞了就拦下。
-	var dup int64
-	h.DB.Model(&model.EzfyCityTech{}).
-		Where("tech_id = ? AND status = 1 AND city_id IN ?", techId, h.ezfyCityIds(city.UserID)).
-		Count(&dup)
-	if dup > 0 {
-		return fmt.Sprintf("%s 已在其他城市研究中, 不能重复研究", cfg.Name)
+	// ★ 2026-10-05：直接用快照里的「进行中科技行」判定，省掉两条 Count 跨 WAN 往返。
+	//   注意跳过 Status != 1 的行 —— checkTechDoneRows 会把**本请求刚结算完**的行在内存里置 0。
+	for i := range snap.techRows {
+		if snap.techRows[i].Status != 1 {
+			continue
+		}
+		if snap.techRows[i].TechId == techId {
+			return fmt.Sprintf("%s 已在其他城市研究中, 不能重复研究", cfg.Name)
+		}
 	}
 	// ★ 2026-09-28 fix：每个城市同时只能有**一条**研究队列（无论什么科技），避免本城开多条队列。
-	var busy int64
-	h.DB.Model(&model.EzfyCityTech{}).Where("city_id = ? AND status = 1", city.ID).Count(&busy)
-	if busy > 0 {
-		return "本城已有科技在研究, 请先完成或取消后再研究"
+	for i := range snap.techRows {
+		if snap.techRows[i].Status != 1 {
+			continue
+		}
+		if snap.techRows[i].CityId == int64(city.ID) {
+			return "本城已有科技在研究, 请先完成或取消后再研究"
+		}
 	}
 	if city.Food < lv.Food || city.Steel < lv.Steel || city.Oil < lv.Oil ||
 		city.Rare < lv.Rare || city.Gold < lv.Gold {

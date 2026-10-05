@@ -1165,7 +1165,11 @@ func ezfyMaintStatus(db *gorm.DB) (on, notice string) {
 	now := time.Now().UnixMilli()
 	maintCacheMu.Lock()
 	defer maintCacheMu.Unlock()
-	if maintCacheAt > 0 && now-maintCacheAt < 5000 {
+	// ★ 2026-10-05 性能：TTL 5s → 30s。
+	//   这两条 `SELECT value FROM settings WHERE key=...` 是**每个 ezfy 请求的第一步**（串行），
+	//   线上跨 WAN 单条 ~55ms → 5 秒 TTL 下几乎每个请求都要白付 ~110ms。
+	//   维护开关是管理端低频操作，30 秒收敛完全够（与二战配置 30s 周期刷新同一量级）。
+	if maintCacheAt > 0 && now-maintCacheAt < 30000 {
 		return maintCacheOn, maintCacheNotice
 	}
 	maintCacheAt = now

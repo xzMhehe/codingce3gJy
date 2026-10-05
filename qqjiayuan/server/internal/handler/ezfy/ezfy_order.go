@@ -825,10 +825,29 @@ func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
 	return !h.playerAtWar(uid)
 }
 
+// createOrder 出征下单。
+//
+// ★★ 2026-10-05 性能（用户反馈「/order 3s 多」）：本函数原来在懒结算之后还有一堆
+// **各自独立、串行**的查询与写入（线上单价：读 ~120ms / 写 ~240ms）：
+//
+//	officerByName ×4（军官校验 / 移速技能 / 军事加成 / officerGoOut 各查一次）
+//	buildingLevel ×2 + techMap ×1 + troopMap ×1 + ezfyOrderTroopCap 内部又各来一遍
+//	扣兵：每个兵种 SELECT + UPDATE/DELETE（2N 条）
+//	集结令：每个道具一次 consumeItem（N 条写）
+//	收尾 6 个写（资源 / 订单 / 扣兵 / 军官状态 / 道具 / 战报）全部串行
+//
+// 现在：① 懒结算改为返回**快照**，建筑等级/科技/部队全部复用（0 额外读）；
+//
+//	② 军官只查一次；③ 扣兵合并成 1 条 CASE UPDATE + 1 条 DELETE；④ 集结令一次扣完；
+//	⑤ 收尾的独立写**并行**发出（不同表，互不依赖）。
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
 	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather int) string {
 
-	h.refreshCity(uid, city)
+	// ★ 懒结算返回快照：下面的建筑等级 / 科技等级 / 城内部队全部走内存，零额外读
+	d := h.refreshCityD(uid, city)
+	blv := d.buildingLevelsOf(h, city.ID)
+	tech := d.techsOf(h, city.ID)
+	cityTroops := d.troopsOf(h, city.ID)
 	// ★ 防抖幂等(2026-09-24 用户反馈「出征了显示多条」)：
 	//   网络超时/连点/客户端重发会让同一次出征重复下单。
 	//   3 秒内同「城市+类型+目标」的订单视为重复提交，直接拒绝。
@@ -975,7 +994,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return fmt.Sprintf("集结令不足: 需要%d个, 当前只有%d个", gather, have)
 		}
 	}
-	cityTroops := h.troopMap(city.ID)
 	for _, t := range validTroops {
 		owned := cityTroops[t.TroopId]
 		if t.Count > owned {
@@ -1024,8 +1042,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		}
 	}
 	// 带队军官校验: 必须存在且在职(未出征/非俘虏)
+	// ★ 2026-10-05 性能：军官只查一次并全程复用（原来「校验/移速技能/军事加成/置出征态」各查一次 = 4 条）
+	var lead *model.EzfyOfficer
 	if officer != "" {
-		lead := h.officerByName(city.ID, officer)
+		lead = h.officerByName(city.ID, officer)
 		if lead == nil {
 			return "军官不存在"
 		}
@@ -1097,8 +1117,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "资源不足,无法运输"
 		}
 	}
-	// 司令部限制
-	hq := h.buildingLevel(city.ID, 13)
+	// 司令部限制（★ 复用快照里的建筑等级）
+	hq := blv[13]
 	if hq < 1 {
 		return "需要先建造司令部"
 	}
@@ -1109,7 +1129,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	// ★ 2026-10-02 用户反馈「运输无上限是bug」：运输(5)也纳入携带上限校验（和其他出征一致）。
 	//   仅派遣(8)在非战斗状态/免战期间无上限（油照常消耗）。
-	carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer)
+	// ★ 复用快照（科技等级 / 司令部等级 / 带队军官）—— 原来这里内部又会各查一遍
+	carryCap, capUnlimited := h.ezfyOrderTroopCap(city.ID, gather, officer,
+		&ezfyTroopCapReuse{techs: tech, hqLv: hq, lead: lead})
 	// ★ 2026-10-02 自城派遣(8)在非战斗状态/免战期间无上限（油照常消耗）
 	if orderType == 8 && h.dispatchNoCap(uid, city) {
 		capUnlimited = true
@@ -1521,10 +1543,33 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	//   大字段）每次都从 RDS 全量拉回来 —— 活跃玩家几百上千行、一次几 MB，跨 WAN 必卡。
 	//   结算循环实际只处理 0/1/2/5/6/98 六种状态，历史行读回来也不参与，纯浪费。
 	//   idx_user 单列索引可快速定位该玩家，再按 status IN 过滤后行数骤降。
-	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status IN (0,1,2,5,6,98)", uid).Order("id ASC").Find(&orders)
+	// ★ 2026-10-05 性能：「我的订单」与「来袭订单」两条查询**互不依赖**，改成并行取 ——
+	//   原来串行 2 个跨 WAN 往返（线上 ~230ms），而它们是所有展示/操作接口懒结算的必经两步。
+	var orders, incoming []model.EzfyOrder
+	incReady := false
+	var pw sync.WaitGroup
+	pw.Add(2)
+	go func() {
+		defer pw.Done()
+		h.DB.Where("user_id = ? AND status IN (0,1,2,5,6,98)", uid).Order("id ASC").Find(&orders)
+	}()
+	go func() { defer pw.Done(); incoming, incReady = h.fetchIncoming(uid, now, cities...) }()
+	pw.Wait()
+
+	// 处理完自己的订单后，用**已取好**的来袭订单列表结算（原来的 processIncoming 串行版）
+	settleIncoming := func() {
+		if !incReady {
+			return
+		}
+		for i := range incoming {
+			o := &incoming[i]
+			// processArrive 用 uid 参数定位**攻方**城市（cityOfOrder 拿 order.CityId），
+			// 所以这里必须传 o.UserID（攻方），不是当前轮询的 uid（守方）。
+			h.processArrive(o.UserID, o, now)
+		}
+	}
 	if len(orders) == 0 {
-		h.processIncoming(uid, now, cities...)
+		settleIncoming()
 		return
 	}
 	// ★ 死单自愈：status=98(结算中) 超过 60 秒没被写回正常状态的订单，
@@ -1599,7 +1644,8 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 	// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
 	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
 	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。
-	h.processIncoming(uid, now, cities...)
+	// ★ 2026-10-05 性能：来袭订单已在本函数开头**并行**取好，这里直接结算（不再查库）。
+	settleIncoming()
 }
 
 // hasProcessingOrder 给定订单列表里是否存在「结算中(98)」的异常残留订单。
@@ -1635,12 +1681,17 @@ var (
 	ezfyIncomingMemo   = map[uint]int64{} // uid → 最近一次「确认无敌军来袭」的毫秒时间戳
 )
 
-func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
+// fetchIncoming 只做「取来袭订单」这一步（不发军情/不开战场），返回 (列表, 是否需要结算)。
+//
+// ★ 2026-10-05 性能：从 processIncoming 拆出来，让调用方（processOrders）能把这条查询
+//   与「我的订单」查询**并行**发出（原来两条串行 = 2 个跨 WAN 往返）。
+//   第二返回值 ready=false 表示「3 秒内刚确认过无敌军来袭」→ 调用方直接跳过结算。
+func (h *EzfyHandler) fetchIncoming(uid uint, now int64, cities ...[]int64) ([]model.EzfyOrder, bool) {
 	ezfyIncomingMemoMu.Lock()
 	last, ok := ezfyIncomingMemo[uid]
 	ezfyIncomingMemoMu.Unlock()
 	if ok && now-last < ezfyViewCacheTTLMs {
-		return
+		return nil, false
 	}
 	var ids []int64
 	if len(cities) > 0 && cities[0] != nil {
@@ -1649,7 +1700,7 @@ func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &ids)
 	}
 	if len(ids) == 0 {
-		return
+		return nil, false
 	}
 	var orders []model.EzfyOrder
 	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", ids, now).
@@ -1662,6 +1713,14 @@ func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
 		}
 		ezfyIncomingMemo[uid] = now
 		ezfyIncomingMemoMu.Unlock()
+		return nil, false
+	}
+	return orders, true
+}
+
+func (h *EzfyHandler) processIncoming(uid uint, now int64, cities ...[]int64) {
+	orders, ready := h.fetchIncoming(uid, now, cities...)
+	if !ready {
 		return
 	}
 	for i := range orders {

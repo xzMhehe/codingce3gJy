@@ -886,7 +886,10 @@ func (h *EzfyHandler) Research(c *gin.Context) {
 	}
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
-	h.done(c, h.researchTech(city, req.TechId), "科技研究已开始")
+	// ★ 2026-10-05 性能（用户反馈「/techs/research 3s」）：先一次并行取数 + 完整懒结算，
+	//   再把快照交给 researchTech 复用（建筑等级/科技等级/进行中研究全走内存，零额外读）。
+	d := h.ezfyActionSettle(uid, city)
+	h.done(c, h.researchTech(city, req.TechId, d), "科技研究已开始")
 }
 
 func (h *EzfyHandler) SpeedTech(c *gin.Context) {
