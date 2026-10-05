@@ -153,7 +153,6 @@
           军校({{ ezfy.recruitData.academy_level }}级)：
           <span v-if="ezfy.recruitData.refresh_left !== undefined">
             本小时刷新:{{ ezfy.recruitData.refresh_left }}/{{ ezfy.recruitData.refresh_limit }}次
-            <span class="gray">(整点重置)</span>
           </span>
           <a href="javascript:;" @click="ezfy.doRefreshRecruit">[刷新]</a>
           <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
@@ -163,11 +162,6 @@
         <div class="old-line">
           军校等级决定每小时候选数量, 参谋部{{ ezfy.recruitData.staff_level }}级(已用{{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }}),
           雇佣费用 = 军官等级 × 1000 {{ ezfy.resNames.gold }}
-        </div>
-        <div class="old-line red" v-if="ezfy.recruitData.academy_level && ezfy.officerFull">
-          参谋部容量已满({{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }}), 请先
-          <a href="javascript:;" @click="ezfy.go('buildm')">[升级参谋部]</a>
-          或到 <a href="javascript:;" @click="ezfy.switchAcade('officer')">[军官]</a> 里流放/释放不需要的军官。
         </div>
         <div class="old-line" v-if="!ezfy.recruitData.academy_level">尚未建造军校, 无法招募军官</div>
         <table v-else class="ezfy-plain-table">

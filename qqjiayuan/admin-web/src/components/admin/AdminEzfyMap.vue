@@ -634,9 +634,10 @@
           <el-input v-model="wc.treasure" maxlength="100" placeholder="可空，例如：珠宝(平原)" />
         </el-form-item>
         <el-form-item label="商城道具掉落">
-          <!-- ★ 2026-10-05 用户要求：野地类型可掉落商城道具，默认空=不掉，管理员配置了才会掉 -->
+          <!-- ★ 2026-10-05 用户要求：野地类型可掉落商城道具，默认空=不掉，管理员配置了才会掉；
+               每条可配掉落概率%（第 3 位），不配 = 100% 必掉 -->
           <el-input v-model="wc.drop_items" type="textarea" :rows="2" maxlength="500"
-                    placeholder="可空=不掉。格式 [[道具cfg_id,数量],...]，如 [[24,1]]。打赢该类型野地/海野/寇城后掉落。" />
+                    placeholder="可空=不掉。格式 [[道具cfg_id,数量,概率%],...]，如 [[24,1,30]]（30%概率掉1个）。打赢该类型野地/海野/寇城后掉落。" />
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="wc.des" type="textarea" :rows="2" maxlength="500" show-word-limit />

@@ -439,6 +439,11 @@ func (h *EzfyHandler) CorpsWarDeclare(c *gin.Context) {
 		return
 	}
 	h.ezfyCorpsWarNotify(&w)
+	// ★ 2026-10-05 用户要求：军团宣战后，双方军团的军团聊天各收到一条系统消息提示
+	warMsg := fmt.Sprintf("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效，%d 小时后整场结束！",
+		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours)
+	h.DB.Create(&model.EzfyCorpsChat{CorpsId: myCorpsId, UserId: 0, UserName: "系统", Content: warMsg})
+	h.DB.Create(&model.EzfyCorpsChat{CorpsId: req.CorpsId, UserId: 0, UserName: "系统", Content: warMsg})
 	h.ezfySysChat("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效，%d 小时后整场结束！",
 		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours)
 	resp.OK(c, gin.H{

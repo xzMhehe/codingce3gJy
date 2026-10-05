@@ -3153,7 +3153,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				report += fmt.Sprintf("\n俘获: %s×%d", ezfyCfg.troopName(capturedTroopId, wildDefCamp), capturedCount)
 			}
 			// ★ 2026-10-05 野地类型「商城道具掉落」（管理端在野地类型里配，默认空=不掉）：
-			//   打赢该类型野地/海野/寇城后按 [[cfg_id,数量],...] 掉落商城道具到背包。
+			//   打赢该类型野地/海野/寇城后按 [[cfg_id,数量,概率%],...] 掉落商城道具到背包，
+			//   每条独立按概率判定（概率缺省 = 100%）。
 			//   ⚠️ 这里在 switch 之外，case 里的 cfg 不可见 → 按同一口径重新取配置。
 			wcType := 1
 			if order.TargetType == 2 {
@@ -3162,7 +3163,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				wcType = 2
 			}
 			if wcfg := ezfyCfg.wildland(wcType, wildLevel); wcfg != nil && strings.TrimSpace(wcfg.DropItems) != "" {
-				for _, d := range parseActWildTreasures(wcfg.DropItems) {
+				for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
+					if rand.Intn(100) >= d[2] {
+						continue // 未命中概率，不掉
+					}
 					if it := ezfyCfg.item(d[0]); it != nil {
 						h.addItem(uid, d[0], d[1])
 						report += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
@@ -3523,6 +3527,31 @@ func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
 		m[t.TroopId] = true
 	}
 	return m
+}
+
+// parseWildlandItemDrops 解析野地类型「商城道具掉落」配置：[[道具cfg_id,数量,概率%],...]
+//
+// ★ 2026-10-05 新增概率：第 3 位 = 单次掉落概率%（1~100）；缺省（只有 2 位）= 100% 必掉。
+func parseWildlandItemDrops(raw string) [][3]int {
+	var rows [][]int
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := [][3]int{}
+	for _, r := range rows {
+		if len(r) < 2 || r[0] <= 0 || r[1] <= 0 {
+			continue
+		}
+		pct := 100
+		if len(r) >= 3 && r[2] > 0 {
+			pct = r[2]
+			if pct > 100 {
+				pct = 100
+			}
+		}
+		out = append(out, [3]int{r[0], r[1], pct})
+	}
+	return out
 }
 
 // parseWildlandTroops 解析 [[兵种id,最小,最大],...] 生成守军(随机数量)
