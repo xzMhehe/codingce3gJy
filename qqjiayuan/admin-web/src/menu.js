@@ -259,7 +259,7 @@ export const menu = [
         ]
       },
       {
-        key: 'g-ezfy', name: '二战风云', icon: 'el-icon-position',
+        key: 'g-ezfy', name: '二战征途', icon: 'el-icon-position',
         children: [
           { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
           { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },

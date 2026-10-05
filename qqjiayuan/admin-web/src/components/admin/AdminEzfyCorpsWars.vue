@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <!-- ★ 2026-09-25 用户要求：新增「军团宣战维护」页面（军团对军团宣战） -->
-        <span>二战风云 · 军团宣战（待生效 / 交战中 / 已结束）</span>
+        <span>二战征途 · 军团宣战（待生效 / 交战中 / 已结束）</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
 

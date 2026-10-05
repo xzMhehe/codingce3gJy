@@ -3,7 +3,7 @@
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <!-- ★ 2026-09-25 用户要求：新增「军团商城维护」页面（军团积分兑换商店） -->
-        <span>二战风云 · 军团商城维护</span>
+        <span>二战征途 · 军团商城维护</span>
         <div>
           <el-button size="mini" type="success" icon="el-icon-plus" @click="openCreate">新增商品</el-button>
           <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>

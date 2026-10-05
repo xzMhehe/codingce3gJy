@@ -8,7 +8,7 @@
       <el-tab-pane label="个人宣战" name="player">
         <el-card shadow="never" class="box">
           <div slot="header" class="card-head">
-            <span>二战风云 · 宣战管理（待生效 / 交战中 / 已结束）</span>
+            <span>二战征途 · 宣战管理（待生效 / 交战中 / 已结束）</span>
             <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
           </div>
 

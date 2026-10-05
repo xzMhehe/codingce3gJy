@@ -1797,23 +1797,23 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-精武堂", "数据管理", "jwtData"),
 		mod("游戏-幻想西游", "西游玩家", "xyPlayers"), mod("游戏-幻想西游", "西游流水", "xyLogs"),
 		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
-		mod("游戏-二战风云", "风云玩家", "ezfyPlayers"), mod("游戏-二战风云", "风云流水", "ezfyLogs"),
-		mod("游戏-二战风云", "风云系统", "ezfySystem"), mod("游戏-二战风云", "风云数据", "ezfyData"),
-		mod("游戏-二战风云", "风云城市", "ezfyCities"), mod("游戏-二战风云", "风云建筑", "ezfyBuildings"),
-		mod("游戏-二战风云", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战风云", "风云兵种", "ezfyTroops"),
-		mod("游戏-二战风云", "风云征兵", "ezfyRecruit"), mod("游戏-二战风云", "风云军官", "ezfyOfficers"), mod("游戏-二战风云", "风云军衔", "ezfyRankCfg"),
+		mod("游戏-二战征途", "风云玩家", "ezfyPlayers"), mod("游戏-二战征途", "风云流水", "ezfyLogs"),
+		mod("游戏-二战征途", "风云系统", "ezfySystem"), mod("游戏-二战征途", "风云数据", "ezfyData"),
+		mod("游戏-二战征途", "风云城市", "ezfyCities"), mod("游戏-二战征途", "风云建筑", "ezfyBuildings"),
+		mod("游戏-二战征途", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战征途", "风云兵种", "ezfyTroops"),
+		mod("游戏-二战征途", "风云征兵", "ezfyRecruit"), mod("游戏-二战征途", "风云军官", "ezfyOfficers"), mod("游戏-二战征途", "风云军衔", "ezfyRankCfg"),
 		// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」，可单独分配给角色
-		mod("游戏-二战风云", "军官装备管理", "ezfyEquips"),
-		mod("游戏-二战风云", "风云资源", "ezfyResources"), mod("游戏-二战风云", "风云科技", "ezfyTechs"),
+		mod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
+		mod("游戏-二战征途", "风云资源", "ezfyResources"), mod("游戏-二战征途", "风云科技", "ezfyTechs"),
 		// 资源交易行维护（系统挂单定价黄金/钻石）
-		mod("游戏-二战风云", "风云交易行", "ezfyExchange"),
-		mod("游戏-二战风云", "风云地图", "ezfyMap"), mod("游戏-二战风云", "风云军团", "ezfyCorps"),
-		mod("游戏-二战风云", "风云私聊", "ezfyPrivchat"),
+		mod("游戏-二战征途", "风云交易行", "ezfyExchange"),
+		mod("游戏-二战征途", "风云地图", "ezfyMap"), mod("游戏-二战征途", "风云军团", "ezfyCorps"),
+		mod("游戏-二战征途", "风云私聊", "ezfyPrivchat"),
 		// 第九轮新增：系统配置（原「建筑上限配置」，用户要求改名）/ 聊天敏感词（二战自己的独立维护页）
-		mod("游戏-二战风云", "风云系统配置", "ezfyBuildLimit"),
-		mod("游戏-二战风云", "风云敏感词", "ezfyWords"),
+		mod("游戏-二战征途", "风云系统配置", "ezfyBuildLimit"),
+		mod("游戏-二战征途", "风云敏感词", "ezfyWords"),
 		// 宣战管理（列表 + 一键生效/一键完成）
-		mod("游戏-二战风云", "风云宣战", "ezfyWars"),
+		mod("游戏-二战征途", "风云宣战", "ezfyWars"),
 		// 系统配置
 		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
 		mod("系统", "菜单维护", "menus"),
@@ -2666,7 +2666,7 @@ func seedGames(db *gorm.DB) {
 		{Name: "全民猎马", Category: "com", Logo: "quanminliema.gif", Stars: "★★★★☆", Desc: "周二四六，包你赢够，尽在猎马", BoardID: bid("全民猎马"), Sort: 16},
 		{Name: "家园股市", Category: "com", Logo: "jiayuangushi.gif", Stars: "★☆☆☆☆", Desc: "家园股市，一夜成名，瞬间暴富", BoardID: bid("家园股市"), Sort: 17},
 		{Name: "幻想西游", Category: "com", Logo: "hxxyth.png", Stars: "★★★★★", Desc: "经典wap游戏，古典神话网游，再梦西游。持神兵利器，降五爪金龙，携爱行走西游", Intro: "五门派闯荡西游世界：地图冒险、回合战斗、神兵装备、宠物捕捉、副本BOSS、帮派结婚。游戏内独立货币银两金豆！", Path: "/games/hxxy", BoardID: bid("幻想西游"), Sort: 1},
-		{Name: "二战风云", Category: "com", Logo: "", Stars: "★★★★★", Desc: "经典策略战争，运筹帷幄，决胜千里", Intro: "建造城池发展资源，训练部队研发科技，出征野地掠夺征服，多回合回合制战争！", Path: "/games/ezfy", BoardID: bid("二战风云"), Sort: 3},
+		{Name: "二战征途", Category: "com", Logo: "", Stars: "★★★★★", Desc: "经典策略战争，运筹帷幄，决胜千里", Intro: "建造城池发展资源，训练部队研发科技，出征野地掠夺征服，多回合回合制战争！", Path: "/games/ezfy", BoardID: bid("二战征途"), Sort: 3},
 		{Name: "永恒修仙", Category: "net", Logo: "logo.jpg", Stars: "★★★★★", Desc: "经典wap游戏，永恒修仙。欢迎体验", BoardID: bid("永恒修仙"), Sort: 2},
 	}
 	for i := range games {

@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <span>二战风云 · 聊天敏感词（独立维护，与社区「黑名单榜」分开）</span>
+        <span>二战征途 · 聊天敏感词（独立维护，与社区「黑名单榜」分开）</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
       <div class="toolbar">
