@@ -373,6 +373,12 @@
               </template>
             </el-table-column>
             <el-table-column prop="treasure" label="宝物" width="120" show-overflow-tooltip />
+            <el-table-column label="道具掉落" min-width="150" show-overflow-tooltip>
+              <template slot-scope="{row}">
+                <span v-if="row.drop_items" class="td-blue">{{ row.drop_items }}</span>
+                <span v-else class="td-sub">—</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="des" label="说明" min-width="150" show-overflow-tooltip />
             <el-table-column label="操作" width="140" align="center" fixed="right">
               <template slot-scope="{row}">
@@ -627,6 +633,11 @@
         <el-form-item label="宝物">
           <el-input v-model="wc.treasure" maxlength="100" placeholder="可空，例如：珠宝(平原)" />
         </el-form-item>
+        <el-form-item label="商城道具掉落">
+          <!-- ★ 2026-10-05 用户要求：野地类型可掉落商城道具，默认空=不掉，管理员配置了才会掉 -->
+          <el-input v-model="wc.drop_items" type="textarea" :rows="2" maxlength="500"
+                    placeholder="可空=不掉。格式 [[道具cfg_id,数量],...]，如 [[24,1]]。打赢该类型野地/海野/寇城后掉落。" />
+        </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="wc.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
         </el-form-item>
@@ -793,14 +804,14 @@ import api from '../../api'
 
 const WILD_KEYS = ['city_id', 'x', 'y', 'wild_type', 'level', 'gain', 'status']
 const WC_KEYS = ['type', 'level', 'troops', 'res_min', 'res_max',
-  'officer_min', 'officer_max', 'officer_id', 'treasure', 'des']
+  'officer_min', 'officer_max', 'officer_id', 'treasure', 'drop_items', 'des']
 
 function emptyWild () {
   return { id: 0, city_id: 1, x: 250, y: 250, wild_type: 1, level: 1, gain: '', status: 0 }
 }
 function emptyWc () {
   return { id: 0, type: 1, level: 1, troops: '', res_min: 0, res_max: 0,
-    officer_min: 0, officer_max: 0, officer_id: 0, treasure: '', des: '',
+    officer_min: 0, officer_max: 0, officer_id: 0, treasure: '', drop_items: '', des: '',
     // 弹窗内的「守军搭配」行（保存时序列化进 troops）
     wcTroops: [] }
 }

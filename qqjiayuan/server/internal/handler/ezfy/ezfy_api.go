@@ -1579,6 +1579,9 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
 		atkName, ezfyWarDelayHours, ezfyWarDurationHours)
 	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
+	// ★ 2026-10-05 用户要求：宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
+	//   与上面系统消息同口径；对方在「邮件」页能看到这条宣战消息。
+	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: req.TargetUserId, Content: defTip})
 	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
 		defName, ezfyWarDelayHours, ezfyWarDurationHours)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})

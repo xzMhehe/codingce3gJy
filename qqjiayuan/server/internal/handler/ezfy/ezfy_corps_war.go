@@ -29,8 +29,8 @@ import (
 //
 //	1 = 待生效   2 = 交战中   3 = 已结束
 const (
-	ezfyCorpsWarDelayHours    = 12 // 宣战后多少小时生效
-	ezfyCorpsWarDurationHours = 36 // 生效窗口（第 12~48 小时，共 36 小时）
+	ezfyCorpsWarDelayHours    = 2 // 宣战后多少小时生效（★ 2026-10-05 用户要求：12h → 2h）
+	ezfyCorpsWarDurationHours = 36 // 生效窗口（第 2~38 小时，共 36 小时；有效期不变）
 	ezfyCorpsWarTotalHours    = 48 // 宣战后多少小时整场结束
 	ezfyCorpsWarPointOrder2   = 10 // 掠夺获胜：个人/军团积分 +10
 	ezfyCorpsWarPointOrder3   = 20 // 征服获胜：个人/军团积分 +20

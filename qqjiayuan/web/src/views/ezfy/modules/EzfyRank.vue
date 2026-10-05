@@ -78,7 +78,6 @@
           <!-- 战力榜 tab（★ 2026-10-02 兵力榜 → 战力榜：科技/建筑/兵种柔和折算） -->
           <template v-if="ezfy.rankTab === 'troops'">
           <div class="panel-title">战力榜</div>
-          <div class="old-line gray">战力 = 科技 + 建筑 + 兵种（按你的最好城市折算），点击战力查看明细</div>
           <table class="ezfy-rank-table">
             <colgroup>
               <col style="width: 13%"><col style="width: 32%"><col style="width: 30%"><col style="width: 25%">

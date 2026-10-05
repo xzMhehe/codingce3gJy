@@ -108,6 +108,9 @@ type EzfyCfgWildland struct {
 	//   0 = 该野地没有守将（打下来也俘不到军官）。
 	OfficerId int    `gorm:"comment:军官ID" json:"officer_id"`
 	Treasure  string `gorm:"type:varchar(100);comment:宝物" json:"treasure"`
+	// ★ 2026-10-05 商城道具掉落：JSON [[cfg_id,数量],...]，留空=不掉（默认）。
+	//   打赢该类型野地（含海野/寇城）后按配置掉落商城道具到背包。
+	DropItems string `gorm:"type:varchar(500);comment:商城道具掉落JSON" json:"drop_items"`
 	Des       string `gorm:"type:varchar(500);comment:描述" json:"des"`
 }
 

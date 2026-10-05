@@ -191,11 +191,11 @@
       <!-- 任命市长: 复刻 acade/setMayor.html -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'mayor'">
         <table class="ezfy-plain-table">
-          <tr><th>名称</th><th>等级</th><th>忠诚</th><th>当前职位</th><th>操作</th></tr>
+          <!-- ★ 2026-10-05 用户要求：去掉等级/忠诚列，新增 后/军/学 属性列 -->
+          <tr><th>名称</th><th>后/军/学</th><th>当前职位</th><th>操作</th></tr>
           <tr v-for="o in ezfy.myOfficers" :key="'my' + o.id">
             <td>{{ o.name }}</td>
-            <td>{{ o.level }}</td>
-            <td>{{ o.loyalty }}</td>
+            <td>{{ o.logistics }}/{{ o.military }}/{{ o.learning }}</td>
             <td>{{ o.position_name }}</td>
             <td>
               <a v-if="o.position !== 1 && o.status === 0" href="javascript:;" @click="ezfy.doPosition(o, 1)">[任命市长]</a>
@@ -489,13 +489,12 @@
 
       <!-- 名将图鉴 -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
-        <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名, 按等级排序)</div>
+        <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名)</div>
         <table class="ezfy-plain-table">
-          <tr><th>名称</th><th>等级</th><th>星级</th><th>军/后/学</th><th>状态</th></tr>
+          <!-- ★ 2026-10-05 用户要求：去掉等级/星级列 -->
+          <tr><th>名称</th><th>军/后/学</th><th>状态</th></tr>
           <tr v-for="g in ezfy.generalData.generals" :key="'gg' + g.id">
             <td>{{ g.name }}</td>
-            <td>{{ g.level }}</td>
-            <td>{{ g.star }}</td>
             <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
             <td>
               <span v-if="g.owned" class="green">已拥有</span>

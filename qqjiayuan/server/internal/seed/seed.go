@@ -303,6 +303,13 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
 
+		// ★ 2026-10-05 野地类型「商城道具掉落」列（默认空=不掉；管理端在野地类型里配置）：
+		//   老行补 ''，避免 Go 侧 string 扫 NULL 报错。
+		if db.Migrator().HasTable("ezfy_cfg_wildland") && !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {
+			db.Exec("ALTER TABLE ezfy_cfg_wildland ADD COLUMN drop_items varchar(500) DEFAULT ''")
+		}
+		db.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
+
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {

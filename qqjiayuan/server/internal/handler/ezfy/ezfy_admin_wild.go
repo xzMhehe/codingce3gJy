@@ -29,7 +29,7 @@ var ezfyWildCfgFields = map[string]string{
 	"type": "int", "level": "int", "troops": "string",
 	"res_min": "int64", "res_max": "int64",
 	"officer_min": "int", "officer_max": "int", "officer_id": "int",
-	"treasure": "string", "des": "string",
+	"treasure": "string", "drop_items": "string", "des": "string",
 }
 
 // 玩家野地可改字段（ezfy_wildland）
@@ -136,7 +136,7 @@ func (h *EzfyAdmin) AdminEzfyWildCfgList(c *gin.Context) {
 			"officer_min": r.OfficerMin, "officer_max": r.OfficerMax,
 			// ★ 2026-10-05 性能：守将名走配置缓存（原 ezfyGeneralName 每行一条 SQL → 一页 20 条）
 			"officer_id": r.OfficerId, "officer_name": h.ezfyGeneralNameCached(r.OfficerId),
-			"treasure": r.Treasure, "des": r.Des,
+			"treasure":   r.Treasure, "drop_items": r.DropItems, "des": r.Des,
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})

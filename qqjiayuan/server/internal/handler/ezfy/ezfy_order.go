@@ -3152,6 +3152,23 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				// ★ 俘获的守军用其原阵营兵种名: 野地=盟军、寇城=轴心国
 				report += fmt.Sprintf("\n俘获: %s×%d", ezfyCfg.troopName(capturedTroopId, wildDefCamp), capturedCount)
 			}
+			// ★ 2026-10-05 野地类型「商城道具掉落」（管理端在野地类型里配，默认空=不掉）：
+			//   打赢该类型野地/海野/寇城后按 [[cfg_id,数量],...] 掉落商城道具到背包。
+			//   ⚠️ 这里在 switch 之外，case 里的 cfg 不可见 → 按同一口径重新取配置。
+			wcType := 1
+			if order.TargetType == 2 {
+				wcType = 3
+			} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+				wcType = 2
+			}
+			if wcfg := ezfyCfg.wildland(wcType, wildLevel); wcfg != nil && strings.TrimSpace(wcfg.DropItems) != "" {
+				for _, d := range parseActWildTreasures(wcfg.DropItems) {
+					if it := ezfyCfg.item(d[0]); it != nil {
+						h.addItem(uid, d[0], d[1])
+						report += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+					}
+				}
+			}
 		}
 
 		// 征服玩家城市
