@@ -3,6 +3,12 @@
     <template v-if="ezfy.cur === 'bag'">
         <div class="panel">
           <div class="panel-title">背包 <a href="javascript:;" @click="ezfy.loadBag">[刷新]</a></div>
+          <!-- ★ 2026-10-05 背包子tab：道具 / 宝物 分开（宝物原来贴在道具列表下面，拆成独立 tab） -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'item' }" @click="ezfy.setBagTab('item')">道具</a><span> | </span>
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'treasure' }" @click="ezfy.setBagTab('treasure')">宝物</a>
+          </div>
+          <template v-if="ezfy.bagTab === 'item'">
           <!-- ★ 检索框：道具多的时候按名字/说明筛 -->
           <div class="old-line">
             搜索:
@@ -53,12 +59,7 @@
               <a href="javascript:;" @click="ezfy.useItem = null">[取消]</a>
             </div>
           </div>
-          <!-- ★ 2026-09-28 背包展示宝物（）：相同宝物合并显示 ×数量 -->
-          <div class="panel-title" v-if="ezfy.bagTreasures.length">宝物</div>
-          <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'bt' + t.cfg_id">
-            <b class="orange">{{ t.name }}</b>×{{ t.count }}
-          </div>
-          <div class="old-line" v-if="!ezfy.bagItems.length && !ezfy.bagTreasures.length">(背包空空如也)</div>
+          <div class="old-line" v-if="!ezfy.bagItems.length">(背包空空如也)</div>
           <div class="old-line gray" v-else-if="!ezfy.bagFiltered.length">(没有匹配「{{ ezfy.bagWord }}」的道具)</div>
           <!-- ★ 分页 -->
           <div class="ezfy-pager" v-if="ezfy.bagFiltered.length > ezfy.bagPageSize">
@@ -67,6 +68,17 @@
             <a href="javascript:;" :class="{ disabled: ezfy.bagPage >= ezfy.bagTotalPages }" @click="ezfy.bagGo(1)">[下一页]</a>
           </div>
           <a href="javascript:;" @click="ezfy.go('mall')">[前往商城]</a>
+          </template>
+          <!-- ★ 宝物子tab：相同宝物合并显示 ×数量（野地采集 / 宝物签到获取） -->
+          <template v-else>
+          <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚。</div>
+          <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'bt' + t.cfg_id">
+            <b class="orange">{{ t.name }}</b>×{{ t.count }}
+          </div>
+          <div class="old-line gray" v-if="!ezfy.bagTreasures.length">(还没有采集到宝物，去野地采集或宝物签到吧)</div>
+          <a href="javascript:;" @click="ezfy.go('map')">[去野地采集]</a>
+          <a href="javascript:;" @click="ezfy.go('welfare')">[宝物签到]</a>
+          </template>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

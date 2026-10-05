@@ -666,6 +666,8 @@ export default {
       bagTreasures: [],
       // ★ 背包 / 装备列表的检索 + 分页（背包里道具/装备都可能有几十上百条）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
+      // ★ 2026-10-05 背包子tab：item道具 / treasure宝物（宝物原来是堆在道具列表下面的，拆成独立 tab）
+      bagTab: 'item',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
       hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 / 4预设编队 (localStorage 记忆)
@@ -2695,6 +2697,10 @@ export default {
     setBagCat (c) {
       this.bagCat = c
       this.bagPage = 1
+    },
+    // ★ 2026-10-05 背包：切换 道具 / 宝物 子tab
+    setBagTab (t) {
+      this.bagTab = t
     },
     // ★ 开箱快捷数量（[5]/[10] 不能超过单次上限）
     setChestCount (n) {
