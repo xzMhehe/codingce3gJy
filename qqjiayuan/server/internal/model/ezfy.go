@@ -1579,6 +1579,9 @@ type EzfyOfficer struct {
 	//   升星加的是当前属性、不动 base_*，洗点时差额会自动退回 ——
 	//   这里持久记录「其中多少点是升星来的」，玩家洗点前一眼能看懂。
 	StarPoints int `gorm:"default:0;comment:升星累计加点" json:"star_points"`
+	// ★ 2026-10-05 获取途径：0=常规（系统发放/军校招募/野地俘虏），1=抢玩家获取
+	//   （PvP 打赢后敌方守将叛逃被收编）。管理端军官列表据此标注「抢玩家获取」。
+	Source int `gorm:"default:0;comment:获取途径 0常规 1抢玩家获取" json:"source"`
 }
 
 func (EzfyOfficer) TableName() string { return "ezfy_officer" }

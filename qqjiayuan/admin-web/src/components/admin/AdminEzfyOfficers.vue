@@ -213,6 +213,12 @@
               </template>
             </el-table-column>
             <el-table-column prop="city_name" label="归属城池" width="100" show-overflow-tooltip />
+            <el-table-column label="获取途径" width="100" align="center">
+              <template slot-scope="{row}">
+                <el-tag v-if="row.source === 1" size="mini" type="danger">抢玩家获取</el-tag>
+                <span v-else class="td-muted">—</span>
+              </template>
+            </el-table-column>
             <el-table-column label="归属玩家" min-width="150" show-overflow-tooltip>
               <template slot-scope="{row}">
                 <span class="td-main">{{ row.owner_name || '—' }}</span>

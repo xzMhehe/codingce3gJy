@@ -372,10 +372,16 @@
                 <span v-else class="td-sub">无</span>
               </template>
             </el-table-column>
-            <el-table-column prop="treasure" label="宝物" width="120" show-overflow-tooltip />
-            <el-table-column label="道具掉落" min-width="150" show-overflow-tooltip>
+            <!-- ★ 2026-10-05 列里看不全 → 点一下弹模态框看全部（名称/数量/概率） -->
+            <el-table-column label="宝物掉落" width="125" align="center">
               <template slot-scope="{row}">
-                <span v-if="row.drop_items" class="td-blue">{{ row.drop_items }}</span>
+                <el-button v-if="row.treasure" type="text" @click="openWcDropDlg(row, 'treasure')">{{ wcDropSummary(row.treasure, 'treasure') }}</el-button>
+                <span v-else class="td-sub">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="道具掉落" width="125" align="center">
+              <template slot-scope="{row}">
+                <el-button v-if="row.drop_items" type="text" @click="openWcDropDlg(row, 'items')">{{ wcDropSummary(row.drop_items, 'items') }}</el-button>
                 <span v-else class="td-sub">—</span>
               </template>
             </el-table-column>
@@ -672,6 +678,21 @@
       </div>
     </el-dialog>
 
+    <!-- ★ 2026-10-05 野地类型列表「宝物掉落 / 道具掉落」详情（列里看不全，点开看全部） -->
+    <el-dialog :title="wcDropDlg.title" :visible.sync="wcDropDlg.visible" width="560px" append-to-body>
+      <div v-if="wcDropDlg.legacy" class="old-line">
+        ⚠️ 旧版文本配置（当前掉落逻辑只认新格式，不会生效）：{{ wcDropDlg.legacy }}
+      </div>
+      <el-table v-else :data="wcDropDlg.rows" size="mini" border>
+        <el-table-column prop="name" label="名称" min-width="200" />
+        <el-table-column prop="count" label="数量" width="90" align="center" />
+        <el-table-column label="概率" width="90" align="center">
+          <template slot-scope="{row}">{{ row.pct }}%</template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!wcDropDlg.legacy && !wcDropDlg.rows.length" class="old-line">（暂无配置）</div>
+    </el-dialog>
+
     <!-- ============ 新增 / 编辑 活动野地配置 ============ -->
     <el-dialog :title="aw.id ? ('编辑活动野地 · ' + aw.x + ',' + aw.y) : '新增活动野地'"
                :visible.sync="awDlg" width="620px" :close-on-click-modal="false">
@@ -864,6 +885,8 @@ export default {
       terrainNames: { 1: '平原', 2: '草原', 3: '森林', 4: '盆地', 5: '丘陵', 6: '沼泽', 7: '山地', 8: '海洋', 9: '沿海平原' },
       wildDlg: false, wf: emptyWild(), wildCfgMatch: null,
       wcDlg: false, wc: emptyWc(),
+      // ★ 2026-10-05 野地类型列表「宝物/道具掉落」详情弹窗
+      wcDropDlg: { visible: false, kind: '', title: '', rows: [], legacy: '' },
       // 活动野地配置（2026-09-29）
       actWilds: [], awTotal: 0, awPage: 1, awSize: 15, awWord: '', awEnabled: -1, loadingAw: false,
       awDlg: false, aw: { x: 250, y: 250, enabled: 1, level: 1, troops: '', res: 0, gold: 0, prestige: 0, jewel: '', des: '', officer_id: 0, officer_name: '', treasures: '', capture_rate: 0, max_capture: 1 },
@@ -1386,7 +1409,33 @@ export default {
         }
         return []
       } catch (e) {
-        return [{ name: raw, count: 1, pct: 100 }]
+        // ★ 2026-10-05 旧版文本（如「初级/中级」）不是有效掉落配置：标记 legacy（掉落逻辑不认）
+        return [{ name: raw, count: 1, pct: 10, legacy: true }]
+      }
+    },
+    // ★ 2026-10-05 列表页掉落列 → 显示「N 种 / 旧文本 / —」，点击弹详情
+    wcDropSummary (raw, kind) {
+      const rows = kind === 'treasure' ? this.parseWcTreasures(raw) : this.parseWcDrops(raw)
+      if (rows.length === 1 && rows[0].legacy) return '旧文本'
+      return rows.length ? (rows.length + ' 种') : '查看'
+    },
+    // 道具 id → 名称（下拉选项里查；查不到显示 id）
+    wcItemName (id) {
+      const it = (this.itemCfgs || []).find(x => Number(x.id) === Number(id))
+      return it ? it.name : ('道具#' + id)
+    },
+    // ★ 2026-10-05 打开「宝物掉落 / 道具掉落」详情弹窗
+    openWcDropDlg (row, kind) {
+      const label = (row.type_name || '') + (row.level != null ? row.level + '级' : '') + ' · ID' + row.id
+      if (kind === 'treasure') {
+        const raw = row.treasure || ''
+        const rows = this.parseWcTreasures(raw)
+        const legacy = (rows.length === 1 && rows[0].legacy) ? raw : ''
+        this.wcDropDlg = { visible: true, kind, title: '宝物掉落 · ' + label, rows: legacy ? [] : rows, legacy }
+      } else {
+        const rows = this.parseWcDrops(row.drop_items || '')
+          .map(r => ({ name: this.wcItemName(r.cfg_id), count: r.count, pct: r.pct }))
+        this.wcDropDlg = { visible: true, kind, title: '道具掉落 · ' + label, rows, legacy: '' }
       }
     },
     doWcSave () {

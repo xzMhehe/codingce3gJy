@@ -2139,10 +2139,9 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	}
 	// 参谋部有空位才收得下战俘
 	room := h.buildingLevel(atkCity.ID, ezfyBuildingStaff) - h.officerCount(atkCity.ID)
-	// ★ 2026-10-04 用户规则「玩家抢玩家也要卡控名将数量」：
-	//   系统发放不再卡控 1 个（可重复），但 PvP 抢将仍要卡控 —— 攻击方**已经拥有**该名将时，
-	//   对方将领不会叛逃成俘（忠诚照扣但不归零拉走），避免同名名将靠抢无限堆积。
-	ownedGen := h.ownedGeneralIds(atkUid)
+	// ★★ 2026-10-05 用户规则「玩家抢玩家的名将不受重复卡控」：
+	//   攻击方**已经拥有**该名将时，也不拦 —— 忠诚归零照样叛逃成俘（管理端标注「抢玩家获取」）。
+	//   （2026-10-04 的「PvP 也要卡控」规则已被推翻；系统发放 / PvP 抢将均不再卡控同名将数量。）
 
 	var defected []model.EzfyOfficer
 	var stayed []string
@@ -2158,15 +2157,6 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 		}
 		drop := 10 + rand.Intn(11) // 每次被攻打 忠诚 -10~-20
 		loyalty := o.Loyalty - drop
-		if o.GeneralId > 0 && ownedGen[o.GeneralId] {
-			// 攻击方已拥有同名将 → 卡控：不叛逃成俘，忠诚扣到最低 1 点
-			if loyalty <= 0 {
-				loyalty = 1
-			}
-			h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("loyalty", loyalty)
-			stayed = append(stayed, o.Name+"("+strconv.Itoa(loyalty)+", 你已拥有同名将)")
-			continue
-		}
 		if loyalty <= 0 {
 			defected = append(defected, *o)
 			continue
@@ -2187,6 +2177,7 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 		if room > 0 {
 			room--
 			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
+			// ★ 2026-10-05 Source=1：标记「抢玩家获取」，管理端军官列表据此标注
 			cap := model.EzfyOfficer{
 				CityId: int64(atkCity.ID), GeneralId: o.GeneralId, Name: o.Name, Star: o.Star,
 				Level: o.Level, Exp: o.Exp,
@@ -2195,7 +2186,7 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				BaseMilitary: o.BaseMilitary, BaseLogistics: o.BaseLogistics, BaseLearning: o.BaseLearning,
 				FreePoints: o.FreePoints,
 				Loyalty:    30, Skill: o.Skill, Equipment: o.Equipment,
-				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, UpdateTime: time.Now(),
+				Position: ezfyPositionNone, Status: 0, IsCaptive: 1, Source: 1, UpdateTime: time.Now(),
 			}
 			h.DB.Create(&cap)
 			// ★ 2026-09-29 用户规则：被俘军官的随身装备随俘虏转移——

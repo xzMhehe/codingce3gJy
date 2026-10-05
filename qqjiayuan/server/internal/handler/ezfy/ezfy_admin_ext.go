@@ -1136,6 +1136,8 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 		StatusName string `json:"status_name"`
 		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「是否名将」列
 		IsGeneral bool `json:"is_general"`
+		// ★ 2026-10-05 获取途径标注：source=1（抢玩家获取）时显示「抢玩家获取」
+		SourceName string `json:"source_name"`
 	}
 	out := []rowOut{}
 	for _, o := range rows {
@@ -1146,9 +1148,13 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 			owner, home = h.ezfyAdminName(ct.UserID)
 		}
 		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
+		srcName := ""
+		if o.Source == 1 {
+			srcName = "抢玩家获取"
+		}
 		out = append(out, rowOut{EzfyOfficer: o, CityName: cityName, OwnerName: owner,
 			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
-			IsGeneral: isGeneral})
+			IsGeneral: isGeneral, SourceName: srcName})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1173,8 +1179,9 @@ func (h *EzfyAdmin) ezfyGrantGeneral(uid uint, generalID int) (string, string) {
 	}
 	city := ez.getOrCreateCity(p.UserID)
 	// ★★ 2026-10-04 用户规则：系统发放的名将**不再卡控 1 个**（同一名将可重复发放给同一玩家）。
-	//   原来「每名玩家同一名将只能持有 1 个」（2026-09-26 修复重复发放时加的查重）已移除；
-	//   「玩家抢玩家」那条路径单独加了卡控（见 defectDefenderOfficers：攻击方已拥有同名将则不会叛逃成俘）。
+	//   原来「每名玩家同一名将只能持有 1 个」（2026-09-26 修复重复发放时加的查重）已移除。
+	// ★ 2026-10-05 用户规则：玩家抢玩家（PvP）也不卡控重复名将（见 defectDefenderOfficers），
+	//   抢来的军官落库时 source=1，管理端军官列表标注「抢玩家获取」。
 	star := g.Star
 	if star <= 0 {
 		star = 5
