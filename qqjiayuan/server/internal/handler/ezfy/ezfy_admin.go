@@ -112,10 +112,13 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		ItemName string `json:"item_name"`
 	}
 	bagViews := []bagOut{}
+	// ★★ 2026-10-05 性能（用户反馈「玩家信息管理 → 玩家详情 超时」）：
+	//   原来**背包里每一件道具**都单独查一次 `ezfy_cfg_item` —— 老玩家背包几百件
+	//   就是几百条跨 WAN 往返，必然超时。道具配置本来就在进程内缓存 ezfyCfg 里，直接取内存（0 条 SQL）。
+	ezfyCfg.load(h.DB)
 	for _, it := range bag {
-		var cfg model.EzfyCfgItem
 		name := ""
-		if err := h.DB.First(&cfg, it.CfgId).Error; err == nil {
+		if cfg := ezfyCfg.item(it.CfgId); cfg != nil {
 			name = cfg.Name
 		}
 		bagViews = append(bagViews, bagOut{EzfyItem: it, ItemName: name})
@@ -127,13 +130,21 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		CorpsName string `json:"corps_name"`
 	}
 	corpsViews := []corpsOut{}
-	for _, m := range members {
-		var cp model.EzfyCorps
-		name := ""
-		if err := h.DB.First(&cp, m.CorpsId).Error; err == nil {
-			name = cp.Name
+	// ★ 2026-10-05 性能：军团名批量取一次（原来是每个成员一条 SQL）
+	corpsNameOf := map[uint]string{}
+	if len(members) > 0 {
+		cids := make([]uint, 0, len(members))
+		for _, m := range members {
+			cids = append(cids, m.CorpsId)
 		}
-		corpsViews = append(corpsViews, corpsOut{EzfyCorpsMember: m, CorpsName: name})
+		var cps []model.EzfyCorps
+		h.DB.Select("id, name").Where("id IN ?", cids).Find(&cps)
+		for _, cp := range cps {
+			corpsNameOf[cp.ID] = cp.Name
+		}
+	}
+	for _, m := range members {
+		corpsViews = append(corpsViews, corpsOut{EzfyCorpsMember: m, CorpsName: corpsNameOf[m.CorpsId]})
 	}
 	var orders []model.EzfyOrder
 	h.DB.Where("user_id = ?", p.UserID).Order("id DESC").Limit(20).Find(&orders)

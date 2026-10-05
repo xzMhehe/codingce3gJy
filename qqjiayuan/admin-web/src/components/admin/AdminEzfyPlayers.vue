@@ -6,7 +6,7 @@
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
       </div>
       <!-- ★ 列宽按实测内容宽度定：ID 类 8 位数字需 74px+，留足余量到 100；
            昵称类设 min-width 作弹性列分摊宽屏多余宽度（只留 1 个弹性列时会被拉到 600px+）。
@@ -129,7 +129,9 @@
               </el-table-column>
               <el-table-column prop="city_level" label="市政厅" width="80" align="center" />
               <el-table-column label="总兵力" width="90" align="center">
-                <template slot-scope="{row}">{{ fmtNum(row.troop_total || 0) }}</template>
+                <!-- ★ 2026-10-05 用户要求：总兵力超过万显示「万」、超过亿显示「亿」
+                     （原来用 fmtNum 原样输出，几十亿的数字根本读不出来；悬停可看完整值） -->
+                <template slot-scope="{row}"><span :title="fmtNum(row.troop_total || 0)">{{ fmtWan(row.troop_total || 0) }}</span></template>
               </el-table-column>
               <el-table-column label="黄金" width="80" align="center">
                 <template slot-scope="{row}"><span :title="fmtNum(row.gold)">{{ fmtWan(row.gold) }}</span></template>
@@ -149,7 +151,8 @@
             </el-table>
           </el-tab-pane>
           <!-- 背包 -->
-          <el-tab-pane :label="'背包 (' + detail.bag.length + ' 行)'" name="bag">
+          <!-- ★ 2026-10-05 用户要求：背包标题去掉「行」这个单位，只展示数量 -->
+          <el-tab-pane :label="'背包 (' + detail.bag.length + ')'" name="bag">
             <el-table :data="detail.bag" size="mini" border max-height="360">
               <el-table-column prop="id" label="行ID" width="80" align="center" />
               <el-table-column prop="cfg_id" label="道具ID" width="90" align="center" />

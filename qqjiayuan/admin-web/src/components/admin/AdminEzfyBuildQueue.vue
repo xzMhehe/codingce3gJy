@@ -12,7 +12,7 @@
         <div class="grow" />
         <el-button type="warning" plain icon="el-icon-s-claim" @click="finishReady">完成可完成的</el-button>
         <el-button type="success" icon="el-icon-s-claim" @click="finishAll">一键完成全部</el-button>
-        <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
       </div>
       <!-- ★ 列宽按实测内容宽度定：「模式」原 95px 装不下「一键满级连锁」标签（需 113px）；
            建筑/所属城池/归属玩家 三个弹性列分摊多余宽度，避免单列被拉到 600px+ -->

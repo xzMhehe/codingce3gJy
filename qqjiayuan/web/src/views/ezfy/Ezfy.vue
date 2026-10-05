@@ -497,6 +497,11 @@ export default {
       resNames: RES_NAMES,
       // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
+      // ★ 2026-10-05 资源**真正的收敛点**（ezfy_cfg_limit.res_max_*，线上 61 亿）。
+      //   原来界面上「当前/仓储上限」的分母是 city.xxx_cap —— 它按设计**不参与产量收敛**，
+      //   玩家看到「42亿/55亿」以为还能涨，实际早被全局上限卡住 → 报「离线资源不涨」。
+      //   后端已随 /view 下发 res_max，这里据它显示「已满」。
+      resMax: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
       // ★ 2026-09-28 安抚参数（后端下发，管理端可配：5 万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
       placate: { gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 },
       // ★ 安抚冷却的每秒时间基准（由 tickClock 驱动，供 placateCdLeft 计算属性用）
@@ -1583,6 +1588,14 @@ export default {
     exchangeMTotalPages () {
       return Math.max(1, Math.ceil(this.exchangeMTotal / this.exchangeMSize))
     },
+    // ★ 2026-10-05 该资源是否已到「资源最大值」。
+    //   到顶后产量**不再累加**（后端 calcResourceD → ezfyAddResMax：cur >= max 直接原样返回），
+    //   所以玩家会看到数字不动 —— 这里明确标「已满」，避免被当成「资源不涨」的 bug 上报。
+    isResFull (k) {
+      const max = Number((this.resMax || {})[k] || 0)
+      const cur = Number((this.city || {})[k] || 0)
+      return max > 0 && cur >= max
+    },
     noticePaged () {
       const p = Math.min(Math.max(1, this.noticePage), this.noticeTotalPages)
       return this.notices.slice((p - 1) * this.noticeSize, p * this.noticeSize)
@@ -1777,6 +1790,7 @@ export default {
           this.profile = r.data.profile
           this.city = r.data.city
           this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_prod || {})
+          this.resMax = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_max || {})
           this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, r.data.placate || {})
           this._placateAt = Date.now() // 记住安抚冷却快照的取回时刻，供 placateCdLeft 本地推算
         }
@@ -2132,6 +2146,7 @@ export default {
       this.city = d.city
       // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
       this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
+      this.resMax = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_max || {})
       // ★★ 2026-09-28 修复「切换城市 → 城市列表空了」：
       //   1bafa1a（格式、民心民怨）新增安抚参数时，把原本这一行 `this.cities = d.cities`
       //   覆盖删掉了。而 cities 在 data 里初值就是 []，**全文件再无第二处赋值** ——

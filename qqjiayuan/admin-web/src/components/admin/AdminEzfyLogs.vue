@@ -17,7 +17,7 @@
             </el-select>
             <el-button type="primary" icon="el-icon-search" @click="orderPage = 1; loadOrders()">查询</el-button>
             <div class="grow" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadOrders">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <!-- ★ 列宽按实测内容宽度定：「耗油」原 90px 装不下 2,446,000,177（需 106px） -->
           <el-table :data="orders" v-loading="orderLoading" stripe border max-height="560">
@@ -69,7 +69,7 @@
                       @keyup.enter.native="chatPage = 1; loadChats()" />
             <el-button type="primary" icon="el-icon-search" @click="chatPage = 1; loadChats()">查询</el-button>
             <div class="grow" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadChats">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <el-table :data="chats" v-loading="chatLoading" stripe border max-height="560">
             <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -110,7 +110,7 @@
             </el-select>
             <el-button type="primary" icon="el-icon-search" @click="exPage = 1; loadExchanges()">查询</el-button>
             <div class="grow" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadExchanges">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <!-- ★ 同上：数量列原 110px 装不下千分位大数 -->
           <el-table :data="exchanges" v-loading="exLoading" stripe border max-height="560">

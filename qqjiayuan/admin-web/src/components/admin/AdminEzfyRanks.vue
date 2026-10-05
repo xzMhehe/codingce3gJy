@@ -50,7 +50,7 @@
                       @keyup.enter.native="page = 1; loadPlayers()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; loadPlayers()">查询</el-button>
             <div class="grow" />
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadPlayers">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <el-table :data="players" v-loading="loading" stripe border>
             <el-table-column prop="user_id" label="用户ID" width="80" align="center" />

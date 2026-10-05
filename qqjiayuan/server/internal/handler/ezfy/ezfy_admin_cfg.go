@@ -1830,61 +1830,66 @@ func (h *EzfyAdmin) AdminEzfyOfficerPickers(c *gin.Context) {
 
 // ============ 一键生成军官（随机名字/等级/星级，属性不超过名将） ============
 
-// AdminEzfyTechMaxAll POST /admin/ezfy-techs/max-all
+// AdminEzfyTechMaxAll POST /admin/ezfy-techs/max-all  {user_id}
 //
-// 一键把**所有玩家、所有城市**的科技升到满级。
+// ★★ 2026-10-05 用户要求：「一键满级所有玩家科技」改成「一键满级玩家科技」+ 输入游戏ID，
+// **只满级指定玩家**（原实现是全服所有玩家一起满级，误触一次全服科技就废了，太危险）。
+//
+// 语义：把该玩家**所有科技**升到各自配置的满级（ezfy_cfg_tech.max_level），
+// 等级写在用户级 ezfy_user_tech（科技等级全城共用，见 ezfy_tech_shared.go）。
 //
 // ★ 「不要产生脏数据」的三道保障：
-//  1. 先按 (city_id, tech_id) **去重**（历史脏数据兜底，只保留 id 最小的那行）；
-//  2. 用 `ON DUPLICATE KEY UPDATE` **upsert**（唯一索引 uk_city_tech），不会插重复行；
-//  3. 把 status/end_time 一并归零，避免留下「研究中」的半截状态。
+//  1. 先按 (city_id, tech_id) **去重**（历史脏数据兜底，只保留 id 最小的那行，**只处理该玩家的城**）；
+//  2. 用 `ON DUPLICATE KEY UPDATE` **upsert**（唯一索引 uk_user_tech），不会插重复行；
+//  3. 回读校验：确认没有重复行。
 func (h *EzfyAdmin) AdminEzfyTechMaxAll(c *gin.Context) {
+	var in struct {
+		UserID uint `json:"user_id"`
+	}
+	_ = c.ShouldBindJSON(&in)
+	if in.UserID == 0 {
+		in.UserID = uint(atoiOr(c.Query("user_id"), 0))
+	}
+	if in.UserID == 0 {
+		resp.ParamError(c, "请填写要满级的玩家游戏ID（本操作只满级该玩家，不再全服满级）")
+		return
+	}
+	var prof model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", in.UserID).First(&prof).Error; err != nil {
+		resp.ParamError(c, fmt.Sprintf("游戏ID %d 不存在（该玩家没有二战档案）", in.UserID))
+		return
+	}
 	var techs []model.EzfyCfgTech
 	h.DB.Order("id").Find(&techs)
 	if len(techs) == 0 {
 		resp.ParamError(c, "没有科技配置，无法满级")
 		return
 	}
-	// 1) 去重：同一 (city_id, tech_id) 只留 id 最小的一行
-	dedup := h.DB.Exec("DELETE t1 FROM ezfy_city_tech t1 JOIN ezfy_city_tech t2 " +
-		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id")
-	removed := dedup.RowsAffected
-
-	// ★ 2026-09-28 科技等级用户级共用 —— 每个玩家写一份 ezfy_user_tech，
-	//   不再按城市各写一份（否则城市越多行数越多，且分城的行是无效数据）。
-	var cities []model.EzfyCity
-	h.DB.Select("id", "user_id").Find(&cities)
-	if len(cities) == 0 {
-		resp.ParamError(c, "还没有玩家城市")
+	// 只取该玩家的城市（去重只在这些城里做，绝不碰别人的数据）
+	var cityIDs []uint
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", in.UserID).Pluck("id", &cityIDs)
+	if len(cityIDs) == 0 {
+		resp.ParamError(c, fmt.Sprintf("游戏ID %d 还没有城市", in.UserID))
 		return
 	}
-	mainOf := map[uint]uint{}
-	uidOf := map[uint]uint{} // main city id -> uid
-	for _, ct := range cities {
-		if m, ok := mainOf[ct.UserID]; !ok || ct.ID < m {
-			mainOf[ct.UserID] = ct.ID
-		}
-	}
-	for _, ct := range cities {
-		uidOf[mainOf[ct.UserID]] = ct.UserID
-	}
-	uids := make([]uint, 0, len(mainOf))
-	for _, mid := range mainOf {
-		uids = append(uids, uidOf[mid])
-	}
+	// 1) 去重：同一 (city_id, tech_id) 只留 id 最小的一行
+	removed := int64(0)
+	dedup := h.DB.Exec("DELETE t1 FROM ezfy_city_tech t1 JOIN ezfy_city_tech t2 "+
+		"ON t1.city_id = t2.city_id AND t1.tech_id = t2.tech_id AND t1.id > t2.id "+
+		"WHERE t1.city_id IN ?", cityIDs)
+	removed = dedup.RowsAffected
+
 	now := time.Now()
-	rows := make([]model.EzfyUserTech, 0, len(uids)*len(techs))
-	for _, uid := range uids {
-		for _, t := range techs {
-			lv := t.MaxLevel
-			if lv <= 0 {
-				lv = 10
-			}
-			rows = append(rows, model.EzfyUserTech{
-				UserId: uid, TechId: t.ID, Level: lv,
-				UpdatedAt: now,
-			})
+	rows := make([]model.EzfyUserTech, 0, len(techs))
+	for _, t := range techs {
+		lv := t.MaxLevel
+		if lv <= 0 {
+			lv = 10
 		}
+		rows = append(rows, model.EzfyUserTech{
+			UserId: in.UserID, TechId: t.ID, Level: lv,
+			UpdatedAt: now,
+		})
 	}
 	// 2) 分批 upsert
 	err := h.DB.Clauses(clause.OnConflict{
@@ -1895,18 +1900,20 @@ func (h *EzfyAdmin) AdminEzfyTechMaxAll(c *gin.Context) {
 		resp.ParamError(c, "满级失败："+err.Error())
 		return
 	}
-	// 3) 回读校验：确认没有重复行、且全部达到满级
+	// 3) 回读校验：该玩家不能有重复行
 	var dupCnt int64
-	h.DB.Raw("SELECT COUNT(*) FROM (SELECT user_id, tech_id FROM ezfy_user_tech " +
-		"GROUP BY user_id, tech_id HAVING COUNT(*) > 1) t").Scan(&dupCnt)
-	var maxLevel int64
-	h.DB.Raw("SELECT COALESCE(MAX(level), 0) FROM ezfy_user_tech").Scan(&maxLevel)
+	h.DB.Raw("SELECT COUNT(*) FROM (SELECT user_id, tech_id FROM ezfy_user_tech "+
+		"WHERE user_id = ? GROUP BY user_id, tech_id HAVING COUNT(*) > 1) t", in.UserID).Scan(&dupCnt)
+	var minLevel, maxLevel int64
+	h.DB.Raw("SELECT COALESCE(MIN(level),0), COALESCE(MAX(level),0) FROM ezfy_user_tech WHERE user_id = ?",
+		in.UserID).Row().Scan(&minLevel, &maxLevel)
 
 	resp.OK(c, gin.H{
-		"msg": fmt.Sprintf("已把 %d 位玩家 × %d 项科技升到满级（清理重复行 %d 条）",
-			len(uids), len(techs), removed),
-		"cities": len(cities), "techs": len(techs),
-		"dedup_removed": removed, "dup_left": dupCnt, "max_level": maxLevel,
+		"msg": fmt.Sprintf("已把玩家 %d 的 %d 项科技升到满级（清理重复行 %d 条）",
+			in.UserID, len(techs), removed),
+		"user_id": in.UserID, "cities": len(cityIDs), "techs": len(techs),
+		"dedup_removed": removed, "dup_left": dupCnt,
+		"min_level": minLevel, "max_level": maxLevel,
 	})
 }
 

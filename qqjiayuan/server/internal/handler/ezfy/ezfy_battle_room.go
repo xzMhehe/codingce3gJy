@@ -528,6 +528,14 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 	if done && b.Status == 2 {
 		// 战斗刚结束 → 结果回写订单（下一次 processOrders 就会出战报）
 		h.ezfyBattleFinishToOrder(b, now)
+		// ★ 2026-10-05 修复「指挥结束了却迟迟看不到结果」：订单属于**攻方**，
+		//   若此刻是**守方**在指挥室里收的尾（攻方已离线），攻方那条订单不会有人去结算，
+		//   战报/掠夺要等攻方下次上线才出。这里直接按攻方身份把订单结算掉。
+		//   ⚠️ processArrive 内部有 CAS 抢占（status 0/5 → 98），与攻方入口并发也不会重复结算。
+		var atkOrder model.EzfyOrder
+		if err := h.DB.First(&atkOrder, b.OrderId).Error; err == nil {
+			h.processArrive(b.UserID, &atkOrder, now)
+		}
 	}
 	resp.OK(c, h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk"))
 }

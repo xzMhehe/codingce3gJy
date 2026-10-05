@@ -206,14 +206,21 @@
             <a href="javascript:;" @click="ezfy.go('cityhall')">市政厅</a>-&gt;资源统计
           </div>
           <div class="old-line">【{{ ezfy.city.name }}】:</div>
+          <!-- ★ 2026-10-05 修复「玩家反馈离线资源不涨」的显示口径：
+               斜杠后的分母从「仓库容量(city.xxx_cap)」改成**资源真正的收敛点**
+               （全局资源最大值 res_max，线上 61 亿）。仓库容量按设计**不参与产量收敛**，
+               原来那样显示会让玩家以为「还没满、怎么不涨」。到顶时明确标「已满」。 -->
           <div class="old-line">
-            {{ ezfy.resNames.gold }}：{{ ezfy.city.gold }}/{{ ezfy.city.gold_cap }}<br/>
-            {{ ezfy.resNames.food }}：{{ ezfy.city.food }}/{{ ezfy.city.food_cap }}<br/>
-            {{ ezfy.resNames.steel }}：{{ ezfy.city.steel }}/{{ ezfy.city.steel_cap }}<br/>
-            {{ ezfy.resNames.oil }}：{{ ezfy.city.oil }}/{{ ezfy.city.oil_cap }}<br/>
-            {{ ezfy.resNames.rare }}：{{ ezfy.city.rare }}/{{ ezfy.city.rare_cap }}
+            {{ ezfy.resNames.gold }}：{{ ezfy.city.gold }}/{{ ezfy.resMax.gold }}<span v-if="ezfy.isResFull('gold')">（已满）</span><br/>
+            {{ ezfy.resNames.food }}：{{ ezfy.city.food }}/{{ ezfy.resMax.food }}<span v-if="ezfy.isResFull('food')">（已满）</span><br/>
+            {{ ezfy.resNames.steel }}：{{ ezfy.city.steel }}/{{ ezfy.resMax.steel }}<span v-if="ezfy.isResFull('steel')">（已满）</span><br/>
+            {{ ezfy.resNames.oil }}：{{ ezfy.city.oil }}/{{ ezfy.resMax.oil }}<span v-if="ezfy.isResFull('oil')">（已满）</span><br/>
+            {{ ezfy.resNames.rare }}：{{ ezfy.city.rare }}/{{ ezfy.resMax.rare }}<span v-if="ezfy.isResFull('rare')">（已满）</span>
           </div>
-          <div class="old-line gray">斜杠后为仓库容量上限；升级仓库可提高保护量与上限。</div>
+          <div class="old-line gray">
+            斜杠后为<b>资源最大值</b>：产量涨到这里就不再增加（标「已满」即已到顶，不是卡住）。<br/>
+            仓库容量（{{ ezfy.city.gold_cap }} 等）只影响被掠夺时的保护量，不影响产量上限。
+          </div>
           <a href="javascript:;" @click="ezfy.go('cityhall')">[返回]</a>
           <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>

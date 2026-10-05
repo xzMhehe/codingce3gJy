@@ -3453,6 +3453,36 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		dbq = dbq.Where("target_id = ?", cityId)
 	}
 	dbq.Find(&defBattles)
+	// ★★ 2026-10-05 修复「守方指挥结束了还显示指挥 / 指挥结束有延迟」：
+	//
+	//	战场与订单都属于**攻方**，而 `processOrders(uid)` 只会推进「自己发起」的订单 ——
+	//	守方无论怎么轮询都推不动这场战斗，只能干等攻方上线或后台 ticker，
+	//	表现就是「守方点完指挥，指挥一直不结束」（攻方离线时能卡很久）。
+	//	这里把「打我方城市」的战场也 tick 一遍：回合到点就推进，打完了就地收尾。
+	//	⚠️ 安全：`processArrive` 内部用 CAS 抢占结算权（status 0/5 → 98），
+	//	  与攻方入口并发到达也不会重复结算战报/掠夺。
+	for i := range defBattles {
+		b := &defBattles[i]
+		if _, done := h.ezfyBattleTick(b, now); !done {
+			continue
+		}
+		h.ezfyBattleFinishToOrder(b, now)
+		// 顺手把攻方那条订单也结算掉，别让部队卡在「已打完但没结算」
+		var atkOrder model.EzfyOrder
+		if err := h.DB.First(&atkOrder, b.OrderId).Error; err == nil {
+			h.processArrive(b.UserID, &atkOrder, now)
+		}
+	}
+	// tick 后已经打完的战场（ezfyBattleTick 会把行状态置 2）不再展示
+	if len(defBattles) > 0 {
+		live := defBattles[:0]
+		for i := range defBattles {
+			if defBattles[i].Status == 1 {
+				live = append(live, defBattles[i])
+			}
+		}
+		defBattles = live
+	}
 	for _, b := range defBattles {
 		// 来袭敌军来源：攻击方城市（查不到就兜底显示玩家 uID）
 		atkName := "玩家" + strconv.FormatUint(uint64(b.UserID), 10)

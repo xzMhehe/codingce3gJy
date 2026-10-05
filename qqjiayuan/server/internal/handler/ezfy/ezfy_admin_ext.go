@@ -101,6 +101,14 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 		return
 	}
 	pn, hn := h.ezfyAdminName(ct.UserID)
+	// ★★ 2026-10-05 性能（用户反馈「城市管理 → 城池详情 严重查询超时」）：
+	//   原来**每一栋建筑 / 每个兵种 / 每项科技**都各查一次配置表
+	//   （`First(&cfg, id)`）—— 满建筑的城市有 100+ 行建筑、20 个兵种、15 项科技，
+	//   一页就是 **~140 条跨 WAN 往返**，必然超时。
+	//   三张配置表都很小且**本来就在进程内缓存** ezfyCfg 里，直接取内存即可（0 条 SQL）。
+	//   ⚠️ 先确保缓存已加载（管理端 handler 不一定走过 h.cfgs()）。
+	ezfyCfg.load(h.DB)
+
 	var buildings []model.EzfyCityBuilding
 	h.DB.Where("city_id = ?", ct.ID).Order("building_id").Find(&buildings)
 	type bOut struct {
@@ -111,8 +119,7 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 	bViews := []bOut{}
 	for _, b := range buildings {
 		name, typ := "", 0
-		var cfg model.EzfyCfgBuilding
-		if err := h.DB.First(&cfg, b.BuildingId).Error; err == nil {
+		if cfg := ezfyCfg.building(b.BuildingId); cfg != nil {
 			name, typ = cfg.Name, cfg.Type
 		}
 		bViews = append(bViews, bOut{EzfyCityBuilding: b, CfgName: name, CfgType: typ})
@@ -126,8 +133,7 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 	tViews := []tOut{}
 	for _, t := range troops {
 		name := ""
-		var cfg model.EzfyCfgTroop
-		if err := h.DB.First(&cfg, t.TroopId).Error; err == nil {
+		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
 			name = cfg.Name
 		}
 		tViews = append(tViews, tOut{EzfyCityTroop: t, CfgName: name})
@@ -142,8 +148,7 @@ func (h *EzfyAdmin) AdminEzfyCityDetail(c *gin.Context) {
 	cViews := []cOut{}
 	for _, t := range techs {
 		name := ""
-		var cfg model.EzfyCfgTech
-		if err := h.DB.First(&cfg, t.TechId).Error; err == nil {
+		if cfg := ezfyCfg.tech(t.TechId); cfg != nil {
 			name = cfg.Name
 		}
 		cViews = append(cViews, cOut{EzfyUserTech: t, CfgName: name})

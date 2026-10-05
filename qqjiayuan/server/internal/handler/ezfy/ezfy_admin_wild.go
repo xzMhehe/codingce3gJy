@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +134,8 @@ func (h *EzfyAdmin) AdminEzfyWildCfgList(c *gin.Context) {
 			"level": r.Level, "troops": r.Troops,
 			"res_min": r.ResMin, "res_max": r.ResMax,
 			"officer_min": r.OfficerMin, "officer_max": r.OfficerMax,
-			"officer_id": r.OfficerId, "officer_name": h.ezfyGeneralName(r.OfficerId),
+			// ★ 2026-10-05 性能：守将名走配置缓存（原 ezfyGeneralName 每行一条 SQL → 一页 20 条）
+			"officer_id": r.OfficerId, "officer_name": h.ezfyGeneralNameCached(r.OfficerId),
 			"treasure": r.Treasure, "des": r.Des,
 		})
 	}
@@ -276,11 +278,172 @@ func (h *EzfyAdmin) AdminEzfyWildlandList(c *gin.Context) {
 	q.Count(&total)
 	var rows []model.EzfyWildland
 	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	// ★★ 2026-10-05 性能（用户反馈「地图管理 tab 查询超时」）：
+	//   原来 ezfyWildlandRow **每行**单独查「城市 + 玩家档案 + 玩家账号 + 野地配置 + 守将名」
+	//   = 4~5 条 SQL，一页 20 行就是 80~100 条跨 WAN 往返 → 必然超时。
+	//   现在按本页数据**批量取一次**：城市 1 条 + 档案 1 条 + 账号 1 条 + 野地配置 1 条，
+	//   守将名走配置缓存 —— 一页固定 4 条 SQL，与页大小无关。
+	cityIDs := make([]uint, 0, len(rows))
+	for _, w := range rows {
+		if w.CityId > 0 {
+			cityIDs = append(cityIDs, uint(w.CityId))
+		}
+	}
+	cityMap := map[uint]model.EzfyCity{}
+	if len(cityIDs) > 0 {
+		var cts []model.EzfyCity
+		h.DB.Where("id IN ?", cityIDs).Find(&cts)
+		for _, ct := range cts {
+			cityMap[ct.ID] = ct
+		}
+	}
+	uids := make([]uint, 0, len(cityMap))
+	for _, ct := range cityMap {
+		uids = append(uids, ct.UserID)
+	}
+	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
+	cfgMap := h.ezfyWildCfgMap()
 	out := make([]gin.H, 0, len(rows))
 	for _, w := range rows {
-		out = append(out, h.ezfyWildlandRow(w))
+		out = append(out, h.ezfyWildlandRowBatch(w, cityMap, nickMap, numMap, cfgMap))
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// AdminEzfyWildlandBatchDelete POST /admin/ezfy-wildlands/batch-delete  {ids:[...]}
+//
+// ★ 2026-10-05 用户要求「管理端删除做好批量删除、没用的历史数据要做物理删除」。
+//   ⚠️ 全站 ezfy 模型**都没有 gorm.DeletedAt**，所以 `Delete` 本来就是**物理删除**（真 DELETE 行），
+//   不会留软删标记 —— 这里保持一致，批量删除也是物理删。
+func (h *EzfyAdmin) AdminEzfyWildlandBatchDelete(c *gin.Context) {
+	ids := ezfyBatchIDs(c)
+	if len(ids) == 0 {
+		resp.ParamError(c, "请先勾选要删除的记录")
+		return
+	}
+	res := h.DB.Where("id IN ?", ids).Delete(&model.EzfyWildland{})
+	if res.Error != nil {
+		resp.ParamError(c, "批量删除失败："+res.Error.Error())
+		return
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已物理删除 %d 条野地记录（勾选 %d 条）", res.RowsAffected, len(ids)),
+		"deleted": res.RowsAffected})
+}
+
+// ezfyBatchIDs 从请求体里取批量操作的 id 列表（兼容 {ids:[1,2]} 与 {ids:"1,2"} 两种写法）。
+func ezfyBatchIDs(c *gin.Context) []int64 {
+	var in struct {
+		IDs interface{} `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.IDs == nil {
+		return nil
+	}
+	out := []int64{}
+	switch v := in.IDs.(type) {
+	case []interface{}:
+		for _, it := range v {
+			switch n := it.(type) {
+			case float64:
+				if n > 0 {
+					out = append(out, int64(n))
+				}
+			case string:
+				if id, e := strconv.ParseInt(strings.TrimSpace(n), 10, 64); e == nil && id > 0 {
+					out = append(out, id)
+				}
+			}
+		}
+	case string:
+		for _, part := range strings.Split(v, ",") {
+			if id, e := strconv.ParseInt(strings.TrimSpace(part), 10, 64); e == nil && id > 0 {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+// ezfyAdminNamesBatch 批量取「玩家昵称 + 账号名」（原 ezfyAdminName 是每行 2 条 SQL 的 N+1）。
+func (h *EzfyAdmin) ezfyAdminNamesBatch(uids []uint) (map[uint]string, map[uint]string) {
+	nick := map[uint]string{}
+	num := map[uint]string{}
+	if len(uids) == 0 {
+		return nick, num
+	}
+	var ps []model.EzfyProfile
+	h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&ps)
+	for _, p := range ps {
+		nick[p.UserID] = p.Nickname
+	}
+	var us []model.User
+	h.DB.Select("id, username").Where("id IN ?", uids).Find(&us)
+	for _, u := range us {
+		num[u.ID] = u.Username
+	}
+	return nick, num
+}
+
+// ezfyWildCfgMap 一次取全部野地配置，按 "type:level" 建索引（原实现每行查一次）。
+func (h *EzfyAdmin) ezfyWildCfgMap() map[string]model.EzfyCfgWildland {
+	var cfgs []model.EzfyCfgWildland
+	h.DB.Order("id").Find(&cfgs)
+	m := make(map[string]model.EzfyCfgWildland, len(cfgs))
+	for _, c := range cfgs {
+		k := fmt.Sprintf("%d:%d", c.Type, c.Level)
+		if _, ok := m[k]; !ok { // 与原来 Order("id").First 同口径：取 id 最小的那条
+			m[k] = c
+		}
+	}
+	return m
+}
+
+// ezfyWildlandRowBatch 同 ezfyWildlandRow，但城市/玩家名/配置全部由调用方批量传入（零额外 SQL）。
+// 守将名走 ezfyCfg 配置缓存（原 ezfyGeneralName 每行一条 SQL）。
+func (h *EzfyAdmin) ezfyWildlandRowBatch(w model.EzfyWildland,
+	cityMap map[uint]model.EzfyCity, nickMap, numMap map[uint]string,
+	cfgMap map[string]model.EzfyCfgWildland) gin.H {
+	cityName, owner, home := "", "", ""
+	if ct, ok := cityMap[uint(w.CityId)]; ok {
+		cityName = ct.Name
+		owner = nickMap[ct.UserID]
+		home = numMap[ct.UserID]
+	}
+	cfg, hasCfg := cfgMap[fmt.Sprintf("%d:%d", w.WildType, w.Level)]
+	row := gin.H{
+		"id": w.ID, "city_id": w.CityId, "x": w.X, "y": w.Y,
+		"wild_type": w.WildType, "type_name": ezfyWildTypeName(w.WildType),
+		"level": w.Level, "gain": w.Gain, "status": w.Status,
+		"status_name": ezfyWildStatusName(w.Status),
+		"start_time":  w.StartTime, "end_time": w.EndTime,
+		"created_at": w.CreatedAt, "updated_at": w.UpdatedAt,
+		"city_name": cityName, "owner_name": owner, "home_num": home,
+		"terrain": ezfyTerrain(w.X, w.Y),
+		// ★ 2026-10-05：野地记录行 ⇒ 确定有野地，海里那块叫「海底森林」（岛屿仍是「岛屿」）
+		"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),
+		"has_cfg":      hasCfg,
+	}
+	if hasCfg {
+		row["cfg_res_min"] = cfg.ResMin
+		row["cfg_res_max"] = cfg.ResMax
+		row["cfg_officer_min"] = cfg.OfficerMin
+		row["cfg_officer_max"] = cfg.OfficerMax
+		row["cfg_officer_id"] = cfg.OfficerId
+		row["cfg_officer_name"] = h.ezfyGeneralNameCached(cfg.OfficerId)
+		row["cfg_treasure"] = cfg.Treasure
+	}
+	return row
+}
+
+// ezfyGeneralNameCached 同 ezfyGeneralName，但走进程内配置缓存（0 条 SQL）。
+func (h *EzfyAdmin) ezfyGeneralNameCached(id int) string {
+	if id <= 0 {
+		return ""
+	}
+	if g := ezfyCfg.general(id); g != nil {
+		return g.Name
+	}
+	return ""
 }
 
 // ezfyWildlandRow 组装一行野地展示数据（城池/玩家/地形/类型名/状态名 + 该等级配置）

@@ -69,6 +69,10 @@
             </el-select>
             <el-input v-model="tileWord" placeholder="坐标 x,y 或备注" clearable style="width:170px"
                       @keyup.enter.native="tilePage = 1; loadTiles()" />
+            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」：勾选后一次性物理删除 -->
+            <el-button type="danger" plain icon="el-icon-delete" :disabled="!tileSel.length" @click="batchDelTiles">
+              批量删除（已选 {{ tileSel.length }}）
+            </el-button>
           </div>
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
@@ -130,7 +134,9 @@
             </el-form>
           </el-card>
 
-          <el-table :data="tiles" v-loading="loadingTile" stripe border max-height="480">
+          <el-table :data="tiles" v-loading="loadingTile" stripe border max-height="480"
+                    @selection-change="s => tileSel = s">
+            <el-table-column type="selection" width="46" align="center" />
             <el-table-column prop="id" label="ID" width="70" align="center" />
             <el-table-column label="坐标" width="110" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
@@ -185,6 +191,10 @@
             <span class="td-sub">活动野地 = 区别于普通野地、可打活动（守军/奖励可配）；关 = 普通野地</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openAwCreate">新增活动野地</el-button>
+            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」 -->
+            <el-button type="danger" plain icon="el-icon-delete" :disabled="!awSel.length" @click="batchDelAws">
+              批量删除（已选 {{ awSel.length }}）
+            </el-button>
           </div>
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
@@ -194,7 +204,8 @@
             </template>
           </el-alert>
 
-          <el-table :data="actWilds" v-loading="loadingAw" stripe border>
+          <el-table :data="actWilds" v-loading="loadingAw" stripe border @selection-change="s => awSel = s">
+            <el-table-column type="selection" width="46" align="center" />
             <el-table-column prop="id" label="ID" width="60" align="center" />
             <el-table-column label="坐标" width="110" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
@@ -272,8 +283,13 @@
             <el-button type="primary" icon="el-icon-search" @click="wildPage = 1; loadWilds()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openWildCreate">新增野地</el-button>
+            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」 -->
+            <el-button type="danger" plain icon="el-icon-delete" :disabled="!wildSel.length" @click="batchDelWilds">
+              批量删除（已选 {{ wildSel.length }}）
+            </el-button>
           </div>
-          <el-table :data="wilds" v-loading="loadingWild" stripe border>
+          <el-table :data="wilds" v-loading="loadingWild" stripe border @selection-change="s => wildSel = s">
+            <el-table-column type="selection" width="46" align="center" />
             <el-table-column prop="id" label="ID" width="65" align="center" />
             <el-table-column label="坐标" width="100" align="center">
               <template slot-scope="{row}"><span class="td-mono">{{ row.x }},{{ row.y }}</span></template>
@@ -799,6 +815,8 @@ export default {
       areaTypes: { 0: '空地', 1: '野地(已占)', 2: '寇城', 3: '玩家城', 4: '资源田' },
       cities: [], cityTotal: 0, cityPage: 1, citySize: 5, cityWord: '', loadingCity: false,
       wilds: [], wildTotal: 0, wildPage: 1, wildSize: 5, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
+      // ★ 2026-10-05 用户要求「管理端删除做好批量删除」：三个列表各自的勾选集合
+      tileSel: [], wildSel: [], awSel: [],
       wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 5, wcType: -1, wcLevel: 0, loadingWc: false,
       occupies: [], occTotal: 0, occPage: 1, occSize: 5, occStatus: -1, loadingOcc: false,
       areas: [], areaTotal: 0, areaPage: 1, areaSize: 5, areaType: -1, loadingArea: false,
@@ -1021,6 +1039,28 @@ export default {
             this.$message.success(r.data.msg || '已清除')
             this.loadTileCell()
             this.loadTiles()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 2026-10-05 用户要求「管理端删除做好批量删除」：三个列表通用。
+    //   ⚠️ 都是**物理删除**（后端模型没有 gorm.DeletedAt，Delete 即真 DELETE 行）。
+    batchDelTiles () { this.doBatchDel('tiles') },
+    batchDelWilds () { this.doBatchDel('wilds') },
+    batchDelAws () { this.doBatchDel('aws') },
+    doBatchDel (kind) {
+      const map = {
+        tiles: { sel: this.tileSel, url: '/admin/ezfy-map-tiles/batch-delete', name: '格子覆盖', reload: () => this.loadTiles() },
+        wilds: { sel: this.wildSel, url: '/admin/ezfy-wildlands/batch-delete', name: '野地记录', reload: () => this.loadWilds() },
+        aws: { sel: this.awSel, url: '/admin/ezfy-act-wilds/batch-delete', name: '活动野地配置', reload: () => this.loadActWilds() }
+      }[kind]
+      if (!map || !map.sel.length) return
+      this.$confirm('确认**物理删除**勾选的 ' + map.sel.length + ' 条' + map.name + '？删除后不可恢复。',
+        '批量删除', { type: 'warning', confirmButtonText: '确定删除' }).then(() => {
+        api.post(map.url, { ids: map.sel.map(x => x.id) }).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已删除')
+            map.reload()
           } else this.$message.error(r.msg)
         })
       }).catch(() => {})

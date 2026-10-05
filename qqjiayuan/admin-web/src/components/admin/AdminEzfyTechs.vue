@@ -12,9 +12,11 @@
                       @keyup.enter.native="page = 1; load()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
-            <el-button type="warning" icon="el-icon-upload2" @click="maxAll">一键满级所有玩家科技</el-button>
+            <!-- ★ 2026-10-05 用户要求：原「一键满级所有玩家科技」太危险（误触全服科技全满），
+                 改成「一键满级玩家科技」+ 输入游戏ID，只满级指定玩家。 -->
+            <el-button type="warning" icon="el-icon-upload2" @click="maxAll">一键满级玩家科技</el-button>
             <el-button type="success" icon="el-icon-setting" @click="openSet">设置科技等级</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <el-table :data="list" v-loading="loading" stripe border>
             <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -65,7 +67,7 @@
             <el-button type="primary" icon="el-icon-search" @click="cfgPage = 1; loadCfgs()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openCfgCreate">新增科技</el-button>
-            <el-button type="primary" plain icon="el-icon-refresh" @click="loadCfgs">刷新</el-button>
+        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
           </div>
           <el-table :data="cfgs" v-loading="loadingCfg" stripe border>
             <el-table-column prop="id" label="ID" width="55" align="center" />
@@ -476,12 +478,23 @@ export default {
       }).catch(() => {})
     },
     // ---- 玩家科技 ----
-    // 一键把所有玩家所有城市的科技升到满级（后端幂等：先去重再 upsert）
+    // ★ 2026-10-05 用户要求：改成「只满级指定玩家」—— 先输入游戏ID，再确认。
+    //   后端幂等：先去重再 upsert；不传 user_id 后端会直接拒绝。
     maxAll () {
-      this.$confirm('确定把所有玩家的科技**全部升到满级**吗？此操作会覆盖玩家已有的科技等级。',
-        '一键满级', { type: 'warning', confirmButtonText: '确定满级', cancelButtonText: '取消' }).then(() => {
+      this.$prompt('请输入要满级科技的玩家游戏ID（只影响该玩家）', '一键满级玩家科技', {
+        confirmButtonText: '确定满级',
+        cancelButtonText: '取消',
+        inputPattern: /^[1-9]\d*$/,
+        inputErrorMessage: '游戏ID必须是正整数'
+      }).then(({ value }) => {
+        const uid = Number(value)
+        return this.$confirm('确定把玩家 ' + uid + ' 的科技**全部升到满级**吗？此操作会覆盖该玩家已有的科技等级。',
+          '一键满级', { type: 'warning', confirmButtonText: '确定满级', cancelButtonText: '取消' })
+          .then(() => uid)
+      }).then(uid => {
+        if (!uid) return
         this.saving = true
-        api.post('/admin/ezfy-techs/max-all', {}).then(r => {
+        api.post('/admin/ezfy-techs/max-all', { user_id: uid }).then(r => {
           this.saving = false
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已满级')

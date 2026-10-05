@@ -209,6 +209,25 @@ func (h *EzfyAdmin) AdminEzfyActWildDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("坐标 (%d,%d) 的活动野地配置已删除，恢复默认判定", a.X, a.Y)})
 }
 
+// AdminEzfyActWildBatchDelete POST /admin/ezfy-act-wilds/batch-delete  {ids:[...]}
+//
+// ★ 2026-10-05 用户要求「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
+func (h *EzfyAdmin) AdminEzfyActWildBatchDelete(c *gin.Context) {
+	ids := ezfyBatchIDs(c)
+	if len(ids) == 0 {
+		resp.ParamError(c, "请先勾选要删除的记录")
+		return
+	}
+	res := h.DB.Where("id IN ?", ids).Delete(&model.EzfyActWild{})
+	if res.Error != nil {
+		resp.ParamError(c, "批量删除失败："+res.Error.Error())
+		return
+	}
+	h.ezfyReload()
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已物理删除 %d 条活动野地配置（勾选 %d 条）", res.RowsAffected, len(ids)),
+		"deleted": res.RowsAffected})
+}
+
 // AdminEzfyActWildAttacks GET /admin/ezfy-act-wilds/:id/attacks —— 查看该活动野地（坐标）的被攻打记录（分页）
 //
 // ★ 2026-10-01 用户要求：活动野地配置页新增「查看被打记录」，模态框展示。

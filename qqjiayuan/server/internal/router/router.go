@@ -1360,6 +1360,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandUpdate)
 				admin.POST("/ezfy-wildlands/:id/finish", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandFinish)
 				admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandDelete)
+				// ★ 2026-10-05 批量物理删除（用户要求「管理端删除做好批量删除」）
+				admin.POST("/ezfy-wildlands/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandBatchDelete)
 
 				// ---- 野地类型维护（ezfy_cfg_wildland） ----
 				admin.GET("/ezfy-map/options", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOptions)
@@ -1369,11 +1371,13 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildToggle)
 				admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildAttacks)
 				admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildDelete)
+				admin.POST("/ezfy-act-wilds/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildBatchDelete)
 				// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
 				admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTiles)
 				admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileCell)
 				admin.POST("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileSave)
 				admin.DELETE("/ezfy-map-tiles/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileDelete)
+				admin.POST("/ezfy-map-tiles/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileBatchDelete)
 				admin.GET("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgList)
 				admin.POST("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgCreate)
 				admin.PUT("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgUpdate)

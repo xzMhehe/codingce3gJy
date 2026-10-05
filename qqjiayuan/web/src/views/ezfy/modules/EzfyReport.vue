@@ -75,7 +75,8 @@
               <template v-if="o.status === 1 && o.arrive_time">
                 <span class="green">本期已采：{{ ezfy.fmtN(o._lg.food) }}粮/{{ ezfy.fmtN(o._lg.steel) }}钢/{{ ezfy.fmtN(o._lg.oil) }}油/{{ ezfy.fmtN(o._lg.rare) }}稀/{{ ezfy.fmtN(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ ezfy.fmtN(o._lg.total) }}，负重 {{ ezfy.fmtN(o._lg.total) }}/{{ ezfy.fmtN(o.carry_cap) }}）</span>
-                <span v-if="o._lg.full" class="red">负重已满, 超出部分会直接入库(可停止或收获)。</span>
+                <!-- ★ 2026-10-05 用户要求：去掉「负重已满, 超出部分会直接入库(可停止或收获)。」提示
+                     （无用提示，看负重条即可）。规则仍生效：后端采集结算把超出负重部分直接入起点城市。 -->
               </template>
               <span v-else-if="o.status === 1" class="gray">本期已采：暂无(未在采集中)</span>
               <br/>

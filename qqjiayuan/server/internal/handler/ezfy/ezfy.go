@@ -3626,6 +3626,19 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"diamond":       profile.Diamond,
 		"city":          city,
 		"res_prod":      resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
+		// ★★ 2026-10-05 修复「玩家反馈离线资源不涨」的**显示口径**问题：
+		//   产量真正的收敛点是全局「资源最大值」ezfy_cfg_limit.res_max_*（线上 61 亿），
+		//   而 city.xxx_cap 只是**仓储展示值**，按设计「永不参与计算」（见 calcResourceD 注释）。
+		//   前端原来只拿到仓储上限，显示成「42亿/55亿」→ 玩家以为还能涨，
+		//   实际早被 61 亿的全局上限卡住不动 → 报「资源不涨」。
+		//   这里把真上限下发给前端，前端据此显示「已满」。
+		"res_max": gin.H{
+			"gold":  ezfyResMaxOf("gold"),
+			"food":  ezfyResMaxOf("food"),
+			"steel": ezfyResMaxOf("steel"),
+			"oil":   ezfyResMaxOf("oil"),
+			"rare":  ezfyResMaxOf("rare"),
+		},
 		// ★ 2026-09-28 安抚参数(管理端可配)：前端安抚页直接展示，不再硬编码「民怨×100」。
 		//   cd_left = 距离下次可安抚的剩余毫秒(0 = 现在就能安抚)。
 		"placate": gin.H{

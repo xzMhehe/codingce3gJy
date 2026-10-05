@@ -85,6 +85,25 @@ func (h *EzfyAdmin) AdminEzfyMapTiles(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
+// AdminEzfyMapTileBatchDelete POST /admin/ezfy-map-tiles/batch-delete  {ids:[...]}
+//
+// ★ 2026-10-05 用户要求「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
+func (h *EzfyAdmin) AdminEzfyMapTileBatchDelete(c *gin.Context) {
+	ids := ezfyBatchIDs(c)
+	if len(ids) == 0 {
+		resp.ParamError(c, "请先勾选要删除的记录")
+		return
+	}
+	res := h.DB.Where("id IN ?", ids).Delete(&model.EzfyMapTile{})
+	if res.Error != nil {
+		resp.ParamError(c, "批量删除失败："+res.Error.Error())
+		return
+	}
+	h.ezfyReload() // 地形覆盖变了 → 刷新配置缓存（含沿海平原索引重建）
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已物理删除 %d 条格子覆盖（勾选 %d 条）", res.RowsAffected, len(ids)),
+		"deleted": res.RowsAffected})
+}
+
 // AdminEzfyMapTileCell GET /admin/ezfy-map-tile?x=&y= —— 查某格（含哈希结果与覆盖结果）
 //
 // 供管理端「按坐标设置」用：先看这格现在是什么（哈希/覆盖），再决定怎么改。
