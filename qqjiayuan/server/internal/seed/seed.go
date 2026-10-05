@@ -117,7 +117,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
-		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 用户要求）
+		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 ）
 		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
 		// ★ 2026-09-30 入团申请（军团开启审核后玩家申请入团）
 		&model.EzfyCorpsApply{},
@@ -189,7 +189,7 @@ func Run(db *gorm.DB, staticDir string) {
 	}
 
 	// 二战风云：出征集结令单次上限（默认 99）—— 存量表补列 + 老行回填
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」（2026-09-26 按线上现值对齐）。
+	// ★ 「出征集结令上限后台管理系统可维护，最大默认 99」（2026-09-26 按线上现值对齐）。
 	//   老行该列是 NULL/0 时统一回填 99（0 无意义 = 等于禁用集结令道具）。
 	if db.Migrator().HasTable("ezfy_cfg_limit") {
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "gather_max_per_order") {
@@ -222,23 +222,23 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("placate_grievance", 2)
 		addLimitCol("placate_feelings", 1)
 		addLimitCol("placate_cooldown_min", 15)
-		// ★ 2026-09-26 用户要求「军官工资现值改成 20」：默认 100 → 20
+		// ★ 2026-09-26 「军官工资现值改成 20」：默认 100 → 20
 		//   ⚠️ addLimitCol 只在「列不存在 / 值为 NULL 或 <= 0」时回填，
 		//   已有数据的库（线上 100、测试库 2000）**不会**被这行改掉，要单独跑一次 SQL。
 		addLimitCol("officer_salary_per_level", 20)
 		addLimitCol("wound_heal_divisor", 50)
-		// ★ 商城单次购买上限（用户要求「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
+		// ★ 商城单次购买上限（「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
 		addLimitCol("mall_buy_max", 99)
-		// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
+		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
 		addLimitCol("convene_food_cost", 100000)
 		addLimitCol("convene_pop_gain", 100000)
-		// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+		// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
 		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。
 		addLimitCol("convene_pop_max", 0)
 	}
 
-	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（用户要求管理端可配）
+	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（管理端可配）
 	//
 	// ★ 开关的列**不能**用上面的 addLimitCol —— 那个带 `WHERE col <= 0` 回填，
 	//   会在每次服务启动时把管理员关掉的开关（0）重新改成 1（开）。这里只回填 NULL。
@@ -256,7 +256,7 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("march_oil_on", 1)    // 出征油耗：1 开（默认）/ 0 关
 		addSwitchCol("war_require_on", 1)  // 宣战功能：1 开（默认，掠夺/征服需先宣战生效）/ 0 关（直接可打）
 		addSwitchCol("march_cap_on", 1)    // 出征兵力上限：1 开（默认，司令部等级那套）/ 0 关（不限兵力）
-		// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
+		// ★ 2026-09-26 「召集人口那里加两个开关」
 		addSwitchCol("house_pop_limit_on", 1)  // 民居容量限制：1 开（默认，民居容量决定人口上限）/ 0 关（不限人口）
 		addSwitchCol("convene_flexible_on", 1) // 召集人口灵活配置：1 开（默认，可突破民居上限）/ 0 关（受上限约束）
 		// ★ 军官升星（2026-09-22）：三个开关 + 四个数值
@@ -278,7 +278,7 @@ func Run(db *gorm.DB, staticDir string) {
 		// ★ 用户规则「军官最多 5 星」
 		addNumCol("officer_star_max", 5)
 
-		// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+		// ★ 2026-09-30 「使用招生简章出五星军官的概率」：
 		//   招生简章刷新时按此概率出 5 星（默认 1 = 1%，100 = 必出）。
 		addNumCol("recruit_five_star_rate", 1)
 
@@ -378,7 +378,7 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET power_compress_pow = 0.5 WHERE power_compress_pow IS NULL OR power_compress_pow <= 0")
 
-		// ★ 2026-09-27 用户要求「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
+		// ★ 2026-09-27 「资源产量也做成累加」：每项资源唯一硬上限，默认 21 亿。
 		//   存 bigint（兼容更高值）；0 / NULL 无意义 → 回填默认 21 亿（已配的正值不覆盖）。
 		if db.Migrator().HasTable("ezfy_cfg_limit") {
 			for _, col := range []string{"res_max_food", "res_max_steel", "res_max_oil",
@@ -421,21 +421,21 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wound_expire_days = 3 WHERE wound_expire_days IS NULL OR wound_expire_days <= 0")
 
-		// ★ 采集结算周期小时数（2026-09-24 用户要求：12 小时 → 可配置；2026-09-26 按线上现值 1）。
+		// ★ 采集结算周期小时数（2026-09-24 12 小时 → 可配置；2026-09-26 按线上现值 1）。
 		//   0 无意义 → 回落默认 1。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "dispatch_period_h") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN dispatch_period_h int DEFAULT 1")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET dispatch_period_h = 1 WHERE dispatch_period_h IS NULL OR dispatch_period_h <= 0")
 
-		// ★ 出征速度加成（2026-09-24 用户要求「节假日让玩家队伍走快点」）。
+		// ★ 出征速度加成（2026-09-24 「节假日让玩家队伍走快点」）。
 		//   百分比口径，2026-09-26 按线上现值默认 100（0 是有意义的值，不做 <= 0 回填）。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "march_speed_bonus") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN march_speed_bonus double DEFAULT 100")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET march_speed_bonus = 100 WHERE march_speed_bonus IS NULL")
 
-		// ★ 向系统出售资源回收比例（2026-09-30 用户要求）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
+		// ★ 向系统出售资源回收比例（2026-09-30 ）：每100单位 → N 黄金，默认粮10/钢10/油20/稀25。
 		//   0 无意义 → 回落各自默认；管理端可在「交易行维护」调整。
 		addSysSellCol := func(col, def string) {
 			if !db.Migrator().HasColumn("ezfy_cfg_limit", col) {
@@ -517,7 +517,7 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 	}
 
-	// 二战风云·军团积分（★ 2026-09-25 用户要求「军团积分 + 军团商城」）
+	// 二战风云·军团积分（★ 2026-09-25 「军团积分 + 军团商城」）
 	//   ezfy_corps.points / ezfy_corps_member.points 是 AutoMigrate 新加的列，
 	//   在**老行上是 NULL** —— Go 侧 int64 扫 NULL 会报
 	//   "converting NULL to int64 is unsupported"（军团列表/成员列表直接扫这两张表）。
@@ -1804,14 +1804,14 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战征途", "风云城市", "ezfyCities"), mod("游戏-二战征途", "风云建筑", "ezfyBuildings"),
 		mod("游戏-二战征途", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战征途", "风云兵种", "ezfyTroops"),
 		mod("游戏-二战征途", "风云征兵", "ezfyRecruit"), mod("游戏-二战征途", "风云军官", "ezfyOfficers"), mod("游戏-二战征途", "风云军衔", "ezfyRankCfg"),
-		// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」，可单独分配给角色
+		// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」，可单独分配给角色
 		mod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
 		mod("游戏-二战征途", "风云资源", "ezfyResources"), mod("游戏-二战征途", "风云科技", "ezfyTechs"),
 		// 资源交易行维护（系统挂单定价黄金/钻石）
 		mod("游戏-二战征途", "风云交易行", "ezfyExchange"),
 		mod("游戏-二战征途", "风云地图", "ezfyMap"), mod("游戏-二战征途", "风云军团", "ezfyCorps"),
 		mod("游戏-二战征途", "风云私聊", "ezfyPrivchat"),
-		// 第九轮新增：系统配置（原「建筑上限配置」，用户要求改名）/ 聊天敏感词（二战自己的独立维护页）
+		// 第九轮新增：系统配置（原「建筑上限配置」，改名）/ 聊天敏感词（二战自己的独立维护页）
 		mod("游戏-二战征途", "风云系统配置", "ezfyBuildLimit"),
 		mod("游戏-二战征途", "风云敏感词", "ezfyWords"),
 		// 宣战管理（列表 + 一键生效/一键完成）
@@ -1824,7 +1824,7 @@ func seedRBAC(db *gorm.DB) {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
 	}
 	// ★ 权限名改过的，要把老行也刷一遍：上面是 FirstOrCreate（命中就不更新），
-	//   否则老库里这条权限永远显示旧名字（用户要求「建筑上限配置」改名「系统配置」）。
+	//   否则老库里这条权限永远显示旧名字（「建筑上限配置」改名「系统配置」）。
 	db.Model(&model.Permission{}).Where("code = ?", "module:ezfyBuildLimit").
 		Update("name", "风云系统配置")
 	// 清理旧粗粒度权限及其角色关联（全部改为 module:* 模块权限）

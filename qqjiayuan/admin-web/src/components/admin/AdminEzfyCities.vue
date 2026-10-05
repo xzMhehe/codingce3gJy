@@ -26,13 +26,13 @@
             <span class="td-muted">（{{ row.home_num || '—' }}）</span>
           </template>
         </el-table-column>
-        <!-- ★ 用户要求：新增「所在州」，去掉「阵营」列 -->
+        <!-- ★ 新增「所在州」，去掉「阵营」列 -->
         <el-table-column label="所在州" min-width="110" align="center" show-overflow-tooltip>
           <template slot-scope="{row}"><span class="td-sub">{{ row.continent || '—' }}</span></template>
         </el-table-column>
         <el-table-column prop="city_level" label="市政厅" width="70" align="center" />
         <el-table-column prop="pop" label="人口" width="135" align="center" />
-        <!-- ★ 用户要求：资源、建筑/部队 不在列表里罗列，改为点击弹模态框查看 -->
+        <!-- ★ 资源、建筑/部队 不在列表里罗列，改为点击弹模态框查看 -->
         <el-table-column label="资源" width="85" align="center">
           <template slot-scope="{row}">
             <el-button size="mini" type="text" @click="openRes(row)">[查看]</el-button>

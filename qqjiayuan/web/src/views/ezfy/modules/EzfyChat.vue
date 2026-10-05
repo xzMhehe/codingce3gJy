@@ -23,7 +23,7 @@
             <a href="javascript:;" @click="ezfy.loadChats">[刷新]</a>
           </div>
 
-          <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 用户要求去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->
+          <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->
           <template v-if="ezfy.chatChannel === 4">
             <div class="panel-title">系统消息</div>
             <div class="old-line" v-for="ch in ezfy.worldChats" :key="'cs' + ch.id">
@@ -113,7 +113,7 @@
           </div>
           <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
           <div class="old-line">
-            <!-- ★ 改成可自适应高度的文本域（用户要求）：随内容长高，最多 8 行后内部滚动 -->
+            <!-- ★ 改成可自适应高度的文本域（）：随内容长高，最多 8 行后内部滚动 -->
             <textarea v-model="ezfy.pmContent" class="ezfy-auto-textarea" placeholder="最多500字"
                       maxlength="500" rows="2"></textarea>
           </div>

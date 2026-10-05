@@ -1,12 +1,12 @@
 <template>
   <div class="farm-admin">
     <el-card shadow="never" class="box">
-      <!-- ★ 数据表切换：下拉框改为 Tab（用户要求，切换更直观） -->
+      <!-- ★ 数据表切换：下拉框改为 Tab（，切换更直观） -->
       <el-tabs v-model="table" class="cfg-tabs" @tab-click="onTabChange">
         <el-tab-pane v-for="t in tables" :key="t.k" :label="t.n" :name="t.k" />
       </el-tabs>
       <div class="toolbar">
-        <!-- ★ 2026-09-27 用户要求：装备道具配置默认只展示「用户商城在售」的装备，可切换查看全部 -->
+        <!-- ★ 2026-09-27 装备道具配置默认只展示「用户商城在售」的装备，可切换查看全部 -->
         <el-switch v-if="table === 'equipments'" v-model="mallOnly" active-text="仅看商城上架"
                    @change="page = 1; load()" />
         <el-tooltip v-if="table === 'equipments'" placement="top">
@@ -24,7 +24,7 @@
         <div class="grow" />
         <!-- ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，隐藏「新增」按钮 -->
         <el-button v-if="!isReadOnly" type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
-        <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 用户要求从玩家信息管理移到这里 -->
+        <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 从玩家信息管理移到这里 -->
         <el-button v-if="table === 'items'" type="warning" plain icon="el-icon-present" @click="openItemGrant">发放道具</el-button>
       </div>
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
@@ -87,7 +87,7 @@
         </div>
       </el-dialog>
 
-      <!-- ★ 发放道具：目标玩家按昵称/游戏ID搜索选择，道具入背包，2026-09-26 用户要求从玩家信息管理移来 -->
+      <!-- ★ 发放道具：目标玩家按昵称/游戏ID搜索选择，道具入背包，2026-09-26 从玩家信息管理移来 -->
       <el-dialog title="发放道具" :visible.sync="grantDlg" width="580px" :close-on-click-modal="false">
         <el-form label-width="90px" size="small">
           <el-form-item label="发放对象">
@@ -335,7 +335,7 @@ const COLS = {
     { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'icon', n: '图标', w: 66 },
     { k: 'description', n: '描述' }
   ],
-  // ★ 2026-09-27 用户要求：商城「装备」的价格定义迁到这里维护（「装备道具配置」）。
+  // ★ 2026-09-27 商城「装备」的价格定义迁到这里维护（「装备道具配置」）。
   //   这里只改价格/库存/身份字段，**不包含**军事/后勤/学识/战斗属性 ——
   //   属性由「军官装备管理 → 散件装备 / 套装管理」单独维护，避免同一字段两处能改。
   // ★ 2026-09-29 装备名用 min-width 弹性铺满：本表列全是固定宽，大屏下表格右侧（库存列和
@@ -348,7 +348,7 @@ const COLS = {
     { k: 'price_gold', n: '黄金价', w: 90 }, { k: 'price_diamond', n: '钻石价', w: 90 },
     { k: 'stock', n: '库存', w: 76, fmt: 'stock' }
   ],
-  // ★ 2026-09-27 用户要求：商城「宝箱」的价格定义 + 上架/库存 + 奖池迁到这里维护（「套装装备配置」）。
+  // ★ 2026-09-27 商城「宝箱」的价格定义 + 上架/库存 + 奖池迁到这里维护（「套装装备配置」）。
   //   宝箱是套装装备的唯一产出渠道，奖池在行内「奖池」按钮的弹窗里维护。
   chests: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '宝箱名', w: 140 },
@@ -493,7 +493,7 @@ const FORMS = {
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
-    // ★ 用户要求：道具可配「钻石道具 / 黄金道具」；钻石道具只能钻石买，黄金道具只能黄金买。
+    // ★ 道具可配「钻石道具 / 黄金道具」；钻石道具只能钻石买，黄金道具只能黄金买。
     //   用户端商城会按这两个分类分开展示（也可选别的分类名，或直接输入自定义分类）。
     { k: 'category', n: '分类 / 货币类型', t: 'input', max: 30, filterable: true, allowCreate: true, opts: [
       { v: '钻石道具', n: '钻石道具（只能用钻石买）' },
@@ -575,7 +575,7 @@ export default {
       //   已在各自模块里维护，放这里会和那些模块重复（同一个字段两处能改）。
       tables: [
         { k: 'items', n: '道具配置' },
-        // ★ 2026-09-27 用户要求：商城「装备 | 宝箱」的价格定义迁到这里
+        // ★ 2026-09-27 商城「装备 | 宝箱」的价格定义迁到这里
         { k: 'equipments', n: '装备道具配置' },
         { k: 'chests', n: '宝箱配置' },
         { k: 'activities', n: '节日活动' },
@@ -596,7 +596,7 @@ export default {
         { k: 'cities', n: '玩家城池', to: '城市管理' }
       ],
       table: 'items', word: '',
-      // ★ 2026-09-27 用户要求：装备道具配置默认只展示用户商城上架的装备
+      // ★ 2026-09-27 装备道具配置默认只展示用户商城上架的装备
       mallOnly: true,
       rows: [], total: 0, page: 1, size: 5, loading: false,
       showForm: false, saving: false,
@@ -743,7 +743,7 @@ export default {
         })
       }).catch(() => {})
     },
-    // ============ 道具配置 → 发放道具（2026-09-26 用户要求从玩家信息管理移到这里） ============
+    // ============ 道具配置 → 发放道具（2026-09-26 从玩家信息管理移到这里） ============
     openItemGrant () {
       this.grantDlg = true
       this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0

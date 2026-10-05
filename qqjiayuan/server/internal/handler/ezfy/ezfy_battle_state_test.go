@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-// 指挥功能（2026-09-22 用户要求）：
+// 指挥功能（2026-09-22 ）：
 // 每回合 30 秒，前 25 秒可下达前进/暂停/后退，后 5 秒锁定结算，最多 40 回合。
 // 下面这组测试盯的是**引擎侧**的语义 —— 能一回合一次地推进、指令真的生效、快照能往返。
 
 // ezfyCmd1 把「全军指令」包成逐兵种指令表（测试里的单位 troopId 都是 1）
 //
-// ★ 指挥是**逐兵种**的（2026-09-22 用户要求：「自己带的兵种都能指挥，就是单独指挥」），
+// ★ 指挥是**逐兵种**的（2026-09-22 「自己带的兵种都能指挥，就是单独指挥」），
 // 测试里只有一个兵种，包一层省得每处都写字面量。
 func ezfyCmd1(cmd string) map[int]string {
 	if cmd == "" {
@@ -134,7 +134,7 @@ func TestBattleFinishWhenOneSideWiped(t *testing.T) {
 	}
 }
 
-// TestBattlePerTroopCommand —— 用户要求：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
+// TestBattlePerTroopCommand —— 「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 //
 // 同一次 Step 里，两个兵种各按自己的指令行动。
 func TestBattlePerTroopCommand(t *testing.T) {

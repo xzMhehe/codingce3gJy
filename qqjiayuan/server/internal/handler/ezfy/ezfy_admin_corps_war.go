@@ -12,7 +12,7 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
-// 二战风云 管理端 —— 军团宣战 / 军团商城维护（★ 2026-09-25 用户要求）
+// 二战风云 管理端 —— 军团宣战 / 军团商城维护（★ 2026-09-25 ）
 //
 // 与「宣战管理（ezfy_admin_war.go）」并列：
 //
@@ -278,7 +278,7 @@ func (h *EzfyAdmin) AdminEzfyCorpsWarFinishAll(c *gin.Context) {
 
 // AdminEzfyCorpsWarEffect POST /admin/ezfy-corps-wars/:id/effect
 //
-// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 与个人宣战同款：
+// ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」→ 与个人宣战同款：
 // 把「待生效」立即变成「交战中」，跳过剩余等待时间（到期时间若已过则按 48 小时整场续上，
 // 避免「刚点生效就立刻过期」）。
 func (h *EzfyAdmin) AdminEzfyCorpsWarEffect(c *gin.Context) {
@@ -325,7 +325,7 @@ func (h *EzfyAdmin) AdminEzfyCorpsWarEffect(c *gin.Context) {
 
 // AdminEzfyCorpsWarEffectAll POST /admin/ezfy-corps-wars/effect-all
 //
-// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 把所有「待生效」的军团宣战
+// ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」→ 把所有「待生效」的军团宣战
 // 一次推进到「交战中」（个人宣战 effect-all 的同口径实现）。
 func (h *EzfyAdmin) AdminEzfyCorpsWarEffectAll(c *gin.Context) {
 	now := time.Now().UnixMilli()

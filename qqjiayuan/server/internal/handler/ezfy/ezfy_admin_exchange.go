@@ -13,7 +13,7 @@ import (
 
 // 二战风云管理端 —— 资源交易行维护
 //
-// 用户要求：「资源交易行 管理要有对应的维护页面，也能后端新增卖，只不过卖方是系统，
+// 「资源交易行 管理要有对应的维护页面，也能后端新增卖，只不过卖方是系统，
 // 定价黄金/钻石，玩家卖只能按黄金买卖」。
 //
 // 所以这里的接口只做三件事：
@@ -106,7 +106,7 @@ func ezfyExchangeStatusName(s int) string {
 
 // AdminEzfyExchangeCreate POST /admin/ezfy-exchange
 // 新增**系统挂单**：卖方固定为系统，货币可选 1 黄金 / 2 钻石。
-// ★ 2026-09-24 用户要求：数量(es_count)是「资源数量」，选完模板后仍可二次修改；
+// ★ 2026-09-24 数量(es_count)是「资源数量」，选完模板后仍可二次修改；
 //
 //	新增 repeat(挂单数量) 支持一次上架多单，不用一单一单调。
 func (h *EzfyAdmin) AdminEzfyExchangeCreate(c *gin.Context) {
@@ -161,7 +161,7 @@ func (h *EzfyAdmin) AdminEzfyExchangeCreate(c *gin.Context) {
 		repeat, ezfyResNames[in.EsType], in.EsCount, in.TotalPrice, ezfyMoneyName(in.Currency))})
 }
 
-// ============ 挂单模板维护（2026-09-24 用户要求） ============
+// ============ 挂单模板维护（2026-09-24 ） ============
 
 // AdminEzfyExchangeTplList GET /admin/ezfy-exchange-tpls
 func (h *EzfyAdmin) AdminEzfyExchangeTplList(c *gin.Context) {

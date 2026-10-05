@@ -16,14 +16,15 @@
           <button @click="ezfy.doPlayerRename">确定</button>
           <a href="javascript:;" @click="ezfy.renameEditing = false">[取消]</a>
         </template>
-        <!-- ★ 2026-10-05 用户要求「没用的页面提示去掉」：改名/阵营提示不再展示（文案保留在代码里） -->
+        <br/>
+        <!-- ★ 2026-10-05 「没用的页面提示去掉」：改名/阵营提示不再展示（文案保留在代码里） -->
         阵营：{{ ezfy.selfInfo.camp_name || (ezfy.profile.camp === 2 ? '轴心国' : '同盟国') }}
         <a href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
         <a href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a>
         声望：{{ ezfy.profile.prestige }}<br/>
         军衔：{{ ezfy.rankName }}({{ ezfy.rankPost }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.myRankId)"></span></span><br/>
         军团：{{ (ezfy.myCorps && ezfy.myCorps.name) || '无' }}<br/>
-        <!-- ★ 2026-09-27 用户要求：统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
+        <!-- ★ 2026-09-27 统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
         <template v-if="ezfy.myCorpsTitle">职务：{{ ezfy.myCorpsTitle }}<br/></template>
         城市数：{{ ezfy.cities.length }}<br/>
         人口数：{{ ezfy.city.pop }}<br/>
@@ -51,7 +52,7 @@
           声望：{{ ezfy.playerInfo.prestige }}<br/>
           军衔：{{ ezfy.playerInfo.rank_name }}({{ ezfy.playerInfo.rank_post }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.rankIdByName(ezfy.playerInfo.rank_name))"></span></span><br/>
           军团：{{ ezfy.playerInfo.corps_name || '无' }}<br/>
-          <!-- ★ 2026-09-29 用户要求：他人统帅页展示军团职务（与我的统帅页一致），职务在军团下一行 -->
+          <!-- ★ 2026-09-29 他人统帅页展示军团职务（与我的统帅页一致），职务在军团下一行 -->
           <template v-if="ezfy.playerInfo.corps_title">职务：{{ ezfy.playerInfo.corps_title }}<br/></template>
           城市数：{{ ezfy.playerInfo.city_count }}<br/>
           军官数：{{ ezfy.playerInfo.officer_count }}<br/>
@@ -109,7 +110,7 @@
         </div>
         <div class="old-line">
           {{ ezfy.resNames.gold }}:{{ ezfy.fmtN(ezfy.officerData.gold) }}
-          <!-- ★ 用户要求「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
+          <!-- ★ 「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
           <span class="gray" v-if="ezfy.officerData.salary">
             （军官工资 {{ ezfy.fmtN(ezfy.officerData.salary) }} {{ ezfy.resNames.gold }}/小时，每级 {{ ezfy.officerData.salary_per_level }} 金/小时）
           </span>
@@ -185,7 +186,7 @@
       <!-- 任命市长: 复刻 acade/setMayor.html -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'mayor'">
         <table class="ezfy-plain-table">
-          <!-- ★ 2026-10-05 用户要求：去掉等级/忠诚列，新增 后/军/学 属性列 -->
+          <!-- ★ 2026-10-05 去掉等级/忠诚列，新增 后/军/学 属性列 -->
           <tr><th>名称</th><th>后/军/学</th><th>当前职位</th><th>操作</th></tr>
           <tr v-for="o in ezfy.myOfficers" :key="'my' + o.id">
             <td>{{ o.name }}</td>
@@ -296,7 +297,7 @@
         </div>
 
         <!-- 套装一览：默认只列**我拥有的**（原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的），
-             可以切到「全部套装」横向对比 —— ★ 2026-09-25 用户要求「方便玩家知晓、对比套装」。 -->
+             可以切到「全部套装」横向对比 —— ★ 2026-09-25 「方便玩家知晓、对比套装」。 -->
         <div v-if="ezfy.equipTab === 'set'">
         <div class="old-line set-tab">
           <a href="javascript:;" :class="{ on: !ezfy.setShowAll }" @click="ezfy.setShowAll = false">[只看我有的]</a>
@@ -485,7 +486,7 @@
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
         <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名)</div>
         <table class="ezfy-plain-table">
-          <!-- ★ 2026-10-05 用户要求：去掉等级/星级列 -->
+          <!-- ★ 2026-10-05 去掉等级/星级列 -->
           <tr><th>名称</th><th>军/后/学</th><th>状态</th></tr>
           <tr v-for="g in ezfy.generalData.generals" :key="'gg' + g.id">
             <td>{{ g.name }}</td>

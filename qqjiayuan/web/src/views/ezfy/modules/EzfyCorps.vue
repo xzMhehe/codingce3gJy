@@ -1,7 +1,7 @@
 <template>
   <div>
     <template v-if="ezfy.cur === 'corps'">
-        <!-- ★ 2026-09-25 用户要求：军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
+        <!-- ★ 2026-09-25 军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
         <div class="panel">
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.corpsTab === 'info' }" @click="ezfy.switchCorpsTab('info')">军团信息</a>|
@@ -19,7 +19,7 @@
           <div class="panel">
             <div class="panel-title">我的军团:{{ ezfy.myCorps.name }}({{ ezfy.myCorps.member_count }}人)</div>
             公告: {{ ezfy.myCorps.notice || '无' }}<br/>
-            <!-- ★ 2026-09-25 用户要求：显示军团总积分（来自 /corps/members 的 corps_points） -->
+            <!-- ★ 2026-09-25 显示军团总积分（来自 /corps/members 的 corps_points） -->
             <div class="old-line">军团总积分: <b>{{ ezfy.corpsPoints }}</b></div>
             <div class="old-line">
               <template v-if="ezfy.isLeader">
@@ -32,7 +32,7 @@
             <table class="ezfy-corps-tbl ezfy-mem-tbl">
               <tr>
                 <th>成员</th><th>职位</th><th>军衔</th>
-                <!-- ★ 2026-09-25 用户要求：成员表格新增「军团积分」列（m.points，个人军团积分） -->
+                <!-- ★ 2026-09-25 成员表格新增「军团积分」列（m.points，个人军团积分） -->
                 <th>军团积分</th>
                 <!-- ★ 第九轮：军团长可任命副团长/参谋长 -->
                 <th v-if="ezfy.isLeader" width="150">任命</th>

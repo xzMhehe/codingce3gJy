@@ -4,8 +4,8 @@
         <div class="panel">
           <div class="panel-title">【科技中心】:{{ ezfy.techsData.academy }}级</div>
           <div class="old-line" v-for="t in ezfy.techsData.techs" :key="'te' + t.tech_id">
-            <!-- ★ 2026-09-28 用户要求：科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
-            <!-- ★ 2026-09-28 用户要求版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
+            <!-- ★ 2026-09-28 科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
+            <!-- ★ 2026-09-28 版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
                  原来 [研究N级] 被挤在效果下面第三行，扫一眼看不出「这条能不能升」。 -->
             <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
             <span v-if="t.researching" class="orange">研究中 {{ ezfy.remain(t.end_time, ezfy.gatherNow) }}

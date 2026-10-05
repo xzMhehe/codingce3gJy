@@ -11,7 +11,7 @@ import (
 // 二战风云 多回合战斗引擎（忠实移植 BattleEngine.java）
 // 规则: 回合制, 每回合按速度从高到低行动; 双方相向移动, 进入射程后开火; 一方全灭或回合耗尽结束
 //
-// ★ 2026-09-22 用户要求「实现指挥功能」（入口：军情 → 军队动态 → [指挥]）：
+// ★ 2026-09-22 「实现指挥功能」（入口：军情 → 军队动态 → [指挥]）：
 // 引擎从「一次跑完所有回合」拆成**可逐回合推进的状态机**（ezfyBattleState.Step），
 // 这样才能支持「每回合 30 秒、前 25 秒下指令、后 5 秒锁定并由服务器结算」的实时指挥。
 // ezfySimulate 保留为兼容包装（内部循环 Step），现有调用点零改动。
@@ -20,7 +20,7 @@ const (
 	// 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
 	ezfyBattleMaxRounds = 40
 	ezfyBattleStartDist = 6000 // 战场初始距离（攻方 0，守方 6000，相距 6000）
-	// ★ 2026-09-23 用户要求：双方后退不能无限制，最多各退 10000。
+	// ★ 2026-09-23 双方后退不能无限制，最多各退 10000。
 	//   战场坐标空间约「10000 / 6000 / 10000」：
 	//   攻方起点 0 只能退到 -10000；守方起点 6000 只能退到 16000。超过夹回。
 	ezfyBattleRetreatMax = 10000
@@ -121,7 +121,7 @@ type ezfyBattleState struct {
 	AtkCounter bool // 攻方带队军官有「绝地反击」
 	DefCounter bool // 守方城守军官有「绝地反击」
 
-	// ★ 2026-09-23 用户要求：指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
+	// ★ 2026-09-23 指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
 	// 攻方=出征方阵营；守方只有玩家城才有值，野地/AI/寇城为 0（通用名）。
 	AtkCamp int
 	DefCamp int
@@ -129,7 +129,7 @@ type ezfyBattleState struct {
 	Round       int  // 已结算回合数
 	Done        bool // 是否已分胜负 / 回合耗尽
 	AttackerWin bool
-	Draw        bool // ★ 2026-09-24 用户要求：打到 40 回合未分胜负 = 平局（守方仍算守住）
+	Draw        bool // ★ 2026-09-24 打到 40 回合未分胜负 = 平局（守方仍算守住）
 
 	// ★ 2026-10-02 盟军驻军战「溃败撤退」：守方剩余兵力跌破 DefBreak% 时判定战败，
 	//   战斗提前结束、守方剩余兵力返航回城（而不是死战到最后一兵）。
@@ -249,11 +249,11 @@ func ezfyMoveDir(unit *ezfyFightUnit, moveMap map[int]int, cmd string) int {
 // Step 结算**一个回合**。返回 true 表示战斗已结束。
 //
 // atkCmds: 攻方**逐兵种**的指令（troopId → advance|hold|retreat）。
-// defCmds: 守方**逐兵种**的指令（2026-09-23 用户要求「敌人打自己，自己也能指挥」——
+// defCmds: 守方**逐兵种**的指令（2026-09-23 「敌人打自己，自己也能指挥」——
 //
 //	玩家守城时与攻方一样逐兵种指挥，AI/野地不下指令时传 nil）。
 //
-// ★ 用户要求（2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
+// ★ （2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 // —— 所以指令是按兵种存的，没给的兵种回落到司令部兵种配置。
 func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	if st.Done {
@@ -261,13 +261,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	}
 	st.Round++
 
-	// ★ 2026-09-23 用户要求：日志里的兵种名按攻守双方**各自的阵营**显示（玩家城守方用守方阵营，野地/AI 为通用名）
-	stName := func(u *ezfyFightUnit, isAtk bool) string {
-		camp := st.DefCamp
-		if isAtk {
-			camp = st.AtkCamp
-		}
-		if n := ezfyCfg.troopName(u.cfg.ID, camp); n != "" {
+	// ★ 2026-10-05 用户要求：战报里的兵种名**统一展示基础兵种名**（不带阵营前缀）。
+	//   本函数生成的日志就是战报「战斗过程」正文，故不再按攻守阵营取名。
+	stName := func(u *ezfyFightUnit) string {
+		if n := ezfyCfg.troopName(u.cfg.ID, 0); n != "" {
 			return n
 		}
 		return u.cfg.Name
@@ -365,7 +362,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			} else {
 				unit.pos -= move
 			}
-			// ★ 2026-09-23 用户要求：后退最多 10000，不能无限制后退。
+			// ★ 2026-09-23 后退最多 10000，不能无限制后退。
 			//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
 			if isAtk {
 				if unit.pos < -ezfyBattleRetreatMax {
@@ -382,13 +379,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				verb = "后撤"
 			}
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
-				side, stName(unit, isAtk), verb, ezfyAbs(move), enemySide, stName(target, !isAtk), dist))
+				side, stName(unit), verb, ezfyAbs(move), enemySide, stName(target), dist))
 		} else if dist > rangeD {
 			// ★ 2026-09-29 用户反馈「选了攻击目标但对方火箭不在射程内，就啥也没操作，玩家不知道咋回事」：
 			//   本回合单位既没移动（指令 hold / 已到射程边界停住）也没开火 → 完全静默。
 			//   追加一条行动日志说明「够不到目标、无法攻击」，让玩家明白不是 bug。
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 距目标%s%s%d，超出射程%d，无法攻击",
-				side, stName(unit, isAtk), enemySide, stName(target, !isAtk), dist, rangeD))
+				side, stName(unit), enemySide, stName(target), dist, rangeD))
 		}
 		// ★ 2026-10-04 优先目标被挡在射程外、但最近敌人在射程内 → 改打最近的（避免干站）。
 		//   配合上方「前进不越过最近敌人」的修复：停在最近敌人射程边缘后能立刻开火。
@@ -454,7 +451,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			// ★ 伤害按「剩余伤害」逐目标结算：先把本次全部伤害打在首选目标上；
 			//   若全歼且伤害还有溢出 → 触发【势不可挡】，溢出伤害继续打下一个存活目标，
 			//   若仍未全歼且还有溢出则继续级联，直到伤害耗尽或对方全灭。
-			//   ★ 2026-09-23 用户要求：溢出打新目标时要**按新目标重新算伤害** ——
+			//   ★ 2026-09-23 溢出打新目标时要**按新目标重新算伤害** ——
 			//   兵种类型不同要重选攻击属性(对海/对陆/对空)，防御不同要重算减免，
 			//   「B 比 A 防御高，对 B 的伤害要按 B 的防御重新折算」，以此类推。
 			//   实现：剩余伤害按「对原目标满额伤害 / 对新目标满额伤害」等比折算。
@@ -532,10 +529,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				cur.count -= killed
 				if first {
 					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
-						side, stName(unit, isAtk), critTxt, enemySide, stName(cur, !isAtk), killed))
+						side, stName(unit), critTxt, enemySide, stName(cur), killed))
 				} else {
 					st.Actions = append(st.Actions, fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 消灭%d个",
-						side, stName(unit, isAtk), enemySide, stName(cur, !isAtk), killed))
+						side, stName(unit), enemySide, stName(cur), killed))
 				}
 				remaining = overflow
 				first = false
@@ -564,7 +561,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				unit.count -= kCnt
 				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【反击】还击%s%s, 消灭%d个",
-					enemySide, stName(target, !isAtk), side, stName(unit, isAtk), kCnt))
+					enemySide, stName(target), side, stName(unit), kCnt))
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {
@@ -591,7 +588,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				st.Done, st.AttackerWin = true, true
 			}
 		} else if st.Round >= ezfyBattleMaxRounds {
-			// ★ 2026-09-24 用户要求：40 回合未分胜负按**平局**描述（守方视为守住，攻方无胜果）
+			// ★ 2026-09-24 40 回合未分胜负按**平局**描述（守方视为守住，攻方无胜果）
 			st.Done, st.Draw = true, true
 		}
 	}
@@ -841,7 +838,7 @@ func ezfyContains(list []*ezfyFightUnit, u *ezfyFightUnit) bool {
 
 // ezfyPickTarget 选择攻击目标：**优先兵种**（取该兵种里最近的），没有则取最近目标。
 //
-// ★★ 2026-09-23 修复（用户要求「指挥战场时兵种目标带过来…敌对没有目标则默认攻击距离最近的」）：
+// ★★ 2026-09-23 修复（「指挥战场时兵种目标带过来…敌对没有目标则默认攻击距离最近的」）：
 //
 //	老实现把「全局最近距离」先算进 minDist，再拿配置兵种的距离去比 `d < minDist` ——
 //	配置兵种的距离**永远不可能小于全局最小值**（顶多相等，而相等也不满足 `<`），

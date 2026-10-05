@@ -210,7 +210,7 @@ func (h *EzfyHandler) Liaison(c *gin.Context) {
 
 // ExpelGarrison POST /games/ezfy/liaison/expel-garrison —— 城主遣返盟军驻军
 //
-// ★ 2026-10-02 用户要求「自己城市被盟友驻军自己可以遣返」：
+// ★ 2026-10-02 「自己城市被盟友驻军自己可以遣返」：
 //   只有目标城主人(uid == target 城 UserID)能遣返；遣返后驻军返航回出发城市(status=2),
 //   到达时由 finishReturn 把兵力入城并删除订单(释放该城驻军槽位)；
 //   驻军方收到「驻防战报: 驻军被遣返」(city_id 由订单回查, 归属其出发城市)。

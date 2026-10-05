@@ -69,7 +69,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
 		ReconSuccessPct: ezfyReconSuccessPctDef,
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 21 亿」
+		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
@@ -306,7 +306,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		DispatchPeriodH *int `json:"dispatch_period_h"`
 		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
 		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置，默认 21 亿」
+		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood  *int64 `json:"res_max_food"`
 		ResMaxSteel *int64 `json:"res_max_steel"`
 		ResMaxOil   *int64 `json:"res_max_oil"`
@@ -416,7 +416,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	} else if in.NoticeHomeCount != nil {
 		lim.NoticeHomeCount = v
 	}
-	// ★ 集结令单次使用上限：用户要求「设置的时候不要加上限，我设置多少都可以」（线上现值 99）。
+	// ★ 集结令单次使用上限：「设置的时候不要加上限，我设置多少都可以」（线上现值 99）。
 	//   只校验 > 0（0 等于把道具禁用，真要禁用请把道具下架），不再限制上界。
 	if in.GatherMaxPerOrder != nil {
 		if *in.GatherMaxPerOrder < 1 {
@@ -435,7 +435,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.MallBuyMax = *in.MallBuyMax
 	}
-	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
+	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   两个值 0 都无意义（召集不要钱 / 召集不给人口），所以只接受 >= 1；
 	//   上界卡在 10 亿（MySQL int 上限约 21 亿），避免误填天文数字把列写溢出。
 	if in.ConveneFoodCost != nil {
@@ -452,7 +452,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.ConvenePopGain = *in.ConvenePopGain
 	}
-	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限。0 = 不限（关闭限制），1~10 亿为有效封顶值。
 	if in.ConvenePopMax != nil {
 		if *in.ConvenePopMax < 0 || *in.ConvenePopMax > 1000000000 {
@@ -489,7 +489,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.ConvenePopGain <= 0 {
 		lim.ConvenePopGain = ezfyConvenePopGainDef
 	}
-	// ★ 战斗/经济数值（用户要求「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
+	// ★ 战斗/经济数值（「民心扣除后台可配置，默认 2」+「军官工资合理消耗」）
 	//   这几个值 0 无意义，所以只接受 >= 1。
 	setPos := func(v *int, dst *int, name string) bool {
 		if v == nil {
@@ -533,7 +533,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	// ★ 野地兵力倍数：允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
-	//   ★ 用户要求「野地兵力倍数没有上限，现在是 100」→ **去掉上界**，填多少就是多少
+	//   ★ 「野地兵力倍数没有上限，现在是 100」→ **去掉上界**，填多少就是多少
 	//   （与「出征集结令单次上限」同一套处理：只挡 <= 0）。
 	if in.WildTroopMult != nil {
 		m := *in.WildTroopMult
@@ -544,7 +544,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		lim.WildTroopMult = m
 	}
 	// ★ 2026-09-25 野地战利品资源倍率：同样允许小数（0.5 = 减半 / 2 = 翻倍），0 及负数无意义。
-	//   用户要求「野地打完资源太少」→ 上不封顶，填多少就是多少（与野地兵力倍数同一套）。
+	//   「野地打完资源太少」→ 上不封顶，填多少就是多少（与野地兵力倍数同一套）。
 	if in.WildResMult != nil {
 		m := *in.WildResMult
 		if m <= 0 {
@@ -1065,7 +1065,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 
 // AdminEzfyDiamondGrant POST /admin/ezfy-players/:id/diamond
 //
-// ★ 2026-09-23 用户要求：钻石字段在管理端「发放资源」处应叫**发放**而非「充值」。
+// ★ 2026-09-23 钻石字段在管理端「发放资源」处应叫**发放**而非「充值」。
 // mode = add(默认，可负数扣减) | set(直接设为某值)
 func (h *EzfyAdmin) AdminEzfyDiamondGrant(c *gin.Context) {
 	uid, err := strconv.ParseUint(c.Param("id"), 10, 64)

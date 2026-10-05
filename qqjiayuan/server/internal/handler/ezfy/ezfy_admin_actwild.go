@@ -16,7 +16,7 @@ import (
 
 // 二战风云管理端 —— 活动野地配置（地图管理「活动野地」tab）
 //
-// ★ 2026-09-29 用户要求：活动野地配置不友好，优化成「按坐标列表管理」，
+// ★ 2026-09-29 活动野地配置不友好，优化成「按坐标列表管理」，
 //   独立成 tab，且要能区别于普通野地（启用开关）+ 可配置活动（等级/守军/奖励）。
 //
 // 数据表 ezfy_act_wild：每个坐标一条。enabled=1 → 该格按活动野地玩法
@@ -211,7 +211,7 @@ func (h *EzfyAdmin) AdminEzfyActWildDelete(c *gin.Context) {
 
 // AdminEzfyActWildBatchDelete POST /admin/ezfy-act-wilds/batch-delete  {ids:[...]}
 //
-// ★ 2026-10-05 用户要求「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
+// ★ 2026-10-05 「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
 func (h *EzfyAdmin) AdminEzfyActWildBatchDelete(c *gin.Context) {
 	ids := ezfyBatchIDs(c)
 	if len(ids) == 0 {
@@ -230,7 +230,7 @@ func (h *EzfyAdmin) AdminEzfyActWildBatchDelete(c *gin.Context) {
 
 // AdminEzfyActWildAttacks GET /admin/ezfy-act-wilds/:id/attacks —— 查看该活动野地（坐标）的被攻打记录（分页）
 //
-// ★ 2026-10-01 用户要求：活动野地配置页新增「查看被打记录」，模态框展示。
+// ★ 2026-10-01 活动野地配置页新增「查看被打记录」，模态框展示。
 //   攻打历史来自 ezfy_battle（活动野地/活动寇/特殊城市战斗都会 ezfyBattleStart 建行，
 //   行不删除，按 target_x / target_y 反查即可）。
 func (h *EzfyAdmin) AdminEzfyActWildAttacks(c *gin.Context) {

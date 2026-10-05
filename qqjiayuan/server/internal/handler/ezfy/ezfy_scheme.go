@@ -13,7 +13,7 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
-// 二战风云 · 计谋（2026-09-22 用户要求）
+// 二战风云 · 计谋（2026-09-22 ）
 //
 // 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗。」
 //
@@ -114,7 +114,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		h.fail(c, "计谋不存在或已下架")
 		return
 	}
-	// ★ 2026-10-02 用户要求：未实现的计谋一律卡控，提示暂未实现，不允许发动。
+	// ★ 2026-10-02 未实现的计谋一律卡控，提示暂未实现，不允许发动。
 	//   目前已实现：Kind=1 先发制人 / Kind=2 神兵天降 / Kind=3 战略转移。
 	if sc.Kind < 1 || sc.Kind > 3 {
 		h.fail(c, "「"+sc.Name+"」暂未实现, 敬请期待")
@@ -166,7 +166,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 				return
 			}
 		}
-		// ★ 2026-10-02 用户要求：先发制人**不能破免战保护令** ——
+		// ★ 2026-10-02 先发制人**不能破免战保护令** ——
 		//   目标城市处于免战保护期时不能对其发动（与出征拦截同口径 hasCityEffect）。
 		if h.hasCityEffect(uint(t.ID), 2) {
 			h.fail(c, "该城市使用了免战保护, 无法对其发动先发制人")

@@ -69,7 +69,7 @@
             </el-select>
             <el-input v-model="tileWord" placeholder="坐标 x,y 或备注" clearable style="width:170px"
                       @keyup.enter.native="tilePage = 1; loadTiles()" />
-            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」：勾选后一次性物理删除 -->
+            <!-- ★ 2026-10-05 「管理端删除做好批量删除」：勾选后一次性物理删除 -->
             <el-button type="danger" plain icon="el-icon-delete" :disabled="!tileSel.length" @click="batchDelTiles">
               批量删除（已选 {{ tileSel.length }}）
             </el-button>
@@ -191,7 +191,7 @@
             <span class="td-sub">活动野地 = 区别于普通野地、可打活动（守军/奖励可配）；关 = 普通野地</span>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openAwCreate">新增活动野地</el-button>
-            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」 -->
+            <!-- ★ 2026-10-05 「管理端删除做好批量删除」 -->
             <el-button type="danger" plain icon="el-icon-delete" :disabled="!awSel.length" @click="batchDelAws">
               批量删除（已选 {{ awSel.length }}）
             </el-button>
@@ -283,7 +283,7 @@
             <el-button type="primary" icon="el-icon-search" @click="wildPage = 1; loadWilds()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-plus" @click="openWildCreate">新增野地</el-button>
-            <!-- ★ 2026-10-05 用户要求「管理端删除做好批量删除」 -->
+            <!-- ★ 2026-10-05 「管理端删除做好批量删除」 -->
             <el-button type="danger" plain icon="el-icon-delete" :disabled="!wildSel.length" @click="batchDelWilds">
               批量删除（已选 {{ wildSel.length }}）
             </el-button>
@@ -631,7 +631,7 @@
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcTroop">添加兵种</el-button>
         </el-form-item>
         <el-form-item label="宝物掉落">
-          <!-- ★ 2026-10-05 用户要求：宝物也搞成下拉选择 + 可配概率（运营不用手写 JSON） -->
+          <!-- ★ 2026-10-05 宝物也搞成下拉选择 + 可配概率（运营不用手写 JSON） -->
           <div v-for="(r, i) in wcTreasures" :key="'wtv' + i" class="wild-troop-row">
             <el-select v-model="r.name" filterable placeholder="选择宝物" style="width:220px">
               <el-option v-for="j in jewels" :key="'wtvj' + j.id" :label="j.name" :value="j.name" />
@@ -646,7 +646,7 @@
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcTreasure">添加宝物</el-button>
         </el-form-item>
         <el-form-item label="商城道具掉落">
-          <!-- ★ 2026-10-05 用户要求：下拉选择 + 数量 + 概率%（运营不用手写 JSON） -->
+          <!-- ★ 2026-10-05 下拉选择 + 数量 + 概率%（运营不用手写 JSON） -->
           <div v-for="(r, i) in wcDrops" :key="'wdp' + i" class="wild-troop-row">
             <el-select v-model.number="r.cfg_id" filterable placeholder="选择商城道具" style="width:220px">
               <el-option v-for="it in itemCfgs" :key="'wdp' + it.id" :label="it.name" :value="it.id" />
@@ -848,7 +848,7 @@ export default {
       areaTypes: { 0: '空地', 1: '野地(已占)', 2: '寇城', 3: '玩家城', 4: '资源田' },
       cities: [], cityTotal: 0, cityPage: 1, citySize: 5, cityWord: '', loadingCity: false,
       wilds: [], wildTotal: 0, wildPage: 1, wildSize: 5, wildWord: '', wildType: -1, wildStatus: -1, loadingWild: false,
-      // ★ 2026-10-05 用户要求「管理端删除做好批量删除」：三个列表各自的勾选集合
+      // ★ 2026-10-05 「管理端删除做好批量删除」：三个列表各自的勾选集合
       tileSel: [], wildSel: [], awSel: [],
       wildCfgs: [], wcTotal: 0, wcPage: 1, wcSize: 5, wcType: -1, wcLevel: 0, loadingWc: false,
       occupies: [], occTotal: 0, occPage: 1, occSize: 5, occStatus: -1, loadingOcc: false,
@@ -1096,7 +1096,7 @@ export default {
         })
       }).catch(() => {})
     },
-    // ★ 2026-10-05 用户要求「管理端删除做好批量删除」：三个列表通用。
+    // ★ 2026-10-05 「管理端删除做好批量删除」：三个列表通用。
     //   ⚠️ 都是**物理删除**（后端模型没有 gorm.DeletedAt，Delete 即真 DELETE 行）。
     batchDelTiles () { this.doBatchDel('tiles') },
     batchDelWilds () { this.doBatchDel('wilds') },

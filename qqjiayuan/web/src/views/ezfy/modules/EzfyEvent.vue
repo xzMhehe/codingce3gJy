@@ -50,7 +50,7 @@
     <!-- ============ 福利(welfare) ============ -->
     <template v-else-if="ezfy.cur === 'welfare'">
       <div class="panel">
-        <!-- ★ 2026-09-28 用户要求：签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
+        <!-- ★ 2026-09-28 签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: ezfy.welfareTab === 0 }" @click="ezfy.setWelfareTab(0)">每日签到</a><span
             class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.welfareTab === 1 }" @click="ezfy.setWelfareTab(1)">礼包</a><span
@@ -70,7 +70,7 @@
         </template>
 
         <!-- 礼包 -->
-        <!-- ★ 用户要求「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
+        <!-- ★ 「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
              只保留 新手 / 每周 / 市政厅10级 三个入口（后端 Gift 同步去掉 20/30/40 分支）。 -->
         <template v-else-if="ezfy.welfareTab === 1">
           <div class="old-line">
@@ -91,7 +91,7 @@
             <a v-else href="javascript:;" @click="ezfy.doTreasureSign">[宝物签到领奖]</a>
             <span v-if="ezfy.welfare.treasure_count" class="gray">| 连续{{ ezfy.welfare.treasure_count }}天</span>
           </div>
-          <!-- ★ 2026-09-28 用户要求：展示本轮已签到领到的具体宝物名, 每轮(每天签到)后更新 -->
+          <!-- ★ 2026-09-28 展示本轮已签到领到的具体宝物名, 每轮(每天签到)后更新 -->
           <div class="old-line" v-if="ezfy.welfare.treasure_signed_today && ezfy.welfare.treasure_reward">
             本轮已领宝物：<span class="green">{{ ezfy.welfare.treasure_reward.split(',').join('、') }}</span>
           </div>

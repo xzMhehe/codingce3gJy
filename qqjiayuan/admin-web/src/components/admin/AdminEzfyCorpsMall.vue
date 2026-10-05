@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <!-- ★ 2026-09-25 用户要求：新增「军团商城维护」页面（军团积分兑换商店） -->
+        <!-- ★ 2026-09-25 新增「军团商城维护」页面（军团积分兑换商店） -->
         <span>二战征途 · 军团商城维护</span>
         <div>
           <el-button size="mini" type="success" icon="el-icon-plus" @click="openCreate">新增商品</el-button>
@@ -155,7 +155,7 @@
 <script>
 import api from '../../api'
 
-// ★ 2026-09-25 用户要求：资源包字段名 → 中文名（与交易行维护页 RES_FALLBACK 保持一致）
+// ★ 2026-09-25 资源包字段名 → 中文名（与交易行维护页 RES_FALLBACK 保持一致）
 const RES_KEYS = [
   { key: 'food', label: '粮食' },
   { key: 'steel', label: '钢铁' },

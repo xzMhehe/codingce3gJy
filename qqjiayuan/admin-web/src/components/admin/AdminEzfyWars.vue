@@ -1,6 +1,6 @@
 <template>
   <div class="farm-admin">
-    <!-- ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」：
+    <!-- ★ 2026-09-25 「军团宣战维护合并到宣战管理，按 tab 展示」：
          一个页面两个 tab —— 个人宣战 / 军团宣战（军团那份直接复用 AdminEzfyCorpsWars 组件，
          逻辑一份不复制）。tab2 加 lazyload，没切过去就不请求接口。 -->
     <!-- 样式与「二战系统配置」页的 tab 保持一致（同为 el-tabs，不带 border-card） -->
@@ -143,7 +143,7 @@
 
 <script>
 import api from '../../api'
-// ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」→ 作为第二个 tab 内嵌
+// ★ 2026-09-25 「军团宣战维护合并到宣战管理，按 tab 展示」→ 作为第二个 tab 内嵌
 import AdminEzfyCorpsWars from './AdminEzfyCorpsWars'
 
 export default {

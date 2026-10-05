@@ -59,7 +59,7 @@
     </template>
     <template v-else-if="ezfy.cur === 'tasks'">
         <div class="panel">
-          <!-- ★ 2026-09-24 用户要求: 任务按分类 tab 分别展示(新手/日常/每周) -->
+          <!-- ★ 2026-09-24  任务按分类 tab 分别展示(新手/日常/每周) -->
           <div class="acade-tab">
             <template v-for="(g, i) in ezfy.taskGroups">
               <!-- ★ 分隔竖线放 <a> 外: 选中态(加粗变色)不波及竖线 -->

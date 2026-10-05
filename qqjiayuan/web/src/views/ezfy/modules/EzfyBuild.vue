@@ -10,7 +10,7 @@
           基础产量(每小时): {{ ezfy.resDetail.base }}
           <span v-if="ezfy.resDetail.tech_prod > 0"> [{{ ezfy.resTechName }}Lv{{ ezfy.resDetail.tech_prod }}: +{{ ezfy.resDetail.tech_prod * 10 }}%]</span>
           <!-- ★ 2026-09-26：基础产量 = 建筑 × 科技 × 开工率（**民心/民怨不再影响产量**，
-               用户要求）。「加成产量」只放市长后勤加成 + 野地 + 道具 + 活动，恒不为负。 -->
+               ）。「加成产量」只放市长后勤加成 + 野地 + 道具 + 活动，恒不为负。 -->
           <span class="gray" v-if="ezfy.resDetail.base_building !== undefined">
             （建筑{{ ezfy.resDetail.base_building }} × 科技{{ 100 + (ezfy.resDetail.tech_prod || 0) * 10 }}%<template
               v-if="ezfy.resDetail.rate !== undefined && ezfy.resDetail.rate !== 100"> × 开工率{{ ezfy.resDetail.rate }}%</template>）
@@ -18,7 +18,7 @@
           <br/>
           加成产量(每小时): {{ ezfy.resDetail.bonus }}
           <span class="gray" v-if="ezfy.resDetail.mayor_bonus > 0"> [市长后勤加成+{{ ezfy.resDetail.mayor_bonus }}%]</span>
-          <!-- ★ 2026-09-30 用户要求「增产令使用了要在资源详情简约体现」：有增产效果时显示幅度 + 剩余时长 -->
+          <!-- ★ 2026-09-30 「增产令使用了要在资源详情简约体现」：有增产效果时显示幅度 + 剩余时长 -->
           <span class="green" v-if="ezfy.resDetail.boost_pct > 0">
             [增产令+{{ ezfy.resDetail.boost_pct }}% {{ ezfy.fmtLeft(Math.floor((ezfy.resDetail.boost_until - ezfy.gatherNow) / 1000)) }}]
           </span>
@@ -81,7 +81,7 @@
                 <a href="javascript:;" @click="ezfy.doUpgrade(b)">升级</a>
                 <!-- ★ 2026-09-25 用户纠正：按钮语义是「一键升级到 max_level-1 级」，
                      已经到达该等级就不再显示（原来会显示成 9 级但实际升满级）
-                     ★ 2026-09-30 用户要求：一键只到 9 级（司令部 12 级时原显示「一键11级」，
+                     ★ 2026-09-30 一键只到 9 级（司令部 12 级时原显示「一键11级」，
                      现统一「一键9级」，10/11/12 级手动升级，每级都要建筑图纸） -->
                 <a v-if="b.level < 9" href="javascript:;" @click="ezfy.doMaxLevel(b)">一键9级</a>
                 <a v-if="b.can_delete === 1" href="javascript:;" @click="ezfy.doDeleteBuilding(b)">拆除</a>

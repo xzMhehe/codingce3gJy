@@ -2,7 +2,7 @@
   <div>
     <template v-if="ezfy.cur === 'rank'">
         <div class="panel">
-          <!-- ★ 2026-09-24 用户要求：军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
+          <!-- ★ 2026-09-24 军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.rankTab === 'prestige' }" @click="ezfy.rankTab = 'prestige'">军衔声望榜</a>|
             <a href="javascript:;" :class="{ on: ezfy.rankTab === 'troops' }" @click="ezfy.rankTab = 'troops'">战力榜</a>|

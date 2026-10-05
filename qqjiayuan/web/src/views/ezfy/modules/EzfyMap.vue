@@ -12,7 +12,7 @@
             输入坐标查找：
             <a href="javascript:;" @click="ezfy.toggleStars">收藏列表</a>
           </div>
-          <!-- ★ 用户要求「横坐标、纵坐标 一行」：两个输入框合并同一行，[查找] 跟在行末 -->
+          <!-- ★ 「横坐标、纵坐标 一行」：两个输入框合并同一行，[查找] 跟在行末 -->
           <div class="old-line ezfy-map-jump">
             横坐标：<input v-model="ezfy.jumpX" type="number" placeholder="(1~500)"/>
             纵坐标：<input v-model="ezfy.jumpY" type="number" placeholder="(1~500)"/>
@@ -30,7 +30,7 @@
             </div>
             <div class="old-line gray" v-if="!ezfy.mapStars.length">(收藏列表为空, 在地图上选中目标后可收藏)</div>
           </template>
-          <!-- ★ 用户要求「格子下面加个坐标，排列整齐一点」：
+          <!-- ★ 「格子下面加个坐标，排列整齐一点」：
                每格两行 —— 第一行名称(等级)，第二行 (x,y)；
                第二行用站内链接蓝 #0645ad，让玩家一眼知道格子能点。 -->
           <table class="ezfy-map-table">
@@ -48,8 +48,8 @@
             </tr>
           </table>
           <div class="old-line">当前坐标中心:({{ ezfy.mapCx }} , {{ ezfy.mapCy }})</div>
-          <!-- ★ 用户要求「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
-          <!-- ★ 2026-10-05 用户要求：「向右、向左 调换下位置（功能不变）用着不习惯」
+          <!-- ★ 「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
+          <!-- ★ 2026-10-05 「向右、向左 调换下位置（功能不变）用着不习惯」
                → 顺序改为 向上 / 向左 / 向下 / 向右（各自 @click 的方向不变，只换摆放位置）。 -->
           <div class="old-line ezfy-dir-nav">
             <a href="javascript:;" @click="ezfy.moveMap(-ezfy.mapStep, 0)">向上</a>
@@ -135,7 +135,7 @@
             <span v-if="ezfy.selCell.ally" class="green">（你的同盟成员）</span>
           </div>
           <hr/>
-          <!-- ★ 按钮文案统一加方括号（用户要求「侦查 掠夺 征服 也加上 []」），
+          <!-- ★ 按钮文案统一加方括号（「侦查 掠夺 征服 也加上 []」），
                与已有的 [宣战]/[返回地图]/[查找] 保持同一种「按钮」写法。
                同一行里的 运输/增援/采集 同属动作按钮，一并统一，免得一行里两种写法。 -->
           <!-- ① 本城：不给侦查/掠夺/征服（自己的城市不能打自己），只提示一句 -->
@@ -148,7 +148,7 @@
                  不再出现 [宣战] 入口，也不再显示「未宣战」状态文案。 -->
           <div class="old-line" v-else-if="ezfy.selCell.area_type === 3">
             <a href="javascript:;" @click="ezfy.pickOrder(1)">[侦查]</a>&nbsp;
-            <!-- ★ 2026-09-25 用户要求：军团交战期（atWar）无需个人宣战即可掠夺/征服 -->
+            <!-- ★ 2026-09-25 军团交战期（atWar）无需个人宣战即可掠夺/征服 -->
             <a v-if="ezfy.warStatus === 2 || !ezfy.warRequire || ezfy.atWar" href="javascript:;" @click="ezfy.pickOrder(2)">[掠夺]</a>
             <a v-else href="javascript:;" class="gray" @click="ezfy.warBlock('掠夺')">[掠夺]</a>&nbsp;
             <a v-if="ezfy.warStatus === 2 || !ezfy.warRequire || ezfy.atWar" href="javascript:;" @click="ezfy.pickOrder(3)">[征服]</a>
@@ -205,7 +205,7 @@
           <hr/>
 
           <!-- ★ 2026-09-28 出征页顺序重排：①指挥军官 → ②出征集结令 → ③选择兵力
-               （用户要求军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚）
+               （军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚）
                预设编队下拉：选中后回填 军官/集结令/兵力（兵力夹到可出征上限，军官不在当前城则回填空） -->
           <!-- 预设编队 -->
           <div class="of-sec">预设编队</div>
@@ -368,12 +368,12 @@
             <span v-else class="red">（已锁定，等待结算）</span>
           </div>
           <!-- 本回合倒计时（最后 5 秒锁定：条变红 = 已锁定）
-               ★ 规则说明一律不写进界面（用户要求），记在这里：
+               ★ 规则说明一律不写进界面（），记在这里：
                  · 每回合 30 秒，前 25 秒（cmd_window_ms）可下达指令，后 5 秒锁定由服务器结算；
-                 · 指令是**逐兵种**的（用户要求「自己带的兵种都能指挥，就是单独指挥」）；
+                 · 指令是**逐兵种**的（「自己带的兵种都能指挥，就是单独指挥」）；
                  · 没下指令的兵种按司令部「兵种战斗配置」行动；
                  · 兵种目标同样是**逐兵种**的：默认取司令部配置，指挥时可改（0 = 最近目标），
-                   守方没有该兵种时服务器自动回落打最近的（2026-09-23 用户要求）；
+                   守方没有该兵种时服务器自动回落打最近的（2026-09-23 ）；
                  · [自动战斗] = 自己全部军队前进，一口气打完。 -->
           <div class="old-line" v-if="!ezfy.battleData.done">
             {{ ezfy.battleData.time_label || '本回合剩余' }}：<b>{{ ezfy.battleLeftText }}</b>
@@ -399,7 +399,7 @@
               <td class="ezfy-side-lbl"><span :class="ezfy.battleData.is_atk ? 'green' : 'red'">攻</span></td>
               <td class="nm">{{ u.name }}</td>
               <td>{{ ezfy.fmtN(u.count) }}</td><td>{{ ezfy.fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
-              <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
+              <!-- ★ 兵种目标（2026-09-23 ）：默认 = 司令部「兵种战斗配置」，
                    指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的）。
                    ★ 守方视角(is_atk=false)时这里显示 AI，指挥控件渲染到守方行上。 -->
               <td v-if="!ezfy.battleData.done">
@@ -545,7 +545,7 @@
             <template v-if="o.status === 1 && o.arrive_time">
               <span class="green">本期已采：{{ ezfy.fmtN(o._lg.food) }}粮/{{ ezfy.fmtN(o._lg.steel) }}钢/{{ ezfy.fmtN(o._lg.oil) }}油/{{ ezfy.fmtN(o._lg.rare) }}稀/{{ ezfy.fmtN(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ ezfy.fmtN(o._lg.total) }}（负重 {{ ezfy.fmtN(o._lg.total) }}/{{ ezfy.fmtN(o.carry_cap) }}）</span>
-              <!-- ★ 2026-10-05 用户要求：去掉「负重已满, 超出部分会直接入库(可停止或收获)。」这行提示
+              <!-- ★ 2026-10-05 去掉「负重已满, 超出部分会直接入库(可停止或收获)。」这行提示
                    —— 属于无用提示，玩家看负重条就够。规则仍然生效（见后端
                    processArrive 采集分支：超出负重部分直接入起点城市，不丢弃），只是不再在界面上提示。
                    对应字段 o._lg.full 仍在用（下面负重进度条按它变色），不要一起删。 -->

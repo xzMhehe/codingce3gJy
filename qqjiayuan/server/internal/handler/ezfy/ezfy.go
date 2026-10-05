@@ -26,12 +26,12 @@ const (
 	ezfyFactoryBuildingID = 14 // 军工厂（★ 不限数量，只受军事区建筑上限约束）
 	// ★ 建筑数量上限（军事区/资源区各 36、民居 33）已迁到 ezfy_cfg_limit 表，
 	//   管理端「二战风云 → 建筑上限配置」可维护，见 ezfyLimit()。
-	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置」：
+	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
 	ezfyNewCityResCost = 50000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 5 万（★ 2026-09-28 原为 10 万黄金）
 	ezfyOilDivGrid     = 300   // 出征耗油: 每格耗油 = 总兵力/300
-	// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 4 小时且可配置」：
+	// ★ 2026-09-24 「采集 12 小时才有宝物 → 4 小时且可配置」：
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
 	//   见 ezfyDispatchPeriod()。
 	ezfyTreasureExtraPct  = 20 // 每期在保底 1 件宝物的基础上, 额外 1 件概率%
@@ -259,7 +259,7 @@ func (h *EzfyHandler) addPrestige(uid uint, amount int) {
 	}
 	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 		Update("prestige", p.Prestige+amount)
-	// ★ 军衔晋升写一条系统消息（用户要求：首页世界聊天要能看到「恭喜玩家晋升XX」）
+	// ★ 军衔晋升写一条系统消息（首页世界聊天要能看到「恭喜玩家晋升XX」）
 	if afterLv != beforeLv {
 		h.ezfySysChat("恭喜玩家 %s 军衔晋升至 %s！", h.ezfyProfileName(uid), ezfyRankNameAt(afterLv))
 	}
@@ -513,7 +513,7 @@ func (h *EzfyHandler) buildingMaxLevel(cityId uint, buildingId int) int {
 
 // techMap 玩家科技等级表（用户级）。
 //
-// ★ 2026-09-28 用户要求「没有主城概念，所有城市都是一样的」：等级存 ezfy_user_tech
+// ★ 2026-09-28 「没有主城概念，所有城市都是一样的」：等级存 ezfy_user_tech
 // （按 user_id），所有调用点（结算/展示/加成）自动变成全账号共用，不用逐个改。
 func (h *EzfyHandler) techMap(cityId uint) map[int]int {
 	var uid uint
@@ -593,7 +593,7 @@ func (h *EzfyHandler) cityTroopTotal(cityId uint) int64 {
 
 // checkTroopCap 训练 / 伤兵恢复前的「兵力上限」校验。
 //
-// ★ 2026-09-23 用户要求：「超过限制不能训练，提示超过限额」。
+// ★ 2026-09-23 「超过限制不能训练，提示超过限额」。
 //
 //	口径：当前兵力(城内 + 训练队列) + 本次要加的量 > troop_max → 拒绝。
 //	返回空串表示通过，否则返回可直接展示给玩家的提示文案。
@@ -678,7 +678,7 @@ func (h *EzfyHandler) addWounded(cityId uint, troopId, wtype int, count int64) {
 
 // filterExpiredWounded 从「已经查出来的伤兵列表」里剔除过期项，并把过期记录删库。
 //
-// ★ 2026-09-23 用户要求：「伤兵 5 天不救治直接消失」。
+// ★ 2026-09-23 「伤兵 5 天不救治直接消失」。
 //
 //	口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算 ——
 //	addWounded 累加时会自动刷新 updated_at，所以玩家持续有伤兵入营会顺延；
@@ -732,7 +732,7 @@ func (h *EzfyHandler) isCoastalCity(city *model.EzfyCity) bool {
 
 // cityKind 城市类型文案
 //
-// ★ 用户要求统一口径：建在沿海平原上的叫「沿海城市」，其余叫「内陆城市」。
+// ★ 统一口径：建在沿海平原上的叫「沿海城市」，其余叫「内陆城市」。
 //
 //	（原来叫「海城 / 陆地城市」，与城市列表、城市状态页两处不一致）
 func (h *EzfyHandler) cityKind(city *model.EzfyCity) string {
@@ -894,7 +894,7 @@ func (h *EzfyHandler) checkBuildingDone(city *model.EzfyCity, reuse ...[]model.E
 
 // calcResource 资源按小时懒结算（科技/开工率/市长后勤加成/道具增产/野地产出/军队耗粮/军官工资）
 //
-// ★ 2026-09-26 用户要求：**民心/民怨不再影响产量**（原来 5 种产量都 × 民心系数，
+// ★ 2026-09-26 **民心/民怨不再影响产量**（原来 5 种产量都 × 民心系数，
 // 民心不满时全体减产，还会把资源详情页的「加成产量」算成负数）。
 // 民心/民怨本身仍然有效：决定能否被征服、被掠夺时扣减、安抚花费。
 //
@@ -990,7 +990,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	city.Feelings = feelings
 	city.Grievance = grievance
 
-	// ★★ 2026-09-26 用户要求「民心不该影响产量」：
+	// ★★ 2026-09-26 「民心不该影响产量」：
 	//
 	//	原来这里有一段 `morale := feelings/100`（民怨 ≥50 再折半），
 	//	然后 5 种产量全部 `× morale` —— 民心不满时所有资源一起减产，
@@ -1091,7 +1091,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		}
 		// ★ 2026-10-05 用户反馈「附属野地每次更新都会没/等级还会变」：
 		//   原来是 degradeWildland 按 UpdatedAt 每 2 天扣 1 级、扣到 0 直接删野地，
-		//   老野地/低级野地因此频繁消失、等级跳动。按用户要求移除该降级机制，
+		//   老野地/低级野地因此频繁消失、等级跳动。按移除该降级机制，
 		//   野地保持征服时的等级，不再随时间消失。
 	}
 
@@ -1123,7 +1123,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		wildRare = wildRare * mult / 100
 	}
 
-	// ★ 2026-09-26 用户要求：「民居容量限制」开关关掉时，民居不再限制人口 —— 自然增长
+	// ★ 2026-09-26 「民居容量限制」开关关掉时，民居不再限制人口 —— 自然增长
 	//   不再按 pop_max 封顶（人口可无限增长）；开着时保持原行为（增长到 pop_max 就停）。
 	housePopLimited := ezfyHousePopLimitOn()
 	if !housePopLimited || city.Pop < city.PopMax {
@@ -1138,7 +1138,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	}
 	// ★★ 2026-09-28 用户规则：**民怨 > 0 就掉人口，民怨 = 0 不掉**。
 	//
-	//	速率设计（用户要求「合理掉下」，别太狠也别没感觉）：
+	//	速率设计（「合理掉下」，别太狠也别没感觉）：
 	//	  每小时流失 = pop_max × 民怨% × 2%
 	//	  → 民怨 10 时 0.2%/时（一天约 4.8%）；民怨 50 时 1%/时（一天约 24%）；
 	//	    民怨 100 时 2%/时（一天约 48%，很痛但不至于一夜清零）。
@@ -1157,12 +1157,12 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 			city.Pop = 0
 		}
 	}
-	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限」：
+	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限」：
 	//   全局硬性上限（管理端可配，0 = 不限）同样封顶自然增长，与召集门同一口径。
 	if hardCap := ezfyConvenePopMaxCfg(); hardCap > 0 && city.Pop > hardCap {
 		city.Pop = hardCap
 	}
-	// ★ 用户要求「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
+	// ★ 「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	var troopFoodCost int64
 	if ezfyFoodUpkeepOn() {
 		for tid, count := range d.troopsOf(h, city.ID) {
@@ -1174,7 +1174,7 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		troopFoodCost = int64(float64(troopFoodCost) * hours)
 	}
 
-	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**唯一上限 = 资源最大值**。
+	// ★ 2026-09-27 「资源产量也做成累加」：**唯一上限 = 资源最大值**。
 	//   产量不再被仓储上限（city.FoodCap 等）卡住，与其它获取方式一样无条件累加到「资源最大值」为止。
 	//   ⚠️ city.XxxCap（仓储）仅保留展示，不再作为产量收敛点 —— 永不参与计算。
 	//
@@ -1613,7 +1613,7 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	tech := techs
 	techFood, techSteel, techOil, techRare := tech[1], tech[2], tech[3], tech[4]
 	techSupply, techStore := tech[18], tech[14]
-	// ★ 2026-09-26 用户要求「民心不该影响产量」→ 这里不再算 morale，产量与民心/民怨无关
+	// ★ 2026-09-26 「民心不该影响产量」→ 这里不再算 morale，产量与民心/民怨无关
 	var foodBase, steelBase, oilBase, rareBase int64
 	for _, b := range buildings {
 		lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level)
@@ -1793,7 +1793,7 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	}
 	// ★ 2026-09-26 起不再下发 morale_pct：民心/民怨已不参与产量，前端 base 行不再显示民心
 	// ★ 2026-09-27 唯一上限 = 资源最大值：cap 下发 ezfyResMaxOf，不再用仓储 city.XxxCap。
-	// ★ 2026-09-30 用户要求「增产令使用了要在资源详情简约体现」：
+	// ★ 2026-09-30 「增产令使用了要在资源详情简约体现」：
 	//   把增产幅度/剩余时长透出到每种资源，前端在加成产量行显示 [增产令+N%]。
 	return gin.H{
 		"food": item(city.Food, ezfyResMaxOf("food"), foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
@@ -1848,7 +1848,7 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 
 // cancelBuildingUpgrade 取消施工中的建筑升级，并**全额退还**已扣的资源与图纸
 //
-// ★ 2026-09-26 用户要求：「已升级的建筑用户端去掉（多余的升级按钮），加个升级状态时 [取消] 功能」。
+// ★ 2026-09-26 「已升级的建筑用户端去掉（多余的升级按钮），加个升级状态时 [取消] 功能」。
 //
 //	退还口径与扣费口径**严格对称**（否则会变成刷资源漏洞）：
 //	  · 普通升级（`start_time != 0`）：只扣过 `b.Level+1` 这一级 → 只退这一级
@@ -2123,7 +2123,7 @@ func (h *EzfyHandler) deleteBuilding(city *model.EzfyCity, recordId int64) strin
 	if b.Status != 0 {
 		return "施工中不可拆除"
 	}
-	// ★ 用户要求：拆除是一级一级拆，而不是直接整栋拆没；降到 0 级才彻底移除
+	// ★ 拆除是一级一级拆，而不是直接整栋拆没；降到 0 级才彻底移除
 	if b.Level <= 1 {
 		h.DB.Delete(&b)
 	} else {
@@ -2257,7 +2257,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 		}
 	}
 	// 人口校验：只跟「正在训练、还没出厂」的兵比 —— 已训练完成的部队不占人口（用户规则）
-	// ★ 用户要求「征兵资源消耗开关关了的话，征兵不消耗资源，也无需空闲人口」→
+	// ★ 「征兵资源消耗开关关了的话，征兵不消耗资源，也无需空闲人口」→
 	//   开关关掉时整段跳过（不校验人口、不扣资源）。
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
@@ -2268,7 +2268,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 				city.Pop, popUsed, popAvailable)
 		}
 	}
-	// ★ 2026-09-23 用户要求「超过限制不能训练，提示超过限额」：
+	// ★ 2026-09-23 「超过限制不能训练，提示超过限额」：
 	//   兵力累加没有任何上限，单兵种 count 撑爆 int64 就翻成负数
 	//   （线上事故：玩家总兵力 -8843547888967622000）。
 	//   这里按 ezfy_cfg_limit.troop_max 统一卡控（城内现有 + 训练队列 + 本次）。
@@ -2379,7 +2379,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 //
 //	这里必须排除，否则城防会被重复计一次。
 func (h *EzfyHandler) troopPop(cityId uint) int64 {
-	// ★ 用户要求「征兵资源消耗开关关了，征兵无需空闲人口」→ 关掉时人口占用恒为 0，
+	// ★ 「征兵资源消耗开关关了，征兵无需空闲人口」→ 关掉时人口占用恒为 0，
 	//   空闲人口 = 人口（与「训练不占人口」的语义一致，界面不会显示「被占满」）。
 	if !ezfyRecruitCostOn() {
 		return 0
@@ -2517,7 +2517,7 @@ func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) s
 	if w.Count <= 0 {
 		return "兵营中没有该兵种"
 	}
-	// ★ 2026-09-23 用户要求：「恢复的数量导致负数的情况也卡控，不能恢复」。
+	// ★ 2026-09-23 「恢复的数量导致负数的情况也卡控，不能恢复」。
 	//   恢复 = 往城里加兵，所以和训练共用同一个兵力上限校验。
 	if msg := h.checkTroopCap(city.ID, w.Count); msg != "" {
 		return msg
@@ -2893,7 +2893,7 @@ func (h *EzfyHandler) hasCityEffect(cityId uint, effectType int) bool {
 }
 
 // hasAnyPeaceEffect 玩家名下**任意**城市是否有生效中的免战保护令（effect_type=2）。
-// ★ 2026-10-02 用户要求：免战保护令改为**全账号生效**——任一城用了保护令，
+// ★ 2026-10-02 免战保护令改为**全账号生效**——任一城用了保护令，
 //   该玩家所有城的自城派遣都放开携带上限（与单城保护令的「出征拦截」语义区分开）。
 // 走索引：ezfy_city_effect 联合唯一索引 (city_id,effect_type) + ezfy_city idx_user。
 func (h *EzfyHandler) hasAnyPeaceEffect(uid uint) bool {
@@ -2923,7 +2923,7 @@ func (h *EzfyHandler) useItem(uid uint, city *model.EzfyCity, cfgId, count int, 
 	if count > have {
 		return fmt.Sprintf("道具数量不足(现有%d个)", have)
 	}
-	// ★ 用户要求「军官经验道具最大只能用 100 不对，没有上限卡控」→ 经验书取消单次数量上限
+	// ★ 「军官经验道具最大只能用 100 不对，没有上限卡控」→ 经验书取消单次数量上限
 	//   （真正的上限只剩「背包里有多少」，上面那条已经挡了）。
 	//   ⚠️ 只对经验书放开：其余道具是「一本一次」的循环实现（每本都要读写库），
 	//   放开会让一次请求打上万条 SQL，所以仍保留 99 的防呆上限。
@@ -3150,7 +3150,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
-		// ★ 2026-10-02 用户要求：免战保护令(24小时) 也要有 24 小时冷却
+		// ★ 2026-10-02 免战保护令(24小时) 也要有 24 小时冷却
 		now := time.Now().UnixMilli()
 		var prof model.EzfyProfile
 		if err := h.DB.Select("peace_cool_until").First(&prof, uid).Error; err == nil && prof.PeaceCoolUntil > now {
@@ -3280,7 +3280,7 @@ var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true,
 
 // ezfyTaskRewardRes 返回某任务结算用的「资源」奖励（粮/钢/油/稀）。
 //
-// ★ 2026-09-29 用户要求资源奖励按任务类型加成：
+// ★ 2026-09-29 资源奖励按任务类型加成：
 //     新手任务(type_id=1)：四种生产资源 ×1000；
 //     日常任务(type_id=2)/ 每周任务(type_id=4)：四种生产资源 ×10。
 //   黄金/声望不改。任务列表展示与发奖都用同一口径，保证玩家看到多少、领到多少一致。
@@ -3389,13 +3389,13 @@ func (h *EzfyHandler) taskAward(uid uint, taskId int64) string {
 		return "任务已停用"
 	}
 	city := h.getOrCreateCity(uid)
-	// ★ 2026-09-30 用户要求「首个城池助力」补领时发到**最早(主)城池**：
+	// ★ 2026-09-30 「首个城池助力」补领时发到**最早(主)城池**：
 	//   老玩家当前城可能早已不是首城，奖励必须进 id 最小的主城，而不是当前操作城。
 	//   仅对 has_city（首个城池）任务生效；其它任务维持原逻辑（发到当前城）。
 	if cfg.TaskType == "has_city" {
 		city = h.mainCity(uid)
 	}
-	// ★ 任务奖励**不受仓储上限截断**（用户要求）。
+	// ★ 任务奖励**不受仓储上限截断**（）。
 	//   原来走 min64(cap, ...)，仓储满了领奖就等于白发；只有「城市自身产量」才该被上限卡住。
 	//   ★ 新手任务资源 ×1000（见 ezfyTaskRewardRes）
 	rf, rs, ro, rr := ezfyTaskRewardRes(&cfg)
@@ -3604,7 +3604,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   对应页面进入时各自调 /buildings、/troops、/techs、/city/wildfull 懒加载（前端 go() 已接线）。
 	//   上面并行块仍把原始数据查回来，供懒结算与 res_prod 计算使用（零重复查询）。
 
-	// ★ 2026-09-28 用户要求：首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
+	// ★ 2026-09-28 首页头部资源栏「/」右侧展示**每小时产量**（与资源详情页同一口径）。
 	//   复用 getResourceCalc 的 total（净产量：产出 − 军队耗粮），保证两边数字永远一致。
 	resProd := gin.H{}
 	// ★ 2026-10-03 性能：getResourceCalc 内部会查 buildingList/techMap/wildlandList/boost/troopMap，
@@ -3706,7 +3706,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 
 // ★ 2026-10-03 /view 玩家级短 TTL 缓存。
 //
-// ★★ 2026-10-05 用户要求：目前两台机器、以后可能多台，进程内缓存会互相 miss、且每台机器的
+// ★★ 2026-10-05 目前两台机器、以后可能多台，进程内缓存会互相 miss、且每台机器的
 //   写操作只清了自己那台的缓存 → 跨机数据不一致。**三套缓存全部改为空操作**（Get 永远 miss、
 //   Set/Del 直通，保留签名让所有调用点照常编译），展示接口直查 DB，靠 SQL/索引/两波并行/
 //   页面懒加载把延迟压在目标内。TTL 常量仅供其它进程内 memo（行军结算快速路径）复用。
@@ -3723,13 +3723,13 @@ func ezfyViewCacheDel(uid uint) {}
 //   装备 /officers/equipments、任务 /tasks）的 3s TTL 玩家级缓存 —— ★ 2026-10-05 已禁用（空操作，
 //   见上注释：多机缓存不一致），调用点保留以兼容编译，写操作后的 Del 也无副作用。
 
-// ★ 2026-10-05 训练一键加速 5 秒卡控（用户要求：前后端都卡，防连点/脚本反复刷黄金结算）
+// ★ 2026-10-05 训练一键加速 5 秒卡控（前后端都卡，防连点/脚本反复刷黄金结算）
 var (
 	ezfySpeedTrainMu   sync.Mutex
 	ezfySpeedTrainMemo = map[uint]int64{}
 )
 
-// ★ 2026-10-05 人口召集 5 秒卡控（用户要求，与训练一键加速一致）
+// ★ 2026-10-05 人口召集 5 秒卡控（，与训练一键加速一致）
 var (
 	ezfyConveneMu   sync.Mutex
 	ezfyConveneMemo = map[uint]int64{}
@@ -4179,7 +4179,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
-	// ★ 2026-10-05 5 秒卡控（用户要求，防连点刷人口）
+	// ★ 2026-10-05 5 秒卡控（，防连点刷人口）
 	{
 		nowCd := time.Now().UnixMilli()
 		ezfyConveneMu.Lock()
@@ -4216,13 +4216,13 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
 		return
 	}
-	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性上限（管理端「二战系统配置」可配，0 = 不限），对召集**永远**生效。
 	if popCap := ezfyConvenePopMaxCfg(); popCap > 0 && city.Pop+popGain > popCap {
 		resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
 		return
 	}
-	// ★ 2026-09-26 用户要求加「民居容量限制 / 召集人口灵活配置」两个开关：
+	// ★ 2026-09-26 加「民居容量限制 / 召集人口灵活配置」两个开关：
 	//   只有「民居容量限制」开着（民居上限才存在）且「召集人口灵活配置」关着时，
 	//   召集才受民居容量上限约束；任一条件不满足都维持原有的「可突破上限」行为。
 	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.Pop+popGain > city.PopMax {

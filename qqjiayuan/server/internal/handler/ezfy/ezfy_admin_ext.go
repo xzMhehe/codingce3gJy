@@ -639,7 +639,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueueFinishAll(c *gin.Context) {
 
 // AdminEzfyBuildQueueFinishReady 完成所有「已到期」的建筑（管理端手动触发，替代原自动协程）
 //
-// ★ 2026-09-29 用户要求：去掉全局自动结算协程，改由管理端定期手动点按钮：
+// ★ 2026-09-29 去掉全局自动结算协程，改由管理端定期手动点按钮：
 //   只把「剩余时间已到（display 成可完成）」的建造/升级项完工，
 //   还没到时间的保持现状不动。与 "一键完成全部"(FinishAll，强制完成整个队列) 不同。
 func (h *EzfyAdmin) AdminEzfyBuildQueueFinishReady(c *gin.Context) {

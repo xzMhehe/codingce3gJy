@@ -546,7 +546,7 @@ var ezfyEzfyCfgWildland = []model.EzfyCfgWildland{
 	{ID: 33, Type: 3, Level: 10, Troops: "[[2, 55000, 55000]]", ResMin: 120000, ResMax: 150000, OfficerMin: 4, OfficerMax: 50, Treasure: "中级/高级", Des: "寇城10级"},
 }
 
-// ★ 2026-09-27 用户要求「道具 /games/ezfy?cur=mall 价格我改了，更新下初始化种子」：
+// ★ 2026-09-27 「道具 /games/ezfy?cur=mall 价格我改了，更新下初始化种子」：
 //   以下 价格 / 库存 全部取线上库快照值（39.105.151.141 qq_jiayuan.ezfy_cfg_item）。
 //   与上一版（2026-09-26）的差异：
 //     · ID 10 建筑图纸 钻石 40→10；
@@ -567,10 +567,10 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 9, Name: "科技加速2小时", ItemType: 5, Param1: 120, PriceDiamond: 4, Stock: 98, Icon: "", Description: "当前科技研究立即减少2小时"},
 	{ID: 10, Name: "建筑图纸", ItemType: 6, Param1: 1, PriceDiamond: 10, Stock: 97, Icon: "", Description: "建筑升级到10级必需, 每张可升级一次"},
 	{ID: 11, Name: "增产令+50%(24小时)", ItemType: 7, Param1: 50, PriceDiamond: 10, Stock: 100, Icon: "", Description: "城市资源产量+50%, 持续24小时"},
-	// ★ 2026-10-02 用户要求：免战保护令改售 10 钻石（黄金太容易得，防滥用囤货）。
+	// ★ 2026-10-02 免战保护令改售 10 钻石（黄金太容易得，防滥用囤货）。
 	//   与线上/测试库 ezfy_cfg_item id=12 的现行价格一致。
 	{ID: 12, Name: "免战保护令(24小时)", ItemType: 8, Param1: 24, PriceDiamond: 10, Stock: 81, Icon: "", Description: "城市24小时内免遭掠夺与征服"},
-	// ★ 2026-09-27 百分比加速道具（用户要求「时间减少 30/60/80%」，价格 2/4/6 钻石）：
+	// ★ 2026-09-27 百分比加速道具（「时间减少 30/60/80%」，价格 2/4/6 钻石）：
 	//   ItemType 24 建筑加速% / 25 训练加速% / 26 科技加速%，Param1 = 百分比，
 	//   使用时按「剩余时间」直接减对应百分比。价格/库存与线上一致，库存 100。
 	{ID: 28, Name: "建筑加速30%", ItemType: 24, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前建筑升级剩余时间减少30%"},
@@ -582,7 +582,7 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 34, Name: "科技加速30%", ItemType: 26, Param1: 30, PriceDiamond: 2, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少30%"},
 	{ID: 35, Name: "科技加速60%", ItemType: 26, Param1: 60, PriceDiamond: 4, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少60%"},
 	{ID: 36, Name: "科技加速80%", ItemType: 26, Param1: 80, PriceDiamond: 6, Stock: 100, Icon: "", Description: "当前科技研究剩余时间减少80%"},
-	// ★ 2026-09-28 用户要求「商城道具新增 5 个资源道具（2钻礼包，各 1000 万资源）」：
+	// ★ 2026-09-28 「商城道具新增 5 个资源道具（2钻礼包，各 1000 万资源）」：
 	//   2钻礼包1~5 对应 黄金/粮食/钢铁/石油/稀矿，统一 2 钻石、无限库存(-1)。
 	//   Category 显式写「资源道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」的判断在
 	//   ItemType 判断**之前**，不写会被归到「钻石道具」分类去。

@@ -102,7 +102,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
-	// ★ 用户要求「点击地图的出征 → 看到玩家城市 → 点进去 → 展示玩家同盟名字」。
+	// ★ 「点击地图的出征 → 看到玩家城市 → 点进去 → 展示玩家同盟名字」。
 	//   一次性把所有涉及玩家的军团名载入（避免逐格查库），格子上带 corps_name。
 	corpsNames := map[uint]string{}
 	if len(userIDs) > 0 {
@@ -453,7 +453,7 @@ func (h *EzfyHandler) warStatus(a, b uint) int {
 
 // addResToCityDB 把一笔资源原子累加进某座城（无条件累加，收敛到配置的「资源最大值」）。
 //
-// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」「各项资源有最大的配置」。
+// ★ 2026-09-25 「攻击野地获得的资源也要累加」「各项资源有最大的配置」。
 //   - 之前战利品是在内存里 city.Food += n 再 saveCityRes(city)：整行写回，
 //     并发下会把别的请求刚写入的增量覆盖掉（同类事故在运输/采集那几处已经修过），
 //     野地/寇城战利品却漏了 —— 这就是「打野地的资源没累加」的根因。
@@ -487,14 +487,14 @@ func (h *EzfyHandler) addResToCityDB(cityId uint, food, steel, oil, rare, gold i
 
 // isAtWar 是否可以对该玩家发起掠夺/征服
 //
-// ★ 用户要求「加一个宣战功能开关，关闭后不需要宣战也能掠夺/征服」→
+// ★ 「加一个宣战功能开关，关闭后不需要宣战也能掠夺/征服」→
 // 开关关掉时恒为 true（视为随时可交战）。这样出征校验、战斗结算两处一起放开，
 // 不会出现「出征放行了、到达时又被判没宣战而返航」的不一致。
 func (h *EzfyHandler) isAtWar(a, b uint) bool {
 	if !ezfyWarRequireOn() {
 		return true
 	}
-	// ★ 2026-09-25 用户要求「军团宣战生效期间，双方军团成员之间可直接掠夺/征服，无需个人宣战」：
+	// ★ 2026-09-25 「军团宣战生效期间，双方军团成员之间可直接掠夺/征服，无需个人宣战」：
 	//   在原有个人宣战判断之外，新增「两人所属军团之间存在生效中的军团宣战 → 返回 true」。
 	//   这样出征校验与战斗结算两处口径一致（原注释就是要求两处一起放开）。
 	if h.corpsActiveWarBetween(a, b) != nil {
@@ -731,7 +731,7 @@ const (
 	// ezfyGatherDefaultPer 每个集结令提升的出征上限（配置表 param1 优先）
 	ezfyGatherDefaultPer = 100000
 	// ezfyGatherMaxDefault 单次出征最多使用多少个集结令的**默认值**。
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」→ 默认 99（线上现值）。
+	// ★ 「出征集结令上限后台管理系统可维护，最大默认 99」→ 默认 99（线上现值）。
 	//   真正的上限由 ezfyGatherMax() 从 ezfy_cfg_limit.gather_max_per_order 读取，
 	//   管理端「建筑上限配置」页可改，改完 cfgsReload() 即时生效。
 	//   这个常量只在配置行缺失/为 0 时兜底。
@@ -752,7 +752,7 @@ func ezfyGatherBonusPer() int64 {
 //	+ 集结令个数 × ezfyGatherBonusPer()                ← 用户规则：每个集结令 +10 万
 //	+ 出征军官军事 × ezfyOfficerCapPerMil()            ← 2026-09-28 用户规则：军官军事累加上限（可配置）
 //
-// ★ 用户要求「再加个出征上限开关，默认开；关闭后出征没有上限」→
+// ★ 「再加个出征上限开关，默认开；关闭后出征没有上限」→
 //
 //	开关关掉时返回 (0, true)，调用方一律用 unlimited 判断，**不要**拿 0 去比大小。
 // ezfyTroopCapReuse 出征上限计算的预取数据（/order/preview 并行块已取好时传入，避免重复查库）
@@ -826,7 +826,7 @@ func (h *EzfyHandler) playerAtWar(uid uint) bool {
 }
 
 // dispatchNoCap 自城派遣(8)是否放开携带上限：玩家名下任一城有生效中的免战保护令
-// （★ 2026-10-02 用户要求：保护令**全账号生效**）或 不处于战斗状态 → 无上限（油照常消耗）；
+// （★ 2026-10-02 保护令**全账号生效**）或 不处于战斗状态 → 无上限（油照常消耗）；
 // 处于战斗状态 → 正常上限。
 func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
 	if h.hasAnyPeaceEffect(uid) {
@@ -1111,7 +1111,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		//   不再按「海城/陆城」卡控城池交战；海军兵种的目标地形限制已由上方统一校验
 		//   （ezfyNavalTargetAllowed：岛屿/海底森林/沿海平原，含建在其上的城市）。
 		//   即：只有海军兵种受地形限制，陆军/空军不受海城出身影响。
-		// ★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
+		// ★ 2026-09-27 免战保护令**绝对生效**（宣战也不能打）。
 		//   目标城市处于免战保护期时直接拦截出征，避免部队白跑一趟。
 		if h.hasCityEffect(uint(targetId), 2) {
 			return "该玩家使用了免战保护, 无法出征"
@@ -1281,7 +1281,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 //	侦查(1)      → 「被侦查报告」（军情警讯）
 //	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随情报等级递增
 //
-// ★ 2026-09-25 用户要求「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
+// ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
 // 不然我只知道有人打我，不知道哪来的」：情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10）。
 // 「出发城市（名称+坐标）」门槛定在 **2 级**，并且够等级时会**写进战报标题**
 // —— 军情警讯列表只显示标题，不点进去也要看得见。
@@ -1295,7 +1295,7 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 	//	侦查(1)      → 「被侦查报告」（军情警讯）
 	//	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随情报等级递增
 	//
-	// ★ 2026-09-25 用户要求「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
+	// ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
 	//
 	//	不然我只知道有人打我，不知道哪来的」：
 	//	情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10），见 h.ezfyIntelLevel。
@@ -1409,7 +1409,7 @@ const (
 
 // ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 侦察技巧等级（合计封顶 10）。
 //
-// ★ 2026-09-25 用户要求：「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下
+// ★ 2026-09-25 「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下
 //
 //	展示，不然我只知道有人打我，不知道哪来的」。
 //
@@ -1504,7 +1504,7 @@ func ezfyOneWayTravel(order *model.EzfyOrder) int64 {
 
 // RecallOrder 取消出征命令（原「召回」，已放开到所有命令类型）
 //
-// ★ 用户要求「出征队列可以取消」：原来只允许 type=7(驻守采集) 召回，
+// ★ 「出征队列可以取消」：原来只允许 type=7(驻守采集) 召回，
 // 其余命令一律返回「该命令不支持召回」。现在所有**还在外面**的命令
 // （status 0 行军中 / 1 驻守中）都能取消，部队原路返回出发城市。
 //
@@ -1536,7 +1536,7 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 		resp.ParamError(c, "部队正在战斗中, 不能取消；请到「军情 → 军队动态 → [指挥]」里打完或点[自动战斗]")
 		return
 	}
-	// ★ 2026-10-02 用户要求「自己也能单独召回驻守的军队」：
+	// ★ 2026-10-02 「自己也能单独召回驻守的军队」：
 	//   出站驻军(增援到友军城, status=3)允许单独召回, 按单程返航回出发城市。
 	//   仅允许「活跃驻军」(result 为空, 未返航过) 且目标城属于他人
 	//   —— 已归队的驻军(Result=兵力)与增援自己城市的订单召回会重复入兵, 一律拦截。
@@ -1700,7 +1700,7 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 		if order.Status == 0 && now >= order.ArriveTime {
 			h.processArrive(uid, order, now)
 		} else if order.Status == ezfyOrderStatusWaiting {
-			// ★ 2026-09-23 用户要求：目标已被抢占 → 部队「等待」。
+			// ★ 2026-09-23 目标已被抢占 → 部队「等待」。
 			//   目标不再忙碌(上一场打完、订单不再是战斗中)时，放行重新进指挥。
 			if !ezfyOrderTargetBusy(h, order, int64(order.ID)) {
 				order.Status = 0
@@ -1730,7 +1730,7 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 		}
 	}
 
-	// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
+	// ★ 2026-09-23 「敌人来了没提示 / 军情警讯不及时」：
 	//   防守方自己的轮询也能触发「打到我家城市的敌军到达 + 开战场」——
 	//   否则进攻方下线时，敌军会一直卡在「行进中」，防守方连「敌军已抵达」都收不到。
 	// ★ 2026-10-05 性能：来袭订单已在本函数开头**并行**取好，这里直接结算（不再查库）。
@@ -1844,7 +1844,7 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	//   只有超过数据库字段最大值才会溢出——去掉 LEAST(cap, ...)，改为无条件累加。
 	c := parseCarry(order.Carry)
 	if c.total() > 0 {
-		// ★ 2026-09-25 用户要求「各项资源有最大的配置」→ 入库统一走 ezfyResAddExpr：
+		// ★ 2026-09-25 「各项资源有最大的配置」→ 入库统一走 ezfyResAddExpr：
 		//   无条件累加，累加到配置的「资源最大值」（默认 100 亿）为止，且不拉低已有更大值。
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 			"food":  ezfyResAddExpr("food", c.Food),
@@ -1876,7 +1876,7 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 // beginReturn 异常返航: 兵力无损带回
 // ezfyOilCost 出征耗油(运输按携带资源量计, 其余按兵种油耗×数量×距离计)
 //
-// ★ 用户要求「加个出征油耗开关，默认开；关了出征消耗油 0」→ 关掉时直接返回 0。
+// ★ 「加个出征油耗开关，默认开；关了出征消耗油 0」→ 关掉时直接返回 0。
 // 出征预览(/order/preview)与真正下单(createOrder)都走这里，所以「看到的 0」就是「实扣的 0」。
 func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
 	troops []ezfyUnitGroup, resources map[string]int64) int64 {
@@ -2045,7 +2045,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 // 时长不足一期时按比例折算。返回 (粮食, 钢铁, 石油, 稀矿, 加成%, 资源名)。
 func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64) (int64, int64, int64, int64, int, string) {
 	// 军官后勤加成: 每 1 点 +1%, 上限 +100%
-	// ★ 2026-09-28 用户要求「采集后勤加成率可调」→ 后勤点数先乘 ezfyOfficerGatherMult 再折算百分比。
+	// ★ 2026-09-28 「采集后勤加成率可调」→ 后勤点数先乘 ezfyOfficerGatherMult 再折算百分比。
 	gainPct := 100
 	if officer := h.officerByName(uint(order.CityId), order.Officer); officer != nil {
 		gainPct += int(float64(officer.Logistics) * ezfyOfficerGatherMult())
@@ -2053,13 +2053,13 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 			gainPct = 200
 		}
 	}
-	// ★ 2026-09-28 用户要求「采集和野地等级有关，越高级采越多」：
+	// ★ 2026-09-28 「采集和野地等级有关，越高级采越多」：
 	//   每期基础 = 800 × (等级 ^ gatherLevelPow)，让高等级加速增长（默认幂次 1.3）；再乘后勤加成%。
 	per := int64(800 * math.Pow(float64(wl.Level), ezfyGatherLevelPow()) * float64(gainPct) / 100)
 	mult := int64(4)
 	if wl.WildType == 2 {
 		mult = 3
-		// ★ 2026-09-28 用户要求「海野采集更高些，给海野加个系数 1~2」：
+		// ★ 2026-09-28 「海野采集更高些，给海野加个系数 1~2」：
 		//   海野基础陆海系数低(3 vs 陆地4)，乘上本系数拉高海野采集收益（默认 1.5 → 4.5，比陆地更高）。
 		if sm := ezfyGatherSeaMult(); sm != 1 {
 			mult = int64(float64(mult) * sm)
@@ -2069,7 +2069,7 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 	if ms > 0 && ms < ezfyDispatchPeriod() {
 		amt = amt * ms / ezfyDispatchPeriod()
 	}
-	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 产出 × 倍率（默认 1 = 原样）
+	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 产出 × 倍率（默认 1 = 原样）
 	if gm := ezfyGatherResMult(); gm != 1 {
 		amt = int64(float64(amt) * gm)
 	}
@@ -2178,14 +2178,14 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 
 // ezfyOrderTargetBusy 目标是否已被别的玩家「抢先指挥」。
 //
-// ★ 2026-09-23 用户要求：A、B 出征同一个目标，A 已经在指挥(战斗中)的话，
+// ★ 2026-09-23 A、B 出征同一个目标，A 已经在指挥(战斗中)的话，
 //
 //	B 应当「等待」，不能再同时开一个指挥室。
 //	判断口径：同目标(target_type + 坐标)下存在**其他**订单处于「战斗中」(status=5)，
 //	或存在**更早**的「等待」(status=6)订单（按 id 排队，防止多个等待者互相死锁）。
 //	这里的 status=5 即「有进行中的战场在等玩家指挥」，把它当成目标被占用。
 //
-// ★ 2026-09-24 用户要求「玩家城市被征服/被掠夺中时，后到的攻击队伍进等待队列」：
+// ★ 2026-09-24 「玩家城市被征服/被掠夺中时，后到的攻击队伍进等待队列」：
 //
 //	等待(6)也占位 —— 新到达者只认现存战斗(5)或等待(6)就排队；放行时只让**最早**的
 //	等待者先走（id 更小的优先），后面的继续等，形成 FIFO 队列。
@@ -2295,7 +2295,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 
 	// 增援: 部队常驻目标城市协防
-	// ★ 2026-10-02 盟军驻军改造(用户要求):
+	// ★ 2026-10-02 盟军驻军改造():
 	//   · 增援**自己的城市** → 兵力并入目标城(部队调动, 行为不变);
 	//   · 增援**盟友城市** → **不送兵**, 兵力保留在订单 = 一个「驻军队列」;
 	//     敌军进攻该城时, 守方部队 = 驻军队列(按到达先后) + 友军自身部队(最后),
@@ -2481,7 +2481,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		wildLevel = level
 		defender = parseWildlandTroops(cfg.Troops)
-		// ★ 野地守将（2026-09-24 用户要求）：军官必须来自军官池(ezfy_cfg_general)、
+		// ★ 野地守将（2026-09-24 ）：军官必须来自军官池(ezfy_cfg_general)、
 		//   每块野地最多 1 名，配在野地类型的 officer_id 上；守将的学识给守军提供防御加成。
 		wildDefCamp = 1 // 野地守军按盟军兵种名展示
 		if cfgType == 3 {
@@ -2494,7 +2494,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defOfficerDesc = g.Name + " Lv." + strconv.Itoa(g.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
 			}
 		}
-		// ★ 用户要求：战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
+		// ★ 战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
 		//   原来一律写「野地N级」，看不出打的是什么地形。
 		// ★ 2026-10-04 与地图同口径改用 Ex（覆盖表/沿海平原），修复「地图沿海平原、战报平原」不一致
 		// ★ 2026-10-05 统一走 ezfyWildTerrainDisplayName：海洋野地→海底森林、岛屿→岛屿、纯海洋→海洋。
@@ -2593,7 +2593,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		return
 	}
 
-	// ★★ 指挥室（2026-09-22 用户要求）：战斗类订单到达后**不立即结算**，
+	// ★★ 指挥室（2026-09-22 ）：战斗类订单到达后**不立即结算**，
 	//   先开一场战场，玩家在「军情 → 军队动态 → [指挥]」里下达前进/暂停/后退；
 	//   每回合 30 秒、最多 40 回合，不下指令则按「前进」自动推进。
 	//   BattleResult 非空 = 这场仗已经在指挥室里打完了 → 直接用结果走下面的常规结算，
@@ -2603,7 +2603,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkMoves := h.buildMoveMap(city.ID, true)
 	defMoves := h.buildMoveMap(cityIdOf(target), false)
 
-	// ★★ 2026-10-02 盟军驻军串行战斗（用户要求）：
+	// ★★ 2026-10-02 盟军驻军串行战斗（）：
 	//   目标为玩家城时，守方 = 盟友驻军队列（按到达先后，先到先被打）+ 友军自身部队（最后）。
 	//   **每个驻军队列是一场独立战斗、独立战报**：打驻守A → 自动打驻守B → 全部驻军被打完
 	//   才与友军自身部队进行主城战（主城战仍走指挥室）。
@@ -2633,10 +2633,6 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			if atkTotal <= 0 {
 				break
-			}
-			garCamp := 0
-			if go_.UserID > 0 {
-				garCamp = h.ensureProfile(go_.UserID).Camp
 			}
 			// ★ 2026-10-02 驻军战用「溃败撤退」：守方剩余兵力跌破阈值即判定战败、战斗提前结束，
 			//   剩余部队自动返航回出发城市 —— 这样「驻军战败 → 回到自己城市」才有兵可回。
@@ -2691,19 +2687,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.addReport(go_.UserID, 2, "驻防战报: "+targetName,
 				fmt.Sprintf("你的驻军(来自%s)在%s(%d,%d)的驻防战斗已结束!\n%s\n%s%s",
 					gcityName, targetName, order.TargetX, order.TargetY,
-					battleOutcomeText(!gbr.AttackerWin, gbr.Draw), lossText(gbr.DefenderLosses, garCamp), endNote),
+					battleOutcomeText(!gbr.AttackerWin, gbr.Draw), lossText(gbr.DefenderLosses), endNote),
 				gDetail, int64(order.ID), target.ID)
 			// 攻方战报（对这支驻军）
 			h.addReport(uid, 2, "战斗报告: 击溃"+gcityName+"的驻军",
 				fmt.Sprintf("我方部队在%s(%d,%d)击溃了来自%s的盟军驻军!\n%s",
 					targetName, order.TargetX, order.TargetY, gcityName,
-					lossText(gbr.DefenderLosses, garCamp)),
+					lossText(gbr.DefenderLosses)),
 				gDetail, int64(order.ID), target.ID)
 			if gLeftStr == "" {
 				// 驻军全灭（未触发溃败撤退）→ 删除队列
 				h.DB.Delete(&model.EzfyOrder{}, go_.ID)
 			} else if gbr.AttackerWin {
-				// ★ 2026-10-02 用户要求：驻军战败 → 剩余部队自动返航回出发城市
+				// ★ 2026-10-02 驻军战败 → 剩余部队自动返航回出发城市
 				//   （返航到达后兵力按 order.CityId 回到自己城市，finishReturn 入城）
 				back := now + ezfyOneWayTravel(go_)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", go_.ID).
@@ -2767,7 +2763,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）
 			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"),
 			h.ensureProfile(uid).Camp, defCamp)
-		// ★ 2026-09-23 用户要求：目标被别的玩家抢先指挥时，本部队改为「等待」，
+		// ★ 2026-09-23 目标被别的玩家抢先指挥时，本部队改为「等待」，
 		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
 		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
 			order.Status = ezfyOrderStatusWaiting
@@ -2779,11 +2775,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Update("status", ezfyOrderStatusBattle)
-			// ★ 2026-09-23 用户要求「敌人来了没提示 / 军情警讯不及时」：
+			// ★ 2026-09-23 「敌人来了没提示 / 军情警讯不及时」：
 			//   敌军**到达**我方城市开战时，立即给守方发一条「军情警讯」。
 			//   （「敌军来袭」预警已在 createOrder 时发；这里补「已抵达」的实时消息，
 			//   不依赖雷达站 —— 结果类消息不受雷达限制。）
-			// ★ 2026-09-25 用户要求「军情警讯里要看到对面城市名字和地址」→ 这里带上**坐标**，
+			// ★ 2026-09-25 「军情警讯里要看到对面城市名字和地址」→ 这里带上**坐标**，
 			//   并且写进标题（列表只显示标题，不点进去也要看得见）。这条是「人已经到了」的事后
 			//   消息，不受雷达站限制，所以来源一定给全 —— 保证玩家至少在这一步知道谁打了他。
 			if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
@@ -2793,7 +2789,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
 					"", 0, target.ID)
 			}
-			// ★ 用户要求：「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
+			// ★ 「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
 			//   再发一条战报只会把战斗报告列表搅乱。
 			return
@@ -2848,14 +2844,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
-	// ★ 用户要求：战报里的兵种名用「阵营兵种名」(同盟国/轴心国各自的叫法)，
-	//   不再是笼统的大类名。攻方用攻方阵营，守方用守方阵营。
-	atkCamp := profile.Camp
-	// ★ 2026-09-24 修复: 野地=盟军兵种名、寇城=轴心国兵种名(之前这里重置成 0 → 战报里兵种全是通用名)
-	defCamp := wildDefCamp
-	if target != nil {
-		defCamp = h.ensureProfile(target.UserID).Camp
-	}
+	// ★ 2026-10-05 战报里的兵种名**统一用基础兵种名**（不带阵营前缀），
+	//   攻方/守方都不再按阵营取 name_ally / name_axis。
 	// 带队军官 / 城守军官
 	if leadOfficer != nil {
 		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
@@ -2866,13 +2856,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
-	// ★ 2026-09-24 用户要求：40 回合平局时双方标签都显示 [平] 而不是胜/败
+	// ★ 2026-09-24 40 回合平局时双方标签都显示 [平] 而不是胜/败
 	atkTag, defTag := winText(win), winText(!win)
 	if draw {
 		atkTag, defTag = "平", "平"
 	}
 	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
-	report += troopChangeText(atkBefore, atkAfter, atkCamp)
+	report += troopChangeText(atkBefore, atkAfter)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
 	// ★★ 守方兵力(2026-09-23 修复报错)：原来 defBefore 直接取**野地配置满编兵力**，
 	//   再用它减去战斗损失得出「剩余」。但战斗实际打到的是**已经损耗过的守军**
@@ -2889,7 +2879,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	for tid, cnt := range defAfter {
 		defBefore[tid] += cnt
 	}
-	report += troopChangeText(defBefore, defAfter, defCamp)
+	report += troopChangeText(defBefore, defAfter)
 
 	detail := ""
 	for _, a := range br.Actions {
@@ -2897,9 +2887,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	detail += "\n[双方兵力]\n"
 	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
-	detail += troopChangeText(atkBefore, atkAfter, atkCamp)
+	detail += troopChangeText(atkBefore, atkAfter)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
-	detail += troopChangeText(defBefore, defAfter, defCamp)
+	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
 	// 攻方战损: 按修复率入伤兵营
@@ -2993,7 +2983,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	prestigeGain := 0
 
 	if win {
-		// ★★ 2026-09-27 用户要求：免战保护令**绝对生效**（宣战也不能打）。
+		// ★★ 2026-09-27 免战保护令**绝对生效**（宣战也不能打）。
 		//   目标城市处于免战保护期时本次战斗不结算：无战利品、不扣民心、武将不被俘，
 		//   部队到达后直接返航，战报提示「该玩家使用免战道具, 无法结算」。
 		if targetProtected && order.TargetType == 3 {
@@ -3013,7 +3003,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 			return
 		}
-		// ★ 2026-09-25 用户要求「军团交战期掠夺/征服获胜可获得军团战绩积分（军团总积分 + 成员个人积分）」：
+		// ★ 2026-09-25 「军团交战期掠夺/征服获胜可获得军团战绩积分（军团总积分 + 成员个人积分）」：
 		//   只在「掠夺(2)/征服(3) 攻打玩家城市 且 攻击方获胜」这一处发放，**只加一次**。
 		//   helper 内部自己判断是否处于生效中的军团交战期（不处于则什么都不做），
 		//   所以这里不需要再做军团判断。
@@ -3081,7 +3071,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			hallLevel := h.buildingLevel(city.ID, 1)
 			owned := len(h.wildlandList(city.ID))
 			if owned >= hallLevel {
-				// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」→ 战利品入账统一走
+				// ★ 2026-09-25 「攻击野地获得的资源也要累加」→ 战利品入账统一走
 				//   ezfyResAddExpr（DB 原子累加 + 资源最大值），不再「内存加完整行写回」：
 				//   原写法在并发下会被别的请求覆盖掉，且会连带写回其它陈旧字段。
 				h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
@@ -3149,8 +3139,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.addTroop(city.ID, capturedTroopId, capturedCount)
 			}
 			if capturedCount > 0 {
-				// ★ 俘获的守军用其原阵营兵种名: 野地=盟军、寇城=轴心国
-				report += fmt.Sprintf("\n俘获: %s×%d", ezfyCfg.troopName(capturedTroopId, wildDefCamp), capturedCount)
+				// ★ 2026-10-05 战报兵种名统一用基础兵种名（不带阵营前缀）
+				report += fmt.Sprintf("\n俘获: %s×%d", ezfyCfg.troopName(capturedTroopId, 0), capturedCount)
 			}
 			// ★ 2026-10-05 野地类型「商城道具掉落」（管理端在野地类型里配，默认空=不掉）：
 			//   打赢该类型野地/海野/寇城后按 [[cfg_id,数量,概率%],...] 掉落商城道具到背包，
@@ -3271,7 +3261,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			target.Oil = defRes[2] - lootOil
 			target.Rare = defRes[3] - lootRare
 			target.Gold = defRes[4] - lootGold
-			// ★★ 2026-09-27 用户要求「仅剩一城不可被占领」→ 后又改口：**允许占光**，
+			// ★★ 2026-09-27 「仅剩一城不可被占领」→ 后又改口：**允许占光**，
 			//   守方自由城被占光后由系统补给一座随机新城市（保证玩家永远有城）。
 			//   征服结算既能由攻方轮询(processOrders)触发、也能由守方轮询(processIncoming)触发，
 			//   多个进攻方可能同时对同一守方做「统计现城数→建占领记录」的读-改-写；
@@ -3339,11 +3329,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			defReportBody := ""
 			if !lastCity {
 				defReportBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
 			} else {
 				// 该城已被先到的队伍占走（本次重复攻打）
 				defReportBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses, defCamp))
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
 			}
 			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail, 0, target.ID)
 		}
@@ -3360,12 +3350,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.addReport(target.UserID, 2, "被掠夺报告: "+city.Name,
 				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-%d 民怨+%d\n%s\n%s",
 					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold,
-					lootFeel, lootFeel, lossText(br.DefenderLosses, defCamp), wareNote),
+					lootFeel, lootFeel, lossText(br.DefenderLosses), wareNote),
 				detail, 0, target.ID)
 		}
 		// 掠夺资源入账
 		if order.OrderType == 2 || order.OrderType == 3 {
-			// ★ 2026-09-25 用户要求「攻击野地获得的资源也要累加」→ 走 DB 原子累加 + 资源最大值：
+			// ★ 2026-09-25 「攻击野地获得的资源也要累加」→ 走 DB 原子累加 + 资源最大值：
 			//   原来在内存里 += 再 saveCityRes（整行写回），既可能覆盖并发写入的增量，
 			//   也把「无上限累加」这个规则散落在多处；现在统一到 addResToCityDB。
 			//   野地/海野/寇城的战利品就是从这里入账的（order 2/3 打 target_type 1/2）。
@@ -3484,10 +3474,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
-			// ★ 2026-09-24 用户要求：军情列表展示 [防守报告] 城市名(坐标)，标题需携带守方城名+坐标
+			// ★ 2026-09-24 军情列表展示 [防守报告] 城市名(坐标)，标题需携带守方城名+坐标
 			h.addReport(target.UserID, 4, "守卫报告: "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses, defCamp)), detail, 0, target.ID)
+				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses)), detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)
 		}
 	}
@@ -3542,7 +3532,7 @@ func (h *EzfyHandler) buildMoveMap(cityId uint, atk bool) map[int]int {
 
 // defExcludeSet 城市「不参与防御」的兵种集合（司令部「防守」= 不参与防御，def_move = -1）。
 //
-// ★ 用户要求（2026-09-23）：被攻击时，防御战斗的兵种列表**不包含**标记了「不参与防御」的兵种。
+// ★ （2026-09-23）：被攻击时，防御战斗的兵种列表**不包含**标记了「不参与防御」的兵种。
 func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
 	m := map[int]bool{}
 	if cityId <= 0 {
@@ -3590,7 +3580,7 @@ func parseWildlandItemDrops(raw string) [][3]int {
 
 // parseWildlandTroops 解析 [[兵种id,最小,最大],...] 生成守军(随机数量)
 //
-// ★ 用户要求「加个野地兵力倍数配置，默认 1，可以调整倍数」→ 随机出来的数量再乘倍数。
+// ★ 「加个野地兵力倍数配置，默认 1，可以调整倍数」→ 随机出来的数量再乘倍数。
 // 野地详情里的守军预览走同一个倍数（见 MapWildland），保证「看到的」=「打到的」。
 func parseWildlandTroops(s string) []ezfyUnitGroup {
 	groups := []ezfyUnitGroup{}
@@ -3623,9 +3613,12 @@ func groupCounts(groups []ezfyUnitGroup) map[int]int64 {
 	return m
 }
 
-// troopChangeText 兵力变化文本；camp 为阵营(1 同盟国 / 2 轴心国)，
-// 用于取「阵营兵种名」(ezfy_cfg_troop.name_ally / name_axis)。
-func troopChangeText(before, after map[int]int64, camp int) string {
+// troopChangeText 兵力变化文本。
+//
+// ★ 2026-10-05 战报里兵种名**统一展示基础兵种名**（不再按阵营显示
+//   阵营兵种名 name_ally / name_axis），损失展示成 `兵种名 战前->战后(-损失)`，
+//   例如 `驱逐舰 16833->0(-16833)`。
+func troopChangeText(before, after map[int]int64) string {
 	ids := []int{}
 	for tid := range before {
 		ids = append(ids, tid)
@@ -3634,7 +3627,8 @@ func troopChangeText(before, after map[int]int64, camp int) string {
 	sort.Ints(ids)
 	text := ""
 	for _, tid := range ids {
-		name := ezfyCfg.troopName(tid, camp)
+		// camp 传 0 → troopName 返回基础兵种名（不带阵营前缀）
+		name := ezfyCfg.troopName(tid, 0)
 		if name == "" {
 			name = "兵种" + strconv.Itoa(tid)
 		}
@@ -3644,14 +3638,16 @@ func troopChangeText(before, after map[int]int64, camp int) string {
 			a = b
 		}
 		if b-a > 0 || b > 0 {
-			text += fmt.Sprintf("%s %d->%d 损失%d\n", name, b, a, b-a)
+			text += fmt.Sprintf("%s %d->%d(-%d)\n", name, b, a, b-a)
 		}
 	}
 	return text
 }
 
-// lossText 守军损失文本；camp 为守方阵营(1 同盟国 / 2 轴心国)
-func lossText(groups []ezfyUnitGroup, camp int) string {
+// lossText 守军损失文本。
+//
+// ★ 2026-10-05 兵种名**统一展示基础兵种名**（不按阵营）。
+func lossText(groups []ezfyUnitGroup) string {
 	if len(groups) == 0 {
 		return "守军无损失"
 	}
@@ -3660,7 +3656,8 @@ func lossText(groups []ezfyUnitGroup, camp int) string {
 		if g.Count <= 0 {
 			continue // ★ 全量保序的守方损失里含 count=0 的占位项，不能打印「×0」
 		}
-		name := ezfyCfg.troopName(g.TroopId, camp)
+		// camp 传 0 → troopName 返回基础兵种名（不带阵营前缀）
+		name := ezfyCfg.troopName(g.TroopId, 0)
 		if name == "" {
 			name = "兵种" + strconv.Itoa(g.TroopId)
 		}
@@ -3683,7 +3680,7 @@ func winResultText(win bool) string {
 	return "失败！"
 }
 
-// battleOutcomeText 战报结局文案（★ 2026-09-24 用户要求：40 回合未分胜负显示平局而非失败）
+// battleOutcomeText 战报结局文案（★ 2026-09-24 40 回合未分胜负显示平局而非失败）
 func battleOutcomeText(win, draw bool) string {
 	if draw {
 		return "与敌方打成平局！"
@@ -3783,12 +3780,10 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		if len(defender) == 0 {
 			b.WriteString("无敌军驻守")
 		}
-		// ★ 兵种名按阵营: 野地=盟军, 寇城=轴心国
-		camp := 1
+		// ★ 2026-10-05 侦查报告兵种名**统一用基础兵种名**（不带阵营前缀），与战斗报告口径一致
 		cfgType := 1
 		level := ezfyWildlandLevel(order.TargetX, order.TargetY)
 		if order.TargetType == 2 {
-			camp = 2
 			cfgType = 3
 			level = ezfyKouLevel(order.TargetX, order.TargetY)
 		} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
@@ -3798,7 +3793,8 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		}
 		for _, g := range defender {
 			if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
-				name := ezfyCfg.troopName(g.TroopId, camp)
+				// camp 传 0 → 基础兵种名
+				name := ezfyCfg.troopName(g.TroopId, 0)
 				if name == "" {
 					name = cfg.Name
 				}
@@ -3852,8 +3848,9 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	}
 	b.WriteString("\n")
 
-	// 军队/城防分列（★ 兵种名用被侦查方的阵营兵种名，与战报口径一致）
-	defCamp := h.ensureProfile(target.UserID).Camp
+	// 军队/城防分列（★ 2026-10-05 兵种名统一用基础兵种名，与战斗报告口径一致）
+	// ensureProfile 仅为兜底补建目标档案（老数据可能没档案），这里不再取阵营
+	_ = h.ensureProfile(target.UserID)
 	var defTxt, armyTxt, navyTxt, airTxt []string
 	var hasDef, hasArmy, hasNavy, hasAir bool
 	for tid, cnt := range h.troopMap(target.ID) {
@@ -3861,7 +3858,8 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		if cfg == nil || cnt <= 0 {
 			continue
 		}
-		name := ezfyCfg.troopName(tid, defCamp)
+		// camp 传 0 → 基础兵种名
+		name := ezfyCfg.troopName(tid, 0)
 		if name == "" {
 			name = cfg.Name
 		}

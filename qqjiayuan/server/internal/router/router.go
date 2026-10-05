@@ -625,7 +625,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// 军团任职（军团长任命副团长 / 参谋长）
 				ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
 				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
-				// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 用户要求）
+				// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 ）
 				// 外交关系标记 + 军团宣战（宣战后 12 小时生效、48 小时整场结束）
 				ezfyG.GET("/corps/relations", ezfyH.CorpsRelations)
 				ezfyG.POST("/corps/relation", ezfyH.CorpsRelationSet)
@@ -1197,7 +1197,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillAdd)
 				admin.DELETE("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillRemove)
 				// 军官装备配置表 CRUD
-				// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（module:ezfyEquips）。
+				// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（module:ezfyEquips）。
 				//   GET 列表是「军官管理→给玩家发装备」下拉和「军官装备管理」共用的，两个权限任一放行；
 				//   增删改只归军官装备管理。
 				admin.GET("/ezfy-equipments", permAny(db, "module:ezfyOfficers", "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipments)
@@ -1329,7 +1329,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-corps-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarCreate)
 				admin.POST("/ezfy-corps-wars/effect-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffectAll)
 				admin.POST("/ezfy-corps-wars/finish-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinishAll)
-				// ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」→ 单条生效
+				// ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」→ 单条生效
 				admin.POST("/ezfy-corps-wars/:id/effect", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffect)
 				admin.POST("/ezfy-corps-wars/:id/finish", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinish)
 				admin.DELETE("/ezfy-corps-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarDelete)
@@ -1360,7 +1360,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandUpdate)
 				admin.POST("/ezfy-wildlands/:id/finish", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandFinish)
 				admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandDelete)
-				// ★ 2026-10-05 批量物理删除（用户要求「管理端删除做好批量删除」）
+				// ★ 2026-10-05 批量物理删除（「管理端删除做好批量删除」）
 				admin.POST("/ezfy-wildlands/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandBatchDelete)
 
 				// ---- 野地类型维护（ezfy_cfg_wildland） ----

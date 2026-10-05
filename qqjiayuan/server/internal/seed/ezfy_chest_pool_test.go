@@ -54,7 +54,7 @@ func TestChestSetPlanSetsExist(t *testing.T) {
 
 // TestLooseEquipPriceInRange —— 散件定价必须落在 100~500 钻区间
 //
-// ★ 2026-09-26 用户要求「商城装备页卖的太低，现钻石 × 10」→ 原 10~50 整体涨到 100~500。
+// ★ 2026-09-26 「商城装备页卖的太低，现钻石 × 10」→ 原 10~50 整体涨到 100~500。
 func TestLooseEquipPriceInRange(t *testing.T) {
 	check := func(name string, p int64) {
 		if p < 100 || p > 500 {

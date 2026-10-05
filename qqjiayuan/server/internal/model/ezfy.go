@@ -120,7 +120,7 @@ func (EzfyCfgWildland) TableName() string { return "ezfy_cfg_wildland" }
 
 // EzfyMapTile 地图格子覆盖（管理端维护）
 //
-// ★ 用户要求：管理端要能维护**所有**野地（不只是玩家已占领的），能改土地类型，
+// ★ 管理端要能维护**所有**野地（不只是玩家已占领的），能改土地类型，
 //
 //	也能把某格设成 寇城 / 活动寇城。
 //
@@ -144,7 +144,7 @@ func (EzfyMapTile) TableName() string { return "ezfy_map_tile" }
 
 // EzfyActWild 活动野地配置（地图管理「活动野地」tab）
 //
-// ★ 2026-09-29 用户要求：活动野地配置不友好，优化成「按坐标列表管理」。
+// ★ 2026-09-29 活动野地配置不友好，优化成「按坐标列表管理」。
 //
 //	活动野地原有坐标由哈希 + mark 覆盖标记决定，这里给**每个活动野地坐标**挂一份可配置数据：
 //	- Enabled：启用开关。开 = 该格按活动野地玩法（守军/奖励/等级用本条配置，缺省回退默认）；
@@ -275,13 +275,13 @@ type EzfyCfgLimit struct {
 	ResourceMax int `gorm:"default:36;comment:资源区建筑数量上限（type 1）" json:"resource_max"`     // 资源区建筑数量上限（type 1）
 	HouseMax    int `gorm:"default:33;comment:民居数量上限" json:"house_max"`                   // 民居数量上限
 	FactoryMax  int `gorm:"default:20;comment:军工厂数量上限（0 = 不限）" json:"factory_max"`        // 军工厂数量上限（0 = 不限）
-	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
+	// ★ 「首页公告默认只能展示一条，管理端可以配置」→ 首页外露公告条数（默认 1）
 	NoticeHomeCount int `gorm:"default:1;comment:公告家园数量" json:"notice_home_count"`
-	// ★ 用户要求「出征集结令上限后台管理系统可维护，最大默认 99」→ 单次出征最多用几个集结令（默认 99）
+	// ★ 「出征集结令上限后台管理系统可维护，最大默认 99」→ 单次出征最多用几个集结令（默认 99）
 	GatherMaxPerOrder int `gorm:"default:99;comment:集结上限每订单" json:"gather_max_per_order"`
-	// ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价，比例系统可灵活配置」→ 挂单出售单价上限（黄金/单位，默认 100）
+	// ★ 2026-09-28 「挂单出售按 1:100 卡控单价，比例系统可灵活配置」→ 挂单出售单价上限（黄金/单位，默认 100）
 	SellPriceMax int `gorm:"default:100;comment:挂单出售单价上限" json:"sell_price_max"`
-	// ★ 2026-09-28 用户要求「军官军事累加上限/加速出征，数值可配置」→ 每点军事累加的出征上限（默认 2000）
+	// ★ 2026-09-28 「军官军事累加上限/加速出征，数值可配置」→ 每点军事累加的出征上限（默认 2000）
 	OfficerCapPerMilitary int `gorm:"default:2000;comment:军官军事每点出征上限" json:"officer_cap_per_military"`
 	// ★ 2026-09-28 军官军事加成出征速度（每点 %，默认 0.1）
 	OfficerSpeedPerMilitary float64 `gorm:"default:0.1;comment:军官军事每点速度加成" json:"officer_speed_per_military"`
@@ -295,7 +295,7 @@ type EzfyCfgLimit struct {
 	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
 	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
 	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。
-	//   ★ 2026-09-26 用户要求「现值 2000 改成 20」：默认值 100 → **20**。
+	//   ★ 2026-09-26 「现值 2000 改成 20」：默认值 100 → **20**。
 	//   起因：名将发放等级修好之后（原来被发成 1 级），150 级名将的工资按 2000/级
 	//   高达 30 万黄金/小时，远超玩家产出（人口 × 税率 ≈ 4 万/小时）→ 会直接破产。
 	//   ⚠️ 字段名必须让 GORM 推出 officer_salary_per_level（与 seed 里补的列名一致），
@@ -304,7 +304,7 @@ type EzfyCfgLimit struct {
 	// ★ 用户反馈「恢复伤兵需要黄金」→ 恢复 1 个伤兵消耗
 	//   ceil(该兵种总造价 / 该值) 黄金，最低 1 黄金。默认 50。
 	WoundHealDivisor int `gorm:"default:50;comment:伤兵治疗Divisor" json:"wound_heal_divisor"`
-	// ★ 用户要求「商城购买卡控改成可配置的」→
+	// ★ 「商城购买卡控改成可配置的」→
 	//   商城单次购买数量上限（下限恒为 1）。线上现值 99。
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
 	MallBuyMax int `gorm:"default:99;comment:Mall购买上限" json:"mall_buy_max"`
@@ -316,12 +316,12 @@ type EzfyCfgLimit struct {
 	PlacateFeelings    int   `gorm:"default:1;comment:安抚提升民心" json:"placate_feelings"`
 	PlacateCooldownMin int   `gorm:"default:15;comment:安抚冷却分钟" json:"placate_cooldown_min"`
 
-	// ★ 用户要求「采集 12 小时才有宝物 → 可配置」：
+	// ★ 「采集 12 小时才有宝物 → 可配置」：
 	//   常驻采集结算一期的小时数（默认 1），由 ezfyDispatchPeriod() 读取。
 	DispatchPeriodH int `gorm:"default:1;comment:采集周期小时" json:"dispatch_period_h"`
 
 	// ★ 出征速度加成（百分比口径，0 = 无加成）：实际行军时间 = 原时间 × 100/(100+加成)。
-	//   ★ 2026-09-24 用户要求「节假日我好让玩家队伍走快点」。默认 100。
+	//   ★ 2026-09-24 「节假日我好让玩家队伍走快点」。默认 100。
 	MarchSpeedBonus float64 `gorm:"default:100;comment:出征速度加成" json:"march_speed_bonus"`
 
 	// ============ 系统配置（管理端「系统配置」页可维护）============
@@ -335,30 +335,30 @@ type EzfyCfgLimit struct {
 	//   默认 10 = 10 倍（线上现值）；2 = 翻倍；0.5 = 减半。允许小数。
 	//   注意：只作用于「打赢的战利品」，不含驻守采集（采集另有自己的产出公式）。
 	WildResMult float64 `gorm:"default:10;comment:野地战利品资源倍率" json:"wild_res_mult"`
-	// ★ 2026-09-26 用户要求「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」：
+	// ★ 2026-09-26 「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」：
 	//   城市每小时资源产量（粮/钢/油/稀矿/金）整体乘这个倍率。
 	//   ⚠️ **0 是合法值**（= 产量归零），不是「未配置」——
 	//   所以读取端**不能**用「<= 0 就回落默认」那套（见 ezfyResProdMult）。
 	//   ⚠️ 老库补列时只能回填 NULL，别用 `WHERE col <= 0`（那样每次启动都会把玩家设的 0 改回 1）。
 	ResProdMult float64 `gorm:"default:1;comment:城市资源产量倍率" json:"res_prod_mult"`
-	// ★ 2026-10-05 用户要求「产量加成倍率」拆成两个：资源(粮/钢/油/稀矿)与黄金分开。
+	// ★ 2026-10-05 「产量加成倍率」拆成两个：资源(粮/钢/油/稀矿)与黄金分开。
 	//   本字段只乘「粮/钢/油/稀矿」产量；黄金产量走 GoldProdMult。
 	//   ⚠️ 0 合法（黄金产量归零）；NULL → seed 回填 1。
 	GoldProdMult float64 `gorm:"default:1;comment:黄金产量倍率" json:"gold_prod_mult"`
-	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
+	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 常驻采集产出资源 × 该倍数。
 	//   作用点：dispatchGatherYield 的产出（等级 × 800 × 后勤加成 × 陆海系数）。
 	//   默认 10 = 10 倍（线上现值）；0.5 = 减半。允许小数。0 无意义 → 回落 10。
 	GatherResMult float64 `gorm:"default:10;comment:采集资源倍率" json:"gather_res_mult"`
-	// ★ 2026-09-28 用户要求「采集军官后勤加成率可调」：
+	// ★ 2026-09-28 「采集军官后勤加成率可调」：
 	//   开工斜率：采集产出里「军官后勤属性」的加成按该倍率缩放后再叠加。
 	//   公式 dispatchGatherYield：gainPct = 100 + floor(后勤 × 本倍率)，封顶 200（+100%）。
 	//   默认 1 = 现行为（每点后勤 +1%）；0.5 = 减半；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1。
 	OfficerGatherMult float64 `gorm:"default:1;comment:采集后勤加成倍率" json:"officer_gather_mult"`
-	// ★ 2026-09-28 用户要求「市长加成整体可调」：
+	// ★ 2026-09-28 「市长加成整体可调」：
 	//   作用点 mayorBonusPct：市长产量加成% 整体 × 该倍率（默认 1 = 现状）。
 	//   0 合法（关闭市长加成）；NULL 无意义 → 回落 1。
 	MayorGainMult float64 `gorm:"default:1;comment:市长加成倍率" json:"mayor_gain_mult"`
-	// ★ 2026-09-28 用户要求「采集和野地等级有关系，越高级采的越多，搞个合理的」：
+	// ★ 2026-09-28 「采集和野地等级有关系，越高级采的越多，搞个合理的」：
 	//   采集每期基础 = 800 × (野地等级 ^ 本幂次)，让高等级野地产出加速型增长（比纯线性更拉开差距）。
 	//   默认 1.3：1级=800；5级≈6467；7级≈10160；9级≈13840（均未乘后勤/倍率/陆海）。
 	//   1.0 = 纯线性（历史行为）；>1 越高等级越发突出；<1 高等级收益递减。0 / 负 / NULL 无意义 → 回落 1.3。
@@ -369,17 +369,17 @@ type EzfyCfgLimit struct {
 	DropT3 int `gorm:"default:4;comment:高级宝物掉落roll阈值" json:"drop_t3"`
 	DropT4 int `gorm:"default:1;comment:特殊宝物掉落roll阈值" json:"drop_t4"`
 	// ★ 2026-10-05 活动野地（活动目标）战斗掉宝总概率%：命中后才按品质掉落（默认 85）。
-	//   用户要求「野地战斗掉落高级宝物（如狙击步枪）的概率要可配」→ 这里就是那个概率。
+	//   「野地战斗掉落高级宝物（如狙击步枪）的概率要可配」→ 这里就是那个概率。
 	//   0 / 负 / NULL → 回落 85。
 	DropActPct int `gorm:"default:85;comment:活动野地战斗掉宝概率" json:"drop_act_pct"`
-	// ★ 2026-09-28 用户要求「海野采集更高些，给海野加个系数 1~2」：
+	// ★ 2026-09-28 「海野采集更高些，给海野加个系数 1~2」：
 	//   海野采集产出在本公式得出后（陆海系数之前）再整体 × 本系数，让海城周边野地采集更划算。
 	//   默认 1.5（海野基础陆海系数 3×1.5=4.5，比同级陆野 4 更高）；1 = 跟陆野拉平；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1.5。
 	GatherSeaMult float64 `gorm:"default:1.5;comment:海野采集系数" json:"gather_sea_mult"`
-	// ★ 2026-09-28 用户要求：军校刷新周期可在二战系统配置切换按天/按小时（默认按小时）。
+	// ★ 2026-09-28 军校刷新周期可在二战系统配置切换按天/按小时（默认按小时）。
 	RecruitCycleMode int `gorm:"default:2;comment:军校刷新周期(1=按天 2=按小时)" json:"recruit_cycle_mode"`
 
-	// ★ 2026-09-27 用户要求「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
+	// ★ 2026-09-27 「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。
 	//
 	//   规则（用户确认口径）：
@@ -411,7 +411,7 @@ type EzfyCfgLimit struct {
 	// ★ 出征兵力上限（关 = 出征不限兵力，随便带多少；司令部等级那套上限失效）
 	MarchCapOn int `gorm:"comment:出征上限开启" json:"march_cap_on"`
 
-	// ★ 2026-09-26 用户要求「召集人口那里加『民居容量限制』『召集人口灵活配置』两个开关」：
+	// ★ 2026-09-26 「召集人口那里加『民居容量限制』『召集人口灵活配置』两个开关」：
 	//   ① HousePopLimitOn 民居容量限制：1 开（默认）= 民居容量决定人口上限 pop_max，
 	//      人口自然增长到 pop_max 封顶；0 关 = 民居不再限制人口，人口可无限增长。
 	//   ② ConveneFlexibleOn 召集人口灵活配置：1 开（默认）= 召集人口不受民居上限限制、
@@ -420,20 +420,20 @@ type EzfyCfgLimit struct {
 	HousePopLimitOn   int `gorm:"comment:民居容量限制开关（关 = 民居不限制人口上限）" json:"house_pop_limit_on"`
 	ConveneFlexibleOn int `gorm:"comment:召集人口灵活配置（关 = 召集同样受民居上限约束）" json:"convene_flexible_on"`
 
-	// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
+	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」：
 	//   召集消耗粮食 + 召集获得人口，默认各 10 万。0 无意义 → 回落默认（seed 走 addLimitCol）。
 	ConveneFoodCost int `gorm:"comment:召集消耗粮食" json:"convene_food_cost"`
 	ConvenePopGain  int `gorm:"comment:召集获得人口" json:"convene_pop_gain"`
-	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限（0 = 不限/不额外封顶；>0 时召集后人口不得超过它）。
 	//   ⚠️ 0 是有意义的（= 不限），不能带 gorm:"default:x" 标签，seed 走 addLimitCol 且别用 <=0 回填覆盖正向值。
 	ConvenePopMax int `gorm:"comment:召集硬性人口上限（0 = 不限，超过禁止召集）" json:"convene_pop_max"`
 
-	// ============ 军官升星（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
+	// ============ 军官升星（2026-09-22 ，2026-09-23 按简化）============
 	//
 	// ★ 简化后的规则：升星按固定概率（officer_star_chance），失败也消耗 1 枚星级徽章，
 	//   每升 1 星三维各 +officer_star_attr_gain，星级上限 officer_star_max。
-	//   原先的「概率开关/每高 1 星递减/成功率下限/失败保留徽章」四个配置已按用户要求去掉。
+	//   原先的「概率开关/每高 1 星递减/成功率下限/失败保留徽章」四个配置已按去掉。
 	//
 	// ⚠️ OfficerStarUpOn 是**开关**（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol。
 	OfficerStarUpOn int `gorm:"comment:升星功能：1 开 / 0 关（关了不能用升星卡）" json:"officer_star_up_on"` // 升星功能：1 开 / 0 关（关了不能用升星卡）
@@ -443,7 +443,7 @@ type EzfyCfgLimit struct {
 	OfficerStarAttrGain int `gorm:"default:10;comment:每升 1 星三维各 +N（默认 10）" json:"officer_star_attr_gain"` // 每升 1 星三维各 +N（默认 10）
 	OfficerStarMax      int `gorm:"default:5;comment:星级上限（默认 5）" json:"officer_star_max"`                 // 星级上限（默认 5）
 
-	// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+	// ★ 2026-09-30 「使用招生简章出五星军官的概率」：
 	//   招生简章刷新军校候选时，以 N% 概率把候选中的 1 名置为 5 星。
 	//   默认 1 = 1%（≈维持现状）；2 = 2 倍率；100 = 100% 必刷出 5 星军官。
 	//   （名将不参与：名将只由管理端发放，「名将开启才可刷到」暂不实现。）
@@ -479,7 +479,7 @@ type EzfyCfgLimit struct {
 	//   口径按「最后一次入营时间」(ezfy_wounded.updated_at) 算，持续有新伤兵入营会顺延。
 	WoundExpireDays int `gorm:"default:3;comment:伤兵过期天数" json:"wound_expire_days"`
 
-	// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金，比例可配置」：
+	// ★ 2026-09-30 「玩家可向系统出售资源获得黄金，比例可配置」：
 	//   玩家把资源**直接卖给系统**（不走挂单），每 100 单位 → N 黄金，实得再扣 10% 手续费。
 	//   默认：粮食 100:10、钢铁 100:10、石油 100:20、稀矿 100:25。
 	//   0 无意义 → 回落各自默认值（见 ezfySysSellRatio）。
@@ -633,7 +633,7 @@ type EzfyCity struct {
 	Feelings  int    `gorm:"comment:民心（民心）" json:"feelings"`            // 民心
 	Grievance int    `gorm:"default:0;comment:民怨" json:"grievance"`     // 民怨
 	TaxRate   int    `gorm:"comment:税率%" json:"tax_rate"`               // 税率%
-	// ★ 2026-09-28 用户要求「安抚 15 分钟可安抚一次」→ 记录上次安抚时间(ms)，0 = 从未安抚。
+	// ★ 2026-09-28 「安抚 15 分钟可安抚一次」→ 记录上次安抚时间(ms)，0 = 从未安抚。
 	PlacateTime int64 `gorm:"comment:上次安抚时间戳(ms)" json:"placate_time"`
 	Pop         int64 `gorm:"comment:人口" json:"pop"`
 	PopMax      int64 `gorm:"comment:人口上限" json:"pop_max"`
@@ -852,7 +852,7 @@ func (EzfyOrder) TableName() string { return "ezfy_order" }
 
 // EzfyBattle 战场（实时指挥室）
 //
-// ★ 2026-09-22 用户要求「实现指挥功能」（入口：军情 → 军队动态 → [指挥]）：
+// ★ 2026-09-22 「实现指挥功能」（入口：军情 → 军队动态 → [指挥]）：
 // 出征部队到达目标后**不立即结算**，而是开一场战场；每回合 30 秒，
 // 前 25 秒玩家可下达前进/暂停/后退，后 5 秒锁定并由服务器结算一回合，最多 40 回合。
 // 战场结束时把结果写回 ezfy_order.battle_result，再走原有的战后结算逻辑。
@@ -875,11 +875,11 @@ type EzfyBattle struct {
 	// Win 0 未分胜负 / 1 攻方胜 / 2 攻方负
 	Win int `gorm:"default:0;comment:Win 0 未分胜负 / 1 攻方胜 / 2 攻方负" json:"win"`
 	// AtkCmd 攻方**逐兵种**指令表，JSON: {"1":"advance","3":"hold"}（troopId → advance|hold|retreat）。
-	// ★ 用户要求「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
+	// ★ 「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
 	//   没给的兵种回落司令部「兵种战斗配置」；键 0 = 旧格式遗留的「全军统一指令」。
 	AtkCmd string `gorm:"type:varchar(500);default:'';comment:攻击指令" json:"atk_cmd"`
 	// DefUserID 守方玩家 uid（仅 target_type=3 攻击玩家城时有值，0 = 野地/寇城无玩家守方）。
-	// ★ 2026-09-23 用户要求「敌人打自己，自己也能指挥」—— 防守方据此找回并进入战场。
+	// ★ 2026-09-23 「敌人打自己，自己也能指挥」—— 防守方据此找回并进入战场。
 	DefUserID uint `gorm:"index:idx_battle_def;comment:守方用户ID" json:"def_user_id"`
 	// DefCmd 守方**逐兵种**指令表，JSON 同 AtkCmd（玩家守城时指挥守军用；AI 为空）。
 	DefCmd string `gorm:"type:varchar(500);default:'';comment:防御指令" json:"def_cmd"`
@@ -981,9 +981,9 @@ type EzfyCorps struct {
 	LeaderUserId uint   `gorm:"comment:首领用户ID" json:"leader_user_id"`
 	Notice       string `gorm:"type:varchar(200);comment:公告" json:"notice"`
 	MemberCount  int    `gorm:"default:1;comment:Member数量" json:"member_count"`
-	// ★ 2026-09-25 用户要求「军团积分」：军团战绩总积分（成员在军团交战期获胜累加，军团商城可查看）
+	// ★ 2026-09-25 「军团积分」：军团战绩总积分（成员在军团交战期获胜累加，军团商城可查看）
 	Points int64 `gorm:"default:0;comment:军团总积分" json:"points"`
-	// ★ 2026-09-30 用户要求「入团需审核」：0=无需审核直接入团(默认)，1=需军团长审核。
+	// ★ 2026-09-30 「入团需审核」：0=无需审核直接入团(默认)，1=需军团长审核。
 	NeedReview int `gorm:"default:0;comment:入团是否需审核(0=直接入团 1=需军团长审核)" json:"need_review"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
@@ -993,7 +993,7 @@ func (EzfyCorps) TableName() string { return "ezfy_corps" }
 
 // EzfyCorpsApply 入团申请（军团长开启审核后，玩家申请入团走此表待审）
 //
-// ★ 2026-09-30 用户要求「进军团需要审核」：open 军团直接入团（不走本表），
+// ★ 2026-09-30 「进军团需要审核」：open 军团直接入团（不走本表），
 //
 //	开启审核的军团，玩家申请先落这里，军团长 [通过]/[拒绝] 后入团或驳回。
 //	Status：0 待审 / 1 通过(已入团) / 2 拒绝。
@@ -1013,7 +1013,7 @@ type EzfyCorpsMember struct {
 	UserId   uint   `gorm:"uniqueIndex:uk_user;comment:用户ID" json:"user_id"`
 	IsLeader int    `gorm:"default:0;comment:是否首领" json:"is_leader"`
 	Title    string `gorm:"type:varchar(20);comment:标题" json:"title"`
-	// ★ 2026-09-25 用户要求「军团商城货币 = 成员个人军团积分」：成员个人战绩积分（商城消费用它扣）
+	// ★ 2026-09-25 「军团商城货币 = 成员个人军团积分」：成员个人战绩积分（商城消费用它扣）
 	Points    int64     `gorm:"default:0;comment:个人军团积分" json:"points"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
@@ -1022,7 +1022,7 @@ func (EzfyCorpsMember) TableName() string { return "ezfy_corps_member" }
 
 // EzfyCorpsRelation 军团外交关系（军团长标记；友好/敌对均双向各写一条）
 //
-// ★ 2026-09-25 用户要求「军团之间可标记友好/敌对，双向记录，友好敌对都可以宣战」。
+// ★ 2026-09-25 「军团之间可标记友好/敌对，双向记录，友好敌对都可以宣战」。
 type EzfyCorpsRelation struct {
 	ID            uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	CorpsId       uint      `gorm:"uniqueIndex:uk_pair;comment:军团ID" json:"corps_id"`
@@ -1036,7 +1036,7 @@ func (EzfyCorpsRelation) TableName() string { return "ezfy_corps_relation" }
 
 // EzfyCorpsWar 军团宣战记录：宣战后 12 小时生效、48 小时整场结束（生效窗口 = 第 12~48 小时，共 36 小时）
 //
-// ★ 2026-09-25 用户要求：生效期间双方**军团成员之间**可互相掠夺/征服，无需个人宣战；
+// ★ 2026-09-25 生效期间双方**军团成员之间**可互相掠夺/征服，无需个人宣战；
 // 掠夺胜 +10、征服胜 +20 军团战绩（记到获胜方所属军团 AtkPoint/DefPoint 与攻击者个人积分）。
 type EzfyCorpsWar struct {
 	ID           uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
@@ -1061,7 +1061,7 @@ func (EzfyCorpsWar) TableName() string { return "ezfy_corps_war" }
 
 // EzfyCorpsMall 军团商城商品：货币 = 成员个人军团积分
 //
-// ★ 2026-09-25 用户要求：商品分两类 —— 资源包（food/steel/oil/rare/gold）与道具
+// ★ 2026-09-25 商品分两类 —— 资源包（food/steel/oil/rare/gold）与道具
 // （复用现有游戏道具配置 EzfyCfgItem，「道具池」= 现有道具表，发放走现有 addItem）。
 type EzfyCorpsMall struct {
 	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
@@ -1275,7 +1275,7 @@ func (EzfyExchange) TableName() string { return "ezfy_exchange" }
 
 // EzfyExchangeTemplate 交易行挂单模板（管理端「维护模版」tab 维护）
 //
-// ★ 2026-09-24 用户要求：资源包模板原来硬编码在前端，选中还有「触发全选」的 bug；
+// ★ 2026-09-24 资源包模板原来硬编码在前端，选中还有「触发全选」的 bug；
 //
 //	改成数据库里的模板表，管理端可增删改；新增系统挂单时选模板只是快速填充，
 //	资源数量(EsCount)上架前**仍可二次修改**，挂单数量(Repeat)支持一次挂多单。
@@ -1345,7 +1345,7 @@ func EzfyStarCap(star, gMil, gLog, gLea int) [3]int {
 
 // EzfyCfgGeneral 军官池（源自 inithebing.sql cfg_general 31 条名将 + 管理端可新增普通军官）
 //
-// ★ 2026-09-22 用户要求：军官分两类，**都在这张池子里**，由管理端统一维护：
+// ★ 2026-09-22 军官分两类，**都在这张池子里**，由管理端统一维护：
 //   - kind=1 普通军官：军校招募/刷新时**从池子里按权重抽**（不再纯随机生成）
 //   - kind=2 名将    ：只由管理端发放，不进招募池
 //
@@ -1441,7 +1441,7 @@ func (e EzfyCfgEquipment) EquipSlot() string {
 
 // EzfyCfgEquipSet 军官装备套装（穿戴同套 N 件触发套装加成）
 //
-// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家用黄金或钻石在商城购买。
+// ★ 2026-09-22 军官穿的装备有套装，玩家用黄金或钻石在商城购买。
 type EzfyCfgEquipSet struct {
 	ID        int    `gorm:"primaryKey;comment:主键ID" json:"id"`
 	Name      string `gorm:"type:varchar(100);comment:名称" json:"name"`
@@ -1465,7 +1465,7 @@ type EzfyCfgEquipSet struct {
 
 func (EzfyCfgEquipSet) TableName() string { return "ezfy_cfg_equip_set" }
 
-// ============ 宝箱（2026-09-22 用户要求）============
+// ============ 宝箱（2026-09-22 ）============
 //
 // 「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
 //
@@ -1509,7 +1509,7 @@ type EzfyCfgChestItem struct {
 
 func (EzfyCfgChestItem) TableName() string { return "ezfy_cfg_chest_item" }
 
-// EzfyCfgScheme 计谋配置（2026-09-22 用户要求）
+// EzfyCfgScheme 计谋配置（2026-09-22 ）
 //
 // 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗。」
 //
@@ -1539,7 +1539,7 @@ func (EzfyCfgScheme) TableName() string { return "ezfy_cfg_scheme" }
 
 // EzfyOfficer 玩家拥有的军官实例（从军官池 ezfy_cfg_general 复制而来）
 //
-// ★ 2026-09-22 用户要求：**加点与升级只影响玩家自己的军官实例，绝不回写军官池**。
+// ★ 2026-09-22 **加点与升级只影响玩家自己的军官实例，绝不回写军官池**。
 //   - Base* = 从池子复制来的**原始属性**（重修书洗点后回退到这个值）
 //   - Military/Logistics/Learning = **当前属性** = Base* + 玩家加点 + 装备/套装加成另算
 //   - FreePoints = 还没分配的属性点，每升 1 级 +1
@@ -1651,7 +1651,7 @@ func EzfySlotCanon(s string) string {
 	return s
 }
 
-// ★ 2026-09-28 用户要求：军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
+// ★ 2026-09-28 军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
 //
 //	RecruitDate 存的是**小时周期 key**（time.Now().Format("2006010215")，10 位 YmdH，装得进 varchar(10)），
 //	整点窗口变化即视为新周期 → (user_id, recruit_date) 唯一索引天然按小时切分，无需扩列迁移。

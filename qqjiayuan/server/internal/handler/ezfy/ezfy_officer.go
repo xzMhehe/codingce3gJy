@@ -29,7 +29,7 @@ import (
 //   - 职位：市长(产量+(10+后勤/20)*3%)、城守(守城防御+10%)
 
 const (
-	ezfyRecruitRefreshLimit = 5     // 军校每小时刷新次数上限（2026-09-28 用户要求：每天5次 → 每1小时5次）
+	ezfyRecruitRefreshLimit = 5     // 军校每小时刷新次数上限（2026-09-28 每天5次 → 每1小时5次）
 	ezfyRecruitCostPerLevel = 1000  // 招募费用 = 军官等级 × 该值(参考 conquer.html: 26级→26000)
 	ezfyGrantCost           = 10000 // 赏赐一次消耗黄金
 	ezfyOfficerMaxSkill     = 3     // 军官技能上限
@@ -46,12 +46,12 @@ const (
 
 // recruitCycleKey 军校刷新计数周期 key（**小时窗口**）。
 //
-// ★ 2026-09-28 用户要求：军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
+// ★ 2026-09-28 军校免费刷新次数从「每天 5 次」改为「每 1 小时 5 次」。
 //
 //	用 "2006010215"（10 位 YmdH，如 2026092815 = 2026-09-28 第15点）作为周期标识，
 //	整点窗口变化即新周期，正好装进 ezfy_recruit.recruit_date 的 varchar(10)。
 func recruitCycleKey() string {
-	// ★ 2026-09-28 用户要求：刷新周期按「天 / 小时」可配（二战系统配置默认按小时）。
+	// ★ 2026-09-28 刷新周期按「天 / 小时」可配（二战系统配置默认按小时）。
 	//   按小时用 10 位 YmdH（装得进 varchar(10)）；按天用 2006-01-02。
 	if ezfyRecruitCycleHourly() {
 		return time.Now().Format("2006010215")
@@ -270,7 +270,7 @@ func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 
 // ============ 军校招募：从军官池抽普通军官 ============
 //
-// ★ 2026-09-22 用户要求：
+// ★ 2026-09-22 
 //   - 军官池 ezfy_cfg_general 里同时维护「普通军官(kind=1)」和「名将(kind=2)」；
 //   - 军校招募/刷新**从池子里抽普通军官**（按 Weight 加权、不重复），
 //     不再是每次现编随机名字 —— 管理端改了池子，玩家刷新出来的列表就跟着变；
@@ -368,7 +368,7 @@ func (h *EzfyHandler) rollOfficerDrafts(academyLevel, n int) []ezfyOfficerDraft 
 		}
 		used[idx] = true
 		g := pool[idx]
-		// ★ 2026-09-26 用户要求「军官池普通军官等级要有差距」：
+		// ★ 2026-09-26 「军官池普通军官等级要有差距」：
 		//   池子里的 `level` 现在是该军官的**原始等级**（种子按星级分层随机 1~150，
 		//   属性也按这个等级同比缩放过了），招募时**直接沿用** ——
 		//   不再按「5 + 随机(军校等级×8)」现算（那样池子的等级就没意义了）。
@@ -540,7 +540,7 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	}
 	h.DB.Create(&o)
 	h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).Update("candidates", joinDrafts(kept))
-	// ★ 五星军官值得全服看一眼（用户要求）
+	// ★ 五星军官值得全服看一眼（）
 	if pick.Star >= 5 {
 		h.ezfySysChat("恭喜玩家 %s 在军校招募到五星军官 %s！", h.ezfyProfileName(uid), o.Name)
 	}
@@ -558,7 +558,7 @@ func (h *EzfyHandler) refreshRecruitFree(uid uint) string {
 	var rec model.EzfyRecruit
 	err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error
 	drafts := h.rollOfficerDrafts(academy, maxInt(1, minInt(academy, 10)))
-	// ★ 2026-09-30 用户要求「使用招生简章出五星军官的概率」：
+	// ★ 2026-09-30 「使用招生简章出五星军官的概率」：
 	//   按配置概率把候选中的 1 名置为 5 星（100 = 必出），提高招生简章刷出 5 星的几率。
 	drafts = h.boostFiveStarDraft(drafts)
 	if err != nil {
@@ -640,7 +640,7 @@ func (h *EzfyHandler) treasureGrantOfficer(city *model.EzfyCity, officerId int64
 	if e.OfficerId != 0 {
 		return "这件宝物已穿戴, 请先卸下"
 	}
-	// ★ 2026-09-28 用户要求：只有「采集宝物」能赏赐 ——
+	// ★ 2026-09-28 只有「采集宝物」能赏赐 ——
 	//   装备表里还混着步枪/钢盔/合金装甲这类普通装备，它们不是宝物，不能拿来换忠诚。
 	//   宝物签到抽的也是同一池（9 种珠宝），所以签到领的宝物天然可赏赐。
 	if !ezfyCollectibleTreasureNames()[e.Name] {
@@ -751,7 +751,7 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 //
 //	这样套装里的头/肩/胸/腰/手/足/饰品/挂件/勋章 9 件互不冲突，能整套穿上。
 //
-// ★ 2026-09-24：用户要求「同一个部位只能穿戴一个」，取消珠宝的叠穿例外。
+// ★ 2026-09-24：「同一个部位只能穿戴一个」，取消珠宝的叠穿例外。
 func (h *EzfyHandler) equipItem(city *model.EzfyCity, officerId, equipId int64) string {
 	h.calcResource(city)
 	o := h.officerOf(city.ID, officerId)
@@ -1039,7 +1039,7 @@ func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string
 
 // ============ 加成接入 ============
 
-// mayorBonusPct 市长产量加成 %（★ 2026-09-27 用户要求「太少，在现有基础上翻三倍」：
+// mayorBonusPct 市长产量加成 %（★ 2026-09-27 「太少，在现有基础上翻三倍」：
 //
 //	(10 + 后勤/20) × 3 —— 实际产量与详情页展示都走本函数，改一处即全生效）
 func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
@@ -1050,7 +1050,7 @@ func (h *EzfyHandler) mayorBonusPct(cityId uint) int {
 	}
 	// ★ 用有效后勤（自身 + 装备），否则给市长穿后勤装备没有任何效果
 	_, log, _ := h.officerEffective(&o)
-	// ★ 2026-09-28 用户要求「市长加成整体可调」→ 结果 × ezfyMayorGainMult（默认 1）；0 = 关闭。
+	// ★ 2026-09-28 「市长加成整体可调」→ 结果 × ezfyMayorGainMult（默认 1）；0 = 关闭。
 	return int(float64((10+log/20)*3) * ezfyMayorGainMult())
 }
 
@@ -1647,7 +1647,7 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 	}
 }
 
-// accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29 用户要求：
+// accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29 
 // 「市长当久了等级一直不变」→ 让带职位的军官也能合理成长）。
 //
 // calcResource 懒结算时随军官列表一起结算：按自上次结算以来的分钟数 × 每分钟经验，
@@ -1901,11 +1901,11 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 	desc := ""
 	roll := rand.Intn(100)
 	dropChance, tier := 80, 1
-	// ★ 2026-09-29 用户要求：先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
+	// ★ 2026-09-29 先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
 	//   统一调低 → 中级17% (roll<25) / 高级6% (roll<8) / 特殊2% (roll<2)，
 	//   省出的概率全部归到 初级(初级散件变多)。
 	// ★ 2026-09-30 玩家反馈高级地掉装备略多：中级 12%(roll<18) / 高级 4%(roll<4) / 特殊 1%(roll<1)
-	// ★ 2026-10-05 用户要求「战斗掉落高级宝物（狙击步枪）概率可配」→ 三个阈值改读「二战系统配置」
+	// ★ 2026-10-05 「战斗掉落高级宝物（狙击步枪）概率可配」→ 三个阈值改读「二战系统配置」
 	//   （中级 drop_t2 / 高级 drop_t3 / 特殊 drop_t4，默认 18/4/1；0/负 → 回落默认）。
 	t2 := ezfyLimitOr(ezfyCfg.limit.DropT2, 18)
 	t3 := ezfyLimitOr(ezfyCfg.limit.DropT3, 4)
@@ -1937,7 +1937,7 @@ func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, spe
 		if cfg := h.randomEquipment(tier); cfg != nil {
 			h.addEquipment(city, cfg)
 			desc += " 宝物[" + ezfyTierName(tier) + "]:" + cfg.Name
-			// ★ 系统消息（用户要求：战斗掉落的装备要能看到）
+			// ★ 系统消息（战斗掉落的装备要能看到）
 			h.ezfySysChat("恭喜玩家 %s 战斗掉落%s宝物：%s", h.ezfyProfileName(city.UserID), ezfyTierName(tier), cfg.Name)
 		}
 	}
@@ -2482,7 +2482,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	sm, sl, se, activeSets := h.officerSetBonus(o)
 	bm, bl, be := officerBaseAttr(o)
 	// 背包里有哪些套装可以一键穿戴（给前端「一键穿戴套装」按钮用）
-	// ★ 2026-09-24 用户要求「套装差了差多少生效看不出来」→ 每个套装带上
+	// ★ 2026-09-24 「套装差了差多少生效看不出来」→ 每个套装带上
 	//   parts(总件数)/worn(该军官已穿件数)/need(还差几件生效)，前端直接展示进度。
 	wornBySet := map[int]int{}
 	for _, m := range officerEquipped(o) {
@@ -2794,7 +2794,7 @@ func (h *EzfyHandler) OfficerTreasureGrant(c *gin.Context) {
 
 // OfficerAttr POST /games/ezfy/officers/:id/attr  {attr: military|logistics|learning, count}
 //
-// ★ 2026-09-22 用户要求：每升 1 级得 1 点可用属性点，玩家自己分配；
+// ★ 2026-09-22 每升 1 级得 1 点可用属性点，玩家自己分配；
 // 只写玩家自己的军官实例，**绝不回写军官池**。
 func (h *EzfyHandler) OfficerAttr(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -2864,7 +2864,7 @@ func (h *EzfyHandler) OfficerAttrAll(c *gin.Context) {
 
 // officerStarUp 执行一次升星判定（**不扣升星卡**，扣卡由调用方决定）
 //
-// ★ 2026-09-23 用户要求「军官升星做得太复杂，优化简约点」→ 简化后规则：
+// ★ 2026-09-23 「军官升星做得太复杂，优化简约点」→ 简化后规则：
 //   - 成功率 = 管理端配置的固定值（officer_star_chance，默认 20%），不再有按星级递减/下限
 //   - 失败星级不变、消耗 1 枚星级徽章（调用方统一扣）
 //   - 每升 1 星三维各 +`officer_star_attr_gain`，**只加当前属性、不动 base_***
@@ -2892,7 +2892,7 @@ func (h *EzfyHandler) officerStarUp(city *model.EzfyCity, officerId int64) (stri
 	if rand.Intn(100) >= rate {
 		return fmt.Sprintf("升星失败(成功率%d%%，星级不变)", rate), false
 	}
-	// ★ 2026-09-26 用户要求「每星三维加成 随机 1-配置的属性」：
+	// ★ 2026-09-26 「每星三维加成 随机 1-配置的属性」：
 	//   三维**各自**随机 +[1, 配置值]（配置 = 管理端 `officer_star_attr_gain`，默认 10），
 	//   而不是固定加配置值 —— 这样每颗星涨多少有差异，不再千篇一律。
 	//   并且夹到「升星后那个星级」的属性上限（普通军官逐项不得超同星级名将；
@@ -2974,7 +2974,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 
 // OfficerRename POST /games/ezfy/officers/:id/rename  {name}
 //
-// ★ 2026-09-23 用户要求「玩家自己的军官也能改名」：消耗 1 张「军官改名卡」。
+// ★ 2026-09-23 「玩家自己的军官也能改名」：消耗 1 张「军官改名卡」。
 //
 //	只改玩家自己的军官实例（ezfy_officer.name），绝不回写军官池（ezfy_cfg_general）。
 func (h *EzfyHandler) OfficerRename(c *gin.Context) {
@@ -3025,7 +3025,7 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 
 // ============ 宝箱（钻石/黄金购买，开箱按权重出套装件） ============
 //
-// ★ 2026-09-22 用户要求：「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
+// ★ 2026-09-22 「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
 //
 // 奖池 ezfy_cfg_chest_item：kind 1=装备（进 ezfy_equipment 背包，可就地穿）、2=道具（进道具背包）。
 
@@ -3195,7 +3195,7 @@ func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCf
 		return cfg.Name + "×" + strconv.Itoa(n)
 	case 3: // ★ 整套（RefId = 套装 id）：把该套装的**全部件**一次性发给玩家
 		//
-		// ★ 用户要求（2026-09-22）：「套装宝箱……开出来还是按套来吧」
+		// ★ （2026-09-22）：「套装宝箱……开出来还是按套来吧」
 		// —— 免得玩家花 300~800 钻石开出一件，还得凑 10 次。
 		s := ezfyCfg.equipSet(it.RefId)
 		if s == nil {
@@ -3794,7 +3794,7 @@ func (h *EzfyHandler) OfficerGenerals(c *gin.Context) {
 
 // ============ 装备商城（套装用黄金/钻石购买） ============
 //
-// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家自己用黄金或钻石买。
+// ★ 2026-09-22 军官穿的装备有套装，玩家自己用黄金或钻石买。
 // 只卖「上架」的（price_gold>0 或 price_diamond>0），库存 -1 = 无上限。
 
 // ezfyEquipIDsOfSet 某套装的全部件 ID（升序）
@@ -3824,7 +3824,7 @@ func ezfyEquipIDsAsc() []int {
 
 // equipShopList 商城在售装备（★ 按**部位**分组）
 //
-// ★ 用户要求（2026-09-22）：
+// ★ （2026-09-22）：
 //   - 「散件也上吧，价格按加成 10 钻石到 50 钻石不等」→ 系列单件（可单穿）+ 纯散件都上架；
 //   - 「商城前端做好看点」→ 按 11 个部位分组，前端直接铺成表格。
 //

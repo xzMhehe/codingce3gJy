@@ -150,7 +150,7 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 		return
 	}
 
-	// ★ 2026-09-30 用户要求：任一采集部队的出发城市资源已达「资源最大值」时，
+	// ★ 2026-09-30 任一采集部队的出发城市资源已达「资源最大值」时，
 	//   一键收获产出入库会被资源上限封顶丢量，先整批确认一次。
 	if !req.Force {
 		var cityID int64
@@ -203,7 +203,7 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	now := time.Now().UnixMilli()
 
 	var orders []model.EzfyOrder
-	// ★ 2026-10-02 用户要求「一键召回」需覆盖出站驻军：
+	// ★ 2026-10-02 「一键召回」需覆盖出站驻军：
 	//   驻守盟友城市的驻军(增援, status=3)也一并召回返航回出发城市。
 	//   仅召回「活跃驻军」(result 为空 + 目标城属于他人)，避免旧僵尸/已归队订单重复入兵。
 	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
@@ -277,7 +277,7 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		resp.ParamError(c, "该部队已在待命(未在采集中)")
 		return
 	}
-	// ★ 2026-09-30 用户要求：出发城市资源已达到配置的「资源最大值」时，
+	// ★ 2026-09-30 出发城市资源已达到配置的「资源最大值」时，
 	//   本次收获产出入库会被资源上限封顶丢量（其余资源只会累加到资源最大值、超出的会消失）。
 	//   先向玩家确认：是否仍要停止/收获；确认后(force=true)才真正结算入库。
 	if !req.Force && h.ezfyAtResMax(order.CityId) {

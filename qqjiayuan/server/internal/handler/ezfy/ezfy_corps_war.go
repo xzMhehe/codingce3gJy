@@ -14,7 +14,7 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
-// 二战风云 —— 军团外交 / 军团宣战 / 军团积分 / 军团商城（★ 2026-09-25 用户要求）
+// 二战风云 —— 军团外交 / 军团宣战 / 军团积分 / 军团商城（★ 2026-09-25 ）
 //
 // 用户规则（已确认）：
 //  1. 军团之间可标记外交关系：友好/敌对（军团长操作，**双向各记一条**）。友好、敌对都可以宣战。
@@ -29,7 +29,7 @@ import (
 //
 //	1 = 待生效   2 = 交战中   3 = 已结束
 const (
-	ezfyCorpsWarDelayHours    = 2 // 宣战后多少小时生效（★ 2026-10-05 用户要求：12h → 2h）
+	ezfyCorpsWarDelayHours    = 2 // 宣战后多少小时生效（★ 2026-10-05 12h → 2h）
 	ezfyCorpsWarDurationHours = 36 // 生效窗口（第 2~38 小时，共 36 小时；有效期不变）
 	ezfyCorpsWarTotalHours    = 48 // 宣战后多少小时整场结束
 	ezfyCorpsWarPointOrder2   = 10 // 掠夺获胜：个人/军团积分 +10
@@ -439,7 +439,7 @@ func (h *EzfyHandler) CorpsWarDeclare(c *gin.Context) {
 		return
 	}
 	h.ezfyCorpsWarNotify(&w)
-	// ★ 2026-10-05 用户要求：军团宣战后，双方军团的军团聊天各收到一条系统消息提示
+	// ★ 2026-10-05 军团宣战后，双方军团的军团聊天各收到一条系统消息提示
 	warMsg := fmt.Sprintf("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效，%d 小时后整场结束！",
 		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours)
 	h.DB.Create(&model.EzfyCorpsChat{CorpsId: myCorpsId, UserId: 0, UserName: "系统", Content: warMsg})

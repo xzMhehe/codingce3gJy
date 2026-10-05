@@ -28,14 +28,14 @@ const (
 	ezfyChatPageMax  = 50
 	// 系统消息比玩家发言长一点（「恭喜 xxx 晋升上校」这类），但也别长到刷屏
 	ezfySysChatMaxRune = 120
-	// 首页「世界聊天」预览条数（用户要求：默认展示 2 条）
+	// 首页「世界聊天」预览条数（默认展示 2 条）
 	ezfyHomeChatLimit = 2
 )
 
 // ezfySysChat 往**系统频道**写一条消息（talk_type=0，只读）。
 //
 // 用途：把「军衔晋升 / 采集到宝物 / 战斗掉落装备 / 招募到五星军官」这类值得全服看到的事件
-// 推到世界聊天与首页预览里（用户要求：这些事原来没有任何交互反馈）。
+// 推到世界聊天与首页预览里（这些事原来没有任何交互反馈）。
 //
 // 内容同样过一遍敏感词（玩家昵称可能被起成敏感词）并按长度截断。
 func (h *EzfyHandler) ezfySysChat(format string, args ...interface{}) {
@@ -84,7 +84,7 @@ func ezfyChatPager(c *gin.Context) (page, size int) {
 
 // ChatList GET /games/ezfy/chat?channel=1|2|4&page=1&size=15
 //
-// ★ 用户要求：聊天页太长 → 分页；排序改**时间降序（最新的在最上面）**。
+// ★ 聊天页太长 → 分页；排序改**时间降序（最新的在最上面）**。
 func (h *EzfyHandler) ChatList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -316,7 +316,7 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 
 // HomeChat GET /games/ezfy/chat/home —— 首页「世界聊天」预览
 //
-// 汇总四个来源并按时间倒序, 每条带频道标识(用户要求):
+// 汇总四个来源并按时间倒序, 每条带频道标识():
 //
 //	[世界] —— 公共频道的玩家发言
 //	[军团] —— 我所在军团的聊天
@@ -327,7 +327,7 @@ func (h *EzfyHandler) myCorpsOf(uid uint) *model.EzfyCorps {
 //
 //	这样玩家改了个性昵称、换了昵称颜色, 聊天里也会跟着变。
 //
-// ★ 展示规则(用户要求)：取**最新 N 条**（ezfyHomeChatLimit），按时间**升序**排列（最早的在上、最新的在下）。
+// ★ 展示规则()：取**最新 N 条**（ezfyHomeChatLimit），按时间**升序**排列（最早的在上、最新的在下）。
 func (h *EzfyHandler) HomeChat(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -455,7 +455,7 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 		fix(&rows[i], uidOf[rows[i].key])
 	}
 
-	// ★ 用户要求：默认展示 ezfyHomeChatLimit 条，**升序**（最早的在上、最新的在下）。
+	// ★ 默认展示 ezfyHomeChatLimit 条，**升序**（最早的在上、最新的在下）。
 	//   所以先按时间降序取「最新的 N 条」，再翻转成升序输出。
 	sort.Slice(rows, func(i, j int) bool { return rows[i].at.After(rows[j].at) })
 	if len(rows) > ezfyHomeChatLimit {
@@ -495,7 +495,7 @@ func ezfyMoneyName(cur int) string {
 
 func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	// ★ 2026-09-24 用户要求：卖家挂单/我的挂单都做分页（默认每页 10 条）
+	// ★ 2026-09-24 卖家挂单/我的挂单都做分页（默认每页 10 条）
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if page < 1 {
 		page = 1
@@ -508,7 +508,7 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 		size = 50
 	}
 	// 卖家挂单(在售、非自己的)
-	// ★ 2026-09-24 用户要求: 卖家挂单加「资源类别」检索(单多了得一页页翻)
+	// ★ 2026-09-24  卖家挂单加「资源类别」检索(单多了得一页页翻)
 	esType, _ := strconv.Atoi(c.DefaultQuery("es_type", "0"))
 	base := h.DB.Model(&model.EzfyExchange{}).
 		Where("status = 0 AND NOT (seller_id = ? AND is_system != 1)", uid)
@@ -589,13 +589,13 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 		resp.ParamError(c, "数量或价格错误")
 		return
 	}
-	// ★ 2026-09-28 用户要求：玩家挂单出售的黄金价格上限卡控到 10 亿，防止标天价
+	// ★ 2026-09-28 玩家挂单出售的黄金价格上限卡控到 10 亿，防止标天价
 	const sellGoldMax = int64(1000000000) // 10 亿
 	if req.TotalPrice > sellGoldMax {
 		resp.ParamError(c, fmt.Sprintf("出售价格不能超过%d黄金", sellGoldMax))
 		return
 	}
-	// ★ 2026-09-28 用户要求：挂单出售单价按 1:100 卡控（卖 1 粮食单价不能超过 100 黄金），
+	// ★ 2026-09-28 挂单出售单价按 1:100 卡控（卖 1 粮食单价不能超过 100 黄金），
 	//   数量随意（1/2/50/60 都行），比例在「二战系统配置」页可灵活配置。
 	unitPriceMax := ezfySellPriceMax()
 	if req.TotalPrice/req.EsCount > int64(unitPriceMax) {
@@ -605,7 +605,7 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 	}
 	city := h.getOrCreateCity(uid)
 	h.calcResource(&city)
-	// ★ 2026-10-04 用户要求：玩家挂单上限 = 交易所等级 × 2（存量挂单不动，新挂单卡控）。
+	// ★ 2026-10-04 玩家挂单上限 = 交易所等级 × 2（存量挂单不动，新挂单卡控）。
 	//   必须在扣资源**之前**校验，否则被拒的挂单会白扣一次资源。
 	exchangeLv := h.buildingLevel(city.ID, ezfyBuildingExchange)
 	orderLimit := exchangeLv * 2
@@ -724,7 +724,7 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 			fmt.Sprintf("你挂单出售的%s×%d已被%s以%d%s购得。", ezfyResNames[e.EsType], e.EsCount, h.ensureProfile(uid).Nickname, e.TotalPrice, money))
 	}
 	// ★ 系统挂单不写成交状态、不通知卖家：保持 status=0 恒在售，
-	//   玩家可以反复购买（用户要求：资源大/中/小包是「买不完」的无限库存）。
+	//   玩家可以反复购买（资源大/中/小包是「买不完」的无限库存）。
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（花费%d%s）", ezfyResNames[e.EsType], e.EsCount, e.TotalPrice, money)})
 }
 
@@ -760,7 +760,7 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 
 // ezfySysSellFeePct 向系统出售资源的手续费百分比（默认 10 = 10%）。
 //
-// ★ 2026-09-30 用户要求「玩家获得的黄金手续费：玩家获取的黄金价格 10% 扣除」。
+// ★ 2026-09-30 「玩家获得的黄金手续费：玩家获取的黄金价格 10% 扣除」。
 const ezfySysSellFeePct = 10
 
 // ezfySysSellRatioMap 向系统出售资源回收比例 map（es_type → 每100单位黄金），供前端展示。
@@ -770,7 +770,7 @@ func ezfySysSellRatioMap() map[int]int {
 
 // ExchangeSysSell POST /games/ezfy/exchange/sys-sell {es_type, es_count}
 //
-// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金」：
+// ★ 2026-09-30 「玩家可向系统出售资源获得黄金」：
 //   - 把资源**直接卖给系统**（不走挂单，不产生订单行）；
 //   - 直接扣城市资源、加城市黄金；
 //   - 每 100 单位 → 按配置比例换黄金（默认粮10/钢10/油20/稀25，交易行维护可配）；
@@ -891,7 +891,7 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	for _, m := range members {
 		p := profMap[m.UserId]
 		u := userMap[m.UserId]
-		// ★ 2026-09-25 用户要求「军团页展示个人军团积分」：每项带 points
+		// ★ 2026-09-25 「军团页展示个人军团积分」：每项带 points
 		views = append(views, gin.H{"user_id": m.UserId, "name": ezfyNickOf(p, &u),
 			"is_leader": m.IsLeader, "title": m.Title,
 			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p)),

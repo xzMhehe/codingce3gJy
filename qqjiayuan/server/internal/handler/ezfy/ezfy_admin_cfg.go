@@ -497,7 +497,7 @@ func (h *EzfyAdmin) AdminEzfyGenerals(c *gin.Context) {
 
 // AdminEzfyGeneralOwners GET /admin/ezfy-generals/:id/owners —— 军官池「拥有玩家」点击查看。
 //
-// ★ 2026-09-29 用户要求：拥有数可点开，看是谁拥有、在哪个城市、军官什么状态。
+// ★ 2026-09-29 拥有数可点开，看是谁拥有、在哪个城市、军官什么状态。
 // 返回该 general_id 被哪些玩家的军官实例持有，附 玩家/城市/等级/星级/经验/忠诚/任命/状态/是否俘虏。
 func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -614,7 +614,7 @@ func (h *EzfyAdmin) AdminEzfyGeneralUpdate(c *gin.Context) {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
 	}
-	// ★ 2026-09-29 用户要求：改池子军官的三属性时，玩家若已招募，初始数据(三属性/原属性基准)要联动。
+	// ★ 2026-09-29 改池子军官的三属性时，玩家若已招募，初始数据(三属性/原属性基准)要联动。
 	//   只有改到 military/logistics/learning 才回写已有实例；保留玩家分配的点数（当前−旧基准）。
 	if _, t1 := vals["military"]; t1 {
 		h.syncRecruitedOfficerBase(id)
@@ -1120,7 +1120,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentDelete(c *gin.Context) {
 
 // ---------- 4.4b 军官装备套装（ezfy_cfg_equip_set，可增删改） ----------
 //
-// ★ 2026-09-22 用户要求：军官穿的装备有套装，玩家用黄金或钻石在商城购买。
+// ★ 2026-09-22 军官穿的装备有套装，玩家用黄金或钻石在商城购买。
 // 一件装备属于哪个套装由 ezfy_cfg_equipment.set_id 指向这里。
 
 // AdminEzfyEquipSets 套装列表（带每个套装已配的件数）
@@ -1287,7 +1287,7 @@ func (h *EzfyAdmin) AdminEzfyEquipSetPieces(c *gin.Context) {
 
 // ---------- 4.4c 宝箱（ezfy_cfg_chest + ezfy_cfg_chest_item，可增删改） ----------
 //
-// ★ 2026-09-22 用户要求：「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
+// ★ 2026-09-22 「有的套装是开宝箱概率得到的，看看怎么引入宝箱，宝箱一般用钻石买。」
 
 // AdminEzfyChests 宝箱列表（含奖池条数）
 func (h *EzfyAdmin) AdminEzfyChests(c *gin.Context) {
@@ -1557,7 +1557,7 @@ func (h *EzfyAdmin) AdminEzfyChestPoolBulkAdd(c *gin.Context) {
 
 // AdminEzfyEquipmentsOwned 玩家装备列表（按「玩家 + 同一装备」聚合，同一装备只显示一条、带数量）
 //
-// ★ 2026-09-29 用户要求：同一个装备在一个玩家身上只展示一条，按数量展示；
+// ★ 2026-09-29 同一个装备在一个玩家身上只展示一条，按数量展示；
 //   不再按城池拆分（装备归属以玩家为准，不展示城池）。
 func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
@@ -1832,7 +1832,7 @@ func (h *EzfyAdmin) AdminEzfyOfficerPickers(c *gin.Context) {
 
 // AdminEzfyTechMaxAll POST /admin/ezfy-techs/max-all  {user_id}
 //
-// ★★ 2026-10-05 用户要求：「一键满级所有玩家科技」改成「一键满级玩家科技」+ 输入游戏ID，
+// ★★ 2026-10-05 「一键满级所有玩家科技」改成「一键满级玩家科技」+ 输入游戏ID，
 // **只满级指定玩家**（原实现是全服所有玩家一起满级，误触一次全服科技就废了，太危险）。
 //
 // 语义：把该玩家**所有科技**升到各自配置的满级（ezfy_cfg_tech.max_level），
@@ -1967,7 +1967,7 @@ func (h *EzfyAdmin) ezfyGeneralCapByStar() map[int][3]int {
 
 // ezfyClampPoolOfficerAttrs 把「普通军官(kind=1)」的三维夹到「同星级名将的逐项最大值」以内
 //
-// ★ 2026-09-26 用户要求：「当前军官池子的五星军官比名将属性都好了，只能 <= 名将属性
+// ★ 2026-09-26 「当前军官池子的五星军官比名将属性都好了，只能 <= 名将属性
 // （有的可能军事高、后勤高、学识高）」—— 注意是**逐项**比较，不是比总和：
 //
 //	军事 ≤ 该星级名将的最高军事、后勤 ≤ 最高后勤、学识 ≤ 最高学识。

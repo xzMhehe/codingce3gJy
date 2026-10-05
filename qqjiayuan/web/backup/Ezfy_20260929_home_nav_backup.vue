@@ -185,7 +185,7 @@
             <a href="javascript:;" @click="loadChats">[刷新]</a>
           </div>
 
-          <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 用户要求去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->
+          <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->
           <template v-if="chatChannel === 4">
             <div class="panel-title">系统消息</div>
             <div class="old-line" v-for="ch in worldChats" :key="'cs' + ch.id">
@@ -277,7 +277,7 @@
           </div>
           <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
           <div class="old-line">
-            <!-- ★ 改成可自适应高度的文本域（用户要求）：随内容长高，最多 8 行后内部滚动 -->
+            <!-- ★ 改成可自适应高度的文本域（）：随内容长高，最多 8 行后内部滚动 -->
             <textarea v-model="pmContent" class="ezfy-auto-textarea" placeholder="最多500字"
                       maxlength="500" rows="2"></textarea>
           </div>
@@ -358,7 +358,7 @@
             </div>
             <div class="old-line" v-for="o in dynStationPaged" :key="'st' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="openOrder(o)">查看</a><br/>
-              <!-- ★ 2026-09-28 用户要求：显示这支部队是「哪个城出来的」(辨识番号) -->
+              <!-- ★ 2026-09-28 显示这支部队是「哪个城出来的」(辨识番号) -->
               <span v-if="o.from_city">起点：{{ o.from_city }}({{ o.from_x }},{{ o.from_y }})<br/></span>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
@@ -391,7 +391,7 @@
               <a href="javascript:;" @click="loadReports">[刷新]</a>
             </div>
             <!-- ★ 雷达站 + 侦察技巧 决定「事前预警」能看到多少（事后结果战报不受影响）
-                 ★ 2026-09-25 用户要求「军情警讯要看到对面城市名字和地址」→ 这里明确写出
+                 ★ 2026-09-25 「军情警讯要看到对面城市名字和地址」→ 这里明确写出
                    还差多少才能看到「出发城市(坐标)」，否则玩家永远不知道该升什么。 -->
             <div class="old-line" v-if="reportRadar > 0">
               <span class="gray">情报等级 <b>{{ reportIntel }}</b> = 雷达站 {{ reportRadar }} 级 + 侦察技巧 {{ reportRecon }} 级：</span>
@@ -422,7 +422,7 @@
               <input v-model="reportWord" placeholder="输入关键字" style="width:110px"
                      @keyup.enter="loadReports"/>
               <a href="javascript:;" @click="loadReports">[查询]</a>
-              <!-- ★ 2026-09-26 用户要求：查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源） -->
+              <!-- ★ 2026-09-26 查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源） -->
               <a href="javascript:;" @click="doClearReports">[一键删除]</a>
               <a v-if="reportWord" href="javascript:;" @click="reportWord = ''; loadReports()">[清空]</a>
             </div>
@@ -448,7 +448,7 @@
       <!-- ============ 战报详情(reportview) ============ -->
       <template v-else-if="cur === 'reportview'">
         <div class="panel" v-if="curReport">
-          <!-- ★ 用户要求：战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
+          <!-- ★ 战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: reportTab === 1 }" @click="goReportTab(1)">军队动态</a><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: reportTab === 2 }" @click="goReportTab(2)">驻军</a><span
@@ -531,7 +531,7 @@
       <!-- ============ 任务(tasks) ============ -->
       <template v-else-if="cur === 'tasks'">
         <div class="panel">
-          <!-- ★ 2026-09-24 用户要求: 任务按分类 tab 分别展示(新手/日常/每周) -->
+          <!-- ★ 2026-09-24  任务按分类 tab 分别展示(新手/日常/每周) -->
           <div class="acade-tab">
             <template v-for="(g, i) in taskGroups">
               <!-- ★ 分隔竖线放 <a> 外: 选中态(加粗变色)不波及竖线 -->
@@ -629,7 +629,7 @@
           基础产量(每小时): {{ resDetail.base }}
           <span v-if="resDetail.tech_prod > 0"> [{{ resTechName }}Lv{{ resDetail.tech_prod }}: +{{ resDetail.tech_prod * 10 }}%]</span>
           <!-- ★ 2026-09-26：基础产量 = 建筑 × 科技 × 开工率（**民心/民怨不再影响产量**，
-               用户要求）。「加成产量」只放市长后勤加成 + 野地 + 道具 + 活动，恒不为负。 -->
+               ）。「加成产量」只放市长后勤加成 + 野地 + 道具 + 活动，恒不为负。 -->
           <span class="gray" v-if="resDetail.base_building !== undefined">
             （建筑{{ resDetail.base_building }} × 科技{{ 100 + (resDetail.tech_prod || 0) * 10 }}%<template
               v-if="resDetail.rate !== undefined && resDetail.rate !== 100"> × 开工率{{ resDetail.rate }}%</template>）
@@ -783,7 +783,7 @@
             训练中占用人口：{{ popUsed }}
           </div>
           <div class="old-line" v-for="t in trainCfgs" :key="'tt' + t.id">
-            <!-- ★ 2026-09-28 用户要求：军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
+            <!-- ★ 2026-09-28 军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
             <a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a>({{ troopTypeName(t.type) }})
             <a href="javascript:;" @click="openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
@@ -836,17 +836,17 @@
       <template v-else-if="cur === 'troops'">
         <div class="panel">
           <div class="panel-title">城内军队</div>
-          <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
+          <!-- ★ 这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
           <table class="ezfy-center-tbl">
             <tr><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
-            <!-- ★ 2026-09-28 用户要求：首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
+            <!-- ★ 2026-09-28 首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in armyRows" :key="'tv' + t.id">
               <td class="nm"><a href="javascript:;" @click="openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ t.count }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
                 <a href="javascript:;" @click="openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
-                <!-- 解散：数量由玩家自己输入（用户要求），数量为 0 时无意义、不显示 -->
+                <!-- 解散：数量由玩家自己输入（），数量为 0 时无意义、不显示 -->
                 <a v-if="t.count > 0" class="red" href="javascript:;" @click="doDisband(t)">[解散]</a>
               </td>
             </tr>
@@ -872,7 +872,7 @@
       <template v-else-if="cur === 'hq'">
         <div class="panel">
           <div class="panel-title">司令部</div>
-          <!-- ★ 2026-09-28 用户要求：司令部内部拆成 tab（兵种配置/出征队列/伤兵营/逃兵营），
+          <!-- ★ 2026-09-28 司令部内部拆成 tab（兵种配置/出征队列/伤兵营/逃兵营），
                刷新后记住上次所在 tab（localStorage, 照抄任务 tab 的 ezfy_task_tab 写法） -->
           <div class="acade-tab hq-tab">
             <a href="javascript:;" :class="{ on: hqTab === 0 }" @click="selectHqTab(0)">兵种配置</a>
@@ -927,7 +927,7 @@
               <td>{{ orderStatusText(o) }}</td>
               <td>
                 <a href="javascript:;" @click="openOrder(o)">[详情]</a>
-                <!-- ★ 用户要求「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
+                <!-- ★ 「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
                 <a v-if="o.status === 0 || o.status === 1" class="red"
                    href="javascript:;" @click="doRecall(o)">[取消]</a>
               </td>
@@ -969,7 +969,7 @@
           </div>
           </div><!-- /逃兵营 tab -->
           <div v-show="hqTab === 4">
-          <!-- ★ 2026-09-28 用户要求：司令部新增「预设编队」tab —— 镜像出征页 ①②③⑥ 保存模板，
+          <!-- ★ 2026-09-28 司令部新增「预设编队」tab —— 镜像出征页 ①②③⑥ 保存模板，
                不含 ④随军资源 / ⑤宿营；⑥油耗计算保留（预设不含目标，按本城0距离估算）。 -->
           <div class="panel-title">预设编队</div>
           <div class="old-line gray">
@@ -1005,7 +1005,7 @@
               每个集结令 +{{ fmtN(orderCapPer) }} 出征上限，单次最多 {{ orderCapMax }} 个。
               司令部上限（含指挥艺术科技）+ 集结令 + 出征军官军事属性<b>叠加</b>。
             </div>
-            <!-- ★ 2026-09-29 用户要求：预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
+            <!-- ★ 2026-09-29 预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
             <div class="old-line" v-if="attackTroops.length">
               <span :class="orderOverCap ? 'red' : 'green'">
                 本次出兵 <b>{{ fmtN(orderTroopTotal) }}</b> / 上限 <b>{{ orderCapText }}</b>
@@ -1078,8 +1078,8 @@
         <div class="panel">
           <div class="panel-title">【科技中心】:{{ techsData.academy }}级</div>
           <div class="old-line" v-for="t in techsData.techs" :key="'te' + t.tech_id">
-            <!-- ★ 2026-09-28 用户要求：科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
-            <!-- ★ 2026-09-28 用户要求版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
+            <!-- ★ 2026-09-28 科技列表不再显示资源消耗/前置条件，点[研究]进详情页查看 -->
+            <!-- ★ 2026-09-28 版式：第一行「名称 等级/满级级 [研究N级]」，第二行才是效果。
                  原来 [研究N级] 被挤在效果下面第三行，扫一眼看不出「这条能不能升」。 -->
             <b>{{ t.name }}</b> {{ t.level }}/{{ t.max_level }}级
             <span v-if="t.researching" class="orange">研究中 {{ remain(t.end_time) }}
@@ -1105,7 +1105,7 @@
         </div>
       </template>
 
-      <!-- ============ 科技详情(techpre) 2026-09-28 用户要求：点[研究]进详情页查看资源/条件再确认 ============ -->
+      <!-- ============ 科技详情(techpre) 2026-09-28 点[研究]进详情页查看资源/条件再确认 ============ -->
       <template v-else-if="cur === 'techpre'">
         <div class="panel" v-if="techSel">
           <div class="panel-title">研究「{{ techSel.name }}」{{ techSel.level + 1 }}级</div>
@@ -1142,7 +1142,7 @@
             输入坐标查找：
             <a href="javascript:;" @click="toggleStars">收藏列表</a>
           </div>
-          <!-- ★ 用户要求「横坐标、纵坐标 一行」：两个输入框合并同一行，[查找] 跟在行末 -->
+          <!-- ★ 「横坐标、纵坐标 一行」：两个输入框合并同一行，[查找] 跟在行末 -->
           <div class="old-line ezfy-map-jump">
             横坐标：<input v-model="jumpX" type="number" placeholder="(1~500)"/>
             纵坐标：<input v-model="jumpY" type="number" placeholder="(1~500)"/>
@@ -1160,7 +1160,7 @@
             </div>
             <div class="old-line gray" v-if="!mapStars.length">(收藏列表为空, 在地图上选中目标后可收藏)</div>
           </template>
-          <!-- ★ 用户要求「格子下面加个坐标，排列整齐一点」：
+          <!-- ★ 「格子下面加个坐标，排列整齐一点」：
                每格两行 —— 第一行名称(等级)，第二行 (x,y)；
                第二行用站内链接蓝 #0645ad，让玩家一眼知道格子能点。 -->
           <table class="ezfy-map-table">
@@ -1174,7 +1174,7 @@
             </tr>
           </table>
           <div class="old-line">当前坐标中心:({{ mapCx }} , {{ mapCy }})</div>
-          <!-- ★ 用户要求「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
+          <!-- ★ 「向上/向右/向下/向左/回到本城 间隙稍微大一点」→ 见 .ezfy-dir-nav a -->
           <div class="old-line ezfy-dir-nav">
             <a href="javascript:;" @click="moveMap(-mapStep, 0)">向上</a>
             <a href="javascript:;" @click="moveMap(0, mapStep)">向右</a>
@@ -1307,7 +1307,7 @@
             <template v-if="trainMode !== 'defence'">吃粮：{{ trainSel.food_keep }}<br/></template>
             时间：{{ durText(trainSel.train_time) }}<br/>
             <template v-if="trainMode !== 'defence'">需要军工厂：{{ trainSel.need_factory }}级<br/></template>
-            <!-- ★ 2026-09-28 用户要求：资源/前提条件移到这里（训练详情页）展示 -->
+            <!-- ★ 2026-09-28 资源/前提条件移到这里（训练详情页）展示 -->
             前提：{{ trainSel.require || '无' }}<template v-if="trainSel.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template><br/>
           </div>
           <div class="old-line green" v-if="troopsData.train_discount > 0 && trainMode !== 'defence'">
@@ -1317,7 +1317,7 @@
             建造数量：
             <input v-model="trainCount" type="number" min="1" :placeholder="'(1~' + maxTrainable + ')'" style="width:90px"/>
             <span class="gray">(最多 {{ maxTrainable }})</span>
-            <!-- ★ 2026-09-28 用户要求：在「(最多 N)」后面加 [最大]，一键把数量填成上限 -->
+            <!-- ★ 2026-09-28 在「(最多 N)」后面加 [最大]，一键把数量填成上限 -->
             <a href="javascript:;" class="train-max"
                :class="{ 'train-max-off': maxTrainable <= 0 }"
                @click="setTrainMax()">[最大]</a>
@@ -1410,7 +1410,7 @@
             <span v-if="selCell.ally" class="green">（你的同盟成员）</span>
           </div>
           <hr/>
-          <!-- ★ 按钮文案统一加方括号（用户要求「侦查 掠夺 征服 也加上 []」），
+          <!-- ★ 按钮文案统一加方括号（「侦查 掠夺 征服 也加上 []」），
                与已有的 [宣战]/[返回地图]/[查找] 保持同一种「按钮」写法。
                同一行里的 运输/增援/采集 同属动作按钮，一并统一，免得一行里两种写法。 -->
           <!-- ① 本城：不给侦查/掠夺/征服（自己的城市不能打自己），只提示一句 -->
@@ -1423,7 +1423,7 @@
                  不再出现 [宣战] 入口，也不再显示「未宣战」状态文案。 -->
           <div class="old-line" v-else-if="selCell.area_type === 3">
             <a href="javascript:;" @click="pickOrder(1)">[侦查]</a>&nbsp;
-            <!-- ★ 2026-09-25 用户要求：军团交战期（atWar）无需个人宣战即可掠夺/征服 -->
+            <!-- ★ 2026-09-25 军团交战期（atWar）无需个人宣战即可掠夺/征服 -->
             <a v-if="warStatus === 2 || !warRequire || atWar" href="javascript:;" @click="pickOrder(2)">[掠夺]</a>
             <a v-else href="javascript:;" class="gray" @click="warBlock('掠夺')">[掠夺]</a>&nbsp;
             <a v-if="warStatus === 2 || !warRequire || atWar" href="javascript:;" @click="pickOrder(3)">[征服]</a>
@@ -1486,7 +1486,7 @@
           <hr/>
 
           <!-- ★ 2026-09-28 出征页顺序重排：①指挥军官 → ②出征集结令 → ③选择兵力
-               （用户要求军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚）
+               （军官放第一个 → 集结令 → 兵种；军团/属性用「军/学/后」简写、不展示忠诚）
                预设编队下拉：选中后回填 军官/集结令/兵力（兵力夹到可出征上限，军官不在当前城则回填空） -->
           <!-- 预设编队 -->
           <div class="of-sec">预设编队</div>
@@ -1661,12 +1661,12 @@
             <span v-else class="red">（已锁定，等待结算）</span>
           </div>
           <!-- 本回合倒计时（最后 5 秒锁定：条变红 = 已锁定）
-               ★ 规则说明一律不写进界面（用户要求），记在这里：
+               ★ 规则说明一律不写进界面（），记在这里：
                  · 每回合 30 秒，前 25 秒（cmd_window_ms）可下达指令，后 5 秒锁定由服务器结算；
-                 · 指令是**逐兵种**的（用户要求「自己带的兵种都能指挥，就是单独指挥」）；
+                 · 指令是**逐兵种**的（「自己带的兵种都能指挥，就是单独指挥」）；
                  · 没下指令的兵种按司令部「兵种战斗配置」行动；
                  · 兵种目标同样是**逐兵种**的：默认取司令部配置，指挥时可改（0 = 最近目标），
-                   守方没有该兵种时服务器自动回落打最近的（2026-09-23 用户要求）；
+                   守方没有该兵种时服务器自动回落打最近的（2026-09-23 ）；
                  · [自动战斗] = 自己全部军队前进，一口气打完。 -->
           <div class="old-line" v-if="!battleData.done">
             {{ battleData.time_label || '本回合剩余' }}：<b>{{ battleLeftText }}</b>
@@ -1690,7 +1690,7 @@
             <tr v-for="u in battleData.attackers" :key="'ba' + u.troop_id">
               <td class="red">攻</td><td class="nm">{{ u.name }}</td>
               <td>{{ fmtN(u.count) }}</td><td>{{ fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
-              <!-- ★ 兵种目标（2026-09-23 用户要求）：默认 = 司令部「兵种战斗配置」，
+              <!-- ★ 兵种目标（2026-09-23 ）：默认 = 司令部「兵种战斗配置」，
                    指挥时玩家可逐兵种改；0 = 最近目标（守方没有该兵种时服务器自动打最近的）。
                    ★ 守方视角(is_atk=false)时这里显示 AI，指挥控件渲染到守方行上。 -->
               <td v-if="!battleData.done">
@@ -1795,7 +1795,7 @@
       </template>
 
       <!-- ============ 出征队列(orders) ============ -->
-      <!-- ★ 2026-09-25 用户要求「出征队列按照军队动态那种展示」：
+      <!-- ★ 2026-09-25 「出征队列按照军队动态那种展示」：
            数据源改成 /reports/dynamics（与「军情 → 军队动态」同一个接口、同一套字段），
            渲染样式也照抄军队动态的竖排块（命令/目标/状态/军官/时间/待带回/操作），
            比原来的 6 列表格信息全得多（原来没有待带回、没有指挥室入口）。
@@ -2217,7 +2217,7 @@
 
       <!-- ============ 军团(corps) ============ -->
       <template v-else-if="cur === 'corps'">
-        <!-- ★ 2026-09-25 用户要求：军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
+        <!-- ★ 2026-09-25 军团页拆成四栏（纯前端 tab，照抄 rank/acade 页 .acade-tab 写法） -->
         <div class="panel">
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: corpsTab === 'info' }" @click="switchCorpsTab('info')">军团信息</a>|
@@ -2233,7 +2233,7 @@
           <div class="panel">
             <div class="panel-title">我的军团:{{ myCorps.name }}({{ myCorps.member_count }}人)</div>
             公告: {{ myCorps.notice || '无' }}<br/>
-            <!-- ★ 2026-09-25 用户要求：显示军团总积分（来自 /corps/members 的 corps_points） -->
+            <!-- ★ 2026-09-25 显示军团总积分（来自 /corps/members 的 corps_points） -->
             <div class="old-line">军团总积分: <b>{{ corpsPoints }}</b></div>
             <div class="old-line">
               <template v-if="isLeader">
@@ -2246,7 +2246,7 @@
             <table class="ezfy-corps-tbl ezfy-mem-tbl">
               <tr>
                 <th>成员</th><th>职位</th><th>军衔</th>
-                <!-- ★ 2026-09-25 用户要求：成员表格新增「军团积分」列（m.points，个人军团积分） -->
+                <!-- ★ 2026-09-25 成员表格新增「军团积分」列（m.points，个人军团积分） -->
                 <th>军团积分</th>
                 <!-- ★ 第九轮：军团长可任命副团长/参谋长 -->
                 <th v-if="isLeader" width="150">任命</th>
@@ -2483,7 +2483,7 @@
       <!-- ============ 排行(rank) ============ -->
       <template v-else-if="cur === 'rank'">
         <div class="panel">
-          <!-- ★ 2026-09-24 用户要求：军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
+          <!-- ★ 2026-09-24 军衔晋升表/军衔声望榜/兵力榜/军团榜做成 tab 分开展示 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: rankTab === 'ranks' }" @click="rankTab = 'ranks'">军衔晋升表</a>|
             <a href="javascript:;" :class="{ on: rankTab === 'prestige' }" @click="rankTab = 'prestige'">军衔声望榜</a>|
@@ -2609,7 +2609,7 @@
             <a v-for="c in bagCats" :key="'bc' + c" href="javascript:;" :class="{ on: bagCat === c }"
                @click="setBagCat(c)">[{{ c }}]</a>
           </div>
-          <!-- ★ 道具说明改成「点 [说明] 才展开」（用户要求：商城/背包都别堆说明文字） -->
+          <!-- ★ 道具说明改成「点 [说明] 才展开」（商城/背包都别堆说明文字） -->
           <div class="old-line" v-for="it in bagPaged" :key="'bi' + it.cfg_id">
             <b>{{ it.name }}</b>×{{ it.count }}
             <a v-if="it.description" href="javascript:;" @click="toggleBagDesc(it.cfg_id)">[说明]</a>
@@ -2645,7 +2645,7 @@
               <a href="javascript:;" @click="useItem = null">[取消]</a>
             </div>
           </div>
-          <!-- ★ 2026-09-28 背包展示宝物（用户要求）：相同宝物合并显示 ×数量 -->
+          <!-- ★ 2026-09-28 背包展示宝物（）：相同宝物合并显示 ×数量 -->
           <div class="panel-title" v-if="bagTreasures.length">宝物</div>
           <div class="old-line" v-for="t in bagTreasures" :key="'bt' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}
@@ -2668,7 +2668,7 @@
         <div class="panel">
           <div class="panel-title">商城({{ resNames.gold }}{{ city.gold }} · 钻石{{ mallDiamond }})</div>
           <!-- ★ 商城分栏：道具 / 装备散件 / 宝箱（套装件只能开宝箱，商城只卖散件）
-               ★ 2026-09-24 用户要求: 三个分栏去掉 []、用 | 分隔并留间距 -->
+               ★ 2026-09-24  三个分栏去掉 []、用 | 分隔并留间距 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: mallTab === 'item' }" @click="switchMallTab('item')">道具</a><span> | </span>
             <a href="javascript:;" :class="{ on: mallTab === 'equipment' }" @click="switchMallTab('equipment')">装备</a><span> | </span>
@@ -2721,7 +2721,7 @@
           <!-- ★ 装备散件（管理端在「装备列表」里维护）
                ★ 用户规则：套装装备只能通过宝箱开启，商城不再上架套装件 -->
           <template v-else-if="mallTab === 'equipment'">
-            <!-- ★ 说明一律不写进界面（用户要求：别在用户能看见的地方加提示），信息记在这里：
+            <!-- ★ 说明一律不写进界面（别在用户能看见的地方加提示），信息记在这里：
                  · 散件用钻石购买，定价按「六项加成总和」映射到 100~500 钻（见 seed 的 ezfyEquipDiamondPrice）；
                  · 买入后到「军官 → 军官详情」穿到军官身上；
                  · 第一批套装（新兵/战士/混沌…，无系列名）只能通过[宝箱]开启，商城不售。 -->
@@ -2812,7 +2812,7 @@
                  · 宝箱用钻石购买（战地补给箱用黄金）；价格 300~800 钻按品质分档；
                  · 套装宝箱开出的是「整套」（一次给该套全部件，见 ezfyGrantChestPrize 的 Kind=3）；
                    战地补给箱开单件散件；
-                 · 奖池**不直接铺开** —— 点宝箱名字才展开（用户要求「别直接展示」）。 -->
+                 · 奖池**不直接铺开** —— 点宝箱名字才展开（「别直接展示」）。 -->
             <!-- ★ 宝箱列表：奖池点名字才展开 -->
             <table class="ezfy-plain-table">
               <tr><th>宝箱</th><th>价格</th><th>奖池</th><th>操作</th></tr>
@@ -3133,7 +3133,7 @@
       <!-- ============ 福利(welfare) ============ -->
       <template v-else-if="cur === 'welfare'">
         <div class="panel">
-          <!-- ★ 2026-09-28 用户要求：签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
+          <!-- ★ 2026-09-28 签到/礼包/宝物签到 拆成 tab 展示（照抄 rank 页 .acade-tab 写法） -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: welfareTab === 0 }" @click="setWelfareTab(0)">每日签到</a><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: welfareTab === 1 }" @click="setWelfareTab(1)">礼包</a><span
@@ -3153,7 +3153,7 @@
           </template>
 
           <!-- 礼包 -->
-          <!-- ★ 用户要求「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
+          <!-- ★ 「把 [市政厅20级礼包][市政厅30级礼包][市政厅40级礼包] 删掉」：
                只保留 新手 / 每周 / 市政厅10级 三个入口（后端 Gift 同步去掉 20/30/40 分支）。 -->
           <template v-else-if="welfareTab === 1">
             <div class="old-line">
@@ -3174,7 +3174,7 @@
               <a v-else href="javascript:;" @click="doTreasureSign">[宝物签到领奖]</a>
               <span v-if="welfare.treasure_count" class="gray">| 连续{{ welfare.treasure_count }}天</span>
             </div>
-            <!-- ★ 2026-09-28 用户要求：展示本轮已签到领到的具体宝物名, 每轮(每天签到)后更新 -->
+            <!-- ★ 2026-09-28 展示本轮已签到领到的具体宝物名, 每轮(每天签到)后更新 -->
             <div class="old-line" v-if="welfare.treasure_signed_today && welfare.treasure_reward">
               本轮已领宝物：<span class="green">{{ welfare.treasure_reward.split(',').join('、') }}</span>
             </div>
@@ -3188,12 +3188,12 @@
       <template v-else-if="cur === 'notices'">
         <div class="panel">
           <div class="panel-title">公告</div>
-          <!-- ★ 用户要求「公告也变成分页，下一页上一页那种」→ 与军情三区同一套 .ezfy-pager 写法
+          <!-- ★ 「公告也变成分页，下一页上一页那种」→ 与军情三区同一套 .ezfy-pager 写法
                （默认每页 5 条，见 noticeSize）。 -->
           <div class="old-line" v-for="n in noticePaged" :key="'nn' + n.id">
             <span v-if="n.is_top" class="red">[置顶]</span>
             <a href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
-            <!-- ★ 用户要求：公告标题后展示发布时间（年-月-日）。CreatedAt(time.Time) JSON 序列化为
+            <!-- ★ 公告标题后展示发布时间（年-月-日）。CreatedAt(time.Time) JSON 序列化为
                  "2026-09-23T11:11:28+08:00"，前端只取 "年-月-日" 并加 [] 色弱化。 -->
             <span class="gray">[{{ fmtDate(n.created_at) }}]</span>
           </div>
@@ -3292,7 +3292,7 @@
           声望：{{ profile.prestige }}<br/>
           军衔：{{ rankName }}({{ rankPost }})<span style="margin-left:4px"><span v-html="rankIcon(myRankId)"></span></span><br/>
           军团：{{ (myCorps && myCorps.name) || '无' }}<br/>
-          <!-- ★ 2026-09-27 用户要求：统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
+          <!-- ★ 2026-09-27 统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
           <template v-if="myCorpsTitle">职务：{{ myCorpsTitle }}<br/></template>
           城市数：{{ cities.length }}<br/>
           人口数：{{ city.pop }}<br/>
@@ -3320,7 +3320,7 @@
             声望：{{ playerInfo.prestige }}<br/>
             军衔：{{ playerInfo.rank_name }}({{ playerInfo.rank_post }})<span style="margin-left:4px"><span v-html="rankIcon(rankIdByName(playerInfo.rank_name))"></span></span><br/>
             军团：{{ playerInfo.corps_name || '无' }}<br/>
-            <!-- ★ 2026-09-29 用户要求：他人统帅页展示军团职务（与我的统帅页一致），职务在军团下一行 -->
+            <!-- ★ 2026-09-29 他人统帅页展示军团职务（与我的统帅页一致），职务在军团下一行 -->
             <template v-if="playerInfo.corps_title">职务：{{ playerInfo.corps_title }}<br/></template>
             城市数：{{ playerInfo.city_count }}<br/>
             军官数：{{ playerInfo.officer_count }}<br/>
@@ -3378,7 +3378,7 @@
           </div>
           <div class="old-line">
             {{ resNames.gold }}:{{ fmtN(officerData.gold) }}
-            <!-- ★ 用户要求「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
+            <!-- ★ 「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
             <span class="gray" v-if="officerData.salary">
               （军官工资 {{ fmtN(officerData.salary) }} {{ resNames.gold }}/小时，每级 {{ officerData.salary_per_level }} 金/小时）
             </span>
@@ -3567,7 +3567,7 @@
           </div>
 
           <!-- 套装一览：默认只列**我拥有的**（原来这里铺的是「全部套装」= 图鉴，玩家分不清哪个是自己有的），
-               可以切到「全部套装」横向对比 —— ★ 2026-09-25 用户要求「方便玩家知晓、对比套装」。 -->
+               可以切到「全部套装」横向对比 —— ★ 2026-09-25 「方便玩家知晓、对比套装」。 -->
           <div v-if="equipTab === 'set'">
           <div class="old-line set-tab">
             <a href="javascript:;" :class="{ on: !setShowAll }" @click="setShowAll = false">[只看我有的]</a>
@@ -4073,7 +4073,7 @@
         <a href="javascript:;" :class="{ on: cur === 'liaison' }" @click="go('liaison')">联络</a>
         <a href="javascript:;" :class="{ on: cur === 'cityhall' }" @click="go('cityhall')">市政</a>
         <a href="javascript:;" :class="{ on: cur === 'chat' }" @click="go('chat')">聊天</a>
-        <!-- ★ 2026-09-24 用户要求: 底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
+        <!-- ★ 2026-09-24  底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
         <a href="javascript:;" @click="exitToHome()">家园</a>
       </div>
       <br/>
@@ -4116,7 +4116,7 @@ export default {
       cur: 'home',
       prevCur: 'home', // ★ 2026-09-29 上一页（各页 [返回] goBack 用）
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
-      // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
+      // ★ 2026-09-28 「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
       gatherNow: 0,
       // ★ 2026-09-28 「军队动态/出征队列」倒计时自动刷新：拉取 dynamics 时的本地时间戳，
       //   战斗中部队的本回合剩余是「相对剩余」，用它当基点往前推算。
@@ -4131,7 +4131,7 @@ export default {
       _dynRefreshedAt: 0,
       _dynFired: Object.create(null),
       resNames: RES_NAMES,
-      // ★ 2026-09-28 用户要求：头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
+      // ★ 2026-09-28 头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
       // ★ 2026-09-28 安抚参数（后端下发，管理端可配：5 万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
       placate: { gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 },
@@ -4188,7 +4188,7 @@ export default {
       dynStationPage: 1, dynStationSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
-      // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」）：默认每页 5 条
+      // ★ 公告分页（「公告也变成分页，下一页上一页那种」）：默认每页 5 条
       noticePage: 1, noticeSize: 5,
       // ★ 首页外露公告（条数由管理端「建筑上限配置」里的「首页公告条数」决定，默认 1）
       homeNotices: [],
@@ -4269,7 +4269,7 @@ export default {
       corpsName: '',
       corpsMsg: '',
       kickUserId: 0,
-      // ★ 2026-09-25 用户要求：军团页拆成「军团信息 / 军团外交 / 军团宣战 / 军团商城」四个子栏，
+      // ★ 2026-09-25 军团页拆成「军团信息 / 军团外交 / 军团宣战 / 军团商城」四个子栏，
       //   纯前端 tab 切换（照抄 rank/acade 页的 .acade-tab 写法），数据按需懒加载。
       corpsTab: 'info',        // info军团信息 / diplomacy军团外交 / war军团宣战 / mall军团商城
       corpsPoints: 0,          // 军团总积分（/corps/members 或 /corps/relations 的 my_corps.points）
@@ -4304,7 +4304,7 @@ export default {
       //   detailRowId = 装备表里正展开详情卡的那一**行**（存装备 id，不是 set_id！
       //   存 set_id 的话同一套的每一行都会各自展开一张一样的卡 —— 实测 10 件套会蹦出 10 张）。
       //   detailMode = 展开的是哪一份内容：'item' 这件自己的加成 / 'set' 套装加成
-      //   （用户要求「点名称看该装备的加成，点套装看套装的加成」）。
+      //   （「点名称看该装备的加成，点套装看套装的加成」）。
       allSets: [],
       detailRowId: 0,
       detailMode: '',
@@ -4339,9 +4339,9 @@ export default {
       officerDetail: { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 },
       // ★ 装备商城（套装用黄金/钻石购买）
       equipShop: { slots: [], items: [], gold: 0, diamond: 0 },
-      // ★ 商城散件：部位筛选 + 检索 + 分页（用户要求「按部位分组表格 + 检索」）
+      // ★ 商城散件：部位筛选 + 检索 + 分页（「按部位分组表格 + 检索」）
       shopSlot: '', shopWord: '', shopPage: 1, shopSize: 20,
-      // ★ 宝箱奖池：点名字才展开（用户要求「别直接展示」）+ 检索 + 分页
+      // ★ 宝箱奖池：点名字才展开（「别直接展示」）+ 检索 + 分页
       chestPoolId: 0, chestPoolWord: '', chestPoolPage: 1, chestPoolSize: 20,
       bagDescId: 0,   // 背包里「点 [说明] 展开」的那件道具（0 = 都没展开）
       equipShopBuy: null,     // 正在填写购买数量的商品
@@ -4390,7 +4390,7 @@ export default {
       // ★ 管理端「宣战功能」开关（/war/status 下发 war_require）：
       //   false = 不需要宣战，掠夺/征服直接可点。默认 true（开关默认开）。
       warRequire: true,
-      // ★ 2026-09-25 用户要求：军团交战期也能掠夺/征服（无需个人宣战）。
+      // ★ 2026-09-25 军团交战期也能掠夺/征服（无需个人宣战）。
       //   atWar = /war/status 下发的 at_war（个人宣战已生效 或 管理端关掉宣战开关 或 军团交战期）；
       //   corpsWar = /war/status 下发的 corps_war（{active, corps_name, text}）。
       atWar: false,
@@ -4599,7 +4599,7 @@ export default {
     trainCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type !== 4)
     },
-    // ★ 2026-09-28 用户要求：首页点「军队」看到全部兵种（数量为 0 的也显示）+ 训练操作。
+    // ★ 2026-09-28 首页点「军队」看到全部兵种（数量为 0 的也显示）+ 训练操作。
     //   城内军队表遍历全部兵种配置（**不含城防兵种 type 4**，城防只在「城防」页展示），
     //   数量从 troops 里取（没有=0），行动行自带 troop_id。
     armyRows () {
@@ -4665,7 +4665,7 @@ export default {
       if (!this.orderCapApplies) return '不限'
       return c.cap_unlimited ? '不限' : this.fmtN(c.troop_cap)
     },
-    // ★ 2026-09-28 用户要求「[最大] 与滑块都按『出征还剩多少』卡控」。
+    // ★ 2026-09-28 「[最大] 与滑块都按『出征还剩多少』卡控」。
     //   出征上限只约束「出征类」命令：后端 createOrder 里写的是 `orderType != 5 && orderType != 8`
     //   → 运输(5) / 派遣(8) 不做兵力上限校验，这两个命令的滑块仍旧只按「城内现有」卡。
     //   ⚠️ 必须与后端同一口径，否则会出现「前端卡着不让填、后端其实允许」或反过来的假拦截。
@@ -4932,7 +4932,7 @@ export default {
       const p = Math.min(Math.max(1, this.equipAllPage), this.equipAllTotalPages)
       return this.equipAllFiltered.slice((p - 1) * this.equipAllPageSize, p * this.equipAllPageSize)
     },
-    // ★ 2026-09-29 用户要求：军官详情「装备背包 / 已穿戴装备」同一个装备叠加展示（名称 × N），
+    // ★ 2026-09-29 军官详情「装备背包 / 已穿戴装备」同一个装备叠加展示（名称 × N），
     //   有空余部位就能继续穿戴（对应部位没被占用），没空余就不能穿戴。
     //   分组 key = cfg_id（同配置的装备实例 = 同一件装备）；老数据没有 cfg_id 时兜底 name|slot|set_id|tier。
     equipGroupKey (e) {
@@ -5127,7 +5127,7 @@ export default {
       const p = Math.min(Math.max(1, this.repPage), this.repTotalPages)
       return this.reports.slice((p - 1) * this.repSize, p * this.repSize)
     },
-    // ★ 公告分页（用户要求「公告也变成分页，下一页上一页那种」），与军情同一套写法
+    // ★ 公告分页（「公告也变成分页，下一页上一页那种」），与军情同一套写法
     noticeTotalPages () {
       return Math.max(1, Math.ceil(this.notices.length / this.noticeSize))
     },
@@ -5567,7 +5567,7 @@ export default {
         this.switchCorpsTab(this.corpsTab)
       }
       else if (t === 'orders') {
-        // ★ 2026-09-25 用户要求「出征队列按照军队动态那种展示」→ 数据源与军队动态统一：
+        // ★ 2026-09-25 「出征队列按照军队动态那种展示」→ 数据源与军队动态统一：
         //   每次进页都重新拉一遍（刷新页面后也是走这里），队列不会再「刷新就消失」。
         this.loadDynamics()
       }
@@ -5932,7 +5932,7 @@ export default {
         }
       })
     },
-    // ★ 2026-09-24 用户要求：军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
+    // ★ 2026-09-24 军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
     intelTag (r) {
       const t = (r && r.title) || ''
       if (t.indexOf('守卫报告') === 0) return '防守报告'
@@ -6013,7 +6013,7 @@ export default {
         if (r.data && r.data.done) this.stopBattleTimer()
       })
     },
-    // ★ 指挥时逐兵种改「优先攻击目标」（2026-09-23 用户要求）：
+    // ★ 指挥时逐兵种改「优先攻击目标」（2026-09-23 ）：
     //   默认值来自司令部「兵种战斗配置」，这里改的只是**本场战斗**，不回写司令部。
     //   target = 0 表示「最近目标」；守方没有该兵种时服务器会自动回落打最近的。
     sendBattleTarget (troopId, ev) {
@@ -6070,7 +6070,7 @@ export default {
       this.shopSlot = s
       this.shopPage = 1
     },
-    // ★ 宝箱奖池：点名字展开/收起（用户要求「别直接展示，点击宝箱名字后展示」）
+    // ★ 宝箱奖池：点名字展开/收起（「别直接展示，点击宝箱名字后展示」）
     toggleChestPool (id) {
       this.chestPoolId = (this.chestPoolId === id) ? 0 : id
       this.chestPoolWord = ''
@@ -6428,7 +6428,7 @@ export default {
           this.corpsMembers = r.data.members
           // ★ 后端下发「我在军团的职位」，副团长也能发军团邮件
           this.myCorpsTitle = r.data.my_title || ''
-          // ★ 2026-09-25 用户要求：军团信息 tab 显示军团总积分（新字段 corps_points）
+          // ★ 2026-09-25 军团信息 tab 显示军团总积分（新字段 corps_points）
           this.corpsPoints = r.data.corps_points || 0
         }
       })
@@ -6665,7 +6665,7 @@ export default {
       })
     },
     doBuild (b) {
-      // ★ 用户要求：建造成功后跳回对应分区（资源区→资源区、军事区→军事区），并刷新建筑列表
+      // ★ 建造成功后跳回对应分区（资源区→资源区、军事区→军事区），并刷新建筑列表
       // ★ 用户反馈「连点会出现多条」→ 防抖：一次点击只下达一条建造命令
       this.once('build', () =>
         api.post('/games/ezfy/build', { building_id: b.building_id || b.bid }).then(r => {
@@ -6696,7 +6696,7 @@ export default {
         } else this.inlineTip = { bid: b.id, text: r.msg || '升级失败', type: 'error' }
       })
     },
-    // ★ 2026-09-25 用户要求「拆除询问下玩家是否拆除，玩家可能按错了」→ 先二次确认再拆
+    // ★ 2026-09-25 「拆除询问下玩家是否拆除，玩家可能按错了」→ 先二次确认再拆
     //   （拆除是逐级降级，降到 0 级才彻底移除，提示里把这个后果说清楚）
     async doDeleteBuilding (b) {
       const nm = (b && b.name) || '该建筑'
@@ -6948,7 +6948,7 @@ export default {
       this.go('trainpre')
     },
     // ★ 2026-09-28 城内军队表改为遍历 armyRows（全兵种含 0 数量），原 quickTrain 已无引用，移除。
-    // ★ 2026-09-28 用户要求：训练页「(最多 N)」后面加 [最大]，一键填成上限。
+    // ★ 2026-09-28 训练页「(最多 N)」后面加 [最大]，一键填成上限。
     //   上限口径与页面上显示的「(最多 N)」完全一致（maxTrainable computed：
     //   资源 / 人口（城防为城防空间）取最小），点了不会填出个填不下的数。
     //   上限为 0 时不可点（灰掉），与出征页 [最大] 的处理保持一致。
@@ -6978,7 +6978,7 @@ export default {
         if (r.code === 0) this.loadTroops()
       })
     },
-    // 取消训练队列（用户要求：征兵序列玩家可以自己取消，资源全额退还）
+    // 取消训练队列（征兵序列玩家可以自己取消，资源全额退还）
     async doCancelTrain (q) {
       const ok = await this.ask('确定取消「' + q.name + '×' + q.count + '」的训练吗？' +
         '取消会收取 10% 手续费，其余资源退还（不受仓储上限影响）。')
@@ -6991,7 +6991,7 @@ export default {
         } else this.notify(r.msg || '取消失败', 'error')
       })
     },
-    // ★ 解散部队（用户要求：军队页面要有解散按钮，数量由玩家自己输入）
+    // ★ 解散部队（军队页面要有解散按钮，数量由玩家自己输入）
     async doDisband (t) {
       const input = await this.ask('解散「' + t.name + '」多少个？（当前 ' + t.count + ' 个）\n' +
         '解散后兵力直接销毁，不退还任何资源。', { input: true, value: '1', placeholder: '数量' })
@@ -7018,7 +7018,7 @@ export default {
       const hh = Math.floor(m / 60)
       return hh + '小时' + (m % 60) + '分'
     },
-    // ★ 2026-09-28 用户要求「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
+    // ★ 2026-09-28 「累计采集/采集资源实时变化、累加展示，不能只靠刷新」：
     //   采集中部队由后端下发 gather = { start_ms, period_ms, per_food/steel/oil/rare }，
     //   前端据此每一秒(由 gatherNow 驱动)本地 extrapolate 出「累计时长+累计产出的资源」。
     //   ★ 2026-09-28 用户规则：本期已采按负重上限展示，超负重部分丢弃（total 封顶到 carry_cap）。
@@ -7056,7 +7056,7 @@ export default {
       const g = this.liveGather(o)
       return g ? Object.assign({}, o, { _lg: g }) : o
     },
-    // ★ 2026-09-28 用户要求「军队动态 / 出征队列的『抵达时间：12秒』也要自动刷新」：
+    // ★ 2026-09-28 「军队动态 / 出征队列的『抵达时间：12秒』也要自动刷新」：
     //   倒计时原来是后端算好的一次性字符串(time_text)，只有重新拉接口才会变，
     //   静止不动看起来像卡死。改法与采集实况一致 —— 后端下发**绝对到点时间戳**，
     //   前端每秒(由 gatherNow 驱动)本地重算剩余。
@@ -7106,7 +7106,7 @@ export default {
         .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
     },
     // ---- 科技 ----
-    // ★ 2026-09-28 用户要求：科技列表不显示资源消耗/前置条件，点[研究]进详情页(techpre)查看后再确认
+    // ★ 2026-09-28 科技列表不显示资源消耗/前置条件，点[研究]进详情页(techpre)查看后再确认
     openTechPre (t) {
       this.techSel = t
       this.go('techpre')
@@ -7246,8 +7246,8 @@ export default {
         this.go('reportview')
       })
     },
-    // ★ 删除战报：不需要二次确认（用户要求）
-    // ★ 2026-09-26 用户要求「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
+    // ★ 删除战报：不需要二次确认（）
+    // ★ 2026-09-26 「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
     //   删的是**自己名下全部战报**（后端 DELETE，不软删），不可恢复 → 先走页面内确认条问一次。
     //   ⚠️ 有搜索词时列表只是筛选，删除范围仍是全部 —— 文案里写清楚，别让玩家以为只删列表里那几条。
     async doClearReports () {
@@ -7277,7 +7277,7 @@ export default {
         }
       })
     },
-    // ★ 取消出征命令（用户要求「出征队列可以取消」）
+    // ★ 取消出征命令（「出征队列可以取消」）
     //   不限命令类型：行进中(0)/驻守中(1)都能取消，部队原路返回出发城市；
     //   运输/派遣带出去的随军资源也会随部队一起带回来。
     async doRecall (o) {
@@ -7420,7 +7420,7 @@ export default {
           //   （后端 isAtWar 同时恒为 true，两边口径一致）。
           //   注意不能靠把 warStatus 伪造成 2 —— 那样同盟城市的 运输/增援 会被误判而消失。
           this.warRequire = r.data.war_require !== false
-          // ★ 2026-09-25 用户要求：接军团交战期字段
+          // ★ 2026-09-25 接军团交战期字段
           //   at_war = 可掠夺/征服（个人宣战已生效 或 管理端关掉宣战开关 或 军团交战期）；
           //   corps_war = {active, corps_name, text}，active 时详情页显示绿色提示。
           this.atWar = !!r.data.at_war
@@ -7428,7 +7428,7 @@ export default {
         }
       })
     },
-    // ★★ 2026-09-28 用户要求：「[最大] 按钮点的不是当前兵种最大兵力，应该是出征还剩多少的最大」，
+    // ★★ 2026-09-28 「[最大] 按钮点的不是当前兵种最大兵力，应该是出征还剩多少的最大」，
     //   且「滑动滚轮也加下剩余可出征兵种最大卡控」。
     //
     //   本兵种可填上限 = min(城内现有, 出征上限剩余)：
@@ -7487,7 +7487,7 @@ export default {
     //   - 用 $set 写对象键：orderTroops 初始是 {}，直接赋值新键 Vue2 侦测不到，
     //     滑块动完数字框不会刷新（这就是「联动」失效的原因）。
     //   - ★ 2026-09-28 夹紧上限由「城内现有」改成 orderQtyMax(id)
-    //     = min(城内现有, 出征上限剩余) —— 用户要求滑块也要按「剩余可出征」卡控。
+    //     = min(城内现有, 出征上限剩余) —— 滑块也要按「剩余可出征」卡控。
     //   - 夹紧后若数值没变（如本来已是上限又填了更大的数），Vue 不会重渲染，
     //     DOM 里会留着用户填的非法数字 → 这里手动把输入框内容回写，保证「看到的 = 提交的」。
     onOrderQtyInput (id, ev) {
@@ -7958,7 +7958,7 @@ export default {
         } else this.notify(r.msg)
       })
     },
-    // ---- ★ 2026-09-25 用户要求：军团外交 / 军团宣战 / 军团商城 ----
+    // ---- ★ 2026-09-25 军团外交 / 军团宣战 / 军团商城 ----
     // 切子栏：只在数据还没拉过时才请求（避免每次切 tab 重复打接口）
     switchCorpsTab (tab) {
       this.corpsTab = tab
@@ -8329,7 +8329,7 @@ export default {
       }
       if (isNaN(d.getTime())) return ''
       const p = n => String(n).padStart(2, '0')
-      // ★ 用户要求：战报时间要带年份（原来是 MM-DD HH:mm:ss，跨年就分不清）
+      // ★ 战报时间要带年份（原来是 MM-DD HH:mm:ss，跨年就分不清）
       return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
         ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     },
@@ -8341,7 +8341,7 @@ export default {
       const id = this._msgSeq
       this.msgs.push({ id: id, text: t, type: type || this.guessMsgType(t) })
       if (this.msgs.length > 6) this.msgs.shift()
-      // ★ 2026-09-27 用户要求：不需要玩家确定的提示 3 秒→1.5 秒后自动消失（也可点 [关闭] 手动收起）
+      // ★ 2026-09-27 不需要玩家确定的提示 3 秒→1.5 秒后自动消失（也可点 [关闭] 手动收起）
       setTimeout(() => this.closeMsg(id), 1500)
     },
     // 提示条样式：fixed 定位在刚才点击的**控件正下方居中**（留 12px 间隙），
@@ -8413,7 +8413,7 @@ export default {
     // ★ after：成功后要额外刷新的数据（如军团信息）。只刷 /view 不够 ——
     //   军团数据来自 /games/ezfy/corps/*，不重新拉就会「加入后还显示未加入」。
     //
-    // ★ 用户要求「提示 ok 改成具体的描述，比如领取就是领取成功，不知道的就是操作成功」：
+    // ★ 「提示 ok 改成具体的描述，比如领取就是领取成功，不知道的就是操作成功」：
     //   所以每个调用点都要传 fallback（领取成功 / 购买成功 / 建造命令已下达 …），
     //   只有真的无从判断时才回落「操作成功」。
     alert (r, fallback, after) {
@@ -8547,7 +8547,7 @@ export default {
     // 点装备名 / 套装名 → 在**这一行**下面展开详情卡；再点同一个收起。
     // ★ 参数 equipId 是**这一行装备的 id**，不是 set_id：同一套会有 9~11 行，
     //   按 set_id 展开的话每行都会各蹦一张一样的卡（实测 10 件套蹦 10 张）。
-    // ★ 2026-09-25 用户要求「名称点击查看该装备的加成，点击套装显示套装的加成」：
+    // ★ 2026-09-25 「名称点击查看该装备的加成，点击套装显示套装的加成」：
     //   两个入口看**不同**的内容，用 mode 区分（'item' 只看这件自己的加成 / 'set' 只看套装加成）。
     //   同一个入口点两次 = 收起；点另一个入口 = 直接换成另一份内容（不收起）。
     toggleDetail (equipId, mode) {
@@ -8613,7 +8613,7 @@ export default {
         this.loadAcade()
       })
     },
-    // ★ 2026-09-28 用户要求：洗点入口放到军官详情页（原来要背包里翻「军官洗点卡」使用）。
+    // ★ 2026-09-28 洗点入口放到军官详情页（原来要背包里翻「军官洗点卡」使用）。
     //   对当前军官直接消耗 1 张洗点卡；后端 case 12 兜底校验（出征中/无卡等）。
     async doRespec () {
       const o = this.officerDetail.officer
@@ -8636,7 +8636,7 @@ export default {
         this.loadOfficerDetail(id)
       })
     },
-    // ★ 2026-09-28 用户要求：宝物可赏赐给军官加忠诚，品质不同加的不同（最高 +50）。
+    // ★ 2026-09-28 宝物可赏赐给军官加忠诚，品质不同加的不同（最高 +50）。
     //   点 [赏赐宝物] 展开可选列表（equipData.bag 里未穿戴的）；点某件 [赏赐] 确认后消耗该件并加忠诚。
     treasureLoyaltyGain (tier) {
       // 与后端 ezfyTreasureLoyalty 对齐：tier 1~4（初级/中级/高级/特殊）→ +10/+20/+35/+50
@@ -8826,7 +8826,7 @@ body.ezfy-immersive { margin: 0; }
      回退链: Windows→宋体/SimSun, macOS→宋体-简(Songti SC), 其余→serif。
      ★ 2026-09-25：**只保留在桌面**。手机上换成系统黑体，见下面的 @supports 段。 */
   font-family: '宋体', 'SimSun', 'Songti SC', 'NSimSun', '新宋体', serif;
-  /* ★ 2026-09-25 用户要求「页面文字大小除了地图，全部改成和首页导航(聊天/邮箱/军情/任务/好友/首页)一样大」：
+  /* ★ 2026-09-25 「页面文字大小除了地图，全部改成和首页导航(聊天/邮箱/军情/任务/好友/首页)一样大」：
      首页导航字号 17px 定为**全站唯一基准** —— 除地图格(.ezfy-map-table / .ezfy-cell)外，
      页面所有文字都取这个变量。以后要整体调大小，只改这一行。
      例外（都是「非正文」或布局硬约束，已在各自规则里注明）：
@@ -8850,7 +8850,7 @@ body.ezfy-immersive { margin: 0; }
    于是回退到系统自带的 **Songti SC（宋体-简）** —— 它是衬线体、笔画极细，
    小字号在 Retina 屏上又细又灰、边缘发虚，观感比 Windows 的 SimSun 差一大截，
    这就是用户说的「iPhone 上字体不好看」。
-   处理（★ 用户要求「iPhone 单独用 iPhone 自己的字体，其他设备不变」）：
+   处理（★ 「iPhone 单独用 iPhone 自己的字体，其他设备不变」）：
      · **桌面（Windows/macOS）保留复古宋体**，一行不动；
      · **只有 iPhone / iPad 换成苹果自带的系统字体** —— 下面这份就是 iPhone 上的常驻字体：
          `-apple-system` / `system-ui` → 苹果系统字体（西文 San Francisco + 中文 **苹方**）
@@ -8923,7 +8923,7 @@ body.ezfy-ios .ezfy-page textarea {
    去掉首链接的左侧留白 → 整条导航左移，与正文左对齐。 */
 .ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
-/* ★ 配色按用户要求：默认 #004299，当前选中黑色
+/* ★ 配色按默认 #004299，当前选中黑色
    ★ 用户反馈「点进去后间隔变大，首页里的这个导航就对」：
      根因是这里用 inline-block(会把换行空白算成一个空格宽)，
      而首页导航用的是 inline。改成 inline 并收窄 padding，
@@ -8931,7 +8931,7 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-subnav a {
   display: inline;
   padding: 0 1px;
-  /* ★ 2026-09-29 用户要求「资源.军官.军队.科技.城防.统帅 间隔小一点点」：margin 1px → 0 */
+  /* ★ 2026-09-29 「资源.军官.军队.科技.城防.统帅 间隔小一点点」：margin 1px → 0 */
   margin: 0;
   /* ★ 字号与 .top-nav a 统一（同一个变量，改一处两处一起变） */
   font-size: var(--fs);
@@ -8942,8 +8942,8 @@ body.ezfy-ios .ezfy-page textarea {
    首链接左侧 padding/margin 归零 —— 与 .top-nav a:first-child 同源。
    两者父容器(.old-line / .top-nav)左右 padding 都是 0，归零后文字左边缘必定对齐。 */
 .ezfy-page .ezfy-subnav a:first-child { margin-left: 0; padding-left: 0; }
-/* 军衔/排行页所有表格：数据水平 + 垂直居中（用户要求）*/
-/* ★ 排行页四个表格统一宽度（用户要求「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
+/* 军衔/排行页所有表格：数据水平 + 垂直居中（）*/
+/* ★ 排行页四个表格统一宽度（「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
    width:50% 占 panel 一半宽度，table-layout:fixed 配合各表 colgroup 比例分列，长文本自动折行 */
 .ezfy-page .ezfy-rank-table {
   width: 50%;
@@ -8957,7 +8957,7 @@ body.ezfy-ios .ezfy-page textarea {
   vertical-align: middle;
   overflow-wrap: break-word;
 }
-/* ★ 排行榜优化（用户要求「榜单太单调、没有追榜动力」）：
+/* ★ 排行榜优化（「榜单太单调、没有追榜动力」）：
    名次做成奖牌徽章，前三名金/银/铜；冠亚季军整行按金/银/铜着色 + 冠军皇冠；
    普通行斑马纹 + 悬停。军衔晋升表是静态参照表（无奖牌徽章、无 rank 类），
    不受这些榜单高亮影响。 */
@@ -9019,7 +9019,7 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-rank-table tr.rank-1 td:first-child,
 .ezfy-page .ezfy-rank-table tr.rank-2 td:first-child,
 .ezfy-page .ezfy-rank-table tr.rank-3 td:first-child { font-weight: bold; }
-/* 学院(acade)页所有表格：数据水平 + 垂直居中（用户要求）*/
+/* 学院(acade)页所有表格：数据水平 + 垂直居中（）*/
 .ezfy-page .ezfy-plain-table th,
 .ezfy-page .ezfy-plain-table td {
   text-align: center;
@@ -9110,7 +9110,7 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-buy-box .bb-row input[type="number"] { width: 70px; }
 .ezfy-page .ezfy-buy-box .bb-total { color: #c0392b; }
 /* ★ 商城购买确认内联行：直接展开在「购买」按钮所在行的正下方，淡色背景区分
-     （用户要求「确认在购买按钮附近」，不再用表格底部那个独立面板） */
+     （「确认在购买按钮附近」，不再用表格底部那个独立面板） */
 .ezfy-page .ezfy-buy-inline td {
   background: #faf8f2;
   text-align: left;
@@ -9190,7 +9190,7 @@ body.ezfy-ios .ezfy-page textarea {
   font-size: var(--fs);
   line-height: 1.75;
 }
-/* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按用户要求 默认 #004299 / 选中 #c0392b */
+/* ★ 间隔对齐原版 .old-line a 的 margin: 0 1px；配色按 默认 #004299 / 选中 #c0392b */
 .ezfy-page .ezfy-bottom-nav a {
   display: inline;
   padding: 0 1px;
@@ -9214,7 +9214,7 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
 .ezfy-page .acade-tab a.on { color: #c0392b; font-weight: bold; }
-/* ★ 2026-09-29 用户要求：司令部 tab(兵种配置/出征队列/伤兵营/逃兵营/预设编队) 间隔大一点点，
+/* ★ 2026-09-29 司令部 tab(兵种配置/出征队列/伤兵营/逃兵营/预设编队) 间隔大一点点，
    仅这组生效（其余 acade-tab 不带 hq-tab 类，间隔保持不变） */
 .ezfy-page .acade-tab.hq-tab a { margin-right: 10px; }
 /* ★ 2026-09-28 tab 之间的「.」分隔符：原写法用 &nbsp;.&nbsp;（不换行空格 U+00A0），
@@ -9282,12 +9282,12 @@ body.ezfy-ios .ezfy-page textarea {
   margin: 6px 0 2px;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
-/* ★ 建筑行「升级 / 一键满级 / 拆除」三个操作间隔再大一点（用户要求） */
+/* ★ 建筑行「升级 / 一键满级 / 拆除」三个操作间隔再大一点（） */
 .ezfy-page .build-act { display: inline-block; }
 .ezfy-page .build-act a { margin: 0 5px; }
 /* ★ 用户反馈「[赏赐…][流放] 这俩按钮之间来点间距」→ 军官详情的操作按钮行统一拉开间距。
    只作用在带 .officer-actions 的行上，不动其它页面的按钮。
-   ★ 2026-09-28 用户要求「按钮样式去掉」→ 全部改文字链接，这里跟着改为 <a> 的间距。 */
+   ★ 2026-09-28 「按钮样式去掉」→ 全部改文字链接，这里跟着改为 <a> 的间距。 */
 .ezfy-page .old-line.officer-actions a { margin-right: 10px; }
 .ezfy-page .old-line.officer-actions a:last-child { margin-right: 0; }
 /* ★ 出征确认页(orderpre)分区：① ② ③ … 小标题 + 等宽列网格。
@@ -9314,7 +9314,7 @@ body.ezfy-ios .ezfy-page textarea {
   gap: 0 16px;
   align-items: center;
 }
-/* ★ 2026-09-25 用户要求「兵种数量搭配改成一行一个兵种」：
+/* ★ 2026-09-25 「兵种数量搭配改成一行一个兵种」：
    原来是 3 列网格（一个兵种占一个格子，得横向找），现在**每个兵种独占一行**，行内从左到右：
      兵种名(定宽) │ 现有 N │ ————— 滑动条 ————— │ [数字框] │ [最大]
    滑块与数字框双向联动（拖滑块数字跟着变 / 填数字滑块跟着走），[最大] 一键全带。
@@ -9401,7 +9401,7 @@ body.ezfy-ios .ezfy-page textarea {
   min-width: 0;
 }
 .ezfy-page .of-cell .of-name {
-  /* ★ 用户要求「文字左最起，按照第一列兵种那块」：
+  /* ★ 「文字左最起，按照第一列兵种那块」：
      兵种名**定宽**（不随名字长短伸缩），这样每行的输入框都从同一个 x 开始，
      三列在所有行里纵向严格对齐 —— 这才是「左起对齐」。
      ★ 定宽还有一层必要性：第 3 列「现有数量」的数字长度是会变的
@@ -9420,7 +9420,7 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .of-cell input.of-num {
   flex: 0 0 auto;
   width: 70px;
-  /* ★ 用户要求「二列三列文字右对齐」：第 2 列（输入框里的数字）右对齐 */
+  /* ★ 「二列三列文字右对齐」：第 2 列（输入框里的数字）右对齐 */
   text-align: right;
 }
 /* 第 3 列「现有数量」：紧跟输入框、左起（不再 margin-left:auto 推到格子最右），
@@ -9445,14 +9445,14 @@ body.ezfy-ios .ezfy-page textarea {
 /* ★ 2026-09-25 随全站统一：写死 17px → var(--fs) */
 .ezfy-page .city-name { font-size: var(--fs); font-weight: bold; color: #2f4156; }
 /* ★ 表格默认用「原版模板的朴素样式」: 无边框、字号对齐正文。
-   ★ 2026-09-24 用户要求「表格固定宽度、切 tab 不因字数不一样变动」：
+   ★ 2026-09-24 「表格固定宽度、切 tab 不因字数不一样变动」：
      table-layout:fixed + width:100% → 列宽按列数均分固定，与单元格内容完全无关，
      切换页面/翻页时列不跳；长文本由下方 th/td 的 word-break 自动折行。
      地图格子与战场指挥室两表内容结构特殊，保持原来自适应（见下方覆盖规则）。 */
 .ezfy-page table {
   table-layout: fixed;
   width: 100%;
-  /* ★ 2026-09-24 用户要求「表格靠左展示」：封顶 920px 左对齐，桌面不铺满整行 */
+  /* ★ 2026-09-24 「表格靠左展示」：封顶 920px 左对齐，桌面不铺满整行 */
   max-width: 920px;
   margin: 0;
   border-collapse: collapse;
@@ -9475,14 +9475,14 @@ body.ezfy-ios .ezfy-page textarea {
   vertical-align: top;
   padding: 2px 10px 2px 0;
 }
-/* ★ 军队总览「城内军队」表：只把单元格内容里左右居中 + 垂直居中（用户要求），表格本身不居中 */
+/* ★ 军队总览「城内军队」表：只把单元格内容里左右居中 + 垂直居中（），表格本身不居中 */
 .ezfy-page table.ezfy-center-tbl th,
 .ezfy-page table.ezfy-center-tbl td {
   text-align: center;
   vertical-align: middle;
 }
 .ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
-/* ★ 2026-09-25 用户要求：「展示兵种名字的列」「军官装备名称的列」以前是整列居中，看着丑 →
+/* ★ 2026-09-25 「展示兵种名字的列」「军官装备名称的列」以前是整列居中，看着丑 →
    **单元格内容改成左对齐 + 垂直居中**；**表头 th 保持居中不变**。
    用法：给这些「名称类」单元格加 class="nm"（不是按列号，按语义，加列/挪列都不会失效）。
    放置位置：紧跟在 .ezfy-center-tbl / .ezfy-plain-table 的居中规则之后 ——
@@ -9502,7 +9502,7 @@ body.ezfy-ios .ezfy-page textarea {
    ⚠️ 只打在**该列自己的 th** 上；像「已穿戴装备」「装备背包」那种 colspan 跨列的段标题
      保持居中不变（它是分节标题，不是列标题）。 */
 .ezfy-page table th.nm { text-align: left; }
-/* ★ 交易行表格美化（2026-09-24 用户要求「页面做好看点」）：细边框 + 表头底色 + 斑马纹 */
+/* ★ 交易行表格美化（2026-09-24 「页面做好看点」）：细边框 + 表头底色 + 斑马纹 */
 .ezfy-page table.ezfy-ex-tbl {
   border-collapse: collapse;
   border: 1px solid #cfc9b6;
@@ -9556,7 +9556,7 @@ body.ezfy-ios .ezfy-page textarea {
   border: 1px solid #999;
   border-radius: 0;
   padding: 3px 4px;
-  /* ★ 2026-09-25 随全站统一：表单 16 → var(--fs)（用户要求所有文字一样大） */
+  /* ★ 2026-09-25 随全站统一：表单 16 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
   background: #fff;
   color: #333;
@@ -9566,7 +9566,7 @@ body.ezfy-ios .ezfy-page textarea {
   border-radius: 0;
   background: #e8e5dd;
   color: #333;
-  /* ★ 2026-09-25 随全站统一：按钮 15 → var(--fs)（用户要求所有文字一样大） */
+  /* ★ 2026-09-25 随全站统一：按钮 15 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
   padding: 2px 8px;
   cursor: pointer;
@@ -9590,7 +9590,7 @@ body.ezfy-ios .ezfy-page textarea {
    参考**没有任何表格 CSS**, 就是浏览器默认样式 —— 单元格按内容自适应宽度、
    无底色、无边框。所以这里只做三件事:
    ① 抵消全局 `.ezfy-page table td` 的虚线下边框  ② 单元格紧凑  ③ 不折行
-   ★ 用户要求「格子下面加个坐标，排列整齐一点」→ 每格变成**两行**：
+   ★ 「格子下面加个坐标，排列整齐一点」→ 每格变成**两行**：
      第一行 名称(等级)，第二行 (x,y)；见下面的 .ezfy-cell-name / .ezfy-cell-xy。 */
 .ezfy-page .ezfy-map-table {
   /* ★ 2026-09-25 用户反馈「点击地图表格列宽会变，向上/向下切换时因为字数不一样看着丑」：
@@ -9615,11 +9615,11 @@ body.ezfy-ios .ezfy-page textarea {
   width: 582px;
   min-width: 0;
   border-collapse: separate;
-  /* ★ 用户要求「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
+  /* ★ 「坐标和坐标之间间隔小了，上下左右都再来点」→ 8px 3px 放大到 12px 6px；
      随后又要求「上下间隔加一点」→ 纵向 6px → 10px；再次要求「上下坐标间隔再大一些」
      → 纵向 10px → 14px；2026-09-25 又反馈「地图区上下还是紧，上下间距再大一点点」
      → 纵向 14px → 18px；当天看过对比图后**拍板用 22px 那档** → 18px → **22px**。
-     ★★ 2026-09-26 用户要求「地图坐标左右之间的间隔大一点，但**第一列左边间隔保持不变**」，
+     ★★ 2026-09-26 「地图坐标左右之间的间隔大一点，但**第一列左边间隔保持不变**」，
         横向最终定档 **22px**（中途试过 20px，用户看过之后说「-2px 去掉吧」→ 回到 22）。
         border-spacing 是**内外一起加**的 —— 第一个值同时管「列与列之间」和「表格左右两边的
         外边距」，所以横向一加大，第一列也会跟着右推；这里用 margin-left 把整表左移抵消
@@ -9653,7 +9653,7 @@ body.ezfy-ios .ezfy-page textarea {
      窄屏同理 12 → 13，见下面媒体查询。 */
   font-size: 15px;
   line-height: 1.3;
-  /* ★ 用户要求「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
+  /* ★ 「坐标上颜色 + 野地类型也上色，不然玩家不知道能点」→ 两行都用站内链接蓝；
      本城(.ezfy-mine)与活动目标(.ezfy-act-*)的颜色是有含义的，下面单独覆盖，不受影响。 */
   color: #0645ad;
   background: none;
@@ -9662,7 +9662,7 @@ body.ezfy-ios .ezfy-page textarea {
   text-align: center;        /* 两行都相对格子中心对齐 */
 }
 /* 第一行：名称(等级) */
-/* ★ 2026-09-26 用户要求「海底森林(10)」**一行显示**（先前是 nowrap + 省略号，
+/* ★ 2026-09-26 「海底森林(10)」**一行显示**（先前是 nowrap + 省略号，
    被截成「海底森…」，等级跟着看不见）。列宽已按最长文案放到 90px（见上面「列宽」那段），
    所有文案天然一行，这里不再需要省略号；white-space:normal 只作兜底：万一某台机器字体更宽，
    宁可折行也不截断或压到邻格（CSS 不允许在「(」后断行，折也是折成「海底森林」/「(10)」）。 */
@@ -9670,10 +9670,10 @@ body.ezfy-ios .ezfy-page textarea {
   display: block;
   white-space: normal;
 }
-/* 第二行：坐标 (x,y)。★ 用户要求「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
+/* 第二行：坐标 (x,y)。★ 「坐标上颜色，不然玩家不知道能点」→ 站内链接蓝 #0645ad；
    字号定稿过程：12 → 11 →「坐标那行大 1 号」12 →「(272,227) 大 1 号」13px；
    2026-09-25 用户反馈「地图坐标看着小了」→ 加大 1 号到 **14px**。
-   ★ margin-top 是用户要求「上下坐标之间再大一点点」——第一行缩到 14 后两行几乎一样大，
+   ★ margin-top 是「上下坐标之间再大一点点」——第一行缩到 14 后两行几乎一样大，
    需要这点缝把它们分开，不然两行糊成一块。 */
 .ezfy-page .ezfy-map-table a .ezfy-cell-xy {
   display: block;
@@ -9690,7 +9690,7 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-map-table a.ezfy-act-kou { font-weight: bold; color: #ff00ff; }
 .ezfy-page .ezfy-map-table a.ezfy-act-city { font-weight: bold; color: #d00000; }
 /* ★ 地图方向导航「向上/向右/向下/向左/回到本城」：
-   全局 .ezfy-page a 只有 margin: 0 1px, 五个词挤成一串。用户要求「间隙稍微大一点」
+   全局 .ezfy-page a 只有 margin: 0 1px, 五个词挤成一串。「间隙稍微大一点」
    → 每个链接右侧留 8px（含标签间空格约 12px 一档），末项不留，右侧不至于飘出去。 */
 .ezfy-page .ezfy-dir-nav a {
   display: inline-block;
@@ -9722,7 +9722,7 @@ body.ezfy-ios .ezfy-page textarea {
 /* ============ WAP 窄屏适配(手机) ============
    目标: 360px / 320px 下不出现横向溢出, 表格不挤成一坨。
    实测基准: iPhone SE 320、常见安卓 360/390。
-   ★ 2026-09-25 用户要求「页面文字除了地图全部和首页导航一样大」→
+   ★ 2026-09-25 「页面文字除了地图全部和首页导航一样大」→
      **这里不再整体缩一档**（原来 表格14/正文15/标题16/导航15 那套阶梯已删除），
      正文·标题·导航·表格·按钮·表单一律沿用 var(--fs)。
    仍然保留缩小的只有两类（属于布局硬约束，不缩就必然溢出）：
@@ -9773,7 +9773,7 @@ body.ezfy-ios .ezfy-page textarea {
 }
 /* 最后一道保险: 万一还有个别元素偏宽, 让它在页面内滚动而不是把整页撑开 */
 .ezfy-page .panel { max-width: 100%; overflow-x: auto; }
-/* ============ 军团三页（军团信息 / 军团外交 / 军团宣战）WAP 适配（2026-09-28 用户要求） ============
+/* ============ 军团三页（军团信息 / 军团外交 / 军团宣战）WAP 适配（2026-09-28 ） ============
    手机上：宽表格（成员 5 列 / 外交 7 列 / 宣战 7 列）挤成一坨 → 隐藏次要列 + 收紧内边距；
    输入框/下拉（内联 width 15%~60%）过宽 → 收窄并限制 max-width。 */
 @media (max-width: 700px) {
@@ -9874,7 +9874,7 @@ body.ezfy-ios .ezfy-page textarea {
 /* ★ 军情三区分页条（军队动态 / 军情警讯 / 战斗报告，默认每页 5 条） */
 .ezfy-page .ezfy-pager {
   margin: 8px 0 4px;
-  /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（用户要求所有文字一样大） */
+  /* ★ 2026-09-25 随全站统一：分页条 15 → var(--fs)（所有文字一样大） */
   font-size: var(--fs);
 }
 .ezfy-page .ezfy-pager a {

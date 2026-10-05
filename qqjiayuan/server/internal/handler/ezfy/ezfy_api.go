@@ -46,7 +46,7 @@ func (h *EzfyHandler) readCityReq(c *gin.Context) (*model.EzfyCity, bool) {
 // fail 把「空字符串 = 成功」的动作结果转成响应。
 //
 // ⚠️ 成功时只说「操作成功」——玩家看不出刚才干了什么。
-// 新代码请优先用 done() 传具体文案（用户要求：建造就说建造成功）。
+// 新代码请优先用 done() 传具体文案（建造就说建造成功）。
 func (h *EzfyHandler) fail(c *gin.Context, msg string) {
 	if msg == "" {
 		resp.OKMsg(c, "操作成功", nil)
@@ -302,7 +302,7 @@ func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 
 // CancelBuilding POST /games/ezfy/building/cancel
 //
-// ★ 2026-09-26 用户要求：「已升级的建筑（施工中）用户端去掉（多余的升级按钮），
+// ★ 2026-09-26 「已升级的建筑（施工中）用户端去掉（多余的升级按钮），
 // 加个升级状态时 [取消] 功能」——取消施工并**全额退还**已扣资源与图纸。
 func (h *EzfyHandler) CancelBuilding(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -407,7 +407,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	//   建筑完工 + 训练队列出厂两个**纯内存、空闲零写**的结算。
 	h.checkBuildingDone(&city, buildings)
 	h.collectTrainQueue(&city, qs)
-	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（用户要求 5 天）
+	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（ 5 天）
 	wounded = h.filterExpiredWounded(wounded)
 	deserters = h.filterExpiredWounded(deserters)
 
@@ -429,7 +429,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	for _, w := range append(wounded, deserters...) {
 		woundViews = append(woundViews, gin.H{"id": w.ID, "troop_id": w.TroopId,
 			"name": ezfyCfg.troopName(w.TroopId, camp), "type": w.Type, "count": w.Count,
-			// ★ 用户要求「恢复伤兵需要黄金」：把单价一起下发，前端在[恢复]旁边显示要花多少钱
+			// ★ 「恢复伤兵需要黄金」：把单价一起下发，前端在[恢复]旁边显示要花多少钱
 			"heal_gold": ezfyWoundHealGoldPer(w.TroopId)})
 	}
 	// 兵种配置一览
@@ -576,7 +576,7 @@ func (h *EzfyHandler) Train(c *gin.Context) {
 
 // CancelTrain POST /games/ezfy/troops/train/cancel {queue_id}
 //
-// 用户要求：征兵队列玩家可以自己取消。取消时把当初消耗的资源全额退还。
+// 征兵队列玩家可以自己取消。取消时把当初消耗的资源全额退还。
 func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 取消训练 → 军队页缓存失效
@@ -702,7 +702,7 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 	h.cfgs()
 
-	// ★ 2026-10-05 5 秒卡控（用户要求：前后端双保险，防连点/脚本反复刷黄金结算）
+	// ★ 2026-10-05 5 秒卡控（前后端双保险，防连点/脚本反复刷黄金结算）
 	{
 		nowCd := time.Now().UnixMilli()
 		ezfySpeedTrainMu.Lock()
@@ -1127,7 +1127,7 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 		views = append(views, gin.H{"id": cp.ID, "name": cp.Name, "notice": cp.Notice,
 			"member_count": counts[int64(cp.ID)], "leader": leaderName, "battle_score": score,
 			"camp": profile.Camp,
-			// ★ 2026-09-25 用户要求「军团积分」：军团总积分（原有字段不动，只补这一个）
+			// ★ 2026-09-25 「军团积分」：军团总积分（原有字段不动，只补这一个）
 			"points": cp.Points,
 			// ★ 2026-09-30 入团审核开关（前端列表展示 [申请]/[申请待审] 文案用）
 			"need_review": cp.NeedReview})
@@ -1223,7 +1223,7 @@ func (h *EzfyHandler) CorpsJoin(c *gin.Context) {
 
 // applyCorpsMember 处理「申请入团」：open 军团直接入团，需审核军团写申请待军团长审批。
 //
-// ★ 2026-09-30 用户要求「进军团需要审核」。返回：
+// ★ 2026-09-30 「进军团需要审核」。返回：
 //   - errMsg != ""：校验失败信息（调用方回 resp.ParamError）
 //   - 否则 msg/data：成功信息 + 附带 need_review 标记
 func (h *EzfyHandler) applyCorpsMember(uid uint, corpsId uint) (string, gin.H, string) {
@@ -1266,7 +1266,7 @@ func (h *EzfyHandler) applyCorpsMember(uid uint, corpsId uint) (string, gin.H, s
 
 // CorpsApply POST /corps/apply {corps_id} —— 申请入团
 //
-// ★ 2026-09-30 用户要求「进军团需要审核」：open 直接入团；开启审核的军团落申请待团长审批。
+// ★ 2026-09-30 「进军团需要审核」：open 直接入团；开启审核的军团落申请待团长审批。
 func (h *EzfyHandler) CorpsApply(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1560,7 +1560,7 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 		ExpireTime: now + (ezfyWarDelayHours+ezfyWarDurationHours)*3600000}
 	h.DB.Create(&w)
 
-	// ★ 用户要求「宣战也要如系统消息」：宣战方与被宣战方各发一条系统消息（EzfyNotice），
+	// ★ 「宣战也要如系统消息」：宣战方与被宣战方各发一条系统消息（EzfyNotice），
 	//   与战争管理后台的提示口径保持一致（ezfy_admin_war.go）。
 	atkName, _ := h.ezfyPlayerName(uid)
 	if atkName == "" {
@@ -1579,14 +1579,14 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
 		atkName, ezfyWarDelayHours, ezfyWarDurationHours)
 	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
-	// ★ 2026-10-05 用户要求：宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
+	// ★ 2026-10-05 宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
 	//   与上面系统消息同口径；对方在「邮件」页能看到这条宣战消息。
 	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: req.TargetUserId, Content: defTip})
 	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
 		defName, ezfyWarDelayHours, ezfyWarDurationHours)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})
 
-	// ★ 用户要求「首页世界聊天那块，谁向谁宣战也播报展示」→ 往**系统频道**写一条全服可见的播报。
+	// ★ 「首页世界聊天那块，谁向谁宣战也播报展示」→ 往**系统频道**写一条全服可见的播报。
 	//   ezfySysChat 写的是 channel=4 / talk_type=0，首页「世界聊天」预览与聊天页的系统频道都会显示，
 	//   所以这里不需要另开接口，玩家端不用改。
 	//   ⚠️ 注意：宣战本身没有次数上限（只挡了「对同一个人重复宣战」），
@@ -1629,7 +1629,7 @@ func (h *EzfyHandler) WarStatus(c *gin.Context) {
 	//   注意这里**不**把 status 伪造成 2 —— 那样会让「同盟城市」的 运输/增援 按钮
 	//   被误判成交战中而消失，所以开关单独下发，由前端分别处理。
 	//
-	// ★ 2026-09-25 用户要求「军团宣战生效期间成员之间可直接打」：新增两个字段（原有字段不变，前端已依赖）。
+	// ★ 2026-09-25 「军团宣战生效期间成员之间可直接打」：新增两个字段（原有字段不变，前端已依赖）。
 	//   at_war    = 个人交战中 || 宣战开关关闭 || 军团交战生效；前端据此放开掠夺/征服按钮。
 	//   corps_war = {active, corps_name(对方军团名), text(军团交战期文案)}。
 	cw := h.corpsActiveWarBetween(uid, tid)
@@ -1784,7 +1784,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
 			"prestige": p.Prestige, "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 	}
-	// 战力榜（★ 2026-10-02 兵力榜 → 战力榜，用户要求柔和科技/建筑/兵种，避免纯兵力碾压吓到新人）
+	// 战力榜（★ 2026-10-02 兵力榜 → 战力榜，柔和科技/建筑/兵种，避免纯兵力碾压吓到新人）
 	//   战力 = 科技战力(用户级, 等级全城共用) + 建筑战力 + 兵种战力；
 	//   建筑/兵种按玩家「最好城市」(综合得分最高的城)计算，展示城市名也用该城。
 	//   权重读 ezfy_cfg_limit（管理端「二战系统配置」可调）：
@@ -2022,7 +2022,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 // ezfyItemCategory 道具的商城分类（管理端没填 category 时按类型自动归类）
 // ezfyIsDiamondItem 是否「钻石道具」。
 //
-// ★ 不能只看 price_diamond > 0：用户要求集结令走钻石渠道但**默认 0 钻石**（先免费放开），
+// ★ 不能只看 price_diamond > 0：集结令走钻石渠道但**默认 0 钻石**（先免费放开），
 // 这时价格是 0，靠价格判不出来。所以再加一条：管理端把 category 填成「钻石道具」也算。
 func ezfyIsDiamondItem(it *model.EzfyCfgItem) bool {
 	// ★ 用户规则：管理端把分类配成「钻石道具 / 黄金道具」时**锁定货币**，
@@ -2068,7 +2068,7 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "增益道具"
 	case 9, 10, 11, 12:
 		return "军官道具"
-	// ★ 19 = 星级徽章（用户要求放到「军官道具」分类下）
+	// ★ 19 = 星级徽章（放到「军官道具」分类下）
 	case 19:
 		return "军官道具"
 	// ★ 21 = 军官改名卡（军官道具）
@@ -2328,7 +2328,7 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		skills = append(skills, gin.H{"id": s.ID, "name": s.Name, "effect": s.Effect})
 	}
 	sort.Slice(skills, func(i, j int) bool { return skills[i]["id"].(int) < skills[j]["id"].(int) })
-	// ★ 2026-09-28 背包展示宝物（用户要求「背包也要展示宝物, 相同宝物×数量」）：
+	// ★ 2026-09-28 背包展示宝物（「背包也要展示宝物, 相同宝物×数量」）：
 	//   宝物 = 野地采集/宝物签到掉落的珠宝，存装备表(ezfy_equipment)且未穿戴(officer_id=0)，
 	//   按 cfg_id 合并成「宝物名×数量」与道具一起下发。
 	type trAgg struct {
@@ -2598,7 +2598,7 @@ func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare,
 
 // giveResourcesNoCap 管理端专用发放：**不按仓储上限截断**。
 //
-// ★ 2026-09-30 用户要求「资源不能累加超过资源最大值（每项资源唯一硬上限，默认 21 亿）」：
+// ★ 2026-09-30 「资源不能累加超过资源最大值（每项资源唯一硬上限，默认 21 亿）」：
 //   管理端发放同样封顶在 21 亿（老数据已超的不拉低、也不再增长）。
 //   如确需超过当前上限，请先在「二战系统配置」把对应 资源最大值 调高再发。
 //   负数是合法的（可用来扣减），但结果不会低于 0。
@@ -2752,7 +2752,7 @@ func (h *EzfyHandler) Sign(c *gin.Context) {
 		return
 	}
 	r := ezfySignRewards[(count-1)%7]
-	// ★ 签到奖励不受仓储上限截断（用户要求：签到/任务/礼包领到的资源不能被上限吃掉）
+	// ★ 签到奖励不受仓储上限截断（签到/任务/礼包领到的资源不能被上限吃掉）
 	h.giveResourcesNoCap(uid, r[1], r[2], r[3], r[4], r[0])
 	if r[5] > 0 {
 		h.addPrestige(uid, int(r[5]))
@@ -2806,7 +2806,7 @@ func (h *EzfyHandler) TreasureSign(c *gin.Context) {
 			won = append(won, name)
 		}
 	}
-	// ★ 2026-09-28 用户要求展示签到领到的具体宝物名 → 落库, 前端已签时展示
+	// ★ 2026-09-28 展示签到领到的具体宝物名 → 落库, 前端已签时展示
 	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).
 		Update("n_reward", strings.Join(won, ","))
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("宝物签到成功(连续%d天), 获得%d件宝物: %s", count, qty, strings.Join(won, ","))})
@@ -2844,7 +2844,7 @@ func (h *EzfyHandler) Gift(c *gin.Context) {
 		h.giveResourcesNoCap(uid, 20000, 20000, 20000, 20000, 2000)
 		recordGift("weekly")
 		resp.OK(c, gin.H{"msg": "每周福利领取成功"})
-	// ★ 用户要求删掉「市政厅20/30/40级礼包」→ 只剩 市政厅10级礼包。
+	// ★ 删掉「市政厅20/30/40级礼包」→ 只剩 市政厅10级礼包。
 	//   注意：老的 ezfy_gifts 里 level20/30/40 的历史领取记录不删（只是不再有入口）。
 	case "level10":
 		needLevel, gold, res := 10, int64(5000), int64(50000)
@@ -2878,7 +2878,7 @@ func (h *EzfyHandler) Notices(c *gin.Context) {
 	var notices []model.EzfyNotice
 	h.DB.Where("user_id = 0 OR user_id = ?", uid).Order("is_top DESC, id DESC").Limit(30).Find(&notices)
 
-	// ★ 用户要求「首页公告默认只能展示一条，管理端可以配置」：
+	// ★ 「首页公告默认只能展示一条，管理端可以配置」：
 	//   首页外露公告取前 N 条（N = ezfy_cfg_limit.notice_home_count，默认 1，0 = 不展示）。
 	limit := h.ezfyNoticeHomeCount()
 	home := []model.EzfyNotice{}
@@ -3256,7 +3256,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 	var orders []model.EzfyOrder
-	// ★ 2026-10-02 用户要求「军情 → 驻军要展示自己驻守盟友城市的驻军」：
+	// ★ 2026-10-02 「军情 → 驻军要展示自己驻守盟友城市的驻军」：
 	//   status=3(常驻) 的增援订单(到友军城)此前不在动态查询内, 出站驻军不可见。
 	//   一并纳入；仅展示「活跃驻军」= result 为空(未返航过) 且目标城属于他人，
 	//   排除增援自己城市的僵尸订单与已归队订单。
@@ -3291,7 +3291,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		}
 	}
 	views := []gin.H{}
-	// ★ 2026-09-28 用户要求「累计采集/采集资源要实时变化、累加展示，不能只靠刷新」：
+	// ★ 2026-09-28 「累计采集/采集资源要实时变化、累加展示，不能只靠刷新」：
 	//   先批量查出**采集中**部队的野地，后端据此下发「每期产出」，
 	//   前端拿到 accept 之后用本地下发时间实时 extrapolate 累加，不必等满一期才结算。
 	gatherWl := map[int64]*model.EzfyWildland{}
@@ -3310,7 +3310,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			gatherWl[int64(wp.ID)] = wp
 		}
 	}
-	// ★ 2026-09-28 用户要求「军队动态/驻军要显示这支部队是从哪个城出来的」：
+	// ★ 2026-09-28 「军队动态/驻军要显示这支部队是从哪个城出来的」：
 	//   订单表只存了 city_id（军队所在城 id），**没有下发城名/坐标**，前端看不出番号。
 	//   这里一次批量查出来（禁止在下面循环里逐条查 = N+1，1 核服务器红线），
 	//   下发 from_city / from_x / from_y 三个字段。
@@ -3367,7 +3367,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 				timeText = "空闲待命, 点[采集]开始采集"
 			} else {
 				statusName = "驻守采集"
-				// ★ 2026-09-28 用户要求: 采集不再显示「下次结算」倒计时,
+				// ★ 2026-09-28  采集不再显示「下次结算」倒计时,
 				//   改为「累计采集了多长时间」(按小时/分钟累计, 从 collect_start 起算)。
 				timeLabel = "累计采集"
 				accum := now - o.CollectStart
@@ -3390,7 +3390,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			statusName = "战斗中"
 			timeLabel = "本回合剩余"
 		}
-		// ★ 指挥室（2026-09-22 用户要求）：战斗中的部队带上回合进度与本回合倒计时，
+		// ★ 指挥室（2026-09-22 ）：战斗中的部队带上回合进度与本回合倒计时，
 		//   前端据此在这一行显示 [指挥] 入口（军情 → 军队动态 → 指挥）。
 		battleRound, battleLeft := 0, int64(0)
 		if o.Status == ezfyOrderStatusBattle {
@@ -3405,7 +3405,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		// ★ 采集部队带上「待带回资源」与负重，前端可展示（资源要召回才入城）
 		c := parseCarry(o.Carry)
 		// ★ 活动目标标识：攻击/征服(掠夺)部队目的地在活动格时下发 act_type，
-		//   前端据此在坐标旁加「活动」标示（用户要求「打活动坐标要有标识」）。
+		//   前端据此在坐标旁加「活动」标示（「打活动坐标要有标识」）。
 		// ★ 2026-10-05 名将野地按玩家判定：已抓到守将的玩家 → 该坐标对其是普通野地，不标活动
 		actType := 0
 		if o.OrderType == 2 || o.OrderType == 3 {
@@ -3442,7 +3442,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		})
 	}
 
-	// ★ 防守方视角（2026-09-23 用户要求「敌人打自己，自己也能指挥」）：
+	// ★ 防守方视角（2026-09-23 「敌人打自己，自己也能指挥」）：
 	//   战场/订单属于**攻方**，上面的军队动态按 user_id 查不到守方要防守的这场战斗。
 	//   这里单独把「正在被攻打(def_user_id = 我方)」的战场拼进列表，让守方也有 [指挥] 入口。
 	var defBattles []model.EzfyBattle
@@ -3531,7 +3531,7 @@ func (h *EzfyHandler) ReportView(c *gin.Context) {
 }
 
 // ReportDelete POST /games/ezfy/reports/:id/delete
-// ★ 用户要求「战斗报告展开后可删除，不需要二次确认」：只允许删除自己名下的一条战报。
+// ★ 「战斗报告展开后可删除，不需要二次确认」：只允许删除自己名下的一条战报。
 func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -3545,7 +3545,7 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 
 // ReportClear POST /games/ezfy/reports/clear
 //
-// ★ 2026-09-26 用户要求「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
+// ★ 2026-09-26 「战报查询 [查询] 右边加个 [一键删除]，物理删除吧节约服务器资源」：
 //
 //	只清**自己名下**的战报（`WHERE user_id = ?`），GORM 走 DELETE 真删行、不软删。
 //	⚠️ 不带 user_id 的批量 Delete 会清全表 —— 这里必须带，且只认 middleware 里的 uid。

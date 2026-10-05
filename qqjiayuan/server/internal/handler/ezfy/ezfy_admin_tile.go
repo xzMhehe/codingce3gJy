@@ -15,7 +15,7 @@ import (
 
 // 二战风云管理端 —— 地图格子覆盖
 //
-// ★ 用户要求：「所有野地管理端也要能维护呀，而且能够改变土地类型，也能设置寇城、活动寇城」。
+// ★ 「所有野地管理端也要能维护呀，而且能够改变土地类型，也能设置寇城、活动寇城」。
 //
 // 本项目的地图（地形 / 野地等级 / 寇城 / 活动目标）**全部是坐标哈希推导的、不落库**，
 // 所以这里做一张覆盖表 ezfy_map_tile：
@@ -87,7 +87,7 @@ func (h *EzfyAdmin) AdminEzfyMapTiles(c *gin.Context) {
 
 // AdminEzfyMapTileBatchDelete POST /admin/ezfy-map-tiles/batch-delete  {ids:[...]}
 //
-// ★ 2026-10-05 用户要求「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
+// ★ 2026-10-05 「管理端删除做好批量删除」。物理删除（模型无 DeletedAt）。
 func (h *EzfyAdmin) AdminEzfyMapTileBatchDelete(c *gin.Context) {
 	ids := ezfyBatchIDs(c)
 	if len(ids) == 0 {

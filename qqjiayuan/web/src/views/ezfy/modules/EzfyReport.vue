@@ -61,7 +61,7 @@
             </div>
             <div class="old-line" v-for="o in ezfy.dynStationPaged" :key="'st' + o.id">
               命令：{{ o.type_name }} <a href="javascript:;" @click="ezfy.openOrder(o)">查看</a><br/>
-              <!-- ★ 2026-09-28 用户要求：显示这支部队是「哪个城出来的」(辨识番号) -->
+              <!-- ★ 2026-09-28 显示这支部队是「哪个城出来的」(辨识番号) -->
               <span v-if="o.from_city">起点：{{ o.from_city }}({{ o.from_x }},{{ o.from_y }})<br/></span>
               目标：{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})<br/>
               军官：{{ o.officer || '无' }}<br/>
@@ -75,7 +75,7 @@
               <template v-if="o.status === 1 && o.arrive_time">
                 <span class="green">本期已采：{{ ezfy.fmtN(o._lg.food) }}粮/{{ ezfy.fmtN(o._lg.steel) }}钢/{{ ezfy.fmtN(o._lg.oil) }}油/{{ ezfy.fmtN(o._lg.rare) }}稀/{{ ezfy.fmtN(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ ezfy.fmtN(o._lg.total) }}，负重 {{ ezfy.fmtN(o._lg.total) }}/{{ ezfy.fmtN(o.carry_cap) }}）</span>
-                <!-- ★ 2026-10-05 用户要求：去掉「负重已满, 超出部分会直接入库(可停止或收获)。」提示
+                <!-- ★ 2026-10-05 去掉「负重已满, 超出部分会直接入库(可停止或收获)。」提示
                      （无用提示，看负重条即可）。规则仍生效：后端采集结算把超出负重部分直接入起点城市。 -->
               </template>
               <span v-else-if="o.status === 1" class="gray">本期已采：暂无(未在采集中)</span>
@@ -95,7 +95,7 @@
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.loadReports">[刷新]</a>
             </div>
-            <!-- ★ 2026-10-05 用户要求「没用的页面提示去掉」：情报等级公式/还能看到什么 不再展示（文案保留注释里） -->
+            <!-- ★ 2026-10-05 「没用的页面提示去掉」：情报等级公式/还能看到什么 不再展示（文案保留注释里） -->
             <div class="old-line" v-for="r in ezfy.repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="ezfy.openReport(r)">
                 <span v-if="r.is_read === 0" class="red">[新]</span>
@@ -117,7 +117,7 @@
               <input v-model="ezfy.reportWord" placeholder="输入关键字" style="width:110px"
                      @keyup.enter="ezfy.loadReports"/>
               <a href="javascript:;" @click="ezfy.loadReports">[查询]</a>
-              <!-- ★ 2026-09-26 用户要求：查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源）
+              <!-- ★ 2026-09-26 查询右边加 [一键删除]（物理删除自己名下全部战报，节约服务器资源）
                    ★ 2026-09-30 军团战报是团员的战报，不能一键删除 -->
               <a v-if="ezfy.reportTab !== 5" href="javascript:;" @click="ezfy.doClearReports">[一键删除]</a>
               <a v-if="ezfy.reportWord" href="javascript:;" @click="ezfy.reportWord = ''; ezfy.loadReports()">[清空]</a>
@@ -143,7 +143,7 @@
     </template>
     <template v-else-if="ezfy.cur === 'reportview'">
         <div class="panel" v-if="ezfy.curReport">
-          <!-- ★ 用户要求：战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
+          <!-- ★ 战报详情页也保留「军队动态 . 驻军 . 军情警讯 . 战斗报告」导航 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.reportTab === 1 }" @click="ezfy.goReportTab(1)">军队动态</a><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 2 }" @click="ezfy.goReportTab(2)">驻军</a><span

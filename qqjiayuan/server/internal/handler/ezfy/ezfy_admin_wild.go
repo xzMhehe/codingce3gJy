@@ -340,7 +340,7 @@ func (h *EzfyAdmin) AdminEzfyWildlandList(c *gin.Context) {
 
 // AdminEzfyWildlandBatchDelete POST /admin/ezfy-wildlands/batch-delete  {ids:[...]}
 //
-// ★ 2026-10-05 用户要求「管理端删除做好批量删除、没用的历史数据要做物理删除」。
+// ★ 2026-10-05 「管理端删除做好批量删除、没用的历史数据要做物理删除」。
 //
 //	⚠️ 全站 ezfy 模型**都没有 gorm.DeletedAt**，所以 `Delete` 本来就是**物理删除**（真 DELETE 行），
 //	不会留软删标记 —— 这里保持一致，批量删除也是物理删。

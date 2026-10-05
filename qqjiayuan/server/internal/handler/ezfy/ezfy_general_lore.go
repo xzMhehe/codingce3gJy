@@ -1,6 +1,6 @@
 package ezfy
 
-// ezfyGeneralLore 名将二战功勋介绍（★ 2026-10-04 用户要求：名将背景 tab 展示二战功勋，约 200 字）。
+// ezfyGeneralLore 名将二战功勋介绍（★ 2026-10-04 名将背景 tab 展示二战功勋，约 200 字）。
 //
 // key = 军官池主键 ezfy_cfg_general.id（kind=2 名将）。管理端维护的 ezfy_cfg_general.des
 // 是「游戏效果」描述（如 全技能+2），与历史功勋是两回事 —— 玩家端「名将背景」一律读这里，

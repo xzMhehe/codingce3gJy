@@ -15,7 +15,7 @@ import (
 
 // ============ 战场指挥室（实时指挥） ============
 //
-// ★ 2026-09-22 用户要求：「实现指挥功能」，入口在 军情 → 军队动态 → [指挥]。
+// ★ 2026-09-22 「实现指挥功能」，入口在 军情 → 军队动态 → [指挥]。
 //
 // 玩法（复刻《战斗机制（家园玩家必看）》§1）：
 //   - 部队到达目标后**不立即结算**，而是开一场战场；
@@ -50,7 +50,7 @@ const (
 
 // ============ 攻方逐兵种指令表 ============
 //
-// ★ 用户要求（2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
+// ★ （2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」。
 // 存法：JSON `{"1":"advance","3":"hold"}`（troopId → 指令）。
 // 没给的兵种 → 回落司令部「兵种战斗配置」；键 0 = 旧格式遗留的「全军统一指令」。
 
@@ -349,7 +349,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		}
 		return snap.DefTargets[troopId]
 	}
-	// ★ 2026-09-23 用户要求：攻守双方兵种名都展示「阵营兵种名」。
+	// ★ 2026-09-23 攻守双方兵种名都展示「阵营兵种名」。
 	// 敌方（目标兵种）的阵营：攻方视角→守方阵营；守方视角→攻方阵营。
 	enemyCamp := snap.AtkCamp
 	if viewerIsAtk {
@@ -399,7 +399,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 					tgt = 0
 				}
 			}
-			// ★ 2026-09-23 用户要求：攻守**双方**兵种名都显示阵营兵种名。
+			// ★ 2026-09-23 攻守**双方**兵种名都显示阵营兵种名。
 			// 新战场快照自带 atk_camp/def_camp；老快照没有 → 己方回落 viewerCamp、敌方通用名。
 			camp := snap.DefCamp
 			if isAtk {
@@ -542,7 +542,7 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 
 // BattleCmd POST /games/ezfy/battle/cmd  {order_id, troop_id, cmd: advance|hold|retreat}
 //
-// ★ 用户要求：指挥是**逐兵种**的（「自己带的兵种都能指挥，就是单独指挥」）。
+// ★ 指挥是**逐兵种**的（「自己带的兵种都能指挥，就是单独指挥」）。
 // troop_id 省略或传 0 = 给全部参战兵种下同一条指令（快捷）。
 func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -637,7 +637,7 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 
 // BattleTarget POST /games/ezfy/battle/target  {order_id, troop_id, target_troop}
 //
-// ★ 2026-09-23 用户要求：「指挥战场的时候兵种目标带过来，指挥的时候玩家也能配置，
+// ★ 2026-09-23 「指挥战场的时候兵种目标带过来，指挥的时候玩家也能配置，
 // 默认是司令部配置的，敌对没有目标则默认攻击距离最近的」。
 //
 // 语义：
@@ -740,7 +740,7 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		resp.NotFound(c, "出征部队不存在")
 		return
 	}
-	// ★ 2026-09-23 用户要求「两个人都在指挥的话不能点击[自动战斗]」：
+	// ★ 2026-09-23 「两个人都在指挥的话不能点击[自动战斗]」：
 	//   攻击玩家城（PvP，双方都能指挥）时，一键打完对另一方不公平，禁用。
 	if b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0 {
 		resp.OK(c, gin.H{"done": false, "msg": "真人对抗无法自动战斗，请逐回合指挥"})
@@ -755,7 +755,7 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		return
 	}
 	st := ezfyBattleStateFromSnapshot(snap)
-	// ★ 用户要求：「玩家点击自动战斗后 默认自己的军队全部前进」
+	// ★ 「玩家点击自动战斗后 默认自己的军队全部前进」
 	//   —— 忽略当前指令，剩下的回合一律全军前进（否则玩家按了暂停再点自动，会一直站着挨打）。
 	advance := map[int]string{}
 	for _, u := range st.Attackers {

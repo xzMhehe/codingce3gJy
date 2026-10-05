@@ -13,7 +13,7 @@
             训练中占用人口：{{ ezfy.popUsed }}
           </div>
           <div class="old-line" v-for="t in ezfy.trainCfgs" :key="'tt' + t.id">
-            <!-- ★ 2026-09-28 用户要求：军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
+            <!-- ★ 2026-09-28 军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->
             <a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a>({{ ezfy.troopTypeName(t.type) }})
             <a href="javascript:;" @click="ezfy.openTrainPre(t, 'troop')">[训练]</a><br/>
           </div>
@@ -62,17 +62,17 @@
     <template v-else-if="ezfy.cur === 'troops'">
         <div class="panel">
           <div class="panel-title">城内军队</div>
-          <!-- ★ 用户要求：这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
+          <!-- ★ 这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
           <table class="ezfy-center-tbl">
             <tr><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
-            <!-- ★ 2026-09-28 用户要求：首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
+            <!-- ★ 2026-09-28 首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in ezfy.armyRows" :key="'tv' + t.id">
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ t.count }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
                 <a href="javascript:;" @click="ezfy.openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
-                <!-- 解散：数量由玩家自己输入（用户要求），数量为 0 时无意义、不显示 -->
+                <!-- 解散：数量由玩家自己输入（），数量为 0 时无意义、不显示 -->
                 <a v-if="t.count > 0" class="red" href="javascript:;" @click="ezfy.doDisband(t)">[解散]</a>
               </td>
             </tr>
@@ -96,7 +96,7 @@
     <template v-else-if="ezfy.cur === 'hq'">
         <div class="panel">
           <div class="panel-title">司令部</div>
-          <!-- ★ 2026-09-28 用户要求：司令部内部拆成 tab（兵种配置/出征队列/伤兵营/逃兵营），
+          <!-- ★ 2026-09-28 司令部内部拆成 tab（兵种配置/出征队列/伤兵营/逃兵营），
                刷新后记住上次所在 tab（localStorage, 照抄任务 tab 的 ezfy_task_tab 写法） -->
           <div class="acade-tab hq-tab">
             <a href="javascript:;" :class="{ on: ezfy.hqTab === 0 }" @click="ezfy.selectHqTab(0)">兵种配置</a>
@@ -151,7 +151,7 @@
               <td>{{ ezfy.orderStatusText(o) }}</td>
               <td>
                 <a href="javascript:;" @click="ezfy.openOrder(o)">[详情]</a>
-                <!-- ★ 用户要求「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
+                <!-- ★ 「出征队列可以取消」：所有还在外面的命令（行进中/驻守中）都能取消 -->
                 <a v-if="o.status === 0 || o.status === 1" class="red"
                    href="javascript:;" @click="ezfy.doRecall(o)">[取消]</a>
                 <!-- ★ 2026-09-30 行军计谋：神兵天降=去程减80%（行进中）、战略转移=回程减360分钟（返回中） -->
@@ -200,7 +200,7 @@
           </div>
           </div><!-- /逃兵营 tab -->
           <div v-show="ezfy.hqTab === 4">
-          <!-- ★ 2026-09-28 用户要求：司令部新增「预设编队」tab —— 镜像出征页 ①②③⑥ 保存模板，
+          <!-- ★ 2026-09-28 司令部新增「预设编队」tab —— 镜像出征页 ①②③⑥ 保存模板，
                不含 ④随军资源 / ⑤宿营；⑥油耗计算保留（预设不含目标，按本城0距离估算）。 -->
           <div class="panel-title">预设编队</div>
           <div class="old-line gray">
@@ -232,7 +232,7 @@
                      :disabled="ezfy.gatherCount <= 0" @change="ezfy.onPresetGatherChange" style="width:80px"/>
               个 <span class="gray">（背包里有 {{ ezfy.gatherCount }} 个，单次最多 {{ ezfy.orderCapMax }} 个）</span>
             </div>
-            <!-- ★ 2026-09-29 用户要求：预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
+            <!-- ★ 2026-09-29 预设页与出征页一致，集结令下方直接显示「本次出兵 / 上限」 -->
             <div class="old-line" v-if="ezfy.attackTroops.length">
               <span :class="ezfy.orderOverCap ? 'red' : 'green'">
                 本次出兵 <b>{{ ezfy.fmtN(ezfy.orderTroopTotal) }}</b> / 上限 <b>{{ ezfy.orderCapText }}</b>
@@ -403,7 +403,7 @@
             <template v-if="ezfy.trainMode !== 'defence'">吃粮：{{ ezfy.trainSel.food_keep }}<br/></template>
             时间：{{ ezfy.durText(ezfy.trainSel.train_time) }}<br/>
             <template v-if="ezfy.trainMode !== 'defence'">需要军工厂：{{ ezfy.trainSel.need_factory }}级<br/></template>
-            <!-- ★ 2026-09-28 用户要求：资源/前提条件移到这里（训练详情页）展示 -->
+            <!-- ★ 2026-09-28 资源/前提条件移到这里（训练详情页）展示 -->
             前提：{{ ezfy.trainSel.require || '无' }}<template v-if="ezfy.trainSel.type === 1"> <span class="red">(海军: 仅海城可训练)</span></template><br/>
           </div>
           <div class="old-line green" v-if="ezfy.troopsData.train_discount > 0 && ezfy.trainMode !== 'defence'">
@@ -413,7 +413,7 @@
             建造数量：
             <input v-model="ezfy.trainCount" type="number" min="1" :placeholder="'(1~' + ezfy.maxTrainable + ')'" style="width:90px"/>
             <span class="gray">(最多 {{ ezfy.maxTrainable }})</span>
-            <!-- ★ 2026-09-28 用户要求：在「(最多 N)」后面加 [最大]，一键把数量填成上限 -->
+            <!-- ★ 2026-09-28 在「(最多 N)」后面加 [最大]，一键把数量填成上限 -->
             <a href="javascript:;" class="train-max"
                :class="{ 'train-max-off': ezfy.maxTrainable <= 0 }"
                @click="ezfy.setTrainMax()">[最大]</a>

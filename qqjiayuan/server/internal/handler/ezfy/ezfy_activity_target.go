@@ -321,7 +321,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	}
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 
-	// ★★ 指挥室（2026-09-22 用户要求）：活动目标也是战斗，同样先开战场等玩家指挥，
+	// ★★ 指挥室（2026-09-22 ）：活动目标也是战斗，同样先开战场等玩家指挥，
 	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。
 	//   BattleResult 非空 = 已在指挥室里打完，直接用结果结算。
 	// ★ 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国(战报兵种名按阵营显示)
@@ -411,13 +411,13 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
-	// ★ 2026-09-24 用户要求：40 回合平局时双方标签都显示 [平]
+	// ★ 2026-09-24 40 回合平局时双方标签都显示 [平]
 	atkTag, defTag := winText(win), winText(!win)
 	if draw {
 		atkTag, defTag = "平", "平"
 	}
 	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
-	report += troopChangeText(atkBefore, atkAfter, profile.Camp)
+	report += troopChangeText(atkBefore, atkAfter)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
 	// ★ 2026-09-29 配置了守将时展示守方军官（否则守方只有兵种看不到是谁）
 	if defGeneral != nil {
@@ -433,7 +433,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			defAfter[tid] = cnt
 		}
 	}
-	report += troopChangeText(defBefore, defAfter, defCamp)
+	report += troopChangeText(defBefore, defAfter)
 
 	// 详细战报：逐回合过程 + 双方兵力变化
 	detail := ""
@@ -445,12 +445,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	if leadOfficer != nil {
 		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
 	}
-	detail += troopChangeText(atkBefore, atkAfter, profile.Camp)
+	detail += troopChangeText(atkBefore, atkAfter)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, label)
 	if defGeneral != nil {
 		detail += "军官:" + defGeneral.Name + "\n"
 	}
-	detail += troopChangeText(defBefore, defAfter, defCamp)
+	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
 	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技 2%/级 + 机械改造 10%
@@ -576,14 +576,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		order.Status = 2
 		report = "我军胜利!\n" + report
 	} else if draw {
-		// ★ 2026-09-24 用户要求：40 回合平局——残部返航（不是阵亡，不能 status=4 吃掉幸存部队）
+		// ★ 2026-09-24 40 回合平局——残部返航（不是阵亡，不能 status=4 吃掉幸存部队）
 		order.Status = 2
 		report = "我军与敌军打成平局!\n" + report
 	} else {
 		order.Status = 4 // 全队阵亡
 		report = "我军战败!\n" + report
 	}
-	// ★ 带队军官经验：胜负平局**都给**（用户要求「战败也有经验」），与普通战斗同款口径。
+	// ★ 带队军官经验：胜负平局**都给**（「战败也有经验」），与普通战斗同款口径。
 	//   即便战败/0 击杀也有基数 30 点；写库放这里统一处理（函数开头只算了数值）。
 	if leadOfficer != nil && atkExp > 0 {
 		h.addOfficerExp(city, leadOfficer.ID, atkExp)

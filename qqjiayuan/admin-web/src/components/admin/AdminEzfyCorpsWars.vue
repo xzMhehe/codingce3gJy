@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <!-- ★ 2026-09-25 用户要求：新增「军团宣战维护」页面（军团对军团宣战） -->
+        <!-- ★ 2026-09-25 新增「军团宣战维护」页面（军团对军团宣战） -->
         <span>二战征途 · 军团宣战（待生效 / 交战中 / 已结束）</span>
         <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
       </div>
@@ -20,7 +20,7 @@
         <!-- 后台代宣战：管理员替两个军团直接发起宣战 -->
         <el-button type="success" icon="el-icon-plus" @click="openAdd">后台代宣战</el-button>
         <div class="grow" />
-        <!-- ★ 2026-09-25 用户要求「军团宣战维护也加个按钮一键生效」：
+        <!-- ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」：
              把所有「待生效」的军团宣战立刻推进到「交战中」（与个人宣战的同款按钮同口径） -->
         <el-button type="warning" plain icon="el-icon-alarm-clock" :loading="acting" @click="effectAll">一键生效全部</el-button>
         <!-- 危险操作：一次结束所有进行中（待生效 / 交战中）的军团宣战 -->
@@ -211,7 +211,7 @@ export default {
         else this.$message.error(r.msg)
       }).catch(() => { this.saving = false })
     },
-    // ★ 2026-09-25 用户要求「一键生效」：单条生效（跳过 12 小时等待，立即开战）
+    // ★ 2026-09-25 「一键生效」：单条生效（跳过 12 小时等待，立即开战）
     doEffect (row) {
       this.$confirm('让「' + (row.atk_corps_name || row.atk_corps_id) + ' → ' +
         (row.def_corps_name || row.def_corps_id) + '」立即进入交战状态（跳过等待）？', '一键生效', { type: 'warning' }).then(() => {
@@ -220,7 +220,7 @@ export default {
         })
       }).catch(() => {})
     },
-    // ★ 2026-09-25 用户要求「一键生效」：全部待生效的军团宣战一次性生效
+    // ★ 2026-09-25 「一键生效」：全部待生效的军团宣战一次性生效
     effectAll () {
       this.$confirm('让当前所有「待生效」的军团宣战立即生效（双方成员马上可以互相掠夺/征服）？',
         '一键生效全部', { type: 'warning' }).then(() => {

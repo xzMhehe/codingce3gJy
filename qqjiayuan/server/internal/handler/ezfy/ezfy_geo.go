@@ -370,7 +370,7 @@ var ezfyTerrainTreasureNames = map[int][]string{
 
 // ezfyCollectibleTreasureNames 可采集/可用于军衔晋升的宝物名集合（9 种珠宝）。
 //
-// ★ 2026-09-28 用户要求：只有「能采集的宝物」可以提交晋升军衔，
+// ★ 2026-09-28 只有「能采集的宝物」可以提交晋升军衔，
 //
 //	普通装备（黑色幽灵[徽章]、合金装甲等）虽然同属装备表，但不算宝物。
 func ezfyCollectibleTreasureNames() map[string]bool {
@@ -460,7 +460,7 @@ func ezfyRankOf(prestige int) model.EzfyCfgRank {
 func ezfyRankName(prestige int) string { return ezfyRankOf(prestige).Name }
 func ezfyRankPost(prestige int) string { return ezfyRankOf(prestige).Post }
 
-// ============ 军衔等级（2026-09-28 用户要求：军衔不再自动跟随声望） ============
+// ============ 军衔等级（2026-09-28 军衔不再自动跟随声望） ============
 //
 // 现在声望达标只是晋升前提，还要提交宝物（见 ezfy_rank_treasure.go）。
 // 玩家实际军衔以 profile.Rank 为准；老玩家 Rank 还没写（=0）时回落声望推导，
@@ -578,7 +578,7 @@ func ezfyLimit() model.EzfyCfgLimit {
 
 // ezfyGatherMax 单次出征最多使用几个集结令（读 ezfy_cfg_limit.gather_max_per_order）
 //
-// ★ 用户要求「出征集结令上限后台管理系统可维护」，默认 99（线上现值）。
+// ★ 「出征集结令上限后台管理系统可维护」，默认 99（线上现值）。
 // 0 或未配置时回落默认值（集结令上限为 0 无意义 —— 等于禁用了这个道具）。
 func ezfyGatherMax() int {
 	if n := ezfyCfg.limit.GatherMaxPerOrder; n > 0 {
@@ -589,7 +589,7 @@ func ezfyGatherMax() int {
 
 // ezfySellPriceMax 挂单出售单价上限（黄金/单位）
 //
-// ★ 2026-09-28 用户要求「挂单出售按 1:100 卡控单价：卖 1 粮食价格不能超过 100，
+// ★ 2026-09-28 「挂单出售按 1:100 卡控单价：卖 1 粮食价格不能超过 100，
 //
 //	数量随意（1/2/50/60），比例在二战系统配置可灵活配置」。
 //
@@ -603,7 +603,7 @@ func ezfySellPriceMax() int {
 
 // ezfySysSellRatio 向系统出售资源的回收比例（每 100 单位 → 黄金）。
 //
-// ★ 2026-09-30 用户要求「玩家可向系统出售资源获得黄金，比例可配置」：
+// ★ 2026-09-30 「玩家可向系统出售资源获得黄金，比例可配置」：
 //
 //	返回 es_type(1粮/2钢/3油/4稀) 对应的「每100单位黄金」数，0 或未配置时回落各自默认。
 //	玩家实得黄金还要在换算后再扣 10% 手续费（见 ExchangeSysSell）。
@@ -651,7 +651,7 @@ func ezfyOfficerSpeedPerMil() float64 {
 }
 
 // ezfyDispatchPeriod 常驻采集结算一期时长（毫秒）。
-// ★ 2026-09-24 用户要求「采集 12 小时才有宝物 → 更短且可配置」：
+// ★ 2026-09-24 「采集 12 小时才有宝物 → 更短且可配置」：
 //
 //	读管理端「建筑上限/系统配置」ezfy_cfg_limit.dispatch_period_h（小时），默认 1（线上现值）。
 func ezfyDispatchPeriod() int64 {
@@ -662,7 +662,7 @@ func ezfyDispatchPeriod() int64 {
 }
 
 // ezfyMarchSpeedBonus 出征速度加成（百分比，0 = 无加成）。
-// ★ 2026-09-24 用户要求「节假日让玩家队伍走快点」：管理端可配。
+// ★ 2026-09-24 「节假日让玩家队伍走快点」：管理端可配。
 //
 //	实际行军时间 = 原时间 × 100/(100+加成)；默认 0（加成 > 0 才生效，负值/未配置按 0 处理）。
 func ezfyMarchSpeedBonus() float64 {
@@ -680,13 +680,13 @@ func ezfyMarchSpeedBonus() float64 {
 const (
 	ezfyConquerFeelingsDef  = 5  // 征服单次最多扣民心（默认 5）
 	ezfyLootFeelingsDef     = 3  // 掠夺每次扣民心（默认 3）
-	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 用户要求由 100 改成 20）
+	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
 	ezfyWoundHealDivisorDef = 50 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 99）
 	ezfyMallBuyMaxDef = 99
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
 	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
-	//   2026-09-23 用户要求「10 亿太少，上调到 50 亿」。
+	//   2026-09-23 「10 亿太少，上调到 50 亿」。
 	ezfyTroopMaxDef = int64(5000000000)
 	// ★ 伤兵在营存活天数：默认 3 天，超时未恢复自动消失。
 	ezfyWoundExpireDaysDef = 3
@@ -694,7 +694,7 @@ const (
 	//   配合下面两个曲线参数：成功率 = cap × 1/(1 + e^-k·(log10(n)-x0))，n = 侦察机数。
 	//   k/x0 为曲线陡度/中点（10 架≈11%、1 千架≈48%、1 万≈69%、5 万≈80%、10 万≈84%）。
 	ezfyReconSuccessPctDef = 95.0
-	// ★ 侦查成功率的数量级曲线参数（用户要求梯度陡、按 10/1千/1万/5万/10万 拉开）。
+	// ★ 侦查成功率的数量级曲线参数（梯度陡、按 10/1千/1万/5万/10万 拉开）。
 	//   k 越大越陡（接近阶跃）；x0 越大曲线越右移（同数量级成功率越低）。
 	ezfyReconK  = 1.0
 	ezfyReconX0 = 3.0
@@ -745,7 +745,7 @@ func ezfyClampRes(v int64) int64 {
 
 // ============ 资源最大值（二战系统配置，默认 21 亿）============
 //
-// ★ 2026-09-27 用户要求「资源产量也做成累加」：**所有**资源统一只受「资源最大值」这一个硬上限，
+// ★ 2026-09-27 「资源产量也做成累加」：**所有**资源统一只受「资源最大值」这一个硬上限，
 //
 //	（默认 21 亿）。产量 / 其它一切获取方式都无条件累加到该值为止，不再被仓储上限卡住。
 //
@@ -919,7 +919,7 @@ func ezfyWoundHealDivisorCfg() int {
 
 // ezfyWoundHealRate 伤兵恢复黄金折扣率（百分比口径：配置 100 = 100% = 原价）。
 //
-// ★ 2026-09-23 用户要求：伤兵恢复黄金也有「折扣率数」，放管理端「二战系统配置」配，
+// ★ 2026-09-23 伤兵恢复黄金也有「折扣率数」，放管理端「二战系统配置」配，
 //
 //	节假日调低 = 恢复便宜。★ 2026-09-24 修正：默认 100 = 现在的正常值，0/负数 → 回落 100。
 func ezfyWoundHealRate() float64 {
@@ -932,7 +932,7 @@ func ezfyWoundHealRate() float64 {
 
 // ezfyMallBuyMaxCfg 商城单次购买数量上限（下限恒为 1，默认 99）
 //
-// ★ 用户要求「商城购买卡控改成可配置的」（2026-09-26 线上现值 = 99）。
+// ★ 「商城购买卡控改成可配置的」（2026-09-26 线上现值 = 99）。
 //
 //	前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
 func ezfyMallBuyMaxCfg() int {
@@ -952,13 +952,13 @@ const (
 	ezfyMarchOilDef    = 1 // 出征油耗：默认开
 	ezfyWarRequireDef  = 1 // 宣战功能：默认开（掠夺/征服需先宣战且生效）
 	ezfyMarchCapDef    = 1 // 出征兵力上限：默认开（按司令部等级算）
-	// ★ 2026-09-26 用户要求「召集人口那里加两个开关」
+	// ★ 2026-09-26 「召集人口那里加两个开关」
 	ezfyHousePopLimitDef = 1  // 民居容量限制：默认开（民居容量决定人口上限）
 	ezfyConveneFlexDef   = 1  // 召集人口灵活配置：默认开（召集可突破民居上限）
 	ezfyWildMultDef      = 10 // 野地兵力倍数：默认 10
 	// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 野地战利品资源倍率，默认 10
 	ezfyWildResMultDef = 10
-	// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 10
+	// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 常驻采集产出资源倍率，默认 10
 	ezfyGatherResMultDef = 10
 	// ★ 2026-09-28 采集军官后勤属性加成率倍率 / 市长产量加成倍率，默认 1
 	ezfyOfficerGatherMultDef = 1
@@ -978,7 +978,7 @@ const (
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）
 //
-// ★ 用户要求「再加个出征上限开关，默认开，关闭出征没有上限」。
+// ★ 「再加个出征上限开关，默认开，关闭出征没有上限」。
 //
 //	关掉后 ezfyOrderTroopCap() 会返回 unlimited=true，出征校验与出征页提示一起放开。
 func ezfyMarchCapOn() bool {
@@ -990,7 +990,7 @@ func ezfyMarchCapOn() bool {
 
 // ezfyHousePopLimitOn 民居容量是否限制人口上限（关 = 民居不限制人口，人口可无限增长）
 //
-// ★ 2026-09-26 用户要求「召集人口那里加个民居容量限制开关，默认开」。
+// ★ 2026-09-26 「召集人口那里加个民居容量限制开关，默认开」。
 //
 //	关掉后 calcResource 里的人口自然增长不再按 pop_max 封顶（pop_max 仍照常计算/展示）。
 func ezfyHousePopLimitOn() bool {
@@ -1002,7 +1002,7 @@ func ezfyHousePopLimitOn() bool {
 
 // ezfyConveneFlexOn 召集人口是否可突破民居上限（关 = 召集同样受民居容量约束）
 //
-// ★ 2026-09-26 用户要求「召集人口灵活配置，默认开（现有行为：可突破上限）」。
+// ★ 2026-09-26 「召集人口灵活配置，默认开（现有行为：可突破上限）」。
 // 注意：只有在「民居容量限制」也开着时，民居上限才存在；两者都开时才需要在 Convene 里卡上限。
 func ezfyConveneFlexOn() bool {
 	if !ezfyCfg.ready() {
@@ -1013,14 +1013,14 @@ func ezfyConveneFlexOn() bool {
 
 // ============ 召集人口：消耗粮食 / 获得人口 ============
 //
-// ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
+// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」。
 // 原来写死在 ezfy.go 的 const（ezfyConveneFoodCost / ezfyConvenePopGain），现迁到
 // ezfy_cfg_limit（convene_food_cost / convene_pop_gain），管理端「二战系统配置」可维护。
 // 0 / 未配置无意义 → 回落默认 10 万（seed 用 addLimitCol 只回填 NULL，不覆盖管理端的值）。
 const (
 	ezfyConveneFoodCostDef = 100000 // 召集一次消耗粮食，默认 10 万
 	ezfyConvenePopGainDef  = 100000 // 召集一次获得人口，默认 10 万
-	// ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
 	//   全局硬性人口上限，默认 0 = 不限。⚠️ 0 是有效值（不限），不能用 ezfyLimitOr 兜底。
 	ezfyConvenePopMaxDef = 0
 )
@@ -1045,10 +1045,10 @@ func ezfyConvenePopMaxCfg() int64 {
 	return int64(ezfyCfg.limit.ConvenePopMax)
 }
 
-// ============ 军官升星配置（2026-09-22 用户要求，2026-09-23 按用户要求简化）============
+// ============ 军官升星配置（2026-09-22 ，2026-09-23 按简化）============
 
 const (
-	// ★ 2026-09-23 用户要求「军官升星做得太复杂，优化简约点」：
+	// ★ 2026-09-23 「军官升星做得太复杂，优化简约点」：
 	//   去掉概率开关 / 每高 1 星递减 / 成功率下限 / 失败保留徽章四个配置，
 	//   只留「功能开关 + 固定成功率 + 每星加成 + 星级上限」。
 	//   规则：每次升星消耗 1 枚星级徽章，按固定概率判定，失败星级不变（徽章照扣）。
@@ -1059,7 +1059,7 @@ const (
 	ezfyStarMaxDef = 5
 	// 升星功能开关默认值（1 = 开 / 0 = 关）
 	ezfyStarUpDef = 1
-	// 招生简章出五星军官概率默认值（1 = 1%，用户要求默认 1 倍率）
+	// 招生简章出五星军官概率默认值（1 = 1%，默认 1 倍率）
 	ezfyRecruitFiveStarDef = 1
 )
 
@@ -1099,7 +1099,7 @@ func ezfyStarSuccessRate() int {
 
 // ezfySpeedTrainRate 训练一键加速黄金倍率（百分比口径：配置 100 = 100% = 原价）。
 //
-// ★ 2026-09-23 用户要求：黄金消耗太多，价格倍率放管理端「二战系统配置」配，
+// ★ 2026-09-23 黄金消耗太多，价格倍率放管理端「二战系统配置」配，
 //
 //	节假日想便宜点就把倍率调低（如 50 = 半价、10 = 一折）。
 //	★ 2026-09-24 用户修正：默认值 100 才是正常值（而不是 1），设置 0.01 时仍觉得贵、
@@ -1114,7 +1114,7 @@ func ezfySpeedTrainRate() float64 {
 
 // ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
 //
-// ★ 用户要求「加一个宣战功能开关，默认开启：开启 = 玩家之间需要宣战；
+// ★ 「加一个宣战功能开关，默认开启：开启 = 玩家之间需要宣战；
 //
 //	关闭 = 不需要宣战也能掠夺/征服」。
 //
@@ -1212,8 +1212,8 @@ const ezfyResProdMultDef = 1.0
 
 // ezfyResProdMult 城市每小时「资源」（粮/钢/油/稀矿）产量的整体倍率
 //
-// ★ 2026-09-26 用户要求：「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」。
-// ★ 2026-10-05 用户要求拆开：本倍率只作用于资源，黄金产量走 ezfyGoldProdMult。
+// ★ 2026-09-26 「二战加个产量加成倍率，默认 1，可以调整 >= 0 的任意数量」。
+// ★ 2026-10-05 拆开：本倍率只作用于资源，黄金产量走 ezfyGoldProdMult。
 //
 //	⚠️ **0 是合法值**（= 产量归零），不是「未配置」——
 //	所以这里**故意不做 `<= 0 就回落默认`**（那套是 `ezfyWildResMult` 的口径，不适用于倍率）。
@@ -1266,7 +1266,7 @@ func ezfyScaleGoldByProdMult(n int64) int64 {
 
 // ezfyGatherResMult 常驻采集产出资源倍率（默认 10；0 或负数无意义 → 回落 10）
 //
-// ★ 2026-09-25 用户要求「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。
+// ★ 2026-09-25 「采集资源倍率也加到系统管理里」→ 管理端「二战系统配置」可调。
 //
 //	作用点只有一处：ezfy_order.go 的 dispatchGatherYield（采集产出 = 等级 × 800 × 后勤加成 × 陆海系数）。
 //	**不含**战斗战利品（那是 ezfyWildResMult）。
@@ -1282,7 +1282,7 @@ func ezfyGatherResMult() float64 {
 
 // ezfyOfficerGatherMult 采集「军官后勤属性」加成率倍率（默认 1；0 / 负 / NULL → 回落 1）
 //
-// ★ 2026-09-28 用户要求「采集后勤加成率可调」：dispatchGatherYield 里
+// ★ 2026-09-28 「采集后勤加成率可调」：dispatchGatherYield 里
 // gainPct = 100 + floor(后勤 × 本倍率)，封顶 200。
 func ezfyOfficerGatherMult() float64 {
 	if !ezfyCfg.ready() {
@@ -1296,7 +1296,7 @@ func ezfyOfficerGatherMult() float64 {
 
 // ezfyMayorGainMult 市长产量加成倍率（默认 1；NULL → 回落 1；0 合法 = 关闭市长加成）
 //
-// ★ 2026-09-28 用户要求「市长加成整体可调」：mayorBonusPct 结果 × 本倍率。
+// ★ 2026-09-28 「市长加成整体可调」：mayorBonusPct 结果 × 本倍率。
 func ezfyMayorGainMult() float64 {
 	if !ezfyCfg.ready() {
 		return ezfyMayorGainMultDef
@@ -1309,7 +1309,7 @@ func ezfyMayorGainMult() float64 {
 
 // ezfyGatherLevelPow 采集等级成长幂次（默认 1.3；0 / 负 / NULL → 回落 1.3）
 //
-// ★ 2026-09-28 用户要求「越高级的野地采集越多」：dispatchGatherYield 里
+// ★ 2026-09-28 「越高级的野地采集越多」：dispatchGatherYield 里
 // per = 800 × (野地等级 ^ 本幂次)。1.0 = 纯线性；>1 = 高等级加速增长。
 func ezfyGatherLevelPow() float64 {
 	if !ezfyCfg.ready() {
@@ -1334,7 +1334,7 @@ func ezfyGatherSeaMult() float64 {
 
 // ezfyRecruitCycleHourly 军校刷新周期是否按小时（默认按小时；1=按天 / 2=按小时，非法回落按小时）
 //
-// ★ 2026-09-28 用户要求：刷新周期可在二战系统配置切换按天/按小时，默认按小时。
+// ★ 2026-09-28 刷新周期可在二战系统配置切换按天/按小时，默认按小时。
 func ezfyRecruitCycleHourly() bool {
 	if !ezfyCfg.ready() {
 		return true
@@ -1667,7 +1667,7 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 }
 
 // ezfyDefaultRanks 内置兜底军衔（与 seed 一致，复刻原版 rankIndex.html）
-// ★ 2026-09-24 用户要求「军衔需要声望太少，统一在原来基础上 ×10」。
+// ★ 2026-09-24 「军衔需要声望太少，统一在原来基础上 ×10」。
 func ezfyDefaultRanks() []model.EzfyCfgRank {
 	// ★ 2026-09-27 军衔门槛按**线上 ezfy_cfg_rank 现值**对齐（与 seed.seedEzfyRanks 口径一致）
 	return []model.EzfyCfgRank{
@@ -1773,7 +1773,7 @@ func (c *ezfyConfigCache) equipSet(id int) *model.EzfyCfgEquipSet {
 
 // poolOfficers 军官池里的**普通军官**（kind=1 且 recruit=1），按 id 升序。
 //
-// ★ 2026-09-22 用户要求：军校招募/刷新**从池子里抽**，不再纯随机生成。
+// ★ 2026-09-22 军校招募/刷新**从池子里抽**，不再纯随机生成。
 func (c *ezfyConfigCache) poolOfficers() []model.EzfyCfgGeneral {
 	out := []model.EzfyCfgGeneral{}
 	for _, g := range c.generals {

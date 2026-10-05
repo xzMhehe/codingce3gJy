@@ -8,7 +8,7 @@
           <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
         </div>
       </div>
-      <!-- ★ 2026-09-25 用户要求「二战系统配置也做成 tab，相同类别的在同一个 tab」：
+      <!-- ★ 2026-09-25 「二战系统配置也做成 tab，相同类别的在同一个 tab」：
            原来是一张长表单 + el-divider 分段，滚起来很长、找一项要翻半天。
            现在按**类别**分成 6 个 tab；保存按钮**放在 tabs 外面**，任何 tab 下都能直接点。 -->
       <el-form label-width="180px" size="small" style="max-width:660px">
@@ -240,7 +240,7 @@
               <template slot="label">出征油耗<el-tooltip placement="top" :content="tips.march_oil_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.march_oil_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
-            <!-- ★ 2026-09-26 用户要求「召集人口那里加民居容量限制、召集人口灵活配置两个开关」 -->
+            <!-- ★ 2026-09-26 「召集人口那里加民居容量限制、召集人口灵活配置两个开关」 -->
             <el-form-item>
               <template slot="label">民居容量限制<el-tooltip placement="top" :content="tips.house_pop_limit_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.house_pop_limit_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
@@ -249,7 +249,7 @@
               <template slot="label">召集人口灵活配置<el-tooltip placement="top" :content="tips.convene_flexible_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.convene_flexible_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
-            <!-- ★ 2026-09-26 用户要求「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」 -->
+            <!-- ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置，现在是写死的」 -->
             <el-form-item>
               <template slot="label">召集消耗粮食<el-tooltip placement="top" :content="tips.convene_food_cost"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.convene_food_cost" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
@@ -258,7 +258,7 @@
               <template slot="label">召集获得人口<el-tooltip placement="top" :content="tips.convene_pop_gain"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.convene_pop_gain" :min="1" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />
             </el-form-item>
-            <!-- ★ 2026-09-26 用户要求「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
+            <!-- ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」 -->
             <el-form-item>
               <template slot="label">召集人口上限<el-tooltip placement="top" :content="tips.convene_pop_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.convene_pop_max" :min="0" :max="1000000000" :step="10000" controls-position="right" style="width: 200px" />

@@ -9,7 +9,7 @@
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <span class="grow" />
         <el-button type="success" icon="el-icon-present" @click="openGrant">发放为爱发电卡</el-button>
-        <!-- ★ 2026-10-05 用户要求：本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
+        <!-- ★ 2026-10-05 本页已有「查询」按钮（点它就会重新 load），这个「刷新」按钮功能重复、容易误点 → 去掉。 -->
       </div>
 
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">

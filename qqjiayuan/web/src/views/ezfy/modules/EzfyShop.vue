@@ -17,7 +17,7 @@
             <a v-for="c in ezfy.bagCats" :key="'bc' + c" href="javascript:;" :class="{ on: ezfy.bagCat === c }"
                @click="ezfy.setBagCat(c)">[{{ c }}]</a>
           </div>
-          <!-- ★ 道具说明改成「点 [说明] 才展开」（用户要求：商城/背包都别堆说明文字） -->
+          <!-- ★ 道具说明改成「点 [说明] 才展开」（商城/背包都别堆说明文字） -->
           <div class="old-line" v-for="it in ezfy.bagPaged" :key="'bi' + it.cfg_id">
             <b>{{ it.name }}</b>×{{ it.count }}
             <a v-if="it.description" href="javascript:;" @click="ezfy.toggleBagDesc(it.cfg_id)">[说明]</a>
@@ -53,7 +53,7 @@
               <a href="javascript:;" @click="ezfy.useItem = null">[取消]</a>
             </div>
           </div>
-          <!-- ★ 2026-09-28 背包展示宝物（用户要求）：相同宝物合并显示 ×数量 -->
+          <!-- ★ 2026-09-28 背包展示宝物（）：相同宝物合并显示 ×数量 -->
           <div class="panel-title" v-if="ezfy.bagTreasures.length">宝物</div>
           <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'bt' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}
@@ -87,7 +87,7 @@
         <div class="panel">
           <div class="panel-title">商城({{ ezfy.resNames.gold }}{{ ezfy.city.gold }} · 钻石{{ ezfy.mallDiamond }})</div>
           <!-- ★ 商城分栏：道具 / 装备散件 / 宝箱（套装件只能开宝箱，商城只卖散件）
-               ★ 2026-09-24 用户要求: 三个分栏去掉 []、用 | 分隔并留间距 -->
+               ★ 2026-09-24  三个分栏去掉 []、用 | 分隔并留间距 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'item' }" @click="ezfy.switchMallTab('item')">道具</a><span> | </span>
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'equipment' }" @click="ezfy.switchMallTab('equipment')">装备</a><span> | </span>
@@ -140,7 +140,7 @@
           <!-- ★ 装备散件（管理端在「装备列表」里维护）
                ★ 用户规则：套装装备只能通过宝箱开启，商城不再上架套装件 -->
           <template v-else-if="ezfy.mallTab === 'equipment'">
-            <!-- ★ 说明一律不写进界面（用户要求：别在用户能看见的地方加提示），信息记在这里：
+            <!-- ★ 说明一律不写进界面（别在用户能看见的地方加提示），信息记在这里：
                  · 散件用钻石购买，定价按「六项加成总和」映射到 100~500 钻（见 seed 的 ezfyEquipDiamondPrice）；
                  · 买入后到「军官 → 军官详情」穿到军官身上；
                  · 第一批套装（新兵/战士/混沌…，无系列名）只能通过[宝箱]开启，商城不售。 -->
@@ -230,7 +230,7 @@
                  · 宝箱用钻石购买（战地补给箱用黄金）；价格 300~800 钻按品质分档；
                  · 套装宝箱开出的是「整套」（一次给该套全部件，见 ezfyGrantChestPrize 的 Kind=3）；
                    战地补给箱开单件散件；
-                 · 奖池**不直接铺开** —— 点宝箱名字才展开（用户要求「别直接展示」）。 -->
+                 · 奖池**不直接铺开** —— 点宝箱名字才展开（「别直接展示」）。 -->
             <!-- ★ 宝箱列表：奖池点名字才展开 -->
             <table class="ezfy-plain-table">
               <tr><th>宝箱</th><th>价格</th><th>奖池</th><th>操作</th></tr>

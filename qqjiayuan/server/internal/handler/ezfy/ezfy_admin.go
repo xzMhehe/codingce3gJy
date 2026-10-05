@@ -315,7 +315,7 @@ func (h *EzfyAdmin) AdminEzfyPlayerUpdate(c *gin.Context) {
 
 // AdminEzfyGrant 发放资源/道具（资源入主城并按仓储上限截断，道具入背包）
 // AdminEzfyGrantOfficer POST /admin/ezfy-players/:id/grant-officer  {general_id}
-// 名将只能由管理端发放(用户要求): 直接把 cfg_general 里的名将变成该玩家的军官
+// 名将只能由管理端发放(): 直接把 cfg_general 里的名将变成该玩家的军官
 func (h *EzfyAdmin) AdminEzfyGrantOfficer(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var in struct {
@@ -571,7 +571,7 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 		"reward_food": "int64", "reward_steel": "int64", "reward_oil": "int64",
 		"reward_rare": "int64", "reward_prestige": "int", "sort_no": "int", "type_id": "int", "status": "int",
 	}},
-	// ★ 2026-09-27 用户要求：商城「装备|宝箱」价格定义迁到「数据管理」。
+	// ★ 2026-09-27 商城「装备|宝箱」价格定义迁到「数据管理」。
 	//   装备（散件+套装件）价格/库存在这维护；**战斗属性/三维属性不在白名单里**，
 	//   那些字段由「军官装备管理」菜单（散件装备/套装管理 tab）单独维护，避免两处能改同一字段。
 	"equipments": {&model.EzfyCfgEquipment{}, map[string]string{
@@ -696,7 +696,7 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 			lq = lq.Where("name LIKE ?", "%"+word+"%")
 		}
 	}
-	// ★ 2026-09-27 用户要求：「装备道具配置」能过滤出「用户商城在售」的装备（前端默认开启）。
+	// ★ 2026-09-27 「装备道具配置」能过滤出「用户商城在售」的装备（前端默认开启）。
 	//   过滤条件与用户端 equipShopList 保持一致：
 	//   ① 有价格（黄金/钻石 > 0）；② 类型为「军官装备」；③ 非第一批套装件
 	//   （set_id>0 且无系列号的只能开宝箱，不直购）。
@@ -1059,7 +1059,7 @@ func (h *EzfyAdmin) AdminEzfyAnnounce(c *gin.Context) {
 
 // AdminEzfyNoticeUpdate 编辑已发布的公告（标题/内容/置顶）
 //
-// ★ 用户要求：已发布的公告要能编辑（原来只能删了重发）。
+// ★ 已发布的公告要能编辑（原来只能删了重发）。
 func (h *EzfyAdmin) AdminEzfyNoticeUpdate(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var n model.EzfyNotice

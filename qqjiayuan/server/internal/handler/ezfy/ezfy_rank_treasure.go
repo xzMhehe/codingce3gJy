@@ -16,7 +16,7 @@ import (
 	"qqjiayuan/server/pkg/resp"
 )
 
-// ============ 军衔晋升宝物（2026-09-28 用户要求） ============
+// ============ 军衔晋升宝物（2026-09-28 ） ============
 //
 // 参考原版《晋升军衔宝物参考.xlsx》：军衔晋升不再只看声望 —— 声望达标是前提，
 // 还需**提交**该军衔所需的宝物数量才能真正晋升。
@@ -26,7 +26,7 @@ import (
 //   - 第 2~11 级（上等兵~大尉）直接沿用原版 10 档的**增量需求**数值；
 //   - 第 12 级起（少校~五星上将）在原版最高档（4 种×40）之上逐级加码，
 //     逐步把 9 种珠宝全部引入，直到五星上将九种各要 100。
-// ★ 2026-10-04 用户要求：上等兵(2)、下士(3) 晋升**不再需要珠宝**（声望达标即可）。
+// ★ 2026-10-04 上等兵(2)、下士(3) 晋升**不再需要珠宝**（声望达标即可）。
 //   内置默认同步置空；DB 里已回填的旧值由 ezfyMigrateRankNoJewel 一次性清成 []。
 var ezfyRankTreasures = map[int][]ezfyRankTreasure{
 	2:  {}, // 上等兵：无需珠宝
@@ -137,7 +137,7 @@ func ezfyMigrateRankInit(db *gorm.DB) {
 }
 
 // ezfyRankNoJewelOnce 一次性迁移（幂等，进程内只跑一次）：
-// ★ 2026-10-04 用户要求「上等兵、下士 无需珠宝」—— 早期 ezfyMigrateRankInit 已把
+// ★ 2026-10-04 「上等兵、下士 无需珠宝」—— 早期 ezfyMigrateRankInit 已把
 //   内置默认（含 2/3 级珠宝需求）回填进 ezfy_cfg_rank.treasures，若只改内置默认，
 //   DB 里的旧值仍会优先（ezfyRankTreasureReqs 数据库优先）。这里把 2/3 级显式清成 []，
 //   管理端「军衔配置」页可见「[] = 无需宝物」。
@@ -218,7 +218,7 @@ func ezfyTreasureListText(reqs []ezfyRankTreasure) string {
 
 // Promote POST /games/ezfy/promote —— 晋升军衔
 //
-// 规则（2026-09-28 用户要求）：声望达标只是前提，还要**提交**所晋升军衔的宝物。
+// 规则（2026-09-28 ）：声望达标只是前提，还要**提交**所晋升军衔的宝物。
 // 宝物从背包（未穿戴）扣除，成功后军衔 +1 并广播全服。
 func (h *EzfyHandler) Promote(c *gin.Context) {
 	h.cfgs()

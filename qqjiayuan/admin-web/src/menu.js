@@ -73,7 +73,7 @@ import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
 import AdminEzfyTroops from './components/admin/AdminEzfyTroops.vue'
 import AdminEzfyRecruit from './components/admin/AdminEzfyRecruit.vue'
 import AdminEzfyOfficers from './components/admin/AdminEzfyOfficers.vue'
-// ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
+// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab）；
 //   装备/宝箱价格定义迁到「数据管理」（装备道具配置/套装装备配置 tab），军官管理不再管装备。
 import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
 // ★ 2026-09-27 用户需求：为爱发电卡维护（发放 + 领取情况）
@@ -89,8 +89,8 @@ import AdminEzfyPrivchat from './components/admin/AdminEzfyPrivchat.vue'
 import AdminEzfyBuildLimit from './components/admin/AdminEzfyBuildLimit.vue'
 import AdminEzfyWords from './components/admin/AdminEzfyWords.vue'
 import AdminEzfyWars from './components/admin/AdminEzfyWars.vue'
-// ★ 2026-09-25 用户要求：新增军团商城维护页面
-//   （军团宣战维护已按用户要求合并进「宣战管理」页的第二个 tab，这里不再单独挂菜单项，
+// ★ 2026-09-25 新增军团商城维护页面
+//   （军团宣战维护已按合并进「宣战管理」页的第二个 tab，这里不再单独挂菜单项，
 //   组件由 AdminEzfyWars.vue 内部 import，无需在 menu.js 引入）
 import AdminEzfyCorpsMall from './components/admin/AdminEzfyCorpsMall.vue'
 import AdminXyLogs from './components/admin/AdminXyLogs.vue'
@@ -268,7 +268,7 @@ export const menu = [
           { key: 'ezfyTroops', name: '兵种管理', icon: 'el-icon-s-flag', component: AdminEzfyTroops, perm: 'module:ezfyTroops' },
           { key: 'ezfyRecruit', name: '队伍征兵', icon: 'el-icon-s-promotion', component: AdminEzfyRecruit, perm: 'module:ezfyRecruit' },
           { key: 'ezfyOfficers', name: '军官管理', icon: 'el-icon-medal', component: AdminEzfyOfficers, perm: 'module:ezfyOfficers' },
-          // ★ 2026-09-27 用户要求：装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab），
+          // ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（散件装备/套装管理 tab），
           //   独立权限 module:ezfyEquips，可在权限管理里单独分配给角色
           { key: 'ezfyEquips', name: '军官装备管理', icon: 'el-icon-suitcase', component: AdminEzfyEquips, perm: 'module:ezfyEquips' },
           // ★ 2026-09-27 为爱发电卡维护（发放 + 领取情况）；perm 复用数据管理
@@ -281,13 +281,13 @@ export const menu = [
           { key: 'ezfyMap', name: '地图管理', icon: 'el-icon-map-location', component: AdminEzfyMap, perm: 'module:ezfyMap' },
           { key: 'ezfyCorps', name: '军团管理', icon: 'el-icon-s-flag', component: AdminEzfyCorps, perm: 'module:ezfyCorps' },
           { key: 'ezfyPrivchat', name: '私聊管理', icon: 'el-icon-chat-line-square', component: AdminEzfyPrivchat, perm: 'module:ezfyPrivchat' },
-          // ★ 用户要求菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
+          // ★ 菜单名由「建筑上限配置」改成「系统配置」，随后又要求改成「二战系统配置」
           //   （避免和下面「系统管理」那组混淆）。key / perm 保持不变，不动已分配的权限。
           { key: 'ezfyBuildLimit', name: '二战系统配置', icon: 'el-icon-set-up', component: AdminEzfyBuildLimit, perm: 'module:ezfyBuildLimit' },
-          // ★ 2026-09-25 用户要求「军团宣战维护合并到宣战管理，按 tab 展示」→
+          // ★ 2026-09-25 「军团宣战维护合并到宣战管理，按 tab 展示」→
           //   不再单独挂菜单项，统一从「宣战管理」进去用 tab 切换（perm 复用 module:ezfyWars）
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
-          // ★ 2026-09-25 用户要求：军团商城维护（perm 复用军团管理 module:ezfyCorps）
+          // ★ 2026-09-25 军团商城维护（perm 复用军团管理 module:ezfyCorps）
           { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
