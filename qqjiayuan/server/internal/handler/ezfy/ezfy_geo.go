@@ -603,6 +603,9 @@ type ezfyConfigCache struct {
 	tiles map[int64]model.EzfyMapTile
 	// 活动野地配置（key = x*100000+y），2026-09-29 地图管理「活动野地」tab 维护
 	actWilds map[int64]*model.EzfyActWild
+	// ★ 2026-10-05 地图瓦片表的「廉价指纹」（行数+最大id+最大updated_at）：
+	//   周期刷新时先比它，只有变了才真去拉瓦片 —— 修「多机改地形不生效」。
+	heavyFp uint64
 	// 军衔配置（按等级 1..N 排序）
 	ranks []model.EzfyCfgRank
 	// 建筑数量上限（军事区/资源区分开，管理端可维护）
@@ -1465,19 +1468,49 @@ func (c *ezfyConfigCache) load(db *gorm.DB) {
 //   活动野地表 —— 这两张表是管理端**低频改动**，仍由 cfgsReload 全量刷新收敛。
 func (c *ezfyConfigCache) reload(db *gorm.DB, skipHeavy ...bool) {
 	skip := len(skipHeavy) > 0 && skipHeavy[0]
+	// ★★ 2026-10-05：周期刷新改成「先算廉价指纹，只有真变了才拉地图瓦片」。
+	//   原实现是**无条件跳过**地图瓦片 —— 双机部署下，管理端改地形只对处理请求的那台生效，
+	//   另一台永远看不到（与活动野地同一个 bug）。现在指纹一变就跟着刷新，多机自动收敛；
+	//   没变时连读都不读（指纹是聚合查询，比拉 4.8 万行便宜几个数量级）。
+	loadTiles := true
+	if skip {
+		fp := ezfyHeavyFingerprint(db)
+		c.mu.RLock()
+		changed := !c.loaded || c.heavyFp != fp
+		c.mu.RUnlock()
+		loadTiles = changed
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	oldTileFp := ezfyTilesFingerprint(c.tiles)
-	c.loadLocked(db, skip)
+	c.loadLocked(db, loadTiles)
 	c.loaded = true
-	if skip {
-		return // 周期刷新：瓦片未动，无需指纹比对/海岸索引重建
+	if !loadTiles {
+		return // 瓦片未动，无需指纹比对/海岸索引重建
 	}
+	c.heavyFp = ezfyHeavyFingerprint(db)
 	if ezfyTilesFingerprint(c.tiles) != oldTileFp {
 		// ★ 地图格子覆盖配置可能改了地形 → 沿海平原索引必须重建，
 		//   否则管理端新配的沿海/陆地不被迁城逻辑看到。
 		ezfyInvalidateCoastalIndex()
 	}
+}
+
+// ezfyHeavyFingerprint 给「可能被周期刷新跳过」的重表算一个**廉价指纹**：
+//
+//	行数 + 最大 id + 最大 updated_at。新增、删除、修改都会让它变化。
+//	用途：多机部署时判断另一台机器有没有改过这些表，变了才真去拉（见 reload）。
+//
+// ⚠️ updated_at 精度是秒级 —— 同一秒内的两次改动可能漏检（管理端手工操作，可忽略）。
+// ⚠️ 只放**行数不大、但全表拉取代价高**的表；活动野地只有几行，直接每次都读，不进指纹。
+func ezfyHeavyFingerprint(db *gorm.DB) uint64 {
+	var t struct {
+		N  int64
+		Mx int64
+		Ts int64
+	}
+	db.Raw("SELECT COUNT(*) AS n, IFNULL(MAX(id),0) AS mx, IFNULL(UNIX_TIMESTAMP(MAX(updated_at)),0) AS ts FROM ezfy_map_tile").Scan(&t)
+	return uint64(t.N)*1000003 + uint64(t.Mx)*7 + uint64(t.Ts)*31
 }
 
 // ezfyTilesFingerprint 对「地图格子覆盖」集合算一个指纹，用于判断这会刷新是否动了地形。
@@ -1507,7 +1540,7 @@ func ezfyPeriodicReload(db *gorm.DB) {
 // ★ 2026-10-04 新增 skipHeavy：周期刷新时跳过「地图瓦片 / 活动野地」两张重表
 //   （25 万行全图扫描跨 WAN RDS 要几百毫秒~秒级，且期间持写锁拖住全站），
 //   这两张表只由管理端低频改动，全量刷新的 cfgsReload 仍会读取。
-func (c *ezfyConfigCache) loadLocked(db *gorm.DB, skipHeavy bool) {
+func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 	c.buildings = map[int]model.EzfyCfgBuilding{}
 	c.buildingLvls = map[int]map[int]model.EzfyCfgBuildingLevel{}
 	c.troops = map[int]model.EzfyCfgTroop{}
@@ -1609,9 +1642,10 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, skipHeavy bool) {
 	}
 	c.chestPools = pm
 
-	if !skipHeavy {
+	if loadTiles {
 		// 地图格子覆盖（改地形 / 设寇城·活动寇城；管理端可维护）
-		// ★ 2026-10-04 周期刷新跳过：25 万行全图扫描太贵，管理端保存后 cfgsReload 才读
+		// ★ 2026-10-04 周期刷新默认跳过（全表拉取太贵）；2026-10-05 起改为
+		//   「先算廉价指纹，只有真变了才拉」→ 多机也能收敛（见 ezfyHeavyFingerprint）。
 		var tiles []model.EzfyMapTile
 		db.Find(&tiles)
 		tm := make(map[int64]model.EzfyMapTile, len(tiles))
@@ -1619,17 +1653,22 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, skipHeavy bool) {
 			tm[ezfyTileKey(t.X, t.Y)] = t
 		}
 		c.tiles = tm
-
-		// 活动野地配置（地图管理「活动野地」tab 维护；key = x*100000+y）
-		var aws []model.EzfyActWild
-		db.Find(&aws)
-		awm := make(map[int64]*model.EzfyActWild, len(aws))
-		for _, a := range aws {
-			cp := a
-			awm[ezfyTileKey(a.X, a.Y)] = &cp
-		}
-		c.actWilds = awm
 	}
+
+	// ★★ 2026-10-05 修复「活动野地配置了没生效」：这段原来和地图瓦片一起被放在
+	//   `if !skipHeavy` 里，而**周期刷新（每 30s）带 skipHeavy=true** —— 双机部署时
+	//   管理端保存只会打到其中一台，那台走 cfgsReload 全量刷新；**另一台只跑周期刷新，
+	//   它的 c.actWilds 永远停在旧值（甚至是空的）**。玩家请求被负载均衡到这台时，
+	//   看到的就是「配置了没生效」（表现为时灵时不灵）。
+	//   活动野地表只有几行（线上 3 行），**每次都读**的成本可以忽略，必须无条件刷新。
+	var aws []model.EzfyActWild
+	db.Find(&aws)
+	awm := make(map[int64]*model.EzfyActWild, len(aws))
+	for _, a := range aws {
+		cp := a
+		awm[ezfyTileKey(a.X, a.Y)] = &cp
+	}
+	c.actWilds = awm
 
 	// 军衔配置（管理端可维护；表为空时回落内置默认，保证排名逻辑永远可用）
 	var rks []model.EzfyCfgRank

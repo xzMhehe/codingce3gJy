@@ -131,6 +131,39 @@ func (h *EzfyAdmin) AdminEzfyActWildSave(c *gin.Context) {
 	if _, ok := vals["max_capture"]; !ok {
 		vals["max_capture"] = 1 // 默认同一玩家可抓 1 次
 	}
+	// ★★ 2026-10-05 修复「编辑会新增一个」：
+	//
+	//	原来**只按 (x,y) upsert**（不带 id）。在「编辑」对话框里改一下坐标再保存，
+	//	就会在新坐标**新增一条**、而旧坐标那条仍然留着 —— 玩家看到的是「编辑变成了新增」。
+	//	现在：带了 id 就**按 id 更新那一行**（坐标跟着一起改，等于「移动这条配置」）；
+	//	没带 id（新增）才按 (x,y) upsert（同坐标再存一次仍然幂等更新，不会重复）。
+	//
+	//	两种情况都做「目标坐标已被别的行占用」检查 —— 否则会出现同坐标两条，
+	//	而运行时配置是按坐标建 map 的，谁后读到谁生效，表现为「配置时灵时不灵」。
+	if id := ezfyAnyInt(in["id"]); id > 0 {
+		var cur model.EzfyActWild
+		if err := h.DB.First(&cur, id).Error; err != nil {
+			resp.NotFound(c, "该活动野地配置不存在（可能已被删除），请刷新后重试")
+			return
+		}
+		var dup int64
+		h.DB.Model(&model.EzfyActWild{}).Where("x = ? AND y = ? AND id <> ?", x, y, id).Count(&dup)
+		if dup > 0 {
+			resp.ParamError(c, fmt.Sprintf("坐标 (%d,%d) 已存在另一条活动野地配置，请先删除或改用其它坐标", x, y))
+			return
+		}
+		if err := h.DB.Model(&model.EzfyActWild{}).Where("id = ?", id).Updates(vals).Error; err != nil {
+			resp.ParamError(c, "保存失败："+err.Error())
+			return
+		}
+		h.ezfyReload()
+		ok := "关闭（普通野地）"
+		if v, _ := vals["enabled"].(int); v == 1 {
+			ok = "启用（活动野地）"
+		}
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("坐标 (%d,%d) 已保存并立即生效：%s", x, y, ok)})
+		return
+	}
 	if err := h.DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "x"}, {Name: "y"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -365,6 +398,23 @@ func actWildCoordsKey(title string) (string, bool) {
 		return "", false
 	}
 	return title[i:], true
+}
+
+// ezfyAnyInt 从 JSON 解析出来的任意值里取整数（前端数字是 float64，兼容字符串/整数）。
+// 用于读取不在白名单里的字段（如 id）。
+func ezfyAnyInt(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case string:
+		i, _ := strconv.Atoi(strings.TrimSpace(n))
+		return i
+	}
+	return 0
 }
 
 // checkActWildVals 校验活动野地配置值

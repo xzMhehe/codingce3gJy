@@ -750,9 +750,15 @@ func (h *EzfyHandler) refreshCity(uid uint, city *model.EzfyCity) {
 // ★★ 2026-10-05 性能：需要「结算完还要继续用建筑等级/科技/部队」的接口（如出征下单）
 // 用它，可以省掉后面 N 次重复查询（buildingLevel/techMap/troopMap 每次都是一整条跨 WAN 往返）。
 func (h *EzfyHandler) refreshCityD(uid uint, city *model.EzfyCity) *resCalcData {
+	return h.refreshCityDWithCities(uid, city, nil)
+}
+
+// refreshCityDWithCities 同 refreshCityD，但调用方已经查好「玩家城市列表」时传入，
+// 省掉懒结算里那次串行的城市列表查询（跨 WAN ~120ms）。cities 为 nil 时自己查。
+func (h *EzfyHandler) refreshCityDWithCities(uid uint, city *model.EzfyCity, cities []model.EzfyCity) *resCalcData {
 	// 原来是 5 步各自查库（~15 条串行跨 WAN = 1s+）。
 	// 现在先一次并行取齐（1 个 RTT），再全部走快照结算 —— 读 0 条，只留资源落库 1 条写。
-	d := h.ezfyLoadCityData(uid, city, nil)
+	d := h.ezfyLoadCityData(uid, city, cities)
 	h.ezfySettleCity(uid, city, d, true)
 	return d
 }
@@ -1463,7 +1469,10 @@ func (d *resCalcData) cityIDIntsOf(h *EzfyHandler, uid uint) []int64 {
 //
 // 所以 `refreshCity*` 三个函数现在都是「并行取数 + 快照结算」的薄封装 ——
 // 它们被 ~30 处调用，改这里等于全部提速。
-func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []model.EzfyCity) *resCalcData {
+// extra 可选：调用方自己的查询（如出征下单的「防重 / 在途数 / 目标归属」三条校验），
+// 会被塞进**同一个并行波**里一起发出去 —— 省掉它们在主流程里各占一个串行往返。
+// ⚠️ extra 在 city 与 cities 都已就绪之后才会跑（它们通常要用 city.ID）。
+func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []model.EzfyCity, extra ...func()) *resCalcData {
 	d := &resCalcData{}
 	// ⚠️ 城市列表必须**先**拿到：下面的 techRows 要用它拼 `city_id IN (...)`。
 	//   曾经把这条查询塞进并行块 → 与 techRows 的 goroutine 竞争读 `cities`，
@@ -1472,7 +1481,10 @@ func (h *EzfyHandler) ezfyLoadCityData(uid uint, city *model.EzfyCity, cities []
 		h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities)
 	}
 	var wg sync.WaitGroup
-	wg.Add(8)
+	wg.Add(8 + len(extra))
+	for _, fn := range extra {
+		go func(f func()) { defer wg.Done(); f() }(fn)
+	}
 	go func() { defer wg.Done(); d.buildings = h.buildingList(city.ID) }()
 	go func() { defer wg.Done(); d.techs = h.techMapOf(uid) }()
 	go func() { defer wg.Done(); d.wilds = h.wildlandList(city.ID) }()

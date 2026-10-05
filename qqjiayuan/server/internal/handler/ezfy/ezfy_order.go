@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -523,10 +524,19 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	city := h.cityOf(uid, req.CityId)
+	// ★ 2026-10-05 性能：选城（含被占校验）与「玩家城市列表」**并行**取，
+	//   后者直接传给 createOrder 的懒结算复用 —— 省掉懒结算里那次串行的城市列表查询（跨 WAN ~120ms）。
+	var city *model.EzfyCity
+	var cities []model.EzfyCity
+	var cwg sync.WaitGroup
+	cwg.Add(2)
+	go func() { defer cwg.Done(); city = h.cityOf(uid, req.CityId) }()
+	go func() { defer cwg.Done(); h.DB.Where("user_id = ?", uid).Order("id ASC").Find(&cities) }()
+	cwg.Wait()
 	if city == nil {
 		city2 := h.getOrCreateCity(uid)
 		city = &city2
+		cities = nil // 新建的城不在上面那份列表里，交给懒结算自己查
 	}
 	waitMin := req.WaitMin
 	if waitMin < 0 {
@@ -535,7 +545,7 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 	if waitMin > 1440 {
 		waitMin = 1440
 	}
-	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin, req.Gather); msg != "" {
+	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin, req.Gather, cities); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}
@@ -841,10 +851,38 @@ func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
 //	② 军官只查一次；③ 扣兵合并成 1 条 CASE UPDATE + 1 条 DELETE；④ 集结令一次扣完；
 //	⑤ 收尾的独立写**并行**发出（不同表，互不依赖）。
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
-	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather int) string {
+	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather int,
+	cities ...[]model.EzfyCity) string {
 
 	// ★ 懒结算返回快照：下面的建筑等级 / 科技等级 / 城内部队全部走内存，零额外读
-	d := h.refreshCityD(uid, city)
+	// cities 可选：调用方已查好玩家城市列表时传入，懒结算直接复用（省一条串行 RTT）。
+	var cityList []model.EzfyCity
+	if len(cities) > 0 {
+		cityList = cities[0]
+	}
+	// ★★ 2026-10-05 性能：三条**互不依赖**的校验查询（防重 / 司令部在途数 / 目标是不是自己的野地）
+	//   原来分散在函数三处、**串行**发出 = 3 个跨 WAN 往返（线上 ~360ms）。
+	//   现在直接塞进懒结算的那个并行波里（ezfyLoadCityData 的 extra 参数），
+	//   与建筑/科技/部队等 8 条查询**同时**发出 → 整段只花 1 个 RTT。
+	var dupCnt, marchingCnt int64
+	var ownWild *model.EzfyWildland
+	d := h.ezfyLoadCityData(uid, city, cityList,
+		func() {
+			h.DB.Model(&model.EzfyOrder{}).
+				Where("user_id = ? AND city_id = ? AND order_type = ? AND target_id = ? AND target_x = ? AND target_y = ? AND start_time >= ?",
+					uid, city.ID, orderType, targetId, targetX, targetY, time.Now().UnixMilli()-3000).
+				Count(&dupCnt)
+		},
+		func() {
+			h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 0", uid).Count(&marchingCnt)
+		},
+		func() {
+			var w model.EzfyWildland
+			if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).First(&w).Error; err == nil {
+				ownWild = &w
+			}
+		})
+	h.ezfySettleCity(uid, city, d, true)
 	blv := d.buildingLevelsOf(h, city.ID)
 	tech := d.techsOf(h, city.ID)
 	cityTroops := d.troopsOf(h, city.ID)
@@ -853,15 +891,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   3 秒内同「城市+类型+目标」的订单视为重复提交，直接拒绝。
 	//   （正常情况下一次作战结束后 3 秒内对同一目标重复出征几乎不可能；
 	//   侦查→掠夺等不同 order_type 不受影响）
-	{
-		var recent int64
-		h.DB.Model(&model.EzfyOrder{}).
-			Where("user_id = ? AND city_id = ? AND order_type = ? AND target_id = ? AND target_x = ? AND target_y = ? AND start_time >= ?",
-				uid, city.ID, orderType, targetId, targetX, targetY, time.Now().UnixMilli()-3000).
-			Count(&recent)
-		if recent > 0 {
-			return "命令已下达, 请勿重复出征"
-		}
+	// ★ 结果来自上面那个并行波（dupCnt），不再单独查一次
+	if dupCnt > 0 {
+		return "命令已下达, 请勿重复出征"
 	}
 	// 过滤数量为0的部队
 	validTroops := []ezfyUnitGroup{}
@@ -1010,15 +1042,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   ⚠️ 野地类目标的 targetType 是 1/2，**3 才是玩家城市**（城市那边由下面
 	//   「掠夺/征服玩家城需先宣战」那段管，别在这里重复拦）。
 	//   归属判定与 WildlandView 下发的 owner/mine 同源：野地记录 → 城市 → UserID。
-	if orderType == 1 || orderType == 2 || orderType == 3 {
-		if targetType != 3 {
-			var w model.EzfyWildland
-			if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).First(&w).Error; err == nil && w.CityId > 0 {
-				var oc model.EzfyCity
-				if err := h.DB.First(&oc, w.CityId).Error; err == nil && oc.UserID == uid {
-					return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
-						"; 如要攻打请先在「附属野地」里[放弃]该野地"
-				}
+	if (orderType == 1 || orderType == 2 || orderType == 3) && targetType != 3 {
+		// ★ 野地记录来自上面那个并行波（ownWild），不再单独查一次
+		if ownWild != nil && ownWild.CityId > 0 {
+			var oc model.EzfyCity
+			if err := h.DB.First(&oc, ownWild.CityId).Error; err == nil && oc.UserID == uid {
+				return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
+					"; 如要攻打请先在「附属野地」里[放弃]该野地"
 			}
 		}
 	}
@@ -1122,9 +1152,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if hq < 1 {
 		return "需要先建造司令部"
 	}
-	var marching int64
-	h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 0", uid).Count(&marching)
-	if int(marching) >= hq {
+	// ★ 在途队伍数来自上面那个并行波（marchingCnt），不再单独查一次
+	if int(marchingCnt) >= hq {
 		return fmt.Sprintf("司令部%d级, 同时只能出征%d支队伍", hq, hq)
 	}
 	// ★ 2026-10-02 用户反馈「运输无上限是bug」：运输(5)也纳入携带上限校验（和其他出征一致）。
@@ -1148,12 +1177,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return "目标太近了"
 	}
 	// 耗油
+	// ★ 2026-10-05 性能：这里**只改内存、不立刻写库** —— 与下面的随军资源合并成**一次**整行写
+	//   （原来油一次 saveCityRes、随军资源再一次 = 2 条 ~240ms 的写往返）。
 	oilCost := h.ezfyOilCost(city, orderType, distance, validTroops, resources)
 	if city.Oil < oilCost {
 		return fmt.Sprintf("石油不足: 本次出征需耗油%d, 当前油库仅%d", oilCost, city.Oil)
 	}
 	city.Oil -= oilCost
-	h.saveCityRes(city)
 
 	// ★ 2026-09-30 运输/派遣资源在**全部校验通过**后才扣（司令部上限/距离/耗油都过了，
 	//   不会再出现「失败但资源已扣」的丢资源 bug）
@@ -1163,20 +1193,20 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		city.Oil -= resources["oil"]
 		city.Rare -= resources["rare"]
 		city.Gold -= resources["gold"]
-		h.saveCityRes(city)
 	}
 
-	tech := h.techMap(city.ID)
-	station := h.buildingLevel(city.ID, 20)
+	// ★ 2026-10-05 性能：科技/驿站等级走快照（原来 techMap 2 条 + buildingLevel 1 条）
+	station := blv[20]
 	travelSec := int64(distance) * 60 * 300 / int64(slowest)
 	travelSec = travelSec * 100 / int64(100+tech[12]*2)
 	travelSec = travelSec * 100 / int64(100+station*3)
 	// 带队军官「移速」技能: 行军 +10%
-	if lead := h.officerByName(city.ID, officer); h.officerSpeedSkill(lead) {
+	// ★ 2026-10-05 性能：复用上面已经查好的 lead（原来这里又各查一次，共 4 次军官查询）
+	if h.officerSpeedSkill(lead) {
 		travelSec = travelSec * 100 / 110
 	}
 	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
-	if lead := h.officerByName(city.ID, officer); lead != nil && lead.Military > 0 {
+	if lead != nil && lead.Military > 0 {
 		travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
 	}
 	// ★ 出征速度加成（管理端「二战系统配置」可配）：节假日调高让队伍走快点
@@ -1194,12 +1224,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if waitMin > 1440 {
 		waitMin = 1440
 	}
-	// ★ 走到这里所有校验都过了，才真正扣掉集结令（失败路径不能白扣玩家道具）
-	if gather > 0 {
-		for i := 0; i < gather; i++ {
-			h.consumeItem(uid, ezfyGatherItemID, "出征集结令")
-		}
-	}
 	order := model.EzfyOrder{
 		UserID: uid, CityId: int64(city.ID),
 		OrderType: orderType, TargetType: targetType,
@@ -1214,23 +1238,58 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		b, _ := json.Marshal(resources)
 		order.Resources = string(b)
 	}
-	h.DB.Create(&order)
-	// 从城市扣兵
-	for _, t := range validTroops {
-		var exist model.EzfyCityTroop
-		if err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, t.TroopId).First(&exist).Error; err == nil && exist.Count >= t.Count {
-			remain := exist.Count - t.Count
-			if remain == 0 {
-				h.DB.Delete(&exist)
-			} else {
-				h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", remain)
-			}
-		}
+
+	// ★★ 2026-10-05 性能：所有校验都过了，从这里开始**写库**。
+	//   这些写落在**不同的表**上、互不依赖 → **并行**发出。
+	//   原来它们是 6 条串行写（城市资源 / 集结令 / 订单 / 扣兵 / 军官状态 / 战报），
+	//   线上一次写 ~240ms → 光收尾就 ~1.4s。并行后只花「最慢的那一条」≈ 250ms。
+	var wwg sync.WaitGroup
+	// ① 城市资源（油 + 随军资源，已合并成一次整行写）
+	wwg.Add(1)
+	go func() { defer wwg.Done(); h.saveCityRes(city) }()
+	// ② 订单行
+	wwg.Add(1)
+	go func() { defer wwg.Done(); h.DB.Create(&order) }()
+	// ③ 从城市扣兵：一条 CASE UPDATE + 一条清零 DELETE（原来每个兵种 SELECT+UPDATE = 2N 条）
+	wwg.Add(1)
+	go func() { defer wwg.Done(); h.deductCityTroops(city.ID, validTroops) }()
+	// ④ 集结令：一次扣完（原来是每个道具一条 consumeItem）
+	if gather > 0 {
+		wwg.Add(1)
+		go func() { defer wwg.Done(); h.consumeItemN(uid, ezfyGatherItemID, gather, "出征集结令") }()
 	}
-	// 带队军官: 置为出征中, 忠诚 -5(归零自动离职)
-	if officer != "" {
-		h.officerGoOut(city, officer, true)
+	// ⑤ 带队军官置出征态（复用已查好的 lead，不再按名字查一次）
+	if lead != nil {
+		wwg.Add(1)
+		go func() { defer wwg.Done(); h.officerGoOutByID(lead.ID, true) }()
 	}
+	// ⑥ 雷达站事前预警（自己的读 + 一条战报写，也一起并行）
+	wwg.Add(1)
+	go func() {
+		defer wwg.Done()
+		h.ezfyOrderRadarWarn(city, &order, orderType, targetType, targetId, officer, validTroops)
+	}()
+	wwg.Wait()
+	return ""
+}
+
+// ezfyOrderRadarWarn 出征时给**被攻击方**发事前预警（雷达站 + 侦察技巧决定能看到多少）。
+//
+// ★ 2026-10-05 从 createOrder 里抽出来：① 让收尾的 6 个写能并行；
+// ② 本段自己的读（目标城 + 情报等级）也不再串在写前面。
+//
+//	侦查(1)      → 「被侦查报告」（军情警讯）
+//	掠夺(2)/征服(3) → 「军情警报: 敌军来袭!」，细节随情报等级递增
+//
+// ★ 2026-09-25 用户要求「军情警讯里面展示下对面城市名字以及地址，雷达站以及科技满足的情况下展示，
+// 不然我只知道有人打我，不知道哪来的」：情报等级 = 雷达站等级 + **侦察技巧科技等级**（合计封顶 10）。
+// 「出发城市（名称+坐标）」门槛定在 **2 级**，并且够等级时会**写进战报标题**
+// —— 军情警讯列表只显示标题，不点进去也要看得见。
+//
+// 注意：这里只发**事前预警**；被掠夺/城破这类**事后结果**报告在 processArrive 里发，
+// 不受雷达站限制 —— 否则玩家资源被抢光了却毫不知情。
+func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.EzfyOrder,
+	orderType, targetType int, targetId int64, officer string, validTroops []ezfyUnitGroup) {
 	// 雷达站预警：**能不能提前看见，取决于被攻击方自己城市的雷达站等级**。
 	//
 	//	侦查(1)      → 「被侦查报告」（军情警讯）
@@ -1308,7 +1367,37 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			}
 		}
 	}
-	return ""
+}
+
+// deductCityTroops 出征后从城市扣兵。
+//
+// ★ 2026-10-05 性能：原来每个兵种「SELECT 行 + UPDATE/DELETE」= 2N 条跨 WAN 往返；
+// 现在合并成**一条 CASE UPDATE**（一次改完所有兵种）+ **一条 DELETE**（清掉归零/负数行）。
+// 数量用 GREATEST(count-?,0) 夹取，绝不会写出负数兵力（与全站防负数防线一致）。
+func (h *EzfyHandler) deductCityTroops(cityId uint, troops []ezfyUnitGroup) {
+	if len(troops) == 0 {
+		return
+	}
+	ids := make([]int, 0, len(troops))
+	var expr strings.Builder
+	expr.WriteString("CASE troop_id")
+	args := make([]interface{}, 0, len(troops)*2)
+	for _, t := range troops {
+		if t.Count <= 0 {
+			continue
+		}
+		ids = append(ids, t.TroopId)
+		expr.WriteString(" WHEN ? THEN GREATEST(count - ?, 0)")
+		args = append(args, t.TroopId, t.Count)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	expr.WriteString(" END")
+	h.DB.Model(&model.EzfyCityTroop{}).Where("city_id = ? AND troop_id IN ?", cityId, ids).
+		Update("count", gorm.Expr(expr.String(), args...))
+	h.DB.Where("city_id = ? AND troop_id IN ? AND count <= 0", cityId, ids).
+		Delete(&model.EzfyCityTroop{})
 }
 
 // 雷达站预警相关常量

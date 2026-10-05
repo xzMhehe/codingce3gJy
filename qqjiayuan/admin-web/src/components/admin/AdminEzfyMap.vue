@@ -1145,7 +1145,11 @@ export default {
       const tRows = (this.awTreasures || []).filter(r => Number(r.treasure_id) > 0 && Number(r.count) > 0)
         .map(r => [Number(r.treasure_id), Number(r.count)].map(n => Number(n)))
       const treasures = tRows.length ? JSON.stringify(tRows) : ''
+      // ★ 2026-10-05 修复「编辑会新增一个」：把 id 一起带上。
+      //   服务端带了 id 就**按 id 更新那一行**（坐标也跟着改，等于「移动这条配置」）；
+      //   不带 id 才按 (x,y) upsert —— 原来编辑时改了坐标就会新增一条、旧的还留着。
       const payload = {
+        id: Number(a.id) || 0,
         x: Number(a.x), y: Number(a.y),
         enabled: a.enabled === 1 ? 1 : 0,
         level: Number(a.level) || 0,
