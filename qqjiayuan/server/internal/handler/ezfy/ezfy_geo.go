@@ -315,6 +315,17 @@ func ezfyTerrainNameEx(x, y int) string {
 	return ezfyTerrainName(ezfyTerrainEx(x, y))
 }
 
+// ezfyEquipmentByName 按名称找装备配置（9 种珠宝也落在装备表里；野地类型「宝物掉落」按名配置用）
+func (c *ezfyConfigCache) equipmentByName(name string) *model.EzfyCfgEquipment {
+	for i := range c.equipments {
+		e := c.equipments[i]
+		if e.Name == name {
+			return &e
+		}
+	}
+	return nil
+}
+
 // ezfyHasNavalTroops 出征部队里是否含有海军兵种（兵种 type=1：驱逐舰/潜艇/战列舰/航母）。
 //
 // ★ 2026-10-02 用户规则：海军兵种只能用于海战，出征攻打陆城时需卡控提示。

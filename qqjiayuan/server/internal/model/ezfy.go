@@ -107,7 +107,9 @@ type EzfyCfgWildland struct {
 	// ★ 守军军官：**最多 1 个**，且只能从「军官池」（ezfy_cfg_general）里选。
 	//   0 = 该野地没有守将（打下来也俘不到军官）。
 	OfficerId int    `gorm:"comment:军官ID" json:"officer_id"`
-	Treasure  string `gorm:"type:varchar(100);comment:宝物" json:"treasure"`
+	// ★ 2026-10-05 宝物掉落（管理端下拉编辑器生成）：JSON [{"name":"宝物名","count":数量,"pct":概率%},...]，
+	//   老文本值（如「珠宝(平原)」）保留兼容，解析失败不掉落。
+	Treasure string `gorm:"type:varchar(500);comment:宝物掉落JSON" json:"treasure"`
 	// ★ 2026-10-05 商城道具掉落：JSON [[cfg_id,数量],...]，留空=不掉（默认）。
 	//   打赢该类型野地（含海野/寇城）后按配置掉落商城道具到背包。
 	DropItems string `gorm:"type:varchar(500);comment:商城道具掉落JSON" json:"drop_items"`

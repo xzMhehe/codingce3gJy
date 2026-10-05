@@ -3173,6 +3173,33 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					}
 				}
 			}
+			// ★ 2026-10-05 宝物掉落（下拉配置 + 概率）：[{"name","count","pct"}]，老文本值解析失败则不掉
+			if wcfg := ezfyCfg.wildland(wcType, wildLevel); wcfg != nil && strings.TrimSpace(wcfg.Treasure) != "" {
+				var drops []wildTreasureDrop
+				if err := json.Unmarshal([]byte(wcfg.Treasure), &drops); err == nil {
+					for _, d := range drops {
+						if d.Count <= 0 || strings.TrimSpace(d.Name) == "" {
+							continue
+						}
+						pct := d.Pct
+						if pct <= 0 {
+							pct = 100
+						}
+						if pct > 100 {
+							pct = 100
+						}
+						if rand.Intn(100) >= pct {
+							continue // 未命中概率，不掉
+						}
+						if eq := ezfyCfg.equipmentByName(d.Name); eq != nil {
+							for k := 0; k < d.Count; k++ {
+								h.addEquipment(city, eq)
+							}
+							report += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
+						}
+					}
+				}
+			}
 		}
 
 		// 征服玩家城市
@@ -3527,6 +3554,13 @@ func (h *EzfyHandler) defExcludeSet(cityId uint) map[int]bool {
 		m[t.TroopId] = true
 	}
 	return m
+}
+
+// wildTreasureDrop 野地类型「宝物掉落」单条配置（管理端下拉编辑器生成的结构化 JSON）
+type wildTreasureDrop struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	Pct   int    `json:"pct"` // 掉落概率 %（缺省/<=0 = 100）
 }
 
 // parseWildlandItemDrops 解析野地类型「商城道具掉落」配置：[[道具cfg_id,数量,概率%],...]

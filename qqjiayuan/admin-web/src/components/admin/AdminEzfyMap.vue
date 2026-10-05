@@ -630,14 +630,35 @@
           <div class="old-line" v-if="!wcTroops.length">（暂无守军，野地将没有防守部队）</div>
           <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcTroop">添加兵种</el-button>
         </el-form-item>
-        <el-form-item label="宝物">
-          <el-input v-model="wc.treasure" maxlength="100" placeholder="可空，例如：珠宝(平原)" />
+        <el-form-item label="宝物掉落">
+          <!-- ★ 2026-10-05 用户要求：宝物也搞成下拉选择 + 可配概率（运营不用手写 JSON） -->
+          <div v-for="(r, i) in wcTreasures" :key="'wtv' + i" class="wild-troop-row">
+            <el-select v-model="r.name" filterable placeholder="选择宝物" style="width:220px">
+              <el-option v-for="j in jewels" :key="'wtvj' + j.id" :label="j.name" :value="j.name" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="r.count" :min="1" controls-position="right" style="width:90px" />
+            <span class="td-sub">概率%</span>
+            <el-input-number v-model.number="r.pct" :min="1" :max="100" controls-position="right" style="width:90px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="wcTreasures.splice(i, 1)" />
+          </div>
+          <div class="old-line" v-if="!wcTreasures.length">（未配置宝物掉落，打赢不掉宝物）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcTreasure">添加宝物</el-button>
         </el-form-item>
         <el-form-item label="商城道具掉落">
-          <!-- ★ 2026-10-05 用户要求：野地类型可掉落商城道具，默认空=不掉，管理员配置了才会掉；
-               每条可配掉落概率%（第 3 位），不配 = 100% 必掉 -->
-          <el-input v-model="wc.drop_items" type="textarea" :rows="2" maxlength="500"
-                    placeholder="可空=不掉。格式 [[道具cfg_id,数量,概率%],...]，如 [[24,1,30]]（30%概率掉1个）。打赢该类型野地/海野/寇城后掉落。" />
+          <!-- ★ 2026-10-05 用户要求：下拉选择 + 数量 + 概率%（运营不用手写 JSON） -->
+          <div v-for="(r, i) in wcDrops" :key="'wdp' + i" class="wild-troop-row">
+            <el-select v-model.number="r.cfg_id" filterable placeholder="选择商城道具" style="width:220px">
+              <el-option v-for="it in itemCfgs" :key="'wdp' + it.id" :label="it.name" :value="it.id" />
+            </el-select>
+            <span class="td-sub">数量</span>
+            <el-input-number v-model.number="r.count" :min="1" controls-position="right" style="width:90px" />
+            <span class="td-sub">概率%</span>
+            <el-input-number v-model.number="r.pct" :min="1" :max="100" controls-position="right" style="width:90px" />
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="wcDrops.splice(i, 1)" />
+          </div>
+          <div class="old-line" v-if="!wcDrops.length">（未配置商城道具掉落，打赢不掉道具）</div>
+          <el-button size="mini" type="success" plain icon="el-icon-plus" @click="addWcDrop">添加道具</el-button>
         </el-form-item>
         <el-form-item label="说明">
           <el-input v-model="wc.des" type="textarea" :rows="2" maxlength="500" show-word-limit />
@@ -813,8 +834,8 @@ function emptyWild () {
 function emptyWc () {
   return { id: 0, type: 1, level: 1, troops: '', res_min: 0, res_max: 0,
     officer_min: 0, officer_max: 0, officer_id: 0, treasure: '', drop_items: '', des: '',
-    // 弹窗内的「守军搭配」行（保存时序列化进 troops）
-    wcTroops: [] }
+    // 弹窗内的可视化行（保存时序列化回 JSON 字段）
+    wcTroops: [], wcDrops: [], wcTreasures: [] }
 }
 
 export default {
@@ -850,6 +871,7 @@ export default {
       awTroops: [], // 活动野地守军可视化行 [{troop_id,count},...]（保存时序列化成 [[tid,count]]）
       awTreasures: [], // 活动野地必掉宝物可视化行 [{treasure_id,count},...]（保存时序列化成 [[cfg_id,count]]）
       jewels: [], // 可采集珠宝下拉（/admin/ezfy-map/options 返回）
+      itemCfgs: [], // ★ 2026-10-05 商城道具下拉（/admin/ezfy-map/options 返回）
       // 活动野地 · 被打记录模态框（2026-10-01）
       awAttDlg: false, awAttLoading: false, awAttRow: null, awAttList: [], awAttTotal: 0, awAttPage: 1, awAttSize: 10,
       saving: false
@@ -857,9 +879,28 @@ export default {
   },
   computed: {
     // 弹窗里的「守军搭配」行：直接映射到 wc.wcTroops（模板里要 v-for + splice）
-    wcTroops () {
-      if (!this.wc.wcTroops) this.$set(this.wc, 'wcTroops', [])
-      return this.wc.wcTroops
+    wcTroops: {
+      get () {
+        if (!this.wc.wcTroops) this.$set(this.wc, 'wcTroops', [])
+        return this.wc.wcTroops
+      },
+      set (v) { this.$set(this.wc, 'wcTroops', v) }
+    },
+    // ★ 2026-10-05 「商城道具掉落」行（cfg_id + 数量 + 概率%）
+    wcDrops: {
+      get () {
+        if (!this.wc.wcDrops) this.$set(this.wc, 'wcDrops', [])
+        return this.wc.wcDrops
+      },
+      set (v) { this.$set(this.wc, 'wcDrops', v) }
+    },
+    // ★ 2026-10-05 「宝物掉落」行（名称 + 数量 + 概率%）
+    wcTreasures: {
+      get () {
+        if (!this.wc.wcTreasures) this.$set(this.wc, 'wcTreasures', [])
+        return this.wc.wcTreasures
+      },
+      set (v) { this.$set(this.wc, 'wcTreasures', v) }
     },
     // 活动野地守将军官下拉：按类型(普通kind=1/名将kind=2)过滤军官池
     awKindGenerals () {
@@ -1246,6 +1287,7 @@ export default {
           this.troopCfgs = r.data.troops || []
           this.generals = r.data.generals || []
           this.jewels = r.data.jewels || []
+          this.itemCfgs = r.data.items || [] // ★ 2026-10-05 商城道具下拉
         }
       })
     },
@@ -1297,6 +1339,16 @@ export default {
       const first = this.troopCfgs[0]
       this.wc.wcTroops.push({ troop_id: first ? first.id : 0, min: 100, max: 200 })
     },
+    // ★ 2026-10-05 商城道具掉落行：新增一行（默认概率 100%）
+    addWcDrop () {
+      if (!this.wc.wcDrops) this.$set(this.wc, 'wcDrops', [])
+      this.wc.wcDrops.push({ cfg_id: (this.itemCfgs[0] || {}).id || 0, count: 1, pct: 100 })
+    },
+    // ★ 2026-10-05 宝物掉落行：新增一行（默认概率 100%）
+    addWcTreasure () {
+      if (!this.wc.wcTreasures) this.$set(this.wc, 'wcTreasures', [])
+      this.wc.wcTreasures.push({ name: (this.jewels[0] || {}).name || '', count: 1, pct: 100 })
+    },
     openWcCreate () {
       this.wc = emptyWc()
       this.wcDlg = true
@@ -1304,7 +1356,35 @@ export default {
     openWcEdit (row) {
       this.wc = Object.assign(emptyWc(), row)
       this.$set(this.wc, 'wcTroops', this.parseWcTroops(row.troops))
+      // ★ 2026-10-05 反序列化「商城道具掉落」[[id,count,pct]...] → 可视化行
+      this.$set(this.wc, 'wcDrops', this.parseWcDrops(row.drop_items))
+      // ★ 2026-10-05 反序列化「宝物掉落」[{name,count,pct}...] → 可视化行（老文本值兜底成一行）
+      this.$set(this.wc, 'wcTreasures', this.parseWcTreasures(row.treasure))
       this.wcDlg = true
+    },
+    // ★ 2026-10-05 [[道具id,数量,概率%]...] → [{cfg_id,count,pct}]；空/非法 → []
+    parseWcDrops (raw) {
+      if (!raw) return []
+      try {
+        const rows = JSON.parse(raw)
+        if (!Array.isArray(rows)) return []
+        return rows.filter(r => Array.isArray(r) && r[0] > 0)
+          .map(r => ({ cfg_id: Number(r[0]), count: Number(r[1]) || 1, pct: Number(r[2]) > 0 ? Number(r[2]) : 100 }))
+      } catch (e) { return [] }
+    },
+    // ★ 2026-10-05 [{name,count,pct}...] → 可视化行；老文本（如「珠宝(平原)」）兜底成一行
+    parseWcTreasures (raw) {
+      if (!raw) return []
+      try {
+        const rows = JSON.parse(raw)
+        if (Array.isArray(rows)) {
+          return rows.filter(r => r && r.name)
+            .map(r => ({ name: r.name, count: Number(r.count) || 1, pct: Number(r.pct) > 0 ? Number(r.pct) : 100 }))
+        }
+        return []
+      } catch (e) {
+        return [{ name: raw, count: 1, pct: 100 }]
+      }
     },
     doWcSave () {
       // ★ 把可视化行序列化回后端要的 [[兵种ID,最小,最大],...]
@@ -1316,6 +1396,14 @@ export default {
           return [Number(r.troop_id), lo, hi]
         })
       this.wc.troops = JSON.stringify(rows)
+      // ★ 2026-10-05 序列化「商城道具掉落」[[id,count,pct]...]
+      this.wc.drop_items = JSON.stringify((this.wc.wcDrops || [])
+        .filter(d => d.cfg_id > 0)
+        .map(d => [Number(d.cfg_id), Number(d.count) || 1, Number(d.pct) > 0 ? Number(d.pct) : 100]))
+      // ★ 2026-10-05 序列化「宝物掉落」[{name,count,pct}...]
+      this.wc.treasure = JSON.stringify((this.wc.wcTreasures || [])
+        .filter(t => t.name)
+        .map(t => ({ name: t.name, count: Number(t.count) || 1, pct: Number(t.pct) > 0 ? Number(t.pct) : 100 })))
       const body = {}
       WC_KEYS.forEach(k => { if (this.wc[k] !== null && this.wc[k] !== undefined) body[k] = this.wc[k] })
       this.saving = true

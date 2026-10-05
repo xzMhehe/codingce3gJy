@@ -310,6 +310,13 @@ func Run(db *gorm.DB, staticDir string) {
 		}
 		db.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
 
+		// ★ 2026-10-05 宝物掉落改成结构化 JSON（[{"name","count","pct"},...]）：
+		//   列扩到 500 并回填空串（老值「珠宝(平原)」保留，解析失败不掉落）。
+		if db.Migrator().HasTable("ezfy_cfg_wildland") {
+			db.Exec("ALTER TABLE ezfy_cfg_wildland MODIFY COLUMN treasure varchar(500) DEFAULT ''")
+		}
+		db.Exec("UPDATE ezfy_cfg_wildland SET treasure = '' WHERE treasure IS NULL")
+
 		// ★ 2026-09-25：野地战利品资源倍率（默认 10，允许小数；0 / NULL 无意义 → 回落 10）
 		//   必须用 double：addLimitCol 建的是 int，配不了 0.5 / 2.5 这种小数。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_res_mult") {

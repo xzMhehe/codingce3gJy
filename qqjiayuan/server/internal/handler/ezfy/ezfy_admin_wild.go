@@ -108,7 +108,14 @@ func (h *EzfyAdmin) AdminEzfyMapOptions(c *gin.Context) {
 	for _, e := range equips {
 		jviews = append(jviews, gin.H{"id": e.ID, "name": e.Name})
 	}
-	resp.OK(c, gin.H{"troops": tviews, "generals": gviews, "jewels": jviews})
+	// ★ 2026-10-05 商城道具下拉：野地类型「商城道具掉落」行编辑器用（运营下拉选择，不用手写 JSON）
+	var items []model.EzfyCfgItem
+	h.DB.Order("id").Find(&items)
+	iviews := make([]gin.H, 0, len(items))
+	for _, it := range items {
+		iviews = append(iviews, gin.H{"id": it.ID, "name": it.Name})
+	}
+	resp.OK(c, gin.H{"troops": tviews, "generals": gviews, "jewels": jviews, "items": iviews})
 }
 
 // AdminEzfyWildCfgList 野地类型配置列表
