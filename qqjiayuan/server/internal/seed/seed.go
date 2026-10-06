@@ -2931,6 +2931,29 @@ func EnsureEzfyBattleLockColumns(db *gorm.DB) {
 	db.Exec("UPDATE ezfy_battle SET def_lock = 0 WHERE def_lock IS NULL")
 }
 
+// EnsureEzfySchemeKinds 幂等补配计谋 kind（skip 分支必须调用）。
+//
+// ★ 2026-10-06 「恫疑虚喝 / 隐真示假」实现为守城伪装计谋：
+//   恫疑虚喝(id=1) → Kind=4，隐真示假(id=2) → Kind=5，并补齐描述文案。
+//   seedEzfySchemes 只在表为空时插入；存量库（共享库 seed.skip 尤其）已有这 12+ 条
+//   计谋，kind 还是 0（纯说明）→ 发动会被「暂未实现」卡住。这里按 id 幂等补配，
+//   条件带 `kind = 0` 避免覆盖管理端手工改过的种类。
+func EnsureEzfySchemeKinds(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_scheme") {
+		return
+	}
+	db.Model(&model.EzfyCfgScheme{}).Where("id = 1 AND kind = 0").
+		Updates(map[string]interface{}{
+			"kind": 4,
+			"des":  "发动后自己所有城市生效1小时（多次发动叠加时长）：被敌人侦查时展示随机兵种1亿兵效果吓唬敌人（实际兵力不变）",
+		})
+	db.Model(&model.EzfyCfgScheme{}).Where("id = 2 AND kind = 0").
+		Updates(map[string]interface{}{
+			"kind": 5,
+			"des":  "发动后自己所有城市生效1小时（多次发动叠加时长）：被敌人侦查时展示随机兵种极少兵力（几乎都在1000内）隐藏实力",
+		})
+}
+
 // EnsureEzfyOfficerColumns 幂等补 ezfy_officer 的后加列（skip 分支必须调用）。
 //
 // ★★ 2026-10-06 线上事故（玩家反馈「将领没有进自己的城市战俘营」）：

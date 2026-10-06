@@ -1534,6 +1534,8 @@ type EzfyCfgScheme struct {
 	//   1 = 先发制人（使双方立即进入可战争状态 N 分钟）
 	//   2 = 神兵天降（队伍去程/行进中剩余时间减 80%）
 	//   3 = 战略转移（队伍回程减 360 分钟）
+	//   4 = 恫疑虚喝（自己所有城市生效1小时，被侦查时展示随机兵种1亿假兵）
+	//   5 = 隐真示假（自己所有城市生效1小时，被侦查时展示随机兵种1000内假兵力）
 	Kind int `gorm:"default:0;comment:种类" json:"kind"`
 	// WarMinutes Kind=1 时的可战争时长（分钟）；实际还会被军官学识夹一次
 	WarMinutes int `gorm:"default:60;comment:WarMinutes Kind=1 时的可战争时长（分钟）；实际还会被军官学识夹一次" json:"war_minutes"`

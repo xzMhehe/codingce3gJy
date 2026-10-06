@@ -381,8 +381,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// 攻方加成与普通出征完全一致（军官 + 科技 + 技能）
 	atkTech := h.techMap(city.ID)
 	leadOfficer := h.officerByName(city.ID, order.Officer)
+	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（用户要求：弹道学=射程，不参与攻击加成）
 	atkBonus := h.officerBattleBonus(leadOfficer) +
-		atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
+		atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
@@ -390,10 +391,25 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
-		ezfyTechItem("弹道学", atkTech[8]*3),
 		ezfyTechItem("重工技术", atkTech[9]*2),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
+	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def，
+	//   与普通出征同口径；活动守军无装备 → 守方无此段）
+	atkEquip := h.officerBattleEquipBonus(leadOfficer)
+	atkDefBonus := 0
+	var atkDefBreak []ezfyBonusItem
+	if leadOfficer != nil {
+		attr := h.officerGuardAttrBonus(leadOfficer)
+		atkDefBonus += attr
+		atkDefBreak = append(atkDefBreak, ezfyBonusItem{Name: "军官·" + leadOfficer.Name, Value: attr})
+		for _, s := range h.officerGuardSkillsBreak(leadOfficer) {
+			atkDefBonus += s.Value
+			atkDefBreak = append(atkDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+		}
+	}
+	atkDefBonus += atkEquip.Def
+	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备", atkEquip.Def)...)
 
 	// ★★ 指挥室（2026-09-22 ）：活动目标也是战斗，同样先开战场等玩家指挥，
 	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。
@@ -441,7 +457,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		// ★ 2026-10-06 攻方射程加成 = 弹道学(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
 		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkTech[8]*3, 0,
-			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
+			atkEquip, ezfyBattleBonus{},
 			atkOfficerDesc, defOfficerDesc,
 			// 活动守军无城墙/无科技 → 守方攻击加成整体都来自守将；攻方军官加成照常拆解展示
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
@@ -449,6 +465,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerSkillBattleBonus(leadOfficer), generalSkillDefBonus(defGeneral),
 			// ★ 2026-10-06 技能/科技逐项明细：攻方=带队军官技能+科技；守方=守将技能（活动守军无科技 → nil）
 			atkSkillBreak, generalSkillDefBreak(defGeneral), atkTechs, nil, defDefBreak,
+			atkDefBonus, atkDefBreak,
 			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerCounterRounds(leadOfficer),

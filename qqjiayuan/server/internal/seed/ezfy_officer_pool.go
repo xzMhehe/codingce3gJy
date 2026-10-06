@@ -1079,11 +1079,17 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 //	1 = 先发制人（使双方立即进入可战争状态）
 //	2 = 神兵天降（队伍去程/行进中剩余时间减 80%）
 //	3 = 战略转移（队伍回程减 360 分钟）
+//	4 = 恫疑虚喝（自己所有城市生效1小时，被侦查时展示随机兵种1亿假兵）
+//	5 = 隐真示假（自己所有城市生效1小时，被侦查时展示随机兵种1000内假兵力）
 //
 // 计谋常量
 var ezfySchemeSeeds = []model.EzfyCfgScheme{
-	{ID: 1, Name: "恫疑虚喝", Des: "恫疑虚喝", Bullet: 4, SortNo: 1},
-	{ID: 2, Name: "隐真示假", Des: "隐真示假", Bullet: 4, SortNo: 2},
+	{ID: 1, Name: "恫疑虚喝",
+		Des:    "发动后自己所有城市生效1小时（多次发动叠加时长）：被敌人侦查时展示随机兵种1亿兵效果吓唬敌人（实际兵力不变）",
+		Bullet: 4, Kind: 4, SortNo: 1},
+	{ID: 2, Name: "隐真示假",
+		Des:    "发动后自己所有城市生效1小时（多次发动叠加时长）：被敌人侦查时展示随机兵种极少兵力（几乎都在1000内）隐藏实力",
+		Bullet: 4, Kind: 5, SortNo: 2},
 	{ID: 3, Name: "十面埋伏", Des: "十面埋伏", Bullet: 7, SortNo: 3},
 	{ID: 4, Name: "欲擒故纵", Des: "欲擒故纵", Bullet: 7, SortNo: 4},
 	{ID: 5, Name: "偷梁换柱", Des: "偷梁换柱", Bullet: 6, SortNo: 5},

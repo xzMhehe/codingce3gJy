@@ -2463,6 +2463,22 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
+	// ★ 2026-10-07 攻方「防御加成」：出征军官属性(学识)+防御技能(弧形防御/弹幕支援)+装备 Def。
+	//   原引擎攻方被打时防御恒 0 —— 军官带弧形防御 Lv.5「防御力+150%」既不生效也不展示（用户反馈）。
+	//   与守方城守口径完全对称；无军官 → 0/nil → 攻方无防御加成（回退老行为）。
+	atkDefBonus := 0
+	var atkDefBreak []ezfyBonusItem
+	if leadOfficer != nil {
+		attr := h.officerGuardAttrBonus(leadOfficer)
+		atkDefBonus += attr
+		atkDefBreak = append(atkDefBreak, ezfyBonusItem{Name: "军官·" + leadOfficer.Name, Value: attr})
+		for _, s := range h.officerGuardSkillsBreak(leadOfficer) {
+			atkDefBonus += s.Value
+			atkDefBreak = append(atkDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+		}
+	}
+	atkDefBonus += atkEquip.Def
+	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备", atkEquip.Def)...)
 	// 城守(仅玩家城市防守方)
 	var cityGuard *model.EzfyOfficer
 	defEquip := ezfyBattleBonus{}
@@ -2866,6 +2882,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(cityGuard),
 			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」）
 			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak, defDefBreak,
+			// ★ 2026-10-07 攻方「防御加成」（军官属性+防御技能+装备 Def）
+			atkDefBonus, atkDefBreak,
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
@@ -4032,6 +4050,9 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	// 军队/城防分列（★ 2026-10-05 兵种名统一用基础兵种名，与战斗报告口径一致）
 	// ensureProfile 仅为兜底补建目标档案（老数据可能没档案），这里不再取阵营
 	_ = h.ensureProfile(target.UserID)
+	// ★ 2026-10-06 计谋伪装：目标城主人有生效中的「恫疑虚喝/隐真示假」时，
+	//   展示的兵种与数量换成随机假数据（实际兵种数量不变），仅对能看清数量的敌人生效。
+	fake := h.ezfySchemeFake(target)
 	var defTxt, armyTxt, navyTxt, airTxt []string
 	var hasDef, hasArmy, hasNavy, hasAir bool
 	for tid, cnt := range h.troopMap(target.ID) {
@@ -4043,6 +4064,16 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 		name := ezfyCfg.troopName(tid, 0)
 		if name == "" {
 			name = cfg.Name
+		}
+		if fake != 0 {
+			// 随机兵种（同类别内随机）+ 假数量：恫疑虚喝=1亿 / 隐真示假=1000内
+			if ft := ezfySchemeFakeTroop(cfg.Type); ft != nil {
+				name = ft.Name
+				if name == "" {
+					name = ft.NameAxis
+				}
+			}
+			cnt = ezfySchemeFakeCount(fake)
 		}
 		switch cfg.Type {
 		case 1: // 海军

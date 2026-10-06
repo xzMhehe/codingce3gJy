@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -115,8 +116,9 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		return
 	}
 	// ★ 2026-10-02 未实现的计谋一律卡控，提示暂未实现，不允许发动。
-	//   目前已实现：Kind=1 先发制人 / Kind=2 神兵天降 / Kind=3 战略转移。
-	if sc.Kind < 1 || sc.Kind > 3 {
+	//   目前已实现：Kind=1 先发制人 / Kind=2 神兵天降 / Kind=3 战略转移 /
+	//              Kind=4 恫疑虚喝 / Kind=5 隐真示假。
+	if sc.Kind < 1 || sc.Kind > 5 {
 		h.fail(c, "「"+sc.Name+"」暂未实现, 敬请期待")
 		return
 	}
@@ -238,6 +240,26 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		return
 	}
 
+	// ===== Kind 4/5 守城伪装计谋：恫疑虚喝(展示1亿假兵) / 隐真示假(展示1000内假兵) =====
+	// ★ 2026-10-06 发动后自己**所有城市**生效 1 小时（多次发动叠加总时长，复用
+	//   addCityEffect 的「剩余时间累加」逻辑）；仅在被敌人侦查出兵力数量时对敌方生效，
+	//   实际兵种与数量不变。
+	if sc.Kind == 4 || sc.Kind == 5 {
+		effectType := 3 // 恫疑虚喝
+		effectDesc := "被敌人侦查时展示随机兵种1亿兵效果, 实际兵力不变"
+		if sc.Kind == 5 {
+			effectType = 4 // 隐真示假
+			effectDesc = "被敌人侦查时展示随机兵种极少兵力(几乎都在1000内), 隐藏实力"
+		}
+		h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
+		h.ezfySchemeEffectCities(uid, effectType)
+		msg := fmt.Sprintf("已发动计谋「%s」，消耗%s×%d：自己所有城市生效1小时（多次发动叠加时长），%s。",
+			sc.Name, name, need, effectDesc)
+		h.addReport(uid, 6, "计谋发动: "+sc.Name, msg+"\n"+sc.Des, "")
+		h.done(c, "", msg)
+		return
+	}
+
 	// ===== 扣信号弹 =====
 	h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
 
@@ -270,6 +292,71 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	}
 	h.addReport(uid, 6, "计谋发动: "+sc.Name, msg+"\n"+sc.Des, "")
 	h.done(c, "", msg)
+}
+
+// ============ 守城伪装计谋（恫疑虚喝 / 隐真示假） ============
+//
+// ★ 2026-10-06 效果存 ezfy_city_effect：effect_type 3 = 恫疑虚喝（展示 1亿 假兵），
+//   4 = 隐真示假（展示 1000 内假兵）。发动后对玩家**所有城市**写入效果行，
+//   每次发动 +1 小时（addCityEffect 把剩余时间与新时长累加 → 多次发动叠加总时长）。
+
+// ezfySchemeEffectCities 把计谋伪装效果写到玩家名下所有城市（各 +1 小时，时长叠加）。
+func (h *EzfyHandler) ezfySchemeEffectCities(uid uint, effectType int) {
+	var cities []model.EzfyCity
+	h.DB.Select("id").Where("user_id = ?", uid).Find(&cities)
+	for _, ct := range cities {
+		h.addCityEffect(ct.ID, effectType, 1, 1)
+	}
+}
+
+// ezfySchemeFake 侦查目标城市主人是否有生效中的计谋伪装效果，返回：
+//   3 = 恫疑虚喝（展示 1亿 假兵）/ 4 = 隐真示假（展示 1000 内假兵）/ 0 = 无效果。
+// 计谋是「自己所有城市都生效」，这里按**主人维度** JOIN 查询：发动后才新建的城市
+// 没有效果行，但主人其它城有 → 同样命中（与 hasAnyPeaceEffect 同一思路）。
+// 两个效果同时生效时，隐真示假（隐藏实力）优先。
+func (h *EzfyHandler) ezfySchemeFake(target *model.EzfyCity) int {
+	if target == nil {
+		return 0
+	}
+	var typ []int
+	h.DB.Raw(
+		"SELECT e.effect_type FROM ezfy_city_effect e JOIN ezfy_city c ON c.id = e.city_id "+
+			"WHERE c.user_id = ? AND e.effect_type IN (3, 4) AND e.until_time > ? "+
+			"GROUP BY e.effect_type", target.UserID, time.Now().UnixMilli()).Scan(&typ)
+	if len(typ) == 0 {
+		return 0
+	}
+	for _, t := range typ {
+		if t == 4 {
+			return 4 // 隐真示假优先
+		}
+	}
+	return 3
+}
+
+// ezfySchemeFakeTroop 计谋伪装用随机兵种（同类别内随机一个，用于「随机兵种」展示）。
+func ezfySchemeFakeTroop(troopType int) *model.EzfyCfgTroop {
+	var pool []model.EzfyCfgTroop
+	for _, t := range ezfyCfg.sortedTroops() {
+		if t.Type == troopType {
+			pool = append(pool, t)
+		}
+	}
+	if len(pool) == 0 {
+		return nil
+	}
+	t := pool[rand.Intn(len(pool))]
+	return &t
+}
+
+// ezfySchemeFakeCount 计谋伪装假数量：
+//   fakeKind 3（恫疑虚喝）→ 固定 1亿（100000000）吓唬敌人；
+//   fakeKind 4（隐真示假）→ 1000 内随机小数量，隐藏实力。
+func ezfySchemeFakeCount(fakeKind int) int64 {
+	if fakeKind == 3 {
+		return 100000000
+	}
+	return int64(rand.Intn(999) + 1)
 }
 
 // ============ 管理端：计谋配置 CRUD ============

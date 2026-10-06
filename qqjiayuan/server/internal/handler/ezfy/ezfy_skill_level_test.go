@@ -247,17 +247,42 @@ func TestDefBonusTxt(t *testing.T) {
 	}
 }
 
-// TestDefBonusInjected 被打行注入「防御加成」段：攻击/溢出/反击行都取明细渲染，
-// 反击行方向相反（守方在打、攻方绝地反击还击 → 被还击方是守方 → 用 !isAtk 判断）。
+// TestDefBonusInjected 被打行注入「防御加成」段（双向）：
+//
+//	· 攻方打守方 → 展示守方防御加成(defBonusTxt)
+//	· 守方打攻方（含守方绝地反击还击）→ 展示攻方防御加成(atkDefBonusTxt)
+//
+// 2026-10-07 起攻方军官防御技能(弧形防御/弹幕支援)+装备 Def 生效：unitDefBonus 不再恒 0。
 func TestDefBonusInjected(t *testing.T) {
 	src := rawFile(t, "ezfy_battle.go")
 	for _, want := range []string{
 		"defBonusTxt := ezfyDefBonusTxt(st.DefDefBreak)",
-		"if isAtk && defBonusTxt != \"\"",  // 攻击行/溢出行：攻方打守方 → 展示守方防御
-		"if !isAtk && defBonusTxt != \"\"", // 反击行：攻方还击守方 → 展示守方防御
+		"atkDefBonusTxt := ezfyDefBonusTxt(st.AtkDefBreak)",
+		"unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def",    // 守方打攻方 → 攻方防御减伤
+		"unitDefBonus = defBonus + st.DefEquip.Def",          // 攻方打守方 → 守方防御(含装备)减伤
+		"}" + "\n" + `					} else if atkDefBonusTxt != "" {`, // 守方打攻方行展示攻方防御
+		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {
-			t.Fatalf("ezfy_battle.go 缺防御加成注入逻辑：%s", want)
+			t.Fatalf("ezfy_battle.go 缺防御加成逻辑：%s", want)
+		}
+	}
+	// 反击行双向：「攻方在打 → 展示攻方防御」「守方在打 → 展示守方防御」
+	if !strings.Contains(src, "if isAtk {\n\t\t\t\t\tif atkDefBonusTxt != \"\"") ||
+		!strings.Contains(src, "} else if defBonusTxt != \"\" {\n\t\t\t\t\tline += \", \" + defBonusTxt") {
+		t.Fatal("ezfy_battle.go 反击行防御段注入不完整")
+	}
+}
+
+// TestAtkDefBonusWired 出征军官的防御加成已接入战斗引擎（order.go 与 activity_target.go 都构造并传参）。
+func TestAtkDefBonusWired(t *testing.T) {
+	for _, f := range []string{"ezfy_order.go", "ezfy_activity_target.go"} {
+		src := rawFile(t, f)
+		if !strings.Contains(src, "atkDefBonus += attr") || !strings.Contains(src, "atkDefBonus += atkEquip.Def") {
+			t.Fatalf("%s 缺攻方防御加成构造（属性+装备）：%s", f, src)
+		}
+		if !strings.Contains(src, "atkDefBonus, atkDefBreak,") {
+			t.Fatalf("%s 缺攻方防御传参（atkDefBonus, atkDefBreak）", f)
 		}
 	}
 }

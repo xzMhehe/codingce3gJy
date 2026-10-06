@@ -42,6 +42,9 @@ func main() {
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)
 	}
+	// ★ 2026-10-06 计谋「恫疑虚喝/隐真示假」kind 幂等补配：存量库已有计谋行且 kind=0，
+	//   会卡「暂未实现」；全量 seed（seedEzfySchemes 表非空即跳过）与 skip 分支都要跑。
+	seed.EnsureEzfySchemeKinds(db)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := router.Setup(db, cfg)
