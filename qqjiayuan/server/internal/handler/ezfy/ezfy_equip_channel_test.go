@@ -80,22 +80,22 @@ func TestBattleLootExcludesSetPieces(t *testing.T) {
 //
 // ★ 2026-09-22 用户定稿：「散件也上吧，价格按加成 10 钻石到 50 钻石不等」
 // —— 六大系列的单件（可单穿）与纯散件都能买；
-// 但**第一批套装**（set_id 1~17、Series 为空）仍然只能开宝箱，
-// 否则「套装装备只能通过宝箱开启」这条规则就形同虚设。
+// ★ 2026-10-06 用户定稿：套装装备**全部下架**（set_id > 0 一律不售，含系列套装），
+// 套装件只能开宝箱，「套装装备只能通过宝箱开启」这条规则对所有套装生效。
 //
 // 列表侧与购买侧都要拦（防前端被绕过直接 POST cfg_id）。
 func TestEquipShopOnlySellsLoosePieces(t *testing.T) {
 	list := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) equipShopList(")
-	if !strings.Contains(list, `e.SetId > 0 && e.Series == ""`) {
-		t.Fatalf("equipShopList 未拦住第一批套装件（只该卖散件）：\n%s", list)
+	if !strings.Contains(list, `e.SetId > 0`) {
+		t.Fatalf("equipShopList 未拦住套装件（set_id > 0 全部下架）：\n%s", list)
 	}
 	if !strings.Contains(list, `"slot"`) {
 		t.Fatalf("equipShopList 应按**部位**分组下发：\n%s", list)
 	}
 
 	buy := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) EquipShopBuy(")
-	if !strings.Contains(buy, `cfg.SetId > 0 && cfg.Series == ""`) {
-		t.Fatalf("EquipShopBuy 未拦截第一批套装件购买：\n%s", buy)
+	if !strings.Contains(buy, `cfg.SetId > 0`) {
+		t.Fatalf("EquipShopBuy 未拦截套装件购买：\n%s", buy)
 	}
 }
 

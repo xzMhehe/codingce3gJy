@@ -3946,9 +3946,9 @@ func ezfyEquipIDsAsc() []int {
 //   - 「商城前端做好看点」→ 按 11 个部位分组，前端直接铺成表格。
 //
 // 上架范围 = **散件**（有系列名的单件 或 不属于任何套装的纯散件）。
-// ★ 第一批套装（set_id 1~17，Series 为空）仍**不上架** —— 它们只能开宝箱，
+// ★ 2026-10-06 套装装备**全部下架**（set_id > 0 一律不上架，含系列套装）——
 //
-//	否则「套装装备只能通过宝箱开启」这条规则就形同虚设。
+//	只能开宝箱，商城不再出售任何套装件。
 func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 	slots := []string{}
 	bySlot := map[string][]gin.H{}
@@ -3964,8 +3964,8 @@ func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 		if e.Type != "军官装备" {
 			continue
 		}
-		if e.SetId > 0 && e.Series == "" {
-			continue // 第一批套装：只能开宝箱
+		if e.SetId > 0 {
+			continue // ★ 2026-10-06 套装件全部下架（含系列套装），只能开宝箱
 		}
 		slot := e.EquipSlot()
 		if _, ok := bySlot[slot]; !ok {
@@ -4055,10 +4055,10 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 		h.fail(c, "装备不存在")
 		return
 	}
-	// ★ 商城只卖**散件**：系列单件（Series != ""，可单穿）与纯散件（SetId == 0）都能买；
-	//   第一批套装（set_id 1~17、Series 为空）只能开宝箱 —— 这里拦住被绕过前端直接传 cfg_id。
-	if cfg.SetId > 0 && cfg.Series == "" {
-		h.fail(c, "该套装装备只能通过宝箱开启，商城不出售")
+	// ★ 2026-10-06 套装装备全部下架（set_id > 0 含系列套装），只能通过宝箱获取，
+	//   这里拦住绕过前端直接传 cfg_id 的购买请求。
+	if cfg.SetId > 0 {
+		h.fail(c, "该套装装备已下架，请通过宝箱获取")
 		return
 	}
 	useDiamond := req.Currency == "diamond"
