@@ -3208,7 +3208,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 
 		// 征服玩家城市
-		if order.OrderType == 3 && order.TargetType == 3 && target != nil {
+	// ★ 2026-10-06 是否**新建成**占领记录（城池没了 → 全城军官都掉忠诚）；
+	//   声明在征服块外，结束区（掠夺/征服共用的军官忠诚结算）也要读它
+	newOccupy := false
+	if order.OrderType == 3 && order.TargetType == 3 && target != nil {
 			surv := int64(0)
 			for _, g := range left {
 				surv += g.Count
@@ -3241,6 +3244,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				// ★ 2026-09-25：战利品入账改为 DB 原子累加 + 资源最大值（同下）
 				h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
 				report += h.battleStatsTail(uid, 0, recyclePct)
+				// ★ 2026-10-06 单次征服攻打（城没占下来，城池还在）→ 只扣城守忠诚
+				if frag := h.defectDefenderOfficers(city, target, uid, false); frag != "" {
+					report += frag
+				}
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -3255,6 +3262,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				order.Status = 2
 				order.ReturnTime = now + travel
 				report += h.battleStatsTail(uid, 0, recyclePct)
+				// ★ 2026-10-06 免战拦截但战斗已打（城池仍在）→ 只扣城守忠诚
+				if frag := h.defectDefenderOfficers(city, target, uid, false); frag != "" {
+					report += frag
+				}
 				h.addReport(uid, 3, "征服报告: "+targetName, report, detail, order.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -3296,6 +3307,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// 补给标记：占掉这座后守方自由城清零 → 解锁后补一座新城
 			needReplenish := false
 			lastCity := false
+			// ★ 2026-10-06 本场是否**新建成**占领记录（城池没了 → 全城军官都掉忠诚）。
+			//   newOccupy 声明在征服块外（见上），此处只赋值，避免遮蔽外层变量。
 			switch {
 			case dupOccupy > 0:
 				// 这座城已被先到的队伍占走，本次不能重复占
@@ -3306,6 +3319,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					AtkUserId: uid, AtkCityId: int64(city.ID), DefUserId: target.UserID,
 					X: target.X, Y: target.Y, Status: 1}
 				h.DB.Create(&occ)
+				newOccupy = true
 				report += "\n占领成功! 城市已归入你的附属, 可在[附属野地]中摧毁/归还"
 				// ★ 2026-10-02 盟军驻军：城市被占领 → 该城盟军驻军全部失效（残余一并清除），
 				//   并给各驻军方发战报（report_type=4 PvP → 军团战报可见）
@@ -3378,9 +3392,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// 攻打玩家城市: 目标城军官忠诚下降, 归零者弃城成为我方战俘
 		// (复刻用户说明的 PvP 战俘来源: 把对方军官忠诚打成 0)
-		if (order.OrderType == 2 || order.OrderType == 3) && order.TargetType == 3 && target != nil {
-			if frag := h.defectDefenderOfficers(city, target, uid); frag != "" {
-				report += frag
+		// ★ 2026-10-06 用户规则修正：
+		//   掠夺成功(城还在)          → 只扣城守忠诚
+		//   征服成功且**新建占领记录**（城池没了）→ 全城军官都扣忠诚，归零者成俘
+		//   重复攻打已被人占走的城（lastCity）→ 该城军官在首次被占时已处理过，不再重复扣
+		if order.TargetType == 3 && target != nil {
+			if order.OrderType == 2 {
+				if frag := h.defectDefenderOfficers(city, target, uid, false); frag != "" {
+					report += frag
+				}
+			} else if order.OrderType == 3 && newOccupy {
+				if frag := h.defectDefenderOfficers(city, target, uid, true); frag != "" {
+					report += frag
+				}
 			}
 		}
 		// 军功声望

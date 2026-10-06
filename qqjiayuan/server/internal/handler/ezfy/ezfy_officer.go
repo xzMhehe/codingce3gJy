@@ -2216,12 +2216,28 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 // defectDefenderOfficers 攻打玩家城市后, 目标城军官忠诚下降;
 // 忠诚归零的军官会弃城投敌, 成为攻方的战俘(复刻用户描述的 PvP 战俘来源)。
 //
+// ★ 2026-10-06 用户规则修正（原来是不分场景地对全城军官循环扣忠诚）：
+//   - conquered=false（单次掠夺 / 征服失败，城池还在）：只有**城守**（守城指挥官）掉忠诚。
+//     其它军官没参战、忠诚不变，也不会被俘走。
+//   - conquered=true（城池被占领，民心清零建立占领记录）：城内**所有军官**都掉忠诚，
+//     归零者弃城归降成俘。这符合「城池没了，城内军官才全部受影响」。
+//
 // 返回写进攻方战报的文本片段。
-func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *model.EzfyCity, atkUid uint) string {
+func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *model.EzfyCity, atkUid uint, conquered bool) string {
 	if target == nil {
 		return ""
 	}
-	officers := h.officerList(target.ID)
+	// conquered=false 时只扣城守（守城指挥官）：没任命城守 / 城守出征中 / 城守已是俘虏 → 无人可扣
+	var officers []model.EzfyOfficer
+	if conquered {
+		officers = h.officerList(target.ID)
+	} else {
+		guard := h.positionOfficer(target.ID, ezfyPositionGuard)
+		if guard == nil || guard.Status == 1 || guard.IsCaptive == 1 {
+			return ""
+		}
+		officers = []model.EzfyOfficer{*guard}
+	}
 	if len(officers) == 0 {
 		return ""
 	}
