@@ -34,6 +34,10 @@ func main() {
 		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，
 		//   skip 分支不补 → 所有军官 INSERT 报 1054、战俘/招募全部静默失败。
 		seed.EnsureEzfyOfficerColumns(db)
+		// ★★ 2026-10-06 线上事故：ezfy_battle.atk_lock/def_lock（指挥室锁定列）同样只靠
+		//   AutoMigrate 建列，skip 分支不补 → 新二进制开战场 INSERT 报 Unknown column、
+		//   指挥室全失效（战斗秒出结果）。必须在这里幂等补列。
+		seed.EnsureEzfyBattleLockColumns(db)
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)

@@ -2908,16 +2908,16 @@ func (h *EzfyHandler) ezfyNoticeHomeCount() int {
 
 // ezfyReportCategory 战报归类（复刻 report/index.html 的三个分区）
 //
-//	1 军情警讯 —— 别人打我 / 我的地盘出事(雷达预警、被侦查、守卫、叛离、被归还、野地丢失)
+//	1 军情警讯 —— 预警类：雷达来袭预警、被侦查、守卫成功、叛离、被归还、野地丢失
 //	2 战斗报告 —— 我打别人(侦查 / 掠夺 / 征服) + 被掠夺 / 被征服(原城破)
 //	3 其他     —— 后勤与系统(采集、运输、增援、派遣、建城、交易、将领变动)
-// ★ 2026-10-06 用户调整:「被掠夺报告」「被征服报告」从军情警讯归到战斗报告 ——
-//   军情警讯只留布防相关(雷达/被侦查/守卫/叛离)。
+// ★ 2026-10-06 用户调整:「被掠夺报告」「被征服报告」从军情警讯归到战斗报告；
+//   「守卫报告」(守方成功抵挡) 也一并归战斗报告并按进攻意图转「被掠夺/被征服报告」，
+//   军情警讯只留预警类（雷达/被侦查）。
 func ezfyReportCategory(title string) int {
 	switch {
 	case strings.HasPrefix(title, "军情警报"),
 		strings.HasPrefix(title, "被侦查报告"), // 雷达站≥1 才收得到
-		strings.HasPrefix(title, "守卫报告"),
 		strings.HasPrefix(title, "城市归还"),
 		strings.HasPrefix(title, "将领叛离"), // 被攻打后忠诚归零叛离, 属于军情警讯
 		strings.Contains(title, "野地丢失"):
@@ -2955,8 +2955,6 @@ func ezfyReportTypeName(reportType int, title string) string {
 		return "征服"
 	case strings.HasPrefix(title, "被侦查报告"):
 		return "被侦查"
-	case strings.HasPrefix(title, "守卫报告"):
-		return "防守报告"
 	case strings.HasPrefix(title, "军情警报"):
 		return "预警"
 	case strings.HasPrefix(title, "侦查报告"):
@@ -3081,7 +3079,7 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 	}
 	row := h.DB.Raw(`SELECT
 		COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
-			OR title LIKE '守卫报告%' OR title LIKE '城市归还%'
+			OR title LIKE '城市归还%'
 			OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
 		COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
 			OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'

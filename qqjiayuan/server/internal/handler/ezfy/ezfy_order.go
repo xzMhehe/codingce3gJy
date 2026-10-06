@@ -3529,8 +3529,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 		if order.TargetType == 3 && target != nil {
-			// ★ 2026-09-24 军情列表展示 [防守报告] 城市名(坐标)，标题需携带守方城名+坐标
-			h.addReport(target.UserID, 4, "守卫报告: "+targetName+
+			// ★ 2026-10-06 守方成功守住也按进攻意图归「战斗报告」：
+			//   掠夺→被掠夺报告 / 征服→被征服报告，军情警讯不再出现防守报告（只留预警）。
+			defTitle, defType := "被掠夺报告", 2
+			if order.OrderType == 3 {
+				defTitle, defType = "被征服报告", 4
+			}
+			h.addReport(target.UserID, defType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses)), detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)

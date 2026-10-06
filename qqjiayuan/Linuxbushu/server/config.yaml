@@ -2,8 +2,8 @@
 # 本包假定整个文件夹放在 /opt/qqjiayuan ,否则同步修改下面两个 web_dir(必须是绝对路径)
 server:
   port: 8080
-  web_dir: "/opt/qqjiayuan/web/dist"
-  admin_web_dir: "/opt/qqjiayuan/admin-web/dist"
+  web_dir: "/opt/Linuxbushu/web/dist"
+  admin_web_dir: "/opt/Linuxbushu/admin-web/dist"
 
 mysql:
   host: 127.0.0.1

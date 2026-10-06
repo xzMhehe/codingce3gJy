@@ -2903,6 +2903,34 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyBattleLockColumns 幂等补 ezfy_battle 的「指挥室本回合锁定」列（skip 分支必须调用）。
+//
+// ★★ 2026-10-06 线上事故（用户反馈「玩家和玩家打架没指挥室、战斗秒出结果」）：
+//
+//	`atk_lock / def_lock`（2026-10-06 指挥室「本回合配置锁定」新增）**只靠 AutoMigrate 建列**；
+//	而多机共享库走 `seed.skip: true` 会跳过整个 AutoMigrate → 表上永远缺这两列。
+//	但新二进制里 ezfyBattleStart 的 INSERT 已带 atk_lock/def_lock 字段 → 每场战斗开战场
+//	都报 `ERROR 1054 Unknown column 'atk_lock'` → ezfyBattleStart 返回 nil → processArrive
+//	兜底走离线模拟 → 战报秒出、战场行没有任何新增（12:00 换新二进制后线上停在全场秒结）。
+//	与 EnsureEzfyLimitColumns 同理：新增字段时**要么改这里，要么记得全量 seed 跑一次**。
+func EnsureEzfyBattleLockColumns(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_battle") {
+		return
+	}
+	if !db.Migrator().HasColumn("ezfy_battle", "atk_lock") {
+		if err := db.Exec("ALTER TABLE ezfy_battle ADD COLUMN atk_lock int NOT NULL DEFAULT 0 COMMENT '攻方本回合是否已锁定配置 0/1'").Error; err != nil {
+			log.Printf("【严重】ezfy_battle.atk_lock 补列失败（所有战斗开不了指挥室、直接离线模拟）: %v", err)
+		}
+	}
+	if !db.Migrator().HasColumn("ezfy_battle", "def_lock") {
+		if err := db.Exec("ALTER TABLE ezfy_battle ADD COLUMN def_lock int NOT NULL DEFAULT 0 COMMENT '守方本回合是否已锁定配置 0/1'").Error; err != nil {
+			log.Printf("【严重】ezfy_battle.def_lock 补列失败（所有战斗开不了指挥室、直接离线模拟）: %v", err)
+		}
+	}
+	db.Exec("UPDATE ezfy_battle SET atk_lock = 0 WHERE atk_lock IS NULL")
+	db.Exec("UPDATE ezfy_battle SET def_lock = 0 WHERE def_lock IS NULL")
+}
+
 // EnsureEzfyOfficerColumns 幂等补 ezfy_officer 的后加列（skip 分支必须调用）。
 //
 // ★★ 2026-10-06 线上事故（玩家反馈「将领没有进自己的城市战俘营」）：
