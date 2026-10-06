@@ -2441,8 +2441,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 带队军官(军事属性 + 装备 + 技能)与科技加成
 	leadOfficer := h.officerByName(city.ID, order.Officer)
 	officerBonus := h.officerBattleBonus(leadOfficer)
-	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 弹道学(8)+3%/级 · 重工技术(9)+2%/级
-	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
+	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 重工技术(9)+2%/级
+	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（用户要求：弹道学=射程，不参与攻击加成）
+	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
 	// 速度加成：燃烧引擎(10)+2%/级 · 喷气引擎(19)+3%/级
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
 	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，用户要求）
@@ -2457,7 +2458,6 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
-		ezfyTechItem("弹道学", atkTech[8]*3),
 		ezfyTechItem("重工技术", atkTech[9]*2),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
@@ -2482,6 +2482,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 守方拆解逐项明细（城守技能/守方科技；野地无科技 → nil，case 3 里填）
 	var defSkillBreak []ezfyBonusItem
 	var defTechBreak []ezfyBonusItem
+	// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/军官属性/军官技能/装备，Name 带前缀；被攻击行展示用）
+	var defDefBreak []ezfyBonusItem
 	defRangeBonus := 0
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
@@ -2537,9 +2539,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if defGeneral != nil {
 				guardAttr := ezfyAttrToBonus(defGeneral.Learning)
 				defBonus += guardAttr
+				// ★ 2026-10-06 守将防御类技能（弧形防御/弹幕支援）也计入守军防御加成
+				//   （与活动守军 ezfyActWildDefBonus 同口径；原来野地守将只有属性加成，
+				//   带防御技能的守将加成完全看不出来 → 明细也不会拆出「军官技能·」段）
+				defBonus += generalSkillDefBonus(defGeneral)
 				// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
 				defAtkBonus += guardAttr
 				defOfficerAtkBonus = guardAttr
+				// ★ 2026-10-06 守方「防御加成」逐项明细（被打时展示：属性+技能，与 defBonus 构成同口径）
+				defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + defGeneral.Name, Value: guardAttr})
+				for _, s := range generalSkillDefBreak(defGeneral) {
+					defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+				}
 				defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
 			}
 		}
@@ -2627,6 +2638,21 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		)
 		defRangeBonus = defTech[8]*3 + defTech[16]*2
 		defEquip = h.officerBattleEquipBonus(cityGuard)
+		// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/城守属性+技能/装备，
+		//   被打行展示「防御加成+N%(城墙+50% 科技·装甲科技+30% …)」，与 defBonus 构成同口径）
+		defDefBreak = ezfyBonusItems(
+			ezfyTechItem("城墙", h.buildingLevel(target.ID, 7)*5),
+			ezfyTechItem("科技·装甲科技", defTech[7]*3),
+			ezfyTechItem("科技·掩体防御", defTech[16]*2),
+			ezfyTechItem("科技·重工技术", defTech[9]*2),
+		)
+		if cityGuard != nil {
+			defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + cityGuard.Name, Value: h.officerGuardAttrBonus(cityGuard)})
+			for _, s := range h.officerGuardSkillsBreak(cityGuard) {
+				defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+			}
+		}
+		defDefBreak = append(defDefBreak, ezfyTechItem("装备", defEquip.Def)...)
 		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
 		//   否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
 		defOfficerDesc = h.officerBattleDesc(cityGuard, h.officerGuardAttrBonus(cityGuard), "守军防御")
@@ -2839,7 +2865,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(cityGuard),
 			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」）
-			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak,
+			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak, defDefBreak,
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,

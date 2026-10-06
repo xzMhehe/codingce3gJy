@@ -122,6 +122,10 @@ type ezfyBattleState struct {
 	DefSkillBreak []ezfyBonusItem
 	AtkTechBreak  []ezfyBonusItem
 	DefTechBreak  []ezfyBonusItem
+	// ★ 2026-10-06 守方「防御加成」**逐项**明细：城墙 / 科技 / 军官属性 / 军官技能 / 装备，
+	//   被攻击时在攻击行展示「防御加成+N%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)」。
+	//   Name 直接带前缀；老快照为 nil → 不展示防御段。攻方没有防御加成，不需要攻方版。
+	DefDefBreak   []ezfyBonusItem
 	AtkSpeedBonus int
 	DefSpeedBonus int
 	// ★ 2026-10-06 射程加成%（用户要求：射程 = 兵种基础射程 × (1 + 科技加成)）
@@ -182,6 +186,7 @@ type ezfyBattleState struct {
 //
 // atkSkills/defSkills: 技能**逐项**明细（战报展示「军官技能·尖兵突击+N%」；nil → 回退合并展示）
 // atkTechs/defTechs: 攻击加成里科技**逐项**明细（战报展示「科技·弹道学+N%」；nil → 回退合并展示）
+// defDefBreak: 守方「防御加成」逐项明细（Name 带前缀：城墙/科技·/军官·/军官技能·/装备；nil → 不展示防御段）
 // atkTargets/defTargets: 兵种ID->优先攻击兵种ID(0=最近, 司令部配置)
 // atkMoves/defMoves: 兵种ID->1前进 0停止（玩家不下指令时的默认行为）
 // atkCounterRounds/defCounterRounds: 绝地反击生效回合数（0=没学；1/2/3 = 前N回合）
@@ -192,7 +197,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkOfficerDesc, defOfficerDesc string,
 	atkOfficerBonus, defOfficerBonus int,
 	atkOfficerSkill, defOfficerSkill int,
-	atkSkills, defSkills, atkTechs, defTechs []ezfyBonusItem,
+	atkSkills, defSkills, atkTechs, defTechs, defDefBreak []ezfyBonusItem,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
 	atkCounterRounds, defCounterRounds int, atkCamp, defCamp int) *ezfyBattleState {
@@ -204,6 +209,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkOfficerSkill: atkOfficerSkill, DefOfficerSkill: defOfficerSkill,
 		AtkSkillBreak: atkSkills, DefSkillBreak: defSkills,
 		AtkTechBreak: atkTechs, DefTechBreak: defTechs,
+		DefDefBreak:   defDefBreak,
 		AtkSpeedBonus: atkSpeedBonus, DefSpeedBonus: defSpeedBonus,
 		AtkRangeBonus: atkRangeBonus, DefRangeBonus: defRangeBonus,
 		AtkEquip: atkEquip, DefEquip: defEquip,
@@ -231,8 +237,17 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	effDefSpeed := defSpeedBonus + defEquip.Move
 	// ★ 2026-10-06 守方攻击加成单独列出：城防/守城部队行动时也吃科技+军官技能加成，
 	//   攻守双方的「加成伤害」都能在开场加成行里一眼看出来
-	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 速度+%d%% | 守方 攻击+%d%% 防御+%d%% 速度+%d%%",
-		effAtk, effAtkSpeed, st.DefAtkBonus, effDef, effDefSpeed))
+	// ★ 2026-10-06 射程加成也显示在加成行（用户要求「回合射程加成也要体现出来」，
+	//   弹道学=射程）；为 0 时不显示，老战报格式不变
+	atkRangeTxt, defRangeTxt := "", ""
+	if atkRangeBonus > 0 {
+		atkRangeTxt = fmt.Sprintf(" 射程+%d%%", atkRangeBonus)
+	}
+	if defRangeBonus > 0 {
+		defRangeTxt = fmt.Sprintf(" 射程+%d%%", defRangeBonus)
+	}
+	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 速度+%d%%%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s",
+		effAtk, effAtkSpeed, atkRangeTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt))
 	if atkEquip != (ezfyBattleBonus{}) {
 		st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
 	}
@@ -329,6 +344,24 @@ func ezfyBonusItems(groups ...[]ezfyBonusItem) []ezfyBonusItem {
 	return out
 }
 
+// ezfyDefBonusTxt 守方「防御加成」来源明细 → 「防御加成+N%(城墙+50% 科技·装甲科技+30% …)」。
+// Name 已带前缀（城墙/科技·/军官·/军官技能·/装备）。全零/无明细 → 返回空串（不展示防御段）。
+func ezfyDefBonusTxt(items []ezfyBonusItem) string {
+	total := 0
+	parts := []string{}
+	for _, it := range items {
+		if it.Value == 0 {
+			continue
+		}
+		total += it.Value
+		parts = append(parts, fmt.Sprintf("%s+%d%%", it.Name, it.Value))
+	}
+	if total == 0 || len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("防御加成+%d%%(%s)", total, strings.Join(parts, " "))
+}
+
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。
 // ★ 2026-10-06 支持**逐项展开**：给了 skills/techs 明细就走逐项展示
 //
@@ -418,6 +451,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		ezfyOfficerShortName(st.AtkOfficerDesc), st.AtkSkillBreak, st.AtkTechBreak)
 	defBonusBreak := ezfyBonusBreakdown(st.DefOfficerBonus, st.DefOfficerSkill, st.DefAtkBonus, 0,
 		ezfyOfficerShortName(st.DefOfficerDesc), st.DefSkillBreak, st.DefTechBreak)
+	// ★ 2026-10-06 守方「防御加成」来源拆解：城防爪到谁被打就展示在谁的行动行
+	//   （城墙+科技+城守属性+城守技能+装备 → 伤害变少的来源）。攻方没有防御加成 → 只在守方被攻击的行上展示；
+	//   老快照无明细 → 不展示防御段。
+	defBonusTxt := ezfyDefBonusTxt(st.DefDefBreak)
 
 	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
 	all := append(append([]*ezfyFightUnit{}, st.Attackers...), st.Defenders...)
@@ -698,13 +735,22 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					// ★ 2026-10-06 攻击行写明「攻击加成+N%」与来源拆解(军官·名+/科技+/装备+)
 					//   「造成D伤害」改为**本目标实际承受的伤害**（消灭数×有效生命），
 					//   与下方【势不可挡】各行的伤害加总=这次攻击的总伤害，方便玩家核算。
-					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%%s, 造成%d伤害, 消灭%d个",
-						side, stName(unit), critTxt, enemySide, stName(cur), unitAtkBonus, bonusBreak,
-						killed*int64(chp), killed))
+					// ★ 2026-10-06 守方被攻击时追加「防御加成+N%(来源)」—— 让玩家看出伤害为啥少打了。
+					line := fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%%s",
+						side, stName(unit), critTxt, enemySide, stName(cur), unitAtkBonus, bonusBreak)
+					if isAtk && defBonusTxt != "" {
+						line += ", " + defBonusTxt
+					}
+					line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", killed*int64(chp), killed)
+					st.Actions = append(st.Actions, line)
 				} else {
-					st.Actions = append(st.Actions, fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 攻击加成+%d%%%s, 造成%d伤害, 消灭%d个",
-						side, stName(unit), enemySide, stName(cur), unitAtkBonus, bonusBreak,
-						killed*int64(chp), killed))
+					line := fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 攻击加成+%d%%%s",
+						side, stName(unit), enemySide, stName(cur), unitAtkBonus, bonusBreak)
+					if isAtk && defBonusTxt != "" {
+						line += ", " + defBonusTxt
+					}
+					line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", killed*int64(chp), killed)
+					st.Actions = append(st.Actions, line)
 				}
 				remaining = overflow
 				first = false
@@ -743,8 +789,16 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if !isAtk {
 					counterBreak = atkBonusBreak
 				}
-				st.Actions = append(st.Actions, fmt.Sprintf("【%s】%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%%s, 造成%d伤害, 消灭%d个",
-					enemySide, stName(target), side, stName(unit), cbAtk, counterBreak, dmg, kCnt))
+				line := fmt.Sprintf("【%s】%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%%s",
+					enemySide, stName(target), side, stName(unit), cbAtk, counterBreak)
+				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
+				//   是守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成；
+				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 攻方无防御加成，不展示。
+				if !isAtk && defBonusTxt != "" {
+					line += ", " + defBonusTxt
+				}
+				line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", dmg, kCnt)
+				st.Actions = append(st.Actions, line)
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {
@@ -813,7 +867,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
 		0, 0, // 技能拆解：simulate 包装无军官技能拆分，攻方/守方技能算在 officerBonus 内（回退合并展示）
-		nil, nil, nil, nil, // 技能/科技逐项明细：simulate 无军官/无科技上下文（回退合并展示）
+		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulate 无军官/无科技上下文（回退展示）
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
@@ -841,7 +895,7 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
 		0, 0, // 技能拆解：驻军战守方无军官；攻方技能算在 officerBonus 内（回退合并展示）
-		nil, nil, nil, nil, // 技能/科技逐项明细：simulateBreak 无军官/无科技上下文（回退合并展示）
+		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulateBreak 无军官/无科技上下文（回退展示）
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	if defBreakPct > 0 {
 		for _, d := range defenderUnits {
@@ -913,6 +967,8 @@ type ezfyBattleSnapshot struct {
 	DefSkillBreak []ezfyBonusItem `json:"def_skill_break,omitempty"`
 	AtkTechBreak  []ezfyBonusItem `json:"atk_tech_break,omitempty"`
 	DefTechBreak  []ezfyBonusItem `json:"def_tech_break,omitempty"`
+	// ★ 2026-10-06 守方「防御加成」逐项明细（老快照没有 → nil → 不展示防御段）
+	DefDefBreak []ezfyBonusItem `json:"def_def_break,omitempty"`
 
 	AtkCounter bool `json:"atk_counter"`
 	DefCounter bool `json:"def_counter"`
@@ -963,6 +1019,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkOfficerSkill: st.AtkOfficerSkill, DefOfficerSkill: st.DefOfficerSkill,
 		AtkSkillBreak: st.AtkSkillBreak, DefSkillBreak: st.DefSkillBreak,
 		AtkTechBreak: st.AtkTechBreak, DefTechBreak: st.DefTechBreak,
+		DefDefBreak:   st.DefDefBreak,
 		AtkSpeedBonus: st.AtkSpeedBonus, DefSpeedBonus: st.DefSpeedBonus,
 		AtkRangeBonus: st.AtkRangeBonus, DefRangeBonus: st.DefRangeBonus,
 		AtkEquip: st.AtkEquip, DefEquip: st.DefEquip,
@@ -995,6 +1052,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkOfficerSkill: snap.AtkOfficerSkill, DefOfficerSkill: snap.DefOfficerSkill,
 		AtkSkillBreak: snap.AtkSkillBreak, DefSkillBreak: snap.DefSkillBreak,
 		AtkTechBreak: snap.AtkTechBreak, DefTechBreak: snap.DefTechBreak,
+		DefDefBreak:   snap.DefDefBreak,
 		AtkSpeedBonus: snap.AtkSpeedBonus, DefSpeedBonus: snap.DefSpeedBonus,
 		AtkRangeBonus: snap.AtkRangeBonus, DefRangeBonus: snap.DefRangeBonus,
 		AtkEquip: snap.AtkEquip, DefEquip: snap.DefEquip,

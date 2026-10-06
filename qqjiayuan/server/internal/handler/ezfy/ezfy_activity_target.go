@@ -424,6 +424,15 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 	}
 	var br ezfyBattleResult
+	// ★ 2026-10-06 守方「防御加成」逐项明细（活动守军无城墙/无科技 → 只有守将属性+技能，
+	//   被打行展示「防御加成+N%(军官·名+X% 军官技能·弧形防御+Y% …)」，与 defBonus 构成同口径）
+	defDefBreak := []ezfyBonusItem{}
+	if defGeneral != nil {
+		defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + defGeneral.Name, Value: ezfyAttrToBonus(defGeneral.Learning)})
+		for _, s := range generalSkillDefBreak(defGeneral) {
+			defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+		}
+	}
 	if done, ok := ezfyBattleResultDecode(order.BattleResult); ok {
 		br = done
 	} else {
@@ -439,7 +448,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerBattleBonus(leadOfficer), defBonus,
 			h.officerSkillBattleBonus(leadOfficer), generalSkillDefBonus(defGeneral),
 			// ★ 2026-10-06 技能/科技逐项明细：攻方=带队军官技能+科技；守方=守将技能（活动守军无科技 → nil）
-			atkSkillBreak, generalSkillDefBreak(defGeneral), atkTechs, nil,
+			atkSkillBreak, generalSkillDefBreak(defGeneral), atkTechs, nil, defDefBreak,
 			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerCounterRounds(leadOfficer),

@@ -1632,6 +1632,25 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 	return bonus
 }
 
+// officerGuardSkillsBreak 城守「防御类技能」的**逐项**明细（弧形防御 30 / 弹幕支援 10，随等级 ×N）。
+// 战报「防御加成」拆解展示用（与 officerGuardBonus 的技能段同一口径）。
+func (h *EzfyHandler) officerGuardSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
+	if o == nil {
+		return nil
+	}
+	scale := h.officerSkillScale(o)
+	out := []ezfyBonusItem{}
+	for _, s := range officerSkills(o) {
+		switch s {
+		case "弧形防御":
+			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
+		case "弹幕支援":
+			out = append(out, ezfyBonusItem{Name: s, Value: 10 * scale})
+		}
+	}
+	return out
+}
+
 // officerReportDesc 战报中的军官行：名字(N级)
 func officerReportDesc(o *model.EzfyOfficer) string {
 	if o == nil {

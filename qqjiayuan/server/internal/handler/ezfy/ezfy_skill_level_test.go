@@ -213,6 +213,67 @@ func TestBonusBreakdownDetail(t *testing.T) {
 	}
 }
 
+// TestDefBonusTxt 守方「防御加成」被打行展示：逐项明细（城墙/科技/军官属性/军官技能/装备，
+// Name 带前缀直接拼「防御加成+N%(...)」）；全零/空明细 → 不展示防御段（空串）。
+func TestDefBonusTxt(t *testing.T) {
+	cases := []struct {
+		name  string
+		items []ezfyBonusItem
+		want  string
+	}{
+		{
+			"玩家城完整",
+			[]ezfyBonusItem{
+				{Name: "城墙", Value: 50},
+				{Name: "科技·装甲科技", Value: 30},
+				{Name: "军官·冥王", Value: 20},
+				{Name: "军官技能·弧形防御", Value: 60},
+				{Name: "装备", Value: 20},
+			},
+			"防御加成+180%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)",
+		},
+		{
+			"明细0项跳过",
+			[]ezfyBonusItem{{Name: "城墙", Value: 50}, {Name: "科技·重工技术", Value: 0}},
+			"防御加成+50%(城墙+50%)",
+		},
+		{"空明细", nil, ""},
+		{"全零", []ezfyBonusItem{{Name: "城墙", Value: 0}}, ""},
+	}
+	for _, c := range cases {
+		if got := ezfyDefBonusTxt(c.items); got != c.want {
+			t.Fatalf("%s: ezfyDefBonusTxt = %q, 期望 %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDefBonusInjected 被打行注入「防御加成」段：攻击/溢出/反击行都取明细渲染，
+// 反击行方向相反（守方在打、攻方绝地反击还击 → 被还击方是守方 → 用 !isAtk 判断）。
+func TestDefBonusInjected(t *testing.T) {
+	src := rawFile(t, "ezfy_battle.go")
+	for _, want := range []string{
+		"defBonusTxt := ezfyDefBonusTxt(st.DefDefBreak)",
+		"if isAtk && defBonusTxt != \"\"",  // 攻击行/溢出行：攻方打守方 → 展示守方防御
+		"if !isAtk && defBonusTxt != \"\"", // 反击行：攻方还击守方 → 展示守方防御
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("ezfy_battle.go 缺防御加成注入逻辑：%s", want)
+		}
+	}
+}
+
+// TestWildDefSkillBonus 野地/寇城守将防御类技能（弧形防御/弹幕支援）计入守军防御加成并逐项拆解。
+func TestWildDefSkillBonus(t *testing.T) {
+	order := rawFile(t, "ezfy_order.go")
+	if !strings.Contains(order, "defBonus += generalSkillDefBonus(defGeneral)") {
+		t.Fatal("ezfy_order.go 野地守将未把防御技能计入 defBonus（generalSkillDefBonus）")
+	}
+	if !strings.Contains(order, "defDefBreak = append(defDefBreak, ezfyBonusItem{Name: \"军官技能·\" + s.Name, Value: s.Value})") ||
+		!strings.Contains(order, "for _, s := range generalSkillDefBreak(defGeneral)") {
+		t.Fatal("ezfy_order.go 野地守将未把防御技能逐项拆进 defDefBreak")
+	}
+}
+
 // ============ 辅助 ============
 
 // rawFile 读取指定源码文件的全部内容（静态断言用）。
