@@ -272,11 +272,14 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 						getWay = "军校招募"
 					case model.EzfyOfficerSourceGrant:
 						getWay = "管理端发放"
-					default: // 未标注(老数据)：能力不够的兜底
+					default: // source 未标注(历史老数据，10-05 加列前的军官)
 						if o.IsCaptive == 1 {
 							getWay = "活动野地俘虏(战俘营)"
 						} else {
-							getWay = "管理端发放"
+							// ★ 2026-10-06 不能兜底成「管理端发放」——source=0 只是「未标注」，
+							//   实质可能是野地任务/打小号抢来的名将（线上全服反馈），
+							//   等全局回填 SQL 标注后再看正确来源，这里如实显示未标注。
+							getWay = "未知(老数据)"
 						}
 					}
 				}
