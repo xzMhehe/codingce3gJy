@@ -125,10 +125,10 @@
             <!-- ★ 2026-09-29 玩家城市也能收藏：玩家城不开 selDetail，原来的[收藏]被 selDetail 条件挡住了 -->
             <a href="javascript:;" style="margin-left:8px" @click="ezfy.addStar">{{ ezfy.isCellStarred ? '已收藏' : '收藏' }}</a>
           </div>
-          <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.owner">城主:{{ ezfy.selCell.owner }}</div>
+          <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.owner">城主: {{ ezfy.selCell.owner }}</div>
           <!-- ★ 玩家城：展示城主的同盟（军团）名 —— 没加入军团显示「无」 -->
           <div class="old-line" v-if="ezfy.selCell.area_type === 3">
-            同盟：
+            同盟: 
             <b :class="ezfy.selCell.corps_name ? (ezfy.selCell.ally ? 'green' : '') : 'gray'">
               {{ ezfy.selCell.corps_name || '无' }}
             </b>
@@ -432,7 +432,7 @@
                     <option value="">默认</option>
                   </select>
                 </template>
-                <span v-else class="gray">AI</span>
+                <span v-else class="gray">{{ ezfy.battleData.is_atk ? (ezfy.battleData.def_name || 'AI') : (ezfy.battleData.atk_name || 'AI') }}</span>
               </td>
             </tr>
             <tr v-for="u in ezfy.battleData.defenders" :key="'bd' + u.troop_id"
@@ -461,13 +461,16 @@
                     <option value="">默认</option>
                   </select>
                 </template>
-                <span v-else class="gray">AI</span>
+                <span v-else class="gray">{{ ezfy.battleData.is_atk ? (ezfy.battleData.def_name || 'AI') : (ezfy.battleData.atk_name || 'AI') }}</span>
               </td>
             </tr>
           </table>
           <div class="old-line">
             战场态势：攻方 {{ ezfy.fmtN(ezfy.battleData.atk_total) }} · 守方 {{ ezfy.fmtN(ezfy.battleData.def_total) }}
           </div>
+          <!-- ★ 2026-10-06 指挥室展示双方军官：后端战场简介(head)里已写入
+               「【攻方军官】… / 【守方军官】…」，原来前端不渲染这组行 → 指挥时看不到军官。 -->
+          <div class="old-line ezfy-battle-head" v-for="(hd, i) in (ezfy.battleData.head || [])" :key="'bh' + i">{{ hd }}</div>
           <!-- 行动日志：最新回合在最上、已过回合在下；我方绿色、敌军红色 -->
           <div class="old-line ezfy-battle-legend">
             <span class="green">■ 我方</span>&nbsp;<span class="red">■ 敌军</span>

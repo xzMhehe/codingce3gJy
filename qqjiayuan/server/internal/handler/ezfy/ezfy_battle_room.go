@@ -346,6 +346,16 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		phase = "cmd" // 指令期（前 25 秒）
 	}
 
+	// ★ 2026-10-06 攻守双方玩家昵称：PvP（target_type=3 打玩家城）时双方都是真人，
+	//   指挥室敌方行的「AI」标签换成玩家昵称；打野地/寇城（无玩家守方）保持 AI 兜底。
+	atkName, defName := "", ""
+	if b.TargetType == 3 {
+		atkName = h.ensureProfile(b.UserID).Nickname
+		if defUID := h.ezfyBattleDefenderUid(b); defUID > 0 {
+			defName = h.ensureProfile(defUID).Nickname
+		}
+	}
+
 	// ★ 逐兵种指令：攻守双方各自带自己的指令，前端每行单独显示/下达
 	atkCmds := ezfyAtkCmdsParse(b.AtkCmd)
 	defCmds := ezfyAtkCmdsParse(b.DefCmd)
@@ -366,7 +376,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	// ★ 2026-10-05 用户要求：指挥模块兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	troopName := func(id int) string {
 		if id == 0 {
-			return "最近目标"
+			return "最近"
 		}
 		// camp 传 0 → 基础兵种名
 		if cn := ezfyCfg.troopName(id, 0); cn != "" {
@@ -426,7 +436,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	// 目标下拉框 = 最近目标 + 敌方兵种（去重）；再把己方当前已配但敌方没有的目标补进去
 	// （敌方全灭/司令部配了别的兵种时，下拉框也要能显示当前值，否则会显示空白）。
 	optSeen := map[int]bool{0: true}
-	opts := []gin.H{{"id": 0, "name": "最近目标"}}
+	opts := []gin.H{{"id": 0, "name": "最近"}}
 	for _, u := range enemySnaps {
 		if optSeen[u.TroopId] {
 			continue
@@ -498,6 +508,8 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		"def_cmd":  b.DefCmd, "def_cmds": defCmds,
 		// 观察方是不是攻方（守方视角时前端把指挥按钮渲染到守方行上）
 		"is_atk": viewerIsAtk,
+		// ★ 2026-10-06 敌方玩家昵称（PvP 才有值，野地/寇城为空 → 前端显示 AI）
+		"atk_name": atkName, "def_name": defName,
 		// PvP 真人对抗时禁用[自动战斗]
 		"pvp":      pvp,
 		"can_auto": !pvp,

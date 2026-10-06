@@ -2618,7 +2618,7 @@ export default {
           this.battleData = st
           this.battleLeftMs = st.round_left_ms || 0
         }
-        this.notify('该兵种目标已设为' + (opt ? opt.name : '最近目标'))
+        this.notify('该兵种目标已设为' + (opt ? opt.name : '最近'))
         if (r.data && r.data.done) this.stopBattleTimer()
       }).finally(() => { this.battleCmdInFlight = false })
     },
@@ -2766,7 +2766,13 @@ export default {
       //   现在无论落在哪都先刷徽标 + 军队动态/驻军数据；列表仅在对应分区拉取。
       this.loadReportCounts()
       this.loadDynamics()
-      if (t === 3 || t === 4 || t === 5) this.loadReports()
+      if (t === 3 || t === 4 || t === 5) {
+        // ★ 2026-10-06 去除切 tab 残留：军情警讯/战斗报告共用 ezfy.reports 列表，
+        //   reportTab 切换后 DOM 立即换分区模板，但旧分区数据还在列表里、要等 loadReports
+        //   异步返回才被替换 → 残留一段时间旧内容。切换时立刻清空，新数据回来前显示占位。
+        this.reports = []
+        this.loadReports()
+      }
     },
     // ★ 战报详情页(reportview)顶部的分区导航：先回列表页再切到对应分区，
     //   直接调 switchReportTab 会停在 reportview 页面上。

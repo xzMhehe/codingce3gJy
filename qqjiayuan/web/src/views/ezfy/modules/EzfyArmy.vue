@@ -116,7 +116,7 @@
             <div class="ezfy-tgt-row">
               <span class="ezfy-tgt-lab">进攻目标</span>
               <select v-model="ezfy.targetCfg[t.id].atk" style="width:110px">
-                <option :value="0">最近目标</option>
+                <option :value="0">最近</option>
                 <option v-for="tt in ezfy.troopsData.cfgs" :key="'a' + tt.id" :value="tt.id">{{ tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">进攻</span>
@@ -128,7 +128,7 @@
             <div class="ezfy-tgt-row">
               <span class="ezfy-tgt-lab">防守目标</span>
               <select v-model="ezfy.targetCfg[t.id].def" style="width:110px">
-                <option :value="0">最近目标</option>
+                <option :value="0">最近</option>
                 <option v-for="tt in ezfy.troopsData.cfgs" :key="'d' + tt.id" :value="tt.id">{{ tt.name }}</option>
               </select>
               <span class="ezfy-tgt-lab">防守</span>
