@@ -5105,7 +5105,8 @@ export default {
       })
     },
     doExchangeSell () {
-      api.post('/games/ezfy/exchange/sell', {
+      // ★ 2026-10-06 连点防抖：一次点击 = 一次挂单（请求未返回时忽略后续点击）
+      this.once('exSell', () => api.post('/games/ezfy/exchange/sell', {
         es_type: parseInt(this.sellType), es_count: parseInt(this.sellCount) || 0,
         total_price: parseInt(this.sellPrice) || 0
       }).then(r => this.alert(r, '挂单已发布', () => {
@@ -5113,13 +5114,15 @@ export default {
         this.sellPrice = 0
         this.exchangeMPage = 1
         this.loadExchange()
-      }))
+      })))
     },
     doExchangeBuy (e) {
-      api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r, '购买成功', () => this.loadExchange()))
+      // ★ 2026-10-06 连点防抖（同一张挂单）
+      this.once('exBuy' + e.id, () => api.post('/games/ezfy/exchange/buy', { id: e.id }).then(r => this.alert(r, '购买成功', () => this.loadExchange())))
     },
     doExchangeCancel (e) {
-      api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销', () => this.loadExchange()))
+      // ★ 2026-10-06 连点防抖（同一张挂单）
+      this.once('exCancel' + e.id, () => api.post('/games/ezfy/exchange/cancel', { id: e.id }).then(r => this.alert(r, '挂单已撤销', () => this.loadExchange())))
     },
     // ★ 2026-09-30 向系统出售资源：预览应得黄金（与后端同口径整数除法）
     sysSellPreview () {
@@ -5131,17 +5134,20 @@ export default {
       return Math.floor(base * (100 - fee) / 100)
     },
     doExchangeSysSell () {
-      this.sysSellLostWarn = ''
-      api.post('/games/ezfy/exchange/sys-sell', {
-        es_type: parseInt(this.sellSysType), es_count: parseInt(this.sellSysCount) || 0
-      }).then(r => {
-        if (r.code === 0 && r.data && r.data.gold_lost) {
-          this.sysSellLostWarn = '黄金累加超过黄金上限，超出 ' + (r.data.lost_gold || 0) + ' 已丢失'
-        }
-        this.alert(r, '已售出', () => {
-          this.sellSysCount = 0
-          this.exchangeMPage = 1
-          this.loadExchange()
+      // ★ 2026-10-06 连点防抖：一次点击 = 一次向系统出售
+      this.once('exSysSell', () => {
+        this.sysSellLostWarn = ''
+        return api.post('/games/ezfy/exchange/sys-sell', {
+          es_type: parseInt(this.sellSysType), es_count: parseInt(this.sellSysCount) || 0
+        }).then(r => {
+          if (r.code === 0 && r.data && r.data.gold_lost) {
+            this.sysSellLostWarn = '黄金累加超过黄金上限，超出 ' + (r.data.lost_gold || 0) + ' 已丢失'
+          }
+          this.alert(r, '已售出', () => {
+            this.sellSysCount = 0
+            this.exchangeMPage = 1
+            this.loadExchange()
+          })
         })
       })
     },

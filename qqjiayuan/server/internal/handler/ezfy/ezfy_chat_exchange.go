@@ -493,6 +493,17 @@ func ezfyMoneyName(cur int) string {
 	return "黄金"
 }
 
+// ezfyExchangeLocks 交易所挂单出售/购买/下架的并发锁（按玩家 id 分片）。
+//
+// ★ 2026-10-06 修复「交易所连续点击重复执行」：
+//   挂单出售/购买/下架都是「读库存 → 扣资源/收款 → 建单/改状态」的读-改-写，
+//   连点会并发进入同一段结算：出售连点会重复扣资源、重复建挂单；
+//   下架连点会重复退回资源（挂单重复返款）；购买连点会重复扣钱。
+//   按玩家串行化后，后到的请求看到资源已扣/订单已成交，直接按正常校验拒绝。
+var ezfyExchangeLocks [64]sync.Mutex
+
+func ezfyExchangeLock(uid uint) *sync.Mutex { return &ezfyExchangeLocks[uid%64] }
+
 func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	// ★ 2026-09-24 卖家挂单/我的挂单都做分页（默认每页 10 条）
@@ -572,6 +583,10 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 
 func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-06 挂单出售串行化，防连点重复扣资源/重复建单
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
 	var req struct {
 		EsType     int   `json:"es_type"`
 		EsCount    int64 `json:"es_count"`
@@ -657,6 +672,10 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 
 func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-06 购买串行化，防连点重复扣钱/重复成交
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
 	var req struct {
 		Id uint `json:"id"`
 	}
@@ -730,6 +749,10 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 
 func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-06 下架串行化，防连点重复退回资源
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
 	var req struct {
 		Id uint `json:"id"`
 	}
@@ -779,6 +802,10 @@ func ezfySysSellRatioMap() map[int]int {
 //     超出部分会丢失，必须提醒玩家（gold_lost=true + lost_gold），没超过不提醒。
 func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	// ★ 2026-10-06 向系统出售串行化，防连点重复扣资源/重复得黄金
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
 	var req struct {
 		EsType  int   `json:"es_type"`
 		EsCount int64 `json:"es_count"`
