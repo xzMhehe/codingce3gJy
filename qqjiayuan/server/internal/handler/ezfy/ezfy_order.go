@@ -597,7 +597,12 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Find(&userTechs) }()
 	go func() { defer wg.Done(); stationLv = h.buildingLevel(city.ID, 20) }()
 	go func() { defer wg.Done(); hqLv = h.buildingLevel(city.ID, 13) }()
-	go func() { defer wg.Done(); if req.Officer != "" { lead = h.officerByName(city.ID, req.Officer) } }()
+	go func() {
+		defer wg.Done()
+		if req.Officer != "" {
+			lead = h.officerByName(city.ID, req.Officer)
+		}
+	}()
 	go func() { defer wg.Done(); gatherHave = h.itemCount(uid, ezfyGatherItemID) }()
 	wg.Wait()
 	techMap := map[int]int{}
@@ -766,6 +771,7 @@ func ezfyGatherBonusPer() int64 {
 // ★ 「再加个出征上限开关，默认开；关闭后出征没有上限」→
 //
 //	开关关掉时返回 (0, true)，调用方一律用 unlimited 判断，**不要**拿 0 去比大小。
+//
 // ezfyTroopCapReuse 出征上限计算的预取数据（/order/preview 并行块已取好时传入，避免重复查库）
 type ezfyTroopCapReuse struct {
 	techs map[int]int
@@ -775,7 +781,8 @@ type ezfyTroopCapReuse struct {
 
 // ezfyOrderTroopCap 出征兵力上限：司令部等级 × 1万 × 指挥艺术科技 + 集结令加成 + 军官军事加成。
 // ★ 2026-10-05 reuse 可选：调用方已并行取好的 科技map/司令部等级/带队军官 时传入（预览接口），
-//   其余调用方（createOrder 等）不传，函数内部照旧自查。
+//
+//	其余调用方（createOrder 等）不传，函数内部照旧自查。
 func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string,
 	reuse ...*ezfyTroopCapReuse) (cap int64, unlimited bool) {
 	if !ezfyMarchCapOn() {
@@ -809,9 +816,12 @@ func (h *EzfyHandler) ezfyOrderTroopCap(cityId uint, gather int, officer string,
 
 // playerAtWar 玩家是否处于「战斗状态」（个人宣战交战中 或 所属军团宣战生效中）。
 // ★ 2026-10-02 用户规则：自城派遣在非战斗状态下不设携带上限（守城兵可以自由调动），
-//   处于战斗状态则恢复正常上限（避免被调走兵力守不住城）。
+//
+//	处于战斗状态则恢复正常上限（避免被调走兵力守不住城）。
+//
 // ★ 2026-10-02 修复：只认「交战中」(status=2 且生效中)，**待生效宣战(status=1)不算战斗状态**，
-//   否则刚宣战还没开打时派遣也会被卡上限（线上反馈「AI大本营派遣还是 144,000 上限」）。
+//
+//	否则刚宣战还没开打时派遣也会被卡上限（线上反馈「AI大本营派遣还是 144,000 上限」）。
 func (h *EzfyHandler) playerAtWar(uid uint) bool {
 	now := time.Now().UnixMilli()
 	var cnt int64
@@ -1775,8 +1785,9 @@ func hasBattleOrder(orders []model.EzfyOrder) bool {
 // ★ 2026-10-04 cities 可选：调用方（如 /view）已查好城市 id 时传入，省一次 Pluck 的 RTT。
 //
 // ★ 2026-10-04 性能（用户反馈「/view 2s+」）：3 秒内刚确认过「无来袭订单」就直接跳过，
-//   省一条串行 RDS（/view 每 3 秒一次 cache miss，常 idle 玩家这条 SELECT 每次空转）。
-//   敌军新出征的到达最多滞后 3 秒被发现（与 /view 缓存 TTL 同级，可接受）。
+//
+//	省一条串行 RDS（/view 每 3 秒一次 cache miss，常 idle 玩家这条 SELECT 每次空转）。
+//	敌军新出征的到达最多滞后 3 秒被发现（与 /view 缓存 TTL 同级，可接受）。
 var (
 	ezfyIncomingMemoMu sync.Mutex
 	ezfyIncomingMemo   = map[uint]int64{} // uid → 最近一次「确认无敌军来袭」的毫秒时间戳
@@ -1785,8 +1796,9 @@ var (
 // fetchIncoming 只做「取来袭订单」这一步（不发军情/不开战场），返回 (列表, 是否需要结算)。
 //
 // ★ 2026-10-05 性能：从 processIncoming 拆出来，让调用方（processOrders）能把这条查询
-//   与「我的订单」查询**并行**发出（原来两条串行 = 2 个跨 WAN 往返）。
-//   第二返回值 ready=false 表示「3 秒内刚确认过无敌军来袭」→ 调用方直接跳过结算。
+//
+//	与「我的订单」查询**并行**发出（原来两条串行 = 2 个跨 WAN 往返）。
+//	第二返回值 ready=false 表示「3 秒内刚确认过无敌军来袭」→ 调用方直接跳过结算。
 func (h *EzfyHandler) fetchIncoming(uid uint, now int64, cities ...[]int64) ([]model.EzfyOrder, bool) {
 	ezfyIncomingMemoMu.Lock()
 	last, ok := ezfyIncomingMemo[uid]
@@ -2112,7 +2124,8 @@ func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.Ezfy
 //
 // ★ 2026-09-23 用户规则: 提前结束采集只有资源没有宝物, 满足一个采集周期才能有宝物。
 // ★ 2026-09-24 修复「提前结束采集提示采集资源0」: 只要驻守过(哪怕几秒)就按比例折算,
-//   至少给 1 点资源, 不再设 1 分钟硬门槛。
+//
+//	至少给 1 点资源, 不再设 1 分钟硬门槛。
 func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, now int64) {
 	if order.ArriveTime <= 0 {
 		return // 空闲驻守: 还没开始采集, 没有产出
@@ -2440,6 +2453,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 技能随军官等级自动升级：速度技能加成也随等级 ×N
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（科技名见 ezfy_cfg 种子表）
+	atkTechs := ezfyBonusItems(
+		ezfyTechItem("军训艺术", atkTech[5]*2),
+		ezfyTechItem("武器科技", atkTech[6]*3),
+		ezfyTechItem("弹道学", atkTech[8]*3),
+		ezfyTechItem("重工技术", atkTech[9]*2),
+	)
+	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	// 城守(仅玩家城市防守方)
@@ -2458,6 +2479,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	defAtkBonus := 0
 	// ★ 2026-10-06 守方攻击加成中「军官」占的百分点（野地守将/城守），战报日志拆解展示用
 	defOfficerAtkBonus := 0
+	// ★ 2026-10-06 守方拆解逐项明细（城守技能/守方科技；野地无科技 → nil，case 3 里填）
+	var defSkillBreak []ezfyBonusItem
+	var defTechBreak []ezfyBonusItem
 	defRangeBonus := 0
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
@@ -2594,6 +2618,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defAtkBonus = defTech[7]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
 		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
+		// ★ 2026-10-06 守方拆解逐项明细：城守技能 + 守方科技（与 defAtkBonus 同口径）
+		defSkillBreak = h.officerSkillsBreak(cityGuard)
+		defTechBreak = ezfyBonusItems(
+			ezfyTechItem("装甲科技", defTech[7]*3),
+			ezfyTechItem("重工技术", defTech[9]*2),
+			ezfyTechItem("掩体防御", defTech[16]*2),
+		)
 		defRangeBonus = defTech[8]*3 + defTech[16]*2
 		defEquip = h.officerBattleEquipBonus(cityGuard)
 		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
@@ -2807,9 +2838,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			officerBonus, defOfficerAtkBonus, // 军官占的「攻击加成」百分点（战报日志拆解用）
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(cityGuard),
+			// ★ 2026-10-06 技能/科技逐项明细（战报展示「军官技能·尖兵突击+N%」「科技·弹道学+N%」）
+			atkSkillBreak, defSkillBreak, atkTechs, defTechBreak,
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
-		h.officerCounterRounds(leadOfficer), defCounterRounds,
+			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
 		// ★ 2026-09-23 目标被别的玩家抢先指挥时，本部队改为「等待」，
 		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
@@ -2882,8 +2915,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	// ★ 2026-10-06 被掠夺/被征服报告正文要等战斗结算完（用与攻方同款的完整正文）才写，
 	//   相关临时值提前到函数级作用域，各分支里只赋值。
-	lootFeel := 0             // 掠夺民心扣减值
-	defConqBody := ""        // 被征服报告顶部「守方结论」段
+	lootFeel := 0     // 掠夺民心扣减值
+	defConqBody := "" // 被征服报告顶部「守方结论」段
 	reportType := "掠夺报告"
 	if order.OrderType == 3 {
 		reportType = "征服报告"
@@ -3247,10 +3280,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 
 		// 征服玩家城市
-	// ★ 2026-10-06 是否**新建成**占领记录（城池没了 → 全城军官都掉忠诚）；
-	//   声明在征服块外，结束区（掠夺/征服共用的军官忠诚结算）也要读它
-	newOccupy := false
-	if order.OrderType == 3 && order.TargetType == 3 && target != nil {
+		// ★ 2026-10-06 是否**新建成**占领记录（城池没了 → 全城军官都掉忠诚）；
+		//   声明在征服块外，结束区（掠夺/征服共用的军官忠诚结算）也要读它
+		newOccupy := false
+		if order.OrderType == 3 && order.TargetType == 3 && target != nil {
 			surv := int64(0)
 			for _, g := range left {
 				surv += g.Count
@@ -3736,8 +3769,9 @@ func groupCounts(groups []ezfyUnitGroup) map[int]int64 {
 // troopChangeText 兵力变化文本。
 //
 // ★ 2026-10-05 战报里兵种名**统一展示基础兵种名**（不再按阵营显示
-//   阵营兵种名 name_ally / name_axis），损失展示成 `兵种名 战前->战后(-损失)`，
-//   例如 `驱逐舰 16833->0(-16833)`。
+//
+//	阵营兵种名 name_ally / name_axis），损失展示成 `兵种名 战前->战后(-损失)`，
+//	例如 `驱逐舰 16833->0(-16833)`。
 func troopChangeText(before, after map[int]int64) string {
 	ids := []int{}
 	for tid := range before {
@@ -3850,10 +3884,11 @@ func ezfyReconPlaneCount(order *model.EzfyOrder) int64 {
 // ezfyReconSucceed 侦查是否成功：按侦察机数量概率判定。
 //
 // ★ 2026-10-02 用户规则：侦查成功率按**侦察机数量**平滑上升，梯度要陡，按数量级拉开
-//   （原 1 架 20%、10 架 89% 的累乘曲线太浅，改成数量级曲线）。曲线为 logistic：
-//     成功率 = cap × 1/(1 + e^-k·(log10(n) - x0))，n = 携带侦察机数。
-//     n=10≈11%  n=100≈26%  n=1千≈48%  n=1万≈69%  n=5万≈80%  n=10万≈84%
-//     cap = ezfy_cfg_limit.recon_success_pct（默认 95 = 封顶 95%），可在二战系统配置调整。
+//
+//	（原 1 架 20%、10 架 89% 的累乘曲线太浅，改成数量级曲线）。曲线为 logistic：
+//	  成功率 = cap × 1/(1 + e^-k·(log10(n) - x0))，n = 携带侦察机数。
+//	  n=10≈11%  n=100≈26%  n=1千≈48%  n=1万≈69%  n=5万≈80%  n=10万≈84%
+//	  cap = ezfy_cfg_limit.recon_success_pct（默认 95 = 封顶 95%），可在二战系统配置调整。
 func ezfyReconSucceed(order *model.EzfyOrder) bool {
 	n := ezfyReconPlaneCount(order)
 	if n <= 0 {

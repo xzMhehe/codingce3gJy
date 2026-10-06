@@ -68,7 +68,8 @@ func generalHasSkill(g *model.EzfyCfgGeneral, name string) bool {
 }
 
 // ★ 2026-10-06 军官池守将技能随等级自动升级（与玩家军官同口径，见 ezfy_officer.go）：
-//   每 30 级 +1 级；名将(kind=2)最高 6 级，普通军官(kind=1)最高 5 级。
+//
+//	每 30 级 +1 级；名将(kind=2)最高 6 级，普通军官(kind=1)最高 5 级。
 func generalSkillLevel(g *model.EzfyCfgGeneral) int {
 	if g == nil {
 		return 1
@@ -107,14 +108,37 @@ func generalSkillDefBonus(g *model.EzfyCfgGeneral) int {
 	return bonus
 }
 
+// generalSkillDefBreak 军官池守将「防御类技能」的**逐项**明细（战报展示「军官技能·弧形防御+N%」）。
+// 与 generalSkillDefBonus 同一口径，明细之和 = 技能总加成。
+func generalSkillDefBreak(g *model.EzfyCfgGeneral) []ezfyBonusItem {
+	if g == nil {
+		return nil
+	}
+	scale := generalSkillScale(g)
+	out := []ezfyBonusItem{}
+	for _, s := range generalSkillList(g) {
+		switch s {
+		case "弧形防御":
+			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
+		case "弹幕支援":
+			out = append(out, ezfyBonusItem{Name: s, Value: 10 * scale})
+		}
+	}
+	return out
+}
+
 // ezfyActWildDefBonus 活动野地配置了守将时的守方加成（复刻玩家城「城守」口径）。
 //
 // ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
-//   （战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御、守将速度技能给速度。
-//   无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形防御+30 / 弹幕支援+10；
-//   速度 = 命中 坦克突袭 / 闪电袭击 / 越岛战术 任一 +10。
+//
+//	（战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御、守将速度技能给速度。
+//	无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形防御+30 / 弹幕支援+10；
+//	速度 = 命中 坦克突袭 / 闪电袭击 / 越岛战术 任一 +10。
+//
 // ★ 2026-10-06 守将技能随等级自动升级：弧形防御/弹幕支援/速度 均 ×技能倍率
-//   （属性部分 ezfyAttrToBonus(g.Learning) 不加倍）。
+//
+//	（属性部分 ezfyAttrToBonus(g.Learning) 不加倍）。
+//
 // 返回 (防御加成, 速度加成)。
 func ezfyActWildDefBonus(g *model.EzfyCfgGeneral) (int, int) {
 	if g == nil {
@@ -275,8 +299,9 @@ func ezfyActTargetLabel(actType, level int) string {
 // playerOwnsActWildGeneral 该玩家是否已拥有此坐标活动野地的守将（名将野地按玩家判定）。
 //
 // ★ 2026-10-05 用户规则：名将野地对没抓到守将的玩家仍是名将野地；只有**已抓到该守将的玩家**，
-//   该坐标才是普通野地。判定口径 = 该玩家名下任一城市的军官里存在 general_id == 守将ID
-//   （收编后 IsCaptive=0 也算已拥有）。快速路径：非活动野地/没配守将 → 直接 false，零查询。
+//
+//	该坐标才是普通野地。判定口径 = 该玩家名下任一城市的军官里存在 general_id == 守将ID
+//	（收编后 IsCaptive=0 也算已拥有）。快速路径：非活动野地/没配守将 → 直接 false，零查询。
 func (h *EzfyHandler) playerOwnsActWildGeneral(uid uint, x, y int) bool {
 	aw := ezfyActWildAt(x, y)
 	if aw == nil || aw.Enabled != 1 || aw.OfficerId <= 0 {
@@ -361,6 +386,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（与普通出征同一口径）
+	atkTechs := ezfyBonusItems(
+		ezfyTechItem("军训艺术", atkTech[5]*2),
+		ezfyTechItem("武器科技", atkTech[6]*3),
+		ezfyTechItem("弹道学", atkTech[8]*3),
+		ezfyTechItem("重工技术", atkTech[9]*2),
+	)
+	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 
 	// ★★ 指挥室（2026-09-22 ）：活动目标也是战斗，同样先开战场等玩家指挥，
 	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。
@@ -405,6 +438,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			h.officerBattleBonus(leadOfficer), defBonus,
 			h.officerSkillBattleBonus(leadOfficer), generalSkillDefBonus(defGeneral),
+			// ★ 2026-10-06 技能/科技逐项明细：攻方=带队军官技能+科技；守方=守将技能（活动守军无科技 → nil）
+			atkSkillBreak, generalSkillDefBreak(defGeneral), atkTechs, nil,
 			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerCounterRounds(leadOfficer),
@@ -755,15 +790,15 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		"x": x, "y": y, "type": 1, "level": level,
 		"name":     ezfyActTargetLabel(actType, level),
 		"act_type": actType, "act_level": level,
-		"act_name":     ezfyActTargetName(actType),
-		"act_desc":     ezfyActTargetDesc(actType),
-		"act_total":    total,
-		"troops":       troops,
-		"res_min":      res,
-		"res_max":      res,
-		"gold":         gold,
-		"prestige":     prestige,
-		"terrain": terrain,
+		"act_name":  ezfyActTargetName(actType),
+		"act_desc":  ezfyActTargetDesc(actType),
+		"act_total": total,
+		"troops":    troops,
+		"res_min":   res,
+		"res_max":   res,
+		"gold":      gold,
+		"prestige":  prestige,
+		"terrain":   terrain,
 		// ★ 2026-10-05：活动野地本身有野地 ⇒ knownWild=true（海里的叫「海底森林」，岛屿仍是「岛屿」）
 		"terrain_name": ezfyWildTerrainDisplayName(x, y, true),
 		"continent":    ezfyContinentName(x, y),

@@ -218,7 +218,7 @@ func captiveCountOf(list []model.EzfyOfficer) int {
 // ★★ 2026-10-06 用户规则：**参谋部容量 与 战俘营容量 是两套，分开算**——
 //   - 参谋部容量（在职军官位） = 参谋部等级           → officerCapacity
 //   - 战俘营容量（关押俘虏）   = 参谋部等级 × 4       → captiveCapacity
-//   两者各数各的：officerCount 只数在职（不含俘虏），captiveCount 只数俘虏。
+//     两者各数各的：officerCount 只数在职（不含俘虏），captiveCount 只数俘虏。
 const ezfyCaptivePerStaff = 4
 
 // officerCapacity 参谋部容量 = 参谋部等级（在职军官位；没参谋部 = 0）。
@@ -328,7 +328,7 @@ func officerEquipped(o *model.EzfyOfficer) []map[string]interface{} {
 
 // ============ 军校招募：从军官池抽普通军官 ============
 //
-// ★ 2026-09-22 
+// ★ 2026-09-22
 //   - 军官池 ezfy_cfg_general 里同时维护「普通军官(kind=1)」和「名将(kind=2)」；
 //   - 军校招募/刷新**从池子里抽普通军官**（按 Weight 加权、不重复），
 //     不再是每次现编随机名字 —— 管理端改了池子，玩家刷新出来的列表就跟着变；
@@ -1279,6 +1279,13 @@ type ezfyBattleBonus struct {
 	CritDmg int // 暴击伤害加成%
 }
 
+// ezfyBonusItem 战报加成拆解的单条明细：名字 + 百分点。
+// 军官技能逐项（如 尖兵突击+90%）、科技逐项（如 弹道学+54%）都走这个结构。
+type ezfyBonusItem struct {
+	Name  string
+	Value int
+}
+
 // officerBattleEquipBonus 汇总军官身上装备 + 已触发套装的六项战斗加成
 //
 // ★ 用户规则：**套装效果只有穿齐才生效**。
@@ -1485,10 +1492,11 @@ func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 }
 
 // ★ 2026-10-06 军官技能随等级自动升级（v2，用户 2026-10-06 修订）：
-//   军官每满 30 级技能等级 +1（30级=1级、60级=2级 … 150级=5级、180级=6级），
-//   等级动态推导、不落库 —— 学了技能后随等级晋级自动升级，学得晚也自然按当前等级定级。
-//   上限按军官身份：普通军官最高 5 级、名将（军官池 GeneralId>0）最高 6 级（达到 180 级解锁）。
-//   加成类技能统乘倍率（攻防/速度/黄金眼/机械改造全部 ×N）；绝地反击按回合数升级（前N回合）。
+//
+//	军官每满 30 级技能等级 +1（30级=1级、60级=2级 … 150级=5级、180级=6级），
+//	等级动态推导、不落库 —— 学了技能后随等级晋级自动升级，学得晚也自然按当前等级定级。
+//	上限按军官身份：普通军官最高 5 级、名将（军官池 GeneralId>0）最高 6 级（达到 180 级解锁）。
+//	加成类技能统乘倍率（攻防/速度/黄金眼/机械改造全部 ×N）；绝地反击按回合数升级（前N回合）。
 func ezfySkillLevelOf(level, cap int) int {
 	lv := level / 30
 	if lv < 1 {
@@ -1554,6 +1562,27 @@ func (h *EzfyHandler) officerSkillBattleBonus(o *model.EzfyOfficer) int {
 		}
 	}
 	return bonus
+}
+
+// officerSkillsBreak 攻击类技能的**逐项**明细（战报拆解展示「军官技能·尖兵突击+N%」，
+// 多个技能分开展示）。与 officerSkillBattleBonus 同一口径，明细之和 = 技能总加成。
+func (h *EzfyHandler) officerSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
+	if o == nil {
+		return nil
+	}
+	scale := h.officerSkillScale(o)
+	out := []ezfyBonusItem{}
+	for _, s := range officerSkills(o) {
+		switch s {
+		case "尖兵突击":
+			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
+		case "火炮控制":
+			out = append(out, ezfyBonusItem{Name: s, Value: 10 * scale})
+		case "四指编队", "狼群战术":
+			out = append(out, ezfyBonusItem{Name: s, Value: 15 * scale})
+		}
+	}
+	return out
 }
 
 // officerBattleBonus 带队军官总攻击加成（军事 + 装备 + 技能）
@@ -1670,8 +1699,9 @@ func ezfySkillEffectText(skill string) string {
 // ezfySkillEffectTextAt 技能在某等级(Lv，1/2/3)下的效果文本。
 //
 // ★ 2026-10-06 加成类技能直接把数值放大嵌入文案（如 Lv.3 尖兵突击 → 「攻击力+90%」），
-//   不再拼「(效果×N)」后缀 —— 玩家看的就是最终效果；绝地反击按回合数（前N回合反击）。
-//   Lv.1 时输出与 ezfySkillEffectText 完全一致。
+//
+//	不再拼「(效果×N)」后缀 —— 玩家看的就是最终效果；绝地反击按回合数（前N回合反击）。
+//	Lv.1 时输出与 ezfySkillEffectText 完全一致。
 func ezfySkillEffectTextAt(skill string, lv int) string {
 	switch skill {
 	case "绝地反击":
@@ -1820,7 +1850,7 @@ func (h *EzfyHandler) addOfficerExp(city *model.EzfyCity, officerId uint, exp in
 	}
 }
 
-// accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29 
+// accrueDutyExp 市长/城守在任期间按时间结算被动经验（★ 2026-09-29
 // 「市长当久了等级一直不变」→ 让带职位的军官也能合理成长）。
 //
 // calcResource 懒结算时随军官列表一起结算：按自上次结算以来的分钟数 × 每分钟经验，
@@ -2741,7 +2771,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"general_level": genLevel,
 			// ★ 2026-10-06 当前技能等级（普通军官最高5级 / 名将最高6级，前端「学成=Lv.X级」用它）
 			"skill_level": h.officerSkillLevel(o),
-			"military":      o.Military, "logistics": o.Logistics, "learning": o.Learning,
+			"military":    o.Military, "logistics": o.Logistics, "learning": o.Learning,
 			// ★ 有效属性（基础 + 装备 + 套装），前端展示成「33 (+5) = 38」
 			"military_total": em, "logistics_total": el, "learning_total": ee,
 			"equip_military": em - o.Military, "equip_logistics": el - o.Logistics,

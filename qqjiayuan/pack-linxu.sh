@@ -265,7 +265,7 @@ log "STEP 5/5 打 tar.gz / zip 包与校验"
 
 rm -f "$TARBALL" "$ZIP"
 if command -v tar >/dev/null 2>&1; then
-  ( cd "$ROOT" && tar -czf "$TARBALL" Linuxbushu )
+  ( cd "$ROOT" && tar --no-xattrs -czf "$TARBALL" Linuxbushu )
   info "tar.gz: $TARBALL ($(du -h "$TARBALL" | cut -f1))"
   info "上传命令: scp \"$TARBALL\" root@你的服务器:/opt/"
   # 可执行位检查:在 Linux/macOS 上打包,chmod 生效,tar 会记 0755;

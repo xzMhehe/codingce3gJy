@@ -140,7 +140,11 @@ func TestCounterSnapshotRounds(t *testing.T) {
 // 用户反馈（2026-10-06）：「尖兵突击(Lv.3 攻击力+30% (效果×3)) 别这么展示，
 // 效果×3 太 low」—— 要求直接按等级算出最终数值展示（如 攻击力+90%）。
 func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
-	cases := []struct{ skill string; lv int; want string }{
+	cases := []struct {
+		skill string
+		lv    int
+		want  string
+	}{
 		{"尖兵突击", 1, "攻击力+30%"},
 		{"尖兵突击", 3, "攻击力+90%"},
 		{"弧形防御", 2, "防御力+60%"},
@@ -159,6 +163,53 @@ func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_officer.go", "func ezfySkillEffectTextAt(")
 	if strings.Contains(body, "效果×") {
 		t.Fatal("技能效果文案仍拼「(效果×N)」后缀，应直接展示最终数值")
+	}
+}
+
+// TestBonusBreakdownDetail 战报加成拆解：军官技能 / 科技都**逐项展开**（多个分开展示）；
+// 明细为 nil（老战场快照）回退旧格式合并展示。
+func TestBonusBreakdownDetail(t *testing.T) {
+	cases := []struct {
+		name      string
+		officer   int
+		skill     int
+		techBase  int
+		equip     int
+		officerNm string
+		skills    []ezfyBonusItem
+		techs     []ezfyBonusItem
+		want      string
+	}{
+		{
+			// 逐项展开：技能/科技各拆成具体名字
+			"逐项", 252, 150, 352, 0, "冥王",
+			[]ezfyBonusItem{{Name: "尖兵突击", Value: 90}, {Name: "火炮控制", Value: 60}},
+			[]ezfyBonusItem{{Name: "军训艺术", Value: 40}, {Name: "弹道学", Value: 54}},
+			"(军官·冥王+102% 军官技能·尖兵突击+90% 军官技能·火炮控制+60% 科技·军训艺术+40% 科技·弹道学+54%)",
+		},
+		{
+			// 科技有值但全 0（明细里 value=0 不展示）
+			"技能明细零项", 252, 150, 352, 0, "冥王",
+			[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
+			[]ezfyBonusItem{{Name: "弹道学", Value: 0}},
+			"(军官·冥王+102% 军官技能·尖兵突击+150%)",
+		},
+		{
+			// 老快照回退：nil 明细 → 合并展示「军官技能+N% / 科技+N%」
+			"老快照回退", 252, 150, 352, 0, "冥王", nil, nil,
+			"(军官·冥王+102% 军官技能+150% 科技+100%)",
+		},
+		{
+			"装备", 252, 150, 352, 120, "冥王",
+			nil, nil,
+			"(军官·冥王+102% 军官技能+150% 科技+100% 装备+120%)",
+		},
+		{"全零", 0, 0, 0, 0, "", nil, nil, ""},
+	}
+	for _, c := range cases {
+		if got := ezfyBonusBreakdown(c.officer, c.skill, c.techBase, c.equip, c.officerNm, c.skills, c.techs); got != c.want {
+			t.Fatalf("%s: ezfyBonusBreakdown = %q, 期望 %q", c.name, got, c.want)
+		}
 	}
 }
 
