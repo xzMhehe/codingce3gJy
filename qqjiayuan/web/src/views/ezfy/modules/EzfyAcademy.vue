@@ -610,7 +610,7 @@
         <!-- ★ 2026-10-06 技能随军官等级自动升级：已学技能展示当前等级 Lv.N，效果已按等级倍数返回 -->
         <table class="ezfy-plain-table">
           <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
-          <tr><th colspan="3">已学技能（{{ ezfy.officerDetail.skills.length }}/3，随军官等级自动升级）</th></tr>
+          <tr><th colspan="3">已学技能（{{ ezfy.officerDetail.skills.length }}/3）</th></tr>
           <tr v-for="s in ezfy.officerDetail.skills" :key="'ds' + s.name">
             <td>{{ s.name }}<span v-if="s.level" class="green"> Lv.{{ s.level }}</span></td>
             <td>{{ s.effect }}</td>

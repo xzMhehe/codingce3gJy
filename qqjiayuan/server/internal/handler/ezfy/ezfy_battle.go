@@ -291,20 +291,22 @@ func ezfyOfficerShortName(desc string) string {
 }
 
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官/科技/装备），写进战报行动日志。
-// 无军官加成部分时返回空串（该方无军官 / 老战场快照），此时不改动原样式的合并加成显示。
+// 只要任一来源非零就展示（PVP 里一方军官没攻击技能/没设城守时，科技加成也照常列出，
+// 不会像以前一样整括号消失）；全零（老战场快照）返回空串，不改动原样式的合并加成显示。
 func ezfyBonusBreakdown(officerBonus, techBase, equipBonus int, name string) string {
-	if officerBonus == 0 {
+	tech := techBase - officerBonus
+	if tech == 0 && equipBonus == 0 && !(name != "" && officerBonus != 0) {
 		return ""
 	}
 	parts := []string{}
-	if name != "" {
-		parts = append(parts, fmt.Sprintf("军官·%s+%d", name, officerBonus))
+	if name != "" && officerBonus != 0 {
+		parts = append(parts, fmt.Sprintf("军官·%s+%d%%", name, officerBonus))
 	}
 	if tech := techBase - officerBonus; tech != 0 {
-		parts = append(parts, fmt.Sprintf("科技+%d", tech))
+		parts = append(parts, fmt.Sprintf("科技+%d%%", tech))
 	}
 	if equipBonus != 0 {
-		parts = append(parts, fmt.Sprintf("装备+%d", equipBonus))
+		parts = append(parts, fmt.Sprintf("装备+%d%%", equipBonus))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -667,11 +669,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				unit.count -= kCnt
 				// ★ 2026-10-06 反击行标明「军官技能·绝地反击」+ 加成来源/伤害，攻守的技能触发一眼可见
+				//   ★ 2026-10-06 v2: 反击方侧标也带【】括号（与攻击行口径一致：/【攻方】【守方】对齐）
 				counterBreak := defBonusBreak
 				if !isAtk {
 					counterBreak = atkBonusBreak
 				}
-				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%%s, 造成%d伤害, 消灭%d个",
+				st.Actions = append(st.Actions, fmt.Sprintf("【%s】%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%%s, 造成%d伤害, 消灭%d个",
 					enemySide, stName(target), side, stName(unit), cbAtk, counterBreak, dmg, kCnt))
 			}
 		}
