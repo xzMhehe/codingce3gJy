@@ -3473,9 +3473,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 		}
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
-		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）等战斗结算完再写，
-		//   正文与攻方「掠夺/征服报告」同款完整格式（顶部加一行守方结论），逐回合详情走 detail；
-		//   标题带守方城名+坐标，列表显示 [掠夺] 被掠夺报告: 城名(X,Y) / [征服] 被征服报告: 城名(X,Y)。
+		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）：**守方视角**标题 = 守方城名+守方坐标
+		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
+		//   如 [掠夺] 被掠夺报告: 我的城名(X,Y)；与攻方报告(L3490)保持对称口径。
 		if order.TargetType == 3 && target != nil {
 			if order.OrderType == 2 {
 				h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
