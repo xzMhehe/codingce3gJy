@@ -891,6 +891,85 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
+// ============ 战报查询（2026-10-06） ============
+//
+// ★ 用户要求（点7）：「管理端加个战报查询模块，可以查询玩家战报，战报不是订单没有订单概念」。
+// 战报 = ezfy_report（侦察/掠夺/征服/战斗/采集/系统），与出征订单 ezfy_order 是两张表，
+// 所以这里的列表独立于「出征记录」模块，按 玩家(user_id/昵称) + 战报类型 过滤。
+// 类型中文名复用 ezfyReportTypeName(reportType, title)（优先按标题前缀判定）。
+
+// AdminEzfyReports 战报列表（可按玩家 / 战报类型 / 关键字过滤）
+func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
+	page, offset, size := pageOf(c, 10)
+	word := strings.TrimSpace(c.Query("word"))
+	reportType := atoiOr(c.Query("type"), 0)
+	q := h.DB.Model(&model.EzfyReport{})
+	if word != "" {
+		if uid, err := strconv.Atoi(word); err == nil {
+			q = q.Where("user_id = ?", uid)
+		} else {
+			var ids []uint
+			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
+				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
+			if len(ids) > 0 {
+				q = q.Where("user_id IN ?", ids)
+			} else {
+				q = q.Where("1 = 0")
+			}
+		}
+	}
+	if reportType > 0 {
+		q = q.Where("report_type = ?", reportType)
+	}
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyReport
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	type rowOut struct {
+		model.EzfyReport
+		PlayerName string `json:"player_name"`
+		HomeNum    string `json:"home_num"`
+		TypeName   string `json:"type_name"`
+		// 列表里带一段正文预览（content 可能是长 JSON/HTML，截前 200 字）
+		Preview string `json:"preview"`
+	}
+	out := []rowOut{}
+	for _, r := range rows {
+		pn, hn := h.ezfyAdminName(r.UserID)
+		preview := r.Content
+		if len([]rune(preview)) > 200 {
+			preview = string([]rune(preview)[:200])
+		}
+		out = append(out, rowOut{EzfyReport: r, PlayerName: pn, HomeNum: hn,
+			TypeName: ezfyReportTypeName(r.ReportType, r.Title),
+			Preview:  preview})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// AdminEzfyReportDetail 战报详情（content/detail 全文）
+func (h *EzfyAdmin) AdminEzfyReportDetail(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var r model.EzfyReport
+	if err := h.DB.First(&r, id).Error; err != nil {
+		resp.NotFound(c, "战报不存在")
+		return
+	}
+	pn, hn := h.ezfyAdminName(r.UserID)
+	resp.OK(c, gin.H{
+		"report":      r,
+		"player_name": pn, "home_num": hn,
+		"type_name": ezfyReportTypeName(r.ReportType, r.Title),
+	})
+}
+
+// AdminEzfyReportDelete 删除战报
+func (h *EzfyAdmin) AdminEzfyReportDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	h.DB.Delete(&model.EzfyReport{}, id)
+	resp.OK(c, gin.H{"msg": "已删除"})
+}
+
 // AdminEzfyChats 世界聊天列表
 func (h *EzfyAdmin) AdminEzfyChats(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)

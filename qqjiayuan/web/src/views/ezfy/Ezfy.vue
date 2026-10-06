@@ -628,6 +628,7 @@ export default {
         phase: 'cmd', round_left_ms: 0, round_ms: 30000, cmd_window_ms: 25000,
         attackers: [], defenders: [], atk_total: 0, def_total: 0,
         is_atk: true, pvp: false, can_auto: true,
+        atk_locked: 0, def_locked: 0, my_locked: 0, can_lock: false,
         head: [], actions: [], done: false
       },
       battleOrderId: 0,     // 正在指挥的出征订单 id
@@ -2617,8 +2618,37 @@ export default {
         this.stopBattleTimer()
       })
     },
+    // ★ 2026-10-06 保存/取消本回合配置：
+    //   保存 = 本回合伤害锁定（禁改指令/目标），攻守双方都保存或到点即结算；
+    //   取消 = 仅限本回合尚未结算时，解除锁定以便重新配置。
+    saveBattleConfig () {
+      if (!this.battleOrderId) return
+      api.post('/games/ezfy/battle/lock', { order_id: this.battleOrderId, lock: true }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '保存失败'); return }
+        const st = r.data && r.data.state
+        if (st) {
+          this.battleData = st
+          this.battleLeftMs = st.round_left_ms || 0
+        }
+        this.notify(st && st.done ? '双方配置已锁定，本回合结算' : '本回合配置已锁定')
+        if (r.data && r.data.done) this.stopBattleTimer()
+      })
+    },
+    cancelBattleConfig () {
+      if (!this.battleOrderId) return
+      api.post('/games/ezfy/battle/lock', { order_id: this.battleOrderId, lock: false }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '取消失败'); return }
+        const st = r.data && r.data.state
+        if (st) {
+          this.battleData = st
+          this.battleLeftMs = st.round_left_ms || 0
+        }
+        this.notify('已取消锁定，可重新配置')
+        if (r.data && r.data.done) this.stopBattleTimer()
+      })
+    },
     battleCmdName (c) {
-      return c === 'hold' ? '停止' : (c === 'retreat' ? '后退' : '前进')
+      return c === 'hold' ? '待命' : (c === 'retreat' ? '后退' : '前进')
     },
     // ★ 战场指挥室：行动日志按攻守上色 —— 我方绿色（跟随 is_atk），敌军红色
     battleLineClass (text) {

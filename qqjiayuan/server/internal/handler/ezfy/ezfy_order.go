@@ -2420,6 +2420,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
 	// 速度加成：燃烧引擎(10)+2%/级 · 喷气引擎(19)+3%/级
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
+	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，用户要求）
+	atkRangeBonus := atkTech[8] * 3
 	// ★★ 2026-09-28 修复：这里原来是**两段一模一样的 if**，军官「移速」技能被加了两次 +10
 	//   （活动目标那条路径 ezfy_activity_target.go 只加一次）。
 	//   后果：带移速技能的军官出征，速度加成虚高 10%，与活动战、与界面描述都不一致。
@@ -2441,6 +2443,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	win := false
 	defBonus := 0
 	defSpeedBonus := 0
+	// ★ 2026-10-06 守方攻击/射程加成（城防/守城部队行动时用，默认 0；玩家城分支里填）
+	defAtkBonus := 0
+	defRangeBonus := 0
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
 	var target *model.EzfyCity
@@ -2491,6 +2496,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if g := ezfyCfg.general(cfg.OfficerId); g != nil {
 				guardAttr := ezfyAttrToBonus(g.Learning)
 				defBonus += guardAttr
+				// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
+				defAtkBonus += guardAttr
 				defOfficerDesc = g.Name + " Lv." + strconv.Itoa(g.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
 			}
 		}
@@ -2562,6 +2569,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
+		// ★ 2026-10-06 守方攻击/射程加成（用户要求「科技加成、技能加成算入伤害」+「射程=基础×科技」）：
+		//   守方攻击加成与守方防御同科技口径（装甲科技7/重工技术9/掩体防御16）+ 城守军官攻击技能；
+		//   守方射程加成 = 弹道学(8)*3 + 掩体防御(16)*2
+		defAtkBonus = defTech[7]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
+		defRangeBonus = defTech[8]*3 + defTech[16]*2
 		defEquip = h.officerBattleEquipBonus(cityGuard)
 		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
 		//   否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
@@ -2637,7 +2649,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 2026-10-02 驻军战用「溃败撤退」：守方剩余兵力跌破阈值即判定战败、战斗提前结束，
 			//   剩余部队自动返航回出发城市 —— 这样「驻军战败 → 回到自己城市」才有兵可回。
 			gbr := ezfySimulateBreak(attacker, garTroops,
-				atkBonus, 0, atkSpeedBonus, 0, atkEquip, ezfyBattleBonus{},
+				atkBonus, 0, atkSpeedBonus, 0,
+				atkRangeBonus, 0, 0,
+				atkEquip, ezfyBattleBonus{},
 				atkOfficerDesc, "", atkTargets, defTargets, atkMoves, defMoves,
 				ezfyGarrisonBreakPct)
 			var gcity model.EzfyCity
@@ -2757,7 +2771,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			defCamp = h.ensureProfile(target.UserID).Camp
 		}
 		st := ezfyNewBattleState(attacker, defender,
-			atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+			atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
+			atkRangeBonus, defRangeBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）

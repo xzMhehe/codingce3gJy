@@ -60,7 +60,7 @@ func ezfyBattleCmdName(cmd string) string {
 	case ezfyCmdAdvance:
 		return "前进"
 	case ezfyCmdHold:
-		return "停止"
+		return "待命"
 	case ezfyCmdRetreat:
 		return "后退"
 	}
@@ -232,9 +232,15 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 	if steps > 0 || st.Done {
 		b.Round = st.Round
 		b.State = ezfyBattleSnapshotEncode(st.Snapshot())
+		// ★ 2026-10-06 新回合开始 → 清除双方锁定（本回合锁定的配置只对本回合生效）
+		if steps > 0 {
+			b.AtkLock = 0
+			b.DefLock = 0
+		}
 		h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
 			"round": b.Round, "state": b.State, "status": b.Status,
 			"win": b.Win, "round_start": b.RoundStart,
+			"atk_lock": b.AtkLock, "def_lock": b.DefLock,
 		})
 	}
 	out, _ := ezfyBattleSnapshotDecode(b.State)
@@ -468,6 +474,14 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	// PvP（攻击玩家城）→ 双方都能指挥，一键[自动战斗]对另一方不公平，禁用
 	pvp := b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0
 
+	// ★ 2026-10-06 保存/锁定配置：我方是否已锁定、对方是否已锁定、我方能否锁定。
+	//   my_locked = 观察方自己这一边是否已保存配置（保存即锁定，双方都锁或到点立即结算）。
+	myLocked := b.AtkLock
+	if !viewerIsAtk {
+		myLocked = b.DefLock
+	}
+	canLock := b.Status == 1 && !snap.Done && myLocked == 0
+
 	return gin.H{
 		"order_id": b.OrderId, "target_name": b.TargetName,
 		"target_x": b.TargetX, "target_y": b.TargetY, "target_type": b.TargetType,
@@ -481,6 +495,10 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		// PvP 真人对抗时禁用[自动战斗]
 		"pvp":      pvp,
 		"can_auto": !pvp,
+		// ★ 2026-10-06 锁定状态：atk_locked/def_locked = 双方是否已保存配置；
+		//   my_locked = 观察方自己是否已锁；can_lock = 现在还能不能保存
+		"atk_locked": b.AtkLock, "def_locked": b.DefLock,
+		"my_locked": myLocked, "can_lock": canLock,
 		// 观察方自己的逐兵种优先攻击目标（0=最近）
 		"my_targets": myTargets,
 		// 目标下拉框可选：最近目标 + 敌方兵种（含当前值兜底）
@@ -533,6 +551,7 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 //
 // ★ 指挥是**逐兵种**的（「自己带的兵种都能指挥，就是单独指挥」）。
 // troop_id 省略或传 0 = 给全部参战兵种下同一条指令（快捷）。
+// cmd 传空串 = 清除指令，该兵种回落司令部「兵种战斗配置」（前端下拉可回「默认」）。
 func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -546,9 +565,9 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 		return
 	}
 	switch req.Cmd {
-	case ezfyCmdAdvance, ezfyCmdHold, ezfyCmdRetreat:
+	case ezfyCmdAdvance, ezfyCmdHold, ezfyCmdRetreat, "":
 	default:
-		resp.ParamError(c, "指令只能是 前进/停止/后退")
+		resp.ParamError(c, "指令只能是 前进/待命/后退")
 		return
 	}
 	b := h.ezfyBattleByOrder(req.OrderId)
@@ -559,6 +578,11 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 	side := h.ezfyBattleSide(b, uid)
 	if side == "" {
 		resp.NotFound(c, "出征部队不存在")
+		return
+	}
+	// ★ 2026-10-06 本回合配置已锁定（保存过配置）：必须先[取消配置]才能再改指令
+	if (side == "atk" && b.AtkLock == 1) || (side != "atk" && b.DefLock == 1) {
+		resp.ParamError(c, "本回合配置已锁定，请先取消配置")
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -587,6 +611,31 @@ func (h *EzfyHandler) BattleCmd(c *gin.Context) {
 			}
 		}
 		delete(cmds, 0)
+	}
+	// cmd 为空串 = 清除指令（回落司令部「兵种战斗配置」）
+	if req.Cmd == "" {
+		if req.TroopId > 0 {
+			delete(cmds, req.TroopId)
+		} else {
+			for _, u := range myUnits {
+				delete(cmds, u.cfg.ID)
+			}
+		}
+		enc := ezfyAtkCmdsEncode(cmds)
+		if side == "atk" {
+			b.AtkCmd = enc
+		} else {
+			b.DefCmd = enc
+		}
+		h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, enc)
+		snap, done := h.ezfyBattleTick(b, now)
+		if done && b.Status == 2 {
+			h.ezfyBattleFinishToOrder(b, now)
+			resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
+			return
+		}
+		resp.OK(c, gin.H{"done": false, "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
+		return
 	}
 	if req.TroopId > 0 {
 		// 指定兵种：必须真的在这支部队里
@@ -669,6 +718,12 @@ func (h *EzfyHandler) BattleTarget(c *gin.Context) {
 		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
 		return
 	}
+	// ★ 2026-10-06 本回合配置已锁定（保存过配置）：必须先[取消配置]才能再改目标
+	//   —— 注意放在 tick 之后：若 tick 推进了新回合已自动清锁，则不受影响
+	if (side == "atk" && b.AtkLock == 1) || (side != "atk" && b.DefLock == 1) {
+		resp.ParamError(c, "本回合配置已锁定，请先取消配置")
+		return
+	}
 	// 只能指挥**自己带了**的兵种（攻方改 AtkTargets、守方改 DefTargets）
 	mySnaps := snap.Attackers
 	targets := snap.AtkTargets
@@ -735,6 +790,11 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		resp.OK(c, gin.H{"done": false, "msg": "真人对抗无法自动战斗，请逐回合指挥"})
 		return
 	}
+	// ★ 2026-10-06 本回合配置已锁定：自动战斗等于无视锁定单方面结算，先取消锁定再用
+	if (side == "atk" && b.AtkLock == 1) || (side != "atk" && b.DefLock == 1) {
+		resp.ParamError(c, "本回合配置已锁定，请先取消配置")
+		return
+	}
 	now := time.Now().UnixMilli()
 	// 先把到点的回合补算掉，再一路跑到结束
 	h.ezfyBattleTick(b, now)
@@ -769,4 +829,88 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 	h.ezfyBattleFinishToOrder(b, now)
 	out, _ := ezfyBattleSnapshotDecode(b.State)
 	resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, out, now, h.ensureProfile(uid).Camp, side == "atk")})
+}
+
+// BattleLock POST /games/ezfy/battle/lock  {order_id, lock: bool} —— 保存 / 取消本回合配置
+//
+// ★ 2026-10-06 用户要求（点6）：「玩家设置好兵种状态后，点击保存，直接进入伤害锁定；
+// 在锁定时间内，可以取消重新配置；如果时间剩余不多，哪怕没操作完成，就按照当前操作直接锁定伤害」。
+//
+// 语义：
+//   - lock=true（保存配置）：把我方锁字段置 1，本回合禁改指令/目标（只能先取消再改）。
+//     若双方都已锁 → 立即结算本回合（RoundStart 前移一回合时长 → tick 推进并自动清锁），
+//     不会干等到 30 秒到点。
+//   - lock=false（取消配置）：仅当本回合尚未结算（RoundStart + 回合时长 > now）时置 0；
+//     已到点被 tick 结算掉的回合不能取消（那等于篡改历史）。
+//   - 本回合最后 5 秒（锁定期）本来就不能再下指令，保存/取消照常可用，到点由 tick 兜底结算。
+func (h *EzfyHandler) BattleLock(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	var req struct {
+		OrderId int64 `json:"order_id"`
+		Lock    bool  `json:"lock"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	b := h.ezfyBattleByOrder(req.OrderId)
+	if b == nil {
+		resp.NotFound(c, "该部队没有战斗记录")
+		return
+	}
+	side := h.ezfyBattleSide(b, uid)
+	if side == "" {
+		resp.NotFound(c, "出征部队不存在")
+		return
+	}
+	now := time.Now().UnixMilli()
+	// 战场已结束则无需再锁
+	snap, done := h.ezfyBattleTick(b, now)
+	if done && b.Status == 2 {
+		h.ezfyBattleFinishToOrder(b, now)
+		resp.OK(c, gin.H{"done": true, "msg": "战斗已结束", "state": h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk")})
+		return
+	}
+
+	field := "atk_lock"
+	if side != "atk" {
+		field = "def_lock"
+	}
+	if req.Lock {
+		if (side == "atk" && b.AtkLock == 1) || (side != "atk" && b.DefLock == 1) {
+			resp.ParamError(c, "本回合配置已锁定")
+			return
+		}
+		if side == "atk" {
+			b.AtkLock = 1
+		} else {
+			b.DefLock = 1
+		}
+		h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, 1)
+		// 双方都已锁 → 立即结算本回合：RoundStart 前移一回合时长，
+		// 下面的 tick 就会把这一回合推进掉并清锁（保存即锁定、双锁即结算）。
+		if b.AtkLock == 1 && b.DefLock == 1 {
+			b.RoundStart -= ezfyBattleRoundMs
+			h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("round_start", b.RoundStart)
+		}
+	} else {
+		// 取消配置：本回合已到点结算（被 tick 推进过、锁已清）时无需取消；
+		// 若仍未到点但锁字段是 0（本来就没锁），也无所谓，幂等处理。
+		if now-b.RoundStart >= ezfyBattleRoundMs {
+			resp.ParamError(c, "本回合已结算，无法取消")
+			return
+		}
+		if side == "atk" {
+			b.AtkLock = 0
+		} else {
+			b.DefLock = 0
+		}
+		h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, 0)
+	}
+	out, d2 := h.ezfyBattleTick(b, now)
+	if d2 && b.Status == 2 {
+		h.ezfyBattleFinishToOrder(b, now)
+	}
+	resp.OK(c, gin.H{"done": b.Status == 2, "state": h.ezfyBattleView(b, out, now, h.ensureProfile(uid).Camp, side == "atk")})
 }

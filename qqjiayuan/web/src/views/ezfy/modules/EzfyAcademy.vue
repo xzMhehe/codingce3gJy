@@ -458,10 +458,6 @@
           <a href="javascript:;" @click="ezfy.switchAcade('search')">去招募</a> |
           战俘营({{ ezfy.officerData.captive_used || 0 }}/{{ ezfy.officerData.captive_capacity || 0 }})
         </div>
-        <div class="old-line gray">
-          战俘营<b>按城市分</b>：只关押<b>当前城</b>的俘虏，容量 = 当前城参谋部等级 × 4。
-          俘虏在哪座城就去那座城看（出征从哪发兵、俘虏就落哪城）。
-        </div>
         <table class="ezfy-plain-table">
           <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>
           <tr v-for="o in ezfy.captiveOfficers" :key="'cp' + o.id">
@@ -477,12 +473,6 @@
           </tr>
         </table>
         <div class="old-line gray" v-if="!ezfy.captiveOfficers.length">(本城战俘营暂无俘虏)</div>
-        <div class="old-line gray">
-          战俘来源:<br/>
-          ① 攻打玩家城市, 把对方军官<b>忠诚打成 0</b> → 弃城归降, 收入我方战俘营;<br/>
-          ② 野地/寇城<b>配置里有军官</b>时, 征服胜利有概率俘获守将。<br/>
-          正常军官请到 <a href="javascript:;" @click="ezfy.switchAcade('search')">[军校招募]</a>。
-        </div>
         <div class="old-line">前去<a href="javascript:;" @click="ezfy.switchAcade('officer')">[军官]</a></div>
       </div>
 

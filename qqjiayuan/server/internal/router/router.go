@@ -692,6 +692,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 指挥时逐兵种改「优先攻击目标」（默认值来自司令部兵种战斗配置）
 				ezfyG.POST("/battle/target", ezfyH.BattleTarget)
 				ezfyG.POST("/battle/auto", ezfyH.BattleAuto)
+				// ★ 2026-10-06 保存 / 取消本回合配置（保存即锁定伤害，双方都锁立即结算）
+				ezfyG.POST("/battle/lock", ezfyH.BattleLock)
 
 				// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====
 				ezfyG.GET("/officers", ezfyH.Officers)
@@ -1101,6 +1103,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataDelete)
 				admin.GET("/ezfy-orders", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrders)
 				admin.DELETE("/ezfy-orders/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrderDelete)
+				// ★ 2026-10-06 战报查询（战报不是订单，独立于 ezfy-orders 列表）
+				admin.GET("/ezfy-reports", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReports)
+				admin.GET("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDetail)
+				admin.DELETE("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDelete)
 				admin.GET("/ezfy-chats", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChats)
 				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChatDelete)
 				admin.GET("/ezfy-exchanges", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyExchanges)

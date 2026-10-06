@@ -1110,6 +1110,8 @@ func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string
 	if o.Position != ezfyPositionNone {
 		return "请先卸任市长/城守再流放"
 	}
+	// ★ 2026-10-06 流放前先解绑已穿戴装备，防止「装备显示已穿戴、军官已删」的孤儿装备
+	h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
 	h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 	return ""
 }
@@ -1668,6 +1670,8 @@ func (h *EzfyHandler) officerLoseLoyalty(uid uint, cityId uint, name string, del
 	}
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("loyalty", loyalty)
 	if loyalty <= 0 {
+		// ★ 2026-10-06 离职前先解绑已穿戴装备，防止孤儿装备（玩家「斯大林没了还能看到装备穿着」）
+		h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
 		h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 		h.addReport(uid, 6, "将领离职: "+o.Name,
 			o.Name+"因连番战败、忠诚度归零而离职, 离开了你的城市。"+reason, "")
@@ -2290,6 +2294,8 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 				o.Name+"因忠诚度归零, 弃城投敌, 加入了对"+atkCity.Name+"的阵营。\n请及时赏赐军官以维持忠诚。", "", 0, target.ID)
 		} else {
 			// 参谋部已满：按原规则军官忠诚归零后仍然离开原城
+			// ★ 2026-10-06 离城前先解绑已穿戴装备，防止孤儿装备
+			h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
 			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
 			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方参谋部已满, 未能收押)")
 			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,

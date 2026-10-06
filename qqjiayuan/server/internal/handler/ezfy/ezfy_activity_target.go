@@ -354,7 +354,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	} else {
 		// 活动守军无城墙/无科技 → 只有守将的加成；攻方装备六项加成照常生效；
 		// 守方阵营: 活动野地=盟军、活动寇/特殊城市=轴心国
-		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+		// ★ 2026-10-06 攻方射程加成 = 弹道学(8)*3；活动守军无科技，射程/守方攻击加成取守将加成(0 兜底)
+		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+			atkTech[8]*3, 0,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 			atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},

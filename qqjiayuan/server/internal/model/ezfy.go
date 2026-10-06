@@ -891,6 +891,10 @@ type EzfyBattle struct {
 	State string `gorm:"type:mediumtext;comment:状态" json:"-"`
 	// RoundStart 本回合开始时间(ms)：过了回合时长就推进一回合
 	RoundStart int64 `gorm:"comment:RoundStart 本回合开始时间(ms)：过了回合时长就推进一回合" json:"round_start"`
+	// ★ 2026-10-06 保存配置 = 本回合锁定：AtkLock/DefLock 1=已锁定（禁改指令，双方都锁或到点即结算）。
+	//   锁定窗口内可取消(置0)重新配置；下回合开始时清零。
+	AtkLock int `gorm:"default:0;comment:攻方本回合是否已锁定配置 0/1" json:"atk_lock"`
+	DefLock int `gorm:"default:0;comment:守方本回合是否已锁定配置 0/1" json:"def_lock"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

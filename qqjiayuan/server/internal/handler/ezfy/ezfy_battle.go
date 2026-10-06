@@ -104,8 +104,14 @@ type ezfyBattleState struct {
 
 	AtkBonus      int
 	DefBonus      int
+	// ★ 2026-10-06 守方攻击加成（城防/守城部队行动时也吃科技+军官技能加成，
+	//   原来守方行动时 unitAtkBonus=0，城防打人完全没加成 —— 用户反馈「科技/技能加成没算入伤害」）
+	DefAtkBonus   int
 	AtkSpeedBonus int
 	DefSpeedBonus int
+	// ★ 2026-10-06 射程加成%（用户要求：射程 = 兵种基础射程 × (1 + 科技加成)）
+	AtkRangeBonus int
+	DefRangeBonus int
 	AtkEquip      ezfyBattleBonus
 	DefEquip      ezfyBattleBonus
 
@@ -143,12 +149,15 @@ type ezfyBattleState struct {
 // ezfyNewBattleState 初始化战场
 // attackerUnits/defenderUnits: [troopId, count]
 // atkBonus: 攻方攻击加成%(军官+科技)  defBonus: 守方防御加成%(城墙+科技+城守)
+// defAtkBonus: 守方攻击加成%(科技+军官技能，城防/守城部队行动时用)
 // atkSpeedBonus/defSpeedBonus: 速度加成%
+// atkRangeBonus/defRangeBonus: 射程加成%（射程 = 基础射程 × (1+加成%)）
 // atkEquip/defEquip: 装备六项加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害，单位百分点）
 // atkTargets/defTargets: 兵种ID->优先攻击兵种ID(0=最近, 司令部配置)
 // atkMoves/defMoves: 兵种ID->1前进 0停止（玩家不下指令时的默认行为）
 func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
-	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
+	atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus int,
+	atkRangeBonus, defRangeBonus int,
 	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
@@ -157,7 +166,9 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 
 	st := &ezfyBattleState{
 		AtkBonus: atkBonus, DefBonus: defBonus,
+		DefAtkBonus:   defAtkBonus,
 		AtkSpeedBonus: atkSpeedBonus, DefSpeedBonus: defSpeedBonus,
+		AtkRangeBonus: atkRangeBonus, DefRangeBonus: defRangeBonus,
 		AtkEquip: atkEquip, DefEquip: defEquip,
 		AtkTargets: atkTargets, DefTargets: defTargets,
 		AtkMoves: atkMoves, DefMoves: defMoves,
@@ -305,7 +316,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 		target := ezfyPickTarget(unit, liveEnemies, targetMap)
 
+		// ★ 2026-10-06 射程 = 兵种基础射程 × (1 + 射程科技加成%)（用户要求）
 		rangeD := unit.cfg.AttackRange
+		if isAtk {
+			rangeD = unit.cfg.AttackRange * (100 + st.AtkRangeBonus) / 100
+		} else {
+			rangeD = unit.cfg.AttackRange * (100 + st.DefRangeBonus) / 100
+		}
 		dist := ezfyAbs(target.pos - unit.pos)
 
 		moveMap := st.DefMoves
@@ -329,60 +346,69 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 
 		dir := ezfyMoveDir(unit, moveMap, cmd)
-		// ★ 2026-10-04 修复「双方前进相遇后不停、越跑越远」：前进不能越过**最近的敌人**。
-		//   原实现只按「优先攻击目标」截断到射程边缘 —— 优先目标被更近的敌人挡在后面时，
-		//   单位会穿过挡路的敌人继续冲（冲到敌军后方），而被穿过的敌人仍在向前推进，
-		//   于是双方距离越拉越大（用户反馈）。
-		//   现在前进上限 = min(目标射程边缘, 最近敌人射程边缘)：只要最近敌人已在射程内就停。
+		// ★ 2026-10-06 冲锋到贴脸（用户确认的前进语义）：
+		//   前进不再「进射程就停」，而是**一路冲到与最近敌人贴身**为止（沿途进射程照常开火）。
+		//   移动量截断到「最近敌人当前距离 - 1」：单位按速度从高到低**逐个行动**，
+		//   后行动的单位看到的是最新位置，截断到 dist-1 天然不会互相穿过（修复用户反馈的
+		//   「穿过对面无限前进」bug —— 原实现双方各自停在射程边缘，既不贴脸又相互够不到）。
 		nearestDist := int(^uint(0) >> 1)
 		for _, e := range liveEnemies {
 			if d := ezfyAbs(e.pos - unit.pos); d < nearestDist {
 				nearestDist = d
 			}
 		}
-		// ★ 2026-09-24 用户反馈「战斗打起来后点后退没反应」：
-		//   老条件是 dist > rangeD 才移动 —— 接战后（已在射程内）后退被直接跳过，
-		//   位置不动、看起来像指令失灵。后退应随时可执行（拉开距离）；
-		//   前进保持「进射程即停」，「move 截断到 rangeD」只对前进有意义。
-		if dir != 0 && ((dist > rangeD && nearestDist > rangeD) || dir < 0) {
+		// 后退随时可执行（2026-09-24 用户反馈「点后退没反应」：接战后已在射程内，
+		// 老条件 dist > rangeD 会跳过后退）。移动量 = 兵种速度 × (1+速度加成)。
+		moved := false
+		if dir != 0 && (nearestDist > 1 || dir < 0) {
 			move := unit.cfg.Speed * (100 + speedBonus) / 100
 			if dir > 0 {
-				// 前进最多推进到「最近敌人射程边缘」；优先目标更近则到目标射程边缘
-				limit := dist - rangeD
-				if nl := nearestDist - rangeD; nl < limit {
-					limit = nl
-				}
-				if move > limit {
+				// 前进最多推到「与最近敌人相距 1」（贴身），不越过敌人
+				if limit := nearestDist - 1; move > limit {
 					move = limit
 				}
-			}
-			move *= dir
-			if isAtk {
-				unit.pos += move
-			} else {
-				unit.pos -= move
-			}
-			// ★ 2026-09-23 后退最多 10000，不能无限制后退。
-			//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
-			if isAtk {
-				if unit.pos < -ezfyBattleRetreatMax {
-					unit.pos = -ezfyBattleRetreatMax
-				}
-			} else {
-				if unit.pos > ezfyBattleStartDist+ezfyBattleRetreatMax {
-					unit.pos = ezfyBattleStartDist + ezfyBattleRetreatMax
+				if move < 1 {
+					move = 0
 				}
 			}
-			dist = ezfyAbs(target.pos - unit.pos)
-			verb := "前进"
-			if dir < 0 {
-				verb = "后撤"
+			if move != 0 {
+				move *= dir
+				if isAtk {
+					unit.pos += move
+				} else {
+					unit.pos -= move
+				}
+				// ★ 2026-09-23 后退最多 10000，不能无限制后退。
+				//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
+				if isAtk {
+					if unit.pos < -ezfyBattleRetreatMax {
+						unit.pos = -ezfyBattleRetreatMax
+					}
+				} else {
+					if unit.pos > ezfyBattleStartDist+ezfyBattleRetreatMax {
+						unit.pos = ezfyBattleStartDist + ezfyBattleRetreatMax
+					}
+				}
+				dist = ezfyAbs(target.pos - unit.pos)
+				// 移动后重算最近距离（后方开火切换目标用）
+				nearestDist = int(^uint(0) >> 1)
+				for _, e := range liveEnemies {
+					if d := ezfyAbs(e.pos - unit.pos); d < nearestDist {
+						nearestDist = d
+					}
+				}
+				verb := "前进"
+				if dir < 0 {
+					verb = "后撤"
+				}
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
+					side, stName(unit), verb, ezfyAbs(move), enemySide, stName(target), dist))
+				moved = true
 			}
-			st.Actions = append(st.Actions, fmt.Sprintf("%s%s%s%d, 与%s%s相距%d",
-				side, stName(unit), verb, ezfyAbs(move), enemySide, stName(target), dist))
-		} else if dist > rangeD {
+		}
+		if !moved && dist > rangeD {
 			// ★ 2026-09-29 用户反馈「选了攻击目标但对方火箭不在射程内，就啥也没操作，玩家不知道咋回事」：
-			//   本回合单位既没移动（指令 hold / 已到射程边界停住）也没开火 → 完全静默。
+			//   本回合单位既没移动（指令 hold / 已贴身停止）也没开火 → 完全静默。
 			//   追加一条行动日志说明「够不到目标、无法攻击」，让玩家明白不是 bug。
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 距目标%s%s%d，超出射程%d，无法攻击",
 				side, stName(unit), enemySide, stName(target), dist, rangeD))
@@ -411,6 +437,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				unitAtkBonus = atkBonus
 				unitDefBonus = defBonus
 				equip = st.AtkEquip
+			} else {
+				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
+				//   （原实现 unitAtkBonus=0，城防/守城部队打人完全没加成 —— 用户反馈
+				//   「科技加成、技能加成没有算入伤害当中」的根因之一）
+				unitAtkBonus = st.DefAtkBonus
 			}
 			// ★ 生命加成：守方装备的生命%让同一发伤害打掉的兵更少
 			//   （等价于「有效生命 = 兵种生命 × (1 + 生命加成%)」）
@@ -612,15 +643,18 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 }
 
 // ezfySimulate 执行战斗（兼容包装：一次跑完）
+// ★ 2026-10-06 新加成参数（守方攻击/射程）兼容包装一律传 0，行为不变
 func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
+	atkRangeBonus, defRangeBonus, defAtkBonus int,
 	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int) ezfyBattleResult {
 
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
-		atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
+		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
 	for !st.Done {
@@ -635,6 +669,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 // 仅驻军战调用，其它战斗路径（指挥室/野地/活动）不受影响。
 func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
+	atkRangeBonus, defRangeBonus, defAtkBonus int,
 	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkTargets, defTargets map[int]int,
@@ -642,7 +677,8 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 	defBreakPct int) ezfyBattleResult {
 
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
-		atkBonus, defBonus, atkSpeedBonus, defSpeedBonus,
+		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
+		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
 	if defBreakPct > 0 {
@@ -692,8 +728,11 @@ type ezfyBattleSnapshot struct {
 
 	AtkBonus       int             `json:"atk_bonus"`
 	DefBonus       int             `json:"def_bonus"`
+	DefAtkBonus    int             `json:"def_atk_bonus"`
 	AtkSpeedBonus  int             `json:"atk_speed_bonus"`
 	DefSpeedBonus  int             `json:"def_speed_bonus"`
+	AtkRangeBonus  int             `json:"atk_range_bonus"`
+	DefRangeBonus  int             `json:"def_range_bonus"`
 	AtkEquip       ezfyBattleBonus `json:"atk_equip"`
 	DefEquip       ezfyBattleBonus `json:"def_equip"`
 	AtkTargets     map[int]int     `json:"atk_targets"`
@@ -744,7 +783,9 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		Defenders: ezfyUnitSnapOf(st.Defenders),
 
 		AtkBonus: st.AtkBonus, DefBonus: st.DefBonus,
+		DefAtkBonus: st.DefAtkBonus,
 		AtkSpeedBonus: st.AtkSpeedBonus, DefSpeedBonus: st.DefSpeedBonus,
+		AtkRangeBonus: st.AtkRangeBonus, DefRangeBonus: st.DefRangeBonus,
 		AtkEquip: st.AtkEquip, DefEquip: st.DefEquip,
 		AtkTargets: st.AtkTargets, DefTargets: st.DefTargets,
 		AtkMoves: st.AtkMoves, DefMoves: st.DefMoves,
@@ -761,7 +802,9 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 	st := &ezfyBattleState{
 		AtkBonus: snap.AtkBonus, DefBonus: snap.DefBonus,
+		DefAtkBonus: snap.DefAtkBonus,
 		AtkSpeedBonus: snap.AtkSpeedBonus, DefSpeedBonus: snap.DefSpeedBonus,
+		AtkRangeBonus: snap.AtkRangeBonus, DefRangeBonus: snap.DefRangeBonus,
 		AtkEquip: snap.AtkEquip, DefEquip: snap.DefEquip,
 		AtkTargets: snap.AtkTargets, DefTargets: snap.DefTargets,
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,

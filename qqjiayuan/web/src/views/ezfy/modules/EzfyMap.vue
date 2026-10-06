@@ -381,11 +381,19 @@
               <i :class="ezfy.battleData.phase === 'cmd' ? 'on' : 'lock'" :style="{ width: ezfy.battleBarPct + '%' }"></i>
             </div>
           </div>
+          <!-- ★ 2026-10-06 保存 = 锁定本回合伤害（双方都保存或到点立即结算）；锁定后禁改配置，
+               可随时取消重新配置（仅限本回合尚未结算）。前端在 my_locked 时禁用所有指挥控件。 -->
           <div class="old-line ezfy-battle-cmds" v-if="!ezfy.battleData.done">
             <a href="javascript:;" @click="ezfy.sendBattleCmd('advance')">[全军前进]</a>
-            <a href="javascript:;" @click="ezfy.sendBattleCmd('hold')">[全军停止]</a>
+            <a href="javascript:;" @click="ezfy.sendBattleCmd('hold')">[全军待命]</a>
             <a href="javascript:;" @click="ezfy.sendBattleCmd('retreat')">[全军后退]</a>
-            <a v-if="ezfy.battleData.can_auto" href="javascript:;" @click="ezfy.doBattleAuto">[自动战斗]</a>
+            <a v-if="ezfy.battleData.can_auto && !ezfy.battleData.my_locked" href="javascript:;" @click="ezfy.doBattleAuto">[自动战斗]</a>
+            <span class="sep">|</span>
+            <a v-if="ezfy.battleData.can_lock" href="javascript:;" class="on" @click="ezfy.saveBattleConfig">[保存配置]</a>
+            <a v-if="ezfy.battleData.my_locked" href="javascript:;" class="red" @click="ezfy.cancelBattleConfig">[取消配置]</a>
+            <span v-if="ezfy.battleData.my_locked" class="red">· 已锁定</span>
+            <span v-else-if="ezfy.battleData.atk_locked && ezfy.battleData.def_locked" class="green">· 对方已锁定</span>
+            <span v-else-if="ezfy.battleData.atk_locked || ezfy.battleData.def_locked" class="green">· 对方已锁定待结算</span>
           </div>
           <!-- 双方兵力 + 逐兵种指挥（指令 + 优先攻击目标） -->
           <table class="ezfy-plain-table ezfy-battle-tbl">
@@ -405,6 +413,7 @@
               <td v-if="!ezfy.battleData.done">
                 <template v-if="ezfy.battleData.is_atk">
                   <select :value="u.target_troop"
+                          :disabled="ezfy.battleData.my_locked"
                           @change="ezfy.sendBattleTarget(u.troop_id, $event)"
                           style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
@@ -413,12 +422,17 @@
                 </template>
                 <span v-else class="gray">-</span>
               </td>
+              <!-- ★ 2026-10-06 逐兵种指令改为下拉（前进/后退/待命/默认）；my_locked 时禁用 -->
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="ezfy.battleData.is_atk">
-                  <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="ezfy.sendBattleCmd('advance', u.troop_id)">[前进]</a>
-                  <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="ezfy.sendBattleCmd('hold', u.troop_id)">[停止]</a>
-                  <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="ezfy.sendBattleCmd('retreat', u.troop_id)">[后退]</a>
-                  <span class="gray">{{ u.cmd_name }}</span>
+                  <select :value="u.cmd" :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)"
+                          style="width:96px">
+                    <option value="advance">前进</option>
+                    <option value="hold">待命</option>
+                    <option value="retreat">后退</option>
+                    <option value="">默认</option>
+                  </select>
                 </template>
                 <span v-else class="gray">AI</span>
               </td>
@@ -431,6 +445,7 @@
               <td v-if="!ezfy.battleData.done">
                 <template v-if="!ezfy.battleData.is_atk">
                   <select :value="u.target_troop"
+                          :disabled="ezfy.battleData.my_locked"
                           @change="ezfy.sendBattleTarget(u.troop_id, $event)"
                           style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
@@ -439,12 +454,17 @@
                 </template>
                 <span v-else class="gray">-</span>
               </td>
+              <!-- ★ 2026-10-06 逐兵种指令改为下拉（前进/后退/待命/默认）；my_locked 时禁用 -->
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="!ezfy.battleData.is_atk">
-                  <a href="javascript:;" :class="{ on: u.cmd === 'advance' }" @click="ezfy.sendBattleCmd('advance', u.troop_id)">[前进]</a>
-                  <a href="javascript:;" :class="{ on: u.cmd === 'hold' }" @click="ezfy.sendBattleCmd('hold', u.troop_id)">[停止]</a>
-                  <a href="javascript:;" :class="{ on: u.cmd === 'retreat' }" @click="ezfy.sendBattleCmd('retreat', u.troop_id)">[后退]</a>
-                  <span class="gray">{{ u.cmd_name }}</span>
+                  <select :value="u.cmd" :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)"
+                          style="width:96px">
+                    <option value="advance">前进</option>
+                    <option value="hold">待命</option>
+                    <option value="retreat">后退</option>
+                    <option value="">默认</option>
+                  </select>
                 </template>
                 <span v-else class="gray">AI</span>
               </td>

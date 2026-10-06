@@ -1292,6 +1292,8 @@ func (h *EzfyAdmin) AdminEzfyOfficerDelete(c *gin.Context) {
 		resp.NotFound(c, "军官不存在")
 		return
 	}
+	// ★ 2026-10-06 解雇前先解绑已穿戴装备，防止孤儿装备
+	h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
 	h.DB.Delete(&model.EzfyOfficer{}, id)
 	resp.OK(c, gin.H{"msg": "军官「" + o.Name + "」已解雇"})
 }

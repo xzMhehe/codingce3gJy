@@ -66,6 +66,7 @@ import AdminXyData from './components/admin/AdminXyData.vue'
 import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
 import AdminEzfyData from './components/admin/AdminEzfyData.vue'
 import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
+import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
 import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
 import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
@@ -291,6 +292,8 @@ export const menu = [
           { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
+          // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
+          { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notice-board', component: AdminEzfyReports, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
         ]
