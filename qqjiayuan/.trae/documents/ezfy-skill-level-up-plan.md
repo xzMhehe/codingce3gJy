@@ -45,12 +45,26 @@ func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
 }
 ```
 
-ezfySkillEffectText 后新增等级感知文本(绝地反击按回合数化,其余标注 ×N):
+ezfySkillEffectText 后新增等级感知文本(绝地反击按回合数化,加成类**直接换算最终数值**):
 ```go
+// ★ 2026-10-06 用户反馈：「攻击力+30% (效果×3)」太 low → 加成类直接放大数值嵌入文案
+//   （Lv.3 尖兵突击 = 「攻击力+90%」）；绝地反击按「前N回合反击」。
 func ezfySkillEffectTextAt(skill string, lv int) string {
-    if skill == "绝地反击" { return "前" + strconv.Itoa(lv) + "回合反击" }
-    if lv > 1 { return ezfySkillEffectText(skill) + " (效果×" + strconv.Itoa(lv) + ")" }
-    return ezfySkillEffectText(skill)
+    switch skill {
+    case "绝地反击": return "前" + strconv.Itoa(lv) + "回合反击"
+    case "尖兵突击": return "攻击力+" + strconv.Itoa(30*lv) + "%"
+    case "弧形防御": return "防御力+" + strconv.Itoa(30*lv) + "%"
+    case "火炮控制": return "陆军装甲攻击+" + strconv.Itoa(10*lv)
+    case "坦克突袭": return "陆军速度+" + strconv.Itoa(10*lv) + "%"
+    case "四指编队": return "空军对空攻击+" + strconv.Itoa(15*lv) + "%"
+    case "闪电袭击": return "空军速度+" + strconv.Itoa(10*lv) + "%"
+    case "狼群战术": return "海军对海攻击+" + strconv.Itoa(15*lv) + "%"
+    case "越岛战术": return "海军速度+" + strconv.Itoa(10*lv) + "%"
+    case "弹幕支援": return "城防攻击范围+" + strconv.Itoa(10*lv) + "%"
+    case "黄金眼": return "侦查等级+" + strconv.Itoa(lv)
+    case "机械改造": return "回收率+" + strconv.Itoa(10*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%"
+    default: return ""
+    }
 }
 ```
 

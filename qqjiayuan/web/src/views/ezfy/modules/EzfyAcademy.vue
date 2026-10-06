@@ -393,20 +393,8 @@
           <span class="gray">效果：{{ sk.effect }}</span>
           <br/>--------------------
         </div>
-        <hr/>
-        <div class="old-line">我的军官:</div>
-        <table class="ezfy-plain-table">
-          <tr><th>名称</th><th>已学技能</th><th>操作</th></tr>
-          <tr v-for="o in ezfy.skillData.officers" :key="'sko' + o.id">
-            <td>{{ o.name }}</td>
-            <td>
-              <span v-if="o.skills.length">{{ o.skills.join('、') }}</span>
-              <span v-else class="gray">无({{ o.skill_count }}/3)</span>
-            </td>
-            <td><a href="javascript:;" @click="ezfy.openOfficer(o.id)">[学习/遗忘]</a></td>
-          </tr>
-        </table>
-        <div class="old-line gray" v-if="!ezfy.skillData.officers.length">(暂无军官)</div>
+        <!-- ★ 2026-10-06 「我的军官」表格去掉：与军官详情里的已学技能重复展示，
+             学习/遗忘统一走 军官列表 → 详情 → 技能 tab -->
       </div>
 
       <!-- 计谋(复刻原版 acade/scheme.html: 12 条计谋, 发动消耗信号弹)
@@ -632,8 +620,8 @@
         </table>
         <table class="ezfy-plain-table">
           <colgroup><col style="width:22%"><col style="width:63%"><col style="width:15%"></colgroup>
-          <!-- ★ 2026-10-06 学习后按军官当前等级自动定级（50级→2级 / 100级→3级） -->
-          <tr><th colspan="3">可学技能（技能书 {{ ezfy.officerDetail.officer.skill_book }} 本 / 学一个消耗1本，学成 = Lv.{{ ezfy.officerDetail.officer.level }}级）</th></tr>
+          <!-- ★ 2026-10-06 学习后按军官当前等级自动定级（每30级+1级：普通军官最高5级 / 名将最高6级） -->
+          <tr><th colspan="3">可学技能（技能书 {{ ezfy.officerDetail.officer.skill_book }} 本 / 学一个消耗1本，学成 = Lv.{{ ezfy.officerDetail.officer.skill_level }}级）</th></tr>
           <tr v-for="s in ezfy.officerDetail.all_skills" :key="'ls' + s.id">
             <td>{{ s.name }}</td>
             <td>{{ s.effect }}</td>

@@ -67,12 +67,17 @@ func generalHasSkill(g *model.EzfyCfgGeneral, name string) bool {
 	return false
 }
 
-// ★ 2026-10-06 军官池守将技能随等级自动升级（与玩家军官同口径，见 ezfy_officer.go）
+// ★ 2026-10-06 军官池守将技能随等级自动升级（与玩家军官同口径，见 ezfy_officer.go）：
+//   每 30 级 +1 级；名将(kind=2)最高 6 级，普通军官(kind=1)最高 5 级。
 func generalSkillLevel(g *model.EzfyCfgGeneral) int {
 	if g == nil {
 		return 1
 	}
-	return ezfySkillLevelOf(g.Level)
+	cap := 5
+	if g.Kind == 2 {
+		cap = 6
+	}
+	return ezfySkillLevelOf(g.Level, cap)
 }
 func generalSkillScale(g *model.EzfyCfgGeneral) int { return generalSkillLevel(g) }
 func generalCounterRounds(g *model.EzfyCfgGeneral) int {

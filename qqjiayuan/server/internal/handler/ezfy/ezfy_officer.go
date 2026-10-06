@@ -1484,18 +1484,28 @@ func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	return ezfyAttrToBonus(mil)
 }
 
-// ★ 2026-10-06 军官技能随等级自动升级：
-//   军官等级 <50 → 技能 1 级（= 现有效果）；50≤等级<100 → 2 级（效果×2）；≥100 → 3 级（效果×3）。
+// ★ 2026-10-06 军官技能随等级自动升级（v2，用户 2026-10-06 修订）：
+//   军官每满 30 级技能等级 +1（30级=1级、60级=2级 … 150级=5级、180级=6级），
 //   等级动态推导、不落库 —— 学了技能后随等级晋级自动升级，学得晚也自然按当前等级定级。
+//   上限按军官身份：普通军官最高 5 级、名将（军官池 GeneralId>0）最高 6 级（达到 180 级解锁）。
 //   加成类技能统乘倍率（攻防/速度/黄金眼/机械改造全部 ×N）；绝地反击按回合数升级（前N回合）。
-func ezfySkillLevelOf(level int) int {
-	if level < 50 {
-		return 1
+func ezfySkillLevelOf(level, cap int) int {
+	lv := level / 30
+	if lv < 1 {
+		lv = 1
 	}
-	if level < 100 {
-		return 2
+	if lv > cap {
+		lv = cap
 	}
-	return 3
+	return lv
+}
+
+// ezfyOfficerSkillCap 军官技能等级上限：名将（军官池名将 GeneralId）最高 6 级，普通军官最高 5 级
+func ezfyOfficerSkillCap(o *model.EzfyOfficer) int {
+	if o != nil && o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId) {
+		return 6
+	}
+	return 5
 }
 
 // officerSkillLevel 军官当前技能等级（无军官兜底 1 级）
@@ -1503,13 +1513,13 @@ func (h *EzfyHandler) officerSkillLevel(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 1
 	}
-	return ezfySkillLevelOf(o.Level)
+	return ezfySkillLevelOf(o.Level, ezfyOfficerSkillCap(o))
 }
 
-// officerSkillScale 军官技能倍率（1/2/3 级对应 ×1/×2/×3）
+// officerSkillScale 军官技能倍率（技能等级即倍率：1级 ×1 … 6级 ×6）
 func (h *EzfyHandler) officerSkillScale(o *model.EzfyOfficer) int { return h.officerSkillLevel(o) }
 
-// officerCounterRounds 绝地反击生效回合数：1级=前1回合 / 2级=前2回合 / 3级=前3回合；没学返回 0
+// officerCounterRounds 绝地反击生效回合数：N 级=前 N 回合（1级=前1回合…6级=前6回合）；没学返回 0
 func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 	if o != nil && h.officerHasSkill(o, "绝地反击") {
 		return h.officerSkillLevel(o)
@@ -1658,15 +1668,39 @@ func ezfySkillEffectText(skill string) string {
 }
 
 // ezfySkillEffectTextAt 技能在某等级(Lv，1/2/3)下的效果文本。
-// 绝地反击按回合数（前N回合反击）；其余加成类在 1 级文本后标注「(效果×N)」。
+//
+// ★ 2026-10-06 加成类技能直接把数值放大嵌入文案（如 Lv.3 尖兵突击 → 「攻击力+90%」），
+//   不再拼「(效果×N)」后缀 —— 玩家看的就是最终效果；绝地反击按回合数（前N回合反击）。
+//   Lv.1 时输出与 ezfySkillEffectText 完全一致。
 func ezfySkillEffectTextAt(skill string, lv int) string {
-	if skill == "绝地反击" {
+	switch skill {
+	case "绝地反击":
 		return "前" + strconv.Itoa(lv) + "回合反击"
+	case "尖兵突击":
+		return "攻击力+" + strconv.Itoa(30*lv) + "%"
+	case "弧形防御":
+		return "防御力+" + strconv.Itoa(30*lv) + "%"
+	case "火炮控制":
+		return "陆军装甲攻击+" + strconv.Itoa(10*lv)
+	case "坦克突袭":
+		return "陆军速度+" + strconv.Itoa(10*lv) + "%"
+	case "四指编队":
+		return "空军对空攻击+" + strconv.Itoa(15*lv) + "%"
+	case "闪电袭击":
+		return "空军速度+" + strconv.Itoa(10*lv) + "%"
+	case "狼群战术":
+		return "海军对海攻击+" + strconv.Itoa(15*lv) + "%"
+	case "越岛战术":
+		return "海军速度+" + strconv.Itoa(10*lv) + "%"
+	case "弹幕支援":
+		return "城防攻击范围+" + strconv.Itoa(10*lv) + "%"
+	case "黄金眼":
+		return "侦查等级+" + strconv.Itoa(lv)
+	case "机械改造":
+		return "回收率+" + strconv.Itoa(10*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%"
+	default:
+		return ""
 	}
-	if lv > 1 {
-		return ezfySkillEffectText(skill) + " (效果×" + strconv.Itoa(lv) + ")"
-	}
-	return ezfySkillEffectText(skill)
 }
 
 func jsonInt(v interface{}) int {
@@ -2705,6 +2739,8 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			"general_des":   genDes,
 			"general_star":  genStar,
 			"general_level": genLevel,
+			// ★ 2026-10-06 当前技能等级（普通军官最高5级 / 名将最高6级，前端「学成=Lv.X级」用它）
+			"skill_level": h.officerSkillLevel(o),
 			"military":      o.Military, "logistics": o.Logistics, "learning": o.Learning,
 			// ★ 有效属性（基础 + 装备 + 套装），前端展示成「33 (+5) = 38」
 			"military_total": em, "logistics_total": el, "learning_total": ee,

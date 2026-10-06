@@ -10,17 +10,26 @@ import (
 
 // ============ 军官技能随等级自动升级（2026-10-06） ============
 //
-// 规则：军官等级 <50 → 技能1级（=现有效果）；50≤等级<100 → 2级（效果×2）；≥100 → 3级（效果×3）。
-// 加成类统乘倍率；绝地反击 1/2/3 级 = 前1/2/3回合。等级动态推导、不落库，学得晚自然按当前等级定级。
+// 规则(v2)：军官每满 30 级技能等级 +1（30级=1级…150级=5级、180级=6级）；
+// 加成类统乘倍率；绝地反击 N 级 = 前 N 回合。普通军官最高 5 级、名将最高 6 级。
+// 等级动态推导、不落库，学得晚自然按当前等级定级。
 
-// TestEzfySkillLevelOf 技能等级边界：0/49→1, 50/99→2, 100/255→3。
+// TestEzfySkillLevelOf 技能等级边界（2026-10-06 v2：每 30 级 +1 级，普通军官 cap5 / 名将 cap6）。
 func TestEzfySkillLevelOf(t *testing.T) {
-	cases := []struct{ level, want int }{
-		{0, 1}, {1, 1}, {49, 1}, {50, 2}, {99, 2}, {100, 3}, {101, 3}, {255, 3},
+	cases := []struct {
+		level, cap, want int
+	}{
+		{0, 5, 1}, {1, 5, 1}, {29, 5, 1}, {30, 5, 1}, {59, 5, 1},
+		{60, 5, 2}, {89, 5, 2}, {90, 5, 3}, {119, 5, 3},
+		{120, 5, 4}, {149, 5, 4}, {150, 5, 5}, {179, 5, 5},
+		// 普通军官最高 5 级：180 级仍封顶 5
+		{180, 5, 5}, {999, 5, 5},
+		// 名将最高 6 级：180 级正好 6 级（「前提达到 180 级」）
+		{150, 6, 5}, {179, 6, 5}, {180, 6, 6}, {209, 6, 6}, {350, 6, 6},
 	}
 	for _, c := range cases {
-		if got := ezfySkillLevelOf(c.level); got != c.want {
-			t.Fatalf("ezfySkillLevelOf(%d) = %d, 期望 %d", c.level, got, c.want)
+		if got := ezfySkillLevelOf(c.level, c.cap); got != c.want {
+			t.Fatalf("ezfySkillLevelOf(%d, %d) = %d, 期望 %d", c.level, c.cap, got, c.want)
 		}
 	}
 	// nil 军官兜底 1 级
@@ -31,10 +40,18 @@ func TestEzfySkillLevelOf(t *testing.T) {
 	if got := generalSkillLevel(nil); got != 1 {
 		t.Fatalf("generalSkillLevel(nil) = %d, 期望 1", got)
 	}
-	// 守将（军官池）同口径
-	g50 := &model.EzfyCfgGeneral{Level: 50}
-	if got := generalSkillLevel(g50); got != 2 {
-		t.Fatalf("generalSkillLevel(50级) = %d, 期望 2", got)
+	// 守将（军官池）同口径：普通军官 kind=1 最高 5 级 / 名将 kind=2 最高 6 级
+	g180 := &model.EzfyCfgGeneral{Level: 180, Kind: 2}
+	if got := generalSkillLevel(g180); got != 6 {
+		t.Fatalf("generalSkillLevel(名将180级) = %d, 期望 6", got)
+	}
+	g180p := &model.EzfyCfgGeneral{Level: 180, Kind: 1}
+	if got := generalSkillLevel(g180p); got != 5 {
+		t.Fatalf("generalSkillLevel(普通守将180级) = %d, 期望 5", got)
+	}
+	g50 := &model.EzfyCfgGeneral{Level: 50, Kind: 2}
+	if got := generalSkillLevel(g50); got != 1 {
+		t.Fatalf("generalSkillLevel(名将50级) = %d, 期望 1", got)
 	}
 }
 
@@ -115,6 +132,33 @@ func TestCounterSnapshotRounds(t *testing.T) {
 	}
 	if !strings.Contains(src, "atkRounds = 1") {
 		t.Fatalf("快照重建缺老快照回退成 1 回合（atkRounds = 1）")
+	}
+}
+
+// TestSkillEffectTextAtShowsFinalValue 技能效果文案直接显示放大后的最终数值。
+//
+// 用户反馈（2026-10-06）：「尖兵突击(Lv.3 攻击力+30% (效果×3)) 别这么展示，
+// 效果×3 太 low」—— 要求直接按等级算出最终数值展示（如 攻击力+90%）。
+func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
+	cases := []struct{ skill string; lv int; want string }{
+		{"尖兵突击", 1, "攻击力+30%"},
+		{"尖兵突击", 3, "攻击力+90%"},
+		{"弧形防御", 2, "防御力+60%"},
+		{"四指编队", 3, "空军对空攻击+45%"},
+		{"弹幕支援", 3, "城防攻击范围+30%"},
+		{"机械改造", 2, "回收率+20%, 出征油耗-20%"},
+		{"黄金眼", 3, "侦查等级+3"},
+		{"绝地反击", 2, "前2回合反击"},
+	}
+	for _, c := range cases {
+		if got := ezfySkillEffectTextAt(c.skill, c.lv); got != c.want {
+			t.Fatalf("ezfySkillEffectTextAt(%q, %d) = %q, 期望 %q", c.skill, c.lv, got, c.want)
+		}
+	}
+	// 文案里不再出现「(效果×N)」后缀（只查函数体，避免注释干扰）
+	body := ezfyFuncBody(t, "ezfy_officer.go", "func ezfySkillEffectTextAt(")
+	if strings.Contains(body, "效果×") {
+		t.Fatal("技能效果文案仍拼「(效果×N)」后缀，应直接展示最终数值")
 	}
 }
 
