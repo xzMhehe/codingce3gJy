@@ -637,8 +637,9 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		travelSec = int64(distance) * 60 * 300 / int64(slowest)
 		travelSec = travelSec * 100 / int64(100+techMap[12]*2)
 		travelSec = travelSec * 100 / int64(100+stationLv*3)
-		if h.officerSpeedSkill(lead) {
-			travelSec = travelSec * 100 / 110
+		if s := h.officerSpeedSkillBonus(lead); s > 0 {
+			// ★ 2026-10-06 移速技能随军官等级自动升级：-N% 行军时间按当前加成算
+			travelSec = travelSec * 100 / int64(100+s)
 		}
 		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
 		if lead != nil && lead.Military > 0 {
@@ -1212,8 +1213,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	travelSec = travelSec * 100 / int64(100+station*3)
 	// 带队军官「移速」技能: 行军 +10%
 	// ★ 2026-10-05 性能：复用上面已经查好的 lead（原来这里又各查一次，共 4 次军官查询）
-	if h.officerSpeedSkill(lead) {
-		travelSec = travelSec * 100 / 110
+	if s := h.officerSpeedSkillBonus(lead); s > 0 {
+		// ★ 2026-10-06 移速技能随军官等级自动升级：-N% 行军时间按当前加成算
+		travelSec = travelSec * 100 / int64(100+s)
 	}
 	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
 	if lead != nil && lead.Military > 0 {
@@ -2435,9 +2437,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★★ 2026-09-28 修复：这里原来是**两段一模一样的 if**，军官「移速」技能被加了两次 +10
 	//   （活动目标那条路径 ezfy_activity_target.go 只加一次）。
 	//   后果：带移速技能的军官出征，速度加成虚高 10%，与活动战、与界面描述都不一致。
-	if h.officerSpeedSkill(leadOfficer) {
-		atkSpeedBonus += 10
-	}
+	// ★ 2026-10-06 技能随军官等级自动升级：速度技能加成也随等级 ×N
+	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
@@ -2461,6 +2462,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
 	var target *model.EzfyCity
+	// ★ 2026-10-06 野地/寇城守将（军官池 EzfyCfgGeneral）提升到外层作用域，
+	//   战斗引擎的「守方绝地反击」用它传参（原来局部在 cfg.OfficerId 块内、从未生效）
+	var defGeneral *model.EzfyCfgGeneral
 
 	// ★ case 0：老数据/异常请求可能没带 target_type，按「野地」处理，
 	//   否则会落进 default，导致战报标题变成「侦查报告: 」（目标名为空）。
@@ -2505,13 +2509,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			wildDefCamp = 2 // 寇城守军按轴心国兵种名展示
 		}
 		if cfg.OfficerId > 0 {
-			if g := ezfyCfg.general(cfg.OfficerId); g != nil {
-				guardAttr := ezfyAttrToBonus(g.Learning)
+			defGeneral = ezfyCfg.general(cfg.OfficerId)
+			if defGeneral != nil {
+				guardAttr := ezfyAttrToBonus(defGeneral.Learning)
 				defBonus += guardAttr
 				// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
 				defAtkBonus += guardAttr
 				defOfficerAtkBonus = guardAttr
-				defOfficerDesc = g.Name + " Lv." + strconv.Itoa(g.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
+				defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
 			}
 		}
 		// ★ 战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
@@ -2527,7 +2532,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		rnd := cfg.ResMin + rand.Int63n(cfg.ResMax-cfg.ResMin+1)
 		lootTech := atkTech[17] * 2
 		if h.officerHasSkill(leadOfficer, "黄金眼") {
-			lootTech += 10
+			// ★ 2026-10-06 技能随军官等级自动升级：掠夺加成也随等级 ×N
+			lootTech += 10 * h.officerSkillScale(leadOfficer)
 		}
 		rnd = rnd * int64(100+lootTech) / 100
 		// ★ 2026-09-25 用户反馈「野地打完获得的资源太少」→ 管理端「二战系统配置 → 野地获取资源倍率」。
@@ -2787,14 +2793,21 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if target != nil {
 			defCamp = h.ensureProfile(target.UserID).Camp
 		}
+		// ★ 守方「绝地反击」生效回合数：玩家城 = 城守军官；野地/寇城 = 野地守将（无守将 → 0）
+		defCounterRounds := 0
+		if target != nil {
+			defCounterRounds = h.officerCounterRounds(cityGuard)
+		} else {
+			defCounterRounds = generalCounterRounds(defGeneral)
+		}
 		st := ezfyNewBattleState(attacker, defender,
 			atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 			atkRangeBonus, defRangeBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 			officerBonus, defOfficerAtkBonus, // 军官占的「攻击加成」百分点（战报日志拆解用）
 			atkTargets, defTargets, atkMoves, defMoves,
-			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）
-			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"),
+			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
+		h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
 		// ★ 2026-09-23 目标被别的玩家抢先指挥时，本部队改为「等待」，
 		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
@@ -2936,9 +2949,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		deadCount += g.Count
 	}
 	healTech := atkTech[21] * 2
-	// 带队军官「修养」技能: 战后伤兵恢复 +10%
+	// 带队军官「机械改造」技能: 战后伤兵恢复 +10%
 	if h.officerHasSkill(leadOfficer, "机械改造") {
-		healTech += 10
+		// ★ 2026-10-06 技能随军官等级自动升级：恢复加成也随等级 ×N
+		healTech += 10 * h.officerSkillScale(leadOfficer)
 	}
 	var repairedTotal int64
 	if deadCount > 0 {
@@ -3055,7 +3069,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// 玩家城市: 掠夺比例10%+掠夺技巧, 上限50%
 			lootRate := 10 + atkTech[17]*2
 			if h.officerHasSkill(leadOfficer, "黄金眼") {
-				lootRate += 10
+				// ★ 2026-10-06 技能随军官等级自动升级：掠夺率也随等级 ×N
+				lootRate += 10 * h.officerSkillScale(leadOfficer)
 			}
 			// 免战保护（含宣战）期间掠夺量为 0；早退分支已统一 return，此处为防御保留
 			if targetProtected || order.OrderType != 2 && order.OrderType != 3 {

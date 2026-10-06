@@ -128,9 +128,13 @@ type ezfyBattleState struct {
 	AtkOfficerDesc string
 	DefOfficerDesc string
 
-	// 军官技能「绝地反击」：第1回合被攻击后存活可立即反击攻击者
+	// 军官技能「绝地反击」：前N回合被攻击后存活可立即反击攻击者（N=技能等级，1级=前1回合…）
+	// AtkCounter/DefCounter 是布尔镜像，仅用于老战场快照回退（见 ezfyBattleStateFromSnapshot）
 	AtkCounter bool // 攻方带队军官有「绝地反击」
 	DefCounter bool // 守方城守军官有「绝地反击」
+	// ★ 2026-10-06 技能随军官等级升级：生效回合数（0=没学）。新战场字段，老快照缺省 0 → 用 bool 回退 1 回合。
+	AtkCounterRounds int
+	DefCounterRounds int
 
 	// ★ 2026-09-23 指挥室/回合日志里攻守双方的兵种名都显示「阵营兵种名」。
 	// 攻方=出征方阵营；守方只有玩家城才有值，野地/AI/寇城为 0（通用名）。
@@ -163,6 +167,7 @@ type ezfyBattleState struct {
 //	仅供战报日志拆解「攻击加成+N%」来源，不改伤害计算）
 // atkTargets/defTargets: 兵种ID->优先攻击兵种ID(0=最近, 司令部配置)
 // atkMoves/defMoves: 兵种ID->1前进 0停止（玩家不下指令时的默认行为）
+// atkCounterRounds/defCounterRounds: 绝地反击生效回合数（0=没学；1/2/3 = 前N回合）
 func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus int,
 	atkRangeBonus, defRangeBonus int,
@@ -171,7 +176,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkOfficerBonus, defOfficerBonus int,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
-	atkCounter, defCounter bool, atkCamp, defCamp int) *ezfyBattleState {
+	atkCounterRounds, defCounterRounds int, atkCamp, defCamp int) *ezfyBattleState {
 
 	st := &ezfyBattleState{
 		AtkBonus: atkBonus, DefBonus: defBonus,
@@ -183,7 +188,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkTargets: atkTargets, DefTargets: defTargets,
 		AtkMoves: atkMoves, DefMoves: defMoves,
 		AtkOfficerDesc: atkOfficerDesc, DefOfficerDesc: defOfficerDesc,
-		AtkCounter: atkCounter, DefCounter: defCounter,
+		AtkCounter:        atkCounterRounds > 0, DefCounter: defCounterRounds > 0,
+		AtkCounterRounds: atkCounterRounds, DefCounterRounds: defCounterRounds,
 		AtkCamp: atkCamp, DefCamp: defCamp,
 		Head: []string{}, Actions: []string{},
 	}
@@ -633,13 +639,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				first = false
 			}
 		}
-		// ★ 军官技能「绝地反击」：第1回合被打且存活 → 立即反击本次攻击者。
-		if dist <= rangeD && st.Round == 1 && target.alive() {
-			counter := st.AtkCounter // target 是攻方时用攻方旗
+		// ★ 军官技能「绝地反击」：**前N回合**被打且存活 → 立即反击本次攻击者。
+		//   2026-10-06 技能随军官等级自动升级：1级=前1回合 / 2级=前2回合 / 3级=前3回合。
+		if dist <= rangeD && target.alive() {
+			counterRounds := st.AtkCounterRounds // target 是攻方时用攻方回合数
 			if isAtk {
-				counter = st.DefCounter // 攻方在打 → 被打方是守方，用守方旗
+				counterRounds = st.DefCounterRounds // 攻方在打 → 被打方是守方，用守方回合数
 			}
-			if counter {
+			if st.Round <= counterRounds && counterRounds > 0 {
 				// 反击方(target)攻击加成 / 被反击方(unit)防御加成 —— 与常规攻击同一口径。
 				// ★ 2026-10-06 修复：守方反击时原来 cbAtk 恒为 0（「绝地反击」技能没算进伤害），
 				//   现在守方反击也吃守方攻击加成(科技+军官技能)。
@@ -732,7 +739,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
-		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
+		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
 		st.Step(nil, nil)
@@ -758,7 +765,7 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
-		atkTargets, defTargets, atkMoves, defMoves, false, false, 0, 0)
+		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	if defBreakPct > 0 {
 		for _, d := range defenderUnits {
 			if d.Count > 0 {
@@ -824,6 +831,9 @@ type ezfyBattleSnapshot struct {
 
 	AtkCounter bool `json:"atk_counter"`
 	DefCounter bool `json:"def_counter"`
+	// ★ 2026-10-06 绝地反击生效回合数（新字段；老快照没有 → 0，由 FromSnapshot 用 bool 回退成 1 回合）
+	AtkCounterRounds int `json:"atk_counter_rounds"`
+	DefCounterRounds int `json:"def_counter_rounds"`
 
 	AtkCamp int `json:"atk_camp"`
 	DefCamp int `json:"def_camp"`
@@ -872,6 +882,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkMoves: st.AtkMoves, DefMoves: st.DefMoves,
 		AtkOfficerDesc: st.AtkOfficerDesc, DefOfficerDesc: st.DefOfficerDesc,
 		AtkCounter: st.AtkCounter, DefCounter: st.DefCounter,
+		AtkCounterRounds: st.AtkCounterRounds, DefCounterRounds: st.DefCounterRounds,
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
 
 		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin, Draw: st.Draw,
@@ -881,6 +892,14 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 
 // ezfyBattleStateFromSnapshot 从快照重建战场（兵种配置按 troop_id 重新查表）
 func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
+	// ★ 2026-10-06 老快照（存的是 atk_counter:true 布尔）没有 round 字段 → 回退成前 1 回合
+	atkRounds, defRounds := snap.AtkCounterRounds, snap.DefCounterRounds
+	if atkRounds == 0 && snap.AtkCounter {
+		atkRounds = 1
+	}
+	if defRounds == 0 && snap.DefCounter {
+		defRounds = 1
+	}
 	st := &ezfyBattleState{
 		AtkBonus: snap.AtkBonus, DefBonus: snap.DefBonus,
 		DefAtkBonus:     snap.DefAtkBonus,
@@ -892,6 +911,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkMoves: snap.AtkMoves, DefMoves: snap.DefMoves,
 		AtkOfficerDesc: snap.AtkOfficerDesc, DefOfficerDesc: snap.DefOfficerDesc,
 		AtkCounter: snap.AtkCounter, DefCounter: snap.DefCounter,
+		AtkCounterRounds: atkRounds, DefCounterRounds: defRounds,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin, Draw: snap.Draw,
 		Head: snap.Head, Actions: snap.Actions,

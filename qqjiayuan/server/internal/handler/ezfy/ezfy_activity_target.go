@@ -67,33 +67,51 @@ func generalHasSkill(g *model.EzfyCfgGeneral, name string) bool {
 	return false
 }
 
+// ★ 2026-10-06 军官池守将技能随等级自动升级（与玩家军官同口径，见 ezfy_officer.go）
+func generalSkillLevel(g *model.EzfyCfgGeneral) int {
+	if g == nil {
+		return 1
+	}
+	return ezfySkillLevelOf(g.Level)
+}
+func generalSkillScale(g *model.EzfyCfgGeneral) int { return generalSkillLevel(g) }
+func generalCounterRounds(g *model.EzfyCfgGeneral) int {
+	if g != nil && generalHasSkill(g, "绝地反击") {
+		return generalSkillLevel(g)
+	}
+	return 0
+}
+
 // ezfyActWildDefBonus 活动野地配置了守将时的守方加成（复刻玩家城「城守」口径）。
 //
 // ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
 //   （战斗加成里 守方 防御+0% 速度+0%）。现在按守将有效学识给防御、守将速度技能给速度。
 //   无科技/城墙/装备：防御 = (有效学识+1)/2 + 弧形防御+30 / 弹幕支援+10；
 //   速度 = 命中 坦克突袭 / 闪电袭击 / 越岛战术 任一 +10。
+// ★ 2026-10-06 守将技能随等级自动升级：弧形防御/弹幕支援/速度 均 ×技能倍率
+//   （属性部分 ezfyAttrToBonus(g.Learning) 不加倍）。
 // 返回 (防御加成, 速度加成)。
 func ezfyActWildDefBonus(g *model.EzfyCfgGeneral) (int, int) {
 	if g == nil {
 		return 0, 0
 	}
+	scale := generalSkillScale(g)
 	def := 0
 	speed := 0
 	hasSpeed := false
 	for _, s := range generalSkillList(g) {
 		switch s {
 		case "弧形防御":
-			def += 30
+			def += 30 * scale
 		case "弹幕支援":
-			def += 10
+			def += 10 * scale
 		case "坦克突袭", "闪电袭击", "越岛战术":
 			hasSpeed = true
 		}
 	}
 	def += ezfyAttrToBonus(g.Learning)
 	if hasSpeed {
-		speed = 10
+		speed = 10 * scale
 	}
 	return def, speed
 }
@@ -316,9 +334,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkBonus := h.officerBattleBonus(leadOfficer) +
 		atkTech[5]*2 + atkTech[6]*3 + atkTech[8]*3 + atkTech[9]*2
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
-	if h.officerSpeedSkill(leadOfficer) {
-		atkSpeedBonus += 10
-	}
+	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 
 	// ★★ 指挥室（2026-09-22 ）：活动目标也是战斗，同样先开战场等玩家指挥，
@@ -342,9 +358,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		if b := ezfyAttrToBonus(defGeneral.Learning); b > 0 {
 			defOfficerDesc += " 守军防御+" + strconv.Itoa(b) + "%"
 		}
+		lv := generalSkillLevel(defGeneral)
 		for _, s := range generalSkillList(defGeneral) {
-			if eff := ezfySkillEffectText(s); eff != "" {
-				defOfficerDesc += " " + s + "(" + eff + ")"
+			if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
+				defOfficerDesc += " " + s + "(Lv." + strconv.Itoa(lv) + " " + eff + ")"
 			}
 		}
 	}
@@ -363,8 +380,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerBattleBonus(leadOfficer), defBonus,
 			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
-			h.officerHasSkill(leadOfficer, "绝地反击"),
-			defGeneral != nil && generalHasSkill(defGeneral, "绝地反击"),
+			h.officerCounterRounds(leadOfficer),
+			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp)
 		// ★★ 2026-09-27 用户反馈「活动野地不能指挥/没有战报/资源不累加」：
 		//   根因是活动流程缺少普通野地的「目标被抢先指挥 → 等待」机制（见 ezfyOrderTargetBusy）。
@@ -461,7 +478,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技 2%/级 + 机械改造 10%
 	healTech := atkTech[21] * 2
 	if h.officerHasSkill(leadOfficer, "机械改造") {
-		healTech += 10
+		healTech += 10 * h.officerSkillScale(leadOfficer)
 	}
 	var repairedTotal int64
 	for _, g := range br.AttackerLosses {

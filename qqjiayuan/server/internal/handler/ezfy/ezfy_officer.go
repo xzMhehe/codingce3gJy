@@ -1484,21 +1484,63 @@ func (h *EzfyHandler) officerBaseBonus(o *model.EzfyOfficer) int {
 	return ezfyAttrToBonus(mil)
 }
 
+// ★ 2026-10-06 军官技能随等级自动升级：
+//   军官等级 <50 → 技能 1 级（= 现有效果）；50≤等级<100 → 2 级（效果×2）；≥100 → 3 级（效果×3）。
+//   等级动态推导、不落库 —— 学了技能后随等级晋级自动升级，学得晚也自然按当前等级定级。
+//   加成类技能统乘倍率（攻防/速度/黄金眼/机械改造全部 ×N）；绝地反击按回合数升级（前N回合）。
+func ezfySkillLevelOf(level int) int {
+	if level < 50 {
+		return 1
+	}
+	if level < 100 {
+		return 2
+	}
+	return 3
+}
+
+// officerSkillLevel 军官当前技能等级（无军官兜底 1 级）
+func (h *EzfyHandler) officerSkillLevel(o *model.EzfyOfficer) int {
+	if o == nil {
+		return 1
+	}
+	return ezfySkillLevelOf(o.Level)
+}
+
+// officerSkillScale 军官技能倍率（1/2/3 级对应 ×1/×2/×3）
+func (h *EzfyHandler) officerSkillScale(o *model.EzfyOfficer) int { return h.officerSkillLevel(o) }
+
+// officerCounterRounds 绝地反击生效回合数：1级=前1回合 / 2级=前2回合 / 3级=前3回合；没学返回 0
+func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
+	if o != nil && h.officerHasSkill(o, "绝地反击") {
+		return h.officerSkillLevel(o)
+	}
+	return 0
+}
+
+// officerSpeedSkillBonus 速度类技能加成%（坦克突袭/闪电袭击/越岛战术，随等级 ×N）
+func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
+	if o != nil && h.officerSpeedSkill(o) {
+		return 10 * h.officerSkillScale(o)
+	}
+	return 0
+}
+
 // officerSkillBattleBonus 军官技能带来的攻击加成（复刻原版 getOfficerBattleBonus 的技能段）
 // 突击+10 鼓舞+5 爆破+8 空袭+8 海战+8 装甲突击+8
 func (h *EzfyHandler) officerSkillBattleBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
 	}
+	scale := h.officerSkillScale(o)
 	bonus := 0
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "尖兵突击":
-			bonus += 30
+			bonus += 30 * scale
 		case "火炮控制":
-			bonus += 10
+			bonus += 10 * scale
 		case "四指编队", "狼群战术":
-			bonus += 15
+			bonus += 15 * scale
 		}
 	}
 	return bonus
@@ -1539,12 +1581,13 @@ func (h *EzfyHandler) officerGuardBonus(o *model.EzfyOfficer) int {
 		return 0
 	}
 	bonus := h.officerGuardAttrBonus(o)
+	scale := h.officerSkillScale(o)
 	for _, s := range officerSkills(o) {
 		switch s {
 		case "弧形防御":
-			bonus += 30
+			bonus += 30 * scale
 		case "弹幕支援":
-			bonus += 10
+			bonus += 10 * scale
 		}
 	}
 	return bonus
@@ -1559,6 +1602,8 @@ func officerReportDesc(o *model.EzfyOfficer) string {
 }
 
 // officerBattleDesc 军官战斗作用描述（战报展示用）
+//
+// ★ 2026-10-06 技能随等级升级：技能行带 Lv.N 与当前等级效果（绝地反击按前N回合）。
 func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, baseBonus int, label string) string {
 	if o == nil {
 		return ""
@@ -1568,9 +1613,10 @@ func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, baseBonus int, lab
 	if baseBonus > 0 {
 		parts = append(parts, label+"+"+strconv.Itoa(baseBonus)+"%")
 	}
+	lv := h.officerSkillLevel(o)
 	for _, s := range officerSkills(o) {
-		if eff := ezfySkillEffectText(s); eff != "" {
-			parts = append(parts, s+"("+eff+")")
+		if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
+			parts = append(parts, s+"(Lv."+strconv.Itoa(lv)+" "+eff+")")
 		}
 	}
 	if len(parts) > 0 {
@@ -1609,6 +1655,18 @@ func ezfySkillEffectText(skill string) string {
 	default:
 		return ""
 	}
+}
+
+// ezfySkillEffectTextAt 技能在某等级(Lv，1/2/3)下的效果文本。
+// 绝地反击按回合数（前N回合反击）；其余加成类在 1 级文本后标注「(效果×N)」。
+func ezfySkillEffectTextAt(skill string, lv int) string {
+	if skill == "绝地反击" {
+		return "前" + strconv.Itoa(lv) + "回合反击"
+	}
+	if lv > 1 {
+		return ezfySkillEffectText(skill) + " (效果×" + strconv.Itoa(lv) + ")"
+	}
+	return ezfySkillEffectText(skill)
 }
 
 func jsonInt(v interface{}) int {
@@ -2539,14 +2597,10 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	h.collectTrainQueue(&city, trainQueues)
 	h.calcResource(&city, cityOfficers)
 	skillViews := []gin.H{}
+	lv := h.officerSkillScale(o)
 	for _, s := range officerSkills(o) {
-		eff := ""
-		if sid, ok := ezfyCfg.skillByName[s]; ok {
-			if cfg := ezfyCfg.skill(sid); cfg != nil {
-				eff = cfg.Effect
-			}
-		}
-		skillViews = append(skillViews, gin.H{"name": s, "effect": eff})
+		// ★ 2026-10-06 已学技能随军官等级自动升级：返回当前技能等级 level 与等级效果文本
+		skillViews = append(skillViews, gin.H{"name": s, "effect": ezfySkillEffectTextAt(s, lv), "level": lv})
 	}
 	allSkills := []gin.H{}
 	for _, s := range ezfyCfg.skills {
