@@ -3531,13 +3531,38 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 && target != nil {
 			// ★ 2026-10-06 守方成功守住也按进攻意图归「战斗报告」：
 			//   掠夺→被掠夺报告 / 征服→被征服报告，军情警讯不再出现防守报告（只留预警）。
+			// ★ 2026-10-06 正文升级为与攻方报告同款的完整公文模板：
+			//   主题/出发地/目的地/时间/公文报告/一段式描述/军衔声望/军官/攻守兵力块/
+			//   军功声望/军官经验/战果/个人荣誉等（守方视角：敌方进攻、我方守住）。
 			defTitle, defType := "被掠夺报告", 2
+			ocTitle := "掠夺"
 			if order.OrderType == 3 {
 				defTitle, defType = "被征服报告", 4
+				ocTitle = "征服"
 			}
+			defProfile := h.ensureProfile(target.UserID)
+			defReport := fmt.Sprintf("主题:%s\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:%s\n敌方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗胜利！\n",
+				defTitle, city.Name, city.X, city.Y, targetName, order.TargetX, order.TargetY,
+				time.UnixMilli(now).Format("2006-01-02 15:04"), defTitle,
+				targetName, order.TargetX, order.TargetY, ocTitle, br.Rounds)
+			defReport += fmt.Sprintf("军衔声望:%d\n", defProfile.Prestige)
+			if cityGuard != nil {
+				defReport += "军官:" + officerReportDesc(cityGuard) + "\n"
+			}
+			// 攻守兵力块复用上面的标签/兵力口径（win=false：攻方落败、守方获胜）
+			defReport += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+			defReport += troopChangeText(atkBefore, atkAfter)
+			defReport += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
+			defReport += troopChangeText(defBefore, defAfter)
+			defReport += "\n军功声望+100"
+			if defExp > 0 {
+				defReport += fmt.Sprintf("\n军官经验+%d", defExp)
+			}
+			defReport += "\n战果\n黄金:0\n粮食:0\n钢铁:0\n石油:0\n稀矿:0"
+			defReport += h.battleStatsTail(target.UserID, 100, 0)
 			h.addReport(target.UserID, defType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-				fmt.Sprintf("你的城市%s成功抵挡了敌方部队的进攻!\n%s", targetName, lossText(br.DefenderLosses)), detail, 0, target.ID)
+				defReport, detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)
 		}
 	}

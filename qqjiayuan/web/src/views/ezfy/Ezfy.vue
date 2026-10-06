@@ -634,6 +634,11 @@ export default {
       battleOrderId: 0,     // 正在指挥的出征订单 id
       battleLeftMs: 0,      // 本地倒计时（毫秒，每秒自减；归零时拉服务端推进回合）
       battleTimer: null,
+      // ★ 2026-10-06 逐兵种指令/目标的**本地即时值**（v-model 绑定）：
+      //   select 一选就落到这里，不等 API 往返，杜绝「下拉选了又被服务端轮询弹回」。
+      battleCmds: {},       // troop_id -> 指令（advance/hold/retreat/''）
+      battleTargets: {},    // troop_id -> 优先攻击目标（0=最近目标）
+      battleCmdInFlight: false, // 指令/目标 API 往返期间暂停轮询，防止整体刷 state 打断选择
       curOrder: null,
       showDetail: true,
       corpsList: [],
@@ -2538,11 +2543,27 @@ export default {
     openBattle (orderId) {
       this.battleOrderId = orderId
       this.battleLeftMs = 0
+      this.battleCmds = {}
+      this.battleTargets = {}
       this.battleData = Object.assign({}, this.battleData, {
         order_id: orderId, done: false, actions: [], round: 0, win: 0
       })
       this.go('battle')
       this.loadBattle()
+    },
+    // ★ 服务端 state 回来时刷新本地即时镜像（v-model 的兜底同步）
+    syncBattleLocal () {
+      const cmds = {}, tgts = {}
+      ;(this.battleData.attackers || []).forEach(u => {
+        cmds[u.troop_id] = u.cmd || ''
+        tgts[u.troop_id] = u.target_troop || 0
+      })
+      ;(this.battleData.defenders || []).forEach(u => {
+        cmds[u.troop_id] = u.cmd || ''
+        tgts[u.troop_id] = u.target_troop || 0
+      })
+      this.battleCmds = cmds
+      this.battleTargets = tgts
     },
     loadBattle () {
       if (!this.battleOrderId) return
@@ -2553,6 +2574,7 @@ export default {
           return
         }
         this.battleData = r.data
+        this.syncBattleLocal()
         this.battleLeftMs = r.data.round_left_ms || 0
         if (r.data.done) this.stopBattleTimer()
         else this.startBattleTimer()
@@ -2562,6 +2584,9 @@ export default {
       this.stopBattleTimer()
       this.battleTimer = setInterval(() => {
         if (this.battleData.done) { this.stopBattleTimer(); return }
+        // ★ 2026-10-06 指令/目标 API 往返期间不轮询：避免整体替换 battleData 把
+        //   正在操作的下拉弹回旧值（用户反馈「指挥模块下拉不能自己选」）。
+        if (this.battleCmdInFlight) return
         this.battleLeftMs -= 1000
         if (this.battleLeftMs <= 0) {
           this.battleLeftMs = 0
@@ -2575,26 +2600,32 @@ export default {
     // troopId 省略 = 全军快捷指令；给了 troopId = 给该兵种**单独**下指令
     sendBattleCmd (cmd, troopId) {
       if (!this.battleOrderId) return
+      // 逐兵种时本地已由 v-model 写进 battleCmds，这里以传入值/镜像为准送出
+      const send = cmd !== undefined ? cmd : this.battleCmds[troopId]
+      this.battleCmdInFlight = true
       api.post('/games/ezfy/battle/cmd', {
-        order_id: this.battleOrderId, troop_id: troopId || 0, cmd
+        order_id: this.battleOrderId, troop_id: troopId || 0, cmd: send
       }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '指令失败'); return }
         const st = r.data && r.data.state
         if (st) {
           this.battleData = st
+          this.syncBattleLocal()
           this.battleLeftMs = st.round_left_ms || 0
         }
-        this.notify((troopId ? '该兵种已' : '全军已') + this.battleCmdName(cmd))
+        this.notify((troopId ? '该兵种已' : '全军已') + this.battleCmdName(send))
         if (r.data && r.data.done) this.stopBattleTimer()
-      })
+      }).finally(() => { this.battleCmdInFlight = false })
     },
     // ★ 指挥时逐兵种改「优先攻击目标」（2026-09-23 ）：
     //   默认值来自司令部「兵种战斗配置」，这里改的只是**本场战斗**，不回写司令部。
     //   target = 0 表示「最近目标」；守方没有该兵种时服务器会自动回落打最近的。
     sendBattleTarget (troopId, ev) {
       if (!this.battleOrderId) return
-      const target = parseInt(ev.target.value, 10) || 0
+      // v-model 已把选中值写进 battleTargets，这里直接取（兼容旧调用带 $event）
+      const target = (ev && ev.target) ? (parseInt(ev.target.value, 10) || 0) : (this.battleTargets[troopId] || 0)
       const opt = (this.battleData.target_options || []).find(o => o.id === target)
+      this.battleCmdInFlight = true
       api.post('/games/ezfy/battle/target', {
         order_id: this.battleOrderId, troop_id: troopId, target_troop: target
       }).then(r => {
@@ -2602,11 +2633,12 @@ export default {
         const st = r.data && r.data.state
         if (st) {
           this.battleData = st
+          this.syncBattleLocal()
           this.battleLeftMs = st.round_left_ms || 0
         }
         this.notify('该兵种目标已设为' + (opt ? opt.name : '最近目标'))
         if (r.data && r.data.done) this.stopBattleTimer()
-      })
+      }).finally(() => { this.battleCmdInFlight = false })
     },
     doBattleAuto () {
       if (!this.battleOrderId) return
@@ -2648,7 +2680,7 @@ export default {
       })
     },
     battleCmdName (c) {
-      return c === 'hold' ? '待命' : (c === 'retreat' ? '后退' : '前进')
+      return c === '' || c == null ? '默认' : (c === 'hold' ? '待命' : (c === 'retreat' ? '后退' : '前进'))
     },
     // ★ 战场指挥室：行动日志按攻守上色 —— 我方绿色（跟随 is_atk），敌军红色
     battleLineClass (text) {
@@ -3999,11 +4031,16 @@ export default {
         this.notify('暂无战报可删除')
         return
       }
-      if (!await this.ask('确定删除【当前城市】的全部战报吗？\n（物理删除，不可恢复；' +
-        (this.reportWord ? '当前只是搜索筛选，删除范围仍是当前城市全部' : '共 ' + this.reports.length + ' 条') + '）')) return
-      api.post('/games/ezfy/reports/clear', { city_id: this.city ? this.city.id : 0 }).then(r => {
+      // ★ 2026-10-06 军情警讯/战斗报告分区删除：category 口径与 loadReports/ezfyReportCounts 一致
+      const scopeName = this.reportTab === 3 ? '军情警讯' : '战斗报告'
+      if (!await this.ask('确定删除【当前城市】的全部' + scopeName + '吗？\n（物理删除，不可恢复；' +
+        (this.reportWord ? '当前只是搜索筛选，删除范围仍是当前城市全部' + scopeName : '共 ' + this.reports.length + ' 条') + '）')) return
+      api.post('/games/ezfy/reports/clear', {
+        city_id: this.city ? this.city.id : 0,
+        category: this.reportTab === 3 ? 1 : 2
+      }).then(r => {
         if (r.code === 0) {
-          this.notify((r.data && r.data.msg) ? r.data.msg : '战报已全部删除')
+          this.notify((r.data && r.data.msg) ? r.data.msg : scopeName + '已全部删除')
           this.repPage = 1
           this.loadReports()
         } else this.notify(r.msg || '删除失败')

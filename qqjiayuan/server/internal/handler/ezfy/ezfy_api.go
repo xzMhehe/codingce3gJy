@@ -3084,7 +3084,7 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 		COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
 			OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
 			OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
-		FROM ezfy_report WHERE user_id = ?`+cityCond, uid).Row()
+		FROM ezfy_report WHERE user_id = ? AND is_read = 0`+cityCond, uid).Row()
 	var c1, c2 int
 	if row != nil {
 		row.Scan(&c1, &c2)
@@ -3552,10 +3552,12 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 //	   路径段数不同（2 段 vs 3 段），Gin 不会和 `:id` 冲突。
 //
 // ★ 2026-10-01 军情按当前城过滤：city_id>0 时只删**当前城市**的战报（口径与 Reports 列表一致）。
+// ★ 2026-10-06 军情警讯支持删除：category=1 只删军情警讯 / 2 只删战斗报告（口径与 ezfyReportCounts 一致）。
 func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
-		CityId int64 `json:"city_id"`
+		CityId   int64 `json:"city_id"`
+		Category int   `json:"category"`
 	}
 	c.ShouldBindJSON(&req)
 	q := h.DB.Where("user_id = ?", uid)
@@ -3564,6 +3566,21 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 		//   与 Reports/ezfyReportCounts 同口径按标题坐标反查该城出征订单
 		q = q.Where(ezfyCityReportCond(req.CityId))
 	}
+	if catCond := ezfyReportCategoryCond(req.Category); catCond != "" {
+		q = q.Where(catCond)
+	}
 	res := q.Delete(&model.EzfyReport{})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
+}
+
+// ezfyReportCategoryCond 按分类返回标题匹配条件（1=军情警讯 2=战斗报告），
+// 与 ezfyReportCounts 的 SQL / ezfyReportCategory 的判定保持同口径；category 无效返回空串。
+func ezfyReportCategoryCond(category int) string {
+	switch category {
+	case 1:
+		return "(title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%')"
+	case 2:
+		return "(title LIKE '侦查报告%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
+	}
+	return ""
 }
