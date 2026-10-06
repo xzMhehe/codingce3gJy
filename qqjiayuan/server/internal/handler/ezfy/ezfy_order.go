@@ -74,6 +74,10 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		cityAt[fmt.Sprintf("%d,%d", c.X, c.Y)] = c
 	}
 	// 玩家昵称（城主显示）
+	// ★ 2026-10-06 修复「点击地图城市，城主显示的是家园名字」：游戏昵称存
+	//   ezfy_profile.nickname（改名/转阵营都写它），家园昵称是 users.nickname。
+	//   这里 profile.nickname 优先、空才回落 users.nickname —— 与 ezfyNickOf 同口径，
+	//   否则玩家在游戏里改过名后，地图/详情上看到的是旧家园名。
 	userNames := map[uint]string{}
 	userIDs := []uint{}
 	for _, c := range myCities {
@@ -84,6 +88,12 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		h.DB.Select("id, nickname").Where("id IN ?", userIDs).Find(&users)
 		for _, u := range users {
 			userNames[u.ID] = u.Nickname
+		}
+		// 游戏昵称覆盖家园昵称：ezfy_profile.nickname 有值的玩家用游戏内的名字
+		var ps []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ? AND nickname <> ''", userIDs).Find(&ps)
+		for _, p := range ps {
+			userNames[p.UserID] = p.Nickname
 		}
 	}
 
