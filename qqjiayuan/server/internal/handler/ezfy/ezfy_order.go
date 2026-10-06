@@ -2805,6 +2805,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			atkRangeBonus, defRangeBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 			officerBonus, defOfficerAtkBonus, // 军官占的「攻击加成」百分点（战报日志拆解用）
+			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
+			h.officerSkillBattleBonus(leadOfficer), h.officerSkillBattleBonus(cityGuard),
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 		h.officerCounterRounds(leadOfficer), defCounterRounds,

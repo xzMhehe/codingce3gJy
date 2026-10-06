@@ -87,6 +87,26 @@ func generalCounterRounds(g *model.EzfyCfgGeneral) int {
 	return 0
 }
 
+// generalSkillDefBonus 军官池守将「防御类技能的攻击加成拆解段」（弧形防御 30 / 弹幕支援 10，
+// 随技能等级 ×N）。活动守军无城墙/无科技 → 守方攻击加成整体来自守将（defBonus），
+// 这里取下其中的技能段，供战报拆解单独展示「军官技能+N%」。
+func generalSkillDefBonus(g *model.EzfyCfgGeneral) int {
+	if g == nil {
+		return 0
+	}
+	scale := generalSkillScale(g)
+	bonus := 0
+	for _, s := range generalSkillList(g) {
+		switch s {
+		case "弧形防御":
+			bonus += 30 * scale
+		case "弹幕支援":
+			bonus += 10 * scale
+		}
+	}
+	return bonus
+}
+
 // ezfyActWildDefBonus 活动野地配置了守将时的守方加成（复刻玩家城「城守」口径）。
 //
 // ★ 2026-09-29 修复：活动野地原来「守方加成恒为 0」，导致配了守将也看不出守方厉害
@@ -382,7 +402,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
 			atkOfficerDesc, defOfficerDesc,
 			// 活动守军无城墙/无科技 → 守方攻击加成整体都来自守将；攻方军官加成照常拆解展示
+			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）
 			h.officerBattleBonus(leadOfficer), defBonus,
+			h.officerSkillBattleBonus(leadOfficer), generalSkillDefBonus(defGeneral),
 			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerCounterRounds(leadOfficer),

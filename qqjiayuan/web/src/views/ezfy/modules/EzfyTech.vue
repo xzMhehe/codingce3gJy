@@ -34,6 +34,7 @@
           <div class="panel-title">研究「{{ ezfy.techSel.name }}」{{ ezfy.techSel.level + 1 }}级</div>
           <div class="old-line">当前等级：{{ ezfy.techSel.level }}/{{ ezfy.techSel.max_level }}级</div>
           <div class="old-line">效果：{{ ezfy.techSel.effect }}</div>
+          <div class="old-line" v-if="ezfy.techSel.next_effect">研究后效果：{{ ezfy.techSel.next_effect }}</div>
           <div class="old-line">前提：科研中心{{ ezfy.techSel.academy_need }}级
             <span class="gray">(本城 {{ ezfy.techSel.academy }} 级)</span></div>
           <div class="old-line">

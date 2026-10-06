@@ -852,16 +852,25 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	views := []gin.H{}
 	for _, t := range all {
 		level := techMap[t.ID]
+		// ★ 2026-10-06 修复「满级了还显示1级效果」：effect 按**当前等级**取
+		//   ezfy_cfg_tech_level.effect（如「粮食产量+10%(当前+100%)」），
+		//   0 级才回落 ezfy_cfg_tech.effect 的一级描述。
+		eff := t.Effect
+		if level >= 1 {
+			if lv := ezfyCfg.techLevel(t.ID, level); lv != nil {
+				eff = lv.Effect
+			}
+		}
 		if rec, ok := researchMap[t.ID]; ok {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
-				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": t.Effect,
+				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": eff,
 				"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": true,
 				"end_time": rec.EndTime})
 			continue
 		}
 		next := ezfyCfg.techLevel(t.ID, level+1)
 		view := gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
-			"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": t.Effect,
+			"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": eff,
 			"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": false}
 		if next != nil {
 			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}

@@ -112,6 +112,10 @@ type ezfyBattleState struct {
 	//   0 = 该方无军官 / 老战场快照（不显示拆解括号，仍显示合并加成）。
 	AtkOfficerBonus int
 	DefOfficerBonus int
+	// ★ 2026-10-06 拆解展示：军官加成里「技能」占的百分点（已含在 AtkOfficerBonus 内），
+	//   单独展示「军官技能+N%」；老快照 0 → 属性部分 = 总加成，回退旧格式。
+	AtkOfficerSkill int
+	DefOfficerSkill int
 	AtkSpeedBonus int
 	DefSpeedBonus int
 	// ★ 2026-10-06 射程加成%（用户要求：射程 = 兵种基础射程 × (1 + 科技加成)）
@@ -165,6 +169,9 @@ type ezfyBattleState struct {
 // atkOfficerBonus/defOfficerBonus: 攻/守方攻击加成中「军官」占的百分点（0=无军官；
 //
 //	仅供战报日志拆解「攻击加成+N%」来源，不改伤害计算）
+// atkOfficerSkill/defOfficerSkill: 军官加成中「技能」占的百分点（已含在 atkOfficerBonus 内，
+//
+//	供拆解单独展示「军官技能+N%」；0 → 属性部分=总加成，回退旧格式）
 // atkTargets/defTargets: 兵种ID->优先攻击兵种ID(0=最近, 司令部配置)
 // atkMoves/defMoves: 兵种ID->1前进 0停止（玩家不下指令时的默认行为）
 // atkCounterRounds/defCounterRounds: 绝地反击生效回合数（0=没学；1/2/3 = 前N回合）
@@ -174,6 +181,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkEquip, defEquip ezfyBattleBonus,
 	atkOfficerDesc, defOfficerDesc string,
 	atkOfficerBonus, defOfficerBonus int,
+	atkOfficerSkill, defOfficerSkill int,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
 	atkCounterRounds, defCounterRounds int, atkCamp, defCamp int) *ezfyBattleState {
@@ -182,6 +190,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkBonus: atkBonus, DefBonus: defBonus,
 		DefAtkBonus:     defAtkBonus,
 		AtkOfficerBonus: atkOfficerBonus, DefOfficerBonus: defOfficerBonus,
+		AtkOfficerSkill: atkOfficerSkill, DefOfficerSkill: defOfficerSkill,
 		AtkSpeedBonus: atkSpeedBonus, DefSpeedBonus: defSpeedBonus,
 		AtkRangeBonus: atkRangeBonus, DefRangeBonus: defRangeBonus,
 		AtkEquip: atkEquip, DefEquip: defEquip,
@@ -290,17 +299,21 @@ func ezfyOfficerShortName(desc string) string {
 	return desc
 }
 
-// ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官/科技/装备），写进战报行动日志。
+// ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。
 // 只要任一来源非零就展示（PVP 里一方军官没攻击技能/没设城守时，科技加成也照常列出，
 // 不会像以前一样整括号消失）；全零（老战场快照）返回空串，不改动原样式的合并加成显示。
-func ezfyBonusBreakdown(officerBonus, techBase, equipBonus int, name string) string {
-	tech := techBase - officerBonus
-	if tech == 0 && equipBonus == 0 && !(name != "" && officerBonus != 0) {
+// skillBonus 是军官加成的技能部分（已含在 officerBonus 内），拆出来单独展示「军官技能+N%」。
+func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name string) string {
+	attr := officerBonus - skillBonus
+	if attr == 0 && skillBonus == 0 && techBase == 0 && equipBonus == 0 {
 		return ""
 	}
 	parts := []string{}
-	if name != "" && officerBonus != 0 {
-		parts = append(parts, fmt.Sprintf("军官·%s+%d%%", name, officerBonus))
+	if name != "" && attr != 0 {
+		parts = append(parts, fmt.Sprintf("军官·%s+%d%%", name, attr))
+	}
+	if skillBonus != 0 {
+		parts = append(parts, fmt.Sprintf("军官技能+%d%%", skillBonus))
 	}
 	if tech := techBase - officerBonus; tech != 0 {
 		parts = append(parts, fmt.Sprintf("科技+%d%%", tech))
@@ -343,11 +356,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	defBonus := st.DefBonus + st.DefEquip.Def
 	atkSpeedBonus := st.AtkSpeedBonus + st.AtkEquip.Move
 	defSpeedBonus := st.DefSpeedBonus + st.DefEquip.Move
-	// ★ 2026-10-06 「攻击加成」来源拆解（军官/科技/装备），写进每行行动日志，
+	// ★ 2026-10-06 「攻击加成」来源拆解（军官属性/军官技能/科技/装备），写进每行行动日志，
 	//   玩家一眼能看到加成是谁给的 —— 攻方=军官技能+科技+装备，守方=城守技能+科技。
-	atkBonusBreak := ezfyBonusBreakdown(st.AtkOfficerBonus, st.AtkBonus, st.AtkEquip.Dmg,
+	atkBonusBreak := ezfyBonusBreakdown(st.AtkOfficerBonus, st.AtkOfficerSkill, st.AtkBonus, st.AtkEquip.Dmg,
 		ezfyOfficerShortName(st.AtkOfficerDesc))
-	defBonusBreak := ezfyBonusBreakdown(st.DefOfficerBonus, st.DefAtkBonus, 0,
+	defBonusBreak := ezfyBonusBreakdown(st.DefOfficerBonus, st.DefOfficerSkill, st.DefAtkBonus, 0,
 		ezfyOfficerShortName(st.DefOfficerDesc))
 
 	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
@@ -742,6 +755,7 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
+		0, 0, // 技能拆解：simulate 包装无军官技能拆分，攻方/守方技能算在 officerBonus 内（回退合并展示）
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
@@ -768,6 +782,7 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkRangeBonus, defRangeBonus,
 		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
+		0, 0, // 技能拆解：驻军战守方无军官；攻方技能算在 officerBonus 内（回退合并展示）
 		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
 	if defBreakPct > 0 {
 		for _, d := range defenderUnits {
@@ -827,10 +842,13 @@ type ezfyBattleSnapshot struct {
 	DefTargets     map[int]int     `json:"def_targets"`
 	AtkMoves       map[int]int     `json:"atk_moves"`
 	DefMoves       map[int]int     `json:"def_moves"`
-	AtkOfficerDesc string          `json:"atk_officer_desc"`
-	DefOfficerDesc string          `json:"def_officer_desc"`
-	AtkOfficerBonus int            `json:"atk_officer_bonus"`
-	DefOfficerBonus int            `json:"def_officer_bonus"`
+	AtkOfficerDesc  string          `json:"atk_officer_desc"`
+	DefOfficerDesc  string          `json:"def_officer_desc"`
+	AtkOfficerBonus int             `json:"atk_officer_bonus"`
+	DefOfficerBonus int             `json:"def_officer_bonus"`
+	// ★ 2026-10-06 军官加成中「技能」占的百分点（老快照没有 → 0，回退旧格式）
+	AtkOfficerSkill int `json:"atk_officer_skill"`
+	DefOfficerSkill int `json:"def_officer_skill"`
 
 	AtkCounter bool `json:"atk_counter"`
 	DefCounter bool `json:"def_counter"`
@@ -878,6 +896,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkBonus: st.AtkBonus, DefBonus: st.DefBonus,
 		DefAtkBonus:     st.DefAtkBonus,
 		AtkOfficerBonus: st.AtkOfficerBonus, DefOfficerBonus: st.DefOfficerBonus,
+		AtkOfficerSkill: st.AtkOfficerSkill, DefOfficerSkill: st.DefOfficerSkill,
 		AtkSpeedBonus: st.AtkSpeedBonus, DefSpeedBonus: st.DefSpeedBonus,
 		AtkRangeBonus: st.AtkRangeBonus, DefRangeBonus: st.DefRangeBonus,
 		AtkEquip: st.AtkEquip, DefEquip: st.DefEquip,
@@ -907,6 +926,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkBonus: snap.AtkBonus, DefBonus: snap.DefBonus,
 		DefAtkBonus:     snap.DefAtkBonus,
 		AtkOfficerBonus: snap.AtkOfficerBonus, DefOfficerBonus: snap.DefOfficerBonus,
+		AtkOfficerSkill: snap.AtkOfficerSkill, DefOfficerSkill: snap.DefOfficerSkill,
 		AtkSpeedBonus: snap.AtkSpeedBonus, DefSpeedBonus: snap.DefSpeedBonus,
 		AtkRangeBonus: snap.AtkRangeBonus, DefRangeBonus: snap.DefRangeBonus,
 		AtkEquip: snap.AtkEquip, DefEquip: snap.DefEquip,
