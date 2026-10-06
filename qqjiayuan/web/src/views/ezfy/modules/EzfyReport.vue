@@ -92,9 +92,7 @@
 
           <!-- ===== 军情警讯: 别人打我 ===== -->
           <template v-else-if="ezfy.reportTab === 3">
-            <div class="old-line">
-              <a href="javascript:;" @click="ezfy.loadReports">[刷新]</a>
-            </div>
+            <!-- ★ 2026-10-06 去掉 [刷新]（切 tab / 进页面会自动 loadReports） -->
             <!-- ★ 2026-10-05 「没用的页面提示去掉」：情报等级公式/还能看到什么 不再展示（文案保留注释里） -->
             <div class="old-line" v-for="r in ezfy.repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="ezfy.openReport(r)">

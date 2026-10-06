@@ -2847,6 +2847,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		atkExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), win)
 	}
 
+	// ★ 2026-10-06 被掠夺/被征服报告正文要等战斗结算完（用与攻方同款的完整正文）才写，
+	//   相关临时值提前到函数级作用域，各分支里只赋值。
+	lootFeel := 0             // 掠夺民心扣减值
+	defConqBody := ""        // 被征服报告顶部「守方结论」段
 	reportType := "掠夺报告"
 	if order.OrderType == 3 {
 		reportType = "征服报告"
@@ -3355,32 +3359,31 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
 				Updates(map[string]interface{}{"feelings": 0, "grievance": target.Grievance})
-			defReportBody := ""
+			// ★ 2026-10-06 「被征服报告」：顶部保留守方结论，完整战斗正文（与攻方
+			//   「征服报告」同款：主题/时间/公文报告/战斗经过/双方兵力/战果/逐回合详情）
+			//   在结算完统一拼写（见函数末尾），标题带守方城名+坐标
+			//   （原误用攻方 city.Name 是 bug）。
 			if !lastCity {
-				defReportBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
+				defConqBody = fmt.Sprintf("你的城市%s已被敌方部队占领!\n民心清零!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			} else {
 				// 该城已被先到的队伍占走（本次重复攻打）
-				defReportBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold, lossText(br.DefenderLosses))
+				defConqBody = fmt.Sprintf("敌方部队再次攻打你的城市%s!\n民心清零, 但该城已被其他部队占领, 无法重复占领!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold)
 			}
-			h.addReport(target.UserID, 4, "城破报告: "+city.Name, defReportBody, detail, 0, target.ID)
 		}
 		// 普通掠夺(含成功掠夺玩家城市): 民心-N 民怨+N
 		// ★ 用户反馈「民心每次 -5 现在太多」→ 扣多少改为管理端可配
 		//   （ezfy_cfg_limit.loot_feelings，默认 2）。
 		if order.OrderType == 2 && order.TargetType == 3 && target != nil {
-			lootFeel := ezfyLootFeelingsCfg()
+			lootFeel = ezfyLootFeelingsCfg()
 			target.Feelings = maxInt(0, target.Feelings-lootFeel)
 			target.Grievance = minInt(100, target.Grievance+lootFeel)
 			h.saveCityRes(target)
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).
 				Updates(map[string]interface{}{"feelings": target.Feelings, "grievance": target.Grievance})
-			h.addReport(target.UserID, 2, "被掠夺报告: "+city.Name,
-				fmt.Sprintf("你的城市%s被敌方部队掠夺!\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d\n民心-%d 民怨+%d\n%s\n%s",
-					targetName, lootFood, lootSteel, lootOil, lootRare, lootGold,
-					lootFeel, lootFeel, lossText(br.DefenderLosses), wareNote),
-				detail, 0, target.ID)
+			// ★ 2026-10-06 「被掠夺报告」正文延后到战斗结算完统一写（见函数末尾），
+			//   与攻方「掠夺报告」同款完整格式；这里只扣民心/民怨。
 		}
 		// 掠夺资源入账
 		if order.OrderType == 2 || order.OrderType == 3 {
@@ -3470,6 +3473,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
 		}
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
+		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）等战斗结算完再写，
+		//   正文与攻方「掠夺/征服报告」同款完整格式（顶部加一行守方结论），逐回合详情走 detail；
+		//   标题带守方城名+坐标，列表显示 [掠夺] 被掠夺报告: 城名(X,Y) / [征服] 被征服报告: 城名(X,Y)。
+		if order.TargetType == 3 && target != nil {
+			if order.OrderType == 2 {
+				h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+					fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n\n%s", targetName, lootFeel, lootFeel, report),
+					detail, 0, target.ID)
+			} else if order.OrderType == 3 && defConqBody != "" {
+				h.addReport(target.UserID, 4, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+					defConqBody+"\n\n"+report, detail, 0, target.ID)
+			}
+		}
 		h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
 	} else {
