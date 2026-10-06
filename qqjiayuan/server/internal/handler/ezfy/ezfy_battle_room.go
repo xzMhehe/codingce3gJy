@@ -305,10 +305,16 @@ func (h *EzfyHandler) ezfyBattleFinishToOrder(b *model.EzfyBattle, now int64) st
 	//   `arrive_time - start_time` 是「单程行军时长」的计算基准（返航时长也用它），
 	//   拨到 now 会让返航时间算出天文数字（线上出现过「20717 天才能回来」）。
 	//   结算改由 processOrders 直接调 processArrive 触发（见那里的 status==5 分支）。
-	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", b.OrderId).Updates(map[string]interface{}{
-		"battle_result": string(payload),
-		"status":        0,
-	})
+	// ★★ 2026-10-06 修复「打一下生成十个战报」：这里**只允许把「战斗中(5)」的订单打回 0**。
+	//   战场打完（b.Status=2）后 BattleState 每次被拉都会走到本函数 —— 老代码无条件写
+	//   status=0，会把已结算(2/3)的订单重新打开，processArrive 的 CAS(0/5/6→98)再次命中
+	//   → 同一条征服/被征服报告反复落库。加 `AND status=5` 后已结算订单不再被二次结算。
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("id = ? AND status = ?", b.OrderId, ezfyOrderStatusBattle).
+		Updates(map[string]interface{}{
+			"battle_result": string(payload),
+			"status":        0,
+		})
 	return string(payload)
 }
 
@@ -534,13 +540,29 @@ func (h *EzfyHandler) BattleState(c *gin.Context) {
 	snap, done := h.ezfyBattleTick(b, now)
 	if done && b.Status == 2 {
 		// 战斗刚结束 → 结果回写订单（下一次 processOrders 就会出战报）
-		h.ezfyBattleFinishToOrder(b, now)
 		// ★ 2026-10-05 修复「指挥结束了却迟迟看不到结果」：订单属于**攻方**，
 		//   若此刻是**守方**在指挥室里收的尾（攻方已离线），攻方那条订单不会有人去结算，
 		//   战报/掠夺要等攻方下次上线才出。这里直接按攻方身份把订单结算掉。
 		//   ⚠️ processArrive 内部有 CAS 抢占（status 0/5 → 98），与攻方入口并发也不会重复结算。
+		// ★★ 2026-10-06 修复「打一下生成十个战报」：战场打完(行 status=2)后本接口每次被拉
+		//   都会走进这个分支 —— 只有「仍处于战斗中(5)」或「刚被别的入口打回行进(0)」的
+		//   订单才允许回写+结算；已结算(2/3)的订单直接跳过（finishToOrder 内部还有
+		//   `AND status=5` 守卫双保险），否则同一会场反复拉取会把订单重置回 0 重新结算。
 		var atkOrder model.EzfyOrder
-		if err := h.DB.First(&atkOrder, b.OrderId).Error; err == nil {
+		if err := h.DB.First(&atkOrder, b.OrderId).Error; err != nil {
+			resp.OK(c, h.ezfyBattleView(b, snap, now, h.ensureProfile(uid).Camp, side == "atk"))
+			return
+		}
+		switch atkOrder.Status {
+		case ezfyOrderStatusBattle:
+			h.ezfyBattleFinishToOrder(b, now)
+			// 重新读一次拿到写好的 battle_result，结算正文才完整
+			var settled model.EzfyOrder
+			if err := h.DB.First(&settled, b.OrderId).Error; err == nil {
+				h.processArrive(b.UserID, &settled, now)
+			}
+		case 0:
+			// 已被别的入口 finishToOrder 打回行进中，直接走一次 CAS 结算（抢不到即跳过）
 			h.processArrive(b.UserID, &atkOrder, now)
 		}
 	}
