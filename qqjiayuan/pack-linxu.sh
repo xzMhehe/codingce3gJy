@@ -190,8 +190,17 @@ info "server / dbinit / ezfymigrate 编译完成(linux/amd64 ELF 校验通过)"
 
 log "STEP 4/5 组装部署包"
 
-preclean "$PKG/web"
-preclean "$PKG/admin-web"
+# ★ 2026-10-06 修复: 直接整目录重建,避免 cp 撞上残留同名条目(目录 vs 文件)报 "File exists"
+#   (老包结构可能和当前不一致,如 static/hxxy/npc 上版是目录、这版是文件)
+rm -rf "$PKG/web" "$PKG/admin-web" 2>/dev/null || true
+if [ -e "$PKG/web" ]; then
+  info "旧 web 目录删除被拦截,改为清空内容(覆盖式拷贝不依赖目录重新创建)"
+  find "$PKG/web" -mindepth 1 -delete 2>/dev/null || true
+fi
+if [ -e "$PKG/admin-web" ]; then
+  info "旧 admin-web 目录删除被拦截,改为清空内容(覆盖式拷贝不依赖目录重新创建)"
+  find "$PKG/admin-web" -mindepth 1 -delete 2>/dev/null || true
+fi
 mkdir -p "$PKG/web/dist" "$PKG/admin-web/dist"
 # 用 src/. 的形式拷贝:即使上面预清理没删成功、目标目录已存在,
 # cp 也不会把它套成 dist/dist(受限环境删不掉目录时会踩这个坑)
