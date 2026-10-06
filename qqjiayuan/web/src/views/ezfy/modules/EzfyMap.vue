@@ -474,12 +474,15 @@
           <!-- 行动日志：最新回合在最上、已过回合在下；我方绿色、敌军红色 -->
           <div class="old-line ezfy-battle-legend">
             <span class="green">■ 我方</span>&nbsp;<span class="red">■ 敌军</span>
+            &nbsp;&nbsp;<a href="javascript:;" @click="ezfy.toggleBattleDetail">[{{ ezfy.battleDetailOn ? '收起' : '展开' }}回合详情]</a>
           </div>
           <template v-if="ezfy.battleRounds.length">
             <div class="old-line ezfy-round-block" v-for="(g, gi) in ezfy.battleRounds" :key="'bg' + gi">
               <div v-if="g.line" class="ezfy-round-title">{{ g.line }}</div>
-              <div v-for="(li, idx) in g.items" :key="'bl' + gi + '_' + idx"
-                   class="ezfy-round-line" :class="ezfy.battleLineClass(li)">{{ li }}</div>
+              <template v-if="ezfy.battleDetailOn">
+                <div v-for="(li, idx) in g.items" :key="'bl' + gi + '_' + idx"
+                     class="ezfy-round-line" :class="ezfy.battleLineClass(li)">{{ li }}</div>
+              </template>
             </div>
           </template>
           <div class="old-line gray" v-else>(暂无行动)</div>

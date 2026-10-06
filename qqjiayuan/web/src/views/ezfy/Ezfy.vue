@@ -640,6 +640,8 @@ export default {
       battleTargets: {},    // troop_id -> 优先攻击目标（0=最近目标）
       battleCmdInFlight: false, // 指令/目标 API 往返期间暂停轮询，防止整体刷 state 打断选择
       battleSelOpen: false, // 指令/目标下拉展开中 → 跳过 syncBattleLocal，防止选择被打断弹回
+      // ★ 2026-10-06 指挥室「展开/收起回合详情」：默认展开（默认只看回合标题时信息太少）
+      battleDetailOn: true,
       curOrder: null,
       showDetail: true,
       corpsList: [],
@@ -2667,6 +2669,10 @@ export default {
     battleCmdName (c) {
       return c === '' || c == null ? '默认' : (c === 'hold' ? '待命' : (c === 'retreat' ? '后退' : '前进'))
     },
+    // ★ 2026-10-06 指挥室：展开/收起逐回合详情（收起时只留回合标题，方便快速翻战况）
+    toggleBattleDetail () {
+      this.battleDetailOn = !this.battleDetailOn
+    },
     // ★ 战场指挥室：行动日志按攻守上色 —— 我方绿色（跟随 is_atk），敌军红色
     battleLineClass (text) {
       const t = text || ''
@@ -2997,23 +3003,65 @@ export default {
       return '<svg class="ezfy-rank-ico" viewBox="0 0 20 20" width="18" height="18" style="vertical-align:-4px;margin-right:4px" role="img">' +
         '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="' + color + '"/>' + polys + '</svg>'
     },
-    // ★ 2026-10-06 城内军队表格的兵种图标：黑白配色，样式参考首页资源图标(圆角方块+图形剪影)。
-    //   没有按 40 种兵种逐一画，按兵种类型画剪影（海军=战舰/陆军=坦克/空军=战机/城防=要塞）。
+    // ★ 2026-10-06 城内军队兵种图标：20 个兵种逐一画剪影（20×20 自绘 SVG，贴切兵种形态）。
+    //   阵营不同配色/角标不同一眼可分：同盟(camp=1)=浅底深剪影+金星角标；轴心(camp=2)=深底白剪影+铁十字角标。
     troopIco (t) {
-      const box = (glyph) =>
+      const id = t ? t.id : 0
+      const camp = (t && t.camp) || this.selfInfo.camp || this.profile.camp || 1
+      const axis = camp === 2
+      const bg = axis ? '#1E2A38' : '#E7ECF1'
+      const fg = axis ? '#fff' : '#2A3646'
+      const mk = (inner) =>
         '<svg class="ezfy-ico" viewBox="0 0 20 20" role="img">' +
-        '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#1E2A38"/>' + glyph + '</svg>'
-      switch ((t && t.type) || 0) {
-        case 1: // 海军·战舰
-          return box('<g fill="#fff"><path d="M2.9 13 H17.2 L15.1 16.4 H4.8 Z"/><rect x="4.6" y="10.8" width="5" height="2.4" rx="0.5"/><rect x="6.4" y="8.6" width="2.4" height="2.2" rx="0.4"/></g>')
-        case 2: // 陆军·坦克
-          return box('<g fill="#fff"><rect x="4" y="11.6" width="11.6" height="1.9" rx="0.4"/><rect x="4" y="9.2" width="10.4" height="2.6" rx="0.5"/><rect x="6.4" y="6.6" width="5.6" height="2.8" rx="1.1"/><rect x="12.2" y="9.7" width="4.8" height="1.5" rx="0.4"/></g>')
-        case 3: // 空军·战机
-          return box('<g fill="#fff"><path d="M2.6 10.8 H17.4 L13.8 9.2 V7.9 L14.9 8.4 V8.9 L16 8.6 V9.7 L13.8 11.6 V12.6 L17.4 13.8 H2.6 Z"/><path d="M6.6 6.6 L10.3 9.2 L14 6.6 L13.2 11.4 H6.8 Z"/></g>')
-        case 4: // 城防·要塞城墙
-          return box('<g fill="#fff"><path d="M3 15.8 V7 L5.4 5.7 V8.2 H7.4 V5.2 H9.4 V8.2 H11.4 V5.2 H13.4 V8.2 H15.4 V5.7 L17.8 7 V15.8 Z"/><rect x="6.2" y="11.6" width="6.6" height="4.2" rx="0.5" fill="#1E2A38"/></g>')
-        default: // 通用兵种
-          return box('<circle cx="10" cy="10" r="4.6" fill="#fff"/>')
+        '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="' + bg + '"/>' +
+        '<g fill="' + fg + '">' + inner.replace(/\{B\}/g, bg) + '</g>' +
+        (axis
+          ? '<g fill="#C9CFD6" transform="translate(13.6 3) scale(0.34)"><path d="M10 2.5 L14 5.5 L18.5 5.5 L14.5 10 L18.5 14.5 L14 14.5 L10 17.5 L6 14.5 L1.5 14.5 L5.5 10 L1.5 5.5 L6 5.5 Z"/></g>'
+          : '<g fill="#D9A320" transform="translate(14.1 2.7) scale(0.32)"><path d="M10 0 L12.4 5.2 L18 5.7 L13.9 9.3 L15.4 14.8 L10 11.9 L4.6 14.8 L6.1 9.3 L2 5.7 L7.6 5.2 Z"/></g>') +
+        '</svg>'
+      switch (id) {
+        case 1: // 步兵·钢盔士兵 + 肩挎步枪
+          return mk('<path d="M7.6 6.6 a2.4 2.4 0 0 1 4.8 0 z"/><rect x="7.2" y="6.5" width="5.6" height="1.1" rx="0.55"/><rect x="6.8" y="8.2" width="6.4" height="2.6" rx="1.3"/><rect x="7.2" y="10.7" width="1.8" height="4.6" rx="0.8"/><rect x="11" y="10.7" width="1.8" height="4.6" rx="0.8"/><rect x="6.9" y="15" width="2.5" height="1" rx="0.5"/><rect x="10.6" y="15" width="2.5" height="1" rx="0.5"/><path d="M13.1 5.2 l1.2 -0.6 0.4 0.7 -1.1 0.6 0.7 8.8 -1.2 0.5 Z"/>')
+        case 2: // 摩托化·边斗摩托车
+          return mk('<circle cx="5.6" cy="13.6" r="2.2"/><circle cx="13.2" cy="13.6" r="2.2"/><circle cx="15.4" cy="14.4" r="1.5"/><path d="M5.8 12.9 h7.7 l-0.5 1.3 h-6.8 Z"/><path d="M5 11.5 L7.2 9.2 h4.3 l3.5 4.3 -1.4 1 -3.1 -3.5 -1.1 2.9 -2.6 0.1 Z"/><path d="M7 9.2 v-1.9 h2.6 l-0.4 0.9 -1.2 -0.1 v1.1 Z"/>')
+        case 3: // 卡车·厢式运输车
+          return mk('<rect x="3.8" y="7.8" width="8.2" height="4.2" rx="0.6"/><path d="M12.7 8.4 q2.8 0 2.8 2.6 v1 h-2.8 Z"/><rect x="15.2" y="11.1" width="0.7" height="0.9" rx="0.35"/><circle cx="5.6" cy="13.8" r="2"/><circle cx="9.4" cy="13.8" r="2"/><circle cx="13.4" cy="13.8" r="2"/>')
+        case 4: // 装甲车·半履带装甲运兵车(前轮+后履带)
+          return mk('<path d="M4.2 10.8 V8.2 L6.6 6.8 h7.6 l1.6 1.4 V10.8 Z"/><path d="M4.2 10.8 h11.6 l-1 1.2 H5.2 Z"/><rect x="6.6" y="4.2" width="3.6" height="2.2" rx="1.1"/><rect x="2.6" y="5" width="2.4" height="0.9" rx="0.45"/><circle cx="6.6" cy="13.6" r="2.1"/><rect x="9.4" y="10.9" width="6.6" height="2.8" rx="1.4"/><circle cx="12.8" cy="14.6" r="1.5"/>')
+        case 5: // 轻型坦克·小炮塔短炮管
+          return mk('<rect x="3.6" y="11.6" width="12.8" height="2.8" rx="1.4"/><circle cx="6" cy="13.4" r="1.2"/><circle cx="8.7" cy="13.4" r="1.2"/><circle cx="11.4" cy="13.4" r="1.2"/><circle cx="14.1" cy="13.4" r="1.2"/><path d="M4.6 11.6 V9.6 h10.8 v2 Z"/><path d="M7 7.2 h6.4 l0 3.5 -6.4 0.6 Z"/><rect x="3.4" y="7.9" width="3.2" height="1" rx="0.5"/><rect x="8.9" y="5.7" width="1.9" height="1.5" rx="0.75"/>')
+        case 6: // 重型坦克·厚重车体长炮管+炮口制退
+          return mk('<rect x="3.4" y="11.2" width="13.2" height="3.2" rx="1.6"/><circle cx="5.4" cy="12.9" r="1.1"/><circle cx="8.2" cy="12.9" r="1.1"/><circle cx="11" cy="12.9" r="1.1"/><circle cx="13.8" cy="12.9" r="1.1"/><path d="M4.8 11.2 V8.9 h10.4 v2.3 Z"/><path d="M5.6 8.9 L7.5 6.9 h8.9 l1.9 2 Z"/><rect x="6.4" y="6.5" width="8.2" height="1.2" rx="0.6"/><rect x="2" y="8" width="3.7" height="1.1" rx="0.55"/><rect x="0.9" y="8.4" width="1.2" height="1" rx="0.4"/>')
+        case 7: // 突击炮·无炮塔前方大倾角+短粗炮
+          return mk('<rect x="3.8" y="11.2" width="12.4" height="2.8" rx="1.4"/><circle cx="6" cy="12.9" r="1.1"/><circle cx="8.8" cy="12.9" r="1.1"/><circle cx="11.6" cy="12.9" r="1.1"/><circle cx="14.4" cy="12.9" r="1.1"/><path d="M4.6 11.2 L7.2 6.3 h7 l2.6 4.9 Z"/><rect x="7.2" y="6.3" width="7.2" height="1.1" rx="0.55"/><rect x="3" y="8.2" width="2.9" height="1.2" rx="0.5"/>')
+        case 8: // 火箭·卡车搭载倾斜火箭发射架
+          return mk('<rect x="4" y="7.4" width="9.8" height="4" rx="0.5"/><g transform="translate(4.6 9) rotate(-24)"><rect x="0" y="-0.9" width="8.8" height="1.8" rx="0.4"/><rect x="1.1" y="-2" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="1.2" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="0.1" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="-0.9" width="6.8" height="0.8" rx="0.3" fill="{B}"/></g><path d="M13.6 8.3 q3 0 3 2.2 v0.9 h-3 Z"/><circle cx="5.4" cy="13.6" r="1.9"/><circle cx="9.6" cy="13.6" r="1.9"/><circle cx="13.3" cy="13.6" r="1.9"/><rect x="16.4" y="11.3" width="0.7" height="0.9" rx="0.35"/>')
+        case 9: // 侦察机·平直翼小型机
+          return mk('<path d="M10 1.8 l1.3 2.6 h-2.6 Z"/><path d="M8.7 4.3 h2.6 v11.7 h-2.6 Z"/><rect x="2.6" y="8.4" width="14.8" height="2" rx="0.8"/><rect x="6.2" y="14.3" width="7.6" height="1.6" rx="0.6"/>')
+        case 10: // 歼击机·后掠翼箭形
+          return mk('<path d="M10 2 L11.2 4.6 L16.9 7 L17.5 8.7 L11.2 6.7 L11.6 10.7 L14.9 13 L14.3 14.4 L10.9 12.1 L10 14.6 L9.1 12.1 L5.7 14.4 L5.1 13 L8.4 10.7 L8.8 6.7 L2.5 8.7 L3.1 7 Z"/>')
+        case 11: // 轰炸机·宽翼双垂尾四引擎
+          return mk('<path d="M8.5 4.6 h3 v11.6 h-3 Z"/><circle cx="10" cy="5" r="1.5"/><rect x="1.4" y="7.4" width="17.2" height="2.6" rx="1"/><rect x="2.6" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="5.3" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="12.9" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="15.6" y="6.4" width="1.8" height="1.4" rx="0.5"/><path d="M8.2 14.7 l-1.5 -1.5 V14.7 Z"/><path d="M11.8 14.7 l1.5 -1.5 V14.7 Z"/><rect x="6.6" y="14.6" width="6.8" height="1.5" rx="0.6"/>')
+        case 12: // 特种兵·伞降伞兵
+          return mk('<path d="M10 1.4 a5.9 5.9 0 0 1 5.9 5.8 q0 1 -1 1.1 l-9.8 0 q-1 0 -1 -1.1 A5.9 5.9 0 0 1 10 1.4 Z"/><path d="M7.8 7.3 V4.6 M10 7.8 V3.2 M12.2 7.3 V4.6" stroke="{B}" stroke-width="0.6" fill="none"/><path d="M7.4 8.2 L9.3 12.4 M12.6 8.2 L10.7 12.4" stroke="{B}" stroke-width="0.55" fill="none"/><circle cx="10" cy="13.4" r="1"/><rect x="8.8" y="14.2" width="2.4" height="2.6" rx="0.9"/><path d="M8.5 16.9 L7.2 19 h1.2 l0.5 -0.8 0.5 0.8 h1.3 l-1.2 -2.1 Z M11.5 16.9 L10.2 19 h1.3 l0.5 -0.8 0.5 0.8 h1.2 Z"/>')
+        case 13: // 驱逐舰·流线舰体+双炮塔
+          return mk('<path d="M2.4 12.6 H15.8 L13.2 15 H3.6 Z"/><path d="M2.4 12.6 L5.2 9.4 h2.2 v3.2 Z"/><rect x="5.6" y="8.2" width="2.7" height="1.6" rx="0.6"/><rect x="3" y="8.7" width="2.7" height="0.7" rx="0.35"/><rect x="8.2" y="7" width="3" height="5.2" rx="0.6"/><rect x="8.9" y="4.9" width="1.8" height="2.3" rx="0.6"/><rect x="12.2" y="9.6" width="2.4" height="1.5" rx="0.6"/><rect x="14.4" y="10" width="2" height="0.6" rx="0.3"/><path d="M14 11.2 l1.9 1.4 h-1.3 l-1.2 -1 Z"/>')
+        case 14: // 潜艇·艇身+指挥塔+潜望镜
+          return mk('<path d="M3 11.4 a7 3.1 0 0 1 14 0 a7 3.1 0 0 1 -14 0 Z"/><rect x="7.2" y="7.9" width="3.6" height="3" rx="0.9"/><rect x="8.6" y="5.5" width="0.8" height="2.6" rx="0.4"/><path d="M15.2 9.5 L17.2 8.8 V11.2 L15.2 12.8 Z"/><path d="M4 10.3 l-1.4 -1 0.7 2.3 1.9 0.4 Z"/>')
+        case 15: // 战列舰·长舰体多主炮塔
+          return mk('<path d="M2.2 12.2 H16.4 L13.6 14.8 H4.6 Z"/><rect x="2.4" y="11.4" width="15" height="1.5" rx="0.5"/><path d="M2.4 11.6 L5 9.2 h1.4 v2.4 Z"/><path d="M4 8.8 h2.3 v3 H4 Z"/><rect x="2.8" y="8.9" width="1.3" height="0.7" rx="0.35"/><path d="M6.6 8.8 h2.3 v3 h-2.3 Z"/><path d="M12.4 9 h2.3 v2.8 h-2.3 Z"/><rect x="13" y="9.1" width="1.3" height="0.7" rx="0.35"/><path d="M15 9.2 h2.1 v2.6 h-2.1 Z"/><rect x="15.3" y="9.3" width="1.2" height="0.6" rx="0.3"/><rect x="8.4" y="6.2" width="3.3" height="5.4" rx="0.7"/><rect x="9" y="4.4" width="1.7" height="2" rx="0.6"/><rect x="10.9" y="4.8" width="1.4" height="1.6" rx="0.5"/>')
+        case 16: // 航母·平直甲板+斜角跑道+舰岛
+          return mk('<path d="M2 12.2 H16.8 L14.8 14.6 H4 Z"/><rect x="1.5" y="8.4" width="17" height="3.7" rx="0.9"/><path d="M4.2 11.6 L10 8.6 l5.8 3 V9.8 L10 6.4 4.2 9.4 Z" fill="{B}"/><rect x="11.6" y="5.8" width="2.7" height="2.8" rx="0.7"/><rect x="12.3" y="4.5" width="1.4" height="1.5" rx="0.5"/>')
+        case 17: // 碉堡·堡垒+射孔
+          return mk('<rect x="3.2" y="7" width="13.6" height="1.9" rx="0.6"/><path d="M4 8.9 h12 v5 H6.2 L4.4 12.9 Z"/><rect x="8.9" y="10.4" width="2.2" height="1" rx="0.5" fill="{B}"/><circle cx="5.7" cy="10.8" r="0.55" fill="{B}"/><circle cx="7.2" cy="10.8" r="0.55" fill="{B}"/><circle cx="12.6" cy="10.8" r="0.55" fill="{B}"/><circle cx="14.1" cy="10.8" r="0.55" fill="{B}"/>')
+        case 18: // 榴弹炮·大仰角短炮管
+          return mk('<rect x="3.6" y="4.8" width="7.4" height="1.9" rx="0.95" transform="rotate(36 10 11)"/><path d="M7.8 7.8 h3 v5.2 h-3 Z"/><path d="M13.7 8.2 l2.5 4.4 -1 0.9 -1.9 -3.3 Z"/><circle cx="8.4" cy="13.8" r="2.3"/><circle cx="13.3" cy="13.8" r="2.3"/>')
+        case 19: // 反坦克炮·长细炮管+炮盾+开腿支架
+          return mk('<rect x="2.2" y="8" width="9.4" height="1" rx="0.5"/><rect x="2.2" y="7.3" width="1.7" height="1.4" rx="0.4"/><rect x="8.8" y="6" width="2.6" height="4.8" rx="0.6"/><rect x="11.4" y="8.2" width="1.4" height="1.2" rx="0.4"/><path d="M12.2 8.8 l1.8 3.4 h-0.7 l-1.4 -2.7 Z"/><path d="M12.2 8.8 l2.2 4.8 h-0.7 l-1.9 -4.1 Z"/><circle cx="10" cy="14" r="2"/>')
+        case 20: // 防空炮·双管高射炮+两侧大轮
+          return mk('<circle cx="5.6" cy="13.6" r="2.4"/><circle cx="14.4" cy="13.6" r="2.4"/><rect x="8.6" y="7.8" width="3.8" height="3.9" rx="0.9"/><rect x="4.8" y="2.8" width="7" height="1.1" rx="0.55" transform="rotate(50 10.4 9.7)"/><rect x="4.8" y="4.3" width="7" height="1.1" rx="0.55" transform="rotate(50 10.4 9.7)"/>')
+        default: // 通用兵种兜底
+          return mk('<circle cx="10" cy="10" r="4.6"/>')
       }
     },
     // ★ 榜单前三名奖台化：给冠/亚/季军整行上色，超出三名的行不加类
@@ -4019,7 +4067,7 @@ export default {
       api.get('/games/ezfy/reports/' + rid).then(res => {
         if (res.code === 0) {
           this.curReport = res.data.report
-          this.showDetail = false
+          this.showDetail = true
           this.go('reportview')
         }
       })
@@ -4034,7 +4082,8 @@ export default {
           // 详情接口异常时至少把列表里的内容显示出来
           this.curReport = r
         }
-        this.showDetail = false
+        // ★ 2026-10-06 战斗报告默认展开「逐回合详情」（原来默认收起，看不到回合过程）
+        this.showDetail = true
         const item = this.reports.find(x => x.id === r.id)
         if (item) item.is_read = 1
         // openReport 可能从「军情警讯」进也可能从「战斗报告」进，这里记录它来自哪个分区

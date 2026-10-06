@@ -191,8 +191,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	effDef := defBonus + defEquip.Def
 	effAtkSpeed := atkSpeedBonus + atkEquip.Move
 	effDefSpeed := defSpeedBonus + defEquip.Move
-	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 速度+%d%% | 守方 防御+%d%% 速度+%d%%",
-		effAtk, effAtkSpeed, effDef, effDefSpeed))
+	// ★ 2026-10-06 守方攻击加成单独列出：城防/守城部队行动时也吃科技+军官技能加成，
+	//   攻守双方的「加成伤害」都能在开场加成行里一眼看出来
+	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 速度+%d%% | 守方 攻击+%d%% 防御+%d%% 速度+%d%%",
+		effAtk, effAtkSpeed, st.DefAtkBonus, effDef, effDefSpeed))
 	if atkEquip != (ezfyBattleBonus{}) {
 		st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
 	}
@@ -559,8 +561,11 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				cur.count -= killed
 				if first {
-					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 消灭%d个",
-						side, stName(unit), critTxt, enemySide, stName(cur), killed))
+					// ★ 2026-10-06 攻击行写明「攻击加成+N%」与「造成D伤害」：
+					//   军官技能+科技+装备（守方还含城防攻击加成）加成多少、实际打了多少，
+					//   「攻、守军官造成的技能/加成伤害」一眼能看出来
+					st.Actions = append(st.Actions, fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%, 造成%d伤害, 消灭%d个",
+						side, stName(unit), critTxt, enemySide, stName(cur), unitAtkBonus, damage, killed))
 				} else {
 					st.Actions = append(st.Actions, fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 消灭%d个",
 						side, stName(unit), enemySide, stName(cur), killed))
@@ -576,9 +581,13 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				counter = st.DefCounter // 攻方在打 → 被打方是守方，用守方旗
 			}
 			if counter {
-				// 反击方(target)攻击加成 / 被反击方(unit)防御加成 —— 与常规攻击同一口径
+				// 反击方(target)攻击加成 / 被反击方(unit)防御加成 —— 与常规攻击同一口径。
+				// ★ 2026-10-06 修复：守方反击时原来 cbAtk 恒为 0（「绝地反击」技能没算进伤害），
+				//   现在守方反击也吃守方攻击加成(科技+军官技能)。
 				cbAtk, cbDef := 0, 0
-				if !isAtk { // target 是攻方，反击守方(unit)
+				if isAtk { // 攻方在打 → 被打的是守方 → 守方发动反击
+					cbAtk = st.DefAtkBonus
+				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击
 					cbAtk = atkBonus
 					cbDef = defBonus
 				}
@@ -591,8 +600,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					kCnt = unit.count
 				}
 				unit.count -= kCnt
-				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【反击】还击%s%s, 消灭%d个",
-					enemySide, stName(target), side, stName(unit), kCnt))
+				// ★ 2026-10-06 反击行标明「军官技能·绝地反击」+ 攻击加成/伤害，攻守的技能触发一眼可见
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%, 造成%d伤害, 消灭%d个",
+					enemySide, stName(target), side, stName(unit), cbAtk, dmg, kCnt))
 			}
 		}
 		if len(ezfyAliveList(enemies)) == 0 {

@@ -62,15 +62,14 @@
     <template v-else-if="ezfy.cur === 'troops'">
         <div class="panel">
           <div class="panel-title">城内军队</div>
-          <!-- ★ 2026-10-06 城内军队加「图标/价格」列：图标黑白配色(参考首页资源图标)，价格=训练消耗 -->
+          <!-- ★ 2026-10-06 城内军队加「图标」列：图标黑白配色(参考首页资源图标) -->
           <table class="ezfy-center-tbl">
-            <tr><th class="nm">图标</th><th class="nm">兵种</th><th>数量</th><th>价格</th><th>操作</th></tr>
+            <tr><th class="nm">图标</th><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
             <!-- ★ 2026-09-28 首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in ezfy.armyRows" :key="'tv' + t.id">
               <td class="nm"><span v-html="ezfy.troopIco(t)"></span></td>
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ t.count }}</td>
-              <td class="gray" style="font-size:11px">粮{{ t.cost ? t.cost.food : 0 }} 钢{{ t.cost ? t.cost.steel : 0 }} 油{{ t.cost ? t.cost.oil : 0 }} 稀{{ t.cost ? t.cost.rare : 0 }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
                 <a href="javascript:;" @click="ezfy.openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
