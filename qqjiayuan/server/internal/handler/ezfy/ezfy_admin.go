@@ -255,10 +255,30 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 				generalName, generalStar = gNameOf[o.GeneralId], gStarOf[o.GeneralId]
 				if w, ok := getWayOf[o.ID]; ok {
 					getWay, getTime = w, getTimeOf[o.ID]
-				} else if o.IsCaptive == 1 {
-					getWay = "活动野地俘虏(战俘营)"
 				} else {
-					getWay = "管理端发放"
+					// ★ 2026-10-06 优先按 source 枚举标注：原来只认「俘虏敌将」战报 +
+					//   IsCaptive 兜底，PvP 抢将收编后（source=4, IsCaptive=0）被误判成
+					//   「管理端发放」（线上反馈：35806363 抢小号军官却显示管理端发放）。
+					switch o.Source {
+					case model.EzfyOfficerSourcePvp:
+						getWay = "抢玩家获取"
+					case model.EzfyOfficerSourceWildland:
+						if o.IsCaptive == 1 {
+							getWay = "活动野地俘虏(战俘营)"
+						} else {
+							getWay = "活动野地俘虏"
+						}
+					case model.EzfyOfficerSourceRecruit:
+						getWay = "军校招募"
+					case model.EzfyOfficerSourceGrant:
+						getWay = "管理端发放"
+					default: // 未标注(老数据)：能力不够的兜底
+						if o.IsCaptive == 1 {
+							getWay = "活动野地俘虏(战俘营)"
+						} else {
+							getWay = "管理端发放"
+						}
+					}
 				}
 			}
 			officersViews = append(officersViews, officerOut{

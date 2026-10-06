@@ -1134,10 +1134,16 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 		HomeNum    string `json:"home_num"`
 		PosName    string `json:"pos_name"`
 		StatusName string `json:"status_name"`
-		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「是否名将」列
+		// ★ 2026-09-29 是否名将（general_id>0 且池子该行 kind=2）—— 玩家军官列表据此加「类型」列
 		IsGeneral bool `json:"is_general"`
 		// ★ 2026-10-05 获取途径标注：按 model.EzfyOfficerSource* 枚举翻译（未标注则为空串）
 		SourceName string `json:"source_name"`
+		// ★ 2026-10-06 军官池模板（编辑弹窗只读展示）：原军官池 ID/名字 + 池子原始属性。
+		//   玩家可改实例名 / 当前属性 / 属性点，但「军官池 ID / 名字 / 原始属性」以池子为准、只读。
+		GeneralName       string `json:"general_name"`
+		PoolBaseMilitary  int    `json:"pool_base_military"`
+		PoolBaseLogistics int    `json:"pool_base_logistics"`
+		PoolBaseLearning  int    `json:"pool_base_learning"`
 	}
 	out := []rowOut{}
 	for _, o := range rows {
@@ -1148,9 +1154,18 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 			owner, home = h.ezfyAdminName(ct.UserID)
 		}
 		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
+		// 军官池模板（只读展示素材）：GeneralId>0 时取池子配置（内存配置，无 DB 开销）
+		generalName, pbM, pbL, pbS := "", 0, 0, 0
+		if o.GeneralId > 0 {
+			if g := ezfyCfg.general(o.GeneralId); g != nil {
+				generalName = g.Name
+				pbM, pbL, pbS = g.Military, g.Logistics, g.Learning
+			}
+		}
 		out = append(out, rowOut{EzfyOfficer: o, CityName: cityName, OwnerName: owner,
 			HomeNum: home, PosName: posNames[o.Position], StatusName: statusNames[o.Status],
-			IsGeneral: isGeneral, SourceName: model.EzfyOfficerSourceName(o.Source)})
+			IsGeneral: isGeneral, SourceName: model.EzfyOfficerSourceName(o.Source),
+			GeneralName: generalName, PoolBaseMilitary: pbM, PoolBaseLogistics: pbL, PoolBaseLearning: pbS})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
@@ -1257,8 +1272,9 @@ func (h *EzfyAdmin) AdminEzfyOfficerUpdate(c *gin.Context) {
 	}
 	for _, k := range []string{"level", "star", "exp", "military", "logistics", "learning",
 		"loyalty", "position", "status", "is_captive",
-		// ★ 2026-09-22：原始属性 + 可用属性点（管理端也能改）
-		"base_military", "base_logistics", "base_learning", "free_points"} {
+		// ★ 2026-10-06 原始属性(base_*)改为**只读**：以军官池模板为准（见列表 general_name/pool_base_*），
+		//   管理端不再接收 base_* 修改，防误改后洗点回退异常；可用属性点 free_points 仍可改
+		"free_points"} {
 		if v, ok := in[k]; ok {
 			if f, err := strconv.ParseFloat(fmt.Sprint(v), 64); err == nil {
 				n := int64(f)

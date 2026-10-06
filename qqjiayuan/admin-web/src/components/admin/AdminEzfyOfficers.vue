@@ -180,7 +180,7 @@
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
             <el-table-column prop="id" label="ID" width="45" align="center" />
-            <el-table-column label="是否名将" width="76" align="center">
+            <el-table-column label="类型" width="76" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.is_general ? 'warning' : 'info'">
                   {{ row.is_general ? '名将' : '普通' }}
@@ -417,6 +417,12 @@
     <!-- ============ 编辑军官 ============ -->
     <el-dialog title="编辑军官" :visible.sync="editDlg" width="560px" :close-on-click-modal="false">
       <el-form label-width="110px" size="small">
+        <!-- ★ 2026-10-06 军官池模板（只读）：原军官池 ID / 名字，玩家改名后也能看到「真名」 -->
+        <el-form-item label="军官池">
+          <el-tag v-if="form.general_id" size="mini" type="info">{{ form.general_id }} · {{ form.general_name }}</el-tag>
+          <el-tag v-else size="mini" type="info">预置</el-tag>
+          <span class="td-sub" style="margin-left:8px">原军官池 ID 与名字不可修改</span>
+        </el-form-item>
         <el-form-item label="姓名"><el-input v-model="form.name" maxlength="100" style="width:240px" /></el-form-item>
         <el-form-item label="等级 / 星级">
           <el-input-number v-model.number="form.level" :min="1" controls-position="right" style="width:130px" />
@@ -427,12 +433,10 @@
           <el-input-number v-model.number="form.logistics" :min="0" controls-position="right" style="width:120px;margin-left:6px" />
           <el-input-number v-model.number="form.learning" :min="0" controls-position="right" style="width:120px;margin-left:6px" />
         </el-form-item>
-        <!-- ★ 2026-09-22：原始属性 + 可用属性点（重修书洗点回退到 base，并退回可用点） -->
+        <!-- ★ 2026-10-06 原始属性改为只读：以军官池模板为准（缺池子时回落到本军官 base_* 展示） -->
         <el-form-item label="原始属性">
-          <el-input-number v-model.number="form.base_military" :min="0" controls-position="right" style="width:120px" />
-          <el-input-number v-model.number="form.base_logistics" :min="0" controls-position="right" style="width:120px;margin-left:6px" />
-          <el-input-number v-model.number="form.base_learning" :min="0" controls-position="right" style="width:120px;margin-left:6px" />
-          <span class="td-sub" style="margin-left:8px">重修书洗点后回到这个值</span>
+          <span class="td-mono">{{ form.pool_base_military }} / {{ form.pool_base_logistics }} / {{ form.pool_base_learning }}</span>
+          <span class="td-sub" style="margin-left:8px">军官池原始属性，只读（重修书洗点回退到池子值）</span>
         </el-form-item>
         <el-form-item label="可用属性点">
           <el-input-number v-model.number="form.free_points" :min="0" controls-position="right" />
@@ -800,9 +804,10 @@ const S_KEYS = ['name', 'effect', 'type', 'des']
 // ★ 计谋（消耗信号弹）
 const SC_KEYS = ['name', 'des', 'bullet', 'kind', 'war_minutes', 'war_max_minutes', 'enabled', 'sort_no']
 const OE_KEYS = ['name', 'type', 'tier', 'military', 'logistics', 'learning', 'level', 'officer_id']
-// ★ 军官编辑里可改的字段（含原始属性 + 可用属性点）
+// ★ 2026-10-06 军官编辑可改字段：原始属性(base_*)改为只读（以军官池模板为准，见 pool_base_*），
+//   不再随保存提交；可用属性点 free_points 仍可改
 const O_EDIT_KEYS = ['name', 'level', 'star', 'military', 'logistics', 'learning', 'loyalty',
-  'position', 'status', 'base_military', 'base_logistics', 'base_learning', 'free_points']
+  'position', 'status', 'free_points']
 
 export default {
   name: 'AdminEzfyOfficers',
@@ -1032,6 +1037,12 @@ export default {
       this.editId = row.id
       const f = {}
       O_EDIT_KEYS.forEach(k => { f[k] = row[k] })
+      // ★ 2026-10-06 军官池模板只读字段（ID/名字/原始属性）：随行带过来仅展示、不随保存提交
+      f.general_id = row.general_id || 0
+      f.general_name = row.general_name || ''
+      f.pool_base_military = row.pool_base_military || 0
+      f.pool_base_logistics = row.pool_base_logistics || 0
+      f.pool_base_learning = row.pool_base_learning || 0
       this.form = f
       this.editDlg = true
     },
