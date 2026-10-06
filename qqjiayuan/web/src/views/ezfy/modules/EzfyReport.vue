@@ -153,7 +153,7 @@
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 4 }" @click="ezfy.goReportTab(4)">战斗报告</a>
           </div>
           <div class="panel-title">{{ ezfy.curReport.title }}</div>
-          <!-- ★ 2026-09-29 战报上色：攻方绿色、守方红色，看不出谁是谁 → 视觉区分 -->
+          <!-- ★ 2026-09-29 战报上色（自己绿、敌军红）：被掠夺/被征服报告里守方是自己 → 守方绿、攻方红 -->
           <div v-for="(seg, i) in ezfy.reportNiceLines(ezfy.curReport.content)" :key="'rc' + i" class="rpt-ln">
             <template v-if="seg.mode === 'pair'">
               <span :class="seg.left.cls">{{ seg.left.text }}</span><span :class="seg.right.cls">{{ seg.right.text }}</span>

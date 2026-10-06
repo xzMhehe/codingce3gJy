@@ -24,7 +24,7 @@
           </span>
           <span class="gray" v-if="ezfy.resDetail.bonus === 0"> [暂无加成]</span>
           <br/>
-          耗量(每小时): {{ ezfy.resDetail.consume }}<br/>
+          耗量(每小时): {{ ezfy.resDetail.consume }}<span v-if="ezfy.resType === 'gold'" class="gray"> [军官工资]</span><br/>
           <template v-if="ezfy.resType === 'food'">
             军队耗粮: {{ ezfy.fmtBig(ezfy.resDetail.troop_consume_raw !== undefined ? ezfy.resDetail.troop_consume_raw : (ezfy.resDetail.troop_consume || 0)) }}
           <template v-if="ezfy.resDetail.supply_tech > 0">

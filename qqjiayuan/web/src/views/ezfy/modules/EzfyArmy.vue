@@ -62,13 +62,15 @@
     <template v-else-if="ezfy.cur === 'troops'">
         <div class="panel">
           <div class="panel-title">城内军队</div>
-          <!-- ★ 这张表数据「上下居中、左右居中」，操作列也一起对齐 -->
+          <!-- ★ 2026-10-06 城内军队加「图标/价格」列：图标黑白配色(参考首页资源图标)，价格=训练消耗 -->
           <table class="ezfy-center-tbl">
-            <tr><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
+            <tr><th class="nm">图标</th><th class="nm">兵种</th><th>数量</th><th>价格</th><th>操作</th></tr>
             <!-- ★ 2026-09-28 首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in ezfy.armyRows" :key="'tv' + t.id">
+              <td class="nm"><span v-html="ezfy.troopIco(t)"></span></td>
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ t.count }}</td>
+              <td class="gray" style="font-size:11px">粮{{ t.cost ? t.cost.food : 0 }} 钢{{ t.cost ? t.cost.steel : 0 }} 油{{ t.cost ? t.cost.oil : 0 }} 稀{{ t.cost ? t.cost.rare : 0 }}</td>
               <td>
                 <!-- 训练/建造：防御兵种(type 4)走城防建造，其余直接训练 -->
                 <a href="javascript:;" @click="ezfy.openTrainPre(t, t.type === 4 ? 'defence' : 'troop')">[{{ t.type === 4 ? '建造' : '训练' }}]</a>
@@ -168,8 +170,6 @@
           </div><!-- /出征队列 tab -->
           <div v-show="ezfy.hqTab === 2">
           <div class="panel-title">伤兵营</div>
-          <div class="old-line gray">伤兵在营中<b>不消耗粮食</b>；恢复出厂需要黄金（按兵种造价折算）。</div>
-          <div class="old-line gray">★ 可填写<b>恢复数量</b>只恢复一部分（留空/0 = 全部恢复该兵种）。</div>
           <table>
             <tr><th class="nm">兵种</th><th>数量</th><th>恢复费用</th><th>操作</th></tr>
             <tr v-for="w in ezfy.woundedList(0)" :key="'w' + w.id">
@@ -189,7 +189,6 @@
           </div><!-- /伤兵营 tab -->
           <div v-show="ezfy.hqTab === 3">
           <div class="panel-title">逃兵营</div>
-          <div class="old-line gray">★ 可填写<b>召回数量</b>只召回一部分（留空/0 = 全部召回该兵种）。</div>
           <table>
             <tr><th class="nm">兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
             <tr v-for="w in ezfy.woundedList(1)" :key="'dsw' + w.id">

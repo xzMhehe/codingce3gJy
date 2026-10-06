@@ -1795,6 +1795,10 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	// ★ 2026-09-27 唯一上限 = 资源最大值：cap 下发 ezfyResMaxOf，不再用仓储 city.XxxCap。
 	// ★ 2026-09-30 「增产令使用了要在资源详情简约体现」：
 	//   把增产幅度/剩余时长透出到每种资源，前端在加成产量行显示 [增产令+N%]。
+	// ★ 2026-10-06 黄金「耗量(每小时)」显示军官工资：原来下发 consume=0，
+	//   而 calcResource 懒结算里每小时都实扣军官工资 —— 页面显示与实际扣费对不上
+	//   （用户：「耗量(每小时): 0 里现在不对」）。资源详情页非热路径，允许查库算工资。
+	goldConsume := h.officerSalaryPerHour(city.ID)
 	return gin.H{
 		"food": item(city.Food, ezfyResMaxOf("food"), foodBaseReal, foodProd-foodBaseReal+wildFood, troopFood, foodProd+wildFood-troopFood,
 			gin.H{"tech_prod": techFood, "troop_consume": troopFood, "troop_consume_raw": troopFoodRaw,
@@ -1805,7 +1809,7 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 			gin.H{"tech_prod": techOil, "base_building": oilBase, "rate": rateOil, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 		"rare": item(city.Rare, ezfyResMaxOf("rare"), rareBaseReal, rareProd-rareBaseReal+wildRare, 0, rareProd+wildRare,
 			gin.H{"tech_prod": techRare, "base_building": rareBase, "rate": rateRare, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
-		"gold": item(city.Gold, ezfyResMaxOf("gold"), goldBaseReal, goldProd-goldBaseReal+wildGold, 0, goldProd+wildGold,
+		"gold": item(city.Gold, ezfyResMaxOf("gold"), goldBaseReal, goldProd-goldBaseReal+wildGold, goldConsume, goldProd+wildGold-goldConsume,
 			gin.H{"tech_prod": 0, "base_building": goldBase, "rate": 100, "mayor_bonus": mayor, "boost_pct": boostPct, "boost_until": boostUntil}),
 	}
 }

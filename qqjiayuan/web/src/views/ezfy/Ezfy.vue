@@ -2677,7 +2677,15 @@ export default {
       if (isAtk) return mineAtk ? 'green' : 'red'
       return mineAtk ? 'red' : 'green'
     },
-    // ★ 战报详情/逐回合详情按行上色：攻方绿色、守方红色（看不清谁是谁 → 视觉区分）。
+    // ★ 2026-10-06 战报视角判断：被掠夺/被征服/城破报告里玩家是守方 ——
+    //   这时「守方=自己(绿)、攻方=敌军(红)」；其他战报（掠夺/征服/战斗）里玩家是攻方，
+    //   「攻方=自己(绿)、守方=敌军(红)」。返回 true 表示当前战报玩家在守方。
+    rptViewerIsDef () {
+      const t = (this.curReport && this.curReport.title) || ''
+      return /^被(掠夺|征服)报告/.test(t) || /^城破报告/.test(t)
+    },
+    // ★ 战报详情/逐回合详情按行上色（看不清谁是谁 → 视觉区分）。
+    //   颜色始终「自己绿、敌军红」：rpt-atk=绿、rpt-def=红，攻/守哪边是自己看战报视角。
     //   返回 [{mode:'line'|'pair', text?, cls?, left?, right?}]；「战斗加成」行攻守各半段分两段上色。
     reportNiceLines (raw) {
       return String(raw || '').split('\n').map(ln => {
@@ -2698,13 +2706,13 @@ export default {
       const t = ln || ''
       const isAtk = /【攻方】|\[胜]攻方|\[平]攻方|【攻方军官】/.test(t) || (t.indexOf('攻方:') >= 0 && t.indexOf('守方:') < 0)
       const isDef = /【守方】|\[败]守方|\[平]守方|【守方军官】/.test(t) || (t.indexOf('守方:') >= 0 && t.indexOf('攻方:') < 0)
-      if (isAtk && !isDef) return 'rpt-atk'
-      if (isDef && !isAtk) return 'rpt-def'
+      if (isAtk && !isDef) return this.rptViewerIsDef() ? 'rpt-def' : 'rpt-atk'
+      if (isDef && !isAtk) return this.rptViewerIsDef() ? 'rpt-atk' : 'rpt-def'
       return ''
     },
     reportSideClass (seg) {
-      if (seg.indexOf('守方') >= 0 && seg.indexOf('攻方') < 0) return 'rpt-def'
-      if (seg.indexOf('攻方') >= 0 && seg.indexOf('守方') < 0) return 'rpt-atk'
+      if (seg.indexOf('守方') >= 0 && seg.indexOf('攻方') < 0) return this.rptViewerIsDef() ? 'rpt-atk' : 'rpt-def'
+      if (seg.indexOf('攻方') >= 0 && seg.indexOf('守方') < 0) return this.rptViewerIsDef() ? 'rpt-def' : 'rpt-atk'
       return ''
     },
     // resumeBattle 刷新页面后从后端找回「进行中的战斗」（订单 id 没存在 URL 里）
@@ -2988,6 +2996,25 @@ export default {
       const polys = layout.map(s => star(s[0], s[1], s[2])).join('')
       return '<svg class="ezfy-rank-ico" viewBox="0 0 20 20" width="18" height="18" style="vertical-align:-4px;margin-right:4px" role="img">' +
         '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="' + color + '"/>' + polys + '</svg>'
+    },
+    // ★ 2026-10-06 城内军队表格的兵种图标：黑白配色，样式参考首页资源图标(圆角方块+图形剪影)。
+    //   没有按 40 种兵种逐一画，按兵种类型画剪影（海军=战舰/陆军=坦克/空军=战机/城防=要塞）。
+    troopIco (t) {
+      const box = (glyph) =>
+        '<svg class="ezfy-ico" viewBox="0 0 20 20" role="img">' +
+        '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#1E2A38"/>' + glyph + '</svg>'
+      switch ((t && t.type) || 0) {
+        case 1: // 海军·战舰
+          return box('<g fill="#fff"><path d="M2.9 13 H17.2 L15.1 16.4 H4.8 Z"/><rect x="4.6" y="10.8" width="5" height="2.4" rx="0.5"/><rect x="6.4" y="8.6" width="2.4" height="2.2" rx="0.4"/></g>')
+        case 2: // 陆军·坦克
+          return box('<g fill="#fff"><rect x="4" y="11.6" width="11.6" height="1.9" rx="0.4"/><rect x="4" y="9.2" width="10.4" height="2.6" rx="0.5"/><rect x="6.4" y="6.6" width="5.6" height="2.8" rx="1.1"/><rect x="12.2" y="9.7" width="4.8" height="1.5" rx="0.4"/></g>')
+        case 3: // 空军·战机
+          return box('<g fill="#fff"><path d="M2.6 10.8 H17.4 L13.8 9.2 V7.9 L14.9 8.4 V8.9 L16 8.6 V9.7 L13.8 11.6 V12.6 L17.4 13.8 H2.6 Z"/><path d="M6.6 6.6 L10.3 9.2 L14 6.6 L13.2 11.4 H6.8 Z"/></g>')
+        case 4: // 城防·要塞城墙
+          return box('<g fill="#fff"><path d="M3 15.8 V7 L5.4 5.7 V8.2 H7.4 V5.2 H9.4 V8.2 H11.4 V5.2 H13.4 V8.2 H15.4 V5.7 L17.8 7 V15.8 Z"/><rect x="6.2" y="11.6" width="6.6" height="4.2" rx="0.5" fill="#1E2A38"/></g>')
+        default: // 通用兵种
+          return box('<circle cx="10" cy="10" r="4.6" fill="#fff"/>')
+      }
     },
     // ★ 榜单前三名奖台化：给冠/亚/季军整行上色，超出三名的行不加类
     rankRowCls (rank) {
@@ -6053,7 +6080,8 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-round-line.green { color: #1d5c2e; }
 .ezfy-page .ezfy-round-line.red { color: #a02a1e; }
 .ezfy-page .ezfy-round-line.gray { color: #777; }
-/* ★ 战报详情/逐回合详情按行上色：攻方绿色、守方红色（看不清谁是谁 → 视觉区分） */
+/* ★ 战报详情/逐回合详情按行上色：始终「自己绿、敌军红」—— rpt-atk=绿(自己/己方)、rpt-def=红(敌军)，
+   攻/守分配给哪种色随战报视角(被掠夺/被征服=守方)翻转，见 reportLineClass。 */
 .ezfy-page .rpt-ln { line-height: 1.6; }
 .ezfy-page .rpt-ln > span { display: inline; white-space: pre-wrap; }
 .ezfy-page .rpt-atk { color: #1d5c2e; }

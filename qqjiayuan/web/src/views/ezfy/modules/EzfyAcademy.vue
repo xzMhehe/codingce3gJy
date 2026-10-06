@@ -110,11 +110,7 @@
         </div>
         <div class="old-line">
           {{ ezfy.resNames.gold }}:{{ ezfy.fmtN(ezfy.officerData.gold) }}
-          <!-- ★ 「军官是消耗黄金的」：把工资亮出来，玩家知道钱花在哪 -->
-          <span class="gray" v-if="ezfy.officerData.salary">
-            （军官工资 {{ ezfy.fmtN(ezfy.officerData.salary) }} {{ ezfy.resNames.gold }}/小时，每级 {{ ezfy.officerData.salary_per_level }} 金/小时）
-          </span>
-          <span class="gray" v-else>（暂无军官，不产生工资）</span>
+          <!-- ★ 2026-10-06 军官工资提示移除：工资已并入资源页黄金「耗量(每小时)」统一展示 -->
         </div>
         <hr/>
         <template v-for="o in ezfy.myOfficers">
