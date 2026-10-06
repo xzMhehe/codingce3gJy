@@ -381,15 +381,15 @@
               <i :class="ezfy.battleData.phase === 'cmd' ? 'on' : 'lock'" :style="{ width: ezfy.battleBarPct + '%' }"></i>
             </div>
           </div>
-          <!-- ★ 2026-10-06 保存 = 锁定本回合伤害（双方都保存或到点立即结算）；锁定后禁改配置，
-               可随时取消重新配置（仅限本回合尚未结算）。前端在 my_locked 时禁用所有指挥控件。 -->
+          <!-- ★ 2026-10-06 指挥全部**下拉即时发送**（非受控 select：不绑 value/v-model，点选即 @change 发送，
+               永远不会被轮询弹回；服务器状态只更新 select 旁的文字提示）。
+               恢复[全军前进/待命/后退]（troop_id=0 走老的全军统一键），保存配置已合入下拉直接生效；
+               到点(30s)服务端自动结算，锁定概念保留给后端（对方锁定状态照常提示）。 -->
           <div class="old-line ezfy-battle-cmds" v-if="!ezfy.battleData.done">
-            <a href="javascript:;" @click="ezfy.sendBattleCmd('advance')">[全军前进]</a>
-            <a href="javascript:;" @click="ezfy.sendBattleCmd('hold')">[全军待命]</a>
-            <a href="javascript:;" @click="ezfy.sendBattleCmd('retreat')">[全军后退]</a>
+            <a href="javascript:;" @click="ezfy.sendBattleCmd('advance', 0)">[全军前进]</a>
+            <a href="javascript:;" @click="ezfy.sendBattleCmd('hold', 0)">[全军待命]</a>
+            <a href="javascript:;" @click="ezfy.sendBattleCmd('retreat', 0)">[全军后退]</a>
             <a v-if="ezfy.battleData.can_auto && !ezfy.battleData.my_locked" href="javascript:;" @click="ezfy.doBattleAuto">[自动战斗]</a>
-            <span class="sep">|</span>
-            <a v-if="ezfy.battleData.can_lock" href="javascript:;" class="on" @click="ezfy.saveBattleConfig">[保存配置]</a>
             <a v-if="ezfy.battleData.my_locked" href="javascript:;" class="red" @click="ezfy.cancelBattleConfig">[取消配置]</a>
             <span v-if="ezfy.battleData.my_locked" class="red">· 已锁定</span>
             <span v-else-if="ezfy.battleData.atk_locked && ezfy.battleData.def_locked" class="green">· 对方已锁定</span>
@@ -412,10 +412,10 @@
                    ★ 守方视角(is_atk=false)时这里显示 AI，指挥控件渲染到守方行上。 -->
               <td v-if="!ezfy.battleData.done">
                 <template v-if="ezfy.battleData.is_atk">
-                  <!-- ★ 2026-10-06 v-model：选完立刻落到本地镜像，不再等 API 往返，防弹回 -->
-                  <select v-model="ezfy.battleTargets[u.troop_id]"
-                          :disabled="ezfy.battleData.my_locked"
-                          @change="ezfy.sendBattleTarget(u.troop_id)"
+                  <!-- ★ 2026-10-06 v3 非受控下拉：不绑 value/v-model，select 永远可点选（除非已锁定），
+                       选择即 @change 发送；服务器回包只更新旁边文字，选中项不被重置 -->
+                  <select :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)"
                           style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
                             :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
@@ -426,8 +426,10 @@
               <!-- ★ 2026-10-06 逐兵种指令改为下拉（前进/后退/待命/默认）；my_locked 时禁用 -->
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="ezfy.battleData.is_atk">
-                  <select v-model="ezfy.battleCmds[u.troop_id]" :disabled="ezfy.battleData.my_locked"
-                          @change="ezfy.sendBattleCmd(undefined, u.troop_id)"
+                  <!-- 指令：非受控下拉，点选即发；当前生效指令由左侧文字显示（服务器回包更新） -->
+                  <span v-if="u.cmd_name" class="green">当前:{{ u.cmd_name }} </span>
+                  <select :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)"
                           style="width:96px">
                     <option value="advance">前进</option>
                     <option value="hold">待命</option>
@@ -445,9 +447,9 @@
               <td>{{ ezfy.fmtN(u.count) }}</td><td>{{ ezfy.fmtN(u.initial) }}</td><td>{{ u.pos }}</td>
               <td v-if="!ezfy.battleData.done">
                 <template v-if="!ezfy.battleData.is_atk">
-                  <select v-model="ezfy.battleTargets[u.troop_id]"
-                          :disabled="ezfy.battleData.my_locked"
-                          @change="ezfy.sendBattleTarget(u.troop_id)"
+                  <!-- 目标：非受控下拉，点选即发 -->
+                  <select :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)"
                           style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
                             :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
@@ -458,8 +460,10 @@
               <!-- ★ 2026-10-06 逐兵种指令改为下拉（前进/后退/待命/默认）；my_locked 时禁用 -->
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="!ezfy.battleData.is_atk">
-                  <select v-model="ezfy.battleCmds[u.troop_id]" :disabled="ezfy.battleData.my_locked"
-                          @change="ezfy.sendBattleCmd(undefined, u.troop_id)"
+                  <!-- 指令：非受控下拉，点选即发；当前生效指令由左侧文字显示（服务器回包更新） -->
+                  <span v-if="u.cmd_name" class="green">当前:{{ u.cmd_name }} </span>
+                  <select :disabled="ezfy.battleData.my_locked"
+                          @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)"
                           style="width:96px">
                     <option value="advance">前进</option>
                     <option value="hold">待命</option>
