@@ -800,6 +800,48 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 
 // ============ 科技 ============
 
+// ★ 2026-10-06 科技效果**按公式实时计算**，不再读 ezfy_cfg_tech_level.effect：
+//   线上库里可能残留旧文案（如「粮食产量+10%(当前+100%)」「行军速度+2%」「全军攻防+1%」），
+//   只要接口按「每级加成 × 当前等级」算文本，无论数据库是什么数据，展示永远正确。
+var ezfyTechEffectPrefix = map[int]string{
+	1: "粮食产量", 2: "钢铁产量", 3: "石油产量", 4: "稀矿产量",
+	5: "部队攻击", 6: "部队攻击", 7: "部队防御", 8: "远程攻击",
+	9: "重装备攻防", 10: "部队速度", 11: "建造时间", 12: "情报",
+	13: "部队负重", 14: "资源容量", 15: "部队携带", 16: "城防攻防",
+	17: "掠夺资源", 18: "军队耗粮", 19: "空军速度", 20: "城防修复",
+	21: "伤兵恢复",
+}
+
+// ezfyTechEffectPer 每级加成（百分点；负数=减益；tech 12 情报是 +1 级/级）
+var ezfyTechEffectPer = map[int]int{
+	1: 10, 2: 10, 3: 10, 4: 10, 5: 2, 6: 3, 7: 3, 8: 3, 9: 2, 10: 2,
+	11: -2, 12: 1, 13: 2, 14: 2, 15: 10, 16: 2, 17: 2, 18: -2, 19: 3,
+	20: 2, 21: 2,
+}
+
+// ezfyTechEffectAt 科技在指定等级的累计效果文案（如 tech1 10 级 → 「粮食产量+100%」）。
+// 未收录的科技回退数据库效果文案（兜底，当前 21 项全覆盖）。
+func ezfyTechEffectAt(t *model.EzfyCfgTech, level int) string {
+	prefix := ezfyTechEffectPrefix[t.ID]
+	if prefix == "" {
+		if lv := ezfyCfg.techLevel(t.ID, level); lv != nil {
+			return lv.Effect
+		}
+		return t.Effect
+	}
+	if level < 1 {
+		level = 1
+	}
+	if t.ID == 12 { // 侦察技巧：情报等级
+		return fmt.Sprintf("情报+%d级", level)
+	}
+	val := ezfyTechEffectPer[t.ID] * level
+	if val > 0 {
+		return fmt.Sprintf("%s+%d%%", prefix, val)
+	}
+	return fmt.Sprintf("%s%d%%", prefix, val)
+}
+
 func (h *EzfyHandler) Techs(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -852,15 +894,10 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 	views := []gin.H{}
 	for _, t := range all {
 		level := techMap[t.ID]
-		// ★ 2026-10-06 修复「满级了还显示1级效果」：effect 按**当前等级**取
-		//   ezfy_cfg_tech_level.effect（如「粮食产量+10%(当前+100%)」），
-		//   0 级才回落 ezfy_cfg_tech.effect 的一级描述。
-		eff := t.Effect
-		if level >= 1 {
-			if lv := ezfyCfg.techLevel(t.ID, level); lv != nil {
-				eff = lv.Effect
-			}
-		}
+		// ★ 2026-10-06 修复「满级了还显示1级效果 / 显示 (当前+N%) 旧文案」：
+		//   effect 按公式「每级加成 × 当前等级」实时计算（如 tech1 10 级 = 粮食产量+100%），
+		//   不再依赖 ezfy_cfg_tech_level.effect 的数据库文案。
+		eff := ezfyTechEffectAt(&t, level)
 		if rec, ok := researchMap[t.ID]; ok {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": eff,
@@ -875,7 +912,7 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 		if next != nil {
 			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}
 			view["next_time"] = next.ResearchTime
-			view["next_effect"] = next.Effect
+			view["next_effect"] = ezfyTechEffectAt(&t, level+1)
 		}
 		views = append(views, view)
 	}
