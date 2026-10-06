@@ -2455,6 +2455,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	defSpeedBonus := 0
 	// ★ 2026-10-06 守方攻击/射程加成（城防/守城部队行动时用，默认 0；玩家城分支里填）
 	defAtkBonus := 0
+	// ★ 2026-10-06 守方攻击加成中「军官」占的百分点（野地守将/城守），战报日志拆解展示用
+	defOfficerAtkBonus := 0
 	defRangeBonus := 0
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
@@ -2508,6 +2510,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defBonus += guardAttr
 				// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
 				defAtkBonus += guardAttr
+				defOfficerAtkBonus = guardAttr
 				defOfficerDesc = g.Name + " Lv." + strconv.Itoa(g.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
 			}
 		}
@@ -2583,6 +2586,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   守方攻击加成与守方防御同科技口径（装甲科技7/重工技术9/掩体防御16）+ 城守军官攻击技能；
 		//   守方射程加成 = 弹道学(8)*3 + 掩体防御(16)*2
 		defAtkBonus = defTech[7]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
+		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
+		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
 		defRangeBonus = defTech[8]*3 + defTech[16]*2
 		defEquip = h.officerBattleEquipBonus(cityGuard)
 		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
@@ -2662,7 +2667,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				atkBonus, 0, atkSpeedBonus, 0,
 				atkRangeBonus, 0, 0,
 				atkEquip, ezfyBattleBonus{},
-				atkOfficerDesc, "", atkTargets, defTargets, atkMoves, defMoves,
+				atkOfficerDesc, "",
+				officerBonus, 0, // 驻军战：守方无军官；攻方军官加成照常拆解展示
+				atkTargets, defTargets, atkMoves, defMoves,
 				ezfyGarrisonBreakPct)
 			var gcity model.EzfyCity
 			gcityName := "友军"
@@ -2784,6 +2791,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 			atkRangeBonus, defRangeBonus,
 			atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
+			officerBonus, defOfficerAtkBonus, // 军官占的「攻击加成」百分点（战报日志拆解用）
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」：第1回合被打可反击（攻方带队/守方城守各自判定）
 			h.officerHasSkill(leadOfficer, "绝地反击"), h.officerHasSkill(cityGuard, "绝地反击"),

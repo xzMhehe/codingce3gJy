@@ -358,7 +358,10 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkTech[8]*3, 0,
 			h.officerBattleEquipBonus(leadOfficer), ezfyBattleBonus{},
-			atkOfficerDesc, defOfficerDesc, h.buildTargetMap(city.ID, true), map[int]int{},
+			atkOfficerDesc, defOfficerDesc,
+			// 活动守军无城墙/无科技 → 守方攻击加成整体都来自守将；攻方军官加成照常拆解展示
+			h.officerBattleBonus(leadOfficer), defBonus,
+			h.buildTargetMap(city.ID, true), map[int]int{},
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerHasSkill(leadOfficer, "绝地反击"),
 			defGeneral != nil && generalHasSkill(defGeneral, "绝地反击"),

@@ -4067,7 +4067,8 @@ export default {
       api.get('/games/ezfy/reports/' + rid).then(res => {
         if (res.code === 0) {
           this.curReport = res.data.report
-          this.showDetail = true
+          // ★ 2026-10-06 战斗报告默认收起「逐回合详情」（点[展开/收起逐回合详情]查看）
+          this.showDetail = false
           this.go('reportview')
         }
       })
@@ -4082,8 +4083,8 @@ export default {
           // 详情接口异常时至少把列表里的内容显示出来
           this.curReport = r
         }
-        // ★ 2026-10-06 战斗报告默认展开「逐回合详情」（原来默认收起，看不到回合过程）
-        this.showDetail = true
+        // ★ 2026-10-06 战斗报告默认收起「逐回合详情」；指挥室默认展开可自行收起
+        this.showDetail = false
         const item = this.reports.find(x => x.id === r.id)
         if (item) item.is_read = 1
         // openReport 可能从「军情警讯」进也可能从「战斗报告」进，这里记录它来自哪个分区
