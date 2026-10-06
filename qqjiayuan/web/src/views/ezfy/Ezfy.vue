@@ -678,6 +678,7 @@ export default {
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
       hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 / 4预设编队 (localStorage 记忆)
+      woundNums: {},                                     // ★ 2026-10-06 伤兵营/逃兵营行内「恢复数量」输入（key=伤兵记录id，0/空=全部）
       // ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力，不含目标/随军资源/宿营）
       presets: [],                                       // 预设列表 [{id,name,officer,gather,troops,troop_total}]
       presetSel: 0,                                      // 出征页「预设编队」下拉选中 id (0=不使用)
@@ -2252,6 +2253,8 @@ export default {
       return api.get('/games/ezfy/troops').then(r => {
         if (r.code === 0) {
           this.troopsData = r.data
+          // ★ 2026-10-06 列表刷新后清掉行内「恢复数量」输入（旧记录的 id 可能复用，避免残留数量误填）
+          this.woundNums = {}
           // ★ 2026-10-04 /view 瘦身：训练队列列表随 /troops 下发（不再由 /view 提供）。
           //   这里同步喂给 this.queues，军队页/城市状态页模板继续读 ezfy.queues 无需改动。
           this.queues = r.data.queues || []
@@ -3859,9 +3862,13 @@ export default {
       return t ? Object.assign({}, o, { _lt: t }) : o
     },
     doRecover (w) {
+      // ★ 2026-10-06 按数量恢复：用户填了恢复数量就只恢复这么多，留空/0 = 全部恢复该兵种
+      const n = parseInt(this.woundNums && this.woundNums[w.id], 10) || 0
+      const body = { troop_id: w.troop_id, type: w.type }
+      if (n > 0 && n < w.count) body.count = n
       // ★ 2026-09-25 用户反馈「伤兵救治后要手动刷新页面才显示」→ 成功后重拉军队数据(含伤兵营/逃兵营)
-      api.post('/games/ezfy/troops/recover', { troop_id: w.troop_id, type: w.type })
-        .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
+      api.post('/games/ezfy/troops/recover', body)
+        .then(r => this.alert(r, '伤兵已恢复', () => { this.loadTroops() }))
     },
     doRecoverAll (t) {
       api.post('/games/ezfy/troops/recover', { all: true, type: t })

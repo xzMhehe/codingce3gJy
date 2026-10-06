@@ -2505,7 +2505,7 @@ func officerSalaryOf(list []model.EzfyOfficer) int64 {
 	return total
 }
 
-func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) string {
+func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int, count int64) string {
 	var w model.EzfyWounded
 	if err := h.DB.Where("city_id = ? AND troop_id = ? AND type = ?", city.ID, troopId, wtype).First(&w).Error; err != nil {
 		return "兵营中没有该兵种"
@@ -2517,20 +2517,30 @@ func (h *EzfyHandler) recoverWounded(city *model.EzfyCity, troopId, wtype int) s
 	if w.Count <= 0 {
 		return "兵营中没有该兵种"
 	}
+	// ★ 2026-10-06 「加个恢复数量，不然全部整不起」：count>0 且小于在营数量 =
+	//   只恢复指定数量（其余留在营里下次再恢复）；count<=0 或大于等于在营数量 = 全部恢复（兼容旧行为）。
+	if count <= 0 || count >= w.Count {
+		count = w.Count
+	}
 	// ★ 2026-09-23 「恢复的数量导致负数的情况也卡控，不能恢复」。
 	//   恢复 = 往城里加兵，所以和训练共用同一个兵力上限校验。
-	if msg := h.checkTroopCap(city.ID, w.Count); msg != "" {
+	if msg := h.checkTroopCap(city.ID, count); msg != "" {
 		return msg
 	}
 	h.calcResource(city)
-	cost := ezfyWoundHealGoldPer(w.TroopId) * w.Count
+	cost := ezfyWoundHealGoldPer(w.TroopId) * count
 	if city.Gold < cost {
-		return fmt.Sprintf("黄金不足: 恢复%d个需要%d黄金, 当前只有%d", w.Count, cost, city.Gold)
+		return fmt.Sprintf("黄金不足: 恢复%d个需要%d黄金, 当前只有%d", count, cost, city.Gold)
 	}
 	city.Gold -= cost
 	h.saveCityRes(city)
-	h.addTroop(city.ID, w.TroopId, w.Count)
-	h.DB.Delete(&w)
+	h.addTroop(city.ID, w.TroopId, count)
+	if count >= w.Count {
+		h.DB.Delete(&w)
+	} else {
+		w.Count -= count
+		h.DB.Model(&model.EzfyWounded{}).Where("id = ?", w.ID).Update("count", w.Count)
+	}
 	return ""
 }
 

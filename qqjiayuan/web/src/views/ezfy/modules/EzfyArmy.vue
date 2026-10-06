@@ -169,12 +169,16 @@
           <div v-show="ezfy.hqTab === 2">
           <div class="panel-title">伤兵营</div>
           <div class="old-line gray">伤兵在营中<b>不消耗粮食</b>；恢复出厂需要黄金（按兵种造价折算）。</div>
+          <div class="old-line gray">★ 可填写<b>恢复数量</b>只恢复一部分（留空/0 = 全部恢复该兵种）。</div>
           <table>
             <tr><th class="nm">兵种</th><th>数量</th><th>恢复费用</th><th>操作</th></tr>
             <tr v-for="w in ezfy.woundedList(0)" :key="'w' + w.id">
               <td class="nm">{{ w.name }}</td><td>{{ w.count }}</td>
               <td>{{ ezfy.fmtN((w.heal_gold || 0) * w.count) }} {{ ezfy.resNames.gold }}</td>
-              <td><a href="javascript:;" @click="ezfy.doRecover(w)">[恢复]</a></td>
+              <td>
+                <input type="number" min="1" v-model.number="ezfy.woundNums[w.id]" :placeholder="'数量(' + w.heal_gold + '金/个)'" style="width:96px">
+                <a href="javascript:;" @click="ezfy.doRecover(w)">[恢复]</a>
+              </td>
             </tr>
           </table>
           <div class="old-line" v-if="!ezfy.woundedList(0).length">(伤兵营无伤兵)</div>
@@ -185,12 +189,16 @@
           </div><!-- /伤兵营 tab -->
           <div v-show="ezfy.hqTab === 3">
           <div class="panel-title">逃兵营</div>
+          <div class="old-line gray">★ 可填写<b>召回数量</b>只召回一部分（留空/0 = 全部召回该兵种）。</div>
           <table>
             <tr><th class="nm">兵种</th><th>数量</th><th>召回费用</th><th>操作</th></tr>
             <tr v-for="w in ezfy.woundedList(1)" :key="'dsw' + w.id">
               <td class="nm">{{ w.name }}</td><td>{{ w.count }}</td>
               <td>{{ ezfy.fmtN((w.heal_gold || 0) * w.count) }} {{ ezfy.resNames.gold }}</td>
-              <td><a href="javascript:;" @click="ezfy.doRecover(w)">[召回]</a></td>
+              <td>
+                <input type="number" min="1" v-model.number="ezfy.woundNums[w.id]" :placeholder="'数量(' + w.heal_gold + '金/个)'" style="width:96px">
+                <a href="javascript:;" @click="ezfy.doRecover(w)">[召回]</a>
+              </td>
             </tr>
           </table>
           <div class="old-line" v-if="!ezfy.woundedList(1).length">(逃兵营无逃兵)</div>

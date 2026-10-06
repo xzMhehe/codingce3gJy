@@ -783,6 +783,7 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 		TroopId int   `json:"troop_id"`
 		Type    int   `json:"type"`
 		All     bool  `json:"all"`
+		Count   int64 `json:"count"` // ★ 2026-10-06 按数量恢复：>0 且小于在营数 = 只恢复指定数量；0/缺省 = 全部
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -794,7 +795,7 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 		h.done(c, h.recoverAllWounded(city, req.Type), "伤兵已全部恢复")
 		return
 	}
-	h.done(c, h.recoverWounded(city, req.TroopId, req.Type), "伤兵已恢复")
+	h.done(c, h.recoverWounded(city, req.TroopId, req.Type, req.Count), "伤兵已恢复")
 }
 
 // ============ 科技 ============
@@ -3498,34 +3499,20 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		if left < 0 {
 			left = 0
 		}
-		// ★ 2026-10-06 修复「军队动态里 军官:无」：来袭行军官原来写死空串。
-		//   补上双方军官 —— 攻方带队军官（订单 Officer 字段）+ 己方城守军官（被打城市的守卫军官）。
-		atkOfficer, defOfficer := "", ""
+		// ★ 2026-10-06 来袭行军官只显示**自己的**（己方城守军官）：
+		//   之前连攻方军官一起列成「攻方军官:X 守方军官:Y」，玩家看自己的动态只关心自己这边。
+		defOfficer := ""
 		if b.TargetType == 3 {
 			if g := h.positionOfficer(uint(b.TargetId), ezfyPositionGuard); g != nil {
 				defOfficer = g.Name
 			}
-		}
-		var atkOrd model.EzfyOrder
-		if err := h.DB.Select("officer").First(&atkOrd, b.OrderId).Error; err == nil && atkOrd.Officer != "" {
-			atkOfficer = atkOrd.Officer
-		}
-		officerLine := ""
-		if atkOfficer != "" {
-			officerLine = "攻方军官:" + atkOfficer
-		}
-		if defOfficer != "" {
-			if officerLine != "" {
-				officerLine += " "
-			}
-			officerLine += "守方军官:" + defOfficer
 		}
 		views = append(views, gin.H{
 			"id": b.OrderId, "order_type": 0, "type_name": "防御",
 			"target_type": b.TargetType, "target_name": atkName,
 			"target_x": atkX, "target_y": atkY,
 			"status": ezfyOrderStatusBattle, "status_name": "战斗中",
-			"officer": officerLine, "time_label": "本回合剩余", "time_text": ezfyDurationText(left / 1000),
+			"officer": defOfficer, "time_label": "本回合剩余", "time_text": ezfyDurationText(left / 1000),
 			"arrive_time": 0, "return_time": 0,
 			"carry": nil, "carry_total": 0, "carry_cap": 0,
 			"can_command":    true,
