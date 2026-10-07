@@ -815,6 +815,9 @@ export default {
       trRare: 0,
       trGold: 0,
       waitH: 0,
+      // ★ 2026-10-07 出征页「自动战斗」选择：1=是（默认；打野地 / AI 寇城抵达即自动打完，无需指挥）
+      //   0=否（抵达后进指挥室部署）。打玩家城市时该项只读、恒为 0（见 orderIsPlayerTarget / orderBody）。
+      orderAutoBattle: 1,
       waitM: 0,
       orderCalc: null,
       // ★ 本次出征使用几个集结令（数量由管理端配置决定，不写死）
@@ -869,6 +872,17 @@ export default {
     }
   },
   computed: {
+    // ★ 2026-10-07 出征目标是不是「玩家城市」：
+    //   地图格 area_type=3 表示玩家城 → 出征页「自动战斗」强制「否」且只读
+    //   （守方是真人，必须留指挥机会）。野地 / AI 寇城为 1/2，不受限。
+    orderIsPlayerTarget () {
+      return !!(this.selCell && this.selCell.area_type === 3)
+    },
+    // ★ 2026-10-07 「自动战斗」的**生效值**：打玩家城市恒为 0（前端只读、后端也强制），
+    //   其余按玩家在出征页所选。模板高亮与提交都用它，保证「显示 = 实际提交」。
+    orderAutoBattleVal () {
+      return this.orderIsPlayerTarget ? 0 : (this.orderAutoBattle ? 1 : 0)
+    },
     // ★ 2026-09-28 赏赐宝物：背包里未穿戴的**采集宝物**（可在军官详情操作区展开选择）
     //   ★ 只认采集宝物（后端 bag 条目带 treasure 标记，名字取自 9 种野地珠宝）——
     //     步枪/钢盔/合金装甲这类普通装备不能换忠诚；宝物签到抽的也是同一池，所以签到宝物可用。
@@ -2533,7 +2547,13 @@ export default {
     // ---- 军队动态 ----
     // ★ 2026-10-01 军情按当前城过滤：只拉当前城市出发/驻守的部队
     loadDynamics () {
-      api.get('/games/ezfy/reports/dynamics?city_id=' + (this.city ? this.city.id : 0)).then(r => {
+      // ★★ 2026-10-07 修复「出征后跳转出征队列是空的 / 打野地也没了」：
+      //   原来按 `city_id = 当前所在城` 过滤，只有「订单出发城 == 当前城」的部队才显示。
+      //   而 `doOrder` 里 `load()`（刷新城市）与 `go('orders')`（拉队列）是**并发**的，
+      //   出征瞬间 `this.city` 可能还是旧值 / 尚未回来 → 过滤条件对不上 → 队列恒为空。
+      //   ★ 出征队列本来就该展示**全部在途部队**（列表里每条都带 from_city 标明来源城，
+      //     见后端下发的 from_city/from_x/from_y），所以这里不再传 city_id（0 = 不过滤）。
+      api.get('/games/ezfy/reports/dynamics?city_id=0').then(r => {
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
           // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
@@ -4528,7 +4548,10 @@ export default {
         target_type: this.selCell.area_type === 3 ? 3 : (this.selCell.area_type === 2 ? 2 : 1),
         target_x: this.selCell.x,
         target_y: this.selCell.y,
-        wait_min: (parseInt(this.waitH) || 0) * 60 + (parseInt(this.waitM) || 0)
+        wait_min: (parseInt(this.waitH) || 0) * 60 + (parseInt(this.waitM) || 0),
+        // ★ 2026-10-07 自动战斗（出征页可配）：打玩家城市(target_type=3)强制 0
+        //   （真人守方必须留指挥机会，后端也会再兜一道）；打野地 / AI 寇城按玩家所选。
+        auto_battle: this.orderAutoBattleVal
       }
       if (this.selCell.area_type === 3 && this.selCell.city_id) {
         body.target_id = this.selCell.city_id
@@ -4587,6 +4610,8 @@ export default {
       this.waitH = 0
       this.waitM = 0
       this.presetSel = 0
+      // ★ 2026-10-07 自动战斗每次进出征页重置为「是」（野地 / AI 寇城默认；打玩家城时强制否、此值不生效）
+      this.orderAutoBattle = 1
     },
     // ---- 预设编队 ----
     // 拉取我的预设列表（出征页下拉 + 司令部预设 tab 共用）
@@ -6459,6 +6484,12 @@ body.ezfy-ios .ezfy-page textarea {
 }
 /* 分区标题里的补充说明（★ 2026-09-25 随全站统一：14 → var(--fs)，靠颜色+不加粗弱化） */
 .ezfy-page .of-sec .of-hint { font-size: var(--fs); font-weight: normal; color: #8a8a8a; }
+/* ★ 2026-10-07 出征页「自动战斗」选项：方括号链接式（与全站 [出征] / [返回] 一致），
+   去掉原生 radio 圆点；选中态变红加粗（同 .acade-tab a.on 口径）；
+   打玩家城时整项置灰、不可点（.disabled）。 */
+.ezfy-page .of-opt { margin-right: 14px; }
+.ezfy-page .of-opt.on { color: #c0392b; font-weight: bold; }
+.ezfy-page .of-opt.disabled { color: #b6c2d2; }
 .ezfy-page .of-grid {
   display: grid;
   gap: 0 16px;

@@ -52,22 +52,21 @@ func TestChestSetPlanSetsExist(t *testing.T) {
 	}
 }
 
-// TestLooseEquipPriceInRange —— 散件定价必须落在 100~500 钻区间
+// TestLooseEquipPriceInRange —— 散件定价必须落在合理区间
 //
 // ★ 2026-09-26 「商城装备页卖的太低，现钻石 × 10」→ 原 10~50 整体涨到 100~500。
+// ★ 2026-10-07 散件改成「显式价优先」（按线上现值，9 件 1000 / 4 件 100）→ 上限放宽到 1000。
+//
+//	这里校验的是**最终写入的价**（ezfyLooseEquipPrice），字面量写错档会被测出来。
+//	★ 套装件 / 系列件**不单卖**（价恒为 0，见 seedEzfyEquipSets），不参与本用例。
 func TestLooseEquipPriceInRange(t *testing.T) {
 	check := func(name string, p int64) {
-		if p < 100 || p > 500 {
-			t.Fatalf("%s 的定价 %d 超出 100~500 钻区间", name, p)
+		if p < 100 || p > 1000 {
+			t.Fatalf("%s 的定价 %d 超出 100~1000 钻区间", name, p)
 		}
 	}
 	for _, l := range ezfyOfficerEquipLooseSeeds {
-		check(l.Name, ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg))
-	}
-	for _, s := range ezfyOfficerSeriesSeeds {
-		for _, p := range s.Pieces {
-			check(s.Series+"["+p.Sub+"]", ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg))
-		}
+		check(l.Name, ezfyLooseEquipPrice(l.Diamond, l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg))
 	}
 }
 

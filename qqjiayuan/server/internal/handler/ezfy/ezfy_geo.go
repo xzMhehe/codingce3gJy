@@ -1457,7 +1457,11 @@ func ezfyHeavyFingerprint(db *gorm.DB) uint64 {
 		Mx int64
 		Ts int64
 	}
-	db.Raw("SELECT COUNT(*) AS n, IFNULL(MAX(id),0) AS mx, IFNULL(UNIX_TIMESTAMP(MAX(updated_at)),0) AS ts FROM ezfy_map_tile").Scan(&t)
+	// ★ 2026-10-07 修复：MySQL 的 UNIX_TIMESTAMP() 返回 **DECIMAL（带小数，如 1790552181.446）**，
+	//   驱动以字符串/[]byte 返回 → Scan 进 int64 直接报
+	//   `converting driver.Value type []uint8 ("...") to a int64`，于是每 30 秒刷一条错误日志。
+	//   套一层 CAST(... AS SIGNED) 取整即可 —— 指纹只要求「表变了就不同」，秒级精度完全够用。
+	db.Raw("SELECT COUNT(*) AS n, IFNULL(MAX(id),0) AS mx, IFNULL(CAST(UNIX_TIMESTAMP(MAX(updated_at)) AS SIGNED),0) AS ts FROM ezfy_map_tile").Scan(&t)
 	return uint64(t.N)*1000003 + uint64(t.Mx)*7 + uint64(t.Ts)*31
 }
 

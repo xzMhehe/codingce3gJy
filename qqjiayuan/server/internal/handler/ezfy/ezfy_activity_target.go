@@ -471,33 +471,35 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.officerCounterRounds(leadOfficer),
 			generalCounterRounds(defGeneral),
 			h.ensureProfile(uid).Camp, defCamp)
-		// ★ 2026-10-07 活动目标：**在线玩家照常指挥，离线才自动结算**。
-		//   原来先 ezfyBattleStart 建「等待指挥」的战场，无论玩家在不在线都等，玩家不开/
-		//   不在线 → 战场冻结在战斗中、order 占着目标(ezfyOrderTargetBusy)，
-		//   同格后续玩家部队全堵在「等待(6)」（线上活动野地一直排队就是这）。
-		//   现在：玩家最近一段时间有活跃(last_active_at 由每个请求刷新) → 原流程可指挥；
-		//   玩家离线 → 抵达即自动打完（守军没有真人，不需要人肉对局）。
-		if h.ezfyUserOnline(uid) {
-			// 「目标被抢先指挥 → 等待」机制：上一场打完(该订单不再战斗中)后 processOrders 自动放行重进
-			if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
-				order.Status = ezfyOrderStatusWaiting
-				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-					Update("status", ezfyOrderStatusWaiting)
-				return
-			}
-			if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
-				order.Status = ezfyOrderStatusBattle
-				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-					Update("status", ezfyOrderStatusBattle)
-				return
-			}
+		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
+		//   活动目标（活动野地 / 活动寇城 / 特殊城市）**按「野地 / NPC」口径处理** ——
+		//   守军是配置数据、没有真人，所以默认「是」：抵达即自动打完，无需指挥。
+		//   · 玩家想指挥 → 在出征页把该订单改成「否」，抵达后照旧进指挥室；
+		//   · 攻方不在线 → 没人能指挥，一律自动结算（否则战场冻结、目标被占，
+		//     同格后续部队全堵在「等待(6)」，线上活动野地一直排队就是这个）。
+		autoBattle := order.AutoBattle == 1
+		if !autoBattle && !h.ezfyUserOnline(uid) {
+			autoBattle = true
+		}
+		if autoBattle {
+			br = h.ezfyBattleAutoFinish(uid, order, st, label, now)
+		} else if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+			// 「目标被抢先指挥 → 等待」：上一场打完(该订单不再战斗中)后 processOrders 自动放行重进
+			order.Status = ezfyOrderStatusWaiting
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusWaiting)
+			return
+		} else if b := h.ezfyBattleStart(uid, order, st, label, now); b != nil {
+			order.Status = ezfyOrderStatusBattle
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Update("status", ezfyOrderStatusBattle)
+			return
+		} else {
 			// 开战场失败（极端情况）→ 兜底直接模拟，绝不让部队卡住
 			for !st.Done {
 				st.Step(nil, nil)
 			}
 			br = st.Result()
-		} else {
-			br = h.ezfyBattleAutoFinish(uid, order, st, label, now)
 		}
 	}
 	win := br.AttackerWin

@@ -20,6 +20,12 @@
         </el-tooltip>
         <el-input v-model="word" :placeholder="searchPh" clearable style="width:200px"
                   @keyup.enter.native="page = 1; load()" />
+        <!-- ★ 2026-10-07 道具配置：按「商城分类」筛选。
+             分类在库里大多是空的（真实分类是算出来的）→ 选项由后端按同一口径算好回传，前端不再写第二套规则。 -->
+        <el-select v-if="table === 'items'" v-model="cat" clearable placeholder="全部分类" style="width:170px"
+                   @change="page = 1; load()">
+          <el-option v-for="c in cats" :key="c" :label="c" :value="c" />
+        </el-select>
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <!-- ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，隐藏「新增」按钮 -->
@@ -40,6 +46,10 @@
             </el-tag>
             <!-- ★ 时间列：库里是毫秒时间戳，格式化成日期时间 -->
             <span v-else-if="col.fmt === 'time'">{{ fmtTime(row[col.k]) }}</span>
+            <!-- ★ 道具参数列：param1 的含义随类型变化 → 按类型渲染成「含义 + 数值 + 单位」 -->
+            <span v-else-if="col.fmt === 'param'">{{ paramText(row) }}</span>
+            <!-- ★ 宝箱价格列：黄金价/钻石价合并显示（宝箱只用其中一种货币，分两列总有一列是 0） -->
+            <span v-else-if="col.fmt === 'price'">{{ priceText(row) }}</span>
             <span v-else>{{ fmt(row[col.k]) }}</span>
           </template>
         </el-table-column>
@@ -138,14 +148,21 @@
         </div>
         <el-table :data="chPool" size="mini" border stripe max-height="460">
           <el-table-column prop="id" label="ID" width="60" align="center" />
-          <el-table-column prop="kind_name" label="类型" width="65" align="center" />
-          <el-table-column prop="name" label="奖品" min-width="170" show-overflow-tooltip>
+          <el-table-column prop="kind_name" label="类型" width="70" align="center" />
+          <!-- ★ 奖品列：主行显示名称，ID 只作小字后缀（原来把「（cfg_id 3001）」摆在正文里，全是数字看不懂） -->
+          <el-table-column prop="name" label="奖品" min-width="200" show-overflow-tooltip>
             <template slot-scope="{row}">
-              <span class="td-main">{{ row.name || ('#' + row.ref_id) }}</span>
-              <span class="td-sub">（cfg_id {{ row.ref_id }}）</span>
+              <span class="td-main">{{ row.name || '（奖品已不存在）' }}</span>
+              <span class="td-sub">#{{ row.ref_id }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="quality" label="品质" width="75" align="center" />
+          <!-- ★ 品质：按档位给颜色（口径 = 装备品质 普通/稀有/史诗/传说） -->
+          <el-table-column prop="quality" label="品质" width="80" align="center">
+            <template slot-scope="{row}">
+              <el-tag v-if="row.quality" size="mini" :type="qualityTagOf(row.quality)">{{ row.quality }}</el-tag>
+              <span v-else class="td-sub">—</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="count" label="数量" width="60" align="center" />
           <el-table-column prop="weight" label="权重" width="70" align="center" />
           <el-table-column label="概率" width="80" align="center">
@@ -153,36 +170,42 @@
           </el-table-column>
           <el-table-column label="操作" width="130" align="center">
             <template slot-scope="{row}">
-              <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openChestItemEdit(row)" />
-              <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="delChestItem(row)" />
+              <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openChestItemEdit(row)" />
+              <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="delChestItem(row)" />
             </template>
           </el-table-column>
         </el-table>
         <div class="pager-info" style="margin-top:8px">
-          提示：装备类奖品的「cfg_id」在「军官装备管理 → 散件装备」里查；道具类在「数据管理 → 道具配置」里查。
+          奖品直接按名称搜索选择（装备/道具/套装都在下拉里），不用再去别处查 ID。
         </div>
       </el-dialog>
 
       <!-- ★ 新增/编辑 奖池条目 -->
+      <!-- ★ 2026-10-07 改造：奖品不再让运营手填数字 cfg_id（得先去别的页面查 ID），
+           改成按名称搜索的下拉（装备/道具/套装分别取各自的配置列表），品质也改成标准档位下拉。 -->
       <el-dialog :title="chif.id ? '编辑奖池条目' : '新增奖池条目'" :visible.sync="chItemDlg"
                  width="620px" :close-on-click-modal="false">
         <el-form label-width="110px" size="small">
           <el-form-item label="奖品类型">
             <el-radio-group v-model.number="chif.kind">
-              <el-radio :label="1">装备</el-radio>
+              <el-radio :label="1">单件装备</el-radio>
               <el-radio :label="2">道具</el-radio>
-              <el-radio :label="3">整套</el-radio>
+              <el-radio :label="3">整套装备</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item :label="chif.kind === 3 ? '套装' : '奖品 cfg_id'" required>
+          <el-form-item :label="chestKindLabel[chif.kind] || '奖品'" required>
             <el-select v-if="chif.kind === 3" v-model.number="chif.ref_id" filterable clearable
-                       placeholder="选择套装（开箱出整套）" style="width:360px">
+                       placeholder="搜索套装名 / ID" style="width:380px">
               <el-option v-for="s in equipSets" :key="'es' + s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
             </el-select>
-            <template v-else>
-              <el-input-number v-model.number="chif.ref_id" :min="1" controls-position="right" style="width:200px" />
-              <span class="td-sub" style="margin-left:8px">装备看「军官装备管理 → 散件装备」的 ID；道具看「道具配置」的 ID</span>
-            </template>
+            <el-select v-else-if="chif.kind === 2" v-model.number="chif.ref_id" filterable clearable
+                       placeholder="搜索道具名 / ID" style="width:380px">
+              <el-option v-for="o in itemOpts" :key="'it' + o.id" :label="o.label" :value="o.id" />
+            </el-select>
+            <el-select v-else v-model.number="chif.ref_id" filterable clearable
+                       placeholder="搜索装备名 / ID" style="width:380px">
+              <el-option v-for="o in equipOpts" :key="'eq' + o.id" :label="o.label" :value="o.id" />
+            </el-select>
           </el-form-item>
           <el-row :gutter="10">
             <el-col :span="8">
@@ -196,8 +219,12 @@
               </el-form-item>
             </el-col>
             <el-col :span="8">
+              <!-- ★ 品质改成标准档位下拉（与装备品质口径一致），也允许自定义输入 -->
               <el-form-item label="品质标签">
-                <el-input v-model="chif.quality" maxlength="20" placeholder="普通/稀有/史诗/传说" />
+                <el-select v-model="chif.quality" filterable allow-create clearable
+                           placeholder="选择或输入" style="width:100%">
+                  <el-option v-for="q in qualityOpts" :key="q" :label="q" :value="q" />
+                </el-select>
               </el-form-item>
             </el-col>
           </el-row>
@@ -251,11 +278,19 @@ const DICTS = {
     1: { n: '上架', t: 'success' }, 0: { n: '下架', t: 'info' }
   },
   // 道具类型
+  // ★ 2026-10-07 补全到 30（原来只映射到 16，17~30 在列表里**直接显示数字**，
+  //   用户反馈「分类还有数字」就是这里）。
   itemType: {
-    1: { n: '资源包' }, 2: { n: '黄金包' }, 3: { n: '建筑加速' }, 4: { n: '训练加速' },
-    5: { n: '科技加速' }, 6: { n: '建筑图纸' }, 7: { n: '增产' }, 8: { n: '免战' },
+    1: { n: '资源包' }, 2: { n: '黄金包' },
+    3: { n: '建筑加速' }, 4: { n: '训练加速' }, 5: { n: '科技加速' },
+    6: { n: '建筑图纸' }, 7: { n: '增产' }, 8: { n: '免战' },
     9: { n: '招生简章' }, 10: { n: '经验书' }, 11: { n: '军官技能书' }, 12: { n: '重修书' },
-    13: { n: '改名卡' }, 14: { n: '阵营转换道具' }, 15: { n: '出征道具' }, 16: { n: '迁城道具' }
+    13: { n: '改名卡' }, 14: { n: '阵营转换道具' }, 15: { n: '出征道具' }, 16: { n: '迁城道具' },
+    17: { n: '高级迁城道具' }, 18: { n: '沿海迁城道具' },
+    19: { n: '星级徽章' }, 20: { n: '计谋道具' }, 21: { n: '军官改名卡' },
+    22: { n: '为爱发电卡' }, 23: { n: '为爱发电高级卡' },
+    24: { n: '建筑加速%' }, 25: { n: '训练加速%' }, 26: { n: '科技加速%' },
+    27: { n: '粮食包' }, 28: { n: '钢铁包' }, 29: { n: '石油包' }, 30: { n: '稀矿包' }
   },
   // 任务行为（库里的 task_type 是 build_upgrade 这种英文代码，列表直接显示没人看得懂）
   taskAction: {
@@ -277,8 +312,65 @@ const DICTS = {
 const TASK_ACTIONS = Object.keys(DICTS.taskAction).map(k => ({ v: k, n: DICTS.taskAction[k].n }))
 // 道具类型下拉选项（同理，与 DICTS.itemType 同源）
 const ITEM_TYPES = Object.keys(DICTS.itemType).map(k => ({ v: Number(k), n: DICTS.itemType[k].n }))
+
+// ★ 2026-10-07 道具的「参数(param1)」含义**随类型变化**（资源量 / 分钟数 / 百分比 / 小时数 / 经验值…），
+//   列表里原来只写「参数」两个字，运营根本不知道这个数字是什么 → 按类型渲染成「含义 + 数值 + 单位」。
+//   label = 编辑表单里该字段的标签（跟着所选类型变），text(v) = 列表单元格文案。
+//   ★ 口径来自后端结算代码（ezfy.go 的 `switch cfg.ItemType`），改玩法时要一起看。
+const PARAM_META = {
+  1: { label: '四资源各增加的数量', text: v => '四资源各 +' + v },
+  2: { label: '黄金增加的数量', text: v => '黄金 +' + v },
+  27: { label: '粮食增加的数量', text: v => '粮食 +' + v },
+  28: { label: '钢铁增加的数量', text: v => '钢铁 +' + v },
+  29: { label: '石油增加的数量', text: v => '石油 +' + v },
+  30: { label: '稀矿增加的数量', text: v => '稀矿 +' + v },
+  3: { label: '加速的分钟数', text: v => '加速 ' + v + ' 分钟' },
+  4: { label: '加速的分钟数', text: v => '加速 ' + v + ' 分钟' },
+  5: { label: '加速的分钟数', text: v => '加速 ' + v + ' 分钟' },
+  24: { label: '加速比例（%）', text: v => '剩余时间 -' + v + '%' },
+  25: { label: '加速比例（%）', text: v => '剩余时间 -' + v + '%' },
+  26: { label: '加速比例（%）', text: v => '剩余时间 -' + v + '%' },
+  7: { label: '产量提升比例（%）', text: v => '产量 +' + v + '%（24 小时）' },
+  8: { label: '免战小时数', text: v => '免战 ' + v + ' 小时' },
+  9: { label: '不使用（固定刷新军校候选）', text: () => '—（刷新军校候选）' },
+  10: { label: '获得的经验值', text: v => '经验 +' + v },
+  11: { label: '不使用（固定免费学 1 个技能）', text: () => '—（免费学 1 个技能）' },
+  12: { label: '不使用（重置军官属性点）', text: () => '—（重置属性点）' },
+  13: { label: '不使用', text: () => '—' },
+  14: { label: '不使用', text: () => '—' },
+  15: { label: '每个集结令提升的出征上限', text: v => '每个 +' + v + ' 出征上限' },
+  16: { label: '不使用（迁城在市政厅操作）', text: () => '—（在市政厅使用）' },
+  17: { label: '不使用（迁城在市政厅操作）', text: () => '—（在市政厅使用）' },
+  18: { label: '不使用（迁城在市政厅操作）', text: () => '—（在市政厅使用）' },
+  19: { label: '不使用（升星概率/加成走管理端升星配置）', text: () => '—（走升星配置）' },
+  20: { label: '不使用（发动计谋固定扣 1 个）', text: () => '—（发动计谋消耗）' },
+  21: { label: '不使用（在军官详情页使用）', text: () => '—（在军官详情使用）' },
+  22: { label: '每天可领的钻石数', text: v => '每天 +' + v + ' 钻石（共 30 天）' },
+  23: { label: '每天可领的钻石数', text: v => '每天 +' + v + ' 钻石（共 30 天）' }
+}
+
+// ★ 2026-10-07 商城分类下拉（顺序/文案与后端 ezfyCategoryOrder 对齐）
+//   ★「钻石道具 / 黄金道具」不只是分类，还会**锁定支付货币**（钻石道具只能用钻石买，反之亦然）。
+const ITEM_CATEGORY_OPTS = [
+  { v: '', n: '（留空 = 按类型自动归类）' },
+  { v: '资源道具', n: '资源道具' }, { v: '加速道具', n: '加速道具' },
+  { v: '增益道具', n: '增益道具' }, { v: '建筑图纸', n: '建筑图纸' },
+  { v: '军官道具', n: '军官道具' }, { v: '计谋道具', n: '计谋道具' },
+  { v: '身份道具', n: '身份道具' }, { v: '出征道具', n: '出征道具' },
+  { v: '迁城道具', n: '迁城道具' },
+  { v: '钻石道具', n: '钻石道具（锁定：只能用钻石买）' },
+  { v: '黄金道具', n: '黄金道具（锁定：只能用黄金买）' },
+  { v: '其他', n: '其他' }
+]
 // ★ 宝箱奖池条目可改字段（走专用接口 /admin/ezfy-chests/:id/pool，宝箱是套装装备唯一产出渠道）
 const CI_KEYS = ['kind', 'ref_id', 'count', 'weight', 'quality', 'des']
+
+// ★ 2026-10-07 奖池条目：kind 1/2/3 对应「奖品」这一栏该填什么（表单标签跟着类型变）
+const CHEST_KIND_LABEL = { 1: '单件装备', 2: '道具', 3: '整套装备' }
+// ★ 品质档位（口径与装备品质一致；库里现用值就是这四档）——允许自定义输入，这里只做常用档位提示
+const QUALITY_OPTS = ['普通', '稀有', '史诗', '传说']
+// 品质标签配色（列表里按档位给颜色）
+const QUALITY_TAG = { 普通: 'info', 稀有: 'primary', 史诗: 'warning', 传说: 'danger' }
 
 // 各数据表的展示列（k=字段, n=列名, w=列宽, dict=枚举文字映射）
 const COLS = {
@@ -328,12 +420,26 @@ const COLS = {
     { k: 'officer_min', n: '军官下限', w: 90 }, { k: 'officer_max', n: '军官上限', w: 90 },
     { k: 'troops', n: '守军' }, { k: 'des', n: '描述' }
   ],
+  // ★ 2026-10-07 道具配置列重排（用户反馈「管理的模糊、分类还有数字、很乱」）：
+  //   ① 类型走 itemType 字典（补全到 30，不再出现数字）；
+  //   ② 分类列显示后端算好的**生效分类**（category_name，口径 = 用户端商城），
+  //      原列名「分类/货币」把「商城分类」和「计价货币」两个概念混在一起；
+  //   ③ 参数列按类型渲染含义（PARAM_META），不再是一个看不懂的裸数字；
+  //   ④ 去掉一直是空的「图标」列（icon 全库为空、用户端也不渲染），字段仍在编辑表单里可改；
+  //   ⑤ 道具名 + 描述 两个弹性列（el-table 只把多余宽度分给 min-width 列，
+  //      只留 1 个弹性列时它会被拉到 600px+，这就是「某列莫名很宽」的根因）。
   items: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '道具名', w: 110 }, { k: 'item_type', n: '类型', w: 90, dict: 'itemType' },
-    { k: 'category', n: '分类/货币', w: 96 }, { k: 'param1', n: '参数', w: 70 },
-    { k: 'price_gold', n: '黄金价', w: 80 }, { k: 'price_diamond', n: '钻石价', w: 80 },
-    { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'icon', n: '图标', w: 66 },
-    { k: 'description', n: '描述' }
+    // ★ 列宽按「列宽体检」（.workbuddy-ai/scripts/table-colwidth-audit.js）实测内容宽度定：
+    //   每列都留 ≥14px 余量，长文本列（道具名/描述）走 min-width 弹性，
+    //   描述列按库里最长描述（43 字 ≈ 229px）给到 230，不再截断。
+    { k: 'id', n: 'ID', w: 46 },
+    { k: 'name', n: '道具名', minW: 140 },
+    { k: 'item_type', n: '类型', w: 92, dict: 'itemType' },
+    { k: 'category_name', n: '商城分类', w: 86 },
+    { k: 'param1', n: '参数', w: 140, fmt: 'param' },
+    { k: 'price_gold', n: '黄金价', w: 70 }, { k: 'price_diamond', n: '钻石价', w: 70 },
+    { k: 'stock', n: '库存', w: 66, fmt: 'stock' },
+    { k: 'description', n: '描述', minW: 230 }
   ],
   // ★ 2026-09-27 商城「装备」的价格定义迁到这里维护（「装备道具配置」）。
   //   这里只改价格/库存/身份字段，**不包含**军事/后勤/学识/战斗属性 ——
@@ -350,12 +456,24 @@ const COLS = {
   ],
   // ★ 2026-09-27 商城「宝箱」的价格定义 + 上架/库存 + 奖池迁到这里维护（「套装装备配置」）。
   //   宝箱是套装装备的唯一产出渠道，奖池在行内「奖池」按钮的弹窗里维护。
+  // ★ 2026-10-07 宝箱配置列重排（用户反馈「列宽忽宽忽窄/被切」）：
+  //   体检发现原 10 列里有 **341px 死白** —— 黄金价 90 只用到 29、宝箱名 140 只用到 70、
+  //   单次上限 80 只用到 29…，而「说明/奖池说明」反而被切（需要 310/324，实际只有 108/179）。
+  //   改法：① 黄金价 + 钻石价 合并成一列「价格」（宝箱只会用其中一种货币，分两列**总有一列是 0 占地方**）；
+  //        ② 其余列按内容宽度收紧；③ 让出的宽度给两个长文本列。
+  //   注：长文本列仍会截断（10 列塞不进 955px），鼠标悬停有 tooltip 看全文。
   chests: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '宝箱名', w: 140 },
-    { k: 'price_gold', n: '黄金价', w: 90 }, { k: 'price_diamond', n: '钻石价', w: 90 },
-    { k: 'stock', n: '库存', w: 76, fmt: 'stock' }, { k: 'open_max', n: '单次上限', w: 80 },
-    { k: 'enabled', n: '上架', w: 76, dict: 'chestOn' }, { k: 'sort_no', n: '排序', w: 60 },
-    { k: 'des', n: '说明', minW: 90 }, { k: 'effect', n: '奖池说明', minW: 150 }
+    { k: 'id', n: 'ID', w: 46 },
+    // ★ 宝箱名固定宽（不给 min-width）：否则大屏下它也会被拉伸到 188px，
+    //   和两个长文本列一起「忽宽忽窄」；弹性列只留真正需要空间的「说明/奖池说明」。
+    { k: 'name', n: '宝箱名', w: 100 },
+    { k: 'price', n: '价格', w: 90, fmt: 'price' },
+    { k: 'stock', n: '库存', w: 62, fmt: 'stock' },
+    { k: 'open_max', n: '单次上限', w: 82 },
+    { k: 'enabled', n: '上架', w: 66, dict: 'chestOn' },
+    { k: 'sort_no', n: '排序', w: 58 },
+    { k: 'des', n: '说明', minW: 205 },
+    { k: 'effect', n: '奖池说明', minW: 245 }
   ],
   taskTypes: [
     { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
@@ -486,25 +604,19 @@ const FORMS = {
     { k: 'status', n: '状态', t: 'num', opts: [{ v: 1, n: '开启' }, { v: 0, n: '关闭' }] },
     { k: 'des', n: '说明', t: 'text' }
   ],
+  // ★ 2026-10-07 道具表单重排：按「是什么 → 归哪类 → 参数 → 价格 → 库存」的顺序，
+  //   分类不再允许随手输入（原 allow-create 能把同一分类写成多种写法），改成固定下拉；
+  //   「留空 = 按类型自动归类」是推荐用法（后端 ezfyCategoryOf 会推导）。
   items: [
     { k: 'name', n: '道具名', t: 'input', req: true, max: 50 },
-    { k: 'stock', n: '库存（-1 = 无上限，可随便买；0 = 售罄）', t: 'num', min: -1 },
     { k: 'item_type', n: '类型', t: 'num', opts: ITEM_TYPES },
+    { k: 'category', n: '商城分类', t: 'input', filterable: true, opts: ITEM_CATEGORY_OPTS },
+    // 参数(param1)的含义随类型变化 → 标签由 computed formFields 按所选类型动态改写
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
-    // ★ 道具可配「钻石道具 / 黄金道具」；钻石道具只能钻石买，黄金道具只能黄金买。
-    //   用户端商城会按这两个分类分开展示（也可选别的分类名，或直接输入自定义分类）。
-    { k: 'category', n: '分类 / 货币类型', t: 'input', max: 30, filterable: true, allowCreate: true, opts: [
-      { v: '钻石道具', n: '钻石道具（只能用钻石买）' },
-      { v: '黄金道具', n: '黄金道具（只能用黄金买）' },
-      { v: '资源道具', n: '资源道具' }, { v: '加速道具', n: '加速道具' },
-      { v: '建筑图纸', n: '建筑图纸' }, { v: '增益道具', n: '增益道具' },
-      { v: '军官道具', n: '军官道具' }, { v: '身份道具', n: '身份道具' },
-      { v: '出征道具', n: '出征道具' }, { v: '迁城道具', n: '迁城道具' },
-      { v: '其他', n: '其他' }
-    ] },
-    { k: 'icon', n: '图标', t: 'input', max: 50 },
+    { k: 'stock', n: '库存（-1 = 无上限，可随便买；0 = 售罄）', t: 'num', min: -1 },
+    { k: 'icon', n: '图标文件名（可留空）', t: 'input', max: 50 },
     { k: 'description', n: '描述', t: 'text' }
   ],
   // ★ 2026-09-27 装备道具配置：只维护价格/库存/身份字段（属性在军官装备管理改）
@@ -596,6 +708,8 @@ export default {
         { k: 'cities', n: '玩家城池', to: '城市管理' }
       ],
       table: 'items', word: '',
+      // ★ 2026-10-07 道具配置的「商城分类」筛选：cat = 当前选中分类，cats = 可选项（后端回传）
+      cat: '', cats: [],
       // ★ 2026-09-27 装备道具配置默认只展示用户商城上架的装备
       mallOnly: true,
       rows: [], total: 0, page: 1, size: 5, loading: false,
@@ -612,7 +726,11 @@ export default {
       // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
       chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
       chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
-      equipSets: []
+      equipSets: [],
+      // ★ 2026-10-07 奖池条目编辑：奖品按名称选 → 装备/道具候选列表（懒加载）
+      equipOpts: [], itemOpts: [],
+      // 模板里只能访问实例属性，模块级 const 要挂到 data 上
+      chestKindLabel: CHEST_KIND_LABEL, qualityOpts: QUALITY_OPTS
     }
   },
   computed: {
@@ -627,8 +745,14 @@ export default {
     // 任务配置的「任务分类」要选类型名而不是填数字 ID → 动态注入任务类型下拉
     formFields () {
       const list = FORMS[this.table] || []
-      if (this.table !== 'tasks') return list
-      return list.map(f => f.k === 'type_id' ? { ...f, opts: this.taskTypeOpts } : f)
+      if (this.table === 'tasks') return list.map(f => f.k === 'type_id' ? { ...f, opts: this.taskTypeOpts } : f)
+      // ★ 道具配置：「参数(param1)」的含义随「类型」变化 → 标签跟着所选类型走，
+      //   运营填数字前就知道这个参数是什么（例：类型=建筑加速 → 参数（加速的分钟数））
+      if (this.table === 'items') {
+        const meta = PARAM_META[this.form.item_type]
+        return list.map(f => f.k === 'param1' && meta ? { ...f, n: '参数（' + meta.label + '）' } : f)
+      }
+      return list
     },
     tableName () {
       const t = this.tables.find(t => t.k === this.table)
@@ -647,14 +771,35 @@ export default {
       const params = { page: this.page, size: this.size, word: this.word }
       // ★ 装备道具配置：默认只展示用户商城上架的装备（mall=1 后端按商城条件过滤）
       if (this.table === 'equipments' && this.mallOnly) params.mall = 1
+      // ★ 道具配置：按商城分类筛选（分类是推导值，后端按同一口径算好 id 集合再过滤）
+      if (this.table === 'items' && this.cat) params.cat = this.cat
       api.get('/admin/ezfy-data/' + this.table, { params }).then(r => {
         this.loading = false
         if (r.code === 0) {
           this.rows = r.data.list
           this.total = r.data.total
           this.page = r.data.page
+          // ★ 分类选项由后端回传（口径唯一，前端不再重复实现分类推导规则）
+          if (this.table === 'items') this.cats = r.data.cats || []
         } else this.$message.error(r.msg)
       })
+    },
+    // ★ 道具参数列：param1 的含义随类型变化 → 按类型渲染成「含义 + 数值 + 单位」
+    paramText (row) {
+      const raw = row.param1
+      if (raw === null || raw === undefined || raw === '') return '—'
+      const meta = PARAM_META[row.item_type]
+      return meta ? meta.text(Number(raw)) : String(raw)
+    },
+    // ★ 宝箱价格：库里「黄金价 / 钻石价」只会用其中一个 → 合并成一列并标出货币，
+    //   否则两列里总有一列是 0（白占 90px，也是「列宽忽宽忽窄」的观感来源之一）。
+    priceText (row) {
+      const g = Number(row.price_gold || 0)
+      const d = Number(row.price_diamond || 0)
+      if (g > 0 && d > 0) return '黄金 ' + g + ' / 钻石 ' + d
+      if (d > 0) return '钻石 ' + d
+      if (g > 0) return '黄金 ' + g
+      return '未定价'
     },
     fmt (v) {
       if (v === null || v === undefined) return '—'
@@ -667,10 +812,11 @@ export default {
       const d = new Date(n < 1e12 ? n * 1000 : n) // 兼容秒级时间戳
       return d.toLocaleString('zh-CN', { hour12: false })
     },
-    // 切换数据表 Tab：清空搜索词、回到第 1 页重新拉取
+    // 切换数据表 Tab：清空搜索词与分类筛选、回到第 1 页重新拉取
     onTabChange (tab) {
       this.table = tab.name
       this.word = ''
+      this.cat = ''
       this.page = 1
       this.load()
     },
@@ -785,12 +931,40 @@ export default {
       this.chPoolChest = row
       this.chBulkSetId = 0
       this.chBulkWeight = 100
-      // 批量加入需要「套装列表」下拉（套装件 = 套装装备，宝箱是其唯一产出渠道）；懒加载即可
+      this.loadPoolRefs()
+      this.loadChestPool()
+      this.chPoolDlg = true
+    },
+    // ★ 2026-10-07 奖池条目编辑要「按名称选奖品」→ 懒加载三份候选：
+    //   套装列表（批量加入 + 整套奖品）、装备列表、道具列表。
+    loadPoolRefs () {
       if (!this.equipSets.length) {
         api.get('/admin/ezfy-equip-sets').then(r => { if (r.code === 0) this.equipSets = r.data.list })
       }
-      this.loadChestPool()
-      this.chPoolDlg = true
+      if (!this.equipOpts.length) {
+        api.get('/admin/ezfy-equipments', { params: { set_id: '' } }).then(r => {
+          if (r.code !== 0) return
+          const list = r.data.list || []
+          this.equipOpts = list.map(e => ({
+            id: e.id,
+            label: e.id + ' · ' + e.name + (e.tier_name ? '（' + e.tier_name + (e.slot ? ' · ' + e.slot : '') + '）' : '')
+          }))
+        })
+      }
+      if (!this.itemOpts.length) this.loadItemOpts(1)
+    },
+    // 道具列表接口是分页的（size 上限 100）→ 循环取全量，保证下拉里能搜到所有道具
+    loadItemOpts (page) {
+      api.get('/admin/ezfy-data/items', { params: { page, size: 100 } }).then(r => {
+        if (r.code !== 0) return
+        const list = r.data.list || []
+        this.itemOpts = this.itemOpts.concat(list.map(it => ({ id: it.id, label: it.id + ' · ' + it.name })))
+        if (this.itemOpts.length < r.data.total && page < 5) this.loadItemOpts(page + 1)
+      })
+    },
+    // 奖池列表的「品质」标签配色（口径 = 装备品质 普通/稀有/史诗/传说）
+    qualityTagOf (q) {
+      return QUALITY_TAG[q] || ''
     },
     loadChestPool () {
       api.get('/admin/ezfy-chests/' + this.chPoolChest.id + '/pool').then(r => {
@@ -801,21 +975,19 @@ export default {
       })
     },
     openChestItemCreate () {
-      // ★ 先确保套装下拉有数据（新增整套奖池时要用）
-      if (!this.equipSets.length) {
-        api.get('/admin/ezfy-equip-sets').then(r => { if (r.code === 0) this.equipSets = r.data.list })
-      }
+      this.loadPoolRefs()
       this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '' }
       this.chItemDlg = true
     },
     openChestItemEdit (row) {
+      this.loadPoolRefs()
       const f = { id: row.id }
       CI_KEYS.forEach(k => { f[k] = row[k] })
       this.chif = f
       this.chItemDlg = true
     },
     doChestItemSave () {
-      if (!this.chif.ref_id) { this.$message.warning('请填写奖品 ID（装备/道具的配置 ID）'); return }
+      if (!this.chif.ref_id) { this.$message.warning('请选择奖品'); return }
       const body = {}
       CI_KEYS.forEach(k => { body[k] = this.chif[k] })
       const isNew = !this.chif.id

@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/model"
 )
@@ -187,8 +188,10 @@ func seedEzfyEliteFiveStars(db *gorm.DB) {
 	}
 	list := buildEzfyEliteFiveStars()
 	if err := db.CreateInBatches(list, 100).Error; err != nil {
+		// ★ 2026-10-07：原来是 db.Clauses()（空子句 = 普通 Create），逐条补时**照样撞主键**。
+		//   改成 OnConflict{DoNothing} → 已存在的跳过、缺的补上，才真正做到「尽量多灌一些」。
 		for i := range list {
-			_ = db.Clauses().Create(&list[i]).Error
+			_ = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&list[i]).Error
 		}
 	}
 }
@@ -208,8 +211,9 @@ func seedEzfyOfficerPool(db *gorm.DB) {
 	list := buildEzfyPoolOfficers()
 	if err := db.CreateInBatches(list, 200).Error; err != nil {
 		// 主键冲突（比如管理端手工加过 1001 号）时逐条补，尽量多灌一些
+		// ★ 2026-10-07：同上，逐条补必须用 OnConflict{DoNothing}，否则每条都撞主键、一条都补不进去。
 		for i := range list {
-			_ = db.Clauses().Create(&list[i]).Error
+			_ = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&list[i]).Error
 		}
 	}
 }
@@ -236,8 +240,10 @@ type ezfyEquipSetSeed struct {
 	SetMi   int // 套装加成（触发后）
 	SetLo   int
 	SetLe   int
-	Gold    int64 // 商城黄金价（每件），0=不卖黄金
-	Diamond int64 // 商城钻石价（每件），0=不卖钻石
+	// ★ 2026-10-07 这两个价格字段**已不再使用**：用户「属于套装装备 单卖的我都下架了暂时不卖」
+	//   → 套装件生成时价格一律写 0（见 seedEzfyEquipSets）。字段留着是为了保留历史定价备查。
+	Gold    int64 // 【已废弃】商城黄金价（每件）
+	Diamond int64 // 【已废弃】商城钻石价（每件）
 	Effect  string
 	Des     string
 }
@@ -429,7 +435,13 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 		}},
 }
 
-// ezfyOfficerEquipLooseSeeds 散件（不属于任何系列，用黄金买，新手过渡用）
+// ezfyOfficerEquipLooseSeeds 散件（不属于任何系列，商城「装备」页单件出售）
+//
+// ★ 2026-10-07 按线上现值**显式定价**（来源：线上库 qq_jiayuan.ezfy_cfg_equipment 快照）：
+//
+//	线上这 13 件里 9 件卖 **1000** 钻、4 件（战无不胜勋章 / 五星勋章 / 忍者足具 / 杜工部集）卖 **100** 钻。
+//	原来一律用 ezfyEquipDiamondPrice() 按加成推算，13 件全算成 100 —— 与线上差 10 倍。
+//	★ Diamond 写 0 时才回落到推算公式（以后新增散件用）。
 var ezfyOfficerEquipLooseSeeds = []struct {
 	ID      int
 	Name    string
@@ -440,22 +452,23 @@ var ezfyOfficerEquipLooseSeeds = []struct {
 	Move    int
 	Crit    int
 	CritDmg int
-	Gold    int64
+	Diamond int64 // ★ 商城钻价（0 = 用推算公式）
+	Gold    int64 // 历史遗留字段，未使用
 	Level   int
 }{
-	{ID: 3001, Name: "和平使者", Slot: "肩部", Dmg: 19, Gold: 2000000, Level: 60},
-	{ID: 3002, Name: "军帽", Slot: "头部", Dmg: 19, Gold: 2000000, Level: 60},
-	{ID: 3003, Name: "智能机器人头盔", Slot: "头部", Dmg: 19, Gold: 3000000, Level: 80},
-	{ID: 3004, Name: "怀表", Slot: "挂件", Def: 19, Gold: 2000000, Level: 60},
-	{ID: 3005, Name: "马甲", Slot: "胸部", Def: 20, Gold: 3000000, Level: 80},
-	{ID: 3006, Name: "功守道", Slot: "腰部", Def: 19, Gold: 2500000, Level: 70},
-	{ID: 3007, Name: "鬼才设计师", Slot: "腰部", Def: 19, Gold: 2000000, Level: 60},
-	{ID: 3008, Name: "战无不胜勋章", Slot: "勋章", Dmg: 20, Def: 20, Gold: 5000000, Level: 100},
-	{ID: 3009, Name: "开山斧", Slot: "左手", Dmg: 19, Gold: 2000000, Level: 60},
-	{ID: 3010, Name: "项链", Slot: "饰品", Crit: 19, Gold: 2000000, Level: 60},
-	{ID: 3011, Name: "五星勋章", Slot: "名将勋章", Hp: 21, Gold: 4000000, Level: 90},
-	{ID: 3012, Name: "忍者足具", Slot: "足部", Def: 19, Move: 21, Gold: 3000000, Level: 80},
-	{ID: 3013, Name: "杜工部集", Slot: "名将史册", Dmg: 21, Def: 21, Gold: 6000000, Level: 100},
+	{ID: 3001, Name: "和平使者", Slot: "肩部", Dmg: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3002, Name: "军帽", Slot: "头部", Dmg: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3003, Name: "智能机器人头盔", Slot: "头部", Dmg: 19, Diamond: 1000, Gold: 3000000, Level: 80},
+	{ID: 3004, Name: "怀表", Slot: "挂件", Def: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3005, Name: "马甲", Slot: "胸部", Def: 20, Diamond: 1000, Gold: 3000000, Level: 80},
+	{ID: 3006, Name: "功守道", Slot: "腰部", Def: 19, Diamond: 1000, Gold: 2500000, Level: 70},
+	{ID: 3007, Name: "鬼才设计师", Slot: "腰部", Def: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3008, Name: "战无不胜勋章", Slot: "勋章", Dmg: 20, Def: 20, Diamond: 100, Gold: 5000000, Level: 100},
+	{ID: 3009, Name: "开山斧", Slot: "左手", Dmg: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3010, Name: "项链", Slot: "饰品", Crit: 19, Diamond: 1000, Gold: 2000000, Level: 60},
+	{ID: 3011, Name: "五星勋章", Slot: "名将勋章", Hp: 21, Diamond: 100, Gold: 4000000, Level: 90},
+	{ID: 3012, Name: "忍者足具", Slot: "足部", Def: 19, Move: 21, Diamond: 100, Gold: 3000000, Level: 80},
+	{ID: 3013, Name: "杜工部集", Slot: "名将史册", Dmg: 21, Def: 21, Diamond: 100, Gold: 6000000, Level: 100},
 }
 
 // ★ 2026-09-23 装备百分比压降：原版单件 110~155%（见装备距离伤害表.xlsx）太变态，
@@ -495,13 +508,17 @@ func seedEzfyEquipSetFamily(db *gorm.DB, minID, maxID int, build func() ([]model
 		return
 	}
 	sets, pieces := build()
+	// ★ 2026-10-07 修复启动报错 `Duplicate entry '3001' for key 'ezfy_cfg_equipment.PRIMARY'`：
+	//   上面的 cnt 只检查了**套装表**(ezfy_cfg_equip_set)；若套装表为空、而装备表已有数据
+	//   （历史遗留，或上次插入部分成功），这里就会重复插装备并报 1062。
+	//   改为 OnConflict{DoNothing}：已存在的行跳过、缺的补上 —— 天然幂等，重复启动无副作用。
 	if len(sets) > 0 {
-		if err := db.Create(&sets).Error; err != nil {
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&sets).Error; err != nil {
 			return
 		}
 	}
 	if len(pieces) > 0 {
-		_ = db.Clauses().CreateInBatches(pieces, 200).Error
+		_ = db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(pieces, 200).Error
 	}
 }
 
@@ -524,7 +541,12 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Name: s.Name + "·" + slot,
 					Type: "套装", Slot: slot, SetId: s.ID, Tier: s.Tier,
 					Military: s.PieceMi, Logistics: s.PieceLo, Learning: s.PieceLe,
-					Level: s.Level, PriceGold: s.Gold, PriceDiamond: s.Diamond,
+					Level: s.Level,
+					// ★ 2026-10-07 用户「属于套装装备 单卖的我都下架了暂时不卖」→ 套装件**不单独出售**（价 0）。
+					//   线上 135 件套装件 price_gold/price_diamond 也都是 0。
+					//   注意：套装件本来就上不了商城（mall 过滤：set_id>0 且无系列名 → 排除），
+					//   这里置 0 是为了「数据口径与线上一致」，不是商城可见性。
+					PriceGold: 0, PriceDiamond: 0,
 					Stock: -1, Effect: s.Effect,
 					Des: s.Name + " 套装件（" + slot + "）",
 				})
@@ -585,8 +607,10 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
 					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
 					Level: s.Level, Stock: -1, EnhanceMax: 20,
-					// ★ 单件可当散件买：价格按自身加成算（100~500 钻）
-					PriceDiamond: ezfyEquipDiamondPrice(p.Dmg, p.Def, p.Hp, p.Move, p.Crit, p.CritDmg),
+					// ★ 2026-10-07 用户「属于套装装备 单卖的我都下架了暂时不卖」：
+					//   系列件（属于套装 21~26）**不再单独出售**（价 0 = 不上架），线上这 66 件也是 0。
+					//   原来按加成定价（100~500 钻）→ 会出现在商城「装备」页，与线上不一致。
+					PriceDiamond: 0,
 					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
 					Dmg:      p.Dmg,
 					Def:      p.Def,
@@ -609,8 +633,9 @@ func seedEzfyEquipSets(db *gorm.DB) {
 			pieces = append(pieces, model.EzfyCfgEquipment{
 				ID: l.ID, Name: l.Name, Type: "军官装备", Slot: l.Slot, SetId: 0, Tier: 2,
 				Level: l.Level, Stock: -1, EnhanceMax: 20,
-				// ★ 纯散件同样按加成定价（100~500 钻）
-				PriceDiamond: ezfyEquipDiamondPrice(l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
+				// ★ 2026-10-07 散件价按线上现值显式写在种子字面量里（Diamond 字段），
+				//   没写才回落到按加成推算（见 ezfyLooseEquipPrice）
+				PriceDiamond: ezfyLooseEquipPrice(l.Diamond, l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
 				// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
 				Dmg:      l.Dmg,
 				Def:      l.Def,
@@ -652,7 +677,9 @@ type ezfyChestSeed struct {
 // ★ 套装箱开出来是**整套**（Kind=3），不是单件。
 // ★ 2026-09-26 「初始化数据按线上现值对齐」：价格/库存/单次上限一律取线上库快照值。
 // ★ 2026-10-05 用户在线上把六个宝箱单价**全部下调**（20/40/60/80/100/100），要求种子按线上对齐。
+// ★ 2026-10-07 再按线上现值对齐一次（来源：线上库 qq_jiayuan.ezfy_cfg_chest 快照）：
 //
+//	统帅宝箱 100 → **120**；其余 5 个价格与线上一致（20/40/60/80/100），未动。
 //	库存是**动态值**（开箱会递减，见 ezfy_officer.go 的 stock - count），故库存仍沿用初始快照，不随线上消耗值走。
 var ezfyChestSeeds = []ezfyChestSeed{
 	{ID: 1, Name: "黄金宝箱", PriceDiamond: 20, Stock: 29, OpenMax: 5,
@@ -670,7 +697,7 @@ var ezfyChestSeeds = []ezfyChestSeed{
 	{ID: 5, Name: "荣耀宝箱", PriceDiamond: 100, Stock: 30, OpenMax: 5,
 		Des:    "开出一整套精锐套装（9 件）",
 		Effect: "奖池：精英守护者 / 传说守护者 / 暴君之怒 / 审判者 整套"},
-	{ID: 6, Name: "统帅宝箱", PriceDiamond: 100, Stock: 25, OpenMax: 1,
+	{ID: 6, Name: "统帅宝箱", PriceDiamond: 120, Stock: 25, OpenMax: 1,
 		Des:    "开出一整套顶级套装（9~11 件），含六大系列",
 		Effect: "奖池：混沌三件套 / 亡魂 / 遗失传说 / 隐秘宝藏 + 六大系列 整套"},
 }
@@ -725,15 +752,30 @@ func ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg int) int64 {
 	}
 }
 
-// backfillLooseEquipPrice 给**散件**补新定价（按加成 100~500 钻）
+// ezfyLooseEquipPrice 散件（ID 3001+）的商城钻价：**显式价优先**，没写才按加成推算。
 //
-// ★ 老库里的价格是历史遗留：系列单件错填了整套价（1200~1500 钻）、纯散件是黄金价。
-// 只在「没定过价 或 还是旧价」时才改 —— 管理端已经手动调过的不会被冲掉。
+// ★ 2026-10-07 为什么要有这个函数：线上这 13 件散件实际卖 1000 / 100 钻（9 件 1000、4 件 100），
+// 而 ezfyEquipDiamondPrice() 按加成算出来 13 件**全是 100**（它们的加成和都 ≤ 110），
+// 用公式初始化出来的新库和线上差 10 倍。所以价格以种子字面量（Diamond 字段）为准。
+func ezfyLooseEquipPrice(explicit int64, dmg, def, hp, move, crit, critDmg int) int64 {
+	if explicit > 0 {
+		return explicit
+	}
+	return ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg)
+}
+
+// backfillLooseEquipPrice 给**纯散件**补定价（按种子字面量里的显式价）。
 //
-// ★ 2026-09-26 整体涨价 ×10 后，这里的「已定过价」阈值必须一起抬高到 1000，
+// ★ 老库里的价格是历史遗留：纯散件以前是黄金价 / 10 钻价。
+// 只在「没定过价 或 价格 > 1000」时才改 —— 管理端已经手动调过的不会被冲掉。
 //
-//	否则线上刚被 ×10 刷成 100~500 的行会在下次启动时被判成「旧价」而重算
-//	（重算结果恰好也等于 ×10，但管理端手改过的那几件会被冲掉，例如 100→1000 的会被打回 150）。
+// ★ 2026-10-07 改了两点：
+//
+//	① **不再给「系列件」定价**：用户「属于套装装备 单卖的我都下架了暂时不卖」→ 系列件价格恒为 0。
+//	   原来这里的筛选条件含 `series <> ''`，会把价格 0 的系列件按加成重新定价（100~500）
+//	   = 等于又把它们重新上架，把种子里刚写死的 0 冲掉。
+//	② 纯散件改取**种子字面量**（`ezfyOfficerEquipLooseSeeds.Diamond`，线上现值 9 件 1000 / 4 件 100），
+//	   不再用 ezfyEquipDiamondPrice()（那个算出来是 100，比线上低 10 倍）。
 func backfillLooseEquipPrice(db *gorm.DB) {
 	// 上一版 backfill 把老版 武器/防具/饰品/珠宝 也当成散件改了价（它们不属于那张表），
 	// 这里还原成「不上架」。幂等：只改「还是 10 钻且没有黄金价」的行，管理端定过价的不动。
@@ -742,10 +784,15 @@ func backfillLooseEquipPrice(db *gorm.DB) {
 		Where("type <> ? AND price_diamond = ? AND price_gold = 0", "军官装备", 10).
 		Update("price_diamond", 0)
 
+	// 纯散件（set_id = 0 且无系列名）→ 按种子字面量定价
+	seedPrice := map[int]int64{}
+	for _, l := range ezfyOfficerEquipLooseSeeds {
+		seedPrice[l.ID] = ezfyLooseEquipPrice(l.Diamond, l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg)
+	}
 	var list []model.EzfyCfgEquipment
-	// 散件 = 《装备距离伤害表》里的「军官装备」类：有系列名的单件（可单穿）或纯散件。
-	// ★ 老版的 武器/防具/饰品/珠宝（Type 是它们自己）不属于那张表，别一起改价。
-	if err := db.Where("type = ? AND (series <> '' OR set_id = 0)", "军官装备").
+	// ★ 老版的 武器/防具/饰品/珠宝（Type 是它们自己）不属于那张表，别一起改价；
+	//   ★ 系列件（series <> ''）也排除：它们不单卖，价格由种子写成 0，这里不许动。
+	if err := db.Where("type = ? AND set_id = 0 AND (series IS NULL OR series = '')", "军官装备").
 		Find(&list).Error; err != nil {
 		return
 	}
@@ -754,7 +801,10 @@ func backfillLooseEquipPrice(db *gorm.DB) {
 		if e.PriceDiamond > 0 && e.PriceDiamond <= 1000 {
 			continue // 已是合理新价（管理端可能手动调过），不动
 		}
-		want := ezfyEquipDiamondPrice(e.Dmg, e.Def, e.Hp, e.Move, e.Crit, e.CritDmg)
+		want, ok := seedPrice[e.ID]
+		if !ok {
+			want = ezfyEquipDiamondPrice(e.Dmg, e.Def, e.Hp, e.Move, e.Crit, e.CritDmg)
+		}
 		db.Model(&model.EzfyCfgEquipment{}).Where("id = ?", e.ID).
 			Updates(map[string]interface{}{"price_diamond": want, "price_gold": 0})
 	}

@@ -3,6 +3,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -627,6 +628,46 @@ var ezfyDataMoved = map[string]string{
 	"cities":         "「城市管理」",
 }
 
+// ezfyAnyStr / ezfyAnyInt64 / ezfyAnyInt 把「Find 到 map」拿到的 interface{} 值转成基础类型。
+//
+// ★ 数据管理列表走的是 `Find(&[]map[string]interface{})`，MySQL 驱动对 varchar 可能给
+// []byte、对 bigint 给 int64，直接断言会 panic —— 统一从这里兜底转换。
+func ezfyAnyStr(v interface{}) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case []byte:
+		return string(x)
+	}
+	return fmt.Sprint(v)
+}
+
+func ezfyAnyInt64(v interface{}) int64 {
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case int32:
+		return int64(x)
+	case uint64:
+		return int64(x)
+	case float64:
+		return int64(x)
+	case []byte:
+		n, _ := strconv.ParseInt(string(x), 10, 64)
+		return n
+	case string:
+		n, _ := strconv.ParseInt(x, 10, 64)
+		return n
+	}
+	return 0
+}
+
 func (h *EzfyAdmin) ezfyTableOf(c *gin.Context) (ezfyTableDef, bool) {
 	name := c.Param("table")
 	def, ok := ezfyTableDefs[name]
@@ -733,10 +774,51 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 		q = q.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
 		lq = lq.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
 	}
+	// ★★ 2026-10-07 「道具配置」可读性改造（用户反馈：分类一栏是空的/是数字，整页很乱）：
+	//   库里 category **大部分是空串**，玩家在商城看到的分类其实是算出来的
+	//   （显式 category → 有钻石价算「钻石道具」→ 按 item_type 归类，见 ezfyCategoryOf）。
+	//   所以这里做两件事，口径全部复用 ezfyCategoryOf，不写第二套：
+	//     ① 支持 `cat` 分类筛选 —— 先按同一口径算出命中的 id 集合，再按 id 过滤 + 分页
+	//        （道具表只有几十行，全量扫一遍代价可忽略；也避免把推导规则翻译成 SQL 表达式）；
+	//     ② 把「当前数据里出现过的分类」回给前端做筛选下拉（顺序走 ezfyCategoryOrder）。
+	var itemCats []string
+	if c.Param("table") == "items" {
+		var all []model.EzfyCfgItem
+		h.DB.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro}).
+			Order("id").Find(&all)
+		cat := strings.TrimSpace(c.Query("cat"))
+		seen := map[string]bool{}
+		ids := make([]int, 0, len(all))
+		for i := range all {
+			ec := ezfyItemCategory(&all[i])
+			if !seen[ec] {
+				seen[ec] = true
+				itemCats = append(itemCats, ec)
+			}
+			if cat != "" && ec == cat {
+				ids = append(ids, all[i].ID)
+			}
+		}
+		sort.Slice(itemCats, func(i, j int) bool {
+			return ezfyCategoryRank(itemCats[i]) < ezfyCategoryRank(itemCats[j])
+		})
+		if cat != "" {
+			// ids 为空时 GORM 生成 `id IN (NULL)` → 命中 0 行，正是想要的结果
+			q = q.Where("id IN ?", ids)
+			lq = lq.Where("id IN ?", ids)
+		}
+	}
 	q.Count(&total)
 	var rows []map[string]interface{}
 	lq.Order("id").Offset(offset).Limit(size).Find(&rows)
-	resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
+	// ★ 道具配置：补「生效分类」中文名（原来直接显示 category 列，空串就一片空白 → 看着像没分类）
+	if c.Param("table") == "items" {
+		for _, r := range rows {
+			r["category_name"] = ezfyCategoryOf(
+				ezfyAnyStr(r["category"]), int(ezfyAnyInt64(r["item_type"])), ezfyAnyInt64(r["price_diamond"]))
+		}
+	}
+	resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size, "cats": itemCats})
 }
 
 // AdminEzfyDataCreate 新增数据

@@ -529,6 +529,10 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 		Officer    string           `json:"officer"`
 		WaitMin    int              `json:"wait_min"` // 宿营分钟数(≤1440)
 		Gather     int              `json:"gather"`   // ★ 集结令个数(0~10)，提高本次出征兵力上限
+		// ★ 2026-10-07 自动战斗：1=到达即自动打完（无需指挥）；0=到达后进指挥室等玩家指挥。
+		//   用**指针**区分「没传」与「显式传 0」。打玩家城市（target_type=3）后端**强制按 0 处理**
+		//   （真人守方必须留指挥机会），前端那一项也是只读的 —— 这里再兜一道，防直接调接口绕过。
+		AutoBattle *int `json:"auto_battle"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -555,7 +559,16 @@ func (h *EzfyHandler) CreateOrder(c *gin.Context) {
 	if waitMin > 1440 {
 		waitMin = 1440
 	}
-	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin, req.Gather, cities); msg != "" {
+	// ★ 2026-10-07 自动战斗（出征页可配）：
+	//   打野地 / AI 寇城 → 默认「是」(1)；打玩家城市(target_type=3) → **强制「否」(0)**，
+	//   守方是真人、必须给指挥机会（前端那一项只读，这里再兜一道防直接调接口绕过）。
+	autoBattle := 1
+	if req.TargetType == 3 {
+		autoBattle = 0
+	} else if req.AutoBattle != nil {
+		autoBattle = *req.AutoBattle
+	}
+	if msg := h.createOrder(uid, city, req.OrderType, req.TargetX, req.TargetY, req.TargetType, req.TargetId, req.Troops, req.Resources, req.Officer, waitMin, req.Gather, autoBattle, cities); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}
@@ -872,7 +885,7 @@ func (h *EzfyHandler) dispatchNoCap(uid uint, city *model.EzfyCity) bool {
 //	② 军官只查一次；③ 扣兵合并成 1 条 CASE UPDATE + 1 条 DELETE；④ 集结令一次扣完；
 //	⑤ 收尾的独立写**并行**发出（不同表，互不依赖）。
 func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, targetX, targetY, targetType int,
-	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather int,
+	targetId int64, troops []ezfyUnitGroup, resources map[string]int64, officer string, waitMin, gather, autoBattle int,
 	cities ...[]model.EzfyCity) string {
 
 	// ★ 懒结算返回快照：下面的建筑等级 / 科技等级 / 城内部队全部走内存，零额外读
@@ -1125,6 +1138,16 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		if tc.UserID == uid {
 			return "不能攻击自己的城市"
 		}
+		// ★★ 2026-10-07 修复「出征被占领的城市 → 出征队列空」：
+		//   城市正在被占领（ezfy_occupy.status=1）时，它的归属与守军处于**中间态**
+		//   （原守方还在、占领方已写入），此时再发起掠夺/征服会算出异常结果，
+		//   线上表现就是「出征后跳转出征队列，队列却是 0」。
+		//   → 与前端「只读」一致：占领结算完成前一律拒绝，避免脏数据。
+		var occ int64
+		h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", targetId).Count(&occ)
+		if occ > 0 {
+			return "该城市正在被占领中, 暂时无法掠夺/征服"
+		}
 		if h.isAllyCity(uid, targetId) {
 			return "不能攻击同盟成员的城市"
 		}
@@ -1257,7 +1280,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		Officer:   officer,
 		StartTime: now, ArriveTime: now + travelSec*1000,
 		ReturnTime: now + travelSec*1000*2, Status: 0,
-		OilUsed: oilCost, WaitMin: waitMin,
+		OilUsed: oilCost, WaitMin: waitMin, AutoBattle: autoBattle,
 	}
 	if resources != nil {
 		b, _ := json.Marshal(resources)
@@ -2907,31 +2930,30 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
-		// ★ 2026-10-07 非玩家目标（普通野地/AI 寇城，target==nil）：**在线玩家照常指挥、
-		//   离线玩家抵达即自动结算**。守方没有真人，玩家不开/不在线时不再让部队占着目标
-		//   「等待(6)」排队堵后面的人。玩家城（真人守方）仍走下方「目标忙→等待 /
-		//   开战场等指挥」流程，不受影响。
-		if target == nil && !h.ezfyUserOnline(uid) {
+		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
+		//   · 打野地 / AI 寇城 → 默认「是」：抵达即自动打完，无需指挥（守方不是真人）；
+		//   · 打玩家城市 → 强制「否」：抵达后开战场进指挥室，等玩家部署守军。
+		//   ★ 玩家城的例外（用户明确要求）：即使配置是「否」，只要**攻守双方当时都不在线**，
+		//     就没人能指挥 → 直接自动结算。否则部队会一直占着目标，把后面排队的人堵死。
+		autoBattle := order.AutoBattle == 1
+		// ★★ 2026-10-07 安全加固（防「出征丢兵」）：**玩家城（target_type=3）一律不自动战斗**。
+		//   原因：`auto_battle` 列的 default 是 1，部署时 AutoMigrate 会把**所有历史订单**填成 1；
+		//   若直接信任该字段，打玩家城的**老订单**就会「到达即自动打完」→ 玩家没机会进指挥室
+		//   → 部队按 AI 自动对局全灭 = 丢兵。
+		//   所以这里**不信任字段值**，按 target_type 重新判定：
+		//     玩家城 → 恒不自动（只有攻守双方都离线时才自动，见下）；
+		//     野地 / AI 寇城 → 按字段（默认 1 = 自动）。
+		if order.TargetType == 3 {
+			autoBattle = false
+		}
+		if !autoBattle && !h.ezfyUserOnline(uid) {
+			defOnline := target != nil && target.UserID > 0 && h.ezfyUserOnline(target.UserID)
+			if !defOnline {
+				autoBattle = true
+			}
+		}
+		if autoBattle {
 			br = h.ezfyBattleAutoFinish(uid, order, st, targetName, now)
-		} else if target == nil {
-			// 在线打野地 → 原流程：目标被抢先指挥时等待放行，否则开战场进指挥室
-			if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
-				order.Status = ezfyOrderStatusWaiting
-				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-					Update("status", ezfyOrderStatusWaiting)
-				return
-			}
-			if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
-				order.Status = ezfyOrderStatusBattle
-				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-					Update("status", ezfyOrderStatusBattle)
-				return
-			}
-			// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
-			for !st.Done {
-				st.Step(nil, nil)
-			}
-			br = st.Result()
 		} else if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
 			order.Status = ezfyOrderStatusWaiting
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

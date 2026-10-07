@@ -2065,7 +2065,6 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 
 // ============ 商城/背包 ============
 
-// ezfyItemCategory 道具的商城分类（管理端没填 category 时按类型自动归类）
 // ezfyIsDiamondItem 是否「钻石道具」。
 //
 // ★ 不能只看 price_diamond > 0：集结令走钻石渠道但**默认 0 钻石**（先免费放开），
@@ -2096,31 +2095,43 @@ func ezfyItemPayCurrency(it *model.EzfyCfgItem) string {
 // ezfyUnlimitedStock 库存为负数表示**无限**（用户规则：库存 -1 = 可以任意购买）
 func ezfyUnlimitedStock(stock int) bool { return stock < 0 }
 
+// ezfyItemCategory 道具在用户端商城的**分类**（同时是管理端列表显示与分类筛选的唯一口径）。
 func ezfyItemCategory(it *model.EzfyCfgItem) string {
-	if c := strings.TrimSpace(it.Category); c != "" {
+	return ezfyCategoryOf(it.Category, it.ItemType, it.PriceDiamond)
+}
+
+// ezfyCategoryOf 分类推导本体（参数化版本；管理端「道具配置」列表/筛选直接复用它，
+//
+//	★ 避免出现第二套口径 —— 改动这里必须同步看 AdminEzfyData 的 items 分支）。
+//
+// 优先级：
+//
+//	① 管理端显式配了 category → 就用它（唯一能覆盖推导的口子，如「黄金道具」锁定黄金支付）；
+//	② 否则有钻石价 → 「钻石道具」（用户规则：钻石道具只能用钻石买）；
+//	③ 否则按 item_type 归类，认不出的落「其他」。
+func ezfyCategoryOf(category string, itemType int, priceDiamond int64) string {
+	if c := strings.TrimSpace(category); c != "" {
 		return c
 	}
-	if it.PriceDiamond > 0 {
+	if priceDiamond > 0 {
 		return "钻石道具"
 	}
-	switch it.ItemType {
+	switch itemType {
 	case 1, 2, 27, 28, 29, 30:
 		return "资源道具"
-	case 3, 4, 5:
+	// ★ 2026-10-07 补 24/25/26（建筑/训练/科技加速 30/60/80%）：
+	//   它们与 3/4/5（分钟制加速）同属「加速道具」，原来漏了这三个 →
+	//   用户商城「建筑加速30%」这类道具掉进「其他」分类页。
+	case 3, 4, 5, 24, 25, 26:
 		return "加速道具"
 	case 6:
 		return "建筑图纸"
 	case 7, 8:
 		return "增益道具"
-	case 9, 10, 11, 12:
+	// 9 招生简章 / 10 经验书 / 11 军官技能书 / 12 洗点卡 / 19 星级徽章 / 21 军官改名卡
+	case 9, 10, 11, 12, 19, 21:
 		return "军官道具"
-	// ★ 19 = 星级徽章（放到「军官道具」分类下）
-	case 19:
-		return "军官道具"
-	// ★ 21 = 军官改名卡（军官道具）
-	case 21:
-		return "军官道具"
-	// ★ 20 = 信号弹（计谋消耗品）
+	// 20 = 信号弹（计谋消耗品）
 	case 20:
 		return "计谋道具"
 	case 13, 14:
@@ -2131,6 +2142,23 @@ func ezfyItemCategory(it *model.EzfyCfgItem) string {
 		return "迁城道具"
 	}
 	return "其他"
+}
+
+// ezfyCategoryOrder 分类在商城 / 管理端「分类筛选」下拉里的展示顺序
+var ezfyCategoryOrder = []string{
+	"资源道具", "加速道具", "增益道具", "建筑图纸", "军官道具",
+	"计谋道具", "身份道具", "出征道具", "迁城道具",
+	"钻石道具", "黄金道具", "其他",
+}
+
+// ezfyCategoryRank 分类排序权重（不在白名单里的自定义分类排最后）
+func ezfyCategoryRank(cat string) int {
+	for i, c := range ezfyCategoryOrder {
+		if c == cat {
+			return i
+		}
+	}
+	return len(ezfyCategoryOrder)
 }
 
 // Mall GET /games/ezfy/mall —— 商城道具（★ 第九轮：带分类与钻石价，前端做分类页签 + 分页）

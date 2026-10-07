@@ -337,8 +337,22 @@
             <input v-model="ezfy.waitM" type="number" min="0" max="60" style="width:50px"/> 分
           </div>
 
-          <!-- ⑥ 计算 / 出征 -->
-          <div class="of-sec">⑥ 消耗预览</div>
+          <!-- ⑥ 自动战斗（★ 2026-10-07：打野地 / NPC 默认「是」；打玩家城市强制「否」且只读） -->
+          <div class="of-sec">⑥ 自动战斗</div>
+          <!-- ★ 2026-10-07 自动战斗选项：改成方括号链接式（与全站 [出征]/[返回] 一致），
+               原生 radio 圆点太丑、也没间距；选中变红加粗，打玩家城时整项置灰不可点。 -->
+          <div class="old-line">
+            <a href="javascript:;" class="of-opt"
+               :class="{ on: ezfy.orderAutoBattleVal === 1, disabled: ezfy.orderIsPlayerTarget }"
+               @click="ezfy.orderIsPlayerTarget || (ezfy.orderAutoBattle = 1)">[是]</a>
+            <a href="javascript:;" class="of-opt"
+               :class="{ on: ezfy.orderAutoBattleVal === 0, disabled: ezfy.orderIsPlayerTarget }"
+               @click="ezfy.orderIsPlayerTarget || (ezfy.orderAutoBattle = 0)">[否]</a>
+            <span class="gray" v-if="ezfy.orderIsPlayerTarget">（打玩家城市必须指挥）</span>
+          </div>
+
+          <!-- ⑦ 计算 / 出征 -->
+          <div class="of-sec">⑦ 消耗预览</div>
           <div class="old-line">
             <button @click="ezfy.doCalc">[计算]</button>
             油耗：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.oil_used : '—' }}</span>
