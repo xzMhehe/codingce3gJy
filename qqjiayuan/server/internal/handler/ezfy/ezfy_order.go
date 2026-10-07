@@ -2900,12 +2900,31 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
-		// ★ 2026-10-07 非玩家目标（普通野地/AI 寇城，target==nil）**抵达即自动结算**：
-		//   守方没有真人，不再开战场等玩家指挥（否则玩家不开/不在线 → 部队占着目标
-		//   「等待(6)」排队，跟活动野地一样把后面的人全堵住）。玩家城（真人守方）
-		//   仍走下方「目标忙→等待 / 开战场等指挥」流程。
-		if target == nil {
+		// ★ 2026-10-07 非玩家目标（普通野地/AI 寇城，target==nil）：**在线玩家照常指挥、
+		//   离线玩家抵达即自动结算**。守方没有真人，玩家不开/不在线时不再让部队占着目标
+		//   「等待(6)」排队堵后面的人。玩家城（真人守方）仍走下方「目标忙→等待 /
+		//   开战场等指挥」流程，不受影响。
+		if target == nil && !h.ezfyUserOnline(uid) {
 			br = h.ezfyBattleAutoFinish(uid, order, st, targetName, now)
+		} else if target == nil {
+			// 在线打野地 → 原流程：目标被抢先指挥时等待放行，否则开战场进指挥室
+			if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+				order.Status = ezfyOrderStatusWaiting
+				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+					Update("status", ezfyOrderStatusWaiting)
+				return
+			}
+			if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
+				order.Status = ezfyOrderStatusBattle
+				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+					Update("status", ezfyOrderStatusBattle)
+				return
+			}
+			// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
+			for !st.Done {
+				st.Step(nil, nil)
+			}
+			br = st.Result()
 		} else if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
 			order.Status = ezfyOrderStatusWaiting
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).

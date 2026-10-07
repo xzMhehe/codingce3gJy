@@ -14,6 +14,27 @@ import (
 )
 
 // ============ 战场指挥室（实时指挥） ============
+
+// ezfyUserOnline 玩家是否「在线」：auth/jwt 中间件每次请求都会刷新 users.last_active_at，
+// 游戏内任何操作（切页/点按钮/拉数据）都算活跃。近 ezfyOnlineWindowSec 秒内有活跃 →
+// 视为在线（战斗到点照常进指挥室）；超过阈值 → 视为离线。
+//
+// ★ 2026-10-07 用户需求：「在线就可以指挥，只有离线的才会自动结算（打野地/非玩家）」。
+// 战斗到达结算时用它分流：在线 → 开战场等玩家指挥；离线 → 抵达即自动打完，避免部队
+// 占着目标在「等待(6)」排队、把同格其他人全堵住（线上活动野地一直排队就是这个场景）。
+const ezfyOnlineWindowSec = 180
+
+func (h *EzfyHandler) ezfyUserOnline(uid uint) bool {
+	if uid == 0 {
+		return false
+	}
+	var u model.User
+	if err := h.DB.Select("last_active_at").First(&u, uid).Error; err != nil || u.LastActiveAt == nil {
+		return false
+	}
+	return time.Since(*u.LastActiveAt) <= ezfyOnlineWindowSec*time.Second
+}
+
 //
 // ★ 2026-09-22 「实现指挥功能」，入口在 军情 → 军队动态 → [指挥]。
 //
