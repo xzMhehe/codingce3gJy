@@ -357,9 +357,11 @@ func ezfyBonusItems(groups ...[]ezfyBonusItem) []ezfyBonusItem {
 	return out
 }
 
-// ezfyDefBonusTxt 守方「防御加成」来源明细 → 「防御加成+N%(城墙+50% 科技·装甲科技+30% …)」。
+// ezfyDefBonusTxt 被攻击方的「防御加成」来源明细 → 「守方防御加成+N%(…)」/「攻方防御加成+N%(…)」。
+// label 传「守方防御加成」/「攻方防御加成」指明归属 —— 不然被打行里光写「防御加成」没标明归属，
+// 玩家会把明细里的军官名误读成「给对方加 buff」（用户反馈 2026-10-07：Stalin 的弧形防御看着像给敌人加成）。
 // Name 已带前缀（城墙/科技·/军官·/军官技能·/装备）。全零/无明细 → 返回空串（不展示防御段）。
-func ezfyDefBonusTxt(items []ezfyBonusItem) string {
+func ezfyDefBonusTxt(label string, items []ezfyBonusItem) string {
 	total := 0
 	parts := []string{}
 	for _, it := range items {
@@ -372,7 +374,7 @@ func ezfyDefBonusTxt(items []ezfyBonusItem) string {
 	if total == 0 || len(parts) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("防御加成+%d%%(%s)", total, strings.Join(parts, " "))
+	return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))
 }
 
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。
@@ -467,10 +469,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	// ★ 2026-10-06 守方「防御加成」来源拆解：城防爪到谁被打就展示在谁的行动行
 	//   （城墙+科技+城守属性+城守技能+装备 → 伤害变少的来源）。攻方没有防御加成 → 只在守方被攻击的行上展示；
 	//   老快照无明细 → 不展示防御段。
-	defBonusTxt := ezfyDefBonusTxt(st.DefDefBreak)
+	defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)
 	// ★ 2026-10-07 攻方「防御加成」来源拆解：攻方被打（守方行动、守方绝地反击还击）时展示，
 	//   来源 = 攻方军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。攻方无明细 → 不展示防御段（回退老行为）。
-	atkDefBonusTxt := ezfyDefBonusTxt(st.AtkDefBreak)
+	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)
 
 	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
 	all := append(append([]*ezfyFightUnit{}, st.Attackers...), st.Defenders...)

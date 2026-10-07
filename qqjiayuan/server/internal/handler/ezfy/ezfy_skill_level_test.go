@@ -213,16 +213,19 @@ func TestBonusBreakdownDetail(t *testing.T) {
 	}
 }
 
-// TestDefBonusTxt 守方「防御加成」被打行展示：逐项明细（城墙/科技/军官属性/军官技能/装备，
-// Name 带前缀直接拼「防御加成+N%(...)」）；全零/空明细 → 不展示防御段（空串）。
+// TestDefBonusTxt 被攻击方的「防御加成」被打行展示：逐项明细（城墙/科技/军官属性/军官技能/装备，
+// Name 带前缀直接拼「守方防御加成+N%(...)」/「攻方防御加成+N%(...)」——带归属方，避免误读为给对方加成）；
+// 全零/空明细 → 不展示防御段（空串）。
 func TestDefBonusTxt(t *testing.T) {
 	cases := []struct {
 		name  string
+		label string
 		items []ezfyBonusItem
 		want  string
 	}{
 		{
-			"玩家城完整",
+			"玩家城完整-守方",
+			"守方防御加成",
 			[]ezfyBonusItem{
 				{Name: "城墙", Value: 50},
 				{Name: "科技·装甲科技", Value: 30},
@@ -230,18 +233,28 @@ func TestDefBonusTxt(t *testing.T) {
 				{Name: "军官技能·弧形防御", Value: 60},
 				{Name: "装备", Value: 20},
 			},
-			"防御加成+180%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)",
+			"守方防御加成+180%(城墙+50% 科技·装甲科技+30% 军官·冥王+20% 军官技能·弧形防御+60% 装备+20%)",
+		},
+		{
+			"攻方军官防御",
+			"攻方防御加成",
+			[]ezfyBonusItem{
+				{Name: "军官·Stalin（斯大林）", Value: 105},
+				{Name: "军官技能·弧形防御", Value: 60},
+			},
+			"攻方防御加成+165%(军官·Stalin（斯大林）+105% 军官技能·弧形防御+60%)",
 		},
 		{
 			"明细0项跳过",
+			"守方防御加成",
 			[]ezfyBonusItem{{Name: "城墙", Value: 50}, {Name: "科技·重工技术", Value: 0}},
-			"防御加成+50%(城墙+50%)",
+			"守方防御加成+50%(城墙+50%)",
 		},
-		{"空明细", nil, ""},
-		{"全零", []ezfyBonusItem{{Name: "城墙", Value: 0}}, ""},
+		{"空明细", "守方防御加成", nil, ""},
+		{"全零", "守方防御加成", []ezfyBonusItem{{Name: "城墙", Value: 0}}, ""},
 	}
 	for _, c := range cases {
-		if got := ezfyDefBonusTxt(c.items); got != c.want {
+		if got := ezfyDefBonusTxt(c.label, c.items); got != c.want {
 			t.Fatalf("%s: ezfyDefBonusTxt = %q, 期望 %q", c.name, got, c.want)
 		}
 	}
@@ -256,11 +269,11 @@ func TestDefBonusTxt(t *testing.T) {
 func TestDefBonusInjected(t *testing.T) {
 	src := rawFile(t, "ezfy_battle.go")
 	for _, want := range []string{
-		"defBonusTxt := ezfyDefBonusTxt(st.DefDefBreak)",
-		"atkDefBonusTxt := ezfyDefBonusTxt(st.AtkDefBreak)",
-		"unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def",    // 守方打攻方 → 攻方防御减伤
-		"unitDefBonus = defBonus + st.DefEquip.Def",          // 攻方打守方 → 守方防御(含装备)减伤
-		"}" + "\n" + `					} else if atkDefBonusTxt != "" {`, // 守方打攻方行展示攻方防御
+		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)`,
+		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)`,
+		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
+		"unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def", // 守方打攻方 → 攻方防御减伤
+		"unitDefBonus = defBonus + st.DefEquip.Def",       // 攻方打守方 → 守方防御(含装备)减伤
 		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {
