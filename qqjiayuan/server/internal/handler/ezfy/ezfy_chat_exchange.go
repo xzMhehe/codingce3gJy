@@ -507,6 +507,31 @@ var ezfyExchangeLocks [64]sync.Mutex
 
 func ezfyExchangeLock(uid uint) *sync.Mutex { return &ezfyExchangeLocks[uid%64] }
 
+// ezfyExchangeCityOf 取挂单的「归属城市」——成交收款 / 下架退款都打回这座城。
+//
+// ★ 2026-10-07 修复「成交后黄金进错城」：
+//
+//	挂单时资源是从**当前操作城市**（currentCity，玩家可在城市列表切换）扣的，
+//	但成交打款与下架退款原来一律 `WHERE user_id = ? ORDER BY id ASC`（恒取主城），
+//	玩家切城后挂单 → 黄金/退回的资源全跑进主城，与卖资源的城市对不上。
+//
+// 口径：优先用挂单时记录的城市（且必须仍属于该卖家，防止城市被摧毁/过户后串号）；
+//
+//	cityId<=0（老数据）或该城已不属于卖家时，回落卖家主城（id 最小）保持兼容。
+func (h *EzfyHandler) ezfyExchangeCityOf(sellerId uint, cityId int64) (model.EzfyCity, bool) {
+	if cityId > 0 {
+		var c model.EzfyCity
+		if err := h.DB.Where("id = ? AND user_id = ?", cityId, sellerId).First(&c).Error; err == nil {
+			return c, true
+		}
+	}
+	var c model.EzfyCity
+	if err := h.DB.Where("user_id = ?", sellerId).Order("id ASC").First(&c).Error; err == nil {
+		return c, true
+	}
+	return c, false
+}
+
 func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	// ★ 2026-09-24 卖家挂单/我的挂单都做分页（默认每页 10 条）
@@ -667,7 +692,10 @@ func (h *EzfyHandler) ExchangeSell(c *gin.Context) {
 	profile := h.ensureProfile(uid)
 	// ★ 玩家挂单一律**黄金计价**（用户规则：玩家卖只能按黄金买卖）。
 	//   钻石定价是系统挂单专属能力，由管理端「交易行维护」新增。
+	// ★ 2026-10-07 记下「挂单所在城市」：资源是从这座城扣的，
+	//   成交收款 / 下架退款都要回到同一座城（否则切城挂单会让黄金进错城）。
 	h.DB.Create(&model.EzfyExchange{SellerId: uid, SellerName: profile.Nickname,
+		CityId: int64(city.ID),
 		EsType: req.EsType, EsCount: req.EsCount, TotalPrice: req.TotalPrice,
 		Status: 0, IsSystem: 0, Currency: ezfyMoneyGold})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("挂单成功: %s×%d 售%d黄金", ezfyResNames[req.EsType], req.EsCount, req.TotalPrice)})
@@ -733,8 +761,9 @@ func (h *EzfyHandler) ExchangeBuy(c *gin.Context) {
 	// ★ 2026-09-24 规则修正：卖家收款同样不受仓储上限截断（只有数据库字段最大值才溢出）
 	// ★ 2026-09-30 仍受「资源最大值」硬上限（21 亿）约束
 	if e.IsSystem != 1 {
-		var sellerCity model.EzfyCity
-		if err := h.DB.Where("user_id = ?", e.SellerId).Order("id ASC").First(&sellerCity).Error; err == nil {
+		// ★ 2026-10-07 黄金打给「挂单所在城市」，而不是卖家主城（用户反馈 bug：
+		//   在 B 城卖的资源，成交黄金却进了主城 A）。
+		if sellerCity, ok := h.ezfyExchangeCityOf(e.SellerId, e.CityId); ok {
 			sellerCity.Gold = ezfyAddResMax("gold", sellerCity.Gold, e.TotalPrice)
 			h.saveCityRes(&sellerCity)
 		}
@@ -768,7 +797,12 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 		resp.ParamError(c, "订单不存在")
 		return
 	}
+	// ★ 2026-10-07 退回「挂单所在城市」（资源就是从这座城扣的），不是当前所在城。
+	//   老数据 city_id=0 / 城市已不存在时回落到当前城，保持兼容。
 	city := h.getOrCreateCity(uid)
+	if c, ok := h.ezfyExchangeCityOf(uid, e.CityId); ok {
+		city = c
+	}
 	switch e.EsType {
 	case 1:
 		city.Food = ezfyAddResMax("food", city.Food, e.EsCount)

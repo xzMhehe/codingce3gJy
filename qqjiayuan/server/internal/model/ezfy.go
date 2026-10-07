@@ -1289,9 +1289,15 @@ type EzfyChat struct {
 func (EzfyChat) TableName() string { return "ezfy_chat" }
 
 // EzfyExchange 交易所挂单：玩家卖资源换黄金；系统挂单可定价黄金或钻石
+//
+// ★ 2026-10-07 CityId = **挂单所在城市**：卖资源时资源是从「当前操作城市」扣的，
+//
+//	成交收款 / 下架退款都必须回到**同一座城**（用户反馈 bug：切城后挂单，成交的黄金却跑进了主城）。
+//	老数据该列为 NULL/0 → 回落卖家主城（id 最小），保持兼容。
 type EzfyExchange struct {
 	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	SellerId   uint   `gorm:"index:idx_seller;comment:卖家ID" json:"seller_id"`
+	CityId     int64  `gorm:"comment:挂单所在城市ID" json:"city_id"`
 	SellerName string `gorm:"type:varchar(20);comment:卖家名称" json:"seller_name"`
 	EsType     int    `gorm:"comment:1粮 2钢 3油 4稀矿" json:"es_type"` // 1粮 2钢 3油 4稀矿
 	EsCount    int64  `gorm:"comment:Es数量" json:"es_count"`

@@ -41,6 +41,9 @@ func main() {
 		//   AutoMigrate 建列，skip 分支不补 → 新二进制开战场 INSERT 报 Unknown column、
 		//   指挥室全失效（战斗秒出结果）。必须在这里幂等补列。
 		seed.EnsureEzfyBattleLockColumns(db)
+		// ★ 2026-10-07 交易行 ezfy_exchange.city_id（挂单所在城市）同样只靠 AutoMigrate 建列，
+		//   skip 分支不补 → 新二进制挂单 INSERT 报 Unknown column 'city_id'，交易行直接挂不了单。
+		seed.EnsureEzfyExchangeColumns(db)
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)

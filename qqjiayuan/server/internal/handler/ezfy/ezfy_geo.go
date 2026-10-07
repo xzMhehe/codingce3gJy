@@ -1491,94 +1491,118 @@ func ezfyPeriodicReload(db *gorm.DB) {
 //	（25 万行全图扫描跨 WAN RDS 要几百毫秒~秒级，且期间持写锁拖住全站），
 //	这两张表只由管理端低频改动，全量刷新的 cfgsReload 仍会读取。
 func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
-	c.buildings = map[int]model.EzfyCfgBuilding{}
-	c.buildingLvls = map[int]map[int]model.EzfyCfgBuildingLevel{}
-	c.troops = map[int]model.EzfyCfgTroop{}
-	c.techs = map[int]model.EzfyCfgTech{}
-	c.techLvls = map[int]map[int]model.EzfyCfgTechLevel{}
-	c.wildlands = map[int]map[int]model.EzfyCfgWildland{}
-	c.items = map[int]model.EzfyCfgItem{}
-	c.generals = map[int]model.EzfyCfgGeneral{}
-	c.skills = map[int]model.EzfyCfgSkill{}
-	c.skillByName = map[string]int{}
-	c.equipments = map[int]model.EzfyCfgEquipment{}
-	c.equipSetMap = map[int]model.EzfyCfgEquipSet{}
-	c.buildingByName = map[string]int{}
-	c.techByName = map[string]int{}
+	buildings := map[int]model.EzfyCfgBuilding{}
+	buildingLvls := map[int]map[int]model.EzfyCfgBuildingLevel{}
+	troops := map[int]model.EzfyCfgTroop{}
+	techs := map[int]model.EzfyCfgTech{}
+	techLvls := map[int]map[int]model.EzfyCfgTechLevel{}
+	wildlands := map[int]map[int]model.EzfyCfgWildland{}
+	items := map[int]model.EzfyCfgItem{}
+	generals := map[int]model.EzfyCfgGeneral{}
+	skills := map[int]model.EzfyCfgSkill{}
+	skillByName := map[string]int{}
+	equipments := map[int]model.EzfyCfgEquipment{}
+	equipSetMap := map[int]model.EzfyCfgEquipSet{}
+	buildingByName := map[string]int{}
+	techByName := map[string]int{}
 
 	var bs []model.EzfyCfgBuilding
 	db.Find(&bs)
 	for _, b := range bs {
-		c.buildings[b.ID] = b
-		c.buildingByName[b.Name] = b.ID
+		buildings[b.ID] = b
+		buildingByName[b.Name] = b.ID
 	}
 	var bls []model.EzfyCfgBuildingLevel
 	db.Find(&bls)
 	for _, l := range bls {
-		m, ok := c.buildingLvls[l.BuildingId]
+		m, ok := buildingLvls[l.BuildingId]
 		if !ok {
 			m = map[int]model.EzfyCfgBuildingLevel{}
-			c.buildingLvls[l.BuildingId] = m
+			buildingLvls[l.BuildingId] = m
 		}
 		m[l.Level] = l
 	}
 	var ts []model.EzfyCfgTroop
 	db.Find(&ts)
 	for _, t := range ts {
-		c.troops[t.ID] = t
+		troops[t.ID] = t
 	}
 	var tcs []model.EzfyCfgTech
 	db.Find(&tcs)
 	for _, t := range tcs {
-		c.techs[t.ID] = t
-		c.techByName[t.Name] = t.ID
+		techs[t.ID] = t
+		techByName[t.Name] = t.ID
 	}
 	var tls []model.EzfyCfgTechLevel
 	db.Find(&tls)
 	for _, l := range tls {
-		m, ok := c.techLvls[l.TechId]
+		m, ok := techLvls[l.TechId]
 		if !ok {
 			m = map[int]model.EzfyCfgTechLevel{}
-			c.techLvls[l.TechId] = m
+			techLvls[l.TechId] = m
 		}
 		m[l.Level] = l
 	}
 	var ws []model.EzfyCfgWildland
 	db.Find(&ws)
 	for _, w := range ws {
-		m, ok := c.wildlands[w.Type]
+		m, ok := wildlands[w.Type]
 		if !ok {
 			m = map[int]model.EzfyCfgWildland{}
-			c.wildlands[w.Type] = m
+			wildlands[w.Type] = m
 		}
 		m[w.Level] = w
 	}
 	var its []model.EzfyCfgItem
 	db.Find(&its)
 	for _, it := range its {
-		c.items[it.ID] = it
+		items[it.ID] = it
 	}
 	var gens []model.EzfyCfgGeneral
 	db.Find(&gens)
 	for _, g := range gens {
-		c.generals[g.ID] = g
+		generals[g.ID] = g
 	}
 	var sks []model.EzfyCfgSkill
 	db.Find(&sks)
 	for _, s := range sks {
-		c.skills[s.ID] = s
-		c.skillByName[s.Name] = s.ID
+		skills[s.ID] = s
+		skillByName[s.Name] = s.ID
 	}
 	var eqs []model.EzfyCfgEquipment
 	db.Find(&eqs)
 	for _, e := range eqs {
-		c.equipments[e.ID] = e
+		equipments[e.ID] = e
 	}
 	var esets []model.EzfyCfgEquipSet
 	db.Find(&esets)
 	for _, s := range esets {
-		c.equipSetMap[s.ID] = s
+		equipSetMap[s.ID] = s
 	}
+
+	// ★★ 2026-10-07 修复「活动野地战斗 0 回合」：
+	//   原来这里是先把下面 14 个 map **清空**、再查库**逐条填充** —— 而读函数
+	//   （troop/general/skill/equipment/tech/...）都没有加锁，reload 窗口内
+	//   （查库跨 WAN RDS 几十~几百毫秒）并发请求会读到**空 map** →
+	//   兵种配置查不到 → 战斗双方参战单位被过滤空 → 判 0 回合（线上 449 条战报：
+	//   战报显示攻方有兵，实际参战兵力为 0，守方零损失）。
+	//   改为：先在局部 map 上构建完整数据，最后**一次性替换字段** —— 读者要么看到
+	//   旧值、要么看到新值，绝不会看到空 map；读取端无需加锁、也没有锁阻塞。
+	//   ★ 以后新增「清空 + 逐条填充」式缓存，也必须走这个模式。
+	c.buildings = buildings
+	c.buildingLvls = buildingLvls
+	c.troops = troops
+	c.techs = techs
+	c.techLvls = techLvls
+	c.wildlands = wildlands
+	c.items = items
+	c.generals = generals
+	c.skills = skills
+	c.skillByName = skillByName
+	c.equipments = equipments
+	c.equipSetMap = equipSetMap
+	c.buildingByName = buildingByName
+	c.techByName = techByName
 
 	// 宝箱配置 + 奖池（★ 2026-10-04 并入配置缓存：/chest 原每次请求查表 + 逐箱查奖池）
 	var chs []model.EzfyCfgChest

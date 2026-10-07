@@ -28,6 +28,9 @@ qqjiayuan/server/tmp/
 .workbuddy-ai
 .workbuddy-ai/*
 
+# Windows 保留名误建文件（SSH_ASKPASS 联调时 UserKnownHostsFile=NUL 会写出这个）
+/NUL
+
 *.log
 
 

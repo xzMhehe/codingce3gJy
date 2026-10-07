@@ -1,64 +1,92 @@
 @echo off
-chcp 65001 >nul
+chcp 936 >nul
 setlocal enabledelayedexpansion
-title å®¶å›­ç¤¾åŒº - éƒ¨ç½²åˆ°çº¿ä¸Š
+title ¼ÒÔ°ÉçÇø - ²¿Êğµ½ÏßÉÏ
 
 rem ============================================================================
-rem  deploy.bat â€”â€” ä¸€é”®æ¨é€å¹¶éƒ¨ç½²ã€Œå®¶å›­ç¤¾åŒºã€åˆ°çº¿ä¸Š Linux æœåŠ¡å™¨ï¼ˆWindows ç‰ˆï¼‰
+rem  deploy.bat ¡ª¡ª Ò»¼üÍÆËÍ²¢²¿Êğ¡¸¼ÒÔ°ÉçÇø¡¹µ½ÏßÉÏ Linux ·şÎñÆ÷£¨Windows °æ£©
 rem
-rem  ä¸ tools/deploy.sh ç­‰ä»·ï¼Œé€»è¾‘ä¸æ­¥éª¤å®Œå…¨ä¸€è‡´ï¼Œç»™ Win11 / Win2012 ç”¨ã€‚
-rem  ä¾èµ–ï¼šnodeï¼ˆtools/ssh-run.js ä¼šè°ƒç”¨ ssh/scpï¼‰
+rem  Óë tools/deploy.sh µÈ¼Û£¬Âß¼­Óë²½ÖèÍêÈ«Ò»ÖÂ£¬¸ø Win11 / Win2012 ÓÃ¡£
+rem  ÒÀÀµ£ºnode£¨tools/ssh-run.js »áµ÷ÓÃ ssh/scp£©
 rem
-rem  ç”¨æ³•ï¼ˆåœ¨æœ¬ç›®å½•æˆ–é¡¹ç›®æ ¹ç›®å½•åŒå‡»/å‘½ä»¤è¡Œæ‰§è¡Œéƒ½è¡Œï¼‰ï¼š
-rem    tools\deploy.bat                     é»˜è®¤ç”¨ ..\Linuxbushu.tar.gz å…¨é‡éƒ¨ç½²
-rem    tools\deploy.bat -f D:\pkg.tar.gz    æŒ‡å®šéƒ¨ç½²åŒ…
-rem    tools\deploy.bat --no-restart        åªä¸Šä¼  + æ ¡éªŒï¼Œä¸åœæœä¸è§£å‹
-rem    tools\deploy.bat --dry-run           åªæ‰“å°è®¡åˆ’ + é¢„æ£€ï¼Œä¸æ”¹ä»»ä½•ä¸œè¥¿
-rem    tools\deploy.bat --no-backup         è·³è¿‡å¤‡ä»½ï¼ˆçœç©ºé—´ï¼Œä¸æ¨èï¼‰
-rem    tools\deploy.bat -h 1.2.3.4 -u root  æŒ‡å®šä¸»æœº/ç”¨æˆ·
+rem  ÓÃ·¨£¨ÔÚ±¾Ä¿Â¼»òÏîÄ¿¸ùÄ¿Â¼Ë«»÷/ÃüÁîĞĞÖ´ĞĞ¶¼ĞĞ£©£º
+rem    tools\deploy.bat                     Ä¬ÈÏÓÃ ..\Linuxbushu.tar.gz È«Á¿²¿Êğ
+rem    tools\deploy.bat -f D:\pkg.tar.gz    Ö¸¶¨²¿Êğ°ü
+rem    tools\deploy.bat --no-restart        Ö»ÉÏ´« + Ğ£Ñé£¬²»Í£·ş²»½âÑ¹
+rem    tools\deploy.bat --dry-run           Ö»´òÓ¡¼Æ»® + Ô¤¼ì£¬²»¸ÄÈÎºÎ¶«Î÷
+rem    tools\deploy.bat --no-backup         Ìø¹ı±¸·İ£¨Ê¡¿Õ¼ä£¬²»ÍÆ¼ö£©
+rem    tools\deploy.bat -h 1.2.3.4 -u root  Ö¸¶¨Ö÷»ú/ÓÃ»§
+rem    tools\deploy.bat -p ÃÜÂë             Ö¸¶¨ SSH ÃÜÂë
 rem
-rem  å¯†ç ï¼šä¼˜å…ˆè¯»ç¯å¢ƒå˜é‡ SSH_PASSï¼›æ²¡è®¾ç½®å°±äº¤äº’è¾“å…¥ï¼Œç›´æ¥å›è½¦ç”¨ ssh-run.js å†…ç½®é»˜è®¤å€¼
-rem        set SSH_PASS=xxx && tools\deploy.bat
+rem  ÃÜÂëÓÅÏÈ¼¶£º-p ²ÎÊı > »·¾³±äÁ¿ SSH_PASS > ½»»¥ÊäÈë > ssh-run.js ÄÚÖÃÄ¬ÈÏÖµ
 rem
-rem  éƒ¨ç½²æ­¥éª¤ï¼ˆä¸çº¿ä¸Šæ—¢æœ‰çº¦å®šä¸€è‡´ï¼‰ï¼š
-rem    0. é¢„æ£€   æœ¬åœ°åŒ…å­˜åœ¨ / æœ¬åœ° md5 / è¿œç«¯è¿é€š / ç£ç›˜ä½™é‡ / å½“å‰æœåŠ¡çŠ¶æ€
-rem    1. å¤‡ä»½   æ‰“åŒ…å½“å‰ /opt/Linuxbushu -> /opt/Linuxbushu.bak.<éšæœºåç¼€>.tar.gz
-rem    2. ä¸Šä¼    scp åˆ° /opt/Linuxbushu.tar.gzï¼Œmd5 åŒå‘æ ¡éªŒï¼ˆä¸ä¸€è‡´ç«‹å³ä¸­æ­¢ï¼‰
-rem    3. åœæœ   chmod +x *.sh && ./stop.shï¼ˆå¿…é¡»å…ˆåœå†è§£å‹ï¼Œå¦åˆ™ Text file busyï¼‰
-rem    4. è§£å‹   tar -xzf ... --exclude=server/config.yamlï¼ˆåŒ…é‡Œæ˜¯æ¨¡æ¿é…ç½®ï¼‰
-rem    5. æ¢å¤   æŠŠå¤‡ä»½çš„çœŸå® config.yaml æ”¾å› server/
-rem    6. å¯åŠ¨   chmod +x server/* && ./start.sh
-rem    7. éªŒè¯   8080 åœ¨ç›‘å¬ + curl 200 + /api è¿”å› JSONï¼ˆä¸æ˜¯ index.html å›è½ï¼‰
+rem  ¸÷ÖÕ¶ËÖ´ĞĞ·½Ê½£¨¡ï ±ØĞëÔÚÏîÄ¿¸ùÄ¿Â¼ qqjiayuan ÏÂ£¬ÇÒÓÃ .bat ²»ÄÜÓÃ .sh£¬¼ûÏÂ£©£º
+rem    CMD:         tools\deploy.bat -p ÃÜÂë -h 39.105.151.141 --no-backup
+rem    PowerShell:  .\tools\deploy.bat -p ÃÜÂë -h 39.105.151.141 --no-backup
+rem    Git Bash:    SSH_PASS='ÃÜÂë' ./tools/deploy.bat -h 39.105.151.141 --no-backup
 rem
-rem  å›æ»šï¼ˆåœ¨æœåŠ¡å™¨ä¸Šæ‰‹åŠ¨æ‰§è¡Œï¼‰ï¼š
+rem  ¡ï¡ï `SSH_PASS='ÃÜÂë' ÃüÁî` ÊÇ **bash ×¨ÊôÓï·¨**£¬ÔÚ PowerShell Àï»áÖ±½Ó±¨
+rem     ¡¸ÎŞ·¨½«"SSH_PASS=..."ÏîÊ¶±ğÎª cmdlet¡¢º¯Êı¡¢½Å±¾ÎÄ¼ş»ò¿ÉÔËĞĞ³ÌĞòµÄÃû³Æ¡¹¡£
+rem     PowerShell Á½ÌõÂ·£º¢Ù ÓÃ -p ²ÎÊı£»¢Ú `$env:SSH_PASS='ÃÜÂë'; .\tools\deploy.bat ...`
+rem     £¨·ÖºÅ·Ö¸ô£¬»·¾³±äÁ¿±ØĞëÔÚÇ°Ãæµ¥¶ÀÉè£¬²»ÄÜĞ´³É `SSH_PASS=x ÃüÁî` ÄÇÖÖÇ°×º£©¡£
+rem
+rem  ¡ï¡ï ÎªÊ²Ã´ Windows ÉÏÒªÓÃ .bat ¶ø²»ÊÇ .sh£¨2026-10-07 ²éÃ÷£©£º
+rem    ²Ö¿âÀï deploy.sh Óë deploy.bat ÔÚ index Àï¶¼ÊÇ LF£¬µ«±¾»ú core.autocrlf=true£¬
+rem    checkout µ½¹¤×÷ÇøºóÁ½¸öÎÄ¼ş¶¼±ä³É CRLF¡£.bat ±ØĞë CRLF£¨ÕıÈ·£©£¬
+rem    ¶ø .sh Ò»µ©ÊÇ CRLF£¬ÔÚ Git Bash ÏÂ»á±¨ `$'\r': command not found` Ö±½ÓÅÜ²»ÁË¡£
+rem    ËùÒÔ Windows ²àÍ³Ò»×ß deploy.bat£»deploy.sh Ö»¸ø Linux/macOS ÓÃ¡£
+rem
+rem  ²¿Êğ²½Öè£¨ÓëÏßÉÏ¼ÈÓĞÔ¼¶¨Ò»ÖÂ£©£º
+rem    0. Ô¤¼ì   ±¾µØ°ü´æÔÚ / ±¾µØ md5 / Ô¶¶ËÁ¬Í¨ / ´ÅÅÌÓàÁ¿ / µ±Ç°·şÎñ×´Ì¬
+rem    1. ±¸·İ   ´ò°üµ±Ç° /opt/Linuxbushu -> /opt/Linuxbushu.bak.<Ëæ»úºó×º>.tar.gz
+rem    2. ÉÏ´«   scp µ½ /opt/Linuxbushu.tar.gz£¬md5 Ë«ÏòĞ£Ñé£¨²»Ò»ÖÂÁ¢¼´ÖĞÖ¹£©
+rem    3. Í£·ş   chmod +x *.sh && ./stop.sh£¨±ØĞëÏÈÍ£ÔÙ½âÑ¹£¬·ñÔò Text file busy£©
+rem    4. ½âÑ¹   tar -xzf ... --exclude=server/config.yaml£¨°üÀïÊÇÄ£°åÅäÖÃ£©
+rem    5. »Ö¸´   °Ñ±¸·İµÄÕæÊµ config.yaml ·Å»Ø server/
+rem    6. Æô¶¯   chmod +x server/* && ./start.sh
+rem    7. ÑéÖ¤   8080 ÔÚ¼àÌı + curl 200 + /api ·µ»Ø JSON£¨²»ÊÇ index.html »ØÂä£©
+rem
+rem  »Ø¹ö£¨ÔÚ·şÎñÆ÷ÉÏÊÖ¶¯Ö´ĞĞ£©£º
 rem    chmod +x /opt/Linuxbushu/*.sh; /opt/Linuxbushu/stop.sh
 rem    rm -rf /opt/Linuxbushu
-rem    tar -xzf /opt/Linuxbushu.bak.<æ—¶é—´æˆ³>.tar.gz -C /opt
+rem    tar -xzf /opt/Linuxbushu.bak.<Ê±¼ä´Á>.tar.gz -C /opt
 rem    chmod +x /opt/Linuxbushu/server/*; /opt/Linuxbushu/start.sh
 rem
-rem  â˜…â˜… ç»´æŠ¤é¡»çŸ¥ï¼ˆ2026-09-28 é‡å†™ï¼Œè¸©è¿‡çš„ä¸¤ä¸ªå‘ï¼Œæ”¹ä¹‹å‰å…ˆè¯»ï¼‰ï¼š
-rem  ã€å‘1ã€‘if / else åµŒå¥—å—é‡Œçš„**æ¯ä¸€è¡Œéƒ½ä¸èƒ½ç”¨è£¸å°æ‹¬å·**ï¼š
-rem         `(è·³è¿‡)` `XX è§£å‹å¤±è´¥(çº¿ä¸Šæ²¡åœ¨è·‘)` è¿™ç§å†™æ³•é‡Œçš„ `)` ä¼šè¢« cmd å½“æˆ
-rem         ã€Œå—ç»“æŸã€ï¼ŒæŠŠæ•´ä¸ª if å—æå‰æˆªæ–­ â†’ åé¢æ¯ä¸€è¡Œçš„ if/else å…¨éƒ¨é”™ä½ â†’
-rem         cmd æŠ¥ "was unexpected at this time." ç„¶å**æ•´ä¸ªè„šæœ¬ä»€ä¹ˆéƒ½ä¸åšå°±é€€å‡º**ã€‚
-rem         å—å†…å¿…é¡»å†™æˆ ^( ^) è½¬ä¹‰ã€‚æœ¬è„šæœ¬åŸæ¥å°±æ˜¯æ­»åœ¨è¿™é‡Œï¼šæ·±åº¦ç´¯åŠ åç»“å°¾è¿˜å‰© 3 ä¸ª
-rem         æœªé—­åˆçš„ `(`ï¼Œè¿åé¢çš„ :rsh / :rsh_read / :usage å­è¿‡ç¨‹éƒ½è¢«å›°åœ¨å—é‡Œã€‚
-rem  ã€å‘2ã€‘åŒä¸€ if/else å—é‡Œ**ä¸èƒ½å¯¹åŒä¸€ä¸ªå˜é‡èµ‹å€¼å¹¶ç«‹åˆ»ç”¨ !var! å–å€¼**ï¼š
-rem         `for ... do ( if not defined RH_OUT set "RH_OUT=%%i" )` â€”â€” æ•´ä¸ª for å—åœ¨
-rem         æ‰§è¡Œå‰å°±è¢«ä¸€æ¬¡æ€§å±•å¼€ï¼Œ`if not defined RH_OUT` æ°¸è¿œçœ‹åˆ°çš„æ˜¯å—å¤–æ—§å€¼ï¼Œ
-rem         äºæ˜¯å¾ªç¯é‡Œæ¯ä¸€æ¬¡éƒ½ä¼šèµ‹å€¼ï¼ŒRH_OUT æœ€ç»ˆç­‰äº**æœ€åä¸€è¡Œè¾“å‡º**è€Œä¸æ˜¯ç¬¬ä¸€è¡Œã€‚
-rem         rsh_read è¦ã€Œå–ç¬¬ä¸€è¡Œã€å°±ç»ä¸èƒ½æ”¾è¿› for å—ï¼Œæœ¬è„šæœ¬æ”¹ç”¨
-rem         `set /p RH_OUT=<æ–‡ä»¶` ç›´æ¥è¯»é¦–è¡Œï¼ˆæ— éœ€å»¶è¿Ÿå±•å¼€ï¼Œä¹Ÿæ²¡æœ‰å—å±•å¼€é—®é¢˜ï¼‰ã€‚
-rem  ã€å‘3ã€‘`quit` è¿™ç±»è¯ä¸æ˜¯ cmd å‘½ä»¤/æ ‡ç­¾ï¼Œä¼šè¢«å½“æˆå¤–éƒ¨ç¨‹åºå»æ‰¾å¹¶æŠ¥é”™ â†’ ç»Ÿä¸€ç”¨ goto :eofã€‚
-rem  ã€å‘4ã€‘â˜…â˜… è¾“å‡ºé‡Œ**ç¦æ­¢å†™ `[!]`**ï¼ˆè¿˜æœ‰å…¶ä»– `[!...]` å½¢å¼ï¼‰ï¼š
-rem         æœ¬è„šæœ¬çš„ echo è¾“å‡ºä¼šè¢«è°ƒç”¨æ–¹ PS æ§åˆ¶å°è§£æï¼Œè€Œ PowerShell æŠŠ `[!]` å½“ä½œ
-rem         **é€šé…ç¬¦å­—ç¬¦é›†**ï¼ˆ`[!abc]` = ä¸åŒ¹é… a/b/cï¼‰ã€‚äºæ˜¯å®ƒæŠŠæ–¹æ‹¬å·åƒæ‰ï¼Œ
-rem         å³ä¾§ç´§é‚»çš„å­—ç¬¦è¢«å½“æˆå‘½ä»¤åå»æ‰§è¡Œï¼ŒæŠ¥å‡ºä¸€ä¸²è«åå…¶å¦™çš„ä¸œè¥¿ï¼š
+rem  ¡ï¡ï Î¬»¤ĞëÖª£¨2026-09-28 ÖØĞ´£¬²È¹ıµÄÁ½¸ö¿Ó£¬¸ÄÖ®Ç°ÏÈ¶Á£©£º
+rem  ¡¾¿Ó1¡¿if / else Ç¶Ì×¿éÀïµÄ**Ã¿Ò»ĞĞ¶¼²»ÄÜÓÃÂãĞ¡À¨ºÅ**£º
+rem         `(Ìø¹ı)` `XX ½âÑ¹Ê§°Ü(ÏßÉÏÃ»ÔÚÅÜ)` ÕâÖÖĞ´·¨ÀïµÄ `)` »á±» cmd µ±³É
+rem         ¡¸¿é½áÊø¡¹£¬°ÑÕû¸ö if ¿éÌáÇ°½Ø¶Ï ¡ú ºóÃæÃ¿Ò»ĞĞµÄ if/else È«²¿´íÎ» ¡ú
+rem         cmd ±¨ "was unexpected at this time." È»ºó**Õû¸ö½Å±¾Ê²Ã´¶¼²»×ö¾ÍÍË³ö**¡£
+rem         ¿éÄÚ±ØĞëĞ´³É ^( ^) ×ªÒå¡£±¾½Å±¾Ô­À´¾ÍÊÇËÀÔÚÕâÀï£ºÉî¶ÈÀÛ¼Óºó½áÎ²»¹Ê£ 3 ¸ö
+rem         Î´±ÕºÏµÄ `(`£¬Á¬ºóÃæµÄ :rsh / :rsh_read / :usage ×Ó¹ı³Ì¶¼±»À§ÔÚ¿éÀï¡£
+rem  ¡¾¿Ó2¡¿Í¬Ò» if/else ¿éÀï**²»ÄÜ¶ÔÍ¬Ò»¸ö±äÁ¿¸³Öµ²¢Á¢¿ÌÓÃ !var! È¡Öµ**£º
+rem         `for ... do ( if not defined RH_OUT set "RH_OUT=%%i" )` ¡ª¡ª Õû¸ö for ¿éÔÚ
+rem         Ö´ĞĞÇ°¾Í±»Ò»´ÎĞÔÕ¹¿ª£¬`if not defined RH_OUT` ÓÀÔ¶¿´µ½µÄÊÇ¿éÍâ¾ÉÖµ£¬
+rem         ÓÚÊÇÑ­»·ÀïÃ¿Ò»´Î¶¼»á¸³Öµ£¬RH_OUT ×îÖÕµÈÓÚ**×îºóÒ»ĞĞÊä³ö**¶ø²»ÊÇµÚÒ»ĞĞ¡£
+rem         rsh_read Òª¡¸È¡µÚÒ»ĞĞ¡¹¾Í¾ø²»ÄÜ·Å½ø for ¿é£¬±¾½Å±¾¸ÄÓÃ
+rem         `set /p RH_OUT=<ÎÄ¼ş` Ö±½Ó¶ÁÊ×ĞĞ£¨ÎŞĞèÑÓ³ÙÕ¹¿ª£¬Ò²Ã»ÓĞ¿éÕ¹¿ªÎÊÌâ£©¡£
+rem  ¡¾¿Ó3¡¿`quit` ÕâÀà´Ê²»ÊÇ cmd ÃüÁî/±êÇ©£¬»á±»µ±³ÉÍâ²¿³ÌĞòÈ¥ÕÒ²¢±¨´í ¡ú Í³Ò»ÓÃ goto :eof¡£
+rem  ¡¾¿Ó4¡¿¡ï¡ï Êä³öÀï½ûÖ¹Ğ´¡¸¸ĞÌ¾ºÅ·½À¨ºÅ¡¹ÄÇÖÖĞÎÊ½£º
+rem         ±¾½Å±¾µÄ echo Êä³ö»á±»µ÷ÓÃ·½ PS ¿ØÖÆÌ¨½âÎö£¬¶ø PowerShell »á°Ñ
+rem         ¡¸·½À¨ºÅ¼Ó¸ĞÌ¾ºÅ¡¹µ±³ÉÍ¨Åä·û×Ö·û¼¯£¬³Ôµô·½À¨ºÅ£¬
+rem         ÓÒ²à½ôÁÚµÄ×Ö·û±»µ±³ÉÃüÁîÃûÈ¥Ö´ĞĞ£¬±¨³öÒ»´®ÄªÃûÆäÃîµÄ¶«Î÷£º
 rem           '.js' is not recognized as an internal or external command
 rem           'eploy.bat' is not recognized as an internal or external command
-rem         ï¼ˆ`[!]` å‰åçš„å·¥å…·å/è„šæœ¬åè¢«æˆªæ–­ï¼Œçœ‹èµ·æ¥åƒè·¯å¾„ bugï¼Œå…¶å®è·Ÿè·¯å¾„æ— å…³ï¼‰ã€‚
-rem         ç»Ÿä¸€æ”¹ç”¨ `WARN:` â€”â€” çº¯å­—æ¯æ–¹æ‹¬å·ï¼ŒPS ä¸å½“é€šé…ç¬¦ï¼Œä»»ä½•ç»ˆç«¯éƒ½å®‰å…¨ã€‚
-rem         â˜… åŒç†åˆ«åœ¨è¾“å‡ºé‡Œå†™ `[a-z]` `[0-9]` è¿™ç§èŒƒå›´å½¢å¼ã€‚
+rem         ¿´ÆğÀ´ÏñÂ·¾¶ bug£¬ÆäÊµ¸úÂ·¾¶ÎŞ¹Ø¡£Í³Ò»¸ÄÓÃ WARN: ÕâÀà´¿ÎÄ×Ö±ê¼Ç¡£
+rem  ¡ï¡ï 2026-10-07 ²¹³ä£º**Á¬ rem ×¢ÊÍÀïÒ²²»ÒªĞ´°ë½Ç·½À¨ºÅºÍ°ë½ÇÔ²À¨ºÅ** ¡ª¡ª
+rem     ¢Ù cmd ½âÎö if ¿éÊ±»á°Ñ¿éÄÚ×¢ÊÍÒ»ÆğÄÉÈëÀ¨ºÅÅä¶Ô£¬×¢ÊÍÀïµÄÂãÔ²À¨ºÅ»á°Ñ¿éÌáÇ°½Ø¶Ï
+rem        £¨±¾´Î¾Í²ÈÁË£º±¸·İ¶ÎÒ»ĞĞ×¢ÊÍÄ©Î²µÄÔ²À¨ºÅµ¼ÖÂÕû¸ö½Å±¾¿é´íÎ»£©£»
+rem     ¢Ú ÍòÒ»ÓĞÈË cat / type ±¾ÎÄ¼şÔÙÕ³µ½ÖÕ¶Ë£¬·½À¨ºÅÓÖ»á±» PS µ±Í¨Åä·û¡£
+rem     ±¾ÎÄ¼şµÄ if ¿éÄÚ×¢ÊÍÒ»ÂÉÖ»ÓÃÈ«½ÇÀ¨ºÅ£»¿éÍâ×¢ÊÍ¾ÙÀıÀïµÄ°ë½ÇÀ¨ºÅ½ö¹©ÔÄ¶Á£¬
+rem     ±ğ°Ñ±¾ÎÄ¼ş cat / type Ö®ºóÕû¶ÎÕ³µ½ÖÕ¶ËÖ´ĞĞ¡£
+rem  ¡¾¿Ó5¡¿¡ï¡ï if( ) ¿éÄÚ**²»ÄÜ**ÓÃ %VAR% ¶Á¡¸¿éÄÚ call ×Ó¹ı³Ì¸ÕÉèºÃµÄ±äÁ¿¡¹£º
+rem         cmd ÔÚÖ´ĞĞ if ¿éÖ®Ç°»á°ÑÕû¸ö¿éÒ»´ÎĞÔÕ¹¿ª£¬%RH_RC% ÔÚÕâÒ»¿Ì¾Í±»Ìæ»»³É
+rem         **Õ¹¿ªÇ°µÄ¾ÉÖµ** ¡ú `if not "%RH_RC%"=="0" goto fail` ÓÀÔ¶ÄÃµ½¾ÉÖµ¡¢ĞÎÍ¬ĞéÉè¡£
+rem         ¿éÄÚ±ØĞëĞ´ `!RH_RC!`£¨±¾½Å±¾ÒÑ setlocal enabledelayedexpansion£©¡£
+rem         ¡ï ±¸·İ¶Î(1/7)ÀïµÄÊ§°Ü¼ì²é¾ÍÔÚ if ¿éÄÚ£¬ÄÇÀïÓÃµÄÊÇ !RH_RC!£¬±ğ¸Ä³É %RH_RC%£»
+rem           ¿éÍâ£¨ÈçÍ£·ş/Æô¶¯/ÑéÖ¤¶Î£©ÔòÍ³Ò»ÓÃ %RH_RC%£¬Á½ÖÖ¶¼¶Ôµ«±ğ»ì×Å¿´ÔÎ¡£
+rem  ¡¾¿Ó6¡¿¡ï ±¾ÎÄ¼ş±ØĞëÊÇ CRLF ĞĞÎ²£¬ÇÒ**Ö»ÄÜÓÃ ASCII Ö±ÒıºÅ**£º
+rem         ¸ÄÍê½Å±¾ÇëÈ·ÈÏ `grep -c $'\r' deploy.bat` µÈÓÚ×ÜĞĞÊı£¬·ñÔò cmd ½âÎö±êÇ©»á³ö´í¡£
 rem ============================================================================
 
 set "SCRIPT_DIR=%~dp0"
@@ -77,8 +105,9 @@ set "NO_RESTART=0"
 set "NO_BACKUP=0"
 set "DRY_RUN=0"
 set "TMPOUT=%TEMP%\deploy_out_%RANDOM%.txt"
+set "TMPERR=%TEMP%\deploy_err_%RANDOM%.txt"
 
-rem ---------- å‚æ•° ----------
+rem ---------- ²ÎÊı ----------
 :parse
 if "%~1"=="" goto parsed
 if /i "%~1"=="-f"         ( set "PKG=%~2"      & shift & shift & goto parse )
@@ -87,35 +116,49 @@ if /i "%~1"=="-h"         ( set "SSH_HOST=%~2" & shift & shift & goto parse )
 if /i "%~1"=="--host"     ( set "SSH_HOST=%~2" & shift & shift & goto parse )
 if /i "%~1"=="-u"         ( set "SSH_USER=%~2" & shift & shift & goto parse )
 if /i "%~1"=="--user"     ( set "SSH_USER=%~2" & shift & shift & goto parse )
+if /i "%~1"=="-p"         goto parse_pass
+if /i "%~1"=="--pass"     goto parse_pass
 if /i "%~1"=="--no-restart" ( set "NO_RESTART=1" & shift & goto parse )
 if /i "%~1"=="--no-backup"  ( set "NO_BACKUP=1"  & shift & goto parse )
 if /i "%~1"=="--dry-run"    ( set "DRY_RUN=1"    & shift & goto parse )
 if /i "%~1"=="--help"       goto usage
 if /i "%~1"=="-?"           goto usage
-echo   XX æœªçŸ¥å‚æ•°: %~1  ï¼ˆç”¨ --help çœ‹ç”¨æ³•ï¼‰
+echo   XX Î´Öª²ÎÊı: %~1  £¨ÓÃ --help ¿´ÓÃ·¨£©
 exit /b 1
 
 :parsed
 if not exist "%SSH_RUN%" (
-  echo   XX æ‰¾ä¸åˆ° %SSH_RUN%
+  echo   XX ÕÒ²»µ½ %SSH_RUN%
+  exit /b 1
+)
+rem ¡ï node ²»ÔÚ PATH Ê± :rsh_read »á¾²Ä¬Ê§°Ü£¨´íÎó±»ÖØ¶¨ÏòÍÌµô£©£¬
+rem   ±íÏÖ³öÀ´¾ÍÊÇ¡¸SSH Á¬²»ÉÏ¡¹£¬¼«ÄÑÅÅ²é ¡ª¡ª ÕâÀïÌáÇ°À¹Ò»µÀ¡£
+node -v >nul 2>&1
+if errorlevel 1 (
+  echo   XX ÕÒ²»µ½ node ÃüÁî, Çë°²×° Node.js ²¢°Ñ node.exe ËùÔÚÄ¿Â¼¼ÓÈë PATH
   exit /b 1
 )
 
-echo ==^> éƒ¨ç½²ç›®æ ‡  %SSH_USER%@%SSH_HOST%:%REMOTE_DIR%
-if "%DRY_RUN%"=="1" echo   WARN: DRY-RUN æ¨¡å¼: åªåšé¢„æ£€, ä¸ä¼šæ”¹ä»»ä½•ä¸œè¥¿
+echo ==^> ²¿ÊğÄ¿±ê  %SSH_USER%@%SSH_HOST%:%REMOTE_DIR%
+if "%DRY_RUN%"=="1" echo   WARN: DRY-RUN Ä£Ê½: Ö»×öÔ¤¼ì, ²»»á¸ÄÈÎºÎ¶«Î÷
 
 rem =========================================================
-rem 0. é¢„æ£€
+rem 0. Ô¤¼ì
 rem =========================================================
-echo ==^> 0/7 é¢„æ£€
+echo ==^> 0/7 Ô¤¼ì
 
-rem â˜… è¿™é‡Œçš„æ‹¬å·å¿…é¡» ^( ^) è½¬ä¹‰ï¼šå®ƒåœ¨ if( ) å—å†…ï¼Œè£¸æ‹¬å·ä¼šæŠŠå—æå‰æˆªæ–­ï¼ˆè§æ–‡ä»¶å¤´ã€Œå‘1ã€ï¼‰
-if "%SSH_PASS%"=="" (
-  set /p "SSH_PASS=SSH å¯†ç  ^(%SSH_USER%@%SSH_HOST%, ç›´æ¥å›è½¦ç”¨å†…ç½®é»˜è®¤å€¼^): "
-)
+rem ¡ï ÓÃ if not defined ¶ø²»ÊÇ if "%SSH_PASS%"==""£ººóÕßÔÚÕ¹¿ª½×¶Î»á°ÑÃÜÂëÀïµÄ
+rem   ^& ^| ^< µÈ×Ö·ûµ±³ÉÃüÁî·Ö¸ô·û/ÖØ¶¨Ïò ¡ú Óï·¨´íÂÒ£»if defined Ö»¿´±äÁ¿ÊÇ·ñ´æÔÚ¡¢
+rem   ÍêÈ«²»Õ¹¿ªÖµ£¬ÊÇ×î°²È«µÄÅĞ¿ÕĞ´·¨¡£
+rem ¡ï ÕâÀïµÄÀ¨ºÅ±ØĞë ^( ^) ×ªÒå£ºËüÔÚ if( ) ¿éÄÚ£¬ÂãÀ¨ºÅ»á°Ñ¿éÌáÇ°½Ø¶Ï£¨¼ûÎÄ¼şÍ·¡¸¿Ó1¡¹£©
+rem ¡ï¡ï ¿ÌÒâ²»ÓÃ if ¿é£º¿éÄÚ±ØĞë°ÑÔ²À¨ºÅ×ªÒå³É ^( ^)£¬¶ø set /p µÄÌáÊ¾ÎÄ±¾ÊÇ×ÖÃæÁ¿¡¢
+rem   ²»½âÎö×ªÒå ¡ú »á°Ñ ^ Ô­ÑùÏÔÊ¾¸øÓÃ»§¡£¸Ä³É if + goto ÅÄÆ½ºóÀ¨ºÅ¾ÍÊÇÆÕÍ¨×Ö·û¡£
+if defined SSH_PASS goto pass_ready
+set /p "SSH_PASS=SSH ÃÜÂë (%SSH_USER%@%SSH_HOST%, Ö±½Ó»Ø³µÓÃÄÚÖÃÄ¬ÈÏÖµ): "
+:pass_ready
 
 if not exist "%PKG%" (
-  echo   XX éƒ¨ç½²åŒ…ä¸å­˜åœ¨: %PKG%
+  echo   XX ²¿Êğ°ü²»´æÔÚ: %PKG%
   exit /b 1
 )
 for %%A in ("%PKG%") do set "LOCAL_SIZE=%%~zA"
@@ -126,181 +169,205 @@ for /f "skip=1 delims=" %%i in ('certutil -hashfile "%PKG%" MD5 2^>nul') do (
 )
 set "LOCAL_MD5=%LOCAL_MD5: =%"
 if "%LOCAL_MD5%"=="" (
-  echo   XX ç®—ä¸å‡ºæœ¬åœ° md5ï¼ˆcertutil å¤±è´¥ï¼‰
+  echo   XX Ëã²»³ö±¾µØ md5£¨certutil Ê§°Ü£©
   exit /b 1
 )
 
 set /a LOCAL_MB=%LOCAL_SIZE%/1048576
-echo   OK éƒ¨ç½²åŒ… %PKG% çº¦ %LOCAL_MB% MB  md5=%LOCAL_MD5%
+echo   OK ²¿Êğ°ü %PKG% Ô¼ %LOCAL_MB% MB  md5=%LOCAL_MD5%
 
 call :rsh_read "echo ping"
-if not "%RH_OUT%"=="ping" (
-  echo   XX SSH è¿ä¸ä¸Š %SSH_USER%@%SSH_HOST% ï¼ˆå¯†ç é”™? ç«¯å£ä¸é€š?ï¼‰
-  exit /b 1
-)
-echo   OK SSH è¿é€š
+if "%RH_OUT%"=="ping" goto ssh_ok
+echo   XX SSH Á¬²»ÉÏ %SSH_USER%@%SSH_HOST%
+echo       ssh-run.js Ô­Ê¼Êä³öÈçÏÂ, Çë¾İ´ËÅĞ¶ÏÔ­Òò:
+if exist "%TMPERR%" type "%TMPERR%"
+if exist "%TMPOUT%" type "%TMPOUT%"
+exit /b 1
+:ssh_ok
+echo   OK SSH Á¬Í¨
 
 call :rsh_read "df -P /opt | tail -1 | awk '{print $4}'"
 set "DISK_AVAIL=%RH_OUT%"
 if "%DISK_AVAIL%"=="" (
-  echo   XX è¯»ä¸åˆ° /opt ç£ç›˜ä½™é‡
+  echo   XX ¶Á²»µ½ /opt ´ÅÅÌÓàÁ¿
   exit /b 1
 )
 set /a AVAIL_MB=%DISK_AVAIL%/1024
 set /a NEED_MB=%LOCAL_SIZE%/1048576+120
 if %AVAIL_MB% LSS %NEED_MB% (
-  echo   XX /opt å‰©ä½™ %AVAIL_MB%MB, ä¸å¤Ÿ^(éœ€çº¦ %NEED_MB%MB^)
+  echo   XX /opt Ê£Óà %AVAIL_MB%MB, ²»¹»^(ĞèÔ¼ %NEED_MB%MB^)
   exit /b 1
 )
-echo   OK /opt å‰©ä½™ %AVAIL_MB%MB ^(éœ€çº¦ %NEED_MB%MB^)
+echo   OK /opt Ê£Óà %AVAIL_MB%MB ^(ĞèÔ¼ %NEED_MB%MB^)
 
 call :rsh_read "test -d '%REMOTE_DIR%' && echo yes || echo no"
 set "HAS_DIR=%RH_OUT%"
 if "%HAS_DIR%"=="yes" (
   call :rsh_read "cat %REMOTE_DIR%/logs/server.pid 2>/dev/null"
-  set "OLD_PID=%RH_OUT%"
+  set "OLD_PID=!RH_OUT!"
   call :rsh_read "ss -lntp 2>/dev/null | grep -c ':8080 ' || true"
-  echo   OK çº¿ä¸Šå·²æœ‰éƒ¨ç½², pid=%OLD_PID%^(ç©º=æ²¡åœ¨è·‘^), 8080 ç›‘å¬æ•°=%RH_OUT%
+  echo   OK ÏßÉÏÒÑÓĞ²¿Êğ, pid=!OLD_PID!^(¿Õ=Ã»ÔÚÅÜ^), 8080 ¼àÌıÊı=!RH_OUT!
 ) else (
-  echo   WARN: çº¿ä¸Šæ²¡æœ‰ %REMOTE_DIR% â€”â€” è¿™æ˜¯å…¨æ–°éƒ¨ç½²^(æ²¡æœ‰æ—§é…ç½®å¯ä¿ç•™^)
+  echo   WARN: ÏßÉÏÃ»ÓĞ %REMOTE_DIR% ¡ª¡ª ÕâÊÇÈ«ĞÂ²¿Êğ^(Ã»ÓĞ¾ÉÅäÖÃ¿É±£Áô^)
 )
 
-if "%NO_RESTART%"=="1" echo   WARN: --no-restart: åªä¸Šä¼  + æ ¡éªŒ, åˆ°æ­¤ä¸ºæ­¢
-if "%DRY_RUN%"=="1" echo ==^> DRY-RUN ç»“æŸ, ä¸‹é¢æ˜¯å®Œæ•´è®¡åˆ’:
+if "%NO_RESTART%"=="1" echo   WARN: --no-restart: Ö»ÉÏ´« + Ğ£Ñé, µ½´ËÎªÖ¹
+if "%DRY_RUN%"=="1" echo ==^> DRY-RUN ½áÊø, ÏÂÃæÊÇÍêÕû¼Æ»®:
 
-rem ---------- 1. å¤‡ä»½ ----------
+rem ---------- 1. ±¸·İ ----------
 set "BAK_CONFIG="
 set "BAK_TGZ="
 call :mktimestamp
 
 if "%NO_RESTART%"=="0" if "%HAS_DIR%"=="yes" (
-  echo ==^> 1/7 å¤‡ä»½çº¿ä¸Šç°æœ‰éƒ¨ç½²
+  echo ==^> 1/7 ±¸·İÏßÉÏÏÖÓĞ²¿Êğ
   if "%NO_BACKUP%"=="1" (
-    echo   WARN: --no-backup: è·³è¿‡æ•´åŒ…å¤‡ä»½, åªç•™ server/config.yaml
+    echo   WARN: --no-backup: Ìø¹ıÕû°ü±¸·İ, Ö»Áô server/config.yaml
     call :rsh "cp -a %REMOTE_DIR%/server/config.yaml %REMOTE_DIR%/server/config.yaml.bak.%TS%"
+    if not "!RH_RC!"=="0" (
+      echo   XX ±¸·İ config.yaml Ê§°Ü
+      goto fail_clean
+    )
   ) else (
-    rem â˜… å¿…é¡»æ’é™¤ logs/: æœåŠ¡æ­£åœ¨å†™ server.log, ä¸æ’é™¤ tar ä¼šæŠ¥ file changed as we read it
-    call :rsh "tar -czf '/opt/Linuxbushu.bak.%TS%.tar.gz' --exclude='Linuxbushu/logs' -C /opt Linuxbushu; rc=$?; if [ $rc -gt 1 ]; then exit $rc; fi; ls -la '/opt/Linuxbushu.bak.%TS%.tar.gz'"
+    rem ¡ï ±ØĞëÅÅ³ı logs/: ·şÎñÕıÔÚĞ´ server.log, ²»ÅÅ³ı tar »á±¨ file changed as we read it
+    rem ¡ï ·Ç¿ÕĞ£Ñé: tar Òò¸æ¾¯·µ»Ø 1 Ê±Ò²»áÁôÏÂÎÄ¼ş, ¿Õ°ü²»ÄÜµ±±¸·İ³É¹¦, ¶ÔÆë deploy.sh
+    call :rsh "tar -czf '/opt/Linuxbushu.bak.%TS%.tar.gz' --exclude='Linuxbushu/logs' -C /opt Linuxbushu; rc=$?; if [ $rc -gt 1 ]; then exit $rc; fi; [ -s '/opt/Linuxbushu.bak.%TS%.tar.gz' ] && ls -la '/opt/Linuxbushu.bak.%TS%.tar.gz'"
+    if not "!RH_RC!"=="0" (
+      echo   XX ±¸·İÊ§°Ü, ÒÑÖĞÖ¹^(ÏßÉÏÎ´¸Ä¶¯^)
+      goto fail_clean
+    )
     call :rsh "cp -a %REMOTE_DIR%/server/config.yaml %REMOTE_DIR%/server/config.yaml.bak.%TS%"
+    if not "!RH_RC!"=="0" (
+      echo   XX ±¸·İ config.yaml Ê§°Ü
+      goto fail_clean
+    )
     set "BAK_TGZ=/opt/Linuxbushu.bak.%TS%.tar.gz"
-    echo   OK å¤‡ä»½: !BAK_TGZ! ^(ä¸å« logs/^)
+    echo   OK ±¸·İ: !BAK_TGZ! ^(²»º¬ logs/^)
   )
   set "BAK_CONFIG=%REMOTE_DIR%/server/config.yaml.bak.%TS%"
 ) else (
-  echo ==^> 1/7 å¤‡ä»½  ^(è·³è¿‡^)
+  echo ==^> 1/7 ±¸·İ  ^(Ìø¹ı^)
 )
 
-rem ---------- 2. ä¸Šä¼  + æ ¡éªŒ ----------
-echo ==^> 2/7 ä¸Šä¼ éƒ¨ç½²åŒ…
+rem ---------- 2. ÉÏ´« + Ğ£Ñé ----------
+echo ==^> 2/7 ÉÏ´«²¿Êğ°ü
 if "%DRY_RUN%"=="1" (
   echo      dry-run: scp %PKG% -^> %SSH_USER%@%SSH_HOST%:%REMOTE_TGZ%
 ) else (
   node "%SSH_RUN%" put "%PKG%" "%REMOTE_TGZ%"
-  if errorlevel 1 (
-    echo   XX ä¸Šä¼ å¤±è´¥
+  set "PUT_RC=!errorlevel!"
+  chcp 936 >nul
+  if not "!PUT_RC!"=="0" (
+    echo   XX ÉÏ´«Ê§°Ü
     goto fail_clean
   )
   call :rsh_read "md5sum '%REMOTE_TGZ%' | awk '{print $1}'"
-  set "REMOTE_MD5=%RH_OUT%"
-  call :rsh_read "stat -c %%s '%REMOTE_TGZ%'"
-  set "REMOTE_SIZE=%RH_OUT%"
-  if not "%REMOTE_MD5%"=="%LOCAL_MD5%" (
-    echo   XX md5 ä¸ä¸€è‡´! æœ¬åœ°=%LOCAL_MD5% è¿œç«¯=%REMOTE_MD5% ^(çº¿ä¸Šæœªæ”¹åŠ¨^)
+  set "REMOTE_MD5=!RH_OUT!"
+rem ¡ï ²»ÄÜÓÃ stat -c %s£ºcall ¶ş´ÎÕ¹¿ª»á°Ñ %s ³Ô³É s£¨Êµ²â£©¡£ÓÃ wc -c Êä³ö´¿Êı×Ö¡£
+call :rsh_read "wc -c < '%REMOTE_TGZ%'"
+  set "REMOTE_SIZE=!RH_OUT!"
+  if not "!REMOTE_MD5!"=="%LOCAL_MD5%" (
+    echo   XX md5 ²»Ò»ÖÂ£¡ ±¾µØ=%LOCAL_MD5% Ô¶¶Ë=!REMOTE_MD5! ^(ÏßÉÏÎ´¸Ä¶¯^)
     goto fail_clean
   )
-  if not "%REMOTE_SIZE%"=="%LOCAL_SIZE%" (
-    echo   XX å­—èŠ‚æ•°ä¸ä¸€è‡´! æœ¬åœ°=%LOCAL_SIZE% è¿œç«¯=%REMOTE_SIZE% ^(çº¿ä¸Šæœªæ”¹åŠ¨^)
+  if not "!REMOTE_SIZE!"=="%LOCAL_SIZE%" (
+    echo   XX ×Ö½ÚÊı²»Ò»ÖÂ£¡ ±¾µØ=%LOCAL_SIZE% Ô¶¶Ë=!REMOTE_SIZE! ^(ÏßÉÏÎ´¸Ä¶¯^)
     goto fail_clean
   )
-  echo   OK md5 + å­—èŠ‚æ•°åŒå‘æ ¡éªŒä¸€è‡´ ^(%REMOTE_MD5%^)
+  echo   OK md5 + ×Ö½ÚÊıË«ÏòĞ£ÑéÒ»ÖÂ ^(!REMOTE_MD5!^)
 )
 
 if "%NO_RESTART%"=="1" (
-  echo ==^> å®Œæˆ  --no-restart æ¨¡å¼: åŒ…å·²å°±ä½, çº¿ä¸ŠæœåŠ¡æœªå—å½±å“
-  echo     è¦å®Œæˆéƒ¨ç½², å†è·‘ä¸€æ¬¡^(å»æ‰ --no-restart^): tools\deploy.bat
+  echo ==^> Íê³É  --no-restart Ä£Ê½: °üÒÑ¾ÍÎ», ÏßÉÏ·şÎñÎ´ÊÜÓ°Ïì
+  echo     ÒªÍê³É²¿Êğ, ÔÙÅÜÒ»´Î^(È¥µô --no-restart^): tools\deploy.bat
   goto done
 )
 
-rem ---------- 3. åœæœ ----------
-echo ==^> 3/7 åœæœ
-rem â˜… é¦–æ¬¡éƒ¨ç½²å *.sh å¸¸å¸¸æ²¡æœ‰æ‰§è¡Œä½, ä¸ chmod ä¼š Permission denied å´ä»¥ä¸ºåœæˆåŠŸäº†
-call :rsh "chmod +x %REMOTE_DIR%/*.sh 2>/dev/null; %REMOTE_DIR%/stop.sh; sleep 1; ss -lntp 2>/dev/null | grep ':8080 ' || echo '8080 å·²é‡Šæ”¾'"
+rem ---------- 3. Í£·ş ----------
+echo ==^> 3/7 Í£·ş
+rem ¡ï Ê×´Î²¿Êğºó *.sh ³£³£Ã»ÓĞÖ´ĞĞÎ», ²» chmod »á Permission denied È´ÒÔÎªÍ£³É¹¦ÁË
+call :rsh "chmod +x %REMOTE_DIR%/*.sh 2>/dev/null; %REMOTE_DIR%/stop.sh; sleep 1; ss -lntp 2>/dev/null | grep ':8080 ' || echo '8080 ÒÑÊÍ·Å'"
+if not "%RH_RC%"=="0" echo   WARN: stop.sh ·µ»Ø·Ç 0^(¿ÉÄÜ±¾À´¾ÍÃ»ÔÚÅÜ^), ¼ÌĞø
 
-rem ---------- 4. è§£å‹ ----------
-echo ==^> 4/7 è§£å‹ ^(æ’é™¤æ¨¡æ¿ config.yaml^)
-rem â˜… è§£å‹ä¼šæŠŠ tar é‡Œçš„æƒé™ä½ç›–å›å»(macOS æ‰“åŒ…çš„ *.sh å¸¸æ˜¯ 644), è§£å‹å®Œå¿…é¡»å†è¡¥ chmod
+rem ---------- 4. ½âÑ¹ ----------
+echo ==^> 4/7 ½âÑ¹ ^(ÅÅ³ıÄ£°å config.yaml^)
+rem ¡ï ½âÑ¹»á°Ñ tar ÀïµÄÈ¨ÏŞÎ»¸Ç»ØÈ¥(macOS ´ò°üµÄ *.sh ³£ÊÇ 644), ½âÑ¹Íê±ØĞëÔÙ²¹ chmod
 call :rsh "tar -xzf '%REMOTE_TGZ%' --exclude='Linuxbushu/server/config.yaml' -C /opt && echo 'extract ok'"
 if not "%RH_RC%"=="0" (
-  echo   XX è§£å‹å¤±è´¥ â€”â€” çº¿ä¸Šç°åœ¨æ²¡åœ¨è·‘, ç”¨å¤‡ä»½å›æ»š: tar -xzf %BAK_TGZ% -C /opt
+  echo   XX ½âÑ¹Ê§°Ü ¡ª¡ª ÏßÉÏÏÖÔÚÃ»ÔÚÅÜ, ÓÃ±¸·İ»Ø¹ö: tar -xzf %BAK_TGZ% -C /opt
   goto fail_clean
 )
 call :rsh "chmod +x %REMOTE_DIR%/*.sh && echo 'chmod sh ok'"
 if not "%RH_RC%"=="0" (
-  echo   XX chmod *.sh å¤±è´¥
+  echo   XX chmod *.sh Ê§°Ü
   goto fail_clean
 )
-echo   OK è§£å‹å®Œæˆ + è¡¥å› *.sh æ‰§è¡Œä½
+echo   OK ½âÑ¹Íê³É + ²¹»Ø *.sh Ö´ĞĞÎ»
 
-rem ---------- 5. æ¢å¤é…ç½® ----------
-echo ==^> 5/7 æ¢å¤çœŸå®é…ç½®
+rem ---------- 5. »Ö¸´ÅäÖÃ ----------
+echo ==^> 5/7 »Ö¸´ÕæÊµÅäÖÃ
 if not "%BAK_CONFIG%"=="" goto restore_from_backup
 call :rsh_read "test -f '%CONFIG_SEED%' && echo yes || echo no"
 if "%RH_OUT%"=="yes" goto restore_from_seed
-echo   WARN: æ‰¾ä¸åˆ°çœŸå®é…ç½®! åŒ…é‡Œçš„æ˜¯æ¨¡æ¿^(å ä½å¯†ç  + æ—§ web_dir^), æœåŠ¡ä¼šèµ·ä¸æ¥
+echo   WARN: ÕÒ²»µ½ÕæÊµÅäÖÃ£¡ °üÀïµÄÊÇÄ£°å^(Õ¼Î»ÃÜÂë + ¾É web_dir^), ·şÎñ»áÆğ²»À´
 goto after_restore
 
 :restore_from_backup
 call :rsh "cp -a '%BAK_CONFIG%' %REMOTE_DIR%/server/config.yaml && echo 'restored from backup'"
-echo   OK å·²ç”¨å¤‡ä»½çš„çœŸå®é…ç½®è¦†ç›–æ¨¡æ¿
+echo   OK ÒÑÓÃ±¸·İµÄÕæÊµÅäÖÃ¸²¸ÇÄ£°å
 goto after_restore
 
 :restore_from_seed
 call :rsh "cp -a '%CONFIG_SEED%' %REMOTE_DIR%/server/config.yaml"
-echo   OK å·²ç”¨ %CONFIG_SEED% è¦†ç›–æ¨¡æ¿
+echo   OK ÒÑÓÃ %CONFIG_SEED% ¸²¸ÇÄ£°å
 
 :after_restore
 call :rsh "chown -R root:root %REMOTE_DIR%"
+if not "%RH_RC%"=="0" echo   WARN: chown Ê§°Ü^(macOS ´ò°üµÄ uid 501^), ²»Ó°ÏìÆô¶¯
 
-rem ---------- 6. å¯åŠ¨ ----------
-echo ==^> 6/7 å¯åŠ¨
+rem ---------- 6. Æô¶¯ ----------
+echo ==^> 6/7 Æô¶¯
 call :rsh "chmod +x %REMOTE_DIR%/*.sh %REMOTE_DIR%/server/server %REMOTE_DIR%/server/dbinit %REMOTE_DIR%/server/ezfymigrate 2>/dev/null; cd %REMOTE_DIR% && ./start.sh"
 if not "%RH_RC%"=="0" (
-  echo   XX å¯åŠ¨è„šæœ¬å¤±è´¥, çœ‹æ—¥å¿—: %REMOTE_DIR%/logs/server.log
+  echo   XX Æô¶¯½Å±¾Ê§°Ü, ¿´ÈÕÖ¾: %REMOTE_DIR%/logs/server.log
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo %RH_OUT%
+  echo !RH_OUT!
   goto fail_clean
 )
 
-rem ---------- 7. éªŒè¯ ----------
-echo ==^> 7/7 éªŒè¯
+rem ---------- 7. ÑéÖ¤ ----------
+echo ==^> 7/7 ÑéÖ¤
 ping -n 7 127.0.0.1 >nul 2>&1
 call :rsh_read "ss -lntp 2>/dev/null | grep ':8080 ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL"
 if not "%RH_OUT%"=="LISTEN_OK" (
-  echo   XX 8080 æ²¡åœ¨ç›‘å¬
+  echo   XX 8080 Ã»ÔÚ¼àÌı
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo %RH_OUT%
+  echo !RH_OUT!
   goto fail_clean
 )
-echo   OK 8080 å·²ç›‘å¬
+echo   OK 8080 ÒÑ¼àÌı
 
-call :rsh_read "curl -s -o /dev/null -w 'HTTP=%%{http_code}' --max-time 8 http://127.0.0.1:8080/"
-if not "%RH_OUT%"=="HTTP=200" (
-  echo   XX é¦–é¡µä¸æ˜¯ 200 ^(%RH_OUT%^)
+rem ¡ï ²»ÄÜÓÃ curl -w '%{http_code}'£ºcall »á¶Ô²ÎÊı×ö¶ş´ÎÕ¹¿ª£¬% »á±»³Ôµô¡£
+rem   ¸ÄÓÃ -sI È¡×´Ì¬ĞĞ£¨ĞÎÈç HTTP/1.1 200 OK£©£¬ÔÙ findstr Æ¥Åä " 200 "¡£
+call :rsh_read "curl -sI --max-time 8 http://127.0.0.1:8080/ | head -1"
+echo !RH_OUT! | findstr /c:" 200 " >nul
+if errorlevel 1 (
+  echo   XX Ê×Ò³²»ÊÇ 200 ^(!RH_OUT!^)
   call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo %RH_OUT%
+  echo !RH_OUT!
   goto fail_clean
 )
-echo   OK é¦–é¡µ HTTP 200
+echo   OK Ê×Ò³ HTTP 200
 
-rem ç‰ˆæœ¬æŒ‡çº¹: æœªçŸ¥è·¯å¾„ä¼šå›è½ index.html è¿” 200, æ‰€ä»¥å¿…é¡»çœ‹å“åº”ä½“æ˜¯ä¸æ˜¯ JSON
+rem °æ±¾Ö¸ÎÆ: Î´ÖªÂ·¾¶»á»ØÂä index.html ·µ 200, ËùÒÔ±ØĞë¿´ÏìÓ¦ÌåÊÇ²»ÊÇ JSON
 call :rsh_read "curl -s --max-time 8 http://127.0.0.1:8080/api/games/ezfy/view | head -c 60"
 echo %RH_OUT% | findstr /c:"code" >nul
 if errorlevel 1 goto verify_not_json
-echo   OK æ¥å£è¿”å› JSON â€”â€” æ–°ç‰ˆæœ¬å·²ç”Ÿæ•ˆ
+echo   OK ½Ó¿Ú·µ»Ø JSON ¡ª¡ª ĞÂ°æ±¾ÒÑÉúĞ§
 goto after_verify
 
 :verify_not_json
-echo   WARN: æ¥å£è¿”å›çš„ä¸æ˜¯ JSON^(å¯èƒ½æ˜¯ index.html å›è½^) â€”â€” ç¡®è®¤ä¸‹ç‰ˆæœ¬
+echo   WARN: ½Ó¿Ú·µ»ØµÄ²»ÊÇ JSON^(¿ÉÄÜÊÇ index.html »ØÂä^) ¡ª¡ª È·ÈÏÏÂ°æ±¾
 echo %RH_OUT%
 
 :after_verify
@@ -308,41 +375,41 @@ call :rsh_read "tail -n 8 %REMOTE_DIR%/logs/server.log"
 echo %RH_OUT%
 
 echo.
-echo éƒ¨ç½²å®Œæˆ  http://%SSH_HOST%:8080
+echo ²¿ÊğÍê³É  http://%SSH_HOST%:8080
 if not "%BAK_TGZ%"=="" (
-  echo   å¤‡ä»½: %BAK_TGZ%
-  echo   å›æ»š: tar -xzf %BAK_TGZ% -C /opt
+  echo   ±¸·İ: %BAK_TGZ%
+  echo   »Ø¹ö: tar -xzf %BAK_TGZ% -C /opt
 ) else (
-  echo   å¤‡ä»½: æ— 
+  echo   ±¸·İ: ÎŞ
 )
 goto done
 
 rem =========================================================
-rem å­è¿‡ç¨‹
+rem ×Ó¹ı³Ì
 rem =========================================================
 
-rem :mktimestamp â€”â€” ç”Ÿæˆå¤‡ä»½ç”¨çš„æ—¶é—´æˆ³åç¼€ï¼Œç»“æœæ”¾ TSã€‚
+rem :mktimestamp ¡ª¡ª Éú³É±¸·İÓÃµÄÊ±¼ä´Áºó×º£¬½á¹û·Å TS¡£
 rem
-rem â˜…â˜… èƒŒæ™¯ï¼ˆéƒ½è¸©è¿‡ï¼Œæ”¹ä¹‹å‰å…ˆè¯»ï¼‰ï¼š
-rem   â‘  `for /f "tokens=1-4 delims=/-. " %%a in ("%DATE% %TIME%")`
-rem      â€”â€” ä¸­æ–‡ Windows çš„ %DATE% æ˜¯ã€Œ2026/09/28 å‘¨ä¸€ã€ï¼Œå¤šå‡ºä¸­æ–‡æ˜ŸæœŸï¼Œ
-rem      åˆ†è¯ç»“æœéšåŒºåŸŸè®¾ç½®æ¼‚ç§»ï¼Œå¯èƒ½æ‹¿åˆ° "å‘¨ä¸€" è¿™ç§åƒåœ¾ã€‚
-rem   â‘¡ `wmic OS get LocalDateTime`
-rem      â€”â€” **Win11 24H2 èµ· wmic å·²è¢«å¾®è½¯ç§»é™¤**ï¼ˆå®æµ‹æœ¬æœº build 26200 ä¸Šä¸å­˜åœ¨ï¼‰ï¼Œ
-rem      ç”¨äº†åªä¼šé™é»˜å¤±è´¥ã€‚
-rem   â‘¢ å„ç§ã€Œå‰”é™¤éæ•°å­—å­—ç¬¦ã€çš„å­—ç¬¦ä¸²ä½“æ“
-rem      â€”â€” cmd çš„å»¶è¿Ÿå±•å¼€ + for å˜é‡æ›¿æ¢æ··ç”¨é™·é˜±å¤ªå¤šï¼Œå†™å¯¹äº†ä¹Ÿå¾ˆè„†ã€‚
+rem ¡ï¡ï ±³¾°£¨¶¼²È¹ı£¬¸ÄÖ®Ç°ÏÈ¶Á£©£º
+rem   ¢Ù `for /f "tokens=1-4 delims=/-. " %%a in ("%DATE% %TIME%")`
+rem      ¡ª¡ª ÖĞÎÄ Windows µÄ %DATE% ÊÇ¡¸2026/09/28 ÖÜÒ»¡¹£¬¶à³öÖĞÎÄĞÇÆÚ£¬
+rem      ·Ö´Ê½á¹ûËæÇøÓòÉèÖÃÆ¯ÒÆ£¬¿ÉÄÜÄÃµ½ "ÖÜÒ»" ÕâÖÖÀ¬»ø¡£
+rem   ¢Ú `wmic OS get LocalDateTime`
+rem      ¡ª¡ª **Win11 24H2 Æğ wmic ÒÑ±»Î¢ÈíÒÆ³ı**£¨Êµ²â±¾»ú build 26200 ÉÏ²»´æÔÚ£©£¬
+rem      ÓÃÁËÖ»»á¾²Ä¬Ê§°Ü¡£
+rem   ¢Û ¸÷ÖÖ¡¸ÌŞ³ı·ÇÊı×Ö×Ö·û¡¹µÄ×Ö·û´®Ìå²Ù
+rem      ¡ª¡ª cmd µÄÑÓ³ÙÕ¹¿ª + for ±äÁ¿Ìæ»»»ìÓÃÏİÚåÌ«¶à£¬Ğ´¶ÔÁËÒ²ºÜ´à¡£
 rem
-rem â˜… æœ€ç»ˆæ–¹æ¡ˆï¼š**åªè¦ä¸€ä¸ªã€Œæœ¬æ¬¡è¿è¡Œå”¯ä¸€ã€çš„åç¼€å°±å¤Ÿäº†ï¼Œä¸è¿½æ±‚å¥½çœ‹çš„æ—¥æœŸæ ¼å¼**ã€‚
-rem   å¤‡ä»½æ–‡ä»¶åçš„ä½œç”¨åªæ˜¯ã€Œä¸å’Œä¹‹å‰çš„å¤‡ä»½æ’è½¦ã€ï¼Œç”¨ %RANDOM% å®Œå…¨å¤Ÿç”¨ï¼Œ
-rem   è€Œä¸” 100% å¯é ã€é›¶ä¾èµ–ã€ä¸æŒ‘ç³»ç»Ÿè¯­è¨€å’Œç‰ˆæœ¬ã€‚
-rem   ï¼ˆ%TIME% çš„ç™¾åˆ†ç§’æ®µåœ¨ä¸ªåˆ«åŒºåŸŸè®¾ç½®ä¸‹å¯èƒ½å¸¦éæ•°å­—å­—ç¬¦ï¼Œä¸€å¹¶é¿å¼€ä¸ç”¨ã€‚ï¼‰
-rem   æƒ³è®©äººçœ‹å‡ºæ—¶é—´ä¹Ÿæ²¡å…³ç³» â€”â€” å¤‡ä»½å®Œæˆåè„šæœ¬ä¼š echo å‡ºå¤‡ä»½åŒ…çš„å®Œæ•´è·¯å¾„å’Œå¤§å°ã€‚
+rem ¡ï ×îÖÕ·½°¸£º**Ö»ÒªÒ»¸ö¡¸±¾´ÎÔËĞĞÎ¨Ò»¡¹µÄºó×º¾Í¹»ÁË£¬²»×·ÇóºÃ¿´µÄÈÕÆÚ¸ñÊ½**¡£
+rem   ±¸·İÎÄ¼şÃûµÄ×÷ÓÃÖ»ÊÇ¡¸²»ºÍÖ®Ç°µÄ±¸·İ×²³µ¡¹£¬ÓÃ %RANDOM% ÍêÈ«¹»ÓÃ£¬
+rem   ¶øÇÒ 100% ¿É¿¿¡¢ÁãÒÀÀµ¡¢²»ÌôÏµÍ³ÓïÑÔºÍ°æ±¾¡£
+rem   £¨%TIME% µÄ°Ù·ÖÃë¶ÎÔÚ¸ö±ğÇøÓòÉèÖÃÏÂ¿ÉÄÜ´ø·ÇÊı×Ö×Ö·û£¬Ò»²¢±Ü¿ª²»ÓÃ¡££©
+rem   ÏëÈÃÈË¿´³öÊ±¼äÒ²Ã»¹ØÏµ ¡ª¡ª ±¸·İÍê³Éºó½Å±¾»á echo ³ö±¸·İ°üµÄÍêÕûÂ·¾¶ºÍ´óĞ¡¡£
 :mktimestamp
 set "TS=%RANDOM%%RANDOM%"
 goto :eof
 
-rem :rsh "è¿œç«¯å‘½ä»¤"  â€”â€” æœ‰å‰¯ä½œç”¨çš„å‘½ä»¤, DRY_RUN æ—¶åªæ‰“å°
+rem :rsh "Ô¶¶ËÃüÁî"  ¡ª¡ª ÓĞ¸±×÷ÓÃµÄÃüÁî, DRY_RUN Ê±Ö»´òÓ¡
 :rsh
 if "%DRY_RUN%"=="1" (
   echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: %~1
@@ -351,39 +418,72 @@ if "%DRY_RUN%"=="1" (
 )
 node "%SSH_RUN%" exec "%~1"
 set "RH_RC=%errorlevel%"
+rem ¡ï node ÔÚ Windows ÉÏÆô¶¯Ê±»á°Ñ¿ØÖÆÌ¨´úÂëÒ³Ç¿ÖÆ¸Ä³É UTF-8£¬
+rem   Ö®ºó½Å±¾ echo µÄÖĞÎÄ¾Í»áÂÒÂë ¡ª¡ª Ã¿´Îµ÷Íê node ¶¼ÒªÇĞ»Ø 936¡£
+chcp 936 >nul
 goto :eof
 
-rem :rsh_read "è¿œç«¯å‘½ä»¤" â€”â€” åªè¯»å‘½ä»¤, DRY_RUN æ—¶ä¹ŸçœŸæ‰§è¡Œ^(é¢„æ£€éœ€è¦çœŸå®ç»“æœ^)
-rem â˜… ç»“æœåªå–**ç¬¬ä¸€è¡Œ**æ”¾è¿› RH_OUTï¼Œé€€å‡ºç æ”¾è¿› RH_RCã€‚
-rem   è¿™é‡Œå¿…é¡»ç”¨ set /pï¼ˆè§æ–‡ä»¶å¤´ã€Œå‘2ã€ï¼‰ï¼Œä¸èƒ½ç”¨ for /f å¾ªç¯åŒ… ifã€‚
+rem :rsh_read "Ô¶¶ËÃüÁî" ¡ª¡ª Ö»¶ÁÃüÁî, DRY_RUN Ê±Ò²ÕæÖ´ĞĞ^(Ô¤¼ìĞèÒªÕæÊµ½á¹û^)
+rem ¡ï ½á¹ûÖ»È¡**µÚÒ»ĞĞ**·Å½ø RH_OUT£¬ÍË³öÂë·Å½ø RH_RC¡£
+rem   ÕâÀï±ØĞëÓÃ set /p£¨¼ûÎÄ¼şÍ·¡¸¿Ó2¡¹£©£¬²»ÄÜÓÃ for /f Ñ­»·°ü if¡£
 :rsh_read
-node "%SSH_RUN%" exec "%~1" >"%TMPOUT%" 2>nul
+if exist "%TMPOUT%" del /q "%TMPOUT%" >nul 2>&1
+if exist "%TMPERR%" del /q "%TMPERR%" >nul 2>&1
+node "%SSH_RUN%" exec "%~1" >"%TMPOUT%" 2>"%TMPERR%"
 set "RH_RC=%errorlevel%"
+chcp 936 >nul
 set "RH_OUT="
-set /p "RH_OUT="<"%TMPOUT%"
+if exist "%TMPOUT%" set /p "RH_OUT="<"%TMPOUT%"
 goto :eof
+
+rem :parse_pass ¡ª¡ª ´¦Àí -p/--pass <ÃÜÂë>¡£
+rem   ¡ï ¿ÌÒâÓÃ¡¸±êÇ©ÌøÔ¾¡¹¶ø²»ÊÇ `if ... ( set "SSH_PASS=%~2" & shift )`£º
+rem     ÃÜÂëÀï¿ÉÄÜº¬ `)` »ò `(`£¬¿éÄÚµÄÂãÀ¨ºÅ»á°Ñ if ¿éÌáÇ°½Ø¶Ï£¨¼ûÎÄ¼şÍ·¡¸¿Ó1¡¹£©£¬
+rem     ¶ø `set "SSH_PASS=..."` ÔÚ±êÇ©´¦Ö´ĞĞÊ±ÕûÌåÔÚÒıºÅÄÚ£¬º¬À¨ºÅÒ²°²È«¡£
+:parse_pass
+set "SSH_PASS=%~2"
+shift
+shift
+goto parse
 
 :usage
-echo deploy.bat â€”â€” ä¸€é”®æ¨é€å¹¶éƒ¨ç½²ã€Œå®¶å›­ç¤¾åŒºã€åˆ°çº¿ä¸Š Linux æœåŠ¡å™¨
+echo deploy.bat ¡ª¡ª Ò»¼üÍÆËÍ²¢²¿Êğ¡¸¼ÒÔ°ÉçÇø¡¹µ½ÏßÉÏ Linux ·şÎñÆ÷
 echo.
-echo   tools\deploy.bat                     é»˜è®¤ç”¨ ..\Linuxbushu.tar.gz å…¨é‡éƒ¨ç½²
-echo   tools\deploy.bat -f D:\pkg.tar.gz    æŒ‡å®šéƒ¨ç½²åŒ…
-echo   tools\deploy.bat --no-restart        åªä¸Šä¼  + æ ¡éªŒï¼Œä¸åœæœä¸è§£å‹
-echo   tools\deploy.bat --dry-run           åªæ‰“å°è®¡åˆ’ + é¢„æ£€ï¼Œä¸æ”¹ä»»ä½•ä¸œè¥¿
-echo   tools\deploy.bat --no-backup         è·³è¿‡å¤‡ä»½ï¼ˆçœç©ºé—´ï¼Œä¸æ¨èï¼‰
-echo   tools\deploy.bat -h 1.2.3.4 -u root  æŒ‡å®šä¸»æœº/ç”¨æˆ·
-echo   tools\deploy.bat --help              æœ¬å¸®åŠ©
+echo ½Å±¾Î»ÖÃ: qqjiayuan\tools\deploy.bat
+echo   ±¾½Å±¾°´×ÔÉíËùÔÚÎ»ÖÃ¶¨Î»²¿Êğ°ü, ´ÓÈÎÒâÄ¿Â¼Ö´ĞĞ¶¼ĞĞ
+echo   ×¢Òâ git ²Ö¿â¸ùÊÇ codingce3gJy, ½Å±¾ÔÚËüÏÂÃæµÄ qqjiayuan\tools\, ±ğÔÚ²Ö¿â¸ùÖ±½ÓÇÃ .\tools\deploy.bat
 echo.
-echo å¯†ç : ä¼˜å…ˆè¯»ç¯å¢ƒå˜é‡ SSH_PASSï¼›æ²¡è®¾ç½®å°±äº¤äº’è¾“å…¥ï¼Œå›è½¦ç”¨å†…ç½®é»˜è®¤å€¼
-echo   set SSH_PASS=xxx ^&^& tools\deploy.bat
+echo   tools\deploy.bat                     Ä¬ÈÏÓÃ ..\Linuxbushu.tar.gz È«Á¿²¿Êğ
+echo   tools\deploy.bat -f D:\pkg.tar.gz    Ö¸¶¨²¿Êğ°ü
+echo   tools\deploy.bat -h 1.2.3.4 -u root  Ö¸¶¨Ö÷»ú/ÓÃ»§
+echo   tools\deploy.bat -p ÃÜÂë             Ö¸¶¨ SSH ÃÜÂë
+echo   tools\deploy.bat --no-restart        Ö»ÉÏ´« + Ğ£Ñé£¬²»Í£·ş²»½âÑ¹
+echo   tools\deploy.bat --no-backup         Ìø¹ı±¸·İ£¨Ê¡¿Õ¼ä£¬²»ÍÆ¼ö£©
+echo   tools\deploy.bat --dry-run           Ö»´òÓ¡¼Æ»® + Ô¤¼ì£¬²»¸ÄÈÎºÎ¶«Î÷
+echo   tools\deploy.bat --help              ±¾°ïÖú
+echo.
+echo ÃÜÂëÓÅÏÈ¼¶: -p ²ÎÊı ^> »·¾³±äÁ¿ SSH_PASS ^> ½»»¥ÊäÈë ^> ssh-run.js ÄÚÖÃÄ¬ÈÏÖµ
+echo.
+echo ¸÷ÖÕ¶ËÓÃ·¨^(ÔÚÏîÄ¿¸ùÄ¿Â¼ qqjiayuan ÏÂÖ´ĞĞ^):
+echo   CMD:         tools\deploy.bat -p ÃÜÂë -h 39.105.151.141 --no-backup
+echo   PowerShell:  .\tools\deploy.bat -p ÃÜÂë -h 39.105.151.141 --no-backup
+echo   PowerShell:  $env:SSH_PASS='ÃÜÂë'; .\tools\deploy.bat -h 39.105.151.141 --no-backup
+echo   Git Bash:    SSH_PASS='ÃÜÂë' ./tools/deploy.bat -h 39.105.151.141 --no-backup
+echo.
+echo ×¢Òâ: SSH_PASS='ÃÜÂë' Ç°×ºÖ»ÔÚ Git Bash ÀïÓĞĞ§; PowerShell »á±¨ CommandNotFoundException
+echo       CMD / PowerShell ÇëÓÃ -p ²ÎÊı, »òÏÈÖ´ĞĞ $env:SSH_PASS='ÃÜÂë'
+echo.
+echo ÌáÊ¾: ÃÜÂëº¬ ^& ^| ^^ µÈÌØÊâ×Ö·ûÊ±ÓÃË«ÒıºÅ°üÆğÀ´, ÀıÈç -p "a^&b"
 goto done
 
 :fail_clean
 if exist "%TMPOUT%" del /q "%TMPOUT%" >nul 2>&1
+if exist "%TMPERR%" del /q "%TMPERR%" >nul 2>&1
 endlocal
 exit /b 1
 
 :done
 if exist "%TMPOUT%" del /q "%TMPOUT%" >nul 2>&1
+if exist "%TMPERR%" del /q "%TMPERR%" >nul 2>&1
 endlocal
 exit /b 0

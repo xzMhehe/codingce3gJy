@@ -19,15 +19,18 @@ import (
 // 所以这里的接口只做三件事：
 //  1. 列出全部挂单（含玩家单与系统单，可按状态/关键字过滤）
 //  2. 新增**系统挂单**（IsSystem=1, SellerId=0），计价货币可选黄金或钻石
-//  3. 下架 / 删除挂单（系统单不涉及退款；玩家单在售时会把资源退回卖家主城）
+//  3. 下架 / 删除挂单（系统单不涉及退款；玩家单在售时会把资源退回**挂单所在城市**）
 
-// ezfyExchangeRefund 把在售玩家挂单的资源退回卖家主城（系统单不用退）
+// ezfyExchangeRefund 把在售玩家挂单的资源退回**挂单所在城市**（系统单不用退）
+//
+// ★ 2026-10-07 与游戏内下架口径统一：原来恒退卖家主城（ORDER BY id ASC），
+//   挂单在哪座城卖就该退回哪座城；老数据 city_id=0 时回落主城。
 func (h *EzfyAdmin) ezfyExchangeRefund(e *model.EzfyExchange) {
 	if e.IsSystem == 1 {
 		return
 	}
-	var city model.EzfyCity
-	if err := h.DB.Where("user_id = ?", e.SellerId).Order("id ASC").First(&city).Error; err != nil {
+	city, ok := h.ezfyH().ezfyExchangeCityOf(e.SellerId, e.CityId)
+	if !ok {
 		return
 	}
 	switch e.EsType {

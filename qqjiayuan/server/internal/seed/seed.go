@@ -184,9 +184,9 @@ func Run(db *gorm.DB, staticDir string) {
 		db.Exec("UPDATE ezfy_profile SET recruit_free_limit = 0 WHERE recruit_free_limit IS NULL")
 	}
 
-	// 二战风云：交易所挂单的计价货币（老行是 NULL，回填 1=黄金）
+	// 二战风云：交易所挂单后加列（★ 2026-10-07 city_id 挂单所在城市；老行 NULL 回填）
 	if db.Migrator().HasTable("ezfy_exchange") {
-		db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
+		EnsureEzfyExchangeColumns(db)
 	}
 
 	// 二战风云：出征集结令单次上限（默认 99）—— 存量表补列 + 老行回填
@@ -2876,6 +2876,30 @@ func EnsureEzfyRansomTable(db *gorm.DB) {
 	if err := db.AutoMigrate(&model.EzfyRansom{}); err != nil {
 		log.Printf("[seed] 补建 ezfy_ransom 表失败: %v", err)
 	}
+}
+
+// EnsureEzfyExchangeColumns 幂等补 ezfy_exchange 的后加列（skip 分支必须调用）。
+//
+// ★ 2026-10-07 用户反馈「交易行成交后黄金进错城」：新增 city_id（挂单所在城市），
+//
+//	成交收款 / 下架退款都按它打回原城。该列只靠 AutoMigrate 建列，
+//	而多机共享库走 `seed.skip: true` 会跳过整个 seed.Run → 列永远建不出来，
+//	新二进制 INSERT ezfy_exchange 带 city_id 会报 `Unknown column 'city_id'`（挂单直接失败）。
+//	与 EnsureEzfyLimitColumns 同理：新增字段时**要么改这里，要么记得全量 seed 跑一次**。
+func EnsureEzfyExchangeColumns(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_exchange") {
+		return
+	}
+	// 挂单所在城市（老行 NULL → 0，读取时回落卖家主城，兼容老单）
+	if !db.Migrator().HasColumn("ezfy_exchange", "city_id") {
+		db.Exec("ALTER TABLE ezfy_exchange ADD COLUMN city_id bigint DEFAULT 0 COMMENT '挂单所在城市ID'")
+	}
+	db.Exec("UPDATE ezfy_exchange SET city_id = 0 WHERE city_id IS NULL")
+	// 计价货币（老行 NULL → 1=黄金）
+	if !db.Migrator().HasColumn("ezfy_exchange", "currency") {
+		db.Exec("ALTER TABLE ezfy_exchange ADD COLUMN currency int DEFAULT 1 COMMENT '货币(1黄金 2钻石)'")
+	}
+	db.Exec("UPDATE ezfy_exchange SET currency = 1 WHERE currency IS NULL")
 }
 
 // EnsureEzfyLimitColumns 幂等补 ezfy_cfg_limit 的新配置列。

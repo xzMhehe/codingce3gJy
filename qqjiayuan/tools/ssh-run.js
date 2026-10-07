@@ -27,11 +27,45 @@ const PASS = process.env.SSH_PASS || 'Admin123mzd..';
 
 const NOISE = /post-quantum|decrypt later|may need to be upgraded|openssh\.com\/pq/i;
 
-// 生成临时 askpass 脚本（打印密码）。进程退出时删掉。
-const ASKPASS = path.join(os.tmpdir(), `askpass-${process.pid}.sh`);
-fs.writeFileSync(ASKPASS, `#!/bin/sh\nprintf '%s\\n' '${PASS.replace(/'/g, "'\\''")}'\n`);
-fs.chmodSync(ASKPASS, 0o755);
-const cleanup = () => { try { fs.unlinkSync(ASKPASS); } catch (e) {} };
+const IS_WIN = process.platform === 'win32';
+
+// ★★ 2026-10-07 关键修复：Windows 上必须用 **.exe** 形式的 askpass。
+//
+//   背景：原来是在临时目录生成一个 .sh 脚本当 SSH_ASKPASS，这在 git-bash 里能跑
+//   （MSYS2 ssh 内部有 /bin/sh），但从 PowerShell / cmd 启动时必然失败 ——
+//   Windows 侧启动 askpass 走 CreateProcessW，**执行不了 .sh / .cmd / .bat**：
+//     · git 自带的 MSYS2 ssh → CreateProcessW failed error:193
+//                              + ssh_askpass: posix_spawnp: Unknown error
+//     · Windows 原生 OpenSSH → ssh_askpass: pipe: Unknown error
+//   两种表现都是密码没送出去，最终退化成 Permission denied (publickey,...,password)。
+//
+//   实测结论（2026-10-07）：
+//     MSYS2 ssh + askpass.exe → 成功；Windows 原生 ssh 的 askpass 机制本身不可用。
+//   所以 Windows 统一改用 tools/askpass.exe（Go 编译，见 askpass.go），
+//   密码通过环境变量 SSH_ASKPASS_PW 传进去，命令行里不出现明文。
+const ASKPASS_EXE = path.join(__dirname, 'askpass.exe');
+let ASKPASS = ASKPASS_EXE;
+const ASKPASS_ENV = {};
+
+if (IS_WIN) {
+  if (!fs.existsSync(ASKPASS_EXE)) {
+    console.error('缺少 ' + ASKPASS_EXE);
+    console.error('请先在 tools/ 目录执行: go build -o askpass.exe askpass.go');
+    process.exit(2);
+  }
+  ASKPASS_ENV.SSH_ASKPASS_PW = PASS;
+} else {
+  // 非 Windows（Linux / macOS / git-bash 下跑）沿用临时 .sh 脚本
+  ASKPASS = path.join(os.tmpdir(), `askpass-${process.pid}.sh`);
+  fs.writeFileSync(ASKPASS, `#!/bin/sh\nprintf '%s\\n' '${PASS.replace(/'/g, "'\\''")}'\n`);
+  fs.chmodSync(ASKPASS, 0o755);
+}
+
+// exe 是常驻文件，不能删；只有临时 .sh 需要清理。
+const cleanup = () => {
+  if (IS_WIN) return;
+  try { fs.unlinkSync(ASKPASS); } catch (e) {}
+};
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(130); });
 
@@ -48,7 +82,13 @@ function baseOpts() {
 }
 
 function env() {
-  return { ...process.env, SSH_ASKPASS: ASKPASS, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY || ':0' };
+  return {
+    ...process.env,
+    SSH_ASKPASS: ASKPASS,
+    SSH_ASKPASS_REQUIRE: 'force',
+    DISPLAY: process.env.DISPLAY || ':0',
+    ...ASKPASS_ENV,   // Windows: 把密码经 SSH_ASKPASS_PW 传给 askpass.exe
+  };
 }
 
 function main() {
