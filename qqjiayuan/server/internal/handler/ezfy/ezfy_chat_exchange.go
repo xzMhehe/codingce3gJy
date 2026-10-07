@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -496,10 +498,11 @@ func ezfyMoneyName(cur int) string {
 // ezfyExchangeLocks 交易所挂单出售/购买/下架的并发锁（按玩家 id 分片）。
 //
 // ★ 2026-10-06 修复「交易所连续点击重复执行」：
-//   挂单出售/购买/下架都是「读库存 → 扣资源/收款 → 建单/改状态」的读-改-写，
-//   连点会并发进入同一段结算：出售连点会重复扣资源、重复建挂单；
-//   下架连点会重复退回资源（挂单重复返款）；购买连点会重复扣钱。
-//   按玩家串行化后，后到的请求看到资源已扣/订单已成交，直接按正常校验拒绝。
+//
+//	挂单出售/购买/下架都是「读库存 → 扣资源/收款 → 建单/改状态」的读-改-写，
+//	连点会并发进入同一段结算：出售连点会重复扣资源、重复建挂单；
+//	下架连点会重复退回资源（挂单重复返款）；购买连点会重复扣钱。
+//	按玩家串行化后，后到的请求看到资源已扣/订单已成交，直接按正常校验拒绝。
 var ezfyExchangeLocks [64]sync.Mutex
 
 func ezfyExchangeLock(uid uint) *sync.Mutex { return &ezfyExchangeLocks[uid%64] }
@@ -574,7 +577,7 @@ func (h *EzfyHandler) ExchangeList(c *gin.Context) {
 		"mine": mineViews, "mtotal": mtotal, "mpage": mpage, "msize": msize,
 		"sell_max": sellMax,
 		"gold":     city.Gold,
-		"diamond": h.ensureProfile(uid).Diamond,
+		"diamond":  h.ensureProfile(uid).Diamond,
 		// ★ 2026-09-30 向系统出售资源：下发回收比例 / 手续费 / 黄金上限，供前端展示与判断
 		"sys_sell_ratio": ezfySysSellRatioMap(),
 		"sys_sell_fee":   ezfySysSellFeePct,
@@ -1046,7 +1049,8 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 // RansomCreate POST /city/ransom {city_id} —— 被占城市原主人发起赎城
 //
 // ★ 2026-10-07 赎城功能：发起即扣「赎城金额」钻石（押金），攻击者同意后金额归攻击者、城市返还，
-//   拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
+//
+//	拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
 func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1061,8 +1065,21 @@ func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 		resp.ParamError(c, "城市不存在")
 		return
 	}
+	// ★ 2026-10-07 修复「赎城能一直扣」：原实现是「查 pending → 扣钻 → 插入」三段分离，
+	//   快速双击/连点/并发会同时通过查重（都看到 0 笔）→ 各扣一次钻石、各插入一条请求。
+	//   现在整段放进一个事务，并先对**城市行加排他锁(FOR UPDATE)**：
+	//   同城赎城被强制串行，后到的请求等前者提交后必能看到新插入的 pending → 拒绝。
+	//   （FOR UPDATE 是当前读、不建立快照，事务里第一次一致性读发生在锁拿到之后，
+	//    所以后到事务能看到先行事务已提交的插入。）
+	tx := h.DB.Begin()
+	defer tx.Rollback()
 	var occ model.EzfyOccupy
-	if err := h.DB.Where("city_id = ? AND status = 1", city.ID).First(&occ).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", city.ID).First(&city).Error; err != nil {
+		resp.ParamError(c, "城市不存在")
+		return
+	}
+	if err := tx.Where("city_id = ? AND status = 1", city.ID).First(&occ).Error; err != nil {
 		resp.ParamError(c, "该城市未被占领, 无需赎城")
 		return
 	}
@@ -1071,7 +1088,10 @@ func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 		return
 	}
 	var pending int64
-	h.DB.Model(&model.EzfyRansom{}).Where("city_id = ? AND status = 0", city.ID).Count(&pending)
+	if err := tx.Model(&model.EzfyRansom{}).Where("city_id = ? AND status = 0", city.ID).Count(&pending).Error; err != nil {
+		resp.ParamError(c, "查询赎城请求失败："+err.Error())
+		return
+	}
 	if pending > 0 {
 		resp.ParamError(c, "该城市已有一笔待处理的赎城请求")
 		return
@@ -1082,16 +1102,24 @@ func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("钻石不足: 赎城需要%d钻石, 当前余额%d", cost, prof.Diamond))
 		return
 	}
-	if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
-		Update("diamond", prof.Diamond-cost).Error; err != nil {
-		resp.ParamError(c, "扣钻石失败："+err.Error())
+	// 原子扣减（WHERE diamond>=cost 兜底并发扣爆）
+	if res := tx.Model(&model.EzfyProfile{}).Where("id = ? AND diamond >= ?", prof.ID, cost).
+		Update("diamond", gorm.Expr("diamond - ?", cost)); res.RowsAffected != 1 {
+		resp.ParamError(c, "扣钻石失败, 请重试")
 		return
 	}
-	h.logDiamond(uid, -cost, "赎城请求押金")
 	r := model.EzfyRansom{CityId: int64(city.ID), OccupyId: occ.ID, DefUserId: uid,
 		AtkUserId: occ.AtkUserId, CityName: city.Name, X: city.X, Y: city.Y,
 		Cost: cost, Status: 0}
-	h.DB.Create(&r)
+	if err := tx.Create(&r).Error; err != nil {
+		resp.ParamError(c, "创建赎城请求失败："+err.Error())
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		resp.ParamError(c, "提交失败："+err.Error())
+		return
+	}
+	h.logDiamond(uid, -cost, "赎城请求押金")
 	h.addReport(occ.AtkUserId, 5, "赎城请求",
 		fmt.Sprintf("原主人「%s」想花%d钻石赎回你占领的城市[%s](%d,%d)，可在[附属野地]的「赎回请求」中同意或拒绝。",
 			prof.Nickname, cost, city.Name, city.X, city.Y))
@@ -1161,6 +1189,9 @@ func (h *EzfyHandler) RansomHandle(c *gin.Context) {
 // RansomCancel POST /city/ransom/cancel {city_id} —— 原主人撤销待处理赎城请求（押金退回）
 //
 // ★ 撤销按 city_id 定位（守方视角只知道自己的城市，不知道请求 id；发起与撤销入参保持对称）。
+// ★ 2026-10-07 撤销赎城也加事务+行锁：原实现「查 status=0 → 退押金 → 置 status」三段分离，
+//
+//	双击/并发会同时通过查询 → 押金双退。现在先锁请求行、再原子置终态、再退押金。
 func (h *EzfyHandler) RansomCancel(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1170,13 +1201,32 @@ func (h *EzfyHandler) RansomCancel(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
+	tx := h.DB.Begin()
+	defer tx.Rollback()
 	var r model.EzfyRansom
-	if err := h.DB.Where("city_id = ? AND def_user_id = ? AND status = 0", req.CityId, uid).
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("city_id = ? AND def_user_id = ? AND status = 0", req.CityId, uid).
 		First(&r).Error; err != nil {
 		resp.ParamError(c, "该城市没有待处理的赎城请求")
 		return
 	}
-	h.refundRansom(&r, 3, "赎城请求撤销退回")
+	// 置终态（锁内原子）：并发的第二个撤销等锁后这里 RowsAffected=0 → 拒绝，押金不会双退
+	if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+		Update("status", 3); res.RowsAffected != 1 {
+		resp.ParamError(c, "该请求已被处理")
+		return
+	}
+	defProf := h.ensureProfile(r.DefUserId)
+	if err := tx.Model(&model.EzfyProfile{}).Where("id = ?", defProf.ID).
+		Update("diamond", gorm.Expr("diamond + ?", r.Cost)).Error; err != nil {
+		resp.ParamError(c, "退回押金失败："+err.Error())
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		resp.ParamError(c, "提交失败："+err.Error())
+		return
+	}
+	h.logDiamond(r.DefUserId, r.Cost, "赎城请求撤销退回")
 	h.addReport(r.AtkUserId, 5, "赎城请求撤销",
 		fmt.Sprintf("原主人撤销了赎回城市[%s](%d,%d)的请求。", r.CityName, r.X, r.Y))
 	resp.OK(c, gin.H{"msg": "已撤销赎城请求, 押金已退回"})
@@ -1213,7 +1263,8 @@ func (h *EzfyHandler) deleteCityData(cityId int64) {
 // WildlandFull 附属野地+被占城市(cityWild 页数据)
 //
 // ★ 2026-10-04 性能（用户反馈「/city/wildfull 线上 2s+」）：懒结算改走 refreshCityRead
-//   （跳过订单结算 3~4 条 RDS）；再加 3s 玩家级缓存，占领/放弃/采集等写操作统一失效。
+//
+//	（跳过订单结算 3~4 条 RDS）；再加 3s 玩家级缓存，占领/放弃/采集等写操作统一失效。
 func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	if it, ok := ezfyPageCacheGet(uid, "wildfull"); ok {
@@ -1246,7 +1297,10 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	//   让下面的 calcResourceD 零额外查询（原来它自己又串行查了 6 遍）。
 	wg.Add(12)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
-	go func() { defer wg.Done(); h.DB.Where("atk_user_id = ? AND status = 0", uid).Order("id ASC").Find(&ransoms) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("atk_user_id = ? AND status = 0", uid).Order("id ASC").Find(&ransoms)
+	}()
 	go func() { defer wg.Done(); h.DB.Where("city_id IN ? AND status = 1", cityIdsOf(cities)).Find(&techRows) }()
 	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
 	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
@@ -1264,7 +1318,10 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	}()
 	go func() { defer wg.Done(); h.DB.Where("atk_city_id = ? AND status = 1", city.ID).Find(&occupies) }()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
+	}()
 	wg.Wait()
 	// 懒结算复用已取数据（零额外查询）
 	h.checkBuildingDone(&city, buildings)
@@ -1305,7 +1362,7 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
 			"wild_type": w.WildType, "level": w.Level, "status": sts,
 			"idle_order_id": idleOrderId,
-			"terrain": ezfyTerrainEx(w.X, w.Y),
+			"terrain":       ezfyTerrainEx(w.X, w.Y),
 			// ★ 2026-10-05 用户纠正：① 海洋野地→海底森林、岛屿→岛屿（岛屿仍是海野玩法，只是名字不同）；
 			//   ② 表里有这一行 ⇒ 确定有野地 ⇒ knownWild=true（不看 level，避免 level=0 的海洋野地被显示成「海洋」）。
 			"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),

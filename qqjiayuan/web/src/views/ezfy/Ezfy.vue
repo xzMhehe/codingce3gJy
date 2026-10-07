@@ -549,6 +549,7 @@ export default {
       occupies: [],
       // ★ 2026-10-07 赎城：待占领方处理的赎回请求 + 赎城金额（管理端可配）
       ransoms: [],
+      ransomBusy: false, // ★ 2026-10-07 赎城连点卡控：请求未返回前忽略再次点击
       ransomCost: 500,
       queues: [],
       marching: 0,
@@ -3763,13 +3764,21 @@ export default {
     },
     // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
     async doRansom (ct) {
-      const cost = this.ransomCost || 500
-      if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
-        '发起即扣押金, 占领方同意后返还城市(钻石归占领方), 拒绝/撤销则自动退回。')) return
-      api.post('/games/ezfy/city/ransom', { city_id: ct.id }).then(r => {
+      // ★ 2026-10-07 卡控连点：请求未返回前再次点击直接忽略，且成功后立即乐观置 ransoming
+      //   （按钮立刻变 [撤赎城]），配合后端事务+行锁，杜绝「赎城能一直扣」。
+      if (this.ransomBusy) return
+      this.ransomBusy = true
+      try {
+        const cost = this.ransomCost || 500
+        if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
+          '发起即扣押金, 占领方同意后返还城市(钻石归占领方), 拒绝/撤销则自动退回。')) return
+        const r = await api.post('/games/ezfy/city/ransom', { city_id: ct.id })
         this.alert(r, '赎城请求已提交')
+        ct.ransoming = true // 乐观置位 → [赎城] 立刻变 [撤赎城]，重连点击被前端和后端双重拦下
         this.go('cities')
-      })
+      } finally {
+        this.ransomBusy = false
+      }
     },
     async doRansomCancel (ct) {
       if (!await this.ask(`确定撤销对城市[${ct.name}](${ct.x},${ct.y})的赎城请求吗? 押金将自动退回。`)) return
