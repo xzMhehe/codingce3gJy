@@ -3258,7 +3258,7 @@ export default {
         if (r.code === 0) {
           this.wildlands = r.data.wildlands
           this.occupies = r.data.occupies
-          // ★ 2026-10-07 赎城：占领方在「被占领城市」面板处理赎回请求
+          // ★ 2026-10-07 赎城：占领方在「占领城市」面板处理赎回请求
           this.ransoms = r.data.ransoms || []
         }
       })
@@ -3763,7 +3763,7 @@ export default {
       api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r, '操作已提交'))
     },
     // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
-    // 按城市ID找待处理的赎城申请（无则 null），供「被占领城市」面板行内审批
+    // 按城市ID找待处理的赎城申请（无则 null），供「占领城市」面板行内审批
     ransomOf (cityId) {
       return this.ransoms.find(r => r.city_id === cityId) || null
     },
