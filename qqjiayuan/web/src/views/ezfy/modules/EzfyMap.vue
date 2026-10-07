@@ -157,9 +157,11 @@
             <div class="old-line green" v-if="ezfy.corpsWar && ezfy.corpsWar.active">
               军团交战期：{{ ezfy.corpsWar.text || ('与【' + (ezfy.corpsWar.corps_name || '敌方军团') + '】处于交战状态，无需个人宣战即可掠夺/征服') }}
             </div>
-            <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示；宣战中一律不显示
-                 （不需要宣战时「交战中」这个概念不成立，所以照常显示） -->
-            <template v-if="ezfy.selCell.ally && (ezfy.warStatus !== 2 || !ezfy.warRequire)">
+            <!-- ★ 运输/增援 只对「同盟(同一军团)成员的城市」显示。
+                 ★ 2026-10-07 去掉「宣战中不显示」的子条件 —— warStatus===2 是【对敌方城市】的宣战状态，
+                 同盟成员城不可能有个人宣战；而军团交战期是全局状态，会把这个条件误触发 → 同团看不到[运输]。
+                 现在只要是同盟成员必显示（后端 createOrder 另有 own/ally 校验兜底）。 -->
+            <template v-if="ezfy.selCell.ally">
               <a href="javascript:;" @click="ezfy.pickOrder(5)">[运输]</a>&nbsp;
               <a href="javascript:;" @click="ezfy.pickOrder(6)">[增援]</a>&nbsp;
             </template>

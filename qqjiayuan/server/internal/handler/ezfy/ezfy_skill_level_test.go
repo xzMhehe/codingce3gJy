@@ -321,7 +321,7 @@ func TestCarryResAllOrderTypes(t *testing.T) {
 		t.Fatalf("ezfy_order.go 召回未把随身资源并入 Carry（采集产出会丢）")
 	}
 	// 前端：随军资源对所有类型显示（不含 5/8 限定）+ 提示文案
-	web, err := os.ReadFile("../../../../web/src/views/ezfy/modules/Ezfymap.vue")
+	web, err := os.ReadFile("../../../../web/src/views/ezfy/modules/EzfyMap.vue")
 	if err != nil {
 		t.Fatalf("读前端 Ezfymap.vue 失败: %v", err)
 	}
