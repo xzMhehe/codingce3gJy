@@ -116,6 +116,7 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},
 		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
 		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
+		&model.EzfyRansom{}, // ★ 2026-10-07 赎城请求表（AutoMigrate 建表）
 		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
 		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 ）
 		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
@@ -2892,6 +2893,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) + " WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
 	}
+	// ★ 2026-10-07 赎城金额可配置：存量库补 ransom_cost 列（默认 500，0 无意义 → 统一回落 500）
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "ransom_cost") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN ransom_cost int DEFAULT 500")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET ransom_cost = 500 WHERE ransom_cost IS NULL OR ransom_cost <= 0")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

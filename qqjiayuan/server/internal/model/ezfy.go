@@ -297,6 +297,9 @@ type EzfyCfgLimit struct {
 	//   掠夺(2)：每次固定扣目标多少民心（原来写死 5，线上现值 3）。
 	ConquerFeelingsMax int `gorm:"default:5;comment:Conquer民心上限" json:"conquer_feelings_max"`
 	LootFeelings       int `gorm:"default:3;comment:掠夺民心" json:"loot_feelings"`
+	// ★ 2026-10-07 赎城功能：被占城市原主人赎回需消耗的钻石（管理端「建筑上限配置」可维护，默认 500）。
+	//   0 无意义（= 禁止赎城）→ 读取端回落默认 500。
+	RansomCost int `gorm:"default:500;comment:赎城金额钻石" json:"ransom_cost"`
 	// ★ 用户反馈「军官是消耗黄金的，黄金现在消耗 0」→ 军官工资：每名军官每小时消耗
 	//   「等级 × 该值」黄金，在 calcResource 里随资源懒结算一起扣。
 	//   ★ 2026-09-26 「现值 2000 改成 20」：默认值 100 → **20**。
@@ -953,6 +956,28 @@ type EzfyOccupy struct {
 }
 
 func (EzfyOccupy) TableName() string { return "ezfy_occupy" }
+
+// EzfyRansom 赎城请求：被占城市原主人发起赎回，占领方同意后返还城市、金额归占领方。
+//
+// ★ 2026-10-07 新增。发起即扣钻石（押金），拒绝/撤销退回，同意后金额转给占领方。
+//   Status: 0 待处理 / 1 已同意(城市已返还) / 2 已拒绝(押金已退) / 3 已撤销(押金已退)
+type EzfyRansom struct {
+	ID        uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	CityId    int64  `gorm:"comment:被赎城市ID" json:"city_id"`
+	OccupyId  uint   `gorm:"comment:关联占领记录ID(ezfy_occupy.id)" json:"occupy_id"`
+	DefUserId uint   `gorm:"comment:发起人(被占城市原主人)" json:"def_user_id"`
+	AtkUserId uint   `gorm:"comment:占领方(同意人)" json:"atk_user_id"`
+	CityName  string `gorm:"type:varchar(50);comment:城市名称" json:"city_name"`
+	X         int    `gorm:"comment:X坐标" json:"x"`
+	Y         int    `gorm:"comment:Y坐标" json:"y"`
+	Cost      int64  `gorm:"comment:发起时快照的赎城金额(钻石)" json:"cost"`
+	Status    int    `gorm:"default:0;comment:0待处理 1已同意返还 2已拒绝 3已撤销" json:"status"`
+
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyRansom) TableName() string { return "ezfy_ransom" }
 
 type EzfyWounded struct {
 	ID      uint  `gorm:"primaryKey;comment:主键ID" json:"id"`

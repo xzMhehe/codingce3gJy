@@ -1043,6 +1043,156 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 	}
 }
 
+// RansomCreate POST /city/ransom {city_id} —— 被占城市原主人发起赎城
+//
+// ★ 2026-10-07 赎城功能：发起即扣「赎城金额」钻石（押金），攻击者同意后金额归攻击者、城市返还，
+//   拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
+func (h *EzfyHandler) RansomCreate(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var city model.EzfyCity
+	if err := h.DB.Where("id = ? AND user_id = ?", req.CityId, uid).First(&city).Error; err != nil {
+		resp.ParamError(c, "城市不存在")
+		return
+	}
+	var occ model.EzfyOccupy
+	if err := h.DB.Where("city_id = ? AND status = 1", city.ID).First(&occ).Error; err != nil {
+		resp.ParamError(c, "该城市未被占领, 无需赎城")
+		return
+	}
+	if occ.DefUserId != uid {
+		resp.ParamError(c, "只有城市原主人才能发起赎城")
+		return
+	}
+	var pending int64
+	h.DB.Model(&model.EzfyRansom{}).Where("city_id = ? AND status = 0", city.ID).Count(&pending)
+	if pending > 0 {
+		resp.ParamError(c, "该城市已有一笔待处理的赎城请求")
+		return
+	}
+	cost := ezfyRansomCost()
+	prof := h.ensureProfile(uid)
+	if prof.Diamond < cost {
+		resp.ParamError(c, fmt.Sprintf("钻石不足: 赎城需要%d钻石, 当前余额%d", cost, prof.Diamond))
+		return
+	}
+	if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
+		Update("diamond", prof.Diamond-cost).Error; err != nil {
+		resp.ParamError(c, "扣钻石失败："+err.Error())
+		return
+	}
+	h.logDiamond(uid, -cost, "赎城请求押金")
+	r := model.EzfyRansom{CityId: int64(city.ID), OccupyId: occ.ID, DefUserId: uid,
+		AtkUserId: occ.AtkUserId, CityName: city.Name, X: city.X, Y: city.Y,
+		Cost: cost, Status: 0}
+	h.DB.Create(&r)
+	h.addReport(occ.AtkUserId, 5, "赎城请求",
+		fmt.Sprintf("原主人「%s」想花%d钻石赎回你占领的城市[%s](%d,%d)，可在[附属野地]的「赎回请求」中同意或拒绝。",
+			prof.Nickname, cost, city.Name, city.X, city.Y))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发起赎城请求, 已扣除%d钻石押金; 占领方同意后返还城市, 拒绝则自动退回。", cost)})
+}
+
+// RansomHandle POST /city/ransom/handle {ransom_id, op} —— 占领方处理赎城请求（op 1同意 2拒绝）
+func (h *EzfyHandler) RansomHandle(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		RansomId uint `json:"ransom_id"`
+		Op       int  `json:"op"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var r model.EzfyRansom
+	if err := h.DB.First(&r, req.RansomId).Error; err != nil {
+		resp.ParamError(c, "赎城请求不存在")
+		return
+	}
+	if r.AtkUserId != uid {
+		resp.ParamError(c, "只有占领方才能处理该赎城请求")
+		return
+	}
+	if r.Status != 0 {
+		resp.ParamError(c, "该请求已处理")
+		return
+	}
+	if req.Op == 1 {
+		// 同意前重校验占领记录：已被建立/摧毁/归还(status≠1) → 押金退回、请求作废
+		var occ model.EzfyOccupy
+		if h.DB.Where("id = ? AND status = 1", r.OccupyId).First(&occ).Error != nil {
+			h.refundRansom(&r, 3, "该城市已被占领方处理, 赎城请求作废, 押金退回")
+			resp.ParamError(c, "该城市已被处理(建立/摧毁/归还), 赎城请求已作废并退回押金")
+			return
+		}
+		// 同意：金额转给占领方 + 城市返还（同「放弃归还」口径：user_id 本仍属守方，补民心）
+		atkProf := h.ensureProfile(uid)
+		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", atkProf.ID).
+			Update("diamond", atkProf.Diamond+r.Cost).Error; err != nil {
+			resp.ParamError(c, "钻石发放失败："+err.Error())
+			return
+		}
+		h.logDiamond(uid, r.Cost, "赎城收入")
+		var ct model.EzfyCity
+		if h.DB.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
+		}
+		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
+		h.DB.Model(&model.EzfyRansom{}).Where("id = ?", r.ID).Update("status", 1)
+		h.addReport(uid, 5, "赎城成功",
+			fmt.Sprintf("你同意了赎城, 收到%d钻石, 城市[%s](%d,%d)已归还原主人。", r.Cost, r.CityName, r.X, r.Y))
+		h.addReport(r.DefUserId, 5, "赎城成功",
+			fmt.Sprintf("占领方已同意你的赎城, 你成功赎回城市[%s](%d,%d)! 民心已恢复。", r.CityName, r.X, r.Y))
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已同意赎城, 收到%d钻石, 城市已归还原主人", r.Cost)})
+		return
+	}
+	// 拒绝：押金退回原主人
+	h.refundRansom(&r, 2, "占领方拒绝了赎城请求, 押金退回")
+	h.addReport(uid, 5, "赎城拒绝",
+		fmt.Sprintf("你拒绝了原主人赎回城市[%s](%d,%d)的请求。", r.CityName, r.X, r.Y))
+	resp.OK(c, gin.H{"msg": "已拒绝该赎城请求, 原主人押金已退回"})
+}
+
+// RansomCancel POST /city/ransom/cancel {city_id} —— 原主人撤销待处理赎城请求（押金退回）
+//
+// ★ 撤销按 city_id 定位（守方视角只知道自己的城市，不知道请求 id；发起与撤销入参保持对称）。
+func (h *EzfyHandler) RansomCancel(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		CityId int64 `json:"city_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var r model.EzfyRansom
+	if err := h.DB.Where("city_id = ? AND def_user_id = ? AND status = 0", req.CityId, uid).
+		First(&r).Error; err != nil {
+		resp.ParamError(c, "该城市没有待处理的赎城请求")
+		return
+	}
+	h.refundRansom(&r, 3, "赎城请求撤销退回")
+	h.addReport(r.AtkUserId, 5, "赎城请求撤销",
+		fmt.Sprintf("原主人撤销了赎回城市[%s](%d,%d)的请求。", r.CityName, r.X, r.Y))
+	resp.OK(c, gin.H{"msg": "已撤销赎城请求, 押金已退回"})
+}
+
+// refundRansom 退回赎城押金并通知原主人（请求置终态 newStatus；reason 用于钻石流水与通知文案）
+func (h *EzfyHandler) refundRansom(r *model.EzfyRansom, newStatus int, reason string) {
+	defProf := h.ensureProfile(r.DefUserId)
+	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", defProf.ID).
+		Update("diamond", defProf.Diamond+r.Cost)
+	h.logDiamond(r.DefUserId, r.Cost, reason)
+	h.DB.Model(&model.EzfyRansom{}).Where("id = ?", r.ID).Update("status", newStatus)
+	h.addReport(r.DefUserId, 5, "赎城押金退回",
+		fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: %s", r.CityName, r.X, r.Y, r.Cost, reason))
+}
+
 // deleteCityData 删除城市及其所有数据
 func (h *EzfyHandler) deleteCityData(cityId int64) {
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyCityBuilding{})
@@ -1080,6 +1230,7 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		gatherIds   []int64
 		idleOrders  []model.EzfyOrder
 		occupies    []model.EzfyOccupy
+		ransoms     []model.EzfyRansom // ★ 2026-10-07 赎城：发给占领方的待处理赎回请求
 		buildings   []model.EzfyCityBuilding
 		trainQueues []model.EzfyTrainQueue
 		techRows    []model.EzfyCityTech
@@ -1093,8 +1244,9 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	//   （昵称查询早改成串行 IN 批量查），WaitGroup 永远等不到第 7 次 Done → 请求死锁挂死。
 	// ★ 2026-10-05 性能：并行块再补 5 条（科技行/科技表/部队/增产令/市长加成），
 	//   让下面的 calcResourceD 零额外查询（原来它自己又串行查了 6 遍）。
-	wg.Add(11)
+	wg.Add(12)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
+	go func() { defer wg.Done(); h.DB.Where("atk_user_id = ? AND status = 0", uid).Order("id ASC").Find(&ransoms) }()
 	go func() { defer wg.Done(); h.DB.Where("city_id IN ? AND status = 1", cityIdsOf(cities)).Find(&techRows) }()
 	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
 	go func() { defer wg.Done(); troops = h.troopMap(city.ID) }()
@@ -1159,20 +1311,22 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 			"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),
 			"continent":    ezfyRegionName(w.X, w.Y)})
 	}
-	// 被占城市归属玩家的游戏昵称（原每行 ensureProfile 一次库 → 改一次 IN 查询）
+	// 被占城市归属玩家 + 赎城请求发起人（原主人）的游戏昵称（原每行 ensureProfile 一次库 → 改一次 IN 查询）
 	nick := map[uint]string{}
-	ids := make([]uint, 0, len(occupies))
-	for _, o := range occupies {
-		dup := false
-		for _, id := range ids {
-			if id == o.DefUserId {
-				dup = true
-				break
+	ids := make([]uint, 0, len(occupies)+len(ransoms))
+	addNickID := func(id uint) {
+		for _, e := range ids {
+			if e == id {
+				return
 			}
 		}
-		if !dup {
-			ids = append(ids, o.DefUserId)
-		}
+		ids = append(ids, id)
+	}
+	for _, o := range occupies {
+		addNickID(o.DefUserId)
+	}
+	for _, r := range ransoms {
+		addNickID(r.DefUserId)
 	}
 	if len(ids) > 0 {
 		var profs []model.EzfyProfile
@@ -1186,7 +1340,12 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
 			"city_name": o.CityName, "def_user": nick[o.DefUserId]})
 	}
-	data := gin.H{"city": city, "wildlands": wildViews, "occupies": occViews,
+	ransomViews := []gin.H{}
+	for _, r := range ransoms {
+		ransomViews = append(ransomViews, gin.H{"id": r.ID, "x": r.X, "y": r.Y,
+			"city_name": r.CityName, "def_user": nick[r.DefUserId], "cost": r.Cost})
+	}
+	data := gin.H{"city": city, "wildlands": wildViews, "occupies": occViews, "ransoms": ransomViews,
 		"hall_level": hallLevel}
 	ezfyPageCacheSet(uid, "wildfull", data)
 	resp.OK(c, data)

@@ -683,6 +683,10 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/city/warehouse", ezfyH.Warehouse)
 				ezfyG.POST("/city/warehouse", ezfyH.WarehouseSet)
 				ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
+				// ★ 2026-10-07 赎城：被占城市原主人发起赎回，占领方同意后返还
+				ezfyG.POST("/city/ransom", ezfyH.RansomCreate)
+				ezfyG.POST("/city/ransom/handle", ezfyH.RansomHandle)
+				ezfyG.POST("/city/ransom/cancel", ezfyH.RansomCancel)
 				ezfyG.GET("/orders/:id", ezfyH.OrderView)
 
 				// ===== 战场指挥室（军情 → 军队动态 → [指挥]）=====

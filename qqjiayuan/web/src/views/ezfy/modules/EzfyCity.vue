@@ -8,10 +8,16 @@
                  [运输][派遣][弃城] 只在非当前城显示（当前城无操作） -->
             <a v-if="ct.id !== ezfy.city.id" class="city-name" href="javascript:;" @click="ezfy.doSwitch(ct)" title="切换为当前城市">{{ ct.name }}</a>({{ ct.x }},{{ ct.y }})
             <span v-else class="city-name">{{ ct.name }}</span>({{ ct.x }},{{ ct.y }})
-            <template v-if="ct.id !== ezfy.city.id">
+            <template v-if="ct.id !== ezfy.city.id && !ct.occupied">
               <a href="javascript:;" @click="ezfy.doTransportTo(ct)">[运输]</a>
               <a href="javascript:;" @click="ezfy.doDispatchTo(ct)">[派遣]</a>
               <a class="red" href="javascript:;" @click="ezfy.doDestroyCity(ct)">[弃城]</a>
+            </template>
+            <!-- ★ 2026-10-07 赎城：自己的城市被人占领后，不显示[运输][派遣][弃城]，
+                 改为 [赎城]（花钻石赎回，需占领方同意）/ [撤赎城]（撤销待处理请求） -->
+            <template v-else-if="ct.id !== ezfy.city.id && ct.occupied">
+              <a v-if="!ct.ransoming" href="javascript:;" @click="ezfy.doRansom(ct)">[赎城]</a>
+              <a v-else class="red" href="javascript:;" @click="ezfy.doRansomCancel(ct)">[撤赎城]</a>
             </template>
           </div>
 

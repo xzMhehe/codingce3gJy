@@ -3647,6 +3647,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"rank_post":     ezfyRankPostAt(ezfyProfileRank(&profile)),
 		"cities":        h.cityViews(cities),
 		"diamond":       profile.Diamond,
+		// ★ 2026-10-07 赎城金额（管理端可配）：前端城市列表 [赎城] 确认弹窗展示
+		"ransom_cost": ezfyRansomCost(),
 		"city":          city,
 		"res_prod":      resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
 		// ★★ 2026-10-05 修复「玩家反馈离线资源不涨」的**显示口径**问题：
@@ -3919,9 +3921,31 @@ type ezfyCityView struct {
 	Kind  string `json:"city_kind"` // ★ 与 /view 的 city_kind 保持同名，前端不要出现两套
 	// ★ 所属大洲 / 大洋（世界地图改版后，城市要标注在哪个州）
 	Continent string `json:"continent"`
+	// ★ 2026-10-07 赎城：被占领(occupy status=1) / 有待处理赎城请求 —— 前端据此切换按钮
+	Occupied  bool `json:"occupied"`
+	Ransoming bool `json:"ransoming"`
 }
 
 func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
+	// ★ 2026-10-07 赎城：一次 IN 查询整批城市的被占/待赎状态，避免每城一条 SQL
+	occupied := map[int64]bool{}
+	ransoming := map[int64]bool{}
+	if len(list) > 0 {
+		ids := make([]int64, 0, len(list))
+		for _, ct := range list {
+			ids = append(ids, int64(ct.ID))
+		}
+		var occIds []int64
+		h.DB.Model(&model.EzfyOccupy{}).Where("status = 1 AND city_id IN ?", ids).Pluck("city_id", &occIds)
+		for _, id := range occIds {
+			occupied[id] = true
+		}
+		var ranIds []int64
+		h.DB.Model(&model.EzfyRansom{}).Where("status = 0 AND city_id IN ?", ids).Pluck("city_id", &ranIds)
+		for _, id := range ranIds {
+			ransoming[id] = true
+		}
+	}
 	out := make([]ezfyCityView, 0, len(list))
 	for i := range list {
 		out = append(out, ezfyCityView{
@@ -3929,6 +3953,8 @@ func (h *EzfyHandler) cityViews(list []model.EzfyCity) []ezfyCityView {
 			IsSea:     h.isSeaCity(&list[i]),
 			Kind:      h.cityKind(&list[i]),
 			Continent: ezfyRegionName(list[i].X, list[i].Y),
+			Occupied:  occupied[int64(list[i].ID)],
+			Ransoming: ransoming[int64(list[i].ID)],
 		})
 	}
 	return out

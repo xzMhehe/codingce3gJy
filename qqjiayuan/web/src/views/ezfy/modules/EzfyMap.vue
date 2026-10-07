@@ -280,10 +280,10 @@
           </div>
           <div class="old-line red" v-if="!ezfy.attackTroops.length">城内无可出征部队</div>
 
-          <!-- ④ 随军资源 -->
-           <!-- （右侧灰字是城内现有；上限 = 所带兵种负重之和 × 装载技术加成，没带部队时不能填） -->
+          <!-- ④ 随军资源（★ 2026-10-07 所有出征类型都能带：玩家资源多了可随身带出腾仓库/防被抢。
+               从出发城扣除、占部队负重；采集产出入库时不重复入库，返航/召回原样带回） -->
           <div class="of-sec">④ 随军资源
-            <!-- <span class="of-hint">（每行拖滑块或直接填数字；上限 = 所带兵种负重之和 × 装载技术加成；没选部队时禁用）</span> -->
+            <span class="of-hint">（从出发城扣除, 占部队负重；采集产出入库时随身资源不重复入库, 返航随部队带回）</span>
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
@@ -631,6 +631,24 @@
                   <a href="javascript:;" @click="ezfy.doOccupy('build', o)">[建立城市]</a>
                   <a class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
                   <a href="javascript:;" @click="ezfy.doOccupy('return', o)">[放弃归还]</a>
+                </td>
+              </tr>
+            </table>
+            <br/>
+          </template>
+          <!-- ★ 2026-10-07 赎城：原主人花钻石赎回被占城市，需占领方在此同意/拒绝 -->
+          <template v-if="ezfy.ransoms.length">
+            <div class="panel-title">赎城请求({{ ezfy.ransoms.length }})</div>
+            <table>
+              <tr><th>坐标</th><th>城市</th><th>原主人</th><th>金额(钻石)</th><th>操作</th></tr>
+              <tr v-for="rm in ezfy.ransoms" :key="'rm' + rm.id">
+                <td>({{ rm.x }},{{ rm.y }})</td>
+                <td>{{ rm.city_name }}</td>
+                <td>{{ rm.def_user }}</td>
+                <td>{{ rm.cost }}</td>
+                <td>
+                  <a href="javascript:;" @click="ezfy.doRansomHandle(rm, 1)">[同意]</a>
+                  <a class="red" href="javascript:;" @click="ezfy.doRansomHandle(rm, 2)">[拒绝]</a>
                 </td>
               </tr>
             </table>

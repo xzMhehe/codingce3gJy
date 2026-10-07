@@ -547,6 +547,9 @@ export default {
       techSel: null,
       wildlands: [],
       occupies: [],
+      // ★ 2026-10-07 赎城：待占领方处理的赎回请求 + 赎城金额（管理端可配）
+      ransoms: [],
+      ransomCost: 500,
       queues: [],
       marching: 0,
       occupying: 0,
@@ -2177,6 +2180,8 @@ export default {
       //   后端 /view 一直在下发 cities（ezfy.go 的 View → h.cityViews），这里接住即可。
       //   ⚠️ 改 load() 时别再把这一行弄丢：它是 cities 的唯一数据源。
       this.cities = d.cities || []
+      // ★ 2026-10-07 赎城金额（管理端可配，默认 500）：城市列表 [赎城] 确认弹窗展示
+      this.ransomCost = d.ransom_cost || 500
       this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
       this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
       this.continent = d.continent
@@ -3252,6 +3257,8 @@ export default {
         if (r.code === 0) {
           this.wildlands = r.data.wildlands
           this.occupies = r.data.occupies
+          // ★ 2026-10-07 赎城：占领方在「被占领城市」面板处理赎回请求
+          this.ransoms = r.data.ransoms || []
         }
       })
     },
@@ -3753,6 +3760,31 @@ export default {
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
           '确定将城市归还给原玩家吗?')) return
       api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r, '操作已提交'))
+    },
+    // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
+    async doRansom (ct) {
+      const cost = this.ransomCost || 500
+      if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
+        '发起即扣押金, 占领方同意后返还城市(钻石归占领方), 拒绝/撤销则自动退回。')) return
+      api.post('/games/ezfy/city/ransom', { city_id: ct.id }).then(r => {
+        this.alert(r, '赎城请求已提交')
+        this.go('cities')
+      })
+    },
+    async doRansomCancel (ct) {
+      if (!await this.ask(`确定撤销对城市[${ct.name}](${ct.x},${ct.y})的赎城请求吗? 押金将自动退回。`)) return
+      api.post('/games/ezfy/city/ransom/cancel', { city_id: ct.id }).then(r => {
+        this.alert(r, '已撤销')
+        this.go('cities')
+      })
+    },
+    async doRansomHandle (rm, op) {
+      if (!await this.ask(op === 1 ? `确定同意赎城吗? 你将收到 ${rm.cost} 钻石, 城市[${rm.city_name}](${rm.x},${rm.y})将归还原主人。` :
+        `确定拒绝该赎城请求吗? 原主人的 ${rm.cost} 钻石押金将退回。`)) return
+      api.post('/games/ezfy/city/ransom/handle', { ransom_id: rm.id, op }).then(r => {
+        this.alert(r, '已处理')
+        this.loadWilds()
+      })
     },
     // 野地列表 → [采集]：进「出征页」选兵种后再下达命令
     // ★ 原来直接 POST 且没带 troops，后端必然返回「请选择出征部队」，

@@ -1148,16 +1148,18 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return "需先对对方宣战, 宣战生效后方可掠夺/征服"
 		}
 	}
-	// 运输/派遣: 校验随军资源（★ 2026-09-30 扣减移到全部校验通过后，避免「已扣资源但后续
+	// 随军资源校验（★ 2026-09-30 扣减移到全部校验通过后，避免「已扣资源但后续
 	// 司令部上限/目标太近/石油不足 等失败」导致资源凭空消失 —— 用户反馈运输丢资源）
-	if (orderType == 5 || orderType == 8) && hasRes {
+	// ★ 2026-10-07 所有出征类型都能携带随军资源（不止运输/派遣）：
+	//   玩家资源多了可随身带出腾仓库/防被抢，出发城照常扣减；负重上限 = 部队负重。
+	if hasRes {
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
 		if f < 0 || s < 0 || o < 0 || r < 0 || g < 0 {
 			return "资源数量错误"
 		}
-		// ★ 第九轮：运输必须有部队来装（负重决定能运多少），军官可以不带队。
+		// ★ 第九轮：携带资源必须有部队来装（负重决定能带多少），军官可以不带队。
 		if len(validTroops) == 0 {
-			return "运输需要携带部队来装载资源(卡车负重最高)"
+			return "携带资源需要部队来装载(卡车负重最高)"
 		}
 		// ★ 2026-09-28 传 city.ID：负重上限含「装载技术」加成（与出征/采集同一口径）
 		cap := h.ezfyCarryCapOf(validTroops, city.ID)
@@ -1165,7 +1167,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			return fmt.Sprintf("负重不足: 本次要携带%d, 部队负重只有%d(多带卡车可提高)", total, cap)
 		}
 		if city.Food < f || city.Steel < s || city.Oil < o || city.Rare < r || city.Gold < g {
-			return "资源不足,无法运输"
+			return "资源不足,无法携带"
 		}
 	}
 	// 司令部限制（★ 复用快照里的建筑等级）
@@ -1206,9 +1208,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 	city.Oil -= oilCost
 
-	// ★ 2026-09-30 运输/派遣资源在**全部校验通过**后才扣（司令部上限/距离/耗油都过了，
+	// ★ 2026-09-30 随军资源在**全部校验通过**后才扣（司令部上限/距离/耗油都过了，
 	//   不会再出现「失败但资源已扣」的丢资源 bug）
-	if (orderType == 5 || orderType == 8) && hasRes {
+	// ★ 2026-10-07 所有出征类型都扣（不止运输/派遣）——随身带出的资源从出发城扣减
+	if hasRes {
 		city.Food -= resources["food"]
 		city.Steel -= resources["steel"]
 		city.Oil -= resources["oil"]
@@ -1598,10 +1601,19 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	if back < 10000 {
 		back = 10000
 	}
-	// 运输(5)/派遣(8)：随军资源出发时就扣了，取消必须原样带回
+	// ★ 2026-10-07 所有出征类型的随军资源都原样带回（不止运输/派遣）：
+	//   出发时已从城里扣掉，召回/返航时必须带回，否则随身资源凭空消失。
+	//   随身资源并入 Carry：采集部队(驻守采集)的采集产出也在 Carry 里，不能覆盖丢产出。
 	carry := order.Carry
-	if (order.OrderType == 5 || order.OrderType == 8) && strings.TrimSpace(order.Resources) != "" {
-		carry = order.Resources
+	if strings.TrimSpace(order.Resources) != "" {
+		c := parseCarry(order.Carry)
+		r := parseCarry(order.Resources)
+		c.Food += r.Food
+		c.Steel += r.Steel
+		c.Oil += r.Oil
+		c.Rare += r.Rare
+		c.Gold += r.Gold
+		carry = carryJSON(c)
 	}
 	order.Status = 2
 	order.Result = order.Troops
@@ -3464,7 +3476,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// 补给在解锁后执行（不占用守方锁；建城自带 findFreePos 找空位）
 			if needReplenish {
 				newCity := h.replenishCity(target.UserID)
-				report += fmt.Sprintf("\n守方城市已全部被占, 系统已补给新城市[%s](%d,%d)", newCity.Name, newCity.X, newCity.Y)
+				// ★ 2026-10-07 用户反馈「被打飞后战报不该告诉攻击者新坐标」：
+				//   攻方战报不再暴露补给新城市的坐标，避免被追打；守方自己的补偿报告(L3475)保留坐标。
+				report += fmt.Sprintf("\n守方城市已全部被占, 系统已补给新城市[%s]", newCity.Name)
 				h.addReport(target.UserID, 5, "系统补偿新城市",
 					fmt.Sprintf("你的全部城市已被敌方占领!\n系统已补偿一座新城市[%s](%d,%d), 请重新发展。", newCity.Name, newCity.X, newCity.Y), "", 0, newCity.ID)
 			}

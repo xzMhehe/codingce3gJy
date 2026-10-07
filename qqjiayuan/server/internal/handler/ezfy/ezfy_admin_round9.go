@@ -30,6 +30,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
 		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
@@ -244,6 +245,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		MallBuyMax              *int     `json:"mall_buy_max"`
 		ConquerFeelingsMax      *int     `json:"conquer_feelings_max"`
 		LootFeelings            *int     `json:"loot_feelings"`
+		// ★ 2026-10-07 赎城金额（钻石，默认 500；>= 1 才合法）
+		RansomCost *int `json:"ransom_cost"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold           *int64 `json:"placate_gold"`
 		PlacateGrievance      *int   `json:"placate_grievance"`
@@ -329,6 +332,7 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
+		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
 		PlacateGold: ezfyPlacateGoldDef, PlacateGrievance: ezfyPlacateGrievanceDef,
 		PlacateFeelings: ezfyPlacateFeelingsDef, PlacateCooldownMin: ezfyPlacateCooldownDef,
@@ -506,6 +510,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	if !setPos(in.LootFeelings, &lim.LootFeelings, "掠夺单次扣民心") {
+		return
+	}
+	if !setPos(in.RansomCost, &lim.RansomCost, "赎城金额") {
 		return
 	}
 	if !setPos(in.OfficerSalaryPerLevel, &lim.OfficerSalaryPerLevel, "军官工资系数") {
@@ -985,6 +992,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}{
 		{"drop_t2", ezfyDropT2Def}, {"drop_t3", ezfyDropT3Def},
 		{"drop_t4", ezfyDropT4Def}, {"drop_act_pct", ezfyDropActPctDef},
+		// ★ 2026-10-07 赎城金额：老库补列 + NULL/<=0 兜底 500（0 无意义 = 禁止赎城）
+		{"ransom_cost", ezfyRansomCostDefault},
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))

@@ -601,6 +601,17 @@ func ezfySellPriceMax() int {
 	return 100
 }
 
+// ezfyRansomCost 赎城所需钻石（读 ezfy_cfg_limit.ransom_cost，管理端「建筑上限配置」可维护）
+//
+// ★ 2026-10-07 赎城功能。发起即按此金额扣原主人钻石（押金），同意后转给占领方，
+//   拒绝/撤销退回。0 或未配置时回落默认 500（0 无意义 = 禁止赎城）。
+func ezfyRansomCost() int64 {
+	if n := ezfyCfg.limit.RansomCost; n > 0 {
+		return int64(n)
+	}
+	return ezfyRansomCostDefault
+}
+
 // ezfySysSellRatio 向系统出售资源的回收比例（每 100 单位 → 黄金）。
 //
 // ★ 2026-09-30 「玩家可向系统出售资源获得黄金，比例可配置」：
@@ -680,6 +691,7 @@ func ezfyMarchSpeedBonus() float64 {
 const (
 	ezfyConquerFeelingsDef  = 5  // 征服单次最多扣民心（默认 5）
 	ezfyLootFeelingsDef     = 3  // 掠夺每次扣民心（默认 3）
+	ezfyRansomCostDefault   = 500 // 赎城所需钻石（默认 500）
 	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
 	ezfyWoundHealDivisorDef = 50 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 99）

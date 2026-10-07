@@ -168,6 +168,11 @@
               <template slot="label">掠夺单次扣民心<el-tooltip placement="top" :content="tips.loot_feelings"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.loot_feelings" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-07 赎城金额（被占城市原主人赎回押金，同意后归占领方） -->
+            <el-form-item>
+              <template slot="label">赎城金额(钻石)<el-tooltip placement="top" :content="tips.ransom_cost"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.ransom_cost" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-09-28 用户规则：安抚固定花费 + 冷却，四个值都可配 -->
             <el-divider content-position="left">安抚（民心/民怨）</el-divider>
             <el-form-item>
@@ -315,7 +320,7 @@ export default {
         officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
-        conquer_feelings_max: 2, loot_feelings: 2,
+        conquer_feelings_max: 2, loot_feelings: 2, ransom_cost: 500,
         // ★ 2026-09-28 安抚参数（黄金 / 民怨- / 民心+ / 冷却分钟），默认 5万 / 2 / 1 / 15
         placate_gold: 50000, placate_grievance: 2, placate_feelings: 1, placate_cooldown_min: 15,
         officer_salary_per_level: 20, wound_heal_divisor: 100,
@@ -371,6 +376,7 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
+        ransom_cost: '被占城市原主人发起赎城需先支付的钻石押金（发起即扣，拒绝/撤销自动退回，同意返还后归占领方），默认 500',
         // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
         placate_gold: '每次安抚消耗的黄金，默认 5 万',
         placate_grievance: '每次安抚降低多少民怨（民怨 > 0 会持续掉人口），默认 2',
@@ -474,6 +480,7 @@ export default {
               ? 0 : Number(r.data.march_speed_bonus),
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
+            ransom_cost: pos(r.data.ransom_cost, 500),
             // ★ 2026-09-28 安抚参数：0 无意义 → pos 各自回落默认
             placate_gold: pos(Number(r.data.placate_gold) || 0, 50000),
             placate_grievance: pos(r.data.placate_grievance, 2),

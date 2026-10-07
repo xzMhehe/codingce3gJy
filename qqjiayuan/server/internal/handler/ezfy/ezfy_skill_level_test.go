@@ -300,6 +300,40 @@ func TestAtkDefBonusWired(t *testing.T) {
 	}
 }
 
+// TestCarryResAllOrderTypes 随军资源**所有出征类型**都能携带（不止运输/派遣）：
+//   - createOrder 扣出发城资源不看 orderType（if hasRes 就扣）；
+//   - 召回/返航随身资源原样带回（并入 Carry，采集产出不丢）；
+//   - 前端随军资源块对所有类型显示并带提示。
+//
+// 背景：玩家资源多了可随身带出腾仓库/防被抢；只有 5/8 能带会造成「订单成功但资源没扣」的体感 bug。
+func TestCarryResAllOrderTypes(t *testing.T) {
+	order := rawFile(t, "ezfy_order.go")
+	if strings.Contains(order, "仅运输/派遣可携带随军资源") {
+		t.Fatalf("ezfy_order.go 仍残留「非运输/派遣拒绝」逻辑, 应支持所有类型带资源")
+	}
+	if strings.Contains(order, "if hasRes && orderType != 5 && orderType != 8") {
+		t.Fatalf("ezfy_order.go 仍残留 5/8 限定扣减条件")
+	}
+	if !strings.Contains(order, "if hasRes {") {
+		t.Fatalf("ezfy_order.go 缺「所有类型 hasRes 都扣出发城资源」")
+	}
+	if !strings.Contains(order, "c := parseCarry(order.Carry)") || !strings.Contains(order, "r := parseCarry(order.Resources)") {
+		t.Fatalf("ezfy_order.go 召回未把随身资源并入 Carry（采集产出会丢）")
+	}
+	// 前端：随军资源对所有类型显示（不含 5/8 限定）+ 提示文案
+	web, err := os.ReadFile("../../../../web/src/views/ezfy/modules/Ezfymap.vue")
+	if err != nil {
+		t.Fatalf("读前端 Ezfymap.vue 失败: %v", err)
+	}
+	ws := string(web)
+	if strings.Contains(ws, `v-if="ezfy.orderType === 5 || ezfy.orderType === 8"`) {
+		t.Fatalf("Ezfymap.vue 仍把随军资源限定在 运输/派遣")
+	}
+	if !strings.Contains(ws, "采集产出入库时随身资源不重复入库") {
+		t.Fatalf("Ezfymap.vue 随军资源缺简洁提示")
+	}
+}
+
 // TestWildDefSkillBonus 野地/寇城守将防御类技能（弧形防御/弹幕支援）计入守军防御加成并逐项拆解。
 func TestWildDefSkillBonus(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
