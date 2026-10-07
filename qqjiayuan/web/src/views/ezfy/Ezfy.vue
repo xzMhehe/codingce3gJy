@@ -49,6 +49,7 @@
 
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
+        <div class="home-body">
         <!-- ★ 只有【置顶】公告展示到首页外边；普通公告进「公告」页看。
              外面包一层 .ezfy-notices 只为统一它与上下两行的间距(见样式表注释)。 -->
         <div class="ezfy-notices" v-if="topNotices.length">
@@ -69,10 +70,7 @@
           <a href="javascript:;" @click="go('corps')" v-else>[{{ myCorps.name }}]</a>
         </div>
         <div class="old-line">声望: {{ profile.prestige }}</div>
-        <div class="old-line">
-          <span v-html="rankIcon(myRankId)"></span>
-          <a href="javascript:;" @click="go('rank')">军衔</a>: {{ rankName }}
-        </div>
+        <div class="old-line"><span v-html="rankIcon(myRankId)"></span><a href="javascript:;" @click="go('rank')">军衔</a>: {{ rankName }}</div>
         <div class="old-line">每日签到: <a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a></div>
 
         <div class="old-line home-nav2">
@@ -84,8 +82,7 @@
           <a href="javascript:;" @click="go('info')">统帅</a>
         </div>
         <div class="old-line">现有资源/产量:
-          <a href="javascript:;" @click="go('exchange')">购买</a><span class="home-gap"></span>
-          <a href="javascript:;" @click="go('mall')">增产</a>
+          <a href="javascript:;" @click="go('exchange')">购买</a><span class="home-gap"></span><a href="javascript:;" @click="go('mall')">增产</a>
         </div>
         <div class="old-line">
           <span :title="resNames.gold"><svg class="ezfy-ico" viewBox="0 0 20 20" role="img"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6.4 5.8 L10 10.3 L13.6 5.8" stroke-width="1.6"/><path d="M10 6 V14.2" stroke-width="1.6"/><path d="M7.6 8.9 H12.4" stroke-width="1.4"/><path d="M7.6 11.7 H12.4" stroke-width="1.4"/></g></svg></span>
@@ -130,9 +127,7 @@
           <a href="javascript:;" @click="go('troop')">[造兵]</a><span class="home-gap"></span><a href="javascript:;" @click="go('defence')">[建防]</a>
         </div>
         <div class="old-line">
-          前往
-          <a href="javascript:;" @click="go('map')">地图</a>
-          出征
+          前往 <a href="javascript:;" @click="go('map')">地图</a> 出征
         </div>
         <div class="old-line">
           <a href="javascript:;" @click="go('citystatus')">城市状态</a><span class="home-gap"></span><a href="javascript:;" @click="go('wilds')">附属野地</a>
@@ -154,6 +149,7 @@
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
+        </div>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -3011,13 +3007,17 @@ export default {
       const axis = camp === 2
       const bg = axis ? '#1E2A38' : '#E7ECF1'
       const fg = axis ? '#fff' : '#2A3646'
+      // ★ 2026-10-07 图标外观优化（用户：「图标还是丑」）：
+      //   ① 外框加一圈细描边 —— 原来只有一块实心浅灰，边界发糊、像「脏方块」；
+      //   ② 阵营角标放大（0.32→0.42）并贴角，避免在小画布上糊成噪点。
+      const edge = axis ? '#3E5170' : '#C3D0DD'
       const mk = (inner) =>
         '<svg class="ezfy-ico" viewBox="0 0 20 20" role="img">' +
-        '<rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="' + bg + '"/>' +
+        '<rect x="0.6" y="0.6" width="18.8" height="18.8" rx="3.6" fill="' + bg + '" stroke="' + edge + '" stroke-width="0.7"/>' +
         '<g fill="' + fg + '">' + inner.replace(/\{B\}/g, bg) + '</g>' +
         (axis
-          ? '<g fill="#C9CFD6" transform="translate(13.6 3) scale(0.34)"><path d="M10 2.5 L14 5.5 L18.5 5.5 L14.5 10 L18.5 14.5 L14 14.5 L10 17.5 L6 14.5 L1.5 14.5 L5.5 10 L1.5 5.5 L6 5.5 Z"/></g>'
-          : '<g fill="#D9A320" transform="translate(14.1 2.7) scale(0.32)"><path d="M10 0 L12.4 5.2 L18 5.7 L13.9 9.3 L15.4 14.8 L10 11.9 L4.6 14.8 L6.1 9.3 L2 5.7 L7.6 5.2 Z"/></g>') +
+          ? '<g fill="#C9CFD6" transform="translate(13.2 2.4) scale(0.42)"><path d="M10 2.5 L14 5.5 L18.5 5.5 L14.5 10 L18.5 14.5 L14 14.5 L10 17.5 L6 14.5 L1.5 14.5 L5.5 10 L1.5 5.5 L6 5.5 Z"/></g>'
+          : '<g fill="#D9A320" transform="translate(13.4 2.2) scale(0.42)"><path d="M10 0 L12.4 5.2 L18 5.7 L13.9 9.3 L15.4 14.8 L10 11.9 L4.6 14.8 L6.1 9.3 L2 5.7 L7.6 5.2 Z"/></g>') +
         '</svg>'
       switch (id) {
         case 1: // 步兵·钢盔士兵 + 肩挎步枪
@@ -6056,6 +6056,12 @@ body.ezfy-ios .ezfy-page textarea {
   padding: 0 1px;
 }
 .ezfy-page .old-line.home-nav2 a.on { color: #000; font-weight: bold; }
+/* ★ 2026-10-07 首页曾经给关键区块加过 .home-block 的 10px 分组留白，
+   用户要求「间隔去掉」→ 已全部移除。
+   现在首页是**完全连续的一列**，不再有任何人为分组间距。 */
+/* 首页内容容器：行距比原版 1.5 略紧一点（用户：「比之前紧凑了是吧，上下间隔大一点点」→ 取 1.45）。
+   只作用于首页，不影响其它页面。 */
+.ezfy-page .home-body { line-height: 1.45; }
 /* 军衔/排行页所有表格：数据水平 + 垂直居中（）*/
 /* ★ 排行页四个表格统一宽度（「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
    width:50% 占 panel 一半宽度，table-layout:fixed 配合各表 colgroup 比例分列，长文本自动折行 */
@@ -6626,6 +6632,22 @@ body.ezfy-ios .ezfy-page textarea {
   vertical-align: middle;
 }
 .ezfy-page table.ezfy-center-tbl td a { margin: 0 3px; }
+/* ★ 2026-10-07 图标列（城内军队表）：原来是 width:22px + padding:0，图标紧贴「兵种」列，
+   用户反馈「图标和兵种列贴的有点近，稍微远一点点」→ 右侧留 10px（列宽 32 = 图标 22 + 间距 10）。 */
+.ezfy-page table.ezfy-center-tbl th.ico-cell,
+.ezfy-page table.ezfy-center-tbl td.ico-cell {
+  width: 32px;
+  padding: 2px 10px 2px 0;
+  text-align: left;
+}
+/* ★ 2026-10-07 军队页图标放大：全局 .ezfy-ico 是 18px，画 20×20 的兵种图形细节会糊成一团
+   （用户：「图标还是丑」）→ 这张表里单独放到 22px 并垂直居中。只影响城内军队表，不动全局。 */
+.ezfy-page table.ezfy-center-tbl .ezfy-ico {
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  margin-right: 0;
+}
 /* ★ 2026-09-25 「展示兵种名字的列」「军官装备名称的列」以前是整列居中，看着丑 →
    **单元格内容改成左对齐 + 垂直居中**；**表头 th 保持居中不变**。
    用法：给这些「名称类」单元格加 class="nm"（不是按列号，按语义，加列/挪列都不会失效）。

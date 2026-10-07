@@ -63,11 +63,13 @@
         <div class="panel">
           <div class="panel-title">城内军队</div>
           <!-- ★ 2026-10-06 城内军队加「图标」列：图标黑白配色(参考首页资源图标) -->
+          <!-- ★ 2026-10-07 图标列：原来 width:22px + padding:0，图标紧贴「兵种」列 →
+               用户反馈「图标和兵种列贴的有点近」→ 改用 .ico-cell（右侧留 10px）。 -->
           <table class="ezfy-center-tbl">
-            <tr><th class="nm" style="width:22px">图标</th><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
+            <tr><th class="nm ico-cell">图标</th><th class="nm">兵种</th><th>数量</th><th>操作</th></tr>
             <!-- ★ 2026-09-28 首页点「军队」要能看到全部兵种（数量为 0 的也显示），每行后跟训练操作 -->
             <tr v-for="t in ezfy.armyRows" :key="'tv' + t.id">
-              <td style="width:22px;padding:0"><span v-html="ezfy.troopIco(t)"></span></td>
+              <td class="ico-cell"><span v-html="ezfy.troopIco(t)"></span></td>
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a></td>
               <td>{{ t.count }}</td>
               <td>
