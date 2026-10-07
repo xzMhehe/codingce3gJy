@@ -383,8 +383,11 @@
             <div class="old-line">奖池（{{ ezfy.chestOpen.pool.length }} 项）<span class="gray">（点奖品名可查看具体属性）</span>：</div>
             <table class="ezfy-plain-table">
               <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
-              <template v-for="(p, i) in ezfy.chestOpen.pool" :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
-                <tr>
+              <!-- ★ 2026-10-07 修复编译错误：Vue 2 的 <template> 上不能带 :key
+                   （报「<template> cannot be keyed」），key 必须放在内部的真实元素上。
+                   这里 template 里有两个 <tr>（主行 + 展开的详情行），各自带 key。 -->
+              <template v-for="(p, i) in ezfy.chestOpen.pool">
+                <tr :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
                   <td>
                     <a href="javascript:;"
                        :class="{ on: ezfy.chestOpenDetailIdx === i }"
@@ -393,7 +396,7 @@
                   <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
                 </tr>
-                <tr v-if="ezfy.chestOpenDetailIdx === i">
+                <tr v-if="ezfy.chestOpenDetailIdx === i" :key="'cpod' + i">
                   <td colspan="4" class="gray">{{ p.detail || '（无更多说明）' }}</td>
                 </tr>
               </template>

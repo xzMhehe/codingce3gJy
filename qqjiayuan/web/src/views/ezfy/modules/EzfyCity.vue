@@ -6,8 +6,16 @@
           <div class="old-line" v-for="ct in ezfy.cities" :key="'ct' + ct.id">
             <!-- ★ 2026-09-29 城市列表改版：一行一座城 = 城市名(坐标)；点城市名**切换**；
                  [运输][派遣][弃城] 只在非当前城显示（当前城无操作） -->
-            <a v-if="ct.id !== ezfy.city.id" class="city-name" href="javascript:;" @click="ezfy.doSwitch(ct)" title="切换为当前城市">{{ ct.name }}</a>({{ ct.x }},{{ ct.y }})
-            <span v-else class="city-name">{{ ct.name }}</span>({{ ct.x }},{{ ct.y }})
+            <!-- ★ 2026-10-07 修复编译错误：v-if / v-else 之间不能夹文本，
+                 原来写成 `<a v-if>…</a>(坐标)` + `<span v-else>…</span>(坐标)`，
+                 Vue 2 报「text between v-if and v-else will be ignored」。
+                 改成各自用 <template> 包住，坐标仍留在链接/文字**外面**（不变成可点区域）。 -->
+            <template v-if="ct.id !== ezfy.city.id">
+              <a class="city-name" href="javascript:;" @click="ezfy.doSwitch(ct)" title="切换为当前城市">{{ ct.name }}</a>({{ ct.x }},{{ ct.y }})
+            </template>
+            <template v-else>
+              <span class="city-name">{{ ct.name }}</span>({{ ct.x }},{{ ct.y }})
+            </template>
             <template v-if="ct.id !== ezfy.city.id && !ct.occupied">
               <a href="javascript:;" @click="ezfy.doTransportTo(ct)">[运输]</a>
               <a href="javascript:;" @click="ezfy.doDispatchTo(ct)">[派遣]</a>
