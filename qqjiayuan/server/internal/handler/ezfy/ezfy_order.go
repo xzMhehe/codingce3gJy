@@ -1866,14 +1866,21 @@ func (h *EzfyHandler) cityOfOrder(order *model.EzfyOrder, uid uint) *model.EzfyC
 }
 
 func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
+	// ★ 2026-10-07 修复「打完自己兵力会翻倍」：返航归队（战斗剩余兵力 addTroop 回城）原先
+	//   没有并发守卫。两实例/重复触发的 processOrders 同时判定「status=2 且已到 return_time」
+	//   时，各自执行一次 finishReturn → 剩余兵力被加进城市 **两次** = 玩家看到兵力翻倍。
+	//   现在先原子抢占 status 2→3：谁抢到（RowsAffected=1）谁归还，抢不到的整段跳过。
+	if res := h.DB.Model(&model.EzfyOrder{}).Where("id = ? AND status = 2", order.ID).
+		Update("status", 3); res.RowsAffected != 1 {
+		return
+	}
 	left := parseGroups(order.Result)
 	city := h.cityOfOrder(order, uid)
 	for _, g := range left {
 		if g.Count > 0 {
 			h.addTroop(city.ID, g.TroopId, g.Count)
 		}
-	}
-	// ★ 部队带回的采集资源在这里入城
+	} // 部队带回的采集资源在这里入城
 	// ★ 2026-09-24 用户反馈「运输/采集资源变少」：同上，把整行写回改成 DB 原子累加，
 	//   不覆盖这期间其它写入的增量。
 	//   ★ 2026-09-24 规则修正（用户确认原版口径）：入城资源不受仓储上限截断，

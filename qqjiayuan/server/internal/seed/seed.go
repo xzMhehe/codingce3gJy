@@ -2862,6 +2862,22 @@ func seedShop(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyRansomTable 幂等补建 ezfy_ransom 赎城请求表。
+//
+// ★ 2026-10-07 线上事故：ezfy_ransom 只注册在 seed.Run 的 AutoMigrate 列表里，
+//   「多机共享库（config 里 seed.skip: true）」启动会跳过整个 seed.Run → 表永远建不出来，
+//   赎城查询/发起直接报 `Error 1146 (42S02): Table 'qq_jiayuan.ezfy_ransom' doesn't exist`。
+//   与 EnsureEzfyLimitColumns 同理：server 启动的 skip 分支也要跑这一段
+//   （HasTable 幂等，两台同时启动也不会冲突）。
+func EnsureEzfyRansomTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyRansom{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyRansom{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_ransom 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyLimitColumns 幂等补 ezfy_cfg_limit 的新配置列。
 //
 // ★ 2026-10-05 多机共享库（config 里 seed.skip: true）启动会**跳过整个 seed.Run**，

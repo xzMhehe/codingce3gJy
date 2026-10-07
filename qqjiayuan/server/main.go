@@ -31,6 +31,9 @@ func main() {
 		// ★ 2026-10-05 多机共享库跳过全量 seed 时，新配置列仍要幂等补上
 		//   （gold_prod_mult 等），否则管理端保存报 Unknown column / 黄金产量归零。
 		seed.EnsureEzfyLimitColumns(db)
+		// ★★ 2026-10-07 线上事故：ezfy_ransom 赎城请求表只注册在 seed.Run 的 AutoMigrate 里，
+		//   skip 分支不补 → 查询/发起赎城直接报 Error 1146 表不存在。
+		seed.EnsureEzfyRansomTable(db)
 		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，
 		//   skip 分支不补 → 所有军官 INSERT 报 1054、战俘/招募全部静默失败。
 		seed.EnsureEzfyOfficerColumns(db)
