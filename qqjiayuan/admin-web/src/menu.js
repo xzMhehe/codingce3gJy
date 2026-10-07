@@ -293,7 +293,8 @@ export const menu = [
           { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
           // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
-          { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notice-board', component: AdminEzfyReports, perm: 'module:ezfyLogs' },
+          //   ★ 2026-10-07 图标 el-icon-notice-board 在 Element UI 2.15 里不存在 → 图标空白，改用 notebook-2
+          { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: AdminEzfyReports, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
         ]

@@ -149,6 +149,22 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "threads", "idx_thread_user_status", "user_id,status", false)
 	ensureEzfyIndex(db, "replies", "idx_reply_thread_status", "thread_id,status", false)
 	ensureEzfyIndex(db, "replies", "idx_reply_user_status", "user_id,status", false)
+
+	ezfyBackfillReportCityId(db)
+}
+
+// ezfyBackfillReportCityId 战报 city_id 兜底回填（幂等）。
+//
+// ★ 2026-10-07：city_id 是后加字段。AutoMigrate 给存量表补列时，若字段没写 default，
+//   建出来的是可空列 → 6000+ 历史行全是 NULL → GORM 扫进 int64 直接报
+//   `converting NULL to int64 is unsupported`，战报/军情接口整体 500。
+//   model 已补 `default:0`；这里再兜一次，确保历史行落成 0（口径 =「待解析」，
+//   军情按城过滤时走 ezfyCityReportCond 的坐标反查分支）。
+//   同款样板见 seed.go 的 `UPDATE ezfy_profile SET current_city_id = 0 WHERE ... IS NULL`。
+func ezfyBackfillReportCityId(db *gorm.DB) {
+	if err := db.Exec("UPDATE ezfy_report SET city_id = 0 WHERE city_id IS NULL").Error; err != nil {
+		log.Printf("ezfy 战报 city_id 回填失败: %v", err)
+	}
 }
 
 // ensureEzfyIndex 幂等补建普通索引。GORM AutoMigrate 对存量表只补列/主键，

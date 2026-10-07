@@ -929,11 +929,22 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	q := h.DB.Model(&model.EzfyReport{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ?", uid)
+			// ★ 2026-10-07 数字既可能是 user_id，也可能是「玩家在游戏里看到的游戏ID」(game_uid，
+			//   首次=家园ID、之后与 user_id 解耦)，还可能是列表里展示的账号名(users.username)。
+			//   三者都匹配，否则管理员拿玩家报的家园号查不到战报。
+			//   口径同「钻石流水」「道具使用」两页（AdminEzfyDiamondLogs / AdminEzfyItemUseLogs）。
+			q = q.Where(`user_id = ?
+				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)
+				OR user_id IN (SELECT id FROM users WHERE username = ?)`, uid, uid, word)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
+			// ★ 账号名(users.username)也一起匹配（列表「家园号」列展示的就是它）
+			var uids []uint
+			h.DB.Model(&model.User{}).Select("id").
+				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
+			ids = append(ids, uids...)
 			if len(ids) > 0 {
 				q = q.Where("user_id IN ?", ids)
 			} else {

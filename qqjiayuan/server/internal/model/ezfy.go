@@ -908,7 +908,9 @@ func (EzfyBattle) TableName() string { return "ezfy_battle" }
 type EzfyReport struct {
 	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID     uint   `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
-	CityId     int64  `gorm:"index:idx_user_city;comment:所属城市ID(军情按当前城过滤, 0=旧数据待解析)" json:"city_id"`
+	// ★ 2026-10-07 补 default:0：此前无 default → AutoMigrate 建的是可空列，
+	//   存量 6000+ 行会变 NULL，GORM 扫进 int64 直接报 converting NULL to int64。
+	CityId     int64  `gorm:"index:idx_user_city;default:0;comment:所属城市ID(军情按当前城过滤, 0=旧数据待解析)" json:"city_id"`
 	OrderId    int64  `gorm:"comment:订单ID" json:"order_id"`
 	ReportType int    `gorm:"comment:1侦察 2掠夺 3征服 4战斗 5采集/派遣 6系统" json:"report_type"` // 1侦察 2掠夺 3征服 4战斗 5采集/派遣 6系统
 	Title      string `gorm:"type:varchar(255);comment:标题" json:"title"`
