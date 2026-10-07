@@ -1395,12 +1395,12 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	occViews := []gin.H{}
 	for _, o := range occupies {
 		occViews = append(occViews, gin.H{"id": o.ID, "x": o.X, "y": o.Y,
-			"city_name": o.CityName, "def_user": nick[o.DefUserId]})
+			"city_id": o.CityId, "city_name": o.CityName, "def_user": nick[o.DefUserId]})
 	}
 	ransomViews := []gin.H{}
 	for _, r := range ransoms {
 		ransomViews = append(ransomViews, gin.H{"id": r.ID, "x": r.X, "y": r.Y,
-			"city_name": r.CityName, "def_user": nick[r.DefUserId], "cost": r.Cost})
+			"city_id": r.CityId, "city_name": r.CityName, "def_user": nick[r.DefUserId], "cost": r.Cost})
 	}
 	data := gin.H{"city": city, "wildlands": wildViews, "occupies": occViews, "ransoms": ransomViews,
 		"hall_level": hallLevel}

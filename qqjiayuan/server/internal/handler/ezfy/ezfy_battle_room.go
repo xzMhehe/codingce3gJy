@@ -171,6 +171,50 @@ func (h *EzfyHandler) ezfyBattleStart(uid uint, order *model.EzfyOrder,
 	return b
 }
 
+// ezfyBattleAutoFinish 非玩家目标（活动野地/活动寇城/特殊城市/普通野地/AI 寇城）**抵达即自动结算**：
+// 直接按默认指令把战场跑完（不建「等待指挥」的战场），返回结果 br。
+//
+// ★ 2026-10-07 用户反馈「线上活动野地一直等在队列」：原来这类战斗先 ezfyBattleStart 开战场
+//
+//	等玩家进指挥室点交战，玩家不开/不在线 → 战场冻结在“战斗中”、order 占着目标
+//	(ezfyOrderTargetBusy) → 同格后续玩家部队全堵在「等待(6)」。
+//	守方没有真人、没必要等对局，改成到达即自动打完；玩家城（真人守方）仍走 ezfyBattleStart。
+//
+// 攻打历史：结束后在 ezfy_battle 留一条**终态(status=2)**记录（管理端「攻打历史」要查这里），
+// 幂等 —— 同订单已有战场行不重复建（避免 processOrders 每个 tick 重复结算时刷多行）。
+func (h *EzfyHandler) ezfyBattleAutoFinish(uid uint, order *model.EzfyOrder,
+	st *ezfyBattleState, targetName string, now int64) ezfyBattleResult {
+	for !st.Done {
+		st.Step(nil, nil)
+	}
+	br := st.Result()
+	if h.ezfyBattleByOrder(int64(order.ID)) == nil {
+		defUID := uint(0)
+		if order.TargetType == 3 {
+			var tc model.EzfyCity
+			if err := h.DB.First(&tc, order.TargetId).Error; err == nil {
+				defUID = tc.UserID
+			}
+		}
+		win := 2
+		if br.AttackerWin {
+			win = 1
+		} else if br.Draw {
+			win = 3
+		}
+		b := &model.EzfyBattle{
+			OrderId: int64(order.ID), UserID: uid, CityId: order.CityId,
+			TargetType: order.TargetType, TargetId: order.TargetId,
+			TargetX: order.TargetX, TargetY: order.TargetY, TargetName: targetName,
+			Status: 2, Round: br.Rounds, Win: win,
+			DefUserID: defUID, State: ezfyBattleSnapshotEncode(st.Snapshot()),
+			RoundStart: now,
+		}
+		h.DB.Create(b)
+	}
+	return br
+}
+
 // ezfyBattleTick 懒推进：把「已经到点」的回合逐回合结算掉。
 //
 // 返回最新快照 + 是否已结束。守方无指令时按司令部兵种配置行动，
@@ -250,17 +294,18 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 // BgTickBattles 后台兜底推进所有「战斗中」战场 + 自动放行「等待」订单（服务启动时常驻 goroutine）。
 //
 // ★ 2026-10-01 线上 bug：活动野地/活动寇城/特殊城市的战场 def_user_id=0，
-//   没有「守方轮询」兜底，只靠攻方本人轮询懒结算 —— 攻方中途下线，战场就
-//   永久冻结在 status=5（差几回合打不完），同目标排队的「等待(6)」订单因
-//   ezfyOrderTargetBusy 判定忙碌而永远放行不了，玩家看到「一直等待」。
-//   这里周期性找出「有活跃战场」+「有等待订单」的 uid，统一复用 processOrders(uid)——
-//   它与玩家在线轮询走同一套逻辑：
-//     1) 战斗中战场 → ezfyBattleTick 按 30 秒/回合自动推进（默认指令前进），
-//        打到 40 回合耗尽或一方全灭即结束，ezfyBattleFinishToOrder 回写 + processArrive 结算；
-//     2) 等待订单 → 目标不再忙时自动放行重新进指挥，**即使该玩家也离线**，
-//        整条排队队列按 id 先后逐场打下去，不再互相卡住。
-//   processOrders 内部自带 enterProcess 防重入 + processArrive 的 CAS 抢占，
-//   与玩家在线轮询天然互斥，不会重复结算。
+//
+//	没有「守方轮询」兜底，只靠攻方本人轮询懒结算 —— 攻方中途下线，战场就
+//	永久冻结在 status=5（差几回合打不完），同目标排队的「等待(6)」订单因
+//	ezfyOrderTargetBusy 判定忙碌而永远放行不了，玩家看到「一直等待」。
+//	这里周期性找出「有活跃战场」+「有等待订单」的 uid，统一复用 processOrders(uid)——
+//	它与玩家在线轮询走同一套逻辑：
+//	  1) 战斗中战场 → ezfyBattleTick 按 30 秒/回合自动推进（默认指令前进），
+//	     打到 40 回合耗尽或一方全灭即结束，ezfyBattleFinishToOrder 回写 + processArrive 结算；
+//	  2) 等待订单 → 目标不再忙时自动放行重新进指挥，**即使该玩家也离线**，
+//	     整条排队队列按 id 先后逐场打下去，不再互相卡住。
+//	processOrders 内部自带 enterProcess 防重入 + processArrive 的 CAS 抢占，
+//	与玩家在线轮询天然互斥，不会重复结算。
 //
 // 性能：每 15 秒 2 条索引查询（status=1 战场 / status=6 等待订单，均很小），
 // 再对命中的少数 uid 各跑一次 processOrders；无战斗无排队时仅 8 次廉价查询/分钟。

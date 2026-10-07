@@ -621,36 +621,38 @@
           </table>
           <div class="old-line" v-if="!ezfy.wildlands.length">(尚未占领任何野地)</div>
           <br/>
-          <template v-if="ezfy.occupies.length">
+          <!-- ★ 2026-10-07 赎城审批并入「被占领城市」面板：原主人申请赎回时，在此同意/拒绝 -->
+          <template v-if="ezfy.occupies.length || ezfy.ransoms.length">
             <div class="panel-title">被占领城市({{ ezfy.occupies.length }})</div>
             <table>
-              <tr><th>坐标</th><th>城市</th><th>原属</th><th>操作</th></tr>
+              <tr><th>坐标</th><th>城市</th><th>原属</th><th>赎城申请</th><th>操作</th></tr>
               <tr v-for="o in ezfy.occupies" :key="'oc' + o.id">
                 <td>({{ o.x }},{{ o.y }})</td>
                 <td>{{ o.city_name }}</td>
                 <td>{{ o.def_user }}</td>
                 <td>
+                  <span v-if="ezfy.ransomOf(o.city_id)" class="gray">待审({{ ezfy.ransomOf(o.city_id).cost }}钻)</span>
+                  <span v-else class="gray">—</span>
+                </td>
+                <td>
                   <a href="javascript:;" @click="ezfy.doOccupy('build', o)">[建立城市]</a>
                   <a class="red" href="javascript:;" @click="ezfy.doOccupy('destroy', o)">[摧毁]</a>
                   <a href="javascript:;" @click="ezfy.doOccupy('return', o)">[放弃归还]</a>
+                  <template v-if="ezfy.ransomOf(o.city_id)">
+                    <a href="javascript:;" @click="ezfy.doRansomHandle(ezfy.ransomOf(o.city_id), 1)">[同意赎城]</a>
+                    <a class="red" href="javascript:;" @click="ezfy.doRansomHandle(ezfy.ransomOf(o.city_id), 2)">[拒绝赎城]</a>
+                  </template>
                 </td>
               </tr>
-            </table>
-            <br/>
-          </template>
-          <!-- ★ 2026-10-07 赎城：原主人花钻石赎回被占城市，需占领方在此同意/拒绝 -->
-          <template v-if="ezfy.ransoms.length">
-            <div class="panel-title">赎城请求({{ ezfy.ransoms.length }})</div>
-            <table>
-              <tr><th>坐标</th><th>城市</th><th>原主人</th><th>金额(钻石)</th><th>操作</th></tr>
-              <tr v-for="rm in ezfy.ransoms" :key="'rm' + rm.id">
+              <!-- 兜底：申请对应的城市已不在占领列表(被建立城市/摧毁/归还等并发), 也允许审批 -->
+              <tr v-for="rm in ezfy.orphanRansoms()" :key="'rm' + rm.id">
                 <td>({{ rm.x }},{{ rm.y }})</td>
                 <td>{{ rm.city_name }}</td>
                 <td>{{ rm.def_user }}</td>
-                <td>{{ rm.cost }}</td>
+                <td><span class="gray">待审({{ rm.cost }}钻)</span></td>
                 <td>
-                  <a href="javascript:;" @click="ezfy.doRansomHandle(rm, 1)">[同意]</a>
-                  <a class="red" href="javascript:;" @click="ezfy.doRansomHandle(rm, 2)">[拒绝]</a>
+                  <a href="javascript:;" @click="ezfy.doRansomHandle(rm, 1)">[同意赎城]</a>
+                  <a class="red" href="javascript:;" @click="ezfy.doRansomHandle(rm, 2)">[拒绝赎城]</a>
                 </td>
               </tr>
             </table>

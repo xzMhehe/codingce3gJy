@@ -3763,6 +3763,15 @@ export default {
       api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r, '操作已提交'))
     },
     // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
+    // 按城市ID找待处理的赎城申请（无则 null），供「被占领城市」面板行内审批
+    ransomOf (cityId) {
+      return this.ransoms.find(r => r.city_id === cityId) || null
+    },
+    // 申请对应的城市已不在占领列表（被建立城市/摧毁/归还等并发残留），兜底行仍可审批
+    orphanRansoms () {
+      const occ = new Set(this.occupies.map(o => o.city_id))
+      return this.ransoms.filter(r => !occ.has(r.city_id))
+    },
     async doRansom (ct) {
       // ★ 2026-10-07 卡控连点：请求未返回前再次点击直接忽略，且成功后立即乐观置 ransoming
       //   （按钮立刻变 [撤赎城]），配合后端事务+行锁，杜绝「赎城能一直扣」。

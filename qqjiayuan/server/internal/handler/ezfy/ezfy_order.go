@@ -2900,21 +2900,24 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
-		// ★ 2026-09-23 目标被别的玩家抢先指挥时，本部队改为「等待」，
-		//   不重复开指挥室。上一场打完(那个订单不再处于战斗中)后，processOrders 会自动放行重进。
-		if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
+		// ★ 2026-10-07 非玩家目标（普通野地/AI 寇城，target==nil）**抵达即自动结算**：
+		//   守方没有真人，不再开战场等玩家指挥（否则玩家不开/不在线 → 部队占着目标
+		//   「等待(6)」排队，跟活动野地一样把后面的人全堵住）。玩家城（真人守方）
+		//   仍走下方「目标忙→等待 / 开战场等指挥」流程。
+		if target == nil {
+			br = h.ezfyBattleAutoFinish(uid, order, st, targetName, now)
+		} else if ezfyOrderTargetBusy(h, order, int64(order.ID)) {
 			order.Status = ezfyOrderStatusWaiting
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Update("status", ezfyOrderStatusWaiting)
 			return
-		}
-		if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
+		} else if b := h.ezfyBattleStart(uid, order, st, targetName, now); b != nil {
 			order.Status = ezfyOrderStatusBattle
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Update("status", ezfyOrderStatusBattle)
-			// ★ 2026-09-23 「敌人来了没提示 / 军情警讯不及时」：
-			//   敌军**到达**我方城市开战时，立即给守方发一条「军情警讯」。
-			//   （「敌军来袭」预警已在 createOrder 时发；这里补「已抵达」的实时消息，
+				// ★ 2026-09-23 「敌人来了没提示 / 军情警讯不及时」：
+				//   敌军**到达**我方城市开战时，立即给守方发一条「军情警讯」。
+				//   （「敌军来袭」预警已在 createOrder 时发；这里补「已抵达」的实时消息，
 			//   不依赖雷达站 —— 结果类消息不受雷达限制。）
 			// ★ 2026-09-25 「军情警讯里要看到对面城市名字和地址」→ 这里带上**坐标**，
 			//   并且写进标题（列表只显示标题，不点进去也要看得见）。这条是「人已经到了」的事后
@@ -2930,12 +2933,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
 			//   再发一条战报只会把战斗报告列表搅乱。
 			return
+		} else {
+			// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
+			for !st.Done {
+				st.Step(nil, nil)
+			}
+			br = st.Result()
 		}
-		// 开战场失败（极端情况：写库异常）→ 兜底走老流程直接模拟，绝不让部队卡住
-		for !st.Done {
-			st.Step(nil, nil)
-		}
-		br = st.Result()
 	}
 	win = br.AttackerWin
 	draw := br.Draw
