@@ -2736,10 +2736,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   只影响这一处（野地/海野/寇城的战斗战利品），不含驻守采集。
 		rnd = ezfyScaleByWildResMult(rnd)
 		lootFood, lootSteel, lootOil, lootRare, lootGold = rnd, rnd, rnd, rnd, rnd
-		// ★ 2026-10-04 用户规则：掠夺不拿黄金，只有征服才能获得黄金（野地/寇城同样适用）
-		if order.OrderType == 2 {
-			lootGold = 0
-		}
+		// ★ 2026-10-08 用户规则修正：掠夺**野地/海野/寇城**产出里也包含黄金，
+		//   只有掠夺**玩家城市**才不产出黄金（玩家城市的黄金清空在下面 case 3 分支单独处理）。
 	case 3:
 		var tc model.EzfyCity
 		if err := h.DB.First(&tc, order.TargetId).Error; err != nil {
