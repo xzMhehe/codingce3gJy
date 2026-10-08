@@ -846,8 +846,14 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 			q = q.Where("name LIKE ?", "%"+word+"%")
 		}
 	}
+	// ★ 2026-10-08 优化：分页下沉到 DB。
+	// 原来每次请求都 `Find(&all)` 全表拉到内存再手动切片，表一大就超时。
+	// 现在先 Count 出军官总数，再按 OFFSE/T/LIMIT 只取当前页军官，技能展开只针对本页做。
+	var total int64
+	q.Count(&total)
+
 	var officers []model.EzfyOfficer
-	q.Order("id DESC").Find(&officers)
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&officers)
 
 	// 技能名 -> 效果（用于展示）
 	h.ezfyH()
@@ -856,24 +862,6 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 	for _, s := range ezfyCfg.skills {
 		effectOf[s.Name] = s.Effect
 		descOf[s.Name] = s.Des
-	}
-
-	// 城市/玩家名缓存
-	cityCache := map[int64]string{}
-	ownerCache := map[int64][2]string{}
-	locOf := func(cityId int64) (string, string, string) {
-		name, ok := cityCache[cityId]
-		if !ok {
-			var ct model.EzfyCity
-			if err := h.DB.First(&ct, cityId).Error; err == nil {
-				name = ct.Name
-				on, hn := h.ezfyAdminName(ct.UserID)
-				ownerCache[cityId] = [2]string{on, hn}
-			}
-			cityCache[cityId] = name
-		}
-		o := ownerCache[cityId]
-		return name, o[0], o[1]
 	}
 
 	type rowOut struct {
@@ -888,10 +876,44 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 		OwnerName   string `json:"owner_name"`
 		HomeNum     string `json:"home_num"`
 	}
+
+	// 批量取本页军官涉及的城市 + 玩家名，去掉原来逐条 First 的 N+1
+	cityIds := []int64{}
+	seenCt := map[int64]bool{}
+	for i := range officers {
+		if !seenCt[officers[i].CityId] {
+			seenCt[officers[i].CityId] = true
+			cityIds = append(cityIds, officers[i].CityId)
+		}
+	}
+	cityByID := map[int64]model.EzfyCity{}
+	uids := []uint{}
+	uidSet := map[uint]bool{}
+	if len(cityIds) > 0 {
+		var cities []model.EzfyCity
+		h.DB.Where("id IN ?", cityIds).Find(&cities)
+		for _, ct := range cities {
+			cityByID[int64(ct.ID)] = ct
+			if !uidSet[ct.UserID] {
+				uidSet[ct.UserID] = true
+				uids = append(uids, ct.UserID)
+			}
+		}
+	}
+	onName, hnName := h.ezfyAdminNamesBatch(uids)
+
 	all := []rowOut{}
 	for i := range officers {
 		o := officers[i]
-		cityName, owner, home := locOf(o.CityId)
+		cityName := ""
+		owner, home := "", ""
+		if ct, ok := cityByID[o.CityId]; ok {
+			cityName = ct.Name
+			if on, okn := onName[ct.UserID]; okn {
+				owner = on
+				home = hnName[ct.UserID]
+			}
+		}
 		for idx, sn := range officerSkills(&o) {
 			if skillName != "" && sn != skillName {
 				continue
@@ -903,15 +925,7 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 			})
 		}
 	}
-	total := len(all)
-	if offset > total {
-		offset = total
-	}
-	end := offset + size
-	if end > total {
-		end = total
-	}
-	resp.OK(c, gin.H{"list": all[offset:end], "total": total, "page": page, "size": size})
+	resp.OK(c, gin.H{"list": all, "total": total, "page": page, "size": size})
 }
 
 // AdminEzfyOfficerSkillAdd 给军官加技能（管理端直接加，不消耗黄金、不受 3 个上限限制）
@@ -1567,8 +1581,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	typ := strings.TrimSpace(c.Query("type"))
 	equipped := atoiOr(c.Query("equipped"), -1)
 
-	// 先查出匹配的行（聚合依据 user_id + cfg_id + name + type + tier）
-	all := []model.EzfyEquipment{}
+	// 先查出符合筛选的行（聚合依据 user_id + cfg_id + name + type + tier）
 	q := h.DB.Model(&model.EzfyEquipment{})
 	if typ != "" {
 		q = q.Where("type = ?", typ)
@@ -1591,90 +1604,119 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 			}
 		}
 	}
-	q.Order("id DESC").Find(&all)
+	// ★ 2026-10-08 优化：聚合/分页下沉到 SQL。
+	// 原来每次请求都 `Find(&all)` 全表拉到内存再手动聚合+分页，装备表一大就超时。
+	// 改成：先按 (user_id,cfg_id,name,type,tier) SQL 聚合出当前页分组，再批量拉本页明细（均为小查询）。
+	var total int64
+	q.Distinct("user_id", "cfg_id", "name", "type", "tier").Count(&total)
 
-	// 内存聚合同一装备（key = user_id|cfg_id|name|type|tier），并记录该组 id 最大的一条作代表
-	// ★ all 已按 id DESC 排序，因此每组首次遇到的那条就是该组 id 最大的（代表）
-	type group struct {
-		id, officerID, userID, count int
-		tier                         int
-		rep                          int
-		items                        []int // 该组所有实例在 all 中的下标（用于查看详情）
+	type grp struct {
+		RepID  uint   `gorm:"column:rep_id"`
+		UserID uint   `gorm:"column:user_id"`
+		CfgID  int    `gorm:"column:cfg_id"`
+		Name   string `gorm:"column:name"`
+		Type   string `gorm:"column:type"`
+		Tier   int    `gorm:"column:tier"`
+		Cnt    int    `gorm:"column:cnt"`
 	}
-	gidx := map[string]int{} // key -> group index
-	groups := []*group{}
-	repByIdx := map[int]*model.EzfyEquipment{}
-	for i := range all {
-		e := all[i]
-		key := fmt.Sprintf("%d|%d|%s|%s|%d", e.UserId, e.CfgId, e.Name, e.Type, e.Tier)
-		gi, ok := gidx[key]
-		if !ok {
-			gi = len(groups)
-			gidx[key] = gi
-			g := &group{rep: i, id: int(e.ID), officerID: int(e.OfficerId), userID: int(e.UserId), tier: e.Tier}
-			groups = append(groups, g)
-			repByIdx[i] = &all[i]
-		}
-		groups[gi].count++
-		groups[gi].items = append(groups[gi].items, i)
-	}
-
-	// 分页：按代表行在 all 中的位置（已 id DESC）
-	total := len(groups)
-	start := offset
-	if start > total {
-		start = total
-	}
-	end := start + size
-	if end > total {
-		end = total
-	}
+	var groups []grp
+	q.Select("MAX(id) AS rep_id, user_id, cfg_id, name, type, tier, COUNT(*) AS cnt").
+		Group("user_id, cfg_id, name, type, tier").
+		Order("rep_id DESC").
+		Offset(offset).Limit(size).
+		Scan(&groups)
 
 	type rowOut struct {
 		model.EzfyEquipment
-		TierName  string `json:"tier_name"`
-		Count     int    `json:"count"`
-		OwnerName string `json:"owner_name"`
-		HomeNum   string `json:"home_num"`
-		OfficerNm string `json:"officer_name"`
+		TierName  string  `json:"tier_name"`
+		Count     int     `json:"count"`
+		OwnerName string  `json:"owner_name"`
+		HomeNum   string  `json:"home_num"`
+		OfficerNm string  `json:"officer_name"`
 		// Details 该聚合组每个实例的明细（穿戴军官 + 所在城），给「查看」弹框用
 		Details []gin.H `json:"details"`
 	}
-	out := []rowOut{}
-	for gi := start; gi < end; gi++ {
-		g := groups[gi]
-		e := repByIdx[g.rep]
-		owner, home := h.ezfyAdminName(uint(g.userID))
-		offName := ""
-		if g.officerID > 0 {
-			var o model.EzfyOfficer
-			if err := h.DB.First(&o, g.officerID).Error; err == nil {
-				offName = o.Name
-			}
+	if len(groups) == 0 {
+		resp.OK(c, gin.H{"list": []rowOut{}, "total": total, "page": page, "size": size})
+		return
+	}
+
+	// 代表性装备（每组 id 最大的一条）
+	repIds := make([]uint, 0, len(groups))
+	ownerIds := make([]uint, 0, len(groups))
+	for _, g := range groups {
+		repIds = append(repIds, g.RepID)
+		ownerIds = append(ownerIds, g.UserID)
+	}
+	var reps []model.EzfyEquipment
+	h.DB.Where("id IN ?", repIds).Find(&reps)
+	repByID := map[uint]model.EzfyEquipment{}
+	for _, r := range reps {
+		repByID[r.ID] = r
+	}
+	ownerName, homeNum := h.ezfyAdminNamesBatch(ownerIds)
+
+	// 本页全部明细装备（行值 IN 一次拉全，替代原来逐组逐条 First 的 N+1）
+	tuples := make([][]interface{}, 0, len(groups))
+	for _, g := range groups {
+		tuples = append(tuples, []interface{}{g.UserID, g.CfgID, g.Name, g.Type, g.Tier})
+	}
+	var items []model.EzfyEquipment
+	if err := h.DB.Where("(user_id, cfg_id, name, type, tier) IN ?", tuples).Order("id DESC").Find(&items).Error; err != nil {
+		items = nil
+	}
+	itemsByKey := map[string][]model.EzfyEquipment{}
+	offIds := []int64{}
+	cityIds := []int64{}
+	seenOff, seenCt := map[int64]bool{}, map[int64]bool{}
+	for _, it := range items {
+		k := fmt.Sprintf("%d|%d|%s|%s|%d", it.UserId, it.CfgId, it.Name, it.Type, it.Tier)
+		itemsByKey[k] = append(itemsByKey[k], it)
+		if it.OfficerId > 0 && !seenOff[it.OfficerId] {
+			seenOff[it.OfficerId] = true
+			offIds = append(offIds, it.OfficerId)
 		}
-		// 明细：逐个实例填 穿戴军官 + 所在城
+		if !seenCt[it.CityId] {
+			seenCt[it.CityId] = true
+			cityIds = append(cityIds, it.CityId)
+		}
+	}
+
+	// 批量本页军官名、城名
+	offByName := map[int64]string{}
+	if len(offIds) > 0 {
+		var os []model.EzfyOfficer
+		h.DB.Where("id IN ?", offIds).Find(&os)
+		for _, o := range os {
+			offByName[int64(o.ID)] = o.Name
+		}
+	}
+	cityByName := map[int64]string{}
+	if len(cityIds) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Where("id IN ?", cityIds).Find(&cs)
+		for _, ct := range cs {
+			cityByName[int64(ct.ID)] = ct.Name
+		}
+	}
+
+	out := []rowOut{}
+	for _, g := range groups {
+		rep := repByID[g.RepID]
+		owner, home := ownerName[g.UserID], homeNum[g.UserID]
+		rgOff := ""
+		if rep.OfficerId > 0 {
+			rgOff = offByName[rep.OfficerId]
+		}
 		details := []gin.H{}
-		for _, idx := range g.items {
-			it := all[idx]
-			dName := ""
-			if it.OfficerId > 0 {
-				var o model.EzfyOfficer
-				if err := h.DB.First(&o, it.OfficerId).Error; err == nil {
-					dName = o.Name
-				}
-			}
-			dCity := ""
-			var ct model.EzfyCity
-			if err := h.DB.First(&ct, it.CityId).Error; err == nil {
-				dCity = ct.Name
-			}
+		for _, it := range itemsByKey[fmt.Sprintf("%d|%d|%s|%s|%d", g.UserID, g.CfgID, g.Name, g.Type, g.Tier)] {
 			details = append(details, gin.H{
-				"equip_id": it.ID, "officer_id": it.OfficerId, "officer_name": dName,
-				"city_id": it.CityId, "city_name": dCity,
+				"equip_id": it.ID, "officer_id": it.OfficerId, "officer_name": offByName[it.OfficerId],
+				"city_id": it.CityId, "city_name": cityByName[it.CityId],
 			})
 		}
-		out = append(out, rowOut{EzfyEquipment: *e, TierName: ezfyEquipTierName(g.tier),
-			Count: g.count, OwnerName: owner, HomeNum: home, OfficerNm: offName, Details: details})
+		out = append(out, rowOut{EzfyEquipment: rep, TierName: ezfyEquipTierName(g.Tier),
+			Count: g.Cnt, OwnerName: owner, HomeNum: home, OfficerNm: rgOff, Details: details})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
