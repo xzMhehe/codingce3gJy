@@ -2597,7 +2597,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//   后果：带移速技能的军官出征，速度加成虚高 10%，与活动战、与界面描述都不一致。
 	// ★ 2026-10-06 技能随军官等级自动升级：速度技能加成也随等级 ×N
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
-	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// ★ 2026-10-08 攻方军官行同时展示攻击加成与防御加成（都是**属性部分**，技能单列）：
+	//   出征军官的属性/技能同样给部队提供防御（被打时减伤），原来军官行只写攻击加成（用户反馈）。
+	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
+		h.officerGuardAttrBonus(leadOfficer), "防御加成")
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（科技名见 ezfy_cfg 种子表）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（原来只列攻击类 → 看头像显示不全）
 	atkTechs := ezfyBonusItems(
@@ -2722,7 +2725,24 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				for _, s := range generalSkillDefBreak(defGeneral) {
 					defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
 				}
-				defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level) + " 守军防御+" + strconv.Itoa(guardAttr) + "%"
+				// ★ 2026-10-08 守将军官行与玩家城城守同口径：**同时**列出「攻击加成」与
+				//   「守军防御」（属性部分，都是有效学识加成），技能逐项单列 —— 读者把属性项与
+				//   技能项相加即得该守将对守军的全部贡献（原来只写守军防御，攻击那半看不到）。
+				officerLv := generalSkillLevel(defGeneral)
+				descParts := []string{}
+				if guardAttr > 0 {
+					descParts = append(descParts, "攻击加成+"+strconv.Itoa(guardAttr)+"%",
+						"守军防御+"+strconv.Itoa(guardAttr)+"%")
+				}
+				for _, s := range generalSkillList(defGeneral) {
+					if eff := ezfySkillEffectTextAt(s, officerLv); eff != "" {
+						descParts = append(descParts, s+"(Lv."+strconv.Itoa(officerLv)+" "+eff+")")
+					}
+				}
+				defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
+				if len(descParts) > 0 {
+					defOfficerDesc += " " + strings.Join(descParts, " ")
+				}
 			}
 		}
 		// ★ 战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
@@ -2825,9 +2845,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 		}
 		defDefBreak = append(defDefBreak, ezfyTechItem("装备", defEquip.Def)...)
-		// ★ 传「属性部分」的防御加成（有效学识÷2），技能由 officerBattleDesc 自己列，
-		//   否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
-		defOfficerDesc = h.officerBattleDesc(cityGuard, h.officerGuardAttrBonus(cityGuard), "守军防御")
+		// ★ 传「属性部分」的攻击/防御加成（军事→攻击、有效学识÷2→守军防御），技能由
+		//   officerBattleDesc 自己列，否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
+		// ★ 2026-10-08 城守军官行也补上「攻击加成」：城守的军事属性/攻击技能同样进 defAtkBonus
+		//   （守城部队行动时吃），原来只显示守军防御，玩家看不到这部分攻击来源（用户反馈）。
+		defOfficerDesc = h.officerBattleDesc(cityGuard, h.officerBaseBonus(cityGuard), "攻击加成",
+			h.officerGuardAttrBonus(cityGuard), "守军防御")
 	}
 
 	// 侦查: 不战斗只报告情报, 部队随即返航

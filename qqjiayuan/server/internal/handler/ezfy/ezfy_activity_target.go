@@ -386,7 +386,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
 	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
-	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
+	// ★ 2026-10-08 与普通出征同口径：军官行同时展示攻击加成与防御加成（属性部分，技能单列）
+	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
+		h.officerGuardAttrBonus(leadOfficer), "防御加成")
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（与普通出征同一口径）
 	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（与普通出征同口径）
 	atkTechs := ezfyBonusItems(
@@ -434,15 +436,25 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	defBonus, defSpeedBonus := ezfyActWildDefBonus(defGeneral)
 	defOfficerDesc := ""
 	if defGeneral != nil {
-		defOfficerDesc = defGeneral.Name
-		if b := ezfyAttrToBonus(defGeneral.Learning); b > 0 {
-			defOfficerDesc += " 守军防御+" + strconv.Itoa(b) + "%"
-		}
+		// ★ 2026-10-08 与玩家城城守同口径：**同时**列出「攻击加成」与「守军防御」（属性部分），
+		//   技能逐项单列。活动守军无城墙/无科技 → 守方的攻防加成整体都来自守将（defBonus），
+		//   原来只写「守军防御」，守军那半攻击加成在军官行里看不到（用户反馈）。
+		//   ★ 顺带补上「Lv.N」：原来活动守将行缺等级，且 ezfyOfficerShortName 只能靠第一个
+		//     空格取名字（名字里带空格时会截错）。
 		lv := generalSkillLevel(defGeneral)
+		attr := ezfyAttrToBonus(defGeneral.Learning)
+		parts := []string{}
+		if attr > 0 {
+			parts = append(parts, "攻击加成+"+strconv.Itoa(attr)+"%", "守军防御+"+strconv.Itoa(attr)+"%")
+		}
 		for _, s := range generalSkillList(defGeneral) {
 			if eff := ezfySkillEffectTextAt(s, lv); eff != "" {
-				defOfficerDesc += " " + s + "(Lv." + strconv.Itoa(lv) + " " + eff + ")"
+				parts = append(parts, s+"(Lv."+strconv.Itoa(lv)+" "+eff+")")
 			}
+		}
+		defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
+		if len(parts) > 0 {
+			defOfficerDesc += " " + strings.Join(parts, " ")
 		}
 	}
 	var br ezfyBattleResult

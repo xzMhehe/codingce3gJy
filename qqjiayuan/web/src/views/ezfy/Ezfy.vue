@@ -1614,19 +1614,35 @@ export default {
       const p = Math.min(Math.max(1, this.chestPoolPage), this.chestPoolTotalPages)
       return this.chestPoolAll.slice((p - 1) * this.chestPoolSize, p * this.chestPoolSize)
     },
+    // ★★ 2026-10-08 「军情三区（军队动态/驻军/军情警讯）分页条始终显示」：
+    //   原来分页条 `v-if="length > size"`，条数不足一页时整条不渲染 —— 切城市重新查询后
+    //   条数变少（或本来就只有几支），玩家看不到任何分页入口，以为这几个列表没有分页。
+    //   现在只要有数据就渲染分页条（第 1/1 页 + 灰掉的上一页/下一页）。
+    //   ★ 同时把「显示用页码」统一夹紧：数据变少时（部队返航 / 切城重查）原页码可能越界，
+    //     原来分页条写「第 3/2 页」而列表显示的却是第 2 页内容（列表内已夹紧、分页条没夹紧）。
+    //     列表切片与分页条现在共用这三个值，两边永远一致。
+    dynPageCur () {
+      return Math.min(Math.max(1, this.dynPage), this.dynMarchTotalPages)
+    },
+    dynStationPageCur () {
+      return Math.min(Math.max(1, this.dynStationPage), this.dynStationTotalPages)
+    },
+    repPageCur () {
+      return Math.min(Math.max(1, this.repPage), this.repTotalPages)
+    },
     dynMarchPaged () {
-      const p = Math.min(Math.max(1, this.dynPage), this.dynMarchTotalPages)
+      const p = this.dynPageCur
       return this.dynMarch.slice((p - 1) * this.dynSize, p * this.dynSize).map(o => this.withLive(o))
     },
     dynStationPaged () {
-      const p = Math.min(Math.max(1, this.dynStationPage), this.dynStationTotalPages)
+      const p = this.dynStationPageCur
       return this.dynStation.slice((p - 1) * this.dynStationSize, p * this.dynStationSize).map(o => this.withLg(this.withLive(o)))
     },
     repTotalPages () {
       return Math.max(1, Math.ceil(this.reports.length / this.repSize))
     },
     repPaged () {
-      const p = Math.min(Math.max(1, this.repPage), this.repTotalPages)
+      const p = this.repPageCur
       return this.reports.slice((p - 1) * this.repSize, p * this.repSize)
     },
     // ★ 公告分页（「公告也变成分页，下一页上一页那种」），与军情同一套写法
@@ -3186,16 +3202,18 @@ export default {
       if (n <= 0) { this.notify('请填写开箱数量'); return }
       if (n > ch.open_max) { this.notify('单次最多开 ' + ch.open_max + ' 个'); return }
       const cur = (ch.price_diamond > 0 && ch.price_gold > 0) ? this.chestPay : (ch.price_diamond > 0 ? 'diamond' : 'gold')
-      api.post('/games/ezfy/chest/open', { chest_id: ch.id, count: n, currency: cur }).then(r => {
-        if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
-        this.notify(r.msg || '开箱成功')
-        this.chestResult = (r.data && r.data.results) || []
-        this.chestOpen = null
-        this.loadBag()
-        this.load()
-        // ★ 开完直接回商城宝箱分类页，结果在「上次开箱结果」展示（go('mall') 会自动刷新宝箱）
-        this.go('mall')
-      })
+      // ★ 2026-10-08 连点防抖：一次点击 = 一次开箱（后端已加条件原子扣款/扣库存）
+      this.once('chestOpen' + ch.id, () => api.post('/games/ezfy/chest/open',
+        { chest_id: ch.id, count: n, currency: cur }).then(r => {
+          if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
+          this.notify(r.msg || '开箱成功')
+          this.chestResult = (r.data && r.data.results) || []
+          this.chestOpen = null
+          this.loadBag()
+          this.load()
+          // ★ 开完直接回商城宝箱分类页，结果在「上次开箱结果」展示（go('mall') 会自动刷新宝箱）
+          this.go('mall')
+        }))
     },
     // ★ 装备商城（套装件，黄金/钻石购买）
     loadEquipShop () {
@@ -3216,15 +3234,17 @@ export default {
       const n = parseInt(this.equipShopCount) || 0
       if (n <= 0) { this.notify('请填写购买数量'); return }
       const cur = p.price_diamond > 0 ? 'diamond' : 'gold'
-      api.post('/games/ezfy/equipshop/buy', { cfg_id: p.id, count: n, currency: cur }).then(r => {
-        if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
-        this.notify(r.msg || '购买成功')
-        this.equipShopBuy = null
-        this.load()
-        this.loadBag()
-        // ★ 购买成功后返回商城（go('mall') 会自动刷新装备商城）
-        this.go('mall')
-      })
+      // ★ 2026-10-08 连点防抖：一次点击 = 一次购买（后端已加条件原子扣款/扣库存）
+      this.once('equipBuy' + p.id, () => api.post('/games/ezfy/equipshop/buy',
+        { cfg_id: p.id, count: n, currency: cur }).then(r => {
+          if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
+          this.notify(r.msg || '购买成功')
+          this.equipShopBuy = null
+          this.load()
+          this.loadBag()
+          // ★ 购买成功后返回商城（go('mall') 会自动刷新装备商城）
+          this.go('mall')
+        }))
     },
     // ★ 拉商城数据。resetPage = true 时才回到第 1 页（进商城页签时用）。
     //   买完道具的刷新**不能**重置页码 —— 否则玩家在第 3 页买个东西就被弹回第 1 页。
@@ -5133,13 +5153,15 @@ export default {
       if (input === null) return
       const n = parseInt(input, 10)
       if (isNaN(n) || n < 1 || n > maxN) { this.notify('数量需在 1-' + maxN + ' 之间'); return }
-      api.post('/games/ezfy/corps/mall/buy', { id: item.id, count: n }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.msg || '兑换成功')
-          this.loadCorpsMall()
-          this.load()
-        } else this.notify(r.msg || '兑换失败')
-      })
+      // ★ 2026-10-08 连点防抖：一次点击 = 一次兑换（后端军团商城本来就是条件原子扣减）
+      this.once('corpsBuy' + item.id, () => api.post('/games/ezfy/corps/mall/buy',
+        { id: item.id, count: n }).then(r => {
+          if (r.code === 0) {
+            this.notify(r.msg || '兑换成功')
+            this.loadCorpsMall()
+            this.load()
+          } else this.notify(r.msg || '兑换失败')
+        }))
     },
     // ---- 商城/背包/交易 ----
     // ★ 第九轮：分类切换 / 翻页
@@ -5202,16 +5224,21 @@ export default {
           return
         }
       }
-      api.post('/games/ezfy/mall/buy', { cfg_id: it.id, count: n, pay_with: payWith }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
-          this.buyItem = null
-          this.load()
-          this.loadBag()
-          // ★ 购买成功后返回商城（go('mall') 会自动刷新商城数据）
-          this.go('mall')
-        } else this.notify(r.msg || '购买失败')
-      })
+      // ★★ 2026-10-08 连点防抖（用户反馈「秒点一次购买能到多个」）：
+      //   一次点击 = 一次购买 —— 请求未返回前忽略后续点击（与交易行 doExchangeBuy 同款）。
+      //   后端同时加了条件原子扣款/扣库存（ezfySpendGold / ezfySpendDiamond / ezfySpendStock），
+      //   这里只是第一道闸，防止手抖/连点一次打出 N 个请求。
+      this.once('mallBuy' + it.id, () => api.post('/games/ezfy/mall/buy',
+        { cfg_id: it.id, count: n, pay_with: payWith }).then(r => {
+          if (r.code === 0) {
+            this.notify(r.data && r.data.msg ? r.data.msg : '购买成功')
+            this.buyItem = null
+            this.load()
+            this.loadBag()
+            // ★ 购买成功后返回商城（go('mall') 会自动刷新商城数据）
+            this.go('mall')
+          } else this.notify(r.msg || '购买失败')
+        }))
     },
     needOfficer (it) {
       // ★ 19 = 星级徽章，也要选军官（漏了它会没有「军官:」下拉，玩家没法用）

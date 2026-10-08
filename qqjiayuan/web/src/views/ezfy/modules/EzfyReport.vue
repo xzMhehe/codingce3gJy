@@ -44,10 +44,11 @@
               --------------------
             </div>
             <div class="old-line" v-if="!ezfy.dynMarch.length">(当前没有在外的部队)</div>
-            <div class="ezfy-pager" v-if="ezfy.dynMarch.length > ezfy.dynSize">
-              <a href="javascript:;" :class="{ gray: ezfy.dynPage <= 1 }" @click="ezfy.sectionPagerGo('dyn', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.dynPage }}/{{ ezfy.dynMarchTotalPages }} 页（共 {{ ezfy.dynMarch.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: ezfy.dynPage >= ezfy.dynMarchTotalPages }" @click="ezfy.sectionPagerGo('dyn', 1)">下一页</a>
+            <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条；切城市重新查询后同样有分页 -->
+            <div class="ezfy-pager" v-if="ezfy.dynMarch.length">
+              <a href="javascript:;" :class="{ gray: ezfy.dynPageCur <= 1 }" @click="ezfy.sectionPagerGo('dyn', -1)">上一页</a>
+              <span class="gray">第 {{ ezfy.dynPageCur }}/{{ ezfy.dynMarchTotalPages }} 页（共 {{ ezfy.dynMarch.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: ezfy.dynPageCur >= ezfy.dynMarchTotalPages }" @click="ezfy.sectionPagerGo('dyn', 1)">下一页</a>
             </div>
           </template>
 
@@ -83,10 +84,11 @@
               --------------------
             </div>
             <div class="old-line" v-if="!ezfy.dynStation.length">(当前没有驻守的部队(采集/驻军))</div>
-            <div class="ezfy-pager" v-if="ezfy.dynStation.length > ezfy.dynStationSize">
-              <a href="javascript:;" :class="{ gray: ezfy.dynStationPage <= 1 }" @click="ezfy.sectionPagerGo('sta', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.dynStationPage }}/{{ ezfy.dynStationTotalPages }} 页（共 {{ ezfy.dynStation.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: ezfy.dynStationPage >= ezfy.dynStationTotalPages }" @click="ezfy.sectionPagerGo('sta', 1)">下一页</a>
+            <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
+            <div class="ezfy-pager" v-if="ezfy.dynStation.length">
+              <a href="javascript:;" :class="{ gray: ezfy.dynStationPageCur <= 1 }" @click="ezfy.sectionPagerGo('sta', -1)">上一页</a>
+              <span class="gray">第 {{ ezfy.dynStationPageCur }}/{{ ezfy.dynStationTotalPages }} 页（共 {{ ezfy.dynStation.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: ezfy.dynStationPageCur >= ezfy.dynStationTotalPages }" @click="ezfy.sectionPagerGo('sta', 1)">下一页</a>
             </div>
           </template>
 
@@ -105,10 +107,11 @@
               <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!ezfy.reports.length">(暂无军情警讯)</div>
-            <div class="ezfy-pager" v-if="ezfy.reports.length > ezfy.repSize">
-              <a href="javascript:;" :class="{ gray: ezfy.repPage <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.repPage }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: ezfy.repPage >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
+            <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
+            <div class="ezfy-pager" v-if="ezfy.reports.length">
+              <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
+              <span class="gray">第 {{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: ezfy.repPageCur >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>
 
@@ -132,10 +135,11 @@
               <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
             </div>
             <div class="old-line" v-if="!ezfy.reports.length">{{ ezfy.reportTab === 5 ? '(暂无军团战报)' : '(暂无战斗报告)' }}</div>
-            <div class="ezfy-pager" v-if="ezfy.reports.length > ezfy.repSize">
-              <a href="javascript:;" :class="{ gray: ezfy.repPage <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
-              <span class="gray">第 {{ ezfy.repPage }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
-              <a href="javascript:;" :class="{ gray: ezfy.repPage >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
+            <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
+            <div class="ezfy-pager" v-if="ezfy.reports.length">
+              <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
+              <span class="gray">第 {{ ezfy.repPageCur }}/{{ ezfy.repTotalPages }} 页（共 {{ ezfy.reports.length }} 条）</span>
+              <a href="javascript:;" :class="{ gray: ezfy.repPageCur >= ezfy.repTotalPages }" @click="ezfy.sectionPagerGo('rep', 1)">下一页</a>
             </div>
           </template>
 

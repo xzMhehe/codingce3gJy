@@ -2806,12 +2806,18 @@ func (h *EzfyHandler) itemCounts(uid uint, cfgIds ...int) map[int]int {
 }
 
 func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
+	if count <= 0 {
+		return
+	}
 	var it model.EzfyItem
 	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
 		h.DB.Create(&model.EzfyItem{UserId: uid, CfgId: cfgId, Count: count})
 		return
 	}
-	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).Update("count", it.Count+count)
+	// ★ 2026-10-08 原子自增（原 `Update("count", it.Count+count)` 是读-改-写，
+	//   并发发放/连点购买时同一行的自增会互相覆盖 → 少发道具）。
+	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).
+		Update("count", gorm.Expr("count + ?", count))
 }
 
 func (h *EzfyHandler) consumeItem(uid uint, cfgId int, reason ...string) {

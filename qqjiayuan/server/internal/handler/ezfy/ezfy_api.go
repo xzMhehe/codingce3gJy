@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -2316,22 +2317,30 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 	if useDiamond {
 		cost := cfg.PriceDiamond * int64(req.Count)
 		prof := h.ensureProfile(uid)
-		if prof.Diamond < cost {
+		// ★★ 2026-10-08 并发卡控（用户反馈「秒点一次购买能到多个」）：
+		//   原来「读 prof.Diamond → 判断 → 写回 prof.Diamond-cost」是读-改-写，
+		//   连点并发时多个请求会同时读到同一个旧余额、同时通过校验、各自发货，
+		//   而扣款只落一次 → 白拿 N 份。改成**条件原子扣**：只有余额够的那一次能扣成功。
+		if !h.ezfySpendDiamond(prof.ID, cost) {
 			resp.ParamError(c, fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d（也可改用黄金购买）", cost, prof.Diamond))
 			return
 		}
 		if cost > 0 {
-			if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
-				Update("diamond", prof.Diamond-cost).Error; err != nil {
-				resp.ParamError(c, "扣钻石失败："+err.Error())
-				return
-			}
 			// ★ 2026-09-28 钻石流水
 			h.logDiamond(uid, -cost, "商城购买: "+cfg.Name)
 		}
-		if !unlimited {
-			h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
-				Updates(map[string]interface{}{"stock": stock - req.Count})
+		// ★ 库存同样条件原子扣：失败必须**退回刚扣的钻石**，否则玩家花了钱拿不到货。
+		if !unlimited && !h.ezfySpendStock(&model.EzfyCfgItem{}, req.CfgId, req.Count) {
+			h.ezfyRefundDiamond(prof.ID, cost)
+			if cost > 0 {
+				h.logDiamond(uid, cost, "商城购买回滚(库存不足): "+cfg.Name)
+			}
+			if stock <= 0 {
+				resp.ParamError(c, fmt.Sprintf("「%s」已售罄", cfg.Name))
+			} else {
+				resp.ParamError(c, fmt.Sprintf("「%s」库存不足，只剩 %d 个", cfg.Name, stock))
+			}
+			return
 		}
 		h.addItem(uid, req.CfgId, req.Count)
 		resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（消耗%d钻石）", cfg.Name, req.Count, cost),
@@ -2345,16 +2354,23 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		return
 	}
 	city := h.bodyCity(uid, req.CityId)
-	if city.Gold < cost {
+	// ★★ 2026-10-08 并发卡控：条件原子扣黄金。原来 `city.Gold -= cost; saveCityRes(city)`
+	//   是读-改-写，连点并发会「扣一次钱发多次货」；这里只认 RowsAffected（见 ezfySpendGold）。
+	//   ★ 不再调 saveCityRes：它会把 city 的快照值（含未落库的产出）整体写回，覆盖原子扣减结果。
+	//     黄金是「库值 - cost」原子落库，未落库产出由下次懒结算按 last_time 补算，不会丢。
+	if !h.ezfySpendGold(city.ID, cost) {
 		resp.ParamError(c, "黄金不足")
 		return
 	}
-	city.Gold -= cost
-	h.saveCityRes(city)
-	// 扣库存（用 map 更新，避免 GORM 的 default:100 把 0 当未设置）
-	if !unlimited {
-		h.DB.Model(&model.EzfyCfgItem{}).Where("id = ?", req.CfgId).
-			Updates(map[string]interface{}{"stock": stock - req.Count})
+	// ★ 库存条件原子扣：失败退回黄金
+	if !unlimited && !h.ezfySpendStock(&model.EzfyCfgItem{}, req.CfgId, req.Count) {
+		h.ezfyRefundGold(city.ID, cost)
+		if stock <= 0 {
+			resp.ParamError(c, fmt.Sprintf("「%s」已售罄", cfg.Name))
+		} else {
+			resp.ParamError(c, fmt.Sprintf("「%s」库存不足，只剩 %d 个", cfg.Name, stock))
+		}
+		return
 	}
 	h.addItem(uid, req.CfgId, req.Count)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", cfg.Name, req.Count),
@@ -2367,6 +2383,84 @@ func stockLeft(unlimited bool, stock, count int) int {
 		return -1
 	}
 	return stock - count
+}
+
+// ============ 商城扣款/扣库存：条件原子更新（并发卡控）============
+//
+// ★★ 2026-10-08 用户反馈「商城购买秒点一次能买到多个」。
+//
+//	根因：Buy / EquipShopBuy / ChestOpen 三处都是「读快照 → 校验 → 用快照值写回」
+//	（`Update("diamond", prof.Diamond-cost)`、`city.Gold -= cost; saveCityRes(city)`），
+//	连点/多端并发时多个请求会同时读到**同一个旧余额**、同时通过校验、各自发货 ——
+//	而写回的是同一个「旧值-单价」，扣款只落了一次 → 白拿 N 份道具/装备。
+//
+//	修法与军团商城 CorpsMallBuy（2026-10 起就是正确样板）对齐：**扣减一律用
+//	带条件的原子 UPDATE**，只有 `RowsAffected > 0` 才算扣成功，其余按「余额/库存不足」拒绝。
+//	这样即使并发，也只有一个请求能扣到，绝不会「扣一次钱发多次货」。
+//
+// ⚠️ MySQL 的 affected_rows 默认是**实际改变的行数**，所以 cost<=0（免费道具）时
+//	不能拿 RowsAffected 判断（`gold = gold - 0` 返回 0）—— 这类一律直接放行。
+
+// ezfySpendGold 原子扣城市黄金（gold >= cost 才扣）。返回 false = 余额不足。
+func (h *EzfyHandler) ezfySpendGold(cityId uint, cost int64) bool {
+	if cost <= 0 {
+		return true
+	}
+	res := h.DB.Model(&model.EzfyCity{}).
+		Where("id = ? AND gold >= ?", cityId, cost).
+		Update("gold", gorm.Expr("gold - ?", cost))
+	return res.Error == nil && res.RowsAffected > 0
+}
+
+// ezfyRefundGold 退还城市黄金（扣库存失败时回滚扣款）。
+func (h *EzfyHandler) ezfyRefundGold(cityId uint, amount int64) {
+	if amount <= 0 {
+		return
+	}
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", cityId).
+		Update("gold", gorm.Expr("gold + ?", amount))
+}
+
+// ezfySpendDiamond 原子扣钻石（diamond >= cost 才扣）。返回 false = 余额不足。
+func (h *EzfyHandler) ezfySpendDiamond(profileId uint, cost int64) bool {
+	if cost <= 0 {
+		return true
+	}
+	res := h.DB.Model(&model.EzfyProfile{}).
+		Where("id = ? AND diamond >= ?", profileId, cost).
+		Update("diamond", gorm.Expr("diamond - ?", cost))
+	return res.Error == nil && res.RowsAffected > 0
+}
+
+// ezfyRefundDiamond 退还钻石（扣库存失败时回滚扣款）。
+func (h *EzfyHandler) ezfyRefundDiamond(profileId uint, amount int64) {
+	if amount <= 0 {
+		return
+	}
+	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", profileId).
+		Update("diamond", gorm.Expr("diamond + ?", amount))
+}
+
+// ezfySpendStock 原子扣配置表库存（`model` 传 &model.EzfyCfgItem{} / &model.EzfyCfgEquipment{} /
+// &model.EzfyCfgChest{}，它们都有 `stock` 列且 **-1 = 无限**）。返回 false = 库存不足。
+//
+// 调用方约定：只在该配置 **不是无限库存** 时调用（无限库存不扣、也不校验）。
+func (h *EzfyHandler) ezfySpendStock(m interface{}, id int, count int) bool {
+	if count <= 0 {
+		return true
+	}
+	res := h.DB.Model(m).
+		Where("id = ? AND stock >= ?", id, count).
+		Update("stock", gorm.Expr("stock - ?", count))
+	return res.Error == nil && res.RowsAffected > 0
+}
+
+// ezfyRefundStock 退还配置表库存（扣款后库存不足时回滚用）。
+func (h *EzfyHandler) ezfyRefundStock(m interface{}, id int, count int) {
+	if count <= 0 {
+		return
+	}
+	h.DB.Model(m).Where("id = ?", id).Update("stock", gorm.Expr("stock + ?", count))
 }
 
 func (h *EzfyHandler) Bag(c *gin.Context) {

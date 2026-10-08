@@ -1720,14 +1720,27 @@ func officerReportDesc(o *model.EzfyOfficer) string {
 // officerBattleDesc 军官战斗作用描述（战报展示用）
 //
 // ★ 2026-10-06 技能随等级升级：技能行带 Lv.N 与当前等级效果（绝地反击按前N回合）。
-func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, baseBonus int, label string) string {
+//
+// ★★ 2026-10-08 军官行**同时**列出「攻击加成」与「防御加成」（用户反馈「有军官的攻守双方
+//
+//	都同时提供攻击加成和防御加成，现在只显示了一项」）：原来攻方只显示攻击加成、
+//	城守只显示守军防御，另一项虽然在战斗加成行里生效，军官行却看不到来源。
+//
+// atkBase/atkLabel、defBase/defLabel 都传**属性部分**的百分点（军事→攻击、学识→防御），
+// 技能由本函数逐项列出 —— 与战斗加成行同一口径：
+// **该军官的贡献 = 属性项 + 技能项之和**（例：攻方「攻击加成+365% + 尖兵突击150%」= 515%，
+// 再加科技/装备才是战斗加成行的「攻击+634%」）。
+func (h *EzfyHandler) officerBattleDesc(o *model.EzfyOfficer, atkBase int, atkLabel string, defBase int, defLabel string) string {
 	if o == nil {
 		return ""
 	}
 	sb := o.Name + " Lv." + strconv.Itoa(o.Level)
 	parts := []string{}
-	if baseBonus > 0 {
-		parts = append(parts, label+"+"+strconv.Itoa(baseBonus)+"%")
+	if atkBase > 0 {
+		parts = append(parts, atkLabel+"+"+strconv.Itoa(atkBase)+"%")
+	}
+	if defBase > 0 {
+		parts = append(parts, defLabel+"+"+strconv.Itoa(defBase)+"%")
 	}
 	lv := h.officerSkillLevel(o)
 	for _, s := range officerSkills(o) {
@@ -3644,31 +3657,42 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 		h.fail(c, "该宝箱不支持用"+unit+"购买")
 		return
 	}
+	// ★ 2026-10-08 奖池检查**前移到扣款之前**：原来先扣钱再查奖池，没配奖池时钱白扣。
+	pool := h.ezfyChestPool(chest.ID)
+	if len(pool) == 0 {
+		h.fail(c, "该宝箱还没配置奖池，请联系管理员")
+		return
+	}
 	total := price * int64(req.Count)
+	var prof model.EzfyProfile
 	if useDiamond {
-		prof := h.ensureProfile(uid)
-		if prof.Diamond < total {
+		prof = h.ensureProfile(uid)
+		// ★★ 2026-10-08 并发卡控（用户反馈「秒点一次购买能到多个」，见 ezfySpendDiamond 注释）：
+		//   原来「读余额 → 判断 → 写回快照值」连点并发会「扣一次钱开多次箱」。
+		if !h.ezfySpendDiamond(prof.ID, total) {
 			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
-			return
-		}
-		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
-			Update("diamond", prof.Diamond-total).Error; err != nil {
-			h.fail(c, "扣钻石失败："+err.Error())
 			return
 		}
 		// ★ 2026-09-28 钻石流水
 		h.logDiamond(uid, -total, "购买宝箱: "+chest.Name)
 	} else {
-		if city.Gold < total {
+		// ★★ 2026-10-08 并发卡控：条件原子扣黄金（不再走 `city.Gold -= / saveCityRes` 的读-改-写）
+		if !h.ezfySpendGold(city.ID, total) {
 			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))
 			return
 		}
-		city.Gold -= total
-		h.saveCityRes(&city)
+		city.Gold -= total // 内存同步：响应里要把扣款后的黄金余额给前端
 	}
-	pool := h.ezfyChestPool(chest.ID)
-	if len(pool) == 0 {
-		h.fail(c, "该宝箱还没配置奖池，请联系管理员")
+	// ★ 宝箱库存条件原子扣：失败退回刚扣的钱（原来是无条件 `stock - count`，会扣成负数/超卖）
+	if chest.Stock > 0 && !h.ezfySpendStock(&model.EzfyCfgChest{}, chest.ID, req.Count) {
+		if useDiamond {
+			h.ezfyRefundDiamond(prof.ID, total)
+			h.logDiamond(uid, total, "购买宝箱回滚(库存不足): "+chest.Name)
+		} else {
+			h.ezfyRefundGold(city.ID, total)
+			city.Gold += total
+		}
+		h.fail(c, fmt.Sprintf("库存不足(剩余%d个)", chest.Stock))
 		return
 	}
 	results := []gin.H{}
@@ -3681,8 +3705,6 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 		results = append(results, gin.H{"name": desc, "quality": prize.Quality})
 	}
 	if chest.Stock > 0 {
-		h.DB.Model(&model.EzfyCfgChest{}).Where("id = ?", chest.ID).
-			Update("stock", gorm.Expr("stock - ?", req.Count))
 		h.cfgsReload()
 	}
 	names := []string{}
@@ -4288,33 +4310,39 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 		return
 	}
 	total := price * int64(req.Count)
+	var prof model.EzfyProfile
 	if useDiamond {
-		prof := h.ensureProfile(uid)
-		if prof.Diamond < total {
+		prof = h.ensureProfile(uid)
+		// ★★ 2026-10-08 并发卡控（与道具商城 Buy 同一套，见 ezfySpendDiamond 注释）：
+		//   原来「读余额 → 判断 → 写回快照值」连点并发会「扣一次钱发多件装备」。
+		if !h.ezfySpendDiamond(prof.ID, total) {
 			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
-			return
-		}
-		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", prof.ID).
-			Update("diamond", prof.Diamond-total).Error; err != nil {
-			h.fail(c, "扣钻石失败："+err.Error())
 			return
 		}
 		// ★ 2026-09-28 钻石流水
 		h.logDiamond(uid, -total, "商城购买装备")
 	} else {
-		if city.Gold < total {
+		// ★★ 2026-10-08 并发卡控：条件原子扣黄金（不再走 `city.Gold -= / saveCityRes` 的读-改-写）
+		if !h.ezfySpendGold(city.ID, total) {
 			h.fail(c, fmt.Sprintf("黄金不足(需要%d黄金, 当前%d)", total, city.Gold))
 			return
 		}
-		city.Gold -= total
-		h.saveCityRes(&city)
+	}
+	// ★ 库存条件原子扣（装备表 stock，-1 = 无限）：失败退回刚扣的钱
+	if cfg.Stock > 0 && !h.ezfySpendStock(&model.EzfyCfgEquipment{}, cfg.ID, req.Count) {
+		if useDiamond {
+			h.ezfyRefundDiamond(prof.ID, total)
+			h.logDiamond(uid, total, "商城购买装备回滚(库存不足)")
+		} else {
+			h.ezfyRefundGold(city.ID, total)
+		}
+		h.fail(c, fmt.Sprintf("库存不足(剩余%d件)", cfg.Stock))
+		return
 	}
 	for i := 0; i < req.Count; i++ {
 		h.addEquipment(&city, cfg)
 	}
 	if cfg.Stock > 0 {
-		h.DB.Model(&model.EzfyCfgEquipment{}).Where("id = ?", cfg.ID).
-			Update("stock", gorm.Expr("stock - ?", req.Count))
 		h.cfgsReload()
 	}
 	h.done(c, "", fmt.Sprintf("购买成功: %s×%d，花费%d%s", cfg.Name, req.Count, total, unit))
