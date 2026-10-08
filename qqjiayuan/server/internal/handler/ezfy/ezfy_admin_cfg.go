@@ -846,14 +846,88 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 			q = q.Where("name LIKE ?", "%"+word+"%")
 		}
 	}
-	// ★ 2026-10-08 优化：分页下沉到 DB。
-	// 原来每次请求都 `Find(&all)` 全表拉到内存再手动切片，表一大就超时。
-	// 现在先 Count 出军官总数，再按 OFFSE/T/LIMIT 只取当前页军官，技能展开只针对本页做。
-	var total int64
-	q.Count(&total)
+	// ★ 2026-10-08 修复分页空 + 分页下沉：
+	//   原来按「军官数」分页（total=军官数），但每页返回的是展开后的**技能行**（一行一技能，
+	//   一个军官可有多条），统计单元和返回单元不一致 → 分页错位、后几页常空。
+	//   现在改为按「技能行」精确分页：只拉全部匹配军官的 id+skill 展开成行，精确切片取当前页，
+	//   total=技能行总数；再批量补本页军官的城市名/归属玩家名（避开逐条 First 的 N+1）。
+	//   （技能存在军官 JSON 字段里，无法直接 SQL 按"行"分页，只能先展平再切。）
+	var pairs []struct {
+		ID    uint
+		Skill string
+	}
+	q.Select("id", "skill").Order("id DESC").Find(&pairs)
 
-	var officers []model.EzfyOfficer
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&officers)
+	type flat struct {
+		officerID uint
+		idx       int
+		skill     string
+	}
+	flatAll := []flat{}
+	for _, p := range pairs {
+		names := []string{}
+		_ = json.Unmarshal([]byte(p.Skill), &names)
+		for i, sn := range names {
+			if skillName != "" && sn != skillName {
+				continue
+			}
+			flatAll = append(flatAll, flat{officerID: p.ID, idx: i, skill: sn})
+		}
+	}
+	total := len(flatAll)
+
+	// 当前页的技能行切片
+	end := offset + size
+	if end > total {
+		end = total
+	}
+	pageFlats := []flat{}
+	if offset < total {
+		pageFlats = flatAll[offset:end]
+	}
+
+	// 本页涉及的军官列表（去重）
+	offIDs := []uint{}
+	seenOff := map[uint]bool{}
+	for _, f := range pageFlats {
+		if !seenOff[f.officerID] {
+			seenOff[f.officerID] = true
+			offIDs = append(offIDs, f.officerID)
+		}
+	}
+	offByID := map[uint]model.EzfyOfficer{}
+	if len(offIDs) > 0 {
+		var os []model.EzfyOfficer
+		h.DB.Where("id IN ?", offIDs).Find(&os)
+		for _, o := range os {
+			offByID[o.ID] = o
+		}
+	}
+
+	// 本页军官涉及的城市 + 玩家名（批量）
+	cityIds := []int64{}
+	seenCt := map[int64]bool{}
+	for _, o := range offByID {
+		if !seenCt[o.CityId] {
+			seenCt[o.CityId] = true
+			cityIds = append(cityIds, o.CityId)
+		}
+	}
+	cityByID := map[int64]model.EzfyCity{}
+	uids := []uint{}
+	uidSet := map[uint]bool{}
+	if len(cityIds) > 0 {
+		var cities []model.EzfyCity
+		h.DB.Where("id IN ?", cityIds).Find(&cities)
+		for _, ct := range cities {
+			cityByID[int64(ct.ID)] = ct
+			if !uidSet[ct.UserID] {
+				uidSet[ct.UserID] = true
+				uids = append(uids, ct.UserID)
+			}
+		}
+	}
+	onName, hnName := h.ezfyAdminNamesBatch(uids)
 
 	// 技能名 -> 效果（用于展示）
 	h.ezfyH()
@@ -877,53 +951,24 @@ func (h *EzfyAdmin) AdminEzfyOfficerSkillsOwned(c *gin.Context) {
 		HomeNum     string `json:"home_num"`
 	}
 
-	// 批量取本页军官涉及的城市 + 玩家名，去掉原来逐条 First 的 N+1
-	cityIds := []int64{}
-	seenCt := map[int64]bool{}
-	for i := range officers {
-		if !seenCt[officers[i].CityId] {
-			seenCt[officers[i].CityId] = true
-			cityIds = append(cityIds, officers[i].CityId)
-		}
-	}
-	cityByID := map[int64]model.EzfyCity{}
-	uids := []uint{}
-	uidSet := map[uint]bool{}
-	if len(cityIds) > 0 {
-		var cities []model.EzfyCity
-		h.DB.Where("id IN ?", cityIds).Find(&cities)
-		for _, ct := range cities {
-			cityByID[int64(ct.ID)] = ct
-			if !uidSet[ct.UserID] {
-				uidSet[ct.UserID] = true
-				uids = append(uids, ct.UserID)
-			}
-		}
-	}
-	onName, hnName := h.ezfyAdminNamesBatch(uids)
-
 	all := []rowOut{}
-	for i := range officers {
-		o := officers[i]
-		cityName := ""
-		owner, home := "", ""
-		if ct, ok := cityByID[o.CityId]; ok {
+	for _, f := range pageFlats {
+		o, ok := offByID[f.officerID]
+		if !ok {
+			continue
+		}
+		cityName, owner, home := "", "", ""
+		if ct, okc := cityByID[o.CityId]; okc {
 			cityName = ct.Name
 			if on, okn := onName[ct.UserID]; okn {
-				owner = on
-				home = hnName[ct.UserID]
+				owner, home = on, hnName[ct.UserID]
 			}
 		}
-		for idx, sn := range officerSkills(&o) {
-			if skillName != "" && sn != skillName {
-				continue
-			}
-			all = append(all, rowOut{
-				OfficerId: o.ID, OfficerName: o.Name, SkillIndex: idx, SkillName: sn,
-				Effect: effectOf[sn], Des: descOf[sn],
-				CityId: o.CityId, CityName: cityName, OwnerName: owner, HomeNum: home,
-			})
-		}
+		all = append(all, rowOut{
+			OfficerId: o.ID, OfficerName: o.Name, SkillIndex: f.idx, SkillName: f.skill,
+			Effect: effectOf[f.skill], Des: descOf[f.skill],
+			CityId: o.CityId, CityName: cityName, OwnerName: owner, HomeNum: home,
+		})
 	}
 	resp.OK(c, gin.H{"list": all, "total": total, "page": page, "size": size})
 }
@@ -1607,8 +1652,12 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	// ★ 2026-10-08 优化：聚合/分页下沉到 SQL。
 	// 原来每次请求都 `Find(&all)` 全表拉到内存再手动聚合+分页，装备表一大就超时。
 	// 改成：先按 (user_id,cfg_id,name,type,tier) SQL 聚合出当前页分组，再批量拉本页明细（均为小查询）。
+	// 图文说明：total 必须等于「聚合分组的条数」，和页面上每组一行对齐。
+	// 之前用 q.Distinct(5列).Count() —— GORM 多列 Distinct 的 Selects 长度>1，走不到
+	// COUNT(DISTINCT(...)) 分支，退化成 count(*)（数的是装备**实例**数），total 远大于
+	// 实际分组页数，导致后几页空。这里用 GROUP BY + Count，GORM 会以 RowsAffected(行数=组数) 返回。
 	var total int64
-	q.Distinct("user_id", "cfg_id", "name", "type", "tier").Count(&total)
+	q.Group("user_id, cfg_id, name, type, tier").Count(&total)
 
 	type grp struct {
 		RepID  uint   `gorm:"column:rep_id"`
