@@ -483,8 +483,8 @@ export default {
       _dynAt: 0,
       // ★ 2026-09-28 「倒计时归零 → 自动重拉」的三个运行态标记（详见 checkDueRefresh）：
       //   _dynRefreshing  : 本轮重拉是否还在进行（防同波多次触发）
-      //   _dynRefreshedAt : 上次重拉的本地时刻（3 秒节流）
-      //   _dynFired       : 已触发过的「订单id@到点时刻」，防后端结算失败时每 3 秒无限重拉
+      //   _dynRefreshedAt : 上次重拉的本地时刻（★ 2026-10-08 节流从 3s 收紧到 1s，减少「返航到点/出征抵达」刷新延迟）
+      //   _dynFired       : 已触发过的「订单id@到点时刻」，防后端结算失败时无限重拉（去重集合，频率与节流无关）
       //     ★ 用 Object.create(null) 而不是 {} —— 它只是个去重集合，不需要响应式，
       //       用 {} 会让 Vue 递归侦听每个动态加的 key，纯属浪费。
       _dynRefreshing: false,
@@ -1792,9 +1792,9 @@ export default {
       const onDynPage = this.cur === 'reports' || this.cur === 'reportview' || this.cur === 'orders'
       if (!onDynPage || !this.dynamics || !this.dynamics.length) return
       const now = Date.now()
-      // 上一轮刷新还没结束 / 距上次刷新不足 3 秒 → 跳过
+      // 上一轮刷新还没结束 / 距上次刷新不足 1 秒 → 跳过（★ 2026-10-08 原 3s，收敛减少「返航/抵达」刷新延迟）
       if (this._dynRefreshing) return
-      if (this._dynRefreshedAt && now - this._dynRefreshedAt < 3000) return
+      if (this._dynRefreshedAt && now - this._dynRefreshedAt < 1000) return
       if (!this._dynFired) this._dynFired = Object.create(null)
       // 长时间挂机会往 _dynFired 里累积 key（每条订单每一轮倒计时一个），
       // 超过 200 个就整体清空 —— 已完成的订单不会再出现在 dynamics 里，
@@ -1829,8 +1829,8 @@ export default {
       //   资源栏只需要 /view 的增量，走下面这个轻量分支。
       if (needRes) this.refreshRes()
       // loadDynamics 是 promise 链，没有返回值可 await；用一个短定时器放开闸门，
-      // 保证同一波到点只触发一次（下一个 tick 不会重复打）。
-      setTimeout(() => { this._dynRefreshing = false }, 1500)
+      // 保证同一波到点只触发一次（下一个 tick 不会重复打）。（★ 2026-10-08 解锁从 1500ms 收紧到 700ms）
+      setTimeout(() => { this._dynRefreshing = false }, 700)
     },
     // ★ 轻量刷新头部资源栏（不触发 loadRank 等重查询）——返航物资入库后调用
     refreshRes () {

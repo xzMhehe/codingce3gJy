@@ -114,8 +114,9 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 
 	// ★ ★ 2026-10-08 「敌人城市标红」：
 	//   个人宣战/被宣战、军团敌对、军团之间战争 的对象城市 → 前端格子标红，方便找敌人。
-	//   镜像 allyUsers 模式：算出当前视野里每个城市格该不该标 enemy，前端只看 cell.enemy。
-	enemyUsers := h.ezfyMapEnemyUsers(uid, myMb.CorpsId)
+	//   镜像 allyUsers 模式，但**惰性**：视野里没有玩家城市格就不做任何战争检索
+	//   （拖动地图到海/野地时零开销），首次遇到城市格才计算，并带 30s 短缓存避免拖动时重复查询。
+	var enemyUsers map[uint]bool
 
 	// ★ 「点击地图的出征 → 看到玩家城市 → 点进去 → 展示玩家同盟名字」。
 	//   一次性把所有涉及玩家的军团名载入（避免逐格查库），格子上带 corps_name。
@@ -178,7 +179,10 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid
 				cell["ally"] = allyUsers[c.UserID]
-				// ★ 2026-10-08 敌人城市标红（个人战争/宣战、军团敌对、军团战争的对象）
+				// ★ 2026-10-08 敌人城市标红：首次遇到城市格才惰性检索（无城市视野零开销）
+				if enemyUsers == nil {
+					enemyUsers = h.ezfyMapEnemyUsersCached(uid, myMb.CorpsId)
+				}
 				cell["enemy"] = enemyUsers[c.UserID]
 				// ★ 该城主的同盟（军团）名；没加入军团时为空串，前端显示「无」
 				cell["corps_name"] = corpsNames[c.UserID]
@@ -270,6 +274,37 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 //	② 军团敌对：我所在军团标记为「敌对」的军团 —— 全体成员。
 //	③ 军团战争：我所在军团正处于「宣战/交战」的敌方军团 —— 全体成员。
 //	未加入军团的玩家只算 ①。镜像 allyUsers 的构建方式，一处计算、每格直接比对。
+// ★ 2026-10-08 「敌人城市标红」缓存：同一玩家 30s 内拖动地图不重复检索战争关系，
+//   避免移动地图卡顿。键=当前玩家 uid（myCorps 由其推导，缓存期内加入/退军团最多延迟 30s 生效）。
+type ezfyEnemyCacheEntry struct {
+	set map[uint]bool
+	exp int64
+}
+
+var (
+	ezfyEnemyCacheMu sync.Mutex
+	ezfyEnemyCache   = map[uint]ezfyEnemyCacheEntry{}
+)
+
+const ezfyEnemyCacheTTLMs = 30 * 1000 // 30 秒
+
+func (h *EzfyHandler) ezfyMapEnemyUsersCached(uid, myCorps uint) map[uint]bool {
+	now := time.Now().UnixMilli()
+	ezfyEnemyCacheMu.Lock()
+	if e, ok := ezfyEnemyCache[uid]; ok && e.exp > now {
+		ezfyEnemyCacheMu.Unlock()
+		return e.set
+	}
+	ezfyEnemyCacheMu.Unlock()
+
+	set := h.ezfyMapEnemyUsers(uid, myCorps)
+
+	ezfyEnemyCacheMu.Lock()
+	ezfyEnemyCache[uid] = ezfyEnemyCacheEntry{set: set, exp: now + ezfyEnemyCacheTTLMs}
+	ezfyEnemyCacheMu.Unlock()
+	return set
+}
+
 func (h *EzfyHandler) ezfyMapEnemyUsers(uid, myCorps uint) map[uint]bool {
 	enemy := map[uint]bool{}
 

@@ -870,14 +870,19 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if !isAtk {
 					counterBreak = atkBonusBreak
 				}
-				// ★ 2026-10-08 绝地反击与常规技能发动同口径：先军官名「发动【绝地反击】」再兵种还击，并带带感口号
+				// ★ 2026-10-08 绝地反击显示方向修正：
+				//   还击方是**被攻击方 target**（拥有绝地反击），发起攻击的 unit 是被还击方。
+				//   侧标/军官/兵种一律取「还击方」，并带带感口号，攻守视角与颜色随还击方阵营对齐
+				//   （原来误用 actor(side/unit)，玩家是攻方时却显示「守方…」，描述、颜色都反了）。
+				actorBare := strings.Trim(side, "【】")
+				counterSide := enemySide // 还击方 = 被攻击方 = 发起方的对手
 				counterOfficer := ezfyOfficerShortName(st.DefOfficerDesc)
-				if isAtk {
+				if counterSide == "攻方" {
 					counterOfficer = ezfyOfficerShortName(st.AtkOfficerDesc)
 				}
 				counterSlogan := ezfySlogans[(st.Round*5+2)%len(ezfySlogans)]
 				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s！%s，攻击加成+%d%%%s",
-					side, counterOfficer, stName(unit), enemySide, stName(target), counterSlogan, cbAtk, counterBreak)
+					counterSide, counterOfficer, stName(target), actorBare, stName(unit), counterSlogan, cbAtk, counterBreak)
 				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
 				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 展示攻方防御加成；
 				//   守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成。
