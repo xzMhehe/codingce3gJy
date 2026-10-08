@@ -263,11 +263,19 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s",
 		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt))
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
+	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
+	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
+	hasAtkTech := false
 	if aTech := ezfyBonusItemsDesc(atkTechs); aTech != "" {
 		st.Head = append(st.Head, "【攻方科技】"+aTech)
+		hasAtkTech = true
 	}
-	if dTech := ezfyBonusItemsDesc(defTechs); dTech != "" {
-		st.Head = append(st.Head, "【守方科技】"+dTech)
+	if hasAtkTech {
+		if dTech := ezfyBonusItemsDesc(defTechs); dTech != "" {
+			st.Head = append(st.Head, "【守方科技】"+dTech)
+		} else {
+			st.Head = append(st.Head, "【守方科技】无")
+		}
 	}
 	// ★ 2026-10-08 装备恒定罗列。装备行 = **单件属性之和**（全量 - 套装），
 	//   套装另起一行单列 →「装备」与「套装」不再重复（套装效果原本被算进装备行）。
@@ -1391,7 +1399,9 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 	return strings.Join(parts, "，")
 }
 
-// ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成「名+X% 名+Y%」；跳过非正值。
+// ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成多行；跳过非正值。
+// ★ 2026-10-08 每项单独一行（原为单空格拼一行，多项科技一行又长又挤、看着像没展示全）；
+//   战报渲染按 \n 分行，pre-wrap 逐行展示完整。
 // 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 	parts := []string{}
@@ -1407,7 +1417,7 @@ func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 		}
 		parts = append(parts, s)
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, "\n")
 }
 
 // ezfyTechEffectDesc 科技名 → 作用说明（取自科技配置表 Effect 的「功能」部分，去掉每级百分比）。

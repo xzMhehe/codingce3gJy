@@ -388,10 +388,16 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（与普通出征同一口径）
+	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（与普通出征同口径）
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
+		ezfyTechItem("装甲科技", atkTech[7]*3),
+		ezfyTechItem("弹道学", atkTech[8]*3),
 		ezfyTechItem("重工技术", atkTech[9]*2),
+		ezfyTechItem("燃烧引擎", atkTech[10]*2),
+		ezfyTechItem("掩体防御", atkTech[16]*2),
+		ezfyTechItem("喷气引擎", atkTech[19]*3),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」（出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def，

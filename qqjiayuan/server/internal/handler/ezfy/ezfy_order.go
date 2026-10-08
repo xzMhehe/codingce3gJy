@@ -2599,10 +2599,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成")
 	// ★ 2026-10-06 战报拆解逐项明细：攻方科技/技能逐项（科技名见 ezfy_cfg 种子表）
+	// ★ 2026-10-08 补全影响 攻击/防御/射程/速度 的全部攻方科技（原来只列攻击类 → 看头像显示不全）
 	atkTechs := ezfyBonusItems(
 		ezfyTechItem("军训艺术", atkTech[5]*2),
 		ezfyTechItem("武器科技", atkTech[6]*3),
+		ezfyTechItem("装甲科技", atkTech[7]*3),
+		ezfyTechItem("弹道学", atkTech[8]*3),
 		ezfyTechItem("重工技术", atkTech[9]*2),
+		ezfyTechItem("燃烧引擎", atkTech[10]*2),
+		ezfyTechItem("掩体防御", atkTech[16]*2),
+		ezfyTechItem("喷气引擎", atkTech[19]*3),
 	)
 	atkSkillBreak := h.officerSkillsBreak(leadOfficer)
 	// ★ 装备六项战斗加成（伤害/防御/生命/移动距离/暴击几率/暴击伤害）
@@ -2796,8 +2802,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defSkillBreak = h.officerSkillsBreak(cityGuard)
 		defTechBreak = ezfyBonusItems(
 			ezfyTechItem("装甲科技", defTech[7]*3),
+			ezfyTechItem("弹道学", defTech[8]*3),
 			ezfyTechItem("重工技术", defTech[9]*2),
+			ezfyTechItem("燃烧引擎", defTech[10]*2),
 			ezfyTechItem("掩体防御", defTech[16]*2),
+			ezfyTechItem("喷气引擎", defTech[19]*3),
 		)
 		defRangeBonus = defTech[8]*3 + defTech[16]*2
 		defEquip = h.officerBattleEquipBonus(cityGuard)
