@@ -555,7 +555,8 @@
           <div class="old-line gray">
             包含行军中 / 战斗中 / 返航中 / 驻守采集的全部部队；驻守空闲的部队需点 [采集] 才开始采集。
           </div>
-          <div class="old-line" v-for="o in ezfy.queueItems" :key="'oq' + o.id">
+          <!-- ★ 2026-10-08 出征队列分页：默认每页 5 条，上一页/下一页（与军情军队动态同款） -->
+          <div class="old-line" v-for="o in ezfy.queuePaged" :key="'oq' + o.id">
             命令：{{ o.type_name }} <a v-if="!o.is_defend" href="javascript:;" @click="ezfy.openOrder(o)">查看</a><br/>
             目标：<span v-if="o.act_type" class="red">[{{ ezfy.actTag(o.act_type) }}]</span>{{ o.target_name }}({{ o.target_x }},{{ o.target_y }})
             <span v-if="o.is_defend" class="red">(敌军来袭)</span><br/>
@@ -595,6 +596,11 @@
             --------------------
           </div>
           <div class="old-line" v-if="!ezfy.queueItems.length">(暂无出征部队)</div>
+          <div class="ezfy-pager" v-if="ezfy.queueItems.length > ezfy.queueSize">
+            <a href="javascript:;" :class="{ gray: ezfy.queuePage <= 1 }" @click="ezfy.sectionPagerGo('queue', -1)">上一页</a>
+            <span class="gray">第 {{ ezfy.queuePage }}/{{ ezfy.queueTotalPages }} 页（共 {{ ezfy.queueItems.length }} 条）</span>
+            <a href="javascript:;" :class="{ gray: ezfy.queuePage >= ezfy.queueTotalPages }" @click="ezfy.sectionPagerGo('queue', 1)">下一页</a>
+          </div>
           <div class="old-line">
             <a href="javascript:;" @click="ezfy.loadDynamics">[刷新]</a>
           </div>

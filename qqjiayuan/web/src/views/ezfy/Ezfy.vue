@@ -555,6 +555,8 @@ export default {
       // ★ 军情分区分页：默认每页 5 条
       dynPage: 1, dynSize: 5,
       dynStationPage: 1, dynStationSize: 5,
+      // ★ 2026-10-08 出征队列分页（默认每页 5 条，上一页/下一页）
+      queuePage: 1, queueSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
       // ★ 公告分页（「公告也变成分页，下一页上一页那种」）：默认每页 5 条
@@ -1535,6 +1537,15 @@ export default {
     },
     dynStationTotalPages () {
       return Math.max(1, Math.ceil(this.dynStation.length / this.dynStationSize))
+    },
+    // ★ 2026-10-08 出征队列分页（数据集 = dynamics 全集，与 queueItems 同源）
+    queueTotalPages () {
+      return Math.max(1, Math.ceil((this.dynamics || []).length / this.queueSize))
+    },
+    queuePaged () {
+      const list = this.dynamics || []
+      const p = Math.min(Math.max(1, this.queuePage), this.queueTotalPages)
+      return list.slice((p - 1) * this.queueSize, p * this.queueSize).map(o => this.withLg(this.withLive(o)))
     },
     // ★ 战场指挥室：本回合剩余秒数 / 倒计时条百分比（最后 5 秒条变红）
     battleLeftText () {
@@ -2560,6 +2571,7 @@ export default {
           //   战斗中的 battle_left_ms 是相对剩余，必须配上它才能每秒往前推算。
           this._dynAt = Date.now()
           this.dynPage = 1
+          this.queuePage = 1
         }
       })
     },
@@ -3693,6 +3705,8 @@ export default {
         this.dynPage = Math.min(this.dynMarchTotalPages, Math.max(1, this.dynPage + delta))
       } else if (which === 'sta') {
         this.dynStationPage = Math.min(this.dynStationTotalPages, Math.max(1, this.dynStationPage + delta))
+      } else if (which === 'queue') {
+        this.queuePage = Math.min(this.queueTotalPages, Math.max(1, this.queuePage + delta))
       } else if (which === 'notice') {
         this.noticePage = Math.min(this.noticeTotalPages, Math.max(1, this.noticePage + delta))
       } else if (which === 'exo') {
