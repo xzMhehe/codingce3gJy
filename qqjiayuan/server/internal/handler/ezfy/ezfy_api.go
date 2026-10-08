@@ -3013,13 +3013,11 @@ func ezfyReportCategory(title string) int {
 	return 3
 }
 
-// ezfyReportTypeName 战报标签(前端列表里的 [xxx] 前缀)
+// EzfyReportTypeName 战报标签(前端列表里的 [xxx] 前缀)
 //
-// ★ 不能只看 report_type：老代码把「掠夺/战斗/被掠夺」都写成 2，
-//
-//	导致战报列表里清一色显示 [掠夺]（用户反馈「都是掠夺」）。
-//	这里优先按**标题前缀**判定，标题没有可识别前缀时才退回 report_type。
-func ezfyReportTypeName(reportType int, title string) string {
+// ★ 2026-10-08 导出为包级函数：写战报落库 + cmd/backfilltype 回填 + 管理端详情 共用同一判定，
+//   单一来源、不会因各处重复实现而漂移。
+func EzfyReportTypeName(reportType int, title string) string {
 	switch {
 	// ★ 2026-10-06 被掠夺/被征服归属战斗报告后, 列表前缀与攻方「掠夺/征服」一致:
 	//   [掠夺] 被掠夺报告: 城市名(X,Y) / [征服] 被征服报告: 城市名(X,Y)
@@ -3108,6 +3106,15 @@ func ezfyReportCategoryName(cat int) string {
 		return "其他"
 	}
 	return "全部"
+}
+
+// ezfyTypeNameStored 取战报类型名：优先用持久化列 type_name（回填后即有值），
+// 存量未回填的老行(空串)再现场计算兜底，保证展示在前端稳定。
+func ezfyTypeNameStored(r model.EzfyReport) string {
+	if r.TypeName != "" {
+		return r.TypeName
+	}
+	return EzfyReportTypeName(r.ReportType, r.Title)
 }
 
 // ezfyCityReportCond 军情按城市过滤的条件片段（cityId > 0 时拼到 WHERE 里）。
@@ -3211,7 +3218,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 			continue
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
-			"type_name": ezfyReportTypeName(r.ReportType, r.Title), "is_read": r.IsRead, "order_id": r.OrderId,
+			"type_name": ezfyTypeNameStored(r), "is_read": r.IsRead, "order_id": r.OrderId,
 			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {
@@ -3308,7 +3315,7 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 			continue
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
-			"type_name": ezfyReportTypeName(r.ReportType, r.Title), "is_read": 1, "order_id": r.OrderId,
+			"type_name": ezfyTypeNameStored(r), "is_read": 1, "order_id": r.OrderId,
 			"owner_name": ownerName[r.UserID],
 			"category": "corps", "category_name": "军团战报", "created_at": r.CreatedAt})
 	}

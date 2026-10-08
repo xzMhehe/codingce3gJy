@@ -94,25 +94,9 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 10, loading: false,
       word: '', type: '', tmStart: '', tmEnd: '',
-      // ★ 2026-10-08 战报类型下拉改按「真实类型名」：与列表「类型」列、玩家看到的一致。
-      //   之前是按报表粗粒度 report_type 编号硬编码（'侦察/掠夺_战斗/战斗' 等），
-      //   与后端下发的 type_name（ezfyReportTypeName 按标题前缀判定）对不上，
-      //   且『战斗』其实是「被征服/驻防失守」，采集/运输/增援/派遣 又共用一个编号——
-      //   选了反而筛不到想要的。现在 value 直接用 type_name，后端按它过滤。
-      typeOptions: [
-        { v: '', n: '全部类型' },
-        { v: '侦查', n: '侦查' },
-        { v: '掠夺', n: '掠夺' },
-        { v: '征服', n: '征服' },
-        { v: '战斗', n: '战斗' },
-        { v: '采集', n: '采集' },
-        { v: '运输', n: '运输' },
-        { v: '增援', n: '增援' },
-        { v: '派遣', n: '派遣' },
-        { v: '被侦查', n: '被侦查' },
-        { v: '预警', n: '预警' },
-        { v: '系统', n: '系统' }
-      ],
+      // ★ 2026-10-08 战报类型下拉由后端返回库里真实的 type_name 去重列表动态填充，
+      //   保证与列表「类型」、玩家看到的一致，且不漏不虚（不再手写枚举）。
+      typeOptions: [{ v: '', n: '全部类型' }],
       detailDlg: false, detail: null
     }
   },
@@ -130,6 +114,11 @@ export default {
           this.list = r.data.list
           this.total = r.data.total
           this.page = r.data.page
+          // 用后端真实的 type_name 列表刷新下拉（幂等）
+          if (r.data.types && r.data.types.length) {
+            this.typeOptions = [{ v: '', n: '全部类型' }].concat(
+              r.data.types.map(t => ({ v: t, n: t })))
+          }
         } else this.$message.error(r.msg)
       })
     },

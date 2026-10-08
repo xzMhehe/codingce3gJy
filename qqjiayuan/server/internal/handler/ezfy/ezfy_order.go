@@ -4318,7 +4318,10 @@ func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int) st
 }
 
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {
-	r := model.EzfyReport{UserID: uid, ReportType: reportType, Title: title, Content: content, IsRead: 0}
+	r := model.EzfyReport{UserID: uid, ReportType: reportType, Title: title,
+		// ★ 2026-10-08 写战报时即落 type_name（真实类型名），供管理端 SQL 过滤，见 EzfyReportTypeName。
+		TypeName: EzfyReportTypeName(reportType, title),
+		Content:  content, IsRead: 0}
 	for i, v := range detailAndOrder {
 		switch i {
 		case 0:

@@ -922,6 +922,11 @@ type EzfyReport struct {
 	OrderId    int64  `gorm:"comment:订单ID" json:"order_id"`
 	ReportType int    `gorm:"comment:1侦察 2掠夺 3征服 4战斗 5采集/派遣 6系统" json:"report_type"` // 1侦察 2掠夺 3征服 4战斗 5采集/派遣 6系统
 	Title      string `gorm:"type:varchar(255);comment:标题" json:"title"`
+	// ★ 2026-10-08 持久化「真实战报类型名」，供管理端战报查询做 SQL 过滤（不等价于粗粒度
+	//   report_type：采集/运输/增援/派遣共用一个编号）。写战报时由 EzfyReportTypeName 落库，
+	//   存量行用 cmd/backfilltype 一次性回填，避免管理端捞整表进内存过滤。
+	//   二级索引 (type_name,id) 由 seed.ensureEzfyIndex 幂等创建（AutoMigrate 对存量表不补二级索引）。
+	TypeName   string `gorm:"type:varchar(20);comment:战报类型名" json:"type_name"`
 	Content    string `gorm:"type:longtext;comment:内容" json:"content"`
 	Detail     string `gorm:"type:longtext;comment:Detail" json:"detail"`
 	IsRead     int    `gorm:"default:0;comment:是否已读" json:"is_read"`

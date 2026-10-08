@@ -1004,12 +1004,15 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 // 类型中文名复用 ezfyReportTypeName(reportType, title)（优先按标题前缀判定）。
 
 // AdminEzfyReports 战报列表（可按玩家 / 战报类型 / 时间范围过滤）
+//
+// ★ 2026-10-08（第2轮优化）彻底去掉「捞内存再分页」：
+//   ezfy_report 已新增持久化列 type_name（写战报时由 EzfyReportTypeName 落库，
+//   存量行用 cmd/backfilltype 一次性回填），因此类型过滤也直接走 SQL WHERE，
+//   与玩家/时间条件统一进 Count + Offset/Limit 库内分页，任何组合都不再全表读内存。
 func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
-	// ★ 2026-10-08 战报类型改按「真实类型名」过滤（之前按 report_type 整数）：
-	//   ezfy_report.report_type 是粗粒度遗留编号（采集/运输/增援/派遣 共用一个编号），
-	//   下发的 type_name（ezfyReportTypeName，优先按标题前缀判定）才真正可区分、且与列表列一致。
+	// ★ 2026-10-08 类型过滤改按「持久化 type_name 列」（写时落库），见 cmd/backfilltype。
 	typeName := strings.TrimSpace(c.Query("type"))
 	// ★ 2026-10-08 新增「时间起止」检索：created_at 落在此区间（end 含整天末）。
 	startStr := strings.TrimSpace(c.Query("start"))
@@ -1018,10 +1021,8 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	q := h.DB.Model(&model.EzfyReport{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			// ★ 2026-10-07 数字既可能是 user_id，也可能是「玩家在游戏里看到的游戏ID」(game_uid，
-			//   首次=家园ID、之后与 user_id 解耦)，还可能是列表里展示的账号名(users.username)。
-			//   三者都匹配，否则管理员拿玩家报的家园号查不到战报。
-			//   口径同「钻石流水」「道具使用」两页（AdminEzfyDiamondLogs / AdminEzfyItemUseLogs）。
+			// ★ 2026-10-07 数字既可能是 user_id，也可能是游戏里看到的游戏ID(game_uid)，
+			//   还可能是列表展示的账号名(users.username)，三者都匹配（口径同钻石流水等页）。
 			q = q.Where(`user_id = ?
 				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)
 				OR user_id IN (SELECT id FROM users WHERE username = ?)`, uid, uid, word)
@@ -1029,7 +1030,6 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
-			// ★ 账号名(users.username)也一起匹配（列表「家园号」列展示的就是它）
 			var uids []uint
 			h.DB.Model(&model.User{}).Select("id").
 				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
@@ -1041,7 +1041,11 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 			}
 		}
 	}
-	// ★ 2026-10-08 时间范围走 SQL（created_at 起止，配合索引）。
+	// 类型过滤走持久化列（可走索引），不再内存运算。
+	if typeName != "" {
+		q = q.Where("type_name = ?", typeName)
+	}
+	// 时间范围走 SQL（created_at 起止，配合索引）。
 	if startStr != "" {
 		if st, err := time.ParseInLocation("2006-01-02", startStr, time.Local); err == nil {
 			q = q.Where("created_at >= ?", st)
@@ -1056,39 +1060,20 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 
 	var rows []model.EzfyReport
 	var total int64
-	if typeName == "" {
-		// ★ 2026-10-08 性能：不选类型时 = 「全部」，直接在库里分页（快径），
-		//   不再把整表/整玩家的战报捞进内存。
-		q.Count(&total)
-		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
-	} else {
-		// 指定类型：type_name 由标题前缀 + report_type 兜底算出，无法在 SQL 精确表达，
-		// 退化为「按玩家+时间范围把候选取回内存，过滤类型后再分页」。
-		// 依赖上面的玩家/时间筛选把候选控制在小范围（user_id / created_at 索引命中）。
-		var all []model.EzfyReport
-		q.Order("id DESC").Find(&all)
-		for _, r := range all {
-			if ezfyReportTypeName(r.ReportType, r.Title) == typeName {
-				rows = append(rows, r)
-			}
-		}
-		total = int64(len(rows))
-		if offset < len(rows) {
-			end := offset + size
-			if end > len(rows) {
-				end = len(rows)
-			}
-			rows = rows[offset:end]
-		}
-	}
+	q.Count(&total)
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+
+	// ★ 2026-10-08 类型下拉交给后端给出库里真实的 type_name 去重列表，
+	//   前端不再手写枚举（避免出现库里没有的「增援」/漏掉「升级、交易、返航」等）。
+	var types []string
+	h.DB.Model(&model.EzfyReport{}).Distinct("type_name").
+		Where("type_name <> ''").Order("type_name").Pluck("type_name", &types)
 
 	type rowOut struct {
 		model.EzfyReport
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
-		TypeName   string `json:"type_name"`
-		// 列表里带一段正文预览（content 可能是长 JSON/HTML，截前 200 字）
-		Preview string `json:"preview"`
+		Preview    string `json:"preview"`
 	}
 	out := []rowOut{}
 	for _, r := range rows {
@@ -1097,11 +1082,9 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 		if len([]rune(preview)) > 200 {
 			preview = string([]rune(preview)[:200])
 		}
-		out = append(out, rowOut{EzfyReport: r, PlayerName: pn, HomeNum: hn,
-			TypeName: ezfyReportTypeName(r.ReportType, r.Title),
-			Preview:  preview})
+		out = append(out, rowOut{EzfyReport: r, PlayerName: pn, HomeNum: hn, Preview: preview})
 	}
-	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size, "types": types})
 }
 
 // AdminEzfyReportDetail 战报详情（content/detail 全文）
@@ -1116,7 +1099,7 @@ func (h *EzfyAdmin) AdminEzfyReportDetail(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"report":      r,
 		"player_name": pn, "home_num": hn,
-		"type_name": ezfyReportTypeName(r.ReportType, r.Title),
+		"type_name": ezfyTypeNameStored(r),
 	})
 }
 

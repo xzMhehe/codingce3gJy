@@ -137,6 +137,9 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	//   名字与线上已建的 idx_report_user_id_desc / idx_report_created 对齐，ensureEzfyIndex 幂等跳过、不重复建。
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_id_desc", "user_id,id", false)
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_created", "created_at", false)
+	// ★ 2026-10-08 管理端按「类型名」过滤走持久化列 type_name（同列回填见 cmd/backfilltype）。
+	//   用复合索引 (type_name,id)：`WHERE type_name=? ORDER BY id DESC` 可直接定位顶部 N 条。
+	ensureEzfyIndex(db, "ezfy_report", "idx_report_type_id", "type_name,id", false)
 	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_user_cfg_off", "user_id,cfg_id,officer_id", false)
 
 	// ★ 2026-10-05 二战风云慢接口补索引（见函数注释）
