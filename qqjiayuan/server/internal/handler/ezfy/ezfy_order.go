@@ -2599,11 +2599,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//     坦克突袭=陆军速度 / 闪电袭击=空军速度 / 越岛战术=海军速度
 	//   ★ 原来它们被无差别算进 atkBonus / atkSpeedBonus（全军受益）——
 	//     用户反馈「空军速度只加空军，有些科技是特定兵种」。
-	atkType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+	atkType := ezfyTypeBonus{Speed: map[int]int{}}
 	if v := atkTech[19] * 3; v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
 	}
-	atkType.Atk, atkType.Speed = h.officerTypeBonus(leadOfficer, atkType.Atk, atkType.Speed)
+	atkType = h.officerTypeBonus(leadOfficer, atkType)
 	// ★ 2026-10-08 攻方军官行同时展示攻击加成与防御加成（都是**属性部分**，技能单列）：
 	//   出征军官的属性/技能同样给部队提供防御（被打时减伤），原来军官行只写攻击加成（用户反馈）。
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
@@ -2825,11 +2825,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defBonus += h.officerGuardBonus(cityGuard)
 		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
-		defType = ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+		defType = ezfyTypeBonus{Speed: map[int]int{}}
 		if v := defTech[19] * 3; v > 0 {
 			defType.Speed[ezfyTroopTypeAir] += v
 		}
-		defType.Atk, defType.Speed = h.officerTypeBonus(cityGuard, defType.Atk, defType.Speed)
+		defType = h.officerTypeBonus(cityGuard, defType)
 		// ★★ 2026-10-08 修正守方**攻击**加成的科技口径（用户反馈「两个号都是满科技，为什么科技加成不一样」）：
 		//
 		//	原来用「装甲科技(7) + 重工技术(9) + 掩体防御(16)」—— 但装甲科技的配置描述是

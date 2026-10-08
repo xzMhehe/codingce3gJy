@@ -115,8 +115,21 @@ const (
 // AtkBonus/AtkSpeedBonus（那会变成全兵种生效 —— 用户反馈「空军速度只加空军」）。
 // 引擎按 `unit.cfg.Type` 取对应兵种的值再叠加。
 type ezfyTypeBonus struct {
-	Atk   map[int]int // 攻击加成%（按兵种）
-	Speed map[int]int // 速度加成%（按兵种）
+	// Atk 攻击加成%（按**攻击方**兵种 type）—— 通用型兵种加成（当前无来源，保留扩展位）
+	Atk map[int]int
+	// Speed 速度加成%（按攻击方兵种 type）—— 喷气引擎(空军速度)/坦克突袭(陆军速度)等
+	Speed map[int]int
+	// ★★ 2026-10-08 按**目标**生效的攻击加成（配置文案「X 对 Y 攻击」的严格口径）：
+	//
+	//	四指编队「空军对空攻击」→ 空军(3) 打 空军(3)
+	//	狼群战术「海军对海攻击」→ 海军(1) 打 海军(1)
+	//	（key = 攻击方兵种 type；内层 key = 目标兵种 type）
+	AtkVsType map[int]map[int]int
+	// ★★ 2026-10-08 AtkFlat 兵种**攻击属性**加成（**绝对值**，不是百分比）：
+	//   直接加到该兵种的 对地/对海/对空 攻击属性上（`ezfyPickAttack` 取哪个就加哪个）。
+	//   火炮控制「陆军装甲攻击+10/级」→ 陆军(2) 的攻击属性 +10/级
+	//   （用户确认：「就改成 陆军 攻击 加 10 属性吧，比如 对地、对海、对空 属性 +10」）。
+	AtkFlat map[int]int
 }
 
 // atkOf / speedOf 取某兵种的专属加成（表为 nil / 未配置 → 0，老快照安全）
@@ -132,6 +145,50 @@ func (t ezfyTypeBonus) speedOf(troopType int) int {
 		return 0
 	}
 	return t.Speed[troopType]
+}
+
+// atkVsType 取「攻击方兵种 type → 目标兵种 type」的攻击加成（表为 nil → 0）
+func (t ezfyTypeBonus) atkVsType(atkType, defType int) int {
+	if t.AtkVsType == nil {
+		return 0
+	}
+	m := t.AtkVsType[atkType]
+	if m == nil {
+		return 0
+	}
+	return m[defType]
+}
+
+// attackBonusFor 某兵种攻击某目标时的**兵种专属攻击加成**合计：
+//
+//	Atk[攻击方type]（通用型）+ AtkVsType[攻击方type][目标type]（对空/对海）+ 目标是装甲类 ? AtkVsArmor[攻击方type] : 0
+//
+// def 为 nil（异常）时只返回通用型。
+func (t ezfyTypeBonus) attackBonusFor(atkType int, def *ezfyTroopStats) int {
+	if def == nil {
+		return t.atkOf(atkType)
+	}
+	// 通用型（Atk）+ 对目标兵种类型（四指编队=空军打空军 / 狼群战术=海军打海军）
+	return t.atkOf(atkType) + t.atkVsType(atkType, def.Type)
+}
+
+// atkFlatOf 取某兵种的**攻击属性**加成（绝对值，表为 nil → 0）
+func (t ezfyTypeBonus) atkFlatOf(atkType int) int {
+	if t.AtkFlat == nil {
+		return 0
+	}
+	return t.AtkFlat[atkType]
+}
+
+// addVsType 往 AtkVsType 里累加（内层 map 懒建）
+func (t *ezfyTypeBonus) addVsType(atkType, defType, v int) {
+	if t.AtkVsType == nil {
+		t.AtkVsType = map[int]map[int]int{}
+	}
+	if t.AtkVsType[atkType] == nil {
+		t.AtkVsType[atkType] = map[int]int{}
+	}
+	t.AtkVsType[atkType][defType] += v
 }
 
 type ezfyBattleState struct {
@@ -782,10 +839,24 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//   回归测试：ezfy_defbonus_test.go（修复前 +100% 防御与 +0% 损失完全相同）。
 			unitAtkBonus := 0
 			unitDefBonus := 0
+			// ★★ 2026-10-08 兵种专属加成（「狼群战术=海军对海攻击+90%」这类）单独标在行尾：
+			//   它按**兵种**生效、不属于通用拆解（bonusBreak 只拆通用段），原来数值虽然算进了
+			//   unitAtkBonus，但日志里**完全看不到来源** → 玩家反馈「狼群战术没有对海攻击加成」
+			//   （看日志只能看到「军官+515 科技+70 装备+49」，加起来对不上总数）。
+			typeAtkTxt := ""
+			// atkFlat = 该兵种**攻击属性**加成（绝对值，如火炮控制给陆军 +10/级），直接加在对地/对海/对空上
+			atkFlat := 0
 			equip := st.DefEquip
 			if isAtk {
-				// ★ 2026-10-08 攻击加成 = 通用 + **该兵种专属**（如「四指编队」只加空军、「狼群战术」只加海军）
-				unitAtkBonus = atkBonus + st.AtkType.atkOf(unit.cfg.Type)
+				// 攻击加成 = 通用 + 该兵种专属（按文案严格：四指编队=空军打空军、狼群战术=海军打海军）
+				tb := st.AtkType.attackBonusFor(unit.cfg.Type, target.cfg)
+				unitAtkBonus = atkBonus + tb
+				if tb > 0 {
+					typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)
+				}
+				if atkFlat = st.AtkType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
+					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
+				}
 				// ★ 2026-10-07 守方防御加成 = 基础(城墙+科技+城守) + 装备 Def（原来漏了装备 Def，
 				//   战斗加成行显示「防御+X%」与伤害减伤不一致）
 				unitDefBonus = defBonus + st.DefEquip.Def
@@ -794,8 +865,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
 				//   （原实现 unitAtkBonus=0，城防/守城部队打人完全没加成 —— 用户反馈
 				//   「科技加成、技能加成没有算入伤害当中」的根因之一）
-				// ★ 2026-10-08 同上：守方行动时也按**兵种**叠加专属攻击加成
-				unitAtkBonus = st.DefAtkBonus + st.DefType.atkOf(unit.cfg.Type)
+				tb := st.DefType.attackBonusFor(unit.cfg.Type, target.cfg)
+				unitAtkBonus = st.DefAtkBonus + tb
+				if tb > 0 {
+					typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)
+				}
+				if atkFlat = st.DefType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
+					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
+				}
 				// ★ 2026-10-07 攻方「防御加成」= 出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。
 				//   原来攻方被打时防御恒 0 —— 攻方军官带弧形防御 Lv.5「防御力+150%」完全看不见也不生效（用户反馈）。
 				unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def
@@ -804,7 +881,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			if !isAtk {
 				bonusBreak = defBonusBreak
 			}
-			damage := ezfyCalcDamage(baseAtk, target.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
+			// ★ 2026-10-08 兵种**攻击属性**加成（绝对值）加在取到的攻击属性上
+			//   （火炮控制「陆军攻击+10/级」→ 陆军打谁都是 对地/对海/对空 +10）
+			damage := ezfyCalcDamage(baseAtk+atkFlat, target.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
 			// ★ 暴击：按暴击几率 roll（几率封顶 100%），命中则乘 (1 + 暴击伤害加成)
 			//
 			// ⚠️ 2026-09-23 用户反馈「暴击打了 1 个单位」→ 老实现有两个坑：
@@ -915,8 +994,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					//   「造成D伤害」改为**本目标实际承受的伤害**（消灭数×有效生命），
 					//   与下方【势不可挡】各行的伤害加总=这次攻击的总伤害，方便玩家核算。
 					// ★ 2026-10-06 守方被攻击时追加「防御加成+N%(来源)」—— 让玩家看出伤害为啥少打了。
-					line := fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%%s",
-						side, stName(unit), critTxt, enemySide, stName(cur), unitAtkBonus, bonusBreak)
+					line := fmt.Sprintf("%s%s攻击%s%s%s, 攻击加成+%d%%%s%s",
+						side, stName(unit), critTxt, enemySide, stName(cur), unitAtkBonus, bonusBreak, typeAtkTxt)
 					if isAtk {
 						// 攻方打守方 → 展示守方防御加成
 						if defBonusTxt != "" {
@@ -929,8 +1008,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", killed*int64(chp), killed)
 					st.Actions = append(st.Actions, line)
 				} else {
-					line := fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 攻击加成+%d%%%s",
-						side, stName(unit), enemySide, stName(cur), unitAtkBonus, bonusBreak)
+					line := fmt.Sprintf("%s%s【势不可挡】溢出伤害继续攻击%s%s, 攻击加成+%d%%%s%s",
+						side, stName(unit), enemySide, stName(cur), unitAtkBonus, bonusBreak, typeAtkTxt)
 					if isAtk {
 						// 攻方打守方 → 展示守方防御加成
 						if defBonusTxt != "" {
@@ -959,16 +1038,34 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★ 2026-10-06 修复：守方反击时原来 cbAtk 恒为 0（「绝地反击」技能没算进伤害），
 				//   现在守方反击也吃守方攻击加成(科技+军官技能)。
 				cbAtk, cbDef := 0, 0
+				// ★★ 2026-10-08 反击方（target）的**兵种专属**加成也要算进 cbAtk：
+				//   原来只取通用加成 → 「狼群战术（海军对海攻击+90%）」这类按兵种的技能
+				//   在反击时**完全不生效**（用户反馈「没有对海军/对海攻击加成」）。
+				cbType := 0
+				cbFlat := 0 // 反击方的兵种攻击属性加成（绝对值）
 				if isAtk { // 攻方在打 → 被打的是守方 → 守方发动反击（被还击方=攻方）
-					cbAtk = st.DefAtkBonus
+					// 反击方(target) 打 被还击方(unit)：专属加成按「反击方兵种 → unit 兵种」取
+					cbType = st.DefType.attackBonusFor(target.cfg.Type, unit.cfg)
+					cbAtk = st.DefAtkBonus + cbType
+					cbFlat = st.DefType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 攻方被守方反击 → 攻方防御加成减伤（原来恒 0）
 					cbDef = st.AtkDefBonus + st.AtkEquip.Def
 				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击（被还击方=守方）
-					cbAtk = atkBonus
+					cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)
+					cbAtk = atkBonus + cbType
+					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 守方被攻方反击 → 守方防御加成（基础+装备）减伤
 					cbDef = defBonus + st.DefEquip.Def
 				}
-				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg), unit.cfg.Defence, target.count, cbAtk, cbDef)
+				cbTypeTxt := ""
+				if cbType > 0 {
+					cbTypeTxt = fmt.Sprintf(" 兵种专属+%d%%", cbType)
+				}
+				if cbFlat > 0 {
+					cbTypeTxt += fmt.Sprintf(" 兵种攻击+%d", cbFlat)
+				}
+				// ★ 反击同样吃反击方的兵种攻击属性加成（绝对值）
+				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg)+cbFlat, unit.cfg.Defence, target.count, cbAtk, cbDef)
 				// ★★ 2026-10-08 修复「反击消灭的兵比普通攻击还多」（用户反馈「为什么反击伤害还高」）：
 				//
 				//	普通攻击用 `cur.hp`（**有效生命** = 基础血量 ×(1+生命加成)，见 ezfyFightUnit.hp
@@ -1005,8 +1102,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					counterOfficer = ezfyOfficerShortName(st.AtkOfficerDesc)
 				}
 				counterSlogan := ezfySlogans[(st.Round*5+2)%len(ezfySlogans)]
-				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s！%s，攻击加成+%d%%%s",
-					counterSide, counterOfficer, stName(target), actorBare, stName(unit), counterSlogan, cbAtk, counterBreak)
+				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s！%s，攻击加成+%d%%%s%s",
+					counterSide, counterOfficer, stName(target), actorBare, stName(unit), counterSlogan, cbAtk, counterBreak, cbTypeTxt)
 				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
 				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 展示攻方防御加成；
 				//   守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成。

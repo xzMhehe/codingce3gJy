@@ -55,12 +55,15 @@ func TestEzfySkillLevelOf(t *testing.T) {
 	}
 }
 
-// TestSkillBattleBonusScaled 攻击类技能加成必须乘倍率（尖兵突击/火炮控制/四指编队·狼群战术）。
+// TestSkillBattleBonusScaled 攻击类技能加成必须乘倍率。
+//
+// ★ 2026-10-08 起：通用段只剩「尖兵突击 30*scale」；火炮控制(10)/四指编队·狼群战术(15)
+// 已移到 officerTypeBonus 按兵种/按目标下发（倍率同样要乘，见 TestTypeSpecificBonusWired）。
 func TestSkillBattleBonusScaled(t *testing.T) {
 	src := rawFile(t, "ezfy_officer.go")
-	for _, want := range []string{"30 * scale", "15 * scale", "h.officerSkillScale(o)"} {
+	for _, want := range []string{"30 * scale", "10 * scale", "15*scale", "h.officerSkillScale(o)"} {
 		if !strings.Contains(src, want) {
-			t.Fatalf("officerSkillBattleBonus 未按等级乘倍率（缺 %s）：\n%s", want, src)
+			t.Fatalf("技能加成未按等级乘倍率（缺 %s）：\n%s", want, src)
 		}
 	}
 }
@@ -382,14 +385,16 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 			t.Fatalf("通用速度不该含喷气引擎(19)（那是空军专属）：%s", bad)
 		}
 	}
-	// ③ 军官的六个兵种技能必须按兵种下发
+	// ③ 军官的六个兵种技能必须按兵种下发（2026-10-08 用户确认的口径）：
+	//   火炮控制 → 陆军**攻击属性 +10/级（绝对值）**；四指编队 → 空军打空军；狼群战术 → 海军打海军；
+	//   坦克突袭/闪电袭击/越岛战术 → 陆/空/海速度。
 	for _, want := range []string{
-		"atk[ezfyTroopTypeArmy] += 10 * scale",   // 火炮控制 → 陆军
-		"atk[ezfyTroopTypeAir] += 15 * scale",    // 四指编队 → 空军
-		"atk[ezfyTroopTypeNavy] += 15 * scale",   // 狼群战术 → 海军
-		"speed[ezfyTroopTypeArmy] += 10 * scale", // 坦克突袭 → 陆军
-		"speed[ezfyTroopTypeAir] += 10 * scale",  // 闪电袭击 → 空军
-		"speed[ezfyTroopTypeNavy] += 10 * scale", // 越岛战术 → 海军
+		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",                       // 火炮控制 → 陆军攻击属性
+		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)",        // 四指编队 → 空军打空军
+		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)",      // 狼群战术 → 海军打海军
+		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",                         // 坦克突袭 → 陆军
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                          // 闪电袭击 → 空军
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                         // 越岛战术 → 海军
 	} {
 		if !strings.Contains(off, want) {
 			t.Fatalf("军官兵种技能未按兵种下发：%s", want)
@@ -412,13 +417,44 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 	}
 	// ⑤ 战斗引擎必须按兵种取值叠加（攻击 + 速度，攻守双方）
 	for _, want := range []string{
-		"atkBonus + st.AtkType.atkOf(unit.cfg.Type)",
-		"st.DefAtkBonus + st.DefType.atkOf(unit.cfg.Type)",
+		"tb := st.AtkType.attackBonusFor(unit.cfg.Type, target.cfg)", // 攻方行动（含"对目标"加成）
+		"tb := st.DefType.attackBonusFor(unit.cfg.Type, target.cfg)", // 守方行动
+		"unitAtkBonus = atkBonus + tb",
+		"unitAtkBonus = st.DefAtkBonus + tb",
 		"atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)",
 		"defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)",
 	} {
 		if !strings.Contains(bat, want) {
 			t.Fatalf("战斗引擎未按兵种叠加加成：%s", want)
+		}
+	}
+}
+
+// TestTypeBonusInAttackAndCounter 兵种专属加成必须在**普通攻击与反击**里都生效，且日志要标出「兵种专属+N%」。
+//
+// ★★ 2026-10-08 用户反馈「狼群战术(Lv.6 海军对海攻击+90%) 没有对海军/对海攻击加成」：
+//
+//	① 反击的 cbAtk 原来只取通用加成 → 按兵种的技能在反击时**完全不生效**（数值就错）；
+//	② 普通攻击里数值算对了，但拆解（bonusBreak 只拆通用段）看不到 → 玩家相加对不上总数，以为没生效。
+func TestTypeBonusInAttackAndCounter(t *testing.T) {
+	bat := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
+	for _, want := range []string{
+		// 普通攻击：数值含专属 + 行尾标注
+		"unitAtkBonus = atkBonus + tb",
+		"unitAtkBonus = st.DefAtkBonus + tb",
+		`typeAtkTxt = fmt.Sprintf(" 兵种专属+%d%%", tb)`,
+		// 反击：数值含反击方专属（含"对目标"加成）+ 行尾标注
+		"cbType = st.DefType.attackBonusFor(target.cfg.Type, unit.cfg)",
+		"cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)",
+		"cbAtk = st.DefAtkBonus + cbType",
+		"cbAtk = atkBonus + cbType",
+		// 兵种攻击属性加成（绝对值）在攻击/反击里都要加上
+		"ezfyCalcDamage(baseAtk+atkFlat,",
+		"ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg)+cbFlat,",
+		`cbTypeTxt = fmt.Sprintf(" 兵种专属+%d%%", cbType)`,
+	} {
+		if !strings.Contains(bat, want) {
+			t.Fatalf("兵种专属加成未接入（攻击/反击/日志标注）：%s", want)
 		}
 	}
 }

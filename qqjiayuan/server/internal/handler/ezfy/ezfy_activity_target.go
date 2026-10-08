@@ -387,11 +387,11 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// 速度：燃烧引擎(10)「部队速度」= 通用；喷气引擎(19)「空军速度」= 兵种专属（见下方 atkType）
 	atkSpeedBonus := atkTech[10] * 2
 	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气引擎只加空军 + 军官兵种技能
-	atkType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+	atkType := ezfyTypeBonus{Speed: map[int]int{}}
 	if v := atkTech[19] * 3; v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
 	}
-	atkType.Atk, atkType.Speed = h.officerTypeBonus(leadOfficer, atkType.Atk, atkType.Speed)
+	atkType = h.officerTypeBonus(leadOfficer, atkType)
 	// ★ 2026-10-08 与普通出征同口径：军官行同时展示攻击加成与防御加成（属性部分，技能单列）
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
 		h.officerGuardAttrBonus(leadOfficer), "防御加成")

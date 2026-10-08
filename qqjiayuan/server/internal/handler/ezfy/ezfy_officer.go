@@ -1605,48 +1605,54 @@ func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
 	return 0
 }
 
-// officerTypeBonus 军官**兵种专属**技能加成 → 按兵种表（ezfyTypeBonus 的 Atk / Speed）。
+// officerTypeBonus 军官**兵种专属**技能加成 → 写进 ezfyTypeBonus。
 //
-// 配置里带兵种的技能（`ezfy_cfg_skill.effect`）：
+// ★★ 2026-10-08 用户确认「按文案严格」—— 配置里的「X 对 Y 攻击」是**按目标**生效的：
 //
-//	火炮控制「陆军装甲攻击+10/级」  → Atk[陆军]
-//	四指编队「空军对空攻击+15%/级」 → Atk[空军]
-//	狼群战术「海军对海攻击+15%/级」 → Atk[海军]
-//	坦克突袭「陆军速度+10%/级」    → Speed[陆军]
-//	闪电袭击「空军速度+10%/级」    → Speed[空军]
-//	越岛战术「海军速度+10%/级」    → Speed[海军]
+//	火炮控制「陆军装甲攻击+10/级」   → **陆军兵种的攻击属性 +10/级**（绝对值；对地/对海/对空都加）
+//	                                   （用户 2026-10-08 确认：「就改成 陆军 攻击 加 10 属性吧」）
+//	四指编队「空军对空攻击+15%/级」  → 空军 打 **空军**目标 +15%/级
+//	狼群战术「海军对海攻击+15%/级」  → 海军 打 **海军**目标 +15%/级
+//	坦克突袭「陆军速度+10%/级」      → 陆军速度（不分目标）
+//	闪电袭击「空军速度+10%/级」      → 空军速度
+//	越岛战术「海军速度+10%/级」      → 海军速度
 //
-// ★★ 2026-10-08 这些技能**只作用于对应兵种**（用户反馈「空军速度只加空军」）：
-// 原来它们被无差别加进通用的 officerSkillBattleBonus / officerSpeedSkillBonus → 全军受益。
-// ★ 传入的 map 为 nil 时函数内部自行建表（调用方可直接 `h.officerTypeBonus(o, nil, nil)`）。
-func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, atk, speed map[int]int) (map[int]int, map[int]int) {
-	if atk == nil {
-		atk = map[int]int{}
+// ★ 原实现一律按「该兵种通用攻击加成」处理（海军打谁都 +90%），与文案不符。
+// ★ 传入的 ezfyTypeBonus 里各表为 nil 时函数内部自行建表。
+func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, b ezfyTypeBonus) ezfyTypeBonus {
+	if b.Atk == nil {
+		b.Atk = map[int]int{}
 	}
-	if speed == nil {
-		speed = map[int]int{}
+	if b.Speed == nil {
+		b.Speed = map[int]int{}
+	}
+	if b.AtkVsType == nil {
+		b.AtkVsType = map[int]map[int]int{}
+	}
+	if b.AtkFlat == nil {
+		b.AtkFlat = map[int]int{}
 	}
 	if o == nil {
-		return atk, speed
+		return b
 	}
 	scale := h.officerSkillScale(o)
 	for _, s := range officerSkills(o) {
 		switch s {
-		case "火炮控制":
-			atk[ezfyTroopTypeArmy] += 10 * scale
-		case "四指编队":
-			atk[ezfyTroopTypeAir] += 15 * scale
-		case "狼群战术":
-			atk[ezfyTroopTypeNavy] += 15 * scale
+		case "火炮控制": // 陆军 攻击属性（对地/对海/对空）+10/级（**绝对值**，不是百分比）
+			b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale
+		case "四指编队": // 空军 打 空军
+			b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)
+		case "狼群战术": // 海军 打 海军
+			b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)
 		case "坦克突袭":
-			speed[ezfyTroopTypeArmy] += 10 * scale
+			b.Speed[ezfyTroopTypeArmy] += 10 * scale
 		case "闪电袭击":
-			speed[ezfyTroopTypeAir] += 10 * scale
+			b.Speed[ezfyTroopTypeAir] += 10 * scale
 		case "越岛战术":
-			speed[ezfyTroopTypeNavy] += 10 * scale
+			b.Speed[ezfyTroopTypeNavy] += 10 * scale
 		}
 	}
-	return atk, speed
+	return b
 }
 
 // officerSkillBattleBonus 军官技能带来的**通用**攻击加成（复刻原版 getOfficerBattleBonus 的技能段）。
