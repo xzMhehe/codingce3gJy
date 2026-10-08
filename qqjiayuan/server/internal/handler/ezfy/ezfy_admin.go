@@ -1071,6 +1071,9 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 
 	type rowOut struct {
 		model.EzfyReport
+		// ★ 2026-10-08 覆盖内嵌的 type_name 字段：存量未回填/部署前老代码新写的行(空串)，
+		//   用 ezfyTypeNameStored 现算兜底，管理端不再显示空白类型（与玩家端同口径）。
+		TypeName   string `json:"type_name"`
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
 		Preview    string `json:"preview"`
@@ -1082,7 +1085,8 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 		if len([]rune(preview)) > 200 {
 			preview = string([]rune(preview)[:200])
 		}
-		out = append(out, rowOut{EzfyReport: r, PlayerName: pn, HomeNum: hn, Preview: preview})
+		out = append(out, rowOut{EzfyReport: r, TypeName: ezfyTypeNameStored(r),
+			PlayerName: pn, HomeNum: hn, Preview: preview})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size, "types": types})
 }
