@@ -111,6 +111,20 @@ const ezfyOfficerRenameCardItemID = 25
 
 // ============ 基础查询 ============
 
+// stableSortOfficers 军官列表排序：等级倒序，同等级按名字升序（用户 2026-10-08 规则，
+// 军官列表按 等级、名字 排序）。稳定排序保证同等级同名字时保持后端原序。
+func stableSortOfficers(list []model.EzfyOfficer) {
+	sort.SliceStable(list, func(i, j int) bool {
+		if list[i].Level != list[j].Level {
+			return list[i].Level > list[j].Level
+		}
+		if list[i].Name != list[j].Name {
+			return list[i].Name < list[j].Name
+		}
+		return list[i].ID < list[j].ID
+	})
+}
+
 // officerList 城市军官列表（自愈：出征中但已无对应行军命令的军官解除出征态）
 func (h *EzfyHandler) officerList(cityId uint) []model.EzfyOfficer {
 	var list []model.EzfyOfficer
@@ -2608,6 +2622,9 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		}
 		return out
 	}
+	// ★ 2026-10-08 用户规则：军官列表按 等级(倒序) 后 名字 排序（同等级按名字排序）
+	//   —— 只影响「我的军官」主列表展示；军情/出征等其它界面各自用 officerList 不限序。
+	stableSortOfficers(list)
 	views := build(list)
 	capViews := build(capList)
 	// ★ 2026-10-04 性能：军校/参谋部等级用第二波已取建筑列表内存取值（零额外查询）
