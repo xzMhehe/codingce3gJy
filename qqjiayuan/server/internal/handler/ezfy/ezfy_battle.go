@@ -445,6 +445,14 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 //
 // ★ （2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 // —— 所以指令是按兵种存的，没给的兵种回落到司令部兵种配置。
+// ★ 2026-10-08 技能发动播报用的「带感口号」池（克制版，不浮夸）。
+//   轮流取 + 攻/守、攻击/防御、回合 三重混合偏移，避免重复枯燥。
+var ezfySlogans = []string{
+	"战意沸腾", "气势如虹", "士气大振", "杀声震天", "锋芒毕露", "势不可挡",
+	"铁血激荡", "锐不可当", "一往无前", "战鼓擂动", "陷阵之志", "气吞万里",
+	"剑锋所指", "热血方刚", "战意高昂", "孤掷一注",
+}
+
 func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	if st.Done {
 		return true
@@ -480,6 +488,36 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)
 
 	st.Actions = append(st.Actions, fmt.Sprintf("第%d回合:", st.Round))
+
+	// ★ 2026-10-08 技能发动播报：每个生效回合都提示。
+	//   攻/守方的攻击类技能（AtkSkillBreak/DefSkillBreak）逐个写一行带感口号，再带出防御类军官技能
+	//   （弧形防御等，明细 Name 带「军官技能·」前缀 → 去掉前缀后发动，说明全体防御力+N%）。
+	//   纯配置/科技/装备来源不播报（无「军官技能·」前缀不碰）。「攻击加成+N%」拆解保持原样。
+	skillAnno := func(side, offName string, off int, wording string, skills []ezfyBonusItem) {
+		for i, s := range skills {
+			if s.Value == 0 {
+				continue
+			}
+			idx := (st.Round + i*3 + off*7) % len(ezfySlogans)
+			st.Actions = append(st.Actions,
+				fmt.Sprintf("%s%s发动【%s】！%s，全体%s+%d%%", side, offName, s.Name, ezfySlogans[idx], wording, s.Value))
+		}
+	}
+	// 只挑明细分里确实是「军官技能」的来源（防御/科技/城防/装备等不算技能发动）
+	officerSkillOnly := func(items []ezfyBonusItem) []ezfyBonusItem {
+		out := []ezfyBonusItem{}
+		for _, it := range items {
+			if strings.HasPrefix(it.Name, "军官技能·") {
+				it.Name = strings.TrimPrefix(it.Name, "军官技能·")
+				out = append(out, it)
+			}
+		}
+		return out
+	}
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 0, "攻击力", st.AtkSkillBreak)
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 1, "攻击力", st.DefSkillBreak)
+	skillAnno("【攻方】", ezfyOfficerShortName(st.AtkOfficerDesc), 2, "防御力", officerSkillOnly(st.AtkDefBreak))
+	skillAnno("【守方】", ezfyOfficerShortName(st.DefOfficerDesc), 3, "防御力", officerSkillOnly(st.DefDefBreak))
 	all := append(append([]*ezfyFightUnit{}, st.Attackers...), st.Defenders...)
 	sort.SliceStable(all, func(i, j int) bool { return all[i].cfg.Speed > all[j].cfg.Speed })
 
@@ -832,8 +870,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if !isAtk {
 					counterBreak = atkBonusBreak
 				}
-				line := fmt.Sprintf("【%s】%s【军官技能·绝地反击】还击%s%s, 攻击加成+%d%%%s",
-					enemySide, stName(target), side, stName(unit), cbAtk, counterBreak)
+				// ★ 2026-10-08 绝地反击与常规技能发动同口径：先军官名「发动【绝地反击】」再兵种还击，并带带感口号
+				counterOfficer := ezfyOfficerShortName(st.DefOfficerDesc)
+				if isAtk {
+					counterOfficer = ezfyOfficerShortName(st.AtkOfficerDesc)
+				}
+				counterSlogan := ezfySlogans[(st.Round*5+2)%len(ezfySlogans)]
+				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s！%s，攻击加成+%d%%%s",
+					side, counterOfficer, stName(unit), enemySide, stName(target), counterSlogan, cbAtk, counterBreak)
 				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
 				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 展示攻方防御加成；
 				//   守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成。
