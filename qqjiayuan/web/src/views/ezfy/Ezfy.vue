@@ -2575,15 +2575,21 @@ export default {
       return t
     },
     // ---- 军队动态 ----
-    // ★ 2026-10-01 军情按当前城过滤：只拉当前城市出发/驻守的部队
+    // ★★ 2026-10-08 军情页四个分区（军队动态 / 驻军 / 军情警讯 / 战斗报告）**一律只查当前城市**：
+    //   军情页(reports/reportview)按 `this.city.id` 过滤 —— 与「军情警讯/战斗报告」的
+    //   `category=..&city_id=..` 口径完全一致（后端 ReportDynamics 已支持 city_id 过滤：
+    //   订单按 city_id(出发城) 过滤、守方战场按 battle.target_id(被打城) 过滤）。
+    //   ★ 出征队列(orders)、地图页「出征队列」面板不在这四个类别里，仍展示**全部在途部队**
+    //     （每条都带 from_city 标明来源城，见后端下发的 from_city/from_x/from_y）。
     loadDynamics () {
       // ★★ 2026-10-07 修复「出征后跳转出征队列是空的 / 打野地也没了」：
-      //   原来按 `city_id = 当前所在城` 过滤，只有「订单出发城 == 当前城」的部队才显示。
-      //   而 `doOrder` 里 `load()`（刷新城市）与 `go('orders')`（拉队列）是**并发**的，
-      //   出征瞬间 `this.city` 可能还是旧值 / 尚未回来 → 过滤条件对不上 → 队列恒为空。
-      //   ★ 出征队列本来就该展示**全部在途部队**（列表里每条都带 from_city 标明来源城，
-      //     见后端下发的 from_city/from_x/from_y），所以这里不再传 city_id（0 = 不过滤）。
-      api.get('/games/ezfy/reports/dynamics?city_id=0').then(r => {
+      //   原来**所有页面**都按 `city_id = 当前所在城` 过滤，而 `doOrder` 里
+      //   `load()`（刷新城市）与 `go('orders')`（拉队列）是**并发**的，出征瞬间
+      //   `this.city` 可能还是旧值 / 尚未回来 → 过滤条件对不上 → 队列恒为空。
+      //   现在只在**军情页**按城过滤，出征队列/地图队列面板保持全集，问题不复现。
+      const onlyCity = (this.cur === 'reports' || this.cur === 'reportview')
+      const cid = (onlyCity && this.city) ? this.city.id : 0
+      api.get('/games/ezfy/reports/dynamics?city_id=' + cid).then(r => {
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
           // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
