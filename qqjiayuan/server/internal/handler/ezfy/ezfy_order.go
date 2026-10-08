@@ -2840,7 +2840,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//	现在与攻方口径对齐：军训艺术+2%/级 · 武器科技+3%/级 · 重工技术+2%/级（重装备攻防）
 		//	＋ 掩体防御+2%/级（城防攻防，守城方专属）＋ 城守军官攻击加成。
 		//	★ 装甲科技(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
-		//	★ 守方射程加成 = 弹道学(8)*3 + 掩体防御(16)*2（不变）
+		//	★ 守方射程加成 = 弹道学(8)*3（与攻方同口径；掩体防御只进城防攻防，不进射程 —— 见下方 defRangeBonus）
 		defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
 		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
@@ -2858,7 +2858,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			ezfyTechItem("掩体防御", defTech[16]*2),
 			ezfyTechItem("喷气引擎", defTech[19]*3),
 		)
-		defRangeBonus = defTech[8]*3 + defTech[16]*2
+		// ★★ 2026-10-08 修复「守方射程加成虚高」（用户反馈「射程加成有问题 守方 50%？」）：
+		//   原来是 `弹道学(8)*3 + 掩体防御(16)*2` —— 但掩体防御的配置描述是
+		//   「**城防攻防**+2% / 提高城防设施攻防」，只加城防的攻与防，**与射程无关**；
+		//   攻方那条路径只有弹道学(8)*3。两边口径不一致 → 满科技的守方凭空多 20% 射程。
+		//   现在与攻方对齐：**守方射程 = 弹道学(8)*3**。
+		//   ★ 掩体防御仍保留在守方**攻击**（defAtkBonus）与**防御**（defBonus/defDefBreak）里 —— 那是它的正确作用。
+		defRangeBonus = defTech[8] * 3
 		defEquip = h.officerBattleEquipBonus(cityGuard)
 		// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/城守属性+技能/装备，
 		//   被打行展示「防御加成+N%(城墙+50% 科技·装甲科技+30% …)」，与 defBonus 构成同口径）

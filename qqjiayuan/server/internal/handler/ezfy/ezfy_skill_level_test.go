@@ -336,7 +336,8 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2"},
 		{"防御", "defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
-		{"射程", "defRangeBonus = defTech[8]*3 + defTech[16]*2"},
+		// ★ 射程只吃弹道学(8)；掩体防御(16) 是「城防攻防」，只进攻击/防御（2026-10-08 修掉虚高）
+		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}
 	for _, c := range atkCases {
 		if !strings.Contains(src, c.want) {
