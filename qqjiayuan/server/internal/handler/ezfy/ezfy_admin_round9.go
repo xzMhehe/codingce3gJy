@@ -44,6 +44,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
 		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
+		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
+		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金，默认粮10/钢10/油20/稀25）
 		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
@@ -146,6 +148,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
 		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
+	}
+	// ★ 2026-10-08 新玩家落地洲兜底（老行 0 / 越界 → 回落默认欧洲）
+	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
+		lim.DefaultContinent = ezfyDefaultMoveContinent
 	}
 	// ★ 军官升星的数值项：0 无意义 → 回落默认值（开关项不兜底，0 = 关）
 	if lim.OfficerStarChance <= 0 {
@@ -270,6 +276,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GatherSeaMult *float64 `json:"gather_sea_mult"`
 		// ★ 2026-09-28：军校刷新周期（1=按天 2=按小时，默认按小时）
 		RecruitCycleMode *int `json:"recruit_cycle_mode"`
+		// ★ 2026-10-08：新玩家落地洲（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
+		DefaultContinent *int `json:"default_continent"`
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult *float64 `json:"res_prod_mult"`
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；**0 合法 = 黄金产量归零**）
@@ -346,6 +354,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		GatherLevelPow:    ezfyGatherLevelPowDef,
 		GatherSeaMult:     ezfyGatherSeaMultDef,
 		RecruitCycleMode:  ezfyRecruitCycleHourlyDef,
+		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
+		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:  ezfyResProdMultDef,
 		GoldProdMult: ezfyGoldProdMultDef,
@@ -634,6 +644,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.RecruitCycleMode = m
 	}
+	// ★ 2026-10-08 新玩家落地洲：大洲 ID 1~7（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）
+	if in.DefaultContinent != nil {
+		m := *in.DefaultContinent
+		if m < 1 || m > 7 {
+			resp.ParamError(c, "新玩家落地洲只能是 1~7（1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲）")
+			return
+		}
+		lim.DefaultContinent = m
+	}
 	// ★ 2026-09-26 城市资源产量倍率：允许小数，**且 0 合法**（= 产量归零）。
 	//   用户原话：「默认 1，可以调整 >= 0 的任意数量」—— 所以只拦负数。
 	if in.ResProdMult != nil {
@@ -896,6 +915,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
 		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
 	}
+	// ★ 2026-10-08 新玩家落地洲兜底（老行 0 / 越界 → 回落默认欧洲）
+	if lim.DefaultContinent < 1 || lim.DefaultContinent > 7 {
+		lim.DefaultContinent = ezfyDefaultMoveContinent
+	}
 	// ★ 军官升星数值兜底（老行可能是 0 / NULL）；开关不兜底
 	if lim.OfficerStarChance <= 0 {
 		lim.OfficerStarChance = ezfyStarChanceDef
@@ -994,6 +1017,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		{"drop_t4", ezfyDropT4Def}, {"drop_act_pct", ezfyDropActPctDef},
 		// ★ 2026-10-07 赎城金额：老库补列 + NULL/<=0 兜底 500（0 无意义 = 禁止赎城）
 		{"ransom_cost", ezfyRansomCostDefault},
+		// ★ 2026-10-08 新玩家落地洲：老库补列 + NULL/越界(含0) 兜底欧洲
+		{"default_continent", ezfyDefaultMoveContinent},
 	} {
 		if !h.DB.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
 			h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
@@ -1029,6 +1054,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"gather_sea_mult": lim.GatherSeaMult,
 		// ★ 2026-09-28 军校刷新周期（1=按天 2=按小时）
 		"recruit_cycle_mode": lim.RecruitCycleMode,
+		// ★ 2026-10-08 新玩家落地洲
+		"default_continent": lim.DefaultContinent,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1，0 = 产量归零）
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，0 = 黄金产量归零）

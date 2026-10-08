@@ -2938,6 +2938,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN ransom_cost int DEFAULT 500")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET ransom_cost = 500 WHERE ransom_cost IS NULL OR ransom_cost <= 0")
+	// ★ 2026-10-08 新玩家落地洲可配置：存量库补 default_continent 列（默认欧洲=1，0/越界 → 回落欧洲）
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "default_continent") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN default_continent int DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET default_continent = 1 WHERE default_continent IS NULL OR default_continent <= 0 OR default_continent > 7")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

@@ -576,6 +576,17 @@ func ezfyLimit() model.EzfyCfgLimit {
 	return l
 }
 
+// ezfyDefaultContinent 新玩家落地洲（读 ezfy_cfg_limit.default_continent，可在二战系统配置调整）
+//
+// ★ 2026-10-08 原来写死欧洲(1)，现在做成管理端可配。大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲。
+// 0 / 越界 / 未加载时回落默认欧洲（保证老玩家与新玩家行为不回退）。
+func ezfyDefaultContinent() int {
+	if n := ezfyCfg.limit.DefaultContinent; n >= 1 && n <= 7 {
+		return n
+	}
+	return ezfyDefaultMoveContinent
+}
+
 // ezfyGatherMax 单次出征最多使用几个集结令（读 ezfy_cfg_limit.gather_max_per_order）
 //
 // ★ 「出征集结令上限后台管理系统可维护」，默认 99（线上现值）。
@@ -1682,6 +1693,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		HousePopLimitOn: ezfyHousePopLimitDef, ConveneFlexibleOn: ezfyConveneFlexDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率：百分比口径（线上现值 0.1 = 训练近乎免费）
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
+		// ★ 2026-10-08 新玩家落地洲缺行兜底（默认欧洲；0/越界行读取时回落见 ezfyDefaultContinent）
+		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02：侦察机每架侦查成功率%（0 无意义 → 回落默认 20）

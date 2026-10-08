@@ -145,7 +145,7 @@ func (h *EzfyHandler) MoveInfo(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"areas": areas, "gold_cost": ezfyMoveCityGoldCost, "gold": city.Gold,
 		"items":             items,
-		"default_continent": ezfyDefaultMoveContinent,
+		"default_continent": ezfyDefaultContinent(),
 		"city": gin.H{"id": city.ID, "name": city.Name, "x": city.X, "y": city.Y,
 			"continent": ezfyRegionName(city.X, city.Y)},
 	})
@@ -208,7 +208,7 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 			break
 		}
 		if continent == 0 {
-			continent = ezfyDefaultMoveContinent
+			continent = ezfyDefaultContinent()
 		}
 		if ezfyMoveAreaOf(continent) == nil {
 			resp.ParamError(c, "请选择要迁入的洲")
@@ -455,7 +455,7 @@ type EzfyMovePlanItem struct {
 // 返回的计划里 NewX/NewY 为 0 表示找不到落点，Reason 说明原因。
 func (h *EzfyHandler) EzfyBuildMovePlan(cities []model.EzfyCity, continent int, onlySea, onlyLand bool) []EzfyMovePlanItem {
 	if continent == 0 {
-		continent = ezfyDefaultMoveContinent
+		continent = ezfyDefaultContinent()
 	}
 	out := make([]EzfyMovePlanItem, 0, len(cities))
 	for i := range cities {
@@ -549,7 +549,7 @@ func (h *EzfyHandler) EzfyMoveOneCity(cityId uint, continent int, excluded map[[
 // 逐城传入 —— 这样「全城坐标」只读一次，不再每城全表扫描。
 func (h *EzfyHandler) EzfyMoveOneCityC(cityId uint, continent int, excluded map[[2]int]bool, ctx *moveCtx) (int, int, string) {
 	if continent == 0 {
-		continent = ezfyDefaultMoveContinent
+		continent = ezfyDefaultContinent()
 	}
 	var ct model.EzfyCity
 	if err := h.DB.First(&ct, cityId).Error; err != nil {
@@ -646,7 +646,7 @@ func (h *EzfyHandler) EzfyMoveOneCityCoastal(cityId uint, continent, fallback in
 func (h *EzfyHandler) EzfyMoveOneCityCoastalC(cityId uint, continent, fallback int,
 	excluded map[[2]int]bool, ctx *moveCtx) (int, int, string) {
 	if continent == 0 {
-		continent = ezfyDefaultMoveContinent
+		continent = ezfyDefaultContinent()
 	}
 	var ct model.EzfyCity
 	if err := h.DB.First(&ct, cityId).Error; err != nil {

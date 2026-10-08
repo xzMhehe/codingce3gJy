@@ -343,9 +343,10 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 //	欧洲满员时按「亚洲 → 非洲 → 北美洲 → 南美洲 → 大洋洲 → 南极洲」依次兜底，
 //	最后再退回全世界随机（保证永远建得出城，不会卡住新玩家）。
 func (h *EzfyHandler) findFreePos() [2]int {
-	order := []int{ezfyDefaultMoveContinent}
+	dc := ezfyDefaultContinent()
+	order := []int{dc}
 	for _, a := range ezfyMoveAreas {
-		if a.ID != ezfyDefaultMoveContinent {
+		if a.ID != dc {
 			order = append(order, a.ID)
 		}
 	}

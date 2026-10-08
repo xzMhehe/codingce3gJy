@@ -65,6 +65,19 @@
                 <el-option :value="1" label="按天" />
               </el-select>
             </el-form-item>
+            <!-- ★ 2026-10-08 新玩家落地洲：默认欧洲，可切换 -->
+            <el-form-item>
+              <template slot="label">新玩家落地洲<el-tooltip placement="top" :content="tips.default_continent"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-select v-model="form.default_continent" style="width:180px">
+                <el-option :value="1" label="欧洲" />
+                <el-option :value="2" label="亚洲" />
+                <el-option :value="3" label="非洲" />
+                <el-option :value="4" label="北美洲" />
+                <el-option :value="5" label="南美洲" />
+                <el-option :value="6" label="大洋洲" />
+                <el-option :value="7" label="南极洲" />
+              </el-select>
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ② 兵力与伤兵 -->
@@ -338,6 +351,8 @@ export default {
         gather_sea_mult: 1.5,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
         recruit_cycle_mode: 2,
+        // ★ 2026-10-08 新玩家落地洲（默认欧洲）
+        default_continent: 1,
         speed_train_rate: 100, wound_heal_rate: 100,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
@@ -412,6 +427,8 @@ export default {
           '海野基础产出系数比陆地低（海野 ×3、陆地 ×4），本系数让海野采得更多：默认 1.5 → 海野 3×1.5=4.5，比同级陆地 4 更高。填 1 = 海野与陆地拉平。建议 1~2。',
         // ★ 2026-09-28 军校刷新周期
         recruit_cycle_mode: '军校免费刷新次数的重置周期。按小时（默认）= 每小时重置；按天 = 每天 0 点重置。',
+        // ★ 2026-10-08 新玩家落地洲
+        default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
         res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
@@ -499,6 +516,8 @@ export default {
             gather_sea_mult: pos(Number(r.data.gather_sea_mult), 1.5),
             // ★ 2026-09-28 军校刷新周期：1=按天 2=按小时，非法回落按小时
             recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
+            // ★ 2026-10-08 新玩家落地洲：1~7，非法回落欧洲
+            default_continent: (r.data.default_continent >= 1 && r.data.default_continent <= 7) ? r.data.default_continent : 1,
             // ★ 2026-09-28 市长加成倍率：**0 合法 = 关闭**, 不能用 pos()（会把 0 改回 1）
             mayor_gain_mult: (r.data.mayor_gain_mult === undefined || r.data.mayor_gain_mult === null)
               ? 1 : Number(r.data.mayor_gain_mult),

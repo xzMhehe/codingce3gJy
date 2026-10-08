@@ -385,6 +385,10 @@ type EzfyCfgLimit struct {
 	GatherSeaMult float64 `gorm:"default:1.5;comment:海野采集系数" json:"gather_sea_mult"`
 	// ★ 2026-09-28 军校刷新周期可在二战系统配置切换按天/按小时（默认按小时）。
 	RecruitCycleMode int `gorm:"default:2;comment:军校刷新周期(1=按天 2=按小时)" json:"recruit_cycle_mode"`
+	// ★ 2026-10-08 「新玩家落地洲」做成可配置：新玩家首次建城/落地默认落到哪个洲
+	//   （大洲 ID：1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲，默认欧洲）。
+	//   0 / 越界读取端回落默认欧洲，见 ezfyDefaultContinent()。
+	DefaultContinent int `gorm:"default:1;comment:新玩家落地洲(1欧洲 2亚洲 3非洲 4北美洲 5南美洲 6大洋洲 7南极洲)" json:"default_continent"`
 
 	// ★ 2026-09-27 「资源产量也做成累加」：**每项资源的唯一硬上限**，默认 21 亿 = 2100000000。
 	//   产量与一切获取方式都无条件累加到该值为止，不再看仓储/库存上限。
