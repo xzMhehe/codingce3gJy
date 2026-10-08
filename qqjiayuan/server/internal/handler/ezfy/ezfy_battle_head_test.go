@@ -13,7 +13,9 @@ import (
 // 这个测试同时把 head 逐行打出来，方便肉眼核对战报/指挥室的准备回合内容。
 func TestBattleHeadOrder(t *testing.T) {
 	st := ezfyNewBattleState(nil, nil,
-		100, 50, 30, 20, 10, // atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus
+		// ★ 参数取「自洽值」：atkBonus 含军官加成、defAtkBonus 含守方军官加成，
+		//   这样「战斗加成」行的来源拆解（军官/科技/装备）不会算出负数。
+		585, 495, 595, 20, 10, // atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus
 		15, 5, // atkRangeBonus, defRangeBonus
 		ezfyBattleBonus{Dmg: 49, Def: 61, Hp: 73, Move: 10, Crit: 45, CritDmg: 64}, // atkEquip（含套装的全量）
 		ezfyBattleBonus{}, // defEquip
@@ -22,7 +24,7 @@ func TestBattleHeadOrder(t *testing.T) {
 		"赤色锤镰[裁决]", "", // atkSetDesc, defSetDesc
 		"Michael·Adams Lv.150 攻击加成+365% 防御加成+144%",
 		"斯大林 Lv.350 攻击加成+325% 守军防御+100%",
-		365, 325, // atkOfficerBonus, defOfficerBonus
+		515, 505, // atkOfficerBonus, defOfficerBonus（= 属性 + 技能，见军官行）
 		150, 180, // atkOfficerSkill, defOfficerSkill
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 150}},
 		[]ezfyBonusItem{{Name: "尖兵突击", Value: 180}},

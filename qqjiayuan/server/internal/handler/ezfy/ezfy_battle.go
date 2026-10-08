@@ -317,8 +317,31 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★★ 2026-10-08 「战斗加成」行**移到最后**（用户要求：这相当于总加成，应排在各项明细之后）：
 	//   准备回合的阅读顺序 = 军官 → 科技 → 装备 → 套装 → **战斗加成(总计)** → 战场初始相距。
 	//   原来它在军官行之后、明细之前，玩家先看到总数再看分项，容易以为数字对不上。
-	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s",
-		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt, defHpTxt)
+	// ★★ 2026-10-08 攻击加成补**来源拆解**（用户反馈「战斗加成汇总感觉不全、科技没加全」）：
+	//
+	//	原来汇总行只写总数，而军官行给的是「属性部分」、技能是单列的 —— 玩家拿
+	//	「军官行属性 + 科技行」去核对总会差一截（差的那截正是军官技能），以为漏算了。
+	//	这里直接写清「军官(属性+技能) / 科技 / 装备」三段，一眼能对账：
+	//	  攻方 攻击+345%(军官+275 科技+70)  ← 275=属性125+尖兵突击150，70=军训20+武器30+重工20
+	//	★ 科技段 = 总攻击加成 − 军官加成 − 装备伤害（三者互不重叠，恒等成立）。
+	// 科技段 = 总额 − 军官 − 装备；正常数据下恒 ≥0，异常/手工构造的输入钳到 0 避免出现「科技+-265」
+	atkTechPart := effAtk - st.AtkOfficerBonus - atkEquip.Dmg
+	if atkTechPart < 0 {
+		atkTechPart = 0
+	}
+	defAtkTechPart := st.DefAtkBonus - st.DefOfficerBonus
+	if defAtkTechPart < 0 {
+		defAtkTechPart = 0
+	}
+	atkAtkSrc := fmt.Sprintf("(军官+%d 科技+%d", st.AtkOfficerBonus, atkTechPart)
+	if atkEquip.Dmg != 0 {
+		atkAtkSrc += fmt.Sprintf(" 装备+%d", atkEquip.Dmg)
+	}
+	atkAtkSrc += ")"
+	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d)", st.DefOfficerBonus, defAtkTechPart)
+	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt,
+		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。

@@ -67,6 +67,7 @@ import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
 import AdminEzfyData from './components/admin/AdminEzfyData.vue'
 import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
 import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
+import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
 import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
 import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
@@ -295,6 +296,9 @@ export const menu = [
           // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
           //   ★ 2026-10-07 图标 el-icon-notice-board 在 Element UI 2.15 里不存在 → 图标空白，改用 notebook-2
           { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: AdminEzfyReports, perm: 'module:ezfyLogs' },
+          // ★ 2026-10-08 战斗队列管理：查看进行中的战场（双方部队/准备回合/逐回合日志），
+          //   支持手动推进一回合、一键自动打完、强制结算/清理卡死战场（perm 复用 module:ezfyLogs）
+          { key: 'ezfyBattles', name: '战斗队列', icon: 'el-icon-s-flag', component: AdminEzfyBattles, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
         ]

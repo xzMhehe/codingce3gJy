@@ -1112,6 +1112,12 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-reports", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReports)
 				admin.GET("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDetail)
 				admin.DELETE("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDelete)
+				// ★ 2026-10-08 战斗队列管理（查看具体战场 / 手动推进一回合 / 一键自动打完 / 强制结算清理）
+				admin.GET("/ezfy-battles", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattles)
+				admin.GET("/ezfy-battles/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleDetail)
+				admin.POST("/ezfy-battles/:id/tick", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleTick)
+				admin.POST("/ezfy-battles/:id/auto", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleAuto)
+				admin.POST("/ezfy-battles/:id/force", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleForce)
 				admin.GET("/ezfy-chats", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChats)
 				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChatDelete)
 				admin.GET("/ezfy-exchanges", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyExchanges)
