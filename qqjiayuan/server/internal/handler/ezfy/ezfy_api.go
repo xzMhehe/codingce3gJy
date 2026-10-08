@@ -3170,21 +3170,42 @@ func ezfyCityReportCond(cityId int64) string {
 // ★ 2026-10-01 军情按当前城过滤：cityId>0 时只统计该城的战报
 //   （新战报带 city_id；老攻击战报 city_id=0 按标题坐标反查订单归属城市）。
 func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
-	cityCond := ""
-	if cityId > 0 {
-		cityCond = " AND " + ezfyCityReportCond(cityId)
+	// ★ 2026-10-08 性能重构：cityId>0 时原来拼 `OR (EXISTS…)` 让每行都跑相关子查询+LIKE。
+	//   这里把「新行(city_id=X 走索引)」与「老行(city_id=0/NULL 用 EXISTS 补查)」分开统计再相加，
+	//   结果与原来一条 SQL 完全一致，但快路径走索引、老行量小。
+	sumSQL := `SELECT
+			COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
+				OR title LIKE '城市归还%'
+				OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
+				OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
+				OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
+			FROM ezfy_report WHERE user_id = ? AND is_read = 0`
+	run := func(extra string, args ...interface{}) (int, int) {
+		row := h.DB.Raw(sumSQL+extra, append([]interface{}{uid}, args...)...).Row()
+		var a, b int
+		if row != nil {
+			row.Scan(&a, &b)
+		}
+		return a, b
 	}
-	row := h.DB.Raw(`SELECT
-		COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
-			OR title LIKE '城市归还%'
-			OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
-		COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
-			OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
-			OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
-		FROM ezfy_report WHERE user_id = ? AND is_read = 0`+cityCond, uid).Row()
 	var c1, c2 int
-	if row != nil {
-		row.Scan(&c1, &c2)
+	if cityId > 0 {
+		a1, a2 := run(" AND city_id = ?", cityId)
+		legacy := fmt.Sprintf(` AND (city_id = 0 OR city_id IS NULL) AND (
+			EXISTS (
+				SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
+				  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
+			)
+			OR EXISTS (
+				SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
+				  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
+			)
+		)`, cityId, cityId)
+		b1, b2 := run(legacy)
+		c1, c2 = a1+b1, a2+b2
+	} else {
+		c1, c2 = run("")
 	}
 	return map[int]int{1: c1, 2: c2}
 }
@@ -3196,6 +3217,28 @@ func (h *EzfyHandler) ReportCounts(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
 	resp.OK(c, gin.H{"counts": h.ezfyReportCounts(uid, cityId)})
+}
+
+// mustListConsolidate 把「城市过滤拆开的快路径 + 老行补查」两批报告合并：
+//   按 id 倒序排序、按 id 去重、截断到 200 条。合并出的切片供列表展示。
+func mustListConsolidate(reports *[]model.EzfyReport) {
+	// 先倒序（id DESC），保证「每批各自倒序 + 追加」后整体仍倒序、且限 200 后取的是最新条
+	sort.Slice(*reports, func(i, j int) bool {
+		return (*reports)[i].ID > (*reports)[j].ID
+	})
+	seen := map[uint]bool{}
+	out := make([]model.EzfyReport, 0, len(*reports))
+	for _, r := range *reports {
+		if seen[r.ID] {
+			continue
+		}
+		seen[r.ID] = true
+		out = append(out, r)
+		if len(out) >= 200 {
+			break
+		}
+	}
+	*reports = out
 }
 
 // Reports GET /games/ezfy/reports?category=1|2|3&word=xxx&city_id=xx
@@ -3214,13 +3257,42 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	if word != "" {
 		q = q.Where("title LIKE ?", "%"+word+"%")
 	}
+	var reports []model.EzfyReport
 	// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只拉当前城的战报。
 	//   新战报已写 city_id；老战报(city_id=0)按标题坐标反查该城出征订单归属。
+	//
+	// ★ 2026-10-08 性能重构：原来 cityId>0 时在一条 SQL 里拼 `city_id = X OR (EXISTS… OR EXISTS…)`，
+	//   OR 让 MySQL 使不上 (user_id, city_id) 索引、还要对**每一行**跑两个相关子查询 + `LIKE %…%`，
+	//   战报多时卡到明显。这里拆成**两条**查询：①索引直查新战报(city_id=X)；②老行(city_id=0/NULL)
+	//   用原 EXISTS 补查（老行本就少），最后按 id 倒序合并取前 200，语义完全一致但快得多。
+	sel := "id, city_id, order_id, report_type, title, type_name, is_read, created_at"
 	if cityId > 0 {
-		q = q.Where(ezfyCityReportCond(cityId))
+		// ① 新战报：city_id 精确命中，走索引（快路径）
+		q2 := h.DB.Select(sel).Where("user_id = ?", uid)
+		if word != "" {
+			q2 = q2.Where("title LIKE ?", "%"+word+"%")
+		}
+		q2.Where("city_id = ?", cityId).Order("id DESC").Limit(200).Find(&reports)
+		// ② 老行补查（city_id=0/NULL 的存量数据，量小）：用原 EXPLICIT 分支兜底，
+		//   避免 OR 拖慢快路径；老行坐标/城名反查仍能归属到当前城。
+		var legacy []model.EzfyReport
+		legacyQ := h.DB.Select(sel).Where("user_id = ? AND (city_id = 0 OR city_id IS NULL)", uid)
+		if word != "" {
+			legacyQ = legacyQ.Where("title LIKE ?", "%"+word+"%")
+		}
+		legacyQ.Where(fmt.Sprintf(`(EXISTS (
+			SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
+			  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
+		) OR EXISTS (
+			SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
+			  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
+		))`, cityId, cityId)).
+			Order("id DESC").Limit(200).Find(&legacy)
+		reports = append(reports, legacy...)
+		mustListConsolidate(&reports)
+	} else {
+		q.Select(sel).Order("id DESC").Limit(200).Find(&reports)
 	}
-	var reports []model.EzfyReport
-	q.Order("id DESC").Limit(200).Find(&reports)
 
 	views := []gin.H{}
 	// ★ 徽标数字用全量真实统计（不再受「最近 200 条窗口」影响，见 ezfyReportCounts）
@@ -3282,7 +3354,9 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 		q = q.Where("title LIKE ?", "%"+word+"%")
 	}
 	var reports []model.EzfyReport
-	q.Order("id DESC").Limit(500).Find(&reports)
+	// ★ 2026-10-08 性能：军团战报列表同样只取短字段，避免拉 Content/Detail 大文本
+	q.Select("id, user_id, city_id, order_id, report_type, title, type_name, is_read, created_at").
+		Order("id DESC").Limit(500).Find(&reports)
 
 	// 判定 PvP：报告的 order 必须 target_type==3（玩家城）；野地(1)/寇城(2) 排除。
 	orderIds := []int64{}

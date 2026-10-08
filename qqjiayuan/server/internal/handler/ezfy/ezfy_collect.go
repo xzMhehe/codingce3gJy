@@ -208,15 +208,19 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
 
+	// ★ 2026-10-08 「一键召回只召回当前城市的」：以玩家**当前城市**(current_city_id)为起点，
+	//   只召回**从这座城出发**的外出部队（采集/驻军），不再把玩家所有城的外出部队一起召回。
+	current := h.currentCity(uid)
+
 	var orders []model.EzfyOrder
 	// ★ 2026-10-02 「一键召回」需覆盖出站驻军：
 	//   驻守盟友城市的驻军(增援, status=3)也一并召回返航回出发城市。
 	//   仅召回「活跃驻军」(result 为空 + 目标城属于他人)，避免旧僵尸/已归队订单重复入兵。
 	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
-	h.DB.Where("user_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND target_type = 3 AND result = '' AND target_id IN (?)))", uid, allyCity).
+	h.DB.Where("user_id = ? AND city_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND target_type = 3 AND result = '' AND target_id IN (?)))", uid, current.ID, allyCity).
 		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "没有可召回的外出部队(采集/驻军)")
+		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
 		return
 	}
 	n := 0
