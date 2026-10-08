@@ -101,6 +101,12 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "该部队已在采集中")
 		return
 	}
+	// ★ 2026-10-08 一个野地同时只允许一个部队采集：
+	//   本野地已另有部队在采集则直接拒绝（新采集卡控；历史已共存的部队不动，只看未来新发起的）。
+	if n := h.ezfyWildlandCollectingCount(order.TargetId, int64(order.ID)); n > 0 {
+		resp.ParamError(c, "已有部队采集")
+		return
+	}
 	var wl model.EzfyWildland
 	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
 		resp.ParamError(c, "采集野地已丢失")
@@ -316,4 +322,19 @@ func dedupStrings(list []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// ezfyWildlandCollectingCount 该野地上当前「正在采集」的部队数（排除自己 orderId）。
+//
+// ★ 2026-10-08 附属野地「一个野地同时只允许一个部队采集」的新卡控：
+//
+//	采集中 = order_type 7(驻守采集) + status 1 + arrive_time > 0。
+//	只看最新发起的采集是否撞上正在采集的部队；历史已共存的采集部队不在此列（不动它们）。
+func (h *EzfyHandler) ezfyWildlandCollectingCount(targetID, excludeOrderID int64) int64 {
+	var n int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("target_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0 AND id != ?",
+			targetID, excludeOrderID).
+		Count(&n)
+	return n
 }
