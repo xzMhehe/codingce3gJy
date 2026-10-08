@@ -914,6 +914,85 @@ func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 		"gold_lost": lost > 0, "lost_gold": lost})
 }
 
+// ezfyTreasureSellPrice 宝物出售给系统的单价（黄金/件）。
+//
+// ★ 2026-10-08 「采集的宝物可以卖给系统，按品质 10 万~50W 不等，收 10% 手续费」
+//   —— 用户确认：宝物当前没有品质差异（采集宝物全 Tier1），统一按 20 万黄金/件出售，收 10% 手续费。
+const ezfyTreasureSellPrice = 200000
+
+// ExchangeTreasureSell POST /games/ezfy/exchange/treasure-sell {cfg_id, count}
+//
+// ★ 2026-10-08 「宝物卖给系统」：
+//   - 只卖**未穿戴**的采集宝物（ezfy_equipment.officer_id = 0，且 cfg_id 属采集宝物）;
+//   - 统一 20 万黄金/件，玩家实得再扣 10% 手续费（ezfySysSellFeePct）;
+//   - 删除对应宝物记录，黄金入账并受「黄金资源最大值」硬上限约束（超出丢量提示）。
+func (h *EzfyHandler) ExchangeTreasureSell(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	// 出售串行化，防连点重复扣宝物 / 重复得黄金
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
+	var req struct {
+		CfgId int `json:"cfg_id"`
+		Count int `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.CfgId <= 0 || req.Count <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	// 校验是采集宝物（黑铁幽灵等普通装备不算可售宝物）
+	cfge, ok := ezfyCfg.equipments[req.CfgId]
+	if !ok || !ezfyCollectibleTreasureNames()[cfge.Name] {
+		resp.ParamError(c, "非可出售宝物")
+		return
+	}
+	// 校验未穿戴的持有量
+	var own int64
+	h.DB.Model(&model.EzfyEquipment{}).
+		Where("user_id = ? AND officer_id = 0 AND cfg_id = ?", uid, req.CfgId).
+		Count(&own)
+	if own < int64(req.Count) {
+		resp.ParamError(c, fmt.Sprintf("宝物不足(现有%d件)", own))
+		return
+	}
+	// 删除 count 件未穿戴宝物
+	if entity := h.DB.Where("user_id = ? AND officer_id = 0 AND cfg_id = ?", uid, req.CfgId).
+		Limit(req.Count).Delete(&model.EzfyEquipment{}); entity.Error != nil {
+		resp.ServerError(c, entity.Error)
+		return
+	}
+	// 结算黄金：单价×数量 → 实得扣 10% 手续费
+	base := int64(req.Count) * ezfyTreasureSellPrice
+	received := base * (100 - ezfySysSellFeePct) / 100
+	fee := base - received
+
+	city := h.getOrCreateCity(uid)
+	h.calcResource(&city)
+	before := city.Gold
+	goldMax := ezfyResMaxOf("gold")
+	after := before + received
+	if after > goldMax {
+		after = goldMax
+	}
+	lost := (before + received) - after
+	city.Gold = after
+	h.saveCityRes(&city)
+	// 出售改变了背包/宝物，玩家级缓存全局失效
+	ezfyPageCacheDel(uid)
+
+	msg := fmt.Sprintf("出售宝物 %s×%d 成功，获得 %d 黄金（手续费已扣 %d）",
+		cfge.Name, req.Count, received, fee)
+	if lost > 0 {
+		msg += fmt.Sprintf("；因超过黄金上限丢失 %d", lost)
+	}
+	resp.OK(c, gin.H{"msg": msg, "received_gold": received, "fee": fee,
+		"gold_lost": lost > 0, "lost_gold": lost})
+}
+
 // CorpsMembers 军团成员列表
 func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	uid := middleware.GetUID(c)

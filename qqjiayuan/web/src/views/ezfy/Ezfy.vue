@@ -676,6 +676,9 @@ export default {
       mallBuyMax: 99,
       bagItems: [],
       bagTreasures: [],
+      // ★ 2026-10-08 宝物出售给系统（统一 20万黄金/件，收10%手续费）
+      sellTreasure: null,          // 正在出售的宝物对象 {cfg_id,name,count}
+      sellTreasureCount: 1,
       // ★ 背包只展示道具（2026-10-06 宝物已独立成「宝物」导航页，去掉宝物子tab）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
@@ -3129,6 +3132,26 @@ export default {
           this.bagOfficers = r.data.officers || []
           this.bagSkills = r.data.skills || []
         }
+      })
+    },
+    // ★ 2026-10-08 宝物出售给系统：打开某件宝物的出售面板
+    openSellTreasure (t) {
+      this.sellTreasure = t
+      this.sellTreasureCount = 1
+    },
+    // ★ 2026-10-08 确认出售宝物（统一 20万黄金/件，收 10% 手续费 → 实得 18万/件）
+    doSellTreasure () {
+      const n = parseInt(this.sellTreasureCount) || 0
+      if (!this.sellTreasure) return
+      if (n <= 0) { this.notify('请填写出售数量'); return }
+      if (n > this.sellTreasure.count) { this.notify('超过现有数量'); return }
+      api.post('/games/ezfy/exchange/treasure-sell', {
+        cfg_id: this.sellTreasure.cfg_id, count: n
+      }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '出售失败'); return }
+        this.notify(r.msg || '出售成功')
+        this.sellTreasure = null
+        this.loadBag()
       })
     },
     // ★ 商城分栏切换（item 道具 / equipment 装备套装 / chest 宝箱）

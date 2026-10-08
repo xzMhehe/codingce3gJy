@@ -2697,6 +2697,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	h.cfgs()
 	_, city, cities := h.ezfyPageCity(uid)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	detailStart := time.Now()
 	o := h.officerOf(city.ID, id)
 	if o == nil {
 		// ★ 2026-10-01 修复「点击军官有时候空白」：军官在玩家**其他城市**
@@ -2714,6 +2715,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		return
 	}
 	// 第二波并行：背包装备 / 本城军官 / 物品持有数 / 建筑 / 训练队列
+	parStart := time.Now()
 	var (
 		items        []model.EzfyEquipment
 		cityOfficers []model.EzfyOfficer
@@ -2885,6 +2887,11 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
 		"equipped": h.officerEquippedView(o), "bag": bag, "bag_sets": bagSets, "gold": city.Gold,
 	})
+	if d := time.Since(detailStart); d > 300*time.Millisecond {
+		pl := time.Since(parStart)
+		log.Printf("[ezfy]OfficerDetail slow uid=%d officer=%d total=%v (并行取数+懒结算=%v, 其余构造=%v)",
+			uid, id, d, pl, d-pl)
+	}
 }
 
 // officerEquippedView 已穿戴装备的下发格式（补套装名，前端直接用）

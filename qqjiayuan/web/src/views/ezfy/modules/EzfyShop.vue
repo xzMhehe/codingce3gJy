@@ -69,9 +69,19 @@
     <template v-else-if="ezfy.cur === 'treasure'">
         <div class="panel">
           <div class="panel-title">宝物 <a href="javascript:;" @click="ezfy.loadBag()">[刷新]</a></div>
-          <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚。</div>
+          <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚；也可出售给系统换 {{ ezfy.resNames.gold }}。</div>
           <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'tr' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}
+            <span class="gray">（可售 20万{{ ezfy.resNames.gold }}/件，到手 18万）</span>
+            <a href="javascript:;" @click="ezfy.openSellTreasure(t)">[出售]</a>
+            <template v-if="ezfy.sellTreasure && ezfy.sellTreasure.cfg_id === t.cfg_id">
+              <br/>
+              <span class="gray">出售</span>
+              <input v-model="ezfy.sellTreasureCount" type="number" min="1" :max="t.count" style="width:60px"/>
+              <span class="gray">/{{ t.count }} 件 · 实得 <b class="green">{{ ezfy.fmtN(180000 * (parseInt(ezfy.sellTreasureCount) || 0)) }}</b>{{ ezfy.resNames.gold }}</span>
+              <a href="javascript:;" @click="ezfy.doSellTreasure()">[确认出售]</a>
+              <a href="javascript:;" @click="ezfy.sellTreasure = null">[取消]</a>
+            </template>
           </div>
           <div class="old-line gray" v-if="!ezfy.bagTreasures.length">(还没有采集到宝物，去野地采集或宝物签到吧)</div>
           <a href="javascript:;" @click="ezfy.go('map')">[去野地采集]</a>

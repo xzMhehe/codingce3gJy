@@ -679,6 +679,7 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/exchange/buy", ezfyH.ExchangeBuy)
 				ezfyG.POST("/exchange/cancel", ezfyH.ExchangeCancel)
 				ezfyG.POST("/exchange/sys-sell", ezfyH.ExchangeSysSell)
+				ezfyG.POST("/exchange/treasure-sell", ezfyH.ExchangeTreasureSell)
 				ezfyG.GET("/city/wildfull", ezfyH.WildlandFull)
 				ezfyG.GET("/city/warehouse", ezfyH.Warehouse)
 				ezfyG.POST("/city/warehouse", ezfyH.WarehouseSet)
