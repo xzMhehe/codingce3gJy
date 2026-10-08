@@ -541,8 +541,14 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		logs = logs[len(logs)-ezfyBattleLogTail:]
 	}
 	head := snap.Head
-	if len(head) > 6 {
-		head = head[:6]
+	// ★★ 2026-10-08 修复「指挥室看不到『战斗加成』汇总行」（用户反馈「就是汇总的没加」）：
+	//   原来只下发前 6 行，而准备回合的顺序是
+	//     军官×2 → 科技×2 → 装备×2 → 套装×0~2 → **战斗加成** → 场景描述
+	//   —— 6 行正好卡在【守方装备】，末尾的汇总行被切掉了（战报不受影响，因为战报直接用 st.Head 全量）。
+	//   head 是固定的小数组（最多 ~10 行、每行百余字节），放宽到 12 行足够覆盖，
+	//   同时仍保留上限，避免将来 head 意外膨胀时下发过大。
+	if len(head) > 12 {
+		head = head[:12]
 	}
 
 	atkTotal, defTotal := int64(0), int64(0)

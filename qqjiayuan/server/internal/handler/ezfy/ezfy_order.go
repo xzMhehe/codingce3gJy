@@ -2706,7 +2706,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if cfg == nil {
 			h.beginReturn(order, now, 0)
 			h.addReport(uid, 2, "战斗报告: 目标不存在",
-				fmt.Sprintf("目标(%d,%d)不存在或已被摧毁, 部队已返航。", order.TargetX, order.TargetY), "", order.ID)
+				fmt.Sprintf("目标(%d,%d)不存在或已被摧毁, 部队已返航。", order.TargetX, order.TargetY), "", order.ID, city.ID)
 			return
 		}
 		wildLevel = level
@@ -2783,7 +2783,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if err := h.DB.First(&tc, order.TargetId).Error; err != nil {
 			h.beginReturn(order, now, 0)
 			h.addReport(uid, 2, "战斗报告: 目标不存在",
-				"目标城市已不存在, 部队已返航。", "", order.ID)
+				"目标城市已不存在, 部队已返航。", "", order.ID, city.ID)
 			return
 		}
 		target = &tc
@@ -2804,7 +2804,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				if target.UserID == uid {
 					msg = "目标城市已归属我方, 部队未交战已返航。"
 				}
-				h.addReport(uid, 2, "战斗报告: 未宣战", msg, "", order.ID)
+				h.addReport(uid, 2, "战斗报告: 未宣战", msg, "", order.ID, city.ID)
 				return
 			}
 		}
@@ -2900,11 +2900,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if !ezfyReconSucceed(order) {
 			h.addReport(uid, 1, "侦查失败: "+targetName,
 				fmt.Sprintf("公文报告:侦查失败\n我方一支部队对%s[%d，%d]的侦查未能成功，未获取到任何情报，部队已返航。\n",
-					targetName, order.TargetX, order.TargetY), "", order.ID)
+					targetName, order.TargetX, order.TargetY), "", order.ID, city.ID)
 			return
 		}
 		h.addReport(uid, 1, "侦查报告: "+targetName,
-			h.scoutReportBody(uid, order, targetName, target, defender), "", order.ID)
+			h.scoutReportBody(uid, order, targetName, target, defender), "", order.ID, city.ID)
 		return
 	}
 

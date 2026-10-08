@@ -422,6 +422,22 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 	}
 }
 
+// TestBattleRoomHeadKeepsBonusLine 指挥室下发的准备回合（head）不能把「战斗加成」汇总行截掉。
+//
+// ★★ 2026-10-08 用户反馈「指挥模块里汇总的没加」：`ezfy_battle_room.go` 原来 `head[:6]`，
+// 而准备回合顺序是 军官×2 → 科技×2 → 装备×2 → 套装×0~2 → **战斗加成** → 场景描述，
+// 6 行正好卡在【守方装备】→ 末尾的汇总行被切掉（战报不受影响，战报用 st.Head 全量）。
+// 上限必须 ≥ 12。
+func TestBattleRoomHeadKeepsBonusLine(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_battle_room.go"), "\r\n", "\n")
+	if strings.Contains(src, "head = head[:6]") || strings.Contains(src, "if len(head) > 6 {") {
+		t.Fatal("指挥室 head 截断上限仍是 6 —— 会把末尾的「战斗加成」汇总行切掉")
+	}
+	if !strings.Contains(src, "if len(head) > 12 {") {
+		t.Fatal("指挥室 head 截断上限应为 12（要覆盖 军官/科技/装备/套装/战斗加成/场景 全部行）")
+	}
+}
+
 // TestAtkDefBonusWired 出征军官的防御加成已接入战斗引擎（order.go 与 activity_target.go 都构造并传参）。
 func TestAtkDefBonusWired(t *testing.T) {
 	for _, f := range []string{"ezfy_order.go", "ezfy_activity_target.go"} {
