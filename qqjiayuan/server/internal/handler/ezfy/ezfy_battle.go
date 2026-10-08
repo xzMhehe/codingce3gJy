@@ -49,6 +49,7 @@ const (
 type ezfyFightUnit struct {
 	id           string
 	cfg          *ezfyTroopStats
+	hp           int // 单兵血量（创建时按受击方装备生命%固化一次，战斗内不再浮动）
 	count        int64
 	initialCount int64
 	pos          int
@@ -258,10 +259,19 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defRangeBonus > 0 {
 		defRangeTxt = fmt.Sprintf(" 射程+%d%%", defRangeBonus)
 	}
-	// ★ 2026-10-07 攻方防御加成（AtkDefBonus 军官部分 + 装备 Def）也显示在加成行：
+	// ★ 2026-10-08 攻方防御加成（AtkDefBonus 军官部分 + 装备 Def）也显示在加成行：
 	//   出征军官带弧形防御/弹幕支援 + 装备防御 → 攻方被打时减伤（原来攻方防御恒 0，看不出带了防御技能）
-	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s",
-		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt))
+	// ★ 2026-10-08 生命加成也显示在加成行：装备/套装的 Hp 让受击方更抗打，
+	//   原来战斗加成行不体现（用户反馈「生命加成没展示」）。为 0 时不显示，老战报格式不变。
+	atkHpTxt, defHpTxt := "", ""
+	if atkEquip.Hp > 0 {
+		atkHpTxt = fmt.Sprintf(" 生命+%d%%", atkEquip.Hp)
+	}
+	if defEquip.Hp > 0 {
+		defHpTxt = fmt.Sprintf(" 生命+%d%%", defEquip.Hp)
+	}
+	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s",
+		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt, defHpTxt))
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
@@ -310,8 +320,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		cfg := ezfyStatsOf(ug.TroopId)
 		if cfg != nil && ug.Count > 0 {
 			idx++
+			// ★ 2026-10-08 攻方单兵血量在创建时按攻方装备生命%固化一次（atkEquip.Hp），战斗内不再浮动
 			st.Attackers = append(st.Attackers, &ezfyFightUnit{
 				id: fmt.Sprintf("A%d", idx), cfg: cfg, count: ug.Count,
+				hp: cfg.Health * (100 + atkEquip.Hp) / 100,
 				initialCount: ug.Count, pos: 0})
 		}
 	}
@@ -320,8 +332,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		cfg := ezfyStatsOf(ug.TroopId)
 		if cfg != nil && ug.Count > 0 {
 			idx++
+			// ★ 2026-10-08 守方单兵血量在创建时按守方装备生命%固化一次（defEquip.Hp），战斗内不再浮动
 			st.Defenders = append(st.Defenders, &ezfyFightUnit{
 				id: fmt.Sprintf("D%d", idx), cfg: cfg, count: ug.Count,
+				hp: cfg.Health * (100 + defEquip.Hp) / 100,
 				initialCount: ug.Count, pos: ezfyBattleStartDist})
 		}
 	}
@@ -713,15 +727,6 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			if !isAtk {
 				bonusBreak = defBonusBreak
 			}
-			// ★ 生命加成：守方装备的生命%让同一发伤害打掉的兵更少
-			//   （等价于「有效生命 = 兵种生命 × (1 + 生命加成%)」）
-			hpMul := 100
-			if equip.Hp != 0 {
-				hpMul = 100 + equip.Hp
-				if hpMul < 1 {
-					hpMul = 1
-				}
-			}
 			damage := ezfyCalcDamage(baseAtk, target.cfg.Defence, unit.count, unitAtkBonus, unitDefBonus)
 			// ★ 暴击：按暴击几率 roll（几率封顶 100%），命中则乘 (1 + 暴击伤害加成)
 			//
@@ -797,7 +802,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					}
 					lastTarget = cur
 				}
-				chp := cur.cfg.Health * hpMul / 100
+				chp := cur.hp
 				if chp < 1 {
 					chp = 1
 				}
@@ -1203,23 +1208,25 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin, Draw: snap.Draw,
 		Head: snap.Head, Actions: snap.Actions,
 	}
-	rebuild := func(list []ezfyBattleUnitSnap) []*ezfyFightUnit {
+	rebuild := func(list []ezfyBattleUnitSnap, equipHp int) []*ezfyFightUnit {
 		out := []*ezfyFightUnit{}
 		for _, s := range list {
 			// 兵种属性直接取快照（不查配置表），保证中途改配置也不影响本场
+			cfg := &ezfyTroopStats{
+				ID: s.TroopId, Name: s.Name, Type: s.Type, Health: s.Health,
+				AtkSea: s.AtkSea, AtkGround: s.AtkGround, AtkAir: s.AtkAir,
+				Defence: s.Defence, Speed: s.Speed, AttackRange: s.AttackRange,
+			}
+			// ★ 2026-10-08 快照只存基础 Health，重建时按本侧装备生命%重新固化 hp（与创建时同一口径）
 			out = append(out, &ezfyFightUnit{
-				id: s.ID, count: s.Count, initialCount: s.InitialCount, pos: s.Pos,
-				cfg: &ezfyTroopStats{
-					ID: s.TroopId, Name: s.Name, Type: s.Type, Health: s.Health,
-					AtkSea: s.AtkSea, AtkGround: s.AtkGround, AtkAir: s.AtkAir,
-					Defence: s.Defence, Speed: s.Speed, AttackRange: s.AttackRange,
-				},
+				id: s.ID, count: s.Count, initialCount: s.InitialCount, pos: s.Pos, cfg: cfg,
+				hp: cfg.Health * (100 + equipHp) / 100,
 			})
 		}
 		return out
 	}
-	st.Attackers = rebuild(snap.Attackers)
-	st.Defenders = rebuild(snap.Defenders)
+	st.Attackers = rebuild(snap.Attackers, st.AtkEquip.Hp)
+	st.Defenders = rebuild(snap.Defenders, st.DefEquip.Hp)
 	if st.Head == nil {
 		st.Head = []string{}
 	}
@@ -1399,9 +1406,9 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 	return strings.Join(parts, "，")
 }
 
-// ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成多行；跳过非正值。
-// ★ 2026-10-08 每项单独一行（原为单空格拼一行，多项科技一行又长又挤、看着像没展示全）；
-//   战报渲染按 \n 分行，pre-wrap 逐行展示完整。
+// ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成一行，顿号分隔；跳过非正值。
+// ★ 2026-10-08 用户要求改回单行顿号分隔（不再每项单独一行），如：
+//   「军训艺术+20%（部队攻击）、武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
 // 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 	parts := []string{}
@@ -1417,7 +1424,7 @@ func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 		}
 		parts = append(parts, s)
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "、")
 }
 
 // ezfyTechEffectDesc 科技名 → 作用说明（取自科技配置表 Effect 的「功能」部分，去掉每级百分比）。
