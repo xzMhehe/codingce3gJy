@@ -3649,6 +3649,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// 补给在解锁后执行（不占用守方锁；建城自带 findFreePos 找空位）
 			if needReplenish {
 				newCity := h.replenishCity(target.UserID)
+				// ★ 2026-10-08 「玩家被打飞系统播报」：守方所有自由城被占光→补给→系统频道播报全服可见
+				h.ezfySysChat("%s 玩家被 %s 玩家打飞了！",
+					h.ezfyProfileName(target.UserID), h.ezfyProfileName(uid))
 				// ★ 2026-10-07 用户反馈「被打飞后战报不该告诉攻击者新坐标」：
 				//   攻方战报不再暴露补给新城市的坐标，避免被追打；守方自己的补偿报告(L3475)保留坐标。
 				report += fmt.Sprintf("\n守方城市已全部被占, 系统已补给新城市[%s]", newCity.Name)
