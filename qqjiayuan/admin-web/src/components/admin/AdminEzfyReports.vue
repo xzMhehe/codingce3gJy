@@ -7,6 +7,10 @@
         <el-select v-model="type" placeholder="战报类型" clearable style="width:140px; margin-left: 8px">
           <el-option v-for="o in typeOptions" :key="o.v" :label="o.n" :value="o.v" />
         </el-select>
+        <el-date-picker v-model="tmStart" type="date" value-format="yyyy-MM-dd" placeholder="起始日期"
+                        style="width:150px; margin-left: 8px" clearable />
+        <el-date-picker v-model="tmEnd" type="date" value-format="yyyy-MM-dd" placeholder="截止日期"
+                        style="width:150px; margin-left: 8px" clearable />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
       </div>
@@ -89,7 +93,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, size: 10, loading: false,
-      word: '', type: '',
+      word: '', type: '', tmStart: '', tmEnd: '',
       // ★ 2026-10-08 战报类型下拉改按「真实类型名」：与列表「类型」列、玩家看到的一致。
       //   之前是按报表粗粒度 report_type 编号硬编码（'侦察/掠夺_战斗/战斗' 等），
       //   与后端下发的 type_name（ezfyReportTypeName 按标题前缀判定）对不上，
@@ -118,6 +122,8 @@ export default {
       this.loading = true
       const params = { page: this.page, size: this.size, word: this.word }
       if (this.type) params.type = this.type
+      if (this.tmStart) params.start = this.tmStart
+      if (this.tmEnd) params.end = this.tmEnd
       api.get('/admin/ezfy-reports', { params }).then(r => {
         this.loading = false
         if (r.code === 0) {

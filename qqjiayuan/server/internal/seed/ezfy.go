@@ -132,6 +132,11 @@ func seedEzfy(db *gorm.DB) {
 func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_order", "idx_order_user_status", "user_id,status,order_type", false)
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_read", "user_id,is_read", false)
+	// ★ 2026-10-08 管理端「战报查询」提速：按玩家列列表要 ORDER BY id DESC、
+	//   新增时间起止检索按 created_at 过滤 —— 各补一个索引（存量表走幂等 ALTER）。
+	//   名字与线上已建的 idx_report_user_id_desc / idx_report_created 对齐，ensureEzfyIndex 幂等跳过、不重复建。
+	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_id_desc", "user_id,id", false)
+	ensureEzfyIndex(db, "ezfy_report", "idx_report_created", "created_at", false)
 	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_user_cfg_off", "user_id,cfg_id,officer_id", false)
 
 	// ★ 2026-10-05 二战风云慢接口补索引（见函数注释）

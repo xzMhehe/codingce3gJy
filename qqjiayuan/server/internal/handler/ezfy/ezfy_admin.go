@@ -1003,7 +1003,7 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 // 所以这里的列表独立于「出征记录」模块，按 玩家(user_id/昵称) + 战报类型 过滤。
 // 类型中文名复用 ezfyReportTypeName(reportType, title)（优先按标题前缀判定）。
 
-// AdminEzfyReports 战报列表（可按玩家 / 战报类型 / 关键字过滤）
+// AdminEzfyReports 战报列表（可按玩家 / 战报类型 / 时间范围过滤）
 func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
@@ -1011,6 +1011,10 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	//   ezfy_report.report_type 是粗粒度遗留编号（采集/运输/增援/派遣 共用一个编号），
 	//   下发的 type_name（ezfyReportTypeName，优先按标题前缀判定）才真正可区分、且与列表列一致。
 	typeName := strings.TrimSpace(c.Query("type"))
+	// ★ 2026-10-08 新增「时间起止」检索：created_at 落在此区间（end 含整天末）。
+	startStr := strings.TrimSpace(c.Query("start"))
+	endStr := strings.TrimSpace(c.Query("end"))
+
 	q := h.DB.Model(&model.EzfyReport{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
@@ -1037,27 +1041,47 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 			}
 		}
 	}
-	// 先把玩家条件下的候选战报一次取出，再在内存里按「显示类型名」过滤并分页。
-	// （type_name 由标题前缀 + report_type 兜底换算，放到 SQL 里拼条件又脆又容易和
-	//   ezfyReportTypeName 的判定先后不一致，统一走内存过滤最稳。）
-	var all []model.EzfyReport
-	q.Order("id DESC").Find(&all)
-	filtered := make([]model.EzfyReport, 0, len(all))
-	for _, r := range all {
-		if typeName != "" && ezfyReportTypeName(r.ReportType, r.Title) != typeName {
-			continue
+	// ★ 2026-10-08 时间范围走 SQL（created_at 起止，配合索引）。
+	if startStr != "" {
+		if st, err := time.ParseInLocation("2006-01-02", startStr, time.Local); err == nil {
+			q = q.Where("created_at >= ?", st)
 		}
-		filtered = append(filtered, r)
 	}
-	total := int64(len(filtered))
-	rows := filtered
-	if offset < len(filtered) {
-		end := offset + size
-		if end > len(filtered) {
-			end = len(filtered)
+	if endStr != "" {
+		if et, err := time.ParseInLocation("2006-01-02", endStr, time.Local); err == nil {
+			// 结束日期按「整天含末」：< 末日+1 天
+			q = q.Where("created_at < ?", et.AddDate(0, 0, 1))
 		}
-		rows = filtered[offset:end]
 	}
+
+	var rows []model.EzfyReport
+	var total int64
+	if typeName == "" {
+		// ★ 2026-10-08 性能：不选类型时 = 「全部」，直接在库里分页（快径），
+		//   不再把整表/整玩家的战报捞进内存。
+		q.Count(&total)
+		q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	} else {
+		// 指定类型：type_name 由标题前缀 + report_type 兜底算出，无法在 SQL 精确表达，
+		// 退化为「按玩家+时间范围把候选取回内存，过滤类型后再分页」。
+		// 依赖上面的玩家/时间筛选把候选控制在小范围（user_id / created_at 索引命中）。
+		var all []model.EzfyReport
+		q.Order("id DESC").Find(&all)
+		for _, r := range all {
+			if ezfyReportTypeName(r.ReportType, r.Title) == typeName {
+				rows = append(rows, r)
+			}
+		}
+		total = int64(len(rows))
+		if offset < len(rows) {
+			end := offset + size
+			if end > len(rows) {
+				end = len(rows)
+			}
+			rows = rows[offset:end]
+		}
+	}
+
 	type rowOut struct {
 		model.EzfyReport
 		PlayerName string `json:"player_name"`
