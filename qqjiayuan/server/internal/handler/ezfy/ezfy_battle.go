@@ -99,6 +99,41 @@ type ezfyBattleResult struct {
 //
 // 加成字段存的是**不含装备**的基础值，Step 里再叠加装备六项 ——
 // 这样快照往返（存库 → 重建）不会把装备加成叠两遍。
+// 兵种 type（与 ezfy_cfg_troop.type 同口径）
+const (
+	ezfyTroopTypeNavy = 1 // 海军
+	ezfyTroopTypeArmy = 2 // 陆军
+	ezfyTroopTypeAir  = 3 // 空军
+	ezfyTroopTypeCity = 4 // 城防
+)
+
+// ezfyTypeBonus 兵种专属加成：key = 兵种 type，value = 百分点。
+//
+// ★★ 2026-10-08 配置里「喷气引擎=空军速度+3%」「火炮控制=陆军装甲攻击+10」
+// 「四指编队=空军对空攻击+15%」「狼群战术=海军对海攻击+15%」「坦克突袭/闪电袭击/越岛战术=
+// 陆/空/海速度+10%」这类科技/军官技能**只作用于特定兵种**，不能像通用加成那样直接进
+// AtkBonus/AtkSpeedBonus（那会变成全兵种生效 —— 用户反馈「空军速度只加空军」）。
+// 引擎按 `unit.cfg.Type` 取对应兵种的值再叠加。
+type ezfyTypeBonus struct {
+	Atk   map[int]int // 攻击加成%（按兵种）
+	Speed map[int]int // 速度加成%（按兵种）
+}
+
+// atkOf / speedOf 取某兵种的专属加成（表为 nil / 未配置 → 0，老快照安全）
+func (t ezfyTypeBonus) atkOf(troopType int) int {
+	if t.Atk == nil {
+		return 0
+	}
+	return t.Atk[troopType]
+}
+
+func (t ezfyTypeBonus) speedOf(troopType int) int {
+	if t.Speed == nil {
+		return 0
+	}
+	return t.Speed[troopType]
+}
+
 type ezfyBattleState struct {
 	Attackers []*ezfyFightUnit
 	Defenders []*ezfyFightUnit
@@ -136,6 +171,13 @@ type ezfyBattleState struct {
 	AtkDefBreak   []ezfyBonusItem
 	AtkSpeedBonus int
 	DefSpeedBonus int
+	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
+	//   喷气引擎「空军速度+3%」/ 火炮控制「陆军装甲攻击+10」/ 四指编队「空军对空攻击+15%」/
+	//   狼群战术「海军对海攻击+15%」/ 坦克突袭「陆军速度+10%」/ 闪电袭击「空军速度+10%」/
+	//   越岛战术「海军速度+10%」—— 这些**只作用于对应兵种**。
+	//   原来它们被无差别加进 AtkBonus/AtkSpeedBonus（全兵种生效），用户反馈「空军速度只加空军」。
+	AtkType ezfyTypeBonus
+	DefType ezfyTypeBonus
 	// ★ 2026-10-06 射程加成%（用户要求：射程 = 兵种基础射程 × (1 + 科技加成)）
 	AtkRangeBonus int
 	DefRangeBonus int
@@ -212,7 +254,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkDefBonus int, atkDefBreak []ezfyBonusItem,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
-	atkCounterRounds, defCounterRounds int, atkCamp, defCamp int) *ezfyBattleState {
+	atkCounterRounds, defCounterRounds int, atkCamp, defCamp int,
+	atkType, defType ezfyTypeBonus) *ezfyBattleState {
 
 	st := &ezfyBattleState{
 		AtkBonus: atkBonus, DefBonus: defBonus,
@@ -232,6 +275,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		AtkCounter: atkCounterRounds > 0, DefCounter: defCounterRounds > 0,
 		AtkCounterRounds: atkCounterRounds, DefCounterRounds: defCounterRounds,
 		AtkCamp: atkCamp, DefCamp: defCamp,
+		AtkType: atkType, DefType: defType,
 		Head: []string{}, Actions: []string{},
 	}
 
@@ -270,8 +314,11 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defEquip.Hp > 0 {
 		defHpTxt = fmt.Sprintf(" 生命+%d%%", defEquip.Hp)
 	}
-	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s",
-		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt, defHpTxt))
+	// ★★ 2026-10-08 「战斗加成」行**移到最后**（用户要求：这相当于总加成，应排在各项明细之后）：
+	//   准备回合的阅读顺序 = 军官 → 科技 → 装备 → 套装 → **战斗加成(总计)** → 战场初始相距。
+	//   原来它在军官行之后、明细之前，玩家先看到总数再看分项，容易以为数字对不上。
+	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s%s",
+		effAtk, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
@@ -313,6 +360,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defSetDesc != "" {
 		st.Head = append(st.Head, "【守方套装】"+defSetDesc)
 	}
+	// ★ 2026-10-08 战斗加成（= 总加成）排在全部明细之后、场景描述之前（见上方 bonusLine 注释）
+	st.Head = append(st.Head, bonusLine)
 	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
 
 	idx := 0
@@ -602,11 +651,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 
 		moveMap := st.DefMoves
 		cmd := ""
-		speedBonus := defSpeedBonus
+		// ★★ 2026-10-08 速度加成 = 通用加成 + **该兵种专属**加成：
+		//   喷气引擎「空军速度+3%」只对空军生效，坦克突袭/闪电袭击/越岛战术分别只加陆/空/海
+		//   （原来一律进 atkSpeedBonus → 全军受益，用户反馈「空军速度只加空军」）。
+		speedBonus := defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)
 		cmds := defCmds
 		if isAtk {
 			moveMap = st.AtkMoves
-			speedBonus = atkSpeedBonus
+			speedBonus = atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)
 			cmds = atkCmds
 		}
 		// ★ 按兵种取指令（缺省 = 空串 → 回落司令部兵种配置）
@@ -709,7 +761,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			unitDefBonus := 0
 			equip := st.DefEquip
 			if isAtk {
-				unitAtkBonus = atkBonus
+				// ★ 2026-10-08 攻击加成 = 通用 + **该兵种专属**（如「四指编队」只加空军、「狼群战术」只加海军）
+				unitAtkBonus = atkBonus + st.AtkType.atkOf(unit.cfg.Type)
 				// ★ 2026-10-07 守方防御加成 = 基础(城墙+科技+城守) + 装备 Def（原来漏了装备 Def，
 				//   战斗加成行显示「防御+X%」与伤害减伤不一致）
 				unitDefBonus = defBonus + st.DefEquip.Def
@@ -718,7 +771,8 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
 				//   （原实现 unitAtkBonus=0，城防/守城部队打人完全没加成 —— 用户反馈
 				//   「科技加成、技能加成没有算入伤害当中」的根因之一）
-				unitAtkBonus = st.DefAtkBonus
+				// ★ 2026-10-08 同上：守方行动时也按**兵种**叠加专属攻击加成
+				unitAtkBonus = st.DefAtkBonus + st.DefType.atkOf(unit.cfg.Type)
 				// ★ 2026-10-07 攻方「防御加成」= 出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。
 				//   原来攻方被打时防御恒 0 —— 攻方军官带弧形防御 Lv.5「防御力+150%」完全看不见也不生效（用户反馈）。
 				unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def
@@ -892,7 +946,18 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					cbDef = defBonus + st.DefEquip.Def
 				}
 				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg), unit.cfg.Defence, target.count, cbAtk, cbDef)
-				kCnt := dmg / int64(unit.cfg.Health)
+				// ★★ 2026-10-08 修复「反击消灭的兵比普通攻击还多」（用户反馈「为什么反击伤害还高」）：
+				//
+				//	普通攻击用 `cur.hp`（**有效生命** = 基础血量 ×(1+生命加成)，见 ezfyFightUnit.hp
+				//	在创建/快照重建时按装备生命%固化），而反击这里原来用 `unit.cfg.Health`（**基础血量**）。
+				//	同一笔伤害下，反击会多消灭「1 + 生命加成」倍的兵 —— 实测：装备生命+73% 时，
+				//	普通攻击消灭 9067 个，反击却消灭 15650 个（9067×1.73），玩家以为「反击伤害更高」。
+				//	这里统一用有效生命；「造成伤害」也改成实际伤害（kCnt×有效生命），与普通攻击行同口径。
+				chp := unit.hp
+				if chp < 1 {
+					chp = 1
+				}
+				kCnt := dmg / int64(chp)
 				if kCnt < 1 {
 					kCnt = 1
 				}
@@ -929,7 +994,9 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				} else if defBonusTxt != "" {
 					line += ", " + defBonusTxt
 				}
-				line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", dmg, kCnt)
+				// ★ 2026-10-08 「造成伤害」= 实际伤害（消灭数 × 有效生命），与普通攻击行口径一致
+				//   （原来写理论伤害 dmg，玩家拿它除以消灭数会发现每个兵的血量对不上）
+				line += fmt.Sprintf(", 造成%d伤害, 消灭%d个", kCnt*int64(chp), kCnt)
 				st.Actions = append(st.Actions, line)
 			}
 		}
@@ -980,10 +1047,38 @@ func (st *ezfyBattleState) Result() ezfyBattleResult {
 	}
 }
 
+// ezfyBattleExtra 战报「加成明细」的可选部分（科技 / 技能 / 套装 / 攻方防御）。
+//
+// ★★ 2026-10-08 新增（用户反馈「战报、指挥模块展示不全」）：
+//
+//	`ezfySimulate` / `ezfySimulateBreak` 这两个兼容包装原来把技能/科技/套装明细**一律传 nil**，
+//	于是走它们生成的战场（**盟军驻军战**）准备回合里：
+//	  · 没有【攻方科技】行（atkTechs = nil）
+//	  · 没有【攻方套装】行（atkSetDesc = ""），且套装效果被并进【攻方装备】行（atkSet = 空 → 没被减掉）
+//	主城战/活动战走的是参数完整的 `ezfyNewBattleState`，所以同一个玩家在两处看到的格式不一致。
+//	现在由调用方按需填这个结构体，包装函数原样透传给 `ezfyNewBattleState`。
+type ezfyBattleExtra struct {
+	AtkSkills, DefSkills []ezfyBonusItem
+	AtkTechs, DefTechs   []ezfyBonusItem
+	DefDefBreak          []ezfyBonusItem
+	AtkDefBonus          int
+	AtkDefBreak          []ezfyBonusItem
+	AtkSet, DefSet       ezfyBattleBonus
+	AtkSetDesc           string
+	DefSetDesc           string
+	AtkOfficerSkill      int
+	DefOfficerSkill      int
+	// ★ 2026-10-08 兵种专属加成（配置里带兵种的那些科技/技能，如「空军速度+3%」只加空军）
+	AtkType ezfyTypeBonus
+	DefType ezfyTypeBonus
+}
+
 // ezfySimulate 执行战斗（兼容包装：一次跑完）
 // ★ 2026-10-06 新加成参数（守方攻击/射程）兼容包装一律传 0，行为不变；
 //
 //	军官加成拆解参数（atkOfficerBonus/defOfficerBonus）仅供战报日志展示
+//
+// ★ 2026-10-08 加 x（明细透传）：不填 = 老行为（无科技/套装行），填了 = 与主城战同格式
 func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, atkSpeedBonus, defSpeedBonus int,
 	atkRangeBonus, defRangeBonus, defAtkBonus int,
@@ -991,18 +1086,20 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkOfficerDesc, defOfficerDesc string,
 	atkOfficerBonus, defOfficerBonus int,
 	atkTargets, defTargets map[int]int,
-	atkMoves, defMoves map[int]int) ezfyBattleResult {
+	atkMoves, defMoves map[int]int,
+	x ezfyBattleExtra) ezfyBattleResult {
 
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 		atkRangeBonus, defRangeBonus,
-		atkEquip, defEquip, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		atkEquip, defEquip, x.AtkSet, x.DefSet, x.AtkSetDesc, x.DefSetDesc,
 		atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
-		0, 0, // 技能拆解：simulate 包装无军官技能拆分，攻方/守方技能算在 officerBonus 内（回退合并展示）
-		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulate 无军官/无科技上下文（回退展示）
-		0, nil, // 攻方防御加成：simulate 无军官上下文（攻方无防御加成，回退老行为）
-		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
+		x.AtkOfficerSkill, x.DefOfficerSkill,
+		x.AtkSkills, x.DefSkills, x.AtkTechs, x.DefTechs, x.DefDefBreak,
+		x.AtkDefBonus, x.AtkDefBreak,
+		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0,
+		x.AtkType, x.DefType)
 	for !st.Done {
 		// nil = 沿用司令部的兵种战斗配置，与原实现行为一致
 		st.Step(nil, nil)
@@ -1021,18 +1118,20 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkOfficerBonus, defOfficerBonus int,
 	atkTargets, defTargets map[int]int,
 	atkMoves, defMoves map[int]int,
+	x ezfyBattleExtra,
 	defBreakPct int) ezfyBattleResult {
 
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 		atkRangeBonus, defRangeBonus,
-		atkEquip, defEquip, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		atkEquip, defEquip, x.AtkSet, x.DefSet, x.AtkSetDesc, x.DefSetDesc,
 		atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
-		0, 0, // 技能拆解：驻军战守方无军官；攻方技能算在 officerBonus 内（回退合并展示）
-		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulateBreak 无军官/无科技上下文（回退展示）
-		0, nil, // 攻方防御加成：simulateBreak 无军官上下文（攻方无防御加成，回退老行为）
-		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0)
+		x.AtkOfficerSkill, x.DefOfficerSkill,
+		x.AtkSkills, x.DefSkills, x.AtkTechs, x.DefTechs, x.DefDefBreak,
+		x.AtkDefBonus, x.AtkDefBreak,
+		atkTargets, defTargets, atkMoves, defMoves, 0, 0, 0, 0,
+		x.AtkType, x.DefType)
 	if defBreakPct > 0 {
 		for _, d := range defenderUnits {
 			if d.Count > 0 {
@@ -1117,6 +1216,9 @@ type ezfyBattleSnapshot struct {
 
 	AtkCamp int `json:"atk_camp"`
 	DefCamp int `json:"def_camp"`
+	// ★ 2026-10-08 兵种专属加成（老快照没有 → nil map → atkOf/speedOf 返回 0，自动回退老行为）
+	AtkType ezfyTypeBonus `json:"atk_type,omitempty"`
+	DefType ezfyTypeBonus `json:"def_type,omitempty"`
 
 	Round       int      `json:"round"`
 	Done        bool     `json:"done"`
@@ -1170,6 +1272,7 @@ func (st *ezfyBattleState) Snapshot() ezfyBattleSnapshot {
 		AtkCounter: st.AtkCounter, DefCounter: st.DefCounter,
 		AtkCounterRounds: st.AtkCounterRounds, DefCounterRounds: st.DefCounterRounds,
 		AtkCamp: st.AtkCamp, DefCamp: st.DefCamp,
+		AtkType: st.AtkType, DefType: st.DefType,
 
 		Round: st.Round, Done: st.Done, AttackerWin: st.AttackerWin, Draw: st.Draw,
 		Head: st.Head, Actions: actions,
@@ -1205,6 +1308,7 @@ func ezfyBattleStateFromSnapshot(snap ezfyBattleSnapshot) *ezfyBattleState {
 		AtkCounter: snap.AtkCounter, DefCounter: snap.DefCounter,
 		AtkCounterRounds: atkRounds, DefCounterRounds: defRounds,
 		AtkCamp: snap.AtkCamp, DefCamp: snap.DefCamp,
+		AtkType: snap.AtkType, DefType: snap.DefType,
 		Round: snap.Round, Done: snap.Done, AttackerWin: snap.AttackerWin, Draw: snap.Draw,
 		Head: snap.Head, Actions: snap.Actions,
 	}

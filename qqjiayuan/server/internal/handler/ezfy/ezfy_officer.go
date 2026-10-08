@@ -1593,7 +1593,11 @@ func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 	return 0
 }
 
-// officerSpeedSkillBonus 速度类技能加成%（坦克突袭/闪电袭击/越岛战术，随等级 ×N）
+// officerSpeedSkillBonus 军官速度类技能的**行军**加成%（坦克突袭/闪电袭击/越岛战术，随等级 ×N）。
+//
+// ★ 2026-10-08 说明：这三个技能在配置里带兵种限定（陆军/空军/海军速度）——
+// **战斗内速度**已改为按兵种下发（见 officerTypeBonus / ezfyTypeBonus，喷气引擎同理）；
+// 这里保留给**行军时间**计算用（行军速度取全军最慢兵种，暂未按兵种细分）。
 func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
 	if o != nil && h.officerSpeedSkill(o) {
 		return 10 * h.officerSkillScale(o)
@@ -1601,8 +1605,55 @@ func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
 	return 0
 }
 
-// officerSkillBattleBonus 军官技能带来的攻击加成（复刻原版 getOfficerBattleBonus 的技能段）
-// 突击+10 鼓舞+5 爆破+8 空袭+8 海战+8 装甲突击+8
+// officerTypeBonus 军官**兵种专属**技能加成 → 按兵种表（ezfyTypeBonus 的 Atk / Speed）。
+//
+// 配置里带兵种的技能（`ezfy_cfg_skill.effect`）：
+//
+//	火炮控制「陆军装甲攻击+10/级」  → Atk[陆军]
+//	四指编队「空军对空攻击+15%/级」 → Atk[空军]
+//	狼群战术「海军对海攻击+15%/级」 → Atk[海军]
+//	坦克突袭「陆军速度+10%/级」    → Speed[陆军]
+//	闪电袭击「空军速度+10%/级」    → Speed[空军]
+//	越岛战术「海军速度+10%/级」    → Speed[海军]
+//
+// ★★ 2026-10-08 这些技能**只作用于对应兵种**（用户反馈「空军速度只加空军」）：
+// 原来它们被无差别加进通用的 officerSkillBattleBonus / officerSpeedSkillBonus → 全军受益。
+// ★ 传入的 map 为 nil 时函数内部自行建表（调用方可直接 `h.officerTypeBonus(o, nil, nil)`）。
+func (h *EzfyHandler) officerTypeBonus(o *model.EzfyOfficer, atk, speed map[int]int) (map[int]int, map[int]int) {
+	if atk == nil {
+		atk = map[int]int{}
+	}
+	if speed == nil {
+		speed = map[int]int{}
+	}
+	if o == nil {
+		return atk, speed
+	}
+	scale := h.officerSkillScale(o)
+	for _, s := range officerSkills(o) {
+		switch s {
+		case "火炮控制":
+			atk[ezfyTroopTypeArmy] += 10 * scale
+		case "四指编队":
+			atk[ezfyTroopTypeAir] += 15 * scale
+		case "狼群战术":
+			atk[ezfyTroopTypeNavy] += 15 * scale
+		case "坦克突袭":
+			speed[ezfyTroopTypeArmy] += 10 * scale
+		case "闪电袭击":
+			speed[ezfyTroopTypeAir] += 10 * scale
+		case "越岛战术":
+			speed[ezfyTroopTypeNavy] += 10 * scale
+		}
+	}
+	return atk, speed
+}
+
+// officerSkillBattleBonus 军官技能带来的**通用**攻击加成（复刻原版 getOfficerBattleBonus 的技能段）。
+//
+// ★★ 2026-10-08 只保留**全体兵种**生效的技能（尖兵突击）；
+// 火炮控制/四指编队/狼群战术是**兵种专属**（陆/空/海），改由 officerTypeBonus 按兵种下发，
+// 不能再进这里（否则空军技能会给陆军加攻击）。
 func (h *EzfyHandler) officerSkillBattleBonus(o *model.EzfyOfficer) int {
 	if o == nil {
 		return 0
@@ -1610,20 +1661,15 @@ func (h *EzfyHandler) officerSkillBattleBonus(o *model.EzfyOfficer) int {
 	scale := h.officerSkillScale(o)
 	bonus := 0
 	for _, s := range officerSkills(o) {
-		switch s {
-		case "尖兵突击":
+		if s == "尖兵突击" {
 			bonus += 30 * scale
-		case "火炮控制":
-			bonus += 10 * scale
-		case "四指编队", "狼群战术":
-			bonus += 15 * scale
 		}
 	}
 	return bonus
 }
 
-// officerSkillsBreak 攻击类技能的**逐项**明细（战报拆解展示「军官技能·尖兵突击+N%」，
-// 多个技能分开展示）。与 officerSkillBattleBonus 同一口径，明细之和 = 技能总加成。
+// officerSkillsBreak 通用攻击类技能的**逐项**明细（战报拆解展示「军官技能·尖兵突击+N%」）。
+// 与 officerSkillBattleBonus 同一口径（只含全体兵种技能），明细之和 = 通用技能总加成。
 func (h *EzfyHandler) officerSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
 	if o == nil {
 		return nil
@@ -1631,13 +1677,8 @@ func (h *EzfyHandler) officerSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
 	scale := h.officerSkillScale(o)
 	out := []ezfyBonusItem{}
 	for _, s := range officerSkills(o) {
-		switch s {
-		case "尖兵突击":
+		if s == "尖兵突击" {
 			out = append(out, ezfyBonusItem{Name: s, Value: 30 * scale})
-		case "火炮控制":
-			out = append(out, ezfyBonusItem{Name: s, Value: 10 * scale})
-		case "四指编队", "狼群战术":
-			out = append(out, ezfyBonusItem{Name: s, Value: 15 * scale})
 		}
 	}
 	return out

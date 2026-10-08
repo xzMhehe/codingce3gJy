@@ -384,8 +384,14 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（用户要求：弹道学=射程，不参与攻击加成）
 	atkBonus := h.officerBattleBonus(leadOfficer) +
 		atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
-	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
-	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
+	// 速度：燃烧引擎(10)「部队速度」= 通用；喷气引擎(19)「空军速度」= 兵种专属（见下方 atkType）
+	atkSpeedBonus := atkTech[10] * 2
+	// ★ 2026-10-08 兵种专属加成（与普通出征同口径）：喷气引擎只加空军 + 军官兵种技能
+	atkType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+	if v := atkTech[19] * 3; v > 0 {
+		atkType.Speed[ezfyTroopTypeAir] += v
+	}
+	atkType.Atk, atkType.Speed = h.officerTypeBonus(leadOfficer, atkType.Atk, atkType.Speed)
 	// ★ 2026-10-08 与普通出征同口径：军官行同时展示攻击加成与防御加成（属性部分，技能单列）
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
 		h.officerGuardAttrBonus(leadOfficer), "防御加成")
@@ -490,7 +496,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 			h.buildMoveMap(city.ID, true), map[int]int{},
 			h.officerCounterRounds(leadOfficer),
 			generalCounterRounds(defGeneral),
-			h.ensureProfile(uid).Camp, defCamp)
+			h.ensureProfile(uid).Camp, defCamp,
+			// ★ 2026-10-08 兵种专属加成（攻方喷气引擎=空军速度+军官兵种技能；活动守军无科技 → 空表）
+			atkType, ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}})
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   活动目标（活动野地 / 活动寇城 / 特殊城市）**按「野地 / NPC」口径处理** ——
 		//   守军是配置数据、没有真人，所以默认「是」：抵达即自动打完，无需指挥。

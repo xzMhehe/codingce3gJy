@@ -2588,15 +2588,22 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 重工技术(9)+2%/级
 	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（用户要求：弹道学=射程，不参与攻击加成）
 	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
-	// 速度加成：燃烧引擎(10)+2%/级 · 喷气引擎(19)+3%/级
-	atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3
+	// 速度加成：只有燃烧引擎(10)「部队速度」是**全体兵种**通用的；
+	// ★ 2026-10-08 喷气引擎(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
+	atkSpeedBonus := atkTech[10] * 2
 	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，用户要求）
 	atkRangeBonus := atkTech[8] * 3
-	// ★★ 2026-09-28 修复：这里原来是**两段一模一样的 if**，军官「移速」技能被加了两次 +10
-	//   （活动目标那条路径 ezfy_activity_target.go 只加一次）。
-	//   后果：带移速技能的军官出征，速度加成虚高 10%，与活动战、与界面描述都不一致。
-	// ★ 2026-10-06 技能随军官等级自动升级：速度技能加成也随等级 ×N
-	atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)
+	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
+	//   · 喷气引擎(19)「空军速度+3%/级」→ **只加空军**
+	//   · 军官兵种技能：火炮控制=陆军装甲攻击 / 四指编队=空军对空攻击 / 狼群战术=海军对海攻击 /
+	//     坦克突袭=陆军速度 / 闪电袭击=空军速度 / 越岛战术=海军速度
+	//   ★ 原来它们被无差别算进 atkBonus / atkSpeedBonus（全军受益）——
+	//     用户反馈「空军速度只加空军，有些科技是特定兵种」。
+	atkType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+	if v := atkTech[19] * 3; v > 0 {
+		atkType.Speed[ezfyTroopTypeAir] += v
+	}
+	atkType.Atk, atkType.Speed = h.officerTypeBonus(leadOfficer, atkType.Atk, atkType.Speed)
 	// ★ 2026-10-08 攻方军官行同时展示攻击加成与防御加成（都是**属性部分**，技能单列）：
 	//   出征军官的属性/技能同样给部队提供防御（被打时减伤），原来军官行只写攻击加成（用户反馈）。
 	atkOfficerDesc := h.officerBattleDesc(leadOfficer, h.officerBaseBonus(leadOfficer), "攻击加成",
@@ -2659,6 +2666,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/军官属性/军官技能/装备，Name 带前缀；被攻击行展示用）
 	var defDefBreak []ezfyBonusItem
 	defRangeBonus := 0
+	// ★ 2026-10-08 守方**兵种专属**加成（喷气引擎=空军速度、城守的兵种技能；野地/寇城无科技 → 保持空表）
+	defType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
 	wildLevel := 0
 	wildDefCamp := 0 // 野地守军阵营: 1盟军(野地) 2轴心国(寇城), 0无
 	var target *model.EzfyCity
@@ -2808,19 +2817,40 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-09-28 补上重工技术(9)+2%/级：该科技描述是「重装备**攻防**+2%」，
 		//   攻方那条路径已加(atkBonus)，守方这条原来漏了 → 被攻击时这 2%/级 完全不生效。
 		defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2 + defTech[9]*2
-		defSpeedBonus = defTech[10]*2 + defTech[19]*3
+		// 速度：只有燃烧引擎(10)「部队速度」是全体兵种通用；喷气引擎(19)「空军速度」是兵种专属
+		// （★ 2026-10-08 移到下方 defType —— 原来错误地给全军加速）
+		defSpeedBonus = defTech[10] * 2
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
-		// ★ 2026-10-06 守方攻击/射程加成（用户要求「科技加成、技能加成算入伤害」+「射程=基础×科技」）：
-		//   守方攻击加成与守方防御同科技口径（装甲科技7/重工技术9/掩体防御16）+ 城守军官攻击技能；
-		//   守方射程加成 = 弹道学(8)*3 + 掩体防御(16)*2
-		defAtkBonus = defTech[7]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
+		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
+		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
+		defType = ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
+		if v := defTech[19] * 3; v > 0 {
+			defType.Speed[ezfyTroopTypeAir] += v
+		}
+		defType.Atk, defType.Speed = h.officerTypeBonus(cityGuard, defType.Atk, defType.Speed)
+		// ★★ 2026-10-08 修正守方**攻击**加成的科技口径（用户反馈「两个号都是满科技，为什么科技加成不一样」）：
+		//
+		//	原来用「装甲科技(7) + 重工技术(9) + 掩体防御(16)」—— 但装甲科技的配置描述是
+		//	**部队防御**，它只该进防御加成，却被当成攻击加成用了；而**军训艺术(5) / 武器科技(6)**
+		//	（描述都是「部队攻击」）完全没算 → 守城部队白丢一截攻击加成，
+		//	且【守方科技】行比【攻方科技】少这两项（满科技的两个号列出来却不一样）。
+		//
+		//	现在与攻方口径对齐：军训艺术+2%/级 · 武器科技+3%/级 · 重工技术+2%/级（重装备攻防）
+		//	＋ 掩体防御+2%/级（城防攻防，守城方专属）＋ 城守军官攻击加成。
+		//	★ 装甲科技(7) 只保留在**防御**加成里（defBonus / defDefBreak），不再重复进攻击。
+		//	★ 守方射程加成 = 弹道学(8)*3 + 掩体防御(16)*2（不变）
+		defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2 + h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
 		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 守方拆解逐项明细：城守技能 + 守方科技（与 defAtkBonus 同口径）
 		defSkillBreak = h.officerSkillsBreak(cityGuard)
+		// ★ 2026-10-08 与【攻方科技】用**同一集合、同一顺序**（补上军训艺术/武器科技）：
+		//   满科技的两个号现在列出的科技项完全一致，不会再出现「都是满科技、守方却少两项」的困惑。
 		defTechBreak = ezfyBonusItems(
+			ezfyTechItem("军训艺术", defTech[5]*2),
+			ezfyTechItem("武器科技", defTech[6]*3),
 			ezfyTechItem("装甲科技", defTech[7]*3),
 			ezfyTechItem("弹道学", defTech[8]*3),
 			ezfyTechItem("重工技术", defTech[9]*2),
@@ -2928,6 +2958,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				atkOfficerDesc, "",
 				officerBonus, 0, // 驻军战：守方无军官；攻方军官加成照常拆解展示
 				atkTargets, defTargets, atkMoves, defMoves,
+				// ★ 2026-10-08 驻军战也透传完整明细（原来包装函数一律传 nil）：
+				//   否则准备回合没有【攻方科技】【攻方套装】行，套装效果还会被并进【攻方装备】行
+				//   —— 与主城战格式不一致（用户反馈「战报、指挥模块展示不全」）。
+				//   守方是盟友驻军（无科技/无城墙/无军官/无装备），守方明细一律留空。
+				ezfyBattleExtra{
+					AtkSkills: atkSkillBreak, AtkTechs: atkTechs,
+					AtkDefBonus: atkDefBonus, AtkDefBreak: atkDefBreak,
+					AtkSet:          h.officerSetEquipBonus(leadOfficer),
+					AtkSetDesc:      h.officerSetsDesc(leadOfficer),
+					AtkOfficerSkill: h.officerSkillBattleBonus(leadOfficer),
+					// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度等）
+					AtkType: atkType,
+				},
 				ezfyGarrisonBreakPct)
 			var gcity model.EzfyCity
 			gcityName := "友军"
@@ -2979,11 +3022,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					battleOutcomeText(!gbr.AttackerWin, gbr.Draw), lossText(gbr.DefenderLosses), endNote),
 				gDetail, int64(order.ID), target.ID)
 			// 攻方战报（对这支驻军）
+			// ★ 2026-10-08 归属**攻方出发城**（原来传 target.ID = 被打的城，攻方按自己的城市
+			//   过滤战报时匹配不上、标题里又没有坐标/自己城名 → 这条战报攻方根本看不到）。
 			h.addReport(uid, 2, "战斗报告: 击溃"+gcityName+"的驻军",
 				fmt.Sprintf("我方部队在%s(%d,%d)击溃了来自%s的盟军驻军!\n%s",
 					targetName, order.TargetX, order.TargetY, gcityName,
 					lossText(gbr.DefenderLosses)),
-				gDetail, int64(order.ID), target.ID)
+				gDetail, int64(order.ID), city.ID)
 			if gLeftStr == "" {
 				// 驻军全灭（未触发溃败撤退）→ 删除队列
 				h.DB.Delete(&model.EzfyOrder{}, go_.ID)
@@ -3030,9 +3075,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.ReturnTime = now + ezfyOneWayTravel(order)
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 			Updates(map[string]interface{}{"status": 2, "result": resultStr, "return_time": order.ReturnTime})
+		// ★ 2026-10-08 同上：归属攻方出发城（原来传 target.ID，攻方在自己的城市视角看不到）
 		h.addReport(uid, 2, "战斗报告: 进攻受阻(驻军拦截)",
 			fmt.Sprintf("我方部队进攻%s(%d,%d)时被盟军驻军拦截, 未能攻入城市, 部队已返航。",
-				targetName, order.TargetX, order.TargetY), "", order.ID, target.ID)
+				targetName, order.TargetX, order.TargetY), "", order.ID, city.ID)
 		return
 	}
 
@@ -3074,7 +3120,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			atkTargets, defTargets, atkMoves, defMoves,
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
-			h.ensureProfile(uid).Camp, defCamp)
+			h.ensureProfile(uid).Camp, defCamp,
+			// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度、军官兵种技能）
+			atkType, defType)
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   · 打野地 / AI 寇城 → 默认「是」：抵达即自动打完，无需指挥（守方不是真人）；
 		//   · 打玩家城市 → 强制「否」：抵达后开战场进指挥室，等玩家部署守军。
@@ -3345,7 +3393,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			} else if order.OrderType == 3 {
 				repTitle = "征服报告: " + targetName
 			}
-			h.addReport(uid, 3, repTitle, report, detail, order.ID)
+			// ★ 2026-10-08 战报显式带**出发城 id**：原来只传 orderId → city_id=0，
+			//   军情页按当前城过滤时只能靠「标题坐标反查订单」兜底（订单查不到就丢）。
+			//   这里与守方战报（传 target.ID）口径一致，归属出发城 city.ID。
+			h.addReport(uid, 3, repTitle, report, detail, order.ID, city.ID)
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 			return
@@ -3435,8 +3486,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.addPrestige(uid, pg)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
 				report += h.battleStatsTail(uid, pg, 0)
+				// ★ 2026-10-08 补出发城 id（原来 city_id=0，按当前城过滤时只能靠坐标反查兜底）
 				h.addReport(uid, 2, reportType+": "+targetName+
-					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
+					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -3820,8 +3872,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					defConqBody+"\n\n"+report, detail, 0, target.ID)
 			}
 		}
+		// ★ 2026-10-08 补出发城 id（与守方战报同口径；原来 city_id=0，按当前城过滤时靠坐标反查兜底）
 		h.addReport(uid, 2, reportType+": "+targetName+
-			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
+			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 	} else {
 		// ★ 第九轮：打败仗 → 幸存部队撤退返航（原来 status=4 是终止态，
 		//   幸存兵力凭空消失、带队军官永远卡在「出征中」，属于 bug）。
@@ -3860,8 +3913,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		report += "\n残部正在撤退返航。"
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
+		// ★ 2026-10-08 补出发城 id（同上）
 		h.addReport(uid, 2, reportType+": "+targetName+
-			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID)
+			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 		if order.TargetType == 3 && target != nil {
 			// ★ 2026-10-06 守方成功守住也按进攻意图归「战斗报告」：
 			//   掠夺→被掠夺报告 / 征服→被征服报告，军情警讯不再出现防守报告（只留预警）。

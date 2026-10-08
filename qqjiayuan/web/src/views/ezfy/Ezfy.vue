@@ -484,12 +484,15 @@ export default {
       // ★ 2026-09-28 「倒计时归零 → 自动重拉」的三个运行态标记（详见 checkDueRefresh）：
       //   _dynRefreshing  : 本轮重拉是否还在进行（防同波多次触发）
       //   _dynRefreshedAt : 上次重拉的本地时刻（★ 2026-10-08 节流从 3s 收紧到 1s，减少「返航到点/出征抵达」刷新延迟）
-      //   _dynFired       : 已触发过的「订单id@到点时刻」，防后端结算失败时无限重拉（去重集合，频率与节流无关）
-      //     ★ 用 Object.create(null) 而不是 {} —— 它只是个去重集合，不需要响应式，
+      //   _dynFired       : 「订单id@到点时刻」→ **已重试次数**（★ 2026-10-08 由「是否已触发」改成计数，
+      //                     见 checkDueRefresh：到点后最多重试 3 次，防后端结算慢导致界面卡住）
+      //   _dynRetryAt     : 上次「到点重试」的本地时刻（重试间隔 3 秒）
+      //     ★ 用 Object.create(null) 而不是 {} —— 它只是个计数表，不需要响应式，
       //       用 {} 会让 Vue 递归侦听每个动态加的 key，纯属浪费。
       _dynRefreshing: false,
       _dynRefreshedAt: 0,
       _dynFired: Object.create(null),
+      _dynRetryAt: 0,
       resNames: RES_NAMES,
       // ★ 2026-09-28 头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -1832,14 +1835,24 @@ export default {
         else if (o.status === 2 && o.return_time > 0) at = o.return_time
         if (!at || at > now) return false
         const key = o.id + '@' + at
-        if (this._dynFired[key]) return false
-        this._dynFired[key] = 1
+        // ★★ 2026-10-08 修复「部队到了、界面没自动刷新」（用户反馈）：
+        //   原来「同一订单同一到点时刻只触发一次」—— 万一那一次后端还没结算完
+        //   （懒结算 + 请求排队），订单仍是 status=0 + 已经过去的 arrive_time，
+        //   而 key 已记 → **之后永远不再触发** → 界面卡在「出征 / 0秒」直到玩家手动刷新。
+        //   现在改成**有限重试**：首次立即触发；之后每 3 秒重试一次，同一订单最多 3 次；
+        //   仍不变化就放弃 —— 既修了「卡住不刷」，也守住「后端真卡死时不能无限打接口」
+        //   这条 1 核 1G 的红线。
+        const tries = this._dynFired[key] || 0
+        if (tries >= 3) return false
+        if (tries > 0 && now - (this._dynRetryAt || 0) < 3000) return false
+        this._dynFired[key] = tries + 1
         // 返航到达 = 待带回资源入库 → 资源栏要刷新；
         // 出征抵达本身不改资源（只是状态变成驻守/进入战斗），不必刷。
         if (o.status === 2) needRes = true
         return true
       })
       if (!due) return
+      this._dynRetryAt = now
       this._dynRefreshing = true
       this._dynRefreshedAt = now
       this.loadDynamics()
@@ -4065,13 +4078,17 @@ export default {
       // 出征中：距抵达还差多久
       if (o.status === 0 && o.arrive_time > 0) {
         const left = o.arrive_time - now
-        if (left <= -2000) return ''   // 早过了 2 秒还没换状态 → 交回后端文案
+        // ★★ 2026-10-08 到点**立即让位**给后端文案（用户报「到了以后又存在倒计时 bug」）：
+        //   原来只挡「过了 2 秒」，那 2 秒内 left 已是负数 → 界面显示「-1秒 / -0秒」这种，
+        //   看起来就是卡住/倒着走。到点那一刻本地推算就失效了，直接 return '' 交回后端
+        //   （o.time_text），同时 checkDueRefresh 正在拉最新状态。
+        if (left <= 0) return ''
         return this.durText(left / 1000)
       }
-      // 返航中：距回城还差多久
+      // 返航中：距回城还差多久（同上：到点即让位）
       if (o.status === 2 && o.return_time > 0) {
         const left = o.return_time - now
-        if (left <= -2000) return ''
+        if (left <= 0) return ''
         return this.durText(left / 1000)
       }
       return ''

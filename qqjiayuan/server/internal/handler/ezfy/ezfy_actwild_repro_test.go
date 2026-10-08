@@ -44,7 +44,8 @@ func TestActWildBattleRepro(t *testing.T) {
 		nil, nil, nil, nil, nil, // skills/techs/defBreak
 		165, nil, // atkDefBonus, atkDefBreak
 		nil, nil, nil, nil, // targets/moves
-		0, 0, 1, 1) // counterRounds, camps
+		0, 0, 1, 1, // counterRounds, camps
+		ezfyTypeBonus{}, ezfyTypeBonus{})
 
 	t.Logf("开局: Done=%v  Attackers=%d  Defenders=%d", st.Done, len(st.Attackers), len(st.Defenders))
 	if len(st.Attackers) == 0 || len(st.Defenders) == 0 {

@@ -267,7 +267,9 @@ func TestDefBonusTxt(t *testing.T) {
 //
 // 2026-10-07 起攻方军官防御技能(弧形防御/弹幕支援)+装备 Def 生效：unitDefBonus 不再恒 0。
 func TestDefBonusInjected(t *testing.T) {
-	src := rawFile(t, "ezfy_battle.go")
+	// ★ 2026-10-08 规范化行尾：仓库在 Windows 下是 CRLF（core.autocrlf=true），
+	//   而本测试用 `\n` 拼多行片段 → 原来在 CRLF 工作区**永远匹配不上**（假红）。
+	src := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
 	for _, want := range []string{
 		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)`,
 		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)`,
@@ -284,6 +286,139 @@ func TestDefBonusInjected(t *testing.T) {
 	if !strings.Contains(src, "if isAtk {\n\t\t\t\t\tif atkDefBonusTxt != \"\"") ||
 		!strings.Contains(src, "} else if defBonusTxt != \"\" {\n\t\t\t\t\tline += \", \" + defBonusTxt") {
 		t.Fatal("ezfy_battle.go 反击行防御段注入不完整")
+	}
+}
+
+// TestDefenderAtkTechMatchesAttacker 守方**攻击**加成的科技口径必须与攻方一致。
+//
+// ★★ 2026-10-08 用户反馈「两个号都是满科技，为什么科技加成不一样」：
+//
+//	守方原来用「装甲科技(7)+重工技术(9)+掩体防御(16)」算攻击加成 ——
+//	装甲科技的配置描述是「部队防御」，只该进防御加成；而「军训艺术(5)/武器科技(6)」
+//	（描述都是「部队攻击」）完全没算。结果满科技的两个号：【守方科技】行比【攻方科技】
+//	少两项，攻击加成还偏低。
+func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	if !strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
+		t.Fatal("守方攻击加成必须含军训艺术(5)/武器科技(6)，与攻方同口径")
+	}
+	if strings.Contains(src, "defAtkBonus = defTech[7]*3") {
+		t.Fatal("守方攻击加成不该用装甲科技(7)（描述是「部队防御」，只进防御加成）")
+	}
+	if !strings.Contains(src, `ezfyTechItem("军训艺术", defTech[5]*2)`) ||
+		!strings.Contains(src, `ezfyTechItem("武器科技", defTech[6]*3)`) {
+		t.Fatal("【守方科技】行缺军训艺术/武器科技（应与【攻方科技】同集合）")
+	}
+}
+
+// TestFourTechCategoriesWired 四类科技加成必须在**攻守双方**都真实参与计算。
+//
+// ★★ 2026-10-08 用户要求：「攻击加成的科技、防御加成科技、速度加成科技、射程加成科技
+// 这里都要展示，而且回合中也要实际有」。
+//
+//	展示侧由【攻方科技】/【守方科技】两行负责（同一集合，见 TestDefenderAtkTechMatchesAttacker）；
+//	这里锁**计算侧** —— 每类科技都要在 ezfy_order.go 的加成表达式里出现，
+//	否则就会出现「列表里列了、回合里不生效」的假展示。
+//
+// 科技 ID 对照：5 军训艺术(攻) · 6 武器科技(攻) · 7 装甲科技(防) · 8 弹道学(射程) ·
+// 9 重工技术(重装备攻防) · 10 燃烧引擎(速度) · 16 掩体防御(城防攻防) · 19 喷气引擎(空军速度)
+func TestFourTechCategoriesWired(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	// ★ 速度只列**通用**那部分（燃烧引擎 10「部队速度」）；喷气引擎(19)是「空军速度」，
+	//   属兵种专属，见下面的 TestTypeSpecificBonusWired。
+	atkCases := []struct{ name, want string }{
+		{"攻击", "atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2"},
+		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[16]*2 + atkTech[9]*2"},
+		{"速度(通用)", "atkSpeedBonus := atkTech[10] * 2"},
+		{"射程", "atkRangeBonus := atkTech[8] * 3"},
+	}
+	defCases := []struct{ name, want string }{
+		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2"},
+		{"防御", "defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2 + defTech[9]*2"},
+		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
+		{"射程", "defRangeBonus = defTech[8]*3 + defTech[16]*2"},
+	}
+	for _, c := range atkCases {
+		if !strings.Contains(src, c.want) {
+			t.Fatalf("攻方缺「%s」类科技加成（列了却不生效）：%s", c.name, c.want)
+		}
+	}
+	for _, c := range defCases {
+		if !strings.Contains(src, c.want) {
+			t.Fatalf("守方缺「%s」类科技加成（列了却不生效）：%s", c.name, c.want)
+		}
+	}
+}
+
+// TestTypeSpecificBonusWired 兵种专属加成必须**按兵种**下发，不能混进通用加成。
+//
+// ★★ 2026-10-08 用户确认：「玩家科技、军官技能有的是全部兵种，有的是指定兵种，不能一起加」。
+//
+//	带兵种的科技：喷气引擎(19)「空军速度+3%/级」；
+//	带兵种的军官技能：火炮控制(陆军装甲攻击) / 四指编队(空军对空攻击) / 狼群战术(海军对海攻击) /
+//	坦克突袭(陆军速度) / 闪电袭击(空军速度) / 越岛战术(海军速度)。
+//	它们必须走 ezfyTypeBonus（Atk/Speed 按 troop type 索引），且**不得**出现在通用加成里。
+func TestTypeSpecificBonusWired(t *testing.T) {
+	ord := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	off := strings.ReplaceAll(rawFile(t, "ezfy_officer.go"), "\r\n", "\n")
+	bat := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
+
+	// ① 喷气引擎（空军速度）→ 只进空军
+	for _, want := range []string{
+		"atkType.Speed[ezfyTroopTypeAir] += v", // 攻方
+		"defType.Speed[ezfyTroopTypeAir] += v", // 守方
+	} {
+		if !strings.Contains(ord, want) {
+			t.Fatalf("喷气引擎（空军速度）未按兵种下发：%s", want)
+		}
+	}
+	// ② 通用速度不得再包含喷气引擎（那是空军专属）
+	for _, bad := range []string{
+		"atkSpeedBonus := atkTech[10]*2 + atkTech[19]*3",
+		"defSpeedBonus = defTech[10]*2 + defTech[19]*3",
+	} {
+		if strings.Contains(ord, bad) {
+			t.Fatalf("通用速度不该含喷气引擎(19)（那是空军专属）：%s", bad)
+		}
+	}
+	// ③ 军官的六个兵种技能必须按兵种下发
+	for _, want := range []string{
+		"atk[ezfyTroopTypeArmy] += 10 * scale",   // 火炮控制 → 陆军
+		"atk[ezfyTroopTypeAir] += 15 * scale",    // 四指编队 → 空军
+		"atk[ezfyTroopTypeNavy] += 15 * scale",   // 狼群战术 → 海军
+		"speed[ezfyTroopTypeArmy] += 10 * scale", // 坦克突袭 → 陆军
+		"speed[ezfyTroopTypeAir] += 10 * scale",  // 闪电袭击 → 空军
+		"speed[ezfyTroopTypeNavy] += 10 * scale", // 越岛战术 → 海军
+	} {
+		if !strings.Contains(off, want) {
+			t.Fatalf("军官兵种技能未按兵种下发：%s", want)
+		}
+	}
+	// ④ 通用技能加成里不得再出现兵种技能（尖兵突击是全体兵种，保留）
+	if !strings.Contains(off, `if s == "尖兵突击" {`) {
+		t.Fatal("通用技能加成应只保留「尖兵突击」（全体兵种）")
+	}
+	if i := strings.Index(off, "func (h *EzfyHandler) officerSkillBattleBonus"); i >= 0 {
+		seg := off[i:]
+		if j := strings.Index(seg, "// officerSkillsBreak"); j > 0 {
+			seg = seg[:j]
+		}
+		for _, bad := range []string{"火炮控制", "四指编队", "狼群战术"} {
+			if strings.Contains(seg, bad) {
+				t.Fatalf("通用技能加成里不该再出现兵种技能：%s", bad)
+			}
+		}
+	}
+	// ⑤ 战斗引擎必须按兵种取值叠加（攻击 + 速度，攻守双方）
+	for _, want := range []string{
+		"atkBonus + st.AtkType.atkOf(unit.cfg.Type)",
+		"st.DefAtkBonus + st.DefType.atkOf(unit.cfg.Type)",
+		"atkSpeedBonus + st.AtkType.speedOf(unit.cfg.Type)",
+		"defSpeedBonus + st.DefType.speedOf(unit.cfg.Type)",
+	} {
+		if !strings.Contains(bat, want) {
+			t.Fatalf("战斗引擎未按兵种叠加加成：%s", want)
+		}
 	}
 }
 
