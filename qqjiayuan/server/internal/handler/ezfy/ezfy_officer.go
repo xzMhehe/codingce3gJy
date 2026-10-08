@@ -1342,6 +1342,23 @@ func (h *EzfyHandler) officerSetEquipBonus(o *model.EzfyOfficer) ezfyBattleBonus
 	return b
 }
 
+// officerSetsDesc 战报「套装」行的展示文案：列出每个**已激活**套装的名字 + 六项加成，
+// 让看战报的人一眼知道是穿齐并生效了哪一套（多个套装叠加 → 用「；」连接）。
+func (h *EzfyHandler) officerSetsDesc(o *model.EzfyOfficer) string {
+	parts := []string{}
+	for _, p := range h.officerSetProgress(o) {
+		if !p.Active {
+			continue
+		}
+		b := ezfyBattleBonus{Dmg: p.Set.Dmg, Def: p.Set.Def, Hp: p.Set.Hp,
+			Move: p.Set.Move, Crit: p.Set.Crit, CritDmg: p.Set.CritDmg}
+		if d := ezfyEquipBonusDesc(b); d != "无" {
+			parts = append(parts, p.Set.Name+": "+d)
+		}
+	}
+	return strings.Join(parts, "；")
+}
+
 // officerBattleView 六项战斗加成的下发格式（列表/详情共用）
 func (h *EzfyHandler) officerBattleView(o *model.EzfyOfficer) gin.H {
 	b := h.officerBattleEquipBonus(o)

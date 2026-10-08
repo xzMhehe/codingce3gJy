@@ -458,6 +458,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		st := ezfyNewBattleState(attacker, defender, atkBonus, defBonus, defBonus, atkSpeedBonus, defSpeedBonus,
 			atkTech[8]*3, 0,
 			atkEquip, ezfyBattleBonus{},
+			h.officerSetEquipBonus(leadOfficer), ezfyBattleBonus{},
+			h.officerSetsDesc(leadOfficer), "",
 			atkOfficerDesc, defOfficerDesc,
 			// 活动守军无城墙/无科技 → 守方攻击加成整体都来自守将；攻方军官加成照常拆解展示
 			// ★ 2026-10-06 军官加成里「技能」占的百分点（拆解单独展示「军官技能+N%」）

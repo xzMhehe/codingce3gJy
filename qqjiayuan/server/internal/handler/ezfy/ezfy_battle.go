@@ -202,7 +202,8 @@ type ezfyBattleState struct {
 func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus int,
 	atkRangeBonus, defRangeBonus int,
-	atkEquip, defEquip ezfyBattleBonus,
+	atkEquip, defEquip, atkSet, defSet ezfyBattleBonus,
+	atkSetDesc, defSetDesc string,
 	atkOfficerDesc, defOfficerDesc string,
 	atkOfficerBonus, defOfficerBonus int,
 	atkOfficerSkill, defOfficerSkill int,
@@ -268,10 +269,32 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if dTech := ezfyBonusItemsDesc(defTechs); dTech != "" {
 		st.Head = append(st.Head, "【守方科技】"+dTech)
 	}
-	// ★ 2026-10-08 装备加成恒定罗列（不再"非零才显示"；这里的 desc 空值时已返回"无"），
-	//   避免玩家反馈的"装备加成看不到"。装备伤害已并入上方「攻击+%d%%」总数值。
-	st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
-	st.Head = append(st.Head, "【守方装备】"+ezfyEquipBonusDesc(defEquip))
+	// ★ 2026-10-08 装备恒定罗列。装备行 = **单件属性之和**（全量 - 套装），
+	//   套装另起一行单列 →「装备」与「套装」不再重复（套装效果原本被算进装备行）。
+	//   战斗加成（伤害/防御/速度）仍按全量（含套装）计算，仅展示拆分。
+	atkPiece := atkEquip
+	atkPiece.Dmg -= atkSet.Dmg
+	atkPiece.Def -= atkSet.Def
+	atkPiece.Hp -= atkSet.Hp
+	atkPiece.Move -= atkSet.Move
+	atkPiece.Crit -= atkSet.Crit
+	atkPiece.CritDmg -= atkSet.CritDmg
+	defPiece := defEquip
+	defPiece.Dmg -= defSet.Dmg
+	defPiece.Def -= defSet.Def
+	defPiece.Hp -= defSet.Hp
+	defPiece.Move -= defSet.Move
+	defPiece.Crit -= defSet.Crit
+	defPiece.CritDmg -= defSet.CritDmg
+	st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkPiece))
+	st.Head = append(st.Head, "【守方装备】"+ezfyEquipBonusDesc(defPiece))
+	// 套装额外加成（只有穿齐才生效）单列，与装备行紧挨着展示；带套装名方便按名选购
+	if atkSetDesc != "" {
+		st.Head = append(st.Head, "【攻方套装】"+atkSetDesc)
+	}
+	if defSetDesc != "" {
+		st.Head = append(st.Head, "【守方套装】"+defSetDesc)
+	}
 	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
 
 	idx := 0
@@ -960,7 +983,8 @@ func ezfySimulate(attackerUnits, defenderUnits []ezfyUnitGroup,
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 		atkRangeBonus, defRangeBonus,
-		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
+		atkEquip, defEquip, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
 		0, 0, // 技能拆解：simulate 包装无军官技能拆分，攻方/守方技能算在 officerBonus 内（回退合并展示）
 		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulate 无军官/无科技上下文（回退展示）
@@ -989,7 +1013,8 @@ func ezfySimulateBreak(attackerUnits, defenderUnits []ezfyUnitGroup,
 	st := ezfyNewBattleState(attackerUnits, defenderUnits,
 		atkBonus, defBonus, defAtkBonus, atkSpeedBonus, defSpeedBonus,
 		atkRangeBonus, defRangeBonus,
-		atkEquip, defEquip, atkOfficerDesc, defOfficerDesc,
+		atkEquip, defEquip, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		atkOfficerDesc, defOfficerDesc,
 		atkOfficerBonus, defOfficerBonus,
 		0, 0, // 技能拆解：驻军战守方无军官；攻方技能算在 officerBonus 内（回退合并展示）
 		nil, nil, nil, nil, nil, // 技能/科技/防御逐项明细：simulateBreak 无军官/无科技上下文（回退展示）

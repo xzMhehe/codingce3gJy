@@ -38,7 +38,7 @@ func TestActWildBattleRepro(t *testing.T) {
 	st := ezfyNewBattleState(attacker, defender,
 		346, 40, 40, 50, 0, // atkBonus, defBonus, defAtkBonus, atkSpeed, defSpeed
 		30, 0, // atkRange, defRange
-		ezfyBattleBonus{}, ezfyBattleBonus{},
+		ezfyBattleBonus{}, ezfyBattleBonus{}, ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
 		"Stalin（斯大林）", "戴高乐（Charles）",
 		346, 40, 0, 0, // officerBonus, officerSkill
 		nil, nil, nil, nil, nil, // skills/techs/defBreak
