@@ -843,7 +843,11 @@ type EzfyOrder struct {
 	// ★ 2026-10-07 自动战斗（出征页可配）：1=到达即自动打完（无需指挥）；0=到达后进指挥室等玩家指挥。
 	//   打野地 / AI 寇城（target_type != 3）默认 1；打玩家城市**强制 0**（真人守方，必须留指挥机会，
 	//   前端该项只读）。例外：打玩家城时若**攻守双方都不在线**，仍直接自动结算（见 processArrive）。
-	AutoBattle int `gorm:"default:1;comment:自动战斗 1是 0否" json:"auto_battle"`
+	// ★★ 2026-10-08 去掉 `default:1` 标签：
+	//   GORM 对带 default 标签的 int 字段在 INSERT 时会**跳过 0 值**，让数据库默认 1 落库 →
+	//   出征页选了「否」(0) 也会被存成 1 → 到达被自动打完、进不了指挥室（用户反馈的 bug）。
+	//   去掉后 GORM 会显式写入玩家所选值，0/1 都原样落库。
+	AutoBattle int `gorm:"comment:自动战斗 1是 0否" json:"auto_battle"`
 
 	// ★ 指挥室（实时战斗）打完的结果（ezfyBattleResult 的 JSON）。
 	//   非空 = 这场仗已经由玩家在指挥室里打完 → processArrive 跳过模拟、直接拿它结算，
