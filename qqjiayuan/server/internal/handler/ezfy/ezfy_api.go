@@ -1622,14 +1622,30 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	if defName == "" {
 		defName = fmt.Sprintf("玩家%d", req.TargetUserId)
 	}
-	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
-		atkName, ezfyWarDelayHours, ezfyWarDurationHours)
+	// ★ 2026-10-08 宣战消息/邮件标注双方城池坐标（用户反馈）：宣战方所在城 + 被宣战城，
+	//   一看就知道两座城在地图上的位置。
+	_, atkCity, _ := h.ezfyPageCity(uid)
+	meta := ""
+	if atkCity.ID > 0 {
+		meta += fmt.Sprintf(" 宣战方所在城(%d,%d)", atkCity.X, atkCity.Y)
+	}
+	if req.CityId > 0 {
+		var tc model.EzfyCity
+		if err := h.DB.First(&tc, req.CityId).Error; err == nil {
+			if meta != "" {
+				meta += "，"
+			}
+			meta += fmt.Sprintf("被宣战城(%d,%d)", tc.X, tc.Y)
+		}
+	}
+	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。%s",
+		atkName, ezfyWarDelayHours, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
 	// ★ 2026-10-05 宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
 	//   与上面系统消息同口径；对方在「邮件」页能看到这条宣战消息。
 	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: req.TargetUserId, Content: defTip})
-	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。",
-		defName, ezfyWarDelayHours, ezfyWarDurationHours)
+	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。%s",
+		defName, ezfyWarDelayHours, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})
 
 	// ★ 「首页世界聊天那块，谁向谁宣战也播报展示」→ 往**系统频道**写一条全服可见的播报。
