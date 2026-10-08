@@ -112,6 +112,11 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
+	// ★ ★ 2026-10-08 「敌人城市标红」：
+	//   个人宣战/被宣战、军团敌对、军团之间战争 的对象城市 → 前端格子标红，方便找敌人。
+	//   镜像 allyUsers 模式：算出当前视野里每个城市格该不该标 enemy，前端只看 cell.enemy。
+	enemyUsers := h.ezfyMapEnemyUsers(uid, myMb.CorpsId)
+
 	// ★ 「点击地图的出征 → 看到玩家城市 → 点进去 → 展示玩家同盟名字」。
 	//   一次性把所有涉及玩家的军团名载入（避免逐格查库），格子上带 corps_name。
 	corpsNames := map[uint]string{}
@@ -173,6 +178,8 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				cell["owner"] = userNames[c.UserID]
 				cell["mine"] = c.UserID == uid
 				cell["ally"] = allyUsers[c.UserID]
+				// ★ 2026-10-08 敌人城市标红（个人战争/宣战、军团敌对、军团战争的对象）
+				cell["enemy"] = enemyUsers[c.UserID]
 				// ★ 该城主的同盟（军团）名；没加入军团时为空串，前端显示「无」
 				cell["corps_name"] = corpsNames[c.UserID]
 			} else {
@@ -255,6 +262,66 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 	resp.OK(c, gin.H{"cells": cells, "cx": cx, "cy": cy, "elite": elite})
+}
+
+// ezfyMapEnemyUsers 当前玩家在「地图上标红的敌人」用户集合：
+//
+//	① 个人战争：我 宣战 / 被宣战 的玩家（待生效 status=1、交战中 status=2 都算，含未过期的）。
+//	② 军团敌对：我所在军团标记为「敌对」的军团 —— 全体成员。
+//	③ 军团战争：我所在军团正处于「宣战/交战」的敌方军团 —— 全体成员。
+//	未加入军团的玩家只算 ①。镜像 allyUsers 的构建方式，一处计算、每格直接比对。
+func (h *EzfyHandler) ezfyMapEnemyUsers(uid, myCorps uint) map[uint]bool {
+	enemy := map[uint]bool{}
+
+	// ① 个人宣战 / 被宣战（EzfyWar.status 只有 1/2，无"已结束"态，须按 expire_time 过滤过期）
+	now := time.Now().UnixMilli()
+	var wars []model.EzfyWar
+	h.DB.Where("status IN (1,2) AND expire_time > ? AND (atk_user_id = ? OR def_user_id = ?)",
+		now, uid, uid).Find(&wars)
+	for _, w := range wars {
+		if w.AtkUserId == uid {
+			enemy[w.DefUserId] = true
+		} else {
+			enemy[w.AtkUserId] = true
+		}
+	}
+
+	if myCorps == 0 {
+		return enemy
+	}
+
+	// ② 军团敌对：我方标记过 target 为「敌对」
+	enemyCorps := map[uint]bool{}
+	var rels []model.EzfyCorpsRelation
+	h.DB.Where("corps_id = ? AND type = 2", myCorps).Find(&rels)
+	for _, r := range rels {
+		enemyCorps[r.TargetCorpsId] = true
+	}
+
+	// ③ 军团战争：我方与对方的宣战 / 交战（corpsWarTick 会把过期的清成 status=3，这里只认 1/2）
+	var cws []model.EzfyCorpsWar
+	h.DB.Where("status IN (1,2) AND (atk_corps_id = ? OR def_corps_id = ?)", myCorps, myCorps).Find(&cws)
+	for _, cw := range cws {
+		if cw.AtkCorpsId == myCorps {
+			enemyCorps[cw.DefCorpsId] = true
+		} else {
+			enemyCorps[cw.AtkCorpsId] = true
+		}
+	}
+
+	// 敌方军团的全体成员都算敌人
+	if len(enemyCorps) > 0 {
+		cids := make([]uint, 0, len(enemyCorps))
+		for cid := range enemyCorps {
+			cids = append(cids, cid)
+		}
+		var mbs []model.EzfyCorpsMember
+		h.DB.Select("user_id").Where("corps_id IN ?", cids).Find(&mbs)
+		for _, m := range mbs {
+			enemy[m.UserId] = true
+		}
+	}
+	return enemy
 }
 
 // WildlandView 野地/寇城详情（守军配置预览）

@@ -4330,6 +4330,8 @@ export default {
     cellClass (cell) {
       if (this.isMapOOB(cell)) return 'ezfy-empty'
       if (cell.mine) return 'ezfy-mine'
+      // ★ 2026-10-08 敌人城市标红（个人战争/宣战、军团敌对、军团战争的对象城市）
+      if (cell.area_type === 3 && cell.enemy) return 'ezfy-enemy'
       // ★ 2026-09-30 带名将守将的活动野地：特殊标识（优先于普通活动野地）
       if (cell.act_type === 1 && cell.act_officer) return 'ezfy-act-named'
       if (cell.act_type === 1) return 'ezfy-act-wild'
@@ -6912,6 +6914,9 @@ body.ezfy-ios .ezfy-page textarea {
 }
 /* 本城加粗标一下, 其余一律朴素文字 */
 .ezfy-page .ezfy-map-table a.ezfy-mine { font-weight: bold; color: #c0392b; }
+/* ★ 2026-10-08 敌人城市标红（个人战争/宣战、军团敌对、军团战争的对象）：
+   红色加粗，地图上一眼认出敌人 */
+.ezfy-page .ezfy-map-table a.ezfy-enemy { font-weight: bold; color: #ff0000; }
 /* 活动目标配色照 mapView.html: 活动野地橙 / 活动寇城品红 / 特殊城市红 */
 .ezfy-page .ezfy-map-table a.ezfy-act-wild { font-weight: bold; color: #ff6600; }
 .ezfy-page .ezfy-map-table a.ezfy-act-kou { font-weight: bold; color: #ff00ff; }
