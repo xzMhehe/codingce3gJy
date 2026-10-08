@@ -3067,47 +3067,49 @@ export default {
           ? '<g fill="#C9CFD6" transform="translate(13.2 2.4) scale(0.42)"><path d="M10 2.5 L14 5.5 L18.5 5.5 L14.5 10 L18.5 14.5 L14 14.5 L10 17.5 L6 14.5 L1.5 14.5 L5.5 10 L1.5 5.5 L6 5.5 Z"/></g>'
           : '<g fill="#D9A320" transform="translate(13.4 2.2) scale(0.42)"><path d="M10 0 L12.4 5.2 L18 5.7 L13.9 9.3 L15.4 14.8 L10 11.9 L4.6 14.8 L6.1 9.3 L2 5.7 L7.6 5.2 Z"/></g>') +
         '</svg>'
+      // ★ 2026-10-08 按用户参考图重画：纯色实心剪影、极简加粗、统一侧视朝左、零内部细节，
+      //   靠轮廓特征区分兵种（炮塔大小分轻重坦/机翼角度分机型/舰体长度分舰型），小尺寸更清晰。
       switch (id) {
-        case 1: // 步兵·钢盔士兵 + 肩挎步枪
-          return mk('<path d="M7.6 6.6 a2.4 2.4 0 0 1 4.8 0 z"/><rect x="7.2" y="6.5" width="5.6" height="1.1" rx="0.55"/><rect x="6.8" y="8.2" width="6.4" height="2.6" rx="1.3"/><rect x="7.2" y="10.7" width="1.8" height="4.6" rx="0.8"/><rect x="11" y="10.7" width="1.8" height="4.6" rx="0.8"/><rect x="6.9" y="15" width="2.5" height="1" rx="0.5"/><rect x="10.6" y="15" width="2.5" height="1" rx="0.5"/><path d="M13.1 5.2 l1.2 -0.6 0.4 0.7 -1.1 0.6 0.7 8.8 -1.2 0.5 Z"/>')
-        case 2: // 摩托化·边斗摩托车
-          return mk('<circle cx="5.6" cy="13.6" r="2.2"/><circle cx="13.2" cy="13.6" r="2.2"/><circle cx="15.4" cy="14.4" r="1.5"/><path d="M5.8 12.9 h7.7 l-0.5 1.3 h-6.8 Z"/><path d="M5 11.5 L7.2 9.2 h4.3 l3.5 4.3 -1.4 1 -3.1 -3.5 -1.1 2.9 -2.6 0.1 Z"/><path d="M7 9.2 v-1.9 h2.6 l-0.4 0.9 -1.2 -0.1 v1.1 Z"/>')
-        case 3: // 卡车·厢式运输车
-          return mk('<rect x="3.8" y="7.8" width="8.2" height="4.2" rx="0.6"/><path d="M12.7 8.4 q2.8 0 2.8 2.6 v1 h-2.8 Z"/><rect x="15.2" y="11.1" width="0.7" height="0.9" rx="0.35"/><circle cx="5.6" cy="13.8" r="2"/><circle cx="9.4" cy="13.8" r="2"/><circle cx="13.4" cy="13.8" r="2"/>')
-        case 4: // 装甲车·半履带装甲运兵车(前轮+后履带)
-          return mk('<path d="M4.2 10.8 V8.2 L6.6 6.8 h7.6 l1.6 1.4 V10.8 Z"/><path d="M4.2 10.8 h11.6 l-1 1.2 H5.2 Z"/><rect x="6.6" y="4.2" width="3.6" height="2.2" rx="1.1"/><rect x="2.6" y="5" width="2.4" height="0.9" rx="0.45"/><circle cx="6.6" cy="13.6" r="2.1"/><rect x="9.4" y="10.9" width="6.6" height="2.8" rx="1.4"/><circle cx="12.8" cy="14.6" r="1.5"/>')
-        case 5: // 轻型坦克·小炮塔短炮管
-          return mk('<rect x="3.6" y="11.6" width="12.8" height="2.8" rx="1.4"/><circle cx="6" cy="13.4" r="1.2"/><circle cx="8.7" cy="13.4" r="1.2"/><circle cx="11.4" cy="13.4" r="1.2"/><circle cx="14.1" cy="13.4" r="1.2"/><path d="M4.6 11.6 V9.6 h10.8 v2 Z"/><path d="M7 7.2 h6.4 l0 3.5 -6.4 0.6 Z"/><rect x="3.4" y="7.9" width="3.2" height="1" rx="0.5"/><rect x="8.9" y="5.7" width="1.9" height="1.5" rx="0.75"/>')
-        case 6: // 重型坦克·厚重车体长炮管+炮口制退
-          return mk('<rect x="3.4" y="11.2" width="13.2" height="3.2" rx="1.6"/><circle cx="5.4" cy="12.9" r="1.1"/><circle cx="8.2" cy="12.9" r="1.1"/><circle cx="11" cy="12.9" r="1.1"/><circle cx="13.8" cy="12.9" r="1.1"/><path d="M4.8 11.2 V8.9 h10.4 v2.3 Z"/><path d="M5.6 8.9 L7.5 6.9 h8.9 l1.9 2 Z"/><rect x="6.4" y="6.5" width="8.2" height="1.2" rx="0.6"/><rect x="2" y="8" width="3.7" height="1.1" rx="0.55"/><rect x="0.9" y="8.4" width="1.2" height="1" rx="0.4"/>')
-        case 7: // 突击炮·无炮塔前方大倾角+短粗炮
-          return mk('<rect x="3.8" y="11.2" width="12.4" height="2.8" rx="1.4"/><circle cx="6" cy="12.9" r="1.1"/><circle cx="8.8" cy="12.9" r="1.1"/><circle cx="11.6" cy="12.9" r="1.1"/><circle cx="14.4" cy="12.9" r="1.1"/><path d="M4.6 11.2 L7.2 6.3 h7 l2.6 4.9 Z"/><rect x="7.2" y="6.3" width="7.2" height="1.1" rx="0.55"/><rect x="3" y="8.2" width="2.9" height="1.2" rx="0.5"/>')
+        case 1: // 步兵·侧立持枪士兵(头盔+躯干+跨步双腿+朝左斜杠步枪)
+          return mk('<path d="M9.9 2.9a2.5 2.5 0 0 1 4.6 0.9l-0.4 2.1h-4.2Z"/><rect x="7.2" y="8.4" width="5.6" height="2" rx="1"/><rect x="6.2" y="10.3" width="7.6" height="3" rx="1.4"/><path d="M8.6 13l-0.3 3h-2.1l0.2-3.3Z"/><path d="M11.5 12.9l0.2 3.2h2.2l-0.3-3.5Z"/><rect x="5.9" y="15.7" width="2.5" height="1.4" rx="0.7"/><rect x="10.9" y="15.7" width="2.5" height="1.4" rx="0.7"/><path d="M3.2 6.6l6.2 3.1-0.7 1.1-5.5-2.8Z"/>')
+        case 2: // 摩托化·边斗摩托车(前/后轮+车身+边斗+边斗轮)
+          return mk('<circle cx="4.2" cy="13.3" r="2.2"/><circle cx="11.6" cy="13.3" r="2.2"/><path d="M3.8 11 2.2 5.6h3.6l0.7 3.2h3.4l1.3 1.6H5Z"/><rect x="13.8" y="8.8" width="3.4" height="3.3" rx="0.8"/><circle cx="16" cy="13.6" r="1.6"/><rect x="6.2" y="6.2" width="1.8" height="3.4" rx="0.9"/><circle cx="6.8" cy="5.4" r="1.1"/><path d="M3.4 4.5l2.6 0.9M3 5.2l2.4 0.7"/>')
+        case 3: // 卡车·厢式运输车(货厢+驾驶室+底盘+双轮)
+          return mk('<rect x="2.8" y="5.2" width="6.6" height="5" rx="0.5"/><path d="M9.6 5.4h3.6l2.8 2.8l0.1 2h-6.5Z"/><rect x="11" y="8.2" width="1.8" height="1.6" rx="0.4"/><rect x="1.8" y="12.4" width="16.4" height="1.3" rx="0.65"/><circle cx="5.4" cy="13.9" r="2"/><circle cx="13.2" cy="13.9" r="2"/>')
+        case 4: // 装甲车·轮式装甲运兵车(方体车身+炮塔+三排轮)
+          return mk('<path d="M2.4 8.6h15.2l-1.5 1.6H3.9Z"/><path d="M4 6.2l1.8-2h8.4l1.8 2Z"/><path d="M7.2 4.2h2.6L9.1 5.9H6.2Z"/><path d="M7.5 6.3h1.6l0.7-2-.9 0.1Z"/><circle cx="4.6" cy="12.9" r="1.9"/><circle cx="9.2" cy="12.9" r="1.9"/><circle cx="13.8" cy="12.9" r="1.9"/>')
+        case 5: // 轻型坦克·紧凑车体+小炮塔+短炮管(朝左)
+          return mk('<rect x="2.8" y="11.7" width="14.4" height="2.5" rx="1.25"/><circle cx="4.7" cy="13" r="0.8" fill="{B}"/><circle cx="7.4" cy="13" r="0.8" fill="{B}"/><circle cx="10.1" cy="13" r="0.8" fill="{B}"/><circle cx="12.8" cy="13" r="0.8" fill="{B}"/><path d="M3.7 8h12.6v2H3.7Z"/><path d="M6.2 5.2h3.4v2.6H6.2Z"/><rect x="2" y="5.7" width="2.5" height="1.1" rx="0.55"/>')
+        case 6: // 重型坦克·厚重车体+大炮塔+长炮管(朝左, 与大炮塔齐平)
+          return mk('<rect x="2.6" y="11.4" width="14.8" height="2.9" rx="1.45"/><circle cx="4.9" cy="12.9" r="0.9" fill="{B}"/><circle cx="7.9" cy="12.9" r="0.9" fill="{B}"/><circle cx="10.9" cy="12.9" r="0.9" fill="{B}"/><circle cx="13.9" cy="12.9" r="0.9" fill="{B}"/><path d="M3.5 8.1h13v2h-13Z"/><path d="M5.8 4.4h6.2l1.9 2.3H4.5Z"/><rect x="0.9" y="5.2" width="3" height="1.3" rx="0.55"/><rect x="0.5" y="6" width="1.1" height="1.4" rx="0.4"/><rect x="1.7" y="8.9" width="3.4" height="1.2" rx="0.6"/>')
+        case 7: // 突击炮·无炮塔楔形车体+短粗炮(朝左)
+          return mk('<rect x="2.8" y="11.7" width="14.4" height="2.6" rx="1.3"/><path d="M3.6 8.4 8.6 4.3h6.6l2.4 4.1Z"/><rect x="1.2" y="5.3" width="2.4" height="1.5" rx="0.6"/>')
         case 8: // 火箭·卡车搭载倾斜火箭发射架
-          return mk('<rect x="4" y="7.4" width="9.8" height="4" rx="0.5"/><g transform="translate(4.6 9) rotate(-24)"><rect x="0" y="-0.9" width="8.8" height="1.8" rx="0.4"/><rect x="1.1" y="-2" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="1.2" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="0.1" width="6.8" height="0.8" rx="0.3"/><rect x="1.1" y="-0.9" width="6.8" height="0.8" rx="0.3" fill="{B}"/></g><path d="M13.6 8.3 q3 0 3 2.2 v0.9 h-3 Z"/><circle cx="5.4" cy="13.6" r="1.9"/><circle cx="9.6" cy="13.6" r="1.9"/><circle cx="13.3" cy="13.6" r="1.9"/><rect x="16.4" y="11.3" width="0.7" height="0.9" rx="0.35"/>')
-        case 9: // 侦察机·平直翼小型机
-          return mk('<path d="M10 1.8 l1.3 2.6 h-2.6 Z"/><path d="M8.7 4.3 h2.6 v11.7 h-2.6 Z"/><rect x="2.6" y="8.4" width="14.8" height="2" rx="0.8"/><rect x="6.2" y="14.3" width="7.6" height="1.6" rx="0.6"/>')
-        case 10: // 歼击机·后掠翼箭形
-          return mk('<path d="M10 2 L11.2 4.6 L16.9 7 L17.5 8.7 L11.2 6.7 L11.6 10.7 L14.9 13 L14.3 14.4 L10.9 12.1 L10 14.6 L9.1 12.1 L5.7 14.4 L5.1 13 L8.4 10.7 L8.8 6.7 L2.5 8.7 L3.1 7 Z"/>')
-        case 11: // 轰炸机·宽翼双垂尾四引擎
-          return mk('<path d="M8.5 4.6 h3 v11.6 h-3 Z"/><circle cx="10" cy="5" r="1.5"/><rect x="1.4" y="7.4" width="17.2" height="2.6" rx="1"/><rect x="2.6" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="5.3" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="12.9" y="6.4" width="1.8" height="1.4" rx="0.5"/><rect x="15.6" y="6.4" width="1.8" height="1.4" rx="0.5"/><path d="M8.2 14.7 l-1.5 -1.5 V14.7 Z"/><path d="M11.8 14.7 l1.5 -1.5 V14.7 Z"/><rect x="6.6" y="14.6" width="6.8" height="1.5" rx="0.6"/>')
-        case 12: // 特种兵·伞降伞兵
-          return mk('<path d="M10 1.4 a5.9 5.9 0 0 1 5.9 5.8 q0 1 -1 1.1 l-9.8 0 q-1 0 -1 -1.1 A5.9 5.9 0 0 1 10 1.4 Z"/><path d="M7.8 7.3 V4.6 M10 7.8 V3.2 M12.2 7.3 V4.6" stroke="{B}" stroke-width="0.6" fill="none"/><path d="M7.4 8.2 L9.3 12.4 M12.6 8.2 L10.7 12.4" stroke="{B}" stroke-width="0.55" fill="none"/><circle cx="10" cy="13.4" r="1"/><rect x="8.8" y="14.2" width="2.4" height="2.6" rx="0.9"/><path d="M8.5 16.9 L7.2 19 h1.2 l0.5 -0.8 0.5 0.8 h1.3 l-1.2 -2.1 Z M11.5 16.9 L10.2 19 h1.3 l0.5 -0.8 0.5 0.8 h1.2 Z"/>')
-        case 13: // 驱逐舰·流线舰体+双炮塔
-          return mk('<path d="M2.4 12.6 H15.8 L13.2 15 H3.6 Z"/><path d="M2.4 12.6 L5.2 9.4 h2.2 v3.2 Z"/><rect x="5.6" y="8.2" width="2.7" height="1.6" rx="0.6"/><rect x="3" y="8.7" width="2.7" height="0.7" rx="0.35"/><rect x="8.2" y="7" width="3" height="5.2" rx="0.6"/><rect x="8.9" y="4.9" width="1.8" height="2.3" rx="0.6"/><rect x="12.2" y="9.6" width="2.4" height="1.5" rx="0.6"/><rect x="14.4" y="10" width="2" height="0.6" rx="0.3"/><path d="M14 11.2 l1.9 1.4 h-1.3 l-1.2 -1 Z"/>')
-        case 14: // 潜艇·艇身+指挥塔+潜望镜
-          return mk('<path d="M3 11.4 a7 3.1 0 0 1 14 0 a7 3.1 0 0 1 -14 0 Z"/><rect x="7.2" y="7.9" width="3.6" height="3" rx="0.9"/><rect x="8.6" y="5.5" width="0.8" height="2.6" rx="0.4"/><path d="M15.2 9.5 L17.2 8.8 V11.2 L15.2 12.8 Z"/><path d="M4 10.3 l-1.4 -1 0.7 2.3 1.9 0.4 Z"/>')
-        case 15: // 战列舰·长舰体多主炮塔
-          return mk('<path d="M2.2 12.2 H16.4 L13.6 14.8 H4.6 Z"/><rect x="2.4" y="11.4" width="15" height="1.5" rx="0.5"/><path d="M2.4 11.6 L5 9.2 h1.4 v2.4 Z"/><path d="M4 8.8 h2.3 v3 H4 Z"/><rect x="2.8" y="8.9" width="1.3" height="0.7" rx="0.35"/><path d="M6.6 8.8 h2.3 v3 h-2.3 Z"/><path d="M12.4 9 h2.3 v2.8 h-2.3 Z"/><rect x="13" y="9.1" width="1.3" height="0.7" rx="0.35"/><path d="M15 9.2 h2.1 v2.6 h-2.1 Z"/><rect x="15.3" y="9.3" width="1.2" height="0.6" rx="0.3"/><rect x="8.4" y="6.2" width="3.3" height="5.4" rx="0.7"/><rect x="9" y="4.4" width="1.7" height="2" rx="0.6"/><rect x="10.9" y="4.8" width="1.4" height="1.6" rx="0.5"/>')
-        case 16: // 航母·平直甲板+斜角跑道+舰岛
-          return mk('<path d="M2 12.2 H16.8 L14.8 14.6 H4 Z"/><rect x="1.5" y="8.4" width="17" height="3.7" rx="0.9"/><path d="M4.2 11.6 L10 8.6 l5.8 3 V9.8 L10 6.4 4.2 9.4 Z" fill="{B}"/><rect x="11.6" y="5.8" width="2.7" height="2.8" rx="0.7"/><rect x="12.3" y="4.5" width="1.4" height="1.5" rx="0.5"/>')
+          return mk('<g transform="translate(2.4 7.2) rotate(-22)"><rect x="0" y="-2" width="8.4" height="1.7" rx="0.5"/><rect x="0" y="0" width="8.4" height="1.7" rx="0.5"/></g><rect x="2.9" y="8.6" width="7.8" height="3.2" rx="0.5"/><path d="M11.4 8.8 h3.6 l2.2 2.4 v0.6 h-5.8 Z"/><circle cx="5.6" cy="13.9" r="1.9"/><circle cx="12.4" cy="13.9" r="1.9"/>')
+        case 9: // 侦察机·平直高翼小型机(单发)
+          return mk('<path d="M10 1.9 l1.4 2.8 h-2.8 Z"/><rect x="8.7" y="4.7" width="2.6" height="11.3" rx="1"/><rect x="2.4" y="7.6" width="15.2" height="2" rx="0.9"/><rect x="6.2" y="14.4" width="7.6" height="1.5" rx="0.7"/>')
+        case 10: // 歼击机·后掠/三角翼箭形(朝左)
+          return mk('<path d="M9.9 1.8l1.3 3h-2.6Z"/><rect x="8.4" y="4.8" width="3.2" height="9.6" rx="0.8"/><path d="M3.8 8.2l4 0.9-1 2.4-3.6-1Z"/><path d="M12.6 8.2l4-0.4-0.2 2.8-3.8-0.9Z"/><path d="M9.6 14.8h1v3.6h-1Z"/>')
+        case 11: // 轰炸机·宽平直翼+四发引擎重机身
+          return mk('<path d="M9.9 2.2 l1.3 2.8 h-2.6 Z"/><rect x="8.8" y="5" width="2.4" height="10.9" rx="1"/><rect x="1.2" y="7.4" width="17.6" height="2.2" rx="1"/><path d="M2.6 6.4 h1.8 v1.6 h-1.8 Z"/><path d="M5.2 6.2 h1.8 v1.7 h-1.8 Z"/><path d="M13 6.2 h1.8 v1.7 h-1.8 Z"/><path d="M15.6 6.4 h1.8 v1.6 h-1.8 Z"/>')
+        case 12: // 特种兵·持枪突进步兵
+          return mk('<path d="M10 1.2a6 6 0 0 1 6.2 5.6 1 1 0 0 1-1 1.1l-10.4 0a1 1 0 0 1-1-1.1A6 6 0 0 1 10 1.2Z"/><path d="M7.8 8.7V5.2M10 9V3.6M12.2 8.7V5.2" stroke="{B}" stroke-width="0.6" fill="none"/><path d="M8.2 8.9l0.9 4.4M11.8 8.9l-0.9 4.4" stroke="{B}" stroke-width="0.55" fill="none"/><rect x="8.4" y="13.2" width="3.2" height="2.2" rx="1"/><rect x="7.6" y="15.2" width="4.8" height="3" rx="1.2"/><rect x="6.8" y="17.5" width="2" height="1.9" rx="0.9"/><rect x="11" y="17.5" width="2" height="1.9" rx="0.9"/>')
+        case 13: // 驱逐舰·流线舰体朝左+炮塔+舰桥+烟囱
+          return mk('<path d="M1.9 11.7 H14.8 L13.4 15 H4.7 Z"/><path d="M5 9.4 h2.6 v2.2 H4.6 Z"/><path d="M8.7 6.8 h2.7 v4.8 h-2.7 Z"/><path d="M8.9 4.4 h1.6 v2.4 h-1.6 Z"/><path d="M5.6 9.6 h1.9 v0.9 H5.6 Z"/><path d="M12 9.2 h1.4 v0.8 h-1.4 Z"/>')
+        case 14: // 潜艇·艇身朝左+指挥塔+潜望镜
+          return mk('<path d="M1.2 10a7.2 2.8 0 0 1 14.6 0 7.2 2.8 0 0 1-14.6 0Z"/><rect x="7.6" y="7.6" width="3.2" height="2.6" rx="0.9"/><path d="M4.8 6.2l0.4 4.6h-2.2l0.2-4Z"/><path d="M13 9.8l1.6-1.1 0.2 3.1-1.2 0.4Z"/><rect x="8.6" y="5.4" width="0.9" height="2.2" rx="0.45"/>')
+        case 15: // 战列舰·长舰体朝左+多主炮塔+高舰桥
+          return mk('<path d="M1.5 11.4 H16.4 L13.6 15 H4 Z"/><path d="M8.2 6.6 h3 v4.7 h-3 Z"/><path d="M8.6 4.4 h1.6 v2.2 h-1.6 Z"/><path d="M3.9 8.5 h2.3 v2.6 H3.9 Z"/><path d="M2.1 8.9 h1.8 v1 H2.1 Z"/><path d="M12.6 8.6 h2.3 v2.5 h-2.3 Z"/><path d="M12.4 9 h1.3 v1 h-1.3 Z"/>')
+        case 16: // 航母·平直甲板+斜角跑道+舰岛(朝左)
+          return mk('<path d="M1.4 11.6h17L15.6 15h-12Z"/><rect x="1" y="7.6" width="18" height="3.9" rx="0.8"/><path d="M2.8 10.6l6.2-2.6 5 2.3v-2l-5-2.3-6.2 2.6Z" fill="{B}"/><rect x="12.8" y="5.4" width="2.6" height="2.4" rx="0.7"/><path d="M13.4 3.7h1v1.7h-1Z"/>')
         case 17: // 碉堡·堡垒+射孔
-          return mk('<rect x="3.2" y="7" width="13.6" height="1.9" rx="0.6"/><path d="M4 8.9 h12 v5 H6.2 L4.4 12.9 Z"/><rect x="8.9" y="10.4" width="2.2" height="1" rx="0.5" fill="{B}"/><circle cx="5.7" cy="10.8" r="0.55" fill="{B}"/><circle cx="7.2" cy="10.8" r="0.55" fill="{B}"/><circle cx="12.6" cy="10.8" r="0.55" fill="{B}"/><circle cx="14.1" cy="10.8" r="0.55" fill="{B}"/>')
-        case 18: // 榴弹炮·大仰角短炮管
-          return mk('<rect x="3.6" y="4.8" width="7.4" height="1.9" rx="0.95" transform="rotate(36 10 11)"/><path d="M7.8 7.8 h3 v5.2 h-3 Z"/><path d="M13.7 8.2 l2.5 4.4 -1 0.9 -1.9 -3.3 Z"/><circle cx="8.4" cy="13.8" r="2.3"/><circle cx="13.3" cy="13.8" r="2.3"/>')
-        case 19: // 反坦克炮·长细炮管+炮盾+开腿支架
-          return mk('<rect x="2.2" y="8" width="9.4" height="1" rx="0.5"/><rect x="2.2" y="7.3" width="1.7" height="1.4" rx="0.4"/><rect x="8.8" y="6" width="2.6" height="4.8" rx="0.6"/><rect x="11.4" y="8.2" width="1.4" height="1.2" rx="0.4"/><path d="M12.2 8.8 l1.8 3.4 h-0.7 l-1.4 -2.7 Z"/><path d="M12.2 8.8 l2.2 4.8 h-0.7 l-1.9 -4.1 Z"/><circle cx="10" cy="14" r="2"/>')
-        case 20: // 防空炮·双管高射炮+两侧大轮
-          return mk('<circle cx="5.6" cy="13.6" r="2.4"/><circle cx="14.4" cy="13.6" r="2.4"/><rect x="8.6" y="7.8" width="3.8" height="3.9" rx="0.9"/><rect x="4.8" y="2.8" width="7" height="1.1" rx="0.55" transform="rotate(50 10.4 9.7)"/><rect x="4.8" y="4.3" width="7" height="1.1" rx="0.55" transform="rotate(50 10.4 9.7)"/>')
+          return mk('<path d="M3.4 13.4 V8.9a6.6 6.6 0 0 1 13.2 0v4.5Z"/><rect x="6" y="13.2" width="8" height="1.1" rx="0.5"/><rect x="8.9" y="9.6" width="2.2" height="1" rx="0.5" fill="{B}"/><rect x="4.4" y="10" width="0.8" height="0.8" rx="0.4" fill="{B}"/><rect x="6.5" y="10" width="0.8" height="0.8" rx="0.4" fill="{B}"/><rect x="12.7" y="10" width="0.8" height="0.8" rx="0.4" fill="{B}"/><rect x="14.8" y="10" width="0.8" height="0.8" rx="0.4" fill="{B}"/>')
+        case 18: // 榴弹炮·大轮+盾+高仰角短炮管(朝左)
+          return mk('<circle cx="5.6" cy="13.2" r="2.4"/><circle cx="13.6" cy="13.2" r="2.4"/><path d="M8 6.6 5.2 4.4l-1.3 0.9 2.7 2.3Z"/><rect x="5.2" y="7.6" width="2.2" height="5.6" rx="0.5"/><path d="M5.4 13.2 3.6 16h1.6l1.4-2.4Z"/><path d="M5.4 13.2 7.6 16.4H6l-1.2-2.6Z"/>')
+        case 19: // 反坦克炮·长细炮管朝左+炮盾+开腿支架+单轮
+          return mk('<path d="M2 8.4 H9.4 v1.4 H2 Z"/><path d="M7.9 5.4 h2.6 v4.6 H7.9 Z"/><circle cx="9.9" cy="13.4" r="2.1"/><path d="M11.6 9.4 l3.4 4.2 h-0.7 l-3.1 -3.8 Z"/><path d="M11.6 9.4 l2.2 5.4 h-0.7 l-1.9 -4.8 Z"/>')
+        case 20: // 防空炮·双管高射炮朝上+两侧大轮
+          return mk('<rect x="8.4" y="7" width="3.4" height="4.4" rx="1"/><path d="M7.6 3.2l4.4 1.5-0.4 0.8-4.4-1.3Z"/><path d="M11.6 2.9l4.6-0.7 0.3 0.8-4.4 1Z"/><path d="M8.6 5l4.4-1.2v1.5l-4.4 1.2Z"/><circle cx="5.6" cy="13" r="2.2"/><circle cx="14.4" cy="13" r="2.2"/>')
         default: // 通用兵种兜底
           return mk('<circle cx="10" cy="10" r="4.6"/>')
       }

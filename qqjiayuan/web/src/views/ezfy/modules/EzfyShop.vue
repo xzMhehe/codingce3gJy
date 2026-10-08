@@ -486,7 +486,7 @@
             </select><br/>
             数量: <input v-model="ezfy.sellCount" type="number" style="width:90px"/><br/>
             总价({{ ezfy.resNames.gold }}): <input v-model="ezfy.sellPrice" type="number" style="width:90px" max="1000000000" placeholder="单价≤100"/><br/>
-            <div class="old-line gray">单价不得超过 100 {{ ezfy.resNames.gold }}/单位（可配，1:100 卡控）</div>
+            <div class="old-line gray">单价不得超过 100 {{ ezfy.resNames.gold }}/单位</div>
             <button @click="ezfy.doExchangeSell">[挂单出售]</button>
           </div>
           <div class="panel-title">向系统出售</div>

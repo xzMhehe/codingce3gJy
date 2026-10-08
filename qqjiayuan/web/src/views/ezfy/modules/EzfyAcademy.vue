@@ -533,8 +533,8 @@
         </div>
         <hr/>
         <div class="old-line">
-          军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span>
-          &nbsp;后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span>
+          后勤：{{ ezfy.officerDetail.officer.logistics_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_logistics">(+{{ ezfy.officerDetail.officer.equip_logistics }})</span>
+          &nbsp;军事：{{ ezfy.officerDetail.officer.military_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_military">(+{{ ezfy.officerDetail.officer.equip_military }})</span>
           &nbsp;学识：{{ ezfy.officerDetail.officer.learning_total }}<span class="green" v-if="ezfy.officerDetail.officer.equip_learning">(+{{ ezfy.officerDetail.officer.equip_learning }})</span>
           <br/>
           攻击加成：{{ ezfy.officerDetail.officer.attack }}
@@ -564,8 +564,8 @@
         </div>
         <div class="old-line" v-if="ezfy.officerDetail.officer.free_points > 0">
           分配：
-          军事<a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全加]</a>
-          &nbsp;后勤<a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全加]</a>
+          后勤<a href="javascript:;" @click="ezfy.doAddAttr('logistics', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('logistics', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('logistics')">[全加]</a>
+          &nbsp;军事<a href="javascript:;" @click="ezfy.doAddAttr('military', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('military', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('military')">[全加]</a>
           &nbsp;学识<a href="javascript:;" @click="ezfy.doAddAttr('learning', 1)">[+1]</a><a href="javascript:;" @click="ezfy.doAddAttr('learning', 10)">[+10]</a><a href="javascript:;" @click="ezfy.doAddAttrAll('learning')">[全加]</a>
         </div>
 

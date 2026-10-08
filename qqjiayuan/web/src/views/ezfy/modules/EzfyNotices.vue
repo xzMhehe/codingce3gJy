@@ -18,7 +18,8 @@
     </div>
     <template v-if="ezfy.curNotice">
       <div class="panel-title">{{ ezfy.curNotice.title }}</div>
-      <div class="old-line">{{ ezfy.curNotice.content }}</div>
+      <!-- ★ 2026-10-08 修复换行丢失：管理端 textarea 存的 \n 会被 HTML 折叠，加 white-space: pre-line 原样换行（文本插值，无注入风险） -->
+      <div class="old-line" style="white-space: pre-line">{{ ezfy.curNotice.content }}</div>
     </template>
     <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
   </div>
