@@ -1664,7 +1664,7 @@ export default {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
     // ★ 2026-09-29 浏览器标签页标题：二战征途改为游戏名（不再显示默认的「家园社区」）
-    document.title = '二战征途-文字游戏'
+    document.title = '二战征途'
     // ★ 2026-09-28 司令部子 tab: 刷新后仍是上次选中的 tab（localStorage）
     this.hqTab = this.restoreHqTab()
     // ★ 2026-09-27 iPhone 字体再修复：旧方案用 `@supports (-webkit-touch-callout: none)`
