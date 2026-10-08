@@ -377,6 +377,7 @@ func (h *MessageHandler) resolveUser(s string) (model.User, error) {
 // 会话列表：按联系人分组，含未读数
 func (h *MessageHandler) Conversations(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
 	type convRow struct {
 		UserID      uint   `json:"user_id"`
 		Username    string `json:"username"`
@@ -386,6 +387,13 @@ func (h *MessageHandler) Conversations(c *gin.Context) {
 		LastAt      string `json:"last_at"`
 		Unread      int64  `json:"unread"`
 	}
+	// 会话总数（去重后的「对方用户」数）
+	var total int64
+	h.DB.Raw(`
+SELECT COUNT(*) FROM (
+  SELECT DISTINCT IF(sender_id = ?, receiver_id, sender_id) AS peer
+  FROM private_messages WHERE sender_id = ? OR receiver_id = ?
+) cnt`, uid, uid, uid).Scan(&total)
 	var convs []convRow
 	h.DB.Raw(`
 SELECT u.id AS user_id, u.username AS username, u.nickname, u.color, m.content AS last_content, m.created_at AS last_at,
@@ -395,8 +403,9 @@ JOIN users u ON u.id = IF(m.sender_id = ?, m.receiver_id, m.sender_id)
 JOIN (SELECT IF(sender_id = ?, receiver_id, sender_id) AS peer, MAX(id) AS max_id
       FROM private_messages WHERE sender_id = ? OR receiver_id = ? GROUP BY peer) t
   ON t.peer = u.id AND t.max_id = m.id
-ORDER BY m.created_at DESC`, uid, uid, uid, uid, uid).Scan(&convs)
-	resp.OK(c, convs)
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT ? OFFSET ?`, uid, uid, uid, uid, uid, size, offset).Scan(&convs)
+	resp.OK(c, gin.H{"list": convs, "total": total, "page": page, "size": size})
 }
 
 // 与某人的私信往来（peerId 支持家园号码或内部 id，转靓号后号码仍可用）

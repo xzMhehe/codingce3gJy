@@ -585,6 +585,7 @@ export default {
       pmPeer: null,
       pmChat: [],
       pmConvs: [],
+      pmConvPage: 1, pmConvTotal: 0, pmConvSize: 10,
       friends: [],
       friendKeyword: '',
       friendSearchList: [],
@@ -2082,7 +2083,7 @@ export default {
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
       // ★ 2026-09-30 计谋页（行军计谋专用）：进页/刷新都重拉信号弹持有量
       else if (t === 'scheme') this.loadSchemes()
-      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.loadPmConvs() }
+      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.pmConvPage = 1; this.loadPmConvs() }
       else if (t === 'friends') this.loadFriends()
       else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
@@ -2429,13 +2430,28 @@ export default {
       this.pmPeer = null
       this.pmChat = []
       this.pmTo = ''
+      this.pmConvPage = 1
       this.loadPmConvs()
       if (userId) this.selectPm(userId)
     },
-    loadPmConvs () {
-      api.get('/messages/conversations').then(r => {
-        if (r.code === 0) this.pmConvs = (r.data || []).slice(0, 50)
+    loadPmConvs (page) {
+      if (!page) page = this.pmConvPage
+      if (page < 1) page = 1
+      api.get('/messages/conversations', { params: { page, size: this.pmConvSize } }).then(r => {
+        if (r.code === 0) {
+          this.pmConvs = r.data.list || []
+          this.pmConvPage = r.data.page || 1
+          this.pmConvTotal = r.data.total || 0
+          this.pmConvSize = r.data.size || this.pmConvSize
+        }
       })
+    },
+    // ★ 会话列表翻页：上一页 / 下一页
+    pmConvPrev () {
+      if (this.pmConvPage > 1) this.loadPmConvs(this.pmConvPage - 1)
+    },
+    pmConvNext () {
+      if (this.pmConvPage * this.pmConvSize < this.pmConvTotal) this.loadPmConvs(this.pmConvPage + 1)
     },
     // 切换聊天对象：拉出「我和 TA」的全部历史记录，并把对方设为收件人
     selectPm (userId) {

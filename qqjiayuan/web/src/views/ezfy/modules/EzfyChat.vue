@@ -84,8 +84,14 @@
             <span class="gray"> ({{ ezfy.fmtTime(c.last_at) }})</span>
           </div>
           <div class="old-line" v-if="!ezfy.pmConvs.length">(还没有聊过的人，在下面填游戏ID或昵称发起私聊)</div>
+          <div class="old-line" v-if="ezfy.pmConvs.length && ezfy.pmConvTotal > ezfy.pmConvSize">
+            共{{ ezfy.pmConvTotal }}个会话 ·
+            <a href="javascript:;" :class="ezfy.pmConvPage <= 1 ? 'gray' : ''" @click="ezfy.pmConvPrev()">[上一页]</a>
+            {{ ezfy.pmConvPage }}/{{ Math.ceil(ezfy.pmConvTotal / ezfy.pmConvSize) }}
+            <a href="javascript:;" :class="ezfy.pmConvPage * ezfy.pmConvSize >= ezfy.pmConvTotal ? 'gray' : ''" @click="ezfy.pmConvNext()">[下一页]</a>
+          </div>
           <br/>
-          <button @click="ezfy.loadPmConvs">刷新会话</button>
+          <button @click="ezfy.loadPmConvs()">刷新会话</button>
         </div>
 
         <div class="panel" v-if="ezfy.pmPeer">
