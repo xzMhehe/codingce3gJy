@@ -45,8 +45,10 @@
             {{ q.name }}×{{ q.count }} 剩余{{ ezfy.remain(q.end_time, ezfy.gatherNow) }}
           </div>
           <div class="old-line gray" v-if="!ezfy.defenceQueues.length">(无)</div>
-          <table>
+          <table class="ezfy-center-tbl">
+            <!-- ★ 2026-10-08 城防加「图标」列：与城内军队图标同源(ezfy.troopIco)，一眼认出设施 -->
             <tr v-for="t in ezfy.defenceCfgs" :key="'dt' + t.id">
+              <td class="ico-cell"><span v-html="ezfy.troopIco(t)"></span></td>
               <td class="nm"><a href="javascript:;" @click="ezfy.openTroopView(t.id)">{{ t.name }}</a>:</td>
               <td>{{ ezfy.troopCount(t.id) }}</td>
               <td>
