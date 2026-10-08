@@ -433,7 +433,7 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 	if len(parts) == 0 {
 		return ""
 	}
-	return strings.Join(parts, " ")
+	return "(" + strings.Join(parts, " ") + ")"
 }
 
 // Step 结算**一个回合**。返回 true 表示战斗已结束。
@@ -1318,13 +1318,30 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 }
 
 // ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成「名+X% 名+Y%」；跳过非正值。
+// 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 	parts := []string{}
 	for _, it := range items {
 		if it.Value <= 0 {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s+%d%%", it.Name, it.Value))
+		s := fmt.Sprintf("%s+%d%%", it.Name, it.Value)
+		// 防御科技逐项名可能带「科技·」前缀，剥离后再查效果
+		key := strings.TrimPrefix(it.Name, "科技·")
+		if eff, ok := ezfyTechEffectDesc[key]; ok {
+			s += "（" + eff + "）"
+		}
+		parts = append(parts, s)
 	}
 	return strings.Join(parts, " ")
+}
+
+// ezfyTechEffectDesc 科技名 → 作用说明（取自科技配置表 Effect 的「功能」部分，去掉每级百分比）。
+// 只为战报科技行展示用；未收录的科技不追加描述。
+var ezfyTechEffectDesc = map[string]string{
+	"军训艺术": "部队攻击", "武器科技": "部队攻击", "装甲科技": "部队防御",
+	"弹道学": "射程加成", "重工技术": "重装备攻防", "燃烧引擎": "部队速度",
+	"掩体防御": "城防攻防", "指挥艺术": "携带上限", "侦察技巧": "情报",
+	"喷气引擎": "空军速度", "装载技术": "部队负重", "补给技巧": "军队耗粮",
+	"掠夺技巧": "掠夺资源", "治愈伤兵": "伤兵恢复", "储存技术": "资源容量",
 }
