@@ -132,7 +132,6 @@
             <b :class="ezfy.selCell.corps_name ? (ezfy.selCell.ally ? 'green' : '') : 'gray'">
               {{ ezfy.selCell.corps_name || '无' }}
             </b>
-            <span v-if="ezfy.selCell.ally" class="green">（你的同盟成员）</span>
           </div>
           <hr/>
           <!-- ★ 按钮文案统一加方括号（「侦查 掠夺 征服 也加上 []」），
@@ -166,9 +165,6 @@
               <a href="javascript:;" @click="ezfy.pickOrder(6)">[增援]</a>&nbsp;
             </template>
             <!-- ★ 用户规则「同盟玩家不能宣战」→ 同盟成员不出现 [宣战] 入口，只给提示 -->
-            <template v-if="ezfy.selCell.ally">
-              <span class="green">同盟成员之间不能宣战</span>
-            </template>
             <a v-else-if="ezfy.warStatus === 0 && ezfy.warRequire" href="javascript:;" @click="ezfy.declareWar">[宣战]</a>
             <!-- 同盟时不再叠「未宣战」这类状态文案，避免读成「不能宣战未宣战」 -->
             <span v-if="ezfy.warText && !ezfy.selCell.ally && ezfy.warRequire" class="orange">{{ ezfy.warText }}</span>
