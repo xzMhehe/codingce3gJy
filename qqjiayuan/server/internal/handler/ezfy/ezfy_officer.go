@@ -111,10 +111,17 @@ const ezfyOfficerRenameCardItemID = 25
 
 // ============ 基础查询 ============
 
-// stableSortOfficers 军官列表排序：等级倒序，同等级按名字升序（用户 2026-10-08 规则，
-// 军官列表按 等级、名字 排序）。稳定排序保证同等级同名字时保持后端原序。
+// stableSortOfficers 军官列表排序（用户 2026-10-08 规则）：名将(GeneralId>0)排在最前，
+// 其后 等级倒序、同等级按名字升序。稳定排序保证其余同优先级时保持后端原序。
 func stableSortOfficers(list []model.EzfyOfficer) {
+	isGeneral := func(o *model.EzfyOfficer) bool {
+		return o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
+	}
 	sort.SliceStable(list, func(i, j int) bool {
+		gi, gj := isGeneral(&list[i]), isGeneral(&list[j])
+		if gi != gj {
+			return gi
+		}
 		if list[i].Level != list[j].Level {
 			return list[i].Level > list[j].Level
 		}
