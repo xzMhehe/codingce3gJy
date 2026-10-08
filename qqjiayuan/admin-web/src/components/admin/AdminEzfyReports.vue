@@ -89,15 +89,25 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, size: 10, loading: false,
-      word: '', type: 0,
+      word: '', type: '',
+      // ★ 2026-10-08 战报类型下拉改按「真实类型名」：与列表「类型」列、玩家看到的一致。
+      //   之前是按报表粗粒度 report_type 编号硬编码（'侦察/掠夺_战斗/战斗' 等），
+      //   与后端下发的 type_name（ezfyReportTypeName 按标题前缀判定）对不上，
+      //   且『战斗』其实是「被征服/驻防失守」，采集/运输/增援/派遣 又共用一个编号——
+      //   选了反而筛不到想要的。现在 value 直接用 type_name，后端按它过滤。
       typeOptions: [
-        { v: 0, n: '全部类型' },
-        { v: 1, n: '侦察' },
-        { v: 2, n: '掠夺/战斗' },
-        { v: 3, n: '征服' },
-        { v: 4, n: '战斗' },
-        { v: 5, n: '采集/派遣' },
-        { v: 6, n: '系统' }
+        { v: '', n: '全部类型' },
+        { v: '侦查', n: '侦查' },
+        { v: '掠夺', n: '掠夺' },
+        { v: '征服', n: '征服' },
+        { v: '战斗', n: '战斗' },
+        { v: '采集', n: '采集' },
+        { v: '运输', n: '运输' },
+        { v: '增援', n: '增援' },
+        { v: '派遣', n: '派遣' },
+        { v: '被侦查', n: '被侦查' },
+        { v: '预警', n: '预警' },
+        { v: '系统', n: '系统' }
       ],
       detailDlg: false, detail: null
     }
@@ -107,7 +117,7 @@ export default {
     load () {
       this.loading = true
       const params = { page: this.page, size: this.size, word: this.word }
-      if (this.type > 0) params.type = this.type
+      if (this.type) params.type = this.type
       api.get('/admin/ezfy-reports', { params }).then(r => {
         this.loading = false
         if (r.code === 0) {

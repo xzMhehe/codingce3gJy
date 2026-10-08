@@ -474,13 +474,12 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   活动目标（活动野地 / 活动寇城 / 特殊城市）**按「野地 / NPC」口径处理** ——
 		//   守军是配置数据、没有真人，所以默认「是」：抵达即自动打完，无需指挥。
-		//   · 玩家想指挥 → 在出征页把该订单改成「否」，抵达后照旧进指挥室；
-		//   · 攻方不在线 → 没人能指挥，一律自动结算（否则战场冻结、目标被占，
-		//     同格后续部队全堵在「等待(6)」，线上活动野地一直排队就是这个）。
+		//   · 玩家想指挥 → 在出征页把该订单改成「否」，抵达后照旧进指挥室。
+		//   ★ 2026-10-08 移除了原「攻方不在线 → 自动结算」的覆盖：活动目标是 NPC，
+		//     玩家在出征页明确选了「否」就要进指挥室，绝不因 180 秒在线窗口过期而
+		//     偷偷自动打完（与打野地 / AI 寇城同口径；用户反馈「选了否也不进指挥」）。
+		//   （原注释里的「同格后续部队全堵在等待(6)」防堵只对打真人守方的玩家城有意义。）
 		autoBattle := order.AutoBattle == 1
-		if !autoBattle && !h.ezfyUserOnline(uid) {
-			autoBattle = true
-		}
 		if autoBattle {
 			br = h.ezfyBattleAutoFinish(uid, order, st, label, now)
 		} else if ezfyOrderTargetBusy(h, order, int64(order.ID)) {

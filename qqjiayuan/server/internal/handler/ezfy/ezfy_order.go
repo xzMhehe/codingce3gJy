@@ -2946,7 +2946,15 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 {
 			autoBattle = false
 		}
-		if !autoBattle && !h.ezfyUserOnline(uid) {
+		// ★★ 2026-10-08 离线自动结算**只对打玩家城（target_type=3）生效**。
+		//   原因：180 秒在线窗口容易被放过（行军久、或结算那一刻不在操作），
+		//   打野地 / AI 寇城时玩家在出征页选了「否」却仍被静默自动打完 →
+		//   「选了否也不进指挥室」（用户反馈的 bug）。
+		//   所以这里把「攻守双方都不在线 → 自动」的兜底**圈死在玩家城**：
+		//     · 玩家城 → 攻守都不在线才自动（真人守方，避免占目标堵后面的人）；
+		//     · 野地 / AI 寇城 → 尊重出征页所选，选了「否」就开战场进指挥室，
+		//       绝不因在线窗口过期而偷偷自动打完。
+		if !autoBattle && order.TargetType == 3 && !h.ezfyUserOnline(uid) {
 			defOnline := target != nil && target.UserID > 0 && h.ezfyUserOnline(target.UserID)
 			if !defOnline {
 				autoBattle = true

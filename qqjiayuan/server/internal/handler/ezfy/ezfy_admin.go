@@ -1007,7 +1007,10 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
-	reportType := atoiOr(c.Query("type"), 0)
+	// ★ 2026-10-08 战报类型改按「真实类型名」过滤（之前按 report_type 整数）：
+	//   ezfy_report.report_type 是粗粒度遗留编号（采集/运输/增援/派遣 共用一个编号），
+	//   下发的 type_name（ezfyReportTypeName，优先按标题前缀判定）才真正可区分、且与列表列一致。
+	typeName := strings.TrimSpace(c.Query("type"))
 	q := h.DB.Model(&model.EzfyReport{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
@@ -1034,13 +1037,27 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 			}
 		}
 	}
-	if reportType > 0 {
-		q = q.Where("report_type = ?", reportType)
+	// 先把玩家条件下的候选战报一次取出，再在内存里按「显示类型名」过滤并分页。
+	// （type_name 由标题前缀 + report_type 兜底换算，放到 SQL 里拼条件又脆又容易和
+	//   ezfyReportTypeName 的判定先后不一致，统一走内存过滤最稳。）
+	var all []model.EzfyReport
+	q.Order("id DESC").Find(&all)
+	filtered := make([]model.EzfyReport, 0, len(all))
+	for _, r := range all {
+		if typeName != "" && ezfyReportTypeName(r.ReportType, r.Title) != typeName {
+			continue
+		}
+		filtered = append(filtered, r)
 	}
-	var total int64
-	q.Count(&total)
-	var rows []model.EzfyReport
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	total := int64(len(filtered))
+	rows := filtered
+	if offset < len(filtered) {
+		end := offset + size
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		rows = filtered[offset:end]
+	}
 	type rowOut struct {
 		model.EzfyReport
 		PlayerName string `json:"player_name"`
