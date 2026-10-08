@@ -261,12 +261,17 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	//   出征军官带弧形防御/弹幕支援 + 装备防御 → 攻方被打时减伤（原来攻方防御恒 0，看不出带了防御技能）
 	st.Head = append(st.Head, fmt.Sprintf("战斗加成: 攻方 攻击+%d%% 防御+%d%% 速度+%d%%%s | 守方 攻击+%d%% 防御+%d%% 速度+%d%%%s",
 		effAtk, atkDefBonus+atkEquip.Def, effAtkSpeed, atkRangeTxt, st.DefAtkBonus, effDef, effDefSpeed, defRangeTxt))
-	if atkEquip != (ezfyBattleBonus{}) {
-		st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
+	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
+	if aTech := ezfyBonusItemsDesc(atkTechs); aTech != "" {
+		st.Head = append(st.Head, "【攻方科技】"+aTech)
 	}
-	if defEquip != (ezfyBattleBonus{}) {
-		st.Head = append(st.Head, "【守方装备】"+ezfyEquipBonusDesc(defEquip))
+	if dTech := ezfyBonusItemsDesc(defTechs); dTech != "" {
+		st.Head = append(st.Head, "【守方科技】"+dTech)
 	}
+	// ★ 2026-10-08 装备加成恒定罗列（不再"非零才显示"；这里的 desc 空值时已返回"无"），
+	//   避免玩家反馈的"装备加成看不到"。装备伤害已并入上方「攻击+%d%%」总数值。
+	st.Head = append(st.Head, "【攻方装备】"+ezfyEquipBonusDesc(atkEquip))
+	st.Head = append(st.Head, "【守方装备】"+ezfyEquipBonusDesc(defEquip))
 	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
 
 	idx := 0
@@ -428,7 +433,7 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 	if len(parts) == 0 {
 		return ""
 	}
-	return "(" + strings.Join(parts, " ") + ")"
+	return strings.Join(parts, " ")
 }
 
 // Step 结算**一个回合**。返回 true 表示战斗已结束。
@@ -1310,4 +1315,16 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 		return "无"
 	}
 	return strings.Join(parts, "，")
+}
+
+// ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成「名+X% 名+Y%」；跳过非正值。
+func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
+	parts := []string{}
+	for _, it := range items {
+		if it.Value <= 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s+%d%%", it.Name, it.Value))
+	}
+	return strings.Join(parts, " ")
 }

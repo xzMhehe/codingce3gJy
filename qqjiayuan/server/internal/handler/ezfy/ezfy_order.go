@@ -2930,6 +2930,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★ 军官技能「绝地反击」随等级升级：生效前N回合（攻方带队/守方城守或野地守将各自判定）
 			h.officerCounterRounds(leadOfficer), defCounterRounds,
 			h.ensureProfile(uid).Camp, defCamp)
+		// ★ 2026-10-08 套装加成单列展示（玩家给军官穿套装时；套装贡献本已并入装备总加成）
+		if aSet := h.officerSetEquipBonus(leadOfficer); aSet != (ezfyBattleBonus{}) {
+			st.Head = append(st.Head, "【攻方套装】"+ezfyEquipBonusDesc(aSet))
+		}
+		defSetOfficer := cityGuard
+		if target == nil {
+			// 野地 / 寇城守将是 AI 将军，无装备、无套装
+			defSetOfficer = nil
+		}
+		if dSet := h.officerSetEquipBonus(defSetOfficer); dSet != (ezfyBattleBonus{}) {
+			st.Head = append(st.Head, "【守方套装】"+ezfyEquipBonusDesc(dSet))
+		}
 		// ★★ 2026-10-07 「自动战斗」配置（出征页可配，见 EzfyOrder.AutoBattle）：
 		//   · 打野地 / AI 寇城 → 默认「是」：抵达即自动打完，无需指挥（守方不是真人）；
 		//   · 打玩家城市 → 强制「否」：抵达后开战场进指挥室，等玩家部署守军。

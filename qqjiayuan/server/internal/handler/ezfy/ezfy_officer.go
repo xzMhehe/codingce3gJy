@@ -1308,6 +1308,26 @@ func (h *EzfyHandler) officerBattleEquipBonus(o *model.EzfyOfficer) ezfyBattleBo
 		b.CritDmg += jsonInt(m["crit_dmg"])
 	}
 	// 套装额外加成（★ 只有**穿齐**才加；只穿几件只算各件自身属性）
+	sb := h.officerSetEquipBonus(o)
+	b.Dmg += sb.Dmg
+	b.Def += sb.Def
+	b.Hp += sb.Hp
+	b.Move += sb.Move
+	b.Crit += sb.Crit
+	b.CritDmg += sb.CritDmg
+	return b
+}
+
+// officerSetEquipBonus 只算「已激活套装」的六项加成。
+//
+// ★ 2026-10-08 供战报单独展示「套装加成」用；总装备加成 officerBattleEquipBonus 已包含它。
+//   套装 = 集齐 part 件才叠加的六项属性（见 officerSetProgress 的 Active）。
+func (h *EzfyHandler) officerSetEquipBonus(o *model.EzfyOfficer) ezfyBattleBonus {
+	b := ezfyBattleBonus{}
+	if o == nil {
+		return b
+	}
+	h.cfgs()
 	for _, p := range h.officerSetProgress(o) {
 		if !p.Active {
 			continue
