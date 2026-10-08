@@ -461,7 +461,7 @@
             <a href="javascript:;" :class="{ gray: ezfy.exchangePage >= ezfy.exchangeTotalPages }" @click="ezfy.sectionPagerGo('exo', 1)">下一页</a>
           </div>
           <div class="panel-title">我的挂单</div>
-          <div class="old-line gray" v-if="ezfy.exchangeSellMax">挂单上限：最多 {{ ezfy.exchangeSellMax }} 单（当前已挂 {{ ezfy.exchangeMTotal }} 单，按交易所等级×2 卡控）</div>
+          <div class="old-line gray" v-if="ezfy.exchangeSellMax">挂单上限：最多 {{ ezfy.exchangeSellMax }} 单（当前 {{ ezfy.exchangeMTotal }} 单）</div>
           <table class="ezfy-ex-tbl" v-if="ezfy.exchangeMine.length">
             <tr><th>资源</th><th>数量</th><th>总价</th><th>操作</th></tr>
             <tr v-for="e in ezfy.exchangeMine" :key="'em' + e.id">

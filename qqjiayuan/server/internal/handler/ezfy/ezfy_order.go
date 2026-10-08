@@ -2609,9 +2609,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」：出征军官属性(学识)+防御技能(弧形防御/弹幕支援)+装备 Def。
 	//   原引擎攻方被打时防御恒 0 —— 军官带弧形防御 Lv.5「防御力+150%」既不生效也不展示（用户反馈）。
-	//   与守方城守口径完全对称；无军官 → 0/nil → 攻方无防御加成（回退老行为）。
+	//   ★ 2026-10-08 再加**防御科技**（装甲科技/掩体防御/重工技术）：原来只算军官+技能+装备，
+	//     不带队军官时防御恒 0 → 玩家有防御科技也显示「防御+0%」（用户反馈）。口径与守方
+	//     防御科技一致（守方 defBonus 用同 7/16/9 三档）。伤害减伤与该展示共用 atkDefBonus。
 	atkDefBonus := 0
 	var atkDefBreak []ezfyBonusItem
+	atkDefBonus += atkTech[7]*3 + atkTech[16]*2 + atkTech[9]*2
+	atkDefBreak = ezfyBonusItems(atkDefBreak,
+		ezfyTechItem("装甲科技", atkTech[7]*3), ezfyTechItem("掩体防御", atkTech[16]*2), ezfyTechItem("重工技术", atkTech[9]*2))
 	if leadOfficer != nil {
 		attr := h.officerGuardAttrBonus(leadOfficer)
 		atkDefBonus += attr
