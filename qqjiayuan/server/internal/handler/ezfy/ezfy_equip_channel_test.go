@@ -77,25 +77,33 @@ func TestBattleLootExcludesSetPieces(t *testing.T) {
 	}
 }
 
-// TestWildlandLootAnnouncesTreasure —— 用户要求（2026-10-09）：「打野地 掉落宝物 也要播报 系统消息」。
+// TestWildlandLootAnnouncesDrops —— 用户要求（2026-10-09）：
+// 「打野地 掉落宝物 也要播报 系统消息」+「商城道具掉落 也播报」。
 //
-// 原来「掉落宝物」只写进战报（玩家自己看得到），系统频道没有任何播报；
+// 原来「掉落宝物 / 掉落道具」只写进战报（玩家自己看得到），系统频道没有任何播报；
 // 采集到宝物却是有播报的（见 ezfy_order.go 采集分支）—— 这里把野地/寇城战斗掉落补齐。
 //
-// 静态断言三件事：
-//  1. 掉到宝物后确实往系统频道写（ezfySysChat）；
-//  2. 掉落宝物**攒成一条**再播（treasureNames），一场战斗掉多件不刷屏；
-//  3. 接收 targetName（调用方传入「海底森林2级」/「寇城3级」），播报文案与战报标题同源。
-func TestWildlandLootAnnouncesTreasure(t *testing.T) {
+// 静态断言四件事：
+//  1. 掉到东西后确实往系统频道写（ezfySysChat）；
+//  2. **两类掉落都进同一条**播报（lootNames 被 append 两次：道具 + 宝物），
+//     一场战斗只刷一条，且不会漏掉商城道具；
+//  3. 接收 targetName（调用方传入「海底森林2级」/「寇城3级」），播报文案与战报标题同源；
+//  4. 两个掉落解析函数都还在（防止为了加播报把掉落逻辑改坏）。
+func TestWildlandLootAnnouncesDrops(t *testing.T) {
 	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) wildlandConfigLoot(")
 	if !strings.Contains(body, "ezfySysChat") {
-		t.Fatalf("wildlandConfigLoot 掉宝物后没有系统频道播报：\n%s", body)
+		t.Fatalf("wildlandConfigLoot 掉落物品后没有系统频道播报：\n%s", body)
 	}
-	if !strings.Contains(body, "treasureNames") {
-		t.Fatalf("wildlandConfigLoot 未把掉落宝物攒成一条播报（找不到 treasureNames）：\n%s", body)
+	if n := strings.Count(body, "lootNames = append("); n != 2 {
+		t.Fatalf("wildlandConfigLoot 应把「商城道具 + 宝物」都攒进同一条播报（期望 2 处 append，实际 %d）：\n%s", n, body)
 	}
 	if !strings.Contains(body, "targetName string") {
 		t.Fatalf("wildlandConfigLoot 未接收 targetName，播报文案无法与战报标题同源：\n%s", body)
+	}
+	for _, fn := range []string{"parseWildlandItemDrops(", "parseWildTreasureDrops("} {
+		if !strings.Contains(body, fn) {
+			t.Fatalf("wildlandConfigLoot 里找不到掉落解析函数 %s（掉落逻辑被改坏了）：\n%s", fn, body)
+		}
 	}
 }
 

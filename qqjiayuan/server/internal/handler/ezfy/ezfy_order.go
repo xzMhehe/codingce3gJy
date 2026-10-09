@@ -3693,8 +3693,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   宝物掉落(treasure) + 商城道具掉落(drop_items) 走。
 		//   ⚠️ 原来这段只写在下面的「征服成功占领」分支里 → 玩家打野地/寇城通常是**掠夺(2)**，
 		//      配置里写的宝物一个都不掉（用户反馈「都不掉这些」）。现在掠夺/征服都走这里。
-		//   ★ 2026-10-09 掉到的宝物同时往系统频道播报（用户要求「打野地 掉落宝物 也要播报」），
-		//     targetName（「海底森林2级」）一并传进去，播报文案与战报标题同源。
+		//   ★ 2026-10-09 掉到的宝物/商城道具同时往系统频道播报（用户要求「掉落宝物 / 商城道具掉落
+		//     都要播报」），targetName（「海底森林2级」）一并传进去，播报文案与战报标题同源。
 		if order.TargetType == 1 || order.TargetType == 2 {
 			report += h.wildlandConfigLoot(uid, city, order, wildLevel, targetName)
 		}
@@ -4333,9 +4333,10 @@ func parseWildTreasureDrops(raw string) []wildTreasureDrop {
 // ★ 安全：**跳过套装件**（set_id > 0）—— 用户规则「套装军官装备只能通过宝箱开启」，
 // 否则在野地类型里填个套装名就能绕过规则刷套装。
 //
-// ★★ 2026-10-09 用户要求「打野地 掉落宝物 也要播报 系统消息」：掉落的宝物除了写进战报，
-// 还往**系统频道**播一条全服可见的消息（与「采集到宝物」同一套口径，见 ezfy_chat_exchange.go
-// 的 ezfySysChat）。同一场战斗掉多件时合并成**一条**，避免一次战斗刷屏。
+// ★★ 2026-10-09 用户要求「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
+// 掉落的**宝物 + 商城道具**除了写进战报，还往**系统频道**播一条全服可见的消息
+// （与「采集到宝物」同一套口径，见 ezfy_chat_exchange.go 的 ezfySysChat）。
+// 同一场战斗掉多件/两类时合并成**一条**，避免一次战斗刷屏。
 // targetName 是战报标题用的目标名（如「海底森林2级」/「寇城3级」），由调用方传入，
 // 保证「播报里看到的」=「战报里写的」。
 //
@@ -4353,6 +4354,10 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 		return ""
 	}
 	out := ""
+	// ★★ 2026-10-09 用户要求「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
+	//   本场掉到的「商城道具 + 宝物」名字统一攒进 lootNames，循环结束后**合并成一条**
+	//   系统频道播报（一场战斗只刷一条，避免刷屏；口径与「采集到宝物」一致）。
+	lootNames := []string{}
 	// ① 商城道具掉落：[[cfg_id, 数量, 概率%],...]
 	for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
 		if rand.Intn(100) >= d[2] {
@@ -4361,12 +4366,10 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 		if it := ezfyCfg.item(d[0]); it != nil {
 			h.addItem(uid, d[0], d[1])
 			out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+			lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
 		}
 	}
 	// ② 宝物掉落：[{"name","count","pct"},...]
-	// ★★ 2026-10-09 用户要求「打野地 掉落宝物 也要播报 系统消息」：把本场掉到的宝物
-	//   攒起来，循环结束后**合并成一条**系统频道播报（与「采集到宝物」同口径）。
-	treasureNames := []string{}
 	for _, d := range parseWildTreasureDrops(wcfg.Treasure) {
 		if rand.Intn(100) >= d.Pct {
 			continue
@@ -4379,18 +4382,18 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 			h.addEquipment(city, eq)
 		}
 		out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
-		treasureNames = append(treasureNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
+		lootNames = append(lootNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
 	}
-	if len(treasureNames) > 0 {
+	if len(lootNames) > 0 {
 		// 播报目标名用调用方算好的 targetName（「海底森林2级」/「寇城3级」）；
 		// 万一为空（理论上不会）回落「野地N级」，保证播报永远可读。
 		label := strings.TrimSpace(targetName)
 		if label == "" {
 			label = "野地" + strconv.Itoa(wildLevel) + "级"
 		}
-		h.ezfySysChat("恭喜玩家 %s 在 %s(%d,%d) 缴获宝物: %s",
+		h.ezfySysChat("恭喜玩家 %s 在 %s(%d,%d) 缴获: %s",
 			h.ezfyProfileName(uid), label, order.TargetX, order.TargetY,
-			strings.Join(treasureNames, "、"))
+			strings.Join(lootNames, "、"))
 	}
 	return out
 }
