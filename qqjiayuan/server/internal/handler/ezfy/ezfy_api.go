@@ -3307,10 +3307,14 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 // ReportCounts GET /games/ezfy/reports/counts?city_id=xx —— 只取 tab 徽标数字，不标记已读。
 // （军情页无论落在哪个分区都要刷新徽标，但不能因此把没看的战报标记成已读，
 //  所以从 Reports 里拆出独立接口。）
+//
+// ★ 2026-10-09 顺带下发 `has_corps`：军情页要据此决定**要不要显示「军团战报」tab**
+// （没军团的玩家不该看到它）。这个接口是进军情页/切分区时**必调**的，
+// 所以放在这里最稳（`my_corps` 只在军团/联络接口里下发，军情页拿不到）。
 func (h *EzfyHandler) ReportCounts(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
-	resp.OK(c, gin.H{"counts": h.ezfyReportCounts(uid, cityId)})
+	resp.OK(c, gin.H{"counts": h.ezfyReportCounts(uid, cityId), "has_corps": h.corpsOfUser(uid) > 0})
 }
 
 // mustListConsolidate 把「城市过滤拆开的快路径 + 老行补查」两批报告合并：
@@ -3418,7 +3422,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 			radarCity = *ct
 		}
 	}
-	resp.OK(c, gin.H{"reports": views, "counts": counts,
+	resp.OK(c, gin.H{"reports": views, "counts": counts, "has_corps": h.corpsOfUser(uid) > 0,
 		"radar": h.buildingLevel(radarCity.ID, ezfyRadarBuildingID),
 		"recon": h.techMap(radarCity.ID)[ezfyReconTechID],
 		"intel": h.ezfyIntelLevel(radarCity.ID)})
@@ -3427,7 +3431,9 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 // corpsReports 军团战报 —— 展示本军团团员的 PvP 战斗战报（对战玩家城，
 // 不含野地/寇城/活动目标/系统消息）。
 func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
-	empty := func() { resp.OK(c, gin.H{"reports": []gin.H{}, "counts": map[int]int{}, "corps": true}) }
+	empty := func() {
+		resp.OK(c, gin.H{"reports": []gin.H{}, "counts": map[int]int{}, "corps": true, "has_corps": false})
+	}
 	myCorp := h.corpsOfUser(uid)
 	if myCorp == 0 {
 		empty()
@@ -3503,7 +3509,11 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 			"owner_name": ownerName[r.UserID],
 			"category": "corps", "category_name": "军团战报", "created_at": r.CreatedAt})
 	}
-	resp.OK(c, gin.H{"reports": views, "counts": counts, "corps": true})
+	// ⚠️ 这里的 counts 是「本军团团员 PvP 战报的**总数**」（按分区累计，与 is_read 无关），
+	//   **不是**自己的未读数 → 前端**绝不能**拿它去更新「战斗报告(N)」徽标
+	//   （2026-10-09 用户反馈「战斗报告(14) 数量问题」的根因就是这里被当徽标用了）。
+	//   徽标一律走 /reports/counts（只数自己的未读、按当前城过滤）。
+	resp.OK(c, gin.H{"reports": views, "counts": counts, "corps": true, "has_corps": true})
 }
 
 // ReportDynamics GET /games/ezfy/reports/dynamics?city_id=xx
@@ -3790,16 +3800,50 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 }
 
 // ReportView GET /games/ezfy/reports/:id
+//
+// ★★ 2026-10-09 修复「军团战报点具体战报进去内容消失」：
+//
+//	原来只认 `user_id = 自己` —— 军团战报列表里是**同团团员**的战报，点进去必然 404，
+//	前端只能降级用列表项渲染（列表项不带 content/detail）→ 标题在、正文空白，
+//	看着就像「战报消失了」。现在：同军团团员的 **PvP 战报**（与军团战报列表同一口径）
+//	也允许查看；团员的战报不标已读（is_read 是原主人自己的状态）。
 func (h *EzfyHandler) ReportView(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var r model.EzfyReport
 	if err := h.DB.Where("id = ? AND user_id = ?", id, uid).First(&r).Error; err != nil {
-		resp.NotFound(c, "战报不存在")
+		if err2 := h.DB.Where("id = ?", id).First(&r).Error; err2 != nil || !h.ezfyReportViewableByCorps(uid, &r) {
+			resp.NotFound(c, "战报不存在")
+			return
+		}
+		resp.OK(c, gin.H{"report": r})
 		return
 	}
 	h.DB.Model(&model.EzfyReport{}).Where("id = ?", r.ID).Update("is_read", 1)
 	resp.OK(c, gin.H{"report": r})
+}
+
+// ezfyReportViewableByCorps 该战报是否可被 uid 以「军团战报」名义查看：
+// 同军团团员的 **PvP**（order.target_type == 3，即打玩家城）战报。
+// 口径与军团战报列表 corpsReports 一致（野地/寇城/系统报告不放行）。
+func (h *EzfyHandler) ezfyReportViewableByCorps(uid uint, r *model.EzfyReport) bool {
+	if r == nil || r.ID == 0 || r.UserID == uid {
+		return false
+	}
+	if r.OrderId <= 0 || (r.ReportType != 1 && r.ReportType != 2 && r.ReportType != 3 && r.ReportType != 4) {
+		return false
+	}
+	var o model.EzfyOrder
+	if err := h.DB.Select("id, target_type").First(&o, r.OrderId).Error; err != nil || o.TargetType != 3 {
+		return false
+	}
+	myCorp := h.corpsOfUser(uid)
+	if myCorp == 0 {
+		return false
+	}
+	var n int64
+	h.DB.Model(&model.EzfyCorpsMember{}).Where("corps_id = ? AND user_id = ?", myCorp, r.UserID).Count(&n)
+	return n > 0
 }
 
 // ReportDelete POST /games/ezfy/reports/:id/delete

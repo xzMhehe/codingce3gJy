@@ -10,8 +10,12 @@
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 3 }" @click="ezfy.switchReportTab(3)">军情警讯</a><span
               v-if="ezfy.reportCounts[1]" class="red">({{ ezfy.reportCounts[1] }})</span><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 4 }" @click="ezfy.switchReportTab(4)">战斗报告</a><span
-              v-if="ezfy.reportCounts[2]" class="red">({{ ezfy.reportCounts[2] }})</span><span
-              class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 5 }" @click="ezfy.switchReportTab(5)">军团战报</a>
+              v-if="ezfy.reportCounts[2]" class="red">({{ ezfy.reportCounts[2] }})</span>
+            <!-- ★ 2026-10-09 「没军团的不展示 军团战报 tab」：
+                 有军团（myCorps 已知）或 /reports/counts 回了 has_corps=true 才显示。
+                 reportHasCorps 为 null（还没拿到）时按 myCorps 判断，避免团员刷新时 tab 闪一下不见。 -->
+            <span v-if="ezfy.myCorps || ezfy.reportHasCorps"><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 5 }" @click="ezfy.switchReportTab(5)">军团战报</a></span>
           </div>
 
           <!-- ===== 军队动态: 行进/战斗/返航中的部队(出征/侦查/掠夺/运输/增援等) ===== -->
@@ -160,6 +164,10 @@
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 2 }" @click="ezfy.goReportTab(2)">驻军</a><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 3 }" @click="ezfy.goReportTab(3)">军情警讯</a><span
               class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 4 }" @click="ezfy.goReportTab(4)">战斗报告</a>
+            <!-- ★ 2026-10-09 战报详情页的导航同样带上「军团战报」（仅在有军团时），
+                 否则从军团战报点进详情后这一栏没有高亮项。 -->
+            <span v-if="ezfy.myCorps || ezfy.reportHasCorps"><span
+              class="acade-sep">.</span><a href="javascript:;" :class="{ on: ezfy.reportTab === 5 }" @click="ezfy.goReportTab(5)">军团战报</a></span>
           </div>
           <div class="panel-title">{{ ezfy.curReport.title }}</div>
           <!-- ★ 2026-09-29 战报上色（自己绿、敌军红）：被掠夺/被征服报告里守方是自己 → 守方绿、攻方红 -->
@@ -179,7 +187,10 @@
             </div>
           </template>
           <div class="old-line">
-            <a href="javascript:;" class="red" @click="ezfy.delReport(ezfy.curReport)">[删除]</a>
+            <!-- ★ 2026-10-09 别人的战报（军团战报里同团团员的）不能删：后端只允许删自己名下的，
+                 点了必然「战报不存在」→ 干脆不显示 [删除]。 -->
+            <a v-if="!ezfy.curReport.user_id || ezfy.curReport.user_id === ezfy.profile.user_id"
+               href="javascript:;" class="red" @click="ezfy.delReport(ezfy.curReport)">[删除]</a>
             <a href="javascript:;" @click="ezfy.go('reports')">[返回]</a>
             <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
           </div>

@@ -620,6 +620,9 @@ export default {
       buildSel: null,
       curReport: null,
       reportTab: 1,
+      // ★ 2026-10-09 「没军团不显示军团战报 tab」：由 /reports/counts 的 has_corps 下发。
+      //   null = 还没拿到（tab 先按 myCorps 判断，避免团员刷新时 tab 闪一下不见）。
+      reportHasCorps: null,
       reportWord: '',
       reportCounts: {},
       // ★ 自己城市的雷达站等级（决定「来袭/被侦查」预警能不能收到）
@@ -2568,6 +2571,9 @@ export default {
       })
     },
     loadReports () {
+      // ★ 2026-10-09 「没军团不显示军团战报 tab」：?rtab=5 残留 / 退团后残留 → 回落「战斗报告」。
+      //   只在**已确认没有军团**时回落（reportHasCorps===false），避免刚进军情页时把团员的 tab 误踢掉。
+      if (this.reportTab === 5 && this.reportHasCorps === false) this.reportTab = 4
       // category: 1 军情警讯 2 战斗报告(战报查询)；reportTab===5 → 军团战报(corps)
       const cat = this.reportTab === 3 ? 1 : 2
       let url = '/games/ezfy/reports?'
@@ -2576,8 +2582,18 @@ export default {
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       api.get(url).then(r => {
         if (r.code === 0) {
+          if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
+          // ★ 2026-10-09 「战斗报告(14) 数量问题」：军团战报接口返回的 counts 是
+          //   **本军团团员 PvP 战报的总数**（不是自己的未读数）→ 拿它更新徽标会让
+          //   「战斗报告(N)」显示成全团的数量。徽标只认 /reports/counts 与 3/4 分区的 counts。
+          if (this.reportTab !== 5) this.reportCounts = r.data.counts || {}
+          // 自愈：军团战报接口明确回 has_corps=false（已退团）→ 回落到战斗报告再拉一次
+          if (this.reportTab === 5 && r.data.has_corps === false) {
+            this.reportTab = 4
+            this.loadReports()
+            return
+          }
           this.reports = r.data.reports || []
-          this.reportCounts = r.data.counts || {}
           this.reportRadar = r.data.radar || 0
           this.reportRecon = r.data.recon || 0
           this.reportIntel = r.data.intel || this.reportRadar
@@ -2588,9 +2604,14 @@ export default {
     // ★ 2026-10-01 徽标数字专用轻量接口（独立于 loadReports：
     //   军情页落在任意分区都要刷新徽标，但不能因此把没看的战报标记已读）
     //   ★ 2026-10-01 军情按当前城过滤：徽标数字也只统计当前城的战报
+    //   ★ 2026-10-09 顺带取 has_corps：军情页据此决定要不要显示「军团战报」tab
+    //     （这个接口进页/切分区必调，比 myCorps 更早、更稳）。
     loadReportCounts () {
       api.get('/games/ezfy/reports/counts?city_id=' + (this.city ? this.city.id : 0)).then(r => {
-        if (r.code === 0) this.reportCounts = r.data.counts || {}
+        if (r.code === 0) {
+          this.reportCounts = r.data.counts || {}
+          if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
+        }
       })
     },
     // ★ 2026-09-24 军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
@@ -4270,6 +4291,9 @@ export default {
         // openReport 可能从「军情警讯」进也可能从「战斗报告」进，这里记录它来自哪个分区
         // ★ 2026-09-30 军团战报(category='corps')回到军团 tab
         this.reportTab = (r.category === 1) ? 3 : (r.category === 'corps' ? 5 : 4)
+        // ★ 2026-10-09 能从军团战报列表点进来 ⇒ 一定有军团（否则该 tab 根本不显示），
+        //   顺手置位，保证「战报详情页」顶部导航也能高亮/显示「军团战报」。
+        if (r.category === 'corps') this.reportHasCorps = true
         this.go('reportview')
       })
     },
