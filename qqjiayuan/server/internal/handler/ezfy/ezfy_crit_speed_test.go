@@ -49,15 +49,14 @@ func TestBonusLineShowsTypeSpeed(t *testing.T) {
 		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}},
 		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeNavy: 10, ezfyTroopTypeAir: 30}})
 
-	line := ""
-	for _, h := range st.Head {
-		if strings.Contains(h, "战斗加成") {
-			line = h
-		}
+	lines := bonusLinesOf(st.Head)
+	if len(lines) != 2 {
+		t.Fatalf("「战斗加成」应拆成两行（攻方/守方各一行），实际 %d 行：%v", len(lines), lines)
 	}
-	if line == "" {
-		t.Fatal("准备回合里没有「战斗加成」行")
+	if !strings.HasPrefix(lines[0], "战斗加成: 攻方 ") || !strings.HasPrefix(lines[1], "战斗加成: 守方 ") {
+		t.Fatalf("两行的顺序/前缀不对（应先攻方后守方）：%v", lines)
 	}
+	line := strings.Join(lines, "\n")
 	// 攻方：通用速度 20（燃烧引擎）+ 兵种专属 30（本方就是空军）
 	if !strings.Contains(line, "速度+20%(科技+20) 兵种专属速度(空军+30%)") {
 		t.Fatalf("攻方移动速度拆解不对：\n%s", line)
@@ -68,10 +67,6 @@ func TestBonusLineShowsTypeSpeed(t *testing.T) {
 	}
 	if strings.Contains(line, "海军+10%") {
 		t.Fatalf("守方没带海军，不该列海军速度加成：\n%s", line)
-	}
-	// 汇总行仍必须保留「攻方 ... | 守方 ...」的 ' | ' 分隔（前端按它左右分色）
-	if !strings.Contains(line, " | ") {
-		t.Fatalf("战斗加成行丢了 ' | ' 分隔：%s", line)
 	}
 }
 
@@ -102,15 +97,10 @@ func TestBonusLineNoIrrelevantTypeSpeed(t *testing.T) {
 		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}},
 		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}})
 
-	line := ""
-	for _, h := range st.Head {
-		if strings.Contains(h, "战斗加成") {
-			line = h
-		}
-	}
-	t.Logf("战斗加成行：%s", line)
-	// 攻方 移动速度 = 燃烧 20 + 套装移动 10 = 30，拆解出「装备+10」（移动距离）
-	if !strings.Contains(line, "速度+30%(科技+20 装备+10)") {
+	line := strings.Join(bonusLinesOf(st.Head), "\n")
+	t.Logf("战斗加成行：\n%s", line)
+	// 攻方 移动速度 = 燃烧 20 + 套装移动 10 = 30，拆解出「装备套装+10」（移动距离）
+	if !strings.Contains(line, "速度+30%(科技+20 装备套装+10)") {
 		t.Fatalf("攻方移动速度拆解不对（移动距离没体现）：\n%s", line)
 	}
 	// 守方 移动速度 = 燃烧 20（无装备）
@@ -121,6 +111,17 @@ func TestBonusLineNoIrrelevantTypeSpeed(t *testing.T) {
 	if strings.Contains(line, "空军") {
 		t.Fatalf("纯海军部队不该在汇总行出现空军速度加成：\n%s", line)
 	}
+}
+
+// bonusLinesOf 取准备回合里的「战斗加成」行（2026-10-09 起拆成攻方/守方两行）。
+func bonusLinesOf(head []string) []string {
+	out := []string{}
+	for _, h := range head {
+		if strings.Contains(h, "战斗加成") {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // TestCritAnnounceAndCounterCrit 暴击要播报；反击同样能触发暴击。

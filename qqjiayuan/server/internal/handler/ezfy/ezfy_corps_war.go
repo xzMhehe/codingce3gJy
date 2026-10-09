@@ -440,12 +440,14 @@ func (h *EzfyHandler) CorpsWarDeclare(c *gin.Context) {
 	}
 	h.ezfyCorpsWarNotify(&w)
 	// ★ 2026-10-05 军团宣战后，双方军团的军团聊天各收到一条系统消息提示
-	warMsg := fmt.Sprintf("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效，%d 小时后整场结束！",
-		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours)
+	// ★ 2026-10-09 补上**绝对开战时间**（原来只有「N 小时后」，玩家还得自己算），
+	//   与个人宣战同口径（用户要求「战斗起始时间」）。
+	effTime := time.UnixMilli(w.EffectTime).Format("01-02 15:04")
+	warMsg := fmt.Sprintf("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效（%s 开战），%d 小时后整场结束！",
+		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, effTime, ezfyCorpsWarTotalHours)
 	h.DB.Create(&model.EzfyCorpsChat{CorpsId: myCorpsId, UserId: 0, UserName: "系统", Content: warMsg})
 	h.DB.Create(&model.EzfyCorpsChat{CorpsId: req.CorpsId, UserId: 0, UserName: "系统", Content: warMsg})
-	h.ezfySysChat("【军团宣战】%s 军团向 %s 军团宣战了，%d 小时后生效，%d 小时后整场结束！",
-		myCorps.Name, target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours)
+	h.ezfySysChat("%s", warMsg)
 	resp.OK(c, gin.H{
 		"msg": fmt.Sprintf("已向「%s」军团宣战，%d 小时后生效，%d 小时后整场结束",
 			target.Name, ezfyCorpsWarDelayHours, ezfyCorpsWarTotalHours),

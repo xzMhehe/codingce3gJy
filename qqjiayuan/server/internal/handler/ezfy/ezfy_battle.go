@@ -445,7 +445,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 	atkAtkSrc := fmt.Sprintf("(军官+%d 科技+%d", st.AtkOfficerBonus, atkTechPart)
 	if atkEquip.Dmg != 0 {
-		atkAtkSrc += fmt.Sprintf(" 装备+%d", atkEquip.Dmg)
+		// ★ 2026-10-09 用户反馈「装备+61% 有歧义」→ 统一写成「装备套装+N%」：
+		//   这一段是**已穿装备的单件 + 已激活套装**的合计（见 officerBattleEquipBonus），
+		//   只写「装备」会让人以为只有散件（尤其【攻方装备】行显示「无」时更困惑）。
+		atkAtkSrc += fmt.Sprintf(" 装备套装+%d", atkEquip.Dmg)
 	}
 	atkAtkSrc += ")"
 	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d)", st.DefOfficerBonus, defAtkTechPart)
@@ -458,7 +461,8 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 			parts = append(parts, fmt.Sprintf("科技+%d", tech))
 		}
 		if equip != 0 {
-			parts = append(parts, fmt.Sprintf("装备+%d", equip))
+			// 同上：「装备套装」= 散件 + 套装合计（装备的「移动距离」也走这里）
+			parts = append(parts, fmt.Sprintf("装备套装+%d", equip))
 		}
 		if len(parts) == 0 {
 			return ""
@@ -469,8 +473,13 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	defSpeedSrc := speedSrc(defSpeedBonus, defEquip.Move)
 	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, ezfyTroopTypesPresent(attackerUnits))
 	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, ezfyTroopTypesPresent(defenderUnits))
-	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
-		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt,
+	// ★★ 2026-10-09 用户要求「战斗加成拆成两行」：攻方一行、守方一行
+	//   （原来是一行里用 ' | ' 分隔，手机窄屏读起来要来回找）。
+	//   ⚠️ 前端 `reportNiceLines` 里对**老战报**（单行含 ' | '）的分色分支要保留 ——
+	//      库里存量战报还是老格式，不能只认新格式。
+	atkBonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
+	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
 		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
@@ -513,8 +522,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defSetDesc != "" {
 		st.Head = append(st.Head, "【守方套装】"+defSetDesc)
 	}
-	// ★ 2026-10-08 战斗加成（= 总加成）排在全部明细之后、场景描述之前（见上方 bonusLine 注释）
-	st.Head = append(st.Head, bonusLine)
+	// ★ 2026-10-08 战斗加成（= 总加成）排在全部明细之后、场景描述之前
+	// ★ 2026-10-09 拆成两行：攻方一行、守方一行（原来是同一行里用 ' | ' 分隔）
+	st.Head = append(st.Head, atkBonusLine)
+	st.Head = append(st.Head, defBonusLine)
 	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
 
 	idx := 0
@@ -675,7 +686,8 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 		parts = append(parts, fmt.Sprintf("科技+%d%%", techTotal))
 	}
 	if equipBonus != 0 {
-		parts = append(parts, fmt.Sprintf("装备+%d%%", equipBonus))
+		// ★ 2026-10-09 「装备」→「装备套装」（散件+套装合计，去掉歧义）
+		parts = append(parts, fmt.Sprintf("装备套装+%d%%", equipBonus))
 	}
 	if len(parts) == 0 {
 		return ""

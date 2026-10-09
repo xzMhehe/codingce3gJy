@@ -2802,7 +2802,9 @@ export default {
     },
     // ★ 战报详情/逐回合详情按行上色（看不清谁是谁 → 视觉区分）。
     //   颜色始终「自己绿、敌军红」：rpt-atk=绿、rpt-def=红，攻/守哪边是自己看战报视角。
-    //   返回 [{mode:'line'|'pair', text?, cls?, left?, right?}]；「战斗加成」行攻守各半段分两段上色。
+    //   返回 [{mode:'line'|'pair', text?, cls?, left?, right?}]。
+    //   ★ 2026-10-09 「战斗加成」已拆成**两行**（攻方一行 / 守方一行）→ 走 mode:'line' 上色；
+    //     这里保留老战报（单行、攻守用 ' | ' 分隔）的 pair 分支 —— 库里存量战报还是老格式。
     reportNiceLines (raw) {
       return String(raw || '').split('\n').map(ln => {
         const bi = ln.indexOf(' | ')
@@ -2820,6 +2822,15 @@ export default {
     },
     reportLineClass (ln) {
       const t = ln || ''
+      // ★ 2026-10-09 战斗加成两行版：「战斗加成: 攻方 …」「战斗加成: 守方 …」
+      //   （老的单行版含 ' | '，已被上面 reportNiceLines 拦掉，不会走到这里）
+      if (t.indexOf('战斗加成') >= 0) {
+        const a = t.indexOf('攻方') >= 0
+        const d = t.indexOf('守方') >= 0
+        if (a && !d) return this.rptViewerIsDef() ? 'rpt-def' : 'rpt-atk'
+        if (d && !a) return this.rptViewerIsDef() ? 'rpt-atk' : 'rpt-def'
+        return ''
+      }
       const isAtk = /【攻方】|\[胜]攻方|\[平]攻方|【攻方军官】/.test(t) || (t.indexOf('攻方:') >= 0 && t.indexOf('守方:') < 0)
       const isDef = /【守方】|\[败]守方|\[平]守方|【守方军官】/.test(t) || (t.indexOf('守方:') >= 0 && t.indexOf('攻方:') < 0)
       if (isAtk && !isDef) return this.rptViewerIsDef() ? 'rpt-def' : 'rpt-atk'

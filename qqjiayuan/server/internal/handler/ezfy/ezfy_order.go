@@ -2707,7 +2707,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 	}
 	atkDefBonus += atkEquip.Def
-	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备", atkEquip.Def)...)
+	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备套装", atkEquip.Def)...)
 	// 城守(仅玩家城市防守方)
 	var cityGuard *model.EzfyOfficer
 	defEquip := ezfyBattleBonus{}
@@ -2944,7 +2944,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
 			}
 		}
-		defDefBreak = append(defDefBreak, ezfyTechItem("装备", defEquip.Def)...)
+		defDefBreak = append(defDefBreak, ezfyTechItem("装备套装", defEquip.Def)...)
 		// ★ 传「属性部分」的攻击/防御加成（军事→攻击、有效学识÷2→守军防御），技能由
 		//   officerBattleDesc 自己列，否则技能会被算两遍。原来这里硬编码 10，与实际生效值不符。
 		// ★ 2026-10-08 城守军官行也补上「攻击加成」：城守的军事属性/攻击技能同样进 defAtkBonus

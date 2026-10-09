@@ -423,7 +423,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		}
 	}
 	atkDefBonus += atkEquip.Def
-	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备", atkEquip.Def)...)
+	atkDefBreak = append(atkDefBreak, ezfyTechItem("装备套装", atkEquip.Def)...)
 
 	// ★★ 指挥室（2026-09-22 ）：活动目标也是战斗，同样先开战场等玩家指挥，
 	//   与普通野地/寇城/玩家城保持一致（否则打活动城不能指挥，玩家会困惑）。

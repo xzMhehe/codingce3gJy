@@ -1639,14 +1639,22 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 			meta += fmt.Sprintf("被宣战城(%d,%d)", tc.X, tc.Y)
 		}
 	}
-	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。%s",
-		atkName, ezfyWarDelayHours, ezfyWarDurationHours, meta)
+	// ★★ 2026-10-09 用户要求「宣战的**战斗起始时间**，在 私聊 / 军团聊天 里也要有播报」：
+	//   ① 播报文案补上**绝对开战时间**（原来只有「N 小时后生效」，玩家还得自己算）；
+	//   ② 双方**各自军团的军团聊天**各写一条系统消息（与「军团宣战」同一套写法：
+	//      EzfyCorpsChat + UserId=0 + UserName=系统）；
+	//   ③ 私聊：下面给被宣战方的那条站内信（PrivateMessage，来源=宣战方）就是私聊里的那条，
+	//      双方在「私聊」页的会话里都能看到（含开战时间）。
+	effTime := time.UnixMilli(w.EffectTime).Format("01-02 15:04")
+	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效（%s 开战），生效后 %d 小时内可互相掠夺/征服。%s",
+		atkName, ezfyWarDelayHours, effTime, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
 	// ★ 2026-10-05 宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
 	//   与上面系统消息同口径；对方在「邮件」页能看到这条宣战消息。
+	// ★ 2026-10-09 这条同时也是「私聊」页里与宣战方的会话消息（含开战时间）。
 	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: req.TargetUserId, Content: defTip})
-	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效，生效后 %d 小时内可互相掠夺/征服。%s",
-		defName, ezfyWarDelayHours, ezfyWarDurationHours, meta)
+	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效（%s 开战），生效后 %d 小时内可互相掠夺/征服。%s",
+		defName, ezfyWarDelayHours, effTime, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})
 
 	// ★ 「首页世界聊天那块，谁向谁宣战也播报展示」→ 往**系统频道**写一条全服可见的播报。
@@ -1654,7 +1662,16 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	//   所以这里不需要另开接口，玩家端不用改。
 	//   ⚠️ 注意：宣战本身没有次数上限（只挡了「对同一个人重复宣战」），
 	//   如果将来发现有人刷屏，可以在 ezfySysChat 外面加个节流/上限。
-	h.ezfySysChat("【宣战】%s 向 %s 宣战了，%d 小时后生效！", atkName, defName, ezfyWarDelayHours)
+	// ★ 2026-10-09 同一条播报也进**双方军团的军团聊天**（用户要求；没军团就只走系统频道）。
+	chatMsg := fmt.Sprintf("【宣战】%s 向 %s 宣战了，%d 小时后生效（%s 开战）！",
+		atkName, defName, ezfyWarDelayHours, effTime)
+	h.ezfySysChat("%s", chatMsg)
+	if c := h.corpsOfUser(uid); c > 0 {
+		h.DB.Create(&model.EzfyCorpsChat{CorpsId: c, UserId: 0, UserName: "系统", Content: chatMsg})
+	}
+	if c := h.corpsOfUser(req.TargetUserId); c > 0 {
+		h.DB.Create(&model.EzfyCorpsChat{CorpsId: c, UserId: 0, UserName: "系统", Content: chatMsg})
+	}
 
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("宣战成功, %d小时后生效, 生效后%d小时内可互相掠夺/征服", ezfyWarDelayHours, ezfyWarDurationHours)})
 }
