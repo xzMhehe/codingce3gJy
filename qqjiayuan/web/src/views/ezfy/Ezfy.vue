@@ -4570,6 +4570,11 @@ export default {
     //     - 管理端把「出征上限」开关关了（cap_unlimited）→ 本来就不限。
     //   ★ 2026-10-02 运输(5)/派遣(8)也参与携带上限判定（orderCapApplies 恒 true）。
     orderQtyMax (id) {
+      // ★ 2026-10-09 「自己被处于指挥时，指挥里面的兵种不能再出征」：
+      //   本城正在被敌军攻击（防御指挥室进行中）时，参战兵种不能出征（后端 createOrder 会硬拦），
+      //   这里把它们的可派上限置 0 → 滑块/数字框/[最大] 一起禁用，避免玩家白填一遍再被拒。
+      //   锁定列表由 /order/preview 下发（locked_troops）；不参与防御(def_move=-1)的兵种不在其中。
+      if (this.troopLocked(id)) return 0
       const own = this.troopCount(id)
       const c = this.orderCalc
       // 上司关了上限开关 → 不限
@@ -4581,6 +4586,20 @@ export default {
       const remain = (c.troop_cap || 0) - (this.orderTroopTotal - this.orderQty(id))
       // remain 可能为负（其它兵种已经把额度吃超了）→ 本兵种只能填 0
       return Math.max(0, Math.min(own, remain))
+    },
+    // troopLocked 该兵种是否被「防御指挥中」锁定（参战兵种不能出征）。
+    //   ★ 2026-10-09 用户规则：自己被处于指挥时，指挥（防御战斗）里面的兵种不能再出征；
+    //     司令部标了「不参与防御」的兵种不参与当次防御 → 不锁、照常可出征。
+    //   数据来源：/order/preview 的 def_locked / locked_troops（点了 [计算] 后才有）。
+    troopLocked (tid) {
+      const c = this.orderCalc
+      if (!c || !c.def_locked) return false
+      const list = c.locked_troops || []
+      const n = Number(tid)
+      for (let i = 0; i < list.length; i++) {
+        if (Number(list[i]) === n) return true
+      }
+      return false
     },
     // ★ 上限变小后（改集结令 / 换带队军官 / 换城市）把已填兵力重新夹进新上限，
     //   否则「本次出兵」会一直红着超限，而滑块又因为 max 变成 0 和数字框显示不一致。

@@ -326,10 +326,18 @@ func TestDefBonusInjected(t *testing.T) {
 //	装甲科技的配置描述是「部队防御」，只该进防御加成；而「军训艺术(5)/武器科技(6)」
 //	（描述都是「部队攻击」）完全没算。结果满科技的两个号：【守方科技】行比【攻方科技】
 //	少两项，攻击加成还偏低。
+//
+// ★★ 2026-10-09 用户再次要求「两个号都满科技，加成就该一样」：守方**不再额外吃掩体防御(16)**。
+//
+//	那是守城方专属的一项，会让满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
+//	现在两边攻击口径完全一致：军训艺术(5) + 武器科技(6) + 重工技术(9) + 军官加成。
 func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
-	if !strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
-		t.Fatal("守方攻击加成必须含军训艺术(5)/武器科技(6)，与攻方同口径")
+	if !strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)") {
+		t.Fatal("守方攻击加成必须与攻方同口径（军训艺术5 + 武器科技6 + 重工技术9 + 军官）")
+	}
+	if strings.Contains(src, "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2") {
+		t.Fatal("守方攻击加成不该再额外吃掩体防御(16)：守城方专属项会让满科技的攻守两号加成不一致")
 	}
 	if strings.Contains(src, "defAtkBonus = defTech[7]*3") {
 		t.Fatal("守方攻击加成不该用装甲科技(7)（描述是「部队防御」，只进防御加成）")
@@ -362,10 +370,12 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		{"射程", "atkRangeBonus := atkTech[8] * 3"},
 	}
 	defCases := []struct{ name, want string }{
-		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + defTech[16]*2"},
-		{"防御", "defBonus = h.buildingLevel(target.ID, 7)*5 + defTech[7]*3 + defTech[16]*2 + defTech[9]*2"},
+		// ★ 2026-10-09 用户要求「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
+		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
+		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7 ×5%/级)，与攻方防御同口径
+		{"防御", "defBonus = defTech[7]*3 + defTech[16]*2 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
-		// ★ 射程只吃弹道学(8)；掩体防御(16) 是「城防攻防」，只进攻击/防御（2026-10-08 修掉虚高）
+		// ★ 射程只吃弹道学(8)；掩体防御(16) 是「城防攻防」，只进防御（2026-10-08 修掉虚高）
 		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}
 	for _, c := range atkCases {

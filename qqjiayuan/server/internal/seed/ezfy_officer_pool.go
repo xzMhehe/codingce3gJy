@@ -855,13 +855,18 @@ type ezfyChestPoolOverride struct {
 var ezfyChestOverride = map[string]ezfyChestPoolOverride{
 	// 帝国宝箱(3)：套装 3/4/7 权重下调
 	"C3K3R3": {20, 1}, "C3K3R4": {10, 1}, "C3K3R7": {10, 1},
+	// ★★ 2026-10-09 用户要求「战神宝箱/荣耀宝箱/统帅宝箱 出套装概率应该是 1%」：
+	//   这三个箱子的**道具总权重**约 1190 / 1220 / 1190（3 个老道具 + 11 个新道具 ×100），
+	//   所以套装**总权重取 12** → 12/(12+1190) ≈ 1.0%，再按套装**数量均分**：
+	//     战神(4) 2 套 → 各 6 ｜ 荣耀(5) 4 套 → 各 3 ｜ 统帅(6) 12 套 → 各 1
+	//   ⚠️ 改这里的值时要同步改 `ezfyChestSetWeightOld`（老库的迁移判据），见 migrateEzfyChestSetWeight。
 	// 战神宝箱(4)
-	"C4K3R5": {20, 1}, "C4K3R6": {20, 1},
+	"C4K3R5": {6, 1}, "C4K3R6": {6, 1},
 	// 荣耀宝箱(5)
-	"C5K3R11": {20, 1}, "C5K3R12": {20, 1}, "C5K3R13": {20, 1}, "C5K3R14": {20, 1},
+	"C5K3R11": {3, 1}, "C5K3R12": {3, 1}, "C5K3R13": {3, 1}, "C5K3R14": {3, 1},
 	// 统帅宝箱(6)
-	"C6K3R8": {150, 1}, "C6K3R9": {150, 1}, "C6K3R10": {150, 1}, "C6K3R15": {150, 1},
-	"C6K3R16": {40, 1}, "C6K3R17": {40, 1}, "C6K3R21": {20, 1},
+	"C6K3R8": {1, 1}, "C6K3R9": {1, 1}, "C6K3R10": {1, 1}, "C6K3R15": {1, 1},
+	"C6K3R16": {1, 1}, "C6K3R17": {1, 1}, "C6K3R21": {1, 1},
 	"C6K3R22": {1, 1}, "C6K3R23": {1, 1}, "C6K3R24": {1, 1}, "C6K3R25": {1, 1}, "C6K3R26": {1, 1},
 	// 道具安慰奖：各宝箱数量/权重按线上现值（经验书14/重修书16/升星卡23）
 	// ★ 2026-09-30 对齐线上库快照（含黄金箱 C1：14×2 / 16×5 / 23×5）
@@ -870,6 +875,47 @@ var ezfyChestOverride = map[string]ezfyChestPoolOverride{
 	"C4K2R14": {40, 6}, "C4K2R16": {40, 20}, "C4K2R23": {10, 20},
 	"C5K2R14": {40, 5}, "C5K2R16": {40, 30}, "C5K2R23": {40, 30},
 	"C6K2R14": {40, 10}, "C6K2R16": {40, 50}, "C6K2R23": {10, 50},
+}
+
+// ezfyChestSetWeightOld 4/5/6 号箱套装行的**旧权重**（2026-10-09「套装 1%」调整前的值）。
+//
+// 只在这些值时改写（幂等 + 保护管理端手动调过的权重），配合 `ezfyChestOverride` 的目标值使用。
+var ezfyChestSetWeightOld = map[string]int{
+	"C4K3R5": 20, "C4K3R6": 20,
+	"C5K3R11": 20, "C5K3R12": 20, "C5K3R13": 20, "C5K3R14": 20,
+	"C6K3R8": 150, "C6K3R9": 150, "C6K3R10": 150, "C6K3R15": 150,
+	"C6K3R16": 40, "C6K3R17": 40, "C6K3R21": 20,
+	"C6K3R22": 1, "C6K3R23": 1, "C6K3R24": 1, "C6K3R25": 1, "C6K3R26": 1,
+}
+
+// migrateEzfyChestSetWeight 把**已有库**里 4/5/6 号箱的套装权重迁到「出套装 1%」的新值。
+//
+// ★ 2026-10-09 用户要求「战神/荣耀/统帅宝箱 出套装概率应该是 1%」。
+// 种子侧由 `ezfyChestOverride` 负责（新库直接生成新权重），但**已有库的行不会被种子覆盖**
+// （`backfillEzfyChestPool` 只补缺、不动已有行）→ 这里做一次幂等迁移。
+// 只在「权重还是旧值」时改写，所以管理端后来手动调过的值不会被冲掉。
+func migrateEzfyChestSetWeight(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_chest_item") {
+		return
+	}
+	changed := int64(0)
+	for key, old := range ezfyChestSetWeightOld {
+		ov, ok := ezfyChestOverride[key]
+		if !ok || ov.Weight == old {
+			continue
+		}
+		var chest, kind, ref int
+		if _, err := fmt.Sscanf(key, "C%dK%dR%d", &chest, &kind, &ref); err != nil {
+			continue
+		}
+		res := db.Model(&model.EzfyCfgChestItem{}).
+			Where("chest_id = ? AND kind = ? AND ref_id = ? AND weight = ?", chest, kind, ref, old).
+			Update("weight", ov.Weight)
+		changed += res.RowsAffected
+	}
+	if changed > 0 {
+		log.Printf("ezfy 宝箱套装权重迁移 %d 条（4/5/6 号箱出套装概率 → 1%%）", changed)
+	}
 }
 
 // buildEzfyChestItems 生成宝箱奖池
@@ -918,6 +964,30 @@ func buildEzfyChestItems() []model.EzfyCfgChestItem {
 		add(chest.ID, 2, 14, 40, "普通") // 经验书
 		add(chest.ID, 2, 16, 20, "稀有") // 重修书
 		add(chest.ID, 2, 23, 10, "史诗") // 军官升星卡
+	}
+	// ★★ 2026-10-09 用户要求：「统帅宝箱、荣耀宝箱、战神宝箱 奖池再加些道具，
+	//   数量默认 1、权重 100」（**非黄金道具** —— 只能用钻石买的消耗品）。
+	//
+	//	只进 4/5/6 三个高级箱（用户点名），黄金/崛起/帝国箱保持原样。
+	//	ref_id 是 ezfy_cfg_item 的道具 id，逐个注释用途，改的时候别改错号。
+	//	⚠️ 新增行由 backfillEzfyChestPool 在启动时**幂等补缺**，线上库不用手动改。
+	ezfyChestExtraItems := []int{
+		10, // 建筑图纸（建筑升级到 10 级必需）
+		9,  // 科技加速2小时
+		4,  // 建筑加速30分钟
+		11, // 增产令+50%(24小时)
+		20, // 迁城计划
+		19, // 集结令
+		22, // 沿海迁城计划
+		21, // 高级迁城计划
+		28, // 建筑加速30%
+		30, // 建筑加速80%
+		32, // 训练加速60%
+	}
+	for _, chestID := range []int{4, 5, 6} {
+		for _, itemID := range ezfyChestExtraItems {
+			add(chestID, 2, itemID, 100, "普通")
+		}
 	}
 	return out
 }
@@ -1023,6 +1093,21 @@ func seedEzfyChests(db *gorm.DB) {
 			Des: c.Des, Effect: c.Effect,
 		}).Error
 	}
+}
+
+// EnsureEzfyChestPool 宝箱奖池补缺（**main.go 的 skip 分支也要调用**）。
+//
+// ★★ 2026-10-09：宝箱奖池的新增行只由 seed.Run 里的 backfillEzfyChestPool 补缺，
+// 而多机共享库走 `seed.skip: true` 会跳过整段 seed.Run →
+//
+//	线上加了新奖品（如这次给 4/5/6 号箱加的一批非黄金道具）后，**共享库永远看不到**，
+//	玩家开箱永远开不出新道具，而代码里却以为已经配好了。
+//
+// 与 EnsureEzfyOrderColumns / EnsureEzfyOfficerColumns 同一类坑：新数据要**两条路都挂**。
+func EnsureEzfyChestPool(db *gorm.DB) {
+	backfillEzfyChestPool(db)
+	// ★ 2026-10-09 「4/5/6 号箱出套装概率 = 1%」：老库的行不会被种子覆盖，这里幂等迁移权重。
+	migrateEzfyChestSetWeight(db)
 }
 
 // backfillOfficerEquipSetBonus 给已经灌过的军官装备系列补属性（幂等，只补「还是 0」的）

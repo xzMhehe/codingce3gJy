@@ -3044,3 +3044,29 @@ func EnsureEzfyOfficerColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_officer ADD KEY idx_ezfy_officer_deleted_at (deleted_at)")
 	}
 }
+
+// EnsureEzfyOrderColumns 幂等补 ezfy_order 的后加列（skip 分支必须调用）。
+//
+// ★★ 2026-10-09 发现（与 EnsureEzfyOfficerColumns 同一类，第三次踩）：
+//
+//	`ezfy_order.auto_battle`（2026-10-07「自动战斗」新增）**只靠 seed.Run 里的
+//	AutoMigrate 建列**；多机共享库走 `seed.skip: true` 会跳过整个 seed.Run，
+//	于是共享库上这一列永远不会被创建 → **所有出征下单**的 `INSERT INTO ezfy_order`
+//	报 `ERROR 1054 Unknown column 'auto_battle'`。
+//
+//	而 createOrder 收尾那条 `go func(){ h.DB.Create(&order) }()` **丢掉了 error**，
+//	于是表现为：接口返回「命令已下达」、兵和油照扣，**出征队列里却什么都没有**。
+//	（判据：ezfy_order 最后一条成功写入的时间远早于其它表，且出征接口仍报成功。）
+//
+// 与 EnsureEzfyLimitColumns 同理：新增字段时**要么改这里，要么记得全量 seed 跑一次**。
+func EnsureEzfyOrderColumns(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_order") {
+		return
+	}
+	// 自动战斗：1=到达即自动打完（无需指挥），0=到达后进指挥室等玩家指挥
+	if !db.Migrator().HasColumn("ezfy_order", "auto_battle") {
+		if err := db.Exec("ALTER TABLE ezfy_order ADD COLUMN auto_battle int NOT NULL DEFAULT 1 COMMENT '自动战斗 1是 0否'").Error; err != nil {
+			log.Printf("【严重】ezfy_order.auto_battle 补列失败（所有出征订单写不进库，但兵/油照扣）: %v", err)
+		}
+	}
+}

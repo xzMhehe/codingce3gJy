@@ -473,14 +473,19 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	defSpeedSrc := speedSrc(defSpeedBonus, defEquip.Move)
 	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, ezfyTroopTypesPresent(attackerUnits))
 	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, ezfyTroopTypesPresent(defenderUnits))
+	// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+	//   攻击行早就有 `(军官+0 科技+70)`，防御行原来只有一个裸数字，玩家看不出构成。
+	//   这里把 AtkDefBreak / DefDefBreak 的明细按来源归类 → `(城墙+45 军官+20 科技+70 装备套装+15)`。
+	atkDefSrc := ezfyDefSrcTxt(st.AtkDefBreak)
+	defDefSrc := ezfyDefSrcTxt(st.DefDefBreak)
 	// ★★ 2026-10-09 用户要求「战斗加成拆成两行」：攻方一行、守方一行
 	//   （原来是一行里用 ' | ' 分隔，手机窄屏读起来要来回找）。
 	//   ⚠️ 前端 `reportNiceLines` 里对**老战报**（单行含 ' | '）的分色分支要保留 ——
 	//      库里存量战报还是老格式，不能只认新格式。
-	atkBonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
-		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
-	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
-		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
+	atkBonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%%%s 速度+%d%%%s%s%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
+	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s 速度+%d%%%s%s%s%s",
+		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
@@ -638,6 +643,50 @@ func ezfyDefBonusTxt(label string, items []ezfyBonusItem) string {
 		return ""
 	}
 	return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))
+}
+
+// ezfyDefSrcTxt 「防御加成」的来源拆解括号（与攻击行的 `(军官+0 科技+70)` 同风格）。
+//
+// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+//
+//	原来战斗加成行里攻击有括号、防御只有裸数字，玩家看不出这一截是谁给的。
+//	把 AtkDefBreak / DefDefBreak 的逐项明细按**来源**归类求和：
+//	  城墙 / 军官（属性+技能）/ 科技（含掩体防御等）/ 装备套装
+//	只列非零项，全零返回空串（老战场快照没有明细时不破坏格式）。
+func ezfyDefSrcTxt(items []ezfyBonusItem) string {
+	wall, officer, tech, equip := 0, 0, 0, 0
+	for _, it := range items {
+		if it.Value == 0 {
+			continue
+		}
+		switch {
+		case it.Name == "城墙":
+			wall += it.Value
+		case strings.HasPrefix(it.Name, "军官·"), strings.HasPrefix(it.Name, "军官技能·"):
+			officer += it.Value
+		case it.Name == "装备套装":
+			equip += it.Value
+		default: // 科技·xxx
+			tech += it.Value
+		}
+	}
+	parts := []string{}
+	if wall != 0 {
+		parts = append(parts, fmt.Sprintf("城墙+%d", wall))
+	}
+	if officer != 0 {
+		parts = append(parts, fmt.Sprintf("军官+%d", officer))
+	}
+	if tech != 0 {
+		parts = append(parts, fmt.Sprintf("科技+%d", tech))
+	}
+	if equip != 0 {
+		parts = append(parts, fmt.Sprintf("装备套装+%d", equip))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "(" + strings.Join(parts, " ") + ")"
 }
 
 // ezfyBonusBreakdown 「攻击加成+N%」的来源拆解（军官属性/军官技能/科技/装备），写进战报行动日志。

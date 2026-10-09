@@ -28,6 +28,12 @@ func main() {
 	if !cfg.Seed.Skip {
 		seed.Run(db, cfg.Server.WebDir+"/static")
 	} else {
+		// ★★ 2026-10-09 通用补列（放在最前）：把「model 里有、库里没有」的 ezfy 列**全部**
+		//   幂等补上。这是第 5 次踩「skip 库缺列 → 写入静默失败」之后加的兜底 ——
+		//   之前每次加字段都要手写一个 EnsureXxxColumns，漏一次就出线上事故
+		//   （officer.source / battle.atk_lock / order.auto_battle / report.type_name）。
+		//   只 ADD COLUMN，不删列不改类型，见 seed/ezfy_schema.go。
+		seed.EnsureEzfySchema(db)
 		// ★ 2026-10-05 多机共享库跳过全量 seed 时，新配置列仍要幂等补上
 		//   （gold_prod_mult 等），否则管理端保存报 Unknown column / 黄金产量归零。
 		seed.EnsureEzfyLimitColumns(db)
@@ -44,6 +50,13 @@ func main() {
 		// ★ 2026-10-07 交易行 ezfy_exchange.city_id（挂单所在城市）同样只靠 AutoMigrate 建列，
 		//   skip 分支不补 → 新二进制挂单 INSERT 报 Unknown column 'city_id'，交易行直接挂不了单。
 		seed.EnsureEzfyExchangeColumns(db)
+		// ★★ 2026-10-09 线上隐患：ezfy_order.auto_battle（2026-10-07 自动战斗）同样只靠
+		//   AutoMigrate 建列，skip 分支不补 → 共享库上所有出征下单报 Unknown column，
+		//   而 createOrder 的 Create 在 goroutine 里且忽略 error → 订单静默丢失、兵/油照扣。
+		seed.EnsureEzfyOrderColumns(db)
+		// ★ 2026-10-09 宝箱奖池：新加的道具奖品行也只由 seed.Run 补缺（backfillEzfyChestPool），
+		//   skip 分支不跑 → 共享库上永远开不出新道具。幂等（只补缺、不动已有行）。
+		seed.EnsureEzfyChestPool(db)
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)

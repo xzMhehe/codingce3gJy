@@ -10,13 +10,17 @@ import (
 // ★★ 2026-10-09 用户要求「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
 //
 //	原来守方战损只扣兵（仅攻方获胜时进逃兵营），打一场 PvP 守方掉几万兵一个都回不来。
+//
+// ★ 2026-10-09 同日追加：战报里**不再单独列**「攻方/守方伤兵入营」两行（用户要求，
+// 与尾部「回收比例」重复）→ 这里改成断言「回收比例」那行带了守方数据。
 func TestPvPDefenderWounded(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	for _, want := range []string{
-		"defHealTech = defTech[21] * 2",                          // 守方科技·治愈伤兵
-		`h.officerHasSkill(cityGuard, "机械改造")`,                   // 城守军官技能
-		"h.addWounded(target.ID, g.TroopId, 0, wounded)",         // 守方伤兵入营（type=0 伤兵）
-		`"守方", defRepairedTotal, br.DefenderLosses, defHealTech`, // 战报里也写一行
+		"defHealTech = defTech[21] * 2",                  // 守方科技·治愈伤兵
+		`h.officerHasSkill(cityGuard, "机械改造")`,           // 城守军官技能
+		"h.addWounded(target.ID, g.TroopId, 0, wounded)", // 守方伤兵入营（type=0 伤兵）
+		// 战报里守方占比通过「回收比例」行体现（原来那行「守方伤兵入营」已按要求去掉）
+		"ezfyHealPctLine(repairedTotal, br.AttackerLosses, defRepairedTotal, br.DefenderLosses)",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("PvP 守方伤兵入营未接入（缺 %s）", want)

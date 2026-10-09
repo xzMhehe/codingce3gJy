@@ -41,6 +41,11 @@ func TestWoundedReportLine(t *testing.T) {
 // ★ 2026-10-09：「回收率」在这个游戏里是**伤兵回收率**（机械改造：回收率+10%），
 // 而战报尾部这个字段是**掠夺比例**（战利品占目标资源的比例，平局就是 0%）——
 // 撞词会让玩家以为「伤兵回收 0%」。
+//
+// ★ 2026-10-09 同日追加：用户要求在「掠夺比例」后面**再加一行「回收比例」**，
+// 这一行专指伤兵回收占比、由 ezfyHealPctLine 生成（不写在 battleStatsTail 里）。
+// 所以本测试改成锁两件事：① battleStatsTail 里的战利品字段叫「掠夺比例」；
+// ② 伤兵那一行在 ezfyHealPctLine 里、字面量是「回收比例」。
 func TestBattleStatsTailUsesLootPctLabel(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
 	i := strings.Index(src, "func (h *EzfyHandler) battleStatsTail(")
@@ -54,7 +59,98 @@ func TestBattleStatsTailUsesLootPctLabel(t *testing.T) {
 	if !strings.Contains(body, `掠夺比例:%d%%`) {
 		t.Fatalf("战报尾部应写「掠夺比例」，实际：\n%s", body)
 	}
-	if strings.Contains(body, `回收比例`) {
-		t.Fatalf("战报尾部不该再出现「回收比例」（与伤兵回收率撞词）：\n%s", body)
+	// ★ 伤兵回收那一行不在 battleStatsTail 里（它拿不到伤兵数据）→ 由 ezfyHealPctLine 生成
+	if !strings.Contains(src, `"\n回收比例: "`) {
+		t.Fatal("缺 ezfyHealPctLine 的「回收比例」行（伤兵回收占比）")
+	}
+}
+
+// TestHealPctLine 「回收比例」行 = 伤兵入营占比（基础修复率 + 科技 + 军官技能），攻守各一个。
+//
+// ★ 2026-10-09 用户口径：「回收比例就是伤兵回收比例 总的 基础+科技+军官技能（入伤兵营的）」。
+func TestHealPctLine(t *testing.T) {
+	// 用户实测战报：攻方战损 20458 → 伤兵 6546（32%）；守方战损 12881 → 伤兵 5152（40%）
+	atk := []ezfyUnitGroup{{TroopId: 16, Count: 20458}}
+	def := []ezfyUnitGroup{{TroopId: 16, Count: 12881}}
+	if got, want := ezfyHealPctLine(6546, atk, 5152, def), "\n回收比例: 攻方32% 守方40%"; got != want {
+		t.Fatalf("回收比例行 = %q，期望 %q", got, want)
+	}
+	// 守方无伤兵数据（野地/寇城守军不进伤兵营）→ 只列攻方
+	if got, want := ezfyHealPctLine(6546, atk, 0, nil), "\n回收比例: 攻方32%"; got != want {
+		t.Fatalf("无守方伤兵时 = %q，期望 %q", got, want)
+	}
+	// 多兵种战损合计
+	multi := []ezfyUnitGroup{{TroopId: 16, Count: 1000}, {TroopId: 1, Count: 1000}}
+	if got := ezfyHealPctLine(400, multi, 0, nil); !strings.Contains(got, "攻方20%") {
+		t.Fatalf("多兵种合计不对：%q", got)
+	}
+}
+
+// TestDefSrcTxt 防御加成的来源括号（2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」）。
+func TestDefSrcTxt(t *testing.T) {
+	// 满科技、无军官 → 只有科技段
+	got := ezfyDefSrcTxt([]ezfyBonusItem{
+		{Name: "科技·装甲科技", Value: 30},
+		{Name: "科技·掩体防御", Value: 20},
+		{Name: "科技·重工技术", Value: 20},
+	})
+	if want := "(科技+70)"; got != want {
+		t.Fatalf("科技段 = %q，期望 %q", got, want)
+	}
+	// 含城墙/军官/装备 → 按来源归类，顺序固定
+	got = ezfyDefSrcTxt([]ezfyBonusItem{
+		{Name: "城墙", Value: 45},
+		{Name: "科技·装甲科技", Value: 30},
+		{Name: "军官·冥王", Value: 20},
+		{Name: "军官技能·弧形防御", Value: 60},
+		{Name: "装备套装", Value: 15},
+	})
+	if want := "(城墙+45 军官+80 科技+30 装备套装+15)"; got != want {
+		t.Fatalf("全来源 = %q，期望 %q", got, want)
+	}
+	// 全零 / 空 → 空串（老战场快照没有明细时不破坏格式）
+	if got := ezfyDefSrcTxt([]ezfyBonusItem{{Name: "科技·装甲科技", Value: 0}}); got != "" {
+		t.Fatalf("全零应为空串，实际 %q", got)
+	}
+	if got := ezfyDefSrcTxt(nil); got != "" {
+		t.Fatalf("nil 应为空串，实际 %q", got)
+	}
+}
+
+// TestBonusLineShowsDefSource 「战斗加成」行里防御也要带来源括号。
+//
+// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+//
+//	原来攻击有 `(军官+0 科技+70)`、防御只有裸数字。
+//	满科技、无军官时两边防御都应是「防御+70%(科技+70)」（守方不再叠加城墙）。
+func TestBonusLineShowsDefSource(t *testing.T) {
+	defer stubCritTroops(t)()
+	techBreak := []ezfyBonusItem{
+		{Name: "科技·装甲科技", Value: 30},
+		{Name: "科技·掩体防御", Value: 20},
+		{Name: "科技·重工技术", Value: 20},
+	}
+	st := ezfyNewBattleState(
+		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
+		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
+		70, 70, 70, 0, 0,
+		30, 30,
+		ezfyBattleBonus{}, ezfyBattleBonus{},
+		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		"", "", 0, 0, 0, 0,
+		nil, nil, nil, nil, techBreak,
+		70, techBreak,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 0, 1, 2,
+		ezfyTypeBonus{Speed: map[int]int{}}, ezfyTypeBonus{Speed: map[int]int{}})
+
+	lines := bonusLinesOf(st.Head)
+	if len(lines) != 2 {
+		t.Fatalf("「战斗加成」应为攻/守两行，实际 %d 行：%v", len(lines), lines)
+	}
+	for _, ln := range lines {
+		if !strings.Contains(ln, "防御+70%(科技+70)") {
+			t.Fatalf("防御加成应带来源括号「防御+70%%(科技+70)」：\n%s", ln)
+		}
 	}
 }

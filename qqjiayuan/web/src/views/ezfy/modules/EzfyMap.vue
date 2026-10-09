@@ -255,12 +255,18 @@
 
           <!-- ③ 兵力 -->
           <div class="of-sec">③ 选择兵力</div>
+          <!-- ★ 2026-10-09 「自己被处于指挥时，指挥里面的兵种不能再出征」：
+               本城正在被敌军攻击（指挥中）时，参战守军不能出征（后端 createOrder 硬拦，
+               前端把它们的数量框禁用）；司令部标了「不参与防御」的兵种不参与当次防御，不受影响。 -->
+          <div class="old-line red" v-if="ezfy.orderCalc && ezfy.orderCalc.def_locked">
+            城市正在被敌军攻击(指挥中)：参战部队不能出征；司令部设为「不参与防御」的兵种不受影响。
+          </div>
           <div class="of-rows">
             <div class="of-row" v-for="t in ezfy.trainCfgs" :key="'at' + t.id"
                  :class="{ 'of-off': ezfy.troopCount(t.id) <= 0 }"
-                 :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）'">
+                 :title="t.name + '（现有 ' + ezfy.fmtN(ezfy.troopCount(t.id)) + '，本次最多可派 ' + ezfy.fmtN(ezfy.orderQtyMax(t.id)) + '）' + (ezfy.troopLocked(t.id) ? ' —— 城市正在被敌军攻击(指挥中)，参战部队不能出征' : '')">
               <span class="of-name">{{ t.name }}</span>
-              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}</span>
+              <span class="of-avail">现有 {{ ezfy.fmtN(ezfy.troopCount(t.id)) }}<span class="red" v-if="ezfy.troopLocked(t.id)"> · 参战部队·指挥中不能出征</span></span>
               <span class="of-ctl">
                 <input type="range" class="of-range" min="0" step="1"
                        :max="ezfy.troopCount(t.id)" :value="ezfy.orderQty(t.id)"
