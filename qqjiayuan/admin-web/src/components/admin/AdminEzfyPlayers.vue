@@ -196,55 +196,72 @@
       </div>
     </el-dialog>
 
-    <!-- 编辑 -->
-    <el-dialog title="编辑玩家" :visible.sync="editDlg" width="480px" :close-on-click-modal="false">
+    <!-- 编辑玩家（★ 2026-10-09 优化：每项显示「当前值」、保存前二次确认、昵称必填校验） -->
+    <el-dialog :title="'编辑玩家 —— ' + (editCur.nickname || '')" :visible.sync="editDlg" width="500px" :close-on-click-modal="false">
       <el-form label-width="100px">
         <el-form-item label="玩家昵称">
-          <el-input v-model="form.nickname" maxlength="20" style="width:200px" />
+          <el-input v-model="form.nickname" maxlength="20" style="width:200px" placeholder="1~20 字" />
+          <div class="td-gray" style="font-size:12px">当前：{{ editCur.nickname || '—' }}</div>
         </el-form-item>
         <el-form-item label="军功声望">
-          <el-input-number v-model.number="form.prestige" :min="0" />
+          <el-input-number v-model.number="form.prestige" :min="0" :step="1000" style="width:200px" />
+          <div class="td-gray" style="font-size:12px">
+            当前：{{ fmtNum(editCur.prestige) }}（声望影响军衔与「可建城数」）
+          </div>
         </el-form-item>
         <el-form-item label="阵营">
           <el-radio-group v-model="form.camp">
             <el-radio :label="1">同盟国</el-radio>
             <el-radio :label="2">轴心国</el-radio>
           </el-radio-group>
+          <div class="td-gray" style="font-size:12px">
+            当前：{{ editCur.camp === 2 ? '轴心国' : '同盟国' }}（只影响兵种显示名与阵营标识）
+          </div>
         </el-form-item>
       </el-form>
+      <div class="td-gray" style="font-size:12px">保存后立即生效。改动会写进玩家的二战档案。</div>
       <div slot="footer">
         <el-button @click="editDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="save">保 存</el-button>
       </div>
     </el-dialog>
 
-    <!-- 发放 -->
-    <el-dialog title="发放资源" :visible.sync="grantDlg" width="540px" :close-on-click-modal="false">
-      <el-form label-width="90px">
-        <el-form-item label="黄金">
-          <el-input-number v-model.number="grant.gold" :min="0" :step="1000" />
+    <!-- 发放 / 扣除资源（★ 2026-10-09 优化：可负数扣除、快捷填充、显示目标城与当前存量、钻石并入同一个「发放」按钮） -->
+    <el-dialog :title="'发放 / 扣除资源 —— ' + grantName" :visible.sync="grantDlg" width="620px" :close-on-click-modal="false">
+      <div class="grant-head">
+        <div>目标城市：<b>{{ grantCity || '（无城池）' }}</b></div>
+        <div class="td-gray" style="font-size:12px">
+          当前：黄金 {{ fmtNum(grantCur.gold) }} · 粮食 {{ fmtNum(grantCur.food) }} ·
+          钢铁 {{ fmtNum(grantCur.steel) }} · 石油 {{ fmtNum(grantCur.oil) }} · 稀矿 {{ fmtNum(grantCur.rare) }}
+          <span v-if="grantDiamond"> · 钻石 {{ fmtNum(grantDiamond) }}</span>
+        </div>
+      </div>
+      <el-form label-width="90px" style="margin-top:10px">
+        <el-form-item label="快捷填充">
+          <el-button v-for="p in presets" :key="'ps' + p.v" size="mini" plain @click="fillAll(p.v)">{{ p.t }}</el-button>
+          <el-button size="mini" plain type="danger" @click="fillAll(0)">清零</el-button>
         </el-form-item>
-        <el-form-item label="粮食">
-          <el-input-number v-model.number="grant.food" :min="0" :step="1000" />
+        <el-form-item v-for="f in resFields" :key="f.k" :label="f.t">
+          <el-input-number v-model.number="grant[f.k]" :step="step" :precision="0" style="width:200px" />
+          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur[f.k]) }}</span>
         </el-form-item>
-        <el-form-item label="钢铁">
-          <el-input-number v-model.number="grant.steel" :min="0" :step="1000" />
-        </el-form-item>
-        <el-form-item label="石油">
-          <el-input-number v-model.number="grant.oil" :min="0" :step="1000" />
-        </el-form-item>
-        <el-form-item label="稀矿">
-          <el-input-number v-model.number="grant.rare" :min="0" :step="1000" />
-        </el-form-item>
-        <!-- ★ 钻石由管理端发放（可负数扣减；玩家端只读余额） -->
         <el-form-item label="钻石">
-          <el-input-number v-model.number="grant.diamond" :min="-9999999" :max="9999999" :step="100" />
-          <el-button size="mini" type="warning" plain :loading="diamondSaving" @click="doDiamond">发 放</el-button>
-          <span class="td-mono" style="margin-left:8px">当前：{{ grantDiamond }}</span>
+          <el-input-number v-model.number="grant.diamond" :min="-9999999" :max="9999999" :step="100" style="width:200px" />
+          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantDiamond) }}</span>
+        </el-form-item>
+        <el-form-item label="步进">
+          <el-radio-group v-model="step" size="mini">
+            <el-radio-button :label="1000">1千</el-radio-button>
+            <el-radio-button :label="10000">1万</el-radio-button>
+            <el-radio-button :label="100000">10万</el-radio-button>
+            <el-radio-button :label="1000000">100万</el-radio-button>
+          </el-radio-group>
         </el-form-item>
       </el-form>
-      <!-- [说明·不显示在界面] 提示：资源发放<b>不受主城仓储上限限制</b>（可以超上限堆着）；
-           道具发放已移至「二战风云 → 数据管理 → 道具配置」 -->
+      <div class="td-gray" style="font-size:12px; line-height:1.7">
+        · 填<b>负数</b>即为「扣除」（例如 -10000 = 扣 1 万）；<br/>
+        · 资源发放<b>不受仓储上限限制</b>（可以超上限堆着）；钻石可正可负。
+      </div>
       <div slot="footer">
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
@@ -262,9 +279,16 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
       detailDlg: false, detail: null, detailTab: 'officers',
-      editDlg: false, saving: false, editId: 0, form: {},
+      editDlg: false, saving: false, editId: 0, form: {}, editCur: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
-      diamondSaving: false, grantDiamond: 0,
+      grantDiamond: 0,
+      // ★ 2026-10-09 发放对话框：目标城/当前存量/快捷填充/步进
+      grantName: '', grantCity: '', grantCur: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },      step: 10000,
+      presets: [{ t: '1万', v: 10000 }, { t: '10万', v: 100000 }, { t: '100万', v: 1000000 }, { t: '1000万', v: 10000000 }],
+      resFields: [
+        { k: 'gold', t: '黄金' }, { k: 'food', t: '粮食' }, { k: 'steel', t: '钢铁' },
+        { k: 'oil', t: '石油' }, { k: 'rare', t: '稀矿' }
+      ],
       typeNames: { 1: '侦查', 2: '掠夺', 3: '征服', 4: '采集', 5: '运输', 6: '增援', 7: '派遣' },
       statusNames: { 0: '行进中', 1: '驻守中', 2: '返回中', 3: '已完成', 4: '已阵亡' }
     }
@@ -318,60 +342,97 @@ export default {
     },
     openEdit (row) {
       this.editId = row.user_id
+      this.editCur = { nickname: row.nickname, prestige: row.prestige, camp: row.camp }
       this.form = { nickname: row.nickname, prestige: row.prestige, camp: row.camp }
       this.editDlg = true
     },
     save () {
-      this.saving = true
-      api.put('/admin/ezfy-players/' + this.editId, this.form).then(r => {
-        this.saving = false
-        if (r.code === 0) {
-          this.editDlg = false
-          this.$message.success(r.data.msg || '已保存')
-          this.load()
-        } else this.$message.error(r.msg)
-      })
+      // ★ 2026-10-09 加校验 + 二次确认（原来点了直接改，昵称填空/只空格会被后端静默忽略）
+      const nick = (this.form.nickname || '').trim()
+      if (!nick) { this.$message.warning('玩家昵称不能为空'); return }
+      if (nick.length > 20) { this.$message.warning('玩家昵称最多 20 个字'); return }
+      if (this.form.prestige == null || this.form.prestige < 0) { this.$message.warning('军功声望不能为负'); return }
+      const changes = []
+      if (nick !== this.editCur.nickname) changes.push('昵称：' + this.editCur.nickname + ' → ' + nick)
+      if (this.form.prestige !== this.editCur.prestige) {
+        changes.push('军功声望：' + this.fmtNum(this.editCur.prestige) + ' → ' + this.fmtNum(this.form.prestige))
+      }
+      if (this.form.camp !== this.editCur.camp) {
+        changes.push('阵营：' + (this.editCur.camp === 2 ? '轴心国' : '同盟国') + ' → ' + (this.form.camp === 2 ? '轴心国' : '同盟国'))
+      }
+      if (!changes.length) { this.$message.info('没有改动'); return }
+      this.$confirm('确认修改？\n· ' + changes.join('\n· '), '编辑玩家', { type: 'warning' }).then(() => {
+        this.saving = true
+        api.put('/admin/ezfy-players/' + this.editId, { nickname: nick, prestige: this.form.prestige, camp: this.form.camp }).then(r => {
+          this.saving = false
+          if (r.code === 0) {
+            this.editDlg = false
+            this.$message.success(r.data.msg || '已保存')
+            this.load()
+          } else this.$message.error(r.msg)
+        }).catch(() => { this.saving = false })
+      }).catch(() => {})
     },
+    // ★ 2026-10-09 发放对话框：先把「目标城 + 当前存量 + 钻石余额」拉出来（原来只拉钻石，看不到会发到哪座城）
     openGrant (row) {
       this.grantId = row.user_id
+      this.grantName = row.nickname || ('玩家' + row.user_id)
       this.grant = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 }
       this.grantDiamond = 0
+      this.grantCity = ''
+      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }
       this.grantDlg = true
-      // 拉一下当前钻石余额（玩家端只读，这里给管理员做参考）
       api.get('/admin/ezfy-players/' + row.user_id + '/detail').then(r => {
-        if (r.code === 0 && r.data && r.data.player) this.grantDiamond = r.data.player.diamond || 0
+        if (r.code !== 0 || !r.data) return
+        if (r.data.player) this.grantDiamond = r.data.player.diamond || 0
+        const cs = r.data.cities || []
+        if (cs.length) {
+          // 后端发放落在玩家「当前所在城」（getOrCreateCity），列表里第一座通常就是它
+          const c = cs[0]
+          this.grantCity = c.name + '(' + c.x + ',' + c.y + ')'
+          this.grantCur = { gold: c.gold || 0, food: c.food || 0, steel: c.steel || 0, oil: c.oil || 0, rare: c.rare || 0 }
+        }
       })
     },
-    // ★ 钻石发放（独立接口，可正可负；走「钻石发放」公告通知玩家）
-    doDiamond () {
-      const n = parseInt(this.grant.diamond) || 0
-      if (!n) { this.$message.warning('请填写发放数量（可为负数扣减）'); return }
-      this.diamondSaving = true
-      api.post('/admin/ezfy-players/' + this.grantId + '/diamond', { amount: n, mode: 'add' }).then(r => {
-        this.diamondSaving = false
-        if (r.code === 0) {
-          this.$message.success(r.data.msg || '发放成功')
-          this.grantDiamond = r.data.diamond
-          this.grant.diamond = 0
-        } else this.$message.error(r.msg || '发放失败')
-      }).catch(() => { this.diamondSaving = false })
+    // 快捷填充：五项资源一起填（0 = 清零）
+    fillAll (v) {
+      this.resFields.forEach(f => { this.grant[f.k] = v })
     },
+    // ★ 2026-10-09 一次「发放」同时处理资源与钻石（原来钻石是另一个按钮，容易漏点）
     doGrant () {
-      const hasRes = this.grant.gold > 0 || this.grant.food > 0 || this.grant.steel > 0 ||
-        this.grant.oil > 0 || this.grant.rare > 0
-      if (!hasRes) {
-        this.$message.warning('请先填写发放内容')
-        return
-      }
-      this.saving = true
-      api.post('/admin/ezfy-players/' + this.grantId + '/grant', this.grant).then(r => {
-        this.saving = false
-        if (r.code === 0) {
-          this.grantDlg = false
-          this.$message.success(r.data.msg || '已发放')
-          this.load()
-        } else this.$message.error(r.msg)
-      })
+      const g = this.grant
+      const hasRes = g.gold !== 0 || g.food !== 0 || g.steel !== 0 || g.oil !== 0 || g.rare !== 0
+      const dia = parseInt(g.diamond) || 0
+      if (!hasRes && !dia) { this.$message.warning('请先填写要发放（或扣除）的数量'); return }
+      const lines = []
+      const push = (t, v) => { if (v !== 0) lines.push(t + (v > 0 ? '+' : '') + this.fmtNum(v)) }
+      push('黄金', g.gold); push('粮食', g.food); push('钢铁', g.steel)
+      push('石油', g.oil); push('稀矿', g.rare); push('钻石', dia)
+      const anyNeg = [g.gold, g.food, g.steel, g.oil, g.rare, dia].some(v => v < 0)
+      this.$confirm('给「' + this.grantName + '」' + (anyNeg ? '发放 / 扣除' : '发放') + '：\n· ' +
+        lines.join('\n· ') + '\n（资源入玩家当前所在城，不受仓储上限限制）', '确认发放', { type: anyNeg ? 'warning' : 'info' }).then(() => {
+        this.saving = true
+        // 先发资源（一次请求），再发钻石（独立接口，可正可负）
+        const doDiamond = () => {
+          if (!dia) { this.grantDlg = false; this.$message.success('已发放'); this.load(); return }
+          api.post('/admin/ezfy-players/' + this.grantId + '/diamond', { amount: dia, mode: 'add' }).then(rd => {
+            this.saving = false
+            if (rd.code === 0) {
+              this.grantDlg = false
+              this.$message.success((rd.data && rd.data.msg) || '已发放')
+              this.load()
+            } else this.$message.error(rd.msg || '钻石发放失败')
+          }).catch(() => { this.saving = false })
+        }
+        if (!hasRes) { this.saving = false; doDiamond(); return }
+        api.post('/admin/ezfy-players/' + this.grantId + '/grant', g).then(r => {
+          this.saving = false
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已发放')
+            doDiamond()
+          } else this.$message.error(r.msg)
+        }).catch(() => { this.saving = false })
+      }).catch(() => {})
     },
     del (row) {
       this.$confirm('删除玩家「' + row.nickname + '」将同时清除城池/部队/科技/出征/背包等全部游戏数据，不可恢复！', '危险操作', { type: 'error' }).then(() => {

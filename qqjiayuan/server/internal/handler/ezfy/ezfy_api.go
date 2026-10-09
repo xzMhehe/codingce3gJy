@@ -2797,20 +2797,31 @@ func (h *EzfyHandler) giveResNoCap(city *model.EzfyCity, food, steel, oil, rare,
 	h.saveCityRes(city)
 }
 
-// giveResourcesNoCap 管理端专用发放：**不按仓储上限截断**。
+// giveResourcesNoCap 管理端/礼包专用发放：**不按仓储上限截断**。
 //
 // ★ 2026-09-30 「资源不能累加超过资源最大值（每项资源唯一硬上限，默认 21 亿）」：
-//   管理端发放同样封顶在 21 亿（老数据已超的不拉低、也不再增长）。
-//   如确需超过当前上限，请先在「二战系统配置」把对应 资源最大值 调高再发。
-//   负数是合法的（可用来扣减），但结果不会低于 0。
-func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) {
+//
+//	管理端发放同样封顶在 21 亿（老数据已超的不拉低、也不再增长）。
+//	如确需超过当前上限，请先在「二战系统配置」把对应 资源最大值 调高再发。
+//	负数是合法的（可用来扣减），但结果不会低于 0。
+//
+// ★★ 2026-10-09 用户反馈「发放资源做的不够好」→ 两处修：
+//
+//	① **先懒结算再改**：原来直接读库改资源 + saveCityRes，会把「上次落库到现在」的产量覆盖掉
+//	   （与交易所下架同一个坑）。现在先 `calcResource` 把产量并进来。
+//	② 返回「实际入库的城市」与**实际到账量**（数组顺序 粮/钢/油/稀/金）——
+//	   被封顶/扣到 0 时调用方能明确告诉管理员，而不是只报「已发放」。
+func (h *EzfyHandler) giveResourcesNoCap(uid uint, food, steel, oil, rare, gold int64) (model.EzfyCity, [5]int64) {
 	city := h.getOrCreateCity(uid)
+	h.calcResource(&city) // ★ 先把这段时间的产量结算进来，避免 saveCityRes 覆盖掉
+	b := [5]int64{city.Food, city.Steel, city.Oil, city.Rare, city.Gold}
 	city.Food = ezfyAddResMax("food", city.Food, food)
 	city.Steel = ezfyAddResMax("steel", city.Steel, steel)
 	city.Oil = ezfyAddResMax("oil", city.Oil, oil)
 	city.Rare = ezfyAddResMax("rare", city.Rare, rare)
 	city.Gold = ezfyAddResMax("gold", city.Gold, gold)
 	h.saveCityRes(&city)
+	return city, [5]int64{city.Food - b[0], city.Steel - b[1], city.Oil - b[2], city.Rare - b[3], city.Gold - b[4]}
 }
 
 func (h *EzfyHandler) Welfare(c *gin.Context) {

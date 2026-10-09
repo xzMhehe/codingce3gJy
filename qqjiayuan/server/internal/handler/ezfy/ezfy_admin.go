@@ -383,22 +383,24 @@ func (h *EzfyAdmin) AdminEzfyGrant(c *gin.Context) {
 	msg := "已发放"
 	if in.Gold != 0 || in.Food != 0 || in.Steel != 0 || in.Oil != 0 || in.Rare != 0 {
 		// GM 发放不按仓储上限截断（玩家要多少给多少，可以超上限堆着）
-		ez.giveResourcesNoCap(p.UserID, in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
-		if in.Gold != 0 {
-			msg += fmt.Sprintf(" 黄金%+d", in.Gold)
+		// ★ 2026-10-09 改为返回「实际入库城市 + 实际到账量」：被资源最大值封顶（或扣到 0）时
+		//   管理员能一眼看出「填了 100 万只进去 30 万」，而不是只看到「已发放」。
+		city, got := ez.giveResourcesNoCap(p.UserID, in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
+		msg += " 入「" + city.Name + "」"
+		add := func(label string, want, real int64) {
+			if want == 0 {
+				return
+			}
+			msg += fmt.Sprintf(" %s%+d", label, real)
+			if real != want {
+				msg += fmt.Sprintf("(填%+d, 受资源上限/下限截断)", want)
+			}
 		}
-		if in.Food != 0 {
-			msg += fmt.Sprintf(" 粮食%+d", in.Food)
-		}
-		if in.Steel != 0 {
-			msg += fmt.Sprintf(" 钢铁%+d", in.Steel)
-		}
-		if in.Oil != 0 {
-			msg += fmt.Sprintf(" 石油%+d", in.Oil)
-		}
-		if in.Rare != 0 {
-			msg += fmt.Sprintf(" 稀矿%+d", in.Rare)
-		}
+		add("粮食", in.Food, got[0])
+		add("钢铁", in.Steel, got[1])
+		add("石油", in.Oil, got[2])
+		add("稀矿", in.Rare, got[3])
+		add("黄金", in.Gold, got[4])
 	}
 	for _, it := range in.Items {
 		if it.CfgID <= 0 || it.Count <= 0 {

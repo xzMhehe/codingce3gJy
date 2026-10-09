@@ -28,31 +28,91 @@ import (
 //	② ezfyBattleTick 是「按 round_start 补算」，重复调用不会把回合算多（只会在同一回合上多写一次快照）；
 //	③ 管理端操作是低频手动行为。真要严格互斥需要 DB 乐观锁，当前不做（收益 < 复杂度）。
 
-// AdminEzfyBattles GET /admin/ezfy-battles —— 战场列表
+// ezfyAdminActiveOrderStatus 管理端「战斗队列」纳入的订单状态（**只在进行中**）：
+// 0 出征 / 1 驻守 / 2 返回 / 5 战斗中 / 6 等待。
 //
-// 查询参数：page / size / word（战场ID·订单ID·用户ID·游戏ID·昵称·目标名）/
+// ★ 2026-10-09 用户要求：已结束的不要（战报模块能查），出征队列也要并进来。
+var ezfyAdminActiveOrderStatus = []int{0, 1, 2, ezfyOrderStatusBattle, ezfyOrderStatusWaiting}
+
+// ezfyAdminOrderStatusName 管理端口径的订单状态名（与玩家端「出征 / 返回 / 等待」一致）
+func ezfyAdminOrderStatusName(s int) string {
+	switch s {
+	case 0:
+		return "出征"
+	case 1:
+		return "驻守"
+	case 2:
+		return "返回"
+	case ezfyOrderStatusBattle:
+		return "战斗中"
+	case ezfyOrderStatusWaiting:
+		return "等待"
+	case ezfyOrderStatusProcessing:
+		return "结算中"
+	case 3:
+		return "已完成"
+	case 4:
+		return "已终止"
+	}
+	return "未知"
+}
+
+// ezfyAdminTroopsText 订单兵力 → 紧凑文案（如「航母×204900, 轰炸机×100」）。
+func ezfyAdminTroopsText(troopsJSON string) string {
+	groups := parseGroups(troopsJSON)
+	if len(groups) == 0 {
+		return ""
+	}
+	parts := []string{}
+	for _, g := range groups {
+		if g.Count <= 0 {
+			continue
+		}
+		name := fmt.Sprintf("兵种%d", g.TroopId)
+		if cfg := ezfyCfg.troop(g.TroopId); cfg != nil && cfg.Name != "" {
+			name = cfg.Name
+		}
+		parts = append(parts, fmt.Sprintf("%s×%d", name, g.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// AdminEzfyBattles GET /admin/ezfy-battles —— 战斗队列 = 所有**进行中**的军队行动
 //
-//	status（-1 全部 / 1 进行中 / 2 已结束）/ target_type（0 全部 / 1 野地 / 2 寇城 / 3 玩家城）
+// ★★ 2026-10-09 用户要求（原实现只列战场、含已结束、且很卡）：
+//
+//	① **把出征队列也并进来** → 主表从 `ezfy_battle` 换成 `ezfy_order`
+//	   （每个战场都能对上它的订单），列表里既有「战斗中(5)」也有「出征(0)/驻守(1)/返回(2)/等待(6)」；
+//	② **不要已结束的**（status=3/4 的订单、status=2 的战场）→ 战报模块能查历史；
+//	③ **修 N+1**：原来每行 3 条 SQL（攻方昵称 + 守方昵称 + 订单状态），
+//	   50 行就是 150 条跨 WAN 查询 → 现在**批量**取昵称 / 战场 / 城池（各 1 条）。
+//
+// 查询参数：page / size / word（订单ID·用户ID·游戏ID·昵称）/ kind（订单状态，空=全部）/
+//
+//	target_type（0 全部 / 1 野地 / 2 寇城 / 3 玩家城）
 func (h *EzfyAdmin) AdminEzfyBattles(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
-	status := strings.TrimSpace(c.DefaultQuery("status", "-1"))
 	ttStr := strings.TrimSpace(c.DefaultQuery("target_type", "0"))
+	kindStr := strings.TrimSpace(c.DefaultQuery("kind", ""))
 
-	q := h.DB.Model(&model.EzfyBattle{})
-	if status == "1" || status == "2" {
-		q = q.Where("status = ?", status)
+	q := h.DB.Model(&model.EzfyOrder{}).Where("status IN ?", ezfyAdminActiveOrderStatus)
+	if k, err := strconv.Atoi(kindStr); err == nil {
+		for _, s := range ezfyAdminActiveOrderStatus {
+			if s == k {
+				q = q.Where("status = ?", k)
+				break
+			}
+		}
 	}
 	if tt, err := strconv.Atoi(ttStr); err == nil && tt > 0 {
 		q = q.Where("target_type = ?", tt)
 	}
 	if word != "" {
 		if n, err := strconv.Atoi(word); err == nil {
-			// 数字：战场ID / 订单ID / 攻守双方 user_id / 游戏ID(game_uid)
-			q = q.Where(`id = ? OR order_id = ? OR user_id = ? OR def_user_id = ?
-				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)
-				OR def_user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)`,
-				n, n, n, n, n, n)
+			// 数字：订单ID / 发起人 user_id / 目标ID / 家园号(game_uid)
+			q = q.Where(`id = ? OR user_id = ? OR target_id = ?
+				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)`, n, n, n, n)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
@@ -62,42 +122,93 @@ func (h *EzfyAdmin) AdminEzfyBattles(c *gin.Context) {
 				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
 			ids = append(ids, uids...)
 			if len(ids) > 0 {
-				q = q.Where("(user_id IN ? OR def_user_id IN ? OR target_name LIKE ?)",
-					ids, ids, "%"+word+"%")
+				q = q.Where("user_id IN ?", ids)
 			} else {
-				q = q.Where("target_name LIKE ?", "%"+word+"%")
+				q = q.Where("1 = 0") // 昵称/账号都没命中 → 不返回任何行
 			}
 		}
 	}
 
-	var rows []model.EzfyBattle
 	var total int64
 	q.Count(&total)
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	var orders []model.EzfyOrder
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&orders)
 
-	type rowOut struct {
-		model.EzfyBattle
-		AtkName        string `json:"atk_name"`
-		AtkHome        string `json:"atk_home"`
-		DefName        string `json:"def_name"`
-		DefHome        string `json:"def_home"`
-		OrderStatus    int    `json:"order_status"`
-		TargetTypeName string `json:"target_type_name"`
-		WinName        string `json:"win_name"`
-	}
-	out := []rowOut{}
-	for _, b := range rows {
-		an, ah := h.ezfyAdminName(b.UserID)
-		dn, dh := h.ezfyAdminName(b.DefUserID)
-		os := -1
-		var o model.EzfyOrder
-		if err := h.DB.Select("id, status").First(&o, b.OrderId).Error; err == nil {
-			os = o.Status
+	// —— 批量取关联数据（各 1 条 SQL，替代原来的 N+1）——
+	var oids, cityIds []int64
+	uids := make([]uint, 0, len(orders)*2)
+	for i := range orders {
+		o := &orders[i]
+		if o.Status == ezfyOrderStatusBattle {
+			oids = append(oids, int64(o.ID))
 		}
-		out = append(out, rowOut{EzfyBattle: b, AtkName: an, AtkHome: ah,
-			DefName: dn, DefHome: dh, OrderStatus: os,
-			TargetTypeName: ezfyBattleTargetTypeName(b.TargetType),
-			WinName:        ezfyBattleWinName(b.Status, b.Win)})
+		if o.TargetType == 3 && o.TargetId > 0 {
+			cityIds = append(cityIds, o.TargetId)
+		}
+		uids = append(uids, o.UserID)
+	}
+	battleByOrder := map[int64]model.EzfyBattle{}
+	if len(oids) > 0 {
+		var bs []model.EzfyBattle
+		h.DB.Where("order_id IN ?", oids).Find(&bs)
+		for i := range bs {
+			battleByOrder[bs[i].OrderId] = bs[i]
+			uids = append(uids, bs[i].DefUserID)
+		}
+	}
+	cityOwner := map[int64]uint{}
+	cityName := map[int64]string{}
+	if len(cityIds) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Select("id, user_id, name").Where("id IN ?", cityIds).Find(&cs)
+		for i := range cs {
+			cityOwner[int64(cs[i].ID)] = cs[i].UserID
+			cityName[int64(cs[i].ID)] = cs[i].Name
+			uids = append(uids, cs[i].UserID)
+		}
+	}
+	nick, num := h.ezfyAdminNamesBatch(uids)
+
+	out := []gin.H{}
+	for i := range orders {
+		o := &orders[i]
+		row := gin.H{
+			"id": o.ID, "user_id": o.UserID,
+			"atk_name": nick[o.UserID], "atk_home": num[o.UserID],
+			"order_type": o.OrderType, "order_type_name": ezfyOrderTypeName(o.OrderType),
+			"target_type": o.TargetType, "target_type_name": ezfyBattleTargetTypeName(o.TargetType),
+			"target_x": o.TargetX, "target_y": o.TargetY,
+			"officer":     o.Officer,
+			"troops_text": ezfyAdminTroopsText(o.Troops),
+			"status":      o.Status, "status_name": ezfyAdminOrderStatusName(o.Status),
+			"start_time": o.StartTime, "arrive_time": o.ArriveTime, "return_time": o.ReturnTime,
+			"created_at": o.CreatedAt,
+			"battle_id":  0, "round": 0, "win": 0, "win_name": "",
+		}
+		if o.TargetType == 3 {
+			row["target_name"] = cityName[o.TargetId]
+			if du := cityOwner[o.TargetId]; du > 0 {
+				row["def_user_id"] = du
+				row["def_name"] = nick[du]
+				row["def_home"] = num[du]
+			}
+		} else {
+			lv := ezfyWildlandLevel(o.TargetX, o.TargetY)
+			if o.TargetType == 2 {
+				lv = ezfyKouLevel(o.TargetX, o.TargetY)
+			}
+			row["target_name"] = fmt.Sprintf("%s%d级", ezfyWildTerrainDisplayName(o.TargetX, o.TargetY, true), lv)
+		}
+		if b, ok := battleByOrder[int64(o.ID)]; ok {
+			row["battle_id"] = b.ID
+			row["round"] = b.Round
+			row["win"] = b.Win
+			row["win_name"] = ezfyBattleWinName(b.Status, b.Win)
+			if b.TargetName != "" {
+				row["target_name"] = b.TargetName
+			}
+		}
+		out = append(out, row)
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
