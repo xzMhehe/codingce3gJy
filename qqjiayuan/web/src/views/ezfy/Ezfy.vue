@@ -612,6 +612,8 @@ export default {
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       // ★ 排行页 tab: ranks军衔晋升表 / prestige军衔声望榜 / troops兵力榜 / corps军团榜
       rankTab: 'ranks',
+      // ★ 2026-10-10 晋升防抖：防止快速连点一次晋升多级（promote 期间/短暂冷却内忽略再次点击）
+      promoting: false,
       // ★ 军衔晋升表中「宝物」点击展开的行下标（-1 = 收起）
       showTreasureRow: -1,
       // ★ 战力榜中「战力」点击展开明细的行 rank（-1 = 收起）
@@ -3089,10 +3091,18 @@ export default {
       return m.next.treasures.every(t => t.have >= t.count)
     },
     doPromote () {
+      // ★ 2026-10-10 晋升防抖：promote 请求进行中 / 短暂冷却期内忽略再次点击，
+      //   防止玩家快速连点一次晋升多级（每次点击都成功晋升一级、宝物连扣）。
+      if (this.promoting) return
       if (!this.canPromote()) return
       const next = this.rankData.mine.next
       const req = next.treasures.map(t => t.name + '×' + t.count).join('、')
       if (!window.confirm('确认消耗宝物「' + req + '」晋升至「' + next.name + '」？')) return
+      this.promoting = true
+      const unlock = () => {
+        // 请求完成后短暂冷却，再放开晋升按钮（防止成功后立刻连点下一级）
+        setTimeout(() => { this.promoting = false }, 800)
+      }
       api.post('/games/ezfy/promote', {}).then(r => {
         if (r.code === 0) {
           alert('恭喜晋升至「' + r.data.rank_name + '」！')
@@ -3101,6 +3111,10 @@ export default {
         } else {
           alert(r.msg || '晋升失败')
         }
+        unlock()
+      }).catch(() => {
+        alert('晋升失败，请稍后再试')
+        unlock()
       })
     },
     // ★ 军衔名 → 军衔等级 id：优先取军衔表，军衔表未加载时回落内置 20 级（与后端种子一致）
@@ -6687,6 +6701,11 @@ body.ezfy-ios .ezfy-page textarea {
   font-weight: bold;
   color: #2f4156;
   margin: 6px 0 2px;
+}
+/* ★ 2026-10-10 参谋部标题里的「去招募 | 战俘营」链接缩小到正文大小（不跟大标题） */
+.ezfy-page .panel-title .staff-links {
+  font-size: var(--fs);
+  font-weight: normal;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
 /* ★ 建筑行「升级 / 一键满级 / 拆除」三个操作间隔再大一点（） */

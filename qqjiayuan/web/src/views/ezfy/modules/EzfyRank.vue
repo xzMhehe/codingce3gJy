@@ -18,7 +18,7 @@
           </div>
           <div v-if="ezfy.rankData.mine && ezfy.rankData.mine.next" class="old-line">
             下一军衔：<b>{{ ezfy.rankData.mine.next.name }}</b>（需要声望 <b>{{ ezfy.rankData.mine.next.need }}</b>，当前 {{ ezfy.rankData.mine.prestige }}）
-            <button v-if="ezfy.canPromote()" @click="ezfy.doPromote">[晋升]</button>
+            <button v-if="ezfy.canPromote()" :disabled="ezfy.promoting" @click="ezfy.doPromote">{{ ezfy.promoting ? '[晋升中…]' : '[晋升]' }}</button>
           </div>
           <div v-else-if="ezfy.rankData.mine" class="old-line green">已晋升至最高军衔「{{ ezfy.rankData.mine.rank_name }}」！</div>
 

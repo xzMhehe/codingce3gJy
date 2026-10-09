@@ -88,8 +88,11 @@
     <template v-else-if="ezfy.cur === 'acade'">
       <div class="panel-title">
         参谋部({{ ezfy.officerData.staff_level }}级)
-        <a href="javascript:;" @click="ezfy.switchAcade('search')">去招募</a> |
-        <a href="javascript:;" @click="ezfy.switchAcade('captive')">战俘营</a>
+        <!-- ★ 2026-10-10 「去招募 | 战俘营」从大标题里拿出来、字号缩到正文大小 -->
+        <span class="staff-links">
+          <a href="javascript:;" @click="ezfy.switchAcade('search')">去招募</a> |
+          <a href="javascript:;" @click="ezfy.switchAcade('captive')">战俘营</a>
+        </span>
       </div>
       <div class="acade-tab">
         <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'officer' }" @click="ezfy.switchAcade('officer')">军官</a>|
