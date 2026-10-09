@@ -3925,9 +3925,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += "\n" + wareNote
 		}
 		report += fmt.Sprintf("\n战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
-		if repairedTotal > 0 {
-			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
-		}
+		report += ezfyWoundedReportLine(repairedTotal, br.AttackerLosses, healTech)
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）：**守方视角**标题 = 守方城名+守方坐标
 		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
@@ -3951,9 +3949,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.ReturnTime = now + travel
-		if repairedTotal > 0 {
-			report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
-		}
+		report += ezfyWoundedReportLine(repairedTotal, br.AttackerLosses, healTech)
 		// ★ 军官忠诚：只有**打败仗**才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
 		//   平局不算败仗，不掉忠诚。
 		if leadOfficer != nil && !draw {
@@ -4581,12 +4577,43 @@ func ezfyOfficerBattleExp(enemyDead int64, won bool) int64 {
 }
 
 // battleStatsTail 战报尾部的战果统计段
-// (复刻 `参考材料/开发文档/掠夺报告1.txt` 的 个人荣誉/个人战绩/军团战绩/回收比例 + [双方兵力];
+// (复刻 `参考材料/开发文档/掠夺报告1.txt` 的 个人荣誉/个人战绩/军团战绩/掠夺比例 + [双方兵力];
 // 军功声望与军官经验已在上文正文里输出, 这里不重复)
+//
+// ★ 2026-10-09 用户反馈「pvp 伤兵回收比例有问题」：这里的字段是**掠夺比例**（战利品占目标资源的比例），
+// 与「伤兵回收率」完全无关 —— 但原字段名「回收比例」和游戏里「机械改造：回收率+10%」撞词，
+// 玩家在战报里看到「回收比例:0%」（平局没掠夺到东西）就以为伤兵回收是 0%。改名为「掠夺比例」消除歧义。
 func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int) string {
 	profile := h.ensureProfile(uid)
-	return fmt.Sprintf("\n个人荣誉:%d\n个人战绩:%d\n军团战绩:%d\n回收比例:%d%%\n[双方兵力]",
+	return fmt.Sprintf("\n个人荣誉:%d\n个人战绩:%d\n军团战绩:%d\n掠夺比例:%d%%\n[双方兵力]",
 		profile.Prestige/6, prestigeGain, 0, recyclePct)
+}
+
+// ezfyWoundedReportLine 战报里的「攻方伤兵入营」行。
+//
+// ★ 2026-10-09 用户反馈「pvp 伤兵回收比例应该有问题」——实测这一行的数值**是对的**
+// （攻方战损 10697、航母修复率 20% + 满级治愈伤兵 +20% → 4278 = 40%），
+// 但战报只写一个数字，玩家拿它跟「兵种详情页的修复率 20%」一对就以为算错了。
+// 这里把**占比**和**修复率的额外加成**一并写出来，一眼能对账。
+func ezfyWoundedReportLine(repaired int64, losses []ezfyUnitGroup, healTech int) string {
+	if repaired <= 0 {
+		return ""
+	}
+	var dead int64
+	for _, g := range losses {
+		dead += g.Count
+	}
+	pct := int64(0)
+	if dead > 0 {
+		// ★ 四舍五入：伤兵数是向下取整来的（10697×40% = 4278.8 → 4278），
+		//   直接整除会显示成 39%，玩家又该以为算错了。
+		pct = (repaired*100 + dead/2) / dead
+	}
+	src := ""
+	if healTech > 0 {
+		src = fmt.Sprintf("，修复率额外加成+%d%%", healTech)
+	}
+	return fmt.Sprintf("\n攻方伤兵入营: %d(占攻方战损 %d 的 %d%%%s)", repaired, dead, pct, src)
 }
 
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {

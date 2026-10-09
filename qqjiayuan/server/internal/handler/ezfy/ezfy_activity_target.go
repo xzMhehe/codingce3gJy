@@ -735,9 +735,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		h.addOfficerExp(city, leadOfficer.ID, atkExp)
 		report += fmt.Sprintf("\n军官经验+%d", atkExp)
 	}
-	if repairedTotal > 0 {
-		report += fmt.Sprintf("\n伤兵入营: %d", repairedTotal)
-	}
+	report += ezfyWoundedReportLine(repairedTotal, br.AttackerLosses, healTech)
 	report += h.battleStatsTail(uid, prestigeGain, 50)
 
 	// 返航时长与去程一致
