@@ -191,6 +191,35 @@ func (t *ezfyTypeBonus) addVsType(atkType, defType, v int) {
 	t.AtkVsType[atkType][defType] += v
 }
 
+// ezfyTypeSpeedTxt 兵种专属**速度**加成的展示串（如「(空军+30%)」；无来源 → 空串）。
+//
+// ★★ 2026-10-09 用户要求「科技的移动速度加成有兵种限制完善下」：
+//
+//	「战斗加成」行原来只写一个笼统的「速度+N%」（= 燃烧引擎等通用速度 + 装备移动），
+//	而**兵种专属**速度（喷气引擎=空军速度、军官技能 坦克突袭/闪电袭击/越岛战术=陆/空/海速度）
+//	按 `unit.cfg.Type` 只作用于对应兵种 —— 玩家在汇总行里完全看不到这截，
+//	于是以为「空军速度没生效」。这里把每个有值的兵种单独列出来，与「兵种专属+N%」口径一致。
+func ezfyTypeSpeedTxt(tb ezfyTypeBonus) string {
+	if len(tb.Speed) == 0 {
+		return ""
+	}
+	keys := make([]int, 0, len(tb.Speed))
+	for k, v := range tb.Speed {
+		if v > 0 {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Ints(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s+%d%%", ezfyTroopTypeName(k), tb.Speed[k]))
+	}
+	return "(" + strings.Join(parts, " ") + ")"
+}
+
 type ezfyBattleState struct {
 	Attackers []*ezfyFightUnit
 	Defenders []*ezfyFightUnit
@@ -396,9 +425,13 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 	atkAtkSrc += ")"
 	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d)", st.DefOfficerBonus, defAtkTechPart)
-	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s",
-		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkRangeTxt, atkHpTxt,
-		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defRangeTxt, defHpTxt)
+	// ★★ 2026-10-09 兵种专属速度加成（喷气引擎=空军速度 / 军官兵种速度技能）单独挂在「速度+N%」后面：
+	//   这类加成只作用于对应兵种，汇总行只写一个笼统速度会让人以为没生效（用户反馈）。
+	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType)
+	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType)
+	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt,
+		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defSpeedTypeTxt, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
@@ -857,9 +890,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				if atkFlat = st.AtkType.atkFlatOf(unit.cfg.Type); atkFlat > 0 {
 					typeAtkTxt += fmt.Sprintf(" 兵种攻击+%d", atkFlat)
 				}
-				// ★ 2026-10-07 守方防御加成 = 基础(城墙+科技+城守) + 装备 Def（原来漏了装备 Def，
-				//   战斗加成行显示「防御+X%」与伤害减伤不一致）
-				unitDefBonus = defBonus + st.DefEquip.Def
+				// ★★ 2026-10-09 修复「装备防御被算两遍」（用户确认修复）：
+				//   `defBonus` 上面已经是 `st.DefBonus + st.DefEquip.Def`（DefBonus = 城墙+科技+城守，
+				//   不含装备），这里再 `+ st.DefEquip.Def` 会把装备/套装的防御算**两遍** ——
+				//   战报显示「防御加成+425%(…装备+61%)」实际却按 486% 减伤，显示与伤害对不上。
+				//   直接取 defBonus（= 守方防御明细 DefDefBreak 之和），显示口径与减伤口径一致。
+				unitDefBonus = defBonus
 				equip = st.AtkEquip
 			} else {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
@@ -875,7 +911,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				// ★ 2026-10-07 攻方「防御加成」= 出征军官属性+防御技能(弧形防御/弹幕支援)+装备 Def。
 				//   原来攻方被打时防御恒 0 —— 攻方军官带弧形防御 Lv.5「防御力+150%」完全看不见也不生效（用户反馈）。
-				unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def
+				// ★★ 2026-10-09 修复「装备防御被算两遍」：`st.AtkDefBonus` 在建 atkDefBonus 时
+				//   **已经含** atkEquip.Def（见 ezfy_order.go / ezfy_activity_target.go），
+				//   这里再 + st.AtkEquip.Def 会重复；直接取 st.AtkDefBonus（= AtkDefBreak 之和）。
+				unitDefBonus = st.AtkDefBonus
 			}
 			bonusBreak := atkBonusBreak
 			if !isAtk {
@@ -909,6 +948,14 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					}
 					damage = damage * int64(100+critBonus) / 100
 				}
+			}
+			// ★★ 2026-10-09 暴击发动播报（用户要求「有些装备爆击不是 100%，发动爆击也要有提示，
+			//   就和军官发动技能似的描述下」）：装备/套装的暴击几率是概率值，只有 roll 中了才播报
+			//   一行，读战报时一眼能看到「这一下出了暴击、加了多少伤害」；攻击行里仍保留
+			//   【暴击+N%】标记（多目标级联时能看出具体是哪一下暴击）。
+			if crit {
+				st.Actions = append(st.Actions, fmt.Sprintf("%s%s发动【暴击】！%s，本次攻击伤害+%d%%",
+					side, stName(unit), ezfySlogans[(st.Round*3+11)%len(ezfySlogans)], critBonus))
 			}
 			// ★ 伤害按「剩余伤害」逐目标结算：先把本次全部伤害打在首选目标上；
 			//   若全歼且伤害还有溢出 → 触发【势不可挡】，溢出伤害继续打下一个存活目标，
@@ -1049,13 +1096,15 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					cbAtk = st.DefAtkBonus + cbType
 					cbFlat = st.DefType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 攻方被守方反击 → 攻方防御加成减伤（原来恒 0）
-					cbDef = st.AtkDefBonus + st.AtkEquip.Def
+					//   ★ 2026-10-09 同上修双算：st.AtkDefBonus 已含 atkEquip.Def
+					cbDef = st.AtkDefBonus
 				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击（被还击方=守方）
 					cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)
 					cbAtk = atkBonus + cbType
 					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 守方被攻方反击 → 守方防御加成（基础+装备）减伤
-					cbDef = defBonus + st.DefEquip.Def
+					//   ★ 2026-10-09 同上修双算：defBonus 已含 defEquip.Def
+					cbDef = defBonus
 				}
 				cbTypeTxt := ""
 				if cbType > 0 {
@@ -1066,6 +1115,30 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				}
 				// ★ 反击同样吃反击方的兵种攻击属性加成（绝对值）
 				dmg := ezfyCalcDamage(ezfyPickAttack(target.cfg, unit.cfg)+cbFlat, unit.cfg.Defence, target.count, cbAtk, cbDef)
+				// ★★ 2026-10-09 反击也能触发暴击（用户反馈「军官反击的技能不会触发暴击」）：
+				//   反击方是**被攻击方 target**，暴击按**反击方自己的装备/套装** roll —— 与普通攻击同口径
+				//   （几率封顶 100%、暴击伤害<=0 用基础倍率兜底，见普通攻击段注释）。
+				//   原来反击固定不暴击 → 同一支部队「普通攻击会暴击、反击永远不暴击」，
+				//   玩家看到反击伤害系统性偏低，误以为是数量/公式 bug。
+				cbEquip := st.DefEquip // 守方发动反击 → 用守方装备
+				if !isAtk {
+					cbEquip = st.AtkEquip // 攻方发动反击 → 用攻方装备
+				}
+				cbCrit, cbCritBonus := false, 0
+				if cbEquip.Crit > 0 {
+					chance := cbEquip.Crit
+					if chance > 100 {
+						chance = 100
+					}
+					if rand.Intn(100) < chance {
+						cbCrit = true
+						cbCritBonus = cbEquip.CritDmg
+						if cbCritBonus <= 0 {
+							cbCritBonus = ezfyCritBaseBonusPct
+						}
+						dmg = dmg * int64(100+cbCritBonus) / 100
+					}
+				}
 				// ★★ 2026-10-08 修复「反击消灭的兵比普通攻击还多」（用户反馈「为什么反击伤害还高」）：
 				//
 				//	普通攻击用 `cur.hp`（**有效生命** = 基础血量 ×(1+生命加成)，见 ezfyFightUnit.hp
@@ -1078,6 +1151,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					chp = 1
 				}
 				kCnt := dmg / int64(chp)
+				// ★ 2026-10-09 反击暴击同样「有余数就多杀 1 个」，与普通攻击的暴击向上取整一致
+				if cbCrit && dmg%int64(chp) != 0 {
+					kCnt++
+				}
 				if kCnt < 1 {
 					kCnt = 1
 				}
@@ -1102,8 +1179,15 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					counterOfficer = ezfyOfficerShortName(st.AtkOfficerDesc)
 				}
 				counterSlogan := ezfySlogans[(st.Round*5+2)%len(ezfySlogans)]
-				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s！%s，攻击加成+%d%%%s%s",
-					counterSide, counterOfficer, stName(target), actorBare, stName(unit), counterSlogan, cbAtk, counterBreak, cbTypeTxt)
+				// ★ 2026-10-09 反击暴击播报 + 行内标记（与普通攻击的暴击口径一致）
+				cbCritTxt := ""
+				if cbCrit {
+					cbCritTxt = fmt.Sprintf("【暴击+%d%%】", cbCritBonus)
+					st.Actions = append(st.Actions, fmt.Sprintf("【%s】%s发动【暴击】！%s，本次反击伤害+%d%%",
+						counterSide, stName(target), ezfySlogans[(st.Round*7+5)%len(ezfySlogans)], cbCritBonus))
+				}
+				line := fmt.Sprintf("【%s】%s发动【绝地反击】%s还击%s%s%s！%s，攻击加成+%d%%%s%s",
+					counterSide, counterOfficer, stName(target), actorBare, stName(unit), cbCritTxt, counterSlogan, cbAtk, counterBreak, cbTypeTxt)
 				// 反击行（方向与常规攻击相反：cur 在行动、target 还击）：
 				//   攻方在打(isAtk=true)、守方反击 → 被还击方是攻方 → 展示攻方防御加成；
 				//   守方在打(isAtk=false)、攻方反击 → 被还击方是守方 → 展示守方防御加成。

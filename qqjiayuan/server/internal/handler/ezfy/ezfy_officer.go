@@ -1593,18 +1593,11 @@ func (h *EzfyHandler) officerCounterRounds(o *model.EzfyOfficer) int {
 	return 0
 }
 
-// officerSpeedSkillBonus 军官速度类技能的**行军**加成%（坦克突袭/闪电袭击/越岛战术，随等级 ×N）。
+// ★★ 2026-10-09 行军速度也改成**按兵种**生效（见 ezfy_order.go 的 ezfyMarchSpeed）：
+// 原来的 officerSpeedSkillBonus（不分兵种一律 +10%/级）已删除 —— 越岛战术(海军)带队纯陆军
+// 不再凭空加速，与「喷气引擎=空军速度」这类「有兵种限制」的口径统一。
+// 战斗内速度与行军速度现在都由 officerTypeBonus 按兵种下发（10%×技能等级，见下方 switch）。
 //
-// ★ 2026-10-08 说明：这三个技能在配置里带兵种限定（陆军/空军/海军速度）——
-// **战斗内速度**已改为按兵种下发（见 officerTypeBonus / ezfyTypeBonus，喷气引擎同理）；
-// 这里保留给**行军时间**计算用（行军速度取全军最慢兵种，暂未按兵种细分）。
-func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
-	if o != nil && h.officerSpeedSkill(o) {
-		return 10 * h.officerSkillScale(o)
-	}
-	return 0
-}
-
 // officerTypeBonus 军官**兵种专属**技能加成 → 写进 ezfyTypeBonus。
 //
 // ★★ 2026-10-08 用户确认「按文案严格」—— 配置里的「X 对 Y 攻击」是**按目标**生效的：
@@ -1693,11 +1686,6 @@ func (h *EzfyHandler) officerSkillsBreak(o *model.EzfyOfficer) []ezfyBonusItem {
 // officerBattleBonus 带队军官总攻击加成（军事 + 装备 + 技能）
 func (h *EzfyHandler) officerBattleBonus(o *model.EzfyOfficer) int {
 	return h.officerBaseBonus(o) + h.officerSkillBattleBonus(o)
-}
-
-// officerSpeedSkill 是否带行军/战斗速度类技能(坦克突袭/闪电袭击/越岛战术 任一)
-func (h *EzfyHandler) officerSpeedSkill(o *model.EzfyOfficer) bool {
-	return h.officerHasSkill(o, "坦克突袭") || h.officerHasSkill(o, "闪电袭击") || h.officerHasSkill(o, "越岛战术")
 }
 
 // officerGuardAttrBonus 军官**属性部分**的防御加成（有效学识 ÷ 2）

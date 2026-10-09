@@ -726,7 +726,6 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	}
 
 	valid := []ezfyUnitGroup{}
-	slowest := 0
 	for _, t := range req.Troops {
 		if t.Count <= 0 {
 			continue
@@ -740,27 +739,27 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 			continue
 		}
 		valid = append(valid, t)
-		if slowest == 0 || cfg.Speed < slowest {
-			slowest = cfg.Speed
-		}
 	}
 	// ★ 2026-09-28 负重统一走 ezfyCarryCapOf（含「装载技术」加成）。
 	//   原来这里手写 `carry += cfg.Carry * count`，与 ezfyCarryCapOf 是**两套实现** ——
 	//   加了科技加成后如果只改一处，出征页预览的负重就会和实际出征时校验的负重对不上。
 	carry := h.ezfyCarryCapOf(valid, city.ID, techMap)
 	distance := ezfyAbs(city.X-req.TargetX) + ezfyAbs(city.Y-req.TargetY)
-	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources)
+	oilCost := h.ezfyOilCost(city, req.OrderType, distance, valid, req.Resources, h.officerOilReducePct(lead))
 
 	var travelSec int64
-	if distance > 0 && slowest > 0 {
+	// ★★ 2026-10-09 行军速度按兵种算（燃烧引擎=通用 / 喷气引擎=空军 / 军官速度技能=陆·空·海），
+	//   与 createOrder 共用 ezfyMarchSpeed，保证预览与实际一致。
+	//   ★ 无可出征部队（如纯运输资源）时回落 300 —— 与 createOrder 同口径（原来预览这里会算成 0）。
+	marchSpeed := h.ezfyMarchSpeed(valid, techMap, lead)
+	if marchSpeed < 1 {
+		marchSpeed = 300
+	}
+	if distance > 0 {
 		// ★ 2026-10-05 科技/指挥室/带队军官来自上方并行块（零额外查询）；带队军官只查一次
-		travelSec = int64(distance) * 60 * 300 / int64(slowest)
+		travelSec = int64(distance) * 60 * 300 / int64(marchSpeed)
 		travelSec = travelSec * 100 / int64(100+techMap[12]*2)
 		travelSec = travelSec * 100 / int64(100+stationLv*3)
-		if s := h.officerSpeedSkillBonus(lead); s > 0 {
-			// ★ 2026-10-06 移速技能随军官等级自动升级：-N% 行军时间按当前加成算
-			travelSec = travelSec * 100 / int64(100+s)
-		}
 		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
 		if lead != nil && lead.Military > 0 {
 			travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
@@ -1137,18 +1136,11 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return "海军部队只能出征岛屿/海底森林/沿海平原"
 	}
 	total := int64(0)
-	slowest := int(^uint(0) >> 1)
 	for _, t := range validTroops {
 		total += t.Count
-		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil && cfg.Speed > 0 && cfg.Speed < slowest {
-			slowest = cfg.Speed
-		}
 	}
 	if orderType != 5 && total <= 0 {
 		return "请选择出征部队"
-	}
-	if slowest == int(^uint(0)>>1) {
-		slowest = 300
 	}
 	// ★ 集结令：先校验参数（不超过管理端配置的单次上限、背包要够），再校验兵力与上限
 	if gather < 0 {
@@ -1327,7 +1319,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// 耗油
 	// ★ 2026-10-05 性能：这里**只改内存、不立刻写库** —— 与下面的随军资源合并成**一次**整行写
 	//   （原来油一次 saveCityRes、随军资源再一次 = 2 条 ~240ms 的写往返）。
-	oilCost := h.ezfyOilCost(city, orderType, distance, validTroops, resources)
+	oilCost := h.ezfyOilCost(city, orderType, distance, validTroops, resources, h.officerOilReducePct(lead))
 	if city.Oil < oilCost {
 		return fmt.Sprintf("石油不足: 本次出征需耗油%d, 当前油库仅%d", oilCost, city.Oil)
 	}
@@ -1346,15 +1338,16 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 
 	// ★ 2026-10-05 性能：科技/驿站等级走快照（原来 techMap 2 条 + buildingLevel 1 条）
 	station := blv[20]
-	travelSec := int64(distance) * 60 * 300 / int64(slowest)
+	// ★★ 2026-10-09 行军速度按兵种算（与 /order/preview 共用 ezfyMarchSpeed）：
+	//   燃烧引擎(10)=通用、喷气引擎(19)=只空军、军官速度技能=陆/空/海 —— 原来行军完全不吃科技速度，
+	//   且军官速度技能不分兵种一律生效（与「有兵种限制」的配置口径不符）。
+	marchSpeed := h.ezfyMarchSpeed(validTroops, tech, lead)
+	if marchSpeed < 1 {
+		marchSpeed = 300 // 无可出征部队（如纯运输资源）→ 沿用旧默认速度
+	}
+	travelSec := int64(distance) * 60 * 300 / int64(marchSpeed)
 	travelSec = travelSec * 100 / int64(100+tech[12]*2)
 	travelSec = travelSec * 100 / int64(100+station*3)
-	// 带队军官「移速」技能: 行军 +10%
-	// ★ 2026-10-05 性能：复用上面已经查好的 lead（原来这里又各查一次，共 4 次军官查询）
-	if s := h.officerSpeedSkillBonus(lead); s > 0 {
-		// ★ 2026-10-06 移速技能随军官等级自动升级：-N% 行军时间按当前加成算
-		travelSec = travelSec * 100 / int64(100+s)
-	}
 	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
 	if lead != nil && lead.Military > 0 {
 		travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
@@ -2046,22 +2039,93 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 //
 // ★ 「加个出征油耗开关，默认开；关了出征消耗油 0」→ 关掉时直接返回 0。
 // 出征预览(/order/preview)与真正下单(createOrder)都走这里，所以「看到的 0」就是「实扣的 0」。
+//
+// ★★ 2026-10-09 带队军官「机械改造」技能（回收率+10%、出征油耗-10%/级）：
+//
+//	oilReducePct = 该军官的油耗减免百分点（0 = 无）。减免在**算出原价之后**统一打折，
+//	预览与实际下单传同一个值 → 不会出现「预览便宜、实扣更贵」。最低保底 1 油。
 func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
-	troops []ezfyUnitGroup, resources map[string]int64) int64 {
+	troops []ezfyUnitGroup, resources map[string]int64, oilReducePct int) int64 {
 	if !ezfyMarchOilOn() {
 		return 0
 	}
+	var cost int64
 	if orderType == 5 {
 		f, s, o, r, g := resources["food"], resources["steel"], resources["oil"], resources["rare"], resources["gold"]
-		return maxInt64(1, (f+s+o+r+g)/10000+int64(distance)/50)
+		cost = maxInt64(1, (f+s+o+r+g)/10000+int64(distance)/50)
+	} else {
+		var oilUnitTotal int64
+		for _, t := range troops {
+			if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
+				oilUnitTotal += int64(cfg.OilKeep) * t.Count
+			}
+		}
+		cost = maxInt64(1, oilUnitTotal*int64(distance)/ezfyOilDivGrid)
 	}
-	var oilUnitTotal int64
-	for _, t := range troops {
-		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
-			oilUnitTotal += int64(cfg.OilKeep) * t.Count
+	if oilReducePct > 0 {
+		// 兜底：减免最多 90%（留 10% 保底，避免配置/数据异常把油耗抹成 0）
+		if oilReducePct > 90 {
+			oilReducePct = 90
+		}
+		cost = cost * int64(100-oilReducePct) / 100
+		if cost < 1 {
+			cost = 1
 		}
 	}
-	return maxInt64(1, oilUnitTotal*int64(distance)/ezfyOilDivGrid)
+	return cost
+}
+
+// officerOilReducePct 带队军官「机械改造」的出征油耗减免%（10% × 技能等级；没学 = 0）。
+//
+// 与「回收率（伤兵恢复）+10%×等级」同源（见 ezfy_order.go 战后伤兵入营 / activity_target.go）。
+func (h *EzfyHandler) officerOilReducePct(o *model.EzfyOfficer) int {
+	if o != nil && h.officerHasSkill(o, "机械改造") {
+		return 10 * h.officerSkillScale(o)
+	}
+	return 0
+}
+
+// ezfyMarchSpeed 全军**行军速度**（= 最慢那支部队的「有效速度」，慢的拖后腿）。
+//
+// 有效速度 = 兵种基础速度 × (1 + 通用速度加成 + **该兵种专属**速度加成)
+//
+//	· 通用：燃烧引擎(10)「部队速度+2%/级」→ 全体兵种
+//	· 兵种专属：喷气引擎(19)「空军速度+3%/级」→ 只加空军；
+//	  军官技能 坦克突袭(陆军)/闪电袭击(空军)/越岛战术(海军) → 只加对应兵种
+//
+// ★★ 2026-10-09 用户确认「行军也按兵种接入科技速度」（原来行军完全不吃科技速度，
+// 且军官速度技能无论部队兵种一律 +10% —— 与「有兵种限制」的配置口径不符）：
+//
+//	现在按每支部队各自的兵种算有效速度再取最慢，喷气引擎只在部队含空军时才会真正
+//	缩短行军时间，越岛战术带队纯陆军也不再凭空加速。
+//
+// 出征预览(/order/preview)与真正下单(createOrder)共用本函数，保证「看到的耗时」=「实际的耗时」。
+// 没有任何可出征部队（如纯运输资源）→ 返回 0，调用方回落到旧默认速度 300。
+func (h *EzfyHandler) ezfyMarchSpeed(troops []ezfyUnitGroup, techMap map[int]int, lead *model.EzfyOfficer) int {
+	gen := techMap[10] * 2 // 燃烧引擎：部队速度（通用）
+	tb := ezfyTypeBonus{Speed: map[int]int{}}
+	if v := techMap[19] * 3; v > 0 { // 喷气引擎：只加空军
+		tb.Speed[ezfyTroopTypeAir] += v
+	}
+	tb = h.officerTypeBonus(lead, tb) // 军官速度技能：按兵种
+	slowest := 0
+	for _, t := range troops {
+		if t.Count <= 0 {
+			continue
+		}
+		cfg := ezfyCfg.troop(t.TroopId)
+		if cfg == nil || cfg.Type == ezfyTroopTypeCity || cfg.Speed <= 0 {
+			continue
+		}
+		sp := cfg.Speed * (100 + gen + tb.speedOf(cfg.Type)) / 100
+		if sp < 1 {
+			sp = 1
+		}
+		if slowest == 0 || sp < slowest {
+			slowest = sp
+		}
+	}
+	return slowest
 }
 
 func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec int64) {

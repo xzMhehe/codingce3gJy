@@ -14,9 +14,14 @@ import "testing"
 // 修复后必须满足下面三条，否则「默认是司令部配置的」这句话就是空的。
 
 // ezfyTgtUnit 造一个只关心 troopId / 位置的测试单位
+//
+// ★ 2026-10-09 补 `hp`：引擎的伤害/消灭换算用**有效生命** `unit.hp`
+// （`chp := cur.hp; if chp < 1 { chp = 1 }`）—— 这个 helper 建于 hp 字段之前，
+// 没设 hp → 被当成 1 点血，一笔伤害能「消灭」几千个并触发【势不可挡】溢出，
+// 把无关兵种也打光（TestStepHitsConfiguredTarget 因此长期假红）。
 func ezfyTgtUnit(id string, troopId, pos int) *ezfyFightUnit {
 	return &ezfyFightUnit{
-		id: id, count: 100, initialCount: 100, pos: pos,
+		id: id, count: 100, initialCount: 100, pos: pos, hp: 100,
 		cfg: &ezfyTroopStats{
 			ID: troopId, Name: "兵种", Type: 2, Health: 100,
 			AtkGround: 200, Defence: 10, Speed: 100, AttackRange: 500,

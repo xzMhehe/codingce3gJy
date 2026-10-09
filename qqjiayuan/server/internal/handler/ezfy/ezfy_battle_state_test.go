@@ -21,9 +21,14 @@ func ezfyCmd1(cmd string) map[int]string {
 }
 
 // ezfyTestUnit 造一个测试单位（不走 ezfyStatsOf，避免依赖配置缓存）
+//
+// ★ 2026-10-09 补 `hp`：引擎的伤害→消灭换算用**有效生命** `unit.hp`
+// （`chp := cur.hp; if chp < 1 { chp = 1 }`，真实创建时 = 基础血量 ×(1+装备生命%)）。
+// 这个 helper 建于 hp 字段之前没设它 → 被当成 1 点血，一笔伤害「消灭」几千个并触发
+// 【势不可挡】溢出，把不相干的兵种也打光（多个用例因此长期假红）。
 func ezfyTestUnit(id, name string, pos int, count int64) *ezfyFightUnit {
 	return &ezfyFightUnit{
-		id: id, count: count, initialCount: count, pos: pos,
+		id: id, count: count, initialCount: count, pos: pos, hp: 100,
 		cfg: &ezfyTroopStats{
 			ID: 1, Name: name, Type: 2, Health: 100,
 			AtkGround: 200, Defence: 10, Speed: 100, AttackRange: 500,

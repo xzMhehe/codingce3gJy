@@ -79,11 +79,33 @@ func TestGuardBonusScaled(t *testing.T) {
 	}
 }
 
-// TestSpeedSkillBonusScaled 速度类技能加成必须乘倍率（坦克突袭/闪电袭击/越岛战术）。
+// TestSpeedSkillBonusScaled 速度类技能加成必须乘倍率，且**按兵种**下发。
+//
+// ★ 2026-10-09 行军速度也改为按兵种生效（`ezfy_order.go` 的 `ezfyMarchSpeed`）：
+// 原来「不分兵种一律 +10%/级」的 `officerSpeedSkillBonus` 已删除（越岛战术带队纯陆军不再
+// 凭空加速），速度技能统一由 `officerTypeBonus` 按兵种下发（陆/空/海，10% × 技能等级）。
 func TestSpeedSkillBonusScaled(t *testing.T) {
-	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerSpeedSkillBonus(")
-	if !strings.Contains(body, "10 * h.officerSkillScale(o)") {
-		t.Fatalf("officerSpeedSkillBonus 未按等级乘倍率：\n%s", body)
+	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) officerTypeBonus(")
+	for _, want := range []string{
+		"b.Speed[ezfyTroopTypeArmy] += 10 * scale", // 坦克突袭 → 陆军
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",  // 闪电袭击 → 空军
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale", // 越岛战术 → 海军
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("速度类技能未按兵种 × 倍率下发（缺 %s）：\n%s", want, body)
+		}
+	}
+	// 行军速度必须走按兵种的 ezfyMarchSpeed（燃烧引擎通用 + 喷气引擎/军官技能按兵种）
+	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
+	for _, want := range []string{
+		"techMap[10] * 2",             // 燃烧引擎：通用（全体兵种）
+		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气引擎：只空军
+		"h.officerTypeBonus(lead, tb)",    // 军官速度技能：按兵种
+		"tb.speedOf(cfg.Type)",            // 按兵种取专属加成
+	} {
+		if !strings.Contains(march, want) {
+			t.Fatalf("行军速度未按兵种接入科技/军官速度加成（缺 %s）：\n%s", want, march)
+		}
 	}
 }
 
@@ -269,6 +291,9 @@ func TestDefBonusTxt(t *testing.T) {
 //	· 守方打攻方（含守方绝地反击还击）→ 展示攻方防御加成(atkDefBonusTxt)
 //
 // 2026-10-07 起攻方军官防御技能(弧形防御/弹幕支援)+装备 Def 生效：unitDefBonus 不再恒 0。
+//
+// ★ 2026-10-09 修「装备防御被算两遍」：`st.AtkDefBonus` / `defBonus` 里**已经含**装备 Def，
+// 原来又各加了一次 → 战报显示 425% 实际按 486% 减伤。现在直接取这两个值（口径与展示一致）。
 func TestDefBonusInjected(t *testing.T) {
 	// ★ 2026-10-08 规范化行尾：仓库在 Windows 下是 CRLF（core.autocrlf=true），
 	//   而本测试用 `\n` 拼多行片段 → 原来在 CRLF 工作区**永远匹配不上**（假红）。
@@ -277,8 +302,8 @@ func TestDefBonusInjected(t *testing.T) {
 		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)`,
 		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)`,
 		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
-		"unitDefBonus = st.AtkDefBonus + st.AtkEquip.Def", // 守方打攻方 → 攻方防御减伤
-		"unitDefBonus = defBonus + st.DefEquip.Def",       // 攻方打守方 → 守方防御(含装备)减伤
+		"unitDefBonus = st.AtkDefBonus\n", // 守方打攻方 → 攻方防御减伤（已含装备 Def）
+		"unitDefBonus = defBonus\n",       // 攻方打守方 → 守方防御减伤（已含装备 Def）
 		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {
