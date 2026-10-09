@@ -112,7 +112,9 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 	}
 	// ★ 2026-10-08 一个野地同时只允许一个部队采集：
 	//   本野地已另有部队在采集则直接拒绝（新采集卡控；历史已共存的部队不动，只看未来新发起的）。
-	if n := h.ezfyWildlandCollectingCount(order.TargetId, int64(order.ID)); n > 0 {
+	// ★ 2026-10-09 口径统一到 ezfyWildlandOccupiedCount（在途 order_type=4 也计入），
+	//   与 createOrder 的下单入口同一套判定，避免「在途采集队」漏算。
+	if n := h.ezfyWildlandOccupiedCount(order.TargetId, int64(order.ID)); n > 0 {
 		resp.ParamError(c, "已有部队采集")
 		return
 	}
@@ -352,6 +354,30 @@ func (h *EzfyHandler) ezfyWildlandCollectingCount(targetID, excludeOrderID int64
 	var n int64
 	h.DB.Model(&model.EzfyOrder{}).
 		Where("target_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0 AND id != ?",
+			targetID, excludeOrderID).
+		Count(&n)
+	return n
+}
+
+// ezfyWildlandOccupiedCount 该野地上当前**所有未结束**的部队数（排除 excludeOrderID）。
+//
+// ★★ 2026-10-09 新增：把「一块附属野地同时只能有一支队伍」的卡控统一到**下单入口**。
+//
+//	上面 `ezfyWildlandCollectingCount` 只看「order_type=7 且已在采集(arrive_time>0)」，
+//	是**旧口径**、只在 `StartCollect` 那一步用 —— 拦不住「附属野地 → [采集]」直接
+//	下发新采集订单（order_type=4）这条真正的漏洞路径（见 createOrder 里的说明）。
+//
+//	本函数口径 = 覆盖该野地的**全部活跃队伍**：
+//	  · 在途部队（order_type=4，采购中还没到）—— status IN (0, 1, 5, 6, 98)，即未结束；
+//	  · 驻守/采集部队（order_type=7，status=1）—— 空闲待命或采集中都算「已占位」。
+//	只算未结束态（3 完成 / 4 阵亡 等历史行不计），避免被旧数据永久挡住。
+func (h *EzfyHandler) ezfyWildlandOccupiedCount(targetID, excludeOrderID int64) int64 {
+	if targetID <= 0 {
+		return 0
+	}
+	var n int64
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("target_id = ? AND ((order_type = 4 AND status IN (0, 1, 5, 6, 98)) OR (order_type = 7 AND status = 1)) AND id != ?",
 			targetID, excludeOrderID).
 		Count(&n)
 	return n

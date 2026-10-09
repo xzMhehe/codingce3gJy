@@ -1023,7 +1023,19 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				Count(&dupCnt)
 		},
 		func() {
-			h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 0", uid).Count(&marchingCnt)
+			// ★★ 2026-10-09 修复「出征队列数没卡住」：
+			//   原口径 `user_id = ? AND status = 0` 有两个漏洞：
+			//   ① 按 **user** 统计（不分城市）→ 多城玩家在 A 城派满后，B 城仍能派，
+			//      且官方口径是「**当前城市**的司令部等级」决定该城能同时出征几支；
+			//   ② 只数 `status=0`（在途）→ 采集(order_type=4/7) 到达后 status 变 1，
+			//      **立刻腾出一个名额**，玩家只要在野地上反复「采集→到达→再采集」就能
+			//      无限刷队伍（线上实测单玩家 115 支采集队，远超司令部等级）。
+			//   → 改为按 `city_id` 统计**全部未结束**的该城外出队伍：
+			//      status IN (0 在途, 1 驻守/采集, 2 返航, 5 战斗, 6 等待) —— 只有真正
+			//      结束（3 完成 / 4 阵亡）才释放名额，出发城市与司令部等级一一对应。
+			h.DB.Model(&model.EzfyOrder{}).
+				Where("city_id = ? AND status IN (0,1,2,5,6)", city.ID).
+				Count(&marchingCnt)
 		},
 		func() {
 			var w model.EzfyWildland
@@ -1223,6 +1235,23 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		// ★ 用户规则：采集/派遣都要带一个军官（带队）
 		if officer == "" {
 			return "采集部队必须携带一名军官"
+		}
+		// ★★ 2026-10-09 修复「自己的附属野地只能一支队伍采集」卡控完全失效（线上有人几百支）：
+		//   原实现把「一野地一采集队」的卡控**只做在 `StartCollect`（开始采集）那一步**，
+		//   靠 `ezfyWildlandCollectingCount`（order_type=7 + status=1 + arrive_time>0）拦住。
+		//   但玩家根本不用走那一步 —— 在「附属野地 → [采集]」直接**下发新的采集订单**
+		//   （order_type=4，见前端 openWildGather）就能往同一块自己的野地反复派兵：
+		//   · 每支新部队的 `orderType==4`，与那条卡控查询的 `order_type=7` **口径不一致**，拦不到；
+		//   · 采集订单到达后 `processArrive` 才把它改写成 `order_type=7`，
+		//     而那时新的采集队早已在路上了（只要军官够多就能无限派）。
+		//   于是同一坐标最终堆出几十上百支 `order_type=7` 的采集部队 ——
+		//   正是线上「一块野地 29 支队伍采集」的成因（且全是从 [采集] 入口来的，
+		//   从未经过 StartCollect 的那个检查）。
+		//   → 在这里按**同一套口径**补卡控：本野地只要已有**任何一支**未结束的部队
+		//     （在途 order_type=4 / 驻守采集 order_type=7），就不再接收新的采集订单。
+		//     与 StartCollect 的「已有部队采集」口径对齐，做到「一块附属野地同时只有一支队伍」。
+		if n := h.ezfyWildlandOccupiedCount(targetId, 0); n > 0 {
+			return "该野地已有部队在采集(一支队伍只能采一块野地), 请先[召回]再重新采集"
 		}
 	}
 	if orderType == 7 {
