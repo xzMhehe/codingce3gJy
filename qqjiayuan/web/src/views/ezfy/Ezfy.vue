@@ -349,7 +349,8 @@
 
       <!-- ============ 商城·宝箱开箱详情页 ============ -->
       <!-- ============ chestopen —— 已拆到 modules/Ezfyshop.vue ============ -->
-      <ezfy-shop v-else-if="cur === 'chestopen'"></ezfy-shop>
+      <!-- ★ 2026-10-09 新增宝箱内容页（chestview，查看奖池+单项详情） -->
+      <ezfy-shop v-else-if="cur === 'chestopen' || cur === 'chestview'"></ezfy-shop>
 
       <!-- ============ 交易行(exchange) ============ -->
       <!-- ============ exchange —— 已拆到 modules/Ezfyshop.vue ============ -->
@@ -758,7 +759,8 @@ export default {
       // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
       chestData: { chests: [], gold: 0, diamond: 0 },
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [],
-      chestOpenDetailIdx: -1,   // 开箱详情页「点奖品名查看具体」：当前展开的奖品下标（-1 = 均收起）
+      // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
+      chestViewDetailIdx: -1,
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
@@ -2144,6 +2146,10 @@ export default {
         if (this.mallTab === 'equipment') this.loadEquipShop()
         if (this.mallTab === 'chest') this.loadChests()
       }
+      // ★ 2026-10-09 宝箱内容页：数据还没拉到就拉一次（刷新/直接带 URL 进来时 chestData 是空的）
+      else if (t === 'chestview') {
+        if (!this.chestData.chests.length) this.loadChests()
+      }
       else if (t === 'exchange') this.loadExchange()
       else if (t === 'corps') {
         // ★ 2026-09-25 进入军团页重置子栏缓存 → 再次进入时拉到最新数据；
@@ -2870,11 +2876,14 @@ export default {
       this.shopSlot = s
       this.shopPage = 1
     },
-    // ★ 宝箱奖池：点名字展开/收起（「别直接展示，点击宝箱名字后展示」）
-    toggleChestPool (id) {
-      this.chestPoolId = (this.chestPoolId === id) ? 0 : id
+    // ★ 2026-10-09 宝箱内容页：点宝箱名/[查看] 进独立「宝箱内容」页看奖池与单项详情
+    //   （原来在商城页内联展开奖池，检索/分页/详情全堆一页太乱，拆成独立页）
+    openChestView (ch) {
+      this.chestPoolId = ch.id
       this.chestPoolWord = ''
       this.chestPoolPage = 1
+      this.chestViewDetailIdx = -1
+      this.cur = 'chestview'
     },
     // ★ 背包：点 [说明] 展开/收起道具说明
     toggleBagDesc (cfgId) {
@@ -3246,14 +3255,21 @@ export default {
     // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
     loadChests () {
       api.get('/games/ezfy/chest').then(r => {
-        if (r.code === 0) this.chestData = r.data
+        if (r.code === 0) {
+          this.chestData = r.data
+          // ★ 2026-10-09 宝箱内容页刷新兜底：进页时 chestData 还没拉到，拉完补一个默认宝箱
+          //   （chestPoolCur 从 chestData 里按 chestPoolId 找，找不到就落到第一个）
+          if (!this.chestPoolCur && (r.data.chests || []).length) {
+            this.chestPoolId = r.data.chests[0].id
+          }
+        }
       })
     },
     openChestBuy (ch) {
       this.chestOpen = ch
+      this.chestPoolId = ch.id   // 开箱页 [查看奖池] 能回到同一个宝箱的内容页
       this.chestCount = 1
       this.chestPay = ch.price_diamond > 0 ? 'diamond' : 'gold'
-      this.chestOpenDetailIdx = -1
       // ★ 跳转到独立开箱详情页确认
       this.chestResult = []
       this.cur = 'chestopen'
@@ -3272,8 +3288,8 @@ export default {
           this.chestOpen = null
           this.loadBag()
           this.load()
-          // ★ 开完直接回商城宝箱分类页，结果在「上次开箱结果」展示（go('mall') 会自动刷新宝箱）
-          this.go('mall')
+          // ★ 2026-10-09 简约化：开箱结果直接留在开箱页展示（原来跳回商城塞在「上次开箱结果」里）
+          this.loadChests()
         }))
     },
     // ★ 装备商城（套装件，黄金/钻石购买）

@@ -230,72 +230,97 @@
             </div>
           </template>
           <!-- ★ 宝箱（用钻石/黄金买，开箱按权重出套装件；奖池由管理端维护）
-               ★ 用户规则：套装军官装备的**唯一**获取途径就是这里 -->
+               ★ 用户规则：套装军官装备的**唯一**获取途径就是这里
+               ★ 2026-10-09 简约化：商城只留「宝箱列表」；点宝箱名/[查看] 去独立「宝箱内容」页
+                 看奖池与单项详情，[开箱] 去独立开箱页（原来奖池/检索/分页/结果全堆在这一页太乱） -->
           <template v-else>
-            <!-- ★ 宝箱（说明不写进界面，记在这里）：
-                 · 宝箱用钻石购买（战地补给箱用黄金）；价格 300~800 钻按品质分档；
-                 · 套装宝箱开出的是「整套」（一次给该套全部件，见 ezfyGrantChestPrize 的 Kind=3）；
-                   战地补给箱开单件散件；
-                 · 奖池**不直接铺开** —— 点宝箱名字才展开（「别直接展示」）。 -->
-            <!-- ★ 宝箱列表：奖池点名字才展开 -->
             <table class="ezfy-plain-table">
-              <tr><th>宝箱</th><th>价格</th><th>奖池</th><th>操作</th></tr>
+              <tr><th>宝箱</th><th>价格</th><th>库存</th><th>操作</th></tr>
               <tr v-for="ch in ezfy.chestData.chests" :key="'ch' + ch.id">
                 <td>
-                  <a href="javascript:;" :class="{ on: ezfy.chestPoolId === ch.id }"
-                     @click="ezfy.toggleChestPool(ch.id)">{{ ch.name }}</a>
-                  <span v-if="ch.stock >= 0" :class="ch.stock > 0 ? 'gray' : 'red'">
-                    （库存{{ ch.stock > 0 ? ch.stock : '0已售罄' }}）
-                  </span>
+                  <a href="javascript:;" @click="ezfy.openChestView(ch)">{{ ch.name }}</a>
+                  <span class="gray">（奖池 {{ ch.pool.length }} 项）</span>
                 </td>
                 <td>
                   <span v-if="ch.price_diamond > 0" class="orange">{{ ch.price_diamond }}钻</span>
                   <span v-else>{{ ch.price_gold }}{{ ezfy.resNames.gold }}</span>
                 </td>
-                <td class="gray">{{ ch.pool.length }} 项</td>
                 <td>
+                  <span v-if="ch.stock < 0" class="green">无限</span>
+                  <span v-else :class="ch.stock > 0 ? 'gray' : 'red'">{{ ch.stock > 0 ? ch.stock : '已售罄' }}</span>
+                </td>
+                <td>
+                  <a href="javascript:;" @click="ezfy.openChestView(ch)">[查看]</a>
                   <a v-if="!ch.sold_out" href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
                   <span v-else class="gray">[售罄]</span>
                 </td>
               </tr>
             </table>
-            <!-- ★ 奖池（点宝箱名字才展开）：检索 + 分页 -->
-            <template v-if="ezfy.chestPoolCur">
-              <div class="old-line">
-                <b>{{ ezfy.chestPoolCur.name }}</b> 奖池
-                <span class="gray">{{ ezfy.chestPoolCur.des }}</span>
-                <a href="javascript:;" @click="ezfy.chestPoolId = 0">[收起]</a>
-              </div>
-              <div class="old-line">
-                检索：<input v-model="ezfy.chestPoolWord" type="text" placeholder="奖品名称" style="width:150px"
-                       @input="ezfy.chestPoolPage = 1"/>
-                <span class="gray">共 {{ ezfy.chestPoolAll.length }} 项</span>
-              </div>
-              <table class="ezfy-plain-table">
-                <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
-                <tr v-for="(p, i) in ezfy.chestPoolPaged" :key="'cp' + p.kind + '_' + p.ref_id + '_' + i">
-                  <td>{{ p.name }}</td>
-                  <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
-                  <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-                </tr>
-              </table>
-              <div class="old-line gray" v-if="!ezfy.chestPoolAll.length">(没有匹配的奖品)</div>
-              <div class="ezfy-pager" v-if="ezfy.chestPoolAll.length > ezfy.chestPoolSize">
-                <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage <= 1 }" @click="ezfy.chestPoolPage--">上一页</a>
-                <span class="gray">第 {{ ezfy.chestPoolPage }}/{{ ezfy.chestPoolTotalPages }} 页（共 {{ ezfy.chestPoolAll.length }} 项）</span>
-                <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage >= ezfy.chestPoolTotalPages }" @click="ezfy.chestPoolPage++">下一页</a>
-              </div>
-            </template>
             <div class="old-line gray" v-if="!ezfy.chestData.chests.length">(暂无上架宝箱，请等管理员在后台配置)</div>
             <div class="old-line gray">
               当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}
             </div>
-            <div class="old-line" v-if="ezfy.chestResult && ezfy.chestResult.length"><b>上次开箱结果：</b></div>
-            <div class="old-line" v-for="(r, i) in ezfy.chestResult" :key="'cr' + i">
-              {{ r.name }}<span :class="ezfy.qualityClass(r.quality)">[{{ r.quality }}]</span>
-            </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('bag')">[背包]</a>
+          <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
+        </div>
+    </template>
+    <!-- ★ 2026-10-09 宝箱内容页（chestview）：独立页看奖池，点奖品名展开详情
+         （原来奖池内联堆在商城页里太乱；也从开箱页里抽走，开箱页只留开箱） -->
+    <template v-else-if="ezfy.cur === 'chestview'">
+        <div class="panel">
+          <div class="panel-title">宝箱内容：{{ ezfy.chestPoolCur ? ezfy.chestPoolCur.name : '…' }}</div>
+          <template v-if="ezfy.chestPoolCur">
+            <div class="old-line" v-if="ezfy.chestPoolCur.des">{{ ezfy.chestPoolCur.des }}</div>
+            <div class="old-line">
+              价格：<span v-if="ezfy.chestPoolCur.price_diamond > 0" class="orange">{{ ezfy.chestPoolCur.price_diamond }}钻/个</span>
+              <span v-else>{{ ezfy.chestPoolCur.price_gold }}{{ ezfy.resNames.gold }}/个</span>
+              <span class="gray">· 奖池 {{ ezfy.chestPoolCur.pool.length }} 项</span>
+            </div>
+            <div class="old-line gray">点奖品名可查看具体内容</div>
+            <div class="old-line">
+              检索：<input v-model="ezfy.chestPoolWord" type="text" placeholder="奖品名称" style="width:150px"
+                     @input="ezfy.chestPoolPage = 1"/>
+              <span class="gray">共 {{ ezfy.chestPoolAll.length }} 项</span>
+            </div>
+            <table class="ezfy-plain-table">
+              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
+              <template v-for="(p, i) in ezfy.chestPoolPaged">
+                <tr :key="'cv' + p.kind + '_' + p.ref_id + '_' + i">
+                  <td>
+                    <a href="javascript:;"
+                       :class="{ on: ezfy.chestViewDetailIdx === i }"
+                       @click="ezfy.chestViewDetailIdx = ezfy.chestViewDetailIdx === i ? -1 : i">{{ p.name }}</a>
+                  </td>
+                  <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
+                  <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
+                </tr>
+                <tr v-if="ezfy.chestViewDetailIdx === i" :key="'cvd' + i">
+                  <td colspan="3">
+                    <div class="set-card">
+                      <div class="sc-h"><b>{{ p.name }}</b>
+                        <span :class="ezfy.qualityClass(p.quality)">[{{ p.quality }}]</span>
+                        <span class="gray">{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</span>
+                      </div>
+                      <div class="sc-b" v-if="p.detail">{{ p.detail }}</div>
+                      <div class="sc-b gray" v-else>（暂无更多说明）</div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </table>
+            <div class="old-line gray" v-if="!ezfy.chestPoolAll.length">(没有匹配的奖品)</div>
+            <div class="ezfy-pager" v-if="ezfy.chestPoolAll.length > ezfy.chestPoolSize">
+              <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage <= 1 }" @click="ezfy.chestPoolPage--">上一页</a>
+              <span class="gray">第 {{ ezfy.chestPoolPage }}/{{ ezfy.chestPoolTotalPages }} 页（共 {{ ezfy.chestPoolAll.length }} 项）</span>
+              <a href="javascript:;" :class="{ gray: ezfy.chestPoolPage >= ezfy.chestPoolTotalPages }" @click="ezfy.chestPoolPage++">下一页</a>
+            </div>
+            <div class="old-line">
+              <a v-if="!ezfy.chestPoolCur.sold_out" href="javascript:;" @click="ezfy.openChestBuy(ezfy.chestPoolCur)">[去开箱]</a>
+              <a href="javascript:;" @click="ezfy.go('mall')">[返回商城]</a>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(宝箱数据还没加载出来，稍后再试)</div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>
@@ -383,34 +408,16 @@
           <div class="panel-title">开宝箱</div>
           <div class="old-line gray">当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}</div>
           <template v-if="ezfy.chestOpen">
-            <div class="old-line"><b>{{ ezfy.chestOpen.name }}</b></div>
+            <div class="old-line"><b>{{ ezfy.chestOpen.name }}</b>
+              <a href="javascript:;" @click="ezfy.go('chestview')">[查看奖池]</a>
+            </div>
             <div class="old-line" v-if="ezfy.chestOpen.des">{{ ezfy.chestOpen.des }}</div>
             <div class="old-line">
               价格：
               <span v-if="ezfy.chestOpen.price_diamond > 0" class="orange">{{ ezfy.chestOpen.price_diamond }}钻/个</span>
               <span v-else>{{ ezfy.chestOpen.price_gold }}{{ ezfy.resNames.gold }}/个</span>
+              <span class="gray">· 奖池 {{ ezfy.chestOpen.pool.length }} 项</span>
             </div>
-            <div class="old-line">奖池（{{ ezfy.chestOpen.pool.length }} 项）<span class="gray">（点奖品名可查看具体属性）</span>：</div>
-            <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
-              <!-- ★ 2026-10-07 修复编译错误：Vue 2 的 <template> 上不能带 :key
-                   （报「<template> cannot be keyed」），key 必须放在内部的真实元素上。
-                   这里 template 里有两个 <tr>（主行 + 展开的详情行），各自带 key。 -->
-              <template v-for="(p, i) in ezfy.chestOpen.pool">
-                <tr :key="'cpo' + p.kind + '_' + p.ref_id + '_' + i">
-                  <td>
-                    <a href="javascript:;"
-                       :class="{ on: ezfy.chestOpenDetailIdx === i }"
-                       @click="ezfy.chestOpenDetailIdx = ezfy.chestOpenDetailIdx === i ? -1 : i">{{ p.name }}</a>
-                  </td>
-                  <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
-                  <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-                </tr>
-                <tr v-if="ezfy.chestOpenDetailIdx === i" :key="'cpod' + i">
-                  <td colspan="4" class="gray">{{ p.detail || '（无更多说明）' }}</td>
-                </tr>
-              </template>
-            </table>
             <div class="old-line">
               数量
               <a href="javascript:;" @click="ezfy.chestCount = 1">[1]</a>
@@ -425,7 +432,7 @@
             </div>
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.doOpenChest(ezfy.chestOpen)">[确认开箱]</a>
-              <a href="javascript:;" @click="ezfy.chestOpen = null; ezfy.go('mall')">[取消]</a>
+              <a href="javascript:;" @click="ezfy.chestOpen = null; ezfy.go('back')">[取消]</a>
             </div>
           </template>
           <template v-else-if="ezfy.chestResult && ezfy.chestResult.length">
