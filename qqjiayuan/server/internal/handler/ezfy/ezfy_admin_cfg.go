@@ -1677,11 +1677,11 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 
 	type rowOut struct {
 		model.EzfyEquipment
-		TierName  string  `json:"tier_name"`
-		Count     int     `json:"count"`
-		OwnerName string  `json:"owner_name"`
-		HomeNum   string  `json:"home_num"`
-		OfficerNm string  `json:"officer_name"`
+		TierName  string `json:"tier_name"`
+		Count     int    `json:"count"`
+		OwnerName string `json:"owner_name"`
+		HomeNum   string `json:"home_num"`
+		OfficerNm string `json:"officer_name"`
 		// Details 该聚合组每个实例的明细（穿戴军官 + 所在城），给「查看」弹框用
 		Details []gin.H `json:"details"`
 	}
@@ -1770,14 +1770,39 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
-// AdminEzfyEquipmentOwnedCreate 给玩家发一件装备（按配置生成，落到其主城背包）
+// AdminEzfyEquipmentOwnedCreate 给玩家发装备（按配置生成，落到其主城背包）
+//
+// ★ 2026-10-09 用户要求「给玩家发装备的装备下拉支持多选」：
+//
+//	原来一次只能选 1 种装备（`cfg_id`），管理员配一整套要重复操作十几次。
+//	现在同时接受 `cfg_ids`（数组）与旧的 `cfg_id`（单个，向后兼容）：
+//	  · 传 cfg_ids → 逐个配置发放（每种 ×count）；
+//	  · 只传 cfg_id → 与旧行为完全一致。
+//	`count` 仍是**每种装备**发放的数量（上限 50/种），不是总数。
 func (h *EzfyAdmin) AdminEzfyEquipmentOwnedCreate(c *gin.Context) {
 	var in struct {
-		UserId uint `json:"user_id"`
-		CfgId  int  `json:"cfg_id"`
-		Count  int  `json:"count"`
+		UserId uint  `json:"user_id"`
+		CfgId  int   `json:"cfg_id"`  // 旧字段（单个），兼容保留
+		CfgIds []int `json:"cfg_ids"` // 新字段（多选）
+		Count  int   `json:"count"`
 	}
-	if err := c.ShouldBindJSON(&in); err != nil || in.CfgId <= 0 {
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	// 合并两种入参：cfg_ids 优先，其次回落到单个 cfg_id
+	cfgIds := make([]int, 0, len(in.CfgIds)+1)
+	seen := map[int]bool{}
+	for _, id := range in.CfgIds {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			cfgIds = append(cfgIds, id)
+		}
+	}
+	if len(cfgIds) == 0 && in.CfgId > 0 {
+		cfgIds = append(cfgIds, in.CfgId)
+	}
+	if len(cfgIds) == 0 {
 		resp.ParamError(c, "请选择装备配置")
 		return
 	}
@@ -1796,22 +1821,35 @@ func (h *EzfyAdmin) AdminEzfyEquipmentOwnedCreate(c *gin.Context) {
 		resp.NotFound(c, "玩家不存在")
 		return
 	}
-	var cfg model.EzfyCfgEquipment
-	if err := h.DB.First(&cfg, in.CfgId).Error; err != nil {
+	// ★ 一次查齐所有配置（避免逐个 First 打 N 次库）
+	var cfgs []model.EzfyCfgEquipment
+	h.DB.Where("id IN ?", cfgIds).Find(&cfgs)
+	if len(cfgs) == 0 {
 		resp.NotFound(c, "装备配置不存在")
 		return
 	}
 	ez := h.ezfyH()
 	city := ez.getOrCreateCity(p.UserID)
-	for i := 0; i < in.Count; i++ {
-		h.DB.Create(&model.EzfyEquipment{
-			UserId: p.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
-			Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
-			Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0,
-			Slot: cfg.EquipSlot(), SetId: cfg.SetId,
-		})
+	total := 0
+	names := make([]string, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		names = append(names, cfg.Name)
+		for i := 0; i < in.Count; i++ {
+			h.DB.Create(&model.EzfyEquipment{
+				UserId: p.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
+				Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
+				Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0,
+				Slot: cfg.EquipSlot(), SetId: cfg.SetId,
+			})
+			total++
+		}
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给「%s」发放 %s ×%d", p.Nickname, cfg.Name, in.Count)})
+	msg := fmt.Sprintf("已给「%s」发放 %s ×%d", p.Nickname, strings.Join(names, "、"), in.Count)
+	if len(cfgs) > 1 {
+		msg = fmt.Sprintf("已给「%s」发放 %d 种装备各 ×%d（共 %d 件）：%s",
+			p.Nickname, len(cfgs), in.Count, total, strings.Join(names, "、"))
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 // AdminEzfyEquipmentOwnedUpdate 修改玩家装备（改名/属性/等级/穿戴军官）

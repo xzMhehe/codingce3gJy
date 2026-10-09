@@ -724,16 +724,20 @@
           <el-input-number v-model.number="egForm.user_id" :min="1" controls-position="right" />
           <span class="td-sub" style="margin-left:8px">即用户ID（不是家园号）</span>
         </el-form-item>
+        <!-- ★ 2026-10-09 用户要求「装备下拉支持多选」：multiple + collapse-tags，
+             一次可勾选多种装备，每种各发「数量」件。 -->
         <el-form-item label="装备" required>
-          <el-select v-model="egForm.cfg_id" filterable style="width:320px">
+          <el-select v-model="egForm.cfg_ids" multiple collapse-tags filterable
+                     style="width:340px" placeholder="可多选装备">
             <el-option v-for="e in equips" :key="e.id"
                        :label="e.id + ' · ' + e.name + '（' + e.type + '·' + e.tier_name + '，需求Lv' + e.level + '）'"
                        :value="e.id" />
           </el-select>
+          <div class="td-sub" style="margin-top:2px">可多选；已选 <b>{{ egForm.cfg_ids.length }}</b> 种</div>
         </el-form-item>
         <el-form-item label="数量">
           <el-input-number v-model.number="egForm.count" :min="1" :max="50" controls-position="right" />
-          <span class="td-sub" style="margin-left:8px">最多 50 件</span>
+          <span class="td-sub" style="margin-left:8px">每种最多 50 件</span>
         </el-form-item>
       </el-form>
       <!-- [说明·不显示在界面] 装备会进入玩家主城背包，未穿戴 -->
@@ -846,7 +850,7 @@ export default {
       // 装备查看详情（穿戴军官 + 所在城）
       eevDlg: false, eevRow: null, eevName: '',
       oeWord: '', oeType: '', oeEquipped: -1,
-      egDlg: false, egForm: { user_id: 1, cfg_id: 0, count: 1 },
+      egDlg: false, egForm: { user_id: 1, cfg_ids: [], count: 1 },
       oeDlg: false, oef: {}, ownerOfficers: [],
       // 下拉数据
       pickers: { generals: [], skills: [], officers: [] },
@@ -1252,11 +1256,12 @@ export default {
     },
     openEquipGrant () {
       if (!this.equips.length) this.loadEquips()
-      this.egForm = { user_id: 1, cfg_id: this.equips.length ? this.equips[0].id : 0, count: 1 }
+      // ★ 2026-10-09 装备下拉改多选：cfg_ids 数组（后端同时兼容旧的单个 cfg_id）
+      this.egForm = { user_id: 1, cfg_ids: this.equips.length ? [this.equips[0].id] : [], count: 1 }
       this.egDlg = true
     },
     doEquipGrant () {
-      if (!this.egForm.cfg_id) { this.$message.warning('请选择装备'); return }
+      if (!this.egForm.cfg_ids || !this.egForm.cfg_ids.length) { this.$message.warning('请选择装备'); return }
       this.saving = true
       api.post('/admin/ezfy-equipments-owned', this.egForm).then(r => {
         this.saving = false
