@@ -803,6 +803,11 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	if c, ok := h.ezfyExchangeCityOf(uid, e.CityId); ok {
 		city = c
 	}
+	// ★★ 2026-10-09 用户反馈「交易所下架资源会被吃掉」：根因是这里**没先懒结算**就 saveCityRes ——
+	//   city 是「上次落库那一刻」的旧值，saveCityRes 会把这几分钟/几小时的产量一起覆盖掉。
+	//   与 ExchangeSell 同口径：先把产量结算进来，再退回挂单的资源。
+	h.calcResource(&city)
+	before := city.Food + city.Steel + city.Oil + city.Rare
 	switch e.EsType {
 	case 1:
 		city.Food = ezfyAddResMax("food", city.Food, e.EsCount)
@@ -813,9 +818,17 @@ func (h *EzfyHandler) ExchangeCancel(c *gin.Context) {
 	case 4:
 		city.Rare = ezfyAddResMax("rare", city.Rare, e.EsCount)
 	}
+	after := city.Food + city.Steel + city.Oil + city.Rare
 	h.saveCityRes(&city)
 	h.DB.Model(&model.EzfyExchange{}).Where("id = ?", e.ID).Update("status", 2)
-	resp.OK(c, gin.H{"msg": "已下架, 资源退回"})
+	// ★ 退回量按「资源最大值」封顶，超出部分会被丢弃 → 明确告知（别让玩家以为又是丢资源的 bug）。
+	back := after - before
+	msg := fmt.Sprintf("已下架, 退回%s×%d", ezfyResNames[e.EsType], back)
+	if lost := e.EsCount - back; lost > 0 {
+		msg = fmt.Sprintf("已下架, 退回%s×%d（其中 %d 因资源已达最大值被丢弃, 可先消耗资源再下架）",
+			ezfyResNames[e.EsType], back, lost)
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 // ezfySysSellFeePct 向系统出售资源的手续费百分比（默认 10 = 10%）。

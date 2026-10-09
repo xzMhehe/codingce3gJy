@@ -29,7 +29,8 @@ const (
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
-	ezfyNewCityResCost = 50000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 5 万（★ 2026-09-28 原为 10 万黄金）
+	// ★ 2026-10-09 用户要求「起新城资源各 10 万」（前端文案原来还写着「消耗10万黄金」）→ 5 万改回 10 万。
+	ezfyNewCityResCost = 100000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 10 万（★ 2026-09-28 曾为 10 万黄金；2026-10-09 由各 5 万改回各 10 万）
 	ezfyOilDivGrid     = 300   // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 「采集 12 小时才有宝物 → 4 小时且可配置」：
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
@@ -3752,7 +3753,8 @@ var (
 	ezfySpeedTrainMemo = map[uint]int64{}
 )
 
-// ★ 2026-10-05 人口召集 5 秒卡控（，与训练一键加速一致）
+// ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
+// ★ 2026-10-09 用户要求 5 秒 → **3 秒**（前端 doConvene 同步改）
 var (
 	ezfyConveneMu   sync.Mutex
 	ezfyConveneMemo = map[uint]int64{}
@@ -4020,6 +4022,18 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		resp.ParamError(c, "只能在平原或沿海平原上建造新城（海城需要沿海平原）")
 		return
 	}
+	// ★★ 2026-10-09 用户规则：「坐标必须是自己的附属野地（平原、沿海平原）」——
+	//   起新城要落在自己**已占领**的野地上（`ezfy_wildland.city_id ∈ 我的城`），
+	//   不能随便找块空地就建（否则整张地图的平原都能被抢建）。
+	var wl model.EzfyWildland
+	if err := h.DB.Where("x = ? AND y = ?", req.X, req.Y).First(&wl).Error; err != nil {
+		resp.ParamError(c, "只能在自己占领的野地上建新城（请先征服该野地）")
+		return
+	}
+	if !h.isOwnCity(uid, int64(wl.CityId)) {
+		resp.ParamError(c, "该野地不属于你，只能在自己占领的野地上建新城")
+		return
+	}
 	isSea := terr == ezfyTerrainCoastalPlain
 	var n int64
 	h.DB.Model(&model.EzfyCity{}).Where("x = ? AND y = ?", req.X, req.Y).Count(&n)
@@ -4226,13 +4240,13 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
-	// ★ 2026-10-05 5 秒卡控（，防连点刷人口）
+	// ★ 2026-10-05 卡控（防连点刷人口）；★ 2026-10-09 用户要求 5 秒 → 3 秒
 	{
 		nowCd := time.Now().UnixMilli()
 		ezfyConveneMu.Lock()
-		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < 5000 {
+		if last, ok := ezfyConveneMemo[uid]; ok && nowCd-last < 3000 {
 			ezfyConveneMu.Unlock()
-			resp.ParamError(c, "操作过于频繁, 请 5 秒后再试")
+			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
 			return
 		}
 		if len(ezfyConveneMemo) > 16384 {

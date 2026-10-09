@@ -2730,6 +2730,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-06 守方「防御加成」逐项明细（城墙/科技/军官属性/军官技能/装备，Name 带前缀；被攻击行展示用）
 	var defDefBreak []ezfyBonusItem
 	defRangeBonus := 0
+	// ★ 2026-10-09 PvP 守方「伤兵回收率」的额外加成%（守方治愈伤兵科技 + 城守军官技能·机械改造），
+	//   case 3 里填；守方战损按「兵种修复率 + 这个值」进伤兵营（用户要求守方伤兵也入营 + 吃科技/技能）。
+	defHealTech := 0
+	// ★ 2026-10-09 守方战损入伤兵营的合计（战报里展示「守方伤兵入营」）
+	defRepairedTotal := int64(0)
 	// ★ 2026-10-08 守方**兵种专属**加成（喷气引擎=空军速度、城守的兵种技能；野地/寇城无科技 → 保持空表）
 	defType := ezfyTypeBonus{Atk: map[int]int{}, Speed: map[int]int{}}
 	wildLevel := 0
@@ -2887,6 +2892,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// 城守: 守城防御 +10% 及 防御/掩体/生命/鼓舞技能
 		cityGuard = h.positionOfficer(target.ID, ezfyPositionGuard)
 		defBonus += h.officerGuardBonus(cityGuard)
+		// ★ 2026-10-09 守方「伤兵回收率」的额外加成 = 守方科技·治愈伤兵(21) + 城守军官技能·机械改造。
+		//   与攻方同口径（攻方见下方 healTech）：兵种修复率 + 科技 + 技能。
+		defHealTech = defTech[21] * 2
+		if h.officerHasSkill(cityGuard, "机械改造") {
+			defHealTech += 10 * h.officerSkillScale(cityGuard)
+		}
 		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
 		defType = ezfyTypeBonus{Speed: map[int]int{}}
@@ -3402,7 +3413,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	order.Result = resultStr
 
-	// 防守方(玩家城市)战损扣除与逃兵
+	// 防守方(玩家城市)战损扣除 + 守方伤兵入营 + 逃兵
+	//
+	// ★★ 2026-10-09 用户要求「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
+	//
+	//	原来守方战损**只扣兵、不进伤兵营**（仅「攻方获胜」时按 ezfyDeserterRate 进逃兵营）——
+	//	打一场 PvP，守方掉几万兵一个都回不来。现在与攻方同口径：守方战损按
+	//	「兵种修复率 + 守方科技·治愈伤兵 + 城守军官技能·机械改造」进伤兵营（defHealTech）。
 	if order.TargetType == 3 && target != nil {
 		for _, g := range br.DefenderLosses {
 			if g.Count <= 0 {
@@ -3416,6 +3433,25 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				} else {
 					h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", remain)
 				}
+			}
+		}
+		// 守方伤兵入营（按守方自己的修复率口径，与攻方对称）
+		for _, g := range br.DefenderLosses {
+			if g.Count <= 0 {
+				continue
+			}
+			rate := 10
+			if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
+				rate = cfg.RepairRate
+			}
+			rate += defHealTech
+			wounded := g.Count * int64(rate) / 100
+			if wounded > g.Count {
+				wounded = g.Count
+			}
+			if wounded > 0 {
+				h.addWounded(target.ID, g.TroopId, 0, wounded)
+				defRepairedTotal += wounded
 			}
 		}
 		if win {
@@ -3926,6 +3962,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		report += fmt.Sprintf("\n战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
 		report += ezfyWoundedReportLine(repairedTotal, br.AttackerLosses, healTech)
+		// ★ 2026-10-09 PvP 守方战损也入伤兵营（按守方自己的修复率口径）
+		report += ezfyWoundedReportLineSide("守方", defRepairedTotal, br.DefenderLosses, defHealTech)
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct)
 		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）：**守方视角**标题 = 守方城名+守方坐标
 		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
@@ -3950,6 +3988,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.Status = 2
 		order.ReturnTime = now + travel
 		report += ezfyWoundedReportLine(repairedTotal, br.AttackerLosses, healTech)
+		// ★ 2026-10-09 PvP 守方战损也入伤兵营（按守方自己的修复率口径）
+		report += ezfyWoundedReportLineSide("守方", defRepairedTotal, br.DefenderLosses, defHealTech)
 		// ★ 军官忠诚：只有**打败仗**才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
 		//   平局不算败仗，不掉忠诚。
 		if leadOfficer != nil && !draw {
@@ -4596,6 +4636,13 @@ func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int) st
 // 但战报只写一个数字，玩家拿它跟「兵种详情页的修复率 20%」一对就以为算错了。
 // 这里把**占比**和**修复率的额外加成**一并写出来，一眼能对账。
 func ezfyWoundedReportLine(repaired int64, losses []ezfyUnitGroup, healTech int) string {
+	return ezfyWoundedReportLineSide("攻方", repaired, losses, healTech)
+}
+
+// ezfyWoundedReportLineSide 同 ezfyWoundedReportLine，但可指定归属方（「攻方」/「守方」）。
+//
+// ★ 2026-10-09 PvP 守方战损也进伤兵营后，战报里攻守各要一行，避免看错是谁的伤兵。
+func ezfyWoundedReportLineSide(side string, repaired int64, losses []ezfyUnitGroup, healTech int) string {
 	if repaired <= 0 {
 		return ""
 	}
@@ -4613,7 +4660,7 @@ func ezfyWoundedReportLine(repaired int64, losses []ezfyUnitGroup, healTech int)
 	if healTech > 0 {
 		src = fmt.Sprintf("，修复率额外加成+%d%%", healTech)
 	}
-	return fmt.Sprintf("\n攻方伤兵入营: %d(占攻方战损 %d 的 %d%%%s)", repaired, dead, pct, src)
+	return fmt.Sprintf("\n%s伤兵入营: %d(占%s战损 %d 的 %d%%%s)", side, repaired, side, dead, pct, src)
 }
 
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {

@@ -3803,8 +3803,8 @@ export default {
     },
     // ---- 城市操作 ----
     doConvene () {
-      // ★ 2026-10-05 前端 5 秒卡控（与后端 /city/convene 双保险，防连点刷人口）
-      if (Date.now() - (this.lastConveneAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
+      // ★ 2026-10-09 用户要求：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
+      if (Date.now() - (this.lastConveneAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       api.post('/games/ezfy/city/convene', {}).then(r => {
         if (r.code === 0) this.lastConveneAt = Date.now()
         this.alert(r, '召集完成')

@@ -312,7 +312,8 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 	return out, st.Done
 }
 
-// BgTickBattles 后台兜底推进所有「战斗中」战场 + 自动放行「等待」订单（服务启动时常驻 goroutine）。
+// BgTickBattles 后台兜底推进所有「战斗中」战场 + 自动放行「等待」订单 + **离线玩家的到期活**
+// （服务启动时常驻 goroutine）。
 //
 // ★ 2026-10-01 线上 bug：活动野地/活动寇城/特殊城市的战场 def_user_id=0，
 //
@@ -328,12 +329,28 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 //	processOrders 内部自带 enterProcess 防重入 + processArrive 的 CAS 抢占，
 //	与玩家在线轮询天然互斥，不会重复结算。
 //
-// 性能：每 15 秒 2 条索引查询（status=1 战场 / status=6 等待订单，均很小），
-// 再对命中的少数 uid 各跑一次 processOrders；无战斗无排队时仅 8 次廉价查询/分钟。
+// ★★ 2026-10-09 用户反馈「没在线 军队就一直在路上、建筑升级也一样」：
+//
+//	懒结算只在玩家**发请求**时推进 → 离线玩家（以及别人看他的城/军队）拿到的
+//	是「停在原地」的旧状态。这里补上两类「已到点」的兜底（每 30 秒一次，隔一次 tick）：
+//	  · 到期订单：status=0 且 arrive_time<=now（行军抵达）/ status=2 且 return_time<=now（返航到城）/
+//	    status=1 且 order_type=7 且 arrive_time<=now（驻守采集到点）；
+//	  · 到期建筑升级：ezfy_city_building.end_time<=now（建造/升级/一键连锁）。
+//	命中 uid 后跑 processOrders（订单）+ 逐城 refreshCity（建筑/科技/训练/资源），
+//	与在线轮询同一套结算逻辑，不新增第二套实现。
+//
+// 性能：到期订单走 idx_status（status 只有 0/1/2 三种活状态，行数很小），
+// 建筑表按 end_time 扫（城市数×建筑数，量级 万级以内）；
+// 每轮最多处理 ezfyBgTickMaxUids 个玩家，避免停服后积压造成瞬时雪崩。
 func (h *EzfyHandler) BgTickBattles() {
+	tick := 0
 	for range time.Tick(15 * time.Second) {
+		tick++
+		now := time.Now().UnixMilli()
 		// 只处理「有活跃战场」或「有等待订单」的 uid，避免全量扫描订单表
 		seen := map[uint]bool{}
+		// cityOnly：由「到期建筑/到期订单」发现的 uid —— 这些还要逐城跑一次完整结算
+		cityOnly := map[uint]bool{}
 		var battleUids, waitUids []uint
 		h.DB.Model(&model.EzfyBattle{}).
 			Where("status = ?", 1).
@@ -346,9 +363,53 @@ func (h *EzfyHandler) BgTickBattles() {
 				seen[uid] = true
 			}
 		}
-		for uid := range seen {
-			h.processOrders(uid)
+		// ★ 2026-10-09 离线兜底：每 30 秒（隔一次 tick）补扫「已到点」的行军/返航/采集订单 + 到期建筑
+		if tick%2 == 0 {
+			var dueUids []uint
+			h.DB.Model(&model.EzfyOrder{}).
+				Where("(status = 0 AND arrive_time > 0 AND arrive_time <= ?)"+
+					" OR (status = 2 AND return_time > 0 AND return_time <= ?)"+
+					" OR (status = 1 AND order_type = 7 AND arrive_time > 0 AND arrive_time <= ?)",
+					now, now, now).
+				Distinct("user_id").Pluck("user_id", &dueUids)
+			var bUids []uint
+			h.DB.Raw(`SELECT DISTINCT c.user_id FROM ezfy_city_building b
+				JOIN ezfy_city c ON c.id = b.city_id
+				WHERE b.end_time > 0 AND b.end_time <= ?`, now).Scan(&bUids)
+			for _, uid := range append(dueUids, bUids...) {
+				if uid != 0 {
+					seen[uid] = true
+					cityOnly[uid] = true
+				}
+			}
 		}
+		n := 0
+		for uid := range seen {
+			if n >= ezfyBgTickMaxUids {
+				break // 积压过多 → 本轮到此，下一轮继续（避免瞬时打满数据库）
+			}
+			n++
+			h.processOrders(uid)
+			if cityOnly[uid] {
+				h.settleDueCities(uid)
+			}
+		}
+	}
+}
+
+// ezfyBgTickMaxUids 后台兜底每轮最多处理的玩家数（防止长时间停服后一次性全量结算）。
+const ezfyBgTickMaxUids = 40
+
+// settleDueCities 对该玩家名下每座城跑一次完整懒结算（建筑完工 / 科技完成 / 训练出厂 / 资源产出）。
+//
+// ★ 2026-10-09 专供后台兜底：玩家离线时建筑升级也要「按时完成」，别人（侦查/排行/军团）
+// 看到的才是最新状态。逐城调用与在线轮询同一个 refreshCity，不新增第二套逻辑。
+func (h *EzfyHandler) settleDueCities(uid uint) {
+	var cities []model.EzfyCity
+	h.DB.Where("user_id = ?", uid).Find(&cities)
+	for i := range cities {
+		c := cities[i]
+		h.refreshCity(uid, &c)
 	}
 }
 
