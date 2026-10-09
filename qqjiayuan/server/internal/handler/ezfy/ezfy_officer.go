@@ -598,6 +598,10 @@ func (h *EzfyHandler) hireOfficerDraft(city *model.EzfyCity, uid uint, key strin
 	if pick == nil {
 		return "该候选不存在(可能已被雇佣或已刷新)"
 	}
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：同城已同名 → 拒绝招募
+	if h.ezfyOfficerNameTaken(city.ID, pick.Name, 0) {
+		return "本城已有同名军官「" + pick.Name + "」, 请改名后再招募"
+	}
 	if city.Gold < pick.Cost {
 		return "黄金不足(雇佣需要" + strconv.FormatInt(pick.Cost, 10) + "黄金)"
 	}
@@ -1090,6 +1094,10 @@ func (h *EzfyHandler) recruitCaptive(uid uint, officerId int64) string {
 	if cap := h.officerCapacity(city.ID); h.officerCount(city.ID) >= cap {
 		return "参谋部容量不足(参谋部" + strconv.Itoa(staff) + "级容纳" + strconv.Itoa(cap) + "名军官)"
 	}
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：同城已同名 → 拒绝收编
+	if h.ezfyOfficerNameTaken(city.ID, o.Name, o.ID) {
+		return "本城已有同名军官「" + o.Name + "」, 无法重复收编"
+	}
 	loyalty := o.Loyalty
 	if loyalty < ezfyCaptiveMinLoyalty {
 		loyalty = ezfyCaptiveMinLoyalty
@@ -1164,6 +1172,31 @@ func (h *EzfyHandler) officerByName(cityId uint, name string) *model.EzfyOfficer
 		return nil
 	}
 	return &o
+}
+
+// ezfyOfficerNameTaken 本城是否已存在同名军官（excludeOfficerId > 0 时排除自己）。
+//
+// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：
+//
+//	所有会产生**新军官行**或**改名**的入口都必须过这里 ——
+//	  - 军校招募 hireOfficerDraft
+//	  - 俘虏收编 recruitCaptive
+//	  - 改名 OfficerRename
+//	  - 野地/活动守将俘虏 createCaptiveOfficer
+//	否则就会出现同城一堆同名军官（线上实测同一守将被反复俘 36 次），
+//	而所有「按名字找军官」的地方（officerByName / officerBusyOrder / 出征带队）
+//	只认第一行 → 军官数能无限涨、但管理/出征只看到 1 个 = 玩家反馈的「卡数量」。
+func (h *EzfyHandler) ezfyOfficerNameTaken(cityId uint, name string, excludeOfficerId uint) bool {
+	if name == "" {
+		return false
+	}
+	q := h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ? AND name = ?", cityId, name)
+	if excludeOfficerId > 0 {
+		q = q.Where("id != ?", excludeOfficerId)
+	}
+	var n int64
+	q.Count(&n)
+	return n > 0
 }
 
 // positionOfficer 取本城某职位的军官（1市长 2城守）
@@ -2211,6 +2244,18 @@ func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
 		resp.ParamError(c, "请先卸任「"+ezfyPositionName(o.Position)+"」再派遣")
 		return
 	}
+	// ★★ 2026-10-09 用户规则「玩家城市军官数量不能超过当前城市参谋部等级」：
+	//   派遣是把军官转到**另一座城**，目标城的在职军官位同样要卡（否则多城互调也能堆超编）。
+	//   目标城在职军官数（不含俘虏）已经 >= 目标城参谋部等级 → 拒绝。
+	if cap := h.officerCapacity(dst.ID); h.officerCount(dst.ID) >= cap {
+		resp.ParamError(c, fmt.Sprintf("目标城市「%s」参谋部%d级, 军官位已满(%d/%d), 无法接收", dst.Name, cap, h.officerCount(dst.ID), cap))
+		return
+	}
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：目标城已有同名 → 拒绝
+	if h.ezfyOfficerNameTaken(dst.ID, o.Name, 0) {
+		resp.ParamError(c, "目标城市已有同名军官「"+o.Name+"」, 无法派遣")
+		return
+	}
 	if err := h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).
 		Update("city_id", int64(dst.ID)).Error; err != nil {
 		resp.ParamError(c, "派遣失败："+err.Error())
@@ -2346,6 +2391,15 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 	if h.buildingLevel(city.ID, ezfyBuildingStaff) < 1 {
 		return "" // 没有参谋部, 无法收押
 	}
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」+ 用户反馈「卡数量」根因：
+	//   野地/寇城/活动野地守将原来**没有任何「是否已拥有」判断** → 同一守将被反复俘
+	//   （线上实测 city 22 的 Pater·Wright 被同一玩家连俘 36 次，时间间隔 30~60 秒），
+	//   而同名军官在玩法里只认第一行 → 军官数无限膨胀、界面只显示 1 个，即「卡数量」。
+	//   这里**先查该城是否已有同名**：有就直接跳过（连战俘营空位都不占）。
+	//   ★ 与活动野地的 aw.MaxCapture 口径一致（默认 1 次）；普通野地/寇城同样只允许 1 名。
+	if h.ezfyOfficerNameTaken(city.ID, g.Name, 0) {
+		return ""
+	}
 	// 战俘营容量（★ 2026-10-06 用户规则：战俘营容量 = 参谋部等级 × 4，与在职军官位分开算）
 	if h.captiveCount(city.ID) >= h.captiveCapacity(city.ID) {
 		return ""
@@ -2452,6 +2506,17 @@ func (h *EzfyHandler) defectDefenderOfficers(atkCity *model.EzfyCity, target *mo
 	}
 	for i := range defected {
 		o := &defected[i]
+		// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：
+		//   攻方城里已有同名军官 → 不再重复收押（否则同城同名堆积，军官数「卡」着涨）。
+		//   与 createCaptiveOfficer 同口径：同名一律跳过，连战俘营空位都不占。
+		if h.ezfyOfficerNameTaken(atkCity.ID, o.Name, 0) {
+			h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
+			h.DB.Delete(&model.EzfyOfficer{}, o.ID)
+			b.WriteString("\n敌方军官 " + o.Name + " 忠诚归零离去(我方已有同名军官, 未收押)")
+			h.addReport(target.UserID, 6, "将领叛离: "+o.Name,
+				o.Name+"因忠诚度归零而离开了你的城市。", "", 0, target.ID)
+			continue
+		}
 		if room > 0 {
 			// 收编为攻方战俘(等级/属性保留, 忠诚重置为 30 待收编)
 			// ★ 2026-10-05 Source=抢玩家获取：标记来源，管理端军官列表据此标注
@@ -3308,6 +3373,14 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 	}
 	if name == o.Name {
 		resp.ParamError(c, "新名字与当前名字相同")
+		return
+	}
+	// ★★ 2026-10-09 用户规则「玩家相同城市同名军官只能有一个」：
+	//   原来这里**没有重名校验** → 玩家改名就能把新名字变成「不占军官位」的同一个身份，
+	//   造成同城同名军官堆积（线上实测 201 组重名 / 多出 749 名），
+	//   而按名字查军官的地方只认第一行 → 军官数无限涨但界面只显示 1 个（玩家反馈的「卡数量」）。
+	if h.ezfyOfficerNameTaken(city.ID, name, o.ID) {
+		resp.ParamError(c, "本城已有同名军官「"+name+"」, 请换一个名字")
 		return
 	}
 	if h.itemCount(uid, ezfyOfficerRenameCardItemID) <= 0 {
