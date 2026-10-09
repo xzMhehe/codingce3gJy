@@ -2888,6 +2888,9 @@ export default {
         if (r.code === 0) {
           this.notify(r.msg)
           this.loadDynamics()
+          // ★ 2026-10-09 「点了采集没反应」：附属野地列表(loadWilds)也要重拉，
+          //   否则列表还显示 [开始采集]，看起来像没生效（load() 已不再下发 wildlands）。
+          this.loadWilds()
         } else this.notify(r.msg)
       })
     },
@@ -2899,6 +2902,9 @@ export default {
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
+          // ★ 2026-10-09 「点采集不管用」：附属野地列表必须一起刷新
+          //   （原来只刷 dynamics + load()，而 load() 已不下发 wildlands → 列表停在「[开始采集]」）。
+          this.loadWilds()
         } else this.notify(r.msg)
       })
     },
@@ -2923,11 +2929,12 @@ export default {
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
+          this.loadWilds() // ★ 2026-10-09 附属野地列表一起刷新（否则状态停在旧值）
         } else this.notify(r.msg)
       })
     },
     // ★ 一键召回：先结算未入城产出, 部队返航(资源已在收获/停止时入城, 召回只是撤兵)
-    //   （玩法细则见代码注释：返航前结算未入城产出，满一期给资源+宝物，不满一期只按时长折算资源、无宝物。）
+    //   （玩法细则见代码注释：返航前结算未入城产出，满一期给资源+宝物，不满一期只按时长折算资源，无宝物。）
     async doRecallAll () {
       if (!await this.ask('确定召回所有驻守部队吗？')) return
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
@@ -2935,6 +2942,7 @@ export default {
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
+          this.loadWilds() // ★ 2026-10-09 附属野地列表一起刷新
         } else this.notify(r.msg)
       })
     },
@@ -2959,6 +2967,7 @@ export default {
           this.notify(r.msg)
           this.loadDynamics()
           this.load()
+          this.loadWilds() // ★ 2026-10-09 附属野地列表一起刷新（否则「[停止]」后仍显示采集中）
         } else this.notify(r.msg)
       })
     },
@@ -6163,11 +6172,12 @@ body.ezfy-ios .ezfy-page textarea {
    去掉首链接的左侧留白 → 整条导航左移，与正文左对齐。 */
 .ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
-/* ★ 配色按默认 #004299，当前选中黑色
+/* ★ 配色按默认 #004299，当前选中 #c0392b 加粗
    ★ 用户反馈「点进去后间隔变大，首页里的这个导航就对」：
      根因是这里用 inline-block(会把换行空白算成一个空格宽)，
      而首页导航用的是 inline。改成 inline 并收窄 padding，
-     与首页视觉完全一致。 */
+     与首页视觉完全一致。
+   ★★ 2026-10-09 用户要求「点了的导航加个颜色区分」→ 当前项由黑色改为全站统一的 #c0392b。 */
 .ezfy-page .ezfy-subnav a {
   display: inline;
   padding: 0 1px;
@@ -6177,7 +6187,7 @@ body.ezfy-ios .ezfy-page textarea {
   font-size: var(--fs);
   color: #004299;
 }
-.ezfy-page .ezfy-subnav a.on { color: #000; font-weight: bold; }
+.ezfy-page .ezfy-subnav a.on { color: #c0392b; font-weight: bold; }
 /* ★ 用户「点进去 资源/军官/军队/科技/城防/统帅 左边 和 聊天 的『聊』字对齐」：
    首链接左侧 padding/margin 归零 —— 与 .top-nav a:first-child 同源。
    两者父容器(.old-line / .top-nav)左右 padding 都是 0，归零后文字左边缘必定对齐。 */
@@ -6505,6 +6515,20 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .acade-tab a { color: #2f4156; }
 .ezfy-page .acade-tab a.on { color: #c0392b; font-weight: bold; }
+/* ★★ 2026-10-09 导航交互：**当前所在的那一项不可再点**（避免重复点击 → 重复请求/重复加载），
+   并且已经用颜色高亮区分（上面三条 .on 规则）。
+   覆盖：二级导航(资源/军官/军队/科技/城防/统帅)、底部导航(军事/资源/地图/…/市政)、
+        各模块 tab(.acade-tab：军官/计谋/招募…、军情四区、军团六栏、商城/排行/签到…)。
+   ⚠️ **顶部「聊天 邮箱 军情 任务 好友 首页」(.top-nav) 不在内** ——
+      用户明确要求那几个「点了还能点」（再点=重新拉一遍，例如军情刷新）。
+   用 pointer-events:none 而不是改 @click：点击直接落到父元素，处理函数不会执行。 */
+.ezfy-page .ezfy-subnav a.on,
+.ezfy-page .ezfy-bottom-nav a.on,
+.ezfy-page .old-line.home-nav2 a.on,
+.ezfy-page .acade-tab a.on {
+  pointer-events: none;
+  cursor: default;
+}
 /* ★ 2026-09-29 司令部 tab(兵种配置/出征队列/伤兵营/逃兵营/预设编队) 间隔大一点点，
    仅这组生效（其余 acade-tab 不带 hq-tab 类，间隔保持不变） */
 .ezfy-page .acade-tab.hq-tab a { margin-right: 10px; }

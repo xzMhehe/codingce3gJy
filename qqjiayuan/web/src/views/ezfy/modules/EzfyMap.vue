@@ -575,16 +575,20 @@
             军官：{{ o.officer || '无' }}<br/>
             {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}<br/>
             <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
-                 规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。 -->
-            <template v-if="o.status === 1 && o.arrive_time">
+                 规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。
+                 ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：liveGather 在客户端时钟
+                   略慢于服务端 / 缺 gather 字段时返回 null → o._lg 为 undefined，原来直接读
+                   o._lg.food 会在渲染期抛 TypeError，**整条队列渲染失败被隐藏**。
+                   现在条件里带上 `o._lg`，拿不到就退化成「统计中…」。 -->
+            <template v-if="o.status === 1 && o.arrive_time && o._lg">
               <span class="green">本期已采：{{ ezfy.fmtN(o._lg.food) }}粮/{{ ezfy.fmtN(o._lg.steel) }}钢/{{ ezfy.fmtN(o._lg.oil) }}油/{{ ezfy.fmtN(o._lg.rare) }}稀/{{ ezfy.fmtN(o._lg.gold) }}金</span><br/>
               <span class="gray">总 {{ ezfy.fmtN(o._lg.total) }}（负重 {{ ezfy.fmtN(o._lg.total) }}/{{ ezfy.fmtN(o.carry_cap) }}）</span>
               <!-- ★ 2026-10-05 去掉「负重已满, 超出部分会直接入库(可停止或收获)。」这行提示
                    —— 属于无用提示，玩家看负重条就够。规则仍然生效（见后端
-                   processArrive 采集分支：超出负重部分直接入起点城市，不丢弃），只是不再在界面上提示。
-                   对应字段 o._lg.full 仍在用（下面负重进度条按它变色），不要一起删。 -->
+                   processArrive 采集分支：超出负重部分直接入起点城市，不丢弃），只是不再在界面上提示。 -->
               <br/>
             </template>
+            <span v-else-if="o.status === 1 && o.arrive_time" class="gray">本期已采：统计中…</span>
             <br/>
             <span v-if="o.status === 0 || o.status === 1">
               <a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[取消]</a><br/>

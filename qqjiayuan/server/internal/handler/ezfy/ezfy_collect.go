@@ -20,17 +20,26 @@ import (
 // ★ 2026-09-24 用户规则: 采集部队到达野地后驻守**空闲**, 需手工点[采集]才开始。
 //   「一键采集」= 对本城所有**空闲驻军**(status=1, arrive_time=0)批量下达采集命令;
 //   派新部队到未驻守的野地走「附属野地 → [采集]」。
+//
+// ★★ 2026-10-09 用户反馈「一键采集只对**当前城市**的采集空闲部队生效」：
+//
+//	原来只按 `user_id` 过滤 —— 玩家有多座城时，会把**别的城市**的空闲驻军也一起下达采集，
+//	而军情→驻军 tab 是按当前城展示的（ReportDynamics 传 city_id）→ 玩家看到的列表里
+//	根本没有那几支部队，却提示「已对 N 支下达」，与「一键召回」（已按 city_id 收口）也不一致。
+//	现在与 一键召回 同口径：只处理 `city_id = 当前城` 的空闲驻军。
 func (h *EzfyHandler) CollectAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
+	current := h.currentCity(uid)
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0", uid).
+	h.DB.Where("user_id = ? AND city_id = ? AND status = 1 AND order_type = 7 AND arrive_time = 0",
+		uid, current.ID).
 		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)")
+		resp.ParamError(c, "当前城市没有空闲的驻军部队(派采集队请到「附属野地 → [采集]」; 已开始采集的部队等待结算即可)")
 		return
 	}
 	// ★★ 2026-09-28 资源已满的守卫：一键采集前逐城判定，避免「采完了收获却是 0」。
@@ -138,21 +147,26 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 //   只是一个批量、一个单个 —— 都是「把已产出的资源收进起点城市」。
 //   所以本接口 = 对每支在采集的部队走一遍「结算 → 入起点城 → 停止采集(原地待命)」。
 //   （原实现只结算 carry 不落库、还要等召回返航，导致玩家以为资源丢了。）
+//
+// ★★ 2026-10-09 与「一键采集 / 一键召回」同口径：只处理**当前城市**出发的采集部队
+//   （军情→驻军 tab 本身就是按当前城展示的，批量操作不该越界到别的城）。
 func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
 	h.processOrders(uid)
 	now := time.Now().UnixMilli()
+	current := h.currentCity(uid)
 	var req struct {
 		Force bool `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 确认后 force=true 才真正结算
 	}
 	_ = c.ShouldBindJSON(&req)
 
 	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0", uid).
+	h.DB.Where("user_id = ? AND city_id = ? AND order_type = 7 AND status = 1 AND arrive_time > 0",
+		uid, current.ID).
 		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
-		resp.ParamError(c, "没有正在采集的部队")
+		resp.ParamError(c, "当前城市没有正在采集的部队")
 		return
 	}
 

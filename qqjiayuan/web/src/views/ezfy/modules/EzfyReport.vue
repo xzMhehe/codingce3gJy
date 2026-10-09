@@ -72,13 +72,18 @@
               <!-- ★ 2026-10-02 出站驻军(增援盟友城): 不可采集, 只能[召回]撤兵 -->
               <span v-else-if="o.status === 3"><a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[召回]</a></span><br/>
               <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
-                   规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。 -->
-              <template v-if="o.status === 1 && o.arrive_time">
+                   规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。
+                   ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：
+                     liveGather 在「客户端时钟略慢于服务端 / 缺 gather 字段」时返回 null → o._lg 为 undefined，
+                     而原来这里直接读 o._lg.food → 渲染期 TypeError → **整个列表渲染失败被隐藏**。
+                     现在把 `o._lg` 也放进条件，拿不到就退化成「统计中…」，不再崩。 -->
+              <template v-if="o.status === 1 && o.arrive_time && o._lg">
                 <span class="green">本期已采：{{ ezfy.fmtN(o._lg.food) }}粮/{{ ezfy.fmtN(o._lg.steel) }}钢/{{ ezfy.fmtN(o._lg.oil) }}油/{{ ezfy.fmtN(o._lg.rare) }}稀/{{ ezfy.fmtN(o._lg.gold) }}金</span>
                 <span class="gray">（总 {{ ezfy.fmtN(o._lg.total) }}，负重 {{ ezfy.fmtN(o._lg.total) }}/{{ ezfy.fmtN(o.carry_cap) }}）</span>
                 <!-- ★ 2026-10-05 去掉「负重已满, 超出部分会直接入库(可停止或收获)。」提示
                      （无用提示，看负重条即可）。规则仍生效：后端采集结算把超出负重部分直接入起点城市。 -->
               </template>
+              <span v-else-if="o.status === 1 && o.arrive_time" class="gray">本期已采：统计中…</span>
               <span v-else-if="o.status === 1" class="gray">本期已采：暂无(未在采集中)</span>
               <br/>
               --------------------
