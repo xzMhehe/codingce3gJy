@@ -735,10 +735,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		h.addOfficerExp(city, leadOfficer.ID, atkExp)
 		report += fmt.Sprintf("\n军官经验+%d", atkExp)
 	}
-	// ★ 2026-10-09 回收比例行（活动守军不进伤兵营 → 只列攻方）；
-	//   原来这里还会输出一行「攻方伤兵入营」，用户要求去掉（与回收比例重复）。
+	// ★ 2026-10-09 回收比例行（谁看展示谁的 → 这里只有攻方视角，算攻方自己那份）
 	report += h.battleStatsTail(uid, prestigeGain, 50,
-		ezfyHealPctLine(repairedTotal, br.AttackerLosses, 0, nil))
+		ezfyHealPctLine(repairedTotal, br.AttackerLosses))
 
 	// 返航时长与去程一致
 	order.ReturnTime = now + ezfyAbs64(order.ArriveTime-order.StartTime)

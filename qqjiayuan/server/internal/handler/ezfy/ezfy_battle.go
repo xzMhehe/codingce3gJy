@@ -130,6 +130,12 @@ type ezfyTypeBonus struct {
 	//   火炮控制「陆军装甲攻击+10/级」→ 陆军(2) 的攻击属性 +10/级
 	//   （用户确认：「就改成 陆军 攻击 加 10 属性吧，比如 对地、对海、对空 属性 +10」）。
 	AtkFlat map[int]int
+	// ★★ 2026-10-09 按**兵种 type** 生效的**防御**加成。
+	//
+	//	用户口径：「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」——
+	//	所以掩体防御(科技16)不再进全军通用防御，而是挂在城防(4) 上（见 ezfy_order.go 的 defType）。
+	//	key = 兵种 type，value = 防御加成%（目前唯一来源：掩体防御 → 城防）。
+	Def map[int]int
 }
 
 // atkOf / speedOf 取某兵种的专属加成（表为 nil / 未配置 → 0，老快照安全）
@@ -145,6 +151,17 @@ func (t ezfyTypeBonus) speedOf(troopType int) int {
 		return 0
 	}
 	return t.Speed[troopType]
+}
+
+// defOf 取某兵种的**专属防御**加成（表为 nil / 未配置 → 0，老战场快照安全）。
+//
+// ★ 2026-10-09 掩体防御改成「只对城防单位生效」后，被攻击方算防御时要按**自己的兵种 type**
+// 取这一截（见 Step 里的 unitDefBonus）。
+func (t ezfyTypeBonus) defOf(troopType int) int {
+	if t.Def == nil {
+		return 0
+	}
+	return t.Def[troopType]
 }
 
 // atkVsType 取「攻击方兵种 type → 目标兵种 type」的攻击加成（表为 nil → 0）
@@ -242,6 +259,36 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 		parts = append(parts, fmt.Sprintf("%s+%d%%", ezfyTroopTypeName(k), tb.Speed[k]))
 	}
 	return " 兵种专属速度(" + strings.Join(parts, " ") + ")"
+}
+
+// ezfyTypeDefTxt 兵种专属**防御**加成 → 「 兵种专属防御(城防+20%)」。
+//
+// ★★ 2026-10-09 用户口径：「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
+// → 掩体防御从「通用防御加成」里移出来，改成按兵种 type 生效（城防），
+// 这里负责在战斗加成行里展示（写法与「兵种专属速度」一致；该方没有这个兵种就不展示）。
+func ezfyTypeDefTxt(tb ezfyTypeBonus, present map[int]bool) string {
+	if len(tb.Def) == 0 {
+		return ""
+	}
+	keys := make([]int, 0, len(tb.Def))
+	for k, v := range tb.Def {
+		if v <= 0 {
+			continue
+		}
+		if len(present) > 0 && !present[k] {
+			continue // 该方没有这个兵种 → 这截对它不生效，不展示
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Ints(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s+%d%%", ezfyTroopTypeName(k), tb.Def[k]))
+	}
+	return " 兵种专属防御(" + strings.Join(parts, " ") + ")"
 }
 
 type ezfyBattleState struct {
@@ -471,8 +518,14 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 	atkSpeedSrc := speedSrc(atkSpeedBonus, atkEquip.Move)
 	defSpeedSrc := speedSrc(defSpeedBonus, defEquip.Move)
-	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, ezfyTroopTypesPresent(attackerUnits))
-	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, ezfyTroopTypesPresent(defenderUnits))
+	atkPresent := ezfyTroopTypesPresent(attackerUnits)
+	defPresent := ezfyTroopTypesPresent(defenderUnits)
+	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, atkPresent)
+	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, defPresent)
+	// ★★ 2026-10-09 兵种专属**防御**单列（掩体防御「只对城防单位生效」→ 不属于通用防御，
+	//   放在防御括号后面展示，该方没带城防单位就不显示）。
+	atkDefTypeTxt := ezfyTypeDefTxt(atkType, atkPresent)
+	defDefTypeTxt := ezfyTypeDefTxt(defType, defPresent)
 	// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
 	//   攻击行早就有 `(军官+0 科技+70)`，防御行原来只有一个裸数字，玩家看不出构成。
 	//   这里把 AtkDefBreak / DefDefBreak 的明细按来源归类 → `(城墙+45 军官+20 科技+70 装备套装+15)`。
@@ -482,10 +535,10 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	//   （原来是一行里用 ' | ' 分隔，手机窄屏读起来要来回找）。
 	//   ⚠️ 前端 `reportNiceLines` 里对**老战报**（单行含 ' | '）的分色分支要保留 ——
 	//      库里存量战报还是老格式，不能只认新格式。
-	atkBonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%%%s 速度+%d%%%s%s%s%s",
-		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
-	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s 速度+%d%%%s%s%s%s",
-		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
+	atkBonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%%%s%s 速度+%d%%%s%s%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, atkDefTypeTxt, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
+	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s%s 速度+%d%%%s%s%s%s",
+		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, defDefTypeTxt, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
@@ -996,7 +1049,10 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				//   不含装备），这里再 `+ st.DefEquip.Def` 会把装备/套装的防御算**两遍** ——
 				//   战报显示「防御加成+425%(…装备+61%)」实际却按 486% 减伤，显示与伤害对不上。
 				//   直接取 defBonus（= 守方防御明细 DefDefBreak 之和），显示口径与减伤口径一致。
-				unitDefBonus = defBonus
+				// ★★ 2026-10-09 被攻击方（守方）还要加**兵种专属防御**：
+				//   掩体防御「只对城防单位生效」（用户口径）→ 从通用防御里移出，按被攻击方的兵种 type 取。
+				//   普通部队(陆/海/空)恒为 0，只有城防单位(4) 吃这一截。
+				unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type)
 				equip = st.AtkEquip
 			} else {
 				// ★ 2026-10-06 守方行动时也要吃科技+军官技能的攻击加成
@@ -1015,7 +1071,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★★ 2026-10-09 修复「装备防御被算两遍」：`st.AtkDefBonus` 在建 atkDefBonus 时
 				//   **已经含** atkEquip.Def（见 ezfy_order.go / ezfy_activity_target.go），
 				//   这里再 + st.AtkEquip.Def 会重复；直接取 st.AtkDefBonus（= AtkDefBreak 之和）。
-				unitDefBonus = st.AtkDefBonus
+				unitDefBonus = st.AtkDefBonus + st.AtkType.defOf(target.cfg.Type)
 			}
 			bonusBreak := atkBonusBreak
 			if !isAtk {
@@ -1198,14 +1254,16 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					cbFlat = st.DefType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 攻方被守方反击 → 攻方防御加成减伤（原来恒 0）
 					//   ★ 2026-10-09 同上修双算：st.AtkDefBonus 已含 atkEquip.Def
-					cbDef = st.AtkDefBonus
+					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（掩体防御只对城防生效）
+					cbDef = st.AtkDefBonus + st.AtkType.defOf(unit.cfg.Type)
 				} else { // 守方在打 → 被打的是攻方 → 攻方发动反击（被还击方=守方）
 					cbType = st.AtkType.attackBonusFor(target.cfg.Type, unit.cfg)
 					cbAtk = atkBonus + cbType
 					cbFlat = st.AtkType.atkFlatOf(target.cfg.Type)
 					// ★ 2026-10-07 守方被攻方反击 → 守方防御加成（基础+装备）减伤
 					//   ★ 2026-10-09 同上修双算：defBonus 已含 defEquip.Def
-					cbDef = defBonus
+					//   ★★ 2026-10-09 被还击方（unit）的兵种专属防御也照加（城防单位吃掩体防御）
+					cbDef = defBonus + st.DefType.defOf(unit.cfg.Type)
 				}
 				cbTypeTxt := ""
 				if cbType > 0 {

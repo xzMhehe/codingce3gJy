@@ -2710,9 +2710,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//     坦克突袭=陆军速度 / 闪电袭击=空军速度 / 越岛战术=海军速度
 	//   ★ 原来它们被无差别算进 atkBonus / atkSpeedBonus（全军受益）——
 	//     用户反馈「空军速度只加空军，有些科技是特定兵种」。
-	atkType := ezfyTypeBonus{Speed: map[int]int{}}
+	atkType := ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}}
 	if v := atkTech[19] * 3; v > 0 {
 		atkType.Speed[ezfyTroopTypeAir] += v
+	}
+	// ★★ 2026-10-09 掩体防御「只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
+	//   （用户口径）→ 不再进全军通用防御 `atkDefBonus`，改成挂在城防(4) 的**兵种专属防御**上。
+	//   攻方出征**不能带城防兵**（createOrder 拦 type=4）→ 这一截对攻方实际恒不生效，
+	//   保留是为了与守方口径对称（以后若放开城防出征也能直接生效）。
+	if v := atkTech[16] * 2; v > 0 {
+		atkType.Def[ezfyTroopTypeCity] = v
 	}
 	atkType = h.officerTypeBonus(leadOfficer, atkType)
 	// ★ 2026-10-08 攻方军官行同时展示攻击加成与防御加成（都是**属性部分**，技能单列）：
@@ -2736,14 +2743,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	atkEquip := h.officerBattleEquipBonus(leadOfficer)
 	// ★ 2026-10-07 攻方「防御加成」：出征军官属性(学识)+防御技能(弧形防御/弹幕支援)+装备 Def。
 	//   原引擎攻方被打时防御恒 0 —— 军官带弧形防御 Lv.5「防御力+150%」既不生效也不展示（用户反馈）。
-	//   ★ 2026-10-08 再加**防御科技**（装甲科技/掩体防御/重工技术）：原来只算军官+技能+装备，
+	//   ★ 2026-10-08 再加**防御科技**（装甲科技/重工技术）：原来只算军官+技能+装备，
 	//     不带队军官时防御恒 0 → 玩家有防御科技也显示「防御+0%」（用户反馈）。口径与守方
-	//     防御科技一致（守方 defBonus 用同 7/16/9 三档）。伤害减伤与该展示共用 atkDefBonus。
+	//     防御科技一致（守方 defBonus 用同 7/9 两档）。伤害减伤与该展示共用 atkDefBonus。
+	//   ★★ 2026-10-09 掩体防御(16) 移出通用防御 → 只对**城防单位**生效（见 atkType.Def[4]），
+	//     所以这里不再 `+ atkTech[16]*2`，明细里也不列（否则「列了却不生效」）。
 	atkDefBonus := 0
 	var atkDefBreak []ezfyBonusItem
-	atkDefBonus += atkTech[7]*3 + atkTech[16]*2 + atkTech[9]*2
+	atkDefBonus += atkTech[7]*3 + atkTech[9]*2
 	atkDefBreak = ezfyBonusItems(atkDefBreak,
-		ezfyTechItem("装甲科技", atkTech[7]*3), ezfyTechItem("掩体防御", atkTech[16]*2), ezfyTechItem("重工技术", atkTech[9]*2))
+		ezfyTechItem("装甲科技", atkTech[7]*3), ezfyTechItem("重工技术", atkTech[9]*2))
 	if leadOfficer != nil {
 		attr := h.officerGuardAttrBonus(leadOfficer)
 		atkDefBonus += attr
@@ -2937,7 +2946,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   ⚠️ 城墙建筑本身**保留**（它的「城防兵容量」作用不受影响），只是不再进防御加成。
 		// ★ 2026-09-28 重工技术(9)+2%/级：该科技描述是「重装备**攻防**+2%」，攻方那条路径已加，
 		//   守方这条原来漏了 → 被攻击时这 2%/级 完全不生效。
-		defBonus = defTech[7]*3 + defTech[16]*2 + defTech[9]*2
+		// ★★ 2026-10-09 掩体防御(16) 移出**通用**防御 → 改成只对**城防单位**生效
+		//   （用户口径「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」），
+		//   见下方 defType.Def[ezfyTroopTypeCity]。
+		defBonus = defTech[7]*3 + defTech[9]*2
 		// 速度：只有燃烧引擎(10)「部队速度」是全体兵种通用；喷气引擎(19)「空军速度」是兵种专属
 		// （★ 2026-10-08 移到下方 defType —— 原来错误地给全军加速）
 		defSpeedBonus = defTech[10] * 2
@@ -2952,9 +2964,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
-		defType = ezfyTypeBonus{Speed: map[int]int{}}
+		defType = ezfyTypeBonus{Speed: map[int]int{}, Def: map[int]int{}}
 		if v := defTech[19] * 3; v > 0 {
 			defType.Speed[ezfyTroopTypeAir] += v
+		}
+		// ★★ 2026-10-09 掩体防御「只对城防单位生效」→ 挂在城防(4) 的**兵种专属防御**上，
+		//   由战斗引擎按被攻击方的兵种 type 取（普通部队不吃，城防单位吃）。
+		if v := defTech[16] * 2; v > 0 {
+			defType.Def[ezfyTroopTypeCity] = v
 		}
 		defType = h.officerTypeBonus(cityGuard, defType)
 		// ★★ 2026-10-08 修正守方**攻击**加成的科技口径（用户反馈「两个号都是满科技，为什么科技加成不一样」）：
@@ -3000,9 +3017,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-10-06 守方「防御加成」逐项明细（科技/城守属性+技能/装备，
 		//   被打行展示「防御加成+N%(科技·装甲科技+30% …)」，与 defBonus 构成同口径）
 		// ★ 2026-10-09 城墙项已移除（与 defBonus 同步 —— 守方不再叠加城墙防御）
+		// ★★ 2026-10-09 掩体防御也移除：它只对**城防单位**生效（见 defType.Def），
+		//   不算进通用防御 → 不能列在通用明细里（否则「列了却不生效」）。
 		defDefBreak = ezfyBonusItems(
 			ezfyTechItem("科技·装甲科技", defTech[7]*3),
-			ezfyTechItem("科技·掩体防御", defTech[16]*2),
 			ezfyTechItem("科技·重工技术", defTech[9]*2),
 		)
 		if cityGuard != nil {
@@ -3521,9 +3539,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.saveCityRes(target)
 	}
 	// ★ 2026-10-09 战报尾部的「回收比例」行（**伤兵回收占比**，见 ezfyHealPctLine）：
-	//   攻方战损来自 br.AttackerLosses；守方仅玩家城 PvP 才有（野地/寇城守军不进伤兵营）。
-	//   与「伤兵入营」行同口径，只是把两方占比汇总成一行、紧跟在「掠夺比例」后面。
-	healLine := ezfyHealPctLine(repairedTotal, br.AttackerLosses, defRepairedTotal, br.DefenderLosses)
+	//   用户要求「谁看展示谁的」→ 攻方视角 / 守方视角**各算一份**，各自的战报用各自那份。
+	//   （攻方战损 = br.AttackerLosses；守方仅玩家城 PvP 才有伤兵数据。）
+	healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)
+	healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)
 
 	// 携带容量(剩余部队负重)
 	// ★ 2026-09-28 同样统一走 ezfyCarryCapOf（含「装载技术」加成），
@@ -3651,7 +3670,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				}
 				h.addPrestige(uid, pg)
 				report += fmt.Sprintf("\n军功声望+%d", pg)
-				report += h.battleStatsTail(uid, pg, 0, healLine)
+				report += h.battleStatsTail(uid, pg, 0, healLineAtk)
 				// ★ 2026-10-08 补出发城 id（原来 city_id=0，按当前城过滤时只能靠坐标反查兜底）
 				h.addReport(uid, 2, reportType+": "+targetName+
 					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
@@ -3794,7 +3813,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				report += fmt.Sprintf("\n征服战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
 				// ★ 2026-09-25：战利品入账改为 DB 原子累加 + 资源最大值（同下）
 				h.addResToCityDB(city.ID, lootFood, lootSteel, lootOil, lootRare, lootGold)
-				report += h.battleStatsTail(uid, 0, recyclePct, healLine)
+				report += h.battleStatsTail(uid, 0, recyclePct, healLineAtk)
 				// ★ 2026-10-06 单次征服攻打（城没占下来，城池还在）→ 只扣城守忠诚
 				if frag := h.defectDefenderOfficers(city, target, uid, false); frag != "" {
 					report += frag
@@ -3812,7 +3831,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				travel := ezfyOneWayTravel(order)
 				order.Status = 2
 				order.ReturnTime = now + travel
-				report += h.battleStatsTail(uid, 0, recyclePct, healLine)
+				report += h.battleStatsTail(uid, 0, recyclePct, healLineAtk)
 				// ★ 2026-10-06 免战拦截但战斗已打（城池仍在）→ 只扣城守忠诚
 				if frag := h.defectDefenderOfficers(city, target, uid, false); frag != "" {
 					report += frag
@@ -4024,18 +4043,24 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-10-09 用户要求：战报里**不再单独列**「攻方/守方伤兵入营」两行 ——
 		//   尾部已经有「回收比例: 攻方X% 守方Y%」把两方占比汇总了，那两行的比例信息是重复的。
 		//   （伤兵**数量**去伤兵营页面看；战报只留比例。）
-		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLine)
+		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLineAtk)
 		// ★ 2026-10-06 守方被动战报（被掠夺/被征服）：**守方视角**标题 = 守方城名+守方坐标
 		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
 		//   如 [掠夺] 被掠夺报告: 我的城名(X,Y)；与攻方报告(L3490)保持对称口径。
 		if order.TargetType == 3 && target != nil {
+			// ★★ 2026-10-09 用户要求「回收比例 谁看展示谁的」：守方这份战报复用攻方正文，
+			//   所以要把尾部那行「回收比例」换成**守方自己**的（守方零战损 → 换成空串=不显示）。
+			defBody := report
+			if healLineAtk != healLineDef {
+				defBody = strings.Replace(report, healLineAtk, healLineDef, 1)
+			}
 			if order.OrderType == 2 {
 				h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-					fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n\n%s", targetName, lootFeel, lootFeel, report),
+					fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n\n%s", targetName, lootFeel, lootFeel, defBody),
 					detail, 0, target.ID)
 			} else if order.OrderType == 3 && defConqBody != "" {
 				h.addReport(target.UserID, 4, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-					defConqBody+"\n\n"+report, detail, 0, target.ID)
+					defConqBody+"\n\n"+defBody, detail, 0, target.ID)
 			}
 		}
 		// ★ 2026-10-08 补出发城 id（与守方战报同口径；原来 city_id=0，按当前城过滤时靠坐标反查兜底）
@@ -4077,7 +4102,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += fmt.Sprintf("\n军官经验+%d", atkExp)
 		}
 		report += "\n残部正在撤退返航。"
-		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLine)
+		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLineAtk)
 		// ★ 2026-10-08 补出发城 id（同上）
 		h.addReport(uid, 2, reportType+": "+targetName+
 			"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
@@ -4112,7 +4137,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defReport += fmt.Sprintf("\n军官经验+%d", defExp)
 			}
 			defReport += "\n战果\n黄金:0\n粮食:0\n钢铁:0\n石油:0\n稀矿:0"
-			defReport += h.battleStatsTail(target.UserID, 100, 0, healLine)
+			defReport += h.battleStatsTail(target.UserID, 100, 0, healLineDef)
 			h.addReport(target.UserID, defType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 				defReport, detail, 0, target.ID)
@@ -4783,32 +4808,28 @@ func ezfyWoundedReportLineSide(side string, repaired int64, losses []ezfyUnitGro
 	return fmt.Sprintf("\n%s伤兵入营: %d(占%s战损 %d 的 %d%%%s)", side, repaired, side, dead, pct, src)
 }
 
-// ezfyHealPctLine 战报「回收比例」行：**伤兵回收占比**（进伤兵营的比例）。
+// ezfyHealPctLine 战报「回收比例」行：**看战报这一方自己**的伤兵回收占比。
 //
-// ★ 2026-10-09 用户要求：「掠夺比例:0% 再加个 回收比例 —— 回收比例就是伤兵回收比例
-// 总的 基础+科技+军官技能（入伤兵营的）」。
+// ★ 2026-10-09 用户口径（两轮）：
 //
-//	口径与「伤兵入营」行完全一致：占比 = 入营伤兵 ÷ 该方战损（四舍五入到整数百分点）。
-//	攻守各一个（兵种不同 → 兵种自带修复率不同，例如航母 20% / 战列舰 12%）。
-//	★ 与「掠夺比例」是两个不同的东西：掠夺比例 = 战利品占目标资源的比例（平局为 0）。
-func ezfyHealPctLine(atkRepaired int64, atkLosses []ezfyUnitGroup, defRepaired int64, defLosses []ezfyUnitGroup) string {
-	pct := func(repaired int64, losses []ezfyUnitGroup) int64 {
-		var dead int64
-		for _, g := range losses {
-			dead += g.Count
-		}
-		if dead <= 0 {
-			return 0
-		}
-		// 与伤兵行同样的四舍五入口径（伤兵数本身是向下取整来的）
-		return (repaired*100 + dead/2) / dead
+//	①「回收比例就是伤兵回收比例 总的 基础+科技+军官技能（入伤兵营的）」；
+//	②「回收比例 谁看展示谁的」→ 攻方看的战报显示攻方的比例、守方看的显示守方的比例，
+//	  所以这里只接收**一方**的数据（调用方按视角各算一份）。
+//
+// 口径与「伤兵入营」行完全一致：占比 = 入营伤兵 ÷ 该方战损（四舍五入到整数百分点）。
+// ★ 与「掠夺比例」是两个不同的东西：掠夺比例 = 战利品占目标资源的比例（平局为 0）。
+// 该方零战损（没死人）→ 返回空串，不输出这一行。
+func ezfyHealPctLine(repaired int64, losses []ezfyUnitGroup) string {
+	var dead int64
+	for _, g := range losses {
+		dead += g.Count
 	}
-	parts := []string{fmt.Sprintf("攻方%d%%", pct(atkRepaired, atkLosses))}
-	// 守方只在真的进了伤兵营时（玩家城 PvP）才列，野地/寇城守军不进营
-	if defRepaired > 0 {
-		parts = append(parts, fmt.Sprintf("守方%d%%", pct(defRepaired, defLosses)))
+	if dead <= 0 {
+		return ""
 	}
-	return "\n回收比例: " + strings.Join(parts, " ")
+	// 与伤兵行同样的四舍五入口径（伤兵数本身是向下取整来的）
+	pct := (repaired*100 + dead/2) / dead
+	return fmt.Sprintf("\n回收比例: %d%%", pct)
 }
 
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {

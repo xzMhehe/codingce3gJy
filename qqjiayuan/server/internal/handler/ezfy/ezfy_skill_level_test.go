@@ -303,8 +303,10 @@ func TestDefBonusInjected(t *testing.T) {
 		`defBonusTxt := ezfyDefBonusTxt("守方防御加成", st.DefDefBreak)`,
 		`atkDefBonusTxt := ezfyDefBonusTxt("攻方防御加成", st.AtkDefBreak)`,
 		`return fmt.Sprintf("%s+%d%%(%s)", label, total, strings.Join(parts, " "))`,
-		"unitDefBonus = st.AtkDefBonus\n", // 守方打攻方 → 攻方防御减伤（已含装备 Def）
-		"unitDefBonus = defBonus\n",       // 攻方打守方 → 守方防御减伤（已含装备 Def）
+		// 守方打攻方 → 攻方防御减伤（已含装备 Def）；★ 2026-10-09 再加被还击方的兵种专属防御
+		"unitDefBonus = st.AtkDefBonus + st.AtkType.defOf(target.cfg.Type)\n",
+		// 攻方打守方 → 守方防御减伤（已含装备 Def）；★ 2026-10-09 同上
+		"unitDefBonus = defBonus + st.DefType.defOf(target.cfg.Type)\n",
 		`json:"atk_def_bonus"`,
 	} {
 		if !strings.Contains(src, want) {
@@ -365,17 +367,18 @@ func TestFourTechCategoriesWired(t *testing.T) {
 	//   属兵种专属，见下面的 TestTypeSpecificBonusWired。
 	atkCases := []struct{ name, want string }{
 		{"攻击", "atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2"},
-		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[16]*2 + atkTech[9]*2"},
+		// ★★ 2026-10-09 掩体防御(16) 移出通用防御 → 只对城防单位生效（atkType.Def[4]）
+		{"防御", "atkDefBonus += atkTech[7]*3 + atkTech[9]*2"},
 		{"速度(通用)", "atkSpeedBonus := atkTech[10] * 2"},
 		{"射程", "atkRangeBonus := atkTech[8] * 3"},
 	}
 	defCases := []struct{ name, want string }{
 		// ★ 2026-10-09 用户要求「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
 		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
-		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7 ×5%/级)，与攻方防御同口径
-		{"防御", "defBonus = defTech[7]*3 + defTech[16]*2 + defTech[9]*2"},
+		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，掩体防御(16) 也只对城防生效
+		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
 		{"速度(通用)", "defSpeedBonus = defTech[10] * 2"},
-		// ★ 射程只吃弹道学(8)；掩体防御(16) 是「城防攻防」，只进防御（2026-10-08 修掉虚高）
+		// ★ 射程只吃弹道学(8)（2026-10-08 修掉虚高）
 		{"射程", "defRangeBonus = defTech[8] * 3"},
 	}
 	for _, c := range atkCases {
@@ -387,6 +390,68 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		if !strings.Contains(src, c.want) {
 			t.Fatalf("守方缺「%s」类科技加成（列了却不生效）：%s", c.name, c.want)
 		}
+	}
+}
+
+// TestCoverDefenseOnlyForCityTroops 掩体防御(16) 必须**只对城防单位(4) 生效**。
+//
+// ★★ 2026-10-09 用户口径：「掩体防御 只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」。
+//
+//	所以它不能进全军通用的 defBonus / atkDefBonus，而要挂到 ezfyTypeBonus.Def[城防] 上，
+//	由战斗引擎按**被攻击方的兵种 type** 取 —— 普通部队(陆/海/空)不吃，城防单位才吃。
+func TestCoverDefenseOnlyForCityTroops(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	// ① 通用防御里不许再出现掩体防御（否则「列了却对全军生效」）
+	for _, bad := range []string{
+		"defBonus = defTech[7]*3 + defTech[16]*2",
+		"atkDefBonus += atkTech[7]*3 + atkTech[16]*2",
+	} {
+		if strings.Contains(src, bad) {
+			t.Fatalf("掩体防御不该再进通用防御：%s", bad)
+		}
+	}
+	// ② 必须挂到城防兵种的专属防御上（攻守双方各一处）
+	for _, want := range []string{
+		"atkType.Def[ezfyTroopTypeCity] = v",
+		"defType.Def[ezfyTroopTypeCity] = v",
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("掩体防御必须挂到城防(4) 的兵种专属防御上：%s", want)
+		}
+	}
+	// ③ 战斗引擎按**被攻击方**兵种 type 取这一截（普攻 + 反击共 4 处）
+	bat := strings.ReplaceAll(rawFile(t, "ezfy_battle.go"), "\r\n", "\n")
+	for _, want := range []string{
+		"st.DefType.defOf(target.cfg.Type)",
+		"st.AtkType.defOf(target.cfg.Type)",
+		"st.AtkType.defOf(unit.cfg.Type)",
+		"st.DefType.defOf(unit.cfg.Type)",
+	} {
+		if !strings.Contains(bat, want) {
+			t.Fatalf("战斗引擎必须按被攻击方兵种取专属防御：%s", want)
+		}
+	}
+}
+
+// TestTypeDefBonusOf 兵种专属防御的取值与展示（掩体防御只对城防生效）。
+func TestTypeDefBonusOf(t *testing.T) {
+	tb := ezfyTypeBonus{Def: map[int]int{ezfyTroopTypeCity: 20}}
+	if got := tb.defOf(ezfyTroopTypeCity); got != 20 {
+		t.Fatalf("城防单位应吃 20%% 专属防御，实际 %d", got)
+	}
+	if got := tb.defOf(ezfyTroopTypeArmy); got != 0 {
+		t.Fatalf("普通陆军不该吃掩体防御，实际 %d", got)
+	}
+	// 老战场快照没有 Def 字段 → 返回 0（不能崩）
+	if got := (ezfyTypeBonus{}).defOf(ezfyTroopTypeCity); got != 0 {
+		t.Fatalf("nil 表应返回 0，实际 %d", got)
+	}
+	// 展示：只有该方真的带了城防单位才显示
+	if got, want := ezfyTypeDefTxt(tb, map[int]bool{ezfyTroopTypeCity: true}), " 兵种专属防御(城防+20%)"; got != want {
+		t.Fatalf("展示文案 = %q，期望 %q", got, want)
+	}
+	if got := ezfyTypeDefTxt(tb, map[int]bool{ezfyTroopTypeArmy: true}); got != "" {
+		t.Fatalf("没带城防单位时不该展示，实际 %q", got)
 	}
 }
 

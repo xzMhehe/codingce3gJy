@@ -60,29 +60,33 @@ func TestBattleStatsTailUsesLootPctLabel(t *testing.T) {
 		t.Fatalf("战报尾部应写「掠夺比例」，实际：\n%s", body)
 	}
 	// ★ 伤兵回收那一行不在 battleStatsTail 里（它拿不到伤兵数据）→ 由 ezfyHealPctLine 生成
-	if !strings.Contains(src, `"\n回收比例: "`) {
+	if !strings.Contains(src, `回收比例: %d%%`) {
 		t.Fatal("缺 ezfyHealPctLine 的「回收比例」行（伤兵回收占比）")
 	}
 }
 
-// TestHealPctLine 「回收比例」行 = 伤兵入营占比（基础修复率 + 科技 + 军官技能），攻守各一个。
+// TestHealPctLine 「回收比例」行 = **看战报这一方自己**的伤兵入营占比。
 //
-// ★ 2026-10-09 用户口径：「回收比例就是伤兵回收比例 总的 基础+科技+军官技能（入伤兵营的）」。
+// ★ 2026-10-09 用户口径（两轮）：①「回收比例就是伤兵回收比例 总的 基础+科技+军官技能（入伤兵营的）」；
+// ②「回收比例 谁看展示谁的」→ 攻方看的战报显示攻方的比例、守方看的显示守方的比例。
 func TestHealPctLine(t *testing.T) {
 	// 用户实测战报：攻方战损 20458 → 伤兵 6546（32%）；守方战损 12881 → 伤兵 5152（40%）
 	atk := []ezfyUnitGroup{{TroopId: 16, Count: 20458}}
 	def := []ezfyUnitGroup{{TroopId: 16, Count: 12881}}
-	if got, want := ezfyHealPctLine(6546, atk, 5152, def), "\n回收比例: 攻方32% 守方40%"; got != want {
-		t.Fatalf("回收比例行 = %q，期望 %q", got, want)
+	if got, want := ezfyHealPctLine(6546, atk), "\n回收比例: 32%"; got != want {
+		t.Fatalf("攻方视角 = %q，期望 %q", got, want)
 	}
-	// 守方无伤兵数据（野地/寇城守军不进伤兵营）→ 只列攻方
-	if got, want := ezfyHealPctLine(6546, atk, 0, nil), "\n回收比例: 攻方32%"; got != want {
-		t.Fatalf("无守方伤兵时 = %q，期望 %q", got, want)
+	if got, want := ezfyHealPctLine(5152, def), "\n回收比例: 40%"; got != want {
+		t.Fatalf("守方视角 = %q，期望 %q", got, want)
+	}
+	// 该方零战损（没死人）→ 不输出这一行
+	if got := ezfyHealPctLine(0, nil); got != "" {
+		t.Fatalf("零战损应为空串，实际 %q", got)
 	}
 	// 多兵种战损合计
 	multi := []ezfyUnitGroup{{TroopId: 16, Count: 1000}, {TroopId: 1, Count: 1000}}
-	if got := ezfyHealPctLine(400, multi, 0, nil); !strings.Contains(got, "攻方20%") {
-		t.Fatalf("多兵种合计不对：%q", got)
+	if got, want := ezfyHealPctLine(400, multi), "\n回收比例: 20%"; got != want {
+		t.Fatalf("多兵种合计 = %q，期望 %q", got, want)
 	}
 }
 

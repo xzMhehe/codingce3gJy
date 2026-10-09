@@ -19,8 +19,11 @@ func TestPvPDefenderWounded(t *testing.T) {
 		"defHealTech = defTech[21] * 2",                  // 守方科技·治愈伤兵
 		`h.officerHasSkill(cityGuard, "机械改造")`,           // 城守军官技能
 		"h.addWounded(target.ID, g.TroopId, 0, wounded)", // 守方伤兵入营（type=0 伤兵）
-		// 战报里守方占比通过「回收比例」行体现（原来那行「守方伤兵入营」已按要求去掉）
-		"ezfyHealPctLine(repairedTotal, br.AttackerLosses, defRepairedTotal, br.DefenderLosses)",
+		// 战报里两方的回收比例各算一份（用户要求「谁看展示谁的」）
+		"healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)",
+		"healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)",
+		// 守方那份战报复用攻方正文 → 必须把「回收比例」换成守方自己的
+		"defBody = strings.Replace(report, healLineAtk, healLineDef, 1)",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("PvP 守方伤兵入营未接入（缺 %s）", want)
