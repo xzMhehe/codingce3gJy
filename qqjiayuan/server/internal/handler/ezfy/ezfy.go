@@ -4273,31 +4273,63 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 	//   召集是即时操作，只用当前已落库的粮食/人口判断与扣减，只写 food 和 pop 两列即可。
 	foodCost := ezfyConveneFoodCostCfg()
 	popGain := ezfyConvenePopGainCfg()
-	if city.Food < foodCost {
-		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
-		return
-	}
-	// ★ 2026-09-26 「玩家城市人口不能超过配置的人口上限，超过则禁止召集」：
+	baseGain := popGain // 未截断前的「单次召集人口」，用于按比例折算粮食
+	// ★★ 2026-10-09 用户报「人口 46 万时再召集被整体拒绝，应该仍能召集、只是加到上限为止」：
+	//   原来两个上限都是「本次召集后会超上限 → **整单拒绝**」→ 人口已经贴近上限的玩家
+	//   一次也召集不了（线上 45 万~50 万之间有 400 座城被误拒），明明还差几十万才满。
+	//   现在改成 **按上限截断**：能加多少加多少，刚好加到上限为止；
+	//   只有「人口已经达到/超过上限」时才拒绝（那时确实一点也加不进去）。
+	//   ⚠️ 截断后粮食**按比例收**（见下），否则会出现「花 20 万粮只加 2 点人口」这种坑。
+	//
 	//   全局硬性上限（管理端「二战系统配置」可配，0 = 不限），对召集**永远**生效。
-	if popCap := ezfyConvenePopMaxCfg(); popCap > 0 && city.Pop+popGain > popCap {
-		resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
-		return
+	if popCap := ezfyConvenePopMaxCfg(); popCap > 0 {
+		if city.Pop >= popCap {
+			resp.ParamError(c, fmt.Sprintf("人口已达上限(%d), 无法继续召集", popCap))
+			return
+		}
+		if city.Pop+popGain > popCap {
+			popGain = popCap - city.Pop
+		}
 	}
 	// ★ 2026-09-26 加「民居容量限制 / 召集人口灵活配置」两个开关：
 	//   只有「民居容量限制」开着（民居上限才存在）且「召集人口灵活配置」关着时，
 	//   召集才受民居容量上限约束；任一条件不满足都维持原有的「可突破上限」行为。
-	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() && city.Pop+popGain > city.PopMax {
-		resp.ParamError(c, fmt.Sprintf("人口已达民居容纳上限(%d), 无法继续召集", city.PopMax))
+	// ★ 2026-10-09 与硬性上限同口径：改成按上限截断，而不是整单拒绝。
+	if ezfyHousePopLimitOn() && !ezfyConveneFlexOn() {
+		if city.Pop >= city.PopMax {
+			resp.ParamError(c, fmt.Sprintf("人口已达民居容纳上限(%d), 无法继续召集", city.PopMax))
+			return
+		}
+		if city.Pop+popGain > city.PopMax {
+			popGain = city.PopMax - city.Pop
+		}
+	}
+	// ★ 2026-10-09 截断后粮食按比例折算：原价「foodCost 粮 = baseGain 人口」，
+	//   本次只加 popGain 人口 → 只收 foodCost × popGain / baseGain（向下取整，至少 1）。
+	if popGain < baseGain && baseGain > 0 {
+		foodCost = foodCost * popGain / baseGain
+		if foodCost < 1 {
+			foodCost = 1
+		}
+	}
+	if city.Food < foodCost {
+		resp.ParamError(c, fmt.Sprintf("粮食不足, 召集%d人口需要%d粮食", popGain, foodCost))
 		return
 	}
 	city.Food -= foodCost
 	city.Pop += popGain
+	// ★ 2026-10-09 被上限截断时把「为什么只加了这么多」说清楚，
+	//   否则玩家看到「人口+2」会以为是 bug（其实是已顶到上限）。
+	conveneMsg := fmt.Sprintf("召集成功, 人口+%d", popGain)
+	if popGain < baseGain {
+		conveneMsg = fmt.Sprintf("召集成功, 人口+%d(已到人口上限, 本次只补到上限)", popGain)
+	}
 	// 只写 food / pop 两列，绝不回写其它资源（这就是上面那句「只耗粮食」的落点）。
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 		"food": city.Food,
 		"pop":  city.Pop,
 	})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("召集成功, 人口+%d", popGain), "pop": city.Pop, "pop_max": city.PopMax})
+	resp.OK(c, gin.H{"msg": conveneMsg, "pop": city.Pop, "pop_max": city.PopMax, "gain": popGain})
 }
 
 // Placate 安抚民心

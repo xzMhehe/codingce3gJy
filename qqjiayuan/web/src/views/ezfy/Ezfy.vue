@@ -970,18 +970,22 @@ export default {
     queueNames () {
       return this.queues
     },
-    // ★ 2026-09-26：召集是否被民居容量上限挡住
-    //   仅当「民居容量限制」开 且「召集人口灵活配置」关 时，召集才受上限约束。
-    //   单次召集 +convenePopGain 人口（管理端可配，默认 10 万），加完超上限就禁用按钮。
+    // ★ 2026-09-26：召集是否被上限挡住（挡不住才显示可点的 [召集]）
+    //   仅当「民居容量限制」开 且「召集人口灵活配置」关 时，召集才受民居上限约束。
+    // ★★ 2026-10-09 修复「人口贴近上限时召集被整体挡住」：
+    //   原来判的是 `pop + 单次召集人口 > 上限` —— 只要「这一次加完会超上限」就禁用按钮，
+    //   于是 45 万~50 万人口之间（上限 50 万、单次 +5 万）**一次都点不了**，
+    //   明明还差几十万才满（用户报的就是这个）。
+    //   现在只在「人口**已经**达到/超过上限」时才禁用；否则允许点，
+    //   后端会**按上限截断**（只补差额、粮食按比例收）。
     conveneBlocked () {
       // 人口取本页展示的 city.pop（与页面上「当前人口」一致），cityPop 兜底
       const pop = (this.city && this.city.pop) || this.cityPop || 0
       // ★ 2026-09-26 全局硬性人口上限（管理端配置，0 = 不限）：对召集永远生效
-      if (this.convenePopMax > 0 && pop + this.convenePopGain > this.convenePopMax) return true
+      if (this.convenePopMax > 0 && pop >= this.convenePopMax) return true
       // ★ 2026-09-26 民居上限：仅当「民居容量限制」开 且「召集人口灵活配置」关 时生效
-      //   单次召集 +convenePopGain 人口（管理端可配，默认 10 万），加完超上限就禁用按钮。
       if (!this.housePopLimitOn || this.conveneFlexibleOn) return false
-      return pop + this.convenePopGain > ((this.city && this.city.pop_max) || 0)
+      return pop >= ((this.city && this.city.pop_max) || 0)
     },
     // 当前建筑分区: 'm' 军事区 / 's' 资源区
     // 复刻原版 BuildingController: 军事区 = type 2/3/4, 资源区 = type 1

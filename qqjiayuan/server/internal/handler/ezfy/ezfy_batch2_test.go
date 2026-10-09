@@ -62,6 +62,42 @@ func TestConveneCooldown3s(t *testing.T) {
 	}
 }
 
+// TestConveneClampToCap 人口召集「贴近上限」时必须还能召集（截断到上限），不能整单拒绝。
+//
+// ★★ 2026-10-09 用户报「人口 46 万时再召集却不行了，应该仍可以召集、只不过是召集到上限为止」：
+//
+//	线上 `convene_pop_max` = 50 万、`convene_pop_gain` = 5 万 → 原判定
+//	`city.Pop + popGain > popCap` 会把「加完会超上限」整单拒绝，
+//	于是人口 45 万以上的 400 座城**一次也召集不了**，明明还差几十万才满。
+//
+// 现在改成：能加多少加多少（刚好加到上限），粮食按比例收；
+// 只有「人口已经达到/超过上限」才拒绝。
+func TestConveneClampToCap(t *testing.T) {
+	body := ezfyFuncBody(t, "ezfy.go", "func (h *EzfyHandler) Convene(")
+
+	// 1) 不能再出现「本次加完会超上限 → 整单拒绝」的旧写法
+	if strings.Contains(body, "popCap > 0 && city.Pop+popGain > popCap") {
+		t.Fatal("Convene 仍是「超上限就整单拒绝」，人口贴近上限的玩家一点也召集不了")
+	}
+	// 2) 硬性上限与民居上限都要按上限截断
+	for _, want := range []string{
+		"popGain = popCap - city.Pop",
+		"popGain = city.PopMax - city.Pop",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("Convene 未按上限截断（缺 %s）", want)
+		}
+	}
+	// 3) 截断后粮食要按比例收，否则会出现「花 20 万粮只加 2 点人口」
+	if !strings.Contains(body, "foodCost = foodCost * popGain / baseGain") {
+		t.Fatal("Convene 截断后粮食没按比例折算")
+	}
+	// 4) 已经到上限时仍要拒绝（不能返回 0 人口却扣粮）
+	if !strings.Contains(body, "city.Pop >= popCap") {
+		t.Fatal("Convene 未处理「人口已达上限」的拒绝分支")
+	}
+}
+
 // TestBgTickOfflineSettle 后台兜底要覆盖「到期订单 + 到期建筑」——离线玩家世界也要往前走。
 //
 // ★★ 2026-10-09 用户反馈「没在线 军队就一直在路上、建筑升级也一样」。
