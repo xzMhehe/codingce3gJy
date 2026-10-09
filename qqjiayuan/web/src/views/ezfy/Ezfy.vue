@@ -4603,7 +4603,8 @@ export default {
     },
     // ★ 2026-10-09 野地/寇城「掉落宝物」的可读化：后端下发的是结构化 JSON
     //   [{"name":"防弹衣","count":1,"pct":2},...]，原来直接 print 出来是一串花括号（用户反馈）。
-    //   → 「防弹衣×1(2%)、青铜军刀×1(10%)」。
+    //   → 「防弹衣、青铜军刀」。
+    //   ★ 用户要求**概率和数量都不展示**（只列宝物名；pct/count 属后台配置信息）。
     //   ⚠️ 老数据可能是纯文本（如「中级/高级」）→ 解析失败就原样返回，不吞掉内容。
     fmtWildDrop (raw) {
       const s = String(raw || '').trim()
@@ -4613,13 +4614,8 @@ export default {
       if (!Array.isArray(rows)) return s
       const parts = []
       for (let i = 0; i < rows.length; i++) {
-        const r = rows[i] || {}
-        const name = String(r.name || '').trim()
-        if (!name) continue
-        const cnt = parseInt(r.count, 10) > 0 ? parseInt(r.count, 10) : 1
-        let pct = parseInt(r.pct, 10)
-        if (isNaN(pct) || pct <= 0) pct = 100   // 缺省/<=0 = 必掉（与后端同口径）
-        parts.push(name + '×' + cnt + '(' + pct + '%)')
+        const name = String((rows[i] || {}).name || '').trim()
+        if (name) parts.push(name)
       }
       return parts.length ? parts.join('、') : s
     },

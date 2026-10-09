@@ -73,10 +73,11 @@ func (h *EzfyHandler) done(c *gin.Context, msg, successMsg string) {
 // ============ 建筑 ============
 
 // ★ 2026-10-04 性能（用户反馈「/buildings 线上 4s」）：
-//   原来每栋建筑调 buildingMaxLevel（内部再查一次完整建筑列表）= 几十条 RDS 往返，
-//   加上 areaCounts ×2、refreshCity 的订单结算 —— 单次请求 40+ 条查询。
-//   现在：建筑列表只查一次；市政厅等级内存取值；军事/资源区数量用 areaCountsOf 纯内存；
-//   懒结算改走 refreshCityRead（跳过订单结算）；再加 3s 玩家级缓存兜底。
+//
+//	原来每栋建筑调 buildingMaxLevel（内部再查一次完整建筑列表）= 几十条 RDS 往返，
+//	加上 areaCounts ×2、refreshCity 的订单结算 —— 单次请求 40+ 条查询。
+//	现在：建筑列表只查一次；市政厅等级内存取值；军事/资源区数量用 areaCountsOf 纯内存；
+//	懒结算改走 refreshCityRead（跳过订单结算）；再加 3s 玩家级缓存兜底。
 func (h *EzfyHandler) Buildings(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -102,7 +103,10 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 	var wg sync.WaitGroup
 	wg.Add(8)
 	go func() { defer wg.Done(); list = h.buildingList(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
+	}()
 	go func() { defer wg.Done(); h.DB.Where("city_id IN ? AND status = 1", cids).Find(&techRows) }()
 	go func() { defer wg.Done(); techs = h.techMapOf(uid) }()
 	go func() { defer wg.Done(); wilds = h.wildlandList(city.ID) }()
@@ -267,9 +271,10 @@ func (h *EzfyHandler) Upgrade(c *gin.Context) {
 // MaxLevel 一键升级建筑
 //
 // ★ 2026-09-25 用户纠正「一键9级 不对，是一键升级到 9 级，而不是升级满」：
-//   按钮文案是「一键{{max_level-1}}级」，那就必须**升到那一级为止**（停在 9 级，
-//   不越过 9→10 这道要建筑图纸的坎、也不升到满级）。target_level 由前端下发，
-//   后端按「目标等级」结算资源与图纸；没带目标等级时仍按「升到满级」兼容。
+//
+//	按钮文案是「一键{{max_level-1}}级」，那就必须**升到那一级为止**（停在 9 级，
+//	不越过 9→10 这道要建筑图纸的坎、也不升到满级）。target_level 由前端下发，
+//	后端按「目标等级」结算资源与图纸；没带目标等级时仍按「升到满级」兼容。
 func (h *EzfyHandler) MaxLevel(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 一键升级 → 建筑列表缓存失效
@@ -367,10 +372,11 @@ func (h *EzfyHandler) SpeedBuilding(c *gin.Context) {
 // ============ 军队 ============
 
 // ★ 2026-10-04 性能（用户反馈「/troops 线上 2s+」）：
-//   原来 20+ 条查询全部串行（refreshCity 订单结算 + 每处 buildingList/troopMap 重复查）。
-//   现在：懒结算改走 refreshCityRead（跳过订单结算）；只读查询并入并行块（1 个 RTT）；
-//   建筑相关（围墙等级/军工厂座数与总等级）与城防占用全部用已取数据纯内存算；
-//   再加 3s 玩家级缓存，训练/拆除/解散/伤兵恢复等写操作统一失效。
+//
+//	原来 20+ 条查询全部串行（refreshCity 订单结算 + 每处 buildingList/troopMap 重复查）。
+//	现在：懒结算改走 refreshCityRead（跳过订单结算）；只读查询并入并行块（1 个 RTT）；
+//	建筑相关（围墙等级/军工厂座数与总等级）与城防占用全部用已取数据纯内存算；
+//	再加 3s 玩家级缓存，训练/拆除/解散/伤兵恢复等写操作统一失效。
 func (h *EzfyHandler) Troops(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -395,9 +401,18 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	//   wg.Wait() 之后用本请求已取到的 buildings + qs 纯内存算。
 	wg.Add(5)
 	go func() { defer wg.Done(); troopMap = h.troopMap(city.ID) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded) }()
-	go func() { defer wg.Done(); h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters) }()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&qs)
+	}()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND type = 0", city.ID).Order("troop_id ASC").Find(&wounded)
+	}()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("city_id = ? AND type = 1", city.ID).Order("troop_id ASC").Find(&deserters)
+	}()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	wg.Wait()
 	popUsed = h.cityPopUsedD(city.ID, buildings, qs)
@@ -802,8 +817,9 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 // ============ 科技 ============
 
 // ★ 2026-10-06 科技效果**按公式实时计算**，不再读 ezfy_cfg_tech_level.effect：
-//   线上库里可能残留旧文案（如「粮食产量+10%(当前+100%)」「行军速度+2%」「全军攻防+1%」），
-//   只要接口按「每级加成 × 当前等级」算文本，无论数据库是什么数据，展示永远正确。
+//
+//	线上库里可能残留旧文案（如「粮食产量+10%(当前+100%)」「行军速度+2%」「全军攻防+1%」），
+//	只要接口按「每级加成 × 当前等级」算文本，无论数据库是什么数据，展示永远正确。
 var ezfyTechEffectPrefix = map[int]string{
 	1: "粮食产量", 2: "钢铁产量", 3: "石油产量", 4: "稀矿产量",
 	5: "部队攻击", 6: "部队攻击", 7: "部队防御", 8: "射程加成", 9: "重装备攻防", 10: "部队速度", 11: "建造时间", 12: "情报",
@@ -1735,11 +1751,12 @@ func (h *EzfyHandler) WarStatus(c *gin.Context) {
 // ============ 排行榜 ============
 
 // ★ 2026-10-02 1核1G 线上 CPU 100% 优化：战力榜每次请求都全表扫描 ezfy_city /
-//   ezfy_city_troop / ezfy_city_building / ezfy_user_tech 四张表，而前端首页每 30 秒
-//   轮询 /view 时又连带调一次 /rank → 单核 MySQL 被查询洪水打满，所有请求排队变慢
-//   （同一个 DELETE 语句从 0.4ms 恶化到 30ms+）。这些底层数据（声望/战力/军团/军衔表）
-//   变化缓慢，做 30 秒内存缓存；过期后第一个请求重算，其余并发请求复用。
-//   玩家本人「军衔/晋升」依赖请求 uid，每次现算（rankMine），不缓存。
+//
+//	ezfy_city_troop / ezfy_city_building / ezfy_user_tech 四张表，而前端首页每 30 秒
+//	轮询 /view 时又连带调一次 /rank → 单核 MySQL 被查询洪水打满，所有请求排队变慢
+//	（同一个 DELETE 语句从 0.4ms 恶化到 30ms+）。这些底层数据（声望/战力/军团/军衔表）
+//	变化缓慢，做 30 秒内存缓存；过期后第一个请求重算，其余并发请求复用。
+//	玩家本人「军衔/晋升」依赖请求 uid，每次现算（rankMine），不缓存。
 type ezfyRankHeavy struct {
 	prestige []gin.H
 	troops   []gin.H
@@ -1758,7 +1775,8 @@ var (
 // ezfyRankHeavyGet 取排行缓存。返回 (data, true)=直接复用；返回 (nil, false)=
 // 调用方成为**单飞 owner**，负责重算并调 ezfyRankHeavyFinish 交账。
 // ★ 单飞：重启后所有玩家首页同时命中缓存过期 → 只有第一个真正全表扫描，
-//   其余请求 Cond.Wait 等它算完复用，避免 N 个并发全表扫描把 1 核打爆。
+//
+//	其余请求 Cond.Wait 等它算完复用，避免 N 个并发全表扫描把 1 核打爆。
 func ezfyRankHeavyGet() (*ezfyRankHeavy, bool) {
 	ezfyRankHeavyMu.Lock()
 	defer ezfyRankHeavyMu.Unlock()
@@ -2583,12 +2601,13 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 // ============ 任务 ============
 
 // ★ 2026-10-04 性能（用户反馈「/tasks 线上 4s」）：整个 handler 重构为
-//   「一次并行取数 → 纯内存处理」：
-//   · 任务配置/我的任务/周期类型 三条独立查询并行打 RDS（原来串行 3 条）；
-//   · 补建缺失任务由「每条配置一条 COUNT」改为「一次 Pluck + 内存判重」（N 条 → 0~1 条）；
-//   · 周期重置由「每任务 2 条查询」改为「复用已取的配置/类型表」全内存判定；
-//   · 状态型任务的值只按 task_type 算一次（原来同名任务重复算 N 遍）。
-//   配合 3s 玩家级缓存（ezfyPageCacheGet/Set），命中时零 SQL。
+//
+//	「一次并行取数 → 纯内存处理」：
+//	· 任务配置/我的任务/周期类型 三条独立查询并行打 RDS（原来串行 3 条）；
+//	· 补建缺失任务由「每条配置一条 COUNT」改为「一次 Pluck + 内存判重」（N 条 → 0~1 条）；
+//	· 周期重置由「每任务 2 条查询」改为「复用已取的配置/类型表」全内存判定；
+//	· 状态型任务的值只按 task_type 算一次（原来同名任务重复算 N 遍）。
+//	配合 3s 玩家级缓存（ezfyPageCacheGet/Set），命中时零 SQL。
 func (h *EzfyHandler) Tasks(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -2756,7 +2775,8 @@ var ezfySignRewards = [7][6]int64{
 }
 
 // ★ 2026-09-28 宝物签到：7 天一轮；逢第 5/6/7 天多给（里程碑增量），方便不采集的懒人攒晋升宝物。
-//   抽取范围 = 9 种采集宝物（装备配置 ID 27-35，见 ezfyTerrainTreasureNames）。
+//
+//	抽取范围 = 9 种采集宝物（装备配置 ID 27-35，见 ezfyTerrainTreasureNames）。
 var ezfyTreasureSignRewards = [7]int{2, 2, 2, 2, 4, 6, 8} // position(1-7) → 当日宝物件数
 
 // ezfyTreasureSignQty 连续宝物签到天数 → 当天应得宝物件数（7 天循环）
@@ -2831,14 +2851,14 @@ func (h *EzfyHandler) Welfare(c *gin.Context) {
 	// ★ 2026-10-03 性能：以下 8 组只读查询互不依赖，并行打 RDS，
 	//   把 welfare 页的串行查询压成一次往返。
 	var (
-		signedToday, signedYest             int64
-		yestSign                            model.EzfySign
-		gifts                               = gin.H{}
-		city                                model.EzfyCity
-		profile                             model.EzfyProfile
-		trsSignedToday, trsSignedYest       int64
-		yestTrs                             model.EzfyTreasureSign
-		trsReward                           string
+		signedToday, signedYest       int64
+		yestSign                      model.EzfySign
+		gifts                         = gin.H{}
+		city                          model.EzfyCity
+		profile                       model.EzfyProfile
+		trsSignedToday, trsSignedYest int64
+		yestTrs                       model.EzfyTreasureSign
+		trsReward                     string
 	)
 	var wg sync.WaitGroup
 	wg.Add(8)
@@ -3123,9 +3143,11 @@ func (h *EzfyHandler) ezfyNoticeHomeCount() int {
 //	1 军情警讯 —— 预警类：雷达来袭预警、被侦查、守卫成功、叛离、被归还、野地丢失
 //	2 战斗报告 —— 我打别人(侦查 / 掠夺 / 征服) + 被掠夺 / 被征服(原城破)
 //	3 其他     —— 后勤与系统(采集、运输、增援、派遣、建城、交易、将领变动)
+//
 // ★ 2026-10-06 用户调整:「被掠夺报告」「被征服报告」从军情警讯归到战斗报告；
-//   「守卫报告」(守方成功抵挡) 也一并归战斗报告并按进攻意图转「被掠夺/被征服报告」，
-//   军情警讯只留预警类（雷达/被侦查）。
+//
+//	「守卫报告」(守方成功抵挡) 也一并归战斗报告并按进攻意图转「被掠夺/被征服报告」，
+//	军情警讯只留预警类（雷达/被侦查）。
 func ezfyReportCategory(title string) int {
 	switch {
 	case strings.HasPrefix(title, "军情警报"),
@@ -3154,7 +3176,8 @@ func ezfyReportCategory(title string) int {
 // EzfyReportTypeName 战报标签(前端列表里的 [xxx] 前缀)
 //
 // ★ 2026-10-08 导出为包级函数：写战报落库 + cmd/backfilltype 回填 + 管理端详情 共用同一判定，
-//   单一来源、不会因各处重复实现而漂移。
+//
+//	单一来源、不会因各处重复实现而漂移。
 func EzfyReportTypeName(reportType int, title string) string {
 	switch {
 	// ★ 2026-10-06 被掠夺/被征服归属战斗报告后, 列表前缀与攻方「掠夺/征服」一致:
@@ -3258,16 +3281,19 @@ func ezfyTypeNameStored(r model.EzfyReport) string {
 // ezfyCityReportCond 军情按城市过滤的条件片段（cityId > 0 时拼到 WHERE 里）。
 //
 // ★ 2026-10-01 修复「按城市检索后战报看不见」：老战报因 addReport uint bug
-//   order_id 全为 0，原来 `city_id = 0 AND order_id IN (该城订单)` 永远匹配不上，
-//   且大量老战报 city_id 存的是 NULL（141 条）——`city_id = 0` 同样匹配不上，
-//   导致历史战报从城市视角全部消失。改为**按标题坐标反查该城的出征订单**归属：
-//   标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对，
-//   city_id 为 0 或 NULL 的老战报都走这条路。新战报（city_id>0）仍走第一分支；
-//   无匹配订单的老防守/系统战报无法归属城市，仅在「全部」视图展示。
+//
+//	order_id 全为 0，原来 `city_id = 0 AND order_id IN (该城订单)` 永远匹配不上，
+//	且大量老战报 city_id 存的是 NULL（141 条）——`city_id = 0` 同样匹配不上，
+//	导致历史战报从城市视角全部消失。改为**按标题坐标反查该城的出征订单**归属：
+//	标题形如「战斗报告: 活动野地3级(258,100)」，与 ezfy_order.target_x/y 比对，
+//	city_id 为 0 或 NULL 的老战报都走这条路。新战报（city_id>0）仍走第一分支；
+//	无匹配订单的老防守/系统战报无法归属城市，仅在「全部」视图展示。
+//
 // ★ 2026-10-02 修复「本城战报看不到」：老防守战报（被侦查/被掠夺/城破/守卫等）
-//   city_id=0/NULL 且标题**只有城市名、无坐标**（如「被掠夺报告: 无忧」），
-//   上面两条路（city_id 直配、标题坐标反查出征订单）都匹配不上，从城市视角全部消失。
-//   这里加第三条路：按标题包含的**城名**反查我的 ezfy_city 归属该城。
+//
+//	city_id=0/NULL 且标题**只有城市名、无坐标**（如「被掠夺报告: 无忧」），
+//	上面两条路（city_id 直配、标题坐标反查出征订单）都匹配不上，从城市视角全部消失。
+//	这里加第三条路：按标题包含的**城名**反查我的 ezfy_city 归属该城。
 func ezfyCityReportCond(cityId int64) string {
 	return fmt.Sprintf(`(city_id = %d OR ((city_id = 0 OR city_id IS NULL) AND (
 		EXISTS (
@@ -3286,11 +3312,14 @@ func ezfyCityReportCond(cityId int64) string {
 // ezfyReportCounts 统计军情警讯(1)/战斗报告(2)的**真实**数量（tab 徽标数字）。
 //
 // ★ 2026-10-01 修复「徽标数字时有时无/无故漂移」：原来在 Reports 里用
-//   「最近 200 条的窗口计数」——新报告把旧报告挤出窗口后，数字在玩家什么都没
-//   删的情况下自己变少甚至归零。这里改单条 SQL 按标题条件聚合全量，与
-//   ezfyReportCategory 的判定规则保持同步（改判定时这里要一起改）。
+//
+//	「最近 200 条的窗口计数」——新报告把旧报告挤出窗口后，数字在玩家什么都没
+//	删的情况下自己变少甚至归零。这里改单条 SQL 按标题条件聚合全量，与
+//	ezfyReportCategory 的判定规则保持同步（改判定时这里要一起改）。
+//
 // ★ 2026-10-01 军情按当前城过滤：cityId>0 时只统计该城的战报
-//   （新战报带 city_id；老攻击战报 city_id=0 按标题坐标反查订单归属城市）。
+//
+//	（新战报带 city_id；老攻击战报 city_id=0 按标题坐标反查订单归属城市）。
 func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 	// ★ 2026-10-08 性能重构：cityId>0 时原来拼 `OR (EXISTS…)` 让每行都跑相关子查询+LIKE。
 	//   这里把「新行(city_id=X 走索引)」与「老行(city_id=0/NULL 用 EXISTS 补查)」分开统计再相加，
@@ -3334,7 +3363,8 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 
 // ReportCounts GET /games/ezfy/reports/counts?city_id=xx —— 只取 tab 徽标数字，不标记已读。
 // （军情页无论落在哪个分区都要刷新徽标，但不能因此把没看的战报标记成已读，
-//  所以从 Reports 里拆出独立接口。）
+//
+//	所以从 Reports 里拆出独立接口。）
 //
 // ★ 2026-10-09 顺带下发 `has_corps`：军情页要据此决定**要不要显示「军团战报」tab**
 // （没军团的玩家不该看到它）。这个接口是进军情页/切分区时**必调**的，
@@ -3346,7 +3376,8 @@ func (h *EzfyHandler) ReportCounts(c *gin.Context) {
 }
 
 // mustListConsolidate 把「城市过滤拆开的快路径 + 老行补查」两批报告合并：
-//   按 id 倒序排序、按 id 去重、截断到 200 条。合并出的切片供列表展示。
+//
+//	按 id 倒序排序、按 id 去重、截断到 200 条。合并出的切片供列表展示。
 func mustListConsolidate(reports *[]model.EzfyReport) {
 	// 先倒序（id DESC），保证「每批各自倒序 + 追加」后整体仍倒序、且限 200 后取的是最新条
 	sort.Slice(*reports, func(i, j int) bool {
@@ -3535,7 +3566,7 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": ezfyTypeNameStored(r), "is_read": 1, "order_id": r.OrderId,
 			"owner_name": ownerName[r.UserID],
-			"category": "corps", "category_name": "军团战报", "created_at": r.CreatedAt})
+			"category":   "corps", "category_name": "军团战报", "created_at": r.CreatedAt})
 	}
 	// ⚠️ 这里的 counts 是「本军团团员 PvP 战报的**总数**」（按分区累计，与 is_read 无关），
 	//   **不是**自己的未读数 → 前端**绝不能**拿它去更新「战斗报告(N)」徽标
@@ -3548,7 +3579,8 @@ func (h *EzfyHandler) corpsReports(c *gin.Context, uid uint, word string) {
 // 军队动态: 所有在外的部队(出征/采集/派遣/侦查/掠夺/运输/增援)
 // 复刻 `二战风云/templates/report/index.html` 的「军队动态」区
 // ★ 2026-10-01 军情按当前城过滤：city_id>0 时只展示当前城出发的部队，
-//   防守战场也只展示「正在攻打当前城」的（守方视角）。
+//
+//	防守战场也只展示「正在攻打当前城」的（守方视角）。
 func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
@@ -3695,7 +3727,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			// ★★ 2026-10-09 补「等待中」：原来这个 switch **没有 case 6** →
 			//   status_name / time_label / time_text 全是空串，军情 → 军队动态里就显示成
 			//   「状态：」+「：」，玩家完全看不出部队在干嘛（用户反馈「看都不知道军队在干啥」）。
-			statusName = "等待中(目标已被抢先攻打, 排队等待交战)"
+			statusName = "等待中(排队等待交战)"
 			timeLabel = "已等待"
 			timeText = ezfyDurationText((now - o.ArriveTime) / 1000)
 		}

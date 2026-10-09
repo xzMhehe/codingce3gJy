@@ -930,7 +930,8 @@ func (h *EzfyHandler) ExchangeSysSell(c *gin.Context) {
 // ezfyTreasureSellPrice 宝物出售给系统的单价（黄金/件）。
 //
 // ★ 2026-10-08 「采集的宝物可以卖给系统，按品质 10 万~50W 不等，收 10% 手续费」
-//   —— 用户确认：宝物当前没有品质差异（采集宝物全 Tier1），统一按 20 万黄金/件出售，收 10% 手续费。
+//
+//	—— 用户确认：宝物当前没有品质差异（采集宝物全 Tier1），统一按 20 万黄金/件出售，收 10% 手续费。
 const ezfyTreasureSellPrice = 200000
 
 // ExchangeTreasureSell POST /games/ezfy/exchange/treasure-sell {cfg_id, count}
@@ -1632,7 +1633,7 @@ func ezfyOrderStatusName(s int) string {
 		return "战斗中"
 	case ezfyOrderStatusWaiting:
 		// ★ 2026-10-09 用户反馈「出征队列里等待中的看不出军队在干啥」→ 文案说清楚为什么在等
-		return "等待中(目标已被抢先攻打, 排队等待交战)"
+		return "等待中(排队等待交战)"
 	default:
 		return "未知"
 	}
