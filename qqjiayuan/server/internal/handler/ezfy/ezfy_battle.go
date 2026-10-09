@@ -191,23 +191,47 @@ func (t *ezfyTypeBonus) addVsType(atkType, defType, v int) {
 	t.AtkVsType[atkType][defType] += v
 }
 
-// ezfyTypeSpeedTxt 兵种专属**速度**加成的展示串（如「(空军+30%)」；无来源 → 空串）。
+// ezfyTroopTypesPresent 该方部队里**实际出现**的兵种 type 集合。
 //
-// ★★ 2026-10-09 用户要求「科技的移动速度加成有兵种限制完善下」：
+// ★★ 2026-10-09 用户反馈「虽然都是航母（海军），战斗加成里却写着 空军+30%」：
 //
-//	「战斗加成」行原来只写一个笼统的「速度+N%」（= 燃烧引擎等通用速度 + 装备移动），
-//	而**兵种专属**速度（喷气引擎=空军速度、军官技能 坦克突袭/闪电袭击/越岛战术=陆/空/海速度）
-//	按 `unit.cfg.Type` 只作用于对应兵种 —— 玩家在汇总行里完全看不到这截，
-//	于是以为「空军速度没生效」。这里把每个有值的兵种单独列出来，与「兵种专属+N%」口径一致。
-func ezfyTypeSpeedTxt(tb ezfyTypeBonus) string {
+//	兵种专属速度（喷气引擎=空军速度、军官速度技能=陆/空/海）只对**对应兵种**生效，
+//	汇总行把「配置里有的兵种」全列出来会误导 —— 一支纯海军部队看到「空军+30%」，
+//	会以为自己的航母吃到了这 30%。现在只列**本方真正带了**的兵种。
+func ezfyTroopTypesPresent(units []ezfyUnitGroup) map[int]bool {
+	out := map[int]bool{}
+	for _, u := range units {
+		if u.Count <= 0 {
+			continue
+		}
+		if cfg := ezfyStatsOf(u.TroopId); cfg != nil {
+			out[cfg.Type] = true
+		}
+	}
+	return out
+}
+
+// ezfyTypeSpeedTxt 兵种专属**移动速度**加成的展示串（如「 兵种专属速度(空军+30%)」；无来源 → 空串）。
+//
+// ★★ 2026-10-09 用户口径：「速度」与「移动距离加成」都是加成**移动速度**的
+// （装备的「移动距离%」= 移动速度，不是攻速）；只有标注「攻击速度/攻速」的才是攻速
+// （攻速决定**先手**）。所以这里展示的是移动速度的**兵种专属**部分，与通用部分
+// （燃烧引擎 + 装备移动距离，见战斗加成行的「速度+N%(科技+X 装备+Y)」）分开列。
+//
+// present = 该方实际出现的兵种 type（nil/空 → 不过滤，全部列出）。
+func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 	if len(tb.Speed) == 0 {
 		return ""
 	}
 	keys := make([]int, 0, len(tb.Speed))
 	for k, v := range tb.Speed {
-		if v > 0 {
-			keys = append(keys, k)
+		if v <= 0 {
+			continue
 		}
+		if len(present) > 0 && !present[k] {
+			continue // 该方没有这个兵种 → 这截对它不生效，不展示
+		}
+		keys = append(keys, k)
 	}
 	if len(keys) == 0 {
 		return ""
@@ -217,7 +241,7 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus) string {
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s+%d%%", ezfyTroopTypeName(k), tb.Speed[k]))
 	}
-	return "(" + strings.Join(parts, " ") + ")"
+	return " 兵种专属速度(" + strings.Join(parts, " ") + ")"
 }
 
 type ezfyBattleState struct {
@@ -425,13 +449,29 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 	atkAtkSrc += ")"
 	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d)", st.DefOfficerBonus, defAtkTechPart)
-	// ★★ 2026-10-09 兵种专属速度加成（喷气引擎=空军速度 / 军官兵种速度技能）单独挂在「速度+N%」后面：
-	//   这类加成只作用于对应兵种，汇总行只写一个笼统速度会让人以为没生效（用户反馈）。
-	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType)
-	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType)
-	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s",
-		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt,
-		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defSpeedTypeTxt, defRangeTxt, defHpTxt)
+	// ★★ 2026-10-09 「速度」= **移动速度**（用户口径：速度与「移动距离」都是移动速度加成；
+	//   攻速是另一回事，决定先手）。拆解出通用来源：科技(燃烧引擎) + 装备(移动距离)；
+	//   兵种专属那截（喷气引擎/军官速度技能）另列，且**只列本方真正带了的兵种**。
+	speedSrc := func(tech, equip int) string {
+		parts := []string{}
+		if tech != 0 {
+			parts = append(parts, fmt.Sprintf("科技+%d", tech))
+		}
+		if equip != 0 {
+			parts = append(parts, fmt.Sprintf("装备+%d", equip))
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		return "(" + strings.Join(parts, " ") + ")"
+	}
+	atkSpeedSrc := speedSrc(atkSpeedBonus, atkEquip.Move)
+	defSpeedSrc := speedSrc(defSpeedBonus, defEquip.Move)
+	atkSpeedTypeTxt := ezfyTypeSpeedTxt(atkType, ezfyTroopTypesPresent(attackerUnits))
+	defSpeedTypeTxt := ezfyTypeSpeedTxt(defType, ezfyTroopTypesPresent(defenderUnits))
+	bonusLine := fmt.Sprintf("战斗加成: 攻方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s | 守方 攻击+%d%%%s 防御+%d%% 速度+%d%%%s%s%s%s",
+		effAtk, atkAtkSrc, atkDefBonus, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt,
+		st.DefAtkBonus, defAtkSrc, effDef, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
 	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。

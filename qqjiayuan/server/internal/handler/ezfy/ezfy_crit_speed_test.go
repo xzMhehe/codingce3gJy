@@ -27,18 +27,17 @@ func stubCritTroops(t *testing.T) func() {
 	return func() { ezfyCfg.troops = saved }
 }
 
-// TestBonusLineShowsTypeSpeed 战斗加成行要把「兵种专属速度」按兵种列出来。
+// TestBonusLineShowsTypeSpeed 战斗加成行要拆解「移动速度」来源，并按兵种列专属加成。
 //
-// ★★ 2026-10-09 用户反馈「科技的移动速度加成有兵种限制完善下」：
-//
-//	喷气引擎（空军速度）/ 军官兵种速度技能只作用于对应兵种，原来汇总行只写一个笼统的
-//	「速度+N%」（通用速度 + 装备移动），兵种专属那截完全看不到 → 玩家以为没生效。
+// ★★ 2026-10-09 用户口径：「速度」与「移动距离加成」都是加成**移动速度**的
+// （装备的移动距离% = 移动速度，不是攻速；攻速决定先手，是另一回事）。
+// 汇总行要能看出 速度 = 科技(燃烧引擎) + 装备(移动距离) + 兵种专属(喷气引擎/军官技能)。
 func TestBonusLineShowsTypeSpeed(t *testing.T) {
 	defer stubCritTroops(t)()
 	st := ezfyNewBattleState(
+		[]ezfyUnitGroup{{TroopId: 11, Count: 100}}, // 兵种 11 = 空军
 		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
-		[]ezfyUnitGroup{{TroopId: 11, Count: 100}},
-		0, 0, 0, 20, 0, // 通用速度加成 20%（燃烧引擎）
+		0, 0, 0, 20, 0, // 攻方通用速度 20%（燃烧引擎）
 		0, 0,
 		ezfyBattleBonus{}, ezfyBattleBonus{},
 		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
@@ -59,16 +58,68 @@ func TestBonusLineShowsTypeSpeed(t *testing.T) {
 	if line == "" {
 		t.Fatal("准备回合里没有「战斗加成」行")
 	}
-	if !strings.Contains(line, "速度+20%(空军+30%)") {
-		t.Fatalf("攻方速度未按兵种展示专属加成（期望 速度+20%%(空军+30%%)）：\n%s", line)
+	// 攻方：通用速度 20（燃烧引擎）+ 兵种专属 30（本方就是空军）
+	if !strings.Contains(line, "速度+20%(科技+20) 兵种专属速度(空军+30%)") {
+		t.Fatalf("攻方移动速度拆解不对：\n%s", line)
 	}
-	// 守方多个兵种：按 type 升序 → 海军(1) 在前、空军(3) 在后
-	if !strings.Contains(line, "(海军+10% 空军+30%)") {
-		t.Fatalf("守方速度未按兵种展示专属加成（期望 (海军+10%% 空军+30%%)）：\n%s", line)
+	// 守方：通用 0（没燃烧引擎）→ 不写空拆解；兵种专属只列**本方带了的**空军
+	if !strings.Contains(line, "速度+0% 兵种专属速度(空军+30%)") {
+		t.Fatalf("守方移动速度拆解不对：\n%s", line)
+	}
+	if strings.Contains(line, "海军+10%") {
+		t.Fatalf("守方没带海军，不该列海军速度加成：\n%s", line)
 	}
 	// 汇总行仍必须保留「攻方 ... | 守方 ...」的 ' | ' 分隔（前端按它左右分色）
 	if !strings.Contains(line, " | ") {
 		t.Fatalf("战斗加成行丢了 ' | ' 分隔：%s", line)
+	}
+}
+
+// TestBonusLineNoIrrelevantTypeSpeed 纯海军（航母）部队不该出现「空军+30%」，且移动距离要进拆解。
+//
+// ★★ 2026-10-09 用户反馈（原战报）：双方都是航母（海军），战斗加成却写「速度+30%(空军+30%)」——
+//
+//	① 喷气引擎「空军速度」对海军根本不生效，列出来会误导；
+//	② 攻方 30% 里那 10% 是套装「移动距离」，拆解里看不出来（「移动加成也不对」）。
+func TestBonusLineNoIrrelevantTypeSpeed(t *testing.T) {
+	saved := ezfyCfg.troops
+	defer func() { ezfyCfg.troops = saved }()
+	ezfyCfg.troops = map[int]model.EzfyCfgTroop{
+		16: {ID: 16, Name: "航母", Type: 1, Health: 2200, AtkSea: 100, Defence: 100, Speed: 850, AttackRange: 3100},
+	}
+	st := ezfyNewBattleState(
+		[]ezfyUnitGroup{{TroopId: 16, Count: 100}},
+		[]ezfyUnitGroup{{TroopId: 16, Count: 100}},
+		0, 0, 0, 20, 20, // 燃烧引擎 +20%（双方通用）
+		30, 30,
+		ezfyBattleBonus{Move: 10}, ezfyBattleBonus{}, // 攻方套装「移动距离+10%」
+		ezfyBattleBonus{}, ezfyBattleBonus{}, "", "",
+		"", "", 0, 0, 0, 0,
+		nil, nil, nil, nil, nil,
+		0, nil,
+		map[int]int{}, map[int]int{}, map[int]int{}, map[int]int{},
+		0, 0, 1, 2,
+		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}},
+		ezfyTypeBonus{Speed: map[int]int{ezfyTroopTypeAir: 30}})
+
+	line := ""
+	for _, h := range st.Head {
+		if strings.Contains(h, "战斗加成") {
+			line = h
+		}
+	}
+	t.Logf("战斗加成行：%s", line)
+	// 攻方 移动速度 = 燃烧 20 + 套装移动 10 = 30，拆解出「装备+10」（移动距离）
+	if !strings.Contains(line, "速度+30%(科技+20 装备+10)") {
+		t.Fatalf("攻方移动速度拆解不对（移动距离没体现）：\n%s", line)
+	}
+	// 守方 移动速度 = 燃烧 20（无装备）
+	if !strings.Contains(line, "速度+20%(科技+20)") {
+		t.Fatalf("守方移动速度拆解不对：\n%s", line)
+	}
+	// 双方都是航母（海军）→ 不该出现「空军」
+	if strings.Contains(line, "空军") {
+		t.Fatalf("纯海军部队不该在汇总行出现空军速度加成：\n%s", line)
 	}
 }
 
