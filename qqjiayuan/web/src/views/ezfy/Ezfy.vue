@@ -4601,6 +4601,28 @@ export default {
       }
       return false
     },
+    // ★ 2026-10-09 野地/寇城「掉落宝物」的可读化：后端下发的是结构化 JSON
+    //   [{"name":"防弹衣","count":1,"pct":2},...]，原来直接 print 出来是一串花括号（用户反馈）。
+    //   → 「防弹衣×1(2%)、青铜军刀×1(10%)」。
+    //   ⚠️ 老数据可能是纯文本（如「中级/高级」）→ 解析失败就原样返回，不吞掉内容。
+    fmtWildDrop (raw) {
+      const s = String(raw || '').trim()
+      if (!s) return ''
+      let rows
+      try { rows = JSON.parse(s) } catch (e) { return s }
+      if (!Array.isArray(rows)) return s
+      const parts = []
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] || {}
+        const name = String(r.name || '').trim()
+        if (!name) continue
+        const cnt = parseInt(r.count, 10) > 0 ? parseInt(r.count, 10) : 1
+        let pct = parseInt(r.pct, 10)
+        if (isNaN(pct) || pct <= 0) pct = 100   // 缺省/<=0 = 必掉（与后端同口径）
+        parts.push(name + '×' + cnt + '(' + pct + '%)')
+      }
+      return parts.length ? parts.join('、') : s
+    },
     // ★ 上限变小后（改集结令 / 换带队军官 / 换城市）把已填兵力重新夹进新上限，
     //   否则「本次出兵」会一直红着超限，而滑块又因为 max 变成 0 和数字框显示不一致。
     //   策略：按兵种 id 升序依次分配剩余额度（先到先得），结果稳定可预期。

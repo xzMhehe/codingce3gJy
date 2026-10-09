@@ -1631,7 +1631,8 @@ func ezfyOrderStatusName(s int) string {
 	case ezfyOrderStatusBattle:
 		return "战斗中"
 	case ezfyOrderStatusWaiting:
-		return "等待"
+		// ★ 2026-10-09 用户反馈「出征队列里等待中的看不出军队在干啥」→ 文案说清楚为什么在等
+		return "等待中(目标已被抢先攻打, 排队等待交战)"
 	default:
 		return "未知"
 	}

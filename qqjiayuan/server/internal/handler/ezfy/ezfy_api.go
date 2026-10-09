@@ -3691,6 +3691,13 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		case ezfyOrderStatusBattle:
 			statusName = "战斗中"
 			timeLabel = "本回合剩余"
+		case ezfyOrderStatusWaiting:
+			// ★★ 2026-10-09 补「等待中」：原来这个 switch **没有 case 6** →
+			//   status_name / time_label / time_text 全是空串，军情 → 军队动态里就显示成
+			//   「状态：」+「：」，玩家完全看不出部队在干嘛（用户反馈「看都不知道军队在干啥」）。
+			statusName = "等待中(目标已被抢先攻打, 排队等待交战)"
+			timeLabel = "已等待"
+			timeText = ezfyDurationText((now - o.ArriveTime) / 1000)
 		}
 		// ★ 指挥室（2026-09-22 ）：战斗中的部队带上回合进度与本回合倒计时，
 		//   前端据此在这一行显示 [指挥] 入口（军情 → 军队动态 → 指挥）。

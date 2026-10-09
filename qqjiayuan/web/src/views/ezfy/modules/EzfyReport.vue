@@ -36,6 +36,12 @@
               <template v-if="o.status === 0 || o.status === 2">
                 <a class="green" href="javascript:;" @click="ezfy.openScheme(o)">[计谋]</a>
               </template>
+              <!-- ★ 2026-10-09 军队动态里也能直接取消（原来只有出征队列能取消，用户反馈找不到）；
+                   等待中(6) 是用户明确要求的：目标被抢先攻打、排队中可自行撤兵。
+                   守方视角的「敌军来袭」行不能取消（那不是自己的部队）。 -->
+              <template v-if="!o.is_defend && (o.status === 0 || o.status === 1 || o.status === 6)">
+                <a class="red" href="javascript:;" @click="ezfy.doRecall(o)">[取消]</a>
+              </template>
               <br/>
               军官：{{ o.officer || '无' }}<br/>
               {{ o.time_label }}：{{ o._lt || o.time_text }}<br/>

@@ -992,11 +992,11 @@ const (
 	ezfyGatherSeaMultDef = 1.5
 	// ★ 2026-09-28 军校刷新周期模式，默认按小时（2）；1 = 按天
 	ezfyRecruitCycleHourlyDef = 2
-	// ★ 2026-10-05 战斗掉落宝物概率（wildlandLoot 可配）：中级/高级/特殊 roll 阈值 + 活动野地掉宝总概率
-	ezfyDropT2Def     = 18
-	ezfyDropT3Def     = 4
-	ezfyDropT4Def     = 1
-	ezfyDropActPctDef = 85
+	// ★ 2026-10-09 原「战斗掉落·中级/高级/特殊宝物概率 + 活动野地掉宝概率」四个全局配置已**删除**
+	//   （用户要求「掉落 都走手动配置的」）：野地/寇城掉落走「地图管理 → 野地类型」里的
+	//   宝物/道具掉落配置（`wildlandConfigLoot`），活动野地走 `EzfyActWild.Treasures`。
+	//   ⚠️ `ezfy_cfg_limit` 上的 drop_t2/drop_t3/drop_t4/drop_act_pct 四个**列保留**（不动历史数据），
+	//   只是代码不再读写。
 )
 
 // ezfyMarchCapOn 出征是否受「兵力上限」限制（关 = 不限兵力）

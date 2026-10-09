@@ -67,12 +67,13 @@ func TestOfficerGuardBonusSourceUsesAttrBonus(t *testing.T) {
 
 // TestBattleLootExcludesSetPieces —— 用户规则：「套装军官装备不能通过战斗掉落获得」。
 //
-// randomEquipment 是战斗掉落（活动目标/野地）取装备的唯一出口，
-// 必须排除 set_id > 0 的套装件（珠宝本来就被排除）。
+// ★ 2026-10-09 掉落改走 `wildlandConfigLoot`（「地图管理 → 野地类型」手动配置的宝物/道具，
+// 掠夺与征服都会掉）后，这里改成盯它：**配置里填了套装名也必须被拦掉** ——
+// 否则管理端填个套装名就能绕过「套装只能开宝箱」这条规则刷套装。
 func TestBattleLootExcludesSetPieces(t *testing.T) {
-	body := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) randomEquipment(")
-	if !strings.Contains(body, "e.SetId > 0") {
-		t.Fatalf("randomEquipment 未排除套装件，战斗掉落仍会掉套装：\n%s", body)
+	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) wildlandConfigLoot(")
+	if !strings.Contains(body, "eq.SetId > 0") {
+		t.Fatalf("wildlandConfigLoot 未排除套装件，野地掉落仍会掉套装：\n%s", body)
 	}
 }
 

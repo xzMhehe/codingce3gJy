@@ -109,8 +109,14 @@
               <div class="old-line">地形：{{ ezfy.selDetail.terrain_name }}</div>
               <div class="old-line" v-if="ezfy.selDetail.type === 3">地块：寇城</div>
               <div class="old-line" v-else>野地等级：{{ ezfy.selDetail.level }}级</div>
+              <!-- ★ 2026-10-09 掉落宝物可读化：后端下发的是结构化 JSON，直接展示是一串花括号
+                   （用户反馈）→ 走 fmtWildDrop 格式化成「防弹衣×1(2%)、青铜军刀×1(10%)」。 -->
               <div class="old-line" v-if="ezfy.selDetail.type === 3">
-                掉落宝物：{{ ezfy.selDetail.treasure || '普通宝物' }}
+                掉落宝物：{{ ezfy.fmtWildDrop(ezfy.selDetail.treasure) || '普通宝物' }}
+              </div>
+              <!-- ★ 野地/海野也能在「野地类型」里配掉落 → 配了才多显示这一行 -->
+              <div class="old-line" v-else-if="ezfy.fmtWildDrop(ezfy.selDetail.treasure)">
+                掉落宝物：{{ ezfy.fmtWildDrop(ezfy.selDetail.treasure) }}
               </div>
               <div class="old-line" v-else>归属：{{ ezfy.selDetail.owner || '中立' }}</div>
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
@@ -596,7 +602,9 @@
             </template>
             <span v-else-if="o.status === 1 && o.arrive_time" class="gray">本期已采：统计中…</span>
             <br/>
-            <span v-if="o.status === 0 || o.status === 1">
+            <!-- ★ 2026-10-09 等待中(6) 也能取消（用户要求「等待中的玩家可以自己取消」）：
+                 部队已到达、只是在排队等交战，撤兵后按单程返航回出发城。 -->
+            <span v-if="o.status === 0 || o.status === 1 || o.status === 6">
               <a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[取消]</a><br/>
             </span>
             --------------------

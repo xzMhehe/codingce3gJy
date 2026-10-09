@@ -1623,6 +1623,38 @@ func (h *EzfyHandler) ezfyIntelLevel(cityID uint) int {
 	return lv
 }
 
+// ezfyOrderTimeLabel 出征队列 / 军队动态里「时间标签 + 文案」的统一口径。
+//
+// ★★ 2026-10-09 新增：出征队列（`/orders`）原来**完全不发** time_label/time_text，
+// 而前端模板是 `{{ o.time_label }}：{{ ... }}` —— 遇到「等待中 / 驻守空闲」这类
+// **没有倒计时**的状态，`_lt` 也拿不到值 → 整行就渲染成一个孤零零的冒号「：」
+// （用户反馈「看都不知道军队在干啥」）。
+//
+// 返回 (label, text)；text 为空 = 交给前端按实时倒计时算（行军中/返航中/战斗中有倒计时）。
+func (h *EzfyHandler) ezfyOrderTimeLabel(o *model.EzfyOrder, now int64) (string, string) {
+	switch o.Status {
+	case 0:
+		return "到达剩余", ezfyDurationText((o.ArriveTime - now) / 1000)
+	case 2:
+		return "返航剩余", ezfyDurationText((o.ReturnTime - now) / 1000)
+	case ezfyOrderStatusBattle:
+		// 本回合倒计时由前端按 battle_left_ms 每秒重算（后端只给标签）
+		return "本回合剩余", ""
+	case ezfyOrderStatusWaiting:
+		// ★ 等待中原来在军队动态里也是空（switch 没这个 case），这里统一口径
+		return "已等待", ezfyDurationText((now - o.ArriveTime) / 1000)
+	case 1:
+		if o.OrderType == 7 {
+			if o.ArriveTime > 0 {
+				return "驻守采集", ""
+			}
+			return "驻守(空闲)", "点[采集]开始采集"
+		}
+		return "驻守中", ""
+	}
+	return "", ""
+}
+
 // OrderList 我的命令列表
 func (h *EzfyHandler) OrderList(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -1652,7 +1684,10 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 		}
 	}
 	views := []gin.H{}
+	// ★ 2026-10-09 时间标签统一口径（见 ezfyOrderTimeLabel）
+	nowMs := time.Now().UnixMilli()
 	for _, o := range orders {
+		tLabel, tText := h.ezfyOrderTimeLabel(&o, nowMs)
 		views = append(views, gin.H{
 			"id": o.ID, "order_type": o.OrderType, "type_name": ezfyOrderTypeName(o.OrderType),
 			"target_type": o.TargetType, "target_x": o.TargetX, "target_y": o.TargetY,
@@ -1670,6 +1705,8 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			// ★ 2026-09-30 行军计谋使用标记：scheme_fast=神兵天降已用  scheme_back=战略转移已用
 			"scheme_fast": o.SchemeUsed & 1,
 			"scheme_back": (o.SchemeUsed >> 1) & 1,
+			// ★ 2026-10-09 时间标签/文案（原来完全不发 → 等待中/驻守空闲渲染成孤零零的「：」）
+			"time_label": tLabel, "time_text": tText,
 		})
 	}
 	resp.OK(c, gin.H{"orders": views})
@@ -1740,7 +1777,9 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 			resp.ParamError(c, "该部队不在盟友城市, 无法召回")
 			return
 		}
-	} else if order.Status != 0 && order.Status != 1 {
+	} else if order.Status != 0 && order.Status != 1 && order.Status != ezfyOrderStatusWaiting {
+		// ★ 2026-10-09 用户要求「等待中的玩家可以自己取消」→ 等待(6) 也放行
+		//   （部队已到达、只是在排队等交战，取消后按单程返航回出发城）。
 		resp.ParamError(c, "该命令已在返航中或已结束, 无法取消")
 		return
 	}
@@ -3650,6 +3689,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			target.Gold = maxInt64(0, target.Gold-lootGold)
 		}
 
+		// ★★ 2026-10-09 野地/寇城战斗**胜利掉落**：完全按「地图管理 → 野地类型」里手动配的
+		//   宝物掉落(treasure) + 商城道具掉落(drop_items) 走。
+		//   ⚠️ 原来这段只写在下面的「征服成功占领」分支里 → 玩家打野地/寇城通常是**掠夺(2)**，
+		//      配置里写的宝物一个都不掉（用户反馈「都不掉这些」）。现在掠夺/征服都走这里。
+		if order.TargetType == 1 || order.TargetType == 2 {
+			report += h.wildlandConfigLoot(uid, city, order, wildLevel)
+		}
 		// 征服野地/寇城: 占领
 		if order.OrderType == 3 && (order.TargetType == 1 || order.TargetType == 2) {
 			hallLevel := h.buildingLevel(city.ID, 1)
@@ -3727,54 +3773,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				// ★ 2026-10-05 战报兵种名统一用基础兵种名（不带阵营前缀）
 				report += fmt.Sprintf("\n俘获: %s×%d", ezfyCfg.troopName(capturedTroopId, 0), capturedCount)
 			}
-			// ★ 2026-10-05 野地类型「商城道具掉落」（管理端在野地类型里配，默认空=不掉）：
-			//   打赢该类型野地/海野/寇城后按 [[cfg_id,数量,概率%],...] 掉落商城道具到背包，
-			//   每条独立按概率判定（概率缺省 = 100%）。
-			//   ⚠️ 这里在 switch 之外，case 里的 cfg 不可见 → 按同一口径重新取配置。
-			wcType := 1
-			if order.TargetType == 2 {
-				wcType = 3
-			} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
-				wcType = 2
-			}
-			if wcfg := ezfyCfg.wildland(wcType, wildLevel); wcfg != nil && strings.TrimSpace(wcfg.DropItems) != "" {
-				for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
-					if rand.Intn(100) >= d[2] {
-						continue // 未命中概率，不掉
-					}
-					if it := ezfyCfg.item(d[0]); it != nil {
-						h.addItem(uid, d[0], d[1])
-						report += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
-					}
-				}
-			}
-			// ★ 2026-10-05 宝物掉落（下拉配置 + 概率）：[{"name","count","pct"}]，老文本值解析失败则不掉
-			if wcfg := ezfyCfg.wildland(wcType, wildLevel); wcfg != nil && strings.TrimSpace(wcfg.Treasure) != "" {
-				var drops []wildTreasureDrop
-				if err := json.Unmarshal([]byte(wcfg.Treasure), &drops); err == nil {
-					for _, d := range drops {
-						if d.Count <= 0 || strings.TrimSpace(d.Name) == "" {
-							continue
-						}
-						pct := d.Pct
-						if pct <= 0 {
-							pct = 100
-						}
-						if pct > 100 {
-							pct = 100
-						}
-						if rand.Intn(100) >= pct {
-							continue // 未命中概率，不掉
-						}
-						if eq := ezfyCfg.equipmentByName(d.Name); eq != nil {
-							for k := 0; k < d.Count; k++ {
-								h.addEquipment(city, eq)
-							}
-							report += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
-						}
-					}
-				}
-			}
+			// ★ 2026-10-09 掉落逻辑已抽到 `wildlandConfigLoot`（在 `if win` 开头统一调用）——
+			//   原来它只写在这里（征服成功占领），掠夺(2) 永远不掉 → 玩家反馈「配置里写的宝物都不掉」。
 		}
 
 		// 征服玩家城市
@@ -4285,6 +4285,89 @@ func parseWildlandItemDrops(raw string) [][3]int {
 			}
 		}
 		out = append(out, [3]int{r[0], r[1], pct})
+	}
+	return out
+}
+
+// parseWildTreasureDrops 解析野地类型「宝物掉落」配置：[{"name","count","pct"},...]
+//
+// pct 缺省/<=0 → 100（必掉），>100 钳到 100；count<=0 或 name 为空的条目丢弃。
+// ★ 老文本值（如「中级/高级」）不是合法 JSON → 返回 nil（不掉落，兼容历史数据）。
+func parseWildTreasureDrops(raw string) []wildTreasureDrop {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var rows []wildTreasureDrop
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := []wildTreasureDrop{}
+	for _, r := range rows {
+		if r.Count <= 0 || strings.TrimSpace(r.Name) == "" {
+			continue
+		}
+		if r.Pct <= 0 {
+			r.Pct = 100
+		}
+		if r.Pct > 100 {
+			r.Pct = 100
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// wildlandConfigLoot 野地/寇城战斗**胜利**掉落：完全按「地图管理 → 野地类型」的手动配置走。
+//
+// ★★ 2026-10-09 用户要求：「掉落 都走手动配置的」。两条配置各自逐条独立按概率判定：
+//
+//	· 宝物掉落 `treasure`    ：[{"name","count","pct"}]，按 name 精确匹配 ezfy_cfg_equipment
+//	· 商城道具掉落 `drop_items`：[[cfg_id,数量,概率%]]
+//
+// ★ 修复的 bug：这段逻辑原来**只写在「征服成功占领」分支里**（order_type=3），
+// 而玩家打野地/寇城绝大多数是**掠夺(2)** → 配置里写的宝物一个都不掉
+// （用户反馈「玩家反馈 都不掉这些」）。现在抽成 helper，掠夺/征服都走这里。
+//
+// ★ 安全：**跳过套装件**（set_id > 0）—— 用户规则「套装军官装备只能通过宝箱开启」，
+// 否则在野地类型里填个套装名就能绕过规则刷套装。
+//
+// 返回战报文本（每行前置 \n）；什么都没掉 → 返回空串。
+func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *model.EzfyOrder, wildLevel int) string {
+	// 野地类型口径与地图/守军一致：寇城=3、海野(含岛屿)=2、其余陆野=1
+	wcType := 1
+	if order.TargetType == 2 {
+		wcType = 3
+	} else if ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
+		wcType = 2
+	}
+	wcfg := ezfyCfg.wildland(wcType, wildLevel)
+	if wcfg == nil {
+		return ""
+	}
+	out := ""
+	// ① 商城道具掉落：[[cfg_id, 数量, 概率%],...]
+	for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
+		if rand.Intn(100) >= d[2] {
+			continue // 未命中概率，不掉
+		}
+		if it := ezfyCfg.item(d[0]); it != nil {
+			h.addItem(uid, d[0], d[1])
+			out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+		}
+	}
+	// ② 宝物掉落：[{"name","count","pct"},...]
+	for _, d := range parseWildTreasureDrops(wcfg.Treasure) {
+		if rand.Intn(100) >= d.Pct {
+			continue
+		}
+		eq := ezfyCfg.equipmentByName(d.Name)
+		if eq == nil || eq.SetId > 0 {
+			continue // 名字对不上 / 是套装件（套装只能开宝箱）
+		}
+		for k := 0; k < d.Count; k++ {
+			h.addEquipment(city, eq)
+		}
+		out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
 	}
 	return out
 }

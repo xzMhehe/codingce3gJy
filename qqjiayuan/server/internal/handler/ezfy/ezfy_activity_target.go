@@ -663,9 +663,9 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		h.saveCityRes(city)
 
 		report += fmt.Sprintf("\n战利品: 粮%d 钢%d 油%d 稀矿%d 黄金%d", res, res, res, res, gold)
-		if loot := h.wildlandLoot(city, level*3, terrain, true); loot != "" {
-			report += "\n" + loot
-		}
+		// ★ 2026-10-09 用户要求「掉落 都走手动配置的」：活动野地**不再走旧的随机掉宝**
+		//   （原 `wildlandLoot` + 全局概率 drop_t2/t3/t4 + drop_act_pct，已废弃），
+		//   只按下面 `aw.Treasures`（活动野地配置里手动配的必掉宝物）发放。
 		// ★ 2026-09-29 必掉宝物多行配置 [[cfg_id,数量]]：胜利后按配置掉落多件（增强宝，保证进背包）
 		if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Treasures) != "" {
 			for _, tr := range parseActWildTreasures(aw.Treasures) {

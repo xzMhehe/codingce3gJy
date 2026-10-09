@@ -370,15 +370,15 @@ type EzfyCfgLimit struct {
 	//   默认 1.3：1级=800；5级≈6467；7级≈10160；9级≈13840（均未乘后勤/倍率/陆海）。
 	//   1.0 = 纯线性（历史行为）；>1 越高等级越发突出；<1 高等级收益递减。0 / 负 / NULL 无意义 → 回落 1.3。
 	GatherLevelPow float64 `gorm:"default:1.3;comment:采集等级成长幂次" json:"gather_level_pow"`
-	// ★ 2026-10-05 战斗掉落宝物概率阈值（wildlandLoot 高级宝物掉率可配）：roll 阈值
-	//   中级 默认 18（roll<18）、高级 默认 4、特殊 默认 1；0/负/NULL → 回落默认。
-	DropT2 int `gorm:"default:18;comment:中级宝物掉落roll阈值" json:"drop_t2"`
-	DropT3 int `gorm:"default:4;comment:高级宝物掉落roll阈值" json:"drop_t3"`
-	DropT4 int `gorm:"default:1;comment:特殊宝物掉落roll阈值" json:"drop_t4"`
-	// ★ 2026-10-05 活动野地（活动目标）战斗掉宝总概率%：命中后才按品质掉落（默认 85）。
-	//   「野地战斗掉落高级宝物（如狙击步枪）的概率要可配」→ 这里就是那个概率。
-	//   0 / 负 / NULL → 回落 85。
-	DropActPct int `gorm:"default:85;comment:活动野地战斗掉宝概率" json:"drop_act_pct"`
+	// ⚠️ 2026-10-09 **已废弃**（用户要求「掉落 都走手动配置的」）：下面四个字段对应的全局掉落概率
+	//   不再被任何代码读写，管理端也已移除。**列保留**只为不动历史数据 ——
+	//   现在野地/寇城掉落走「地图管理 → 野地类型」的 treasure/drop_items（`wildlandConfigLoot`），
+	//   活动野地走 `EzfyActWild.Treasures`。
+	DropT2 int `gorm:"default:18;comment:已废弃(2026-10-09)：中级宝物掉落roll阈值" json:"drop_t2"`
+	DropT3 int `gorm:"default:4;comment:已废弃(2026-10-09)：高级宝物掉落roll阈值" json:"drop_t3"`
+	DropT4 int `gorm:"default:1;comment:已废弃(2026-10-09)：特殊宝物掉落roll阈值" json:"drop_t4"`
+	// ⚠️ 2026-10-09 同上**已废弃**（活动野地掉宝总概率%）。
+	DropActPct int `gorm:"default:85;comment:已废弃(2026-10-09)：活动野地战斗掉宝概率" json:"drop_act_pct"`
 	// ★ 2026-09-28 「海野采集更高些，给海野加个系数 1~2」：
 	//   海野采集产出在本公式得出后（陆海系数之前）再整体 × 本系数，让海城周边野地采集更划算。
 	//   默认 1.5（海野基础陆海系数 3×1.5=4.5，比同级陆野 4 更高）；1 = 跟陆野拉平；2 = 翻倍。0 / 负 / NULL 无意义 → 回落 1.5。

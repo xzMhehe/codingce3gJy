@@ -2223,61 +2223,13 @@ func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
 
 // ============ 野地掉宝 / 俘虏守将 ============
 
-// wildlandLoot 战胜野地/寇城掉宝：按等级概率掉装备 + 按地形概率掉珠宝
-func (h *EzfyHandler) wildlandLoot(city *model.EzfyCity, level, terrain int, special bool) string {
-	h.cfgs()
-	desc := ""
-	roll := rand.Intn(100)
-	dropChance, tier := 80, 1
-	// ★ 2026-09-29 先前 中级/高级/特殊 散件掉率太高（30%/14%/6%），
-	//   统一调低 → 中级17% (roll<25) / 高级6% (roll<8) / 特殊2% (roll<2)，
-	//   省出的概率全部归到 初级(初级散件变多)。
-	// ★ 2026-09-30 玩家反馈高级地掉装备略多：中级 12%(roll<18) / 高级 4%(roll<4) / 特殊 1%(roll<1)
-	// ★ 2026-10-05 「战斗掉落高级宝物（狙击步枪）概率可配」→ 三个阈值改读「二战系统配置」
-	//   （中级 drop_t2 / 高级 drop_t3 / 特殊 drop_t4，默认 18/4/1；0/负 → 回落默认）。
-	t2 := ezfyLimitOr(ezfyCfg.limit.DropT2, 18)
-	t3 := ezfyLimitOr(ezfyCfg.limit.DropT3, 4)
-	t4 := ezfyLimitOr(ezfyCfg.limit.DropT4, 1)
-	if level >= 3 && roll < t2 {
-		tier = 2
-	}
-	if level >= 6 && roll < t3 {
-		tier = 3
-	}
-	if level >= 9 && roll < t4 {
-		tier = 4
-	}
-	if special {
-		if tier < 3 {
-			tier = 3
-		}
-		// ★ 2026-09-30 玩家反馈高级地掉装备偏多：活动野地不再必定掉，降为 85%
-		// ★ 2026-10-05 该概率改读配置（drop_act_pct，默认 85；0/负 → 回落 85）
-		dropChance = ezfyLimitOr(ezfyCfg.limit.DropActPct, 85)
-	} else if m := maxInt(maxInt(t2, t3), t4); m > dropChance {
-		// 非活动野地：阈值本身即掉率，避免把阈值配得 >80 时被 dropChance 卡掉
-		dropChance = m
-	}
-	if dropChance > 100 {
-		dropChance = 100
-	}
-	if roll < dropChance {
-		if cfg := h.randomEquipment(tier); cfg != nil {
-			h.addEquipment(city, cfg)
-			desc += " 宝物[" + ezfyTierName(tier) + "]:" + cfg.Name
-			// ★ 系统消息（战斗掉落的装备要能看到）
-			h.ezfySysChat("恭喜玩家 %s 战斗掉落%s宝物：%s", h.ezfyProfileName(city.UserID), ezfyTierName(tier), cfg.Name)
-		}
-	}
-	if rand.Intn(100) < 40 {
-		if jewel := h.randomJewel(terrain); jewel != nil {
-			h.addEquipment(city, jewel)
-			desc += " 珠宝:" + jewel.Name
-			h.ezfySysChat("恭喜玩家 %s 缴获地形珠宝：%s", h.ezfyProfileName(city.UserID), jewel.Name)
-		}
-	}
-	return desc
-}
+// ★ 2026-10-09 用户要求「掉落 都走手动配置的」→ 原 `wildlandLoot`（活动野地的随机掉宝 +
+// 全局概率 drop_t2/drop_t3/drop_t4/drop_act_pct）已**整体废弃删除**：
+//
+//	· 野地 / 寇城掉落 → `wildlandConfigLoot`（按「地图管理 → 野地类型」手动配的宝物/道具）
+//	· 活动野地掉落   → `aw.Treasures`（活动野地配置里手动配的必掉宝物）
+//
+// 顺带删掉了只服务于它的 `randomEquipment`；`randomJewel` 保留（活动野地详情预览还在用）。
 
 // ezfyProfileName 取玩家昵称（发系统消息用），拿不到时给个兜底，避免出现「恭喜玩家  晋升」
 func (h *EzfyHandler) ezfyProfileName(uid uint) string {
@@ -2301,29 +2253,6 @@ func ezfyTierName(tier int) string {
 	default:
 		return "特殊"
 	}
-}
-
-// randomEquipment 随机取指定品质的**非套装、非珠宝**装备
-//
-// ★ 用户规则（2026-09-22）：**套装军官装备只能通过宝箱开启**。
-//
-//	战斗掉落（活动目标/野地）只出普通装备（武器/防具/饰品）与地形珠宝，
-//	套装件（set_id > 0）在这里被排除 —— 想让某套装能掉落，必须从这条规则外另开口子。
-func (h *EzfyHandler) randomEquipment(tier int) *model.EzfyCfgEquipment {
-	pool := []model.EzfyCfgEquipment{}
-	for _, e := range ezfyCfg.equipments {
-		if e.Type == "珠宝" || e.SetId > 0 {
-			continue
-		}
-		if e.Tier == tier {
-			pool = append(pool, e)
-		}
-	}
-	if len(pool) == 0 {
-		return nil
-	}
-	e := pool[rand.Intn(len(pool))]
-	return &e
 }
 
 // randomJewel 按地形取珠宝（地形 1-8 对应珠宝 id 19-26）

@@ -52,9 +52,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		ResProdMult: ezfyResProdMultDef,
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；0 合法 = 黄金产量归零）
 		GoldProdMult: ezfyGoldProdMultDef,
-		// ★ 2026-10-05 战斗掉落宝物概率（中级/高级/特殊阈值 + 活动野地掉宝总概率）
-		DropT2: ezfyDropT2Def, DropT3: ezfyDropT3Def, DropT4: ezfyDropT4Def,
-		DropActPct: ezfyDropActPctDef,
 		// ★ 三个开关的默认值都写进初始值：新建行时 GORM 会显式写 1（列上没有 gorm default 标签）
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
@@ -215,19 +212,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.SysSellRare <= 0 {
 		lim.SysSellRare = 25
 	}
-	// ★ 2026-10-05 战斗掉落宝物概率兜底（0 / NULL → 回落默认 18/4/1 + 85）
-	if lim.DropT2 <= 0 {
-		lim.DropT2 = ezfyDropT2Def
-	}
-	if lim.DropT3 <= 0 {
-		lim.DropT3 = ezfyDropT3Def
-	}
-	if lim.DropT4 <= 0 {
-		lim.DropT4 = ezfyDropT4Def
-	}
-	if lim.DropActPct <= 0 {
-		lim.DropActPct = ezfyDropActPctDef
-	}
 	// ★ 三个开关**不做** <= 0 兜底：0 就是「关」，是合法值。
 	//   只有 NULL 才是没配过（列是后来补的），seed 启动时已回填 1。
 	resp.OK(c, lim)
@@ -282,11 +266,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ResProdMult *float64 `json:"res_prod_mult"`
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；**0 合法 = 黄金产量归零**）
 		GoldProdMult *float64 `json:"gold_prod_mult"`
-		// ★ 2026-10-05 战斗掉落宝物概率（中级/高级/特殊 roll 阈值 + 活动野地掉宝总概率%）
-		DropT2        *int `json:"drop_t2"`
-		DropT3        *int `json:"drop_t3"`
-		DropT4        *int `json:"drop_t4"`
-		DropActPct    *int `json:"drop_act_pct"`
 		RecruitCostOn *int `json:"recruit_cost_on"`
 		FoodUpkeepOn  *int `json:"food_upkeep_on"`
 		MarchOilOn    *int `json:"march_oil_on"`
@@ -359,9 +338,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
 		ResProdMult:  ezfyResProdMultDef,
 		GoldProdMult: ezfyGoldProdMultDef,
-		// ★ 2026-10-05 战斗掉落宝物概率（中级/高级/特殊阈值 + 活动野地掉宝总概率）
-		DropT2: ezfyDropT2Def, DropT3: ezfyDropT3Def, DropT4: ezfyDropT4Def,
-		DropActPct:    ezfyDropActPctDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
@@ -614,26 +590,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.GatherSeaMult = m
-	}
-	// ★ 2026-10-05 战斗掉落宝物概率：都是百分比 1~100（可填 100 = 必掉），0/负 拒绝
-	for _, dp := range []struct {
-		in   *int
-		dst  *int
-		name string
-	}{
-		{in.DropT2, &lim.DropT2, "中级宝物掉落概率"},
-		{in.DropT3, &lim.DropT3, "高级宝物掉落概率"},
-		{in.DropT4, &lim.DropT4, "特殊宝物掉落概率"},
-		{in.DropActPct, &lim.DropActPct, "活动野地掉宝概率"},
-	} {
-		if dp.in == nil {
-			continue
-		}
-		if *dp.in <= 0 || *dp.in > 100 {
-			resp.ParamError(c, dp.name+"必须在 1~100 之间（% ）")
-			return
-		}
-		*dp.dst = *dp.in
 	}
 	// ★ 2026-09-28 军校刷新周期：只允许 1=按天 2=按小时
 	if in.RecruitCycleMode != nil {
@@ -898,19 +854,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if lim.GatherSeaMult <= 0 {
 		lim.GatherSeaMult = ezfyGatherSeaMultDef
 	}
-	// ★ 2026-10-05 战斗掉落宝物概率兜底（老行 0 / NULL → 回落默认 18/4/1 + 85）
-	if lim.DropT2 <= 0 {
-		lim.DropT2 = ezfyDropT2Def
-	}
-	if lim.DropT3 <= 0 {
-		lim.DropT3 = ezfyDropT3Def
-	}
-	if lim.DropT4 <= 0 {
-		lim.DropT4 = ezfyDropT4Def
-	}
-	if lim.DropActPct <= 0 {
-		lim.DropActPct = ezfyDropActPctDef
-	}
 	// ★ 2026-09-28 军校刷新周期兜底（只允许 1=按天 / 2=按小时，其余回落按小时）
 	if lim.RecruitCycleMode != 1 && lim.RecruitCycleMode != 2 {
 		lim.RecruitCycleMode = ezfyRecruitCycleHourlyDef
@@ -1008,13 +951,11 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		h.DB.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN gold_prod_mult double DEFAULT 1")
 		h.DB.Exec("UPDATE ezfy_cfg_limit SET gold_prod_mult = 1 WHERE gold_prod_mult IS NULL")
 	}
-	// ★ 2026-10-05 同理防御「Unknown column 'drop_t2' / 'drop_act_pct' 等」
+	// ★ 2026-10-05 同理防御「Unknown column 'ransom_cost' / 'default_continent' 等」
 	for _, c := range []struct {
 		col string
 		def int
 	}{
-		{"drop_t2", ezfyDropT2Def}, {"drop_t3", ezfyDropT3Def},
-		{"drop_t4", ezfyDropT4Def}, {"drop_act_pct", ezfyDropActPctDef},
 		// ★ 2026-10-07 赎城金额：老库补列 + NULL/<=0 兜底 500（0 无意义 = 禁止赎城）
 		{"ransom_cost", ezfyRansomCostDefault},
 		// ★ 2026-10-08 新玩家落地洲：老库补列 + NULL/越界(含0) 兜底欧洲
@@ -1060,11 +1001,6 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"res_prod_mult": lim.ResProdMult,
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，0 = 黄金产量归零）
 		"gold_prod_mult": lim.GoldProdMult,
-		// ★ 2026-10-05 战斗掉落宝物概率（中级/高级/特殊阈值 + 活动野地掉宝总概率）
-		"drop_t2":      lim.DropT2,
-		"drop_t3":      lim.DropT3,
-		"drop_t4":      lim.DropT4,
-		"drop_act_pct": lim.DropActPct,
 		// ★ 军官升星功能开关同样要显式写（0 = 关 必须落库）
 		"officer_star_up_on": lim.OfficerStarUpOn,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写
