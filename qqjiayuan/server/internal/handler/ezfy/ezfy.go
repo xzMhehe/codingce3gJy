@@ -2153,10 +2153,20 @@ func (h *EzfyHandler) speedUpBuilding(city *model.EzfyCity, recordId int64, minu
 		return "建筑没有在施工"
 	}
 	end := time.Now().UnixMilli()
+	// ★ 2026-10-10 修复「加速被吞」（与训练同一类）：建筑已完成（end_time 已过未结算）
+	//   再用加速零收益却扣道具 → 拒绝，不扣。
+	if b.EndTime <= end {
+		return "该建筑已完工，无需加速"
+	}
 	if remain := b.EndTime - minutes*60000; remain > end {
 		end = remain
 	}
-	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).Update("end_time", end)
+	// 并发保护：条件更新抢占，失败说明已被并发懒结算收走 → 不扣道具
+	res := h.DB.Model(&model.EzfyCityBuilding{}).
+		Where("id = ? AND status != 0", b.ID).Update("end_time", end)
+	if res.Error != nil || res.RowsAffected == 0 {
+		return "建筑状态已变化，请刷新后重试"
+	}
 	return ""
 }
 
@@ -2754,10 +2764,20 @@ func (h *EzfyHandler) speedUpTech(city *model.EzfyCity, minutes int64) string {
 		return "没有研究中的科技"
 	}
 	end := time.Now().UnixMilli()
+	// ★ 2026-10-10 修复「加速被吞」（与训练同一类）：研究已完成（end_time 已过未结算）
+	//   再用加速零收益却扣道具 → 拒绝，不扣。
+	if t.EndTime <= end {
+		return "该科技已完成，无需加速"
+	}
 	if remain := t.EndTime - minutes*60000; remain > end {
 		end = remain
 	}
-	h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).Update("end_time", end)
+	// 并发保护：条件更新抢占，失败说明已被并发懒结算收走 → 不扣道具
+	res := h.DB.Model(&model.EzfyCityTech{}).
+		Where("id = ? AND status = 1", t.ID).Update("end_time", end)
+	if res.Error != nil || res.RowsAffected == 0 {
+		return "科技状态已变化，请刷新后重试"
+	}
 	return ""
 }
 
@@ -2773,10 +2793,21 @@ func (h *EzfyHandler) speedUpTrain(city *model.EzfyCity, queueId int64, minutes 
 		return "没有训练中的队列"
 	}
 	end := time.Now().UnixMilli()
+	// ★ 2026-10-10 修复「造兵加速被吞」：训练队列已完成（end_time 已过但还没懒结算）时，
+	//   再用加速 clamp 到 now 等于零收益，道具却被扣掉 —— 用户连点多个全被吞。
+	//   已完成/已并发结算(status!=0)一律拒绝，不扣道具。
+	if q.EndTime <= end {
+		return "该训练队列已完成，无需加速"
+	}
 	if remain := q.EndTime - minutes*60000; remain > end {
 		end = remain
 	}
-	h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).Update("end_time", end)
+	// 并发保护：条件更新抢占 status=0，失败说明已被并发懒结算取走 → 不扣道具
+	res := h.DB.Model(&model.EzfyTrainQueue{}).
+		Where("id = ? AND status = 0", q.ID).Update("end_time", end)
+	if res.Error != nil || res.RowsAffected == 0 {
+		return "训练队列状态已变化，请刷新后重试"
+	}
 	return ""
 }
 
@@ -3132,8 +3163,18 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			}
 			b = target
 		}
-		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
-			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), b.EndTime, param))
+		now := time.Now().UnixMilli()
+		// ★ 2026-10-10 修复「加速被吞」（与训练同一类）：建筑已完成（end_time 已过未结算）
+		//   再用 % 零收益却扣道具 → 拒绝，不扣。
+		if b.EndTime <= now {
+			return "该建筑已完工，无需加速"
+		}
+		res := h.DB.Model(&model.EzfyCityBuilding{}).
+			Where("id = ? AND status != 0", b.ID).
+			Update("end_time", pctSpeedEnd(now, b.EndTime, param))
+		if res.Error != nil || res.RowsAffected == 0 {
+			return "建筑状态已变化，请刷新后重试"
+		}
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前建筑升级剩余时间减少%d%%", param)
 	case 25: // 训练加速%
@@ -3150,8 +3191,18 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			}
 			q = target
 		}
-		h.DB.Model(&model.EzfyTrainQueue{}).Where("id = ?", q.ID).
-			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), q.EndTime, param))
+		now := time.Now().UnixMilli()
+		// ★ 2026-10-10 修复「造兵加速被吞」：队列已完成（end_time 已过未结算）时
+		//   pctSpeedEnd 零收益、道具却被扣 → 已完成/已并发结算都拒绝，不扣道具。
+		if q.EndTime <= now {
+			return "该训练队列已完成，无需加速"
+		}
+		res := h.DB.Model(&model.EzfyTrainQueue{}).
+			Where("id = ? AND status = 0", q.ID).
+			Update("end_time", pctSpeedEnd(now, q.EndTime, param))
+		if res.Error != nil || res.RowsAffected == 0 {
+			return "训练队列状态已变化，请刷新后重试"
+		}
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前训练队列剩余时间减少%d%%", param)
 	case 26: // 科技加速%
@@ -3161,8 +3212,17 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			First(&t).Error; err != nil {
 			return "没有研究中的科技"
 		}
-		h.DB.Model(&model.EzfyCityTech{}).Where("id = ?", t.ID).
-			Update("end_time", pctSpeedEnd(time.Now().UnixMilli(), t.EndTime, param))
+		now := time.Now().UnixMilli()
+		// ★ 2026-10-10 修复「加速被吞」（与训练同一类）：研究已完成（end_time 已过未结算）
+		//   再用 % 零收益却扣道具 → 拒绝，不扣。
+		if t.EndTime <= now {
+			return "该科技已完成，无需加速"
+		}
+		res := h.DB.Model(&model.EzfyCityTech{}).Where("id = ? AND status = 1", t.ID).
+			Update("end_time", pctSpeedEnd(now, t.EndTime, param))
+		if res.Error != nil || res.RowsAffected == 0 {
+			return "科技状态已变化，请刷新后重试"
+		}
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 当前科技研究剩余时间减少%d%%", param)
 	case 6:
