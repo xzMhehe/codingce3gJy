@@ -3,7 +3,7 @@
     <template v-if="ezfy.cur === 'friends'">
         <div class="panel">
           <div class="panel-title">游戏内好友</div>
-          <div class="panel-title">搜索玩家（按游戏ID / 玩家号码 / 昵称）</div>
+          <div class="panel-title">搜索玩家</div>
           <div class="old-line">
             <input v-model="ezfy.friendKeyword" placeholder="输入游戏ID / 玩家号码 / 昵称" style="width:170px"/>
             <button @click="ezfy.doFriendSearch">[搜索]</button>
