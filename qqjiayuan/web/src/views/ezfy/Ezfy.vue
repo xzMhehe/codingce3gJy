@@ -492,6 +492,9 @@
            （如果以后又要一个独立页，从 git 历史里捞回来即可。） -->
 
       <!-- 底部导航(每页都有, 复刻原版 cityHome.html 的 8+7 两行) -->
+      <!-- ★ 2026-10-10 新首页布局：底部 16 项与首页主网格重复（有些还是电脑端功能）→ 首页新布局整块隐藏，
+           老布局与其它页面保留 -->
+      <template v-if="!isNewHome">
       <br/>
       <div class="old-line ezfy-bottom-nav">
         <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>
@@ -514,6 +517,7 @@
         <!-- ★ 2026-09-24  底部导航「首页」换成「家园」(全局页脚已对沉浸式页面隐藏, 这里作为离开游戏的出口) -->
         <a href="javascript:;" @click="exitToHome()">家园</a>
       </div>
+      </template>
       <hr/>
       <div>小Q报时：{{ nowText }}</div>
       <!-- <div>联系我们：QQ群 431442049</div> -->
@@ -1039,6 +1043,11 @@ export default {
     },
     showSubnav () {
       return ['buildm', 'builds', 'acade', 'officerdetail', 'techs', 'techpre', 'defence', 'info'].indexOf(this.cur) >= 0 || this.isArmyPage
+    },
+    // ★ 2026-10-10 是否「首页-新布局」：新布局下底部 16 项导航与首页主网格重复 → 整块隐藏；
+    //   老布局（homeLayout===2）与其它页面保留底部导航。
+    isNewHome () {
+      return this.cur === 'home' && this.homeLayout !== 2
     },
     // ★ 玩家当前军衔等级 id（用于首页/统帅信息展示对应军衔星级图标）
     myRankId () { return this.rankIdByName(this.rankName) },
@@ -6445,32 +6454,31 @@ body.ezfy-ios .ezfy-page textarea {
    只作用于首页，不影响其它页面。 */
 .ezfy-page .home-body { line-height: 1.45; }
 
-/* ====================== 首页-新布局（战争主题简约版，2026-10-10） ====================== */
-/* 深色军旅面板：军绿底色 + 沙色文字 + 金色点缀；一屏放全功能、去重后的入口按钮。
-   只作用于首页新布局（.war-home），不影响其它页面。 */
+/* ====================== 首页-新布局（战争简约版，2026-10-10 白底优化） ====================== */
+/* 白底 + 浅灰卡片 + 深红点缀：保留战争风格（城市/按钮红黑强调、浅灰"军牌"卡片），
+   不破坏整体浅色氛围；一屏放全功能、去重后的入口按钮。只作用于首页新布局。 */
 .ezfy-page .war-home {
   margin-top: 6px;
-  padding: 8px 10px 10px;
-  background: linear-gradient(180deg, #383d2c, #262a1e);
-  border: 1px solid #5f6440;
+  padding: 6px 8px 8px;
+  background: #fff;
+  border: 1px solid #dcdfe6;
   border-radius: 8px;
-  color: #e9e4cc;
+  color: #333;
   line-height: 1.35;
+  /* ★ 2026-10-10 用户：「别铺满整屏幕 铺一半」→ 桌面限到约半屏宽（约 720px），手机上仍全宽 */
+  max-width: 720px;
 }
-.ezfy-page .war-home a { color: #e8b84b; margin: 0 2px; }
-.ezfy-page .war-home a:hover { color: #ff6b5e; text-decoration: none; }
-/* 深色底上聊天/提示用色提亮一档，保证可读 */
-.ezfy-page .war-home .orange { color: #e0a83a; }
-.ezfy-page .war-home .gray { color: #a9a48c; }
+.ezfy-page .war-home a { margin: 0 2px; }
+.ezfy-page .war-home a:hover { text-decoration: none; }
 .ezfy-page .war-home .ezfy-ico { vertical-align: -5px; }
 /* 头部：城市 + 军衔/声望/军团/签到 */
 .ezfy-page .war-head {
-  border-bottom: 1px dashed #5f6440;
+  border-bottom: 1px dashed #d5d9e0;
   padding-bottom: 4px;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 .ezfy-page .war-head .city-name {
-  color: #f0cf6a;
+  color: #8b2f2f; /* 战争深红，突出主城 */
   font-weight: bold;
   font-size: calc(var(--fs) + 1px);
 }
@@ -6480,16 +6488,16 @@ body.ezfy-ios .ezfy-page textarea {
   flex-wrap: wrap;
   gap: 0 10px;
 }
-.ezfy-page .war-stat { color: #cfc9ae; font-size: var(--fs); }
+.ezfy-page .war-stat { color: #555; font-size: var(--fs); }
 /* 资源 5 列网格（图标 + 现有/每小时产量） */
 .ezfy-page .war-res {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 5px;
+  gap: 4px;
 }
 .ezfy-page .war-res-cell {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(232, 227, 200, 0.22);
+  background: #f7f8fa;
+  border: 1px solid #e4e7ed;
   border-radius: 6px;
   padding: 3px 2px 4px;
   text-align: center;
@@ -6500,11 +6508,11 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .war-res-val {
   margin-top: 1px;
   font-size: 13px;
-  color: #f0ead2;
+  color: #333;
   white-space: nowrap;
   overflow: hidden;
 }
-.ezfy-page .war-res-val i { font-style: normal; color: #8d9272; margin: 0 1px; }
+.ezfy-page .war-res-val i { font-style: normal; color: #999; margin: 0 1px; }
 .ezfy-page .war-res-ops {
   grid-column: 1 / -1;
   text-align: left;
@@ -6515,49 +6523,51 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .war-row2 {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin: 6px 0;
+  gap: 4px;
+  margin: 5px 0;
 }
 .ezfy-page .war-cell2 {
   flex: 1 1 auto;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(232, 227, 200, 0.22);
+  background: #f7f8fa;
+  border: 1px solid #e4e7ed;
   border-radius: 6px;
   padding: 3px 6px;
   font-size: var(--fs);
-  color: #e9e4cc;
+  color: #333;
   white-space: nowrap;
 }
 /* 功能入口按钮网格（4 列，去重后全部功能） */
 .ezfy-page .war-btns {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
+  gap: 4px;
 }
 .ezfy-page .war-btn {
   display: block;
   text-align: center;
   padding: 5px 2px;
-  background: linear-gradient(180deg, #4d5238, #3a3f2b);
-  border: 1px solid #747a50;
+  background: #f0f2f5;
+  border: 1px solid #d5d9e0;
   border-radius: 4px;
-  color: #f0ead2 !important;
+  color: #333 !important;
   font-size: var(--fs);
   margin: 0;
 }
 .ezfy-page .war-btn:hover {
-  color: #ffd76a !important;
-  border-color: #d8a94f;
+  color: #c0392b !important; /* 战争红 */
+  border-color: #c0392b;
+  background: #fdf3f2;
   text-decoration: none;
 }
 /* 世界聊天 */
 .ezfy-page .war-chat {
-  margin-top: 6px;
-  border-top: 1px dashed #5f6440;
+  margin-top: 5px;
+  border-top: 1px dashed #d5d9e0;
   padding-top: 4px;
-  color: #cfc9ae;
+  color: #333;
 }
 @media (max-width: 480px) {
+  .ezfy-page .war-home { max-width: 100%; }
   .ezfy-page .war-res { grid-template-columns: repeat(3, 1fr); }
   .ezfy-page .war-btns { grid-template-columns: repeat(3, 1fr); }
 }
