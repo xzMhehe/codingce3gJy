@@ -437,6 +437,9 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 
 	// —— 开局描述（与拆分层之前完全一致，保证老战报格式不变）——
+	// ★ 2026-10-10 展开首行加「准备回合:」标识（用户要求）：军官/科技/装备/套装/
+	//   战斗加成都属于开战前的状态，与后面的「第1回合」「第2回合」呼应，一眼看出阶段。
+	st.Head = append(st.Head, "准备回合:")
 	if atkOfficerDesc != "" {
 		st.Head = append(st.Head, "【攻方军官】"+atkOfficerDesc)
 	}

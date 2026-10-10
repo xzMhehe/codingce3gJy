@@ -513,6 +513,13 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 		if it.CfgID <= 0 || it.Count <= 0 {
 			continue
 		}
+		// ★ 2026-10-10 为爱发电卡：已彻底脱离道具体系（不在 ezfy_cfg_item），
+		//   发放即生效（创建激活记录），先按卡片目录识别，命中即不再查道具表。
+		if cat := loveCardByID(it.CfgID); cat != nil {
+			ez.createLoveCard(p.UserID, cat, it.Count)
+			items = items + fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+			continue
+		}
 		var cfg model.EzfyCfgItem
 		if err := h.DB.First(&cfg, it.CfgID).Error; err != nil {
 			resp.ParamError(c, "道具不存在："+strconv.Itoa(it.CfgID))
@@ -520,10 +527,13 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 		}
 		// ★ 2026-09-27 为爱发电卡：发放即生效，不走背包（创建激活记录），其余道具照常入背包。
 		if isLoveCardItem(cfg.ItemType) {
-			ez.createLoveCard(p.UserID, &cfg, it.Count)
-		} else {
-			ez.addItem(p.UserID, it.CfgID, it.Count)
+			if cat := loveCardByType(cfg.ItemType); cat != nil {
+				ez.createLoveCard(p.UserID, cat, it.Count)
+				items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+				continue
+			}
 		}
+		ez.addItem(p.UserID, it.CfgID, it.Count)
 		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
 	}
 	if items == "" {

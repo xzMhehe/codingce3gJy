@@ -573,32 +573,20 @@ func seedEzfyMoveItems(db *gorm.DB) {
 	}
 }
 
-// seedEzfyLoveCardItems 为爱发电卡道具配置
+// seedEzfyLoveCardItems 清理「为爱发电卡」在道具配置表中的残留
 //
-// 用户规则：为爱发电卡 30 天、每天领 150 钻石；为爱发电高级卡 30 天、每天领 200 钻石。
-//
-//	卡片本身不投入商城（管理端「发放道具」专用），Param1 存每日钻石数量。
-//	ItemType 22 普通 / 23 高级 —— 管理端发放时据此识别并激活卡片（创建 ezfy_love_card 记录）。
+// ★ 2026-10-10 用户需求：为爱发电卡不是道具, 有专门模块维护, 要从道具体系彻底移除。
+//   此前曾把两张卡(cfg 26/27)写入 ezfy_cfg_item, 现改为跨版本删除这两行,
+//   后续发卡/下拉/查看均由专属模块(loveCardCatalog + ezfy_love_card)承担。
+//   卡片规则：为爱发电卡每日150钻石 / 为爱发电高级卡每日200钻石, 各30天。
 func seedEzfyLoveCardItems(db *gorm.DB) {
-	rows := []model.EzfyCfgItem{
-		{ID: 26, Name: "为爱发电卡", ItemType: 22, Param1: 150, PriceGold: 0, PriceDiamond: 0, Stock: -1,
-			Category:    "为爱发电卡",
-			Description: "管理端发放即生效: 有效期30天, 每天可领150钻石(漏领的天数之后会累加补齐)"},
-		{ID: 27, Name: "为爱发电高级卡", ItemType: 23, Param1: 200, PriceGold: 0, PriceDiamond: 0, Stock: -1,
-			Category:    "为爱发电卡",
-			Description: "管理端发放即生效: 有效期30天, 每天可领200钻石(漏领的天数之后会累加补齐)"},
+	var removed int
+	res := db.Where("id IN ?", []int{26, 27}).Delete(&model.EzfyCfgItem{})
+	if res != nil && res.RowsAffected > 0 {
+		removed = int(res.RowsAffected)
 	}
-	for _, it := range rows {
-		var count int64
-		db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).Count(&count)
-		if count > 0 {
-			// 已存在则只同步名称/类型/说明/分类, 不动价格与库存(避免覆盖后台调价)
-			db.Model(&model.EzfyCfgItem{}).Where("id = ?", it.ID).
-				Updates(map[string]interface{}{"name": it.Name, "item_type": it.ItemType,
-					"param1": it.Param1, "description": it.Description, "category": it.Category})
-			continue
-		}
-		db.Create(&it)
+	if removed > 0 {
+		log.Printf("ezfy 为爱发电卡已从道具配置表移除 %d 行（改由专属模块维护）", removed)
 	}
 }
 

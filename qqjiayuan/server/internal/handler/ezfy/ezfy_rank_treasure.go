@@ -165,6 +165,17 @@ func ezfyMigrateTreasureBag(db *gorm.DB) {
 	db.Where("cfg_id >= ? AND cfg_id <= ? AND count > 0", 27, 35).Find(&items)
 	moved := 0
 	for _, it := range items {
+		// ★★ 2026-10-10 严重bug修复：道具配置存在时，绝不能当「误发宝物」迁移删除。
+		//   本一次性迁移本意是把历史「宝物签到」误发到道具表(ezfy_item)的残留转到装备表，
+		//   但它用 sync.Once 包裹，**每次进程重启后首个请求都会重跑**；
+		//   而 ezfy_item 的 cfg_id 区间(27~35)已被真实道具占用：27=为爱发电高级卡、
+		//   28~36=[建筑/训练/科技]加速(30/60/80%)——与装备配置(珠宝装备) ID 重叠，
+		//   导致玩家手里的真实道具每次重启都被当成宝物删掉并换成珠宝装备。
+		//   修复：凡能在道具配置表(ezfy_cfg_item)查到该 cfg_id 的，都是真实道具，
+		//   一律跳过不迁移；只有道具表里查不到、但装备表(珠宝)里存在的，才是历史误发残留。
+		if ezfyCfg.item(it.CfgId) != nil {
+			continue
+		}
 		cfg, ok := ezfyCfg.equipments[it.CfgId]
 		if !ok {
 			continue

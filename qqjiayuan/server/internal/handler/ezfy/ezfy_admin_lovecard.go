@@ -34,13 +34,12 @@ func (h *EzfyAdmin) AdminEzfyLoveCardDelete(c *gin.Context) {
 // AdminEzfyLoveCardOptions GET /admin/ezfy-love-cards/options —— 专属维护页的卡片下拉选项
 // （卡片不在通用「数据管理→道具配置 / 发放道具」面展示，这里单独取）。
 func (h *EzfyAdmin) AdminEzfyLoveCardOptions(c *gin.Context) {
-	var items []model.EzfyCfgItem
-	h.DB.Where("item_type IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro}).
-		Order("id ASC").Find(&items)
-	opts := make([]gin.H, 0, len(items))
-	for i := range items {
-		it := items[i]
-		opts = append(opts, gin.H{"id": it.ID, "name": it.Name, "daily_diamond": it.Param1})
+	// ★ 2026-10-10 为爱发电卡已彻底脱离道具体系（不再写入 ezfy_cfg_item），
+	//   下拉选项直接取自内置 loveCardCatalog，不再依赖道具配置表。
+	opts := make([]gin.H, 0, len(loveCardCatalog))
+	for i := range loveCardCatalog {
+		it := &loveCardCatalog[i]
+		opts = append(opts, gin.H{"id": it.ID, "name": it.Name, "daily_diamond": it.Daily})
 	}
 	resp.OK(c, gin.H{"list": opts, "total": len(opts)})
 }

@@ -243,7 +243,9 @@ log "7/7 验证"
 #   才 bind 8080。一次性 sleep 6 会把「正在启动」误报成「8080 没在监听」——改成轮询,
 #   每 2 秒检查一次, 最多等 90 秒; 期间服务自愈完会自动起来。
 WAITED=0
-for _ in $(seq 1 45); do
+# ★ 2026-10-10 轮询上限 60 次(120s)兜底：启动链已优化(EnsureEzfySchema 近两千次跨 WAN
+#   查询→2 次)，正常 30s 内就该起来；120s 只是给未知慢点留余量，成功即 break 不会真等满。
+for _ in $(seq 1 60); do
   [ "$(rsh_read "ss -lntp 2>/dev/null | grep -c ':8080 ' || true")" = "1" ] && break
   sleep 2
   WAITED=$((WAITED + 2))

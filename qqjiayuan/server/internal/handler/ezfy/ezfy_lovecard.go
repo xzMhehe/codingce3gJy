@@ -23,7 +23,9 @@ import (
 //   - 多张卡可叠加领取：普通 + 高级可同时各领各的。
 
 const (
-	// ezfyItemTypeLoveCard ezfy_cfg_item.item_type：22 为爱发电卡 / 23 为爱发电高级卡
+	// ezfyItemTypeLoveCard 为爱发电卡 item_type：22 普通 / 23 高级
+	// ★ 2026-10-10 为爱发电卡已彻底脱离道具体系（不再写入 ezfy_cfg_item），
+	//   这两个类型仅保留用于兼容识别旧有引用，实际卡片配置以 loveCardCat 为准。
 	ezfyItemTypeLoveCard    = 22
 	ezfyItemTypeLoveCardPro = 23
 	// ezfyLoveCardDayMS 为爱发电卡 1 天的毫秒数
@@ -31,6 +33,40 @@ const (
 	// ezfyLoveCardTotalDays 每张为爱发电卡总有效天数
 	ezfyLoveCardTotalDays = 30
 )
+
+// loveCardCat 为爱发电卡类型定义（专属模块自持，不依赖 ezfy_cfg_item）。
+type loveCardCat struct {
+	ID    int    // 卡片类型ID（存入 ezfy_love_card.cfg_id，与 cfg_id 解耦后仍用它作类型标识）
+	Type  int    // 兼容旧 item_type（22/23），用于识别遗留引用
+	Name  string // 卡片名
+	Daily int    // 每日可领钻石
+}
+
+// loveCardCatalog 为爱发电卡目录：普通卡每日 150、高级卡每日 200，均 30 天。
+var loveCardCatalog = []loveCardCat{
+	{ID: 26, Type: ezfyItemTypeLoveCard, Name: "为爱发电卡", Daily: 150},
+	{ID: 27, Type: ezfyItemTypeLoveCardPro, Name: "为爱发电高级卡", Daily: 200},
+}
+
+// loveCardByID 按卡片类型ID查目录（无则返回 nil）。
+func loveCardByID(id int) *loveCardCat {
+	for i := range loveCardCatalog {
+		if loveCardCatalog[i].ID == id {
+			return &loveCardCatalog[i]
+		}
+	}
+	return nil
+}
+
+// loveCardByType 按旧 item_type 查目录（识别遗留引用用）。
+func loveCardByType(t int) *loveCardCat {
+	for i := range loveCardCatalog {
+		if loveCardCatalog[i].Type == t {
+			return &loveCardCatalog[i]
+		}
+	}
+	return nil
+}
 
 // isLoveCardItem 是否「为爱发电卡」类道具（管理端发放时据此识别激活卡片）。
 func isLoveCardItem(itemType int) bool {
@@ -61,12 +97,13 @@ func (h *EzfyHandler) logDiamond(uid uint, change int64, reason string) {
 //
 // 2026-09-27 规则：同类型卡「累加时间」——若玩家已有同一类型的卡且仍有未领天数，
 // 则将天数续到那张卡上（total_days += 30×张数），不新建；否则才新建一张（发放即生效）。
-func (h *EzfyHandler) createLoveCard(uid uint, cfg *model.EzfyCfgItem, count int) {
-	if count <= 0 {
+// ★ 2026-10-10：卡片已彻底脱离道具体系，配置来自 loveCardCat（不再查询 ezfy_cfg_item）。
+func (h *EzfyHandler) createLoveCard(uid uint, cat *loveCardCat, count int) {
+	if count <= 0 || cat == nil {
 		return
 	}
 	nowMS := time.Now().UnixMilli()
-	daily := cfg.Param1
+	daily := int64(cat.Daily)
 	if daily <= 0 {
 		daily = 0
 	}
@@ -74,7 +111,7 @@ func (h *EzfyHandler) createLoveCard(uid uint, cfg *model.EzfyCfgItem, count int
 	// 续在同类型、仍有剩余天数的卡上（累加时间）
 	var cur model.EzfyLoveCard
 	h.DB.Model(&model.EzfyLoveCard{}).
-		Where("user_id = ? AND cfg_id = ? AND claimed_days < total_days", uid, cfg.ID).
+		Where("user_id = ? AND cfg_id = ? AND claimed_days < total_days", uid, cat.ID).
 		Order("created_at ASC, id ASC").First(&cur)
 	if cur.ID > 0 {
 		h.DB.Model(&model.EzfyLoveCard{}).Where("id = ?", cur.ID).
@@ -88,8 +125,8 @@ func (h *EzfyHandler) createLoveCard(uid uint, cfg *model.EzfyCfgItem, count int
 	for i := 0; i < count; i++ {
 		h.DB.Create(&model.EzfyLoveCard{
 			UserId:       uid,
-			CfgId:        cfg.ID,
-			Name:         cfg.Name,
+			CfgId:        cat.ID,
+			Name:         cat.Name,
 			DailyDiamond: daily,
 			StartTime:    nowMS,
 			EndTime:      nowMS + ezfyLoveCardTotalDays*ezfyLoveCardDayMS,
