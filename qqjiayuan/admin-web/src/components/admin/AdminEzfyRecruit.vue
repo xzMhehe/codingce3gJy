@@ -74,13 +74,11 @@
         </el-form-item>
         <el-form-item label="兵种与数量">
           <div v-for="(row, i) in createForm.rows" :key="i" style="margin-bottom:6px">
-            <el-select v-model="row.troop_id" filterable style="width:250px" placeholder="选择兵种">
-              <el-option v-for="b in cfgs" :key="b.id" :label="b.id + ' · ' + b.name + '（' + b.type_name + '）'" :value="b.id" />
+            <el-select v-model="row.troop_id" filterable style="width:150px" placeholder="选择兵种">
+              <el-option v-for="b in cfgs" :key="b.id" :label="b.name" :value="b.id" />
             </el-select>
-            <el-select v-model="row.count" filterable allow-create default-first-option
-                       style="width:120px" placeholder="数量">
-              <el-option v-for="n in countPresets" :key="n" :label="fmtN(n)" :value="n" />
-            </el-select>
+            <el-input-number v-model.number="row.count" :min="1" :controls="false"
+                             style="width:150px" placeholder="数量（任意填写）" />
             <el-button v-if="createForm.rows.length > 1" size="mini" type="text" class="td-danger"
                        icon="el-icon-delete" @click="removeRow(i)" />
           </div>
@@ -135,11 +133,10 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1,
       cfgs: [],
-      createDlg: false, createForm: { city_id: 0, rows: [{ troop_id: 0, count: 100 }], seconds: 0, instant: false },
+      createDlg: false, createForm: { city_id: 0, rows: [{ troop_id: 0, count: 100 }], seconds: 0, instant: true },
       // ★ 2026-10-10「先选玩家→再选城市→多兵种」：玩家远程搜索 + 该玩家城市下拉 + 多个兵种行
       players: [], playerLoading: false, createPlayer: null,
       cities: [], cityLoading: false,
-      countPresets: [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
       speedDlg: false, speedRow: {}, speedMinutes: 10,
       finishingAll: false,
       saving: false
@@ -185,7 +182,7 @@ export default {
       this.createForm = {
         city_id: 0,
         rows: [{ troop_id: this.cfgs.length ? this.cfgs[0].id : 0, count: 100 }],
-        seconds: 0, instant: false
+        seconds: 0, instant: true
       }
       this.createPlayer = null
       this.players = []

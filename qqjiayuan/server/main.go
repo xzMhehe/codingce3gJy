@@ -57,6 +57,10 @@ func main() {
 		// ★ 2026-10-09 宝箱奖池：新加的道具奖品行也只由 seed.Run 补缺（backfillEzfyChestPool），
 		//   skip 分支不跑 → 共享库上永远开不出新道具。幂等（只补缺、不动已有行）。
 		seed.EnsureEzfyChestPool(db)
+		// ★ 2026-10-10 线上事故：管理端发装备漏拷六项战斗属性 → 战报【守方装备】显示「无」。
+		//   全量 seed 里的 repairEquipSnapshots 本来会自愈，但 skip 分支不跑 → 共享库永远修不了。
+		//   挂到 skip 路径，任何一台重启都会把存量装备行六项对齐配置池并重建军官 JSON（幂等）。
+		seed.EnsureEzfyEquipSnapshots(db)
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		seed.EnsureEzfyIndexes(db)

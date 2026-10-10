@@ -1478,6 +1478,15 @@ func repairEquipSnapshots(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyEquipSnapshots 幂等对齐装备快照到配置池（六项+三维同步、军官 equipment JSON 重建）。
+//
+// ★ 为什么单独导出：多机共享库时 `seed.skip: true` 会跳过全量 seed（含 repairEquipSnapshots），
+//   导致管理端发装备漏拷的六项战斗属性在线上永远修不回来（战报【守方装备】显示「无」）。
+//   挂到 skip 路径上，任何一台启动都会自愈；与 repairEquipSnapshots 一样幂等（稳态 no-op）。
+func EnsureEzfyEquipSnapshots(db *gorm.DB) {
+	repairEquipSnapshots(db)
+}
+
 // ============ 三、存量军官：属性点迁移 ============
 
 // migrateOfficerAttrPoints 给存量军官补「原始属性 base_*」与「可用属性点 free_points」
