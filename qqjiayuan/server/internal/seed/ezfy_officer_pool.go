@@ -1,6 +1,6 @@
 // 军官池（普通军官 1000 名） / 装备套装种子 + 存量军官属性点迁移
 //
-// ★ 2026-09-22 
+// ★ 2026-09-22
 //  1. 军官分两类，都放在军官池 ezfy_cfg_general 里由管理端维护：
 //     kind=1 普通军官（军校招募/刷新**从池子抽**，不再纯随机生成）
 //     kind=2 名将（只由管理端发放）
@@ -1388,66 +1388,70 @@ func nerfEquipSetPct(db *gorm.DB) {
 //		两层都从池子/背包重建，稳态下是 no-op（幂等）。
 func repairEquipSnapshots(db *gorm.DB) {
 	// ① 玩家背包里的装备：六项百分比 + 三维「始终」对齐池子当前值（统一池子语义）；
-	//    enhance（玩家自己的强化等级）与 slot/set_id/series（身份字段）仍只补缺。
-	var owned []model.EzfyEquipment
-	db.Where("cfg_id > 0").Find(&owned)
-	for _, e := range owned {
-		var cfg model.EzfyCfgEquipment
-		if err := db.First(&cfg, e.CfgId).Error; err != nil {
-			continue
-		}
-		up := map[string]interface{}{}
-		syncI := func(cur, val int, col string) {
-			if val != 0 && cur != val {
-				up[col] = val
-			}
-		}
-		fillI := func(cur, val int, col string) {
-			if cur == 0 && val != 0 {
-				up[col] = val
-			}
-		}
-		syncI(e.Military, cfg.Military, "military")
-		syncI(e.Logistics, cfg.Logistics, "logistics")
-		syncI(e.Learning, cfg.Learning, "learning")
-		syncI(e.Dmg, cfg.Dmg, "dmg")
-		syncI(e.Def, cfg.Def, "def")
-		syncI(e.Hp, cfg.Hp, "hp")
-		syncI(e.Move, cfg.Move, "move")
-		syncI(e.Crit, cfg.Crit, "crit")
-		syncI(e.CritDmg, cfg.CritDmg, "crit_dmg")
-		fillI(e.Enhance, cfg.Enhance, "enhance")
-		// 部位落库统一走规范名（头盔→头部、手套/左手→手部……），老数据顺手归一
-		if canon := model.EzfySlotCanon(cfg.EquipSlot()); canon != "" && e.EquipSlot() != canon {
-			up["slot"] = canon
-		}
-		if e.SetId == 0 && cfg.SetId != 0 {
-			up["set_id"] = cfg.SetId
-		}
-		if e.Series == "" && cfg.Series != "" {
-			up["series"] = cfg.Series
-		}
-		if len(up) > 0 {
-			db.Model(&model.EzfyEquipment{}).Where("id = ?", e.ID).Updates(up)
-		}
+	//    enhance/set_id/series（身份字段）仍只补缺；部位顺手归一规范名。
+	//    ★ 2026-10-10 由逐行 GORM 循环（N+1 查询，72K+ 行经 WAN 让启动卡几分钟）
+	//      改为一条 JOIN UPDATE 批量 SQL（cfg 非 0 才覆盖，等价原 syncI/fillI 语义，
+	//      WHERE 只挑真正需要动的行 → 稳态秒级 no-op）。
+	if err := db.Exec(`UPDATE ezfy_equipment e
+		JOIN ezfy_cfg_equipment c ON c.id = e.cfg_id
+		SET
+		  e.dmg = CASE WHEN c.dmg <> 0 THEN c.dmg ELSE e.dmg END,
+		  e.def = CASE WHEN c.def <> 0 THEN c.def ELSE e.def END,
+		  e.hp = CASE WHEN c.hp <> 0 THEN c.hp ELSE e.hp END,
+		  e.move = CASE WHEN c.move <> 0 THEN c.move ELSE e.move END,
+		  e.crit = CASE WHEN c.crit <> 0 THEN c.crit ELSE e.crit END,
+		  e.crit_dmg = CASE WHEN c.crit_dmg <> 0 THEN c.crit_dmg ELSE e.crit_dmg END,
+		  e.military = CASE WHEN c.military <> 0 THEN c.military ELSE e.military END,
+		  e.logistics = CASE WHEN c.logistics <> 0 THEN c.logistics ELSE e.logistics END,
+		  e.learning = CASE WHEN c.learning <> 0 THEN c.learning ELSE e.learning END,
+		  e.enhance = CASE WHEN e.enhance = 0 AND c.enhance <> 0 THEN c.enhance ELSE e.enhance END,
+		  e.set_id = CASE WHEN e.set_id = 0 AND c.set_id <> 0 THEN c.set_id ELSE e.set_id END,
+		  e.series = CASE WHEN e.series = '' AND c.series <> '' THEN c.series ELSE e.series END,
+		  e.slot = CASE
+			WHEN e.slot = '头盔' THEN '头部'
+			WHEN e.slot = '护肩' THEN '肩部'
+			WHEN e.slot = '胸甲' THEN '胸部'
+			WHEN e.slot IN ('手套','左手') THEN '手部'
+			WHEN e.slot = '战靴' THEN '足部'
+			WHEN e.slot = '腰带' THEN '腰部'
+			ELSE e.slot END
+		WHERE e.cfg_id > 0
+		  AND ((c.dmg <> 0 AND e.dmg <> c.dmg) OR (c.def <> 0 AND e.def <> c.def)
+		       OR (c.hp <> 0 AND e.hp <> c.hp) OR (c.move <> 0 AND e.move <> c.move)
+		       OR (c.crit <> 0 AND e.crit <> c.crit) OR (c.crit_dmg <> 0 AND e.crit_dmg <> c.crit_dmg)
+		       OR (c.military <> 0 AND e.military <> c.military)
+		       OR (c.logistics <> 0 AND e.logistics <> c.logistics)
+		       OR (c.learning <> 0 AND e.learning <> c.learning)
+		       OR (e.enhance = 0 AND c.enhance <> 0)
+		       OR (e.set_id = 0 AND c.set_id <> 0)
+		       OR (e.series = '' AND c.series <> '')
+		       OR e.slot IN ('头盔','护肩','胸甲','手套','左手','战靴','腰带'))`).Error; err != nil {
+		log.Printf("repairEquipSnapshots ①行同步失败: %v", err)
 	}
 
 	// ② 军官身上的装备 JSON：从背包行重建，保证「穿在身上的」和「背包里的」永远一致
 	//    ★ 2026-09-24 配套「同部位只能穿一件」：同部位只留 id 最大（最后穿上）那件，
 	//      其余 officer_id 置 0 放回背包；部位与快照统一走规范名并补品质 tier。
+	//    ★ 2026-10-10 批量版：一条 SQL 取全部已穿戴行 + 全部有 JSON 的军官，内存分组重建，
+	//      只对变化的军官 UPDATE → 多机共享库启动路径也能秒级跑完（不再逐军官 N+1）。
 	var offs []model.EzfyOfficer
 	db.Where("equipment <> ''").Find(&offs)
+	var items []model.EzfyEquipment
+	db.Where("officer_id > 0").Order("id").Find(&items)
+	byOfficer := map[int64][]model.EzfyEquipment{}
+	for _, it := range items {
+		byOfficer[it.OfficerId] = append(byOfficer[it.OfficerId], it)
+	}
+	var drops []int64
 	for _, o := range offs {
-		var items []model.EzfyEquipment
-		db.Where("officer_id = ?", o.ID).Order("id").Find(&items)
-		if len(items) == 0 {
+		lst, ok := byOfficer[int64(o.ID)]
+		if !ok {
 			continue // 一件都没有就别动（可能是历史脏数据，宁可留着让人排查）
 		}
 		seen := map[string]bool{}
-		drops := []int64{}
 		list := []map[string]interface{}{}
-		for i := len(items) - 1; i >= 0; i-- {
-			e := items[i]
+		for i := len(lst) - 1; i >= 0; i-- {
+			e := lst[i]
 			if seen[model.EzfySlotCanon(e.EquipSlot())] {
 				drops = append(drops, int64(e.ID))
 				continue
@@ -1472,17 +1476,18 @@ func repairEquipSnapshots(db *gorm.DB) {
 		if string(b) != o.Equipment {
 			db.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Update("equipment", string(b))
 		}
-		if len(drops) > 0 {
-			db.Model(&model.EzfyEquipment{}).Where("id IN ?", drops).Update("officer_id", 0)
-		}
+	}
+	if len(drops) > 0 {
+		db.Model(&model.EzfyEquipment{}).Where("id IN ?", drops).Update("officer_id", 0)
 	}
 }
 
 // EnsureEzfyEquipSnapshots 幂等对齐装备快照到配置池（六项+三维同步、军官 equipment JSON 重建）。
 //
 // ★ 为什么单独导出：多机共享库时 `seed.skip: true` 会跳过全量 seed（含 repairEquipSnapshots），
-//   导致管理端发装备漏拷的六项战斗属性在线上永远修不回来（战报【守方装备】显示「无」）。
-//   挂到 skip 路径上，任何一台启动都会自愈；与 repairEquipSnapshots 一样幂等（稳态 no-op）。
+//
+//	导致管理端发装备漏拷的六项战斗属性在线上永远修不回来（战报【守方装备】显示「无」）。
+//	挂到 skip 路径上，任何一台启动都会自愈；与 repairEquipSnapshots 一样幂等（稳态 no-op）。
 func EnsureEzfyEquipSnapshots(db *gorm.DB) {
 	repairEquipSnapshots(db)
 }

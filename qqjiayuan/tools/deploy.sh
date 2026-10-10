@@ -239,7 +239,16 @@ rsh "chmod +x $REMOTE_DIR/*.sh $REMOTE_DIR/server/server $REMOTE_DIR/server/dbin
 
 # ---------- 7. 验证 ----------
 log "7/7 验证"
-sleep 6
+# ★ 2026-10-10 启动链(Ensure* 系列跨 WAN 查 information_schema / 跑 DDL)可能需 10~40 秒
+#   才 bind 8080。一次性 sleep 6 会把「正在启动」误报成「8080 没在监听」——改成轮询,
+#   每 2 秒检查一次, 最多等 90 秒; 期间服务自愈完会自动起来。
+WAITED=0
+for _ in $(seq 1 45); do
+  [ "$(rsh_read "ss -lntp 2>/dev/null | grep -c ':8080 ' || true")" = "1" ] && break
+  sleep 2
+  WAITED=$((WAITED + 2))
+done
+[ "$WAITED" -gt 0 ] && step "等待 8080 就绪 ${WAITED}s"
 RESULT="$(rsh_read "
   ss -lntp 2>/dev/null | grep ':8080 ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL
   curl -s -o /dev/null -w 'HTTP=%{http_code}' --max-time 8 http://127.0.0.1:8080/ || echo 'HTTP=000'
