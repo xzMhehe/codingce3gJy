@@ -1835,11 +1835,18 @@ func (h *EzfyAdmin) AdminEzfyEquipmentOwnedCreate(c *gin.Context) {
 	for _, cfg := range cfgs {
 		names = append(names, cfg.Name)
 		for i := 0; i < in.Count; i++ {
+			// ★ 2026-10-10 修复「管理端发装备 → 战报【守方装备】显示无」：
+			//   之前只拷三维/等级/部位，六项战斗属性 + series + enhance 漏拷成 0。
+			//   穿身上后套装能触发（set_id 在）但单件贡献全 0，战报里装备行归零显示「无」。
+			//   现在与 addEquipment 同口径整份拷贝（配置池是唯一数据源）。
 			h.DB.Create(&model.EzfyEquipment{
 				UserId: p.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
 				Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 				Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0,
-				Slot: cfg.EquipSlot(), SetId: cfg.SetId,
+				Slot: model.EzfySlotCanon(cfg.EquipSlot()), SetId: cfg.SetId,
+				Series: cfg.Series, Enhance: cfg.Enhance,
+				Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp,
+				Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
 			})
 			total++
 		}

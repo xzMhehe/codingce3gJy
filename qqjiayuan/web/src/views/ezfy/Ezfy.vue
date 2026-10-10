@@ -422,8 +422,10 @@ export default {
       resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
       // ★ 2026-10-10 首页布局：0/1=新布局 2=老布局（/view 的 profile.home_layout 下发，
-      //   统帅页单选切换；玩家 10000 由后端 seed 固定为老布局）
-      homeLayout: 0,
+      //   统帅页单选切换；玩家 10000 由后端 seed 固定为老布局）。
+      // ★ 2026-10-10 防「刷新时新布局掠影」：初值从 localStorage 恢复（上次切过的布局），
+      //   让首帧就按正确布局渲染，不再先画新布局再等 /view 回来改成老布局。
+      homeLayout: this.cachedHomeLayout(),
       userBrief: { account: '', level: 0, exp: 0 },
       officerCount: 0,
       activities: [],
@@ -1999,8 +2001,24 @@ export default {
       })
     },
     // ---- 首页布局切换（老布局/新布局，统帅页单选，即改即生效） ----
+    // ★ 2026-10-10 防「刷新时新布局掠影」：把上次用的布局存 localStorage（key 带用户），
+    //   刷新首帧就用它渲染。只要本地没有缓存（如清缓存/换账号首登），才退回 /view 下发值。
+    cachedHomeLayout () {
+      try {
+        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        const k = 'ezfy_home_layout_' + uid
+        return localStorage.getItem(k) === '2' ? 2 : 0
+      } catch (e) { return 0 }
+    },
+    saveHomeLayout (v) {
+      try {
+        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        localStorage.setItem('ezfy_home_layout_' + uid, String(v === 2 ? 2 : 1))
+      } catch (e) {}
+    },
     setHomeLayout (l) {
       const v = l === 2 ? 2 : 1
+      this.saveHomeLayout(v)
       api.post('/games/ezfy/profile/layout', { layout: v }).then(r => {
         if (r.code === 0) {
           this.homeLayout = v
@@ -2176,6 +2194,9 @@ export default {
       // ★ 2026-10-10 首页布局：0/1=新布局 2=老布局（后端 /view 随 profile 下发）
       const hl = d.profile && d.profile.home_layout
       this.homeLayout = (hl === undefined || hl === null) ? 0 : Number(hl)
+      // ★ 2026-10-10 后端下发的是权威布局：顺手缓存到 localStorage，
+      //   这样纯 seed 固定（如玩家 10000 固定老布局、从不手动切换）的账号也防「刷新新布局掠影」。
+      if (hl !== undefined && hl !== null) this.saveHomeLayout(Number(hl))
       this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
       this.officerCount = d.officer_count || 0
       this.rankName = d.rank_name
