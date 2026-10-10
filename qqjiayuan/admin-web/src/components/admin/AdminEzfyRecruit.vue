@@ -57,18 +57,34 @@
     </el-card>
 
     <!-- 新增征兵 -->
-    <el-dialog title="新增征兵任务" :visible.sync="createDlg" width="540px" :close-on-click-modal="false">
-      <el-form label-width="120px" size="small">
-        <el-form-item label="城池ID" required>
-          <el-input-number v-model.number="createForm.city_id" :min="1" controls-position="right" />
+    <el-dialog title="新增征兵任务" :visible.sync="createDlg" width="620px" :close-on-click-modal="false">
+      <el-form label-width="110px" size="small">
+        <el-form-item label="玩家" required>
+          <el-select v-model="createPlayer" filterable remote :remote-method="loadPlayers" :loading="playerLoading"
+                     placeholder="按昵称 / 家园号 / ID 搜索玩家" style="width:360px" @change="onChangePlayer">
+            <el-option v-for="p in players" :key="p.user_id" :label="pLabel(p)" :value="p" />
+          </el-select>
+          <el-button v-if="createPlayer" size="mini" plain style="margin-left:8px" @click="resetPlayer">清空</el-button>
         </el-form-item>
-        <el-form-item label="兵种" required>
-          <el-select v-model="createForm.troop_id" filterable style="width:280px">
-            <el-option v-for="b in cfgs" :key="b.id" :label="b.id + ' · ' + b.name + '（' + b.type_name + '）'" :value="b.id" />
+        <el-form-item label="城市" required>
+          <el-select v-model="createForm.city_id" filterable :disabled="!createPlayer" :loading="cityLoading"
+                     placeholder="先选择上方玩家, 再选其城市" style="width:320px">
+            <el-option v-for="c in cities" :key="c.id" :label="cityLabel(c)" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="数量" required>
-          <el-input-number v-model.number="createForm.count" :min="1" controls-position="right" />
+        <el-form-item label="兵种与数量">
+          <div v-for="(row, i) in createForm.rows" :key="i" style="margin-bottom:6px">
+            <el-select v-model="row.troop_id" filterable style="width:250px" placeholder="选择兵种">
+              <el-option v-for="b in cfgs" :key="b.id" :label="b.id + ' · ' + b.name + '（' + b.type_name + '）'" :value="b.id" />
+            </el-select>
+            <el-select v-model="row.count" filterable allow-create default-first-option
+                       style="width:120px" placeholder="数量">
+              <el-option v-for="n in countPresets" :key="n" :label="fmtN(n)" :value="n" />
+            </el-select>
+            <el-button v-if="createForm.rows.length > 1" size="mini" type="text" class="td-danger"
+                       icon="el-icon-delete" @click="removeRow(i)" />
+          </div>
+          <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="addRow">新增兵种</el-button>
         </el-form-item>
         <el-form-item label="耗时（秒）">
           <el-input-number v-model.number="createForm.seconds" :min="0" controls-position="right" />
@@ -119,7 +135,11 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1,
       cfgs: [],
-      createDlg: false, createForm: { city_id: 1, troop_id: 0, count: 100, seconds: 0, instant: false },
+      createDlg: false, createForm: { city_id: 0, rows: [{ troop_id: 0, count: 100 }], seconds: 0, instant: false },
+      // ★ 2026-10-10「先选玩家→再选城市→多兵种」：玩家远程搜索 + 该玩家城市下拉 + 多个兵种行
+      players: [], playerLoading: false, createPlayer: null,
+      cities: [], cityLoading: false,
+      countPresets: [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
       speedDlg: false, speedRow: {}, speedMinutes: 10,
       finishingAll: false,
       saving: false
@@ -162,17 +182,77 @@ export default {
       })
     },
     openCreate () {
-      this.createForm = { city_id: 1, troop_id: this.cfgs.length ? this.cfgs[0].id : 0, count: 100, seconds: 0, instant: false }
+      this.createForm = {
+        city_id: 0,
+        rows: [{ troop_id: this.cfgs.length ? this.cfgs[0].id : 0, count: 100 }],
+        seconds: 0, instant: false
+      }
+      this.createPlayer = null
+      this.players = []
+      this.cities = []
       this.createDlg = true
     },
-    doCreate () {
-      if (!this.createForm.troop_id) { this.$message.warning('请选择兵种'); return }
-      this.saving = true
-      api.post('/admin/ezfy-train-queue', this.createForm).then(r => {
-        this.saving = false
-        if (r.code === 0) { this.createDlg = false; this.$message.success(r.data.msg || '已入队'); this.load() }
+    // 玩家下拉选项文案
+    pLabel (p) {
+      return (p.home_nick || '') + ' · 家园' + (p.home_num || '') + '（ID ' + p.user_id + '）'
+    },
+    // 远程搜索玩家（昵称 / 家园号 / ID）
+    loadPlayers (word) {
+      word = (word || '').trim()
+      if (!word) { this.players = []; return }
+      this.playerLoading = true
+      api.get('/admin/ezfy-players', { params: { page: 1, size: 10, word: word } }).then(r => {
+        this.playerLoading = false
+        if (r.code === 0) this.players = r.data.list || []
+      })
+    },
+    // 选中玩家后加载其城市列表
+    onChangePlayer () {
+      this.cities = []
+      this.createForm.city_id = 0
+      const uid = this.createPlayer && this.createPlayer.user_id
+      if (!uid) return
+      this.cityLoading = true
+      api.get('/admin/ezfy-players/' + uid + '/detail').then(r => {
+        this.cityLoading = false
+        if (r.code === 0) this.cities = r.data.cities || []
         else this.$message.error(r.msg)
       })
+    },
+    resetPlayer () {
+      this.createPlayer = null
+      this.cities = []
+      this.createForm.city_id = 0
+    },
+    cityLabel (c) {
+      return c.name + '（' + c.x + ',' + c.y + ' · ID ' + c.id + '）'
+    },
+    addRow () {
+      this.createForm.rows.push({ troop_id: 0, count: 100 })
+    },
+    removeRow (i) {
+      this.createForm.rows.splice(i, 1)
+    },
+    doCreate () {
+      if (!this.createPlayer) { this.$message.warning('请先选择玩家'); return }
+      if (!this.createForm.city_id) { this.$message.warning('请选择城市'); return }
+      const rows = this.createForm.rows.map(row => ({ troop_id: Number(row.troop_id), count: Number(row.count) }))
+      for (const row of rows) {
+        if (!row.troop_id || !(row.count > 0)) { this.$message.warning('请完整填写兵种与数量'); return }
+      }
+      if (!rows.length) { this.$message.warning('请至少添加一个兵种'); return }
+      this.saving = true
+      const base = { city_id: this.createForm.city_id, seconds: this.createForm.seconds, instant: this.createForm.instant }
+      Promise.all(rows.map(row =>
+        api.post('/admin/ezfy-train-queue', Object.assign({}, base, { troop_id: row.troop_id, count: row.count }))
+      )).then(re => {
+        this.saving = false
+        const err = re.find(x => x.code !== 0)
+        if (err) { this.$message.error(err.msg); return }
+        this.createDlg = false
+        this.$message.success('已生成 ' + rows.length + ' 条征兵任务')
+        this.load()
+      }).catch(() => { this.saving = false })
     },
     finish (row) {
       api.post('/admin/ezfy-train-queue/' + row.id + '/finish').then(r => {
