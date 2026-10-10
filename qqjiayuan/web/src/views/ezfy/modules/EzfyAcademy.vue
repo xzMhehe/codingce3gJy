@@ -503,8 +503,8 @@
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'attr' }" @click="ezfy.officerDetailTab = 'attr'">属性</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'skill' }" @click="ezfy.officerDetailTab = 'skill'">技能</a>|
-          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.officerDetailTab = 'equip'">装备</a>|
-          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'bag' }" @click="ezfy.officerDetailTab = 'bag'">装备背包</a>
+          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.openOfficerDetailTab('equip')">装备</a>|
+          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'bag' }" @click="ezfy.openOfficerDetailTab('bag')">装备背包</a>
           <!-- ★ 2026-10-04 名将背景 tab 放到最后（仅名将显示）：二战的功勋介绍 -->
           <a v-if="ezfy.officerDetail.officer.is_general" href="javascript:;"
              :class="{ on: ezfy.officerDetailTab === 'general' }" @click="ezfy.officerDetailTab = 'general'"><span style="margin:0 6px 0 2px;color:#888;">|</span>名将背景</a>
@@ -697,13 +697,13 @@
         </table>
 
         <!-- 一键穿戴套装（背包里有件的套装） -->
-        <table class="ezfy-plain-table" v-if="ezfy.officerDetail.bag_sets && ezfy.officerDetail.bag_sets.length">
+        <table class="ezfy-plain-table" v-if="ezfy.officerBagSets && ezfy.officerBagSets.length">
           <colgroup>
             <col style="width:36%"><col style="width:32%"><col style="width:12%"><col style="width:20%">
           </colgroup>
           <tr><th colspan="4">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
           <tr><th class="nm">套装</th><th>穿齐进度</th><th>等级</th><th>操作</th></tr>
-          <tr v-for="s in ezfy.officerDetail.bag_sets" :key="'bs' + s.set_id">
+          <tr v-for="s in ezfy.officerBagSets" :key="'bs' + s.set_id">
             <td class="nm">{{ s.name }}</td>
             <td>
               <span :class="s.need > 0 ? 'gray' : 'green'">

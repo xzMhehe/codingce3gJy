@@ -720,6 +720,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/schemes", ezfyH.Schemes)
 				ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
 				ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
+				// ★ 2026-10-10 背包装备从详情拆分出来，切「背包」tab 才按需拉取（详情降载）
+				ezfyG.GET("/officers/:id/backpack", ezfyH.OfficerBackpack)
 				ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
 				// ★ 赏赐宝物加忠诚（按品质 +10/+20/+35/+50）
 				ezfyG.POST("/officers/:id/treasure-grant", ezfyH.OfficerTreasureGrant)

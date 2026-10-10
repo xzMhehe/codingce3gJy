@@ -820,6 +820,12 @@ export default {
       officerBagWord: '', officerBagPage: 1, officerBagPageSize: 10, // 军官详情里的背包装备
       officerDetailTab: 'attr', // 军官详情页签: attr属性 / skill技能 / equip装备 / bag装备背包
       officerTreasureOpen: false, // ★ 2026-09-28 赏赐宝物：展开的未穿戴宝物列表
+      // ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：背包装备不再随军官详情下发，
+      //   切到装备背包/装备/赏赐宝物时才按需拉 /officers/:id/backpack，切换军官时清空。
+      officerBag: [],       // 懒加载的背包装备（含已穿戴/被俘过滤后的全局背包）
+      officerBagSets: [],   // 懒加载的「可一键穿戴套装」列表
+      officerBagFor: 0,     // 当前 officerBag/officerBagSets 属于哪个军官 id（防切换串数据）
+      officerBagLoaded: 0,  // 0 未拉 / 1 已对当前军官拉好
       // ★ 2026-09-25：equipDetail / equipDetailBack 已随「装备详情页」一起删除
       bagOfficers: [],
       bagSkills: [],
@@ -1010,7 +1016,8 @@ export default {
     // ★ 2026-10-05 相同宝物按名称合并成一行带数量（原来逐件列出，背包几十件时列表太长）；
     //   保留一个代表 id 供 [赏赐] 用（同组宝物任一件都可赏赐）。
     officerTreasures () {
-      const rows = ((this.officerDetail && this.officerDetail.bag) || [])
+      // ★ 2026-10-10 背包装备改懒加载：从 officerBag 取（点「赏赐宝物」前已按需拉取）
+      const rows = ((this.officerBag) || [])
         .filter(e => e.treasure && !e.worn)
       const byName = {}
       for (const e of rows) {
@@ -1540,7 +1547,8 @@ export default {
     //   分组 key = cfg_id（同配置的装备实例 = 同一件装备）；老数据没有 cfg_id 时兜底 name|slot|set_id|tier。
     // 已穿戴装备分组（装备 tab）：同 cfg 的叠加成一行，数量 >1 时显示 ×N
     officerEquipGroups () {
-      const bag = (this.officerDetail && this.officerDetail.bag) || []
+      // ★ 2026-10-10 背包装备改懒加载：用 officerBag 建 cfg 映射（进装备页前已按需拉取）
+      const bag = this.officerBag || []
       const cfgOf = {}
       for (const e of bag) if (e.cfg_id) cfgOf[e.id] = e.cfg_id
       const groups = {}
@@ -1569,7 +1577,8 @@ export default {
     // 军官详情里的装备背包：按 cfg 叠加（只算未穿戴的），带 canEquip（该部位还有空余就能穿）
     officerBagGroups () {
       const w = (this.officerBagWord || '').trim().toLowerCase()
-      const bag = (this.officerDetail && this.officerDetail.bag) || []
+      // ★ 2026-10-10 背包装备改懒加载：从 officerBag 取（切「装备背包」tab 前已按需拉取）
+      const bag = this.officerBag || []
       const groups = {}
       const order = []
       const slots = this.officerEquipSlots
@@ -6013,11 +6022,54 @@ export default {
       this.officerDetailTab = 'attr'
       this.officerBagWord = ''
       this.officerBagPage = 1
+      // ★ 2026-10-10 切换军官 → 清掉旧军官的懒加载背包（响应「切换哪个获取哪个」）
+      this.officerBag = []
+      this.officerBagSets = []
+      this.officerBagFor = 0
+      this.officerBagLoaded = 0
       // ★ 2026-10-01 修复「点击军官有时候空白」：进页先清掉旧军官数据/错误，
       //   加载完成前显示「加载中...」，避免残留上一名军官的详情或白屏
       this.officerDetail = { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 }
       this.officerDetailError = ''
       this.loadOfficerDetail(id)
+    },
+    // ★ 2026-10-10 性能（详情降载）：背包装备按需拉取，同一军官只拉一次。
+    //   装备背包 / 装备(一键穿套装) / 赏赐宝物 三处共用这一份懒加载数据。
+    async ensureOfficerBag () {
+      const o = this.officerDetail && this.officerDetail.officer
+      if (!o || !o.id) return
+      // 已对当前军官拉好 → 直接复用，不再重复请求
+      if (this.officerBagLoaded && this.officerBagFor === o.id) return
+      const id = o.id
+      this.officerBag = []
+      this.officerBagSets = []
+      this.officerBagLoaded = 0
+      try {
+        const r = await api.get('/games/ezfy/officers/' + id + '/backpack')
+        // 可能已切换军官 → 丢弃这次结果，避免串数据
+        if (!this.officerDetail || !this.officerDetail.officer || this.officerDetail.officer.id !== id) return
+        if (r.code === 0) {
+          this.officerBag = (r.data && r.data.bag) || []
+          this.officerBagSets = (r.data && r.data.bag_sets) || []
+        } else {
+          this.notify(r.msg || '背包装备加载失败, 请重试')
+        }
+      } catch (e) { /* 网络异常：保持为空，不打扰，切回来会重试 */ }
+      this.officerBagLoaded = 1
+      this.officerBagFor = id
+    },
+    // ★ 2026-10-10 穿/卸装备后背包会变 → 失效缓存并静默重拉一次（界面就地刷新）
+    refreshOfficerBag () {
+      this.officerBagLoaded = 0
+      this.officerBagFor = 0
+      this.ensureOfficerBag()
+    },
+    // ★ 2026-10-10 打开军官详情页签：装备/装备背包 需要背包数据 → 先懒加载再切页
+    openOfficerDetailTab (tab) {
+      if ((tab === 'equip' || tab === 'bag') && !(this.officerBagLoaded && this.officerBagFor === (this.officerDetail && this.officerDetail.officer && this.officerDetail.officer.id))) {
+        this.ensureOfficerBag()
+      }
+      this.officerDetailTab = tab
     },
     loadOfficerDetail (id) {
       // ★ 2026-10-01 防串数据：连续点多名军官时，只认最后一次请求的结果
@@ -6130,8 +6182,8 @@ export default {
       //   「赏赐「undefined」(普通) …」，点确认还会用 undefined 当 equip_id 提交。
       //   现在按「有没有装备 id」判断：事件对象/空值一律走展开分支，彻底免疫。
       if (!e || !e.id) {
-        // 点「赏赐宝物」按钮：先拉最新军官详情（背包随之刷新）再展开选择列表
-        this.loadOfficerDetail(o.id)
+        // 点「赏赐宝物」按钮：按需拉背包装备（改懒加载后不再整包重拉详情）再展开选择列表
+        this.ensureOfficerBag()
         this.officerTreasureOpen = !this.officerTreasureOpen
         return
       }
@@ -6147,7 +6199,7 @@ export default {
         //     已赏赐的宝物不会再出现在列表里可点）
         //   · 军官列表里同步该军官忠诚
         o.loyalty = Math.min(100, o.loyalty + gain)
-        const bag = this.officerDetail.bag || []
+        const bag = this.officerBag || []
         const idx = bag.findIndex(x => x.id === e.id)
         if (idx >= 0) bag.splice(idx, 1)
         const lst = (this.officerData && this.officerData.officers) || []
@@ -6233,6 +6285,7 @@ export default {
       api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: e.id, op: 'on' }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '穿戴失败')
         this.loadOfficerDetail(id)
+        this.refreshOfficerBag()
       })
     },
     // ★ 2026-09-29 装备背包叠加行 [穿戴]：穿组内第一件未穿戴的
@@ -6246,6 +6299,7 @@ export default {
       api.post('/games/ezfy/officers/' + id + '/equip', { equip_id: equipId, op: 'off' }).then(r => {
         if (r.code !== 0) this.notify(r.msg || '卸下失败')
         this.loadOfficerDetail(id)
+        this.refreshOfficerBag()
       })
     },
     async doUnequipAll () {
@@ -6255,6 +6309,7 @@ export default {
         if (r.code !== 0) this.notify(r.msg || '卸下失败')
         else this.notify(r.msg || '已卸下全部装备')
         this.loadOfficerDetail(id)
+        this.refreshOfficerBag()
       })
     },
     async doEquipSet (s) {
@@ -6264,6 +6319,7 @@ export default {
         if (r.code !== 0) this.notify(r.msg || '穿戴失败')
         else this.notify(r.msg || '穿戴成功')
         this.loadOfficerDetail(id)
+        this.refreshOfficerBag()
       })
     },
     doPosition (o, pos) {

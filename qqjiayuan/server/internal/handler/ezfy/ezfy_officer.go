@@ -2756,18 +2756,19 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		resp.ParamError(c, "武将不存在")
 		return
 	}
-	// 第二波并行：背包装备 / 本城军官 / 物品持有数 / 建筑 / 训练队列
+	// 第二波并行：本城军官 / 物品持有数 / 建筑 / 训练队列
+	// ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：大号全局背包装备可达上千件、
+	//   每次详情都整包拉进响应+前端大量 v-for，导致详情打开卡顿。
+	//   改法：背包不再随详情下发 —— 切到「背包」tab 才按需请求新接口 /officers/:id/backpack。
 	parStart := time.Now()
 	var (
-		items        []model.EzfyEquipment
 		cityOfficers []model.EzfyOfficer
 		cnts         map[int]int
 		buildings    []model.EzfyCityBuilding
 		trainQueues  []model.EzfyTrainQueue
 	)
 	var wg sync.WaitGroup
-	wg.Add(5)
-	go func() { defer wg.Done(); items = h.equipmentList(uid) }()
+	wg.Add(4)
 	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
 	go func() {
 		defer wg.Done()
@@ -2798,80 +2799,9 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		return allSkills[i]["id"].(int) < allSkills[j]["id"].(int)
 	})
 	em, el, ee := h.officerEffective(o)
-	bag := []gin.H{}
-	// ★ 2026-09-28 赏赐宝物只认「采集宝物」：背包条目带上标记，前端据此过滤可选列表
-	treasureSet := ezfyCollectibleTreasureNames()
-	// ★ 2026-10-04 性能（用户反馈「军官详情一直加载中」）：原实现逐件装备调
-	//   equipIsCaptiveWorn（内部 2 次查库）—— 背包几百件装备就是上千次 SQL 往返，
-	//   双机共 RDS 时单次详情能卡到秒级。现在当前城军官只查一次，被俘判定走内存 map。
-	//   ★ 2026-10-04 items/cityOfficers 已在第二波并行取好，这里直接用。
-	captive := map[int64]bool{}
-	for i := range cityOfficers {
-		if cityOfficers[i].IsCaptive == 1 {
-			captive[int64(cityOfficers[i].ID)] = true
-		}
-	}
-	// ★ 一键穿套装：背包里每个套装分别有件未穿戴的（officer_id=0 才在背包）
-	bagSetCnt := map[int]int{}
-	for i := range items {
-		e := &items[i]
-		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进背包（展示在俘虏的已穿戴里）
-		if e.OfficerId > 0 && captive[e.OfficerId] {
-			continue
-		}
-		if e.OfficerId == 0 && e.SetId > 0 {
-			bagSetCnt[e.SetId]++
-		}
-		bag = append(bag, gin.H{
-			"id": e.ID, "cfg_id": e.CfgId, "name": e.Name, "type": e.Type, "tier": e.Tier,
-			"tier_name": ezfyTierName(e.Tier),
-			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
-			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0,
-			"treasure": treasureSet[e.Name],
-			"slot":     e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
-			"series": e.Series, "enhance": e.Enhance,
-			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
-		})
-	}
+	// ★ 2026-10-10 背包装备不再随详情下发（见上：切「背包」tab 按需取 /officers/:id/backpack）
 	sm, sl, se, activeSets := h.officerSetBonus(o)
 	bm, bl, be := officerBaseAttr(o)
-	// 背包里有哪些套装可以一键穿戴（给前端「一键穿戴套装」按钮用）
-	// ★ 2026-09-24 「套装差了差多少生效看不出来」→ 每个套装带上
-	//   parts(总件数)/worn(该军官已穿件数)/need(还差几件生效)，前端直接展示进度。
-	wornBySet := map[int]int{}
-	for _, m := range officerEquipped(o) {
-		if sid := jsonInt(m["set_id"]); sid > 0 {
-			wornBySet[sid]++
-		}
-	}
-	bagSets := []gin.H{}
-	bSetIds := make([]int, 0, len(bagSetCnt))
-	for sid := range bagSetCnt {
-		bSetIds = append(bSetIds, sid)
-	}
-	sort.Ints(bSetIds)
-	for _, sid := range bSetIds {
-		name := h.ezfySetName(sid)
-		if name == "" {
-			continue
-		}
-		parts := 0
-		if s := ezfyCfg.equipSet(sid); s != nil {
-			parts = s.Parts
-		}
-		// ★ 2026-09-29 一键穿戴套装表要显示「等级」列：取该套装各件的穿戴等级需求最大值。
-		setLevel := 0
-		for _, e := range ezfyCfg.equipments {
-			if e.SetId == sid && e.Level > setLevel {
-				setLevel = e.Level
-			}
-		}
-		bagSets = append(bagSets, gin.H{
-			"set_id": sid, "name": name, "bag_count": bagSetCnt[sid],
-			"parts": parts, "worn": wornBySet[sid], "need": maxInt(0, parts-wornBySet[sid]),
-			"level": setLevel,
-		})
-	}
 	// ★ 2026-10-04 升星卡/改名卡/技能书 已在第二波并行取好（原 3 条 itemCount SQL）
 	// ★ 2026-10-04 名将标识 + 二战功勋背景（玩家改名后仍能认出原名与身份）
 	isGen := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
@@ -2927,13 +2857,105 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 		},
 		"skills": skillViews, "all_skills": allSkills,
 		// ★ 已穿戴装备补上套装名（老数据里只存了 set_id，前端不该显示「套装21」这种内部 ID）
-		"equipped": h.officerEquippedView(o), "bag": bag, "bag_sets": bagSets, "gold": city.Gold,
+		"equipped": h.officerEquippedView(o), "gold": city.Gold,
 	})
 	if d := time.Since(detailStart); d > 300*time.Millisecond {
 		pl := time.Since(parStart)
 		log.Printf("[ezfy]OfficerDetail slow uid=%d officer=%d total=%v (并行取数+懒结算=%v, 其余构造=%v)",
 			uid, id, d, pl, d-pl)
 	}
+}
+
+// OfficerBackpack GET /games/ezfy/officers/:id/backpack —— 该军官的背包装备 + 可一键穿戴套装
+//
+// ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：从 OfficerDetail 中拆出。
+//   全局背包装备大号可达上千件，原来每次详情都整包下发 + 前端大量 v-for，太卡。
+//   现在详情只下发已穿戴等小体积数据，切到「背包」tab 才按需请求这里。
+func (h *EzfyHandler) OfficerBackpack(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	o, city := h.officerOfMine(uid, id)
+	if o == nil || city == nil {
+		resp.ParamError(c, "武将不存在")
+		return
+	}
+	// 背包全量 + 本城军官（被俘判定）并行取
+	var (
+		items        []model.EzfyEquipment
+		cityOfficers []model.EzfyOfficer
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); items = h.equipmentList(uid) }()
+	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
+	wg.Wait()
+
+	treasureSet := ezfyCollectibleTreasureNames()
+	captive := map[int64]bool{}
+	for i := range cityOfficers {
+		if cityOfficers[i].IsCaptive == 1 {
+			captive[int64(cityOfficers[i].ID)] = true
+		}
+	}
+	bag := []gin.H{}
+	bagSetCnt := map[int]int{}
+	for i := range items {
+		e := &items[i]
+		// ★ 2026-09-29：挂在「未收编俘虏」身上的装备不进背包（展示在俘虏的已穿戴里）
+		if e.OfficerId > 0 && captive[e.OfficerId] {
+			continue
+		}
+		if e.OfficerId == 0 && e.SetId > 0 {
+			bagSetCnt[e.SetId]++
+		}
+		bag = append(bag, gin.H{
+			"id": e.ID, "cfg_id": e.CfgId, "name": e.Name, "type": e.Type, "tier": e.Tier,
+			"tier_name": ezfyTierName(e.Tier),
+			"military":  e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"level": e.Level, "officer_id": e.OfficerId, "worn": e.OfficerId > 0,
+			"treasure": treasureSet[e.Name],
+			"slot":     e.EquipSlot(), "set_id": e.SetId, "set_name": h.ezfySetName(e.SetId),
+			"series": e.Series, "enhance": e.Enhance,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+		})
+	}
+	// 一键穿套装：该军官已穿件数 + 背包未穿件数
+	wornBySet := map[int]int{}
+	for _, m := range officerEquipped(o) {
+		if sid := jsonInt(m["set_id"]); sid > 0 {
+			wornBySet[sid]++
+		}
+	}
+	bagSets := []gin.H{}
+	bSetIds := make([]int, 0, len(bagSetCnt))
+	for sid := range bagSetCnt {
+		bSetIds = append(bSetIds, sid)
+	}
+	sort.Ints(bSetIds)
+	for _, sid := range bSetIds {
+		name := h.ezfySetName(sid)
+		if name == "" {
+			continue
+		}
+		parts := 0
+		if s := ezfyCfg.equipSet(sid); s != nil {
+			parts = s.Parts
+		}
+		// ★ 2026-09-29 一键穿戴套装表要显示「等级」列：取该套装各件的穿戴等级需求最大值。
+		setLevel := 0
+		for _, e := range ezfyCfg.equipments {
+			if e.SetId == sid && e.Level > setLevel {
+				setLevel = e.Level
+			}
+		}
+		bagSets = append(bagSets, gin.H{
+			"set_id": sid, "name": name, "bag_count": bagSetCnt[sid],
+			"parts": parts, "worn": wornBySet[sid], "need": maxInt(0, parts-wornBySet[sid]),
+			"level": setLevel,
+		})
+	}
+	resp.OK(c, gin.H{"bag": bag, "bag_sets": bagSets})
 }
 
 // officerEquippedView 已穿戴装备的下发格式（补套装名，前端直接用）
