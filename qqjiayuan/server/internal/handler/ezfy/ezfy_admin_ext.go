@@ -18,7 +18,7 @@ import (
 
 // ezfyH 返回一个带 DB 的 EzfyHandler，用于复用游戏内结算逻辑
 func (h *EzfyAdmin) ezfyH() *EzfyHandler {
-	ez := &EzfyHandler{DB: h.DB}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	ez.cfgs()
 	return ez
 }
@@ -1503,7 +1503,7 @@ func (h *EzfyAdmin) AdminEzfyTechs(c *gin.Context) {
 		var uids []uint
 		if id, err := strconv.Atoi(word); err == nil {
 			// 数字：匹配 玩家ID 或 家园号(账号)
-			h.DB.Model(&model.User{}).
+			h.home().Model(&model.User{}).
 				Where("id = ? OR username LIKE ?", id, "%"+word+"%").Pluck("id", &uids)
 		} else {
 			// 文本：匹配玩家昵称
@@ -2072,7 +2072,7 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 			q = q.Where("sender_id = ? OR receiver_id = ?", uid, uid)
 		} else {
 			var ids []uint
-			h.DB.Model(&model.User{}).Select("id").
+			h.home().Model(&model.User{}).Select("id").
 				Where("nickname LIKE ? OR username LIKE ?", "%"+word+"%", "%"+word+"%").Scan(&ids)
 			if len(ids) > 0 {
 				q = q.Where("content LIKE ? OR sender_id IN ? OR receiver_id IN ?", "%"+word+"%", ids, ids)
@@ -2095,7 +2095,7 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 		n, num := h.ezfyAdminName(uid)
 		if n == "" {
 			var u model.User
-			if err := h.DB.First(&u, uid).Error; err == nil {
+			if err := h.home().First(&u, uid).Error; err == nil {
 				n, num = u.Nickname, u.Username
 			}
 		}

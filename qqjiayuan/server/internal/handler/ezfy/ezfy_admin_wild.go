@@ -414,7 +414,7 @@ func (h *EzfyAdmin) ezfyAdminNamesBatch(uids []uint) (map[uint]string, map[uint]
 		nick[p.UserID] = p.Nickname
 	}
 	var us []model.User
-	h.DB.Select("id, username").Where("id IN ?", uids).Find(&us)
+	h.home().Select("id, username").Where("id IN ?", uids).Find(&us)
 	for _, u := range us {
 		num[u.ID] = u.Username
 	}

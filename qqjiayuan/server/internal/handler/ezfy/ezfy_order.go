@@ -86,7 +86,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 	}
 	if len(userIDs) > 0 {
 		var users []model.User
-		h.DB.Select("id, nickname").Where("id IN ?", userIDs).Find(&users)
+		h.home().Select("id, nickname").Where("id IN ?", userIDs).Find(&users)
 		for _, u := range users {
 			userNames[u.ID] = u.Nickname
 		}
@@ -4851,7 +4851,7 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 	// ★ 侦察技巧≥10级: 才能看到玩家最后在线时间（取账号最近活跃时间）
 	if scoutLv >= 10 {
 		var owner model.User
-		if err := h.DB.First(&owner, target.UserID).Error; err == nil && owner.LastActiveAt != nil {
+		if err := h.home().First(&owner, target.UserID).Error; err == nil && owner.LastActiveAt != nil {
 			b.WriteString("最后在线时间：" + owner.LastActiveAt.Format("2006-01-02 15:04:05") + "\n")
 		}
 	}

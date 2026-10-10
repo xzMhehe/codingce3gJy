@@ -16,7 +16,18 @@ import (
 //   因此二战把 GM 方法统一挂到这个独立类型上，整个二战（游戏 + GM）代码都收敛在 ezfy 包，
 //   为将来二战独立部署预留 —— 不动论坛/西游的 AdminHandler。
 type EzfyAdmin struct {
+	// DB 二战库（独立库模式下 = qq_ezzt；单库模式 = 家园库）。
 	DB *gorm.DB
+	// HomeDB 家园库：账号/昵称等**仍由家园持有**的数据经它只读（见 EzfyHandler.HomeDB）。
+	HomeDB *gorm.DB
+}
+
+// home 家园库句柄：未配 HomeDB（单库模式）时回落 DB。
+func (h *EzfyAdmin) home() *gorm.DB {
+	if h.HomeDB != nil {
+		return h.HomeDB
+	}
+	return h.DB
 }
 
 // pageOf 通用分页参数：page 从 1 起，size 默认 defSize（1~100），返回 page、offset、size。

@@ -25,7 +25,7 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	q := h.DB.Model(&model.EzfyProfile{})
 	if word != "" {
 		var wu model.User
-		h.DB.Select("id").Where("username = ? OR nickname = ?", word, word).First(&wu)
+		h.home().Select("id").Where("username = ? OR nickname = ?", word, word).First(&wu)
 		if uid, err := strconv.Atoi(word); err == nil {
 			q = q.Where("user_id = ?", uid)
 			if wu.ID > 0 {
@@ -53,7 +53,7 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	out := []rowOut{}
 	for _, p := range rows {
 		var u model.User
-		h.DB.First(&u, p.UserID)
+		h.home().First(&u, p.UserID)
 		var cities int64
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cities)
 		out = append(out, rowOut{EzfyProfile: p, HomeNick: u.Nickname, HomeNum: u.Username,
@@ -151,7 +151,7 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 	h.DB.Where("user_id = ?", p.UserID).Order("id DESC").Limit(20).Find(&orders)
 	var u model.User
 	homeNick, homeNum := "", ""
-	if err := h.DB.First(&u, p.UserID).Error; err == nil {
+	if err := h.home().First(&u, p.UserID).Error; err == nil {
 		homeNick, homeNum = u.Nickname, u.Username
 	}
 	// ★ 军官：玩家名下所有城市的全部军官（含出征中/俘虏），带所属城市名/职位/状态
@@ -379,7 +379,7 @@ func (h *EzfyAdmin) AdminEzfyGrant(c *gin.Context) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	ez := &EzfyHandler{DB: h.DB}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	msg := "已发放"
 	if in.Gold != 0 || in.Food != 0 || in.Steel != 0 || in.Oil != 0 || in.Rare != 0 {
 		// GM 发放不按仓储上限截断（玩家要多少给多少，可以超上限堆着）
@@ -444,7 +444,7 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 	for _, p := range rows {
 		homeNum := ""
 		var u model.User
-		if err := h.DB.First(&u, p.UserID).Error; err == nil {
+		if err := h.home().First(&u, p.UserID).Error; err == nil {
 			homeNum = u.Username
 		}
 		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNum})
@@ -507,7 +507,7 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 			return
 		}
 	}
-	ez := &EzfyHandler{DB: h.DB}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	items := ""
 	for _, it := range in.Items {
 		if it.CfgID <= 0 || it.Count <= 0 {
@@ -1035,15 +1035,22 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 		if uid, err := strconv.Atoi(word); err == nil {
 			// ★ 2026-10-07 数字既可能是 user_id，也可能是游戏里看到的游戏ID(game_uid)，
 			//   还可能是列表展示的账号名(users.username)，三者都匹配（口径同钻石流水等页）。
+			// ★★ 2026-10-10 双数据源：`users` 在家园库，**不能在二战库的 SQL 里子查询它** ——
+			//   先按账号名去家园库取出 uid，再用普通 IN 条件拼进来。
+			byName := []uint{}
+			var uu model.User
+			if e := h.home().Select("id").Where("username = ?", word).First(&uu).Error; e == nil {
+				byName = append(byName, uu.ID)
+			}
 			q = q.Where(`user_id = ?
 				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)
-				OR user_id IN (SELECT id FROM users WHERE username = ?)`, uid, uid, word)
+				OR user_id IN ?`, uid, uid, byName)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 			var uids []uint
-			h.DB.Model(&model.User{}).Select("id").
+			h.home().Model(&model.User{}).Select("id").
 				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
 			ids = append(ids, uids...)
 			if len(ids) > 0 {
@@ -1193,7 +1200,7 @@ func (h *EzfyAdmin) ezfyAdminName(uid uint) (string, string) {
 	}
 	var u model.User
 	num := ""
-	if err := h.DB.First(&u, uid).Error; err == nil {
+	if err := h.home().First(&u, uid).Error; err == nil {
 		num = u.Username
 	}
 	return nick, num

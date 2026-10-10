@@ -33,7 +33,7 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	// ★ id 既接受家园 user_id，也接受「游戏ID」（首次=家园ID，之后可能独立变化）
 	target := uint(tid)
 	var u model.User
-	if err := h.DB.First(&u, target).Error; err != nil {
+	if err := h.home().First(&u, target).Error; err != nil {
 		var gp model.EzfyProfile
 		if e2 := h.DB.Where("game_uid = ?", int64(tid)).First(&gp).Error; e2 == nil {
 			target = gp.UserID
@@ -146,7 +146,7 @@ func (h *EzfyHandler) PlayerSearch(c *gin.Context) {
 		if len(profs) == 0 {
 			// 家园号码（users.username）兜底
 			var uids []uint
-			h.DB.Model(&model.User{}).Select("id").Where("username = ?", kw).Scan(&uids)
+			h.home().Model(&model.User{}).Select("id").Where("username = ?", kw).Scan(&uids)
 			if len(uids) > 0 {
 				h.DB.Where("user_id IN ?", uids).Limit(20).Find(&profs)
 			}
@@ -158,7 +158,7 @@ func (h *EzfyHandler) PlayerSearch(c *gin.Context) {
 	out := make([]gin.H, 0, len(profs))
 	for _, p := range profs {
 		var u model.User
-		h.DB.Select("username, nickname").First(&u, p.UserID)
+		h.home().Select("username, nickname").First(&u, p.UserID)
 		nick := p.Nickname
 		if nick == "" {
 			nick = u.Nickname

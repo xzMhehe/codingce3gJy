@@ -29,7 +29,7 @@ func (h *EzfyHandler) ezfyUserOnline(uid uint) bool {
 		return false
 	}
 	var u model.User
-	if err := h.DB.Select("last_active_at").First(&u, uid).Error; err != nil || u.LastActiveAt == nil {
+	if err := h.home().Select("last_active_at").First(&u, uid).Error; err != nil || u.LastActiveAt == nil {
 		return false
 	}
 	return time.Since(*u.LastActiveAt) <= ezfyOnlineWindowSec*time.Second

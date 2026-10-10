@@ -21,7 +21,7 @@ import (
 // 战斗推进**完全复用玩家端那套**（ezfyBattleTick / ezfyBattleFinishToOrder / processArrive），
 // 管理端只负责「触发」与「展示」，不另写第二套战斗逻辑（避免两边口径漂移）。
 //
-// ⚠️ 并发说明：EzfyAdmin 上没有 EzfyHandler 的方法，这里临时构造 `&EzfyHandler{DB: h.DB}` 调用。
+// ⚠️ 并发说明：EzfyAdmin 上没有 EzfyHandler 的方法，这里临时构造 `&EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}` 调用。
 //
 //	它与玩家端请求是两个实例（processing 重入标记不共享），理论上可能与玩家端同时推进同一场战斗。
 //	缓解：① 每次操作前**重新读一次战场行**拿最新 round_start；
@@ -118,7 +118,7 @@ func (h *EzfyAdmin) AdminEzfyBattles(c *gin.Context) {
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 			var uids []uint
-			h.DB.Model(&model.User{}).Select("id").
+			h.home().Model(&model.User{}).Select("id").
 				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
 			ids = append(ids, uids...)
 			if len(ids) > 0 {
@@ -303,7 +303,7 @@ func (h *EzfyAdmin) AdminEzfyBattleTick(c *gin.Context) {
 		resp.ParamError(c, "该战斗已结束，无需推进")
 		return
 	}
-	eh := &EzfyHandler{DB: h.DB}
+	eh := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	eh.cfgs()
 	now := time.Now().UnixMilli()
 	b.RoundStart = now - ezfyBattleRoundMs // 拨到「刚好到点」
@@ -332,7 +332,7 @@ func (h *EzfyAdmin) AdminEzfyBattleAuto(c *gin.Context) {
 		resp.ParamError(c, "该战斗已结束")
 		return
 	}
-	eh := &EzfyHandler{DB: h.DB}
+	eh := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	eh.cfgs()
 	now := time.Now().UnixMilli()
 	rounds := 0
@@ -370,7 +370,7 @@ func (h *EzfyAdmin) AdminEzfyBattleForce(c *gin.Context) {
 		resp.NotFound(c, "战场不存在")
 		return
 	}
-	eh := &EzfyHandler{DB: h.DB}
+	eh := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	eh.cfgs()
 	now := time.Now().UnixMilli()
 

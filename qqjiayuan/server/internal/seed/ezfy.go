@@ -150,13 +150,10 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_city_tech", "idx_city_tech_status", "city_id,status", false)
 	ensureEzfyIndex(db, "ezfy_officer", "idx_officer_city_position", "city_id,position", false)
 
-	// ★ 2026-10-03 家园论坛索引：版块帖子列表(board_id+状态)、我的帖子/回复(user_id+状态)是高频查询。
-	//   Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。
-	//   GORM 默认表名 thread→threads、reply→replies；表名若逢差异只会少建、不会报错（helper 仅 log）。
-	ensureEzfyIndex(db, "threads", "idx_thread_board_status", "board_id,status,audit_status", false)
-	ensureEzfyIndex(db, "threads", "idx_thread_user_status", "user_id,status", false)
-	ensureEzfyIndex(db, "replies", "idx_reply_thread_status", "thread_id,status", false)
-	ensureEzfyIndex(db, "replies", "idx_reply_user_status", "user_id,status", false)
+	// ★★ 2026-10-10 原来这里还建 4 个**家园论坛**索引（threads/replies）——
+	//   二战拆到独立库后，这条函数跑在二战库上，家园表不在 → 每次启动刷 4 条
+	//   `Table 'qq_ezzt.threads' doesn't exist` 噪音。已挪到 EnsureHomeForumIndexes，
+	//   由 main 在家园库上调用。**二战库相关的索引只留 ezfy_* 的**。
 
 	ezfyBackfillReportCityId(db)
 }
@@ -173,6 +170,22 @@ func ezfyBackfillReportCityId(db *gorm.DB) {
 	if err := db.Exec("UPDATE ezfy_report SET city_id = 0 WHERE city_id IS NULL").Error; err != nil {
 		log.Printf("ezfy 战报 city_id 回填失败: %v", err)
 	}
+}
+
+// EnsureHomeForumIndexes 家园论坛索引（版块帖子列表 / 我的帖子 / 回复）。
+//
+// ★ 2026-10-03 加：版块帖子列表(board_id+状态)、我的帖子/回复(user_id+状态)是高频查询。
+//   Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。
+//   GORM 默认表名 thread→threads、reply→replies；表名若有差异只会少建、不会报错（helper 仅 log）。
+//
+// ★★ 2026-10-10 从 EnsureEzfyIndexes 里挪出来：那函数现在跑在**二战库**上，
+//   家园表不在那儿 → 每次启动刷 `Table 'qq_ezzt.threads' doesn't exist` 噪音。
+//   这条在家园库上由 main 调用（幂等）。
+func EnsureHomeForumIndexes(db *gorm.DB) {
+	ensureEzfyIndex(db, "threads", "idx_thread_board_status", "board_id,status,audit_status", false)
+	ensureEzfyIndex(db, "threads", "idx_thread_user_status", "user_id,status", false)
+	ensureEzfyIndex(db, "replies", "idx_reply_thread_status", "thread_id,status", false)
+	ensureEzfyIndex(db, "replies", "idx_reply_user_status", "user_id,status", false)
 }
 
 // ensureEzfyIndex 幂等补建普通索引。GORM AutoMigrate 对存量表只补列/主键，

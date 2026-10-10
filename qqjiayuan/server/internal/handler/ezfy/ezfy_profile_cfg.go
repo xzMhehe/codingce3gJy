@@ -57,7 +57,7 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	p := h.ensureProfile(uid)
 	var u model.User
-	h.DB.First(&u, uid)
+	h.home().First(&u, uid)
 
 	renameFree := p.RenameUsed == 0
 	campFree := p.CampUsed == 0
@@ -111,7 +111,7 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 	}
 	p := h.ensureProfile(uid)
 	var u model.User
-	h.DB.First(&u, uid)
+	h.home().First(&u, uid)
 	if name == ezfyNickOf(p, &u) {
 		resp.ParamError(c, "新昵称与当前昵称相同")
 		return

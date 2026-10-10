@@ -15,7 +15,12 @@ import (
 	"qqjiayuan/server/internal/middleware"
 )
 
-func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
+// Setup 装配全部路由。
+//
+// ★★ 2026-10-10 双数据源：`db` = 家园库（账号/角色/权限/私信/设置 + 其它小游戏），
+// `ezfyDB` = 二战库（全部 ezfy_* + 二战自己的家信/设置）。单库模式下两者是同一个连接。
+// 二战 handler 同时拿到 ezfyDB（自己的数据）与 db（家园库，只读账号/昵称）。
+func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 	r.Use(middleware.CORS())
 	// 全站 IP 封禁（命中封禁名单的请求 302 到服务不可用页）
@@ -60,8 +65,9 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 	parkH := &handler.ParkHandler{DB: db}
 	jwtH := &handler.JwtHandler{DB: db}
 	hxH := &handler.HxxyHandler{DB: db}
-	ezfyH := &ezfy.EzfyHandler{DB: db}
-	ezfyAdminH := &ezfy.EzfyAdmin{DB: db}
+	// ★★ 2026-10-10 二战用独立库：DB = 二战库，HomeDB = 家园库（只读账号/昵称）。
+	ezfyH := &ezfy.EzfyHandler{DB: ezfyDB, HomeDB: db}
+	ezfyAdminH := &ezfy.EzfyAdmin{DB: ezfyDB, HomeDB: db}
 	// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
 	// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
 	go ezfyH.BgTickBattles()

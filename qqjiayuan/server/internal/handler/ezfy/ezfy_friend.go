@@ -35,7 +35,7 @@ func (h *EzfyHandler) ezfyIsFriend(uid, other uint) bool {
 // ezfyFriendBrief 好友/申请行里展示的玩家信息
 func (h *EzfyHandler) ezfyFriendBrief(uid uint) gin.H {
 	var u model.User
-	h.DB.First(&u, uid)
+	h.home().First(&u, uid)
 	var p model.EzfyProfile
 	h.DB.Where("user_id = ?", uid).First(&p)
 	nick := p.Nickname
@@ -112,7 +112,7 @@ func (h *EzfyHandler) FriendsSearch(c *gin.Context) {
 		h.DB.Where("game_uid = ?", n).Limit(20).Find(&profs)
 		if len(profs) == 0 {
 			var uids []uint
-			h.DB.Model(&model.User{}).Select("id").Where("username = ?", kw).Scan(&uids)
+			h.home().Model(&model.User{}).Select("id").Where("username = ?", kw).Scan(&uids)
 			if len(uids) > 0 {
 				h.DB.Where("user_id IN ?", uids).Limit(20).Find(&profs)
 			}
@@ -152,7 +152,7 @@ func (h *EzfyHandler) FriendsApply(c *gin.Context) {
 		return
 	}
 	var u model.User
-	if err := h.DB.First(&u, req.TargetID).Error; err != nil {
+	if err := h.home().First(&u, req.TargetID).Error; err != nil {
 		resp.NotFound(c, "该玩家不存在")
 		return
 	}

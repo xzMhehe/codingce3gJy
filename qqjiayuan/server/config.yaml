@@ -12,6 +12,13 @@ mysql:
   password: "1234567890"
   dbname: qq_jiayuan
 
+# ★★ 2026-10-10 二战征途独立库（多数据源）。全部 ezfy_* 表都在这个库里。
+#   host/port/user/password 留空 = 自动沿用上面 mysql 的（同实例换库）。
+#   整段留空或删掉 = 单库模式（二战与家园同库），老部署不受影响。
+#   账号 / 昵称 / 私信 / 系统设置仍在家园库（二战经 HomeDB 读），只靠「家园号」关联。
+ezfy_mysql:
+  dbname: qq_ezzt
+
 jwt:
   secret: "qq-jiayuan-secret-2026-do-not-leak"
   expire_hours: 168

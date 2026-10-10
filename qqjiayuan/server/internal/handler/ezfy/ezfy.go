@@ -74,9 +74,24 @@ var ezfyTechAcademy = map[int]int{
 // `target.UserID == uid`，覆盖不了「A↔B 互相打」和「同一轮订单未落库被重入」。
 // processOrders / refreshCity 进函数前抢锁，已在处理中的 uid 直接跳过。
 type EzfyHandler struct {
+	// DB 二战库：独立库模式下 = qq_ezzt；单库模式下 = 家园库。
+	// 所有 ezfy_* 表、二战自己的家信(private_messages)、系统设置(settings)都走它。
 	DB *gorm.DB
+	// HomeDB 家园库：**仍由家园持有**的数据（账号 users）经它只读。
+	// ★★ 2026-10-10 双数据源：二战与家园只靠「家园号」(users.id) 关联 —— 账号/昵称
+	//   不复制、不落二战库，一律 h.home() 读家园库。为空时回落 DB（单库模式）。
+	HomeDB *gorm.DB
 	// processing 记录「正在被本 goroutine 懒结算的 uid」，防止订单结算递归重入
 	processing sync.Map
+}
+
+// home 家园库句柄：账号/昵称等共享数据一律经它读。
+// 未单独配置 HomeDB（单库模式）时回落 DB，保证老部署行为完全不变。
+func (h *EzfyHandler) home() *gorm.DB {
+	if h.HomeDB != nil {
+		return h.HomeDB
+	}
+	return h.DB
 }
 
 // enterProcess 标记 uid 进入结算；返回 false 表示已在结算中（调用方应立即返回）。
@@ -148,7 +163,7 @@ func (h *EzfyHandler) ensureProfile(uid uint) model.EzfyProfile {
 	}
 	var u model.User
 	nickname := ""
-	if err := h.DB.Select("nickname").First(&u, uid).Error; err == nil {
+	if err := h.home().Select("nickname").First(&u, uid).Error; err == nil {
 		nickname = u.Nickname
 	}
 	// ★ 游戏ID 首次 = 家园ID，之后永不随家园ID变化
@@ -3960,7 +3975,7 @@ func (h *EzfyHandler) ResCfg(c *gin.Context) {
 // ezfyAccount 家园账号(号码) / 等级 / 经验 —— 统帅信息页需要展示家园侧资料
 func (h *EzfyHandler) ezfyUserBrief(uid uint) (account string, level, exp int) {
 	var u model.User
-	if err := h.DB.First(&u, uid).Error; err != nil {
+	if err := h.home().First(&u, uid).Error; err != nil {
 		return "", 0, 0
 	}
 	return u.Username, u.Level, u.Exp

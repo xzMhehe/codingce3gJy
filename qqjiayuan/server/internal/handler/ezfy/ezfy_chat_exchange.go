@@ -296,7 +296,7 @@ func (h *EzfyHandler) liveNicknames(ids []uint) map[uint][2]string {
 		return out
 	}
 	var us []model.User
-	h.DB.Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
+	h.home().Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
 	for _, u := range us {
 		out[u.ID] = [2]string{u.Nickname, u.Color}
 	}
@@ -350,7 +350,7 @@ func (h *EzfyHandler) HomeChat(c *gin.Context) {
 			return out
 		}
 		var us []model.User
-		h.DB.Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
+		h.home().Select("id, nickname, color").Where("id IN ?", ids).Find(&us)
 		for _, u := range us {
 			out[u.ID] = [2]string{u.Nickname, u.Color}
 		}
@@ -1040,7 +1040,7 @@ func (h *EzfyHandler) CorpsMembers(c *gin.Context) {
 	if len(userIDs) > 0 {
 		var users []model.User
 		// 只取昵称：model.User 里 AvatarBase64 是 longtext，全员拉全量会很慢。
-		h.DB.Select("id", "nickname").Where("id IN ?", userIDs).Find(&users)
+		h.home().Select("id", "nickname").Where("id IN ?", userIDs).Find(&users)
 		for i := range users {
 			userMap[users[i].ID] = users[i]
 		}

@@ -28,7 +28,7 @@ import (
 
 // ezfyReload 改完配置表后调用：返回一个已强制重载配置缓存的 EzfyHandler
 func (h *EzfyAdmin) ezfyReload() *EzfyHandler {
-	ez := &EzfyHandler{DB: h.DB}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	ez.cfgsReload()
 	return ez
 }
@@ -506,8 +506,6 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 		CityId    int64
 		CityName  string
 		UserId    uint
-		Nickname  string
-		Username  string
 		Level     int
 		Star      int
 		Exp       int64
@@ -519,20 +517,40 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 	var rows []row
 	// ★ 2026-10-06 军官改逻辑删除：这里走的是 `Table()` 原生查询，
 	//   GORM 的软删除 scope 不会自动加，必须手写 `deleted_at IS NULL`，否则已删军官会漏出来。
+	// ★★ 2026-10-10 双数据源：`users` 在家园库、`ezfy_*` 在二战库 —— **不能跨库 JOIN**，
+	//   改成「二战库查军官+城池 → 家园库按 user_id 批量取昵称/账号 → 内存合并」。
 	h.DB.Table("ezfy_officer o").
-		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.user_id, u.nickname, u.username, "+
+		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.user_id, "+
 			"o.level, o.star, o.exp, o.loyalty, o.position, o.status, o.is_captive").
 		Joins("LEFT JOIN ezfy_city c ON c.id = o.city_id").
-		Joins("LEFT JOIN users u ON u.id = c.user_id").
 		Where("o.general_id = ? AND o.deleted_at IS NULL", id).
 		Order("o.city_id").Scan(&rows)
 
+	// 按 user_id 去家园库补「昵称/账号」（去重后一次 IN 查询）
+	ownerOf := map[uint]string{}
+	seen := map[uint]bool{}
+	uids := make([]uint, 0, len(rows))
+	for _, r := range rows {
+		if r.UserId != 0 && !seen[r.UserId] {
+			seen[r.UserId] = true
+			uids = append(uids, r.UserId)
+		}
+	}
+	if len(uids) > 0 {
+		var us []model.User
+		h.home().Select("id, nickname, username").Where("id IN ?", uids).Find(&us)
+		for _, u := range us {
+			nm := u.Nickname
+			if nm == "" {
+				nm = u.Username
+			}
+			ownerOf[u.ID] = nm
+		}
+	}
+
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		owner := r.Nickname
-		if owner == "" {
-			owner = r.Username
-		}
+		owner := ownerOf[r.UserId]
 		if owner == "" {
 			owner = fmt.Sprintf("玩家%d", r.UserId)
 		}
@@ -1641,7 +1659,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 			q = q.Where("id = ? OR user_id = ?", id, id)
 		} else {
 			var uids []uint
-			h.DB.Model(&model.User{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("id", &uids)
+			h.home().Model(&model.User{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("id", &uids)
 			if len(uids) > 0 {
 				q = q.Where("name LIKE ? OR user_id IN ?", "%"+word+"%", uids)
 			} else {
@@ -2220,7 +2238,7 @@ func (h *EzfyAdmin) AdminEzfyGenOfficers(c *gin.Context) {
 		return
 	}
 	var pu model.User
-	h.DB.First(&pu, in.UserID)
+	h.home().First(&pu, in.UserID)
 	ez := h.ezfyH()
 	city := ez.mainCity(in.UserID)
 	caps := h.ezfyGeneralCapByStar()

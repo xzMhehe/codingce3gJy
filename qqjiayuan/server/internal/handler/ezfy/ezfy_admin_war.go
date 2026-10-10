@@ -93,7 +93,7 @@ func (h *EzfyAdmin) AdminEzfyWars(c *gin.Context) {
 		h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").
 			Pluck("user_id", &uids)
 		var ids []uint
-		h.DB.Model(&model.User{}).Where("username LIKE ?", "%"+word+"%").
+		h.home().Model(&model.User{}).Where("username LIKE ?", "%"+word+"%").
 			Pluck("id", &ids)
 		uids = append(uids, ids...)
 		if len(uids) == 0 {

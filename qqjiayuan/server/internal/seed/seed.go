@@ -108,52 +108,18 @@ func Run(db *gorm.DB, staticDir string) {
 		&model.HxxyGangInvite{}, &model.HxxyHouseInvite{},
 		&model.HxxyGzWar{}, &model.HxxyGzScore{}, &model.HxxyGzPlayer{},
 		&model.HxxyActivityLog{},
-		// 二战风云（复刻 stzb-fk 二战风云：城池建造/资源结算/造兵科技/地图出征/多回合战斗/军团）
-		&model.EzfyCfgBuilding{}, &model.EzfyCfgBuildingLevel{}, &model.EzfyCfgTroop{},
-		&model.EzfyCfgTech{}, &model.EzfyCfgTechLevel{}, &model.EzfyCfgWildland{},
-		&model.EzfyCfgItem{}, &model.EzfyCfgTaskType{}, &model.EzfyCfgTask{},
-		&model.EzfyProfile{}, &model.EzfyCity{}, &model.EzfyCityBuilding{},
-		&model.EzfyCityTroop{}, &model.EzfyCityTech{}, &model.EzfyUserTech{}, &model.EzfyTrainQueue{},
-		&model.EzfyMapArea{}, &model.EzfyOrder{}, &model.EzfyBattle{}, &model.EzfyReport{},
-		&model.EzfyWildland{}, &model.EzfyOccupy{}, &model.EzfyWounded{},
-		&model.EzfyRansom{}, // ★ 2026-10-07 赎城请求表（AutoMigrate 建表）
-		&model.EzfyWar{}, &model.EzfyCorps{}, &model.EzfyCorpsMember{}, &model.EzfyCorpsChat{},
-		// 二战风云·军团外交/军团宣战/军团商城（★ 2026-09-25 ）
-		&model.EzfyCorpsRelation{}, &model.EzfyCorpsWar{}, &model.EzfyCorpsMall{}, &model.EzfyCorpsMallLog{},
-		// ★ 2026-09-30 入团申请（军团开启审核后玩家申请入团）
-		&model.EzfyCorpsApply{},
-		&model.EzfyItem{}, &model.EzfySign{}, &model.EzfyGift{}, &model.EzfyTreasureSign{}, &model.EzfyCityEffect{},
-		&model.EzfyCityTarget{}, &model.EzfyTask{}, &model.EzfyNotice{},
-		&model.EzfyChat{}, &model.EzfyExchange{}, &model.EzfyExchangeTemplate{},
-		// ★ 2026-09-28 玩家钻石流水（管理端「数据管理 → 钻石流水」查看）
-		&model.EzfyDiamondLog{},
-		// ★ 2026-10-02 玩家道具使用流水（管理端「数据管理 → 道具使用」查看）
-		&model.EzfyItemUseLog{},
-		// 二战风云·军官/学院（军校招募/技能/装备/俘虏/任命市长城守）
-		&model.EzfyCfgGeneral{}, &model.EzfyCfgSkill{}, &model.EzfyCfgEquipment{},
-		&model.EzfyCfgEquipSet{}, &model.EzfyCfgChest{}, &model.EzfyCfgChestItem{},
-		&model.EzfyCfgScheme{},
-		&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
-		&model.EzfyMapStar{}, &model.EzfyPreset{},
-		&model.EzfyActivity{},
-		// 资源显示名配置（管理端可改名，游戏端/管理端展示全部跟随）
-		&model.EzfyCfgResource{},
-		// 游戏内好友（与家园好友分开）
-		&model.EzfyFriend{}, &model.EzfyFriendApply{},
-		// 军衔配置（可建城数）
-		&model.EzfyCfgRank{},
-		// 地图格子覆盖（改地形 / 设寇城·活动寇城）
-		&model.EzfyMapTile{},
-		&model.EzfyActWild{},
-		// 建筑数量上限配置（军事区/资源区各 36，管理端可维护）
-		&model.EzfyCfgLimit{},
-		// 二战聊天敏感词（独立维护页）
-		&model.EzfyWordFilter{},
-		// 二战风云·为爱发电卡（管理端发放、玩家每日领钻石）
-		&model.EzfyLoveCard{},
 	)
 	if err != nil {
 		log.Fatalf("建表失败: %v", err)
+	}
+	// ★★ 2026-10-10 二战风云（ezfy_*）的表**不再固定建在家园库**：
+	//   二战使用独立库（config 的 ezfy_mysql，如 qq_ezzt）时由 RunEzfy 在二战库上建；
+	//   单库模式（未配 ezfy_mysql）时仍在家园库建，行为与以前一致。
+	//   模型清单见 ezfy_run.go 的 ezfyMigrateModels。
+	if !EzfyUsesOwnDB {
+		if err := db.AutoMigrate(ezfyMigrateModels...); err != nil {
+			log.Fatalf("二战建表失败: %v", err)
+		}
 	}
 	// 二战风云：道具库存列是后加的，老行回填默认 100
 	if db.Migrator().HasTable("ezfy_cfg_item") {
@@ -722,7 +688,11 @@ func Run(db *gorm.DB, staticDir string) {
 	seedParkData(db)
 	seedJwt(db)
 	seedHxxy(db)
-	seedEzfy(db)
+	// ★★ 2026-10-10 二战使用独立库时，二战的配置/数据种子改由 RunEzfy 在二战库上灌
+	//   （见 ezfy_run.go）；这里跳过，避免把二战种子又写回家园库。
+	if !EzfyUsesOwnDB {
+		seedEzfy(db)
+	}
 	seedPlazaSections(db)
 	seedNoblePlans(db)
 	seedNobleLevels(db)

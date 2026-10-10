@@ -129,7 +129,7 @@ func (h *EzfyHandler) CorpsSetTitle(c *gin.Context) {
 	}
 	p := h.ensureProfile(req.UserId)
 	var u model.User
-	h.DB.First(&u, req.UserId)
+	h.home().First(&u, req.UserId)
 	name := ezfyNickOf(p, &u)
 	if name == "" {
 		name = strconv.Itoa(int(req.UserId))
@@ -295,7 +295,7 @@ func (h *EzfyHandler) CorpsMail(c *gin.Context) {
 			continue // 不给自己发
 		}
 		var u model.User
-		if err := h.DB.First(&u, m.UserId).Error; err != nil {
+		if err := h.home().First(&u, m.UserId).Error; err != nil {
 			continue
 		}
 		h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: m.UserId, Content: content})
