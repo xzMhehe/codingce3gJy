@@ -3057,7 +3057,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   那是守城方专属的一项，导致满科技的两个号在战报里显示成「攻方 攻击+70% / 守方 攻击+90%」。
 		//   现在两边攻击口径完全一致（军训艺术 + 武器科技 + 重工技术 + 带队/城守军官）。
 		//   掩体防御仍保留在**防御**里（defBonus / defDefBreak）—— 攻守双方都吃，不影响对称性。
-		defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)
+		// ★ 2026-10-10 修复「装备一样加成不一样」：攻方攻击 = atkBonus + atkEquip.Dmg（装备伤害单独加），
+		//   而守方攻击之前漏加了装备/套装伤害（defEquip.Dmg）。这里先算 defEquip（必须在 defAtkBonus 之前赋值），
+		//   再补进去 —— 守城部队反击时身上装备/套装的「伤害」加成才真实生效。
+		defEquip = h.officerBattleEquipBonus(cityGuard)
+		defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard) + defEquip.Dmg
 		// ★ 2026-10-06 城守军官占守方攻击加成的百分点（战报日志拆解用）
 		defOfficerAtkBonus = h.officerBattleBonus(cityGuard)
 		// ★ 2026-10-06 守方拆解逐项明细：城守技能 + 守方科技（与 defAtkBonus 同口径）
@@ -3081,7 +3085,6 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   现在与攻方对齐：**守方射程 = 弹道学(8)*3**。
 		//   ★ 掩体防御仍保留在守方**攻击**（defAtkBonus）与**防御**（defBonus/defDefBreak）里 —— 那是它的正确作用。
 		defRangeBonus = defTech[8] * 3
-		defEquip = h.officerBattleEquipBonus(cityGuard)
 		// ★ 2026-10-06 守方「防御加成」逐项明细（科技/城守属性+技能/装备，
 		//   被打行展示「防御加成+N%(科技·装甲科技+30% …)」，与 defBonus 构成同口径）
 		// ★ 2026-10-09 城墙项已移除（与 defBonus 同步 —— 守方不再叠加城墙防御）

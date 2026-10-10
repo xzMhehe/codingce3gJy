@@ -486,7 +486,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if atkTechPart < 0 {
 		atkTechPart = 0
 	}
-	defAtkTechPart := st.DefAtkBonus - st.DefOfficerBonus
+	defAtkTechPart := st.DefAtkBonus - st.DefOfficerBonus - defEquip.Dmg
 	if defAtkTechPart < 0 {
 		defAtkTechPart = 0
 	}
@@ -498,7 +498,11 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		atkAtkSrc += fmt.Sprintf(" 装备套装+%d", atkEquip.Dmg)
 	}
 	atkAtkSrc += ")"
-	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d)", st.DefOfficerBonus, defAtkTechPart)
+	defAtkSrc := fmt.Sprintf("(军官+%d 科技+%d", st.DefOfficerBonus, defAtkTechPart)
+	if defEquip.Dmg != 0 {
+		defAtkSrc += fmt.Sprintf(" 装备套装+%d", defEquip.Dmg)
+	}
+	defAtkSrc += ")"
 	// ★★ 2026-10-09 「速度」= **移动速度**（用户口径：速度与「移动距离」都是移动速度加成；
 	//   攻速是另一回事，决定先手）。拆解出通用来源：科技(燃烧引擎) + 装备(移动距离)；
 	//   兵种专属那截（喷气引擎/军官速度技能）另列，且**只列本方真正带了的兵种**。
