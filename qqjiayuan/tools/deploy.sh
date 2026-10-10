@@ -247,6 +247,8 @@ for _ in $(seq 1 45); do
   [ "$(rsh_read "ss -lntp 2>/dev/null | grep -c ':8080 ' || true")" = "1" ] && break
   sleep 2
   WAITED=$((WAITED + 2))
+  # ★ 2026-10-10 每 10s 打一次进度, 避免启动链 DDL 期间看起来像卡死
+  [ $((WAITED % 10)) = 0 ] && step "等待 8080 就绪中… 已 ${WAITED}s"
 done
 [ "$WAITED" -gt 0 ] && step "等待 8080 就绪 ${WAITED}s"
 RESULT="$(rsh_read "

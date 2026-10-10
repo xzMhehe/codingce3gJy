@@ -1324,6 +1324,8 @@ func (h *EzfyHandler) officerEffective(o *model.EzfyOfficer) (mil, log, lea int)
 //	总攻击力   = 基础攻击力 × (1 + 暴击伤害加成)
 //
 // 装备的「伤害/防御/生命/移动距离/暴击几率/暴击伤害」全部是**百分比加成**。
+// ★ 2026-10-10 追加三维字段（军事/后勤/学识）——**平面数值**，不进战斗百分比计算，
+//   只在战报【攻方装备】【守方装备】行展示「这件装备加了多属性」。
 type ezfyBattleBonus struct {
 	Dmg     int // 伤害加成%
 	Def     int // 防御加成%
@@ -1331,6 +1333,10 @@ type ezfyBattleBonus struct {
 	Move    int // 移动距离加成%
 	Crit    int // 暴击几率加成%
 	CritDmg int // 暴击伤害加成%
+	// ★ 三维平面数值（仅战报展示用，不参与战斗计算）
+	Military  int
+	Logistics int
+	Learning  int
 }
 
 // ezfyBonusItem 战报加成拆解的单条明细：名字 + 百分点。
@@ -1360,6 +1366,10 @@ func (h *EzfyHandler) officerBattleEquipBonus(o *model.EzfyOfficer) ezfyBattleBo
 		b.Move += jsonInt(m["move"])
 		b.Crit += jsonInt(m["crit"])
 		b.CritDmg += jsonInt(m["crit_dmg"])
+		// ★ 2026-10-10 三维平面数值也累计（仅战报展示用，不进战斗计算）
+		b.Military += jsonInt(m["military"])
+		b.Logistics += jsonInt(m["logistics"])
+		b.Learning += jsonInt(m["learning"])
 	}
 	// 套装额外加成（★ 只有**穿齐**才加；只穿几件只算各件自身属性）
 	sb := h.officerSetEquipBonus(o)
@@ -1369,6 +1379,9 @@ func (h *EzfyHandler) officerBattleEquipBonus(o *model.EzfyOfficer) ezfyBattleBo
 	b.Move += sb.Move
 	b.Crit += sb.Crit
 	b.CritDmg += sb.CritDmg
+	b.Military += sb.Military
+	b.Logistics += sb.Logistics
+	b.Learning += sb.Learning
 	return b
 }
 
@@ -1392,6 +1405,10 @@ func (h *EzfyHandler) officerSetEquipBonus(o *model.EzfyOfficer) ezfyBattleBonus
 		b.Move += p.Set.Move
 		b.Crit += p.Set.Crit
 		b.CritDmg += p.Set.CritDmg
+		// ★ 2026-10-10 套装三维平面数值也累计（仅战报展示用，不进战斗计算）
+		b.Military += p.Set.Military
+		b.Logistics += p.Set.Logistics
+		b.Learning += p.Set.Learning
 	}
 	return b
 }

@@ -503,8 +503,8 @@
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'attr' }" @click="ezfy.officerDetailTab = 'attr'">属性</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'skill' }" @click="ezfy.officerDetailTab = 'skill'">技能</a>|
-          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.openOfficerDetailTab('equip')">装备</a>|
-          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'bag' }" @click="ezfy.openOfficerDetailTab('bag')">装备背包</a>
+          <!-- ★ 2026-10-10 装备背包 tab 已合并进「装备」：一个 tab 看已穿 + 一键穿戴 + 背包 -->
+          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.openOfficerDetailTab('equip')">装备</a>
           <!-- ★ 2026-10-04 名将背景 tab 放到最后（仅名将显示）：二战的功勋介绍 -->
           <a v-if="ezfy.officerDetail.officer.is_general" href="javascript:;"
              :class="{ on: ezfy.officerDetailTab === 'general' }" @click="ezfy.officerDetailTab = 'general'"><span style="margin:0 6px 0 2px;color:#888;">|</span>名将背景</a>
@@ -548,12 +548,12 @@
           &nbsp;防御加成：{{ ezfy.officerDetail.officer.defence }}
         </div>
 
-        <!-- 套装与战斗加成（套装穿齐才生效） -->
+        <!-- 套装与战斗加成（套装穿齐才生效；战斗加成只列**单件**的，套装加成单独一行，不重复） -->
         <template v-if="(ezfy.officerDetail.officer.set_progress && ezfy.officerDetail.officer.set_progress.length) ||
-                         ezfy.officerBattleText(ezfy.officerDetail.officer.battle)">
+                         ezfy.officerEquipText(ezfy.officerDetail.officer)">
           <hr/>
-          <div class="old-line" v-if="ezfy.officerBattleText(ezfy.officerDetail.officer.battle)">
-            装备战斗加成：<span class="green">{{ ezfy.officerBattleText(ezfy.officerDetail.officer.battle) }}</span>
+          <div class="old-line" v-if="ezfy.officerEquipText(ezfy.officerDetail.officer)">
+            装备战斗加成：<span class="green">{{ ezfy.officerEquipText(ezfy.officerDetail.officer) }}</span>
           </div>
           <div class="old-line" v-for="sp in ezfy.officerDetail.officer.set_progress" :key="'sp' + sp.set_id">
             套装「{{ sp.name }}」：{{ sp.worn }}/{{ sp.parts }} 件
@@ -719,10 +719,8 @@
             <td><a href="javascript:;" @click="ezfy.doEquipSet(s)">[一键穿戴]</a></td>
           </tr>
         </table>
-        </div>
 
-        <!-- 装备背包 tab（检索 + 分页） -->
-        <div v-if="ezfy.officerDetailTab === 'bag'">
+        <!-- ★ 2026-10-10 装备背包已合并进「装备」tab（检索 + 分页） -->
         <table class="ezfy-plain-table">
           <colgroup>
             <col style="width:30%"><col style="width:12%"><col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:18%">

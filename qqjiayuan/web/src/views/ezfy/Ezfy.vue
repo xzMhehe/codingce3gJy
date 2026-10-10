@@ -4231,6 +4231,33 @@ export default {
       if (b.crit_dmg) parts.push('暴击伤害+' + b.crit_dmg + '%')
       return parts.join(' ')
     },
+    // ★ 2026-10-10 军官详情「装备战斗加成」改展示**单件**装备的加成（三维 + 六项）：
+    //   减去已激活套装的加成，避免与「套装」行重复（单件六项清零后曾完全撞车）。
+    //   顺序：先三维（军事/后勤/学识），再六项百分比。
+    officerEquipText (o) {
+      if (!o) return ''
+      const parts = []
+      // 单件三维 = 装备总三维(单件+套装) − 已激活套装三维
+      const mi = (o.equip_military || 0) - (o.set_military || 0)
+      const lo = (o.equip_logistics || 0) - (o.set_logistics || 0)
+      const le = (o.equip_learning || 0) - (o.set_learning || 0)
+      if (mi) parts.push('军事+' + mi)
+      if (lo) parts.push('后勤+' + lo)
+      if (le) parts.push('学识+' + le)
+      // 单件六项 = battle 全量六项 − 已激活套装六项
+      const b = o.battle || {}
+      const sv = {}
+      ;(o.set_progress || []).forEach(sp => {
+        if (!sp.active) return
+        ;['dmg', 'def', 'hp', 'move', 'crit', 'crit_dmg'].forEach(k => { sv[k] = (sv[k] || 0) + (sp[k] || 0) })
+      })
+      ;[['dmg', '伤害'], ['def', '防御'], ['hp', '生命'], ['move', '移动距离'], ['crit', '暴击几率'], ['crit_dmg', '暴击伤害']]
+        .forEach(([k, label]) => {
+          const v = (b[k] || 0) - (sv[k] || 0)
+          if (v) parts.push(label + '+' + v + '%')
+        })
+      return parts.join(' ')
+    },
     // 防御兵种（城防 type=4：碉堡/榴弹炮/反坦克炮/防空炮…）固定阵地
     isDefenceTroop (t) {
       return !!t && t.type === 4

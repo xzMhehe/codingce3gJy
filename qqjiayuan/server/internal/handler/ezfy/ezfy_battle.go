@@ -1850,9 +1850,14 @@ func ezfyDefLossGroups(units []*ezfyFightUnit) []ezfyUnitGroup {
 	return groups
 }
 
-// ezfyEquipBonusDesc 把装备六项加成写成战报里的一行
+// ezfyEquipBonusDesc 把装备加成写成战报里的一行：
+// 先三维属性（军事/后勤/学识，平面数值 = 已穿装备全量，含已激活套装），再六项百分比。
+// ★ 2026-10-10 用户「【攻方装备】【守方装备】都要展示总的属性加成」。
 func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 	parts := []string{}
+	if b.Military != 0 || b.Logistics != 0 || b.Learning != 0 {
+		parts = append(parts, fmt.Sprintf("军事+%d 后勤+%d 学识+%d", b.Military, b.Logistics, b.Learning))
+	}
 	if b.Dmg != 0 {
 		parts = append(parts, fmt.Sprintf("伤害+%d%%", b.Dmg))
 	}

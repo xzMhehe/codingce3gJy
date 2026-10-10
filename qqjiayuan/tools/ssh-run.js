@@ -75,10 +75,32 @@ function baseOpts() {
     '-o', 'UserKnownHostsFile=/dev/null',
     '-o', 'LogLevel=ERROR',
     '-o', 'ConnectTimeout=20',
+    // ★ 2026-10-10 连接阶段有超时, 但「命令执行中」没有——
+    //   服务启动链(Ensure* 跨 WAN 跑 DDL, 10~40s)期间服务器忙, ssh 会话会一直挂着,
+    //   node 永不退出 → deploy.sh 卡死。加心跳: 每 15s 探测一次, 4 次无响应(≈60s)断开
+    '-o', 'ServerAliveInterval=15',
+    '-o', 'ServerAliveCountMax=4',
     '-o', 'PreferredAuthentications=password',
     '-o', 'PubkeyAuthentication=no',
     '-o', 'NumberOfPasswordPrompts=1',
   ];
+}
+
+// ★ 2026-10-10 整体超时兜底: 心跳靠服务器响应, 但万一 sshd 卡死/网络黑洞,
+//   心跳也不可靠。每条命令(exec)最多 30s、传包(put)最多 300s, 超时强杀并退出,
+//   绝不让部署脚本永久挂住。
+const EXEC_TIMEOUT_MS = 30_000;
+const PUT_TIMEOUT_MS = 300_000;
+
+function armTimeout(p, ms, tag) {
+  const timer = setTimeout(() => {
+    try {
+      p.kill('SIGTERM');
+      setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} }, 3000).unref();
+      console.error(`[超时] ${tag} 超过 ${ms / 1000}s 已终止(远端可能仍在执行, 可手动重跑 deploy.sh)`);
+    } catch (e) {}
+  }, ms);
+  return timer;
 }
 
 function env() {
@@ -97,9 +119,10 @@ function main() {
   if (mode === 'exec') {
     const cmd = rest.join(' ');
     const p = spawn('ssh', ['-T', ...baseOpts(), `${USER}@${HOST}`, cmd], { env: env(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = armTimeout(p, EXEC_TIMEOUT_MS, `ssh exec: ${cmd.slice(0, 60)}`);
     p.stdout.on('data', d => process.stdout.write(d));
     p.stderr.on('data', d => { const s = d.toString(); if (!NOISE.test(s)) process.stderr.write(d); });
-    p.on('close', code => { cleanup(); process.exit(code === 0 ? 0 : (code || 1)); });
+    p.on('close', code => { clearTimeout(timer); cleanup(); process.exit(code === 0 ? 0 : (code || 1)); });
     return;
   }
 
@@ -110,6 +133,7 @@ function main() {
     const size = fs.statSync(local).size;
     console.log(`[scp] 上传 ${path.basename(local)} (${(size / 1048576).toFixed(1)} MB) → ${remote}`);
     const p = spawn('scp', [...baseOpts(), local, `${USER}@${HOST}:${remote}`], { env: env(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = armTimeout(p, PUT_TIMEOUT_MS, `scp: ${path.basename(local)}`);
     p.stdout.on('data', d => process.stdout.write(d));
     p.stderr.on('data', d => {
       const s = d.toString();
@@ -117,7 +141,7 @@ function main() {
       // scp 无进度条输出，只打印错误
       if (/lost connection|denied|No such|error/i.test(s)) process.stderr.write(d);
     });
-    p.on('close', code => { cleanup(); console.log(`[scp] 完成 exit=${code}`); process.exit(code === 0 ? 0 : 1); });
+    p.on('close', code => { clearTimeout(timer); cleanup(); console.log(`[scp] 完成 exit=${code}`); process.exit(code === 0 ? 0 : 1); });
     return;
   }
 
