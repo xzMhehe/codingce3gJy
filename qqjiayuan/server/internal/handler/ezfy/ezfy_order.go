@@ -2315,20 +2315,23 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if room < 0 {
 		room = 0
 	}
+	// ★★ 2026-10-10 修复「采集资源没入城市」：负重**已装满(room==0)**或**没有负重(如纯步兵/运输兵 carry=0)**时，
+	//   没有可容纳的新产出 → 原代码因 `amt > room && room > 0` 不成立(room==0)走进 else，
+	//   addCarryToOrder 按其内部 room<amt 逻辑把整批产出丢弃 → 资源既不进负重也不入城，玩家看到产出却永不入城。
+	//   现改为：装不下的部分(room==0 时即全部)统一直接入起点城市, 与 harvestToCity 同一口径, 资源永不消失。
 	direct := int64(0) // 超出负重、直接入城的资源量
-	if amt > room && room > 0 {
+	if amt > room {
 		direct = amt - room
-		// 负重部分按比例装（食物/钢铁/石油/稀矿）
-		scale := func(v int64) int64 { return v * room / amt }
-		sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
-		h.addCarryToOrder(order, sf, ss, so, sr, 0)
-		// 超出部分按比例直接入起点城市（不丢）
-		dF := food - sf
-		dS := steel - ss
-		dO := oil - so
-		dR := rare - sr
+		if room > 0 {
+			// 负重部分按比例装（食物/钢铁/石油/稀矿）
+			scale := func(v int64) int64 { return v * room / amt }
+			sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
+			h.addCarryToOrder(order, sf, ss, so, sr, 0)
+			food, steel, oil, rare = food-sf, steel-ss, oil-so, rare-sr
+		}
+		// 超出部分（room==0 时即全部）直接入起点城市（不丢）
 		if city != nil {
-			h.harvestToCity(int64(city.ID), dF, dS, dO, dR, 0)
+			h.harvestToCity(int64(city.ID), food, steel, oil, rare, 0)
 		}
 	} else {
 		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
@@ -2492,15 +2495,19 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 		room = 0
 	}
 	amt := food + steel + oil + rare
+	// ★★ 2026-10-10 修复「采集资源没入城市」（与 settleDispatch 同一处 bug）：负重已装满(room==0)或
+	//   没有负重(纯步兵/运输兵 carry=0)时原代码把整批产出丢弃; 现改为装不下的部分直接入起点城市, 资源永不消失。
 	direct := int64(0)
-	if amt > room && room > 0 {
+	if amt > room {
 		direct = amt - room
-		scale := func(v int64) int64 { return v * room / amt }
-		sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
-		h.addCarryToOrder(order, sf, ss, so, sr, 0)
-		dF, dS, dO, dR := food-sf, steel-ss, oil-so, rare-sr
+		if room > 0 {
+			scale := func(v int64) int64 { return v * room / amt }
+			sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
+			h.addCarryToOrder(order, sf, ss, so, sr, 0)
+			food, steel, oil, rare = food-sf, steel-ss, oil-so, rare-sr
+		}
 		if city != nil {
-			h.harvestToCity(int64(city.ID), dF, dS, dO, dR, 0)
+			h.harvestToCity(int64(city.ID), food, steel, oil, rare, 0)
 		}
 	} else {
 		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
