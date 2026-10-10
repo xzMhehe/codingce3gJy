@@ -1504,6 +1504,20 @@ export default {
       const pct = this.battleLeftMs * 100 / total
       return Math.max(0, Math.min(100, pct))
     },
+    // ★ 2026-10-10 战场位置条：按兵种把攻守配成「一行一对抗对」，左攻右守同一行里面对面。
+    //   优先同兵种(troop_id)对齐（攻有步兵、守也有步兵 → 共同占一行）；一方独有的兵种
+    //   单独占一行（另一侧留空）。行内部图标仍按统一 pos 轴(-10000攻老家~+16000守老家)定位，
+    //   两者间距随交战缩小，直观看出面对面冲锋。
+    battlePosRows () {
+      const atk = this.battleData.attackers || []
+      const def = this.battleData.defenders || []
+      const aMap = {}, dMap = {}
+      const order = []
+      for (const u of atk) { if (u && u.troop_id && !(u.troop_id in aMap)) { aMap[u.troop_id] = u; order.push(u.troop_id) } }
+      for (const u of def) { if (u && u.troop_id && !(u.troop_id in dMap)) { dMap[u.troop_id] = u; if (!(u.troop_id in aMap)) order.push(u.troop_id) } }
+      order.sort((a, b) => a - b)
+      return order.map(id => ({ id, atk: aMap[id] || null, def: dMap[id] || null }))
+    },
     // ★ 战场指挥室：把行动日志按回合分组，并让**最新回合排最上**（旧回合往下沉）
     battleRounds () {
       const acts = (this.battleData && this.battleData.actions) || []
@@ -2670,6 +2684,22 @@ export default {
     },
     stopBattleTimer () {
       if (this.battleTimer) { clearInterval(this.battleTimer); this.battleTimer = null }
+    },
+    // ★ 2026-10-10 战场位置条：把兵种 pos 映射到统一横向坐标轴。
+    //   坐标语义：攻方老家在 -10000，守方老家在 +16000（间距 26000）；
+    //   攻方前进 pos 增大（向右靠守方），守方前进 pos 减小（向左迎攻方）——
+    //   两者在同一把尺上直接对位，`left%` 线性能比，轮询拿新 pos 时 transition 平滑滑动。
+    battlePosLeft (u) {
+      if (!u || u.pos === undefined || u.pos === null || isNaN(u.pos)) return 50
+      const min = -10000
+      const span = 16000 - min // 26000
+      const pct = ((u.pos - min) / span) * 100
+      return Math.max(3, Math.min(93, pct))
+    },
+    // 兵种图标：位置条直接复用「军队(城内军队/城防)」页面同一套图标 —— ezfy.troopIco(id)。
+    // 这里把战斗单位(用 troop_id)包成 troopIco 需要的 {id} 结构（阵营配色沿用玩家自己的阵营）。
+    battleUnitCfg (u) {
+      return { id: u && u.troop_id }
     },
     // troopId 省略 = 全军快捷指令；给了 troopId = 给该兵种**单独**下指令
     sendBattleCmd (cmd, troopId) {
@@ -6584,6 +6614,69 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .ezfy-battle-bar > i.on { background: #27763c; }
 .ezfy-page .ezfy-battle-bar > i.lock { background: #c0392b; }
+/* ★ 2026-10-10 战场位置条：每行一对「攻-守」兵种（左攻右守、同一行面对面），
+   行内图标按统一 pos 轴定位，轮询回新 pos 时平滑滑动。 */
+.ezfy-page .ezfy-battle-posbars { margin: 4px 0 3px; }
+.ezfy-page .ezfy-battle-pair {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.ezfy-page .ezfy-battle-pair + .ezfy-battle-pair { margin-top: 2px; }
+.ezfy-page .ezfy-pair-side {
+  flex: 0 0 auto;
+  width: 12px;
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 1;
+  padding-top: 8px;
+}
+.ezfy-page .ezfy-pair-side.atk { color: #27763c; }
+.ezfy-page .ezfy-pair-side.def { color: #c0392b; }
+.ezfy-page .ezfy-battle-poslane {
+  position: relative;
+  flex: 1 1 auto;
+  height: 40px;
+  border: 1px solid #d4d4d4;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #eefaf0, #fff 45%, #fff 55%, #fdeeec);
+  overflow: hidden;
+}
+.ezfy-page .ezfy-battle-unit {
+  position: absolute;
+  top: 1px;
+  width: 26px;
+  margin-left: -13px;
+  text-align: center;
+  /* pos 每次轮询更新 → left 变化 → 平滑滑动 */
+  transition: left 0.6s linear;
+}
+.ezfy-page .ezfy-battle-unit .ezfy-unit-ico {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto;
+  border-radius: 4px;
+  overflow: hidden;
+  line-height: 0;
+}
+.ezfy-page .ezfy-battle-unit .ezfy-unit-ico svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ezfy-page .ezfy-battle-unit .ezfy-unit-name {
+  display: block;
+  max-width: 48px;
+  margin: 0 auto;
+  font-size: 10px;
+  line-height: 1.1;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ezfy-page .ezfy-battle-unit.dead { opacity: .4; }
 /* ★ 战场指挥室：双方兵力表按攻守着色 —— 我方整行浅绿(enemy 浅红)、方标签加粗 */
 .ezfy-page .ezfy-battle-tbl tr.ezfy-row-self td { background: #eef7f0 !important; }
 .ezfy-page .ezfy-battle-tbl tr.ezfy-row-enemy td { background: #fdeeec !important; }

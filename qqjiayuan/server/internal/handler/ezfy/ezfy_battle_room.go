@@ -550,9 +550,15 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 			if cn := ezfyCfg.troopName(u.TroopId, 0); cn != "" {
 				name = cn
 			}
+			// ★ 2026-10-10 战场位置动画：补 icon(兵种图标) 供前端位置条展示
+			icon := ""
+			if tc := ezfyCfg.troop(u.TroopId); tc != nil {
+				icon = tc.Icon
+			}
 			out = append(out, gin.H{
 				"troop_id": u.TroopId, "name": name,
 				"count": u.Count, "initial": u.InitialCount, "pos": u.Pos,
+				"icon": icon,
 				"cmd": cmd, "cmd_name": ezfyBattleCmdName(cmd),
 				"target_troop": tgt, "target_name": troopName(tgt),
 			})
