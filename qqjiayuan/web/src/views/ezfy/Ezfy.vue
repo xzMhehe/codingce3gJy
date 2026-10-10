@@ -52,8 +52,13 @@
       <!-- ★ 2026-10-10 首页布局切换：homeLayout===2 → 老布局（保留原样）；否则 → 新布局（战争主题简约版，一屏放全）。
            ★ 2026-10-10 优化：老/新两套首页各自拆成独立子组件（modules/EzfyHomeOld.vue / modules/EzfyHomeNew.vue），
              与其它页面同一套 inject['ezfy'] 模式，内联大模板不再留在 shell，避免刷新时两个布局互相闪现的痕迹。 -->
-      <ezfy-home-old v-if="homeLayout === 2"></ezfy-home-old>
-      <ezfy-home-new v-else></ezfy-home-new>
+      <!-- ★ 2026-10-10 防「首次进入(本地无缓存)新布局掠影」：本地没有布局缓存时，先不渲染首页，
+           等 /view 下发权威布局（homeLayoutReady）后再渲染，避免「配置的是老布局却先画一帧新布局」。
+           有缓存（含 seed 固定老布局的账号刷过一次之后）→ 首帧即渲染，不闪白。 -->
+      <template v-if="homeLayoutReady">
+        <ezfy-home-old v-if="homeLayout === 2"></ezfy-home-old>
+        <ezfy-home-new v-else></ezfy-home-new>
+      </template>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -426,6 +431,9 @@ export default {
       // ★ 2026-10-10 防「刷新时新布局掠影」：初值从 localStorage 恢复（上次切过的布局），
       //   让首帧就按正确布局渲染，不再先画新布局再等 /view 回来改成老布局。
       homeLayout: this.cachedHomeLayout(),
+      // ★ 2026-10-10 防「首次进入(本地无缓存)新布局掠影」：没有缓存时先不渲染首页，
+      //   等 /view 下发权威布局（或兜底超时）再渲染；有缓存则照旧首帧即渲染、不闪白。
+      homeLayoutReady: this.hasCachedHomeLayout(),
       userBrief: { account: '', level: 0, exp: 0 },
       officerCount: 0,
       activities: [],
@@ -518,7 +526,9 @@ export default {
       // ★ 2026-09-27 为爱发电卡（管理端未发放时为空数组，对应 tab 不显示；多卡可叠加）
       loveCards: [],
       // ★ 计谋（配置由后端下发，发动消耗「信号弹」）
-      schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 24 },
+      // ★ 2026-10-10 道具 cfg_id 已全体迁到 1001+（与装备号段彻底分开）→ 别写死数字，
+      //   一律用后端 /schemes 下发的 bullet_item_id。
+      schemeData: { schemes: [], bullet_name: '信号弹', bullet_have: 0, bullet_item_id: 0 },
       // ★ 2026-09-30 行军计谋页：当前选中的部队（军队动态/出征队列的 [计谋] 带入）
       schemeOrder: null,
       schemeX: '', schemeY: '',
@@ -1504,19 +1514,18 @@ export default {
       const pct = this.battleLeftMs * 100 / total
       return Math.max(0, Math.min(100, pct))
     },
-    // ★ 2026-10-10 战场位置条：按兵种把攻守配成「一行一对抗对」，左攻右守同一行里面对面。
-    //   优先同兵种(troop_id)对齐（攻有步兵、守也有步兵 → 共同占一行）；一方独有的兵种
-    //   单独占一行（另一侧留空）。行内部图标仍按统一 pos 轴(-10000攻老家~+16000守老家)定位，
-    //   两者间距随交战缩小，直观看出面对面冲锋。
+    // ★ 2026-10-10 战场位置条：每行 = 一对「攻-守」，**左右并排相向**（用户反馈「一行只有一个兵种」：
+    //   旧实现按 troop_id 配对，攻守兵种不同 → 几乎每行都只剩一侧）。
+    //   现在改为**按下标逐对配对**（各自按 troop_id 排序后 zip）：第 i 行 = 攻方第 i 个兵种 vs
+    //   守方第 i 个兵种，保证每行都有攻有守、面对面。一方兵种更多时多出来的行另一侧留空。
     battlePosRows () {
-      const atk = this.battleData.attackers || []
-      const def = this.battleData.defenders || []
-      const aMap = {}, dMap = {}
-      const order = []
-      for (const u of atk) { if (u && u.troop_id && !(u.troop_id in aMap)) { aMap[u.troop_id] = u; order.push(u.troop_id) } }
-      for (const u of def) { if (u && u.troop_id && !(u.troop_id in dMap)) { dMap[u.troop_id] = u; if (!(u.troop_id in aMap)) order.push(u.troop_id) } }
-      order.sort((a, b) => a - b)
-      return order.map(id => ({ id, atk: aMap[id] || null, def: dMap[id] || null }))
+      const byTroop = (a, b) => a.troop_id - b.troop_id
+      const atk = (this.battleData.attackers || []).filter(u => u && u.troop_id).slice().sort(byTroop)
+      const def = (this.battleData.defenders || []).filter(u => u && u.troop_id).slice().sort(byTroop)
+      const n = Math.max(atk.length, def.length)
+      const rows = []
+      for (let i = 0; i < n; i++) rows.push({ id: i, atk: atk[i] || null, def: def[i] || null })
+      return rows
     },
     // ★ 战场指挥室：把行动日志按回合分组，并让**最新回合排最上**（旧回合往下沉）
     battleRounds () {
@@ -1696,6 +1705,9 @@ export default {
     window.addEventListener('popstate', this._onBack)
     this.load()
     this.loadResCfg()
+    // ★ 2026-10-10 兜底：/view 若异常或超时（首次进入、本地无布局缓存）也要让首页渲染出来，
+    //   否则首页会一直空白。正常 /view 会先返回并置 homeLayoutReady=true，这里只是保险。
+    this._homeLayoutFallback = setTimeout(() => { this.homeLayoutReady = true }, 2500)
     // ★ 刷新后回到刷新前所在的页面（用户反馈：每次刷新都跑首页，不对）
     //   页面状态写在 URL 的 ?cur= 上，onload 时读回来重放 go() 的加载逻辑。
     // ★ 2026-10-03 接口懒加载：先恢复页面，再按当前页加载数据——
@@ -1731,6 +1743,7 @@ export default {
     if (this.timer) clearInterval(this.timer)
     if (this.clockTimer) clearInterval(this.clockTimer)
     if (this._tipTimer) clearTimeout(this._tipTimer)
+    if (this._homeLayoutFallback) clearTimeout(this._homeLayoutFallback)
     this.stopBattleTimer()
   },
   methods: {
@@ -2024,6 +2037,14 @@ export default {
         return localStorage.getItem(k) === '2' ? 2 : 0
       } catch (e) { return 0 }
     },
+    // ★ 2026-10-10 本地是否已有布局缓存（决定首帧能不能直接渲染首页）。
+    //   没有 → 说明是首次进入/清过缓存，先不渲染首页，等 /view 权威布局，避免「新布局掠影」。
+    hasCachedHomeLayout () {
+      try {
+        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        return localStorage.getItem('ezfy_home_layout_' + uid) !== null
+      } catch (e) { return false }
+    },
     saveHomeLayout (v) {
       try {
         const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
@@ -2211,6 +2232,8 @@ export default {
       // ★ 2026-10-10 后端下发的是权威布局：顺手缓存到 localStorage，
       //   这样纯 seed 固定（如玩家 10000 固定老布局、从不手动切换）的账号也防「刷新新布局掠影」。
       if (hl !== undefined && hl !== null) this.saveHomeLayout(Number(hl))
+      // ★ 2026-10-10 权威布局已到 → 放行首页渲染（首次进入不再先画一帧新布局）。
+      this.homeLayoutReady = true
       this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
       this.officerCount = d.officer_count || 0
       this.rankName = d.rank_name
@@ -2685,16 +2708,29 @@ export default {
     stopBattleTimer () {
       if (this.battleTimer) { clearInterval(this.battleTimer); this.battleTimer = null }
     },
-    // ★ 2026-10-10 战场位置条：把兵种 pos 映射到统一横向坐标轴。
-    //   坐标语义：攻方老家在 -10000，守方老家在 +16000（间距 26000）；
-    //   攻方前进 pos 增大（向右靠守方），守方前进 pos 减小（向左迎攻方）——
-    //   两者在同一把尺上直接对位，`left%` 线性能比，轮询拿新 pos 时 transition 平滑滑动。
-    battlePosLeft (u) {
-      if (!u || u.pos === undefined || u.pos === null || isNaN(u.pos)) return 50
-      const min = -10000
-      const span = 16000 - min // 26000
-      const pct = ((u.pos - min) / span) * 100
-      return Math.max(3, Math.min(93, pct))
+    // ★ 2026-10-10 战场位置条：把兵种 pos 映射到行内横向坐标（左半区=攻、右半区=守）。
+    //   后端坐标语义：攻方老家 0、守方老家 6000（初始相距 6000），前进 = 攻方 pos 增大 / 守方 pos 减小，
+    //   后退上限 10000（攻方最低 -10000、守方最高 16000）。
+    //   ★ 用户反馈「位置会越过，不应该越过」：旧实现把攻守放在同一把尺上，
+    //     但配对并非「实际交战对」→ 攻方图标可能跑到守方图标右边（互相穿过）。
+    //   现改为**分区映射**：攻方恒映射到左半区 [3%,46%]、守方恒映射到右半区 [54%,97%]，
+    //     攻方前进(向 6000)越靠右、守方前进(向 0)越靠左，二者向中央靠拢 —— 永远相向、绝不越过。
+    battlePosLeft (u, isDef) {
+      if (!u || u.pos === undefined || u.pos === null || isNaN(u.pos)) return isDef ? 70 : 30
+      if (isDef) {
+        // 守方：老家 16000 → 97%，前线 0 → 54%
+        const p = Math.max(0, Math.min(16000, u.pos))
+        return 97 - (16000 - p) / 16000 * 43
+      }
+      // 攻方：老家 -10000 → 3%，前线 6000 → 46%
+      const p = Math.max(-10000, Math.min(6000, u.pos))
+      return 3 + (p + 10000) / 16000 * 43
+    },
+    // ★ 2026-10-10 位置条兵种名：只显示首字（图标下 26px 宽放不下全名）。
+    //   全名 + 位置仍保留在 title 提示里。
+    battleUnitName (u) {
+      const n = (u && u.name) || ''
+      return n ? n.charAt(0) : ''
     },
     // 兵种图标：位置条直接复用「军队(城内军队/城防)」页面同一套图标 —— ezfy.troopIco(id)。
     // 这里把战斗单位(用 troop_id)包成 troopIco 需要的 {id} 结构（阵营配色沿用玩家自己的阵营）。
@@ -6642,6 +6678,14 @@ body.ezfy-ios .ezfy-page textarea {
   background: linear-gradient(90deg, #eefaf0, #fff 45%, #fff 55%, #fdeeec);
   overflow: hidden;
 }
+/* ★ 2026-10-10 内缩 14px 的跑道：图标(26px 宽、居中)贴到两端时也不会越出格子边界。 */
+.ezfy-page .ezfy-battle-postrack {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+}
 .ezfy-page .ezfy-battle-unit {
   position: absolute;
   top: 1px;
@@ -6653,13 +6697,20 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .ezfy-battle-unit .ezfy-unit-ico {
   display: block;
+  box-sizing: border-box;
   width: 26px;
   height: 26px;
   margin: 0 auto;
+  border: 2px solid #b8b8b8;
   border-radius: 4px;
+  background: #f4f4f4;
   overflow: hidden;
   line-height: 0;
 }
+/* ★ 2026-10-10 图标按攻守上色区分（用户反馈「图标区分不出攻守」）：
+   攻=绿框、守=红框，与行首「攻/守」标签同色。 */
+.ezfy-page .ezfy-battle-unit.atk .ezfy-unit-ico { border-color: #27763c; background: #eefaf0; }
+.ezfy-page .ezfy-battle-unit.def .ezfy-unit-ico { border-color: #c0392b; background: #fdeeec; }
 .ezfy-page .ezfy-battle-unit .ezfy-unit-ico svg {
   display: block;
   width: 100%;
@@ -6676,6 +6727,8 @@ body.ezfy-ios .ezfy-page textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ezfy-page .ezfy-battle-unit.atk .ezfy-unit-name { color: #27763c; }
+.ezfy-page .ezfy-battle-unit.def .ezfy-unit-name { color: #c0392b; }
 .ezfy-page .ezfy-battle-unit.dead { opacity: .4; }
 /* ★ 战场指挥室：双方兵力表按攻守着色 —— 我方整行浅绿(enemy 浅红)、方标签加粗 */
 .ezfy-page .ezfy-battle-tbl tr.ezfy-row-self td { background: #eef7f0 !important; }

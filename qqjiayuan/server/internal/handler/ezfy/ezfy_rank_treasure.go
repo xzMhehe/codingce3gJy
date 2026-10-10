@@ -152,14 +152,19 @@ func ezfyMigrateRankNoJewel(db *gorm.DB) {
 	}
 }
 
-// ezfyTreasureBagOnce 一次性迁移：历史「宝物签到」误发到道具表(ezfy_item)的宝物 → 装备表(ezfy_equipment)
+// ezfyMigrateTreasureBag 历史「宝物签到」误发到道具表(ezfy_item)的宝物 → 装备表(ezfy_equipment)
 //
 // ★ 2026-09-28 修复「签到宝物没到账」：签到原来用 addItem 发进道具表，
 //   而宝物配置 27-35 是装备配置（采集掉宝进的是装备表）——道具表里既没名字、
 //   军衔晋升也统计不到，玩家自然「感觉没到账」。这里把存量一次性转正，
 //   之后签到直接走 addEquipment，不会再产生这类脏数据。
-var ezfyTreasureBagOnce sync.Once
-
+//
+// ★★ 2026-10-10 已从启动路径**永久摘除**（原 `ezfy.go` 里的 `ezfyTreasureBagOnce.Do(...)`）：
+//   sync.Once 只对**进程内**有效，每次重启/重新部署后首个请求都会重跑；而 cfg_id 27~35
+//   现在已被真实道具占用（28~36 = 建筑/训练/科技加速），与珠宝装备 ID 完全重叠 →
+//   玩家买的/打野地掉的加速道具每次部署都被当「误发残留」删掉并换成珠宝装备。
+//   ⚠️ **禁止再挂回请求/启动路径**。确需清理历史残留时，用一次性运维脚本 + 人工确认执行。
+//   下面的守卫（道具配置存在 → 跳过）保留，作为万一被误调用时的最后一道防线。
 func ezfyMigrateTreasureBag(db *gorm.DB) {
 	var items []model.EzfyItem
 	db.Where("cfg_id >= ? AND cfg_id <= ? AND count > 0", 27, 35).Find(&items)

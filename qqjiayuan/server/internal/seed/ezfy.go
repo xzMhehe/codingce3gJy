@@ -449,21 +449,21 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 	//   阵营转换道具 500→10 钻石、集结令 20→1 钻石、信号弹 20→2 钻石；
 	//   库存：军官洗点卡 96→-1、信号弹 100→0、军官改名卡 79→-1。
 	rows := []model.EzfyCfgItem{
-		{ID: 13, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
+		{ID: 1013, Name: "招生简章", ItemType: 9, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: -1,
 			Description: "立即刷新军校候选名将, 不占用每日刷新次数"},
-		{ID: 14, Name: "荣誉史记", ItemType: 10, Param1: 20000000, PriceGold: 0, PriceDiamond: 80, Stock: -1,
+		{ID: 1014, Name: "荣誉史记", ItemType: 10, Param1: 20000000, PriceGold: 0, PriceDiamond: 80, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 每本增加 20000000 经验"},
-		{ID: 15, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
+		{ID: 1015, Name: "军官技能书", ItemType: 11, Param1: 1, PriceGold: 0, PriceDiamond: 100, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官技能管理页面使用, 消耗技能书学习技能"},
 		// ★ 2026-09-26 用户明确：洗点**只动属性**，技能/等级/经验都保留
-		{ID: 16, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: -1,
+		{ID: 1016, Name: "军官洗点卡", ItemType: 12, Param1: 0, PriceGold: 80000, PriceDiamond: 0, Stock: -1,
 			Category:    "军官道具",
 			Description: "洗点: 军官属性重置为军官池初始属性, 已分配的点退回待分配点(等级/经验/技能保留)"},
-		{ID: 17, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
+		{ID: 1017, Name: "改名卡", ItemType: 13, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
 			Description: "在统帅页修改玩家昵称(首次改名免费, 之后每次消耗1张)"},
-		{ID: 18, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
+		{ID: 1018, Name: "阵营转换道具", ItemType: 14, Param1: 1, PriceGold: 0, PriceDiamond: 10, Stock: -1,
 			Description: "在统帅页转换阵营(首次转换免费, 之后每次消耗1个)"},
 		// ★ 用户规则：集结令走**钻石**渠道，先默认 0 钻石（等于免费发放，方便先放开玩）；
 		//   库存 -1 = 无限，玩家可任意购买（见 Buy 里的 stock < 0 分支）。
@@ -471,24 +471,24 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 		// ★ 说明里**不要**再写「单次最多使用10个」——
 		//   单次上限由管理端 `ezfy_cfg_limit.gather_max_per_order` 维护（线上现值 99），
 		//   写死 10 会和管理端配置对不上，玩家会以为只能买 10 个。
-		{ID: 19, Name: "集结令", ItemType: 15, Param1: 100000,
+		{ID: 1019, Name: "集结令", ItemType: 15, Param1: 100000,
 			PriceGold: 0, PriceDiamond: 1, Stock: -1, Category: "钻石道具",
 			Description: "出征时使用: 每使用1个本次出征兵力上限+10万"},
 		// ★ 2026-09-23 「军官升星卡」改名「星级徽章」，固定 20% 概率升 1 星、最高 5 星，
 		//   失败消耗徽章、不降星级与属性（星级上限/失败保留开关仍走管理端「系统配置」页）。
-		{ID: 23, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: 100,
+		{ID: 1023, Name: "星级徽章", ItemType: 19, Param1: 1, PriceGold: 0, PriceDiamond: 50, Stock: 100,
 			Category:    "军官道具",
 			Description: "对军官使用, 每枚有20%概率升1星, 最高五星; 失败消耗徽章, 不降低星级和属性"},
 		// ★ 2026-09-23 「玩家自己的军官也能改名」：消耗「军官改名卡」，
 		//   在军官管理页面使用，成功改名消耗 1 张，不改动军官池里的原军官。
-		{ID: 25, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: -1,
+		{ID: 1025, Name: "军官改名卡", ItemType: 21, Param1: 1, PriceGold: 10000, PriceDiamond: 0, Stock: -1,
 			Category:    "军官道具",
 			Description: "在军官管理页面使用, 成功改名消耗1张, 不影响军官池的原军官"},
 		// ★ 2026-09-22 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗」。
 		//   ★ Category 必须显式写「计谋道具」：ezfyItemCategory 里「PriceDiamond>0 → 钻石道具」
 		//   那一步在 ItemType 判断**之前**，不写的话它会被归到「钻石道具」里。
 		//   Category 不是「黄金道具/钻石道具」→ 不锁货币 → 前端两种价格都列出来让玩家选。
-		{ID: 24, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: 0,
+		{ID: 1024, Name: "信号弹", ItemType: 20, Param1: 1, PriceGold: 0, PriceDiamond: 2, Stock: 0,
 			Category:    "计谋道具",
 			Description: "计谋消耗品: 发动计谋时消耗, 每条计谋需要的数量不同"},
 	}
@@ -549,13 +549,13 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 // 库存按线上现值：迁城计划 / 高级迁城计划 100，沿海迁城计划 99（-1 = 无限）。
 func seedEzfyMoveItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
-		{ID: 20, Name: "迁城计划", ItemType: 16, Param1: 1,
+		{ID: 1020, Name: "迁城计划", ItemType: 16, Param1: 1,
 			PriceGold: 0, PriceDiamond: 10, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
-		{ID: 21, Name: "高级迁城计划", ItemType: 17, Param1: 1,
+		{ID: 1021, Name: "高级迁城计划", ItemType: 17, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: 100, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 指定坐标迁移城市, 目标必须是未被占领的平原"},
-		{ID: 22, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
+		{ID: 1022, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: 99, Category: "迁城道具",
 			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
 	}
@@ -581,7 +581,9 @@ func seedEzfyMoveItems(db *gorm.DB) {
 //   卡片规则：为爱发电卡每日150钻石 / 为爱发电高级卡每日200钻石, 各30天。
 func seedEzfyLoveCardItems(db *gorm.DB) {
 	var removed int
-	res := db.Where("id IN ?", []int{26, 27}).Delete(&model.EzfyCfgItem{})
+	// ★ 2026-10-10 道具 ID 全体 +1000 后，历史脏数据可能停在 26/27（旧号）或 1026/1027（迁移后号），
+	//   两个号段都清掉，保证「为爱发电卡」永远不出现在道具表里。
+	res := db.Where("id IN ?", []int{26, 27, 1026, 1027}).Delete(&model.EzfyCfgItem{})
 	if res != nil && res.RowsAffected > 0 {
 		removed = int(res.RowsAffected)
 	}

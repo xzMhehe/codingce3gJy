@@ -327,6 +327,31 @@ func (c *ezfyConfigCache) equipmentByName(name string) *model.EzfyCfgEquipment {
 	return nil
 }
 
+// itemIDByName 按名称找道具 cfg_id（0 = 没找到）。
+//
+// ★★ 2026-10-10 为什么要它：道具(ezfy_cfg_item)与装备(ezfy_cfg_equipment)是两张独立编号的表，
+// 原先 ID 空间重叠，现在道具已统一迁到 **1001+**（见 seed/ezfy_cfg_gen.go 说明）。
+// 凡是代码里要「认某一种固定道具」（集结令 / 信号弹 / 经验书…），**一律按名字解析**，
+// 别硬编码数字 ID —— 否则以后调号段就会静默失效（查不到 → 数量恒 0 → 功能哑掉）。
+func (c *ezfyConfigCache) itemIDByName(name string) int {
+	for id := range c.items {
+		if c.items[id].Name == name {
+			return id
+		}
+	}
+	return 0
+}
+
+// itemByName 按名称找道具配置（nil = 没找到）。
+func (c *ezfyConfigCache) itemByName(name string) *model.EzfyCfgItem {
+	for id := range c.items {
+		if it := c.items[id]; it.Name == name {
+			return &it
+		}
+	}
+	return nil
+}
+
 // ezfyHasNavalTroops 出征部队里是否含有海军兵种（兵种 type=1：驱逐舰/潜艇/战列舰/航母）。
 //
 // ★ 2026-10-02 用户规则：海军兵种只能用于海战，出征攻打陆城时需卡控提示。
@@ -509,6 +534,22 @@ func ezfyRankCityMax(prestige int) int {
 
 // ============ 配置缓存（进程内加载，seed 完成后首用时加载） ============
 
+// ezfyConfigCache 全部 ezfy 配置表的进程内缓存。
+//
+// ★★ 2026-10-10 注意：`items`（ezfy_cfg_item）与 `equipments`（ezfy_cfg_equipment）是
+// **两张互不相关的配置表，各自从 1 开始编号** → 数值 ID 大面积重叠：
+//
+//	ezfy_cfg_item      : 1~41   （30 = 建筑加速80%）
+//	ezfy_cfg_equipment : 1~35 + 101/201/…（30 = 黑曜石戒指）
+//
+// 也就是说「ID 30」既可能指一件道具、也可能指一件装备 —— **光看数字无法判断身份**。
+// 因此铁律：
+//
+//	① 解析必须带**来源**：道具走 `item(id)`，装备走 `equipment(id)`/`equipments[id]`，
+//	   宝箱/任务/掉落等混合配置必须靠 `Kind`/`item_type` 之类字段区分，**禁止按 ID 区间猜**；
+//	② 禁止写「cfg_id 落在某区间 → 当成装备/道具」这类迁移（历史事故：ezfyMigrateTreasureBag
+//	   按 27~35 把玩家真实加速道具当误发宝物删掉换成珠宝，每次部署清空一次）。
+//	   静态断言：TestNoCrossTableIDGuess（ezfy_item_loss_test.go）。
 type ezfyConfigCache struct {
 	mu             sync.RWMutex
 	loaded         bool

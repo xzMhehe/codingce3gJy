@@ -420,23 +420,25 @@
             <span v-else-if="ezfy.battleData.atk_locked || ezfy.battleData.def_locked" class="green">· 对方已锁定待结算</span>
           </div>
           <!-- ★ 2026-10-10 战场位置条：每行一对「攻-守」兵种（左攻右守、同一行里面对面），
-               按兵种配对；行内图标按统一 pos 轴(-10000 攻老家→+16000 守老家)定位，
-               间距随交战缩小，直观看到面对面冲锋。图标复用「军队」页(ezfy.troopIco)。 -->
+               按下标逐对配对（保证每行都有攻有守）；攻方恒在左半区、守方恒在右半区，
+               相向靠拢、**绝不越过**。图标复用「军队」页(ezfy.troopIco)，边框按攻守上色区分。 -->
           <div class="old-line ezfy-battle-posbars" v-if="ezfy.battlePosRows.length">
             <div class="ezfy-battle-pair" v-for="row in ezfy.battlePosRows" :key="'pr' + row.id">
               <span class="ezfy-pair-side atk">攻</span>
               <div class="ezfy-battle-poslane">
-                <div v-if="row.atk" class="ezfy-battle-unit atk"
-                     :class="{ dead: (row.atk.count || 0) <= 0 }"
-                     :style="{ left: ezfy.battlePosLeft(row.atk) + '%' }">
-                  <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.atk))"></span>
-                  <span class="ezfy-unit-name" :title="row.atk.name + ' 位置' + ezfy.fmtN(row.atk.pos)">{{ row.atk.name }}</span>
-                </div>
-                <div v-if="row.def" class="ezfy-battle-unit def"
-                     :class="{ dead: (row.def.count || 0) <= 0 }"
-                     :style="{ left: ezfy.battlePosLeft(row.def) + '%' }">
-                  <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.def))"></span>
-                  <span class="ezfy-unit-name" :title="row.def.name + ' 位置' + ezfy.fmtN(row.def.pos)">{{ row.def.name }}</span>
+                <div class="ezfy-battle-postrack">
+                  <div v-if="row.atk" class="ezfy-battle-unit atk"
+                       :class="{ dead: (row.atk.count || 0) <= 0 }"
+                       :style="{ left: ezfy.battlePosLeft(row.atk, false) + '%' }">
+                    <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.atk))"></span>
+                    <span class="ezfy-unit-name" :title="row.atk.name + ' 位置' + ezfy.fmtN(row.atk.pos)">{{ ezfy.battleUnitName(row.atk) }}</span>
+                  </div>
+                  <div v-if="row.def" class="ezfy-battle-unit def"
+                       :class="{ dead: (row.def.count || 0) <= 0 }"
+                       :style="{ left: ezfy.battlePosLeft(row.def, true) + '%' }">
+                    <span class="ezfy-unit-ico" v-html="ezfy.troopIco(ezfy.battleUnitCfg(row.def))"></span>
+                    <span class="ezfy-unit-name" :title="row.def.name + ' 位置' + ezfy.fmtN(row.def.pos)">{{ ezfy.battleUnitName(row.def) }}</span>
+                  </div>
                 </div>
               </div>
               <span class="ezfy-pair-side def">守</span>

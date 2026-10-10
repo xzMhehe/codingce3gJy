@@ -33,6 +33,16 @@ func main() {
 	}
 
 	db := database.Init(&cfg.Mysql)
+	// ★★ 2026-10-10 道具 cfg_id 全体迁到 1001+（与装备配置 1~35 彻底不重叠，根除「同 ID 混淆」）。
+	//   必须跑在 seed.Run **之前**：种子里的道具已按新号 1001+ 灌，若老号行还在，
+	//   库里会同时存在老号行和新号行（商城列表出现重复道具）。
+	//   两条路径都要跑（幂等 + 事务，见 seed/ezfy_item_id_migrate.go）。
+	//   ★ 失败必须中止启动：带着老号继续跑，种子会再灌一套新号配置 → 商城道具重复。
+	timedStep("EnsureEzfyItemIDsHighRange", func() {
+		if err := seed.EnsureEzfyItemIDsHighRange(db); err != nil {
+			log.Fatalf("道具 cfg_id 改号失败，拒绝启动（避免道具配置出现老号/新号两套）：%v", err)
+		}
+	})
 	// 连接的是「已被别的实例灌好数据的共享库」时(seed.skip: true)，跳过全量初始化，
 	// 否则每台节点启动都会对已填充的表重跑配置 INSERT(重复主键/跨 WAN 挂起)。
 	if !cfg.Seed.Skip {

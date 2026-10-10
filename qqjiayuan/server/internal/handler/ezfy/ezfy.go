@@ -113,8 +113,18 @@ func (h *EzfyHandler) cfgs() {
 	ezfyRankInitOnce.Do(func() { ezfyMigrateRankInit(h.DB) })
 	// 一次性迁移：上等兵/下士 晋升无需珠宝（把 2/3 级宝物需求清成 []，幂等）
 	ezfyRankNoJewelOnce.Do(func() { ezfyMigrateRankNoJewel(h.DB) })
-	// 一次性迁移：历史「宝物签到」误发到道具表的宝物 → 装备表（幂等，见 ezfy_rank_treasure.go）
-	ezfyTreasureBagOnce.Do(func() { ezfyMigrateTreasureBag(h.DB) })
+	// ★★ 2026-10-10 永久移除「宝物签到误发 → 装备表」的一次性迁移（原 ezfyMigrateTreasureBag）。
+	//
+	//   事故：它用 sync.Once 包裹，而 sync.Once 只对**进程内**有效 —— 每次重启 / 重新部署后
+	//   首个请求都会重跑。而 ezfy_item.cfg_id 的 27~35 区间**已被真实道具占用**
+	//   （28~36 = 建筑/训练/科技加速），与装备配置（珠宝 25~35）ID 完全重叠 →
+	//   玩家花钱买 / 打野地掉落的加速道具，**每次部署都被当成「误发宝物」删掉**，
+	//   再换成一件珠宝装备（线上特征：某小时一次性生成 2000+ 件珠宝）。
+	//
+	//   该迁移的历史使命（2026-09-28 签到改走装备表）早已完成；且现在已**无法区分**
+	//   「历史误发残留」与「真实道具」——两者 cfg_id 完全重叠，任何自动迁移都必然误删真实道具。
+	//   故永久移除，不再随进程启动执行。若确需清理历史残留，走一次性运维脚本 + 人工确认，
+	//   切勿再挂回这条请求路径（函数体保留在 ezfy_rank_treasure.go，仅作参考，禁止调用）。
 }
 
 // cfgsReload 强制重载配置缓存。管理端改过 ezfy_cfg_* 后必须调它，
@@ -3643,7 +3653,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	}()
 	go func() { // 集结令背包持有量
 		defer wg.Done()
-		gatherHave = h.itemCount(uid, ezfyGatherItemID)
+		gatherHave = h.itemCount(uid, ezfyGatherItemID())
 	}()
 	go func() { // 家园账号 / 等级 / 经验
 		defer wg.Done()

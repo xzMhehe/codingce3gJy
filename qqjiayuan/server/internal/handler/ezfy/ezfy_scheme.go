@@ -19,16 +19,23 @@ import (
 // 「信号弹也是道具，可以黄金、钻石购买，加上，用于计谋消耗。」
 //
 // 设计：
-//   - 信号弹 = 普通道具（cfg_id=24, ItemType 20），黄金 / 钻石双渠道，库存无限；
+//   - 信号弹 = 普通道具（ItemType 20），黄金 / 钻石双渠道，库存无限；
 //   - 计谋配置放 ezfy_cfg_scheme（管理端可维护：名称/说明/消耗数量/上下架），
 //     不再写死在前端；
 //   - 发动一次计谋 = 扣对应数量的信号弹 + 写一条战报；
 //     Kind=1（先发制人）额外让双方立即进入「可战争」状态。
-const ezfySchemeItemID = 24 // 信号弹
+//
+// ★★ 2026-10-10 不再硬编码道具 id（原 `const ezfySchemeItemID = 24`）：
+// 道具已统一迁到 1001+（见 seed/ezfy_cfg_gen.go），改为**按名字解析**，
+// 否则以后调号段会静默失效（查不到 → 持有量恒 0 → 计谋全变「信号弹不足」）。
+const ezfySchemeItemName = "信号弹" // 信号弹
+
+// ezfySchemeItemID 信号弹的道具 cfg_id（0 = 配置里没有）。
+func ezfySchemeItemID() int { return ezfyCfg.itemIDByName(ezfySchemeItemName) }
 
 // ezfySchemeBulletName 信号弹的显示名（管理端可改名，别写死）
 func (h *EzfyHandler) ezfySchemeBulletName() string {
-	if it := ezfyCfg.item(ezfySchemeItemID); it != nil {
+	if it := ezfyCfg.item(ezfySchemeItemID()); it != nil {
 		return it.Name
 	}
 	return "信号弹"
@@ -40,7 +47,7 @@ func (h *EzfyHandler) Schemes(c *gin.Context) {
 	h.cfgs()
 	var rows []model.EzfyCfgScheme
 	h.DB.Where("enabled <> 0").Order("sort_no, id").Find(&rows)
-	have := h.itemCount(uid, ezfySchemeItemID)
+	have := h.itemCount(uid, ezfySchemeItemID())
 	list := []gin.H{}
 	for _, s := range rows {
 		list = append(list, gin.H{
@@ -51,7 +58,7 @@ func (h *EzfyHandler) Schemes(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"schemes":        list,
-		"bullet_item_id": ezfySchemeItemID, "bullet_name": h.ezfySchemeBulletName(),
+		"bullet_item_id": ezfySchemeItemID(), "bullet_name": h.ezfySchemeBulletName(),
 		"bullet_have": have,
 	})
 }
@@ -127,7 +134,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		need = 1
 	}
 	name := h.ezfySchemeBulletName()
-	if have := h.itemCount(uid, ezfySchemeItemID); have < need {
+	if have := h.itemCount(uid, ezfySchemeItemID()); have < need {
 		h.fail(c, fmt.Sprintf("%s不足: 发动「%s」需要%d个, 当前只有%d个（可在商城购买）",
 			name, sc.Name, need, have))
 		return
@@ -224,7 +231,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 		}
 		// 扣信号弹 + 写位标记 + 改时间（一个事务里完成）
 		h.DB.Transaction(func(tx *gorm.DB) error {
-			h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
+			h.consumeItemN(uid, ezfySchemeItemID(), need, "发动计谋")
 			if sc.Kind == 2 {
 				tx.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"arrive_time": newVal, "scheme_used": order.SchemeUsed | flag})
@@ -251,7 +258,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 			effectType = 4 // 隐真示假
 			effectDesc = "被敌人侦查时展示随机兵种极少兵力(几乎都在1000内), 隐藏实力"
 		}
-		h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
+		h.consumeItemN(uid, ezfySchemeItemID(), need, "发动计谋")
 		h.ezfySchemeEffectCities(uid, effectType)
 		msg := fmt.Sprintf("已发动计谋「%s」，消耗%s×%d：自己所有城市生效1小时（多次发动叠加时长），%s。",
 			sc.Name, name, need, effectDesc)
@@ -261,7 +268,7 @@ func (h *EzfyHandler) SchemeUse(c *gin.Context) {
 	}
 
 	// ===== 扣信号弹 =====
-	h.consumeItemN(uid, ezfySchemeItemID, need, "发动计谋")
+	h.consumeItemN(uid, ezfySchemeItemID(), need, "发动计谋")
 
 	// ===== 生效 + 写战报 =====
 	msg := fmt.Sprintf("已发动计谋「%s」，消耗%s×%d", sc.Name, name, need)

@@ -722,7 +722,7 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 			lead = h.officerByName(city.ID, req.Officer)
 		}
 	}()
-	go func() { defer wg.Done(); gatherHave = h.itemCount(uid, ezfyGatherItemID) }()
+	go func() { defer wg.Done(); gatherHave = h.itemCount(uid, ezfyGatherItemID()) }()
 	go func() { defer wg.Done(); defLocked = h.cityDefendLocked(city.ID) }()
 	wg.Wait()
 	techMap := map[int]int{}
@@ -866,8 +866,10 @@ func ezfyDurationText(sec int64) string {
 // ============ 集结令 / 出征兵力上限 ============
 
 const (
-	// ezfyGatherItemID 集结令道具 id（ezfy_cfg_item）
-	ezfyGatherItemID = 19
+	// ezfyGatherItemName 集结令道具名。
+	// ★★ 2026-10-10 不再硬编码道具 id：道具已统一迁到 1001+（见 seed/ezfy_cfg_gen.go），
+	//   按名字解析（ezfyGatherItemID()）才不会在调号段时静默失效。
+	ezfyGatherItemName = "集结令"
 	// ezfyGatherDefaultPer 每个集结令提升的出征上限（配置表 param1 优先）
 	ezfyGatherDefaultPer = 100000
 	// ezfyGatherMaxDefault 单次出征最多使用多少个集结令的**默认值**。
@@ -878,9 +880,12 @@ const (
 	ezfyGatherMaxDefault = 99
 )
 
+// ezfyGatherItemID 集结令的道具 cfg_id（0 = 配置里没有）。
+func ezfyGatherItemID() int { return ezfyCfg.itemIDByName(ezfyGatherItemName) }
+
 // ezfyGatherBonusPer 每个集结令提升的出征上限（读配置 param1，缺省 10 万）
 func ezfyGatherBonusPer() int64 {
-	if it := ezfyCfg.item(ezfyGatherItemID); it != nil && it.Param1 > 0 {
+	if it := ezfyCfg.item(ezfyGatherItemID()); it != nil && it.Param1 > 0 {
 		return it.Param1
 	}
 	return ezfyGatherDefaultPer
@@ -1177,7 +1182,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return fmt.Sprintf("集结令单次最多使用%d个", gm)
 	}
 	if gather > 0 {
-		if have := h.itemCount(uid, ezfyGatherItemID); have < gather {
+		if have := h.itemCount(uid, ezfyGatherItemID()); have < gather {
 			return fmt.Sprintf("集结令不足: 需要%d个, 当前只有%d个", gather, have)
 		}
 	}
@@ -1467,7 +1472,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ④ 集结令：一次扣完（原来是每个道具一条 consumeItem）
 	if gather > 0 {
 		wwg.Add(1)
-		go func() { defer wwg.Done(); h.consumeItemN(uid, ezfyGatherItemID, gather, "出征集结令") }()
+		go func() { defer wwg.Done(); h.consumeItemN(uid, ezfyGatherItemID(), gather, "出征集结令") }()
 	}
 	// ⑤ 带队军官置出征态（复用已查好的 lead，不再按名字查一次）
 	if lead != nil {
