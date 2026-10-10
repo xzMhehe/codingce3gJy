@@ -37,6 +37,39 @@ var ezfySchemaModels = []interface{}{
 	&model.EzfyWordFilter{}, &model.EzfyWounded{},
 }
 
+// ezfySchemaCatalog 一次拉全库「表 / 列」信息（跨 WAN 只发 2 条查询）。
+//
+// ★ 2026-10-10 性能（用户「部署启动怎么这么久」）：原实现用 HasTable/HasColumn
+//
+//	逐表逐字段探测，60 张表 × 每表二三十字段 ≈ 近两千次串行跨 WAN 查询，
+//	每次 100~300ms → 启动链 10~40s+。改成一次 SELECT 拿全库列，内存比对。
+func ezfySchemaCatalog(db *gorm.DB) (tables map[string]bool, cols map[string]map[string]bool) {
+	tables = map[string]bool{}
+	cols = map[string]map[string]bool{}
+	if rows, err := db.Raw("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()").Rows(); err == nil {
+		for rows.Next() {
+			var t string
+			if rows.Scan(&t) == nil {
+				tables[t] = true
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := db.Raw("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()").Rows(); err == nil {
+		for rows.Next() {
+			var t, c string
+			if rows.Scan(&t, &c) == nil {
+				if cols[t] == nil {
+					cols[t] = map[string]bool{}
+				}
+				cols[t][c] = true
+			}
+		}
+		rows.Close()
+	}
+	return
+}
+
 // EnsureEzfySchema 幂等补齐 ezfy 全部表的**缺失列**（main.go 的 skip 分支必须调用）。
 //
 // ★★ 为什么需要（2026-10-09 第 5 次踩同一个坑）：
@@ -51,22 +84,24 @@ var ezfySchemaModels = []interface{}{
 //	每次都手写一个 `EnsureXxxColumns` 太容易漏 —— 这里对 ezfy 全部 model 做一次通用补齐。
 //
 // ★ 安全性：**只 ADD COLUMN，不删列、不改已有列的类型**（不走 AutoMigrate），
-//   所以对线上大表也安全（MySQL 8.0 的 ADD COLUMN 默认 INSTANT）。
+//
+//	所以对线上大表也安全（MySQL 8.0 的 ADD COLUMN 默认 INSTANT）。
 func EnsureEzfySchema(db *gorm.DB) {
+	tables, cols := ezfySchemaCatalog(db)
 	for _, m := range ezfySchemaModels {
-		if !db.Migrator().HasTable(m) {
-			continue // 表还没建（全新库走 seed.Run）→ 交给 AutoMigrate
-		}
 		stmt := &gorm.Statement{DB: db}
 		if err := stmt.Parse(m); err != nil {
 			log.Printf("【严重】ezfy 表结构解析失败（补列被跳过）: %v", err)
 			continue
 		}
+		if !tables[stmt.Schema.Table] {
+			continue // 表还没建（全新库走 seed.Run）→ 交给 AutoMigrate
+		}
 		for _, f := range stmt.Schema.Fields {
 			if f.DBName == "" || f.IgnoreMigration {
 				continue
 			}
-			if db.Migrator().HasColumn(m, f.Name) {
+			if cols[stmt.Schema.Table][f.DBName] {
 				continue
 			}
 			if err := db.Migrator().AddColumn(m, f.Name); err != nil {
