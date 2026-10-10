@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/config"
 	"qqjiayuan/server/internal/router"
@@ -23,6 +24,39 @@ func timedStep(name string, fn func()) {
 	log.Printf("[启动链] %s 耗时 %v", name, time.Since(t0).Round(time.Millisecond))
 }
 
+// ezfySplitDBName 自动识别用的二战独立库名（固定就这一个）。
+const ezfySplitDBName = "qq_ezzt"
+
+// detectEzfySplitDB 同实例上是否已有「二战独立库」且里面已经有二战数据。
+//
+// ★★ 2026-10-10 加这个是为了让拆库能**只靠部署**完成：tools/deploy.bat 解压时
+// `--exclude='Linuxbushu/server/config.yaml'` 且把服务器上已有 config.yaml 备份还原，
+// 所以仓库里加的 `ezfy_mysql` 段根本带不上去。这里改成启动时探测：
+// 同实例存在 `qq_ezzt` 且 `ezfy_city` 有数据 → 自动启用独立库。
+//
+// ★ 安全：**只读探测，绝不创建**（`database.Init` 才会建库，这里只查 information_schema）。
+//
+//	库不存在 / 是空的 → 返回空串，保持单库模式，行为与以前完全一致。
+//	显式配置了 `ezfy_mysql` 时根本不会走到这里（调用方先判 EzfySplit）。
+func detectEzfySplitDB(homeDB *gorm.DB) string {
+	var hasTable int64
+	if err := homeDB.Raw(`SELECT COUNT(*) FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'ezfy_city'`, ezfySplitDBName).Scan(&hasTable).Error; err != nil {
+		return ""
+	}
+	if hasTable == 0 {
+		return ""
+	}
+	var rows int64
+	if err := homeDB.Raw("SELECT COUNT(*) FROM `" + ezfySplitDBName + "`.ezfy_city").Scan(&rows).Error; err != nil {
+		return ""
+	}
+	if rows == 0 {
+		return ""
+	}
+	return ezfySplitDBName
+}
+
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "配置文件路径")
 	flag.Parse()
@@ -37,12 +71,26 @@ func main() {
 	//   ezfyDB = 二战库（qq_ezzt）  ：全部 ezfy_* + 二战自己的家信(private_messages)与设置
 	//   未配 ezfy_mysql（或与家园同库）时退化为单库模式，行为与以前完全一致。
 	homeDB := database.Init(&cfg.Mysql)
+	// ★★ 2026-10-10 未显式配置 ezfy_mysql 时，**自动识别**同实例上是否已有二战独立库：
+	//   有（且里面已有二战数据）→ 自动启用独立库模式。
+	//   目的：让「只部署、不改服务器 config.yaml」也能完成拆库
+	//   （tools/deploy.bat 解压时排除了 config.yaml 并原样还原，配置改不动）。
+	//   ★ 只认「已经存在且有数据」的库，**不会凭空创建**；显式配置的 ezfy_mysql 优先级更高。
+	if !cfg.EzfySplit() {
+		if name := detectEzfySplitDB(homeDB); name != "" {
+			cfg.EzfyMysql = config.MysqlConfig{DBName: name} // 其余字段留空 → EzfyDBConfig 自动沿用 mysql
+			log.Printf("自动识别到二战独立库 %s（同实例、已有数据）→ 启用独立库模式", name)
+		}
+	}
 	seed.EzfyUsesOwnDB = cfg.EzfySplit()
 	ezfyDB := homeDB
 	if seed.EzfyUsesOwnDB {
 		ezfyCfg := cfg.EzfyDBConfig()
 		ezfyDB = database.Init(&ezfyCfg)
-		log.Printf("二战独立库已启用：%s（家园库 %s）", cfg.EzfyMysql.DBName, cfg.Mysql.DBName)
+		log.Printf("★ 二战数据库模式：独立库 %s（家园库 %s）", cfg.EzfyMysql.DBName, cfg.Mysql.DBName)
+	} else {
+		log.Printf("★ 二战数据库模式：单库（与家园同库 %s）—— 如需拆库，"+
+			"在 config.yaml 加 ezfy_mysql.dbname，或先建好名为 qq_ezzt 的库并搬入二战数据", cfg.Mysql.DBName)
 	}
 
 	// ★★ 2026-10-10 道具 cfg_id 全体迁到 1001+（与装备配置 1~35 彻底不重叠，根除「同 ID 混淆」）。
@@ -110,9 +158,9 @@ func main() {
 	// 家园论坛索引（幂等）：原来挂在 EnsureEzfyIndexes 里，二战拆库后必须在家园库上执行。
 	timedStep("EnsureHomeForumIndexes", func() { seed.EnsureHomeForumIndexes(homeDB) })
 
-	// 二战独立库：建表 + 幂等补列 + 灌种子（内含道具改号，顺序已保证）。
+	// 二战独立库：建表 +（首次）自动把家园库里的二战数据整体搬过来 + 灌种子。
 	if seed.EzfyUsesOwnDB {
-		timedStep("RunEzfy", func() { seed.RunEzfy(ezfyDB) })
+		timedStep("RunEzfy", func() { seed.RunEzfy(ezfyDB, homeDB) })
 	}
 
 	gin.SetMode(gin.ReleaseMode)

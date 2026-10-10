@@ -161,6 +161,11 @@ for /f "delims=" %%s in ('powershell -NoProfile -Command "($x=1..32^|ForEach-Obj
     echo   password: "CHANGE-TO-SERVER-MYSQL-ROOT-PASSWORD"
     echo   dbname: qq_jiayuan
     echo.
+    echo # WW2 ezfy uses its own database. Omit this whole block for single-database mode.
+    echo # host / port / user / password default to the mysql block above.
+    echo ezfy_mysql:
+    echo   dbname: qq_ezzt
+    echo.
     echo jwt:
     echo   secret: "%SECRET%"
     echo   expire_hours: 168
