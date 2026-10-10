@@ -249,56 +249,59 @@ type ezfyEquipSetSeed struct {
 }
 
 var ezfyEquipSetSeeds = []ezfyEquipSetSeed{
+	// ★ 2026-10-10 用户「1-17 套装单件也按品质加属性（40-80 区间）」：
+	//   单件三维按品质统一分档，后/学为军的一半取整（T1=40/20/20 T2=50/25/25 T3=65/32/32 T4=80/40/40）；
+	//   套装加成（SetMi/SetLo/SetLe，穿齐触发）保持原值不动。
 	{ID: 1, Name: "新兵套装(Recruit)", Parts: 9, Slots: ezfySetSlots9, Level: 20, Tier: 1,
-		PieceMi: 1, PieceLo: 2, SetMi: 10, SetLo: 14, Gold: 50000,
+		PieceMi: 40, PieceLo: 20, PieceLe: 20, SetMi: 10, SetLo: 14, Gold: 50000,
 		Effect: "9件：攻击+33，防御+22", Des: "新号起步套装，用黄金购买"},
 	{ID: 2, Name: "战士套装(Warrior)", Parts: 9, Slots: ezfySetSlots9, Level: 40, Tier: 1,
-		PieceMi: 3, PieceLo: 4, SetMi: 30, SetLo: 37, Gold: 300000,
+		PieceMi: 40, PieceLo: 20, PieceLe: 20, SetMi: 30, SetLo: 37, Gold: 300000,
 		Effect: "9件：攻击+75，防御+50", Des: "完成上士军衔任务可换，也可直接购买"},
 	{ID: 3, Name: "海军上将套装(Admiral)", Parts: 9, Slots: ezfySetSlots9, Level: 80, Tier: 2,
-		PieceMi: 35, PieceLe: 9, SetMi: 120, SetLe: 40, Gold: 2000000,
+		PieceMi: 50, PieceLo: 25, PieceLe: 25, SetMi: 120, SetLe: 40, Gold: 2000000,
 		Effect: "9件：海军突击+2，海军伏击+2，反击+2", Des: "海军指挥官专用套装"},
 	{ID: 4, Name: "传说英雄套装(Legendary Heroism)", Parts: 9, Slots: ezfySetSlots9, Level: 60, Tier: 2,
-		PieceMi: 24, PieceLe: 6, SetMi: 90, SetLe: 24, Gold: 5000000,
+		PieceMi: 50, PieceLo: 25, PieceLe: 25, SetMi: 90, SetLe: 24, Gold: 5000000,
 		Effect: "9件：攻击+973，防御+824", Des: "刷第五师团、黄金箱子零件兑换"},
 	{ID: 5, Name: "传说无畏套装(Legendary Dreadnaught)", Parts: 9, Slots: ezfySetSlots9, Level: 80, Tier: 3,
-		PieceMi: 35, PieceLe: 9, SetMi: 130, SetLe: 40, Gold: 8000000,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 130, SetLe: 40, Gold: 8000000,
 		Effect: "9件：攻击+646，防御+430", Des: "刷第五师团、黄金箱子零件兑换"},
 	{ID: 6, Name: "传说征服套装(Legendary Conquer)", Parts: 9, Slots: ezfySetSlots9, Level: 100, Tier: 3,
-		PieceMi: 48, PieceLe: 12, SetMi: 180, SetLe: 55, Gold: 15000000,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 180, SetLe: 55, Gold: 15000000,
 		Effect: "9件：攻击+867，防御+578", Des: "刷第五师团、黄金箱子零件兑换"},
 	{ID: 7, Name: "名门征服套装(Renowned Conquer)", Parts: 9, Slots: ezfySetSlots9, Level: 100, Tier: 2,
-		PieceMi: 27, PieceLe: 8, SetMi: 100, SetLe: 30, Gold: 10000000,
+		PieceMi: 50, PieceLo: 25, PieceLe: 25, SetMi: 100, SetLe: 30, Gold: 10000000,
 		Effect: "9件：攻击+341，防御+228", Des: "刷野兑换"},
 	{ID: 8, Name: "混沌套装一(头/肩/胸)", Parts: 3, Slots: []string{"头盔", "护肩", "胸甲"}, Level: 140, Tier: 4,
-		PieceMi: 21, PieceLo: 25, PieceLe: 65, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
 		Effect: "3件：战术防御+3级", Des: "混沌三件套，钻石购买"},
 	{ID: 9, Name: "混沌套装二(腰/手/足)", Parts: 3, Slots: []string{"腰带", "手套", "战靴"}, Level: 140, Tier: 4,
-		PieceMi: 21, PieceLo: 25, PieceLe: 65, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
 		Effect: "3件：英雄突击+3", Des: "混沌三件套，钻石购买"},
 	{ID: 10, Name: "混沌套装三(饰品/挂件/勋章)", Parts: 3, Slots: []string{"饰品", "挂件", "勋章"}, Level: 140, Tier: 4,
-		PieceMi: 21, PieceLo: 25, PieceLe: 65, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 3000,
 		Effect: "3件：军队生命+30%", Des: "混沌三件套，钻石购买"},
 	{ID: 11, Name: "精英守护者套装(Elite Guardian)", Parts: 9, Slots: ezfySetSlots9, Level: 130, Tier: 3,
-		PieceMi: 49, PieceLe: 21, SetMi: 190, SetLe: 75, Diamond: 300,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 190, SetLe: 75, Diamond: 300,
 		Effect: "9件：反击+3", Des: "钻石购买"},
 	{ID: 12, Name: "传说守护者套装(Legendary Guardian)", Parts: 9, Slots: ezfySetSlots9, Level: 130, Tier: 3,
-		PieceMi: 59, PieceLe: 23, SetMi: 230, SetLe: 90, Diamond: 450,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 230, SetLe: 90, Diamond: 450,
 		Effect: "9件：反击+3", Des: "钻石购买"},
 	{ID: 13, Name: "暴君之怒套装(King Fury)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 72, PieceLe: 28, SetMi: 280, SetLe: 105, Diamond: 700,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 280, SetLe: 105, Diamond: 700,
 		Effect: "9件：英雄突击+3，反击+3", Des: "军团战奖励 / 钻石购买"},
 	{ID: 14, Name: "审判者套装(Judicator)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 78, PieceLe: 28, SetMi: 300, SetLe: 110, Diamond: 800,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 300, SetLe: 110, Diamond: 800,
 		Effect: "9件：三绝+3级", Des: "军团战奖励 / 钻石购买"},
 	{ID: 15, Name: "亡魂套装(Revenant)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 78, PieceLe: 34, SetMi: 310, SetLe: 130, Diamond: 1200,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 310, SetLe: 130, Diamond: 1200,
 		Effect: "9件：弧形防御+2，反击+3", Des: "刷野活动 / 钻石购买"},
 	{ID: 16, Name: "遗失传说套装(The Lost Legend)", Parts: 9, Slots: ezfySetSlots9, Level: 150, Tier: 4,
-		PieceMi: 90, PieceLo: 47, PieceLe: 47, SetMi: 360, SetLo: 190, SetLe: 190, Diamond: 3600,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 360, SetLo: 190, SetLe: 190, Diamond: 3600,
 		Effect: "9件：+95%基础军事，攻击+2984，防御+2980", Des: "顶级套装，钻石购买"},
 	{ID: 17, Name: "隐秘宝藏套装(The Hidden Treasure)", Parts: 9, Slots: ezfySetSlots9, Level: 150, Tier: 4,
-		PieceMi: 99, PieceLo: 51, PieceLe: 51, SetMi: 400, SetLo: 210, SetLe: 210, Diamond: 5000,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 400, SetLo: 210, SetLe: 210, Diamond: 5000,
 		Effect: "9件：+100%基础军事，攻击+2984，防御+2890", Des: "顶级套装，钻石购买"},
 }
 
@@ -344,12 +347,18 @@ type ezfyOfficerSeries struct {
 	// ★ 每件的三维属性（军事/后勤/学识）；11 件套 = 该值 × 11。
 	//   ★ 2026-09-23 原版量级（整套 700~900 军）太高，已按品质同比压降（与百分比同档系数）：
 	//     顶级(T4-130) 35 | T4-120 25 | T4-110 18 | T3 10，后/学约为军的一半。
+	//   ★ 2026-10-10 用户「单件倍率加成全改加属性」：单件六项百分比清零，三维按系列档位上调
+	//     （军 50~100，后/学为军的一半）。11 件全穿齐 = 该值 × 11。
 	Mi, Lo, Le int
-	Pieces     []ezfyOfficerEquipPiece
+	// ★ 套装行三维现值（2026-10-10 锁定，不随单件推导）：
+	//   套装行 = 额外加成，只有穿齐 11 件才触发；保持线上原值不动。
+	SetMi, SetLo, SetLe int
+	Pieces              []ezfyOfficerEquipPiece
 }
 
 var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
-	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 1500, Mi: 25, Lo: 13, Le: 13,
+	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 1500,
+		Mi: 75, Lo: 37, Le: 37, SetMi: 68, SetLo: 35, SetLe: 35,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "围巾", Dmg: 53, Def: 50},
 			{Sub: "头盔", Def: 55, Hp: 57},
@@ -363,7 +372,8 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "草鞋", Hp: 53, Move: 40},
 			{Sub: "史册", Def: 57},
 		}},
-	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 1500, Mi: 25, Lo: 13, Le: 13,
+	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 1500,
+		Mi: 75, Lo: 37, Le: 37, SetMi: 68, SetLo: 35, SetLe: 35,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩章", Def: 53, Hp: 50},
 			{Sub: "帽子", Def: 55},
@@ -377,7 +387,8 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "鞋子", Def: 48, Move: 40},
 			{Sub: "名册", Crit: 45, CritDmg: 50},
 		}},
-	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 1200, Mi: 18, Lo: 9, Le: 9,
+	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 1200,
+		Mi: 62, Lo: 31, Le: 31, SetMi: 49, SetLo: 24, SetLe: 24,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "盾牌", Def: 39, Hp: 40},
 			{Sub: "帽子", Def: 44},
@@ -391,7 +402,8 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足靴", Def: 39, Move: 40},
 			{Sub: "名册", Crit: 44},
 		}},
-	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 800, Mi: 10, Lo: 5, Le: 5,
+	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 800,
+		Mi: 50, Lo: 25, Le: 25, SetMi: 27, SetLo: 13, SetLe: 13,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "对讲机", Def: 30},
 			{Sub: "头盔", Crit: 31},
@@ -405,7 +417,8 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "雨靴", Hp: 33},
 			{Sub: "史册", CritDmg: 34},
 		}},
-	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000, Mi: 35, Lo: 18, Le: 18,
+	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000,
+		Mi: 88, Lo: 44, Le: 44, SetMi: 96, SetLo: 49, SetLe: 49,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
 			{Sub: "头部", Def: 60},
@@ -419,7 +432,8 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足部", Def: 58, Hp: 58, Move: 40},
 			{Sub: "名将史册", Crit: 45, CritDmg: 65},
 		}},
-	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 2000, Mi: 35, Lo: 18, Le: 18,
+	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 2000,
+		Mi: 100, Lo: 50, Le: 50, SetMi: 96, SetLo: 49, SetLe: 49,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
 			{Sub: "头部", Def: 60},
@@ -555,16 +569,15 @@ func seedEzfyEquipSets(db *gorm.DB) {
 		return sets, pieces
 	})
 
-	// 第二批：军官装备系列 21~26（11 件套，六项战斗属性 + 三维属性）
+	// 第二批：军官装备系列 21~26（11 件套）
+	// ★ 2026-10-10 用户「单装备倍率加成全改加属性」：单件六项百分比清零（防穿一件就 +53% 太变态），
+	//   改为加三维属性（军/后/学，按系列档位 50~100）；套装行 = 穿齐 11 件的**额外**加成，保持现值不动。
 	seedEzfyEquipSetFamily(db, 21, 40, func() ([]model.EzfyCfgEquipSet, []model.EzfyCfgEquipment) {
 		sets := []model.EzfyCfgEquipSet{}
 		pieces := []model.EzfyCfgEquipment{}
 		for _, s := range ezfyOfficerSeriesSeeds {
-			// ★ 套装是**额外**加成（穿齐才生效）：
-			//   - 六项战斗属性：各件（字面量已是压降后最终值）之和 ÷ 4，封顶 90
-			//   - 三维属性：各件之和 ÷ 4（+25%，平面数值不算百分比）
-			//   所以「穿齐整套」的实际总加成 ≈ 各件之和 × 1.25。
-			sum := struct{ dmg, def, hp, mv, cr, cd, mi, lo, le int }{}
+			// ★ 套装六项 = 各件（字面量仍是压降后最终值，仅供此处推导套装）之和 ÷ 4，封顶 90
+			sum := struct{ dmg, def, hp, mv, cr, cd int }{}
 			for _, p := range s.Pieces {
 				sum.dmg += p.Dmg
 				sum.def += p.Def
@@ -572,22 +585,15 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				sum.mv += p.Move
 				sum.cr += p.Crit
 				sum.cd += p.CritDmg
-				// 三维：每件用系列统一值（件上没单独写就用系列的）
-				mi, lo, le := p.Mi, p.Lo, p.Le
-				if mi == 0 && lo == 0 && le == 0 {
-					mi, lo, le = s.Mi, s.Lo, s.Le
-				}
-				sum.mi += mi
-				sum.lo += lo
-				sum.le += le
 			}
 			sets = append(sets, model.EzfyCfgEquipSet{
 				ID: s.ID, Name: s.SetName, Parts: len(s.Pieces), Series: s.Series,
 				Dmg: ezfySetBonusPct(sum.dmg), Def: ezfySetBonusPct(sum.def), Hp: ezfySetBonusPct(sum.hp),
 				Move: ezfySetBonusPct(sum.mv), Crit: ezfySetBonusPct(sum.cr), CritDmg: ezfySetBonusPct(sum.cd),
-				Military: sum.mi / 4, Logistics: sum.lo / 4, Learning: sum.le / 4,
+				// 三维保持线上现值（SetMi/SetLo/SetLe），不随单件上调
+				Military: s.SetMi, Logistics: s.SetLo, Learning: s.SetLe,
 				Effect: fmt.Sprintf("穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
-					len(s.Pieces), sum.mi/4, sum.lo/4, sum.le/4,
+					len(s.Pieces), s.SetMi, s.SetLo, s.SetLe,
 					ezfySetBonusPct(sum.dmg), ezfySetBonusPct(sum.def), ezfySetBonusPct(sum.hp),
 					ezfySetBonusPct(sum.mv), ezfySetBonusPct(sum.cr), ezfySetBonusPct(sum.cd)),
 				Des: s.Series + "系列军官装备（11 部位各 1 件）",
@@ -611,13 +617,14 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					//   系列件（属于套装 21~26）**不再单独出售**（价 0 = 不上架），线上这 66 件也是 0。
 					//   原来按加成定价（100~500 钻）→ 会出现在商城「装备」页，与线上不一致。
 					PriceDiamond: 0,
-					// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
-					Dmg:      p.Dmg,
-					Def:      p.Def,
-					Hp:       p.Hp,
-					Move:     p.Move,
-					Crit:     p.Crit,
-					CritDmg:  p.CritDmg,
+					// ★ 2026-10-10 单件六项百分比清零（用户「单装备倍率加成全改加属性」）；
+					//   只保留套装行的套装倍率（穿齐 11 件才触发）
+					Dmg:      0,
+					Def:      0,
+					Hp:       0,
+					Move:     0,
+					Crit:     0,
+					CritDmg:  0,
 					Military: mi, Logistics: lo, Learning: le,
 					Effect: "装备+20", Des: s.SetName + " 的" + slot + "部件",
 				})
@@ -637,13 +644,15 @@ func seedEzfyEquipSets(db *gorm.DB) {
 				//   没写才回落到按加成推算（见 ezfyLooseEquipPrice）
 				PriceDiamond: ezfyLooseEquipPrice(l.Diamond, l.Dmg, l.Def, l.Hp, l.Move, l.Crit, l.CritDmg),
 				// ★ 六项百分比字面量已是压降后最终值（2026-09-23），直接写入
-				Dmg:      l.Dmg,
-				Def:      l.Def,
-				Hp:       l.Hp,
-				Move:     l.Move,
-				Crit:     l.Crit,
-				CritDmg:  l.CritDmg,
-				Military: 10, Logistics: 5, Learning: 5,
+				Dmg:     l.Dmg,
+				Def:     l.Def,
+				Hp:      l.Hp,
+				Move:    l.Move,
+				Crit:    l.Crit,
+				CritDmg: l.CritDmg,
+				// ★ 2026-10-10 用户「散件属性按品质（穿戴等级）10-50 合理加」：
+				//   L60-70 → 20/10/10；L80-90 → 35/17/17；L100 → 50/25/25
+				Military: ezfyLooseTrio(l.Level), Logistics: ezfyLooseTrio(l.Level), Learning: ezfyLooseTrio(l.Level),
 				Effect: "装备+20", Des: "散件军官装备（不属于套装）",
 			})
 		}
@@ -762,6 +771,20 @@ func ezfyLooseEquipPrice(explicit int64, dmg, def, hp, move, crit, critDmg int) 
 		return explicit
 	}
 	return ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg)
+}
+
+// ezfyLooseTrio 散件三维按穿戴等级分档（★ 2026-10-10 用户「散件属性按品质 10-50 合理加」）：
+//
+//	L60-70 → 20；L80-90 → 35；L100 → 50（后/学为军的一半取整，返回值是军事值）
+func ezfyLooseTrio(level int) int {
+	switch {
+	case level <= 70:
+		return 20
+	case level <= 90:
+		return 35
+	default:
+		return 50
+	}
 }
 
 // backfillLooseEquipPrice 给**纯散件**补定价（按种子字面量里的显式价）。
@@ -1120,8 +1143,12 @@ func EnsureEzfyChestPool(db *gorm.DB) {
 //   - 管理端改过的值不会被冲掉
 //   - 跑过一次之后条件不再命中，天然幂等
 func backfillOfficerEquipSetBonus(db *gorm.DB) {
-	// ① 散件的三维（ID 3001+）：★ 2026-09-23 由 20/10/10 同比压降到 10/5/5
-	db.Exec("UPDATE ezfy_cfg_equipment SET military = 10, logistics = 5, learning = 5 " +
+	// ① 散件的三维（ID 3001+）：★ 2026-09-23 由 20/10/10 同比压降到 10/5/5；
+	//   ★ 2026-10-10 改按穿戴等级分档（用户「散件属性按品质 10-50 合理加」）
+	db.Exec("UPDATE ezfy_cfg_equipment SET " +
+		"military = CASE WHEN level <= 70 THEN 20 WHEN level <= 90 THEN 35 ELSE 50 END, " +
+		"logistics = CASE WHEN level <= 70 THEN 10 WHEN level <= 90 THEN 17 ELSE 25 END, " +
+		"learning = CASE WHEN level <= 70 THEN 10 WHEN level <= 90 THEN 17 ELSE 25 END " +
 		"WHERE id BETWEEN 3001 AND 4000 AND military = 0 AND logistics = 0 AND learning = 0")
 
 	// ② 各系列的「件」：补三维（每件用系列统一值）
@@ -1146,7 +1173,7 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 		if len(pieces) == 0 {
 			continue
 		}
-		var d, df, hp, mv, cr, cd, mi, lo, le int
+		var d, df, hp, mv, cr, cd int
 		for _, p := range pieces {
 			d += p.Dmg
 			df += p.Def
@@ -1154,9 +1181,6 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 			mv += p.Move
 			cr += p.Crit
 			cd += p.CritDmg
-			mi += p.Military
-			lo += p.Logistics
-			le += p.Learning
 		}
 		updates := map[string]interface{}{}
 		fill := func(cur int, col string, val int) {
@@ -1170,15 +1194,17 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 		fill(st.Move, "move", mv/4)
 		fill(st.Crit, "crit", cr/4)
 		fill(st.CritDmg, "crit_dmg", cd/4)
-		fill(st.Military, "military", mi/4)
-		fill(st.Logistics, "logistics", lo/4)
-		fill(st.Learning, "learning", le/4)
+		// ★ 2026-10-10 套装三维锁定现值（SetMi/SetLo/SetLe），不再从单件推导：
+		//   单件六项已清零、三维已上调，若还按「各件之和 ÷ 4」会给套装行补成大值。
+		fill(st.Military, "military", s.SetMi)
+		fill(st.Logistics, "logistics", s.SetLo)
+		fill(st.Learning, "learning", s.SetLe)
 		if len(updates) == 0 {
 			continue
 		}
 		updates["effect"] = fmt.Sprintf(
 			"穿齐%d件，额外再获得：军事+%d 后勤+%d 学识+%d；伤害+%d%% 防御+%d%% 生命+%d%% 移动距离+%d%% 暴击几率+%d%% 暴击伤害+%d%%",
-			st.Parts, mi/4, lo/4, le/4, d/4, df/4, hp/4, mv/4, cr/4, cd/4)
+			st.Parts, s.SetMi, s.SetLo, s.SetLe, d/4, df/4, hp/4, mv/4, cr/4, cd/4)
 		db.Model(&model.EzfyCfgEquipSet{}).Where("id = ?", st.ID).Updates(updates)
 	}
 
