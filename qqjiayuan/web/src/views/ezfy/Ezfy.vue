@@ -49,7 +49,8 @@
 
       <!-- ============ 首页(cityHome) ============ -->
       <template v-if="cur === 'home'">
-        <div class="home-body">
+      <!-- ★ 2026-10-10 首页布局切换：homeLayout===2 → 老布局（保留原样）；否则 → 新布局（战争主题简约版，一屏放全） -->
+      <div class="home-body" v-if="homeLayout === 2">
         <!-- ★ 只有【置顶】公告展示到首页外边；普通公告进「公告」页看。
              外面包一层 .ezfy-notices 只为统一它与上下两行的间距(见样式表注释)。 -->
         <div class="ezfy-notices" v-if="topNotices.length">
@@ -149,7 +150,104 @@
         </div>
         <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
 
+      </div>
+
+      <!-- ============ 首页-新布局（战争主题简约版，一屏放全） ============ -->
+      <div class="war-home" v-else>
+        <!-- 置顶公告 -->
+        <div class="ezfy-notices" v-if="topNotices.length">
+          <div class="old-line" v-for="n in topNotices" :key="'wn' + n.id">
+            <img class="logo-title" src="/static/ezfy/notice.gif" alt="."/>
+            <a class="red" href="javascript:;" @click="openNotice(n)">{{ n.title }}</a>
+          </div>
         </div>
+
+        <!-- 城市 + 军衔/声望/军团/签到 -->
+        <div class="war-head">
+          <div class="war-city">
+            <span class="city-name">{{ city.name }}({{ city.x }},{{ city.y }})</span>
+            <a href="javascript:;" @click="go('cities')">切换城市</a>
+          </div>
+          <div class="war-stats">
+            <span class="war-stat" title="军衔"><span v-html="rankIcon(myRankId)"></span>{{ rankName }}</span>
+            <span class="war-stat" title="声望">声望{{ profile.prestige }}</span>
+            <span class="war-stat" title="军团">
+              <a href="javascript:;" @click="go('corps')" v-if="!myCorps">加入军团</a>
+              <a href="javascript:;" @click="go('corps')" v-else>{{ myCorps.name }}</a>
+            </span>
+            <span class="war-stat" title="每日签到">
+              <a href="javascript:;" @click="go('welfare')">{{ welfare.signed_today ? '已签到' : '签到' }}</a>
+            </span>
+          </div>
+        </div>
+
+        <!-- 资源 5 列网格（图标 + 现有/每小时产量） -->
+        <div class="war-res">
+          <div class="war-res-cell" v-for="rk in ['gold', 'food', 'steel', 'oil', 'rare']" :key="'rk' + rk">
+            <span class="war-res-ico" v-html="resIcon(rk)"></span>
+            <a class="war-res-name" href="javascript:;" @click="go('res/' + rk)">{{ resNames[rk] }}</a>
+            <div class="war-res-val">
+              <span :title="'现有 ' + fmtN(city[rk])">{{ fmtProd(city[rk]) }}</span>
+              <i>/</i>
+              <span :title="resShort[rk] + '每小时产量'">{{ fmtProd(resProd[rk]) }}</span>
+            </div>
+          </div>
+          <div class="war-res-ops">
+            <a href="javascript:;" @click="go('exchange')">购买</a>
+            <a href="javascript:;" @click="go('mall')">增产</a>
+          </div>
+        </div>
+
+        <!-- 人口/民心/税率 -->
+        <div class="war-row2">
+          <span class="war-cell2" :title="'人口/空闲'">
+            <svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><circle cx="7" cy="7.4" r="1.6" fill="#FFD700"/><path d="M4.7 14.6 C4.7 12.7 5.7 11.5 7 11.5 C8.3 11.5 9.3 12.7 9.3 14.6 Z" fill="#FFD700"/><circle cx="13" cy="6.6" r="1.5" fill="#FFD700"/><path d="M10.9 14.6 C10.9 12.9 11.9 11.9 13 11.9 C14.1 11.9 15.1 12.9 15.1 14.6 Z" fill="#FFD700"/></svg>
+            {{ city.pop }}/{{ freePop }}
+            <a href="javascript:;" @click="go('convene')">[召集]</a>
+          </span>
+          <span class="war-cell2" :title="'民心/民怨'">
+            <svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 15.5 C5.3 12.6 4.1 9.6 4.1 7.6 C4.1 5.9 5.4 4.7 7 4.7 C8.1 4.7 9.2 5.3 10 6.3 C10.8 5.3 11.9 4.7 13 4.7 C14.6 4.7 15.9 5.9 15.9 7.6 C15.9 9.6 14.7 12.6 10 15.5 Z" fill="#FFD700"/></svg>
+            {{ city.feelings }}/{{ city.grievance }}
+            <a href="javascript:;" @click="go('placate')">[安抚]</a>
+          </span>
+          <span class="war-cell2" title="税率">
+            <svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M14.6 5.4 L5.4 14.6" stroke="#FFD700" stroke-width="1.4" stroke-linecap="round"/><circle cx="6.9" cy="5.9" r="1.8" fill="#FFD700"/><circle cx="13.1" cy="14.1" r="1.8" fill="#FFD700"/></svg>
+            <a href="javascript:;" @click="go('taxset')">{{ city.tax_rate }}%</a>
+          </span>
+        </div>
+
+        <!-- 功能入口（去重后全部功能） -->
+        <div class="war-btns">
+          <a class="war-btn" href="javascript:;" @click="go('builds')">资源</a>
+          <a class="war-btn" href="javascript:;" @click="go('acade')">军官</a>
+          <a class="war-btn" href="javascript:;" @click="go('troops')">军队</a>
+          <a class="war-btn" href="javascript:;" @click="go('techs')">科技</a>
+          <a class="war-btn" href="javascript:;" @click="go('defence')">城防</a>
+          <a class="war-btn" href="javascript:;" @click="go('info')">统帅</a>
+          <a class="war-btn" href="javascript:;" @click="go('buildm')">军事区</a>
+          <a class="war-btn" href="javascript:;" @click="go('troop')">造兵</a>
+          <a class="war-btn" href="javascript:;" @click="go('map')">地图</a>
+          <a class="war-btn" href="javascript:;" @click="go('citystatus')">城市状态</a>
+          <a class="war-btn" href="javascript:;" @click="go('wilds')">野地</a>
+          <a class="war-btn" href="javascript:;" @click="go('chat')">聊天</a>
+        </div>
+
+        <!-- 世界聊天 -->
+        <div class="war-chat">
+          <div class="old-line">【世界聊天】<a href="javascript:;" @click="go('chat')">[进入]</a></div>
+          <div class="old-line" v-for="ch in homeChats" :key="'wc' + ch.key">
+            [<span class="orange">{{ ch.tag }}</span>]
+            <span v-if="ch.user_id">
+              <a href="javascript:;" @click="openPlayer(ch.user_id)"><span
+                 v-for="(c, ci) in nickChars(ch.user_name)" :key="'nc' + ci"
+                 :style="nickColorAt(ch.color, ci)">{{ c }}</span></a>：
+            </span>
+            <span v-else>{{ ch.tag == '系统' ? '系统：' : ch.tag + '：' }}</span>
+            {{ ch.content }}
+          </div>
+          <div class="old-line gray" v-if="!homeChats.length">(暂无消息)</div>
+        </div>
+      </div>
       </template>
 
       <!-- ============ 世界聊天(chat) ============ -->
@@ -510,6 +608,9 @@ export default {
       resShort: RES_SHORT,
       resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
+      // ★ 2026-10-10 首页布局：0/1=新布局 2=老布局（/view 的 profile.home_layout 下发，
+      //   统帅页单选切换；玩家 10000 由后端 seed 固定为老布局）
+      homeLayout: 0,
       userBrief: { account: '', level: 0, exp: 0 },
       officerCount: 0,
       activities: [],
@@ -2070,6 +2171,17 @@ export default {
         } else this.notify(r.msg)
       })
     },
+    // ---- 首页布局切换（老布局/新布局，统帅页单选，即改即生效） ----
+    setHomeLayout (l) {
+      const v = l === 2 ? 2 : 1
+      api.post('/games/ezfy/profile/layout', { layout: v }).then(r => {
+        if (r.code === 0) {
+          this.homeLayout = v
+          this.loadSelfInfo()
+          this.notify(r.msg)
+        } else this.notify(r.msg)
+      })
+    },
     go (t) {
       // ★ 2026-09-29 各页 [返回]：回到上一页；无有效上一页则回首页
       if (t === 'back') { this.go(this.prevCur && this.prevCur !== this.cur ? this.prevCur : 'home'); return }
@@ -2234,6 +2346,9 @@ export default {
     applyView (d) {
       if (!d) return
       this.profile = d.profile
+      // ★ 2026-10-10 首页布局：0/1=新布局 2=老布局（后端 /view 随 profile 下发）
+      const hl = d.profile && d.profile.home_layout
+      this.homeLayout = (hl === undefined || hl === null) ? 0 : Number(hl)
       this.userBrief = { account: d.account || '', level: d.user_level || 0, exp: d.user_exp || 0 }
       this.officerCount = d.officer_count || 0
       this.rankName = d.rank_name
@@ -5540,9 +5655,19 @@ export default {
     // ★ 2026-10-05 用户要求：达到「亿」(≥1e8) 就换成「亿」单位, 比 4639万 更好读；
     //   首页的**现有资源**(city.*)和**每小时产量**(resProd.*)都走这个函数, 一起生效。
     //   同样向下取整(截断)、保留 1 位小数(千万位截断)。例如 123456789 → 1.2亿, 543000000 → 5.4亿
+    // ★ 2026-10-10 新首页布局资源图标（5 种资源，与老布局同一套 20×20 图形）
+    resIcon (k) {
+      const ico = {
+        gold: '<svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M6.4 5.8 L10 10.3 L13.6 5.8" stroke-width="1.6"/><path d="M10 6 V14.2" stroke-width="1.6"/><path d="M7.6 8.9 H12.4" stroke-width="1.4"/><path d="M7.6 11.7 H12.4" stroke-width="1.4"/></g></svg>',
+        food: '<svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><g stroke="#FFD700" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M7.2 6.2 C6.7 5.4 7.3 4.1 7.9 3.5"/><path d="M12.8 6.2 C13.3 5.4 12.7 4.1 12.1 3.5"/></g><path d="M5 8.6 H15 C15 8.6 14.7 12.2 13.3 13.7 C12.2 14.8 10.9 15.4 10 15.4 C9.1 15.4 7.8 14.8 6.7 13.7 C5.3 12.2 5 8.6 5 8.6 Z" fill="#FFD700"/></svg>',
+        steel: '<svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M4.2 8.4 L6.6 15.6 H13.4 L15.8 8.4 Z" fill="#FFD700"/><path d="M5.6 10.2 H14.4" stroke="#C9AFF0" stroke-width="1.3" stroke-linecap="round"/></svg>',
+        oil: '<svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M10 3.6 C10 3.6 6.1 8.1 6.1 11.2 C6.1 13.5 7.8 15.3 10 15.3 C12.2 15.3 13.9 13.5 13.9 11.2 C13.9 8.1 10 3.6 10 3.6 Z" fill="#FFD700"/><circle cx="8.6" cy="11.4" r="0.9" fill="#C9AFF0"/></svg>',
+        rare: '<svg class="ezfy-ico" viewBox="0 0 20 20"><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#6C48A8"/><path d="M5.8 6.4 H14.2 L11.7 9.2 L10 15.6 L8.3 9.2 Z" fill="#FFD700"/><path d="M5.8 6.4 H10 L8.3 9.2 Z" fill="#C9AFF0"/></svg>'
+      }
+      return ico[k] || ''
+    },
     fmtProd (n) {
       const v = Number(n)
-      if (!isFinite(v)) return '0'
       const neg = v < 0
       const a = Math.abs(v)
       if (a >= 100000000) {
@@ -6319,6 +6444,123 @@ body.ezfy-ios .ezfy-page textarea {
 /* 首页内容容器：行距比原版 1.5 略紧一点（用户：「比之前紧凑了是吧，上下间隔大一点点」→ 取 1.45）。
    只作用于首页，不影响其它页面。 */
 .ezfy-page .home-body { line-height: 1.45; }
+
+/* ====================== 首页-新布局（战争主题简约版，2026-10-10） ====================== */
+/* 深色军旅面板：军绿底色 + 沙色文字 + 金色点缀；一屏放全功能、去重后的入口按钮。
+   只作用于首页新布局（.war-home），不影响其它页面。 */
+.ezfy-page .war-home {
+  margin-top: 6px;
+  padding: 8px 10px 10px;
+  background: linear-gradient(180deg, #383d2c, #262a1e);
+  border: 1px solid #5f6440;
+  border-radius: 8px;
+  color: #e9e4cc;
+  line-height: 1.35;
+}
+.ezfy-page .war-home a { color: #e8b84b; margin: 0 2px; }
+.ezfy-page .war-home a:hover { color: #ff6b5e; text-decoration: none; }
+/* 深色底上聊天/提示用色提亮一档，保证可读 */
+.ezfy-page .war-home .orange { color: #e0a83a; }
+.ezfy-page .war-home .gray { color: #a9a48c; }
+.ezfy-page .war-home .ezfy-ico { vertical-align: -5px; }
+/* 头部：城市 + 军衔/声望/军团/签到 */
+.ezfy-page .war-head {
+  border-bottom: 1px dashed #5f6440;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+.ezfy-page .war-head .city-name {
+  color: #f0cf6a;
+  font-weight: bold;
+  font-size: calc(var(--fs) + 1px);
+}
+.ezfy-page .war-stats {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+}
+.ezfy-page .war-stat { color: #cfc9ae; font-size: var(--fs); }
+/* 资源 5 列网格（图标 + 现有/每小时产量） */
+.ezfy-page .war-res {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+.ezfy-page .war-res-cell {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(232, 227, 200, 0.22);
+  border-radius: 6px;
+  padding: 3px 2px 4px;
+  text-align: center;
+  min-width: 0;
+}
+.ezfy-page .war-res-cell .ezfy-ico { width: 24px; height: 24px; }
+.ezfy-page .war-res-name { display: block; font-size: var(--fs); line-height: 1.2; }
+.ezfy-page .war-res-val {
+  margin-top: 1px;
+  font-size: 13px;
+  color: #f0ead2;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ezfy-page .war-res-val i { font-style: normal; color: #8d9272; margin: 0 1px; }
+.ezfy-page .war-res-ops {
+  grid-column: 1 / -1;
+  text-align: left;
+  font-size: var(--fs);
+  padding-top: 2px;
+}
+/* 人口/民心/税率 一行 */
+.ezfy-page .war-row2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0;
+}
+.ezfy-page .war-cell2 {
+  flex: 1 1 auto;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(232, 227, 200, 0.22);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: var(--fs);
+  color: #e9e4cc;
+  white-space: nowrap;
+}
+/* 功能入口按钮网格（4 列，去重后全部功能） */
+.ezfy-page .war-btns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.ezfy-page .war-btn {
+  display: block;
+  text-align: center;
+  padding: 5px 2px;
+  background: linear-gradient(180deg, #4d5238, #3a3f2b);
+  border: 1px solid #747a50;
+  border-radius: 4px;
+  color: #f0ead2 !important;
+  font-size: var(--fs);
+  margin: 0;
+}
+.ezfy-page .war-btn:hover {
+  color: #ffd76a !important;
+  border-color: #d8a94f;
+  text-decoration: none;
+}
+/* 世界聊天 */
+.ezfy-page .war-chat {
+  margin-top: 6px;
+  border-top: 1px dashed #5f6440;
+  padding-top: 4px;
+  color: #cfc9ae;
+}
+@media (max-width: 480px) {
+  .ezfy-page .war-res { grid-template-columns: repeat(3, 1fr); }
+  .ezfy-page .war-btns { grid-template-columns: repeat(3, 1fr); }
+}
 /* 军衔/排行页所有表格：数据水平 + 垂直居中（）*/
 /* ★ 排行页四个表格统一宽度（「表格有的大有的小，统一整齐」→ 又要求「太长占页面，改50%」）：
    width:50% 占 panel 一半宽度，table-layout:fixed 配合各表 colgroup 比例分列，长文本自动折行 */

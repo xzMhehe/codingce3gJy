@@ -64,6 +64,9 @@ func main() {
 	// ★ 2026-10-06 计谋「恫疑虚喝/隐真示假」kind 幂等补配：存量库已有计谋行且 kind=0，
 	//   会卡「暂未实现」；全量 seed（seedEzfySchemes 表非空即跳过）与 skip 分支都要跑。
 	seed.EnsureEzfySchemeKinds(db)
+	// ★ 2026-10-10 首页布局回填：home_layout NULL→0（默认新布局）；玩家 10000 保留老布局。
+	//   两条路径都跑（幂等），保证新老库一致。
+	seed.EnsureEzfyHomeLayout(db)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := router.Setup(db, cfg)

@@ -23,6 +23,10 @@
         <a href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a><br/>
         声望：{{ ezfy.profile.prestige }}<br/>
         军衔：{{ ezfy.rankName }}({{ ezfy.rankPost }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.myRankId)"></span></span><br/>
+        <!-- ★ 2026-10-10 首页布局单选（老布局/新布局）：即选即生效，简约无提示 -->
+        首页布局：
+        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout !== 2" @change="ezfy.setHomeLayout(1)"/>新布局</label>
+        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout === 2" @change="ezfy.setHomeLayout(2)"/>老布局</label><br/>
         军团：{{ (ezfy.myCorps && ezfy.myCorps.name) || '无' }}<br/>
         <!-- ★ 2026-09-27 统帅信息展示军团；有军团职务(军团长/副团长/参谋长)才展示职务 -->
         <template v-if="ezfy.myCorpsTitle">职务：{{ ezfy.myCorpsTitle }}<br/></template>

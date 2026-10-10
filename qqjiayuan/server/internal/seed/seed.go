@@ -3005,6 +3005,21 @@ func EnsureEzfySchemeKinds(db *gorm.DB) {
 		})
 }
 
+// EnsureEzfyHomeLayout 幂等回填 ezfy_profile.home_layout（两条路径都跑）。
+//
+// ★ 2026-10-10 首页布局（新布局/老布局）：
+//   1) AutoMigrate 新加的 home_layout 列在老行上是 NULL → 统一回填 0（= 默认新布局），
+//      否则 GORM 把 NULL 扫描进 int 会出错；
+//   2) 玩家 10000（首个管理员）保留现在的首页老布局 → 置 2。
+//      条件带 `home_layout IS NULL OR home_layout = 0`：玩家在统帅页手动切过布局后不被覆盖。
+func EnsureEzfyHomeLayout(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_profile") {
+		return
+	}
+	db.Exec("UPDATE ezfy_profile SET home_layout = 0 WHERE home_layout IS NULL")
+	db.Exec("UPDATE ezfy_profile SET home_layout = 2 WHERE user_id = 10000 AND (home_layout IS NULL OR home_layout = 0)")
+}
+
 // EnsureEzfyOfficerColumns 幂等补 ezfy_officer 的后加列（skip 分支必须调用）。
 //
 // ★★ 2026-10-06 线上事故（玩家反馈「将领没有进自己的城市战俘营」）：

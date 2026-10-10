@@ -75,6 +75,9 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 		"camp_free":       campFree,
 		"camp_item_count": h.itemCount(uid, ezfyItemCampSwitch),
 		"camp_item_id":    ezfyItemCampSwitch,
+
+		// ★ 2026-10-10 首页布局（1=新布局 2=老布局；0=未设置按新布局展示），统帅页单选切换
+		"home_layout": p.HomeLayout,
 	})
 }
 
@@ -179,6 +182,31 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 		msg += "（首次免费）"
 	}
 	resp.OK(c, gin.H{"msg": msg, "camp": req.Camp, "camp_name": ezfyCampName(req.Camp)})
+}
+
+// ProfileSetLayout POST /games/ezfy/profile/layout {layout} —— 首页布局切换（1=新布局 2=老布局）
+//
+// ★ 2026-10-10 统帅页「首页布局」单选：即改即生效（老布局/新布局），无额外确认弹窗。
+func (h *EzfyHandler) ProfileSetLayout(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	var req struct {
+		Layout int `json:"layout"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.Layout != 1 && req.Layout != 2 {
+		resp.ParamError(c, "布局只能是 1(新布局) 或 2(老布局)")
+		return
+	}
+	p := h.ensureProfile(uid)
+	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("home_layout", req.Layout)
+	name := "新布局"
+	if req.Layout == 2 {
+		name = "老布局"
+	}
+	resp.OK(c, gin.H{"msg": "首页已切换为" + name, "layout": req.Layout})
 }
 
 // ============ 军校免费刷新次数 ============

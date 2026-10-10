@@ -642,6 +642,8 @@ func Setup(db *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/profile/self", ezfyH.ProfileSelfInfo)
 				ezfyG.POST("/profile/rename", ezfyH.ProfileRename)
 				ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
+				// ★ 2026-10-10 首页布局切换（老布局/新布局，统帅页单选）
+				ezfyG.POST("/profile/layout", ezfyH.ProfileSetLayout)
 				// 军校：直接用招生简章刷新（不用跳背包）
 				ezfyG.POST("/acade/recruit/ticket", ezfyH.RecruitUseTicket)
 				// 游戏内好友（与家园好友完全分开）
