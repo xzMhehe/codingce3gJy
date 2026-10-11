@@ -87,10 +87,13 @@ func (h *EzfyHandler) addDiamond(uid uint, amount int64) error {
 
 // logDiamond 记录玩家钻石流水（2026-09-28 新增：管理端「数据管理 → 钻石流水」的数据来源，
 // 所有钻石变动点都应先落库钻石变动、再调这里记一条流水）。
-func (h *EzfyHandler) logDiamond(uid uint, change int64, reason string) {
+// 返回流水 ID：宝箱这类「先扣款、后抽奖」的场景，开箱结果要用它回填 extra（2026-10-11）。
+func (h *EzfyHandler) logDiamond(uid uint, change int64, reason string) uint {
 	var bal int64
 	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck("diamond", &bal)
-	h.DB.Create(&model.EzfyDiamondLog{UserId: uid, Change: change, Balance: bal, Reason: reason})
+	row := model.EzfyDiamondLog{UserId: uid, Change: change, Balance: bal, Reason: reason}
+	h.DB.Create(&row)
+	return row.ID
 }
 
 // createLoveCard 管理端发放为爱发电卡。

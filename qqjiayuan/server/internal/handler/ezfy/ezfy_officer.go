@@ -3872,6 +3872,7 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	}
 	total := price * int64(req.Count)
 	var prof model.EzfyProfile
+	var logID uint // ★ 2026-10-11 购买宝箱的钻石流水 ID：开箱结果要回填到这条流水的 extra
 	if useDiamond {
 		prof = h.ensureProfile(uid)
 		// ★★ 2026-10-08 并发卡控（用户反馈「秒点一次购买能到多个」，见 ezfySpendDiamond 注释）：
@@ -3880,8 +3881,8 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
 			return
 		}
-		// ★ 2026-09-28 钻石流水
-		h.logDiamond(uid, -total, "购买宝箱: "+chest.Name)
+		// ★ 2026-09-28 钻石流水（★ 2026-10-11 记下 ID，开箱后回填 extra=开出的道具）
+		logID = h.logDiamond(uid, -total, "购买宝箱: "+chest.Name)
 	} else {
 		// ★★ 2026-10-08 并发卡控：条件原子扣黄金（不再走 `city.Gold -= / saveCityRes` 的读-改-写）
 		if !h.ezfySpendGold(city.ID, total) {
@@ -3917,6 +3918,15 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	names := []string{}
 	for _, r := range results {
 		names = append(names, fmt.Sprint(r["name"]))
+	}
+	// ★ 2026-10-11 把开箱结果回填到扣款时那条钻石流水（管理端「数据管理→钻石流水」新增「开出道具」列）。
+	//   抽奖在扣款之后 → 只能先记流水再回填；extra 为空的历史行前端显示「—」。
+	if logID > 0 && len(names) > 0 {
+		extra := "获得：" + strings.Join(names, "、")
+		if rs := []rune(extra); len(rs) > 255 {
+			extra = string(rs[:255])
+		}
+		h.DB.Model(&model.EzfyDiamondLog{}).Where("id = ?", logID).Update("extra", extra)
 	}
 	// ★ 2026-10-04 库存/黄金/钻石都变了 → 失效宝箱缓存
 	ezfyChestCacheDel(uid)

@@ -736,7 +736,7 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 		//   updated_at/game_uid/current_city_id/rename_used/camp_used/recruit_free_limit/diamond/rank。
 		base := h.DB.Table("ezfy_diamond_logs").
 			Select("ezfy_diamond_logs.id, ezfy_diamond_logs.user_id, ezfy_diamond_logs.change, " +
-				"ezfy_diamond_logs.balance, ezfy_diamond_logs.reason, " +
+				"ezfy_diamond_logs.balance, ezfy_diamond_logs.reason, ezfy_diamond_logs.extra, " +
 				"DATE_FORMAT(ezfy_diamond_logs.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, ezfy_profile.nickname").
 			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.user_id = ezfy_diamond_logs.user_id")
 		if word != "" {

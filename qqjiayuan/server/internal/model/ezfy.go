@@ -630,9 +630,12 @@ func (EzfyProfile) TableName() string { return "ezfy_profile" }
 // EzfyDiamondLog 玩家钻石流水（2026-09-28 新增：管理端「数据管理 → 钻石流水」查看的数据来源，
 // 所有钻石变动点（商城购买/宝箱/装备/交易所/管理端发放/为爱发电卡）都会写入一条）。
 type EzfyDiamondLog struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserId    uint      `gorm:"index;comment:玩家ID" json:"user_id"`
-	Change    int64     `gorm:"comment:变动数量(+入/-出)" json:"change"`
+	ID     uint  `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId uint  `gorm:"index;comment:玩家ID" json:"user_id"`
+	Change int64 `gorm:"comment:变动数量(+入/-出)" json:"change"`
+	// ★ 2026-10-11 「购买宝箱」这类流水的开箱结果在扣款之后才产生 → 先记流水、开箱后回填这里，
+	//   管理端「数据管理→钻石流水」加一列展示（历史行留空）。
+	Extra     string    `gorm:"type:varchar(255);comment:附加信息(宝箱开出的道具)" json:"extra"`
 	Balance   int64     `gorm:"comment:变动后余额" json:"balance"`
 	Reason    string    `gorm:"type:varchar(100);comment:变动原因" json:"reason"`
 	CreatedAt time.Time `gorm:"comment:发生时间" json:"created_at"`
