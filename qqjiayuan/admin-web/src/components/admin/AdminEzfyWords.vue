@@ -107,10 +107,19 @@ export default {
     save () {
       if (!this.form.word.trim()) { this.$message.error('敏感词不能为空'); return }
       this.saving = true
+      const isNew = !this.formId
       const done = r => {
         this.saving = false
-        if (r.code === 0) { this.dlg = false; this.$message.success(r.data.msg || '已保存'); this.load() }
-        else this.$message.error(r.msg)
+        if (r.code === 0) {
+          this.dlg = false
+          this.$message.success(r.data.msg || '已保存')
+          // ★ 2026-10-11 新增后清空搜索词并回到第 1 页：
+          //   列表按 id DESC（新加的排最前）。若沿用上次的搜索条件 / 页码，刚加的词会被筛掉，
+          //   列表看起来「只剩一条 / 其他数据都没了」（用户反馈「新增了分页其他数据就没有了」）。
+          if (isNew) this.word = ''
+          this.page = 1
+          this.load()
+        } else this.$message.error(r.msg)
       }
       if (this.formId) api.put('/admin/ezfy-word-filters/' + this.formId, this.form).then(done)
       else api.post('/admin/ezfy-word-filters', this.form).then(done)
@@ -118,7 +127,12 @@ export default {
     remove (row) {
       this.$confirm('删除敏感词「' + row.word + '」？', '提示', { type: 'warning' }).then(() => {
         api.delete('/admin/ezfy-word-filters/' + row.id).then(r => {
-          if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.load() } else this.$message.error(r.msg)
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已删除')
+            // ★ 2026-10-11 删掉当前页最后一条 → 回退一页，避免停在空页（列表看起来「数据没了」）
+            if (this.list.length <= 1 && this.page > 1) this.page--
+            this.load()
+          } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     },
@@ -127,7 +141,14 @@ export default {
       this.saving = true
       api.post('/admin/ezfy-word-filters/bulk', { text: this.bulkText }).then(r => {
         this.saving = false
-        if (r.code === 0) { this.bulkDlg = false; this.bulkText = ''; this.$message.success(r.data.msg || '导入完成'); this.load() }
+        if (r.code === 0) {
+          this.bulkDlg = false
+          this.bulkText = ''
+          this.$message.success(r.data.msg || '导入完成')
+          // ★ 2026-10-11 批量导入的词同样排在最前 → 回到第 1 页才能看到
+          this.page = 1
+          this.load()
+        }
         else this.$message.error(r.msg)
       })
     }
