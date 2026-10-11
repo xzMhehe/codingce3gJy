@@ -4473,6 +4473,13 @@ func (h *EzfyHandler) Convene(c *gin.Context) {
 		"food": city.Food,
 		"pop":  city.Pop,
 	})
+	// ★ 2026-10-11 活动监测埋点：召集成功才写（best-effort，失败不影响玩家响应）。
+	//   popGain 是已按硬上限/民居上限截断后的**实际加入人口**，一次召集一行。
+	if err := h.DB.Create(&model.EzfyConveneLog{
+		UserId: uid, CityId: int64(city.ID), PopGain: popGain,
+	}).Error; err != nil {
+		log.Printf("ezfy 召集埋点写入失败 uid=%d: %v", uid, err)
+	}
 	resp.OK(c, gin.H{"msg": conveneMsg, "pop": city.Pop, "pop_max": city.PopMax, "gain": popGain})
 }
 

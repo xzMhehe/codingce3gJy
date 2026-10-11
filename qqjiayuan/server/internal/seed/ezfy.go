@@ -152,6 +152,14 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_city_tech", "idx_city_tech_status", "city_id,status", false)
 	ensureEzfyIndex(db, "ezfy_officer", "idx_officer_city_position", "city_id,position", false)
 
+	// ★ 2026-10-11 管理端「活动监测」时间窗口聚合提速：
+	//   ezfy_order 征服/掠夺按 order_type IN (2,3) + created_at 区间扫描；
+	//   ezfy_train_queue 造兵按 start_time(ms) 区间扫描（无 created_at）；
+	//   ezfy_convene_log 召集全局窗口 COUNT（复合索引 user_id 打头，窗口扫描走单列）。
+	ensureEzfyIndex(db, "ezfy_order", "idx_order_type_created", "order_type,created_at", false)
+	ensureEzfyIndex(db, "ezfy_train_queue", "idx_train_start", "start_time", false)
+	ensureEzfyIndex(db, "ezfy_convene_log", "idx_convene_created", "created_at", false)
+
 	// ★★ 2026-10-10 原来这里还建 4 个**家园论坛**索引（threads/replies）——
 	//   二战拆到独立库后，这条函数跑在二战库上，家园表不在 → 每次启动刷 4 条
 	//   `Table 'qq_ezzt.threads' doesn't exist` 噪音。已挪到 EnsureHomeForumIndexes，

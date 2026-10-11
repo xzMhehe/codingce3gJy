@@ -69,6 +69,7 @@ import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
 import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
 import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
+import AdminEzfyMonitor from './components/admin/AdminEzfyMonitor.vue'
 import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
 import AdminEzfyBuildings from './components/admin/AdminEzfyBuildings.vue'
 import AdminEzfyBuildQueue from './components/admin/AdminEzfyBuildQueue.vue'
@@ -300,6 +301,8 @@ export const menu = [
           //   支持手动推进一回合、一键自动打完、强制结算/清理卡死战场（perm 复用 module:ezfyLogs）
           { key: 'ezfyBattles', name: '战斗队列', icon: 'el-icon-s-flag', component: AdminEzfyBattles, perm: 'module:ezfyLogs' },
           { key: 'ezfySystem', name: '系统管理', icon: 'el-icon-s-tools', component: AdminEzfySystem, perm: 'module:ezfySystem' },
+          // ★ 2026-10-11 活动监测：造兵/征服/掠夺/召集次数排行（perm 复用 module:ezfySystem）
+          { key: 'ezfyMonitor', name: '活动监测', icon: 'el-icon-data-line', component: AdminEzfyMonitor, perm: 'module:ezfySystem' },
           { key: 'ezfyData', name: '数据管理', icon: 'el-icon-data-analysis', component: AdminEzfyData, perm: 'module:ezfyData' },
         ]
       }

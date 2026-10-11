@@ -656,6 +656,18 @@ type EzfyItemUseLog struct {
 
 func (EzfyItemUseLog) TableName() string { return "ezfy_item_use_logs" }
 
+// EzfyConveneLog 玩家召集人口流水（2026-10-11 新增：管理端「活动监测」的召集次数数据来源，
+// Convene 召集成功时写入一行，用于统计最近时间段内玩家的召集人口次数）。
+type EzfyConveneLog struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId    uint      `gorm:"index:idx_convene_user_time;comment:玩家ID" json:"user_id"`
+	CityId    int64     `gorm:"comment:城市ID" json:"city_id"`
+	PopGain   int64     `gorm:"comment:本次实际加入人口" json:"pop_gain"`
+	CreatedAt time.Time `gorm:"index:idx_convene_user_time;comment:召集时间" json:"created_at"`
+}
+
+func (EzfyConveneLog) TableName() string { return "ezfy_convene_log" }
+
 // ============ 运行时表 ============
 
 type EzfyCity struct {

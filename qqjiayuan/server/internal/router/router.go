@@ -1145,6 +1145,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-stats", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyStats)
 				admin.GET("/ezfy-server", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServer)
 				admin.POST("/ezfy-server/maintenance", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServerSet)
+				// ★ 2026-10-11 活动监测（造兵/征服/掠夺/召集次数排行，perm 复用系统管理）
+				admin.GET("/ezfy-monitor", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyMonitor)
 
 				// ---- 城市管理 ----
 				admin.GET("/ezfy-cities", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCities)
