@@ -68,7 +68,7 @@
     </template>
     <template v-else-if="ezfy.cur === 'treasure'">
         <div class="panel">
-          <div class="panel-title">宝物 <a href="javascript:;" @click="ezfy.loadBag()">[刷新]</a></div>
+          <div class="panel-title">宝物({{ ezfy.treasureTotal }}/{{ ezfy.treasureMax }}) <a href="javascript:;" @click="ezfy.loadBag()">[刷新]</a></div>
           <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚；也可出售给系统换 {{ ezfy.resNames.gold }}。</div>
           <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'tr' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}

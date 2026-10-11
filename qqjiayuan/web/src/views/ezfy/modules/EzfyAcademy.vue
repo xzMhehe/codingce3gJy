@@ -448,6 +448,7 @@
           参谋部({{ ezfy.officerData.staff_level }}级)
           <a href="javascript:;" @click="ezfy.switchAcade('search')">去招募</a> |
           战俘营({{ ezfy.officerData.captive_used || 0 }}/{{ ezfy.officerData.captive_capacity || 0 }})
+          <a v-if="ezfy.captiveOfficers.length" href="javascript:;" @click="ezfy.releaseAllCaptives">[一键释放]</a>
         </div>
         <table class="ezfy-plain-table">
           <tr><th>姓名</th><th>等级</th><th>星级</th><th>后/军/学</th><th>费用</th><th>招募</th></tr>

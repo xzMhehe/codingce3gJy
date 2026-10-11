@@ -315,6 +315,15 @@ type EzfyCfgLimit struct {
 	//   商城单次购买数量上限（下限恒为 1）。线上现值 99。
 	//   读不到或 <= 0 时回落默认值（0 无意义 = 等于禁止购买）。
 	MallBuyMax int `gorm:"default:99;comment:Mall购买上限" json:"mall_buy_max"`
+	// ★ 2026-10-11 用户规则：「玩家背包道具上限卡控，默认 5000，超过就不能再买，二战系统配置可配置」：
+	//   同一种道具在玩家背包里的**持有上限**（ezfy_item.count 不得超过它）。
+	//   Buy 时按「已有 + 本次购买 <= 上限」卡控；<= 0 无意义 → 读取端回落默认 5000。
+	//   已超上限的存量不做回溯处理（「超过的暂时先这样」）。
+	BagItemMax int `gorm:"default:5000;comment:背包单件道具上限" json:"bag_item_max"`
+	// ★ 2026-10-11 用户规则：「宝物库存上限 5000，超过 5000 采集的时候停止给提示，打地掉落宝物超上限也提示」：
+	//   玩家**未穿戴**的采集宝物（9 种珠宝）持有上限。采集结算 / 打地掉落宝物时卡控；
+	//   <= 0 无意义 → 读取端回落默认 5000。已超上限的存量不回溯。
+	TreasureMax int `gorm:"default:5000;comment:宝物库存上限" json:"treasure_max"`
 
 	// ★ 2026-09-28 用户规则：「安抚 消费黄金 5w 降低民怨 2 增加民心 1 15分钟可安抚一次」
 	//   四个值都可由管理端调整；<= 0 时回落默认（5 万 / 2 / 1 / 15 分钟）。
@@ -922,8 +931,8 @@ type EzfyBattle struct {
 func (EzfyBattle) TableName() string { return "ezfy_battle" }
 
 type EzfyReport struct {
-	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserID     uint   `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
+	ID     uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID uint `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
 	// ★ 2026-10-07 补 default:0：此前无 default → AutoMigrate 建的是可空列，
 	//   存量 6000+ 行会变 NULL，GORM 扫进 int64 直接报 converting NULL to int64。
 	CityId     int64  `gorm:"index:idx_user_city;default:0;comment:所属城市ID(军情按当前城过滤, 0=旧数据待解析)" json:"city_id"`
@@ -934,10 +943,10 @@ type EzfyReport struct {
 	//   report_type：采集/运输/增援/派遣共用一个编号）。写战报时由 EzfyReportTypeName 落库，
 	//   存量行用 cmd/backfilltype 一次性回填，避免管理端捞整表进内存过滤。
 	//   二级索引 (type_name,id) 由 seed.ensureEzfyIndex 幂等创建（AutoMigrate 对存量表不补二级索引）。
-	TypeName   string `gorm:"type:varchar(20);comment:战报类型名" json:"type_name"`
-	Content    string `gorm:"type:longtext;comment:内容" json:"content"`
-	Detail     string `gorm:"type:longtext;comment:Detail" json:"detail"`
-	IsRead     int    `gorm:"default:0;comment:是否已读" json:"is_read"`
+	TypeName string `gorm:"type:varchar(20);comment:战报类型名" json:"type_name"`
+	Content  string `gorm:"type:longtext;comment:内容" json:"content"`
+	Detail   string `gorm:"type:longtext;comment:Detail" json:"detail"`
+	IsRead   int    `gorm:"default:0;comment:是否已读" json:"is_read"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
@@ -983,7 +992,8 @@ func (EzfyOccupy) TableName() string { return "ezfy_occupy" }
 // EzfyRansom 赎城请求：被占城市原主人发起赎回，占领方同意后返还城市、金额归占领方。
 //
 // ★ 2026-10-07 新增。发起即扣钻石（押金），拒绝/撤销退回，同意后金额转给占领方。
-//   Status: 0 待处理 / 1 已同意(城市已返还) / 2 已拒绝(押金已退) / 3 已撤销(押金已退)
+//
+//	Status: 0 待处理 / 1 已同意(城市已返还) / 2 已拒绝(押金已退) / 3 已撤销(押金已退)
 type EzfyRansom struct {
 	ID        uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	CityId    int64  `gorm:"comment:被赎城市ID" json:"city_id"`

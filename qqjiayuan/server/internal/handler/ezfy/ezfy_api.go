@@ -2219,6 +2219,15 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 	h.cfgs()
 	var items []model.EzfyCfgItem
 	h.DB.Order("id ASC").Find(&items)
+	// ★ 2026-10-11 玩家各道具持有量（前端据此卡控「背包上限」，避免买超）——一次查询建 map
+	owned := map[int]int{}
+	{
+		var its []model.EzfyItem
+		h.DB.Where("user_id = ?", uid).Find(&its)
+		for _, x := range its {
+			owned[x.CfgId] = x.Count
+		}
+	}
 	views := make([]gin.H, 0, len(items))
 	cats := []string{}
 	seen := map[string]bool{}
@@ -2245,6 +2254,8 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 			"dual_pay": payCur == "" && it.PriceGold > 0 && it.PriceDiamond > 0,
 			// ★ 库存 -1 = 无限可购（前端显示「无限」）
 			"unlimited": ezfyUnlimitedStock(it.Stock),
+			// ★ 2026-10-11 当前持有量（前端据此卡控背包上限：已有 + 购买 <= bag_max）
+			"have": owned[it.ID],
 		})
 	}
 	prof := h.ensureProfile(uid)
@@ -2253,6 +2264,9 @@ func (h *EzfyHandler) Mall(c *gin.Context) {
 		// ★ 单次购买数量上限（管理端「建筑上限配置」页维护，线上现值 99）
 		//   前端输入框 max / 前端校验都用它，避免和写死的 99 打架。
 		"buy_max": ezfyMallBuyMaxCfg(),
+		// ★ 2026-10-11 背包单件道具上限（默认 1000，管理端「系统配置」页可维护）：
+		//   前端据此限制「已有 + 本次购买 <= bag_max」。
+		"bag_max": ezfyBagItemMax(),
 	})
 }
 
@@ -2302,6 +2316,18 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			}
 			return
 		}
+	}
+	// ★ 2026-10-11 背包单件道具上限卡控（用户规则：默认 1000，超过就不能再买）。
+	//   放在「扣钱/扣库存」之前先拦一次，给出友好提示；真正的原子卡控在 addItemCapped。
+	bagMax := ezfyBagItemMax()
+	have := h.itemCount(uid, req.CfgId)
+	if have+req.Count > bagMax {
+		left := bagMax - have
+		if left < 0 {
+			left = 0
+		}
+		resp.ParamError(c, fmt.Sprintf("「%s」背包上限 %d 个，当前已有 %d 个，最多再买 %d 个", cfg.Name, bagMax, have, left))
+		return
 	}
 	// ★ 支付渠道判定（第十二轮：支持「黄金 / 钻石」双渠道道具）
 	//
@@ -2377,7 +2403,15 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 			}
 			return
 		}
-		h.addItem(uid, req.CfgId, req.Count)
+		if !h.addItemCapped(uid, req.CfgId, req.Count, bagMax) {
+			// 并发下刚好被买满 → 回滚已扣的钻石与库存，避免「花了钱拿不到货」
+			h.ezfyRefundDiamond(prof.ID, cost)
+			if !unlimited {
+				h.ezfyRefundStock(&model.EzfyCfgItem{}, req.CfgId, req.Count)
+			}
+			resp.ParamError(c, fmt.Sprintf("「%s」已达背包上限 %d 个", cfg.Name, bagMax))
+			return
+		}
 		resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d（消耗%d钻石）", cfg.Name, req.Count, cost),
 			"stock_left": stockLeft(unlimited, stock, req.Count), "diamond": prof.Diamond - cost})
 		return
@@ -2407,7 +2441,15 @@ func (h *EzfyHandler) Buy(c *gin.Context) {
 		}
 		return
 	}
-	h.addItem(uid, req.CfgId, req.Count)
+	if !h.addItemCapped(uid, req.CfgId, req.Count, bagMax) {
+		// 并发下刚好被买满 → 回滚已扣的黄金与库存
+		h.ezfyRefundGold(city.ID, cost)
+		if !unlimited {
+			h.ezfyRefundStock(&model.EzfyCfgItem{}, req.CfgId, req.Count)
+		}
+		resp.ParamError(c, fmt.Sprintf("「%s」已达背包上限 %d 个", cfg.Name, bagMax))
+		return
+	}
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("购买成功: %s×%d", cfg.Name, req.Count),
 		"stock_left": stockLeft(unlimited, stock, req.Count)})
 }
@@ -2566,7 +2608,9 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		}
 		trViews = append(trViews, gin.H{"cfg_id": a.CfgId, "name": cfg.Name, "count": a.Cnt})
 	}
-	resp.OK(c, gin.H{"items": views, "treasures": trViews, "officers": officers, "skills": skills})
+	resp.OK(c, gin.H{"items": views, "treasures": trViews, "officers": officers, "skills": skills,
+		// ★ 2026-10-11 宝物库存上限（默认 5000，管理端「系统配置」可维护）：前端展示「宝物(N/上限)」
+		"treasure_max": ezfyTreasureMax()})
 }
 
 func (h *EzfyHandler) UseItem(c *gin.Context) {
@@ -3031,17 +3075,31 @@ func (h *EzfyHandler) TreasureSign(c *gin.Context) {
 		city = h.getOrCreateCity(uid) // 福利页必有游戏存档
 	}
 	var won []string
+	// ★ 2026-10-11 宝物库存上限（默认 5000，二战系统配置可配）：装不下的不再发放，给一句简约提示。
+	left := h.ezfyTreasureLeft(uid)
+	skipped := 0
 	for i := 0; i < qty; i++ {
 		name := names[rand.Intn(len(names))]
-		if cfg := ezfyEquipCfgByName(name); cfg != nil {
-			h.addEquipment(&city, cfg)
-			won = append(won, name)
+		cfg := ezfyEquipCfgByName(name)
+		if cfg == nil {
+			continue
 		}
+		if left <= 0 {
+			skipped++
+			continue
+		}
+		h.addEquipment(&city, cfg)
+		left--
+		won = append(won, name)
 	}
 	// ★ 2026-09-28 展示签到领到的具体宝物名 → 落库, 前端已签时展示
 	h.DB.Model(&model.EzfyTreasureSign{}).Where("user_id = ? AND sign_date = ?", uid, today).
 		Update("n_reward", strings.Join(won, ","))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("宝物签到成功(连续%d天), 获得%d件宝物: %s", count, qty, strings.Join(won, ","))})
+	msg := fmt.Sprintf("宝物签到成功(连续%d天), 获得%d件宝物: %s", count, len(won), strings.Join(won, ","))
+	if skipped > 0 {
+		msg += fmt.Sprintf("（宝物已达上限 %d, %d 件未能入包）", ezfyTreasureMax(), skipped)
+	}
+	resp.OK(c, gin.H{"msg": msg})
 }
 
 func (h *EzfyHandler) Gift(c *gin.Context) {

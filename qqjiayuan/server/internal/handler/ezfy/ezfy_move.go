@@ -33,11 +33,15 @@ import (
 // ★ 第十二轮起：迁城**消耗对应道具**，不再扣黄金（道具本身可用黄金或钻石在商城购买）。
 const ezfyMoveCityGoldCost = 200000 // 保留常量：道具的默认黄金定价参考值
 
-// 三种迁城道具的 CfgId（见 seed/ezfy.go seedEzfyMoveItems）
+// 三种迁城道具名（见 seed/ezfy.go seedEzfyMoveItems）
+//
+// ★★ 2026-10-10 道具 cfg_id 已全体 +1000（1~41 → 1001~1041），这里改为**按名字解析**、
+// 不再硬编码数字 ID —— 与集结令/信号弹同款（见 ezfy_geo.go 的 itemIDByName）。
+// 否则以后调号段会静默失效（查不到 → 持有量恒 0 → 迁城永远提示「背包里没有」）。
 const (
-	ezfyItemMoveCity    = 20 // 迁城计划     ItemType 16
-	ezfyItemMoveCityAdv = 21 // 高级迁城计划 ItemType 17
-	ezfyItemMoveCitySea = 22 // 沿海迁城计划 ItemType 18
+	ezfyMoveItemNameLow = "迁城计划"   // ItemType 16
+	ezfyMoveItemNameAdv = "高级迁城计划" // ItemType 17
+	ezfyMoveItemNameSea = "沿海迁城计划" // ItemType 18
 )
 
 // 道具 ItemType（与 ezfy_cfg_item.item_type 对应）
@@ -61,18 +65,21 @@ const (
 	ezfyItemTypeTechSpeedPct  = 26
 )
 
-// ezfyMoveKinds 三种迁城方式 → 所需道具 cfgId + 展示名
+// ezfyMoveKinds 三种迁城方式 → 所需道具名 + 展示名
 type ezfyMoveKind struct {
-	Code    string // low / high / sea
-	ItemId  int    // 需要的道具 cfgId
-	Label   string // 道具名
-	PickSea bool   // 落点是否必须是沿海平原（海城）
+	Code     string // low / high / sea
+	ItemName string // 所需道具名（按名字解析 cfg_id，别硬编码数字）
+	Label    string // 道具展示名
+	PickSea  bool   // 落点是否必须是沿海平原（海城）
 }
 
+// ItemID 该迁城方式所需道具的 cfg_id（按名字解析；0 = 配置里没有）。
+func (k ezfyMoveKind) ItemID() int { return ezfyCfg.itemIDByName(k.ItemName) }
+
 var ezfyMoveKinds = []ezfyMoveKind{
-	{"low", ezfyItemMoveCity, "迁城计划", false},
-	{"high", ezfyItemMoveCityAdv, "高级迁城计划", false},
-	{"sea", ezfyItemMoveCitySea, "沿海迁城计划", true},
+	{"low", ezfyMoveItemNameLow, "迁城计划", false},
+	{"high", ezfyMoveItemNameAdv, "高级迁城计划", false},
+	{"sea", ezfyMoveItemNameSea, "沿海迁城计划", true},
 }
 
 func ezfyMoveKindOf(code string) *ezfyMoveKind {
@@ -133,8 +140,9 @@ func (h *EzfyHandler) MoveInfo(c *gin.Context) {
 	// 三种道具的持有数量 + 商城定价（前端直接展示「持有 x 个 / 商城 xx 黄金」）
 	items := make([]gin.H, 0, len(ezfyMoveKinds))
 	for _, k := range ezfyMoveKinds {
-		cfg := ezfyCfg.item(k.ItemId)
-		it := gin.H{"code": k.Code, "item_id": k.ItemId, "label": k.Label, "count": h.itemCount(uid, k.ItemId)}
+		itemID := k.ItemID()
+		cfg := ezfyCfg.item(itemID)
+		it := gin.H{"code": k.Code, "item_id": itemID, "label": k.Label, "count": h.itemCount(uid, itemID)}
 		if cfg != nil {
 			it["price_gold"] = cfg.PriceGold
 			it["price_diamond"] = cfg.PriceDiamond
@@ -184,7 +192,8 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	h.refreshCity(uid, city)
 
 	// 先校验道具，避免「扣了资源才发现道具不够」
-	if have := h.itemCount(uid, kind.ItemId); have < 1 {
+	itemID := kind.ItemID()
+	if have := h.itemCount(uid, itemID); have < 1 {
 		resp.ParamError(c, fmt.Sprintf("背包里没有【%s】，请先到商城购买", kind.Label))
 		return
 	}
@@ -248,7 +257,7 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	city.X, city.Y = tx, ty
 	h.saveCityRes(city)
 	// ★ 消耗道具（不是扣黄金）
-	h.consumeItem(uid, kind.ItemId, "城市迁移")
+	h.consumeItem(uid, itemID, "城市迁移")
 	// 旧坐标上的「玩家城」地图区域记录要清掉，否则地图还显示那里有城
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
 

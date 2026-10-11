@@ -668,13 +668,25 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 		//   只按下面 `aw.Treasures`（活动野地配置里手动配的必掉宝物）发放。
 		// ★ 2026-09-29 必掉宝物多行配置 [[cfg_id,数量]]：胜利后按配置掉落多件（增强宝，保证进背包）
 		if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Treasures) != "" {
+			// ★ 2026-10-11 宝物库存上限（默认 5000，二战系统配置可配）：装不下的不入包，战报给简约提示。
+			left := h.ezfyTreasureLeft(city.UserID)
 			for _, tr := range parseActWildTreasures(aw.Treasures) {
 				if e := ezfyCfg.equipment(tr[0]); e != nil {
-					for k := 0; k < tr[1]; k++ {
+					give := tr[1]
+					if give > left {
+						give = left
+					}
+					for k := 0; k < give; k++ {
 						h.addEquipment(city, e)
 					}
-					report += fmt.Sprintf("\n掉落宝物: %s ×%d", e.Name, tr[1])
-					h.ezfySysChat("恭喜玩家 %s 缴获宝物：%s", h.ezfyProfileName(city.UserID), e.Name)
+					left -= give
+					if give > 0 {
+						report += fmt.Sprintf("\n掉落宝物: %s ×%d", e.Name, give)
+						h.ezfySysChat("恭喜玩家 %s 缴获宝物：%s", h.ezfyProfileName(city.UserID), e.Name)
+					}
+					if give < tr[1] {
+						report += fmt.Sprintf("\n宝物已达上限(%d), %s×%d 未能入包", ezfyTreasureMax(), e.Name, tr[1]-give)
+					}
 				}
 			}
 		}

@@ -57,6 +57,14 @@
               <template slot="label">商城单次购买上限<el-tooltip placement="top" :content="tips.mall_buy_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
             </el-form-item>
+            <el-form-item>
+              <template slot="label">背包道具上限<el-tooltip placement="top" :content="tips.bag_item_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.bag_item_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">宝物库存上限<el-tooltip placement="top" :content="tips.treasure_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.treasure_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-09-28 军校刷新周期：按小时(默认)/按天 切换 -->
             <el-form-item>
               <template slot="label">军校刷新周期<el-tooltip placement="top" :content="tips.recruit_cycle_mode"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
@@ -317,6 +325,8 @@ export default {
       form: {
         military_max: 33, resource_max: 33, house_max: 10, factory_max: 0,
         notice_home_count: 1, gather_max_per_order: 50, sell_price_max: 100, mall_buy_max: 9999,
+        bag_item_max: 5000,
+        treasure_max: 5000,
         officer_cap_per_military: 2000, officer_speed_per_military: 0.1,
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
@@ -370,6 +380,8 @@ export default {
         officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
         officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
         mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 99',
+        bag_item_max: '同一种道具在玩家背包里的持有上限：购买/掉落时按「已有 + 本次 ≤ 上限」卡控，默认 5000',
+        treasure_max: '未穿戴采集宝物的持有上限：采集结算/打地掉落宝物时按此卡控，满了停止采集并提示，默认 5000',
         troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
         wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 3 天',
         dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 1 小时',
@@ -470,6 +482,8 @@ export default {
             officer_speed_per_military: (r.data.officer_speed_per_military === undefined || r.data.officer_speed_per_military === null)
               ? 0.1 : r.data.officer_speed_per_military,
             mall_buy_max: pos(r.data.mall_buy_max, 9999),
+            bag_item_max: pos(r.data.bag_item_max, 5000),
+            treasure_max: pos(r.data.treasure_max, 5000),
             troop_max: pos(r.data.troop_max, 1000000000),
             wound_expire_days: pos(r.data.wound_expire_days, 5),
             dispatch_period_h: pos(r.data.dispatch_period_h, 4),

@@ -30,6 +30,12 @@ func (h *EzfyAdmin) home() *gorm.DB {
 	return h.DB
 }
 
+// cfgs 管理端也需要配置缓存（按名字解析道具 cfg_id 等，见 ezfyItemRecruitTicket）。
+//
+// ★ 配置缓存 ezfyCfg 是**包级全局**，与 EzfyHandler 共用：谁先到谁加载，已加载时 load 为 no-op。
+//   这里只保证「首次访问管理端时也会加载」，不重复跑启动迁移（那些挂在 EzfyHandler.cfgs 上）。
+func (h *EzfyAdmin) cfgs() { ezfyCfg.load(h.DB) }
+
 // pageOf 通用分页参数：page 从 1 起，size 默认 defSize（1~100），返回 page、offset、size。
 // （handler 包 user.go 同款，这里复制一份，让 ezfy 包不依赖 handler 包。）
 func pageOf(c *gin.Context, defSize int) (int, int, int) {

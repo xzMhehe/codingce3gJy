@@ -29,7 +29,7 @@ import (
 //
 //	1 = 待生效   2 = 交战中   3 = 已结束
 const (
-	ezfyCorpsWarDelayHours    = 2 // 宣战后多少小时生效（★ 2026-10-05 12h → 2h）
+	ezfyCorpsWarDelayHours    = 2  // 宣战后多少小时生效（★ 2026-10-05 12h → 2h）
 	ezfyCorpsWarDurationHours = 36 // 生效窗口（第 2~38 小时，共 36 小时；有效期不变）
 	ezfyCorpsWarTotalHours    = 48 // 宣战后多少小时整场结束
 	ezfyCorpsWarPointOrder2   = 10 // 掠夺获胜：个人/军团积分 +10
@@ -630,6 +630,14 @@ func (h *EzfyHandler) CorpsMallBuy(c *gin.Context) {
 	if item.Stock >= 0 && item.Sold+req.Count > item.Stock {
 		resp.ParamError(c, "库存不足")
 		return
+	}
+	// ★ 2026-10-11 背包单件上限（默认 1000，二战系统配置可配）：
+	//   道具类商品在**扣军团积分之前**先卡，避免「扣了积分却拿不到货」。
+	if item.Kind == 2 {
+		if have := h.itemCount(uid, item.ItemId); have+item.ItemCount*req.Count > ezfyBagItemMax() {
+			resp.ParamError(c, fmt.Sprintf("「%s」背包已满（上限 %d 个）", item.Name, ezfyBagItemMax()))
+			return
+		}
 	}
 	cost := item.Price * int64(req.Count)
 	// ★ 扣个人军团积分：原子表达式 + points >= cost 条件，防并发超扣

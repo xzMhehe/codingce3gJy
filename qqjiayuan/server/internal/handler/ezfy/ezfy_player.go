@@ -75,7 +75,9 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 	go func() { // 军官数 / 野地数（跨城）
 		defer wg2.Done()
 		if len(cityIds) > 0 {
-			h.DB.Model(&model.EzfyOfficer{}).Where("city_id IN ?", cityIds).Count(&officerCount)
+			// ★ 2026-10-11 用户规则「统帅信息 军官数量不算 战俘」：
+			//   军官数只数在职（is_captive = 0），战俘营里的俘虏不计入。
+			h.DB.Model(&model.EzfyOfficer{}).Where("city_id IN ? AND is_captive = 0", cityIds).Count(&officerCount)
 			h.DB.Model(&model.EzfyWildland{}).Where("city_id IN ?", cityIds).Count(&wildCount)
 		}
 	}()

@@ -196,6 +196,13 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("wound_heal_divisor", 50)
 		// ★ 商城单次购买上限（「原来卡控 1-99，改成可配置的」，2026-09-26 按线上现值 99）
 		addLimitCol("mall_buy_max", 99)
+		// ★ 2026-10-11 「玩家背包道具上限卡控，默认 5000，超过就不能再买」：
+		//   同一种道具的持有上限（0 无意义 → 回填默认 5000）。★ 当天由 1000 上调为 5000。
+		addLimitCol("bag_item_max", 5000)
+		// ★ 2026-10-11 「宝物库存上限 5000」：未穿戴采集宝物的持有上限（0 无意义 → 回填默认 5000）。
+		addLimitCol("treasure_max", 5000)
+		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
+		ezfyBumpBagItemMaxDefault(db)
 		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
 		addLimitCol("convene_food_cost", 100000)
 		addLimitCol("convene_pop_gain", 100000)
@@ -2835,10 +2842,11 @@ func seedShop(db *gorm.DB) {
 // EnsureEzfyRansomTable 幂等补建 ezfy_ransom 赎城请求表。
 //
 // ★ 2026-10-07 线上事故：ezfy_ransom 只注册在 seed.Run 的 AutoMigrate 列表里，
-//   「多机共享库（config 里 seed.skip: true）」启动会跳过整个 seed.Run → 表永远建不出来，
-//   赎城查询/发起直接报 `Error 1146 (42S02): Table 'qq_jiayuan.ezfy_ransom' doesn't exist`。
-//   与 EnsureEzfyLimitColumns 同理：server 启动的 skip 分支也要跑这一段
-//   （HasTable 幂等，两台同时启动也不会冲突）。
+//
+//	「多机共享库（config 里 seed.skip: true）」启动会跳过整个 seed.Run → 表永远建不出来，
+//	赎城查询/发起直接报 `Error 1146 (42S02): Table 'qq_jiayuan.ezfy_ransom' doesn't exist`。
+//	与 EnsureEzfyLimitColumns 同理：server 启动的 skip 分支也要跑这一段
+//	（HasTable 幂等，两台同时启动也不会冲突）。
 func EnsureEzfyRansomTable(db *gorm.DB) {
 	if db.Migrator().HasTable(&model.EzfyRansom{}) {
 		return
@@ -2913,6 +2921,20 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN default_continent int DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET default_continent = 1 WHERE default_continent IS NULL OR default_continent <= 0 OR default_continent > 7")
+	// ★ 2026-10-11 背包单件道具上限（默认 5000）+ 宝物库存上限（默认 5000）：
+	//   列可能由通用补列（EnsureEzfySchema）建出（不带默认值）→ 这里兜底建列 + 回填 NULL/<=0。
+	for _, c := range []struct {
+		col string
+		def int
+	}{{"bag_item_max", 5000}, {"treasure_max", 5000}} {
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", c.col) {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN " + c.col + " int DEFAULT " + strconv.Itoa(c.def))
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET " + c.col + " = " + strconv.Itoa(c.def) +
+			" WHERE " + c.col + " IS NULL OR " + c.col + " <= 0")
+	}
+	// ★ 2026-10-11 背包上限默认值当天由 1000 上调为 5000：把仍停在旧默认 1000 的行一次性提升。
+	ezfyBumpBagItemMaxDefault(db)
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {
@@ -2922,6 +2944,24 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("UPDATE ezfy_cfg_wildland SET drop_items = '' WHERE drop_items IS NULL")
 		db.Exec("UPDATE ezfy_cfg_wildland SET treasure = '' WHERE treasure IS NULL")
 	}
+}
+
+// ezfyBumpBagItemMaxDefault 一次性把「仍停在旧默认 1000」的背包单件上限提升到 5000。
+//
+// ★ 2026-10-11：背包单件上限默认值当天由 1000 上调为 5000（用户要求「默认也 5000」）。
+// 用 settings 打标**只跑一次** —— 之后管理员即使手工设成 1000，下次重启也不会被顶掉。
+// 幂等：settings 无标记才执行；表不存在直接跳过。
+func ezfyBumpBagItemMaxDefault(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_limit") || !db.Migrator().HasTable("settings") {
+		return
+	}
+	var marked int64
+	db.Raw("SELECT COUNT(*) FROM settings WHERE `key` = ?", "ezfy_bag_item_max_bump_5000").Scan(&marked)
+	if marked > 0 {
+		return
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET bag_item_max = 5000 WHERE bag_item_max = 1000")
+	db.Exec("INSERT INTO settings (`key`, `value`) VALUES (?, ?)", "ezfy_bag_item_max_bump_5000", "1")
 }
 
 // EnsureEzfyBattleLockColumns 幂等补 ezfy_battle 的「指挥室本回合锁定」列（skip 分支必须调用）。
@@ -2955,10 +2995,11 @@ func EnsureEzfyBattleLockColumns(db *gorm.DB) {
 // EnsureEzfySchemeKinds 幂等补配计谋 kind（skip 分支必须调用）。
 //
 // ★ 2026-10-06 「恫疑虚喝 / 隐真示假」实现为守城伪装计谋：
-//   恫疑虚喝(id=1) → Kind=4，隐真示假(id=2) → Kind=5，并补齐描述文案。
-//   seedEzfySchemes 只在表为空时插入；存量库（共享库 seed.skip 尤其）已有这 12+ 条
-//   计谋，kind 还是 0（纯说明）→ 发动会被「暂未实现」卡住。这里按 id 幂等补配，
-//   条件带 `kind = 0` 避免覆盖管理端手工改过的种类。
+//
+//	恫疑虚喝(id=1) → Kind=4，隐真示假(id=2) → Kind=5，并补齐描述文案。
+//	seedEzfySchemes 只在表为空时插入；存量库（共享库 seed.skip 尤其）已有这 12+ 条
+//	计谋，kind 还是 0（纯说明）→ 发动会被「暂未实现」卡住。这里按 id 幂等补配，
+//	条件带 `kind = 0` 避免覆盖管理端手工改过的种类。
 func EnsureEzfySchemeKinds(db *gorm.DB) {
 	if !db.Migrator().HasTable("ezfy_cfg_scheme") {
 		return
@@ -2978,10 +3019,10 @@ func EnsureEzfySchemeKinds(db *gorm.DB) {
 // EnsureEzfyHomeLayout 幂等回填 ezfy_profile.home_layout（两条路径都跑）。
 //
 // ★ 2026-10-10 首页布局（新布局/老布局）：
-//   1) AutoMigrate 新加的 home_layout 列在老行上是 NULL → 统一回填 0（= 默认新布局），
-//      否则 GORM 把 NULL 扫描进 int 会出错；
-//   2) 玩家 10000（首个管理员）保留现在的首页老布局 → 置 2。
-//      条件带 `home_layout IS NULL OR home_layout = 0`：玩家在统帅页手动切过布局后不被覆盖。
+//  1. AutoMigrate 新加的 home_layout 列在老行上是 NULL → 统一回填 0（= 默认新布局），
+//     否则 GORM 把 NULL 扫描进 int 会出错；
+//  2. 玩家 10000（首个管理员）保留现在的首页老布局 → 置 2。
+//     条件带 `home_layout IS NULL OR home_layout = 0`：玩家在统帅页手动切过布局后不被覆盖。
 func EnsureEzfyHomeLayout(db *gorm.DB) {
 	if !db.Migrator().HasTable("ezfy_profile") {
 		return

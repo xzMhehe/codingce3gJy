@@ -2353,33 +2353,46 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if direct > 0 {
 		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
 	}
-	// 宝物: 每满一个采集周期(每期)至少 1 件, 直接进背包; 每期另有 20% 概率多 1 件
+	// 宝物: 每满一个采集周期(每期)至少 1 件, 直接进「宝物」; 每期另有 20% 概率多 1 件
+	//
+	// ★ 2026-10-11 用户规则「宝物库存上限 5000（二战系统配置可配），超过 5000 采集的时候停止给提示」：
+	//   装不下就不再给，并且**停止采集**（原地待命，与 [停止采集] 同语义），战报里给一句简约提示。
+	treasureMax := ezfyTreasureMax()
+	left := h.ezfyTreasureLeft(uid)
 	treasureNames := []string{}
+	want := 0
 	for i := int64(0); i < periods; i++ {
-		n := 1
+		want++
 		if rand.Intn(100) < ezfyTreasureExtraPct {
-			n = 2
-		}
-		for j := 0; j < n; j++ {
-			eq := h.randomTerrainTreasure(terrain)
-			if eq == nil || city == nil {
-				continue // 平原/沿海平原无珠宝
-			}
-			h.addEquipment(city, eq)
-			treasureNames = append(treasureNames, eq.Name)
+			want++
 		}
 	}
+	treasureFull := left <= 0 || want > left
+	for k := 0; k < want && len(treasureNames) < left; k++ {
+		eq := h.randomTerrainTreasure(terrain)
+		if eq == nil || city == nil {
+			continue // 平原/沿海平原无珠宝
+		}
+		h.addEquipment(city, eq)
+		treasureNames = append(treasureNames, eq.Name)
+	}
 	if len(treasureNames) > 0 {
-		desc += fmt.Sprintf("获得宝物(已直接放入背包): %s\n", strings.Join(treasureNames, ", "))
+		desc += fmt.Sprintf("获得宝物(已直接放入宝物): %s\n", strings.Join(treasureNames, ", "))
 		h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物: %s",
 			h.ezfyProfileName(uid), level, wl.X, wl.Y, strings.Join(treasureNames, ", "))
-	} else {
+	} else if !treasureFull {
 		desc += "本期无宝物(该地形不出珠宝)。\n"
+	}
+	if treasureFull {
+		desc += fmt.Sprintf("宝物已达上限(%d), 采集已停止, 请先处理宝物后再点[采集]。\n", treasureMax)
 	}
 	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：负重满了就封顶（产出累积到 carry 上限，
 	//   多采部分丢弃），但部队**不自动停止**、持续采集；由玩家手动[停止采集]/[一键收获]/[召回]取回负重。
+	//   ★ 2026-10-11 例外：**宝物满 → 停止采集**（arrive_time=0 原地待命，与 [停止采集] 同语义）。
 	nextArrive := now + ezfyDispatchPeriod()
-	if h.ezfyCarryFull(order) {
+	if treasureFull {
+		nextArrive = 0 // 停止采集：原地待命，等玩家腾出宝物空位再点[采集]
+	} else if h.ezfyCarryFull(order) {
 		desc += "负重已满, 部队仍继续驻守采集(多采部分丢弃)。可点[停止采集]或[一键收获]取回负重。\n"
 	} else {
 		desc += fmt.Sprintf("部队继续驻守采集, 可随时[召回]或[停止采集]。\n负重 %d/%d\n",
@@ -2387,9 +2400,12 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	order.ArriveTime = nextArrive
 	order.Result = order.Troops
-	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-		Updates(map[string]interface{}{"arrive_time": order.ArriveTime,
-			"result": order.Result, "carry": order.Carry})
+	upd := map[string]interface{}{"arrive_time": order.ArriveTime,
+		"result": order.Result, "carry": order.Carry}
+	if treasureFull {
+		upd["collect_start"] = 0 // 停止采集（与 [停止采集]/[一键收获] 落库口径一致）
+	}
+	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(upd)
 	h.addReport(uid, 5, "采集报告: 驻守结算", desc, "", order.ID)
 	return int(periods), true
 }
@@ -4402,18 +4418,29 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 	//   本场掉到的「商城道具 + 宝物」名字统一攒进 lootNames，循环结束后**合并成一条**
 	//   系统频道播报（一场战斗只刷一条，避免刷屏；口径与「采集到宝物」一致）。
 	lootNames := []string{}
+	// ★ 2026-10-11 掉落卡控（用户规则）：道具受「背包单件上限」(默认 1000)、
+	//   宝物受「宝物库存上限」(默认 5000) 约束；装不下的**不入包**，战报里给一句简约提示。
+	bagMax := ezfyBagItemMax()
+	treasureMax := ezfyTreasureMax()
 	// ① 商城道具掉落：[[cfg_id, 数量, 概率%],...]
 	for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
 		if rand.Intn(100) >= d[2] {
 			continue // 未命中概率，不掉
 		}
-		if it := ezfyCfg.item(d[0]); it != nil {
-			h.addItem(uid, d[0], d[1])
-			out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
-			lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
+		it := ezfyCfg.item(d[0])
+		if it == nil {
+			continue
 		}
+		if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
+			out += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
+			continue
+		}
+		h.addItem(uid, d[0], d[1])
+		out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+		lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
 	}
 	// ② 宝物掉落：[{"name","count","pct"},...]
+	treasureLeft := h.ezfyTreasureLeft(uid)
 	for _, d := range parseWildTreasureDrops(wcfg.Treasure) {
 		if rand.Intn(100) >= d.Pct {
 			continue
@@ -4422,9 +4449,14 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 		if eq == nil || eq.SetId > 0 {
 			continue // 名字对不上 / 是套装件（套装只能开宝箱）
 		}
+		if d.Count > treasureLeft {
+			out += fmt.Sprintf("\n宝物已满(%d), %s×%d 未能入包", treasureMax, eq.Name, d.Count)
+			continue
+		}
 		for k := 0; k < d.Count; k++ {
 			h.addEquipment(city, eq)
 		}
+		treasureLeft -= d.Count
 		out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
 		lootNames = append(lootNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
 	}

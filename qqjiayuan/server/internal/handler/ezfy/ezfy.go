@@ -31,7 +31,7 @@ const (
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
 	// ★ 2026-10-09 用户要求「起新城资源各 10 万」（前端文案原来还写着「消耗10万黄金」）→ 5 万改回 10 万。
 	ezfyNewCityResCost = 100000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 10 万（★ 2026-09-28 曾为 10 万黄金；2026-10-09 由各 5 万改回各 10 万）
-	ezfyOilDivGrid     = 300   // 出征耗油: 每格耗油 = 总兵力/300
+	ezfyOilDivGrid     = 300    // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 「采集 12 小时才有宝物 → 4 小时且可配置」：
 	//   采集结算周期不再写死，读取管理端配置 ezfy_cfg_limit.dispatch_period_h（小时，默认 4），
 	//   见 ezfyDispatchPeriod()。
@@ -45,8 +45,7 @@ const (
 	ezfyCancelTrainFeePct = 10
 	// ★ 第九轮：军官忠诚 —— 派遣不再扣，只有打败仗才扣（见 ezfy_battle.go）
 	ezfyLoyaltyOnDefeat = 3 // 败仗基础扣忠心
-	// ★ 建筑图纸道具 cfg_id（ezfy_cfg_item 表 ID=10，ItemType=6），升级到 10 级及以上必需
-	ezfyBlueprintItemID = 10
+	// ★ 建筑图纸道具：升级到 10 级及以上必需。cfg_id 按名字解析（见 ezfyBlueprintItemID）。
 	// ★ 司令部兵种战斗配置「防守」第三种状态：不参与防御（被攻击时防御战斗兵种不含它）
 	ezfyDefMoveNone = -1
 	// ★ 2026-09-28 科技 13「装载技术」：部队负重 +2%/级。
@@ -2035,20 +2034,20 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	if lv == nil {
 		return "配置缺失"
 	}
-	// ★ 建筑图纸道具 cfg_id = 10（ItemType=6），不是 6 —— 6 是「训练加速30分钟」。
+	// ★ 建筑图纸道具（ItemType=6，按名字解析，见 ezfyBlueprintItemID），不是「训练加速30分钟」。
 	//   规则（2026-09-23 用户修正）：**所有建筑 9→10 级**都需图纸；
 	//   民居(2) 10→11、11→12 也要。
 	//   ★ 2026-09-30 用户追加：**司令部(13) 10级及以后每升一级都需要图纸**（9→10、10→11、11→12）。
 	needBlueprint := target == 10 ||
 		((b.BuildingId == 2 || b.BuildingId == 13) && target >= 11)
-	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID) <= 0 {
+	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID()) <= 0 {
 		return fmt.Sprintf("升级到%d级需要建筑图纸", target)
 	}
 	if !h.pay(city, lv) {
 		return "资源不足"
 	}
 	if needBlueprint {
-		h.consumeItem(city.UserID, ezfyBlueprintItemID, "建筑升级")
+		h.consumeItem(city.UserID, ezfyBlueprintItemID(), "建筑升级")
 	}
 	buildTech := h.techMap(city.ID)[11]
 	now := time.Now().UnixMilli()
@@ -2118,7 +2117,7 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 			needGold += l.Gold
 		}
 	}
-	if needBlueprint > 0 && h.itemCount(city.UserID, ezfyBlueprintItemID) < needBlueprint {
+	if needBlueprint > 0 && h.itemCount(city.UserID, ezfyBlueprintItemID()) < needBlueprint {
 		return 0, fmt.Sprintf("一键升到%d级需要%d张建筑图纸(当前不足)", target, needBlueprint)
 	}
 	if city.Food < needFood || city.Steel < needSteel || city.Oil < needOil ||
@@ -2133,7 +2132,7 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 	city.Gold -= needGold
 	h.saveCityRes(city)
 	if needBlueprint > 0 {
-		h.consumeItemN(city.UserID, ezfyBlueprintItemID, needBlueprint, "建筑升级")
+		h.consumeItemN(city.UserID, ezfyBlueprintItemID(), needBlueprint, "建筑升级")
 	}
 	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).
@@ -2838,6 +2837,16 @@ func (h *EzfyHandler) speedUpTrain(city *model.EzfyCity, queueId int64, minutes 
 
 // ============ 道具(背包/商城/加速/免战/增产) ============
 
+// ezfyBlueprintItemName 「建筑图纸」道具名（ItemType 6）
+const ezfyBlueprintItemName = "建筑图纸"
+
+// ezfyBlueprintItemID 「建筑图纸」的道具 cfg_id（按名字解析；0 = 配置里没有）。
+//
+// ★★ 2026-10-10 道具 cfg_id 已全体 +1000（1~41 → 1001~1041，见 seed/ezfy_cfg_gen.go），
+// 原硬编码的 10 已失效 → 升级 9→10 永远提示「需要建筑图纸」而无法消耗。
+// 与集结令/信号弹同款改为按名字解析（见 ezfy_geo.go 的 itemIDByName）。
+func ezfyBlueprintItemID() int { return ezfyCfg.itemIDByName(ezfyBlueprintItemName) }
+
 func (h *EzfyHandler) itemCount(uid uint, cfgId int) int {
 	var it model.EzfyItem
 	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
@@ -2875,6 +2884,40 @@ func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
 	//   并发发放/连点购买时同一行的自增会互相覆盖 → 少发道具）。
 	h.DB.Model(&model.EzfyItem{}).Where("id = ?", it.ID).
 		Update("count", gorm.Expr("count + ?", count))
+}
+
+// addItemCapped 带「背包单件上限」的发放：只有「当前持有 + count <= max」才写入。
+//
+// ★ 2026-10-11 用户规则：背包道具上限卡控（默认 1000，超过 1000 就不能再买）。
+//   与 addItem 的差别：用**条件原子自增**（`count + n <= max` 才成功），并发购买也绝不超上限；
+//   返回 false = 已超上限、本次未发放（调用方据此回滚已扣的钱/库存）。max <= 0 = 不限。
+func (h *EzfyHandler) addItemCapped(uid uint, cfgId, count, max int) bool {
+	if count <= 0 {
+		return true
+	}
+	if max <= 0 {
+		h.addItem(uid, cfgId, count)
+		return true
+	}
+	var it model.EzfyItem
+	if err := h.DB.Where("user_id = ? AND cfg_id = ?", uid, cfgId).First(&it).Error; err != nil {
+		// 背包里还没有这件道具：count 本身就不能超上限
+		if count > max {
+			return false
+		}
+		if e := h.DB.Create(&model.EzfyItem{UserId: uid, CfgId: cfgId, Count: count}).Error; e != nil {
+			// 并发插入撞唯一索引（uk_user_item）→ 回落条件自增
+			res := h.DB.Model(&model.EzfyItem{}).
+				Where("user_id = ? AND cfg_id = ? AND count + ? <= ?", uid, cfgId, count, max).
+				Update("count", gorm.Expr("count + ?", count))
+			return res.Error == nil && res.RowsAffected > 0
+		}
+		return true
+	}
+	res := h.DB.Model(&model.EzfyItem{}).
+		Where("id = ? AND count + ? <= ?", it.ID, count, max).
+		Update("count", gorm.Expr("count + ?", count))
+	return res.Error == nil && res.RowsAffected > 0
 }
 
 func (h *EzfyHandler) consumeItem(uid uint, cfgId int, reason ...string) {
@@ -3742,8 +3785,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"diamond":       profile.Diamond,
 		// ★ 2026-10-07 赎城金额（管理端可配）：前端城市列表 [赎城] 确认弹窗展示
 		"ransom_cost": ezfyRansomCost(),
-		"city":          city,
-		"res_prod":      resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
+		"city":        city,
+		"res_prod":    resProd, // ★ 2026-09-28 各资源每小时净产量(与资源详情页同口径), 头部资源栏「/」右侧展示
 		// ★★ 2026-10-05 修复「玩家反馈离线资源不涨」的**显示口径**问题：
 		//   产量真正的收敛点是全局「资源最大值」ezfy_cfg_limit.res_max_*（线上 61 亿），
 		//   而 city.xxx_cap 只是**仓储展示值**，按设计「永不参与计算」（见 calcResourceD 注释）。
@@ -3760,13 +3803,13 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		// ★ 2026-09-28 安抚参数(管理端可配)：前端安抚页直接展示，不再硬编码「民怨×100」。
 		//   cd_left = 距离下次可安抚的剩余毫秒(0 = 现在就能安抚)。
 		"placate": gin.H{
-			"gold":          ezfyPlacateGoldCost(),
-			"grievance":     ezfyPlacateGrievanceDown(),
-			"feelings":      ezfyPlacateFeelingsUp(),
-			"cooldown_min":  ezfyPlacateCooldownMinutes(),
-			"cd_left":       max64(0, city.PlacateTime+ezfyPlacateCooldownMs()-time.Now().UnixMilli()),
+			"gold":         ezfyPlacateGoldCost(),
+			"grievance":    ezfyPlacateGrievanceDown(),
+			"feelings":     ezfyPlacateFeelingsUp(),
+			"cooldown_min": ezfyPlacateCooldownMinutes(),
+			"cd_left":      max64(0, city.PlacateTime+ezfyPlacateCooldownMs()-time.Now().UnixMilli()),
 		},
-		"continent":     ezfyContinentName(city.X, city.Y),
+		"continent": ezfyContinentName(city.X, city.Y),
 		// 海城/陆地城市(海城可建航海协会、训练海军)
 		"is_sea":       h.isSeaCity(&city),
 		"city_kind":    h.cityKind(&city),
@@ -3777,8 +3820,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"game_uid":        profile.GameUID,
 		"home_num":        acct,
 		"current_city_id": city.ID,
-		"protected": protected,
-		"boost":     boost,
+		"protected":       protected,
+		"boost":           boost,
 		// ★ 军事区/资源区各自上限（分开下发；建筑列表/可建造池已移到 /buildings）
 		"military_cap": lim.MilitaryMax,
 		"resource_cap": lim.ResourceMax,

@@ -408,6 +408,20 @@ func ezfyCollectibleTreasureNames() map[string]bool {
 	return set
 }
 
+// ezfyCollectibleTreasureIDs 9 种采集宝物的装备 cfg_id 列表（按名字解析，别硬编码号段）。
+//
+// ★ 用于「宝物库存上限」统计：ezfy_equipment 里混着普通装备，只有名字命中宝物集合的才算宝物。
+func ezfyCollectibleTreasureIDs() []int {
+	set := ezfyCollectibleTreasureNames()
+	ids := make([]int, 0, len(set))
+	for id := range ezfyCfg.equipments {
+		if set[ezfyCfg.equipments[id].Name] {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // ezfyGatherResName 地形 → 采集产出的资源名（粮食/钢铁/石油/稀矿）
 func ezfyGatherResName(t int) string {
 	switch t {
@@ -656,7 +670,8 @@ func ezfySellPriceMax() int {
 // ezfyRansomCost 赎城所需钻石（读 ezfy_cfg_limit.ransom_cost，管理端「建筑上限配置」可维护）
 //
 // ★ 2026-10-07 赎城功能。发起即按此金额扣原主人钻石（押金），同意后转给占领方，
-//   拒绝/撤销退回。0 或未配置时回落默认 500（0 无意义 = 禁止赎城）。
+//
+//	拒绝/撤销退回。0 或未配置时回落默认 500（0 无意义 = 禁止赎城）。
 func ezfyRansomCost() int64 {
 	if n := ezfyCfg.limit.RansomCost; n > 0 {
 		return int64(n)
@@ -741,13 +756,20 @@ func ezfyMarchSpeedBonus() float64 {
 //
 //	所以读到 <= 0 时一律回落默认值（与 ezfyGatherMax 同一套兜底思路）。
 const (
-	ezfyConquerFeelingsDef  = 5  // 征服单次最多扣民心（默认 5）
-	ezfyLootFeelingsDef     = 3  // 掠夺每次扣民心（默认 3）
+	ezfyConquerFeelingsDef  = 5   // 征服单次最多扣民心（默认 5）
+	ezfyLootFeelingsDef     = 3   // 掠夺每次扣民心（默认 3）
 	ezfyRansomCostDefault   = 500 // 赎城所需钻石（默认 500）
-	ezfyOfficerSalaryDef    = 20 // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
-	ezfyWoundHealDivisorDef = 50 // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
+	ezfyOfficerSalaryDef    = 20  // 军官工资：每级每小时黄金（★ 2026-09-26 由 100 改成 20）
+	ezfyWoundHealDivisorDef = 50  // 恢复伤兵黄金 = 兵种总造价 / 该值（默认 50）
 	// ★ 商城单次购买数量上限（默认 99）
 	ezfyMallBuyMaxDef = 99
+	// ★ 背包单件道具持有上限（默认 5000）：同一种道具在玩家背包里不得超过它。
+	//   Buy 时卡控；0 无意义 → 读取端回落该默认值。存量超额不回溯（「超过的暂时先这样」）。
+	//   ★ 2026-10-11 当天由 1000 上调为 5000（用户要求「背包上限默认也 5000」）。
+	ezfyBagItemMaxDef = 5000
+	// ★ 宝物库存上限（默认 5000）：未穿戴的采集宝物持有上限。
+	//   采集结算 / 打地掉落宝物时卡控；0 无意义 → 读取端回落该默认值。
+	ezfyTreasureMaxDef = 5000
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
 	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
 	//   2026-09-23 「10 亿太少，上调到 50 亿」。
@@ -1001,6 +1023,22 @@ func ezfyWoundHealRate() float64 {
 //	前端输入框 max、前端校验、后端校验**都**读这一个值，避免两边不一致。
 func ezfyMallBuyMaxCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.MallBuyMax, ezfyMallBuyMaxDef)
+}
+
+// ezfyBagItemMax 背包单件道具持有上限（默认 5000）
+//
+// ★ 2026-10-11 用户规则：「玩家背包道具上限卡控，默认 1000，超过 1000 就不能再买，
+// 二战系统配置可配置」。Buy 时按「已有 + 本次购买 <= 上限」卡控；0 无意义 → 回落默认。
+func ezfyBagItemMax() int {
+	return ezfyLimitOr(ezfyCfg.limit.BagItemMax, ezfyBagItemMaxDef)
+}
+
+// ezfyTreasureMax 宝物库存上限（默认 5000，二战系统配置可配）。
+//
+// ★ 2026-10-11 用户规则：「宝物库存上限 5000，超过 5000 采集的时候停止给提示，
+// 打地掉落宝物超上限也提示」。口径 = 该玩家**未穿戴**的采集宝物件数（与「宝物」页展示一致）。
+func ezfyTreasureMax() int {
+	return ezfyLimitOr(ezfyCfg.limit.TreasureMax, ezfyTreasureMaxDef)
 }
 
 // ============ 系统配置：玩法开关 + 野地兵力倍数 ============

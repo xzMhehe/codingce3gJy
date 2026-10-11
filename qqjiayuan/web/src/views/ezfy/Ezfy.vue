@@ -609,8 +609,12 @@ export default {
       mallTab: 'item',
       // ★ 单次购买数量上限（管理端「建筑上限配置」页维护，默认 99）
       mallBuyMax: 99,
+      // ★ 2026-10-11 背包单件道具上限（管理端「系统配置」页维护，默认 5000）
+      mallBagMax: 5000,
       bagItems: [],
       bagTreasures: [],
+      // ★ 2026-10-11 宝物库存上限（管理端「系统配置」可配，默认 5000）：宝物页展示「宝物(N/上限)」
+      treasureMax: 5000,
       // ★ 2026-10-08 宝物出售给系统（统一 20万黄金/件，收10%手续费）
       sellTreasure: null,          // 正在出售的宝物对象 {cfg_id,name,count}
       sellTreasureCount: 1,
@@ -989,6 +993,10 @@ export default {
         return (this.officerData.captives || []).filter(o => o.status !== 1)
       }
       return (this.officerData.officers || []).filter(o => o.is_captive === 1 && o.status !== 1)
+    },
+    // 宝物总件数（9 种采集珠宝的持有数之和，用于「宝物(N/上限)」展示）
+    treasureTotal () {
+      return (this.bagTreasures || []).reduce((s, t) => s + (parseInt(t.count) || 0), 0)
     },
     // 参谋部军官位是否已满(招募前先拦一道, 避免点了才报「容量不足」)
     officerFull () {
@@ -3264,6 +3272,8 @@ export default {
         if (r.code === 0) {
           this.bagItems = r.data.items
           this.bagTreasures = r.data.treasures || []
+          // ★ 2026-10-11 宝物库存上限（默认 5000）
+          this.treasureMax = parseInt(r.data.treasure_max) > 0 ? parseInt(r.data.treasure_max) : 5000
           this.bagOfficers = r.data.officers || []
           this.bagSkills = r.data.skills || []
         }
@@ -3377,6 +3387,8 @@ export default {
           this.mallDiamond = r.data.diamond || 0
           // ★ 单次购买上限（管理端可配，默认 99）
           this.mallBuyMax = parseInt(r.data.buy_max) > 0 ? parseInt(r.data.buy_max) : 99
+          // ★ 2026-10-11 背包单件道具上限（默认 5000）
+          this.mallBagMax = parseInt(r.data.bag_max) > 0 ? parseInt(r.data.bag_max) : 5000
           if (this.mallCat && this.mallCatsList.indexOf(this.mallCat) < 0) this.mallCat = ''
           if (resetPage) this.mallPage = 1
           else if (this.mallPage > this.mallTotalPages) this.mallPage = this.mallTotalPages
@@ -5389,18 +5401,33 @@ export default {
       // ★ 跳转到独立购买详情页确认（不再行内展开）
       this.cur = 'mallbuy'
     },
-    // ★ 单次可买上限 = min(管理端配置的单次上限, 库存)。
+    // ★ 单次可买上限 = min(管理端配置的单次上限, 库存, 背包剩余容量)。
     //   无限库存(-1)的道具只看配置值。原来这里写死 999，和 doBuy 里的 99 打架。
+    //   ★ 2026-10-11 叠加「背包单件上限」：已有 have 个，最多再买 bagMax - have 个。
     buyMaxOf (it) {
       const cfgMax = parseInt(this.mallBuyMax) > 0 ? parseInt(this.mallBuyMax) : 9999
-      if (it.unlimited) return cfgMax
-      const st = parseInt(it.stock) || 0
-      return Math.max(1, Math.min(cfgMax, st))
+      const bagMax = parseInt(this.mallBagMax) > 0 ? parseInt(this.mallBagMax) : 5000
+      const bagLeft = Math.max(0, bagMax - (parseInt(it.have) || 0))
+      let cap = cfgMax
+      if (!it.unlimited) {
+        const st = parseInt(it.stock) || 0
+        cap = Math.min(cap, st)
+      }
+      cap = Math.min(cap, bagLeft)
+      return Math.max(0, cap)
     },
     doBuy (it) {
       const n = parseInt(this.buyCount) || 0
+      const bagMax = parseInt(this.mallBagMax) > 0 ? parseInt(this.mallBagMax) : 5000
+      const have = parseInt(it.have) || 0
+      // ★ 2026-10-11 背包上限：已达上限直接拦，剩余不足给出可买数
+      if (have >= bagMax) { this.notify('「' + it.name + '」已达背包上限 ' + bagMax + ' 个，无法再购买'); return }
       const maxBuy = this.buyMaxOf(it)
       if (n < 1 || n > maxBuy) { this.notify('数量需在 1-' + maxBuy + ' 之间'); return }
+      if (have + n > bagMax) {
+        this.notify('「' + it.name + '」背包上限 ' + bagMax + ' 个，当前已有 ' + have + ' 个，最多再买 ' + (bagMax - have) + ' 个')
+        return
+      }
       if (!it.unlimited && it.stock !== undefined && n > it.stock) {
         this.notify(it.stock > 0 ? ('库存不足，最多买 ' + it.stock + ' 个') : '该道具已售罄')
         return
@@ -6265,6 +6292,21 @@ export default {
           if (rr.code === 0) this.officerData = rr.data
         })
       })
+    },
+    // ★ 2026-10-11 战俘营 [一键释放]：释放**当前城**全部俘虏（后端物理删除，只在日志文件留痕）。
+    //   与单个释放同口径：出征中的俘虏后端会跳过。
+    async releaseAllCaptives () {
+      const n = this.captiveOfficers.length
+      if (!n) return
+      if (!await this.ask('确定一键释放本城全部 ' + n + ' 名俘虏吗?（释放后不可恢复）')) return
+      // 连点防抖：请求未返回前忽略后续点击（与 doCaptive / 商城购买同款）
+      this.once('releaseCaptives', () => api.post('/games/ezfy/officers/captive/release-all', {}).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '操作失败'); return }
+        this.notify((r.data && r.data.msg) || '已一键释放')
+        api.get('/games/ezfy/officers').then(rr => {
+          if (rr.code === 0) this.officerData = rr.data
+        })
+      }))
     },
     async doExile () {
       if (!await this.ask('确定流放该武将吗? 流放后无法找回!')) return

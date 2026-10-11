@@ -100,14 +100,27 @@ func (h *EzfyHandler) officerMaxLevelOf(o *model.EzfyOfficer) int {
 	return ezfyOfficerMaxLevel
 }
 
-// ezfyStarItemID 「星级徽章」的道具 cfg_id（ItemType 19）
-const ezfyStarItemID = 23
+// ★★ 2026-10-10 军官类道具一律**按名字解析** cfg_id（道具已统一迁到 1001+，见
+// seed/ezfy_cfg_gen.go）。硬编码数字 ID 会在调号段后静默失效（查不到 → 持有量恒 0 →
+// 「背包里明明有却提示没有」）。与集结令/信号弹同款，见 ezfy_geo.go 的 itemIDByName。
 
-// ezfySkillBookItemID 「军官技能书」的道具 cfg_id（ItemType 11）
-const ezfySkillBookItemID = 15
+// ezfyStarItemName 「星级徽章」道具名（ItemType 19）
+const ezfyStarItemName = "星级徽章"
 
-// ezfyOfficerRenameCardItemID 「军官改名卡」的道具 cfg_id（ItemType 21）
-const ezfyOfficerRenameCardItemID = 25
+// ezfyStarItemID 「星级徽章」的道具 cfg_id（0 = 配置里没有）
+func ezfyStarItemID() int { return ezfyCfg.itemIDByName(ezfyStarItemName) }
+
+// ezfySkillBookItemName 「军官技能书」道具名（ItemType 11）
+const ezfySkillBookItemName = "军官技能书"
+
+// ezfySkillBookItemID 「军官技能书」的道具 cfg_id（0 = 配置里没有）
+func ezfySkillBookItemID() int { return ezfyCfg.itemIDByName(ezfySkillBookItemName) }
+
+// ezfyOfficerRenameCardItemName 「军官改名卡」道具名（ItemType 21）
+const ezfyOfficerRenameCardItemName = "军官改名卡"
+
+// ezfyOfficerRenameCardItemID 「军官改名卡」的道具 cfg_id（0 = 配置里没有）
+func ezfyOfficerRenameCardItemID() int { return ezfyCfg.itemIDByName(ezfyOfficerRenameCardItemName) }
 
 // ============ 基础查询 ============
 
@@ -778,10 +791,10 @@ func (h *EzfyHandler) learnSkill(city *model.EzfyCity, officerId int64, skillId 
 			return "已学习该技能"
 		}
 	}
-	if h.itemCount(city.UserID, ezfySkillBookItemID) <= 0 {
+	if h.itemCount(city.UserID, ezfySkillBookItemID()) <= 0 {
 		return "没有「军官技能书」，可在商城购买"
 	}
-	h.consumeItem(city.UserID, ezfySkillBookItemID, "军官学技能")
+	h.consumeItem(city.UserID, ezfySkillBookItemID(), "军官学技能")
 	skills = append(skills, cfg.Name)
 	h.saveOfficerSkills(o, skills)
 	return ""
@@ -840,6 +853,31 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 		Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
 	}
 	h.DB.Create(&e)
+}
+
+// ezfyTreasureCount 该玩家**未穿戴**的采集宝物件数（与「宝物」页展示口径一致）。
+//
+// ★ 2026-10-11 宝物库存上限用：只数 9 种采集珠宝（ezfyCollectibleTreasureIDs），
+//
+//	装备表里混着的普通武器/防具不算。
+func (h *EzfyHandler) ezfyTreasureCount(uid uint) int {
+	ids := ezfyCollectibleTreasureIDs()
+	if len(ids) == 0 {
+		return 0
+	}
+	var n int64
+	h.DB.Model(&model.EzfyEquipment{}).
+		Where("user_id = ? AND officer_id = 0 AND cfg_id IN ?", uid, ids).Count(&n)
+	return int(n)
+}
+
+// ezfyTreasureLeft 宝物库存还能再放几件（上限 - 现有未穿戴宝物数，最小 0）。
+func (h *EzfyHandler) ezfyTreasureLeft(uid uint) int {
+	left := ezfyTreasureMax() - h.ezfyTreasureCount(uid)
+	if left < 0 {
+		left = 0
+	}
+	return left
 }
 
 // equipItem 穿戴装备：等级达标 + 同部位唯一（含珠宝，任何部位都只能穿一件）
@@ -1107,27 +1145,86 @@ func (h *EzfyHandler) recruitCaptive(uid uint, officerId int64) string {
 	return ""
 }
 
-// freeOfficer 释放俘虏（★ 2026-10-06 起是**逻辑删除**，行还在库里可追溯）；
-// ★ 2026-09-29 释放时把随俘装备返还给原玩家。
+// freeOfficer 释放 / 遣散军官。
 //
+// ★★ 2026-10-11 用户规则：「释放就是物理删除，别占空间，写入文件的日志加下就行」
+// → 改回 **Unscoped().Delete**（不再留 deleted_at 行），只在日志文件里留一条记录。
+//
+// ★ 2026-09-29 释放俘虏时把随俘装备按 original_user_id 返还给原玩家。
 // ★ 2026-10-06 改成按 uid 找军官（跨城）—— 见 officerOfMine 的说明。
+//
+// ⚠️ 2026-10-06 曾把这里改成「逻辑删除」，是怕 PvP 抢将中途失败丢掉军官等级；
+// 但 PvP 侧早已改成「先建俘虏、成功后再删原军官」，且释放是玩家主动行为、无需回滚 ——
+// 故按用户要求回到物理删除。要追溯释放行为请查日志文件（见下方 log.Printf）。
 func (h *EzfyHandler) freeOfficer(uid uint, officerId int64) string {
-	o, _ := h.officerOfMine(uid, officerId)
+	o, city := h.officerOfMine(uid, officerId)
 	if o == nil {
 		return "武将不存在"
 	}
 	if o.Status == 1 {
 		return "出征中无法遣散"
 	}
-	// 释放俘虏：随身装备按 original_user_id 返还给原玩家
 	if o.IsCaptive == 1 {
+		// 释放俘虏：随身装备按 original_user_id 返还给原玩家
 		h.returnCaptiveEquips(int64(o.ID))
+	} else {
+		// 非俘虏（UI 一般不给入口）：先解绑已穿戴装备，避免「军官已删、装备仍显示已穿戴」的孤儿装备
+		h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
 	}
-	h.DB.Delete(&model.EzfyOfficer{}, o.ID)
+	cityId := uint(0)
+	if city != nil {
+		cityId = city.ID
+	}
+	log.Printf("ezfy 释放军官(物理删除) uid=%d city=%d officer=%d name=%s captive=%d level=%d star=%d",
+		uid, cityId, o.ID, o.Name, o.IsCaptive, o.Level, o.Star)
+	h.DB.Unscoped().Delete(&model.EzfyOfficer{}, o.ID)
 	return ""
 }
 
-// exileOfficer 流放（需先卸任）
+// releaseAllCaptives 释放指定城战俘营里的**全部**俘虏（物理删除）。返回 (释放数, 跳过数)。
+//
+// ★ 2026-10-11 用户规则「战俘营加个[一键释放]，释放就是物理删除，别占空间，写入文件的日志加下就行」。
+//
+//	口径与战俘营展示一致（按城市分）：
+//	  · 只处理 `city_id = cityId AND is_captive = 1`；
+//	  · 出征中的俘虏（status=1）跳过（与单个释放同口径）；
+//	  · 每名俘虏的随身装备按 original_user_id 返还给原玩家；
+//	  · **物理删除**（Unscoped），不留 deleted_at；
+//	  · 记一条日志到日志文件。
+func (h *EzfyHandler) releaseAllCaptives(uid uint, cityId uint) (int, int) {
+	var list []model.EzfyOfficer
+	h.DB.Where("city_id = ? AND is_captive = 1", cityId).Find(&list)
+	ids := make([]uint, 0, len(list))
+	names := make([]string, 0, len(list))
+	skipped := 0
+	for i := range list {
+		o := list[i]
+		if o.Status == 1 { // 出征中：与单个释放同口径，跳过
+			skipped++
+			continue
+		}
+		h.returnCaptiveEquips(int64(o.ID))
+		ids = append(ids, o.ID)
+		names = append(names, o.Name)
+	}
+	if len(ids) == 0 {
+		return 0, skipped
+	}
+	h.DB.Unscoped().Where("id IN ?", ids).Delete(&model.EzfyOfficer{})
+	log.Printf("ezfy 一键释放战俘(物理删除) uid=%d city=%d 释放=%d 跳过(出征中)=%d 名单=%s",
+		uid, cityId, len(ids), skipped, strings.Join(names, ","))
+	return len(ids), skipped
+}
+
+// exileOfficer 流放（需先卸任）。
+//
+// ★★ 2026-10-11 用户规则：「自己军官 流放 改成物理删除节省空间，装备回到自己的装备背包」：
+//
+//	· **物理删除**（Unscoped().Delete，不留 deleted_at 占空间）；
+//	· 先解绑已穿戴装备（officer_id=0）→ 装备回到**玩家自己的装备背包**（user_id 不变）；
+//	· 记一条日志到日志文件。
+//
+// ⚠️ 删的是**玩家军官实例**（ezfy_officer），**绝不碰军官池**（ezfy_cfg_general）。
 func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string {
 	o := h.officerOf(city.ID, officerId)
 	if o == nil {
@@ -1139,9 +1236,17 @@ func (h *EzfyHandler) exileOfficer(city *model.EzfyCity, officerId int64) string
 	if o.Position != ezfyPositionNone {
 		return "请先卸任市长/城守再流放"
 	}
-	// ★ 2026-10-06 流放前先解绑已穿戴装备，防止「装备显示已穿戴、军官已删」的孤儿装备
-	h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
-	h.DB.Delete(&model.EzfyOfficer{}, o.ID)
+	if o.IsCaptive == 1 {
+		// 俘虏（UI 不给流放入口，防御性兜底）：走「释放」口径，装备按 original_user_id 还给原玩家
+		h.returnCaptiveEquips(int64(o.ID))
+	} else {
+		// 自己的军官：解绑已穿戴装备 → 回玩家自己的装备背包
+		// （★ 2026-10-06 起就有的防孤儿装备处理，保留）
+		h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID).Update("officer_id", 0)
+	}
+	log.Printf("ezfy 流放军官(物理删除) uid=%d city=%d officer=%d name=%s captive=%d level=%d star=%d",
+		city.UserID, city.ID, o.ID, o.Name, o.IsCaptive, o.Level, o.Star)
+	h.DB.Unscoped().Delete(&model.EzfyOfficer{}, o.ID)
 	return ""
 }
 
@@ -1325,7 +1430,8 @@ func (h *EzfyHandler) officerEffective(o *model.EzfyOfficer) (mil, log, lea int)
 //
 // 装备的「伤害/防御/生命/移动距离/暴击几率/暴击伤害」全部是**百分比加成**。
 // ★ 2026-10-10 追加三维字段（军事/后勤/学识）——**平面数值**，不进战斗百分比计算，
-//   只在战报【攻方装备】【守方装备】行展示「这件装备加了多属性」。
+//
+//	只在战报【攻方装备】【守方装备】行展示「这件装备加了多属性」。
 type ezfyBattleBonus struct {
 	Dmg     int // 伤害加成%
 	Def     int // 防御加成%
@@ -1388,7 +1494,8 @@ func (h *EzfyHandler) officerBattleEquipBonus(o *model.EzfyOfficer) ezfyBattleBo
 // officerSetEquipBonus 只算「已激活套装」的六项加成。
 //
 // ★ 2026-10-08 供战报单独展示「套装加成」用；总装备加成 officerBattleEquipBonus 已包含它。
-//   套装 = 集齐 part 件才叠加的六项属性（见 officerSetProgress 的 Active）。
+//
+//	套装 = 集齐 part 件才叠加的六项属性（见 officerSetProgress 的 Active）。
 func (h *EzfyHandler) officerSetEquipBonus(o *model.EzfyOfficer) ezfyBattleBonus {
 	b := ezfyBattleBonus{}
 	if o == nil {
@@ -2611,7 +2718,7 @@ func (h *EzfyHandler) Officers(c *gin.Context) {
 		defer wg.Done()
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Order("start_time ASC").Find(&trainQueues)
 	}()
-	go func() { defer wg.Done(); starCard = h.itemCount(uid, ezfyStarItemID) }()
+	go func() { defer wg.Done(); starCard = h.itemCount(uid, ezfyStarItemID()) }()
 	wg.Wait()
 	// ★★ 2026-10-06 用户规则：**战俘营按城市分**（绑在玩家城市上）——
 	//   只列**当前城**的俘虏，容量也只看当前城的参谋部等级 × 4。
@@ -2789,7 +2896,7 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 	go func() { defer wg.Done(); cityOfficers = h.officerList(city.ID) }()
 	go func() {
 		defer wg.Done()
-		cnts = h.itemCounts(uid, ezfyStarItemID, ezfyOfficerRenameCardItemID, ezfySkillBookItemID)
+		cnts = h.itemCounts(uid, ezfyStarItemID(), ezfyOfficerRenameCardItemID(), ezfySkillBookItemID())
 	}()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	go func() {
@@ -2861,10 +2968,10 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 			// ★ 升星：星级上限 / 固定成功率 / 每星加多少 / 持有升星卡数
 			"star_max": ezfyStarMax(), "star_up_on": ezfyStarUpOn(),
 			"star_rate":      ezfyStarSuccessRate(),
-			"star_attr_gain": ezfyStarAttrGain(), "star_card": cnts[ezfyStarItemID],
+			"star_attr_gain": ezfyStarAttrGain(), "star_card": cnts[ezfyStarItemID()],
 			// ★ 军官改名卡 / 军官技能书 持有数（前端改名按钮与可学技能表头展示）
-			"rename_card": cnts[ezfyOfficerRenameCardItemID],
-			"skill_book":  cnts[ezfySkillBookItemID],
+			"rename_card": cnts[ezfyOfficerRenameCardItemID()],
+			"skill_book":  cnts[ezfySkillBookItemID()],
 			"attack":      h.officerBattleBonus(o), "defence": h.officerGuardBonus(o),
 			"loyalty": o.Loyalty, "position": o.Position, "position_name": ezfyPositionName(o.Position),
 			"status": o.Status, "status_name": ezfyOfficerStatusName(o), "is_captive": o.IsCaptive,
@@ -2886,8 +2993,9 @@ func (h *EzfyHandler) OfficerDetail(c *gin.Context) {
 // OfficerBackpack GET /games/ezfy/officers/:id/backpack —— 该军官的背包装备 + 可一键穿戴套装
 //
 // ★ 2026-10-10 性能（玩家反馈「军官详情非常卡」）：从 OfficerDetail 中拆出。
-//   全局背包装备大号可达上千件，原来每次详情都整包下发 + 前端大量 v-for，太卡。
-//   现在详情只下发已穿戴等小体积数据，切到「背包」tab 才按需请求这里。
+//
+//	全局背包装备大号可达上千件，原来每次详情都整包下发 + 前端大量 v-for，太卡。
+//	现在详情只下发已穿戴等小体积数据，切到「背包」tab 才按需请求这里。
 func (h *EzfyHandler) OfficerBackpack(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -3356,7 +3464,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		resp.NotFound(c, "军官不存在")
 		return
 	}
-	if h.itemCount(uid, ezfyStarItemID) <= 0 {
+	if h.itemCount(uid, ezfyStarItemID()) <= 0 {
 		h.fail(c, "没有「星级徽章」，可在商城购买或开宝箱获得")
 		return
 	}
@@ -3366,7 +3474,7 @@ func (h *EzfyHandler) OfficerStarUp(c *gin.Context) {
 		return
 	}
 	msg, ok := h.officerStarUp(&city, id)
-	h.consumeItem(uid, ezfyStarItemID, "军官升星")
+	h.consumeItem(uid, ezfyStarItemID(), "军官升星")
 	if !ok {
 		h.fail(c, msg)
 		return
@@ -3422,11 +3530,11 @@ func (h *EzfyHandler) OfficerRename(c *gin.Context) {
 		resp.ParamError(c, "本城已有同名军官「"+name+"」, 请换一个名字")
 		return
 	}
-	if h.itemCount(uid, ezfyOfficerRenameCardItemID) <= 0 {
+	if h.itemCount(uid, ezfyOfficerRenameCardItemID()) <= 0 {
 		resp.ParamError(c, "没有「军官改名卡」，可在商城购买")
 		return
 	}
-	h.consumeItem(uid, ezfyOfficerRenameCardItemID, "军官改名")
+	h.consumeItem(uid, ezfyOfficerRenameCardItemID(), "军官改名")
 	h.DB.Model(&model.EzfyOfficer{}).Where("id = ?", o.ID).Updates(map[string]interface{}{
 		"name": name, "update_time": time.Now(),
 	})
@@ -3592,6 +3700,18 @@ func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCf
 		if cfg == nil {
 			return ""
 		}
+		// ★ 2026-10-11 若开出的是「采集宝物」（珠宝），受宝物库存上限约束（默认 5000）
+		if ezfyCollectibleTreasureNames()[cfg.Name] {
+			if got := h.ezfyTreasureLeft(city.UserID); got < n {
+				for i := 0; i < got; i++ {
+					h.addEquipment(city, cfg)
+				}
+				if got <= 0 {
+					return cfg.Name + "（宝物已满, 未能入包）"
+				}
+				return fmt.Sprintf("%s×%d（宝物已满, 少给%d件）", cfg.Name, got, n-got)
+			}
+		}
 		for i := 0; i < n; i++ {
 			h.addEquipment(city, cfg)
 		}
@@ -3600,6 +3720,17 @@ func (h *EzfyHandler) ezfyGrantChestPrize(city *model.EzfyCity, it *model.EzfyCf
 		cfg := ezfyCfg.item(it.RefId)
 		if cfg == nil {
 			return ""
+		}
+		// ★ 2026-10-11 背包单件上限（默认 1000，二战系统配置可配）：装不下的不入包
+		if got := ezfyBagItemMax() - h.itemCount(city.UserID, it.RefId); got < n {
+			if got < 0 {
+				got = 0
+			}
+			if got > 0 {
+				h.addItem(city.UserID, it.RefId, got)
+				return fmt.Sprintf("%s×%d（背包已满, 少给%d件）", cfg.Name, got, n-got)
+			}
+			return cfg.Name + "（背包已满, 未能入包）"
 		}
 		h.addItem(city.UserID, it.RefId, n)
 		return cfg.Name + "×" + strconv.Itoa(n)
@@ -4023,6 +4154,37 @@ func (h *EzfyHandler) OfficerCaptive(c *gin.Context) {
 		return
 	}
 	h.done(c, h.freeOfficer(uid, id), "已释放该武将")
+}
+
+// OfficerCaptiveReleaseAll POST /games/ezfy/officers/captive/release-all —— 战俘营 [一键释放]
+//
+// ★ 2026-10-11 用户规则：「战俘营(14/36) 加个 [一键释放]，释放就是物理删除，别占空间，
+// 写入文件的日志加下就行」。
+//
+//	释放**当前城市**战俘营里的全部俘虏（与战俘营「按城市分」的展示口径一致）：
+//	  · 出征中的俘虏跳过（与单个释放同口径）；
+//	  · 随俘装备返还原玩家；
+//	  · 物理删除（Unscoped），不留 deleted_at；
+//	  · 记一条日志到日志文件。
+func (h *EzfyHandler) OfficerCaptiveReleaseAll(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	h.cfgs()
+	ezfyPageCacheDel(uid)
+	city := h.getOrCreateCity(uid)
+	n, skipped := h.releaseAllCaptives(uid, city.ID)
+	if n == 0 {
+		if skipped > 0 {
+			h.fail(c, fmt.Sprintf("本城有 %d 名俘虏正在出征中, 无法释放", skipped))
+			return
+		}
+		h.fail(c, "本城战俘营暂无俘虏")
+		return
+	}
+	msg := fmt.Sprintf("已一键释放 %d 名俘虏", n)
+	if skipped > 0 {
+		msg += fmt.Sprintf("（%d 名出征中已跳过）", skipped)
+	}
+	resp.OK(c, gin.H{"msg": msg, "released": n, "skipped": skipped})
 }
 
 // OfficerExile POST /games/ezfy/officers/:id/exile

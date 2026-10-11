@@ -24,7 +24,8 @@ import (
 // 管理端「系统配置」页：建筑上限 + 各项数值 + 玩法开关，一次全量返回。
 func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
-		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
+		TreasureMax: ezfyTreasureMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
@@ -78,6 +79,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	// ★ 商城单次购买上限兜底（0 无意义 = 禁止购买），默认 99
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
+	}
+	// ★ 背包单件道具上限兜底（0 无意义），默认 1000
+	if lim.BagItemMax <= 0 {
+		lim.BagItemMax = ezfyBagItemMaxDef
+	}
+	// ★ 宝物库存上限兜底（0 无意义），默认 5000
+	if lim.TreasureMax <= 0 {
+		lim.TreasureMax = ezfyTreasureMaxDef
 	}
 	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底（0 无意义），默认各 10 万
 	if lim.ConveneFoodCost <= 0 {
@@ -233,8 +242,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		OfficerCapPerMilitary   *int     `json:"officer_cap_per_military"`
 		OfficerSpeedPerMilitary *float64 `json:"officer_speed_per_military"`
 		MallBuyMax              *int     `json:"mall_buy_max"`
-		ConquerFeelingsMax      *int     `json:"conquer_feelings_max"`
-		LootFeelings            *int     `json:"loot_feelings"`
+		// ★ 2026-10-11 背包单件道具持有上限（默认 1000；>= 1 才合法）
+		BagItemMax *int `json:"bag_item_max"`
+		// ★ 2026-10-11 宝物库存上限（默认 5000；>= 1 才合法）
+		TreasureMax        *int `json:"treasure_max"`
+		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
+		LootFeelings       *int `json:"loot_feelings"`
 		// ★ 2026-10-07 赎城金额（钻石，默认 500；>= 1 才合法）
 		RansomCost *int `json:"ransom_cost"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -265,12 +278,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零**）
 		ResProdMult *float64 `json:"res_prod_mult"`
 		// ★ 2026-10-05 黄金产量倍率（与资源倍率拆开，默认 1；**0 合法 = 黄金产量归零**）
-		GoldProdMult *float64 `json:"gold_prod_mult"`
-		RecruitCostOn *int `json:"recruit_cost_on"`
-		FoodUpkeepOn  *int `json:"food_upkeep_on"`
-		MarchOilOn    *int `json:"march_oil_on"`
-		WarRequireOn  *int `json:"war_require_on"`
-		MarchCapOn    *int `json:"march_cap_on"`
+		GoldProdMult  *float64 `json:"gold_prod_mult"`
+		RecruitCostOn *int     `json:"recruit_cost_on"`
+		FoodUpkeepOn  *int     `json:"food_upkeep_on"`
+		MarchOilOn    *int     `json:"march_oil_on"`
+		WarRequireOn  *int     `json:"war_require_on"`
+		MarchCapOn    *int     `json:"march_cap_on"`
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置（0/1 开关）
 		HousePopLimitOn   *int `json:"house_pop_limit_on"`
 		ConveneFlexibleOn *int `json:"convene_flexible_on"`
@@ -313,7 +326,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		return
 	}
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
-		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef,
+		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
+		TreasureMax: ezfyTreasureMaxDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
@@ -336,8 +350,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-08 新玩家落地洲（缺行时给默认欧洲）
 		DefaultContinent: ezfyDefaultMoveContinent,
 		// ★ 2026-09-26 城市资源产量倍率（默认 1；**0 合法 = 产量归零，故不做 <=0 兜底**）
-		ResProdMult:  ezfyResProdMultDef,
-		GoldProdMult: ezfyGoldProdMultDef,
+		ResProdMult:   ezfyResProdMultDef,
+		GoldProdMult:  ezfyGoldProdMultDef,
 		RecruitCostOn: ezfyRecruitCostDef, FoodUpkeepOn: ezfyFoodUpkeepDef, MarchOilOn: ezfyMarchOilDef,
 		WarRequireOn: ezfyWarRequireDef, MarchCapOn: ezfyMarchCapDef,
 		// ★ 2026-09-26：民居容量限制 / 召集人口灵活配置
@@ -425,6 +439,23 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		lim.MallBuyMax = *in.MallBuyMax
 	}
+	// ★ 2026-10-11 背包单件道具持有上限：可配置，默认 1000。
+	//   下限恒为 1（0 = 谁都买不了，无意义），上限给个防呆值 999999（MySQL int 装得下）。
+	if in.BagItemMax != nil {
+		if *in.BagItemMax < 1 || *in.BagItemMax > 999999 {
+			resp.ParamError(c, "背包道具上限需要在 1~999999 之间")
+			return
+		}
+		lim.BagItemMax = *in.BagItemMax
+	}
+	// ★ 2026-10-11 宝物库存上限：可配置，默认 5000（同上，1~999999）。
+	if in.TreasureMax != nil {
+		if *in.TreasureMax < 1 || *in.TreasureMax > 999999 {
+			resp.ParamError(c, "宝物上限需要在 1~999999 之间")
+			return
+		}
+		lim.TreasureMax = *in.TreasureMax
+	}
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   两个值 0 都无意义（召集不要钱 / 召集不给人口），所以只接受 >= 1；
 	//   上界卡在 10 亿（MySQL int 上限约 21 亿），避免误填天文数字把列写溢出。
@@ -471,6 +502,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	// ★ 商城单次购买上限兜底：老数据可能是 0（该列刚加），归一化到默认 99
 	if lim.MallBuyMax <= 0 {
 		lim.MallBuyMax = ezfyMallBuyMaxDef
+	}
+	// ★ 背包单件道具上限兜底：老数据可能是 0（该列刚加），归一化到默认 1000
+	if lim.BagItemMax <= 0 {
+		lim.BagItemMax = ezfyBagItemMaxDef
+	}
+	// ★ 宝物库存上限兜底：老数据可能是 0（该列刚加），归一化到默认 5000
+	if lim.TreasureMax <= 0 {
+		lim.TreasureMax = ezfyTreasureMaxDef
 	}
 	// ★ 2026-09-26 召集消耗粮食 / 获得人口兜底：老数据/新列可能是 0，归一化到默认 10 万
 	if lim.ConveneFoodCost <= 0 {

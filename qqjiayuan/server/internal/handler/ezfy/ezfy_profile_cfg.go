@@ -17,20 +17,37 @@ import (
 
 // 二战风云 —— 统帅页自助改昵称/改阵营 + 军校免费刷新次数配置
 //
-// 1. 改昵称：**首次免费**，之后每次消耗 1 张「改名卡」(道具 17 / ItemType 13)
-// 2. 改阵营：**首次免费**，之后每次消耗 1 个「阵营转换道具」(道具 18 / ItemType 14)
+// 1. 改昵称：**首次免费**，之后每次消耗 1 张「改名卡」(ItemType 13)
+// 2. 改阵营：**首次免费**，之后每次消耗 1 个「阵营转换道具」(ItemType 14)
 // 3. 军校免费刷新次数：全局默认值存在 settings 表，可按玩家在 ezfy_profile 上覆盖；
 //    次数用完时用户端可在军校**直接使用招生简章**刷新（不用跳背包）。
+//
+// ★★ 道具 cfg_id 一律按名字解析（道具已迁到 1001+，别硬编码数字），见下方 ezfyItemXxx()。
 
 const (
-	ezfyItemRenameCard = 17 // 改名卡
-	ezfyItemCampSwitch = 18 // 阵营转换道具
-
 	// 军校每小时免费刷新次数的 settings key（管理端可改；2026-09-28 从每日改每小时）
 	ezfySettingRecruitFreeLimit = "ezfy_recruit_free_limit"
 
 	ezfyRecruitFreeLimitDefault = 5
 )
+
+// ★★ 2026-10-10 统帅页自助道具一律**按名字解析** cfg_id（道具已统一迁到 1001+，见
+// seed/ezfy_cfg_gen.go）。硬编码数字 ID 会在调号段后静默失效（查不到 → 持有量恒 0 →
+// 「背包里明明有却提示没有」）。与集结令/信号弹同款，见 ezfy_geo.go 的 itemIDByName。
+const (
+	ezfyItemNameRenameCard    = "改名卡"    // ItemType 13
+	ezfyItemNameCampSwitch    = "阵营转换道具" // ItemType 14
+	ezfyItemNameRecruitTicket = "招生简章"   // ItemType 9
+)
+
+// ezfyItemRenameCard 改名卡的道具 cfg_id（0 = 配置里没有）
+func ezfyItemRenameCard() int { return ezfyCfg.itemIDByName(ezfyItemNameRenameCard) }
+
+// ezfyItemCampSwitch 阵营转换道具的道具 cfg_id（0 = 配置里没有）
+func ezfyItemCampSwitch() int { return ezfyCfg.itemIDByName(ezfyItemNameCampSwitch) }
+
+// ezfyItemRecruitTicket 招生简章的道具 cfg_id（0 = 配置里没有）
+func ezfyItemRecruitTicket() int { return ezfyCfg.itemIDByName(ezfyItemNameRecruitTicket) }
 
 // ezfyRecruitFreeLimit 取某玩家的军校每小时免费刷新次数（玩家覆盖 > 全局默认）
 func (h *EzfyHandler) ezfyRecruitFreeLimit(uid uint) int {
@@ -55,6 +72,7 @@ func (h *EzfyHandler) ezfyRecruitFreeLimitWith(p *model.EzfyProfile) int {
 // ProfileSelfInfo GET /games/ezfy/profile/self —— 统帅页自助信息
 func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 	uid := middleware.GetUID(c)
+	h.cfgs() // ★ 下面按名字解析改名卡/阵营转换道具的 cfg_id，必须先加载配置缓存
 	p := h.ensureProfile(uid)
 	var u model.User
 	h.home().First(&u, uid)
@@ -69,12 +87,12 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 		"camp_name": ezfyCampName(p.Camp),
 
 		"rename_free":       renameFree,
-		"rename_card_count": h.itemCount(uid, ezfyItemRenameCard),
-		"rename_card_id":    ezfyItemRenameCard,
+		"rename_card_count": h.itemCount(uid, ezfyItemRenameCard()),
+		"rename_card_id":    ezfyItemRenameCard(),
 
 		"camp_free":       campFree,
-		"camp_item_count": h.itemCount(uid, ezfyItemCampSwitch),
-		"camp_item_id":    ezfyItemCampSwitch,
+		"camp_item_count": h.itemCount(uid, ezfyItemCampSwitch()),
+		"camp_item_id":    ezfyItemCampSwitch(),
 
 		// ★ 2026-10-10 首页布局（1=新布局 2=老布局；0=未设置按新布局展示），统帅页单选切换
 		"home_layout": p.HomeLayout,
@@ -109,6 +127,7 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 		resp.ParamError(c, "昵称长度需在 2~12 个字符之间")
 		return
 	}
+	h.cfgs() // 按名字解析「改名卡」cfg_id 前必须先加载配置缓存
 	p := h.ensureProfile(uid)
 	var u model.User
 	h.home().First(&u, uid)
@@ -123,11 +142,11 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 			Updates(map[string]interface{}{"nickname": name, "rename_used": 1})
 	} else {
-		if h.itemCount(uid, ezfyItemRenameCard) <= 0 {
+		if h.itemCount(uid, ezfyItemRenameCard()) <= 0 {
 			resp.ParamError(c, "首次免费改名已用掉，需要消耗 1 张「改名卡」（当前没有，可到商城购买）")
 			return
 		}
-		h.consumeItem(uid, ezfyItemRenameCard, "玩家改名")
+		h.consumeItem(uid, ezfyItemRenameCard(), "玩家改名")
 		usedCard = true
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("nickname", name)
 	}
@@ -156,6 +175,7 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 		resp.ParamError(c, "阵营只能是 1(同盟国) 或 2(轴心国)")
 		return
 	}
+	h.cfgs() // 按名字解析「阵营转换道具」cfg_id 前必须先加载配置缓存
 	p := h.ensureProfile(uid)
 	if p.Camp == req.Camp {
 		resp.ParamError(c, "当前已经是「"+ezfyCampName(req.Camp)+"」")
@@ -167,11 +187,11 @@ func (h *EzfyHandler) ProfileChangeCamp(c *gin.Context) {
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).
 			Updates(map[string]interface{}{"camp": req.Camp, "camp_used": 1})
 	} else {
-		if h.itemCount(uid, ezfyItemCampSwitch) <= 0 {
+		if h.itemCount(uid, ezfyItemCampSwitch()) <= 0 {
 			resp.ParamError(c, "首次免费转换阵营已用掉，需要消耗 1 个「阵营转换道具」（当前没有，可到商城购买）")
 			return
 		}
-		h.consumeItem(uid, ezfyItemCampSwitch, "阵营转换")
+		h.consumeItem(uid, ezfyItemCampSwitch(), "阵营转换")
 		usedItem = true
 		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", p.ID).Update("camp", req.Camp)
 	}
@@ -262,7 +282,7 @@ func (h *EzfyHandler) RecruitUseTicket(c *gin.Context) {
 		resp.ParamError(c, "需要先建造军校")
 		return
 	}
-	if h.itemCount(uid, ezfyItemRecruitTicket) <= 0 {
+	if h.itemCount(uid, ezfyItemRecruitTicket()) <= 0 {
 		resp.ParamError(c, "没有「招生简章」（可到商城购买）")
 		return
 	}
@@ -270,11 +290,9 @@ func (h *EzfyHandler) RecruitUseTicket(c *gin.Context) {
 		resp.ParamError(c, msg)
 		return
 	}
-	h.consumeItem(uid, ezfyItemRecruitTicket, "军校招募")
+	h.consumeItem(uid, ezfyItemRecruitTicket(), "军校招募")
 	resp.OK(c, gin.H{"msg": "已使用招生简章 ×1，军校候选名将已刷新（不占每小时次数）"})
 }
-
-const ezfyItemRecruitTicket = 13 // 招生简章
 
 // ============ 管理端：军校免费刷新次数维护 ============
 
@@ -309,6 +327,7 @@ func (h *EzfyAdmin) AdminEzfyRecruitLimitSet(c *gin.Context) {
 
 // AdminEzfyRecruitLimitList 玩家覆盖列表（含本小时已用次数）
 func (h *EzfyAdmin) AdminEzfyRecruitLimitList(c *gin.Context) {
+	h.cfgs() // 按名字解析「招生简章」cfg_id 前先加载配置缓存
 	page, offset, size := pageOf(c, 20)
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyProfile{})
@@ -343,7 +362,7 @@ func (h *EzfyAdmin) AdminEzfyRecruitLimitList(c *gin.Context) {
 		}
 		name, homeNum := h.ezfyAdminName(p.UserID)
 		var ticket int64
-		h.DB.Model(&model.EzfyItem{}).Where("user_id = ? AND cfg_id = ?", p.UserID, ezfyItemRecruitTicket).
+		h.DB.Model(&model.EzfyItem{}).Where("user_id = ? AND cfg_id = ?", p.UserID, ezfyItemRecruitTicket()).
 			Select("COALESCE(SUM(`count`),0)").Scan(&ticket)
 		// 字段名沿用 used_today/left_today 以兼容管理端前端，语义已是「本小时」
 		out = append(out, gin.H{

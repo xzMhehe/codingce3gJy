@@ -744,6 +744,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/officers/:id/equip-set", ezfyH.OfficerEquipSet)
 				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
 				ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
+				// ★ 2026-10-11 战俘营 [一键释放]：物理删除当前城全部俘虏（写日志文件）
+				ezfyG.POST("/officers/captive/release-all", ezfyH.OfficerCaptiveReleaseAll)
 				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
 				// 城市列表的 [派遣]：军官调往自己的另一座城
 				ezfyG.POST("/officers/:id/dispatch", ezfyH.OfficerDispatch)
