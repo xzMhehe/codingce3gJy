@@ -275,8 +275,10 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 //	② 军团敌对：我所在军团标记为「敌对」的军团 —— 全体成员。
 //	③ 军团战争：我所在军团正处于「宣战/交战」的敌方军团 —— 全体成员。
 //	未加入军团的玩家只算 ①。镜像 allyUsers 的构建方式，一处计算、每格直接比对。
+//
 // ★ 2026-10-08 「敌人城市标红」缓存：同一玩家 30s 内拖动地图不重复检索战争关系，
-//   避免移动地图卡顿。键=当前玩家 uid（myCorps 由其推导，缓存期内加入/退军团最多延迟 30s 生效）。
+//
+//	避免移动地图卡顿。键=当前玩家 uid（myCorps 由其推导，缓存期内加入/退军团最多延迟 30s 生效）。
 type ezfyEnemyCacheEntry struct {
 	set map[uint]bool
 	exp int64
@@ -1841,18 +1843,10 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 	}
 	// ★ 2026-10-07 所有出征类型的随军资源都原样带回（不止运输/派遣）：
 	//   出发时已从城里扣掉，召回/返航时必须带回，否则随身资源凭空消失。
-	//   随身资源并入 Carry：采集部队(驻守采集)的采集产出也在 Carry 里，不能覆盖丢产出。
+	// ★★ 2026-10-11 随军资源(order.Resources)**不再在这里并入 Carry** ——
+	//   统一由 finishReturn 在「返航到达入库」时并入（一处兜住取消/异常返航/战斗返航等所有路径）。
+	//   这里若也并一次，会与 finishReturn 重复计入 → 资源翻倍。
 	carry := order.Carry
-	if strings.TrimSpace(order.Resources) != "" {
-		c := parseCarry(order.Carry)
-		r := parseCarry(order.Resources)
-		c.Food += r.Food
-		c.Steel += r.Steel
-		c.Oil += r.Oil
-		c.Rare += r.Rare
-		c.Gold += r.Gold
-		carry = carryJSON(c)
-	}
 	order.Status = 2
 	order.Result = order.Troops
 	order.Carry = carry
@@ -2124,6 +2118,21 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	//   ★ 2026-09-24 规则修正（用户确认原版口径）：入城资源不受仓储上限截断，
 	//   只有超过数据库字段最大值才会溢出——去掉 LEAST(cap, ...)，改为无条件累加。
 	c := parseCarry(order.Carry)
+	// ★★ 2026-10-11 修复「派遣携带黄金，取消/返航后黄金不见了」：
+	//   随军资源(order.Resources)在**出发时就从出发城扣掉了**（见 createOrder），此后只有两种归宿：
+	//     ① 送达目标城 —— 运输/派遣/增援**到达**时入目标城，并把 order.resources 清空；
+	//     ② 随部队返航入城 —— 就是这里。
+	//   原来只有「召回」那一条路径把 Resources 并进了 Carry，其余所有返航
+	//   （取消派遣/异常返航/侦查返航/战斗结束返航/放弃野地/遣返驻军…）都只带 Carry，
+	//   Resources 里的粮/钢/油/稀/金**凭空消失**。现在统一在这里并入，一处兜住所有返航。
+	if strings.TrimSpace(order.Resources) != "" {
+		r := parseCarry(order.Resources)
+		c.Food += r.Food
+		c.Steel += r.Steel
+		c.Oil += r.Oil
+		c.Rare += r.Rare
+		c.Gold += r.Gold
+	}
 	if c.total() > 0 {
 		// ★ 2026-09-25 「各项资源有最大的配置」→ 入库统一走 ezfyResAddExpr：
 		//   无条件累加，累加到配置的「资源最大值」（默认 100 亿）为止，且不拉低已有更大值。
@@ -2134,8 +2143,10 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 			"rare":  ezfyResAddExpr("rare", c.Rare),
 			"gold":  ezfyResAddExpr("gold", c.Gold),
 		})
-		h.addReport(uid, 5, "部队返航: 采集资源已入库",
-			fmt.Sprintf("采集部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
+		// ★ 2026-10-11 文案改中性：本函数现在承接**所有**出征类型的返航资源入城
+		//   （不止采集），别再说「采集部队」。标题前缀「部队返航」被战报分类依赖，保持不变。
+		h.addReport(uid, 5, "部队返航: 资源已入库",
+			fmt.Sprintf("部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
 				city.Name, c.Food, c.Steel, c.Oil, c.Rare, c.Gold), "", order.ID)
 	}
 	// 带队军官归来, 恢复在职
@@ -2264,9 +2275,13 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 	order.Result = order.Troops
 	order.ReturnTime = now + wait + travel
 	// ★ Carry 必须一起落库，否则「随部队带回的资源」下次读库就丢了
+	// ★ 2026-10-11 resources 也一起落库：调用方若已把随军资源「送达目标城」，
+	//   会先把 order.Resources 置空再调本函数（如运输到达），这里落库保证清空生效 ——
+	//   否则 finishReturn 会把已送达的资源再带回一次。
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": 2, "result": order.Troops,
-			"return_time": order.ReturnTime, "carry": order.Carry})
+			"return_time": order.ReturnTime, "carry": order.Carry,
+			"resources": order.Resources})
 }
 
 // settleDispatch 常驻采集结算(每满一个采集周期一期)
@@ -2656,6 +2671,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			"gold":  ezfyResAddExpr("gold", g),
 		})
 		order.Carry = ""
+		// ★ 2026-10-11 资源已送达目标城 → 清空 Resources，避免返航时又被 finishReturn 带回一次
+		order.Resources = ""
 		desc := fmt.Sprintf("运输部队已到达%s\n", target.Name)
 		if f+s+o+r+g > 0 {
 			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f, s, o, r, g)
@@ -2704,13 +2721,29 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			desc += "\n部队已编入驻防队列(不并入该城兵力): 敌军进攻时先攻击先到达的驻军, 驻军全部被消灭后才攻击我方部队。"
 		}
+		// ★ 2026-10-11 随军资源入目标城：原来增援**完全不处理** order.Resources ——
+		//   带过去的粮/钢/油/稀/金到达后凭空消失。与运输/派遣同口径，送到增援目标城。
+		if res := h.parseResMap(order.Resources); res["food"]+res["steel"]+res["oil"]+res["rare"]+res["gold"] > 0 {
+			h.calcResource(&target, h.officerList(target.ID))
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
+				"food":  ezfyResAddExpr("food", res["food"]),
+				"steel": ezfyResAddExpr("steel", res["steel"]),
+				"oil":   ezfyResAddExpr("oil", res["oil"]),
+				"rare":  ezfyResAddExpr("rare", res["rare"]),
+				"gold":  ezfyResAddExpr("gold", res["gold"]),
+			})
+			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
+		}
+		order.Resources = "" // 已送达，避免返航时重复带回
 		if own {
 			// ★ 2026-10-02 增援自己城市: 兵力/军官已并入目标城, 订单已完结 → 删除,
 			//   避免 status=3 僵尸订单被军情误判为驻军、占用驻军槽位。
 			h.DB.Delete(&model.EzfyOrder{}, order.ID)
 		} else {
 			order.Status = 3
-			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Update("status", 3)
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Updates(map[string]interface{}{"status": 3, "resources": ""})
 		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
@@ -2759,6 +2792,9 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
 				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
 		}
+		// ★ 2026-10-11 随军资源已送达目标城（或本来就没有）→ 清空 Resources，
+		//   否则返航时 finishReturn 会把它们再带回出发城（凭空多一份）。
+		order.Resources = ""
 		// 随军军官调任目标城市（清空职位）
 		if order.Officer != "" {
 			h.moveOfficerTo(city, order.Officer, target.ID)
@@ -2776,11 +2812,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			order.ReturnTime = now + travel
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 				Updates(map[string]interface{}{"status": 2, "result": "", "carry": order.Carry,
-					"return_time": order.ReturnTime})
+					"return_time": order.ReturnTime, "resources": ""})
 		} else {
 			order.Status = 3
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-				Updates(map[string]interface{}{"status": 3, "carry": ""})
+				Updates(map[string]interface{}{"status": 3, "carry": "", "resources": ""})
 		}
 		h.addReport(uid, 5, "派遣报告: "+target.Name, desc, "", order.ID)
 		return
