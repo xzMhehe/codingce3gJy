@@ -72,7 +72,6 @@
           <div class="old-line gray">采集宝物：通过野地采集或「福利 → 宝物签到」获得，可用于军衔晋升、赏赐军官加忠诚；也可出售给系统换 {{ ezfy.resNames.gold }}。</div>
           <div class="old-line" v-for="t in ezfy.bagTreasures" :key="'tr' + t.cfg_id">
             <b class="orange">{{ t.name }}</b>×{{ t.count }}
-            <span class="gray">（可售 20万{{ ezfy.resNames.gold }}/件，到手 18万）</span>
             <a href="javascript:;" @click="ezfy.openSellTreasure(t)">[出售]</a>
             <template v-if="ezfy.sellTreasure && ezfy.sellTreasure.cfg_id === t.cfg_id">
               <br/>

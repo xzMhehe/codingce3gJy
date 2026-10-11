@@ -58,7 +58,7 @@
               <el-input-number v-model.number="form.mall_buy_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
-              <template slot="label">背包道具上限<el-tooltip placement="top" :content="tips.bag_item_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <template slot="label">单件道具上限<el-tooltip placement="top" :content="tips.bag_item_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.bag_item_max" :min="1" :max="999999" controls-position="right" style="width:180px" />
             </el-form-item>
             <el-form-item>
@@ -380,8 +380,8 @@ export default {
         officer_cap_per_military: '出征军官每 1 点军事属性累加的出征上限，默认 2000（与司令部/科技/集结令叠加），0 = 回落默认',
         officer_speed_per_military: '出征军官每 1 点军事属性加成的行军速度（%）：0.1 = 每点 +0.1%，1000 军事约 2 倍速；0 = 回落默认',
         mall_buy_max: '商城一次最多可购买的数量（下限恒为 1），默认 99',
-        bag_item_max: '同一种道具在玩家背包里的持有上限：购买/掉落时按「已有 + 本次 ≤ 上限」卡控，默认 5000',
-        treasure_max: '未穿戴采集宝物的持有上限：采集结算/打地掉落宝物时按此卡控，满了停止采集并提示，默认 5000',
+        bag_item_max: '【单个道具】的持有上限（不是整个背包的总量）：同一种道具最多能持有多少个；购买/掉落超过就不再入包，默认 5000',
+        treasure_max: '【宝物总库存】上限（所有采集宝物合计，不是每种各 5000）：采集/掉落/开箱/签到超过就不再入包，默认 5000',
         troop_max: '单座城市的兵力上限（含训练队列中尚未出厂的新兵），超出将拒绝训练或恢复，默认 50 亿',
         wound_expire_days: '伤兵在营超过该天数自动消失；按最后一次入营时间计算，期间有新伤兵入营会顺延，默认 3 天',
         dispatch_period_h: '驻守采集每满该小时数结算一期（宝物+资源），默认 1 小时',
