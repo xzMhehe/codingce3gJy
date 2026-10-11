@@ -77,7 +77,7 @@
 
           <el-alert type="info" :closable="false" show-icon style="margin-bottom:10px">
             <template slot="title">
-              地图默认是「坐标哈希」推导的，这里做**覆盖**：改了立即生效（不用重启）。
+              地图默认是「坐标哈希」推导的，这里做覆盖：改了立即生效（不用重启）。
               地形留「不覆盖」就按默认；标记留「无」也按默认。
             </template>
           </el-alert>
@@ -1133,7 +1133,7 @@ export default {
         aws: { sel: this.awSel, url: '/admin/ezfy-act-wilds/batch-delete', name: '活动野地配置', reload: () => this.loadActWilds() }
       }[kind]
       if (!map || !map.sel.length) return
-      this.$confirm('确认**物理删除**勾选的 ' + map.sel.length + ' 条' + map.name + '？删除后不可恢复。',
+      this.$confirm('确认物理删除勾选的 ' + map.sel.length + ' 条' + map.name + '？删除后不可恢复。',
         '批量删除', { type: 'warning', confirmButtonText: '确定删除' }).then(() => {
         api.post(map.url, { ids: map.sel.map(x => x.id) }).then(r => {
           if (r.code === 0) {

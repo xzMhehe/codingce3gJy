@@ -488,7 +488,7 @@ export default {
         inputErrorMessage: '游戏ID必须是正整数'
       }).then(({ value }) => {
         const uid = Number(value)
-        return this.$confirm('确定把玩家 ' + uid + ' 的科技**全部升到满级**吗？此操作会覆盖该玩家已有的科技等级。',
+        return this.$confirm('确定把玩家 ' + uid + ' 的科技全部升到满级吗？此操作会覆盖该玩家已有的科技等级。',
           '一键满级', { type: 'warning', confirmButtonText: '确定满级', cancelButtonText: '取消' })
           .then(() => uid)
       }).then(uid => {

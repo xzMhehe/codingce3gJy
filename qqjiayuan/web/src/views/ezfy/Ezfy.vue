@@ -7467,6 +7467,10 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .logo-title { height: 14px; vertical-align: -2px; }
 /* ★ 首页功能图标(军团/军衔/资源/人口/民心/税率)：统一用内联 SVG 圆角徽章，替换原来风格杂乱的 PNG */
 .ezfy-page .ezfy-ico { width: 18px; height: 18px; vertical-align: -4px; margin-right: 3px; }
+/* ★ 2026-10-11 图标与紧随其后的文字「零间距」：覆盖上面 .ezfy-ico 默认的 3px 右外边距。
+   用于老布局首页「军团:」行（用户要求「军团和图标之间的空格去掉」）。
+   ⚠️ 只改 CSS 不够 —— 模板里 </svg> 与文字之间也不能有换行空白，否则仍会渲染出一个空格。 */
+.ezfy-page .ezfy-ico.ico-flush { margin-right: 0; }
 .ezfy-page .red { color: #c0392b; }
 .ezfy-page .gray { color: #999; }
 .ezfy-page .green { color: #27763c; }
