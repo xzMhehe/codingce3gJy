@@ -934,8 +934,11 @@ func (h *EzfyAdmin) AdminEzfyTrainQueue(c *gin.Context) {
 	if cityId > 0 {
 		q = q.Where("city_id = ?", cityId)
 	} else if word != "" {
+		// ★ 2026-10-11 支持「玩家ID」检索：数字同时按 城池ID / 归属玩家ID 匹配（口径同城市管理）
 		if id, err := strconv.Atoi(word); err == nil {
-			q = q.Where("city_id = ?", id)
+			var cids []uint
+			h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id = ?", id).Scan(&cids)
+			q = q.Where("city_id = ? OR city_id IN ?", id, cids)
 		} else {
 			var cids []uint
 			h.DB.Model(&model.EzfyCity{}).Select("id").

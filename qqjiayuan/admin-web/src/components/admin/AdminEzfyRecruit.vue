@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="城名 / 城池ID" clearable style="width:200px"
+        <el-input v-model="word" placeholder="城名 / 城池ID / 玩家ID" clearable style="width:220px"
                   @keyup.enter.native="page = 1; load()" />
         <el-select v-model="status" style="width:140px" @change="page = 1; load()">
           <el-option label="全部状态" :value="-1" />
