@@ -235,7 +235,13 @@ func ezfyTroopTypesPresent(units []ezfyUnitGroup) map[int]bool {
 // （攻速决定**先手**）。所以这里展示的是移动速度的**兵种专属**部分，与通用部分
 // （燃烧引擎 + 装备移动距离，见战斗加成行的「速度+N%(科技+X 装备+Y)」）分开列。
 //
-// present = 该方实际出现的兵种 type（nil/空 → 不过滤，全部列出）。
+// present = 该方实际出现的兵种 type。
+//
+// ★★ 2026-10-11 用户口径（玩家反馈「当时没有城防单位，却展示了兵种专属防御(城防+20%)」）：
+//
+//	**该方没有这个兵种就一律不展示**。原来写成 `len(present) > 0 && !present[k]`
+//	→ present 为空(nil/空 map)时「不过滤、全部列出」= 没有该兵种也会展示，造成歧义
+//	（玩家会以为凭空多了 20% 防御）。现在空表也当作「没有」。
 func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 	if len(tb.Speed) == 0 {
 		return ""
@@ -245,8 +251,8 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 		if v <= 0 {
 			continue
 		}
-		if len(present) > 0 && !present[k] {
-			continue // 该方没有这个兵种 → 这截对它不生效，不展示
+		if !present[k] {
+			continue // 该方没有这个兵种（present 为空/缺失也算没有）→ 这截对它不生效，不展示
 		}
 		keys = append(keys, k)
 	}
@@ -266,6 +272,11 @@ func ezfyTypeSpeedTxt(tb ezfyTypeBonus, present map[int]bool) string {
 // ★★ 2026-10-09 用户口径：「掩体防御只对城防单位生效，也是属于兵种单位加成只不过是城防单位类型」
 // → 掩体防御从「通用防御加成」里移出来，改成按兵种 type 生效（城防），
 // 这里负责在战斗加成行里展示（写法与「兵种专属速度」一致；该方没有这个兵种就不展示）。
+//
+// ★★ 2026-10-11 用户口径：「假如当前兵种不是城防兵种就别展示，不然容易有歧义」
+// → present 为空(nil/空 map)时也当作「没有」，不再「不过滤、全部列出」。
+//   （排查线上战场 83068：守方确实带了 troop_id=20 防空炮(type=4)，当时展示是对的；
+//    但空表兜底会让「真的没带城防兵」的一方也显示 20%，属歧义来源。）
 func ezfyTypeDefTxt(tb ezfyTypeBonus, present map[int]bool) string {
 	if len(tb.Def) == 0 {
 		return ""
@@ -275,8 +286,8 @@ func ezfyTypeDefTxt(tb ezfyTypeBonus, present map[int]bool) string {
 		if v <= 0 {
 			continue
 		}
-		if len(present) > 0 && !present[k] {
-			continue // 该方没有这个兵种 → 这截对它不生效，不展示
+		if !present[k] {
+			continue // 该方没有这个兵种（present 为空/缺失也算没有）→ 这截对它不生效，不展示
 		}
 		keys = append(keys, k)
 	}
