@@ -1,6 +1,7 @@
 package ezfy
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -56,6 +57,41 @@ var ezfyTechLevelFields = map[string]string{
 // 资源名称配置可改字段（ezfy_cfg_resource）
 var ezfyResCfgFields = map[string]string{
 	"name": "string", "short": "string", "sort": "int",
+}
+
+// ezfyCheckWildTreasure 校验野地类型「宝物掉落」配置：[{"name","count","pct"},...]
+//
+// ★ 2026-10-11 用户要求「二战地图管理 → 宝物掉落 那里，老宝物也要不能配置掉落」：
+//
+//	只允许配置**真能掉落**的装备，两类一律拒绝保存（与 `wildlandConfigLoot` 的实际掉落口径对齐）：
+//	  ① 名字在 ezfy_cfg_equipment 里查不到 —— 含已删的老珠宝（红宝石/蓝宝石/绿宝石/翡翠/紫水晶/
+//	     猫眼石/玛瑙/珍珠）、手写错名 → 「配了却永远不掉」；
+//	  ② 查到但是**套装件**（set_id > 0）—— 用户规则「套装只能开宝箱获得」，掉落逻辑本就跳过。
+func (h *EzfyAdmin) ezfyCheckWildTreasure(vals map[string]interface{}) string {
+	raw, ok := vals["treasure"].(string)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	var rows []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return `宝物掉落配置格式不对，应为 [{"name":"宝物名","count":1,"pct":2}]`
+	}
+	for _, r := range rows {
+		name := strings.TrimSpace(r.Name)
+		if name == "" {
+			continue
+		}
+		var eq model.EzfyCfgEquipment
+		if err := h.DB.Where("name = ?", name).First(&eq).Error; err != nil {
+			return "宝物「" + name + "」不存在（可能已被删除），请重新选择"
+		}
+		if eq.SetId > 0 {
+			return "「" + name + "」是套装件，只能开宝箱获得，不能配置为掉落"
+		}
+	}
+	return ""
 }
 
 func ezfyWildTypeName(t int) string {
@@ -228,6 +264,10 @@ func (h *EzfyAdmin) AdminEzfyWildCfgCreate(c *gin.Context) {
 		resp.ParamError(c, msg)
 		return
 	}
+	if msg := h.ezfyCheckWildTreasure(vals); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
 	if err := h.DB.Model(&model.EzfyCfgWildland{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
@@ -256,6 +296,10 @@ func (h *EzfyAdmin) AdminEzfyWildCfgUpdate(c *gin.Context) {
 		return
 	}
 	if msg := h.ezfyCheckWildOfficer(vals); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	if msg := h.ezfyCheckWildTreasure(vals); msg != "" {
 		resp.ParamError(c, msg)
 		return
 	}

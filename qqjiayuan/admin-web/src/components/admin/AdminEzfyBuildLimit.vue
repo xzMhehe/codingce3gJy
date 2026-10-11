@@ -160,6 +160,11 @@
               <template slot="label">出征速度加成(%)<el-tooltip placement="top" :content="tips.march_speed_bonus"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.march_speed_bonus" :min="0" :max="1000" :step="10" :precision="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-11 打野地掉宝冷却（小时）：默认 2，**0 合法 = 关闭冷却** → :min="0" -->
+            <el-form-item>
+              <template slot="label">打野地掉宝冷却(小时)<el-tooltip placement="top" :content="tips.wild_treasure_cooldown_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.wild_treasure_cooldown_h" :min="0" :max="720" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-10-09 原「战斗掉落·中级/高级/特殊宝物概率(%) + 活动野地掉宝概率(%)」
                  四个配置已删除：掉落**全部走手动配置** ——
                  野地/寇城 →「地图管理 → 野地类型 → 掉落宝物/掉落道具」，
@@ -346,6 +351,8 @@ export default {
         gather_level_pow: 1.3,
         // ★ 2026-09-28 海野采集系数（默认 1.5）
         gather_sea_mult: 1.5,
+        // ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**）
+        wild_treasure_cooldown_h: 2,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
         recruit_cycle_mode: 2,
         // ★ 2026-10-08 新玩家落地洲（默认欧洲）
@@ -424,6 +431,9 @@ export default {
           '海野基础产出系数比陆地低（海野 ×3、陆地 ×4），本系数让海野采得更多：默认 1.5 → 海野 3×1.5=4.5，比同级陆地 4 更高。填 1 = 海野与陆地拉平。建议 1~2。',
         // ★ 2026-09-28 军校刷新周期
         recruit_cycle_mode: '军校免费刷新次数的重置周期。按小时（默认）= 每小时重置；按天 = 每天 0 点重置。',
+        // ★ 2026-10-11 打野地掉宝冷却
+        wild_treasure_cooldown_h: '打野地/寇城胜利掉落宝物的**玩家级冷却**（小时，默认 2）：同一玩家在冷却期内再次打地，本场不掉宝物（商城道具掉落不受影响）。' +
+          '用来压制「即使概率配得很低、打得多了照样出宝」的情况。★ 填 0 = 关闭冷却（合法值）。掉到宝物后才开始计冷却，没掉到不占冷却。',
         // ★ 2026-10-08 新玩家落地洲
         default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
@@ -508,6 +518,9 @@ export default {
             gather_level_pow: pos(Number(r.data.gather_level_pow), 1.3),
             // ★ 2026-09-28 海野采集系数：0 无意义 → pos 回落默认 1.5
             gather_sea_mult: pos(Number(r.data.gather_sea_mult), 1.5),
+            // ★ 2026-10-11 打野地掉宝冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 2）
+            wild_treasure_cooldown_h: (r.data.wild_treasure_cooldown_h === undefined || r.data.wild_treasure_cooldown_h === null)
+              ? 2 : Number(r.data.wild_treasure_cooldown_h),
             // ★ 2026-09-28 军校刷新周期：1=按天 2=按小时，非法回落按小时
             recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
             // ★ 2026-10-08 新玩家落地洲：1~7，非法回落欧洲

@@ -86,14 +86,10 @@ var ezfyEzfyCfgEquipment = []model.EzfyCfgEquipment{
 	{ID: 16, Name: "元帅礼服", Type: "防具", Tier: 4, Military: 30, Logistics: 30, Learning: 120, Level: 75, Des: "特殊防具,学识+120"},
 	{ID: 17, Name: "帝国勋章", Type: "饰品", Tier: 4, Military: 80, Logistics: 80, Learning: 80, Level: 80, Des: "特殊饰品,三属性+80"},
 	{ID: 18, Name: "金质怀表", Type: "饰品", Tier: 4, Military: 50, Logistics: 100, Learning: 100, Level: 80, Des: "特殊饰品,后勤学识+100"},
-	{ID: 19, Name: "红宝石", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(平原),三属性+5"},
-	{ID: 20, Name: "蓝宝石", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(丘陵),三属性+5"},
-	{ID: 21, Name: "绿宝石", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(森林),三属性+5"},
-	{ID: 22, Name: "翡翠", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(草原),三属性+5"},
-	{ID: 23, Name: "紫水晶", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(沼泽),三属性+5"},
-	{ID: 24, Name: "猫眼石", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(盆地),三属性+5"},
-	{ID: 25, Name: "玛瑙", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(山地),三属性+5"},
-	{ID: 26, Name: "珍珠", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "珠宝(海洋),三属性+5"},
+	// ★★ 2026-10-11 用户要求「老珠宝全部删除，种子里面也都去掉」：
+	//   原 19~26 红宝石/蓝宝石/绿宝石/翡翠/紫水晶/猫眼石/玛瑙/珍珠 已从种子与库里移除
+	//   （价格 0、不在任何宝箱奖池/军团商城，采集也不会掉，纯历史残留）。
+	//   ⚠️ 号段 19~26 已作废，**不要再用**；新增装备请从 36+ 取号。
 	// ★ 采集宝物(用户规范): 只在野地采集中按地形掉落, 战斗不掉宝物
 	{ID: 27, Name: "黄金手镯", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(丘陵/沼泽/森林),三属性+5"},
 	{ID: 28, Name: "玛瑙项坠", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(丘陵/草原),三属性+5"},

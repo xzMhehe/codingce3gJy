@@ -613,6 +613,12 @@ export default {
       mallBagMax: 5000,
       bagItems: [],
       bagTreasures: [],
+      // ★ 2026-10-11 背包分栏：item=道具 / equip=军官装备
+      bagTab: 'item',
+      // ★ 2026-10-11 背包「军官装备」tab：非宝物装备（军官装备/武器/防具/饰品），武器防具可卖黄金
+      bagEquips: [],
+      sellEquip: null,      // 正在出售的装备 {cfg_id,name,type,tier,count,unworn,sell_price}
+      sellEquipCount: 1,
       // ★ 2026-10-11 宝物库存上限（管理端「系统配置」可配，默认 5000）：宝物页展示「宝物(N/上限)」
       treasureMax: 5000,
       // ★ 2026-10-08 宝物出售给系统（统一 20万黄金/件，收10%手续费）
@@ -3272,6 +3278,8 @@ export default {
         if (r.code === 0) {
           this.bagItems = r.data.items
           this.bagTreasures = r.data.treasures || []
+          // ★ 2026-10-11 背包「军官装备」tab
+          this.bagEquips = r.data.equips || []
           // ★ 2026-10-11 宝物库存上限（默认 5000）
           this.treasureMax = parseInt(r.data.treasure_max) > 0 ? parseInt(r.data.treasure_max) : 5000
           this.bagOfficers = r.data.officers || []
@@ -3296,6 +3304,31 @@ export default {
         if (r.code !== 0) { this.notify(r.msg || '出售失败'); return }
         this.notify(r.msg || '出售成功')
         this.sellTreasure = null
+        this.loadBag()
+      })
+    },
+    // ★ 2026-10-11 背包分栏：道具 / 军官装备
+    setBagTab (t) {
+      this.bagTab = t
+      this.sellEquip = null
+    },
+    // ★ 2026-10-11 背包出售装备（武器/防具）：打开出售面板
+    openSellEquip (e) {
+      this.sellEquip = e
+      this.sellEquipCount = 1
+    },
+    // ★ 2026-10-11 确认出售装备：按品质单价 1万~20万/件，黄金入当前城市，**物理删除**
+    doSellEquip () {
+      const n = parseInt(this.sellEquipCount) || 0
+      if (!this.sellEquip) return
+      if (n <= 0) { this.notify('请填写出售数量'); return }
+      if (n > (this.sellEquip.unworn || 0)) { this.notify('超过未穿戴数量'); return }
+      api.post('/games/ezfy/equip/sell', {
+        cfg_id: this.sellEquip.cfg_id, count: n
+      }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '出售失败'); return }
+        this.notify(r.msg || '出售成功')
+        this.sellEquip = null
         this.loadBag()
       })
     },

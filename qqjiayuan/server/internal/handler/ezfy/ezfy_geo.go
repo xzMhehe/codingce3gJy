@@ -770,6 +770,8 @@ const (
 	// ★ 宝物库存上限（默认 5000）：未穿戴的采集宝物持有上限。
 	//   采集结算 / 打地掉落宝物时卡控；0 无意义 → 读取端回落该默认值。
 	ezfyTreasureMaxDef = 5000
+	// ★ 打野地掉落宝物的冷却小时数（默认 2）。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
+	ezfyWildTreasureCooldownDef = 2
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
 	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
 	//   2026-09-23 「10 亿太少，上调到 50 亿」。
@@ -1039,6 +1041,20 @@ func ezfyBagItemMax() int {
 // 打地掉落宝物超上限也提示」。口径 = 该玩家**未穿戴**的采集宝物件数（与「宝物」页展示一致）。
 func ezfyTreasureMax() int {
 	return ezfyLimitOr(ezfyCfg.limit.TreasureMax, ezfyTreasureMaxDef)
+}
+
+// ezfyWildTreasureCooldownH 打野地掉落宝物的冷却小时数（默认 2，二战系统配置可配）。
+//
+// ★ 2026-10-11 用户规则：「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内
+// 掉落了宝物那么就不会再掉」→ 按**玩家**维度冷却（上次掉宝时间存 ezfy_profile.wild_treasure_at）。
+// ★ 0 是**合法值**（= 关闭冷却），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
+//
+//	配置缓存没加载过时才回落默认 2，避免把「还没加载」误判成「关闭」。
+func ezfyWildTreasureCooldownH() int {
+	if !ezfyCfg.ready() {
+		return ezfyWildTreasureCooldownDef
+	}
+	return ezfyCfg.limit.WildTreasureCooldownH
 }
 
 // ============ 系统配置：玩法开关 + 野地兵力倍数 ============

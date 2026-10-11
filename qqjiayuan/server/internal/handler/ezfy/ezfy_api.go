@@ -2608,7 +2608,65 @@ func (h *EzfyHandler) Bag(c *gin.Context) {
 		}
 		trViews = append(trViews, gin.H{"cfg_id": a.CfgId, "name": cfg.Name, "count": a.Cnt})
 	}
-	resp.OK(c, gin.H{"items": views, "treasures": trViews, "officers": officers, "skills": skills,
+	// ★ 2026-10-11 背包新增「军官装备」tab：把玩家的**非宝物装备**也下发
+	//   （军官装备 / 武器 / 防具 / 饰品），供背包查看；其中 **武器/防具** 可在背包里按品质卖黄金（见 EquipSell）。
+	//   · 按 (cfg_id, tier, name, type) 聚合，count = 总持有、unworn = 未穿戴（= 可卖数量）；
+	//   · 宝物（9 种珠宝）不在这里重复下发（已由上面的 treasures 单独给，宝物页用）。
+	type eqAgg struct {
+		CfgId  int
+		Tier   int
+		Name   string
+		Type   string
+		Cnt    int64
+		Unworn int64
+	}
+	var eqAggs []eqAgg
+	h.DB.Model(&model.EzfyEquipment{}).
+		Select("cfg_id, tier, name, type, COUNT(*) AS cnt, SUM(officer_id = 0) AS unworn").
+		Where("user_id = ?", uid).Group("cfg_id, tier, name, type").Scan(&eqAggs)
+	eqViews := []gin.H{}
+	for _, a := range eqAggs {
+		if treasureSet[a.Name] {
+			continue // 采集宝物走上面的 treasures
+		}
+		switch a.Type {
+		case "军官装备", "武器", "防具", "饰品":
+		default:
+			continue // 其它类型（历史脏数据）不进背包
+		}
+		v := gin.H{"cfg_id": a.CfgId, "name": a.Name, "type": a.Type, "tier": a.Tier,
+			"count": a.Cnt, "unworn": a.Unworn, "sellable": ezfyEquipSellableType(a.Type)}
+		if v["sellable"] == true {
+			v["sell_price"] = ezfyEquipSellPrice(a.Tier)
+		}
+		eqViews = append(eqViews, v)
+	}
+	// 展示顺序：军官装备 → 武器 → 防具 → 饰品，其次品质高→低，再按名字
+	eqTypeRank := func(t string) int {
+		switch t {
+		case "军官装备":
+			return 0
+		case "武器":
+			return 1
+		case "防具":
+			return 2
+		case "饰品":
+			return 3
+		}
+		return 9
+	}
+	sort.SliceStable(eqViews, func(i, j int) bool {
+		ri, rj := eqTypeRank(eqViews[i]["type"].(string)), eqTypeRank(eqViews[j]["type"].(string))
+		if ri != rj {
+			return ri < rj
+		}
+		if eqViews[i]["tier"].(int) != eqViews[j]["tier"].(int) {
+			return eqViews[i]["tier"].(int) > eqViews[j]["tier"].(int)
+		}
+		return eqViews[i]["name"].(string) < eqViews[j]["name"].(string)
+	})
+	resp.OK(c, gin.H{"items": views, "treasures": trViews, "equips": eqViews,
+		"officers": officers, "skills": skills,
 		// ★ 2026-10-11 宝物库存上限（默认 5000，管理端「系统配置」可维护）：前端展示「宝物(N/上限)」
 		"treasure_max": ezfyTreasureMax()})
 }

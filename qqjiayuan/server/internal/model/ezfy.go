@@ -325,6 +325,12 @@ type EzfyCfgLimit struct {
 	//   <= 0 无意义 → 读取端回落默认 5000。已超上限的存量不回溯。
 	TreasureMax int `gorm:"default:5000;comment:宝物库存上限" json:"treasure_max"`
 
+	// ★ 2026-10-11 用户规则「打野地掉落宝物太频繁了，即使我配置了 1%，
+	//   如果玩家 2 小时内掉落了宝物那么就不会再掉」：
+	//   打野地（野地/寇城战斗掉落）掉宝的**冷却小时数**，默认 2。
+	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildTreasureCooldownH。
+	WildTreasureCooldownH int `gorm:"default:2;comment:打野地掉宝冷却小时(0=关闭)" json:"wild_treasure_cooldown_h"`
+
 	// ★ 2026-09-28 用户规则：「安抚 消费黄金 5w 降低民怨 2 增加民心 1 15分钟可安抚一次」
 	//   四个值都可由管理端调整；<= 0 时回落默认（5 万 / 2 / 1 / 15 分钟）。
 	PlacateGold        int64 `gorm:"default:50000;comment:安抚花费黄金" json:"placate_gold"`
@@ -610,6 +616,11 @@ type EzfyProfile struct {
 	// ★ 2026-10-10 首页布局：0=跟随默认(新布局) 1=新布局 2=老布局（统帅页单选切换）
 	//   玩家 10000（首个管理员）由 seed 幂等置为 2 保留现在的首页老布局。
 	HomeLayout int `gorm:"default:0;comment:首页布局(0/1新布局 2老布局)" json:"home_layout"`
+
+	// ★ 2026-10-11 用户规则「打野地掉落宝物太频繁了，即使我配置了 1%」→
+	//   记录该玩家**上一次打野地掉到宝物**的时间戳(ms)，0 = 从未掉过。
+	//   距上次不足 ezfy_cfg_limit.wild_treasure_cooldown_h 小时（默认 2）则本次不掉宝物。
+	WildTreasureAt int64 `gorm:"default:0;comment:打野地掉宝冷却(上次掉宝时间戳ms,0=从未)" json:"wild_treasure_at"`
 
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }

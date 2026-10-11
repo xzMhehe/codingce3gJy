@@ -130,6 +130,44 @@ func TestEquipShopOnlySellsLoosePieces(t *testing.T) {
 	}
 }
 
+// ============ 二·补、打野地掉宝冷却 + 宝物掉落配置校验（2026-10-11） ============
+
+// TestWildlandTreasureCooldown —— 用户要求（2026-10-11）：
+// 「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内掉落了宝物那么就不会再掉」。
+//
+// 静态断言：
+//  1. wildlandConfigLoot 读「二战系统配置」的冷却时长（ezfyWildTreasureCooldownH）并做冷却判定
+//     （ezfyWildTreasureReady）；
+//  2. 掉到宝物后写 ezfy_profile.wild_treasure_at（冷却从此刻起算）；
+//  3. 冷却判定函数存在且读 wild_treasure_at。
+func TestWildlandTreasureCooldown(t *testing.T) {
+	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) wildlandConfigLoot(")
+	if !strings.Contains(body, "ezfyWildTreasureCooldownH()") {
+		t.Fatalf("wildlandConfigLoot 未读取打野地掉宝冷却配置（二战系统配置）：\n%s", body)
+	}
+	if !strings.Contains(body, "ezfyWildTreasureReady(") {
+		t.Fatalf("wildlandConfigLoot 未做掉宝冷却判定，宝物仍会频繁掉：\n%s", body)
+	}
+	if !strings.Contains(body, `Update("wild_treasure_at"`) {
+		t.Fatalf("wildlandConfigLoot 掉到宝物后未刷新冷却时间戳（wild_treasure_at）：\n%s", body)
+	}
+	helper := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyWildTreasureReady(")
+	if !strings.Contains(helper, "wild_treasure_at") {
+		t.Fatalf("ezfyWildTreasureReady 未按 wild_treasure_at 判定冷却：\n%s", helper)
+	}
+}
+
+// TestWildTreasureCfgRejectsSetPieces —— 管理端「地图管理 → 野地类型 → 宝物掉落」保存校验：
+//
+// 除了「名字查不到（含已删的老珠宝）」要拒，**套装件**（只能开宝箱）也要拒 —— 与掉落逻辑
+// （wildlandConfigLoot 里 `eq.SetId > 0` 跳过）保持一致，避免「配了却永远不掉」。
+func TestWildTreasureCfgRejectsSetPieces(t *testing.T) {
+	body := ezfyFuncBody(t, "ezfy_admin_wild.go", "func (h *EzfyAdmin) ezfyCheckWildTreasure(")
+	if !strings.Contains(body, "SetId > 0") {
+		t.Fatalf("ezfyCheckWildTreasure 未拒绝套装件，管理端可把套装配成野地掉落：\n%s", body)
+	}
+}
+
 // ============ 三、辅助 ============
 
 // ezfyFuncBody 取某个函数从签名到首个「行首 }」之间的源码（用于静态断言）。

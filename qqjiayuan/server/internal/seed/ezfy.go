@@ -64,6 +64,8 @@ func seedEzfy(db *gorm.DB) {
 	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
+	// ★ 2026-10-11 清野地类型「宝物掉落」里残留的老珠宝（老宝物不再可配置掉落；幂等，无残留=no-op）
+	ensureEzfyNoLegacyJewelDrop(db)
 	batch(ezfyEzfyCfgItem, "ezfy_cfg_item")
 	// ★ 2026-09-26 「道具配置按现在线上跑的初始化」：
 	//   stock 列自带 DB 默认值 100，而 GORM 对「带 default 标签的字段」会跳过 Go 零值，

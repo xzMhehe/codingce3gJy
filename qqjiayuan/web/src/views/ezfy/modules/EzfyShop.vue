@@ -3,6 +3,12 @@
     <template v-if="ezfy.cur === 'bag'">
         <div class="panel">
           <div class="panel-title">背包 <a href="javascript:;" @click="ezfy.loadBag">[刷新]</a></div>
+          <!-- ★ 2026-10-11 背包分栏：道具 / 军官装备（宝物由底部导航「宝物」独立页承载） -->
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'item' }" @click="ezfy.setBagTab('item')">道具</a><span> | </span>
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'equip' }" @click="ezfy.setBagTab('equip')">军官装备</a>
+          </div>
+          <template v-if="ezfy.bagTab === 'item'">
           <!-- ★ 2026-10-06 背包只展示道具：宝物已由底部导航「宝物」独立页承载，去掉子tab及宝物展示 -->
           <!-- ★ 检索框：道具多的时候按名字/说明筛 -->
           <div class="old-line">
@@ -62,6 +68,27 @@
             <span class="gray">第 {{ Math.min(ezfy.bagPage, ezfy.bagTotalPages) }}/{{ ezfy.bagTotalPages }} 页 · 共 {{ ezfy.bagFiltered.length }} 种</span>
             <a href="javascript:;" :class="{ disabled: ezfy.bagPage >= ezfy.bagTotalPages }" @click="ezfy.bagGo(1)">[下一页]</a>
           </div>
+          </template>
+          <!-- ★ 2026-10-11 军官装备 tab：展示自己的装备；武器/防具可按品质卖黄金（物理删除） -->
+          <template v-else>
+            <div class="old-line" v-for="e in ezfy.bagEquips" :key="'eq' + e.cfg_id">
+              <b>{{ e.name }}</b>×{{ e.count }}
+              <span class="gray">[{{ e.type }}]</span>
+              <template v-if="e.sellable">
+                <span class="gray">可卖 {{ ezfy.fmtN(e.sell_price) }}{{ ezfy.resNames.gold }}/件</span>
+                <a href="javascript:;" @click="ezfy.openSellEquip(e)">[出售]</a>
+              </template>
+              <template v-if="ezfy.sellEquip && ezfy.sellEquip.cfg_id === e.cfg_id">
+                <br/>
+                <span class="gray">出售</span>
+                <input v-model="ezfy.sellEquipCount" type="number" min="1" :max="e.unworn" style="width:60px"/>
+                <span class="gray">/{{ e.unworn }} 件 · 实得 <b class="green">{{ ezfy.fmtN((e.sell_price || 0) * (parseInt(ezfy.sellEquipCount) || 0)) }}</b>{{ ezfy.resNames.gold }}</span>
+                <a href="javascript:;" @click="ezfy.doSellEquip()">[确认出售]</a>
+                <a href="javascript:;" @click="ezfy.sellEquip = null">[取消]</a>
+              </template>
+            </div>
+            <div class="old-line gray" v-if="!ezfy.bagEquips.length">(没有装备)</div>
+          </template>
           <a href="javascript:;" @click="ezfy.go('mall')">[前往商城]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>

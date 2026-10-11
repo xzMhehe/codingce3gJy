@@ -668,6 +668,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/mall/buy", ezfyH.Buy)
 				ezfyG.GET("/bag", ezfyH.Bag)
 				ezfyG.POST("/bag/use", ezfyH.UseItem)
+				// ★ 2026-10-11 背包「军官装备」tab：出售武器/防具换黄金（按品质 1万~20万，物理删除）
+				ezfyG.POST("/equip/sell", ezfyH.EquipSell)
 				ezfyG.GET("/tasks", ezfyH.Tasks)
 				ezfyG.POST("/tasks/award", ezfyH.TaskAward)
 				// ★ 2026-09-27 为爱发电卡（管理端发放即生效，每天领钻石，漏领累加封顶30天）

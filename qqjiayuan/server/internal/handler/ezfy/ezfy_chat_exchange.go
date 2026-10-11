@@ -974,6 +974,8 @@ func (h *EzfyHandler) ExchangeTreasureSell(c *gin.Context) {
 		return
 	}
 	// 删除 count 件未穿戴宝物
+	// ★ 2026-10-11 用户明确「宝物那块的卖也是物理删除」：EzfyEquipment **没有 DeletedAt**，
+	//   所以这里的 Delete 本来就是真删行（物理删除），不是软删 —— 保持现状即可。
 	if entity := h.DB.Where("user_id = ? AND officer_id = 0 AND cfg_id = ?", uid, req.CfgId).
 		Limit(req.Count).Delete(&model.EzfyEquipment{}); entity.Error != nil {
 		resp.ServerError(c, entity.Error)
@@ -1004,6 +1006,103 @@ func (h *EzfyHandler) ExchangeTreasureSell(c *gin.Context) {
 		msg += fmt.Sprintf("；因超过黄金上限丢失 %d", lost)
 	}
 	resp.OK(c, gin.H{"msg": msg, "received_gold": received, "fee": fee,
+		"gold_lost": lost > 0, "lost_gold": lost})
+}
+
+// ============ 装备（武器/防具）出售（2026-10-11）============
+
+// ezfyEquipSellPrice 装备出售给系统的单价（黄金/件），按**品质档位**：
+//
+//	初级(tier1) 1 万 / 中级(tier2) 5 万 / 高级(tier3) 10 万 / 特殊(tier4) 20 万。
+//
+// ★ 2026-10-11 用户规则：「防具、武器 type 可以在背包里面卖黄金，卖了到当前城市黄金里面，
+// 按品级 1万 - 20 万 不等」。tier 缺失/越界一律按初级 1 万兜底。
+func ezfyEquipSellPrice(tier int) int64 {
+	switch tier {
+	case 2:
+		return 50000
+	case 3:
+		return 100000
+	case 4:
+		return 200000
+	default:
+		return 10000
+	}
+}
+
+// ezfyEquipSellableType 该装备类型能否在背包里出售（★ 只放 武器/防具；军官装备/饰品暂时不出售）。
+func ezfyEquipSellableType(t string) bool { return t == "武器" || t == "防具" }
+
+// EquipSell POST /games/ezfy/equip/sell {cfg_id, count} —— 背包里出售「武器/防具」换黄金
+//
+// ★ 2026-10-11 用户规则：
+//   - 只卖 **武器 / 防具** 两种 type（服务端判定，不信前端）；
+//   - 只卖**未穿戴**的（officer_id = 0；穿在军官身上的不卖）；
+//   - 单价按品质档位 1 万~20 万（见 ezfyEquipSellPrice），不另收手续费；
+//   - 黄金入**当前城市**，受「黄金资源最大值」硬上限约束（超出丢量并提示）；
+//   - **物理删除**（EzfyEquipment 无 DeletedAt，Delete 即真删行）。
+func (h *EzfyHandler) EquipSell(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	// 与宝物出售同一把玩家级锁：防连点重复删装备 / 重复得黄金
+	mu := ezfyExchangeLock(uid)
+	mu.Lock()
+	defer mu.Unlock()
+	var req struct {
+		CfgId int `json:"cfg_id"`
+		Count int `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if req.CfgId <= 0 || req.Count <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	cfge, ok := ezfyCfg.equipments[req.CfgId]
+	if !ok {
+		resp.ParamError(c, "装备不存在")
+		return
+	}
+	if !ezfyEquipSellableType(cfge.Type) {
+		resp.ParamError(c, "该类型装备不可出售")
+		return
+	}
+	var own int64
+	h.DB.Model(&model.EzfyEquipment{}).
+		Where("user_id = ? AND officer_id = 0 AND cfg_id = ?", uid, req.CfgId).Count(&own)
+	if own < int64(req.Count) {
+		resp.ParamError(c, fmt.Sprintf("数量不足(未穿戴 %d 件)", own))
+		return
+	}
+	if entity := h.DB.Where("user_id = ? AND officer_id = 0 AND cfg_id = ?", uid, req.CfgId).
+		Limit(req.Count).Delete(&model.EzfyEquipment{}); entity.Error != nil {
+		resp.ServerError(c, entity.Error)
+		return
+	}
+	price := ezfyEquipSellPrice(cfge.Tier)
+	received := price * int64(req.Count)
+
+	// ★ 黄金入**当前城市**（用户规则），并受「黄金资源最大值」硬上限约束
+	city := h.getOrCreateCity(uid)
+	h.calcResource(&city)
+	before := city.Gold
+	goldMax := ezfyResMaxOf("gold")
+	after := before + received
+	if after > goldMax {
+		after = goldMax
+	}
+	lost := (before + received) - after
+	city.Gold = after
+	h.saveCityRes(&city)
+	// 出售改变了装备背包，玩家级缓存全局失效
+	ezfyPageCacheDel(uid)
+
+	msg := fmt.Sprintf("出售 %s×%d 成功，获得 %d 黄金", cfge.Name, req.Count, received)
+	if lost > 0 {
+		msg += fmt.Sprintf("；因超过黄金上限丢失 %d", lost)
+	}
+	resp.OK(c, gin.H{"msg": msg, "received_gold": received,
 		"gold_lost": lost > 0, "lost_gold": lost})
 }
 

@@ -4415,6 +4415,20 @@ func parseWildTreasureDrops(raw string) []wildTreasureDrop {
 	return out
 }
 
+// ezfyWildTreasureReady 打野地掉宝冷却是否已过：距上次掉宝 >= cooldownH 小时（或从未掉过）→ true。
+//
+// ★ 2026-10-11 用户规则「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内掉落了宝物那么就不会再掉」：
+// 按**玩家**维度冷却（不分地图/野地等级）。上次掉宝时间戳(ms)存 ezfy_profile.wild_treasure_at，0 = 从未掉过。
+// cooldownH <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
+func (h *EzfyHandler) ezfyWildTreasureReady(uid uint, cooldownH int) bool {
+	var last []int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck("wild_treasure_at", &last)
+	if len(last) == 0 || last[0] <= 0 {
+		return true // 从未掉过 / 列尚未补出（老库）→ 放行，避免误伤
+	}
+	return time.Now().UnixMilli()-last[0] >= int64(cooldownH)*3600000
+}
+
 // wildlandConfigLoot 野地/寇城战斗**胜利**掉落：完全按「地图管理 → 野地类型」的手动配置走。
 //
 // ★★ 2026-10-09 用户要求：「掉落 都走手动配置的」。两条配置各自逐条独立按概率判定：
@@ -4476,25 +4490,41 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 		lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
 	}
 	// ② 宝物掉落：[{"name","count","pct"},...]
+	//
+	// ★ 2026-10-11 用户规则「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内
+	//   掉落了宝物那么就不会再掉」→ 按**玩家**维度冷却：距上次掉宝不足
+	//   ezfy_cfg_limit.wild_treasure_cooldown_h 小时（默认 2）则本场**不掉宝物**。
+	//   冷却时长 0 = 关闭冷却（合法值）；**只卡宝物，商城道具掉落不受影响**。
+	//   掉到宝物后才刷新冷却时间戳（没掉到不占冷却）。
 	treasureLeft := h.ezfyTreasureLeft(uid)
-	for _, d := range parseWildTreasureDrops(wcfg.Treasure) {
-		if rand.Intn(100) >= d.Pct {
-			continue
+	cooldownH := ezfyWildTreasureCooldownH()
+	treasureDropped := false
+	if cooldownH <= 0 || h.ezfyWildTreasureReady(uid, cooldownH) {
+		for _, d := range parseWildTreasureDrops(wcfg.Treasure) {
+			if rand.Intn(100) >= d.Pct {
+				continue
+			}
+			eq := ezfyCfg.equipmentByName(d.Name)
+			if eq == nil || eq.SetId > 0 {
+				continue // 名字对不上 / 是套装件（套装只能开宝箱）
+			}
+			if d.Count > treasureLeft {
+				out += fmt.Sprintf("\n宝物已满(%d), %s×%d 未能入包", treasureMax, eq.Name, d.Count)
+				continue
+			}
+			for k := 0; k < d.Count; k++ {
+				h.addEquipment(city, eq)
+			}
+			treasureLeft -= d.Count
+			out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
+			lootNames = append(lootNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
+			treasureDropped = true
 		}
-		eq := ezfyCfg.equipmentByName(d.Name)
-		if eq == nil || eq.SetId > 0 {
-			continue // 名字对不上 / 是套装件（套装只能开宝箱）
-		}
-		if d.Count > treasureLeft {
-			out += fmt.Sprintf("\n宝物已满(%d), %s×%d 未能入包", treasureMax, eq.Name, d.Count)
-			continue
-		}
-		for k := 0; k < d.Count; k++ {
-			h.addEquipment(city, eq)
-		}
-		treasureLeft -= d.Count
-		out += fmt.Sprintf("\n掉落宝物: %s×%d", eq.Name, d.Count)
-		lootNames = append(lootNames, fmt.Sprintf("%s×%d", eq.Name, d.Count))
+	}
+	if treasureDropped {
+		// 本次掉到宝物 → 记录掉宝时间，冷却从此刻起算（下次要等冷却过去才会再掉）
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+			Update("wild_treasure_at", time.Now().UnixMilli())
 	}
 	if len(lootNames) > 0 {
 		// 播报目标名用调用方算好的 targetName（「海底森林2级」/「寇城3级」）；

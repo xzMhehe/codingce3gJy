@@ -201,6 +201,13 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("bag_item_max", 5000)
 		// ★ 2026-10-11 「宝物库存上限 5000」：未穿戴采集宝物的持有上限（0 无意义 → 回填默认 5000）。
 		addLimitCol("treasure_max", 5000)
+		// ★ 2026-10-11 「打野地掉落宝物太频繁」→ 掉宝冷却小时数（默认 2）。
+		//   ⚠️ **0 是合法值（= 关闭冷却）**，所以**不能**用 addLimitCol（它带 `WHERE col <= 0` 回填，
+		//   会把管理员关掉的冷却每次启动又改回 2）→ 只补列 + 只回填 NULL。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_treasure_cooldown_h") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
 		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
 		ezfyBumpBagItemMaxDefault(db)
 		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
@@ -2935,6 +2942,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 	}
 	// ★ 2026-10-11 背包上限默认值当天由 1000 上调为 5000：把仍停在旧默认 1000 的行一次性提升。
 	ezfyBumpBagItemMaxDefault(db)
+	// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2）：⚠️ 0 合法（= 关闭）→ 只补列 + 只回填 NULL，
+	//   不能走上面那个 `WHERE IS NULL OR <= 0` 的循环。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_treasure_cooldown_h") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

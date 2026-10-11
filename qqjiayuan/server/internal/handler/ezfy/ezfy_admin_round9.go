@@ -26,6 +26,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
+		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
+		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
@@ -245,9 +247,11 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-10-11 背包单件道具持有上限（默认 1000；>= 1 才合法）
 		BagItemMax *int `json:"bag_item_max"`
 		// ★ 2026-10-11 宝物库存上限（默认 5000；>= 1 才合法）
-		TreasureMax        *int `json:"treasure_max"`
-		ConquerFeelingsMax *int `json:"conquer_feelings_max"`
-		LootFeelings       *int `json:"loot_feelings"`
+		TreasureMax *int `json:"treasure_max"`
+		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，只拦负数/越界）
+		WildTreasureCooldownH *int `json:"wild_treasure_cooldown_h"`
+		ConquerFeelingsMax    *int `json:"conquer_feelings_max"`
+		LootFeelings          *int `json:"loot_feelings"`
 		// ★ 2026-10-07 赎城金额（钻石，默认 500；>= 1 才合法）
 		RansomCost *int `json:"ransom_cost"`
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -328,6 +332,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	lim := model.EzfyCfgLimit{ID: 1, MilitaryMax: 36, ResourceMax: 36, HouseMax: 33, FactoryMax: 20,
 		GatherMaxPerOrder: ezfyGatherMaxDefault, MallBuyMax: ezfyMallBuyMaxDef, BagItemMax: ezfyBagItemMaxDef,
 		TreasureMax: ezfyTreasureMaxDef,
+		// ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**，故不参与 <=0 兜底）
+		WildTreasureCooldownH: ezfyWildTreasureCooldownDef,
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
@@ -455,6 +461,16 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.TreasureMax = *in.TreasureMax
+	}
+	// ★ 2026-10-11 打野地掉宝冷却小时数：可配置，默认 2。**0 合法 = 关闭冷却**（所以只拦负数）；
+	//   上限 720 防呆（30 天），避免误填天文数字。
+	//   ⚠️ 不做 <=0 兜底 —— 0 是管理员「关掉冷却」的合法表达，兜底会把它改回 2。
+	if in.WildTreasureCooldownH != nil {
+		if *in.WildTreasureCooldownH < 0 || *in.WildTreasureCooldownH > 720 {
+			resp.ParamError(c, "打野地掉宝冷却需要在 0~720 小时之间（0 = 关闭冷却）")
+			return
+		}
+		lim.WildTreasureCooldownH = *in.WildTreasureCooldownH
 	}
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   两个值 0 都无意义（召集不要钱 / 召集不给人口），所以只接受 >= 1；
@@ -1066,6 +1082,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_pop_gain":  lim.ConvenePopGain,
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
 		"convene_pop_max": lim.ConvenePopMax,
+		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
+		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()
