@@ -635,16 +635,32 @@ func (h *EzfyAdmin) AdminEzfyGeneralUpdate(c *gin.Context) {
 		return
 	}
 	// ★ 2026-09-29 改池子军官的三属性时，玩家若已招募，初始数据(三属性/原属性基准)要联动。
-	//   只有改到 military/logistics/learning 才回写已有实例；保留玩家分配的点数（当前−旧基准）。
-	if _, t1 := vals["military"]; t1 {
-		h.syncRecruitedOfficerBase(id)
-	} else if _, t1 := vals["logistics"]; t1 {
-		h.syncRecruitedOfficerBase(id)
-	} else if _, t1 := vals["learning"]; t1 {
+	//   只有**真正改到** military/logistics/learning 才回写已有实例；属性值与当前池子一致时不动玩家。
+	//   ★★ 2026-10-11 事故修复：管理端表单保存时会把 military/logistics/learning 全量提交，
+	//   即使值没变也会触发 syncRecruitedOfficerBase，把玩家已分配加点覆盖成池子值（「加点消失」）。
+	//   这里只认「值真变了」才回写，改名/改星级/改描述不再误清玩家加点。
+	if h.generalAttrChanged(vals, &g) {
 		h.syncRecruitedOfficerBase(id)
 	}
 	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "名将「" + g.Name + "」已保存"})
+}
+
+// generalAttrChanged 提交的三属性（military/logistics/learning）是否与当前池子值**真正不同**。
+//
+// ★★ 2026-10-11 事故修复（配合 AdminEzfyGeneralUpdate）：管理端军官池表单每次保存都会全量带上
+// 三属性字段，若仅凭「字段存在」就回写玩家实例，会把玩家已分配加点全部覆盖成池子值。这里比较
+// 新旧值，只有任一属性真的变了才需要联动回写（属性不变时玩家实例不受影响）。
+func (h *EzfyAdmin) generalAttrChanged(vals map[string]interface{}, g *model.EzfyCfgGeneral) bool {
+	cur := map[string]int{"military": g.Military, "logistics": g.Logistics, "learning": g.Learning}
+	for k, want := range cur {
+		if v, ok := vals[k]; ok {
+			if n, ok2 := v.(int); ok2 && n != want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // syncRecruitedOfficerBase 把军官池(general_id) 新的三属性/初始值同步到已招募实例
@@ -653,7 +669,9 @@ func (h *EzfyAdmin) AdminEzfyGeneralUpdate(c *gin.Context) {
 //
 //	管理端改池子后不更新的话面板一直显示旧值。这里按 general_id 找出所有已招实例：
 //	- ★ 2026-09-29 用户明确：玩家军官的初始值要和池子**保持一致**（军=军事/学=学识/后=后勤），
-//	  即军事/后勤/学识 与 初始基准 Base* 全部覆盖为池子新值（不保留玩家加点）。
+//	  即军事/后勤/学识 与 初始基准 Base* 全部覆盖为池子新值。
+//	- ★★ 2026-10-11 用户规则补充：覆盖前先把玩家已分配的加点退还为「待分配点数」
+//	  （free_points += 旧当前值−旧基准值的合计），保证玩家升级攒的点不白丢，可自行重新加点。
 func (h *EzfyAdmin) syncRecruitedOfficerBase(generalId int) {
 	var nu model.EzfyCfgGeneral
 	if err := h.DB.First(&nu, generalId).Error; err != nil {
@@ -665,6 +683,11 @@ func (h *EzfyAdmin) syncRecruitedOfficerBase(generalId int) {
 	}
 	for i := range ofs {
 		o := &ofs[i]
+		// 把玩家已分配的点数（旧当前属性 − 旧基准属性）退还给待分配点数，重新加点用
+		alloc := (o.Military - o.BaseMilitary) + (o.Logistics - o.BaseLogistics) + (o.Learning - o.BaseLearning)
+		if alloc > 0 {
+			o.FreePoints += alloc
+		}
 		o.BaseMilitary = nu.Military
 		o.BaseLogistics = nu.Logistics
 		o.BaseLearning = nu.Learning

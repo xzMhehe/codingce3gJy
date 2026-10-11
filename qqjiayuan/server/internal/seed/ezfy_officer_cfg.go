@@ -1,43 +1,43 @@
-// 军官/学院配置种子：数据源自 stzb-fk inithebing.sql（cfg_general / cfg_skill / cfg_equipment）
+// 军官/学院配置种子：数据源自 stzb-fk inithebing.sql(cfg_general / cfg_skill / cfg_equipment)
 
 package seed
 
 import "qqjiayuan/server/internal/model"
 
 // ★ 2026-09-29 用户规则：「所有军官池子军官 1 级」+「名将属性不变」+「名将最高等级 350」。
-//   名将 Level 统一改为 1（发放/招募出来就是 1 级，靠升级成长），三维属性保持原值不动。
+//   名将 Level 统一改为 1(发放/招募出来就是 1 级，靠升级成长)，三维属性保持原值不动。
 var ezfyEzfyCfgGeneral = []model.EzfyCfgGeneral{
 	{ID: 1, Name: "Stalin(约瑟夫·斯大林)", Level: 1, Military: 300, Logistics: 150, Learning: 200, Star: 5, Source: "300充值凭证+15万砖石", GetCondition: "505", Skill: "活动中心换取", Des: "全技能+2，攻击+20％，出兵+20％", Recruit: 0},
 	{ID: 2, Name: "Churchill(温斯顿·丘吉尔)", Level: 1, Military: 85, Logistics: 336, Learning: 118, Star: 5, Source: "6万砖石", GetCondition: "203", Skill: "商店买", Des: "", Recruit: 0},
 	{ID: 3, Name: "Henry H Arnold(亨利·阿诺德)", Level: 1, Military: 145, Logistics: 56, Learning: 230, Star: 5, Source: "5万砖石", GetCondition: "375", Skill: "商店买", Des: "攻击防御速度+10％，英雄突击+2", Recruit: 0},
-	{ID: 4, Name: "邓尼茨（Donitz）", Level: 1, Military: 190, Logistics: 120, Learning: 120, Star: 5, Source: "10套地图+15亿金+10万潜艇送35％战列生命章", GetCondition: "310", Skill: "任务（soul of wolf）", Des: "", Recruit: 0},
-	{ID: 5, Name: "戴高乐（Charles）", Level: 1, Military: 230, Logistics: 70, Learning: 80, Star: 5, Source: "15亿金子", GetCondition: "310", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 4, Name: "邓尼茨(Donitz)", Level: 1, Military: 190, Logistics: 120, Learning: 120, Star: 5, Source: "10套地图+15亿金+10万潜艇送35％战列生命章", GetCondition: "310", Skill: "任务(soul of wolf)", Des: "", Recruit: 0},
+	{ID: 5, Name: "戴高乐(Charles)", Level: 1, Military: 230, Logistics: 70, Learning: 80, Star: 5, Source: "15亿金子", GetCondition: "310", Skill: "任务", Des: "", Recruit: 0},
 	{ID: 6, Name: "White Beard", Level: 1, Military: 264, Logistics: 113, Learning: 201, Star: 5, Source: "10万砖石", GetCondition: "465", Skill: "商店购买", Des: "英雄突击+2，攻速移速+20％", Recruit: 0},
 	{ID: 7, Name: "Maple", Level: 1, Military: 85, Logistics: 95, Learning: 295, Star: 5, Source: "5万砖石", GetCondition: "380", Skill: "商店购买", Des: "", Recruit: 0},
-	{ID: 8, Name: "Guisan", Level: 1, Military: 250, Logistics: 102, Learning: 95, Star: 5, Source: "120个hero shards（刷野掉落）", GetCondition: "345", Skill: "刷野", Des: "", Recruit: 0},
-	{ID: 9, Name: "巴顿（Patton）", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "陆军生命，攻击+15％", Recruit: 0},
-	{ID: 10, Name: "朱可夫（Zhukov）", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 11, Name: "隆美尔（Rommel）", Level: 1, Military: 215, Logistics: 100, Learning: 55, Star: 5, Source: "10亿金子", GetCondition: "270", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 12, Name: "崔可夫（Chuikov）", Level: 1, Military: 230, Logistics: 95, Learning: 105, Star: 5, Source: "10亿金子", GetCondition: "335", Skill: "任务", Des: "反击+2，生命+15％，出兵+20％", Recruit: 0},
-	{ID: 13, Name: "蒋介石（Chiang Kai-shek）", Level: 1, Military: 60, Logistics: 90, Learning: 230, Star: 5, Source: "15亿金子", GetCondition: "290", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 14, Name: "史迪威（Stilwell）", Level: 1, Military: 85, Logistics: 95, Learning: 255, Star: 5, Source: "100充值凭证", GetCondition: "340", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 15, Name: "马歇尔（Marshall）", Level: 1, Military: 120, Logistics: 245, Learning: 80, Star: 5, Source: "50充值凭证", GetCondition: "200", Skill: "任务", Des: "油耗+2，后勤+300，训练时间-15％", Recruit: 0},
-	{ID: 16, Name: "天皇（Emperor Showa）", Level: 1, Military: 60, Logistics: 230, Learning: 90, Star: 5, Source: "15亿金子", GetCondition: "150", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 17, Name: "赫鲁晓夫（Khrushchev）", Level: 1, Military: 70, Logistics: 210, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "160", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 18, Name: "朱可夫（Zhukov）", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "突击+2，军事+300，攻速+30％", Recruit: 0},
-	{ID: 19, Name: "科涅夫（Konev）", Level: 1, Military: 130, Logistics: 215, Learning: 66, Star: 5, Source: "15凭证", GetCondition: "196", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 20, Name: "罗科索夫斯基（Rokossovsky）", Level: 1, Military: 150, Logistics: 94, Learning: 50, Star: 5, Source: "15凭证", GetCondition: "200", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 21, Name: "麦克阿瑟（MacArthur）", Level: 1, Military: 210, Logistics: 110, Learning: 50, Star: 5, Source: "10亿金子", GetCondition: "260", Skill: "任务", Des: "防御+2，攻击防御+15％", Recruit: 0},
-	{ID: 22, Name: "蒙哥马利（Montgomery）", Level: 1, Military: 210, Logistics: 75, Learning: 75, Star: 5, Source: "10亿金子", GetCondition: "285", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 23, Name: "爱森豪威尔（Eisenhower）", Level: 1, Military: 190, Logistics: 120, Learning: 60, Star: 5, Source: "110个Birthday Token（商店买）", GetCondition: "250", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 24, Name: "Model（莫德尔）", Level: 1, Military: 100, Logistics: 70, Learning: 200, Star: 5, Source: "100个Birthday Token（商店买）", GetCondition: "300", Skill: "任务", Des: "突击+2，攻速移速+15％", Recruit: 0},
-	{ID: 25, Name: "古德里安（Guderian）", Level: 1, Military: 250, Logistics: 50, Learning: 80, Star: 5, Source: "110个Birthday Token（商店买）", GetCondition: "230", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 26, Name: "Portal（波特尔）", Level: 1, Military: 285, Logistics: 66, Learning: 105, Star: 5, Source: "15万砖石打包带走三个", GetCondition: "390", Skill: "商店购买", Des: "英雄突击+3，减少敌方核飞速度10%", Recruit: 0},
-	{ID: 27, Name: "Gamelin（加木林）", Level: 1, Military: 95, Logistics: 70, Learning: 263, Star: 5, Source: "", GetCondition: "358", Skill: "", Des: "", Recruit: 0},
-	{ID: 28, Name: "Darlin（达尔郎）", Level: 1, Military: 87, Logistics: 264, Learning: 101, Star: 5, Source: "", GetCondition: "188", Skill: "", Des: "", Recruit: 0},
-	{ID: 29, Name: "Nimitz（尼米兹）", Level: 1, Military: 300, Logistics: 100, Learning: 200, Star: 5, Source: "600凭证+25万砖", GetCondition: "535", Skill: "活动中心兑换", Des: "一级：全技能+2\n二级：全技能+3，军队移速+20％，攻击+25％", Recruit: 0},
-	{ID: 30, Name: "Clark（克拉克）", Level: 1, Military: 210, Logistics: 225, Learning: 300, Star: 5, Source: "10万砖石或者一定活跃凭证兑换", GetCondition: "510", Skill: "商店，任务", Des: "", Recruit: 0},
-	{ID: 31, Name: "Bradley（布兰得利）", Level: 1, Military: 220, Logistics: 300, Learning: 215, Star: 5, Source: "10万砖石", GetCondition: "435", Skill: "商店买", Des: "", Recruit: 0},
+	{ID: 8, Name: "Guisan", Level: 1, Military: 250, Logistics: 102, Learning: 95, Star: 5, Source: "120个hero shards(刷野掉落)", GetCondition: "345", Skill: "刷野", Des: "", Recruit: 0},
+	{ID: 9, Name: "巴顿(Patton)", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "陆军生命，攻击+15％", Recruit: 0},
+	{ID: 10, Name: "朱可夫(Zhukov)", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 11, Name: "隆美尔(Rommel)", Level: 1, Military: 215, Logistics: 100, Learning: 55, Star: 5, Source: "10亿金子", GetCondition: "270", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 12, Name: "崔可夫(Chuikov)", Level: 1, Military: 230, Logistics: 95, Learning: 105, Star: 5, Source: "10亿金子", GetCondition: "335", Skill: "任务", Des: "反击+2，生命+15％，出兵+20％", Recruit: 0},
+	{ID: 13, Name: "蒋介石(Chiang Kai-shek)", Level: 1, Military: 60, Logistics: 90, Learning: 230, Star: 5, Source: "15亿金子", GetCondition: "290", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 14, Name: "史迪威(Stilwell)", Level: 1, Military: 85, Logistics: 95, Learning: 255, Star: 5, Source: "100充值凭证", GetCondition: "340", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 15, Name: "马歇尔(Marshall)", Level: 1, Military: 120, Logistics: 245, Learning: 80, Star: 5, Source: "50充值凭证", GetCondition: "200", Skill: "任务", Des: "油耗+2，后勤+300，训练时间-15％", Recruit: 0},
+	{ID: 16, Name: "天皇(Emperor Showa)", Level: 1, Military: 60, Logistics: 230, Learning: 90, Star: 5, Source: "15亿金子", GetCondition: "150", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 17, Name: "赫鲁晓夫(Khrushchev)", Level: 1, Military: 70, Logistics: 210, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "160", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 18, Name: "朱可夫(Zhukov)", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "突击+2，军事+300，攻速+30％", Recruit: 0},
+	{ID: 19, Name: "科涅夫(Konev)", Level: 1, Military: 130, Logistics: 215, Learning: 66, Star: 5, Source: "15凭证", GetCondition: "196", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 20, Name: "罗科索夫斯基(Rokossovsky)", Level: 1, Military: 150, Logistics: 94, Learning: 50, Star: 5, Source: "15凭证", GetCondition: "200", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 21, Name: "麦克阿瑟(MacArthur)", Level: 1, Military: 210, Logistics: 110, Learning: 50, Star: 5, Source: "10亿金子", GetCondition: "260", Skill: "任务", Des: "防御+2，攻击防御+15％", Recruit: 0},
+	{ID: 22, Name: "蒙哥马利(Montgomery)", Level: 1, Military: 210, Logistics: 75, Learning: 75, Star: 5, Source: "10亿金子", GetCondition: "285", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 23, Name: "爱森豪威尔(Eisenhower)", Level: 1, Military: 190, Logistics: 120, Learning: 60, Star: 5, Source: "110个Birthday Token(商店买)", GetCondition: "250", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 24, Name: "Model(莫德尔)", Level: 1, Military: 100, Logistics: 70, Learning: 200, Star: 5, Source: "100个Birthday Token(商店买)", GetCondition: "300", Skill: "任务", Des: "突击+2，攻速移速+15％", Recruit: 0},
+	{ID: 25, Name: "古德里安(Guderian)", Level: 1, Military: 250, Logistics: 50, Learning: 80, Star: 5, Source: "110个Birthday Token(商店买)", GetCondition: "230", Skill: "任务", Des: "", Recruit: 0},
+	{ID: 26, Name: "Portal(波特尔)", Level: 1, Military: 285, Logistics: 66, Learning: 105, Star: 5, Source: "15万砖石打包带走三个", GetCondition: "390", Skill: "商店购买", Des: "英雄突击+3，减少敌方核飞速度10%", Recruit: 0},
+	{ID: 27, Name: "Gamelin(加木林)", Level: 1, Military: 95, Logistics: 70, Learning: 263, Star: 5, Source: "", GetCondition: "358", Skill: "", Des: "", Recruit: 0},
+	{ID: 28, Name: "Darlin(达尔郎)", Level: 1, Military: 87, Logistics: 264, Learning: 101, Star: 5, Source: "", GetCondition: "188", Skill: "", Des: "", Recruit: 0},
+	{ID: 29, Name: "Nimitz(尼米兹)", Level: 1, Military: 300, Logistics: 100, Learning: 200, Star: 5, Source: "600凭证+25万砖", GetCondition: "535", Skill: "活动中心兑换", Des: "一级：全技能+2\n二级：全技能+3，军队移速+20％，攻击+25％", Recruit: 0},
+	{ID: 30, Name: "Clark(克拉克)", Level: 1, Military: 210, Logistics: 225, Learning: 300, Star: 5, Source: "10万砖石或者一定活跃凭证兑换", GetCondition: "510", Skill: "商店，任务", Des: "", Recruit: 0},
+	{ID: 31, Name: "Bradley(布兰得利)", Level: 1, Military: 220, Logistics: 300, Learning: 215, Star: 5, Source: "10万砖石", GetCondition: "435", Skill: "商店买", Des: "", Recruit: 0},
 }
 
 var ezfyEzfyCfgSkill = []model.EzfyCfgSkill{
@@ -88,7 +88,7 @@ var ezfyEzfyCfgEquipment = []model.EzfyCfgEquipment{
 	{ID: 18, Name: "金质怀表", Type: "饰品", Tier: 4, Military: 50, Logistics: 100, Learning: 100, Level: 80, Des: "特殊饰品,后勤学识+100"},
 	// ★★ 2026-10-11 「老珠宝全部删除，种子里面也都去掉」：
 	//   原 19~26 红宝石/蓝宝石/绿宝石/翡翠/紫水晶/猫眼石/玛瑙/珍珠 已从种子与库里移除
-	//   （价格 0、不在任何宝箱奖池/军团商城，采集也不会掉，纯历史残留）。
+	//   (价格 0、不在任何宝箱奖池/军团商城，采集也不会掉，纯历史残留)。
 	//   ⚠️ 号段 19~26 已作废，**不要再用**；新增装备请从 36+ 取号。
 	// ★ 采集宝物(用户规范): 只在野地采集中按地形掉落, 战斗不掉宝物
 	{ID: 27, Name: "黄金手镯", Type: "珠宝", Tier: 1, Military: 5, Logistics: 5, Learning: 5, Level: 1, Des: "采集宝物(丘陵/沼泽/森林),三属性+5"},

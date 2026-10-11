@@ -824,7 +824,7 @@ export default {
       // 2 军官池（普通军官 + 名将）
       generals: [], gTotal: 0, loadingG: false, gWord: '', gKind: 0, gKindCounts: { normal: 0, general: 0 },
       gPage: 1, gSize: 20,
-      gDlg: false, gf: {},
+      gDlg: false, gf: {}, gfOrig: {},
       // 2d 计谋
       schemes: [], loadingSc: false, scWord: '', scDlg: false, scf: {},
       // 3 玩家军官
@@ -955,13 +955,19 @@ export default {
       const f = { id: row.id }
       G_KEYS.forEach(k => { f[k] = row[k] })
       this.gf = f
+      // ★ 2026-10-11 事故修复：记录打开时的原值，保存时只提交真正变更的字段。
+      //   若三属性字段被全量提交，后端会误触发 syncRecruitedOfficerBase，
+      //   把该武将所有玩家实例的加点清空（「加点消失」事故）。
+      this.gfOrig = {}
+      G_KEYS.forEach(k => { this.gfOrig[k] = row[k] })
       this.gDlg = true
     },
     doGeneralSave () {
       if (!String(this.gf.name || '').trim()) { this.$message.warning('军官名称不能为空'); return }
       const isNew = !this.gf.id
       const body = {}
-      G_KEYS.forEach(k => { body[k] = this.gf[k] })
+      G_KEYS.forEach(k => { if (isNew || this.gf[k] !== this.gfOrig[k]) body[k] = this.gf[k] })
+      if (!isNew && Object.keys(body).length === 0) { this.$message.info('未修改任何字段，无需保存'); return }
       this.saving = true
       const req = isNew ? api.post('/admin/ezfy-generals', body) : api.put('/admin/ezfy-generals/' + this.gf.id, body)
       req.then(r => {
