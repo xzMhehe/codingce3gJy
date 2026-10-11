@@ -475,6 +475,12 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	// ★ 2026-09-30 详情直接下发收藏态，前端收藏按钮不用依赖异步 loadStars
 	var starCnt int64
 	h.DB.Model(&model.EzfyMapStar{}).Where("user_id = ? AND x = ? AND y = ?", uid, x, y).Count(&starCnt)
+	// ★ 2026-10-11 采集中状态：该野地是否有部队正在采集/驻守（任意玩家）。
+	//   采集中的野地不能被征服/掠夺（createOrder 同步拦截），前端据此置灰按钮并提示。
+	collecting := false
+	if w.ID > 0 {
+		collecting = h.ezfyWildlandOccupiedCount(int64(w.ID), 0) > 0
+	}
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
@@ -490,6 +496,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"treasure":     cfg.Treasure, // 寇城宝物档次(初级/中级/高级)
 		"owner":        owner,
 		"mine":         isMine,      // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
+		"collecting":   collecting,  // ★ 2026-10-11 正在被采集（不能征服/掠夺）
 		"is_starred":   starCnt > 0, // ★ 2026-09-30 收藏态
 	})
 }
@@ -1232,6 +1239,14 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
 					"; 如要攻打请先在「附属野地」里[放弃]该野地"
 			}
+		}
+		// ★ 2026-10-11 用户规则：**采集中的野地不能被征服/掠夺**（不论归属谁）——
+		//   别人正在采集的野地打掉会把采集部队/已采资源弄丢，自己的同理（先召回/放弃再打）。
+		//   与 WildlandView 下发的 collecting 同源（ezfyWildlandOccupiedCount），前端按钮已置灰。
+		if (orderType == 2 || orderType == 3) && ownWild != nil && ownWild.ID > 0 &&
+			h.ezfyWildlandOccupiedCount(int64(ownWild.ID), 0) > 0 {
+			return "该野地正在被采集, 不能" + ezfyOrderTypeName(orderType) +
+				"; 请等采集结束(召回)后再攻打"
 		}
 	}
 	if orderType == 4 {

@@ -1160,6 +1160,13 @@ export default {
       return !!(this.selDetail && this.selDetail.mine &&
         this.selCell && this.selCell.area_type !== 3)
     },
+    // ★ 2026-10-11 采集中的野地不能被征服/掠夺（不论归属谁）。
+    //   判据取后端 WildlandView 下发的 collecting（ezfyWildlandOccupiedCount>0），
+    //   与后端 createOrder 拦截同一口径；前端据此置灰[掠夺][征服]并给提示。
+    isWildCollecting () {
+      return !!(this.selDetail && this.selDetail.collecting &&
+        this.selCell && this.selCell.area_type !== 3)
+    },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
     },
@@ -4783,6 +4790,13 @@ export default {
       if ((t === 1 || t === 2 || t === 3) && this.isOwnWild) {
         this.notify('这是你自己的附属野地, 不能' + (this.orderNames[t] || '') +
           '; 请先在「附属野地」里[放弃]该野地')
+        return
+      }
+      // ★ 2026-10-11 采集中的野地不能被征服/掠夺（不论归属谁）——前端兜底提示，
+      //   后端 createOrder 有同样拦截。侦查(1)不受影响（不伤害采集部队）。
+      if ((t === 2 || t === 3) && this.isWildCollecting) {
+        this.notify('该野地正在被采集, 不能' + (this.orderNames[t] || '') +
+          '; 请等采集结束(召回)后再攻打')
         return
       }
       this.orderType = t

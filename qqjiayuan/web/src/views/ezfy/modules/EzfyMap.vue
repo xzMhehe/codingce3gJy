@@ -118,7 +118,9 @@
               <div class="old-line" v-else-if="ezfy.fmtWildDrop(ezfy.selDetail.treasure)">
                 掉落宝物：{{ ezfy.fmtWildDrop(ezfy.selDetail.treasure) }}
               </div>
-              <div class="old-line" v-else>归属：{{ ezfy.selDetail.owner || '中立' }}</div>
+              <!-- ★ 2026-10-11 修复「野地归属描述消失」：归属行原来挂在上面掉落宝物的 v-else 上，
+                   野地一旦配置了掉落宝物就永远走不到它 → 归属描述丢了。改为独立显示，不受宝物影响。 -->
+              <div class="old-line">归属：{{ ezfy.selDetail.owner || '中立' }}</div>
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
                 <!-- ★ 2026-09-28 用户反馈：平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
@@ -179,11 +181,14 @@
           <div class="old-line" v-else-if="ezfy.selCell.name !== '寇城(废墟)' && !(ezfy.selDetail && ezfy.selDetail.is_ocean)">
             <!-- ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服（要先[放弃]）→
                  三个命令灰掉、点了给提示（判据 isOwnWild 取后端下发的 selDetail.mine，
-                 与「归属：我」同源，不靠前端猜）；[采集] 不受影响。 -->
+                 与「归属：我」同源，不靠前端猜）；[采集] 不受影响。
+                 ★ 2026-10-11 采集中的野地也不能征服/掠夺（不论归属谁）→ 依据后端下发的
+                 selDetail.collecting 置灰，点了给提示；与后端 createOrder 拦截同一口径。 -->
             <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(1)">[侦查]</a><span class="home-gap"></span>
-            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
-            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(3)">[征服]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild || ezfy.isWildCollecting }" @click="ezfy.pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild || ezfy.isWildCollecting }" @click="ezfy.pickOrder(3)">[征服]</a><span class="home-gap"></span>
             <a v-if="ezfy.selCell.occupied && ezfy.isOwnWild" href="javascript:;" @click="ezfy.pickOrder(4)">[采集]</a>
+            <span v-if="ezfy.isWildCollecting" class="orange">(该野地正在被采集)</span>
           </div>
           <a href="javascript:;" @click="ezfy.go('map')">[返回地图]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
