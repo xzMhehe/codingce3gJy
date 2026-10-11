@@ -2,7 +2,7 @@
   <div>
     <template v-if="ezfy.cur === 'bag'">
         <div class="panel">
-          <div class="panel-title">背包 <a href="javascript:;" @click="ezfy.loadBag">[刷新]</a></div>
+          <div class="panel-title">背包</div>
           <!-- ★ 2026-10-11 背包分栏：道具 / 军官装备（宝物由底部导航「宝物」独立页承载） -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.bagTab === 'item' }" @click="ezfy.setBagTab('item')">道具</a><span> | </span>
@@ -69,9 +69,10 @@
             <a href="javascript:;" :class="{ disabled: ezfy.bagPage >= ezfy.bagTotalPages }" @click="ezfy.bagGo(1)">[下一页]</a>
           </div>
           </template>
-          <!-- ★ 2026-10-11 军官装备 tab：展示自己的装备；武器/防具可按品质卖黄金（物理删除） -->
+          <!-- ★ 2026-10-11 军官装备 tab：展示自己的装备；武器/防具可按品质卖黄金（物理删除）。
+               ★ 2026-10-11 加分页（用户：「背包也要做分页 不然展示太多」）：每页 10 种，与道具 tab 同款。 -->
           <template v-else>
-            <div class="old-line" v-for="e in ezfy.bagEquips" :key="'eq' + e.cfg_id">
+            <div class="old-line" v-for="e in ezfy.bagEquipPaged" :key="'eq' + e.cfg_id">
               <b>{{ e.name }}</b>×{{ e.count }}
               <span class="gray">[{{ e.type }}]</span>
               <template v-if="e.sellable">
@@ -88,6 +89,12 @@
               </template>
             </div>
             <div class="old-line gray" v-if="!ezfy.bagEquips.length">(没有装备)</div>
+            <!-- ★ 军官装备分页（与道具 tab 同款：有数据且超过一页才显示） -->
+            <div class="ezfy-pager" v-if="ezfy.bagEquips.length > ezfy.bagEquipPageSize">
+              <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage <= 1 }" @click="ezfy.bagEquipGo(-1)">[上一页]</a>
+              <span class="gray">第 {{ Math.min(ezfy.bagEquipPage, ezfy.bagEquipTotalPages) }}/{{ ezfy.bagEquipTotalPages }} 页 · 共 {{ ezfy.bagEquips.length }} 种</span>
+              <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage >= ezfy.bagEquipTotalPages }" @click="ezfy.bagEquipGo(1)">[下一页]</a>
+            </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('mall')">[前往商城]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>

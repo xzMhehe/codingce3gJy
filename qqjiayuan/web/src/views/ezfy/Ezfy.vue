@@ -410,6 +410,20 @@ export default {
       _dynRefreshedAt: 0,
       _dynFired: Object.create(null),
       _dynRetryAt: 0,
+      // ★ 2026-10-11 军情分页 tab 切换流畅化（用户：「军队动态/驻军/军情警讯/战斗报告/军团战报
+      //   这些 tab 切换还是卡顿」）。原来每次切 tab 都：清空列表 → 打 2~3 个接口 → 等回来才渲染，
+      //   于是「点一下先白一下」。现在改成「缓存即时渲染 + 后台刷新 + 请求去重」：
+      //   · _repCache  : 每个 tab 的战报列表缓存，key=`tab|城市|搜索词` → {reports,radar,recon,intel,at}。
+      //                  切 tab 先用缓存立刻渲染，不再清空；同一 tab 2 秒内重复点不重复打接口。
+      //   · _dynKey/_dynLoading   : 军队动态「上次拉取的城市」+「请求是否在途」（连点 tab 不堆请求）。
+      //   · _countsLoading : 徽标接口「请求是否在途」（这个不设 TTL，保证未读数及时清）。
+      //   · _repLoading : 战报列表请求是否在途（防同 tab 并发重复请求）。
+      //   ★ 用 Object.create(null) 而非 {}：纯缓存表，不需要 Vue 递归侦听。
+      _repCache: Object.create(null),
+      _dynKey: null,
+      _dynLoading: false,
+      _countsLoading: false,
+      _repLoading: false,
       resNames: RES_NAMES,
       // ★ 2026-09-28 头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -626,6 +640,8 @@ export default {
       sellTreasureCount: 1,
       // ★ 背包只展示道具（2026-10-06 宝物已独立成「宝物」导航页，去掉宝物子tab）
       bagWord: '', bagPage: 1, bagPageSize: 10, bagCat: '',
+      // ★ 2026-10-11 背包「军官装备」tab 也分页（用户：「背包也要做分页 不然展示太多」）
+      bagEquipPage: 1, bagEquipPageSize: 10,
       equipWord: '', equipPage: 1, equipPageSize: 10,        // 我的装备
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
       hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 / 4预设编队 (localStorage 记忆)
@@ -1265,6 +1281,12 @@ export default {
     bagPaged () {
       const p = Math.min(Math.max(1, this.bagPage), this.bagTotalPages)
       return this.bagFiltered.slice((p - 1) * this.bagPageSize, p * this.bagPageSize)
+    },
+    // ★ 2026-10-11 背包「军官装备」tab 分页（与道具 tab 同一套写法）
+    bagEquipTotalPages () { return Math.max(1, Math.ceil((this.bagEquips || []).length / this.bagEquipPageSize)) },
+    bagEquipPaged () {
+      const p = Math.min(Math.max(1, this.bagEquipPage), this.bagEquipTotalPages)
+      return (this.bagEquips || []).slice((p - 1) * this.bagEquipPageSize, p * this.bagEquipPageSize)
     },
     // 我的装备（可按 名称 / 部位 / 套装 / 类型 检索）
     // ★ 2026-09-25：set_id → 套装配置（含加成）。装备表/商城表/军官装备表都从这里查，
@@ -2596,49 +2618,82 @@ export default {
         })
       })
     },
-    loadReports () {
+    // soft=true：切 tab 触发的**软刷新** —— 命中缓存(2 秒内)/请求在途就跳过，
+    //   避免「切一下打一次接口」把服务器压住（线上 1 核）；内容已由 applyCachedReports 先行渲染。
+    // soft=false/缺省：强制拉取（[查询]/[清空]/删除后/军团战报自愈 等都需要拿到最新）。
+    loadReports (soft) {
       // ★ 2026-10-09 「没军团不显示军团战报 tab」：?rtab=5 残留 / 退团后残留 → 回落「战斗报告」。
       //   只在**已确认没有军团**时回落（reportHasCorps===false），避免刚进军情页时把团员的 tab 误踢掉。
       if (this.reportTab === 5 && this.reportHasCorps === false) this.reportTab = 4
       // category: 1 军情警讯 2 战斗报告(战报查询)；reportTab===5 → 军团战报(corps)
-      const cat = this.reportTab === 3 ? 1 : 2
+      const tab = this.reportTab
+      const cat = tab === 3 ? 1 : 2
+      const key = this.repCacheKey(tab)
+      // ★ 严格判 `=== true`：模板里 `@click="ezfy.loadReports"` 会把**点击事件对象**当第一个参数传进来
+      //   （不是布尔），那种情况要当**强制刷新**处理，不能被误判成软刷新。
+      if (soft === true) {
+        const cached = this._repCache[key]
+        // ★ 2026-10-11 切 tab 流畅化：刚拉过(2s) 或 已有请求在途 → 直接用缓存，不再打接口
+        if (cached && Date.now() - cached.at < 2000) return
+        if (this._repLoading) return
+      }
       let url = '/games/ezfy/reports?'
-      if (this.reportTab === 5) url += 'corps=1'
+      if (tab === 5) url += 'corps=1'
       else url += 'category=' + cat + '&city_id=' + (this.city ? this.city.id : 0)
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
+      this._repLoading = true
       api.get(url).then(r => {
+        this._repLoading = false
         if (r.code === 0) {
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
           // ★ 2026-10-09 「战斗报告(14) 数量问题」：军团战报接口返回的 counts 是
           //   **本军团团员 PvP 战报的总数**（不是自己的未读数）→ 拿它更新徽标会让
           //   「战斗报告(N)」显示成全团的数量。徽标只认 /reports/counts 与 3/4 分区的 counts。
-          if (this.reportTab !== 5) this.reportCounts = r.data.counts || {}
+          if (tab !== 5) this.reportCounts = r.data.counts || {}
           // 自愈：军团战报接口明确回 has_corps=false（已退团）→ 回落到战斗报告再拉一次
-          if (this.reportTab === 5 && r.data.has_corps === false) {
+          if (tab === 5 && r.data.has_corps === false) {
             this.reportTab = 4
             this.loadReports()
             return
           }
-          this.reports = r.data.reports || []
-          this.reportRadar = r.data.radar || 0
-          this.reportRecon = r.data.recon || 0
-          this.reportIntel = r.data.intel || this.reportRadar
-          this.repPage = 1
+          const data = {
+            reports: r.data.reports || [],
+            radar: r.data.radar || 0,
+            recon: r.data.recon || 0,
+            intel: r.data.intel || r.data.radar || 0,
+            at: Date.now()
+          }
+          // 写缓存（按 key，城市/搜索词变化时旧缓存自然不被命中）
+          this._repCache[key] = data
+          // ★ 只有**仍停在原分区、且城市/搜索词没变**时才替换列表 ——
+          //   否则慢响应回来会把用户已经切到的别的分区内容覆盖掉。
+          if (this.reportTab === tab && this.repCacheKey(tab) === key) {
+            this.reports = data.reports
+            this.reportRadar = data.radar
+            this.reportRecon = data.recon
+            this.reportIntel = data.intel
+            if (soft !== true) this.repPage = 1
+          }
         }
-      })
+      }).catch(() => { this._repLoading = false })
     },
     // ★ 2026-10-01 徽标数字专用轻量接口（独立于 loadReports：
     //   军情页落在任意分区都要刷新徽标，但不能因此把没看的战报标记已读）
     //   ★ 2026-10-01 军情按当前城过滤：徽标数字也只统计当前城的战报
     //   ★ 2026-10-09 顺带取 has_corps：军情页据此决定要不要显示「军团战报」tab
     //     （这个接口进页/切分区必调，比 myCorps 更早、更稳）。
+    //   ★ 2026-10-11 切 tab 流畅化：加「请求在途」守卫（连点 tab 不堆请求），
+    //     **不设 TTL** —— 徽标必须及时反映「已看战报被标记已读」，不能拖。
     loadReportCounts () {
+      if (this._countsLoading) return
+      this._countsLoading = true
       api.get('/games/ezfy/reports/counts?city_id=' + (this.city ? this.city.id : 0)).then(r => {
+        this._countsLoading = false
         if (r.code === 0) {
           this.reportCounts = r.data.counts || {}
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
         }
-      })
+      }).catch(() => { this._countsLoading = false })
     },
     // ★ 2026-09-24 军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
     intelTag (r) {
@@ -2660,7 +2715,9 @@ export default {
     //   订单按 city_id(出发城) 过滤、守方战场按 battle.target_id(被打城) 过滤）。
     //   ★ 出征队列(orders)、地图页「出征队列」面板不在这四个类别里，仍展示**全部在途部队**
     //     （每条都带 from_city 标明来源城，见后端下发的 from_city/from_x/from_y）。
-    loadDynamics () {
+    // soft=true：切 tab 触发的软刷新 —— 同一城市 2 秒内刚拉过 / 已有请求在途就跳过，
+    //   避免连点 tab 堆一串请求（线上 1 核扛不住）。缺省=强制拉（动作后刷新、到点重拉等）。
+    loadDynamics (soft) {
       // ★★ 2026-10-07 修复「出征后跳转出征队列是空的 / 打野地也没了」：
       //   原来**所有页面**都按 `city_id = 当前所在城` 过滤，而 `doOrder` 里
       //   `load()`（刷新城市）与 `go('orders')`（拉队列）是**并发**的，出征瞬间
@@ -2668,16 +2725,26 @@ export default {
       //   现在只在**军情页**按城过滤，出征队列/地图队列面板保持全集，问题不复现。
       const onlyCity = (this.cur === 'reports' || this.cur === 'reportview')
       const cid = (onlyCity && this.city) ? this.city.id : 0
+      // ★ 2026-10-11 切 tab 流畅化：软刷新时去重（在途/2 秒内）→ 连点 tab 不再重复打接口
+      //   ★ 严格判 `=== true`：模板里 `@click="ezfy.loadDynamics"` 会把点击事件对象当参数传进来，
+      //     那种情况要当强制刷新（见 loadReports 同款说明）。
+      if (soft === true) {
+        if (this._dynLoading) return
+        if (this._dynKey === cid && this._dynAt && Date.now() - this._dynAt < 2000) return
+      }
+      this._dynLoading = true
       api.get('/games/ezfy/reports/dynamics?city_id=' + cid).then(r => {
+        this._dynLoading = false
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
           // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
           //   战斗中的 battle_left_ms 是相对剩余，必须配上它才能每秒往前推算。
           this._dynAt = Date.now()
+          this._dynKey = cid
           this.dynPage = 1
           this.queuePage = 1
         }
-      })
+      }).catch(() => { this._dynLoading = false })
     },
     // ================= 战场指挥室（军情 → 军队动态 → [指挥]）=================
     // 每回合 30 秒：前 25 秒可下达前进/暂停/后退，后 5 秒锁定并由服务器结算，最多 40 回合。
@@ -2953,18 +3020,39 @@ export default {
       this.dynStationPage = 1
       // ★ 2026-09-28 分区写进 URL，否则刷新后回落到默认的「军队动态」(t=1)
       this.syncUrl()
-      // ★ 2026-10-01 修复「徽标数字时有时无」：原来落 tab 1/2 只拉 dynamics、
-      //   落 tab 3/4 只拉 reports —— 落在哪个分区决定徽标有没有数字。
-      //   现在无论落在哪都先刷徽标 + 军队动态/驻军数据；列表仅在对应分区拉取。
-      this.loadReportCounts()
-      this.loadDynamics()
+      // ★★ 2026-10-11 切 tab 流畅化（用户：「这些 tab 切换还是卡顿」）：
+      //   ① **先用缓存把内容渲染出来**（`applyCachedReports`）—— 不再「清空列表 → 等接口回来才显示」，
+      //      点一下立刻有内容，切回来更是瞬开；
+      //   ② 徽标 + 军队动态/驻军 + 战报列表都改成**软刷新**（soft=true）：命中缓存/请求在途就跳过，
+      //      连点 tab 不会堆一串请求把服务器（线上 1 核）压住；
+      //   ③ 没有缓存时才回落原来的「先清空占位」行为（首次进入某分区）。
+      this.applyCachedReports(t)
+      this.loadReportCounts(true)
+      this.loadDynamics(true)
       if (t === 3 || t === 4 || t === 5) {
-        // ★ 2026-10-06 去除切 tab 残留：军情警讯/战斗报告共用 ezfy.reports 列表，
-        //   reportTab 切换后 DOM 立即换分区模板，但旧分区数据还在列表里、要等 loadReports
-        //   异步返回才被替换 → 残留一段时间旧内容。切换时立刻清空，新数据回来前显示占位。
-        this.reports = []
-        this.loadReports()
+        this.loadReports(true)
       }
+    },
+    // 战报列表缓存 key：分区 + 城市 + 搜索词（任一变化即视为不同数据集，自然失效）
+    repCacheKey (t) {
+      return t + '|' + ((this.city && this.city.id) || 0) + '|' + (this.reportWord || '')
+    },
+    // 用缓存把某个分区的战报列表**立刻**渲染出来（无缓存则清空显示占位）
+    applyCachedReports (t) {
+      if (t !== 3 && t !== 4 && t !== 5) return
+      const c = this._repCache[this.repCacheKey(t)]
+      if (!c) {
+        // 首次进入该分区：没有缓存 → 清空，等接口回来（与旧行为一致，避免显示别的分区残留）
+        this.reports = []
+        return
+      }
+      this.reports = c.reports
+      this.reportRadar = c.radar
+      this.reportRecon = c.recon
+      this.reportIntel = c.intel
+      // ★ 徽标不从这里恢复：loadReports 回的 counts 是**标记已读之前**算的（偏大），
+      //   而 switchReportTab 紧接着会调 loadReportCounts()（无 TTL）拿准确值 ——
+      //   这里不写，避免徽标数字先跳到偏大的值再回落（闪一下）。
     },
     // ★ 战报详情页(reportview)顶部的分区导航：先回列表页再切到对应分区，
     //   直接调 switchReportTab 会停在 reportview 页面上。
@@ -3280,6 +3368,8 @@ export default {
           this.bagTreasures = r.data.treasures || []
           // ★ 2026-10-11 背包「军官装备」tab
           this.bagEquips = r.data.equips || []
+          // 出售后列表可能变短 → 页码夹紧，避免停在空白页
+          if (this.bagEquipPage > this.bagEquipTotalPages) this.bagEquipPage = this.bagEquipTotalPages
           // ★ 2026-10-11 宝物库存上限（默认 5000）
           this.treasureMax = parseInt(r.data.treasure_max) > 0 ? parseInt(r.data.treasure_max) : 5000
           this.bagOfficers = r.data.officers || []
@@ -3311,6 +3401,7 @@ export default {
     setBagTab (t) {
       this.bagTab = t
       this.sellEquip = null
+      this.bagEquipPage = 1
     },
     // ★ 2026-10-11 背包出售装备（武器/防具）：打开出售面板
     openSellEquip (e) {
@@ -5421,6 +5512,8 @@ export default {
       return (p >= 1 && p <= total) ? p : cur
     },
     bagGo (d) { this.bagPage = this.pagerGo(d, this.bagPage, this.bagTotalPages) },
+    // ★ 2026-10-11 背包「军官装备」tab 翻页
+    bagEquipGo (d) { this.bagEquipPage = this.pagerGo(d, this.bagEquipPage, this.bagEquipTotalPages) },
     equipGo (d) { this.equipPage = this.pagerGo(d, this.equipPage, this.equipTotalPages) },
     equipAllGo (d) { this.equipAllPage = this.pagerGo(d, this.equipAllPage, this.equipAllTotalPages) },
     officerBagGo (d) {
