@@ -77,7 +77,7 @@ func TestBattleLootExcludesSetPieces(t *testing.T) {
 	}
 }
 
-// TestWildlandLootAnnouncesDrops —— 用户要求（2026-10-09）：
+// TestWildlandLootAnnouncesDrops —— （2026-10-09）：
 // 「打野地 掉落宝物 也要播报 系统消息」+「商城道具掉落 也播报」。
 //
 // 原来「掉落宝物 / 掉落道具」只写进战报（玩家自己看得到），系统频道没有任何播报；
@@ -132,7 +132,7 @@ func TestEquipShopOnlySellsLoosePieces(t *testing.T) {
 
 // ============ 二·补、打野地掉宝冷却 + 宝物掉落配置校验（2026-10-11） ============
 
-// TestWildlandTreasureCooldown —— 用户要求（2026-10-11）：
+// TestWildlandTreasureCooldown —— （2026-10-11）：
 // 「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内掉落了宝物那么就不会再掉」。
 //
 // 静态断言：

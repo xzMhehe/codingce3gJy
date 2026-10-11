@@ -158,14 +158,14 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 	//   （管理端查看玩家信息用，数据口径与用户端军官列表一致）
 	type officerOut struct {
 		model.EzfyOfficer
-		CityName     string `json:"city_name"`
-		PositionName string `json:"position_name"`
-		StatusName   string `json:"status_name"`
-		TypeName     string `json:"type_name"`    // ★ 普通 / 名将（只有 kind=2 名将池的才算名将）
-		GeneralName  string `json:"general_name"` // ★ 原名将名称（名将池回填，供管理端点击查看）
-		GeneralStar  int    `json:"general_star"` // ★ 原名将星级
-		GetWay       string `json:"get_way"`      // ★ 获取方式（活动野地俘虏/战俘营/管理端发放）
-		GetTime      time.Time `json:"get_time"`  // ★ 获取时间（按战报反查；无战报回落到军官更新时间）
+		CityName     string    `json:"city_name"`
+		PositionName string    `json:"position_name"`
+		StatusName   string    `json:"status_name"`
+		TypeName     string    `json:"type_name"`    // ★ 普通 / 名将（只有 kind=2 名将池的才算名将）
+		GeneralName  string    `json:"general_name"` // ★ 原名将名称（名将池回填，供管理端点击查看）
+		GeneralStar  int       `json:"general_star"` // ★ 原名将星级
+		GetWay       string    `json:"get_way"`      // ★ 获取方式（活动野地俘虏/战俘营/管理端发放）
+		GetTime      time.Time `json:"get_time"`     // ★ 获取时间（按战报反查；无战报回落到军官更新时间）
 	}
 	officersViews := []officerOut{}
 	if len(cities) > 0 {
@@ -300,7 +300,7 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
 		"cities": citiesViews, "bag": bagViews, "corps": corpsViews, "orders": orders,
-		"officers": officersViews,
+		"officers":  officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }
 
@@ -454,9 +454,10 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 
 // AdminEzfyItemGrantOptions GET /admin/ezfy-item-grant/options —— 「发放道具」弹窗的道具下拉选项。
 // ★ 2026-09-27 修复「发放道具不全 / 检索迁城无匹配」：
-//   旧实现复用 /admin/ezfy-data/items 分页接口，pageOf() 会把 size>100 钳制回落 10，
-//   导致下拉永远只拿到前 10 件道具（迁城计划等 13 号以后的道具选不到）。
-//   这里直接全量返回 ezfy_cfg_item（id + name），不走分页钳制。
+//
+//	旧实现复用 /admin/ezfy-data/items 分页接口，pageOf() 会把 size>100 钳制回落 10，
+//	导致下拉永远只拿到前 10 件道具（迁城计划等 13 号以后的道具选不到）。
+//	这里直接全量返回 ezfy_cfg_item（id + name），不走分页钳制。
 func (h *EzfyAdmin) AdminEzfyItemGrantOptions(c *gin.Context) {
 	var items []model.EzfyCfgItem
 	h.DB.Order("id ASC").Find(&items)
@@ -1010,7 +1011,7 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 
 // ============ 战报查询（2026-10-06） ============
 //
-// ★ 用户要求（点7）：「管理端加个战报查询模块，可以查询玩家战报，战报不是订单没有订单概念」。
+// ★ （点7）：「管理端加个战报查询模块，可以查询玩家战报，战报不是订单没有订单概念」。
 // 战报 = ezfy_report（侦察/掠夺/征服/战斗/采集/系统），与出征订单 ezfy_order 是两张表，
 // 所以这里的列表独立于「出征记录」模块，按 玩家(user_id/昵称) + 战报类型 过滤。
 // 类型中文名复用 ezfyReportTypeName(reportType, title)（优先按标题前缀判定）。
@@ -1018,9 +1019,10 @@ func (h *EzfyAdmin) AdminEzfyOrderDelete(c *gin.Context) {
 // AdminEzfyReports 战报列表（可按玩家 / 战报类型 / 时间范围过滤）
 //
 // ★ 2026-10-08（第2轮优化）彻底去掉「捞内存再分页」：
-//   ezfy_report 已新增持久化列 type_name（写战报时由 EzfyReportTypeName 落库，
-//   存量行用 cmd/backfilltype 一次性回填），因此类型过滤也直接走 SQL WHERE，
-//   与玩家/时间条件统一进 Count + Offset/Limit 库内分页，任何组合都不再全表读内存。
+//
+//	ezfy_report 已新增持久化列 type_name（写战报时由 EzfyReportTypeName 落库，
+//	存量行用 cmd/backfilltype 一次性回填），因此类型过滤也直接走 SQL WHERE，
+//	与玩家/时间条件统一进 Count + Offset/Limit 库内分页，任何组合都不再全表读内存。
 func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
@@ -1404,9 +1406,10 @@ func (h *EzfyAdmin) AdminEzfyStats(c *gin.Context) {
 
 // 维护开关内存缓存（5 秒）。
 // ★ 2026-10-02 线上 1核1G CPU 100% 优化：EzfyMaintGate 中间件挂在所有 /games/ezfy/* 路由上，
-//   原本每个请求都查 settings 表（~8 次/秒），与战力榜全表扫描叠加打满 MySQL 单核。
-//   维护开关极少变化，缓存 5 秒对「开关维护」的响应速度几乎无感知；AdminEzfyServerSet 写入后
-//   主动失效，下次请求立即重读。
+//
+//	原本每个请求都查 settings 表（~8 次/秒），与战力榜全表扫描叠加打满 MySQL 单核。
+//	维护开关极少变化，缓存 5 秒对「开关维护」的响应速度几乎无感知；AdminEzfyServerSet 写入后
+//	主动失效，下次请求立即重读。
 var (
 	maintCacheMu     sync.Mutex
 	maintCacheAt     int64

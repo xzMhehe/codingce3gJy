@@ -98,7 +98,7 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 	// 行军速度必须走按兵种的 ezfyMarchSpeed（燃烧引擎通用 + 喷气引擎/军官技能按兵种）
 	march := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyMarchSpeed(")
 	for _, want := range []string{
-		"techMap[10] * 2",             // 燃烧引擎：通用（全体兵种）
+		"techMap[10] * 2",                 // 燃烧引擎：通用（全体兵种）
 		"tb.Speed[ezfyTroopTypeAir] += v", // 喷气引擎：只空军
 		"h.officerTypeBonus(lead, tb)",    // 军官速度技能：按兵种
 		"tb.speedOf(cfg.Type)",            // 按兵种取专属加成
@@ -352,7 +352,7 @@ func TestDefenderAtkTechMatchesAttacker(t *testing.T) {
 
 // TestFourTechCategoriesWired 四类科技加成必须在**攻守双方**都真实参与计算。
 //
-// ★★ 2026-10-08 用户要求：「攻击加成的科技、防御加成科技、速度加成科技、射程加成科技
+// ★★ 2026-10-08 ：「攻击加成的科技、防御加成科技、速度加成科技、射程加成科技
 // 这里都要展示，而且回合中也要实际有」。
 //
 //	展示侧由【攻方科技】/【守方科技】两行负责（同一集合，见 TestDefenderAtkTechMatchesAttacker）；
@@ -373,7 +373,7 @@ func TestFourTechCategoriesWired(t *testing.T) {
 		{"射程", "atkRangeBonus := atkTech[8] * 3"},
 	}
 	defCases := []struct{ name, want string }{
-		// ★ 2026-10-09 用户要求「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
+		// ★ 2026-10-09 「攻守加成一致」：守方攻击不再额外吃掩体防御(16)
 		{"攻击", "defAtkBonus = defTech[5]*2 + defTech[6]*3 + defTech[9]*2 + h.officerBattleBonus(cityGuard)"},
 		// ★ 2026-10-09 同上：守方防御不再叠加城墙(建筑7)，掩体防御(16) 也只对城防生效
 		{"防御", "defBonus = defTech[7]*3 + defTech[9]*2"},
@@ -490,12 +490,12 @@ func TestTypeSpecificBonusWired(t *testing.T) {
 	//   火炮控制 → 陆军**攻击属性 +10/级（绝对值）**；四指编队 → 空军打空军；狼群战术 → 海军打海军；
 	//   坦克突袭/闪电袭击/越岛战术 → 陆/空/海速度。
 	for _, want := range []string{
-		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",                       // 火炮控制 → 陆军攻击属性
-		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)",        // 四指编队 → 空军打空军
-		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)",      // 狼群战术 → 海军打海军
-		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",                         // 坦克突袭 → 陆军
-		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                          // 闪电袭击 → 空军
-		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                         // 越岛战术 → 海军
+		"b.AtkFlat[ezfyTroopTypeArmy] += 10 * scale",                  // 火炮控制 → 陆军攻击属性
+		"b.addVsType(ezfyTroopTypeAir, ezfyTroopTypeAir, 15*scale)",   // 四指编队 → 空军打空军
+		"b.addVsType(ezfyTroopTypeNavy, ezfyTroopTypeNavy, 15*scale)", // 狼群战术 → 海军打海军
+		"b.Speed[ezfyTroopTypeArmy] += 10 * scale",                    // 坦克突袭 → 陆军
+		"b.Speed[ezfyTroopTypeAir] += 10 * scale",                     // 闪电袭击 → 空军
+		"b.Speed[ezfyTroopTypeNavy] += 10 * scale",                    // 越岛战术 → 海军
 	} {
 		if !strings.Contains(off, want) {
 			t.Fatalf("军官兵种技能未按兵种下发：%s", want)

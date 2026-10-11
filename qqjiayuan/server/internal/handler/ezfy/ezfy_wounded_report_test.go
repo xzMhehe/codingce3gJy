@@ -42,7 +42,7 @@ func TestWoundedReportLine(t *testing.T) {
 // 而战报尾部这个字段是**掠夺比例**（战利品占目标资源的比例，平局就是 0%）——
 // 撞词会让玩家以为「伤兵回收 0%」。
 //
-// ★ 2026-10-09 同日追加：用户要求在「掠夺比例」后面**再加一行「回收比例」**，
+// ★ 2026-10-09 同日追加：在「掠夺比例」后面**再加一行「回收比例」**，
 // 这一行专指伤兵回收占比、由 ezfyHealPctLine 生成（不写在 battleStatsTail 里）。
 // 所以本测试改成锁两件事：① battleStatsTail 里的战利品字段叫「掠夺比例」；
 // ② 伤兵那一行在 ezfyHealPctLine 里、字面量是「回收比例」。
@@ -90,7 +90,7 @@ func TestHealPctLine(t *testing.T) {
 	}
 }
 
-// TestDefSrcTxt 防御加成的来源括号（2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」）。
+// TestDefSrcTxt 防御加成的来源括号（2026-10-09 「防御也整个括号() 能看出来哪来的」）。
 func TestDefSrcTxt(t *testing.T) {
 	// 满科技、无军官 → 只有科技段
 	got := ezfyDefSrcTxt([]ezfyBonusItem{
@@ -123,7 +123,7 @@ func TestDefSrcTxt(t *testing.T) {
 
 // TestBonusLineShowsDefSource 「战斗加成」行里防御也要带来源括号。
 //
-// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+// ★★ 2026-10-09 「防御也整个括号() 能看出来哪来的」：
 //
 //	原来攻击有 `(军官+0 科技+70)`、防御只有裸数字。
 //	满科技、无军官时两边防御都应是「防御+70%(科技+70)」（守方不再叠加城墙）。

@@ -9,7 +9,7 @@ import (
 //
 //	军官 → 科技 → 装备 → 套装 → **战斗加成(总计)** → 战场初始相距
 //
-// ★ 2026-10-08 用户要求「战斗加成放到最下面，这相当于总加成」。
+// ★ 2026-10-08 「战斗加成放到最下面，这相当于总加成」。
 // 这个测试同时把 head 逐行打出来，方便肉眼核对战报/指挥室的准备回合内容。
 func TestBattleHeadOrder(t *testing.T) {
 	st := ezfyNewBattleState(nil, nil,
@@ -21,7 +21,7 @@ func TestBattleHeadOrder(t *testing.T) {
 		ezfyBattleBonus{}, // defEquip
 		ezfyBattleBonus{Dmg: 49, Def: 61, Hp: 73, Move: 10, Crit: 45, CritDmg: 64}, // atkSet
 		ezfyBattleBonus{}, // defSet
-		"赤色锤镰[裁决]", "", // atkSetDesc, defSetDesc
+		"赤色锤镰[裁决]", "",    // atkSetDesc, defSetDesc
 		"Michael·Adams Lv.150 攻击加成+365% 防御加成+144%",
 		"斯大林 Lv.350 攻击加成+325% 守军防御+100%",
 		515, 505, // atkOfficerBonus, defOfficerBonus（= 属性 + 技能，见军官行）

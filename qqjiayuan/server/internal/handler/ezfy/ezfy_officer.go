@@ -1155,7 +1155,7 @@ func (h *EzfyHandler) recruitCaptive(uid uint, officerId int64) string {
 //
 // ⚠️ 2026-10-06 曾把这里改成「逻辑删除」，是怕 PvP 抢将中途失败丢掉军官等级；
 // 但 PvP 侧早已改成「先建俘虏、成功后再删原军官」，且释放是玩家主动行为、无需回滚 ——
-// 故按用户要求回到物理删除。要追溯释放行为请查日志文件（见下方 log.Printf）。
+// 故按回到物理删除。要追溯释放行为请查日志文件（见下方 log.Printf）。
 func (h *EzfyHandler) freeOfficer(uid uint, officerId int64) string {
 	o, city := h.officerOfMine(uid, officerId)
 	if o == nil {
@@ -2392,7 +2392,7 @@ func (h *EzfyHandler) OfficerDispatch(c *gin.Context) {
 
 // ============ 野地掉宝 / 俘虏守将 ============
 
-// ★ 2026-10-09 用户要求「掉落 都走手动配置的」→ 原 `wildlandLoot`（活动野地的随机掉宝 +
+// ★ 2026-10-09 「掉落 都走手动配置的」→ 原 `wildlandLoot`（活动野地的随机掉宝 +
 // 全局概率 drop_t2/drop_t3/drop_t4/drop_act_pct）已**整体废弃删除**：
 //
 //	· 野地 / 寇城掉落 → `wildlandConfigLoot`（按「地图管理 → 野地类型」手动配的宝物/道具）

@@ -461,7 +461,7 @@ func ezfyBattleResultDecode(s string) (ezfyBattleResult, bool) {
 // viewerCamp / viewerIsAtk：观察方自己的阵营与攻守身份 —— 观察方只能指挥「自己这一方」，
 // 另一方（敌方）不下发指令。
 //
-// ★ 2026-10-05 用户要求：兵种名**统一用基础兵种名**（不带阵营前缀），viewerCamp 已不再参与取名。
+// ★ 2026-10-05 ：兵种名**统一用基础兵种名**（不带阵营前缀），viewerCamp 已不再参与取名。
 func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, viewerCamp int, viewerIsAtk bool) gin.H {
 	// 本回合剩余时间：过了就是 0（等待下一次请求推进）
 	left := b.RoundStart + ezfyBattleRoundMs - now
@@ -500,7 +500,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		}
 		return snap.DefTargets[troopId]
 	}
-	// ★ 2026-10-05 用户要求：指挥模块兵种名**统一展示基础兵种名**（不带阵营前缀）。
+	// ★ 2026-10-05 ：指挥模块兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	troopName := func(id int) string {
 		if id == 0 {
 			return "最近"
@@ -545,7 +545,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 					tgt = 0
 				}
 			}
-			// ★ 2026-10-05 用户要求：指挥模块兵种名统一用基础兵种名（不带阵营前缀）
+			// ★ 2026-10-05 ：指挥模块兵种名统一用基础兵种名（不带阵营前缀）
 			name := u.Name
 			if cn := ezfyCfg.troopName(u.TroopId, 0); cn != "" {
 				name = cn
@@ -559,7 +559,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 				"troop_id": u.TroopId, "name": name,
 				"count": u.Count, "initial": u.InitialCount, "pos": u.Pos,
 				"icon": icon,
-				"cmd": cmd, "cmd_name": ezfyBattleCmdName(cmd),
+				"cmd":  cmd, "cmd_name": ezfyBattleCmdName(cmd),
 				"target_troop": tgt, "target_name": troopName(tgt),
 			})
 		}
@@ -575,7 +575,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 			continue
 		}
 		optSeen[u.TroopId] = true
-		// ★ 2026-10-05 用户要求：目标下拉里的兵种名统一用基础兵种名
+		// ★ 2026-10-05 ：目标下拉里的兵种名统一用基础兵种名
 		name := u.Name
 		if cn := ezfyCfg.troopName(u.TroopId, 0); cn != "" {
 			name = cn
@@ -1006,7 +1006,7 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 
 // BattleLock POST /games/ezfy/battle/lock  {order_id, lock: bool} —— 保存 / 取消本回合配置
 //
-// ★ 2026-10-06 用户要求（点6）：「玩家设置好兵种状态后，点击保存，直接进入伤害锁定；
+// ★ 2026-10-06 （点6）：「玩家设置好兵种状态后，点击保存，直接进入伤害锁定；
 // 在锁定时间内，可以取消重新配置；如果时间剩余不多，哪怕没操作完成，就按照当前操作直接锁定伤害」。
 //
 // 语义：

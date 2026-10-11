@@ -1814,7 +1814,7 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 			return
 		}
 	} else if order.Status != 0 && order.Status != 1 && order.Status != ezfyOrderStatusWaiting {
-		// ★ 2026-10-09 用户要求「等待中的玩家可以自己取消」→ 等待(6) 也放行
+		// ★ 2026-10-09 「等待中的玩家可以自己取消」→ 等待(6) 也放行
 		//   （部队已到达、只是在排队等交战，取消后按单程返航回出发城）。
 		resp.ParamError(c, "该命令已在返航中或已结束, 无法取消")
 		return
@@ -2829,12 +2829,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	leadOfficer := h.officerByName(city.ID, order.Officer)
 	officerBonus := h.officerBattleBonus(leadOfficer)
 	// 攻击加成：军训艺术(5)+2%/级 · 武器科技(6)+3%/级 · 重工技术(9)+2%/级
-	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（用户要求：弹道学=射程，不参与攻击加成）
+	// ★ 2026-10-06 弹道学(8) 改为**射程加成**（：弹道学=射程，不参与攻击加成）
 	atkBonus := officerBonus + atkTech[5]*2 + atkTech[6]*3 + atkTech[9]*2
 	// 速度加成：只有燃烧引擎(10)「部队速度」是**全体兵种**通用的；
 	// ★ 2026-10-08 喷气引擎(19)「空军速度」是**兵种专属** → 移到下方 atkType（原来错误地加了全军）
 	atkSpeedBonus := atkTech[10] * 2
-	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，用户要求）
+	// ★ 2026-10-06 攻方射程加成：弹道学(8)+3%/级（射程 = 基础射程 × (1+科技加成)，）
 	atkRangeBonus := atkTech[8] * 3
 	// ★★ 2026-10-08 兵种专属加成（配置里写明作用兵种的那些科技/军官技能）：
 	//   · 喷气引擎(19)「空军速度+3%/级」→ **只加空军**
@@ -2919,7 +2919,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	var defDefBreak []ezfyBonusItem
 	defRangeBonus := 0
 	// ★ 2026-10-09 PvP 守方「伤兵回收率」的额外加成%（守方治愈伤兵科技 + 城守军官技能·机械改造），
-	//   case 3 里填；守方战损按「兵种修复率 + 这个值」进伤兵营（用户要求守方伤兵也入营 + 吃科技/技能）。
+	//   case 3 里填；守方战损按「兵种修复率 + 这个值」进伤兵营（守方伤兵也入营 + 吃科技/技能）。
 	defHealTech := 0
 	// ★ 2026-10-09 守方战损入伤兵营的合计（战报里展示「守方伤兵入营」）
 	defRepairedTotal := int64(0)
@@ -3624,7 +3624,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	// 防守方(玩家城市)战损扣除 + 守方伤兵入营 + 逃兵
 	//
-	// ★★ 2026-10-09 用户要求「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
+	// ★★ 2026-10-09 「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
 	//
 	//	原来守方战损**只扣兵、不进伤兵营**（仅「攻方获胜」时按 ezfyDeserterRate 进逃兵营）——
 	//	打一场 PvP，守方掉几万兵一个都回不来。现在与攻方同口径：守方战损按
@@ -3674,7 +3674,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		h.saveCityRes(target)
 	}
 	// ★ 2026-10-09 战报尾部的「回收比例」行（**伤兵回收占比**，见 ezfyHealPctLine）：
-	//   用户要求「谁看展示谁的」→ 攻方视角 / 守方视角**各算一份**，各自的战报用各自那份。
+	//   「谁看展示谁的」→ 攻方视角 / 守方视角**各算一份**，各自的战报用各自那份。
 	//   （攻方战损 = br.AttackerLosses；守方仅玩家城 PvP 才有伤兵数据。）
 	healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)
 	healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)
@@ -3789,7 +3789,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   宝物掉落(treasure) + 商城道具掉落(drop_items) 走。
 		//   ⚠️ 原来这段只写在下面的「征服成功占领」分支里 → 玩家打野地/寇城通常是**掠夺(2)**，
 		//      配置里写的宝物一个都不掉（用户反馈「都不掉这些」）。现在掠夺/征服都走这里。
-		//   ★ 2026-10-09 掉到的宝物/商城道具同时往系统频道播报（用户要求「掉落宝物 / 商城道具掉落
+		//   ★ 2026-10-09 掉到的宝物/商城道具同时往系统频道播报（「掉落宝物 / 商城道具掉落
 		//     都要播报」），targetName（「海底森林2级」）一并传进去，播报文案与战报标题同源。
 		if order.TargetType == 1 || order.TargetType == 2 {
 			report += h.wildlandConfigLoot(uid, city, order, wildLevel, targetName)
@@ -4138,7 +4138,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			report += "\n" + wareNote
 		}
 		report += fmt.Sprintf("\n战果\n黄金:%d\n粮食:%d\n钢铁:%d\n石油:%d\n稀矿:%d", lootGold, lootFood, lootSteel, lootOil, lootRare)
-		// ★ 2026-10-09 用户要求：战报里**不再单独列**「攻方/守方伤兵入营」两行 ——
+		// ★ 2026-10-09 ：战报里**不再单独列**「攻方/守方伤兵入营」两行 ——
 		//   尾部已经有「回收比例: 攻方X% 守方Y%」把两方占比汇总了，那两行的比例信息是重复的。
 		//   （伤兵**数量**去伤兵营页面看；战报只留比例。）
 		report += h.battleStatsTail(uid, prestigeGain, recyclePct, healLineAtk)
@@ -4146,7 +4146,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
 		//   如 [掠夺] 被掠夺报告: 我的城名(X,Y)；与攻方报告(L3490)保持对称口径。
 		if order.TargetType == 3 && target != nil {
-			// ★★ 2026-10-09 用户要求「回收比例 谁看展示谁的」：守方这份战报复用攻方正文，
+			// ★★ 2026-10-09 「回收比例 谁看展示谁的」：守方这份战报复用攻方正文，
 			//   所以要把尾部那行「回收比例」换成**守方自己**的（守方零战损 → 换成空串=不显示）。
 			defBody := report
 			if healLineAtk != healLineDef {
@@ -4170,7 +4170,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		travel := ezfyOneWayTravel(order)
 		order.Status = 2
 		order.ReturnTime = now + travel
-		// ★ 2026-10-09 用户要求：战报里不再单独列「攻方/守方伤兵入营」两行
+		// ★ 2026-10-09 ：战报里不再单独列「攻方/守方伤兵入营」两行
 		//   （尾部「回收比例」已汇总两方占比）。伤兵数量去伤兵营看。
 		// ★ 军官忠诚：只有**打败仗**才掉，且按战损比例合理计算（基础 3 点，全灭 10 点）
 		//   平局不算败仗，不掉忠诚。
@@ -4431,7 +4431,7 @@ func (h *EzfyHandler) ezfyWildTreasureReady(uid uint, cooldownH int) bool {
 
 // wildlandConfigLoot 野地/寇城战斗**胜利**掉落：完全按「地图管理 → 野地类型」的手动配置走。
 //
-// ★★ 2026-10-09 用户要求：「掉落 都走手动配置的」。两条配置各自逐条独立按概率判定：
+// ★★ 2026-10-09 ：「掉落 都走手动配置的」。两条配置各自逐条独立按概率判定：
 //
 //	· 宝物掉落 `treasure`    ：[{"name","count","pct"}]，按 name 精确匹配 ezfy_cfg_equipment
 //	· 商城道具掉落 `drop_items`：[[cfg_id,数量,概率%]]
@@ -4443,7 +4443,7 @@ func (h *EzfyHandler) ezfyWildTreasureReady(uid uint, cooldownH int) bool {
 // ★ 安全：**跳过套装件**（set_id > 0）—— 用户规则「套装军官装备只能通过宝箱开启」，
 // 否则在野地类型里填个套装名就能绕过规则刷套装。
 //
-// ★★ 2026-10-09 用户要求「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
+// ★★ 2026-10-09 「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
 // 掉落的**宝物 + 商城道具**除了写进战报，还往**系统频道**播一条全服可见的消息
 // （与「采集到宝物」同一套口径，见 ezfy_chat_exchange.go 的 ezfySysChat）。
 // 同一场战斗掉多件/两类时合并成**一条**，避免一次战斗刷屏。
@@ -4464,7 +4464,7 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 		return ""
 	}
 	out := ""
-	// ★★ 2026-10-09 用户要求「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
+	// ★★ 2026-10-09 「打野地 掉落宝物 / 商城道具掉落 都要播报 系统消息」：
 	//   本场掉到的「商城道具 + 宝物」名字统一攒进 lootNames，循环结束后**合并成一条**
 	//   系统频道播报（一场战斗只刷一条，避免刷屏；口径与「采集到宝物」一致）。
 	lootNames := []string{}
@@ -5007,7 +5007,7 @@ func ezfyOfficerBattleExp(enemyDead int64, won bool) int64 {
 // 与「伤兵回收率」完全无关 —— 但原字段名「回收比例」和游戏里「机械改造：回收率+10%」撞词，
 // 玩家在战报里看到「回收比例:0%」（平局没掠夺到东西）就以为伤兵回收是 0%。改名为「掠夺比例」消除歧义。
 //
-// ★ 2026-10-09 同日追加：用户要求在「掠夺比例」后面**再加一行「回收比例」**，
+// ★ 2026-10-09 同日追加：在「掠夺比例」后面**再加一行「回收比例」**，
 // 这次专指**伤兵回收比例**（入伤兵营的占比，见 ezfyHealPctLine）——
 // 两个字段含义不再重叠：掠夺比例 = 战利品，回收比例 = 伤兵。
 // 由调用方按需传入（healPct 可变参数）：没有伤兵数据的早期返回分支不传 → 不输出这一行。
@@ -5028,7 +5028,7 @@ func (h *EzfyHandler) battleStatsTail(uid uint, prestigeGain, recyclePct int, he
 // 但战报只写一个数字，玩家拿它跟「兵种详情页的修复率 20%」一对就以为算错了。
 // 这里把**占比**和**修复率的额外加成**一并写出来，一眼能对账。
 //
-// ⚠️ 2026-10-09 同日用户要求：战报里**不再输出**这一行（尾部「回收比例」已经汇总了
+// ⚠️ 2026-10-09 同日：战报里**不再输出**这一行（尾部「回收比例」已经汇总了
 // 攻守双方的占比，两行比例信息重复）。**函数保留** —— 伤兵结算逻辑（`rate += healTech`）
 // 和 `repairedTotal` 仍在用；若以后要在战报里恢复伤兵数量，把调用加回 processArrive 即可。
 func ezfyWoundedReportLine(repaired int64, losses []ezfyUnitGroup, healTech int) string {

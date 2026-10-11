@@ -3539,11 +3539,21 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	//   战报多时卡到明显。这里拆成**两条**查询：①索引直查新战报(city_id=X)；②老行(city_id=0/NULL)
 	//   用原 EXISTS 补查（老行本就少），最后按 id 倒序合并取前 200，语义完全一致但快得多。
 	sel := "id, city_id, order_id, report_type, title, type_name, is_read, created_at"
+	// ★★ 2026-10-11 修复「战斗报告(N) 却显示 (暂无战斗报告)」（用户报「优化的我连战报都看不到了」）：
+	//   原来先取「最新 200 条」**再**在 Go 里按分类过滤 —— 采集报告/将领升级这类「其他(3)」
+	//   刷屏时（驻守采集每期一条、将领升级一次 1~3 条），战斗报告会被挤出 200 条窗口 →
+	//   列表恒空；而徽标 `ezfyReportCounts` 是**全量**统计（不受窗口影响）→ 数字有、列表没有。
+	//   （本地实测：玩家 35806386 总战报 2913 条，徽标 4，但最新 200 条里战斗报告 = 0。）
+	//   现在把分类条件**下推到 SQL**，LIMIT 作用于「筛完分类之后」的结果集，与徽标同口径。
+	catCond := ezfyReportCategoryCond(category)
 	if cityId > 0 {
 		// ① 新战报：city_id 精确命中，走索引（快路径）
 		q2 := h.DB.Select(sel).Where("user_id = ?", uid)
 		if word != "" {
 			q2 = q2.Where("title LIKE ?", "%"+word+"%")
+		}
+		if catCond != "" {
+			q2 = q2.Where(catCond)
 		}
 		q2.Where("city_id = ?", cityId).Order("id DESC").Limit(200).Find(&reports)
 		// ② 老行补查（city_id=0/NULL 的存量数据，量小）：用原 EXPLICIT 分支兜底，
@@ -3552,6 +3562,9 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		legacyQ := h.DB.Select(sel).Where("user_id = ? AND (city_id = 0 OR city_id IS NULL)", uid)
 		if word != "" {
 			legacyQ = legacyQ.Where("title LIKE ?", "%"+word+"%")
+		}
+		if catCond != "" {
+			legacyQ = legacyQ.Where(catCond)
 		}
 		legacyQ.Where(fmt.Sprintf(`(EXISTS (
 			SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
@@ -3564,6 +3577,9 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		reports = append(reports, legacy...)
 		mustListConsolidate(&reports)
 	} else {
+		if catCond != "" {
+			q = q.Where(catCond)
+		}
 		q.Select(sel).Order("id DESC").Limit(200).Find(&reports)
 	}
 

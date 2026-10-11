@@ -86,7 +86,7 @@ var ezfyEzfyCfgEquipment = []model.EzfyCfgEquipment{
 	{ID: 16, Name: "元帅礼服", Type: "防具", Tier: 4, Military: 30, Logistics: 30, Learning: 120, Level: 75, Des: "特殊防具,学识+120"},
 	{ID: 17, Name: "帝国勋章", Type: "饰品", Tier: 4, Military: 80, Logistics: 80, Learning: 80, Level: 80, Des: "特殊饰品,三属性+80"},
 	{ID: 18, Name: "金质怀表", Type: "饰品", Tier: 4, Military: 50, Logistics: 100, Learning: 100, Level: 80, Des: "特殊饰品,后勤学识+100"},
-	// ★★ 2026-10-11 用户要求「老珠宝全部删除，种子里面也都去掉」：
+	// ★★ 2026-10-11 「老珠宝全部删除，种子里面也都去掉」：
 	//   原 19~26 红宝石/蓝宝石/绿宝石/翡翠/紫水晶/猫眼石/玛瑙/珍珠 已从种子与库里移除
 	//   （价格 0、不在任何宝箱奖池/军团商城，采集也不会掉，纯历史残留）。
 	//   ⚠️ 号段 19~26 已作废，**不要再用**；新增装备请从 36+ 取号。

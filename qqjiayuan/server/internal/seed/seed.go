@@ -2961,7 +2961,7 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 
 // ezfyBumpBagItemMaxDefault 一次性把「仍停在旧默认 1000」的背包单件上限提升到 5000。
 //
-// ★ 2026-10-11：背包单件上限默认值当天由 1000 上调为 5000（用户要求「默认也 5000」）。
+// ★ 2026-10-11：背包单件上限默认值当天由 1000 上调为 5000（「默认也 5000」）。
 // 用 settings 打标**只跑一次** —— 之后管理员即使手工设成 1000，下次重启也不会被顶掉。
 // 幂等：settings 无标记才执行；表不存在直接跳过。
 func ezfyBumpBagItemMaxDefault(db *gorm.DB) {

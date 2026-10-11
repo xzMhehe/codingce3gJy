@@ -61,7 +61,7 @@ var ezfyResCfgFields = map[string]string{
 
 // ezfyCheckWildTreasure 校验野地类型「宝物掉落」配置：[{"name","count","pct"},...]
 //
-// ★ 2026-10-11 用户要求「二战地图管理 → 宝物掉落 那里，老宝物也要不能配置掉落」：
+// ★ 2026-10-11 「二战地图管理 → 宝物掉落 那里，老宝物也要不能配置掉落」：
 //
 //	只允许配置**真能掉落**的装备，两类一律拒绝保存（与 `wildlandConfigLoot` 的实际掉落口径对齐）：
 //	  ① 名字在 ezfy_cfg_equipment 里查不到 —— 含已删的老珠宝（红宝石/蓝宝石/绿宝石/翡翠/紫水晶/

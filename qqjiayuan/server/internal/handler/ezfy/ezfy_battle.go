@@ -335,7 +335,7 @@ type ezfyBattleState struct {
 	//   原来它们被无差别加进 AtkBonus/AtkSpeedBonus（全兵种生效），用户反馈「空军速度只加空军」。
 	AtkType ezfyTypeBonus
 	DefType ezfyTypeBonus
-	// ★ 2026-10-06 射程加成%（用户要求：射程 = 兵种基础射程 × (1 + 科技加成)）
+	// ★ 2026-10-06 射程加成%（：射程 = 兵种基础射程 × (1 + 科技加成)）
 	AtkRangeBonus int
 	DefRangeBonus int
 	AtkEquip      ezfyBattleBonus
@@ -437,7 +437,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	}
 
 	// —— 开局描述（与拆分层之前完全一致，保证老战报格式不变）——
-	// ★ 2026-10-10 展开首行加「准备回合:」标识（用户要求）：军官/科技/装备/套装/
+	// ★ 2026-10-10 展开首行加「准备回合:」标识（）：军官/科技/装备/套装/
 	//   战斗加成都属于开战前的状态，与后面的「第1回合」「第2回合」呼应，一眼看出阶段。
 	st.Head = append(st.Head, "准备回合:")
 	if atkOfficerDesc != "" {
@@ -454,7 +454,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	effDefSpeed := defSpeedBonus + defEquip.Move
 	// ★ 2026-10-06 守方攻击加成单独列出：城防/守城部队行动时也吃科技+军官技能加成，
 	//   攻守双方的「加成伤害」都能在开场加成行里一眼看出来
-	// ★ 2026-10-06 射程加成也显示在加成行（用户要求「回合射程加成也要体现出来」，
+	// ★ 2026-10-06 射程加成也显示在加成行（「回合射程加成也要体现出来」，
 	//   弹道学=射程）；为 0 时不显示，老战报格式不变
 	atkRangeTxt, defRangeTxt := "", ""
 	if atkRangeBonus > 0 {
@@ -474,7 +474,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	if defEquip.Hp > 0 {
 		defHpTxt = fmt.Sprintf(" 生命+%d%%", defEquip.Hp)
 	}
-	// ★★ 2026-10-08 「战斗加成」行**移到最后**（用户要求：这相当于总加成，应排在各项明细之后）：
+	// ★★ 2026-10-08 「战斗加成」行**移到最后**（：这相当于总加成，应排在各项明细之后）：
 	//   准备回合的阅读顺序 = 军官 → 科技 → 装备 → 套装 → **战斗加成(总计)** → 战场初始相距。
 	//   原来它在军官行之后、明细之前，玩家先看到总数再看分项，容易以为数字对不上。
 	// ★★ 2026-10-08 攻击加成补**来源拆解**（用户反馈「战斗加成汇总感觉不全、科技没加全」）：
@@ -533,12 +533,12 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	//   放在防御括号后面展示，该方没带城防单位就不显示）。
 	atkDefTypeTxt := ezfyTypeDefTxt(atkType, atkPresent)
 	defDefTypeTxt := ezfyTypeDefTxt(defType, defPresent)
-	// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+	// ★★ 2026-10-09 「防御也整个括号() 能看出来哪来的」：
 	//   攻击行早就有 `(军官+0 科技+70)`，防御行原来只有一个裸数字，玩家看不出构成。
 	//   这里把 AtkDefBreak / DefDefBreak 的明细按来源归类 → `(城墙+45 军官+20 科技+70 装备套装+15)`。
 	atkDefSrc := ezfyDefSrcTxt(st.AtkDefBreak)
 	defDefSrc := ezfyDefSrcTxt(st.DefDefBreak)
-	// ★★ 2026-10-09 用户要求「战斗加成拆成两行」：攻方一行、守方一行
+	// ★★ 2026-10-09 「战斗加成拆成两行」：攻方一行、守方一行
 	//   （原来是一行里用 ' | ' 分隔，手机窄屏读起来要来回找）。
 	//   ⚠️ 前端 `reportNiceLines` 里对**老战报**（单行含 ' | '）的分色分支要保留 ——
 	//      库里存量战报还是老格式，不能只认新格式。
@@ -546,7 +546,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 		effAtk, atkAtkSrc, atkDefBonus, atkDefSrc, atkDefTypeTxt, effAtkSpeed, atkSpeedSrc, atkSpeedTypeTxt, atkRangeTxt, atkHpTxt)
 	defBonusLine := fmt.Sprintf("战斗加成: 守方 攻击+%d%%%s 防御+%d%%%s%s 速度+%d%%%s%s%s%s",
 		st.DefAtkBonus, defAtkSrc, effDef, defDefSrc, defDefTypeTxt, effDefSpeed, defSpeedSrc, defSpeedTypeTxt, defRangeTxt, defHpTxt)
-	// ★ 2026-10-08 攻/守方科技逐项单列（用户要求罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
+	// ★ 2026-10-08 攻/守方科技逐项单列（罗列）：如「科技·弹道学+30% 科技·装甲科技+15%」
 	// ★ 2026-10-08 野地/寇城守军没有科技：只要【攻方科技】行存在，【守方科技】就恒展示（空→'无'），
 	//   让攻/守两行对称，一眼看出守方没有科技加成（与【攻方装备】【守方装备】的'无'风格一致）。
 	hasAtkTech := false
@@ -601,7 +601,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 			// ★ 2026-10-08 攻方单兵血量在创建时按攻方装备生命%固化一次（atkEquip.Hp），战斗内不再浮动
 			st.Attackers = append(st.Attackers, &ezfyFightUnit{
 				id: fmt.Sprintf("A%d", idx), cfg: cfg, count: ug.Count,
-				hp: cfg.Health * (100 + atkEquip.Hp) / 100,
+				hp:           cfg.Health * (100 + atkEquip.Hp) / 100,
 				initialCount: ug.Count, pos: 0})
 		}
 	}
@@ -613,7 +613,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 			// ★ 2026-10-08 守方单兵血量在创建时按守方装备生命%固化一次（defEquip.Hp），战斗内不再浮动
 			st.Defenders = append(st.Defenders, &ezfyFightUnit{
 				id: fmt.Sprintf("D%d", idx), cfg: cfg, count: ug.Count,
-				hp: cfg.Health * (100 + defEquip.Hp) / 100,
+				hp:           cfg.Health * (100 + defEquip.Hp) / 100,
 				initialCount: ug.Count, pos: ezfyBattleStartDist})
 		}
 	}
@@ -707,7 +707,7 @@ func ezfyDefBonusTxt(label string, items []ezfyBonusItem) string {
 
 // ezfyDefSrcTxt 「防御加成」的来源拆解括号（与攻击行的 `(军官+0 科技+70)` 同风格）。
 //
-// ★★ 2026-10-09 用户要求「防御也整个括号() 能看出来哪来的」：
+// ★★ 2026-10-09 「防御也整个括号() 能看出来哪来的」：
 //
 //	原来战斗加成行里攻击有括号、防御只有裸数字，玩家看不出这一截是谁给的。
 //	把 AtkDefBreak / DefDefBreak 的逐项明细按**来源**归类求和：
@@ -814,7 +814,8 @@ func ezfyBonusBreakdown(officerBonus, skillBonus, techBase, equipBonus int, name
 // ★ （2026-09-22）：「指挥不是指挥全部，自己带的兵种都能指挥，就是单独指挥」
 // —— 所以指令是按兵种存的，没给的兵种回落到司令部兵种配置。
 // ★ 2026-10-08 技能发动播报用的「带感口号」池（克制版，不浮夸）。
-//   轮流取 + 攻/守、攻击/防御、回合 三重混合偏移，避免重复枯燥。
+//
+//	轮流取 + 攻/守、攻击/防御、回合 三重混合偏移，避免重复枯燥。
 var ezfySlogans = []string{
 	"战意沸腾", "气势如虹", "士气大振", "杀声震天", "锋芒毕露", "势不可挡",
 	"铁血激荡", "锐不可当", "一往无前", "战鼓擂动", "陷阵之志", "气吞万里",
@@ -827,7 +828,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 	}
 	st.Round++
 
-	// ★ 2026-10-05 用户要求：战报里的兵种名**统一展示基础兵种名**（不带阵营前缀）。
+	// ★ 2026-10-05 ：战报里的兵种名**统一展示基础兵种名**（不带阵营前缀）。
 	//   本函数生成的日志就是战报「战斗过程」正文，故不再按攻守阵营取名。
 	stName := func(u *ezfyFightUnit) string {
 		if n := ezfyCfg.troopName(u.cfg.ID, 0); n != "" {
@@ -914,7 +915,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 		}
 		target := ezfyPickTarget(unit, liveEnemies, targetMap)
 
-		// ★ 2026-10-06 射程 = 兵种基础射程 × (1 + 射程科技加成%)（用户要求）
+		// ★ 2026-10-06 射程 = 兵种基础射程 × (1 + 射程科技加成%)（）
 		rangeD := unit.cfg.AttackRange
 		if isAtk {
 			rangeD = unit.cfg.AttackRange * (100 + st.AtkRangeBonus) / 100
@@ -1113,7 +1114,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					damage = damage * int64(100+critBonus) / 100
 				}
 			}
-			// ★★ 2026-10-09 暴击发动播报（用户要求「有些装备爆击不是 100%，发动爆击也要有提示，
+			// ★★ 2026-10-09 暴击发动播报（「有些装备爆击不是 100%，发动爆击也要有提示，
 			//   就和军官发动技能似的描述下」）：装备/套装的暴击几率是概率值，只有 roll 中了才播报
 			//   一行，读战报时一眼能看到「这一下出了暴击、加了多少伤害」；攻击行里仍保留
 			//   【暴击+N%】标记（多目标级联时能看出具体是哪一下暴击）。
@@ -1254,7 +1255,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				//   在反击时**完全不生效**（用户反馈「没有对海军/对海攻击加成」）。
 				cbType := 0
 				cbFlat := 0 // 反击方的兵种攻击属性加成（绝对值）
-				if isAtk { // 攻方在打 → 被打的是守方 → 守方发动反击（被还击方=攻方）
+				if isAtk {  // 攻方在打 → 被打的是守方 → 守方发动反击（被还击方=攻方）
 					// 反击方(target) 打 被还击方(unit)：专属加成按「反击方兵种 → unit 兵种」取
 					cbType = st.DefType.attackBonusFor(target.cfg.Type, unit.cfg)
 					cbAtk = st.DefAtkBonus + cbType
@@ -1886,8 +1887,10 @@ func ezfyEquipBonusDesc(b ezfyBattleBonus) string {
 }
 
 // ezfyBonusItemsDesc 把逐项明细（科技/技能）拼成一行，顿号分隔；跳过非正值。
-// ★ 2026-10-08 用户要求改回单行顿号分隔（不再每项单独一行），如：
-//   「军训艺术+20%（部队攻击）、武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
+// ★ 2026-10-08 改回单行顿号分隔（不再每项单独一行），如：
+//
+//	「军训艺术+20%（部队攻击）、武器科技+30%（部队攻击）、装甲科技+30%（部队防御）」。
+//
 // 对科技额外补齐「（效果描述）」，让玩家一眼看出该科技起什么用（对应 ezfy_cfg 科技表 Effect）。
 func ezfyBonusItemsDesc(items []ezfyBonusItem) string {
 	parts := []string{}

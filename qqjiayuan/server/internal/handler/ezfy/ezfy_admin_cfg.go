@@ -650,9 +650,10 @@ func (h *EzfyAdmin) AdminEzfyGeneralUpdate(c *gin.Context) {
 // syncRecruitedOfficerBase 把军官池(general_id) 新的三属性/初始值同步到已招募实例
 //
 // ★ 已招军官的 Military/BaseMilitary 等是三属性/原属性基准的快照（见 recruitOfficer/captive），
-//   管理端改池子后不更新的话面板一直显示旧值。这里按 general_id 找出所有已招实例：
-//   - ★ 2026-09-29 用户明确：玩家军官的初始值要和池子**保持一致**（军=军事/学=学识/后=后勤），
-//     即军事/后勤/学识 与 初始基准 Base* 全部覆盖为池子新值（不保留玩家加点）。
+//
+//	管理端改池子后不更新的话面板一直显示旧值。这里按 general_id 找出所有已招实例：
+//	- ★ 2026-09-29 用户明确：玩家军官的初始值要和池子**保持一致**（军=军事/学=学识/后=后勤），
+//	  即军事/后勤/学识 与 初始基准 Base* 全部覆盖为池子新值（不保留玩家加点）。
 func (h *EzfyAdmin) syncRecruitedOfficerBase(generalId int) {
 	var nu model.EzfyCfgGeneral
 	if err := h.DB.First(&nu, generalId).Error; err != nil {
@@ -1637,7 +1638,8 @@ func (h *EzfyAdmin) AdminEzfyChestPoolBulkAdd(c *gin.Context) {
 // AdminEzfyEquipmentsOwned 玩家装备列表（按「玩家 + 同一装备」聚合，同一装备只显示一条、带数量）
 //
 // ★ 2026-09-29 同一个装备在一个玩家身上只展示一条，按数量展示；
-//   不再按城池拆分（装备归属以玩家为准，不展示城池）。
+//
+//	不再按城池拆分（装备归属以玩家为准，不展示城池）。
 func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	word := strings.TrimSpace(c.Query("word"))
@@ -1790,7 +1792,7 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 
 // AdminEzfyEquipmentOwnedCreate 给玩家发装备（按配置生成，落到其主城背包）
 //
-// ★ 2026-10-09 用户要求「给玩家发装备的装备下拉支持多选」：
+// ★ 2026-10-09 「给玩家发装备的装备下拉支持多选」：
 //
 //	原来一次只能选 1 种装备（`cfg_id`），管理员配一整套要重复操作十几次。
 //	现在同时接受 `cfg_ids`（数组）与旧的 `cfg_id`（单个，向后兼容）：

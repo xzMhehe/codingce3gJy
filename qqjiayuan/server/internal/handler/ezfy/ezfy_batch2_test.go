@@ -7,11 +7,11 @@ import (
 
 // TestPvPDefenderWounded PvP 守方战损也要进伤兵营，且回收率吃「守方科技 + 城守军官技能」。
 //
-// ★★ 2026-10-09 用户要求「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
+// ★★ 2026-10-09 「pvp 伤兵也是入伤兵营、回收比例也要有科技加成、军官技能」：
 //
 //	原来守方战损只扣兵（仅攻方获胜时进逃兵营），打一场 PvP 守方掉几万兵一个都回不来。
 //
-// ★ 2026-10-09 同日追加：战报里**不再单独列**「攻方/守方伤兵入营」两行（用户要求，
+// ★ 2026-10-09 同日追加：战报里**不再单独列**「攻方/守方伤兵入营」两行（，
 // 与尾部「回收比例」重复）→ 这里改成断言「回收比例」那行带了守方数据。
 func TestPvPDefenderWounded(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
@@ -19,7 +19,7 @@ func TestPvPDefenderWounded(t *testing.T) {
 		"defHealTech = defTech[21] * 2",                  // 守方科技·治愈伤兵
 		`h.officerHasSkill(cityGuard, "机械改造")`,           // 城守军官技能
 		"h.addWounded(target.ID, g.TroopId, 0, wounded)", // 守方伤兵入营（type=0 伤兵）
-		// 战报里两方的回收比例各算一份（用户要求「谁看展示谁的」）
+		// 战报里两方的回收比例各算一份（「谁看展示谁的」）
 		"healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)",
 		"healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)",
 		// 守方那份战报复用攻方正文 → 必须把「回收比例」换成守方自己的
@@ -33,7 +33,7 @@ func TestPvPDefenderWounded(t *testing.T) {
 
 // TestNewCityRules 起新城：坐标必须是**自己的附属野地**（平原/沿海平原）+ 五项资源各 10 万。
 //
-// ★★ 2026-10-09 用户要求「坐标必须是自己的附属野地（平原、沿海平原），而且资源是各 10 万」。
+// ★★ 2026-10-09 「坐标必须是自己的附属野地（平原、沿海平原），而且资源是各 10 万」。
 func TestNewCityRules(t *testing.T) {
 	src := strings.ReplaceAll(rawFile(t, "ezfy.go"), "\r\n", "\n")
 	for _, want := range []string{

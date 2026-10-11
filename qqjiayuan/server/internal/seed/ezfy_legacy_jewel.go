@@ -12,7 +12,7 @@ import (
 
 // ezfyLegacyJewelNames 「老珠宝」名单（非采集宝物的历史珠宝）。
 //
-// ★ 2026-10-11 用户要求「老珠宝全部删除，种子里面也都去掉」：这 8 种已从 ezfy_cfg_equipment
+// ★ 2026-10-11 「老珠宝全部删除，种子里面也都去掉」：这 8 种已从 ezfy_cfg_equipment
 // 删除（配置 ID 原为 19~26，号段作废），玩家实例/军官 JSON 里的残留由
 // 仓库根 `删除-老珠宝-2026-10-11.sql` 清理。这里只处理**掉落配置**里的残留（见下）。
 var ezfyLegacyJewelNames = []string{
@@ -21,7 +21,7 @@ var ezfyLegacyJewelNames = []string{
 
 // ensureEzfyNoLegacyJewelDrop 清「地图管理 → 野地类型 → 宝物掉落」配置里残留的老珠宝条目。
 //
-// ★ 2026-10-11 用户要求「二战地图管理 → 宝物掉落 那里，老宝物也要不能配置掉落」：
+// ★ 2026-10-11 「二战地图管理 → 宝物掉落 那里，老宝物也要不能配置掉落」：
 //
 //	老珠宝已从 ezfy_cfg_equipment 删除，但**野地类型的掉落配置**（ezfy_cfg_wildland.treasure）
 //	里还留着它们（线上/本地各 20+ 行，见 id 2~29 那批）。后果：

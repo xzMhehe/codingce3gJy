@@ -29,7 +29,7 @@ const (
 	// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：
 	//   召集消耗粮食 / 获得人口已迁到 ezfy_cfg_limit（convene_food_cost / convene_pop_gain），
 	//   管理端「二战系统配置 → 玩法开关」可维护，见 ezfyConveneFoodCostCfg / ezfyConvenePopGainCfg。
-	// ★ 2026-10-09 用户要求「起新城资源各 10 万」（前端文案原来还写着「消耗10万黄金」）→ 5 万改回 10 万。
+	// ★ 2026-10-09 「起新城资源各 10 万」（前端文案原来还写着「消耗10万黄金」）→ 5 万改回 10 万。
 	ezfyNewCityResCost = 100000 // 起新城消耗: 粮食/钢铁/石油/稀矿/黄金 各 10 万（★ 2026-09-28 曾为 10 万黄金；2026-10-09 由各 5 万改回各 10 万）
 	ezfyOilDivGrid     = 300    // 出征耗油: 每格耗油 = 总兵力/300
 	// ★ 2026-09-24 「采集 12 小时才有宝物 → 4 小时且可配置」：
@@ -235,17 +235,19 @@ func ezfyOccupyLock(uid uint) *sync.Mutex { return &ezfyOccupyLocks[uid%64] }
 
 // ezfyTrainLocks 训练/建造的并发锁：按**城市** id 分片。
 // ★ 2026-09-28 修复「城防数量超过城防空间」并发漏洞：
-//   原来 trainTroop 里「读已占用量(defenceSpaceUsed) → 校验空间 → 建队列」不是原子的，
-//   两个并发请求同时读到同一个已占用量、双双通过校验，城防总量最终超过围墙容量。
+//
+//	原来 trainTroop 里「读已占用量(defenceSpaceUsed) → 校验空间 → 建队列」不是原子的，
+//	两个并发请求同时读到同一个已占用量、双双通过校验，城防总量最终超过围墙容量。
 var ezfyTrainLocks [64]sync.Mutex
 
 func ezfyTrainLock(cityID uint) *sync.Mutex { return &ezfyTrainLocks[cityID%64] }
 
 // ezfySpeedTrainLocks 训练一键加速的并发锁（按 **玩家** id 分片）。
 // ★ 2026-10-03 修复「频繁点击零消耗黄金」：SpeedTrainAll 里
-//   「读队列剩余秒数 → 算钱 → 校验黄金 → 扣黄金 → 清空队列剩余时间」不是原子的，
-//   连点会并发进入同一段结算：第二路看到已被清零的剩余时间（算成 0 秒），
-//   于是算出 0 黄金并返回「消耗0黄金」。串行化后一次只能有一个请求在结算扣费。
+//
+//	「读队列剩余秒数 → 算钱 → 校验黄金 → 扣黄金 → 清空队列剩余时间」不是原子的，
+//	连点会并发进入同一段结算：第二路看到已被清零的剩余时间（算成 0 秒），
+//	于是算出 0 黄金并返回「消耗0黄金」。串行化后一次只能有一个请求在结算扣费。
 var ezfySpeedTrainLocks [64]sync.Mutex
 
 func ezfySpeedTrainLock(uid uint) *sync.Mutex { return &ezfySpeedTrainLocks[uid%64] }
@@ -435,7 +437,8 @@ func (h *EzfyHandler) buildingLevel(cityId uint, buildingId int) int {
 
 // buildingLevelsOf 一次性建筑列表 → 「building_id → 最高等级」内存 map。
 // ★ 2026-10-04 性能：展示接口多次调 buildingLevel（每次 = 一次完整 buildingList 查询）
-//   时改为一次查全、纯内存取值，省掉重复 RDS 往返。
+//
+//	时改为一次查全、纯内存取值，省掉重复 RDS 往返。
 func buildingLevelsOf(list []model.EzfyCityBuilding) map[int]int {
 	m := map[int]int{}
 	for _, b := range list {
@@ -482,7 +485,8 @@ func (h *EzfyHandler) areaCounts(cityId uint) (military, resource int) {
 
 // areaCountsOf 按已取到的建筑列表纯内存统计军事/资源区数量（免重复全表查询）。
 // ★ 2026-10-04 性能：/buildings 原来 areaCounts ×2 + 每栋建筑 buildingMaxLevel ×1
-//   都是「再查一次完整建筑列表」，几十栋楼 = 几十条 RDS 往返 → 4s。
+//
+//	都是「再查一次完整建筑列表」，几十栋楼 = 几十条 RDS 往返 → 4s。
 func areaCountsOf(list []model.EzfyCityBuilding) (military, resource int) {
 	for _, b := range list {
 		c := ezfyCfg.building(b.BuildingId)
@@ -623,6 +627,7 @@ func (h *EzfyHandler) cityTroopTotal(cityId uint) int64 {
 //
 //	口径：当前兵力(城内 + 训练队列) + 本次要加的量 > troop_max → 拒绝。
 //	返回空串表示通过，否则返回可直接展示给玩家的提示文案。
+//
 // cityTroopTotalD 同 cityTroopTotal，但复用已查好的部队表 + 训练队列（两者都非 nil 时零 SQL）。
 func (h *EzfyHandler) cityTroopTotalD(troops map[int]int64, trainQ []model.EzfyTrainQueue) int64 {
 	max := ezfyTroopMaxCfg()
@@ -1895,12 +1900,14 @@ func (h *EzfyHandler) saveCityRes(city *model.EzfyCity) {
 //   - 建筑单次升级耗时很短（BuildTime 秒级，下限 1 秒），玩家点取消时往往**已完工**。
 //     对「本次取消请求开始时仍在施工（原 status != 0）、恰在此步被 `checkBuildingDone`
 //     结算成完工」的情况：已建成，按「该建筑已完成建造」处理，保留新等级、不退任何资源。
+//
 // ★★ 2026-09-27 严重漏洞修复：**取消升级零退还，建筑保留当前等级**。
-//    升级/一键升满开局就一次性扣光资源+图纸（见 upgradeBuilding / maxLevelBuilding），
-//    而旧逻辑取消时又 giveResNoCap + addItem 全额退还 → 玩家可「一键升满 → 立即取消」反复刷，
-//    还能连 9→10 / 民居 11+ 的建筑图纸一起刷。现在无论一键还是单级升级：
-//    **取消后不退还任何资源/图纸，且建筑保留当前等级**（不回退、不推进），只停止施工；
-//    防并发/重复取消仍用 CAS 抢占领位。
+//
+//	升级/一键升满开局就一次性扣光资源+图纸（见 upgradeBuilding / maxLevelBuilding），
+//	而旧逻辑取消时又 giveResNoCap + addItem 全额退还 → 玩家可「一键升满 → 立即取消」反复刷，
+//	还能连 9→10 / 民居 11+ 的建筑图纸一起刷。现在无论一键还是单级升级：
+//	**取消后不退还任何资源/图纸，且建筑保留当前等级**（不回退、不推进），只停止施工；
+//	防并发/重复取消仍用 CAS 抢占领位。
 func (h *EzfyHandler) cancelBuildingUpgrade(city *model.EzfyCity, recordId int64) string {
 	// 1) 先读建筑；如果本来就空闲，直接返回（不提前刷资源）
 	var b0 model.EzfyCityBuilding
@@ -2067,11 +2074,12 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 // maxLevelBuilding 一键升级建筑：升到 targetLevel（0 = 升到该建筑上限）
 //
 // ★ 2026-09-25 用户纠正「一键9级 不对，是一键升级到 9 级，而不是升级满」：
-//   前端按钮文案是「一键{{max_level-1}}级」（市政厅 10 级 → 一键9级），
-//   语义就是「一键升到那一级为止」——**不能**越过它去升满级：
-//   9→10 是要建筑图纸的坎，玩家点「一键9级」本意就是只到 9 级。
-//   现在按 targetLevel 结算（资源/图纸都只算到目标级），并且施工一次到位。
-//   返回 (实际目标等级, 错误信息)；错误信息为空表示成功。
+//
+//	前端按钮文案是「一键{{max_level-1}}级」（市政厅 10 级 → 一键9级），
+//	语义就是「一键升到那一级为止」——**不能**越过它去升满级：
+//	9→10 是要建筑图纸的坎，玩家点「一键9级」本意就是只到 9 级。
+//	现在按 targetLevel 结算（资源/图纸都只算到目标级），并且施工一次到位。
+//	返回 (实际目标等级, 错误信息)；错误信息为空表示成功。
 func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, targetLevel int) (int, string) {
 	h.refreshCity(city.UserID, city)
 	var b model.EzfyCityBuilding
@@ -2242,13 +2250,13 @@ func (h *EzfyHandler) trainTroop(city *model.EzfyCity, troopId, count int, split
 //
 // ★★ 2026-10-05 性能（用户反馈「/troops/train 3s」）：改造前本函数 = refreshCity（~15 条串行）
 //
-//	+ 需求里的 buildingLevel / techMap（每个需求各查一次）+ cityPopUsed（2 条）
-//	+ checkTroopCap（2 条）+ 围墙等级（1 条）+ defenceSpaceUsed（2 条）≈ **30 条几乎全串行**。
-//	现在先一次并行取数（ezfyActionSettle 里 1 个 RTT），下面全部走内存 map/切片：
-//	  · 建筑等级 → blv（一次 buildingList 的产物）    · 科技等级 → tech
-//	  · 人口占用 → cityPopUsedD（建筑 + 训练队列）    · 兵力上限 → checkTroopCapD
-//	  · 城防空间 → defenceSpaceUsedD
-//	d 为空时兜底自己建一份（行为不变，只是慢）。
+//   - 需求里的 buildingLevel / techMap（每个需求各查一次）+ cityPopUsed（2 条）
+//   - checkTroopCap（2 条）+ 围墙等级（1 条）+ defenceSpaceUsed（2 条）≈ **30 条几乎全串行**。
+//     现在先一次并行取数（ezfyActionSettle 里 1 个 RTT），下面全部走内存 map/切片：
+//     · 建筑等级 → blv（一次 buildingList 的产物）    · 科技等级 → tech
+//     · 人口占用 → cityPopUsedD（建筑 + 训练队列）    · 兵力上限 → checkTroopCapD
+//     · 城防空间 → defenceSpaceUsedD
+//     d 为空时兜底自己建一份（行为不变，只是慢）。
 func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int, split bool, d ...*resCalcData) string {
 	var snap *resCalcData
 	if len(d) > 0 && d[0] != nil {
@@ -2637,13 +2645,13 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 //
 // ★★ 2026-10-05 性能（用户反馈「/techs/research 3s」）：改造前本函数 = refreshCity（~15 条串行）
 //
-//	+ buildingLevel ×2（每次一条完整 buildingList）+ techMap ×2（每次 2 条）+ ezfyCityIds
-//	+ dup/busy 两个 Count ≈ **30 条几乎全串行的跨 WAN 往返** → 1.5~3s。
-//	现在：可选传入调用方已建好的快照 d（ezfyActionSettle），全部改走内存：
-//	  · 建筑等级 → d.buildingLevelsOf（一次 buildingList 的产物）
-//	  · 科技等级 → d.techsOf
-//	  · 「本城/同科技是否已在研究」→ 直接用 d.techRows（checkTechDoneRows 已把完成的行置 0）
-//	d 为空时兜底自己建一份（行为不变，只是慢）。
+//   - buildingLevel ×2（每次一条完整 buildingList）+ techMap ×2（每次 2 条）+ ezfyCityIds
+//   - dup/busy 两个 Count ≈ **30 条几乎全串行的跨 WAN 往返** → 1.5~3s。
+//     现在：可选传入调用方已建好的快照 d（ezfyActionSettle），全部改走内存：
+//     · 建筑等级 → d.buildingLevelsOf（一次 buildingList 的产物）
+//     · 科技等级 → d.techsOf
+//     · 「本城/同科技是否已在研究」→ 直接用 d.techRows（checkTechDoneRows 已把完成的行置 0）
+//     d 为空时兜底自己建一份（行为不变，只是慢）。
 func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int, d ...*resCalcData) string {
 	var snap *resCalcData
 	if len(d) > 0 && d[0] != nil {
@@ -2756,7 +2764,8 @@ func (h *EzfyHandler) checkTechDone(city *model.EzfyCity, reuse ...[]uint) {
 
 // checkTechDoneRows 对已查好的「进行中科技」做完成结算（写部分；list 由调用方预取可省 1 条串行 RTT）。
 // ★ 2026-10-05 结算成功的行把内存里的 Status 置 0，调用方（techs 页）据此直接从这批行
-//   构建「研究中」集合，不再多查一次 status=1 的记录。
+//
+//	构建「研究中」集合，不再多查一次 status=1 的记录。
 func (h *EzfyHandler) checkTechDoneRows(city *model.EzfyCity, list []model.EzfyCityTech) {
 	now := time.Now().UnixMilli()
 	for i := range list {
@@ -2857,7 +2866,8 @@ func (h *EzfyHandler) itemCount(uid uint, cfgId int) int {
 
 // itemCounts 一次查询取该玩家多件道具的持有数（map[cfgId]count，缺省 0）。
 // ★ 2026-10-04 军官详情原来对升星卡/改名卡/技能书各查一次 itemCount（3 条 SQL），
-//   合并成一条「user_id + cfg_id IN」查询。
+//
+//	合并成一条「user_id + cfg_id IN」查询。
 func (h *EzfyHandler) itemCounts(uid uint, cfgIds ...int) map[int]int {
 	out := map[int]int{}
 	if len(cfgIds) == 0 {
@@ -2889,8 +2899,9 @@ func (h *EzfyHandler) addItem(uid uint, cfgId, count int) {
 // addItemCapped 带「背包单件上限」的发放：只有「当前持有 + count <= max」才写入。
 //
 // ★ 2026-10-11 用户规则：背包道具上限卡控（默认 1000，超过 1000 就不能再买）。
-//   与 addItem 的差别：用**条件原子自增**（`count + n <= max` 才成功），并发购买也绝不超上限；
-//   返回 false = 已超上限、本次未发放（调用方据此回滚已扣的钱/库存）。max <= 0 = 不限。
+//
+//	与 addItem 的差别：用**条件原子自增**（`count + n <= max` 才成功），并发购买也绝不超上限；
+//	返回 false = 已超上限、本次未发放（调用方据此回滚已扣的钱/库存）。max <= 0 = 不限。
 func (h *EzfyHandler) addItemCapped(uid uint, cfgId, count, max int) bool {
 	if count <= 0 {
 		return true
@@ -3015,7 +3026,9 @@ func (h *EzfyHandler) hasCityEffect(cityId uint, effectType int) bool {
 
 // hasAnyPeaceEffect 玩家名下**任意**城市是否有生效中的免战保护令（effect_type=2）。
 // ★ 2026-10-02 免战保护令改为**全账号生效**——任一城用了保护令，
-//   该玩家所有城的自城派遣都放开携带上限（与单城保护令的「出征拦截」语义区分开）。
+//
+//	该玩家所有城的自城派遣都放开携带上限（与单城保护令的「出征拦截」语义区分开）。
+//
 // 走索引：ezfy_city_effect 联合唯一索引 (city_id,effect_type) + ezfy_city idx_user。
 func (h *EzfyHandler) hasAnyPeaceEffect(uid uint) bool {
 	var one int
@@ -3431,10 +3444,11 @@ var ezfyStateTaskTypes = map[string]bool{"city_level": true, "army_count": true,
 // ezfyTaskRewardRes 返回某任务结算用的「资源」奖励（粮/钢/油/稀）。
 //
 // ★ 2026-09-29 资源奖励按任务类型加成：
-//     新手任务(type_id=1)：四种生产资源 ×1000；
-//     日常任务(type_id=2)/ 每周任务(type_id=4)：四种生产资源 ×10。
-//   黄金/声望不改。任务列表展示与发奖都用同一口径，保证玩家看到多少、领到多少一致。
-//   注意这里只做展示/发奖加成，不改表里存的原始数值（管理端「数据管理」仍存基数）。
+//
+//	  新手任务(type_id=1)：四种生产资源 ×1000；
+//	  日常任务(type_id=2)/ 每周任务(type_id=4)：四种生产资源 ×10。
+//	黄金/声望不改。任务列表展示与发奖都用同一口径，保证玩家看到多少、领到多少一致。
+//	注意这里只做展示/发奖加成，不改表里存的原始数值（管理端「数据管理」仍存基数）。
 func ezfyTaskRewardRes(cfg *model.EzfyCfgTask) (int64, int64, int64, int64) {
 	food, steel, oil, rare := cfg.RewardFood, cfg.RewardSteel, cfg.RewardOil, cfg.RewardRare
 	switch cfg.TypeId {
@@ -3859,9 +3873,10 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 // ★ 2026-10-03 /view 玩家级短 TTL 缓存。
 //
 // ★★ 2026-10-05 目前两台机器、以后可能多台，进程内缓存会互相 miss、且每台机器的
-//   写操作只清了自己那台的缓存 → 跨机数据不一致。**三套缓存全部改为空操作**（Get 永远 miss、
-//   Set/Del 直通，保留签名让所有调用点照常编译），展示接口直查 DB，靠 SQL/索引/两波并行/
-//   页面懒加载把延迟压在目标内。TTL 常量仅供其它进程内 memo（行军结算快速路径）复用。
+//
+//	写操作只清了自己那台的缓存 → 跨机数据不一致。**三套缓存全部改为空操作**（Get 永远 miss、
+//	Set/Del 直通，保留签名让所有调用点照常编译），展示接口直查 DB，靠 SQL/索引/两波并行/
+//	页面懒加载把延迟压在目标内。TTL 常量仅供其它进程内 memo（行军结算快速路径）复用。
 const ezfyViewCacheTTLMs = 3000
 
 func ezfyViewCacheGet(uid uint) (gin.H, bool) { return nil, false }
@@ -3882,7 +3897,7 @@ var (
 )
 
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
-// ★ 2026-10-09 用户要求 5 秒 → **3 秒**（前端 doConvene 同步改）
+// ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
 var (
 	ezfyConveneMu   sync.Mutex
 	ezfyConveneMemo = map[uint]int64{}
@@ -3921,9 +3936,10 @@ func (h *EzfyHandler) ezfyViewCurrentCity(p model.EzfyProfile, cities []model.Ez
 // ezfyPageCity 展示接口统一取「档案 + 当前城 + 城市列表」：两波并行（第一波 1 个 RTT）。
 //
 // ★ 2026-10-04 性能（用户反馈军官/装备/野地等接口 cache 未命中仍 3s+）：
-//   原来 getOrCreateCity 串行查 profile → city（2 RTT），再跑 refreshCityRead 的
-//   建筑/科技/队列（3~4 RTT）…… miss 路径十几条串行 RTT。这里第一波把
-//   profile + 城市列表**并行**取出（1 RTT），懒结算数据由调用方第二波并行补齐。
+//
+//	原来 getOrCreateCity 串行查 profile → city（2 RTT），再跑 refreshCityRead 的
+//	建筑/科技/队列（3~4 RTT）…… miss 路径十几条串行 RTT。这里第一波把
+//	profile + 城市列表**并行**取出（1 RTT），懒结算数据由调用方第二波并行补齐。
 func (h *EzfyHandler) ezfyPageCity(uid uint) (model.EzfyProfile, model.EzfyCity, []model.EzfyCity) {
 	var profile model.EzfyProfile
 	var cities []model.EzfyCity
@@ -4368,7 +4384,7 @@ func (h *EzfyHandler) SetTax(c *gin.Context) {
 func (h *EzfyHandler) Convene(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 召集人口 → 资源详情缓存失效
-	// ★ 2026-10-05 卡控（防连点刷人口）；★ 2026-10-09 用户要求 5 秒 → 3 秒
+	// ★ 2026-10-05 卡控（防连点刷人口）；★ 2026-10-09  5 秒 → 3 秒
 	{
 		nowCd := time.Now().UnixMilli()
 		ezfyConveneMu.Lock()
@@ -4562,7 +4578,8 @@ func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 // Resources 资源详情
 //
 // ★ 2026-10-04 性能（用户反馈「/resources 2s+」）：第一波 档案+城市列表（1 RTT）定当前城，
-//   第二波 6 条计算数据并行（1 RTT）；加 3s 玩家级缓存（税率/增产/安抚等写操作会失效）。
+//
+//	第二波 6 条计算数据并行（1 RTT）；加 3s 玩家级缓存（税率/增产/安抚等写操作会失效）。
 func (h *EzfyHandler) Resources(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
