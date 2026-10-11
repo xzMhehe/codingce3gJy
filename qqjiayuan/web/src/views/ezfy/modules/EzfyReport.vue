@@ -124,7 +124,10 @@
                 <span v-if="ezfy.intelTag(r)" class="orange">[{{ ezfy.intelTag(r) }}] </span>{{ ezfy.intelTitle(r) }}</a>
               <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
             </div>
-            <div class="old-line" v-if="!ezfy.reports.length">(暂无军情警讯)</div>
+            <!-- ★ 2026-10-11 区分「加载中」与「真的没有」：切分区时列表先清空、接口回来前显示「加载中…」，
+                 避免「战斗报告(1) 却显示暂无」这种误导。 -->
+            <div class="old-line gray" v-if="!ezfy.reports.length && ezfy.repLoading">(加载中…)</div>
+            <div class="old-line" v-else-if="!ezfy.reports.length">(暂无军情警讯)</div>
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
             <div class="ezfy-pager" v-if="ezfy.reports.length">
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>
@@ -152,7 +155,9 @@
                 <span class="orange">[{{ r.type_name }}]</span> {{ r.title }}</a>
               <span class="gray">({{ ezfy.fmtTime(r.created_at) }})</span>
             </div>
-            <div class="old-line" v-if="!ezfy.reports.length">{{ ezfy.reportTab === 5 ? '(暂无军团战报)' : '(暂无战斗报告)' }}</div>
+            <!-- ★ 2026-10-11 同上：加载中 vs 真的没有 -->
+            <div class="old-line gray" v-if="!ezfy.reports.length && ezfy.repLoading">(加载中…)</div>
+            <div class="old-line" v-else-if="!ezfy.reports.length">{{ ezfy.reportTab === 5 ? '(暂无军团战报)' : '(暂无战斗报告)' }}</div>
             <!-- ★ 2026-10-08 分页条**始终显示**（只要有数据），默认每页 5 条 -->
             <div class="ezfy-pager" v-if="ezfy.reports.length">
               <a href="javascript:;" :class="{ gray: ezfy.repPageCur <= 1 }" @click="ezfy.sectionPagerGo('rep', -1)">上一页</a>

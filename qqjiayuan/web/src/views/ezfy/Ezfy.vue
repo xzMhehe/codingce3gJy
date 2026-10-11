@@ -417,13 +417,18 @@ export default {
       //                  切 tab 先用缓存立刻渲染，不再清空；同一 tab 2 秒内重复点不重复打接口。
       //   · _dynKey/_dynLoading   : 军队动态「上次拉取的城市」+「请求是否在途」（连点 tab 不堆请求）。
       //   · _countsLoading : 徽标接口「请求是否在途」（这个不设 TTL，保证未读数及时清）。
-      //   · _repLoading : 战报列表请求是否在途（防同 tab 并发重复请求）。
+      //   · _repLoadingKey : 战报列表**正在请求的那个缓存 key**（'' = 空闲）。
+      //     ★★ 必须按 key 去重，不能用全局布尔（2026-10-11 事故：原来用全局 `_repLoading`，
+      //        切分区时「别的分区的请求在途」会把本分区这次请求也挡掉 → 本分区列表永远空着，
+      //        用户报「优化的我连战报都看不到了」。）
+      //   · repLoading（响应式）: 当前分区是否在加载 → 模板显示「(加载中…)」而不是「(暂无战斗报告)」。
       //   ★ 用 Object.create(null) 而非 {}：纯缓存表，不需要 Vue 递归侦听。
       _repCache: Object.create(null),
       _dynKey: null,
       _dynLoading: false,
       _countsLoading: false,
-      _repLoading: false,
+      _repLoadingKey: '',
+      repLoading: false,
       resNames: RES_NAMES,
       // ★ 2026-09-28 头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
       resProd: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -2633,17 +2638,22 @@ export default {
       //   （不是布尔），那种情况要当**强制刷新**处理，不能被误判成软刷新。
       if (soft === true) {
         const cached = this._repCache[key]
-        // ★ 2026-10-11 切 tab 流畅化：刚拉过(2s) 或 已有请求在途 → 直接用缓存，不再打接口
+        // ★ 2026-10-11 切 tab 流畅化：该分区刚拉过(2s) → 直接用缓存（内容已由 applyCachedReports 渲染好）
         if (cached && Date.now() - cached.at < 2000) return
-        if (this._repLoading) return
+        // ★★ 去重**只按同一个 key**：同一分区已有请求在途 → 让它回来填，避免并发重复请求。
+        //    原来用的是全局 `_repLoading`：切分区时「别的分区的请求在途」会把本分区这次请求也挡掉，
+        //    而 applyCachedReports 已经把列表清空 → 本分区永远显示「暂无」（用户报「看不到战报」）。
+        if (this._repLoadingKey === key) return
       }
       let url = '/games/ezfy/reports?'
       if (tab === 5) url += 'corps=1'
       else url += 'category=' + cat + '&city_id=' + (this.city ? this.city.id : 0)
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
-      this._repLoading = true
+      this._repLoadingKey = key
+      this.repLoading = true
       api.get(url).then(r => {
-        this._repLoading = false
+        if (this._repLoadingKey === key) this._repLoadingKey = ''
+        if (this.repCacheKey(this.reportTab) === key) this.repLoading = false
         if (r.code === 0) {
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
           // ★ 2026-10-09 「战斗报告(14) 数量问题」：军团战报接口返回的 counts 是
@@ -2675,7 +2685,10 @@ export default {
             if (soft !== true) this.repPage = 1
           }
         }
-      }).catch(() => { this._repLoading = false })
+      }).catch(() => {
+        if (this._repLoadingKey === key) this._repLoadingKey = ''
+        if (this.repCacheKey(this.reportTab) === key) this.repLoading = false
+      })
     },
     // ★ 2026-10-01 徽标数字专用轻量接口（独立于 loadReports：
     //   军情页落在任意分区都要刷新徽标，但不能因此把没看的战报标记已读）
@@ -3037,16 +3050,19 @@ export default {
     repCacheKey (t) {
       return t + '|' + ((this.city && this.city.id) || 0) + '|' + (this.reportWord || '')
     },
-    // 用缓存把某个分区的战报列表**立刻**渲染出来（无缓存则清空显示占位）
+    // 用缓存把某个分区的战报列表**立刻**渲染出来（无缓存则清空 + 标「加载中」）
     applyCachedReports (t) {
       if (t !== 3 && t !== 4 && t !== 5) return
       const c = this._repCache[this.repCacheKey(t)]
       if (!c) {
-        // 首次进入该分区：没有缓存 → 清空，等接口回来（与旧行为一致，避免显示别的分区残留）
+        // 首次进入该分区：没有缓存 → 清空，等接口回来（与旧行为一致，避免显示别的分区残留）。
+        // ★ 标 repLoading=true → 模板显示「(加载中…)」，而不是误导性的「(暂无战斗报告)」。
         this.reports = []
+        this.repLoading = true
         return
       }
       this.reports = c.reports
+      this.repLoading = false
       this.reportRadar = c.radar
       this.reportRecon = c.recon
       this.reportIntel = c.intel
