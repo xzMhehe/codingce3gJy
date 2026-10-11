@@ -724,7 +724,7 @@
           <el-input-number v-model.number="egForm.user_id" :min="1" controls-position="right" />
           <span class="td-sub" style="margin-left:8px">即用户ID（不是家园号）</span>
         </el-form-item>
-        <!-- ★ 2026-10-09 用户要求「装备下拉支持多选」：multiple + collapse-tags，
+        <!-- ★ 2026-10-09 「装备下拉支持多选」：multiple + collapse-tags，
              一次可勾选多种装备，每种各发「数量」件。 -->
         <el-form-item label="装备" required>
           <el-select v-model="egForm.cfg_ids" multiple collapse-tags filterable

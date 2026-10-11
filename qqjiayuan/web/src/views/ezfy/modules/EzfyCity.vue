@@ -96,7 +96,7 @@
             花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口(受民居容纳上限限制, 满员后无法召集)<br/>
           </template>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>
-          <!-- ★ 2026-10-09 用户要求「去掉按钮样式」：改成与全站一致的 [链接] 写法
+          <!-- ★ 2026-10-09 「去掉按钮样式」：改成与全站一致的 [链接] 写法
                （原来用 <button>，样式和别处不统一）；卡控由后端 + doConvene 3 秒双保险。 -->
           <a v-if="!ezfy.conveneBlocked" href="javascript:;" @click="ezfy.doConvene">[召集]</a>
           <span v-else class="gray">[召集]（已达人口上限, 无法召集）</span>

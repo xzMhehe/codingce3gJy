@@ -2035,9 +2035,30 @@ export default {
       this.renameInput = this.selfInfo.nickname || this.profile.nickname || ''
       this.renameEditing = true
     },
+    // ★ 2026-10-11 昵称不能含 emoji（与后端 ezfyHasEmoji 同口径；前端先给即时提示，不用等接口）
+    //   覆盖 Unicode 表情区块：1F000–1FAFF / 2600–27BF / 2B00–2BFF / FE00–FE0F / 200D / 20E3
+    //   + ©®‼⁉™ℹ〰〽㊗㊙（会被当 emoji 渲染）；**放行** ★☆（常用装饰符号）、← → ↑ ↓（常用箭头）。
+    hasEmoji (s) {
+      const str = String(s || '')
+      for (let i = 0; i < str.length; i++) {
+        const c = str.codePointAt(i)
+        if (c > 0xFFFF) i++ // 代理对：跳过低位，避免重复判断
+        if ((c >= 0x1F000 && c <= 0x1FAFF) ||
+            (c >= 0x2600 && c <= 0x27BF && c !== 0x2605 && c !== 0x2606) ||
+            (c >= 0x2B00 && c <= 0x2BFF) ||
+            (c >= 0xFE00 && c <= 0xFE0F) ||
+            c === 0x200D || c === 0x20E3 ||
+            c === 0x00A9 || c === 0x00AE || c === 0x203C || c === 0x2049 ||
+            c === 0x2122 || c === 0x2139 || c === 0x3030 || c === 0x303D ||
+            c === 0x3297 || c === 0x3299) return true
+      }
+      return false
+    },
     async doPlayerRename () {
       const name = String(this.renameInput || '').trim()
       if (name.length < 2 || name.length > 12) { this.notify('昵称长度需在 2~12 个字符之间'); return }
+      // ★ 2026-10-11 「[修改昵称] 不能用表情」
+      if (this.hasEmoji(name)) { this.notify('昵称不能包含表情符号'); return }
       const free = this.selfInfo.rename_free
       const tip = free ? '确认改名为「' + name + '」吗？（首次免费）'
         : '确认改名为「' + name + '」吗？将消耗「改名卡」×1（当前 ' +
@@ -4018,7 +4039,7 @@ export default {
     },
     // ---- 城市操作 ----
     doConvene () {
-      // ★ 2026-10-09 用户要求：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
+      // ★ 2026-10-09 ：卡控 5 秒 → **3 秒**（与后端 /city/convene 双保险，防连点刷人口）
       if (Date.now() - (this.lastConveneAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       api.post('/games/ezfy/city/convene', {}).then(r => {
         if (r.code === 0) this.lastConveneAt = Date.now()
@@ -4846,7 +4867,7 @@ export default {
     // ★ 2026-10-09 野地/寇城「掉落宝物」的可读化：后端下发的是结构化 JSON
     //   [{"name":"防弹衣","count":1,"pct":2},...]，原来直接 print 出来是一串花括号（用户反馈）。
     //   → 「防弹衣、青铜军刀」。
-    //   ★ 用户要求**概率和数量都不展示**（只列宝物名；pct/count 属后台配置信息）。
+    //   ★ **概率和数量都不展示**（只列宝物名；pct/count 属后台配置信息）。
     //   ⚠️ 老数据可能是纯文本（如「中级/高级」）→ 解析失败就原样返回，不吞掉内容。
     fmtWildDrop (raw) {
       const s = String(raw || '').trim()
@@ -5762,7 +5783,7 @@ export default {
     // ★ 2026-09-28 首页头部产量缩写：≥1万 时按「万」缩成紧凑形式, 保留负号; 不足1万显示原值
     //   采用向下取整(截断), 不四舍五入——保证展示值≤真实值, 玩家不会被夸大误导
     //   例如 -46393790 → -4639万, 113840 → 11.3万, 54566 → 5.4万
-    // ★ 2026-10-05 用户要求：达到「亿」(≥1e8) 就换成「亿」单位, 比 4639万 更好读；
+    // ★ 2026-10-05 ：达到「亿」(≥1e8) 就换成「亿」单位, 比 4639万 更好读；
     //   首页的**现有资源**(city.*)和**每小时产量**(resProd.*)都走这个函数, 一起生效。
     //   同样向下取整(截断)、保留 1 位小数(千万位截断)。例如 123456789 → 1.2亿, 543000000 → 5.4亿
     // ★ 2026-10-10 新首页布局资源图标（5 种资源，与老布局同一套 20×20 图形）
@@ -6580,7 +6601,7 @@ body.ezfy-ios .ezfy-page textarea {
      根因是这里用 inline-block(会把换行空白算成一个空格宽)，
      而首页导航用的是 inline。改成 inline 并收窄 padding，
      与首页视觉完全一致。
-   ★★ 2026-10-09 用户要求「点了的导航加个颜色区分」→ 当前项由黑色改为全站统一的 #c0392b。 */
+   ★★ 2026-10-09 「点了的导航加个颜色区分」→ 当前项由黑色改为全站统一的 #c0392b。 */
 .ezfy-page .ezfy-subnav a {
   display: inline;
   padding: 0 1px;
@@ -6611,7 +6632,7 @@ body.ezfy-ios .ezfy-page textarea {
 }
 .ezfy-page .old-line.home-nav2 a.on { color: #000; font-weight: bold; }
 /* ★ 2026-10-07 首页曾经给关键区块加过 .home-block 的 10px 分组留白，
-   用户要求「间隔去掉」→ 已全部移除。
+   「间隔去掉」→ 已全部移除。
    现在首页是**完全连续的一列**，不再有任何人为分组间距。 */
 /* 首页内容容器：行距比原版 1.5 略紧一点（用户：「比之前紧凑了是吧，上下间隔大一点点」→ 取 1.45）。
    只作用于首页，不影响其它页面。 */
@@ -7484,7 +7505,7 @@ body.ezfy-ios .ezfy-page textarea {
 /* ★ 首页功能图标(军团/军衔/资源/人口/民心/税率)：统一用内联 SVG 圆角徽章，替换原来风格杂乱的 PNG */
 .ezfy-page .ezfy-ico { width: 18px; height: 18px; vertical-align: -4px; margin-right: 3px; }
 /* ★ 2026-10-11 图标与紧随其后的文字「零间距」：覆盖上面 .ezfy-ico 默认的 3px 右外边距。
-   用于老布局首页「军团:」行（用户要求「军团和图标之间的空格去掉」）。
+   用于老布局首页「军团:」行（「军团和图标之间的空格去掉」）。
    ⚠️ 只改 CSS 不够 —— 模板里 </svg> 与文字之间也不能有换行空白，否则仍会渲染出一个空格。 */
 .ezfy-page .ezfy-ico.ico-flush { margin-right: 0; }
 .ezfy-page .red { color: #c0392b; }

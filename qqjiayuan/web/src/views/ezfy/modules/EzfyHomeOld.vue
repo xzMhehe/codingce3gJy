@@ -16,7 +16,7 @@
         <a href="javascript:;" @click="ezfy.go('cities')">切换城市</a>
       </div>
       <div class="old-line">
-        <!-- ★ 2026-10-11 用户要求「军团和图标之间的空格去掉」：图标要「紧贴」军团:。
+        <!-- ★ 2026-10-11 「军团和图标之间的空格去掉」：图标要「紧贴」军团:。
              空格有两处来源，必须都去掉：① 模板里 </svg> 与「军团:」之间的换行空白（会渲染成一个空格）；
              ② 全局 `.ezfy-ico` 的 `margin-right:3px` → 用 `ico-flush` 覆盖成 0。 -->
         <svg class="ezfy-ico ico-flush" viewBox="0 0 20 20" role="img"><title>军团</title><rect x="1.5" y="1.5" width="17" height="17" rx="4.5" fill="#2F5D8A"/><path d="M10 3.3 L15.4 5.2 V10.4 C15.4 13.5 13.2 15.6 10 16.5 C6.8 15.6 4.6 13.5 4.6 10.4 V5.2 Z" fill="#fff"/><path d="M10 7.4 L11.2 9.6 L13.6 9.8 L12 11.3 L12.5 13.6 L10 12.3 L7.5 13.6 L8 11.3 L6.4 9.8 L8.8 9.6 Z" fill="#2F5D8A"/></svg>军团:

@@ -106,6 +106,39 @@ func ezfyNickOf(p model.EzfyProfile, u *model.User) string {
 	return u.Nickname
 }
 
+// ezfyHasEmoji 名字里是否含 emoji（表情符号）。
+//
+// ★ 2026-10-11 用户要求「[修改昵称] 不能用表情」：emoji 在复古 WAP 文字页上渲染不一致
+// （同一个 emoji 在 Windows/安卓/iOS 上宽度能差一倍）还容易撑破行宽，所以昵称一律不许带。
+// 覆盖范围 = Unicode 里「表情符号」所在的主要区块（含 emoji 序列的组成部分）：
+//
+//	1F000–1FAFF  表情与象形（😀🎉🔥🚀🀄🃏…，含扩展 A；国旗 1F1E6–1F1FF 也在内）
+//	2600–27BF    杂项符号 + 装饰符号（☀❤✅⚡✂✈ 等）——**但放行 ★(2605) ☆(2606)**：
+//	             它们是常用装饰符号、不算表情，游戏里也常见
+//	2B00–2BFF    杂项符号与箭头（⭐⬛⬆ 等）
+//	FE00–FE0F    变体选择符（emoji 呈现选择符「️」就落在这）
+//	200D         零宽连接符（👨‍👩‍👦 这类组合 emoji 的粘合符）
+//	20E3         组合键帽（1️⃣ 的 ️⃣）
+//	00A9 00AE 203C 2049 2122 2139 3030 303D 3297 3299（©®‼⁉™ℹ〰〽㊗㊙ —— 会被当 emoji 渲染）
+//
+// ⚠️ 故意**不**包含 2190–21FF（← → ↑ ↓ 等箭头）：那是常用符号，不算表情。
+func ezfyHasEmoji(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 0x1F000 && r <= 0x1FAFF,
+			r >= 0x2600 && r <= 0x27BF && r != 0x2605 && r != 0x2606,
+			r >= 0x2B00 && r <= 0x2BFF,
+			r >= 0xFE00 && r <= 0xFE0F,
+			r == 0x200D, r == 0x20E3,
+			r == 0x00A9, r == 0x00AE, r == 0x203C, r == 0x2049,
+			r == 0x2122, r == 0x2139, r == 0x3030, r == 0x303D,
+			r == 0x3297, r == 0x3299:
+			return true
+		}
+	}
+	return false
+}
+
 // ProfileRename POST /games/ezfy/profile/rename {nickname}
 //
 // 首次免费；之后消耗 1 张改名卡。
@@ -125,6 +158,11 @@ func (h *EzfyHandler) ProfileRename(c *gin.Context) {
 	}
 	if len([]rune(name)) < 2 || len([]rune(name)) > 12 {
 		resp.ParamError(c, "昵称长度需在 2~12 个字符之间")
+		return
+	}
+	// ★ 2026-10-11 用户要求「[修改昵称] 不能用表情」：昵称不许带 emoji（前端也有同样一版即时提示）
+	if ezfyHasEmoji(name) {
+		resp.ParamError(c, "昵称不能包含表情符号")
 		return
 	}
 	h.cfgs() // 按名字解析「改名卡」cfg_id 前必须先加载配置缓存
