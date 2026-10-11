@@ -418,7 +418,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "史册", CritDmg: 34},
 		}},
 	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 2000,
-		Mi: 88, Lo: 44, Le: 44, SetMi: 96, SetLo: 49, SetLe: 49,
+		Mi: 100, Lo: 50, Le: 50, SetMi: 96, SetLo: 49, SetLe: 49,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
 			{Sub: "头部", Def: 60},
