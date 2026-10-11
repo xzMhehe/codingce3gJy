@@ -3456,10 +3456,19 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 		}
 		return a, b
 	}
+	// ★★ 2026-10-11 性能修复（用户报「军情警讯、战斗报告 都查不到 严重bug」）：
+	//   线上实测：玩家 35806478 有 1126 行「city_id=0/NULL 且未读」的战报，老行补查对**每一行**
+	//   跑 2 个 EXISTS（其中 ezfy_order 的 `title LIKE %(...)%` 是全表扫）→ 单条 SQL **33 秒**；
+	//   远超前端 axios 的 15s 超时 → counts 拿不到、reports 同样超时 → 两个 tab 全空。
+	//   修法：**先把行按标题收窄到「军情警讯/战斗报告」这两类**，再跑 EXISTS —— 实测 33s → 0.5s。
+	//   ★ 结果不变：老行(city_id=0)里根本没有这两类标题（都是将领升级/采集/运输等「其他」），
+	//     而且 sumSQL 的 CASE WHEN 本就只对这两类计数，收窄后其余行的贡献本来就是 0。
+	//   ★ 快路径同样加收窄（避免单城战报极多时白扫一堆「其他」类行）。
+	anyTitle := ezfyReportCatCondAny()
 	var c1, c2 int
 	if cityId > 0 {
-		a1, a2 := run(" AND city_id = ?", cityId)
-		legacy := fmt.Sprintf(` AND (city_id = 0 OR city_id IS NULL) AND (
+		a1, a2 := run(" AND city_id = ? AND "+anyTitle, cityId)
+		legacy := fmt.Sprintf(` AND (city_id = 0 OR city_id IS NULL) AND %s AND (
 			EXISTS (
 				SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
 				  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
@@ -3468,7 +3477,7 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 				SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
 				  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
 			)
-		)`, cityId, cityId)
+		)`, anyTitle, cityId, cityId)
 		b1, b2 := run(legacy)
 		c1, c2 = a1+b1, a2+b2
 	} else {
@@ -3586,21 +3595,28 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	views := []gin.H{}
 	// ★ 徽标数字用全量真实统计（不再受「最近 200 条窗口」影响，见 ezfyReportCounts）
 	counts := h.ezfyReportCounts(uid, cityId)
+	// ★★ 2026-10-11 性能：标记已读原来是**逐条 UPDATE**（最多 50 次 RDS 往返；线上 1 核 1G
+	//   实测军情页打开明显卡 —— 用户报「咋这慢啊」）。改为先收集 id、循环后**一次批量 UPDATE**。
+	//   `len(views) >= 50` 同时从 continue 改成 break：列表只要前 50 条，continue 会白扫剩余 150 条。
+	unreadIDs := make([]uint, 0, 50)
 	for _, r := range reports {
 		cat := ezfyReportCategory(r.Title)
 		if category > 0 && cat != category {
 			continue
 		}
 		if len(views) >= 50 {
-			continue
+			break
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": ezfyTypeNameStored(r), "is_read": r.IsRead, "order_id": r.OrderId,
 			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {
-			h.DB.Model(&model.EzfyReport{}).Where("id = ?", r.ID).Update("is_read", 1)
+			unreadIDs = append(unreadIDs, r.ID)
 		}
+	}
+	if len(unreadIDs) > 0 {
+		h.DB.Model(&model.EzfyReport{}).Where("id IN ?", unreadIDs).Update("is_read", 1)
 	}
 	// ★ 军情警讯的可见范围由**自己城市的雷达站**决定：没有雷达站收不到「来袭预警/被侦查」，
 	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
@@ -4087,6 +4103,15 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	}
 	res := q.Delete(&model.EzfyReport{})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
+}
+
+// ezfyReportCatCondAny 军情警讯(1) ∪ 战斗报告(2) 的标题条件（已带外层括号，可直接 AND 拼接）。
+//
+// ★ 2026-10-11 新增：给「老行(city_id=0/NULL)补查」**先收窄候选行**用。
+// 老行补查里的 EXISTS 很贵（ezfy_order 的 `title LIKE %(...)%` 是全表扫），
+// 必须先用标题条件把行数降下来 —— 详见 ezfyReportCounts 的注释（33s → 0.5s）。
+func ezfyReportCatCondAny() string {
+	return "(" + ezfyReportCategoryCond(1) + " OR " + ezfyReportCategoryCond(2) + ")"
 }
 
 // ezfyReportCategoryCond 按分类返回标题匹配条件（1=军情警讯 2=战斗报告），
