@@ -397,7 +397,6 @@ export default {
       gatherNow: 0,
       // ★ 2026-09-28 「军队动态/出征队列」倒计时自动刷新：拉取 dynamics 时的本地时间戳，
       //   战斗中部队的本回合剩余是「相对剩余」，用它当基点往前推算。
-      _dynAt: 0,
       // ★ 2026-09-28 「倒计时归零 → 自动重拉」的三个运行态标记（详见 checkDueRefresh）：
       //   _dynRefreshing  : 本轮重拉是否还在进行（防同波多次触发）
       //   _dynRefreshedAt : 上次重拉的本地时刻（★ 2026-10-08 节流从 3s 收紧到 1s，减少「返航到点/出征抵达」刷新延迟）
@@ -406,28 +405,34 @@ export default {
       //   _dynRetryAt     : 上次「到点重试」的本地时刻（重试间隔 2 秒）
       //     ★ 用 Object.create(null) 而不是 {} —— 它只是个计数表，不需要响应式，
       //       用 {} 会让 Vue 递归侦听每个动态加的 key，纯属浪费。
-      _dynRefreshing: false,
-      _dynRefreshedAt: 0,
-      _dynFired: Object.create(null),
-      _dynRetryAt: 0,
+      //   ★★ 2026-10-11 修复「有战报但列表空」：Vue 2 的 initData 对 `_` 开头字段不 proxy 到实例，
+      //       必须全部去掉 `_` 前缀（见 repCache 等字段同款说明）。
+      dynAt: 0,
+      dynRefreshing: false,
+      dynRefreshedAt: 0,
+      dynFired: Object.create(null),
+      dynRetryAt: 0,
       // ★ 2026-10-11 军情分页 tab 切换流畅化（用户：「军队动态/驻军/军情警讯/战斗报告/军团战报
       //   这些 tab 切换还是卡顿」）。原来每次切 tab 都：清空列表 → 打 2~3 个接口 → 等回来才渲染，
       //   于是「点一下先白一下」。现在改成「缓存即时渲染 + 后台刷新 + 请求去重」：
-      //   · _repCache  : 每个 tab 的战报列表缓存，key=`tab|城市|搜索词` → {reports,radar,recon,intel,at}。
+      //   · repCache  : 每个 tab 的战报列表缓存，key=`tab|城市|搜索词` → {reports,radar,recon,intel,at}。
       //                  切 tab 先用缓存立刻渲染，不再清空；同一 tab 2 秒内重复点不重复打接口。
-      //   · _dynKey/_dynLoading   : 军队动态「上次拉取的城市」+「请求是否在途」（连点 tab 不堆请求）。
-      //   · _countsLoading : 徽标接口「请求是否在途」（这个不设 TTL，保证未读数及时清）。
-      //   · _repLoadingKey : 战报列表**正在请求的那个缓存 key**（'' = 空闲）。
+      //   · dynKey/dynLoading   : 军队动态「上次拉取的城市」+「请求是否在途」（连点 tab 不堆请求）。
+      //   · countsLoading : 徽标接口「请求是否在途」（这个不设 TTL，保证未读数及时清）。
+      //   · repLoadingKey : 战报列表**正在请求的那个缓存 key**（'' = 空闲）。
       //     ★★ 必须按 key 去重，不能用全局布尔（2026-10-11 事故：原来用全局 `_repLoading`，
       //        切分区时「别的分区的请求在途」会把本分区这次请求也挡掉 → 本分区列表永远空着，
       //        用户报「优化的我连战报都看不到了」。）
       //   · repLoading（响应式）: 当前分区是否在加载 → 模板显示「(加载中…)」而不是「(暂无战斗报告)」。
       //   ★ 用 Object.create(null) 而非 {}：纯缓存表，不需要 Vue 递归侦听。
-      _repCache: Object.create(null),
-      _dynKey: null,
-      _dynLoading: false,
-      _countsLoading: false,
-      _repLoadingKey: '',
+      //   ★★ 2026-10-11 修复「有战报但列表空」：Vue 2 的 initData 对 `_` 开头字段不 proxy 到实例，
+      //      `this.repCache` 恒为 undefined → 一访问就抛 TypeError → switchReportTab 的
+      //      applyCachedReports 直接崩掉、loadReports 永远不执行。这里全部去掉 `_` 前缀。
+      repCache: Object.create(null),
+      dynKey: null,
+      dynLoading: false,
+      countsLoading: false,
+      repLoadingKey: '',
       repLoading: false,
       resNames: RES_NAMES,
       // ★ 2026-09-28 头部资源栏「/」右侧展示每小时产量（与资源详情页同口径）
@@ -441,7 +446,7 @@ export default {
       placate: { gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 },
       // ★ 安抚冷却的每秒时间基准（由 tickClock 驱动，供 placateCdLeft 计算属性用）
       placateNow: 0,
-      _placateAt: 0, // 安抚冷却快照(/view 里的 cd_left)的取回时刻
+      placateAt: 0, // 安抚冷却快照(/view 里的 cd_left)的取回时刻
       resShort: RES_SHORT,
       resDes: buildResDes(RES_NAMES),
       profile: { prestige: 0, camp: 1, nickname: '' },
@@ -1527,7 +1532,7 @@ export default {
       const snap = (this.placate && this.placate.cd_left) || 0
       if (snap <= 0) return 0
       // 快照剩余 = snap（拉接口的那一刻）；本地已经流逝的时间 = 从 load 到现在的差
-      const elapsed = this.placateNow && this._placateAt ? this.placateNow - this._placateAt : 0
+      const elapsed = this.placateNow && this.placateAt ? this.placateNow - this.placateAt : 0
       return Math.max(0, Math.min(total, snap - elapsed))
     },
     // ★ 军情分区分页（默认每页 5 条，可上一页/下一页）
@@ -1824,14 +1829,14 @@ export default {
       if (!onDynPage || !this.dynamics || !this.dynamics.length) return
       const now = Date.now()
       // 上一轮刷新还没结束 / 距上次刷新不足 1 秒 → 跳过（★ 2026-10-08 原 3s，收敛减少「返航/抵达」刷新延迟）
-      if (this._dynRefreshing) return
-      if (this._dynRefreshedAt && now - this._dynRefreshedAt < 1000) return
-      if (!this._dynFired) this._dynFired = Object.create(null)
+      if (this.dynRefreshing) return
+      if (this.dynRefreshedAt && now - this.dynRefreshedAt < 1000) return
+      if (!this.dynFired) this.dynFired = Object.create(null)
       // 长时间挂机会往 _dynFired 里累积 key（每条订单每一轮倒计时一个），
       // 超过 200 个就整体清空 —— 已完成的订单不会再出现在 dynamics 里，
       // 清掉不会导致「重复触发」，只是给还在跑的订单重新计一次数。
-      const firedKeys = Object.keys(this._dynFired)
-      if (firedKeys.length > 200) this._dynFired = Object.create(null)
+      const firedKeys = Object.keys(this.dynFired)
+      if (firedKeys.length > 200) this.dynFired = Object.create(null)
       // 只认「还在走」的倒计时：出征(0)看 arrive_time，返航(2)看 return_time。
       // 战斗中(5)的回合由 battleTimer 自己驱动，不在这里管。
       // 用「订单id+到点时刻」当 key —— 这样同一订单后续新一轮倒计时（重新出征/返航）
@@ -1854,19 +1859,19 @@ export default {
         //   ★ 2026-10-08 加固：重试 3 次/3 秒 → **5 次/2 秒**（共约 10 秒窗口）。
         //     实测「并发请求被 per-uid 重入守卫挡掉」时，往往要等下一次请求才结算完，
         //     窗口太短会在极端情况下停在「结算中…」不再自动恢复。
-        const tries = this._dynFired[key] || 0
+        const tries = this.dynFired[key] || 0
         if (tries >= 5) return false
-        if (tries > 0 && now - (this._dynRetryAt || 0) < 2000) return false
-        this._dynFired[key] = tries + 1
+        if (tries > 0 && now - (this.dynRetryAt || 0) < 2000) return false
+        this.dynFired[key] = tries + 1
         // 返航到达 = 待带回资源入库 → 资源栏要刷新；
         // 出征抵达本身不改资源（只是状态变成驻守/进入战斗），不必刷。
         if (o.status === 2) needRes = true
         return true
       })
       if (!due) return
-      this._dynRetryAt = now
-      this._dynRefreshing = true
-      this._dynRefreshedAt = now
+      this.dynRetryAt = now
+      this.dynRefreshing = true
+      this.dynRefreshedAt = now
       this.loadDynamics()
       // ★ 只有「返航到达」这种真的会改动城市资源的情况才补一次资源刷新。
       //   注意这里**不调整个 load()** —— load() 会连带完整懒结算与军衔等重逻辑，太重；
@@ -1874,7 +1879,7 @@ export default {
       if (needRes) this.refreshRes()
       // loadDynamics 是 promise 链，没有返回值可 await；用一个短定时器放开闸门，
       // 保证同一波到点只触发一次（下一个 tick 不会重复打）。（★ 2026-10-08 解锁从 1500ms 收紧到 700ms）
-      setTimeout(() => { this._dynRefreshing = false }, 700)
+      setTimeout(() => { this.dynRefreshing = false }, 700)
     },
     // ★ 轻量刷新头部资源栏（不触发 loadRank 等重查询）——返航物资入库后调用
     refreshRes () {
@@ -1885,7 +1890,7 @@ export default {
           this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_prod || {})
           this.resMax = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, r.data.res_max || {})
           this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, r.data.placate || {})
-          this._placateAt = Date.now() // 记住安抚冷却快照的取回时刻，供 placateCdLeft 本地推算
+          this.placateAt = Date.now() // 记住安抚冷却快照的取回时刻，供 placateCdLeft 本地推算
         }
       })
     },
@@ -2305,6 +2310,14 @@ export default {
       //   建筑/军队/野地；页面重新进入时 go() 会各自重新拉取。首页轮询时城市没变不清。
       const cityChanged = !!d.city && (!this.city || d.city.id !== this.city.id)
       this.city = d.city
+      // ★ 2026-10-11 修复「首帧 city 未就绪 → 战报按 city_id=0 拉取显示暂无」：
+      //   首次进入军情页时 /view 还没回来，restoreFromUrl→go('reports') 会用 city=undefined
+      //   发请求并写进 '4|0|' 缓存。city 就绪后这里补一次强制刷新，覆盖成当前城的真实战报。
+      if ((this.cur === 'reports' || this.cur === 'reportview') &&
+          (this.reportTab === 3 || this.reportTab === 4 || this.reportTab === 5) &&
+          !this.repCache[this.repCacheKey(this.reportTab)]) {
+        this.loadReports()
+      }
       // ★ 2026-09-28：头部资源栏「/」右侧展示每小时产量
       this.resProd = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_prod || {})
       this.resMax = Object.assign({ gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }, d.res_max || {})
@@ -2318,7 +2331,7 @@ export default {
       // ★ 2026-10-07 赎城金额（管理端可配，默认 500）：城市列表 [赎城] 确认弹窗展示
       this.ransomCost = d.ransom_cost || 500
       this.placate = Object.assign({ gold: 50000, grievance: 2, feelings: 1, cooldown_min: 15, cd_left: 0 }, d.placate || {})
-      this._placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
+      this.placateAt = Date.now() // 安抚冷却快照时刻（见 placateCdLeft）
       this.continent = d.continent
       this.cityKindRaw = d.city_kind || ''
       this.cityIsSea = !!d.is_sea
@@ -2658,22 +2671,22 @@ export default {
       // ★ 严格判 `=== true`：模板里 `@click="ezfy.loadReports"` 会把**点击事件对象**当第一个参数传进来
       //   （不是布尔），那种情况要当**强制刷新**处理，不能被误判成软刷新。
       if (soft === true) {
-        const cached = this._repCache[key]
+        const cached = this.repCache[key]
         // ★ 2026-10-11 切 tab 流畅化：该分区刚拉过(2s) → 直接用缓存（内容已由 applyCachedReports 渲染好）
         if (cached && Date.now() - cached.at < 2000) return
         // ★★ 去重**只按同一个 key**：同一分区已有请求在途 → 让它回来填，避免并发重复请求。
         //    原来用的是全局 `_repLoading`：切分区时「别的分区的请求在途」会把本分区这次请求也挡掉，
         //    而 applyCachedReports 已经把列表清空 → 本分区永远显示「暂无」（用户报「看不到战报」）。
-        if (this._repLoadingKey === key) return
+        if (this.repLoadingKey === key) return
       }
       let url = '/games/ezfy/reports?'
       if (tab === 5) url += 'corps=1'
       else url += 'category=' + cat + '&city_id=' + (this.city ? this.city.id : 0)
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
-      this._repLoadingKey = key
+      this.repLoadingKey = key
       this.repLoading = true
       api.get(url).then(r => {
-        if (this._repLoadingKey === key) this._repLoadingKey = ''
+        if (this.repLoadingKey === key) this.repLoadingKey = ''
         if (this.repCacheKey(this.reportTab) === key) this.repLoading = false
         if (r.code === 0) {
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
@@ -2695,7 +2708,7 @@ export default {
             at: Date.now()
           }
           // 写缓存（按 key，城市/搜索词变化时旧缓存自然不被命中）
-          this._repCache[key] = data
+          this.repCache[key] = data
           // ★ 只有**仍停在原分区、且城市/搜索词没变**时才替换列表 ——
           //   否则慢响应回来会把用户已经切到的别的分区内容覆盖掉。
           if (this.reportTab === tab && this.repCacheKey(tab) === key) {
@@ -2707,7 +2720,7 @@ export default {
           }
         }
       }).catch(() => {
-        if (this._repLoadingKey === key) this._repLoadingKey = ''
+        if (this.repLoadingKey === key) this.repLoadingKey = ''
         if (this.repCacheKey(this.reportTab) === key) this.repLoading = false
       })
     },
@@ -2719,15 +2732,15 @@ export default {
     //   ★ 2026-10-11 切 tab 流畅化：加「请求在途」守卫（连点 tab 不堆请求），
     //     **不设 TTL** —— 徽标必须及时反映「已看战报被标记已读」，不能拖。
     loadReportCounts () {
-      if (this._countsLoading) return
-      this._countsLoading = true
+      if (this.countsLoading) return
+      this.countsLoading = true
       api.get('/games/ezfy/reports/counts?city_id=' + (this.city ? this.city.id : 0)).then(r => {
-        this._countsLoading = false
+        this.countsLoading = false
         if (r.code === 0) {
           this.reportCounts = r.data.counts || {}
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
         }
-      }).catch(() => { this._countsLoading = false })
+      }).catch(() => { this.countsLoading = false })
     },
     // ★ 2026-09-24 军情警讯列表加 [防守报告]/[预警] 标签（其余类型无标签）
     intelTag (r) {
@@ -2763,22 +2776,22 @@ export default {
       //   ★ 严格判 `=== true`：模板里 `@click="ezfy.loadDynamics"` 会把点击事件对象当参数传进来，
       //     那种情况要当强制刷新（见 loadReports 同款说明）。
       if (soft === true) {
-        if (this._dynLoading) return
-        if (this._dynKey === cid && this._dynAt && Date.now() - this._dynAt < 2000) return
+        if (this.dynLoading) return
+        if (this.dynKey === cid && this.dynAt && Date.now() - this.dynAt < 2000) return
       }
-      this._dynLoading = true
+      this.dynLoading = true
       api.get('/games/ezfy/reports/dynamics?city_id=' + cid).then(r => {
-        this._dynLoading = false
+        this.dynLoading = false
         if (r.code === 0) {
           this.dynamics = r.data.dynamics || []
           // ★ 2026-09-28 倒计时自动刷新的时间基点：以「拿到数据的这一刻」为准，
           //   战斗中的 battle_left_ms 是相对剩余，必须配上它才能每秒往前推算。
-          this._dynAt = Date.now()
-          this._dynKey = cid
+          this.dynAt = Date.now()
+          this.dynKey = cid
           this.dynPage = 1
           this.queuePage = 1
         }
-      }).catch(() => { this._dynLoading = false })
+      }).catch(() => { this.dynLoading = false })
     },
     // ================= 战场指挥室（军情 → 军队动态 → [指挥]）=================
     // 每回合 30 秒：前 25 秒可下达前进/暂停/后退，后 5 秒锁定并由服务器结算，最多 40 回合。
@@ -3074,7 +3087,7 @@ export default {
     // 用缓存把某个分区的战报列表**立刻**渲染出来（无缓存则清空 + 标「加载中」）
     applyCachedReports (t) {
       if (t !== 3 && t !== 4 && t !== 5) return
-      const c = this._repCache[this.repCacheKey(t)]
+      const c = this.repCache[this.repCacheKey(t)]
       if (!c) {
         // 首次进入该分区：没有缓存 → 清空，等接口回来（与旧行为一致，避免显示别的分区残留）。
         // ★ 标 repLoading=true → 模板显示「(加载中…)」，而不是误导性的「(暂无战斗报告)」。
@@ -4352,7 +4365,7 @@ export default {
       // 战斗中：本回合剩余 = 拉数据那一刻的剩余 - 已过去的时间
       if (o.status === 5) {
         if (!o.battle_left_ms && o.battle_left_ms !== 0) return ''
-        const left = Math.max(0, (o.battle_left_ms || 0) - (now - (this._dynAt || now)))
+        const left = Math.max(0, (o.battle_left_ms || 0) - (now - (this.dynAt || now)))
         return this.durText(left / 1000)
       }
       // 出征中：距抵达还差多久
