@@ -953,6 +953,15 @@ func (h *EzfyAdmin) AdminEzfyTrainQueue(c *gin.Context) {
 	if status >= 0 {
 		q = q.Where("status = ?", status)
 	}
+	// ★ 2026-10-11 日期检索：按**队列开始时间**过滤（yyyy-MM-dd，含结束当天；也接受毫秒时间戳）
+	if startMs, endMs := ezfyAdminTimeRange(c.Query("start"), c.Query("end")); startMs > 0 || endMs > 0 {
+		if startMs > 0 {
+			q = q.Where("start_time >= ?", startMs)
+		}
+		if endMs > 0 {
+			q = q.Where("start_time < ?", endMs)
+		}
+	}
 	var total int64
 	q.Count(&total)
 	var rows []model.EzfyTrainQueue
@@ -969,18 +978,39 @@ func (h *EzfyAdmin) AdminEzfyTrainQueue(c *gin.Context) {
 		RemainSec int64  `json:"remain_sec"`
 		PopNeed   int64  `json:"pop_need"`
 	}
+	// ★★ 2026-10-11 性能（用户反馈「切 100 条/页、切第 2 页都报网络开小差了」）：
+	//   原来**每一行**各查 1 次兵种配置 + 1 次城市 + 2 次玩家名（profile + 家园 users）——
+	//   size=100 时就是 **400+ 条跨 WAN 往返**，线上 1.3 万条队列必然超过前端 15s 超时
+	//   （axios 超时兜底 → 「网络开小差了，稍后再试」）。
+	//   现在：兵种配置走进程内缓存 ezfyCfg（0 条 SQL）、城市一次 IN 批量、玩家名 ezfyAdminNamesBatch 批量。
+	ezfyCfg.load(h.DB)
+	cityIds := make([]int64, 0, len(rows))
+	for _, t := range rows {
+		cityIds = append(cityIds, t.CityId)
+	}
+	cityMap := map[int64]model.EzfyCity{}
+	if len(cityIds) > 0 {
+		var cs []model.EzfyCity
+		h.DB.Where("id IN ?", cityIds).Find(&cs)
+		for _, ct := range cs {
+			cityMap[int64(ct.ID)] = ct
+		}
+	}
+	uids := make([]uint, 0, len(cityMap))
+	for _, ct := range cityMap {
+		uids = append(uids, ct.UserID)
+	}
+	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
 	out := []rowOut{}
 	for _, t := range rows {
 		name, pop := "", 0
-		var cfg model.EzfyCfgTroop
-		if err := h.DB.First(&cfg, t.TroopId).Error; err == nil {
+		if cfg := ezfyCfg.troop(t.TroopId); cfg != nil {
 			name, pop = cfg.Name, cfg.Pop
 		}
 		cityName, owner, home := "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, t.CityId).Error; err == nil {
+		if ct, ok := cityMap[t.CityId]; ok {
 			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
+			owner, home = nickMap[ct.UserID], numMap[ct.UserID]
 		}
 		remain := (t.EndTime - now) / 1000
 		if remain < 0 {

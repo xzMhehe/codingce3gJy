@@ -10,6 +10,10 @@
           <el-option label="待领取" :value="1" />
           <el-option label="已完成" :value="2" />
         </el-select>
+        <!-- ★ 2026-10-11 日期检索：按队列开始时间筛选（含结束当天） -->
+        <el-date-picker v-model="dateRange" type="daterange" value-format="yyyy-MM-dd"
+                        range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"
+                        style="width:250px" clearable @change="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
         <el-button type="success" icon="el-icon-plus" @click="openCreate">新增征兵</el-button>
@@ -131,7 +135,7 @@ export default {
   name: 'AdminEzfyRecruit',
   data () {
     return {
-      list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1,
+      list: [], total: 0, page: 1, size: 5, loading: false, word: '', status: -1, dateRange: [],
       cfgs: [],
       createDlg: false, createForm: { city_id: 0, rows: [{ troop_id: 0, count: 100 }], seconds: 0, instant: true },
       // ★ 2026-10-10「先选玩家→再选城市→多兵种」：玩家远程搜索 + 该玩家城市下拉 + 多个兵种行
@@ -162,8 +166,12 @@ export default {
     },
     load () {
       this.loading = true
+      const range = this.dateRange || []
       api.get('/admin/ezfy-train-queue', {
-        params: { page: this.page, size: this.size, word: this.word, status: this.status }
+        params: {
+          page: this.page, size: this.size, word: this.word, status: this.status,
+          start: range[0] || '', end: range[1] || ''
+        }
       }).then(r => {
         this.loading = false
         if (r.code === 0) {

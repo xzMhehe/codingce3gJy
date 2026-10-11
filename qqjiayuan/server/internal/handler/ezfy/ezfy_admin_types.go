@@ -2,6 +2,8 @@ package ezfy
 
 import (
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -48,6 +50,33 @@ func pageOf(c *gin.Context, defSize int) (int, int, int) {
 		size = defSize
 	}
 	return page, (page - 1) * size, size
+}
+
+// ezfyAdminTimeRange 解析**可选**的日期区间参数，返回 [startMs, endMs) 毫秒区间；空/非法 → 0（表示不筛选）。
+//
+// ★ 2026-10-11 「队伍征兵」加日期检索用。支持两种写法：
+//
+//	`yyyy-MM-dd`（前端 el-date-picker value-format 的格式；end 自动取**次日 0 点**，含结束当天）
+//	毫秒时间戳字符串（直接透传，便于前端精确到时刻）
+func ezfyAdminTimeRange(startStr, endStr string) (int64, int64) {
+	loc := time.Local
+	parse := func(s string, isEnd bool) int64 {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return 0
+		}
+		if ms, err := strconv.ParseInt(s, 10, 64); err == nil && ms > 0 {
+			return ms
+		}
+		if t, err := time.ParseInLocation("2006-01-02", s, loc); err == nil {
+			if isEnd {
+				t = t.AddDate(0, 0, 1)
+			}
+			return t.UnixMilli()
+		}
+		return 0
+	}
+	return parse(startStr, false), parse(endStr, true)
 }
 
 // xySettingSet 写 settings 键值（存在则更新，否则创建）。
