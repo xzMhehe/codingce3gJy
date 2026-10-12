@@ -96,7 +96,17 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 
 		// ★ 2026-10-10 首页布局（1=新布局 2=老布局；0=未设置按新布局展示），统帅页单选切换
 		"home_layout": p.HomeLayout,
+
+		// ★ 2026-10-12 访问记录：别人看我统帅页的总量（信息页「占领野地」下方可点开访问列表）
+		"visit_count": h.visitCount(uid),
 	})
+}
+
+// visitCount 该玩家统帅页被访问的历史总量（含记录在案的所有访问）。
+func (h *EzfyHandler) visitCount(uid uint) int64 {
+	var n int64
+	h.DB.Model(&model.EzfyVisitLog{}).Where("target_uid = ?", uid).Count(&n)
+	return n
 }
 
 func ezfyNickOf(p model.EzfyProfile, u *model.User) string {

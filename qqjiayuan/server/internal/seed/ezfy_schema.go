@@ -33,7 +33,7 @@ var ezfySchemaModels = []interface{}{
 	&model.EzfyPreset{}, &model.EzfyProfile{}, &model.EzfyRansom{},
 	&model.EzfyRecruit{}, &model.EzfyReport{}, &model.EzfySign{},
 	&model.EzfyTask{}, &model.EzfyTrainQueue{}, &model.EzfyTreasureSign{},
-	&model.EzfyUserTech{}, &model.EzfyWar{}, &model.EzfyWildland{},
+	&model.EzfyUserTech{}, &model.EzfyVisitLog{}, &model.EzfyWar{}, &model.EzfyWildland{},
 	&model.EzfyWordFilter{}, &model.EzfyWounded{},
 }
 

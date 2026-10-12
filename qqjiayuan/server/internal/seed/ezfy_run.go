@@ -60,6 +60,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 	&model.EzfyPreset{}, &model.EzfyActivity{}, &model.EzfyFriend{}, &model.EzfyFriendApply{},
 	&model.EzfyLoveCard{}, &model.EzfyConveneLog{}, // ★ 2026-10-11 召集埋点（活动监测）
+	&model.EzfyVisitLog{}, // ★ 2026-10-12 统帅页访问记录
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）
@@ -82,6 +83,7 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	EnsureEzfySchema(db)
 	EnsureEzfyLimitColumns(db)
 	EnsureEzfyRansomTable(db)
+	EnsureEzfyVisitTable(db)
 	EnsureEzfyOfficerColumns(db)
 	EnsureEzfyBattleLockColumns(db)
 	EnsureEzfyExchangeColumns(db)

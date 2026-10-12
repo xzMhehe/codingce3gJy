@@ -289,6 +289,9 @@
       <!-- ============ playerinfo —— 已拆到 modules/Ezfyacademy.vue ============ -->
       <ezfy-academy v-else-if="cur === 'playerinfo'"></ezfy-academy>
 
+      <!-- ============ 访问记录(visits) ============ -->
+      <ezfy-academy v-else-if="cur === 'visits'"></ezfy-academy>
+
       <!-- ============ 军官/学院(acade) ============ -->
       <!-- ============ acade —— 已拆到 modules/Ezfyacademy.vue ============ -->
       <ezfy-academy v-else-if="cur === 'acade'"></ezfy-academy>
@@ -511,6 +514,8 @@ export default {
       queuePage: 1, queueSize: 5,
       repPage: 1, repSize: 5,
       notices: [],
+      // ★ 2026-10-12 访问记录：我的统帅页被谁看过（信息页「占领野地」下方点开）
+      visitRecords: [],
       // ★ 公告分页（「公告也变成分页，下一页上一页那种」）：默认每页 5 条
       noticePage: 1, noticeSize: 5,
       // ★ 首页外露公告（条数由管理端「建筑上限配置」里的「首页公告条数」决定，默认 1）
@@ -2043,6 +2048,12 @@ export default {
         }
       }).catch(() => {})
     },
+    // ★ 2026-10-12 访问记录列表
+    loadVisits () {
+      api.get('/games/ezfy/visits').then(r => {
+        if (r.code === 0) this.visitRecords = r.data.list || []
+      }).catch(() => {})
+    },
     startRename () {
       this.renameInput = this.selfInfo.nickname || this.profile.nickname || ''
       this.renameEditing = true
@@ -2269,6 +2280,7 @@ export default {
       else if (t === 'sourceset') this.loadProduce()
       else if (t === 'activity') this.loadActivity()
       else if (t === 'info') this.loadSelfInfo()
+      else if (t === 'visits') this.loadVisits()
       else if (t === 'factory') { this.loadTroops(); this.loadBuildings() }
       // 城市状态页要显示「人口/空闲人口」，/view 才带 pop_used → 进页先拉一次
       // ★ 2026-10-04 /view 瘦身：城市状态页的建筑列表/训练队列/野地计数/城内军队

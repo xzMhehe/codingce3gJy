@@ -642,6 +642,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/corps/mall/buy", ezfyH.CorpsMallBuy)
 				ezfyG.GET("/liaison", ezfyH.Liaison)
 				ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
+				// ★ 2026-10-12 访问记录：我的统帅页访问列表（倒序，简约）
+				ezfyG.GET("/visits", ezfyH.Visits)
 				// 搜索玩家（按游戏ID / 家园号码 / 昵称）
 				ezfyG.GET("/player-search", ezfyH.PlayerSearch)
 				// 统帅页自助：改昵称（首次免费/改名卡）、改阵营（首次免费/阵营转换道具）

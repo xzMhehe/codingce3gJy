@@ -33,6 +33,8 @@
         总兵力：{{ ezfy.totalTroops }}<br/>
         城外行进：{{ ezfy.marching }}支 | 驻守采集：{{ ezfy.occupying }}支<br/>
         占领野地：{{ ezfy.wildlands.length }}块<br/>
+        <!-- ★ 2026-10-12 访问记录：我统帅页被看过的总量，点数字进访问列表 -->
+        访问记录：<a href="javascript:;" @click="ezfy.go('visits')">{{ ezfy.selfInfo.visit_count || 0 }}</a><br/>
         <!-- ★ 2026-10-10 首页布局单选（老布局/新布局）：即选即生效，简约无提示 -->
         首页布局：
         <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout !== 2" @change="ezfy.setHomeLayout(1)"/>新布局</label>
@@ -85,6 +87,26 @@
       </div>
       <div class="panel" v-else>
         <div class="old-line gray">正在加载统帅信息…</div>
+      </div>
+    </template>
+
+    <!-- ============ 访问记录(visits)：我统帅页被谁看过 ============ -->
+    <template v-else-if="ezfy.cur === 'visits'">
+      <div class="panel">
+        <div class="panel-title">访问记录</div>
+        <template v-if="ezfy.visitRecords.length">
+          <div class="old-line" v-for="v in ezfy.visitRecords" :key="v.visitor_uid + v.created_at">
+            <a href="javascript:;" @click="ezfy.openPlayer(v.visitor_uid)">{{ v.nickname }}</a>
+            <span class="gray">({{ v.visitor_uid }})</span>
+            <span class="gray"> · {{ ezfy.fmtTime(v.created_at) }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <div class="old-line gray">还没有人看过你的统帅页</div>
+        </template>
+        <div class="old-line">
+          <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
+        </div>
       </div>
     </template>
 

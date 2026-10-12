@@ -2863,6 +2863,19 @@ func EnsureEzfyRansomTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyVisitTable 幂等补建 ezfy_visit_log 表（多机共享库 skip 分支也必须能建出来）。
+//
+// ★ 2026-10-12 访问记录：新表只靠 AutoMigrate 建，而 skip 分支会跳过它 → 表永远建不出来，
+//   访问记录写不进去、信息页拿不到 visit_count。与 EnsureEzfyRansomTable 同理，HasTable 幂等。
+func EnsureEzfyVisitTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyVisitLog{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyVisitLog{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_visit_log 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyExchangeColumns 幂等补 ezfy_exchange 的后加列（skip 分支必须调用）。
 //
 // ★ 2026-10-07 用户反馈「交易行成交后黄金进错城」：新增 city_id（挂单所在城市），

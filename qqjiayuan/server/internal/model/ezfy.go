@@ -671,6 +671,20 @@ type EzfyConveneLog struct {
 
 func (EzfyConveneLog) TableName() string { return "ezfy_convene_log" }
 
+// EzfyVisitLog 统帅页访问记录
+//
+// ★ 2026-10-12 功能「访问记录」：别人打开我的 `games/ezfy?cur=playerinfo` 就记一笔。
+// 信息页(cur=info)「占领野地」下方展示历史访问总量 visit_count，点进城查看访问列表。
+// TargetUid 是被查看方，VisitorUid 是访问方；自己看自己不记。
+type EzfyVisitLog struct {
+	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	TargetUid  uint      `gorm:"index:idx_ezfy_visit_target;comment:被查看统帅ID" json:"target_uid"`
+	VisitorUid uint      `gorm:"comment:访问者ID" json:"visitor_uid"`
+	CreatedAt  time.Time `gorm:"comment:访问时间" json:"created_at"`
+}
+
+func (EzfyVisitLog) TableName() string { return "ezfy_visit_log" }
+
 // ============ 运行时表 ============
 
 type EzfyCity struct {

@@ -46,6 +46,8 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 			return
 		}
 	}
+	// ★ 2026-10-12 访问记录：别人看我的统帅页 → 记一笔（自己看自己不记，异步落库不拖响应）
+	h.recordVisit(target, uid)
 
 	// 档案：只读，不存在就按默认值展示（不给别人凭空建档案）
 	// ★ 2026-10-05 性能（用户反馈「/player/:id 2s+」）：原来 ~10 条查询全串行。
