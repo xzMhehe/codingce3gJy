@@ -2330,6 +2330,15 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	if periods > 24 {
 		periods = 24
 	}
+	// ★★ 2026-10-12 跨进程幂等认领（修复「一键收货随机多收资源 ~25 倍」）：
+	//   enterProcess 只是 handler 的**进程内** map，双机共享库时两台 server 各自读到同一笔
+	//   采集订单的旧 arrive_time，各结算一个完整周期（arrive_time 由最后一个写回者生效），
+	//   同一周期被重复计产出 → 随机叠加多给。现在先把 arrive_time 原子推进
+	//   （WHERE id=? AND arrive_time=旧值），只有没被另一台进程抢先结算的快照能认领成功；
+	//   认领失败 = 已被他方结算 → 直接跳过，不重复给资源（幂等）。
+	if !h.ezfyClaimSettle(order, order.ArriveTime, now+ezfyDispatchPeriod()) {
+		return 0, false
+	}
 	level := wl.Level
 	terrain := ezfyTerrainEx(wl.X, wl.Y)
 	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod())
@@ -2438,6 +2447,25 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(upd)
 	h.addReport(uid, 5, "采集报告: 驻守结算", desc, "", order.ID)
 	return int(periods), true
+}
+
+// ezfyClaimSettle 原子认领一次采集结算窗口（跨进程幂等，防双机重复结算多给资源）。
+//
+// ★★ 2026-10-12 修复「一键收货随机多收资源」：enterProcess 只是进程内锁，双机共享库时
+//   两台 server 会各自把同一笔采集订单的同一周期结算一次。这里用条件更新
+//   `WHERE id=? AND arrive_time=?（旧快照）` 把 arrive_time 原子推进到 next：
+//   只有没被另一台进程抢先结算的快照能认领成功（RowsAffected==1）；否则说明他方已结算 → 返回 false。
+func (h *EzfyHandler) ezfyClaimSettle(order *model.EzfyOrder, oldArrive, next int64) bool {
+	if oldArrive <= 0 {
+		return false
+	}
+	res := h.DB.Model(&model.EzfyOrder{}).
+		Where("id = ? AND arrive_time = ?", order.ID, oldArrive).
+		Update("arrive_time", next)
+	if res.Error != nil || res.RowsAffected == 0 {
+		return false
+	}
+	return true
 }
 
 // dispatchGatherYield 按驻守时长(毫秒)计算采集资源产出。
