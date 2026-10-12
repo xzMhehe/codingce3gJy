@@ -16,12 +16,12 @@ import (
 
 // Visits GET /games/ezfy/visits —— 当前玩家的访问列表（被谁看过我的统帅页）
 //
-// 简约列表：按时间倒序，最多 50 条；含访问者昵称 / 访问时间。
+// 简约列表：按时间倒序，只保留最近 5 次。
 // 点击访问列表里的昵称可再跳进对方的统帅页（复用 openPlayer → playerinfo）。
 func (h *EzfyHandler) Visits(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var logs []model.EzfyVisitLog
-	h.DB.Where("target_uid = ?", uid).Order("id DESC").Limit(50).Find(&logs)
+	h.DB.Where("target_uid = ?", uid).Order("id DESC").Limit(5).Find(&logs)
 	list := make([]gin.H, 0, len(logs))
 	if len(logs) == 0 {
 		resp.OK(c, gin.H{"list": list})
@@ -64,6 +64,7 @@ func (h *EzfyHandler) Visits(c *gin.Context) {
 }
 
 // recordVisit 记一笔「别人查看了 targetUid 的统帅页」；自己看自己不记，失败不影响主流程。
+// 只保留最近 5 次：超出部分物理删除（访问是瞬时行为，无需留存旧记录）。
 func (h *EzfyHandler) recordVisit(targetUid, visitorUid uint) {
 	if targetUid == 0 || visitorUid == 0 || targetUid == visitorUid {
 		return
@@ -73,6 +74,13 @@ func (h *EzfyHandler) recordVisit(targetUid, visitorUid uint) {
 		rec := model.EzfyVisitLog{TargetUid: targetUid, VisitorUid: visitorUid}
 		if err := h.DB.Create(&rec).Error; err != nil {
 			return
+		}
+		// 删掉「第 6 新及更旧」的记录，保持该玩家最多 5 条
+		var oldID uint
+		if err := h.DB.Model(&model.EzfyVisitLog{}).
+			Where("target_uid = ?", targetUid).
+			Order("id DESC").Offset(5).Limit(1).Pluck("id", &oldID).Error; err == nil && oldID > 0 {
+			h.DB.Delete(&model.EzfyVisitLog{}, "target_uid = ? AND id <= ?", targetUid, oldID)
 		}
 	}()
 }
