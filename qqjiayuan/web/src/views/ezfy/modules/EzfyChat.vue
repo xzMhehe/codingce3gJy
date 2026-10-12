@@ -19,8 +19,8 @@
               <span v-else class="gray">冷却中 {{ ezfy.chatCooldown }}s</span>
               <span class="gray">(最大25个字)</span>
             </template>
-            <span v-else class="gray">(系统频道仅系统可发言)</span>
-            <a href="javascript:;" @click="ezfy.loadChats">[刷新]</a>
+            <!-- 系统频道无发言框、也不自动轮询 → 保留 [刷新] 作为唯一手动刷新入口 -->
+            <a v-if="ezfy.chatChannel === 4" href="javascript:;" @click="ezfy.loadChats">[刷新]</a>
           </div>
 
           <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->

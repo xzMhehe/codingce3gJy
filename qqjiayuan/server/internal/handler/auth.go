@@ -152,7 +152,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 	}
 	var user model.User
-	if err := h.DB.Preload("Roles").Where("username = ? OR nickname = ?", name, name).First(&user).Error; err != nil {
+	// ★ 2026-10-12 二战独立登录：家园号（=users.id，纯数字）也可直接登录。
+	//   原来是 `username = name OR nickname = name`，纯数字家园号（区域号/数字UID）会查不到人。
+	//   数字优先按 id 精确匹配（家园号即全局唯一主键），同时兼容 username/昵称。
+	q := h.DB.Preload("Roles")
+	if idv, err := strconv.ParseUint(name, 10, 64); err == nil {
+		q = q.Where("id = ? OR username = ? OR nickname = ?", idv, name, name)
+	} else {
+		q = q.Where("username = ? OR nickname = ?", name, name)
+	}
+	if err := q.First(&user).Error; err != nil {
 		resp.ParamError(c, "账号不存在，先免费注册一个吧")
 		return
 	}

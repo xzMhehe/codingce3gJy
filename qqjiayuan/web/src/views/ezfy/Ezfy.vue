@@ -1,6 +1,24 @@
 <template>
   <div class="ezfy-page">
-    <div class="home-wrap">
+    <!-- ★ 2026-10-12 二战独立登录：未登录（无家园 token）时游戏整体不渲染，只显示下面的登录界面。
+         登录校验走家园账号 /api/auth/login（家园号=二战游戏ID），拿到的 JWT 与游戏共用。 -->
+    <div v-if="!isLogin" class="wwii-login"
+         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
+      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
+      <div style="font-size:13px;color:#8a7a55;text-align:center;margin-bottom:18px;">输入家园号 + 家园密码直接进入</div>
+      <input v-model="wwiiName" placeholder="家园号"
+             style="box-sizing:border-box;width:100%;padding:10px;margin-bottom:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;"
+             @keyup.enter="wwiiLogin()"/>
+      <input v-model="wwiiPwd" type="password" placeholder="家园密码"
+             style="box-sizing:border-box;width:100%;padding:10px;margin-bottom:12px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;"
+             @keyup.enter="wwiiLogin()"/>
+      <div v-if="wwiiErr" style="color:#c0392b;font-size:13px;margin-bottom:10px;text-align:center;">{{ wwiiErr }}</div>
+      <button @click="wwiiLogin()" :disabled="wwiiBusy"
+              style="width:100%;padding:10px;border:0;border-radius:4px;background:#b8860b;color:#fff;font-size:15px;cursor:pointer;">
+        {{ wwiiBusy ? '登录中…' : '进入二战征途' }}
+      </button>
+    </div>
+    <div class="home-wrap" v-if="isLogin">
       <div class="title-bar">二战征途-【1区】红色警戒</div>
 
       <!-- 顶部导航(每页都有) -->
@@ -395,6 +413,11 @@ export default {
     return {
       cur: 'home',
       prevCur: 'home', // ★ 2026-09-29 上一页（各页 [返回] goBack 用）
+      // ★ 2026-10-12 二战独立登录界面（未登录时根组件只渲染它）：
+      wwiiName: '',
+      wwiiPwd: '',
+      wwiiErr: '',
+      wwiiBusy: false,
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       // ★ 2026-09-28 「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
       gatherNow: 0,
@@ -940,6 +963,10 @@ export default {
     // 私聊里区分「我」和「对方」
     myUserId () {
       return this.$store.state.user ? this.$store.state.user.id : 0
+    },
+    // ★ 2026-10-12 二战独立登录：本地有没有家园登录态。没有 → 根组件渲染二战自己的登录界面（不弹回家园）
+    isLogin () {
+      return !!this.$store.getters.isLogin
     },
     freePop () {
       // ★ 占用人口由后端统一算：只有「训练中、还没出厂」的新兵占人口。
@@ -1717,6 +1744,12 @@ export default {
     }
   },
   mounted () {
+    // ★ 2026-10-12 二战独立登录：未登录时不启动游戏（不打接口、不起轮询，避免 401 弹跳），
+    //   根组件只渲染二战自己的登录界面；登录成功后由 wwiiLogin() 重载进入游戏。
+    if (!this.isLogin) {
+      document.title = '二战征途-【1区】红色警戒'
+      return
+    }
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
     // ★ 2026-09-29 浏览器标签页标题：二战征途改为游戏名（不再显示默认的「家园社区」）
@@ -2038,6 +2071,35 @@ export default {
       // ★ 复用 go()：所有页面分支的加载逻辑都在它里面，
       //   在这里重写一遍必然漏，直接重放最省事也最不容易出错。
       this.go(cur)
+    },
+    // ---- ★ 2026-10-12 二战独立登录 ----
+    // 输入家园号(=二战游戏ID) + 家园密码，走家园同一套账号密码校验（/api/auth/login），
+    // 拿到的 JWT 与游戏共用 → 写回 store/localStorage 后进游戏。
+    wwiiLogin () {
+      if (this.wwiiBusy) return
+      const name = (this.wwiiName || '').trim()
+      const pwd = this.wwiiPwd || ''
+      if (!name || !pwd) {
+        this.wwiiErr = '请输入家园号和密码'
+        return
+      }
+      this.wwiiErr = ''
+      this.wwiiBusy = true
+      api.post('/auth/login', { name, password: pwd }).then(r => {
+        this.wwiiBusy = false
+        if (r.code === 0 && r.token) {
+          this.$store.commit('setUser', { token: r.token, user: r.user || {} })
+          // 登录态就绪：守卫可放行 /games/ezfy；跳过去再刷新，让 mounted 完整启动游戏
+          this.$router.replace('/games/ezfy')
+            .then(() => window.location.reload())
+            .catch(() => window.location.reload())
+        } else {
+          this.wwiiErr = r.msg || '登录失败，请重试'
+        }
+      }).catch(() => {
+        this.wwiiBusy = false
+        this.wwiiErr = '网络异常，请重试'
+      })
     },
     // ---- 统帅页自助 ----
     loadSelfInfo () {

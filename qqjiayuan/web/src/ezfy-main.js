@@ -13,6 +13,12 @@ Vue.config.productionTip = false
 
 // 拦截器：凡不是二战页的导航 → 整页跳回家园站点（避免在独立壳里加载家园页面）
 router.beforeEach((to, from, next) => {
+  // ★ 2026-10-12 二战独立登录：未登录访问二战页时，主路由守卫会把 /games/ezfy 重定向到 /login。
+  //   独立壳里 /login 不显示家园登录（根组件就是 Ezfy.vue）——放行它，由 Ezfy.vue 渲染二战自己的登录界面，
+  //   避免被整页弹回家园，也不会和 /games/ezfy 之间来回重定向。
+  if (to.path === '/login' || to.path === '/register') {
+    return next()
+  }
   if (to.path.indexOf('/games/ezfy') !== 0) {
     window.location.href = window.location.origin + to.fullPath
     return
