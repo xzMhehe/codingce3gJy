@@ -685,6 +685,23 @@ type EzfyVisitLog struct {
 
 func (EzfyVisitLog) TableName() string { return "ezfy_visit_log" }
 
+// EzfyAccount 二战征途独立登录账号
+//
+// ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。
+//   GameID = 家园号(users.id)：二战全部业务表本就按这个 uid 存储 → 零迁移。
+//   首次登录用「家园号 + 家园密码」校验，通过后把家园密码 hash 拷进本表，
+//   此后二战自助管密码、不再依赖家园账号（为二战/家园拆开部署做准备）。
+type EzfyAccount struct {
+	GameID    uint      `gorm:"primaryKey;comment:游戏ID(=家园号)" json:"game_id"`
+	Password  string    `gorm:"type:varchar(100);comment:二战登录密码hash(bcrypt)" json:"-"`
+	Nickname  string    `gorm:"type:varchar(100);comment:玩家昵称" json:"nickname"`
+	MSync     uint      `gorm:"default:1;comment:是否已从家园同步(1=已同步)" json:"msync"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyAccount) TableName() string { return "ezfy_account" }
+
 // ============ 运行时表 ============
 
 type EzfyCity struct {

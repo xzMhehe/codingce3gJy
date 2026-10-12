@@ -73,7 +73,7 @@ const routes = [
   { path: '/games/park', name: 'park', component: () => import('../views/Park.vue'), meta: { auth: true } },
   { path: '/games/jwt', name: 'jwt', component: () => import('../views/Jingwt.vue'), meta: { auth: true } },
   { path: '/games/hxxy', name: 'hxxy', component: () => import('../views/Xiyou.vue'), meta: { auth: true } },
-  { path: '/games/ezfy', name: 'ezfy', component: () => import('../views/ezfy/Ezfy.vue'), meta: { auth: true } },
+  { path: '/games/ezfy', name: 'ezfy', component: () => import('../views/ezfy/Ezfy.vue'), meta: { ezfy: true } },
   { path: '/noble', name: 'noble', component: () => import('../views/Noble.vue'), meta: { auth: true } },
   // 个性昵称（复刻 3GQQ name.html）
   { path: '/name', name: 'nameCust', component: () => import('../views/Name.vue'), meta: { auth: true } },
@@ -156,6 +156,11 @@ router.beforeEach((to, from, next) => {
   // 已登录再访问登录/注册页，直接回广场（退出登录后才会放行）
   if ((to.path === '/login' || to.path === '/register') && store.getters.isLogin) {
     return next('/')
+  }
+  // ★ 2026-10-12 二战独立登录：二战页自带独立登录界面（看 ezfy_token），
+  //   不强制家园登录，也不被家园路由守卫拦走。
+  if (to.meta.ezfy) {
+    return next()
   }
   if (to.meta.auth && !store.getters.isLogin) {
     return next('/login?redirect=' + encodeURIComponent(to.fullPath))

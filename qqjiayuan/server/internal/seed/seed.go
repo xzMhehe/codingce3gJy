@@ -2876,6 +2876,21 @@ func EnsureEzfyVisitTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyAccountTable 幂等补建 ezfy_account 二战独立登录账号表（skip 分支也必须能建出来）。
+//
+// ★ 2026-10-12 二战独立账号：只靠 AutoMigrate 建表的表，在「多机共享库 seed.skip:
+//
+//	true」或「独立库 skip」等跳过全量 seed 的启动路径下永远建不出来，
+//	二战登录会直接报表不存在。与 EnsureEzfyVisitTable 同理，HasTable 幂等。
+func EnsureEzfyAccountTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyAccount{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyAccount{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_account 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyExchangeColumns 幂等补 ezfy_exchange 的后加列（skip 分支必须调用）。
 //
 // ★ 2026-10-07 用户反馈「交易行成交后黄金进错城」：新增 city_id（挂单所在城市），

@@ -124,6 +124,8 @@ func main() {
 		// ★★ 2026-10-07 线上事故：ezfy_ransom 赎城请求表只注册在 seed.Run 的 AutoMigrate 里，
 		//   skip 分支不补 → 查询/发起赎城直接报 Error 1146 表不存在。
 		timedStep("EnsureEzfyRansomTable", func() { seed.EnsureEzfyRansomTable(homeDB) })
+		// ★★ 2026-10-12 二战独立登录账号表：skip 分支不补 → 二战登录直接报表不存在。
+		timedStep("EnsureEzfyAccountTable", func() { seed.EnsureEzfyAccountTable(homeDB) })
 		// ★★ 2026-10-06 线上事故：ezfy_officer.source 同样只由 AutoMigrate 建列，
 		//   skip 分支不补 → 所有军官 INSERT 报 1054、战俘/招募全部静默失败。
 		timedStep("EnsureEzfyOfficerColumns", func() { seed.EnsureEzfyOfficerColumns(homeDB) })

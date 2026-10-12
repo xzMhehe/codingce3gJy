@@ -5,7 +5,9 @@ import router from '../router'
 const api = axios.create({ baseURL: '/api', timeout: 15000 })
 
 api.interceptors.request.use(cfg => {
-  const token = store.state.token
+  const isEzfy = (cfg.url || '').indexOf('/games/ezfy/') >= 0
+  // ★ 2026-10-12 二战独立登录：二战接口用 ezfyToken，其余用家园 token，互不串用
+  const token = isEzfy ? store.state.ezfyToken : store.state.token
   if (token) cfg.headers.Authorization = 'Bearer ' + token
   return cfg
 })
@@ -13,14 +15,22 @@ api.interceptors.request.use(cfg => {
 api.interceptors.response.use(
   resp => {
     const body = resp.data
+    const reqUrl = (resp.config && resp.config.url) || ''
+    const isEzfy = reqUrl.indexOf('/games/ezfy/') >= 0
+    // ★ 2026-10-12 二战独立登录：二战接口 401 → 只清二战 token（二战页自带登录界面），
+    //   不清家园登录态、也不跳家园 /login。
     // ★ 2026-10-02 手机端"进去数据没刷新出来"根因修复：
     //   后端 resp.Unauthorized 返回的是 **HTTP 200 + JSON code 401**（不是 HTTP 401），
     //   原 401 判断写在 axios 错误分支里只对 HTTP 4xx/5xx 生效，业务码 401 永远到不了，
     //   于是登录过期的 token 请求 /view 时前端静默失败，首页全 0、也不跳登录页
     //   （无痕模式是新 token 所以正常）。这里统一处理业务码 401：登出并跳登录页。
     if (body && typeof body === 'object' && body.code === 401) {
-      store.commit('logout')
-      router.push('/login')
+      if (isEzfy) {
+        store.commit('ezfyLogout')
+      } else {
+        store.commit('logout')
+        router.push('/login')
+      }
       return body
     }
     // ★ 被 IP 封禁时后端 302 到 /503.html，axios 跟随重定向后拿到 HTML 字符串。
@@ -41,8 +51,13 @@ api.interceptors.response.use(
     if (err.response && err.response.data) {
       const body = err.response.data
       if (body.code === 401) {
-        store.commit('logout')
-        router.push('/login')
+        const reqUrl = (err.config && err.config.url) || ''
+        if (reqUrl.indexOf('/games/ezfy/') >= 0) {
+          store.commit('ezfyLogout')
+        } else {
+          store.commit('logout')
+          router.push('/login')
+        }
       }
       return Promise.resolve(body)
     }

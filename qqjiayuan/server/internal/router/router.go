@@ -66,7 +66,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	jwtH := &handler.JwtHandler{DB: db}
 	hxH := &handler.HxxyHandler{DB: db}
 	// ★★ 2026-10-10 二战用独立库：DB = 二战库，HomeDB = 家园库（只读账号/昵称）。
-	ezfyH := &ezfy.EzfyHandler{DB: ezfyDB, HomeDB: db}
+	// ★ 2026-10-12 二战独立账号：ezfyH 额外持有 Secret/ExpH，用于二战专属 token 签发。
+	ezfyH := &ezfy.EzfyHandler{DB: ezfyDB, HomeDB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
 	ezfyAdminH := &ezfy.EzfyAdmin{DB: ezfyDB, HomeDB: db}
 	// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
 	// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
@@ -82,6 +83,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	welfareH := &handler.WelfareHandler{DB: db}
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
+	// ★ 2026-10-12 二战专属认证：只认二战签发的 token（与家园彻底独立）。
+	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret)
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 	permAny := middleware.RequireAnyPerm
@@ -215,12 +218,17 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/articles/:id", saH.Detail)
 		api.GET("/articles/:id/comments", saH.Comments)
 
-		// 商店市场（公开浏览）
+		// 公开浏览
 		api.GET("/market", shopH.GoodsList)
 		api.GET("/market/categories", shopH.Categories)
 		api.GET("/market/:id", shopH.GoodsDetail)
 
+		// ★ 2026-10-12 二战独立登录（公开路由）：不走家园认证，签发二战专属 token。
+		api.POST("/ezfy/login", ezfyH.EzfyLogin)
+
 		authed := api.Group("/", jwtM)
+		// ★ 2026-10-12 二战独立账号：二战专属授权组（不挂家园 jwtM，走 ezfyJwtM）。
+		ezfyAuthed := api.Group("/", ezfyJwtM)
 		{
 			authed.GET("/auth/me", authH.Me)
 
@@ -540,7 +548,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 
 			// 二战风云（复刻 stzb-fk 二战风云：城池建造/资源结算/造兵科技/地图出征/多回合战斗/军团）
 			// 整组挂服务器维护中间件：维护中所有游戏接口返回维护公告
-			ezfyG := authed.Group("/games/ezfy", ezfyH.EzfyMaintGate())
+			// ★ 2026-10-12 二战独立账号：ezfy 组从家园 jwtM 切到二战专属 ezfyJwtM，
+			//   后续仍走维护中间件。
+			ezfyG := ezfyAuthed.Group("/games/ezfy", ezfyH.EzfyMaintGate())
 			{
 				ezfyG.GET("/view", ezfyH.View)
 				ezfyG.GET("/city/list", ezfyH.CityList)

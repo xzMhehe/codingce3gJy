@@ -132,6 +132,33 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 	}
 }
 
+// EzfyJWTAuth 二战征途专属认证（★ 2026-10-12 账号体系与家园分离）。
+//
+//	只认二战签发的 token（Issuer=qqjiayuan-ezfy），家园 token 无法通过（反过亦然）。
+//	校验通过后同样 set CtxUID/CtxUName —— 值就是「家园号(=二战游戏ID)」，
+//	二战 handler 按 middleware.GetUID(c) 沿用既有查询，**零迁移**。
+//	不写家园库（无活跃时间/勋章等家园逻辑），登录态彻底独立。
+func EzfyJWTAuth(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		auth := c.GetHeader("Authorization")
+		if auth == "" {
+			resp.Unauthorized(c, "请先登录")
+			c.Abort()
+			return
+		}
+		tokenStr := strings.TrimPrefix(auth, "Bearer ")
+		claims, err := authutil.ParseEzfyToken(tokenStr, secret)
+		if err != nil {
+			resp.Unauthorized(c, "登录已过期，请重新登录")
+			c.Abort()
+			return
+		}
+		c.Set(CtxUID, claims.UserID)
+		c.Set(CtxUName, claims.Nickname)
+		c.Next()
+	}
+}
+
 func GetUID(c *gin.Context) uint {
 	v, _ := c.Get(CtxUID)
 	uid, _ := v.(uint)

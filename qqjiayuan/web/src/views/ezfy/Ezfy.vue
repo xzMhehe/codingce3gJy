@@ -1,11 +1,11 @@
 <template>
   <div class="ezfy-page">
-    <!-- ★ 2026-10-12 二战独立登录：未登录（无家园 token）时游戏整体不渲染，只显示下面的登录界面。
-         登录校验走家园账号 /api/auth/login（家园号=二战游戏ID），拿到的 JWT 与游戏共用。 -->
+    <!-- ★ 2026-10-12 二战独立登录：未登录（无二战 ezfy_token）时游戏整体不渲染，只显示下面二战自己的登录界面。
+         登录走二战专属 /api/ezfy/login（首登同步家园账号），token 单独存，与家园彻底分离。 -->
     <div v-if="!isLogin" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
-      <div style="font-size:13px;color:#8a7a55;text-align:center;margin-bottom:18px;">输入家园号 + 家园密码直接进入</div>
+      <div style="font-size:13px;color:#8a7a55;text-align:center;margin-bottom:18px;">输入家园号 + 家园密码进入（仅首次同步）</div>
       <input v-model="wwiiName" placeholder="家园号"
              style="box-sizing:border-box;width:100%;padding:10px;margin-bottom:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;"
              @keyup.enter="wwiiLogin()"/>
@@ -958,15 +958,19 @@ export default {
       return '首次免费已用掉，再次转换需消耗「阵营转换道具」×1（当前持有 ' + (d.camp_item_count || 0) + ' 个）'
     },
     nick () {
-      return this.$store.state.user ? this.$store.state.user.nickname : ''
+      // 优先二战账号，其次家园账号（二战独立后家园身份可能为空）
+      return (this.$store.state.ezfyUser && this.$store.state.ezfyUser.nickname) ||
+        (this.$store.state.user ? this.$store.state.user.nickname : '')
     },
     // 私聊里区分「我」和「对方」
     myUserId () {
-      return this.$store.state.user ? this.$store.state.user.id : 0
+      return (this.$store.state.ezfyUser && this.$store.state.ezfyUser.id) ||
+        (this.$store.state.user ? this.$store.state.user.id : 0)
     },
-    // ★ 2026-10-12 二战独立登录：本地有没有家园登录态。没有 → 根组件渲染二战自己的登录界面（不弹回家园）
+    // ★ 2026-10-12 二战独立登录：本地有没有「二战专属登录态」（ezfy_token）。
+    //   只是没登录 → 根组件渲染二战自己的登录界面，不依赖家园 token、不弹回家园。
     isLogin () {
-      return !!this.$store.getters.isLogin
+      return !!this.$store.getters.isEzfyLogin
     },
     freePop () {
       // ★ 占用人口由后端统一算：只有「训练中、还没出厂」的新兵占人口。
@@ -2073,8 +2077,9 @@ export default {
       this.go(cur)
     },
     // ---- ★ 2026-10-12 二战独立登录 ----
-    // 输入家园号(=二战游戏ID) + 家园密码，走家园同一套账号密码校验（/api/auth/login），
-    // 拿到的 JWT 与游戏共用 → 写回 store/localStorage 后进游戏。
+    // 输入家园号(=二战游戏ID) + 家园密码，走二战自己的登录接口 /api/ezfy/login：
+    //   首登用「家园号+家园密码」校验并同步建档，签发二战专属 token；
+    //   二战登录态只存 ezfy_token，与家园账号体系彻底分离。
     wwiiLogin () {
       if (this.wwiiBusy) return
       const name = (this.wwiiName || '').trim()
@@ -2085,11 +2090,13 @@ export default {
       }
       this.wwiiErr = ''
       this.wwiiBusy = true
-      api.post('/auth/login', { name, password: pwd }).then(r => {
+      api.post('/ezfy/login', { name, password: pwd }).then(r => {
         this.wwiiBusy = false
         if (r.code === 0 && r.token) {
-          this.$store.commit('setUser', { token: r.token, user: r.user || {} })
-          // 登录态就绪：守卫可放行 /games/ezfy；跳过去再刷新，让 mounted 完整启动游戏
+          // 只写二战专属 token 与身份，不碰家园 token
+          this.$store.commit('setEzfyToken', r.token)
+          this.$store.commit('setEzfyUser', { id: r.game_id, nickname: r.nickname || '' })
+          // 登录态就绪：守卫已放行 /games/ezfy；跳过去再刷新，让 mounted 完整启动游戏
           this.$router.replace('/games/ezfy')
             .then(() => window.location.reload())
             .catch(() => window.location.reload())
@@ -2179,7 +2186,8 @@ export default {
     //   刷新首帧就用它渲染。只要本地没有缓存（如清缓存/换账号首登），才退回 /view 下发值。
     cachedHomeLayout () {
       try {
-        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        const uid = ((this.$store.state.ezfyUser && this.$store.state.ezfyUser.id) ||
+          (this.$store.state.user && this.$store.state.user.id)) || 'x'
         const k = 'ezfy_home_layout_' + uid
         return localStorage.getItem(k) === '2' ? 2 : 0
       } catch (e) { return 0 }
@@ -2188,13 +2196,15 @@ export default {
     //   没有 → 说明是首次进入/清过缓存，先不渲染首页，等 /view 权威布局，避免「新布局掠影」。
     hasCachedHomeLayout () {
       try {
-        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        const uid = ((this.$store.state.ezfyUser && this.$store.state.ezfyUser.id) ||
+          (this.$store.state.user && this.$store.state.user.id)) || 'x'
         return localStorage.getItem('ezfy_home_layout_' + uid) !== null
       } catch (e) { return false }
     },
     saveHomeLayout (v) {
       try {
-        const uid = (this.$store && this.$store.state.user && this.$store.state.user.id) || 'x'
+        const uid = ((this.$store.state.ezfyUser && this.$store.state.ezfyUser.id) ||
+          (this.$store.state.user && this.$store.state.user.id)) || 'x'
         localStorage.setItem('ezfy_home_layout_' + uid, String(v === 2 ? 2 : 1))
       } catch (e) {}
     },

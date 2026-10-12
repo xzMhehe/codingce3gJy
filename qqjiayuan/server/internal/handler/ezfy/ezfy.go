@@ -80,6 +80,9 @@ type EzfyHandler struct {
 	// ★★ 2026-10-10 双数据源：二战与家园只靠「家园号」(users.id) 关联 —— 账号/昵称
 	//   不复制、不落二战库，一律 h.home() 读家园库。为空时回落 DB（单库模式）。
 	HomeDB *gorm.DB
+	// Secret / ExpH：二战专属 JWT 的签名密钥与有效期（★ 2026-10-12 独立登录签发二战 token）。
+	Secret string
+	ExpH   int
 	// processing 记录「正在被本 goroutine 懒结算的 uid」，防止订单结算递归重入
 	processing sync.Map
 }
