@@ -255,7 +255,8 @@
           <el-input-number v-model.number="grant.diamond" :min="-9999999" :max="9999999" :step="100" style="width:200px" />
           <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantDiamond) }}</span>
         </el-form-item>
-        <el-form-item label="步进">
+        <el-form-item>
+          <template slot="label">步进<el-tooltip placement="top" :content="tips.step"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
           <el-radio-group v-model="step" size="mini">
             <el-radio-button :label="1000">1千</el-radio-button>
             <el-radio-button :label="10000">1万</el-radio-button>
@@ -288,6 +289,11 @@ export default {
       editDlg: false, saving: false, editId: 0, form: {}, editCur: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       grantDiamond: 0,
+      // ★ 2026-10-12 label 上的 i 图标提示（沿用「二战系统配置」页的 tips 写法，鼠标悬停显示）
+      tips: {
+        step: '数字框右侧 ▲/▼ 每点一次的增减量（只影响点箭头，手打数字不受影响）。' +
+          '资源动辄几十万到上千万，用粗粒度步进比一次次点快；本项只作用于上面 5 项资源，钻石固定按 100 增减。'
+      },
       // ★ 2026-10-09 发放对话框：目标城/当前存量/快捷填充/步进
       grantName: '', grantCity: '', grantCur: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },      step: 10000,
       presets: [{ t: '1万', v: 10000 }, { t: '10万', v: 100000 }, { t: '100万', v: 1000000 }, { t: '1000万', v: 10000000 }],
@@ -464,6 +470,9 @@ export default {
 
 <style scoped>
 @import './farm-admin.css';
+/* ★ 2026-10-12 label 提示图标（与「二战系统配置」页同款；那边是 scoped 样式，这里要单独来一份） */
+.cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
+.cfg-tip:hover { color: #409eff; }
 /* 玩家详情头卡 */
 .player-head { display: flex; align-items: center; gap: 16px; background: #f5f7fa; border: 1px solid #ebeef5; border-radius: 6px; padding: 14px 16px; margin-bottom: 14px; }
 .ph-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #409eff, #7c5cf0); color: #fff; font-size: 24px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
