@@ -15,8 +15,8 @@
       </template>
     </div>
 
-    <!-- 未登录横幅 -->
-    <div class="user-info" v-if="!isLogin">
+    <!-- 未登录横幅（二战征途为沉浸式独立游戏：进入时连同横幅一起隐藏，不误导跳家园登录） -->
+    <div class="user-info" v-if="!immersive && !isLogin">
       <a href="javascript:;" @click="$router.push('/login')">登陆家园社区</a>与好友互动、家族乐斗、最炫魔法花园、武林精武帮战、最牛游戏赢活动豪礼!<a href="javascript:;" @click="$router.push('/register')">注册&gt;&gt;&gt;</a>
     </div>
 

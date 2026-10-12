@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -264,6 +265,33 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	//   城市所在的格子不能再有野地 —— 若落点曾是自己的附属野地，野地行会残留，
 	//   地图上「城市 + 野地」在同一格重叠显示。这里把新坐标上的野地清掉。
 	h.DB.Where("x = ? AND y = ?", tx, ty).Delete(&model.EzfyWildland{})
+
+	// ★ 2026-10-12 用户反馈：迁城后**旧**坐标变成玩家的「附属野地」。
+	//   老城址必须一并释放，不能残留成已占领野地（否则占格、计入附属野地上限、地图还显示成野地）。
+	//   与 AbandonWildland 同口径：先把旧坐标野地上在途的采集(4)/驻守(7)部队转返航，
+	//   再删野地行（直接删会让驻守/采集部队凭空消失，见放弃野地的历史教训）。
+	{
+		var oldWls []model.EzfyWildland
+		h.DB.Where("x = ? AND y = ?", oldX, oldY).Find(&oldWls)
+		if len(oldWls) > 0 {
+			nowRel := time.Now().UnixMilli()
+			for i := range oldWls {
+				wid := oldWls[i].ID
+				var wOrders []model.EzfyOrder
+				h.DB.Where("user_id = ? AND target_id = ? AND order_type IN (4,7) AND status IN (0,1)", uid, wid).Find(&wOrders)
+				for j := range wOrders {
+					o := &wOrders[j]
+					o.Status = 2
+					o.Result = o.Troops
+					o.ReturnTime = nowRel + ezfyOneWayTravel(o)
+					h.DB.Model(&model.EzfyOrder{}).Where("id = ?", o.ID).
+						Updates(map[string]interface{}{"status": 2, "result": o.Result,
+							"return_time": o.ReturnTime, "carry": o.Carry})
+				}
+			}
+			h.DB.Where("x = ? AND y = ?", oldX, oldY).Delete(&model.EzfyWildland{})
+		}
+	}
 
 	newRegion := ezfyRegionName(tx, ty)
 	h.addReport(uid, 6, "城市迁移完成",
@@ -544,6 +572,8 @@ func (h *EzfyHandler) EzfyApplyMove(cityId uint, x, y int) string {
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
 	// ★ 2026-10-12 与玩家侧迁城同口径：城市落点所在格清掉野地，避免「城市 + 野地」重叠显示。
 	h.DB.Where("x = ? AND y = ?", x, y).Delete(&model.EzfyWildland{})
+	// ★ 2026-10-12 与玩家侧迁移同口径：旧坐标老城址一并释放，不留附属野地。
+	h.DB.Where("x = ? AND y = ?", oldX, oldY).Delete(&model.EzfyWildland{})
 	return ""
 }
 

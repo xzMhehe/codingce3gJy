@@ -16,12 +16,16 @@ import (
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/authutil"
+	"qqjiayuan/server/pkg/captcha"
+	"qqjiayuan/server/pkg/loginlimiter"
 	"qqjiayuan/server/pkg/resp"
 )
 
 type ezfyLoginReq struct {
-	Name     string `json:"name" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Name      string `json:"name" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	CaptchaID string `json:"captcha_id"` // 图形验证码 ID（密码输错满 3 次后必填）
+	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
 }
 
 // EzfyLogin 二战独立登录。
@@ -53,6 +57,26 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ParamError(c, "家园号不正确")
 		return
 	}
+	// ★ 密码输错满 3 次（15 分钟窗口）→ 必须过图形验证码（与家园登录一致，防脚本刷密码）
+	if loginlimiter.NeedCaptcha(name) {
+		if strings.TrimSpace(req.Captcha) == "" {
+			resp.ParamError(c, "密码错误次数较多，请输入验证码（图片算式的计算结果）")
+			return
+		}
+		if !captcha.Verify(req.CaptchaID, req.Captcha) {
+			resp.ParamError(c, "验证码不对哦，请点击图片刷新后重试")
+			return
+		}
+	}
+	// 密码校验失败统一走这里：计数 + 满次数带 need_captcha 标记
+	passFail := func() {
+		loginlimiter.Fail(name)
+		if loginlimiter.NeedCaptcha(name) {
+			resp.FailData(c, 400, "密码错误次数较多，请先通过验证码再试", gin.H{"need_captcha": true})
+			return
+		}
+		resp.ParamError(c, "密码不对哦，再想想")
+	}
 
 	var acct model.EzfyAccount
 	found := h.DB.Where("game_id = ?", gameID).First(&acct).Error == nil
@@ -60,7 +84,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 	if found {
 		// 二战自有账号 → 二战密码校验
 		if bcrypt.CompareHashAndPassword([]byte(acct.Password), []byte(req.Password)) != nil {
-			resp.ParamError(c, "密码不对哦，再想想")
+			passFail()
 			return
 		}
 	} else {
@@ -75,7 +99,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 			return
 		}
 		if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
-			resp.ParamError(c, "密码不对哦，再想想")
+			passFail()
 			return
 		}
 		// 校验通过 → 同步家园密码 hash 建档（此后二战自助管，不再依赖家园）
@@ -92,6 +116,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		}
 		bound = true
 	}
+	loginlimiter.Success(name)
 
 	if acct.Nickname == "" {
 		// 建档时带了昵称；这里兜底（理论不会为空）

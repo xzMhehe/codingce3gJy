@@ -6,12 +6,20 @@
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
       <div style="font-size:13px;color:#8a7a55;text-align:center;margin-bottom:18px;">输入家园号 + 家园密码进入（仅首次同步）</div>
-      <input v-model="wwiiName" placeholder="家园号"
-             style="box-sizing:border-box;width:100%;padding:10px;margin-bottom:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;"
+      <!-- class=wwii-input 统一账号/密码框样式，避免密码框被全局 input 选择器漏配而变小 -->
+      <input v-model="wwiiName" placeholder="家园号" class="wwii-input"
              @keyup.enter="wwiiLogin()"/>
-      <input v-model="wwiiPwd" type="password" placeholder="家园密码"
-             style="box-sizing:border-box;width:100%;padding:10px;margin-bottom:12px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;"
+      <input v-model="wwiiPwd" type="password" placeholder="家园密码" class="wwii-input"
              @keyup.enter="wwiiLogin()"/>
+      <!-- 密码错误满 3 次后展示验证码（算式图片，点了换一张） -->
+      <div v-if="wwiiNeedCaptcha" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <input v-model="wwiiCaptcha" placeholder="验证码" class="wwii-input"
+               style="margin-bottom:0;"
+               @keyup.enter="wwiiLogin()"/>
+        <img v-if="wwiiCaptchaImg" :src="wwiiCaptchaImg" alt="验证码" title="点击换一张"
+             style="height:38px;flex-shrink:0;border:1px solid #cbbd96;border-radius:4px;background:#fff;cursor:pointer;"
+             @click="loadWwiiCaptcha"/>
+      </div>
       <div v-if="wwiiErr" style="color:#c0392b;font-size:13px;margin-bottom:10px;text-align:center;">{{ wwiiErr }}</div>
       <button @click="wwiiLogin()" :disabled="wwiiBusy"
               style="width:100%;padding:10px;border:0;border-radius:4px;background:#b8860b;color:#fff;font-size:15px;cursor:pointer;">
@@ -418,6 +426,10 @@ export default {
       wwiiPwd: '',
       wwiiErr: '',
       wwiiBusy: false,
+      wwiiCaptcha: '',        // 验证码答案
+      wwiiCaptchaId: '',      // 验证码 ID
+      wwiiCaptchaImg: '',     // 验证码 base64 图
+      wwiiNeedCaptcha: false, // 密码错误满 3 次 → 显示验证码
       nowText: '', // ★ 页脚小Q报时(每秒刷新, 与 App.vue 同一格式)
       // ★ 2026-09-28 「累计采集/采集资源实时变化」：每秒本地 tick 的时间基准
       gatherNow: 0,
@@ -2090,22 +2102,46 @@ export default {
       }
       this.wwiiErr = ''
       this.wwiiBusy = true
-      api.post('/ezfy/login', { name, password: pwd }).then(r => {
+      const body = { name, password: pwd }
+      if (this.wwiiNeedCaptcha) {
+        body.captcha_id = this.wwiiCaptchaId
+        body.captcha = this.wwiiCaptcha
+      }
+      api.post('/ezfy/login', body).then(r => {
         this.wwiiBusy = false
-        if (r.code === 0 && r.token) {
+        if (r.code === 0 && r.data && r.data.token) {
           // 只写二战专属 token 与身份，不碰家园 token
-          this.$store.commit('setEzfyToken', r.token)
-          this.$store.commit('setEzfyUser', { id: r.game_id, nickname: r.nickname || '' })
-          // 登录态就绪：守卫已放行 /games/ezfy；跳过去再刷新，让 mounted 完整启动游戏
-          this.$router.replace('/games/ezfy')
-            .then(() => window.location.reload())
-            .catch(() => window.location.reload())
+          this.$store.commit('setEzfyToken', r.data.token)
+          this.$store.commit('setEzfyUser', { id: r.data.game_id, nickname: r.data.nickname || '' })
+          // 硬刷新进游戏：本应用是 hash 路由（/#/games/ezfy?cur=home）——
+          // 必须带 `#` 跳，否则走 `location.href='/games/ezfy'` 会落到服务器根路径、
+          // 被 vue-router 当作 `/`（家园首页）→ 未家园登录就弹去 /#/login。
+          window.location.hash = '#/games/ezfy?cur=home'
+          window.location.reload()
         } else {
           this.wwiiErr = r.msg || '登录失败，请重试'
+          if (r.data && r.data.need_captcha) {
+            // 密码错误满 3 次，立即弹出验证码框
+            this.wwiiNeedCaptcha = true
+            this.loadWwiiCaptcha()
+          } else if (this.wwiiNeedCaptcha) {
+            // 验证码一次性，失败后换一张
+            this.loadWwiiCaptcha()
+          }
         }
       }).catch(() => {
         this.wwiiBusy = false
         this.wwiiErr = '网络异常，请重试'
+      })
+    },
+    // 拉一张新的算式验证码（点图片换一张）
+    loadWwiiCaptcha () {
+      this.wwiiCaptcha = ''
+      api.get('/auth/captcha').then(r => {
+        if (r.code === 0) {
+          this.wwiiCaptchaImg = r.data.img
+          this.wwiiCaptchaId = r.data.id
+        }
       })
     },
     // ---- 统帅页自助 ----
@@ -7623,6 +7659,21 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .q-rare { color: #4dabff; }
 .ezfy-page .q-epic { color: #9b59b6; }
 .ezfy-page .q-legend { color: #e67e22; }
+/* ★ 2026-10-12 二战登录框：统一账号/密码/验证码输入框。
+      必须对 box-sizing/padding/border 等都加 !important —— 全局 `input[type=text]` 那组
+      选择器优先级更高，会用它自己的 `padding:3px 4px` 盖掉账号框的 10px，导致账号框比密码框矮。
+      (margin-bottom 不加 !important，验证码框用内联 margin-bottom:0 对齐图片) */
+.wwii-login input.wwii-input,
+.wwii-login input.wwii-input[type="password"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  padding: 10px !important;
+  margin-bottom: 10px;
+  border: 1px solid #cbbd96 !important;
+  border-radius: 4px !important;
+  background: #fffdf5 !important;
+  font-size: 14px;
+}
 .ezfy-page input[type="text"],
 .ezfy-page input[type="number"],
 .ezfy-page input:not([type]),
