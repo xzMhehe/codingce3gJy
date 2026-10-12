@@ -46,6 +46,14 @@ export default new Vuex.Store({
       s.unread = 0
       localStorage.removeItem('jy_token')
       localStorage.removeItem('jy_user')
+      // ★ 2026-10-12 家园退出 → 二战一并退出（用户：「家园退了 二战也要退，现在家园退了二战没退」）。
+      //   二战 token 是**单独存**的（ezfy_token），只清家园会留下「家园已退、二战还登录着」的孤儿登录态。
+      //   家园退出的全部入口都走这个 mutation（页脚「退出」、以及 api 拦截器里家园 401），改这一处即可全覆盖。
+      //   ★ 反向不成立：二战登出（ezfyLogout）只清二战，不动家园登录态。
+      s.ezfyToken = ''
+      s.ezfyUser = null
+      localStorage.removeItem('ezfy_token')
+      localStorage.removeItem('ezfy_user')
     },
     // 二战登出：只清 ezfyToken 与 ezfyUser
     ezfyLogout (s) {
