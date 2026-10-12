@@ -155,6 +155,12 @@ func main() {
 		timedStep("EnsureEzfySchemeKinds", func() { seed.EnsureEzfySchemeKinds(homeDB) })
 		// ★ 2026-10-10 首页布局回填：home_layout NULL→0（默认新布局）；玩家 10000 保留老布局。
 		timedStep("EnsureEzfyHomeLayout", func() { seed.EnsureEzfyHomeLayout(homeDB) })
+		// ★★ 2026-10-12 线上事故：skip 模式（多机共享库）不跑 seed.Run → seedRBAC 被跳过
+		//   → 新加的菜单权限点永远不入 permissions 表。表现极具误导性：
+		//   超管菜单是全量展示的（前端 my-perms 返回 super=true），点进去却被
+		//   RequirePerm 拦成 403「你没有权限进入！」（免战管理 module:ezfyPeace）。
+		//   幂等补权限点 + 给「全量角色」追加，自定义角色不动，见 seed/rbac_ensure.go。
+		timedStep("EnsureRBACPerms", func() { seed.EnsureRBACPerms(homeDB) })
 	}
 
 	// 家园论坛索引（幂等）：原来挂在 EnsureEzfyIndexes 里，二战拆库后必须在家园库上执行。

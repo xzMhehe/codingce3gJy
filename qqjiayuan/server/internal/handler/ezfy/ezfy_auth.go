@@ -144,3 +144,68 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).Update("last_login_at", time.Now().UnixMilli())
 	resp.OK(c, gin.H{"token": token, "home_token": homeToken, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
 }
+
+// EzfySSO ★ 2026-10-12 家园已登录 → 免密换取二战登录态。
+//
+// 用户反馈：「从家园登录页面登录了，再进二战征途还需要登录，不对」。
+// 二战独立登录后二战页只认 ezfy_token，家园已登录的玩家进来仍被要求再输一次密码。
+// 这里补一条「家园登录态换二战 token」的通道：
+//
+//	Authorization 里带**家园** token（Issuer=qqjiayuan，家园登录时签发）→ 校验通过即
+//	视为身份可信（token 本身就是家园登录成功的凭证，无需再验密码）→ 找/建 ezfy_account
+//	→ 签发二战 token（Issuer=qqjiayuan-ezfy）。
+//
+// ★ 只认家园 Issuer：authutil.ParseToken 内部校验，二战 token 拿不来这里自我续期。
+// ★ 失败一律返回**业务码 400**（HTTP 200），刻意不用 401 —— 前端 axios 拦截器把
+//   非二战接口的 401 当作「家园登录过期」会强制登出并跳家园 /login；而这里的语义
+//   只是「家园没登录/失效」，玩家应当安静地看到二战自己的登录框。
+//
+//	path: POST /api/ezfy/sso （公开路由；前端在「家园已登录但还没有 ezfy_token」时调用）
+func (h *EzfyHandler) EzfySSO(c *gin.Context) {
+	raw := strings.TrimSpace(c.GetHeader("Authorization"))
+	tokenStr := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
+	if tokenStr == "" {
+		resp.ParamError(c, "未登录家园账号")
+		return
+	}
+	claims, err := authutil.ParseToken(tokenStr, h.Secret)
+	if err != nil || claims == nil || claims.UserID == 0 {
+		resp.ParamError(c, "家园登录状态已失效，请用家园号和密码登录")
+		return
+	}
+	uid := claims.UserID
+	var user model.User
+	if err := h.home().First(&user, uid).Error; err != nil {
+		resp.ParamError(c, "家园账号不存在")
+		return
+	}
+	if user.Status == 0 {
+		resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
+		return
+	}
+	// 找/建二战账号：已建档的**不动**它的二战密码（玩家可能已在二战里改过密码）
+	var acct model.EzfyAccount
+	if err := h.DB.Where("game_id = ?", uid).First(&acct).Error; err != nil {
+		acct = model.EzfyAccount{
+			GameID:   uid,
+			Password: user.Password, // 与首登一致：拷家园 hash 作初始二战密码
+			Nickname: user.Nickname,
+			MSync:    1,
+		}
+		if err := h.DB.Create(&acct).Error; err != nil {
+			log.Printf("二战 SSO 建档失败 uid=%d: %v", uid, err)
+			resp.ServerError(c, err)
+			return
+		}
+	}
+	if acct.Nickname == "" {
+		acct.Nickname = user.Nickname
+	}
+	token, err := authutil.GenerateEzfyToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
+	if err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).Update("last_login_at", time.Now().UnixMilli())
+	resp.OK(c, gin.H{"token": token, "game_id": acct.GameID, "nickname": acct.Nickname})
+}

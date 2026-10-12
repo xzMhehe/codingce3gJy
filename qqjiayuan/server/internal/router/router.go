@@ -225,6 +225,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 
 		// ★ 2026-10-12 二战独立登录（公开路由）：不走家园认证，签发二战专属 token。
 		api.POST("/ezfy/login", ezfyH.EzfyLogin)
+		// ★ 2026-10-12 家园已登录 → 免密换二战登录态（Authorization 里带家园 token），
+		//   解决「家园登录后进二战还要再登一次」。同样公开路由，内部手动校验家园 token。
+		api.POST("/ezfy/sso", ezfyH.EzfySSO)
 
 		authed := api.Group("/", jwtM)
 		// ★ 2026-10-12 二战独立账号：二战专属授权组（不挂家园 jwtM，走 ezfyJwtM）。

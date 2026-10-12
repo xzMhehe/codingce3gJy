@@ -1765,6 +1765,9 @@ export default {
     //   根组件只渲染二战自己的登录界面；登录成功后由 wwiiLogin() 重载进入游戏。
     if (!this.isLogin) {
       document.title = '二战征途-【1区】红色警戒'
+      // ★ 2026-10-12 家园已登录（有家园 token）→ 静默换取二战登录态，不再要求二次登录；
+      //   家园没登录就安静地显示下面二战自己的登录框。
+      this.trySsoLogin()
       return
     }
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
@@ -2090,6 +2093,24 @@ export default {
       this.go(cur)
     },
     // ---- ★ 2026-10-12 二战独立登录 ----
+    // 家园已登录 → 自动换二战登录态（免二次登录）。
+    //   家园 token 有效 → 后端 /api/ezfy/sso 直接签发二战 token（不再验密码）；
+    //   换成功就硬刷新进游戏（本应用是 hash 路由，与 wwiiLogin 同一套做法）。
+    //   失败（家园没登录/已失效）**不提示错误**，保持显示二战登录框，玩家可自己输密码。
+    //   ★ /ezfy/sso 不在 /games/ezfy/ 前缀下 → api 拦截器会自动带**家园** token（正是这里要的）。
+    trySsoLogin () {
+      if (!this.$store.state.token) return // 家园没登录：不打扰，直接显示二战登录框
+      this.wwiiBusy = true
+      api.post('/ezfy/sso').then(r => {
+        if (r.code === 0 && r.data && r.data.token) {
+          this.$store.commit('setEzfyToken', r.data.token)
+          this.$store.commit('setEzfyUser', { id: r.data.game_id, nickname: r.data.nickname || '' })
+          window.location.reload()
+          return
+        }
+        this.wwiiBusy = false
+      }).catch(() => { this.wwiiBusy = false })
+    },
     // 输入家园号(=二战游戏ID) + 家园密码，走二战自己的登录接口 /api/ezfy/login：
     //   首登用「家园号+家园密码」校验并同步建档，签发二战专属 token；
     //   二战登录态只存 ezfy_token，与家园账号体系彻底分离。
@@ -7667,20 +7688,28 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .q-epic { color: #9b59b6; }
 .ezfy-page .q-legend { color: #e67e22; }
 /* ★ 2026-10-12 二战登录框：统一账号/密码/验证码输入框。
-      必须对 box-sizing/padding/border 等都加 !important —— 全局 `input[type=text]` 那组
-      选择器优先级更高，会用它自己的 `padding:3px 4px` 盖掉账号框的 10px，导致账号框比密码框矮。
+      必须对 box-sizing/padding/border/height/font-size 等都加 !important —— 全局那组
+      `.ezfy-page input[type="text"] / input:not([type]) / select / textarea`（本文件后面）
+      与 `.wwii-login input.wwii-input` 的优先级**完全相同**（都是 0,2,1），但它写在后面 →
+      后写的赢，会把 `font-size` 打回 var(--fs)=16px。
+      而密码框是 `input[type="password"]`，**不被那组全局规则命中** → 仍是 14px。
+      结果就是「家园号」框 16px、「家园密码」框 14px：文字大小不一、看着没对齐
+      （高度同样会被内联 height 与全局 padding 拉扯）。所以这里逐项 !important 锁死。
       (margin-bottom 不加 !important，验证码框用内联 margin-bottom:0 对齐图片) */
 .wwii-login input.wwii-input,
 .wwii-login input.wwii-input[type="password"] {
   display: block;
   box-sizing: border-box !important;
   width: 100% !important;
+  height: 38px !important;
   padding: 10px !important;
-  margin-bottom: 10px;
+  margin: 0 0 10px 0;
   border: 1px solid #cbbd96 !important;
   border-radius: 4px !important;
   background: #fffdf5 !important;
-  font-size: 14px;
+  color: #333 !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
 }
 .ezfy-page input[type="text"],
 .ezfy-page input[type="number"],

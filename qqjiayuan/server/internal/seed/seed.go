@@ -1748,73 +1748,80 @@ func seedMigrate2026(db *gorm.DB) {
 	}
 }
 
+// rbacMod 构造一个模块权限点（code = module:<菜单key>）。
+func rbacMod(group, name, key string) model.Permission {
+	return model.Permission{Name: name, Code: "module:" + key, Remark: group}
+}
+
+// modulePerms ★★ 全部后台模块权限点清单（**唯一实现**）：全量 seed（seedRBAC）与
+// skip 模式补种（EnsureRBACPerms，见 rbac_ensure.go）共用同一份。
+// code 约定 module:<菜单key>，与 admin-web/src/menu.js 的 perm 一一对应；
+// 以后新增菜单只在这里加一行，两条路径都会自动补上。
+var modulePerms = []model.Permission{
+	rbacMod("概览", "数据概览", "dashboard"),
+	rbacMod("概览", "在线查看", "online"),
+	// 会员管理
+	rbacMod("会员", "会员列表", "users"), rbacMod("会员", "个性昵称", "nickName"), rbacMod("会员", "会员资料", "home"),
+	rbacMod("会员", "会员证件", "userDocu"), rbacMod("会员", "会员联系", "userContact"), rbacMod("会员", "会员地址", "userAddress"),
+	rbacMod("会员", "会员密保", "userProtec"), rbacMod("会员", "会员日志", "userLogs"), rbacMod("会员", "手机审核", "userPhones"),
+	rbacMod("会员", "会员推荐", "invites"), rbacMod("会员", "勋章管理", "badges"),
+	// 货币管理
+	rbacMod("货币", "会员财务", "wallet"), rbacMod("货币", "货币流水", "walletLogs"),
+	// 社区管理
+	rbacMod("社区", "版块管理", "boards"), rbacMod("社区", "同城管理", "tongcheng"), rbacMod("社区", "版块分类", "boardCategories"),
+	rbacMod("社区", "帖子管理", "threads"), rbacMod("社区", "捐款上榜", "fla"), rbacMod("社区", "家族管理", "families"),
+	rbacMod("社区", "福利院", "welfare"),
+	rbacMod("社区", "TT头像", "ttou"), rbacMod("社区", "恢复帖子", "recycle"), rbacMod("社区", "敏感词", "wordFilters"),
+	// 内容管理
+	rbacMod("内容", "文章管理", "articles"), rbacMod("内容", "留言本管理", "guestbook"), rbacMod("内容", "家信管理", "messages"),
+	// 博客/家园/商城
+	rbacMod("博客", "空间列表", "spaces"), rbacMod("家园", "家园列表", "homes"), rbacMod("家园", "家园访客", "visitors"),
+	rbacMod("商城", "店铺管理", "shops"), rbacMod("商城", "商品管理", "shopGoods"), rbacMod("商城", "订单管理", "shopOrders"),
+	rbacMod("商城", "评论管理", "shopComments"), rbacMod("商城", "道具商城", "goods"), rbacMod("商城", "货币商店", "moneyShop"),
+	// 书城/特权/广播
+	rbacMod("书城", "小说列表", "books"), rbacMod("书城", "章节管理", "bookChapters"), rbacMod("书城", "书评管理", "bookComments"),
+	rbacMod("特权", "特权管理", "privileges"), rbacMod("广播", "公告广播", "announcements"),
+	// 游戏管理
+	rbacMod("游戏", "游戏大厅", "games"),
+	rbacMod("游戏-魔法花园", "花园活动", "gardenActivities"), rbacMod("游戏-魔法花园", "花园花种", "gardenSeeds"),
+	rbacMod("游戏-魔法花园", "花之图谱", "gardenMaps"), rbacMod("游戏-魔法花园", "合成配方", "gardenMixes"),
+	rbacMod("游戏-魔法花园", "精灵花册", "gardenElves"), rbacMod("游戏-魔法花园", "签到管理", "gardenSign"),
+	rbacMod("游戏-魔法花园", "花园数据管理", "gardenData"),
+	rbacMod("游戏-开心农场", "农场种子", "farmSeeds"), rbacMod("游戏-开心农场", "化肥陷阱", "farmItems"),
+	rbacMod("游戏-开心农场", "农场数据管理", "farmData"),
+	rbacMod("游戏-抢车位", "车市车辆", "parkCars"), rbacMod("游戏-抢车位", "车位数据管理", "parkData"),
+	rbacMod("游戏-精武堂", "玩家管理", "jwtPlayers"), rbacMod("游戏-精武堂", "道具管理", "jwtItems"),
+	rbacMod("游戏-精武堂", "技能管理", "jwtSkills"), rbacMod("游戏-精武堂", "比武记录", "jwtRecords"),
+	rbacMod("游戏-精武堂", "数据管理", "jwtData"),
+	rbacMod("游戏-幻想西游", "西游玩家", "xyPlayers"), rbacMod("游戏-幻想西游", "西游流水", "xyLogs"),
+	rbacMod("游戏-幻想西游", "西游系统", "xySystem"), rbacMod("游戏-幻想西游", "西游数据", "xyData"),
+	rbacMod("游戏-二战征途", "风云玩家", "ezfyPlayers"), rbacMod("游戏-二战征途", "风云流水", "ezfyLogs"),
+	rbacMod("游戏-二战征途", "风云系统", "ezfySystem"), rbacMod("游戏-二战征途", "风云数据", "ezfyData"),
+	rbacMod("游戏-二战征途", "风云城市", "ezfyCities"), rbacMod("游戏-二战征途", "风云建筑", "ezfyBuildings"),
+	rbacMod("游戏-二战征途", "风云建筑队列", "ezfyBuildQueue"), rbacMod("游戏-二战征途", "风云兵种", "ezfyTroops"),
+	rbacMod("游戏-二战征途", "风云征兵", "ezfyRecruit"), rbacMod("游戏-二战征途", "风云军官", "ezfyOfficers"), rbacMod("游戏-二战征途", "风云军衔", "ezfyRankCfg"),
+	// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」，可单独分配给角色
+	rbacMod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
+	// ★ 2026-10-12 免战管理（开始/结束免战，绕过个号冷却），独立可分配权限
+	rbacMod("游戏-二战征途", "免战管理", "ezfyPeace"),
+	rbacMod("游戏-二战征途", "风云资源", "ezfyResources"), rbacMod("游戏-二战征途", "风云科技", "ezfyTechs"),
+	// 资源交易行维护（系统挂单定价黄金/钻石）
+	rbacMod("游戏-二战征途", "风云交易行", "ezfyExchange"),
+	rbacMod("游戏-二战征途", "风云地图", "ezfyMap"), rbacMod("游戏-二战征途", "风云军团", "ezfyCorps"),
+	rbacMod("游戏-二战征途", "风云私聊", "ezfyPrivchat"),
+	// 第九轮新增：系统配置（原「建筑上限配置」，改名）/ 聊天敏感词（二战自己的独立维护页）
+	rbacMod("游戏-二战征途", "风云系统配置", "ezfyBuildLimit"),
+	rbacMod("游戏-二战征途", "风云敏感词", "ezfyWords"),
+	// 宣战管理（列表 + 一键生效/一键完成）
+	rbacMod("游戏-二战征途", "风云宣战", "ezfyWars"),
+	// 系统配置
+	rbacMod("系统", "站点设置", "siteConfig"), rbacMod("系统", "管理设置", "roles"), rbacMod("系统", "文件管理", "resources"),
+	rbacMod("系统", "菜单维护", "menus"),
+}
+
+// seedRBAC 全量 RBAC 初始化（含角色与角色权限绑定；仅非 skip 模式跑）。
+// ★ skip 模式（线上 seed.skip: true）不跑本函数 → 新菜单权限点靠 EnsureRBACPerms 补。
 func seedRBAC(db *gorm.DB) {
-	// 全部后台模块权限点（一个管理端菜单模块一个权限，角色未分配则菜单与接口皆不可用）
-	// code 约定 module:<菜单key>，与 admin-web/src/menu.js 的 perm 一一对应
-	mod := func(group, name, key string) model.Permission {
-		return model.Permission{Name: name, Code: "module:" + key, Remark: group}
-	}
-	modulePerms := []model.Permission{
-		mod("概览", "数据概览", "dashboard"),
-		mod("概览", "在线查看", "online"),
-		// 会员管理
-		mod("会员", "会员列表", "users"), mod("会员", "个性昵称", "nickName"), mod("会员", "会员资料", "home"),
-		mod("会员", "会员证件", "userDocu"), mod("会员", "会员联系", "userContact"), mod("会员", "会员地址", "userAddress"),
-		mod("会员", "会员密保", "userProtec"), mod("会员", "会员日志", "userLogs"), mod("会员", "手机审核", "userPhones"),
-		mod("会员", "会员推荐", "invites"), mod("会员", "勋章管理", "badges"),
-		// 货币管理
-		mod("货币", "会员财务", "wallet"), mod("货币", "货币流水", "walletLogs"),
-		// 社区管理
-		mod("社区", "版块管理", "boards"), mod("社区", "同城管理", "tongcheng"), mod("社区", "版块分类", "boardCategories"),
-		mod("社区", "帖子管理", "threads"), mod("社区", "捐款上榜", "fla"), mod("社区", "家族管理", "families"),
-		mod("社区", "福利院", "welfare"),
-		mod("社区", "TT头像", "ttou"), mod("社区", "恢复帖子", "recycle"), mod("社区", "敏感词", "wordFilters"),
-		// 内容管理
-		mod("内容", "文章管理", "articles"), mod("内容", "留言本管理", "guestbook"), mod("内容", "家信管理", "messages"),
-		// 博客/家园/商城
-		mod("博客", "空间列表", "spaces"), mod("家园", "家园列表", "homes"), mod("家园", "家园访客", "visitors"),
-		mod("商城", "店铺管理", "shops"), mod("商城", "商品管理", "shopGoods"), mod("商城", "订单管理", "shopOrders"),
-		mod("商城", "评论管理", "shopComments"), mod("商城", "道具商城", "goods"), mod("商城", "货币商店", "moneyShop"),
-		// 书城/特权/广播
-		mod("书城", "小说列表", "books"), mod("书城", "章节管理", "bookChapters"), mod("书城", "书评管理", "bookComments"),
-		mod("特权", "特权管理", "privileges"), mod("广播", "公告广播", "announcements"),
-		// 游戏管理
-		mod("游戏", "游戏大厅", "games"),
-		mod("游戏-魔法花园", "花园活动", "gardenActivities"), mod("游戏-魔法花园", "花园花种", "gardenSeeds"),
-		mod("游戏-魔法花园", "花之图谱", "gardenMaps"), mod("游戏-魔法花园", "合成配方", "gardenMixes"),
-		mod("游戏-魔法花园", "精灵花册", "gardenElves"), mod("游戏-魔法花园", "签到管理", "gardenSign"),
-		mod("游戏-魔法花园", "花园数据管理", "gardenData"),
-		mod("游戏-开心农场", "农场种子", "farmSeeds"), mod("游戏-开心农场", "化肥陷阱", "farmItems"),
-		mod("游戏-开心农场", "农场数据管理", "farmData"),
-		mod("游戏-抢车位", "车市车辆", "parkCars"), mod("游戏-抢车位", "车位数据管理", "parkData"),
-		mod("游戏-精武堂", "玩家管理", "jwtPlayers"), mod("游戏-精武堂", "道具管理", "jwtItems"),
-		mod("游戏-精武堂", "技能管理", "jwtSkills"), mod("游戏-精武堂", "比武记录", "jwtRecords"),
-		mod("游戏-精武堂", "数据管理", "jwtData"),
-		mod("游戏-幻想西游", "西游玩家", "xyPlayers"), mod("游戏-幻想西游", "西游流水", "xyLogs"),
-		mod("游戏-幻想西游", "西游系统", "xySystem"), mod("游戏-幻想西游", "西游数据", "xyData"),
-		mod("游戏-二战征途", "风云玩家", "ezfyPlayers"), mod("游戏-二战征途", "风云流水", "ezfyLogs"),
-		mod("游戏-二战征途", "风云系统", "ezfySystem"), mod("游戏-二战征途", "风云数据", "ezfyData"),
-		mod("游戏-二战征途", "风云城市", "ezfyCities"), mod("游戏-二战征途", "风云建筑", "ezfyBuildings"),
-		mod("游戏-二战征途", "风云建筑队列", "ezfyBuildQueue"), mod("游戏-二战征途", "风云兵种", "ezfyTroops"),
-		mod("游戏-二战征途", "风云征兵", "ezfyRecruit"), mod("游戏-二战征途", "风云军官", "ezfyOfficers"), mod("游戏-二战征途", "风云军衔", "ezfyRankCfg"),
-		// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」，可单独分配给角色
-		mod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
-		// ★ 2026-10-12 免战管理（开始/结束免战，绕过个号冷却），独立可分配权限
-		mod("游戏-二战征途", "免战管理", "ezfyPeace"),
-		mod("游戏-二战征途", "风云资源", "ezfyResources"), mod("游戏-二战征途", "风云科技", "ezfyTechs"),
-		// 资源交易行维护（系统挂单定价黄金/钻石）
-		mod("游戏-二战征途", "风云交易行", "ezfyExchange"),
-		mod("游戏-二战征途", "风云地图", "ezfyMap"), mod("游戏-二战征途", "风云军团", "ezfyCorps"),
-		mod("游戏-二战征途", "风云私聊", "ezfyPrivchat"),
-		// 第九轮新增：系统配置（原「建筑上限配置」，改名）/ 聊天敏感词（二战自己的独立维护页）
-		mod("游戏-二战征途", "风云系统配置", "ezfyBuildLimit"),
-		mod("游戏-二战征途", "风云敏感词", "ezfyWords"),
-		// 宣战管理（列表 + 一键生效/一键完成）
-		mod("游戏-二战征途", "风云宣战", "ezfyWars"),
-		// 系统配置
-		mod("系统", "站点设置", "siteConfig"), mod("系统", "管理设置", "roles"), mod("系统", "文件管理", "resources"),
-		mod("系统", "菜单维护", "menus"),
-	}
 	for _, p := range modulePerms {
 		db.Where("code = ?", p.Code).FirstOrCreate(&p)
 	}
