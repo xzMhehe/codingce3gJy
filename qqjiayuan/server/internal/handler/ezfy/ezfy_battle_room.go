@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"encoding/json"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -394,6 +395,35 @@ func (h *EzfyHandler) BgTickBattles() {
 				h.settleDueCities(uid)
 			}
 		}
+		// ★ 2026-10-12 用户规则：战俘营俘虏最多保留 3 天，超期且未释放/未雇佣 → 物理删除。
+		//   每 15 秒 tick 一次，这里每 40 轮 ≈ 10 分钟清一次，频率够低不扰动正常逻辑。
+		if tick%40 == 0 {
+			h.purgeExpiredCaptives()
+		}
+	}
+}
+
+// ezfyCaptiveExpireDays 战俘营俘虏最长保留天数（2026-10-12 用户规则：最多 3 天）。
+const ezfyCaptiveExpireDays = 3
+
+// purgeExpiredCaptives 物理删除战俘营里「超期且未被处置」的俘虏，腾占库空间。
+//
+// ★ 2026-10-12 用户规则：二战胜俘营里的俘虏最多保留 3 天 ——
+//   3 天内玩家既没「释放（freeOfficer 物理删）」也没「雇佣（recruitCaptive 收编）」，
+//   就直接物理删除。超期口径按俘虏「入营时间」（ezfy_officer.update_time，创建即入营）算；
+//   只删 is_captive=1 的俘虏行，已收编/已释放/在职的军官不受影响。
+//   .Unscoped().Delete() 强制物理删除，覆盖 model.EzfyOfficer 上的逻辑删除约定
+//   （逻辑删除约定针对「可见军官」防丢档；战俘营超期俘虏按用户要求物理删除腾空间）。
+func (h *EzfyHandler) purgeExpiredCaptives() {
+	if ezfyCaptiveExpireDays <= 0 {
+		return
+	}
+	deadline := time.Now().Add(-time.Duration(ezfyCaptiveExpireDays) * 24 * time.Hour)
+	res := h.DB.Unscoped().Where("is_captive = ? AND update_time < ?", 1, deadline).Delete(&model.EzfyOfficer{})
+	if res.Error != nil {
+		log.Printf("ezfy 清理超期俘虏失败: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		log.Printf("ezfy 清理超期俘虏 %d 名（保留 %d 天）", res.RowsAffected, ezfyCaptiveExpireDays)
 	}
 }
 
