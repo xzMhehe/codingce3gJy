@@ -260,6 +260,10 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	h.consumeItem(uid, itemID, "城市迁移")
 	// 旧坐标上的「玩家城」地图区域记录要清掉，否则地图还显示那里有城
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
+	// ★ 2026-10-12 用户反馈：迁城后脚下那块「附属野地」图标还显示在城市坐标上。
+	//   城市所在的格子不能再有野地 —— 若落点曾是自己的附属野地，野地行会残留，
+	//   地图上「城市 + 野地」在同一格重叠显示。这里把新坐标上的野地清掉。
+	h.DB.Where("x = ? AND y = ?", tx, ty).Delete(&model.EzfyWildland{})
 
 	newRegion := ezfyRegionName(tx, ty)
 	h.addReport(uid, 6, "城市迁移完成",
@@ -538,6 +542,8 @@ func (h *EzfyHandler) EzfyApplyMove(cityId uint, x, y int) string {
 		return "写入失败: " + err.Error()
 	}
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
+	// ★ 2026-10-12 与玩家侧迁城同口径：城市落点所在格清掉野地，避免「城市 + 野地」重叠显示。
+	h.DB.Where("x = ? AND y = ?", x, y).Delete(&model.EzfyWildland{})
 	return ""
 }
 

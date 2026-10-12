@@ -4225,6 +4225,9 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
 	}
 	h.DB.Create(&city)
+	// ★ 2026-10-12 用户反馈修复：新城建在自己已占领的野地上时，该坐标已经变成城市，
+	//   必须把这里的野地清掉，否则地图上「城市 + 附属野地」在同一格重叠显示。
+	h.DB.Where("x = ? AND y = ?", req.X, req.Y).Delete(&model.EzfyWildland{})
 	h.initBuilding(city.ID, 1, 1)
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
