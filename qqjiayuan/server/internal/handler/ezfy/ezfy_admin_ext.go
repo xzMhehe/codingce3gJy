@@ -667,7 +667,7 @@ func (h *EzfyAdmin) AdminEzfyBuildQueueFinishReady(c *gin.Context) {
 
 // ============ 4. 兵种管理 ============
 
-// AdminEzfyTroops 玩家部队列表（city_id 精确筛选，word=城名/玩家）
+// AdminEzfyTroops 玩家部队列表（city_id 精确筛选，word=游戏ID/玩家名/城名/城池ID）
 func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 	page, offset, size := pageOf(c, 15)
 	word := strings.TrimSpace(c.Query("word"))
@@ -676,16 +676,36 @@ func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 	if cityId > 0 {
 		q = q.Where("city_id = ?", cityId)
 	} else if word != "" {
+		var cids []uint
 		if id, err := strconv.Atoi(word); err == nil {
-			q = q.Where("city_id = ?", id)
+			// ★ 2026-10-12 数字：优先按游戏ID（=玩家 user_id）查其全部城池，兼容原「城池ID」精确
+			if id > 0 {
+				var uidCids []uint
+				h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", id).Pluck("id", &uidCids)
+				cids = append(cids, uidCids...)
+				cids = append(cids, uint(id))
+			}
+			q = q.Where("city_id IN ?", cids)
 		} else {
-			var cids []uint
-			h.DB.Model(&model.EzfyCity{}).Select("id").
-				Where("name LIKE ?", "%"+word+"%").Scan(&cids)
-			if len(cids) > 0 {
-				q = q.Where("city_id IN ?", cids)
-			} else {
+			// ★ 2026-10-12 非数字：玩家名（二战昵称 / 家园账号 / 家园昵称）或城名模糊
+			var uids []uint
+			h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("user_id", &uids)
+			var huids []uint
+			h.home().Model(&model.User{}).Select("id").
+				Where("username LIKE ? OR nickname LIKE ?", "%"+word+"%", "%"+word+"%").Scan(&huids)
+			uids = append(uids, huids...)
+			if len(uids) > 0 {
+				var uidCids []uint
+				h.DB.Model(&model.EzfyCity{}).Where("user_id IN ?", uids).Pluck("id", &uidCids)
+				cids = append(cids, uidCids...)
+			}
+			var nameCids []uint
+			h.DB.Model(&model.EzfyCity{}).Where("name LIKE ?", "%"+word+"%").Pluck("id", &nameCids)
+			cids = append(cids, nameCids...)
+			if len(cids) == 0 {
 				q = q.Where("1 = 0")
+			} else {
+				q = q.Where("city_id IN ?", cids)
 			}
 		}
 	}
@@ -706,17 +726,44 @@ func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 		TypeName  string `json:"type_name"`
 	}
 	out := []rowOut{}
+	if len(rows) == 0 {
+		resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+		return
+	}
+	// ★ 2026-10-12 分页慢修复：原实现每行 4 次 SQL（兵种配置/城市/玩家昵称/家园号）→ N+1 全表抖。
+	//   改为页内批量预取：兵种配置 1 次 + 城市 1 次 + 玩家名批量 1 次，固定 4 次查询，不再随页大放大。
+	troopIds := make([]int, 0, len(rows))
+	cityIds := make([]uint, 0, len(rows))
+	for _, t := range rows {
+		troopIds = append(troopIds, t.TroopId)
+		cityIds = append(cityIds, uint(t.CityId))
+	}
+	cfgMap := map[int]model.EzfyCfgTroop{}
+	var cfgs []model.EzfyCfgTroop
+	if err := h.DB.Where("id IN ?", troopIds).Find(&cfgs).Error; err == nil {
+		for _, cf := range cfgs {
+			cfgMap[cf.ID] = cf
+		}
+	}
+	cityMap := map[uint]model.EzfyCity{}
+	var cities []model.EzfyCity
+	h.DB.Where("id IN ?", cityIds).Find(&cities)
+	uids := []uint{}
+	for _, ct := range cities {
+		cityMap[ct.ID] = ct
+		uids = append(uids, ct.UserID)
+	}
+	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
 	for _, t := range rows {
 		name, typ, pop := "", 0, 0
-		var cfg model.EzfyCfgTroop
-		if err := h.DB.First(&cfg, t.TroopId).Error; err == nil {
+		if cfg, ok := cfgMap[t.TroopId]; ok {
 			name, typ, pop = cfg.Name, cfg.Type, cfg.Pop
 		}
 		cityName, owner, home := "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, t.CityId).Error; err == nil {
+		if ct, ok := cityMap[uint(t.CityId)]; ok {
 			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
+			owner = nickMap[ct.UserID]
+			home = numMap[ct.UserID]
 		}
 		out = append(out, rowOut{EzfyCityTroop: t, CfgName: name, TroopType: typ, Pop: pop,
 			TotalPop: t.Count * int64(pop), CityName: cityName, OwnerName: owner, HomeNum: home,
@@ -1057,7 +1104,12 @@ func (h *EzfyAdmin) AdminEzfyTrainCreate(c *gin.Context) {
 	ez := h.ezfyH()
 	if in.Instant {
 		ez.addTroop(uint(in.CityId), in.TroopId, in.Count)
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("已立即征召【%s】×%d", cfg.Name, in.Count)})
+		// ★ 2026-10-12 即时征召也落一条队列记录（status=2 已完成）：
+		//   原来只 addTroop 不入队 → 前端提示「已生成征兵任务」但分页列表查不到新任务。
+		//   现在分页可见；collectTrainQueue 只结算 status=0，故该留痕不会被重复入库。
+		h.DB.Create(&model.EzfyTrainQueue{CityId: in.CityId, TroopId: in.TroopId, Count: in.Count,
+			Status: 2, StartTime: now, EndTime: now})
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已立即征召【%s】×%d，已记录可查", cfg.Name, in.Count)})
 		return
 	}
 	h.DB.Create(&model.EzfyTrainQueue{CityId: in.CityId, TroopId: in.TroopId, Count: in.Count,

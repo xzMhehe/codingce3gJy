@@ -5,7 +5,7 @@
         <!-- 玩家部队 -->
         <el-tab-pane label="玩家部队" name="troops">
           <div class="toolbar">
-            <el-input v-model="word" placeholder="城名 / 城池ID" clearable style="width:200px"
+            <el-input v-model="word" placeholder="游戏ID / 玩家名 / 城名 / 城池ID" clearable style="width:230px"
                       @keyup.enter.native="page = 1; load()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
