@@ -186,11 +186,14 @@ func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	var orders []model.EzfyOrder
 	// ★ 2026-10-05 性能：两个调用方都只读 Officer 字段（判军官是否在外），
 	//   只取 id/officer，不再把 troops/result/battle_result 这些大字段拉回来。
-	h.DB.Select("id, officer").Where("city_id = ? AND status IN (0,1,2)", cityId).Find(&orders)
+	// ★ 2026-10-12 修复「军官战斗中还能再次出征」：原来只查 status IN (0,1,2)，
+	//   漏掉了 status=5(战斗中)/6(等待) —— 行军中会被拦，但**战斗中**的军官却能再下一单。
+	//   补齐为与 createOrder 的出兵限额同口径的 `status IN (0,1,2,5,6)`（未结束命令全集）。
+	h.DB.Select("id, officer").Where("city_id = ? AND status IN (0,1,2,5,6)", cityId).Find(&orders)
 	return orders
 }
 
-// officerBusyOrder 军官当前是否还有未结束的命令（0行军中/1驻守中/2返航中）
+// officerBusyOrder 军官当前是否还有未结束的命令（0行军中/1驻守中/2返航中/5战斗中/6等待中）
 //
 // 与 officer.Status 双保险：officer.Status 可能因历史数据漂移而不准，
 // 这里直接按命令表判定，保证「没回来就不能再出征」。
