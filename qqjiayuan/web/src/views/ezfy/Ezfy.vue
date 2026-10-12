@@ -5,16 +5,17 @@
     <div v-if="!isLogin" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
-      <div style="font-size:13px;color:#8a7a55;text-align:center;margin-bottom:18px;">输入家园号 + 家园密码进入（仅首次同步）</div>
-      <!-- class=wwii-input 统一账号/密码框样式，避免密码框被全局 input 选择器漏配而变小 -->
+      <!-- class=wwii-input + 行内 style(含 !important) 双保险，保证账号/密码/验证码输入框宽高完全一致 -->
       <input v-model="wwiiName" placeholder="家园号" class="wwii-input"
+             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
              @keyup.enter="wwiiLogin()"/>
       <input v-model="wwiiPwd" type="password" placeholder="家园密码" class="wwii-input"
+             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
              @keyup.enter="wwiiLogin()"/>
       <!-- 密码错误满 3 次后展示验证码（算式图片，点了换一张） -->
       <div v-if="wwiiNeedCaptcha" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <input v-model="wwiiCaptcha" placeholder="验证码" class="wwii-input"
-               style="margin-bottom:0;"
+               style="margin-bottom:0;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
                @keyup.enter="wwiiLogin()"/>
         <img v-if="wwiiCaptchaImg" :src="wwiiCaptchaImg" alt="验证码" title="点击换一张"
              style="height:38px;flex-shrink:0;border:1px solid #cbbd96;border-radius:4px;background:#fff;cursor:pointer;"
@@ -2110,9 +2111,15 @@ export default {
       api.post('/ezfy/login', body).then(r => {
         this.wwiiBusy = false
         if (r.code === 0 && r.data && r.data.token) {
-          // 只写二战专属 token 与身份，不碰家园 token
+          // 二战专属 token 与身份（与家园 token 分开存，各自过期）
           this.$store.commit('setEzfyToken', r.data.token)
           this.$store.commit('setEzfyUser', { id: r.data.game_id, nickname: r.data.nickname || '' })
+          // ★ 2026-10-12 家园号+家园密码登二战，也让家园进入已登录态：后端同秘密签发 home_token，
+          //   这里写进家园 jy_token，点【家园】不再要求重新登录。
+          if (r.data.home_token) {
+            const uname = r.data.nickname || ''
+            this.$store.commit('setUser', { token: r.data.home_token, user: { id: r.data.game_id, name: uname, nickname: uname } })
+          }
           // 硬刷新进游戏：本应用是 hash 路由（/#/games/ezfy?cur=home）——
           // 必须带 `#` 跳，否则走 `location.href='/games/ezfy'` 会落到服务器根路径、
           // 被 vue-router 当作 `/`（家园首页）→ 未家园登录就弹去 /#/login。
@@ -7665,6 +7672,7 @@ body.ezfy-ios .ezfy-page textarea {
       (margin-bottom 不加 !important，验证码框用内联 margin-bottom:0 对齐图片) */
 .wwii-login input.wwii-input,
 .wwii-login input.wwii-input[type="password"] {
+  display: block;
   box-sizing: border-box !important;
   width: 100% !important;
   padding: 10px !important;

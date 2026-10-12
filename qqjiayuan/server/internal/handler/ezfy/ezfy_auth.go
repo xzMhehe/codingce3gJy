@@ -130,5 +130,14 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
-	resp.OK(c, gin.H{"token": token, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
+	// ★ 2026-10-12 用户反馈：用家园号+家园密码登二战，点【家园】应已是家园已登录态。
+	//   二战口令经过家园校验（或已建档的自有账号）→ 用同一签名秘密再签发一个**家园** token
+	//   （Issuer=qqjiayuan，与二战 Issuer=qqjiayuan-ezfy 区分）一起返回，前端顺势写进家园 jy_token；
+	//   两个 token 各自独立签名、独立过期，互不影响。
+	homeToken, herr := authutil.GenerateToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
+	if herr != nil {
+		resp.ServerError(c, herr)
+		return
+	}
+	resp.OK(c, gin.H{"token": token, "home_token": homeToken, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
 }
