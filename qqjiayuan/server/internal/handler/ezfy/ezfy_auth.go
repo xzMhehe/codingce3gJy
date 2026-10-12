@@ -10,6 +10,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -139,5 +140,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ServerError(c, herr)
 		return
 	}
+	// ★ 2026-10-12 管理端「玩家信息管理」展示最后登陆时间用 → 登录成功落库
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).Update("last_login_at", time.Now().UnixMilli())
 	resp.OK(c, gin.H{"token": token, "home_token": homeToken, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
 }

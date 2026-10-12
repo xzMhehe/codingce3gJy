@@ -335,11 +335,17 @@ func (h *EzfyAdmin) AdminEzfyBattleAuto(c *gin.Context) {
 	eh := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	eh.cfgs()
 	now := time.Now().UnixMilli()
+	// ★★ 2026-10-12 卡顿优化（用户反馈「自动完成战斗比较卡顿」）：
+	//   原来每回合单独调一次 ezfyBattleTick → 每次都是一次完整快照编解码 + 指令解析 + 一条 DB 写，
+	//   最多 42 个跨 WAN 往返，把请求拖到秒级。
+	//   ezfyBattleTick 本身支持「按 round_start 一次性补算多回合」：把 round_start 拨回足够远，
+	//   一次调用就在**内存**里把所有剩余回合走完并对最终状态写**一次**库（内部有 steps>MaxRounds 兜底）。
 	rounds := 0
 	for i := 0; i < ezfyBattleMaxRounds+2; i++ {
-		b.RoundStart = now - ezfyBattleRoundMs
+		before := b.Round
+		b.RoundStart = now - (ezfyBattleMaxRounds+3)*ezfyBattleRoundMs
 		_, done := eh.ezfyBattleTick(&b, now)
-		rounds++
+		rounds += b.Round - before
 		if done {
 			break
 		}

@@ -68,6 +68,7 @@ import AdminEzfyData from './components/admin/AdminEzfyData.vue'
 import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
 import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
 import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
+import AdminEzfyPeace from './components/admin/AdminEzfyPeace.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
 import AdminEzfyMonitor from './components/admin/AdminEzfyMonitor.vue'
 import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
@@ -265,6 +266,8 @@ export const menu = [
         key: 'g-ezfy', name: '二战征途', icon: 'el-icon-position',
         children: [
           { key: 'ezfyPlayers', name: '玩家信息管理', icon: 'el-icon-user', component: AdminEzfyPlayers, perm: 'module:ezfyPlayers' },
+          // ★ 2026-10-12 免战管理：开始/结束免战（管理端不受冷却限制），独立权限 module:ezfyPeace
+          { key: 'ezfyPeace', name: '免战管理', icon: 'el-icon-lock', component: AdminEzfyPeace, perm: 'module:ezfyPeace' },
           { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },
           { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: AdminEzfyBuildings, perm: 'module:ezfyBuildings' },
           { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: AdminEzfyBuildQueue, perm: 'module:ezfyBuildQueue' },

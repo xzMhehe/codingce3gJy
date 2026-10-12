@@ -44,20 +44,37 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	q.Order("prestige DESC, id ASC").Offset(offset).Limit(size).Find(&rows)
 	type rowOut struct {
 		model.EzfyProfile
-		HomeNick  string `json:"home_nick"`
-		HomeNum   string `json:"home_num"`
-		CityCount int64  `json:"city_count"`
-		CampName  string `json:"camp_name"`
-		RankName  string `json:"rank_name"`
+		HomeNick     string `json:"home_nick"`
+		HomeNum      string `json:"home_num"`
+		CityCount    int64  `json:"city_count"`
+		CampName     string `json:"camp_name"`
+		RankName     string `json:"rank_name"`
+		LastLoginAt  int64  `json:"last_login_at"` // ★ 2026-10-12 最后登陆时间(ms)
 	}
 	out := []rowOut{}
+	// ★ 2026-10-12 批量取最后登陆时间（各账号一条，替代每行一条 SQL）
+	lastLoginOf := map[uint]int64{}
+	{
+		gids := make([]uint, 0, len(rows))
+		for _, p := range rows {
+			gids = append(gids, p.UserID)
+		}
+		if len(gids) > 0 {
+			var accs []model.EzfyAccount
+			h.DB.Select("game_id, last_login_at").Where("game_id IN ?", gids).Find(&accs)
+			for _, a := range accs {
+				lastLoginOf[a.GameID] = a.LastLoginAt
+			}
+		}
+	}
 	for _, p := range rows {
 		var u model.User
 		h.home().First(&u, p.UserID)
 		var cities int64
 		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cities)
 		out = append(out, rowOut{EzfyProfile: p, HomeNick: u.Nickname, HomeNum: u.Username,
-			CityCount: cities, CampName: ezfyCampName(p.Camp), RankName: ezfyRankNameAt(ezfyProfileRank(&p))})
+			CityCount: cities, CampName: ezfyCampName(p.Camp), RankName: ezfyRankNameAt(ezfyProfileRank(&p)),
+			LastLoginAt: lastLoginOf[p.UserID]})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }

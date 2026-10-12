@@ -74,7 +74,7 @@
             <el-button size="mini" type="primary" plain icon="el-icon-right" title="推进一回合"
                        :disabled="row.status !== 5" @click="doTick(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-video-play" title="自动打完"
-                       :disabled="row.status !== 5" @click="doAuto(row)" />
+                       :disabled="row.status !== 5" :loading="autoBattleId === row.battle_id" @click="doAuto(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-magic-stick" title="强制结算 / 清理卡死"
                        :disabled="!row.battle_id" @click="doForce(row)" />
           </template>
@@ -178,6 +178,8 @@ export default {
       word: '', kind: '', targetType: '0',
       // 战斗回合上限（与后端 ezfyBattleMaxRounds 一致）
       maxRounds: 40,
+      // ★ 2026-10-12 自动打完的 loading 行（后端一次内存跑完+一次写库，仍可能耗时，给按钮转圈反馈）
+      autoBattleId: 0,
       detailDlg: false, detail: null, detailLoading: false
     }
   },
@@ -242,13 +244,15 @@ export default {
     doAuto (row) {
       this.$confirm('确认让 AI 把战场 #' + row.battle_id + ' 直接打完？' +
         '结束后会回写订单并结算（发战报、掠夺、部队返航）。', '自动打完', { type: 'warning' }).then(() => {
+        this.autoBattleId = row.battle_id
         api.post('/admin/ezfy-battles/' + row.battle_id + '/auto').then(r => {
+          this.autoBattleId = 0
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已自动打完')
             this.load()
             if (this.detailDlg) this.openDetail(row)
           } else this.$message.error(r.msg)
-        })
+        }).catch(() => { this.autoBattleId = 0 })
       }).catch(() => {})
     },
     doForce (row) {

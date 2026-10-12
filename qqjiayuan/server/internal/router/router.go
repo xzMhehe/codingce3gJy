@@ -1121,6 +1121,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
 				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)
 				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDelete)
+				// ★ 2026-10-12 免战模块：列表 / 开始(全城免战,可带 hours) / 结束(清除全部城池免战)，独立权限 module:ezfyPeace
+				admin.GET("/ezfy-peace", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeace)
+				admin.POST("/ezfy-peace/:id/start", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceStart)
+				admin.DELETE("/ezfy-peace/:id", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceEnd)
 				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantPlayers)
 				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantOptions)
 				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrant)

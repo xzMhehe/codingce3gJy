@@ -1799,6 +1799,8 @@ func seedRBAC(db *gorm.DB) {
 		mod("游戏-二战征途", "风云征兵", "ezfyRecruit"), mod("游戏-二战征途", "风云军官", "ezfyOfficers"), mod("游戏-二战征途", "风云军衔", "ezfyRankCfg"),
 		// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」，可单独分配给角色
 		mod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
+		// ★ 2026-10-12 免战管理（开始/结束免战，绕过个号冷却），独立可分配权限
+		mod("游戏-二战征途", "免战管理", "ezfyPeace"),
 		mod("游戏-二战征途", "风云资源", "ezfyResources"), mod("游戏-二战征途", "风云科技", "ezfyTechs"),
 		// 资源交易行维护（系统挂单定价黄金/钻石）
 		mod("游戏-二战征途", "风云交易行", "ezfyExchange"),
@@ -2883,11 +2885,16 @@ func EnsureEzfyVisitTable(db *gorm.DB) {
 //	true」或「独立库 skip」等跳过全量 seed 的启动路径下永远建不出来，
 //	二战登录会直接报表不存在。与 EnsureEzfyVisitTable 同理，HasTable 幂等。
 func EnsureEzfyAccountTable(db *gorm.DB) {
-	if db.Migrator().HasTable(&model.EzfyAccount{}) {
+	if !db.Migrator().HasTable(&model.EzfyAccount{}) {
+		if err := db.AutoMigrate(&model.EzfyAccount{}); err != nil {
+			log.Printf("[seed] 补建 ezfy_account 表失败: %v", err)
+		}
 		return
 	}
-	if err := db.AutoMigrate(&model.EzfyAccount{}); err != nil {
-		log.Printf("[seed] 补建 ezfy_account 表失败: %v", err)
+	// ★ 2026-10-12 管理端「玩家信息管理」加的最后登陆列：老库已有 ezfy_account 时 HasTable 在上面
+	//   return 了，AutoMigrate 也不会跑 → 只能在这里幂等补列（否则共享库重启写 last_login_at 报 Unknown column）。
+	if !db.Migrator().HasColumn("ezfy_account", "last_login_at") {
+		db.Exec("ALTER TABLE ezfy_account ADD COLUMN last_login_at bigint DEFAULT 0 COMMENT '最后登陆时间戳(ms,0=从未)'")
 	}
 }
 

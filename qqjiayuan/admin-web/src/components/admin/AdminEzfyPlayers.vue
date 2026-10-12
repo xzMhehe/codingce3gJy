@@ -35,6 +35,10 @@
         <el-table-column label="更新时间" width="170" align="center">
           <template slot-scope="{row}">{{ fmtTime(row.updated_at) }}</template>
         </el-table-column>
+        <!-- ★ 2026-10-12 玩家信息管理加「最后登陆时间」列（ezfy_account.last_login_at, ms） -->
+        <el-table-column label="最后登陆" width="170" align="center">
+          <template slot-scope="{row}">{{ row.last_login_at ? fmtTime(row.last_login_at) : '—' }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="175" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-view" title="详情" @click="openDetail(row)" />

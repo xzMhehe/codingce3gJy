@@ -696,6 +696,10 @@ type EzfyAccount struct {
 	Password  string    `gorm:"type:varchar(100);comment:二战登录密码hash(bcrypt)" json:"-"`
 	Nickname  string    `gorm:"type:varchar(100);comment:玩家昵称" json:"nickname"`
 	MSync     uint      `gorm:"default:1;comment:是否已从家园同步(1=已同步)" json:"msync"`
+
+	// ★ 2026-10-12 管理端「玩家信息管理」要展示最后登陆时间 → 每次二战登录成功落库（ms, 0 = 从未记过）
+	LastLoginAt int64 `gorm:"default:0;comment:最后登陆时间戳(ms,0=从未)" json:"last_login_at"`
+
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
