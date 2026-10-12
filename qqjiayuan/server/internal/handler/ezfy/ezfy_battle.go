@@ -1025,6 +1025,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			//   追加一条行动日志说明「够不到目标、无法攻击」，让玩家明白不是 bug。
 			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 距目标%s%s%d，超出射程%d，无法攻击",
 				side, stName(unit), enemySide, stName(target), dist, rangeD))
+		} else if !moved && dir > 0 {
+			// ★ 2026-10-12 用户反馈「点前进后部队看起来不动了，不知道为啥」：
+			//   前进指令下没移动 = 已经推到「与最近活敌相距 1」（贴身极限，再走就穿过去了）
+			//   → 明确写一行，玩家才知道是「已到贴脸位置、原地开火」而不是指令失灵。
+			st.Actions = append(st.Actions, fmt.Sprintf("%s%s 已与%s%s贴身，原地攻击",
+				side, stName(unit), enemySide, stName(target)))
 		}
 		// ★ 2026-10-04 优先目标被挡在射程外、但最近敌人在射程内 → 改打最近的（避免干站）。
 		//   配合上方「前进不越过最近敌人」的修复：停在最近敌人射程边缘后能立刻开火。
