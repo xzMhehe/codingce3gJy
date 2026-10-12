@@ -27,7 +27,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	banM := middleware.NewIPBan(db)
 	r.Use(banM.Handler())
 
-	authH := &handler.AuthHandler{DB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
+	// ★ 2026-10-12 EzfyDB：家园侧改/重置密码时同步二战账号密码（临时措施，见 syncEzfyPassword）
+	authH := &handler.AuthHandler{DB: db, EzfyDB: ezfyDB, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
 	userH := &handler.UserHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
 	boardH := &handler.BoardHandler{DB: db}
 	threadH := &handler.ThreadHandler{DB: db}
@@ -40,7 +41,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	msgH := &handler.MessageHandler{DB: db}
 	chatH := &handler.ChatHandler{DB: db}
 	notifyH := &handler.NotifyHandler{DB: db}
-	adminH := &handler.AdminHandler{DB: db, Ban: banM}
+	// ★ 2026-10-12 EzfyDB：管理端「重置密码」同样同步二战账号密码（临时措施，见 syncEzfyPassword）
+	adminH := &handler.AdminHandler{DB: db, Ban: banM, EzfyDB: ezfyDB}
 	badgeH := &handler.BadgeHandler{DB: db}
 	gameH := &handler.GameHandler{DB: db}
 	resH := &handler.ResourceHandler{DB: db, StaticDir: cfg.Server.WebDir + "/static"}
@@ -84,7 +86,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	// ★ 2026-10-12 二战专属认证：只认二战签发的 token（与家园彻底独立）。
-	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret)
+	// ★ 2026-10-12 传 ezfyDB：二战中间件要读 ezfy_account.kick_at 支持管理端「踢下线」
+	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret, ezfyDB)
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 	permAny := middleware.RequireAnyPerm
@@ -1124,6 +1127,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
 				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)
 				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDelete)
+				// ★ 2026-10-12 踢下线：作废该玩家当前的二战登录态（token.iat <= kick_at → 401）
+				admin.POST("/ezfy-players/:id/kick", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerKick)
 				// ★ 2026-10-12 免战模块：列表 / 开始(全城免战,可带 hours) / 结束(清除全部城池免战)，独立权限 module:ezfyPeace
 				admin.GET("/ezfy-peace", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeace)
 				admin.POST("/ezfy-peace/:id/start", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceStart)

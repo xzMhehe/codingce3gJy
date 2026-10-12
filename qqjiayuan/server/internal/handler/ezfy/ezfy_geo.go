@@ -772,6 +772,13 @@ const (
 	ezfyTreasureMaxDef = 5000
 	// ★ 打野地掉落宝物的冷却小时数（默认 2）。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyWildTreasureCooldownDef = 2
+	// ★ 2026-10-12 迁城冷却小时数（默认 24）：迁城成功后**该城**要等这么久才能再迁。
+	//   0 = 关闭迁城冷却（合法值，不走 ezfyLimitOr）。
+	ezfyMoveCoolDef = 24
+	// ★ 2026-10-12 免战保护令的使用冷却小时数。
+	//   2026-10-02 上线时是 24 小时，2026-10-12 用户规则：「免战道具冷却时间改成 4 小时」。
+	//   冷却按**玩家**算（存 ezfy_profile.peace_cool_until），不是按城市。
+	ezfyPeaceCoolH = 4
 	// ★ 单城兵力上限：默认 50 亿。2026-09-23 线上「负数兵力」事故后新增 ——
 	//   训练 / 伤兵恢复 / addTroop 三处共用，防止兵力累加溢出成负数。
 	//   2026-09-23 「10 亿太少，上调到 50 亿」。
@@ -1055,6 +1062,24 @@ func ezfyWildTreasureCooldownH() int {
 		return ezfyWildTreasureCooldownDef
 	}
 	return ezfyCfg.limit.WildTreasureCooldownH
+}
+
+// ezfyMoveCoolH 迁城冷却小时数（默认 24，管理端「二战系统配置 → 迁城冷却」可配）。
+//
+// ★ 2026-10-12 用户规则：「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时」→
+// 冷却按**城市**算（存 ezfy_city.move_cool_until），不是按玩家。
+// ★ 0 是**合法值**（= 关闭迁城冷却），所以不能用 ezfyLimitOr（它把 0 当「未配置」回落默认）；
+// 配置缓存没加载过时才回落默认，避免把「还没加载」误判成「关闭」。
+func ezfyMoveCoolH() int {
+	if !ezfyCfg.ready() {
+		return ezfyMoveCoolDef
+	}
+	return ezfyCfg.limit.MoveCoolH
+}
+
+// ezfyMoveCoolMs 迁城冷却毫秒数（0 = 关闭冷却）。
+func ezfyMoveCoolMs() int64 {
+	return int64(ezfyMoveCoolH()) * 3600000
 }
 
 // ============ 系统配置：玩法开关 + 野地兵力倍数 ============
@@ -1790,6 +1815,8 @@ func (c *ezfyConfigCache) loadLocked(db *gorm.DB, loadTiles bool) {
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
 		// ★ 2026-10-08 新玩家落地洲缺行兜底（默认欧洲；0/越界行读取时回落见 ezfyDefaultContinent）
 		DefaultContinent: ezfyDefaultMoveContinent,
+		// ★ 2026-10-12 迁城冷却小时数缺行兜底（默认 24；0 合法 = 关闭，见 ezfyMoveCoolH）
+		MoveCoolH: ezfyMoveCoolDef,
 		// ★ 2026-09-23：兵力上限 / 伤兵存活天数的缺行兜底（0 无意义 → 默认 50 亿 / 3 天）
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02：侦察机每架侦查成功率%（0 无意义 → 回落默认 20）

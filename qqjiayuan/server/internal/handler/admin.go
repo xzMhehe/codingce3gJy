@@ -19,6 +19,9 @@ import (
 type AdminHandler struct {
 	DB  *gorm.DB
 	Ban *middleware.IPBan
+	// ★ 2026-10-12 二战账号库（单库模式下 == DB）：管理端「重置密码」也要同步二战密码，
+	//   见 handler/auth.go 的 syncEzfyPassword（临时措施，二战彻底拆开后删掉）。
+	EzfyDB *gorm.DB
 }
 
 // ---- 概览 ----
@@ -843,6 +846,7 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	h.DB.Model(&model.User{}).Where("id = ?", id).Update("password", string(hash))
+	syncEzfyPassword(h.EzfyDB, uint(id), string(hash)) // ★ 临时：同步二战密码（见 syncEzfyPassword）
 	resp.OK(c, "密码已重置")
 }
 

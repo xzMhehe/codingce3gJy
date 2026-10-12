@@ -138,7 +138,7 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 //	校验通过后同样 set CtxUID/CtxUName —— 值就是「家园号(=二战游戏ID)」，
 //	二战 handler 按 middleware.GetUID(c) 沿用既有查询，**零迁移**。
 //	不写家园库（无活跃时间/勋章等家园逻辑），登录态彻底独立。
-func EzfyJWTAuth(secret string) gin.HandlerFunc {
+func EzfyJWTAuth(secret string, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
@@ -153,10 +153,58 @@ func EzfyJWTAuth(secret string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		// ★ 2026-10-12 管理端「踢下线」：token 签发时间早于/等于「被踢时间」→ 该 token 已作废。
+		if db != nil && claims.IssuedAt != nil {
+			if kickAt := ezfyKickAtOf(db, claims.UserID); kickAt > 0 && claims.IssuedAt.UnixMilli() <= kickAt {
+				resp.Unauthorized(c, "账号已被强制下线，请重新登录")
+				c.Abort()
+				return
+			}
+		}
 		c.Set(CtxUID, claims.UserID)
 		c.Set(CtxUName, claims.Nickname)
 		c.Next()
 	}
+}
+
+// ============ 二战「踢下线」支持（★ 2026-10-12）============
+//
+// 管理端「玩家信息管理 → 踢下线」。二战 token 是**无状态 JWT**，服务端没有会话可删，
+// 所以用 `ezfy_account.kick_at`（被踢时间戳 ms）作废旧 token：
+//
+//	token 的 iat <= kick_at  →  该 token 签发于「被踢」之前 → 拒绝（401，前端 axios 拦截器
+//	看到二战接口 401 会自动 ezfyLogout，玩家回到二战登录界面）。
+//	玩家重新登录会签发新 token（iat > kick_at）→ 自然恢复，不需要额外的「解封」操作。
+//
+// 性能：本中间件跑在**每个二战请求**上，1核1G + RDS 跨 WAN 不能每次都查库 →
+// kick_at 走进程内缓存（TTL 60s）；踢出接口写库后调 SetEzfyKickAt **立即刷新本机缓存**，
+// 所以单机部署下踢出即时生效（多机部署时其他节点最迟 60s 生效）。
+var ezfyKickCache sync.Map // uid(uint) -> ezfyKickEntry
+
+type ezfyKickEntry struct {
+	kickAt int64
+	at     time.Time
+}
+
+const ezfyKickCacheTTL = 60 * time.Second
+
+// ezfyKickAtOf 取玩家当前的「被踢下线」时间戳（0 = 从未被踢），带进程内缓存。
+func ezfyKickAtOf(db *gorm.DB, uid uint) int64 {
+	if v, ok := ezfyKickCache.Load(uid); ok {
+		if e, ok2 := v.(ezfyKickEntry); ok2 && time.Since(e.at) < ezfyKickCacheTTL {
+			return e.kickAt
+		}
+	}
+	var at int64
+	// 用 Raw 而不是 model.EzfyAccount：middleware 包不引 model，免得平添依赖（表不存在时 at 保持 0 = 未踢）。
+	db.Raw("SELECT kick_at FROM ezfy_account WHERE game_id = ?", uid).Scan(&at)
+	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: at, at: time.Now()})
+	return at
+}
+
+// SetEzfyKickAt 踢下线后立即刷新缓存（管理端踢出接口调用），保证本机即时生效。
+func SetEzfyKickAt(uid uint, kickAt int64) {
+	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: kickAt, at: time.Now()})
 }
 
 func GetUID(c *gin.Context) uint {

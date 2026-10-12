@@ -26,6 +26,32 @@ type AuthHandler struct {
 	DB     *gorm.DB
 	Secret string
 	ExpH   int
+	// ★ 2026-10-12 二战账号库（`ezfy_account` 在二战库 qq_ezzt；单库模式下 == DB）。
+	//   只用于「家园改/重置密码 → 同步二战密码」这条**临时**通道，见 syncEzfyPassword。
+	EzfyDB *gorm.DB
+}
+
+// syncEzfyPassword ★ 2026-10-12 临时措施（用户：「二战征途还没脱离家园，家园里面重置密码的时候
+// 给征途也同步下暂时」）：家园侧改密码/重置密码成功后，把新的 bcrypt hash 同步到二战账号表。
+//
+// 背景：二战现在是独立登录（`ezfy_account` 自己存一份密码 hash，首登时从家园拷过来），
+// 但二战**还没真正脱离家园** —— 玩家在家园重置密码后，二战那边还是旧密码，
+// 会出现「用家园新密码登不进二战、只能用旧密码」的错位。所以过渡期在家园侧同步一次。
+//
+// 规则：
+//   - 只更新**已存在**的二战账号行（`game_id = 家园号`）；没玩过二战的玩家不会因此被建档；
+//   - 二战库没配（单库模式下就是家园库）或表不存在 → 静默跳过，绝不影响家园改密码本身；
+//   - 玩家在二战里自己改过密码的，家园再重置会把它覆盖回家园密码 —— 过渡期可接受。
+//
+// ⚠️ 等二战彻底拆开独立部署后，**应删掉本函数与全部调用点**（届时二战完全自助管密码）。
+func syncEzfyPassword(ezfyDB *gorm.DB, uid uint, hash string) {
+	if ezfyDB == nil || uid == 0 || hash == "" {
+		return
+	}
+	if !ezfyDB.Migrator().HasTable("ezfy_account") {
+		return
+	}
+	ezfyDB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).Update("password", hash)
 }
 
 type regReq struct {
@@ -333,6 +359,7 @@ func (h *AuthHandler) RepassByQQ(c *gin.Context) {
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.QQ), bcrypt.DefaultCost)
 	h.DB.Model(&user).Update("password", string(hash))
+	syncEzfyPassword(h.EzfyDB, user.ID, string(hash)) // ★ 临时：同步二战密码（见 syncEzfyPassword）
 	userLog(h.DB, user.ID, "重置密码", "通过QQ找回", c.ClientIP())
 	resp.OK(c, gin.H{"username": user.Username, "password": req.QQ})
 }
@@ -367,6 +394,7 @@ func (h *AuthHandler) RepassByMail(c *gin.Context) {
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.NewPwd), bcrypt.DefaultCost)
 	h.DB.Model(&user).Update("password", string(hash))
+	syncEzfyPassword(h.EzfyDB, user.ID, string(hash)) // ★ 临时：同步二战密码（见 syncEzfyPassword）
 	userLog(h.DB, user.ID, "重置密码", "通过邮箱找回", c.ClientIP())
 	resp.OK(c, gin.H{"username": user.Username})
 }
@@ -402,6 +430,7 @@ func (h *AuthHandler) RepassByProtection(c *gin.Context) {
 	pass := randomPassword(8)
 	hash, _ := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
 	h.DB.Model(&user).Update("password", string(hash))
+	syncEzfyPassword(h.EzfyDB, user.ID, string(hash)) // ★ 临时：同步二战密码（见 syncEzfyPassword）
 	userLog(h.DB, user.ID, "重置密码", "通过密保找回", c.ClientIP())
 	resp.OK(c, gin.H{"username": user.Username, "password": pass})
 }
@@ -517,6 +546,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte(req.New), bcrypt.DefaultCost)
 	h.DB.Model(&user).Update("password", string(hash))
+	syncEzfyPassword(h.EzfyDB, user.ID, string(hash)) // ★ 临时：同步二战密码（见 syncEzfyPassword）
 	resp.OK(c, nil)
 }
 

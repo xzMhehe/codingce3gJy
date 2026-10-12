@@ -165,6 +165,11 @@
               <template slot="label">打野地掉宝冷却(小时)<el-tooltip placement="top" :content="tips.wild_treasure_cooldown_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.wild_treasure_cooldown_h" :min="0" :max="720" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-12 迁城冷却（小时）：默认 24，**0 合法 = 关闭迁城冷却** → :min="0" -->
+            <el-form-item>
+              <template slot="label">迁城冷却(小时)<el-tooltip placement="top" :content="tips.move_cool_h"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.move_cool_h" :min="0" :max="720" controls-position="right" style="width:180px" />
+            </el-form-item>
             <!-- ★ 2026-10-09 原「战斗掉落·中级/高级/特殊宝物概率(%) + 活动野地掉宝概率(%)」
                  四个配置已删除：掉落**全部走手动配置** ——
                  野地/寇城 →「地图管理 → 野地类型 → 掉落宝物/掉落道具」，
@@ -353,6 +358,8 @@ export default {
         gather_sea_mult: 1.5,
         // ★ 2026-10-11 打野地掉宝冷却小时数（默认 2；**0 合法 = 关闭冷却**）
         wild_treasure_cooldown_h: 2,
+        // ★ 2026-10-12 迁城冷却小时数（默认 24；**0 合法 = 关闭迁城冷却**）
+        move_cool_h: 24,
         // ★ 2026-09-28 军校刷新周期（1=按天 2=按小时，默认按小时）
         recruit_cycle_mode: 2,
         // ★ 2026-10-08 新玩家落地洲（默认欧洲）
@@ -434,6 +441,10 @@ export default {
         // ★ 2026-10-11 打野地掉宝冷却
         wild_treasure_cooldown_h: '打野地/寇城胜利掉落宝物的玩家级冷却（小时，默认 2）：同一玩家在冷却期内再次打地，本场不掉宝物（商城道具掉落不受影响）。' +
           '用来压制「即使概率配得很低、打得多了照样出宝」的情况。★ 填 0 = 关闭冷却（合法值）。掉到宝物后才开始计冷却，没掉到不占冷却。',
+        // ★ 2026-10-12 迁城冷却
+        move_cool_h: '迁城冷却（小时，默认 24）：**按城市算** —— 用迁城计划/高级迁城计划/沿海迁城计划迁过的**这座城**，' +
+          '要等冷却结束才能再次迁城；同一个账号的其他城市不受影响。★ 填 0 = 关闭迁城冷却（合法值）。' +
+          '冷却中玩家点迁城会提示「该城市迁城冷却中, 剩余N小时」。',
         // ★ 2026-10-08 新玩家落地洲
         default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
@@ -521,6 +532,9 @@ export default {
             // ★ 2026-10-11 打野地掉宝冷却：**0 合法 = 关闭冷却**，不能用 pos()（会把 0 改回 2）
             wild_treasure_cooldown_h: (r.data.wild_treasure_cooldown_h === undefined || r.data.wild_treasure_cooldown_h === null)
               ? 2 : Number(r.data.wild_treasure_cooldown_h),
+            // ★ 2026-10-12 迁城冷却：**0 合法 = 关闭迁城冷却**，同样不能用 pos()（会把 0 改回 24）
+            move_cool_h: (r.data.move_cool_h === undefined || r.data.move_cool_h === null)
+              ? 24 : Number(r.data.move_cool_h),
             // ★ 2026-09-28 军校刷新周期：1=按天 2=按小时，非法回落按小时
             recruit_cycle_mode: (r.data.recruit_cycle_mode === 1) ? 1 : 2,
             // ★ 2026-10-08 新玩家落地洲：1~7，非法回落欧洲

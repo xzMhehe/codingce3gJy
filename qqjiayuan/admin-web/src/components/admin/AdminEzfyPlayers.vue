@@ -39,11 +39,13 @@
         <el-table-column label="最后登陆" width="170" align="center">
           <template slot-scope="{row}">{{ row.last_login_at ? fmtTime(row.last_login_at) : '—' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="175" align="center" fixed="right">
+        <!-- ★ 2026-10-12 加「踢下线」按钮 → 操作列宽 175 → 212（5 个图标按钮 × 30 + 4 间距 × 10 + padding 22） -->
+        <el-table-column label="操作" width="212" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="info" plain icon="el-icon-view" title="详情" @click="openDetail(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发放" @click="openGrant(row)" />
+            <el-button size="mini" type="warning" plain icon="el-icon-switch-button" title="踢下线" @click="kick(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删号" @click="del(row)" />
           </template>
         </el-table-column>
@@ -436,6 +438,17 @@ export default {
             doDiamond()
           } else this.$message.error(r.msg)
         }).catch(() => { this.saving = false })
+      }).catch(() => {})
+    },
+    // ★ 2026-10-12 踢下线：作废该玩家当前的二战登录态（后端写 ezfy_account.kick_at，
+    //   中间件按「token.iat <= kick_at」拒绝旧 token）。玩家重新登录即可恢复，无需解封。
+    kick (row) {
+      const name = row.nickname || row.home_nick || ('玩家' + row.user_id)
+      this.$confirm('确认把「' + name + '」踢下线？\n该玩家当前的二战登录会立即失效，需要重新登录（重新登录即可恢复，不是封号）。', '踢下线', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-players/' + row.user_id + '/kick').then(r => {
+          if (r.code === 0) this.$message.success((r.data && r.data.msg) || '已踢下线')
+          else this.$message.error(r.msg)
+        })
       }).catch(() => {})
     },
     del (row) {

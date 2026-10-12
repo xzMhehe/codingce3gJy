@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
 )
@@ -44,12 +45,12 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	q.Order("prestige DESC, id ASC").Offset(offset).Limit(size).Find(&rows)
 	type rowOut struct {
 		model.EzfyProfile
-		HomeNick     string `json:"home_nick"`
-		HomeNum      string `json:"home_num"`
-		CityCount    int64  `json:"city_count"`
-		CampName     string `json:"camp_name"`
-		RankName     string `json:"rank_name"`
-		LastLoginAt  int64  `json:"last_login_at"` // ★ 2026-10-12 最后登陆时间(ms)
+		HomeNick    string `json:"home_nick"`
+		HomeNum     string `json:"home_num"`
+		CityCount   int64  `json:"city_count"`
+		CampName    string `json:"camp_name"`
+		RankName    string `json:"rank_name"`
+		LastLoginAt int64  `json:"last_login_at"` // ★ 2026-10-12 最后登陆时间(ms)
 	}
 	out := []rowOut{}
 	// ★ 2026-10-12 批量取最后登陆时间（各账号一条，替代每行一条 SQL）
@@ -319,6 +320,37 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		"cities": citiesViews, "bag": bagViews, "corps": corpsViews, "orders": orders,
 		"officers":  officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
+}
+
+// AdminEzfyPlayerKick POST /admin/ezfy-players/:id/kick —— 踢下线（强制该玩家重新登录二战）
+//
+// ★ 2026-10-12 用户要求：「二战管理系统 · 玩家信息管理 · 操作加个踢下线功能」。
+//
+// 二战 token 是**无状态 JWT**，服务端没有会话可删，所以用「被踢时间戳」作废旧 token：
+// 写 `ezfy_account.kick_at = now`，中间件按 `token.iat <= kick_at → 该 token 已作废` 拒绝
+// （见 middleware.EzfyJWTAuth）。玩家重新登录会签发新 token（iat 晚于 kick_at）→ 自动恢复，
+// 不需要额外的「解封」操作。
+//
+// id = 家园号(game_id)。从未登录过二战的玩家没有 ezfy_account 行 → 直接提示，不算失败。
+func (h *EzfyAdmin) AdminEzfyPlayerKick(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		resp.ParamError(c, "玩家不正确")
+		return
+	}
+	now := time.Now().UnixMilli()
+	res := h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", id).Update("kick_at", now)
+	if res.Error != nil {
+		resp.ServerError(c, res.Error)
+		return
+	}
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "该玩家还没有二战登录账号（从未登录过二战）")
+		return
+	}
+	// 立即刷新进程内缓存 → 本机即时生效（不必等 60s TTL）
+	middleware.SetEzfyKickAt(uint(id), now)
+	resp.OK(c, gin.H{"msg": "已踢下线，该玩家需要重新登录二战", "kick_at": now})
 }
 
 // AdminEzfyPlayerUpdate 修改玩家（昵称/声望/阵营）

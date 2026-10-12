@@ -208,6 +208,11 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
+		// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
 		// ★ 背包上限默认值当天由 1000 改 5000：把「仍停在旧默认 1000」的行一次性提升（见函数注释）。
 		ezfyBumpBagItemMaxDefault(db)
 		// ★ 2026-09-26 「花费 10万粮食 召集 10万人口也要能配置」：默认各 10 万
@@ -2875,7 +2880,8 @@ func EnsureEzfyRansomTable(db *gorm.DB) {
 // EnsureEzfyVisitTable 幂等补建 ezfy_visit_log 表（多机共享库 skip 分支也必须能建出来）。
 //
 // ★ 2026-10-12 访问记录：新表只靠 AutoMigrate 建，而 skip 分支会跳过它 → 表永远建不出来，
-//   访问记录写不进去、信息页拿不到 visit_count。与 EnsureEzfyRansomTable 同理，HasTable 幂等。
+//
+//	访问记录写不进去、信息页拿不到 visit_count。与 EnsureEzfyRansomTable 同理，HasTable 幂等。
 func EnsureEzfyVisitTable(db *gorm.DB) {
 	if db.Migrator().HasTable(&model.EzfyVisitLog{}) {
 		return
@@ -2902,6 +2908,10 @@ func EnsureEzfyAccountTable(db *gorm.DB) {
 	//   return 了，AutoMigrate 也不会跑 → 只能在这里幂等补列（否则共享库重启写 last_login_at 报 Unknown column）。
 	if !db.Migrator().HasColumn("ezfy_account", "last_login_at") {
 		db.Exec("ALTER TABLE ezfy_account ADD COLUMN last_login_at bigint DEFAULT 0 COMMENT '最后登陆时间戳(ms,0=从未)'")
+	}
+	// ★ 2026-10-12 管理端「踢下线」：同样在这里幂等补列（理由同上，老库走不到 AutoMigrate）。
+	if !db.Migrator().HasColumn("ezfy_account", "kick_at") {
+		db.Exec("ALTER TABLE ezfy_account ADD COLUMN kick_at bigint DEFAULT 0 COMMENT '强制下线时间戳(ms,0=从未)'")
 	}
 }
 
@@ -2990,6 +3000,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
+	// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

@@ -331,6 +331,12 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildTreasureCooldownH。
 	WildTreasureCooldownH int `gorm:"default:2;comment:打野地掉宝冷却小时(0=关闭)" json:"wild_treasure_cooldown_h"`
 
+	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时，二战系统配置可配置迁城冷却」：
+	//   迁城成功后该城要等多少小时才能再迁（默认 24），冷却记在 `ezfy_city.move_cool_until`。
+	//   ★ 0 是**合法值**（= 关闭迁城冷却）→ 读取端不能用 ezfyLimitOr（它把 0 当「未配置」回落默认），
+	//   见 ezfyMoveCoolH()。
+	MoveCoolH int `gorm:"default:24;comment:迁城冷却小时(0=关闭)" json:"move_cool_h"`
+
 	// ★ 2026-09-28 用户规则：「安抚 消费黄金 5w 降低民怨 2 增加民心 1 15分钟可安抚一次」
 	//   四个值都可由管理端调整；<= 0 时回落默认（5 万 / 2 / 1 / 15 分钟）。
 	PlacateGold        int64 `gorm:"default:50000;comment:安抚花费黄金" json:"placate_gold"`
@@ -688,17 +694,24 @@ func (EzfyVisitLog) TableName() string { return "ezfy_visit_log" }
 // EzfyAccount 二战征途独立登录账号
 //
 // ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。
-//   GameID = 家园号(users.id)：二战全部业务表本就按这个 uid 存储 → 零迁移。
-//   首次登录用「家园号 + 家园密码」校验，通过后把家园密码 hash 拷进本表，
-//   此后二战自助管密码、不再依赖家园账号（为二战/家园拆开部署做准备）。
+//
+//	GameID = 家园号(users.id)：二战全部业务表本就按这个 uid 存储 → 零迁移。
+//	首次登录用「家园号 + 家园密码」校验，通过后把家园密码 hash 拷进本表，
+//	此后二战自助管密码、不再依赖家园账号（为二战/家园拆开部署做准备）。
 type EzfyAccount struct {
-	GameID    uint      `gorm:"primaryKey;comment:游戏ID(=家园号)" json:"game_id"`
-	Password  string    `gorm:"type:varchar(100);comment:二战登录密码hash(bcrypt)" json:"-"`
-	Nickname  string    `gorm:"type:varchar(100);comment:玩家昵称" json:"nickname"`
-	MSync     uint      `gorm:"default:1;comment:是否已从家园同步(1=已同步)" json:"msync"`
+	GameID   uint   `gorm:"primaryKey;comment:游戏ID(=家园号)" json:"game_id"`
+	Password string `gorm:"type:varchar(100);comment:二战登录密码hash(bcrypt)" json:"-"`
+	Nickname string `gorm:"type:varchar(100);comment:玩家昵称" json:"nickname"`
+	MSync    uint   `gorm:"default:1;comment:是否已从家园同步(1=已同步)" json:"msync"`
 
 	// ★ 2026-10-12 管理端「玩家信息管理」要展示最后登陆时间 → 每次二战登录成功落库（ms, 0 = 从未记过）
 	LastLoginAt int64 `gorm:"default:0;comment:最后登陆时间戳(ms,0=从未)" json:"last_login_at"`
+
+	// ★ 2026-10-12 管理端「踢下线」：被强制下线的时间戳(ms，0 = 从未被踢)。
+	//   二战 token 是无状态的（JWT），作废判据 = 「token 的 iat <= kick_at → 这个 token 已失效」，
+	//   见 middleware.EzfyJWTAuth（带 60s 进程内缓存，踢出接口会立即刷新缓存）。
+	//   玩家重新登录会签发新 token（iat > kick_at）→ 自然恢复。
+	KickAt int64 `gorm:"default:0;comment:强制下线时间戳(ms,0=从未)" json:"kick_at"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
@@ -733,6 +746,10 @@ type EzfyCity struct {
 	OilCap      int64 `gorm:"comment:石油上限" json:"oil_cap"`
 	RareCap     int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
 	LastTime    int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
+	// ★ 2026-10-12 用户规则「迁城道具加个冷却，针对**迁过城的城市**冷却 24 小时」：
+	//   冷却记在**城市**上 —— 本城迁城时间 + 配置的冷却时长的截止时间戳(ms)，0 = 无冷却。
+	//   别的城不受影响；时长由管理端「二战系统配置 → 迁城冷却(小时)」维护（0 = 关闭）。
+	MoveCoolUntil int64 `gorm:"default:0;comment:迁城冷却截止时间戳(ms,0=无冷却)" json:"move_cool_until"`
 
 	// 仓库保护配比(4 项资源的保护额度占比, 合计 ≤ 100; 默认各 25)
 	// 每项保护额度 = 仓库等级对应保护总量 × 该项占比 / 100

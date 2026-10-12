@@ -3316,17 +3316,22 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
-		// ★ 2026-10-02 免战保护令(24小时) 也要有 24 小时冷却
+		// ★ 2026-10-02 免战保护令(24小时) 也要有使用冷却（按**玩家**算，存 peace_cool_until）。
+		// ★ 2026-10-12 用户规则：「免战道具冷却时间改成 4 小时」（原 24 小时，见 ezfyPeaceCoolH）。
 		now := time.Now().UnixMilli()
 		var prof model.EzfyProfile
-		if err := h.DB.Select("peace_cool_until").First(&prof, uid).Error; err == nil && prof.PeaceCoolUntil > now {
+		// ★★ 2026-10-12 修复「免战冷却形同虚设」：这里传的是**家园号(user_id)**，不是
+		//   ezfy_profile 的自增主键 id（EzfyProfile.ID 是 auto_increment，UserID 才是家园号）。
+		//   原来读用 First(&prof, uid)（= WHERE id = uid）、写用 Where("id = ?", uid)，
+		//   两处都查错了行 → 冷却既写不进去也读不出来（Update 0 行受影响且不报错）。
+		if err := h.DB.Select("peace_cool_until").Where("user_id = ?", uid).First(&prof).Error; err == nil && prof.PeaceCoolUntil > now {
 			remainH := (prof.PeaceCoolUntil - now + 3599999) / 3600000
 			return fmt.Sprintf("免战保护令冷却中, 剩余%d小时", remainH)
 		}
 		h.addCityEffect(city.ID, 2, 0, param)
 		h.consumeItem(uid, cfgId, "使用道具")
-		h.DB.Model(&model.EzfyProfile{}).Where("id = ?", uid).Update("peace_cool_until", now+24*3600000)
-		return fmt.Sprintf("使用成功: 城市免战保护%d小时(冷却24小时)", param)
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("peace_cool_until", now+int64(ezfyPeaceCoolH)*3600000)
+		return fmt.Sprintf("使用成功: 城市免战保护%d小时(冷却%d小时)", param, ezfyPeaceCoolH)
 	case 9: // 招生简章: 立即刷新军校候选(不占每日次数)
 		if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
 			return "需要先建造军校"

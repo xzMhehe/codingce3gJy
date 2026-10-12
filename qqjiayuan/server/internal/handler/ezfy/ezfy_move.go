@@ -192,6 +192,18 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	}
 	h.refreshCity(uid, city)
 
+	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对**迁过城的城市**冷却 24 小时」：
+	//   冷却记在**城市**上（city.move_cool_until）—— 迁过城的这座城要等冷却结束才能再迁，
+	//   同一个号的其他城不受影响。时长 = 管理端「二战系统配置 → 迁城冷却(小时)」（0 = 关闭）。
+	//   放在道具校验之前：冷却中就明确告知，不必先看背包。
+	if coolMs := ezfyMoveCoolMs(); coolMs > 0 {
+		if nowMs := time.Now().UnixMilli(); city.MoveCoolUntil > nowMs {
+			remainH := (city.MoveCoolUntil - nowMs + 3599999) / 3600000
+			resp.ParamError(c, fmt.Sprintf("该城市迁城冷却中, 剩余%d小时", remainH))
+			return
+		}
+	}
+
 	// 先校验道具，避免「扣了资源才发现道具不够」
 	itemID := kind.ItemID()
 	if have := h.itemCount(uid, itemID); have < 1 {
@@ -249,13 +261,21 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	//   玩家以为迁好了，库里其实还是旧坐标，之后任意一次刷新/重启都显示旧坐标。
 	//   现在：① 先落库坐标（带错误检查+日志），成功才扣道具；
 	//         ② 写失败直接报错，不扣道具（避免道具被吃）。
+	// ★ 2026-10-12 迁城成功一并落「本城迁城冷却截止时间」（冷却关闭时不写，保持 0）。
+	upd := map[string]interface{}{"x": tx, "y": ty}
+	if coolMs := ezfyMoveCoolMs(); coolMs > 0 {
+		upd["move_cool_until"] = time.Now().UnixMilli() + coolMs
+	}
 	if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
-		Updates(map[string]interface{}{"x": tx, "y": ty}).Error; err != nil {
+		Updates(upd).Error; err != nil {
 		log.Printf("迁城落库失败 uid=%d city=%d (%d,%d)→(%d,%d): %v", uid, city.ID, oldX, oldY, tx, ty, err)
 		resp.ParamError(c, "迁城失败：坐标写入出错，请重试")
 		return
 	}
 	city.X, city.Y = tx, ty
+	if v, ok := upd["move_cool_until"]; ok {
+		city.MoveCoolUntil = v.(int64)
+	}
 	h.saveCityRes(city)
 	// ★ 消耗道具（不是扣黄金）
 	h.consumeItem(uid, itemID, "城市迁移")
