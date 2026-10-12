@@ -604,6 +604,11 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		if optSeen[u.TroopId] {
 			continue
 		}
+		// ★ 2026-10-12 用户反馈「目标下拉里还有已经打光的兵种」：只列**活着**的敌方兵种。
+		//   打光的留在下拉里没有意义（选中也会被引擎自动改打最近的），只会让人以为还能打。
+		if u.Count <= 0 {
+			continue
+		}
 		optSeen[u.TroopId] = true
 		// ★ 2026-10-05 ：目标下拉里的兵种名统一用基础兵种名
 		name := u.Name
@@ -618,7 +623,9 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	}
 	for _, u := range myList {
 		t := myTgtOf(u.TroopId)
-		if t != 0 && !optSeen[t] {
+		// ★ 2026-10-12 兜底项也只补**活着**的敌方兵种：已打光的当前目标在上面的展示层
+		//   已回落成「最近」，这里若再补进下拉，又会冒出一个死兵种（用户要求：死了的别在列表里）。
+		if t != 0 && !optSeen[t] && aliveEnemy[t] {
 			optSeen[t] = true
 			opts = append(opts, gin.H{"id": t, "name": troopName(t)})
 		}

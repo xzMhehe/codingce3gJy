@@ -637,12 +637,12 @@ export default {
       battleOrderId: 0,     // 正在指挥的出征订单 id
       battleLeftMs: 0,      // 本地倒计时（毫秒，每秒自减；归零时拉服务端推进回合）
       battleTimer: null,
-      // ★ 2026-10-06 逐兵种指令/目标的**本地即时值**（v-model 绑定）：
-      //   select 一选就落到这里，不等 API 往返，杜绝「下拉选了又被服务端轮询弹回」。
+      // ★★ 2026-10-12 逐兵种指令/目标的**本地待确认值**（select 的 :value 优先取它）：
+      //   一选就落到这里 → 下拉立刻显示新值、且不会被服务端轮询回包弹回；
+      //   服务端回包与本地一致时自动清除该项，之后完全以服务端为准（见 syncBattleLocal）。
       battleCmds: {},       // troop_id -> 指令（advance/hold/retreat/''）
       battleTargets: {},    // troop_id -> 优先攻击目标（0=最近目标）
       battleCmdInFlight: false, // 指令/目标 API 往返期间暂停轮询，防止整体刷 state 打断选择
-      battleSelOpen: false, // 指令/目标下拉展开中 → 跳过 syncBattleLocal，防止选择被打断弹回
       // ★ 2026-10-06 指挥室「展开/收起回合详情」：默认展开（默认只看回合标题时信息太少）
       battleDetailOn: true,
       curOrder: null,
@@ -2968,8 +2968,7 @@ export default {
           this.leaveBattle()
           return
         }
-        this.battleData = r.data
-        this.battleLeftMs = r.data.round_left_ms || 0
+        this.applyBattleState(r.data)
         if (r.data.done) this.stopBattleTimer()
         else this.startBattleTimer()
       })
@@ -3020,21 +3019,64 @@ export default {
     battleUnitCfg (u) {
       return { id: u && u.troop_id }
     },
+    // ★★ 2026-10-12 逐兵种「指挥 / 目标」下拉的回填（用户反馈三点）：
+    //   ① 点[全军前进/待命/后退]后，单兵种的「指挥」下拉没跟着变（还显示"前进"）；
+    //   ② 强制刷新后下拉被打回「最近 / 前进」，看不到刷新前自己的选择。
+    //   根因：这两个 select 是**非受控**的（不绑 value）→ 服务端状态怎么变，DOM 里的选中项都不动。
+    //   改法：select 绑 `:value="battleCmdSel(u)"` 做受控回填，但**优先返回本地待确认值**
+    //   （battleCmds/battleTargets）→ 选完立刻显示新值，也不会被轮询回包弹回（老方案的老毛病）。
+    //   服务端回包与本地值一致时清掉本地项（syncBattleLocal），之后完全以服务端为准。
+    battleCmdSel (u) {
+      const k = u && u.troop_id
+      if (k === undefined || k === null) return ''
+      const v = this.battleCmds[k]
+      if (v !== undefined) return v
+      return u.cmd || ''
+    },
+    battleTargetSel (u) {
+      const k = u && u.troop_id
+      if (k === undefined || k === null) return '0'
+      const v = this.battleTargets[k]
+      if (v !== undefined) return String(v)
+      return String(u.target_troop || 0)
+    },
+    // 服务端状态回来了：本地待确认值与服务端一致 → 清掉本地项（此后以服务端为准）
+    syncBattleLocal (st) {
+      if (!st) return
+      const own = st.is_atk ? (st.attackers || []) : (st.defenders || [])
+      own.forEach(u => {
+        const k = u.troop_id
+        if (this.battleCmds[k] !== undefined && this.battleCmds[k] === (u.cmd || '')) {
+          this.$delete(this.battleCmds, k)
+        }
+        if (this.battleTargets[k] !== undefined && String(this.battleTargets[k]) === String(u.target_troop || 0)) {
+          this.$delete(this.battleTargets, k)
+        }
+      })
+    },
+    // 统一应用服务端战场状态：所有入口都走它，避免漏掉下拉本地值的同步清理
+    applyBattleState (st) {
+      if (!st) return
+      this.battleData = st
+      this.battleLeftMs = st.round_left_ms || 0
+      this.syncBattleLocal(st)
+    },
     // troopId 省略 = 全军快捷指令；给了 troopId = 给该兵种**单独**下指令
     sendBattleCmd (cmd, troopId) {
       if (!this.battleOrderId) return
-      // ★ 2026-10-06 v3 非受控下拉：cmd 由 $event.target.value 直传，不再依赖本地镜像
       const send = cmd || ''
+      // ★ 2026-10-12 先写本地待确认值 → 下拉立刻显示新值；**全军命令则给自己这一方所有兵种都写上**，
+      //   这样每个单兵种的「指挥」下拉会跟着一起变（用户反馈「全军命令生效了但单兵种下拉不动」）
+      const own = this.battleData.is_atk ? (this.battleData.attackers || []) : (this.battleData.defenders || [])
+      if (troopId > 0) this.$set(this.battleCmds, troopId, send)
+      else own.forEach(u => this.$set(this.battleCmds, u.troop_id, send))
       this.battleCmdInFlight = true
       api.post('/games/ezfy/battle/cmd', {
         order_id: this.battleOrderId, troop_id: troopId || 0, cmd: send
       }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '指令失败'); return }
         const st = r.data && r.data.state
-        if (st) {
-          this.battleData = st
-          this.battleLeftMs = st.round_left_ms || 0
-        }
+        if (st) this.applyBattleState(st)
         this.notify((troopId ? '该兵种' : '全军') + '已设' + this.battleCmdName(send))
         if (r.data && r.data.done) this.stopBattleTimer()
       }).finally(() => { this.battleCmdInFlight = false })
@@ -3044,8 +3086,9 @@ export default {
     //   target = 0 表示「最近目标」；守方没有该兵种时服务器会自动回落打最近的。
     sendBattleTarget (troopId, val) {
       if (!this.battleOrderId) return
-      // ★ 2026-10-06 v3 非受控下拉：target 由 $event.target.value 直传（数字）
       const target = parseInt(val, 10) || 0
+      // ★ 2026-10-12 同上：先写本地待确认值 → 下拉立刻显示该目标，刷新时也不会被打回「最近」
+      if (troopId > 0) this.$set(this.battleTargets, troopId, target)
       const opt = (this.battleData.target_options || []).find(o => o.id === target)
       this.battleCmdInFlight = true
       api.post('/games/ezfy/battle/target', {
@@ -3053,10 +3096,7 @@ export default {
       }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '目标设置失败'); return }
         const st = r.data && r.data.state
-        if (st) {
-          this.battleData = st
-          this.battleLeftMs = st.round_left_ms || 0
-        }
+        if (st) this.applyBattleState(st)
         this.notify('该兵种目标已设为' + (opt ? opt.name : '最近'))
         if (r.data && r.data.done) this.stopBattleTimer()
       }).finally(() => { this.battleCmdInFlight = false })
@@ -3066,7 +3106,7 @@ export default {
       api.post('/games/ezfy/battle/auto', { order_id: this.battleOrderId }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '操作失败'); return }
         const st = r.data && r.data.state
-        if (st) { this.battleData = st; this.battleLeftMs = 0 }
+        if (st) this.applyBattleState(st)
         this.notify('已按「全军前进」打完这场战斗，战报稍后可在军情里查看')
         this.stopBattleTimer()
       })
@@ -3079,10 +3119,7 @@ export default {
       api.post('/games/ezfy/battle/lock', { order_id: this.battleOrderId, lock: true }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '保存失败'); return }
         const st = r.data && r.data.state
-        if (st) {
-          this.battleData = st
-          this.battleLeftMs = st.round_left_ms || 0
-        }
+        if (st) this.applyBattleState(st)
         this.notify(st && st.done ? '双方配置已锁定，本回合结算' : '本回合配置已锁定')
         if (r.data && r.data.done) this.stopBattleTimer()
       })
@@ -3092,10 +3129,7 @@ export default {
       api.post('/games/ezfy/battle/lock', { order_id: this.battleOrderId, lock: false }).then(r => {
         if (r.code !== 0) { this.notify(r.msg || '取消失败'); return }
         const st = r.data && r.data.state
-        if (st) {
-          this.battleData = st
-          this.battleLeftMs = st.round_left_ms || 0
-        }
+        if (st) this.applyBattleState(st)
         this.notify('已取消锁定，可重新配置')
         if (r.data && r.data.done) this.stopBattleTimer()
       })

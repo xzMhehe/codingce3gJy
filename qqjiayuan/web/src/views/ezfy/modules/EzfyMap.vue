@@ -410,8 +410,11 @@
               <i :class="ezfy.battleData.phase === 'cmd' ? 'on' : 'lock'" :style="{ width: ezfy.battleBarPct + '%' }"></i>
             </div>
           </div>
-          <!-- ★ 2026-10-06 指挥全部**下拉即时发送**（非受控 select：不绑 value/v-model，点选即 @change 发送，
-               永远不会被轮询弹回；服务器状态只更新 select 旁的文字提示）。
+          <!-- ★ 2026-10-06 指挥全部**下拉即时发送**（点选即 @change 发送，无需确认按钮）。
+               ★ 2026-10-12 改为**受控回填**：select 绑 `:value="battleCmdSel(u)"`（优先取本地待确认值，
+               否则取服务端值）—— 这样 ①[全军前进]后各兵种「指挥」下拉会跟着一起变；
+               ②强制刷新后仍显示刷新前的选择，而不是被打回「最近/前进」；
+               ③本地值被服务端确认后自动交回服务端，选完那一刻也不会被轮询弹回。
                恢复[全军前进/待命/后退]（troop_id=0 走老的全军统一键），保存配置已合入下拉直接生效；
                到点(30s)服务端自动结算，锁定概念保留给后端（对方锁定状态照常提示）。 -->
           <div class="old-line ezfy-battle-cmds" v-if="!ezfy.battleData.done">
@@ -466,9 +469,9 @@
                    ★ 守方视角(is_atk=false)时这里显示 AI，指挥控件渲染到守方行上。 -->
               <td v-if="!ezfy.battleData.done">
                 <template v-if="ezfy.battleData.is_atk">
-                  <!-- ★ 2026-10-06 v3 非受控下拉：不绑 value/v-model，select 永远可点选（除非已锁定），
-                       选择即 @change 发送；服务器回包只更新旁边文字，选中项不被重置 -->
-                  <select @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)" style="width:96px">
+                  <!-- ★ 2026-10-12 受控回填：:value 取「本地待确认值 → 服务端值」，
+                       选择即 @change 发送；服务端确认后交回服务端，不会被轮询弹回 -->
+                  <select :value="ezfy.battleTargetSel(u)" @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)" style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
                             :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
                   </select>
@@ -479,7 +482,7 @@
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="ezfy.battleData.is_atk">
                   <!-- 指令：非受控下拉，点选即发 -->
-                  <select @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)" style="width:96px">
+                  <select :value="ezfy.battleCmdSel(u)" @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)" style="width:96px">
                     <option value="advance">前进</option>
                     <option value="hold">待命</option>
                     <option value="retreat">后退</option>
@@ -497,7 +500,7 @@
               <td v-if="!ezfy.battleData.done">
                 <template v-if="!ezfy.battleData.is_atk">
                   <!-- 目标：非受控下拉，点选即发 -->
-                  <select @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)" style="width:96px">
+                  <select :value="ezfy.battleTargetSel(u)" @change="ezfy.sendBattleTarget(u.troop_id, $event.target.value)" style="width:96px">
                     <option v-for="op in (ezfy.battleData.target_options || [])"
                             :key="'to' + u.troop_id + '_' + op.id" :value="op.id">{{ op.name }}</option>
                   </select>
@@ -508,7 +511,7 @@
               <td v-if="!ezfy.battleData.done" class="ezfy-cmd">
                 <template v-if="!ezfy.battleData.is_atk">
                   <!-- 指令：非受控下拉，点选即发 -->
-                  <select @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)" style="width:96px">
+                  <select :value="ezfy.battleCmdSel(u)" @change="ezfy.sendBattleCmd($event.target.value, u.troop_id)" style="width:96px">
                     <option value="advance">前进</option>
                     <option value="hold">待命</option>
                     <option value="retreat">后退</option>
