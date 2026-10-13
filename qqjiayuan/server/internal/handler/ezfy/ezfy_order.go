@@ -2350,7 +2350,7 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	for _, n := range order {
 		parts = append(parts, fmt.Sprintf("%s×%d", n, cnt[n]))
 	}
-	h.ezfySysChat("恭喜玩家 %s 本次采集收获宝物 %d 件: %s",
+	h.ezfySysChat("恭喜玩家 %s 采集收获宝物 %d 件: %s",
 		b.name, len(b.loot), strings.Join(parts, "、"))
 }
 
