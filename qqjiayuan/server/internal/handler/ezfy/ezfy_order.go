@@ -2328,6 +2328,9 @@ func (b *ezfyLootBatch) add(loot string) {
 }
 
 // ezfyLootBatchFlush 结算批次结束：有掉落则发一条合并播报（无掉落直接返回）。
+//
+// ★ 2026-10-13 用户反馈「相同宝物按数量展示，不然播报太长」：
+//   同种宝物聚合统计后拼接，形如「红宝石戒指×3」（全部宝物都带 ×N，顺序按本批首次掉落）。
 func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	if b == nil || len(b.loot) == 0 {
 		return
@@ -2335,8 +2338,20 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	if b.name == "" {
 		b.name = h.ezfyProfileName(uid)
 	}
+	cnt := map[string]int{}
+	order := []string{}
+	for _, n := range b.loot {
+		if cnt[n] == 0 {
+			order = append(order, n)
+		}
+		cnt[n]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, n := range order {
+		parts = append(parts, fmt.Sprintf("%s×%d", n, cnt[n]))
+	}
 	h.ezfySysChat("恭喜玩家 %s 本次采集收获宝物 %d 件: %s",
-		b.name, len(b.loot), strings.Join(b.loot, "、"))
+		b.name, len(b.loot), strings.Join(parts, "、"))
 }
 
 // settleDispatch 常驻采集结算(每满一个采集周期一期)
