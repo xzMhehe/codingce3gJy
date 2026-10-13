@@ -409,6 +409,7 @@ LIMIT ? OFFSET ?`, uid, uid, uid, uid, uid, size, offset).Scan(&convs)
 }
 
 // 与某人的私信往来（peerId 支持家园号码或内部 id，转靓号后号码仍可用）
+// ★ 2026-10-13 可选分页：传 page 参数 → 新到旧分页返回（带 total/page/size）；不传 → 保持旧逻辑（正序最多 200 条）
 func (h *MessageHandler) With(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	peer, err := h.resolveUser(c.Param("id"))
@@ -417,11 +418,23 @@ func (h *MessageHandler) With(c *gin.Context) {
 		return
 	}
 	peerID := peer.ID
-	var msgs []model.PrivateMessage
-	h.DB.Preload("Sender").Where("(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)",
-		uid, peerID, peerID, uid).Order("created_at ASC").Limit(200).Find(&msgs)
+	where := "(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)"
+	var total int64
+	h.DB.Model(&model.PrivateMessage{}).Where(where, uid, peerID, peerID, uid).Count(&total)
+	// 已读回执（无论是否分页都执行）
 	h.DB.Model(&model.PrivateMessage{}).
 		Where("sender_id = ? AND receiver_id = ? AND is_read = 0", peerID, uid).Update("is_read", 1)
+	if c.Query("page") != "" {
+		page, offset, size := pageOf(c, 20)
+		var msgs []model.PrivateMessage
+		h.DB.Preload("Sender").Where(where, uid, peerID, peerID, uid).
+			Order("created_at DESC, id DESC").Offset(offset).Limit(size).Find(&msgs)
+		resp.OK(c, gin.H{"peer": gin.H{"id": peer.ID, "username": peer.Username, "nickname": peer.Nickname, "color": peer.Color},
+			"list": msgs, "total": total, "page": page, "size": size})
+		return
+	}
+	var msgs []model.PrivateMessage
+	h.DB.Preload("Sender").Where(where, uid, peerID, peerID, uid).Order("created_at ASC").Limit(200).Find(&msgs)
 	resp.OK(c, gin.H{"peer": gin.H{"id": peer.ID, "username": peer.Username, "nickname": peer.Nickname, "color": peer.Color}, "list": msgs})
 }
 

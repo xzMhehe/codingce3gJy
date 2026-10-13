@@ -38,6 +38,12 @@
                 <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
               </div>
               <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
+              <!-- ★ 2026-10-13 私聊记录分页（每页 20 条） -->
+              <div class="ezfy-pager" v-if="ezfy.pmChatTotal > ezfy.pmChatSize">
+                <a href="javascript:;" :class="{ gray: ezfy.pmChatPage <= 1 }" @click="ezfy.pmChatPrev()">上一页</a>
+                <span class="gray">第 {{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }} 页（共 {{ ezfy.pmChatTotal }} 条）</span>
+                <a href="javascript:;" :class="{ gray: ezfy.pmChatPage * ezfy.pmChatSize >= ezfy.pmChatTotal }" @click="ezfy.pmChatNext()">下一页</a>
+              </div>
               <div class="old-line">
                 <input v-model="ezfy.pmContent" class="ezfy-chat-input" maxlength="500" placeholder="最多500字" @keyup.enter="ezfy.doSendPrivchat"/>
                 <button @click="ezfy.doSendPrivchat">发送</button>

@@ -578,6 +578,10 @@ export default {
       // ★ 私聊：当前会话对象 + 与该对象的聊天记录 + 会话列表
       pmPeer: null,
       pmChat: [],
+      // ★ 2026-10-13 私聊发送用「好友游戏ID」而非昵称（游戏昵称/家园昵称不一致会解析失败→收不到）；
+      //   聊天记录分页（新到旧，前端反转成旧到新展示）
+      pmPeerUid: 0,
+      pmChatPage: 1, pmChatTotal: 0, pmChatSize: 20,
       pmConvs: [],
       pmConvPage: 1, pmConvTotal: 0, pmConvSize: 10,
       friends: [],
@@ -2751,6 +2755,9 @@ export default {
       this.pmPeer = null
       this.pmChat = []
       this.pmContent = ''
+      // ★ 发送统一用「好友游戏ID」：数值 → 后端按 game_uid 精确解析，不会因昵称不一致而失败
+      this.pmPeerUid = f.game_uid || 0
+      this.pmChatPage = 1
       this.selectPm(f.user_id)
     },
     closeFriendPm () {
@@ -2758,15 +2765,21 @@ export default {
       this.pmChat = []
       this.pmContent = ''
       this.pmTo = ''
+      this.pmPeerUid = 0
+      this.pmChatPage = 1
+      this.pmChatTotal = 0
     },
     doSendPrivchat () {
       if (!this.pmPeer) { this.notify('请先选择要私聊的好友'); return }
       const content = (this.pmContent || '').trim()
       if (!content) { this.notify('请填写内容'); return }
-      api.post('/games/ezfy/privchat/send', { to: this.pmPeer.nickname || this.pmPeer.username, content: content }).then(r => {
+      // ★ 优先用好友游戏ID发送；没有游戏ID时才回退昵称
+      const to = this.pmPeerUid ? String(this.pmPeerUid) : (this.pmPeer.nickname || this.pmPeer.username)
+      api.post('/games/ezfy/privchat/send', { to: to, content: content }).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
           this.pmContent = ''
+          this.pmChatPage = 1
           this.selectPm(this.pmPeer.id)
         } else this.notify(r.msg || '发送失败')
       })
@@ -2866,13 +2879,17 @@ export default {
     pmConvNext () {
       if (this.pmConvPage * this.pmConvSize < this.pmConvTotal) this.loadPmConvs(this.pmConvPage + 1)
     },
-    // 切换聊天对象：拉出「我和 TA」的全部历史记录，并把对方设为收件人
+    // 切换聊天对象：拉出「我和 TA」的历史记录（分页，新到旧→前端反转成旧到新展示），并把对方设为收件人
     selectPm (userId) {
       if (!userId) return
-      api.get('/messages/with/' + userId).then(r => {
+      api.get('/messages/with/' + userId, { params: { page: this.pmChatPage, size: this.pmChatSize } }).then(r => {
         if (r.code === 0) {
           this.pmPeer = r.data.peer || null
-          this.pmChat = r.data.list || []
+          const list = r.data.list || []
+          this.pmChat = list.slice().reverse()
+          this.pmChatTotal = r.data.total || 0
+          this.pmChatPage = r.data.page || 1
+          this.pmChatSize = r.data.size || this.pmChatSize
           this.pmTo = this.pmPeer ? (this.pmPeer.nickname || this.pmPeer.username) : ''
           this.loadMails()
           this.loadPmConvs()
@@ -2880,6 +2897,13 @@ export default {
           this.notify(r.msg || '打开会话失败')
         }
       })
+    },
+    // 私聊记录翻页（好友私聊面板）
+    pmChatPrev () {
+      if (this.pmChatPage > 1) { this.pmChatPage--; this.selectPm(this.pmPeer.id) }
+    },
+    pmChatNext () {
+      if (this.pmChatPage * this.pmChatSize < this.pmChatTotal) { this.pmChatPage++; this.selectPm(this.pmPeer.id) }
     },
     loadMails () {
       api.get('/messages/inbox').then(r => {
