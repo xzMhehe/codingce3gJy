@@ -199,7 +199,14 @@
     </template>
     <template v-else-if="ezfy.cur === 'orderpre'">
         <div class="panel" v-if="ezfy.selCell">
-          <div class="panel-title">出征确认 · {{ ezfy.orderNames[ezfy.orderType] }}</div>
+          <div class="panel-title">出征确认 ·
+            <!-- ★ 2026-10-13 命令改成**下拉可改**（默认沿用地图详情页点进来的那个，如侦查），
+                 且只列**当前可选**的命令（判据 `ezfy.orderAvail`，与地图上那几个命令按钮**同源**）——
+                 还没宣战就只能侦查，那这个下拉里就只有「侦查」。 -->
+            <select v-model.number="ezfy.orderType" @change="ezfy.onOrderTypeChange" style="width:96px">
+              <option v-for="t in ezfy.orderAvailList" :key="'ot' + t" :value="t">{{ ezfy.orderNames[t] }}</option>
+            </select>
+          </div>
           <!-- ★ 用户反馈「切换城市后感觉出征页还是切换前那个城」→
                出征页原来只写「目标」，看不出这支部队是从哪座城出发的。
                把**出发城市**显式写在最上面，玩家一眼就能确认用的是哪座城的兵/军官/资源。 -->

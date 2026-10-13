@@ -48,6 +48,30 @@ func (h *EzfyHandler) ezfyIsKouCity(x, y int) bool {
 	return true
 }
 
+// ezfyKouRuinSet 一次性取回 [x0,x1]×[y0,y1] 范围内**已变废墟**的寇城坐标集合
+// （ezfy_map_area.area_type=2 且 start_time > now 的那些格）。
+//
+// ★★ 2026-10-13 性能（用户反馈「点地图卡顿 / 点方向键也卡顿」）：
+//
+//	MapView 末尾的「发现精英中立城市」要由近及远扫到 ±30（约 3700 格），原来每格都调
+//	`ezfyIsKouCity` —— 它内部 1/97 概率要查一次 ezfy_map_area，实测整张地图一次请求
+//	要打 **~38 条跨 WAN SQL**（线上 1 核 1G + 远程 RDS，每次拖动地图都白挨这一下）。
+//	现在改成**先把整个扫描范围的废墟一次性取回（1 条 SQL）**，扫描时纯内存比对。
+func (h *EzfyHandler) ezfyKouRuinSet(x0, y0, x1, y1 int) map[string]bool {
+	var rows []model.EzfyMapArea
+	h.DB.Select("x, y, start_time").
+		Where("area_type = 2 AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?", x0, x1, y0, y1).
+		Find(&rows)
+	now := time.Now().UnixMilli()
+	out := map[string]bool{}
+	for _, a := range rows {
+		if a.StartTime > now {
+			out[fmt.Sprintf("%d,%d", a.X, a.Y)] = true
+		}
+	}
+	return out
+}
+
 // MapView 以中心坐标返回区域地图（默认以当前城为中心）
 func (h *EzfyHandler) MapView(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -160,6 +184,23 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 		}
 	}
 
+	// ★★ 2026-10-13 性能（用户反馈「点地图/点方向键卡顿」）：本请求里所有「寇城判定」都走这个
+	//   内存闭包 —— 寇城废墟集合已一次性预取（见 ezfyKouRuinSet），不再逐格查库。
+	//   主循环(±r，r≤15) 与下面精英城扫描(±30) 都在预取范围(±30)内。
+	kouRuins := h.ezfyKouRuinSet(cx-30, cy-30, cx+30, cy+30)
+	isKouFast := func(x, y int) bool {
+		if mk := ezfyMarkKindAt(x, y); mk > 0 {
+			return mk == model.EzfyMarkKou || mk == model.EzfyMarkActKou
+		}
+		if ezfyAbs(x*5381^y*33)%97 != 0 {
+			return false
+		}
+		if ezfyAbs(x-250)+ezfyAbs(y-250) <= 150 {
+			return false
+		}
+		return !kouRuins[fmt.Sprintf("%d,%d", x, y)]
+	}
+
 	cells := []gin.H{}
 	for y := cy - r; y <= cy+r; y++ {
 		for x := cx - r; x <= cx+r; x++ {
@@ -188,7 +229,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 				// ★ 该城主的同盟（军团）名；没加入军团时为空串，前端显示「无」
 				cell["corps_name"] = corpsNames[c.UserID]
 			} else {
-				kou := h.ezfyIsKouCity(x, y)
+				kou := isKouFast(x, y)
 				switch {
 				case terrain == ezfyTerrainSea:
 					cell["area_type"] = 1
@@ -259,7 +300,7 @@ func (h *EzfyHandler) MapView(c *gin.Context) {
 					continue // 只看这一圈的边框
 				}
 				ex, ey := cx+dx, cy+dy
-				if ezfyTerrain(ex, ey) == 8 || !h.ezfyIsKouCity(ex, ey) {
+				if ezfyTerrain(ex, ey) == 8 || !isKouFast(ex, ey) {
 					continue
 				}
 				elite = gin.H{"x": ex, "y": ey, "level": ezfyKouLevel(ex, ey)}

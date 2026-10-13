@@ -847,6 +847,9 @@ export default {
       resType: 'gold',
       resDetail: null,
       mapCells: [],
+      // ★ 2026-10-13 地图请求自增序号：连点方向键会堆一串在途请求，响应**谁后到谁覆盖** →
+      //   画面来回跳、还白渲染好几遍。只应用「最新一次请求」的响应（见 loadMap/jumpTo）。
+      mapSeq: 0,
       mapCx: 0,
       mapCy: 0,
       mapR: 2, // 视野半径 → 5×5 表格(复刻 map/index.html)
@@ -1268,6 +1271,14 @@ export default {
     isWildCollecting () {
       return !!(this.selDetail && this.selDetail.collecting &&
         this.selCell && this.selCell.area_type !== 3)
+    },
+    // ★★ 2026-10-13 「出征确认」命令下拉里**要列出的命令**（按 orderNames 的固定顺序：
+    //   侦查→掠夺→征服→采集→运输→增援）。判据见 orderAvail —— 与地图详情页那几个命令按钮**同源**，
+    //   于是「地图上点不了的」在下拉里也不会出现（用户：还没宣战就只能侦查，那下拉里就只有侦查）。
+    orderAvailList () {
+      const out = []
+      for (let t = 1; t <= 8; t++) if (this.orderAvail(t)) out.push(t)
+      return out
     },
     defenceCfgs () {
       return (this.troopsData.cfgs || []).filter(t => t.type === 4)
@@ -2471,10 +2482,14 @@ export default {
         this.loadPresets()
         // ★ 出征页顶部要显示「出发城市」，随军资源的「城内现有」也取自 /view，
         //   所以这里必须连 /view 一起拉 —— 否则切换城市后出征页仍显示上一座城的名字/资源。
-        this.load()
+        // ★★ 2026-10-13 性能（用户反馈「点[出征]卡顿」）：
+        //   ① `/view` 是最重的接口（十几条查询 + 懒结算），但出征页只需要它里面的
+        //      「出发城市名/坐标 + 城内现有资源」→ 让到**下一帧之后**再发，页面骨架先出来、别拖首屏；
+        //   ② `loadCityOfficers` 已挪进 `loadOnDutyOfficers` 按需触发（只在真的没有可带队军官时），
+        //      这里不再无条件发 —— 并发请求从 6 个降到 5 个（浏览器同域上限 6，正好避开排队）。
+        setTimeout(() => this.load(), 0)
         this.loadTroops()
         this.loadOnDutyOfficers()
-        this.loadCityOfficers()
         this.loadBag()
         // 进来就先算一次：让「本次出兵 0 / 上限 N」和集结令上限立刻是准确值
         // （原来要玩家自己点[计算]才会显示）
@@ -4141,7 +4156,10 @@ export default {
     loadMap () {
       // ★ 必须带 r: 不带的话后端用默认半径返回, 格子数与前端切行用的 mapR 不一致,
       //   整张网格会错位(本城就不在中心格了)
-      api.get('/games/ezfy/map?r=' + this.mapR).then(r => { if (r.code === 0) this.applyMap(r.data) })
+      const seq = ++this.mapSeq
+      api.get('/games/ezfy/map?r=' + this.mapR).then(r => {
+        if (r.code === 0 && seq === this.mapSeq) this.applyMap(r.data)
+      })
     },
     // ★ 2026-09-25 用户反馈「[返回地图] 怎么都回到初始的地图页，我都移动好多次了」：
     //   地图视野中心(mapCx/mapCy)一直存在内存里，进详情页再回来时要按**离开时的中心**刷新，
@@ -4156,8 +4174,9 @@ export default {
     },
     // ---- 地图坐标查找 / 收藏列表(复刻原版地图页) ----
     jumpTo (x, y) {
+      const seq = ++this.mapSeq
       api.get('/games/ezfy/map?x=' + x + '&y=' + y + '&r=' + this.mapR)
-        .then(r => { if (r.code === 0) this.applyMap(r.data) })
+        .then(r => { if (r.code === 0 && seq === this.mapSeq) this.applyMap(r.data) })
     },
     // ★ 2026-10-04 附属野地坐标点击 → 进地图并居中到该坐标（跳坐标只打一次地图接口）
     openMapAt (x, y) {
@@ -5240,10 +5259,45 @@ export default {
       this.orderCalc = null
       this.go('orderpre')
     },
+    // ★★ 2026-10-13 「出征确认」命令下拉的**可选命令**判据 —— 与地图详情页那几个命令按钮的
+    //   显示条件**完全同源**（不另发明一套），保证「地图上能点的」和「下拉里能选的」永远一致。
+    //   用户规则：还没宣战就只能侦查 → 下拉里就**只列侦查**，不能选的命令一律不出现。
+    //   ★ 覆盖全部进出征页的入口：地图详情页(侦查/掠夺/征服/采集/运输/增援)、
+    //     城市列表(运输/派遣)、野地列表(采集)。
     orderAvail (t) {
-      if (t === 4 || t === 7) return false
-      if ((t === 5 || t === 6) && this.selCell && this.selCell.area_type !== 3) return false
-      return true
+      const c = this.selCell
+      if (!c) return false
+      const isCity = c.area_type === 3
+      const isMineCity = isCity && !!c.mine                     // 自己的城（地图不给命令，入口在城市列表的 [运输]/[派遣]）
+      const isAllyCity = isCity && !c.mine && !!c.ally          // 同盟成员的城
+      // ① 自己的城：只能 运输(5) / 派遣(8)
+      if (isMineCity) return t === 5 || t === 8
+      // ② 同盟成员的城：运输(5) / 增援(6)
+      if (isAllyCity) return t === 5 || t === 6
+      // ③ 采集(4)：只有「自己的附属野地」（有 wild_id = 从我的野地进来的；或详情页判定的 mine）
+      if (t === 4) return !isCity && (!!c.wild_id || (this.isOwnWild && !!c.occupied))
+      // ④ 驻守采集(7)：只在「附属野地」页对已有采集队操作，出征页不给
+      if (t === 7) return false
+      // ⑤ 运输(5)/增援(6) 只对城，野地不给
+      if (t === 5 || t === 6) return false
+      // ⑥ 侦查(1)：非自己的城常显；野地只要不是自己的附属野地
+      if (t === 1) return isCity ? !c.mine : !this.isOwnWild
+      // ⑦ 掠夺(2)/征服(3)
+      if (t === 2 || t === 3) {
+        if (isCity) {
+          // 与地图按钮同判据：宣战已生效 / 管理端关了宣战开关 / 军团交战期
+          return this.warStatus === 2 || !this.warRequire || this.atWar
+        }
+        // 野地：自己的附属野地要先[放弃]；正在被采集的野地不能打（与后端 createOrder 同口径）
+        return !this.isOwnWild && !this.isWildCollecting
+      }
+      return false
+    },
+    // ★ 2026-10-13 出征确认页改命令：按新命令重算（不同命令的出征上限完全不同 ——
+    //   采集/派遣无上限、运输/增援另一套、掠夺/征服受集结令+军官加成），算完会把兵力夹回新上限。
+    onOrderTypeChange () {
+      this.orderCalc = null
+      this.$nextTick(() => this.doCalc())
     },
     declareWar () {
       if (!this.selCell || !this.selCell.city_id) return
@@ -5680,7 +5734,13 @@ export default {
     },
     loadOnDutyOfficers () {
       api.get('/games/ezfy/officers/onduty').then(r => {
-        if (r.code === 0) this.onDutyOfficers = r.data.officers || []
+        if (r.code === 0) {
+          this.onDutyOfficers = r.data.officers || []
+          // ★ 2026-10-13 性能（用户反馈「点[出征]卡顿」）：本城军官全量列表**只用于**
+          //   「为什么没有可带队军官」那句提示 —— 只有真的没有可带队军官时才需要。
+          //   挪到这里按需拉，别和出征页另外几个接口抢浏览器同域并发（上限 6）。
+          if (!this.onDutyOfficers.length) this.loadCityOfficers()
+        }
       })
     },
     // 本城军官全量列表（含出征中/俘虏）：只用于出征页的「为什么没有可带队军官」提示
