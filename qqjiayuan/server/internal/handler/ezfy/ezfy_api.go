@@ -1659,16 +1659,15 @@ func (h *EzfyHandler) DeclareWar(c *gin.Context) {
 	//   ① 播报文案补上**绝对开战时间**（原来只有「N 小时后生效」，玩家还得自己算）；
 	//   ② 双方**各自军团的军团聊天**各写一条系统消息（与「军团宣战」同一套写法：
 	//      EzfyCorpsChat + UserId=0 + UserName=系统）；
-	//   ③ 私聊：下面给被宣战方的那条站内信（PrivateMessage，来源=宣战方）就是私聊里的那条，
-	//      双方在「私聊」页的会话里都能看到（含开战时间）。
+	//   ③ 邮箱：给被宣战方发一封「系统邮件」（sender=系统，收件箱外的系统邮件 tab 可见）。
 	effTime := time.UnixMilli(w.EffectTime).Format("01-02 15:04")
 	defTip := fmt.Sprintf("【宣战】%s 向你宣战，%d 小时后生效（%s 开战），生效后 %d 小时内可互相掠夺/征服。%s",
 		atkName, ezfyWarDelayHours, effTime, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: req.TargetUserId, Title: "宣战", Content: defTip})
 	// ★ 2026-10-05 宣战后自动给被宣战方发一封站内信（邮件，来源 = 宣战方），
-	//   与上面系统消息同口径；对方在「邮件」页能看到这条宣战消息。
-	// ★ 2026-10-09 这条同时也是「私聊」页里与宣战方的会话消息（含开战时间）。
-	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: req.TargetUserId, Content: defTip})
+	//   与上面系统消息同口径；对方在「邮箱 → 系统邮件」能看到这条宣战消息。
+	// ★ 2026-10-13 由 PrivateMessage 改为 ezfy_mail 系统邮件（新邮箱页才看得到）。
+	h.ezfyMailCreate(0, req.TargetUserId, "系统", "宣战", defTip)
 	atkTip := fmt.Sprintf("【宣战】你已向 %s 宣战，%d 小时后生效（%s 开战），生效后 %d 小时内可互相掠夺/征服。%s",
 		defName, ezfyWarDelayHours, effTime, ezfyWarDurationHours, meta)
 	h.DB.Create(&model.EzfyNotice{UserId: uid, Title: "宣战", Content: atkTip})

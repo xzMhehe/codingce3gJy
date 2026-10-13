@@ -2,59 +2,109 @@
   <div>
     <template v-if="ezfy.cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">游戏内好友</div>
-          <div class="panel-title">搜索玩家</div>
-          <div class="old-line">
-            <input v-model="ezfy.friendKeyword" placeholder="输入游戏ID / 玩家号码 / 昵称" style="width:170px"/>
-            <button @click="ezfy.doFriendSearch">[搜索]</button>
+          <div class="panel-title">好友</div>
+          <div class="acade-tab">
+            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'list' }" @click="ezfy.setFriendTab('list')">好友</a>|
+            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'apply' }" @click="ezfy.setFriendTab('apply')">申请</a>|
+            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'sent' }" @click="ezfy.setFriendTab('sent')">已发送</a>|
+            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'search' }" @click="ezfy.setFriendTab('search')">查找</a>
           </div>
-          <table v-if="ezfy.friendSearchDone">
-            <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>状态</th><th>操作</th></tr>
-            <tr v-for="u in ezfy.friendSearchList" :key="'fs' + u.user_id">
-              <td><span class="td-mono">{{ u.game_uid }}</span></td>
-              <td><a href="javascript:;" @click="ezfy.openPlayer(u.user_id)">{{ u.nickname }}</a></td>
-              <td>{{ u.prestige }}</td>
-              <td><span class="gray">{{ u.rank_name }}</span></td>
-              <td>
-                <span v-if="u.is_friend" class="gray">已是好友</span>
-                <span v-else-if="u.applied" class="orange">已申请</span>
-                <a v-else href="javascript:;" @click="ezfy.doAddFriend(u)">[加好友]</a>
-              </td>
-            </tr>
-          </table>
-          <div class="old-line gray" v-if="ezfy.friendSearchDone && !ezfy.friendSearchList.length">(没找到这位统帅, 换个游戏ID或昵称试试)</div>
 
-          <div class="panel-title">好友申请（待处理 {{ ezfy.friendApplies.inbox.length }}）</div>
-          <table v-if="ezfy.friendApplies.inbox.length">
-            <tr><th>游戏ID</th><th>昵称</th><th>验证信息</th><th>操作</th></tr>
-            <tr v-for="a in ezfy.friendApplies.inbox" :key="'fa' + a.apply_id">
-              <td><span class="td-mono">{{ a.game_uid }}</span></td>
-              <td><a href="javascript:;" @click="ezfy.openPlayer(a.user_id)">{{ a.nickname }}</a></td>
-              <td>{{ a.remark || '—' }}</td>
-              <td>
-                <a href="javascript:;" @click="ezfy.doHandleApply(a, true)">[同意]</a>
-                <a href="javascript:;" @click="ezfy.doHandleApply(a, false)">[拒绝]</a>
-              </td>
-            </tr>
-          </table>
-          <div class="old-line gray" v-else>(暂无新的好友申请)</div>
+          <!-- 好友列表 -->
+          <template v-if="ezfy.friendTab === 'list'">
+            <table v-if="ezfy.friends.length">
+              <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
+              <tr v-for="f in ezfy.friends" :key="'f' + f.user_id">
+                <td><span class="td-mono">{{ f.game_uid }}</span></td>
+                <td><a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">{{ f.nickname }}</a></td>
+                <td>{{ f.prestige }}</td>
+                <td>{{ f.rank_name }}</td>
+                <td>
+                  <a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">[统帅信息]</a>
+                  <a href="javascript:;" @click="ezfy.openFriendPm(f)">[私聊]</a>
+                  <a href="javascript:;" @click="ezfy.doDelFriend(f)">[删除]</a>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-else>(还没有游戏好友，用下面的「查找」找找吧)</div>
 
-          <div class="panel-title">我的游戏好友（{{ ezfy.friends.length }}）</div>
-          <table v-if="ezfy.friends.length">
-            <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
-            <tr v-for="f in ezfy.friends" :key="'f' + f.user_id">
-              <td><span class="td-mono">{{ f.game_uid }}</span></td>
-              <td><a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">{{ f.nickname }}</a></td>
-              <td>{{ f.prestige }}</td>
-              <td>{{ f.rank_name }}</td>
-              <td>
-                <a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">[统帅信息]</a>
-                <a href="javascript:;" @click="ezfy.openPm(f.user_id)">[私聊]</a>
-                <a href="javascript:;" @click="ezfy.doDelFriend(f)">[删除]</a>
-              </td>
-            </tr>
-          </table>
-          <div class="old-line gray" v-else>(还没有游戏好友, 用上面的搜索找找吧)</div>
+            <!-- ★ 好友间私聊（仅好友之间可发，非好友请用「邮箱」联系） -->
+            <div v-if="ezfy.pmPeer" style="margin-top:10px;border-top:1px dashed #cbbd96;padding-top:8px;">
+              <div class="panel-title">与 {{ ezfy.pmPeer.nickname }} 的私聊
+                <a href="javascript:;" @click="ezfy.closeFriendPm()">[关闭]</a>
+                <a href="javascript:;" @click="ezfy.selectPm(ezfy.pmPeer.id)">[刷新]</a>
+              </div>
+              <div class="old-line" v-for="m in ezfy.pmChat" :key="'pc' + m.id">
+                <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">{{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.nickname }}</span>：{{ m.content }}
+                <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
+              </div>
+              <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
+              <div class="old-line">
+                <input v-model="ezfy.pmContent" class="ezfy-chat-input" maxlength="500" placeholder="最多500字" @keyup.enter="ezfy.doSendPrivchat"/>
+                <button @click="ezfy.doSendPrivchat">发送</button>
+                <span class="gray">(仅游戏好友之间私聊)</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- 好友申请 -->
+          <template v-else-if="ezfy.friendTab === 'apply'">
+            <div class="panel-title">好友申请（待处理 {{ ezfy.friendApplies.inbox.length }}）</div>
+            <table v-if="ezfy.friendApplies.inbox.length">
+              <tr><th>游戏ID</th><th>昵称</th><th>验证信息</th><th>操作</th></tr>
+              <tr v-for="a in ezfy.friendApplies.inbox" :key="'fa' + a.apply_id">
+                <td><span class="td-mono">{{ a.game_uid }}</span></td>
+                <td><a href="javascript:;" @click="ezfy.openPlayer(a.user_id)">{{ a.nickname }}</a></td>
+                <td>{{ a.remark || '—' }}</td>
+                <td>
+                  <a href="javascript:;" @click="ezfy.doHandleApply(a, true)">[同意]</a>
+                  <a href="javascript:;" @click="ezfy.doHandleApply(a, false)">[拒绝]</a>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-else>(暂无新的好友申请)</div>
+          </template>
+
+          <!-- 已发送的申请 -->
+          <template v-else-if="ezfy.friendTab === 'sent'">
+            <div class="panel-title">已发送的申请</div>
+            <table v-if="ezfy.friendApplies.outbox.length">
+              <tr><th>游戏ID</th><th>昵称</th><th>状态</th></tr>
+              <tr v-for="a in ezfy.friendApplies.outbox" :key="'fo' + a.apply_id">
+                <td><span class="td-mono">{{ a.game_uid }}</span></td>
+                <td><a href="javascript:;" @click="ezfy.openPlayer(a.user_id)">{{ a.nickname }}</a></td>
+                <td>{{ a.status_txt }}</td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-else>(还没有发送过好友申请)</div>
+          </template>
+
+          <!-- 查找玩家 -->
+          <template v-else>
+            <div class="panel-title">查找玩家</div>
+            <div class="old-line">
+              玩家昵称或ID
+              <input v-model="ezfy.friendKeyword" placeholder="输入昵称或ID" style="width:170px" @keyup.enter="ezfy.doFriendSearch"/>
+              <a href="javascript:;" @click="ezfy.doFriendSearch()">[查找]</a>
+              <a href="javascript:;" @click="ezfy.doFriendSearch()">[刷新]</a>
+            </div>
+            <div class="old-line gray">输入昵称或ID查找玩家。</div>
+            <table v-if="ezfy.friendSearchDone">
+              <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
+              <tr v-for="u in ezfy.friendSearchList" :key="'fs' + u.user_id">
+                <td><span class="td-mono">{{ u.game_uid }}</span></td>
+                <td><a href="javascript:;" @click="ezfy.openPlayer(u.user_id)">{{ u.nickname }}</a></td>
+                <td>{{ u.prestige }}</td>
+                <td>{{ u.rank_name }}</td>
+                <td>
+                  <span v-if="u.is_friend" class="gray">已是好友</span>
+                  <span v-else-if="u.applied" class="orange">已申请</span>
+                  <a v-else href="javascript:;" @click="ezfy.doAddFriend(u)">[加好友]</a>
+                </td>
+              </tr>
+            </table>
+            <div class="old-line gray" v-if="ezfy.friendSearchDone && !ezfy.friendSearchList.length">(没找到这位玩家，换个昵称或ID试试)</div>
+          </template>
         </div>
     </template>
     <template v-else-if="ezfy.cur === 'tasks'">

@@ -33,7 +33,7 @@
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
         <a href="javascript:;" @click="go('chat')">聊天</a>
-        <a href="javascript:;" @click="openPm()">邮箱</a>
+        <a href="javascript:;" @click="go('mail')">邮箱</a>
         <a href="javascript:;" @click="go('reports')">军情</a>
         <a href="javascript:;" @click="go('tasks')">任务</a>
         <a href="javascript:;" @click="go('friends')">好友</a>
@@ -92,9 +92,9 @@
       <!-- ============ chat —— 已拆到 modules/Ezfychat.vue ============ -->
       <ezfy-chat v-else-if="cur === 'chat'"></ezfy-chat>
 
-      <!-- ============ 私聊(mail) ============ -->
-      <!-- ============ mail —— 已拆到 modules/Ezfychat.vue ============ -->
-      <ezfy-chat v-else-if="cur === 'mail'"></ezfy-chat>
+      <!-- ============ 邮箱(mail) ============ -->
+      <!-- ============ mail —— 已拆到 modules/Ezfymail.vue ============ -->
+      <ezfy-mail v-else-if="cur === 'mail'"></ezfy-mail>
 
       <!-- ============ 情报/军情(reports) ============ -->
       <!-- ============ reports —— 已拆到 modules/Ezfyreport.vue ============ -->
@@ -404,6 +404,7 @@ export default {
     'ezfy-home-new': () => import('./modules/EzfyHomeNew.vue'),
     'ezfy-notices': () => import('./modules/EzfyNotices.vue'),
     'ezfy-chat': () => import('./modules/EzfyChat.vue'),
+    'ezfy-mail': () => import('./modules/EzfyMail.vue'),
     'ezfy-report': () => import('./modules/EzfyReport.vue'),
     'ezfy-social': () => import('./modules/EzfySocial.vue'),
     'ezfy-build': () => import('./modules/EzfyBuild.vue'),
@@ -584,6 +585,15 @@ export default {
       friendSearchList: [],
       friendSearchDone: false,
       friendApplies: { inbox: [], outbox: [] },
+      // ★ 2026-10-13 好友页四 tab：list好友 / apply申请 / sent已发送 / search查找
+      friendTab: 'list',
+      // ★ 2026-10-13 邮箱页：四 tab + 未读计数 + 分页 + 写邮件
+      mailTab: 'inbox',
+      mailInbox: [], mailSystem: [], mailSent: [],
+      mailUnread: { inbox: 0, system: 0, total: 0 },
+      mailTotal: 0, mailPage: 1, mailSize: 10,
+      mailOpen: 0,
+      mailCompose: { to: '', subject: '', content: '' },
       taskGroups: [],
       // ★ 任务分类 tab(0=默认第一个分类: 新手/日常/每周); -1=为爱发电卡。
       //   2026-09-27 fix: 刷新后记住上次所在 tab（localStorage 恢复）
@@ -2368,7 +2378,7 @@ export default {
       else if (t === 'reports') { this.curReport = null; this.switchReportTab(this.reportTab) }
       // ★ 2026-09-30 计谋页（行军计谋专用）：进页/刷新都重拉信号弹持有量
       else if (t === 'scheme') this.loadSchemes()
-      else if (t === 'mail') { this.loadMails(); this.loadFriends(); this.loadPmCandidates(); this.pmConvPage = 1; this.loadPmConvs() }
+      else if (t === 'mail') { this.loadMail(this.mailTab, true) }
       else if (t === 'friends') this.loadFriends()
       else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
@@ -2731,14 +2741,122 @@ export default {
     },
     // ★ 私聊：打开与某位玩家的聊天（选中谁就聊谁，并带出历史记录）
     //   userId 为空时只进页面、显示会话列表。
+    // ★ 顶部导航「邮箱」入口：直接进邮箱页（私聊已迁到好友页，见 openFriendPm）
+    //   userId 有值（统帅信息页 [发私聊/发私信]）：是好友 → 好友页开私聊面板；
+    //   非好友 → 邮箱「写邮件」，收件人自动填好对方昵称（符合「非好友用邮箱联系」规则）。
     openPm (userId) {
-      this.cur = 'mail'
+      if (userId) {
+        const f = this.friends.find(x => x.user_id === userId)
+        if (f) { this.cur = 'friends'; this.friendTab = 'list'; this.openFriendPm(f); return }
+        this.cur = 'mail'
+        this.setMailTab('compose')
+        this.mailCompose.to = (this.playerInfo && this.playerInfo.nickname) || ''
+        this.loadMail('inbox', true)
+        return
+      }
+      this.go('mail')
+    },
+    // ---- 好友页私聊面板（仅好友之间可私聊） ----
+    openFriendPm (f) {
+      this.cur = 'friends'
       this.pmPeer = null
       this.pmChat = []
+      this.pmContent = ''
+      this.selectPm(f.user_id)
+    },
+    closeFriendPm () {
+      this.pmPeer = null
+      this.pmChat = []
+      this.pmContent = ''
       this.pmTo = ''
-      this.pmConvPage = 1
-      this.loadPmConvs()
-      if (userId) this.selectPm(userId)
+    },
+    doSendPrivchat () {
+      if (!this.pmPeer) { this.notify('请先选择要私聊的好友'); return }
+      const content = (this.pmContent || '').trim()
+      if (!content) { this.notify('请填写内容'); return }
+      api.post('/games/ezfy/privchat/send', { to: this.pmPeer.nickname || this.pmPeer.username, content: content }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
+          this.pmContent = ''
+          this.selectPm(this.pmPeer.id)
+        } else this.notify(r.msg || '发送失败')
+      })
+    },
+    // ---- 好友页四 tab ----
+    setFriendTab (t) {
+      this.friendTab = t
+      if (t !== 'list') this.closeFriendPm()
+    },
+    // ---- 邮箱页 ----
+    setMailTab (t) {
+      this.mailTab = t
+      this.mailOpen = 0
+      if (t !== 'compose') { this.mailPage = 1; this.loadMail(t, true) }
+    },
+    loadMail (tab, force) {
+      const t = tab || this.mailTab
+      if (t === 'compose') return
+      if (!force && this._mailLoading === t) return
+      this._mailLoading = t
+      api.get('/games/ezfy/mail', { params: { tab: t, page: this.mailPage, size: this.mailSize } }).then(r => {
+        this._mailLoading = ''
+        if (r.code === 0) {
+          const d = r.data
+          if (t === 'inbox') this.mailInbox = d.list || []
+          else if (t === 'system') this.mailSystem = d.list || []
+          else this.mailSent = d.list || []
+          this.mailTotal = d.total || 0
+          this.mailPage = d.page || 1
+          this.mailSize = d.size || this.mailSize
+          this.mailUnread = d.unread || { inbox: 0, system: 0, total: 0 }
+        } else this.notify(r.msg || '加载失败')
+      }).catch(() => { this._mailLoading = '' })
+    },
+    mailPrev () { if (this.mailPage > 1) { this.mailPage--; this.loadMail(this.mailTab, true) } },
+    mailNext () { if (this.mailPage * this.mailSize < this.mailTotal) { this.mailPage++; this.loadMail(this.mailTab, true) } },
+    mailList (tab) { return tab === 'inbox' ? this.mailInbox : tab === 'system' ? this.mailSystem : this.mailSent },
+    mailSender (m) { return m.sender_id === 0 ? '系统' : (m.sender_name || ('玩家' + m.sender_id)) },
+    mailToggle (m) {
+      this.mailOpen = this.mailOpen === m.id ? 0 : m.id
+      if (m.is_read === 0) this.doMailRead(m)
+    },
+    doMailRead (m) {
+      if (m.is_read !== 0) return
+      m.is_read = 1
+      this.mailUnread.total = Math.max(0, (this.mailUnread.total || 0) - 1)
+      if (this.mailTab === 'inbox') this.mailUnread.inbox = Math.max(0, (this.mailUnread.inbox || 0) - 1)
+      else if (this.mailTab === 'system') this.mailUnread.system = Math.max(0, (this.mailUnread.system || 0) - 1)
+      api.post('/games/ezfy/mail/read', { id: m.id })
+    },
+    doMailReadAll () {
+      api.post('/games/ezfy/mail/readall', { tab: this.mailTab }).then(r => {
+        if (r.code === 0) { this.notify(r.data && r.data.msg ? r.data.msg : '已全部标记已读'); this.loadMail(this.mailTab, true) }
+        else this.notify(r.msg || '操作失败')
+      })
+    },
+    doMailDelete (m) {
+      this.ask('确定删除这封邮件吗？（只删除你自己视角的副本）').then(ok => {
+        if (!ok) return
+        api.post('/games/ezfy/mail/delete', { id: m.id }).then(r => {
+          if (r.code === 0) { this.notify(r.data && r.data.msg ? r.data.msg : '邮件已删除'); this.mailOpen = 0; this.loadMail(this.mailTab, true) }
+          else this.notify(r.msg || '操作失败')
+        })
+      })
+    },
+    doSendMail () {
+      const to = (this.mailCompose.to || '').trim()
+      const subject = (this.mailCompose.subject || '').trim()
+      const content = (this.mailCompose.content || '').trim()
+      if (!to) { this.notify('请填写收件人（昵称或游戏ID）'); return }
+      if (!content) { this.notify('请填写邮件内容'); return }
+      api.post('/games/ezfy/mail/send', { to: to, subject: subject, content: content }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '邮件已发送')
+          this.mailCompose = { to: '', subject: '', content: '' }
+          this.loadMail('inbox', true)
+          this.setMailTab('sent')
+        } else this.notify(r.msg || '发送失败')
+      })
     },
     loadPmConvs (page) {
       if (!page) page = this.pmConvPage

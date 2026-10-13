@@ -236,6 +236,28 @@ type EzfyFriendApply struct {
 
 func (EzfyFriendApply) TableName() string { return "ezfy_friend_apply" }
 
+// EzfyMail 游戏内邮件（收件箱 / 系统邮件 / 发件箱）
+//
+// ★ 2026-10-13 邮箱改造：玩家之间的邮件 + 系统邮件都在这一张表。
+//   一封邮件只有一行，发件人与收件人各自按自己视角读：
+//   - 收件人视角：receiver_id = 我 且 sender_deleted = 0（sender_id=0 即系统邮件）
+//   - 发件人视角：sender_id = 我 且 receiver_deleted = 0
+//   删除只置自己视角的标记，不影响对方。
+type EzfyMail struct {
+	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	SenderId   uint      `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"`     // 0 = 系统邮件
+	ReceiverId uint      `gorm:"index:idx_ezfy_mail_recv;comment:收件人" json:"receiver_id"`           // 0 = 收件人为全体（系统群发）
+	SenderName string    `gorm:"type:varchar(30);comment:发件人昵称快照" json:"sender_name"`              // 系统邮件为「系统」
+	Subject    string    `gorm:"type:varchar(30);comment:主题(≤20字)" json:"subject"`
+	Content    string    `gorm:"type:varchar(1000);comment:正文(≤500字)" json:"content"`
+	IsRead     int       `gorm:"default:0;comment:0未读 1已读" json:"is_read"`
+	SenderDel  int       `gorm:"default:0;comment:发件人视角已删" json:"sender_del"`
+	RecvDel    int       `gorm:"default:0;comment:收件人视角已删" json:"recv_del"`
+	CreatedAt  time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyMail) TableName() string { return "ezfy_mail" }
+
 // EzfyCfgResource 资源显示名配置（管理端可改名，全站展示跟随）
 //
 // ★ 这是「预留」能力：后期把「稀矿」改成别的叫法，只要改这张表，

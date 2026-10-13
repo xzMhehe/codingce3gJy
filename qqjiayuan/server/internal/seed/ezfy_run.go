@@ -59,6 +59,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyDiamondLog{}, &model.EzfyItemUseLog{},
 	&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 	&model.EzfyPreset{}, &model.EzfyActivity{}, &model.EzfyFriend{}, &model.EzfyFriendApply{},
+	&model.EzfyMail{}, // ★ 2026-10-13 游戏内邮件（收件箱/系统邮件/发件箱）
 	&model.EzfyLoveCard{}, &model.EzfyConveneLog{}, // ★ 2026-10-11 召集埋点（活动监测）
 	&model.EzfyVisitLog{}, &model.EzfyAccount{}, // ★ 2026-10-12 访问记录 / 二战独立登录账号
 	// —— 二战自己用的通用表（不共享家园）——

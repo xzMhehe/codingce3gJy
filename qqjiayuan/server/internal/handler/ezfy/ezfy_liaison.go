@@ -289,16 +289,20 @@ func (h *EzfyHandler) CorpsMail(c *gin.Context) {
 	}
 	var members []model.EzfyCorpsMember
 	h.DB.Where("corps_id = ?", cp.ID).Find(&members)
+	// ★ 2026-10-13 军团邮件改为写「游戏内邮箱」：收件人收件箱可见，军团长发件箱可见
+	senderNick := h.ensureProfile(uid).Nickname
+	if senderNick == "" {
+		var u model.User
+		if err := h.home().First(&u, uid).Error; err == nil {
+			senderNick = u.Nickname
+		}
+	}
 	sent := 0
 	for _, m := range members {
 		if m.UserId == 0 || m.UserId == uid {
 			continue // 不给自己发
 		}
-		var u model.User
-		if err := h.home().First(&u, m.UserId).Error; err != nil {
-			continue
-		}
-		h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: m.UserId, Content: content})
+		h.ezfyMailCreate(uid, m.UserId, senderNick, "军团邮件", content)
 		sent++
 	}
 	if sent == 0 {

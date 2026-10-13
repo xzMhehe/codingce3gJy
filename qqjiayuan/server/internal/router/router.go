@@ -677,6 +677,14 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/friends/apply", ezfyH.FriendsApply)
 				ezfyG.POST("/friends/handle", ezfyH.FriendsHandle)
 				ezfyG.POST("/friends/delete", ezfyH.FriendsDelete)
+				// ★ 2026-10-13 游戏内邮箱（收件箱/系统邮件/发件箱/写邮件，非好友也可发）
+				ezfyG.GET("/mail", ezfyH.MailList)
+				ezfyG.POST("/mail/send", ezfyH.MailSend)
+				ezfyG.POST("/mail/read", ezfyH.MailRead)
+				ezfyG.POST("/mail/readall", ezfyH.MailReadAll)
+				ezfyG.POST("/mail/delete", ezfyH.MailDelete)
+				// ★ 2026-10-13 好友私聊（强制仅好友，非好友请走邮箱）
+				ezfyG.POST("/privchat/send", ezfyH.PrivChatSend)
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)
@@ -1451,6 +1459,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-privchats", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchats)
 				admin.DELETE("/ezfy-privchats/:id", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatDelete)
 				admin.POST("/ezfy-privchats/clear", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatClear)
+
+				// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----
+				admin.GET("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemList)
+				admin.POST("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemSend)
 
 				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
 				admin.GET("/users", perm(db, "module:users"), adminH.Users)

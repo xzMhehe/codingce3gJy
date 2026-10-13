@@ -72,6 +72,39 @@
         <el-button type="danger" :loading="saving" @click="doClear">清 空</el-button>
       </div>
     </el-dialog>
+
+    <!-- ★ 2026-10-13 系统邮件：发全体 / 发指定玩家 + 最近发送记录 -->
+    <el-card shadow="never" class="box" style="margin-top:14px">
+      <div slot="header"><b>系统邮件</b>（进入游戏「邮箱」→「系统邮件」可见；target 0 = 全体玩家）</div>
+      <el-form inline size="small">
+        <el-form-item label="收件人">
+          <el-input-number v-model.number="mailForm.target_id" :min="0" controls-position="right" style="width:160px" />
+        </el-form-item>
+        <el-form-item label="主题">
+          <el-input v-model="mailForm.subject" maxlength="20" show-word-limit placeholder="最多20字" style="width:220px" />
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="mailForm.content" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="最多500字" style="width:380px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="mailSending" @click="sendMail">发 送</el-button>
+          <el-button @click="loadSysMails">刷新记录</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="sysMails" v-loading="sysLoading" stripe border max-height="360">
+        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column label="收件人" min-width="140" show-overflow-tooltip>
+          <template slot-scope="{row}">
+            <span class="td-main">{{ row.target_id === 0 ? '全体玩家' : (row.receiver_name || ('玩家' + row.target_id)) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="subject" label="主题" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
+        <el-table-column label="时间" width="160" align="center">
+          <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
@@ -83,10 +116,12 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', isRead: -1,
-      clearDlg: false, clearForm: { user_id: 1, dir: 'all' }, saving: false
+      clearDlg: false, clearForm: { user_id: 1, dir: 'all' }, saving: false,
+      mailForm: { target_id: 0, subject: '', content: '' },
+      sysMails: [], sysLoading: false, mailSending: false
     }
   },
-  mounted () { this.load() },
+  mounted () { this.load(); this.loadSysMails() },
   methods: {
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     load () {
@@ -122,6 +157,29 @@ export default {
           else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ---- 系统邮件 ----
+    loadSysMails () {
+      this.sysLoading = true
+      api.get('/admin/ezfy-mails/system').then(r => {
+        this.sysLoading = false
+        if (r.code === 0) this.sysMails = r.data.list || []
+        else this.$message.error(r.msg)
+      }).catch(() => { this.sysLoading = false })
+    },
+    sendMail () {
+      const subject = (this.mailForm.subject || '').trim()
+      const content = (this.mailForm.content || '').trim()
+      if (!content) { this.$message.warning('请填写邮件内容'); return }
+      this.mailSending = true
+      api.post('/admin/ezfy-mails/system', { target_id: this.mailForm.target_id, subject: subject, content: content }).then(r => {
+        this.mailSending = false
+        if (r.code === 0) {
+          this.$message.success(r.data && r.data.msg ? r.data.msg : '已发送')
+          this.mailForm.content = ''
+          this.loadSysMails()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.mailSending = false })
     }
   }
 }

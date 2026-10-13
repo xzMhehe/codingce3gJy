@@ -82,7 +82,7 @@
           <!-- ★ 2026-09-26：全局硬性人口上限（管理端配置，0 表示不限），达到上限后无法召集 -->
           <!-- ★ 2026-10-09：改成「按上限截断」后，接近上限时只补差额、粮食按比例收，这里说清楚 -->
           <template v-if="ezfy.convenePopMax > 0">
-            召集人口上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}<span class="gray">(人口接近上限时只补差额, 粮食按比例收)</span><br/>
+            召集人口上限: {{ ezfy.fmtBig(ezfy.convenePopMax) }}<span class="gray"></span><br/>
           </template>
           <!-- ★ 2026-09-26：提示文案随「民居容量限制 / 召集人口灵活配置」两个开关变化，
                花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->

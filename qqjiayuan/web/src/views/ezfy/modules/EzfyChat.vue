@@ -7,8 +7,7 @@
             <a href="javascript:;" :class="{ on: ezfy.chatChannel === 1 }" @click="ezfy.switchChannel(1)">世界</a>|
             <!-- ★ 军团频道常显：没加入军团时进去显示「未加入 · 0 人」 -->
             <a href="javascript:;" :class="{ on: ezfy.chatChannel === 2 }" @click="ezfy.switchChannel(2)">军团</a>|
-            <a href="javascript:;" :class="{ on: ezfy.chatChannel === 4 }" @click="ezfy.switchChannel(4)">系统</a>|
-            <a href="javascript:;" @click="ezfy.openPm()">私聊</a>
+            <a href="javascript:;" :class="{ on: ezfy.chatChannel === 4 }" @click="ezfy.switchChannel(4)">系统</a>
           </div>
 
           <!-- ★ 发言框移到聊天列表**上方** 列表按时间降序、最新在最上面 -->
@@ -68,79 +67,6 @@
               <a href="javascript:;" :class="{ gray: ezfy.chatPage >= ezfy.chatTotalPages }" @click="ezfy.chatGo(1)">下一页</a>
             </div>
           </template>
-        </div>
-    </template>
-    <template v-else-if="ezfy.cur === 'mail'">
-        <div class="panel">
-          <div class="panel-title">私聊 · 会话列表</div>
-          <div class="old-line" v-for="c in ezfy.pmConvs" :key="'cv' + c.user_id">
-            <a href="javascript:;" @click="ezfy.selectPm(c.user_id)">
-              <span :class="{ red: ezfy.pmPeer && ezfy.pmPeer.id === c.user_id }">
-                {{ ezfy.pmPeer && ezfy.pmPeer.id === c.user_id ? '▶ ' : '' }}{{ c.nickname }}</span></a>
-            <span class="gray">({{ c.username }})</span>
-            <span v-if="c.unread > 0" class="red">[未读{{ c.unread }}]</span>
-            <br/>
-            <span class="gray">{{ c.last_content }}</span>
-            <span class="gray"> ({{ ezfy.fmtTime(c.last_at) }})</span>
-          </div>
-          <div class="old-line" v-if="!ezfy.pmConvs.length">(还没有聊过的人，在下面填游戏ID或昵称发起私聊)</div>
-          <div class="old-line" v-if="ezfy.pmConvs.length && ezfy.pmConvTotal > ezfy.pmConvSize">
-            共{{ ezfy.pmConvTotal }}个会话 ·
-            <a href="javascript:;" :class="ezfy.pmConvPage <= 1 ? 'gray' : ''" @click="ezfy.pmConvPrev()">[上一页]</a>
-            {{ ezfy.pmConvPage }}/{{ Math.ceil(ezfy.pmConvTotal / ezfy.pmConvSize) }}
-            <a href="javascript:;" :class="ezfy.pmConvPage * ezfy.pmConvSize >= ezfy.pmConvTotal ? 'gray' : ''" @click="ezfy.pmConvNext()">[下一页]</a>
-          </div>
-          <br/>
-          <button @click="ezfy.loadPmConvs()">刷新会话</button>
-        </div>
-
-        <div class="panel" v-if="ezfy.pmPeer">
-          <div class="panel-title">与 {{ ezfy.pmPeer.nickname }}({{ ezfy.pmPeer.username }}) 的聊天记录</div>
-          <div class="old-line" v-for="m in ezfy.pmChat" :key="'pc' + m.id">
-            <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">
-              {{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.nickname }}</span>：{{ m.content }}
-            <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
-          </div>
-          <div class="old-line" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
-          <br/>
-          <button @click="ezfy.selectPm(ezfy.pmPeer.id)">刷新记录</button>
-          <a href="javascript:;" @click="ezfy.pmPeer = null; ezfy.pmChat = []; ezfy.pmTo = ''">[关闭会话]</a>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title">发私信</div>
-          <div class="old-line">
-            收件人:
-            <input v-model="ezfy.pmTo" placeholder="游戏ID / 昵称" style="width:170px" list="ezfyPmCands"/>
-            <datalist id="ezfyPmCands">
-              <option v-for="f in ezfy.pmCandidates" :key="'pmc' + f.id" :value="f.name"></option>
-            </datalist>
-            <span class="gray" v-if="ezfy.pmPeer">（当前会话：{{ ezfy.pmPeer.nickname }}）</span>
-          </div>
-          <div class="old-line gray">不需要先加好友, 填对方游戏ID或昵称即可; 对方把你拉黑则发不出去。</div>
-          <div class="old-line">
-            <!-- ★ 改成可自适应高度的文本域（）：随内容长高，最多 8 行后内部滚动 -->
-            <textarea v-model="ezfy.pmContent" class="ezfy-auto-textarea" placeholder="最多500字"
-                      maxlength="500" rows="2"></textarea>
-          </div>
-          <div class="old-line">
-            <button @click="ezfy.doSendPm">发送</button>
-            <a href="javascript:;" @click="ezfy.go('friends')">[好友]</a>
-            <a href="javascript:;" @click="ezfy.go('chat')">[聊天频道]</a>
-          </div>
-        </div>
-
-        <!-- 收到的私信（系统通知 / 别人的来信） -->
-        <div class="panel">
-          <div class="panel-title">收到的私信</div>
-          <div class="old-line" v-for="m in ezfy.mails" :key="'m' + m.id">
-            <a href="javascript:;" @click="ezfy.selectPm(m.sender_id)"><span
-               :class="{ red: m.is_read === 0 }">{{ m.sender }}</span></a>:
-            {{ m.content }} <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
-          </div>
-          <div class="old-line" v-if="!ezfy.mails.length">(暂无私信)</div>
-          <br/>
-          <a href="javascript:;" @click="ezfy.loadMails">[刷新]</a>
         </div>
     </template>
   </div>
