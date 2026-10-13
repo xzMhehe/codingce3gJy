@@ -271,8 +271,19 @@
               <tr><th>宝箱</th><th>价格</th><th>库存</th><th>操作</th></tr>
               <tr v-for="ch in ezfy.chestData.chests" :key="'ch' + ch.id">
                 <td>
-                  <a href="javascript:;" @click="ezfy.openChestView(ch)">{{ ch.name }}</a>
+                  <a href="javascript:;"
+                     :class="{ on: ezfy.chestDescId === ch.id }"
+                     @click="ezfy.toggleChestDesc(ch)">{{ ch.name }}</a>
                   <span class="gray">（奖池 {{ ch.pool.length }} 项）</span>
+                  <!-- ★ 2026-10-13 行内「可开出」预览：不跳奖池页也知道能开出啥 -->
+                  <div class="old-line gray" v-if="ezfy.chestDescId === ch.id">
+                    可开出：
+                    <template v-for="(g, gi) in ezfy.chestPoolTop(ch.pool, 6)" :key="'cp' + gi">
+                      <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="gi < 5">、</span>
+                    </template>
+                    <span class="gray" v-if="ch.pool.length > 6">…等{{ ch.pool.length - 6 }}项</span>
+                    <a href="javascript:;" @click="ezfy.openChestView(ch)">[完整奖池]</a>
+                  </div>
                 </td>
                 <td>
                   <span v-if="ch.price_diamond > 0" class="orange">{{ ch.price_diamond }}钻</span>
@@ -283,7 +294,6 @@
                   <span v-else :class="ch.stock > 0 ? 'gray' : 'red'">{{ ch.stock > 0 ? ch.stock : '已售罄' }}</span>
                 </td>
                 <td>
-                  <a href="javascript:;" @click="ezfy.openChestView(ch)">[查看]</a>
                   <template v-if="!ch.sold_out">
                     <a href="javascript:;" @click="ezfy.quickOpenChest(ch, 1)">[开1]</a>
                     <a v-if="ch.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenChest(ch, 5)">[开5]</a>
@@ -298,13 +308,13 @@
             <div class="old-line gray">
               当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}
             </div>
-            <!-- ★ 2026-10-13 开箱结果就地展示：品质聚合着色（高品质排前）+ 花费 + 余额，让玩家一眼看到值不值 -->
+            <!-- ★ 2026-10-13 开箱结果就地展示：按奖品名聚合着色（高品质排前）+ 花费 + 余额，一眼看到开出啥、值不值 -->
             <div class="old-line" v-if="ezfy.chestResult.length">
               <b class="green">开箱成功</b>
               <span class="gray">花费 {{ ezfy.chestLastCost }} · 余额
                 {{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}</span>
-              <template v-for="(s, i) in ezfy.chestResultSummary" :key="'cs' + i">
-                <span :class="ezfy.qualityClass(s.q)">【{{ s.q }}×{{ s.n }}】</span>
+              <template v-for="(g, i) in ezfy.chestResultGroups" :key="'cr' + i">
+                <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
               </template>
               <a href="javascript:;" @click="ezfy.chestResult = []; ezfy.chestLastCost = ''">[收起]</a>
             </div>

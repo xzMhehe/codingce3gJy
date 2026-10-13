@@ -782,6 +782,8 @@ export default {
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [], chestLastCost: '',
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
+      // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
+      chestDescId: 0,
       sellType: '1',
       sellCount: 0,
       sellPrice: 0,
@@ -937,19 +939,6 @@ export default {
         byName[k].count++
       }
       return Object.values(byName)
-    },
-    // ★ 2026-10-13 开箱结果面板：按品质聚合着色（高品质排前），让玩家一眼看出「这波值不值」。
-    //   品质档位：传说/传奇/特殊=0 → 史诗/高级=1 → 稀有/中级=2 → 优良/普通=3
-    chestResultSummary () {
-      const rank = { '传说': 0, '传奇': 0, '特殊': 0, '史诗': 1, '高级': 1, '稀有': 2, '中级': 2, '优良': 3, '普通': 3 }
-      const byQ = {}
-      for (const r of (this.chestResult || [])) {
-        const q = r.quality || '普通'
-        if (!byQ[q]) byQ[q] = { q: q, n: 0 }
-        byQ[q].n++
-      }
-      return Object.values(byQ).sort((a, b) =>
-        ((rank[a.q] === undefined ? 9 : rank[a.q]) - (rank[b.q] === undefined ? 9 : rank[b.q])))
     },
     // ★ 2026-10-13 开箱结果明细：同名同品质合并成一行 ×N（几十个箱子结果不刷屏），高品质排前
     chestResultGroups () {
@@ -3841,6 +3830,26 @@ export default {
       this.chestOpen = ch
       this.setChestCount(n)
       this.doOpenChest(ch)
+    },
+    // ★ 2026-10-13 商城宝箱行：点宝箱名展开/收起「可开出」预览（不跳奖池页也知道能开出啥）
+    toggleChestDesc (ch) {
+      this.chestDescId = (this.chestDescId === ch.id) ? 0 : ch.id
+    },
+    // ★ 2026-10-13 奖池预览摘要：同名同为档合并计数、高档排前，只取前 max 项
+    chestPoolTop (pool, max) {
+      const rank = { '传说': 0, '传奇': 0, '特殊': 0, '史诗': 1, '高级': 1, '稀有': 2, '中级': 2, '优良': 3, '普通': 3 }
+      const byK = {}
+      for (const p of (pool || [])) {
+        const q = p.quality || '普通'
+        const k = (p.name || '?') + '|' + q
+        if (!byK[k]) byK[k] = { name: p.name || '?', quality: q, n: 0 }
+        byK[k].n += (p.count || 1)
+      }
+      return Object.values(byK).sort((a, b) => {
+        const ra = rank[a.quality] === undefined ? 9 : rank[a.quality]
+        const rb = rank[b.quality] === undefined ? 9 : rank[b.quality]
+        return (ra - rb) || (a.name < b.name ? -1 : 1)
+      }).slice(0, max || 6)
     },
     doOpenChest (ch) {
       const n = parseInt(this.chestCount) || 0
