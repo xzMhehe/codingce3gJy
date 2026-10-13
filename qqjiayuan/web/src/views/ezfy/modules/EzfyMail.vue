@@ -2,7 +2,6 @@
   <div>
     <template v-if="ezfy.cur === 'mail'">
         <div class="panel">
-          <div class="panel-title">邮箱</div>
           <div class="old-line">
             未读：<b class="red">{{ ezfy.mailUnread.total }}</b> 封（收件箱 <b>{{ ezfy.mailUnread.inbox }}</b> / 系统邮件 <b>{{ ezfy.mailUnread.system }}</b>）
             <a v-if="ezfy.mailTab === 'inbox' || ezfy.mailTab === 'system'" href="javascript:;" @click="ezfy.doMailReadAll">[全部已读]</a>

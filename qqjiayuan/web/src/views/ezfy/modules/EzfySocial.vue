@@ -2,10 +2,9 @@
   <div>
     <template v-if="ezfy.cur === 'friends'">
         <div class="panel">
-          <div class="panel-title">好友</div>
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.friendTab === 'list' }" @click="ezfy.setFriendTab('list')">好友</a>|
-            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'apply' }" @click="ezfy.setFriendTab('apply')">申请</a>|
+            <a href="javascript:;" :class="{ on: ezfy.friendTab === 'apply' }" @click="ezfy.setFriendTab('apply')">申请<span v-if="ezfy.friendApplies.inbox.length">（{{ ezfy.friendApplies.inbox.length }}）</span></a>|
             <a href="javascript:;" :class="{ on: ezfy.friendTab === 'sent' }" @click="ezfy.setFriendTab('sent')">已发送</a>|
             <a href="javascript:;" :class="{ on: ezfy.friendTab === 'search' }" @click="ezfy.setFriendTab('search')">查找</a>
           </div>
@@ -49,7 +48,6 @@
 
           <!-- 好友申请 -->
           <template v-else-if="ezfy.friendTab === 'apply'">
-            <div class="panel-title">好友申请（待处理 {{ ezfy.friendApplies.inbox.length }}）</div>
             <table v-if="ezfy.friendApplies.inbox.length">
               <tr><th>游戏ID</th><th>昵称</th><th>验证信息</th><th>操作</th></tr>
               <tr v-for="a in ezfy.friendApplies.inbox" :key="'fa' + a.apply_id">
@@ -67,7 +65,6 @@
 
           <!-- 已发送的申请 -->
           <template v-else-if="ezfy.friendTab === 'sent'">
-            <div class="panel-title">已发送的申请</div>
             <table v-if="ezfy.friendApplies.outbox.length">
               <tr><th>游戏ID</th><th>昵称</th><th>状态</th></tr>
               <tr v-for="a in ezfy.friendApplies.outbox" :key="'fo' + a.apply_id">
@@ -81,7 +78,6 @@
 
           <!-- 查找玩家 -->
           <template v-else>
-            <div class="panel-title">查找玩家</div>
             <div class="old-line">
               玩家昵称或ID
               <input v-model="ezfy.friendKeyword" placeholder="输入昵称或ID" style="width:170px" @keyup.enter="ezfy.doFriendSearch"/>
