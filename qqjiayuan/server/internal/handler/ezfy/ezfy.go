@@ -4335,7 +4335,20 @@ func (h *EzfyHandler) ezfyDestroyCity(uid uint, ct *model.EzfyCity) string {
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityEffect{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyCityTarget{})
 	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyOfficer{})
-	h.DB.Where("city_id = ?", cid).Delete(&model.EzfyEquipment{})
+	// ★★ 2026-10-13 修复「弃城把账号背包里的装备/宝物一起删了」（线上用户 35806411 事故，一次丢了 305 件）：
+	//   装备的归属是 **user_id**（`equipmentList(uid)` 就是 `WHERE user_id = ?` 全局查，界面不分城），
+	//   `city_id` 只是**获得时的出生城**、而且穿戴/转移到别城军官后**不会更新**
+	//   （备份里就有 `city_id=68` 却穿在 142/91/92/552/71 等城军官身上的行）。
+	//   拿 `city_id` 当删除依据 = 把「出生地」当「存放地」→ 玩家主动弃一座城，账号背包里的宝物凭空消失。
+	//   现在改为：**装备全部保留在账号背包** —— 卸下（军官已随城消失）+ `city_id` 迁到玩家主城。
+	//   ⚠️ 主城必须**排除被弃的这座**，否则 anyCity 可能正好返回它、等于没迁。
+	var mc model.EzfyCity
+	mainId := int64(0)
+	if err := h.DB.Where("user_id = ? AND id <> ?", uid, cid).Order("id ASC").First(&mc).Error; err == nil {
+		mainId = int64(mc.ID)
+	}
+	h.DB.Model(&model.EzfyEquipment{}).Where("city_id = ?", cid).
+		Updates(map[string]interface{}{"officer_id": 0, "city_id": mainId})
 	// 被这座城占领的玩家城/野地记录也要释放
 	h.DB.Where("city_id = ? AND status = 1", cid).Delete(&model.EzfyOccupy{})
 	// ★ 地图区域：删掉「玩家城」记录 → 该格回到普通地形
