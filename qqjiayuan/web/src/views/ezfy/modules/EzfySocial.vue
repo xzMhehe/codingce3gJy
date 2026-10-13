@@ -41,7 +41,6 @@
               <div class="old-line">
                 <input v-model="ezfy.pmContent" class="ezfy-chat-input" maxlength="500" placeholder="最多500字" @keyup.enter="ezfy.doSendPrivchat"/>
                 <button @click="ezfy.doSendPrivchat">发送</button>
-                <span class="gray">(仅游戏好友之间私聊)</span>
               </div>
             </div>
           </template>
