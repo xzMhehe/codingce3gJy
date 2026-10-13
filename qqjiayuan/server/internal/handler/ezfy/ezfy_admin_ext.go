@@ -1185,12 +1185,29 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("word"))
 	cityId := int64(atoiOr(c.Query("city_id"), 0))
 	captive := atoiOr(c.Query("captive"), -1)
+	// ★ 2026-10-13 新增「类型」检索（用户要求）：-1 全部 / 1 名将 / 0 普通。
+	//   名将的判据是**军官池配置的 kind==2**（见 ezfyCfg.isGeneral），SQL 里判不了 →
+	//   先把名将池 ID 捞出来，再用 `general_id IN / NOT IN` 过滤。
+	//   `general_id = 0`（历史老数据/无池子）天然落在「普通」里，不用单独 OR。
+	general := atoiOr(c.Query("general"), -1)
 	q := h.DB.Model(&model.EzfyOfficer{})
 	if cityId > 0 {
 		q = q.Where("city_id = ?", cityId)
 	}
 	if captive >= 0 {
 		q = q.Where("is_captive = ?", captive)
+	}
+	if general >= 0 {
+		gids := ezfyCfg.generalIDsOfKind(2)
+		if general == 1 {
+			if len(gids) == 0 {
+				q = q.Where("1 = 0") // 池子里没有名将 → 直接空结果
+			} else {
+				q = q.Where("general_id IN ?", gids)
+			}
+		} else if len(gids) > 0 {
+			q = q.Where("general_id NOT IN ?", gids)
+		}
 	}
 	if word != "" {
 		if id, err := strconv.Atoi(word); err == nil {
@@ -1230,13 +1247,37 @@ func (h *EzfyAdmin) AdminEzfyOfficers(c *gin.Context) {
 		PoolBaseLogistics int    `json:"pool_base_logistics"`
 		PoolBaseLearning  int    `json:"pool_base_learning"`
 	}
+	// ★★ 2026-10-13 性能修复（用户反馈「军官管理 → 玩家军官列表，换每页条数时分页卡顿」）：
+	//   原来这里是**逐行 N+1**：每行 `First(&ct)` 查一次城市 + `ezfyAdminName()` 再查 profile/users 两条
+	//   → **一行 3 条 SQL**（其中 users 在**家园库**、跨 WAN），size=15 要 45 条、size=100 要 **300 条**，
+	//   所以「每页条数」一调大就明显卡。现在改成**两次批量查询**：
+	//   ① 一次取回本页所有城市；② 一次批量取回这些城主的昵称/家园号（复用 ezfyAdminNamesBatch）。
+	cityMap := map[int64]model.EzfyCity{}
+	{
+		ids := make([]int64, 0, len(rows))
+		for _, o := range rows {
+			ids = append(ids, o.CityId)
+		}
+		if len(ids) > 0 {
+			var cs []model.EzfyCity
+			h.DB.Where("id IN ?", ids).Find(&cs)
+			for _, c := range cs {
+				cityMap[int64(c.ID)] = c
+			}
+		}
+	}
+	uids := make([]uint, 0, len(cityMap))
+	for _, c := range cityMap {
+		uids = append(uids, c.UserID)
+	}
+	nickMap, numMap := h.ezfyAdminNamesBatch(uids)
+
 	out := []rowOut{}
 	for _, o := range rows {
 		cityName, owner, home := "", "", ""
-		var ct model.EzfyCity
-		if err := h.DB.First(&ct, o.CityId).Error; err == nil {
+		if ct, ok := cityMap[o.CityId]; ok {
 			cityName = ct.Name
-			owner, home = h.ezfyAdminName(ct.UserID)
+			owner, home = nickMap[ct.UserID], numMap[ct.UserID]
 		}
 		isGeneral := o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId)
 		// 军官池模板（只读展示素材）：GeneralId>0 时取池子配置（内存配置，无 DB 开销）

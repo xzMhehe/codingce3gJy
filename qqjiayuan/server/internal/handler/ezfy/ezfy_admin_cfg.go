@@ -1748,22 +1748,65 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 	}
 	ownerName, homeNum := h.ezfyAdminNamesBatch(ownerIds)
 
-	// 本页全部明细装备（行值 IN 一次拉全，替代原来逐组逐条 First 的 N+1）
-	tuples := make([][]interface{}, 0, len(groups))
+	// ★★ 2026-10-13 性能修复（用户反馈「玩家军官装备列表 换每页条数时分页卡顿」）：
+	//   原来**每次列表请求**都要把本页所有聚合组的**全部实例明细**拉回来（`items` 大查询 +
+	//   军官名 + 城名 3 条 SQL），只为填 `details` —— 而 `details` **只有点「查看」弹框才用**。
+	//   某玩家一组可能有几百件（例如红宝石戒指 559 件），size=100 时这一下要拉回上万行 → 越大越卡。
+	//   现在列表**不再查明细**（只回 `count`），明细改由 `AdminEzfyEquipmentOwnedDetails` 按需查。
+	offIds := []int64{}
+	seenOff := map[int64]bool{}
+	for _, r := range reps {
+		if r.OfficerId > 0 && !seenOff[r.OfficerId] {
+			seenOff[r.OfficerId] = true
+			offIds = append(offIds, r.OfficerId)
+		}
+	}
+	offByName := map[int64]string{}
+	if len(offIds) > 0 {
+		var os []model.EzfyOfficer
+		h.DB.Where("id IN ?", offIds).Find(&os)
+		for _, o := range os {
+			offByName[int64(o.ID)] = o.Name
+		}
+	}
+
+	out := []rowOut{}
 	for _, g := range groups {
-		tuples = append(tuples, []interface{}{g.UserID, g.CfgID, g.Name, g.Type, g.Tier})
+		rep := repByID[g.RepID]
+		owner, home := ownerName[g.UserID], homeNum[g.UserID]
+		rgOff := ""
+		if rep.OfficerId > 0 {
+			rgOff = offByName[rep.OfficerId]
+		}
+		out = append(out, rowOut{EzfyEquipment: rep, TierName: ezfyEquipTierName(g.Tier),
+			Count: g.Cnt, OwnerName: owner, HomeNum: home, OfficerNm: rgOff})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// AdminEzfyEquipmentOwnedDetails 某个聚合组（同 user+cfg+name+type+tier）的**实例明细**：
+// 每件的装备 id / 穿戴军官 / 所在城，给「装备详情」弹框用。
+//
+// ★ 2026-10-13 从列表接口 `AdminEzfyEquipmentsOwned` 里**拆出来**（按需查）：
+//
+//	列表原来每次都把明细一起拉回来，一组可能有几百件 → size 大时拉回上万行，切每页条数就卡。
+func (h *EzfyAdmin) AdminEzfyEquipmentOwnedDetails(c *gin.Context) {
+	userId := uint(atoiOr(c.Query("user_id"), 0))
+	cfgId := atoiOr(c.Query("cfg_id"), 0)
+	name := c.Query("name")
+	typ := c.Query("type")
+	tier := atoiOr(c.Query("tier"), 0)
+	if userId == 0 {
+		resp.ParamError(c, "参数错误")
+		return
 	}
 	var items []model.EzfyEquipment
-	if err := h.DB.Where("(user_id, cfg_id, name, type, tier) IN ?", tuples).Order("id DESC").Find(&items).Error; err != nil {
-		items = nil
-	}
-	itemsByKey := map[string][]model.EzfyEquipment{}
-	offIds := []int64{}
-	cityIds := []int64{}
+	h.DB.Where("user_id = ? AND cfg_id = ? AND name = ? AND type = ? AND tier = ?",
+		userId, cfgId, name, typ, tier).Order("id DESC").Find(&items)
+
+	offIds, cityIds := []int64{}, []int64{}
 	seenOff, seenCt := map[int64]bool{}, map[int64]bool{}
 	for _, it := range items {
-		k := fmt.Sprintf("%d|%d|%s|%s|%d", it.UserId, it.CfgId, it.Name, it.Type, it.Tier)
-		itemsByKey[k] = append(itemsByKey[k], it)
 		if it.OfficerId > 0 && !seenOff[it.OfficerId] {
 			seenOff[it.OfficerId] = true
 			offIds = append(offIds, it.OfficerId)
@@ -1773,8 +1816,6 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 			cityIds = append(cityIds, it.CityId)
 		}
 	}
-
-	// 批量本页军官名、城名
 	offByName := map[int64]string{}
 	if len(offIds) > 0 {
 		var os []model.EzfyOfficer
@@ -1791,26 +1832,14 @@ func (h *EzfyAdmin) AdminEzfyEquipmentsOwned(c *gin.Context) {
 			cityByName[int64(ct.ID)] = ct.Name
 		}
 	}
-
-	out := []rowOut{}
-	for _, g := range groups {
-		rep := repByID[g.RepID]
-		owner, home := ownerName[g.UserID], homeNum[g.UserID]
-		rgOff := ""
-		if rep.OfficerId > 0 {
-			rgOff = offByName[rep.OfficerId]
-		}
-		details := []gin.H{}
-		for _, it := range itemsByKey[fmt.Sprintf("%d|%d|%s|%s|%d", g.UserID, g.CfgID, g.Name, g.Type, g.Tier)] {
-			details = append(details, gin.H{
-				"equip_id": it.ID, "officer_id": it.OfficerId, "officer_name": offByName[it.OfficerId],
-				"city_id": it.CityId, "city_name": cityByName[it.CityId],
-			})
-		}
-		out = append(out, rowOut{EzfyEquipment: rep, TierName: ezfyEquipTierName(g.Tier),
-			Count: g.Cnt, OwnerName: owner, HomeNum: home, OfficerNm: rgOff, Details: details})
+	details := []gin.H{}
+	for _, it := range items {
+		details = append(details, gin.H{
+			"equip_id": it.ID, "officer_id": it.OfficerId, "officer_name": offByName[it.OfficerId],
+			"city_id": it.CityId, "city_name": cityByName[it.CityId],
+		})
 	}
-	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+	resp.OK(c, gin.H{"list": details, "total": len(details)})
 }
 
 // AdminEzfyEquipmentOwnedCreate 给玩家发装备（按配置生成，落到其主城背包）

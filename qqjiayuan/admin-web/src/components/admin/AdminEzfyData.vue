@@ -33,6 +33,14 @@
         <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 从玩家信息管理移到这里 -->
         <el-button v-if="table === 'items'" type="warning" plain icon="el-icon-present" @click="openItemGrant">发放道具</el-button>
       </div>
+      <!-- ★★ 2026-10-13 表格宽度改成「按列宽合计」（tableWidth），不再强制铺满整行：
+           本页多数表只有 6~9 列，铺满 1115px 时 el-table 会把剩余宽度全摊给弹性列 ——
+           实测「任务类型」的类型名被拉到 299px（内容只要 70px）、「任务配置」的状态 337px，
+           一列显示 3 个字却占 300px，就是用户说的「列宽还是不合理」。
+           ⇒ 表格宽度 = 各列宽之和（含固定操作列）；容器更宽时表格不再被拉伸（右侧自然留白），
+             容器更窄时 max-width 不生效 → 表格照旧铺满并压缩弹性列（小屏不横向滚动）。
+           ★ 分页条一起放进这个容器，保证和表格同宽、右边缘对齐。 -->
+      <div class="tbl-fit" :style="{ maxWidth: tableWidth + 'px' }">
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w" :min-width="col.minW"
                          :align="(col.w || col.minW) ? 'center' : 'left'" show-overflow-tooltip>
@@ -70,6 +78,7 @@
                        :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
                        @current-change="p => { page = p; load() }"
                        @size-change="s => { size = s; page = 1; load() }" />
+      </div>
       </div>
 
       <!-- 新增/编辑对话框 -->
@@ -390,17 +399,21 @@ const QUALITY_TAG = { 普通: 'info', 稀有: 'primary', 史诗: 'warning', 传�
 // 各数据表的展示列（k=字段, n=列名, w=列宽, dict=枚举文字映射）
 const COLS = {
   activities: [
-    { k: 'id', n: 'ID', w: 60 },
-    { k: 'name', n: '活动名', w: 150 },
+    // ★★ 2026-10-13 列宽体检重排（1440 视口，表体可视 1115，操作列 160）：
+    //   原「活动名 150 / 参数 90 / 状态 90」都留着几十 px 死白，而「说明」只有 135px、
+    //   被切掉 150px。⇒ 短列按内容收紧，把宽度让给「说明」；活动名 + 说明 做弹性列。
+    { k: 'id', n: 'ID', w: 46 },
+    { k: 'name', n: '活动名', minW: 100 },
     // ★ 原为 type_name / status_txt —— 表里根本没有这两列，列表一直显示「—」，
     //   改成真实字段 type / status + 文字映射
-    { k: 'type', n: '类型', w: 110, dict: 'actType' },
-    { k: 'param', n: '参数', w: 90 },
+    { k: 'type', n: '类型', w: 92, dict: 'actType' },
+    { k: 'param', n: '参数', w: 64 },
     // ★ 库里存的是毫秒时间戳（如 1758652800000），直接显示没人看得懂 → 格式化成日期时间
-    { k: 'start_time', n: '开始时间', w: 160, fmt: 'time' },
-    { k: 'end_time', n: '结束时间', w: 160, fmt: 'time' },
-    { k: 'status', n: '状态', w: 90, dict: 'actStatus' },
-    { k: 'des', n: '说明' }
+    //   ★ 时间列固定 170（约定值，日期时间格式的显示宽度）
+    { k: 'start_time', n: '开始时间', w: 170, fmt: 'time' },
+    { k: 'end_time', n: '结束时间', w: 170, fmt: 'time' },
+    { k: 'status', n: '状态', w: 76, dict: 'actStatus' },
+    { k: 'des', n: '说明', minW: 200 }
   ],
   buildings: [
     { k: 'id', n: 'ID', w: 70 }, { k: 'name', n: '建筑名', w: 110 }, { k: 'type', n: '类型', w: 70 },
@@ -453,7 +466,7 @@ const COLS = {
     { k: 'item_type', n: '类型', w: 92, dict: 'itemType' },
     { k: 'category_name', n: '商城分类', w: 86 },
     { k: 'param1', n: '参数', w: 140, fmt: 'param' },
-    { k: 'price_gold', n: '黄金价', w: 70 }, { k: 'price_diamond', n: '钻石价', w: 64 },
+    { k: 'price_gold', n: '黄金价', w: 70 }, { k: 'price_diamond', n: '钻石价', w: 66 },
     { k: 'stock', n: '库存', w: 66, fmt: 'stock' },
     { k: 'description', n: '描述', minW: 230 }
   ],
@@ -473,7 +486,7 @@ const COLS = {
     //   ⚠️ 大屏下列会整体变宽（这是"铺满"的必然代价）；最长装备名仍可能截断，悬停有 tooltip。
     { k: 'id', n: 'ID', minW: 56 }, { k: 'name', n: '装备名', minW: 150 }, { k: 'type', n: '类型', minW: 90 },
     { k: 'tier', n: '品质', minW: 78, dict: 'tier' }, { k: 'slot', n: '部位', minW: 74 },
-    { k: 'set_id', n: '套装ID', minW: 78 }, { k: 'level', n: '需求等级', minW: 88 },
+    { k: 'set_id', n: '套装ID', minW: 82 }, { k: 'level', n: '需求等级', minW: 88 },
     { k: 'series', n: '系列', minW: 84 },
     { k: 'price_gold', n: '黄金价', minW: 78 }, { k: 'price_diamond', n: '钻石价', minW: 82 },
     { k: 'stock', n: '库存', minW: 84, fmt: 'stock' }
@@ -487,35 +500,42 @@ const COLS = {
   //        ② 其余列按内容宽度收紧；③ 让出的宽度给两个长文本列。
   //   注：长文本列仍会截断（10 列塞不进 955px），鼠标悬停有 tooltip 看全文。
   chests: [
-    { k: 'id', n: 'ID', w: 46 },
-    // ★★ 2026-10-13 按「列宽体检」实测（视口 1440 → 表体可视 **1115px**）重排：
-    //   体检口径：**偏宽 = 列宽-内容 > 60px**；**截断 = 内容装不下**；**列宽合计 > 1115 = 横向滚动**。
-    //   ① 宝箱名：库里最长就 4 个字（内容仅需 70px）→ 120（余 50，既比原来宽、又不触发偏宽）；
-    //   ② 单次上限 82→74、排序 58→50（内容都只要 29）→ 省下的宽度全部让给两个长文本列；
-    //   ③ 省完后「说明/奖池说明」分到 ~408 / ~488px，**两列都不再截断**（原来 -105 / -79）；
-    //   ④ 合计从 1154 降到 **1115 以内**，**横向滚动消失**。
-    { k: 'name', n: '宝箱名', w: 120 },
-    { k: 'price', n: '价格', w: 90, fmt: 'price' },
+    { k: 'id', n: 'ID', w: 42 },
+    // ★★ 2026-10-13 二次体检（上次收紧后仍有死白 + 两个长文本列各截断 104/79px）：
+    //   宝箱名/价格/单次上限/上架/排序 再按内容收 4~24px，省下的全给「说明/奖池说明」；
+    //   两个长文本列仍走 min-width 弹性（比例按内容需求 310:324 设，截断尽量均衡）。
+    { k: 'name', n: '宝箱名', w: 84 },
+    { k: 'price', n: '价格', w: 74, fmt: 'price' },
     { k: 'stock', n: '库存', w: 62, fmt: 'stock' },
-    { k: 'open_max', n: '单次上限', w: 74 },
-    { k: 'enabled', n: '上架', w: 66, dict: 'chestOn' },
-    { k: 'sort_no', n: '排序', w: 46 },
-    { k: 'des', n: '说明', minW: 205 },
-    { k: 'effect', n: '奖池说明', minW: 245 }
+    // ★ 62→78：表头「单次上限」4 个字在 62px 下会被切成「单次…」（体检新增的表头截断检查）
+    { k: 'open_max', n: '单次上限', w: 78 },
+    { k: 'enabled', n: '上架', w: 62, dict: 'chestOn' },
+    { k: 'sort_no', n: '排序', w: 52 },
+    { k: 'des', n: '说明', minW: 230 },
+    { k: 'effect', n: '奖池说明', minW: 260 }
   ],
   taskTypes: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '类型名', w: 110 }, { k: 'code', n: '代码', w: 110 },
-    { k: 'reset_type', n: '重置', w: 80, dict: 'resetType' }, { k: 'sort_no', n: '排序', w: 60 },
-    // ★ 最后一列不固定宽、只给最小宽，让表格自动铺满整个卡片（用户反馈右侧大空白）
+    // ★★ 2026-10-13 用户反馈「列宽还是不合理」的**真凶就在这两张表**：
+    //   原写法是「前面全固定宽 + 最后一列（状态）一个 min-width」—— 按 el-table 的分配规则，
+    //   剩余宽度**全部**给那唯一的弹性列：1440 视口实测「状态」被拉到 **539px**（内容只要 58px），
+    //   同一页「任务配置」的「状态」被拉到 337px。这正是 MEMORY 里那条
+    //   「每表配 2~3 个 min-width 弹性列，只留 1 个会被拉到 600px+」的坑。
+    //   ⇒ 弹性列改成 3 个（类型名 / 代码 / 状态），剩余宽度按 min-width 比例摊开，单列不再突兀。
+    { k: 'id', n: 'ID', w: 56 },
+    { k: 'name', n: '类型名', minW: 130 },
+    { k: 'code', n: '代码', minW: 110 },
+    { k: 'reset_type', n: '重置', w: 80, dict: 'resetType' },
+    { k: 'sort_no', n: '排序', w: 60 },
     { k: 'status', n: '状态', minW: 90, dict: 'onoff' }
   ],
   tasks: [
-    { k: 'id', n: 'ID', w: 56 }, { k: 'name', n: '任务名', w: 120 },
+    { k: 'id', n: 'ID', w: 56 },
+    { k: 'name', n: '任务名', minW: 140 },
     // ★ task_type 存的是 build_upgrade 这类英文代码 → 列表里转成中文
-    { k: 'task_type', n: '任务行为', w: 110, dict: 'taskAction' },
+    { k: 'task_type', n: '任务行为', minW: 110, dict: 'taskAction' },
     { k: 'target', n: '目标数', w: 70 }, { k: 'reward_gold', n: '黄金', w: 76 }, { k: 'reward_food', n: '粮食', w: 70 },
     { k: 'reward_prestige', n: '声望', w: 60 },     { k: 'sort_no', n: '排序', w: 56 },
-    // ★ 同上：最后一列弹性铺满
+    // ★ 同上（任务配置）：状态不再是唯一的弹性列，改与任务名/任务行为一起摊剩余宽度
     { k: 'status', n: '状态', minW: 90, dict: 'onoff' }
   ],
   cities: [
@@ -527,27 +547,34 @@ const COLS = {
   ],
   // ★ 2026-09-28 玩家钻石流水（只读）：按玩家ID/昵称搜索；created_at 由后端格式化好
   diamondLogs: [
-    { k: 'id', n: '流水ID', w: 80 },
-    { k: 'user_id', n: '玩家ID', w: 90 },
-    { k: 'nickname', n: '玩家昵称', w: 120 },
-    { k: 'change', n: '变动', w: 100 },
-    { k: 'balance', n: '变动后余额', w: 110 },
-    { k: 'reason', n: '变动原因', minW: 160 },
+    // ★★ 2026-10-13 列宽体检重排（只读表**没有操作列**，表体可视 1115 全给数据列）：
+    //   原来 3 个 min-width 弹性列（原因/开出道具/发生时间）等比例放大 → 时间列被拉到 192px、
+    //   「开出道具」被拉到 217px，而内容只要 131/121px。
+    //   ⇒ 发生时间回到**固定 170**（时间列约定值）；富余宽度集中给「变动原因」这类真长文本列。
+    { k: 'id', n: '流水ID', w: 76 },
+    { k: 'user_id', n: '玩家ID', w: 84 },
+    { k: 'nickname', n: '玩家昵称', minW: 110 },
+    { k: 'change', n: '变动', w: 76 },
+    { k: 'balance', n: '变动后余额', w: 96 },
+    { k: 'reason', n: '变动原因', minW: 200 },
     // ★ 2026-10-11 购买宝箱的流水回填开出的道具（后端开箱后 UPDATE extra；其它流水为空显示「—」）
-    { k: 'extra', n: '开出道具', minW: 170 },
-    { k: 'created_at', n: '发生时间', minW: 150 }
+    { k: 'extra', n: '开出道具', minW: 150 },
+    { k: 'created_at', n: '发生时间', w: 170 }
   ],
   // ★ 2026-10-02 玩家道具使用流水（只读）：按玩家ID/昵称/道具名搜索；created_at 由后端格式化好
   itemUseLogs: [
-    { k: 'id', n: '记录ID', w: 80 },
-    { k: 'user_id', n: '玩家ID', w: 90 },
-    { k: 'nickname', n: '玩家昵称', w: 120 },
-    { k: 'cfg_id', n: '道具ID', w: 80 },
-    { k: 'item_name', n: '道具名', w: 120 },
-    { k: 'item_type', n: '道具类型', w: 90, dict: 'itemType' },
-    { k: 'count', n: '数量', w: 70 },
+    // ★★ 2026-10-13 列宽体检重排（只读表，无操作列）：原「道具名」固定 120 被内容 127 切掉 7px，
+    //   而「消耗原因 225 / 发生时间 240」却各空着 143/109px。
+    //   ⇒ 道具名改 min-width 弹性（不再截断）；发生时间回到固定 170；短列按内容收紧。
+    { k: 'id', n: '记录ID', w: 76 },
+    { k: 'user_id', n: '玩家ID', w: 84 },
+    { k: 'nickname', n: '玩家昵称', minW: 100 },
+    { k: 'cfg_id', n: '道具ID', w: 76 },
+    { k: 'item_name', n: '道具名', minW: 150 },
+    { k: 'item_type', n: '道具类型', w: 88, dict: 'itemType' },
+    { k: 'count', n: '数量', w: 64 },
     { k: 'reason', n: '消耗原因', minW: 140 },
-    { k: 'created_at', n: '发生时间', minW: 150 }
+    { k: 'created_at', n: '发生时间', w: 170 }
   ]
 }
 
@@ -742,7 +769,9 @@ export default {
       cat: '', cats: [],
       // ★ 2026-09-27 装备道具配置默认只展示用户商城上架的装备
       mallOnly: true,
-      rows: [], total: 0, page: 1, size: 5, loading: false,
+      // ★ 2026-10-13 默认每页 5 条 → 10 条：数据管理页 8 个 tab 的表都很短，
+      //   每页 5 条动不动就要翻页（其余管理端页面的分页口径也是 10 条/页）
+      rows: [], total: 0, page: 1, size: 10, loading: false,
       showForm: false, saving: false,
       form: {}, formId: 0,
       // ★ 动态字典：任务分类名来自「任务类型」表，不能写死在前端
@@ -767,6 +796,15 @@ export default {
   },
   computed: {
     cols () { return COLS[this.table] || [] },
+    // ★ 2026-10-13 表格目标宽度 = 各列宽之和（固定列取 w、弹性列取 minW，兜底 120）+ 固定操作列 160。
+    //   模板里给表格外层容器设 maxWidth，容器更宽时表格就停在这个宽度（列宽贴合内容、不再被拉伸）。
+    tableWidth () {
+      const cols = this.cols
+      if (!cols.length) return 0
+      let sum = 0
+      cols.forEach(c => { sum += (c.w || c.minW || 120) })
+      return sum + (this.isReadOnly ? 0 : 160)
+    },
     // 只读视图（钻石流水 / 道具使用）：无新增、无编辑、无删除操作列
     isReadOnly () { return this.table === 'diamondLogs' || this.table === 'itemUseLogs' },
     searchPh () {
@@ -1087,6 +1125,11 @@ export default {
 .unlimited { color: #67c23a; font-weight: 600; }
 /* 数据表切换 Tab：与下方工具栏贴近一些，别留一大块空白 */
 .cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
+/* ★★ 2026-10-13 大屏列宽失控兜底：本页多数表只有 6~9 列，el-table 铺满 1600px 时
+   「弹性列」会被等比拉到 400~500px（6 列的「任务类型」最夸张：一列显示 3 个字占 500px）。
+   ⇒ 内容区限宽 1240px 并居中：1440 及以下容器本来就不到 1240，**布局完全不变**；
+     更大屏则整体收在 1240 内，列宽与 1440 视口基本一致，不再被无限拉宽。 */
+.farm-admin .box { max-width: 1240px; margin: 0 auto; }
 /* 发放道具：已选玩家提示 + 道具行 */
 .grant-target { margin-top: 6px; color: #67c23a; font-size: 12px; }
 /* ★ 2026-10-13 全员发放提示：橙色警示，明确「不可撤销」 */

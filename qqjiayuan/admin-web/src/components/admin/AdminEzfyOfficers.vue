@@ -173,6 +173,12 @@
               <el-option label="仅俘虏" :value="1" />
               <el-option label="非俘虏" :value="0" />
             </el-select>
+            <!-- ★ 2026-10-13 新增「类型」检索：名将判据 = 军官池 kind==2（后端 generalIDsOfKind(2)） -->
+            <el-select v-model="general" style="width:120px" @change="page = 1; load()">
+              <el-option label="全部类型" :value="-1" />
+              <el-option label="名将" :value="1" />
+              <el-option label="普通" :value="0" />
+            </el-select>
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />
             <el-button type="success" icon="el-icon-magic-stick" @click="openGen">一键生成军官</el-button>
@@ -392,9 +398,9 @@
 
     <!-- ============ 装备查看详情（穿戴军官 + 所在城） ============ -->
     <el-dialog :title="eevDlg ? ('装备详情 · ' + eevName) : '装备详情'" :visible.sync="eevDlg" width="640px">
-      <div v-if="eevRow && eevRow.details && eevRow.details.length" class="td-sub" style="margin-bottom:8px">
-        该装备共 {{ eevRow.count }} 件，分布在以下位置：</div>
-      <el-table v-if="eevRow && eevRow.details && eevRow.details.length" :data="eevRow.details" size="mini" border stripe max-height="360">
+      <div v-if="eevDetails.length" class="td-sub" style="margin-bottom:8px">
+        该装备共 {{ eevRow && eevRow.count }} 件，分布在以下位置：</div>
+      <el-table v-if="eevDetails.length" v-loading="eevLoading" :data="eevDetails" size="mini" border stripe max-height="360">
         <el-table-column prop="equip_id" label="装备ID" width="70" align="center" />
         <el-table-column label="穿戴军官" min-width="140" show-overflow-tooltip>
           <template slot-scope="{row}">
@@ -902,7 +908,8 @@ export default {
       // 2d 计谋
       schemes: [], loadingSc: false, scWord: '', scDlg: false, scf: {},
       // 3 玩家军官
-      list: [], total: 0, page: 1, size: 5, loading: false, word: '', captive: -1,
+      // ★ 2026-10-13 加 general（「类型」检索：-1 全部 / 1 名将 / 0 普通）
+      list: [], total: 0, page: 1, size: 5, loading: false, word: '', captive: -1, general: -1,
       editDlg: false, editId: 0, form: {},
       // ★ 2026-10-13 查看玩家军官信息（军官信息 + 已穿戴装备 + 后台卸下）
       odDlg: false, loadingOd: false, odOfficer: {}, odEquips: [], odSkills: [], odSummary: {},
@@ -925,6 +932,9 @@ export default {
       ownedEquips: [], oeTotal: 0, oePage: 1, oeSize: 5, loadingOE: false,
       // 装备查看详情（穿戴军官 + 所在城）
       eevDlg: false, eevRow: null, eevName: '',
+      // ★ 2026-10-13 装备明细改为**按需查**（列表接口不再随行下发 details ——
+      //   一组可能有几百件，size 调大时要拉回上万行，这就是「换每页条数卡顿」的根因）
+      eevDetails: [], eevLoading: false,
       oeWord: '', oeType: '', oeEquipped: -1,
       egDlg: false, egForm: { user_id: 1, cfg_ids: [], count: 1 },
       oeDlg: false, oef: {}, ownerOfficers: [],
@@ -1109,7 +1119,7 @@ export default {
     load () {
       this.loading = true
       api.get('/admin/ezfy-officers', {
-        params: { page: this.page, size: this.size, word: this.word, captive: this.captive }
+        params: { page: this.page, size: this.size, word: this.word, captive: this.captive, general: this.general }
       }).then(r => {
         this.loading = false
         if (r.code === 0) {
@@ -1381,6 +1391,16 @@ export default {
       this.eevRow = row || null
       this.eevName = (row && row.name) || ''
       this.eevDlg = true
+      // ★ 2026-10-13 明细**按需查**：列表接口不再随行下发 details（一组可能有几百件，
+      //   size 调大时要拉回上万行 —— 这正是「玩家军官装备列表 换每页条数卡顿」的根因）。
+      this.eevDetails = []
+      if (!row) return
+      this.eevLoading = true
+      api.get('/admin/ezfy-equipments-owned/details', {
+        params: { user_id: row.user_id, cfg_id: row.cfg_id, name: row.name, type: row.type, tier: row.tier }
+      }).then(r => {
+        if (r && r.code === 0) this.eevDetails = r.data.list || []
+      }).finally(() => { this.eevLoading = false })
     },
     openEquipGrant () {
       if (!this.equips.length) this.loadEquips()

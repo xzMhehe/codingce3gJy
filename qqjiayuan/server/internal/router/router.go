@@ -1302,6 +1302,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeDelete)
 				// 玩家军官装备列表（ezfy_equipment）
 				admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentsOwned)
+				// ★ 2026-10-13 「装备详情」弹框的实例明细按需查（列表接口不再随行下发，避免 size 大时拉回上万行）
+				admin.GET("/ezfy-equipments-owned/details", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDetails)
 				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedCreate)
 				admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedUpdate)
 				admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDelete)

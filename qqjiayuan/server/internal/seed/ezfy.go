@@ -143,6 +143,11 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	//   用复合索引 (type_name,id)：`WHERE type_name=? ORDER BY id DESC` 可直接定位顶部 N 条。
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_type_id", "type_name,id", false)
 	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_user_cfg_off", "user_id,cfg_id,officer_id", false)
+	// ★ 2026-10-13 管理端「玩家军官装备列表」提速：该列表按 `(user_id,cfg_id,name,type,tier)` 聚合分组，
+	//   而原有索引 (user_id,cfg_id,officer_id) 不含 name/type/tier → GROUP BY 退化成**全表扫 + 临时表**，
+	//   单次列表请求固定 ~250ms（与 size 无关，但线上跨 WAN 更明显，用户反馈「换每页条数卡顿」）。
+	//   补一条覆盖该分组键的索引，让 GROUP BY 直接走索引。
+	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_grp", "user_id,cfg_id,name,type,tier", false)
 
 	// ★ 2026-10-05 二战风云慢接口补索引（见函数注释）
 	ensureEzfyIndex(db, "ezfy_occupy", "idx_occupy_city_status", "city_id,status", false)

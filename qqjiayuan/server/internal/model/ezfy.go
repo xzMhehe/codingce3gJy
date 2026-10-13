@@ -508,6 +508,11 @@ type EzfyCfgLimit struct {
 	//   ⚠️ 0 是有意义的（= 不限），不能带 gorm:"default:x" 标签，seed 走 addLimitCol 且别用 <=0 回填覆盖正向值。
 	ConvenePopMax int `gorm:"comment:召集硬性人口上限（0 = 不限，超过禁止召集）" json:"convene_pop_max"`
 
+	// ★ 2026-10-13 用户规则「用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」：
+	//   空闲人口每小时恢复量（默认 1 万）。作用点见 EzfyCity.PopRecover。
+	//   0 / 未配置无意义 → 回落默认 10000（seed 走 addLimitCol）。
+	PopRecoverPerHour int `gorm:"comment:空闲人口每小时恢复量（默认 1 万）" json:"pop_recover_per_hour"`
+
 	// ============ 军官升星（2026-09-22 ，2026-09-23 按简化）============
 	//
 	// ★ 简化后的规则：升星按固定概率（officer_star_chance），失败也消耗 1 枚星级徽章，
@@ -788,6 +793,17 @@ type EzfyCity struct {
 	PlacateTime int64 `gorm:"comment:上次安抚时间戳(ms)" json:"placate_time"`
 	Pop         int64 `gorm:"comment:人口" json:"pop"`
 	PopMax      int64 `gorm:"comment:人口上限" json:"pop_max"`
+	// ★ 2026-10-13 用户规则「空闲人口不该一训练完就立刻恢复，要一点一点恢复到当前人口」：
+	//
+	//	训练队列出厂时，它占用的人口**不再瞬间归还**，而是转成这里的「待恢复人口」，
+	//	之后按 `ezfy_cfg_limit.pop_recover_per_hour`（默认 1 万/小时）慢慢减回 0。
+	//
+	//	空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0），
+	//	上限 = min(召集人口上限, 人口 − 建筑占用)，所以待恢复人口天然保证空闲不超上限。
+	//	★ 移民法案道具（ItemType 31）就是直接把这笔待恢复人口扣掉，等于立刻恢复空闲人口。
+	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
+	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
+	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
 	Gold        int64 `gorm:"comment:黄金" json:"gold"`
 	Food        int64 `gorm:"comment:粮食" json:"food"`
 	Steel       int64 `gorm:"comment:钢铁" json:"steel"`

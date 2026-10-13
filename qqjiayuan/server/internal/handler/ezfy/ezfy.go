@@ -57,11 +57,32 @@ const (
 
 var ezfyRequirePattern = regexp.MustCompile(`([^()（）]+)[（(]\s*(\d+)\s*级?\s*[）)]`)
 
-// 科技研究所需科研中心等级
+// 科技研究所需科研中心等级（该科技**固有门槛**，与等级无关）
 var ezfyTechAcademy = map[int]int{
 	1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 2, 9: 3, 7: 3, 12: 3,
 	13: 4, 10: 4, 8: 4, 11: 5, 19: 5, 18: 6, 14: 6, 21: 6,
 	15: 7, 16: 8, 20: 9, 17: 10,
+}
+
+// ★ 2026-10-13 用户规则：科技升到 10 级（9 级 → 10 级）必须科研中心 10 级。
+const ezfyTechAcademyTopLevel = 10
+
+// ezfyTechAcademyNeed 研究某科技到**目标等级**所需的科研中心等级。
+// 规则 = max(该科技固有门槛 ezfyTechAcademy[techId], 目标等级 ≥ 10 时的 10)。
+//
+// ★ 原来只按 techId 卡「能不能研究这条科技」，与等级无关 → 门槛低的科技
+// （如科技 1 只需科研中心 1 级）可以一路升到 10 级，玩家因此没有动力升科研中心 10 级。
+// ★ 唯一实现：researchTech（卡控）与 Techs（界面「前提：科研中心N级」）都走这里。
+// ★ 历史数据不动：只在「开始研究」时校验，已到 10 级的玩家保留。
+func ezfyTechAcademyNeed(techId, targetLevel int) int {
+	need := 1
+	if v, ok := ezfyTechAcademy[techId]; ok {
+		need = v
+	}
+	if targetLevel >= ezfyTechAcademyTopLevel && need < ezfyTechAcademyTopLevel {
+		need = ezfyTechAcademyTopLevel
+	}
+	return need
 }
 
 // EzfyHandler 二战风云处理器。
@@ -1196,6 +1217,11 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	if hardCap := ezfyConvenePopMaxCfg(); hardCap > 0 && city.Pop > hardCap {
 		city.Pop = hardCap
 	}
+	// ★ 2026-10-13 空闲人口「慢恢复」：把待恢复人口按小时线性减回 0
+	//   （用户规则：训练完不该立即恢复空闲人口，要一点一点恢复）。
+	//   与人口自然增长同一处结算 —— 所有接口必经懒结算，口径唯一。
+	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at）。
+	h.ezfySettlePopRecover(city)
 	// ★ 「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
 	var troopFoodCost int64
 	if ezfyFoodUpkeepOn() {
@@ -1333,6 +1359,8 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 			"feelings": city.Feelings, "grievance": city.Grievance,
 			"pop": city.Pop, "pop_max": city.PopMax,
+			// ★ 2026-10-13 空闲人口慢恢复的两个字段一起写（与上面的内存结算同口径）
+			"pop_recover": city.PopRecover, "pop_recover_at": city.PopRecoverAt,
 			"gold": city.Gold, "food": city.Food, "steel": city.Steel,
 			"oil": city.Oil, "rare": city.Rare,
 			"gold_cap": city.GoldCap, "food_cap": city.FoodCap,
@@ -1357,7 +1385,12 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity, reuse ...[]model.E
 	} else {
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Find(&list)
 	}
-	for _, q := range list {
+	// ★ 2026-10-13 出厂的新兵**不再瞬间归还人口**：占用转成「待恢复人口」慢慢恢复
+	//   （用户规则：训练完立即恢复是 bug，要一点一点恢复到当前人口）。
+	//   本次出厂的所有队列合计一笔，最后一次性落库，避免逐队列打库。
+	var recovered int64
+	for i := range list {
+		q := list[i]
 		if q.EndTime > now {
 			continue
 		}
@@ -1374,6 +1407,31 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity, reuse ...[]model.E
 			continue // 已被其他并发请求收走
 		}
 		h.addTroop(city.ID, q.TroopId, q.Count)
+		// 城防(type 4)不占人口（走城防空间那套），与 troopPop 的排除口径一致；
+		// 征兵消耗开关关掉时训练本来就不占人口 → 同样不产生待恢复人口。
+		if ezfyRecruitCostOn() {
+			if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
+				recovered += int64(cfg.Pop) * q.Count
+			}
+		}
+		// ★★ 关键：把该队列在本请求快照里的数量清零。
+		//   reuse[0] 与调用方（/view、/troops）的 trainQueues 是**同一份底层数组**，
+		//   不清零的话「训练中占用」会把这条已出厂的队列再算一遍，
+		//   与下面刚加进去的「待恢复人口」**重复计**（空闲人口凭空少一截）。
+		list[i].Count = 0
+	}
+	if recovered > 0 {
+		// ★ 先把旧账按时间结清（顺带把 pop_recover_at 推进到「已兑换掉的那部分时间」），
+		//   再把本次出厂的占用并进来 —— 这样新加入的这笔从**当前时间点**起算恢复，
+		//   不会因为沿用旧的 pop_recover_at 而被「一次性恢复光」。
+		h.ezfySettlePopRecover(city)
+		city.PopRecover += recovered
+		// 直接落库一次：/troops 这类**不跑 calcResource**的路径也要能存住。
+		// 与内存 city.PopRecover 同值，随后 calcResourceD 的写合并写的是同一份，不会打架。
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"pop_recover":    city.PopRecover,
+			"pop_recover_at": city.PopRecoverAt,
+		})
 	}
 }
 
@@ -2313,10 +2371,12 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
 		popUsed := h.cityPopUsedD(city.ID, snap.buildingsOf(h, city.ID), trainQ)
-		popAvailable := city.Pop - popUsed
+		// ★ 2026-10-13 还要扣掉「待恢复人口」——训练完占用的人口不瞬间归还，
+		//   这段时间里它既不算空闲、也不该被拿来训练（否则等于训练完立刻又满了）。
+		popAvailable := city.Pop - popUsed - city.PopRecover
 		if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
-			return fmt.Sprintf("人口不足(当前居民%d, 建筑及训练已占用%d, 可用%d); 可召集人口突破民居上限",
-				city.Pop, popUsed, popAvailable)
+			return fmt.Sprintf("人口不足(当前居民%d, 建筑及训练已占用%d, 待恢复%d, 可用%d); 可召集人口突破民居上限",
+				city.Pop, popUsed, city.PopRecover, popAvailable)
 		}
 	}
 	// ★ 2026-09-23 「超过限制不能训练，提示超过限额」：
@@ -2491,6 +2551,76 @@ func (h *EzfyHandler) cityPopUsedD(cityId uint, buildings []model.EzfyCityBuildi
 		}
 	}
 	return pop
+}
+
+// ezfySettlePopRecover 空闲人口「慢恢复」结算：把 `ezfy_city.pop_recover` 线性减回 0。
+//
+// ★ 2026-10-13 用户规则（原话）：「玩家军队训练完会立即恢复（这是 bug），
+// 这种用完的人口不会立即恢复，是一点一点恢复到当前人口数量的」。
+//
+//	`pop_recover` = 训练队列出厂时占用的人口（见 collectTrainQueue），
+//	本函数按 ezfyPopRecoverPerHour()（默认 1 万/小时）把它减回 0。
+//	纯内存计算、**不查库**；落库由 calcResourceD 的「写合并」顺带写（见那里的说明）。
+//
+// ⚠️⚠️ 时间推进必须用「本次真正兑换成人头的那部分时间」，**不能**直接 `At = now`：
+//
+//	前端每 30 秒轮询一次 /view，而恢复速率是 1 万/小时 ≈ 2.78 人/秒，
+//	若每次结算都无条件把 At 清零，`恢复量 = 速率 × 时长` 会长期取整成 0
+//	（30 秒 → 83 人，其实不为 0；但 /troops 之类的高频接口间隔只有几百毫秒 → 恒为 0），
+//	时间余量被反复丢弃 → 待恢复人口永远减不下去（等于这个功能失效）。
+func (h *EzfyHandler) ezfySettlePopRecover(city *model.EzfyCity) {
+	if city == nil {
+		return
+	}
+	now := time.Now().UnixMilli()
+	// 首次见到该城（老数据 pop_recover_at = 0）：只记时间，不恢复
+	// —— 否则会把「建城至今」的全部时间一次性算成恢复量。
+	if city.PopRecoverAt <= 0 || city.PopRecoverAt > now {
+		city.PopRecoverAt = now
+		return
+	}
+	// 没有待恢复人口：只把时间点跟到 now（下次训练完成才重新起算）
+	if city.PopRecover <= 0 {
+		city.PopRecover = 0
+		city.PopRecoverAt = now
+		return
+	}
+	rate := ezfyPopRecoverPerHour()
+	if rate <= 0 {
+		city.PopRecoverAt = now
+		return
+	}
+	dec := rate * (now - city.PopRecoverAt) / 3600000
+	if dec <= 0 {
+		return // 还不足 1 人：保留时间余量，下次继续攒
+	}
+	if dec >= city.PopRecover {
+		city.PopRecover = 0
+		city.PopRecoverAt = now
+		return
+	}
+	city.PopRecover -= dec
+	city.PopRecoverAt += dec * 3600000 / rate // 只推进真正用掉的时间，余量留给下次
+}
+
+// ezfyPopFree 空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（下限 0）。
+//
+// ★ 上限口径（用户 2026-10-13 确认）：
+//
+//	空闲人口 ≤ min(召集人口上限, 人口 − 建筑占用)。
+//	「训练中占用」「待恢复人口」都 ≥ 0，所以「≤ 人口 − 建筑占用」天然成立；
+//	全局硬上限（召集人口上限，0 = 不限）另需显式夹一次。
+//
+// ★ 移民法案道具（ItemType 31）恢复空闲人口 = 减少 recover，因此**永远不可能**越过这两个上限。
+func ezfyPopFree(pop, buildingPop, troopPop, recover int64) int64 {
+	free := pop - buildingPop - troopPop - recover
+	if free < 0 {
+		free = 0
+	}
+	if hard := ezfyConvenePopMaxCfg(); hard > 0 && free > hard {
+		free = hard
+	}
+	return free
 }
 
 // ezfyWoundHealGoldPer 恢复 1 个该兵种伤兵需要的黄金
@@ -2669,17 +2799,16 @@ func (h *EzfyHandler) researchTech(city *model.EzfyCity, techId int, d ...*resCa
 	if cfg == nil {
 		return "科技不存在"
 	}
-	academyNeed := 1
-	if v, ok := ezfyTechAcademy[techId]; ok {
-		academyNeed = v
-	}
-	// ★ 2026-09-28 研究限制来自**当前城市**的科研中心等级（不再取全城最高）
-	if blv[8] < academyNeed {
-		return fmt.Sprintf("本城需要科研中心%d级才能研究%s（当前%d级）", academyNeed, cfg.Name, blv[8])
-	}
 	curLevel := tech[techId]
 	if curLevel >= cfg.MaxLevel {
 		return "已达到最高等级"
+	}
+	// ★ 2026-10-13 科研中心等级要求按**目标等级**算（科技 9→10 需要科研中心 10 级），
+	//   见 ezfyTechAcademyNeed。
+	academyNeed := ezfyTechAcademyNeed(techId, curLevel+1)
+	// ★ 2026-09-28 研究限制来自**当前城市**的科研中心等级（不再取全城最高）
+	if blv[8] < academyNeed {
+		return fmt.Sprintf("本城需要科研中心%d级才能研究%s（当前%d级）", academyNeed, cfg.Name, blv[8])
 	}
 	lv := ezfyCfg.techLevel(techId, curLevel+1)
 	if lv == nil {
@@ -3207,6 +3336,47 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 稀矿+%d", param)
+	// ★ 2026-10-13 移民法案（ItemType 31）：钻石道具，恢复空闲人口。
+	//
+	//	用户规则（原话）：「新增移民法案，钻石道具用于恢复空闲人口，2 钻石恢复 10w 空闲人口；
+	//	空闲人口不会超过召集人口上限（50 万），也不能超过 当前人口（如 78250）」。
+	//
+	//	实现 = 直接把「待恢复人口」扣掉：
+	//	  空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（见 ezfyPopFree），
+	//	  所以扣掉待恢复人口 = 立刻恢复这么多空闲人口；
+	//	  且因为只扣「已经存在的那笔」，空闲人口**天然不会**越过
+	//	  min(召集人口上限, 人口 − 建筑占用) 这两个上限。
+	//	本来就没有待恢复人口（空闲已满）→ 拒绝，且**不消耗道具**。
+	case 31:
+		// 先把旧账按时间结清，保证用的是「此刻」的待恢复人口
+		h.ezfySettlePopRecover(city)
+		room := city.PopRecover
+		// 上限封顶：空闲人口 ≤ min(召集人口上限, 人口 − 建筑占用)
+		if hard := ezfyConvenePopMaxCfg(); hard > 0 {
+			free := ezfyPopFree(city.Pop, h.buildingPop(city.ID), h.troopPop(city.ID), city.PopRecover)
+			if d := hard - free; d < room {
+				room = d
+			}
+		}
+		if room > int64(param) {
+			room = int64(param)
+		}
+		if room <= 0 {
+			return "空闲人口已达上限, 无需使用移民法案"
+		}
+		// 条件原子扣减：并发/状态已变时不扣道具
+		res := h.DB.Model(&model.EzfyCity{}).
+			Where("id = ? AND pop_recover >= ?", city.ID, room).
+			Update("pop_recover", gorm.Expr("pop_recover - ?", room))
+		if res.Error != nil || res.RowsAffected == 0 {
+			return "城市状态已变化, 请刷新后重试"
+		}
+		city.PopRecover -= room
+		h.consumeItem(uid, cfgId, "使用道具")
+		if room < int64(param) {
+			return fmt.Sprintf("使用成功: 空闲人口+%d（已达上限, 本次只恢复这么多）", room)
+		}
+		return fmt.Sprintf("使用成功: 空闲人口+%d", room)
 	case 3:
 		err = h.speedUpBuilding(city, recordId, param)
 		if err != "" {
@@ -3757,9 +3927,6 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   顺序保持原样：calcResource 在 processOrders 之前（processOrders 可能向当前城市写资源，
 	//   必须最后写，避免覆盖返航/战斗入库的资源）。
 	//   calcResource 未到结算点(每小时)时为 0 查询，processOrders 保持串行链尾。
-	// ★ 2026-10-05 性能：已占用人口用已取数据纯内存算（零 SQL）。
-	popUsed = h.cityPopUsedD(city.ID, buildings, trainQueues)
-
 	// ★★ 2026-10-05 性能（用户反馈「这几个接口还是 2s+」）：
 	//   把本请求并行块已取到的「城市只读数据」打包成快照，交给懒结算与资源详情复用 ——
 	//   calcResource 由「8~9 条串行 RDS」变成「0 读 + 1 写」，getResourceCalcWith 也零额外查询。
@@ -3774,6 +3941,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	h.checkTechDoneRows(&city, techRows)
 	h.collectTrainQueue(&city, trainQueues)
 	h.calcResourceD(&city, snap, officers)
+	// ★ 2026-10-13 已占用人口必须放在 collectTrainQueue **之后**算：
+	//   出厂队列在 collectTrainQueue 里被清零（其占用转成「待恢复人口」），
+	//   放前面会把同一条队列既算成「训练中占用」又算成「待恢复人口」→ 空闲人口凭空少一截。
+	//   ★ 2026-10-05 性能：已占用人口用已取数据纯内存算（零 SQL）。
+	popUsed = h.cityPopUsedD(city.ID, buildings, trainQueues)
 	// ★ 2026-10-04 传入已查好的城市列表：processIncoming 直接复用，省一次 Pluck 的 RTT
 	cids := make([]int64, 0, len(cities))
 	for _, c := range cities {
@@ -3862,6 +4034,9 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
 		"pop_used":       popUsed,
 		"unread_reports": unreadReports,
+		// ★ 2026-10-13 待恢复人口：训练已消耗、还没回到空闲的那部分。
+		//   空闲人口 = 人口 − 占用 − 待恢复（见 ezfyPopFree），前端 freePop 必须扣掉它。
+		"pop_recover": city.PopRecover,
 		// ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯(1)+战斗报告(2) 数量
 		"unread_warns": unreadWarns,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）

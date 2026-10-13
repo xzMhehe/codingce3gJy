@@ -415,7 +415,6 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	}()
 	go func() { defer wg.Done(); buildings = h.buildingList(city.ID) }()
 	wg.Wait()
-	popUsed = h.cityPopUsedD(city.ID, buildings, qs)
 	// 懒结算复用已取数据（零额外查询）
 	// ★ 2026-10-05 性能（用户反馈「/troops 还是 2s」）：原来这里还跑 checkTechDone +
 	//   calcResource（各 2~4 条串行跨 WAN 查询），是本页 2s 的根源。军队页不展示科技/资源，
@@ -423,6 +422,12 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	//   建筑完工 + 训练队列出厂两个**纯内存、空闲零写**的结算。
 	h.checkBuildingDone(&city, buildings)
 	h.collectTrainQueue(&city, qs)
+	// ★ 2026-10-13 空闲人口慢恢复：把「待恢复人口」按时间减一下（只影响本响应展示，
+	//   落库由 /view 的懒结算承担，最多滞后一轮 30s 轮询，约 80 人口，可忽略）。
+	h.ezfySettlePopRecover(&city)
+	// ★ 2026-10-13 占用人口必须在 collectTrainQueue **之后**算：出厂队列在上面被清零
+	//   （其占用已转成「待恢复人口」），放前面会把同一条队列重复计一次。
+	popUsed = h.cityPopUsedD(city.ID, buildings, qs)
 	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（ 5 天）
 	wounded = h.filterExpiredWounded(wounded)
 	deserters = h.filterExpiredWounded(deserters)
@@ -502,6 +507,8 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	data := gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
+		// ★ 2026-10-13 待恢复人口（空闲人口 = 人口 − 占用 − 待恢复，见 ezfyPopFree）
+		"pop_recover": city.PopRecover,
 		"wall_level":         wallLevel,
 		"train_discount":     discount,
 		"defence_space":      defSpace,
@@ -917,14 +924,14 @@ func (h *EzfyHandler) Techs(c *gin.Context) {
 		if rec, ok := researchMap[t.ID]; ok {
 			views = append(views, gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 				"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": eff,
-				"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": true,
+				"academy_need": ezfyTechAcademyNeed(t.ID, level+1), "academy": academy, "researching": true,
 				"end_time": rec.EndTime})
 			continue
 		}
 		next := ezfyCfg.techLevel(t.ID, level+1)
 		view := gin.H{"tech_id": t.ID, "name": t.Name, "type": t.Type,
 			"level": level, "max_level": t.MaxLevel, "des": t.Des, "effect": eff,
-			"academy_need": ezfyTechAcademy[t.ID], "academy": academy, "researching": false}
+			"academy_need": ezfyTechAcademyNeed(t.ID, level+1), "academy": academy, "researching": false}
 		if next != nil {
 			view["next_cost"] = gin.H{"food": next.Food, "steel": next.Steel, "oil": next.Oil, "rare": next.Rare, "gold": next.Gold}
 			view["next_time"] = next.ResearchTime

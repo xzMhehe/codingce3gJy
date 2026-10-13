@@ -1221,6 +1221,20 @@ func ezfyConvenePopMaxCfg() int64 {
 	return int64(ezfyCfg.limit.ConvenePopMax)
 }
 
+// ============ 空闲人口「慢恢复」（2026-10-13）============
+//
+// ★ 用户规则（原话）：「玩家军队训练完会立即恢复，这种用完的人口不会立即恢复，
+// 是一点一点恢复到当前人口数量的」。
+//
+//	所以训练队列出厂时占用的人口不再瞬间归还，而是转成 ezfy_city.pop_recover，
+//	按本值（默认 1 万/小时）慢慢减回 0（见 ezfySettlePopRecover）。
+const ezfyPopRecoverPerHourDef = 10000 // 空闲人口每小时恢复量，默认 1 万
+
+// ezfyPopRecoverPerHour 空闲人口每小时恢复量（默认 1 万；0/未配置 → 回落默认）。
+func ezfyPopRecoverPerHour() int64 {
+	return int64(ezfyLimitOr(ezfyCfg.limit.PopRecoverPerHour, ezfyPopRecoverPerHourDef))
+}
+
 // ============ 军官升星配置（2026-09-22 ，2026-09-23 按简化）============
 
 const (
@@ -1919,6 +1933,21 @@ func (c *ezfyConfigCache) general(id int) *model.EzfyCfgGeneral {
 func (c *ezfyConfigCache) isGeneral(id int) bool {
 	g := c.general(id)
 	return g != nil && g.Kind == 2
+}
+
+// generalIDsOfKind 取军官池里指定 kind 的全部池 ID（kind==2 即「名将」）。
+//
+// ★ 2026-10-13 管理端「玩家军官列表」新增「类型（普通/名将）」检索用 ——
+// 名将的判据是**池子配置的 kind**（见 isGeneral），SQL 里判不了，
+// 所以先把这些池 ID 捞出来，再在 SQL 里用 IN / NOT IN 过滤。
+func (c *ezfyConfigCache) generalIDsOfKind(kind int) []int {
+	out := make([]int, 0, len(c.generals))
+	for id, g := range c.generals {
+		if g.Kind == kind {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // generalByName 按名字回查军官池
