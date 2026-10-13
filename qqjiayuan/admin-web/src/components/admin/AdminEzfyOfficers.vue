@@ -179,7 +179,7 @@
             <el-button type="warning" icon="el-icon-present" @click="openGrant">发放名将</el-button>
           </div>
           <el-table :data="list" v-loading="loading" stripe border max-height="600">
-            <el-table-column prop="id" label="ID" width="45" align="center" />
+            <el-table-column prop="id" label="ID" width="90" align="center" />
             <el-table-column label="类型" width="76" align="center">
               <template slot-scope="{row}">
                 <el-tag size="mini" :type="row.is_general ? 'warning' : 'info'">
@@ -225,8 +225,9 @@
                 <span class="td-muted">（{{ row.home_num || '—' }}）</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center" fixed="right">
+            <el-table-column label="操作" width="240" align="center" fixed="right">
               <template slot-scope="{row}">
+                <el-button size="mini" type="success" plain icon="el-icon-view" title="查看军官信息 / 装备" @click="openOfficerDetail(row)" />
                 <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
                 <el-button size="mini" type="warning" plain :icon="row.is_captive === 1 ? 'el-icon-unlock' : 'el-icon-lock'"
                            :title="row.is_captive === 1 ? '释放' : '设为俘虏'" @click="toggleCaptive(row)" />
@@ -411,6 +412,79 @@
       <el-empty v-else description="该装备没有实例明细" />
       <div slot="footer">
         <el-button @click="eevDlg = false">关 闭</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- ============ ★ 2026-10-13 查看玩家军官信息（军官信息 + 已穿戴装备，可后台卸下） ============ -->
+    <el-dialog :title="'军官信息 · ' + (odOfficer.name || '')" :visible.sync="odDlg" width="960px">
+      <div v-loading="loadingOd" class="od-wrap">
+        <el-descriptions :column="3" size="mini" border>
+          <el-descriptions-item label="军官ID">{{ odOfficer.id }}</el-descriptions-item>
+          <el-descriptions-item label="姓名">{{ odOfficer.name }}</el-descriptions-item>
+          <el-descriptions-item label="类型">
+            <el-tag size="mini" :type="odOfficer.is_general ? 'warning' : 'info'">{{ odOfficer.is_general ? '名将' : '普通军官' }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="等级">{{ odOfficer.level }}</el-descriptions-item>
+          <el-descriptions-item label="星级">{{ '★'.repeat(odOfficer.star || 0) }}</el-descriptions-item>
+          <el-descriptions-item label="经验">{{ odOfficer.exp }}</el-descriptions-item>
+          <el-descriptions-item label="军事/后勤/学识">{{ odOfficer.military }} / {{ odOfficer.logistics }} / {{ odOfficer.learning }}</el-descriptions-item>
+          <el-descriptions-item label="原始属性">{{ odOfficer.pool_base_military }} / {{ odOfficer.pool_base_logistics }} / {{ odOfficer.pool_base_learning }}</el-descriptions-item>
+          <el-descriptions-item label="可用属性点">{{ odOfficer.free_points }}（升星加点 {{ odOfficer.star_points }}）</el-descriptions-item>
+          <el-descriptions-item label="忠诚">{{ odOfficer.loyalty }}</el-descriptions-item>
+          <el-descriptions-item label="任命">{{ odOfficer.position_name }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag size="mini" :type="odOfficer.is_captive === 1 ? 'danger' : 'success'">{{ odOfficer.is_captive === 1 ? '俘虏' : odOfficer.status_name }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="归属城池">{{ odOfficer.city_name || '—' }}（{{ odOfficer.city_id }}）</el-descriptions-item>
+          <el-descriptions-item label="归属玩家">{{ odOfficer.owner_name || '—' }}（{{ odOfficer.home_num || '—' }}）</el-descriptions-item>
+          <el-descriptions-item label="获取途径">{{ odOfficer.source_name || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="军官池">{{ odOfficer.general_id ? (odOfficer.general_id + ' · ' + odOfficer.general_name) : '预置' }}</el-descriptions-item>
+          <el-descriptions-item label="技能" :span="2">
+            <template v-if="odSkills.length">
+              <el-tag v-for="s in odSkills" :key="s.name" size="mini" style="margin-right:4px">
+                {{ s.name }}<span v-if="s.effect">（{{ s.effect }}）</span>
+              </el-tag>
+            </template>
+            <span v-else class="td-muted">未学技能</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="od-sub">
+          <span>已穿戴装备 <b>{{ odEquips.length }}</b> 件</span>
+          <span v-if="odEquips.length" class="td-sub">
+            合计 军事+{{ odSummary.military }} 后勤+{{ odSummary.logistics }} 学识+{{ odSummary.learning }} ·
+            伤害+{{ odSummary.dmg }} 防御+{{ odSummary.def }} 生命+{{ odSummary.hp }} 移动+{{ odSummary.move }} 暴击+{{ odSummary.crit }} 暴伤+{{ odSummary.crit_dmg }}
+          </span>
+          <div class="grow" />
+          <el-button size="mini" type="danger" plain icon="el-icon-remove-outline" :disabled="!odEquips.length"
+                     @click="unequipAll">一键卸下全部</el-button>
+        </div>
+        <el-table :data="odEquips" size="mini" border stripe max-height="340" empty-text="该军官未穿戴任何装备">
+          <el-table-column prop="id" label="装备ID" width="80" align="center" />
+          <el-table-column prop="name" label="装备名" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="type" label="类型" width="70" align="center" />
+          <el-table-column prop="slot" label="部位" width="70" align="center" />
+          <el-table-column label="品质" width="70" align="center">
+            <template slot-scope="{row}">{{ row.tier_name }}</template>
+          </el-table-column>
+          <el-table-column label="需求等级" width="80" align="center">
+            <template slot-scope="{row}">{{ row.level }}</template>
+          </el-table-column>
+          <el-table-column label="三维(军/后/学)" width="120" align="center">
+            <template slot-scope="{row}"><span class="td-mono">{{ row.military }} / {{ row.logistics }} / {{ row.learning }}</span></template>
+          </el-table-column>
+          <el-table-column label="六项(伤/防/血/移/暴/暴伤)" min-width="180" align="center">
+            <template slot-scope="{row}"><span class="td-mono">{{ row.dmg }} / {{ row.def }} / {{ row.hp }} / {{ row.move }} / {{ row.crit }} / {{ row.crit_dmg }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" align="center" fixed="right">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="warning" plain icon="el-icon-remove-outline" title="卸下" @click="unequipOne(row)" />
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div slot="footer">
+        <el-button @click="odDlg = false">关 闭</el-button>
       </div>
     </el-dialog>
 
@@ -830,6 +904,8 @@ export default {
       // 3 玩家军官
       list: [], total: 0, page: 1, size: 5, loading: false, word: '', captive: -1,
       editDlg: false, editId: 0, form: {},
+      // ★ 2026-10-13 查看玩家军官信息（军官信息 + 已穿戴装备 + 后台卸下）
+      odDlg: false, loadingOd: false, odOfficer: {}, odEquips: [], odSkills: [], odSummary: {},
       grantDlg: false, grantForm: { user_id: 0, general_id: 0 },
       // ★ 2026-09-28 发放名将：玩家搜索（昵称/游戏ID）—— 原来只能手填用户ID，
       //   而管理员手上通常只有玩家的昵称或游戏里看到的游戏ID，根本填不出来。
@@ -1076,6 +1152,52 @@ export default {
           if (r.code === 0) { this.$message.success(r.data.msg || '已解雇'); this.load(); this.loadOverview() } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ---------- 3b 查看军官信息 / 后台卸下装备（★ 2026-10-13） ----------
+    openOfficerDetail (row) {
+      if (!row || !row.id) return
+      // 先用列表行占位，避免弹窗打开瞬间是空白（详情随后覆盖）
+      this.odOfficer = { id: row.id, name: row.name }
+      this.odEquips = []
+      this.odSkills = []
+      this.odSummary = {}
+      this.odDlg = true
+      this.loadOfficerDetail(row.id)
+    },
+    loadOfficerDetail (officerId) {
+      this.loadingOd = true
+      api.get('/admin/ezfy-officer-equips', { params: { officer_id: officerId } }).then(r => {
+        this.loadingOd = false
+        if (r.code === 0) {
+          this.odOfficer = r.data.officer || {}
+          this.odEquips = r.data.equips || []
+          this.odSkills = r.data.skills || []
+          this.odSummary = r.data.summary || {}
+        } else this.$message.error(r.msg)
+      })
+    },
+    unequipOne (row) {
+      this.$confirm('把「' + row.name + '」从「' + this.odOfficer.name + '」身上卸下？装备会回到玩家背包。',
+        '提示', { type: 'warning' }).then(() => {
+        this.doUnequip(row.id)
+      }).catch(() => {})
+    },
+    unequipAll () {
+      if (!this.odEquips.length) { this.$message.info('该军官未穿戴装备'); return }
+      this.$confirm('卸下「' + this.odOfficer.name + '」身上全部 ' + this.odEquips.length + ' 件装备？装备会回到玩家背包。',
+        '危险操作', { type: 'warning' }).then(() => {
+        this.doUnequip(0)
+      }).catch(() => {})
+    },
+    doUnequip (equipId) {
+      this.saving = true
+      api.post('/admin/ezfy-officer-unequip', { officer_id: this.odOfficer.id, equip_id: equipId }).then(r => {
+        this.saving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已卸下')
+          this.loadOfficerDetail(this.odOfficer.id)
+        } else this.$message.error(r.msg)
+      })
     },
     // 一键生成军官（随机名字/等级/星级，属性不超过名将）
     openGen () {
@@ -1324,4 +1446,7 @@ export default {
 }
 /* ★ 装备六项战斗属性的紧凑一行（label + 小输入框） */
 .attr-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: #5b6b82; }
+/* ★ 2026-10-13 军官信息弹窗 */
+.od-wrap { min-height: 140px; }
+.od-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0 8px; font-size: 13px; font-weight: 600; color: #1f2d3d; }
 </style>

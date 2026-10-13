@@ -1423,6 +1423,146 @@ func (h *EzfyAdmin) AdminEzfyOfficerCaptive(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": msg})
 }
 
+// ============ 军官详情 / 卸下装备（★ 2026-10-13 管理端需求） ============
+
+// AdminEzfyOfficerEquips 查看某军官的详细信息 + 已穿戴装备
+//
+//	GET /admin/ezfy-officer-equips?officer_id=123
+//
+// ★ 2026-10-13 用户需求：军官管理 →「玩家军官列表」→ 操作列加「查看」，
+//
+//	要能看到该军官身上穿了哪些装备，并能后台逐件 / 一键卸下。
+//	这里返回：军官基本信息（归属城/玩家、军官池模板、技能）+ 已穿戴装备明细（一行一件）。
+//
+// ★ 路径刻意不用 `/ezfy-officers/:id/...`：gin 路由树里 `/ezfy-officers/players`
+//
+//	已是静态段，再挂 `:id` 通配会冲突；沿用 `ezfy-officer-xxx` 的平铺命名。
+func (h *EzfyAdmin) AdminEzfyOfficerEquips(c *gin.Context) {
+	id := int64(atoiOr(c.Query("officer_id"), 0))
+	if id <= 0 {
+		resp.ParamError(c, "请指定军官ID")
+		return
+	}
+	var o model.EzfyOfficer
+	if err := h.DB.First(&o, id).Error; err != nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	// 归属城 / 归属玩家（账号昵称一律读家园库）
+	cityName, ownerName, homeNum := "", "", ""
+	var ct model.EzfyCity
+	if err := h.DB.First(&ct, o.CityId).Error; err == nil {
+		cityName = ct.Name
+		ownerName, homeNum = h.ezfyAdminName(ct.UserID)
+	}
+	// 军官池模板（只读展示，与玩家军官列表口径一致）
+	generalName, pbM, pbL, pbS := "", 0, 0, 0
+	if o.GeneralId > 0 {
+		if g := ezfyCfg.general(o.GeneralId); g != nil {
+			generalName = g.Name
+			pbM, pbL, pbS = g.Military, g.Logistics, g.Learning
+		}
+	}
+	// 技能：技能名 → 效果 / 类型
+	skInfo := map[string]gin.H{}
+	for _, s := range ezfyCfg.skills {
+		skInfo[s.Name] = gin.H{"effect": s.Effect, "type_name": ezfySkillTypeName(s.Type)}
+	}
+	skills := []gin.H{}
+	for _, n := range officerSkills(&o) {
+		it := gin.H{"name": n, "effect": "", "type_name": ""}
+		if v, ok := skInfo[n]; ok {
+			it["effect"], it["type_name"] = v["effect"], v["type_name"]
+		}
+		skills = append(skills, it)
+	}
+	// 已穿戴装备（一行一件；部位归一与游戏内 rebuildOfficerEquipJSON 同口径）
+	var items []model.EzfyEquipment
+	h.DB.Where("officer_id = ?", o.ID).Order("id").Find(&items)
+	equips := []gin.H{}
+	sum := map[string]int{"military": 0, "logistics": 0, "learning": 0,
+		"dmg": 0, "def": 0, "hp": 0, "move": 0, "crit": 0, "crit_dmg": 0}
+	for _, e := range items {
+		equips = append(equips, gin.H{
+			"id": e.ID, "cfg_id": e.CfgId, "name": e.Name, "type": e.Type,
+			"slot": model.EzfySlotCanon(e.EquipSlot()), "tier": e.Tier, "tier_name": ezfyEquipTierName(e.Tier),
+			"level": e.Level, "set_id": e.SetId, "series": e.Series, "enhance": e.Enhance,
+			"military": e.Military, "logistics": e.Logistics, "learning": e.Learning,
+			"dmg": e.Dmg, "def": e.Def, "hp": e.Hp, "move": e.Move, "crit": e.Crit, "crit_dmg": e.CritDmg,
+			"original_user_id": e.OriginalUserId,
+		})
+		sum["military"] += e.Military
+		sum["logistics"] += e.Logistics
+		sum["learning"] += e.Learning
+		sum["dmg"] += e.Dmg
+		sum["def"] += e.Def
+		sum["hp"] += e.Hp
+		sum["move"] += e.Move
+		sum["crit"] += e.Crit
+		sum["crit_dmg"] += e.CritDmg
+	}
+	resp.OK(c, gin.H{
+		"officer": gin.H{
+			"id": o.ID, "name": o.Name, "city_id": o.CityId, "city_name": cityName,
+			"owner_name": ownerName, "home_num": homeNum,
+			"general_id": o.GeneralId, "general_name": generalName,
+			"is_general": o.GeneralId > 0 && ezfyCfg.isGeneral(o.GeneralId),
+			"level":      o.Level, "star": o.Star, "exp": o.Exp,
+			"military": o.Military, "logistics": o.Logistics, "learning": o.Learning,
+			"base_military": o.BaseMilitary, "base_logistics": o.BaseLogistics, "base_learning": o.BaseLearning,
+			"pool_base_military": pbM, "pool_base_logistics": pbL, "pool_base_learning": pbS,
+			"free_points": o.FreePoints, "star_points": o.StarPoints, "loyalty": o.Loyalty,
+			"position": o.Position, "position_name": map[int]string{0: "无", 1: "市长", 2: "城守"}[o.Position],
+			"status": o.Status, "status_name": map[int]string{0: "在职", 1: "出征中", 2: "被俘"}[o.Status],
+			"is_captive": o.IsCaptive,
+			"source":     o.Source, "source_name": model.EzfyOfficerSourceName(o.Source),
+		},
+		"equips": equips, "skills": skills, "summary": sum, "equip_count": len(items),
+	})
+}
+
+// AdminEzfyOfficerUnequip 后台卸下军官装备
+//
+//	POST /admin/ezfy-officer-unequip  body: {"officer_id":123,"equip_id":456}
+//
+// ★ equip_id=0 表示「一键卸下全部」。卸下后装备行 officer_id 置 0（回到玩家背包，user_id/city_id 不变），
+// 军官身上的装备 JSON 用 rebuildOfficerEquipJSON 重建（同部位去重，与游戏内卸下口径完全一致）。
+func (h *EzfyAdmin) AdminEzfyOfficerUnequip(c *gin.Context) {
+	var in struct {
+		OfficerId int64 `json:"officer_id"`
+		EquipId   int64 `json:"equip_id"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.OfficerId <= 0 {
+		resp.ParamError(c, "请指定军官ID")
+		return
+	}
+	var o model.EzfyOfficer
+	if err := h.DB.First(&o, in.OfficerId).Error; err != nil {
+		resp.NotFound(c, "军官不存在")
+		return
+	}
+	q := h.DB.Model(&model.EzfyEquipment{}).Where("officer_id = ?", o.ID)
+	if in.EquipId > 0 {
+		q = q.Where("id = ?", in.EquipId)
+	}
+	res := q.Update("officer_id", 0)
+	if res.Error != nil {
+		resp.ParamError(c, "卸下失败："+res.Error.Error())
+		return
+	}
+	if res.RowsAffected == 0 {
+		resp.ParamError(c, "该军官没有可卸下的装备")
+		return
+	}
+	// 装备行已解绑，按行重建军官装备 JSON（全部卸下时重建为 []）
+	h.ezfyH().rebuildOfficerEquipJSON(int64(o.ID))
+	msg := "已卸下 1 件装备到背包"
+	if in.EquipId <= 0 {
+		msg = fmt.Sprintf("已卸下 %d 件装备到背包", res.RowsAffected)
+	}
+	resp.OK(c, gin.H{"msg": msg})
+}
+
 // ============ 7. 资源管理 ============
 
 // AdminEzfyResources 各城资源总览

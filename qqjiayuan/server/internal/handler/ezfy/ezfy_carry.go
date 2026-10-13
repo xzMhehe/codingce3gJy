@@ -86,9 +86,12 @@ func (h *EzfyHandler) ezfyCarryCapOf(groups []ezfyUnitGroup, cityId uint, techs 
 // addCarryToOrder 把一次采集产出记进「待带回」，超出负重的部分会被丢弃
 //
 // 返回 (实际装入, 因负重丢弃)
-func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, food, steel, oil, rare, gold int64) (int64, int64) {
+//
+// ★ 2026-10-13 性能：负重上限 capTotal 改由调用方传入 —— 原实现在函数内调
+// `h.ezfyCarryCap(order)`，而那个函数每次要打 2 条跨库查询（查城的 user_id + 查该玩家科技表），
+// 一支部队结算时就会被调用多次。批量结算（一键收获）由请求级缓存传入，省掉这些往返。
+func (h *EzfyHandler) addCarryToOrder(order *model.EzfyOrder, capTotal, food, steel, oil, rare, gold int64) (int64, int64) {
 	cur := parseCarry(order.Carry)
-	capTotal := h.ezfyCarryCap(order)
 	room := capTotal - cur.total()
 	if room < 0 {
 		room = 0

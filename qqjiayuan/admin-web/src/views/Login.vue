@@ -54,6 +54,31 @@
             />
           </el-form-item>
 
+          <!-- ★ 2026-10-13 密码输错满 3 次后，后端会在响应里带 `need_captcha`，
+               这时才亮出验证码（算式图片）—— 原来管理端**完全没有验证码**，
+               只会弹一句「请输入验证码（图片算式的计算结果）」，没有输入框也没有图片，直接卡死登不进去。 -->
+          <el-form-item v-if="needCaptcha">
+            <div class="captcha-row">
+              <el-input
+                v-model.trim="captcha"
+                maxlength="6"
+                placeholder="输入算式计算结果"
+                prefix-icon="el-icon-key"
+                aria-label="验证码"
+                @keyup.enter.native="doLogin"
+              />
+              <img
+                v-if="captchaImg"
+                class="captcha-img"
+                :src="captchaImg"
+                alt="验证码"
+                title="点击切换"
+                @click="loadCaptcha"
+              >
+              <el-button v-else type="text" class="captcha-reload" @click="loadCaptcha">加载验证码</el-button>
+            </div>
+          </el-form-item>
+
           <transition name="el-zoom-in-top">
             <el-alert
               v-if="err"
@@ -98,9 +123,23 @@ import api from '../api'
 export default {
   name: 'AdminLogin',
   data () {
-    return { name: '', pass: '', err: '', loading: false }
+    return {
+      name: '', pass: '', err: '', loading: false,
+      // ★ 2026-10-13 验证码：密码输错满 3 次后由后端 `need_captcha` 触发才需要
+      captcha: '', captchaId: '', captchaImg: '', needCaptcha: false
+    }
   },
   methods: {
+    // ★ 2026-10-13 拉一张算式验证码（点图片 / 用错后换一张）
+    loadCaptcha () {
+      this.captcha = ''
+      api.get('/auth/captcha').then(r => {
+        if (r && r.code === 0) {
+          this.captchaImg = r.data.img
+          this.captchaId = r.data.id
+        }
+      })
+    },
     getErrorMessage (error, fallback) {
       const responseData = error && error.response && error.response.data
       return (responseData && (responseData.msg || responseData.message)) ||
@@ -118,10 +157,29 @@ export default {
         return
       }
 
+      // 需要验证码时先本地拦一道（后端也会校验，这里只是省一次往返）
+      if (this.needCaptcha && !this.captcha) {
+        this.err = '请输入验证码（图片算式的计算结果）'
+        return
+      }
+
       this.loading = true
-      api.post('/auth/login', { name: this.name, password: this.pass })
+      const body = { name: this.name, password: this.pass }
+      if (this.needCaptcha) {
+        body.captcha_id = this.captchaId
+        body.captcha = this.captcha
+      }
+      api.post('/auth/login', body)
         .then(r => {
           if (!r || r.code !== 0) {
+            // ★ 2026-10-13 后端回「需要验证码」→ 亮出验证码框并拉一张新的；
+            //   验证码用错/一次性失效也换一张（原来只显示 msg，验证码框永远不出现 → 卡死登不进去）
+            if (r && r.data && r.data.need_captcha) {
+              this.needCaptcha = true
+              this.loadCaptcha()
+            } else if (this.needCaptcha) {
+              this.loadCaptcha()
+            }
             throw new Error((r && r.msg) || '账号或密码错误，请重试')
           }
           localStorage.setItem('jy_admin_token', r.data.token)
@@ -308,6 +366,19 @@ export default {
 .login-form .el-form-item { margin-bottom: 18px; }
 
 .login-alert { margin: 2px 0 16px; border-radius: 8px; }
+
+/* ★ 2026-10-13 验证码行：输入框 + 算式图片（点图换一张） */
+.captcha-row { display: flex; align-items: center; gap: 10px; }
+.captcha-row .el-input { flex: 1 1 auto; }
+.captcha-img {
+  flex: 0 0 auto;
+  height: 40px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+}
+.captcha-reload { flex: 0 0 auto; }
 
 .login-btn {
   width: 100%;

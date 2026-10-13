@@ -157,6 +157,34 @@ func TestWildlandTreasureCooldown(t *testing.T) {
 	}
 }
 
+// TestWildlandItemDropCooldown —— （2026-10-13）：
+// 「野地商城道具掉落也加个限制，有人用脚本刷野地，1 小时内掉落过了就不能再次掉落，
+// 二战系统配置可配置间隔时间」。
+//
+// 静态断言：
+//  1. wildlandConfigLoot 读「二战系统配置」的掉道具冷却时长（ezfyWildItemCooldownH）并做冷却判定
+//     （ezfyWildItemReady）；
+//  2. 掉到商城道具后写 ezfy_profile.wild_item_at（冷却从此刻起算）；
+//  3. 冷却判定函数存在且读 wild_item_at。
+//
+// ★ 与宝物冷却各自独立：道具写 wild_item_at、宝物写 wild_treasure_at，互不影响。
+func TestWildlandItemDropCooldown(t *testing.T) {
+	body := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) wildlandConfigLoot(")
+	if !strings.Contains(body, "ezfyWildItemCooldownH()") {
+		t.Fatalf("wildlandConfigLoot 未读取打野地掉道具冷却配置（二战系统配置）：\n%s", body)
+	}
+	if !strings.Contains(body, "ezfyWildItemReady(") {
+		t.Fatalf("wildlandConfigLoot 未做掉道具冷却判定，道具仍会被脚本刷：\n%s", body)
+	}
+	if !strings.Contains(body, `Update("wild_item_at"`) {
+		t.Fatalf("wildlandConfigLoot 掉到商城道具后未刷新冷却时间戳（wild_item_at）：\n%s", body)
+	}
+	helper := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) ezfyWildItemReady(")
+	if !strings.Contains(helper, "wild_item_at") {
+		t.Fatalf("ezfyWildItemReady 未按 wild_item_at 判定冷却：\n%s", helper)
+	}
+}
+
 // TestWildTreasureCfgRejectsSetPieces —— 管理端「地图管理 → 野地类型 → 宝物掉落」保存校验：
 //
 // 除了「名字查不到（含已删的老珠宝）」要拒，**套装件**（只能开宝箱）也要拒 —— 与掉落逻辑

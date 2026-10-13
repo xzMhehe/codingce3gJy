@@ -2035,7 +2035,7 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 			if lootBatch == nil {
 				lootBatch = &ezfyLootBatch{}
 			}
-			h.settleDispatch(uid, order, now, lootBatch)
+			h.settleDispatch(uid, order, now, nil, lootBatch)
 		} else if order.Status == 2 && now >= order.ReturnTime {
 			h.finishReturn(uid, order)
 		}
@@ -2411,15 +2411,23 @@ func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 // 返回 (结算期数, 是否结算); 未满一期或野地已丢(部队自动返航)时 settled=false。
 // lootBatch 可选：批量结算入口（processOrders 轮询 / 一键收获）传入聚合器，
 // 把本批掉落的宝物合并成一条系统播报（见 ezfyLootBatch）；不传则逐件立即播报。
-func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64, lootBatch ...*ezfyLootBatch) (int, bool) {
+func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64, env *ezfySettleEnv, lootBatch ...*ezfyLootBatch) (int, bool) {
 	// ★ 空闲驻守(arrive_time=0)或未满一期: 没有可结算的期数
 	if order.ArriveTime <= 0 || now < order.ArriveTime {
 		return 0, false
 	}
+	// ★ 2026-10-13 性能：批量结算时野地已预取（env），单支路径回落单条查询。
 	var wl model.EzfyWildland
-	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+	if env != nil {
+		if w := env.wildland(order.TargetId); w != nil {
+			wl = *w
+		}
+	} else if err := h.DB.First(&wl, order.TargetId).Error; err != nil {
+		wl.ID = 0 // 查询失败 → 按「野地已丢失」处理（与原来 err != nil 同口径）
+	}
+	if wl.ID == 0 || wl.CityId != order.CityId {
 		h.beginReturn(order, now, 0)
-		h.addReport(uid, 5, "采集报告: 野地丢失",
+		h.envReport(env, uid, 5, "采集报告: 野地丢失",
 			"所采集的野地已不属于我方, 采集部队已返航。", "", order.ID, order.CityId)
 		return 0, false
 	}
@@ -2439,7 +2447,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	level := wl.Level
 	terrain := ezfyTerrainEx(wl.X, wl.Y)
-	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod())
+	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, int64(periods)*ezfyDispatchPeriod(), env)
 	amt := food + steel + oil + rare
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；待玩家[停止采集]/[一键收获]/[召回]时取回负重入城（见各入口）。
@@ -2451,9 +2459,16 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	//   现在改成**装不下负重的部分直接入起点城市**（与「收获即入城」同一口径，走 harvestToCity）：
 	//   负重能装的进负重、超出的部分直接入库 —— 资源永远不会凭空消失，也不影响部队继续驻守采集。
 	//   做法：先按负重剩余空间算「能装多少」，剩下的拆出来直接入库。
-	city := h.cityOfOrder(order, uid)
+	// ★ 2026-10-13 性能：批量结算时城市已预取（env），单支路径回落单条查询。
+	var city *model.EzfyCity
+	if env != nil {
+		city = env.city(int64(order.CityId))
+	}
+	if city == nil {
+		city = h.cityOfOrder(order, uid)
+	}
 	cur := parseCarry(order.Carry)
-	room := h.ezfyCarryCap(order) - cur.total()
+	room := h.envCarryCap(env, order, uid) - cur.total()
 	if room < 0 {
 		room = 0
 	}
@@ -2468,15 +2483,16 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 			// 负重部分按比例装（食物/钢铁/石油/稀矿）
 			scale := func(v int64) int64 { return v * room / amt }
 			sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
-			h.addCarryToOrder(order, sf, ss, so, sr, 0)
+			h.addCarryToOrder(order, h.envCarryCap(env, order, uid), sf, ss, so, sr, 0)
 			food, steel, oil, rare = food-sf, steel-ss, oil-so, rare-sr
 		}
 		// 超出部分（room==0 时即全部）直接入起点城市（不丢）
 		if city != nil {
-			h.harvestToCity(int64(city.ID), food, steel, oil, rare, 0)
+			// ★ 2026-10-13 性能：批量结算时先记为待入账，由 envFlush 按城合并入库。
+			h.envHarvest(env, order.ID, int64(city.ID), food, steel, oil, rare, 0, true)
 		}
 	} else {
-		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+		_, _ = h.addCarryToOrder(order, h.envCarryCap(env, order, uid), food, steel, oil, rare, 0)
 	}
 	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)驻守满%d期\n产出: %s%d",
@@ -2486,7 +2502,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	} else {
 		desc += fmt.Sprintf("(等级×%d期)", periods)
 	}
-	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.ezfyCarryCap(order))
+	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.envCarryCap(env, order, uid))
 	if direct > 0 {
 		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
 	}
@@ -2495,7 +2511,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	// ★ 2026-10-11 用户规则「宝物库存上限 5000（二战系统配置可配），超过 5000 采集的时候停止给提示」：
 	//   装不下就不再给，并且**停止采集**（原地待命，与 [停止采集] 同语义），战报里给一句简约提示。
 	treasureMax := ezfyTreasureMax()
-	left := h.ezfyTreasureLeft(uid)
+	left := h.envTreasureLeft(env, uid)
 	treasureNames := []string{}
 	want := 0
 	for i := int64(0); i < periods; i++ {
@@ -2510,7 +2526,7 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		if eq == nil || city == nil {
 			continue // 平原/沿海平原无珠宝
 		}
-		h.addEquipment(city, eq)
+		h.envAddEquip(env, city, eq)
 		treasureNames = append(treasureNames, eq.Name)
 	}
 	if len(treasureNames) > 0 {
@@ -2540,11 +2556,11 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	nextArrive := now + ezfyDispatchPeriod()
 	if treasureFull {
 		nextArrive = 0 // 停止采集：原地待命，等玩家腾出宝物空位再点[采集]
-	} else if h.ezfyCarryFull(order) {
+	} else if h.envCarryFull(env, order, uid) {
 		desc += "负重已满, 部队仍继续驻守采集(多采部分丢弃)。可点[停止采集]或[一键收获]取回负重。\n"
 	} else {
 		desc += fmt.Sprintf("部队继续驻守采集, 可随时[召回]或[停止采集]。\n负重 %d/%d\n",
-			cur.total(), h.ezfyCarryCap(order))
+			cur.total(), h.envCarryCap(env, order, uid))
 	}
 	order.ArriveTime = nextArrive
 	order.Result = order.Troops
@@ -2554,7 +2570,8 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 		upd["collect_start"] = 0 // 停止采集（与 [停止采集]/[一键收获] 落库口径一致）
 	}
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(upd)
-	h.addReport(uid, 5, "采集报告: 驻守结算", desc, "", order.ID)
+	// ★ 2026-10-13 性能：传 order.CityId，省掉 addReport 里「按订单回查城市」的那次跨库查询。
+	h.envReport(env, uid, 5, "采集报告: 驻守结算", desc, "", order.ID, order.CityId)
 	return int(periods), true
 }
 
@@ -2581,11 +2598,16 @@ func (h *EzfyHandler) ezfyClaimSettle(order *model.EzfyOrder, oldArrive, next in
 //
 // 每期(一个采集周期)产出 = 野地等级 × 800 × 后勤加成; 陆地 ×4, 海野(wild_type=2) ×3;
 // 时长不足一期时按比例折算。返回 (粮食, 钢铁, 石油, 稀矿, 加成%, 资源名)。
-func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64) (int64, int64, int64, int64, int, string) {
+func (h *EzfyHandler) dispatchGatherYield(order *model.EzfyOrder, wl *model.EzfyWildland, ms int64, envs ...*ezfySettleEnv) (int64, int64, int64, int64, int, string) {
+	// ★ 2026-10-13 性能：批量结算传入请求级缓存 env（军官只查一次），单支路径不传。
+	var env *ezfySettleEnv
+	if len(envs) > 0 {
+		env = envs[0]
+	}
 	// 军官后勤加成: 每 1 点 +1%, 上限 +100%
 	// ★ 2026-09-28 「采集后勤加成率可调」→ 后勤点数先乘 ezfyOfficerGatherMult 再折算百分比。
 	gainPct := 100
-	if officer := h.officerByName(uint(order.CityId), order.Officer); officer != nil {
+	if officer := h.envOfficer(env, uint(order.CityId), order.Officer); officer != nil {
 		gainPct += int(float64(officer.Logistics) * ezfyOfficerGatherMult())
 		if gainPct > 200 {
 			gainPct = 200
@@ -2645,11 +2667,11 @@ func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, n
 		return // 空闲驻守: 还没开始采集, 没有产出
 	}
 	if now >= order.ArriveTime {
-		h.settleDispatch(uid, order, now)
+		h.settleDispatch(uid, order, now, nil)
 		return
 	}
 	// 未满一期: 提前召回, 资源按已驻守时长比例结算, 不做宝物
-	h.settlePartialCollect(uid, order, now, "提前召回")
+	h.settlePartialCollect(uid, order, now, "提前召回", nil)
 }
 
 // settlePartialCollect 未满一个采集周期的部分结算(「停止采集」/「提前召回」共用):
@@ -2658,12 +2680,20 @@ func (h *EzfyHandler) settleDispatchOnRecall(uid uint, order *model.EzfyOrder, n
 //   - 只把结果写进 result, **不接回** —— 是否返航由调用方决定。
 //
 // label: 描述文案(「停止采集」/「提前召回」), 用于战报正文与标题。
-func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now int64, label string) {
+func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now int64, label string, env *ezfySettleEnv) {
 	if order.TargetId <= 0 {
 		return
 	}
+	// ★ 2026-10-13 性能：批量结算时野地已预取（env），单支路径回落单条查询。
 	var wl model.EzfyWildland
-	if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+	if env != nil {
+		if w := env.wildland(order.TargetId); w != nil {
+			wl = *w
+		}
+	} else if err := h.DB.First(&wl, order.TargetId).Error; err != nil {
+		wl.ID = 0
+	}
+	if wl.ID == 0 || wl.CityId != order.CityId {
 		return
 	}
 	started := order.ArriveTime - ezfyDispatchPeriod() // 本期起算点(=上次结算或开始采集时间)
@@ -2671,14 +2701,21 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	if elapsed > ezfyDispatchPeriod() {
 		elapsed = ezfyDispatchPeriod()
 	}
-	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed)
+	food, steel, oil, rare, gainPct, resName := h.dispatchGatherYield(order, &wl, elapsed, env)
 	// ★ 2026-09-28 规则修正：产出**累积进部队负重(carry)**（负重封顶、多采部分丢弃），
 	//   不直接入城；取回负重入城由各入口（StopCollect/HarvestAll/RecallAll）负责。
 	// ★★ 2026-09-30 同 settleDispatch 的修复：负重满了的部分直接入起点城市，不丢弃。
 	//   这里入口（停止/收获/召回）随后都会 harvestCarryToCity，负重装不下就按比例拆出直接入库。
-	city := h.cityOfOrder(order, uid)
+	// ★ 2026-10-13 性能：批量结算时城市已预取（env），单支路径回落单条查询。
+	var city *model.EzfyCity
+	if env != nil {
+		city = env.city(int64(order.CityId))
+	}
+	if city == nil {
+		city = h.cityOfOrder(order, uid)
+	}
 	cur := parseCarry(order.Carry)
-	room := h.ezfyCarryCap(order) - cur.total()
+	room := h.envCarryCap(env, order, uid) - cur.total()
 	if room < 0 {
 		room = 0
 	}
@@ -2691,14 +2728,15 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 		if room > 0 {
 			scale := func(v int64) int64 { return v * room / amt }
 			sf, ss, so, sr := scale(food), scale(steel), scale(oil), scale(rare)
-			h.addCarryToOrder(order, sf, ss, so, sr, 0)
+			h.addCarryToOrder(order, h.envCarryCap(env, order, uid), sf, ss, so, sr, 0)
 			food, steel, oil, rare = food-sf, steel-ss, oil-so, rare-sr
 		}
 		if city != nil {
-			h.harvestToCity(int64(city.ID), food, steel, oil, rare, 0)
+			// ★ 2026-10-13 性能：批量结算时先记为待入账，由 envFlush 按城合并入库。
+			h.envHarvest(env, order.ID, int64(city.ID), food, steel, oil, rare, 0, true)
 		}
 	} else {
-		_, _ = h.addCarryToOrder(order, food, steel, oil, rare, 0)
+		_, _ = h.addCarryToOrder(order, h.envCarryCap(env, order, uid), food, steel, oil, rare, 0)
 	}
 	cur = parseCarry(order.Carry)
 	desc := fmt.Sprintf("采集部队在野地%d级(%d,%d)%s, 按驻守时长折算资源\n产出: %s%d",
@@ -2708,7 +2746,7 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	} else {
 		desc += fmt.Sprintf("(等级×%d分钟)", max64(elapsed/60000, 1))
 	}
-	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.ezfyCarryCap(order))
+	desc += fmt.Sprintf("\n已入负重 %d/%d", cur.total(), h.envCarryCap(env, order, uid))
 	if direct > 0 {
 		desc += fmt.Sprintf("\n负重已满, 超出部分 %d 已直接入起点城市(不丢弃)", direct)
 	}
@@ -2716,7 +2754,7 @@ func (h *EzfyHandler) settlePartialCollect(uid uint, order *model.EzfyOrder, now
 	order.Result = order.Troops
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"result": order.Result, "carry": order.Carry})
-	h.addReport(uid, 5, "采集报告: "+label+"结算", desc, "", order.ID)
+	h.envReport(env, uid, 5, "采集报告: "+label+"结算", desc, "", order.ID, order.CityId)
 }
 
 // ezfyOrderTargetBusy 目标是否已被别的玩家「抢先指挥」。
@@ -4567,18 +4605,35 @@ func parseWildTreasureDrops(raw string) []wildTreasureDrop {
 	return out
 }
 
-// ezfyWildTreasureReady 打野地掉宝冷却是否已过：距上次掉宝 >= cooldownH 小时（或从未掉过）→ true。
+// ezfyWildDropReady 打野地掉落冷却是否已过：距该玩家上次掉落 >= cooldownH 小时（或从未掉过）→ true。
+//
+// ★ 冷却按**玩家**维度算（不分地图/野地等级）。上次掉落时间戳(ms)存在 ezfy_profile 的 col 列
+// （宝物=wild_treasure_at / 商城道具=wild_item_at），0 = 从未掉过。
+// cooldownH <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
+func (h *EzfyHandler) ezfyWildDropReady(uid uint, col string, cooldownH int) bool {
+	var last []int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck(col, &last)
+	if len(last) == 0 || last[0] <= 0 {
+		return true // 从未掉过 / 列尚未补出（老库）→ 放行，避免误伤
+	}
+	return time.Now().UnixMilli()-last[0] >= int64(cooldownH)*3600000
+}
+
+// ezfyWildTreasureReady 打野地掉**宝物**冷却是否已过（读 wild_treasure_at）。
 //
 // ★ 2026-10-11 用户规则「打野地掉落宝物有点频繁了，即使我配置了 1%，如果玩家 2 小时内掉落了宝物那么就不会再掉」：
 // 按**玩家**维度冷却（不分地图/野地等级）。上次掉宝时间戳(ms)存 ezfy_profile.wild_treasure_at，0 = 从未掉过。
 // cooldownH <= 0 由调用方直接放行（= 关闭冷却），这里只处理 > 0 的判定。
 func (h *EzfyHandler) ezfyWildTreasureReady(uid uint, cooldownH int) bool {
-	var last []int64
-	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Pluck("wild_treasure_at", &last)
-	if len(last) == 0 || last[0] <= 0 {
-		return true // 从未掉过 / 列尚未补出（老库）→ 放行，避免误伤
-	}
-	return time.Now().UnixMilli()-last[0] >= int64(cooldownH)*3600000
+	return h.ezfyWildDropReady(uid, "wild_treasure_at", cooldownH)
+}
+
+// ezfyWildItemReady 打野地掉**商城道具**冷却是否已过（读 wild_item_at）。
+//
+// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，有人用脚本刷野地，1 小时内掉落过了就不能再次掉落」：
+// 与宝物冷却同款按**玩家**维度算，但时间戳字段独立（wild_item_at），两条掉落互不影响。
+func (h *EzfyHandler) ezfyWildItemReady(uid uint, cooldownH int) bool {
+	return h.ezfyWildDropReady(uid, "wild_item_at", cooldownH)
 }
 
 // wildlandConfigLoot 野地/寇城战斗**胜利**掉落：完全按「地图管理 → 野地类型」的手动配置走。
@@ -4625,21 +4680,37 @@ func (h *EzfyHandler) wildlandConfigLoot(uid uint, city *model.EzfyCity, order *
 	bagMax := ezfyBagItemMax()
 	treasureMax := ezfyTreasureMax()
 	// ① 商城道具掉落：[[cfg_id, 数量, 概率%],...]
-	for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
-		if rand.Intn(100) >= d[2] {
-			continue // 未命中概率，不掉
+	//
+	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制吧，有人用脚本刷野地暂时卡控，
+	//   1 小时内掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却：
+	//   距上次掉商城道具不足 ezfy_cfg_limit.wild_item_cooldown_h 小时（默认 1）则本场**不掉道具**。
+	//   冷却时长 0 = 关闭冷却（合法值）；**只卡商城道具，宝物掉落不受影响**（两条冷却各自独立）。
+	//   掉到道具后才刷新冷却时间戳（没掉到不占冷却）。
+	itemCooldownH := ezfyWildItemCooldownH()
+	itemDropped := false
+	if itemCooldownH <= 0 || h.ezfyWildItemReady(uid, itemCooldownH) {
+		for _, d := range parseWildlandItemDrops(wcfg.DropItems) {
+			if rand.Intn(100) >= d[2] {
+				continue // 未命中概率，不掉
+			}
+			it := ezfyCfg.item(d[0])
+			if it == nil {
+				continue
+			}
+			if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
+				out += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
+				continue
+			}
+			h.addItem(uid, d[0], d[1])
+			out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
+			lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
+			itemDropped = true
 		}
-		it := ezfyCfg.item(d[0])
-		if it == nil {
-			continue
-		}
-		if have := h.itemCount(uid, d[0]); have+d[1] > bagMax {
-			out += fmt.Sprintf("\n背包已满, %s×%d 未能入包", it.Name, d[1])
-			continue
-		}
-		h.addItem(uid, d[0], d[1])
-		out += fmt.Sprintf("\n掉落道具: %s×%d", it.Name, d[1])
-		lootNames = append(lootNames, fmt.Sprintf("%s×%d", it.Name, d[1]))
+	}
+	if itemDropped {
+		// 本次掉到商城道具 → 记录掉道具时间，冷却从此刻起算（下次要等冷却过去才会再掉）
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+			Update("wild_item_at", time.Now().UnixMilli())
 	}
 	// ② 宝物掉落：[{"name","count","pct"},...]
 	//
@@ -5235,7 +5306,20 @@ func ezfyHealPctLine(repaired int64, losses []ezfyUnitGroup) string {
 	return fmt.Sprintf("\n回收比例: %d%%", pct)
 }
 
+// ★ 2026-10-13 性能：拆成「构造(newReport) + 落库(addReport)」两半，
+// 批量结算（一键收获）可以把整批战报攒起来一次 CreateInBatches，省 N 次跨库往返。
 func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) {
+	// ★ 2026-10-13 修复：原来写成 `h.DB.Create(h.newReport(...))` —— **传的是值不是指针**，
+	//   GORM 在 ConvertToCreateValues 里对主键 SetInt 会 panic
+	//   `reflect: reflect.Value.SetInt using unaddressable value`，
+	//   任何走 addReport 的路径（将领升级战报 / 一键收获）都会打挂整个进程。
+	//   必须先落到变量再取地址（与 ezfy_settle_env.go 的 flush 同款写法）。
+	r := h.newReport(uid, reportType, title, content, detailAndOrder...)
+	h.DB.Create(&r)
+}
+
+// newReport 构造一条战报（不落库）。
+func (h *EzfyHandler) newReport(uid uint, reportType int, title, content string, detailAndOrder ...interface{}) model.EzfyReport {
 	r := model.EzfyReport{UserID: uid, ReportType: reportType, Title: title,
 		// ★ 2026-10-08 写战报时即落 type_name（真实类型名），供管理端 SQL 过滤，见 EzfyReportTypeName。
 		TypeName: EzfyReportTypeName(reportType, title),
@@ -5277,5 +5361,5 @@ func (h *EzfyHandler) addReport(uid uint, reportType int, title, content string,
 			r.CityId = ocid
 		}
 	}
-	h.DB.Create(&r)
+	return r
 }

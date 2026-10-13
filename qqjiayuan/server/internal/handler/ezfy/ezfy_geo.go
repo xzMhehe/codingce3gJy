@@ -772,6 +772,9 @@ const (
 	ezfyTreasureMaxDef = 5000
 	// ★ 打野地掉落宝物的冷却小时数（默认 2）。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
 	ezfyWildTreasureCooldownDef = 2
+	// ★ 2026-10-13 打野地掉落**商城道具**的冷却小时数（默认 1）：有人用脚本刷野地 →
+	//   1 小时内掉过道具就不再掉。0 = 关闭冷却（合法值，不走 ezfyLimitOr）。
+	ezfyWildItemCooldownDef = 1
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：迁城成功后**该城**要等这么久才能再迁。
 	//   0 = 关闭迁城冷却（合法值，不走 ezfyLimitOr）。
 	ezfyMoveCoolDef = 24
@@ -1077,6 +1080,21 @@ func ezfyWildTreasureCooldownH() int {
 		return ezfyWildTreasureCooldownDef
 	}
 	return ezfyCfg.limit.WildTreasureCooldownH
+}
+
+// ezfyWildItemCooldownH 打野地掉落**商城道具**的冷却小时数（默认 1，二战系统配置可配）。
+//
+// ★ 2026-10-13 用户规则：「野地商城道具掉落也加个限制吧，有人用脚本刷野地暂时卡控，
+// 1 小时内掉落过了就不能再次掉落，二战系统配置可配置间隔时间」→ 按**玩家**维度冷却
+// （上次掉道具时间存 ezfy_profile.wild_item_at），与宝物冷却各自独立。
+// ★ 0 是**合法值**（= 关闭冷却），所以**不能**用 ezfyLimitOr（它把 0 当「未配置」回落默认）。
+//
+//	配置缓存没加载过时才回落默认 1，避免把「还没加载」误判成「关闭」。
+func ezfyWildItemCooldownH() int {
+	if !ezfyCfg.ready() {
+		return ezfyWildItemCooldownDef
+	}
+	return ezfyCfg.limit.WildItemCooldownH
 }
 
 // ezfyMoveCoolH 迁城冷却小时数（默认 24，管理端「二战系统配置 → 迁城冷却」可配）。

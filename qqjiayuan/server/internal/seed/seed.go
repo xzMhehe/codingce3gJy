@@ -208,6 +208,11 @@ func Run(db *gorm.DB, staticDir string) {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 		}
 		db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
+		// ★ 2026-10-13 打野地掉**商城道具**冷却小时数（默认 1）。⚠️ 0 合法（= 关闭冷却）→ 同样只补列 + 只回填 NULL。
+		if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_h") {
+			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT 1")
+		}
+		db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = 1 WHERE wild_item_cooldown_h IS NULL")
 		// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
 		if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
 			db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
@@ -3014,6 +3019,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_treasure_cooldown_h int DEFAULT 2")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET wild_treasure_cooldown_h = 2 WHERE wild_treasure_cooldown_h IS NULL")
+	// ★ 2026-10-13 打野地掉**商城道具**冷却小时数（默认 1）：⚠️ 0 合法（= 关闭）→ 只补列 + 只回填 NULL。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "wild_item_cooldown_h") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN wild_item_cooldown_h int DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET wild_item_cooldown_h = 1 WHERE wild_item_cooldown_h IS NULL")
 	// ★ 2026-10-12 迁城冷却小时数（默认 24）：⚠️ 0 合法（= 关闭迁城冷却）→ 同样只补列 + 只回填 NULL。
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "move_cool_h") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")

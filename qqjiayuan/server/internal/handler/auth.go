@@ -167,13 +167,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	name := strings.TrimSpace(req.Name)
 	// 同一账号在窗口期内密码输错满 3 次后，登录必须过图形验证码（先验验证码，避免被脚本刷密码）
+	// ★★ 2026-10-13 修复「只弹提示、不显示验证码框」：
+	//   这两个分支原来用 `resp.ParamError`（**不带 `need_captcha` 标记**），
+	//   而前端 `Login.vue` 是**靠 `r.data.need_captcha` 才把验证码框亮出来**的。
+	//   于是「输错 3 次 → 看到验证码 → 刷新/重进登录页（needCaptcha 被重置）→ 再登录」
+	//   就只弹一句提示、**没有输入框也没有图片**，玩家直接卡死登不进去。
+	//   统一改成 `resp.FailData(..., {"need_captcha": true})`，与下面的密码错误分支 / 二战登录同口径。
 	if loginlimiter.NeedCaptcha(name) {
 		if strings.TrimSpace(req.Captcha) == "" {
-			resp.ParamError(c, "密码错误次数较多，请输入验证码（图片算式的计算结果）")
+			resp.FailData(c, 400, "密码错误次数较多，请输入验证码（图片算式的计算结果）", gin.H{"need_captcha": true})
 			return
 		}
 		if !captcha.Verify(req.CaptchaID, req.Captcha) {
-			resp.ParamError(c, "验证码不对哦，请点击图片刷新后重试")
+			resp.FailData(c, 400, "验证码不对哦，请点击图片刷新后重试", gin.H{"need_captcha": true})
 			return
 		}
 	}

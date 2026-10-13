@@ -43,34 +43,56 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 		return
 	}
 	// ★★ 2026-09-28 资源已满的守卫：一键采集前逐城判定，避免「采完了收获却是 0」。
+	//
+	// ★★ 2026-10-13 性能（用户反馈「一键采集 卡顿」）：
+	//	原实现每支都要打 3 次跨库往返（查野地 + 查城判资源是否满 + 写订单），20 支 = 60 次，
+	//	线上（1核1G + 跨 WAN）就是几秒的转圈。现在：
+	//	  · 野地一次 `WHERE id IN (...)` 批量取回；
+	//	  · 本接口只处理**当前城市**的空闲驻军 → 资源是否已满只需判一次（原来每支都判同一座城）；
+	//	  · 整批的 arrive_time / collect_start **完全相同** → 一条 `WHERE id IN (...)` 批量下达。
+	//	整批固定 3 次往返，与部队支数无关。
+	atMax := h.ezfyAtResMax(int64(current.ID))
+	wildIDs := make([]int64, 0, len(orders))
+	for i := range orders {
+		wildIDs = append(wildIDs, orders[i].TargetId)
+	}
+	wilds := h.batchWildlands(wildIDs)
+
 	fullMsg := ""
-	ok, fail, skip := 0, 0, 0
+	okIDs := make([]int64, 0, len(orders))
+	fail, skip := 0, 0
 	for i := range orders {
 		order := &orders[i]
-		var wl model.EzfyWildland
-		if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+		wl := wilds[order.TargetId]
+		if wl == nil || wl.CityId != order.CityId {
 			h.beginReturn(order, now, 0)
 			fail++
 			continue
 		}
-		if h.ezfyAtResMax(order.CityId) {
+		if atMax {
 			// 起点城市五项资源全满 → 采集无意义，跳过（不报错，其它城照常采）
 			fullMsg = "出发城市资源已达上限, 采集产出无法入库; 请先消耗资源或提升资源最大值配置"
 			skip++
 			continue
 		}
-		order.ArriveTime = now + ezfyDispatchPeriod()
-		order.CollectStart = now // ★ 2026-09-28 记录采集起始, 用于「累计采集时长」
-		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"arrive_time": order.ArriveTime, "collect_start": now})
-		ok++
+		okIDs = append(okIDs, int64(order.ID))
 	}
 	// 全部因为「资源满」被跳过 → 直接以业务错误回，前端才会提示原因
-	if ok == 0 && skip > 0 && fail == 0 {
+	if len(okIDs) == 0 && skip > 0 && fail == 0 {
 		resp.ParamError(c, fullMsg)
 		return
 	}
-	msg := fmt.Sprintf("已对 %d 支空闲驻军下达采集命令(每满一个采集周期结算一期)", ok)
+	// ★ 2026-10-13 性能：同一批 arrive_time / collect_start 完全相同 → 一条 UPDATE 批量下达
+	//   （原每支一条 UPDATE，20 支就是 20 次跨库往返）。
+	//   collect_start 记录采集起始，用于「累计采集时长」（★ 2026-09-28）。
+	if len(okIDs) > 0 {
+		h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", okIDs).
+			Updates(map[string]interface{}{
+				"arrive_time":   now + ezfyDispatchPeriod(),
+				"collect_start": now,
+			})
+	}
+	msg := fmt.Sprintf("已对 %d 支空闲驻军下达采集命令(每满一个采集周期结算一期)", len(okIDs))
 	if fail > 0 {
 		msg += fmt.Sprintf("(%d 支野地已丢失, 部队自动返航)", fail)
 	}
@@ -174,10 +196,20 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 
 	// ★ 2026-09-30 任一采集部队的出发城市资源已达「资源最大值」时，
 	//   一键收获产出入库会被资源上限封顶丢量，先整批确认一次。
+	//
+	// ★★ 2026-10-13 性能（用户反馈「一键收获 卡顿」）：
+	//	原实现对**每支**采集部队独立走一遍完整结算，每支要打 10+ 次跨库往返
+	//	（查野地 / 查城市 / 数宝物库存 / 插装备 / 写订单 / 插战报 / 战报补 city_id 回查 /
+	//	 入城前后读两次城资源 + 写城资源 / 清空负重写订单 …）。
+	//	玩家带 20 支采集队 = 200+ 次往返，线上（1核1G + 跨 WAN）就是「点了按钮一直转圈」。
+	//	现在用 ezfySettleEnv 把「整批共享的只读数据」一次预取、「可攒批的写」攒到最后一次提交，
+	//	每支只剩 1 次「原子认领」+ 1 次「订单结果写回」是必须逐支的。
+	env := h.newSettleEnv(orders)
 	if !req.Force {
 		var cityID int64
 		for i := range orders {
-			if h.ezfyAtResMax(orders[i].CityId) {
+			// ★ 2026-10-13 性能：吃预取的城市对象判资源是否已满（原每支一条 SELECT）。
+			if h.ezfyCityAtResMax(env.city(int64(orders[i].CityId))) {
 				cityID = orders[i].CityId
 				break
 			}
@@ -193,23 +225,35 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	}
 
 	n := 0
-	var gained int64
+	okIDs := make([]int64, 0, len(orders))
 	// ★ 2026-10-13 采集宝物播报防刷屏：一键收获批量结算掉落的宝物合并成一条播报（见 ezfyLootBatch）。
 	lootBatch := &ezfyLootBatch{}
 	for i := range orders {
 		order := &orders[i]
 		// 满一个采集周期 → 完整结算(资源进负重+宝物); 不满 → 按采集时长折算资源(无宝物)
 		if now >= order.ArriveTime {
-			h.settleDispatch(uid, order, now, lootBatch)
+			h.settleDispatch(uid, order, now, env, lootBatch)
 		} else {
-			h.settlePartialCollect(uid, order, now, "收获")
+			h.settlePartialCollect(uid, order, now, "收获", env)
 		}
 		// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：结算后把部队负重**入城**再原地待命。
-		gained += h.harvestCarryToCity(order)
-		// ★ 统一收口：收获后一律「停止采集」原地待命（与 [停止] 同一个语义）
-		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
+		//   ★ 2026-10-13 性能：先记为待入账，由 envFlush 按城合并入库（原每支读两次城 + 写一次城）。
+		h.envHarvestCarry(env, order)
+		okIDs = append(okIDs, int64(order.ID))
 		n++
+	}
+	// ★ 统一收口：收获后一律「停止采集」原地待命（与 [停止] 同一个语义）。
+	//   ★ 2026-10-13 性能：整批一次批量落库（原每支一条 UPDATE）。
+	if len(okIDs) > 0 {
+		h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", okIDs).
+			Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
+	}
+	// ★ 2026-10-13 性能：战报 / 装备批量落库 + 采集资源按城合并入库，一次提交。
+	gained, cleared := h.envFlush(env)
+	// ★ 负重清空沿用「实际入账 > 0 才清」的口径（资源已满、被上限吞掉时保留负重，与原来一致）。
+	if len(cleared) > 0 {
+		h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", cleared).
+			Update("carry", "")
 	}
 	// ★ 2026-10-13 一键收获本批掉落的宝物合并成一条系统播报后发出。
 	h.ezfyLootBatchFlush(uid, lootBatch)
@@ -319,9 +363,9 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 		return
 	}
 	if now >= order.ArriveTime {
-		h.settleDispatch(uid, &order, now) // 满一期: 完整结算(资源+宝物)
+		h.settleDispatch(uid, &order, now, nil) // 满一期: 完整结算(资源+宝物)
 	} else {
-		h.settlePartialCollect(uid, &order, now, "停止采集") // 未满一期: 只有资源
+		h.settlePartialCollect(uid, &order, now, "停止采集", nil) // 未满一期: 只有资源
 	}
 	// ★ 2026-09-28 用户规则「负重封顶+无自动停止」：停止采集 = 取回部队负重入城
 	gained := h.harvestCarryToCity(&order)

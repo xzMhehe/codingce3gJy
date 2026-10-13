@@ -353,6 +353,12 @@ type EzfyCfgLimit struct {
 	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildTreasureCooldownH。
 	WildTreasureCooldownH int `gorm:"default:2;comment:打野地掉宝冷却小时(0=关闭)" json:"wild_treasure_cooldown_h"`
 
+	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，有人用脚本刷野地，暂时卡控 1 小时内
+	//   掉落过了就不能再次掉落，二战系统配置可配置间隔时间」：
+	//   打野地（野地/寇城战斗掉落）掉**商城道具**的冷却小时数，默认 1。
+	//   ★ 0 是**合法值**（= 关闭冷却）→ 读取端不能用「<=0 回落默认」那套，见 ezfyWildItemCooldownH。
+	WildItemCooldownH int `gorm:"default:1;comment:打野地掉道具冷却小时(0=关闭)" json:"wild_item_cooldown_h"`
+
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对迁过城的城市冷却 24 小时，二战系统配置可配置迁城冷却」：
 	//   迁城成功后该城要等多少小时才能再迁（默认 24），冷却记在 `ezfy_city.move_cool_until`。
 	//   ★ 0 是**合法值**（= 关闭迁城冷却）→ 读取端不能用 ezfyLimitOr（它把 0 当「未配置」回落默认），
@@ -668,6 +674,12 @@ type EzfyProfile struct {
 	//   记录该玩家**上一次打野地掉到宝物**的时间戳(ms)，0 = 从未掉过。
 	//   距上次不足 ezfy_cfg_limit.wild_treasure_cooldown_h 小时（默认 2）则本次不掉宝物。
 	WildTreasureAt int64 `gorm:"default:0;comment:打野地掉宝冷却(上次掉宝时间戳ms,0=从未)" json:"wild_treasure_at"`
+
+	// ★ 2026-10-13 用户规则「野地商城道具掉落也加个限制，1 小时内掉落过了就不能再次掉落」→
+	//   记录该玩家**上一次打野地掉到商城道具**的时间戳(ms)，0 = 从未掉过。
+	//   距上次不足 ezfy_cfg_limit.wild_item_cooldown_h 小时（默认 1）则本次不掉道具。
+	//   （与宝物冷却 wild_treasure_at 各自独立：两条掉落互不影响。）
+	WildItemAt int64 `gorm:"default:0;comment:打野地掉道具冷却(上次掉道具时间戳ms,0=从未)" json:"wild_item_at"`
 
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }

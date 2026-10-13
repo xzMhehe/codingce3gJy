@@ -843,9 +843,10 @@ func (h *EzfyHandler) equipmentList(uid uint) []model.EzfyEquipment {
 	return list
 }
 
-// addEquipment 生成装备实例进背包
-func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) {
-	e := model.EzfyEquipment{
+// buildEquipment 按配置生成一件装备实例（内存对象，未落库）。
+// ★ 2026-10-13 性能：从 addEquipment 拆出，批量结算可攒起来一次 CreateInBatches。
+func (h *EzfyHandler) buildEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) model.EzfyEquipment {
+	return model.EzfyEquipment{
 		UserId: city.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
 		Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 		Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
@@ -855,6 +856,11 @@ func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquip
 		Series: cfg.Series, Enhance: cfg.Enhance,
 		Dmg: cfg.Dmg, Def: cfg.Def, Hp: cfg.Hp, Move: cfg.Move, Crit: cfg.Crit, CritDmg: cfg.CritDmg,
 	}
+}
+
+// addEquipment 生成装备实例进背包
+func (h *EzfyHandler) addEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) {
+	e := h.buildEquipment(city, cfg)
 	h.DB.Create(&e)
 }
 

@@ -1247,6 +1247,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUpdate)
 				admin.POST("/ezfy-officers/:id/captive", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerCaptive)
 				admin.DELETE("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerDelete)
+				// ★ 2026-10-13 军官管理 →「玩家军官列表」→ 查看：军官信息 + 已穿戴装备 + 后台卸下装备
+				admin.GET("/ezfy-officer-equips", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerEquips)
+				admin.POST("/ezfy-officer-unequip", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUnequip)
 				// 总览 + 下拉数据
 				admin.GET("/ezfy-officer-overview", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerOverview)
 				admin.GET("/ezfy-officer-pickers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerPickers)

@@ -59,13 +59,16 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		return
 	}
 	// ★ 密码输错满 3 次（15 分钟窗口）→ 必须过图形验证码（与家园登录一致，防脚本刷密码）
+	// ★★ 2026-10-13 同 auth.go 的修复：这里原来用 `resp.ParamError`（不带 `need_captcha` 标记），
+	//   前端刷新登录页后 `needCaptcha` 被重置 → 只弹提示、不亮验证码框，玩家卡死。
+	//   统一带 `need_captcha: true`。
 	if loginlimiter.NeedCaptcha(name) {
 		if strings.TrimSpace(req.Captcha) == "" {
-			resp.ParamError(c, "密码错误次数较多，请输入验证码（图片算式的计算结果）")
+			resp.FailData(c, 400, "密码错误次数较多，请输入验证码（图片算式的计算结果）", gin.H{"need_captcha": true})
 			return
 		}
 		if !captcha.Verify(req.CaptchaID, req.Captcha) {
-			resp.ParamError(c, "验证码不对哦，请点击图片刷新后重试")
+			resp.FailData(c, 400, "验证码不对哦，请点击图片刷新后重试", gin.H{"need_captcha": true})
 			return
 		}
 	}
