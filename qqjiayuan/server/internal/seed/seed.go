@@ -227,6 +227,10 @@ func Run(db *gorm.DB, staticDir string) {
 		//   全局硬性人口上限，默认 0 = 不限。addLimitCol 只在 NULL/<=0 时回填 0，
 		//   不会覆盖管理端配的正向值（配 0 仍表示不限）。
 		addLimitCol("convene_pop_max", 0)
+		// ★ 2026-10-13 空闲人口「慢恢复」速率（默认 1 万/小时）：
+		//   训练完不再瞬间归还人口，转成待恢复人口按此速度一点点回到空闲（见 ezfySettlePopRecover）。
+		//   0 无意义（读取端回落默认 1 万）→ 用 addLimitCol 补列 + 回填。
+		addLimitCol("pop_recover_per_hour", 10000)
 		// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
 		//   战斗引擎 5 个硬编码机制常量配置化（默认值 = 移植前的硬编码值）。
 		//   这几个值 0 都无意义（= 未配置/配置错，读取端回落默认）→ 用 addLimitCol 补列+回填。

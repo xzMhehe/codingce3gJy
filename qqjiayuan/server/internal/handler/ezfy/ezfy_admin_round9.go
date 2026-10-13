@@ -36,6 +36,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
+		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
+		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -344,6 +346,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConvenePopGain  *int `json:"convene_pop_gain"`
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，可配置为 0 关闭限制）
 		ConvenePopMax *int `json:"convene_pop_max"`
+		// ★ 2026-10-13 空闲人口每小时恢复量（默认 1 万；0 → 读取端回落默认）
+		PopRecoverPerHour *int `json:"pop_recover_per_hour"`
 		// ★ 军官升星（简化后：功能开关 + 数值）
 		OfficerStarUpOn     *int `json:"officer_star_up_on"`
 		OfficerStarChance   *int `json:"officer_star_chance"`
@@ -403,6 +407,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
 		ConvenePopMax:      ezfyConvenePopMaxDef,
+		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
+		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -587,6 +593,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.ConvenePopMax = *in.ConvenePopMax
+	}
+	// ★ 2026-10-13 空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复）：
+	//   0 无意义（读取端回落默认 1 万）→ 只拦负数与防呆上界，不主动归一。
+	if in.PopRecoverPerHour != nil {
+		if *in.PopRecoverPerHour < 0 || *in.PopRecoverPerHour > 1000000000 {
+			resp.ParamError(c, "空闲人口每小时恢复量需要在 0~1000000000 之间")
+			return
+		}
+		lim.PopRecoverPerHour = *in.PopRecoverPerHour
 	}
 	if lim.MilitaryMax <= 0 {
 		lim.MilitaryMax = 36
@@ -1263,6 +1278,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"convene_pop_gain":  lim.ConvenePopGain,
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限，必须显式写否则 0 会被 GORM 吞掉）
 		"convene_pop_max": lim.ConvenePopMax,
+		// ★ 2026-10-13 空闲人口每小时恢复量：同样显式写，避免零值被 GORM default 吞掉
+		"pop_recover_per_hour": lim.PopRecoverPerHour,
 		// ★ 2026-10-11 打野地掉宝冷却小时数（**0 合法 = 关闭冷却**，必须显式写否则 0 会被 GORM 吞掉）
 		"wild_treasure_cooldown_h": lim.WildTreasureCooldownH,
 		// ★ 2026-10-13 打野地掉商城道具冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）

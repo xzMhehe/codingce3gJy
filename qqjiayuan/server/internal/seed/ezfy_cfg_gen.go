@@ -601,6 +601,13 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	{ID: 1039, Name: "2钻礼包3", ItemType: 28, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得钢铁1000万"},
 	{ID: 1040, Name: "2钻礼包4", ItemType: 29, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得石油1000万"},
 	{ID: 1041, Name: "2钻礼包5", ItemType: 30, Param1: 10000000, PriceDiamond: 2, Stock: -1, Icon: "", Category: "资源道具", Description: "使用后获得稀矿1000万"},
+	// ★ 2026-10-13 移民法案（ItemType 31）：钻石道具，恢复空闲人口。
+	//   用户规则：「2 钻石恢复 10w 空闲人口」→ Param1 = 100000（单次恢复量），钻石价 2。
+	//   空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（见 ezfyPopFree），
+	//   使用 = 直接扣掉等量「待恢复人口」，**天然不会超过** 召集人口上限 与 当前人口；
+	//   没有待恢复人口（空闲已满）时后端拒绝且不消耗道具。
+	{ID: 1042, Name: "移民法案", ItemType: 31, Param1: 100000, PriceDiamond: 2, Stock: -1, Icon: "",
+		Category: "钻石道具", Description: "立即恢复空闲人口10万(最多恢复到当前人口/召集上限)"},
 }
 
 var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{
