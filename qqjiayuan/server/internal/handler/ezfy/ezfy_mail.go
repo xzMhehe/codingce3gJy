@@ -62,6 +62,17 @@ func (h *EzfyHandler) ezfyResolvePlayer(kw string) uint {
 		if err := h.DB.Where("game_uid = ?", n).First(&prof).Error; err == nil {
 			return prof.UserID
 		}
+		// ★ 2026-10-13 兜底：把纯数字再当「家园号」解析一次。
+		//   私聊会话/好友列表下发的 gid 在「档案还没填游戏ID」时会回落成家园号
+		//   （见 ezfyGameName / ezfyFriendBrief 的 `gu = int64(uid)`），
+		//   只认 ezfy_profile.game_uid 就会出现「点了好友[私聊]/点会话发消息 →
+		//   提示找不到这位玩家」。
+		if n > 0 {
+			var u model.User
+			if err := h.home().First(&u, uint(n)).Error; err == nil {
+				return u.ID
+			}
+		}
 	}
 	// 昵称精确匹配：二战档案昵称优先，兜底家园昵称
 	var prof model.EzfyProfile
@@ -329,14 +340,14 @@ func (h *EzfyHandler) PrivChatSend(c *gin.Context) {
 		resp.Forbidden(c, "只有游戏好友之间才能私聊，非好友请用「邮箱」联系")
 		return
 	}
-	// 对方把我拉黑（复用家园黑名单）则发不出去 —— ★ 2026-10-13 黑名单在**家园库**，这里改查 h.home()
-	var black int64
-	h.home().Model(&model.FriendBlack{}).
-		Where("user_id = ? AND friend_id = ? AND end_time > ?", target, uid, time.Now()).Count(&black)
-	if black > 0 {
-		resp.Forbidden(c, "对方不接受你的私聊")
-		return
-	}
+	// ★★ 2026-10-13 用户规则「消息全部都用二战自己的库」：
+	//   原来这里查的是家园库的 friend_blacks（复用家园黑名单）——已移除。
+	//   理由：① 二战没有任何「拉黑」入口，这张表在二战侧永远无人维护，
+	//          查它既挡不住人、又是一次跨库查询；
+	//        ② 二战私聊的准入由**二战自己的好友关系**（ezfy_friend）决定，
+	//          非好友上面已经拦掉了。
+	//   如果以后要做「二战自己的拉黑」，请新建 ezfy 表（加进 seed 的 ezfyMigrateModels），
+	//   不要再回读家园库。
 	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: target, Content: content})
 	resp.OK(c, gin.H{"msg": "已发送"})
 }
@@ -377,40 +388,59 @@ func (h *EzfyHandler) ezfyGameName(uid uint, homeNick string) (int64, string) {
 // ★ 2026-10-13 用户规则「二战里面都用游戏ID和游戏名称」：
 //
 //	会话展示/私聊线程一律用游戏ID(gid)+游戏昵称(gname)，不用家园名字。
+//
+// ★★ 2026-10-13 修「私聊发出去对方/自己都收不到」：
+//
+//	二战的私信落在**二战库**（ezfyMigrateModels 里有 model.PrivateMessage，
+//	PrivChatSend 也是 `h.DB.Create`），但这里读的却是 h.home()（家园库）——
+//	写一个库、读另一个库，会话列表与对话线程自然永远是空的。
+//	家园库只用来读账号/昵称（users 表只在家园库），所以这里拆成两步：
+//	先在二战库聚合会话，再按 peer id 批量到家园库补昵称（顺带干掉原来的 N+1）。
 func (h *EzfyHandler) PrivChatConvs(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	page, offset, size := pageOf(c, 10)
 	var total int64
-	h.home().Raw(`
+	h.DB.Raw(`
 SELECT COUNT(*) FROM (
   SELECT DISTINCT IF(sender_id = ?, receiver_id, sender_id) AS peer
   FROM private_messages WHERE sender_id = ? OR receiver_id = ?
 ) cnt`, uid, uid, uid).Scan(&total)
 	type convRow struct {
-		UserID      uint   `json:"user_id"`
-		Username    string `json:"username"`
-		Nickname    string `json:"nickname"`
+		Peer        uint   `json:"peer"`
 		LastContent string `json:"last_content"`
 		LastAt      string `json:"last_at"`
 		Unread      int64  `json:"unread"`
 	}
 	var rows []convRow
-	h.home().Raw(`
-SELECT u.id AS user_id, u.username AS username, u.nickname, m.content AS last_content, m.created_at AS last_at,
-  (SELECT COUNT(*) FROM private_messages x WHERE x.sender_id = u.id AND x.receiver_id = ? AND x.is_read = 0) AS unread
-FROM private_messages m
-JOIN users u ON u.id = IF(m.sender_id = ?, m.receiver_id, m.sender_id)
-JOIN (SELECT IF(sender_id = ?, receiver_id, sender_id) AS peer, MAX(id) AS max_id
+	// 不能 JOIN users：跨库。先只从 private_messages（二战库）取会话 + 最后一条 + 未读数。
+	h.DB.Raw(`
+SELECT t.peer AS peer, m.content AS last_content, m.created_at AS last_at,
+  (SELECT COUNT(*) FROM private_messages x WHERE x.sender_id = t.peer AND x.receiver_id = ? AND x.is_read = 0) AS unread
+FROM (SELECT IF(sender_id = ?, receiver_id, sender_id) AS peer, MAX(id) AS max_id
       FROM private_messages WHERE sender_id = ? OR receiver_id = ? GROUP BY peer) t
-  ON t.peer = u.id AND t.max_id = m.id
+JOIN private_messages m ON m.id = t.max_id
 ORDER BY m.created_at DESC, m.id DESC
-LIMIT ? OFFSET ?`, uid, uid, uid, uid, uid, size, offset).Scan(&rows)
+LIMIT ? OFFSET ?`, uid, uid, uid, uid, size, offset).Scan(&rows)
+	// 家园库批量补账号/昵称（一次查询，避免逐个查）
+	peers := make([]uint, 0, len(rows))
+	for _, r := range rows {
+		peers = append(peers, r.Peer)
+	}
+	homeUsers := map[uint]model.User{}
+	if len(peers) > 0 {
+		var us []model.User
+		h.home().Where("id IN ?", peers).Find(&us)
+		for _, u := range us {
+			homeUsers[u.ID] = u
+		}
+	}
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		gid, gname := h.ezfyGameName(r.UserID, r.Nickname)
+		u := homeUsers[r.Peer]
+		gid, gname := h.ezfyGameName(r.Peer, u.Nickname)
 		out = append(out, gin.H{
-			"user_id": r.UserID, "gid": gid, "gname": gname,
-			"username": r.Username, "nickname": gname,
+			"user_id": r.Peer, "gid": gid, "gname": gname,
+			"username": u.Username, "nickname": gname,
 			"last_content": r.LastContent, "last_at": r.LastAt, "unread": r.Unread,
 		})
 	}
@@ -418,6 +448,12 @@ LIMIT ? OFFSET ?`, uid, uid, uid, uid, uid, size, offset).Scan(&rows)
 }
 
 // PrivChatWith GET /games/ezfy/privchat/with/:id —— 与某好友的私聊记录（分页，新到旧）
+//
+// ★★ 2026-10-13 同上：私信在**二战库**，必须用 h.DB 读（原来读 h.home() 读的是家园库，
+// 与 PrivChatSend 的写入库不一致 → 刚发的消息刷新后依然看不到）。
+//
+//	users 表只在家园库 → 不用 Preload("Sender")（二战库没有 users 表，
+//	Preload 会报「表不存在」并静默返回空 Sender）；对方信息由 resolveHomeUser 单独取。
 func (h *EzfyHandler) PrivChatWith(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	peer, ok := h.resolveHomeUser(c.Param("id"))
@@ -429,12 +465,12 @@ func (h *EzfyHandler) PrivChatWith(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	where := "(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)"
 	var total int64
-	h.home().Model(&model.PrivateMessage{}).Where(where, uid, peerID, peerID, uid).Count(&total)
+	h.DB.Model(&model.PrivateMessage{}).Where(where, uid, peerID, peerID, uid).Count(&total)
 	var msgs []model.PrivateMessage
-	h.home().Preload("Sender").Where(where, uid, peerID, peerID, uid).
+	h.DB.Where(where, uid, peerID, peerID, uid).
 		Order("created_at DESC, id DESC").Offset(offset).Limit(size).Find(&msgs)
 	// 已读回执
-	h.home().Model(&model.PrivateMessage{}).
+	h.DB.Model(&model.PrivateMessage{}).
 		Where("sender_id = ? AND receiver_id = ? AND is_read = 0", peerID, uid).Update("is_read", 1)
 	gid, gname := h.ezfyGameName(peer.ID, peer.Nickname)
 	resp.OK(c, gin.H{"peer": gin.H{

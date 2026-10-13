@@ -571,10 +571,7 @@ export default {
       chatPage: 1,
       chatTotal: 0,
       chatSize: 15,
-      mails: [],
-      pmTo: '',
       pmContent: '',
-      pmCandidates: [],
       // ★ 私聊：当前会话对象 + 与该对象的聊天记录 + 会话列表
       pmPeer: null,
       pmChat: [],
@@ -2696,45 +2693,12 @@ export default {
         }
       })
     },
-    // 收件人候选(好友 + 同军团成员 + 最近聊过的人), 只是方便输入, 也可以直接手填号码/昵称
-    loadPmCandidates () {
-      const list = []
-      const seen = {}
-      const push = (id, name) => {
-        if (!id || seen[id]) return
-        seen[id] = 1
-        list.push({ id: id, name: name })
-      }
-      ;(this.friends || []).forEach(f => push(f.id, f.nickname))
-      ;(this.corpsMembers || []).forEach(m => push(m.user_id || m.id, m.nickname || m.name))
-      ;(this.homeChats || []).forEach(c => { if (c.user_id) push(c.user_id, c.user_name) })
-      this.pmCandidates = list
-    },
-    doSendPm () {
-      const to = (this.pmTo || '').trim()
-      const content = (this.pmContent || '').trim()
-      if (!to) { this.notify('请填写收件人(游戏ID或昵称)'); return }
-      if (!content) { this.notify('请填写内容'); return }
-      api.post('/messages', { to_name: to, content: content }).then(r => {
-        if (r.code === 0) {
-          this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
-          this.pmContent = ''
-          this.loadMails()
-          // ★ 发完就把「和这个人」的聊天记录刷新出来（选中谁就聊谁）
-          if (this.pmPeer) {
-            this.selectPm(this.pmPeer.id)
-          } else {
-            api.get('/messages/conversations').then(r2 => {
-              if (r2.code === 0) {
-                this.pmConvs = (r2.data || []).slice(0, 50)
-                const hit = this.pmConvs.find(c => c.nickname === to || c.username === to)
-                if (hit) this.selectPm(hit.user_id)
-              }
-            })
-          }
-        } else this.notify(r.msg || '发送失败')
-      })
-    },
+    // ★★ 2026-10-13 用户规则「消息全部都用二战自己的库」：
+    //   删掉了这里原来的 doSendPm / loadMails / loadPmCandidates —— 它们打的是**家园**的
+    //   消息接口（POST /messages、GET /messages/conversations、GET /messages/inbox），
+    //   写/读的都是家园库，二战界面上要么是死代码、要么拉回来根本没人渲染。
+    //   二战的消息一律走 /games/ezfy/*（privchat / mail / chat / corps/chat），
+    //   后端也只读写二战库（private_messages / ezfy_mail / ezfy_chat / ezfy_corps_chat）。
     // ★ 私聊：打开与某位玩家的聊天（选中谁就聊谁，并带出历史记录）
     //   userId 为空时只进页面、显示会话列表。
     // ★ 顶部导航「邮箱」入口：直接进邮箱页（私聊已迁到好友页，见 openFriendPm）
@@ -2783,7 +2747,6 @@ export default {
       this.pmPeer = null
       this.pmChat = []
       this.pmContent = ''
-      this.pmTo = ''
       this.pmPeerUid = 0
       this.pmChatPage = 1
       this.pmChatTotal = 0
@@ -2916,8 +2879,8 @@ export default {
           this.pmChatTotal = r.data.total || 0
           this.pmChatPage = r.data.page || 1
           this.pmChatSize = r.data.size || this.pmChatSize
-          this.pmTo = this.pmPeer ? (this.pmPeer.nickname || this.pmPeer.username) : ''
-          this.loadMails()
+          // ★ 2026-10-13 原来这里还会 this.loadMails() 打家园的 /messages/inbox，
+          //   结果拉回来没人渲染（已随「消息全部用二战库」一起删掉）。
           this.loadPmConvs()
         } else {
           this.notify(r.msg || '打开会话失败')
@@ -2930,11 +2893,6 @@ export default {
     },
     pmChatNext () {
       if (this.pmChatPage * this.pmChatSize < this.pmChatTotal) { this.pmChatPage++; this.selectPm(this.pmPeer.id) }
-    },
-    loadMails () {
-      api.get('/messages/inbox').then(r => {
-        if (r.code === 0) this.mails = (r.data.list || []).slice(0, 30)
-      })
     },
     // ★ 游戏内好友（不碰家园 /friends）
     loadFriends () {
@@ -3915,9 +3873,20 @@ export default {
           this.chestOpen = null
           // ★ 2026-10-13 开箱扣款已实时回账：结果行余额直接取本次响应，不等 loadChests 回来
           //   （loadChests 有缓存/延迟，会导致「钻石没局部更新」）
+          // ★★ 2026-10-13 修「开宝箱后商城标题/道具页钻石余额不刷新」：
+          //   商城标题用的是 mallDiamond、装备商城用的是 equipShop.diamond，
+          //   这两个只由 loadMall()/loadEquipShop() 赋值，开箱这条路径原来一个都没调
+          //   → 余额一直停在开箱前的旧值。这里统一用后端返回的扣款后余额就地回填。
           if (r.data) {
-            if (r.data.gold !== undefined) this.chestData.gold = r.data.gold
-            if (r.data.diamond !== undefined) this.chestData.diamond = r.data.diamond
+            if (r.data.gold !== undefined) {
+              this.chestData.gold = r.data.gold
+              this.equipShop.gold = r.data.gold
+            }
+            if (r.data.diamond !== undefined) {
+              this.chestData.diamond = r.data.diamond
+              this.equipShop.diamond = r.data.diamond
+              this.mallDiamond = r.data.diamond
+            }
           }
           this.loadBag()
           this.load()
