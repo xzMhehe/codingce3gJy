@@ -325,6 +325,7 @@ func ezfyRecruitLimitOf(db *gorm.DB) int {
 func (h *EzfyHandler) RecruitUseTicket(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
+	ezfyPageCacheDel(uid) // 候选已重刷, 失效玩家页缓存（与 AcadeRefresh 同口径）
 	city := h.getOrCreateCity(uid)
 	if h.buildingLevel(city.ID, ezfyBuildingAcademy) < 1 {
 		resp.ParamError(c, "需要先建造军校")

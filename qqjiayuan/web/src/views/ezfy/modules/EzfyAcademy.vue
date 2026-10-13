@@ -183,7 +183,7 @@
           <a href="javascript:;" @click="ezfy.doRefreshRecruit">[刷新]</a>
           <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
           <a href="javascript:;" @click="ezfy.doUseRecruitTicket">[使用招生简章刷新]</a>
-          <span class="gray">(持有 {{ ezfy.bagCount(13) }} 张)</span>
+          <span class="gray">(持有 {{ ezfy.recruitTicketCount() }} 张)</span>
         </div>
         <div class="old-line">
           军校等级决定每小时候选数量, 参谋部{{ ezfy.recruitData.staff_level }}级(已用{{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }}),

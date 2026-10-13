@@ -284,7 +284,12 @@
                 </td>
                 <td>
                   <a href="javascript:;" @click="ezfy.openChestView(ch)">[查看]</a>
-                  <a v-if="!ch.sold_out" href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
+                  <template v-if="!ch.sold_out">
+                    <a href="javascript:;" @click="ezfy.quickOpenChest(ch, 1)">[开1]</a>
+                    <a v-if="ch.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenChest(ch, 5)">[开5]</a>
+                    <a v-if="ch.open_max >= 10" href="javascript:;" @click="ezfy.quickOpenChest(ch, 10)">[开10]</a>
+                    <a href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
+                  </template>
                   <span v-else class="gray">[售罄]</span>
                 </td>
               </tr>
@@ -292,6 +297,16 @@
             <div class="old-line gray" v-if="!ezfy.chestData.chests.length">(暂无上架宝箱，请等管理员在后台配置)</div>
             <div class="old-line gray">
               当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}
+            </div>
+            <!-- ★ 2026-10-13 开箱结果就地展示：品质聚合着色（高品质排前）+ 花费 + 余额，让玩家一眼看到值不值 -->
+            <div class="old-line" v-if="ezfy.chestResult.length">
+              <b class="green">开箱成功</b>
+              <span class="gray">花费 {{ ezfy.chestLastCost }} · 余额
+                {{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}</span>
+              <template v-for="(s, i) in ezfy.chestResultSummary" :key="'cs' + i">
+                <span :class="ezfy.qualityClass(s.q)">【{{ s.q }}×{{ s.n }}】</span>
+              </template>
+              <a href="javascript:;" @click="ezfy.chestResult = []; ezfy.chestLastCost = ''">[收起]</a>
             </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('bag')">[背包]</a>
@@ -466,15 +481,6 @@
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.doOpenChest(ezfy.chestOpen)">[确认开箱]</a>
               <a href="javascript:;" @click="ezfy.chestOpen = null; ezfy.go('back')">[取消]</a>
-            </div>
-          </template>
-          <template v-else-if="ezfy.chestResult && ezfy.chestResult.length">
-            <div class="old-line"><b>开箱结果：</b></div>
-            <div class="old-line" v-for="(r, i) in ezfy.chestResult" :key="'cres' + i">
-              {{ r.name }}<span class="gray">({{ r.quality }})</span>
-            </div>
-            <div class="old-line">
-              <a href="javascript:;" @click="ezfy.chestResult = []; ezfy.go('mall')">[返回商城]</a>
             </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('mall')">[返回商城]</a>

@@ -769,7 +769,7 @@ export default {
       equipShopPay: 'gold',   // gold | diamond
       // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
       chestData: { chests: [], gold: 0, diamond: 0 },
-      chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [],
+      chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [], chestLastCost: '',
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       sellType: '1',
@@ -927,6 +927,32 @@ export default {
         byName[k].count++
       }
       return Object.values(byName)
+    },
+    // ★ 2026-10-13 开箱结果面板：按品质聚合着色（高品质排前），让玩家一眼看出「这波值不值」。
+    //   品质档位：传说/传奇/特殊=0 → 史诗/高级=1 → 稀有/中级=2 → 优良/普通=3
+    chestResultSummary () {
+      const rank = { '传说': 0, '传奇': 0, '特殊': 0, '史诗': 1, '高级': 1, '稀有': 2, '中级': 2, '优良': 3, '普通': 3 }
+      const byQ = {}
+      for (const r of (this.chestResult || [])) {
+        const q = r.quality || '普通'
+        if (!byQ[q]) byQ[q] = { q: q, n: 0 }
+        byQ[q].n++
+      }
+      return Object.values(byQ).sort((a, b) =>
+        ((rank[a.q] === undefined ? 9 : rank[a.q]) - (rank[b.q] === undefined ? 9 : rank[b.q])))
+    },
+    // ★ 2026-10-13 开箱结果明细：同名同品质合并成一行 ×N（几十个箱子结果不刷屏），高品质排前
+    chestResultGroups () {
+      const rank = { '传说': 0, '传奇': 0, '特殊': 0, '史诗': 1, '高级': 1, '稀有': 2, '中级': 2, '优良': 3, '普通': 3 }
+      const byK = {}
+      for (const r of (this.chestResult || [])) {
+        const k = (r.name || '?') + '|' + (r.quality || '普通')
+        if (!byK[k]) byK[k] = { name: r.name || '?', quality: r.quality || '普通', n: 0 }
+        byK[k].n++
+      }
+      return Object.values(byK).sort((a, b) =>
+        ((rank[a.quality] === undefined ? 9 : rank[a.quality]) - (rank[b.quality] === undefined ? 9 : rank[b.quality])) ||
+        (a.name < b.name ? -1 : 1))
     },
     // ★ 任务分类 tab: 当前展示的任务组(新手/日常/每周; taskTab=0 或无效时回落到第一组)
     taskGroupCur () {
@@ -3690,6 +3716,14 @@ export default {
       this.chestResult = []
       this.cur = 'chestopen'
     },
+    // ★ 2026-10-13 快捷开箱：商城宝箱列表直接 [开1]/[开5]/[开10]，数量超过单次上限自动封顶，
+    //   开完结果就地展示在商城宝箱 tab（不用再跳独立开箱页看列表）
+    quickOpenChest (ch, n) {
+      if (ch.sold_out) { this.notify('该宝箱已售罄'); return }
+      this.chestOpen = ch
+      this.setChestCount(n)
+      this.doOpenChest(ch)
+    },
     doOpenChest (ch) {
       const n = parseInt(this.chestCount) || 0
       if (n <= 0) { this.notify('请填写开箱数量'); return }
@@ -3704,8 +3738,13 @@ export default {
           this.chestOpen = null
           this.loadBag()
           this.load()
-          // ★ 2026-10-09 简约化：开箱结果直接留在开箱页展示（原来跳回商城塞在「上次开箱结果」里）
           this.loadChests()
+          // ★ 2026-10-13 简约化：开箱结果回「商城 → 宝箱」tab 就地聚合展示（品质着色 + 花费 + 余额），
+          //   玩家不用再跳独立开箱页看结果列表
+          const price = ch.price_diamond > 0 ? ch.price_diamond : ch.price_gold
+          this.chestLastCost = (price * n) + (cur === 'diamond' ? '钻' : this.resNames.gold)
+          this.cur = 'mall'
+          this.mallTab = 'chest'
         }))
     },
     // ★ 装备商城（套装件，黄金/钻石购买）
@@ -6197,6 +6236,8 @@ export default {
       this.loadAcadeOfficers()
       this.loadAcadeTab()
       this.prefetchAcadeTabs()
+      // ★ 2026-10-13 军校页要显示「招生简章」持有量 → 进页顺带拉一次背包
+      this.loadBag()
     },
     loadAcadeTab () {
       if (this.acadeTab === 'search') this.loadRecruit()
@@ -6425,11 +6466,13 @@ export default {
     // 军校直接使用招生简章刷新（不占每小时次数；不用跳背包）
     async doUseRecruitTicket () {
       if (!this.recruitData.academy_level) { this.notify('需要先建造军校'); return }
-      if (this.bagCount(13) <= 0) { this.notify('没有「招生简章」，可到商城购买'); return }
+      await this.loadBag() // 持有量按名字统计, 先拉一次背包保证准确
+      if (this.recruitTicketCount() <= 0) { this.notify('没有「招生简章」，可到商城购买'); return }
       if (!await this.ask('确认使用「招生简章」×1 刷新军校候选名将吗？（不占用每小时次数）')) return
       api.post('/games/ezfy/acade/recruit/ticket', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
+          delete this._acadeCache['recruit'] // ★ 候选已重刷, 失效招募缓存（与 [刷新] 同口径）
           this.loadAcade()
           this.loadBag()
         } else this.notify(r.msg)
@@ -6438,6 +6481,12 @@ export default {
     // 背包里某道具的数量
     bagCount (cfgId) {
       const it = (this.bagItems || []).find(x => x.cfg_id === cfgId)
+      return it ? it.count : 0
+    },
+    // ★ 2026-10-13 招生简章持有量：按名字统计（道具 cfg_id 已全体迁到 1001+，
+    //   老号 13 查不到 → 持有量恒 0 → 「背包有却提示没有」）
+    recruitTicketCount () {
+      const it = (this.bagItems || []).find(x => x.name === '招生简章')
       return it ? it.count : 0
     },
     doRefreshRecruit () {

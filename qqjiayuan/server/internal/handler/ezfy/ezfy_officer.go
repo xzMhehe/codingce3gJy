@@ -3922,10 +3922,25 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	for _, r := range results {
 		names = append(names, fmt.Sprint(r["name"]))
 	}
+	// ★ 2026-10-13 开箱播报聚合：同名奖品合并成「名×数量」，10 连开出结果不再刷一长串
+	//   （msg 与钻石流水 extra 都用聚合文本；顺序按首次出现）
+	agg := make([]string, 0, len(names))
+	seen := map[string]int{}
+	for _, nm := range names {
+		seen[nm]++
+	}
+	for _, nm := range names {
+		if seen[nm] > 1 {
+			agg = append(agg, fmt.Sprintf("%s×%d", nm, seen[nm]))
+		} else {
+			agg = append(agg, nm)
+		}
+		seen[nm] = 0
+	}
 	// ★ 2026-10-11 把开箱结果回填到扣款时那条钻石流水（管理端「数据管理→钻石流水」新增「开出道具」列）。
 	//   抽奖在扣款之后 → 只能先记流水再回填；extra 为空的历史行前端显示「—」。
 	if logID > 0 && len(names) > 0 {
-		extra := "获得：" + strings.Join(names, "、")
+		extra := "获得：" + strings.Join(agg, "、")
 		if rs := []rune(extra); len(rs) > 255 {
 			extra = string(rs[:255])
 		}
@@ -3935,7 +3950,7 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	ezfyChestCacheDel(uid)
 	// resp.OK 会把 data 里的 msg 提升到顶层（前端读 r.msg）
 	resp.OK(c, gin.H{
-		"msg":     fmt.Sprintf("开箱成功: 花费%d%s, 获得 %s", total, unit, strings.Join(names, "、")),
+		"msg":     fmt.Sprintf("开箱成功: 花费%d%s, 获得 %s", total, unit, strings.Join(agg, "、")),
 		"results": results, "gold": city.Gold, "diamond": h.ensureProfile(uid).Diamond,
 	})
 }
