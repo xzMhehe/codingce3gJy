@@ -114,9 +114,11 @@
           <template v-else-if="ezfy.reportTab === 3">
             <!-- ★ 2026-10-06 去掉 [刷新]（切 tab / 进页面会自动 loadReports） -->
             <!-- ★ 2026-10-05 「没用的页面提示去掉」：情报等级公式/还能看到什么 不再展示（文案保留注释里） -->
-            <!-- ★ 2026-10-06 军情警讯也能删除：一键删除当前城市的全部军情警讯（doClearReports 传 category=1） -->
+            <!-- ★ 2026-10-06 军情警讯也能删除：一键删除全部军情警讯（doClearReports 传 category=1） -->
+            <!-- ★ 2026-10-13 军情警讯**不受城市限制**：列表/徽标/一键删除都是「全部城市」口径 -->
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.doClearReports">[一键删除]</a>
+              <span class="gray">(全部城市)</span>
             </div>
             <div class="old-line" v-for="r in ezfy.repPaged" :key="'rw' + r.id">
               <a href="javascript:;" @click="ezfy.openReport(r)">

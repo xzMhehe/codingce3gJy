@@ -3647,6 +3647,9 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		marching      int64
 		occupying     int64
 		unreadReports int64
+		// ★ 2026-10-13 顶部导航「军情」的感叹号角标：未看的**军情警讯(1)+战斗报告(2)** 数量
+		//   （不含采集/运输/将领升级这类「其他」战报 —— 那些不该让导航闪感叹号）。
+		unreadWarns int64
 		popUsed       int64
 		protected     bool
 		boost         bool
@@ -3663,7 +3666,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	// ★ 2026-10-04 瘦身：建筑/军队/科技/野地/队列/伤兵**不再随 /view 下发**（移到对应页面
 	//   进入时各自接口加载），但原数据仍要查回来供懒结算与首页产量(res_prod)计算复用。
 	var wg sync.WaitGroup
-	wg.Add(14)
+	wg.Add(15)
 	go func() { // 军官列表（含出征态自愈 + 一次 orderListByCity 自愈判定）
 		defer wg.Done()
 		officers = h.officerList(city.ID)
@@ -3708,6 +3711,15 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		var c int64
 		h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&c)
 		unreadReports = c
+	}()
+	go func() { // ★ 2026-10-13 未读的「军情警讯 + 战斗报告」（顶部导航感叹号角标用）
+		//   一条单表 COUNT（user_id + is_read 先收窄，再按标题分类），与
+		//   ezfyReportCounts 同一套标题口径（`ezfyReportCatCondAny`，同包共用）。
+		defer wg.Done()
+		var c int64
+		h.DB.Model(&model.EzfyReport{}).
+			Where("user_id = ? AND is_read = 0 AND "+ezfyReportCatCondAny(), uid).Count(&c)
+		unreadWarns = c
 	}()
 	// ★ 2026-10-05 性能：已占用人口不再单独查库 —— wg.Wait() 之后用本请求已取到的
 	//   buildings + trainQueues 纯内存算（原来 buildingPop/troopPop 各自再查一次）。
@@ -3853,6 +3865,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		//   否则没进过「军队」页时 troopsData 还是空的 → 空闲人口会显示成满人口（用户反馈的 bug）
 		"pop_used":       popUsed,
 		"unread_reports": unreadReports,
+		// ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯(1)+战斗报告(2) 数量
+		"unread_warns": unreadWarns,
 		// ★ 资源显示名（管理端可改名，前端一律读这里，不要再写死「粮食/钢铁/…」）
 		"res_names": ezfyResCfgOf(h.DB),
 		// ★ 集结令配置：跟着 /view 一起下发，前端一进页面就是准确值。

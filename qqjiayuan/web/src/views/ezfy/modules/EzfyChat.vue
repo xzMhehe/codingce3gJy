@@ -10,16 +10,15 @@
             <a href="javascript:;" :class="{ on: ezfy.chatChannel === 4 }" @click="ezfy.switchChannel(4)">系统</a>
           </div>
 
-          <!-- ★ 发言框移到聊天列表**上方** 列表按时间降序、最新在最上面 -->
-          <div class="old-line ezfy-chat-send">
+          <!-- ★ 发言框移到聊天列表**上方** 列表按时间降序、最新在最上面
+               ★ 2026-10-13 去掉系统频道上方的 [刷新]（系统消息上方不再有手动刷新入口） -->
+          <div class="old-line ezfy-chat-send" v-if="ezfy.chatChannel !== 4">
             <template v-if="ezfy.chatCanSend">
               <input v-model="ezfy.chatMsg" class="ezfy-chat-input" maxlength="25" @keyup.enter="ezfy.doChatSend"/>
               <a v-if="ezfy.chatCooldown <= 0" href="javascript:;" @click="ezfy.doChatSend">[发送]</a>
               <span v-else class="gray">冷却中 {{ ezfy.chatCooldown }}s</span>
               <span class="gray">(最大25个字)</span>
             </template>
-            <!-- 系统频道无发言框、也不自动轮询 → 保留 [刷新] 作为唯一手动刷新入口 -->
-            <a v-if="ezfy.chatChannel === 4" href="javascript:;" @click="ezfy.loadChats">[刷新]</a>
           </div>
 
           <!-- 系统频道: 系统消息(只读) ★ 2026-09-29 去掉「系统公告」——首页已有公告入口(置顶公告+底部导航「公告」) -->

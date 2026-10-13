@@ -34,7 +34,27 @@
       <div class="top-nav">
         <a href="javascript:;" @click="go('chat')">聊天</a>
         <a href="javascript:;" @click="go('mail')">邮箱</a>
-        <a href="javascript:;" @click="go('reports')">军情</a>
+        <!-- ★★ 2026-10-13 「有没看的预警或没看的战斗报告 → 军情后面加个感叹号图标」
+             （类似首页公告行那个小喇叭）：未看数 = 军情警讯(预警) + 战斗报告，由 /view 的
+             `unread_warns` 下发；进过军情页把战报标已读后，下次 /view 刷新角标自动消失。
+             ★ 造型：**裸感叹号**（不加圆圈底，用户要求），配色直接取公告小喇叭 notice.gif 的
+             **主体色**：亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504 竖向渐变，
+             再压一道砖红 #8E2525 细描边（小喇叭里的那个红）—— 纯黄在浅底上会看不清，描边保证可读。 -->
+        <a href="javascript:;" @click="go('reports')">军情<svg
+          v-if="unreadWarns > 0" class="ezfy-nav-warn" viewBox="0 0 8 14" role="img">
+          <title>有 {{ unreadWarns }} 条未看的军情警讯/战斗报告</title>
+          <defs>
+            <linearGradient id="ezfyNavWarnGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#fce224"/>
+              <stop offset="55%" stop-color="#fed903"/>
+              <stop offset="100%" stop-color="#fda504"/>
+            </linearGradient>
+          </defs>
+          <rect x="2.4" y="1.75" width="3.2" height="7" rx="1.6"
+                fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+          <circle cx="4" cy="11.4" r="1.75"
+                  fill="url(#ezfyNavWarnGrad)" stroke="#8e2525" stroke-width="1.15"/>
+        </svg></a>
         <a href="javascript:;" @click="go('tasks')">任务</a>
         <a href="javascript:;" @click="go('friends')">好友</a>
         <a href="javascript:;" @click="go('home')">首页</a>
@@ -543,6 +563,8 @@ export default {
       marching: 0,
       occupying: 0,
       unreadReports: 0,
+      // ★ 2026-10-13 未看的「军情警讯(预警) + 战斗报告」数量 —— 顶部导航「军情」后面的感叹号角标
+      unreadWarns: 0,
       reports: [],
       // ★ 军情分区分页：默认每页 5 条
       dynPage: 1, dynSize: 5,
@@ -2551,6 +2573,8 @@ export default {
       this.marching = d.marching
       this.occupying = d.occupying
       this.unreadReports = d.unread_reports
+      // ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯(预警)+战斗报告
+      this.unreadWarns = d.unread_warns || 0
       // ★ 占用人口随 /view 一起下发：首页/城市状态页的「空闲人口」不再依赖
       //   「有没有进过军队页」（原来没进过就按 0 算，空闲人口显示成满人口）
       this.popUsed = d.pop_used || 0
@@ -2977,7 +3001,10 @@ export default {
       }
       let url = '/games/ezfy/reports?'
       if (tab === 5) url += 'corps=1'
-      else url += 'category=' + cat + '&city_id=' + (this.city ? this.city.id : 0)
+      // ★★ 2026-10-13 「军情警讯不受城市限制」：tab3(军情警讯/category=1) **city_id 传 0** →
+      //   后端按「全部城市」查询（谁的城被打都收得到，不再只看当前城）；
+      //   战斗报告(tab4/category=2) 仍只查当前城（口径不变）。
+      else url += 'category=' + cat + '&city_id=' + (tab === 3 ? 0 : (this.city ? this.city.id : 0))
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       this.repLoadingKey = key
       this.repLoading = true
@@ -3034,6 +3061,10 @@ export default {
         this.countsLoading = false
         if (r.code === 0) {
           this.reportCounts = r.data.counts || {}
+          // ★ 2026-10-13 顶部导航「军情」感叹号角标与 tab 徽标同源：
+          //   未看数 = 军情警讯(1) + 战斗报告(2)（counts 就是这两个的未读数）。
+          //   军情页停留期间角标随徽标一起刷新；离开后由 /view 的 unread_warns 覆盖纠正。
+          this.unreadWarns = (this.reportCounts[1] || 0) + (this.reportCounts[2] || 0)
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
         }
       }).catch(() => { this.countsLoading = false })
@@ -3052,10 +3083,10 @@ export default {
       return t
     },
     // ---- 军队动态 ----
-    // ★★ 2026-10-08 军情页四个分区（军队动态 / 驻军 / 军情警讯 / 战斗报告）**一律只查当前城市**：
-    //   军情页(reports/reportview)按 `this.city.id` 过滤 —— 与「军情警讯/战斗报告」的
-    //   `category=..&city_id=..` 口径完全一致（后端 ReportDynamics 已支持 city_id 过滤：
-    //   订单按 city_id(出发城) 过滤、守方战场按 battle.target_id(被打城) 过滤）。
+    // ★★ 2026-10-08 军情页分区按 `this.city.id` 过滤：军队动态 / 驻军 / 战斗报告
+    //   （后端 ReportDynamics 已支持 city_id 过滤：订单按 city_id(出发城) 过滤、
+    //   守方战场按 battle.target_id(被打城) 过滤）。
+    //   ★★ 2026-10-13 例外：**军情警讯不再按城市**（不受城市限制，查全部城市，见 loadReports 的 url 构造）。
     //   ★ 出征队列(orders)、地图页「出征队列」面板不在这四个类别里，仍展示**全部在途部队**
     //     （每条都带 from_city 标明来源城，见后端下发的 from_city/from_x/from_y）。
     // soft=true：切 tab 触发的软刷新 —— 同一城市 2 秒内刚拉过 / 已有请求在途就跳过，
@@ -3411,8 +3442,11 @@ export default {
       }
     },
     // 战报列表缓存 key：分区 + 城市 + 搜索词（任一变化即视为不同数据集，自然失效）
+    // ★ 2026-10-13 军情警讯(t=3)不受城市限制 → 城市位**恒为 0**：
+    //   切城市时军情警讯的数据本来就不变，key 保持一致 → 命中缓存、不重复打接口（也不会串城）。
     repCacheKey (t) {
-      return t + '|' + ((this.city && this.city.id) || 0) + '|' + (this.reportWord || '')
+      const cid = t === 3 ? 0 : ((this.city && this.city.id) || 0)
+      return t + '|' + cid + '|' + (this.reportWord || '')
     },
     // 用缓存把某个分区的战报列表**立刻**渲染出来（无缓存则清空 + 标「加载中」）
     applyCachedReports (t) {
@@ -4969,6 +5003,8 @@ export default {
     //   删的是**自己名下全部战报**（后端 DELETE，不软删），不可恢复 → 先走页面内确认条问一次。
     //   ⚠️ 有搜索词时列表只是筛选，删除范围仍是全部 —— 文案里写清楚，别让玩家以为只删列表里那几条。
     // ★ 2026-10-01 军情按当前城过滤：一键删除也只删**当前城市**的战报
+    // ★ 2026-10-13 军情警讯不受城市限制 → 军情警讯的删除也按**全部城市**
+    //   （列表/徽标已是全城口径，若删除仍只删当前城，会出现「删完列表还剩一堆」的矛盾）。
     async doClearReports () {
       if (!this.reports.length) {
         this.notify('暂无战报可删除')
@@ -4976,10 +5012,12 @@ export default {
       }
       // ★ 2026-10-06 军情警讯/战斗报告分区删除：category 口径与 loadReports/ezfyReportCounts 一致
       const scopeName = this.reportTab === 3 ? '军情警讯' : '战斗报告'
-      if (!await this.ask('确定删除【当前城市】的全部' + scopeName + '吗？\n（物理删除，不可恢复；' +
-        (this.reportWord ? '当前只是搜索筛选，删除范围仍是当前城市全部' + scopeName : '共 ' + this.reports.length + ' 条') + '）')) return
+      const allCity = this.reportTab === 3          // 军情警讯=全部城市；战斗报告=当前城市
+      const scopeTxt = allCity ? '全部城市' : '当前城市'
+      if (!await this.ask('确定删除【' + scopeTxt + '】的全部' + scopeName + '吗？\n（物理删除，不可恢复；' +
+        (this.reportWord ? '当前只是搜索筛选，删除范围仍是' + scopeTxt + '全部' + scopeName : '共 ' + this.reports.length + ' 条') + '）')) return
       api.post('/games/ezfy/reports/clear', {
-        city_id: this.city ? this.city.id : 0,
+        city_id: allCity ? 0 : (this.city ? this.city.id : 0),
         category: this.reportTab === 3 ? 1 : 2
       }).then(r => {
         if (r.code === 0) {
@@ -7005,6 +7043,26 @@ body.ezfy-ios .ezfy-page textarea {
    于是第一个链接「聊天」的文字比下面正文行(公告/新城市…)右移。
    去掉首链接的左侧留白 → 整条导航左移，与正文左对齐。 */
 .ezfy-page .top-nav a:first-child { margin-left: 0; padding-left: 0; }
+/* ★★ 2026-10-13 顶部导航「军情」的未读角标：有未看的 军情警讯(预警)/战斗报告 时，
+   在「军情」右边显示一个感叹号（提示方式类似首页公告行前的小喇叭）。
+   ★ 造型：**裸感叹号**（不加圆圈底，用户要求「别用圆圈包着」），用内联 SVG 画；
+     配色取公告小喇叭 notice.gif 的**主体色**（亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504），
+     压一道砖红 #8E2525 细描边（小喇叭里的那个红）—— 纯黄在浅底上会看不清。
+   ⚠️ 尺寸 7×12px（用户「再扁一点点」→ 高 14 收到 12、viewBox 同步压到 8×14），
+   靠 vertical-align 微调，不能把 .top-nav 那一行撑高（导航行高 = 全站字号基准）。 */
+.ezfy-page .top-nav .ezfy-nav-warn {
+  display: inline-block;
+  width: 7px; height: 12px;
+  margin-left: 3px;
+  vertical-align: -1px;
+  /* 极淡的深红描边光晕，浅色导航底上边缘更实（只有一个元素，开销可忽略） */
+  filter: drop-shadow(0 0 .5px rgba(142, 37, 37, .55));
+  animation: ezfyNavWarnPulse 1.1s ease-in-out infinite;
+}
+@keyframes ezfyNavWarnPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
 /* 二级导航(资源/军官/军队/科技/城防/统帅) —— 复刻原版军队/城防/兵种页里的那行 */
 /* ★ 配色按默认 #004299，当前选中 #c0392b 加粗
    ★ 用户反馈「点进去后间隔变大，首页里的这个导航就对」：

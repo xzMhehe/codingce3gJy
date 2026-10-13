@@ -3466,7 +3466,8 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 	anyTitle := ezfyReportCatCondAny()
 	var c1, c2 int
 	if cityId > 0 {
-		a1, a2 := run(" AND city_id = ? AND "+anyTitle, cityId)
+		// 快路径 + 老行补查：只用来数「战斗报告(cat2)」，军情警讯(cat1) 走下面的全量统计
+		_, a2 := run(" AND city_id = ? AND "+anyTitle, cityId)
 		legacy := fmt.Sprintf(` AND (city_id = 0 OR city_id IS NULL) AND %s AND (
 			EXISTS (
 				SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
@@ -3477,8 +3478,12 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 				  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
 			)
 		)`, anyTitle, cityId, cityId)
-		b1, b2 := run(legacy)
-		c1, c2 = a1+b1, a2+b2
+		_, b2 := run(legacy)
+		c2 = a2 + b2
+		// ★★ 2026-10-13 军情警讯(cat1) **不受城市限制** → 徽标数字永远按**全部城市**全量统计，
+		//   与军情警讯列表（Reports 里 category=1 时 city_id 置 0）保持同口径；
+		//   战斗报告(cat2) 仍按当前城。全量统计是单表聚合（user_id+is_read 索引、无 EXISTS），很快。
+		c1, _ = run("")
 	} else {
 		c1, c2 = run("")
 	}
@@ -3523,11 +3528,20 @@ func mustListConsolidate(reports *[]model.EzfyReport) {
 }
 
 // Reports GET /games/ezfy/reports?category=1|2|3&word=xxx&city_id=xx
+//
+// ★ 2026-10-13 「军情警讯不受城市限制」：category=1（军情警讯）时**忽略 city_id**，
+// 按「全部城市」查询（queryCityId=0）；战斗报告(category=2) 仍只查当前城。
+// 雷达/侦察/情报等级（radar/recon/intel）仍按前端传的 city_id 取（看的是「当前查看城」的能力）。
 func (h *EzfyHandler) Reports(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	category, _ := strconv.Atoi(c.DefaultQuery("category", "0"))
 	word := strings.TrimSpace(c.Query("word"))
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
+	// ★★ 2026-10-13 军情警讯(category=1) 不受城市限制 → 列表查询按全部城市（0=不过滤城市）
+	queryCityId := cityId
+	if category == 1 {
+		queryCityId = 0
+	}
 	// ★ 2026-09-30 军团战报：展示本军团团员的 PvP 战报（不含 NPC/野地/系统）
 	if c.Query("corps") == "1" {
 		h.corpsReports(c, uid, word)
@@ -3554,7 +3568,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	//   （本地实测：玩家 35806386 总战报 2913 条，徽标 4，但最新 200 条里战斗报告 = 0。）
 	//   现在把分类条件**下推到 SQL**，LIMIT 作用于「筛完分类之后」的结果集，与徽标同口径。
 	catCond := ezfyReportCategoryCond(category)
-	if cityId > 0 {
+	if queryCityId > 0 {
 		// ① 新战报：city_id 精确命中，走索引（快路径）
 		q2 := h.DB.Select(sel).Where("user_id = ?", uid)
 		if word != "" {
@@ -3563,7 +3577,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		if catCond != "" {
 			q2 = q2.Where(catCond)
 		}
-		q2.Where("city_id = ?", cityId).Order("id DESC").Limit(200).Find(&reports)
+		q2.Where("city_id = ?", queryCityId).Order("id DESC").Limit(200).Find(&reports)
 		// ② 老行补查（city_id=0/NULL 的存量数据，量小）：用原 EXPLICIT 分支兜底，
 		//   避免 OR 拖慢快路径；老行坐标/城名反查仍能归属到当前城。
 		var legacy []model.EzfyReport
@@ -3580,7 +3594,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		) OR EXISTS (
 			SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
 			  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
-		))`, cityId, cityId)).
+		))`, queryCityId, queryCityId)).
 			Order("id DESC").Limit(200).Find(&legacy)
 		reports = append(reports, legacy...)
 		mustListConsolidate(&reports)
@@ -3620,6 +3634,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": ezfyTypeNameStored(r), "is_read": r.IsRead, "order_id": r.OrderId,
+			"city_id": r.CityId,
 			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {
@@ -3645,11 +3660,18 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	if len(unreadIDs) > 0 {
 		h.DB.Model(&model.EzfyReport{}).Where("id IN ?", unreadIDs).Update("is_read", 1)
 	}
+	// ★ 2026-10-13 军情警讯：**逐条**补上「该条警讯所属城市」的雷达/侦察/情报等级
+	//   （军情警讯是全城视图，页面级单值没有意义；口径见 ezfyFillReportIntel）
+	if category == 1 {
+		h.ezfyFillReportIntel(uid, views)
+	}
 	// ★ 军情警讯的可见范围由**自己城市的雷达站**决定：没有雷达站收不到「来袭预警/被侦查」，
 	//   但被掠夺/城破这类事后结果照样会有。这里把雷达等级一并下发，前端据此给提示。
 	// ★ 2026-09-25：同时下发**侦察技巧等级**与**合计情报等级** —— 现在「出发城市+坐标」
 	//   由「雷达站 + 侦察技巧」合计决定，前端要按这两个值告诉玩家还差多少才能看到来袭城市。
 	// ★ 2026-10-01 军情按当前城过滤：雷达/情报等级也取**所查看的城市**，不是主城
+	// ★ 2026-10-13 军情警讯（category=1）例外：**逐条**字段才是权威口径（按被打的那座城），
+	//   下面这三个页面级字段只作兜底（军情警讯时 cityId=0 → 落到主城）。
 	radarCity := h.getOrCreateCity(uid)
 	if cityId > 0 {
 		if ct := h.cityOf(uid, cityId); ct != nil {
@@ -3660,6 +3682,74 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		"radar": h.buildingLevel(radarCity.ID, ezfyRadarBuildingID),
 		"recon": h.techMap(radarCity.ID)[ezfyReconTechID],
 		"intel": h.ezfyIntelLevel(radarCity.ID)})
+}
+
+// ezfyFillReportIntel 给「军情警讯」逐条补上**该条警讯所属城市**的雷达/侦察/情报等级。
+//
+// ★ 2026-10-13 用户纠正：「雷达/侦察/情报等级应该按**被侦查的那座城**算，而不是当前查看城」。
+//
+//	军情警讯是全城视图（category=1 时忽略 city_id），页面级单值没有意义；
+//	而「能不能看到来袭城市与坐标」本来就由**被打的那座城**的 雷达站(建筑21) + 侦察技巧(科技12)
+//	决定 —— 生成战报时 `ezfyOrderRadarWarn` 已按 `target.ID` 写进标题/正文（够 2 级才写来源）。
+//	这里把**同一口径**逐条下发（每条自带 city_id/radar/recon/intel），
+//	前端就能「哪座城被打、那座城的情报等级够不够」一目了然，不必再看当前查看城。
+//
+// 性能：2 条 SQL（我的城市列表 + 这些城市的雷达站等级）。科技是**用户级**
+// （`ezfy_user_tech` 按 user_id、全账号共用，见 techMap 注释）→ 内存取值，不用按城查。
+// 老行 city_id=0/NULL：按标题里的**城名**反查归属（与 ezfyCityReportCond 第 3 条路同口径）。
+func (h *EzfyHandler) ezfyFillReportIntel(uid uint, views []gin.H) {
+	if len(views) == 0 {
+		return
+	}
+	var cities []model.EzfyCity
+	h.DB.Select("id, name").Where("user_id = ?", uid).Find(&cities)
+	nameToID := make(map[string]int64, len(cities))
+	ids := make([]int64, 0, len(cities))
+	for _, c := range cities {
+		if c.Name != "" {
+			nameToID[c.Name] = int64(c.ID)
+		}
+		ids = append(ids, int64(c.ID))
+	}
+	// 一次查出这些城市的雷达站等级（同城多行取最高，与 buildingLevel 一致）
+	radarByCity := map[int64]int{}
+	if len(ids) > 0 {
+		var bs []model.EzfyCityBuilding
+		h.DB.Select("city_id, level").
+			Where("city_id IN ? AND building_id = ?", ids, ezfyRadarBuildingID).Find(&bs)
+		for _, b := range bs {
+			if b.Level > radarByCity[b.CityId] {
+				radarByCity[b.CityId] = b.Level
+			}
+		}
+	}
+	recon := h.techMapOf(uid)[ezfyReconTechID] // 科技用户级 → 所有城共用
+	for _, v := range views {
+		cid, _ := v["city_id"].(int64)
+		if cid == 0 {
+			// 老行没有 city_id → 按标题里的城名反查归属
+			if title, ok := v["title"].(string); ok {
+				for name, id := range nameToID {
+					if strings.Contains(title, name) {
+						cid = id
+						break
+					}
+				}
+			}
+		}
+		radar := radarByCity[cid]
+		intel := 0
+		if radar > 0 { // 与 ezfyIntelLevel 完全同口径：没雷达站 = 0
+			intel = radar + recon
+			if intel > ezfyIntelMaxLevel {
+				intel = ezfyIntelMaxLevel
+			}
+		}
+		v["city_id"] = cid
+		v["radar"] = radar
+		v["recon"] = recon
+		v["intel"] = intel
+	}
 }
 
 // corpsReports 军团战报 —— 展示本军团团员的 PvP 战斗战报（对战玩家城，
@@ -4120,9 +4210,11 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	}
 	c.ShouldBindJSON(&req)
 	q := h.DB.Where("user_id = ?", uid)
-	if req.CityId > 0 {
-		// ★ 2026-10-01 修复：老战报 order_id 全为 0，不能靠 order_id 关联城市，
-		//   与 Reports/ezfyReportCounts 同口径按标题坐标反查该城出征订单
+	// ★ 2026-10-01 修复：老战报 order_id 全为 0，不能靠 order_id 关联城市，
+	//   与 Reports/ezfyReportCounts 同口径按标题坐标反查该城出征订单
+	// ★ 2026-10-13 军情警讯(category=1) 不受城市限制 → 删除也不按城市过滤
+	//   （列表/徽标已是全城口径，删除若只删当前城会「删完还剩一堆」）。
+	if req.CityId > 0 && req.Category != 1 {
 		q = q.Where(ezfyCityReportCond(req.CityId))
 	}
 	if catCond := ezfyReportCategoryCond(req.Category); catCond != "" {
