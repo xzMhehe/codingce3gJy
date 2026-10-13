@@ -194,11 +194,13 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 
 	n := 0
 	var gained int64
+	// ★ 2026-10-13 采集宝物播报防刷屏：一键收获批量结算掉落的宝物合并成一条播报（见 ezfyLootBatch）。
+	lootBatch := &ezfyLootBatch{}
 	for i := range orders {
 		order := &orders[i]
 		// 满一个采集周期 → 完整结算(资源进负重+宝物); 不满 → 按采集时长折算资源(无宝物)
 		if now >= order.ArriveTime {
-			h.settleDispatch(uid, order, now)
+			h.settleDispatch(uid, order, now, lootBatch)
 		} else {
 			h.settlePartialCollect(uid, order, now, "收获")
 		}
@@ -209,6 +211,8 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 			Updates(map[string]interface{}{"arrive_time": 0, "collect_start": 0})
 		n++
 	}
+	// ★ 2026-10-13 一键收获本批掉落的宝物合并成一条系统播报后发出。
+	h.ezfyLootBatchFlush(uid, lootBatch)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已收获 %d 支采集部队, 资源已直接入库(共 %d), 部队原地待命", n, gained)})
 }
 

@@ -1955,6 +1955,9 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 				time.Now().Add(-60*time.Second)).
 			Updates(map[string]interface{}{"status": 0})
 	}
+	// ★ 2026-10-13 采集宝物播报防刷屏：本轮批量结算（多支采集队到点）掉落的宝物
+	//   攒进 lootBatch，循环结束统一 flush 成一条合并播报（见 ezfyLootBatch）。
+	var lootBatch *ezfyLootBatch
 	for i := range orders {
 		order := &orders[i]
 		// ★ 指挥室：战斗中的订单先推进战场（懒结算）。
@@ -1988,11 +1991,16 @@ func (h *EzfyHandler) processOrders(uid uint, cities ...[]int64) {
 				h.processArrive(uid, order, now)
 			}
 		} else if order.Status == 1 && order.OrderType == 7 && order.ArriveTime > 0 && now >= order.ArriveTime {
-			h.settleDispatch(uid, order, now)
+			if lootBatch == nil {
+				lootBatch = &ezfyLootBatch{}
+			}
+			h.settleDispatch(uid, order, now, lootBatch)
 		} else if order.Status == 2 && now >= order.ReturnTime {
 			h.finishReturn(uid, order)
 		}
 	}
+	// ★ 2026-10-13 采集宝物播报防刷屏：本轮批量结算的宝物统一合并成一条播报后发出。
+	h.ezfyLootBatchFlush(uid, lootBatch)
 	// ★ 2026-10-04 修复「打完了还一直显示」：攻方下线后没人 tick 战场，
 	//   守方自己的轮询也把「正在打我方城市」的战场懒推进：打完了立刻收尾
 	//   （finishToOrder 把订单重置回行进 status=0，随后 processIncoming 结算它）。
@@ -2299,6 +2307,38 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 			"resources": order.Resources})
 }
 
+// ezfyLootBatch 单次「批量结算」的宝物播报聚合器。
+//
+// ★ 2026-10-13 用户反馈「采集播报太多了」：玩家批量采集时，几十支采集队同一批结算，
+//   每掉一件宝物就往世界频道播一条「恭喜玩家xx在野地x级采集到宝物」，全服频道刷屏。
+//   批量入口（processOrders 轮询 / 一键收获）一次结算多支部队时，把掉落的宝物名攒进
+//   本批次，循环结束统一 flush 成**一条**合并播报；单条结算（停止采集/召回）不传
+//   批次，保持原样立即播报。
+type ezfyLootBatch struct {
+	name string   // 玩家昵称（首次掉落时取一次，避免每件宝物都查一次）
+	loot []string // 本批次掉落的宝物名
+}
+
+// add 记录一件掉落的宝物。
+func (b *ezfyLootBatch) add(loot string) {
+	if b == nil {
+		return
+	}
+	b.loot = append(b.loot, loot)
+}
+
+// ezfyLootBatchFlush 结算批次结束：有掉落则发一条合并播报（无掉落直接返回）。
+func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
+	if b == nil || len(b.loot) == 0 {
+		return
+	}
+	if b.name == "" {
+		b.name = h.ezfyProfileName(uid)
+	}
+	h.ezfySysChat("恭喜玩家 %s 本次采集收获宝物 %d 件: %s",
+		b.name, len(b.loot), strings.Join(b.loot, "、"))
+}
+
 // settleDispatch 常驻采集结算(每满一个采集周期一期)
 //
 // ★ 2026-09-23 用户规则:
@@ -2313,7 +2353,9 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 //   - **负重满了不再自动停止**：封顶后部队继续驻守采集，由玩家手动[停止采集]/[一键收获]/[召回]取回。
 //
 // 返回 (结算期数, 是否结算); 未满一期或野地已丢(部队自动返航)时 settled=false。
-func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64) (int, bool) {
+// lootBatch 可选：批量结算入口（processOrders 轮询 / 一键收获）传入聚合器，
+// 把本批掉落的宝物合并成一条系统播报（见 ezfyLootBatch）；不传则逐件立即播报。
+func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64, lootBatch ...*ezfyLootBatch) (int, bool) {
 	// ★ 空闲驻守(arrive_time=0)或未满一期: 没有可结算的期数
 	if order.ArriveTime <= 0 || now < order.ArriveTime {
 		return 0, false
@@ -2417,8 +2459,19 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 	}
 	if len(treasureNames) > 0 {
 		desc += fmt.Sprintf("获得宝物(已直接放入宝物): %s\n", strings.Join(treasureNames, ", "))
-		h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物: %s",
-			h.ezfyProfileName(uid), level, wl.X, wl.Y, strings.Join(treasureNames, ", "))
+		// ★ 2026-10-13 采集宝物播报防刷屏：批量结算（一键收获/轮询）传入 lootBatch 时，
+		//   宝物并入批次由调用方合并成**一条**播报；单条结算（停止采集/召回）仍逐件立即播报。
+		if len(lootBatch) > 0 && lootBatch[0] != nil {
+			if lootBatch[0].name == "" {
+				lootBatch[0].name = h.ezfyProfileName(uid)
+			}
+			for _, tn := range treasureNames {
+				lootBatch[0].add(tn)
+			}
+		} else {
+			h.ezfySysChat("恭喜玩家 %s 在野地%d级(%d,%d)采集到宝物: %s",
+				h.ezfyProfileName(uid), level, wl.X, wl.Y, strings.Join(treasureNames, ", "))
+		}
 	} else if !treasureFull {
 		desc += "本期无宝物(该地形不出珠宝)。\n"
 	}

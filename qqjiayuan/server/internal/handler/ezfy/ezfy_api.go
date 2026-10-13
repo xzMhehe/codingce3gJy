@@ -3593,19 +3593,31 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	}
 
 	views := []gin.H{}
-	// ★ 徽标数字用全量真实统计（不再受「最近 200 条窗口」影响，见 ezfyReportCounts）
+	// ★★ 2026-10-13 「将领离职」当天播报置顶：离职报告(report_type=6)按 id 倒序埋在列表中间，
+	//   采集/掠夺报告一多就被挤出 200 条窗口 —— 玩家根本看不到「将领离职」通知
+	//   （用户反馈「这种播报玩家看不到」）。当天(自然日 0 点起)的离职报告提到列表**最前**，
+	//   跨天(第二天起)后回归正常 id 倒序，与普通播报一致。
+	dayStart := time.Now().Format("2006-01-02") + " 00:00:00"
+	var topResign []model.EzfyReport
+	h.DB.Select(sel).Where("user_id = ? AND report_type = 6 AND created_at >= ?", uid, dayStart).
+		Order("id DESC").Find(&topResign)
+	topIDs := map[uint]bool{}
+	for _, r := range topResign {
+		topIDs[r.ID] = true
+	}
+	// 徽标数字用全量真实统计（不再受「最近 200 条窗口」影响，见 ezfyReportCounts）
 	counts := h.ezfyReportCounts(uid, cityId)
 	// ★★ 2026-10-11 性能：标记已读原来是**逐条 UPDATE**（最多 50 次 RDS 往返；线上 1 核 1G
 	//   实测军情页打开明显卡 —— 用户报「咋这慢啊」）。改为先收集 id、循环后**一次批量 UPDATE**。
 	//   `len(views) >= 50` 同时从 continue 改成 break：列表只要前 50 条，continue 会白扫剩余 150 条。
 	unreadIDs := make([]uint, 0, 50)
-	for _, r := range reports {
+	appendView := func(r model.EzfyReport) bool {
 		cat := ezfyReportCategory(r.Title)
 		if category > 0 && cat != category {
-			continue
+			return false
 		}
 		if len(views) >= 50 {
-			break
+			return true // 列表已满，通知调用方停止追加
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": ezfyTypeNameStored(r), "is_read": r.IsRead, "order_id": r.OrderId,
@@ -3613,6 +3625,22 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {
 			unreadIDs = append(unreadIDs, r.ID)
+		}
+		return false
+	}
+	// ① 当天离职报告置顶段（受 category 过滤，category=3「其他」或「全部」可见）
+	for _, r := range topResign {
+		if appendView(r) {
+			break
+		}
+	}
+	// ② 正常列表（跳过已置顶的离职报告，避免重复）
+	for _, r := range reports {
+		if topIDs[r.ID] {
+			continue
+		}
+		if appendView(r) {
+			break
 		}
 	}
 	if len(unreadIDs) > 0 {
