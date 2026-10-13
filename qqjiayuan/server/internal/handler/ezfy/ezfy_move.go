@@ -27,9 +27,12 @@ import (
 //
 // 三种迁城方式（与三种道具一一对应）：
 //
-//	low  迁城计划     —— 选洲，落该洲内的随机空平原（陆地城市）
-//	high 高级迁城计划 —— 指定 x/y，必须是未被占领的平原
-//	sea  沿海迁城计划 —— 选洲 或 指定 x/y，必须是未被占领的沿海平原
+//	low  迁城计划     —— 仅陆地城市可用；选洲，落该洲内的随机空**陆地平原**
+//	high 高级迁城计划 —— 仅陆地城市可用；指定 x/y，必须是未被占领的陆地平原（沿海平原不可）
+//	sea  沿海迁城计划 —— 仅沿海城市可用；选洲 或 指定 x/y，必须是未被占领的沿海平原
+//
+// ★ 2026-10-13 用户规则校正：三种道具一律按「陆城 / 海城」区分使用场景，
+//   不再要求目标坐标是自己附属野地；陆地城市只落陆地平原、海城只落沿海平原。
 //
 // ★ 第十二轮起：迁城**消耗对应道具**，不再扣黄金（道具本身可用黄金或钻石在商城购买）。
 const ezfyMoveCityGoldCost = 200000 // 保留常量：道具的默认黄金定价参考值
@@ -192,6 +195,16 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 	}
 	h.refreshCity(uid, city)
 
+	// ★ 2026-10-13 用户规则：三种迁城道具按「陆城 / 海城」区分使用场景——
+	//   迁城计划 / 高级迁城计划 仅陆地城市可用；沿海迁城计划 仅沿海城市可用。
+	if seaCity := h.isSeaCity(city); (kind.Code == "low" || kind.Code == "high") && seaCity {
+		resp.ParamError(c, "该城市是沿海城市, 【"+kind.Label+"】仅陆地城市可用, 请使用【沿海迁城计划】")
+		return
+	} else if kind.Code == "sea" && !seaCity {
+		resp.ParamError(c, "【沿海迁城计划】仅沿海城市可用, 陆地城市请使用【迁城计划】或【高级迁城计划】")
+		return
+	}
+
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却时间，针对**迁过城的城市**冷却 24 小时」：
 	//   冷却记在**城市**上（city.move_cool_until）—— 迁过城的这座城要等冷却结束才能再迁，
 	//   同一个号的其他城不受影响。时长 = 管理端「二战系统配置 → 迁城冷却(小时)」（0 = 关闭）。
@@ -325,7 +338,7 @@ func (h *EzfyHandler) MoveCity(c *gin.Context) {
 
 // findFreePosInContinent 在指定洲内随机找一个「未被占领的空位」
 //
-// needCoastal=true → 必须是沿海平原（海城）；false → 平原或沿海平原都可以（陆地城市）。
+// needCoastal=true → 必须是沿海平原（海城）；false → 只能陆地平原（不含沿海平原，陆地城市专用）。
 //
 // ★ 「尽量都在附近」：先做「优先贴着已有城市」的采样 ——
 // 内测玩家互相之间要能侦查/掠夺，离太远就没得打。
@@ -426,7 +439,8 @@ func (h *EzfyHandler) findFreePosInContinentExceptC(continent int, needCoastal b
 			if t != ezfyTerrainCoastalPlain {
 				return false
 			}
-		} else if t != 1 && t != ezfyTerrainCoastalPlain {
+		} else if t != 1 {
+			// ★ 2026-10-13 用户规则：陆地城市只落到「陆地平原」（t=1），沿海平原留给沿海迁城计划
 			return false
 		}
 		return true

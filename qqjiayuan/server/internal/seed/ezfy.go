@@ -561,9 +561,9 @@ func seedEzfyOfficerItems(db *gorm.DB) {
 //
 //	         「用 迁城计划、高级迁城计划、沿海迁城计划 …… 可以灵活批量迁移城池」
 //
-//		1020 迁城计划     ItemType 16 选洲迁城（落该洲随机空平原）
-//		1021 高级迁城计划 ItemType 17 指定坐标迁城（平原）
-//		1022 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，海城专用）
+//		1020 迁城计划     ItemType 16 选洲迁城（落该洲随机空陆地平原，仅陆地城市可用）
+//		1021 高级迁城计划 ItemType 17 指定坐标迁城（陆地平原，仅陆地城市可用）
+//		1022 沿海迁城计划 ItemType 18 选洲 / 指定坐标迁城（沿海平原，仅沿海城市可用）
 //
 // ★ 代码侧一律**按名字**解析这三件道具的 cfg_id（见 handler/ezfy/ezfy_move.go），别硬编码数字。
 //
@@ -578,13 +578,13 @@ func seedEzfyMoveItems(db *gorm.DB) {
 	rows := []model.EzfyCfgItem{
 		{ID: 1020, Name: "迁城计划", ItemType: 16, Param1: 1,
 			PriceGold: 0, PriceDiamond: 10, Stock: 100, Category: "迁城道具",
-			Description: "在市政厅→城市迁移使用: 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
+			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 选择一个大洲, 城市随机迁移到该洲内未被占领的平原"},
 		{ID: 1021, Name: "高级迁城计划", ItemType: 17, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: 100, Category: "迁城道具",
-			Description: "在市政厅→城市迁移使用: 指定坐标迁移城市, 目标必须是未被占领的平原"},
+			Description: "在市政厅→城市迁移使用: 仅陆地城市可用, 指定坐标迁移城市, 目标必须是未被占领的陆地平原(沿海平原不可)"},
 		{ID: 1022, Name: "沿海迁城计划", ItemType: 18, Param1: 1,
 			PriceGold: 0, PriceDiamond: 30, Stock: 99, Category: "迁城道具",
-			Description: "在市政厅→城市迁移使用: 选择大洲或指定坐标, 城市迁移到沿海平原(海城专用)"},
+			Description: "在市政厅→城市迁移使用: 沿海城市专用, 选择大洲或指定坐标, 城市迁移到未被占领的沿海平原"},
 	}
 	for _, it := range rows {
 		var count int64

@@ -269,7 +269,7 @@
           <hr/>
           <div class="old-line">
             使用【迁城计划】：持有 {{ ezfy.moveItemCounts.low }} 个
-            <span class="gray">(迁移到所选大洲内未被占领的平原)</span>
+            <span class="gray">(仅陆地城市可用，迁移到所选大洲内未被占领的平原)</span>
           </div>
           <div class="old-line">
             迁入大洲：
@@ -283,7 +283,7 @@
             使用【高级迁城计划】：持有 {{ ezfy.moveItemCounts.high }} 个
           </div>
           <div class="old-line gray">
-            请确认您输入的坐标是非被占领的平原，沿海平原无法直接迁移城市
+            仅陆地城市可用，请确认您输入的坐标是未被占领的陆地平原，沿海平原无法直接迁移城市
           </div>
           <div class="old-line">
             横坐标 x：<input v-model="ezfy.moveX" type="number" style="width:80px"/>
