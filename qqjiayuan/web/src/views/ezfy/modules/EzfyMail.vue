@@ -45,7 +45,7 @@
               <span class="gray">({{ ezfy.mailSender(m) }} · {{ ezfy.fmtTime(m.created_at) }})</span>
               <a v-if="m.is_read === 0" href="javascript:;" @click="ezfy.doMailRead(m)">[标已读]</a>
               <a href="javascript:;" @click="ezfy.doMailDelete(m)">[删除]</a>
-              <div v-if="ezfy.mailOpen === m.id" class="sub" style="margin-top:4px;padding:6px;background:#f6f1e3;border-radius:4px;white-space:pre-wrap;word-break:break-all;">{{ m.content }}</div>
+              <div v-if="ezfy.mailOpen === m.id" class="sub" style="margin-top:4px;white-space:pre-wrap;word-break:break-all;">{{ m.content }}</div>
             </div>
             <div class="old-line gray" v-if="!ezfy.mailList(ezfy.mailTab).length">
               {{ ezfy.mailTab === 'inbox' ? '收件箱暂无邮件。' : ezfy.mailTab === 'system' ? '暂无系统邮件。' : '发件箱暂无邮件。' }}

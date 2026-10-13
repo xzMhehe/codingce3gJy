@@ -3863,6 +3863,12 @@ export default {
           this.notify(r.msg || '开箱成功')
           this.chestResult = (r.data && r.data.results) || []
           this.chestOpen = null
+          // ★ 2026-10-13 开箱扣款已实时回账：结果行余额直接取本次响应，不等 loadChests 回来
+          //   （loadChests 有缓存/延迟，会导致「钻石没局部更新」）
+          if (r.data) {
+            if (r.data.gold !== undefined) this.chestData.gold = r.data.gold
+            if (r.data.diamond !== undefined) this.chestData.diamond = r.data.diamond
+          }
           this.loadBag()
           this.load()
           this.loadChests()
