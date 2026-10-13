@@ -289,8 +289,9 @@ func (h *EzfyHandler) MailDelete(c *gin.Context) {
 // PrivChatSend POST /games/ezfy/privchat/send {to, content}
 //
 // ★ 2026-10-13 用户规则「好友之间私聊放好友页、非好友用邮箱联系」：
-//   私聊**强制仅好友**——非好友之间不能私聊，请走邮箱。
-//   私信仍落在 PrivateMessage（与聊天/会话历史同一张表），只加好友校验。
+//
+//	私聊**强制仅好友**——非好友之间不能私聊，请走邮箱。
+//	私信仍落在 PrivateMessage（与聊天/会话历史同一张表），只加好友校验。
 func (h *EzfyHandler) PrivChatSend(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -328,9 +329,9 @@ func (h *EzfyHandler) PrivChatSend(c *gin.Context) {
 		resp.Forbidden(c, "只有游戏好友之间才能私聊，非好友请用「邮箱」联系")
 		return
 	}
-	// 对方把我拉黑（复用家园黑名单）则发不出去
+	// 对方把我拉黑（复用家园黑名单）则发不出去 —— ★ 2026-10-13 黑名单在**家园库**，这里改查 h.home()
 	var black int64
-	h.DB.Model(&model.FriendBlack{}).
+	h.home().Model(&model.FriendBlack{}).
 		Where("user_id = ? AND friend_id = ? AND end_time > ?", target, uid, time.Now()).Count(&black)
 	if black > 0 {
 		resp.Forbidden(c, "对方不接受你的私聊")
@@ -338,4 +339,106 @@ func (h *EzfyHandler) PrivChatSend(c *gin.Context) {
 	}
 	h.DB.Create(&model.PrivateMessage{SenderID: uid, ReceiverID: target, Content: content})
 	resp.OK(c, gin.H{"msg": "已发送"})
+}
+
+// resolveHomeUser 按「家园号码 或 内部 id」解析家园用户（私聊会话/线程用）
+func (h *EzfyHandler) resolveHomeUser(s string) (model.User, bool) {
+	var u model.User
+	if h.home().Where("username = ?", s).First(&u).Error == nil {
+		return u, true
+	}
+	if id, e := strconv.Atoi(s); e == nil && id > 0 {
+		if h.home().First(&u, id).Error == nil {
+			return u, true
+		}
+	}
+	return u, false
+}
+
+// ezfyGameName 玩家的游戏身份（游戏ID + 游戏昵称，游戏没填就兜底家园）
+func (h *EzfyHandler) ezfyGameName(uid uint, homeNick string) (int64, string) {
+	var p model.EzfyProfile
+	if h.DB.Where("user_id = ?", uid).First(&p).Error == nil {
+		gname := p.Nickname
+		if gname == "" {
+			gname = homeNick
+		}
+		gu := p.GameUID
+		if gu == 0 {
+			gu = int64(uid)
+		}
+		return gu, gname
+	}
+	return int64(uid), homeNick
+}
+
+// PrivChatConvs GET /games/ezfy/privchat/convs —— 好友私聊会话列表（微信式，游戏身份）
+//
+// ★ 2026-10-13 用户规则「二战里面都用游戏ID和游戏名称」：
+//
+//	会话展示/私聊线程一律用游戏ID(gid)+游戏昵称(gname)，不用家园名字。
+func (h *EzfyHandler) PrivChatConvs(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	page, offset, size := pageOf(c, 10)
+	var total int64
+	h.home().Raw(`
+SELECT COUNT(*) FROM (
+  SELECT DISTINCT IF(sender_id = ?, receiver_id, sender_id) AS peer
+  FROM private_messages WHERE sender_id = ? OR receiver_id = ?
+) cnt`, uid, uid, uid).Scan(&total)
+	type convRow struct {
+		UserID      uint   `json:"user_id"`
+		Username    string `json:"username"`
+		Nickname    string `json:"nickname"`
+		LastContent string `json:"last_content"`
+		LastAt      string `json:"last_at"`
+		Unread      int64  `json:"unread"`
+	}
+	var rows []convRow
+	h.home().Raw(`
+SELECT u.id AS user_id, u.username AS username, u.nickname, m.content AS last_content, m.created_at AS last_at,
+  (SELECT COUNT(*) FROM private_messages x WHERE x.sender_id = u.id AND x.receiver_id = ? AND x.is_read = 0) AS unread
+FROM private_messages m
+JOIN users u ON u.id = IF(m.sender_id = ?, m.receiver_id, m.sender_id)
+JOIN (SELECT IF(sender_id = ?, receiver_id, sender_id) AS peer, MAX(id) AS max_id
+      FROM private_messages WHERE sender_id = ? OR receiver_id = ? GROUP BY peer) t
+  ON t.peer = u.id AND t.max_id = m.id
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT ? OFFSET ?`, uid, uid, uid, uid, uid, size, offset).Scan(&rows)
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		gid, gname := h.ezfyGameName(r.UserID, r.Nickname)
+		out = append(out, gin.H{
+			"user_id": r.UserID, "gid": gid, "gname": gname,
+			"username": r.Username, "nickname": gname,
+			"last_content": r.LastContent, "last_at": r.LastAt, "unread": r.Unread,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// PrivChatWith GET /games/ezfy/privchat/with/:id —— 与某好友的私聊记录（分页，新到旧）
+func (h *EzfyHandler) PrivChatWith(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	peer, ok := h.resolveHomeUser(c.Param("id"))
+	if !ok {
+		resp.NotFound(c, "这位玩家不存在")
+		return
+	}
+	peerID := peer.ID
+	page, offset, size := pageOf(c, 20)
+	where := "(sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)"
+	var total int64
+	h.home().Model(&model.PrivateMessage{}).Where(where, uid, peerID, peerID, uid).Count(&total)
+	var msgs []model.PrivateMessage
+	h.home().Preload("Sender").Where(where, uid, peerID, peerID, uid).
+		Order("created_at DESC, id DESC").Offset(offset).Limit(size).Find(&msgs)
+	// 已读回执
+	h.home().Model(&model.PrivateMessage{}).
+		Where("sender_id = ? AND receiver_id = ? AND is_read = 0", peerID, uid).Update("is_read", 1)
+	gid, gname := h.ezfyGameName(peer.ID, peer.Nickname)
+	resp.OK(c, gin.H{"peer": gin.H{
+		"id": peer.ID, "username": peer.Username, "nickname": peer.Nickname,
+		"gid": gid, "gname": gname,
+	}, "list": msgs, "total": total, "page": page, "size": size})
 }

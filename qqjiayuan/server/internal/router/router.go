@@ -685,6 +685,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/mail/delete", ezfyH.MailDelete)
 				// ★ 2026-10-13 好友私聊（强制仅好友，非好友请走邮箱）
 				ezfyG.POST("/privchat/send", ezfyH.PrivChatSend)
+				ezfyG.GET("/privchat/convs", ezfyH.PrivChatConvs)
+				ezfyG.GET("/privchat/with/:id", ezfyH.PrivChatWith)
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)

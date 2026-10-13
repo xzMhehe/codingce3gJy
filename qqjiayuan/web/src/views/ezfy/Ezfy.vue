@@ -582,6 +582,8 @@ export default {
       //   聊天记录分页（新到旧，前端反转成旧到新展示）
       pmPeerUid: 0,
       pmChatPage: 1, pmChatTotal: 0, pmChatSize: 20,
+      // ★ 2026-10-13 好友页 tab 内子视图：convs=会话列表（微信式） friends=好友列表
+      friendView: 'convs',
       pmConvs: [],
       pmConvPage: 1, pmConvTotal: 0, pmConvSize: 10,
       friends: [],
@@ -2372,7 +2374,8 @@ export default {
       // ★ 2026-09-30 计谋页（行军计谋专用）：进页/刷新都重拉信号弹持有量
       else if (t === 'scheme') this.loadSchemes()
       else if (t === 'mail') { this.loadMail(this.mailTab, true) }
-      else if (t === 'friends') this.loadFriends()
+      // ★ 2026-10-13 好友页：进入即拉会话列表 + 好友列表（微信式会话列表优先展示）
+      else if (t === 'friends') { this.friendView = 'convs'; this.loadPmConvs(); this.loadFriends() }
       else if (t === 'liaison') this.loadLiaison()
       else if (t === 'tasks') this.loadTasks()
       else if (t === 'welfare') this.loadWelfare()
@@ -2749,9 +2752,11 @@ export default {
       }
       this.go('mail')
     },
-    // ---- 好友页私聊面板（仅好友之间可私聊） ----
+    // ---- 好友页私聊（微信式：会话列表 ⇄ 对话线程，仅好友之间可私聊） ----
     openFriendPm (f) {
       this.cur = 'friends'
+      this.friendTab = 'list'
+      this.friendView = 'convs'
       this.pmPeer = null
       this.pmChat = []
       this.pmContent = ''
@@ -2759,8 +2764,22 @@ export default {
       this.pmPeerUid = f.game_uid || 0
       this.pmChatPage = 1
       this.selectPm(f.user_id)
+      this.loadPmConvs()
     },
-    closeFriendPm () {
+    // 会话列表点某条会话 → 直接打开对话线程（c 来自 convs 接口，带 gid/gname）
+    openConv (c) {
+      this.cur = 'friends'
+      this.friendTab = 'list'
+      this.friendView = 'convs'
+      this.pmPeer = null
+      this.pmChat = []
+      this.pmContent = ''
+      this.pmPeerUid = c.gid || 0
+      this.pmChatPage = 1
+      this.selectPm(c.user_id)
+    },
+    // 返回会话列表
+    closePm () {
       this.pmPeer = null
       this.pmChat = []
       this.pmContent = ''
@@ -2768,13 +2787,18 @@ export default {
       this.pmPeerUid = 0
       this.pmChatPage = 1
       this.pmChatTotal = 0
+      this.loadPmConvs()
+    },
+    switchFriendView (v) {
+      this.friendView = v
+      if (v === 'convs') this.closePm()
     },
     doSendPrivchat () {
       if (!this.pmPeer) { this.notify('请先选择要私聊的好友'); return }
       const content = (this.pmContent || '').trim()
       if (!content) { this.notify('请填写内容'); return }
-      // ★ 优先用好友游戏ID发送；没有游戏ID时才回退昵称
-      const to = this.pmPeerUid ? String(this.pmPeerUid) : (this.pmPeer.nickname || this.pmPeer.username)
+      // ★ 优先用好友游戏ID发送；没有游戏ID时才回退游戏昵称
+      const to = this.pmPeerUid ? String(this.pmPeerUid) : (this.pmPeer.gname || this.pmPeer.nickname)
       api.post('/games/ezfy/privchat/send', { to: to, content: content }).then(r => {
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '已发送')
@@ -2787,7 +2811,7 @@ export default {
     // ---- 好友页四 tab ----
     setFriendTab (t) {
       this.friendTab = t
-      if (t !== 'list') this.closeFriendPm()
+      if (t !== 'list') this.closePm()
     },
     // ---- 邮箱页 ----
     setMailTab (t) {
@@ -2863,7 +2887,8 @@ export default {
     loadPmConvs (page) {
       if (!page) page = this.pmConvPage
       if (page < 1) page = 1
-      api.get('/messages/conversations', { params: { page, size: this.pmConvSize } }).then(r => {
+      // ★ 2026-10-13 私聊会话走游戏内接口（游戏ID+游戏名），不再用家园名字
+      api.get('/games/ezfy/privchat/convs', { params: { page, size: this.pmConvSize } }).then(r => {
         if (r.code === 0) {
           this.pmConvs = r.data.list || []
           this.pmConvPage = r.data.page || 1
@@ -2879,10 +2904,11 @@ export default {
     pmConvNext () {
       if (this.pmConvPage * this.pmConvSize < this.pmConvTotal) this.loadPmConvs(this.pmConvPage + 1)
     },
-    // 切换聊天对象：拉出「我和 TA」的历史记录（分页，新到旧→前端反转成旧到新展示），并把对方设为收件人
+    // 切换聊天对象：拉出「我和 TA」的私聊记录（分页，新到旧→前端反转成旧到新展示）
+    // ★ 2026-10-13 走游戏内接口，对方显示游戏ID+游戏名（不用家园名字）
     selectPm (userId) {
       if (!userId) return
-      api.get('/messages/with/' + userId, { params: { page: this.pmChatPage, size: this.pmChatSize } }).then(r => {
+      api.get('/games/ezfy/privchat/with/' + userId, { params: { page: this.pmChatPage, size: this.pmChatSize } }).then(r => {
         if (r.code === 0) {
           this.pmPeer = r.data.peer || null
           const list = r.data.list || []

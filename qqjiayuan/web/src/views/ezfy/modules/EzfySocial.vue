@@ -9,46 +9,73 @@
             <a href="javascript:;" :class="{ on: ezfy.friendTab === 'search' }" @click="ezfy.setFriendTab('search')">查找</a>
           </div>
 
-          <!-- 好友列表 -->
+          <!-- 好友（微信式：会话列表 ⇄ 好友列表） -->
           <template v-if="ezfy.friendTab === 'list'">
-            <table v-if="ezfy.friends.length">
-              <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
-              <tr v-for="f in ezfy.friends" :key="'f' + f.user_id">
-                <td><span class="td-mono">{{ f.game_uid }}</span></td>
-                <td><a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">{{ f.nickname }}</a></td>
-                <td>{{ f.prestige }}</td>
-                <td>{{ f.rank_name }}</td>
-                <td>
-                  <a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">[统帅信息]</a>
-                  <a href="javascript:;" @click="ezfy.openFriendPm(f)">[私聊]</a>
-                  <a href="javascript:;" @click="ezfy.doDelFriend(f)">[删除]</a>
-                </td>
-              </tr>
-            </table>
-            <div class="old-line gray" v-else>(还没有游戏好友，用下面的「查找」找找吧)</div>
-
-            <!-- ★ 好友间私聊（仅好友之间可发，非好友请用「邮箱」联系） -->
-            <div v-if="ezfy.pmPeer" style="margin-top:10px;border-top:1px dashed #cbbd96;padding-top:8px;">
-              <div class="panel-title">与 {{ ezfy.pmPeer.nickname }} 的私聊
-                <a href="javascript:;" @click="ezfy.closeFriendPm()">[关闭]</a>
-                <a href="javascript:;" @click="ezfy.selectPm(ezfy.pmPeer.id)">[刷新]</a>
-              </div>
-              <div class="old-line" v-for="m in ezfy.pmChat" :key="'pc' + m.id">
-                <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">{{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.nickname }}</span>：{{ m.content }}
-                <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
-              </div>
-              <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
-              <!-- ★ 2026-10-13 私聊记录分页（每页 20 条） -->
-              <div class="ezfy-pager" v-if="ezfy.pmChatTotal > ezfy.pmChatSize">
-                <a href="javascript:;" :class="{ gray: ezfy.pmChatPage <= 1 }" @click="ezfy.pmChatPrev()">上一页</a>
-                <span class="gray">第 {{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }} 页（共 {{ ezfy.pmChatTotal }} 条）</span>
-                <a href="javascript:;" :class="{ gray: ezfy.pmChatPage * ezfy.pmChatSize >= ezfy.pmChatTotal }" @click="ezfy.pmChatNext()">下一页</a>
-              </div>
-              <div class="old-line">
-                <input v-model="ezfy.pmContent" class="ezfy-chat-input" maxlength="500" placeholder="最多500字" @keyup.enter="ezfy.doSendPrivchat"/>
-                <button @click="ezfy.doSendPrivchat">发送</button>
-              </div>
+            <div class="old-line">
+              <a href="javascript:;" :class="{ on: ezfy.friendView === 'convs' }" @click="ezfy.switchFriendView('convs')">会话列表</a>|
+              <a href="javascript:;" :class="{ on: ezfy.friendView === 'friends' }" @click="ezfy.switchFriendView('friends')">好友列表</a>
             </div>
+
+            <!-- ★ 会话列表（微信式，游戏ID+游戏名，带未读/最后消息） -->
+            <template v-if="ezfy.friendView === 'convs'">
+              <!-- 对话线程：点会话进入，[返回] 回列表 -->
+              <template v-if="ezfy.pmPeer">
+                <div class="panel-title">与 {{ ezfy.pmPeer.gname }}（{{ ezfy.pmPeer.gid }}）的私聊
+                  <a href="javascript:;" @click="ezfy.closePm()">[返回]</a>
+                  <a href="javascript:;" @click="ezfy.selectPm(ezfy.pmPeer.id)">[刷新]</a>
+                </div>
+                <div class="old-line" v-for="m in ezfy.pmChat" :key="'pc' + m.id">
+                  <span :class="m.sender_id === ezfy.myUserId ? 'green' : ''">{{ m.sender_id === ezfy.myUserId ? '我' : ezfy.pmPeer.gname }}</span>：{{ m.content }}
+                  <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
+                </div>
+                <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
+                <!-- 私聊记录分页（每页 20 条） -->
+                <div class="ezfy-pager" v-if="ezfy.pmChatTotal > ezfy.pmChatSize">
+                  <a href="javascript:;" :class="{ gray: ezfy.pmChatPage <= 1 }" @click="ezfy.pmChatPrev()">上一页</a>
+                  <span class="gray">第 {{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }} 页（共 {{ ezfy.pmChatTotal }} 条）</span>
+                  <a href="javascript:;" :class="{ gray: ezfy.pmChatPage * ezfy.pmChatSize >= ezfy.pmChatTotal }" @click="ezfy.pmChatNext()">下一页</a>
+                </div>
+                <div class="old-line">
+                  <input v-model="ezfy.pmContent" class="ezfy-chat-input" maxlength="500" placeholder="最多500字" @keyup.enter="ezfy.doSendPrivchat"/>
+                  <button @click="ezfy.doSendPrivchat">发送</button>
+                </div>
+              </template>
+              <!-- 会话列表 -->
+              <template v-else>
+                <div class="old-line" v-for="c in ezfy.pmConvs" :key="'pvc' + c.user_id">
+                  <a href="javascript:;" @click="ezfy.openConv(c)"><span :class="{ red: c.unread > 0 }">{{ c.gname }}</span>
+                    <span class="gray">({{ c.gid }})</span>
+                    <span v-if="c.unread > 0" class="red">[未读{{ c.unread }}]</span></a>
+                  <span class="gray">{{ c.last_content }}</span>
+                  <span class="gray">({{ ezfy.fmtTime(c.last_at) }})</span>
+                </div>
+                <div class="old-line gray" v-if="!ezfy.pmConvs.length">(还没有会话，去「好友列表」找好友私聊吧)</div>
+                <div class="ezfy-pager" v-if="ezfy.pmConvTotal > ezfy.pmConvSize">
+                  <a href="javascript:;" :class="ezfy.pmConvPage <= 1 ? 'gray' : ''" @click="ezfy.pmConvPrev()">[上一页]</a>
+                  <span class="gray">第 {{ ezfy.pmConvPage }}/{{ Math.ceil(ezfy.pmConvTotal / ezfy.pmConvSize) }} 页（共 {{ ezfy.pmConvTotal }} 个会话）</span>
+                  <a href="javascript:;" :class="ezfy.pmConvPage * ezfy.pmConvSize >= ezfy.pmConvTotal ? 'gray' : ''" @click="ezfy.pmConvNext()">[下一页]</a>
+                </div>
+              </template>
+            </template>
+
+            <!-- ★ 好友列表 -->
+            <template v-else>
+              <table v-if="ezfy.friends.length">
+                <tr><th>游戏ID</th><th>昵称</th><th>声望</th><th>军衔</th><th>操作</th></tr>
+                <tr v-for="f in ezfy.friends" :key="'f' + f.user_id">
+                  <td><span class="td-mono">{{ f.game_uid }}</span></td>
+                  <td><a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">{{ f.nickname }}</a></td>
+                  <td>{{ f.prestige }}</td>
+                  <td>{{ f.rank_name }}</td>
+                  <td>
+                    <a href="javascript:;" @click="ezfy.openPlayer(f.user_id)">[统帅信息]</a>
+                    <a href="javascript:;" @click="ezfy.openFriendPm(f)">[私聊]</a>
+                    <a href="javascript:;" @click="ezfy.doDelFriend(f)">[删除]</a>
+                  </td>
+                </tr>
+              </table>
+              <div class="old-line gray" v-else>(还没有游戏好友，用下面的「查找」找找吧)</div>
+            </template>
           </template>
 
           <!-- 好友申请 -->
