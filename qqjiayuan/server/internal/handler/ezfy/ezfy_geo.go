@@ -810,6 +810,13 @@ const (
 	ezfyBattleRetreatMaxDef = 10000 // 战斗最大后退距离（默认 10000）
 	ezfyCritBaseBonusPctDef = 50    // 暴击基础伤害加成%（默认 50）
 	ezfyGarrisonBreakPctDef = 50    // 盟军驻军溃败撤退阈值%（默认 50）
+	// ★ 2026-10-13 伤害公式系数：伤害 = (攻×攻系数+攻加值)/(防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成; 最小伤害=数量×最小伤害系数
+	ezfyBattleRoundMsDef = 30000 // 战斗每回合时长（毫秒，默认 30 秒）
+	ezfyAtkCoeffDef      = 5     // 伤害公式攻击系数（默认 5）
+	ezfyAtkBaseDef       = 1000  // 伤害公式攻击加值（默认 1000）
+	ezfyDefCoeffDef      = 3     // 伤害公式防御系数（默认 3）
+	ezfyDefBaseDef       = 10    // 伤害公式防御加值（默认 10）
+	ezfyMinDmgCoeffDef   = 5     // 最小伤害系数（最小伤害 = 数量×系数，默认 5）
 )
 
 // ezfyTroopMaxCfg 单城兵力上限（读 ezfy_cfg_limit.troop_max，默认 50 亿）

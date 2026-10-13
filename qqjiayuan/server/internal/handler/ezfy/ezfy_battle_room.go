@@ -50,8 +50,8 @@ func (h *EzfyHandler) ezfyUserOnline(uid uint) bool {
 // 时刻由「下一次请求」决定 —— 这与本游戏其它系统（资源产出、建筑完工）口径一致。
 
 const (
-	ezfyBattleRoundMs = int64(30000) // 每回合 30 秒
-	ezfyBattleCmdMs   = int64(25000) // 前 25 秒可下达指令，最后 5 秒锁定
+	// 每回合时长已挪进「二战系统配置 → 回合战斗公式 → battle_round_ms」可调（默认 30 秒），读取端见 ezfyBattleRoundMsCfg()Cfg()。
+	ezfyBattleCmdMs = int64(25000) // 前 25 秒可下达指令，最后 5 秒锁定（需 ≤ 每回合时长）
 	// ezfyBattleLogTail 下发给前端的日志条数（日志会一直累积，全量下发会拖慢轮询）
 	ezfyBattleLogTail = 40
 	// ezfyBattleLogMax 战场快照里保留的日志条数上限
@@ -275,9 +275,9 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 	defCmds := ezfyAtkCmdsParse(b.DefCmd)
 
 	steps := 0
-	for !st.Done && now-b.RoundStart >= ezfyBattleRoundMs {
+	for !st.Done && now-b.RoundStart >= ezfyBattleRoundMsCfg() {
 		st.Step(cmds, defCmds)
-		b.RoundStart += ezfyBattleRoundMs
+		b.RoundStart += ezfyBattleRoundMsCfg()
 		steps++
 		// 防御性上限：即使时间戳异常（比如系统时钟跳变）也绝不死循环
 		if steps > ezfyBattleMaxRoundsCfg()+1 {
@@ -494,12 +494,12 @@ func ezfyBattleResultDecode(s string) (ezfyBattleResult, bool) {
 // ★ 2026-10-05 ：兵种名**统一用基础兵种名**（不带阵营前缀），viewerCamp 已不再参与取名。
 func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapshot, now int64, viewerCamp int, viewerIsAtk bool) gin.H {
 	// 本回合剩余时间：过了就是 0（等待下一次请求推进）
-	left := b.RoundStart + ezfyBattleRoundMs - now
+	left := b.RoundStart + ezfyBattleRoundMsCfg() - now
 	if left < 0 {
 		left = 0
 	}
 	phase := "lock" // 锁定结算期
-	if left > ezfyBattleRoundMs-ezfyBattleCmdMs {
+	if left > ezfyBattleRoundMsCfg()-ezfyBattleCmdMs {
 		phase = "cmd" // 指令期（前 25 秒）
 	}
 
@@ -698,7 +698,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		// 目标下拉框可选：最近目标 + 敌方兵种（含当前值兜底）
 		"target_options": opts,
 		"phase":          phase, "round_left_ms": left,
-		"round_ms": ezfyBattleRoundMs, "cmd_window_ms": ezfyBattleCmdMs,
+		"round_ms": ezfyBattleRoundMsCfg(), "cmd_window_ms": ezfyBattleCmdMs,
 		"attackers": units(snap.Attackers, true), "defenders": units(snap.Defenders, false),
 		"atk_total": atkTotal, "def_total": defTotal,
 		"head": head, "actions": logs, "done": snap.Done,
@@ -1101,13 +1101,13 @@ func (h *EzfyHandler) BattleLock(c *gin.Context) {
 		// 双方都已锁 → 立即结算本回合：RoundStart 前移一回合时长，
 		// 下面的 tick 就会把这一回合推进掉并清锁（保存即锁定、双锁即结算）。
 		if b.AtkLock == 1 && b.DefLock == 1 {
-			b.RoundStart -= ezfyBattleRoundMs
+			b.RoundStart -= ezfyBattleRoundMsCfg()
 			h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update("round_start", b.RoundStart)
 		}
 	} else {
 		// 取消配置：本回合已到点结算（被 tick 推进过、锁已清）时无需取消；
 		// 若仍未到点但锁字段是 0（本来就没锁），也无所谓，幂等处理。
-		if now-b.RoundStart >= ezfyBattleRoundMs {
+		if now-b.RoundStart >= ezfyBattleRoundMsCfg() {
 			resp.ParamError(c, "本回合已结算，无法取消")
 			return
 		}

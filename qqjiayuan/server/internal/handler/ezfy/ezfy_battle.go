@@ -51,6 +51,18 @@ func ezfyGarrisonBreakPctCfg() int {
 	return ezfyLimitOr(ezfyCfg.limit.GarrisonBreakPct, ezfyGarrisonBreakPctDef)
 }
 
+// 每回合时长（毫秒，指挥室实时战斗推进节奏，默认 30 秒）
+func ezfyBattleRoundMsCfg() int64 {
+	return int64(ezfyLimitOr(ezfyCfg.limit.BattleRoundMs, ezfyBattleRoundMsDef))
+}
+
+// 伤害公式系数（见 ezfyCalcDamage；默认 = 移植前的硬编码值 5 / 1000 / 3 / 10 / 5）
+func ezfyAtkCoeffCfg() int    { return ezfyLimitOr(ezfyCfg.limit.AtkCoeff, ezfyAtkCoeffDef) }
+func ezfyAtkBaseCfg() int     { return ezfyLimitOr(ezfyCfg.limit.AtkBase, ezfyAtkBaseDef) }
+func ezfyDefCoeffCfg() int    { return ezfyLimitOr(ezfyCfg.limit.DefCoeff, ezfyDefCoeffDef) }
+func ezfyDefBaseCfg() int     { return ezfyLimitOr(ezfyCfg.limit.DefBase, ezfyDefBaseDef) }
+func ezfyMinDmgCoeffCfg() int { return ezfyLimitOr(ezfyCfg.limit.MinDmgCoeff, ezfyMinDmgCoeffDef) }
+
 // 战场指挥指令（玩家每回合可下达）
 const (
 	ezfyCmdAdvance = "advance" // 前进
@@ -1841,12 +1853,13 @@ func ezfyPickAttack(atk, def *ezfyTroopStats) int {
 	}
 }
 
-// ezfyCalcDamage 伤害 = (攻*5+1000)/(守防*(100+防加成%)*3+10)*数量, 再乘攻加成; 最小伤害=数量*5
+// ezfyCalcDamage 伤害 = (攻×攻系数+攻加值)/(守防×(100+防加成%)×防系数+防加值)*数量, 再乘攻加成; 最小伤害=数量*最小伤害系数
+// 五个系数都在「二战系统配置 → 战斗与经济 → 回合战斗公式」可调（默认 = 移植前的硬编码值 5/1000/3/10/5）。
 func ezfyCalcDamage(baseAtk, def int, count int64, atkBonus, defBonus int) int64 {
 	bonusDef := def * (100 + defBonus) / 100
-	damage := int64(baseAtk*5+1000) / int64(bonusDef*3+10) * count
+	damage := int64(baseAtk*ezfyAtkCoeffCfg()+ezfyAtkBaseCfg()) / int64(bonusDef*ezfyDefCoeffCfg()+ezfyDefBaseCfg()) * count
 	damage = damage * int64(100+atkBonus) / 100
-	minimum := count * 5
+	minimum := count * int64(ezfyMinDmgCoeffCfg())
 	if damage < minimum {
 		return minimum
 	}

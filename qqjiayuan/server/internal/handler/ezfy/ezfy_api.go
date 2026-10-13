@@ -3793,7 +3793,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 		h.DB.Where("user_id = ? AND status = 1", uid).Find(&battles)
 		for _, b := range battles {
 			battleRounds[b.OrderId] = b.Round
-			left := b.RoundStart + ezfyBattleRoundMs - now
+			left := b.RoundStart + ezfyBattleRoundMsCfg() - now
 			if left < 0 {
 				left = 0
 			}
@@ -4012,7 +4012,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			atkName = atkCity.Name
 			atkX, atkY = atkCity.X, atkCity.Y
 		}
-		left := b.RoundStart + ezfyBattleRoundMs - now
+		left := b.RoundStart + ezfyBattleRoundMsCfg() - now
 		if left < 0 {
 			left = 0
 		}

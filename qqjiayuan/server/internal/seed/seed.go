@@ -230,6 +230,12 @@ func Run(db *gorm.DB, staticDir string) {
 		addLimitCol("battle_retreat_max", 10000)
 		addLimitCol("crit_base_bonus_pct", 50)
 		addLimitCol("garrison_break_pct", 50)
+		addLimitCol("battle_round_ms", 30000)
+		addLimitCol("atk_coeff", 5)
+		addLimitCol("atk_base", 1000)
+		addLimitCol("def_coeff", 3)
+		addLimitCol("def_base", 10)
+		addLimitCol("min_dmg_coeff", 5)
 	}
 
 	// 二战风云：系统配置的「玩法开关」+ 野地兵力倍数（管理端可配）

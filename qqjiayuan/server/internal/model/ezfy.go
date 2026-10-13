@@ -363,6 +363,13 @@ type EzfyCfgLimit struct {
 	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"` // 双方各自最多后退多少（默认 10000）
 	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`   // 装备无暴击伤害(crit_dmg=0)时的兜底暴击倍率%（默认 50）
 	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"` // 盟军驻军战：守方兵力跌破初始的此比例% 即判败撤退（默认 50）
+	// ★ 2026-10-13 伤害公式系数：伤害 = (攻×攻系数+攻加值)/(防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成; 最小伤害=数量×最小伤害系数
+	BattleRoundMs int `gorm:"default:30000;comment:战斗每回合时长(毫秒)" json:"battle_round_ms"` // 指挥室实时战斗每回合毫秒数（默认 30000 = 30 秒）
+	AtkCoeff      int `gorm:"default:5;comment:伤害公式攻击系数" json:"atk_coeff"`                 // 伤害分子 攻×系数（默认 5）
+	AtkBase       int `gorm:"default:1000;comment:伤害公式攻击加值" json:"atk_base"`                // 伤害分子 +加值（默认 1000）
+	DefCoeff      int `gorm:"default:3;comment:伤害公式防御系数" json:"def_coeff"`                 // 伤害分母 防×系数（默认 3）
+	DefBase       int `gorm:"default:10;comment:伤害公式防御加值" json:"def_base"`                 // 伤害分母 +加值（默认 10）
+	MinDmgCoeff   int `gorm:"default:5;comment:最小伤害系数(数量×系数)" json:"min_dmg_coeff"`        // 最小伤害 = 数量×系数（默认 5）
 
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//

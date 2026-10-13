@@ -306,7 +306,7 @@ func (h *EzfyAdmin) AdminEzfyBattleTick(c *gin.Context) {
 	eh := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	eh.cfgs()
 	now := time.Now().UnixMilli()
-	b.RoundStart = now - ezfyBattleRoundMs // 拨到「刚好到点」
+	b.RoundStart = now - ezfyBattleRoundMsCfg() // 拨到「刚好到点」
 	_, done := eh.ezfyBattleTick(&b, now)
 
 	msg := fmt.Sprintf("已推进到第 %d 回合", b.Round)
@@ -343,7 +343,7 @@ func (h *EzfyAdmin) AdminEzfyBattleAuto(c *gin.Context) {
 	rounds := 0
 	for i := 0; i < ezfyBattleMaxRoundsCfg()+2; i++ {
 		before := b.Round
-		b.RoundStart = now - int64(ezfyBattleMaxRoundsCfg()+3)*ezfyBattleRoundMs
+		b.RoundStart = now - int64(ezfyBattleMaxRoundsCfg()+3)*ezfyBattleRoundMsCfg()
 		_, done := eh.ezfyBattleTick(&b, now)
 		rounds += b.Round - before
 		if done {

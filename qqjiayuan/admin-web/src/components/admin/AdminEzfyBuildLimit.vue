@@ -200,6 +200,31 @@
               <template slot="label">驻军溃败撤退阈值(%)<el-tooltip placement="top" :content="tips.garrison_break_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.garrison_break_pct" :min="1" :max="100" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-13 伤害公式系数 + 每回合时长（默认 = 移植前的硬编码值） -->
+            <el-form-item>
+              <template slot="label">每回合时长(毫秒)<el-tooltip placement="top" :content="tips.battle_round_ms"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.battle_round_ms" :min="25000" :max="120000" :step="1000" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤害攻击系数<el-tooltip placement="top" :content="tips.atk_coeff"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.atk_coeff" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤害攻击加值<el-tooltip placement="top" :content="tips.atk_base"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.atk_base" :min="1" :max="100000" :step="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤害防御系数<el-tooltip placement="top" :content="tips.def_coeff"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.def_coeff" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">伤害防御加值<el-tooltip placement="top" :content="tips.def_base"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.def_base" :min="1" :max="100000" :step="10" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">最小伤害系数<el-tooltip placement="top" :content="tips.min_dmg_coeff"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.min_dmg_coeff" :min="1" :max="1000" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
@@ -366,6 +391,8 @@ export default {
         // ★ 2026-10-13 回合战斗公式（默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50）
         battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
         crit_base_bonus_pct: 50, garrison_break_pct: 50,
+        // ★ 2026-10-13 伤害公式系数 + 每回合时长（默认 = 移植前的硬编码值：30000 / 5 / 1000 / 3 / 10 / 5）
+        battle_round_ms: 30000, atk_coeff: 5, atk_base: 1000, def_coeff: 3, def_base: 10, min_dmg_coeff: 5,
         // ★ 2026-09-28 安抚参数（黄金 / 民怨- / 民心+ / 冷却分钟），默认 5万 / 2 / 1 / 15
         placate_gold: 50000, placate_grievance: 2, placate_feelings: 1, placate_cooldown_min: 15,
         officer_salary_per_level: 20, wound_heal_divisor: 100,
@@ -437,6 +464,15 @@ export default {
           '「出了暴击但跟没暴一样」；本配置兜底让这类装备也有暴击加成',
         garrison_break_pct: '盟军驻军战「溃败撤退」阈值(%)：守方剩余兵力跌破初始兵力的该百分比即判定战败、战斗提前结束，' +
           '剩余部队自动返航回出发城市（不再死战到全灭），默认 50 = 剩一半就撤，可调 1~100。调 100 = 一挨打就撤、调 1 = 基本打到底',
+        // ★ 2026-10-13 伤害公式系数 + 每回合时长
+        battle_round_ms: '指挥室实时战斗每回合时长（毫秒，默认 30000 = 30 秒）：前 25 秒可下指令、最后 5 秒锁定。' +
+          '可调 25000~120000（≥ 25 秒的指令窗口，调小了指挥室会一直处于锁定态）',
+        atk_coeff: '伤害公式分子系数：伤害 = (攻×攻系数+攻加值) ÷ (防×(100+防加成%)×防系数+防加值) × 数量，再乘攻加成。' +
+          '本项是「攻系数」，默认 5，可调 1~100。调大 → 攻击方伤害整体变高',
+        atk_base: '伤害公式分子加值（默认 1000，可调 1~100000）：攻击很低时靠它保底打出基础伤害，调大 → 小兵力也能打出可观伤害',
+        def_coeff: '伤害公式分母系数（默认 3，可调 1~100）：防系数越大，防御属性对伤害的削减越明显 → 战斗更持久',
+        def_base: '伤害公式分母加值（默认 10，可调 1~100000）：防止防御为 0 时公式除零爆炸，调大 → 整体伤害被压低',
+        min_dmg_coeff: '最小伤害系数（默认 5，可调 1~1000）：单支部队最小伤害 = 兵力数量 × 系数。调大 → 再弱的部队也打得动',
         ransom_cost: '被占城市原主人发起赎城需先支付的钻石押金（发起即扣，拒绝/撤销自动退回，同意返还后归占领方），默认 500',
         // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
         placate_gold: '每次安抚消耗的黄金，默认 5 万',
@@ -554,6 +590,13 @@ export default {
             battle_retreat_max: pos(r.data.battle_retreat_max, 10000),
             crit_base_bonus_pct: pos(r.data.crit_base_bonus_pct, 50),
             garrison_break_pct: pos(r.data.garrison_break_pct, 50),
+            // ★ 2026-10-13 伤害公式系数 + 每回合时长：0 无意义 → pos 回落各自默认
+            battle_round_ms: pos(r.data.battle_round_ms, 30000),
+            atk_coeff: pos(r.data.atk_coeff, 5),
+            atk_base: pos(r.data.atk_base, 1000),
+            def_coeff: pos(r.data.def_coeff, 3),
+            def_base: pos(r.data.def_base, 10),
+            min_dmg_coeff: pos(r.data.min_dmg_coeff, 5),
             // ★ 2026-09-28 安抚参数：0 无意义 → pos 各自回落默认
             placate_gold: pos(Number(r.data.placate_gold) || 0, 50000),
             placate_grievance: pos(r.data.placate_grievance, 2),

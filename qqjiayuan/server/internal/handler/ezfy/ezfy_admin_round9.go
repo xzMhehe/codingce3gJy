@@ -78,6 +78,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
 		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
 		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
+		BattleRoundMs:    ezfyBattleRoundMsDef, AtkCoeff: ezfyAtkCoeffDef, AtkBase: ezfyAtkBaseDef,
+		DefCoeff: ezfyDefCoeffDef, DefBase: ezfyDefBaseDef, MinDmgCoeff: ezfyMinDmgCoeffDef,
 		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
@@ -216,6 +218,24 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.GarrisonBreakPct <= 0 {
 		lim.GarrisonBreakPct = ezfyGarrisonBreakPctDef
 	}
+	if lim.BattleRoundMs <= 0 {
+		lim.BattleRoundMs = ezfyBattleRoundMsDef
+	}
+	if lim.AtkCoeff <= 0 {
+		lim.AtkCoeff = ezfyAtkCoeffDef
+	}
+	if lim.AtkBase <= 0 {
+		lim.AtkBase = ezfyAtkBaseDef
+	}
+	if lim.DefCoeff <= 0 {
+		lim.DefCoeff = ezfyDefCoeffDef
+	}
+	if lim.DefBase <= 0 {
+		lim.DefBase = ezfyDefBaseDef
+	}
+	if lim.MinDmgCoeff <= 0 {
+		lim.MinDmgCoeff = ezfyMinDmgCoeffDef
+	}
 	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 21 亿）
 	if lim.ResMaxFood <= 0 {
 		lim.ResMaxFood = ezfyResMaxDef
@@ -343,6 +363,13 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		BattleRetreatMax *int `json:"battle_retreat_max"`
 		CritBaseBonusPct *int `json:"crit_base_bonus_pct"`
 		GarrisonBreakPct *int `json:"garrison_break_pct"`
+		// ★ 2026-10-13 回合战斗公式·伤害系数 + 每回合时长
+		BattleRoundMs *int `json:"battle_round_ms"`
+		AtkCoeff      *int `json:"atk_coeff"`
+		AtkBase       *int `json:"atk_base"`
+		DefCoeff      *int `json:"def_coeff"`
+		DefBase       *int `json:"def_base"`
+		MinDmgCoeff   *int `json:"min_dmg_coeff"`
 		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood  *int64 `json:"res_max_food"`
 		ResMaxSteel *int64 `json:"res_max_steel"`
@@ -408,6 +435,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
 		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
 		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
+		BattleRoundMs:    ezfyBattleRoundMsDef, AtkCoeff: ezfyAtkCoeffDef, AtkBase: ezfyAtkBaseDef,
+		DefCoeff: ezfyDefCoeffDef, DefBase: ezfyDefBaseDef, MinDmgCoeff: ezfyMinDmgCoeffDef,
 		// ★ 2026-09-25 各项资源的「资源最大值」（默认 21 亿）
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
@@ -936,6 +965,49 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.GarrisonBreakPct = *in.GarrisonBreakPct
+	}
+	// ★ 2026-10-13 每回合时长（毫秒）：需 ≥ 指令窗口 25000（前 25 秒下指令、后 5 秒锁定），否则指挥室会一直处于锁定态
+	if in.BattleRoundMs != nil {
+		if *in.BattleRoundMs < 25000 || *in.BattleRoundMs > 120000 {
+			resp.ParamError(c, "每回合时长需要在 25000~120000 毫秒之间（需 ≥ 指令窗口 25 秒）")
+			return
+		}
+		lim.BattleRoundMs = *in.BattleRoundMs
+	}
+	if in.AtkCoeff != nil {
+		if *in.AtkCoeff < 1 || *in.AtkCoeff > 100 {
+			resp.ParamError(c, "伤害攻击系数需要在 1~100 之间")
+			return
+		}
+		lim.AtkCoeff = *in.AtkCoeff
+	}
+	if in.AtkBase != nil {
+		if *in.AtkBase < 1 || *in.AtkBase > 100000 {
+			resp.ParamError(c, "伤害攻击加值需要在 1~100000 之间")
+			return
+		}
+		lim.AtkBase = *in.AtkBase
+	}
+	if in.DefCoeff != nil {
+		if *in.DefCoeff < 1 || *in.DefCoeff > 100 {
+			resp.ParamError(c, "伤害防御系数需要在 1~100 之间")
+			return
+		}
+		lim.DefCoeff = *in.DefCoeff
+	}
+	if in.DefBase != nil {
+		if *in.DefBase < 1 || *in.DefBase > 100000 {
+			resp.ParamError(c, "伤害防御加值需要在 1~100000 之间")
+			return
+		}
+		lim.DefBase = *in.DefBase
+	}
+	if in.MinDmgCoeff != nil {
+		if *in.MinDmgCoeff < 1 || *in.MinDmgCoeff > 1000 {
+			resp.ParamError(c, "最小伤害系数需要在 1~1000 之间")
+			return
+		}
+		lim.MinDmgCoeff = *in.MinDmgCoeff
 	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef
