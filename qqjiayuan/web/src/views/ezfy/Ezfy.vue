@@ -34,15 +34,18 @@
       <div class="top-nav">
         <a href="javascript:;" @click="go('chat')">聊天</a>
         <a href="javascript:;" @click="go('mail')">邮箱</a>
-        <!-- ★★ 2026-10-13 「有没看的预警或没看的战斗报告 → 军情后面加个感叹号图标」
-             （类似首页公告行那个小喇叭）：未看数 = 军情警讯(预警) + 战斗报告，由 /view 的
-             `unread_warns` 下发；进过军情页把战报标已读后，下次 /view 刷新角标自动消失。
+        <!-- ★★ 2026-10-13 「有没看的预警或没看的被袭战报 → 军情后面加个感叹号图标」
+             （类似首页公告行那个小喇叭）：未看数 = 未读的**军情警讯** + 未读的
+             **被侦查/被掠夺/被征服/城破**战报，由 /view 的 `unread_warns` 下发
+             （后端 `ezfyReportAlertCond`，只算被动挨打类；自己主动出击的战果不计入）。
+             进过军情页把战报标已读后，下次 /view 刷新角标自动消失。
              ★ 造型：**裸感叹号**（不加圆圈底，用户要求），配色直接取公告小喇叭 notice.gif 的
              **主体色**：亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504 竖向渐变，
              再压一道砖红 #8E2525 细描边（小喇叭里的那个红）—— 纯黄在浅底上会看不清，描边保证可读。 -->
         <a href="javascript:;" @click="go('reports')">军情<svg
-          v-if="unreadWarns > 0" class="ezfy-nav-warn" viewBox="0 0 8 14" role="img">
-          <title>有 {{ unreadWarns }} 条未看的军情警讯/战斗报告</title>
+          v-if="unreadWarns > 0" class="ezfy-nav-warn" viewBox="0 0 8 14"
+          preserveAspectRatio="none" role="img">
+          <title>有 {{ unreadWarns }} 条未看的军情警讯/被袭战报</title>
           <defs>
             <linearGradient id="ezfyNavWarnGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color="#fce224"/>
@@ -1676,7 +1679,24 @@ export default {
       const def = (this.battleData.defenders || []).filter(u => u && u.troop_id).slice().sort(byTroop)
       const n = Math.max(atk.length, def.length)
       const rows = []
-      for (let i = 0; i < n; i++) rows.push({ id: i, atk: atk[i] || null, def: def[i] || null })
+      // ★ 2026-10-13 位置条的 left 在这里**一次算好**（不再由模板各自调 battlePosLeft）——
+      //   这样才能做「同一行保序」：攻方图标恒在守方左边，贴身时不重叠、也不互相穿过。
+      //   ★★ 保序**只把攻方往左推，守方位置永远保持真实** ——
+      //     否则「守方战列舰」(行1) 会被推到右边，和同 pos 的「守方航母」(行2) 错开，
+      //     看起来就不是「贴身」了（用户：「既然贴身了，守方航母和战列舰应该一列」）。
+      const GAP = 9 // % —— 约等于一个 26px 图标在手机屏行宽里的占比
+      for (let i = 0; i < n; i++) {
+        const a = atk[i] || null
+        const d = def[i] || null
+        let al = a ? this.battlePosLeft(a) : null
+        let dl = d ? this.battlePosLeft(d) : null
+        if (al !== null && dl !== null && dl - al < GAP) {
+          al = Math.max(3, dl - GAP)   // 攻方左推到「刚好留出 GAP」；守方不动 → 同 pos 的单位纵向对齐
+        }
+        if (al !== null && al < 3) al = 3
+        if (dl !== null && dl > 97) dl = 97
+        rows.push({ id: i, atk: a, def: d, atkLeft: al, defLeft: dl })
+      }
       return rows
     },
     // ★ 战场指挥室：把行动日志按回合分组，并让**最新回合排最上**（旧回合往下沉）
@@ -2573,8 +2593,12 @@ export default {
       this.marching = d.marching
       this.occupying = d.occupying
       this.unreadReports = d.unread_reports
-      // ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯(预警)+战斗报告
+      // ★ 2026-10-13 顶部导航「军情」感叹号角标：未看的 军情警讯 + 被侦查/被掠夺/被征服战报
+      //   （后端 unread_warns，口径见 `ezfyReportAlertCond`）
       this.unreadWarns = d.unread_warns || 0
+      // ★★ 后端旧版本不下发 unread_warns 时兜底问一次 counts —— 否则角标只有「点进军情页」
+      //   才会被 loadReportCounts 点亮（用户反馈「满足条件不提示，必需点军情才有，这没意义」）。
+      if (d.unread_warns === undefined) this.loadReportCounts()
       // ★ 占用人口随 /view 一起下发：首页/城市状态页的「空闲人口」不再依赖
       //   「有没有进过军队页」（原来没进过就按 0 算，空闲人口显示成满人口）
       this.popUsed = d.pop_used || 0
@@ -3061,10 +3085,13 @@ export default {
         this.countsLoading = false
         if (r.code === 0) {
           this.reportCounts = r.data.counts || {}
-          // ★ 2026-10-13 顶部导航「军情」感叹号角标与 tab 徽标同源：
-          //   未看数 = 军情警讯(1) + 战斗报告(2)（counts 就是这两个的未读数）。
-          //   军情页停留期间角标随徽标一起刷新；离开后由 /view 的 unread_warns 覆盖纠正。
-          this.unreadWarns = (this.reportCounts[1] || 0) + (this.reportCounts[2] || 0)
+          // ★★ 2026-10-13 顶部导航「军情」感叹号角标：**优先用后端下发的 unread_warns**
+          //   （只算被动挨打类，见后端 `ezfyReportAlertCond`），不要再拿两个 tab 徽标相加 ——
+          //   徽标是全量口径（含自己刷野地的「掠夺报告」动辄几千条），相加会让角标永远闪、提示失去意义。
+          //   仅当后端旧版本没这个字段时才回落到「军情警讯 + 战斗报告」的旧口径。
+          this.unreadWarns = (r.data.unread_warns !== undefined)
+            ? (r.data.unread_warns || 0)
+            : ((this.reportCounts[1] || 0) + (this.reportCounts[2] || 0))
           if (r.data.has_corps !== undefined) this.reportHasCorps = !!r.data.has_corps
         }
       }).catch(() => { this.countsLoading = false })
@@ -3162,23 +3189,22 @@ export default {
     stopBattleTimer () {
       if (this.battleTimer) { clearInterval(this.battleTimer); this.battleTimer = null }
     },
-    // ★ 2026-10-10 战场位置条：把兵种 pos 映射到行内横向坐标（左半区=攻、右半区=守）。
+    // ★★ 2026-10-13 战场位置条坐标映射：**攻守共用同一把尺**（用户反馈「【守方】战列舰 已与攻方航母贴身，
+    //   原地攻击，但位置条上两个图标离得老远」）。
     //   后端坐标语义：攻方老家 0、守方老家 6000（初始相距 6000），前进 = 攻方 pos 增大 / 守方 pos 减小，
-    //   后退上限 10000（攻方最低 -10000、守方最高 16000）。
-    //   ★ 用户反馈「位置会越过，不应该越过」：旧实现把攻守放在同一把尺上，
-    //     但配对并非「实际交战对」→ 攻方图标可能跑到守方图标右边（互相穿过）。
-    //   现改为**分区映射**：攻方恒映射到左半区 [3%,46%]、守方恒映射到右半区 [54%,97%]，
-    //     攻方前进(向 6000)越靠右、守方前进(向 0)越靠左，二者向中央靠拢 —— 永远相向、绝不越过。
-    battlePosLeft (u, isDef) {
-      if (!u || u.pos === undefined || u.pos === null || isNaN(u.pos)) return isDef ? 70 : 30
-      if (isDef) {
-        // 守方：老家 16000 → 97%，前线 0 → 54%
-        const p = Math.max(0, Math.min(16000, u.pos))
-        return 97 - (16000 - p) / 16000 * 43
-      }
-      // 攻方：老家 -10000 → 3%，前线 6000 → 46%
-      const p = Math.max(-10000, Math.min(6000, u.pos))
-      return 3 + (p + 10000) / 16000 * 43
+    //   各自最多后退 10000 → 坐标空间 [-10000, 16000]，**贴身的判据就是两个 pos 只差 1**。
+    //   旧实现是**分区映射**（攻方恒在左半区 [3%,46%]、守方恒在右半区 [54%,97%]）：它按「各自相对老家的
+    //   进度」定位，于是哪怕两个单位已经贴脸，图标之间仍固定隔着 ~24% 行宽 —— 看着像隔着半个战场，
+    //   和行动日志里的「贴身」完全对不上。
+    //   现在按**绝对 pos** 映射（攻守同一把尺）：pos 相近 → 图标自然挨在一起，贴身时基本重合；
+    //   而同一对实际交战单位的 pos 天然有序（攻方 pos 恒小于守方 pos），所以照样不会穿过。
+    //   三段线性：两侧撤退区各压到 15%，中间主战区放大到 64% —— 交战区的位移看得更清楚。
+    //   ★ 同一行的「保序 + 最小间隔」在 battlePosRows 里做（那里才能同时看到攻守两侧）。
+    battlePosLeft (u) {
+      const p = (u && u.pos !== undefined && u.pos !== null && !isNaN(u.pos)) ? u.pos : 3000
+      if (p <= 0) return 3 + (Math.max(-10000, p) + 10000) / 10000 * 15   // 攻方撤退区 [-10000,0] → [3%,18%]
+      if (p >= 6000) return 82 + (Math.min(16000, p) - 6000) / 10000 * 15 // 守方撤退区 [6000,16000] → [82%,97%]
+      return 18 + p / 6000 * 64                                          // 主战区 [0,6000] → [18%,82%]
     },
     // ★ 2026-10-10 位置条兵种名：只显示首字（图标下 26px 宽放不下全名）。
     //   全名 + 位置仍保留在 title 提示里。
@@ -7048,11 +7074,14 @@ body.ezfy-ios .ezfy-page textarea {
    ★ 造型：**裸感叹号**（不加圆圈底，用户要求「别用圆圈包着」），用内联 SVG 画；
      配色取公告小喇叭 notice.gif 的**主体色**（亮黄 #FCE224 → 黄 #FED903 → 橙 #FDA504），
      压一道砖红 #8E2525 细描边（小喇叭里的那个红）—— 纯黄在浅底上会看不清。
-   ⚠️ 尺寸 7×12px（用户「再扁一点点」→ 高 14 收到 12、viewBox 同步压到 8×14），
+   ⚠️ 尺寸 7×12px（用户「再扁一点点」→ 高 14 收到 12、viewBox 同步压到 8×14）。
+   ★ 2026-10-13 用户「再窄点」→ 宽 7px 收到 5px，并给 svg 加 `preserveAspectRatio="none"`：
+     只压**横向**（高度不变）→ 感叹号变瘦长；若不加这句，SVG 会等比缩放，改 width 只会整体变小、
+     宽度比例纹丝不动（这也是上次「改窄了但看着没变」的原因）。
    靠 vertical-align 微调，不能把 .top-nav 那一行撑高（导航行高 = 全站字号基准）。 */
 .ezfy-page .top-nav .ezfy-nav-warn {
   display: inline-block;
-  width: 7px; height: 12px;
+  width: 5px; height: 12px;
   margin-left: 3px;
   vertical-align: -1px;
   /* 极淡的深红描边光晕，浅色导航底上边缘更实（只有一个元素，开销可忽略） */

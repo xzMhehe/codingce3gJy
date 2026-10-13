@@ -3712,14 +3712,11 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&c)
 		unreadReports = c
 	}()
-	go func() { // ★ 2026-10-13 未读的「军情警讯 + 战斗报告」（顶部导航感叹号角标用）
-		//   一条单表 COUNT（user_id + is_read 先收窄，再按标题分类），与
-		//   ezfyReportCounts 同一套标题口径（`ezfyReportCatCondAny`，同包共用）。
+	go func() { // ★ 2026-10-13 未读的「军情警讯 + 被袭战报」（顶部导航感叹号角标用）
+		//   一条单表 COUNT（user_id + is_read 先收窄，再按标题分类）；口径见
+		//   `ezfyReportAlertCond` —— 只算**被动挨打**类，自己主动出击的战果不计入。
 		defer wg.Done()
-		var c int64
-		h.DB.Model(&model.EzfyReport{}).
-			Where("user_id = ? AND is_read = 0 AND "+ezfyReportCatCondAny(), uid).Count(&c)
-		unreadWarns = c
+		unreadWarns = h.ezfyUnreadAlertCount(uid)
 	}()
 	// ★ 2026-10-05 性能：已占用人口不再单独查库 —— wg.Wait() 之后用本请求已取到的
 	//   buildings + trainQueues 纯内存算（原来 buildingPop/troopPop 各自再查一次）。

@@ -3501,7 +3501,13 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 func (h *EzfyHandler) ReportCounts(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
-	resp.OK(c, gin.H{"counts": h.ezfyReportCounts(uid, cityId), "has_corps": h.corpsOfUser(uid) > 0})
+	resp.OK(c, gin.H{
+		"counts":    h.ezfyReportCounts(uid, cityId),
+		"has_corps": h.corpsOfUser(uid) > 0,
+		// ★ 2026-10-13 顺带下发顶部导航「军情」感叹号角标数（与 /view 的 unread_warns 同口径）：
+		//   前端进游戏时若 /view 未下发该字段（旧版本后端）也能用这里兜底，不必「点进军情才有提示」。
+		"unread_warns": h.ezfyUnreadAlertCount(uid),
+	})
 }
 
 // mustListConsolidate 把「城市过滤拆开的快路径 + 老行补查」两批报告合并：
@@ -4243,4 +4249,27 @@ func ezfyReportCategoryCond(category int) string {
 		return "(title LIKE '侦查报告%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
 	}
 	return ""
+}
+
+// ezfyReportAlertCond 顶部导航「军情」感叹号角标的统计口径（已带外层括号，可直接 AND 拼接）。
+//
+// ★★ 2026-10-13 用户明确规则：「有未读的军情警讯 和 未读的**被**侦察/被掠夺/被征服战报 才提示」。
+//
+//	即只提示**被动挨打**类 —— 军情警讯(cat1) 全部（军情警报/被侦查报告/城市归还/将领叛离/野地丢失）
+//	+ 战斗报告里的 被掠夺报告 / 被征服报告 / 城破报告。
+//	自己主动出击的战果（侦查报告/掠夺报告/战斗报告/征服报告）**不计入** —— 那些是收益不是警报，
+//	尤其「掠夺报告: 寇城N级」这类刷野地战报动辄几千条未读，会让角标永远闪、提示失去意义。
+//	★ 与 ezfyReportCatCondAny（列表/徽标口径）**故意不同**：徽标仍按分区全量数，只有导航感叹号收窄。
+func ezfyReportAlertCond() string {
+	return "(" + ezfyReportCategoryCond(1) +
+		" OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
+}
+
+// ezfyUnreadAlertCount 顶部导航「军情」感叹号角标的未读数。
+// 单条 COUNT（user_id + is_read 先收窄再按标题分类），/view 与 /reports/counts 两处共用同一口径。
+func (h *EzfyHandler) ezfyUnreadAlertCount(uid uint) int64 {
+	var c int64
+	h.DB.Model(&model.EzfyReport{}).
+		Where("user_id = ? AND is_read = 0 AND "+ezfyReportAlertCond(), uid).Count(&c)
+	return c
 }
