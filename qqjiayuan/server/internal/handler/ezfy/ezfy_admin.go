@@ -595,6 +595,150 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发放给玩家「%s」(ID:%d)%s", p.Nickname, p.UserID, items)})
 }
 
+// ezfyGrantAllChunk 全员发放的分批大小（一条 SQL 最多塞多少个玩家）。
+// 500 个玩家 × 3 个占位符 = 1500 个参数，远低于 MySQL 的 max_allowed_packet / 占位符上限。
+const ezfyGrantAllChunk = 500
+
+// ezfyGrantItemToPlayers 把**同一件道具**一次性发给一批玩家（全员发放用）。
+//
+// ★★ 2026-10-13 不能逐个玩家调 addItem：那是「先查背包 → 再写」两次往返，
+// 几百个玩家就是上千次 SQL（跨 WAN 的 RDS 直接超时）。这里用**一条 upsert** 覆盖两种情况：
+//
+//	背包里已有该道具 → 唯一索引 uk_user_item(user_id,cfg_id) 冲突 → `count = count + ?`（原子自增，不读-改-写）
+//	背包里还没有     → 直接插入一行
+//
+// ⚠️ 与 `addItem` 一样**不校验背包单件上限**（管理端发放本就该无视上限，与单人发放口径一致）。
+func ezfyGrantItemToPlayers(db *gorm.DB, cfgID, count int, uids []uint) error {
+	if count <= 0 || len(uids) == 0 {
+		return nil
+	}
+	for i := 0; i < len(uids); i += ezfyGrantAllChunk {
+		j := i + ezfyGrantAllChunk
+		if j > len(uids) {
+			j = len(uids)
+		}
+		chunk := uids[i:j]
+		ph := make([]string, 0, len(chunk))
+		args := make([]interface{}, 0, len(chunk)*3+1)
+		for _, u := range chunk {
+			ph = append(ph, "(?, ?, ?)")
+			args = append(args, u, cfgID, count)
+		}
+		args = append(args, count) // ON DUPLICATE KEY UPDATE 里要再加一次增量
+		sql := "INSERT INTO ezfy_item (user_id, cfg_id, count) VALUES " +
+			strings.Join(ph, ",") + " ON DUPLICATE KEY UPDATE count = count + ?"
+		if err := db.Exec(sql, args...).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AdminEzfyItemGrantTargets GET /admin/ezfy-item-grant/targets —— 全员发放的「目标人数」预览。
+//
+// 单独做一个小接口而不是复用 /admin/ezfy-players：后者的权限点是 module:ezfyPlayers，
+// 而「发放道具」在 module:ezfyData 下 —— 只有数据管理权限的管理员调它会 403。
+func (h *EzfyAdmin) AdminEzfyItemGrantTargets(c *gin.Context) {
+	var n int64
+	h.DB.Model(&model.EzfyProfile{}).Count(&n)
+	resp.OK(c, gin.H{"total": n})
+}
+
+// AdminEzfyItemGrantAll POST /admin/ezfy-item-grant/all {items[]} —— 「发放道具」的**全员发放**。
+//
+// ★ 2026-10-13 用户需求：发放道具原来一次只能给一个玩家，补一个全员发放。
+//
+//	发放对象 = 全部二战玩家档案（ezfy_profile 的所有 user_id）。
+//	道具入背包；同时给每人写一条站内通知（与单人发放同一套文案）。
+//	⚠️ 为爱发电卡不在「发放道具」下拉里（见 AdminEzfyItemGrantOptions 已过滤），
+//	   但为了兼容仍然按「发放即生效」处理，避免有人直接构造 cfg_id 调接口时发错。
+func (h *EzfyAdmin) AdminEzfyItemGrantAll(c *gin.Context) {
+	var in struct {
+		Items []struct {
+			CfgID int `json:"cfg_id"`
+			Count int `json:"count"`
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if len(in.Items) == 0 {
+		resp.ParamError(c, "请添加要发放的道具")
+		return
+	}
+	var uids []uint
+	if err := h.DB.Model(&model.EzfyProfile{}).Pluck("user_id", &uids).Error; err != nil {
+		resp.ServerError(c, fmt.Errorf("读取玩家列表失败：%w", err))
+		return
+	}
+	if len(uids) == 0 {
+		resp.NotFound(c, "还没有任何二战玩家档案，无法全员发放")
+		return
+	}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	items := ""
+	for _, it := range in.Items {
+		if it.CfgID <= 0 || it.Count <= 0 {
+			continue
+		}
+		// 为爱发电卡：发放即生效（创建激活记录），不走背包
+		if cat := loveCardByID(it.CfgID); cat != nil {
+			for _, uid := range uids {
+				ez.createLoveCard(uid, cat, it.Count)
+			}
+			items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+			continue
+		}
+		var cfg model.EzfyCfgItem
+		if err := h.DB.First(&cfg, it.CfgID).Error; err != nil {
+			resp.ParamError(c, "道具不存在："+strconv.Itoa(it.CfgID))
+			return
+		}
+		if isLoveCardItem(cfg.ItemType) {
+			if cat := loveCardByType(cfg.ItemType); cat != nil {
+				for _, uid := range uids {
+					ez.createLoveCard(uid, cat, it.Count)
+				}
+				items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+				continue
+			}
+		}
+		if err := ezfyGrantItemToPlayers(h.DB, it.CfgID, it.Count, uids); err != nil {
+			resp.ServerError(c, fmt.Errorf("发放【%s】失败：%w（前面已成功的道具不会回滚）", cfg.Name, err))
+			return
+		}
+		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
+	}
+	if items == "" {
+		resp.ParamError(c, "请添加要发放的道具")
+		return
+	}
+	// 每人一条站内通知（分批插入）。
+	// ⚠️ 不用「全员公告」(ezfy_notice.user_id=0)：那会占掉首页公告位（notice_home_count 默认只展示 1 条），
+	//   把管理员真正要发的公告顶掉。所以按人写通知，口径与单人发放一致。
+	content := "管理员发放道具：" + strings.TrimSpace(items) + "，请查收。"
+	notices := make([]model.EzfyNotice, 0, len(uids))
+	now := time.Now()
+	for _, uid := range uids {
+		notices = append(notices, model.EzfyNotice{UserId: uid, Title: "管理员发放道具", Content: content, CreatedAt: now})
+	}
+	for i := 0; i < len(notices); i += ezfyGrantAllChunk {
+		j := i + ezfyGrantAllChunk
+		if j > len(notices) {
+			j = len(notices)
+		}
+		part := notices[i:j]
+		if err := h.DB.Create(&part).Error; err != nil {
+			// 通知失败不回滚道具（道具已经发出去了）—— 只提示，别让管理员以为发放失败又发一次
+			resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发放%s；但站内通知写入失败：%s",
+				len(uids), items, err.Error()), "players": len(uids), "notify_failed": true})
+			return
+		}
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发放%s", len(uids), items), "players": len(uids)})
+}
+
 // AdminEzfyPlayerDelete 删除玩家（档案+城池+全部游戏数据）
 func (h *EzfyAdmin) AdminEzfyPlayerDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))

@@ -98,9 +98,16 @@
       </el-dialog>
 
       <!-- ★ 发放道具：目标玩家按昵称/游戏ID搜索选择，道具入背包，2026-09-26 从玩家信息管理移来 -->
+      <!-- ★ 2026-10-13 新增「全体玩家」：一次给全部二战玩家各发一份（不可撤销，发放前二次确认） -->
       <el-dialog title="发放道具" :visible.sync="grantDlg" width="580px" :close-on-click-modal="false">
         <el-form label-width="90px" size="small">
-          <el-form-item label="发放对象">
+          <el-form-item label="发放范围">
+            <el-radio-group v-model="grantAll" @change="onGrantScopeChange">
+              <el-radio-button :label="false">指定玩家</el-radio-button>
+              <el-radio-button :label="true">全体玩家</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="!grantAll" label="发放对象">
             <div>
               <el-input v-model="grantPlayer" placeholder="玩家昵称 / 游戏ID" clearable style="width:210px"
                         @keyup.enter.native="searchGrantPlayer" />
@@ -114,6 +121,12 @@
                          :value="p.user_id" />
             </el-select>
             <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>
+          </el-form-item>
+          <el-form-item v-else label="发放对象">
+            <div class="grant-all-tip">
+              ⚠️ 将给全部 <b>{{ grantAllTotal }}</b> 名二战玩家 <b>各发放一份</b>下列道具，<b>发放后不可撤销</b>。<br/>
+              对象 = 全部二战玩家档案；每人还会收到一条「管理员发放道具」站内通知。
+            </div>
           </el-form-item>
           <el-form-item label="道具">
             <div v-for="(it, i) in grantItems" :key="i" class="grant-item-row">
@@ -129,7 +142,9 @@
         </el-form>
         <div slot="footer">
           <el-button size="small" @click="grantDlg = false">取 消</el-button>
-          <el-button size="small" type="primary" :loading="grantSaving" @click="doItemGrant">发 放</el-button>
+          <el-button size="small" :type="grantAll ? 'danger' : 'primary'" :loading="grantSaving" @click="doItemGrant">
+            {{ grantAll ? '全员发放' : '发 放' }}
+          </el-button>
         </div>
       </el-dialog>
 
@@ -725,6 +740,8 @@ export default {
       grantDlg: false, grantSaving: false,
       grantPlayer: '', grantPlayers: [], grantUserId: 0,
       grantItemOpts: [], grantItems: [],
+      // ★ 2026-10-13 发放范围：false=指定玩家（原逻辑） true=全体玩家（全员发放）
+      grantAll: false, grantAllTotal: 0,
       // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
       chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
       chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
@@ -896,12 +913,25 @@ export default {
       this.grantDlg = true
       this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0
       this.grantItems = [{ cfg_id: '', count: 1 }]
+      // ★ 2026-10-13 每次打开都回到「指定玩家」（全员发放是危险操作，不做记忆，避免手滑）
+      this.grantAll = false
       // ★ 2026-09-27 修复「发放道具不全 / 检索迁城无匹配」：
       //   旧实现走 /admin/ezfy-data/items 分页接口，pageOf 会把 size>100 钳制回落 10，
       //   下拉永远只拿到前 10 件道具（迁城计划等选不到）。
       //   改为专用全量接口 /admin/ezfy-item-grant/options（id+name 全量返回，不走分页钳制）。
       api.get('/admin/ezfy-item-grant/options').then(r => {
         if (r.code === 0) this.grantItemOpts = r.data.list || []
+      })
+    },
+    // ★ 2026-10-13 发放范围切到「全体玩家」时取一次目标人数（用于确认文案）。
+    //   专用小接口 /admin/ezfy-item-grant/targets —— 权限点同样是 module:ezfyData，
+    //   不能复用 /admin/ezfy-players（那是 module:ezfyPlayers，只有数据管理权限的管理员会 403）。
+    onGrantScopeChange (v) {
+      if (v) this.loadGrantTargets()
+    },
+    loadGrantTargets () {
+      api.get('/admin/ezfy-item-grant/targets').then(r => {
+        if (r.code === 0) this.grantAllTotal = r.data.total || 0
       })
     },
     // 按昵称 / 游戏ID 搜索目标玩家（昵称模糊、ID 精确，后端返回最多 20 条）
@@ -917,10 +947,27 @@ export default {
       })
     },
     doItemGrant () {
-      const target = this.grantUserId || ((this.grantPlayer || '').trim())
-      if (!target) { this.$message.warning('请先搜索并选择要发放的玩家'); return }
       const items = this.grantItems.filter(it => it.cfg_id && it.count > 0)
       if (!items.length) { this.$message.warning('请添加要发放的道具'); return }
+      // ★ 2026-10-13 全员发放：不可撤销，先二次确认（把「发给谁 + 发什么」写进确认文案）
+      if (this.grantAll) {
+        const names = items.map(it => {
+          const o = this.grantItemOpts.find(x => x.id === it.cfg_id)
+          return '【' + (o ? o.name : it.cfg_id) + '】×' + it.count
+        }).join(' ')
+        this.$confirm('确认给全部 ' + this.grantAllTotal + ' 名二战玩家各发放：' + names + '？该操作不可撤销！',
+          '全员发放', { type: 'warning', confirmButtonText: '确认全员发放' }).then(() => {
+          this.grantSaving = true
+          api.post('/admin/ezfy-item-grant/all', { items }).then(r => {
+            this.grantSaving = false
+            if (r.code === 0) { this.$message.success(r.data.msg || '全员发放成功'); this.grantDlg = false }
+            else this.$message.error(r.msg || '发放失败')
+          }).catch(() => { this.grantSaving = false })
+        }).catch(() => {})
+        return
+      }
+      const target = this.grantUserId || ((this.grantPlayer || '').trim())
+      if (!target) { this.$message.warning('请先搜索并选择要发放的玩家'); return }
       this.grantSaving = true
       api.post('/admin/ezfy-item-grant', { player: String(target), items }).then(r => {
         this.grantSaving = false
@@ -1029,6 +1076,8 @@ export default {
 .cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
 /* 发放道具：已选玩家提示 + 道具行 */
 .grant-target { margin-top: 6px; color: #67c23a; font-size: 12px; }
+/* ★ 2026-10-13 全员发放提示：橙色警示，明确「不可撤销」 */
+.grant-all-tip { color: #e6a23c; font-size: 12px; line-height: 1.8; }
 .grant-item-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .grant-x { color: #909399; }
 </style>

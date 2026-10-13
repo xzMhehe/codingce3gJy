@@ -1146,6 +1146,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantPlayers)
 				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantOptions)
 				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrant)
+				// ★ 2026-10-13 「发放道具」新增全员发放：targets = 目标人数预览（全体二战玩家），all = 执行
+				admin.GET("/ezfy-item-grant/targets", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantTargets)
+				admin.POST("/ezfy-item-grant/all", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantAll)
 				// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
 				admin.GET("/ezfy-love-cards/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardOptions)
 				admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCards)
