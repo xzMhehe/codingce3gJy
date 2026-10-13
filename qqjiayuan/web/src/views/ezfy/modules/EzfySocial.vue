@@ -29,8 +29,11 @@
                   <span class="gray">({{ ezfy.fmtTime(m.created_at) }})</span>
                 </div>
                 <div class="old-line gray" v-if="!ezfy.pmChat.length">(还没有聊天记录，发一条试试)</div>
-                <!-- 私聊记录分页（每页 20 条） -->
-                <div class="ezfy-pager" v-if="ezfy.pmChatTotal > ezfy.pmChatSize">
+                <!-- 私聊记录分页（每页 20 条）
+                     ★ 2026-10-13 用户反馈「这没分页」：原来条件是 `pmChatTotal > pmChatSize`（超过一页才显示），
+                       于是刚好 20 条（= 每页条数）时**分页条整个不出现**，看着像压根没做分页。
+                       改成与「军情/公告」同一口径 —— **有记录就显示**（哪怕只有 1 页，也让玩家看到「第 1/1 页（共 N 条）」）。 -->
+                <div class="ezfy-pager" v-if="ezfy.pmChatTotal > 0">
                   <a href="javascript:;" :class="{ gray: ezfy.pmChatPage <= 1 }" @click="ezfy.pmChatPrev()">上一页</a>
                   <span class="gray">第 {{ ezfy.pmChatPage }}/{{ Math.ceil(ezfy.pmChatTotal / ezfy.pmChatSize) }} 页（共 {{ ezfy.pmChatTotal }} 条）</span>
                   <a href="javascript:;" :class="{ gray: ezfy.pmChatPage * ezfy.pmChatSize >= ezfy.pmChatTotal }" @click="ezfy.pmChatNext()">下一页</a>
