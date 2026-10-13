@@ -1752,7 +1752,7 @@ func (h *EzfyHandler) OrderList(c *gin.Context) {
 			// 指挥室：可指挥时前端显示 [指挥]
 			"can_command":  o.Status == ezfyOrderStatusBattle,
 			"battle_round": battleRounds[int64(o.ID)],
-			"battle_max":   ezfyBattleMaxRounds,
+			"battle_max":   ezfyBattleMaxRoundsCfg(),
 			// ★ 2026-09-30 行军计谋使用标记：scheme_fast=神兵天降已用  scheme_back=战略转移已用
 			"scheme_fast": o.SchemeUsed & 1,
 			"scheme_back": (o.SchemeUsed >> 1) & 1,
@@ -3372,7 +3372,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					// ★ 2026-10-08 兵种专属加成（喷气引擎=空军速度等）
 					AtkType: atkType,
 				},
-				ezfyGarrisonBreakPct)
+				ezfyGarrisonBreakPctCfg())
 			var gcity model.EzfyCity
 			gcityName := "友军"
 			if err := h.DB.First(&gcity, go_.CityId).Error; err == nil {

@@ -74,6 +74,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
 		ReconSuccessPct: ezfyReconSuccessPctDef,
+		// ★ 2026-10-13 回合战斗公式（管理端可调，默认值 = 移植前的硬编码值）
+		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
+		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
+		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
 		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
@@ -196,6 +200,22 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 	if lim.DispatchPeriodH <= 0 {
 		lim.DispatchPeriodH = 1
 	}
+	// ★ 2026-10-13 回合战斗公式：0 无意义（= 未配置/配置错）→ 回落移植前的硬编码默认值
+	if lim.BattleMaxRounds <= 0 {
+		lim.BattleMaxRounds = ezfyBattleMaxRoundsDef
+	}
+	if lim.BattleStartDist <= 0 {
+		lim.BattleStartDist = ezfyBattleStartDistDef
+	}
+	if lim.BattleRetreatMax <= 0 {
+		lim.BattleRetreatMax = ezfyBattleRetreatMaxDef
+	}
+	if lim.CritBaseBonusPct <= 0 {
+		lim.CritBaseBonusPct = ezfyCritBaseBonusPctDef
+	}
+	if lim.GarrisonBreakPct <= 0 {
+		lim.GarrisonBreakPct = ezfyGarrisonBreakPctDef
+	}
 	// ★ 2026-09-25：各项资源的「资源最大值」（0 无意义 → 回落默认 21 亿）
 	if lim.ResMaxFood <= 0 {
 		lim.ResMaxFood = ezfyResMaxDef
@@ -317,6 +337,12 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		DispatchPeriodH *int `json:"dispatch_period_h"`
 		// ★ 2026-09-24：出征速度加成（百分比，0 = 无加成，节假日调高让队伍走快点）
 		MarchSpeedBonus *float64 `json:"march_speed_bonus"`
+		// ★ 2026-10-13 回合战斗公式：数值项（0 无意义 → 回落默认，见下方校验兜底）
+		BattleMaxRounds  *int `json:"battle_max_rounds"`
+		BattleStartDist  *int `json:"battle_start_dist"`
+		BattleRetreatMax *int `json:"battle_retreat_max"`
+		CritBaseBonusPct *int `json:"crit_base_bonus_pct"`
+		GarrisonBreakPct *int `json:"garrison_break_pct"`
 		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood  *int64 `json:"res_max_food"`
 		ResMaxSteel *int64 `json:"res_max_steel"`
@@ -378,6 +404,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
 		ReconSuccessPct: ezfyReconSuccessPctDef,
+		// ★ 2026-10-13 回合战斗公式（默认值 = 移植前的硬编码值）
+		BattleMaxRounds: ezfyBattleMaxRoundsDef, BattleStartDist: ezfyBattleStartDistDef,
+		BattleRetreatMax: ezfyBattleRetreatMaxDef, CritBaseBonusPct: ezfyCritBaseBonusPctDef,
+		GarrisonBreakPct: ezfyGarrisonBreakPctDef,
 		// ★ 2026-09-25 各项资源的「资源最大值」（默认 21 亿）
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
@@ -870,6 +900,42 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 			return
 		}
 		lim.MarchSpeedBonus = m
+	}
+	// ★ 2026-10-13 回合战斗公式：0 无意义（= 未配置）回落默认，且各自做范围防呆
+	if in.BattleMaxRounds != nil {
+		if *in.BattleMaxRounds < 1 || *in.BattleMaxRounds > 200 {
+			resp.ParamError(c, "战斗最大回合数需要在 1~200 之间")
+			return
+		}
+		lim.BattleMaxRounds = *in.BattleMaxRounds
+	}
+	if in.BattleStartDist != nil {
+		if *in.BattleStartDist < 1000 || *in.BattleStartDist > 50000 {
+			resp.ParamError(c, "战场初始距离需要在 1000~50000 之间")
+			return
+		}
+		lim.BattleStartDist = *in.BattleStartDist
+	}
+	if in.BattleRetreatMax != nil {
+		if *in.BattleRetreatMax < 1000 || *in.BattleRetreatMax > 100000 {
+			resp.ParamError(c, "战斗最大后退距离需要在 1000~100000 之间")
+			return
+		}
+		lim.BattleRetreatMax = *in.BattleRetreatMax
+	}
+	if in.CritBaseBonusPct != nil {
+		if *in.CritBaseBonusPct < 1 || *in.CritBaseBonusPct > 500 {
+			resp.ParamError(c, "暴击基础伤害加成需要在 1~500 之间（%）")
+			return
+		}
+		lim.CritBaseBonusPct = *in.CritBaseBonusPct
+	}
+	if in.GarrisonBreakPct != nil {
+		if *in.GarrisonBreakPct < 1 || *in.GarrisonBreakPct > 100 {
+			resp.ParamError(c, "盟军驻军溃败撤退阈值需要在 1~100 之间（%）")
+			return
+		}
+		lim.GarrisonBreakPct = *in.GarrisonBreakPct
 	}
 	if lim.ConquerFeelingsMax <= 0 {
 		lim.ConquerFeelingsMax = ezfyConquerFeelingsDef

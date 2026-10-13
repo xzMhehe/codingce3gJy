@@ -178,6 +178,28 @@
 
           <!-- ④ 战斗与经济 -->
           <el-tab-pane label="战斗与经济" name="battle">
+            <!-- ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50） -->
+            <el-divider content-position="left">回合战斗公式</el-divider>
+            <el-form-item>
+              <template slot="label">战斗最大回合数<el-tooltip placement="top" :content="tips.battle_max_rounds"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.battle_max_rounds" :min="1" :max="200" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">战场初始距离<el-tooltip placement="top" :content="tips.battle_start_dist"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.battle_start_dist" :min="1000" :max="50000" :step="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">战斗最大后退距离<el-tooltip placement="top" :content="tips.battle_retreat_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.battle_retreat_max" :min="1000" :max="100000" :step="100" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">暴击基础伤害加成(%)<el-tooltip placement="top" :content="tips.crit_base_bonus_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.crit_base_bonus_pct" :min="1" :max="500" controls-position="right" style="width:180px" />
+            </el-form-item>
+            <el-form-item>
+              <template slot="label">驻军溃败撤退阈值(%)<el-tooltip placement="top" :content="tips.garrison_break_pct"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.garrison_break_pct" :min="1" :max="100" controls-position="right" style="width:180px" />
+            </el-form-item>
             <el-form-item>
               <template slot="label">征服单次扣民心<el-tooltip placement="top" :content="tips.conquer_feelings_max"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.conquer_feelings_max" :min="1" controls-position="right" style="width:180px" />
@@ -341,6 +363,9 @@ export default {
         troop_max: 1000000000, wound_expire_days: 5, dispatch_period_h: 4,
         march_speed_bonus: 0,
         conquer_feelings_max: 2, loot_feelings: 2, ransom_cost: 500,
+        // ★ 2026-10-13 回合战斗公式（默认 = 移植前的硬编码值：40 / 6000 / 10000 / 50 / 50）
+        battle_max_rounds: 40, battle_start_dist: 6000, battle_retreat_max: 10000,
+        crit_base_bonus_pct: 50, garrison_break_pct: 50,
         // ★ 2026-09-28 安抚参数（黄金 / 民怨- / 民心+ / 冷却分钟），默认 5万 / 2 / 1 / 15
         placate_gold: 50000, placate_grievance: 2, placate_feelings: 1, placate_cooldown_min: 15,
         officer_salary_per_level: 20, wound_heal_divisor: 100,
@@ -402,6 +427,16 @@ export default {
         march_speed_bonus: '出征行军速度加成（%）：100 = 行军时间减半。节假日调高让玩家队伍走快点，0 = 无加成',
         conquer_feelings_max: '征服成功时最多扣掉目标多少民心（按幸存兵力动态计算，不超过此值），默认 5',
         loot_feelings: '掠夺成功时固定扣掉目标多少民心，默认 3',
+        // ★ 2026-10-13 回合战斗公式（可调，默认 = 移植前的硬编码值）
+        battle_max_rounds: '单场战斗最多打多少回合：打满仍未分胜负则按平局处理（守方视为守住，攻方无胜果），默认 40，可调 1~200',
+        battle_start_dist: '战场初始距离：攻方从 0 出发、守方站在该距离处（两者相距该值），默认 6000，可调 1000~50000。' +
+          '调小 → 双方更快接火，战斗总回合数变少；调大 → 需要更多回合才够得着',
+        battle_retreat_max: '双方「后退」指令的最远退距：攻方最低 -该值、守方最高「初始距离+该值」，超出夹回，默认 10000，可调 1000~100000',
+        crit_base_bonus_pct: '暴击基础伤害加成(%)：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时按该值算暴击伤害，' +
+          '默认 50 = 暴击伤害 ×1.5，可调 1~500。例：黑色幽灵[徽章] crit=125 / crit_dmg=0，按老公式伤害不变、' +
+          '「出了暴击但跟没暴一样」；本配置兜底让这类装备也有暴击加成',
+        garrison_break_pct: '盟军驻军战「溃败撤退」阈值(%)：守方剩余兵力跌破初始兵力的该百分比即判定战败、战斗提前结束，' +
+          '剩余部队自动返航回出发城市（不再死战到全灭），默认 50 = 剩一半就撤，可调 1~100。调 100 = 一挨打就撤、调 1 = 基本打到底',
         ransom_cost: '被占城市原主人发起赎城需先支付的钻石押金（发起即扣，拒绝/撤销自动退回，同意返还后归占领方），默认 500',
         // ★ 2026-09-28 安抚：民心 + 税率 = 100 为基准，安抚只是临时顶一下民心、压一压民怨
         placate_gold: '每次安抚消耗的黄金，默认 5 万',
@@ -513,6 +548,12 @@ export default {
             conquer_feelings_max: pos(r.data.conquer_feelings_max, 2),
             loot_feelings: pos(r.data.loot_feelings, 2),
             ransom_cost: pos(r.data.ransom_cost, 500),
+            // ★ 2026-10-13 回合战斗公式：0 无意义 → pos 回落各自默认
+            battle_max_rounds: pos(r.data.battle_max_rounds, 40),
+            battle_start_dist: pos(r.data.battle_start_dist, 6000),
+            battle_retreat_max: pos(r.data.battle_retreat_max, 10000),
+            crit_base_bonus_pct: pos(r.data.crit_base_bonus_pct, 50),
+            garrison_break_pct: pos(r.data.garrison_break_pct, 50),
             // ★ 2026-09-28 安抚参数：0 无意义 → pos 各自回落默认
             placate_gold: pos(Number(r.data.placate_gold) || 0, 50000),
             placate_grievance: pos(r.data.placate_grievance, 2),

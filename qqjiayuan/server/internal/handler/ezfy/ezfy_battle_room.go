@@ -280,7 +280,7 @@ func (h *EzfyHandler) ezfyBattleTick(b *model.EzfyBattle, now int64) (ezfyBattle
 		b.RoundStart += ezfyBattleRoundMs
 		steps++
 		// 防御性上限：即使时间戳异常（比如系统时钟跳变）也绝不死循环
-		if steps > ezfyBattleMaxRounds+1 {
+		if steps > ezfyBattleMaxRoundsCfg()+1 {
 			st.Done = true
 			break
 		}
@@ -677,7 +677,7 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 	return gin.H{
 		"order_id": b.OrderId, "target_name": b.TargetName,
 		"target_x": b.TargetX, "target_y": b.TargetY, "target_type": b.TargetType,
-		"round": maxInt(b.Round, 1), "max_round": ezfyBattleMaxRounds,
+		"round": maxInt(b.Round, 1), "max_round": ezfyBattleMaxRoundsCfg(),
 		"status": b.Status, "win": b.Win, "draw": snap.Draw,
 		"atk_cmd":  b.AtkCmd, // 原始 JSON（前端不用，调试用）
 		"atk_cmds": atkCmds,  // troopId -> 指令，前端每行按钮高亮用

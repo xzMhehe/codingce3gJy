@@ -26,7 +26,7 @@ import "testing"
 
 // ezfyDefBonusState 造一个「守方带 N% 防御加成」的战场（其余完全相同）
 //
-// ★ 2026-10-09 守方起始距离改为 300（在双方射程 500 内）：原来放 ezfyBattleStartDist(6000)，
+// ★ 2026-10-09 守方起始距离改为 300（在双方射程 500 内）：原来放 6000，
 //   要 30 个回合才够得着 —— 用「固定回合数」比较损失时前几回合根本没交火（损失恒 0）。
 func ezfyDefBonusState(defDefBonus int) *ezfyBattleState {
 	return &ezfyBattleState{

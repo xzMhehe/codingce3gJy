@@ -22,7 +22,7 @@ import (
 func ezfyCritTestState(crit, critDmg int) *ezfyBattleState {
 	return &ezfyBattleState{
 		Attackers: []*ezfyFightUnit{ezfyTestUnit("A1", "步兵", 0, 200)},
-		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDist, 200)},
+		Defenders: []*ezfyFightUnit{ezfyTestUnit("D1", "步兵", ezfyBattleStartDistCfg(), 200)},
 		AtkEquip:  ezfyBattleBonus{Crit: crit, CritDmg: critDmg},
 		Head:      []string{}, Actions: []string{},
 	}
@@ -33,7 +33,7 @@ func ezfyCritTestState(crit, critDmg int) *ezfyBattleState {
 // 判据：战报里出现【暴击+50%】（兜底倍率），而不是干巴巴的【暴击】。
 func TestCritZeroCritDmgStillAmplifies(t *testing.T) {
 	st := ezfyCritTestState(125, 0) // crit_dmg = 0 的典型老装备
-	for !st.Done && st.Round < ezfyBattleMaxRounds {
+	for !st.Done && st.Round < ezfyBattleMaxRoundsCfg() {
 		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")
@@ -51,7 +51,7 @@ func TestCritZeroCritDmgStillAmplifies(t *testing.T) {
 // 且不会出现负的暴击倍率。
 func TestCritChanceCappedAt100(t *testing.T) {
 	st := ezfyCritTestState(100, 60)
-	for !st.Done && st.Round < ezfyBattleMaxRounds {
+	for !st.Done && st.Round < ezfyBattleMaxRoundsCfg() {
 		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")
@@ -63,7 +63,7 @@ func TestCritChanceCappedAt100(t *testing.T) {
 // TestCritBonusUsedAsIs —— 装备配了暴击伤害时，就用配置值（不被兜底覆盖）
 func TestCritBonusUsedAsIs(t *testing.T) {
 	st := ezfyCritTestState(50, 135)
-	for !st.Done && st.Round < ezfyBattleMaxRounds {
+	for !st.Done && st.Round < ezfyBattleMaxRoundsCfg() {
 		st.Step(nil, nil)
 	}
 	log := strings.Join(st.Actions, "\n")

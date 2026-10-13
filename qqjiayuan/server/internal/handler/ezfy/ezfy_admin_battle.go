@@ -319,7 +319,7 @@ func (h *EzfyAdmin) AdminEzfyBattleTick(c *gin.Context) {
 
 // AdminEzfyBattleAuto POST /admin/ezfy-battles/:id/auto —— 一键自动打完
 //
-// 反复推进直到分出胜负（最多 ezfyBattleMaxRounds 回合），结束后回写订单并结算，
+// 反复推进直到分出胜负（最多 ezfyBattleMaxRoundsCfg() 回合），结束后回写订单并结算，
 // 相当于管理员替玩家按了「自动战斗」。
 func (h *EzfyAdmin) AdminEzfyBattleAuto(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -341,9 +341,9 @@ func (h *EzfyAdmin) AdminEzfyBattleAuto(c *gin.Context) {
 	//   ezfyBattleTick 本身支持「按 round_start 一次性补算多回合」：把 round_start 拨回足够远，
 	//   一次调用就在**内存**里把所有剩余回合走完并对最终状态写**一次**库（内部有 steps>MaxRounds 兜底）。
 	rounds := 0
-	for i := 0; i < ezfyBattleMaxRounds+2; i++ {
+	for i := 0; i < ezfyBattleMaxRoundsCfg()+2; i++ {
 		before := b.Round
-		b.RoundStart = now - (ezfyBattleMaxRounds+3)*ezfyBattleRoundMs
+		b.RoundStart = now - int64(ezfyBattleMaxRoundsCfg()+3)*ezfyBattleRoundMs
 		_, done := eh.ezfyBattleTick(&b, now)
 		rounds += b.Round - before
 		if done {

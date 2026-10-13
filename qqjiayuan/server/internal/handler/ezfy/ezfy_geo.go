@@ -802,6 +802,14 @@ const (
 	ezfyPlacateGrievanceDef = 2            // 安抚降低民怨（默认 2）
 	ezfyPlacateFeelingsDef  = 1            // 安抚提升民心（默认 1）
 	ezfyPlacateCooldownDef  = 15           // 安抚冷却分钟数（默认 15）
+
+	// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
+	//   战斗引擎 ezfy_battle.go 硬编码机制常量配置化（默认值 = 移植前的硬编码值）。
+	ezfyBattleMaxRoundsDef  = 40    // 战斗最大回合数（默认 40）
+	ezfyBattleStartDistDef  = 6000  // 战场初始距离（默认 6000）
+	ezfyBattleRetreatMaxDef = 10000 // 战斗最大后退距离（默认 10000）
+	ezfyCritBaseBonusPctDef = 50    // 暴击基础伤害加成%（默认 50）
+	ezfyGarrisonBreakPctDef = 50    // 盟军驻军溃败撤退阈值%（默认 50）
 )
 
 // ezfyTroopMaxCfg 单城兵力上限（读 ezfy_cfg_limit.troop_max，默认 50 亿）

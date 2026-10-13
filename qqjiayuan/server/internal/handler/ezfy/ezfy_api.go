@@ -3950,7 +3950,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			// 指挥室：可指挥时前端显示 [指挥]
 			"can_command":    o.Status == ezfyOrderStatusBattle,
 			"battle_round":   battleRound,
-			"battle_max":     ezfyBattleMaxRounds,
+			"battle_max":     ezfyBattleMaxRoundsCfg(),
 			"battle_left_ms": battleLeft,
 			// ★ 2026-09-30 行军计谋使用标记（与出征队列 /orders 同口径）：
 			//   神兵天降=去程(出征中)减80%  战略转移=回程(返回中)减360分钟，每支部队各限一次
@@ -4034,7 +4034,7 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			"carry": nil, "carry_total": 0, "carry_cap": 0,
 			"can_command":    true,
 			"battle_round":   b.Round,
-			"battle_max":     ezfyBattleMaxRounds,
+			"battle_max":     ezfyBattleMaxRoundsCfg(),
 			"battle_left_ms": left,
 			"is_defend":      true,
 		})

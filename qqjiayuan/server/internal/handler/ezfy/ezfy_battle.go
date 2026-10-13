@@ -16,28 +16,40 @@ import (
 // 这样才能支持「每回合 30 秒、前 25 秒下指令、后 5 秒锁定并由服务器结算」的实时指挥。
 // ezfySimulate 保留为兼容包装（内部循环 Step），现有调用点零改动。
 
-const (
-	// 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
-	ezfyBattleMaxRounds = 40
-	ezfyBattleStartDist = 6000 // 战场初始距离（攻方 0，守方 6000，相距 6000）
-	// ★ 2026-09-23 双方后退不能无限制，最多各退 10000。
-	//   战场坐标空间约「10000 / 6000 / 10000」：
-	//   攻方起点 0 只能退到 -10000；守方起点 6000 只能退到 16000。超过夹回。
-	ezfyBattleRetreatMax = 10000
+// 回合战斗公式（二战系统配置可调，默认值 = 移植前的硬编码值，见 ezfy_geo.go 的 Def 常量）
+//
+// 最大回合数 —— 复刻《战斗机制（家园玩家必看）》§1「战斗最多40回合；达到上限仍未分胜负则按平局处理」
+func ezfyBattleMaxRoundsCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.BattleMaxRounds, ezfyBattleMaxRoundsDef)
+}
 
-	// ★ 暴击基础伤害加成%：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时的兜底倍率。
-	//
-	// 2026-09-23 用户反馈「暴击打了 1 个单位」—— 根因就是这类装备：
-	// 例「黑色幽灵[徽章]」crit=125 / crit_dmg=0，按老公式 伤害×(100+0)/100 = 伤害不变，
-	// 于是「出了【暴击】但一点没多打」，玩家看到的就成了「暴击跟没暴一样」。
-	ezfyCritBaseBonusPct = 50
+// 战场初始距离（攻方 0，守方 6000，相距 6000）
+func ezfyBattleStartDistCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.BattleStartDist, ezfyBattleStartDistDef)
+}
 
-	// ★ 2026-10-02 盟军驻军战「溃败撤退」阈值：守方剩余兵力跌破初始兵力的 50% 即判定战败，
-	//   战斗提前结束，剩余部队自动返航回出发城市（不再死战到全灭）。
-	//   —— 让「驻军战败 → 剩余部队回到自己城市」有兵可回（引擎里「战败」原本=全灭）。
-	//   后续如需可调，可挪进「二战系统配置」。
-	ezfyGarrisonBreakPct = 50
-)
+// 双方后退不能无限制，最多各退 10000。
+// 战场坐标空间约「10000 / 6000 / 10000」：
+// 攻方起点 0 只能退到 -10000；守方起点 6000 只能退到 16000。超过夹回。
+func ezfyBattleRetreatMaxCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.BattleRetreatMax, ezfyBattleRetreatMaxDef)
+}
+
+// 暴击基础伤害加成%：装备只配了暴击几率、没配暴击伤害（crit_dmg = 0）时的兜底倍率。
+//
+// 2026-09-23 用户反馈「暴击打了 1 个单位」—— 根因就是这类装备：
+// 例「黑色幽灵[徽章]」crit=125 / crit_dmg=0，按老公式 伤害×(100+0)/100 = 伤害不变，
+// 于是「出了【暴击】但一点没多打」，玩家看到的就成了「暴击跟没暴一样」。
+func ezfyCritBaseBonusPctCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.CritBaseBonusPct, ezfyCritBaseBonusPctDef)
+}
+
+// 盟军驻军战「溃败撤退」阈值：守方剩余兵力跌破初始兵力的阈值即判定战败，
+// 战斗提前结束，剩余部队自动返航回出发城市（不再死战到全灭）。
+// —— 让「驻军战败 → 剩余部队回到自己城市」有兵可回（引擎里「战败」原本=全灭）。
+func ezfyGarrisonBreakPctCfg() int {
+	return ezfyLimitOr(ezfyCfg.limit.GarrisonBreakPct, ezfyGarrisonBreakPctDef)
+}
 
 // 战场指挥指令（玩家每回合可下达）
 const (
@@ -602,7 +614,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 	// ★ 2026-10-09 拆成两行：攻方一行、守方一行（原来是同一行里用 ' | ' 分隔）
 	st.Head = append(st.Head, atkBonusLine)
 	st.Head = append(st.Head, defBonusLine)
-	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDist))
+	st.Head = append(st.Head, fmt.Sprintf("战场初始相距%d, 攻守双方相向推进", ezfyBattleStartDistCfg()))
 
 	idx := 0
 	for _, ug := range attackerUnits {
@@ -625,7 +637,7 @@ func ezfyNewBattleState(attackerUnits, defenderUnits []ezfyUnitGroup,
 			st.Defenders = append(st.Defenders, &ezfyFightUnit{
 				id: fmt.Sprintf("D%d", idx), cfg: cfg, count: ug.Count,
 				hp:           cfg.Health * (100 + defEquip.Hp) / 100,
-				initialCount: ug.Count, pos: ezfyBattleStartDist})
+				initialCount: ug.Count, pos: ezfyBattleStartDistCfg()})
 		}
 	}
 	// 一方无兵 → 直接结束（与原实现一致：Rounds = 0）
@@ -994,12 +1006,12 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 				// ★ 2026-09-23 后退最多 10000，不能无限制后退。
 				//   攻方起点 0 → 最低 -10000；守方起点 6000 → 最高 16000。超出夹回。
 				if isAtk {
-					if unit.pos < -ezfyBattleRetreatMax {
-						unit.pos = -ezfyBattleRetreatMax
+					if unit.pos < -ezfyBattleRetreatMaxCfg() {
+						unit.pos = -ezfyBattleRetreatMaxCfg()
 					}
 				} else {
-					if unit.pos > ezfyBattleStartDist+ezfyBattleRetreatMax {
-						unit.pos = ezfyBattleStartDist + ezfyBattleRetreatMax
+					if unit.pos > ezfyBattleStartDistCfg()+ezfyBattleRetreatMaxCfg() {
+						unit.pos = ezfyBattleStartDistCfg() + ezfyBattleRetreatMaxCfg()
 					}
 				}
 				dist = ezfyAbs(target.pos - unit.pos)
@@ -1126,7 +1138,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 					crit = true
 					critBonus = equip.CritDmg
 					if critBonus <= 0 {
-						critBonus = ezfyCritBaseBonusPct
+						critBonus = ezfyCritBaseBonusPctCfg()
 					}
 					damage = damage * int64(100+critBonus) / 100
 				}
@@ -1318,7 +1330,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 						cbCrit = true
 						cbCritBonus = cbEquip.CritDmg
 						if cbCritBonus <= 0 {
-							cbCritBonus = ezfyCritBaseBonusPct
+							cbCritBonus = ezfyCritBaseBonusPctCfg()
 						}
 						dmg = dmg * int64(100+cbCritBonus) / 100
 					}
@@ -1411,7 +1423,7 @@ func (st *ezfyBattleState) Step(atkCmds, defCmds map[int]string) bool {
 			if defLeft*100 < int64(st.DefBreak)*st.DefInitialTotal {
 				st.Done, st.AttackerWin = true, true
 			}
-		} else if st.Round >= ezfyBattleMaxRounds {
+		} else if st.Round >= ezfyBattleMaxRoundsCfg() {
 			// ★ 2026-09-24 40 回合未分胜负按**平局**描述（守方视为守住，攻方无胜果）
 			st.Done, st.Draw = true, true
 		}

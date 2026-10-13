@@ -352,6 +352,18 @@ type EzfyCfgLimit struct {
 	//   ★ 2026-09-24 「节假日我好让玩家队伍走快点」。默认 100。
 	MarchSpeedBonus float64 `gorm:"default:100;comment:出征速度加成" json:"march_speed_bonus"`
 
+	// ============ 回合战斗公式（管理端「二战系统配置」页可维护）============
+	//
+	// ★ 2026-10-13 用户需求「回合战斗公式能维护起来，放到二战系统配置」：
+	//   战斗引擎 ezfy_battle.go 顶部的 5 个硬编码机制常量全部配置化，管理端可调、保存即热生效。
+	//   默认值 = 移植前的硬编码值（40/6000/10000/50/50），不改默认战斗行为；
+	//   读取端用 ezfyLimitOr 兜底（0 = 未配置/配置错 → 回落默认值）。
+	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`    // 战斗最多多少回合，达到上限按平局（默认 40）
+	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`    // 战场初始距离（攻方 0，守方 6000，相距 6000，默认 6000）
+	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"` // 双方各自最多后退多少（默认 10000）
+	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`   // 装备无暴击伤害(crit_dmg=0)时的兜底暴击倍率%（默认 50）
+	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"` // 盟军驻军战：守方兵力跌破初始的此比例% 即判败撤退（默认 50）
+
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
 	//   ★ 野地兵力倍数：野地/海野/寇城的守军兵力 = 配置值 × 该倍数，默认 10。
