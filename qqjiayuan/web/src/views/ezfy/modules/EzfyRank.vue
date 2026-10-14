@@ -115,29 +115,30 @@
               <option v-for="w in ezfy.pvpRank.weeks.indexOf(ezfy.pvpRank.week) < 0 ? [ezfy.pvpRank.week].concat(ezfy.pvpRank.weeks) : ezfy.pvpRank.weeks" :key="w" :value="w">{{ w }}</option>
             </select>
             <span v-if="ezfy.pvpLoading" class="gray" style="margin-left:8px">加载中…</span>
-            <span v-else class="gray" style="margin-left:8px">周一~周日 · 玩家对战</span>
+            <span v-else class="gray" style="margin-left:8px">按积分排名 · 周一~周日玩家对战</span>
           </div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 12%"><col style="width: 28%"><col style="width: 16%"><col style="width: 14%"><col style="width: 14%"><col style="width: 8%"><col style="width: 8%">
+              <col style="width: 10%"><col style="width: 22%"><col style="width: 12%"><col style="width: 12%"><col style="width: 12%"><col style="width: 10%"><col style="width: 8%"><col style="width: 8%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>军团</th><th>灭敌</th><th title="战损比 = 淘汰数÷死亡数（灭敌÷战损）">战损比</th><th>参战</th><th>胜率</th></tr>
+            <tr><th>名次</th><th>统帅</th><th>军团</th><th>积分</th><th>灭敌</th><th title="战损比 = 淘汰数÷死亡数（灭敌÷战损）">战损比</th><th>参战</th><th>胜率</th></tr>
             <template v-if="ezfy.pvpRank.ranks && ezfy.pvpRank.ranks.length">
               <tr v-for="r in ezfy.pvpRank.ranks" :key="'pv' + r.rank"
                 :style="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id === r.user_id ? 'background:#fff7e6;font-weight:bold' : ''">
                 <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
                 <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
                 <td>{{ r.corps || '—' }}</td>
+                <td><b>{{ ezfy.fmtN(r.points) }}</b></td>
                 <td>{{ ezfy.fmtN(r.kills) }}</td>
                 <td :title="'灭敌 ' + ezfy.fmtN(r.kills) + ' ÷ 战损 ' + ezfy.fmtN(r.losses)">{{ r.losses > 0 ? Math.round((r.kills / r.losses) * 10) / 10 : (r.kills > 0 ? '∞' : '—') }}</td>
                 <td>{{ r.battles }}</td>
                 <td>{{ Math.round(r.win_rate * 10) / 10 }}%</td>
               </tr>
             </template>
-            <tr v-else><td colspan="7" class="gray">该周暂无玩家对战记录</td></tr>
+            <tr v-else><td colspan="8" class="gray">该周暂无玩家对战记录</td></tr>
           </table>
           <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
-            我的战绩（{{ ezfy.pvpRank.week }}）：参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.kills) }}</b> · 战损比 <b>{{ ezfy.pvpRank.mine.losses > 0 ? Math.round((ezfy.pvpRank.mine.kills / ezfy.pvpRank.mine.losses) * 10) / 10 : (ezfy.pvpRank.mine.kills > 0 ? '∞' : '—') }}</b>
+            我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.kills) }}</b> · 战损比 <b>{{ ezfy.pvpRank.mine.losses > 0 ? Math.round((ezfy.pvpRank.mine.kills / ezfy.pvpRank.mine.losses) * 10) / 10 : (ezfy.pvpRank.mine.kills > 0 ? '∞' : '—') }}</b>
           </div>
           </template>
 

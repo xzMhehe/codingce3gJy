@@ -2940,17 +2940,16 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 	}
 }
 
-// EnsureEzfyPvpWeekTable 幂等补建 ezfy_pvp_week 风云榜表（skip 分支也必须能建出来）。
+// EnsureEzfyPvpWeekTable 幂等补建/更新 ezfy_pvp_week 风云榜表。
 //
 // ★ 2026-10-14 风云榜周榜：同 hazard —— 只靠 AutoMigrate 建表的表，多机共享库
 //
-//	skip 分支会跳过 → 战斗结算写榜直接报表不存在。与 EnsureEzfyUserChestTable 同款。
+//	skip 分支会跳过 → 战斗结算写榜直接报表不存在。
+//	★ 2026-10-14 改法：不再 HasTable 早退，直接 AutoMigrate（幂等：建表/补缺列都行），
+//	确保已上线的表也能补上新增的 points 积分列。
 func EnsureEzfyPvpWeekTable(db *gorm.DB) {
-	if db.Migrator().HasTable(&model.EzfyPvpWeek{}) {
-		return
-	}
 	if err := db.AutoMigrate(&model.EzfyPvpWeek{}); err != nil {
-		log.Printf("[seed] 补建 ezfy_pvp_week 表失败: %v", err)
+		log.Printf("[seed] 补建/更新 ezfy_pvp_week 表失败: %v", err)
 	}
 }
 

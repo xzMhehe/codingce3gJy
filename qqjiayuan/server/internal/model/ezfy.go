@@ -787,11 +787,12 @@ type EzfyUserChestPity struct {
 
 func (EzfyUserChestPity) TableName() string { return "ezfy_user_chest_pity" }
 
-// EzfyPvpWeek 风云榜（每周玩家对战战绩，★ 2026-10-14）
+// EzfyPvpWeek 风云榜（每周玩家对战战绩，★ 2026-10-14 创建并加积分列）
 //
 // 按**自然周**（周一 00:00 ~ 周日 23:59，Week 形如 "20261012-20261018"）统计
 // **玩家 vs 玩家** 战斗（攻打玩家城 target_type=3，排除野地/寇城/活动目标）：
-// 灭敌(击杀敌军数) / 战损(己方阵亡数) / 参战场次 / 胜场。每玩家每周一条。
+// 灭敌(击杀敌军数) / 战损(己方阵亡数) / 参战场次 / 胜场 / 积分(每周累计)，每玩家每周一条。
+// 榜单按**积分**排名。
 type EzfyPvpWeek struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	Week      string    `gorm:"type:varchar(17);uniqueIndex:uk_pvp_week_user;comment:自然周 20060102-20060102" json:"week"`
@@ -802,6 +803,7 @@ type EzfyPvpWeek struct {
 	Wins      int64     `gorm:"default:0;comment:胜场" json:"wins"`
 	Kills     int64     `gorm:"default:0;comment:灭敌(击杀敌军数)" json:"kills"`
 	Losses    int64     `gorm:"default:0;comment:战损(己方阵亡数)" json:"losses"`
+	Points    int64     `gorm:"default:0;comment:风云积分(周累计，榜单排名依据)" json:"points"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
 

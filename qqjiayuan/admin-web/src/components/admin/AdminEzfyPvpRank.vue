@@ -11,7 +11,7 @@
           <el-option v-for="w in weeks" :key="w" :label="w" :value="w" />
         </el-select>
         <span class="head-hint" style="margin-left:8px">
-          榜单按「灭敌」降序（同灭敌按胜场多、战损少）。昵称/军团为写榜时快照。
+          榜单按「积分」降序（同积分按灭敌多、胜场多、战损少）。昵称/军团为写榜时快照。
         </span>
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
@@ -20,12 +20,12 @@
             <span class="td-rank" :class="row.rank <= 3 ? 'top' : ''">{{ row.rank }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="归属账号" width="90" align="center">
-          <template slot-scope="{row}"><span class="td-mono">{{ row.user_id }}</span></template>
-        </el-table-column>
         <el-table-column prop="name" label="玩家" min-width="110" show-overflow-tooltip />
         <el-table-column prop="corps" label="军团" min-width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.corps || '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="points" label="积分" width="90" align="right">
+          <template slot-scope="{row}"><b>{{ row.points.toLocaleString() }}</b></template>
         </el-table-column>
         <el-table-column prop="kills" label="灭敌" width="100" align="right">
           <template slot-scope="{row}">{{ row.kills.toLocaleString() }}</template>

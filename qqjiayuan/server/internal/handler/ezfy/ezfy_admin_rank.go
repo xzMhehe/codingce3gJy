@@ -229,7 +229,7 @@ func (h *EzfyAdmin) AdminEzfyRankSetPrestige(c *gin.Context) {
 }
 
 // AdminEzfyPvpRank 管理端风云榜查询：?week=自然周周串（不传 = 本周）。
-// 返回最近 12 个有数据的周 + 指定周全量榜单（灭敌降序），任一周后台都能查。
+// 返回最近 12 个有数据的周 + 指定周全量榜单（**积分降序**），任一周后台都能查。
 func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 	week := c.Query("week")
 	if week == "" {
@@ -243,7 +243,7 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 	for i, r := range rows {
 		ranks = append(ranks, gin.H{
 			"rank": i + 1, "user_id": r.UserID, "name": r.Nickname, "corps": r.Corps,
-			"battles": r.Battles, "wins": r.Wins, "kills": r.Kills, "losses": r.Losses,
+			"points": r.Points, "battles": r.Battles, "wins": r.Wins, "kills": r.Kills, "losses": r.Losses,
 			"win_rate": pvpWinRate(r.Wins, r.Battles),
 		})
 	}
