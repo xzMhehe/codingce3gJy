@@ -225,9 +225,11 @@
                  两栏共用这段模板（内容由 ezfy.shopAll 按 mallTab 过滤）。 -->
           <template v-else-if="ezfy.mallTab === 'equipment' || ezfy.mallTab === 'set'">
             <!-- ★ 说明一律不写进界面（别在用户能看见的地方加提示），信息记在这里：
-                 · 散件用钻石购买，定价按「六项加成总和」映射到 100~500 钻（见 seed 的 ezfyEquipDiamondPrice）；
+                 · 散件用钻石购买，定价 50~100 钻（按穿戴等级+六项加成分档，见 seed 的 ezfyLooseDiamondPrice；
+                   种子字面量 ezfyOfficerEquipLooseSeeds.Diamond 优先）；
                  · ★ 2026-10-14 用户「都是钻石价」→ 套装件 1~17 与系列件 21~26 **一律钻石**购买
-                   （套装 1~7 阶梯价见 seed 的 ezfySetDiamondPrice，8~17 用各自定价；系列件用原单价）；
+                   （套装 1~7 阶梯价见 seed 的 ezfySetDiamondPrice 100~300，8~17 顶套 400，
+                    系列件 250~400，全部在 100~400 档内）；
                  · 买入后到「军官 → 军官详情」穿到军官身上。 -->
             <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行 -->
             <div class="ezfy-slot-grid">
