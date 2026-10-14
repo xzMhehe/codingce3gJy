@@ -136,9 +136,10 @@ var ezfyEzfyCfgBuildingLevel = []model.EzfyCfgBuildingLevel{
 	{ID: 3003, BuildingId: 10, Level: 11, Pop: 44, Food: 409600, Steel: 2560000, Oil: 1228800, Rare: 716800, Gold: 0, BuildTime: 614400, Capacity: 11, Effect: "可容纳/发现军官11名"},
 	{ID: 3004, BuildingId: 10, Level: 12, Pop: 48, Food: 819200, Steel: 5120000, Oil: 2457600, Rare: 1433600, Gold: 0, BuildTime: 1228800, Capacity: 12, Effect: "可容纳/发现军官12名"},
 	// ★ 2026-10-14 用户：参谋部上限上调到 15 级（13~15 级每级都要建筑图纸，见 ezfy.go needBlueprint）
-	{ID: 3005, BuildingId: 10, Level: 13, Pop: 52, Food: 1638400, Steel: 10240000, Oil: 4915200, Rare: 2867200, Gold: 0, BuildTime: 2457600, Capacity: 13, Effect: "可容纳/发现军官13名"},
-	{ID: 3006, BuildingId: 10, Level: 14, Pop: 56, Food: 3276800, Steel: 20480000, Oil: 9830400, Rare: 5734400, Gold: 0, BuildTime: 4915200, Capacity: 14, Effect: "可容纳/发现军官14名"},
-	{ID: 3007, BuildingId: 10, Level: 15, Pop: 60, Food: 6553600, Steel: 40960000, Oil: 19660800, Rare: 11468800, Gold: 0, BuildTime: 9830400, Capacity: 15, Effect: "可容纳/发现军官15名"},
+	//   ★★ ID 必须避开已占用的 3005/3006（那两条是**司令部 11/12 级**，撞号会被 DoNothing 跳过不插入）
+	{ID: 3010, BuildingId: 10, Level: 13, Pop: 52, Food: 1638400, Steel: 10240000, Oil: 4915200, Rare: 2867200, Gold: 0, BuildTime: 2457600, Capacity: 13, Effect: "可容纳/发现军官13名"},
+	{ID: 3011, BuildingId: 10, Level: 14, Pop: 56, Food: 3276800, Steel: 20480000, Oil: 9830400, Rare: 5734400, Gold: 0, BuildTime: 4915200, Capacity: 14, Effect: "可容纳/发现军官14名"},
+	{ID: 3012, BuildingId: 10, Level: 15, Pop: 60, Food: 6553600, Steel: 40960000, Oil: 19660800, Rare: 11468800, Gold: 0, BuildTime: 9830400, Capacity: 15, Effect: "可容纳/发现军官15名"},
 	{ID: 101, BuildingId: 11, Level: 1, Pop: 4, Food: 1000, Steel: 1000, Oil: 1000, Rare: 1000, Gold: 0, BuildTime: 800, Capacity: 100000, Effect: "可同时支持1笔交易,单笔交易资源上限100000"},
 	{ID: 102, BuildingId: 11, Level: 2, Pop: 8, Food: 2000, Steel: 2000, Oil: 2000, Rare: 2000, Gold: 0, BuildTime: 1600, Capacity: 200000, Effect: "可同时支持2笔交易,单笔交易资源上限200000"},
 	{ID: 103, BuildingId: 11, Level: 3, Pop: 12, Food: 4000, Steel: 4000, Oil: 4000, Rare: 4000, Gold: 0, BuildTime: 3200, Capacity: 300000, Effect: "可同时支持3笔交易,单笔交易资源上限300000"},
