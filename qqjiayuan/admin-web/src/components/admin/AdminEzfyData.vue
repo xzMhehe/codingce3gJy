@@ -43,12 +43,16 @@
              表格宽度 = 容器宽（100%），剩余宽度按各列 min-width 比例均匀摊开 —— 既铺满无空白、
              又没有任何一列被单独拉飞；宝箱配置的长文本列所需合计超过容器 → 表格内部横向滚动
              （这是既有适配口径，右侧操作列 fixed 不遮挡）。 -->
-      <!-- ★★ 2026-10-14 限宽只作用于**表格本身**：分页条放在 .tbl-cap **外面**、随卡片整行铺开。
-           之前的写法是「分页条也写在 .tbl-cap 里面」，结果大屏下分页条跟着表格一起被收窄到 1240px
-           并居中 → 信息条挤在左、页码挤在右，与活动监测/系统管理等页「整行铺开」的分页完全不一致
-           （用户反馈「分页和其他分页不一样，大屏没铺满」就是这个）。
-           ⇒ 现在：表格限宽防列被拉飞；分页条移出限宽容器，与全站其它页面口径一致。 -->
-      <div class="tbl-cap">
+      <!-- ★★ 2026-10-14 口径回到「和地图管理一致」：表格**铺满整行、与工具栏/tab/分页同一条左边线**。
+           历史：
+           ① 原先把**整个卡片**限宽 1240 居中 → 大屏下边线整体缩进；
+           ② 上一轮把限宽收窄到只作用于表格（`.tbl-cap`）→ 分页条铺满了，但**表格仍被居中缩进 178px**
+              （大屏下：工具栏 left=277、表格 left=455）＝用户说的「还有问题，参考地图管理做」；
+           ③ 现在**彻底去掉限宽**：本页所有数据表都是「全列弹性 min-width」口径
+              （见下方 2026-10-13 第三轮的列宽注释），表格宽度=容器宽、剩余宽度按各列 minW 比例摊开，
+              本来就不需要限宽兜底；限宽反而与这套弹性口径自相矛盾。
+           ⇒ 与地图管理完全一致：toolbar / tabs / 表格 / 分页条 全部 left 对齐、铺满整行。
+            （宝箱配置等长文本列 minW 合计超容器 → 表格内部横向滚动，此为既有适配口径。） -->
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w" :min-width="col.minW"
                          :align="(col.w || col.minW) ? 'center' : 'left'" show-overflow-tooltip>
@@ -80,7 +84,6 @@
           </template>
         </el-table-column>
       </el-table>
-      </div>
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
@@ -1176,12 +1179,10 @@ export default {
 .unlimited { color: #67c23a; font-weight: 600; }
 /* 数据表切换 Tab：与下方工具栏贴近一些，别留一大块空白 */
 .cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
-/* ★★ 2026-10-14 大屏列宽失控兜底：本页多数表只有 6~9 列，el-table 铺满 1600px 时
-   「弹性列」会被等比拉到 400~500px（6 列的「任务类型」最夸张：一列显示 3 个字占 500px）。
-   ⇒ 只给**表格**限宽 1240px 并居中：1440 及以下容器本来就不到 1240，**布局完全不变**；
-     更大屏则表格收在 1240 内。★分页条写在 .tbl-cap **外面**，随卡片整行铺开、与全站口径一致
-     （此前误把分页条也写进限宽容器，导致大屏下分页被一起收窄居中＝用户说的「大屏没铺满」）。 */
-.tbl-cap { max-width: 1240px; margin: 0 auto; }
+/* ★★ 2026-10-14 去掉表格限宽（`.tbl-cap` / 原 `.farm-admin .box { max-width }`）：
+   与地图管理口径一致 —— 表格铺满整行、左边缘与 toolbar/tabs/分页对齐。
+   本页所有数据表都是「全列弹性 min-width」口径（见模板里的列宽注释），
+   容器多宽就铺多宽、剩余宽度按各列 minW 比例摊开，无需限宽兜底。 */
 /* 发放道具：已选玩家提示 + 道具行 */
 .grant-target { margin-top: 6px; color: #67c23a; font-size: 12px; }
 /* ★ 2026-10-13 全员发放提示：橙色警示，明确「不可撤销」 */
