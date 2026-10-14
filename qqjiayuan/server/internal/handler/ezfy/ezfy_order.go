@@ -1133,7 +1133,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★ 2026-09-30 用户规则：侦察只有侦察机才能侦察。
 	//   侦察(orderType 1)必须携带侦察机(troopId 9)，且只能带侦察机；
 	//   其它部队不能混编侦察，防止用普通部队当炮灰探路。
-	const ezfyReconPlaneTroopID = 9
 	if orderType == 1 {
 		if len(validTroops) == 0 {
 			return "侦察必须携带侦察机(侦察机)"
@@ -1687,9 +1686,10 @@ func (h *EzfyHandler) deductCityTroops(cityId uint, troops []ezfyUnitGroup) {
 
 // 雷达站预警相关常量
 const (
-	ezfyRadarBuildingID = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
-	ezfyReconTechID     = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
-	ezfyIntelMaxLevel   = 10 // 情报等级封顶
+	ezfyRadarBuildingID    = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
+	ezfyReconTechID        = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
+	ezfyIntelMaxLevel      = 10 // 情报等级封顶
+	ezfyReconPlaneTroopID  = 9  // ★ 2026-10-14 侦察机兵种 id（侦查只能带它；被侦查城有它且未设「不参与防御」时升空拦截空战）
 )
 
 // ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 侦察技巧等级（合计封顶 10）。
@@ -3377,18 +3377,115 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		order.Status = 2
 		order.Result = order.Troops
 		order.ReturnTime = now + travel
+		// ★★ 2026-10-14 侦察机拦截空战（用户规则）：
+		//   被侦查**玩家城市**若有侦察机、且其主人未在司令部把侦察机设为「不参与防御」，
+		//   则双方侦察机在目标城市上空**纯侦察机空战**（不涉及其它兵种）。
+		//   - 守方按战斗结果损兵（扣城内侦察机 + 按修复率进伤兵营），并收到拦截战报；
+		//   - 攻方损兵体现在出战报 result（剩余侦察机返航），被击落也按修复率进伤兵营；
+		//   - 攻方侦察机**全军覆没** → 侦查必失败、无情报；有幸存仍按数量概率判定成败。
+		battleBlock := "" // 拦截空战战报正文（未拦截 → 空，保持原侦查报告样式）
+		allShotDown := false
+		if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
+			defMap := h.troopMap(target.ID)
+			defRecon := defMap[ezfyReconPlaneTroopID]
+			if defRecon > 0 && !defExclude[ezfyReconPlaneTroopID] {
+				var atkRecon []ezfyUnitGroup
+				for _, g := range attacker {
+					if g.TroopId == ezfyReconPlaneTroopID && g.Count > 0 {
+						atkRecon = append(atkRecon, g)
+					}
+				}
+				if len(atkRecon) > 0 {
+					defReconG := []ezfyUnitGroup{{TroopId: ezfyReconPlaneTroopID, Count: defRecon}}
+					ar := ezfySimulateBreak(atkRecon, defReconG, 0, 0, 0, 0, 0, 0, 0,
+						ezfyBattleBonus{}, ezfyBattleBonus{}, "", "", 0, 0,
+						nil, nil, nil, nil, ezfyBattleExtra{}, 0)
+					// ---- 攻方侦察机战损（伤兵营 + 返航剩余） ----
+					var dead int64
+					for _, g := range ar.AttackerLosses {
+						dead += g.Count
+					}
+					if dead > 0 {
+						rate := 10
+						if cfg := ezfyCfg.troop(ezfyReconPlaneTroopID); cfg != nil {
+							rate = cfg.RepairRate
+						}
+						wounded := dead * int64(rate) / 100
+						if wounded > 0 {
+							h.addWounded(city.ID, ezfyReconPlaneTroopID, 0, wounded)
+						}
+					}
+					leftStr := ""
+					for _, g := range ar.AttackerLeft {
+						if g.Count > 0 {
+							leftStr += strconv.Itoa(g.TroopId) + ":" + strconv.FormatInt(g.Count, 10) + ","
+						}
+					}
+					order.Result = strings.TrimSuffix(leftStr, ",")
+					// ---- 守方侦察机战损（扣城内 + 伤兵营） ----
+					for _, g := range ar.DefenderLosses {
+						if g.Count <= 0 {
+							continue
+						}
+						var exist model.EzfyCityTroop
+						if err := h.DB.Where("city_id = ? AND troop_id = ?", target.ID, g.TroopId).First(&exist).Error; err == nil {
+							remain := exist.Count - g.Count
+							if remain <= 0 {
+								h.DB.Delete(&exist)
+							} else {
+								h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", remain)
+							}
+						}
+						rate := 10
+						if cfg := ezfyCfg.troop(g.TroopId); cfg != nil {
+							rate = cfg.RepairRate
+						}
+						wounded := g.Count * int64(rate) / 100
+						if wounded > 0 {
+							h.addWounded(target.ID, g.TroopId, 0, wounded)
+						}
+					}
+					// ---- 空战战报正文（攻守双方各自的兵种变化行） ----
+					atkTagC, defTagC := winText(ar.AttackerWin), winText(!ar.AttackerWin)
+					airLine := fmt.Sprintf("[%s]攻方:%s\n", atkTagC, city.Name) +
+						troopChangeText(groupCounts(atkRecon), groupCounts(ar.AttackerLeft)) +
+						fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTagC, targetName) +
+						troopChangeText(groupCounts(defReconG), groupCounts(ar.DefenderLeft))
+					battleBlock = fmt.Sprintf("公文报告:侦查拦截\n我方侦察机抵达%s[%d，%d]上空时遭敌方侦察机拦截，双方侦察机展开空战，共持续 %d 回合！\n",
+						targetName, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n------------------\n"
+					// ---- 守方拦截战报 ----
+					defBlock := fmt.Sprintf("公文报告:防空拦截\n敌军侦察机企图侦查我方城市「%s」(%d,%d)，我军侦察机升空拦截，双方侦察机展开空战，共持续 %d 回合！\n",
+						target.Name, order.TargetX, order.TargetY, ar.Rounds) + airLine + "\n敌军侦察机已被击破或击退。\n"
+					h.addReport(target.UserID, 2, "战斗报告: 击退敌军侦察", defBlock, "", order.ID, target.ID)
+					if enemyDeadOf(ar.AttackerLeft) <= 0 {
+						allShotDown = true
+					}
+				}
+			}
+		}
 		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-			Updates(map[string]interface{}{"status": 2, "result": order.Troops, "return_time": order.ReturnTime})
+			Updates(map[string]interface{}{"status": 2, "result": order.Result, "return_time": order.ReturnTime})
 		// ★ 2026-10-02 用户规则：侦查成功率按**侦察机数量**概率（一架必成不对），
 		//   失败只发失败战报、不获取任何情报（部队照常返航，不损兵）。
+		// ★ 2026-10-14 拦截空战：攻方侦察机被全部击落 → 必失败；有幸存仍按数量概率判定。
+		if allShotDown {
+			h.addReport(uid, 1, "侦查失败: "+targetName,
+				battleBlock+fmt.Sprintf("我方侦察机全部被击落，未获取到任何情报。\n"), "", order.ID, city.ID)
+			return
+		}
 		if !ezfyReconSucceed(order) {
 			h.addReport(uid, 1, "侦查失败: "+targetName,
-				fmt.Sprintf("公文报告:侦查失败\n我方一支部队对%s[%d，%d]的侦查未能成功，未获取到任何情报，部队已返航。\n",
+				battleBlock+fmt.Sprintf("公文报告:侦查失败\n我方一支部队对%s[%d，%d]的侦查未能成功，未获取到任何情报，仅存侦察机已返航。\n",
 					targetName, order.TargetX, order.TargetY), "", order.ID, city.ID)
 			return
 		}
-		h.addReport(uid, 1, "侦查报告: "+targetName,
-			h.scoutReportBody(uid, order, targetName, target, defender), "", order.ID, city.ID)
+		// 成功：若有拦截，把空战正文接在情报之前
+		scoutBody := h.scoutReportBody(uid, order, targetName, target, defender)
+		if battleBlock != "" {
+			scoutBody = strings.Replace(scoutBody, "侦查过程中未受到任何阻拦。",
+				"侦查过程中在目标城市上空与敌方侦察机交战，击破拦截后继续侦查。"+battleBlock, 1)
+		}
+		h.addReport(uid, 1, "侦查报告: "+targetName, scoutBody, "", order.ID, city.ID)
 		return
 	}
 
