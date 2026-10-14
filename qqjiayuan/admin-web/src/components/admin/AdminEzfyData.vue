@@ -42,6 +42,10 @@
              又没有任何一列被单独拉飞；宝箱配置的长文本列所需合计超过容器 → 表格内部横向滚动
              （这是既有适配口径，右侧操作列 fixed 不遮挡）。 -->
       <div class="tbl-fit">
+      <!-- ★ 2026-10-14 限宽只作用于表格本身：若整体限宽，大屏下分页条也会被收窄
+           （与活动监测/系统管理等页整行铺开的分页不一致）。表格保持限宽防列被拉飞，
+           分页条移出限宽容器、随卡片整行铺开。 -->
+      <div class="tbl-cap">
       <el-table :data="rows" v-loading="loading" stripe border max-height="620">
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w" :min-width="col.minW"
                          :align="(col.w || col.minW) ? 'center' : 'left'" show-overflow-tooltip>
@@ -73,6 +77,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
@@ -1098,9 +1103,9 @@ export default {
 .cfg-tabs >>> .el-tabs__header { margin-bottom: 10px; }
 /* ★★ 2026-10-13 大屏列宽失控兜底：本页多数表只有 6~9 列，el-table 铺满 1600px 时
    「弹性列」会被等比拉到 400~500px（6 列的「任务类型」最夸张：一列显示 3 个字占 500px）。
-   ⇒ 内容区限宽 1240px 并居中：1440 及以下容器本来就不到 1240，**布局完全不变**；
-     更大屏则整体收在 1240 内，列宽与 1440 视口基本一致，不再被无限拉宽。 */
-.farm-admin .box { max-width: 1240px; margin: 0 auto; }
+   ⇒ 表格限宽 1240px 并居中：1440 及以下容器本来就不到 1240，**布局完全不变**；
+     更大屏则表格收在 1240 内（分页条在表格下方随卡片整行铺开，不受影响，见 .tbl-cap 注释）。 */
+.tbl-cap { max-width: 1240px; margin: 0 auto; }
 /* 发放道具：已选玩家提示 + 道具行 */
 .grant-target { margin-top: 6px; color: #67c23a; font-size: 12px; }
 /* ★ 2026-10-13 全员发放提示：橙色警示，明确「不可撤销」 */
