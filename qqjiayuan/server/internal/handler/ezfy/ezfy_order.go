@@ -1601,7 +1601,9 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 					body += fmt.Sprintf("侦查时间: %s\n", time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 				}
 				body += fmt.Sprintf("(情报等级%d: 雷达站等级越高、侦察技巧越高, 情报越详细)", radar)
-				h.addReport(target.UserID, 6, "被侦查报告: "+city.Name, body, "", 0, target.ID)
+				// ★ 2026-10-14 「只有名字看不出来，其他玩家有重名的，加坐标辨别」：
+				//   标题里带上**侦查方城市坐标**，重名城一眼可分（体例与「被掠夺报告: X(286,294)」一致）。
+				h.addReport(target.UserID, 6, fmt.Sprintf("被侦查报告: %s(%d,%d)", city.Name, city.X, city.Y), body, "", 0, target.ID)
 			}
 			if radar >= 1 && orderType != 1 {
 				// ★ 出发城市（名称+坐标）放正文**最前面** —— 玩家最想知道的就是「谁、从哪来」

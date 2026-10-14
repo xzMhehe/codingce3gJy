@@ -46,3 +46,34 @@ func TestUnreadAlertSingleSource(t *testing.T) {
 		t.Fatal("/view 的角标仍在用 ezfyReportCatCondAny（全量口径）→ 主动战报会让角标永远闪")
 	}
 }
+
+// TestAlertReportTitleHasCoord 所有「被动挨打」类军情警讯的**标题**必须带城市坐标。
+//
+// ★ 2026-10-14 用户反馈：「被侦查报告: 新城市」这种只有名字，别的玩家有重名分不清 → 要加坐标。
+//
+//	军情警讯列表只显示标题（不点进去），所以重名城必须在标题里就能区分。
+//	体例统一为 `xxx报告: 城市名(X,Y)`，与「被掠夺报告: X(286,294)」一致。
+//
+//	本测试用静态扫描锁定：
+//	  ① 被侦查报告(ezfy_order.go) 标题必须含 %d,%d 坐标；
+//	  ② 被掠夺/被征服报告(ezfy_order.go) 标题必须含 TargetX/TargetY；
+//	  ③ 军情警报(来袭/已抵达) 标题必须含坐标。
+func TestAlertReportTitleHasCoord(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	for _, want := range []string{
+		// 被侦查报告：侦查方城市坐标
+		`被侦查报告: %s(%d,%d)`,
+		// 被掠夺报告：被攻击城市坐标
+		`"被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")"`,
+		// 被征服报告：被攻击城市坐标
+		`"被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")"`,
+		// 军情警报「敌军来袭」：来源城市坐标
+		`title += fmt.Sprintf(" 来自 %s(%d,%d)", city.Name, city.X, city.Y)`,
+		// 军情警报「敌军已抵达」：来源城市坐标
+		`"军情警报: 敌军已抵达 来自 %s(%d,%d)"`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("军情警讯标题缺坐标（重名城无法区分）：期望片段\n  %s\n未在 ezfy_order.go 中找到", want)
+		}
+	}
+}
