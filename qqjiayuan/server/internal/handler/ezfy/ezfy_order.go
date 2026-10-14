@@ -3674,6 +3674,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	win = br.AttackerWin
 	draw := br.Draw
 
+	// ★★ 风云榜（★ 2026-10-14）：按自然周统计**玩家 vs 玩家**战绩（灭敌/战损/场次/胜场）。
+	//   只记打玩家城（target_type=3）的一场完整对局 —— 这里是攻守双方战果齐备、
+	//   且 processArrive 顶部 CAS 保证只结算一次的汇聚点（自动战斗/指挥室两种路径都到此）。
+	//   野地 / AI 寇城 / 活动目标（target=nil 或 target_type!=3）不算 PVP。
+	if order.TargetType == 3 && target != nil && target.UserID > 0 && target.UserID != uid {
+		h.accumPvpWeek(now, uid, target.UserID, br, win, draw)
+	}
+
 	// ★★ 军官经验结算（2026-09-21 重做）
 	//
 	// 用户规则：

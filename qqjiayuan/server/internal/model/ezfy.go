@@ -787,6 +787,26 @@ type EzfyUserChestPity struct {
 
 func (EzfyUserChestPity) TableName() string { return "ezfy_user_chest_pity" }
 
+// EzfyPvpWeek 风云榜（每周玩家对战战绩，★ 2026-10-14）
+//
+// 按**自然周**（周一 00:00 ~ 周日 23:59，Week 形如 "20261012-20261018"）统计
+// **玩家 vs 玩家** 战斗（攻打玩家城 target_type=3，排除野地/寇城/活动目标）：
+// 灭敌(击杀敌军数) / 战损(己方阵亡数) / 参战场次 / 胜场。每玩家每周一条。
+type EzfyPvpWeek struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Week      string    `gorm:"type:varchar(17);uniqueIndex:uk_pvp_week_user;comment:自然周 20060102-20060102" json:"week"`
+	UserID    uint      `gorm:"uniqueIndex:uk_pvp_week_user;comment:玩家ID" json:"user_id"`
+	Nickname  string    `gorm:"type:varchar(20);comment:昵称快照(写榜时)" json:"nickname"`
+	Corps     string    `gorm:"type:varchar(20);comment:军团名快照(写榜时)" json:"corps"`
+	Battles   int64     `gorm:"default:0;comment:参战场次" json:"battles"`
+	Wins      int64     `gorm:"default:0;comment:胜场" json:"wins"`
+	Kills     int64     `gorm:"default:0;comment:灭敌(击杀敌军数)" json:"kills"`
+	Losses    int64     `gorm:"default:0;comment:战损(己方阵亡数)" json:"losses"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyPvpWeek) TableName() string { return "ezfy_pvp_week" }
+
 // EzfyAccount 二战征途独立登录账号
 //
 // ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。

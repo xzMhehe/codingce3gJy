@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -225,4 +226,26 @@ func (h *EzfyAdmin) AdminEzfyRankSetPrestige(c *gin.Context) {
 	p.Prestige = in.Prestige // 同步内存值，方便下面按新声望推导军衔名（老玩家 Rank=0 回落声望）
 	resp.OK(c, gin.H{"msg": "声望已设为 " + strconv.Itoa(in.Prestige) +
 		"，当前军衔「" + ezfyRankNameAt(ezfyProfileRank(&p)) + "」"})
+}
+
+// AdminEzfyPvpRank 管理端风云榜查询：?week=自然周周串（不传 = 本周）。
+// 返回最近 12 个有数据的周 + 指定周全量榜单（灭敌降序），任一周后台都能查。
+func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
+	week := c.Query("week")
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	var weeks []string
+	h.DB.Model(&model.EzfyPvpWeek{}).Distinct("week").Order("week DESC").Limit(12).Pluck("week", &weeks)
+
+	rows := ezfyPvpRankRows(h.DB, week, 0)
+	ranks := make([]gin.H, 0, len(rows))
+	for i, r := range rows {
+		ranks = append(ranks, gin.H{
+			"rank": i + 1, "user_id": r.UserID, "name": r.Nickname, "corps": r.Corps,
+			"battles": r.Battles, "wins": r.Wins, "kills": r.Kills, "losses": r.Losses,
+			"win_rate": pvpWinRate(r.Wins, r.Battles),
+		})
+	}
+	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks})
 }

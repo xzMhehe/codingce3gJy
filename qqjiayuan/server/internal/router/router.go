@@ -690,6 +690,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
 				ezfyG.GET("/war/status", ezfyH.WarStatus)
 				ezfyG.GET("/rank", ezfyH.Rank)
+				// ★ 2026-10-14 风云榜：按自然周统计玩家对战战绩（灭敌/战损/场次/胜场）的周榜
+				ezfyG.GET("/rank/pvp", ezfyH.PvpRank)
 				// ★ 2026-09-28 军衔晋升：声望达标 + 提交宝物（参考原版晋升军衔宝物参考.xlsx）
 				ezfyG.POST("/promote", ezfyH.Promote)
 				ezfyG.GET("/mall", ezfyH.Mall)
@@ -1326,6 +1328,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-rank-players", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankPlayers)
 				admin.PUT("/ezfy-rank-players/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPlayer)
 				admin.POST("/ezfy-rank-players/:id/prestige", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPrestige)
+
+				// ---- 风云榜（每周玩家对战战绩，perm 复用数据管理） ----
+				admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
 
 				// ---- 军校免费刷新次数维护 ----
 				admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitGet)

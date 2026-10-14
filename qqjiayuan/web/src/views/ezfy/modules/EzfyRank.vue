@@ -7,7 +7,8 @@
             <a href="javascript:;" :class="{ on: ezfy.rankTab === 'prestige' }" @click="ezfy.rankTab = 'prestige'">军衔声望榜</a>|
             <a href="javascript:;" :class="{ on: ezfy.rankTab === 'troops' }" @click="ezfy.rankTab = 'troops'">战力榜</a>|
             <a href="javascript:;" :class="{ on: ezfy.rankTab === 'corps' }" @click="ezfy.rankTab = 'corps'">军团榜</a>|
-            <a href="javascript:;" :class="{ on: ezfy.rankTab === 'ranks' }" @click="ezfy.rankTab = 'ranks'">军衔晋升表</a>
+            <a href="javascript:;" :class="{ on: ezfy.rankTab === 'ranks' }" @click="ezfy.rankTab = 'ranks'">军衔晋升表</a>|
+            <a href="javascript:;" :class="{ on: ezfy.rankTab === 'pvp' }" @click="ezfy.showPvpRank()">风云榜</a>
           </div>
 
           <!-- 军衔晋升表 tab（静态参照表 + 我的晋升，★ 2026-09-28 加宝物门槛） -->
@@ -103,6 +104,41 @@
               <td><span v-if="r.rank === 1" class="rank-crown">♛</span>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
             </tr>
           </table>
+          </template>
+
+          <!-- ★ 2026-10-14 风云榜 tab：按自然周统计玩家对战战绩（灭敌/战损/场次/胜场） -->
+          <template v-if="ezfy.rankTab === 'pvp'">
+          <div class="panel-title">
+            风云榜
+            <select v-if="ezfy.pvpRank.weeks && ezfy.pvpRank.weeks.length" :value="ezfy.pvpRank.week"
+              style="margin-left:8px;font-size:12px" @change="ezfy.loadPvpRank($event.target.value)">
+              <option v-for="w in ezfy.pvpRank.weeks.indexOf(ezfy.pvpRank.week) < 0 ? [ezfy.pvpRank.week].concat(ezfy.pvpRank.weeks) : ezfy.pvpRank.weeks" :key="w" :value="w">{{ w }}</option>
+            </select>
+            <span v-if="ezfy.pvpLoading" class="gray" style="margin-left:8px">加载中…</span>
+            <span v-else class="gray" style="margin-left:8px">周一~周日 · 玩家对战</span>
+          </div>
+          <table class="ezfy-rank-table">
+            <colgroup>
+              <col style="width: 12%"><col style="width: 28%"><col style="width: 16%"><col style="width: 14%"><col style="width: 14%"><col style="width: 8%"><col style="width: 8%">
+            </colgroup>
+            <tr><th>名次</th><th>统帅</th><th>军团</th><th>灭敌</th><th>战损</th><th>参战</th><th>胜率</th></tr>
+            <template v-if="ezfy.pvpRank.ranks && ezfy.pvpRank.ranks.length">
+              <tr v-for="r in ezfy.pvpRank.ranks" :key="'pv' + r.rank"
+                :style="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id === r.user_id ? 'background:#fff7e6;font-weight:bold' : ''">
+                <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+                <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
+                <td>{{ r.corps || '—' }}</td>
+                <td>{{ ezfy.fmtN(r.kills) }}</td>
+                <td>{{ ezfy.fmtN(r.losses) }}</td>
+                <td>{{ r.battles }}</td>
+                <td>{{ Math.round(r.win_rate * 10) / 10 }}%</td>
+              </tr>
+            </template>
+            <tr v-else><td colspan="7" class="gray">该周暂无玩家对战记录</td></tr>
+          </table>
+          <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
+            我的战绩（{{ ezfy.pvpRank.week }}）：参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.kills) }}</b> · 战损 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.losses) }}</b>
+          </div>
           </template>
 
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>

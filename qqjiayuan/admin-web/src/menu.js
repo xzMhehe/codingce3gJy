@@ -84,6 +84,7 @@ import AdminEzfyEquips from './components/admin/AdminEzfyEquips.vue'
 import AdminEzfyLoveCard from './components/admin/AdminEzfyLoveCard.vue'
 import AdminEzfyRecruitLimit from './components/admin/AdminEzfyRecruitLimit.vue'
 import AdminEzfyRanks from './components/admin/AdminEzfyRanks.vue'
+import AdminEzfyPvpRank from './components/admin/AdminEzfyPvpRank.vue'
 import AdminEzfyResources from './components/admin/AdminEzfyResources.vue'
 import AdminEzfyExchange from './components/admin/AdminEzfyExchange.vue'
 import AdminEzfyTechs from './components/admin/AdminEzfyTechs.vue'
@@ -281,6 +282,8 @@ export const menu = [
           { key: 'ezfyLoveCard', name: '为爱发电卡', icon: 'el-icon-present', component: AdminEzfyLoveCard, perm: 'module:ezfyData' },
           { key: 'ezfyRecruitLimit', name: '军校刷新次数', icon: 'el-icon-refresh', component: AdminEzfyRecruitLimit, perm: 'module:ezfyOfficers' },
           { key: 'ezfyRankCfg', name: '军衔维护', icon: 'el-icon-medal', component: AdminEzfyRanks, perm: 'module:ezfyRankCfg' },
+          // ★ 2026-10-14 风云榜：每周玩家对战战绩周榜（perm 复用数据管理）
+          { key: 'ezfyPvpRank', name: '风云榜', icon: 'el-icon-trophy', component: AdminEzfyPvpRank, perm: 'module:ezfyData' },
           { key: 'ezfyResources', name: '资源管理', icon: 'el-icon-coin', component: AdminEzfyResources, perm: 'module:ezfyResources' },
           { key: 'ezfyExchange', name: '交易行维护', icon: 'el-icon-s-shop', component: AdminEzfyExchange, perm: 'module:ezfyExchange' },
           { key: 'ezfyTechs', name: '科技管理', icon: 'el-icon-cpu', component: AdminEzfyTechs, perm: 'module:ezfyTechs' },
