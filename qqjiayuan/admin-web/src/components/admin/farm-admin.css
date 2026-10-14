@@ -30,6 +30,7 @@
 .td-red { color: #e6a23c; font-weight: 600; }
 .td-green { color: #67c23a; font-weight: 600; }
 .td-small { font-size: 12px; }
+.td-dim { color: #b6c2d2; }
 /* 弹窗内容超高时内部滚动，避免页脚被顶出视口 */
 .farm-admin .el-dialog__body { max-height: 72vh; overflow-y: auto; }
 /* 数字输入框：右侧加减按钮不能盖住数字（窄列里给个下限） */

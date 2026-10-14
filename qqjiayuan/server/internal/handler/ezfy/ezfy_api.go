@@ -842,6 +842,36 @@ var ezfyTechEffectPer = map[int]int{
 	20: 2, 21: 2,
 }
 
+// ezfyTechEffectValueAt 科技某等级的**效果数值**（百分点；负数=减益；tech 12 情报是 +1 级/级）。
+//
+// ★ 2026-10-14 用户需求「效果加一列专门是数字的方便维护」：优先读
+// `ezfy_cfg_tech_level.effect_value`（管理端可直接把「治愈伤兵 Lv.10 效果数值」改成 50），
+// 0 / 缺失 → 回退历史公式（ezfyTechEffectPer × 等级），老数据行为完全不变。
+func ezfyTechEffectValueAt(techId, level int) int {
+	if level < 1 {
+		return 0
+	}
+	if lv := ezfyCfg.techLevel(techId, level); lv != nil && lv.EffectValue != 0 {
+		return lv.EffectValue
+	}
+	return ezfyTechEffectPer[techId] * level
+}
+
+// ezfyTechEffectTextWithVal 用指定数值拼效果文案（管理端同步「效果数值」→「效果」用，不读配置缓存）。
+func ezfyTechEffectTextWithVal(t *model.EzfyCfgTech, level, val int) string {
+	prefix := ezfyTechEffectPrefix[t.ID]
+	if prefix == "" {
+		return t.Effect
+	}
+	if t.ID == 12 { // 侦察技巧：情报等级
+		return fmt.Sprintf("情报+%d级", level)
+	}
+	if val > 0 {
+		return fmt.Sprintf("%s+%d%%", prefix, val)
+	}
+	return fmt.Sprintf("%s%d%%", prefix, val)
+}
+
 // ezfyTechEffectAt 科技在指定等级的累计效果文案（如 tech1 10 级 → 「粮食产量+100%」）。
 // 未收录的科技回退数据库效果文案（兜底，当前 21 项全覆盖）。
 func ezfyTechEffectAt(t *model.EzfyCfgTech, level int) string {
@@ -858,7 +888,7 @@ func ezfyTechEffectAt(t *model.EzfyCfgTech, level int) string {
 	if t.ID == 12 { // 侦察技巧：情报等级
 		return fmt.Sprintf("情报+%d级", level)
 	}
-	val := ezfyTechEffectPer[t.ID] * level
+	val := ezfyTechEffectValueAt(t.ID, level)
 	if val > 0 {
 		return fmt.Sprintf("%s+%d%%", prefix, val)
 	}

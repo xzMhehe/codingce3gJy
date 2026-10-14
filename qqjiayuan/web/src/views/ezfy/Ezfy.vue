@@ -813,8 +813,8 @@ export default {
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [], chestLastCost: '',
       // ★ 2026-10-14 我的待开宝箱（商城买的、管理端发放的，自己开箱）
       chestBag: { list: [], total: 0 },
-      // ★ 2026-10-14 商城宝箱「购买」（只买不开入背包）：当前展开的宝箱 + 数量
-      buyChest: null, buyChestCount: 1,
+      // ★ 2026-10-14 商城宝箱「购买」独立页：目标宝箱 + 数量（买进背包不抽奖）
+      chestBuyTarget: null, buyChestCount: 1,
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
@@ -3946,25 +3946,22 @@ export default {
       this.chestResult = []
       this.cur = 'chestopen'
     },
-    // ★ 2026-10-14 商城宝箱「购买」：只买不开，宝箱进背包（背包→宝箱 tab），不抽奖
-    buyChest (ch) {
-      this.buyChest = this.buyChest && this.buyChest.id === ch.id ? null : ch
+    // ★ 2026-10-14 商城宝箱「购买」独立页：进购买页选数量，确认后宝箱进背包（不抽奖）
+    goBuyChest (ch) {
+      this.chestBuyTarget = ch
       this.buyChestCount = 1
+      this.cur = 'chestbuy'
     },
-    // ★ 2026-10-14 快捷购买：买1/买5/买10，直接下单（数量超出单次上限自动封顶）
-    quickBuyChest (ch, n) {
-      if (ch.sold_out) { this.notify('该宝箱已售罄'); return }
-      n = Math.max(1, Math.min(n, ch.open_max || n))
-      this.submitBuyChest(ch, n)
+    // ★ 2026-10-14 购买页数量快捷 [1][5][10]
+    buyChestSet (n) {
+      this.buyChestCount = n
     },
-    doBuyChest () {
-      const ch = this.buyChest
-      if (!ch) return
-      const n = parseInt(this.buyChestCount) || 0
-      if (n <= 0) { this.notify('请填写购买数量'); return }
-      this.submitBuyChest(ch, n)
-    },
+    // ★ 2026-10-14 提交宝箱购买：POST /chest/buy（只买不开，入 ezfy_user_chest 背包）
     submitBuyChest (ch, n) {
+      if (!ch) return
+      if (!(n > 0)) { this.notify('请选择购买数量'); return }
+      const maxN = ch.open_max || n
+      n = Math.max(1, Math.min(n, maxN))
       // 并发防抖：连点不会重复下单
       this.once('chestBuy' + ch.id, () =>
         api.post('/games/ezfy/chest/buy', {
@@ -3972,8 +3969,10 @@ export default {
         }).then(r => {
           if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
           this.notify(r.msg || '购买成功，宝箱已放入背包')
-          this.buyChest = null
-          // 刷新余额/库存 + 背包宝箱数（买到的进背包）
+          this.chestBuyTarget = null
+          // 回到商城宝箱 tab；刷新余额/库存 + 背包宝箱数（买到的进背包）
+          this.mallTab = 'chest'
+          this.cur = 'mall'
           this.loadChests()
           this.loadChestBag()
         }))

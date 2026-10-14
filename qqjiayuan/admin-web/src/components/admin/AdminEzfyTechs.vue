@@ -238,6 +238,11 @@
         <el-table-column label="稀" width="90" align="center"><template slot-scope="{row}"><span class="td-mono td-small">{{ fmtN(row.rare) }}</span></template></el-table-column>
         <el-table-column label="黄金" width="90" align="center"><template slot-scope="{row}"><span class="td-mono td-small">{{ fmtN(row.gold) }}</span></template></el-table-column>
         <el-table-column label="研究(秒)" width="85" align="center"><template slot-scope="{row}"><span class="td-mono">{{ row.research_time }}</span></template></el-table-column>
+        <el-table-column label="数值" width="70" align="center">
+          <template slot-scope="{row}">
+            <span class="td-mono td-small" :class="{ 'td-dim': !row.effect_value }">{{ row.effect_value || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="effect" label="效果" min-width="250" show-overflow-tooltip />
         <el-table-column label="操作" width="130" align="center" fixed="right">
           <template slot-scope="{row}">
@@ -299,6 +304,10 @@
         <el-form-item label="效果">
           <el-input v-model="lvForm.effect" maxlength="255" placeholder="例如：粮食产量+1%" />
         </el-form-item>
+        <el-form-item label="效果数值">
+          <el-input-number v-model.number="lvForm.effect_value" :min="-999" :max="999" controls-position="right" style="width:100%" />
+          <div class="td-sub">百分点，该等级的累计加成（如 50 = +50%）；0 = 按原公式。保存时效果文案自动同步。</div>
+        </el-form-item>
       </el-form>
       <div slot="footer">
         <el-button @click="lvEditDlg = false">取 消</el-button>
@@ -312,13 +321,13 @@
 import api from '../../api'
 
 const CF_KEYS = ['name', 'type', 'max_level', 'pre_building', 'pre_tech', 'pre_tech_level', 'effect', 'des']
-const LV_KEYS = ['tech_id', 'level', 'food', 'steel', 'oil', 'rare', 'gold', 'research_time', 'effect']
+const LV_KEYS = ['tech_id', 'level', 'food', 'steel', 'oil', 'rare', 'gold', 'research_time', 'effect', 'effect_value']
 
 function emptyCf () {
   return { id: 0, name: '', type: 3, max_level: 10, pre_building: 0, pre_tech: null, pre_tech_level: 0, effect: '', des: '' }
 }
 function emptyLv () {
-  return { id: 0, tech_id: 0, level: 1, food: 0, steel: 0, oil: 0, rare: 0, gold: 0, research_time: 0, effect: '' }
+  return { id: 0, tech_id: 0, level: 1, food: 0, steel: 0, oil: 0, rare: 0, gold: 0, research_time: 0, effect: '', effect_value: 0 }
 }
 
 export default {

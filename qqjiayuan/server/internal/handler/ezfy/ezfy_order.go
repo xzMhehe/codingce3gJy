@@ -3280,7 +3280,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		defBonus += h.officerGuardBonus(cityGuard)
 		// ★ 2026-10-09 守方「伤兵回收率」的额外加成 = 守方科技·治愈伤兵(21) + 城守军官技能·机械改造。
 		//   与攻方同口径（攻方见下方 healTech）：兵种修复率 + 科技 + 技能。
-		defHealTech = defTech[21] * 2
+		// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
+		defHealTech = ezfyTechEffectValueAt(21, defTech[21])
 		if h.officerHasSkill(cityGuard, "机械改造") {
 			defHealTech += 10 * h.officerSkillScale(cityGuard)
 		}
@@ -3772,7 +3773,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	for _, g := range losses {
 		deadCount += g.Count
 	}
-	healTech := atkTech[21] * 2
+	// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
+	healTech := ezfyTechEffectValueAt(21, atkTech[21])
 	// 带队军官「机械改造」技能: 战后伤兵恢复 +10%
 	if h.officerHasSkill(leadOfficer, "机械改造") {
 		// ★ 2026-10-06 技能随军官等级自动升级：恢复加成也随等级 ×N

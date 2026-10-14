@@ -315,21 +315,9 @@
                 </td>
                 <td>
                   <template v-if="!ch.sold_out">
-                    <!-- ★ 2026-10-14 [开箱]=买了即开；[买1]/[买5]/[买10]=快捷买进背包；[自定义]=自己输数量 -->
+                    <!-- ★ 2026-10-14 [开箱]=买了即开；[购买]=跳购买页选数量(1/5/10或自定义)买进背包 -->
                     <a href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
-                    <a href="javascript:;" @click="ezfy.quickBuyChest(ch, 1)">[买1]</a>
-                    <a v-if="ch.open_max >= 5" href="javascript:;" @click="ezfy.quickBuyChest(ch, 5)">[买5]</a>
-                    <a v-if="ch.open_max >= 10" href="javascript:;" @click="ezfy.quickBuyChest(ch, 10)">[买10]</a>
-                    <a href="javascript:;" @click="ezfy.buyChest(ch)">[自定义]</a>
-                    <!-- 自定义购买面板: 数量 + 确认（买后进背包，不抽奖） -->
-                    <template v-if="ezfy.buyChest && ezfy.buyChest.id === ch.id">
-                      <br/>
-                      <span class="gray">数量</span>
-                      <input v-model="ezfy.buyChestCount" type="number" min="1" :max="ch.open_max" style="width:60px"/>
-                      <span class="gray">/{{ ch.open_max }} 个 · 买后放背包</span>
-                      <a href="javascript:;" @click="ezfy.doBuyChest()">[确认购买]</a>
-                      <a href="javascript:;" @click="ezfy.buyChest = null">[取消]</a>
-                    </template>
+                    <a href="javascript:;" @click="ezfy.goBuyChest(ch)">[购买]</a>
                   </template>
                   <span v-else class="gray">[售罄]</span>
                 </td>
@@ -447,6 +435,46 @@
           </template>
           <div class="old-line gray" v-else>(宝箱数据还没加载出来，稍后再试)</div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
+        </div>
+    </template>
+    <!-- ★ 2026-10-14 宝箱购买页（chestbuy）：商城宝箱 [购买] 进来选数量 -> 买进背包（不抽奖，可去背包/商城直接开）
+         仿 mallbuy 道具购买页的结构；这里只买不开 -->
+    <template v-else-if="ezfy.cur === 'chestbuy'">
+        <div class="panel">
+          <div class="panel-title">购买宝箱</div>
+          <div class="old-line gray">购买后宝箱放入背包，可去「背包 → 宝箱」开启，或在商城直接开箱。当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.city.gold) }} · 钻石{{ ezfy.mallDiamond }}</div>
+          <template v-if="ezfy.chestBuyTarget">
+            <div class="old-line">
+              <b>{{ ezfy.chestBuyTarget.name }}</b>
+              <span class="gray" v-if="ezfy.chestBuyTarget.des">（{{ ezfy.chestBuyTarget.des }}）</span>
+            </div>
+            <div class="old-line">
+              价格：
+              <span v-if="ezfy.chestBuyTarget.price_diamond > 0" class="orange">{{ ezfy.chestBuyTarget.price_diamond }}钻/个</span>
+              <span v-else>{{ ezfy.chestBuyTarget.price_gold }}{{ ezfy.resNames.gold }}/个</span>
+              <span class="gray">· 库存 {{ ezfy.chestBuyTarget.stock < 0 ? '无限' : (ezfy.chestBuyTarget.stock || 0) }} · 单次最多 {{ ezfy.chestBuyTarget.open_max }} 个</span>
+              <a href="javascript:;" @click="ezfy.openChestView(ezfy.chestBuyTarget)">[查看奖池]</a>
+            </div>
+            <div class="old-line">
+              数量：
+              <template v-for="n in [1, 5, 10]">
+                <a v-if="(n === 1 || ezfy.chestBuyTarget.open_max >= n)" href="javascript:;" :class="{ on: parseInt(ezfy.buyChestCount) === n }"
+                   @click="ezfy.buyChestSet(n)">[{{ n }}]</a>
+              </template>
+              <input v-model="ezfy.buyChestCount" type="number" min="1" :max="ezfy.chestBuyTarget.open_max" style="width:70px"/>
+              <span class="gray">个（单次最多 {{ ezfy.chestBuyTarget.open_max }}，买后放背包）</span>
+            </div>
+            <div class="old-line">
+              合计：
+              <b class="bb-total">{{ (ezfy.chestBuyTarget.price_diamond > 0 ? ezfy.chestBuyTarget.price_diamond : ezfy.chestBuyTarget.price_gold) * (parseInt(ezfy.buyChestCount) || 0) }} {{ ezfy.chestBuyTarget.price_diamond > 0 ? '钻石' : ezfy.resNames.gold }}</b>
+            </div>
+            <div class="old-line">
+              <a href="javascript:;" @click="ezfy.submitBuyChest(ezfy.chestBuyTarget, parseInt(ezfy.buyChestCount) || 1)">[确认购买]</a>
+              <a href="javascript:;" @click="ezfy.go('mall')">[返回商城]</a>
+            </div>
+          </template>
+          <div class="old-line gray" v-else>(未选择宝箱)</div>
+          <a href="javascript:;" @click="ezfy.go('mall')">[返回商城]</a>
         </div>
     </template>
     <template v-else-if="ezfy.cur === 'mallbuy'">

@@ -52,6 +52,7 @@ var ezfyTechLevelFields = map[string]string{
 	"tech_id": "int", "level": "int",
 	"food": "int64", "steel": "int64", "oil": "int64", "rare": "int64", "gold": "int64",
 	"research_time": "int", "effect": "string",
+	"effect_value": "int", // ★ 2026-10-14 效果数值（百分点）：游戏逻辑/展示优先读它，0=未配置走公式
 }
 
 // 资源名称配置可改字段（ezfy_cfg_resource）
@@ -799,6 +800,7 @@ func (h *EzfyAdmin) AdminEzfyTechLevelCreate(c *gin.Context) {
 		resp.ParamError(c, "请填写等级")
 		return
 	}
+	h.ezfySyncTechLevelEffect(vals)
 	if err := h.DB.Model(&model.EzfyCfgTechLevel{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
@@ -825,6 +827,8 @@ func (h *EzfyAdmin) AdminEzfyTechLevelUpdate(c *gin.Context) {
 		resp.ParamError(c, "无可修改字段")
 		return
 	}
+	// ★ 2026-10-14 效果数值改了 → 自动同步「效果」文案（与游戏展示同口径，避免只改数字、文案还是旧值）
+	h.ezfySyncTechLevelEffect(vals)
 	if err := h.DB.Model(&model.EzfyCfgTechLevel{}).Where("id = ?", id).Updates(vals).Error; err != nil {
 		resp.ParamError(c, "修改失败："+err.Error())
 		return
@@ -839,6 +843,35 @@ func (h *EzfyAdmin) AdminEzfyTechLevelDelete(c *gin.Context) {
 	h.DB.Delete(&model.EzfyCfgTechLevel{}, id)
 	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "等级配置已删除"})
+}
+
+// ezfySyncTechLevelEffect 保存科技等级时：带 effect_value → 自动重算「效果」文案。
+//
+// ★ 2026-10-14 用户需求「效果加一列专门是数字的方便维护」：管理端只填数字，
+// 文案按同一口径（前缀 + 数值%）自动生成，避免「改了数值、效果列还是旧文案」。
+// 数值 0 = 清掉自定义 → 文案回退历史公式（ezfyTechEffectPer × 等级）。
+func (h *EzfyAdmin) ezfySyncTechLevelEffect(vals map[string]interface{}) {
+	ev, ok := vals["effect_value"]
+	if !ok {
+		return
+	}
+	techID, ok1 := vals["tech_id"].(int)
+	level, ok2 := vals["level"].(int)
+	if !ok1 || !ok2 {
+		return
+	}
+	var tech model.EzfyCfgTech
+	if h.DB.First(&tech, techID).Error != nil {
+		return
+	}
+	evv, ok := ev.(int)
+	if !ok {
+		return
+	}
+	if evv == 0 {
+		evv = ezfyTechEffectPer[tech.ID] * level
+	}
+	vals["effect"] = ezfyTechEffectTextWithVal(&tech, level, evv)
 }
 
 // ============ 4. 资源名称维护（ezfy_cfg_resource） ============

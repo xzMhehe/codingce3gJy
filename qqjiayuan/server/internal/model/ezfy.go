@@ -95,6 +95,9 @@ type EzfyCfgTechLevel struct {
 	Gold         int64  `gorm:"comment:黄金" json:"gold"`
 	ResearchTime int    `gorm:"comment:研究时间（秒）" json:"research_time"` // 秒
 	Effect       string `gorm:"type:varchar(255);comment:效果" json:"effect"`
+	// ★ 2026-10-14 效果数值（百分点，**该等级的累计加成**；0 = 未配置 → 走原公式兜底）。
+	//   管理端可直接维护数字（如「治愈伤兵 Lv.10 改成 50」），游戏逻辑/展示读它优先于文案。
+	EffectValue int `gorm:"default:0;comment:效果数值(百分点,该等级累计加成;0=未配置走公式)" json:"effect_value"`
 }
 
 func (EzfyCfgTechLevel) TableName() string { return "ezfy_cfg_tech_level" }

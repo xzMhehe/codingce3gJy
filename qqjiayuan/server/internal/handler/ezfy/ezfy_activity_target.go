@@ -595,8 +595,8 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
-	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技 2%/级 + 机械改造 10%
-	healTech := atkTech[21] * 2
+	// 攻方战损入伤兵营：兵种修复率% + 治愈伤兵科技（管理端「效果数值」，未配置按 2%/级）+ 机械改造 10%
+	healTech := ezfyTechEffectValueAt(21, atkTech[21])
 	if h.officerHasSkill(leadOfficer, "机械改造") {
 		healTech += 10 * h.officerSkillScale(leadOfficer)
 	}
