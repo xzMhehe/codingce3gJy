@@ -86,7 +86,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		DefCoeff: ezfyDefCoeffDef, DefBase: ezfyDefBaseDef, MinDmgCoeff: ezfyMinDmgCoeffDef,
 		// ★ 2026-09-25 「各项资源有最大的配置，默认 21 亿」
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
-		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef}
+		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
+		// ★ 2026-10-14 风云榜统计开关（默认 1 = 开；0 合法 = 关闭统计，故不做 <=0 兜底）
+		PvpRankOn: 1}
 	if err := h.DB.First(&lim, 1).Error; err != nil {
 		h.DB.Create(&lim)
 	}
@@ -391,6 +393,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SysSellSteel *int `json:"sys_sell_steel"`
 		SysSellOil   *int `json:"sys_sell_oil"`
 		SysSellRare  *int `json:"sys_sell_rare"`
+		// ★ 2026-10-14 风云榜统计开关（0 = 关，1 = 开；0 合法）
+		PvpRankOn *int `json:"pvp_rank_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -455,7 +459,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		ResMaxFood: ezfyResMaxDef, ResMaxSteel: ezfyResMaxDef, ResMaxOil: ezfyResMaxDef,
 		ResMaxRare: ezfyResMaxDef, ResMaxGold: ezfyResMaxDef,
 		// ★ 2026-09-30 向系统出售资源回收比例（每100单位黄金）
-		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25}
+		SysSellFood: 10, SysSellSteel: 10, SysSellOil: 20, SysSellRare: 25,
+		// ★ 2026-10-14 风云榜统计开关（默认开）
+		PvpRankOn: 1}
 	h.DB.First(&lim, 1)
 	// ★ 2026-09-30 向系统出售资源回收比例兜底（0 无意义 → 回落各自默认）
 	if lim.SysSellFood <= 0 {
@@ -939,6 +945,15 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	if !sysSellSet(in.SysSellRare, &lim.SysSellRare, "稀矿回收比例") {
 		return
 	}
+	// ★ 2026-10-14 风云榜统计开关：0 = 关（不统计）、1 = 开。**0 是合法值**（关掉统计），
+	//   所以只拦非法枚举，不做 <=0 兜底。
+	if in.PvpRankOn != nil {
+		if *in.PvpRankOn != 0 && *in.PvpRankOn != 1 {
+			resp.ParamError(c, "风云榜统计开关只能是 0（关）或 1（开）")
+			return
+		}
+		lim.PvpRankOn = *in.PvpRankOn
+	}
 	// ★ 2026-09-28：军官军事每点累加的出征上限（默认 2000）/ 每点速度加成（默认 0.1，单位 %）
 	if in.OfficerCapPerMilitary != nil {
 		if *in.OfficerCapPerMilitary < 0 || *in.OfficerCapPerMilitary > 100000 {
@@ -1298,6 +1313,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		"wild_item_cooldown_h": lim.WildItemCooldownH,
 		// ★ 2026-10-12 迁城冷却小时数（**0 合法 = 关闭冷却**，同样必须显式写）
 		"move_cool_h": lim.MoveCoolH,
+		// ★ 2026-10-14 风云榜统计开关（**0 合法 = 关闭统计**，必须显式写否则 0 会被 GORM 吞掉）
+		"pvp_rank_on": lim.PvpRankOn,
 	})
 	// ★ 写完必须重载配置缓存，否则玩家端要重启才生效
 	h.ezfyH().cfgsReload()

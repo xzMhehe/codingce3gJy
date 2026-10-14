@@ -2960,6 +2960,15 @@ func EnsureEzfyPvpFoeTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyPvpExcludeTable 幂等补建 ezfy_pvp_exclude 表（★ 2026-10-14 风云榜「不参与排名」名单）。
+//
+// 同 hazard：多机共享库的 skip 分支不跑全量 seed → 不补建则管理端标记「不参与排名」报表不存在。
+func EnsureEzfyPvpExcludeTable(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyPvpExclude{}); err != nil {
+		log.Printf("[seed] 补建/更新 ezfy_pvp_exclude 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyChestItemMinDraws 幂等补 ezfy_cfg_chest_item.min_draws 列（skip 分支也必须能补）。
 //
 // ★ 2026-10-14 奖池「保底解锁次数」：存量库（尤其多机共享库 skip 分支）只靠 AutoMigrate
@@ -3101,6 +3110,12 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN move_cool_h int DEFAULT 24")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET move_cool_h = 24 WHERE move_cool_h IS NULL")
+	// ★ 2026-10-14 风云榜统计开关（默认 1 = 开）。
+	//   ⚠️ 0 合法（= 关闭统计）→ 只补列 + 只回填 NULL，**不能**用 `<= 0` 兜底（会把关掉的又打开）。
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "pvp_rank_on") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pvp_rank_on int DEFAULT 1")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET pvp_rank_on = 1 WHERE pvp_rank_on IS NULL")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

@@ -1329,8 +1329,14 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.PUT("/ezfy-rank-players/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPlayer)
 				admin.POST("/ezfy-rank-players/:id/prestige", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPrestige)
 
-				// ---- 风云榜（每周玩家对战战绩，perm 复用数据管理） ----
+				// ---- 排行榜（风云榜 + 战力榜，perm 复用数据管理） ----
+				// ★ 2026-10-14 用户需求：管理系统「风云榜」改名「排行榜」，下设两个 tab：
+				//   风云榜（周榜 + 统计开关 + 不参与排名名单）、战力榜（复用游戏内战力口径）。
 				admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
+				admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
+				admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
+				admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
+				admin.GET("/ezfy-power-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPowerRank)
 
 				// ---- 军校免费刷新次数维护 ----
 				admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitGet)

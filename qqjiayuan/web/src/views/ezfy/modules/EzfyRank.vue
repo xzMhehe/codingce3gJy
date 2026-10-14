@@ -134,7 +134,8 @@
                 <td>{{ Math.round(r.win_rate * 10) / 10 }}%</td>
               </tr>
             </template>
-            <tr v-else><td colspan="7" class="gray">该周暂无玩家对战记录</td></tr>
+            <!-- ★ 2026-10-14 风云榜统计开关关闭时明确提示，而不是让玩家看到「暂无记录」 -->
+            <tr v-else><td colspan="7" class="gray">{{ ezfy.pvpRank.enabled === false ? '风云榜暂未开启' : '该周暂无玩家对战记录' }}</td></tr>
           </table>
           <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
             我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b :title="'灭敌 ' + ezfy.fmtN(ezfy.pvpRank.mine.kills)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.kills) }}</b> · 战损 <b :title="'战损 ' + ezfy.fmtN(ezfy.pvpRank.mine.losses)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.losses) }}</b>

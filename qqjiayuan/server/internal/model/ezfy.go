@@ -595,6 +595,11 @@ type EzfyCfgLimit struct {
 	PowerTroopType     int     `gorm:"default:300;comment:战力每兵种类型" json:"power_troop_type"`
 	PowerTroopPow      float64 `gorm:"default:0.8;comment:战力兵种数量幂次" json:"power_troop_pow"`
 	PowerCompressPow   float64 `gorm:"default:0.5;comment:战力总量压缩幂次(总和^此值, 默认0.5)" json:"power_compress_pow"`
+
+	// ★ 2026-10-14 风云榜统计开关（1 = 开：玩家对战结算写周榜；0 = 关：完全不做统计）。
+	//   管理端「排行榜 → 风云榜」页可直接开关；关闭后新战斗不再累计，
+	//   历史周榜数据保留（重新开启即继续统计，不清历史）。
+	PvpRankOn int `gorm:"default:1;comment:风云榜统计开关(1开0关)" json:"pvp_rank_on"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -825,6 +830,22 @@ type EzfyPvpFoe struct {
 }
 
 func (EzfyPvpFoe) TableName() string { return "ezfy_pvp_foe" }
+
+// EzfyPvpExclude 风云榜「不参与排名」名单（★ 2026-10-14）
+//
+// 管理端「排行榜 → 风云榜」页的**操作列**可把某玩家设为「不参与排名」：
+// 之后榜单不再展示 TA 的名次（统计照常不入榜），从名单移除即恢复。
+// 用 upsert 语义（user_id 唯一），删除 = 恢复参与排名。
+type EzfyPvpExclude struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_pvp_exclude_user;comment:玩家ID" json:"user_id"`
+	Nickname  string    `gorm:"type:varchar(20);comment:昵称快照(便于后台识别)" json:"nickname"`
+	Reason    string    `gorm:"type:varchar(100);comment:排除原因(后台备注)" json:"reason"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyPvpExclude) TableName() string { return "ezfy_pvp_exclude" }
 
 // EzfyAccount 二战征途独立登录账号
 //

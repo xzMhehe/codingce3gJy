@@ -163,9 +163,54 @@ ON DUPLICATE KEY UPDATE
 		week, uid, nick, corps, wins, kills, losses, points)
 }
 
+// ezfyPvpRankOn 风云榜统计开关（读 ezfy_cfg_limit.pvp_rank_on，管理端「排行榜 → 风云榜」可开关）。
+//
+// ★ 2026-10-14 用户需求「风云榜 tab 能够选择开启关闭，开启就是现在这样，关闭就是不进行统计」。
+//   · 开（1）= 战斗结算写周榜（现状）；
+//   · 关（0）= **完全不做统计**：不写 ezfy_pvp_week / ezfy_pvp_foe，玩家端榜单为空。
+//   历史数据保留，重新开启即继续累计（不清历史）。
+//   ⚠️ 读的是缓存里的 limit，开关是「0 合法」的值 → 必须确认配置已加载（ready()），
+//     否则未加载时会读到零值 0 → 把「开」误判成「关」（/war/status 踩过同款坑）。
+func ezfyPvpRankOn() bool {
+	if !ezfyCfg.ready() {
+		return true // 配置未加载 → 按默认「开」，避免误判成关
+	}
+	return ezfyCfg.limit.PvpRankOn != 0
+}
+
+// pvpExcludedSet 取「不参与排名」名单（管理端操作列维护），返回 user_id 集合。
+//
+// ★ 2026-10-14：榜单查询时把名单内玩家过滤掉（统计照常不入榜 → 「标记排除，不显示在榜」）。
+func pvpExcludedSet(db *gorm.DB) map[uint]bool {
+	var ids []uint
+	db.Model(&model.EzfyPvpExclude{}).Pluck("user_id", &ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	set := make(map[uint]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
+}
+
+// pvpIsExcluded 单个玩家是否在「不参与排名」名单里。
+func pvpIsExcluded(db *gorm.DB, uid uint) bool {
+	if uid == 0 {
+		return false
+	}
+	var n int64
+	db.Model(&model.EzfyPvpExclude{}).Where("user_id = ?", uid).Count(&n)
+	return n > 0
+}
+
 // accumPvpWeek 一次玩家对战结算 → 攻守双方各写一条风云榜战绩。
 // br 为已定局的战斗结果，win=攻方是否获胜，draw=是否平局。
 func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattleResult, win, draw bool) {
+	// ★ 2026-10-14 风云榜统计开关关闭 → 完全不做统计（不写榜、不记对手封顶）
+	if !ezfyPvpRankOn() {
+		return
+	}
 	if atkUID == 0 || defUID == 0 || atkUID == defUID {
 		return
 	}
@@ -232,6 +277,12 @@ func (h *EzfyHandler) PvpRank(c *gin.Context) {
 	if week == "" {
 		week = ezfyPvpWeekOf(time.Now())
 	}
+	enabled := ezfyPvpRankOn()
+	// ★ 2026-10-14 统计关闭时不展示榜单（前端显示「暂未开启」），但接口仍正常返回不报错。
+	if !enabled {
+		resp.OK(c, gin.H{"week": week, "weeks": []string{}, "ranks": []gin.H{}, "mine": gin.H{}, "enabled": false})
+		return
+	}
 	// 最近 12 个有数据的周（倒序，周串定长 → 字典序即时间序）
 	var weeks []string
 	h.DB.Model(&model.EzfyPvpWeek{}).Distinct("week").Order("week DESC").Limit(12).Pluck("week", &weeks)
@@ -247,26 +298,54 @@ func (h *EzfyHandler) PvpRank(c *gin.Context) {
 		})
 	}
 	// 本人本周战绩（未上榜也返回，供前端「我的战绩」展示）
+	// ★ 2026-10-14 被设为「不参与排名」的玩家不再返回榜单名次，但自己的战绩仍展示（提示已排除）。
 	mine := gin.H{}
-	var me model.EzfyPvpWeek
-	if err := h.DB.Where("week = ? AND user_id = ?", week, uid).First(&me).Error; err == nil {
-		mine = gin.H{
-			"user_id": me.UserID, "name": me.Nickname, "corps": me.Corps,
-			"points": me.Points, "battles": me.Battles, "wins": me.Wins, "kills": me.Kills, "losses": me.Losses,
-			"win_rate": pvpWinRate(me.Wins, me.Battles),
+	if !pvpIsExcluded(h.DB, uid) {
+		var me model.EzfyPvpWeek
+		if err := h.DB.Where("week = ? AND user_id = ?", week, uid).First(&me).Error; err == nil {
+			mine = gin.H{
+				"user_id": me.UserID, "name": me.Nickname, "corps": me.Corps,
+				"points": me.Points, "battles": me.Battles, "wins": me.Wins, "kills": me.Kills, "losses": me.Losses,
+				"win_rate": pvpWinRate(me.Wins, me.Battles),
+			}
 		}
 	}
-	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks, "mine": mine})
+	resp.OK(c, gin.H{"week": week, "weeks": weeks, "ranks": ranks, "mine": mine, "enabled": true})
 }
 
-// EzfyPvpRankRows 查询风云榜指定周（管理端/玩家端共用），**按积分降序**。
+// ezfyPvpRankRows 查询风云榜指定周（管理端/玩家端共用），**按积分降序**。
+//
+// ★ 2026-10-14：自动跳过「不参与排名」名单里的玩家（管理端操作列维护），
+// 名单内玩家即使有战绩也不出现在榜上。limit > 0 时在**过滤后**截断。
 func ezfyPvpRankRows(db *gorm.DB, week string, limit int) []model.EzfyPvpWeek {
-	var rows []model.EzfyPvpWeek
-	q := db.Where("week = ?", week).
-		Order("points DESC, kills DESC, wins DESC, losses ASC, user_id ASC")
+	q := db.Where("week = ?", week)
+	if ex := pvpExcludedSet(db); len(ex) > 0 {
+		ids := make([]uint, 0, len(ex))
+		for id := range ex {
+			ids = append(ids, id)
+		}
+		q = q.Where("user_id NOT IN ?", ids)
+	}
+	q = q.Order("points DESC, kills DESC, wins DESC, losses ASC, user_id ASC")
 	if limit > 0 {
+		// 过滤已在 SQL 层完成 → 直接 LIMIT 即「过滤后的前 N 名」
 		q = q.Limit(limit)
 	}
+	var rows []model.EzfyPvpWeek
 	q.Find(&rows)
 	return rows
+}
+
+// pvpExcludedRows 当前「不参与排名」名单（带昵称，管理端展示用）。
+func pvpExcludedRows(db *gorm.DB) []gin.H {
+	var rows []model.EzfyPvpExclude
+	db.Order("id DESC").Find(&rows)
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, gin.H{
+			"id": r.ID, "user_id": r.UserID, "name": r.Nickname, "reason": r.Reason,
+			"created_at": r.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	return out
 }

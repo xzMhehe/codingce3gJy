@@ -347,6 +347,11 @@
               <template slot="label">空闲人口每小时恢复量<el-tooltip placement="top" :content="tips.pop_recover_per_hour"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model="form.pop_recover_per_hour" :min="0" :max="1000000000" :step="1000" controls-position="right" style="width: 200px" />
             </el-form-item>
+            <!-- ★ 2026-10-14 风云榜统计开关（与「排行榜 → 风云榜」页的开关同一项，两处都能改） -->
+            <el-form-item>
+              <template slot="label">风云榜统计<el-tooltip placement="top" :content="tips.pvp_rank_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.pvp_rank_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ⑥ 军官升星 -->
@@ -445,6 +450,8 @@ export default {
         convene_pop_max: 0,
         // ★ 2026-10-13：空闲人口每小时恢复量（训练完人口不再瞬间归还，按此速度慢慢恢复，默认 1 万）
         pop_recover_per_hour: 10000,
+        // ★ 2026-10-14 风云榜统计开关（1 = 开：战斗结算写周榜；0 = 关：完全不统计）
+        pvp_rank_on: 1,
         officer_star_up_on: 1,
         officer_star_chance: 20,
         officer_star_attr_gain: 10, officer_star_max: 5,
@@ -569,6 +576,8 @@ export default {
         convene_pop_max: '玩家城市人口硬性上限，超过则禁止召集（0 = 不限）。即使「召集人口灵活配置」开着也受此限制',
         pop_recover_per_hour: '训练完的士兵占用的空闲人口不再瞬间归还，而是按此速率每小时慢慢恢复（默认 1 万）。' +
           '填 0 = 按默认 1 万/小时。玩家可用「移民法案」道具（2 钻石）瞬间恢复 10 万空闲人口',
+        pvp_rank_on: '开 = 玩家对战结算按自然周写入风云榜（现行为）；关 = 完全不统计（榜单为空，历史周榜保留，重新开启即继续累计）。' +
+          '与「排行榜 → 风云榜」页顶部的开关是同一项配置',
         officer_star_up_on: '开 = 可用星级徽章给军官升星；关 = 关闭升星功能',
         officer_star_chance: '每次升星的成功概率，失败同样消耗 1 枚星级徽章，默认 20',
         officer_star_attr_gain: '每升 1 星，军官三维属性各 +N，默认 10',
@@ -680,6 +689,9 @@ export default {
             convene_pop_max: pos(r.data.convene_pop_max, 0),
             // ★ 2026-10-13 空闲人口每小时恢复量（0 无意义 → 回落默认 1 万）
             pop_recover_per_hour: pos(r.data.pop_recover_per_hour, 10000),
+            // ★ 2026-10-14 风云榜统计开关：**0 合法 = 关闭统计**，不能用 pos()（会把 0 改回 1）
+            pvp_rank_on: (r.data.pvp_rank_on === undefined || r.data.pvp_rank_on === null)
+              ? 1 : Number(r.data.pvp_rank_on),
             officer_star_up_on: sw(r.data.officer_star_up_on),
             officer_star_chance: pos(r.data.officer_star_chance, 20),
             officer_star_attr_gain: pos(r.data.officer_star_attr_gain, 10),

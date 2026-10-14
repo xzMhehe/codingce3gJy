@@ -58,9 +58,14 @@ func seedEzfy(db *gorm.DB) {
 		}
 	}
 
-	// —— 纯代码维护：每次对齐 ——
+	// —— 科技：主表每次对齐；等级表**保护 effect_value**（见 seedEzfyTechLevels） ——
+	//
+	// ★★ 2026-10-14 线上事故：管理端把「治愈伤兵 Lv.10 效果数值」改成 50，
+	//   下次重启（含 air 热重启）`batch(UpdateAll)` 用 ezfy_cfg_gen.go 里的
+	//   内置默认（EffectValue=20 / Effect="伤兵恢复+20%"）整行覆盖 → 每次重启都变回 20。
+	//   修法：等级表不再无条件 UpdateAll，改为「只补缺 + 只保护 effect_value 一列」。
 	batch(ezfyEzfyCfgTech, "ezfy_cfg_tech")
-	batch(ezfyEzfyCfgTechLevel, "ezfy_cfg_tech_level")
+	seedEzfyTechLevels(db)
 	// ★ 野地类型管理端可编辑（守军 + 守军军官 officer_id），必须只补缺不覆盖，
 	//   否则每次重启会把管理端/守将补缺的 officer_id 冲回 0（2026-09-24 野地军官需求）。
 	batchKeep(ezfyEzfyCfgWildland, "ezfy_cfg_wildland")
@@ -112,6 +117,61 @@ func seedEzfy(db *gorm.DB) {
 	fixEzfySignIndex(db)
 
 	EnsureEzfyIndexes(db)
+}
+
+// seedEzfyTechLevels 科技等级配置种子（★ 2026-10-14 起：保护管理端维护的 effect_value）
+//
+// 原实现是 `batch(UpdateAll)` —— 每次启动用 ezfy_cfg_gen.go 的内置默认**整行覆盖**。
+// 管理端在「科技管理 → 等级配置 → 效果数值」里改过的值（如治愈伤兵 Lv.10 = 50）
+// 会在每次重启时被冲回内置默认值，用户反馈「改了 50，每次重启就变回去」。
+//
+// 现在按列拆开写：
+//   - 行不存在 → 整行插入内置默认（新库/新科技照常初始化）；
+//   - 行已存在 → 只对齐「不可由管理端维护」的列（等级/资源花费/研究时间），
+//     **effect / effect_value 一律不动** —— 由管理端独家维护。
+//
+// 幂等：靠 (tech_id, level) 唯一性逐行判断，重复启动无副作用。
+func seedEzfyTechLevels(db *gorm.DB) {
+	type key struct{ techId, level int }
+	existing := map[key]bool{}
+	var ids []struct {
+		TechId int
+		Level  int
+	}
+	if err := db.Model(&model.EzfyCfgTechLevel{}).Select("tech_id, level").Scan(&ids).Error; err != nil {
+		log.Printf("ezfy 科技等级种子：读取现有行失败: %v", err)
+		return
+	}
+	for _, r := range ids {
+		existing[key{r.TechId, r.Level}] = true
+	}
+	var missing []model.EzfyCfgTechLevel
+	for _, l := range ezfyEzfyCfgTechLevel {
+		if existing[key{l.TechId, l.Level}] {
+			continue
+		}
+		missing = append(missing, l)
+	}
+	if len(missing) > 0 {
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).
+			CreateInBatches(missing, 200).Error; err != nil {
+			log.Printf("ezfy 科技等级种子补缺失败: %v", err)
+		}
+	}
+	// 已有行：只对齐资源花费/研究时间（**不含 effect / effect_value**，避免覆盖管理端配置）
+	for _, l := range ezfyEzfyCfgTechLevel {
+		if !existing[key{l.TechId, l.Level}] {
+			continue
+		}
+		if err := db.Model(&model.EzfyCfgTechLevel{}).
+			Where("tech_id = ? AND level = ?", l.TechId, l.Level).
+			Updates(map[string]interface{}{
+				"food": l.Food, "steel": l.Steel, "oil": l.Oil,
+				"rare": l.Rare, "gold": l.Gold, "research_time": l.ResearchTime,
+			}).Error; err != nil {
+			log.Printf("ezfy 科技等级种子对齐失败 tech=%d lv=%d: %v", l.TechId, l.Level, err)
+		}
+	}
 }
 
 // EnsureEzfyIndexes 幂等补建高频查询所需的索引。

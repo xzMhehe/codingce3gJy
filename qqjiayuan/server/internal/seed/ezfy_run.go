@@ -66,6 +66,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyUserChestPity{}, // ★ 2026-10-14 玩家宝箱奖池保底进度（min_draws）
 	&model.EzfyPvpWeek{}, // ★ 2026-10-14 风云榜（每周玩家对战战绩）
 	&model.EzfyPvpFoe{}, // ★ 2026-10-14 风云榜同对手积分封顶（防小号互刷）
+	&model.EzfyPvpExclude{}, // ★ 2026-10-14 风云榜「不参与排名」名单
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）
