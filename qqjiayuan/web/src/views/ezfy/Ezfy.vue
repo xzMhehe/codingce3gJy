@@ -311,6 +311,12 @@
       <!-- ★ 2026-10-09 新增宝箱内容页（chestview，查看奖池+单项详情） -->
       <ezfy-shop v-else-if="cur === 'chestopen' || cur === 'chestview'"></ezfy-shop>
 
+      <!-- ============ 商城·宝箱购买页（chestbuy，买进背包不抽奖） ============ -->
+      <ezfy-shop v-else-if="cur === 'chestbuy'"></ezfy-shop>
+
+      <!-- ============ 我的待开宝箱（chestbag） ============ -->
+      <ezfy-shop v-else-if="cur === 'chestbag'"></ezfy-shop>
+
       <!-- ============ 交易行(exchange) ============ -->
       <!-- ============ exchange —— 已拆到 modules/Ezfyshop.vue ============ -->
       <ezfy-shop v-else-if="cur === 'exchange'"></ezfy-shop>
