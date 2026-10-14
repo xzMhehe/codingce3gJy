@@ -35,9 +35,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax:      ezfyConvenePopMaxDef,
+		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		PopRecoverPerHour:  ezfyPopRecoverPerHourDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -358,6 +358,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径，100 = 100% = 原价，节假日调低 = 便宜）
 		SpeedTrainRate *float64 `json:"speed_train_rate"`
 		WoundHealRate  *float64 `json:"wound_heal_rate"`
+		// ★ 2026-10-14 伤兵营「钻石一键恢复全部伤兵」单价（默认 100 钻；0 无意义 → 管理端只收 >= 1）
+		HealAllDiamond *int64 `json:"heal_all_diamond"`
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax        *int64 `json:"troop_max"`
 		WoundExpireDays *int   `json:"wound_expire_days"`
@@ -406,9 +408,9 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-26：召集消耗粮食 / 获得人口（缺行时给默认 10 万）
 		ConveneFoodCost: ezfyConveneFoodCostDef, ConvenePopGain: ezfyConvenePopGainDef,
 		// ★ 2026-09-26：召集硬性人口上限（缺行时默认 0 = 不限）
-		ConvenePopMax:      ezfyConvenePopMaxDef,
+		ConvenePopMax: ezfyConvenePopMaxDef,
 		// ★ 2026-10-13 空闲人口每小时恢复量（缺行时默认 1 万）
-		PopRecoverPerHour: ezfyPopRecoverPerHourDef,
+		PopRecoverPerHour:  ezfyPopRecoverPerHourDef,
 		ConquerFeelingsMax: ezfyConquerFeelingsDef, LootFeelings: ezfyLootFeelingsDef,
 		RansomCost: ezfyRansomCostDefault,
 		// ★ 2026-09-28 安抚参数（默认 5万黄金 / 民怨-2 / 民心+1 / 15 分钟冷却）
@@ -651,6 +653,14 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		}
 		*dst = *v
 		return true
+	}
+	// ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵单价：0 无意义 → 只收 >= 1
+	if in.HealAllDiamond != nil {
+		if *in.HealAllDiamond < 1 {
+			resp.ParamError(c, "伤兵营钻石一键恢复单价至少为 1")
+			return
+		}
+		lim.HealAllDiamond = *in.HealAllDiamond
 	}
 	if !setPos(in.ConquerFeelingsMax, &lim.ConquerFeelingsMax, "征服单次扣民心") {
 		return
@@ -1257,6 +1267,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率同样用 map 显式写
 		"speed_train_rate": lim.SpeedTrainRate,
 		"wound_heal_rate":  lim.WoundHealRate,
+		// ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵单价（默认 100 钻）
+		"heal_all_diamond": lim.HealAllDiamond,
 		// ★ 2026-09-23：兵力上限（bigint）/ 伤兵存活天数，同样用 map 显式写，避开零值被吞的坑
 		"troop_max":         lim.TroopMax,
 		"wound_expire_days": lim.WoundExpireDays,

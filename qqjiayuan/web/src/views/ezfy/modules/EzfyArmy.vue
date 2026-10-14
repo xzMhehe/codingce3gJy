@@ -189,6 +189,10 @@
             合计 <b>{{ ezfy.fmtN(ezfy.woundedHealCost(0)) }}</b> {{ ezfy.resNames.gold }}
             <button @click="ezfy.doRecoverAll(0)">[全部恢复]</button>
           </div>
+          <!-- ★ 2026-10-14 钻石一键恢复全部伤兵（单价走二战系统配置 heal_all_diamond，默认 100 钻，账号级钻石余额） -->
+          <div class="old-line" v-if="ezfy.woundedList(0).length">
+            合计 <b>{{ ezfy.healAllDiamond || 100 }}</b> 钻石 <button @click="ezfy.doRecoverAllDiamond(0)">[全部恢复]</button>
+          </div>
           </div><!-- /伤兵营 tab -->
           <div v-show="ezfy.hqTab === 3">
           <div class="panel-title">逃兵营</div>

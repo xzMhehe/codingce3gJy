@@ -106,6 +106,10 @@
               <template slot="label">伤兵恢复黄金折扣率(%)<el-tooltip placement="top" :content="tips.wound_heal_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.wound_heal_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
             </el-form-item>
+            <el-form-item>
+              <template slot="label">伤兵营钻石恢复(钻/次)<el-tooltip placement="top" :content="tips.heal_all_diamond"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-input-number v-model.number="form.heal_all_diamond" :min="1" controls-position="right" style="width:180px" />
+            </el-form-item>
           </el-tab-pane>
 
           <!-- ③ 野地与行军 -->
@@ -428,7 +432,7 @@ export default {
         recruit_cycle_mode: 2,
         // ★ 2026-10-08 新玩家落地洲（默认欧洲）
         default_continent: 1,
-        speed_train_rate: 100, wound_heal_rate: 100,
+        speed_train_rate: 100, wound_heal_rate: 100, heal_all_diamond: 100,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
         res_max_rare: 2100000000, res_max_gold: 2100000000,
@@ -496,6 +500,7 @@ export default {
         officer_salary_per_level: '每名军官每小时消耗「等级 × 该值」黄金，随资源结算一并扣除，默认 20',
         wound_heal_divisor: '恢复 1 个伤兵消耗「该兵种总造价 ÷ 该值」黄金（最低 1 黄金），默认 50',
         wound_heal_rate: '在上一条算出的恢复费用上再打折：100 = 原价、50 = 半价，默认 100',
+        heal_all_diamond: '伤兵营「一键恢复全部伤兵」的钻石单价（不按伤兵数量计，一次固定扣该数值），默认 100',
         wild_troop_mult: '野地 / 海野 / 寇城守军兵力 = 配置值 × 该倍数（可填小数，2 = 翻倍），默认 10',
         wild_res_mult: '野地 / 海野 / 寇城战斗胜利后的战利品资源 × 该倍数（可填小数，2 = 翻倍，5 = 五倍），默认 10。' +
           '只影响「打赢的战利品」，不含驻守采集的产出；地图上选中野地时的「胜利奖励」会同步显示放大后的数值。',
@@ -597,6 +602,7 @@ export default {
             treasure_max: pos(r.data.treasure_max, 5000),
             troop_max: pos(r.data.troop_max, 1000000000),
             wound_expire_days: pos(r.data.wound_expire_days, 5),
+            heal_all_diamond: pos(r.data.heal_all_diamond, 100),
             dispatch_period_h: pos(r.data.dispatch_period_h, 4),
             march_speed_bonus: (r.data.march_speed_bonus === undefined || r.data.march_speed_bonus === null)
               ? 0 : Number(r.data.march_speed_bonus),

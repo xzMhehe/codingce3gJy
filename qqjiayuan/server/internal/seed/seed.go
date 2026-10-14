@@ -2917,7 +2917,8 @@ func EnsureEzfyVisitTable(db *gorm.DB) {
 // EnsureEzfyUserChestTable 幂等补建 ezfy_user_chest 表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-14 待开宝箱同 hazard：新表只靠 AutoMigrate 建，skip 分支会跳过它
-//   → 共享库上「发放宝箱/开箱」直接报表不存在。与 EnsureEzfyVisitTable 同款，HasTable 幂等。
+//
+//	→ 共享库上「发放宝箱/开箱」直接报表不存在。与 EnsureEzfyVisitTable 同款，HasTable 幂等。
 func EnsureEzfyUserChestTable(db *gorm.DB) {
 	if db.Migrator().HasTable(&model.EzfyUserChest{}) {
 		return
@@ -2942,7 +2943,8 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 // EnsureEzfyChestItemMinDraws 幂等补 ezfy_cfg_chest_item.min_draws 列（skip 分支也必须能补）。
 //
 // ★ 2026-10-14 奖池「保底解锁次数」：存量库（尤其多机共享库 skip 分支）只靠 AutoMigrate
-//   建列会漏 → HasColumn 幂等补，默认 1（不限制）。
+//
+//	建列会漏 → HasColumn 幂等补，默认 1（不限制）。
 func EnsureEzfyChestItemMinDraws(db *gorm.DB) {
 	if !db.Migrator().HasTable("ezfy_cfg_chest_item") {
 		return
@@ -3039,6 +3041,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN ransom_cost int DEFAULT 500")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET ransom_cost = 500 WHERE ransom_cost IS NULL OR ransom_cost <= 0")
+	// ★ 2026-10-14 伤兵营「钻石一键恢复全部伤兵」单价可配置：默认 100 钻，0 无意义 → 统一回落 100
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "heal_all_diamond") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN heal_all_diamond int DEFAULT 100")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET heal_all_diamond = 100 WHERE heal_all_diamond IS NULL OR heal_all_diamond <= 0")
 	// ★ 2026-10-08 新玩家落地洲可配置：存量库补 default_continent 列（默认欧洲=1，0/越界 → 回落欧洲）
 	if !db.Migrator().HasColumn("ezfy_cfg_limit", "default_continent") {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN default_continent int DEFAULT 1")

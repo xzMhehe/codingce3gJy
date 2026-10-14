@@ -507,8 +507,10 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	data := gin.H{
 		"city": city, "troops": troopViews, "queues": queues, "wounded": woundViews,
 		"pop": city.Pop, "pop_used": popUsed, "cfgs": cfgViews,
+		// ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵的单价（系统配置可配，默认 100）
+		"heal_all_diamond": ezfyHealAllDiamondCost(),
 		// ★ 2026-10-13 待恢复人口（空闲人口 = 人口 − 占用 − 待恢复，见 ezfyPopFree）
-		"pop_recover": city.PopRecover,
+		"pop_recover":        city.PopRecover,
 		"wall_level":         wallLevel,
 		"train_discount":     discount,
 		"defence_space":      defSpace,
@@ -802,11 +804,12 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 伤兵恢复 → 军队页缓存失效
 	var req struct {
-		CityId  int64 `json:"city_id"`
-		TroopId int   `json:"troop_id"`
-		Type    int   `json:"type"`
-		All     bool  `json:"all"`
-		Count   int64 `json:"count"` // ★ 2026-10-06 按数量恢复：>0 且小于在营数 = 只恢复指定数量；0/缺省 = 全部
+		CityId     int64 `json:"city_id"`
+		TroopId    int   `json:"troop_id"`
+		Type       int   `json:"type"`
+		All        bool  `json:"all"`
+		Count      int64 `json:"count"`       // ★ 2026-10-06 按数量恢复：>0 且小于在营数 = 只恢复指定数量；0/缺省 = 全部
+		UseDiamond bool  `json:"use_diamond"` // ★ 2026-10-14 钻石一键恢复全部伤兵（固定 500 钻）
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -815,6 +818,11 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 	h.cfgs()
 	city := h.bodyCity(uid, req.CityId)
 	if req.All {
+		if req.UseDiamond {
+			// ★ 2026-10-14 「伤兵营 500 钻石恢复全部伤兵」：钻石=账号级货币，校验口径与黄金版一致
+			h.done(c, h.recoverAllWoundedByDiamond(city, req.Type), "伤兵已全部恢复")
+			return
+		}
 		h.done(c, h.recoverAllWounded(city, req.Type), "伤兵已全部恢复")
 		return
 	}
@@ -3677,7 +3685,7 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		}
 		views = append(views, gin.H{"id": r.ID, "title": r.Title, "report_type": r.ReportType,
 			"type_name": ezfyTypeNameStored(r), "is_read": r.IsRead, "order_id": r.OrderId,
-			"city_id": r.CityId,
+			"city_id":  r.CityId,
 			"category": cat, "category_name": ezfyReportCategoryName(cat),
 			"created_at": r.CreatedAt})
 		if r.IsRead == 0 {

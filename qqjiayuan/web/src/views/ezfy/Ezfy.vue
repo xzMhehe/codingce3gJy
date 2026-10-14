@@ -744,6 +744,7 @@ export default {
       equipTab: 'my',                                      // 装备页子tab: my我的装备 / set我的套装 / all装备图鉴
       hqTab: 0,                                          // ★ 司令部子tab: 0兵种配置 / 1出征队列 / 2伤兵营 / 3逃兵营 / 4预设编队 (localStorage 记忆)
       woundNums: {},                                     // ★ 2026-10-06 伤兵营/逃兵营行内「恢复数量」输入（key=伤兵记录id，0/空=全部）
+      healAllDiamond: 100,                // ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵单价（系统配置下发，默认100）
       // ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力，不含目标/随军资源/宿营）
       presets: [],                                       // 预设列表 [{id,name,officer,gather,troops,troop_total}]
       presetSel: 0,                                      // 出征页「预设编队」下拉选中 id (0=不使用)
@@ -2687,6 +2688,8 @@ export default {
           // ★ 待恢复人口（训练完的人口慢慢恢复的那部分，见 freePop）
           this.popRecover = r.data.pop_recover || 0
           this.cityPop = r.data.pop || 0
+          // ★ 2026-10-14 伤兵营钻石一键恢复全部伤兵单价（系统配置下发，默认100）
+          this.healAllDiamond = r.data.heal_all_diamond || 100
           if (r.data.cfgs.length && !this.trainSel) this.trainSel = null
           // 司令部配置表按兵种建键, 兵种数据后到时要补齐, 否则渲染会取到 undefined
           this.ensureTargetCfg()
@@ -4968,6 +4971,13 @@ export default {
     doRecoverAll (t) {
       api.post('/games/ezfy/troops/recover', { all: true, type: t })
         .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
+    },
+    // ★ 2026-10-14 钻石一键恢复全部伤兵（单价由二战系统配置下发 heal_all_diamond，默认 100 钻）
+    doRecoverAllDiamond (t) {
+      const cost = this.healAllDiamond || 100
+      if (!window.confirm('花费 ' + cost + ' 钻石恢复全部伤兵？')) return
+      api.post('/games/ezfy/troops/recover', { all: true, type: t, use_diamond: true })
+        .then(r => this.alert(r, '伤兵已全部恢复', () => { this.mallDiamond = null; this.loadTroops() }))
     },
     // ---- 科技 ----
     // ★ 2026-09-28 科技列表不显示资源消耗/前置条件，点[研究]进详情页(techpre)查看后再确认

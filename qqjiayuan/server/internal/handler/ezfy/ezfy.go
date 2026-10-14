@@ -2772,6 +2772,56 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 	return ""
 }
 
+// ezfyHealAllDiamondCost 伤兵营「钻石一键恢复全部伤兵」的单价（★ 2026-10-14 系统配置可配，
+// 默认 100 钻；0 无意义或未加载 → 回落 100）
+func ezfyHealAllDiamondCost() int64 {
+	if c := ezfyLimit().HealAllDiamond; c >= 1 {
+		return c
+	}
+	return ezfyHealAllDiamondDefault
+}
+
+// ezfyHealAllDiamondDefault 伤兵营钻石一键恢复全部伤兵的默认单价（100 钻）
+const ezfyHealAllDiamondDefault int64 = 100
+
+// recoverAllWoundedByDiamond 花**钻石**一键恢复全部伤兵（与黄金版 recoverAllWounded 同校验口径）。
+//
+// 钻石是**账号级**货币（EzfyProfile.Diamond，跨城共享），从这里直接原子扣 + 记流水；
+// 校验顺序：过期伤兵过滤 → 兵力上限 → 钻石余额，全部通过才落库，不产生「扣了钱没恢复」。
+func (h *EzfyHandler) recoverAllWoundedByDiamond(city *model.EzfyCity, wtype int) string {
+	var list []model.EzfyWounded
+	h.DB.Where("city_id = ? AND type = ?", city.ID, wtype).Find(&list)
+	list = h.filterExpiredWounded(list)
+	max := ezfyTroopMaxCfg()
+	var pending int64
+	for _, w := range list {
+		if w.Count > 0 {
+			pending = ezfySafeAdd(pending, w.Count, max)
+		}
+	}
+	if pending <= 0 {
+		return "兵营中空空如也"
+	}
+	if cur := h.cityTroopTotal(city.ID); cur >= max || pending > max-cur {
+		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d, 待恢复%d)", max, cur, pending)
+	}
+	// 钻石原子扣（并发也只扣成功一次），失败不恢复任何伤兵
+	prof := h.ensureProfile(city.UserID)
+	cost := ezfyHealAllDiamondCost()
+	if !h.ezfySpendDiamond(prof.ID, cost) {
+		return fmt.Sprintf("钻石不足: 需要%d钻石, 当前余额%d", cost, prof.Diamond)
+	}
+	h.logDiamond(city.UserID, -cost, "伤兵全部恢复(钻石)")
+	for _, w := range list {
+		if w.Count <= 0 {
+			continue
+		}
+		h.addTroop(city.ID, w.TroopId, w.Count)
+		h.DB.Delete(&w)
+	}
+	return ""
+}
+
 // ============ 科技 ============
 
 // researchTech 开始研究。
@@ -3855,14 +3905,14 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		// ★ 2026-10-13 顶部导航「军情」的感叹号角标：未看的**军情警讯(1)+战斗报告(2)** 数量
 		//   （不含采集/运输/将领升级这类「其他」战报 —— 那些不该让导航闪感叹号）。
 		unreadWarns int64
-		popUsed       int64
-		protected     bool
-		boost         bool
-		boostEff      *model.EzfyCityEffect
-		mayorPct      int
-		gatherHave    int
-		acct          string
-		ulv, uexp     int
+		popUsed     int64
+		protected   bool
+		boost       bool
+		boostEff    *model.EzfyCityEffect
+		mayorPct    int
+		gatherHave  int
+		acct        string
+		ulv, uexp   int
 	)
 
 	// ★ 2026-10-03 性能：以下只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup

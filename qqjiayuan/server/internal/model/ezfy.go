@@ -552,6 +552,9 @@ type EzfyCfgLimit struct {
 	//   默认 100 = 100% = 原价；调低 = 恢复便宜。0 无意义 → 回落 100。
 	WoundHealRate float64 `gorm:"default:100;comment:伤兵治疗比率" json:"wound_heal_rate"`
 
+	// ★ 2026-10-14 伤兵营「钻石一键恢复全部伤兵」单价（默认 100 钻，0 无意义 → 回落 100）
+	HealAllDiamond int64 `gorm:"default:100;comment:伤兵营钻石一键恢复全部伤兵单价" json:"heal_all_diamond"`
+
 	// ============ 数值安全卡控（2026-09-23 线上「负数兵力」事故）============
 	//
 	// ★ 事故现象：玩家「总兵力」显示 -8843547888967622000 —— int64 正向溢出翻负。
