@@ -811,6 +811,8 @@ export default {
       // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
       chestData: { chests: [], gold: 0, diamond: 0 },
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [], chestLastCost: '',
+      // ★ 2026-10-14 我的待开宝箱（管理端发放的，自己开箱）
+      chestBag: { list: [], total: 0 },
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
@@ -2447,12 +2449,14 @@ export default {
       else if (t === 'mall') {
         this.loadMall(true)
         if (this.mallTab === 'equipment') this.loadEquipShop()
-        if (this.mallTab === 'chest') this.loadChests()
+        if (this.mallTab === 'chest') { this.loadChests(); this.loadChestBag() }
       }
       // ★ 2026-10-09 宝箱内容页：数据还没拉到就拉一次（刷新/直接带 URL 进来时 chestData 是空的）
       else if (t === 'chestview') {
         if (!this.chestData.chests.length) this.loadChests()
       }
+      // ★ 2026-10-14 我的待开宝箱页：进页即拉
+      else if (t === 'chestbag') this.loadChestBag()
       else if (t === 'exchange') this.loadExchange()
       else if (t === 'corps') {
         // ★ 2026-09-25 进入军团页重置子栏缓存 → 再次进入时拉到最新数据；
@@ -3892,7 +3896,29 @@ export default {
     switchMallTab (tab) {
       this.mallTab = tab
       if (tab === 'equipment') this.loadEquipShop()
-      if (tab === 'chest') this.loadChests()
+      if (tab === 'chest') { this.loadChests(); this.loadChestBag() }
+    },
+    // ★ 2026-10-14 我的待开宝箱：管理端发放的宝箱在背包里，凑齐了来商城「宝箱」页打开
+    loadChestBag () {
+      api.get('/games/ezfy/chest/bag').then(r => {
+        if (r.code === 0) this.chestBag = r.data || { list: [], total: 0 }
+      })
+    },
+    // 开管理端发放的待开宝箱（不花钱，详情同购买开箱）
+    openBagChest (b) { this.runOpenBagChest(b, 1) },
+    quickOpenBagChest (b, n) { this.runOpenBagChest(b, n) },
+    runOpenBagChest (b, n) {
+      // 连点防抖：一次点击 = 一次开箱
+      this.once('chestBagOpen' + b.chest_id, () =>
+        api.post('/games/ezfy/chest/open-bag', { chest_id: b.chest_id, count: n }).then(r => {
+          if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
+          this.notify(r.msg || '开箱成功')
+          this.chestResult = (r.data && r.data.results) || []
+          // ★ 开箱结果就地展示（复用商城宝箱那套聚合着色）；刷新待开数量 + 背包（开出的道具/装备）
+          this.chestLastCost = ''
+          this.loadChestBag()
+          this.loadBag()
+        }))
     },
     // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
     loadChests () {

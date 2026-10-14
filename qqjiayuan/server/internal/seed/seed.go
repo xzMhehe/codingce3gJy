@@ -2914,6 +2914,19 @@ func EnsureEzfyVisitTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyUserChestTable 幂等补建 ezfy_user_chest 表（skip 分支也必须能建出来）。
+//
+// ★ 2026-10-14 待开宝箱同 hazard：新表只靠 AutoMigrate 建，skip 分支会跳过它
+//   → 共享库上「发放宝箱/开箱」直接报表不存在。与 EnsureEzfyVisitTable 同款，HasTable 幂等。
+func EnsureEzfyUserChestTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyUserChest{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyUserChest{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_user_chest 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyAccountTable 幂等补建 ezfy_account 二战独立登录账号表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-12 二战独立账号：只靠 AutoMigrate 建表的表，在「多机共享库 seed.skip:

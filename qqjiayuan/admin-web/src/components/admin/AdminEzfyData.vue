@@ -32,6 +32,8 @@
         <el-button v-if="!isReadOnly" type="success" icon="el-icon-plus" @click="openCreate">新增</el-button>
         <!-- ★ 道具配置专属：发放道具（按玩家昵称/游戏ID搜索目标，道具入背包），2026-09-26 从玩家信息管理移到这里 -->
         <el-button v-if="table === 'items'" type="warning" plain icon="el-icon-present" @click="openItemGrant">发放道具</el-button>
+        <!-- ★ 2026-10-14 宝箱配置专属：发放宝箱（待开宝箱入玩家背包，玩家在游戏内「我的宝箱」自己开箱） -->
+        <el-button v-if="table === 'chests'" type="warning" plain icon="el-icon-gift" @click="openChestGrant">发放宝箱</el-button>
       </div>
       <!-- ★★ 2026-10-13 第三轮列宽口径 ——「全列弹性 min-width，表格铺满容器」。
            前两轮的教训：
@@ -160,6 +162,42 @@
           <el-button size="small" :type="grantAll ? 'danger' : 'primary'" :loading="grantSaving" @click="doItemGrant">
             {{ grantAll ? '全员发放' : '发 放' }}
           </el-button>
+        </div>
+      </el-dialog>
+
+      <!-- ★ 2026-10-14 发放宝箱：指定玩家，待开宝箱入背包（玩家在游戏内「我的宝箱」里自己开箱，与发放道具同款交互） -->
+      <el-dialog title="发放宝箱" :visible.sync="chGrantDlg" width="580px" :close-on-click-modal="false">
+        <el-form label-width="90px" size="small">
+          <el-form-item label="发放对象">
+            <div>
+              <el-input v-model="grantPlayer" placeholder="玩家昵称 / 游戏ID" clearable style="width:210px"
+                        @keyup.enter.native="searchGrantPlayer" />
+              <el-button size="small" type="primary" plain icon="el-icon-search" @click="searchGrantPlayer">搜索</el-button>
+            </div>
+            <el-select v-if="grantPlayers.length" v-model="grantUserId" placeholder="在搜索结果中选择玩家"
+                       style="margin-top:6px;width:100%"
+                       :filterable="grantPlayers.length > 1" default-first-option>
+              <el-option v-for="p in grantPlayers" :key="'cg' + p.user_id"
+                         :label="p.nickname + '（ID:' + p.user_id + (p.home_num ? ' / 家园:' + p.home_num : '') + '）'"
+                         :value="p.user_id" />
+            </el-select>
+            <div v-if="grantUserId" class="grant-target">已选：{{ grantTargetName }}</div>
+          </el-form-item>
+          <el-form-item label="宝箱">
+            <div v-for="(it, i) in chGrantItems" :key="i" class="grant-item-row">
+              <el-select v-model="it.chest_id" filterable placeholder="选择宝箱" style="width:230px">
+                <el-option v-for="o in chGrantOpts" :key="'cgc' + o.id" :label="o.id + ' — ' + o.name" :value="o.id" />
+              </el-select>
+              <span class="grant-x">×</span>
+              <el-input-number v-model.number="it.count" :min="1" :max="9999" controls-position="right" style="width:110px" />
+              <el-button type="text" class="danger-btn" @click="chGrantItems.splice(i, 1)">删除</el-button>
+            </div>
+            <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="chGrantItems.push({ chest_id: '', count: 1 })">添加宝箱</el-button>
+          </el-form-item>
+        </el-form>
+        <div slot="footer">
+          <el-button size="small" @click="chGrantDlg = false">取 消</el-button>
+          <el-button size="small" type="primary" :loading="chGrantSaving" @click="doChestGrant">发 放</el-button>
         </div>
       </el-dialog>
 
@@ -769,6 +807,9 @@ export default {
       grantItemOpts: [], grantItems: [],
       // ★ 2026-10-13 发放范围：false=指定玩家（原逻辑） true=全体玩家（全员发放）
       grantAll: false, grantAllTotal: 0,
+      // ★ 2026-10-14 发放宝箱对话框状态（目标玩家复用 grantPlayer/grantPlayers/grantUserId 搜索）
+      chGrantDlg: false, chGrantSaving: false,
+      chGrantOpts: [], chGrantItems: [],
       // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
       chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
       chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
@@ -998,9 +1039,29 @@ export default {
       this.grantSaving = true
       api.post('/admin/ezfy-item-grant', { player: String(target), items }).then(r => {
         this.grantSaving = false
-        if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.grantDlg = false }
-        else this.$message.error(r.msg || '发放失败')
+        if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.grantDlg = false } else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.grantSaving = false })
+    },
+    // ============ 宝箱配置 → 发放宝箱（待开宝箱入玩家背包，2026-10-14） ============
+    openChestGrant () {
+      this.chGrantDlg = true
+      this.grantPlayer = ''; this.grantPlayers = []; this.grantUserId = 0
+      this.chGrantItems = [{ chest_id: '', count: 1 }]
+      api.get('/admin/ezfy-chest-grant/options').then(r => {
+        if (r.code === 0) this.chGrantOpts = r.data.list || []
+      })
+    },
+    doChestGrant () {
+      const items = this.chGrantItems.filter(it => it.chest_id && it.count > 0)
+      if (!items.length) { this.$message.warning('请添加要发放的宝箱'); return }
+      const target = this.grantUserId || ((this.grantPlayer || '').trim())
+      if (!target) { this.$message.warning('请先搜索并选择要发放的玩家'); return }
+      this.chGrantSaving = true
+      api.post('/admin/ezfy-chest-grant', { player: String(target), items }).then(r => {
+        this.chGrantSaving = false
+        if (r.code === 0) { this.$message.success(r.data.msg || '发放成功'); this.chGrantDlg = false }
+        else this.$message.error(r.msg || '发放失败')
+      }).catch(() => { this.chGrantSaving = false })
     },
     // ============ 套装装备配置（宝箱）→ 奖池管理（2026-09-27 从「军官管理 → 宝箱」迁来） ============
     openChestPool (row) {

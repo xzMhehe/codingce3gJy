@@ -304,6 +304,11 @@
                 </td>
               </tr>
             </table>
+            <!-- ★ 2026-10-14 我的待开宝箱入口：管理员发放的宝箱入「待开宝箱」，在这里进背包页开 -->
+            <div class="old-line" v-if="ezfy.chestBag.total > 0">
+              我的待开宝箱：<b class="green">{{ ezfy.chestBag.total }}</b> 个
+              <a href="javascript:;" @click="ezfy.go('chestbag')">[去开箱]</a>
+            </div>
             <div class="old-line gray" v-if="!ezfy.chestData.chests.length">(暂无上架宝箱，请等管理员在后台配置)</div>
             <div class="old-line gray">
               当前余额：{{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}
@@ -320,6 +325,33 @@
             </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('bag')">[背包]</a>
+          <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
+        </div>
+    </template>
+    <!-- ★ 2026-10-14 我的待开宝箱页（chestbag）：管理员发放的宝箱在背包里待开，不花钱直接开（复用商城开箱的奖池/抽奖/展示） -->
+    <template v-else-if="ezfy.cur === 'chestbag'">
+        <div class="panel">
+          <div class="panel-title">我的待开宝箱（共 {{ ezfy.chestBag.total }} 个）</div>
+          <div class="old-line gray">管理员发放的宝箱在这里开启，无需花费，直接开箱拿奖励。</div>
+          <div class="old-line" v-for="b in ezfy.chestBag.list" :key="'cb' + b.chest_id">
+            <b>{{ b.name }}</b>×{{ b.count }}
+            <span v-if="b.effect" class="gray">[{{ b.effect }}]</span>
+            <a href="javascript:;" @click="ezfy.openBagChest(b)">[开箱]</a>
+            <a v-if="b.count >= 5 && b.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 5)">[开5]</a>
+            <a v-if="b.count >= 10 && b.open_max >= 10" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 10)">[开10]</a>
+          </div>
+          <div class="old-line gray" v-if="!ezfy.chestBag.list.length">(没有待开宝箱，找管理员发放吧)</div>
+          <!-- ★ 开箱结果就地展示（与商城同款，聚合着色） -->
+          <div class="old-line" v-if="ezfy.chestResult.length">
+            <b class="green">开箱成功</b>
+            <template v-for="(g, i) in ezfy.chestResultGroups">
+              <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
+            </template>
+            <a href="javascript:;" @click="ezfy.chestResult = []">[收起]</a>
+          </div>
+          <div class="old-line">
+            <a href="javascript:;" @click="ezfy.go('mall'); ezfy.mallTab='chest'">[返回宝箱商城]</a>
+          </div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

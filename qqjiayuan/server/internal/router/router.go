@@ -752,6 +752,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 宝箱（钻石/黄金买，开箱按权重出套装件）
 				ezfyG.GET("/chest", ezfyH.ChestList)
 				ezfyG.POST("/chest/open", ezfyH.ChestOpen)
+				// ★ 2026-10-14 我的待开宝箱（管理端发放的，玩家自己开箱）
+				ezfyG.GET("/chest/bag", ezfyH.ChestBag)
+				ezfyG.POST("/chest/open-bag", ezfyH.ChestBagOpen)
 				// ★ 计谋（消耗信号弹）
 				ezfyG.GET("/schemes", ezfyH.Schemes)
 				ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
@@ -1295,6 +1298,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolBulkAdd)
 				admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolUpdate)
 				admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolDelete)
+				// ★ 2026-10-14 发放宝箱给玩家（入待开宝箱表，玩家在「我的宝箱」里自己开）
+				admin.GET("/ezfy-chest-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantOptions)
+				admin.POST("/ezfy-chest-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrant)
 				// ★ 计谋配置（消耗信号弹）
 				admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemes)
 				admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeCreate)

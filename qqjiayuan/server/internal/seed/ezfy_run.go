@@ -62,6 +62,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyMail{}, // ★ 2026-10-13 游戏内邮件（收件箱/系统邮件/发件箱）
 	&model.EzfyLoveCard{}, &model.EzfyConveneLog{}, // ★ 2026-10-11 召集埋点（活动监测）
 	&model.EzfyVisitLog{}, &model.EzfyAccount{}, // ★ 2026-10-12 访问记录 / 二战独立登录账号
+	&model.EzfyUserChest{}, // ★ 2026-10-14 玩家持有的未开宝箱（发放后自己开）
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）

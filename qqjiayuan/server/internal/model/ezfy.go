@@ -749,6 +749,22 @@ type EzfyVisitLog struct {
 
 func (EzfyVisitLog) TableName() string { return "ezfy_visit_log" }
 
+// EzfyUserChest 玩家持有的未开宝箱（管理端/活动发放，玩家在「我的宝箱」里自己开）
+//
+// ★ 2026-10-14 用户需求「宝箱也能发放给玩家」：购买的宝箱买了即开（不进背包），
+//   发放的宝箱进这张表（user_id + chest_id 唯一，数量累加），玩家在自己背包/宝箱页开箱。
+//   开箱走 ezfy_cfg_chest 的奖池，不扣钱、不扣全库库存（发放是运营行为，库存是商城口径）。
+type EzfyUserChest struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_ezfy_user_chest;comment:玩家ID" json:"user_id"`
+	ChestId   int       `gorm:"uniqueIndex:uk_ezfy_user_chest;comment:宝箱配置ID(ezfy_cfg_chest.id)" json:"chest_id"`
+	Count     int       `gorm:"default:1;comment:未开数量" json:"count"`
+	CreatedAt time.Time `gorm:"comment:获取时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyUserChest) TableName() string { return "ezfy_user_chest" }
+
 // EzfyAccount 二战征途独立登录账号
 //
 // ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。
