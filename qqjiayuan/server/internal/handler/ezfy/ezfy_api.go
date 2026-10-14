@@ -3317,6 +3317,7 @@ func ezfyReportCategory(title string) int {
 		strings.Contains(title, "野地丢失"):
 		return 1
 	case strings.HasPrefix(title, "侦查报告"),
+		strings.HasPrefix(title, "侦查失败"), // ★ 2026-10-14 侦查失败也要进战斗报告（用户：失败看不到）
 		strings.HasPrefix(title, "掠夺报告"),
 		strings.HasPrefix(title, "战斗报告"),
 		strings.HasPrefix(title, "征服报告"),
@@ -3352,6 +3353,8 @@ func EzfyReportTypeName(reportType int, title string) string {
 		return "预警"
 	case strings.HasPrefix(title, "侦查报告"):
 		return "侦查"
+	case strings.HasPrefix(title, "侦查失败"):
+		return "侦查失败"
 	case strings.HasPrefix(title, "掠夺报告"):
 		return "掠夺"
 	case strings.HasPrefix(title, "征服报告"):
@@ -3488,7 +3491,7 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 			COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
 				OR title LIKE '城市归还%'
 				OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '掠夺报告%'
+			COALESCE(SUM(CASE WHEN title LIKE '侦查报告%' OR title LIKE '侦查失败%' OR title LIKE '掠夺报告%'
 				OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
 				OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
 			FROM ezfy_report WHERE user_id = ? AND is_read = 0`
@@ -4291,7 +4294,7 @@ func ezfyReportCategoryCond(category int) string {
 	case 1:
 		return "(title LIKE '军情警报%' OR title LIKE '被侦查报告%' OR title LIKE '城市归还%' OR title LIKE '将领叛离%' OR title LIKE '%野地丢失%')"
 	case 2:
-		return "(title LIKE '侦查报告%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
+		return "(title LIKE '侦查报告%' OR title LIKE '侦查失败%' OR title LIKE '掠夺报告%' OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%' OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"
 	}
 	return ""
 }
