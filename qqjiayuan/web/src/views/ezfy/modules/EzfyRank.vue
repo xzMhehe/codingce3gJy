@@ -125,6 +125,7 @@
             <template v-if="ezfy.pvpRank.ranks && ezfy.pvpRank.ranks.length">
               <template v-for="r in ezfy.pvpRank.ranks">
                 <tr :key="'pv' + r.rank"
+                  :class="ezfy.rankRowCls(r.rank)"
                   :style="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id === r.user_id ? 'background:#fff7e6;font-weight:bold' : ''">
                   <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
                   <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
