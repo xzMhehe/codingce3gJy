@@ -30,8 +30,12 @@
         <el-table-column prop="kills" label="灭敌" width="100" align="right">
           <template slot-scope="{row}">{{ row.kills.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="losses" label="战损" width="100" align="right">
-          <template slot-scope="{row}">{{ row.losses.toLocaleString() }}</template>
+        <el-table-column prop="losses" label="战损比" width="90" align="center">
+          <template slot-scope="{row}">
+            <el-tooltip :content="'灭敌 ' + row.kills.toLocaleString() + ' ÷ 战损 ' + row.losses.toLocaleString()" placement="top">
+              <span>{{ row.losses > 0 ? Math.round((row.kills / row.losses) * 10) / 10 : (row.kills > 0 ? '∞' : '—') }}</span>
+            </el-tooltip>
+          </template>
         </el-table-column>
         <el-table-column prop="battles" label="参战" width="80" align="center" />
         <el-table-column prop="wins" label="胜场" width="80" align="center" />

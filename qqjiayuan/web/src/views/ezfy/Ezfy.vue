@@ -649,7 +649,7 @@ export default {
       welfareTab: 0,
       rankData: { prestige: [], troops: [], corps: [], ranks: [] },
       // ★ 排行页 tab: ranks军衔晋升表 / prestige军衔声望榜 / troops兵力榜 / corps军团榜
-      rankTab: 'ranks',
+      rankTab: 'pvp', // ★ 2026-10-14 风云榜置首，进排行页默认落点改风云榜
       // ★ 2026-10-14 风云榜（每周玩家对战战绩周榜）：pvpRank.week 有值 = 已加载当前周
       pvpRank: { week: '', weeks: [], ranks: [], mine: {} },
       pvpLoading: false,
