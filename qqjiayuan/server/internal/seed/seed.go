@@ -2927,6 +2927,34 @@ func EnsureEzfyUserChestTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyUserChestPityTable 幂等补建 ezfy_user_chest_pity 表（skip 分支也必须能建出来）。
+//
+// ★ 2026-10-14 保底进度表同 hazard：与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
+func EnsureEzfyUserChestPityTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyUserChestPity{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyUserChestPity{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_user_chest_pity 表失败: %v", err)
+	}
+}
+
+// EnsureEzfyChestItemMinDraws 幂等补 ezfy_cfg_chest_item.min_draws 列（skip 分支也必须能补）。
+//
+// ★ 2026-10-14 奖池「保底解锁次数」：存量库（尤其多机共享库 skip 分支）只靠 AutoMigrate
+//   建列会漏 → HasColumn 幂等补，默认 1（不限制）。
+func EnsureEzfyChestItemMinDraws(db *gorm.DB) {
+	if !db.Migrator().HasTable("ezfy_cfg_chest_item") {
+		return
+	}
+	if db.Migrator().HasColumn("ezfy_cfg_chest_item", "min_draws") {
+		return
+	}
+	if err := db.Exec("ALTER TABLE ezfy_cfg_chest_item ADD COLUMN min_draws int NOT NULL DEFAULT 1 COMMENT 'MinDraws 保底解锁次数(1=不限制,>=2满N抽才进奖池)'").Error; err != nil {
+		log.Printf("[seed] ezfy_cfg_chest_item.min_draws 补列失败: %v", err)
+	}
+}
+
 // EnsureEzfyAccountTable 幂等补建 ezfy_account 二战独立登录账号表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-12 二战独立账号：只靠 AutoMigrate 建表的表，在「多机共享库 seed.skip:

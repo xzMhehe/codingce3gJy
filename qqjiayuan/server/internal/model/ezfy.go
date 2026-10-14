@@ -765,6 +765,22 @@ type EzfyUserChest struct {
 
 func (EzfyUserChest) TableName() string { return "ezfy_user_chest" }
 
+// EzfyUserChestPity 玩家宝箱累计抽取次数（★ 2026-10-14）
+//
+// 奖池奖品配置 MinDraws 保底次数 = **解锁门槛**：该奖品在玩家抽取此宝箱的累计次数
+// 达到 MinDraws 之前，不进奖池（开不到）；达到后才按正常权重参与抽奖（不是必出）。
+// 默认 1 = 首次抽取即解锁（多数奖品）；传说类按品质配 50~500。
+// 每个玩家每个宝箱一条累计次数（total_draw），抽一次 +1。
+type EzfyUserChestPity struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_ezfy_chest_pity;comment:玩家ID" json:"user_id"`
+	ChestId   int       `gorm:"uniqueIndex:uk_ezfy_chest_pity;comment:宝箱配置ID(ezfy_cfg_chest.id)" json:"chest_id"`
+	TotalDraw int       `gorm:"default:0;comment:该宝箱累计抽取次数" json:"total_draw"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyUserChestPity) TableName() string { return "ezfy_user_chest_pity" }
+
 // EzfyAccount 二战征途独立登录账号
 //
 // ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。
@@ -1739,7 +1755,10 @@ type EzfyCfgChestItem struct {
 	Weight int `gorm:"default:100;comment:Weight 权重（越大越容易抽到）；全部为 0 时按等概率" json:"weight"`
 	// Quality 展示用品质标签（普通/稀有/史诗/传说），纯展示
 	Quality string `gorm:"type:varchar(20);default:'';comment:Quality 展示用品质标签（普通/稀有/史诗/传说），纯展示" json:"quality"`
-	Des     string `gorm:"type:varchar(200);default:'';comment:描述" json:"des"`
+	// MinDraws 保底抽取次数（★ 2026-10-14）：玩家抽该宝箱累计满 MinDraws 次仍没出此奖品，
+	// 则下一次必出此奖品（出后清零重新累计）。1 = 不启用保底（默认，普通奖品）；传说类按品质 50~500。
+	MinDraws int `gorm:"default:1;comment:MinDraws 保底抽取次数(1=不启用,>=2生效,出后清零)" json:"min_draws"`
+	Des      string `gorm:"type:varchar(200);default:'';comment:描述" json:"des"`
 }
 
 func (EzfyCfgChestItem) TableName() string { return "ezfy_cfg_chest_item" }

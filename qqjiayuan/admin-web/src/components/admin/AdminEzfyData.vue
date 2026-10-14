@@ -236,6 +236,13 @@
           <el-table-column label="概率" width="80" align="center">
             <template slot-scope="{row}">{{ row.rate }}%</template>
           </el-table-column>
+          <!-- ★ 2026-10-14 保底解锁次数：玩家抽该宝箱满 N 次后该奖品才以正常概率进入奖池；1=不限制 -->
+          <el-table-column label="保底解锁" width="90" align="center">
+            <template slot-scope="{row}">
+              <span v-if="row.min_draws > 1" class="orange">{{ row.min_draws }} 抽解锁</span>
+              <span v-else class="gray">—</span>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="130" align="center">
             <template slot-scope="{row}">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openChestItemEdit(row)" />
@@ -284,6 +291,13 @@
             <el-col :span="8">
               <el-form-item label="权重">
                 <el-input-number v-model.number="chif.weight" :min="0" controls-position="right" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <!-- ★ 2026-10-14 保底解锁次数：玩家抽该宝箱满 N 次后，该奖品才以正常概率进入奖池；1=不限制（默认） -->
+              <el-form-item label="保底解锁">
+                <el-input-number v-model.number="chif.min_draws" :min="1" controls-position="right" style="width:100%" />
+                <div class="td-sub">满 N 抽解锁进奖池；1=默认不限制</div>
               </el-form-item>
             </el-col>
             <el-col :span="8">
@@ -431,7 +445,7 @@ const ITEM_CATEGORY_OPTS = [
   { v: '其他', n: '其他' }
 ]
 // ★ 宝箱奖池条目可改字段（走专用接口 /admin/ezfy-chests/:id/pool，宝箱是套装装备唯一产出渠道）
-const CI_KEYS = ['kind', 'ref_id', 'count', 'weight', 'quality', 'des']
+const CI_KEYS = ['kind', 'ref_id', 'count', 'weight', 'quality', 'des', 'min_draws']
 
 // ★ 2026-10-07 奖池条目：kind 1/2/3 对应「奖品」这一栏该填什么（表单标签跟着类型变）
 const CHEST_KIND_LABEL = { 1: '单件装备', 2: '道具', 3: '整套装备' }
@@ -1113,7 +1127,7 @@ export default {
     },
     openChestItemCreate () {
       this.loadPoolRefs()
-      this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '' }
+      this.chif = { kind: 1, ref_id: 0, count: 1, weight: 100, quality: '', des: '', min_draws: 1 }
       this.chItemDlg = true
     },
     openChestItemEdit (row) {

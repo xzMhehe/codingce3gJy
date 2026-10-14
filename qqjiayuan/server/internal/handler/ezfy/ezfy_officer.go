@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
@@ -3596,6 +3597,43 @@ func ezfyDrawChest(pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
 	return &p
 }
 
+// ezfyDrawChestUnlocked 按奖池抽一件，应用「MinDraws 解锁门槛」（★ 2026-10-14）
+//
+// 用户规则：「玩家抽取该宝箱达到配置次数后，该奖品才会以正常概率获得」——
+// 与常见的"必出保底"相反：MinDraws 是**解锁值**而非保底值。
+//
+//	累计抽取次数(ezfy_user_chest_pity.total_draw) < MinDraws  → 奖品不进奖池（开不到）
+//	累计抽取次数 >= MinDraws                                  → 奖品按正常权重参与抽奖
+//
+// 默认 MinDraws=1 → 首次抽取即解锁；传说类奖品按品质配 50~500（管理端逐行配置）。
+// 每次抽取后累计次数原子 +1（按 user_id+chest_id upsert）；若奖池全部未解锁（极端），
+// 退回全池兜底，避免抽奖抽空。
+func (h *EzfyHandler) ezfyDrawChestUnlocked(uid uint, chestID int, pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
+	if len(pool) == 0 {
+		return nil
+	}
+	total := 0
+	h.DB.Model(&model.EzfyUserChestPity{}).
+		Where("user_id = ? AND chest_id = ?", uid, chestID).
+		Pluck("total_draw", &total)
+	avail := make([]model.EzfyCfgChestItem, 0, len(pool))
+	for _, it := range pool {
+		if it.MinDraws <= 1 || total >= it.MinDraws {
+			avail = append(avail, it)
+		}
+	}
+	if len(avail) == 0 {
+		avail = pool // 全未解锁 → 兜底按全池抽，避免抽空
+	}
+	prize := ezfyDrawChest(avail)
+	// 累计抽取次数 +1（幂等 upsert；失败不影响开箱结果，下次再补）
+	h.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "chest_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"total_draw": gorm.Expr("total_draw + 1"), "updated_at": time.Now()}),
+	}).Create(&model.EzfyUserChestPity{UserID: uid, ChestId: chestID, TotalDraw: 1})
+	return prize
+}
+
 // ezfyEquipAttrText 装备六项战斗属性说明（伤害/防御/生命/移动/暴击几率/暴击伤害 + 老三维军事/后勤/学识）
 func ezfyEquipAttrText(e *model.EzfyCfgEquipment) string {
 	var parts []string
@@ -3808,7 +3846,7 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 			pool = append(pool, gin.H{
 				"kind": p.Kind, "ref_id": p.RefId, "name": name,
 				"count": p.Count, "weight": p.Weight, "quality": quality,
-				"detail": h.ezfyChestPrizeDetail(&p),
+				"detail": h.ezfyChestPrizeDetail(&p), "min_draws": p.MinDraws,
 			})
 		}
 		out = append(out, gin.H{
@@ -3914,7 +3952,7 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 	}
 	results := []gin.H{}
 	for i := 0; i < req.Count; i++ {
-		prize := ezfyDrawChest(pool)
+		prize := h.ezfyDrawChestUnlocked(uid, chest.ID, pool)
 		desc := h.ezfyGrantChestPrize(&city, prize)
 		if desc == "" {
 			continue

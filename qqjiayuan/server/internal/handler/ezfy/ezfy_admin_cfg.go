@@ -108,7 +108,7 @@ var ezfyChestFields = map[string]string{
 // 宝箱奖池可改字段（ezfy_cfg_chest_item）
 var ezfyChestItemFields = map[string]string{
 	"kind": "int", "ref_id": "int", "count": "int", "weight": "int",
-	"quality": "string", "des": "string",
+	"quality": "string", "des": "string", "min_draws": "int",
 }
 
 // 计谋配置可改字段（ezfy_cfg_scheme）
@@ -1541,7 +1541,7 @@ func (h *EzfyAdmin) AdminEzfyChestPool(c *gin.Context) {
 			"id": it.ID, "chest_id": it.ChestId, "kind": it.Kind, "kind_name": kindName,
 			"ref_id": it.RefId, "name": name, "count": it.Count,
 			"weight": it.Weight, "rate": fmt.Sprintf("%.2f", rate),
-			"quality": it.Quality, "des": it.Des,
+			"quality": it.Quality, "des": it.Des, "min_draws": it.MinDraws,
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out), "weight_sum": total})

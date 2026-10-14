@@ -374,7 +374,7 @@
               <span class="gray">共 {{ ezfy.chestPoolAll.length }} 项</span>
             </div>
             <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
+              <tr><th>奖品</th><th>品质</th><th>数量</th><th>解锁</th></tr>
               <template v-for="(p, i) in ezfy.chestPoolPaged">
                 <tr :key="'cv' + p.kind + '_' + p.ref_id + '_' + i">
                   <td>
@@ -384,9 +384,13 @@
                   </td>
                   <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
+                  <td class="gray">
+                    <span v-if="p.min_draws > 1">满 {{ p.min_draws }} 抽解锁</span>
+                    <span v-else>—</span>
+                  </td>
                 </tr>
                 <tr v-if="ezfy.chestViewDetailIdx === i" :key="'cvd' + i">
-                  <td colspan="3">
+                  <td colspan="4">
                     <div class="set-card">
                       <div class="sc-h"><b>{{ p.name }}</b>
                         <span :class="ezfy.qualityClass(p.quality)">[{{ p.quality }}]</span>

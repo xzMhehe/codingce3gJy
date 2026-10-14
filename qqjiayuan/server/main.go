@@ -145,6 +145,10 @@ func main() {
 		timedStep("EnsureEzfyChestPool", func() { seed.EnsureEzfyChestPool(homeDB) })
 		// ★ 2026-10-14 待开宝箱表：同 hazard —— skip 分支不建表 → 共享库发放/开箱报表不存在。
 		timedStep("EnsureEzfyUserChestTable", func() { seed.EnsureEzfyUserChestTable(homeDB) })
+		// ★ 2026-10-14 宝箱累计抽取次数表（奖池 min_draws 解锁门槛）：同 hazard，skip 分支幂等补建。
+		timedStep("EnsureEzfyUserChestPityTable", func() { seed.EnsureEzfyUserChestPityTable(homeDB) })
+		// ★ 2026-10-14 奖池 min_draws 列：存量库 AutoMigrate 可能漏加，skip 分支 HasColumn 幂等补。
+		timedStep("EnsureEzfyChestItemMinDraws", func() { seed.EnsureEzfyChestItemMinDraws(homeDB) })
 		// ★ 2026-10-10 线上事故：管理端发装备漏拷六项战斗属性 → 战报【守方装备】显示「无」。
 		//   全量 seed 里的 repairEquipSnapshots 本来会自愈，但 skip 分支不跑 → 共享库永远修不了。
 		//   挂到 skip 路径，任何一台重启都会把存量装备行六项对齐配置池并重建军官 JSON（幂等）。

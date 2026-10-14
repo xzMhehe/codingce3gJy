@@ -98,7 +98,7 @@ func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 	results := []gin.H{}
 	names := []string{}
 	for i := 0; i < req.Count; i++ {
-		prize := ezfyDrawChest(pool)
+		prize := h.ezfyDrawChestUnlocked(uid, chest.ID, pool)
 		if prize == nil {
 			continue
 		}
