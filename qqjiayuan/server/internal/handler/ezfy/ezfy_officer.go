@@ -3597,41 +3597,42 @@ func ezfyDrawChest(pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
 	return &p
 }
 
-// ezfyDrawChestUnlocked 按奖池抽一件，应用「MinDraws 解锁门槛」（★ 2026-10-14）
+// ezfyDrawChestsUnlocked 批量抽奖（★ 2026-10-14 开箱卡顿优化）
 //
-// 用户规则：「玩家抽取该宝箱达到配置次数后，该奖品才会以正常概率获得」——
-// 与常见的"必出保底"相反：MinDraws 是**解锁值**而非保底值。
-//
-//	累计抽取次数(ezfy_user_chest_pity.total_draw) < MinDraws  → 奖品不进奖池（开不到）
-//	累计抽取次数 >= MinDraws                                  → 奖品按正常权重参与抽奖
-//
-// 默认 MinDraws=1 → 首次抽取即解锁；传说类奖品按品质配 50~500（管理端逐行配置）。
-// 每次抽取后累计次数原子 +1（按 user_id+chest_id upsert）；若奖池全部未解锁（极端），
-// 退回全池兜底，避免抽奖抽空。
-func (h *EzfyHandler) ezfyDrawChestUnlocked(uid uint, chestID int, pool []model.EzfyCfgChestItem) *model.EzfyCfgChestItem {
-	if len(pool) == 0 {
-		return nil
+// 一次开 n 个宝箱：循环外用**一次**查询拿到累计解锁次数，循环内纯内存过滤奖池+抽奖，
+// 结束后**一次** upsert 累计次数 += n —— 避免原来"每开一个就查一次+写一次"（开 100 个 = 100 查 + 100 写，
+// 全开/开10都会卡）。逻辑与 ezfyDrawChestUnlocked 完全一致（MinDraws 解锁门槛），只是去掉了逐次 DB 调用。
+func (h *EzfyHandler) ezfyDrawChestsUnlocked(uid uint, chestID int, pool []model.EzfyCfgChestItem, n int) []*model.EzfyCfgChestItem {
+	out := make([]*model.EzfyCfgChestItem, 0, n)
+	if len(pool) == 0 || n <= 0 {
+		return out
 	}
 	total := 0
 	h.DB.Model(&model.EzfyUserChestPity{}).
 		Where("user_id = ? AND chest_id = ?", uid, chestID).
 		Pluck("total_draw", &total)
-	avail := make([]model.EzfyCfgChestItem, 0, len(pool))
-	for _, it := range pool {
-		if it.MinDraws <= 1 || total >= it.MinDraws {
-			avail = append(avail, it)
+	for i := 0; i < n; i++ {
+		avail := make([]model.EzfyCfgChestItem, 0, len(pool))
+		for _, it := range pool {
+			if it.MinDraws <= 1 || total >= it.MinDraws {
+				avail = append(avail, it)
+			}
 		}
+		if len(avail) == 0 {
+			avail = pool // 全未解锁 → 兜底按全池抽，避免抽空
+		}
+		prize := ezfyDrawChest(avail)
+		if prize != nil {
+			out = append(out, prize)
+		}
+		total++ // 内存累计：本次批量内连续抽取也递增解锁进度
 	}
-	if len(avail) == 0 {
-		avail = pool // 全未解锁 → 兜底按全池抽，避免抽空
-	}
-	prize := ezfyDrawChest(avail)
-	// 累计抽取次数 +1（幂等 upsert；失败不影响开箱结果，下次再补）
+	// 批量结束：累计次数一次性 +n
 	h.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "chest_id"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{"total_draw": gorm.Expr("total_draw + 1"), "updated_at": time.Now()}),
-	}).Create(&model.EzfyUserChestPity{UserID: uid, ChestId: chestID, TotalDraw: 1})
-	return prize
+		DoUpdates: clause.Assignments(map[string]interface{}{"total_draw": gorm.Expr("total_draw + ?", n), "updated_at": time.Now()}),
+	}).Create(&model.EzfyUserChestPity{UserID: uid, ChestId: chestID, TotalDraw: n})
+	return out
 }
 
 // ezfyEquipAttrText 装备六项战斗属性说明（伤害/防御/生命/移动/暴击几率/暴击伤害 + 老三维军事/后勤/学识）
@@ -3950,9 +3951,9 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 		h.fail(c, fmt.Sprintf("库存不足(剩余%d个)", chest.Stock))
 		return
 	}
+	// ★ 2026-10-14 批量抽奖（一次查总次数+一次累计写库，10 连不再卡）
 	results := []gin.H{}
-	for i := 0; i < req.Count; i++ {
-		prize := h.ezfyDrawChestUnlocked(uid, chest.ID, pool)
+	for _, prize := range h.ezfyDrawChestsUnlocked(uid, chest.ID, pool, req.Count) {
 		desc := h.ezfyGrantChestPrize(&city, prize)
 		if desc == "" {
 			continue

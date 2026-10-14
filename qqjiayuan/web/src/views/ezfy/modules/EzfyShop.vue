@@ -97,13 +97,25 @@
               <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage >= ezfy.bagEquipTotalPages }" @click="ezfy.bagEquipGo(1)">[下一页]</a>
             </div>
           </template>
-          <!-- ★ 2026-10-14 宝箱 tab：商城买的（只买不开）、管理端发放的宝箱都在这里，点开箱走 ezfy_user_chest -->
+          <!-- ★ 2026-10-14 宝箱 tab：商城买的（只买不开）、管理端发放的宝箱都在这里，点开箱走 ezfy_user_chest
+               ★ 2026-10-14 布局整理：每个宝箱两行——第一行：名称×数量 + 价格 + [说明](点开才看奖池)；
+                 第二行：开箱操作 [开1][开5][开10][全部] + 自定义数量 -->
           <template v-else-if="ezfy.bagTab === 'chest'">
             <div class="old-line gray">这里放你购买后暂不开、以及管理员发放的宝箱，开箱直接拿奖励（不花钱）。</div>
             <div class="old-line" v-for="b in ezfy.chestBag.list" :key="'bc' + b.chest_id">
               <b>{{ b.name }}</b>×{{ b.count }}
               <span v-if="b.effect" class="gray">[{{ b.effect }}]</span>
-              <!-- ★ 2026-10-14 开箱分档：1 / 5 / 10 / 全部 / 自定义数量 -->
+              <span class="gray" v-if="b.price_diamond > 0">· {{ b.price_diamond }}钻/个</span>
+              <span class="gray" v-else>· {{ b.price_gold }}{{ ezfy.resNames.gold }}/个</span>
+              <a href="javascript:;" @click="ezfy.toggleBagChestDesc(b.chest_id)">[{{ ezfy.bagChestDescId === b.chest_id ? '收起' : '说明' }}]</a>
+              <!-- ★ 说明：点开才展示奖池（价格/奖励内容），默认收起，不堆信息 -->
+              <span v-if="ezfy.bagChestDescId === b.chest_id" class="gray">：{{ b.des || '' }}</span>
+              <br/>
+              <span v-if="ezfy.bagChestDescId === b.chest_id" style="display:block">
+                <span v-for="(p, pi) in b.pool" :key="'bp' + pi">
+                  <span :class="ezfy.qualityClass(p.quality)">{{ p.name }}</span><span v-if="p.count > 1">×{{ p.count }}</span><template v-if="pi < b.pool.length - 1">、</template>
+                </span>
+              </span>
               <a href="javascript:;" @click="ezfy.openBagChest(b)">[开1]</a>
               <a v-if="b.count >= 5 && b.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 5)">[开5]</a>
               <a v-if="b.count >= 10 && b.open_max >= 10" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 10)">[开10]</a>
@@ -112,6 +124,12 @@
               <a href="javascript:;" @click="ezfy.openBagChestCustom(b)">[开]</a>
             </div>
             <div class="old-line gray" v-if="!ezfy.chestBag.list.length">(背包里没有待开宝箱，去商城宝箱页购买吧)</div>
+            <!-- ★ 开箱中：请求未返回时禁用所有开箱按钮，防连点重复开 + 反馈等待 -->
+            <div class="old-line" v-if="ezfy.chestOpening">
+              <b class="orange">开箱中，请稍候…</b>
+              <a href="javascript:;">[开1]</a><a href="javascript:;">[开5]</a><a href="javascript:;">[开10]</a><a href="javascript:;">[全部]</a>
+              <span class="gray">（正在开箱，暂时锁定，避免重复开）</span>
+            </div>
             <!-- ★ 开箱结果就地展示（与商城宝箱同款聚合着色） -->
             <div class="old-line" v-if="ezfy.chestResult.length">
               <b class="green">开箱成功</b>

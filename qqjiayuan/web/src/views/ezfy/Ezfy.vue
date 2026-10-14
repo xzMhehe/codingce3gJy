@@ -823,6 +823,8 @@ export default {
       chestBuyTarget: null, buyChestCount: 1,
       // ★ 2026-10-14 背包宝箱自定义开箱数量
       bagChestCount: 1,
+      // ★ 2026-10-14 背包宝箱：开箱中锁（防连点）+ [说明]展开的宝箱 id
+      chestOpening: false, bagChestDescId: 0,
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
@@ -3933,17 +3935,23 @@ export default {
       this.runOpenBagChest(b, n)
     },
     runOpenBagChest (b, n) {
-      // 连点防抖：一次点击 = 一次开箱
-      this.once('chestBagOpen' + b.chest_id, () =>
-        api.post('/games/ezfy/chest/open-bag', { chest_id: b.chest_id, count: n }).then(r => {
-          if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
-          this.notify(r.msg || '开箱成功')
-          this.chestResult = (r.data && r.data.results) || []
-          // ★ 开箱结果就地展示（复用商城宝箱那套聚合着色）；刷新待开数量 + 背包（开出的道具/装备）
-          this.chestLastCost = ''
-          this.loadChestBag()
-          this.loadBag()
-        }))
+      if (this.chestOpening) { this.notify('正在开箱，请稍候…'); return } // 锁：上一个还没结束
+      if (n <= 0) { this.notify('请选择开箱数量'); return }
+      this.chestOpening = true
+      // 请求期间禁止再开（前端锁 + 后端批量抽奖都防并发重复）
+      api.post('/games/ezfy/chest/open-bag', { chest_id: b.chest_id, count: n }).then(r => {
+        if (r.code !== 0) { this.notify(r.msg || '开箱失败'); return }
+        this.notify(r.msg || '开箱成功')
+        this.chestResult = (r.data && r.data.results) || []
+        // ★ 开箱结果就地展示（复用商城宝箱那套聚合着色）；刷新待开数量 + 背包（开出的道具/装备）
+        this.chestLastCost = ''
+        this.loadChestBag()
+        this.loadBag()
+      }).finally(() => { this.chestOpening = false })
+    },
+    // ★ 2026-10-14 背包宝箱 [说明]：点开/收起奖池
+    toggleBagChestDesc (id) {
+      this.bagChestDescId = this.bagChestDescId === id ? 0 : id
     },
     // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
     loadChests () {

@@ -125,17 +125,55 @@ func (h *EzfyHandler) ChestBag(c *gin.Context) {
 	h.cfgs()
 	var rows []model.EzfyUserChest
 	h.DB.Where("user_id = ? AND count > 0", uid).Find(&rows)
+	var chestsMap = map[int]model.EzfyCfgChest{}
+	var all []model.EzfyCfgChest
+	h.DB.Find(&all)
+	for _, ch := range all {
+		chestsMap[ch.ID] = ch
+	}
 	list := make([]gin.H, 0, len(rows))
 	total := 0
 	for _, r := range rows {
 		total += r.Count
-		var chest model.EzfyCfgChest
-		if err := h.DB.First(&chest, r.ChestId).Error; err != nil {
+		chest, ok := chestsMap[r.ChestId]
+		if !ok {
 			continue // 宝箱配置已删：持有行不展示，但不清数据（等运营处理）
+		}
+		// ★ 2026-10-14 带完整奖池（供背包内 [说明] 展开看能开出啥）+ 价格说明
+		pool := []gin.H{}
+		for _, p := range ezfyCfg.chestPool(chest.ID) {
+			name, quality := "", p.Quality
+			switch p.Kind {
+			case 1:
+				if cfg := ezfyCfg.equipment(p.RefId); cfg != nil {
+					name = cfg.Name
+					if quality == "" {
+						quality = ezfyTierName(cfg.Tier)
+					}
+				}
+			case 2:
+				if cfg := ezfyCfg.item(p.RefId); cfg != nil {
+					name = cfg.Name
+				}
+			case 3: // 整套（RefId = 套装 id）
+				if s := ezfyCfg.equipSet(p.RefId); s != nil {
+					name = s.Name + " 整套"
+				}
+			}
+			if name == "" {
+				continue
+			}
+			pool = append(pool, gin.H{
+				"kind": p.Kind, "ref_id": p.RefId, "name": name,
+				"count": p.Count, "weight": p.Weight, "quality": quality,
+				"detail": h.ezfyChestPrizeDetail(&p), "min_draws": p.MinDraws,
+			})
 		}
 		list = append(list, gin.H{
 			"chest_id": r.ChestId, "name": chest.Name, "count": r.Count, "effect": chest.Effect,
 			"open_max": chest.OpenMax,
+			"price_gold": chest.PriceGold, "price_diamond": chest.PriceDiamond,
+			"des": chest.Des, "pool": pool,
 		})
 	}
 	resp.OK(c, gin.H{"list": list, "total": total})
@@ -190,13 +228,11 @@ func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 		h.fail(c, "待开宝箱数量不足, 请刷新后重试")
 		return
 	}
+	// ★ 2026-10-14 卡顿优化：批量抽奖（一次查总次数+一次累计写库，不再逐开逐查逐写）
+	prizes := h.ezfyDrawChestsUnlocked(uid, chest.ID, pool, req.Count)
 	results := []gin.H{}
 	names := []string{}
-	for i := 0; i < req.Count; i++ {
-		prize := h.ezfyDrawChestUnlocked(uid, chest.ID, pool)
-		if prize == nil {
-			continue
-		}
+	for _, prize := range prizes {
 		desc := h.ezfyGrantChestPrize(&city, prize)
 		if desc == "" {
 			continue
