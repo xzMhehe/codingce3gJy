@@ -101,7 +101,6 @@
                ★ 2026-10-14 布局整理：每个宝箱两行——第一行：名称×数量 + 价格 + [说明](点开才看奖池)；
                  第二行：开箱操作 [开1][开5][开10][全部] + 自定义数量 -->
           <template v-else-if="ezfy.bagTab === 'chest'">
-            <div class="old-line gray">这里放你购买后暂不开、以及管理员发放的宝箱，开箱直接拿奖励（不花钱）。</div>
             <div class="old-line" v-for="b in ezfy.chestBag.list" :key="'bc' + b.chest_id">
               <b>{{ b.name }}</b>×{{ b.count }}
               <span v-if="b.effect" class="gray">[{{ b.effect }}]</span>
