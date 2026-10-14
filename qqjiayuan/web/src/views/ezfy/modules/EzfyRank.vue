@@ -119,26 +119,28 @@
           </div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 11%"><col style="width: 25%"><col style="width: 14%"><col style="width: 14%"><col style="width: 14%"><col style="width: 11%"><col style="width: 11%">
+              <col style="width: 18%"><col style="width: 40%"><col style="width: 42%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>积分</th><th>灭敌</th><th title="战损 = 己方阵亡部队总数">战损</th><th>参战</th><th>胜率</th></tr>
+            <tr><th>名次</th><th>统帅</th><th>积分</th></tr>
             <template v-if="ezfy.pvpRank.ranks && ezfy.pvpRank.ranks.length">
-              <tr v-for="r in ezfy.pvpRank.ranks" :key="'pv' + r.rank"
-                :style="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id === r.user_id ? 'background:#fff7e6;font-weight:bold' : ''">
-                <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
-                <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
-                <td><b>{{ ezfy.fmtN(r.points) }}</b></td>
-                <td :title="'灭敌 ' + ezfy.fmtN(r.kills)">{{ ezfy.fmtProd(r.kills) }}</td>
-                <td :title="'战损 ' + ezfy.fmtN(r.losses)">{{ ezfy.fmtProd(r.losses) }}</td>
-                <td>{{ r.battles }}</td>
-                <td>{{ Math.round(r.win_rate * 10) / 10 }}%</td>
-              </tr>
+              <template v-for="r in ezfy.pvpRank.ranks">
+                <tr :key="'pv' + r.rank"
+                  :style="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id === r.user_id ? 'background:#fff7e6;font-weight:bold' : ''">
+                  <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
+                  <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
+                  <td><a href="javascript:;" @click="ezfy.showPvpRow = ezfy.showPvpRow === r.rank ? -1 : r.rank"><b>{{ ezfy.fmtN(r.points) }}</b></a></td>
+                </tr>
+                <tr v-if="ezfy.showPvpRow === r.rank" :key="'pvd' + r.rank" class="rank-treasure-row">
+                  <td>战绩明细</td>
+                  <td colspan="2" class="gray">灭敌 {{ ezfy.fmtProd(r.kills) }} / 战损 {{ ezfy.fmtProd(r.losses) }} / 参战 {{ r.battles }} 场 / 胜率 {{ Math.round(r.win_rate * 10) / 10 }}% · 战损比 {{ r.losses > 0 ? (Math.round((r.kills / r.losses) * 10) / 10) : (r.kills > 0 ? '∞' : '—') }}</td>
+                </tr>
+              </template>
             </template>
             <!-- ★ 2026-10-14 风云榜统计开关关闭时明确提示，而不是让玩家看到「暂无记录」 -->
-            <tr v-else><td colspan="7" class="gray">{{ ezfy.pvpRank.enabled === false ? '风云榜暂未开启' : '该周暂无玩家对战记录' }}</td></tr>
+            <tr v-else><td colspan="3" class="gray">{{ ezfy.pvpRank.enabled === false ? '风云榜暂未开启' : '该周暂无玩家对战记录' }}</td></tr>
           </table>
           <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
-            我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b :title="'灭敌 ' + ezfy.fmtN(ezfy.pvpRank.mine.kills)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.kills) }}</b> · 战损 <b :title="'战损 ' + ezfy.fmtN(ezfy.pvpRank.mine.losses)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.losses) }}</b>
+            我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b :title="'灭敌 ' + ezfy.fmtN(ezfy.pvpRank.mine.kills)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.kills) }}</b> · 战损 <b :title="'战损 ' + ezfy.fmtN(ezfy.pvpRank.mine.losses)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.losses) }}</b> · 战损比 <b>{{ ezfy.pvpRank.mine.losses > 0 ? (Math.round((ezfy.pvpRank.mine.kills / ezfy.pvpRank.mine.losses) * 10) / 10) : (ezfy.pvpRank.mine.kills > 0 ? '∞' : '—') }}</b>
           </div>
           </template>
 

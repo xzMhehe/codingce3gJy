@@ -659,6 +659,8 @@ export default {
       showTreasureRow: -1,
       // ★ 战力榜中「战力」点击展开明细的行 rank（-1 = 收起）
       showPowerRow: -1,
+      // ★ 2026-10-14 风云榜中「积分」点击展开明细的行 rank（-1 = 收起），与战力榜同款交互
+      showPvpRow: -1,
       orders: [],
       buildZone: 'm',
       buildSel: null,
