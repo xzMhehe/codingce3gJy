@@ -115,7 +115,7 @@
               <option v-for="w in ezfy.pvpRank.weeks.indexOf(ezfy.pvpRank.week) < 0 ? [ezfy.pvpRank.week].concat(ezfy.pvpRank.weeks) : ezfy.pvpRank.weeks" :key="w" :value="w">{{ w }}</option>
             </select>
             <span v-if="ezfy.pvpLoading" class="gray" style="margin-left:8px">加载中…</span>
-            <span v-else class="gray" style="margin-left:8px">按积分排名 · 周一~周日玩家对战</span>
+            <span v-else class="gray" style="margin-left:8px" title="行动分：进攻20/防守15；胜负分：胜40/平15/负10；战损比分0~30；兵力满1000才计分，同对手每周封顶8000">按积分排名 · 满兵才算分 · 同对手周封顶</span>
           </div>
           <table class="ezfy-rank-table">
             <colgroup>

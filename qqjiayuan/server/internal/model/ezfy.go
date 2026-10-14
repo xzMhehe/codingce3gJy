@@ -809,6 +809,23 @@ type EzfyPvpWeek struct {
 
 func (EzfyPvpWeek) TableName() string { return "ezfy_pvp_week" }
 
+// EzfyPvpFoe 风云榜「同对手对战积分」记录（★ 2026-10-14 防小号互刷）
+//
+// 同一自然周内，同一玩家与**同一对手**对战的积分累计封顶（ezfyPvpFoeCap）：
+// 已达上限后，再与该对手交战的积分不再计入榜单，但场次/灭敌/战损照常累计。
+// 表内 points 为「与该对手本场累计已计积分」，榜单积分以 ezfy_pvp_week.points 为准。
+type EzfyPvpFoe struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Week      string    `gorm:"type:varchar(17);uniqueIndex:uk_pvp_foe_week;comment:自然周 20060102-20060102" json:"week"`
+	UserID    uint      `gorm:"uniqueIndex:uk_pvp_foe_week;comment:玩家ID" json:"user_id"`
+	FoeID     uint      `gorm:"uniqueIndex:uk_pvp_foe_week;comment:对手玩家ID" json:"foe_id"`
+	Points    int64     `gorm:"default:0;comment:与该对手对战的已计积分(周内封顶)" json:"points"`
+	Battles   int64     `gorm:"default:0;comment:与该对手交战次数" json:"battles"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyPvpFoe) TableName() string { return "ezfy_pvp_foe" }
+
 // EzfyAccount 二战征途独立登录账号
 //
 // ★ 2026-10-12 二战账号体系与家园分离：二战登录不再复用家园 token。

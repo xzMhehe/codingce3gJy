@@ -149,6 +149,8 @@ func main() {
 		timedStep("EnsureEzfyUserChestPityTable", func() { seed.EnsureEzfyUserChestPityTable(homeDB) })
 		// ★ 2026-10-14 风云榜周榜表：同 hazard，skip 分支幂等补建（否则战斗结算写榜报表不存在）。
 		timedStep("EnsureEzfyPvpWeekTable", func() { seed.EnsureEzfyPvpWeekTable(homeDB) })
+		// ★ 2026-10-14 风云榜同对手积分封顶表（防小号互刷）：同 hazard，幂等补建。
+		timedStep("EnsureEzfyPvpFoeTable", func() { seed.EnsureEzfyPvpFoeTable(homeDB) })
 		// ★ 2026-10-14 奖池 min_draws 列：存量库 AutoMigrate 可能漏加，skip 分支 HasColumn 幂等补。
 		timedStep("EnsureEzfyChestItemMinDraws", func() { seed.EnsureEzfyChestItemMinDraws(homeDB) })
 		// ★ 2026-10-10 线上事故：管理端发装备漏拷六项战斗属性 → 战报【守方装备】显示「无」。

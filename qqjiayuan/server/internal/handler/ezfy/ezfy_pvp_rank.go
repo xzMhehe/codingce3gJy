@@ -40,6 +40,16 @@ func (h *EzfyHandler) pvpCorpsNameOf(uid uint) string {
 	return cp.Name
 }
 
+// 风云榜防刷阈值（★ 2026-10-14 上线后发现 1 兵刷 / 小号互刷，加三条防刷规则）
+const (
+	// ezfyPvpMinTroop 本场己方投入兵力低于此值 → 本场**不计积分**（1 兵刷无效；攻守双方同规则）。
+	// 正常出击/布防都是上万兵，「1 兵碰瓷」直接 0 分。
+	ezfyPvpMinTroop = int64(1000)
+	// ezfyPvpFoeCap 同一自然周内，与**同一对手**对战的积分累计封顶（防小号互刷）。
+	// 达上限后与该对手再交战：场次/灭敌/战损照记，积分不再计入榜单。
+	ezfyPvpFoeCap = int64(8000)
+)
+
 // pvpUnitsOf 统计 ezfyUnitGroup 总兵力。
 func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 	var n int64
@@ -93,12 +103,32 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 // accumPvpWeekOnce 把一位玩家的本周战绩累加进风云榜（按 (week,user_id) 唯一键 upsert）。
 //   - battles: 本场 +1；wins: 本场胜 1，否则 0（平局双方都不算胜）；
 //   - kills: 本场灭敌（击杀敌军数）；losses: 本场战损（己方阵亡数）；
-//   - points: 本场风云积分（周累计，按积分排名）。
+//   - points: 本场风云积分（周累计，按积分排名）；foeID 为对手玩家ID，做同对手封顶。
 //
 // 昵称/军团随写榜时刻刷新（玩家改名/换军团后历史周保留当时名字）。
-func (h *EzfyHandler) accumPvpWeekOnce(week string, uid uint, nick, corps string, wins, kills, losses, points int64) {
+func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, corps string, wins, kills, losses, points int64) {
 	if uid == 0 || week == "" {
 		return
+	}
+	// ★ 防刷：同一周与同一对手对战的积分封顶（小号互刷只能刷到固定上限）。
+	//   已计分 ≥ 上限 → 本场积分 0；未达上限 → 最多补到上限。场次/灭敌/战损不受影响。
+	if points > 0 && foeID > 0 {
+		var cur int64
+		h.DB.Model(&model.EzfyPvpFoe{}).
+			Where("week = ? AND user_id = ? AND foe_id = ?", week, uid, foeID).
+			Select("points").Scan(&cur)
+		if cur >= ezfyPvpFoeCap {
+			points = 0
+		} else if cur+points > ezfyPvpFoeCap {
+			points = ezfyPvpFoeCap - cur
+		}
+		h.DB.Exec(`INSERT INTO ezfy_pvp_foe (week, user_id, foe_id, points, battles, updated_at)
+VALUES (?, ?, ?, ?, 1, NOW())
+ON DUPLICATE KEY UPDATE
+  points = points + VALUES(points),
+  battles = battles + VALUES(battles),
+  updated_at = VALUES(updated_at)`,
+			week, uid, foeID, points)
 	}
 	h.DB.Exec(`INSERT INTO ezfy_pvp_week (week, user_id, nickname, corps, battles, wins, kills, losses, points, updated_at)
 VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, NOW())
@@ -130,12 +160,25 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 	// 积分：攻方行动分 20（掠夺/征服），守方 15（防守）
 	atkPts := pvpBattlePoints(atkKills, atkLosses, atkPower, defPower, 20, win, draw)
 	defPts := pvpBattlePoints(defKills, defLosses, defPower, atkPower, 15, !win, draw)
+	// ★ 防刷：
+	// 1) 兵力下限——1 兵碰瓷（无论胜负）本场 0 分；攻守双方同规则。
+	if atkPower < ezfyPvpMinTroop {
+		atkPts = 0
+	}
+	if defPower < ezfyPvpMinTroop {
+		defPts = 0
+	}
+	// 2) 空城刷——守方零兵力（空城）时进攻方不得分（打空城不算战绩）。
+	if defPower == 0 {
+		atkPts = 0
+	}
+	// 3) 同对手封顶在 accumPvpWeekOnce 内按 foeID 处理。
 	atkP := h.ensureProfile(atkUID)
 	defP := h.ensureProfile(defUID)
 	// 攻方
-	h.accumPvpWeekOnce(week, atkUID, atkP.Nickname, h.pvpCorpsNameOf(atkUID), boolInt64(win), atkKills, atkLosses, atkPts)
+	h.accumPvpWeekOnce(week, atkUID, defUID, atkP.Nickname, h.pvpCorpsNameOf(atkUID), boolInt64(win), atkKills, atkLosses, atkPts)
 	// 守方：攻方败且非平局 = 守方胜；平局双方都不算胜
-	h.accumPvpWeekOnce(week, defUID, defP.Nickname, h.pvpCorpsNameOf(defUID), boolInt64(!win && !draw), defKills, defLosses, defPts)
+	h.accumPvpWeekOnce(week, defUID, atkUID, defP.Nickname, h.pvpCorpsNameOf(defUID), boolInt64(!win && !draw), defKills, defLosses, defPts)
 }
 
 func boolInt64(b bool) int64 {

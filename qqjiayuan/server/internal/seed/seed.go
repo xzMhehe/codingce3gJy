@@ -2953,6 +2953,13 @@ func EnsureEzfyPvpWeekTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyPvpFoeTable 幂等补建/更新 ezfy_pvp_foe 表（★ 2026-10-14 同对手积分封顶，防小号互刷）。
+func EnsureEzfyPvpFoeTable(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyPvpFoe{}); err != nil {
+		log.Printf("[seed] 补建/更新 ezfy_pvp_foe 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyChestItemMinDraws 幂等补 ezfy_cfg_chest_item.min_draws 列（skip 分支也必须能补）。
 //
 // ★ 2026-10-14 奖池「保底解锁次数」：存量库（尤其多机共享库 skip 分支）只靠 AutoMigrate
