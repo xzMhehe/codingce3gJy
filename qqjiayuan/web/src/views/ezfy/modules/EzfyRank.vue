@@ -74,19 +74,18 @@
           <div class="panel-title">战力榜</div>
           <table class="ezfy-rank-table">
             <colgroup>
-              <col style="width: 13%"><col style="width: 32%"><col style="width: 30%"><col style="width: 25%">
+              <col style="width: 18%"><col style="width: 40%"><col style="width: 42%">
             </colgroup>
-            <tr><th>名次</th><th>统帅</th><th>城市</th><th>战力</th></tr>
+            <tr><th>名次</th><th>统帅</th><th>战力</th></tr>
             <template v-for="(r, i) in ezfy.rankData.troops">
               <tr :key="'rt' + r.rank" :class="ezfy.rankRowCls(r.rank)">
                 <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
                 <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.role_name }}</a></td>
-                <td>{{ r.city_name }}</td>
                 <td><a href="javascript:;" @click="ezfy.showPowerRow = ezfy.showPowerRow === r.rank ? -1 : r.rank"><b>{{ ezfy.fmtN(r.power) }}</b></a></td>
               </tr>
               <tr v-if="ezfy.showPowerRow === r.rank" :key="'rp' + r.rank" class="rank-treasure-row">
                 <td>战力明细</td>
-                <td colspan="3" class="gray">科技 {{ ezfy.fmtN(r.tech_power) }} / 建筑 {{ ezfy.fmtN(r.build_power) }} / 兵种 {{ ezfy.fmtN(r.troop_power) }}</td>
+                <td colspan="2" class="gray">科技 {{ ezfy.fmtN(r.tech_power) }} / 建筑 {{ ezfy.fmtN(r.build_power) }} / 兵种 {{ ezfy.fmtN(r.troop_power) }}</td>
               </tr>
             </template>
           </table>
