@@ -7,6 +7,7 @@
 package ezfy
 
 import (
+	"math"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -59,17 +60,35 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 	return n
 }
 
-// pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 积分规则设计）。
+// pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 规则；杀敌分同日本轮补充）。
 //
-//	积分 = (行动分 + 胜负分) × 兵力劣势系数 + 战损比分，单场**上限 300**（防刷）
+//	积分 = (行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分，单场**上限 400**（防刷）
 //
 //   - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
 //   - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
-//   - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
 //   - 兵力劣势系数：己方本场投入兵力 < 对方时，以少打多奖励：
 //     系数 = min(3.0, 对方兵力÷己方兵力)；攻方出征少、守方兵力多时攻击方按比例**多拿分**；
 //     系数对双方都生效（谁兵力劣势谁加成），≥1 时系数=1
+//   - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上）：按**灭敌绝对量**对数缩放，
+//     20×log10(灭敌) 封顶 200 —— 千万级大战与百万级小仗拉开差距、大仗有分量；
+//     对数压缩 → 灭敌量翻 10 倍只多 20 分，不会被天文数字刷爆。1 兵刷/空城刷由门槛拦住。
+//   - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
+const (
+	// ezfyPvpKillPtCap 杀敌分封顶
+	ezfyPvpKillPtCap = int64(200)
+	// ezfyPvpMaxPoint 单场上限（防极端刷分）
+	ezfyPvpMaxPoint = int64(400)
+)
+
 func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win, draw bool) int64 {
+	// 杀敌分：20×log10(灭敌)，0~200（灭敌 0 不给分）
+	killPts := int64(0)
+	if kills > 0 {
+		killPts = int64(20 * math.Log10(float64(kills)))
+		if killPts > ezfyPvpKillPtCap {
+			killPts = ezfyPvpKillPtCap
+		}
+	}
 	// 战损比奖励分 0~30
 	kdrPts := int64(30)
 	if losses > 0 {
@@ -93,9 +112,9 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 			mult = 300
 		}
 	}
-	pts := (actBase+outcome)*mult/100 + kdrPts
-	if pts > 300 {
-		pts = 300
+	pts := (actBase+outcome)*mult/100 + killPts + kdrPts
+	if pts > ezfyPvpMaxPoint {
+		pts = ezfyPvpMaxPoint
 	}
 	return pts
 }
