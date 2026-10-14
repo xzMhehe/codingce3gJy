@@ -99,7 +99,6 @@
           </template>
           <!-- ★ 2026-10-14 宝箱 tab：商城买的（只买不开）、管理端发放的宝箱都在这里，点开箱走 ezfy_user_chest -->
           <template v-else-if="ezfy.bagTab === 'chest'">
-            <div class="old-line gray">这里放你购买后暂不开、以及管理员发放的宝箱，开箱直接拿奖励（不花钱）。</div>
             <div class="old-line" v-for="b in ezfy.chestBag.list" :key="'bc' + b.chest_id">
               <b>{{ b.name }}</b>×{{ b.count }}
               <span v-if="b.effect" class="gray">[{{ b.effect }}]</span>
