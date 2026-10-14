@@ -315,10 +315,13 @@
                 </td>
                 <td>
                   <template v-if="!ch.sold_out">
-                    <!-- ★ 2026-10-14 [开箱]=买了即开；[购买]=只买不开入背包，可去背包再开 -->
+                    <!-- ★ 2026-10-14 [开箱]=买了即开；[买1]/[买5]/[买10]=快捷买进背包；[自定义]=自己输数量 -->
                     <a href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
-                    <a href="javascript:;" @click="ezfy.buyChest(ch)">[购买]</a>
-                    <!-- 购买面板: 数量 + 确认（复用背包/商城 use-box 样式） -->
+                    <a href="javascript:;" @click="ezfy.quickBuyChest(ch, 1)">[买1]</a>
+                    <a v-if="ch.open_max >= 5" href="javascript:;" @click="ezfy.quickBuyChest(ch, 5)">[买5]</a>
+                    <a v-if="ch.open_max >= 10" href="javascript:;" @click="ezfy.quickBuyChest(ch, 10)">[买10]</a>
+                    <a href="javascript:;" @click="ezfy.buyChest(ch)">[自定义]</a>
+                    <!-- 自定义购买面板: 数量 + 确认（买后进背包，不抽奖） -->
                     <template v-if="ezfy.buyChest && ezfy.buyChest.id === ch.id">
                       <br/>
                       <span class="gray">数量</span>

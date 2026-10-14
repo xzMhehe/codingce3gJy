@@ -3951,18 +3951,27 @@ export default {
       this.buyChest = this.buyChest && this.buyChest.id === ch.id ? null : ch
       this.buyChestCount = 1
     },
+    // ★ 2026-10-14 快捷购买：买1/买5/买10，直接下单（数量超出单次上限自动封顶）
+    quickBuyChest (ch, n) {
+      if (ch.sold_out) { this.notify('该宝箱已售罄'); return }
+      n = Math.max(1, Math.min(n, ch.open_max || n))
+      this.submitBuyChest(ch, n)
+    },
     doBuyChest () {
       const ch = this.buyChest
       if (!ch) return
       const n = parseInt(this.buyChestCount) || 0
       if (n <= 0) { this.notify('请填写购买数量'); return }
+      this.submitBuyChest(ch, n)
+    },
+    submitBuyChest (ch, n) {
       // 并发防抖：连点不会重复下单
       this.once('chestBuy' + ch.id, () =>
         api.post('/games/ezfy/chest/buy', {
           chest_id: ch.id, count: n, currency: ch.price_diamond > 0 ? 'diamond' : 'gold'
         }).then(r => {
           if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
-          this.notify(r.msg || '购买成功')
+          this.notify(r.msg || '购买成功，宝箱已放入背包')
           this.buyChest = null
           // 刷新余额/库存 + 背包宝箱数（买到的进背包）
           this.loadChests()
