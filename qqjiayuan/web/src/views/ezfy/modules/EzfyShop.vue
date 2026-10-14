@@ -132,8 +132,8 @@
             <!-- ★ 开箱结果就地展示（与商城宝箱同款聚合着色） -->
             <div class="old-line" v-if="ezfy.chestResult.length">
               <b class="green">开箱成功</b>
-              <template v-for="(g, i) in ezfy.chestResultGroups" :key="'bcr' + i">
-                <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
+              <template v-for="(g, i) in ezfy.chestResultGroups">
+                <span :key="'bcr' + i" :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
               </template>
               <a href="javascript:;" @click="ezfy.chestResult = []">[收起]</a>
             </div>
@@ -167,11 +167,13 @@
     <template v-else-if="ezfy.cur === 'mall'">
         <div class="panel">
           <div class="panel-title">商城({{ ezfy.resNames.gold }}{{ ezfy.city.gold }} · 钻石{{ ezfy.mallDiamond }})</div>
-          <!-- ★ 商城分栏：道具 / 装备散件 / 宝箱（套装件只能开宝箱，商城只卖散件）
-               ★ 2026-09-24  三个分栏去掉 []、用 | 分隔并留间距 -->
+          <!-- ★ 商城分栏：道具 / 装备 / 套装 / 宝箱
+               ★ 2026-10-14 用户「装备 下面再加一个 [套装] tab 专门是套装散件」：
+                 新增独立「套装」分栏（set_id>0 的套装部件），「装备」分栏只留非套装件。 -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'item' }" @click="ezfy.switchMallTab('item')">道具</a><span> | </span>
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'equipment' }" @click="ezfy.switchMallTab('equipment')">装备</a><span> | </span>
+            <a href="javascript:;" :class="{ on: ezfy.mallTab === 'set' }" @click="ezfy.switchMallTab('set')">套装</a><span> | </span>
             <a href="javascript:;" :class="{ on: ezfy.mallTab === 'chest' }" @click="ezfy.switchMallTab('chest')">宝箱</a>
           </div>
           <template v-if="ezfy.mallTab === 'item'">
@@ -218,13 +220,15 @@
             <a href="javascript:;" :class="{ disabled: ezfy.mallPage >= ezfy.mallTotalPages }" @click="ezfy.mallGo(1)">[下一页]</a>
           </div>
           </template>
-          <!-- ★ 装备散件（管理端在「装备列表」里维护）
-               ★ 用户规则：套装装备只能通过宝箱开启，商城不再上架套装件 -->
-          <template v-else-if="ezfy.mallTab === 'equipment'">
+          <!-- ★ 装备 / 套装（管理端在「装备列表」里维护）
+               ★ 2026-10-14 拆两栏：`equipment`=非套装件（散件/系列件），`set`=套装件（set_id>0），
+                 两栏共用这段模板（内容由 ezfy.shopAll 按 mallTab 过滤）。 -->
+          <template v-else-if="ezfy.mallTab === 'equipment' || ezfy.mallTab === 'set'">
             <!-- ★ 说明一律不写进界面（别在用户能看见的地方加提示），信息记在这里：
                  · 散件用钻石购买，定价按「六项加成总和」映射到 100~500 钻（见 seed 的 ezfyEquipDiamondPrice）；
-                 · 买入后到「军官 → 军官详情」穿到军官身上；
-                 · 第一批套装（新兵/战士/混沌…，无系列名）只能通过[宝箱]开启，商城不售。 -->
+                 · ★ 2026-10-14 用户「都是钻石价」→ 套装件 1~17 与系列件 21~26 **一律钻石**购买
+                   （套装 1~7 阶梯价见 seed 的 ezfySetDiamondPrice，8~17 用各自定价；系列件用原单价）；
+                 · 买入后到「军官 → 军官详情」穿到军官身上。 -->
             <!-- ★ 部位筛选（11 个部位，来自装备距离伤害表）：流式排列自动换行 -->
             <div class="ezfy-slot-grid">
               <a href="javascript:;" :class="{ on: ezfy.shopSlot === '' }" @click="ezfy.setShopSlot('')">[全部]</a>
@@ -248,14 +252,12 @@
               <template v-for="p in ezfy.shopPaged">
               <tr :key="'eq' + p.id">
                 <td>{{ p.slot }}</td>
-                <td class="nm"><a href="javascript:;" @click="ezfy.toggleDetail(p.id, 'item')">{{ p.name }}</a>
-                  <!-- 手机列窄，套装这行尽量短：「需几件」放进展开卡里，不在这里重复 -->
-                  <div v-if="ezfy.setOf(p.set_id)" class="set-mini">
-                    套装：<a href="javascript:;" @click="ezfy.toggleDetail(p.id, 'set')">{{ p.set_name }}</a>
-                  </div>
+                <td class="nm"><a href="javascript:;" @click="ezfy.toggleDetail(p.id, 'item')">{{ ezfy.equipShortName(p) }}</a>
+                  <!-- ★ 2026-10-14 名称不再拼「·部位」后缀（表格已有部位列，用户要求简约）；
+                       套装件也不再在名称下展示「套装：xxx」这行。 -->
                 </td>
                 <td>{{ p.level }}</td>
-                <td><span class="orange">{{ p.price_diamond }}钻</span></td>
+                <td><span class="orange">{{ ezfy.equipPrice(p).text }}</span></td>
                 <td>
                   <a v-if="!p.sold_out" href="javascript:;" @click="ezfy.openEquipBuy(p)">[购买]</a>
                   <span v-else class="gray">[售罄]</span>
@@ -320,8 +322,8 @@
                   <!-- ★ 2026-10-13 行内「可开出」预览：不跳奖池页也知道能开出啥 -->
                   <div class="old-line gray" v-if="ezfy.chestDescId === ch.id">
                     可开出：
-                    <template v-for="(g, gi) in ezfy.chestPoolTop(ch.pool, 6)" :key="'cp' + gi">
-                      <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="gi < 5">、</span>
+                    <template v-for="(g, gi) in ezfy.chestPoolTop(ch.pool, 6)">
+                      <span :key="'cp' + gi" :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="gi < 5">、</span>
                     </template>
                     <span class="gray" v-if="ch.pool.length > 6">…等{{ ch.pool.length - 6 }}项</span>
                     <a href="javascript:;" @click="ezfy.openChestView(ch)">[完整奖池]</a>
@@ -359,8 +361,8 @@
               <b class="green">开箱成功</b>
               <span class="gray">花费 {{ ezfy.chestLastCost }} · 余额
                 {{ ezfy.resNames.gold }}{{ ezfy.fmtN(ezfy.chestData.gold) }} · 钻石{{ ezfy.chestData.diamond }}</span>
-              <template v-for="(g, i) in ezfy.chestResultGroups" :key="'cr' + i">
-                <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
+              <template v-for="(g, i) in ezfy.chestResultGroups">
+                <span :key="'cr' + i" :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
               </template>
               <a href="javascript:;" @click="ezfy.chestResult = []; ezfy.chestLastCost = ''">[收起]</a>
             </div>
@@ -552,22 +554,26 @@
     </template>
     <template v-else-if="ezfy.cur === 'equipbuy'">
         <div class="panel">
-          <div class="panel-title">购买装备散件</div>
-          <div class="old-line gray">当前余额：钻石{{ ezfy.equipShop.diamond }}</div>
+          <div class="panel-title">购买装备</div>
+          <!-- ★ 2026-10-14 套装件 1~7 是黄金价 → 余额行按本件实际币种显示（原来写死钻石） -->
+          <div class="old-line gray">当前余额：{{ ezfy.equipShopBuy && ezfy.equipPrice(ezfy.equipShopBuy).cur === 'gold'
+            ? ('黄金' + ezfy.fmtN(ezfy.equipShop.gold)) : ('钻石' + ezfy.fmtN(ezfy.equipShop.diamond)) }}</div>
           <template v-if="ezfy.equipShopBuy">
             <div class="old-line">
-              <b>{{ ezfy.equipShopBuy.name }}</b>
+              <!-- ★ 2026-10-14 名称用「简约名」（不拼·部位），部位单独 [头盔] 展示 -->
+              <b>{{ ezfy.equipShortName(ezfy.equipShopBuy) }}</b>
               <span class="gray">[{{ ezfy.equipShopBuy.slot }}]</span>
               <span v-if="ezfy.equipShopBuy.sold_out" class="red">[已售罄]</span>
             </div>
             <div class="old-line">等级：{{ ezfy.equipShopBuy.level }}</div>
             <div class="old-line">属性：{{ ezfy.equipAttrText(ezfy.equipShopBuy) || '—' }}</div>
-            <div class="old-line">价格：<span class="orange">{{ ezfy.equipShopBuy.price_diamond }}钻</span>/件</div>
+            <div class="old-line">价格：<span class="orange">{{ ezfy.equipPrice(ezfy.equipShopBuy).text }}</span>/件</div>
             <div class="old-line">
               数量：<input v-model="ezfy.equipShopCount" type="number" min="1" style="width:70px"/>
             </div>
             <div class="old-line">
-              合计：<b class="bb-total">{{ ezfy.equipShopBuy.price_diamond * (parseInt(ezfy.equipShopCount) || 0) }} 钻石</b>
+              合计：<b class="bb-total">{{ ezfy.fmtN(ezfy.equipPrice(ezfy.equipShopBuy).val * (parseInt(ezfy.equipShopCount) || 0)) }}
+                {{ ezfy.equipPrice(ezfy.equipShopBuy).cur === 'gold' ? '黄金' : '钻石' }}</b>
             </div>
             <div class="old-line">
               <a href="javascript:;" @click="ezfy.doBuyEquip(ezfy.equipShopBuy)">[确认购买]</a>

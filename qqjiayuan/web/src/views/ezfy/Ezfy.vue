@@ -1752,13 +1752,23 @@ export default {
       }
       return groups.slice().reverse()
     },
-    // ★ 商城散件：部位筛选 + 检索 + 分页
+    // ★ 商城装备：部位筛选 + 检索 + 分页
+    //   ★ 2026-10-14 用户「商城 装备 下面再加一个 [套装] tab 专门是套装散件」：
+    //     `equipment` 分栏只留**非套装件**（set_id=0 的散件/系列件），
+    //     新增 `set` 分栏只看**套装件**（set_id>0）。两栏各自独立分页/检索。
     shopSlots () {
       return (this.equipShop.slots || []).map(s => s.slot)
+    },
+    // isSetTab：当前是否在「套装」分栏（决定 shopAll 取 set_id>0 还是 =0）
+    isSetsTab () {
+      return this.mallTab === 'set'
     },
     shopAll () {
       let list = []
       ;(this.equipShop.slots || []).forEach(s => { list = list.concat(s.pieces || []) })
+      // ★ 按分栏切分：套装件（set_id>0）只在「套装」栏显示，非套装件只在「装备」栏显示
+      const wantSet = this.isSetsTab
+      list = list.filter(p => wantSet ? (p.set_id > 0) : !(p.set_id > 0))
       if (this.shopSlot) list = list.filter(p => p.slot === this.shopSlot)
       const w = (this.shopWord || '').trim()
       if (w) list = list.filter(p => (p.name || '').indexOf(w) >= 0 || (p.slot || '').indexOf(w) >= 0)
@@ -3928,11 +3938,14 @@ export default {
         this.loadBag()
       })
     },
-    // ★ 商城分栏切换（item 道具 / equipment 装备套装 / chest 宝箱）
+    // ★ 商城分栏切换（item 道具 / equipment 装备 / set 套装 / chest 宝箱）
     switchMallTab (tab) {
       this.mallTab = tab
-      if (tab === 'equipment') this.loadEquipShop()
+      // ★ 装备与套装共用同一份 equipShop 数据（按 set_id 分流），两边都要拉
+      if (tab === 'equipment' || tab === 'set') this.loadEquipShop()
       if (tab === 'chest') { this.loadChests(); this.loadChestBag() }
+      // 切栏回第 1 页（否则会停在上一栏的分页位置看到空白）
+      this.shopPage = 1
     },
     // ★ 2026-10-14 我的待开宝箱：管理端发放的宝箱在背包里，凑齐了来商城「宝箱」页打开
     loadChestBag () {
@@ -5058,6 +5071,28 @@ export default {
       if (e.logistics) parts.push('后勤+' + e.logistics)
       if (e.learning) parts.push('学识+' + e.learning)
       return parts.join(' ')
+    },
+    // ★ 2026-10-14 装备商城统一价格展示：套装件 1~7 是**黄金价**、其余（套装 8~17 / 系列件 / 散件）是**钻石价**。
+    //   返回 { cur:'gold'|'diamond', val:数字, text:'50,000金' / '1500钻' }，表格与购买确认页共用，避免两处各写一套。
+    equipPrice (e) {
+      if (!e) return { cur: 'diamond', val: 0, text: '—' }
+      const gold = parseInt(e.price_gold) || 0
+      const dia = parseInt(e.price_diamond) || 0
+      if (dia > 0) return { cur: 'diamond', val: dia, text: this.fmtN(dia) + '钻' }
+      if (gold > 0) return { cur: 'gold', val: gold, text: this.fmtN(gold) + '金' }
+      return { cur: 'diamond', val: 0, text: '—' }
+    },
+    // ★ 2026-10-14 商城装备列表的「简约名」：表格已有部位列 → 名称不再拼「·头盔 / ·护肩」后缀。
+    //   只在**结尾恰好是「·+本件部位」**时去掉（套装件「海军上将套装(Admiral)·头盔」→「海军上将套装(Admiral)」；
+    //   系列件「革命者[围巾]」结尾不是·部位 → 原样）。详情/购买页保持完整名，列表才用短名。
+    equipShortName (e) {
+      if (!e) return ''
+      const n = String(e.name || '')
+      const s = String(e.slot || '')
+      if (s && n.length > s.length + 1 && n.slice(-(s.length + 1)) === '·' + s) {
+        return n.slice(0, n.length - s.length - 1)
+      }
+      return n
     },
     // 军官详情里「装备战斗加成」一行
     officerBattleText (b) {
@@ -7663,6 +7698,11 @@ body.ezfy-ios .ezfy-page textarea {
   font-size: var(--fs);
 }
 .ezfy-page .ezfy-slot-grid > a { white-space: nowrap; }
+/* ★ 2026-10-14 筛选网格的选中高亮（用户「切小类别切换没有高亮，玩家不知道在哪个小类别下」）：
+   .ezfy-slot-grid 用于 商城道具分类 / 装备部位筛选 / 背包分类 三处，
+   原来只绑了 .on class 没写样式 → 选中项和未选看起来一样。
+   口径与 .acade-tab a.on 一致：红 + 加粗。 */
+.ezfy-page .ezfy-slot-grid > a.on { color: #c0392b; font-weight: bold; }
 /* ★ 2026-09-25 套装加成展示（用户反馈「套装的加成看不到，不知道买完套装给军官用哪个」）
    三处展示，全部是**纯文本竖排**，窄屏不会横向溢出：
      ① .set-card  —— 装备表里点套装名，在该行下面**跨整行**展开的加成卡
@@ -7833,6 +7873,8 @@ body.ezfy-ios .ezfy-page textarea {
 .ezfy-page .ezfy-subnav a.on,
 .ezfy-page .ezfy-bottom-nav a.on,
 .ezfy-page .old-line.home-nav2 a.on,
+/* ★ 2026-10-14 筛选网格（商城分类/装备部位/背包分类）同样适用「当前项不可再点」 */
+.ezfy-page .ezfy-slot-grid > a.on,
 .ezfy-page .acade-tab a.on {
   pointer-events: none;
   cursor: default;

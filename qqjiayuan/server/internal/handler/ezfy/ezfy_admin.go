@@ -808,6 +808,8 @@ var ezfyTableDefs = map[string]ezfyTableDef{
 		"name": "string", "type": "string", "tier": "int", "level": "int",
 		"slot": "string", "set_id": "int", "series": "string",
 		"price_gold": "int64", "price_diamond": "int64", "stock": "int",
+		// ★ 2026-10-14 上下架开关（1上架 0下架；与价格解耦）
+		"shelf": "int",
 	}},
 	// ★ 宝箱（套装装备唯一产出渠道）价格/库存/上架 + 奖池由前端「套装装备配置」tab 的奖池弹窗维护。
 	"chests": {&model.EzfyCfgChest{}, map[string]string{
@@ -968,10 +970,12 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 	}
 	// ★ 2026-09-27 「装备道具配置」能过滤出「用户商城在售」的装备（前端默认开启）。
 	//   过滤条件与用户端 equipShopList 保持一致：
-	//   ① 有价格（黄金/钻石 > 0）；② 类型为「军官装备」；③ 非第一批套装件
-	//   （set_id>0 且无系列号的只能开宝箱，不直购）。
+	//   ① 有价格（黄金/钻石 > 0）；② 类型为「军官装备」或「套装」。
+	//   ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ 套装件（Type=套装）/系列件重新上架，
+	//      这里**去掉**原来的「非第一批套装件」限制，并放行 Type="套装"，与 equipShopList 同步。
+	//   ★★ 2026-10-14 新增 shelf 上下架开关 → 在售判定追加 `shelf = 1`（与 equipShopList 完全一致）。
 	if c.Param("table") == "equipments" && c.Query("mall") == "1" {
-		mallCond := "(price_gold > 0 OR price_diamond > 0) AND type = '军官装备' AND NOT (set_id > 0 AND (series IS NULL OR series = ''))"
+		mallCond := "shelf = 1 AND (price_gold > 0 OR price_diamond > 0) AND type IN ('军官装备','套装')"
 		q = q.Where(mallCond)
 		lq = lq.Where(mallCond)
 	}
@@ -1093,6 +1097,51 @@ func (h *EzfyAdmin) AdminEzfyDataDelete(c *gin.Context) {
 	// ★ 第九轮：配置表删完必须重载 ezfyCfg
 	h.ezfyReload()
 	resp.OK(c, gin.H{"msg": "删除成功"})
+}
+
+// AdminEzfyDataShelf PUT /admin/ezfy-data-shelf/:table
+//
+// ★ 2026-10-14 上下架批量开关（用户「上下架不好维护，优化下」）。
+//
+//	Body: { ids: [1,2,3], shelf: 1 }（1=上架 0=下架）。
+//	只对**含 shelf 列**的表生效（当前 = equipments）；下架**不清价**（价格留着，重新上架即恢复）。
+//	一条 UPDATE ... WHERE id IN (...) 完成，避免 N 次行内点击。
+//
+//	★ 路由走独立前缀 `/ezfy-data-shelf/:table`：`/ezfy-data/:table/shelf` 会与
+//	  `/ezfy-data/:table/:id` 同层冲突（静态段 vs 参数段）→ Gin 把 shelf 当成 id。
+func (h *EzfyAdmin) AdminEzfyDataShelf(c *gin.Context) {
+	def, ok := h.ezfyTableOf(c)
+	if !ok {
+		return
+	}
+	// 仅装备表有上下架（其它表没有 shelf 列）
+	if c.Param("table") != "equipments" {
+		resp.ParamError(c, "该表不支持上下架")
+		return
+	}
+	var in struct {
+		Ids   []int `json:"ids"`
+		Shelf int   `json:"shelf"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || len(in.Ids) == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	shelf := 0
+	if in.Shelf > 0 {
+		shelf = 1
+	}
+	if err := h.DB.Model(def.Model).Where("id IN ?", in.Ids).
+		Updates(map[string]interface{}{"shelf": shelf}).Error; err != nil {
+		resp.ParamError(c, "操作失败："+err.Error())
+		return
+	}
+	h.ezfyReload()
+	word := "下架"
+	if shelf == 1 {
+		word = "上架"
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已%s %d 件", word, len(in.Ids)), "shelf": shelf})
 }
 
 // ============ 流水管理（出征/世界聊天/交易所） ============

@@ -4490,10 +4490,14 @@ func ezfyEquipIDsAsc() []int {
 //   - 「散件也上吧，价格按加成 10 钻石到 50 钻石不等」→ 系列单件（可单穿）+ 纯散件都上架；
 //   - 「商城前端做好看点」→ 按 11 个部位分组，前端直接铺成表格。
 //
-// 上架范围 = **散件**（有系列名的单件 或 不属于任何套装的纯散件）。
-// ★ 2026-10-06 套装装备**全部下架**（set_id > 0 一律不上架，含系列套装）——
-//
-//	只能开宝箱，商城不再出售任何套装件。
+// 上架范围 = `Shelf=1`（管理端上下架开关）**且** 有价格的「军官装备 / 套装」。
+// ★ 历史：2026-09-22 定稿「散件也上吧」→ 只上散件；2026-10-06 套装件全部下架（set_id > 0 不售）；
+// ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ **套装件与系列件重新上架**（价格见 seed），
+//    商城不再按 set_id 拦，只要求「是军官装备 + 有价格（黄金或钻石）」。
+// ★★ 2026-10-14 用户「上下架不好维护」→ 新增 `shelf` 字段（与价格解耦：下架不清价），
+//    上架判定 = `shelf=1 && (price_gold>0 || price_diamond>0)`。
+//    注意：套装件/系列件仍**不会**从野地战斗掉落（wildlandConfigLoot 里 `eq.SetId > 0` 跳过），
+//    商城购买是它们的第二个获取途径（第一个仍是宝箱）。
 func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 	slots := []string{}
 	bySlot := map[string][]gin.H{}
@@ -4501,16 +4505,19 @@ func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 	// 按 ID 升序遍历（equipments 是 map，直接 range 顺序随机 → 部位分组顺序会乱跳）
 	for _, id := range ezfyEquipIDsAsc() {
 		e := ezfyCfg.equipments[id]
+		// ★ 2026-10-14 上下架开关（shelf=0 直接不进商城，价格留着）
+		if e.Shelf <= 0 {
+			continue
+		}
 		if e.PriceGold <= 0 && e.PriceDiamond <= 0 {
 			continue
 		}
-		// ★ 只上架「军官装备」类的散件 —— 也就是《装备距离伤害表》里的 11 个部位。
+		// ★ 只上架「军官装备」类的装备 —— 也就是《装备距离伤害表》里的 11 个部位。
 		//   老版的 武器/防具/饰品/珠宝（Type 是它们自己）不属于那张表，别混进来。
-		if e.Type != "军官装备" {
+		//   ★★ 2026-10-14 套装件（第一批 1~17）的 Type 是 **"套装"**（系列件 21~26 是 "军官装备"）——
+		//      两类都在 11 个部位表内，重新上架时一并放行；老版那 4 类 Type 仍排除。
+		if e.Type != "军官装备" && e.Type != "套装" {
 			continue
-		}
-		if e.SetId > 0 {
-			continue // ★ 2026-10-06 套装件全部下架（含系列套装），只能开宝箱
 		}
 		slot := e.EquipSlot()
 		if _, ok := bySlot[slot]; !ok {
@@ -4600,12 +4607,13 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 		h.fail(c, "装备不存在")
 		return
 	}
-	// ★ 2026-10-06 套装装备全部下架（set_id > 0 含系列套装），只能通过宝箱获取，
-	//   这里拦住绕过前端直接传 cfg_id 的购买请求。
-	if cfg.SetId > 0 {
-		h.fail(c, "该套装装备已下架，请通过宝箱获取")
+	// ★ 2026-10-14 上下架开关：下架的装备即使被乱传 cfg_id 也不能买。
+	if cfg.Shelf <= 0 {
+		h.fail(c, "该装备已下架")
 		return
 	}
+	// ★★ 2026-10-14 套装件/系列件重新上架 → 不再拦 set_id。
+	//   价格按 currency 取 PriceGold/PriceDiamond（套装 1~7 是黄金价，8~17 与系列件是钻石价）。
 	useDiamond := req.Currency == "diamond"
 	price := cfg.PriceGold
 	unit := "黄金"

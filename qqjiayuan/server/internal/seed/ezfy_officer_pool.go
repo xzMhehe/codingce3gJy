@@ -240,10 +240,12 @@ type ezfyEquipSetSeed struct {
 	SetMi   int // 套装加成（触发后）
 	SetLo   int
 	SetLe   int
-	// ★ 2026-10-07 这两个价格字段**已不再使用**：用户「属于套装装备 单卖的我都下架了暂时不卖」
-	//   → 套装件生成时价格一律写 0（见 seedEzfyEquipSets）。字段留着是为了保留历史定价备查。
-	Gold    int64 // 【已废弃】商城黄金价（每件）
-	Diamond int64 // 【已废弃】商城钻石价（每件）
+	// ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ 套装件**重新上架**，且**一律钻石价**（用户明确「都是钻石价」）。
+	//   ★ 注意：1~7 套种子里的 `Gold` 字段是历史遗留（新兵5万金…名门征服1000万金），**不要用**；
+	//     这 17 套统一走钻石价，1~7 用下方 ezfySetDiamondPrice 阶梯，8~17 用 s.Diamond 字面量。
+	Diamond int64 // 商城钻石价（每件）
+	// Gold 仅供历史/资料参考，**不再用于定价**（套装件一律钻石）。
+	Gold int64 // 【不用于定价】历史黄金价，仅备查
 	Effect  string
 	Des     string
 }
@@ -556,11 +558,10 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Type: "套装", Slot: slot, SetId: s.ID, Tier: s.Tier,
 					Military: s.PieceMi, Logistics: s.PieceLo, Learning: s.PieceLe,
 					Level: s.Level,
-					// ★ 2026-10-07 用户「属于套装装备 单卖的我都下架了暂时不卖」→ 套装件**不单独出售**（价 0）。
-					//   线上 135 件套装件 price_gold/price_diamond 也都是 0。
-					//   注意：套装件本来就上不了商城（mall 过滤：set_id>0 且无系列名 → 排除），
-					//   这里置 0 是为了「数据口径与线上一致」，不是商城可见性。
-					PriceGold: 0, PriceDiamond: 0,
+					// ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ 套装件**重新上架**。
+					//   ★ 用户明确「都是钻石价」→ **一律钻石**，PriceGold 恒 0（s.Gold 是历史黄金价，不用）。
+					//   1~7 走 ezfySetDiamondPrice 阶梯，8~17 用 s.Diamond 字面量。
+					PriceGold: 0, PriceDiamond: ezfySetDiamondPrice(s.ID, s.Diamond),
 					Stock: -1, Effect: s.Effect,
 					Des: s.Name + " 套装件（" + slot + "）",
 				})
@@ -613,10 +614,10 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					ID: s.ID*100 + i + 1, Name: s.Series + "[" + p.Sub + "]",
 					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
 					Level: s.Level, Stock: -1, EnhanceMax: 20,
-					// ★ 2026-10-07 用户「属于套装装备 单卖的我都下架了暂时不卖」：
-					//   系列件（属于套装 21~26）**不再单独出售**（价 0 = 不上架），线上这 66 件也是 0。
-					//   原来按加成定价（100~500 钻）→ 会出现在商城「装备」页，与线上不一致。
-					PriceDiamond: 0,
+					// ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ 系列件**重新上架**（恢复原单价）。
+					//   价格取自 ezfyOfficerSeriesSeeds.Diamond：革命者/渡鸦之魂 1500、黑色幽灵 1200、
+					//   巨匠 800、青天白日 2000、赤色锤镰 2000（钻/件）。
+					PriceDiamond: s.Diamond,
 					// ★ 2026-10-10 单件六项百分比清零（用户「单装备倍率加成全改加属性」）；
 					//   只保留套装行的套装倍率（穿齐 11 件才触发）
 					Dmg:      0,
@@ -759,6 +760,41 @@ func ezfyEquipDiamondPrice(dmg, def, hp, move, crit, critDmg int) int64 {
 	default:
 		return 500
 	}
+}
+
+// ezfySetDiamondPrice 套装件 1~17 的商城**钻石单价**（每件）。
+//
+// ★★ 2026-10-14 用户「之前下的装备现在上架吧」+「都是钻石价」：
+//   这批套装件重新上架，且**统一钻石结算**（1~7 套种子里原本只有黄金价，按同档类比补出钻价）。
+//   8~17 套沿用种子字面量 s.Diamond（300~5000）。
+//
+//   ★ 1~7 的阶梯（按品质/等级类比 8~17 定，2026-10-14 用户确认）：
+//     新兵(20,T1)100 / 战士(40,T1)200 / 海军上将(80,T2)300 / 传说英雄(60,T2)300 /
+//     传说无畏(80,T3)450 / 传说征服(100,T3)600 / 名门征服(100,T2)400。
+//
+// 写死成查表（而不是公式）：这是一个只有 17 项的固定价目表，公式反而更难核对。
+func ezfySetDiamondPrice(setID int, fallback int64) int64 {
+	switch setID {
+	case 1:
+		return 100
+	case 2:
+		return 200
+	case 3:
+		return 300
+	case 4:
+		return 300
+	case 5:
+		return 450
+	case 6:
+		return 600
+	case 7:
+		return 400
+	}
+	// 8~17：用种子里写的钻石价
+	if fallback > 0 {
+		return fallback
+	}
+	return 0
 }
 
 // ezfyLooseEquipPrice 散件（ID 3001+）的商城钻价：**显式价优先**，没写才按加成推算。

@@ -58,7 +58,7 @@ func TestChestSetPlanSetsExist(t *testing.T) {
 // ★ 2026-10-07 散件改成「显式价优先」（按线上现值，9 件 1000 / 4 件 100）→ 上限放宽到 1000。
 //
 //	这里校验的是**最终写入的价**（ezfyLooseEquipPrice），字面量写错档会被测出来。
-//	★ 套装件 / 系列件**不单卖**（价恒为 0，见 seedEzfyEquipSets），不参与本用例。
+//	★ 套装件 / 系列件不在本用例范围（它们按套装/系列原价上架，见 seedEzfyEquipSets；2026-10-14 重新上架）。
 func TestLooseEquipPriceInRange(t *testing.T) {
 	check := func(name string, p int64) {
 		if p < 100 || p > 1000 {
@@ -139,6 +139,49 @@ func TestChestSetProbabilityOnePercent(t *testing.T) {
 		if pct < 0.9 || pct > 1.1 {
 			t.Fatalf("宝箱 %d 出套装概率 = %.2f%%（套装权重 %d / 总权重 %d），应在 1%% 附近",
 				chestID, pct, setW, total)
+		}
+	}
+}
+
+// TestSetDiamondPriceLadder —— 套装件 1~17 的商城钻石单价阶梯（2026-10-14 用户「都是钻石价」）。
+//
+// 锁住这张价目表：1~7 是补出来的阶梯（100/200/300/300/450/600/400），8~17 用种子 s.Diamond。
+// 目的：防止日后有人改 ezfySetDiamondPrice 或把 8~17 的 Diamond 字面量改坏。
+func TestSetDiamondPriceLadder(t *testing.T) {
+	want := map[int]int64{
+		1: 100, 2: 200, 3: 300, 4: 300, 5: 450, 6: 600, 7: 400,
+		8: 3000, 9: 3000, 10: 3000, 11: 300, 12: 450,
+		13: 700, 14: 800, 15: 1200, 16: 3600, 17: 5000,
+	}
+	// 1~7 由 ezfySetDiamondPrice 决定（fallback 传 0，确保走阶梯）
+	for id := 1; id <= 7; id++ {
+		if got := ezfySetDiamondPrice(id, 0); got != want[id] {
+			t.Fatalf("套装 %d 的钻石单价 = %d，期望 %d", id, got, want[id])
+		}
+	}
+	// 8~17 必须与种子 s.Diamond 一致（用 fallback 走字面量）
+	for _, s := range ezfyEquipSetSeeds {
+		if s.ID < 8 {
+			continue
+		}
+		if got := ezfySetDiamondPrice(s.ID, s.Diamond); got != want[s.ID] {
+			t.Fatalf("套装 %d(%s) 的钻石单价 = %d，期望 %d", s.ID, s.Name, got, want[s.ID])
+		}
+		if s.Diamond != want[s.ID] {
+			t.Fatalf("套装 %d(%s) 种子里 Diamond=%d，期望 %d（8~17 的值必须写在种子字面量里）",
+				s.ID, s.Name, s.Diamond, want[s.ID])
+		}
+	}
+	// 每个套装都必须在表里（漏项会让该套装件价 0 = 上不了架）
+	for _, s := range ezfyEquipSetSeeds {
+		if _, ok := want[s.ID]; !ok {
+			t.Fatalf("套装 %d(%s) 没有钻石单价（价 0 会上不了架）", s.ID, s.Name)
+		}
+	}
+	// 上架依赖：全部 17 套的最终价必须 > 0
+	for _, s := range ezfyEquipSetSeeds {
+		if p := ezfySetDiamondPrice(s.ID, s.Diamond); p <= 0 {
+			t.Fatalf("套装 %d(%s) 钻石价 %d，上架会因「无价格」被过滤掉", s.ID, s.Name, p)
 		}
 	}
 }

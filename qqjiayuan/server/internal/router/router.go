@@ -1161,6 +1161,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardDelete)
 				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyData)
 				admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataCreate)
+				// ★ 2026-10-14 批量上下架（{ids:[...], shelf:1|0}）。
+				//   ★★ 不能挂在 `/ezfy-data/:table/shelf` —— 与 `/ezfy-data/:table/:id` 同层
+				//      （静态段 shelf vs 参数段 :id）会让 Gin 路由冲突、`shelf` 被当成 id 吞掉。
+				//      改用独立前缀 `/ezfy-data-shelf/:table`（:table 仍是参数，但不与 :id 同层）。
+				admin.PUT("/ezfy-data-shelf/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataShelf)
 				admin.PUT("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataUpdate)
 				admin.DELETE("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataDelete)
 				admin.GET("/ezfy-orders", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrders)

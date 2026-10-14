@@ -1725,6 +1725,11 @@ type EzfyCfgEquipment struct {
 	PriceDiamond int64 `gorm:"default:0;comment:钻石价格" json:"price_diamond"`
 	// Stock 商城库存，-1 = 无上限；0 = 已售罄
 	Stock int `gorm:"default:-1;comment:Stock 商城库存，-1 = 无上限；0 = 已售罄" json:"stock"`
+	// Shelf 商城上下架开关（★ 2026-10-14）：1=上架（商城可见）0=下架（商城隐藏）。
+	//   ★ 与价格解耦：下架**不清价**（价格留着，重新上架即恢复原价）。
+	//   ★ 默认 1：新增装备默认上架；存量老行补列后也是 1（保持既有可见性不变）。
+	//   ★ 玩家端上架判定从「价格>0」改为「shelf=1 且 价格>0」（见 ezfy_officer.go::equipShopList）。
+	Shelf int `gorm:"default:1;comment:Shelf 商城上下架 1=上架 0=下架" json:"shelf"`
 	// Effect 额外效果说明（如「攻速+40%」），仅展示 + 战斗加成文本
 	Effect string `gorm:"type:varchar(200);default:'';comment:Effect 额外效果说明（如「攻速+40%」），仅展示 + 战斗加成文本" json:"effect"`
 	// ===== ★ 2026-09-22 第二批：参照 装备距离伤害表.xlsx =====

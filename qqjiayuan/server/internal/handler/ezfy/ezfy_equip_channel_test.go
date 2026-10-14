@@ -107,26 +107,33 @@ func TestWildlandLootAnnouncesDrops(t *testing.T) {
 	}
 }
 
-// TestEquipShopOnlySellsLoosePieces —— 商城只卖**散件**。
+// TestEquipShopSellsOfficerEquip —— 商城在售 = 有价格的「军官装备」（含套装件/系列件）。
 //
-// ★ 2026-09-22 用户定稿：「散件也上吧，价格按加成 10 钻石到 50 钻石不等」
-// —— 六大系列的单件（可单穿）与纯散件都能买；
-// ★ 2026-10-06 用户定稿：套装装备**全部下架**（set_id > 0 一律不售，含系列套装），
-// 套装件只能开宝箱，「套装装备只能通过宝箱开启」这条规则对所有套装生效。
+// ★ 2026-09-22 用户定稿：「散件也上吧，价格按加成 10 钻石到 50 钻石不等」；
+// ★ 2026-10-06 用户定稿：套装装备**全部下架**（set_id > 0 一律不售，含系列套装）；
+// ★★ 2026-10-14 用户定稿：「之前下的装备现在上架吧」→ **套装件（1~17）与系列件（21~26）重新上架**，
+// 商城不再按 set_id 拦。所以现在**不能**再断言「set_id > 0 被拦住」，
+// 而要断住「仍然只上架军官装备 + 有价格」这两条底线（老版武器/防具/珠宝别混进来）。
 //
-// 列表侧与购买侧都要拦（防前端被绕过直接 POST cfg_id）。
-func TestEquipShopOnlySellsLoosePieces(t *testing.T) {
+// 另：套装件/系列件仍**不会**从野地战斗掉落（见 TestBattleLootExcludesSetPieces）。
+func TestEquipShopSellsOfficerEquip(t *testing.T) {
 	list := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) equipShopList(")
-	if !strings.Contains(list, `e.SetId > 0`) {
-		t.Fatalf("equipShopList 未拦住套装件（set_id > 0 全部下架）：\n%s", list)
+	if strings.Contains(list, "e.SetId > 0") || strings.Contains(list, "e.SetId>0") {
+		t.Fatalf("equipShopList 仍在拦套装件（2026-10-14 已重新上架）：\n%s", list)
+	}
+	if !strings.Contains(list, `e.Type != "军官装备" && e.Type != "套装"`) {
+		t.Fatalf("equipShopList 未限制「只上架军官装备/套装」（老版武器/防具/珠宝会混进来）：\n%s", list)
+	}
+	if !strings.Contains(list, "e.PriceGold <= 0 && e.PriceDiamond <= 0") {
+		t.Fatalf("equipShopList 未要求「有价格」，未定价装备（价 0）会上架：\n%s", list)
 	}
 	if !strings.Contains(list, `"slot"`) {
 		t.Fatalf("equipShopList 应按**部位**分组下发：\n%s", list)
 	}
 
 	buy := ezfyFuncBody(t, "ezfy_officer.go", "func (h *EzfyHandler) EquipShopBuy(")
-	if !strings.Contains(buy, `cfg.SetId > 0`) {
-		t.Fatalf("EquipShopBuy 未拦截套装件购买：\n%s", buy)
+	if strings.Contains(buy, "cfg.SetId > 0") || strings.Contains(buy, "cfg.SetId>0") {
+		t.Fatalf("EquipShopBuy 仍在拦套装件购买（2026-10-14 已重新上架）：\n%s", buy)
 	}
 }
 

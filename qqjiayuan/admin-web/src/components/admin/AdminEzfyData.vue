@@ -10,14 +10,22 @@
         <el-switch v-if="table === 'equipments'" v-model="mallOnly" active-text="仅看商城上架"
                    @change="page = 1; load()" />
         <el-tooltip v-if="table === 'equipments'" placement="top">
-          <div slot="content" style="max-width:340px;line-height:1.6">
+          <div slot="content" style="max-width:360px;line-height:1.6">
             展示到用户商城需同时满足：<br>
-            ① 有价格（黄金或钻石 > 0）；<br>
-            ② 类型为「军官装备」；<br>
-            ③ 非第一批套装件（set_id&gt;0 且无系列号的只能开宝箱，不直购）
+            ① 上架开关 = 上架（行内按钮或批量切换）；<br>
+            ② 有价格（黄金或钻石 &gt; 0）；<br>
+            ③ 类型为「军官装备」或「套装」。<br>
+            ★ 下架**不清价格**，重新上架即恢复原价。
           </div>
           <i class="el-icon-question" style="margin-left:6px;color:#909399;cursor:pointer" />
         </el-tooltip>
+        <!-- ★ 2026-10-14 批量上下架（装备专属；勾选行后用这两个按钮，下架不清价） -->
+        <template v-if="table === 'equipments'">
+          <el-button size="small" type="success" plain icon="el-icon-top" :disabled="!selRows.length"
+                     @click="batchShelf(1)">批量上架{{ selRows.length ? '（' + selRows.length + '）' : '' }}</el-button>
+          <el-button size="small" type="warning" plain icon="el-icon-bottom" :disabled="!selRows.length"
+                     @click="batchShelf(0)">批量下架{{ selRows.length ? '（' + selRows.length + '）' : '' }}</el-button>
+        </template>
         <el-input v-model="word" :placeholder="searchPh" clearable style="width:200px"
                   @keyup.enter.native="page = 1; load()" />
         <!-- ★ 2026-10-07 道具配置：按「商城分类」筛选。
@@ -53,13 +61,19 @@
               本来就不需要限宽兜底；限宽反而与这套弹性口径自相矛盾。
            ⇒ 与地图管理完全一致：toolbar / tabs / 表格 / 分页条 全部 left 对齐、铺满整行。
             （宝箱配置等长文本列 minW 合计超容器 → 表格内部横向滚动，此为既有适配口径。） -->
-      <el-table :data="rows" v-loading="loading" stripe border max-height="620">
+      <el-table :data="rows" v-loading="loading" stripe border max-height="620" @selection-change="onSelChange">
+        <!-- ★ 2026-10-14 装备道具配置：支持多选 + 批量上下架（用户「上下架不好维护，优化下」） -->
+        <el-table-column v-if="table === 'equipments'" type="selection" width="46" align="center" />
         <el-table-column v-for="col in cols" :key="col.k" :label="col.n" :width="col.w" :min-width="col.minW"
                          :align="(col.w || col.minW) ? 'center' : 'left'" show-overflow-tooltip>
           <template slot-scope="{row}">
             <span v-if="col.fmt === 'stock'" :class="row[col.k] < 0 ? 'unlimited' : ''">
               {{ row[col.k] < 0 ? '无上限' : row[col.k] }}
             </span>
+            <!-- ★ 2026-10-14 上架状态列（装备专属）：shelf 1=上架 0=下架 -->
+            <el-tag v-else-if="col.fmt === 'shelf'" size="mini" :type="row[col.k] ? 'success' : 'info'">
+              {{ row[col.k] ? '上架' : '下架' }}
+            </el-tag>
             <!-- ★ 状态 / 枚举列：1、0 这种编码玩家看不懂，统一渲染成文字标签 -->
             <el-tag v-else-if="col.dict" size="mini" :type="dictOf(col, row[col.k]).t">
               {{ dictOf(col, row[col.k]).n }}
@@ -75,10 +89,16 @@
         </el-table-column>
         <!-- ★ 操作按钮统一成图标按钮（与其他二战页面一致，原为「编辑/删除」文字按钮）；
              ★ 2026-09-27 套装装备配置（宝箱）专属：加「奖池」按钮，开箱奖池在弹窗里维护（宝箱是套装装备唯一产出渠道）；
-             ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，不渲染操作列 -->
-        <el-table-column v-if="!isReadOnly" label="操作" width="160" align="center" fixed="right">
+             ★ 2026-09-28 钻石流水 / 2026-10-02 道具使用 是只读视图，不渲染操作列；
+             ★ 2026-10-14 装备专属：行内加 [上架/下架] 一键切换（下架不清价，价格留着）。 -->
+        <el-table-column v-if="!isReadOnly" label="操作" width="210" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button v-if="table === 'chests'" size="mini" type="success" plain icon="el-icon-s-grid" title="配置奖池" @click="openChestPool(row)" />
+            <!-- 装备：一键上下架（shelf 1=上架 0=下架） -->
+            <el-button v-if="table === 'equipments'" size="mini" :type="row.shelf ? 'warning' : 'success'" plain
+                       :icon="row.shelf ? 'el-icon-bottom' : 'el-icon-top'"
+                       :title="row.shelf ? '下架（商城隐藏，价格保留）' : '上架到商城'"
+                       @click="toggleShelf(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="doDelete(row)" />
           </template>
@@ -95,9 +115,15 @@
       <!-- 新增/编辑对话框 -->
       <el-dialog :title="formId ? '编辑' + tableName : '新增' + tableName" :visible.sync="showForm" width="600px" append-to-body>
         <el-form label-width="140px" size="small">
-          <el-form-item v-for="f in formFields" :key="f.k" :label="f.n" :required="f.req">
+          <el-form-item v-for="f in formFields" :key="f.k" :label="f.label || f.n" :required="f.req">
+            <!-- ★ 2026-10-14 字段说明（如「-1 = 无上限」）改成 label 旁的 ? 悬浮提示，不再塞进 label 文字 -->
+            <el-tooltip v-if="f.tip" slot="label" effect="dark" placement="top">
+              <div slot="content" style="max-width:320px;line-height:1.6">{{ f.tip }}</div>
+              <span>{{ f.label || f.n }} <i class="el-icon-question" style="color:#909399" /></span>
+            </el-tooltip>
             <el-select v-if="f.opts" v-model="form[f.k]" style="width:240px"
-                       :filterable="!!f.filterable" :allow-create="!!f.allowCreate" default-first-option>
+                       :filterable="!!f.filterable" :allow-create="!!f.allowCreate" default-first-option
+                       @change="onFormFieldChange(f.k, $event)">
               <el-option v-for="o in f.opts" :key="o.v" :label="o.n" :value="o.v" />
             </el-select>
             <el-input-number v-else-if="f.t === 'num'" v-model="form[f.k]"
@@ -398,6 +424,26 @@ const TASK_ACTIONS = Object.keys(DICTS.taskAction).map(k => ({ v: k, n: DICTS.ta
 // 道具类型下拉选项（同理，与 DICTS.itemType 同源）
 const ITEM_TYPES = Object.keys(DICTS.itemType).map(k => ({ v: Number(k), n: DICTS.itemType[k].n }))
 
+// ★ 2026-10-14 装备「类型」下拉（原自由文本能写出各种写法，导致口径不一）。
+//   取值来自 model.EzfyCfgEquipment.Type 注释 + 现有数据：军官装备 / 套装 / 武器 / 防具 / 饰品 / 珠宝。
+//   ★ 商城上架只认「军官装备」「套装」两类（见后端 equipShopList）；其余类型不受影响。
+const EQUIP_TYPES = [
+  { v: '军官装备', n: '军官装备' },
+  { v: '套装', n: '套装' },
+  { v: '武器', n: '武器' },
+  { v: '防具', n: '防具' },
+  { v: '饰品', n: '饰品' },
+  { v: '珠宝', n: '珠宝' }
+]
+// ★ 2026-10-14 装备「部位」下拉（可搜索 + 可输入新值）。
+//   取值 = 库里实际部位全集：
+//   · 第一批套装（1~17）：头盔/护肩/胸甲/腰带/手套/战靴/饰品/挂件/勋章
+//   · 军官装备系列（21~26，seed 的 ezfyOfficerEquipSlots）：肩部/头部/胸部/腰部/左手/足部/饰品/挂件/勋章/名将勋章/名将史册
+//   （27 件老装备 slot 为空 → 显示时回落到 type，见后端 EquipSlot()）
+const EQUIP_SLOTS = ['头盔', '护肩', '胸甲', '腰带', '手套', '战靴',
+  '肩部', '头部', '胸部', '腰部', '左手', '足部',
+  '饰品', '挂件', '勋章', '名将勋章', '名将史册'].map(s => ({ v: s, n: s }))
+
 // ★ 2026-10-07 道具的「参数(param1)」含义**随类型变化**（资源量 / 分钟数 / 百分比 / 小时数 / 经验值…），
 //   列表里原来只写「参数」两个字，运营根本不知道这个数字是什么 → 按类型渲染成「含义 + 数值 + 单位」。
 //   label = 编辑表单里该字段的标签（跟着所选类型变），text(v) = 列表单元格文案。
@@ -540,7 +586,9 @@ const COLS = {
     { k: 'set_id', n: '套装ID', minW: 82 }, { k: 'level', n: '需求等级', minW: 88 },
     { k: 'series', n: '系列', minW: 84 },
     { k: 'price_gold', n: '黄金价', minW: 78 }, { k: 'price_diamond', n: '钻石价', minW: 82 },
-    { k: 'stock', n: '库存', minW: 84, fmt: 'stock' }
+    { k: 'stock', n: '库存', minW: 84, fmt: 'stock' },
+    // ★ 2026-10-14 上架状态列（shelf 1=上架 0=下架；与价格解耦，下架不清价）
+    { k: 'shelf', n: '状态', minW: 70, fmt: 'shelf' }
   ],
   // ★ 2026-09-27 商城「宝箱」的价格定义 + 上架/库存 + 奖池迁到这里维护（「套装装备配置」）。
   //   宝箱是套装装备的唯一产出渠道，奖池在行内「奖池」按钮的弹窗里维护。
@@ -712,30 +760,38 @@ const FORMS = {
     { k: 'param1', n: '参数', t: 'num' },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
-    { k: 'stock', n: '库存（-1 = 无上限，可随便买；0 = 售罄）', t: 'num', min: -1 },
+    { k: 'stock', n: '库存', t: 'num', min: -1, tip: '-1 = 无上限（可随便买）；0 = 售罄；正数 = 限量。' },
     { k: 'icon', n: '图标文件名（可留空）', t: 'input', max: 50 },
     { k: 'description', n: '描述', t: 'text' }
   ],
   // ★ 2026-09-27 装备道具配置：只维护价格/库存/身份字段（属性在军官装备管理改）
+  // ★ 2026-10-14 用户「编辑装备道具配置改成下拉、所属套装ID也改成下拉、系列空的问题、
+  //   （-1 = 无上限）改成 i 鼠标滑动提示」：
+  //   · type 自由文本 → 固定下拉（原来能写成各种写法）；
+  //   · set_id 裸数字 → 套装下拉（label = 「ID · 套装名」，并自动带出 series）；
+  //   · series 由所选套装自动带出（套装件 series 空 = 手动补），也可手改；
+  //   · stock 的「-1 = 无上限」搬到 label 旁的 ? 提示。
   equipments: [
     { k: 'name', n: '装备名', t: 'input', req: true, max: 50 },
-    { k: 'type', n: '类型（武器/防具/饰品/套装）', t: 'input', max: 20 },
+    { k: 'type', n: '类型', t: 'input', opts: EQUIP_TYPES },
     { k: 'tier', n: '品质', t: 'num', opts: [
       { v: 1, n: '1 初级' }, { v: 2, n: '2 中级' }, { v: 3, n: '3 高级' }, { v: 4, n: '4 特殊' }] },
-    { k: 'slot', n: '部位', t: 'input', max: 20 },
-    { k: 'set_id', n: '所属套装ID（0=散件）', t: 'num' },
+    { k: 'slot', n: '部位', t: 'input', opts: EQUIP_SLOTS, filterable: true, allowCreate: true },
+    // set_id 下拉选项由 computed formFields 注入（依赖已加载的 equipSets）；
+    //   t=num 保证 blankVal 默认 0（= 散件），有 opts 时模板走下拉、不会渲染数字框
+    { k: 'set_id', n: '所属套装', t: 'num' },
     { k: 'level', n: '需求等级', t: 'num' },
     { k: 'series', n: '系列', t: 'input', max: 30 },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
-    { k: 'stock', n: '库存（-1 = 无上限）', t: 'num', min: -1 }
+    { k: 'stock', n: '库存', t: 'num', min: -1, tip: '-1 = 无上限（可随便买）；0 = 售罄下架该渠道；正数 = 限量。' }
   ],
   // ★ 2026-09-27 套装装备配置（宝箱）：价格/库存/上架 + 说明；奖池走行内「奖池」按钮弹窗
   chests: [
     { k: 'name', n: '宝箱名', t: 'input', req: true, max: 100 },
     { k: 'price_gold', n: '黄金售价', t: 'num' },
     { k: 'price_diamond', n: '钻石售价', t: 'num' },
-    { k: 'stock', n: '库存（-1 = 无上限）', t: 'num', min: -1 },
+    { k: 'stock', n: '库存', t: 'num', min: -1, tip: '-1 = 无上限；0 = 售罄。' },
     { k: 'open_max', n: '单次开箱上限', t: 'num', min: 1 },
     { k: 'enabled', n: '上架状态', t: 'num', opts: [{ v: 1, n: '上架' }, { v: 0, n: '下架' }] },
     { k: 'sort_no', n: '排序', t: 'num' },
@@ -831,6 +887,8 @@ export default {
       chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
       chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
       equipSets: [],
+      // ★ 2026-10-14 装备批量上下架：表格勾选的行
+      selRows: [],
       // ★ 2026-10-07 奖池条目编辑：奖品按名称选 → 装备/道具候选列表（懒加载）
       equipOpts: [], itemOpts: [],
       // 模板里只能访问实例属性，模块级 const 要挂到 data 上
@@ -855,6 +913,12 @@ export default {
       if (this.table === 'items') {
         const meta = PARAM_META[this.form.item_type]
         return list.map(f => f.k === 'param1' && meta ? { ...f, n: '参数（' + meta.label + '）' } : f)
+      }
+      // ★ 2026-10-14 装备：所属套装 ID 裸数字 → 套装下拉（0 = 散件 + 全部套装「ID · 名称」）
+      if (this.table === 'equipments') {
+        const setIdOpts = [{ v: 0, n: '0 · 散件（不属任何套装）' }]
+          .concat(this.equipSets.map(s => ({ v: s.id, n: s.id + ' · ' + s.name })))
+        return list.map(f => f.k === 'set_id' ? { ...f, opts: setIdOpts, filterable: true } : f)
       }
       return list
     },
@@ -950,7 +1014,17 @@ export default {
       if (fd.t === 'time') return null
       return ''
     },
+    // ★ 2026-10-14 表单字段联动：装备选了「所属套装」→ 自动带出该套装的「系列」
+    //   （套装件 series 常为空 = 用户说的「系列空的问题」；选了套装就自动补上，仍可手改）。
+    onFormFieldChange (key, val) {
+      if (this.table !== 'equipments') return
+      if (key !== 'set_id') return
+      const s = this.equipSets.find(x => x.id === Number(val))
+      if (s && s.series) this.$set(this.form, 'series', s.series)
+    },
     openCreate () {
+      // ★ 2026-10-14 装备表单的「所属套装」是下拉 → 先确保套装列表已加载
+      if (this.table === 'equipments') this.ensureEquipSets()
       const f = {}
       this.formFields.forEach(fd => { f[fd.k] = this.blankVal(fd) })
       this.form = f
@@ -958,6 +1032,8 @@ export default {
       this.showForm = true
     },
     openEdit (row) {
+      // ★ 2026-10-14 同上：装备表单要先有套装下拉数据
+      if (this.table === 'equipments') this.ensureEquipSets()
       const f = {}
       this.formFields.forEach(fd => {
         const v = row[fd.k]
@@ -992,6 +1068,33 @@ export default {
           else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ============ ★ 2026-10-14 装备上下架（行内一键 / 批量） ============
+    onSelChange (rows) { this.selRows = rows || [] },
+    // 行内一键切换：shelf 1=上架 0=下架（下架不清价，价格留着）
+    toggleShelf (row) {
+      const to = row.shelf ? 0 : 1
+      const word = to ? '上架' : '下架'
+      if (!to) {
+        this.$confirm('确认下架「' + (row.name || 'ID' + row.id) + '」？下架后商城不可见，但价格保留。', '下架确认', { type: 'warning' })
+          .then(() => this.doBatchShelf([row.id], to)).catch(() => {})
+        return
+      }
+      this.doBatchShelf([row.id], to)
+    },
+    batchShelf (shelf) {
+      if (!this.selRows.length) return
+      const ids = this.selRows.map(r => r.id)
+      const word = shelf ? '上架' : '下架'
+      const extra = shelf ? '' : '（下架后商城不可见，但价格保留）'
+      this.$confirm('确认批量' + word + ' ' + ids.length + ' 件装备？' + extra, word + '确认', { type: 'warning' })
+        .then(() => this.doBatchShelf(ids, shelf)).catch(() => {})
+    },
+    doBatchShelf (ids, shelf) {
+      api.put('/admin/ezfy-data-shelf/' + this.table, { ids, shelf }).then(r => {
+        if (r.code === 0) { this.$message.success(r.data.msg || '已更新'); this.load() }
+        else this.$message.error(r.msg)
+      })
     },
     // ============ 道具配置 → 发放道具（2026-09-26 从玩家信息管理移到这里） ============
     openItemGrant () {
@@ -1091,10 +1194,14 @@ export default {
     },
     // ★ 2026-10-07 奖池条目编辑要「按名称选奖品」→ 懒加载三份候选：
     //   套装列表（批量加入 + 整套奖品）、装备列表、道具列表。
-    loadPoolRefs () {
+    // ★ 2026-10-14 抽出 ensureEquipSets：装备表单的「所属套装」下拉也要用同一份数据。
+    ensureEquipSets () {
       if (!this.equipSets.length) {
         api.get('/admin/ezfy-equip-sets').then(r => { if (r.code === 0) this.equipSets = r.data.list })
       }
+    },
+    loadPoolRefs () {
+      this.ensureEquipSets()
       if (!this.equipOpts.length) {
         api.get('/admin/ezfy-equipments', { params: { set_id: '' } }).then(r => {
           if (r.code !== 0) return
