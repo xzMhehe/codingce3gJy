@@ -16,7 +16,7 @@ import (
 
 // Visits GET /games/ezfy/visits —— 当前玩家的访问列表（被谁看过我的统帅页）
 //
-// 简约列表：按时间倒序，只保留最近 5 次。
+// 简约列表：按时间倒序，只展示最近 5 次（总量 visit_count 见信息页，全量累加）。
 // 点击访问列表里的昵称可再跳进对方的统帅页（复用 openPlayer → playerinfo）。
 func (h *EzfyHandler) Visits(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -64,23 +64,19 @@ func (h *EzfyHandler) Visits(c *gin.Context) {
 }
 
 // recordVisit 记一笔「别人查看了 targetUid 的统帅页」；自己看自己不记，失败不影响主流程。
-// 只保留最近 5 次：超出部分物理删除（访问是瞬时行为，无需留存旧记录）。
+//
+// ★ 2026-10-14 修复「访问记录一直是 5」：原来每次新记录后都会把「第 6 新及更旧」的记录
+//   物理删除，而信息页顶部的 visit_count 是按现存行数 Count 统计的 → 总量永远卡在 5，
+//   涨不上去。现在表内全量保留（访问列表接口 Visits 仍只取最近 5 条展示），
+//   visit_count 即为真实的历史访问总量（累加）。
 func (h *EzfyHandler) recordVisit(targetUid, visitorUid uint) {
 	if targetUid == 0 || visitorUid == 0 || targetUid == visitorUid {
 		return
 	}
 	// 异步落库：调用方是 /player/:id（本身就有性能要求），不让写日志拖慢响应。
 	go func() {
-		rec := model.EzfyVisitLog{TargetUid: targetUid, VisitorUid: visitorUid}
-		if err := h.DB.Create(&rec).Error; err != nil {
+		if err := h.DB.Create(&model.EzfyVisitLog{TargetUid: targetUid, VisitorUid: visitorUid}).Error; err != nil {
 			return
-		}
-		// 删掉「第 6 新及更旧」的记录，保持该玩家最多 5 条
-		var oldID uint
-		if err := h.DB.Model(&model.EzfyVisitLog{}).
-			Where("target_uid = ?", targetUid).
-			Order("id DESC").Offset(5).Limit(1).Pluck("id", &oldID).Error; err == nil && oldID > 0 {
-			h.DB.Delete(&model.EzfyVisitLog{}, "target_uid = ? AND id <= ?", targetUid, oldID)
 		}
 	}()
 }
