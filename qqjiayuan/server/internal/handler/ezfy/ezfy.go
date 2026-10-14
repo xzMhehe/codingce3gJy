@@ -3336,22 +3336,57 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		}
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 稀矿+%d", param)
-	// ★ 2026-10-13 移民法案（ItemType 31）：钻石道具，恢复空闲人口。
+	// ★ 2026-10-14 移民法案（ItemType 31）：钻石道具，功能同「人口召集」——
+	//   先召集人口，人口已达上限后再召集空闲人口（恢复空闲人口）。
 	//
-	//	用户规则（原话）：「新增移民法案，钻石道具用于恢复空闲人口，2 钻石恢复 10w 空闲人口；
-	//	空闲人口不会超过召集人口上限（50 万），也不能超过 当前人口（如 78250）」。
+	//	用户规则（原话）：「功能同人口召集，也受召集人口上限数量限制；达到了50w以后
+	//	再用就是回复空闲人口，直到空闲人口和人口数量一样；空闲人口不会超过召集人口上限，
+	//	也不会超过当前人口」。
 	//
-	//	实现 = 直接把「待恢复人口」扣掉：
-	//	  空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口（见 ezfyPopFree），
-	//	  所以扣掉待恢复人口 = 立刻恢复这么多空闲人口；
-	//	  且因为只扣「已经存在的那笔」，空闲人口**天然不会**越过
-	//	  min(召集人口上限, 人口 − 建筑占用) 这两个上限。
-	//	本来就没有待恢复人口（空闲已满）→ 拒绝，且**不消耗道具**。
+	//	阶段一（召集人口）：人口未到上限时直接加人口，上限与「人口召集」完全一致：
+	//	 ① 召集人口上限（convene_pop_max，管理端可配，0 = 不限）——永远生效；
+	//	 ② 民居容纳上限 pop_max（仅当「民居容量限制」开 且「召集人口灵活配置」关时生效）。
+	//	 超上限部分截断，只加到上限为止（与召集同口径，2026-10-09 起不再整单拒绝）。
+	//	阶段二（召集空闲人口）：人口已到上限后，直接把「待恢复人口」扣掉恢复空闲人口
+	//	 （空闲人口 = 人口 − 建筑占用 − 训练中占用 − 待恢复人口，见 ezfyPopFree），
+	//	 空闲人口**天然不会超过** 当前人口 与 召集人口上限（双上限）。
+	//	 待恢复人口 = 0（空闲已满）时拒绝，且**不消耗道具**。
 	case 31:
 		// 先把旧账按时间结清，保证用的是「此刻」的待恢复人口
 		h.ezfySettlePopRecover(city)
+		// —— 阶段一：召集人口（人口未到上限）——
+		gain := int64(param)
+		if popCap := ezfyConvenePopMaxCfg(); popCap > 0 {
+			if city.Pop >= popCap {
+				gain = 0
+			} else if city.Pop+gain > popCap {
+				gain = popCap - city.Pop
+			}
+		}
+		if gain > 0 && ezfyHousePopLimitOn() && !ezfyConveneFlexOn() {
+			if city.Pop >= city.PopMax {
+				gain = 0
+			} else if city.Pop+gain > city.PopMax {
+				gain = city.PopMax - city.Pop
+			}
+		}
+		if gain > 0 {
+			res := h.DB.Model(&model.EzfyCity{}).
+				Where("id = ?", city.ID).
+				Update("pop", gorm.Expr("pop + ?", gain))
+			if res.Error != nil || res.RowsAffected == 0 {
+				return "城市状态已变化, 请刷新后重试"
+			}
+			city.Pop += gain
+			h.consumeItem(uid, cfgId, "使用道具")
+			if gain < int64(param) {
+				return fmt.Sprintf("使用成功: 人口+%d（已达上限, 本次只召到上限）", gain)
+			}
+			return fmt.Sprintf("使用成功: 人口+%d", gain)
+		}
+		// —— 阶段二：召集空闲人口（人口已到上限，恢复空闲人口）——
 		room := city.PopRecover
-		// 上限封顶：空闲人口 ≤ min(召集人口上限, 人口 − 建筑占用)
+		// 上限封顶：空闲人口 ≤ min(召集人口上限, 当前人口)
 		if hard := ezfyConvenePopMaxCfg(); hard > 0 {
 			free := ezfyPopFree(city.Pop, h.buildingPop(city.ID), h.troopPop(city.ID), city.PopRecover)
 			if d := hard - free; d < room {
@@ -3362,7 +3397,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 			room = int64(param)
 		}
 		if room <= 0 {
-			return "空闲人口已达上限, 无需使用移民法案"
+			return "人口已达召集上限, 空闲人口也已满, 无需使用移民法案"
 		}
 		// 条件原子扣减：并发/状态已变时不扣道具
 		res := h.DB.Model(&model.EzfyCity{}).
