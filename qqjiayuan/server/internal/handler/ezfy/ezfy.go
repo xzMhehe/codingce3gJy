@@ -530,7 +530,8 @@ func areaCountsOf(list []model.EzfyCityBuilding) (military, resource int) {
 //
 //	市政厅(1)            → 10
 //	民居(2)              → 最多比市政厅高 1 级；市政厅到 10 级时民居可升到 12
-//	参谋部(10)/司令部(13) → 12
+//	参谋部(10)           → 15（★ 2026-10-14 用户：由 12 上调到 15）
+//	司令部(13)           → 12
 //	其他                 → 10
 func ezfyBuildingMaxLevel(buildingId, hallLevel int) int {
 	switch buildingId {
@@ -544,7 +545,9 @@ func ezfyBuildingMaxLevel(buildingId, hallLevel int) int {
 			return 12
 		}
 		return hallLevel + 1
-	case 10, 13:
+	case 10:
+		return 15
+	case 13:
 		return 12
 	}
 	return 10
@@ -2106,8 +2109,10 @@ func (h *EzfyHandler) upgradeBuilding(city *model.EzfyCity, recordId int64) stri
 	//   规则（2026-09-23 用户修正）：**所有建筑 9→10 级**都需图纸；
 	//   民居(2) 10→11、11→12 也要。
 	//   ★ 2026-09-30 用户追加：**司令部(13) 10级及以后每升一级都需要图纸**（9→10、10→11、11→12）。
+	//   ★ 2026-10-14 用户追加：**参谋部(10) 10级及以后每升一级都需要图纸**
+	//     （10→11、11→12、12→13、13→14、14→15 全要；参谋部上限已上调到 15）。
 	needBlueprint := target == 10 ||
-		((b.BuildingId == 2 || b.BuildingId == 13) && target >= 11)
+		((b.BuildingId == 2 || b.BuildingId == 13 || b.BuildingId == 10) && target >= 11)
 	if needBlueprint && h.itemCount(city.UserID, ezfyBlueprintItemID()) <= 0 {
 		return fmt.Sprintf("升级到%d级需要建筑图纸", target)
 	}
@@ -2175,7 +2180,8 @@ func (h *EzfyHandler) maxLevelBuilding(city *model.EzfyCity, recordId int64, tar
 	for lv := b.Level + 1; lv <= target; lv++ {
 		// ★ 与 upgradeBuilding 同口径：所有建筑 9→10、民居(2) 10→11 / 11→12 需图纸；
 		//   ★ 2026-09-30 司令部(13) 10级及以后每级都需图纸
-		if lv == 10 || ((b.BuildingId == 2 || b.BuildingId == 13) && lv >= 11) {
+		//   ★ 2026-10-14 参谋部(10) 10级及以后每级都需图纸
+		if lv == 10 || ((b.BuildingId == 2 || b.BuildingId == 13 || b.BuildingId == 10) && lv >= 11) {
 			needBlueprint++
 		}
 		if l := ezfyCfg.buildingLevel(b.BuildingId, lv); l != nil {

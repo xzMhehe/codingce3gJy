@@ -138,7 +138,7 @@ func (h *EzfyHandler) Buildings(c *gin.Context) {
 		if cfg != nil {
 			view["name"] = cfg.Name
 			view["type"] = cfg.Type
-			// ★ 等级上限按用户规则（市政厅10 / 参谋部·司令部·民居12 / 其他10，民居受市政厅约束）
+			// ★ 等级上限按用户规则（市政厅10 / 参谋部15 / 司令部12 / 民居12，民居受市政厅约束）
 			view["max_level"] = ezfyBuildingMaxLevel(b.BuildingId, hallLevel)
 			view["des"] = cfg.Des
 			view["can_delete"] = cfg.CanDelete
