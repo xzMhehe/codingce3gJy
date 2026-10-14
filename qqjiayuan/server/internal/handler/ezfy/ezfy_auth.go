@@ -64,7 +64,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 	//   统一带 `need_captcha: true`。
 	if loginlimiter.NeedCaptcha(name) {
 		if strings.TrimSpace(req.Captcha) == "" {
-			resp.FailData(c, 400, "密码错误次数较多，请输入验证码（图片算式的计算结果）", gin.H{"need_captcha": true})
+			resp.FailData(c, 400, "密码错误次数较多，请输入验证码", gin.H{"need_captcha": true})
 			return
 		}
 		if !captcha.Verify(req.CaptchaID, req.Captcha) {

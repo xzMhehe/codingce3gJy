@@ -56,7 +56,7 @@
 
           <!-- ★ 2026-10-13 密码输错满 3 次后，后端会在响应里带 `need_captcha`，
                这时才亮出验证码（算式图片）—— 原来管理端**完全没有验证码**，
-               只会弹一句「请输入验证码（图片算式的计算结果）」，没有输入框也没有图片，直接卡死登不进去。 -->
+               只会弹一句「请输入验证码」，没有输入框也没有图片，直接卡死登不进去。 -->
           <el-form-item v-if="needCaptcha">
             <div class="captcha-row">
               <el-input
@@ -159,7 +159,7 @@ export default {
 
       // 需要验证码时先本地拦一道（后端也会校验，这里只是省一次往返）
       if (this.needCaptcha && !this.captcha) {
-        this.err = '请输入验证码（图片算式的计算结果）'
+        this.err = '请输入验证码'
         return
       }
 

@@ -82,7 +82,7 @@ export default {
         return
       }
       if (!this.form.captcha) {
-        this.err = '请输入验证码（图片算式的计算结果）'
+        this.err = '请输入验证码'
         return
       }
       api.post('/auth/register', this.form).then(r => {

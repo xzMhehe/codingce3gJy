@@ -86,7 +86,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	// 先验验证码，避免脚本不填验证码就批量探测昵称
 	if strings.TrimSpace(req.Captcha) == "" {
-		resp.ParamError(c, "请输入验证码（图片算式的计算结果）")
+		resp.ParamError(c, "请输入验证码")
 		return
 	}
 	if !captcha.Verify(req.CaptchaID, req.Captcha) {
@@ -175,7 +175,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	//   统一改成 `resp.FailData(..., {"need_captcha": true})`，与下面的密码错误分支 / 二战登录同口径。
 	if loginlimiter.NeedCaptcha(name) {
 		if strings.TrimSpace(req.Captcha) == "" {
-			resp.FailData(c, 400, "密码错误次数较多，请输入验证码（图片算式的计算结果）", gin.H{"need_captcha": true})
+			resp.FailData(c, 400, "密码错误次数较多，请输入验证码", gin.H{"need_captcha": true})
 			return
 		}
 		if !captcha.Verify(req.CaptchaID, req.Captcha) {
