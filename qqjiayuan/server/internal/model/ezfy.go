@@ -164,8 +164,8 @@ type EzfyActWild struct {
 	// Enabled 启用开关：1=启用活动（是活动野地） 0=关闭（该格按普通野地处理）
 	Enabled int `gorm:"default:0;comment:启用开关 1启用 0关闭" json:"enabled"`
 	Level   int `gorm:"default:0;comment:活动等级1-3，0=用默认" json:"level"`
-	// Troops 守军配置 JSON [[兵种id,数量],...]，空=用默认守军
-	Troops string `gorm:"type:varchar(1000);comment:守军JSON [[兵种id,count],...]" json:"troops"`
+	// Troops 守军配置 JSON [[兵种id,最小,最大],...]（兼容旧格式 [兵种id,数量]），空=用默认守军
+	Troops string `gorm:"type:varchar(1000);comment:守军JSON [[兵种id,min,max],...] 兼容 [id,count]" json:"troops"`
 	// Res 每次胜利资源奖励(粮/钢/油/稀矿各加)，0=用默认
 	Res int64 `gorm:"default:0;comment:资源奖励，0=用默认" json:"res"`
 	// Gold 黄金(元宝)奖励，0=用默认

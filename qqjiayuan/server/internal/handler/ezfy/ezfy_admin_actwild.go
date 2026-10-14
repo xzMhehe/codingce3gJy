@@ -453,10 +453,10 @@ func checkActWildVals(vals map[string]interface{}) string {
 	if v, ok := vals["prestige"].(int); ok && v < 0 {
 		return "声望奖励不能为负"
 	}
-	// 守军 JSON 校验
+	// 守军 JSON 校验（范围格式 [[兵种id,最小,最大]]，兼容旧的 [[兵种id,数量]]）
 	if s, ok := vals["troops"].(string); ok && strings.TrimSpace(s) != "" {
 		if parseActWildTroops(s) == nil {
-			return "守军配置格式不对，应为 [[兵种id,数量],...]"
+			return "守军配置格式不对，应为 [[兵种id,数量]] 或 [[兵种id,最小,最大]]"
 		}
 	}
 	// 必掉宝物 JSON 校验 [[cfg_id,count],...]

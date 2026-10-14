@@ -3,6 +3,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -12,20 +13,68 @@ import (
 	"qqjiayuan/server/internal/model"
 )
 
-// parseActWildTroops 解析活动野地配置的守军 JSON [[兵种id,count],...]→ 战斗兵组列表
+// parseActWildTroops 解析活动野地配置的守军 JSON → 战斗兵组列表
 //
-// 失败/空串返回 nil。count 不合法（<=0）的行丢弃。
+// 支持两种格式（★ 2026-10-14 与野地类型同口径，改成范围配）：
+//   - [[兵种id,数量],...]：固定数量（兼容旧数据）
+//   - [[兵种id,最小,最大],...]：范围内随机数量
+//
+// 失败/空串返回 nil。兵种id<=0 或 数量<=0 的行丢弃。
 func parseActWildTroops(raw string) []ezfyUnitGroup {
-	var rows [][2]int
+	var rows [][]int64
 	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
 		return nil
 	}
 	out := []ezfyUnitGroup{}
 	for _, r := range rows {
-		if r[0] <= 0 || r[1] <= 0 {
+		if len(r) < 2 || r[0] <= 0 {
 			continue
 		}
-		out = append(out, ezfyUnitGroup{TroopId: r[0], Count: int64(r[1])})
+		count := r[1]
+		if len(r) >= 3 {
+			lo, hi := r[1], r[2]
+			if hi < lo {
+				hi = lo
+			}
+			count = lo
+			if hi > lo {
+				count = lo + rand.Int63n(hi-lo+1)
+			}
+		}
+		if count <= 0 {
+			continue
+		}
+		out = append(out, ezfyUnitGroup{TroopId: int(r[0]), Count: count})
+	}
+	return out
+}
+
+// parseActWildTroopRanges 解析活动野地守军配置为范围预览 [[兵种id,最小,最大],...]，
+// 兼容旧格式 [兵种id,数量]（min=max=数量）。失败/空 → nil。
+func parseActWildTroopRanges(raw string) [][]int64 {
+	var rows [][]int64
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := [][]int64{}
+	for _, r := range rows {
+		if len(r) < 2 || r[0] <= 0 {
+			continue
+		}
+		lo, hi := r[1], r[1]
+		if len(r) >= 3 {
+			hi = r[2]
+			if hi < lo {
+				hi = lo
+			}
+		}
+		if lo <= 0 {
+			continue
+		}
+		out = append(out, []int64{r[0], lo, hi})
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -809,19 +858,30 @@ func (h *EzfyHandler) ezfyActWildlandView(uid uint, camp, x, y, actType int) gin
 		level = aw.Level
 	}
 	defs := ezfyActivityDefender(actType, level, terrain)
-	if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Troops) != "" {
-		if cfg := parseActWildTroops(aw.Troops); cfg != nil && len(cfg) > 0 {
-			defs = cfg
-		}
-	}
 	troops := []gin.H{}
 	var total int64
-	for _, g := range defs {
-		total += g.Count
-		troops = append(troops, gin.H{
-			"troop_id": g.TroopId, "name": ezfyCfg.troopName(g.TroopId, camp),
-			"min": g.Count, "max": g.Count,
-		})
+	// ★ 2026-10-14 配置守军改为范围格式：预览按 [[兵种id,最小,最大]] 展示 min~max
+	//   （不再随机取值，保证玩家看到的范围 = 实际打的随机区间；act_total 按「最大守军」算）
+	if aw != nil && aw.Enabled == 1 && strings.TrimSpace(aw.Troops) != "" {
+		if rgs := parseActWildTroopRanges(aw.Troops); rgs != nil {
+			for _, rg := range rgs {
+				tid, lo, hi := int(rg[0]), rg[1], rg[2]
+				total += hi
+				troops = append(troops, gin.H{
+					"troop_id": tid, "name": ezfyCfg.troopName(tid, camp),
+					"min": lo, "max": hi,
+				})
+			}
+		}
+	}
+	if len(troops) == 0 {
+		for _, g := range defs {
+			total += g.Count
+			troops = append(troops, gin.H{
+				"troop_id": g.TroopId, "name": ezfyCfg.troopName(g.TroopId, camp),
+				"min": g.Count, "max": g.Count,
+			})
+		}
 	}
 	res := ezfyActRewardBase(actType, level)
 	gold := ezfyActGoldReward(actType, level)

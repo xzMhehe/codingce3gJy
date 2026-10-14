@@ -730,8 +730,10 @@
               <el-option v-for="t in troopCfgs" :key="'awtc' + t.id"
                          :label="t.name" :value="t.id" />
             </el-select>
-            <span class="td-sub">数量</span>
-            <el-input-number v-model.number="r.count" :min="0" controls-position="right" style="width:150px" />
+            <span class="td-sub">最小</span>
+            <el-input-number v-model.number="r.min" :min="0" controls-position="right" style="width:120px" />
+            <span class="td-sub">~最大</span>
+            <el-input-number v-model.number="r.max" :min="0" controls-position="right" style="width:120px" />
             <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="awTroops.splice(i, 1)" />
           </div>
           <div class="old-line" v-if="!awTroops.length">（未配置守军，用默认活动守军）</div>
@@ -1214,7 +1216,7 @@ export default {
       this.aw.officer_name = ''
       this.awStarFilter = 0
     },
-    // 解析 [[兵种id,数量],...] JSON → 可视化行
+    // 解析 [[兵种id,数量]]（旧）或 [[兵种id,最小,最大]]（新）JSON → 可视化行
     parseAwTroops (raw) {
       const out = []
       try {
@@ -1222,7 +1224,8 @@ export default {
         if (Array.isArray(arr)) {
           arr.forEach(r => {
             if (Array.isArray(r) && r.length >= 2 && Number(r[0]) > 0) {
-              out.push({ troop_id: Number(r[0]) || 0, count: Number(r[1]) || 0 })
+              const lo = Number(r[1]) || 0
+              out.push({ troop_id: Number(r[0]) || 0, min: lo, max: r.length >= 3 ? Math.max(lo, Number(r[2]) || 0) : lo })
             }
           })
         }
@@ -1231,7 +1234,7 @@ export default {
     },
     addAwTroop () {
       const first = this.troopCfgs[0]
-      if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, count: 100 })
+      if (this.troopCfgs.length) this.awTroops.push({ troop_id: first.id, min: 100, max: 200 })
     },
     // 解析 [[宝物cfg_id,数量],...] JSON → 可视化行
     parseAwTreasures (raw) {
@@ -1255,9 +1258,13 @@ export default {
     saveAw () {
       const a = this.aw
       if (!(Number(a.x) > 0) || !(Number(a.y) > 0)) { this.$message.warning('请填写坐标 x/y'); return }
-      // 可视化行 → [[兵种id,数量],...]（没配任何行 = 留空用默认守军）
-      const rows = (this.awTroops || []).filter(r => Number(r.troop_id) > 0 && Number(r.count) > 0)
-        .map(r => [Number(r.troop_id), Number(r.count)].map(n => Number(n)))
+      // 可视化行 → [[兵种id,最小,最大],...]（没配任何行 = 留空用默认守军）
+      const rows = (this.awTroops || []).filter(r => Number(r.troop_id) > 0 && Number(r.min) > 0)
+        .map(r => {
+          const lo = Number(r.min) || 0
+          const hi = Math.max(lo, Number(r.max) || 0)
+          return [Number(r.troop_id), lo, hi]
+        })
       const troops = rows.length ? JSON.stringify(rows) : ''
       // 宝物可视化行 → [[cfg_id,数量],...]
       const tRows = (this.awTreasures || []).filter(r => Number(r.treasure_id) > 0 && Number(r.count) > 0)
@@ -1317,13 +1324,15 @@ export default {
         }
       })
     },
-    // 活动野地列表：把守军 [[兵种id,数量]] 显示成「步兵 100、卡车 50」这种好读形式
+    // 活动野地列表：把守军 [[兵种id,最小,最大]] 显示成「步兵 100~200、卡车 50」这种好读形式
     awTroopText (raw) {
       const rows = this.parseAwTroops(raw)
       if (!rows.length) return ''
       return rows.map(r => {
         const t = (this.troopCfgs || []).find(x => Number(x.id) === Number(r.troop_id))
-        return (t ? t.name : ('兵种' + r.troop_id)) + ' ' + Number(r.count).toLocaleString()
+        const fmt = v => Number(v).toLocaleString()
+        const name = t ? t.name : ('兵种' + r.troop_id)
+        return Number(r.max) > Number(r.min) ? name + ' ' + fmt(r.min) + '~' + fmt(r.max) : name + ' ' + fmt(r.min)
       }).join('、')
     },
     // 活动野地列表：把必掉宝物 [[cfg_id,数量]] 显示成「红宝石 x2、蓝宝石 x1」
