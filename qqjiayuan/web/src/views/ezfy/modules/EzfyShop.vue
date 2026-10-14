@@ -3,10 +3,11 @@
     <template v-if="ezfy.cur === 'bag'">
         <div class="panel">
           <div class="panel-title">背包</div>
-          <!-- ★ 2026-10-11 背包分栏：道具 / 军官装备（宝物由底部导航「宝物」独立页承载） -->
+          <!-- ★ 2026-10-11 背包分栏：道具 / 军官装备 / 宝箱（★ 2026-10-14 商城买的宝箱、管理端发放的宝箱都在这开） -->
           <div class="acade-tab">
             <a href="javascript:;" :class="{ on: ezfy.bagTab === 'item' }" @click="ezfy.setBagTab('item')">道具</a><span> | </span>
-            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'equip' }" @click="ezfy.setBagTab('equip')">军官装备</a>
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'equip' }" @click="ezfy.setBagTab('equip')">军官装备</a><span> | </span>
+            <a href="javascript:;" :class="{ on: ezfy.bagTab === 'chest' }" @click="ezfy.setBagTab('chest')">宝箱</a>
           </div>
           <template v-if="ezfy.bagTab === 'item'">
           <!-- ★ 2026-10-06 背包只展示道具：宝物已由底部导航「宝物」独立页承载，去掉子tab及宝物展示 -->
@@ -71,7 +72,7 @@
           </template>
           <!-- ★ 2026-10-11 军官装备 tab：展示自己的装备；武器/防具可按品质卖黄金（物理删除）。
                ★ 2026-10-11 加分页（用户：「背包也要做分页 不然展示太多」）：每页 10 种，与道具 tab 同款。 -->
-          <template v-else>
+          <template v-else-if="ezfy.bagTab === 'equip'">
             <div class="old-line" v-for="e in ezfy.bagEquipPaged" :key="'eq' + e.cfg_id">
               <b>{{ e.name }}</b>×{{ e.count }}
               <span class="gray">[{{ e.type }}]</span>
@@ -94,6 +95,26 @@
               <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage <= 1 }" @click="ezfy.bagEquipGo(-1)">[上一页]</a>
               <span class="gray">第 {{ Math.min(ezfy.bagEquipPage, ezfy.bagEquipTotalPages) }}/{{ ezfy.bagEquipTotalPages }} 页 · 共 {{ ezfy.bagEquips.length }} 种</span>
               <a href="javascript:;" :class="{ disabled: ezfy.bagEquipPage >= ezfy.bagEquipTotalPages }" @click="ezfy.bagEquipGo(1)">[下一页]</a>
+            </div>
+          </template>
+          <!-- ★ 2026-10-14 宝箱 tab：商城买的（只买不开）、管理端发放的宝箱都在这里，点开箱走 ezfy_user_chest -->
+          <template v-else-if="ezfy.bagTab === 'chest'">
+            <div class="old-line gray">这里放你购买后暂不开、以及管理员发放的宝箱，开箱直接拿奖励（不花钱）。</div>
+            <div class="old-line" v-for="b in ezfy.chestBag.list" :key="'bc' + b.chest_id">
+              <b>{{ b.name }}</b>×{{ b.count }}
+              <span v-if="b.effect" class="gray">[{{ b.effect }}]</span>
+              <a href="javascript:;" @click="ezfy.openBagChest(b)">[开箱]</a>
+              <a v-if="b.count >= 5 && b.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 5)">[开5]</a>
+              <a v-if="b.count >= 10 && b.open_max >= 10" href="javascript:;" @click="ezfy.quickOpenBagChest(b, 10)">[开10]</a>
+            </div>
+            <div class="old-line gray" v-if="!ezfy.chestBag.list.length">(背包里没有待开宝箱，去商城宝箱页购买吧)</div>
+            <!-- ★ 开箱结果就地展示（与商城宝箱同款聚合着色） -->
+            <div class="old-line" v-if="ezfy.chestResult.length">
+              <b class="green">开箱成功</b>
+              <template v-for="(g, i) in ezfy.chestResultGroups" :key="'bcr' + i">
+                <span :class="ezfy.qualityClass(g.quality)">{{ g.name }}×{{ g.n }}</span><span v-if="i < ezfy.chestResultGroups.length - 1">、</span>
+              </template>
+              <a href="javascript:;" @click="ezfy.chestResult = []">[收起]</a>
             </div>
           </template>
           <a href="javascript:;" @click="ezfy.go('mall')">[前往商城]</a>
@@ -295,10 +316,18 @@
                 </td>
                 <td>
                   <template v-if="!ch.sold_out">
-                    <a href="javascript:;" @click="ezfy.quickOpenChest(ch, 1)">[开1]</a>
-                    <a v-if="ch.open_max >= 5" href="javascript:;" @click="ezfy.quickOpenChest(ch, 5)">[开5]</a>
-                    <a v-if="ch.open_max >= 10" href="javascript:;" @click="ezfy.quickOpenChest(ch, 10)">[开10]</a>
+                    <!-- ★ 2026-10-14 [开箱]=买了即开；[购买]=只买不开入背包，可去背包再开 -->
                     <a href="javascript:;" @click="ezfy.openChestBuy(ch)">[开箱]</a>
+                    <a href="javascript:;" @click="ezfy.buyChest(ch)">[购买]</a>
+                    <!-- 购买面板: 数量 + 确认（复用背包/商城 use-box 样式） -->
+                    <template v-if="ezfy.buyChest && ezfy.buyChest.id === ch.id">
+                      <br/>
+                      <span class="gray">数量</span>
+                      <input v-model="ezfy.buyChestCount" type="number" min="1" :max="ch.open_max" style="width:60px"/>
+                      <span class="gray">/{{ ch.open_max }} 个 · 买后放背包</span>
+                      <a href="javascript:;" @click="ezfy.doBuyChest()">[确认购买]</a>
+                      <a href="javascript:;" @click="ezfy.buyChest = null">[取消]</a>
+                    </template>
                   </template>
                   <span v-else class="gray">[售罄]</span>
                 </td>

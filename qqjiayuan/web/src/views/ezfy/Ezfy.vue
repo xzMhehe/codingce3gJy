@@ -811,8 +811,10 @@ export default {
       // ★ 宝箱（用钻石/黄金买，开箱按权重出套装件）
       chestData: { chests: [], gold: 0, diamond: 0 },
       chestOpen: null, chestCount: 1, chestPay: 'diamond', chestResult: [], chestLastCost: '',
-      // ★ 2026-10-14 我的待开宝箱（管理端发放的，自己开箱）
+      // ★ 2026-10-14 我的待开宝箱（商城买的、管理端发放的，自己开箱）
       chestBag: { list: [], total: 0 },
+      // ★ 2026-10-14 商城宝箱「购买」（只买不开入背包）：当前展开的宝箱 + 数量
+      buyChest: null, buyChestCount: 1,
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
@@ -2444,7 +2446,7 @@ export default {
       // ★ 2026-09-28 兜底：cities 只在 /view 里下发，万一初始化那次请求失败（或列表为空）
       //   → 进页时补拉一次 /view，别让玩家看到一个空列表还不知道为什么。
       else if (t === 'cities') { this.loadRank(); if (!this.cities.length) this.load() }
-      else if (t === 'bag') this.loadBag()
+      else if (t === 'bag') { this.loadBag(); if (this.bagTab === 'chest') this.loadChestBag() }
       else if (t === 'treasure') this.loadBag()   // ★ 宝物页：展示采集宝物（bagTreasures）
       else if (t === 'mall') {
         this.loadMall(true)
@@ -3866,11 +3868,13 @@ export default {
         this.loadBag()
       })
     },
-    // ★ 2026-10-11 背包分栏：道具 / 军官装备
+    // ★ 2026-10-11 背包分栏：道具 / 军官装备 / 宝箱
     setBagTab (t) {
       this.bagTab = t
       this.sellEquip = null
       this.bagEquipPage = 1
+      // ★ 2026-10-14 宝箱 tab：切进来就拉一次待开宝箱（商城买的/管理端发放的）
+      if (t === 'chest') this.loadChestBag()
     },
     // ★ 2026-10-11 背包出售装备（武器/防具）：打开出售面板
     openSellEquip (e) {
@@ -3941,6 +3945,29 @@ export default {
       // ★ 跳转到独立开箱详情页确认
       this.chestResult = []
       this.cur = 'chestopen'
+    },
+    // ★ 2026-10-14 商城宝箱「购买」：只买不开，宝箱进背包（背包→宝箱 tab），不抽奖
+    buyChest (ch) {
+      this.buyChest = this.buyChest && this.buyChest.id === ch.id ? null : ch
+      this.buyChestCount = 1
+    },
+    doBuyChest () {
+      const ch = this.buyChest
+      if (!ch) return
+      const n = parseInt(this.buyChestCount) || 0
+      if (n <= 0) { this.notify('请填写购买数量'); return }
+      // 并发防抖：连点不会重复下单
+      this.once('chestBuy' + ch.id, () =>
+        api.post('/games/ezfy/chest/buy', {
+          chest_id: ch.id, count: n, currency: ch.price_diamond > 0 ? 'diamond' : 'gold'
+        }).then(r => {
+          if (r.code !== 0) { this.notify(r.msg || '购买失败'); return }
+          this.notify(r.msg || '购买成功')
+          this.buyChest = null
+          // 刷新余额/库存 + 背包宝箱数（买到的进背包）
+          this.loadChests()
+          this.loadChestBag()
+        }))
     },
     // ★ 2026-10-13 快捷开箱：商城宝箱列表直接 [开1]/[开5]/[开10]，数量超过单次上限自动封顶，
     //   开完结果就地展示在商城宝箱 tab（不用再跳独立开箱页看列表）

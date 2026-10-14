@@ -752,7 +752,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 宝箱（钻石/黄金买，开箱按权重出套装件）
 				ezfyG.GET("/chest", ezfyH.ChestList)
 				ezfyG.POST("/chest/open", ezfyH.ChestOpen)
-				// ★ 2026-10-14 我的待开宝箱（管理端发放的，玩家自己开箱）
+				// ★ 2026-10-14 商城宝箱「购买」（只买不开，入背包）与背包开箱
+				ezfyG.POST("/chest/buy", ezfyH.ChestBuy)
 				ezfyG.GET("/chest/bag", ezfyH.ChestBag)
 				ezfyG.POST("/chest/open-bag", ezfyH.ChestBagOpen)
 				// ★ 计谋（消耗信号弹）
