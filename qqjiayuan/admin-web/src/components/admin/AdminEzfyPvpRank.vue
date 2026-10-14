@@ -23,12 +23,12 @@
             {{ enabled ? '按自然周统计玩家对战战绩' : '已关闭：不再统计新的玩家对战战绩（历史周榜保留）' }}
           </span>
           <div class="grow" />
-          <el-select v-model="week" placeholder="选择统计周" style="width:200px" @change="loadPvp()">
+          <el-select v-model="week" placeholder="选择统计周" style="width:200px" @change="loadPvp(true)">
             <el-option v-for="w in weeks" :key="w" :label="w" :value="w" />
           </el-select>
         </div>
 
-        <el-table :data="list" v-loading="loading" stripe border>
+        <el-table :data="pvpPageList" v-loading="loading" stripe border>
           <el-table-column label="名次" width="70" align="center">
             <template slot-scope="{row}">
               <span class="td-rank" :class="row.rank <= 3 ? 'top' : ''">{{ row.rank }}</span>
@@ -64,8 +64,14 @@
             </template>
           </el-table-column>
         </el-table>
-        <div class="pager-info" style="margin-top:8px">
-          共 <b>{{ list.length }}</b> 名 · 榜单按「积分」降序（同积分按灭敌多、胜场多、战损少）。昵称/军团为写榜时快照。
+        <!-- ★ 2026-10-14 风云榜分页（默认每页 10 条） -->
+        <div class="pager-bar">
+          <div class="pager-info">共 <b>{{ pvpTotal }}</b> 名 · 榜单按「积分」降序（同积分按灭敌多、胜场多、战损少）。昵称/军团为写榜时快照。</div>
+          <el-pagination v-show="pvpTotal > 0" small background layout="sizes, prev, pager, next, jumper"
+                         :total="pvpTotal" :page-size="pvpSize" :current-page="pvpPage"
+                         :page-sizes="[10, 20, 50, 100]"
+                         @current-change="p => { pvpPage = p }"
+                         @size-change="s => { pvpSize = s; pvpPage = 1 }" />
         </div>
 
         <!-- 不参与排名名单 -->
@@ -155,11 +161,14 @@ export default {
       week: '',
       weeks: [],
       list: [],
+      // ★ 2026-10-14 风云榜分页（默认每页 10 条）——后端一次性返回整周榜单，前端切片
+      pvpPage: 1,
+      pvpSize: 10,
       excluded: [],
       // ---- 战力榜 ----
       powerLoading: false,
       powerPage: 1,
-      powerSize: 20,
+      powerSize: 10,
       powerTotal: 0,
       powerWord: '',
       powerList: [],
@@ -167,6 +176,14 @@ export default {
   },
   mounted () {
     this.loadPvp()
+  },
+  computed: {
+    // ★ 2026-10-14 风云榜分页：后端一次性返回整周榜单，这里按页切片展示
+    pvpTotal () { return this.list.length },
+    pvpPageList () {
+      const start = (this.pvpPage - 1) * this.pvpSize
+      return this.list.slice(start, start + this.pvpSize)
+    }
   },
   methods: {
     reloadAll () {
@@ -176,8 +193,10 @@ export default {
     onTabChange () {
       if (this.tab === 'power' && !this.powerList.length) this.loadPower()
     },
-    loadPvp () {
+    loadPvp (resetPage) {
       this.loading = true
+      // ★ 2026-10-14 切周（resetPage）后回到第 1 页；单纯刷新保留当前页
+      if (resetPage === true) this.pvpPage = 1
       const params = {}
       if (this.week) params.week = this.week
       api.get('/admin/ezfy-pvp-rank', { params }).then(r => {
@@ -242,6 +261,10 @@ export default {
 </script>
 
 <style>
+  /* ★ 2026-10-14 补齐公共样式（card-head / toolbar / grow / pager-bar / pager-info）——
+     之前本文件没 import 也没重定义 `.card-head`，header 里的「排行榜」标题和「刷新」按钮
+     因为没有 flex 布局而贴在一起（用户反馈）。 */
+  @import './farm-admin.css';
   .td-rank { font-weight: 600; color: #909399; }
   .td-rank.top { color: #e6a23c; }
   .cfg-tabs { margin-bottom: 6px; }
