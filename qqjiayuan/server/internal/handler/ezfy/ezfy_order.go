@@ -1592,6 +1592,9 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 			radar := h.ezfyIntelLevel(target.ID)
 			if radar >= 1 && orderType == 1 {
 				body := "有敌军对我方城市进行了侦查!\n"
+				// ★ 2026-10-14 被侦查报告：先亮出我方哪座城被侦查（自己的城无需情报等级）——
+				//   玩家最想知道的就是「哪座城、从哪来」。
+				body += fmt.Sprintf("我方城市: %s(%d,%d)\n", target.Name, target.X, target.Y)
 				if radar >= 3 {
 					body += fmt.Sprintf("侦查方城市: %s(%d,%d)\n", city.Name, city.X, city.Y)
 				}

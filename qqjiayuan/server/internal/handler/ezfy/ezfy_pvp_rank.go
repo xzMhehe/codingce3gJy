@@ -161,18 +161,21 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 	atkPts := pvpBattlePoints(atkKills, atkLosses, atkPower, defPower, 20, win, draw)
 	defPts := pvpBattlePoints(defKills, defLosses, defPower, atkPower, 15, !win, draw)
 	// ★ 防刷：
-	// 1) 兵力下限——1 兵碰瓷（无论胜负）本场 0 分；攻守双方同规则。
+	// 1) 兵力下限——1 兵碰瓷（无论胜负）**攻守双方**本场都 0 分：
+	//    攻方 1 兵送，守方轻易全灭也不给防御分（防「小号送人头给大号刷分」）。
 	if atkPower < ezfyPvpMinTroop {
 		atkPts = 0
+		defPts = 0
 	}
+	// 2) 防守方自己兵力也少（<1000）→ 守方 0 分（守方同规则，防守方 1 兵挂分）。
 	if defPower < ezfyPvpMinTroop {
 		defPts = 0
 	}
-	// 2) 空城刷——守方零兵力（空城）时进攻方不得分（打空城不算战绩）。
+	// 3) 空城刷——守方零兵力（空城）时进攻方不得分（打空城不算战绩）。
 	if defPower == 0 {
 		atkPts = 0
 	}
-	// 3) 同对手封顶在 accumPvpWeekOnce 内按 foeID 处理。
+	// 4) 同对手封顶在 accumPvpWeekOnce 内按 foeID 处理。
 	atkP := h.ensureProfile(atkUID)
 	defP := h.ensureProfile(defUID)
 	// 攻方
