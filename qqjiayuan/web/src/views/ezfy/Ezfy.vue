@@ -821,6 +821,8 @@ export default {
       chestBag: { list: [], total: 0 },
       // ★ 2026-10-14 商城宝箱「购买」独立页：目标宝箱 + 数量（买进背包不抽奖）
       chestBuyTarget: null, buyChestCount: 1,
+      // ★ 2026-10-14 背包宝箱自定义开箱数量
+      bagChestCount: 1,
       // ★ 2026-10-09 宝箱内容页（chestview）「点奖品名查看详情」：当前展开的奖品下标（-1 = 均收起）
       chestViewDetailIdx: -1,
       // ★ 2026-10-13 商城宝箱行内「可开出」预览：当前展开的宝箱 id（0 = 均收起）
@@ -3916,7 +3918,20 @@ export default {
     },
     // 开管理端发放的待开宝箱（不花钱，详情同购买开箱）
     openBagChest (b) { this.runOpenBagChest(b, 1) },
-    quickOpenBagChest (b, n) { this.runOpenBagChest(b, n) },
+    quickOpenBagChest (b, n) {
+      // 数量超过背包持有自动封顶
+      n = Math.max(1, Math.min(n, b.count || n))
+      this.runOpenBagChest(b, n)
+    },
+    // ★ 2026-10-14 背包宝箱「全部」开
+    openBagChestAll (b) { if (b.count > 0) this.runOpenBagChest(b, b.count) },
+    // ★ 2026-10-14 背包宝箱自定义数量开（输入非法/超量自动封顶到持有数）
+    openBagChestCustom (b) {
+      let n = parseInt(this.bagChestCount) || 0
+      if (n <= 0) { this.notify('请填写开箱数量'); return }
+      if (b.count > 0 && n > b.count) { this.notify('数量超过持有 ' + b.count + ' 个，已按持有数开'); n = b.count }
+      this.runOpenBagChest(b, n)
+    },
     runOpenBagChest (b, n) {
       // 连点防抖：一次点击 = 一次开箱
       this.once('chestBagOpen' + b.chest_id, () =>

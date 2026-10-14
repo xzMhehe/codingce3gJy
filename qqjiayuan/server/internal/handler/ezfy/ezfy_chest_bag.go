@@ -171,14 +171,8 @@ func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 		h.fail(c, "宝箱不存在或已下架")
 		return
 	}
-	maxOpen := chest.OpenMax
-	if maxOpen <= 0 {
-		maxOpen = 1
-	}
-	if req.Count > maxOpen {
-		h.fail(c, fmt.Sprintf("单次最多开%d个", maxOpen))
-		return
-	}
+	// ★ 2026-10-14 去掉 OpenMax 单次上限：开的是自己背包里的待开宝箱，支持一次开「全部」（
+	//   OpenMax 只约束商城购买/即开），仅校验持有数量，防超开。
 	if req.Count > held.Count {
 		h.fail(c, fmt.Sprintf("待开宝箱数量不足(共%d个)", held.Count))
 		return
