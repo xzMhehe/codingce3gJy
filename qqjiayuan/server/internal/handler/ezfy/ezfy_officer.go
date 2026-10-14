@@ -2574,6 +2574,11 @@ func (h *EzfyHandler) createCaptiveOfficer(city *model.EzfyCity, g *model.EzfyCf
 		log.Printf("ezfy 野地战俘写入失败 city=%d general=%d name=%s: %v", city.ID, g.ID, g.Name, err)
 		return ""
 	}
+	// ★ 2026-10-14 「抓到名将也要系统播报」：俘虏到**名将**（军官池 kind=2，只由管理端发放、
+	//   不进招募池）→ 系统频道全服播报。普通军官不播，避免刷屏。
+	if g.Kind == 2 {
+		h.ezfySysChat("恭喜玩家 %s 抓获名将 %s(%d星)！", h.ezfyProfileName(city.UserID), g.Name, star)
+	}
 	return "俘虏敌将:" + o.Name + "(" + strconv.Itoa(star) + "星, 忠诚30) 可前往军校收编"
 }
 
