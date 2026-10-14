@@ -2455,7 +2455,7 @@ export default {
       else if (t === 'welfare') this.loadWelfare()
       // ★ 2026-10-03 接口懒加载：聊天数据只在进入聊天页时拉（原 mounted 无条件拉）
       else if (t === 'chat') this.loadChats()
-      else if (t === 'rank') { this.loadRank(); if (this.rankTab === 'pvp' && !this.pvpRank.week) this.loadPvpRank() }
+      else if (t === 'rank') { this.loadRank(); if (this.rankTab === 'pvp') this.loadPvpRank() }
       // 城市列表页要显示「军衔可建城数」，所以也拉一次军衔数据
       // ★ 2026-09-28 兜底：cities 只在 /view 里下发，万一初始化那次请求失败（或列表为空）
       //   → 进页时补拉一次 /view，别让玩家看到一个空列表还不知道为什么。
@@ -3701,10 +3701,10 @@ export default {
         if (r.code === 0) this.rankData = r.data
       })
     },
-    // ★ 2026-10-14 风云榜：切到该 tab 时切光并首次拉取本周榜单
+    // ★ 2026-10-14 风云榜：切到该 tab 时总是重新拉最新榜单（修复「点风云榜不刷新」）
     showPvpRank () {
       this.rankTab = 'pvp'
-      if (!this.pvpRank.week) this.loadPvpRank()
+      this.loadPvpRank()
     },
     // ★ 2026-10-14 风云榜：按自然周加载玩家对战周榜（week 不传 = 本周）
     loadPvpRank (week) {

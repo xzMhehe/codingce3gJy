@@ -129,7 +129,7 @@
                 <td><span v-if="r.rank === 1" class="rank-crown">♛</span><a href="javascript:;" @click="ezfy.openPlayer(r.user_id)">{{ r.name }}</a></td>
                 <td>{{ r.corps || '—' }}</td>
                 <td><b>{{ ezfy.fmtN(r.points) }}</b></td>
-                <td>{{ ezfy.fmtN(r.kills) }}</td>
+                <td :title="'灭敌 ' + ezfy.fmtN(r.kills)">{{ ezfy.fmtProd(r.kills) }}</td>
                 <td :title="'灭敌 ' + ezfy.fmtN(r.kills) + ' ÷ 战损 ' + ezfy.fmtN(r.losses)">{{ r.losses > 0 ? Math.round((r.kills / r.losses) * 10) / 10 : (r.kills > 0 ? '∞' : '—') }}</td>
                 <td>{{ r.battles }}</td>
                 <td>{{ Math.round(r.win_rate * 10) / 10 }}%</td>
@@ -138,7 +138,7 @@
             <tr v-else><td colspan="8" class="gray">该周暂无玩家对战记录</td></tr>
           </table>
           <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
-            我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.kills) }}</b> · 战损比 <b>{{ ezfy.pvpRank.mine.losses > 0 ? Math.round((ezfy.pvpRank.mine.kills / ezfy.pvpRank.mine.losses) * 10) / 10 : (ezfy.pvpRank.mine.kills > 0 ? '∞' : '—') }}</b>
+            我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b>{{ ezfy.fmtN(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b :title="'灭敌 ' + ezfy.fmtN(ezfy.pvpRank.mine.kills)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.kills) }}</b> · 战损比 <b>{{ ezfy.pvpRank.mine.losses > 0 ? Math.round((ezfy.pvpRank.mine.kills / ezfy.pvpRank.mine.losses) * 10) / 10 : (ezfy.pvpRank.mine.kills > 0 ? '∞' : '—') }}</b>
           </div>
           </template>
 
