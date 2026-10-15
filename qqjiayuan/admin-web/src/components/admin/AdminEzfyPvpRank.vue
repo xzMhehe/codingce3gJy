@@ -3,7 +3,6 @@
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
         <span>排行榜</span>
-        <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="reloadAll()">刷新</el-button>
       </div>
 
       <!-- ★ 2026-10-14 用户需求：「风云榜」页改名「排行榜」，下面设 风云榜 / 战力榜 两个 tab -->
@@ -23,6 +22,10 @@
             {{ enabled ? '按自然周统计玩家对战战绩' : '已关闭：不再统计新的玩家对战战绩（历史周榜保留）' }}
           </span>
           <div class="grow" />
+          <!-- ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家（清空 = 全量榜单） -->
+          <el-input v-model="pvpWord" placeholder="游戏ID" clearable style="width:160px"
+                    @keyup.enter.native="doPvpSearch()" />
+          <el-button type="primary" icon="el-icon-search" @click="doPvpSearch()">查询</el-button>
           <el-select v-model="week" placeholder="选择统计周" style="width:200px" @change="loadPvp(true)">
             <el-option v-for="w in weeks" :key="w" :label="w" :value="w" />
           </el-select>
@@ -149,6 +152,9 @@ import api from '../../api'
 // ★ 2026-10-14 排行榜（原「风云榜」）：
 //   风云榜 tab —— 每周玩家对战战绩周榜（可开关统计、可把玩家设为「不参与排名」）
 //   战力榜 tab —— 复用游戏内战力口径（科技 + 建筑 + 兵种），管理端全量分页查看
+// ★ 2026-10-15 用户：「排行榜 刷新按钮去掉；风云榜里加个查询按钮能根据游戏ID查询玩家」
+//   —— 去掉头部 [刷新]（进页面/切周自动拉数据）；风云榜 tab 加「游戏ID」输入 + [查询]
+//      （后端一次性下发整周全量榜单，查询走前端精确过滤，清空回到全量）。
 export default {
   name: 'AdminEzfyPvpRank',
   data () {
@@ -164,6 +170,7 @@ export default {
       // ★ 2026-10-14 风云榜分页（默认每页 10 条）——后端一次性返回整周榜单，前端切片
       pvpPage: 1,
       pvpSize: 10,
+      pvpWord: '', // ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家
       excluded: [],
       // ---- 战力榜 ----
       powerLoading: false,
@@ -179,16 +186,32 @@ export default {
   },
   computed: {
     // ★ 2026-10-14 风云榜分页：后端一次性返回整周榜单，这里按页切片展示
-    pvpTotal () { return this.list.length },
+    // ★ 2026-10-15 风云榜查询：填了游戏ID 就只展示该玩家（查不到 = 空），清空回到全量榜单
+    pvpShown () {
+      if (!this.pvpWord) return this.list
+      const uid = Number(this.pvpWord)
+      if (isNaN(uid)) return []
+      return this.list.filter(r => r.user_id === uid)
+    },
+    pvpTotal () { return this.pvpShown().length },
     pvpPageList () {
       const start = (this.pvpPage - 1) * this.pvpSize
-      return this.list.slice(start, start + this.pvpSize)
+      return this.pvpShown().slice(start, start + this.pvpSize)
     }
   },
   methods: {
-    reloadAll () {
-      if (this.tab === 'power') this.loadPower()
-      else this.loadPvp()
+    // ★ 2026-10-15 风云榜查询：按游戏ID精确查找玩家（查不到提示，便于核对输入）
+    doPvpSearch () {
+      this.pvpPage = 1
+      if (!this.pvpWord) return
+      const uid = Number(this.pvpWord)
+      if (isNaN(uid)) {
+        this.$message.warning('请输入数字游戏ID')
+        return
+      }
+      if (!this.list.some(r => r.user_id === uid)) {
+        this.$message.info('该周榜单中没有此玩家')
+      }
     },
     onTabChange () {
       if (this.tab === 'power' && !this.powerList.length) this.loadPower()
