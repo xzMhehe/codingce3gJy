@@ -153,10 +153,17 @@ func EzfyJWTAuth(secret string, db *gorm.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		// ★ 2026-10-12 管理端「踢下线」：token 签发时间早于/等于「被踢时间」→ 该 token 已作废。
+		// ★ 2026-10-12 管理端「踢下线」 + ★★ 2026-10-15 单点登录（新登录顶掉旧登录）：
+		// 两个时间戳合一查询（带 60s 进程内缓存），任一命中 → 401 作废旧 token。
 		if db != nil && claims.IssuedAt != nil {
-			if kickAt := ezfyKickAtOf(db, claims.UserID); kickAt > 0 && claims.IssuedAt.UnixMilli() <= kickAt {
+			kickAt, sessionAt := ezfySessionOf(db, claims.UserID)
+			if kickAt > 0 && claims.IssuedAt.UnixMilli() <= kickAt {
 				resp.Unauthorized(c, "账号已被强制下线，请重新登录")
+				c.Abort()
+				return
+			}
+			if sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
+				resp.Unauthorized(c, "账号已在其他地点登录，请重新登录")
 				c.Abort()
 				return
 			}
@@ -167,44 +174,69 @@ func EzfyJWTAuth(secret string, db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// ============ 二战「踢下线」支持（★ 2026-10-12）============
+// ============ 二战「踢下线 + 单点登录」支持（★ 2026-10-12 / ★★ 2026-10-15）============
 //
-// 管理端「玩家信息管理 → 踢下线」。二战 token 是**无状态 JWT**，服务端没有会话可删，
-// 所以用 `ezfy_account.kick_at`（被踢时间戳 ms）作废旧 token：
+// 二战 token 是**无状态 JWT**，服务端没有会话可删，所以用 ezfy_account 里的两个时间戳作废旧 token：
 //
-//	token 的 iat <= kick_at  →  该 token 签发于「被踢」之前 → 拒绝（401，前端 axios 拦截器
-//	看到二战接口 401 会自动 ezfyLogout，玩家回到二战登录界面）。
-//	玩家重新登录会签发新 token（iat > kick_at）→ 自然恢复，不需要额外的「解封」操作。
+//	kick_at    被踢时间戳(ms)：`token.iat <= kick_at` → 作废（管理端「踢下线」）。
+//	session_at 最近签发 token 时刻(秒级×1000)：`token.iat < session_at` → 该 token 是旧登录
+//	            签发的 → 作废（★★ 2026-10-15 单点登录：只能一个 IP 在线，其他地方登录前面必掉线）。
+//
+//	命中任一 → 拒绝（401，前端 axios 拦截器看到二战接口 401 会自动 ezfyLogout，玩家回到二战登录界面）。
+//	玩家重新登录会签发新 token（iat >= session_at）→ 自然恢复，不需要额外的「解封」操作。
 //
 // 性能：本中间件跑在**每个二战请求**上，1核1G + RDS 跨 WAN 不能每次都查库 →
-// kick_at 走进程内缓存（TTL 60s）；踢出接口写库后调 SetEzfyKickAt **立即刷新本机缓存**，
-// 所以单机部署下踢出即时生效（多机部署时其他节点最迟 60s 生效）。
+// 两个时间戳都走进程内缓存（TTL 60s）；登录/踢出接口写库后各自调 SetEzfySessionAt/SetEzfyKickAt
+// **立即刷新本机缓存**，所以单机部署下即时生效（多机部署时其他节点最迟 60s 生效）。
 var ezfyKickCache sync.Map // uid(uint) -> ezfyKickEntry
 
 type ezfyKickEntry struct {
-	kickAt int64
-	at     time.Time
+	kickAt    int64
+	sessionAt int64
+	at        time.Time
 }
 
 const ezfyKickCacheTTL = 60 * time.Second
 
-// ezfyKickAtOf 取玩家当前的「被踢下线」时间戳（0 = 从未被踢），带进程内缓存。
-func ezfyKickAtOf(db *gorm.DB, uid uint) int64 {
+// ezfySessionOf 取玩家「token 作废线」两项（kick_at / session_at），带进程内缓存。
+func ezfySessionOf(db *gorm.DB, uid uint) (kickAt, sessionAt int64) {
 	if v, ok := ezfyKickCache.Load(uid); ok {
 		if e, ok2 := v.(ezfyKickEntry); ok2 && time.Since(e.at) < ezfyKickCacheTTL {
-			return e.kickAt
+			return e.kickAt, e.sessionAt
 		}
 	}
-	var at int64
-	// 用 Raw 而不是 model.EzfyAccount：middleware 包不引 model，免得平添依赖（表不存在时 at 保持 0 = 未踢）。
-	db.Raw("SELECT kick_at FROM ezfy_account WHERE game_id = ?", uid).Scan(&at)
-	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: at, at: time.Now()})
-	return at
+	var row struct {
+		KickAt    int64
+		SessionAt int64
+	}
+	// 用 Raw 而不是 model.EzfyAccount：middleware 包不引 model，免得平添依赖（表不存在时两值保持 0）。
+	db.Raw("SELECT IFNULL(kick_at,0) AS kick_at, IFNULL(session_at,0) AS session_at FROM ezfy_account WHERE game_id = ?", uid).Scan(&row)
+	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: row.KickAt, sessionAt: row.SessionAt, at: time.Now()})
+	return row.KickAt, row.SessionAt
 }
 
 // SetEzfyKickAt 踢下线后立即刷新缓存（管理端踢出接口调用），保证本机即时生效。
+// 保留已缓存的 sessionAt（单点登录时刻），只更新 kick_at。
 func SetEzfyKickAt(uid uint, kickAt int64) {
-	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: kickAt, at: time.Now()})
+	sessionAt := int64(0)
+	if v, ok := ezfyKickCache.Load(uid); ok {
+		if e, ok2 := v.(ezfyKickEntry); ok2 {
+			sessionAt = e.sessionAt
+		}
+	}
+	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: kickAt, sessionAt: sessionAt, at: time.Now()})
+}
+
+// SetEzfySessionAt 登录签发新 token 后立即刷新缓存（单点登录：新登录顶掉旧登录），
+// 保证本机即时生效。保留已缓存的 kickAt，只更新 session_at。
+func SetEzfySessionAt(uid uint, sessionAt int64) {
+	kickAt := int64(0)
+	if v, ok := ezfyKickCache.Load(uid); ok {
+		if e, ok2 := v.(ezfyKickEntry); ok2 {
+			kickAt = e.kickAt
+		}
+	}
+	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: kickAt, sessionAt: sessionAt, at: time.Now()})
 }
 
 func GetUID(c *gin.Context) uint {

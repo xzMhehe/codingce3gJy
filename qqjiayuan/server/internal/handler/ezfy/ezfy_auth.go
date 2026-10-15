@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 
+	"qqjiayuan/server/internal/middleware"
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/authutil"
 	"qqjiayuan/server/pkg/captcha"
@@ -143,8 +144,15 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ServerError(c, herr)
 		return
 	}
-	// ★ 2026-10-12 管理端「玩家信息管理」展示最后登陆时间用 → 登录成功落库
-	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).Update("last_login_at", time.Now().UnixMilli())
+	// ★★ 2026-10-15 单点登录卡控（只能一个 IP 在线，防脚本多 IP 同时刷号）：
+	//   session_at 取「秒级」时间戳 ×1000 —— 与 JWT 的 iat 精度对齐（jwt/v5 秒级），
+	//   中间件判据 = token.iat < session_at → 掉线；刚签发的 token iat == session_at 恒通过。
+	//   写库后立即刷新本机缓存（多机部署时其他节点最迟 60s 生效，与「踢下线」同策略）。
+	//   last_login_ip 留痕（配合排查「不同城市/IP 刷号」）。
+	nowSec := time.Now().Unix() * 1000
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
+		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
+	middleware.SetEzfySessionAt(acct.GameID, nowSec)
 	resp.OK(c, gin.H{"token": token, "home_token": homeToken, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
 }
 
@@ -209,6 +217,10 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
-	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).Update("last_login_at", time.Now().UnixMilli())
+	// ★★ 2026-10-15 单点登录卡控（与 EzfyLogin 同口径）：SSO 换发新 token 同样顶掉旧 token。
+	nowSec := time.Now().Unix() * 1000
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
+		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
+	middleware.SetEzfySessionAt(acct.GameID, nowSec)
 	resp.OK(c, gin.H{"token": token, "game_id": acct.GameID, "nickname": acct.Nickname})
 }

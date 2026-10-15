@@ -869,6 +869,15 @@ type EzfyAccount struct {
 	//   玩家重新登录会签发新 token（iat > kick_at）→ 自然恢复。
 	KickAt int64 `gorm:"default:0;comment:强制下线时间戳(ms,0=从未)" json:"kick_at"`
 
+	// ★★ 2026-10-15 单点登录（只能一个 IP 在线，防脚本多 IP 同时刷号）：
+	//   每次签发二战 token 都覆盖为「签发时刻」（秒级 ×1000，与 JWT 的 iat 精度对齐）。
+	//   中间件判据 = 「token 的 iat < session_at → 该 token 是旧登录签发的 → 掉线」，
+	//   新登录（session_at）会把所有更早的 token 全部顶下线 —— 其他地方登录，前面必掉线。
+	SessionAt int64 `gorm:"default:0;comment:最近签发token时间戳(ms,0=从未)" json:"session_at"`
+
+	// ★ 2026-10-15 最后登陆 IP 留痕（配合 session_at 排查「不同城市/IP 刷号」），默认空串。
+	LastLoginIP string `gorm:"type:varchar(64);default:'';comment:最后登陆IP" json:"last_login_ip"`
+
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }

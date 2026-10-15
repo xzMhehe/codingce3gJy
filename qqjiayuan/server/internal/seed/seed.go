@@ -3008,6 +3008,14 @@ func EnsureEzfyAccountTable(db *gorm.DB) {
 	if !db.Migrator().HasColumn("ezfy_account", "kick_at") {
 		db.Exec("ALTER TABLE ezfy_account ADD COLUMN kick_at bigint DEFAULT 0 COMMENT '强制下线时间戳(ms,0=从未)'")
 	}
+	// ★★ 2026-10-15 单点登录（只能一个 IP 在线）：最近签发 token 时刻（session_at）—— 同上幂等补列。
+	if !db.Migrator().HasColumn("ezfy_account", "session_at") {
+		db.Exec("ALTER TABLE ezfy_account ADD COLUMN session_at bigint DEFAULT 0 COMMENT '最近签发token时间戳(ms,0=从未)'")
+	}
+	// ★ 2026-10-15 最后登陆 IP 留痕 —— 同上幂等补列。
+	if !db.Migrator().HasColumn("ezfy_account", "last_login_ip") {
+		db.Exec("ALTER TABLE ezfy_account ADD COLUMN last_login_ip varchar(64) DEFAULT '' COMMENT '最后登陆IP'")
+	}
 }
 
 // EnsureEzfyExchangeColumns 幂等补 ezfy_exchange 的后加列（skip 分支必须调用）。
