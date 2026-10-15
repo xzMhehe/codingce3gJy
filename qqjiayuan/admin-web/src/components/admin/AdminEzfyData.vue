@@ -323,10 +323,16 @@
               </el-form-item>
             </el-col>
             <el-col :span="8">
-              <!-- ★ 2026-10-14 保底解锁次数：玩家抽该宝箱满 N 次后，该奖品才以正常概率进入奖池；1=不限制（默认） -->
-              <el-form-item label="保底解锁">
+              <!-- ★ 2026-10-14 保底解锁次数：玩家抽该宝箱满 N 次后，该奖品才以正常概率进入奖池；1=不限制（默认）
+                   ★ 2026-10-15 说明文案改成「i」悬停提示，不再直接占表单空间 -->
+              <el-form-item>
+                <template slot="label">
+                  保底解锁
+                  <el-tooltip effect="dark" content="满 N 抽解锁进奖池；1=默认不限制" placement="top">
+                    <i class="el-icon-question" style="cursor:pointer; color:#909399" />
+                  </el-tooltip>
+                </template>
                 <el-input-number v-model.number="chif.min_draws" :min="1" controls-position="right" style="width:100%" />
-                <div class="td-sub">满 N 抽解锁进奖池；1=默认不限制</div>
               </el-form-item>
             </el-col>
             <el-col :span="8">

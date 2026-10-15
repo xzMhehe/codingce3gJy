@@ -430,7 +430,12 @@
                   <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
                   <td class="gray">
-                    <span v-if="p.min_draws > 1">满 {{ p.min_draws }} 抽解锁</span>
+                    <!-- ★ 2026-10-15 解锁信息改成「i」悬停提示（满 N 抽解锁进奖池），不再每行直接展示文字 -->
+                    <span v-if="p.min_draws > 1">
+                      <el-tooltip effect="dark" :content="'满 ' + p.min_draws + ' 抽解锁进奖池'" placement="top">
+                        <i class="el-icon-question" style="cursor:pointer" />
+                      </el-tooltip>
+                    </span>
                     <span v-else>—</span>
                   </td>
                 </tr>
