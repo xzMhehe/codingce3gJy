@@ -4187,6 +4187,12 @@ var (
 	ezfyRecoverMemo = map[uint]int64{}
 )
 
+// ★ 2026-10-15 为爱发电卡领取 3 秒卡控（防连点/脚本刷钻石；多节点部署时另有条件原子更新兜底）
+var (
+	ezfyLoveCardMu   sync.Mutex
+	ezfyLoveCardMemo = map[uint]int64{}
+)
+
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
 var (

@@ -3689,19 +3689,23 @@ export default {
       } catch (e) { return 0 }
     },
     // ★ 2026-09-27 为爱发电卡领取（多卡叠加、漏领累加、封顶30天）
+    // ★ 2026-10-15 3 秒卡控 + 请求未返回前忽略再点（与后端条件原子更新双保险，防连点刷钻石）
     doLoveCardClaim () {
-      api.post('/games/ezfy/love-card/claim', {}).then(r => {
+      if (Date.now() - (this.lastLoveClaimAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
+      this.once('loveCardClaim', () => api.post('/games/ezfy/love-card/claim', {}).then(r => {
         if (r && r.code === 0) {
           if (r.data) {
             if (r.data.love_cards) this.loveCards = r.data.love_cards
             if (this.loveCards.length === 0) this.taskTab = 0
             this.notify(r.data.msg || '已领取')
           }
+          // 成功才进冷却（失败/今日无钻石可立即重试）
+          this.lastLoveClaimAt = Date.now()
           this.load()
         } else {
           this.notify(r && r.msg ? r.msg : '领取失败')
         }
-      })
+      }))
     },
     loadWelfare () {
       api.get('/games/ezfy/welfare').then(r => {

@@ -223,6 +223,23 @@ func (h *EzfyHandler) LoveCard(c *gin.Context) {
 // LoveCardClaim POST /games/ezfy/love-card/claim —— 领取每日钻石（多卡叠加、漏领累加、封顶总天数）。
 func (h *EzfyHandler) LoveCardClaim(c *gin.Context) {
 	uid := middleware.GetUID(c)
+
+	// ★ 2026-10-15 3 秒卡控（前后端双保险，防连点/脚本反复刷钻石）
+	{
+		nowCd := time.Now().UnixMilli()
+		ezfyLoveCardMu.Lock()
+		if last, ok := ezfyLoveCardMemo[uid]; ok && nowCd-last < 3000 {
+			ezfyLoveCardMu.Unlock()
+			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
+			return
+		}
+		if len(ezfyLoveCardMemo) > 16384 {
+			ezfyLoveCardMemo = map[uint]int64{}
+		}
+		ezfyLoveCardMemo[uid] = nowCd
+		ezfyLoveCardMu.Unlock()
+	}
+
 	nowMS := time.Now().UnixMilli()
 	cards := h.loveCards(uid)
 	if len(cards) == 0 {
@@ -241,8 +258,15 @@ func (h *EzfyHandler) LoveCardClaim(c *gin.Context) {
 		if gain < 0 {
 			gain = 0
 		}
-		h.DB.Model(&model.EzfyLoveCard{}).Where("id = ?", card.ID).
+		// ★★ 2026-10-15 并发卡控：条件原子更新 —— claimed_days 必须仍等于读到的旧值才允许累加。
+		//   连点/多节点并发时只有一条 UPDATE 生效（RowsAffected=1），重复领取直接落空、钻石只发一次。
+		//   （改造前是「读 claimed_days → 算可领 → 回写」的读改写，并发请求会各发一遍钻石。）
+		res := h.DB.Model(&model.EzfyLoveCard{}).
+			Where("id = ? AND claimed_days = ?", card.ID, card.ClaimedDays).
 			Updates(map[string]interface{}{"claimed_days": card.ClaimedDays + claimable, "last_claim_time": nowMS})
+		if res.Error != nil || res.RowsAffected != 1 {
+			continue // 已被并发请求领走，跳过不重复发放
+		}
 		totalGain += gain
 		login = append(login, fmt.Sprintf("%s领%d天(+%d)", card.Name, claimable, gain))
 	}
