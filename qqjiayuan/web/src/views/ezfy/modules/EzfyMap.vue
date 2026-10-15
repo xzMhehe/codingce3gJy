@@ -701,6 +701,8 @@
           <!-- ★ 2026-10-07 赎城审批并入「占领城市」面板：原主人申请赎回时，在此同意/拒绝 -->
           <template v-if="ezfy.occupies.length || ezfy.ransoms.length">
             <div class="panel-title">占领城市({{ ezfy.occupies.length }})</div>
+            <!-- ★ 2026-10-15 成交收取 20% 手续费：同意赎城时实收赎金的 80% -->
+            <div class="old-line gray">同意赎城将收取20%手续费（实收赎金的80%）</div>
             <table>
               <tr><th>坐标</th><th>城市</th><th>原属</th><th>赎城申请</th><th>操作</th></tr>
               <tr v-for="o in ezfy.occupies" :key="'oc' + o.id">

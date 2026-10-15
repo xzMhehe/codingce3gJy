@@ -4781,7 +4781,7 @@ export default {
       try {
         const cost = this.ransomCost || 500
         if (!await this.ask(`确定花费 ${cost} 钻石赎回城市[${ct.name}](${ct.x},${ct.y})吗?\n` +
-          '发起即扣押金, 占领方同意后返还城市(钻石归占领方), 拒绝/撤销则自动退回。')) return
+          '发起即扣押金, 占领方同意后返还城市(成交收取20%手续费, 占领方实收80%), 拒绝/撤销则自动退回。')) return
         const r = await api.post('/games/ezfy/city/ransom', { city_id: ct.id })
         this.alert(r, '赎城请求已提交')
         ct.ransoming = true // 乐观置位 → [赎城] 立刻变 [撤赎城]，重连点击被前端和后端双重拦下
@@ -4798,7 +4798,9 @@ export default {
       })
     },
     async doRansomHandle (rm, op) {
-      if (!await this.ask(op === 1 ? `确定同意赎城吗? 你将收到 ${rm.cost} 钻石, 城市[${rm.city_name}](${rm.x},${rm.y})将归还原主人。` :
+      // ★ 2026-10-15 20% 手续费：同意时系统收取，占领方实收 80%（与后端 r.Cost - r.Cost/5 同口径）
+      const receive = rm.cost - Math.floor(rm.cost / 5)
+      if (!await this.ask(op === 1 ? `确定同意赎城吗? 你将收到 ${receive} 钻石(已扣20%手续费), 城市[${rm.city_name}](${rm.x},${rm.y})将归还原主人。` :
         `确定拒绝该赎城请求吗? 原主人的 ${rm.cost} 钻石押金将退回。`)) return
       api.post('/games/ezfy/city/ransom/handle', { ransom_id: rm.id, op }).then(r => {
         this.alert(r, '已处理')

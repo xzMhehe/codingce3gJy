@@ -1277,6 +1277,7 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 // ★ 2026-10-07 赎城功能：发起即扣「赎城金额」钻石（押金），攻击者同意后金额归攻击者、城市返还，
 //
 //	拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
+// ★ 2026-10-15 成交收取 20% 手续费：同意时占领方只实收 80%，20% 由系统收取（见 RansomHandle）。
 func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1349,22 +1350,33 @@ func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 	h.addReport(occ.AtkUserId, 5, "赎城请求",
 		fmt.Sprintf("原主人「%s」想花%d钻石赎回你占领的城市[%s](%d,%d)，可在[附属野地]的「赎回请求」中同意或拒绝。",
 			prof.Nickname, cost, city.Name, city.X, city.Y))
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发起赎城请求, 已扣除%d钻石押金; 占领方同意后返还城市, 拒绝则自动退回。", cost)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发起赎城请求, 已扣除%d钻石押金; 占领方同意后返还城市(成交收取20%%手续费), 拒绝则自动退回。", cost)})
 }
 
 // RansomHandle POST /city/ransom/handle {ransom_id, op} —— 占领方处理赎城请求（op 1同意 2拒绝）
+//
+// ★★ 2026-10-15 修复「靠赎城刷钻石」：原实现**无事务/无锁**，同意/拒绝与撤销并发时
+//
+//	  会重复发放/重复退回（如 同意+撤销 同时通过 → 攻击者拿到赎金的同时守方押金也被退回，
+//	  押金只扣过一次 → 凭空多出一份钻石；或双击同意 → 金额重复到账）。现在整段放进事务，
+//	  先对赎城请求行加排他锁(FOR UPDATE) 强制串行，再在锁内以
+//	  「WHERE status=0 的原子置终态」兜底：后到的请求等锁后必看到已处理状态 → 拒绝。
+//	★ 2026-10-15 同时按用户要求给赎回系统加 20% 手续费：成交时系统收取 20%，占领方实收 80%
+//	  （拒绝/撤销/作废仍全额退回押金，不收手续费）。
 func (h *EzfyHandler) RansomHandle(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
 		RansomId uint `json:"ransom_id"`
 		Op       int  `json:"op"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Op != 1 && req.Op != 2) {
 		resp.ParamError(c, "参数错误")
 		return
 	}
+	tx := h.DB.Begin()
+	defer tx.Rollback()
 	var r model.EzfyRansom
-	if err := h.DB.First(&r, req.RansomId).Error; err != nil {
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&r, req.RansomId).Error; err != nil {
 		resp.ParamError(c, "赎城请求不存在")
 		return
 	}
@@ -1377,36 +1389,76 @@ func (h *EzfyHandler) RansomHandle(c *gin.Context) {
 		return
 	}
 	if req.Op == 1 {
-		// 同意前重校验占领记录：已被建立/摧毁/归还(status≠1) → 押金退回、请求作废
+		// 同意前重校验占领记录：已被建立/摧毁/归还(status≠1) → 请求作废 + 押金退回
 		var occ model.EzfyOccupy
-		if h.DB.Where("id = ? AND status = 1", r.OccupyId).First(&occ).Error != nil {
-			h.refundRansom(&r, 3, "该城市已被占领方处理, 赎城请求作废, 押金退回")
+		if err := tx.Where("id = ? AND status = 1", r.OccupyId).First(&occ).Error; err != nil {
+			if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+				Update("status", 3); res.RowsAffected != 1 {
+				resp.ParamError(c, "该请求已被处理")
+				return
+			}
+			if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", r.DefUserId).
+				Update("diamond", gorm.Expr("diamond + ?", r.Cost)).Error; err != nil {
+				resp.ParamError(c, "退回押金失败："+err.Error())
+				return
+			}
+			if err := tx.Commit().Error; err != nil {
+				resp.ParamError(c, "提交失败："+err.Error())
+				return
+			}
+			h.logDiamond(r.DefUserId, r.Cost, "该城市已被占领方处理, 赎城请求作废, 押金退回")
+			h.addReport(r.DefUserId, 5, "赎城押金退回",
+				fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: 该城市已被占领方处理, 请求作废。", r.CityName, r.X, r.Y, r.Cost))
 			resp.ParamError(c, "该城市已被处理(建立/摧毁/归还), 赎城请求已作废并退回押金")
 			return
 		}
-		// 同意：金额转给占领方 + 城市返还（同「放弃归还」口径：user_id 本仍属守方，补民心）
-		atkProf := h.ensureProfile(uid)
-		if err := h.DB.Model(&model.EzfyProfile{}).Where("id = ?", atkProf.ID).
-			Update("diamond", atkProf.Diamond+r.Cost).Error; err != nil {
+		// 原子置终态（锁内 + WHERE status=0 兜底）：并发的第二个同意/撤销等锁后必被拒，杜绝重复发放
+		if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+			Update("status", 1); res.RowsAffected != 1 {
+			resp.ParamError(c, "该请求已处理")
+			return
+		}
+		// ★ 2026-10-15 20% 手续费：占领方实收 80%（整数向下取整），20% 由系统收取（防刷钻 + 抑制空转）
+		receive := r.Cost - r.Cost/5
+		if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
+			Update("diamond", gorm.Expr("diamond + ?", receive)).Error; err != nil {
 			resp.ParamError(c, "钻石发放失败："+err.Error())
 			return
 		}
-		h.logDiamond(uid, r.Cost, "赎城收入")
+		// 同意：城市返还（同「放弃归还」口径：user_id 本仍属守方，补民心）
 		var ct model.EzfyCity
-		if h.DB.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
+		if tx.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
+			tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
 		}
-		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
-		h.DB.Model(&model.EzfyRansom{}).Where("id = ?", r.ID).Update("status", 1)
+		tx.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
+		if err := tx.Commit().Error; err != nil {
+			resp.ParamError(c, "提交失败："+err.Error())
+			return
+		}
+		h.logDiamond(uid, receive, "赎城收入(已扣20%手续费)")
 		h.addReport(uid, 5, "赎城成功",
-			fmt.Sprintf("你同意了赎城, 收到%d钻石, 城市[%s](%d,%d)已归还原主人。", r.Cost, r.CityName, r.X, r.Y))
+			fmt.Sprintf("你同意了赎城, 收到%d钻石(已扣20%%手续费), 城市[%s](%d,%d)已归还原主人。", receive, r.CityName, r.X, r.Y))
 		h.addReport(r.DefUserId, 5, "赎城成功",
 			fmt.Sprintf("占领方已同意你的赎城, 你成功赎回城市[%s](%d,%d)! 民心已恢复。", r.CityName, r.X, r.Y))
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("已同意赎城, 收到%d钻石, 城市已归还原主人", r.Cost)})
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已同意赎城, 收到%d钻石(已扣20%%手续费), 城市已归还原主人", receive)})
 		return
 	}
-	// 拒绝：押金退回原主人
-	h.refundRansom(&r, 2, "占领方拒绝了赎城请求, 押金退回")
+	// 拒绝：锁内原子置终态 + 全额退回押金（不收手续费）
+	if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+		Update("status", 2); res.RowsAffected != 1 {
+		resp.ParamError(c, "该请求已处理")
+		return
+	}
+	if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", r.DefUserId).
+		Update("diamond", gorm.Expr("diamond + ?", r.Cost)).Error; err != nil {
+		resp.ParamError(c, "退回押金失败："+err.Error())
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		resp.ParamError(c, "提交失败："+err.Error())
+		return
+	}
+	h.logDiamond(r.DefUserId, r.Cost, "赎城拒绝退回押金")
 	h.addReport(uid, 5, "赎城拒绝",
 		fmt.Sprintf("你拒绝了原主人赎回城市[%s](%d,%d)的请求。", r.CityName, r.X, r.Y))
 	resp.OK(c, gin.H{"msg": "已拒绝该赎城请求, 原主人押金已退回"})
@@ -1456,17 +1508,6 @@ func (h *EzfyHandler) RansomCancel(c *gin.Context) {
 	h.addReport(r.AtkUserId, 5, "赎城请求撤销",
 		fmt.Sprintf("原主人撤销了赎回城市[%s](%d,%d)的请求。", r.CityName, r.X, r.Y))
 	resp.OK(c, gin.H{"msg": "已撤销赎城请求, 押金已退回"})
-}
-
-// refundRansom 退回赎城押金并通知原主人（请求置终态 newStatus；reason 用于钻石流水与通知文案）
-func (h *EzfyHandler) refundRansom(r *model.EzfyRansom, newStatus int, reason string) {
-	defProf := h.ensureProfile(r.DefUserId)
-	h.DB.Model(&model.EzfyProfile{}).Where("id = ?", defProf.ID).
-		Update("diamond", defProf.Diamond+r.Cost)
-	h.logDiamond(r.DefUserId, r.Cost, reason)
-	h.DB.Model(&model.EzfyRansom{}).Where("id = ?", r.ID).Update("status", newStatus)
-	h.addReport(r.DefUserId, 5, "赎城押金退回",
-		fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: %s", r.CityName, r.X, r.Y, r.Cost, reason))
 }
 
 // deleteCityData 删除城市及其所有数据
