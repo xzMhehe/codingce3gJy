@@ -491,9 +491,19 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	}
 	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
 
-	// 昵称：一次批量查档案（避免逐条 ensureProfile 的 N 次跨库往返）
-	uidList := make([]uint, 0, len(arr))
+	// ★ 2026-10-15 战力榜「不参与排名」：与风云榜共用同一份排除名单（排除后重新排名，与风云榜口径一致）
+	exSet := pvpExcludedSet(h.DB)
+	ranked := make([]*pw, 0, len(arr))
 	for _, e := range arr {
+		if exSet[uint(e.uid)] {
+			continue
+		}
+		ranked = append(ranked, e)
+	}
+
+	// 昵称：一次批量查档案（避免逐条 ensureProfile 的 N 次跨库往返）
+	uidList := make([]uint, 0, len(ranked))
+	for _, e := range ranked {
 		uidList = append(uidList, uint(e.uid))
 	}
 	nickByUID := map[uint]string{}
@@ -514,8 +524,8 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 		}
 		return strings.Contains(nickByUID[uint(e.uid)], word)
 	}
-	filtered := make([]*pw, 0, len(arr))
-	for _, e := range arr {
+	filtered := make([]*pw, 0, len(ranked))
+	for _, e := range ranked {
 		if hit(e) {
 			filtered = append(filtered, e)
 		}
@@ -529,9 +539,9 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	if end > len(filtered) {
 		end = len(filtered)
 	}
-	// 名次 = 在全服排序里的位置（过滤关键词也不改变原始名次口径）
+	// 名次 = 在全服排序（已剔除「不参与排名」玩家）里的位置（过滤关键词也不改变原始名次口径）
 	rankOf := map[int64]int{}
-	for i, e := range arr {
+	for i, e := range ranked {
 		rankOf[e.uid] = i + 1
 	}
 	out := make([]gin.H, 0, end-start)

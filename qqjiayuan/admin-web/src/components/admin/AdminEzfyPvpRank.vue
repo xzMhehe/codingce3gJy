@@ -76,26 +76,6 @@
                          @current-change="p => { pvpPage = p }"
                          @size-change="s => { pvpSize = s; pvpPage = 1 }" />
         </div>
-
-        <!-- 不参与排名名单 -->
-        <div class="panel-title">不参与排名（{{ excluded.length }} 人）</div>
-        <el-table :data="excluded" v-loading="loading" stripe border size="mini"
-                  :empty-text="'暂无排除玩家'">
-          <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
-          <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
-            <template slot-scope="{row}">{{ row.name || '—' }}</template>
-          </el-table-column>
-          <el-table-column prop="reason" label="原因" min-width="160" show-overflow-tooltip>
-            <template slot-scope="{row}">{{ row.reason || '—' }}</template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="加入时间" width="160" align="center" />
-          <el-table-column label="操作" width="110" align="center" fixed="right">
-            <template slot-scope="{row}">
-              <el-button size="mini" type="success" plain icon="el-icon-refresh-left"
-                         title="恢复参与排名" @click="removeExclude(row)">恢复排名</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
       </template>
 
       <!-- ==================== 战力榜 tab ==================== -->
@@ -132,6 +112,13 @@
           <el-table-column label="兵种战力" width="110" align="right">
             <template slot-scope="{row}">{{ row.troop_power.toLocaleString() }}</template>
           </el-table-column>
+          <!-- ★ 2026-10-15 战力榜「不参与排名」：与风云榜同一份名单（排除后重新排名） -->
+          <el-table-column label="操作" width="130" align="center" fixed="right">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="danger" plain icon="el-icon-remove-outline"
+                         title="不参与排名" @click="openExclude(row)">不参与排名</el-button>
+            </template>
+          </el-table-column>
         </el-table>
         <div class="pager-bar">
           <div class="pager-info">共 <b>{{ powerTotal }}</b> 条 · 每页 {{ powerSize }} 条</div>
@@ -142,6 +129,26 @@
                          @size-change="s => { powerSize = s; powerPage = 1; loadPower() }" />
         </div>
       </template>
+
+      <!-- ★ 2026-10-15 不参与排名名单：风云榜/战力榜共用（移到两个 tab 之外统一展示） -->
+      <div class="panel-title">不参与排名（{{ excluded.length }} 人）</div>
+      <el-table :data="excluded" v-loading="loading" stripe border size="mini"
+                :empty-text="'暂无排除玩家'">
+        <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
+        <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.name || '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="reason" label="原因" min-width="160" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.reason || '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="加入时间" width="160" align="center" />
+        <el-table-column label="操作" width="110" align="center" fixed="right">
+          <template slot-scope="{row}">
+            <el-button size="mini" type="success" plain icon="el-icon-refresh-left"
+                       title="恢复参与排名" @click="removeExclude(row)">恢复排名</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-card>
   </div>
 </template>
@@ -262,7 +269,9 @@ export default {
           api.post('/admin/ezfy-pvp-rank/exclude', { user_id: row.user_id, reason: value || '' }).then(r => {
             if (r.code === 0) {
               this.$message.success(r.data.msg || '已设置')
+              // ★ 2026-10-15 排除名单两个榜共用：同时刷新风云榜/战力榜
               this.loadPvp()
+              this.loadPower()
             } else this.$message.error(r.msg)
           })
         }).catch(() => {})
@@ -273,7 +282,9 @@ export default {
         api.delete('/admin/ezfy-pvp-rank/exclude/' + row.id).then(r => {
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已恢复')
+            // ★ 2026-10-15 排除名单两个榜共用：同时刷新风云榜/战力榜
             this.loadPvp()
+            this.loadPower()
           } else this.$message.error(r.msg)
         })
       }).catch(() => {})
