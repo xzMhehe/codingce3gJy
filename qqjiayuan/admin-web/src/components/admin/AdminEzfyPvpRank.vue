@@ -193,10 +193,11 @@ export default {
       if (isNaN(uid)) return []
       return this.list.filter(r => r.user_id === uid)
     },
-    pvpTotal () { return this.pvpShown().length },
+    // ★ 2026-10-15 修复「排行榜空白」：pvpShown 是计算属性，取值用 this.pvpShown，不能当函数调用
+    pvpTotal () { return this.pvpShown.length },
     pvpPageList () {
       const start = (this.pvpPage - 1) * this.pvpSize
-      return this.pvpShown().slice(start, start + this.pvpSize)
+      return this.pvpShown.slice(start, start + this.pvpSize)
     }
   },
   methods: {
