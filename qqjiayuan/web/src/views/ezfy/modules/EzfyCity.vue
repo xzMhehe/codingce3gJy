@@ -61,13 +61,17 @@
                于是这里永远显示「陆地城市」，和城市列表的「海城」对不上 —— 用户反馈的 bug） -->
           <span :class="ezfy.cityIsSea ? 'green' : 'gray'">[{{ ezfy.cityKindLabel }}]</span><br/>
           市政厅: {{ ezfy.city.city_level }}级<br/>
-          人口: {{ ezfy.city.pop }}/{{ ezfy.housePopLimitOn ? ezfy.city.pop_max : '不限' }} (空闲{{ ezfy.freePop }})<br/>
+          <!-- ★★ 2026-10-15 分母改用「真正的有效人口上限」(popCap)：召集人口上限 与 生效中的民居容纳 取小。
+               原来恒显示民居容纳 → 线上「民居容量限制开 + 召集灵活配置开」时，召集能把人口顶到 7.8 万，
+               而分母还是民居的 1.8 万，出现「78250/18000」这种分子大于分母的荒谬显示。 -->
+          人口: {{ ezfy.city.pop }}/{{ ezfy.popCap > 0 ? ezfy.popCap : '不限' }} (空闲{{ ezfy.freePop }})<br/>
           民心/民怨: {{ ezfy.city.feelings }}/{{ ezfy.city.grievance }} 税率: {{ ezfy.city.tax_rate }}%<br/>
           建筑: {{ ezfy.buildings.length }}座 (军事+资源区 {{ ezfy.areaCount }}/{{ ezfy.areaCap }})<br/>
           军队: {{ ezfy.totalTroops }} (城外{{ ezfy.marching }}支队伍行进, {{ ezfy.occupying }}支驻守)<br/>
           附属野地: {{ ezfy.wildlands.length }}/{{ ezfy.city.city_level }}<br/>
           训练队列: {{ ezfy.queues.length }} | 未读军情: {{ ezfy.unreadReports }}<br/>
-          <span v-if="ezfy.protectedUntil" class="green">[免战保护中]</span>
+          <!-- ★ 2026-10-15 免战状态 + 时效（剩余时间每秒本地重算，见 Ezfy.vue::peaceText） -->
+          <span v-if="ezfy.peaceText" class="green">{{ ezfy.peaceText }}</span>
           <span v-if="ezfy.boostUntil" class="orange">[增产中]</span>
           <br/>
           <a href="javascript:;" @click="ezfy.go('cityhall')">[市政厅]</a>

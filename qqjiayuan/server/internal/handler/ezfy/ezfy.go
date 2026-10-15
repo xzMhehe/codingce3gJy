@@ -3913,12 +3913,15 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		unreadWarns int64
 		popUsed     int64
 		protected   bool
-		boost       bool
-		boostEff    *model.EzfyCityEffect
-		mayorPct    int
-		gatherHave  int
-		acct        string
-		ulv, uexp   int
+		// ★ 2026-10-15 免战保护令到期时间戳（ms）：城市状态页要展示「免战状态 + 时效」，
+		//   只下发布尔值没法显示剩余时间。0 = 无免战。
+		protectedUntil int64
+		boost          bool
+		boostEff       *model.EzfyCityEffect
+		mayorPct       int
+		gatherHave     int
+		acct           string
+		ulv, uexp      int
 	)
 
 	// ★ 2026-10-03 性能：以下只读查询互相独立、且只依赖 uid/city.ID，用 sync.WaitGroup
@@ -3967,11 +3970,17 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		h.DB.Model(&model.EzfyOrder{}).Where("user_id = ? AND status = 1", uid).Count(&o)
 		marching, occupying = m, o
 	}()
-	go func() { // 未读战报
+	go func() { // 未读军情（军情警讯 + 战斗报告）
+		// ★★ 2026-10-15 修复「城市状态页的『未读军情: 5』不对」：
+		//   原来统计的是**全部未读战报**（`user_id AND is_read=0`），把「部队返航/城市迁移/
+		//   将领升级」这类「其他」播报也算了进去 —— 于是页面上显示 5，点进军情页两个 tab
+		//   却一个未读都没有（那些数字压根不是军情）。
+		//   现在改用与军情页两个 tab 徽标**完全同口径**的统计：`ezfyReportCounts`（军情警讯 cat1
+		//   + 战斗报告 cat2），cityId=0 = 全部城市（军情警讯本就是全城口径，战斗报告也按全账号算，
+		//   免得「别城的未读战斗报告」在这条数字上漏掉）。
 		defer wg.Done()
-		var c int64
-		h.DB.Model(&model.EzfyReport{}).Where("user_id = ? AND is_read = 0", uid).Count(&c)
-		unreadReports = c
+		cc := h.ezfyReportCounts(uid, 0)
+		unreadReports = int64(cc[1] + cc[2])
 	}()
 	go func() { // ★ 2026-10-13 未读的「军情警讯 + 被袭战报」（顶部导航感叹号角标用）
 		//   一条单表 COUNT（user_id + is_read 先收窄，再按标题分类）；口径见
@@ -3981,9 +3990,18 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	}()
 	// ★ 2026-10-05 性能：已占用人口不再单独查库 —— wg.Wait() 之后用本请求已取到的
 	//   buildings + trainQueues 纯内存算（原来 buildingPop/troopPop 各自再查一次）。
-	go func() { // 免战保护令（effect_type=2）
+	go func() { // 免战保护令（effect_type=2）：布尔 + 到期时间戳（城市状态页展示时效）
+		// ★ 2026-10-15 与下面的加速(effect_type=1)同款写法：过期顺手删，未过期把 UntilTime 一并下发。
 		defer wg.Done()
-		protected = h.hasCityEffect(city.ID, 2)
+		var e model.EzfyCityEffect
+		if err := h.DB.Where("city_id = ? AND effect_type = 2", city.ID).First(&e).Error; err == nil {
+			if e.UntilTime > time.Now().UnixMilli() {
+				protected = true
+				protectedUntil = e.UntilTime
+			} else {
+				h.DB.Delete(&e)
+			}
+		}
 	}()
 	go func() { // 加速效果（effect_type=1）：展示布尔 + 资源结算复用（过期顺手删）
 		defer wg.Done()
@@ -4115,6 +4133,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"home_num":        acct,
 		"current_city_id": city.ID,
 		"protected":       protected,
+		// ★ 2026-10-15 免战保护令到期时间戳(ms, 0 = 无免战)：城市状态页展示「[免战保护中] 剩余 …」
+		"protected_until": protectedUntil,
 		"boost":           boost,
 		// ★ 军事区/资源区各自上限（分开下发；建筑列表/可建造池已移到 /buildings）
 		"military_cap": lim.MilitaryMax,

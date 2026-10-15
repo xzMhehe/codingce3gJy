@@ -550,6 +550,9 @@ export default {
       cityKindRaw: '',
       cityIsSea: false,
       protectedUntil: false,
+      // ★ 2026-10-15 免战保护令到期时间戳(ms, 0 = 无免战)：/view 下发，城市状态页展示时效
+      //   （只下发布尔值没法显示「剩余多久」，见 peaceText 计算属性）
+      protectedUntilMs: 0,
       boostUntil: false,
       buildings: [],
       buildingPool: [],
@@ -1087,6 +1090,37 @@ export default {
       const pop = this.cityPop || this.city.pop || 0
       const v = pop - used
       return v > 0 ? v : 0
+    },
+    // ★★ 2026-10-15 修复「城市状态页显示『人口: 78250/18000』，分子比分母还大」：
+    //   原来分母恒取「民居容纳(pop_max)」，但民居只在一个前提下才真正限制人口 ——
+    //   **民居容量限制开 且 召集人口灵活配置关**。线上这两个开关是「开 + 开」，
+    //   召集早已把人口顶到 7.8 万（民居只有 1.8 万），于是分母显得荒谬。
+    //   这里改成**真正的有效上限**：召集人口上限（0 = 不限）与「生效中的民居容纳」取小；都不生效 = 0 = 不限。
+    //   ★ 与后端口径一一对应：召集/自然增长都按「min(convene_pop_max, pop_max 若生效)」封顶。
+    popCap () {
+      let cap = 0 // 0 = 不限
+      if (this.convenePopMax > 0) cap = this.convenePopMax
+      if (this.housePopLimitOn && !this.conveneFlexibleOn) {
+        const pm = (this.city && this.city.pop_max) || 0
+        if (pm > 0) cap = cap > 0 ? Math.min(cap, pm) : pm
+      }
+      return cap
+    },
+    // ★ 2026-10-15 免战保护令文案（城市状态页）：「[免战保护中] 剩余 2小时30分」。
+    //   剩余时间每秒随 gatherNow 重算（全站统一做法：后端下发绝对到点时间戳，前端本地倒计时）；
+    //   到点 / 后端没下发到期时间 → 只显示状态（不显示剩余）。
+    peaceText () {
+      if (!this.protectedUntil) return ''
+      const until = this.protectedUntilMs
+      if (!until) return '[免战保护中]'
+      const ms = until - (this.gatherNow || Date.now())
+      if (ms <= 0) return '[免战保护中]'
+      const s = Math.floor(ms / 1000)
+      const h = Math.floor(s / 3600)
+      const m = Math.floor((s % 3600) / 60)
+      const left = h > 0 ? (h + '小时' + m + '分')
+        : (m > 0 ? (m + '分' + (s % 60) + '秒') : (s + '秒'))
+      return '[免战保护中] 剩余 ' + left
     },
     queueNames () {
       return this.queues
@@ -2636,6 +2670,8 @@ export default {
       this.cityKindRaw = d.city_kind || ''
       this.cityIsSea = !!d.is_sea
       this.protectedUntil = d.protected
+      // ★ 2026-10-15 免战到期时间戳（城市状态页展示时效；老后端不下发 → 0，退化成只显示「[免战保护中]」）
+      this.protectedUntilMs = d.protected_until || 0
       this.boostUntil = d.boost
       // ★ 2026-10-04 修复「一键加速后建筑没了」：/view 已不再下发 buildings，
       //   这里若无条件赋空数组，会把页面已懒加载好的建筑列表整个清空。

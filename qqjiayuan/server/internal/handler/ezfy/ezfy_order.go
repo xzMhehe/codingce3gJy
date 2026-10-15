@@ -1112,6 +1112,21 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	if dupCnt > 0 {
 		return "命令已下达, 请勿重复出征"
 	}
+	// ★★ 2026-10-15 免战保护令**双向生效**（用户规则：免战城不能被别人打，当前免战城也不能打别人，
+	//   只能打野地）。
+	//   目标侧拦截早已实现（见下面「掠夺/征服玩家城需先宣战」段里的 `hasCityEffect(targetId, 2)`），
+	//   这里补**出击侧**：**当前城市**处于免战保护期时，不能对**玩家城市**(targetType=3)发起
+	//   侦查(1)/掠夺(2)/征服(3) —— 即「只能打野地/寇城」。
+	//   ★ 放在最前面（早于兵种/兵力校验）：免战是「这件事根本不允许做」的硬规则，
+	//     先报「免战中不能打别人」比报「兵力不足/侦察机不能混编」更贴切。
+	//   ★ 按**当前城**判定（免战保护令是给单座城打的，与目标侧按目标城判定对称）；
+	//     野地(1)/寇城(2) 不受限，运输(5)/增援(6)/派遣(8) 是自家/盟友城，也不受影响。
+	if (orderType == 1 || orderType == 2 || orderType == 3) && targetType == 3 && targetId > 0 {
+		if h.hasCityEffect(city.ID, 2) {
+			return "当前城市处于免战保护期, 不能" + ezfyOrderTypeName(orderType) +
+				"其他玩家城市(只能攻打野地/寇城)"
+		}
+	}
 	// 过滤数量为0的部队
 	validTroops := []ezfyUnitGroup{}
 	for _, t := range troops {
