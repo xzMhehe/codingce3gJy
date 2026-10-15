@@ -5006,24 +5006,40 @@ export default {
       return t ? Object.assign({}, o, { _lt: t }) : o
     },
     doRecover (w) {
+      // ★ 2026-10-15 3 秒卡控（与后端 /troops/recover 双保险，防连点）
+      if (Date.now() - (this.lastRecoverAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       // ★ 2026-10-06 按数量恢复：用户填了恢复数量就只恢复这么多，留空/0 = 全部恢复该兵种
       const n = parseInt(this.woundNums && this.woundNums[w.id], 10) || 0
       const body = { troop_id: w.troop_id, type: w.type }
       if (n > 0 && n < w.count) body.count = n
       // ★ 2026-09-25 用户反馈「伤兵救治后要手动刷新页面才显示」→ 成功后重拉军队数据(含伤兵营/逃兵营)
       api.post('/games/ezfy/troops/recover', body)
-        .then(r => this.alert(r, '伤兵已恢复', () => { this.loadTroops() }))
+        .then(r => {
+          // 只有真正成功才进冷却，失败/资源不足不影响重试
+          if (r.code === 0) this.lastRecoverAt = Date.now()
+          this.alert(r, '伤兵已恢复', () => { this.loadTroops() })
+        })
     },
     doRecoverAll (t) {
+      // ★ 2026-10-15 3 秒卡控（与后端 /troops/recover 双保险，防连点）
+      if (Date.now() - (this.lastRecoverAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       api.post('/games/ezfy/troops/recover', { all: true, type: t })
-        .then(r => this.alert(r, '伤兵已恢复', () => this.loadTroops()))
+        .then(r => {
+          if (r.code === 0) this.lastRecoverAt = Date.now()
+          this.alert(r, '伤兵已恢复', () => this.loadTroops())
+        })
     },
     // ★ 2026-10-14 钻石一键恢复全部伤兵（单价由二战系统配置下发 heal_all_diamond，默认 100 钻）
     doRecoverAllDiamond (t) {
+      // ★ 2026-10-15 3 秒卡控：放在 confirm 之前，连点不会重复弹确认框（与后端双保险）
+      if (Date.now() - (this.lastRecoverAt || 0) < 3000) { this.notify('操作过于频繁, 请 3 秒后再试'); return }
       const cost = this.healAllDiamond || 100
       if (!window.confirm('花费 ' + cost + ' 钻石恢复全部伤兵？')) return
       api.post('/games/ezfy/troops/recover', { all: true, type: t, use_diamond: true })
-        .then(r => this.alert(r, '伤兵已全部恢复', () => { this.mallDiamond = null; this.loadTroops() }))
+        .then(r => {
+          if (r.code === 0) { this.mallDiamond = null; this.lastRecoverAt = Date.now() }
+          this.alert(r, '伤兵已全部恢复', () => { this.loadTroops() })
+        })
     },
     // ---- 科技 ----
     // ★ 2026-09-28 科技列表不显示资源消耗/前置条件，点[研究]进详情页(techpre)查看后再确认

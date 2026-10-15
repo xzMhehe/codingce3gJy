@@ -187,11 +187,13 @@
           <div class="old-line" v-if="!ezfy.woundedList(0).length">(伤兵营无伤兵)</div>
           <div class="old-line" v-if="ezfy.woundedList(0).length">
             合计 <b>{{ ezfy.fmtN(ezfy.woundedHealCost(0)) }}</b> {{ ezfy.resNames.gold }}
-            <button @click="ezfy.doRecoverAll(0)">[全部恢复]</button>
+            <!-- ★ 2026-10-15 「去掉按钮样式」：与全站一致的 [链接] 写法（原来用 <button> 样式不统一）；
+                 3 秒卡控由后端 + doRecoverAll 双保险。 -->
+            <a href="javascript:;" @click="ezfy.doRecoverAll(0)">[全部恢复]</a>
           </div>
           <!-- ★ 2026-10-14 钻石一键恢复全部伤兵（单价走二战系统配置 heal_all_diamond，默认 100 钻，账号级钻石余额） -->
           <div class="old-line" v-if="ezfy.woundedList(0).length">
-            合计 <b>{{ ezfy.healAllDiamond || 100 }}</b> 钻石 <button @click="ezfy.doRecoverAllDiamond(0)">[全部恢复]</button>
+            合计 <b>{{ ezfy.healAllDiamond || 100 }}</b> 钻石 <a href="javascript:;" @click="ezfy.doRecoverAllDiamond(0)">[全部恢复]</a>
           </div>
           </div><!-- /伤兵营 tab -->
           <div v-show="ezfy.hqTab === 3">

@@ -4181,6 +4181,12 @@ var (
 	ezfySpeedTrainMemo = map[uint]int64{}
 )
 
+// ★ 2026-10-15 伤兵恢复 3 秒卡控（[全部恢复]/[恢复] 连点防抖，与训练一键加速/人口召集口径一致）
+var (
+	ezfyRecoverMu   sync.Mutex
+	ezfyRecoverMemo = map[uint]int64{}
+)
+
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
 var (

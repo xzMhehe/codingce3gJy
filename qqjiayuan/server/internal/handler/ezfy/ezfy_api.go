@@ -816,6 +816,23 @@ func (h *EzfyHandler) RecoverWounded(c *gin.Context) {
 		return
 	}
 	h.cfgs()
+
+	// ★ 2026-10-15 3 秒卡控（前后端双保险，防连点/脚本反复刷伤兵恢复）
+	{
+		nowCd := time.Now().UnixMilli()
+		ezfyRecoverMu.Lock()
+		if last, ok := ezfyRecoverMemo[uid]; ok && nowCd-last < 3000 {
+			ezfyRecoverMu.Unlock()
+			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
+			return
+		}
+		if len(ezfyRecoverMemo) > 16384 {
+			ezfyRecoverMemo = map[uint]int64{}
+		}
+		ezfyRecoverMemo[uid] = nowCd
+		ezfyRecoverMu.Unlock()
+	}
+
 	city := h.bodyCity(uid, req.CityId)
 	if req.All {
 		if req.UseDiamond {
