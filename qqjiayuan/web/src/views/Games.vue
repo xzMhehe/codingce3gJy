@@ -72,12 +72,17 @@
     </transition>
 
     <!-- ★★ 2026-10-15 进入游戏前的「选择服务器」弹层（区名/区服由管理端游戏大厅维护配置，不写死）。
-         点游戏 → 有配区服就先选（哪怕只有一个服也要选），再进入；没配区服维持原跳转。 -->
+         点游戏 → 有配区服就先选（哪怕只有一个服也要选），再进入。 -->
     <div v-if="srvDlg.on" class="gs-mask" @click.self="closeSrvDlg">
       <div class="gs-box">
         <div class="gs-title">{{ srvDlg.game ? srvDlg.game.name : '选择服务器' }}</div>
         <div class="gs-sub">请选择要进入的服务器</div>
         <div v-if="srvDlg.loading" class="gs-loading">加载中…</div>
+        <!-- ★ 2026-10-15 接口失败不再偷偷关窗直接进（否则"掠影秒进"）：停留显示原因 + 重试 -->
+        <div v-else-if="srvDlg.err" class="gs-empty">
+          服务器列表加载失败<br>
+          <a href="javascript:;" style="color:#b8860b;margin-top:6px;display:inline-block;" @click="loadServers">重新加载</a>
+        </div>
         <div v-else-if="!srvDlg.list.length" class="gs-empty">该游戏暂无可进入的服务器</div>
         <div v-else class="gs-list">
           <div v-for="s in srvDlg.list" :key="s.id" class="gs-item" @click="enterServer(s)">
@@ -104,7 +109,8 @@ export default {
       toastMsg: '',
       toastTimer: null,
       // ★★ 2026-10-15 选择服务器弹层（区服由管理端「游戏大厅维护」配置）
-      srvDlg: { on: false, loading: false, game: null, list: [] },
+      //   err=true 表示列表请求失败（停留给重试，不再"掠影秒进"）
+      srvDlg: { on: false, loading: false, err: false, game: null, list: [] },
       // 诺哈原版娱乐竞猜两行：竞猜　农场　江湖　猜球　大话 / 富翁　好友买卖　苹果机　抢车位
       guessLabels: ['竞猜', '农场', '江湖', '猜球', '大话', '富翁', '好友买卖', '苹果机', '抢车位'],
       guessMap: {
@@ -175,37 +181,46 @@ export default {
       })
     },
     // 进入游戏：内部网址(path)=本站路由，直接跳转；外部网址(url)=外站，新窗口打开
-    // url 里若被误填成站内路由（以 / 或 #/ 开头）也按站内路由走，避免开出一个空白页
     // ★★ 2026-10-15 改：先查该游戏的区服配置 —— 配了区服（如二战征途）就先弹「选择服务器」
     //   （区名由管理端配置，哪怕只有一个服也要选）；没配区服的维持原逻辑直接进。
     play (g) {
       if (!this.hasGo(g)) { this.toast('「' + g.name + '」正在建设中，敬请期待'); return }
       this.srvDlg.on = true
-      this.srvDlg.loading = true
       this.srvDlg.game = g
+      this.loadServers()
+    },
+    // 拉服务器列表；失败→err=true 停留给重试（不再秒进闪没），成功空列表→直接进（没配区服的普通游戏不受影响）
+    loadServers () {
+      const g = this.srvDlg.game
+      this.srvDlg.loading = true
+      this.srvDlg.err = false
       this.srvDlg.list = []
       api.get('/game-servers', { params: { game_id: g.id } }).then(r => {
-        if (r.code !== 0) { this.srvDlg.loading = false; return }
+        if (r.code !== 0) { this.srvDlg.loading = false; this.srvDlg.err = true; return }
         const list = r.data || []
+        this.srvDlg.loading = false
         if (!list.length) {
+          // 没配区服：维持老行为直接进（二战由后端默认种子保证有区服，不会落这）
           this.srvDlg.on = false
           this.jumpGame(g.path || g.url)
           return
         }
         this.srvDlg.list = list
-        this.srvDlg.loading = false
       }).catch(() => {
-        this.srvDlg.on = false
-        this.jumpGame(g.path || g.url)
+        // 接口不存在/后端没重启：停留显示失败 + 重试，绝不"偷偷直接进"
+        this.srvDlg.loading = false
+        this.srvDlg.err = true
       })
     },
     closeSrvDlg () {
       this.srvDlg.on = false
       this.srvDlg.loading = false
+      this.srvDlg.err = false
       this.srvDlg.game = null
       this.srvDlg.list = []
     },
     // 选定区服：host 为空 = 同源本服直接路由；有 host = 跨服整页跳（hash 路由拼 #/ 前缀）
+    // ★ 2026-10-15 path 可带 query（如 /games/ezfy?cur=home），统一解析成 {path,query} 再跳
     enterServer (s) {
       const p = (s.path || (this.srvDlg.game && this.srvDlg.game.path) || '')
       if (s.host) {
@@ -213,15 +228,24 @@ export default {
         return
       }
       this.closeSrvDlg()
-      if (p) this.$router.push(p)
+      if (p) this.$router.push(parseRoute(p))
     },
     jumpGame (u) {
       if (!u) return
-      if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(u.replace(/^#/, '')); return }
+      if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(parseRoute(u.replace(/^#/, ''))); return }
       window.open(u)
     },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('游戏·' + title)) }
   }
+}
+// 解析「/games/ezfy?cur=home」这类带 query 的站内路由为 vue-router 的 {path, query} 对象
+function parseRoute (u) {
+  const qi = u.indexOf('?')
+  if (qi < 0) return u
+  const path = u.slice(0, qi)
+  const query = {}
+  new URLSearchParams(u.slice(qi + 1)).forEach((v, k) => { query[k] = v })
+  return { path, query }
 }
 </script>
 

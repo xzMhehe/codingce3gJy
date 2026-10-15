@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -324,6 +325,11 @@ func (h *GameHandler) AdminServerCreate(c *gin.Context) {
 			return
 		}
 		req.Path = g.Path // 缺省沿用游戏的站内入口
+		// ★ 2026-10-15 游戏入口填在 url（如 «#/games/ezfy?cur=home»）时也回落，
+		//   否则 path 留空的新区服玩家点「进入」会没反应
+		if req.Path == "" && len(g.Url) > 1 && strings.HasPrefix(g.Url, "#/") {
+			req.Path = g.Url[1:]
+		}
 	}
 	s := model.GameServer{GameID: uint(gid), Name: req.Name, Host: req.Host, Path: req.Path, Sort: req.Sort, Status: req.Status}
 	h.DB.Create(&s)

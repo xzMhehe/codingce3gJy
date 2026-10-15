@@ -2764,13 +2764,13 @@ func seedGames(db *gorm.DB) {
 
 	// ★★ 2026-10-15 区服默认种子：二战征途没配过区服时，先补一个「一区」兜底
 	//   （区名只是引导值，管理端「游戏大厅维护」里可随意改/增；以后开二区加一行即可）。
-	//   host 留空 = 同源本服，path 沿游戏的站内入口。
+	//   host 留空 = 同源本服；path 带 ?cur=home：进二战直接落在主界面（原版 QQ 应用入口约定）。
 	var ww2 model.Game
 	if err := db.Where("path = ?", "/games/ezfy").First(&ww2).Error; err == nil {
 		var cnt int64
 		db.Model(&model.GameServer{}).Where("game_id = ?", ww2.ID).Count(&cnt)
 		if cnt == 0 {
-			db.Create(&model.GameServer{GameID: ww2.ID, Name: "二战征途-【1区】红色警戒", Path: "/games/ezfy", Sort: 1, Status: 1})
+			db.Create(&model.GameServer{GameID: ww2.ID, Name: "二战征途-【1区】红色警戒", Path: "/games/ezfy?cur=home", Sort: 1, Status: 1})
 		}
 	}
 }
