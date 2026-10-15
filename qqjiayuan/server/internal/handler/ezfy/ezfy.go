@@ -4213,6 +4213,14 @@ var (
 	ezfyLoveCardMemo = map[uint]int64{}
 )
 
+// ★★ 2026-10-15 加速类道具 3 秒卡控（建筑3/训练4/科技5及百分比24/25/26）
+//   与前端「多 tab 共享锁」同口径的后端双保险 —— 绕过前端直接打接口 / 一个账号开多个 tab 连点，
+//   加速/采集/收获/召回的请求同样被卡死，杜绝「多 tab 刷资源刷兵」。
+var (
+	ezfyItemUseMu   sync.Mutex
+	ezfyItemUseMemo = map[uint]int64{}
+)
+
 // ★ 2026-10-05 人口召集卡控（与训练一键加速一致）
 // ★ 2026-10-09  5 秒 → **3 秒**（前端 doConvene 同步改）
 var (

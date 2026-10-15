@@ -2758,6 +2758,27 @@ func (h *EzfyHandler) UseItem(c *gin.Context) {
 		return
 	}
 	h.cfgs()
+
+	// ★★ 2026-10-15 加速类道具(建筑3/训练4/科技5/百分比24/25/26)按账号 3 秒卡控：
+	//   与前端「多 tab 共享锁」同口径的后端双保险，防绕过前端直连 / 多 tab 连点刷资源刷兵。
+	//   只拦加速类 —— 资源包(1)、经验书(10)、升星卡(19)、洗点卡(12) 等批量/常用道具不受影响。
+	itCfg := ezfyCfg.item(req.CfgId)
+	if itCfg != nil && (itCfg.ItemType == 3 || itCfg.ItemType == 4 || itCfg.ItemType == 5 ||
+		itCfg.ItemType == 24 || itCfg.ItemType == 25 || itCfg.ItemType == 26) {
+		nowCd := time.Now().UnixMilli()
+		ezfyItemUseMu.Lock()
+		if last, ok := ezfyItemUseMemo[uid]; ok && nowCd-last < 3000 {
+			ezfyItemUseMu.Unlock()
+			resp.ParamError(c, "操作过于频繁, 请 3 秒后再试")
+			return
+		}
+		if len(ezfyItemUseMemo) > 16384 {
+			ezfyItemUseMemo = map[uint]int64{}
+		}
+		ezfyItemUseMemo[uid] = nowCd
+		ezfyItemUseMu.Unlock()
+	}
+
 	city := h.bodyCity(uid, req.CityId)
 	msg := h.useItem(uid, city, req.CfgId, req.Count, req.OfficerId, req.SkillId, req.RecordId)
 	if msg == "" {

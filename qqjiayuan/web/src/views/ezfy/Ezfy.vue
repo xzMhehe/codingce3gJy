@@ -3618,6 +3618,9 @@ export default {
       this.switchReportTab(t)   // 内部已 syncUrl，会把 cur=reports 与 rtab 一起写回
     },
     doCollectAll () {
+      // ★★★ 2026-10-15 多 tab 防刷：一键采集账号级 3 秒共享卡控 + 请求防抖（防连点/多tab重复下达采集）
+      if (!this.opGuard('collectAll', 3000)) return
+      this.once('collectAll', () =>
       api.post('/games/ezfy/wild/collect-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -3627,6 +3630,7 @@ export default {
           this.loadWilds()
         } else this.notify(r.msg)
       })
+      )
     },
     // ★ 单支空闲驻军开始采集（2026-09-24 采集空闲化）
     startCollect (o) {
@@ -3647,11 +3651,15 @@ export default {
     //   （玩法细则见代码注释：满一期结算资源+宝物；不满一期只按时长折算资源、无宝物；负重满后超出部分直接入城。）
     async doHarvestAll () {
       if (!await this.ask('确定收获所有采集中的部队吗？')) return
+      // ★★★ 2026-10-15 多 tab 防刷：一键收获账号级 3 秒共享卡控（确认通过后才占冷却，误点取消不占）
+      if (!this.opGuard('harvestAll', 3000)) return
       this.harvestAllReq(false)
     },
     // ★ 2026-09-30 出发城市资源已达「配置的资源最大值」时，后端返回 confirm 标记;
     //   弹确认框，玩家确认后带 force=true 重发才真正收获（否则批量产出入库会因资源上限被丢弃）。
     harvestAllReq (force) {
+      // ★★★ 2026-10-15 请求防抖：同一批收获请求未返回时忽略后续点击（force 重发在上一发返回后才发起，不受影响）
+      this.once('harvestAll', () =>
       api.post('/games/ezfy/wild/harvest-all', { force }).then(r => {
         if (r.code === 0) {
           if (r.data && r.data.confirm) {
@@ -3666,11 +3674,15 @@ export default {
           this.loadWilds() // ★ 2026-10-09 附属野地列表一起刷新（否则状态停在旧值）
         } else this.notify(r.msg)
       })
+      )
     },
     // ★ 一键召回：先结算未入城产出, 部队返航(资源已在收获/停止时入城, 召回只是撤兵)
     //   （玩法细则见代码注释：返航前结算未入城产出，满一期给资源+宝物，不满一期只按时长折算资源，无宝物。）
     async doRecallAll () {
       if (!await this.ask('确定召回所有驻守部队吗？')) return
+      // ★★★ 2026-10-15 多 tab 防刷：一键召回账号级 3 秒共享卡控（确认通过后才占冷却，误点取消不占）
+      if (!this.opGuard('recallAll', 3000)) return
+      this.once('recallAll', () =>
       api.post('/games/ezfy/wild/recall-all', {}).then(r => {
         if (r.code === 0) {
           this.notify(r.msg)
@@ -3679,6 +3691,7 @@ export default {
           this.loadWilds() // ★ 2026-10-09 附属野地列表一起刷新
         } else this.notify(r.msg)
       })
+      )
     },
     // ★ 单支采集部队「停止采集」(= 单支收获): 满一期结算资源+宝物, 不满只结算按采集时长的资源(无宝物);
     //   资源直接入起点城市; 部队原地待命不回城。
@@ -4521,13 +4534,11 @@ export default {
     },
     // 训练一键加速(本城 / 所有城市)
     doSpeedTrainAll () {
-      // ★ 2026-10-05 前端 5 秒卡控（与后端 /troops/speed-all 双保险）
-      if (Date.now() - (this.lastSpeedTrainAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
-      // ★ 2026-10-03 连点会并发打同一加速接口，后端第二发算成 0 秒/0 黄金 → 与建造一样走 once 防抖
+      // ★★★ 2026-10-15 多 tab 防刷：统一账号级 3 秒共享卡控（localStorage 同锁，所有 tab 共用一个冷却窗口）
+      if (!this.opGuard('speedTrainAll', 3000)) return
       this.once('speedTrain', () =>
         api.post('/games/ezfy/troops/speed-all', { all_city: false }).then(r => {
           if (r.code === 0) {
-            this.lastSpeedTrainAt = Date.now()
             this.notify(r.msg)
             this.load()
             this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）
@@ -4537,12 +4548,11 @@ export default {
     },
     async doSpeedTrainAllCity () {
       if (!await this.ask('确定对所有城市的训练队列一键加速吗?(按剩余时间消耗' + this.resNames.gold + ')')) return
-      // ★ 2026-10-05 前端 5 秒卡控（与后端 /troops/speed-all 双保险）
-      if (Date.now() - (this.lastSpeedTrainAt || 0) < 5000) { this.notify('操作过于频繁, 请 5 秒后再试'); return }
+      // ★★★ 2026-10-15 多 tab 防刷：确认通过后才占用 3 秒共享卡控（误点取消不占冷却）
+      if (!this.opGuard('speedTrainAll', 3000)) return
       this.once('speedTrain', () =>
         api.post('/games/ezfy/troops/speed-all', { all_city: true }).then(r => {
           if (r.code === 0) {
-            this.lastSpeedTrainAt = Date.now()
             this.notify(r.msg)
             this.load()
             this.loadBuildings() // ★ 2026-10-04 加速后建筑列表保持最新（/view 已不下发 buildings）
@@ -4632,6 +4642,8 @@ export default {
       }
       const body = { cfg_id: it.cfg_id, count: 1, city_id: this.city.id }
       if (targetId) body.record_id = targetId
+      // ★★★ 2026-10-15 多 tab 防刷：训练/科技加速道具统一账号级 3 秒共享卡控（localStorage 同锁）
+      if (!this.opGuard('speedItem', 3000)) return
       api.post('/games/ezfy/bag/use', body).then(r => {
         if (r.code === 0) {
           this.notify((r.data && r.data.msg) ? r.data.msg : '加速成功', 'ok')
@@ -4651,6 +4663,9 @@ export default {
       }
       // ★ 带上 city_id：多城时「不传 city_id 走当前城」容易和玩家正在看的城错位
       // ★ 2026-09-27 带上 record_id：点哪条建筑就减哪条，避免后端总是挑最早结束的一条
+      // ★★★ 2026-10-15 多 tab 防刷：建筑加速道具统一账号级 3 秒共享卡控（localStorage 同锁）
+      if (!this.opGuard('speedItem', 3000)) return
+      this.once('speedBuilding', () =>
       api.post('/games/ezfy/bag/use', { cfg_id: it.cfg_id, count: 1, city_id: this.city.id, record_id: bid }).then(r => {
         if (r.code === 0) {
           this.inlineTip = { bid, text: (r.data && r.data.msg) ? r.data.msg : '加速成功', type: 'ok' }
@@ -4659,6 +4674,7 @@ export default {
           this.loadBag()
         } else this.inlineTip = { bid, text: r.msg || '加速失败', type: 'error' }
       })
+      )
     },
     // ★ 2026-09-27 严重漏洞修复：取消建筑升级**零退还**（资源与建筑图纸不退，建筑保留当前等级）。
     //   旧逻辑「全额退还」会让人「一键升满→取消」反复刷资源/图纸。
@@ -6761,6 +6777,30 @@ export default {
       }
       if (ret && typeof ret.then === 'function') ret.then(release, release)
       else release()
+    },
+    // ★★ 2026-10-15 账号级 3 秒卡控（防「一个账号开多个 tab 连点刷资源/刷兵」）：
+    //   冷却时间戳写进 localStorage —— 同一浏览器 / 同一账号下**所有 tab 共享同一把锁**，
+    //   从源头把「多 tab 同时连点加速/采集/收获/召回」卡死；内存同时留一份兜底（浏览器禁 localStorage 时）。
+    //   返回 true 放行 / false 拦截（拦截时已 notify 提示剩余秒数）。
+    opGuard (key, ms) {
+      const gap = (ms && ms > 0) ? ms : 3000
+      const now = Date.now()
+      if (!this._opGuardAt) this._opGuardAt = {}
+      let last = this._opGuardAt[key] || 0
+      const uid = (this.$store.state.ezfyUser && this.$store.state.ezfyUser.id) || 0
+      const lsKey = 'ezfy_guard_' + uid + '_' + key
+      try {
+        const ls = parseInt(window.localStorage.getItem(lsKey), 10) || 0
+        if (ls > last) last = ls
+      } catch (e) {}
+      if (now - last < gap) {
+        const left = Math.max(1, Math.ceil((gap - (now - last)) / 1000))
+        this.notify('操作过于频繁, 请 ' + left + ' 秒后再试', 'error')
+        return false
+      }
+      try { window.localStorage.setItem(lsKey, String(now)) } catch (e) {}
+      this._opGuardAt[key] = now
+      return true
     },
     // ---- 军官/学院 ----
     loadAcade () {
