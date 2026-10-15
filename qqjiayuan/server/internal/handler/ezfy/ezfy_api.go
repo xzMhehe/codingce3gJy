@@ -2071,6 +2071,17 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		arr = append(arr, v)
 	}
 	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
+	// ★ 2026-10-15 战力榜「不参与排名」：与风云榜共用同一份排除名单（排除后重新排名，用户端/管理端同口径）
+	if exSet := pvpExcludedSet(h.DB); len(exSet) > 0 {
+		keep := make([]*pw, 0, len(arr))
+		for _, e := range arr {
+			if exSet[uint(e.uid)] {
+				continue
+			}
+			keep = append(keep, e)
+		}
+		arr = keep
+	}
 	// ★ 2026-10-03 性能：原实现逐条 ensureProfile（top20 = 20 次 RDS 往返），
 	//   改成一次 WHERE user_id IN 批量查档案（照搬 CorpsList 的批量模式）。
 	topUIDs := make([]uint, 0, 20)
