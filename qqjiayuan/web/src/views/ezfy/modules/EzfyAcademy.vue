@@ -490,13 +490,13 @@
         <div class="old-line">前去<a href="javascript:;" @click="ezfy.switchAcade('officer')">[军官]</a></div>
       </div>
 
-      <!-- 名将图鉴 -->
+      <!-- 名将图鉴（★ 2026-10-15 分页展示，默认每页 10，翻页静默无提示） -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'generals'">
         <div class="old-line">名将图鉴(共{{ ezfy.generalData.generals.length }}名)</div>
         <table class="ezfy-plain-table">
           <!-- ★ 2026-10-05 去掉等级/星级列 -->
           <tr><th>名称</th><th>军/后/学</th><th>状态</th></tr>
-          <tr v-for="g in ezfy.generalData.generals" :key="'gg' + g.id">
+          <tr v-for="g in ezfy.generalPaged" :key="'gg' + g.id">
             <td>{{ g.name }}</td>
             <td>{{ g.military }}/{{ g.logistics }}/{{ g.learning }}</td>
             <td>
@@ -505,6 +505,11 @@
             </td>
           </tr>
         </table>
+        <div class="ezfy-pager" v-if="ezfy.generalData.generals.length > ezfy.generalPageSize">
+          <a href="javascript:;" :class="{ disabled: ezfy.generalPage <= 1 }" @click="ezfy.generalGo(-1)">[上一页]</a>
+          <span class="gray">第 {{ Math.min(ezfy.generalPage, ezfy.generalTotalPages) }}/{{ ezfy.generalTotalPages }} 页 · 共 {{ ezfy.generalData.generals.length }} 名</span>
+          <a href="javascript:;" :class="{ disabled: ezfy.generalPage >= ezfy.generalTotalPages }" @click="ezfy.generalGo(1)">[下一页]</a>
+        </div>
       </div>
     </template>
 

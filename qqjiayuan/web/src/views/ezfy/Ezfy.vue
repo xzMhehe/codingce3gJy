@@ -817,6 +817,7 @@ export default {
       skillData: { skills: [], officers: [], gold: 0 },
       equipData: { bag: [], all: [], sets: [] },
       generalData: { generals: [] },
+      generalPage: 1, generalPageSize: 10, // ★ 2026-10-15 名将图鉴分页（默认每页 10）
       officerDetail: { officer: null, skills: [], all_skills: [], equipped: [], bag: [], gold: 0 },
       // ★ 2026-10-01 修复「点击军官有时候空白」：加载失败/武将不在当前城时，
       //   不再静默留空，页面展示该错误并引导返回军官列表
@@ -1565,6 +1566,12 @@ export default {
     equipAllPaged () {
       const p = Math.min(Math.max(1, this.equipAllPage), this.equipAllTotalPages)
       return this.equipAllFiltered.slice((p - 1) * this.equipAllPageSize, p * this.equipAllPageSize)
+    },
+    // ★ 2026-10-15 名将图鉴分页（与装备图鉴同款，纯前端切片，无任何提示）
+    generalTotalPages () { return Math.max(1, Math.ceil((this.generalData.generals || []).length / this.generalPageSize)) },
+    generalPaged () {
+      const p = Math.min(Math.max(1, this.generalPage), this.generalTotalPages)
+      return (this.generalData.generals || []).slice((p - 1) * this.generalPageSize, p * this.generalPageSize)
     },
     // ★ 2026-09-29 军官详情「装备背包 / 已穿戴装备」同一个装备叠加展示（名称 × N），
     //   有空余部位就能继续穿戴（对应部位没被占用），没空余就不能穿戴。
@@ -6289,6 +6296,8 @@ export default {
     bagEquipGo (d) { this.bagEquipPage = this.pagerGo(d, this.bagEquipPage, this.bagEquipTotalPages) },
     equipGo (d) { this.equipPage = this.pagerGo(d, this.equipPage, this.equipTotalPages) },
     equipAllGo (d) { this.equipAllPage = this.pagerGo(d, this.equipAllPage, this.equipAllTotalPages) },
+    // ★ 2026-10-15 名将图鉴翻页（静默，无提示）
+    generalGo (d) { this.generalPage = this.pagerGo(d, this.generalPage, this.generalTotalPages) },
     officerBagGo (d) {
       this.officerBagPage = this.pagerGo(d, this.officerBagPage, this.officerBagTotalPages)
     },
