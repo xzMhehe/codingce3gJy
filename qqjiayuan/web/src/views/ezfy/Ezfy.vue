@@ -2,7 +2,15 @@
   <div class="ezfy-page">
     <!-- ★ 2026-10-12 二战独立登录：未登录（无二战 ezfy_token）时游戏整体不渲染，只显示下面二战自己的登录界面。
          登录走二战专属 /api/ezfy/login（首登同步家园账号），token 单独存，与家园彻底分离。 -->
-    <div v-if="!isLogin" class="wwii-login"
+    <!-- ★★ 2026-10-15 家园已登录 → 先走 SSO 静默换二战登录态，这期间显示轻量占位，不闪登录框
+         （原来会先渲染出二战登录框、SSO 成功后再整页刷新 —— 玩家进二战会看到「登陆掠影」）。
+         ssoPending 在 data() 初始化（首帧就占位，连一帧登录框都不会闪）。 -->
+    <div v-if="!isLogin && ssoPending" class="wwii-login"
+         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
+      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">二战征途</div>
+      <div style="text-align:center;padding:14px 0 16px;color:#8a6d3b;font-size:14px;">正在进入二战征途…</div>
+    </div>
+    <div v-else-if="!isLogin" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
       <!-- class=wwii-input + 行内 style(含 !important) 双保险，保证账号/密码/验证码输入框宽高完全一致 -->
@@ -457,6 +465,9 @@ export default {
       wwiiPwd: '',
       wwiiErr: '',
       wwiiBusy: false,
+      // ★★ 2026-10-15 家园已登录 → 进二战先占位「正在进入二战征途…」，SSO 换到二战 token 前不闪登录框。
+      //   在 data() 初始化（不是 mounted）：连首帧渲染都不会露出登录框。
+      ssoPending: !!this.$store.state.token,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
       wwiiCaptchaImg: '',     // 验证码 base64 图
@@ -2218,6 +2229,7 @@ export default {
     trySsoLogin () {
       if (!this.$store.state.token) return // 家园没登录：不打扰，直接显示二战登录框
       this.wwiiBusy = true
+      this.ssoPending = true // 占位兜底（data() 已按家园登录态初始化）
       api.post('/ezfy/sso').then(r => {
         if (r.code === 0 && r.data && r.data.token) {
           this.$store.commit('setEzfyToken', r.data.token)
@@ -2225,8 +2237,10 @@ export default {
           window.location.reload()
           return
         }
+        // SSO 失败（二战未建档等）→ 撤掉占位，露出二战登录框让玩家自己输密码
+        this.ssoPending = false
         this.wwiiBusy = false
-      }).catch(() => { this.wwiiBusy = false })
+      }).catch(() => { this.ssoPending = false; this.wwiiBusy = false })
     },
     // 输入家园号(=二战游戏ID) + 家园密码，走二战自己的登录接口 /api/ezfy/login：
     //   首登用「家园号+家园密码」校验并同步建档，签发二战专属 token；
