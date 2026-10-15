@@ -233,7 +233,12 @@
       <!-- ★ 套装装备配置 → 宝箱奖池：开箱按奖池权重随机出装备/道具（2026-09-27 从「军官管理 → 宝箱」迁来） -->
       <el-dialog :title="'奖池 · ' + chPoolChest.name" :visible.sync="chPoolDlg" width="1000px">
         <div class="toolbar">
-          <span class="td-sub">共 {{ chPool.length }} 条 · 权重合计 {{ chWeightSum }}（每条的「概率」= 权重 ÷ 合计）</span>
+          <!-- ★ 2026-10-15 权重合计/概率说明改成「i」悬停提示，不再直接占工具栏空间 -->
+          <span class="td-sub">共 {{ chPool.length }} 条
+            <el-tooltip effect="dark" :content="'权重合计 ' + chWeightSum + '，每条的「概率」= 权重 ÷ 合计'" placement="top">
+              <i class="el-icon-question" style="cursor:pointer" />
+            </el-tooltip>
+          </span>
           <div class="grow" />
           <el-select v-model.number="chBulkSetId" filterable clearable placeholder="按套装批量加入" style="width:240px">
             <el-option v-for="s in equipSets" :key="'bs' + s.id" :label="s.id + ' · ' + s.name" :value="s.id" />
