@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="城名 / 玩家昵称 / 用户ID" clearable style="width:240px"
+        <el-input v-model="word" placeholder="城名 / 玩家昵称 / 用户ID / 游戏号" clearable style="width:260px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />

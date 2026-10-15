@@ -78,6 +78,45 @@ func TestAdminEzfyPlayersNoNPlusOne(t *testing.T) {
 	}
 }
 
+// TestAdminEzfyCitiesNoNPlusOne 管理端「城市管理」列表禁止逐行查库。
+//
+// ★★ 2026-10-15 用户反馈：「城市管理 也严重卡顿」。比「玩家信息管理」还狠 ——
+//
+//	原来**每一行 7 条库**：玩家名+家园号（ezfyAdminName，2 条）+ 建筑/部队/军官/野地 4 条 COUNT
+//	+ 阵营 1 条 profile → size=100 就是 **700 条跨 WAN 往返**。
+//	现在整页固定 9 条 SQL（与 size 无关）：分页 2 + 玩家名/家园号 2 + 四个 GROUP BY + 阵营 1。
+//
+// ★ 特别注意军官计数口径：`ezfy_officer` 是**软删除表**，GORM 的 `Model().Count()` 会自动加
+// `deleted_at IS NULL`；改成原生 GROUP BY 后必须**自己加**，否则把已删军官也算进来。
+func TestAdminEzfyCitiesNoNPlusOne(t *testing.T) {
+	body := stripGoComments(ezfyFuncBody(t, "ezfy_admin_ext.go", "func (h *EzfyAdmin) AdminEzfyCities("))
+	for _, bad := range []string{
+		"h.ezfyAdminName(ct.UserID)", // 逐行取玩家名（2 条/行）
+		`.Count(&bn)`,                // 逐行数建筑
+		`.Count(&tn)`,                // 逐行数部队
+		`.Count(&on)`,                // 逐行数军官
+		`.Count(&wn)`,                // 逐行数野地
+		`h.DB.Where("user_id = ?", ct.UserID).First(&p)`, // 逐行取阵营
+	} {
+		if strings.Contains(body, bad) {
+			t.Fatalf("城市管理列表里还有 N+1（逐行查库）：%s\n分页越大越慢，必须改成 IN 批量/GROUP BY", bad)
+		}
+	}
+	for _, want := range []string{
+		"h.ezfyAdminNamesBatch(uids)",      // 玩家名/家园号：一次 IN
+		`Where("city_id IN ?", cityIDs)`,   // 城池子表：一次 IN
+		`Group("city_id")`,                 // 计数：一次 GROUP BY
+		`"deleted_at IS NULL"`,             // ★ 军官软删除口径必须显式带上
+		`"level > 0"`,                      // 建筑口径
+		`"count > 0"`,                      // 部队口径
+		`Select("user_id, camp")`,          // 阵营：一次 IN
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("城市管理的批量取数缺失（缺 %s）", want)
+		}
+	}
+}
+
 // TestAdminEzfyItemGrantPlayersNoNPlusOne 「发放道具」目标玩家搜索同样禁止逐行查家园号
 // （最多 20 行 → 原来 20 条跨库往返）。
 func TestAdminEzfyItemGrantPlayersNoNPlusOne(t *testing.T) {

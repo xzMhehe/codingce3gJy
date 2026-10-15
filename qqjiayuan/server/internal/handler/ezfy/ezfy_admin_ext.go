@@ -34,14 +34,17 @@ func (h *EzfyAdmin) ezfyCityOf(id int64) (*model.EzfyCity, string) {
 
 // ============ 1. 城市管理 ============
 
-// AdminEzfyCities 城池列表（word=城名/用户ID/玩家昵称）
+// AdminEzfyCities 城池列表（word=城名/用户ID/城池ID/游戏号/玩家昵称）
 func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyCity{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ? OR id = ?", uid, uid)
+			// ★ 2026-10-15 数字口径与其它管理端页统一：用户ID / 城池ID / **游戏号**(game_uid)
+			//   （游戏号转靓号后会与 user_id 解耦，玩家报给客服的就是它，只匹配 user_id 会搜不到）
+			q = q.Where("user_id = ? OR id = ? OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)",
+				uid, uid, uid)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
@@ -71,21 +74,67 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 		// ★ 管理端「城市管理」展示列：玩家所在州（大洲/大洋名）
 		Continent string `json:"continent"`
 	}
+	// ★★ 2026-10-15 性能修复（用户反馈「城市管理 也严重卡顿」）。
+	//
+	//   原来**每一行**要打 **7 条库**：
+	//     ① `ezfyAdminName`（玩家昵称 + 家园号，内部 2 条）
+	//     ②③④⑤ 建筑数 / 部队数 / 军官数 / 野地数（4 条 COUNT）
+	//     ⑥ `ezfy_profile` 取阵营
+	//   → size=10 就是 70 条、size=100 就是 **700 条跨 WAN 往返**
+	//     （比「玩家信息管理」的 2 条/行还狠 3 倍）→ 线上 1核1G + RDS 必然超时，
+	//     且分页越大越慢，正是用户描述的现象。
+	//
+	//   现在全部按 `IN ?` 批量取，整页固定 **9 条 SQL、与 size 无关**：
+	//   分页主查询(Count+Find) 2 + 玩家名/家园号 2 + 建筑/部队/军官/野地 各 1（GROUP BY）+ 阵营 1。
+	//   ★ 口径逐条对齐原实现：建筑 `level > 0`、部队 `count > 0`、
+	//     军官**排除软删除**（`deleted_at IS NULL` —— GORM 的 `Model().Count()` 会自动加，
+	//     改成原生 GROUP BY 必须自己加，否则把已删军官也算进来）、野地不过滤。
+	cityIDs := make([]uint, 0, len(rows))
+	uids := make([]uint, 0, len(rows))
+	for _, ct := range rows {
+		cityIDs = append(cityIDs, ct.ID)
+		uids = append(uids, ct.UserID)
+	}
+	// 按城分组计数（一次 GROUP BY 顶掉 N 条 COUNT）
+	countByCity := func(m interface{}, where string, args ...interface{}) map[uint]int64 {
+		res := map[uint]int64{}
+		if len(cityIDs) == 0 {
+			return res
+		}
+		var sums []struct {
+			CityID uint
+			Cnt    int64
+		}
+		cq := h.DB.Model(m).Select("city_id, COUNT(*) AS cnt").Where("city_id IN ?", cityIDs)
+		if where != "" {
+			cq = cq.Where(where, args...)
+		}
+		cq.Group("city_id").Scan(&sums)
+		for _, s := range sums {
+			res[s.CityID] = s.Cnt
+		}
+		return res
+	}
+	buildNum := countByCity(&model.EzfyCityBuilding{}, "level > 0")
+	troopNum := countByCity(&model.EzfyCityTroop{}, "count > 0")
+	officerNum := countByCity(&model.EzfyOfficer{}, "deleted_at IS NULL")
+	wildNum := countByCity(&model.EzfyWildland{}, "")
+	// 玩家昵称 / 家园号：一次 IN 批量（替代每行 2 条）
+	nickOf, numOf := h.ezfyAdminNamesBatch(uids)
+	// 阵营：一次 IN 批量（替代每行 1 条 profile）
+	campOf := map[uint]string{}
+	if len(uids) > 0 {
+		var ps []model.EzfyProfile
+		h.DB.Select("user_id, camp").Where("user_id IN ?", uids).Find(&ps)
+		for _, p := range ps {
+			campOf[p.UserID] = ezfyCampName(p.Camp)
+		}
+	}
 	out := []rowOut{}
 	for _, ct := range rows {
-		pn, hn := h.ezfyAdminName(ct.UserID)
-		var bn, tn, on, wn int64
-		h.DB.Model(&model.EzfyCityBuilding{}).Where("city_id = ? AND level > 0", ct.ID).Count(&bn)
-		h.DB.Model(&model.EzfyCityTroop{}).Where("city_id = ? AND count > 0", ct.ID).Count(&tn)
-		h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ?", ct.ID).Count(&on)
-		h.DB.Model(&model.EzfyWildland{}).Where("city_id = ?", ct.ID).Count(&wn)
-		var p model.EzfyProfile
-		camp := ""
-		if err := h.DB.Where("user_id = ?", ct.UserID).First(&p).Error; err == nil {
-			camp = ezfyCampName(p.Camp)
-		}
-		out = append(out, rowOut{EzfyCity: ct, PlayerName: pn, HomeNum: hn, CampName: camp,
-			BuildingNum: bn, TroopNum: tn, OfficerNum: on, WildNum: wn,
+		out = append(out, rowOut{EzfyCity: ct, PlayerName: nickOf[ct.UserID], HomeNum: numOf[ct.UserID],
+			CampName: campOf[ct.UserID], BuildingNum: buildNum[ct.ID], TroopNum: troopNum[ct.ID],
+			OfficerNum: officerNum[ct.ID], WildNum: wildNum[ct.ID],
 			TerrainName: ezfyTerrainNameEx(ct.X, ct.Y),
 			Continent:   ezfyRegionName(ct.X, ct.Y)})
 	}
