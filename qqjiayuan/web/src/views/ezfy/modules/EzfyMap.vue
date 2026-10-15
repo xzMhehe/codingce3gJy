@@ -129,9 +129,18 @@
             </template>
           </template>
           <div class="old-line" v-else>
-            {{ ezfy.selCell.name }}({{ ezfy.selCell.x }},{{ ezfy.selCell.y }})
-            <!-- ★ 2026-09-29 玩家城市也能收藏：玩家城不开 selDetail，原来的[收藏]被 selDetail 条件挡住了 -->
-            <a href="javascript:;" style="margin-left:8px" @click="ezfy.addStar">{{ ezfy.isCellStarred ? '已收藏' : '收藏' }}</a>
+            <!-- ★ 2026-10-15 玩家地图详情补「所属区域」：与野地弹窗同款布局 —— 所属区域 + [收藏] 同一行。
+                 玩家城没有 selDetail，之前只有野地弹窗有这行（地图格数据本来就带 continent，漏展示而已）。
+                 有 continent 走新布局；没有（如收藏列表重建的格子）回落到旧布局，收藏按钮永远有。 -->
+            <div v-if="ezfy.selCell.continent">
+              所属区域：{{ ezfy.selCell.continent }}
+              <a href="javascript:;" @click="ezfy.addStar">{{ ezfy.isCellStarred ? '已收藏' : '收藏' }}</a>
+            </div>
+            <div v-else>
+              {{ ezfy.selCell.name }}({{ ezfy.selCell.x }},{{ ezfy.selCell.y }})
+              <!-- ★ 2026-09-29 玩家城市也能收藏：玩家城不开 selDetail，原来的[收藏]被 selDetail 条件挡住了 -->
+              <a href="javascript:;" style="margin-left:8px" @click="ezfy.addStar">{{ ezfy.isCellStarred ? '已收藏' : '收藏' }}</a>
+            </div>
           </div>
           <div class="old-line" v-if="!ezfy.selDetail && ezfy.selCell.owner">城主: {{ ezfy.selCell.owner }}</div>
           <!-- ★ 玩家城：展示城主的同盟（军团）名 —— 没加入军团显示「无」 -->
