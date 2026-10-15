@@ -112,12 +112,19 @@ func TestSpeedSkillBonusScaled(t *testing.T) {
 // TestLootHealScaled 黄金眼掠夺 / 机械改造恢复 全部乘倍率（ezfy_order.go ≥3 处、activity_target.go ≥1 处）。
 func TestLootHealScaled(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
-	if got := strings.Count(order, "10 * h.officerSkillScale(leadOfficer)"); got < 3 {
+	if got := strings.Count(order, "h.officerSkillScale(leadOfficer)"); got < 3 {
 		t.Fatalf("ezfy_order.go 里黄金眼/机械改造乘倍率点只有 %d 处，期望 ≥3", got)
 	}
+	// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）：攻方战后恢复 + 守方伤兵回收都锁 5 系数
+	if got := strings.Count(order, "+= 5 * h.officerSkillScale("); got < 2 {
+		t.Fatalf("ezfy_order.go 里机械改造回收率 5%%/级 点只有 %d 处，期望 ≥2", got)
+	}
 	act := rawFile(t, "ezfy_activity_target.go")
-	if got := strings.Count(act, "10 * h.officerSkillScale(leadOfficer)"); got < 1 {
+	if got := strings.Count(act, "h.officerSkillScale(leadOfficer)"); got < 1 {
 		t.Fatalf("ezfy_activity_target.go 里机械改造乘倍率点只有 %d 处，期望 ≥1", got)
+	}
+	if got := strings.Count(act, "+= 5 * h.officerSkillScale("); got < 1 {
+		t.Fatalf("ezfy_activity_target.go 里机械改造回收率 5%%/级 点只有 %d 处，期望 ≥1", got)
 	}
 }
 
@@ -175,7 +182,7 @@ func TestSkillEffectTextAtShowsFinalValue(t *testing.T) {
 		{"弧形防御", 2, "防御力+60%"},
 		{"四指编队", 3, "空军对空攻击+45%"},
 		{"弹幕支援", 3, "城防攻击范围+30%"},
-		{"机械改造", 2, "回收率+20%, 出征油耗-20%"},
+		{"机械改造", 2, "回收率+10%, 出征油耗-20%"},
 		{"黄金眼", 3, "侦查等级+3"},
 		{"绝地反击", 2, "前2回合反击"},
 	}

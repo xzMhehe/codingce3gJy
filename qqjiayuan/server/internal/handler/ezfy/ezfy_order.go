@@ -2240,7 +2240,7 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 // ★ 「加个出征油耗开关，默认开；关了出征消耗油 0」→ 关掉时直接返回 0。
 // 出征预览(/order/preview)与真正下单(createOrder)都走这里，所以「看到的 0」就是「实扣的 0」。
 //
-// ★★ 2026-10-09 带队军官「机械改造」技能（回收率+10%、出征油耗-10%/级）：
+// ★★ 2026-10-09 带队军官「机械改造」技能（★ 2026-10-15 回收率降为 +5%/级，出征油耗维持 -10%/级）：
 //
 //	oilReducePct = 该军官的油耗减免百分点（0 = 无）。减免在**算出原价之后**统一打折，
 //	预览与实际下单传同一个值 → 不会出现「预览便宜、实扣更贵」。最低保底 1 油。
@@ -2277,7 +2277,7 @@ func (h *EzfyHandler) ezfyOilCost(city *model.EzfyCity, orderType, distance int,
 
 // officerOilReducePct 带队军官「机械改造」的出征油耗减免%（10% × 技能等级；没学 = 0）。
 //
-// 与「回收率（伤兵恢复）+10%×等级」同源（见 ezfy_order.go 战后伤兵入营 / activity_target.go）。
+// 与「回收率（伤兵恢复）+5%×等级」同源（★ 2026-10-15 回收率 10%/级 → 5%/级，见 ezfy_order.go 战后伤兵入营 / activity_target.go）。
 func (h *EzfyHandler) officerOilReducePct(o *model.EzfyOfficer) int {
 	if o != nil && h.officerHasSkill(o, "机械改造") {
 		return 10 * h.officerSkillScale(o)
@@ -3286,9 +3286,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		// ★ 2026-10-09 守方「伤兵回收率」的额外加成 = 守方科技·治愈伤兵(21) + 城守军官技能·机械改造。
 		//   与攻方同口径（攻方见下方 healTech）：兵种修复率 + 科技 + 技能。
 		// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
+		// ★ 2026-10-15 机械改造回收率由 10%/级 → **5%/级**（名将满级最高 30%）。
 		defHealTech = ezfyTechEffectValueAt(21, defTech[21])
 		if h.officerHasSkill(cityGuard, "机械改造") {
-			defHealTech += 10 * h.officerSkillScale(cityGuard)
+			defHealTech += 5 * h.officerSkillScale(cityGuard)
 		}
 		// ★ 2026-10-08 守方兵种专属加成：喷气引擎(19)只加空军 + 城守军官的兵种技能
 		//   （火炮控制=陆军 / 四指编队=空军 / 狼群战术=海军 / 坦克突袭·闪电袭击·越岛战术=陆·空·海速度）
@@ -3885,10 +3886,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	// ★ 2026-10-14 治愈伤兵按管理端「效果数值」取（原为固定 2%/级），未配置走原公式。
 	healTech := ezfyTechEffectValueAt(21, atkTech[21])
-	// 带队军官「机械改造」技能: 战后伤兵恢复 +10%
+	// 带队军官「机械改造」技能: 战后伤兵恢复 +5%/级（★ 2026-10-15 由 10%/级下调，最高 30%）
 	if h.officerHasSkill(leadOfficer, "机械改造") {
 		// ★ 2026-10-06 技能随军官等级自动升级：恢复加成也随等级 ×N
-		healTech += 10 * h.officerSkillScale(leadOfficer)
+		healTech += 5 * h.officerSkillScale(leadOfficer)
 	}
 	var repairedTotal int64
 	if deadCount > 0 {
@@ -5339,7 +5340,7 @@ func ezfyOfficerBattleExp(enemyDead int64, won bool) int64 {
 // 军功声望与军官经验已在上文正文里输出, 这里不重复)
 //
 // ★ 2026-10-09 用户反馈「pvp 伤兵回收比例有问题」：这里的字段是**掠夺比例**（战利品占目标资源的比例），
-// 与「伤兵回收率」完全无关 —— 但原字段名「回收比例」和游戏里「机械改造：回收率+10%」撞词，
+// 与「伤兵回收率」完全无关 —— 但原字段名「回收比例」和游戏里「机械改造：回收率+5%」撞词，
 // 玩家在战报里看到「回收比例:0%」（平局没掠夺到东西）就以为伤兵回收是 0%。改名为「掠夺比例」消除歧义。
 //
 // ★ 2026-10-09 同日追加：在「掠夺比例」后面**再加一行「回收比例」**，

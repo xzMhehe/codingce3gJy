@@ -1982,7 +1982,7 @@ func ezfySkillEffectText(skill string) string {
 	case "黄金眼":
 		return "侦查等级+1"
 	case "机械改造":
-		return "回收率+10%, 出征油耗-10%"
+		return "回收率+5%, 出征油耗-10%"
 	default:
 		return ""
 	}
@@ -2019,7 +2019,8 @@ func ezfySkillEffectTextAt(skill string, lv int) string {
 	case "黄金眼":
 		return "侦查等级+" + strconv.Itoa(lv)
 	case "机械改造":
-		return "回收率+" + strconv.Itoa(10*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%"
+		// ★ 2026-10-15 回收率 10%/级 → **5%/级**（名将满级 Lv.6 = 30%）；油耗维持 10%/级
+		return "回收率+" + strconv.Itoa(5*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%"
 	default:
 		return ""
 	}

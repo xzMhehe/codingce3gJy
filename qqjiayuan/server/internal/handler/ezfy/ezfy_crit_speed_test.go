@@ -220,7 +220,7 @@ func TestWolfPackOnlyNavyVsNavy(t *testing.T) {
 // TestOilReduceByMechanicalSkill 机械改造「出征油耗-10%/级」要真的减油耗。
 //
 // ★★ 2026-10-09 用户反馈「携带机械改造技能军官：出征油耗降低、伤兵回收加成」。
-// 伤兵回收（回收率+10%/级）此前已生效；这里盯的是**油耗减免**，并保证：
+// 伤兵回收（★ 2026-10-15 回收率 10%/级 → **5%/级**，最高 30%）此前已生效；这里盯的是**油耗减免**，并保证：
 //
 //	减免在算完原价之后统一打折、最低 1 油、预览与实际下单同口径（同一个函数）。
 func TestOilReduceByMechanicalSkill(t *testing.T) {

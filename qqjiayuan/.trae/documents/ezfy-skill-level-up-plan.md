@@ -62,7 +62,7 @@ func ezfySkillEffectTextAt(skill string, lv int) string {
     case "越岛战术": return "海军速度+" + strconv.Itoa(10*lv) + "%"
     case "弹幕支援": return "城防攻击范围+" + strconv.Itoa(10*lv) + "%"
     case "黄金眼": return "侦查等级+" + strconv.Itoa(lv)
-    case "机械改造": return "回收率+" + strconv.Itoa(10*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%"
+    case "机械改造": return "回收率+" + strconv.Itoa(5*lv) + "%, 出征油耗-" + strconv.Itoa(10*lv) + "%" // ★ 2026-10-15 回收率 10%/级 → 5%/级（最高 30%），油耗维持 10%/级
     default: return ""
     }
 }
@@ -90,8 +90,8 @@ func generalCounterRounds(g *model.EzfyCfgGeneral) int {
 | activity_target.go L319-321 | 同上 `atkSpeedBonus += 10` | `atkSpeedBonus += h.officerSpeedSkillBonus(leadOfficer)` |
 | ezfy_order.go L2529 黄金眼 | `lootTech += 10` | `lootTech += 10 * h.officerSkillScale(leadOfficer)` |
 | ezfy_order.go L3057 黄金眼 | `lootRate += 10` | `lootRate += 10 * h.officerSkillScale(leadOfficer)`(保留上限 50) |
-| ezfy_order.go L2940 机械改造 | `healTech += 10` | `healTech += 10 * h.officerSkillScale(leadOfficer)` |
-| activity_target.go L463 机械改造 | `healTech += 10` | `healTech += 10 * h.officerSkillScale(leadOfficer)` |
+| ezfy_order.go L2940 机械改造 | `healTech += 10` | `healTech += 5 * h.officerSkillScale(leadOfficer)`（★ 2026-10-15 回收率 10%/级 → **5%/级**，最高 30%） |
+| activity_target.go L463 机械改造 | `healTech += 10` | `healTech += 5 * h.officerSkillScale(leadOfficer)`（同上） |
 | activity_target.go `ezfyActWildDefBonus` L77-99 | 弧形防御+30 / 弹幕支援+10 / 速度+10 | 取 `scale := generalSkillScale(g)`,case 改 `30*scale` / `10*scale`,`speed = 10*scale`(`ezfyAttrToBonus(g.Learning)` 不加倍) |
 
 ### 4. 绝地反击回合数(ezfy_battle.go)

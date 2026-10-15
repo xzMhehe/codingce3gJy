@@ -63,7 +63,7 @@ var ezfyEzfyCfgSkill = []model.EzfyCfgSkill{
 		Des: "提高城防攻击范围，生效回合数随技能等级变化；"},
 	{ID: 11, Name: "黄金眼", Effect: "侦查等级+1", Type: 3,
 		Des: "提高侦查等级，生效回合数随技能等级变化；"},
-	{ID: 12, Name: "机械改造", Effect: "回收率+10%, 出征油耗-10%", Type: 3,
+	{ID: 12, Name: "机械改造", Effect: "回收率+5%, 出征油耗-10%", Type: 3,
 		Des: "增加回收率，减少出征油耗。"},
 }
 
