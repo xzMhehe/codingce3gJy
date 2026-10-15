@@ -4791,21 +4791,33 @@ export default {
       }
     },
     async doRansomCancel (ct) {
-      if (!await this.ask(`确定撤销对城市[${ct.name}](${ct.x},${ct.y})的赎城请求吗? 押金将自动退回。`)) return
-      api.post('/games/ezfy/city/ransom/cancel', { city_id: ct.id }).then(r => {
+      // ★ 2026-10-15 赎城防抖（与 doRansom 同一把锁）：请求未返回前连点直接忽略
+      if (this.ransomBusy) return
+      this.ransomBusy = true
+      try {
+        if (!await this.ask(`确定撤销对城市[${ct.name}](${ct.x},${ct.y})的赎城请求吗? 押金将自动退回。`)) return
+        const r = await api.post('/games/ezfy/city/ransom/cancel', { city_id: ct.id })
         this.alert(r, '已撤销')
         this.go('cities')
-      })
+      } finally {
+        this.ransomBusy = false
+      }
     },
     async doRansomHandle (rm, op) {
-      // ★ 2026-10-15 20% 手续费：同意时系统收取，占领方实收 80%（与后端 r.Cost - r.Cost/5 同口径）
-      const receive = rm.cost - Math.floor(rm.cost / 5)
-      if (!await this.ask(op === 1 ? `确定同意赎城吗? 你将收到 ${receive} 钻石(已扣20%手续费), 城市[${rm.city_name}](${rm.x},${rm.y})将归还原主人。` :
-        `确定拒绝该赎城请求吗? 原主人的 ${rm.cost} 钻石押金将退回。`)) return
-      api.post('/games/ezfy/city/ransom/handle', { ransom_id: rm.id, op }).then(r => {
+      // ★ 2026-10-15 赎城防抖（与 doRansom 同一把锁）：请求未返回前连点直接忽略
+      if (this.ransomBusy) return
+      this.ransomBusy = true
+      try {
+        // ★ 2026-10-15 20% 手续费：同意时系统收取，占领方实收 80%（与后端 r.Cost - r.Cost/5 同口径）
+        const receive = rm.cost - Math.floor(rm.cost / 5)
+        if (!await this.ask(op === 1 ? `确定同意赎城吗? 你将收到 ${receive} 钻石(已扣20%手续费), 城市[${rm.city_name}](${rm.x},${rm.y})将归还原主人。` :
+          `确定拒绝该赎城请求吗? 原主人的 ${rm.cost} 钻石押金将退回。`)) return
+        const r = await api.post('/games/ezfy/city/ransom/handle', { ransom_id: rm.id, op })
         this.alert(r, '已处理')
         this.loadWilds()
-      })
+      } finally {
+        this.ransomBusy = false
+      }
     },
     // 野地列表 → [采集]：进「出征页」选兵种后再下达命令
     // ★ 原来直接 POST 且没带 troops，后端必然返回「请选择出征部队」，
