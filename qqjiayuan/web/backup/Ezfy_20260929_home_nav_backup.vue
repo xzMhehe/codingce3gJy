@@ -1391,7 +1391,7 @@
               </div>
               <div class="old-line" v-else>归属：{{ selDetail.owner || '中立' }}</div>
               <div class="old-line" v-if="selDetail.gather_res">
-                <!-- ★ 2026-09-28 用户反馈：平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
+                <!-- ★ 2026-09-28 平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
                 <template v-if="selDetail.terrain === 1 || selDetail.terrain === 9">采集可以获得{{ selDetail.gather_res }}，可建立城市。</template>
                 <template v-else>采集可以获得{{ selDetail.gather_res }}，可能获得{{ (selDetail.treasures || []).join('、') }}。</template>
               </div>
@@ -5215,7 +5215,7 @@ export default {
     this.loadHomeChats()
     this.loadNotices()
     this.loadCorps()
-    // ★ 刷新后回到刷新前所在的页面（用户反馈：每次刷新都跑首页，不对）
+    // ★ 刷新后回到刷新前所在的页面（每次刷新都跑首页，不对）
     //   页面状态写在 URL 的 ?cur= 上，onload 时读回来重放 go() 的加载逻辑。
     this.restoreFromUrl()
     this.timer = setInterval(() => {
@@ -7037,7 +7037,7 @@ export default {
       const gold = 0
       let total = food + steel + oil + rare
       const cap = o.carry_cap || 0
-      // ★ 2026-09-28 用户反馈：装满负重后「本期已采」不能超过负重，超负重部分丢弃。
+      // ★ 2026-09-28 装满负重后「本期已采」不能超过负重，超负重部分丢弃。
       //   把各分项等比收敛，使 total 封顶到负重 cap（total == cap，负重叠满）。
       let full = cap > 0 && total >= cap
       if (cap > 0 && total > cap) {
@@ -7311,7 +7311,7 @@ export default {
     cellText (cell) {
       // 复刻 map/index.html: 格子文案为「名称(等级)」；★ 现在每格第二行统一显示坐标，
       //   所以这里一律只返回「名称」部分，本城也不再拼 (x,y)，避免和下面那行重复。
-      // ★ 2026-09-25 用户反馈：玩家城市名太长，格子会被撑变形 → 地图上（含本城）统一显示「城市」，
+      // ★ 2026-09-25 玩家城市名太长，格子会被撑变形 → 地图上（含本城）统一显示「城市」，
       //   具体城市名/城主点进目标详情页再看（鼠标悬停的 title 里也有全称，见 cellTip）。
       if (cell.area_type === 3) return '城市'
       // 活动目标: 复刻 mapView.html 的「活动野地N级 / 活动寇N级 / 特殊城市N级」
@@ -9233,7 +9233,7 @@ body.ezfy-ios .ezfy-page textarea {
    在 macOS(Songti SC / 苹方) 下是**半角**(约 4px)，同一份代码两端差 4 倍；
    而源码里的换行只会折叠成 1 个半角空格(约 4px)，又太挤。
    统一改用定宽 span，任何平台/字体下宽度完全一致。
-   用户反馈：「[造兵] [建防] 之间少一点点」（原来 &nbsp; 太宽）、
+   「[造兵] [建防] 之间少一点点」（原来 &nbsp; 太宽）、
    「城市状态 / 附属野地 之间大一点点」（原来只有一个折叠空格，太挤）。 */
 .ezfy-page .home-gap { display: inline-block; width: 10px; height: 1em; }
 .ezfy-page .use-box {

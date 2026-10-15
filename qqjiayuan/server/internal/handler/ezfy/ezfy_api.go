@@ -1978,7 +1978,7 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		cityName[int64(c.ID)] = c.Name
 	}
 	// 兵种战力按「玩家所有城市」聚合（含城防 type=4）：Σ count^pow × 质量 + 兵种类型数 × 系数。
-	// ★ 2026-10-02 用户反馈：只算最好城市会导致榜首建筑明细=2 的失真，量应取全城合计，
+	// ★ 2026-10-02 只算最好城市会导致榜首建筑明细=2 的失真，量应取全城合计，
 	//   「最好城市」只用来选展示主城名。
 	var troops []model.EzfyCityTroop
 	h.DB.Find(&troops)

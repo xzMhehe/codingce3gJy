@@ -806,7 +806,7 @@ func (h *EzfyHandler) processActivityBattle(uid uint, city *model.EzfyCity, orde
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).Updates(map[string]interface{}{
 		"status": order.Status, "result": order.Result, "return_time": order.ReturnTime,
 	})
-	// ★ 用户反馈：标题「活动野地3级战斗报告: 活动野地」冒号后面没带等级，看着像缺了目标。
+	// ★ 标题「活动野地3级战斗报告: 活动野地」冒号后面没带等级，看着像缺了目标。
 	//   统一成「活动野地3级战斗报告: 活动野地3级(323,69)」，与普通战报「地形N级(坐标)」一致。
 	h.addReport(uid, 3, label+"战斗报告: "+label+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
 		report, detail, order.ID)

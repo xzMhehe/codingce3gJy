@@ -1296,7 +1296,7 @@ func backfillOfficerEquipSetBonus(db *gorm.DB) {
 	db.Exec("UPDATE ezfy_cfg_equip_set SET effect = REPLACE(effect, '（各件本身属性另计）', '') " +
 		"WHERE effect LIKE '%（各件本身属性另计）%'")
 
-	// ★ 2026-09-23 用户反馈：宝箱说明里的「**一整套**」等星号原样显示、没生效。
+	// ★ 2026-09-23 宝箱说明里的「**一整套**」等星号原样显示、没生效。
 	//   任何前端展示的配置文案列都统一去掉 markdown 星号（种子字面量已无星号，
 	//   这里只兜底老库）。截至当前实测命中的是 ezfy_cfg_chest.des（ID 2~6）。
 	stripStars := func(table, cols string) {

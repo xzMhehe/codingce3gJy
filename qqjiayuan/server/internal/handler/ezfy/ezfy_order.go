@@ -3993,7 +3993,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	wareNote := ""
 	recyclePct := 0 // 战报里的「回收比例」(玩家城按掠夺比例)
-	// ★ 用户反馈：野地/寇城战报里「回收比例:0%」看着像 bug。
+	// ★ 野地/寇城战报里「回收比例:0%」看着像 bug。
 	//   野地没有仓库保护额度，战利品是整份资源 → 回收比例就是 100%。
 	if win && (order.TargetType == 1 || order.TargetType == 2) {
 		recyclePct = 100

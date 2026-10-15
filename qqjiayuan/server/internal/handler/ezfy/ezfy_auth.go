@@ -135,7 +135,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ServerError(c, err)
 		return
 	}
-	// ★ 2026-10-12 用户反馈：用家园号+家园密码登二战，点【家园】应已是家园已登录态。
+	// ★ 2026-10-12 用家园号+家园密码登二战，点【家园】应已是家园已登录态。
 	//   二战口令经过家园校验（或已建档的自有账号）→ 用同一签名秘密再签发一个**家园** token
 	//   （Issuer=qqjiayuan，与二战 Issuer=qqjiayuan-ezfy 区分）一起返回，前端顺势写进家园 jy_token；
 	//   两个 token 各自独立签名、独立过期，互不影响。
@@ -158,7 +158,7 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 
 // EzfySSO ★ 2026-10-12 家园已登录 → 免密换取二战登录态。
 //
-// 用户反馈：「从家园登录页面登录了，再进二战征途还需要登录，不对」。
+// 「从家园登录页面登录了，再进二战征途还需要登录，不对」。
 // 二战独立登录后二战页只认 ezfy_token，家园已登录的玩家进来仍被要求再输一次密码。
 // 这里补一条「家园登录态换二战 token」的通道：
 //

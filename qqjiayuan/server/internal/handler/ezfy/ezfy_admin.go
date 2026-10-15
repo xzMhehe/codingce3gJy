@@ -984,7 +984,7 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 		q = q.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
 		lq = lq.Where("item_type NOT IN ?", []int{ezfyItemTypeLoveCard, ezfyItemTypeLoveCardPro})
 	}
-	// ★★ 2026-10-07 「道具配置」可读性改造（用户反馈：分类一栏是空的/是数字，整页很乱）：
+	// ★★ 2026-10-07 「道具配置」可读性改造（分类一栏是空的/是数字，整页很乱）：
 	//   库里 category **大部分是空串**，玩家在商城看到的分类其实是算出来的
 	//   （显式 category → 有钻石价算「钻石道具」→ 按 item_type 归类，见 ezfyCategoryOf）。
 	//   所以这里做两件事，口径全部复用 ezfyCategoryOf，不写第二套：

@@ -122,7 +122,7 @@
                    野地一旦配置了掉落宝物就永远走不到它 → 归属描述丢了。改为独立显示，不受宝物影响。 -->
               <div class="old-line">归属：{{ ezfy.selDetail.owner || '中立' }}</div>
               <div class="old-line" v-if="ezfy.selDetail.gather_res">
-                <!-- ★ 2026-09-28 用户反馈：平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
+                <!-- ★ 2026-09-28 平原/沿海平原(特殊平原,可建航海协会)采集只有粮食、可建城市，不再显示「可能获得宝物」 -->
                 <template v-if="ezfy.selDetail.terrain === 1 || ezfy.selDetail.terrain === 9">采集可以获得{{ ezfy.selDetail.gather_res }}，可建立城市。</template>
                 <template v-else>采集可以获得{{ ezfy.selDetail.gather_res }}，可能获得{{ (ezfy.selDetail.treasures || []).join('、') }}。</template>
               </div>

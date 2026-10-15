@@ -47,7 +47,7 @@ func (h *EzfyHandler) officerSpeedSkillBonus(o *model.EzfyOfficer) int {
 
 ezfySkillEffectText 后新增等级感知文本(绝地反击按回合数化,加成类**直接换算最终数值**):
 ```go
-// ★ 2026-10-06 用户反馈：「攻击力+30% (效果×3)」太 low → 加成类直接放大数值嵌入文案
+// ★ 2026-10-06 「攻击力+30% (效果×3)」太 low → 加成类直接放大数值嵌入文案
 //   （Lv.3 尖兵突击 = 「攻击力+90%」）；绝地反击按「前N回合反击」。
 func ezfySkillEffectTextAt(skill string, lv int) string {
     switch skill {
