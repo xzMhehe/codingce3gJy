@@ -25,17 +25,20 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyProfile{})
 	if word != "" {
-		var wu model.User
-		h.home().Select("id").Where("username = ? OR nickname = ?", word, word).First(&wu)
+		// ★★ 2026-10-15 用户规则：「二战管理系统里所有家园号条件查询，全部换成游戏号查询」。
+		//   原来这里拿 word 去**家园库** `users.username`（= 家园号）反查 uid 再匹配 ——
+		//   家园号会随「转靓号」变，而玩家在游戏里看到、报给客服的是**游戏号**
+		//   （`ezfy_profile.game_uid`：建档时 = 家园ID，之后与 user_id 解耦）。
+		//   现在：数字 → 用户ID 或 游戏号；非数字 → 玩家昵称（另兼容家园昵称精确）。
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ?", uid)
-			if wu.ID > 0 {
-				q = q.Or("user_id = ?", wu.ID)
-			}
+			q = q.Where("user_id = ? OR game_uid = ?", uid, uid)
 		} else {
-			q = q.Where("nickname LIKE ?", "%"+word+"%")
+			var wu model.User
+			h.home().Select("id").Where("nickname = ?", word).First(&wu)
 			if wu.ID > 0 {
-				q = q.Or("user_id = ?", wu.ID)
+				q = q.Where("nickname LIKE ? OR user_id = ?", "%"+word+"%", wu.ID)
+			} else {
+				q = q.Where("nickname LIKE ?", "%"+word+"%")
 			}
 		}
 	}
@@ -53,28 +56,52 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 		LastLoginAt int64  `json:"last_login_at"` // ★ 2026-10-12 最后登陆时间(ms)
 	}
 	out := []rowOut{}
-	// ★ 2026-10-12 批量取最后登陆时间（各账号一条，替代每行一条 SQL）
-	lastLoginOf := map[uint]int64{}
-	{
-		gids := make([]uint, 0, len(rows))
-		for _, p := range rows {
-			gids = append(gids, p.UserID)
+	// ★★ 2026-10-15 性能修复（用户反馈「玩家信息管理 分页查询严重卡顿，这才 200 多个人，
+	//   切分页大小时更严重」）。
+	//
+	//   原来**每一行**都要打两条库：
+	//     ① `h.home().First(&u, p.UserID)` —— 取家园昵称 / 家园号（跨库，可能跨 WAN）
+	//     ② `COUNT(*) FROM ezfy_city WHERE user_id = ?` —— 数城池
+	//   → size=100 就是 **200 条往返**；线上 1核1G + RDS 必然卡到几十秒，
+	//     而且分页越大越慢 —— 正是用户描述的现象（不是数据量大，是查询条数被行数放大）。
+	//
+	//   现在三样附属数据（最后登陆 / 家园账号 / 城池数）**全部按 `IN ?` 批量取**，
+	//   整页固定 4 条 SQL：①分页主查询 ②最后登陆 ③家园账号 ④城池数(GROUP BY user_id)。
+	//   ★ 口径不变：家园昵称/家园号仍是「按 user_id 查家园库」，城池数仍是该玩家的城数。
+	uids := make([]uint, 0, len(rows))
+	for _, p := range rows {
+		uids = append(uids, p.UserID)
+	}
+	homeOf := map[uint]model.User{} // 家园账号（id → 昵称/家园号）
+	lastLoginOf := map[uint]int64{} // 最后登陆时间(ms)
+	cityCountOf := map[uint]int64{} // 城池数
+	if len(uids) > 0 {
+		var users []model.User
+		h.home().Select("id, username, nickname").Where("id IN ?", uids).Find(&users)
+		for _, u := range users {
+			homeOf[u.ID] = u
 		}
-		if len(gids) > 0 {
-			var accs []model.EzfyAccount
-			h.DB.Select("game_id, last_login_at").Where("game_id IN ?", gids).Find(&accs)
-			for _, a := range accs {
-				lastLoginOf[a.GameID] = a.LastLoginAt
-			}
+		var accs []model.EzfyAccount
+		h.DB.Select("game_id, last_login_at").Where("game_id IN ?", uids).Find(&accs)
+		for _, a := range accs {
+			lastLoginOf[a.GameID] = a.LastLoginAt
+		}
+		var sums []struct {
+			UserID uint
+			Cnt    int64
+		}
+		h.DB.Model(&model.EzfyCity{}).
+			Select("user_id, COUNT(*) AS cnt").
+			Where("user_id IN ?", uids).Group("user_id").Scan(&sums)
+		for _, s := range sums {
+			cityCountOf[s.UserID] = s.Cnt
 		}
 	}
 	for _, p := range rows {
-		var u model.User
-		h.home().First(&u, p.UserID)
-		var cities int64
-		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cities)
+		u := homeOf[p.UserID]
 		out = append(out, rowOut{EzfyProfile: p, HomeNick: u.Nickname, HomeNum: u.Username,
-			CityCount: cities, CampName: ezfyCampName(p.Camp), RankName: ezfyRankNameAt(ezfyProfileRank(&p)),
+			CityCount: cityCountOf[p.UserID], CampName: ezfyCampName(p.Camp),
+			RankName:    ezfyRankNameAt(ezfyProfileRank(&p)),
 			LastLoginAt: lastLoginOf[p.UserID]})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
@@ -478,7 +505,9 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 	}
 	q := h.DB.Model(&model.EzfyProfile{})
 	if uid, err := strconv.Atoi(word); err == nil {
-		q = q.Where("user_id = ?", uid)
+		// ★ 2026-10-15 弹窗 placeholder 写的是「玩家昵称 / 游戏ID」→ 数字也要匹配**游戏号**
+		//   （game_uid 转靓号后与 user_id 解耦，只匹配 user_id 会让管理员按玩家报的游戏号搜不到）。
+		q = q.Where("user_id = ? OR game_uid = ?", uid, uid)
 	} else {
 		q = q.Where("nickname LIKE ?", "%"+word+"%")
 	}
@@ -489,14 +518,23 @@ func (h *EzfyAdmin) AdminEzfyItemGrantPlayers(c *gin.Context) {
 		Nickname string `json:"nickname"`
 		HomeNum  string `json:"home_num"`
 	}
+	// ★ 2026-10-15 同 AdminEzfyPlayers：家园号**一次 IN 批量取**，别再每行一次 First
+	//   （这个对话框最多 20 行 → 原来 20 条跨库往返，线上明显卡）。
+	gids := make([]uint, 0, len(rows))
+	for _, p := range rows {
+		gids = append(gids, p.UserID)
+	}
+	homeNumOf := map[uint]string{}
+	if len(gids) > 0 {
+		var us []model.User
+		h.home().Select("id, username").Where("id IN ?", gids).Find(&us)
+		for _, u := range us {
+			homeNumOf[u.ID] = u.Username
+		}
+	}
 	list := []out{}
 	for _, p := range rows {
-		homeNum := ""
-		var u model.User
-		if err := h.home().First(&u, p.UserID).Error; err == nil {
-			homeNum = u.Username
-		}
-		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNum})
+		list = append(list, out{UserID: p.UserID, Nickname: p.Nickname, HomeNum: homeNumOf[p.UserID]})
 	}
 	resp.OK(c, gin.H{"list": list})
 }
@@ -739,7 +777,15 @@ func (h *EzfyAdmin) AdminEzfyItemGrantAll(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发放%s", len(uids), items), "players": len(uids)})
 }
 
-// AdminEzfyPlayerDelete 删除玩家（档案+城池+全部游戏数据）
+// AdminEzfyPlayerDelete 删除玩家（**物理删除该玩家在二战库的全部数据**）。
+//
+// ★★ 2026-10-15 用户规则：「操作里面的删除 是物理操作，把该玩家的所有数据都删除掉」。
+//
+//	老实现只清了 16 张表，登录账号/军官/装备/交易行/邮件/好友/风云榜/宣战/占领/军团
+//	等一大批全留着（删完号后台还能看到残留）→ 改成走 `ezfyPurgePlayerData`
+//	的**声明式清单 + 事务**（清单见 ezfy_admin_purge.go，漏表护栏见 ezfy_admin_purge_test.go）。
+//
+//	★ 只删二战库；家园账号（qq_jiayuan.users）与家园库的老 ezfy_* 回滚表一律不动。
 func (h *EzfyAdmin) AdminEzfyPlayerDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var p model.EzfyProfile
@@ -750,28 +796,15 @@ func (h *EzfyAdmin) AdminEzfyPlayerDelete(c *gin.Context) {
 	uid := p.UserID
 	var cityIds []int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", uid).Pluck("id", &cityIds)
-	if len(cityIds) > 0 {
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyCityBuilding{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyCityTroop{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyCityTech{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyTrainQueue{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyWildland{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyWounded{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyCityEffect{})
-		h.DB.Where("city_id IN ?", cityIds).Delete(&model.EzfyCityTarget{})
+	rows, err := h.ezfyPurgePlayerData(uid, cityIds)
+	if err != nil {
+		resp.ServerError(c, err)
+		return
 	}
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyCity{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyOrder{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyReport{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyItem{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyLoveCard{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfySign{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyGift{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyTask{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyNotice{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyCorpsMember{})
-	h.DB.Where("user_id = ?", uid).Delete(&model.EzfyProfile{})
-	resp.OK(c, gin.H{"msg": "玩家及全部游戏数据已删除"})
+	resp.OK(c, gin.H{
+		"msg":  fmt.Sprintf("已物理删除「%s」在二战库的全部数据（含登录账号，共 %d 行）", p.Nickname, rows),
+		"rows": rows,
+	})
 }
 
 // ============ 数据管理（配置表 + 城池，复用 xy 数据管理白名单模式） ============
@@ -1277,25 +1310,19 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	q := h.DB.Model(&model.EzfyReport{})
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			// ★ 2026-10-07 数字既可能是 user_id，也可能是游戏里看到的游戏ID(game_uid)，
-			//   还可能是列表展示的账号名(users.username)，三者都匹配（口径同钻石流水等页）。
-			// ★★ 2026-10-10 双数据源：`users` 在家园库，**不能在二战库的 SQL 里子查询它** ——
-			//   先按账号名去家园库取出 uid，再用普通 IN 条件拼进来。
-			byName := []uint{}
-			var uu model.User
-			if e := h.home().Select("id").Where("username = ?", word).First(&uu).Error; e == nil {
-				byName = append(byName, uu.ID)
-			}
+			// ★ 2026-10-07 数字既可能是 user_id，也可能是游戏里看到的游戏ID(game_uid)，两者都匹配。
+			// ★★ 2026-10-15 用户规则：**家园号条件查询全部换成游戏号** → 去掉按
+			//   `users.username`(家园号) 反查 uid 的那一支（家园号会随转靓号变，游戏号才是玩家报的那个）。
 			q = q.Where(`user_id = ?
-				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)
-				OR user_id IN ?`, uid, uid, byName)
+				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)`, uid, uid)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
+			// 家园库只按**昵称**模糊（不再按家园号）
 			var uids []uint
 			h.home().Model(&model.User{}).Select("id").
-				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
+				Where("nickname LIKE ?", "%"+word+"%").Scan(&uids)
 			ids = append(ids, uids...)
 			if len(ids) > 0 {
 				q = q.Where("user_id IN ?", ids)

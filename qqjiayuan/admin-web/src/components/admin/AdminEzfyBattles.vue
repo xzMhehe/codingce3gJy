@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="订单ID / 用户ID / 家园号 / 昵称" clearable style="width:250px"
+        <el-input v-model="word" placeholder="订单ID / 用户ID / 游戏号 / 昵称" clearable style="width:250px"
                   @keyup.enter.native="page = 1; load()" />
         <!-- ★ 2026-10-09 状态筛选改成「进行中的订单状态」：出征/驻守/返回/战斗中/等待
              （原来只有 全部/进行中/已结束 —— 已结束的现在整页不显示了，战报模块能查） -->

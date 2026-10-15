@@ -88,19 +88,28 @@ func (h *EzfyAdmin) AdminEzfyWars(c *gin.Context) {
 		}
 	}
 	if word != "" {
-		// 先按昵称/家园号码定位玩家，再用其 uid 过滤
+		// ★★ 2026-10-15 用户规则：家园号条件查询 → 游戏号。
+		//   数字 = 用户ID 或 游戏号(game_uid)；非数字 = 玩家昵称 / 家园昵称模糊
+		//   （不再按家园库 users.username(家园号) 反查）。
 		var uids []uint
-		h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").
-			Pluck("user_id", &uids)
-		var ids []uint
-		h.home().Model(&model.User{}).Where("username LIKE ?", "%"+word+"%").
-			Pluck("id", &ids)
-		uids = append(uids, ids...)
+		if n, err := strconv.Atoi(word); err == nil {
+			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
+				Where("user_id = ? OR game_uid = ?", n, n).Scan(&uids)
+		} else {
+			h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").
+				Pluck("user_id", &uids)
+			var ids []uint
+			h.home().Model(&model.User{}).Where("nickname LIKE ?", "%"+word+"%").
+				Pluck("id", &ids)
+			uids = append(uids, ids...)
+		}
 		if len(uids) == 0 {
 			resp.OK(c, gin.H{"list": []interface{}{}, "total": 0, "page": page, "size": size})
 			return
 		}
-		q = q.Where("atk_user_id IN ? OR def_user_id IN ?", uids, uids)
+		// ★ 加括号：上面已有 status/时间条件，不加括号会被 SQL 的 AND 优先于 OR 串味
+		//   （`... AND atk_user_id IN (...) OR def_user_id IN (...)` 会让守方绕过状态过滤）。
+		q = q.Where("(atk_user_id IN ? OR def_user_id IN ?)", uids, uids)
 	}
 
 	var total int64

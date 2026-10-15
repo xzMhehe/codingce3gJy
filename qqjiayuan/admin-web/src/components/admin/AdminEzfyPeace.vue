@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="玩家昵称 / 用户ID / 家园号搜索" clearable style="width:250px"
+        <el-input v-model="word" placeholder="玩家昵称 / 用户ID / 游戏号搜索" clearable style="width:250px"
                   @keyup.enter.native="page = 1; load()" />
         <el-checkbox v-model="only" style="margin-left:12px" @change="page = 1; load()">只看在免战</el-checkbox>
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>

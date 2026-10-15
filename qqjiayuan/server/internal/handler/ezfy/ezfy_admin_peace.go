@@ -45,20 +45,24 @@ func (h *EzfyAdmin) AdminEzfyPeace(c *gin.Context) {
 			SELECT c.user_id FROM ezfy_city_effect e JOIN ezfy_city c ON c.id = e.city_id
 			WHERE e.effect_type = 2 AND e.until_time > ?)`, now)
 	}
-	// word：昵称/家园号/用户ID/游戏ID 模糊
+	// word：昵称 / 用户ID / 游戏号
+	//
+	// ★★ 2026-10-15 用户规则：家园号条件查询 → 游戏号（不再按家园库 users.username 反查）。
+	// ★ 顺带修一个**条件串味**的老 bug：原来用 `q.Where(...)` + 多次 `q.Or(...)` 拼，
+	//   而上面 only=1 时已经有一个 `user_id IN (...)` 条件 —— SQL 里 AND 优先于 OR，
+	//   拼出来是 `(only条件 AND user_id=?) OR user_id=? OR game_uid=?`，
+	//   于是「只看在免战的玩家 + 搜索」会把不在免战的玩家也带出来。
+	//   现在改成**一个 Where 内的括号条件**，与 only 条件天然 AND。
 	if word != "" {
-		var wu model.User
-		h.home().Select("id").Where("username = ? OR nickname = ?", word, word).First(&wu)
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ?", uid)
-			if wu.ID > 0 {
-				q = q.Or("user_id = ?", wu.ID)
-			}
-			q = q.Or("game_uid = ?", int64(uid))
+			q = q.Where("user_id = ? OR game_uid = ?", uid, uid)
 		} else {
-			q = q.Where("nickname LIKE ?", "%"+word+"%")
+			var wu model.User
+			h.home().Select("id").Where("nickname = ?", word).First(&wu)
 			if wu.ID > 0 {
-				q = q.Or("user_id = ?", wu.ID)
+				q = q.Where("nickname LIKE ? OR user_id = ?", "%"+word+"%", wu.ID)
+			} else {
+				q = q.Where("nickname LIKE ?", "%"+word+"%")
 			}
 		}
 	}

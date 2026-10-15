@@ -678,21 +678,31 @@ func (h *EzfyAdmin) AdminEzfyTroops(c *gin.Context) {
 	} else if word != "" {
 		var cids []uint
 		if id, err := strconv.Atoi(word); err == nil {
-			// ★ 2026-10-12 数字：优先按游戏ID（=玩家 user_id）查其全部城池，兼容原「城池ID」精确
+			// 数字：按 用户ID 或 游戏号(game_uid) 查其全部城池，兼容原「城池ID」精确
+			// ★ 2026-10-15 用户规则：家园号条件查询 → 游戏号（游戏号可能与 user_id 已解耦，两个都查）
 			if id > 0 {
 				var uidCids []uint
 				h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", id).Pluck("id", &uidCids)
 				cids = append(cids, uidCids...)
+				var guids []uint
+				h.DB.Model(&model.EzfyProfile{}).Select("user_id").
+					Where("game_uid = ?", id).Scan(&guids)
+				if len(guids) > 0 {
+					var guCids []uint
+					h.DB.Model(&model.EzfyCity{}).Where("user_id IN ?", guids).Pluck("id", &guCids)
+					cids = append(cids, guCids...)
+				}
 				cids = append(cids, uint(id))
 			}
 			q = q.Where("city_id IN ?", cids)
 		} else {
-			// ★ 2026-10-12 非数字：玩家名（二战昵称 / 家园账号 / 家园昵称）或城名模糊
+			// 非数字：玩家名（二战昵称 / 家园昵称）或城名模糊
+			// ★ 2026-10-15 家园号条件查询 → 游戏号：家园库只按**昵称**模糊
 			var uids []uint
 			h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").Pluck("user_id", &uids)
 			var huids []uint
 			h.home().Model(&model.User{}).Select("id").
-				Where("username LIKE ? OR nickname LIKE ?", "%"+word+"%", "%"+word+"%").Scan(&huids)
+				Where("nickname LIKE ?", "%"+word+"%").Scan(&huids)
 			uids = append(uids, huids...)
 			if len(uids) > 0 {
 				var uidCids []uint
@@ -1768,9 +1778,10 @@ func (h *EzfyAdmin) AdminEzfyTechs(c *gin.Context) {
 	} else if word != "" {
 		var uids []uint
 		if id, err := strconv.Atoi(word); err == nil {
-			// 数字：匹配 玩家ID 或 家园号(账号)
-			h.home().Model(&model.User{}).
-				Where("id = ? OR username LIKE ?", id, "%"+word+"%").Pluck("id", &uids)
+			// 数字：匹配 用户ID 或 游戏号(game_uid)
+			// ★ 2026-10-15 用户规则：家园号条件查询 → 游戏号（不再按家园库 username 反查）
+			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
+				Where("user_id = ? OR game_uid = ?", id, id).Scan(&uids)
 		} else {
 			// 文本：匹配玩家昵称
 			h.DB.Model(&model.EzfyProfile{}).
@@ -2334,14 +2345,26 @@ func (h *EzfyAdmin) AdminEzfyPrivchats(c *gin.Context) {
 		q = q.Where("is_read = ?", isRead)
 	}
 	if word != "" {
+		// ★★ 2026-10-15 用户规则：家园号条件查询 → 游戏号。
+		//   数字 = 用户ID 或 游戏号(game_uid)；非数字 = 内容 / 家园昵称模糊
+		//   （不再按家园库 users.username(家园号) 匹配）。★ 条件都加括号：上面已有
+		//   receiver_id / is_read 条件，不加括号会被 SQL 的 AND 优先于 OR 串味。
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("sender_id = ? OR receiver_id = ?", uid, uid)
+			ids := []uint{}
+			if uid > 0 {
+				ids = append(ids, uint(uid))
+			}
+			var guids []uint
+			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
+				Where("game_uid = ?", uid).Scan(&guids)
+			ids = append(ids, guids...)
+			q = q.Where("(sender_id IN ? OR receiver_id IN ?)", ids, ids)
 		} else {
 			var ids []uint
 			h.home().Model(&model.User{}).Select("id").
-				Where("nickname LIKE ? OR username LIKE ?", "%"+word+"%", "%"+word+"%").Scan(&ids)
+				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 			if len(ids) > 0 {
-				q = q.Where("content LIKE ? OR sender_id IN ? OR receiver_id IN ?", "%"+word+"%", ids, ids)
+				q = q.Where("(content LIKE ? OR sender_id IN ? OR receiver_id IN ?)", "%"+word+"%", ids, ids)
 			} else {
 				q = q.Where("content LIKE ?", "%"+word+"%")
 			}

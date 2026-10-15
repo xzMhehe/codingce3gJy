@@ -8,7 +8,7 @@
             科技归玩家所有、与城市无关；城市需建设「科研中心」后，科技加成才会生效
           </div>
           <div class="toolbar">
-            <el-input v-model="word" placeholder="玩家名 / 家园号 / 玩家ID" clearable style="width:200px"
+            <el-input v-model="word" placeholder="玩家名 / 游戏号 / 玩家ID" clearable style="width:200px"
                       @keyup.enter.native="page = 1; load()" />
             <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
             <div class="grow" />

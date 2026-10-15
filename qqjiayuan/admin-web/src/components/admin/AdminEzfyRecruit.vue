@@ -65,7 +65,7 @@
       <el-form label-width="110px" size="small">
         <el-form-item label="玩家" required>
           <el-select v-model="createPlayer" filterable remote :remote-method="loadPlayers" :loading="playerLoading"
-                     placeholder="按昵称 / 家园号 / ID 搜索玩家" style="width:360px" @change="onChangePlayer">
+                     placeholder="按昵称 / 游戏号 / ID 搜索玩家" style="width:360px" @change="onChangePlayer">
             <el-option v-for="p in players" :key="p.user_id" :label="pLabel(p)" :value="p" />
           </el-select>
           <el-button v-if="createPlayer" size="mini" plain style="margin-left:8px" @click="resetPlayer">清空</el-button>
@@ -201,7 +201,7 @@ export default {
     pLabel (p) {
       return (p.home_nick || '') + ' · 家园' + (p.home_num || '') + '（ID ' + p.user_id + '）'
     },
-    // 远程搜索玩家（昵称 / 家园号 / ID）
+    // 远程搜索玩家（昵称 / 游戏号 / 用户ID）—— ★ 2026-10-15 后端口径：家园号 → 游戏号
     loadPlayers (word) {
       word = (word || '').trim()
       if (!word) { this.players = []; return }

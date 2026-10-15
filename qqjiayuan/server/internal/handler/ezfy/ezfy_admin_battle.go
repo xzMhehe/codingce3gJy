@@ -110,21 +110,22 @@ func (h *EzfyAdmin) AdminEzfyBattles(c *gin.Context) {
 	}
 	if word != "" {
 		if n, err := strconv.Atoi(word); err == nil {
-			// 数字：订单ID / 发起人 user_id / 目标ID / 家园号(game_uid)
+			// 数字：订单ID / 发起人 user_id / 目标ID / 游戏号(game_uid)
 			q = q.Where(`id = ? OR user_id = ? OR target_id = ?
 				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)`, n, n, n, n)
 		} else {
+			// ★★ 2026-10-15 用户规则：家园号条件查询 → 游戏号 → 家园库只按**昵称**模糊
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 			var uids []uint
 			h.home().Model(&model.User{}).Select("id").
-				Where("username LIKE ?", "%"+word+"%").Scan(&uids)
+				Where("nickname LIKE ?", "%"+word+"%").Scan(&uids)
 			ids = append(ids, uids...)
 			if len(ids) > 0 {
 				q = q.Where("user_id IN ?", ids)
 			} else {
-				q = q.Where("1 = 0") // 昵称/账号都没命中 → 不返回任何行
+				q = q.Where("1 = 0") // 昵称都没命中 → 不返回任何行
 			}
 		}
 	}

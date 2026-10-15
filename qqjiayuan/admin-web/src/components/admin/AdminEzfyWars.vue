@@ -13,7 +13,7 @@
           </div>
 
           <div class="toolbar">
-            <el-input v-model="word" placeholder="按昵称 / 家园号码搜索" clearable style="width:220px"
+            <el-input v-model="word" placeholder="按昵称 / 游戏号搜索" clearable style="width:220px"
                       @keyup.enter.native="page = 1; load()" />
             <el-select v-model="status" style="width:150px" @change="page = 1; load()">
               <el-option :value="0" label="全部状态" />

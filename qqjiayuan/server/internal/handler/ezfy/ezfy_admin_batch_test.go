@@ -40,6 +40,70 @@ func TestAdminBattleQueueActiveOnly(t *testing.T) {
 	}
 }
 
+// TestAdminEzfyPlayersNoNPlusOne 管理端「玩家信息管理」列表禁止逐行查库。
+//
+// ★★ 2026-10-15 用户反馈：「玩家信息管理 分页查询严重卡顿，这才 200 多个人，切分页大小时更严重」。
+//
+//	根因不是数据量大，而是**查询条数被行数放大**：原来每一行都要打两条库 ——
+//	  ① `h.home().First(&u, p.UserID)` 取家园昵称/家园号（跨库）
+//	  ② `COUNT(*) FROM ezfy_city WHERE user_id = ?` 数城池
+//	→ size=100 就是 **200 条往返**；线上 1核1G + RDS 跨 WAN 必然卡到几十秒。
+//	实测（MySQL general_log，size=100）：旧版 users=100 + ezfy_city=100 条；
+//	  新版固定 4 条业务查询（分页主查询 / 最后登陆 / 家园账号 / 城池数 GROUP BY），与 size 无关。
+//
+// 这里静态锁死：① 函数体里不得出现逐行 First/Count；② 三样附属数据必须走 `IN ?` 批量。
+func TestAdminEzfyPlayersNoNPlusOne(t *testing.T) {
+	body := ezfyFuncBody(t, "ezfy_admin.go", "func (h *EzfyAdmin) AdminEzfyPlayers(")
+	// ★ 先剥掉注释行再断言：函数里的说明注释会引用「旧写法」的原文，
+	//   不剥会把注释当成真代码误报（本条注释自己也写了 old 写法）。
+	code := stripGoComments(body)
+	for _, bad := range []string{
+		"h.home().First(&u, p.UserID)",
+		`h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cities)`,
+	} {
+		if strings.Contains(code, bad) {
+			t.Fatalf("玩家列表里还有 N+1（逐行查库）：%s\n分页越大越慢，必须改成 IN 批量取", bad)
+		}
+	}
+	body = code
+	for _, want := range []string{
+		`h.home().Select("id, username, nickname").Where("id IN ?", uids)`, // 家园账号：一次 IN
+		`Where("game_id IN ?", uids)`,                                      // 最后登陆：一次 IN
+		`Select("user_id, COUNT(*) AS cnt")`,                               // 城池数：一次 GROUP BY
+		`Group("user_id")`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("玩家列表的批量取数缺失（缺 %s）", want)
+		}
+	}
+}
+
+// TestAdminEzfyItemGrantPlayersNoNPlusOne 「发放道具」目标玩家搜索同样禁止逐行查家园号
+// （最多 20 行 → 原来 20 条跨库往返）。
+func TestAdminEzfyItemGrantPlayersNoNPlusOne(t *testing.T) {
+	body := stripGoComments(ezfyFuncBody(t, "ezfy_admin.go", "func (h *EzfyAdmin) AdminEzfyItemGrantPlayers("))
+	if strings.Contains(body, "h.home().First(&u, p.UserID)") {
+		t.Fatal("发放道具目标搜索里还有 N+1（逐行查家园号）：应改成 `Where(\"id IN ?\", gids)` 一次批量")
+	}
+	if !strings.Contains(body, `Where("id IN ?", gids)`) {
+		t.Fatal("发放道具目标搜索必须一次 IN 批量取家园号")
+	}
+}
+
+// stripGoComments 去掉 Go 源码里的整行注释（`//` 开头，允许前置空白），
+// 供「禁止出现某种写法」的静态断言使用 —— 免得解释性注释里引用的旧写法被误判成真代码。
+func stripGoComments(src string) string {
+	var b strings.Builder
+	for _, ln := range strings.Split(src, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(ln), "//") {
+			continue
+		}
+		b.WriteString(ln)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
 // TestGiveResourcesSettlesFirst 管理端「发放资源」前必须先懒结算，并返回实际到账量。
 //
 // ★★ 2026-10-09 用户反馈「发放资源做的不够好」：原来直接读库改 + saveCityRes，

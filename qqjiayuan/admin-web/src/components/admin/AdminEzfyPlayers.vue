@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="玩家昵称 / 用户ID / 家园号搜索" clearable style="width:240px"
+        <el-input v-model="word" placeholder="玩家昵称 / 用户ID / 游戏号搜索" clearable style="width:240px"
                   @keyup.enter.native="page = 1; load()" />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
         <div class="grow" />
@@ -458,7 +458,10 @@ export default {
       }).catch(() => {})
     },
     del (row) {
-      this.$confirm('删除玩家「' + row.nickname + '」将同时清除城池/部队/科技/出征/背包等全部游戏数据，不可恢复！', '危险操作', { type: 'error' }).then(() => {
+      // ★ 2026-10-15 与后端口径对齐（ezfy_admin_purge.go）：现在是**物理删除该玩家在二战库的全部数据**，
+      //   含登录账号/军官/装备/交易行挂单/邮件/好友/风云榜/军团（若是军团长则军团一并解散）。
+      //   家园账号不动，玩家之后可用「家园号 + 家园密码」重新登录，但是全新号。
+      this.$confirm('确认物理删除玩家「' + row.nickname + '」？\n将永久清除 TA 在二战的全部数据：登录账号、档案、城池、部队、军官、装备、背包、订单、战报、宝箱、交易行挂单、好友、私信、邮件、风云榜等；若 TA 是军团长，军团会一并解散。\n家园账号不受影响（可重新登录，但会是全新号）。此操作不可恢复！', '危险操作', { type: 'error', dangerouslyUseHTMLString: false }).then(() => {
         api.delete('/admin/ezfy-players/' + row.user_id).then(r => {
           if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.load() } else this.$message.error(r.msg)
         })

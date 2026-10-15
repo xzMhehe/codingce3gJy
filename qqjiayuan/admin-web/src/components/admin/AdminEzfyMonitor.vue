@@ -11,7 +11,7 @@
         <el-date-picker v-if="preset === 'custom'" v-model="range" type="daterange"
                         value-format="yyyy-MM-dd" range-separator="至" start-placeholder="开始日期"
                         end-placeholder="结束日期" style="width:260px; margin-left:8px" clearable />
-        <el-input v-model="word" placeholder="玩家ID / 账号 / 昵称" clearable style="width:200px; margin-left:8px"
+        <el-input v-model="word" placeholder="玩家ID / 游戏号 / 昵称" clearable style="width:200px; margin-left:8px"
                   @keyup.enter.native="page = 1; load()" />
         <el-select v-model="sort" placeholder="排序" style="width:120px; margin-left:8px" @change="page = 1; load()">
           <el-option label="合计" value="total" />

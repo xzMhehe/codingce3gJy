@@ -2,7 +2,7 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="玩家ID / 家园号 / 昵称" clearable style="width:220px"
+        <el-input v-model="word" placeholder="玩家ID / 游戏号 / 昵称" clearable style="width:220px"
                   @keyup.enter.native="page = 1; load()" />
         <el-select v-model="type" placeholder="战报类型" clearable style="width:140px; margin-left: 8px">
           <el-option v-for="o in typeOptions" :key="o.v" :label="o.n" :value="o.v" />

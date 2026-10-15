@@ -226,6 +226,18 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_train_queue", "idx_train_start", "start_time", false)
 	ensureEzfyIndex(db, "ezfy_convene_log", "idx_convene_created", "created_at", false)
 
+	// ★★ 2026-10-15 管理端「删号」提速（ezfy_admin_purge.go）：删号要按 user_id / city_id
+	//   把该玩家的数据从 50+ 张表里逐表 DELETE。**没有索引的列会全表扫** ——
+	//   线上 1核1G，全表扫 + InnoDB 对扫描到的行加锁 = 删号期间整张表被写阻塞。
+	//   这里只补**行数会很大**的那几张（本地实测 ezfy_equipment 5.5 万 / ezfy_battle 3 万 /
+	//   ezfy_chat 3 千）；军团/赎城/占领等小表（几十~几千行）保持全扫，不为此加索引拖慢写入。
+	ensureEzfyIndex(db, "ezfy_equipment", "idx_equip_city", "city_id", false)
+	ensureEzfyIndex(db, "ezfy_battle", "idx_battle_city", "city_id", false)
+	ensureEzfyIndex(db, "ezfy_chat", "idx_chat_user", "user_id", false)
+	ensureEzfyIndex(db, "ezfy_map_area", "idx_map_area_owner", "owner_id", false)
+	ensureEzfyIndex(db, "ezfy_exchange", "idx_exchange_buyer", "buyer_id", false)
+	ensureEzfyIndex(db, "ezfy_visit_log", "idx_ezfy_visit_visitor", "visitor_uid", false)
+
 	// ★★ 2026-10-10 原来这里还建 4 个**家园论坛**索引（threads/replies）——
 	//   二战拆到独立库后，这条函数跑在二战库上，家园表不在 → 每次启动刷 4 条
 	//   `Table 'qq_ezzt.threads' doesn't exist` 噪音。已挪到 EnsureHomeForumIndexes，

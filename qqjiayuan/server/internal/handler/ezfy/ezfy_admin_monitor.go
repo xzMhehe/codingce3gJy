@@ -240,28 +240,27 @@ func monitorRange(startStr, endStr string) (start, end time.Time, ok bool) {
 }
 
 // monitorWordUids 解析 word → 玩家 uid 集合（空 word 返回 nil = 不过滤）。
-// 纯数字：先按账号名反查 uid，再合并 user_id/game_uid/账号名三口径；
-// 非数字：昵称 LIKE + 账号 LIKE 双库合并。
+//
+// ★★ 2026-10-15 用户规则：**家园号条件查询全部换成游戏号** ——
+//
+//	纯数字 = 用户ID 或 游戏号(game_uid)；不再按家园库 `users.username`(家园号) 反查
+//	（家园号会随转靓号变，游戏号才是玩家在游戏里看到、报给客服的那个）。
+//	非数字 = 玩家昵称 LIKE + 家园昵称 LIKE（双库合并）。
 func monitorWordUids(h *EzfyAdmin, word string) []uint {
 	if word == "" {
 		return nil
 	}
 	if uid, err := strconv.Atoi(word); err == nil {
-		byName := []uint{}
-		var uu model.User
-		if e := h.home().Select("id").Where("username = ?", word).First(&uu).Error; e == nil {
-			byName = append(byName, uu.ID)
-		}
 		ids := []uint{}
 		h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 			Where("user_id = ? OR game_uid = ?", uid, uid).Scan(&ids)
-		return append(ids, byName...)
+		return ids
 	}
 	var ids []uint
 	h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 		Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 	var uids []uint
 	h.home().Model(&model.User{}).Select("id").
-		Where("username LIKE ?", "%"+word+"%").Scan(&uids)
+		Where("nickname LIKE ?", "%"+word+"%").Scan(&uids)
 	return append(ids, uids...)
 }
