@@ -13,6 +13,7 @@ import (
 	"qqjiayuan/server/internal/handler"
 	ezfy "qqjiayuan/server/internal/handler/ezfy"
 	"qqjiayuan/server/internal/middleware"
+	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
 )
 
@@ -236,14 +237,27 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.POST("/ezfy/sso", ezfyH.EzfySSO)
 
 		// ★★ 2026-10-15 区名写活 + 入口选服（开多区准备）：
-		//   公开接口返回本服务器（区）信息 —— 单进程=单区，这里就先返回自己。
-		//   前端进入二战前用它做「服务器选择」；以后每区=一个实例，各自返回自己，
-		//   做了多区聚合入口页后可让每个实例都返回全区列表（各区进程读同一份源）。
+		//   公开接口返回本服务器（区）信息 —— 单进程=单区，这里就先返回自己在用的区。
+		//   ★ 区名优先取管理端「游戏大厅维护」里配的 game_servers（DB 驱动，改名即时生效），
+		//     二战游戏首页标题/登录页选服都用它；没配过区服才回落 config 里的旧区名兜底。
 		api.GET("/ezfy/zone", func(c *gin.Context) {
-			resp.OK(c, gin.H{
-				"list":    []gin.H{{"id": cfg.Server.ZoneID, "name": cfg.ZoneTitle()}},
-				"current": cfg.Server.ZoneID,
-			})
+			list := make([]gin.H, 0)
+			current := 0
+			var ww model.Game
+			if err := db.Where("path = ? OR url LIKE ?", "/games/ezfy", "%/games/ezfy%").First(&ww).Error; err == nil {
+				var srv []model.GameServer
+				db.Where("game_id = ? AND status = 1", ww.ID).Order("sort ASC, id ASC").Find(&srv)
+				for _, s := range srv {
+					list = append(list, gin.H{"id": s.ID, "name": s.Name, "host": s.Host, "path": s.Path})
+				}
+				if len(srv) > 0 {
+					current = int(srv[0].ID)
+				}
+			}
+			if len(list) == 0 {
+				list = append(list, gin.H{"id": 0, "name": cfg.ZoneTitle()})
+			}
+			resp.OK(c, gin.H{"list": list, "current": current})
 		})
 
 		authed := api.Group("/", jwtM)
