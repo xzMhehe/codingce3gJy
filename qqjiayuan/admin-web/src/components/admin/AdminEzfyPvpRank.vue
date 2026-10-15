@@ -6,9 +6,11 @@
       </div>
 
       <!-- ★ 2026-10-14 用户需求：「风云榜」页改名「排行榜」，下面设 风云榜 / 战力榜 两个 tab -->
+      <!-- ★ 2026-10-15 用户需求：把「军衔声望榜」也放进排行榜，且同样支持不参与排名 -->
       <el-tabs v-model="tab" class="cfg-tabs" @tab-click="onTabChange">
         <el-tab-pane label="风云榜" name="pvp" />
         <el-tab-pane label="战力榜" name="power" />
+        <el-tab-pane label="军衔声望榜" name="prestige" />
       </el-tabs>
 
       <!-- ==================== 风云榜 tab ==================== -->
@@ -130,7 +132,59 @@
         </div>
       </template>
 
-      <!-- ★ 2026-10-15 不参与排名名单：风云榜/战力榜共用（移到两个 tab 之外统一展示） -->
+      <!-- ==================== 军衔声望榜 tab ==================== -->
+      <template v-if="tab === 'prestige'">
+        <div class="toolbar">
+          <el-input v-model="prestigeWord" placeholder="昵称 / 用户ID" clearable style="width:220px"
+                    @keyup.enter.native="prestigePage = 1; loadPrestige()" />
+          <el-button type="primary" icon="el-icon-search" @click="prestigePage = 1; loadPrestige()">查询</el-button>
+          <div class="grow" />
+          <span class="td-sub">与游戏内「军衔声望榜」同口径：按声望降序，名次为剔除「不参与排名」后的全服排名</span>
+        </div>
+        <el-table :data="prestigeList" v-loading="prestigeLoading" stripe border>
+          <el-table-column label="名次" width="70" align="center">
+            <template slot-scope="{row}">
+              <span class="td-rank" :class="row.rank <= 3 ? 'top' : ''">{{ row.rank }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
+          <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
+            <template slot-scope="{row}">{{ row.name || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="军衔" min-width="120" show-overflow-tooltip>
+            <template slot-scope="{row}">
+              <el-tag size="mini" type="warning">{{ row.rank_name }}</el-tag>
+              <span class="td-sub" v-if="row.rank_post">({{ row.rank_post }})</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="声望" width="120" align="right">
+            <template slot-scope="{row}"><b>{{ row.prestige.toLocaleString() }}</b></template>
+          </el-table-column>
+          <el-table-column label="可建城" width="80" align="center">
+            <template slot-scope="{row}">{{ row.city_max }}</template>
+          </el-table-column>
+          <el-table-column label="已建城" width="80" align="center">
+            <template slot-scope="{row}">{{ row.city_count }}</template>
+          </el-table-column>
+          <!-- ★ 2026-10-15 军衔声望榜「不参与排名」：与风云榜/战力榜共用同一份排除名单 -->
+          <el-table-column label="操作" width="130" align="center" fixed="right">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="danger" plain icon="el-icon-remove-outline"
+                         title="不参与排名" @click="openExclude(row)">不参与排名</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pager-bar">
+          <div class="pager-info">共 <b>{{ prestigeTotal }}</b> 条 · 每页 {{ prestigeSize }} 条</div>
+          <el-pagination v-show="prestigeTotal > 0" small background layout="sizes, prev, pager, next, jumper"
+                         :total="prestigeTotal" :page-size="prestigeSize" :current-page="prestigePage"
+                         :page-sizes="[10, 20, 50, 100]"
+                         @current-change="p => { prestigePage = p; loadPrestige() }"
+                         @size-change="s => { prestigeSize = s; prestigePage = 1; loadPrestige() }" />
+        </div>
+      </template>
+
+      <!-- ★ 2026-10-15 不参与排名名单：风云榜/战力榜/军衔声望榜共用（统一展示，任一榜标记/恢复即三榜同时生效） -->
       <div class="panel-title">不参与排名（{{ excluded.length }} 人）</div>
       <el-table :data="excluded" v-loading="loading" stripe border size="mini"
                 :empty-text="'暂无排除玩家'">
@@ -162,6 +216,9 @@ import api from '../../api'
 // ★ 2026-10-15 用户：「排行榜 刷新按钮去掉；风云榜里加个查询按钮能根据游戏ID查询玩家」
 //   —— 去掉头部 [刷新]（进页面/切周自动拉数据）；风云榜 tab 加「游戏ID」输入 + [查询]
 //      （后端一次性下发整周全量榜单，查询走前端精确过滤，清空回到全量）。
+// ★ 2026-10-15 用户：把「军衔声望榜」也放进排行榜，且同样支持不参与排名
+//   —— 新增 军衔声望榜 tab（按声望降序、展示当前军衔，口径与玩家端一致）；
+//      排除名单风云榜/战力榜/军衔声望榜三榜共用（任一榜标记/恢复都同时生效）。
 export default {
   name: 'AdminEzfyPvpRank',
   data () {
@@ -186,6 +243,13 @@ export default {
       powerTotal: 0,
       powerWord: '',
       powerList: [],
+      // ---- 军衔声望榜（★ 2026-10-15 与玩家端口径一致，支持不参与排名）----
+      prestigeLoading: false,
+      prestigePage: 1,
+      prestigeSize: 10,
+      prestigeTotal: 0,
+      prestigeWord: '',
+      prestigeList: [],
     }
   },
   mounted () {
@@ -223,6 +287,8 @@ export default {
     },
     onTabChange () {
       if (this.tab === 'power' && !this.powerList.length) this.loadPower()
+      // ★ 2026-10-15 军衔声望榜 tab：首次进入或数据被清空时加载
+      if (this.tab === 'prestige' && !this.prestigeList.length) this.loadPrestige()
     },
     loadPvp (resetPage) {
       this.loading = true
@@ -269,9 +335,10 @@ export default {
           api.post('/admin/ezfy-pvp-rank/exclude', { user_id: row.user_id, reason: value || '' }).then(r => {
             if (r.code === 0) {
               this.$message.success(r.data.msg || '已设置')
-              // ★ 2026-10-15 排除名单两个榜共用：同时刷新风云榜/战力榜
+              // ★ 2026-10-15 排除名单三个榜共用：同时刷新风云榜/战力榜/军衔声望榜
               this.loadPvp()
               this.loadPower()
+              this.loadPrestige()
             } else this.$message.error(r.msg)
           })
         }).catch(() => {})
@@ -282,9 +349,10 @@ export default {
         api.delete('/admin/ezfy-pvp-rank/exclude/' + row.id).then(r => {
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已恢复')
-            // ★ 2026-10-15 排除名单两个榜共用：同时刷新风云榜/战力榜
+            // ★ 2026-10-15 排除名单三个榜共用：同时刷新风云榜/战力榜/军衔声望榜
             this.loadPvp()
             this.loadPower()
+            this.loadPrestige()
           } else this.$message.error(r.msg)
         })
       }).catch(() => {})
@@ -299,6 +367,19 @@ export default {
           this.powerTotal = r.data.total || 0
         }
       }).finally(() => { this.powerLoading = false })
+    },
+    // ★ 2026-10-15 军衔声望榜（新 tab）：按声望降序，与玩家端口径一致；
+    //   管理端剔除「不参与排名」名单后重排，操作列复用 openExclude（共用排除名单）。
+    loadPrestige () {
+      this.prestigeLoading = true
+      const params = { page: this.prestigePage, size: this.prestigeSize }
+      if (this.prestigeWord) params.word = this.prestigeWord
+      api.get('/admin/ezfy-prestige-rank', { params }).then(r => {
+        if (r.code === 0) {
+          this.prestigeList = r.data.list || []
+          this.prestigeTotal = r.data.total || 0
+        }
+      }).finally(() => { this.prestigeLoading = false })
     }
   }
 }

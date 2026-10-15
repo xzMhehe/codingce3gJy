@@ -556,3 +556,87 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
 		"usage": "战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径"})
 }
+
+// AdminEzfyPrestigeRank 管理端军衔声望榜（GET /admin/ezfy-prestige-rank?page=&size=&word=）。
+//
+// ★ 2026-10-15 用户需求「管理系统 → 排行榜：把军衔声望榜也放到这里面，然后也可以不参与排名」：
+//   - 口径与玩家端 /rank 的「军衔声望榜」一致 —— 按声望(prestige)降序，展示当前军衔名；
+//   - 与战力榜同样剔除「不参与排名」名单（风云榜/战力榜/军衔声望榜共用同一份排除名单，
+//     管理端三处任一标记/恢复都会对三个榜同时生效）；
+//   - word 支持昵称模糊 / 用户ID 精确（过滤后名次仍保持全服口径，与战力榜一致）。
+func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
+	ezfyCfg.load(h.DB) // 军衔名从配置缓存读（与玩家端口径一致）
+	page, offset, size := pageOf(c, 20)
+	word := strings.TrimSpace(c.Query("word"))
+
+	// 全量声望排序（玩家端同样按 prestige DESC）；剔除「不参与排名」名单后重排
+	var all []model.EzfyProfile
+	h.DB.Order("prestige DESC").Find(&all)
+	exSet := pvpExcludedSet(h.DB)
+	ranked := make([]model.EzfyProfile, 0, len(all))
+	for _, p := range all {
+		if exSet[p.UserID] {
+			continue
+		}
+		ranked = append(ranked, p)
+	}
+	// 关键词过滤（昵称模糊 / 用户ID 精确）—— 不改变全服名次口径
+	hit := func(p model.EzfyProfile) bool {
+		if word == "" {
+			return true
+		}
+		if p.Nickname != "" {
+			return strings.Contains(p.Nickname, word)
+		}
+		// 无昵称的玩家：按用户ID（user_id / game_uid）精确匹配
+		return strconv.FormatUint(uint64(p.UserID), 10) == word ||
+			strconv.FormatInt(p.GameUID, 10) == word
+	}
+	// ★ word 为纯数字时按 user_id 精确命中（与战力榜一致）
+	if n, err := strconv.Atoi(word); err == nil && word != "" {
+		filtered := make([]model.EzfyProfile, 0, len(ranked))
+		for _, p := range ranked {
+			if p.UserID == uint(n) {
+				filtered = append(filtered, p)
+			}
+		}
+		ranked = filtered
+	} else {
+		filtered := make([]model.EzfyProfile, 0, len(ranked))
+		for _, p := range ranked {
+			if hit(p) {
+				filtered = append(filtered, p)
+			}
+		}
+		ranked = filtered
+	}
+	total := int64(len(ranked))
+	start := offset
+	if start > len(ranked) {
+		start = len(ranked)
+	}
+	end := start + size
+	if end > len(ranked) {
+		end = len(ranked)
+	}
+	out := make([]gin.H, 0, end-start)
+	for i, p := range ranked[start:end] {
+		lv := ezfyProfileRank(&p)
+		r := ezfyRankAt(lv)
+		var cityCount int64
+		h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", p.UserID).Count(&cityCount)
+		out = append(out, gin.H{
+			"rank": start + i + 1, "user_id": p.UserID,
+			"name":        p.Nickname,
+			"prestige":    p.Prestige,
+			"rank_id":     r.ID,
+			"rank_name":   r.Name,
+			"rank_post":   r.Post,
+			"city_max":    ezfyRankCityMaxAt(lv),
+			"city_count":  cityCount,
+			"is_excluded": exSet[p.UserID],
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
+		"usage": "与游戏内「军衔声望榜」同口径（按声望降序）；已标记「不参与排名」的玩家不参与名次，名次为剔除后的全服排名"})
+}
