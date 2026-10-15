@@ -4,6 +4,12 @@ server:
   web_dir: "../web/dist"
   # 管理系统前端（admin-web/dist），托管在 /admin-ui/
   admin_web_dir: "../admin-web/dist"
+  # ★★ 2026-10-15 区名写活：游戏名/区编号/区名/区后缀 → 完整标题「二战征途-【1区】红色警戒」
+  #   开二区时复制一份配置，把下面三项改成二区值（如 2 / 2区 / 铁血），port 换掉即可。
+  game_name: "二战征途"           # 游戏名（缺省回落「二战征途」）
+  zone_id: 1                      # 本服务器编号（区号）
+  zone_name: "1区"                # 区名
+  zone_sub: "红色警戒"            # 区后缀（可为空，如二区可不填后缀）
 
 mysql:
   host: 127.0.0.1

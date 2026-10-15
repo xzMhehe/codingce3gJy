@@ -10,6 +10,25 @@ type ServerConfig struct {
 	Port        int    `yaml:"port"`
 	WebDir      string `yaml:"web_dir"`
 	AdminWebDir string `yaml:"admin_web_dir"`
+	// ★★ 2026-10-15 区名写活（开多区准备）：游戏名 / 区编号 / 区名 / 区后缀。
+	//   前端标题、浏览器标签、选服页都从这里拼，不再是写死的「二战征途-【1区】红色警戒」。
+	GameName string `yaml:"game_name"`
+	ZoneID   int    `yaml:"zone_id"`
+	ZoneName string `yaml:"zone_name"`
+	ZoneSub  string `yaml:"zone_sub"`
+}
+
+// ZoneTitle 完整服务标题，如「二战征途-【1区】红色警戒」。
+// game_name 缺省回落「二战征途」；未配区名时只返回游戏名（老配置不带新区字段也能正常启动）。
+func (c *Config) ZoneTitle() string {
+	name := c.Server.GameName
+	if name == "" {
+		name = "二战征途"
+	}
+	if c.Server.ZoneName == "" {
+		return name
+	}
+	return name + "-【" + c.Server.ZoneName + "】" + c.Server.ZoneSub
 }
 
 type MysqlConfig struct {

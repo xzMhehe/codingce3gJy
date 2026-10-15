@@ -1,4 +1,4 @@
-﻿package router
+package router
 
 import (
 	"net/http"
@@ -13,6 +13,7 @@ import (
 	"qqjiayuan/server/internal/handler"
 	ezfy "qqjiayuan/server/internal/handler/ezfy"
 	"qqjiayuan/server/internal/middleware"
+	"qqjiayuan/server/pkg/resp"
 )
 
 // Setup 装配全部路由。
@@ -139,6 +140,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		api.GET("/badges", badgeH.List)
 		api.GET("/badge-presets", badgeH.Presets)
 		api.GET("/games", gameH.List)
+		// ★★ 2026-10-15 游戏区服列表（家园大厅进入游戏前的「选择服务器」，区名由管理端配置不写死）
+		api.GET("/game-servers", gameH.ListServers)
 		api.GET("/privs", resH.Privs)
 		// 库存图片取图（管理端上传的 base64 图片）
 		api.GET("/res/*path", resH.Serve)
@@ -231,6 +234,17 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		// ★ 2026-10-12 家园已登录 → 免密换二战登录态（Authorization 里带家园 token），
 		//   解决「家园登录后进二战还要再登一次」。同样公开路由，内部手动校验家园 token。
 		api.POST("/ezfy/sso", ezfyH.EzfySSO)
+
+		// ★★ 2026-10-15 区名写活 + 入口选服（开多区准备）：
+		//   公开接口返回本服务器（区）信息 —— 单进程=单区，这里就先返回自己。
+		//   前端进入二战前用它做「服务器选择」；以后每区=一个实例，各自返回自己，
+		//   做了多区聚合入口页后可让每个实例都返回全区列表（各区进程读同一份源）。
+		api.GET("/ezfy/zone", func(c *gin.Context) {
+			resp.OK(c, gin.H{
+				"list":    []gin.H{{"id": cfg.Server.ZoneID, "name": cfg.ZoneTitle()}},
+				"current": cfg.Server.ZoneID,
+			})
+		})
 
 		authed := api.Group("/", jwtM)
 		// ★ 2026-10-12 二战独立账号：二战专属授权组（不挂家园 jwtM，走 ezfyJwtM）。
@@ -1641,6 +1655,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/games", perm(db, "module:games"), gameH.Create)
 				admin.PUT("/games/:id", perm(db, "module:games"), gameH.Update)
 				admin.DELETE("/games/:id", perm(db, "module:games"), gameH.Delete)
+				// ★★ 2026-10-15 游戏大厅维护：游戏区服（服务器选择）配置
+				admin.GET("/games/:id/servers", perm(db, "module:games"), gameH.AdminServers)
+				admin.POST("/games/:id/servers", perm(db, "module:games"), gameH.AdminServerCreate)
+				admin.PUT("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerUpdate)
+				admin.DELETE("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerDelete)
 
 				admin.GET("/resources", perm(db, "module:resources"), resH.List)
 				admin.PUT("/resources/:id", perm(db, "module:resources"), resH.Update)

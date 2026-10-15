@@ -264,6 +264,93 @@ func (h *GameHandler) validLogo(logo string) bool {
 
 func (h *GameHandler) Delete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
+	// ★ 2026-10-15 连区服配置一起删，避免孤儿行
+	h.DB.Where("game_id = ?", id).Delete(&model.GameServer{})
 	h.DB.Delete(&model.Game{}, id)
+	resp.OK(c, nil)
+}
+
+// ---- 游戏区服（服务器选择） ----
+// ★★ 2026-10-15 开多区准备：家园游戏大厅点游戏 → 先「选择服务器」。
+//   区服列表由管理端「游戏大厅维护」里配置（game_servers 表），前端不写死区名。
+
+// ListServers 公开：某游戏的启用区服列表（大厅进入前选择用）
+func (h *GameHandler) ListServers(c *gin.Context) {
+	gid, _ := strconv.Atoi(c.Query("game_id"))
+	if gid <= 0 {
+		resp.ParamError(c, "缺少 game_id")
+		return
+	}
+	var list []model.GameServer
+	h.DB.Where("game_id = ? AND status = 1", gid).Order("sort ASC, id ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+// AdminServers 管理端：某游戏的全部区服（含停用）
+func (h *GameHandler) AdminServers(c *gin.Context) {
+	gid, _ := strconv.Atoi(c.Param("id"))
+	if gid <= 0 {
+		resp.ParamError(c, "缺少游戏ID")
+		return
+	}
+	var list []model.GameServer
+	h.DB.Where("game_id = ?", gid).Order("sort ASC, id ASC").Find(&list)
+	resp.OK(c, list)
+}
+
+type gameServerReq struct {
+	Name   string `json:"name" binding:"required,min=1,max=50"`
+	Host   string `json:"host" binding:"max=200"`
+	Path   string `json:"path" binding:"max=100"`
+	Sort   int    `json:"sort"`
+	Status int    `json:"status"`
+}
+
+func (h *GameHandler) AdminServerCreate(c *gin.Context) {
+	gid, _ := strconv.Atoi(c.Param("id"))
+	if gid <= 0 {
+		resp.ParamError(c, "缺少游戏ID")
+		return
+	}
+	var req gameServerReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "区服名必填")
+		return
+	}
+	if req.Path == "" {
+		var g model.Game
+		if err := h.DB.First(&g, gid).Error; err != nil {
+			resp.NotFound(c, "游戏不存在")
+			return
+		}
+		req.Path = g.Path // 缺省沿用游戏的站内入口
+	}
+	s := model.GameServer{GameID: uint(gid), Name: req.Name, Host: req.Host, Path: req.Path, Sort: req.Sort, Status: req.Status}
+	h.DB.Create(&s)
+	resp.OK(c, s)
+}
+
+func (h *GameHandler) AdminServerUpdate(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req gameServerReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		resp.ParamError(c, "区服名必填")
+		return
+	}
+	var s model.GameServer
+	if err := h.DB.First(&s, id).Error; err != nil {
+		resp.NotFound(c, "区服不存在")
+		return
+	}
+	h.DB.Model(&s).Updates(map[string]interface{}{
+		"name": req.Name, "host": req.Host, "path": req.Path, "sort": req.Sort, "status": req.Status,
+	})
+	h.DB.First(&s, id)
+	resp.OK(c, s)
+}
+
+func (h *GameHandler) AdminServerDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	h.DB.Delete(&model.GameServer{}, id)
 	resp.OK(c, nil)
 }

@@ -70,6 +70,24 @@
     <transition name="g-toast">
       <div v-if="toastMsg" class="g-toast">{{ toastMsg }}</div>
     </transition>
+
+    <!-- ★★ 2026-10-15 进入游戏前的「选择服务器」弹层（区名/区服由管理端游戏大厅维护配置，不写死）。
+         点游戏 → 有配区服就先选（哪怕只有一个服也要选），再进入；没配区服维持原跳转。 -->
+    <div v-if="srvDlg.on" class="gs-mask" @click.self="closeSrvDlg">
+      <div class="gs-box">
+        <div class="gs-title">{{ srvDlg.game ? srvDlg.game.name : '选择服务器' }}</div>
+        <div class="gs-sub">请选择要进入的服务器</div>
+        <div v-if="srvDlg.loading" class="gs-loading">加载中…</div>
+        <div v-else-if="!srvDlg.list.length" class="gs-empty">该游戏暂无可进入的服务器</div>
+        <div v-else class="gs-list">
+          <div v-for="s in srvDlg.list" :key="s.id" class="gs-item" @click="enterServer(s)">
+            <span class="gs-name">{{ s.name }}</span>
+            <span class="gs-in">进入 →</span>
+          </div>
+        </div>
+        <div class="gs-close" @click="closeSrvDlg">关闭</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -85,6 +103,8 @@ export default {
       showAdd: false,
       toastMsg: '',
       toastTimer: null,
+      // ★★ 2026-10-15 选择服务器弹层（区服由管理端「游戏大厅维护」配置）
+      srvDlg: { on: false, loading: false, game: null, list: [] },
       // 诺哈原版娱乐竞猜两行：竞猜　农场　江湖　猜球　大话 / 富翁　好友买卖　苹果机　抢车位
       guessLabels: ['竞猜', '农场', '江湖', '猜球', '大话', '富翁', '好友买卖', '苹果机', '抢车位'],
       guessMap: {
@@ -156,14 +176,49 @@ export default {
     },
     // 进入游戏：内部网址(path)=本站路由，直接跳转；外部网址(url)=外站，新窗口打开
     // url 里若被误填成站内路由（以 / 或 #/ 开头）也按站内路由走，避免开出一个空白页
+    // ★★ 2026-10-15 改：先查该游戏的区服配置 —— 配了区服（如二战征途）就先弹「选择服务器」
+    //   （区名由管理端配置，哪怕只有一个服也要选）；没配区服的维持原逻辑直接进。
     play (g) {
-      if (g.path) { this.$router.push(g.path); return }
-      const u = g.url || ''
-      if (u) {
-        if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(u.replace(/^#/, '')); return }
-        window.open(u); return
+      if (!this.hasGo(g)) { this.toast('「' + g.name + '」正在建设中，敬请期待'); return }
+      this.srvDlg.on = true
+      this.srvDlg.loading = true
+      this.srvDlg.game = g
+      this.srvDlg.list = []
+      api.get('/game-servers', { params: { game_id: g.id } }).then(r => {
+        if (r.code !== 0) { this.srvDlg.loading = false; return }
+        const list = r.data || []
+        if (!list.length) {
+          this.srvDlg.on = false
+          this.jumpGame(g.path || g.url)
+          return
+        }
+        this.srvDlg.list = list
+        this.srvDlg.loading = false
+      }).catch(() => {
+        this.srvDlg.on = false
+        this.jumpGame(g.path || g.url)
+      })
+    },
+    closeSrvDlg () {
+      this.srvDlg.on = false
+      this.srvDlg.loading = false
+      this.srvDlg.game = null
+      this.srvDlg.list = []
+    },
+    // 选定区服：host 为空 = 同源本服直接路由；有 host = 跨服整页跳（hash 路由拼 #/ 前缀）
+    enterServer (s) {
+      const p = (s.path || (this.srvDlg.game && this.srvDlg.game.path) || '')
+      if (s.host) {
+        window.location.href = s.host.replace(/\/+$/, '') + '/#' + (p.charAt(0) === '/' ? '' : '/') + p
+        return
       }
-      this.toast('「' + g.name + '」正在建设中，敬请期待')
+      this.closeSrvDlg()
+      if (p) this.$router.push(p)
+    },
+    jumpGame (u) {
+      if (!u) return
+      if (u.charAt(0) === '/' || u.indexOf('#/') === 0) { this.$router.push(u.replace(/^#/, '')); return }
+      window.open(u)
     },
     tip (title) { this.$router.push('/tip?title=' + encodeURIComponent('游戏·' + title)) }
   }
@@ -196,4 +251,37 @@ export default {
 }
 .g-toast-enter-active, .g-toast-leave-active { transition: opacity .2s; }
 .g-toast-enter, .g-toast-leave-to { opacity: 0; }
+
+/* ★★ 2026-10-15 选择服务器弹层（诺哈风：米黄卡片 + 绿条题头） */
+.gs-mask {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center;
+}
+.gs-box {
+  width: 320px; max-width: 92vw; max-height: 80vh; overflow: auto;
+  background: #f7f2e7; border: 1px solid #d8c9a3; border-radius: 8px;
+}
+.gs-title {
+  background: #e8dcc0;
+  padding: 10px 16px; font-weight: bold; color: #004299; text-align: center;
+}
+.gs-sub { padding: 8px 16px 2px; color: #8a6d3b; font-size: 12px; }
+.gs-list { padding: 10px 16px; }
+.gs-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: #fffdf5; border: 1px solid #d8c9a3; border-radius: 5px;
+  cursor: pointer;
+}
+.gs-item:hover { background: #fdf3d8; }
+.gs-name { color: #5b4a26; font-weight: bold; }
+.gs-in { color: #b8860b; }
+.gs-loading, .gs-empty { padding: 20px 16px; text-align: center; color: #8a6d3b; }
+.gs-close {
+  margin: 4px 16px 14px; padding: 7px 0; text-align: center;
+  background: #e8dcc0; border: 1px solid #d8c9a3; border-radius: 5px;
+  color: #5b4a26; cursor: pointer;
+}
+.gs-close:hover { background: #fdf3d8; }
 </style>

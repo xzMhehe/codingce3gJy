@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div>
     <el-card shadow="never" class="box">
       <div class="toolbar">
@@ -37,10 +37,12 @@
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '上架' : '下架' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" header-align="center">
+        <el-table-column label="操作" width="230" fixed="right" header-align="center">
           <template slot-scope="{row}">
             <div class="ops">
               <el-button size="mini" type="primary" plain icon="el-icon-edit" @click="openDlg(row)">编辑</el-button>
+              <!-- ★★ 2026-10-15 游戏区服（服务器选择）维护：区名/地址在这里配置，前端不再写死 -->
+              <el-button size="mini" type="warning" plain icon="el-icon-location-outline" @click="openServers(row)">区服</el-button>
               <el-button size="mini" type="danger" plain icon="el-icon-delete" @click="del(row)">删除</el-button>
             </div>
           </template>
@@ -109,6 +111,59 @@
         <el-button type="primary" @click="save">确 定</el-button>
       </div>
     </el-dialog>
+
+    <!-- ★★ 2026-10-15 区服（服务器选择）维护：点游戏行「区服」打开。
+         区名在此随意配置（不写死），前端大厅入口按这里展示「选择服务器」。host 空=本服。 -->
+    <el-dialog :title="srvCur ? ('区服维护：' + srvCur.name) : '区服维护'" :visible.sync="srvDlg" width="720px" :close-on-click-modal="false">
+      <div class="toolbar" style="margin-bottom:10px">
+        <span class="muted">配置该游戏的服务器列表，玩家在大厅点进入时会先选择；哪怕只有一个服也会弹出来。</span>
+        <div class="grow" />
+        <el-button size="mini" type="primary" icon="el-icon-plus" @click="openSrvForm(null)">新增区服</el-button>
+      </div>
+      <el-table :data="srvList" size="mini" stripe border>
+        <el-table-column prop="id" label="ID" width="60" />
+        <el-table-column prop="name" label="区服名" min-width="180" show-overflow-tooltip />
+        <el-table-column label="入口地址" min-width="180" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.host || '（本服）' }}</template>
+        </el-table-column>
+        <el-table-column prop="path" label="入口路由" min-width="110" show-overflow-tooltip />
+        <el-table-column prop="sort" label="排序" width="60" align="center" />
+        <el-table-column label="状态" width="70" align="center">
+          <template slot-scope="{row}">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="mini">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template slot-scope="{row}">
+            <el-button size="mini" type="primary" plain @click="openSrvForm(row)">编辑</el-button>
+            <el-button size="mini" type="danger" plain @click="delSrv(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 新增 / 编辑区服 -->
+      <el-form v-if="srvForm.on" label-width="90px" style="margin-top:14px">
+        <el-form-item label="区服名">
+          <el-input v-model.trim="srvForm.name" maxlength="50" placeholder="如 二战征途-【1区】红色警戒" />
+        </el-form-item>
+        <el-form-item label="入口地址">
+          <el-input v-model.trim="srvForm.host" maxlength="200" placeholder="留空=本服务器；跨服填 http(s)://域名(:端口)，如 http://1.2.3.4:8081" />
+        </el-form-item>
+        <el-form-item label="入口路由">
+          <el-input v-model.trim="srvForm.path" maxlength="100" placeholder="如 /games/ezfy（空则沿用游戏内部网址）" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="srvForm.sort" :min="0" :max="999" />
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="srvForm.status" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+        <div style="text-align:right">
+          <el-button size="mini" @click="srvForm.on = false">取 消</el-button>
+          <el-button size="mini" type="primary" @click="saveSrv">确 定</el-button>
+        </div>
+      </el-form>
+    </el-dialog>
   </div>
 </template>
 
@@ -122,7 +177,12 @@ export default {
       list: [], total: 0, page: 1, size: 10, loading: false,
       channels: [], logos: [], dlg: false,
       starsNum: 3,
-      form: this.blank()
+      form: this.blank(),
+      // ★★ 2026-10-15 区服维护（服务器选择）
+      srvDlg: false,
+      srvCur: null,
+      srvList: [],
+      srvForm: { on: false, id: 0, name: '', host: '', path: '', sort: 0, status: 1 }
     }
   },
   mounted () {
@@ -190,6 +250,51 @@ export default {
       this.$confirm(`确定删除游戏「${row.name}」吗？`, '提示', { type: 'warning' }).then(() => {
         api.delete('/admin/games/' + row.id).then(r => {
           if (r.code === 0) { this.$message.success('已删除'); this.load() } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ---- ★★ 2026-10-15 区服（服务器选择）维护 ----
+    openServers (row) {
+      this.srvCur = row
+      this.srvDlg = true
+      this.srvForm.on = false
+      api.get('/admin/games/' + row.id + '/servers').then(r => {
+        if (r.code === 0) this.srvList = r.data || []
+      })
+    },
+    openSrvForm (row) {
+      if (row) {
+        this.srvForm = { on: true, id: row.id, name: row.name, host: row.host || '', path: row.path || '', sort: row.sort, status: row.status }
+      } else {
+        this.srvForm = { on: true, id: 0, name: '', host: '', path: '', sort: 0, status: 1 }
+      }
+    },
+    saveSrv () {
+      const f = this.srvForm
+      if (!f.name) { this.$message.error('请填写区服名'); return }
+      const payload = { name: f.name, host: f.host, path: f.path, sort: f.sort, status: f.status }
+      const call = f.id
+        ? api.put('/admin/game-servers/' + f.id, payload)
+        : api.post('/admin/games/' + this.srvCur.id + '/servers', payload)
+      call.then(r => {
+        if (r.code === 0) {
+          this.$message.success(f.id ? '已保存' : '已新增')
+          this.srvForm.on = false
+          api.get('/admin/games/' + this.srvCur.id + '/servers').then(x => {
+            if (x.code === 0) this.srvList = x.data || []
+          })
+        } else this.$message.error(r.msg)
+      })
+    },
+    delSrv (row) {
+      this.$confirm(`确定删除区服「${row.name}」吗？`, '提示', { type: 'warning' }).then(() => {
+        api.delete('/admin/game-servers/' + row.id).then(r => {
+          if (r.code === 0) {
+            this.$message.success('已删除')
+            api.get('/admin/games/' + this.srvCur.id + '/servers').then(x => {
+              if (x.code === 0) this.srvList = x.data || []
+            })
+          } else this.$message.error(r.msg)
         })
       }).catch(() => {})
     }

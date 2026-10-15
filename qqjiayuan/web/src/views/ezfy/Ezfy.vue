@@ -7,12 +7,21 @@
          ssoPending 在 data() 初始化（首帧就占位，连一帧登录框都不会闪）。 -->
     <div v-if="!isLogin && ssoPending" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
-      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">二战征途</div>
-      <div style="text-align:center;padding:14px 0 16px;color:#8a6d3b;font-size:14px;">正在进入二战征途…</div>
+      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">{{ zoneTitle }}</div>
+      <div style="text-align:center;padding:14px 0 16px;color:#8a6d3b;font-size:14px;">正在进入{{ zoneTitle }}…</div>
     </div>
     <div v-else-if="!isLogin" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
-      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">二战征途</div>
+      <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">{{ zoneTitle }}</div>
+      <!-- ★★ 2026-10-15 入口选服：目前单进程=单区（一区），先做「服务器选择」占位；
+           以后二区/更多区各起一个实例后，这里会下发全区列表供切换 -->
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <span style="flex-shrink:0;color:#8a6d3b;font-size:13px;margin-right:8px;">服务器</span>
+        <select v-model="zoneSel" class="wwii-select"
+                style="flex:1;box-sizing:border-box;height:34px;padding:0 8px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;color:#5b4a26;outline:none;">
+          <option v-for="z in zoneList" :key="z.id" :value="z.id">{{ z.name }}</option>
+        </select>
+      </div>
       <!-- class=wwii-input + 行内 style(含 !important) 双保险，保证账号/密码/验证码输入框宽高完全一致 -->
       <input v-model="wwiiName" placeholder="家园号" class="wwii-input"
              style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
@@ -36,7 +45,7 @@
       </button>
     </div>
     <div class="home-wrap" v-if="isLogin">
-      <div class="title-bar">二战征途-【1区】红色警戒</div>
+      <div class="title-bar">{{ zoneTitle }}</div>
 
       <!-- 顶部导航(每页都有) -->
       <div class="top-nav">
@@ -465,8 +474,11 @@ export default {
       wwiiPwd: '',
       wwiiErr: '',
       wwiiBusy: false,
-      // ★★ 2026-10-15 家园已登录 → 进二战先占位「正在进入二战征途…」，SSO 换到二战 token 前不闪登录框。
-      //   在 data() 初始化（不是 mounted）：连首帧渲染都不会露出登录框。
+      // ★★ 2026-10-15 区名写活 + 入口选服：/api/ezfy/zone 下发本区信息（单进程=单区，先返回自己）。
+      //   zoneTitle 为完整标题（如「二战征途-【1区】红色警戒」），zoneList/zoneSel 供登录页选服。
+      zoneList: [],
+      zoneSel: 1,
+      zoneTitle: '二战征途-【1区】红色警戒', // 接口没回来前的兜底文案（老前端标题）
       ssoPending: !!this.$store.state.token,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
@@ -1930,10 +1942,13 @@ export default {
     }
   },
   mounted () {
+    // ★★ 2026-10-15 区名写活：先拉 /api/ezfy/zone 拿本区信息（标题/选服列表），再走登录流程。
+    //   接口是公开的，未登录也要能拿到，好让登录页标题/选服显示正确区名。
+    this.loadZone()
     // ★ 2026-10-12 二战独立登录：未登录时不启动游戏（不打接口、不起轮询，避免 401 弹跳），
     //   根组件只渲染二战自己的登录界面；登录成功后由 wwiiLogin() 重载进入游戏。
     if (!this.isLogin) {
-      document.title = '二战征途-【1区】红色警戒'
+      document.title = this.zoneTitle
       // ★ 2026-10-12 家园已登录（有家园 token）→ 静默换取二战登录态，不再要求二次登录；
       //   家园没登录就安静地显示下面二战自己的登录框。
       this.trySsoLogin()
@@ -1942,7 +1957,8 @@ export default {
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
     document.body.classList.add('ezfy-immersive')
     // ★ 2026-09-29 浏览器标签页标题：二战征途改为游戏名（不再显示默认的「家园社区」）
-    document.title = '二战征途'
+    // ★★ 2026-10-15 区名写活：跟后端配置走（二战征途-【1区】红色警戒 / 二战征途-【2区】铁血）
+    document.title = this.zoneTitle
     // ★ 2026-09-28 司令部子 tab: 刷新后仍是上次选中的 tab（localStorage）
     this.hqTab = this.restoreHqTab()
     // ★ 2026-09-27 iPhone 字体再修复：旧方案用 `@supports (-webkit-touch-callout: none)`
@@ -2262,6 +2278,22 @@ export default {
       this.go(cur)
     },
     // ---- ★ 2026-10-12 二战独立登录 ----
+    // ★★ 2026-10-15 区名写活 + 入口选服：拉本区信息（公开接口，未登录也能拿）。
+    //   目前单进程=单区，后端先返回自己；以后多区时这里可扩展为全区列表（登录页下拉切换）。
+    loadZone () {
+      api.get('/ezfy/zone').then(r => {
+        if (r.code === 0) {
+          const list = r.data.list || []
+          this.zoneList = list
+          if (r.data.current) this.zoneSel = r.data.current
+          const cur = list.find(z => z.id === this.zoneSel) || list[0]
+          if (cur && cur.name) {
+            this.zoneTitle = cur.name
+            document.title = cur.name
+          }
+        }
+      }).catch(() => {}) // 拿不到就用 data() 里的兜底标题，不影响登录
+    },
     // 家园已登录 → 自动换二战登录态（免二次登录）。
     //   家园 token 有效 → 后端 /api/ezfy/sso 直接签发二战 token（不再验密码）；
     //   换成功就硬刷新进游戏（本应用是 hash 路由，与 wwiiLogin 同一套做法）。

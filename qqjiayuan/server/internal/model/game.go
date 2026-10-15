@@ -32,3 +32,20 @@ type Game struct {
 }
 
 func (Game) TableName() string { return "games" }
+
+// 游戏区服（服务器）配置：家园游戏大厅「进入游戏前的服务器选择」由它驱动。
+// ★★ 2026-10-15 区名写活：管理端「游戏大厅维护」里配置每个区服的名称与入口地址，
+//   前端不再写死「【1区】红色警戒」；点游戏 → 先弹服务器选择（即使只有一个服也要选）。
+//   host 为空 = 同源本服（路由跳转）；带 http(s) 域名 = 跨服入口（整页跳该服）。
+type GameServer struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	GameID    uint      `gorm:"index:uk_gs_game_sort;comment:游戏ID" json:"game_id"`
+	Name      string    `gorm:"type:varchar(50);comment:区服名（如 二战征途-【1区】红色警戒）" json:"name"`
+	Host      string    `gorm:"type:varchar(200);comment:该服入口地址，空=本服务器" json:"host"`
+	Path      string    `gorm:"type:varchar(100);comment:该服站内入口路由（如 /games/ezfy）" json:"path"`
+	Sort      int       `gorm:"default:0;comment:排序值" json:"sort"`
+	Status    int       `gorm:"default:1;comment:1启用 0停用" json:"status"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (GameServer) TableName() string { return "game_servers" }
