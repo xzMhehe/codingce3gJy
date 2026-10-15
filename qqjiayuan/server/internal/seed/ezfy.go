@@ -110,7 +110,7 @@ func seedEzfy(db *gorm.DB) {
 	nerfEquipSetPct(db)
 	repairEquipSnapshots(db)
 	backfillLooseEquipPrice(db)
-	backfillSetEquipDiamondPrice(db) // ★ 2026-10-14 套装件/系列件钻价降档到 100~400
+	backfillSetEquipDiamondPrice(db) // ★ 2026-10-15 套装件/系列件钻价降档到 100~200
 	seedEzfyChests(db)
 	backfillEzfyChestPool(db)
 	seedEzfySchemes(db)

@@ -146,16 +146,16 @@ func TestChestSetProbabilityOnePercent(t *testing.T) {
 
 // TestSetDiamondPriceLadder —— 套装件 1~17 的商城钻石单价阶梯（2026-10-14 用户「都是钻石价」）。
 //
-// ★★ 2026-10-14 用户「套装装备 单件 太贵了 按单件 100-400 合理品质梯度调整钻石价格」：
-//   - 1~7 阶梯 100/150/200/200/250/300/250；
-//   - 8~17 用种子 s.Diamond（T3 300/350，T4 顶套 400 封顶）；
-//   - 系列件 21~26 的钻价 = 种子 s.Diamond（250/300/350/400，见 TestSeriesDiamondPriceInRange）。
+// ★★ 2026-10-15 用户「套装玩家反馈太贵了 按品质 100-200 合理梯度调整钻石价格」：
+//   - 1~7 阶梯 100/100/120/120/150/160/140；
+//   - 8~17 用种子 s.Diamond（T3 150/160，T4 顶套 200 封顶）；
+//   - 系列件 21~26 的钻价 = 种子 s.Diamond（130/140/160/180，见 TestSeriesDiamondPriceInRange）。
 // 锁住这张价目表：防止日后有人改 ezfySetDiamondPrice 或把 8~17 的 Diamond 字面量改坏。
 func TestSetDiamondPriceLadder(t *testing.T) {
 	want := map[int]int64{
-		1: 100, 2: 150, 3: 200, 4: 200, 5: 250, 6: 300, 7: 250,
-		8: 400, 9: 400, 10: 400, 11: 300, 12: 350,
-		13: 400, 14: 400, 15: 400, 16: 400, 17: 400,
+		1: 100, 2: 100, 3: 120, 4: 120, 5: 150, 6: 160, 7: 140,
+		8: 180, 9: 180, 10: 180, 11: 150, 12: 160,
+		13: 180, 14: 180, 15: 180, 16: 200, 17: 200,
 	}
 	// 1~7 由 ezfySetDiamondPrice 决定（fallback 传 0，确保走阶梯）
 	for id := 1; id <= 7; id++ {
@@ -190,15 +190,15 @@ func TestSetDiamondPriceLadder(t *testing.T) {
 	}
 }
 
-// TestSeriesDiamondPriceInRange —— 系列件 21~26（商城「套装」页在售的 11 件套单件）钻价必须在 100~400。
+// TestSeriesDiamondPriceInRange —— 系列件 21~26（商城「套装」页在售的 11 件套单件）钻价必须在 100~200。
 //
-// ★★ 2026-10-14 用户「套装装备 单件 太贵了 按单件 100-400 合理品质梯度调整钻石价格」：
+// ★★ 2026-10-15 用户「套装玩家反馈太贵了 按品质 100-200 合理梯度调整钻石价格」：
 //
-//	系列件与套装件同属商城「套装」页，单件价从 800~2000 降到 250~400。
+//	系列件与套装件同属商城「套装」页，单件价从 250~400 再降到 130~180。
 func TestSeriesDiamondPriceInRange(t *testing.T) {
 	for _, s := range ezfyOfficerSeriesSeeds {
-		if s.Diamond < 100 || s.Diamond > 400 {
-			t.Fatalf("系列 %d(%s) 的单件钻价 %d 超出 100~400 区间", s.ID, s.SetName, s.Diamond)
+		if s.Diamond < 100 || s.Diamond > 200 {
+			t.Fatalf("系列 %d(%s) 的单件钻价 %d 超出 100~200 区间", s.ID, s.SetName, s.Diamond)
 		}
 	}
 }

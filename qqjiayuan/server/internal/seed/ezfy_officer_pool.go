@@ -276,34 +276,34 @@ var ezfyEquipSetSeeds = []ezfyEquipSetSeed{
 		PieceMi: 50, PieceLo: 25, PieceLe: 25, SetMi: 100, SetLe: 30, Gold: 10000000,
 		Effect: "9件：攻击+341，防御+228", Des: "刷野兑换"},
 	{ID: 8, Name: "混沌套装一(头/肩/胸)", Parts: 3, Slots: []string{"头盔", "护肩", "胸甲"}, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 180,
 		Effect: "3件：战术防御+3级", Des: "混沌三件套，钻石购买"},
 	{ID: 9, Name: "混沌套装二(腰/手/足)", Parts: 3, Slots: []string{"腰带", "手套", "战靴"}, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 180,
 		Effect: "3件：英雄突击+3", Des: "混沌三件套，钻石购买"},
 	{ID: 10, Name: "混沌套装三(饰品/挂件/勋章)", Parts: 3, Slots: []string{"饰品", "挂件", "勋章"}, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 60, SetLo: 70, SetLe: 180, Diamond: 180,
 		Effect: "3件：军队生命+30%", Des: "混沌三件套，钻石购买"},
 	{ID: 11, Name: "精英守护者套装(Elite Guardian)", Parts: 9, Slots: ezfySetSlots9, Level: 130, Tier: 3,
-		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 190, SetLe: 75, Diamond: 300,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 190, SetLe: 75, Diamond: 150,
 		Effect: "9件：反击+3", Des: "钻石购买"},
 	{ID: 12, Name: "传说守护者套装(Legendary Guardian)", Parts: 9, Slots: ezfySetSlots9, Level: 130, Tier: 3,
-		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 230, SetLe: 90, Diamond: 350,
+		PieceMi: 65, PieceLo: 32, PieceLe: 32, SetMi: 230, SetLe: 90, Diamond: 160,
 		Effect: "9件：反击+3", Des: "钻石购买"},
 	{ID: 13, Name: "暴君之怒套装(King Fury)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 280, SetLe: 105, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 280, SetLe: 105, Diamond: 180,
 		Effect: "9件：英雄突击+3，反击+3", Des: "军团战奖励 / 钻石购买"},
 	{ID: 14, Name: "审判者套装(Judicator)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 300, SetLe: 110, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 300, SetLe: 110, Diamond: 180,
 		Effect: "9件：三绝+3级", Des: "军团战奖励 / 钻石购买"},
 	{ID: 15, Name: "亡魂套装(Revenant)", Parts: 9, Slots: ezfySetSlots9, Level: 140, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 310, SetLe: 130, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 310, SetLe: 130, Diamond: 180,
 		Effect: "9件：弧形防御+2，反击+3", Des: "刷野活动 / 钻石购买"},
 	{ID: 16, Name: "遗失传说套装(The Lost Legend)", Parts: 9, Slots: ezfySetSlots9, Level: 150, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 360, SetLo: 190, SetLe: 190, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 360, SetLo: 190, SetLe: 190, Diamond: 200,
 		Effect: "9件：+95%基础军事，攻击+2984，防御+2980", Des: "顶级套装，钻石购买"},
 	{ID: 17, Name: "隐秘宝藏套装(The Hidden Treasure)", Parts: 9, Slots: ezfySetSlots9, Level: 150, Tier: 4,
-		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 400, SetLo: 210, SetLe: 210, Diamond: 400,
+		PieceMi: 80, PieceLo: 40, PieceLe: 40, SetMi: 400, SetLo: 210, SetLe: 210, Diamond: 200,
 		Effect: "9件：+100%基础军事，攻击+2984，防御+2890", Des: "顶级套装，钻石购买"},
 }
 
@@ -359,7 +359,7 @@ type ezfyOfficerSeries struct {
 }
 
 var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
-	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 350,
+	{ID: 21, Series: "革命者", SetName: "革命者[迷雾幽灵]", Level: 120, Tier: 4, Diamond: 160,
 		Mi: 75, Lo: 37, Le: 37, SetMi: 68, SetLo: 35, SetLe: 35,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "围巾", Dmg: 53, Def: 50},
@@ -374,7 +374,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "草鞋", Hp: 53, Move: 40},
 			{Sub: "史册", Def: 57},
 		}},
-	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 350,
+	{ID: 22, Series: "渡鸦之魂", SetName: "渡鸦之魂[无尽怒火]", Level: 120, Tier: 4, Diamond: 160,
 		Mi: 75, Lo: 37, Le: 37, SetMi: 68, SetLo: 35, SetLe: 35,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩章", Def: 53, Hp: 50},
@@ -389,7 +389,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "鞋子", Def: 48, Move: 40},
 			{Sub: "名册", Crit: 45, CritDmg: 50},
 		}},
-	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 300,
+	{ID: 23, Series: "黑色幽灵", SetName: "黑色幽灵[其人之道]", Level: 110, Tier: 4, Diamond: 140,
 		Mi: 62, Lo: 31, Le: 31, SetMi: 49, SetLo: 24, SetLe: 24,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "盾牌", Def: 39, Hp: 40},
@@ -404,7 +404,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足靴", Def: 39, Move: 40},
 			{Sub: "名册", Crit: 44},
 		}},
-	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 250,
+	{ID: 24, Series: "巨匠", SetName: "巨匠[匠人之心]", Level: 110, Tier: 3, Diamond: 130,
 		Mi: 50, Lo: 25, Le: 25, SetMi: 27, SetLo: 13, SetLe: 13,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "对讲机", Def: 30},
@@ -419,7 +419,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "雨靴", Hp: 33},
 			{Sub: "史册", CritDmg: 34},
 		}},
-	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 400,
+	{ID: 25, Series: "青天白日", SetName: "青天白日[审判]", Level: 130, Tier: 4, Diamond: 180,
 		Mi: 100, Lo: 50, Le: 50, SetMi: 96, SetLo: 49, SetLe: 49,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
@@ -434,7 +434,7 @@ var ezfyOfficerSeriesSeeds = []ezfyOfficerSeries{
 			{Sub: "足部", Def: 58, Hp: 58, Move: 40},
 			{Sub: "名将史册", Crit: 45, CritDmg: 65},
 		}},
-	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 400,
+	{ID: 26, Series: "赤色锤镰", SetName: "赤色锤镰[裁决]", Level: 130, Tier: 4, Diamond: 180,
 		Mi: 100, Lo: 50, Le: 50, SetMi: 96, SetLo: 49, SetLe: 49,
 		Pieces: []ezfyOfficerEquipPiece{
 			{Sub: "肩部", Dmg: 60},
@@ -619,8 +619,8 @@ func seedEzfyEquipSets(db *gorm.DB) {
 					Type: "军官装备", Series: s.Series, Slot: slot, SetId: s.ID, Tier: s.Tier,
 					Level: s.Level, Stock: -1, EnhanceMax: 20,
 					// ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ 系列件**重新上架**。
-					//   ★★ 2026-10-14 用户「套装单件 100-400 合理品质梯度」→ 降档：
-					//     巨匠 250 / 黑色幽灵 300 / 革命者·渡鸦之魂 350 / 青天白日·赤色锤镰 400（钻/件，见种子字面量）。
+					//   ★★ 2026-10-15 用户「套装太贵了 按品质 100-200」→ 再降档：
+					//     巨匠 130 / 黑色幽灵 140 / 革命者·渡鸦之魂 160 / 青天白日·赤色锤镰 180（钻/件，见种子字面量）。
 					PriceDiamond: s.Diamond,
 					// ★ 2026-10-10 单件六项百分比清零（用户「单装备倍率加成全改加属性」）；
 					//   只保留套装行的套装倍率（穿齐 11 件才触发）
@@ -769,12 +769,12 @@ func ezfyLooseDiamondPrice(level int, dmg, def, hp, move, crit, critDmg int) int
 //   这批套装件重新上架，且**统一钻石结算**（1~7 套种子里原本只有黄金价，按同档类比补出钻价）。
 //   8~17 套沿用种子字面量 s.Diamond。
 //
-// ★★ 2026-10-14 用户「套装装备 单件 太贵了 按单件 100-400 合理品质梯度」→ 全档降价：
+// ★★ 2026-10-15 用户「套装玩家反馈太贵了 按品质 100-200 合理梯度」→ 全档再降价：
 //
-//	1~7 阶梯（按品质/等级分档，2026-10-14 用户确认）：
-//	新兵(20,T1)100 / 战士(40,T1)150 / 海军上将(80,T2)200 / 传说英雄(60,T2)200 /
-//	传说无畏(80,T3)250 / 传说征服(100,T3)300 / 名门征服(100,T2)250；
-//	8~17 由种子字面量承担（T4 顶套 400 封顶）。
+//	1~7 阶梯（按品质/等级分档，2026-10-15 用户确认）：
+//	新兵(20,T1)100 / 战士(40,T1)100 / 海军上将(80,T2)120 / 传说英雄(60,T2)120 /
+//	传说无畏(80,T3)150 / 传说征服(100,T3)160 / 名门征服(100,T2)140；
+//	8~17 由种子字面量承担（T4 顶套 200 封顶）。
 //
 // 写死成查表（而不是公式）：这是一个只有 17 项的固定价目表，公式反而更难核对。
 func ezfySetDiamondPrice(setID int, fallback int64) int64 {
@@ -782,17 +782,17 @@ func ezfySetDiamondPrice(setID int, fallback int64) int64 {
 	case 1:
 		return 100
 	case 2:
-		return 150
+		return 100
 	case 3:
-		return 200
+		return 120
 	case 4:
-		return 200
+		return 120
 	case 5:
-		return 250
+		return 150
 	case 6:
-		return 300
+		return 160
 	case 7:
-		return 250
+		return 140
 	}
 	// 8~17：用种子里写的钻石价
 	if fallback > 0 {
@@ -878,11 +878,11 @@ func backfillLooseEquipPrice(db *gorm.DB) {
 
 // backfillSetEquipDiamondPrice 套装件 / 系列件（set_id>0 的商城「套装」页在售件）钻石价对齐。
 //
-// ★★ 2026-10-14 用户「套装装备 单件 太贵了 按单件 100-400 合理品质梯度调整钻石价格」：
+// ★★ 2026-10-15 用户「套装玩家反馈太贵了 按品质 100-200 合理梯度调整钻石价格」：
 //
-//	老库套装件是 300~5000 钻（混沌 3000 / 遗失 3600 / 隐秘 5000），统一降档到 100~400：
-//	套装 1~7 按 ezfySetDiamondPrice 阶梯，8~17 按种子字面量（T4 顶套 400），
-//	系列件 21~26 按种子字面量（250~400）。
+//	老库套装件在 100~400 钻（T4 顶套 400），统一再降档到 100~200：
+//	套装 1~7 按 ezfySetDiamondPrice 阶梯，8~17 按种子字面量（T4 顶套 200），
+//	系列件 21~26 按种子字面量（130~180）。
 //	幂等：只有「当前钻价 ≠ 目标价」才更新；本次为明确的重新定价请求，
 //	线上库与种子不一致的行会在下次启动时被对齐（price_gold 同时清零，保证纯钻石渠道）。
 func backfillSetEquipDiamondPrice(db *gorm.DB) {
