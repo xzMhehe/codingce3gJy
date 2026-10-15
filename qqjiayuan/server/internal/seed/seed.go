@@ -624,6 +624,10 @@ func Run(db *gorm.DB, staticDir string) {
 	if !m.HasColumn("users", "last_ip") {
 		db.Exec("ALTER TABLE users ADD COLUMN last_ip varchar(45) DEFAULT ''")
 	}
+	// ★★ 2026-10-15 家园 token 服务端作废：最近退出登录时刻（logout 接口写，中间件按 iat < session_at 判 401）
+	if !m.HasColumn("users", "session_at") {
+		db.Exec("ALTER TABLE users ADD COLUMN session_at bigint DEFAULT 0 COMMENT '最近退出登录时刻(ms,0=从未)'")
+	}
 	if !m.HasColumn("users", "pay_pass") {
 		db.Exec("ALTER TABLE users ADD COLUMN pay_pass varchar(100) DEFAULT ''")
 	}

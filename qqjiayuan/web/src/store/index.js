@@ -41,6 +41,14 @@ export default new Vuex.Store({
     },
     setUnread (s, n) { s.unread = n },
     logout (s) {
+      // ★★ 2026-10-15 服务端作废：家园 token 和二战 token 都是无状态 JWT —— 只清本地不算数，
+      //   脚本/旧页面拿着 token 还能继续打接口。退出前先带当前家园 token 通知服务端
+      //   （POST /api/auth/logout，fire-and-forget）：服务端把 users.session_at 和
+      //   ezfy_account.session_at 顶到当前 → 两个旧 token 之后全部 401 作废。
+      const t = s.token
+      if (t) {
+        fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t } }).catch(() => {})
+      }
       s.token = ''
       s.user = null
       s.unread = 0

@@ -69,6 +69,51 @@ func CORS() gin.HandlerFunc {
 	}
 }
 
+// ★★ 2026-10-15 家园 token 服务端作废（logout 接口写 `users.session_at`，这里按
+// `token 的 iat < session_at → 401 作废` 判掉线）。家园 token 无状态，本地清了不算数，
+// 脚本拿着旧 token 还能打接口 —— 退出时服务端把 session_at 顶到当前，旧 token 即失效。
+//
+// 性能：家园请求也走 1核1G + RDS，这里同样用 60s 进程内缓存；logout 接口写库后调
+// SetHomeSessionAt **立即刷新本机缓存**（多机部署时其他节点最迟 60s 生效，与二战侧同策略）。
+// 注意：只在「退出」时写 session_at，登录不写 → 家园多设备同时登录不受影响。
+var (
+	homeSessionCacheMu   sync.Mutex
+	homeSessionCache     = map[uint]int64{}
+	homeSessionCacheDone = map[uint]time.Time{}
+)
+
+const homeSessionCacheTTL = 60 * time.Second
+
+// homeSessionAtOf 取玩家「最近退出登录」时刻（0 = 从未退出），带进程内缓存。
+func homeSessionAtOf(db *gorm.DB, uid uint) int64 {
+	homeSessionCacheMu.Lock()
+	if at, ok := homeSessionCache[uid]; ok && time.Since(homeSessionCacheDone[uid]) < homeSessionCacheTTL {
+		homeSessionCacheMu.Unlock()
+		return at
+	}
+	homeSessionCacheMu.Unlock()
+	var at int64
+	// 用 Raw 而不是 model.User：表列不存在时 at 保持 0 = 从未退出，不影响登录。
+	db.Raw("SELECT session_at FROM users WHERE id = ?", uid).Scan(&at)
+	homeSessionCacheMu.Lock()
+	if len(homeSessionCache) > 65536 { // 防无限增长（与其它进程内备忘同一策略）
+		homeSessionCache = map[uint]int64{}
+		homeSessionCacheDone = map[uint]time.Time{}
+	}
+	homeSessionCache[uid] = at
+	homeSessionCacheDone[uid] = time.Now()
+	homeSessionCacheMu.Unlock()
+	return at
+}
+
+// SetHomeSessionAt 退出登录后立即刷新本机缓存（logout 接口调用），保证本机即时生效。
+func SetHomeSessionAt(uid uint, at int64) {
+	homeSessionCacheMu.Lock()
+	homeSessionCache[uid] = at
+	homeSessionCacheDone[uid] = time.Now()
+	homeSessionCacheMu.Unlock()
+}
+
 // JWT 认证，并把活跃时间落库用于「在线人数」统计（节流 1 分钟）
 func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -87,6 +132,15 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 		}
 		c.Set(CtxUID, claims.UserID)
 		c.Set(CtxUName, claims.Nickname)
+
+		// ★★ 2026-10-15 家园退出 → 家园 token 作废：token 签发时刻早于「最近退出登录时刻」→ 401。
+		if claims.IssuedAt != nil {
+			if sessionAt := homeSessionAtOf(db, claims.UserID); sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
+				resp.Unauthorized(c, "账号已在其他设备退出登录，请重新登录")
+				c.Abort()
+				return
+			}
+		}
 
 		// 节流更新活跃时间（10 分钟内活跃视为在线）
 		// ★ 2026-10-05 性能：本进程 1 分钟内已刷新过 → 连 SELECT 都跳过（见 lastActiveRecently）。

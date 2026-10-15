@@ -225,6 +225,36 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	resp.OK(c, gin.H{"token": token, "user": h.userBrief(user)})
 }
 
+// Logout POST /api/auth/logout —— ★★ 2026-10-15 家园退出 → **家园 token 和二战 token 一起服务端作废**。
+//
+// 家园/二战 token 都是无状态 JWT，本地清了不算数（脚本拿着旧 token 还能打接口）。
+// 作废手段 = 把两边「最近签发时刻」顶到当前（秒级 ×1000，与 JWT 的 iat 精度对齐）：
+//
+//	家园侧  users.session_at            → 中间件按 token.iat < session_at 判 401
+//	二战侧  ezfy_account.session_at     → 二战中间件同样判 401
+//
+// 只写这两个时间戳，不做其它状态；玩家重新登录会签发新 token（iat >= session_at）→ 自然恢复。
+// 多机部署时写库后各自刷新**本机**缓存即时生效，其它节点最迟 60s（与「踢下线」同策略）。
+// 只在退出时写、登录不写 —— 家园多设备同时登录不受影响。
+func (h *AuthHandler) Logout(c *gin.Context) {
+	uid := middleware.GetUID(c)
+	nowSec := time.Now().Unix() * 1000
+
+	// 家园 token 作废
+	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("session_at", nowSec)
+	middleware.SetHomeSessionAt(uid, nowSec)
+
+	// 二战 token 一并作废（家园退出 → 二战也掉线）；没玩过二战的玩家（无 ezfy_account 行）静默跳过。
+	// EzfyDB 是二战库（单库模式下就是家园库），表不存在时同样跳过，绝不影响家园退出本身。
+	if h.EzfyDB != nil && h.EzfyDB.Migrator().HasTable("ezfy_account") {
+		h.EzfyDB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).Update("session_at", nowSec)
+		middleware.SetEzfySessionAt(uid, nowSec)
+	}
+
+	userLog(h.DB, uid, "登出", "家园退出", c.ClientIP())
+	resp.OK(c, gin.H{"msg": "已退出登录"})
+}
+
 // 找回资料：凭昵称模糊找回家园号码（演示站的情怀功能）
 func (h *AuthHandler) FindAccount(c *gin.Context) {
 	word := strings.TrimSpace(c.Query("nickname"))

@@ -63,6 +63,11 @@ type User struct {
 	LastActiveAt   *time.Time `gorm:"comment:最后活跃时间" json:"last_active_at"`
 	LastBoardID    uint       `gorm:"default:0;comment:最后停留版块（版块在线统计，参考诺哈 wap_online.bbsid）" json:"last_board_id"` // 最后停留版块（版块在线统计，参考诺哈 wap_online.bbsid）
 	LastLoginAt    *time.Time `gorm:"comment:最后Login时间" json:"last_login_at"`
+	// ★★ 2026-10-15 家园 token 服务端作废：最近一次「退出登录」时刻(ms，秒级×1000，0=从未)。
+	//   家园 token 是无状态 JWT，本地清了不算数（脚本拿着旧 token 还能打接口），
+	//   退出接口把它顶到当前 → 中间件按「token 的 iat < session_at → 401 作废」。
+	//   只在退出时写，登录不写 —— 家园多设备同时登录不受影响。
+	SessionAt      int64     `gorm:"default:0;comment:最近退出登录时刻(ms,0=从未)" json:"session_at"`
 	ActiveDays     float64    `gorm:"default:0;comment:家园活跃天数" json:"active_days"`                 // 家园活跃天数
 	LastActiveDate string     `gorm:"type:varchar(10);comment:最后活跃日期(去重)" json:"last_active_date"` // 最后活跃日期(去重)
 	InvitedBy      uint       `gorm:"default:0;comment:邀请人（0=自然注册）" json:"invited_by"`             // 邀请人（0=自然注册）

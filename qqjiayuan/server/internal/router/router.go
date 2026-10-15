@@ -237,6 +237,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		ezfyAuthed := api.Group("/", ezfyJwtM)
 		{
 			authed.GET("/auth/me", authH.Me)
+			// ★★ 2026-10-15 家园退出：服务端作废家园 + 二战两个 token（脚本拿旧 token 也打不进来了）
+			authed.POST("/auth/logout", authH.Logout)
 
 			// 个性昵称（复刻 3GQQ name.html：购买/赠送/颜色设置）
 			authed.GET("/name", nameH.NameInfo)
