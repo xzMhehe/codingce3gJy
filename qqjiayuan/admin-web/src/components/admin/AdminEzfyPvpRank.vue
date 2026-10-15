@@ -231,7 +231,16 @@ export default {
           // 后端 1 = 开 / 0 = 关
           this.enabled = r.data.enabled ? 1 : 0
           if (this.weeks.indexOf(this.week) < 0 && this.week) this.weeks.unshift(this.week)
+        } else {
+          // ★ 2026-10-15 防「空白页」：接口异常时明确提示，而不是静默一片空白
+          this.$message.error(r.msg || '加载排行榜失败')
+          this.list = []
+          this.excluded = []
         }
+      }).catch(() => {
+        this.$message.error('加载排行榜失败，请检查后端服务')
+        this.list = []
+        this.excluded = []
       }).finally(() => { this.loading = false })
     },
     onToggle (val) {

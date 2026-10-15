@@ -4643,8 +4643,8 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 			h.fail(c, fmt.Sprintf("钻石不足(需要%d钻石, 当前%d)", total, prof.Diamond))
 			return
 		}
-		// ★ 2026-09-28 钻石流水
-		h.logDiamond(uid, -total, "商城购买装备")
+		// ★ 2026-09-28 钻石流水（★ 2026-10-15 标注购买的装备名与数量）
+		h.logDiamond(uid, -total, "商城购买装备: "+cfg.Name+equipBuyCountSuffix(req.Count))
 	} else {
 		// ★★ 2026-10-08 并发卡控：条件原子扣黄金（不再走 `city.Gold -= / saveCityRes` 的读-改-写）
 		if !h.ezfySpendGold(city.ID, total) {
@@ -4656,7 +4656,7 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 	if cfg.Stock > 0 && !h.ezfySpendStock(&model.EzfyCfgEquipment{}, cfg.ID, req.Count) {
 		if useDiamond {
 			h.ezfyRefundDiamond(prof.ID, total)
-			h.logDiamond(uid, total, "商城购买装备回滚(库存不足)")
+			h.logDiamond(uid, total, "商城购买装备回滚(库存不足): "+cfg.Name+equipBuyCountSuffix(req.Count))
 		} else {
 			h.ezfyRefundGold(city.ID, total)
 		}
@@ -4670,4 +4670,12 @@ func (h *EzfyHandler) EquipShopBuy(c *gin.Context) {
 		h.cfgsReload()
 	}
 	h.done(c, "", fmt.Sprintf("购买成功: %s×%d，花费%d%s", cfg.Name, req.Count, total, unit))
+}
+
+// equipBuyCountSuffix 购买数量标注：1 件不额外标注，多件显示 ×N（钻石流水里标明买了哪个装备）
+func equipBuyCountSuffix(n int) string {
+	if n > 1 {
+		return fmt.Sprintf("×%d", n)
+	}
+	return ""
 }
