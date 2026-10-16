@@ -2741,18 +2741,27 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 	}
 	// ★ 2026-09-23：一键恢复 = 一次性把全部伤兵加回城里，所以按「总量」做一次上限校验
 	//   （逐个校验会漏掉「每个都不超、加起来超了」的情况，且叠加后同样能溢出）。
+	// ★★ 2026-10-16 修复「万亿伤兵分分钟回复」：原来 pending 用 ezfySafeAdd 被**夹取到 max**，
+	//   多行伤兵总和明明超上限（如 20 个兵种各 50 亿），pending 却恒等于 max →
+	//   `pending > max-cur` 在 cur=0 时永不触发 → 循环里 addTroop 逐行加到 max，
+	//   单城兵力被撑到「行数×50亿」（多城可到万亿）。现在 pending 记录**真实总和**，
+	//   提前溢出即按超限拒绝（max+1 仅为「爆表」标记，不会落库）。
 	max := ezfyTroopMaxCfg()
 	cur := h.cityTroopTotal(city.ID)
 	var pending int64
 	for _, w := range list {
 		if w.Count > 0 {
-			pending = ezfySafeAdd(pending, w.Count, max)
+			if pending > max-w.Count {
+				pending = max + 1
+				break
+			}
+			pending += w.Count
 		}
 	}
 	if pending <= 0 {
 		return "兵营中空空如也"
 	}
-	if cur >= max || pending > max-cur {
+	if pending > max-cur {
 		return fmt.Sprintf("超过限额(单城兵力上限%d, 当前%d, 待恢复%d)", max, cur, pending)
 	}
 	h.calcResource(city)
@@ -2798,11 +2807,17 @@ func (h *EzfyHandler) recoverAllWoundedByDiamond(city *model.EzfyCity, wtype int
 	var list []model.EzfyWounded
 	h.DB.Where("city_id = ? AND type = ?", city.ID, wtype).Find(&list)
 	list = h.filterExpiredWounded(list)
+	// ★★ 2026-10-16 与黄金版同修复：pending 记真实总和，多行伤兵总和超过单城上限时按超限拒绝，
+	//   避免「一键恢复把单城兵力撑到行数×上限（多城破万亿）」。
 	max := ezfyTroopMaxCfg()
 	var pending int64
 	for _, w := range list {
 		if w.Count > 0 {
-			pending = ezfySafeAdd(pending, w.Count, max)
+			if pending > max-w.Count {
+				pending = max + 1
+				break
+			}
+			pending += w.Count
 		}
 	}
 	if pending <= 0 {
