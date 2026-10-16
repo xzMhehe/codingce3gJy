@@ -4870,7 +4870,12 @@ export default {
       if (!await this.ask(op === 'build' ? '确定将该城市正式建立为自己的城市吗?' :
         op === 'destroy' ? '确定摧毁该城市吗? 城市及其建筑/部队将全部消失, 不可恢复!' :
           '确定将城市归还给原玩家吗?')) return
-      api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id }).then(r => this.alert(r, '操作已提交'))
+      // ★ 2026-10-16 占城操作（建立/摧毁/归还）成功后补一次局部刷新：
+      //   之前只弹「操作已提交」，alert 自带的 load() 只刷 /view 不刷 wildfull 页数据，
+      //   卡顿/慢网下占领城市面板停在旧行（[建立] 按钮仍在），这里对齐采集/放弃等操作
+      //   统一走 loadWilds() 重拉附属野地+占领城市+赎城面板；once 防连点重复下单。
+      this.once('occupy' + o.id, () => api.post('/games/ezfy/city/occupy/' + op, { occupy_id: o.id })
+        .then(r => this.alert(r, '操作已提交', () => this.loadWilds())))
     },
     // ---- 赎城（2026-10-07）：被占城市原主人花钻石赎回，需占领方同意 ----
     // 按城市ID找待处理的赎城申请（无则 null），供「占领城市」面板行内审批
