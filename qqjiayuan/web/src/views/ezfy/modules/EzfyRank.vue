@@ -193,4 +193,8 @@ export default {
   background: #fbfbfb; border: 1px solid #eee; border-radius: 6px;
 }
 .pvp-inline a { color: #0055aa; }
+/* ★ 2026-10-16 电脑端明细条太宽：收窄到面板约一半宽；手机端保持全宽 */
+@media (min-width: 769px) {
+  .pvp-inline { max-width: 50%; }
+}
 </style>
