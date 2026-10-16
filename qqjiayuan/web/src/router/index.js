@@ -153,8 +153,10 @@ VueRouter.prototype.replace = function replace (location, onResolve, onReject) {
 }
 
 router.beforeEach((to, from, next) => {
-  // 已登录再访问登录/注册页，直接回广场（退出登录后才会放行）
-  if ((to.path === '/login' || to.path === '/register') && store.getters.isLogin) {
+  // 已登录再访问登录页，直接回广场（退出登录后才会放行）
+  // ★ 2026-10-16 注册页不再拦：isLogin 只看 localStorage 有没有 token，验不了有效性，
+  //   陈旧 token 会把注册入口顶回家园、再被后台刷新 401 顶到登录页——注册是公开入口，直接放行。
+  if (to.path === '/login' && store.getters.isLogin) {
     return next('/')
   }
   // ★ 2026-10-12 二战独立登录：二战页自带独立登录界面（看 ezfy_token），

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -55,12 +57,44 @@ func syncEzfyPassword(ezfyDB *gorm.DB, uid uint, hash string) {
 }
 
 type regReq struct {
-	Nickname  string `json:"nickname" binding:"required,min=1,max=20"`
+	Nickname  string `json:"nickname" binding:"required,min=2,max=20"`
 	Password  string `json:"password" binding:"required,min=6,max=20"`
 	Gender    int    `json:"gender"`
 	Invite    string `json:"invite"`     // 邀请码（邀请开通家园）
 	CaptchaID string `json:"captcha_id"` // 图形验证码 ID
 	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
+}
+
+// nickRule 昵称卡控（★ 2026-10-16，与前端 Register.vue 同口径）：
+// 2-20 个字符；不能是纯数字（含夹空白）；不能含 emoji（主流表情区块 + 变体选择符 + ZWJ 表情序列）。
+// 主流特殊字符（♥✿★ 等文本符号）不拦。合法返回空串，非法返回用户可读的提示。
+func nickRule(s string) string {
+	n := utf8.RuneCountInString(s)
+	if n < 2 {
+		return "昵称至少2个字符"
+	}
+	if n > 20 {
+		return "昵称最多20个字符"
+	}
+	digitOnly := true
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		if r < '0' || r > '9' {
+			digitOnly = false
+			break
+		}
+	}
+	if digitOnly && n > 0 {
+		return "昵称不能是纯数字"
+	}
+	for _, r := range s {
+		if (r >= 0x1F000 && r <= 0x1FAFF) || r == 0x200D || r == 0xFE0F || r == 0xFE0E {
+			return "昵称不能包含表情符号"
+		}
+	}
+	return ""
 }
 
 // 图形验证码：返回 {id, img}，img 为 data:image/png;base64 可直接给 <img src>
@@ -78,11 +112,17 @@ func (h *AuthHandler) Captcha(c *gin.Context) {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req regReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		resp.ParamError(c, "昵称或密码格式不对：昵称1-20字，密码6-20位")
+		resp.ParamError(c, "昵称或密码格式不对：昵称2-20字，密码6-20位")
 		return
 	}
 	if req.Gender != 1 && req.Gender != 2 {
 		req.Gender = 1
+	}
+	// ★ 2026-10-16 昵称卡控（与前端同口径）：去首尾空白后校验，防脚本直连绕过前端限制。
+	req.Nickname = strings.TrimSpace(req.Nickname)
+	if msg := nickRule(req.Nickname); msg != "" {
+		resp.ParamError(c, msg)
+		return
 	}
 	// 先验验证码，避免脚本不填验证码就批量探测昵称
 	if strings.TrimSpace(req.Captcha) == "" {

@@ -4,6 +4,19 @@ import router from '../router'
 
 const api = axios.create({ baseURL: '/api', timeout: 15000 })
 
+// ★ 2026-10-16 免登录/纯展示页面：这些页面上遇到业务码 401 只清掉过期 token，
+//   不跳登录页 —— 否则陈旧 token 场景下 App.vue 的后台静默请求（refreshMe 等）会把
+//   /register、/kefu/terms 等公开页一并顶到登录页。其余页面维持「登出并跳登录页」。
+const GUEST_KEEP_PATHS = ['/login', '/register', '/find', '/kefu', '/kefu/terms', '/kefu/disclaimer', '/kefu/help']
+
+// 家园 token 失效（401）：清掉过期登录态；当前在免登录页则留在原地，否则跳登录页。
+function homeUnauthorized () {
+  store.commit('logout')
+  if (GUEST_KEEP_PATHS.indexOf(router.currentRoute.path) < 0) {
+    router.push('/login')
+  }
+}
+
 api.interceptors.request.use(cfg => {
   const isEzfy = (cfg.url || '').indexOf('/games/ezfy/') >= 0
   // ★ 2026-10-12 二战独立登录：二战接口用 ezfyToken，其余用家园 token，互不串用
@@ -28,8 +41,7 @@ api.interceptors.response.use(
       if (isEzfy) {
         store.commit('ezfyLogout')
       } else {
-        store.commit('logout')
-        router.push('/login')
+        homeUnauthorized()
       }
       return body
     }
@@ -55,8 +67,7 @@ api.interceptors.response.use(
         if (reqUrl.indexOf('/games/ezfy/') >= 0) {
           store.commit('ezfyLogout')
         } else {
-          store.commit('logout')
-          router.push('/login')
+          homeUnauthorized()
         }
       }
       return Promise.resolve(body)

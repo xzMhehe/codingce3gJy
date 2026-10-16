@@ -8,6 +8,7 @@
           <div class="item">
             <div class="text">您的昵称:</div>
             <input type="text" v-model.trim="form.nickname" maxlength="20" required>
+            <div style="color:#999;font-size:12px;line-height:1.6">2-20个字符，可用 ♥✿★ 等特殊字符，禁止表情符号和纯数字</div>
           </div>
           <div class="item">
             <div class="text">您的性别:</div>
@@ -75,8 +76,27 @@ export default {
         }
       })
     },
+    // ★ 2026-10-16 昵称卡控（与服务端 auth.go 同口径）：2-20 个字符；禁表情；禁纯数字；
+    //   主流特殊字符（♥✿★ 等文本符号）不拦。返回错误文案，合法返回空串。
+    validNickname (n) {
+      const v = (n || '').trim()
+      if (!v) return '请输入昵称'
+      const len = Array.from(v).length
+      if (len < 2) return '昵称至少2个字符'
+      if (len > 20) return '昵称最多20个字符'
+      // 表情：主流表情区块（1F000-1FAFF 含笑脸/符号/旗标等）+ 变体选择符/ZWJ 表情序列
+      if (/[\u{1F000}-\u{1FAFF}\u{200D}\u{FE0F}\u{FE0E}]/u.test(v)) return '昵称不能包含表情符号'
+      // 纯数字（含中间夹空白，如 "1 2"）也不允许
+      if (/^[0-9\s]+$/.test(v)) return '昵称不能是纯数字'
+      return ''
+    },
     doReg () {
       this.err = ''
+      const nickErr = this.validNickname(this.form.nickname)
+      if (nickErr) {
+        this.err = nickErr
+        return
+      }
       if (this.form.password !== this.pass2) {
         this.err = '两次输入的密码不一样哦'
         return
