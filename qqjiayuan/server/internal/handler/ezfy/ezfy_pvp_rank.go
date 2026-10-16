@@ -8,6 +8,7 @@ package ezfy
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,38 +48,112 @@ const (
 	// 正常出击/布防都是上万兵，「1 兵碰瓷」直接 0 分。
 	ezfyPvpMinTroop = int64(1000)
 	// ezfyPvpFoeCap 同一自然周内，与**同一对手**对战的积分累计封顶（防小号互刷）。
+	// ★ 2026-10-16 8000 → 20000：加权兵种分后单仗更能打了，封顶同步放宽。
 	// 达上限后与该对手再交战：场次/灭敌/战损照记，积分不再计入榜单。
-	ezfyPvpFoeCap = int64(8000)
+	ezfyPvpFoeCap = int64(20000)
 )
 
-// pvpUnitsOf 统计 ezfyUnitGroup 总兵力。
+// pvpUnitCost 兵种分权重（★ 2026-10-16 用户要求「按建造资源多少算分」）。
+//
+//	权重 = 建造资源总成本(粮/钢/油/稀有) ÷100，向下取整、至少 1、封顶 300；
+//	步兵≈2，特种兵≈48，火箭≈67，战列舰/航母等封顶 300 —— 同数量下贵兵种分远高于步兵。
+//	侦察机(9)/卡车(3) 权重=0：运输/侦察队不算战力，灭敌/战损/兵力统统不计入积分（堵刷分）。
+//	懒构建一次（配置整表已进缓存），并发安全。
+var (
+	pvpCostOnce sync.Once
+	pvpCost     map[int]int64
+)
+
+func pvpUnitWeight(id int) int64 {
+	pvpCostOnce.Do(func() {
+		m := make(map[int]int64)
+		for _, t := range ezfyCfg.sortedTroops() {
+			w := (t.Food + t.Steel + t.Oil + t.Rare) / 100
+			if w < 1 {
+				w = 1
+			}
+			if w > 300 {
+				w = 300
+			}
+			m[t.ID] = w
+		}
+		m[3] = 0 // 卡车  不参与积分
+		m[9] = 0 // 侦察机 不参与积分
+		pvpCost = m
+	})
+	if w, ok := pvpCost[id]; ok {
+		return w
+	}
+	return 1
+}
+
+// pvpUnitsOf 统计 ezfyUnitGroup 总兵力（风云榜口径：按兵种分权重加权，侦察机/卡车不计）。
+//
+// ★ 2026-10-16 原先是数人头——侦察机/卡车/步兵堆数量刷分、没阶梯；
+// 改为「Σ 权重×数量」：同数量下航母/战列舰等昂贵兵种远高于步兵，堵无差别刷步兵。
+// 同时承担加权灭敌 / 加权战损两个角色（格式相同，省一次遍历）。
 func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 	var n int64
 	for _, g := range gs {
-		n += g.Count
+		w := pvpUnitWeight(g.TroopId)
+		if w > 0 {
+			n += w * g.Count
+		}
 	}
 	return n
 }
 
 // pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 规则；杀敌分同日本轮补充）。
 //
-//	积分 = (行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分，单场**上限 400**（防刷）
+//	积分 = ((行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分) × 兵力规模系数，
+//	单场**上限 800**（防刷，★ 2026-10-16 400→800）
 //
 //   - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
 //   - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
 //   - 兵力劣势系数：己方本场投入兵力 < 对方时，以少打多奖励：
 //     系数 = min(3.0, 对方兵力÷己方兵力)；攻方出征少、守方兵力多时攻击方按比例**多拿分**；
 //     系数对双方都生效（谁兵力劣势谁加成），≥1 时系数=1
-//   - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上）：按**灭敌绝对量**对数缩放，
+//   - 兵力规模系数（★ 2026-10-16）：按己方投入兵力取 0.3×~3.0×（见 pvpArmyScale），
+//     大兵团分越多、少兵碰瓷的白拿分被压低
+//   - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上；★ 2026-10-16 灭敌改按兵种价值加权后
+//     同数量高级兵种 > 低级兵种）：按**加权灭敌量**对数缩放，
 //     20×log10(灭敌) 封顶 200 —— 千万级大战与百万级小仗拉开差距、大仗有分量；
 //     对数压缩 → 灭敌量翻 10 倍只多 20 分，不会被天文数字刷爆。1 兵刷/空城刷由门槛拦住。
 //   - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
 const (
 	// ezfyPvpKillPtCap 杀敌分封顶
 	ezfyPvpKillPtCap = int64(200)
-	// ezfyPvpMaxPoint 单场上限（防极端刷分）
-	ezfyPvpMaxPoint = int64(400)
+	// ezfyPvpMaxPoint 单场上限（防极端刷分；★ 2026-10-16 400→800）
+	ezfyPvpMaxPoint = int64(800)
 )
+
+// pvpArmyScale 兵力规模系数（★ 2026-10-16 用户要求「大兵团作战分越多，少兵刷不了」）。
+//
+//	按本场**实际投入兵力(加权口径)**取规模档，百分比返回（100 = ×1.0）：
+//	投入越大系数越高（0.3× ~ 3.0×）。
+//	目的：把「少兵碰瓷」那部分白拿分（行动+胜负+战损比）压到极低 ——
+//	一个千把兵的部队跑一场最多拿三成基础分；真正的大兵团(几十万+兵)才拿满 3 倍。
+//	与「以少打多加成」独立叠加：大兵团打大兵团互吃高系数，小部队打大兵团仍以少胜多有余地。
+func pvpArmyScale(power int64) int64 {
+	switch {
+	case power < 2000:
+		return 30 // ×0.3  约 1000 兵（贴着下限的碰瓷）
+	case power < 5000:
+		return 50 // ×0.5
+	case power < 10000:
+		return 80 // ×0.8
+	case power < 30000:
+		return 100 // ×1.0  正常一仗
+	case power < 100000:
+		return 150 // ×1.5
+	case power < 300000:
+		return 200 // ×2.0
+	case power < 1000000:
+		return 250 // ×2.5  大兵团（航母/战列舰等高价值兵种更快到）
+	default:
+		return 300 // ×3.0  超大兵团
+	}
+}
 
 func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win, draw bool) int64 {
 	// 杀敌分：20×log10(灭敌)，0~200（灭敌 0 不给分）
@@ -112,7 +187,7 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 			mult = 300
 		}
 	}
-	pts := (actBase+outcome)*mult/100 + killPts + kdrPts
+	pts := ((actBase+outcome)*mult/100 + killPts + kdrPts) * pvpArmyScale(myPower) / 100
 	if pts > ezfyPvpMaxPoint {
 		pts = ezfyPvpMaxPoint
 	}
@@ -215,15 +290,23 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 		return
 	}
 	week := ezfyPvpWeekOf(time.UnixMilli(now))
+	// ★ 2026-10-16 积分口径（加权）：灭敌/战损/兵力都按「兵种分权重」算（侦察机/卡车不计）——
+	//   同数量下高级兵种(航母/战列舰)分远高于步兵，堵「无差别刷步兵」。
+	//   展示口径（原始数量）另存，写榜/战报里的灭敌/战损列仍是玩家看到的真实杀敌数。
+	atkKillsV := pvpUnitsOf(br.DefenderLosses) // 攻方有效灭敌（加权）
+	atkLossesV := pvpUnitsOf(br.AttackerLosses)
+	defKillsV := pvpUnitsOf(br.AttackerLosses)
+	defLossesV := pvpUnitsOf(br.DefenderLosses)
+	atkPower := atkKillsV + pvpUnitsOf(br.AttackerLeft) // 攻方本场投入（加权）
+	defPower := defLossesV + pvpUnitsOf(br.DefenderLeft) // 守方本场投入（加权）
+	// 榜单展示列：原始灭敌/战损
 	atkKills := enemyDeadOf(br.DefenderLosses) // 攻方灭敌 = 守方阵亡
 	atkLosses := enemyDeadOf(br.AttackerLosses)
 	defKills := enemyDeadOf(br.AttackerLosses) // 守方灭敌 = 攻方阵亡
 	defLosses := enemyDeadOf(br.DefenderLosses)
-	atkPower := pvpUnitsOf(br.AttackerLosses) + pvpUnitsOf(br.AttackerLeft) // 攻方本场投入
-	defPower := pvpUnitsOf(br.DefenderLosses) + pvpUnitsOf(br.DefenderLeft) // 守方本场投入
-	// 积分：攻方行动分 20（掠夺/征服），守方 15（防守）
-	atkPts := pvpBattlePoints(atkKills, atkLosses, atkPower, defPower, 20, win, draw)
-	defPts := pvpBattlePoints(defKills, defLosses, defPower, atkPower, 15, !win, draw)
+	// 积分：攻方行动分 20（掠夺/征服），守方 15（防守）；按加权口径计
+	atkPts := pvpBattlePoints(atkKillsV, atkLossesV, atkPower, defPower, 20, win, draw)
+	defPts := pvpBattlePoints(defKillsV, defLossesV, defPower, atkPower, 15, !win, draw)
 	// ★ 防刷：
 	// 1) 兵力下限——1 兵碰瓷（无论胜负）**攻守双方**本场都 0 分：
 	//    攻方 1 兵送，守方轻易全灭也不给防御分（防「小号送人头给大号刷分」）。
