@@ -2065,6 +2065,9 @@ export default {
       //   这里每秒检查一次：只要**有部队的倒计时归零了**且当前在会走时间的页面上，
       //   就主动重拉一次军队动态（后端顺手把该结算的结算掉）。
       this.checkDueRefresh()
+      // ★ 2026-10-16 建筑完工「即时局部刷新」：也是「倒计时归零 → 主动去拉最新状态」
+      //   的同一思路，见 checkBuildDue / tickClock 的说明。
+      this.checkBuildDue()
     },
     // ★ 倒计时归零 → 自动重拉军队动态（见 tickClock 里的说明）
     //   为什么不用固定间隔轮询：大部分时间没有到点的部队，固定轮询纯浪费请求；
@@ -2130,6 +2133,35 @@ export default {
       // loadDynamics 是 promise 链，没有返回值可 await；用一个短定时器放开闸门，
       // 保证同一波到点只触发一次（下一个 tick 不会重复打）。（★ 2026-10-08 解锁从 1500ms 收紧到 700ms）
       setTimeout(() => { this.dynRefreshing = false }, 700)
+    },
+    // ★★ 2026-10-16 建筑完工「即时局部刷新」（用户反馈：已完成建筑不自动刷新）：
+    //   建筑「施工中 x秒」倒计时是纯本地推算，归零后 remain() 显示「已完成」，
+    //   但等级/状态要等**服务端懒结算**——原来只能靠 30s 全局轮询带一次 /buildings，
+    //   于是界面停在「施工中 已完成」最多 30 秒，玩家看着就像没刷新（旧版甚至要手动重进页面）。
+    //   这里移植 checkDueRefresh 的「触发式」思想：每秒扫一眼，建筑页上只要有
+    //   「已到点还没结算」的建筑就立刻 loadBuildings()（后端 checkBuildingDone 顺手结算），
+    //   行马上翻成新等级、队列数同步收回；没有任何到点的建筑时零请求。
+    //   节流/去重口径与 checkDueRefresh 一致：最小间隔 1s；同一建筑同一到点最多重试 5 次，
+    //   共约 10 秒窗口（懒结算被 per-uid 重入守卫挡掉时常要多等一次请求才结算完）。
+    checkBuildDue () {
+      if (this.cur !== 'buildm' && this.cur !== 'builds' && this.cur !== 'cityhall') return
+      if (!this.buildings || !this.buildings.length) return
+      const now = Date.now()
+      if (this.buildRefreshing) return
+      if (this.buildRefreshedAt && now - this.buildRefreshedAt < 1000) return
+      if (!this.buildFired) this.buildFired = Object.create(null)
+      if (Object.keys(this.buildFired).length > 200) this.buildFired = Object.create(null)
+      const doneB = this.buildings.find(b => b && b.status !== 0 && b.end_time > 0 && b.end_time <= now)
+      if (!doneB) return
+      const key = doneB.id + '@' + doneB.end_time
+      const tries = this.buildFired[key] || 0
+      if (tries >= 5) return
+      if (tries > 0 && now - (this.buildRetryAt || 0) < 2000) return
+      this.buildFired[key] = tries + 1
+      this.buildRefreshing = true
+      this.buildRefreshedAt = now
+      this.loadBuildings()
+      setTimeout(() => { this.buildRefreshing = false }, 700)
     },
     // ★ 轻量刷新头部资源栏（不触发 loadRank 等重查询）——返航物资入库后调用
     refreshRes () {
