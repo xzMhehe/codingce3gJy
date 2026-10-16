@@ -3864,19 +3864,36 @@ export default {
       this.pvpLoading = true
       const q = week ? '?week=' + encodeURIComponent(week) : ''
       api.get('/games/ezfy/rank/pvp' + q).then(r => {
-        if (r.code === 0) this.pvpRank = r.data
+        if (r.code === 0) {
+          this.pvpRank = r.data
+          // ★ 2026-10-16 明细就地展开中：切周后明细跟着切到新周第 1 页
+          if (this.pvpRank.week && this.pvpDetail.show) {
+            if (this.pvpDetail.week !== this.pvpRank.week) {
+              this.pvpDetail.week = this.pvpRank.week
+              this.pvpDetail.page = 1
+              this.loadPvpDetail()
+            }
+          }
+        }
       }).finally(() => { this.pvpLoading = false })
     },
-    // ★ 2026-10-16 风云榜「我的战绩」场次明细：打开（本周）并加载第 1 页
-    openPvpDetail () {
+    // ★ 2026-10-16 风云榜「我的战绩」场次明细：就地展开/收起（收起时不重新拉数据）
+    togglePvpDetail () {
       const d = this.pvpDetail
+      if (d.show) {
+        d.show = false
+        return
+      }
       if (!this.pvpRank || !this.pvpRank.mine) return
-      d.week = this.pvpRank.week || ''
-      d.page = 1
-      d.total = 0
-      d.list = []
+      const week = this.pvpRank.week || ''
+      if (d.week !== week || !d.list.length) { // 首次打开/切周后 → 拉第 1 页
+        d.week = week
+        d.page = 1
+        d.list = []
+        d.total = 0
+        this.loadPvpDetail()
+      }
       d.show = true
-      this.loadPvpDetail()
     },
     // ★ 2026-10-16 拉取当前页场次明细（分页倒序）
     loadPvpDetail () {
