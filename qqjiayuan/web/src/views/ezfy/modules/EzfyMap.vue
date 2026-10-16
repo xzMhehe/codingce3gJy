@@ -314,7 +314,7 @@
           <!-- ④ 随军资源（★ 2026-10-07 所有出征类型都能带：玩家资源多了可随身带出腾仓库/防被抢。
                从出发城扣除、占部队负重；采集产出入库时不重复入库，返航/召回原样带回） -->
           <div class="of-sec">④ 随军资源
-            <span class="of-hint">（从出发城扣除, 占部队负重；采集产出入库时随身资源不重复入库, 返航随部队带回）</span>
+            <span class="of-hint">（从出发城扣、占负重；返航随部队带回）</span>
           </div>
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
@@ -344,13 +344,12 @@
               —— 超出（<template v-if="ezfy.orderType !== 5">负重{{ ezfy.fmtN(ezfy.orderResCap) }} − 油耗{{ ezfy.fmtN(ezfy.oilUsed) }}</template><template v-else>负重{{ ezfy.fmtN(ezfy.orderResCap) }}</template>），请减少资源或多带部队
             </span>
             <span v-else class="gray">
-              <template v-if="ezfy.orderType !== 5">（负重{{ ezfy.fmtN(ezfy.orderResCap) }} − 油耗{{ ezfy.fmtN(ezfy.oilUsed) }}，含装载技术加成）</template>
-              <template v-else>（负重{{ ezfy.fmtN(ezfy.orderResCap) }}，运输油耗另扣不占负重；含装载技术加成）</template>
+              <template v-if="ezfy.orderType !== 5">（负重{{ ezfy.fmtN(ezfy.orderResCap) }}−油耗{{ ezfy.fmtN(ezfy.oilUsed) }}<span v-if="ezfy.orderCalc" class="green">，装载+{{ ezfy.orderCalc.load_bonus }}%</span>）</template>
+              <template v-else>（负重{{ ezfy.fmtN(ezfy.orderResCap) }}，油耗另扣<span v-if="ezfy.orderCalc" class="green">，装载+{{ ezfy.orderCalc.load_bonus }}%</span>）</template>
             </span>
           </div>
           <div class="old-line gray" v-if="ezfy.orderType === 5">
-            运输：自己城市之间 / 同盟成员之间都能运；必须带部队来装货，能运多少看<b>负重</b>，一般用卡车；
-            可以不带队军官；送完部队会返回出发城市。
+            己方/同盟城市互运：带部队装货（<b>负重</b>，卡车最佳）；送达后部队自动返回。
           </div>
           <div class="old-line gray" v-else-if="ezfy.orderType === 7">派遣必须选择带队军官。</div>
           <div class="old-line gray" v-else-if="ezfy.orderType === 8">
@@ -377,7 +376,7 @@
             <a href="javascript:;" class="of-opt"
                :class="{ on: ezfy.orderAutoBattleVal === 0, disabled: ezfy.orderIsPlayerTarget }"
                @click="ezfy.orderIsPlayerTarget || (ezfy.orderAutoBattle = 0)">[否]</a>
-            <span class="gray" v-if="ezfy.orderIsPlayerTarget">（打玩家城市必须指挥）</span>
+            <span class="gray" v-if="ezfy.orderIsPlayerTarget">（打玩家城须指挥）</span>
           </div>
 
           <!-- ⑦ 计算 / 出征 -->
@@ -387,6 +386,9 @@
             油耗：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.oil_used : '—' }}</span>
             &nbsp;/&nbsp;负重：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.carry : '—' }}</span>
             &nbsp;/&nbsp;耗时：<span class="orange">{{ ezfy.orderCalc ? ezfy.orderCalc.need_time : '—' }}</span>
+            <span v-if="ezfy.orderCalc && ezfy.orderCalc.spd_bonus && ezfy.orderCalc.spd_bonus.length" class="green">
+              ［提速 {{ ezfy.orderCalc.spd_bonus.join(' ') }}］
+            </span>
           </div>
           <div class="old-line red" v-if="ezfy.orderCalc && !ezfy.orderCalc.oil_enough">
             {{ ezfy.resNames.oil }}不足：需要{{ ezfy.orderCalc.oil_used }}，当前只有{{ ezfy.orderCalc.oil_have }}

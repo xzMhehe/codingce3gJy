@@ -874,12 +874,25 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	if req.OrderType == 8 && h.dispatchNoCap(uid, city) {
 		capUnlimited = true
 	}
+	// ★ 2026-10-16 加成可视化（玩家反馈"看不出有没有耗时加成"）：把耗时提速清单与
+	//   负重装载加成按来源算清楚返回，前端 [计算] 后直接展示；
+	//   引擎科技已折进 marchSpeed 不单列，只列「运输站 / 科技12」两个自适应加成，避免啰嗦。
+	spdBonus := []string{}
+	if s := stationLv * 3; s > 0 {
+		spdBonus = append(spdBonus, fmt.Sprintf("运输站+%d%%", s))
+	}
+	if t12 := techMap[12] * 2; t12 > 0 {
+		spdBonus = append(spdBonus, fmt.Sprintf("科技+%d%%", t12))
+	}
+	loadPct := techMap[13] * 2 // 科技13「装载技术」：负重 +2%/级
 	resp.OK(c, gin.H{
 		"oil_used":    oilCost,
 		"oil_enough":  city.Oil >= oilCost,
 		"oil_have":    city.Oil,
 		"carry":       carry,
 		"distance":    distance,
+		"spd_bonus":   spdBonus,
+		"load_bonus":  loadPct,
 		"travel_sec":  travelSec,
 		"wait_min":    waitMin,
 		"need_sec":    needSec,
