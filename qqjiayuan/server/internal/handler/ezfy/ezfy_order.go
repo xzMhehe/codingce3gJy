@@ -761,21 +761,10 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	// ★ 2026-10-09 「自己被处于指挥时，指挥里面的兵种不能再出征」：
 	//   本城正在被攻击时，参战兵种集合（供前端禁用数量框 + 提示），与其他查询并行取。
 	var defLocked map[int]bool
-	var dstStationLv int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向叠加用）
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(6)
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Find(&userTechs) }()
 	go func() { defer wg.Done(); stationLv = h.buildingLevel(city.ID, 20) }()
-	go func() {
-		defer wg.Done()
-		// ★ 2026-10-16 与 createOrder 同口径：运输/增援要按目的地城运输站等级叠加加成（只在货物类订单触发）
-		if req.OrderType == 5 || req.OrderType == 6 {
-			var dc model.EzfyCity
-			if err := h.DB.Where("x = ? AND y = ?", req.TargetX, req.TargetY).First(&dc).Error; err == nil {
-				dstStationLv = h.buildingLevel(dc.ID, 20)
-			}
-		}
-	}()
 	go func() { defer wg.Done(); hqLv = h.buildingLevel(city.ID, 13) }()
 	go func() {
 		defer wg.Done()
@@ -827,14 +816,14 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		//   不加速行军。真正加速行军的是 燃烧引擎(科技10，通用) + 喷气引擎(科技19，空军)，
 		//   它们已折进上面的 ezfyMarchSpeed，不需要在这里再除一次。
 		travelSec = int64(distance) * 60 * 300 / int64(marchSpeed)
-		// ★★ 2026-10-16 运输站「双向叠加」（玩家确认修正）：运输(5)/增援(6) 出发城与
-		//   目的地城的运输站等级**相加**（每级 +3%，两个满级 = +60%）；
-		//   其余出征类型（侦查/掠夺/征服/采集/派遣等）维持「只算出发城运输站」。
-		//   目的地城没建运输站 / 查不到 → dstStationLv=0，自动退化为只算出发城。
-		if req.OrderType == 5 || req.OrderType == 6 {
-			stationLv += dstStationLv
+		// ★★ 2026-10-16 运输站改「速度倍数」（玩家口径，与 cfg 文案「部队行动速度提高1.5~6.0倍
+		//   (己方/盟友基地间)」对齐）：只按**出发城**运输站等级，1级1.5倍 … 10级6.0倍。
+		//   只对「己方/盟友基地间」的调动生效（运输5 / 增援·驻守盟友城6 / 派遣8）；
+		//   战斗与野外行动（侦查1/掠夺2/征服3/采集4/驻守采集7）**不吃**运输站加成。
+		//   不再双向叠加（原「出发城+目的地城等级相加」已废，6倍×6倍会太夸张）。
+		if ezfyStationOrderType(req.OrderType) {
+			travelSec = int64(float64(travelSec) / ezfyStationSpeedMult(stationLv))
 		}
-		travelSec = travelSec * 100 / int64(100+stationLv*3)
 		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
 		if lead != nil && lead.Military > 0 {
 			travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
@@ -876,12 +865,14 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 		capUnlimited = true
 	}
 	// ★ 2026-10-16 加成可视化（玩家反馈"看不出有没有耗时加成"）：耗时提速清单按**真正生效的
-	//   来源**列 —— 燃烧引擎(科技10，通用)、喷气引擎(科技19，只对空军，部队不含空军时不列)、
-	//   运输站(运输/增援时含目的地城，双向等级叠加)。
+	//   来源**列 —— 运输站(只按出发城等级、只对己方/盟友基地间订单)、燃烧引擎(科技10，通用)、
+	//   喷气引擎(科技19，只对空军，部队不含空军时不列)。
 	//   ★ 不再列「科技12 侦察技巧」：它只加军情情报等级，不加速行军。
 	spdBonus := []string{}
-	if s := stationLv * 3; s > 0 {
-		spdBonus = append(spdBonus, fmt.Sprintf("运输站+%d%%", s))
+	if ezfyStationOrderType(req.OrderType) {
+		if m := ezfyStationSpeedMult(stationLv); m > 1 {
+			spdBonus = append(spdBonus, fmt.Sprintf("运输站×%.1f倍", m))
+		}
 	}
 	if t := techMap[10] * 2; t > 0 && len(valid) > 0 {
 		spdBonus = append(spdBonus, fmt.Sprintf("燃烧引擎+%d%%", t))
@@ -1107,7 +1098,6 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   本城是否正在被攻击 + 参战兵种集合，与上面几条查询**并行**取（零额外 RTT）。
 	//   未被攻击时内部只有 1 条 COUNT，命中才补 2 条（rare）。
 	var defLocked map[int]bool
-	var dstStation int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向叠加用）
 	d := h.ezfyLoadCityData(uid, city, cityList,
 		func() {
 			h.DB.Model(&model.EzfyOrder{}).
@@ -1136,17 +1126,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 				ownWild = &w
 			}
 		},
-		func() { defLocked = h.cityDefendLocked(city.ID) },
-		// ★ 2026-10-16 运输站「双向叠加」：运输(5)/增援(6) 要叠加目的地城运输站等级，
-		//   与前面的建筑/科技等查询并行取目的城坐标上的运输站等级（零额外 RTT）。
-		func() {
-			if orderType == 5 || orderType == 6 {
-				var dc model.EzfyCity
-				if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).First(&dc).Error; err == nil {
-					dstStation = h.buildingLevel(dc.ID, 20)
-				}
-			}
-		})
+		func() { defLocked = h.cityDefendLocked(city.ID) })
 	h.ezfySettleCity(uid, city, d, true)
 	blv := d.buildingLevelsOf(h, city.ID)
 	tech := d.techsOf(h, city.ID)
@@ -1526,14 +1506,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	}
 
 	// ★ 2026-10-05 性能：科技/驿站等级走快照（原来 techMap 2 条 + buildingLevel 1 条）
+	// ★★ 2026-10-16 运输站口径（与 /order/preview 同口径，规则见 ezfyStationSpeedMult / ezfyStationOrderType）：
+	//   只按**出发城**运输站等级算「速度倍数」（1级1.5倍 … 10级6.0倍），只对己方/盟友基地间
+	//   的调动生效（运输5/增援·驻守盟友6/派遣8），且**不双向叠加**。
 	station := blv[20]
-	// ★★ 2026-10-16 运输站「双向叠加」（玩家确认修正，与 /order/preview 同口径）：
-	//   运输(5)/增援(6) 出发城与目的地城的运输站等级**相加**（每级 +3%，两个满级 = +60%）；
-	//   其余出征类型（侦查/掠夺/征服/采集/派遣等）只算出发城运输站。
-	//   目的地城没建运输站 / 查不到 → dstStation=0，自动退化为只算出发城。
-	if orderType == 5 || orderType == 6 {
-		station += dstStation
-	}
 	// ★★ 2026-10-09 行军速度按兵种算（与 /order/preview 共用 ezfyMarchSpeed）：
 	//   燃烧引擎(10)=通用、喷气引擎(19)=只空军、军官速度技能=陆/空/海 —— 原来行军完全不吃科技速度，
 	//   且军官速度技能不分兵种一律生效（与「有兵种限制」的配置口径不符）。
@@ -1545,7 +1521,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★★ 2026-10-16 删除「侦察技巧(科技12)×2%/级」这一级（与 /order/preview 同口径）：
 	//   侦察技巧只加军情情报等级，不加速行军；加速行军的是 燃烧引擎(10)/喷气引擎(19)，
 	//   已折进上面的 ezfyMarchSpeed。
-	travelSec = travelSec * 100 / int64(100+station*3)
+	if ezfyStationOrderType(orderType) {
+		travelSec = int64(float64(travelSec) / ezfyStationSpeedMult(station))
+	}
 	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
 	if lead != nil && lead.Military > 0 {
 		travelSec = int64(float64(travelSec) * 100 / (100 + float64(lead.Military)*ezfyOfficerSpeedPerMil()))
@@ -2355,6 +2333,39 @@ func (h *EzfyHandler) officerOilReducePct(o *model.EzfyOfficer) int {
 		return 10 * h.officerSkillScale(o)
 	}
 	return 0
+}
+
+// ============ 运输站（建筑 20）：己方/盟友基地间的「行动速度倍数」============
+//
+// ★★ 2026-10-16 玩家口径重做（对齐 cfg 文案「部队行动速度提高1.5~6.0倍(己方/盟友基地间)」）：
+//   - 口径是**倍数**，不是百分比：1 级 1.5 倍 … 10 级 6.0 倍（每级 +0.5 倍）；
+//   - 只按**出发城**运输站等级算，**不**把目的地城的等级加进来（6倍×6倍会太夸张）；
+//   - 只对「己方/盟友基地间」的调动生效（见 ezfyStationOrderType）。
+//
+// 行军时间 = 原时间 ÷ 倍数；等级 0（没建）→ 1.0 倍（不减时）。
+// ★ /order/preview 与 createOrder 共用这两个函数 —— 规则只在这一处实现。
+
+// ezfyStationSpeedMult 运输站等级 → 行动速度倍数（原版表：1级1.5倍 … 10级6.0倍）。
+func ezfyStationSpeedMult(level int) float64 {
+	if level <= 0 {
+		return 1
+	}
+	if level > 10 {
+		level = 10 // 运输站上限 10 级，防配置越界
+	}
+	return 1 + 0.5*float64(level)
+}
+
+// ezfyStationOrderType 运输站是否作用于该订单类型。
+//
+// 原版文案写的是「己方/盟友基地间」—— 所以只有这三类吃到：
+//
+//	运输(5) 己方/同盟城市互运、增援(6) 驻守盟友城市、派遣(8) 把自己的部队送去自己的另一座城。
+//
+// 侦查(1)/掠夺(2)/征服(3)/采集(4)/驻守采集(7) 等战斗与野外行动**不吃**运输站加成
+// （否则 10 级 6 倍速会让打仗几乎瞬间到位）。
+func ezfyStationOrderType(orderType int) bool {
+	return orderType == 5 || orderType == 6 || orderType == 8
 }
 
 // ezfyMarchSpeed 全军**行军速度**（= 最慢那支部队的「有效速度」，慢的拖后腿）。

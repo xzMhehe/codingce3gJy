@@ -14,8 +14,9 @@ import (
 //     效果改成了「情报+1级」，两套口径就打架了）。
 //     真正加速行军的是 燃烧引擎(科技10，通用) + 喷气引擎(科技19，空军)，已折进 ezfyMarchSpeed。
 //
-//  2. 运输站改成「双向叠加」：运输(5)/增援(6) 出发城 + 目的地城运输站等级**相加**（每级 3%）。
-//     原来是「两边都建了才生效、只按出发城算」的门槛规则 —— 玩家反馈「一个运输站加速太少了」。
+//  2. 运输站(建筑20) 是**倍数**口径（对齐 cfg 文案「部队行动速度提高1.5~6.0倍(己方/盟友基地间)」）：
+//     只按**出发城**等级 → 1级1.5倍 … 10级6.0倍；只对「己方/盟友基地间」的调动生效
+//     （运输5 / 增援·驻守盟友6 / 派遣8）；**不**把目的地城等级加进来（6倍×6倍太夸张）。
 //
 // 预览(/order/preview) 与下单(createOrder) 必须**同口径**，否则「看到的耗时」≠「实际耗时」。
 
@@ -36,21 +37,49 @@ func TestMarchSpeedIgnoresReconTech(t *testing.T) {
 	}
 }
 
-// TestStationBonusStacksBothWays —— 运输/增援的运输站加成必须是「出发城 + 目的地城」相加
-func TestStationBonusStacksBothWays(t *testing.T) {
-	preview := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) OrderPreview(")
-	if !strings.Contains(preview, "stationLv += dstStationLv") {
-		t.Fatal("OrderPreview 的运输站加成要改成双向叠加（stationLv += dstStationLv）")
+// TestStationBonusIsMultiplierNotStack —— 运输站是「出发城等级 → 速度倍数」，不再双向叠加
+func TestStationBonusIsMultiplierNotStack(t *testing.T) {
+	for _, fn := range []string{
+		"func (h *EzfyHandler) OrderPreview(",
+		"func (h *EzfyHandler) createOrder(",
+	} {
+		body := ezfyFuncBody(t, "ezfy_order.go", fn)
+		for _, bad := range []string{"dstStation", "stationLv += ", "station += ", "stationLv*3", "station*3"} {
+			if strings.Contains(body, bad) {
+				t.Fatalf("%s 里又出现 `%s` —— 运输站现在是「出发城等级→速度倍数」的单边口径，\n"+
+					"不要再按等级相加/按百分比除（规则只在 ezfyStationSpeedMult / ezfyStationOrderType）。", fn, bad)
+			}
+		}
+		if !strings.Contains(body, "ezfyStationSpeedMult(") {
+			t.Fatalf("%s 没有走 ezfyStationSpeedMult 算运输站倍数（规则只在那一个函数里实现）", fn)
+		}
+		if !strings.Contains(body, "ezfyStationOrderType(") {
+			t.Fatalf("%s 没有走 ezfyStationOrderType 判断是否吃运输站加成", fn)
+		}
 	}
-	if strings.Contains(preview, "stationLv < 1 || dstStationLv < 1") {
-		t.Fatal("OrderPreview 里还留着「双向驿站」门槛规则（两边都建才生效），应改为等级相加")
+}
+
+// TestStationMultiplierTable —— 倍数表与原版文案一致：1级1.5倍 … 10级6.0倍；未建/越界回落 1.0
+func TestStationMultiplierTable(t *testing.T) {
+	cases := map[int]float64{0: 1, 1: 1.5, 2: 2.0, 5: 3.5, 10: 6.0, 11: 6.0, 99: 6.0, -3: 1}
+	for lv, want := range cases {
+		if got := ezfyStationSpeedMult(lv); got != want {
+			t.Fatalf("运输站 %d 级应为 %v 倍，实际 %v", lv, want, got)
+		}
 	}
-	create := ezfyFuncBody(t, "ezfy_order.go", "func (h *EzfyHandler) createOrder(")
-	if !strings.Contains(create, "station += dstStation") {
-		t.Fatal("createOrder 的运输站加成要改成双向叠加（station += dstStation）")
+}
+
+// TestStationOrderTypeScope —— 运输站只作用于「己方/盟友基地间」的订单
+func TestStationOrderTypeScope(t *testing.T) {
+	for _, ot := range []int{5, 6, 8} { // 运输 / 增援·驻守盟友城 / 派遣
+		if !ezfyStationOrderType(ot) {
+			t.Fatalf("订单类型 %d 应吃运输站加成（己方/盟友基地间）", ot)
+		}
 	}
-	if strings.Contains(create, "station < 1 || dstStation < 1") {
-		t.Fatal("createOrder 里还留着「双向驿站」门槛规则（两边都建才生效），应改为等级相加")
+	for _, ot := range []int{0, 1, 2, 3, 4, 7, 9} { // 侦查/掠夺/征服/采集/驻守采集…
+		if ezfyStationOrderType(ot) {
+			t.Fatalf("订单类型 %d 不该吃运输站加成（战斗/野外行动）", ot)
+		}
 	}
 }
 
@@ -65,5 +94,8 @@ func TestSpdBonusNamesRealSources(t *testing.T) {
 	}
 	if !strings.Contains(body, `"喷气引擎+%d%%"`) {
 		t.Fatal("「提速」清单应列出 喷气引擎（科技19，仅部队含空军时）")
+	}
+	if !strings.Contains(body, `"运输站×%.1f倍"`) {
+		t.Fatal("「提速」清单里运输站要按倍数展示（运输站×N.N倍）")
 	}
 }

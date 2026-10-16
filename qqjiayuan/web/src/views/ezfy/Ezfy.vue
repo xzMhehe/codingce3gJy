@@ -163,7 +163,7 @@
       <!-- ============ 建筑区(buildm/builds) ============ -->
       <!-- ============ 军事区 / 资源区(buildm / builds) 复刻 building/militaryIndex.html ============ -->
       <!-- ============ buildm/builds —— 已拆到 modules/Ezfybuild.vue ============ -->
-      <ezfy-build v-else-if="cur === 'buildm' || cur === 'builds'"></ezfy-build>
+      <ezfy-build v-else-if="cur === 'buildm' || cur === 'builds' || cur === 'bdetail'"></ezfy-build>
 
       <!-- ============ 建造页(buildpre) 复刻 building/preCreateMilitary.html / preCreateSource.html ============ -->
       <!-- ============ buildpre —— 已拆到 modules/Ezfybuild.vue ============ -->
@@ -384,8 +384,8 @@
       <template v-if="!isNewHome">
       <br/>
       <div class="old-line ezfy-bottom-nav">
-        <a href="javascript:;" :class="{ on: cur === 'buildm' }" @click="go('buildm')">军事</a>
-        <a href="javascript:;" :class="{ on: cur === 'builds' }" @click="go('builds')">资源</a>
+        <a href="javascript:;" :class="{ on: cur === 'buildm' || (cur === 'bdetail' && buildInfoZone === 'm') }" @click="go('buildm')">军事</a>
+        <a href="javascript:;" :class="{ on: cur === 'builds' || (cur === 'bdetail' && buildInfoZone === 's') }" @click="go('builds')">资源</a>
         <a href="javascript:;" :class="{ on: cur === 'map' }" @click="go('map')">地图</a>
         <a href="javascript:;" :class="{ on: cur === 'corps' }" @click="go('corps')">军团</a>
         <a href="javascript:;" :class="{ on: cur === 'rank' }" @click="go('rank')">排行</a>
@@ -692,6 +692,9 @@ export default {
       orders: [],
       buildZone: 'm',
       buildSel: null,
+      // ★ 2026-10-16 军事区/资源区「点建筑名 → 建筑详情页」要看的建筑 id（0 = 不在详情页）。
+      //   只存 id，展示的数据由 computed buildInfo 现取 —— 30s 轮询/升级完工后效果文字自动跟着变。
+      buildInfoId: 0,
       curReport: null,
       reportTab: 1,
       // ★ 2026-10-09 「没军团不显示军团战报 tab」：由 /reports/counts 的 has_corps 下发。
@@ -1161,6 +1164,8 @@ export default {
     zone () {
       if (this.cur === 'builds') return 's'
       if (this.cur === 'buildpre') return this.buildZone
+      // ★ 2026-10-16 建筑详情页按**那栋建筑自己的分区**算（它的名字就是从那个区点进来的）
+      if (this.cur === 'bdetail') return this.buildInfoZone
       return 'm'
     },
     zoneBuildings () {
@@ -1181,6 +1186,17 @@ export default {
         if (res.length) return built.filter(b => b.building_id !== 2).concat(res)
       }
       return built
+    },
+    // ★ 2026-10-16 军事区/资源区点建筑名进来的「建筑详情」页要展示的那栋建筑。
+    //   按 id 从 buildings 现取：升级完工 / 30s 轮询刷新后，当前级效果文字自动跟着最新等级走。
+    buildInfo () {
+      if (!this.buildInfoId) return null
+      return this.buildings.find(b => b.id === this.buildInfoId) || null
+    },
+    // 建筑详情页属于哪个区：'m' 军事区 / 's' 资源区（供 [返回xx区] 与底部导航高亮）
+    buildInfoZone () {
+      const b = this.buildInfo
+      return (b && b.type === 1) ? 's' : 'm'
     },
     // 可建造的建筑(「建造」按钮进去的那一页)
     zonePool () {
@@ -2148,7 +2164,7 @@ export default {
     //   节流/去重口径与 checkDueRefresh 一致：最小间隔 1s；同一建筑同一到点最多重试 5 次，
     //   共约 10 秒窗口（懒结算被 per-uid 重入守卫挡掉时常要多等一次请求才结算完）。
     checkBuildDue () {
-      if (this.cur !== 'buildm' && this.cur !== 'builds' && this.cur !== 'cityhall') return
+      if (this.cur !== 'buildm' && this.cur !== 'builds' && this.cur !== 'cityhall' && this.cur !== 'bdetail') return
       if (!this.buildings || !this.buildings.length) return
       const now = Date.now()
       if (this.buildRefreshing) return
@@ -2252,6 +2268,9 @@ export default {
         if ((this.cur === 'reports' || this.cur === 'reportview') && this.reportTab) {
           params.set('rtab', this.reportTab)
         } else params.delete('rtab')
+        // ★ 2026-10-16 建筑详情页(bdetail)要看的建筑 id 也写进 URL，否则刷新后 buildInfo 找不到建筑
+        if (this.cur === 'bdetail' && this.buildInfoId) params.set('bid', this.buildInfoId)
+        else params.delete('bid')
         const qs = params.toString()
         const next = base + (qs ? '?' + qs : '')
         history.replaceState(history.state, '', location.pathname + location.search + next)
@@ -2305,6 +2324,20 @@ export default {
       //   （绝不能停在空白的计谋页；信号弹持有量可以重新拉）。
       if (cur === 'scheme' && !this.schemeOrder) {
         this.go('reports')
+        return
+      }
+      // ★ 2026-10-16 建筑详情页(bdetail)刷新兜底：建筑 id 在 URL 的 bid 里，
+      //   取不到就退回军事区（绝不停在空白详情页）。
+      //   ⚠️ buildInfoId 必须在 go() **之前**赋值：go() 里 `t !== this.cur` 时会把
+      //   buildInfoId 清零，只有 `t === 'bdetail'` 才保留 —— 所以顺序不能反。
+      if (cur === 'bdetail') {
+        const bid = parseInt(params.get('bid') || '0', 10) || 0
+        if (bid > 0) {
+          this.buildInfoId = bid
+          this.go('bdetail')
+        } else {
+          this.go('buildm')
+        }
         return
       }
       // 没写 cur、或就是 home：保持默认首页即可（go('home') 会重复拉一遍数据）
@@ -2538,7 +2571,9 @@ export default {
       // ★ 离开战场页就停掉倒计时轮询，避免在后台一直打接口
       if (t !== 'battle') this.stopBattleTimer()
       // ★ 2026-09-29 记录上一页，供各页 [返回]（goBack）回到上一页
-      if (t !== this.cur) this.prevCur = this.cur
+      // ★ 2026-10-16 换页时清掉「建筑详情」要看的建筑 id（它只属于 bdetail 页）；
+      //   去 bdetail 自己时保留（openBuildInfo 先设 id 再 go）。
+      if (t !== this.cur) { this.prevCur = this.cur; if (t !== 'bdetail') this.buildInfoId = 0 }
       this.cur = t
       this.syncUrl()
       if (t === 'home') {
@@ -2574,7 +2609,7 @@ export default {
       //   现在按「背包里实际拥有的加速道具档位」渲染按钮，所以进页时要拿到背包数据。
       else if (t === 'techs') { this.loadTechs(); this.loadBag() }
       // ★ 2026-10-04 /view 瘦身：建筑列表/可建造池移到 /buildings，进入建筑相关页懒加载
-      else if (t === 'buildm' || t === 'builds' || t === 'cityhall') { this.loadBuildings(); this.loadBag() }
+      else if (t === 'buildm' || t === 'builds' || t === 'cityhall' || t === 'bdetail') { this.loadBuildings(); this.loadBag() }
       // ★ 2026-10-04 /view 瘦身：地图页「占领野地」面板数据移到 /city/wildfull 懒加载
       else if (t === 'map') { this.backToMap(); this.loadStars(); this.loadWilds() }
       // ★ 2026-09-28 军情页：分区由 reportTab 决定，且 switchReportTab 内部会 syncUrl，
@@ -2842,7 +2877,7 @@ export default {
     //   切城后停留在旧页时也会在 30s 内拉回新城数据，消除「所有城市都一样」的错觉）。
     refreshPageData () {
       const t = this.cur
-      if (t === 'buildm' || t === 'builds' || t === 'cityhall' || t === 'buildpre') {
+      if (t === 'buildm' || t === 'builds' || t === 'cityhall' || t === 'buildpre' || t === 'bdetail') {
         this.loadBuildings()
       } else if (t === 'troops' || t === 'troop' || t === 'defence' || t === 'factory' ||
                  t === 'troopview' || t === 'trainpre' || t === 'troopstat') {
@@ -4826,6 +4861,8 @@ export default {
       this.useSpeedItem(item, 4, q ? q.id : 0, () => { this.loadTroops(); this.load() })
     },
     // 建筑名后的特殊入口(复刻原版 militaryIndex 里各建筑指向的功能页)
+    // ★ 2026-10-16 玩家口径：这几个建筑**保持原样** —— 名字直接进下面这个功能页，
+    //   不加任何额外按钮（所以「建筑简介」只挂在原本点不动的建筑上，见 EzfyBuild.vue）。
     bEntry (bid) {
       const map = {
         1: { label: '市政厅', cur: 'cityhall' },
@@ -4841,6 +4878,12 @@ export default {
         15: { label: '联络中心', cur: 'liaison' }
       }
       return map[bid] || null
+    },
+    // ★ 2026-10-16 军事区/资源区：点建筑名 → 跳「建筑详情」页（简介 + 当前级效果 + 下一级效果）。
+    //   只对**原本点不动的建筑**生效；有功能页的建筑（军工厂/司令部…）名字仍直接进功能页。
+    openBuildInfo (b) {
+      this.buildInfoId = b.id
+      this.go('bdetail')
     },
     goEntry (bid) {
       const e = this.bEntry(bid)

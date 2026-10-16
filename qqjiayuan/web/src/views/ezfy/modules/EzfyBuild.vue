@@ -59,11 +59,17 @@
             <a href="javascript:;" @click="ezfy.openBuildPre(ezfy.cur === 'buildm' ? 'm' : 's')">建造</a>
           </div>
           <!-- 已建建筑: 一行一个 —— 名称 (N级) 升级 一键9级 拆除 -->
+          <!-- ★ 2026-10-16 点建筑名看简介/当前级效果：**只对原本点不动的建筑**（民居/农田/炼钢厂/
+               石油基地/稀矿厂/轻工厂/重工厂/停机坪/航海协会/运输站/雷达站…）生效。
+               原本就有功能页的那几个（市政厅/城防/科研中心/军校/参谋部/交易所/仓库/司令部/
+               军工厂/联络中心）**保持原样**：名字还是直接进原来的功能页，不加任何额外按钮。 -->
           <div class="old-line" v-for="b in ezfy.zoneBuilt" :key="'zb' + b.id">
             <span v-if="ezfy.bEntry(b.building_id)">
               <a href="javascript:;" @click="ezfy.goEntry(b.building_id)">{{ b.name }}</a>
             </span>
-            <span v-else>{{ b.name }}</span>
+            <span v-else>
+              <a href="javascript:;" @click="ezfy.openBuildInfo(b)">{{ b.name }}</a>
+            </span>
             ({{ b.level }}级)
             <template v-if="b.status !== 0">
               <span class="orange">施工中 {{ ezfy.remain(b.end_time, ezfy.gatherNow) }}</span>
@@ -138,6 +144,8 @@
             <hr/>
             <div class="panel-title">{{ ezfy.buildSel.name }}</div>
             <div class="old-line">{{ ezfy.buildSel.des }}</div>
+            <!-- ★ 2026-10-16 建造前的「简介 + 效果」：可建造池下发的 effect 就是 1 级效果 -->
+            <div class="old-line" v-if="ezfy.buildSel.effect">建成后(1级): {{ ezfy.buildSel.effect }}</div>
             <div class="old-line gray">
               造价: {{ ezfy.resShort.food }}{{ ezfy.buildSel.cost.food }} {{ ezfy.resShort.steel }}{{ ezfy.buildSel.cost.steel }} {{ ezfy.resShort.oil }}{{ ezfy.buildSel.cost.oil }}
               {{ ezfy.resShort.rare }}{{ ezfy.buildSel.cost.rare }} {{ ezfy.resShort.gold }}{{ ezfy.buildSel.cost.gold }}
@@ -149,6 +157,35 @@
             </div>
           </template>
           <a href="javascript:;" @click="ezfy.go(ezfy.buildZone === 'm' ? 'buildm' : 'builds')">[返回{{ ezfy.buildZone === 'm' ? '军事区' : '资源区' }}]</a>
+        </div>
+    </template>
+    <!-- ============ 建筑详情(bdetail) ============
+         ★ 2026-10-16 军事区/资源区里「原本点不动的建筑」（民居/农田/炼钢厂/石油基地/稀矿厂/
+         轻工厂/重工厂/停机坪/航海协会/运输站/雷达站/围墙…）点名字跳进来的独立页：
+         建筑简介 + 当前级加成效果 + 下一级效果（升级前能看到会变成什么）。
+         有功能页的建筑（市政厅/城防/科研中心/军校/参谋部/交易所/仓库/司令部/军工厂/联络中心）
+         名字仍直接进各自的功能页，不会到这一页来。
+         数据来自 /buildings 下发的 des / effect / next_effect（cfg 配置驱动，管理端改配置即时生效）。 -->
+    <template v-else-if="ezfy.cur === 'bdetail'">
+        <div class="panel" v-if="ezfy.buildInfo">
+          <div class="old-line">
+            <a href="javascript:;" @click="ezfy.go(ezfy.zone === 'm' ? 'buildm' : 'builds')">{{ ezfy.zone === 'm' ? '军事区' : '资源区' }}</a> 建筑详情
+          </div>
+          <div class="panel-title">{{ ezfy.buildInfo.name }} ({{ ezfy.buildInfo.level }}级/{{ ezfy.buildInfo.max_level }}级)</div>
+          <div class="old-line">{{ ezfy.buildInfo.des }}</div>
+          <div class="old-line" v-if="ezfy.buildInfo.level > 0 && ezfy.buildInfo.effect">
+            当前{{ ezfy.buildInfo.level }}级: {{ ezfy.buildInfo.effect }}
+          </div>
+          <div class="old-line" v-if="ezfy.buildInfo.next_effect && ezfy.buildInfo.level < ezfy.buildInfo.max_level">
+            {{ ezfy.buildInfo.level > 0 ? '下一级' : '建成后' }}{{ ezfy.buildInfo.level + 1 }}级: {{ ezfy.buildInfo.next_effect }}
+          </div>
+          <div class="old-line">
+            <a href="javascript:;" @click="ezfy.go(ezfy.zone === 'm' ? 'buildm' : 'builds')">[返回{{ ezfy.zone === 'm' ? '军事区' : '资源区' }}]</a>
+            <a href="javascript:;" @click="ezfy.go('back')">[返回]</a>
+          </div>
+        </div>
+        <div class="panel" v-else>
+          <div class="old-line">正在加载…</div>
         </div>
     </template>
   </div>
