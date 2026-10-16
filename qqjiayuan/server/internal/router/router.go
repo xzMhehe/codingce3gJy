@@ -722,6 +722,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				ezfyG.GET("/rank", ezfyH.Rank)
 				// ★ 2026-10-14 风云榜：按自然周统计玩家对战战绩（灭敌/战损/场次/胜场）的周榜
 				ezfyG.GET("/rank/pvp", ezfyH.PvpRank)
+				// ★ 2026-10-16 风云榜「我的战绩」场次明细（分页，独立表——战报会删，明细留存）
+				ezfyG.GET("/rank/pvp/detail", ezfyH.PvpRankDetail)
 				// ★ 2026-09-28 军衔晋升：声望达标 + 提交宝物（参考原版晋升军衔宝物参考.xlsx）
 				ezfyG.POST("/promote", ezfyH.Promote)
 				ezfyG.GET("/mall", ezfyH.Mall)

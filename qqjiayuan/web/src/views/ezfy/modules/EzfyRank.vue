@@ -115,7 +115,7 @@
               <option v-for="w in ezfy.pvpRank.weeks.indexOf(ezfy.pvpRank.week) < 0 ? [ezfy.pvpRank.week].concat(ezfy.pvpRank.weeks) : ezfy.pvpRank.weeks" :key="w" :value="w">{{ w }}</option>
             </select>
             <span v-if="ezfy.pvpLoading" class="gray" style="margin-left:8px">加载中…</span>
-            <span v-else class="gray" style="margin-left:8px" title="行动分：进攻20/防守15；胜负分：胜40/平15/负10；杀敌分按灭敌兵种价值加权对数计（最高200）；兵种越贵、兵团越大分越多（最多×3）；侦察机/卡车不计分；同对手每周封顶20000">按积分排名 · 大兵团/高级兵种分多 · 同对手周封顶</span>
+            <span v-else class="gray" style="margin-left:8px" title="行动分：进攻20/防守15；胜负分：胜40/平15/负10；杀敌分按灭敌兵种价值加权对数计（最高200）；兵种越贵、兵团越大分越多（最多×3.5）；兵力不足约1万步兵/70航母不计分（出征上限由司令部+集结令决定）；小仗最多400分，大兵团会战（约1万航母/150万步兵）封顶800；侦察机/卡车不计分；同对手每周封顶20000">按积分排名 · 大兵团分多 · 同对手周封顶</span>
           </div>
           <table class="ezfy-rank-table">
             <colgroup>
@@ -145,12 +145,45 @@
           </table>
           <div v-if="ezfy.pvpRank.mine && ezfy.pvpRank.mine.user_id" class="old-line">
             我的战绩（{{ ezfy.pvpRank.week }}）：积分 <b :title="'具体积分 ' + ezfy.fmtN(ezfy.pvpRank.mine.points) + ' 分'">{{ ezfy.fmtProd(ezfy.pvpRank.mine.points) }}</b> · 参战 <b>{{ ezfy.pvpRank.mine.battles }}</b> 场 · 胜 <b>{{ ezfy.pvpRank.mine.wins }}</b> 场 · 灭敌 <b :title="'灭敌 ' + ezfy.fmtN(ezfy.pvpRank.mine.kills)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.kills) }}</b> / 战损 <b :title="'战损 ' + ezfy.fmtN(ezfy.pvpRank.mine.losses)">{{ ezfy.fmtProd(ezfy.pvpRank.mine.losses) }}</b>
+            <!-- ★ 2026-10-16 「场次明细」：每场加了多分，分页查看 -->
+            <a href="javascript:;" style="margin-left:6px" @click="ezfy.openPvpDetail()">场次明细</a>
           </div>
           </template>
 
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>
+
+    <!-- ★ 2026-10-16 「我的战绩」场次明细浮层（简约，适配手机；分页倒序） -->
+    <div v-if="ezfy.pvpDetail.show" class="pvp-detail-mask" @click.self="ezfy.pvpDetail.show = false">
+      <div class="pvp-detail-box">
+        <div class="pvp-detail-head">
+          <b>场次明细（{{ ezfy.pvpDetail.week }}）</b>
+          <span @click="ezfy.pvpDetail.show = false" style="cursor:pointer;color:#888">[关闭]</span>
+        </div>
+        <div class="pvp-detail-body">
+          <div v-if="ezfy.pvpDetail.loading" class="gray" style="padding:10px;text-align:center">加载中…</div>
+          <template v-else>
+            <div v-if="!ezfy.pvpDetail.list.length" class="gray" style="padding:10px;text-align:center">本周暂无对战记录</div>
+            <div v-for="(it, i) in ezfy.pvpDetail.list" :key="'pvd' + i"
+              style="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px dashed #eee;font-size:13px">
+              <span class="gray" style="width:86px;flex:none">{{ it.ts_fmt }}</span>
+              <span :class="it.is_win ? 'green' : (it.is_draw ? 'orange' : 'red')" style="width:16px;flex:none">
+                {{ it.is_win ? '胜' : (it.is_draw ? '平' : '负') }}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">vs {{ it.foe_nick || '—' }}
+                <span class="gray" v-if="it.kills || it.losses">（灭{{ ezfy.fmtProd(it.kills) }} / 损{{ ezfy.fmtProd(it.losses) }}）</span>
+              </span>
+              <b :class="it.points > 0 ? 'green' : 'gray'" style="flex:none">{{ it.points > 0 ? '+' + ezfy.fmtN(it.points) : '+0' }}</b>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;font-size:13px">
+              <a href="javascript:;" @click="ezfy.pvpDetailPage(-1)">上一页</a>
+              <span class="gray">{{ ezfy.pvpDetail.page }}/{{ Math.max(1, Math.ceil(ezfy.pvpDetail.total / ezfy.pvpDetail.size)) }}（共 {{ ezfy.pvpDetail.total }} 场）</span>
+              <a href="javascript:;" @click="ezfy.pvpDetailPage(1)">下一页</a>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -162,3 +195,27 @@ export default {
   inject: ['ezfy']
 }
 </script>
+
+<style scoped>
+/* ★ 2026-10-16 「场次明细」浮层（简约；手机宽度下全屏，桌面居中弹窗） */
+.pvp-detail-mask {
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.45); z-index: 60;
+  display: flex; align-items: stretch; justify-content: center;
+}
+.pvp-detail-box {
+  width: 100%; max-width: 420px; background: #fff; border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); overflow: hidden;
+  display: flex; flex-direction: column; align-self: center;
+  margin-top: 8vh; max-height: 80vh;
+}
+.pvp-detail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: #f7f7f7; border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+.pvp-detail-body {
+  flex: 1; overflow-y: auto; min-height: 0;
+}
+.pvp-detail-body a { color: #0055aa; }
+</style>

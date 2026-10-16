@@ -2972,6 +2972,13 @@ func EnsureEzfyPvpWeekTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyPvpDetailTable 幂等补建/更新 ezfy_pvp_detail 表（★ 2026-10-16 风云榜「我的战绩」场次明细）。
+func EnsureEzfyPvpDetailTable(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyPvpDetail{}); err != nil {
+		log.Printf("[seed] 补建/更新 ezfy_pvp_detail 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyPvpFoeTable 幂等补建/更新 ezfy_pvp_foe 表（★ 2026-10-14 同对手积分封顶，防小号互刷）。
 func EnsureEzfyPvpFoeTable(db *gorm.DB) {
 	if err := db.AutoMigrate(&model.EzfyPvpFoe{}); err != nil {

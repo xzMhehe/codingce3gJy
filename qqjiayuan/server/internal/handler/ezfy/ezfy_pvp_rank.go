@@ -8,6 +8,7 @@ package ezfy
 
 import (
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -44,9 +45,11 @@ func (h *EzfyHandler) pvpCorpsNameOf(uid uint) string {
 
 // 风云榜防刷阈值（★ 2026-10-14 上线后发现 1 兵刷 / 小号互刷，加三条防刷规则）
 const (
-	// ezfyPvpMinTroop 本场己方投入兵力低于此值 → 本场**不计积分**（1 兵刷无效；攻守双方同规则）。
-	// 正常出击/布防都是上万兵，「1 兵碰瓷」直接 0 分。
-	ezfyPvpMinTroop = int64(1000)
+	// ezfyPvpMinTroop 本场己方投入兵力（加权口径）低于此值 → 本场**不计积分**（★ 2026-10-16 1000→10000→20000）。
+	//	卡控小号/垃圾兵刷分：约「1 万步兵 / 70 艘航母」才够门槛，即**满一场常规装载的司令部出击**。
+	//	能带多少兵本来就受「司令部等级 + 集结令」的携带上限约束 —— 带上集结令把上限拉高、多带兵，
+	//	分自然更高（兵越多分越多）；靠几千垃圾兵互点无效。攻守同规则，任一方不足整仗 0 分。
+	ezfyPvpMinTroop = int64(20000)
 	// ezfyPvpFoeCap 同一自然周内，与**同一对手**对战的积分累计封顶（防小号互刷）。
 	// ★ 2026-10-16 8000 → 20000：加权兵种分后单仗更能打了，封顶同步放宽。
 	// 达上限后与该对手再交战：场次/灭敌/战损照记，积分不再计入榜单。
@@ -106,7 +109,9 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 // pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 规则；杀敌分同日本轮补充）。
 //
 //	积分 = ((行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分) × 兵力规模系数，
-//	单场**上限 800**（防刷，★ 2026-10-16 400→800）
+//	单场**封顶按规模分档**（★ 2026-10-16 用户要求「鼓励大仗、小仗卡 400 以下、大兵团趋近封顶」）：
+//	  本场投入 < 大兵团线(300 万加权 ≈ 10000 航母 / 150 万步兵) → 单场最多 **400**；
+//	  达到大兵团线（集结令拉满级别的会战）→ 单场最多 **800**。
 //
 //   - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
 //   - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
@@ -123,35 +128,39 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 const (
 	// ezfyPvpKillPtCap 杀敌分封顶
 	ezfyPvpKillPtCap = int64(200)
-	// ezfyPvpMaxPoint 单场上限（防极端刷分；★ 2026-10-16 400→800）
+	// ezfyPvpMaxPoint 大兵团单场上限（集结令拉满级别的会战）；小仗上限见 ezfyPvpSmallMax
 	ezfyPvpMaxPoint = int64(800)
+	// ezfyPvpSmallMax 小仗单场上限（★ 2026-10-16 用户要求「小仗卡控在 400 以下」）
+	ezfyPvpSmallMax = int64(400)
+	// ezfyPvpBigArmyPower 大兵团线（加权口径）：本场投入达到该值才用 800 上限
+	// ≈ 1 万航母 / 150 万步兵 —— 不带集结令拉上限的话基本到不了，天然只属于大兵团会战
+	ezfyPvpBigArmyPower = int64(3000000)
 )
 
 // pvpArmyScale 兵力规模系数（★ 2026-10-16 用户要求「大兵团作战分越多，少兵刷不了」）。
 //
 //	按本场**实际投入兵力(加权口径)**取规模档，百分比返回（100 = ×1.0）：
-//	投入越大系数越高（0.3× ~ 3.0×）。
-//	目的：把「少兵碰瓷」那部分白拿分（行动+胜负+战损比）压到极低 ——
-//	一个千把兵的部队跑一场最多拿三成基础分；真正的大兵团(几十万+兵)才拿满 3 倍。
+//	投入越大系数越高（0 ~ 3.5×）。
+//	目的：把「少兵碰瓷/小号垃圾兵互刷」彻底压死 ——
+//	门槛（≈1 万步兵/70 航母，一场常规装载）以下整仗 0 分；贴着门槛的部队白拿分只给四成；
+//	大兵团会战（≥300 万加权，99 集结令+满级司令部级别）直接 ×3.5，顶满单场 800。
 //	与「以少打多加成」独立叠加：大兵团打大兵团互吃高系数，小部队打大兵团仍以少胜多有余地。
 func pvpArmyScale(power int64) int64 {
 	switch {
-	case power < 2000:
-		return 30 // ×0.3  约 1000 兵（贴着下限的碰瓷）
-	case power < 5000:
-		return 50 // ×0.5
-	case power < 10000:
+	case power < 20000:
+		return 0 // 门槛以下（≈1 万步兵/70 航母 = 一场常规装载）：整仗不计分（★ 2026-10-16 小号/垃圾兵刷分卡控）
+	case power < 60000:
+		return 40 // ×0.4  小部队：白拿分（行动+胜负+战损比）压到极低
+	case power < 200000:
 		return 80 // ×0.8
-	case power < 30000:
-		return 100 // ×1.0  正常一仗
-	case power < 100000:
-		return 150 // ×1.5
-	case power < 300000:
-		return 200 // ×2.0
-	case power < 1000000:
-		return 250 // ×2.5  大兵团（航母/战列舰等高价值兵种更快到）
+	case power < 600000:
+		return 120 // ×1.2  正常一仗
+	case power < 2000000:
+		return 160 // ×1.6
+	case power < 3000000:
+		return 220 // ×2.2
 	default:
-		return 300 // ×3.0  超大兵团
+		return 350 // ×3.5  大兵团会战（≥300 万加权=大兵团线，99 集结令满级司令部可到）
 	}
 }
 
@@ -187,9 +196,14 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 			mult = 300
 		}
 	}
+	// ★ 2026-10-16 单场封顶按规模分档：小仗 400，大兵团会战（≥300 万加权）800 —— 鼓励大仗
+	cap := ezfyPvpSmallMax
+	if myPower >= ezfyPvpBigArmyPower {
+		cap = ezfyPvpMaxPoint
+	}
 	pts := ((actBase+outcome)*mult/100 + killPts + kdrPts) * pvpArmyScale(myPower) / 100
-	if pts > ezfyPvpMaxPoint {
-		pts = ezfyPvpMaxPoint
+	if pts > cap {
+		pts = cap
 	}
 	return pts
 }
@@ -198,12 +212,16 @@ func pvpBattlePoints(kills, losses, myPower, foePower int64, actBase int64, win,
 //   - battles: 本场 +1；wins: 本场胜 1，否则 0（平局双方都不算胜）；
 //   - kills: 本场灭敌（击杀敌军数）；losses: 本场战损（己方阵亡数）；
 //   - points: 本场风云积分（周累计，按积分排名）；foeID 为对手玩家ID，做同对手封顶。
+//   - 另写一条「我的战绩」场次明细（★ 2026-10-16 战报会定期删，明细表独立留存）：
+//     记的是**实际入账分**（封顶/门槛/同对手上限之后），0 分也记——玩家每场加没加、加了多少一目了然。
 //
 // 昵称/军团随写榜时刻刷新（玩家改名/换军团后历史周保留当时名字）。
-func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, corps string, wins, kills, losses, points int64) {
+func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, foeNick, corps string, ts int64, wins, kills, losses, points int64, draw bool) {
 	if uid == 0 || week == "" {
 		return
 	}
+	// 本场实际入账分（同对手封顶截断后），先保存再写明细
+	credited := points
 	// ★ 防刷：同一周与同一对手对战的积分封顶（小号互刷只能刷到固定上限）。
 	//   已计分 ≥ 上限 → 本场积分 0；未达上限 → 最多补到上限。场次/灭敌/战损不受影响。
 	if points > 0 && foeID > 0 {
@@ -216,6 +234,7 @@ func (h *EzfyHandler) accumPvpWeekOnce(week string, uid, foeID uint, nick, corps
 		} else if cur+points > ezfyPvpFoeCap {
 			points = ezfyPvpFoeCap - cur
 		}
+		credited = points
 		h.DB.Exec(`INSERT INTO ezfy_pvp_foe (week, user_id, foe_id, points, battles, updated_at)
 VALUES (?, ?, ?, ?, 1, NOW())
 ON DUPLICATE KEY UPDATE
@@ -236,6 +255,10 @@ ON DUPLICATE KEY UPDATE
   corps = VALUES(corps),
   updated_at = VALUES(updated_at)`,
 		week, uid, nick, corps, wins, kills, losses, points)
+	// ★ 2026-10-16 「我的战绩」场次明细：独立表，战报清理不影响
+	h.DB.Exec(`INSERT INTO ezfy_pvp_detail (week, user_id, foe_id, foe_nick, ts, kills, losses, points, is_win, is_draw, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+		week, uid, foeID, foeNick, ts, kills, losses, credited, wins > 0, draw)
 }
 
 // ezfyPvpRankOn 风云榜统计开关（读 ezfy_cfg_limit.pvp_rank_on，管理端「排行榜 → 风云榜」可开关）。
@@ -326,9 +349,9 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 	atkP := h.ensureProfile(atkUID)
 	defP := h.ensureProfile(defUID)
 	// 攻方
-	h.accumPvpWeekOnce(week, atkUID, defUID, atkP.Nickname, h.pvpCorpsNameOf(atkUID), boolInt64(win), atkKills, atkLosses, atkPts)
+	h.accumPvpWeekOnce(week, atkUID, defUID, atkP.Nickname, defP.Nickname, h.pvpCorpsNameOf(atkUID), now, boolInt64(win), atkKills, atkLosses, atkPts, draw)
 	// 守方：攻方败且非平局 = 守方胜；平局双方都不算胜
-	h.accumPvpWeekOnce(week, defUID, atkUID, defP.Nickname, h.pvpCorpsNameOf(defUID), boolInt64(!win && !draw), defKills, defLosses, defPts)
+	h.accumPvpWeekOnce(week, defUID, atkUID, defP.Nickname, atkP.Nickname, h.pvpCorpsNameOf(defUID), now, boolInt64(!win && !draw), defKills, defLosses, defPts, draw)
 }
 
 func boolInt64(b bool) int64 {
@@ -344,6 +367,43 @@ func pvpWinRate(wins, battles int64) float64 {
 		return 0
 	}
 	return float64(100*wins) / float64(battles)
+}
+
+// PvpRankDetail GET /games/ezfy/rank/pvp/detail?week=&page=&size= 玩家端「我的战绩」场次明细（分页倒序）。
+//
+// ★ 2026-10-16：战报会定期清理，明细存独立表 ezfy_pvp_detail，历史照查。
+// 返回 list（按时间倒序）：ts/ts_fmt/foe_nick/points(本场实际入账)/kills/losses/is_win/is_draw，
+// 外加 total/page/size 供前端分页。
+func (h *EzfyHandler) PvpRankDetail(c *gin.Context) {
+	h.cfgs()
+	uid := middleware.GetUID(c)
+	week := c.Query("week")
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 50 {
+		size = 20
+	}
+	q := h.DB.Model(&model.EzfyPvpDetail{}).Where("week = ? AND user_id = ?", week, uid)
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyPvpDetail
+	q.Order("ts DESC, id DESC").Offset((page - 1) * size).Limit(size).Find(&rows)
+	list := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		list = append(list, gin.H{
+			"ts": r.Ts, "ts_fmt": time.UnixMilli(r.Ts).Format("01-02 15:04"),
+			"foe_nick": r.FoeNick, "points": r.Points,
+			"kills": r.Kills, "losses": r.Losses,
+			"is_win": r.IsWin, "is_draw": r.IsDraw,
+		})
+	}
+	resp.OK(c, gin.H{"list": list, "total": total, "page": page, "size": size})
 }
 
 // PvpRank GET /games/ezfy/rank/pvp?week=… 玩家端风云榜（周榜）。

@@ -814,6 +814,27 @@ type EzfyPvpWeek struct {
 
 func (EzfyPvpWeek) TableName() string { return "ezfy_pvp_week" }
 
+// EzfyPvpDetail 风云榜「我的战绩」场次明细（★ 2026-10-16 玩家端可看每场加了多分）。
+//
+// 每场玩家对战结算时，攻守双方**各写一条**（points = 本场实际入账积分，封顶/门槛/同对手上限之后的值，0 也记——玩家看得明明白白）。
+// 独立于战报表：战报会定期清理，明细表不受影响，历史照查。
+type EzfyPvpDetail struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Week      string    `gorm:"type:varchar(17);index:uk_pvp_detail;comment:自然周 20060102-20060102" json:"week"`
+	UserID    uint      `gorm:"index:uk_pvp_detail;comment:玩家ID" json:"user_id"`
+	FoeID     uint      `gorm:"comment:对手玩家ID" json:"foe_id"`
+	FoeNick   string    `gorm:"type:varchar(20);comment:对手昵称快照(结算时)" json:"foe_nick"`
+	Ts        int64     `gorm:"comment:战斗时间(毫秒)" json:"ts"`
+	Kills     int64     `gorm:"default:0;comment:本场灭敌(原始数量，展示口径)" json:"kills"`
+	Losses    int64     `gorm:"default:0;comment:本场战损(原始数量，展示口径)" json:"losses"`
+	Points    int64     `gorm:"default:0;comment:本场入账积分(0 也记)" json:"points"`
+	IsWin     bool      `gorm:"comment:本场胜" json:"is_win"`
+	IsDraw    bool      `gorm:"comment:本场平局" json:"is_draw"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
+}
+
+func (EzfyPvpDetail) TableName() string { return "ezfy_pvp_detail" }
+
 // EzfyPvpFoe 风云榜「同对手对战积分」记录（★ 2026-10-14 防小号互刷）
 //
 // 同一自然周内，同一玩家与**同一对手**对战的积分累计封顶（ezfyPvpFoeCap）：

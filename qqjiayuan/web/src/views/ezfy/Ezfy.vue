@@ -687,6 +687,8 @@ export default {
       showPowerRow: -1,
       // ★ 2026-10-14 风云榜中「积分」点击展开明细的行 rank（-1 = 收起），与战力榜同款交互
       showPvpRow: -1,
+      // ★ 2026-10-16 风云榜「我的战绩」场次明细（分页倒序，独立表——战报会周期性清理，明细留存）
+      pvpDetail: { show: false, loading: false, list: [], total: 0, page: 1, size: 20, week: '' },
       orders: [],
       buildZone: 'm',
       buildSel: null,
@@ -3864,6 +3866,43 @@ export default {
       api.get('/games/ezfy/rank/pvp' + q).then(r => {
         if (r.code === 0) this.pvpRank = r.data
       }).finally(() => { this.pvpLoading = false })
+    },
+    // ★ 2026-10-16 风云榜「我的战绩」场次明细：打开（本周）并加载第 1 页
+    openPvpDetail () {
+      const d = this.pvpDetail
+      if (!this.pvpRank || !this.pvpRank.mine) return
+      d.week = this.pvpRank.week || ''
+      d.page = 1
+      d.total = 0
+      d.list = []
+      d.show = true
+      this.loadPvpDetail()
+    },
+    // ★ 2026-10-16 拉取当前页场次明细（分页倒序）
+    loadPvpDetail () {
+      const d = this.pvpDetail
+      if (d.loading || !d.week) return
+      d.loading = true
+      const q = '?week=' + encodeURIComponent(d.week) + '&page=' + d.page + '&size=' + d.size
+      api.get('/games/ezfy/rank/pvp/detail' + q).then(r => {
+        if (r.code === 0 && r.data) {
+          d.list = r.data.list || []
+          d.total = r.data.total || 0
+          if (r.data.page > 1 && d.list.length === 0) { // 翻过头（数据刚被清）→ 回到末页重拉
+            d.page = r.data.page - 1
+            this.loadPvpDetail()
+          }
+        }
+      }).finally(() => { d.loading = false })
+    },
+    // 场次明细翻页（step = ±1）
+    pvpDetailPage (step) {
+      const d = this.pvpDetail
+      const pages = Math.max(1, Math.ceil(d.total / d.size))
+      const p = d.page + step
+      if (p < 1 || p > pages) return
+      d.page = p
+      this.loadPvpDetail()
     },
     // ★ 2026-09-28 军衔晋升：声望达标 + 背包宝物足够才能点[晋升]
     canPromote () {

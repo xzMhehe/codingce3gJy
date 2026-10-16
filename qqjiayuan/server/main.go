@@ -151,6 +151,8 @@ func main() {
 		timedStep("EnsureEzfyPvpWeekTable", func() { seed.EnsureEzfyPvpWeekTable(homeDB) })
 		// ★ 2026-10-14 风云榜同对手积分封顶表（防小号互刷）：同 hazard，幂等补建。
 		timedStep("EnsureEzfyPvpFoeTable", func() { seed.EnsureEzfyPvpFoeTable(homeDB) })
+		// ★ 2026-10-16 风云榜「我的战绩」场次明细表：同 hazard，幂等补建（战报会删，明细独立留存）。
+		timedStep("EnsureEzfyPvpDetailTable", func() { seed.EnsureEzfyPvpDetailTable(homeDB) })
 		// ★ 2026-10-14 风云榜「不参与排名」名单表：同 hazard，幂等补建。
 		timedStep("EnsureEzfyPvpExcludeTable", func() { seed.EnsureEzfyPvpExcludeTable(homeDB) })
 		// ★ 2026-10-14 奖池 min_draws 列：存量库 AutoMigrate 可能漏加，skip 分支 HasColumn 幂等补。
