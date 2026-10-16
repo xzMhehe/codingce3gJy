@@ -97,6 +97,9 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	EnsureEzfyBattleLockColumns(db)
 	EnsureEzfyExchangeColumns(db)
 	EnsureEzfyOrderColumns(db)
+	// ★ 2026-10-16 榜单排除名单拆成「风云榜/战力榜/军衔声望榜」三份：加 board 列、
+	//   删老唯一索引、一次性把老记录复制到另外两榜（幂等，带 settings 标记位）。
+	EnsureEzfyPvpExcludeTable(db)
 	// ★ 道具 cfg_id 改号必须跑在 seed 之前：种子里的道具已按新号 1001+ 写
 	if err := EnsureEzfyItemIDsHighRange(db); err != nil {
 		log.Fatalf("二战库道具改号失败: %v", err)

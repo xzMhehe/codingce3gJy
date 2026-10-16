@@ -80,6 +80,76 @@ func TestPvpExcludeAppliedToRankQuery(t *testing.T) {
 	}
 }
 
+// TestPvpExcludeBoardsIndependent —— 防回归：三个榜的「不参与排名」名单必须**互相独立**。
+//
+// 背景（2026-10-16 用户）：「风云榜和战力榜、军衔声望榜 都可以单独不参与排名，现在公用一个不对」。
+// 实现：ezfy_pvp_exclude.board = pvp / power / prestige，三份名单各查各的。
+//
+// 风险：日后有人图省事把 board 参数去掉（又退回一份共用名单）—— 表现很隐蔽：
+// 在风云榜标记的玩家会莫名从战力榜/军衔声望榜消失，运营要查半天。
+// 所以这里断言：
+//  1. 两个查询函数签名带 board，且 SQL 里有 board 条件；
+//  2. 三处调用点分别传 ezfyBoardPvp / ezfyBoardPower / ezfyBoardPrestige（不是同一个）；
+//  3. 模型里有 board 列 + 复合唯一键（同一玩家能在三个榜各排一次）；
+//  4. 建表迁移有**一次性标记位**（否则每次重启会把「只在风云榜排除」的记录又复制到另外两榜）。
+func TestPvpExcludeBoardsIndependent(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("读 %s 失败: %v", p, err)
+		}
+		return string(b)
+	}
+
+	pvpSrc := read(filepath.Join(".", "ezfy_pvp_rank.go"))
+	for _, sig := range []string{"func pvpExcludedSet(db *gorm.DB, board string)", "func pvpExcludedRows(db *gorm.DB, board string)"} {
+		body := funcBody(pvpSrc, sig)
+		if body == "" {
+			t.Fatalf("找不到 %s 函数体（榜单名单必须按 board 隔离）", sig)
+		}
+		if !strings.Contains(body, "board = ?") {
+			t.Fatalf("%s 没在 SQL 里按 board 过滤 —— 三个榜会互相影响", sig)
+		}
+	}
+
+	// 调用点：玩家端 / 管理端三个榜各传自己的 board
+	callers := map[string][]string{
+		filepath.Join(".", "ezfy_api.go"):        {"pvpExcludedSet(h.DB, ezfyBoardPower)", "pvpExcludedSet(h.DB, ezfyBoardPrestige)"},
+		filepath.Join(".", "ezfy_admin_rank.go"): {"pvpExcludedSet(h.DB, ezfyBoardPower)", "pvpExcludedSet(h.DB, ezfyBoardPrestige)", "pvpExcludedRows(h.DB, ezfyBoardPvp)"},
+	}
+	for path, wants := range callers {
+		src := read(path)
+		for _, w := range wants {
+			if !strings.Contains(src, w) {
+				t.Fatalf("%s 里找不到 %q —— 榜单名单没按 board 分开", filepath.Base(path), w)
+			}
+		}
+	}
+
+	// 模型：board 列 + 复合唯一键
+	modelSrc := read(filepath.Join("..", "..", "model", "ezfy.go"))
+	ms := funcBody(modelSrc, "type EzfyPvpExclude struct {")
+	if ms == "" {
+		t.Fatal("找不到 model.EzfyPvpExclude 定义")
+	}
+	if !strings.Contains(ms, "Board") || !strings.Contains(ms, "uk_excl_board_user") {
+		t.Fatal("EzfyPvpExclude 缺 board 列 / 复合唯一键 uk_excl_board_user")
+	}
+
+	// 迁移：一次性标记位（防「启动迁移重跑」把单独取消的设置冲掉）
+	seedSrc := read(filepath.Join("..", "..", "seed", "seed.go"))
+	sb := funcBody(seedSrc, "func EnsureEzfyPvpExcludeTable(")
+	if sb == "" {
+		t.Fatal("找不到 seed.EnsureEzfyPvpExcludeTable 函数体")
+	}
+	if !strings.Contains(sb, "ezfyPvpExcludeBoardMigratedKey") {
+		t.Fatal("EnsureEzfyPvpExcludeTable 没有一次性标记位 —— 每次重启都会把已取消的排除复制回来")
+	}
+	if !strings.Contains(sb, "uk_pvp_exclude_user") {
+		t.Fatal("EnsureEzfyPvpExcludeTable 没删老唯一索引 uk_pvp_exclude_user —— 同一玩家无法在第二个榜标记")
+	}
+}
+
 // funcBody 粗略取出 Go 函数体（从 signature 起，按大括号配平到函数结束）。
 // 只在测试里做静态检查用，遇到字符串/注释里的括号可能失真 —— 对本文件足够。
 func funcBody(src, sig string) string {

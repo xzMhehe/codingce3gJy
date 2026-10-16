@@ -63,6 +63,9 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_equipment", []string{"user_id", "original_user_id"}},
 	{"ezfy_user_chest", []string{"user_id"}},
 	{"ezfy_user_chest_pity", []string{"user_id"}},
+	// ★ 2026-10-16 补漏：开箱流水（2026-10-16 新增的 ezfy_chest_logs）有 user_id，属玩家数据，
+	//   删号必须一并清掉（漏表护栏 TestEzfyPlayerPurgeCoversAllTables 报出来的）。
+	{"ezfy_chest_logs", []string{"user_id"}},
 	{"ezfy_user_tech", []string{"user_id"}},
 	{"ezfy_sign", []string{"user_id"}},
 	{"ezfy_treasure_sign", []string{"user_id"}},
@@ -95,6 +98,11 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_pvp_week", []string{"user_id"}},
 	{"ezfy_pvp_foe", []string{"user_id", "foe_id"}},
 	{"ezfy_pvp_exclude", []string{"user_id"}},
+	// ★ 2026-10-16 补漏：风云榜「我的战绩」场次明细（2026-10-16 新增的 ezfy_pvp_detail）——
+	//   漏表护栏 TestEzfyPlayerPurgeCoversAllTables 报出来的。
+	//   ★ 只按 user_id 清（**不清 foe_id**）：这张表是「谁的战绩明细」，按 foe_id 清会把
+	//     **别人**的历史记录删掉；对手名在表里已是快照(foe_nick)，留着不影响。
+	{"ezfy_pvp_detail", []string{"user_id"}},
 }
 
 // ezfyPurgeByCity 按**城市**归属的表（占位值 = 该玩家的城池 id 列表）。

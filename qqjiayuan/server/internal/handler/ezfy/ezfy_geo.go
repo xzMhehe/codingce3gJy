@@ -364,6 +364,19 @@ func ezfyHasNavalTroops(units []ezfyUnitGroup) bool {
 	return false
 }
 
+// ezfyHasAirTroops 出征部队里是否含有空军兵种（兵种 type=3：侦察机/歼击机/轰炸机/特种兵）。
+//
+// ★ 2026-10-16 出征预览「提速」清单用：喷气引擎(科技19)只加速空军，
+//   部队不含空军时不该把它列出来（否则玩家以为它在生效）。
+func ezfyHasAirTroops(units []ezfyUnitGroup) bool {
+	for _, u := range units {
+		if c := ezfyCfg.troop(u.TroopId); c != nil && c.Type == ezfyTroopTypeAir {
+			return true
+		}
+	}
+	return false
+}
+
 // ezfyNavalTargetAllowed 海军兵种可出征的目标地形。
 //
 // ★ 2026-10-02 用户规则：海军只能用于「岛屿(7)/海底森林(海洋8)/沿海平原(9)」

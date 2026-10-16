@@ -1935,9 +1935,18 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 			panic(r)
 		}
 	}()
-	// 声望榜
+	// 声望榜（★ 2026-10-16 「不参与排名」名单下推到 SQL：管理端「排行榜→军衔声望榜」操作列
+	//   维护的是**这一榜自己**的名单；过滤放在 LIMIT 之前，避免「先截 20 条再筛」缺人）
 	var profiles []model.EzfyProfile
-	h.DB.Order("prestige DESC").Limit(20).Find(&profiles)
+	prestigeQ := h.DB.Order("prestige DESC")
+	if exSet := pvpExcludedSet(h.DB, ezfyBoardPrestige); len(exSet) > 0 {
+		ids := make([]uint, 0, len(exSet))
+		for id := range exSet {
+			ids = append(ids, id)
+		}
+		prestigeQ = prestigeQ.Where("user_id NOT IN ?", ids)
+	}
+	prestigeQ.Limit(20).Find(&profiles)
 	prestigeRank := []gin.H{}
 	for i, p := range profiles {
 		prestigeRank = append(prestigeRank, gin.H{"rank": i + 1, "name": p.Nickname, "user_id": p.UserID,
@@ -2088,8 +2097,10 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 		arr = append(arr, v)
 	}
 	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
-	// ★ 2026-10-15 战力榜「不参与排名」：与风云榜共用同一份排除名单（排除后重新排名，用户端/管理端同口径）
-	if exSet := pvpExcludedSet(h.DB); len(exSet) > 0 {
+	// ★ 2026-10-15 战力榜「不参与排名」：管理端「排行榜→战力榜」操作列维护
+	// ★ 2026-10-16 只读**战力榜自己那一份**名单（风云榜/军衔声望榜各有独立名单，互不影响）；
+	//   排除后重新排名（用户端/管理端同口径）。
+	if exSet := pvpExcludedSet(h.DB, ezfyBoardPower); len(exSet) > 0 {
 		keep := make([]*pw, 0, len(arr))
 		for _, e := range arr {
 			if exSet[uint(e.uid)] {
@@ -2127,50 +2138,58 @@ func (h *EzfyHandler) Rank(c *gin.Context) {
 			"power": int64(e.power), "tech_power": int64(e.tech),
 			"build_power": int64(e.build), "troop_power": int64(e.troop)})
 	}
-	// 军团榜
+	// 军团榜（★ 2026-10-16 改为「按战力排名」）
+	//   军团战力 = Σ 该团成员战力，成员战力口径与上面的战力榜**完全一致**
+	//   （直接复用已算好的 all 表，0 额外查询；不再用成员声望合计）。
+	//   ★ 必须取**全部军团**再排序：原来 `ORDER BY member_count LIMIT 20` 是先在
+	//     「人数最多的 20 个团」里取候选，改成战力口径后会漏掉战力高但人数少的团。
+	//   ★ 并列时人数多者在前；「不参与排名」名单只作用于个人战力榜，不剔除军团成员
+	//     （否则军团战力 ≠ 其成员战力之和）。
 	var corps []model.EzfyCorps
-	// 排序仍按计数字段（只影响顺序），展示用实时人数
-	h.DB.Order("member_count DESC").Limit(20).Find(&corps)
+	h.DB.Find(&corps)
 	rankIds := make([]int64, 0, len(corps))
 	for _, cp := range corps {
 		rankIds = append(rankIds, int64(cp.ID))
 	}
 	rankCounts := h.corpsMemberCountMap(rankIds)
 	// ★ 2026-10-03 性能：原实现逐军团查成员、逐成员 ensureProfile（N+1，数十次 RDS 往返），
-	//   照搬 CorpsList 的批量模式：一次查全部成员 + 一次批量查档案，固定 2 次往返。
+	//   照搬 CorpsList 的批量模式：一次查全部成员，固定 1 次往返。
 	memberByCorps := map[int64][]model.EzfyCorpsMember{}
-	needUIDs := map[uint]bool{}
 	if len(rankIds) > 0 {
 		var members []model.EzfyCorpsMember
 		h.DB.Where("corps_id IN ?", rankIds).Find(&members)
 		for _, m := range members {
 			memberByCorps[int64(m.CorpsId)] = append(memberByCorps[int64(m.CorpsId)], m)
-			needUIDs[m.UserId] = true
 		}
 	}
+	type corpsPw struct {
+		cp    model.EzfyCorps
+		power float64
+		cnt   int64
+	}
+	allCorps := make([]corpsPw, 0, len(corps))
 	for _, cp := range corps {
-		needUIDs[cp.LeaderUserId] = true
-	}
-	corpsProfileByUID := map[uint]model.EzfyProfile{}
-	if len(needUIDs) > 0 {
-		uids := make([]uint, 0, len(needUIDs))
-		for u := range needUIDs {
-			uids = append(uids, u)
-		}
-		var ps []model.EzfyProfile
-		h.DB.Where("user_id IN ?", uids).Find(&ps)
-		for _, p := range ps {
-			corpsProfileByUID[p.UserID] = p
-		}
-	}
-	corpsRank := []gin.H{}
-	for i, cp := range corps {
-		score := 0
+		var sum float64
 		for _, m := range memberByCorps[int64(cp.ID)] {
-			score += corpsProfileByUID[m.UserId].Prestige
+			if e := all[int64(m.UserId)]; e != nil {
+				sum += e.power
+			}
 		}
-		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": cp.Name,
-			"member_count": rankCounts[int64(cp.ID)], "battle_score": score})
+		allCorps = append(allCorps, corpsPw{cp: cp, power: sum, cnt: rankCounts[int64(cp.ID)]})
+	}
+	sort.Slice(allCorps, func(i, j int) bool {
+		if allCorps[i].power != allCorps[j].power {
+			return allCorps[i].power > allCorps[j].power
+		}
+		return allCorps[i].cnt > allCorps[j].cnt
+	})
+	corpsRank := []gin.H{}
+	for i, e := range allCorps {
+		if i >= 20 {
+			break
+		}
+		corpsRank = append(corpsRank, gin.H{"rank": i + 1, "name": e.cp.Name,
+			"member_count": e.cnt, "power": int64(e.power)})
 	}
 	// 军衔表（★ 含「可建城数」一列，与 model.EzfyCfgRank 一致；2026-09-28 新增「宝物」列）
 	ranks := []gin.H{}

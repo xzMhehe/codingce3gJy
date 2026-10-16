@@ -259,7 +259,7 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"week": week, "weeks": weeks, "ranks": ranks,
 		"enabled":  ezfyPvpRankOn(),
-		"excluded": pvpExcludedRows(h.DB),
+		"excluded": pvpExcludedRows(h.DB, ezfyBoardPvp),
 	})
 }
 
@@ -288,17 +288,29 @@ func (h *EzfyAdmin) AdminEzfyPvpRankToggle(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "风云榜统计已关闭（不再统计新的玩家对战战绩）", "on": 0})
 }
 
-// AdminEzfyPvpExclude POST /admin/ezfy-pvp-rank/exclude，body: {user_id, reason}。
+// AdminEzfyPvpExclude POST /admin/ezfy-pvp-rank/exclude，body: {user_id, reason, board}。
 //
 // ★ 2026-10-14 风云榜「操作列」：[不参与排名] —— 把该玩家加入排除名单，
 //   榜单不再展示 TA 的名次（历史战绩数据保留，从名单移除即恢复）。
+// ★ 2026-10-16 用户需求「风云榜和战力榜、军衔声望榜都可以单独不参与排名」：
+//   加 board（pvp/power/prestige）→ 三个榜各存一份**互不影响**的名单；
+//   不传 board 时按 pvp 处理（兼容老调用）。
 func (h *EzfyAdmin) AdminEzfyPvpExclude(c *gin.Context) {
 	var in struct {
 		UserID uint   `json:"user_id"`
 		Reason string `json:"reason"`
+		Board  string `json:"board"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.UserID == 0 {
 		resp.ParamError(c, "请选择玩家")
+		return
+	}
+	board := strings.TrimSpace(in.Board)
+	if board == "" {
+		board = ezfyBoardPvp
+	}
+	if board != ezfyBoardPvp && board != ezfyBoardPower && board != ezfyBoardPrestige {
+		resp.ParamError(c, "榜单类型不正确")
 		return
 	}
 	// 昵称：优先取二战档案（写榜用的就是它），没有则从家园库补
@@ -311,11 +323,11 @@ func (h *EzfyAdmin) AdminEzfyPvpExclude(c *gin.Context) {
 		nick, _ = h.ezfyAdminName(in.UserID)
 	}
 	reason := trimStr(strings.TrimSpace(in.Reason), 100)
-	// upsert：重复标记只更新原因/昵称，不报错
-	if err := h.DB.Exec(`INSERT INTO ezfy_pvp_exclude (user_id, nickname, reason, created_at, updated_at)
-VALUES (?, ?, ?, NOW(), NOW())
+	// upsert：重复标记只更新原因/昵称，不报错（唯一键 = board + user_id）
+	if err := h.DB.Exec(`INSERT INTO ezfy_pvp_exclude (user_id, board, nickname, reason, created_at, updated_at)
+VALUES (?, ?, ?, ?, NOW(), NOW())
 ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), reason = VALUES(reason), updated_at = VALUES(updated_at)`,
-		in.UserID, nick, reason).Error; err != nil {
+		in.UserID, board, nick, reason).Error; err != nil {
 		resp.ParamError(c, "操作失败："+err.Error())
 		return
 	}
@@ -323,10 +335,13 @@ ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), reason = VALUES(reason), up
 	if shown == "" {
 		shown = strconv.Itoa(int(in.UserID))
 	}
-	resp.OK(c, gin.H{"msg": "已把「" + shown + "」设为不参与排名（榜单不再展示 TA）"})
+	resp.OK(c, gin.H{"msg": "已把「" + shown + "」设为「" + ezfyBoardName(board) + "」不参与排名（该榜不再展示 TA）"})
 }
 
-// AdminEzfyPvpExcludeRemove DELETE /admin/ezfy-pvp-rank/exclude/:id —— 从排除名单移除（恢复参与排名）。
+// AdminEzfyPvpExcludeRemove DELETE /admin/ezfy-pvp-rank/exclude/:id —— 从排除名单移除（该榜恢复参与排名）。
+//
+// ★ 2026-10-16 三榜名单独立：删的是**这一条**（board+user_id），只让该玩家在**这一榜**恢复，
+//   另外两个榜若也有记录则不受影响（前端按当前 tab 的名单展示，不会误删别的榜）。
 func (h *EzfyAdmin) AdminEzfyPvpExcludeRemove(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if id <= 0 {
@@ -346,7 +361,7 @@ func (h *EzfyAdmin) AdminEzfyPvpExcludeRemove(c *gin.Context) {
 	if shown == "" {
 		shown = strconv.Itoa(int(row.UserID))
 	}
-	resp.OK(c, gin.H{"msg": "已恢复「" + shown + "」参与排名"})
+	resp.OK(c, gin.H{"msg": "已恢复「" + shown + "」参与「" + ezfyBoardName(row.Board) + "」排名"})
 }
 
 // AdminEzfyPowerRank 管理端战力榜（GET /admin/ezfy-power-rank?page=&size=&word=）。
@@ -491,8 +506,9 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	}
 	sort.Slice(arr, func(i, j int) bool { return arr[i].power > arr[j].power })
 
-	// ★ 2026-10-15 战力榜「不参与排名」：与风云榜共用同一份排除名单（排除后重新排名，与风云榜口径一致）
-	exSet := pvpExcludedSet(h.DB)
+	// ★ 2026-10-15 战力榜「不参与排名」；★ 2026-10-16 改为**只读战力榜自己那一份**名单
+	//   （风云榜/军衔声望榜各有独立名单，互不影响）
+	exSet := pvpExcludedSet(h.DB, ezfyBoardPower)
 	ranked := make([]*pw, 0, len(arr))
 	for _, e := range arr {
 		if exSet[uint(e.uid)] {
@@ -554,6 +570,7 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
+		"excluded": pvpExcludedRows(h.DB, ezfyBoardPower),
 		"usage": "战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径"})
 }
 
@@ -561,8 +578,7 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 //
 // ★ 2026-10-15 用户需求「管理系统 → 排行榜：把军衔声望榜也放到这里面，然后也可以不参与排名」：
 //   - 口径与玩家端 /rank 的「军衔声望榜」一致 —— 按声望(prestige)降序，展示当前军衔名；
-//   - 与战力榜同样剔除「不参与排名」名单（风云榜/战力榜/军衔声望榜共用同一份排除名单，
-//     管理端三处任一标记/恢复都会对三个榜同时生效）；
+//   - 剔除「不参与排名」名单；★ 2026-10-16 起只读**军衔声望榜自己那一份**（三榜名单互相独立）；
 //   - word 支持昵称模糊 / 用户ID 精确（过滤后名次仍保持全服口径，与战力榜一致）。
 func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 	ezfyCfg.load(h.DB) // 军衔名从配置缓存读（与玩家端口径一致）
@@ -572,7 +588,7 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 	// 全量声望排序（玩家端同样按 prestige DESC）；剔除「不参与排名」名单后重排
 	var all []model.EzfyProfile
 	h.DB.Order("prestige DESC").Find(&all)
-	exSet := pvpExcludedSet(h.DB)
+	exSet := pvpExcludedSet(h.DB, ezfyBoardPrestige)
 	ranked := make([]model.EzfyProfile, 0, len(all))
 	for _, p := range all {
 		if exSet[p.UserID] {
@@ -638,5 +654,6 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
+		"excluded": pvpExcludedRows(h.DB, ezfyBoardPrestige),
 		"usage": "与游戏内「军衔声望榜」同口径（按声望降序）；已标记「不参与排名」的玩家不参与名次，名次为剔除后的全服排名"})
 }

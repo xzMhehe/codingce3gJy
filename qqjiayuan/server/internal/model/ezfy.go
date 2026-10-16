@@ -871,16 +871,21 @@ type EzfyPvpFoe struct {
 
 func (EzfyPvpFoe) TableName() string { return "ezfy_pvp_foe" }
 
-// EzfyPvpExclude 风云榜「不参与排名」名单（★ 2026-10-14）
+// EzfyPvpExclude 榜单「不参与排名」名单（★ 2026-10-14 风云榜；★ 2026-10-16 拆成三份独立名单）
 //
-// 管理端「排行榜 → 风云榜」页的**操作列**可把某玩家设为「不参与排名」：
-// 之后榜单不再展示 TA 的名次（统计照常不入榜），从名单移除即恢复。
-// 用 upsert 语义（user_id 唯一），删除 = 恢复参与排名。
+// 管理端「排行榜」的三个 tab（风云榜 / 战力榜 / 军衔声望榜）**各自维护一份**名单：
+// Board 区分榜单（pvp / power / prestige），同一玩家可以「风云榜不参与、战力榜照常参与」。
+// upsert 语义（board+user_id 唯一），删除某条 = 该榜恢复参与排名（不影响另两榜）。
+//
+// ★ 老数据（拆分前）没有 board 概念、三个榜共用一份 → 升级时统一落到 pvp，
+//   再由 seed.EnsureEzfyPvpExcludeTable 一次性复制到 power/prestige，
+//   保持「拆分前标一个 = 三个榜都不参与」的既有效果（不让玩家突然出现在另外两个榜上）。
 type EzfyPvpExclude struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserID    uint      `gorm:"uniqueIndex:uk_pvp_exclude_user;comment:玩家ID" json:"user_id"`
-	Nickname  string    `gorm:"type:varchar(20);comment:昵称快照(便于后台识别)" json:"nickname"`
-	Reason    string    `gorm:"type:varchar(100);comment:排除原因(后台备注)" json:"reason"`
+	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID   uint   `gorm:"uniqueIndex:uk_excl_board_user,priority:2;comment:玩家ID" json:"user_id"`
+	Board    string `gorm:"type:varchar(16);not null;default:'pvp';uniqueIndex:uk_excl_board_user,priority:1;comment:榜单类型 pvp风云榜/power战力榜/prestige军衔声望榜" json:"board"`
+	Nickname string `gorm:"type:varchar(20);comment:昵称快照(便于后台识别)" json:"nickname"`
+	Reason   string `gorm:"type:varchar(100);comment:排除原因(后台备注)" json:"reason"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }

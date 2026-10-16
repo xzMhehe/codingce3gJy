@@ -91,7 +91,7 @@
           </table>
           </template>
 
-          <!-- 军团榜 tab -->
+          <!-- 军团榜 tab（★ 2026-10-16 改为按「军团战力」排名：= Σ 成员战力，口径同战力榜） -->
           <template v-if="ezfy.rankTab === 'corps'">
           <div class="panel-title">军团榜</div>
           <table class="ezfy-rank-table">
@@ -101,7 +101,7 @@
             <tr><th>名次</th><th>军团</th><th>人数</th><th>战力</th></tr>
             <tr v-for="r in ezfy.rankData.corps" :key="'rc' + r.rank" :class="ezfy.rankRowCls(r.rank)">
               <td><span class="rank-medal" :class="'m' + r.rank">{{ r.rank }}</span></td>
-              <td><span v-if="r.rank === 1" class="rank-crown">♛</span>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ r.battle_score }}</td>
+              <td><span v-if="r.rank === 1" class="rank-crown">♛</span>{{ r.name }}</td><td>{{ r.member_count }}</td><td>{{ ezfy.fmtN(r.power) }}</td>
             </tr>
           </table>
           </template>

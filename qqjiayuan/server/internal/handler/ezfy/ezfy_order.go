@@ -761,14 +761,14 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	// ★ 2026-10-09 「自己被处于指挥时，指挥里面的兵种不能再出征」：
 	//   本城正在被攻击时，参战兵种集合（供前端禁用数量框 + 提示），与其他查询并行取。
 	var defLocked map[int]bool
-	var dstStationLv int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向驿站规则用）
+	var dstStationLv int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向叠加用）
 	var wg sync.WaitGroup
 	wg.Add(7)
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", uid).Find(&userTechs) }()
 	go func() { defer wg.Done(); stationLv = h.buildingLevel(city.ID, 20) }()
 	go func() {
 		defer wg.Done()
-		// ★ 2026-10-16 与 createOrder 同口径：运输/增援需查目的地城坐标上的运输站（只在货物类订单触发）
+		// ★ 2026-10-16 与 createOrder 同口径：运输/增援要按目的地城运输站等级叠加加成（只在货物类订单触发）
 		if req.OrderType == 5 || req.OrderType == 6 {
 			var dc model.EzfyCity
 			if err := h.DB.Where("x = ? AND y = ?", req.TargetX, req.TargetY).First(&dc).Error; err == nil {
@@ -823,15 +823,16 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	}
 	if distance > 0 {
 		// ★ 2026-10-05 科技/指挥室/带队军官来自上方并行块（零额外查询）；带队军官只查一次
+		//   ★★ 2026-10-16 删除「侦察技巧(科技12)×2%/级」这一级：侦察技巧只加军情情报等级，
+		//   不加速行军。真正加速行军的是 燃烧引擎(科技10，通用) + 喷气引擎(科技19，空军)，
+		//   它们已折进上面的 ezfyMarchSpeed，不需要在这里再除一次。
 		travelSec = int64(distance) * 60 * 300 / int64(marchSpeed)
-		travelSec = travelSec * 100 / int64(100+techMap[12]*2)
-		// ★★ 2026-10-16 与 createOrder 完全同口径的「双向驿站」规则：
-		//   运输(5)/增援(6) 出发城与目的地城都建有运输站才减时，加成等级只按出发城运输站
-		//   （每级+3%）；目的地站只是门槛；单边有站不生效；其余出征类型维持出发城加成。
+		// ★★ 2026-10-16 运输站「双向叠加」（玩家确认修正）：运输(5)/增援(6) 出发城与
+		//   目的地城的运输站等级**相加**（每级 +3%，两个满级 = +60%）；
+		//   其余出征类型（侦查/掠夺/征服/采集/派遣等）维持「只算出发城运输站」。
+		//   目的地城没建运输站 / 查不到 → dstStationLv=0，自动退化为只算出发城。
 		if req.OrderType == 5 || req.OrderType == 6 {
-			if stationLv < 1 || dstStationLv < 1 {
-				stationLv = 0
-			}
+			stationLv += dstStationLv
 		}
 		travelSec = travelSec * 100 / int64(100+stationLv*3)
 		// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配，与 createOrder 同口径）
@@ -874,15 +875,19 @@ func (h *EzfyHandler) OrderPreview(c *gin.Context) {
 	if req.OrderType == 8 && h.dispatchNoCap(uid, city) {
 		capUnlimited = true
 	}
-	// ★ 2026-10-16 加成可视化（玩家反馈"看不出有没有耗时加成"）：把耗时提速清单与
-	//   负重装载加成按来源算清楚返回，前端 [计算] 后直接展示；
-	//   引擎科技已折进 marchSpeed 不单列，只列「运输站 / 科技12」两个自适应加成，避免啰嗦。
+	// ★ 2026-10-16 加成可视化（玩家反馈"看不出有没有耗时加成"）：耗时提速清单按**真正生效的
+	//   来源**列 —— 燃烧引擎(科技10，通用)、喷气引擎(科技19，只对空军，部队不含空军时不列)、
+	//   运输站(运输/增援时含目的地城，双向等级叠加)。
+	//   ★ 不再列「科技12 侦察技巧」：它只加军情情报等级，不加速行军。
 	spdBonus := []string{}
 	if s := stationLv * 3; s > 0 {
 		spdBonus = append(spdBonus, fmt.Sprintf("运输站+%d%%", s))
 	}
-	if t12 := techMap[12] * 2; t12 > 0 {
-		spdBonus = append(spdBonus, fmt.Sprintf("科技+%d%%", t12))
+	if t := techMap[10] * 2; t > 0 && len(valid) > 0 {
+		spdBonus = append(spdBonus, fmt.Sprintf("燃烧引擎+%d%%", t))
+	}
+	if t := techMap[19] * 3; t > 0 && ezfyHasAirTroops(valid) {
+		spdBonus = append(spdBonus, fmt.Sprintf("喷气引擎+%d%%", t))
 	}
 	loadPct := techMap[13] * 2 // 科技13「装载技术」：负重 +2%/级
 	resp.OK(c, gin.H{
@@ -1102,7 +1107,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	//   本城是否正在被攻击 + 参战兵种集合，与上面几条查询**并行**取（零额外 RTT）。
 	//   未被攻击时内部只有 1 条 COUNT，命中才补 2 条（rare）。
 	var defLocked map[int]bool
-	var dstStation int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向驿站规则用）
+	var dstStation int // ★ 2026-10-16 目的地城运输站等级（运输5/增援6 双向叠加用）
 	d := h.ezfyLoadCityData(uid, city, cityList,
 		func() {
 			h.DB.Model(&model.EzfyOrder{}).
@@ -1132,7 +1137,7 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			}
 		},
 		func() { defLocked = h.cityDefendLocked(city.ID) },
-		// ★ 2026-10-16 运输站「双向驿站」规则：运输(5)/增援(6) 需目的地城也建有运输站，
+		// ★ 2026-10-16 运输站「双向叠加」：运输(5)/增援(6) 要叠加目的地城运输站等级，
 		//   与前面的建筑/科技等查询并行取目的城坐标上的运输站等级（零额外 RTT）。
 		func() {
 			if orderType == 5 || orderType == 6 {
@@ -1522,14 +1527,12 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 
 	// ★ 2026-10-05 性能：科技/驿站等级走快照（原来 techMap 2 条 + buildingLevel 1 条）
 	station := blv[20]
-	// ★★ 2026-10-16 运输站「双向驿站」规则（玩家确认修正）：运输(5)/增援(6) 必须出发城与
-	//   目的地城**都建有运输站**才减时，加成等级**只按出发城运输站**（每级 +3%）；
-	//   目的地城运输站只是门槛，不参与加成；单边有站不生效。
-	//   其余出征类型（侦查/掠夺/征服/采集/派遣等）维持「出发城运输站」原有加成不变。
+	// ★★ 2026-10-16 运输站「双向叠加」（玩家确认修正，与 /order/preview 同口径）：
+	//   运输(5)/增援(6) 出发城与目的地城的运输站等级**相加**（每级 +3%，两个满级 = +60%）；
+	//   其余出征类型（侦查/掠夺/征服/采集/派遣等）只算出发城运输站。
+	//   目的地城没建运输站 / 查不到 → dstStation=0，自动退化为只算出发城。
 	if orderType == 5 || orderType == 6 {
-		if station < 1 || dstStation < 1 {
-			station = 0
-		}
+		station += dstStation
 	}
 	// ★★ 2026-10-09 行军速度按兵种算（与 /order/preview 共用 ezfyMarchSpeed）：
 	//   燃烧引擎(10)=通用、喷气引擎(19)=只空军、军官速度技能=陆/空/海 —— 原来行军完全不吃科技速度，
@@ -1539,7 +1542,9 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		marchSpeed = 300 // 无可出征部队（如纯运输资源）→ 沿用旧默认速度
 	}
 	travelSec := int64(distance) * 60 * 300 / int64(marchSpeed)
-	travelSec = travelSec * 100 / int64(100+tech[12]*2)
+	// ★★ 2026-10-16 删除「侦察技巧(科技12)×2%/级」这一级（与 /order/preview 同口径）：
+	//   侦察技巧只加军情情报等级，不加速行军；加速行军的是 燃烧引擎(10)/喷气引擎(19)，
+	//   已折进上面的 ezfyMarchSpeed。
 	travelSec = travelSec * 100 / int64(100+station*3)
 	// ★ 2026-09-28 军官军事加成出征速度：每点军事 +0.1%（可配）
 	if lead != nil && lead.Military > 0 {

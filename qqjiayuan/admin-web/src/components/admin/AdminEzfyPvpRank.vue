@@ -65,7 +65,7 @@
           <el-table-column label="操作" width="130" align="center" fixed="right">
             <template slot-scope="{row}">
               <el-button size="mini" type="danger" plain icon="el-icon-remove-outline"
-                         title="不参与排名" @click="openExclude(row)">不参与排名</el-button>
+                         :title="'「' + boardLabel[tab] + '」不参与排名'" @click="openExclude(row)">不参与排名</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -114,11 +114,11 @@
           <el-table-column label="兵种战力" width="110" align="right">
             <template slot-scope="{row}">{{ row.troop_power.toLocaleString() }}</template>
           </el-table-column>
-          <!-- ★ 2026-10-15 战力榜「不参与排名」：与风云榜同一份名单（排除后重新排名） -->
+          <!-- ★ 2026-10-15 战力榜「不参与排名」；★ 2026-10-16 改用**战力榜自己那一份**名单（排除后重新排名） -->
           <el-table-column label="操作" width="130" align="center" fixed="right">
             <template slot-scope="{row}">
               <el-button size="mini" type="danger" plain icon="el-icon-remove-outline"
-                         title="不参与排名" @click="openExclude(row)">不参与排名</el-button>
+                         :title="'「' + boardLabel[tab] + '」不参与排名'" @click="openExclude(row)">不参与排名</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -166,11 +166,11 @@
           <el-table-column label="已建城" width="80" align="center">
             <template slot-scope="{row}">{{ row.city_count }}</template>
           </el-table-column>
-          <!-- ★ 2026-10-15 军衔声望榜「不参与排名」：与风云榜/战力榜共用同一份排除名单 -->
+          <!-- ★ 2026-10-15 军衔声望榜「不参与排名」；★ 2026-10-16 改用**本榜自己那一份**名单 -->
           <el-table-column label="操作" width="130" align="center" fixed="right">
             <template slot-scope="{row}">
               <el-button size="mini" type="danger" plain icon="el-icon-remove-outline"
-                         title="不参与排名" @click="openExclude(row)">不参与排名</el-button>
+                         :title="'「' + boardLabel[tab] + '」不参与排名'" @click="openExclude(row)">不参与排名</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -184,10 +184,11 @@
         </div>
       </template>
 
-      <!-- ★ 2026-10-15 不参与排名名单：风云榜/战力榜/军衔声望榜共用（统一展示，任一榜标记/恢复即三榜同时生效） -->
-      <div class="panel-title">不参与排名（{{ excluded.length }} 人）</div>
-      <el-table :data="excluded" v-loading="loading" stripe border size="mini"
-                :empty-text="'暂无排除玩家'">
+      <!-- ★ 2026-10-16 不参与排名名单：**三个榜各自独立**（切换 tab 看/改的是该榜自己的名单，
+           在风云榜标记不会影响战力榜、军衔声望榜，反之亦然） -->
+      <div class="panel-title">「{{ boardLabel[tab] }}」不参与排名（{{ excludedNow.length }} 人）</div>
+      <el-table :data="excludedNow" v-loading="excludedLoading" stripe border size="mini"
+                :empty-text="'「' + boardLabel[tab] + '」暂无排除玩家'">
         <el-table-column prop="user_id" label="用户ID" width="90" align="center" />
         <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.name || '—' }}</template>
@@ -199,7 +200,7 @@
         <el-table-column label="操作" width="110" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" type="success" plain icon="el-icon-refresh-left"
-                       title="恢复参与排名" @click="removeExclude(row)">恢复排名</el-button>
+                       :title="'恢复参与「' + boardLabel[tab] + '」排名'" @click="removeExclude(row)">恢复排名</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -217,13 +218,17 @@ import api from '../../api'
 //   —— 去掉头部 [刷新]（进页面/切周自动拉数据）；风云榜 tab 加「游戏ID」输入 + [查询]
 //      （后端一次性下发整周全量榜单，查询走前端精确过滤，清空回到全量）。
 // ★ 2026-10-15 用户：把「军衔声望榜」也放进排行榜，且同样支持不参与排名
-//   —— 新增 军衔声望榜 tab（按声望降序、展示当前军衔，口径与玩家端一致）；
-//      排除名单风云榜/战力榜/军衔声望榜三榜共用（任一榜标记/恢复都同时生效）。
+//   —— 新增 军衔声望榜 tab（按声望降序、展示当前军衔，口径与玩家端一致）。
+// ★ 2026-10-16 用户：「风云榜和战力榜、军衔声望榜 都可以单独不参与排名，现在公用一个不对」
+//   —— 排除名单拆成**三份互相独立**（后端 ezfy_pvp_exclude.board = pvp/power/prestige）；
+//      页面下方「不参与排名」列表**只展示当前 tab 那一份**，标记/恢复也只影响该榜。
 export default {
   name: 'AdminEzfyPvpRank',
   data () {
     return {
       tab: 'pvp',
+      // ★ 2026-10-16 榜单中文名（tab 名即 board 名：pvp/power/prestige）
+      boardLabel: { pvp: '风云榜', power: '战力榜', prestige: '军衔声望榜' },
       // ---- 风云榜 ----
       loading: false,
       toggling: false,
@@ -235,7 +240,8 @@ export default {
       pvpPage: 1,
       pvpSize: 10,
       pvpWord: '', // ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家
-      excluded: [],
+      // ★ 2026-10-16 三榜各自的「不参与排名」名单（互不影响）
+      excluded: { pvp: [], power: [], prestige: [] },
       // ---- 战力榜 ----
       powerLoading: false,
       powerPage: 1,
@@ -256,6 +262,16 @@ export default {
     this.loadPvp()
   },
   computed: {
+    // ★ 2026-10-16 当前 tab 对应的榜单名（= 后端 board）
+    board () { return this.tab },
+    // ★ 2026-10-16 页面下方只展示「当前 tab」那一份排除名单
+    excludedNow () { return this.excluded[this.tab] || [] },
+    // ★ 2026-10-16 排除名单表格的 loading 跟随当前 tab（原来固定用风云榜的 loading）
+    excludedLoading () {
+      if (this.tab === 'power') return this.powerLoading
+      if (this.tab === 'prestige') return this.prestigeLoading
+      return this.loading
+    },
     // ★ 2026-10-14 风云榜分页：后端一次性返回整周榜单，这里按页切片展示
     // ★ 2026-10-15 风云榜查询：填了游戏ID 就只展示该玩家（查不到 = 空），清空回到全量榜单
     pvpShown () {
@@ -301,7 +317,8 @@ export default {
           this.weeks = r.data.weeks || []
           this.week = r.data.week
           this.list = r.data.ranks || []
-          this.excluded = r.data.excluded || []
+          // ★ 2026-10-16 三榜名单独立：这里拿到的是「风云榜」那一份
+          this.$set(this.excluded, 'pvp', r.data.excluded || [])
           // 后端 1 = 开 / 0 = 关
           this.enabled = r.data.enabled ? 1 : 0
           if (this.weeks.indexOf(this.week) < 0 && this.week) this.weeks.unshift(this.week)
@@ -309,12 +326,12 @@ export default {
           // ★ 2026-10-15 防「空白页」：接口异常时明确提示，而不是静默一片空白
           this.$message.error(r.msg || '加载排行榜失败')
           this.list = []
-          this.excluded = []
+          this.$set(this.excluded, 'pvp', [])
         }
       }).catch(() => {
         this.$message.error('加载排行榜失败，请检查后端服务')
         this.list = []
-        this.excluded = []
+        this.$set(this.excluded, 'pvp', [])
       }).finally(() => { this.loading = false })
     },
     onToggle (val) {
@@ -328,34 +345,38 @@ export default {
       }).catch(() => { this.enabled = val ? 0 : 1 })
         .finally(() => { this.toggling = false })
     },
+    // ★ 2026-10-16 标记「不参与排名」：带上当前 tab 对应的榜单（board），
+    //   只影响该榜；成功后只刷新当前 tab 的数据（不再三榜齐刷）。
     openExclude (row) {
-      this.$prompt('把「' + (row.name || row.user_id) + '」设为不参与排名？可填原因（选填）。',
-        '不参与排名', { inputPlaceholder: '原因，例如：刷分 / 违规', inputValue: '' })
+      const bn = this.boardLabel[this.tab] || '榜单'
+      this.$prompt('把「' + (row.name || row.user_id) + '」设为「' + bn + '」不参与排名？可填原因（选填）。',
+        bn + ' · 不参与排名', { inputPlaceholder: '原因，例如：刷分 / 违规', inputValue: '' })
         .then(({ value }) => {
-          api.post('/admin/ezfy-pvp-rank/exclude', { user_id: row.user_id, reason: value || '' }).then(r => {
+          api.post('/admin/ezfy-pvp-rank/exclude', { user_id: row.user_id, reason: value || '', board: this.tab }).then(r => {
             if (r.code === 0) {
               this.$message.success(r.data.msg || '已设置')
-              // ★ 2026-10-15 排除名单三个榜共用：同时刷新风云榜/战力榜/军衔声望榜
-              this.loadPvp()
-              this.loadPower()
-              this.loadPrestige()
+              this.reloadCurrent()
             } else this.$message.error(r.msg)
           })
         }).catch(() => {})
     },
     removeExclude (row) {
-      this.$confirm('恢复「' + (row.name || row.user_id) + '」参与排名？', '提示', { type: 'warning' }).then(() => {
-        // 走排除记录的 id（不是 user_id）—— 接口是按记录主键删的
+      const bn = this.boardLabel[this.tab] || '榜单'
+      this.$confirm('恢复「' + (row.name || row.user_id) + '」参与「' + bn + '」排名？', '提示', { type: 'warning' }).then(() => {
+        // 走排除记录的 id（不是 user_id）—— 接口是按记录主键删的（一条记录只属于一个榜）
         api.delete('/admin/ezfy-pvp-rank/exclude/' + row.id).then(r => {
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已恢复')
-            // ★ 2026-10-15 排除名单三个榜共用：同时刷新风云榜/战力榜/军衔声望榜
-            this.loadPvp()
-            this.loadPower()
-            this.loadPrestige()
+            this.reloadCurrent()
           } else this.$message.error(r.msg)
         })
       }).catch(() => {})
+    },
+    // ★ 2026-10-16 只刷新当前 tab（含它自己那份排除名单）
+    reloadCurrent () {
+      if (this.tab === 'power') this.loadPower()
+      else if (this.tab === 'prestige') this.loadPrestige()
+      else this.loadPvp()
     },
     loadPower () {
       this.powerLoading = true
@@ -365,11 +386,12 @@ export default {
         if (r.code === 0) {
           this.powerList = r.data.list || []
           this.powerTotal = r.data.total || 0
+          this.$set(this.excluded, 'power', r.data.excluded || [])
         }
       }).finally(() => { this.powerLoading = false })
     },
     // ★ 2026-10-15 军衔声望榜（新 tab）：按声望降序，与玩家端口径一致；
-    //   管理端剔除「不参与排名」名单后重排，操作列复用 openExclude（共用排除名单）。
+    //   管理端剔除「不参与排名」名单后重排，操作列复用 openExclude（★ 2026-10-16 用本榜自己的名单）。
     loadPrestige () {
       this.prestigeLoading = true
       const params = { page: this.prestigePage, size: this.prestigeSize }
@@ -378,6 +400,7 @@ export default {
         if (r.code === 0) {
           this.prestigeList = r.data.list || []
           this.prestigeTotal = r.data.total || 0
+          this.$set(this.excluded, 'prestige', r.data.excluded || [])
         }
       }).finally(() => { this.prestigeLoading = false })
     }

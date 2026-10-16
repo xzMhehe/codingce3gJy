@@ -120,6 +120,10 @@ func Run(db *gorm.DB, staticDir string) {
 		if err := db.AutoMigrate(ezfyMigrateModels...); err != nil {
 			log.Fatalf("二战建表失败: %v", err)
 		}
+		// ★ 2026-10-16 榜单「不参与排名」名单拆成三份：AutoMigrate 只会加 board 列，
+		//   **不会删老唯一索引**（只锁 user_id）——不删的话同一玩家在第二个榜标记直接撞唯一键。
+		//   这里补上「删老索引 + 一次性复制老记录到另外两榜」（幂等）。
+		EnsureEzfyPvpExcludeTable(db)
 	}
 	// 二战风云：道具库存列是后加的，老行回填默认 100
 	if db.Migrator().HasTable("ezfy_cfg_item") {
@@ -2999,12 +3003,55 @@ func EnsureEzfyPvpFoeTable(db *gorm.DB) {
 	}
 }
 
-// EnsureEzfyPvpExcludeTable 幂等补建 ezfy_pvp_exclude 表（★ 2026-10-14 风云榜「不参与排名」名单）。
+// ezfyPvpExcludeBoardMigratedKey 「榜单排除名单拆分」一次性迁移的标记位（settings 表）。
+const ezfyPvpExcludeBoardMigratedKey = "ezfy_pvp_exclude_board_migrated"
+
+// EnsureEzfyPvpExcludeTable 幂等补建/升级 ezfy_pvp_exclude 表。
 //
 // 同 hazard：多机共享库的 skip 分支不跑全量 seed → 不补建则管理端标记「不参与排名」报表不存在。
+// 所以它必须同时挂在 main.go 的 skip 分支和 RunEzfy（独立库）里。
+//
+// ★ 2026-10-14 风云榜「不参与排名」名单。
+// ★ 2026-10-16 拆成「风云榜 / 战力榜 / 军衔声望榜」三份**互相独立**的名单（用户需求：
+// 「风云榜和战力榜、军衔声望榜都可以单独不参与排名，现在公用一个不对」）。
+//
+// 升级动作（全部幂等）：
+//  1. AutoMigrate 加 board 列（老行取默认值 pvp）+ 复合唯一索引 uk_excl_board_user(board,user_id)；
+//  2. **删掉老唯一索引 uk_pvp_exclude_user**（只锁 user_id）——不删的话同一玩家没法在
+//     三个榜各排一次（第二、三条 INSERT 直接撞唯一键）；
+//  3. 一次性把老的「风云榜」记录复制到 power / prestige 两份，保持拆分前
+//     「标一个 = 三个榜都不参与」的既有效果，避免玩家突然出现在战力榜/军衔声望榜上。
+//     ★ 用 settings 标记位保证**只跑一次**：否则每次重启都会把管理员「只在风云榜排除」的
+//     记录又复制回来（把「单独取消某个榜」的设置冲掉）——这正是「启动迁移重跑」那类事故。
 func EnsureEzfyPvpExcludeTable(db *gorm.DB) {
 	if err := db.AutoMigrate(&model.EzfyPvpExclude{}); err != nil {
 		log.Printf("[seed] 补建/更新 ezfy_pvp_exclude 表失败: %v", err)
+		return
+	}
+	// 2) 老唯一索引（只锁 user_id）必须删掉
+	if db.Migrator().HasIndex(&model.EzfyPvpExclude{}, "uk_pvp_exclude_user") {
+		if err := db.Migrator().DropIndex(&model.EzfyPvpExclude{}, "uk_pvp_exclude_user"); err != nil {
+			log.Printf("[seed] 删除 ezfy_pvp_exclude 老唯一索引失败: %v", err)
+		}
+	}
+	// 3) 一次性：老记录（board=pvp）复制到 power / prestige
+	var done int64
+	db.Model(&model.Setting{}).Where("`key` = ?", ezfyPvpExcludeBoardMigratedKey).Count(&done)
+	if done > 0 {
+		return
+	}
+	var rows []model.EzfyPvpExclude
+	db.Where("board = ?", "pvp").Find(&rows)
+	for _, r := range rows {
+		for _, b := range []string{"power", "prestige"} {
+			if err := db.Exec("INSERT IGNORE INTO ezfy_pvp_exclude (user_id, board, nickname, reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+				r.UserID, b, r.Nickname, r.Reason, r.CreatedAt, r.UpdatedAt).Error; err != nil {
+				log.Printf("[seed] 复制排除名单到 %s 失败(user=%d): %v", b, r.UserID, err)
+			}
+		}
+	}
+	if err := db.Exec("INSERT IGNORE INTO settings (`key`, `value`) VALUES (?, ?)", ezfyPvpExcludeBoardMigratedKey, "1").Error; err != nil {
+		log.Printf("[seed] 写榜单排除名单迁移标记失败: %v", err)
 	}
 }
 
