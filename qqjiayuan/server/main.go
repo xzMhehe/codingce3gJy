@@ -180,6 +180,13 @@ func main() {
 	// 家园论坛索引（幂等）：原来挂在 EnsureEzfyIndexes 里，二战拆库后必须在家园库上执行。
 	timedStep("EnsureHomeForumIndexes", func() { seed.EnsureHomeForumIndexes(homeDB) })
 
+	// ★★ 2026-10-16 线上事故：`users.session_at`（2026-10-15 token 服务端作废）只在
+	//   seed.Run 的 AutoMigrate 里建列，skip 分支只补 ezfy 侧 → 多机共享库上 users 缺列，
+	//   新用户注册全字段 INSERT 报 `Unknown column 'session_at'`（ERROR 1054）。
+	//   这里在家园库上幂等补**家园全部缺失列**（只 ADD COLUMN，不删不改），
+	//   与 EnsureEzfySchema 同构，任何一台节点重启都会自动补上。
+	timedStep("EnsureHomeSchema", func() { seed.EnsureHomeSchema(homeDB) })
+
 	// 二战独立库：建表 +（首次）自动把家园库里的二战数据整体搬过来 + 灌种子。
 	if seed.EzfyUsesOwnDB {
 		timedStep("RunEzfy", func() { seed.RunEzfy(ezfyDB, homeDB) })

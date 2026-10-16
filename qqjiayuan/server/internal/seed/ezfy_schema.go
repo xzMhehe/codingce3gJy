@@ -113,3 +113,50 @@ func EnsureEzfySchema(db *gorm.DB) {
 		}
 	}
 }
+
+// homeSchemaModels 家园库（非二战）全部需要在 skip 分支补列的表。
+//
+// ⚠️ 与 ezfySchemaModels 同款坑（2026-10-16 注册报 `Unknown column 'session_at'`）：
+//   给 model 加字段后，列只在 `seed.Run` 的 AutoMigrate 里建；多机共享库走
+//   `seed.skip: true` 会跳过整段 seed.Run → 库里永远缺这一列 → 注册/写表
+//   `INSERT` 报 `ERROR 1054 Unknown column`。之前只补了 ezfy 侧，家园 users 的
+//   session_at（2026-10-15 token 服务端作废）漏了 → 新号注册全字段 INSERT 直接报错。
+//   新增家园表 model 时**记得往这里加一笔**。
+var homeSchemaModels = []interface{}{
+	&model.User{}, &model.UserBadge{}, &model.NumHistory{},
+	&model.Friendship{}, &model.FriendGroup{}, &model.FriendGroupItem{}, &model.FriendApply{}, &model.FriendBlack{},
+	&model.PrivateMessage{}, &model.ChatMessage{}, &model.Notification{},
+	&model.Home{}, &model.HomeNews{}, &model.HomeFavorite{}, &model.UserContact{},
+	&model.Invite{}, &model.JwtPlayer{}, &model.JwtItem{}, &model.JwtBag{},
+}
+
+// EnsureHomeSchema 幂等补齐家园库**缺失列**（main.go 的 skip 分支必须调用，见 2026-10-16
+// 注册 `Unknown column 'session_at'` 事故注释）。逻辑与 EnsureEzfySchema 完全一致：
+// 只 ADD COLUMN，不删列不改类型——对线上大表安全（MySQL 8.0 ADD COLUMN 默认 INSTANT）。
+func EnsureHomeSchema(db *gorm.DB) {
+	tables, cols := ezfySchemaCatalog(db)
+	for _, m := range homeSchemaModels {
+		stmt := &gorm.Statement{DB: db}
+		if err := stmt.Parse(m); err != nil {
+			log.Printf("【严重】家园表结构解析失败（补列被跳过）: %v", err)
+			continue
+		}
+		if !tables[stmt.Schema.Table] {
+			continue // 表还没建（全新库走 seed.Run）→ 交给 AutoMigrate
+		}
+		for _, f := range stmt.Schema.Fields {
+			if f.DBName == "" || f.IgnoreMigration {
+				continue
+			}
+			if cols[stmt.Schema.Table][f.DBName] {
+				continue
+			}
+			if err := db.Migrator().AddColumn(m, f.Name); err != nil {
+				log.Printf("【严重】%s.%s 补列失败（该表的写入会报 Unknown column）: %v",
+					stmt.Schema.Table, f.DBName, err)
+				continue
+			}
+			log.Printf("家园补列: %s.%s", stmt.Schema.Table, f.DBName)
+		}
+	}
+}
