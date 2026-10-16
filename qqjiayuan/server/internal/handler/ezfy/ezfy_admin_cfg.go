@@ -505,6 +505,8 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 		OfficerId uint
 		CityId    int64
 		CityName  string
+		X         int32
+		Y         int32
 		UserId    uint
 		Level     int
 		Star      int
@@ -518,16 +520,17 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 	// ★ 2026-10-06 军官改逻辑删除：这里走的是 `Table()` 原生查询，
 	//   GORM 的软删除 scope 不会自动加，必须手写 `deleted_at IS NULL`，否则已删军官会漏出来。
 	// ★★ 2026-10-10 双数据源：`users` 在家园库、`ezfy_*` 在二战库 —— **不能跨库 JOIN**，
-	//   改成「二战库查军官+城池 → 家园库按 user_id 批量取昵称/账号 → 内存合并」。
+	//   改成「二战库查军官+城池 → 家园库按 user_id 批量取昵称/账号/最后登陆 → 内存合并」。
 	h.DB.Table("ezfy_officer o").
-		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.user_id, "+
+		Select("o.id AS officer_id, o.city_id, c.name AS city_name, c.x, c.y, c.user_id, "+
 			"o.level, o.star, o.exp, o.loyalty, o.position, o.status, o.is_captive").
 		Joins("LEFT JOIN ezfy_city c ON c.id = o.city_id").
 		Where("o.general_id = ? AND o.deleted_at IS NULL", id).
 		Order("o.city_id").Scan(&rows)
 
-	// 按 user_id 去家园库补「昵称/账号」（去重后一次 IN 查询）
+	// 按 user_id 去家园库补「昵称/账号/最后登陆」（去重后一次 IN 查询）
 	ownerOf := map[uint]string{}
+	lastOf := map[uint]*time.Time{}
 	seen := map[uint]bool{}
 	uids := make([]uint, 0, len(rows))
 	for _, r := range rows {
@@ -538,13 +541,14 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 	}
 	if len(uids) > 0 {
 		var us []model.User
-		h.home().Select("id, nickname, username").Where("id IN ?", uids).Find(&us)
+		h.home().Select("id, nickname, username, last_login_at").Where("id IN ?", uids).Find(&us)
 		for _, u := range us {
 			nm := u.Nickname
 			if nm == "" {
 				nm = u.Username
 			}
 			ownerOf[u.ID] = nm
+			lastOf[u.ID] = u.LastLoginAt
 		}
 	}
 
@@ -560,9 +564,15 @@ func (h *EzfyAdmin) AdminEzfyGeneralOwners(c *gin.Context) {
 		} else if r.Status == 1 {
 			statusName = "出征中"
 		}
+		// ★ 2026-10-16 拥有者列表补「归属城市坐标 + 玩家最后登陆时间」（家园 users.last_login_at）
+		lastLogin := ""
+		if t, ok := lastOf[r.UserId]; ok && t != nil {
+			lastLogin = t.Format("2006-01-02 15:04:05")
+		}
 		out = append(out, gin.H{
 			"officer_id": r.OfficerId, "officer_city_id": r.CityId, "city_name": r.CityName,
-			"user_id": r.UserId, "owner": owner,
+			"x": r.X, "y": r.Y,
+			"user_id": r.UserId, "owner": owner, "last_login": lastLogin,
 			"level": r.Level, "star": r.Star, "exp": r.Exp, "loyalty": r.Loyalty,
 			"position": r.Position, "position_name": ezfyPositionName(r.Position),
 			"status": r.Status, "status_name": statusName, "is_captive": r.IsCaptive,

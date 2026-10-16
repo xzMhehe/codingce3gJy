@@ -603,6 +603,10 @@
       <el-table :data="ownerRows" v-loading="loadingOwners" stripe border max-height="480">
         <el-table-column prop="owner" label="玩家" min-width="110" show-overflow-tooltip />
         <el-table-column prop="city_name" label="归属城市" width="110" show-overflow-tooltip />
+        <!-- ★ 2026-10-16 拥有者列表补「归属城市坐标」 -->
+        <el-table-column label="城市坐标" width="90" align="center">
+          <template slot-scope="{row}">{{ row.x }},{{ row.y }}</template>
+        </el-table-column>
         <el-table-column label="等级" width="60" align="center">
           <template slot-scope="{row}">{{ row.level }}</template>
         </el-table-column>
@@ -619,6 +623,10 @@
         </el-table-column>
         <el-table-column prop="loyalty" label="忠诚" width="60" align="center" />
         <el-table-column prop="officer_id" label="军官ID" width="70" align="center" />
+        <!-- ★ 2026-10-16 拥有者列表补「玩家最后登陆时间」（家园 users.last_login_at） -->
+        <el-table-column label="最后登陆" width="150" align="center">
+          <template slot-scope="{row}">{{ row.last_login || '—' }}</template>
+        </el-table-column>
       </el-table>
       <div slot="footer">
         <el-button @click="ownerDlg = false">关 闭</el-button>
