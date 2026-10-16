@@ -19,7 +19,7 @@ import (
 //
 // 免战的底层机制与玩家端完全一致：`ezfy_city_effect` 表里 `effect_type=2`（免战保护令）的行，
 // 行上有 `until_time` 到期时间戳、作用在某座城；玩家本人还有 `ezfy_profile.peace_cool_until`
-// 24 小时使用冷却。管理端只管**数据本身**：
+// 使用冷却（时长 = ezfyPeaceCoolH，2026-10-16 起 8 小时）。管理端只管**数据本身**：
 //
 //	· 开始免战 → 给该玩家**全部城池**打上 effect_type=2（until = now + 小时数），
 //	  直接写 `until_time`（覆盖旧的），**不受玩家的 peace_cool_until 冷却限制**；
@@ -142,15 +142,15 @@ func (h *EzfyAdmin) AdminEzfyPeace(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
-// AdminEzfyPeaceStart POST /admin/ezfy-peace/:id/start?hours=24 —— 给该玩家**全部城池**开始免战
+// AdminEzfyPeaceStart POST /admin/ezfy-peace/:id/start?hours=8 —— 给该玩家**全部城池**开始免战
 //
-// id = user_id。hours 默认 24。直接覆盖每座城现有的免战到期时间（= now + hours）。
+// id = user_id。hours 默认 8（与玩家端免战道具时长一致）。直接覆盖每座城现有的免战到期时间（= now + hours）。
 // ★ 不受玩家 peace_cool_until 冷却限制（管理端覆盖）。
 func (h *EzfyAdmin) AdminEzfyPeaceStart(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	hours, _ := strconv.Atoi(c.DefaultQuery("hours", "24"))
+	hours, _ := strconv.Atoi(c.DefaultQuery("hours", "8"))
 	if hours <= 0 {
-		hours = 24
+		hours = 8
 	}
 	var prof model.EzfyProfile
 	if err := h.DB.Where("user_id = ?", id).First(&prof).Error; err != nil {

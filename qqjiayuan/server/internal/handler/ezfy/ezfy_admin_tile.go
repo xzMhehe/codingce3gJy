@@ -154,7 +154,8 @@ func (h *EzfyAdmin) AdminEzfyMapTileCell(c *gin.Context) {
 		cityName = ct.Name
 	}
 	var wl model.EzfyWildland
-	if h.DB.Where("x = ? AND y = ?", x, y).First(&wl).Error == nil {
+	// ★ 2026-10-16 取最新那条（同坐标只应有一条野地记录；兜底见 WildlandView）
+	if h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error == nil {
 		var c2 model.EzfyCity
 		if h.DB.First(&c2, wl.CityId).Error == nil {
 			wildOwner = c2.Name

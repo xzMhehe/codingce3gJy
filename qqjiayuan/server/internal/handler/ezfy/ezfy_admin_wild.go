@@ -585,6 +585,18 @@ func (h *EzfyAdmin) AdminEzfyWildlandCreate(c *gin.Context) {
 	if _, ok := vals["level"]; !ok {
 		vals["level"] = 1
 	}
+	// ★ 2026-10-16 一个坐标只允许一条野地记录（唯一索引 uk_wildland_xy）：
+	//   提前拦下并给管理员一句人话，而不是让 MySQL 抛 1062 Duplicate entry。
+	if x, ok := vals["x"]; ok {
+		if y, ok2 := vals["y"]; ok2 {
+			var n int64
+			h.DB.Model(&model.EzfyWildland{}).Where("x = ? AND y = ?", x, y).Count(&n)
+			if n > 0 {
+				resp.ParamError(c, fmt.Sprintf("坐标(%v,%v)已有野地记录（一个坐标只允许一条），请先删除那条或换坐标", x, y))
+				return
+			}
+		}
+	}
 	if err := h.DB.Model(&model.EzfyWildland{}).Create(vals).Error; err != nil {
 		resp.ParamError(c, "新增失败："+err.Error())
 		return
@@ -609,6 +621,17 @@ func (h *EzfyAdmin) AdminEzfyWildlandUpdate(c *gin.Context) {
 	if len(vals) == 0 {
 		resp.ParamError(c, "无可修改字段")
 		return
+	}
+	// ★ 2026-10-16 同上：改坐标时若目标坐标已有别的野地记录，提前拦下（唯一索引 uk_wildland_xy）
+	if x, ok := vals["x"]; ok {
+		if y, ok2 := vals["y"]; ok2 {
+			var n int64
+			h.DB.Model(&model.EzfyWildland{}).Where("x = ? AND y = ? AND id <> ?", x, y, id).Count(&n)
+			if n > 0 {
+				resp.ParamError(c, fmt.Sprintf("坐标(%v,%v)已有野地记录（一个坐标只允许一条），请先删除那条或换坐标", x, y))
+				return
+			}
+		}
 	}
 	if err := h.DB.Model(&model.EzfyWildland{}).Where("id = ?", id).Updates(vals).Error; err != nil {
 		resp.ParamError(c, "修改失败："+err.Error())

@@ -430,3 +430,44 @@ func (h *EzfyHandler) ezfyWildlandOccupiedCount(targetID, excludeOrderID int64) 
 		Count(&n)
 	return n
 }
+
+// ezfyClearWildlandAt 清掉某坐标上的**全部**野地记录（含历史重复行），返回 (被清掉的行数, 被转返航的部队数)。
+//
+// ★★ 2026-10-16 新增。**一个坐标只允许存在一条野地记录**（归属唯一）——
+//
+//	调用点：① 野地被他人征服占领（`ezfy_order.go` 占领段）；
+//	        ② 主动放弃野地（`AbandonWildland`）。
+//
+// 为什么不能直接 DELETE：野地行上可能挂着**未结束**的采集(4)/驻守(7)部队
+// （`order.target_id = 野地 id`），直接删行会让这些部队的 target_id 悬空
+// → 部队凭空消失 / 结算异常（放弃野地的历史教训，见 AbandonWildland 注释）。
+// 所以先把它们转成返航，再删行。
+//
+// 部队口径与 `ezfyWildlandOccupiedCount` 完全对齐（「算作占用该野地」= 「会被转返航」）：
+// order_type=4 的 status(0,1,5,6,98) + order_type=7 的 status=1。
+func (h *EzfyHandler) ezfyClearWildlandAt(x, y int, now int64) (rows int, orders int) {
+	var olds []model.EzfyWildland
+	h.DB.Where("x = ? AND y = ?", x, y).Find(&olds)
+	if len(olds) == 0 {
+		return 0, 0
+	}
+	ids := make([]int64, 0, len(olds))
+	for i := range olds {
+		ids = append(ids, int64(olds[i].ID))
+	}
+	var gos []model.EzfyOrder
+	h.DB.Where("target_id IN ? AND ((order_type = 4 AND status IN (0,1,5,6,98)) OR (order_type = 7 AND status = 1))", ids).
+		Find(&gos)
+	for i := range gos {
+		o := &gos[i]
+		travel := ezfyOneWayTravel(o)
+		o.Status = 2
+		o.Result = o.Troops
+		o.ReturnTime = now + travel
+		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", o.ID).
+			Updates(map[string]interface{}{"status": 2, "result": o.Result,
+				"return_time": o.ReturnTime, "carry": o.Carry})
+	}
+	h.DB.Where("id IN ?", ids).Delete(&model.EzfyWildland{})
+	return len(olds), len(gos)
+}

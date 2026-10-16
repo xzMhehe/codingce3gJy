@@ -3548,13 +3548,15 @@ func ezfyCityReportCond(cityId int64) string {
 //	删的情况下自己变少甚至归零。这里改单条 SQL 按标题条件聚合全量，与
 //	ezfyReportCategory 的判定规则保持同步（改判定时这里要一起改）。
 //
-// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只统计该城的战报
+// ★★ 2026-10-16 「全部城市」口径（用户要求：战斗报告查询改成查全部、别限制当前城）：
 //
-//	（新战报带 city_id；老攻击战报 city_id=0 按标题坐标反查订单归属城市）。
+//	军情警讯(cat1) 与 战斗报告(cat2) 现在**都按全账号**统计，与列表（Reports 不再按城市过滤）同口径。
+//	于是 cityId 参数不再参与过滤（**签名保留**：/view 等调用点仍按 `ezfyReportCounts(uid, 0)` 调用），
+//	同时**彻底删掉**了老行(city_id=0/NULL) 的 EXISTS 补查 —— 它是 2026-10-11 那次 33s 超时的源头
+//	（详见流水：玩家 35806478 有 1126 行老行未读战报，逐行跑 2 个 EXISTS → 单条 SQL 33 秒，
+//	超过前端 15s 超时 → 徽标和列表一起空）。全城视图下补查已无存在必要。
+//	现在只有**一条**单表聚合（user_id + is_read 索引、无 EXISTS、无 city_id 条件），很快。
 func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
-	// ★ 2026-10-08 性能重构：cityId>0 时原来拼 `OR (EXISTS…)` 让每行都跑相关子查询+LIKE。
-	//   这里把「新行(city_id=X 走索引)」与「老行(city_id=0/NULL 用 EXISTS 补查)」分开统计再相加，
-	//   结果与原来一条 SQL 完全一致，但快路径走索引、老行量小。
 	sumSQL := `SELECT
 			COALESCE(SUM(CASE WHEN title LIKE '军情警报%' OR title LIKE '被侦查报告%'
 				OR title LIKE '城市归还%'
@@ -3563,46 +3565,12 @@ func (h *EzfyHandler) ezfyReportCounts(uid uint, cityId int64) map[int]int {
 				OR title LIKE '战斗报告%' OR title LIKE '征服报告%' OR title LIKE '%战斗报告%'
 				OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%' THEN 1 ELSE 0 END), 0)
 			FROM ezfy_report WHERE user_id = ? AND is_read = 0`
-	run := func(extra string, args ...interface{}) (int, int) {
-		row := h.DB.Raw(sumSQL+extra, append([]interface{}{uid}, args...)...).Row()
-		var a, b int
-		if row != nil {
-			row.Scan(&a, &b)
-		}
-		return a, b
-	}
-	// ★★ 2026-10-11 性能修复（用户报「军情警讯、战斗报告 都查不到 严重bug」）：
-	//   线上实测：玩家 35806478 有 1126 行「city_id=0/NULL 且未读」的战报，老行补查对**每一行**
-	//   跑 2 个 EXISTS（其中 ezfy_order 的 `title LIKE %(...)%` 是全表扫）→ 单条 SQL **33 秒**；
-	//   远超前端 axios 的 15s 超时 → counts 拿不到、reports 同样超时 → 两个 tab 全空。
-	//   修法：**先把行按标题收窄到「军情警讯/战斗报告」这两类**，再跑 EXISTS —— 实测 33s → 0.5s。
-	//   ★ 结果不变：老行(city_id=0)里根本没有这两类标题（都是将领升级/采集/运输等「其他」），
-	//     而且 sumSQL 的 CASE WHEN 本就只对这两类计数，收窄后其余行的贡献本来就是 0。
-	//   ★ 快路径同样加收窄（避免单城战报极多时白扫一堆「其他」类行）。
-	anyTitle := ezfyReportCatCondAny()
+	row := h.DB.Raw(sumSQL, uid).Row()
 	var c1, c2 int
-	if cityId > 0 {
-		// 快路径 + 老行补查：只用来数「战斗报告(cat2)」，军情警讯(cat1) 走下面的全量统计
-		_, a2 := run(" AND city_id = ? AND "+anyTitle, cityId)
-		legacy := fmt.Sprintf(` AND (city_id = 0 OR city_id IS NULL) AND %s AND (
-			EXISTS (
-				SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
-				  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
-			)
-			OR EXISTS (
-				SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
-				  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
-			)
-		)`, anyTitle, cityId, cityId)
-		_, b2 := run(legacy)
-		c2 = a2 + b2
-		// ★★ 2026-10-13 军情警讯(cat1) **不受城市限制** → 徽标数字永远按**全部城市**全量统计，
-		//   与军情警讯列表（Reports 里 category=1 时 city_id 置 0）保持同口径；
-		//   战斗报告(cat2) 仍按当前城。全量统计是单表聚合（user_id+is_read 索引、无 EXISTS），很快。
-		c1, _ = run("")
-	} else {
-		c1, c2 = run("")
+	if row != nil {
+		row.Scan(&c1, &c2)
 	}
+	_ = cityId // ★ 2026-10-16 全城口径，参数保留只为不动调用点签名
 	return map[int]int{1: c1, 2: c2}
 }
 
@@ -3626,44 +3594,19 @@ func (h *EzfyHandler) ReportCounts(c *gin.Context) {
 	})
 }
 
-// mustListConsolidate 把「城市过滤拆开的快路径 + 老行补查」两批报告合并：
-//
-//	按 id 倒序排序、按 id 去重、截断到 200 条。合并出的切片供列表展示。
-func mustListConsolidate(reports *[]model.EzfyReport) {
-	// 先倒序（id DESC），保证「每批各自倒序 + 追加」后整体仍倒序、且限 200 后取的是最新条
-	sort.Slice(*reports, func(i, j int) bool {
-		return (*reports)[i].ID > (*reports)[j].ID
-	})
-	seen := map[uint]bool{}
-	out := make([]model.EzfyReport, 0, len(*reports))
-	for _, r := range *reports {
-		if seen[r.ID] {
-			continue
-		}
-		seen[r.ID] = true
-		out = append(out, r)
-		if len(out) >= 200 {
-			break
-		}
-	}
-	*reports = out
-}
-
 // Reports GET /games/ezfy/reports?category=1|2|3&word=xxx&city_id=xx
 //
-// ★ 2026-10-13 「军情警讯不受城市限制」：category=1（军情警讯）时**忽略 city_id**，
-// 按「全部城市」查询（queryCityId=0）；战斗报告(category=2) 仍只查当前城。
-// 雷达/侦察/情报等级（radar/recon/intel）仍按前端传的 city_id 取（看的是「当前查看城」的能力）。
+// ★★ 2026-10-16 「战报列表不再限制当前城」（用户要求：战斗报告查询改成查全部）：
+// 军情警讯(category=1) 与 战斗报告(category=2) **都按全部城市**查询 —— 玩家名下所有城的战报
+// 一并展示，city_id 不再参与过滤，只保留给页面级「雷达/侦察/情报等级」兜底
+// （军情警讯另有 ezfyFillReportIntel 的**逐条**权威口径）。
+// 顺带**彻底删掉**「老行(city_id=0/NULL) 按标题坐标/城名反查订单」的那条 EXISTS 路径 ——
+// 它是历史 33s 超时的源头（见 ezfyReportCounts 注释），全城视图下已无存在必要。
 func (h *EzfyHandler) Reports(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	category, _ := strconv.Atoi(c.DefaultQuery("category", "0"))
 	word := strings.TrimSpace(c.Query("word"))
 	cityId, _ := strconv.ParseInt(c.DefaultQuery("city_id", "0"), 10, 64)
-	// ★★ 2026-10-13 军情警讯(category=1) 不受城市限制 → 列表查询按全部城市（0=不过滤城市）
-	queryCityId := cityId
-	if category == 1 {
-		queryCityId = 0
-	}
 	// ★ 2026-09-30 军团战报：展示本军团团员的 PvP 战报（不含 NPC/野地/系统）
 	if c.Query("corps") == "1" {
 		h.corpsReports(c, uid, word)
@@ -3675,13 +3618,8 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 		q = q.Where("title LIKE ?", "%"+word+"%")
 	}
 	var reports []model.EzfyReport
-	// ★ 2026-10-01 军情按当前城过滤：cityId>0 时只拉当前城的战报。
-	//   新战报已写 city_id；老战报(city_id=0)按标题坐标反查该城出征订单归属。
-	//
-	// ★ 2026-10-08 性能重构：原来 cityId>0 时在一条 SQL 里拼 `city_id = X OR (EXISTS… OR EXISTS…)`，
-	//   OR 让 MySQL 使不上 (user_id, city_id) 索引、还要对**每一行**跑两个相关子查询 + `LIKE %…%`，
-	//   战报多时卡到明显。这里拆成**两条**查询：①索引直查新战报(city_id=X)；②老行(city_id=0/NULL)
-	//   用原 EXISTS 补查（老行本就少），最后按 id 倒序合并取前 200，语义完全一致但快得多。
+	// ★★ 2026-10-16 全城口径：不再有「当前城过滤 / 老行补查」两条查询 —— 一次全量取 200 条。
+	//   （老行补查的 EXISTS 是历史 33s 超时源头；现在列表本就跨城，补查已无意义。）
 	sel := "id, city_id, order_id, report_type, title, type_name, is_read, created_at"
 	// ★★ 2026-10-11 修复「战斗报告(N) 却显示 (暂无战斗报告)」（用户报「优化的我连战报都看不到了」）：
 	//   原来先取「最新 200 条」**再**在 Go 里按分类过滤 —— 采集报告/将领升级这类「其他(3)」
@@ -3690,42 +3628,10 @@ func (h *EzfyHandler) Reports(c *gin.Context) {
 	//   （本地实测：玩家 35806386 总战报 2913 条，徽标 4，但最新 200 条里战斗报告 = 0。）
 	//   现在把分类条件**下推到 SQL**，LIMIT 作用于「筛完分类之后」的结果集，与徽标同口径。
 	catCond := ezfyReportCategoryCond(category)
-	if queryCityId > 0 {
-		// ① 新战报：city_id 精确命中，走索引（快路径）
-		q2 := h.DB.Select(sel).Where("user_id = ?", uid)
-		if word != "" {
-			q2 = q2.Where("title LIKE ?", "%"+word+"%")
-		}
-		if catCond != "" {
-			q2 = q2.Where(catCond)
-		}
-		q2.Where("city_id = ?", queryCityId).Order("id DESC").Limit(200).Find(&reports)
-		// ② 老行补查（city_id=0/NULL 的存量数据，量小）：用原 EXPLICIT 分支兜底，
-		//   避免 OR 拖慢快路径；老行坐标/城名反查仍能归属到当前城。
-		var legacy []model.EzfyReport
-		legacyQ := h.DB.Select(sel).Where("user_id = ? AND (city_id = 0 OR city_id IS NULL)", uid)
-		if word != "" {
-			legacyQ = legacyQ.Where("title LIKE ?", "%"+word+"%")
-		}
-		if catCond != "" {
-			legacyQ = legacyQ.Where(catCond)
-		}
-		legacyQ.Where(fmt.Sprintf(`(EXISTS (
-			SELECT 1 FROM ezfy_order o WHERE o.user_id = ezfy_report.user_id AND o.city_id = %d
-			  AND ezfy_report.title LIKE CONCAT('%%', CONCAT(CONCAT('(', o.target_x), CONCAT(',', CONCAT(o.target_y, ')'))), '%%')
-		) OR EXISTS (
-			SELECT 1 FROM ezfy_city ct WHERE ct.user_id = ezfy_report.user_id AND ct.id = %d
-			  AND ezfy_report.title LIKE CONCAT('%%', ct.name, '%%')
-		))`, queryCityId, queryCityId)).
-			Order("id DESC").Limit(200).Find(&legacy)
-		reports = append(reports, legacy...)
-		mustListConsolidate(&reports)
-	} else {
-		if catCond != "" {
-			q = q.Where(catCond)
-		}
-		q.Select(sel).Order("id DESC").Limit(200).Find(&reports)
+	if catCond != "" {
+		q = q.Where(catCond)
 	}
+	q.Select(sel).Order("id DESC").Limit(200).Find(&reports)
 
 	views := []gin.H{}
 	// ★★ 2026-10-13 「将领离职」当天播报置顶：离职报告(report_type=6)按 id 倒序埋在列表中间，
@@ -4322,8 +4228,10 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 //	⚠️ 路由用 `/reports/clear` 而不是 `/reports/:id/delete` 的同级形式：
 //	   路径段数不同（2 段 vs 3 段），Gin 不会和 `:id` 冲突。
 //
-// ★ 2026-10-01 军情按当前城过滤：city_id>0 时只删**当前城市**的战报（口径与 Reports 列表一致）。
+// ★ 2026-10-01 军情按当前城过滤：city_id>0 时只删**当前城市**的战报（口径与当时的 Reports 列表一致）。
 // ★ 2026-10-06 军情警讯支持删除：category=1 只删军情警讯 / 2 只删战斗报告（口径与 ezfyReportCounts 一致）。
+// ★★ 2026-10-16 「列表改成全部城市」后，前端两个分区都传 `city_id: 0` → 删除也是**全部城市**口径
+//   （列表全城、删除只删当前城会「删完还剩一堆」）。city_id 过滤能力保留，供将来按城删除使用。
 func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -4346,17 +4254,11 @@ func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除 %d 条战报", res.RowsAffected), "deleted": res.RowsAffected})
 }
 
-// ezfyReportCatCondAny 军情警讯(1) ∪ 战斗报告(2) 的标题条件（已带外层括号，可直接 AND 拼接）。
-//
-// ★ 2026-10-11 新增：给「老行(city_id=0/NULL)补查」**先收窄候选行**用。
-// 老行补查里的 EXISTS 很贵（ezfy_order 的 `title LIKE %(...)%` 是全表扫），
-// 必须先用标题条件把行数降下来 —— 详见 ezfyReportCounts 的注释（33s → 0.5s）。
-func ezfyReportCatCondAny() string {
-	return "(" + ezfyReportCategoryCond(1) + " OR " + ezfyReportCategoryCond(2) + ")"
-}
-
 // ezfyReportCategoryCond 按分类返回标题匹配条件（1=军情警讯 2=战斗报告），
 // 与 ezfyReportCounts 的 SQL / ezfyReportCategory 的判定保持同口径；category 无效返回空串。
+//
+// ★ 2026-10-16：原 `ezfyReportCatCondAny()`（cat1∪cat2，给老行补查先收窄用）随「全城口径」
+// 一起删除 —— 补查本身已不存在，列表/徽标都直接按本函数下推 SQL。
 func ezfyReportCategoryCond(category int) string {
 	switch category {
 	case 1:
@@ -4375,7 +4277,8 @@ func ezfyReportCategoryCond(category int) string {
 //	+ 战斗报告里的 被掠夺报告 / 被征服报告 / 城破报告。
 //	自己主动出击的战果（侦查报告/掠夺报告/战斗报告/征服报告）**不计入** —— 那些是收益不是警报，
 //	尤其「掠夺报告: 寇城N级」这类刷野地战报动辄几千条未读，会让角标永远闪、提示失去意义。
-//	★ 与 ezfyReportCatCondAny（列表/徽标口径）**故意不同**：徽标仍按分区全量数，只有导航感叹号收窄。
+//	★ 与「列表/徽标」口径（`ezfyReportCategoryCond`：cat1 全部 + cat2 全部）**故意不同**：
+//	  徽标仍按分区全量数，只有导航感叹号收窄。
 func ezfyReportAlertCond() string {
 	return "(" + ezfyReportCategoryCond(1) +
 		" OR title LIKE '被掠夺报告%' OR title LIKE '被征服报告%' OR title LIKE '城破报告%')"

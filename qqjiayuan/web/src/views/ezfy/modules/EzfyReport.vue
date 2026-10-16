@@ -139,6 +139,8 @@
           </template>
 
           <!-- ===== 战斗报告: 我打别人 + 战报查询 ===== -->
+          <!-- ★ 2026-10-16 战斗报告也**不受城市限制**：列表/徽标/一键删除都是「全部城市」口径
+               （后端 Reports 已不按 city_id 过滤，见 Ezfy.vue loadReports / doClearReports）。 -->
           <template v-else>
             <div class="old-line">
               战报查询:

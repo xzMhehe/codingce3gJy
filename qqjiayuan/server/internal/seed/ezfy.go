@@ -117,6 +117,9 @@ func seedEzfy(db *gorm.DB) {
 	migrateOfficerAttrPoints(db)
 	fixEzfySignIndex(db)
 
+	// ★ 2026-10-16 野地表存量去重（同坐标多条 / 城市格残留）→ 必须在建索引前跑，
+	//   否则唯一索引 (x,y) 因存量重复而建不出来。
+	EnsureEzfyWildlandUnique(db)
 	EnsureEzfyIndexes(db)
 }
 
@@ -214,6 +217,11 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_occupy", "idx_occupy_city_status", "city_id,status", false)
 	ensureEzfyIndex(db, "ezfy_occupy", "idx_occupy_atkcity_status", "atk_city_id,status", false)
 	ensureEzfyIndex(db, "ezfy_wildland", "idx_wildland_xy", "x,y", false)
+	// ★★ 2026-10-16 「一个坐标只允许一条野地记录」：再补一条**唯一**索引把规则钉在库上。
+	//   代码层：占领/放弃野地都先清同坐标旧行（`EzfyHandler.ezfyClearWildlandAt`）；
+	//   存量脏数据：`EnsureEzfyWildlandUnique` 收口（必须排在本函数之前跑，否则重复行会让这条建不出来）。
+	//   并发下两个玩家同时征服同一坐标时，唯一约束让后到的 INSERT 失败 → 宁可少一条记录，也不要归属冲突。
+	ensureEzfyIndex(db, "ezfy_wildland", "uk_wildland_xy", "x,y", true)
 	ensureEzfyIndex(db, "ezfy_order", "idx_order_target_status", "target_id,status", false)
 	ensureEzfyIndex(db, "ezfy_city_tech", "idx_city_tech_status", "city_id,status", false)
 	ensureEzfyIndex(db, "ezfy_officer", "idx_officer_city_position", "city_id,position", false)

@@ -502,7 +502,10 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	//   后端 createOrder 里也有同样校验，防止绕过前端直接下单。
 	owner, isMine := "", false
 	var w model.EzfyWildland
-	if err := h.DB.Where("x = ? AND y = ?", x, y).First(&w).Error; err == nil && w.CityId > 0 {
+	// ★ 2026-10-16 一个坐标只应有一条野地记录（唯一索引 uk_wildland_xy 保证）；
+	//   Order("id DESC") 是兜底：万一存量重复还没被启动清理收口，也取**最新**那条（= 最后占领者），
+	//   否则会取到旧行（原主人）→ 详情显示「归属别人」、mine=false（用户反馈的 bug 现象）。
+	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&w).Error; err == nil && w.CityId > 0 {
 		var oc model.EzfyCity
 		if err := h.DB.First(&oc, w.CityId).Error; err == nil {
 			if oc.UserID == uid {
@@ -1122,7 +1125,8 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		},
 		func() {
 			var w model.EzfyWildland
-			if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).First(&w).Error; err == nil {
+			// ★ 2026-10-16 取最新那条（同坐标只应有一条，见 WildlandView 的说明）
+			if err := h.DB.Where("x = ? AND y = ?", targetX, targetY).Order("id DESC").First(&w).Error; err == nil {
 				ownWild = &w
 			}
 		},
@@ -4214,6 +4218,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if order.TargetType == 2 || ezfyIsSeaWildTerrain(ezfyTerrainEx(order.TargetX, order.TargetY)) {
 				wildType = 2
 			}
+			// ★★ 2026-10-16 修复「征服他人附属野地后原记录残留」（一个坐标只允许一条野地记录）：
+			//   原来这里**无条件 Create 新行** —— 该坐标若早已被别人占领（表里已有 city_id=他人城的行），
+			//   就会留下同坐标多条记录（线上实测 153 个坐标重复、81 个坐标归属冲突），后果：
+			//     · 详情 WildlandView / 建新城 CreateCity 用 `First()` → 取到**旧行**（原主人）：
+			//       「地图显示归我、详情却写归属别人、mine=false」，我还能对自己的地反复下单刷资源；
+			//     · 原主人的「附属野地」列表仍含这块地 → 白占他的上限、还能在上面采集；
+			//     · `len(wildlandList(city.ID))` 虚高 → 我这边明明有空位却被判「已达上限」。
+			//   现在先把该坐标上的历史记录（含历史重复行）清掉，再建自己的那条。
+			//   ⚠️ 清记录前必须把旧行上未结束的采集/驻守部队转返航（helper 内已处理）。
+			h.ezfyClearWildlandAt(order.TargetX, order.TargetY, now)
 			wl := model.EzfyWildland{CityId: int64(city.ID), X: order.TargetX, Y: order.TargetY,
 				WildType: wildType, Level: wildLevel, Status: 0}
 			h.DB.Create(&wl)

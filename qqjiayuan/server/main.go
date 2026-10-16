@@ -163,6 +163,10 @@ func main() {
 		//   全量 seed 里的 repairEquipSnapshots 本来会自愈，但 skip 分支不跑 → 共享库永远修不了。
 		//   挂到 skip 路径，任何一台重启都会把存量装备行六项对齐配置池并重建军官 JSON（幂等）。
 		timedStep("EnsureEzfyEquipSnapshots", func() { seed.EnsureEzfyEquipSnapshots(homeDB) })
+		// ★★ 2026-10-16 野地表存量脏数据去重（同坐标多条 / 城市格残留 → 一个坐标只允许一条记录）。
+		//   必须排在 EnsureEzfyIndexes 之前：存量重复会让唯一索引 (x,y) 建不出来。
+		//   （独立库模式走 seed.RunEzfy → seedEzfy，那里也调了同一个 helper。）
+		timedStep("EnsureEzfyWildlandUnique", func() { seed.EnsureEzfyWildlandUnique(homeDB) })
 		// ★ 2026-10-05 索引同样要补：多机下只有一台跑全量 seed，另一台走这条 skip 路径，
 		//   否则慢接口的复合索引在这台机器的库上永远建不出来（helper 幂等，先到先建）。
 		timedStep("EnsureEzfyIndexes", func() { seed.EnsureEzfyIndexes(homeDB) })

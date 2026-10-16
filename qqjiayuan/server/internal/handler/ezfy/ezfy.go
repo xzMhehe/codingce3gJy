@@ -3592,8 +3592,10 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		h.consumeItem(uid, cfgId, "使用道具")
 		return fmt.Sprintf("使用成功: 资源产量+%d%%, 持续24小时", param)
 	case 8:
-		// ★ 2026-10-02 免战保护令(24小时) 也要有使用冷却（按**玩家**算，存 peace_cool_until）。
+		// ★ 2026-10-02 免战保护令 也要有使用冷却（按**玩家**算，存 peace_cool_until）。
 		// ★ 2026-10-12 用户规则：「免战道具冷却时间改成 4 小时」（原 24 小时，见 ezfyPeaceCoolH）。
+		// ★ 2026-10-16 用户规则：「免战道具改成 8 小时，冷却时间 8 小时」——
+		//   持续时长走道具自身 Param1（seed id=1012 已由 24 改 8），冷却走 ezfyPeaceCoolH（4 → 8）。
 		now := time.Now().UnixMilli()
 		var prof model.EzfyProfile
 		// ★★ 2026-10-12 修复「免战冷却形同虚设」：这里传的是**家园号(user_id)**，不是
@@ -4510,7 +4512,8 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	//   起新城要落在自己**已占领**的野地上（`ezfy_wildland.city_id ∈ 我的城`），
 	//   不能随便找块空地就建（否则整张地图的平原都能被抢建）。
 	var wl model.EzfyWildland
-	if err := h.DB.Where("x = ? AND y = ?", req.X, req.Y).First(&wl).Error; err != nil {
+	// ★ 2026-10-16 取最新那条（同坐标只应有一条野地记录，见 WildlandView 的说明）
+	if err := h.DB.Where("x = ? AND y = ?", req.X, req.Y).Order("id DESC").First(&wl).Error; err != nil {
 		resp.ParamError(c, "只能在自己占领的野地上建新城（请先征服该野地）")
 		return
 	}
@@ -4567,7 +4570,9 @@ func (h *EzfyHandler) CreateCity(c *gin.Context) {
 	h.DB.Create(&city)
 	// ★ 2026-10-12 用户反馈修复：新城建在自己已占领的野地上时，该坐标已经变成城市，
 	//   必须把这里的野地清掉，否则地图上「城市 + 附属野地」在同一格重叠显示。
-	h.DB.Where("x = ? AND y = ?", req.X, req.Y).Delete(&model.EzfyWildland{})
+	// ★ 2026-10-16 改走 ezfyClearWildlandAt：该野地上若有**未结束**的采集/驻守部队，
+	//   先把它们转返航再清行 —— 直接 DELETE 会让部队 target_id 悬空（凭空消失）。
+	h.ezfyClearWildlandAt(req.X, req.Y, time.Now().UnixMilli())
 	h.initBuilding(city.ID, 1, 1)
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
@@ -4916,24 +4921,14 @@ func (h *EzfyHandler) AbandonWildland(c *gin.Context) {
 		return
 	}
 	// ★ 用户反馈修复：原来直接删野地记录，**驻守/采集中的部队会凭空消失**。
-	//   现在先把这个野地上的采集(4)/驻守(7)命令改成返航，兵力与已采资源随部队回城。
+	//   现在统一走 `ezfyClearWildlandAt`（先把该野地上的采集(4)/驻守(7)命令改成返航，
+	//   兵力与已采资源随部队回城，再删行）——与「野地被他人征服占领」同一口径，
+	//   顺带把同坐标的历史重复行一并清掉（一个坐标只允许一条野地记录）。
 	now := time.Now().UnixMilli()
-	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ? AND target_id = ? AND order_type IN (4,7) AND status IN (0,1)", uid, w.ID).Find(&orders)
-	for i := range orders {
-		o := &orders[i]
-		travel := ezfyOneWayTravel(o)
-		o.Status = 2
-		o.Result = o.Troops
-		o.ReturnTime = now + travel
-		h.DB.Model(&model.EzfyOrder{}).Where("id = ?", o.ID).
-			Updates(map[string]interface{}{"status": 2, "result": o.Result,
-				"return_time": o.ReturnTime, "carry": o.Carry})
-	}
-	h.DB.Delete(&w)
+	_, n := h.ezfyClearWildlandAt(w.X, w.Y, now)
 	msg := "已放弃该野地"
-	if len(orders) > 0 {
-		msg += fmt.Sprintf("，%d 支采集/驻守部队已返航（到达后兵力与资源回城）", len(orders))
+	if n > 0 {
+		msg += fmt.Sprintf("，%d 支采集/驻守部队已返航（到达后兵力与资源回城）", n)
 	}
 	resp.OK(c, gin.H{"msg": msg})
 }

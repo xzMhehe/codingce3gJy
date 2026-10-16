@@ -59,7 +59,7 @@
     <el-dialog :title="'开始免战 —— ' + (targetName || '')" :visible.sync="startDlg" width="460px" :close-on-click-modal="false">
       <div class="td-gray" style="line-height:1.8; margin-bottom:10px">
         将给「{{ targetName }}」的<b>全部 {{ targetCityCount }} 座城池</b>开启免战保护，期间该玩家不会被掠夺/征服。<br/>
-        ★ 管理端操作<b>不受玩家 24 小时使用冷却限制</b>，直接生效并覆盖原有到期时间。
+        ★ 管理端操作<b>不受玩家免战使用冷却限制</b>，直接生效并覆盖原有到期时间。
       </div>
       <el-form label-width="90px">
         <el-form-item label="生效时长">
@@ -87,7 +87,7 @@ export default {
     return {
       list: [], total: 0, page: 1, size: 10, loading: false,
       word: '', only: false,
-      startDlg: false, saving: false, targetId: 0, targetName: '', targetCityCount: 0, hours: 24
+      startDlg: false, saving: false, targetId: 0, targetName: '', targetCityCount: 0, hours: 8
     }
   },
   mounted () { this.load() },
@@ -110,7 +110,7 @@ export default {
       this.targetId = row.user_id
       this.targetName = row.nickname || row.home_nick || ('玩家' + row.user_id)
       this.targetCityCount = row.city_count
-      this.hours = 24
+      this.hours = 8
       this.startDlg = true
     },
     doStart () {

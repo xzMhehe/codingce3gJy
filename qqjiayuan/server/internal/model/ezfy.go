@@ -679,7 +679,8 @@ type EzfyProfile struct {
 	//   用于购买「钻石道具」（ezfy_cfg_item.price_diamond > 0）。
 	Diamond int64 `gorm:"default:0;comment:钻石" json:"diamond"`
 
-	// ★ 2026-10-02 免战保护令冷却：使用后 24 小时内不能再次使用（时间戳, 0 = 无冷却）
+	// ★ 2026-10-02 免战保护令冷却：使用后一段时间内不能再次使用（时间戳, 0 = 无冷却）。
+	//   冷却时长 = handler/ezfy/ezfy_geo.go 的 ezfyPeaceCoolH（2026-10-16 起 8 小时）。
 	PeaceCoolUntil int64 `gorm:"default:0;comment:免战保护令冷却截止时间戳(ms, 0=无冷却)" json:"peace_cool_until"`
 
 	// ★ 2026-10-10 首页布局：0=跟随默认(新布局) 1=新布局 2=老布局（统帅页单选切换）

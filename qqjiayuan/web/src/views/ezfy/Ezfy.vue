@@ -3249,9 +3249,10 @@ export default {
       }
       let url = '/games/ezfy/reports?'
       if (tab === 5) url += 'corps=1'
-      // ★★ 2026-10-13 「军情警讯不受城市限制」：tab3(军情警讯/category=1) **city_id 传 0** →
-      //   后端按「全部城市」查询（谁的城被打都收得到，不再只看当前城）；
-      //   战斗报告(tab4/category=2) 仍只查当前城（口径不变）。
+      // ★★ 2026-10-16 「战斗报告也改成查全部」：后端列表**已不再按城市过滤**
+      //   （category=1/2 都是全账号口径，见后端 Reports）→ 这里传的 city_id 只用于
+      //   页面级「雷达/侦察/情报等级」兜底（军情警讯还有后端逐条下发的权威口径）。
+      //   tab3 仍传 0：其页面级字段本就落到主城，逐条字段才是权威。
       else url += 'category=' + cat + '&city_id=' + (tab === 3 ? 0 : (this.city ? this.city.id : 0))
       if (this.reportWord) url += '&word=' + encodeURIComponent(this.reportWord)
       this.repLoadingKey = key
@@ -5495,7 +5496,8 @@ export default {
     //   ⚠️ 有搜索词时列表只是筛选，删除范围仍是全部 —— 文案里写清楚，别让玩家以为只删列表里那几条。
     // ★ 2026-10-01 军情按当前城过滤：一键删除也只删**当前城市**的战报
     // ★ 2026-10-13 军情警讯不受城市限制 → 军情警讯的删除也按**全部城市**
-    //   （列表/徽标已是全城口径，若删除仍只删当前城，会出现「删完列表还剩一堆」的矛盾）。
+    // ★★ 2026-10-16 战斗报告同样改成全部城市口径（列表/徽标/删除一致；后端 Reports 已不按城市过滤）
+    //   —— 若删除仍只删当前城，会出现「删完列表还剩一堆」的矛盾。
     async doClearReports () {
       if (!this.reports.length) {
         this.notify('暂无战报可删除')
@@ -5503,12 +5505,11 @@ export default {
       }
       // ★ 2026-10-06 军情警讯/战斗报告分区删除：category 口径与 loadReports/ezfyReportCounts 一致
       const scopeName = this.reportTab === 3 ? '军情警讯' : '战斗报告'
-      const allCity = this.reportTab === 3          // 军情警讯=全部城市；战斗报告=当前城市
-      const scopeTxt = allCity ? '全部城市' : '当前城市'
+      const scopeTxt = '全部城市'
       if (!await this.ask('确定删除【' + scopeTxt + '】的全部' + scopeName + '吗？\n（物理删除，不可恢复；' +
         (this.reportWord ? '当前只是搜索筛选，删除范围仍是' + scopeTxt + '全部' + scopeName : '共 ' + this.reports.length + ' 条') + '）')) return
       api.post('/games/ezfy/reports/clear', {
-        city_id: allCity ? 0 : (this.city ? this.city.id : 0),
+        city_id: 0,
         category: this.reportTab === 3 ? 1 : 2
       }).then(r => {
         if (r.code === 0) {

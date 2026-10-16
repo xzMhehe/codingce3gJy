@@ -605,9 +605,12 @@ func (h *EzfyHandler) EzfyApplyMove(cityId uint, x, y int) string {
 	}
 	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
 	// ★ 2026-10-12 与玩家侧迁城同口径：城市落点所在格清掉野地，避免「城市 + 野地」重叠显示。
-	h.DB.Where("x = ? AND y = ?", x, y).Delete(&model.EzfyWildland{})
+	// ★ 2026-10-16 改走 ezfyClearWildlandAt：落点/老城址上若还挂着**未结束**的采集(4)/驻守(7)部队，
+	//   先把它们转返航再清行 —— 直接 DELETE 会让部队 target_id 悬空（凭空消失 / 结算异常）。
+	now := time.Now().UnixMilli()
+	h.ezfyClearWildlandAt(x, y, now)
 	// ★ 2026-10-12 与玩家侧迁移同口径：旧坐标老城址一并释放，不留附属野地。
-	h.DB.Where("x = ? AND y = ?", oldX, oldY).Delete(&model.EzfyWildland{})
+	h.ezfyClearWildlandAt(oldX, oldY, now)
 	return ""
 }
 
