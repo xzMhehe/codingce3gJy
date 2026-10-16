@@ -2093,7 +2093,8 @@ export default {
       const firedKeys = Object.keys(this.dynFired)
       if (firedKeys.length > 200) this.dynFired = Object.create(null)
       // 只认「还在走」的倒计时：出征(0)看 arrive_time，返航(2)看 return_time。
-      // 战斗中(5)的回合由 battleTimer 自己驱动，不在这里管。
+      // 战斗中(5)看 battle_left_ms（相对剩余，基准 dynAt —— 与 liveLeft 同口径）：
+      //   battleTimer 只在战场指挥室页跑，这里在 orders/军情页兜底，到点拉一次让后端结算回合。
       // 用「订单id+到点时刻」当 key —— 这样同一订单后续新一轮倒计时（重新出征/返航）
       // 能再次触发，而同一轮到点只触发一次。
       let needRes = false
@@ -2102,6 +2103,7 @@ export default {
         let at = 0
         if (o.status === 0 && o.arrive_time > 0) at = o.arrive_time
         else if (o.status === 2 && o.return_time > 0) at = o.return_time
+        else if (o.status === 5 && o.battle_left_ms > 0) at = (this.dynAt || 0) + o.battle_left_ms
         if (!at || at > now) return false
         const key = o.id + '@' + at
         // ★★ 2026-10-08 修复「部队到了、界面没自动刷新」（用户反馈）：
@@ -2652,7 +2654,7 @@ export default {
         this.loadBag()
         // 进来就先算一次：让「本次出兵 0 / 上限 N」和集结令上限立刻是准确值
         // （原来要玩家自己点[计算]才会显示）
-        this.$nextTick(() => this.doCalc())
+        this.$nextTick(() => this.scheduleOrderCalc())
       }
       // ★ 2026-10-04 /view 瘦身：军官页顶部「占领野地 N 块」移到 /city/wildfull 懒加载
       else if (t === 'acade') { this.loadAcade(); this.loadWilds() }
@@ -2850,6 +2852,11 @@ export default {
         this.loadTechs()
       } else if (t === 'wilds') {
         this.loadWilds()
+      } else if (t === 'orders' || t === 'reports' || t === 'reportview') {
+        // ★ 2026-10-16 军情/出征队列/军队动态：30s 轮询兜底拉一次军队动态，
+        //   覆盖「没有倒计时可听（如等待驻军/情报列表）」时长期不刷新的情况。
+        //   触发式 checkDueRefresh 负责到点即时刷新，这里是慢速兜底，两者互不冲突。
+        this.loadDynamics(true)
       }
     },
     loadBuildings () {
@@ -5693,7 +5700,7 @@ export default {
     //   采集/派遣无上限、运输/增援另一套、掠夺/征服受集结令+军官加成），算完会把兵力夹回新上限。
     onOrderTypeChange () {
       this.orderCalc = null
-      this.$nextTick(() => this.doCalc())
+      this.$nextTick(() => this.scheduleOrderCalc())
     },
     declareWar () {
       if (!this.selCell || !this.selCell.city_id) return
@@ -5962,6 +5969,13 @@ export default {
         } else this.alert(r, '计算失败')
       })
     },
+    // ★ 2026-10-16 出征卡顿：所有会触发 /order/preview 的入口（改集结令/切军官/应用预设/进出征页
+    //   自动算一次）统一走 300ms 防抖 —— 后端该接口是 7 条并行 DB 查询 + 纯只读重算，连点/连改
+    //   会堆一串请求排队卡住页面。与兵种滑块 watcher 共用同一个 _resCalcT 定时器，互斥收敛。
+    scheduleOrderCalc () {
+      if (this._resCalcT) clearTimeout(this._resCalcT)
+      this._resCalcT = setTimeout(() => this.doCalc(), 300)
+    },
     // ★ 清空出征表单（用户反馈「出征还有上次留的数据」）
     //   每次进出征页都重置，避免上次的兵力/资源被误当成这次的出征内容。
     resetOrderForm () {
@@ -6092,7 +6106,7 @@ export default {
       const cap = this.gatherMax
       this.orderGather = g > cap ? cap : g
       // ⑥ 用真实目标重算（异步；内部会把已填兵力夹回新上限）
-      this.doCalc()
+      this.scheduleOrderCalc()
     },
     // 改集结令数量后立刻重算，让「本次出兵 / 上限」即时刷新
     // ★ 手填数字：夹到 [0, 可用上限]，可用上限 = min(管理端配置, 背包持有量)。
@@ -6103,7 +6117,7 @@ export default {
       const cap = this.gatherMax
       if (n > cap) n = cap
       this.orderGather = n
-      this.doCalc()
+      this.scheduleOrderCalc()
     },
     doOrder () {
       if (!this.selCell) return
