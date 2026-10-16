@@ -64,6 +64,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyVisitLog{}, &model.EzfyAccount{}, // ★ 2026-10-12 访问记录 / 二战独立登录账号
 	&model.EzfyUserChest{}, // ★ 2026-10-14 玩家持有的未开宝箱（发放后自己开）
 	&model.EzfyUserChestPity{}, // ★ 2026-10-14 玩家宝箱奖池保底进度（min_draws）
+	&model.EzfyChestLog{}, // ★ 2026-10-16 玩家开箱流水（管理端「数据管理→宝箱开启」）
 	&model.EzfyPvpWeek{}, // ★ 2026-10-14 风云榜（每周玩家对战战绩）
 	&model.EzfyPvpFoe{}, // ★ 2026-10-14 风云榜同对手积分封顶（防小号互刷）
 	&model.EzfyPvpDetail{}, // ★ 2026-10-16 风云榜「我的战绩」场次明细（战报会删，明细独立留存）

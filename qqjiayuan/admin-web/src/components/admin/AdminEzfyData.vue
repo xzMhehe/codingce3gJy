@@ -674,6 +674,18 @@ const COLS = {
     { k: 'count', n: '数量', minW: 64 },
     { k: 'reason', n: '消耗原因', minW: 140 },
     { k: 'created_at', n: '发生时间', minW: 170 }
+  ],
+  // ★ 2026-10-16 玩家开箱流水（只读）：按玩家ID/昵称/宝箱名搜索；created_at 由后端格式化好。
+  //   同只读表口径：无操作列，全列 minW 铺满容器；「开出的东西」真长文本列弹性吸宽。
+  chestLogs: [
+    { k: 'id', n: '记录ID', minW: 76 },
+    { k: 'user_id', n: '玩家ID', minW: 84 },
+    { k: 'nickname', n: '玩家昵称', minW: 100 },
+    { k: 'chest_id', n: '宝箱ID', minW: 76 },
+    { k: 'chest_name', n: '宝箱名', minW: 110 },
+    { k: 'count', n: '数量', minW: 64 },
+    { k: 'result', n: '开出的东西', minW: 240 },
+    { k: 'created_at', n: '开箱时间', minW: 170 }
   ]
 }
 
@@ -860,7 +872,9 @@ export default {
         // ★ 2026-09-28 玩家钻石流水（只读查看，按玩家ID/昵称搜索）
         { k: 'diamondLogs', n: '钻石流水' },
         // ★ 2026-10-02 玩家道具使用流水（只读查看，按玩家ID/昵称/道具名搜索）
-        { k: 'itemUseLogs', n: '道具使用' }
+        { k: 'itemUseLogs', n: '道具使用' },
+        // ★ 2026-10-16 玩家开箱流水（只读查看：商城购买即开 + 背包待开宝箱开箱，开出了什么）
+        { k: 'chestLogs', n: '宝箱开启' }
       ],
       moved: [
         { k: 'buildings', n: '建筑配置', to: '建筑管理 → 总建筑配置' },
@@ -908,11 +922,12 @@ export default {
   },
   computed: {
     cols () { return COLS[this.table] || [] },
-    // 只读视图（钻石流水 / 道具使用）：无新增、无编辑、无删除操作列
-    isReadOnly () { return this.table === 'diamondLogs' || this.table === 'itemUseLogs' },
+    // 只读视图（钻石流水 / 道具使用 / 宝箱开启）：无新增、无编辑、无删除操作列
+    isReadOnly () { return this.table === 'diamondLogs' || this.table === 'itemUseLogs' || this.table === 'chestLogs' },
     searchPh () {
       if (this.table === 'diamondLogs') return '玩家ID / 昵称搜索'
       if (this.table === 'itemUseLogs') return '玩家ID / 昵称 / 道具名搜索'
+      if (this.table === 'chestLogs') return '玩家ID / 昵称 / 宝箱名搜索'
       return '名称 / ID 搜索'
     },
     // 任务配置的「任务分类」要选类型名而不是填数字 ID → 动态注入任务类型下拉

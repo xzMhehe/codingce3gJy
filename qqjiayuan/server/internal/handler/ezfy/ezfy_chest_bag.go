@@ -256,6 +256,18 @@ func (h *EzfyHandler) ChestBagOpen(c *gin.Context) {
 	if len(agg) == 0 {
 		agg = []string{"空箱"}
 	}
+	// ★★ 2026-10-16 开箱流水：背包待开宝箱开箱也记一条（管理端「数据管理→宝箱开启」），
+	//   与商城购买即开(ChestOpen)同口径，方便核实「发放的宝箱开出了什么」。
+	if len(names) > 0 {
+		result := "获得：" + strings.Join(agg, "、")
+		if rs := []rune(result); len(rs) > 255 {
+			result = string(rs[:255])
+		}
+		h.DB.Create(&model.EzfyChestLog{
+			UserID: uid, ChestId: chest.ID, ChestName: chest.Name,
+			Count: req.Count, Result: result,
+		})
+	}
 	resp.OK(c, gin.H{
 		"msg":     fmt.Sprintf("开箱成功: 获得 %s", strings.Join(agg, "、")),
 		"results": results,

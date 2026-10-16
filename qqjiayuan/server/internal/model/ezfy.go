@@ -792,6 +792,25 @@ type EzfyUserChestPity struct {
 
 func (EzfyUserChestPity) TableName() string { return "ezfy_user_chest_pity" }
 
+// EzfyChestLog 玩家开箱流水（2026-10-16 新增：管理端「数据管理 → 宝箱开启」查看的数据来源）。
+//
+// 无论是商城购买即开（ChestOpen）还是发放/背包待开宝箱开箱（ChestBagOpen），
+// 每次开箱成功都会写一条：本次开了什么（开出的奖品聚合文本，同名合并成「名×数量」）。
+// 用于核实「开了宝箱东西没到账」「开箱结果不对」类反馈——管理员按玩家ID/昵称/宝箱名
+// 搜索即可看到每次开箱开出了什么。
+type EzfyChestLog struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"index:idx_ezfy_chest_log_user;comment:玩家ID" json:"user_id"`
+	ChestId   int       `gorm:"comment:宝箱配置ID(ezfy_cfg_chest.id)" json:"chest_id"`
+	ChestName string    `gorm:"type:varchar(50);comment:宝箱名快照(开箱时)" json:"chest_name"`
+	Count     int       `gorm:"comment:本次开的宝箱数量" json:"count"`
+	// 开箱结果聚合文本，如「获得：黄金×5000、经验×100」（同名合并，与开箱播报同口径）
+	Result    string    `gorm:"type:varchar(255);comment:开出的东西(聚合文本)" json:"result"`
+	CreatedAt time.Time `gorm:"comment:开箱时间" json:"created_at"`
+}
+
+func (EzfyChestLog) TableName() string { return "ezfy_chest_logs" }
+
 // EzfyPvpWeek 风云榜（每周玩家对战战绩，★ 2026-10-14 创建并加积分列）
 //
 // 按**自然周**（周一 00:00 ~ 周日 23:59，Week 形如 "20261012-20261018"）统计

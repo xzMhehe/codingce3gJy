@@ -2959,6 +2959,19 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 	}
 }
 
+// EnsureEzfyChestLogTable 幂等补建 ezfy_chest_logs 开箱流水表（skip 分支也必须能建出来）。
+//
+// ★ 2026-10-16 开箱记录表同 hazard：与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
+//   否则多机共享库上开箱写日志直接报表不存在。
+func EnsureEzfyChestLogTable(db *gorm.DB) {
+	if db.Migrator().HasTable(&model.EzfyChestLog{}) {
+		return
+	}
+	if err := db.AutoMigrate(&model.EzfyChestLog{}); err != nil {
+		log.Printf("[seed] 补建 ezfy_chest_logs 表失败: %v", err)
+	}
+}
+
 // EnsureEzfyPvpWeekTable 幂等补建/更新 ezfy_pvp_week 风云榜表。
 //
 // ★ 2026-10-14 风云榜周榜：同 hazard —— 只靠 AutoMigrate 建表的表，多机共享库

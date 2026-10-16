@@ -3997,6 +3997,18 @@ func (h *EzfyHandler) ChestOpen(c *gin.Context) {
 		}
 		h.DB.Model(&model.EzfyDiamondLog{}).Where("id = ?", logID).Update("extra", extra)
 	}
+	// ★★ 2026-10-16 开箱流水：无论黄金/钻石购买即开都记一条（管理端「数据管理→宝箱开启」）。
+	//   与钻石流水解耦（黄金买的宝箱不记钻石流水，反馈核实开箱结果就查这张表）。
+	if len(names) > 0 {
+		result := "获得：" + strings.Join(agg, "、")
+		if rs := []rune(result); len(rs) > 255 {
+			result = string(rs[:255])
+		}
+		h.DB.Create(&model.EzfyChestLog{
+			UserID: uid, ChestId: chest.ID, ChestName: chest.Name,
+			Count: req.Count, Result: result,
+		})
+	}
 	// ★ 2026-10-04 库存/黄金/钻石都变了 → 失效宝箱缓存
 	ezfyChestCacheDel(uid)
 	// resp.OK 会把 data 里的 msg 提升到顶层（前端读 r.msg）

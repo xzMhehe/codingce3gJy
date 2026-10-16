@@ -950,6 +950,32 @@ func (h *EzfyAdmin) AdminEzfyData(c *gin.Context) {
 		resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
 		return
 	}
+	// ★ 2026-10-16 玩家开箱流水（数据管理 → 宝箱开启，只读）：
+	//   按「玩家ID / 昵称 / 宝箱名」搜索，附昵称列，倒序展示最近开箱记录。
+	//   （数据源 ezfy_chest_logs：商城购买即开 + 背包待开宝箱开箱，每次开箱写一条。）
+	if c.Param("table") == "chestLogs" {
+		page, offset, size := pageOf(c, 10)
+		word := strings.TrimSpace(c.Query("word"))
+		base := h.DB.Table("ezfy_chest_logs").
+			Select("ezfy_chest_logs.id, ezfy_chest_logs.user_id, ezfy_chest_logs.chest_id, " +
+				"ezfy_chest_logs.chest_name, ezfy_chest_logs.count, ezfy_chest_logs.result, " +
+				"DATE_FORMAT(ezfy_chest_logs.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, ezfy_profile.nickname").
+			Joins("LEFT JOIN ezfy_profile ON ezfy_profile.user_id = ezfy_chest_logs.user_id")
+		if word != "" {
+			if id, err := strconv.Atoi(word); err == nil && id > 0 {
+				// 数字既可能是「用户ID」也可能是玩家在游戏里看到的「游戏ID」(game_uid)，或宝箱配置ID(chest_id)
+				base = base.Where("ezfy_chest_logs.user_id = ? OR ezfy_profile.game_uid = ? OR ezfy_chest_logs.chest_id = ?", id, id, id)
+			} else {
+				base = base.Where("(ezfy_profile.nickname LIKE ? OR ezfy_chest_logs.chest_name LIKE ?)", "%"+word+"%", "%"+word+"%")
+			}
+		}
+		var total int64
+		base.Count(&total)
+		var rows []map[string]interface{}
+		base.Order("ezfy_chest_logs.id DESC").Offset(offset).Limit(size).Find(&rows)
+		resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
+		return
+	}
 	// ★ 2026-09-28 玩家钻石流水（数据管理 → 钻石流水，只读）：
 	//   按「玩家ID」或「昵称」搜索，附昵称列，倒序展示最近流水。
 	if c.Param("table") == "diamondLogs" {

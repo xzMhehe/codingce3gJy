@@ -147,6 +147,8 @@ func main() {
 		timedStep("EnsureEzfyUserChestTable", func() { seed.EnsureEzfyUserChestTable(homeDB) })
 		// ★ 2026-10-14 宝箱累计抽取次数表（奖池 min_draws 解锁门槛）：同 hazard，skip 分支幂等补建。
 		timedStep("EnsureEzfyUserChestPityTable", func() { seed.EnsureEzfyUserChestPityTable(homeDB) })
+		// ★ 2026-10-16 开箱流水表（管理端「数据管理→宝箱开启」数据源）：同 hazard，skip 分支幂等补建。
+		timedStep("EnsureEzfyChestLogTable", func() { seed.EnsureEzfyChestLogTable(homeDB) })
 		// ★ 2026-10-14 风云榜周榜表：同 hazard，skip 分支幂等补建（否则战斗结算写榜报表不存在）。
 		timedStep("EnsureEzfyPvpWeekTable", func() { seed.EnsureEzfyPvpWeekTable(homeDB) })
 		// ★ 2026-10-14 风云榜同对手积分封顶表（防小号互刷）：同 hazard，幂等补建。
