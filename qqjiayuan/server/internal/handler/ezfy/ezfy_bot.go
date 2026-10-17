@@ -498,7 +498,14 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		return a, d, ok
 	}
 
-	// 4) 军事（总开关 / 允许攻击玩家 / 每日节流）
+	// 3½) 军官养成（★ 2026-10-17 人机军官编辑修复）：自己招募军官 + 给可加点军官点军事，
+	//   这样「出场带高军事军官」才有得带，而不是永远只有管理端手填的几个人。
+	//   ⚠️ 只走业务接口（严格按真人规则扣费/占容量），绝不绕过校验凭空加属性。
+	if a, d, ok := h.botOfficer(city, b.Level); ok {
+		return a, d, ok
+	}
+
+	// 4) 军事（总开关 / 允许攻击玩家 / 攻频节流）
 	if a, d, ok := h.botMilitary(b, city, troopTotal, cfg); ok {
 		return a, d, ok
 	} else if a != "" {
@@ -656,10 +663,6 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	if troopTotal < cfg.TroopTarget/2 || troopTotal < 200 {
 		return "", "", false
 	}
-	// 每日节流
-	if !h.botAtkQuotaOK(b) {
-		return "", "", false
-	}
 	now := time.Now().UnixMilli()
 
 	// ① 已有计划：推进状态
@@ -686,6 +689,22 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			}
 			continue
 		case 2: // 可出击
+			// ★ 2026-10-17 出征时间 > 10 分钟 → 人机先自迁城贴近目标，再出击
+			//   （默认行军速度换算：每格约 60 秒 → 10 分钟 ≈ 10 格；用曼哈顿距离估算，
+			//    实际受兵种/科技速度影响，够用来做「太远就搬家」的判断。迁城不受冷却。）
+			var tcity model.EzfyCity
+			if err := h.DB.First(&tcity, p.TargetCityId).Error; err == nil {
+				if dist := ezfyAbs(city.X-tcity.X) + ezfyAbs(city.Y-tcity.Y); dist > 10 {
+					if a, d, ok := h.botRelocateNear(b, city, tcity.X, tcity.Y); ok {
+						return a, d, ok
+					}
+				}
+			}
+			// ★ 2026-10-17 攻频从「每日上限」改成「按小时频率」：宣战/生效照常推进，
+			//   只在真正出击这里按「次/小时」节流（默认按难度 6/8/10，管理端可覆盖）。
+			if !h.botAtkQuotaOK(b) {
+				return "", "", false
+			}
 			return h.botAttack(b, city, p, troopTotal)
 		case 0: // 待宣战 → 立即宣战
 			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
@@ -801,13 +820,184 @@ LIMIT 1`,
 	return r, true
 }
 
-// botAttack 出击：派 60% 兵力掠夺目标城。
+// botOfficer 人机军官养成（★ 2026-10-17 人机军官编辑修复）。
+//
+// ②③ 两条都走**和真人完全相同的业务接口**（/officers/:id/attr、/acade/recruit/hire），
+//
+//	扣黄金/占参谋部容量/同名限制/招募上限全部照常 —— 绝不绕过校验凭空加属性。
+func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, string, bool) {
+	uid := city.UserID
+	// ① 先验军校/参谋部等级（没建这两个建筑就不用想了）
+	var academy, staff int
+	h.DB.Model(&model.EzfyCityBuilding{}).
+		Where("city_id = ? AND building_id = ?", city.ID, ezfyBuildingAcademy).
+		Select("COALESCE(MAX(level),0)").Scan(&academy)
+	h.DB.Model(&model.EzfyCityBuilding{}).
+		Where("city_id = ? AND building_id = ?", city.ID, ezfyBuildingStaff).
+		Select("COALESCE(MAX(level),0)").Scan(&staff)
+	if academy < 1 || staff < 1 {
+		return "", "", false
+	}
+	// ② 优先「点属性」：本城在职军官里有待分配点的 → 一次全点「军事」
+	//   （军事又加出征上限又加战斗力，人机要的就是能打）。
+	var o model.EzfyOfficer
+	if err := h.DB.Where("city_id = ? AND status = 0 AND free_points > 0", city.ID).
+		Order("free_points DESC").First(&o).Error; err == nil {
+		code, msg := h.botCall(uid, "", "POST",
+			fmt.Sprintf("/games/ezfy/officers/%d/attr", o.ID),
+			map[string]interface{}{"attr": "military", "count": o.FreePoints})
+		if code == 0 {
+			return "军官加点", fmt.Sprintf("%s 军事+%d", o.Name, o.FreePoints), true
+		}
+		return "军官加点", fmt.Sprintf("%s 加点失败: %s", o.Name, msg), false
+	}
+	// ③ 待分配点都点完了 → 「招募」：军官没满员 + 本周期有候选 + 黄金够 → 招一个
+	var cnt int64
+	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ?", city.ID).Count(&cnt)
+	if int(cnt) >= staff {
+		return "", "", false
+	}
+	var rec model.EzfyRecruit
+	if err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, recruitCycleKey()).
+		First(&rec).Error; err != nil {
+		return "", "", false // 候选还没生成（玩家没打开过军校页）→ 跳过
+	}
+	for _, d := range parseDrafts(rec.Candidates) {
+		if d.Key == "" {
+			continue
+		}
+		if city.Gold < d.Cost {
+			continue // 挑黄金够的第一个招
+		}
+		code, msg := h.botCall(uid, "", "POST", "/games/ezfy/acade/recruit/hire",
+			map[string]interface{}{"key": d.Key})
+		if code == 0 {
+			return "招募军官", fmt.Sprintf("%s（%d星 军事%d）", d.Name, d.Star, d.Military), true
+		}
+		return "招募军官", "招募失败: " + msg, false
+	}
+	return "", "", false
+}
+
+// botRelocateNear 人机自迁城（★ 2026-10-17 用户规则「人机迁城不受冷却限制」）。
+//
+// 走管理端同款路径：checkMoveTarget 校验后直接落库坐标 —— **不写 move_cool_until（不受冷却）、
+// 不消耗迁城道具**。但副作用必须和真人迁城一样完整，否则产生脏数据：
+//
+//	① 清旧坐标的地图「玩家城」区域记录（ezfy_map_area area_type=3），否则地图还显示旧位置有城；
+//	② 清落点坐标残留野地（城市脚下不能叠野地图标）；
+//	③ 旧坐标若残留附属野地 → 在途采集(4)/驻守(7)部队先转返航，再删野地行（直接删会丢部队，
+//	  见放弃野地的历史教训）。
+//
+// 频率很低（只有目标距主城 > 10 格、要远征时触发），不担心性能。
+func (h *EzfyHandler) botRelocateNear(b *model.EzfyBot, city *model.EzfyCity, nearX, nearY int) (string, string, bool) {
+	oldX, oldY := city.X, city.Y
+	tx, ty, ok := h.ezfyBotPickRelocateSpot(nearX, nearY)
+	if !ok {
+		return "", "", false // 附近没空地 → 本轮不迁（下轮再试）
+	}
+	// ① 落库新坐标（不动 move_cool_until → 人机不受迁城冷却）
+	if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).
+		Updates(map[string]interface{}{"x": tx, "y": ty}).Error; err != nil {
+		return "迁城", "迁城落库失败: " + err.Error(), false
+	}
+	city.X, city.Y = tx, ty
+	// ② 清旧坐标地图区域记录
+	h.DB.Where("x = ? AND y = ? AND area_type = ?", oldX, oldY, 3).Delete(&model.EzfyMapArea{})
+	// ③ 清新坐标脚下野地残留
+	h.DB.Where("x = ? AND y = ?", tx, ty).Delete(&model.EzfyWildland{})
+	// ④ 旧坐标残留附属野地：在途部队转返航 → 删野地行
+	var oldWls []model.EzfyWildland
+	h.DB.Where("x = ? AND y = ?", oldX, oldY).Find(&oldWls)
+	if len(oldWls) > 0 {
+		nowRel := time.Now().UnixMilli()
+		for i := range oldWls {
+			wid := oldWls[i].ID
+			var wOrders []model.EzfyOrder
+			h.DB.Where("user_id = ? AND target_id = ? AND order_type IN (4,7) AND status IN (0,1)", b.UserID, wid).Find(&wOrders)
+			for j := range wOrders {
+				o := &wOrders[j]
+				o.Status = 2
+				o.Result = o.Troops
+				o.ReturnTime = nowRel + ezfyOneWayTravel(o)
+				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", o.ID).
+					Updates(map[string]interface{}{"status": 2, "result": o.Result,
+						"return_time": o.ReturnTime, "carry": o.Carry})
+			}
+		}
+		h.DB.Where("x = ? AND y = ?", oldX, oldY).Delete(&model.EzfyWildland{})
+	}
+	h.ezfyBotLog(b.UserID, "迁城", fmt.Sprintf("%s(%d,%d) → (%d,%d)，靠近目标附近", city.Name, oldX, oldY, tx, ty), 1)
+	return "迁城", fmt.Sprintf("%s(%d,%d) → (%d,%d)", city.Name, oldX, oldY, tx, ty), true
+}
+
+// ezfyBotPickRelocateSpot 在目标坐标附近 3~6 格环形内找一个「合法空位」。
+//
+// 从小圈到大圈（迁太近会被对方贴脸堵门，太远失去迁城意义）；每圈随机打散尝试顺序，
+// 命中 checkMoveTarget（坐标 1~499 / 平原 / 无人占用）即返回；每圈最多试 20 个点防卡。
+func (h *EzfyHandler) ezfyBotPickRelocateSpot(nearX, nearY int) (int, int, bool) {
+	for radius := 3; radius <= 6; radius++ {
+		cand := make([][2]int, 0, radius*8)
+		for dx := -radius; dx <= radius; dx++ {
+			for dy := -radius; dy <= radius; dy++ {
+				if ezfyAbs(dx) < radius && ezfyAbs(dy) < radius {
+					continue // 只取环上坐标
+				}
+				cand = append(cand, [2]int{nearX + dx, nearY + dy})
+			}
+		}
+		// Fisher-Yates 随机打散，避免每轮都从同一角开始
+		for i := len(cand) - 1; i > 0; i-- {
+			j := mathrand.Intn(i + 1)
+			cand[i], cand[j] = cand[j], cand[i]
+		}
+		checked := 0
+		for _, p := range cand {
+			checked++
+			if checked > 20 {
+				break
+			}
+			if h.checkMoveTarget(p[0], p[1], false) == "" {
+				return p[0], p[1], true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// botAttack 出击：按难度默认出兵 30~40 万、带本城军事最高的军官，掠夺目标城。
 func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.EzfyBotTarget, troopTotal int64) (string, string, bool) {
 	var troops []model.EzfyCityTroop
 	h.DB.Where("city_id = ? AND count > 0", city.ID).Find(&troops)
+	var total int64
+	for _, t := range troops {
+		total += int64(t.Count)
+	}
+	if total == 0 {
+		return "", "", false
+	}
+	// ★ 2026-10-17 出征数量按难度默认 30~40 万（管理端可单独覆盖），全兵种按占比分配；
+	//   兵力不足目标数 → 全派（新手期没得选，派多少是多少）。
+	//   出征类型：默认**征服**(3)，管理端调整记录在 b.AtkType（1侦察/2掠夺/3征服）。
+	//   侦察只派 1 兵探路（大部队去送没意义）。
+	leadName := ""
+	var lead model.EzfyOfficer
+	h.DB.Where("city_id = ? AND status = 0", city.ID).
+		Order("military DESC, level DESC").First(&lead)
+	if lead.ID > 0 && lead.Military > 0 {
+		leadName = lead.Name
+	}
+	atkType := ezfyBotOrderTypeOf(b.AtkType)
+	want := ezfyBotAtkTroopOf(b.Level, b.AtkTroop)
+	if atkType == 1 {
+		want = 1 // 侦察兵
+	}
+	if want > total {
+		want = total
+	}
 	groups := make([]ezfyUnitGroup, 0, len(troops))
 	for _, t := range troops {
-		n := t.Count * 6 / 10
+		n := int64(t.Count) * want / total
 		if n <= 0 {
 			continue
 		}
@@ -819,8 +1009,7 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	// ★★ 2026-10-17 修复：出征兵力必须 ≤ 出征上限（司令部等级×1万×指挥科技 + 集结令 + 军官），
 	//   否则线上 march_cap_on=1 → createOrder 拒绝 → 人机「有 1 亿兵也打不出去」（只看见休整）。
 	//   超了 → 全兵种等比缩放到上限内（派够上限也够拆目标城）。
-	// ★★ 2026-10-17 人机用集结令：上限不够 → 烧背包集结令扩额（每个 +10 万），
-	//   最多烧到单次出征上限 ezfyGatherMax()；集结令在 createOrder 里真实扣减。
+	//   集结令不够 → 烧背包集结令扩额（每个 +10 万，上限 ezfyGatherMax()），createOrder 里真实扣减。
 	gather := 0
 	if ezfyMarchCapOn() {
 		gather = h.itemCount(b.UserID, ezfyGatherItemID())
@@ -828,15 +1017,15 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 			gather = maxG
 		}
 	}
-	cap, unlimited := h.ezfyOrderTroopCap(city.ID, gather, "")
+	cap, unlimited := h.ezfyOrderTroopCap(city.ID, gather, leadName)
 	if !unlimited && cap > 0 {
-		var total int64
+		var gTotal int64
 		for _, g := range groups {
-			total += g.Count
+			gTotal += g.Count
 		}
-		if total > cap {
+		if gTotal > cap {
 			for i := range groups {
-				groups[i].Count = groups[i].Count * cap / total
+				groups[i].Count = groups[i].Count * cap / gTotal
 			}
 			trim := groups[:0]
 			for _, g := range groups {
@@ -855,18 +1044,22 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
 		return "出击放弃", "目标城不存在", false
 	}
-	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/order", map[string]interface{}{
-		"city_id": int64(city.ID), "order_type": 2, // 掠夺
+	body := map[string]interface{}{
+		"city_id": int64(city.ID), "order_type": atkType,
 		"target_type": 3, "target_id": int64(tc.ID),
 		"target_x": tc.X, "target_y": tc.Y,
 		"troops": groups, "auto_battle": 1, "gather": gather,
-	})
+	}
+	if leadName != "" {
+		body["officer"] = leadName // 带高军事军官出战
+	}
+	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/order", body)
 	if code == 0 {
 		// 冷却 12 小时 + 记一次出征
 		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
 			Updates(map[string]interface{}{"status": 3, "cool_until": time.Now().Add(12 * time.Hour).UnixMilli()})
 		h.botAtkCountInc(b)
-		return "出击", fmt.Sprintf("掠夺 %s(%d,%d) 派兵 %d 支", p.Note, tc.X, tc.Y, len(groups)), true
+		return "出击", fmt.Sprintf("%s %s(%d,%d) 派兵 %d 支", ezfyOrderTypeName(atkType), p.Note, tc.X, tc.Y, len(groups)), true
 	}
 	// 失败（免战/兵力不足/队列满）→ 冷却 2 小时后重试
 	h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
@@ -924,17 +1117,22 @@ func ezfyBotFoodFree(isBot int) bool {
 	return ezfyCfg.limit.BotFoodFree != 0
 }
 
-// botAtkQuotaOK 今日出征次数是否还没到上限（跨天自动清零）。
+// botAtkQuotaOK 该人机「现在能否再出征」：按「次/小时」频率节流。
+//
+// ★ 2026-10-17 从「每日上限」改成「每小时频率」：默认按难度阶梯（新手6 普通8 精英10 次/小时），
+//   管理端可在人机编辑里单独覆盖（atk_per_hour>0）。时间窗 = 1小时 / 频率；
+//   距上次出征不足时间窗 → 本小时额度用光，等下一轮再试。
 func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
-	today := time.Now().Format("20060102")
-	cnt := b.AtkCountToday
-	if b.AtkDate != today {
-		cnt = 0
+	rate := ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour)
+	if rate <= 0 {
+		return true
 	}
-	return cnt < ezfyBotDailyAtkCap()
+	window := 3600000 / int64(rate)
+	now := time.Now().UnixMilli()
+	return b.LastAtkAt <= 0 || now-b.LastAtkAt >= window
 }
 
-// botAtkCountInc 今日出征次数 +1（跨天重置）。
+// botAtkCountInc 今日出征次数 +1（跨天重置），并记录本次出征时间供攻频节流。
 func (h *EzfyHandler) botAtkCountInc(b *model.EzfyBot) {
 	today := time.Now().Format("20060102")
 	cnt := 1
@@ -942,7 +1140,45 @@ func (h *EzfyHandler) botAtkCountInc(b *model.EzfyBot) {
 		cnt = b.AtkCountToday + 1
 	}
 	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).
-		Updates(map[string]interface{}{"atk_count_today": cnt, "atk_date": today})
+		Updates(map[string]interface{}{"atk_count_today": cnt, "atk_date": today, "last_atk_at": time.Now().UnixMilli()})
+}
+
+// ezfyBotAtkPerHourOf 攻击频率（次/小时）：0=按难度默认（新手6 普通8 精英10），管理端可单独覆盖。
+func ezfyBotAtkPerHourOf(level, override int) int {
+	if override > 0 {
+		return override
+	}
+	switch level {
+	case 1:
+		return 6
+	case 3:
+		return 10
+	}
+	return 8
+}
+
+// ezfyBotAtkTroopOf 单次出征兵力：0=按难度默认（新手30万 普通35万 精英40万），管理端可单独覆盖。
+func ezfyBotAtkTroopOf(level int, override int64) int64 {
+	if override > 0 {
+		return override
+	}
+	switch level {
+	case 1:
+		return 300000
+	case 3:
+		return 400000
+	}
+	return 350000
+}
+
+// ezfyBotOrderTypeOf 该人机出征类型（ezfy_order.order_type）：
+//
+//	0=默认**征服**(3)，管理端可调 1侦察 / 2掠夺 / 3征服。
+func ezfyBotOrderTypeOf(atkType int) int {
+	if atkType >= 1 && atkType <= 3 {
+		return atkType
+	}
+	return 3 // 默认征服
 }
 
 // boolInt bool → 0/1（日志用）。

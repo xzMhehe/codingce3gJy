@@ -32,6 +32,12 @@ type EzfyBot struct {
 	// 攻击节流：每日出征次数（跨天自动清零）
 	AtkCountToday int    `gorm:"default:0;comment:今日出征次数" json:"atk_count_today"`
 	AtkDate       string `gorm:"type:varchar(10);comment:今日日期 yyyymmdd" json:"atk_date"`
+	// ★ 2026-10-17 出征设置（0=按难度默认）：频率 次/小时（简单6 普通8 精英10）、单次出兵（30/35/40万）
+	AtkPerHour int   `gorm:"default:0;comment:攻击频率(次/小时)，0=按难度默认" json:"atk_per_hour"`
+	AtkTroop   int64 `gorm:"default:0;comment:单次出征兵力，0=按难度默认" json:"atk_troop"`
+	LastAtkAt  int64 `gorm:"default:0;comment:上次出征时间(ms)，按小时频率节流" json:"last_atk_at"`
+	// ★ 2026-10-17 出征类型：0=默认征服(3)；1=侦察 2=掠夺 3=征服（管理端可调整）
+	AtkType int `gorm:"default:0;comment:出征类型 0=默认征服 1=侦察 2=掠夺 3=征服" json:"atk_type"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

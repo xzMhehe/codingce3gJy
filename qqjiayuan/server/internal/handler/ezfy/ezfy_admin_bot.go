@@ -135,6 +135,10 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"city_id": ct.ID, "city_name": ct.Name, "x": ct.X, "y": ct.Y, "city_level": ct.CityLevel,
 			"troop_total": troopOf[b.UserID],
 			"gather_count": gatherOf[b.UserID],
+			// ★ 2026-10-17 出征设置：原值（0=按难度默认）+ 生效值（默认按难度阶梯）
+			"atk_per_hour": b.AtkPerHour, "atk_per_hour_eff": ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour),
+			"atk_troop":     b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
+			"atk_type": b.AtkType, "atk_type_eff": ezfyBotOrderTypeOf(b.AtkType), // 0=默认征服，1侦查/2掠夺/3征服
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -643,6 +647,11 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			Learning   *int     `json:"learning"`
 			Skills     []string `json:"skills"`
 		} `json:"officers"`
+		// ★ 2026-10-17 出征设置（0=按难度默认：攻频 新手6/普通8/精英10 次·小时，出兵 30/35/40万）
+		AtkPerHour *int   `json:"atk_per_hour"`
+		AtkTroop   *int64 `json:"atk_troop"`
+		// ★ 2026-10-17 出征类型：1侦察 2掠夺 3征服（不传/0=默认征服）
+		AtkType *int `json:"atk_type"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -919,6 +928,34 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		if n > 0 {
 			changes = append(changes, fmt.Sprintf("军官 %d 名", n))
 		}
+	}
+
+	// ⑨ 出征设置：攻击频率（次/小时）、单次出征兵力；0 = 恢复按难度默认
+	ezUpd := map[string]interface{}{}
+	if in.AtkPerHour != nil {
+		if *in.AtkPerHour < 0 || *in.AtkPerHour > 60 {
+			resp.ParamError(c, "攻击频率需在 0~60 次/小时（0=按难度默认）")
+			return
+		}
+		ezUpd["atk_per_hour"] = *in.AtkPerHour
+	}
+	if in.AtkTroop != nil {
+		if *in.AtkTroop < 0 || *in.AtkTroop > 500000000 {
+			resp.ParamError(c, "出征兵力需在 0~5 亿（0=按难度默认）")
+			return
+		}
+		ezUpd["atk_troop"] = *in.AtkTroop
+	}
+	if in.AtkType != nil {
+		if *in.AtkType < 0 || *in.AtkType > 3 {
+			resp.ParamError(c, "出征类型需为 1侦察/2掠夺/3征服（0=默认征服）")
+			return
+		}
+		ezUpd["atk_type"] = *in.AtkType
+	}
+	if len(ezUpd) > 0 {
+		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Updates(ezUpd)
+		changes = append(changes, "出征设置")
 	}
 
 	if len(changes) == 0 {

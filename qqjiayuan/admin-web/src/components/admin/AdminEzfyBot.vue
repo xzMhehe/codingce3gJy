@@ -68,6 +68,12 @@
         <el-table-column label="集结令" width="100" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.gather_count) }}</span></template>
         </el-table-column>
+        <!-- ★ 2026-10-17 攻频/出兵：按难度生效值（0=默认 新手6·30万 / 普通8·35万 / 精英10·40万） -->
+        <el-table-column label="攻频/出兵" width="150" align="center">
+          <template slot-scope="{row}">
+            <span class="td-mono">{{ ezfyAtkTypeName(row.atk_type_eff) }} {{ row.atk_per_hour_eff }}次/h · {{ fmtNum(row.atk_troop_eff) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="声望" width="100" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.prestige) }}</span></template>
         </el-table-column>
@@ -86,7 +92,7 @@
             <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '运行中' : '已暂停' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="440" align="center" fixed="right">
+        <el-table-column label="操作" width="500" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/建筑）" @click="openEdit(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发放资源" @click="openGrant(row)" />
@@ -94,6 +100,7 @@
             <el-button size="mini" type="warning" plain icon="el-icon-aim" title="攻击目标（查看/指定/删除）" @click="openTargets(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-map-location" title="迁城（输入坐标）" @click="openRelocate(row)" />
             <el-button size="mini" plain icon="el-icon-tickets" title="行为日志" @click="openLogs(row)" />
+            <el-button size="mini" plain icon="el-icon-document" title="出征战报" @click="openReports(row)" />
             <el-button size="mini" :type="row.enabled ? 'warning' : 'success'" plain
                        :icon="row.enabled ? 'el-icon-video-pause' : 'el-icon-video-play'"
                        :title="row.enabled ? '暂停' : '启用'" @click="toggle(row)" />
@@ -176,6 +183,22 @@
                 <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000"
                                  controls-position="right" style="width:160px" />
                 <span class="td-gray" style="margin-left:6px">空闲人口 = 总人口 − 建筑/训练占用 − 待恢复</span>
+              </el-form-item>
+              <!-- ★ 2026-10-17 出征设置：攻击频率 + 单次出兵，0=按难度默认（新手6次/8h→普通8/精英10 + 30/35/40万） -->
+              <el-form-item label="攻频/出兵">
+                <el-input-number v-model.number="editForm.atk_per_hour" :min="0" :max="60" :step="1"
+                                 controls-position="right" style="width:100px" />
+                <span class="td-gray" style="margin-left:6px">次/小时 (0=默认 {{ editForm.atk_per_hour_eff }})</span>
+                <el-input-number v-model.number="editForm.atk_troop" :min="0" :step="10000"
+                                 controls-position="right" style="width:140px;margin-left:16px" />
+                <span class="td-gray" style="margin-left:6px">出兵 (0=默认 {{ fmtNum(editForm.atk_troop_eff) }})</span>
+                <el-select v-model.number="editForm.atk_type" style="width:110px;margin-left:16px" size="mini">
+                  <el-option label="征服(默认)" :value="0" />
+                  <el-option label="侦察" :value="1" />
+                  <el-option label="掠夺" :value="2" />
+                  <el-option label="征服" :value="3" />
+                </el-select>
+                <span class="td-gray" style="margin-left:6px">出征类型</span>
               </el-form-item>
             </el-form>
           </el-tab-pane>
@@ -376,6 +399,23 @@
       </div>
       <div slot="footer"><el-button @click="logsDlg = false">关 闭</el-button></div>
     </el-dialog>
+
+    <!-- 出征战报（★ 2026-10-17 管理员看人机战报：复用全局战报查询，按 user_id 过滤） -->
+    <el-dialog :title="'出征战报 —— ' + (cur ? cur.nickname : '')" :visible.sync="reportsDlg" width="860px">
+      <el-table :data="reports" v-loading="reportsLoading" size="mini" border max-height="430">
+        <el-table-column prop="created_at" label="时间" width="160" align="center" />
+        <el-table-column prop="type_name" label="类型" width="110" align="center" />
+        <el-table-column prop="player_name" label="玩家" width="120" show-overflow-tooltip />
+        <el-table-column prop="preview" label="内容" min-width="340" show-overflow-tooltip />
+      </el-table>
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ reportTotal }}</b> 条战报</div>
+        <el-pagination v-show="reportTotal > 0" small background layout="prev, pager, next" :total="reportTotal"
+                       :page-size="reportSize" :current-page="reportPage"
+                       @current-change="p => { reportPage = p; loadReports() }" />
+      </div>
+      <div slot="footer"><el-button @click="reportsDlg = false">关 闭</el-button></div>
+    </el-dialog>
   </div>
 </template>
 
@@ -403,7 +443,10 @@ export default {
       actAllDlg: false, actAllSaving: false, actAllRounds: 5,
       // 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
-      editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0 },
+      editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
+        atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
+        atk_type: 0, atk_type_eff: 3 },
+      editSnapA: { h: 0, t: 0, ty: 0 },
       editBuildings: [],
       editTechs: [],
       editTroops: [],
@@ -420,6 +463,8 @@ export default {
       ],
       // 行为日志
       logsDlg: false, logs: [], logTotal: 0, logPage: 1, logSize: 20, logsLoading: false,
+      // ★ 2026-10-17 出征战报
+      reportsDlg: false, reports: [], reportTotal: 0, reportPage: 1, reportSize: 20, reportsLoading: false,
       cur: null,
       tips: {
         overview: '人机走和真人完全相同的接口（建城/升级/造兵/宣战），每 60 秒一轮、每轮最多 10 个，带租约锁（多进程只有一台真正执行）；人机不出现在「玩家信息管理」里。',
@@ -435,6 +480,8 @@ export default {
   },
   methods: {
     fmtNum (n) { return n == null ? 0 : Number(n).toLocaleString() },
+    // ★ 2026-10-17 出征类型名（1侦察 2掠夺 3征服）
+    ezfyAtkTypeName (t) { return ({ 1: '侦察', 2: '掠夺', 3: '征服' })[t] || '征服' },
     fmtTime (t) { return t ? new Date(t).toLocaleString() : '' },
     levelTag (l) { return ({ 1: 'info', 2: '', 3: 'danger' })[l] || '' },
     load () {
@@ -511,7 +558,10 @@ export default {
       this.editTechs = []
       this.editTroops = []
       this.editOfficers = []
-      this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0 }
+      this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0,
+        atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
+        atk_type: 0, atk_type_eff: 3 }
+      this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0 }
       this.editDlg = true
       this.editLoading = true
       api.get('/admin/ezfy-bot/' + row.user_id + '/buildings').then(r => {
@@ -521,7 +571,11 @@ export default {
             nickname: r.data.nickname || '', prestige: r.data.prestige || 0,
             city_name: r.data.city_name || '',
             pop: r.data.pop || 0, pop_max: r.data.pop_max || 0, pop_recover: r.data.pop_recover || 0,
-            freePop: r.data.free_pop || 0
+            freePop: r.data.free_pop || 0,
+            // ★ 2026-10-17 出征设置（原值 + 按难度生效值，列表接口已返回）
+            atk_per_hour: row.atk_per_hour || 0, atk_troop: row.atk_troop || 0,
+            atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
+            atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
@@ -602,7 +656,11 @@ export default {
         troops: trNow === this.editSnap.tr ? [] : this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })),
         officers: oNow === this.editSnap.o ? [] : this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp,
           free_points: x.free_points, military: x.military, logistics: x.logistics,
-          learning: x.learning, skills: x.skills }))
+          learning: x.learning, skills: x.skills })),
+        // ★ 2026-10-17 出征设置：改了才提交（null=不更新；0=恢复按难度默认）
+        atk_per_hour: this.editSnapA.h === this.editForm.atk_per_hour ? null : this.editForm.atk_per_hour,
+        atk_troop: this.editSnapA.t === this.editForm.atk_troop ? null : this.editForm.atk_troop,
+        atk_type: this.editSnapA.ty === this.editForm.atk_type ? null : this.editForm.atk_type
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {
@@ -745,6 +803,27 @@ export default {
           this.logTotal = r.data.total
         }
       }).catch(() => { this.logsLoading = false })
+    },
+    // ★ 2026-10-17 出征战报：复用全局战报接口按 game_uid 过滤（人机 GameUID == UserID）
+    openReports (row) {
+      this.cur = row
+      this.reports = []
+      this.reportTotal = 0
+      this.reportPage = 1
+      this.reportsDlg = true
+      this.loadReports()
+    },
+    loadReports () {
+      this.reportsLoading = true
+      api.get('/admin/ezfy-reports', {
+        params: { word: this.cur ? this.cur.user_id : 0, page: this.reportPage, size: this.reportSize }
+      }).then(r => {
+        this.reportsLoading = false
+        if (r.code === 0) {
+          this.reports = r.data.list || []
+          this.reportTotal = r.data.total || 0
+        }
+      }).catch(() => { this.reportsLoading = false })
     }
   }
 }
