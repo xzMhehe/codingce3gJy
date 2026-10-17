@@ -25,8 +25,10 @@
         </div>
         <!-- ★ 2026-10-05 「没用的页面提示去掉」：改名/阵营提示不再展示（文案保留在代码里） -->
         阵营：{{ ezfy.selfInfo.camp_name || (ezfy.profile.camp === 2 ? '轴心国' : '同盟国') }}
-        <a href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
-        <a href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a><br/>
+        <!-- ★ 2026-10-17 只显示「转去另一个阵营」：已经是同盟国就不显示[转同盟国]，已经是轴心国就不显示[转轴心国]
+             （当前阵营口径与 doChangeCamp 一致：selfInfo 优先、profile 兜底） -->
+        <a v-if="(ezfy.selfInfo.camp || ezfy.profile.camp) !== 1" href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
+        <a v-if="(ezfy.selfInfo.camp || ezfy.profile.camp) !== 2" href="javascript:;" @click="ezfy.doChangeCamp(2)">[转轴心国]</a><br/>
         声望：{{ ezfy.profile.prestige }}<br/>
         军衔：{{ ezfy.rankName }}({{ ezfy.rankPost }})<span style="margin-left:4px"><span v-html="ezfy.rankIcon(ezfy.myRankId)"></span></span><br/>
         军团：{{ (ezfy.myCorps && ezfy.myCorps.name) || '无' }}<br/>
@@ -57,7 +59,7 @@
         <div class="panel-title">统帅信息</div>
         <div class="old-line">
           <b :style="ezfy.nickColorAt(ezfy.playerInfo.color, 0)">{{ ezfy.playerInfo.nickname }}</b>
-          <span class="gray">(玩家号码 {{ ezfy.playerInfo.game_uid || ezfy.playerInfo.user_id }})</span>
+          <span class="gray">(账号 {{ ezfy.playerInfo.game_uid || ezfy.playerInfo.user_id }})</span>
         </div>
         <!-- ★ 2026-10-17 统帅称号：昵称下方、阵营上方（生效中的才返回，过期自动消失） -->
         <div class="ezfy-title-line" v-if="ezfy.playerInfo.titles && ezfy.playerInfo.titles.length">
