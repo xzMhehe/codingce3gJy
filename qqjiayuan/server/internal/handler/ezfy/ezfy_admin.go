@@ -24,6 +24,11 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyProfile{})
+	// ★★ 2026-10-17 人机模块：玩家管理**默认只出真人**（is_bot = 0）。
+	//   人机的数据只在「人机管理」里出现 —— 运营看到的注册数/在线数/新增玩家不再被几百个人机污染。
+	//   ⚠️ 下面 word 的两个 OR 条件必须自己加括号：GORM 串联 Where 只按 AND 拼、不补括号，
+	//      否则会变成 `is_bot=0 AND user_id=? OR game_uid=?` → 把人机也带出来。
+	q = q.Where("is_bot = 0")
 	if word != "" {
 		// ★★ 2026-10-15 用户规则：「二战管理系统里所有家园号条件查询，全部换成游戏号查询」。
 		//   原来这里拿 word 去**家园库** `users.username`（= 家园号）反查 uid 再匹配 ——
@@ -31,12 +36,12 @@ func (h *EzfyAdmin) AdminEzfyPlayers(c *gin.Context) {
 		//   （`ezfy_profile.game_uid`：建档时 = 家园ID，之后与 user_id 解耦）。
 		//   现在：数字 → 用户ID 或 游戏号；非数字 → 玩家昵称（另兼容家园昵称精确）。
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("user_id = ? OR game_uid = ?", uid, uid)
+			q = q.Where("(user_id = ? OR game_uid = ?)", uid, uid)
 		} else {
 			var wu model.User
 			h.home().Select("id").Where("nickname = ?", word).First(&wu)
 			if wu.ID > 0 {
-				q = q.Where("nickname LIKE ? OR user_id = ?", "%"+word+"%", wu.ID)
+				q = q.Where("(nickname LIKE ? OR user_id = ?)", "%"+word+"%", wu.ID)
 			} else {
 				q = q.Where("nickname LIKE ?", "%"+word+"%")
 			}

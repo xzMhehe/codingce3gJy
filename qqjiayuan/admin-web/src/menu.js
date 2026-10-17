@@ -70,6 +70,7 @@ import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
 import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
 import AdminEzfyPeace from './components/admin/AdminEzfyPeace.vue'
 import AdminEzfyTitles from './components/admin/AdminEzfyTitles.vue'
+import AdminEzfyBot from './components/admin/AdminEzfyBot.vue'
 import AdminEzfySystem from './components/admin/AdminEzfySystem.vue'
 import AdminEzfyMonitor from './components/admin/AdminEzfyMonitor.vue'
 import AdminEzfyCities from './components/admin/AdminEzfyCities.vue'
@@ -272,6 +273,8 @@ export const menu = [
           { key: 'ezfyPeace', name: '免战管理', icon: 'el-icon-lock', component: AdminEzfyPeace, perm: 'module:ezfyPeace' },
           // ★ 2026-10-17 统帅称号：称号定义维护 + 授予/撤销 + 已有称号玩家，独立权限 module:ezfyTitles
           { key: 'ezfyTitles', name: '统帅称号', icon: 'el-icon-s-custom', component: AdminEzfyTitles, perm: 'module:ezfyTitles' },
+          // ★ 2026-10-17 人机管理：与玩家管理**完全独立**的模块（独立权限点 module:ezfyBot）
+          { key: 'ezfyBot', name: '人机管理', icon: 'el-icon-cpu', component: AdminEzfyBot, perm: 'module:ezfyBot' },
           { key: 'ezfyCities', name: '城市管理', icon: 'el-icon-office-building', component: AdminEzfyCities, perm: 'module:ezfyCities' },
           { key: 'ezfyBuildings', name: '建筑管理', icon: 'el-icon-s-home', component: AdminEzfyBuildings, perm: 'module:ezfyBuildings' },
           { key: 'ezfyBuildQueue', name: '建筑队列管理', icon: 'el-icon-time', component: AdminEzfyBuildQueue, perm: 'module:ezfyBuildQueue' },

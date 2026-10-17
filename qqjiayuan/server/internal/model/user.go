@@ -71,6 +71,10 @@ type User struct {
 	ActiveDays     float64    `gorm:"default:0;comment:家园活跃天数" json:"active_days"`                 // 家园活跃天数
 	LastActiveDate string     `gorm:"type:varchar(10);comment:最后活跃日期(去重)" json:"last_active_date"` // 最后活跃日期(去重)
 	InvitedBy      uint       `gorm:"default:0;comment:邀请人（0=自然注册）" json:"invited_by"`             // 邀请人（0=自然注册）
+	// ★★ 2026-10-17 人机（AI 玩家）标识：家园库是**账号级权威源**。
+	//   1 = 人机账号：登录接口一律拒绝；管理端「玩家管理」默认排除（is_bot = 0）；
+	//   二战库的 ezfy_profile.is_bot / ezfy_city.is_bot 是它的副本（见 ezfy_bot.go）。
+	IsBot          int        `gorm:"default:0;index:idx_user_is_bot;comment:是否人机(1=AI玩家)" json:"is_bot"`
 	CreatedAt      time.Time  `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt      time.Time  `gorm:"comment:更新时间" json:"updated_at"`
 	Roles          []Role     `gorm:"many2many:user_roles;" json:"roles,omitempty"`

@@ -39,18 +39,24 @@ func (h *EzfyAdmin) AdminEzfyCities(c *gin.Context) {
 	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyCity{})
+	// ★ 2026-10-17 人机模块：城市管理**默认排除人机城**（?with_bot=1 才包含）。
+	//   数据不串味：运营看的「城市总数」不该被几百个人机城撑起来。
+	//   ⚠️ 下面 word 的 OR 条件必须自己加括号（GORM 串联 Where 不补括号 → 会把人机城带出来）。
+	if strings.TrimSpace(c.DefaultQuery("with_bot", "0")) != "1" {
+		q = q.Where("is_bot = 0")
+	}
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
 			// ★ 2026-10-15 数字口径与其它管理端页统一：用户ID / 城池ID / **游戏号**(game_uid)
 			//   （游戏号转靓号后会与 user_id 解耦，玩家报给客服的就是它，只匹配 user_id 会搜不到）
-			q = q.Where("user_id = ? OR id = ? OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)",
+			q = q.Where("(user_id = ? OR id = ? OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?))",
 				uid, uid, uid)
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").
 				Where("nickname LIKE ?", "%"+word+"%").Scan(&ids)
 			if len(ids) > 0 {
-				q = q.Where("name LIKE ? OR user_id IN ?", "%"+word+"%", ids)
+				q = q.Where("(name LIKE ? OR user_id IN ?)", "%"+word+"%", ids)
 			} else {
 				q = q.Where("name LIKE ?", "%"+word+"%")
 			}

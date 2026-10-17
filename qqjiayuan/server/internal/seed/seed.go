@@ -1842,6 +1842,8 @@ var modulePerms = []model.Permission{
 	rbacMod("游戏-二战征途", "免战管理", "ezfyPeace"),
 	// ★ 2026-10-17 统帅称号（称号定义维护 + 授予/撤销 + 已有称号玩家），独立可分配权限
 	rbacMod("游戏-二战征途", "统帅称号", "ezfyTitles"),
+	// ★ 2026-10-17 人机（AI 玩家）管理：与玩家管理完全独立的模块与权限点
+	rbacMod("游戏-二战征途", "人机管理", "ezfyBot"),
 	rbacMod("游戏-二战征途", "风云资源", "ezfyResources"), rbacMod("游戏-二战征途", "风云科技", "ezfyTechs"),
 	// 资源交易行维护（系统挂单定价黄金/钻石）
 	rbacMod("游戏-二战征途", "风云交易行", "ezfyExchange"),
@@ -2968,7 +2970,8 @@ func EnsureEzfyUserChestPityTable(db *gorm.DB) {
 // EnsureEzfyChestLogTable 幂等补建 ezfy_chest_logs 开箱流水表（skip 分支也必须能建出来）。
 //
 // ★ 2026-10-16 开箱记录表同 hazard：与 EnsureEzfyUserChestTable 同款，HasTable 幂等。
-//   否则多机共享库上开箱写日志直接报表不存在。
+//
+//	否则多机共享库上开箱写日志直接报表不存在。
 func EnsureEzfyChestLogTable(db *gorm.DB) {
 	if db.Migrator().HasTable(&model.EzfyChestLog{}) {
 		return
@@ -3006,6 +3009,16 @@ func EnsureEzfyPvpDetailTable(db *gorm.DB) {
 func EnsureEzfyTitleTables(db *gorm.DB) {
 	if err := db.AutoMigrate(&model.EzfyTitle{}, &model.EzfyTitleGrant{}, &model.EzfyTitleDaily{}); err != nil {
 		log.Printf("[seed] 补建/更新统帅称号表失败: %v", err)
+	}
+}
+
+// EnsureEzfyBotTables 幂等补建/更新人机模块四张表（★ 2026-10-17）。
+//
+// 同 hazard：多机共享库的 skip 分支不跑全量 seed → 不补建则人机 tick / 管理端直接报表不存在。
+func EnsureEzfyBotTables(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyBot{}, &model.EzfyBotTarget{},
+		&model.EzfyBotLog{}, &model.EzfyBotLock{}); err != nil {
+		log.Printf("[seed] 补建/更新人机表失败: %v", err)
 	}
 }
 

@@ -72,6 +72,11 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyTitle{},         // ★ 2026-10-17 统帅称号定义（管理端维护）
 	&model.EzfyTitleGrant{},    // ★ 2026-10-17 玩家持有的称号（(title_id,user_id) 唯一）
 	&model.EzfyTitleDaily{},    // ★ 2026-10-17 风云榜每日第一称号结算记录（day 唯一，幂等锁）
+	// —— 人机（AI 玩家）模块（★ 2026-10-17，见 model/ezfy_bot.go）——
+	&model.EzfyBot{},       // 人机档案（与 profile 一对一）
+	&model.EzfyBotTarget{}, // 攻击计划（宣战 24h 时序驱动）
+	&model.EzfyBotLog{},    // 行为日志
+	&model.EzfyBotLock{},   // tick 租约锁（多进程互斥）
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）

@@ -242,10 +242,11 @@ func (EzfyFriendApply) TableName() string { return "ezfy_friend_apply" }
 // EzfyMail 游戏内邮件（收件箱 / 系统邮件 / 发件箱）
 //
 // ★ 2026-10-13 邮箱改造：玩家之间的邮件 + 系统邮件都在这一张表。
-//   一封邮件只有一行，发件人与收件人各自按自己视角读：
-//   - 收件人视角：receiver_id = 我 且 sender_deleted = 0（sender_id=0 即系统邮件）
-//   - 发件人视角：sender_id = 我 且 receiver_deleted = 0
-//   删除只置自己视角的标记，不影响对方。
+//
+//	一封邮件只有一行，发件人与收件人各自按自己视角读：
+//	- 收件人视角：receiver_id = 我 且 sender_deleted = 0（sender_id=0 即系统邮件）
+//	- 发件人视角：sender_id = 我 且 receiver_deleted = 0
+//	删除只置自己视角的标记，不影响对方。
 type EzfyMail struct {
 	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	SenderId   uint      `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"` // 0 = 系统邮件
@@ -600,6 +601,12 @@ type EzfyCfgLimit struct {
 	//   管理端「排行榜 → 风云榜」页可直接开关；关闭后新战斗不再累计，
 	//   历史周榜数据保留（重新开启即继续统计，不清历史）。
 	PvpRankOn int `gorm:"default:1;comment:风云榜统计开关(1开0关)" json:"pvp_rank_on"`
+
+	// ★ 2026-10-17 人机（AI 玩家）风控开关
+	//   BotAtkOn：0 = 只发育、不打扰玩家（**0 是合法值**，读取时不能用 ezfyLimitOr 兜底）
+	//   BotAtkDaily：每个人机每日出征次数上限（默认 3）
+	BotAtkOn    int `gorm:"default:1;comment:人机允许攻击玩家(1开0关=只发育)" json:"bot_atk_on"`
+	BotAtkDaily int `gorm:"default:3;comment:每个人机每日出征上限" json:"bot_atk_daily"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
@@ -698,6 +705,9 @@ type EzfyProfile struct {
 	//   （与宝物冷却 wild_treasure_at 各自独立：两条掉落互不影响。）
 	WildItemAt int64 `gorm:"default:0;comment:打野地掉道具冷却(上次掉道具时间戳ms,0=从未)" json:"wild_item_at"`
 
+	// ★★ 2026-10-17 人机标识（二战侧权威源）：与家园库 users.is_bot 保持一致，
+	//   由 ezfyBotProvision / 管理端「转人机/转真人」唯一写入点维护。
+	IsBot     int       `gorm:"default:0;index:idx_profile_is_bot;comment:是否人机(1=AI玩家)" json:"is_bot"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
 
@@ -764,8 +774,9 @@ func (EzfyVisitLog) TableName() string { return "ezfy_visit_log" }
 // EzfyUserChest 玩家持有的未开宝箱（管理端/活动发放，玩家在「我的宝箱」里自己开）
 //
 // ★ 2026-10-14 用户需求「宝箱也能发放给玩家」：购买的宝箱买了即开（不进背包），
-//   发放的宝箱进这张表（user_id + chest_id 唯一，数量累加），玩家在自己背包/宝箱页开箱。
-//   开箱走 ezfy_cfg_chest 的奖池，不扣钱、不扣全库库存（发放是运营行为，库存是商城口径）。
+//
+//	发放的宝箱进这张表（user_id + chest_id 唯一，数量累加），玩家在自己背包/宝箱页开箱。
+//	开箱走 ezfy_cfg_chest 的奖池，不扣钱、不扣全库库存（发放是运营行为，库存是商城口径）。
 type EzfyUserChest struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID    uint      `gorm:"uniqueIndex:uk_ezfy_user_chest;comment:玩家ID" json:"user_id"`
@@ -881,8 +892,9 @@ func (EzfyPvpFoe) TableName() string { return "ezfy_pvp_foe" }
 // upsert 语义（board+user_id 唯一），删除某条 = 该榜恢复参与排名（不影响另两榜）。
 //
 // ★ 老数据（拆分前）没有 board 概念、三个榜共用一份 → 升级时统一落到 pvp，
-//   再由 seed.EnsureEzfyPvpExcludeTable 一次性复制到 power/prestige，
-//   保持「拆分前标一个 = 三个榜都不参与」的既有效果（不让玩家突然出现在另外两个榜上）。
+//
+//	再由 seed.EnsureEzfyPvpExcludeTable 一次性复制到 power/prestige，
+//	保持「拆分前标一个 = 三个榜都不参与」的既有效果（不让玩家突然出现在另外两个榜上）。
 type EzfyPvpExclude struct {
 	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
 	UserID    uint      `gorm:"uniqueIndex:uk_excl_board_user,priority:2;comment:玩家ID" json:"user_id"`
@@ -902,7 +914,8 @@ func (EzfyPvpExclude) TableName() string { return "ezfy_pvp_exclude" }
 // 展示生效中的称号徽章，样式按 Type 区分颜色（榜单=紫金，最醒目）。
 //
 // ★ 自动发放：风云榜**每日积分第一** → 自动获得「天下无双」（有效期 1 天）。
-//   结算记录见 EzfyTitleDaily（每天一条，day 唯一，多实例安全），玩家持有见 EzfyTitleGrant。
+//
+//	结算记录见 EzfyTitleDaily（每天一条，day 唯一，多实例安全），玩家持有见 EzfyTitleGrant。
 type EzfyTitle struct {
 	ID        uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
 	Name      string `gorm:"type:varchar(20);not null;uniqueIndex:uk_ezfy_title_name;comment:称号名称" json:"name"`
@@ -983,6 +996,8 @@ type EzfyAccount struct {
 	// ★ 2026-10-15 最后登陆 IP 留痕（配合 session_at 排查「不同城市/IP 刷号」），默认空串。
 	LastLoginIP string `gorm:"type:varchar(64);default:'';comment:最后登陆IP" json:"last_login_ip"`
 
+	// ★ 2026-10-17 人机标识：登录路径性能敏感（每次登录都要判「人机不许登」），直接读本表列。
+	IsBot     int       `gorm:"default:0;comment:是否人机(1=AI玩家)" json:"is_bot"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
@@ -1046,6 +1061,9 @@ type EzfyCity struct {
 	RateOil   int `gorm:"comment:比率石油" json:"rate_oil"`
 	RateRare  int `gorm:"comment:比率稀矿" json:"rate_rare"`
 
+	// ★ 2026-10-17 人机标识（profile 的冗余副本）：地图渲染 / 目标筛选 / 城市统计大量**直接查 city 表**、
+	//   不 join profile —— 线上 1核1G+跨 WAN，冗余一列比每次 join 便宜。写入点统一从 profile 取。
+	IsBot     int       `gorm:"default:0;index:idx_city_is_bot;comment:是否人机(1=AI玩家)" json:"is_bot"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
@@ -1411,6 +1429,8 @@ type EzfyCorps struct {
 	// ★ 2026-09-30 「入团需审核」：0=无需审核直接入团(默认)，1=需军团长审核。
 	NeedReview int `gorm:"default:0;comment:入团是否需审核(0=直接入团 1=需军团长审核)" json:"need_review"`
 
+	// ★ 2026-10-17 人机军团标识（军团管理列表要能区分）
+	IsBot     int       `gorm:"default:0;comment:是否人机军团" json:"is_bot"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
 

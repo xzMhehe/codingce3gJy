@@ -107,6 +107,10 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	//   称号**定义**表 ezfy_title 是全局配置，见 ezfyPurgeGlobalTables）
 	{"ezfy_title_grant", []string{"user_id"}},
 	{"ezfy_title_daily", []string{"user_id"}},
+	// ★ 2026-10-17 人机模块：人机档案 / 攻击计划（两个方向）/ 行为日志，删号必须一起清
+	{"ezfy_bot", []string{"user_id"}},
+	{"ezfy_bot_target", []string{"bot_uid", "target_uid"}},
+	{"ezfy_bot_log", []string{"bot_uid"}},
 }
 
 // ezfyPurgeByCity 按**城市**归属的表（占位值 = 该玩家的城池 id 列表）。
@@ -151,6 +155,7 @@ var ezfyPurgeGlobalTables = []string{
 	"ezfy_exchange_tpl", // 交易行挂单模板
 	"ezfy_map_tile",     // 地图瓦片（全服共享地形）
 	"ezfy_title",        // 统帅称号**定义**（管理端维护的全局配置，与玩家无关）
+	"ezfy_bot_lock",     // 人机 tick 租约锁（单行，与玩家无关）
 	"settings",          // 二战系统设置（全服一份）
 }
 

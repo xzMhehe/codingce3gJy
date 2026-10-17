@@ -79,6 +79,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
 	//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
 	go ezfyH.BgTickTitles()
+	// ★ 2026-10-17 人机（AI 玩家）：内部自调用要打本机端口 → 先绑定 base URL，再起 tick
+	//   （tick 自带租约锁，多进程只有一台真正执行；启动先等 45s 让建表/配置缓存就绪）
+	ezfy.SetEzfyBotBaseURL(cfg.Server.Port)
+	ezfy.SetEzfyBotAdminSecret(cfg.Jwt.Secret)
+	go ezfyH.BgTickBots()
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -1178,6 +1183,18 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
 				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)
 				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDelete)
+				// ===== 人机（AI 玩家）管理：独立前缀 /ezfy-bot/* + 独立权限点 module:ezfyBot =====
+				// ★ 与「玩家信息管理」完全分开（方案 7.1）：改人机不会碰到玩家管理代码，可整块回滚。
+				admin.GET("/ezfy-bot/list", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotList)
+				admin.POST("/ezfy-bot/create", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCreate)
+				admin.POST("/ezfy-bot/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotClear)
+				admin.GET("/ezfy-bot/logs", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogs)
+				admin.GET("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfig)
+				admin.POST("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfigSet)
+				admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
+				admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)
+				admin.POST("/ezfy-bot/:uid/act", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAct)
+				admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
 				// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
 				//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，
 				//   让只有 module:ezfyPlayers 的管理员也能加道具（发放道具菜单在 module:ezfyData 下）。

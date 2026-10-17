@@ -85,6 +85,12 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 
 	var acct model.EzfyAccount
 	found := h.DB.Where("game_id = ?", gameID).First(&acct).Error == nil
+	// ★★ 2026-10-17 人机账号禁止登录（人机是「自动操作的玩家代理」，不是给真人用的号）。
+	//   放在密码校验**之前**：不泄露「这个号存在且是人机」以外的任何信息，也不给人机密码爆破面。
+	if found && acct.IsBot == 1 {
+		resp.ParamError(c, "该账号无法登录")
+		return
+	}
 	bound := false
 	if found {
 		// 二战自有账号 → 二战密码校验
@@ -101,6 +107,11 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		}
 		if user.Status == 0 {
 			resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
+			return
+		}
+		// ★ 2026-10-17 家园侧人机标识兜底（二战账号行缺失时也不能让 bot 登进来）
+		if user.IsBot == 1 {
+			resp.ParamError(c, "该账号无法登录")
 			return
 		}
 		if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
@@ -192,6 +203,11 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 	}
 	if user.Status == 0 {
 		resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
+		return
+	}
+	// ★ 2026-10-17 人机账号禁止通过 SSO 登录（家园 token 换二战 token 这条路也要堵）
+	if user.IsBot == 1 {
+		resp.ParamError(c, "该账号无法登录")
 		return
 	}
 	// 找/建二战账号：已建档的**不动**它的二战密码（玩家可能已在二战里改过密码）

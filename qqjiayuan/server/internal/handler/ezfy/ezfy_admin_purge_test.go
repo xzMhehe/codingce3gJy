@@ -22,7 +22,10 @@ var ezfyTableNameRe = regexp.MustCompile(`TableName\(\) string \{ return "([a-z_
 
 // TestEzfyPlayerPurgeCoversAllTables 删号清单必须覆盖二战库的每一张表。
 func TestEzfyPlayerPurgeCoversAllTables(t *testing.T) {
+	// ★ 2026-10-17 人机模块把新表单独放在 model/ezfy_bot.go → 两个文件都要扫，
+	//   否则「人机表漏进删号清单」这种漏表护栏就形同虚设。
 	src := strings.ReplaceAll(rawFile(t, "../../model/ezfy.go"), "\r\n", "\n")
+	src += "\n" + strings.ReplaceAll(rawFile(t, "../../model/ezfy_bot.go"), "\r\n", "\n")
 	matches := ezfyTableNameRe.FindAllStringSubmatch(src, -1)
 	if len(matches) < 60 {
 		t.Fatalf("从 internal/model/ezfy.go 只解析出 %d 张表（解析规则失效？表名写法变了？）", len(matches))
