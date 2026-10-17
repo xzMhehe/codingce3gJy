@@ -616,6 +616,12 @@ var ezfyEzfyCfgItem = []model.EzfyCfgItem{
 	//   空闲已满（无待恢复人口）时拒绝且不消耗道具。
 	{ID: 1042, Name: "移民法案", ItemType: 31, Param1: 100000, PriceDiamond: 2, Stock: -1, Icon: "",
 		Category: "钻石道具", Description: "召集人口10万（人口达上限后改为召集空闲人口，空闲人口达上限后无法使用）"},
+	// ★ 2026-10-17 军团联络令（ItemType 32）：创建军团凭证道具。
+	//   用户规则：「创建军团需要军团联络令道具，10钻石一个；
+	//   描述：创建军团需要联络凭证，创建军团时消耗1个」。
+	//   创建军团时自动消耗 1 个（无则提示先到商城购买），不能直接在背包手动使用。
+	{ID: 1043, Name: "军团联络令", ItemType: 32, Param1: 1, PriceDiamond: 10, Stock: -1, Icon: "",
+		Category: "钻石道具", Description: "创建军团需要联络凭证，创建军团时消耗1个"},
 }
 
 var ezfyEzfyCfgTaskType = []model.EzfyCfgTaskType{

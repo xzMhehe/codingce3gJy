@@ -1275,6 +1275,17 @@ func (h *EzfyHandler) CorpsList(c *gin.Context) {
 	resp.OK(c, gin.H{"corps": views, "my_corps": myCorpsView})
 }
 
+// ezfyCorpsItemName 创建军团消耗的凭证道具「军团联络令」（ItemType 32）。
+//
+// ★ 2026-10-17 用户规则：「创建军团需要军团联络令道具，10钻石一个；
+//
+//	创建军团需要联络凭证，创建军团时消耗1个」。
+//
+// 与集结令/信号弹/建筑图纸同款，**按名字解析**（见 ezfy_geo.go 的 itemIDByName），不写死 cfg_id。
+const ezfyCorpsItemName = "军团联络令"
+
+func ezfyCorpsItemID() int { return ezfyCfg.itemIDByName(ezfyCorpsItemName) }
+
 func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
@@ -1312,12 +1323,19 @@ func (h *EzfyHandler) CorpsCreate(c *gin.Context) {
 		resp.ParamError(c, "需要 2 级联络中心才能创建联盟(当前"+strconv.Itoa(liaison)+"级)")
 		return
 	}
+	// ★ 2026-10-17 创建军团需要消耗 1 个「军团联络令」（商城 10 钻石/个），
+	//   背包没有则提示先购买，不扣黄金。
+	if h.itemCount(uid, ezfyCorpsItemID()) < 1 {
+		resp.ParamError(c, "创建军团需要1个军团联络令(商城10钻石购买)，请先在商城购买")
+		return
+	}
 	if city.Gold < ezfyCorpsCreateGold {
 		resp.ParamError(c, "创建联盟需要"+strconv.Itoa(ezfyCorpsCreateGold)+"黄金")
 		return
 	}
 	city.Gold -= ezfyCorpsCreateGold
 	h.saveCityRes(&city)
+	h.consumeItem(uid, ezfyCorpsItemID(), "创建军团消耗")
 	cp := model.EzfyCorps{Name: name, LeaderUserId: uid, Notice: "", MemberCount: 1}
 	h.DB.Create(&cp)
 	h.DB.Create(&model.EzfyCorpsMember{CorpsId: cp.ID, UserId: uid, IsLeader: 1, Title: "军团长"})

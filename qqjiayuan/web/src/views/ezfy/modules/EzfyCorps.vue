@@ -99,6 +99,8 @@
             军团名: <input v-model="ezfy.corpsName" class="corps-name-input" style="width:10%"/>
             <button @click="ezfy.doCreateCorps">[创建]</button>
           </div>
+          <!-- ★ 2026-10-17 创建军团需消耗 1 个军团联络令（商城 10 钻石/个） -->
+          <div class="old-line gray">创建军团需消耗1个军团联络令，背包没有时请先在商城购买</div>
         </div>
         </template>
 

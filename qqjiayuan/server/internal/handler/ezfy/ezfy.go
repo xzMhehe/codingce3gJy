@@ -3718,6 +3718,8 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		return fmt.Sprintf("【%s】请在「市政厅 → 城市迁移」页面使用", cfg.Name)
 	case 21: // 军官改名卡：在军官详情页使用（不在背包直接点）
 		return fmt.Sprintf("【%s】请在「军官 → 军官详情」页面使用", cfg.Name)
+	case 32: // 军团联络令：创建军团时自动消耗（不在背包直接点）
+		return fmt.Sprintf("【%s】请在「军团 → 创建军团」页面使用，创建成功后自动消耗", cfg.Name)
 	default:
 		return "道具类型错误"
 	}
