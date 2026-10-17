@@ -198,6 +198,17 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 			"food": 500000, "steel": 200000, "oil": 200000, "rare": 200000,
 		})
 	}
+	// ★ 2026-10-17 新增人机按难度给初始兵力：侦察机 10/20/30 万、火箭 1/2/3 亿（有兵才敢宣战）
+	scoutN, rocketN := int64(100000), int64(100000000)
+	switch level {
+	case 1:
+		scoutN, rocketN = 100000, 100000000
+	case 2:
+		scoutN, rocketN = 200000, 200000000
+	case 3:
+		scoutN, rocketN = 300000, 300000000
+	}
+	h.ezfyBotSeedTroops(city.ID, scoutN, rocketN)
 	// ★ 2026-10-17 人机默认持有 5000 个集结令（每个 +10 万出征上限，大兵力一样能派出去）
 	h.addItem(uid, ezfyGatherItemID(), 5000)
 
@@ -231,6 +242,22 @@ func (h *EzfyHandler) ezfyBotPickNick() string {
 	return "钢铁洪流" + strconv.FormatInt(time.Now().UnixNano()%100000, 10)
 }
 
+// ezfyBotEnsuredUniqueNick 返回一个未被占用的昵称（冲突自动补数字后缀）——生成时自定义马甲用。
+func (h *EzfyHandler) ezfyBotEnsuredUniqueNick(name string) string {
+	for i := 0; i < 60; i++ {
+		cand := name
+		if i > 0 {
+			cand = name + strconv.Itoa(i+1)
+		}
+		var n int64
+		h.home().Model(&model.User{}).Where("nickname = ?", cand).Count(&n)
+		if n == 0 {
+			return cand
+		}
+	}
+	return name + "-" + strconv.FormatInt(time.Now().UnixMilli()%100000, 10)
+}
+
 // ezfyBotPersona 性格（目前只用于日志/展示，后续可影响节奏）。
 func ezfyBotPersona(level int) string {
 	switch level {
@@ -245,6 +272,19 @@ func ezfyBotPersona(level int) string {
 // ezfyBotLog 写一条行为日志（管理端「行为日志」数据源）。
 func (h *EzfyHandler) ezfyBotLog(uid uint, action, detail string, ok int) {
 	h.DB.Create(&model.EzfyBotLog{BotUid: uid, Action: action, Detail: trimStr(detail, 240), Result: ok})
+}
+
+// ezfyBotSeedTroops 给人机城市塞初始兵力（★ 2026-10-17）。
+//
+// 直接建行（新起/新补的城市必然无兵，不会撞 uk_city_troop 唯一键）：
+// 侦察机 troop_id=9、火箭 troop_id=8（种子兵种 ID）。
+func (h *EzfyHandler) ezfyBotSeedTroops(cityID uint, scoutN, rocketN int64) {
+	if scoutN > 0 {
+		h.DB.Create(&model.EzfyCityTroop{CityId: int64(cityID), TroopId: 9, Count: scoutN})
+	}
+	if rocketN > 0 {
+		h.DB.Create(&model.EzfyCityTroop{CityId: int64(cityID), TroopId: 8, Count: rocketN})
+	}
 }
 
 // ============ 存量人机补一批集结令 ============
@@ -837,6 +877,24 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 		Select("COALESCE(MAX(level),0)").Scan(&staff)
 	if academy < 1 || staff < 1 {
 		return "", "", false
+	}
+	// ①½ 任命城守（★ 2026-10-17 用户规则「人机自己设置城守」）：当前城没有城守 →
+	//   把军事最高的在职军官任命为城守（position=2，走真人任命接口）。
+	//   城守给守军加防御还领被动经验，人机被打飞后新城市也立刻有守将。
+	if h.positionOfficer(city.ID, ezfyPositionGuard) == nil {
+		var best model.EzfyOfficer
+		if err := h.DB.Where("city_id = ? AND status = 0", city.ID).
+			Order("military DESC, level DESC").First(&best).Error; err == nil && best.ID > 0 &&
+			best.Position != ezfyPositionGuard {
+			code, errMsg := h.botCall(uid, "", "POST",
+				fmt.Sprintf("/games/ezfy/officers/%d/position", best.ID),
+				map[string]interface{}{"position": 2})
+			if code == 0 {
+				return "任命城守", fmt.Sprintf("%s 就任城守", best.Name), true
+			}
+			// 任命失败（无参谋部等）不拦截，继续其余军官动作
+			_ = errMsg
+		}
 	}
 	// ② 优先「点属性」：本城在职军官里有待分配点的 → 一次全点「军事」
 	//   （军事又加出征上限又加战斗力，人机要的就是能打）。

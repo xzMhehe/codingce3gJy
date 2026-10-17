@@ -358,8 +358,12 @@ func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
 // 落点 / 初始资源 / 基础建筑 / 当前城市指向 均与 createMainCity 一致。
 func (h *EzfyHandler) replenishCity(uid uint) model.EzfyCity {
 	pos := h.findFreePos()
+	// ★ 2026-10-17 人机被打飞也走补给重建：新城保持 is_bot=1、直接铺 9 级建筑底盘、
+	//   固定初始兵力（10 万侦察机 + 1 亿火箭），被打飞后立刻恢复战力继续进犯玩家。
+	var botCnt int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ? AND is_bot = 1", uid).Count(&botCnt)
 	city := model.EzfyCity{
-		UserID: uid, Name: "新城市",
+		UserID: uid, Name: "新城市", IsBot: int(botCnt),
 		Feelings: 80, Grievance: 0, TaxRate: 20,
 		Pop: 0, PopMax: 100,
 		Gold: 20000, Food: 5000, Steel: 5000, Oil: 5000, Rare: 5000,
@@ -372,6 +376,14 @@ func (h *EzfyHandler) replenishCity(uid uint) model.EzfyCity {
 	h.initBuilding(city.ID, 1, 1)
 	h.initBuilding(city.ID, 2, 1)
 	h.initBuilding(city.ID, 3, 1)
+	if botCnt > 0 {
+		// 人机重建：9 级建筑底盘（司令部等满配置）+ 固定初始兵力
+		h.cfgs()
+		for _, bid := range ezfyBotDefaultBuildings {
+			h.ensureBotBuilding(city.ID, bid, 9)
+		}
+		h.ezfyBotSeedTroops(city.ID, 100000, 100000000)
+	}
 	// 当前城市指向新城（守方原当前城已被占，切到新城避免操作报错）
 	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).
 		Update("current_city_id", int64(city.ID))

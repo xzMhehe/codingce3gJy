@@ -128,6 +128,10 @@
           <el-switch v-model="createBoost" />
           <el-tooltip placement="top" :content="tips.boost"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
         </el-form-item>
+        <!-- ★ 2026-10-17 昵称马甲：生成时自定义名字（仅单条生成可用；留空走自动词库） -->
+        <el-form-item label="昵称马甲">
+          <el-input v-model="createNickname" placeholder="留空 = 随机军事昵称（仅 1 个时可用）" style="width:260px" maxlength="20" />
+        </el-form-item>
       </el-form>
       <div slot="footer">
         <el-button @click="createDlg = false">取 消</el-button>
@@ -438,7 +442,7 @@ export default {
       relocateDlg: false, relocateSaving: false, relocateForm: { x: 1, y: 1 },
       // 编辑快照（保存时只提交有变化的 tab —— 修复「保存卡顿」：几十条 UPDATE 串行跨 WAN 太慢）
       editSnap: { b: '', t: '', tr: '', o: '' },
-      createDlg: false, createCount: 3, createLevel: 2, createBoost: true,
+      createDlg: false, createCount: 3, createLevel: 2, createBoost: true, createNickname: '',
       // 一键立即行动（全部人机连跑 N 轮）
       actAllDlg: false, actAllSaving: false, actAllRounds: 5,
       // 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）
@@ -511,7 +515,7 @@ export default {
     },
     doCreate () {
       this.saving = true
-      api.post('/admin/ezfy-bot/create', { count: this.createCount, level: this.createLevel, boost: this.createBoost }).then(r => {
+      api.post('/admin/ezfy-bot/create', { count: this.createCount, level: this.createLevel, boost: this.createBoost, nickname: this.createNickname || '' }).then(r => {
         this.saving = false
         if (r.code === 0) {
           this.createDlg = false

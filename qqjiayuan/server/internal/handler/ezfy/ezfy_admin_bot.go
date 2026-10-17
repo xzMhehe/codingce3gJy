@@ -155,14 +155,16 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 	})
 }
 
-// AdminEzfyBotCreate POST /admin/ezfy-bot/create {count, level} —— 批量生成人机
+// AdminEzfyBotCreate POST /admin/ezfy-bot/create {count, level, boost, nickname} —— 批量生成人机
 //
 // count 单次最多 10（避免一次建太多把 1 核打满）；level 1新手/2普通/3精英。
+// nickname 可选马甲（只支持 count=1 时给这台人机起名；留空走自动词库随机昵称）。
 func (h *EzfyAdmin) AdminEzfyBotCreate(c *gin.Context) {
 	var in struct {
-		Count int  `json:"count"`
-		Level int  `json:"level"`
-		Boost bool `json:"boost"`
+		Count    int    `json:"count"`
+		Level    int    `json:"level"`
+		Boost    bool   `json:"boost"`
+		Nickname string `json:"nickname"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -174,6 +176,11 @@ func (h *EzfyAdmin) AdminEzfyBotCreate(c *gin.Context) {
 	}
 	if in.Level < 1 || in.Level > 3 {
 		in.Level = 2
+	}
+	in.Nickname = strings.TrimSpace(in.Nickname)
+	if in.Nickname != "" && in.Count > 1 {
+		resp.ParamError(c, "自定义昵称（马甲）仅支持单次生成 1 个")
+		return
 	}
 	// 生成走 EzfyHandler（建城/建档案的懒结算都在那边）
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
@@ -187,6 +194,15 @@ func (h *EzfyAdmin) AdminEzfyBotCreate(c *gin.Context) {
 			continue
 		}
 		created++
+		// 马甲：覆盖自动词库昵称（家园 users + 二战 account/profile 三处同步改）
+		if in.Nickname != "" && created == 1 {
+			final := ez.ezfyBotEnsuredUniqueNick(in.Nickname)
+			h.DB.Model(&model.User{}).Where("id = ?", uid).Update("nickname", final)
+			h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).Update("nickname", final)
+			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("nickname", final)
+			names = append(names, final)
+			continue
+		}
 		names = append(names, ez.ezfyBotNickOf(uid))
 	}
 	msg := "已生成 " + strconv.Itoa(created) + " 个人机"
