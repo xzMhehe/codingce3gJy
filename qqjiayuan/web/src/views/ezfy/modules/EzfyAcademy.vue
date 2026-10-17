@@ -5,7 +5,7 @@
       <div class="panel">
         <div class="panel-title">统帅信息</div>
         <!-- ★ 只展示「玩家号码(游戏ID)」——不展示家园号码 -->
-        玩家号码：{{ ezfy.selfInfo.game_uid || ezfy.profile.game_uid || ezfy.userBrief.game_uid || '—' }}<br/>
+        账号：{{ ezfy.selfInfo.game_uid || ezfy.profile.game_uid || ezfy.userBrief.game_uid || '—' }}<br/>
         昵称：{{ ezfy.selfInfo.nickname || ezfy.profile.nickname }}
         <template v-if="!ezfy.renameEditing">
           <a href="javascript:;" @click="ezfy.startRename">[修改]</a>
@@ -59,7 +59,7 @@
         <div class="panel-title">统帅信息</div>
         <div class="old-line">
           <b :style="ezfy.nickColorAt(ezfy.playerInfo.color, 0)">{{ ezfy.playerInfo.nickname }}</b>
-          <span class="gray">(账号 {{ ezfy.playerInfo.game_uid || ezfy.playerInfo.user_id }})</span>
+          <span class="gray">({{ ezfy.playerInfo.game_uid || ezfy.playerInfo.user_id }})</span>
         </div>
         <!-- ★ 2026-10-17 统帅称号：昵称下方、阵营上方（生效中的才返回，过期自动消失） -->
         <div class="ezfy-title-line" v-if="ezfy.playerInfo.titles && ezfy.playerInfo.titles.length">
