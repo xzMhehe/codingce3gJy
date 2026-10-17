@@ -159,11 +159,27 @@
           <!-- 背包 -->
           <!-- ★ 2026-10-05 背包标题去掉「行」这个单位，只展示数量 -->
           <el-tab-pane :label="'背包 (' + detail.bag.length + ')'" name="bag">
-            <el-table :data="detail.bag" size="mini" border max-height="360">
+            <!-- ★ 2026-10-17 背包维护：添加道具（累加）/ 编辑数量（覆盖）/ 物理删除 -->
+            <div class="bag-bar">
+              <span class="td-gray" style="font-size:12px">
+                共 {{ detail.bag.length }} 种道具 · 编辑数量为<b>直接设为</b>该值，删除为<b>物理删除</b>（不可恢复）
+              </span>
+              <div class="grow" />
+              <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="openBagAdd">添加道具</el-button>
+            </div>
+            <el-table :data="detail.bag" size="mini" border max-height="330">
               <el-table-column prop="id" label="行ID" width="80" align="center" />
               <el-table-column prop="cfg_id" label="道具ID" width="90" align="center" />
-              <el-table-column prop="item_name" label="道具名" min-width="120" />
-              <el-table-column prop="count" label="数量" width="90" align="center" />
+              <el-table-column prop="item_name" label="道具名" min-width="140" show-overflow-tooltip />
+              <el-table-column label="数量" width="110" align="center">
+                <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.count) }}</span></template>
+              </el-table-column>
+              <el-table-column label="操作" width="150" align="center" fixed="right">
+                <template slot-scope="{row}">
+                  <el-button size="mini" plain icon="el-icon-edit" title="编辑数量" @click="openBagEdit(row)" />
+                  <el-button size="mini" type="danger" plain icon="el-icon-delete" title="物理删除" @click="bagDelete(row)" />
+                </template>
+              </el-table-column>
             </el-table>
           </el-tab-pane>
           <!-- 军团 -->
@@ -274,6 +290,31 @@
         <el-button type="primary" :loading="saving" @click="doGrant">发 放</el-button>
       </div>
     </el-dialog>
+
+    <!-- ★ 2026-10-17 背包：添加道具 / 编辑数量（详情弹窗之上，append-to-body 避免被遮罩挡住） -->
+    <el-dialog :title="bagEdit.row ? ('编辑数量 —— ' + bagEdit.row.item_name) : '添加道具'"
+               :visible.sync="bagDlg" width="470px" :close-on-click-modal="false" append-to-body>
+      <el-form label-width="80px">
+        <el-form-item label="道具" v-if="!bagEdit.row">
+          <el-select v-model="bagEdit.cfg_id" filterable placeholder="选择道具（可输入名称搜索）" style="width:300px">
+            <el-option v-for="it in bagOptions" :key="it.id" :label="it.name + '（ID ' + it.id + '）'" :value="it.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model.number="bagEdit.count" :min="1" :max="1000000000" :step="1" style="width:190px" />
+          <span v-if="bagEdit.row" class="td-gray" style="margin-left:8px">当前 {{ fmtNum(bagEdit.row.count) }}</span>
+        </el-form-item>
+        <div class="td-gray" style="font-size:12px; line-height:1.7; padding-left:80px">
+          <template v-if="bagEdit.row">· 保存后数量<b>直接设为</b>该值（不是累加）。</template>
+          <template v-else>· 添加为<b>累加</b>：背包里已有该道具就在原数量上加。</template><br/>
+          · 管理端操作<b>不受单件上限约束</b>；不需要时可用「物理删除」直接清掉。
+        </div>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="bagDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="bagSaving" @click="saveBag">确 定</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -289,6 +330,9 @@ export default {
       editDlg: false, saving: false, editId: 0, form: {}, editCur: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       grantDiamond: 0,
+      // ★ 2026-10-17 背包维护：添加道具 / 编辑数量 / 物理删除
+      bagDlg: false, bagSaving: false, bagOptions: [], bagLoaded: false,
+      bagEdit: { row: null, cfg_id: null, count: 1 },
       // ★ 2026-10-12 label 上的 i 图标提示（沿用「二战系统配置」页的 tips 写法，鼠标悬停显示）
       tips: {
         step: '数字框右侧 ▲/▼ 每点一次的增减量（只影响点箭头，手打数字不受影响）。' +
@@ -347,10 +391,62 @@ export default {
     openDetail (row) {
       this.detail = null
       this.detailDlg = true
-      api.get('/admin/ezfy-players/' + row.user_id + '/detail').then(r => {
+      this.loadDetail(row.user_id)
+    },
+    // ★ 2026-10-17 抽出 loadDetail：背包维护后要就地刷新详情（不用关掉重开弹窗）
+    loadDetail (uid) {
+      api.get('/admin/ezfy-players/' + uid + '/detail').then(r => {
         if (r.code === 0) this.detail = r.data
         else { this.detailDlg = false; this.$message.error(r.msg) }
       })
+    },
+    // ---- 背包维护（★ 2026-10-17）----
+    openBagAdd () {
+      this.loadBagOptions()
+      this.bagEdit = { row: null, cfg_id: null, count: 1 }
+      this.bagDlg = true
+    },
+    // 道具下拉只拉一次（全量 id+name，几百件也很快；后端已排除为爱发电卡）
+    loadBagOptions () {
+      if (this.bagLoaded) return
+      api.get('/admin/ezfy-player-items/options').then(r => {
+        if (r.code === 0) { this.bagOptions = r.data.list || []; this.bagLoaded = true }
+      }).catch(() => {})
+    },
+    openBagEdit (row) {
+      this.bagEdit = { row: row, cfg_id: row.cfg_id, count: row.count }
+      this.bagDlg = true
+    },
+    saveBag () {
+      const e = this.bagEdit
+      if (!e.cfg_id) { this.$message.warning('请选择道具'); return }
+      const cnt = parseInt(e.count) || 0
+      if (cnt <= 0) { this.$message.warning('数量必须大于 0'); return }
+      const uid = this.detail.player.user_id
+      this.bagSaving = true
+      api.post('/admin/ezfy-players/' + uid + '/item', {
+        cfg_id: e.cfg_id, count: cnt, mode: e.row ? 'set' : 'add'
+      }).then(r => {
+        this.bagSaving = false
+        if (r.code === 0) {
+          this.bagDlg = false
+          this.$message.success(r.data.msg || '已保存')
+          this.loadDetail(uid)
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.bagSaving = false })
+    },
+    bagDelete (row) {
+      const uid = this.detail.player.user_id
+      this.$confirm('确认物理删除「' + this.detail.player.nickname + '」的【' + row.item_name + '】×' +
+        this.fmtNum(row.count) + '？\n删除后不可恢复（玩家背包里这一行会直接消失）。',
+      '物理删除道具', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-players/' + uid + '/item/' + row.cfg_id).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已删除')
+            this.loadDetail(uid)
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
     },
     openEdit (row) {
       this.editId = row.user_id
@@ -490,4 +586,7 @@ export default {
 .td-gen { color: #e6a23c; cursor: pointer; text-decoration: underline; font-size: 12px; }
 .td-attr { margin-right: 8px; color: #606266; font-size: 12px; }
 .loyalty-low { color: #f56c6c; font-weight: 600; }
+/* ★ 2026-10-17 背包 tab 工具条（添加道具 + 说明） */
+.bag-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.bag-bar .grow { flex: 1; }
 </style>
