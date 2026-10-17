@@ -386,6 +386,40 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 	h.DB.Create(&b)
 }
 
+// ★ 2026-10-17 人机默认发育底盘：直接给 9 级，避免从零爬建筑长期卡「休整」。
+//
+//	市政厅(1) 农田(3) 炼钢厂(4) 石油基地(5) 稀矿厂(6) 军工厂(14) 参谋部(10) 司令部(13)
+var ezfyBotDefaultBuildings = []int{1, 3, 4, 5, 6, 14, 10, 13}
+
+// ensureBotBuilding 把人机城市的指定建筑补/提到 target 级（幂等）。
+// 该城没有该建筑 → 新建一条；已有 → 只升不降，且不管施工状态直接置为 9（Status 清零，
+// 避免遗留「建造中」的行继续占用施工队列）。
+func (h *EzfyHandler) ensureBotBuilding(cityId uint, buildingId, target int) {
+	cfg := ezfyCfg.building(buildingId)
+	if cfg != nil && target > cfg.MaxLevel {
+		target = cfg.MaxLevel
+	}
+	var b model.EzfyCityBuilding
+	err := h.DB.Where("city_id = ? AND building_id = ?", int64(cityId), buildingId).First(&b).Error
+	if err != nil {
+		// 不存在 → 直接建到 target 级
+		h.DB.Create(&model.EzfyCityBuilding{
+			CityId: int64(cityId), BuildingId: buildingId,
+			Level: target, Status: 0, StartTime: 0, EndTime: 0,
+		})
+		return
+	}
+	if b.Level < target {
+		b.Level = target
+		b.Status = 0
+		b.StartTime = 0
+		b.EndTime = 0
+		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
+			"level": b.Level, "status": 0, "start_time": 0, "end_time": 0,
+		})
+	}
+}
+
 // findFreePos 新玩家首次进游戏的落点
 //
 // ★ 第十二轮：默认落在**欧洲**（ezfyDefaultMoveContinent），

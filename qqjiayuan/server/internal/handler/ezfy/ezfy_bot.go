@@ -117,6 +117,8 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	if level < 1 || level > 3 {
 		level = 2
 	}
+	// ★ 2026-10-17 ensureBotBuilding 里要用 ezfyCfg.building() 查上限，先确保配置已加载
+	h.cfgs()
 	// 数量上限
 	var cnt int64
 	h.DB.Model(&model.EzfyBot{}).Count(&cnt)
@@ -182,6 +184,12 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 		return rollback(fmt.Errorf("建城失败"))
 	}
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("is_bot", 1)
+	// ★ 2026-10-17 人机默认发育底盘：市政厅/农田/炼钢厂/石油基地/稀矿厂/军工厂/参谋部/司令部
+	//   初始直接 9 级（司令部上限 12，其余 10），避免新人生机从 1 级慢慢爬、长期停在「休整/资源不足」。
+	//   在 createMainCity 给的 1 级基础上补齐：已建的直接提到 9，未建的补建到 9。
+	for _, bid := range ezfyBotDefaultBuildings {
+		h.ensureBotBuilding(city.ID, bid, 9)
+	}
 	// 运营初始化（方案 4.7「开服调参」）：可选「加速开局」——给一笔启动资源，
 	// 否则人机要花很久才能攒够「召集人口」的 20 万粮（从零开始是默认档）。
 	if boost {
