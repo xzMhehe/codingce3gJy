@@ -129,6 +129,14 @@ node "$SSH_RUN" exec "chmod +x $REMOTE_DIR/*.sh $REMOTE_DIR/server/server && ech
 info "解压完成 + 执行位已设置"
 
 step "5/7 恢复线上配置"
+# 无论恢复备份/种子还是用模板，随后统一执行 wwii-patch-cfg.sh：
+# 从家园配置 /opt/Linuxbushu/server/config.yaml（退路 /opt/config.yaml）回填
+# MySQL host/密码，并写入 home_url（家园服公网地址 http://<主机IP>:<家园端口>）
+# 供二战「家园」按钮整页跳转。幂等，重复执行无害。
+node "$SSH_RUN" put "$SCRIPT_DIR/wwii-patch-cfg.sh" "$REMOTE_DIR/wwii-patch-cfg.sh" || die "上传补丁脚本失败"
+HOME_PORT=$(rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
+[ -n "$HOME_PORT" ] || HOME_PORT=8080
+
 if [ -n "$BAK_CONFIG" ]; then
   node "$SSH_RUN" exec "cp -a '$BAK_CONFIG' $REMOTE_DIR/server/config.yaml && echo restored" || die "恢复备份配置失败"
   info "已从备份恢复配置"
@@ -136,15 +144,10 @@ elif [ "$(rsh_read "test -f '$CONFIG_SEED' && echo yes || echo no")" = "yes" ]; 
   node "$SSH_RUN" exec "cp -a '$CONFIG_SEED' $REMOTE_DIR/server/config.yaml" || die "恢复种子配置失败"
   info "已从 $CONFIG_SEED 恢复配置"
 else
-  # 无备份/种子 → 模板就位。上传 wwii-patch-cfg.sh，从服务器上家园配置
-  # /opt/Linuxbushu/server/config.yaml（退路 /opt/config.yaml）回填 MySQL host/密码，
-  # 并写入 home_url（家园服公网地址 http://<主机IP>:<家园端口>）供二战「家园」按钮整页跳转。
-  node "$SSH_RUN" put "$SCRIPT_DIR/wwii-patch-cfg.sh" "$REMOTE_DIR/wwii-patch-cfg.sh" || die "上传补丁脚本失败"
-  HOME_PORT=$(rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
-  [ -n "$HOME_PORT" ] || HOME_PORT=8080
-  node "$SSH_RUN" exec "bash $REMOTE_DIR/wwii-patch-cfg.sh $REMOTE_DIR/server/config.yaml /opt/Linuxbushu/server/config.yaml http://$SSH_HOST:$HOME_PORT" || die "回填 WWII 配置失败"
-  info "已从家园配置回填 MySQL host/密码 + home_url（http://$SSH_HOST:$HOME_PORT）"
+  info "无备份/种子 → 使用解压出的模板配置"
 fi
+node "$SSH_RUN" exec "bash $REMOTE_DIR/wwii-patch-cfg.sh $REMOTE_DIR/server/config.yaml /opt/Linuxbushu/server/config.yaml http://$SSH_HOST:$HOME_PORT" || die "回填 WWII 配置失败"
+info "已从家园配置回填 MySQL host/密码 + home_url（http://$SSH_HOST:$HOME_PORT）"
 
 step "6/7 启动"
 node "$SSH_RUN" exec "cd $REMOTE_DIR && ./start.sh" || {
@@ -165,8 +168,13 @@ if [ "$ZONE2" = "1" ]; then
   echo "==> --zone2: 克隆 2 区（$ZONE2_DIR，端口 $ZONE2_PORT，独立库 qq_ezzt2，fresh）"
   if [ "$(rsh_read "test -d '$ZONE2_DIR' && echo yes || echo no")" = "yes" ]; then
     info "$ZONE2_DIR 已存在 —— 同步新二进制/web/脚本（保留其 config.yaml），重启 2 区"
-    node "$SSH_RUN" exec "cp -f $REMOTE_DIR/server/server $ZONE2_DIR/server/server && cp -R $REMOTE_DIR/web/dist/. $ZONE2_DIR/web/dist/ && cp -f $REMOTE_DIR/start.sh $REMOTE_DIR/stop.sh $ZONE2_DIR/ && chmod +x $ZONE2_DIR/*.sh $ZONE2_DIR/server/server && $ZONE2_DIR/stop.sh 2>/dev/null; sleep 1; $ZONE2_DIR/start.sh" || {
-      info "2 区同步/重启失败，日志尾部："
+    node "$SSH_RUN" exec "cp -f $REMOTE_DIR/server/server $ZONE2_DIR/server/server && cp -R $REMOTE_DIR/web/dist/. $ZONE2_DIR/web/dist/ && cp -f $REMOTE_DIR/start.sh $REMOTE_DIR/stop.sh $ZONE2_DIR/ && chmod +x $ZONE2_DIR/*.sh $ZONE2_DIR/server/server" || {
+      info "2 区同步失败，日志尾部："
+      node "$SSH_RUN" exec "tail -n 15 $ZONE2_DIR/logs/server.log 2>/dev/null" || true
+      exit 1
+    }
+    node "$SSH_RUN" exec "bash $REMOTE_DIR/wwii-patch-cfg.sh $ZONE2_DIR/server/config.yaml /opt/Linuxbushu/server/config.yaml http://$SSH_HOST:$HOME_PORT >/dev/null 2>&1; $ZONE2_DIR/stop.sh 2>/dev/null; sleep 1; $ZONE2_DIR/start.sh" || {
+      info "2 区重启失败，日志尾部："
       node "$SSH_RUN" exec "tail -n 15 $ZONE2_DIR/logs/server.log 2>/dev/null" || true
       exit 1
     }

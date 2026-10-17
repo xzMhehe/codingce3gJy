@@ -27,10 +27,18 @@ if [ -n "$PASS" ]; then
 else
   echo "WARN: no mysql password found in $HOME_CFG"
 fi
-# server.home_url: drop any existing line, then insert after zone_sub (old templates
-# generated before 2026-10-17 have no home_url line, so delete-then-insert is safe).
+# server.home_url: drop any existing line, then insert after zone_sub. Some old
+# live configs lack zone_sub, so fall back to zone_id / the server: block header.
+# (Old templates generated before 2026-10-17 have no home_url line, so
+# delete-then-insert is safe.)
 if [ -n "$HOME_BASE" ]; then
   sed -i '/^[[:space:]]*home_url:/d' "$CFG"
-  sed -i "/^[[:space:]]*zone_sub:/a\\  home_url: \"$HOME_BASE\"" "$CFG"
+  if grep -qE '^[[:space:]]*zone_sub:' "$CFG"; then
+    sed -i "/^[[:space:]]*zone_sub:/a\\  home_url: \"$HOME_BASE\"" "$CFG"
+  elif grep -qE '^[[:space:]]*zone_id:' "$CFG"; then
+    sed -i "/^[[:space:]]*zone_id:/a\\  home_url: \"$HOME_BASE\"" "$CFG"
+  else
+    sed -i "/^server:/a\\  home_url: \"$HOME_BASE\"" "$CFG"
+  fi
   echo "OK home_url=$HOME_BASE"
 fi

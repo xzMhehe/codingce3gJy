@@ -216,11 +216,9 @@ echo   OK extracted + exec bits set
 
 rem ---------- 5/7 restore config ----------
 echo ==^> 5/7 restore live config
-if not "%BAK_CONFIG%"=="" goto restore_from_backup
-call :rsh_read "test -f '%CONFIG_SEED%' && echo yes || echo no"
-if "%RH_OUT%"=="yes" goto restore_from_seed
-REM no backup / no seed: upload + run wwii-patch-cfg.sh to fill MySQL host+password
-REM from the home config (/opt/Linuxbushu/server/config.yaml, fallback /opt/config.yaml).
+REM Every branch below (backup / seed / fresh template) then runs wwii-patch-cfg.sh,
+REM so MySQL host+password AND server.home_url (home server public URL) always end
+REM up filled no matter which config path was restored. The patch is idempotent.
 REM WWII mode connects to the home DB read-only; ezfy_mysql inherits host/user/password
 REM from the mysql block, so patching host+password is enough (DB may be a remote RDS).
 REM All quoting lives inside the bash script - cmd/bat can never pass a literal "
@@ -235,24 +233,31 @@ if not "!PUT_RC!"=="0" (
 call :rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'"
 set "HOME_PORT=!RH_OUT!"
 if "!HOME_PORT!"=="" set "HOME_PORT=8080"
-call :rsh "bash %REMOTE_DIR%/wwii-patch-cfg.sh %REMOTE_DIR%/server/config.yaml /opt/Linuxbushu/server/config.yaml http://%SSH_HOST%:!HOME_PORT!"
-if "!RH_RC!"=="0" (
-    echo   OK MySQL host/password + home_url derived from home config ^(http://%SSH_HOST%:!HOME_PORT!^)
-) else (
-    echo   WARN: patch script failed - edit %REMOTE_DIR%\server\config.yaml to set MySQL host/password before start
-)
-goto after_restore
+
+if not "%BAK_CONFIG%"=="" goto restore_from_backup
+call :rsh_read "test -f '%CONFIG_SEED%' && echo yes || echo no"
+if "%RH_OUT%"=="yes" goto restore_from_seed
+REM no backup / no seed: fresh template config.yaml is already in place
+goto run_patch
 
 :restore_from_backup
 call :rsh "cp -a '%BAK_CONFIG%' %REMOTE_DIR%/server/config.yaml && echo 'restored from backup'"
 if not "%RH_RC%"=="0" goto fail_clean
 echo   OK restored live config from backup
-goto after_restore
+goto run_patch
 
 :restore_from_seed
 call :rsh "cp -a '%CONFIG_SEED%' %REMOTE_DIR%/server/config.yaml && echo 'restored from seed'"
 if not "%RH_RC%"=="0" goto fail_clean
 echo   OK restored live config from %CONFIG_SEED%
+
+:run_patch
+call :rsh "bash %REMOTE_DIR%/wwii-patch-cfg.sh %REMOTE_DIR%/server/config.yaml /opt/Linuxbushu/server/config.yaml http://%SSH_HOST%:!HOME_PORT!"
+if "!RH_RC!"=="0" (
+    echo   OK MySQL host/password + home_url filled from home config ^(http://%SSH_HOST%:!HOME_PORT!^)
+) else (
+    echo   WARN: patch script failed - edit %REMOTE_DIR%\server\config.yaml to set MySQL host/password before start
+)
 
 :after_restore
 
@@ -291,7 +296,8 @@ if "%ZONE2%"=="1" (
   call :rsh "test -d '%ZONE2_DIR%' && echo yes || echo no"
   if "!RH_OUT!"=="yes" (
     echo   %ZONE2_DIR% exists - syncing new binary/web/scripts ^(config.yaml kept^), restarting zone 2
-    call :rsh "cp -f %REMOTE_DIR%/server/server %ZONE2_DIR%/server/server && cp -R %REMOTE_DIR%/web/dist/. %ZONE2_DIR%/web/dist/ && cp -f %REMOTE_DIR%/start.sh %REMOTE_DIR%/stop.sh %ZONE2_DIR%/ && chmod +x %ZONE2_DIR%/*.sh %ZONE2_DIR%/server/server && %ZONE2_DIR%/stop.sh 2>/dev/null; sleep 1; %ZONE2_DIR%/start.sh"
+    call :rsh "cp -f %REMOTE_DIR%/server/server %ZONE2_DIR%/server/server && cp -R %REMOTE_DIR%/web/dist/. %ZONE2_DIR%/web/dist/ && cp -f %REMOTE_DIR%/start.sh %REMOTE_DIR%/stop.sh %ZONE2_DIR%/ && chmod +x %ZONE2_DIR%/*.sh %ZONE2_DIR%/server/server"
+    call :rsh "bash %REMOTE_DIR%/wwii-patch-cfg.sh %ZONE2_DIR%/server/config.yaml /opt/Linuxbushu/server/config.yaml http://%SSH_HOST%:!HOME_PORT! >/dev/null 2>&1; %ZONE2_DIR%/stop.sh 2>/dev/null; sleep 1; %ZONE2_DIR%/start.sh"
     if not "!RH_RC!"=="0" (
       echo   XX zone2 sync/restart failed
       call :rsh_read "tail -n 15 %ZONE2_DIR%/logs/server.log 2>/dev/null"

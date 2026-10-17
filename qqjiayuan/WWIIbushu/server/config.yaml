@@ -7,6 +7,8 @@ server:
   zone_id: 1
   zone_name: "1区"
   zone_sub: "红色警戒"
+  # home URL of the home server (for the WWII "back to home" button, filled by deploy-wwii)
+  home_url: ""
 mysql:
   host: 127.0.0.1
   port: 3306
