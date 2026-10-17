@@ -185,16 +185,19 @@ func seedEzfyTechLevels(db *gorm.DB) {
 // 保证任何一台启动都会把缺的索引补齐（ensureEzfyIndex 本身幂等，先到先建）。
 //
 // ★ 2026-10-03 起：首页 /view 30s 轮询的命令数/未读战报计数、装备检索，
-//   都按 user_id + status/is_read 过滤。只靠单列 user_id 会在引擎层窄化后再筛，
-//   补复合索引直接命中，省掉每一段的扫描。
+//
+//	都按 user_id + status/is_read 过滤。只靠单列 user_id 会在引擎层窄化后再筛，
+//	补复合索引直接命中，省掉每一段的扫描。
+//
 // ★ 2026-10-05 起（用户反馈「这些接口还是 2s+」）：跨 WAN 每次往返 13~37ms，
-//   慢接口的每一个**全表扫**都会被放大。以下三张表原先**只有主键**（或单列），
-//   而懒结算/展示每次都按这些条件过滤：
-//     · ezfy_occupy     —— cityOf() 查 `city_id + status=1`、wildfull 查 `atk_city_id + status=1`
-//     · ezfy_wildland   —— 地图/详情按 `x,y` 精确定位、地图按 x 区间裁剪
-//     · ezfy_order      —— processIncoming 按 `target_id IN (...) + status=0` 找来袭订单
-//     · ezfy_city_tech  —— 多城研究结算按 `city_id IN (...) + status=1`
-//     · ezfy_officer    —— 市长加成按 `city_id + position` 取 1 行
+//
+//	慢接口的每一个**全表扫**都会被放大。以下三张表原先**只有主键**（或单列），
+//	而懒结算/展示每次都按这些条件过滤：
+//	  · ezfy_occupy     —— cityOf() 查 `city_id + status=1`、wildfull 查 `atk_city_id + status=1`
+//	  · ezfy_wildland   —— 地图/详情按 `x,y` 精确定位、地图按 x 区间裁剪
+//	  · ezfy_order      —— processIncoming 按 `target_id IN (...) + status=0` 找来袭订单
+//	  · ezfy_city_tech  —— 多城研究结算按 `city_id IN (...) + status=1`
+//	  · ezfy_officer    —— 市长加成按 `city_id + position` 取 1 行
 func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_order", "idx_order_user_status", "user_id,status,order_type", false)
 	ensureEzfyIndex(db, "ezfy_report", "idx_report_user_read", "user_id,is_read", false)
@@ -251,6 +254,11 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	//   （model 里 Ts 已带 index 标签，独立库 AutoMigrate 会建；这里照顾单库 skip 的存量表。）
 	ensureEzfyIndex(db, "ezfy_pvp_detail", "idx_pvp_detail_ts", "ts", false)
 
+	// ★ 2026-10-17 统帅称号「持有人数」聚合提速：管理端列表/玩家列表都按 title_id 统计
+	//   `COUNT(*) + SUM(expire_at=0 OR expire_at>now)`。复合索引 (title_id, expire_at)
+	//   让这条聚合走**覆盖索引**（不回表），称号持有量上千时也不会拖慢列表。
+	ensureEzfyIndex(db, "ezfy_title_grant", "idx_title_grant_title_expire", "title_id,expire_at", false)
+
 	// ★★ 2026-10-10 原来这里还建 4 个**家园论坛**索引（threads/replies）——
 	//   二战拆到独立库后，这条函数跑在二战库上，家园表不在 → 每次启动刷 4 条
 	//   `Table 'qq_ezzt.threads' doesn't exist` 噪音。已挪到 EnsureHomeForumIndexes，
@@ -262,11 +270,12 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 // ezfyBackfillReportCityId 战报 city_id 兜底回填（幂等）。
 //
 // ★ 2026-10-07：city_id 是后加字段。AutoMigrate 给存量表补列时，若字段没写 default，
-//   建出来的是可空列 → 6000+ 历史行全是 NULL → GORM 扫进 int64 直接报
-//   `converting NULL to int64 is unsupported`，战报/军情接口整体 500。
-//   model 已补 `default:0`；这里再兜一次，确保历史行落成 0（口径 =「待解析」，
-//   军情按城过滤时走 ezfyCityReportCond 的坐标反查分支）。
-//   同款样板见 seed.go 的 `UPDATE ezfy_profile SET current_city_id = 0 WHERE ... IS NULL`。
+//
+//	建出来的是可空列 → 6000+ 历史行全是 NULL → GORM 扫进 int64 直接报
+//	`converting NULL to int64 is unsupported`，战报/军情接口整体 500。
+//	model 已补 `default:0`；这里再兜一次，确保历史行落成 0（口径 =「待解析」，
+//	军情按城过滤时走 ezfyCityReportCond 的坐标反查分支）。
+//	同款样板见 seed.go 的 `UPDATE ezfy_profile SET current_city_id = 0 WHERE ... IS NULL`。
 func ezfyBackfillReportCityId(db *gorm.DB) {
 	if err := db.Exec("UPDATE ezfy_report SET city_id = 0 WHERE city_id IS NULL").Error; err != nil {
 		log.Printf("ezfy 战报 city_id 回填失败: %v", err)
@@ -276,12 +285,14 @@ func ezfyBackfillReportCityId(db *gorm.DB) {
 // EnsureHomeForumIndexes 家园论坛索引（版块帖子列表 / 我的帖子 / 回复）。
 //
 // ★ 2026-10-03 加：版块帖子列表(board_id+状态)、我的帖子/回复(user_id+状态)是高频查询。
-//   Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。
-//   GORM 默认表名 thread→threads、reply→replies；表名若有差异只会少建、不会报错（helper 仅 log）。
+//
+//	Thread/Reply 只有单列外键索引，status 过滤会扫整块；补状态复合索引直接命中。
+//	GORM 默认表名 thread→threads、reply→replies；表名若有差异只会少建、不会报错（helper 仅 log）。
 //
 // ★★ 2026-10-10 从 EnsureEzfyIndexes 里挪出来：那函数现在跑在**二战库**上，
-//   家园表不在那儿 → 每次启动刷 `Table 'qq_ezzt.threads' doesn't exist` 噪音。
-//   这条在家园库上由 main 调用（幂等）。
+//
+//	家园表不在那儿 → 每次启动刷 `Table 'qq_ezzt.threads' doesn't exist` 噪音。
+//	这条在家园库上由 main 调用（幂等）。
 func EnsureHomeForumIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "threads", "idx_thread_board_status", "board_id,status,audit_status", false)
 	ensureEzfyIndex(db, "threads", "idx_thread_user_status", "user_id,status", false)
@@ -348,9 +359,10 @@ func fixEzfySignIndex(db *gorm.DB) {
 // ezfyWildOfficerStarOf 按野地等级决定守将星级
 //
 // ★ 2026-09-29 用户规则：高级野地守将星级高、低级野地守将星级低，用最新军官池里
-//   对应星级的**普通军官**（kind=1）。分档（按各自身形互补，覆盖 1~5 星）：
 //
-//	等级 0-1 → 1 星 · 2-3 → 2 星 · 4-6 → 3 星 · 7-8 → 4 星 · 9-10 → 5 星
+//	  对应星级的**普通军官**（kind=1）。分档（按各自身形互补，覆盖 1~5 星）：
+//
+//		等级 0-1 → 1 星 · 2-3 → 2 星 · 4-6 → 3 星 · 7-8 → 4 星 · 9-10 → 5 星
 func ezfyWildOfficerStarOf(level int) int {
 	switch {
 	case level <= 1:
@@ -694,9 +706,10 @@ func seedEzfyMoveItems(db *gorm.DB) {
 // seedEzfyLoveCardItems 清理「为爱发电卡」在道具配置表中的残留
 //
 // ★ 2026-10-10 用户需求：为爱发电卡不是道具, 有专门模块维护, 要从道具体系彻底移除。
-//   此前曾把两张卡(cfg 26/27)写入 ezfy_cfg_item, 现改为跨版本删除这两行,
-//   后续发卡/下拉/查看均由专属模块(loveCardCatalog + ezfy_love_card)承担。
-//   卡片规则：为爱发电卡每日150钻石 / 为爱发电高级卡每日200钻石, 各30天。
+//
+//	此前曾把两张卡(cfg 26/27)写入 ezfy_cfg_item, 现改为跨版本删除这两行,
+//	后续发卡/下拉/查看均由专属模块(loveCardCatalog + ezfy_love_card)承担。
+//	卡片规则：为爱发电卡每日150钻石 / 为爱发电高级卡每日200钻石, 各30天。
 func seedEzfyLoveCardItems(db *gorm.DB) {
 	var removed int
 	// ★ 2026-10-10 道具 ID 全体 +1000 后，历史脏数据可能停在 26/27（旧号）或 1026/1027（迁移后号），

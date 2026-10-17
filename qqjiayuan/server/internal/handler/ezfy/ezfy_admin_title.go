@@ -26,47 +26,47 @@ import (
 
 // AdminEzfyTitles GET /admin/ezfy-titles —— 称号列表（带持有人数）
 //
-// 参数：page / size / word（称号名称模糊）。
-// 每行返回：定义字段 + holder_total（累计持有人）+ holder_active（当前生效中）。
+// 参数：word（称号名称模糊，可选）。
+//
+// ★★ 2026-10-17 卡顿优化（用户反馈「统帅称号 查询卡顿」）：
+//
+//	原实现是 **3 次跨 WAN 往返** —— COUNT(*) → 分页 SELECT → 持有人数聚合
+//	（线上二战库是远端 RDS，单次 20~40ms，点菜单/翻页固定 100ms+）。
+//	但称号是运营**手动创建**的，全服也就几条到几十条，分页本身就是多余的：
+//	现在**一次 SQL 全量返回**（LEFT JOIN 预聚合持有人数，上限 500 条防意外），
+//	前端本地做搜索 + 分页 → 「查询」不再发请求，翻页零延迟。
 func (h *EzfyAdmin) AdminEzfyTitles(c *gin.Context) {
-	page, offset, size := pageOf(c, 10)
 	word := strings.TrimSpace(c.Query("word"))
+	now := time.Now().UnixMilli()
 
-	q := h.DB.Model(&model.EzfyTitle{})
+	type titleRow struct {
+		ID           uint      `gorm:"column:id"`
+		Name         string    `gorm:"column:name"`
+		Type         int       `gorm:"column:type"`
+		ValidDays    int       `gorm:"column:valid_days"`
+		Remark       string    `gorm:"column:remark"`
+		Status       int       `gorm:"column:status"`
+		CreatedAt    time.Time `gorm:"column:created_at"`
+		HolderTotal  int64     `gorm:"column:holder_total"`
+		HolderActive int64     `gorm:"column:holder_active"`
+	}
+	var rows []titleRow
+	// 持有人数用**预聚合子查询** LEFT JOIN：一次往返拿全，不再逐称号查一次。
+	// 子查询只扫 ezfy_title_grant 的 (title_id, expire_at) 覆盖索引（见 EnsureEzfyIndexes）。
+	q := h.DB.Table("ezfy_title AS t").
+		Select("t.id AS id, t.name AS name, t.type AS type, t.valid_days AS valid_days, "+
+			"t.remark AS remark, t.status AS status, t.created_at AS created_at, "+
+			"COALESCE(g.total, 0) AS holder_total, COALESCE(g.active, 0) AS holder_active").
+		Joins("LEFT JOIN (SELECT title_id, COUNT(*) AS total, "+
+			"SUM(CASE WHEN expire_at = 0 OR expire_at > ? THEN 1 ELSE 0 END) AS active "+
+			"FROM ezfy_title_grant GROUP BY title_id) AS g ON g.title_id = t.id", now)
 	if word != "" {
-		q = q.Where("name LIKE ?", "%"+word+"%")
+		q = q.Where("t.name LIKE ?", "%"+word+"%")
 	}
-	var total int64
-	q.Count(&total)
-	var rows []model.EzfyTitle
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
-
-	ids := make([]uint, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
-	}
-	type aggRow struct {
-		TitleId uint  `gorm:"column:title_id"`
-		Total   int64 `gorm:"column:total"`
-		Active  int64 `gorm:"column:active"`
-	}
-	holderOf := map[uint]aggRow{}
-	if len(ids) > 0 {
-		var agg []aggRow
-		h.DB.Table("ezfy_title_grant").
-			Select("title_id, COUNT(*) AS total, "+
-				"COALESCE(SUM(CASE WHEN expire_at = 0 OR expire_at > ? THEN 1 ELSE 0 END), 0) AS active",
-				time.Now().UnixMilli()).
-			Where("title_id IN ?", ids).
-			Group("title_id").Scan(&agg)
-		for _, a := range agg {
-			holderOf[a.TitleId] = a
-		}
-	}
+	q.Order("t.id DESC").Limit(500).Scan(&rows)
 
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
-		ag := holderOf[r.ID]
 		out = append(out, gin.H{
 			"id": r.ID, "name": r.Name,
 			"type": r.Type, "type_name": ezfyTitleTypeName(r.Type),
@@ -75,11 +75,12 @@ func (h *EzfyAdmin) AdminEzfyTitles(c *gin.Context) {
 			"remark":        r.Remark,
 			"status":        r.Status,
 			"created_at":    r.CreatedAt.Format("2006-01-02 15:04:05"),
-			"holder_total":  ag.Total,
-			"holder_active": ag.Active,
+			"holder_total":  r.HolderTotal,
+			"holder_active": r.HolderActive,
 		})
 	}
-	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size, "types": ezfyTitleTypes()})
+	// page/size 保留字段（老前端兼容），但已不再分页：一次给全，前端本地切页
+	resp.OK(c, gin.H{"list": out, "total": len(out), "page": 1, "size": len(out), "types": ezfyTitleTypes()})
 }
 
 // ezfyTitleValidText 有效期展示文案（0 = 永久）。
@@ -223,16 +224,35 @@ func (h *EzfyAdmin) AdminEzfyTitlePlayers(c *gin.Context) {
 
 	q := h.DB.Model(&model.EzfyTitleGrant{}).Where("title_id = ?", id)
 	if only {
-		q = q.Where("expire_at = 0 OR expire_at > ?", now)
+		// ★ 2026-10-17 必须自己加括号：GORM 串联多个 Where 只按 AND 拼、**不会**给字符串条件补括号，
+		//   写成 `expire_at = 0 OR expire_at > ?` 会变成 `title_id=? AND expire_at=0 OR ...`
+		//   → 串味（把别的称号的未过期记录也带出来）+ OR 让索引失效全表扫。
+		q = q.Where("(expire_at = 0 OR expire_at > ?)", now)
 	}
 	// ★ 搜索条件放在**一个 Where 内的括号**里：前面已有 title_id / only 条件，
 	//   用 `q.Or(...)` 会被 SQL 的 AND 优先于 OR 串味（免战管理踩过同款坑）。
+	//
+	// ★★ 2026-10-17 卡顿优化：原来是 `user_id IN (SELECT ... FROM ezfy_profile WHERE ...)` 子查询，
+	//   MySQL 会**对 grant 表的每一行**求值一次子查询（半连接也不一定物化），昵称 LIKE 更是全表扫。
+	//   改成「先查 profile 拿 uid 列表 → 再 IN」：两次都走主键/索引，且昵称无匹配时直接返回空。
 	if word != "" {
 		if uid, err := strconv.Atoi(word); err == nil {
-			q = q.Where("(user_id = ? OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?))", uid, uid)
+			ids := []uint{uint(uid)}
+			// 数字既可能是用户ID也可能是游戏号（game_uid），两个都匹配
+			var gids []uint
+			h.DB.Model(&model.EzfyProfile{}).Where("game_uid = ?", uid).Limit(20).Pluck("user_id", &gids)
+			ids = append(ids, gids...)
+			q = q.Where("user_id IN ?", ids)
 		} else {
-			q = q.Where("(nickname LIKE ? OR user_id IN (SELECT user_id FROM ezfy_profile WHERE nickname LIKE ?))",
-				"%"+word+"%", "%"+word+"%")
+			var uids []uint
+			h.DB.Model(&model.EzfyProfile{}).Where("nickname LIKE ?", "%"+word+"%").Limit(500).Pluck("user_id", &uids)
+			if len(uids) == 0 {
+				resp.OK(c, gin.H{"list": []gin.H{}, "total": 0, "page": 1, "size": size,
+					"title": gin.H{"id": t.ID, "name": t.Name, "type": t.Type, "type_name": ezfyTitleTypeName(t.Type),
+						"valid_days": t.ValidDays, "valid_text": ezfyTitleValidText(t.ValidDays)}})
+				return
+			}
+			q = q.Where("user_id IN ?", uids)
 		}
 	}
 	var total int64

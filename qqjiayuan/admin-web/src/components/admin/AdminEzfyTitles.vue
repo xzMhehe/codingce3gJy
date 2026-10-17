@@ -2,9 +2,12 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div class="toolbar">
-        <el-input v-model="word" placeholder="称号名称搜索" clearable style="width:220px"
-                  @keyup.enter.native="page = 1; load()" />
-        <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
+        <!-- ★ 2026-10-17 卡顿优化：列表一次拉全量（称号本来就只有几条~几十条），
+             搜索与翻页全部在本地完成 —— 点查询/翻页 0 请求、立即出结果。 -->
+        <el-input v-model="word" placeholder="称号名称搜索（本地即时过滤）" clearable style="width:240px"
+                  @keyup.enter.native="applyFilter" @clear="applyFilter" />
+        <el-button type="primary" icon="el-icon-search" @click="applyFilter">查询</el-button>
+        <el-button icon="el-icon-refresh" :loading="loading" @click="load">刷新</el-button>
         <div class="grow" />
         <span class="td-gray" style="font-size:12px">
           「天下无双」由<b>风云榜每日积分第一</b>自动获得（有效期取该称号配置）；其他称号由管理员在此授予
@@ -56,8 +59,8 @@
         <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
         <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total"
                        :page-size="size" :current-page="page" :page-sizes="[10, 20, 50, 100]"
-                       @current-change="p => { page = p; load() }"
-                       @size-change="s => { size = s; page = 1; load() }" />
+                       @current-change="p => { page = p; slicePage() }"
+                       @size-change="s => { size = s; page = 1; slicePage() }" />
       </div>
     </el-card>
 
@@ -164,7 +167,8 @@ export default {
   name: 'AdminEzfyTitles',
   data () {
     return {
-      list: [], total: 0, page: 1, size: 10, loading: false,
+      // all = 服务端一次拉回的全量（≤500），filtered = 本地搜索后的结果，list = 当前页切片
+      all: [], filtered: [], list: [], total: 0, page: 1, size: 10, loading: false,
       word: '', types: [],
       saving: false,
       // 新增/编辑
@@ -183,17 +187,32 @@ export default {
     typeTag (t) {
       return ({ 1: 'danger', 2: 'warning', 3: '', 4: 'info' })[t] || 'info'
     },
+    // ★ 2026-10-17 卡顿优化：一次拉全量（服务端已把「列表 + 持有人数」合成一条 SQL），
+    //   搜索/翻页都在本地算 —— 只有「进页面」和「刷新」发请求。
     load () {
       this.loading = true
-      api.get('/admin/ezfy-titles', { params: { page: this.page, size: this.size, word: this.word } }).then(r => {
+      api.get('/admin/ezfy-titles').then(r => {
         this.loading = false
         if (r.code === 0) {
-          this.list = r.data.list || []
-          this.total = r.data.total
-          this.page = r.data.page
+          this.all = r.data.list || []
           this.types = r.data.types || []
+          this.applyFilter()
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
+    },
+    // 本地过滤（瞬时）：名称包含关键词即可
+    applyFilter () {
+      const w = (this.word || '').trim()
+      this.filtered = w ? this.all.filter(t => (t.name || '').indexOf(w) >= 0) : this.all
+      this.total = this.filtered.length
+      this.page = 1
+      this.slicePage()
+    },
+    // 本地切页（瞬时）
+    slicePage () {
+      const src = this.filtered || this.all
+      const start = (this.page - 1) * this.size
+      this.list = src.slice(start, start + this.size)
     },
     openEdit (row) {
       if (row) {
