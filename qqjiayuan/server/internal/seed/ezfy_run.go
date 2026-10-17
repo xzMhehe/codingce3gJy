@@ -27,6 +27,12 @@ import (
 // 为 true 时：`seed.Run`（家园）不再建/灌二战表与种子，改由 `RunEzfy` 在二战库上做。
 var EzfyUsesOwnDB bool
 
+// EzfyBootstrapFresh 二战库「fresh」初始化开关（main 启动时按配置设置）。
+//
+// 为 true 时：即使二战库为空且家园库还有残留二战数据，也**跳过整体搬迁**
+// （qq_ezzt2 等新开区只建表+灌种子，绝不在开区时把 homeDB 残留的 zone1 数据误搬进 2 区）。
+var EzfyBootstrapFresh bool
+
 // ezfyMigrateModels 二战库要建的模型：全部 ezfy_* + 二战自己要用的两张通用表。
 //
 // ⚠️ 不含 `model.User`：账号仍在家园库（二战经 HomeDB 只读）。
@@ -133,6 +139,13 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 //	· 可核验：每张表打印搬了多少行，搬完对照家园库行数即可。
 func ezfyCopyFromHomeIfEmpty(dst, src *gorm.DB) {
 	if dst == nil || src == nil {
+		return
+	}
+	// ★★ 2026-10-17 二战独立部署开新服（ezfy_mysql.bootstrap=fresh）：跳过搬库。
+	//   qq_ezzt2 空库时若 homeDB 还残留 zone1 数据，默认逻辑会把它整体误搬进 2 区；
+	//   fresh 模式只建表+灌种子（各 Ensure* 幂等、空表安全），玩家数据从零开始。
+	if EzfyBootstrapFresh {
+		log.Printf("二战搬库: bootstrap=fresh，跳过从家园库搬迁（只建表+灌种子）")
 		return
 	}
 	// 同一个连接（单库模式）→ 不需要搬

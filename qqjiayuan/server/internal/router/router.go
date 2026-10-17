@@ -1,9 +1,14 @@
 package router
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +27,15 @@ import (
 // ★★ 2026-10-10 双数据源：`db` = 家园库（账号/角色/权限/私信/设置 + 其它小游戏），
 // `ezfyDB` = 二战库（全部 ezfy_* + 二战自己的家信/设置）。单库模式下两者是同一个连接。
 // 二战 handler 同时拿到 ezfyDB（自己的数据）与 db（家园库，只读账号/昵称）。
+//
+// ★★ 2026-10-17 二战独立部署：Setup 按 cfg.Mode() 分支装配 ——
+//
+//	· home（默认）：只注册家园路由 + 管理端非二战路由；二战用户路由**不注册**；
+//	  二战管理端 /api/admin/ezfy* 由 admin 组末尾 catch-all 反代到二战服
+//	  （admin-web 零改动；RBAC 仍由家园侧 authed jwtM + perm() 驱动）；
+//	  NoRoute 遇 /games/ezfy* 302 到二战默认区服 host。home **不连 ezfyDB**（ezfyDB=nil）。
+//	· wwii：只注册二战路由（登录/SSO/zone/用户路由/管理端路由带内部 secret 校验）
+//	  + 托管二战前端（ezfy.html / assets / static）；三个 BgTick goroutine 只在 wwii 启动。
 func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 	r.Use(middleware.CORS())
@@ -73,17 +87,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	// ★ 2026-10-12 二战独立账号：ezfyH 额外持有 Secret/ExpH，用于二战专属 token 签发。
 	ezfyH := &ezfy.EzfyHandler{DB: ezfyDB, HomeDB: db, Secret: cfg.Jwt.Secret, ExpH: cfg.Jwt.ExpireHours}
 	ezfyAdminH := &ezfy.EzfyAdmin{DB: ezfyDB, HomeDB: db}
-	// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
-	// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
-	go ezfyH.BgTickBattles()
-	// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
-	//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
-	go ezfyH.BgTickTitles()
-	// ★ 2026-10-17 人机（AI 玩家）：内部自调用要打本机端口 → 先绑定 base URL，再起 tick
-	//   （tick 自带租约锁，多进程只有一台真正执行；启动先等 45s 让建表/配置缓存就绪）
-	ezfy.SetEzfyBotBaseURL(cfg.Server.Port)
-	ezfy.SetEzfyBotAdminSecret(cfg.Jwt.Secret)
-	go ezfyH.BgTickBots()
+	// ★★ 2026-10-17 二战独立部署：三个 BgTick goroutine 只在 wwii 模式启动
+	//   （home 模式不连二战库，见下方 registerEzfyRoutes 的 wwii 分支）。
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -101,1689 +106,1766 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 	permAny := middleware.RequireAnyPerm
+	// ★★ 2026-10-17 二战独立部署：wwii 模式下，二战管理端路由**不需要** RBAC 权限校验
+	//   —— RBAC 表（permissions/roles）在家园库，由 home 侧 authed jwtM + perm() 驱动；
+	//   二战服只认内部密钥（X-Ezfy-Admin-Secret）。这里把 perm/permAny 重定义为放行中间件，
+	//   让原 1179-1584 行的二战管理端路由代码原样复用（zero 改动）。
+	if cfg.Mode() == "wwii" {
+		perm = func(db *gorm.DB, code string) gin.HandlerFunc {
+			return func(c *gin.Context) {}
+		}
+		permAny = func(db *gorm.DB, codes ...string) gin.HandlerFunc {
+			return func(c *gin.Context) {}
+		}
+	}
 
 	api := r.Group("/api")
 	{
-		// 公开接口
-		api.GET("/auth/captcha", authH.Captcha) // 注册/登录图形验证码
-		api.POST("/auth/register", authH.Register)
-		api.POST("/auth/login", authH.Login)
-		api.GET("/auth/find", authH.FindAccount)
-		api.GET("/auth/find/contact", authH.FindByContact)
-		api.GET("/auth/find/document", authH.FindByDocument)
-		api.GET("/auth/repass/channels", authH.RepassChannels)
-		api.POST("/auth/repass/qq", authH.RepassByQQ)
-		api.POST("/auth/repass/mail", authH.RepassByMail)
-		api.POST("/auth/repass/protection", authH.RepassByProtection)
-		api.GET("/fla", flaH.Index)
-		// 福利院·慈善基金（领取/名单公开可见）
-		api.GET("/welfare", optAuth, welfareH.Index)
-		api.GET("/welfare/claims", welfareH.Claims)
-		api.GET("/welfare/donations", welfareH.Donations)
-		api.GET("/plaza", plazaH.Index)
-		// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
-		api.GET("/online", optAuth, plazaH.Online)
-		api.GET("/announcements", plazaH.Announcements)
-		// 站点展示信息（页脚 QQ 群号等，后台站点设置 qq_group 可配）
-		api.GET("/site-info", plazaH.SiteInfo)
-		api.GET("/search", plazaH.Search)
-		api.GET("/boards", boardH.Tree)
-		api.GET("/boards/:id", boardH.Info)
-		api.GET("/boards/:id/threads", boardH.Threads)
-		// 同城客栈（复刻诺哈三代同城模块）
-		cityH := &handler.CityHandler{DB: db}
-		api.GET("/tongcheng", cityH.Home)
-		api.GET("/tongcheng/lookup", cityH.Lookup)
-		api.GET("/tongcheng/province/:id", cityH.Province)
-		api.GET("/tongcheng/city/:id", optAuth, cityH.Detail)
-		api.GET("/tongcheng/city/:id/online", optAuth, cityH.Online)
-		api.GET("/threads/hot", threadH.Hot)
-		// 社区新帖/社区动态（复刻诺哈 topic_new.asp / topic_reply.asp）
-		api.GET("/threads/new", threadH.NewList)
-		api.GET("/threads/active", threadH.ActiveList)
-		// 频道论坛页（复刻诺哈论坛天地：各子版块最新帖）
-		api.GET("/boards/:id/forum", boardH.Forum)
-		api.GET("/threads/:id", optAuth, threadH.Detail)
-		api.GET("/threads/:id/replies", optAuth, threadH.Replies)
-		api.GET("/users/:id", userH.Profile)
-		api.GET("/badges", badgeH.List)
-		api.GET("/badge-presets", badgeH.Presets)
-		api.GET("/games", gameH.List)
-		// ★★ 2026-10-15 游戏区服列表（家园大厅进入游戏前的「选择服务器」，区名由管理端配置不写死）
-		api.GET("/game-servers", gameH.ListServers)
-		api.GET("/privs", resH.Privs)
-		// 库存图片取图（管理端上传的 base64 图片）
-		api.GET("/res/*path", resH.Serve)
-		// 家族列表/详情/动态公开（未登录仅浏览，无角色）
-		api.GET("/families", famH.List)
-		api.GET("/families/categories", famH.Categories)
-		api.GET("/families/search", famH.Search)
-		api.GET("/families/top", famH.Top)
-		api.GET("/families/:id", famH.Detail)
-		api.GET("/families/:id/activities", famH.FamilyActivities)
-		api.GET("/families/:id/forum", famH.Forum)
-		api.GET("/families/:id/hot", famH.Hot)
-		api.GET("/families/activities", famH.Activities)
-		api.GET("/families/featured", famH.FeatureList)
-		api.GET("/families/pending", famH.Pending)
-		api.GET("/families/activity-threads", famH.ActivityThreads)
-
-		// 店铺商城公开（店铺街/商品详情/评价）
+		// ★★ 2026-10-17 二战独立部署：storeH / cityH 在公开块与 authed/admin 块共用，
+		//   声明必须提到 if 分支之外（否则 authed/admin 块引用不到）。
 		storeH := &handler.StoreHandler{DB: db}
-		api.GET("/stores", storeH.Shops)
-		api.GET("/store-goods/:id", storeH.GoodsDetail)
-		api.GET("/store-goods/:id/comments", storeH.GoodsComments)
+		cityH := &handler.CityHandler{DB: db}
 
-		// 花园活动公开列表
-		api.GET("/garden-activities", gardenH.ActivityList)
-		api.GET("/plaza-sections", plazaH.Sections)
-		// 便民服务（复刻诺哈三代 wap/tool 便民中心）
-		toolH := &handler.ToolHandler{DB: db}
-		api.GET("/tool/client", toolH.Client)
-		api.GET("/tool/ip", toolH.IP)
-		api.GET("/tool/weather", toolH.Weather)
-		api.GET("/tool/phone", toolH.Phone)
-		api.GET("/tool/translate", toolH.Translate)
-		api.GET("/tool/name", toolH.Name)
-		api.GET("/goods", goodH.List)
-		api.GET("/goods/:id", goodH.Detail)
-		api.GET("/money-shop", msH.List)
-		api.GET("/money-shop/:id", msH.Detail)
-		api.GET("/rank", rankH.Top)
-		// 活动专区（诺哈 topic_active.asp：活动帖列表）
-		api.GET("/activities", actH.List)
-		api.GET("/activities/column", actH.Column)
-		// 公告帖（诺哈 topic_notice.asp：notice=1 帖子列表）
-		api.GET("/notices/threads", actH.NoticeList)
-		// 书城公开
-		api.GET("/books", bookH.Index)
-		api.GET("/books/list", bookH.List)
-		api.GET("/books/categories", bookH.Categories)
-		api.GET("/books/:id", bookH.Detail)
-		api.GET("/books/:id/chapters", bookH.Chapters)
-		api.GET("/books/:id/comments", bookH.Comments)
-		api.GET("/chapters/:id", bookH.Chapter)
+		// 公开接口（★★ 2026-10-17 二战独立部署：家园公开路由只在 home 模式注册；
+		//   wwii 模式只注册二战公开路由 login/sso/zone，见下方分支）
+		if cfg.Mode() != "wwii" {
+			api.GET("/auth/captcha", authH.Captcha) // 注册/登录图形验证码
+			api.POST("/auth/register", authH.Register)
+			api.POST("/auth/login", authH.Login)
+			api.GET("/auth/find", authH.FindAccount)
+			api.GET("/auth/find/contact", authH.FindByContact)
+			api.GET("/auth/find/document", authH.FindByDocument)
+			api.GET("/auth/repass/channels", authH.RepassChannels)
+			api.POST("/auth/repass/qq", authH.RepassByQQ)
+			api.POST("/auth/repass/mail", authH.RepassByMail)
+			api.POST("/auth/repass/protection", authH.RepassByProtection)
+			api.GET("/fla", flaH.Index)
+			// 福利院·慈善基金（领取/名单公开可见）
+			api.GET("/welfare", optAuth, welfareH.Index)
+			api.GET("/welfare/claims", welfareH.Claims)
+			api.GET("/welfare/donations", welfareH.Donations)
+			api.GET("/plaza", plazaH.Index)
+			// 在线用户（复刻诺哈 online.html：用户/游客混排，游客按 IP 展示）
+			api.GET("/online", optAuth, plazaH.Online)
+			api.GET("/announcements", plazaH.Announcements)
+			// 站点展示信息（页脚 QQ 群号等，后台站点设置 qq_group 可配）
+			api.GET("/site-info", plazaH.SiteInfo)
+			api.GET("/search", plazaH.Search)
+			api.GET("/boards", boardH.Tree)
+			api.GET("/boards/:id", boardH.Info)
+			api.GET("/boards/:id/threads", boardH.Threads)
+			// 同城客栈（复刻诺哈三代同城模块）
+			api.GET("/tongcheng", cityH.Home)
+			api.GET("/tongcheng/lookup", cityH.Lookup)
+			api.GET("/tongcheng/province/:id", cityH.Province)
+			api.GET("/tongcheng/city/:id", optAuth, cityH.Detail)
+			api.GET("/tongcheng/city/:id/online", optAuth, cityH.Online)
+			api.GET("/threads/hot", threadH.Hot)
+			// 社区新帖/社区动态（复刻诺哈 topic_new.asp / topic_reply.asp）
+			api.GET("/threads/new", threadH.NewList)
+			api.GET("/threads/active", threadH.ActiveList)
+			// 频道论坛页（复刻诺哈论坛天地：各子版块最新帖）
+			api.GET("/boards/:id/forum", boardH.Forum)
+			api.GET("/threads/:id", optAuth, threadH.Detail)
+			api.GET("/threads/:id/replies", optAuth, threadH.Replies)
+			api.GET("/users/:id", userH.Profile)
+			api.GET("/badges", badgeH.List)
+			api.GET("/badge-presets", badgeH.Presets)
+			api.GET("/games", gameH.List)
+			// ★★ 2026-10-15 游戏区服列表（家园大厅进入游戏前的「选择服务器」，区名由管理端配置不写死）
+			api.GET("/game-servers", gameH.ListServers)
+			api.GET("/privs", resH.Privs)
+			// 库存图片取图（管理端上传的 base64 图片）
+			api.GET("/res/*path", resH.Serve)
+			// 家族列表/详情/动态公开（未登录仅浏览，无角色）
+			api.GET("/families", famH.List)
+			api.GET("/families/categories", famH.Categories)
+			api.GET("/families/search", famH.Search)
+			api.GET("/families/top", famH.Top)
+			api.GET("/families/:id", famH.Detail)
+			api.GET("/families/:id/activities", famH.FamilyActivities)
+			api.GET("/families/:id/forum", famH.Forum)
+			api.GET("/families/:id/hot", famH.Hot)
+			api.GET("/families/activities", famH.Activities)
+			api.GET("/families/featured", famH.FeatureList)
+			api.GET("/families/pending", famH.Pending)
+			api.GET("/families/activity-threads", famH.ActivityThreads)
 
-		// 空间公开接口
-		api.GET("/space/:userId", spaceH.SpaceInfo)
-		api.GET("/space/:userId/moods", spaceH.MoodList)
-		api.GET("/space/:userId/articles", spaceH.ArticleList)
-		api.GET("/space/:userId/albums", spaceH.AlbumList)
-		api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
-		api.GET("/space/:userId/visitors", spaceH.VisitorList)
-		api.GET("/space/:userId/friends", spaceH.SpaceFriends)
-		api.GET("/marriage/list", marryH.List)
-		api.GET("/space/article/:id", spaceH.ArticleDetail)
-		api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
-		api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
-		api.GET("/space/photos/:id", spaceH.PhotoClick)
-		api.GET("/space/:userId/files", spaceH.SpaceFileList)
-		api.GET("/space/files/:id/download", spaceH.SpaceFileDownload)
+			// 店铺商城公开（店铺街/商品详情/评价）
+			api.GET("/stores", storeH.Shops)
+			api.GET("/store-goods/:id", storeH.GoodsDetail)
+			api.GET("/store-goods/:id/comments", storeH.GoodsComments)
 
-		// 家园（诺哈：他人家园 / 串门）
-		api.GET("/home/other/:userId", homeH.Other)
-		api.GET("/home/visit", homeH.Visit)
+			// 花园活动公开列表
+			api.GET("/garden-activities", gardenH.ActivityList)
+			api.GET("/plaza-sections", plazaH.Sections)
+			// 便民服务（复刻诺哈三代 wap/tool 便民中心）
+			toolH := &handler.ToolHandler{DB: db}
+			api.GET("/tool/client", toolH.Client)
+			api.GET("/tool/ip", toolH.IP)
+			api.GET("/tool/weather", toolH.Weather)
+			api.GET("/tool/phone", toolH.Phone)
+			api.GET("/tool/translate", toolH.Translate)
+			api.GET("/tool/name", toolH.Name)
+			api.GET("/goods", goodH.List)
+			api.GET("/goods/:id", goodH.Detail)
+			api.GET("/money-shop", msH.List)
+			api.GET("/money-shop/:id", msH.Detail)
+			api.GET("/rank", rankH.Top)
+			// 活动专区（诺哈 topic_active.asp：活动帖列表）
+			api.GET("/activities", actH.List)
+			api.GET("/activities/column", actH.Column)
+			// 公告帖（诺哈 topic_notice.asp：notice=1 帖子列表）
+			api.GET("/notices/threads", actH.NoticeList)
+			// 书城公开
+			api.GET("/books", bookH.Index)
+			api.GET("/books/list", bookH.List)
+			api.GET("/books/categories", bookH.Categories)
+			api.GET("/books/:id", bookH.Detail)
+			api.GET("/books/:id/chapters", bookH.Chapters)
+			api.GET("/books/:id/comments", bookH.Comments)
+			api.GET("/chapters/:id", bookH.Chapter)
 
-		// 留言本（全站）
-		api.GET("/guestbook", guestH.List)
+			// 空间公开接口
+			api.GET("/space/:userId", spaceH.SpaceInfo)
+			api.GET("/space/:userId/moods", spaceH.MoodList)
+			api.GET("/space/:userId/articles", spaceH.ArticleList)
+			api.GET("/space/:userId/albums", spaceH.AlbumList)
+			api.GET("/space/:userId/messages", spaceH.SpaceMsgList)
+			api.GET("/space/:userId/visitors", spaceH.VisitorList)
+			api.GET("/space/:userId/friends", spaceH.SpaceFriends)
+			api.GET("/marriage/list", marryH.List)
+			api.GET("/space/article/:id", spaceH.ArticleDetail)
+			api.GET("/space/article/:id/comments", spaceH.ArticleCommentList)
+			api.GET("/space/albums/:albumId/photos", spaceH.PhotoList)
+			api.GET("/space/photos/:id", spaceH.PhotoClick)
+			api.GET("/space/:userId/files", spaceH.SpaceFileList)
+			api.GET("/space/files/:id/download", spaceH.SpaceFileDownload)
 
-		// 文章（社区专栏）
-		api.GET("/articles", saH.List)
-		api.GET("/articles/categories", saH.Categories)
-		api.GET("/articles/:id", saH.Detail)
-		api.GET("/articles/:id/comments", saH.Comments)
+			// 家园（诺哈：他人家园 / 串门）
+			api.GET("/home/other/:userId", homeH.Other)
+			api.GET("/home/visit", homeH.Visit)
 
-		// 公开浏览
-		api.GET("/market", shopH.GoodsList)
-		api.GET("/market/categories", shopH.Categories)
-		api.GET("/market/:id", shopH.GoodsDetail)
+			// 留言本（全站）
+			api.GET("/guestbook", guestH.List)
 
-		// ★ 2026-10-12 二战独立登录（公开路由）：不走家园认证，签发二战专属 token。
-		api.POST("/ezfy/login", ezfyH.EzfyLogin)
-		// ★ 2026-10-12 家园已登录 → 免密换二战登录态（Authorization 里带家园 token），
-		//   解决「家园登录后进二战还要再登一次」。同样公开路由，内部手动校验家园 token。
-		api.POST("/ezfy/sso", ezfyH.EzfySSO)
+			// 文章（社区专栏）
+			api.GET("/articles", saH.List)
+			api.GET("/articles/categories", saH.Categories)
+			api.GET("/articles/:id", saH.Detail)
+			api.GET("/articles/:id/comments", saH.Comments)
+
+			// 公开浏览
+			api.GET("/market", shopH.GoodsList)
+			api.GET("/market/categories", shopH.Categories)
+			api.GET("/market/:id", shopH.GoodsDetail)
+		} // ★★ 2026-10-17 家园公开路由（仅 home 模式）结束
+
+		// ★★ 2026-10-17 二战独立部署：二战公开路由（login/sso）只在 wwii 模式注册
+		//   （home 模式不注册：二战登录/SSO 直连二战服）。
+		if cfg.Mode() == "wwii" {
+			// ★ 2026-10-12 二战独立登录（公开路由）：不走家园认证，签发二战专属 token。
+			api.POST("/ezfy/login", ezfyH.EzfyLogin)
+			// ★ 2026-10-12 家园已登录 → 免密换二战登录态（Authorization 里带家园 token），
+			//   解决「家园登录后进二战还要再登一次」。同样公开路由，内部手动校验家园 token。
+			api.POST("/ezfy/sso", ezfyH.EzfySSO)
+		}
 
 		// ★★ 2026-10-15 区名写活 + 入口选服（开多区准备）：
-		//   公开接口返回本服务器（区）信息 —— 单进程=单区，这里就先返回自己在用的区。
+		//   公开接口返回二战区服列表 —— home/wwii 两模式都注册（读 homeDB 的 game_servers，
+		//   二战前端守卫用它解析默认区服；home 侧反代/302 用同一份列表）。
 		//   ★ 区名优先取管理端「游戏大厅维护」里配的 game_servers（DB 驱动，改名即时生效），
 		//     二战游戏首页标题/登录页选服都用它；没配过区服才回落 config 里的旧区名兜底。
 		api.GET("/ezfy/zone", func(c *gin.Context) {
-			list := make([]gin.H, 0)
-			current := 0
-			var ww model.Game
-			if err := db.Where("path = ? OR url LIKE ?", "/games/ezfy", "%/games/ezfy%").First(&ww).Error; err == nil {
-				var srv []model.GameServer
-				db.Where("game_id = ? AND status = 1", ww.ID).Order("sort ASC, id ASC").Find(&srv)
-				for _, s := range srv {
-					list = append(list, gin.H{"id": s.ID, "name": s.Name, "host": s.Host, "path": s.Path})
-				}
-				if len(srv) > 0 {
-					current = int(srv[0].ID)
-				}
-			}
-			if len(list) == 0 {
-				list = append(list, gin.H{"id": 0, "name": cfg.ZoneTitle()})
-			}
-			resp.OK(c, gin.H{"list": list, "current": current})
-		})
+		// ★★ 2026-10-17 二战独立部署（多区）：wwii 模式玩家端只下发**本区**，
+		//   绝不把全区服列表（尤其 1 区）暴露给 2 区玩家 —— 2 区首页刷新不再闪「1区」掠影。
+		//   管理端切区走 home 模式的反代（home 的 /api/ezfy/zone 返回全区列表）。
+		if cfg.Mode() == "wwii" {
+			zoneName := cfg.ZoneTitle()
+			resp.OK(c, gin.H{
+				"list":    []gin.H{{"id": cfg.Server.ZoneID, "name": zoneName, "host": "", "path": ""}},
+				"current": cfg.Server.ZoneID,
+			})
+			return
+		}
+		list := make([]gin.H, 0)
+		current := 0
+		srv := ezfyServers(db)
+		for _, s := range srv {
+			list = append(list, gin.H{"id": s.ID, "name": s.Name, "host": s.Host, "path": s.Path})
+		}
+		if len(srv) > 0 {
+			current = int(srv[0].ID)
+		}
+		if len(list) == 0 {
+			list = append(list, gin.H{"id": 0, "name": cfg.ZoneTitle()})
+		}
+		resp.OK(c, gin.H{"list": list, "current": current})
+	})
 
 		authed := api.Group("/", jwtM)
 		// ★ 2026-10-12 二战独立账号：二战专属授权组（不挂家园 jwtM，走 ezfyJwtM）。
 		ezfyAuthed := api.Group("/", ezfyJwtM)
 		{
-			authed.GET("/auth/me", authH.Me)
-			// ★★ 2026-10-15 家园退出：服务端作废家园 + 二战两个 token（脚本拿旧 token 也打不进来了）
-			authed.POST("/auth/logout", authH.Logout)
+			// ★★ 2026-10-17 二战独立部署：家园 authed 路由只在 home 模式注册
+			//   （wwii 模式只注册二战路由，见下方 wwii 分支）。
+			if cfg.Mode() != "wwii" {
+				authed.GET("/auth/me", authH.Me)
+				// ★★ 2026-10-15 家园退出：服务端作废家园 + 二战两个 token（脚本拿旧 token 也打不进来了）
+				authed.POST("/auth/logout", authH.Logout)
 
-			// 个性昵称（复刻 3GQQ name.html：购买/赠送/颜色设置）
-			authed.GET("/name", nameH.NameInfo)
-			authed.POST("/name/buy", nameH.NameBuy)
-			authed.POST("/name/send", nameH.NameSend)
-			authed.POST("/name/set", nameH.NameSet)
-			authed.PUT("/auth/password", authH.ChangePassword)
-			authed.PUT("/users/me", userH.UpdateMe)
-			authed.PUT("/me/city", userH.CitySet)
-			// 用户附属信息（诺哈 address/docu/protec/pass/log）
-			authed.GET("/me/address", userH.AddressView)
-			authed.PUT("/me/address", userH.AddressSave)
-			authed.GET("/me/document", userH.DocumentView)
-			authed.POST("/me/document", userH.DocumentSave)
-			authed.GET("/me/protection", userH.ProtectionView)
-			authed.POST("/me/protection", userH.ProtectionSave)
-			authed.GET("/me/paypass", userH.PayPassView)
-			authed.POST("/me/paypass", userH.PayPassSet)
-			authed.GET("/me/logs", userH.MyLogs)
-			authed.POST("/boards/:id/threads", boardH.CreateThread)
-			authed.PUT("/threads/:id", threadH.Update)
-			authed.POST("/threads/:id/replies", threadH.Reply)
-			authed.DELETE("/threads/:id", threadH.DeleteThread)
-			authed.DELETE("/replies/:id", threadH.DeleteReply)
-			authed.POST("/threads/:id/sticky-reply", threadH.StickyReply)
-			authed.DELETE("/threads/:id/sticky-reply", threadH.UnstickyReply)
-			authed.POST("/threads/:id/poll-vote", threadH.VotePoll)
-			authed.POST("/threads/:id/manage", threadH.Manage)
-			authed.POST("/threads/:id/audit", threadH.Audit)
-			authed.POST("/threads/:id/move", threadH.Move)
-			authed.GET("/my-threads", threadH.MyThreads)
-			authed.GET("/audit-threads", threadH.AuditList)
-			authed.GET("/my-medals", badgeH.MyMedals)
-			authed.GET("/attachments/:id/download", threadH.Download)
-			authed.POST("/threads/:id/favorite", favH.Toggle)
-			authed.GET("/threads/:id/favorite-status", favH.Status)
-			authed.GET("/favorite-threads", favH.MyFavorites)
-			authed.GET("/my-replies", favH.MyReplies)
+				// 个性昵称（复刻 3GQQ name.html：购买/赠送/颜色设置）
+				authed.GET("/name", nameH.NameInfo)
+				authed.POST("/name/buy", nameH.NameBuy)
+				authed.POST("/name/send", nameH.NameSend)
+				authed.POST("/name/set", nameH.NameSet)
+				authed.PUT("/auth/password", authH.ChangePassword)
+				authed.PUT("/users/me", userH.UpdateMe)
+				authed.PUT("/me/city", userH.CitySet)
+				// 用户附属信息（诺哈 address/docu/protec/pass/log）
+				authed.GET("/me/address", userH.AddressView)
+				authed.PUT("/me/address", userH.AddressSave)
+				authed.GET("/me/document", userH.DocumentView)
+				authed.POST("/me/document", userH.DocumentSave)
+				authed.GET("/me/protection", userH.ProtectionView)
+				authed.POST("/me/protection", userH.ProtectionSave)
+				authed.GET("/me/paypass", userH.PayPassView)
+				authed.POST("/me/paypass", userH.PayPassSet)
+				authed.GET("/me/logs", userH.MyLogs)
+				authed.POST("/boards/:id/threads", boardH.CreateThread)
+				authed.PUT("/threads/:id", threadH.Update)
+				authed.POST("/threads/:id/replies", threadH.Reply)
+				authed.DELETE("/threads/:id", threadH.DeleteThread)
+				authed.DELETE("/replies/:id", threadH.DeleteReply)
+				authed.POST("/threads/:id/sticky-reply", threadH.StickyReply)
+				authed.DELETE("/threads/:id/sticky-reply", threadH.UnstickyReply)
+				authed.POST("/threads/:id/poll-vote", threadH.VotePoll)
+				authed.POST("/threads/:id/manage", threadH.Manage)
+				authed.POST("/threads/:id/audit", threadH.Audit)
+				authed.POST("/threads/:id/move", threadH.Move)
+				authed.GET("/my-threads", threadH.MyThreads)
+				authed.GET("/audit-threads", threadH.AuditList)
+				authed.GET("/my-medals", badgeH.MyMedals)
+				authed.GET("/attachments/:id/download", threadH.Download)
+				authed.POST("/threads/:id/favorite", favH.Toggle)
+				authed.GET("/threads/:id/favorite-status", favH.Status)
+				authed.GET("/favorite-threads", favH.MyFavorites)
+				authed.GET("/my-replies", favH.MyReplies)
 
-			// 店铺商城（登录态：开店/上货/交易/评价，诺哈 wap/shop）
-			authed.GET("/stores/my", storeH.MyShop)
-			authed.POST("/stores", storeH.ShopCreate)
-			authed.GET("/stores/:id", storeH.ShopDetail)
-			authed.POST("/store-goods", storeH.GoodsAdd)
-			authed.PUT("/store-goods/:id", storeH.GoodsEdit)
-			authed.DELETE("/store-goods/:id", storeH.GoodsDel)
-			authed.GET("/store-goods-mine", storeH.MyGoods)
-			authed.POST("/store-orders", storeH.OrderBuy)
-			authed.GET("/store-orders", storeH.MyOrders)
-			authed.POST("/store-orders/:id/deliver", storeH.OrderDeliver)
-			authed.POST("/store-orders/:id/receive", storeH.OrderReceive)
-			authed.POST("/store-orders/:id/cancel", storeH.OrderCancel)
-			authed.POST("/store-comments", storeH.CommentAdd)
-			authed.POST("/store-comments/:id/reply", storeH.ReplyComment)
-			// 书城（登录态：书评/书架）
-			authed.POST("/books/:id/comments", bookH.CommentAdd)
-			authed.POST("/books/:id/shelf", bookH.ShelfAdd)
-			authed.DELETE("/books/:id/shelf", bookH.ShelfDel)
-			authed.GET("/me/shelf", bookH.ShelfList)
+				// 店铺商城（登录态：开店/上货/交易/评价，诺哈 wap/shop）
+				authed.GET("/stores/my", storeH.MyShop)
+				authed.POST("/stores", storeH.ShopCreate)
+				authed.GET("/stores/:id", storeH.ShopDetail)
+				authed.POST("/store-goods", storeH.GoodsAdd)
+				authed.PUT("/store-goods/:id", storeH.GoodsEdit)
+				authed.DELETE("/store-goods/:id", storeH.GoodsDel)
+				authed.GET("/store-goods-mine", storeH.MyGoods)
+				authed.POST("/store-orders", storeH.OrderBuy)
+				authed.GET("/store-orders", storeH.MyOrders)
+				authed.POST("/store-orders/:id/deliver", storeH.OrderDeliver)
+				authed.POST("/store-orders/:id/receive", storeH.OrderReceive)
+				authed.POST("/store-orders/:id/cancel", storeH.OrderCancel)
+				authed.POST("/store-comments", storeH.CommentAdd)
+				authed.POST("/store-comments/:id/reply", storeH.ReplyComment)
+				// 书城（登录态：书评/书架）
+				authed.POST("/books/:id/comments", bookH.CommentAdd)
+				authed.POST("/books/:id/shelf", bookH.ShelfAdd)
+				authed.DELETE("/books/:id/shelf", bookH.ShelfDel)
+				authed.GET("/me/shelf", bookH.ShelfList)
 
-			// 帖子互动：赞/踩/打赏/送花/分享/举报
-			authed.POST("/threads/:id/vote", itH.Vote)
-			authed.GET("/threads/:id/interact-status", itH.Status)
-			authed.POST("/replies/:id/like", itH.ReplyLike)
-			authed.POST("/threads/:id/gift", itH.Gift)
-			authed.POST("/threads/:id/flower", itH.Flower)
-			authed.POST("/threads/:id/share", itH.Share)
-			authed.POST("/reports", itH.CreateReport)
+				// 帖子互动：赞/踩/打赏/送花/分享/举报
+				authed.POST("/threads/:id/vote", itH.Vote)
+				authed.GET("/threads/:id/interact-status", itH.Status)
+				authed.POST("/replies/:id/like", itH.ReplyLike)
+				authed.POST("/threads/:id/gift", itH.Gift)
+				authed.POST("/threads/:id/flower", itH.Flower)
+				authed.POST("/threads/:id/share", itH.Share)
+				authed.POST("/reports", itH.CreateReport)
 
-			// 好友分组
-			authed.GET("/friend-groups", fgH.List)
-			authed.POST("/friend-groups", fgH.Create)
-			authed.DELETE("/friend-groups/:id", fgH.Delete)
-			authed.POST("/friend-groups/:id/friends", fgH.AddFriend)
-			authed.DELETE("/friend-groups/:id/friends/:friendId", fgH.RemoveFriend)
+				// 好友分组
+				authed.GET("/friend-groups", fgH.List)
+				authed.POST("/friend-groups", fgH.Create)
+				authed.DELETE("/friend-groups/:id", fgH.Delete)
+				authed.POST("/friend-groups/:id/friends", fgH.AddFriend)
+				authed.DELETE("/friend-groups/:id/friends/:friendId", fgH.RemoveFriend)
 
-			// 游戏：魔法花园（对齐诺哈三代 ASP 版玩法）
-			authed.GET("/games/garden/view", gardenH.View)
-			authed.GET("/games/garden/visit", gardenH.Visit)
-			authed.GET("/games/garden/shop", gardenH.Shop)
-			authed.POST("/games/garden/buy", gardenH.Buy)
-			authed.POST("/games/garden/sow", gardenH.Sow)
-			authed.POST("/games/garden/care/:kind", gardenH.Care)
-			authed.POST("/games/garden/harvest", gardenH.Harvest)
-			authed.POST("/games/garden/delplot", gardenH.DelPlot)
-			authed.POST("/games/garden/pick", gardenH.Pick)
-			authed.POST("/games/garden/addland", gardenH.AddLand)
-			authed.GET("/games/garden/basket", gardenH.Basket)
-			authed.GET("/games/garden/bottle", gardenH.Bottle)
-			authed.POST("/games/garden/gift", gardenH.Gift)
-			authed.GET("/games/garden/giftlog", gardenH.GiftLog)
-			authed.GET("/games/garden/room", gardenH.Room)
-			authed.POST("/games/garden/mix", gardenH.Mix)
-			authed.POST("/games/garden/item-use", gardenH.ItemUse)
-			authed.GET("/games/garden/map", gardenH.MapList)
-			authed.POST("/games/garden/setting", gardenH.Setting)
-			authed.GET("/games/garden/msgs", gardenH.Msgs)
-			authed.GET("/games/garden/elves", gardenH.Elves)
-			authed.GET("/games/garden/rank", gardenH.Rank)
-			authed.GET("/games/garden/sign-status", gardenH.SignStatus)
-			authed.POST("/games/garden/sign", gardenH.Sign)
-			authed.POST("/games/garden/activity-submit", gardenH.SubmitActivity)
-			// 开心农场（对齐诺哈三代 wap/game/farm 玩法）
-			authed.GET("/games/farm/view", farmH.View)
-			authed.GET("/games/farm/visit", farmH.Visit)
-			authed.GET("/games/farm/neighbors", farmH.Neighbors)
-			authed.GET("/games/farm/shop", farmH.Shop)
-			authed.POST("/games/farm/buy", farmH.Buy)
-			authed.GET("/games/farm/bag", farmH.Bag)
-			authed.GET("/games/farm/warehouse", farmH.Warehouse)
-			authed.POST("/games/farm/plow", farmH.Plow)
-			authed.POST("/games/farm/plant", farmH.Plant)
-			authed.POST("/games/farm/care/:kind", farmH.Care)
-			authed.POST("/games/farm/ppest", farmH.Ppest)
-			authed.POST("/games/farm/muck", farmH.Muck)
-			authed.POST("/games/farm/trap", farmH.Trap)
-			authed.POST("/games/farm/pick", farmH.Pick)
-			authed.POST("/games/farm/steal", farmH.Steal)
-			authed.POST("/games/farm/sell", farmH.Sell)
-			authed.GET("/games/farm/rank", farmH.Rank)
-			authed.GET("/games/farm/slaves", farmH.Slaves)
-			authed.POST("/games/farm/slave/:kind/:id", farmH.SlaveAct)
-			authed.POST("/games/farm/setting", farmH.Setting)
-			// 抢车位（对齐诺哈三代 wap/game/car 玩法）
-			authed.GET("/games/park/view", parkH.View)
-			authed.GET("/games/park/owner", parkH.Owner)
-			authed.GET("/games/park/friends", parkH.Friends)
-			authed.GET("/games/park/shop", parkH.Shop)
-			authed.POST("/games/park/buy", parkH.Buy)
-			authed.POST("/games/park/send", parkH.Send)
-			authed.POST("/games/park/sell", parkH.Sell)
-			authed.POST("/games/park/stop", parkH.Stop)
-			authed.POST("/games/park/favor", parkH.Favor)
-			authed.POST("/games/park/seal", parkH.Seal)
-			authed.GET("/games/park/garage", parkH.Garage)
-			authed.GET("/games/park/logs", parkH.Logs)
-			authed.GET("/games/park/top", parkH.Top)
+				// 游戏：魔法花园（对齐诺哈三代 ASP 版玩法）
+				authed.GET("/games/garden/view", gardenH.View)
+				authed.GET("/games/garden/visit", gardenH.Visit)
+				authed.GET("/games/garden/shop", gardenH.Shop)
+				authed.POST("/games/garden/buy", gardenH.Buy)
+				authed.POST("/games/garden/sow", gardenH.Sow)
+				authed.POST("/games/garden/care/:kind", gardenH.Care)
+				authed.POST("/games/garden/harvest", gardenH.Harvest)
+				authed.POST("/games/garden/delplot", gardenH.DelPlot)
+				authed.POST("/games/garden/pick", gardenH.Pick)
+				authed.POST("/games/garden/addland", gardenH.AddLand)
+				authed.GET("/games/garden/basket", gardenH.Basket)
+				authed.GET("/games/garden/bottle", gardenH.Bottle)
+				authed.POST("/games/garden/gift", gardenH.Gift)
+				authed.GET("/games/garden/giftlog", gardenH.GiftLog)
+				authed.GET("/games/garden/room", gardenH.Room)
+				authed.POST("/games/garden/mix", gardenH.Mix)
+				authed.POST("/games/garden/item-use", gardenH.ItemUse)
+				authed.GET("/games/garden/map", gardenH.MapList)
+				authed.POST("/games/garden/setting", gardenH.Setting)
+				authed.GET("/games/garden/msgs", gardenH.Msgs)
+				authed.GET("/games/garden/elves", gardenH.Elves)
+				authed.GET("/games/garden/rank", gardenH.Rank)
+				authed.GET("/games/garden/sign-status", gardenH.SignStatus)
+				authed.POST("/games/garden/sign", gardenH.Sign)
+				authed.POST("/games/garden/activity-submit", gardenH.SubmitActivity)
+				// 开心农场（对齐诺哈三代 wap/game/farm 玩法）
+				authed.GET("/games/farm/view", farmH.View)
+				authed.GET("/games/farm/visit", farmH.Visit)
+				authed.GET("/games/farm/neighbors", farmH.Neighbors)
+				authed.GET("/games/farm/shop", farmH.Shop)
+				authed.POST("/games/farm/buy", farmH.Buy)
+				authed.GET("/games/farm/bag", farmH.Bag)
+				authed.GET("/games/farm/warehouse", farmH.Warehouse)
+				authed.POST("/games/farm/plow", farmH.Plow)
+				authed.POST("/games/farm/plant", farmH.Plant)
+				authed.POST("/games/farm/care/:kind", farmH.Care)
+				authed.POST("/games/farm/ppest", farmH.Ppest)
+				authed.POST("/games/farm/muck", farmH.Muck)
+				authed.POST("/games/farm/trap", farmH.Trap)
+				authed.POST("/games/farm/pick", farmH.Pick)
+				authed.POST("/games/farm/steal", farmH.Steal)
+				authed.POST("/games/farm/sell", farmH.Sell)
+				authed.GET("/games/farm/rank", farmH.Rank)
+				authed.GET("/games/farm/slaves", farmH.Slaves)
+				authed.POST("/games/farm/slave/:kind/:id", farmH.SlaveAct)
+				authed.POST("/games/farm/setting", farmH.Setting)
+				// 抢车位（对齐诺哈三代 wap/game/car 玩法）
+				authed.GET("/games/park/view", parkH.View)
+				authed.GET("/games/park/owner", parkH.Owner)
+				authed.GET("/games/park/friends", parkH.Friends)
+				authed.GET("/games/park/shop", parkH.Shop)
+				authed.POST("/games/park/buy", parkH.Buy)
+				authed.POST("/games/park/send", parkH.Send)
+				authed.POST("/games/park/sell", parkH.Sell)
+				authed.POST("/games/park/stop", parkH.Stop)
+				authed.POST("/games/park/favor", parkH.Favor)
+				authed.POST("/games/park/seal", parkH.Seal)
+				authed.GET("/games/park/garage", parkH.Garage)
+				authed.GET("/games/park/logs", parkH.Logs)
+				authed.GET("/games/park/top", parkH.Top)
 
-			// 精武堂（复刻 wap 精武堂：属性/修炼/技能/比武/锻造/任务/头衔/帮派）
-			authed.GET("/games/jwt/view", jwtH.View)
-			authed.GET("/games/jwt/shop", jwtH.Shop)
-			authed.POST("/games/jwt/buy", jwtH.Buy)
-			authed.POST("/games/jwt/energy", jwtH.EnergyAlloc)
-			authed.GET("/games/jwt/skills", jwtH.SkillShop)
-			authed.POST("/games/jwt/learn", jwtH.LearnSkill)
-			authed.POST("/games/jwt/skill-act", jwtH.SkillAct)
-			authed.POST("/games/jwt/practice", jwtH.Practice)
-			authed.GET("/games/jwt/arena", jwtH.ArenaList)
-			authed.POST("/games/jwt/arena", jwtH.Arena)
-			authed.GET("/games/jwt/arena-live", jwtH.ArenaLive)
-			authed.GET("/games/jwt/records", jwtH.ArenaRecords)
-			authed.GET("/games/jwt/records/:id", jwtH.RecordDetail)
-			authed.GET("/games/jwt/bag", jwtH.Bag)
-			authed.POST("/games/jwt/item-use", jwtH.UseItem)
-			authed.POST("/games/jwt/item-drop", jwtH.ItemDrop)
-			authed.POST("/games/jwt/equip", jwtH.Equip)
-			authed.POST("/games/jwt/unequip", jwtH.Unequip)
-			authed.GET("/games/jwt/forge", jwtH.Forge)
-			authed.POST("/games/jwt/forge", jwtH.ForgeItem)
-			authed.GET("/games/jwt/tasks", jwtH.Tasks)
-			authed.POST("/games/jwt/sign", jwtH.Sign)
-			authed.POST("/games/jwt/reward", jwtH.Reward)
-			authed.POST("/games/jwt/chat", jwtH.Chat)
-			authed.GET("/games/jwt/chat", jwtH.ChatList)
-			authed.GET("/games/jwt/logs", jwtH.Logs)
-			authed.GET("/games/jwt/titles", jwtH.Titles)
-			authed.POST("/games/jwt/titles", jwtH.Titles)
-			authed.GET("/games/jwt/gangs", jwtH.Gangs)
-			authed.POST("/games/jwt/gang/create", jwtH.GangCreate)
-			authed.POST("/games/jwt/gang/join", jwtH.GangJoin)
-			authed.POST("/games/jwt/gang/leave", jwtH.GangLeave)
-			authed.GET("/games/jwt/ranking", jwtH.Ranking)
-			authed.GET("/games/jwt/title-ranking", jwtH.TitleRanking)
-			authed.POST("/games/jwt/myskill", jwtH.MySkill)
-			authed.GET("/games/jwt/friends", jwtH.Friends)
-			authed.POST("/games/jwt/profile", jwtH.PlayerProfile)
-			authed.POST("/games/jwt/profile-edit", jwtH.ProfileEdit)
-			authed.POST("/games/jwt/levelup", jwtH.LevelUp)
-			authed.POST("/games/jwt/gangview", jwtH.GangView)
-			authed.POST("/games/jwt/gangapply", jwtH.GangApply)
+				// 精武堂（复刻 wap 精武堂：属性/修炼/技能/比武/锻造/任务/头衔/帮派）
+				authed.GET("/games/jwt/view", jwtH.View)
+				authed.GET("/games/jwt/shop", jwtH.Shop)
+				authed.POST("/games/jwt/buy", jwtH.Buy)
+				authed.POST("/games/jwt/energy", jwtH.EnergyAlloc)
+				authed.GET("/games/jwt/skills", jwtH.SkillShop)
+				authed.POST("/games/jwt/learn", jwtH.LearnSkill)
+				authed.POST("/games/jwt/skill-act", jwtH.SkillAct)
+				authed.POST("/games/jwt/practice", jwtH.Practice)
+				authed.GET("/games/jwt/arena", jwtH.ArenaList)
+				authed.POST("/games/jwt/arena", jwtH.Arena)
+				authed.GET("/games/jwt/arena-live", jwtH.ArenaLive)
+				authed.GET("/games/jwt/records", jwtH.ArenaRecords)
+				authed.GET("/games/jwt/records/:id", jwtH.RecordDetail)
+				authed.GET("/games/jwt/bag", jwtH.Bag)
+				authed.POST("/games/jwt/item-use", jwtH.UseItem)
+				authed.POST("/games/jwt/item-drop", jwtH.ItemDrop)
+				authed.POST("/games/jwt/equip", jwtH.Equip)
+				authed.POST("/games/jwt/unequip", jwtH.Unequip)
+				authed.GET("/games/jwt/forge", jwtH.Forge)
+				authed.POST("/games/jwt/forge", jwtH.ForgeItem)
+				authed.GET("/games/jwt/tasks", jwtH.Tasks)
+				authed.POST("/games/jwt/sign", jwtH.Sign)
+				authed.POST("/games/jwt/reward", jwtH.Reward)
+				authed.POST("/games/jwt/chat", jwtH.Chat)
+				authed.GET("/games/jwt/chat", jwtH.ChatList)
+				authed.GET("/games/jwt/logs", jwtH.Logs)
+				authed.GET("/games/jwt/titles", jwtH.Titles)
+				authed.POST("/games/jwt/titles", jwtH.Titles)
+				authed.GET("/games/jwt/gangs", jwtH.Gangs)
+				authed.POST("/games/jwt/gang/create", jwtH.GangCreate)
+				authed.POST("/games/jwt/gang/join", jwtH.GangJoin)
+				authed.POST("/games/jwt/gang/leave", jwtH.GangLeave)
+				authed.GET("/games/jwt/ranking", jwtH.Ranking)
+				authed.GET("/games/jwt/title-ranking", jwtH.TitleRanking)
+				authed.POST("/games/jwt/myskill", jwtH.MySkill)
+				authed.GET("/games/jwt/friends", jwtH.Friends)
+				authed.POST("/games/jwt/profile", jwtH.PlayerProfile)
+				authed.POST("/games/jwt/profile-edit", jwtH.ProfileEdit)
+				authed.POST("/games/jwt/levelup", jwtH.LevelUp)
+				authed.POST("/games/jwt/gangview", jwtH.GangView)
+				authed.POST("/games/jwt/gangapply", jwtH.GangApply)
 
-			// 幻想西游（复刻 wap 幻想西游：地图行走/回合战斗/装备/技能/宠物/副本/社交）
-			// 整组挂服务器维护中间件：维护中所有游戏接口返回维护公告
-			hxxyG := authed.Group("/games/hxxy", hxH.HxxyMaintGate())
-			hxxyG.GET("/status", hxH.Status)
-			hxxyG.POST("/create", hxH.Create)
-			hxxyG.GET("/state", hxH.State)
-			hxxyG.GET("/home", hxH.Home)
-			hxxyG.GET("/pm/:id", hxH.PMList)
-			hxxyG.POST("/pm/send", hxH.PMSend)
-			hxxyG.GET("/attrs", hxH.Attrs)
-			hxxyG.POST("/move", hxH.Move)
-			hxxyG.POST("/jump", hxH.Jump)
-			hxxyG.GET("/map/grid", hxH.MapGrid)
-			hxxyG.GET("/npc/:id", hxH.NpcView)
-			hxxyG.POST("/npc/teleport", hxH.NpcTeleport)
-			hxxyG.POST("/rest", hxH.Rest)
-			hxxyG.POST("/battle/start", hxH.BattleStart)
-			hxxyG.GET("/battle/state", hxH.BattleState)
-			hxxyG.POST("/battle/action", hxH.BattleAction)
-			hxxyG.GET("/bag", hxH.Bag)
-			hxxyG.POST("/bag/use", hxH.BagUse)
-			hxxyG.POST("/bag/discard", hxH.BagDiscard)
-			hxxyG.GET("/warehouse", hxH.Warehouse)
-			hxxyG.POST("/warehouse/deposit", hxH.WhDeposit)
-			hxxyG.POST("/warehouse/takeout", hxH.WhTakeout)
-			hxxyG.POST("/equip/wear", hxH.EquipWear)
-			hxxyG.POST("/equip/takeoff", hxH.EquipTakeoff)
-			hxxyG.POST("/equip/upgrade", hxH.EquipUpgrade)
-			hxxyG.POST("/equip/hole", hxH.EquipHole)
-			hxxyG.POST("/equip/gem", hxH.EquipGem)
-			hxxyG.GET("/skills", hxH.Skills)
-			hxxyG.POST("/skills/learn", hxH.SkillLearn)
-			hxxyG.GET("/pets", hxH.Pets)
-			hxxyG.POST("/pets/act", hxH.PetAct)
-			hxxyG.GET("/shop/:kind", hxH.Shop)
-			hxxyG.POST("/shop/buy", hxH.ShopBuy)
-			hxxyG.POST("/shop/sell", hxH.ShopSell)
-			hxxyG.GET("/bank", hxH.Bank)
-			hxxyG.POST("/bank/deposit", hxH.BankDeposit)
-			hxxyG.POST("/bank/withdraw", hxH.BankWithdraw)
-			hxxyG.GET("/quests", hxH.Quests)
-			hxxyG.POST("/quests/accept", hxH.QuestAccept)
-			hxxyG.POST("/quests/submit", hxH.QuestSubmit)
-			hxxyG.POST("/quests/abandon", hxH.QuestAbandon)
-			hxxyG.GET("/activities", hxH.Activities)
-			hxxyG.POST("/activities/claim", hxH.ActivityClaim)
-			hxxyG.GET("/dungeons", hxH.Dungeons)
-			hxxyG.POST("/dungeons/enter", hxH.DungeonEnter)
-			hxxyG.GET("/bosses", hxH.Bosses)
-			hxxyG.POST("/bosses/challenge", hxH.BossChallenge)
-			hxxyG.GET("/cultivate", hxH.Cultivate)
-			hxxyG.POST("/cultivate/toggle", hxH.CultivateToggle)
-			hxxyG.POST("/cultivate/upgrade", hxH.CultivateUpgrade)
-			hxxyG.POST("/cultivate/exchange-dan", hxH.CultivateExchangeDan)
-			hxxyG.GET("/titles", hxH.Titles)
-			hxxyG.POST("/titles/activate", hxH.TitleActivate)
-			hxxyG.POST("/titles/wear", hxH.TitleWear)
-			hxxyG.POST("/signin", hxH.Signin)
-			hxxyG.GET("/signin/info", hxH.SigninInfo)
-			hxxyG.POST("/signin/claim", hxH.SigninClaim)
-			hxxyG.GET("/welfare", hxH.Welfare)
-			hxxyG.POST("/welfare/gift", hxH.WelfareGiftClaim)
-			hxxyG.POST("/welfare/noble", hxH.WelfareNobleClaim)
-			hxxyG.GET("/vip/info", hxH.VipInfo)
-			hxxyG.POST("/vip/exchange", hxH.VipExchange)
-			hxxyG.POST("/vip/recharge", hxH.VipRecharge)
-			hxxyG.GET("/rank/:type", hxH.Rank)
-			hxxyG.GET("/chat", hxH.ChatList)
-			hxxyG.POST("/chat", hxH.ChatPost)
-			hxxyG.GET("/friends", hxH.Friends)
-			hxxyG.POST("/friends/add", hxH.FriendAdd)
-			hxxyG.POST("/friends/black", hxH.FriendBlack)
-			hxxyG.POST("/friends/remove", hxH.FriendRemove)
-			hxxyG.GET("/gang", hxH.GangInfo)
-			hxxyG.POST("/gang/create", hxH.GangCreate)
-			hxxyG.POST("/gang/join", hxH.GangJoin)
-			hxxyG.POST("/gang/leave", hxH.GangLeave)
-			hxxyG.POST("/gang/donate", hxH.GangDonate)
-			hxxyG.POST("/gang/invite", hxH.GangInvite)
-			hxxyG.POST("/gang/invite/agree", hxH.GangInviteAgree)
-			hxxyG.POST("/gang/invite/refuse", hxH.GangInviteRefuse)
-			hxxyG.GET("/gang/mall", hxH.GangMall)
-			hxxyG.POST("/gang/mall/buy", hxH.GangMallBuy)
-			hxxyG.POST("/gang/appoint", hxH.GangAppoint)
-			hxxyG.POST("/gang/dismiss", hxH.GangDismiss)
-			hxxyG.POST("/gang/kick", hxH.GangKick)
-			hxxyG.POST("/gang/upgrade", hxH.GangUpgrade)
-			hxxyG.POST("/gang/dissolve", hxH.GangDissolve)
-			hxxyG.GET("/marriage", hxH.MarriageInfo)
-			hxxyG.POST("/marriage/propose", hxH.MarriagePropose)
-			hxxyG.POST("/marriage/agree", hxH.MarriageAgree)
-			hxxyG.POST("/marriage/refuse", hxH.MarriageRefuse)
-			hxxyG.POST("/marriage/divorce", hxH.MarriageDivorce)
-			hxxyG.GET("/house", hxH.House)
-			hxxyG.POST("/house/buy", hxH.HouseBuy)
-			hxxyG.POST("/house/invite", hxH.HouseInvite)
-			hxxyG.POST("/house/invite/agree", hxH.HouseInviteAgree)
-			hxxyG.POST("/house/invite/refuse", hxH.HouseInviteRefuse)
-			hxxyG.POST("/house/visit", hxH.HouseVisit)
-			hxxyG.GET("/stalls", hxH.Stalls)
-			hxxyG.GET("/stalls/mine", hxH.StallsMine)
-			hxxyG.GET("/stalls/player/:id", hxH.StallsOf)
-			hxxyG.POST("/stall/sell", hxH.StallSell)
-			hxxyG.POST("/stall/buy", hxH.StallBuy)
-			hxxyG.POST("/stall/cancel", hxH.StallCancel)
-			hxxyG.GET("/auction", hxH.AuctionList)
-			hxxyG.GET("/auction/mine", hxH.AuctionMine)
-			hxxyG.POST("/auction/sell", hxH.AuctionSell)
-			hxxyG.POST("/auction/buy", hxH.AuctionBuy)
-			hxxyG.POST("/auction/cancel", hxH.AuctionCancel)
-			hxxyG.POST("/give/money", hxH.GiveMoney)
-			hxxyG.POST("/give/item", hxH.GiveItem)
-			hxxyG.GET("/wallet", hxH.WalletLogs)
-			hxxyG.GET("/battle-logs", hxH.BattleLogs)
-			hxxyG.GET("/arena/info", hxH.ArenaInfo)
-			hxxyG.POST("/arena/fight", hxH.ArenaFight)
-			hxxyG.GET("/tower/info", hxH.TowerInfo)
-			hxxyG.POST("/tower/start", hxH.TowerStart)
-			hxxyG.POST("/fun/roll", hxH.FunRoll)
-			hxxyG.GET("/teyun/list", hxH.TeyunList)
-			hxxyG.POST("/teyun/go", hxH.TeyunGo)
-			hxxyG.GET("/player/:id", hxH.PlayerView)
-			hxxyG.GET("/gz/info", hxH.GzInfo)
-			hxxyG.POST("/gz/signup", hxH.GzSignup)
-			hxxyG.POST("/gz/rod", hxH.GzRod)
-			hxxyG.POST("/gz/neijian", hxH.GzNeijian)
-			hxxyG.GET("/team/info", hxH.TeamInfo)
-			hxxyG.POST("/team/create", hxH.TeamCreate)
-			hxxyG.POST("/team/invite", hxH.TeamInvite)
-			hxxyG.POST("/team/agree", hxH.TeamAgree)
-			hxxyG.POST("/team/refuse", hxH.TeamRefuse)
-			hxxyG.POST("/team/kick", hxH.TeamKick)
-			hxxyG.POST("/team/leave", hxH.TeamLeave)
+				// 幻想西游（复刻 wap 幻想西游：地图行走/回合战斗/装备/技能/宠物/副本/社交）
+				// 整组挂服务器维护中间件：维护中所有游戏接口返回维护公告
+				hxxyG := authed.Group("/games/hxxy", hxH.HxxyMaintGate())
+				hxxyG.GET("/status", hxH.Status)
+				hxxyG.POST("/create", hxH.Create)
+				hxxyG.GET("/state", hxH.State)
+				hxxyG.GET("/home", hxH.Home)
+				hxxyG.GET("/pm/:id", hxH.PMList)
+				hxxyG.POST("/pm/send", hxH.PMSend)
+				hxxyG.GET("/attrs", hxH.Attrs)
+				hxxyG.POST("/move", hxH.Move)
+				hxxyG.POST("/jump", hxH.Jump)
+				hxxyG.GET("/map/grid", hxH.MapGrid)
+				hxxyG.GET("/npc/:id", hxH.NpcView)
+				hxxyG.POST("/npc/teleport", hxH.NpcTeleport)
+				hxxyG.POST("/rest", hxH.Rest)
+				hxxyG.POST("/battle/start", hxH.BattleStart)
+				hxxyG.GET("/battle/state", hxH.BattleState)
+				hxxyG.POST("/battle/action", hxH.BattleAction)
+				hxxyG.GET("/bag", hxH.Bag)
+				hxxyG.POST("/bag/use", hxH.BagUse)
+				hxxyG.POST("/bag/discard", hxH.BagDiscard)
+				hxxyG.GET("/warehouse", hxH.Warehouse)
+				hxxyG.POST("/warehouse/deposit", hxH.WhDeposit)
+				hxxyG.POST("/warehouse/takeout", hxH.WhTakeout)
+				hxxyG.POST("/equip/wear", hxH.EquipWear)
+				hxxyG.POST("/equip/takeoff", hxH.EquipTakeoff)
+				hxxyG.POST("/equip/upgrade", hxH.EquipUpgrade)
+				hxxyG.POST("/equip/hole", hxH.EquipHole)
+				hxxyG.POST("/equip/gem", hxH.EquipGem)
+				hxxyG.GET("/skills", hxH.Skills)
+				hxxyG.POST("/skills/learn", hxH.SkillLearn)
+				hxxyG.GET("/pets", hxH.Pets)
+				hxxyG.POST("/pets/act", hxH.PetAct)
+				hxxyG.GET("/shop/:kind", hxH.Shop)
+				hxxyG.POST("/shop/buy", hxH.ShopBuy)
+				hxxyG.POST("/shop/sell", hxH.ShopSell)
+				hxxyG.GET("/bank", hxH.Bank)
+				hxxyG.POST("/bank/deposit", hxH.BankDeposit)
+				hxxyG.POST("/bank/withdraw", hxH.BankWithdraw)
+				hxxyG.GET("/quests", hxH.Quests)
+				hxxyG.POST("/quests/accept", hxH.QuestAccept)
+				hxxyG.POST("/quests/submit", hxH.QuestSubmit)
+				hxxyG.POST("/quests/abandon", hxH.QuestAbandon)
+				hxxyG.GET("/activities", hxH.Activities)
+				hxxyG.POST("/activities/claim", hxH.ActivityClaim)
+				hxxyG.GET("/dungeons", hxH.Dungeons)
+				hxxyG.POST("/dungeons/enter", hxH.DungeonEnter)
+				hxxyG.GET("/bosses", hxH.Bosses)
+				hxxyG.POST("/bosses/challenge", hxH.BossChallenge)
+				hxxyG.GET("/cultivate", hxH.Cultivate)
+				hxxyG.POST("/cultivate/toggle", hxH.CultivateToggle)
+				hxxyG.POST("/cultivate/upgrade", hxH.CultivateUpgrade)
+				hxxyG.POST("/cultivate/exchange-dan", hxH.CultivateExchangeDan)
+				hxxyG.GET("/titles", hxH.Titles)
+				hxxyG.POST("/titles/activate", hxH.TitleActivate)
+				hxxyG.POST("/titles/wear", hxH.TitleWear)
+				hxxyG.POST("/signin", hxH.Signin)
+				hxxyG.GET("/signin/info", hxH.SigninInfo)
+				hxxyG.POST("/signin/claim", hxH.SigninClaim)
+				hxxyG.GET("/welfare", hxH.Welfare)
+				hxxyG.POST("/welfare/gift", hxH.WelfareGiftClaim)
+				hxxyG.POST("/welfare/noble", hxH.WelfareNobleClaim)
+				hxxyG.GET("/vip/info", hxH.VipInfo)
+				hxxyG.POST("/vip/exchange", hxH.VipExchange)
+				hxxyG.POST("/vip/recharge", hxH.VipRecharge)
+				hxxyG.GET("/rank/:type", hxH.Rank)
+				hxxyG.GET("/chat", hxH.ChatList)
+				hxxyG.POST("/chat", hxH.ChatPost)
+				hxxyG.GET("/friends", hxH.Friends)
+				hxxyG.POST("/friends/add", hxH.FriendAdd)
+				hxxyG.POST("/friends/black", hxH.FriendBlack)
+				hxxyG.POST("/friends/remove", hxH.FriendRemove)
+				hxxyG.GET("/gang", hxH.GangInfo)
+				hxxyG.POST("/gang/create", hxH.GangCreate)
+				hxxyG.POST("/gang/join", hxH.GangJoin)
+				hxxyG.POST("/gang/leave", hxH.GangLeave)
+				hxxyG.POST("/gang/donate", hxH.GangDonate)
+				hxxyG.POST("/gang/invite", hxH.GangInvite)
+				hxxyG.POST("/gang/invite/agree", hxH.GangInviteAgree)
+				hxxyG.POST("/gang/invite/refuse", hxH.GangInviteRefuse)
+				hxxyG.GET("/gang/mall", hxH.GangMall)
+				hxxyG.POST("/gang/mall/buy", hxH.GangMallBuy)
+				hxxyG.POST("/gang/appoint", hxH.GangAppoint)
+				hxxyG.POST("/gang/dismiss", hxH.GangDismiss)
+				hxxyG.POST("/gang/kick", hxH.GangKick)
+				hxxyG.POST("/gang/upgrade", hxH.GangUpgrade)
+				hxxyG.POST("/gang/dissolve", hxH.GangDissolve)
+				hxxyG.GET("/marriage", hxH.MarriageInfo)
+				hxxyG.POST("/marriage/propose", hxH.MarriagePropose)
+				hxxyG.POST("/marriage/agree", hxH.MarriageAgree)
+				hxxyG.POST("/marriage/refuse", hxH.MarriageRefuse)
+				hxxyG.POST("/marriage/divorce", hxH.MarriageDivorce)
+				hxxyG.GET("/house", hxH.House)
+				hxxyG.POST("/house/buy", hxH.HouseBuy)
+				hxxyG.POST("/house/invite", hxH.HouseInvite)
+				hxxyG.POST("/house/invite/agree", hxH.HouseInviteAgree)
+				hxxyG.POST("/house/invite/refuse", hxH.HouseInviteRefuse)
+				hxxyG.POST("/house/visit", hxH.HouseVisit)
+				hxxyG.GET("/stalls", hxH.Stalls)
+				hxxyG.GET("/stalls/mine", hxH.StallsMine)
+				hxxyG.GET("/stalls/player/:id", hxH.StallsOf)
+				hxxyG.POST("/stall/sell", hxH.StallSell)
+				hxxyG.POST("/stall/buy", hxH.StallBuy)
+				hxxyG.POST("/stall/cancel", hxH.StallCancel)
+				hxxyG.GET("/auction", hxH.AuctionList)
+				hxxyG.GET("/auction/mine", hxH.AuctionMine)
+				hxxyG.POST("/auction/sell", hxH.AuctionSell)
+				hxxyG.POST("/auction/buy", hxH.AuctionBuy)
+				hxxyG.POST("/auction/cancel", hxH.AuctionCancel)
+				hxxyG.POST("/give/money", hxH.GiveMoney)
+				hxxyG.POST("/give/item", hxH.GiveItem)
+				hxxyG.GET("/wallet", hxH.WalletLogs)
+				hxxyG.GET("/battle-logs", hxH.BattleLogs)
+				hxxyG.GET("/arena/info", hxH.ArenaInfo)
+				hxxyG.POST("/arena/fight", hxH.ArenaFight)
+				hxxyG.GET("/tower/info", hxH.TowerInfo)
+				hxxyG.POST("/tower/start", hxH.TowerStart)
+				hxxyG.POST("/fun/roll", hxH.FunRoll)
+				hxxyG.GET("/teyun/list", hxH.TeyunList)
+				hxxyG.POST("/teyun/go", hxH.TeyunGo)
+				hxxyG.GET("/player/:id", hxH.PlayerView)
+				hxxyG.GET("/gz/info", hxH.GzInfo)
+				hxxyG.POST("/gz/signup", hxH.GzSignup)
+				hxxyG.POST("/gz/rod", hxH.GzRod)
+				hxxyG.POST("/gz/neijian", hxH.GzNeijian)
+				hxxyG.GET("/team/info", hxH.TeamInfo)
+				hxxyG.POST("/team/create", hxH.TeamCreate)
+				hxxyG.POST("/team/invite", hxH.TeamInvite)
+				hxxyG.POST("/team/agree", hxH.TeamAgree)
+				hxxyG.POST("/team/refuse", hxH.TeamRefuse)
+				hxxyG.POST("/team/kick", hxH.TeamKick)
+				hxxyG.POST("/team/leave", hxH.TeamLeave)
 
-			// 二战风云（复刻 stzb-fk 二战风云：城池建造/资源结算/造兵科技/地图出征/多回合战斗/军团）
-			// 整组挂服务器维护中间件：维护中所有游戏接口返回维护公告
-			// ★ 2026-10-12 二战独立账号：ezfy 组从家园 jwtM 切到二战专属 ezfyJwtM，
-			//   后续仍走维护中间件。
-			ezfyG := ezfyAuthed.Group("/games/ezfy", ezfyH.EzfyMaintGate())
-			{
-				ezfyG.GET("/view", ezfyH.View)
-				ezfyG.GET("/city/list", ezfyH.CityList)
-				ezfyG.POST("/city/switch", ezfyH.SwitchCity)
-				ezfyG.POST("/city/create", ezfyH.CreateCity)
-				ezfyG.POST("/city/rename", ezfyH.RenameCity)
-				ezfyG.POST("/city/tax", ezfyH.SetTax)
-				ezfyG.POST("/city/convene", ezfyH.Convene)
-				ezfyG.POST("/city/placate", ezfyH.Placate)
-				ezfyG.POST("/city/abandon-wild", ezfyH.AbandonWildland)
-				// 摧毁自己的城市（仅限非当前所在城市）
-				ezfyG.POST("/city/destroy", ezfyH.DestroyCity)
-				ezfyG.GET("/city/move", ezfyH.MoveInfo)
-				ezfyG.POST("/city/move", ezfyH.MoveCity)
-				ezfyG.GET("/city/produce", ezfyH.ProduceInfo)
-				ezfyG.POST("/city/produce", ezfyH.ProduceSet)
-				ezfyG.GET("/resources", ezfyH.Resources)
-				ezfyG.GET("/buildings", ezfyH.Buildings)
-				ezfyG.POST("/build", ezfyH.Build)
-				ezfyG.POST("/building/upgrade", ezfyH.Upgrade)
-				ezfyG.POST("/building/max-level", ezfyH.MaxLevel)
-				ezfyG.POST("/building/delete", ezfyH.DeleteBuilding)
-				// ★ 2026-09-26：施工中可取消升级（全额退还已扣资源与图纸）
-				ezfyG.POST("/building/cancel", ezfyH.CancelBuilding)
-				ezfyG.POST("/building/speed", ezfyH.SpeedBuilding)
-				ezfyG.GET("/troops", ezfyH.Troops)
-				ezfyG.POST("/troops/train", ezfyH.Train)
-				// 取消训练队列（退还资源）
-				ezfyG.POST("/troops/train/cancel", ezfyH.CancelTrain)
-				// 解散部队（用户自输数量）
-				ezfyG.POST("/troops/disband", ezfyH.DisbandTroops)
-				ezfyG.POST("/troops/speed-all", ezfyH.SpeedTrainAll)
-				ezfyG.POST("/troops/recover", ezfyH.RecoverWounded)
-				ezfyG.POST("/troops/dismiss", ezfyH.DismissDefence)
-				ezfyG.GET("/techs", ezfyH.Techs)
-				ezfyG.POST("/techs/research", ezfyH.Research)
-				ezfyG.POST("/techs/speed", ezfyH.SpeedTech)
-				ezfyG.POST("/techs/cancel", ezfyH.CancelTech)
-				ezfyG.GET("/map", ezfyH.MapView)
-				ezfyG.GET("/map/wildland", ezfyH.WildlandView)
-				// 资源显示名（管理端改名后前端立即跟随；/view 里也有同名字段）
-				ezfyG.GET("/res-cfg", ezfyH.ResCfg)
-				ezfyG.GET("/map/stars", ezfyH.MapStars)
-				ezfyG.POST("/map/stars", ezfyH.MapStarAdd)
-				ezfyG.POST("/map/stars/delete", ezfyH.MapStarDelete)
-				// ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力）
-				ezfyG.GET("/presets", ezfyH.Presets)
-				ezfyG.POST("/presets", ezfyH.PresetAdd)
-				ezfyG.POST("/presets/delete", ezfyH.PresetDelete)
-				ezfyG.POST("/order", ezfyH.CreateOrder)
-				ezfyG.POST("/order/preview", ezfyH.OrderPreview)
-				ezfyG.GET("/orders", ezfyH.OrderList)
-				ezfyG.POST("/order/recall", ezfyH.RecallOrder)
-				ezfyG.POST("/wild/collect-all", ezfyH.CollectAll)
-				// 单支空闲驻军开始采集（2026-09-24 采集空闲化）
-				ezfyG.POST("/wild/start-collect", ezfyH.StartCollect)
-				ezfyG.POST("/wild/harvest-all", ezfyH.HarvestAll)
-				// 一键召回（资源随返航带回）
-				ezfyG.POST("/wild/recall-all", ezfyH.RecallAll)
-				// ★ 2026-09-28 单支采集部队停止采集(原地待命, 结算资源: 满期有宝物/不满期无)
-				ezfyG.POST("/wild/stop-collect", ezfyH.StopCollect)
-				ezfyG.GET("/reports", ezfyH.Reports)
-				// ★ 2026-10-01 军情页徽标数字专用轻量接口（不标记已读；须在 /reports/:id 之前注册）
-				ezfyG.GET("/reports/counts", ezfyH.ReportCounts)
-				ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
-				ezfyG.GET("/reports/:id", ezfyH.ReportView)
-				ezfyG.POST("/reports/:id/delete", ezfyH.ReportDelete)
-				// ★ 2026-09-26：战报「一键删除」（物理删除自己名下全部战报）
-				ezfyG.POST("/reports/clear", ezfyH.ReportClear)
-				ezfyG.GET("/targets", ezfyH.Targets)
-				ezfyG.POST("/targets", ezfyH.SaveTarget)
-				ezfyG.GET("/corps/list", ezfyH.CorpsList)
-				ezfyG.POST("/corps/create", ezfyH.CorpsCreate)
-				ezfyG.POST("/corps/join", ezfyH.CorpsJoin)
-				// ★ 2026-09-30 入团申请 / 审核
-				ezfyG.POST("/corps/apply", ezfyH.CorpsApply)
-				ezfyG.GET("/corps/apply", ezfyH.CorpsApplyList)
-				ezfyG.POST("/corps/apply/handle", ezfyH.CorpsApplyHandle)
-				ezfyG.POST("/corps/need-review", ezfyH.CorpsNeedReview)
-				ezfyG.POST("/corps/leave", ezfyH.CorpsLeave)
-				ezfyG.POST("/corps/kick", ezfyH.CorpsKick)
-				ezfyG.POST("/corps/notice", ezfyH.CorpsNotice)
-				ezfyG.GET("/corps/chats", ezfyH.CorpsChats)
-				ezfyG.POST("/corps/chat", ezfyH.CorpsChat)
-				ezfyG.POST("/corps/mail", ezfyH.CorpsMail)
-				// ★ 2026-10-02 城主遣返盟军驻军（驻军返航回出发城市）
-				ezfyG.POST("/liaison/expel-garrison", ezfyH.ExpelGarrison)
-				// 军团任职（军团长任命副团长 / 参谋长）
-				ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
-				ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
-				// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 ）
-				// 外交关系标记 + 军团宣战（宣战后 12 小时生效、48 小时整场结束）
-				ezfyG.GET("/corps/relations", ezfyH.CorpsRelations)
-				ezfyG.POST("/corps/relation", ezfyH.CorpsRelationSet)
-				ezfyG.GET("/corps/war", ezfyH.CorpsWarList)
-				ezfyG.POST("/corps/war/declare", ezfyH.CorpsWarDeclare)
-				// 军团商城（货币 = 成员个人军团积分）
-				ezfyG.GET("/corps/mall", ezfyH.CorpsMallList)
-				ezfyG.POST("/corps/mall/buy", ezfyH.CorpsMallBuy)
-				ezfyG.GET("/liaison", ezfyH.Liaison)
-				ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
-				// ★ 2026-10-12 访问记录：我的统帅页访问列表（倒序，简约）
-				ezfyG.GET("/visits", ezfyH.Visits)
-				// 搜索玩家（按游戏ID / 家园号码 / 昵称）
-				ezfyG.GET("/player-search", ezfyH.PlayerSearch)
-				// 统帅页自助：改昵称（首次免费/改名卡）、改阵营（首次免费/阵营转换道具）
-				ezfyG.GET("/profile/self", ezfyH.ProfileSelfInfo)
-				ezfyG.POST("/profile/rename", ezfyH.ProfileRename)
-				ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
-				// ★ 2026-10-10 首页布局切换（老布局/新布局，统帅页单选）
-				ezfyG.POST("/profile/layout", ezfyH.ProfileSetLayout)
-				// 军校：直接用招生简章刷新（不用跳背包）
-				ezfyG.POST("/acade/recruit/ticket", ezfyH.RecruitUseTicket)
-				// 游戏内好友（与家园好友完全分开）
-				ezfyG.GET("/friends", ezfyH.Friends)
-				ezfyG.GET("/friends/applies", ezfyH.FriendsApplies)
-				ezfyG.GET("/friends/search", ezfyH.FriendsSearch)
-				ezfyG.POST("/friends/apply", ezfyH.FriendsApply)
-				ezfyG.POST("/friends/handle", ezfyH.FriendsHandle)
-				ezfyG.POST("/friends/delete", ezfyH.FriendsDelete)
-				// ★ 2026-10-13 游戏内邮箱（收件箱/系统邮件/发件箱/写邮件，非好友也可发）
-				ezfyG.GET("/mail", ezfyH.MailList)
-				ezfyG.POST("/mail/send", ezfyH.MailSend)
-				ezfyG.POST("/mail/read", ezfyH.MailRead)
-				ezfyG.POST("/mail/readall", ezfyH.MailReadAll)
-				ezfyG.POST("/mail/delete", ezfyH.MailDelete)
-				// ★ 2026-10-13 好友私聊（强制仅好友，非好友请走邮箱）
-				ezfyG.POST("/privchat/send", ezfyH.PrivChatSend)
-				ezfyG.GET("/privchat/convs", ezfyH.PrivChatConvs)
-				ezfyG.GET("/privchat/with/:id", ezfyH.PrivChatWith)
-				ezfyG.POST("/war/declare", ezfyH.DeclareWar)
-				ezfyG.GET("/war/status", ezfyH.WarStatus)
-				ezfyG.GET("/rank", ezfyH.Rank)
-				// ★ 2026-10-14 风云榜：按自然周统计玩家对战战绩（灭敌/战损/场次/胜场）的周榜
-				ezfyG.GET("/rank/pvp", ezfyH.PvpRank)
-				// ★ 2026-10-16 风云榜「我的战绩」场次明细（分页，独立表——战报会删，明细留存）
-				ezfyG.GET("/rank/pvp/detail", ezfyH.PvpRankDetail)
-				// ★ 2026-09-28 军衔晋升：声望达标 + 提交宝物（参考原版晋升军衔宝物参考.xlsx）
-				ezfyG.POST("/promote", ezfyH.Promote)
-				ezfyG.GET("/mall", ezfyH.Mall)
-				ezfyG.POST("/mall/buy", ezfyH.Buy)
-				ezfyG.GET("/bag", ezfyH.Bag)
-				ezfyG.POST("/bag/use", ezfyH.UseItem)
-				// ★ 2026-10-11 背包「军官装备」tab：出售武器/防具换黄金（按品质 1万~20万，物理删除）
-				ezfyG.POST("/equip/sell", ezfyH.EquipSell)
-				ezfyG.GET("/tasks", ezfyH.Tasks)
-				ezfyG.POST("/tasks/award", ezfyH.TaskAward)
-				// ★ 2026-09-27 为爱发电卡（管理端发放即生效，每天领钻石，漏领累加封顶30天）
-				ezfyG.GET("/love-card", ezfyH.LoveCard)
-				ezfyG.POST("/love-card/claim", ezfyH.LoveCardClaim)
-				ezfyG.GET("/welfare", ezfyH.Welfare)
-				ezfyG.POST("/welfare/sign", ezfyH.Sign)
-				ezfyG.POST("/welfare/treasure-sign", ezfyH.TreasureSign)
-				ezfyG.POST("/welfare/gift/:type", ezfyH.Gift)
-				ezfyG.GET("/notices", ezfyH.Notices)
-				ezfyG.GET("/activity", ezfyH.ActivityInfo)
-				ezfyG.GET("/chat", ezfyH.ChatList)
-				ezfyG.POST("/chat", ezfyH.ChatSend)
-				ezfyG.GET("/chat/home", ezfyH.HomeChat)
-				ezfyG.GET("/exchange", ezfyH.ExchangeList)
-				ezfyG.POST("/exchange/sell", ezfyH.ExchangeSell)
-				ezfyG.POST("/exchange/buy", ezfyH.ExchangeBuy)
-				ezfyG.POST("/exchange/cancel", ezfyH.ExchangeCancel)
-				ezfyG.POST("/exchange/sys-sell", ezfyH.ExchangeSysSell)
-				ezfyG.POST("/exchange/treasure-sell", ezfyH.ExchangeTreasureSell)
-				ezfyG.GET("/city/wildfull", ezfyH.WildlandFull)
-				ezfyG.GET("/city/warehouse", ezfyH.Warehouse)
-				ezfyG.POST("/city/warehouse", ezfyH.WarehouseSet)
-				ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
-				// ★ 2026-10-07 赎城：被占城市原主人发起赎回，占领方同意后返还
-				ezfyG.POST("/city/ransom", ezfyH.RansomCreate)
-				ezfyG.POST("/city/ransom/handle", ezfyH.RansomHandle)
-				ezfyG.POST("/city/ransom/cancel", ezfyH.RansomCancel)
-				ezfyG.GET("/orders/:id", ezfyH.OrderView)
+				// ★★ 2026-10-17 二战独立部署：到这里家园 authed 路由（home 模式）注册完毕，
+				//   转接 wwii 模式的二战用户路由（else 分支）。
+			} else {
+				// 二战风云（复刻 stzb-fk 二战风云：城池建造/资源结算/造兵科技/地图出征/多回合战斗/军团）
+				// 整组挂服务器维护中间件：维护中所有游戏接口返回维护公告
+				// ★ 2026-10-12 二战独立账号：ezfy 组从家园 jwtM 切到二战专属 ezfyJwtM，
+				//   后续仍走维护中间件。
+				ezfyG := ezfyAuthed.Group("/games/ezfy", ezfyH.EzfyMaintGate())
+				{
+					ezfyG.GET("/view", ezfyH.View)
+					ezfyG.GET("/city/list", ezfyH.CityList)
+					ezfyG.POST("/city/switch", ezfyH.SwitchCity)
+					ezfyG.POST("/city/create", ezfyH.CreateCity)
+					ezfyG.POST("/city/rename", ezfyH.RenameCity)
+					ezfyG.POST("/city/tax", ezfyH.SetTax)
+					ezfyG.POST("/city/convene", ezfyH.Convene)
+					ezfyG.POST("/city/placate", ezfyH.Placate)
+					ezfyG.POST("/city/abandon-wild", ezfyH.AbandonWildland)
+					// 摧毁自己的城市（仅限非当前所在城市）
+					ezfyG.POST("/city/destroy", ezfyH.DestroyCity)
+					ezfyG.GET("/city/move", ezfyH.MoveInfo)
+					ezfyG.POST("/city/move", ezfyH.MoveCity)
+					ezfyG.GET("/city/produce", ezfyH.ProduceInfo)
+					ezfyG.POST("/city/produce", ezfyH.ProduceSet)
+					ezfyG.GET("/resources", ezfyH.Resources)
+					ezfyG.GET("/buildings", ezfyH.Buildings)
+					ezfyG.POST("/build", ezfyH.Build)
+					ezfyG.POST("/building/upgrade", ezfyH.Upgrade)
+					ezfyG.POST("/building/max-level", ezfyH.MaxLevel)
+					ezfyG.POST("/building/delete", ezfyH.DeleteBuilding)
+					// ★ 2026-09-26：施工中可取消升级（全额退还已扣资源与图纸）
+					ezfyG.POST("/building/cancel", ezfyH.CancelBuilding)
+					ezfyG.POST("/building/speed", ezfyH.SpeedBuilding)
+					ezfyG.GET("/troops", ezfyH.Troops)
+					ezfyG.POST("/troops/train", ezfyH.Train)
+					// 取消训练队列（退还资源）
+					ezfyG.POST("/troops/train/cancel", ezfyH.CancelTrain)
+					// 解散部队（用户自输数量）
+					ezfyG.POST("/troops/disband", ezfyH.DisbandTroops)
+					ezfyG.POST("/troops/speed-all", ezfyH.SpeedTrainAll)
+					ezfyG.POST("/troops/recover", ezfyH.RecoverWounded)
+					ezfyG.POST("/troops/dismiss", ezfyH.DismissDefence)
+					ezfyG.GET("/techs", ezfyH.Techs)
+					ezfyG.POST("/techs/research", ezfyH.Research)
+					ezfyG.POST("/techs/speed", ezfyH.SpeedTech)
+					ezfyG.POST("/techs/cancel", ezfyH.CancelTech)
+					ezfyG.GET("/map", ezfyH.MapView)
+					ezfyG.GET("/map/wildland", ezfyH.WildlandView)
+					// 资源显示名（管理端改名后前端立即跟随；/view 里也有同名字段）
+					ezfyG.GET("/res-cfg", ezfyH.ResCfg)
+					ezfyG.GET("/map/stars", ezfyH.MapStars)
+					ezfyG.POST("/map/stars", ezfyH.MapStarAdd)
+					ezfyG.POST("/map/stars/delete", ezfyH.MapStarDelete)
+					// ★ 2026-09-28 预设编队（司令部保存的出征模板：军官+集结令+兵力）
+					ezfyG.GET("/presets", ezfyH.Presets)
+					ezfyG.POST("/presets", ezfyH.PresetAdd)
+					ezfyG.POST("/presets/delete", ezfyH.PresetDelete)
+					ezfyG.POST("/order", ezfyH.CreateOrder)
+					ezfyG.POST("/order/preview", ezfyH.OrderPreview)
+					ezfyG.GET("/orders", ezfyH.OrderList)
+					ezfyG.POST("/order/recall", ezfyH.RecallOrder)
+					ezfyG.POST("/wild/collect-all", ezfyH.CollectAll)
+					// 单支空闲驻军开始采集（2026-09-24 采集空闲化）
+					ezfyG.POST("/wild/start-collect", ezfyH.StartCollect)
+					ezfyG.POST("/wild/harvest-all", ezfyH.HarvestAll)
+					// 一键召回（资源随返航带回）
+					ezfyG.POST("/wild/recall-all", ezfyH.RecallAll)
+					// ★ 2026-09-28 单支采集部队停止采集(原地待命, 结算资源: 满期有宝物/不满期无)
+					ezfyG.POST("/wild/stop-collect", ezfyH.StopCollect)
+					ezfyG.GET("/reports", ezfyH.Reports)
+					// ★ 2026-10-01 军情页徽标数字专用轻量接口（不标记已读；须在 /reports/:id 之前注册）
+					ezfyG.GET("/reports/counts", ezfyH.ReportCounts)
+					ezfyG.GET("/reports/dynamics", ezfyH.ReportDynamics)
+					ezfyG.GET("/reports/:id", ezfyH.ReportView)
+					ezfyG.POST("/reports/:id/delete", ezfyH.ReportDelete)
+					// ★ 2026-09-26：战报「一键删除」（物理删除自己名下全部战报）
+					ezfyG.POST("/reports/clear", ezfyH.ReportClear)
+					ezfyG.GET("/targets", ezfyH.Targets)
+					ezfyG.POST("/targets", ezfyH.SaveTarget)
+					ezfyG.GET("/corps/list", ezfyH.CorpsList)
+					ezfyG.POST("/corps/create", ezfyH.CorpsCreate)
+					ezfyG.POST("/corps/join", ezfyH.CorpsJoin)
+					// ★ 2026-09-30 入团申请 / 审核
+					ezfyG.POST("/corps/apply", ezfyH.CorpsApply)
+					ezfyG.GET("/corps/apply", ezfyH.CorpsApplyList)
+					ezfyG.POST("/corps/apply/handle", ezfyH.CorpsApplyHandle)
+					ezfyG.POST("/corps/need-review", ezfyH.CorpsNeedReview)
+					ezfyG.POST("/corps/leave", ezfyH.CorpsLeave)
+					ezfyG.POST("/corps/kick", ezfyH.CorpsKick)
+					ezfyG.POST("/corps/notice", ezfyH.CorpsNotice)
+					ezfyG.GET("/corps/chats", ezfyH.CorpsChats)
+					ezfyG.POST("/corps/chat", ezfyH.CorpsChat)
+					ezfyG.POST("/corps/mail", ezfyH.CorpsMail)
+					// ★ 2026-10-02 城主遣返盟军驻军（驻军返航回出发城市）
+					ezfyG.POST("/liaison/expel-garrison", ezfyH.ExpelGarrison)
+					// 军团任职（军团长任命副团长 / 参谋长）
+					ezfyG.POST("/corps/member/title", ezfyH.CorpsSetTitle)
+					ezfyG.GET("/corps/members", ezfyH.CorpsMembers)
+					// 军团外交 / 军团宣战 / 军团商城（★ 2026-09-25 ）
+					// 外交关系标记 + 军团宣战（宣战后 12 小时生效、48 小时整场结束）
+					ezfyG.GET("/corps/relations", ezfyH.CorpsRelations)
+					ezfyG.POST("/corps/relation", ezfyH.CorpsRelationSet)
+					ezfyG.GET("/corps/war", ezfyH.CorpsWarList)
+					ezfyG.POST("/corps/war/declare", ezfyH.CorpsWarDeclare)
+					// 军团商城（货币 = 成员个人军团积分）
+					ezfyG.GET("/corps/mall", ezfyH.CorpsMallList)
+					ezfyG.POST("/corps/mall/buy", ezfyH.CorpsMallBuy)
+					ezfyG.GET("/liaison", ezfyH.Liaison)
+					ezfyG.GET("/player/:id", ezfyH.PlayerInfo)
+					// ★ 2026-10-12 访问记录：我的统帅页访问列表（倒序，简约）
+					ezfyG.GET("/visits", ezfyH.Visits)
+					// 搜索玩家（按游戏ID / 家园号码 / 昵称）
+					ezfyG.GET("/player-search", ezfyH.PlayerSearch)
+					// 统帅页自助：改昵称（首次免费/改名卡）、改阵营（首次免费/阵营转换道具）
+					ezfyG.GET("/profile/self", ezfyH.ProfileSelfInfo)
+					ezfyG.POST("/profile/rename", ezfyH.ProfileRename)
+					ezfyG.POST("/profile/camp", ezfyH.ProfileChangeCamp)
+					// ★ 2026-10-10 首页布局切换（老布局/新布局，统帅页单选）
+					ezfyG.POST("/profile/layout", ezfyH.ProfileSetLayout)
+					// 军校：直接用招生简章刷新（不用跳背包）
+					ezfyG.POST("/acade/recruit/ticket", ezfyH.RecruitUseTicket)
+					// 游戏内好友（与家园好友完全分开）
+					ezfyG.GET("/friends", ezfyH.Friends)
+					ezfyG.GET("/friends/applies", ezfyH.FriendsApplies)
+					ezfyG.GET("/friends/search", ezfyH.FriendsSearch)
+					ezfyG.POST("/friends/apply", ezfyH.FriendsApply)
+					ezfyG.POST("/friends/handle", ezfyH.FriendsHandle)
+					ezfyG.POST("/friends/delete", ezfyH.FriendsDelete)
+					// ★ 2026-10-13 游戏内邮箱（收件箱/系统邮件/发件箱/写邮件，非好友也可发）
+					ezfyG.GET("/mail", ezfyH.MailList)
+					ezfyG.POST("/mail/send", ezfyH.MailSend)
+					ezfyG.POST("/mail/read", ezfyH.MailRead)
+					ezfyG.POST("/mail/readall", ezfyH.MailReadAll)
+					ezfyG.POST("/mail/delete", ezfyH.MailDelete)
+					// ★ 2026-10-13 好友私聊（强制仅好友，非好友请走邮箱）
+					ezfyG.POST("/privchat/send", ezfyH.PrivChatSend)
+					ezfyG.GET("/privchat/convs", ezfyH.PrivChatConvs)
+					ezfyG.GET("/privchat/with/:id", ezfyH.PrivChatWith)
+					ezfyG.POST("/war/declare", ezfyH.DeclareWar)
+					ezfyG.GET("/war/status", ezfyH.WarStatus)
+					ezfyG.GET("/rank", ezfyH.Rank)
+					// ★ 2026-10-14 风云榜：按自然周统计玩家对战战绩（灭敌/战损/场次/胜场）的周榜
+					ezfyG.GET("/rank/pvp", ezfyH.PvpRank)
+					// ★ 2026-10-16 风云榜「我的战绩」场次明细（分页，独立表——战报会删，明细留存）
+					ezfyG.GET("/rank/pvp/detail", ezfyH.PvpRankDetail)
+					// ★ 2026-09-28 军衔晋升：声望达标 + 提交宝物（参考原版晋升军衔宝物参考.xlsx）
+					ezfyG.POST("/promote", ezfyH.Promote)
+					ezfyG.GET("/mall", ezfyH.Mall)
+					ezfyG.POST("/mall/buy", ezfyH.Buy)
+					ezfyG.GET("/bag", ezfyH.Bag)
+					ezfyG.POST("/bag/use", ezfyH.UseItem)
+					// ★ 2026-10-11 背包「军官装备」tab：出售武器/防具换黄金（按品质 1万~20万，物理删除）
+					ezfyG.POST("/equip/sell", ezfyH.EquipSell)
+					ezfyG.GET("/tasks", ezfyH.Tasks)
+					ezfyG.POST("/tasks/award", ezfyH.TaskAward)
+					// ★ 2026-09-27 为爱发电卡（管理端发放即生效，每天领钻石，漏领累加封顶30天）
+					ezfyG.GET("/love-card", ezfyH.LoveCard)
+					ezfyG.POST("/love-card/claim", ezfyH.LoveCardClaim)
+					ezfyG.GET("/welfare", ezfyH.Welfare)
+					ezfyG.POST("/welfare/sign", ezfyH.Sign)
+					ezfyG.POST("/welfare/treasure-sign", ezfyH.TreasureSign)
+					ezfyG.POST("/welfare/gift/:type", ezfyH.Gift)
+					ezfyG.GET("/notices", ezfyH.Notices)
+					ezfyG.GET("/activity", ezfyH.ActivityInfo)
+					ezfyG.GET("/chat", ezfyH.ChatList)
+					ezfyG.POST("/chat", ezfyH.ChatSend)
+					ezfyG.GET("/chat/home", ezfyH.HomeChat)
+					ezfyG.GET("/exchange", ezfyH.ExchangeList)
+					ezfyG.POST("/exchange/sell", ezfyH.ExchangeSell)
+					ezfyG.POST("/exchange/buy", ezfyH.ExchangeBuy)
+					ezfyG.POST("/exchange/cancel", ezfyH.ExchangeCancel)
+					ezfyG.POST("/exchange/sys-sell", ezfyH.ExchangeSysSell)
+					ezfyG.POST("/exchange/treasure-sell", ezfyH.ExchangeTreasureSell)
+					ezfyG.GET("/city/wildfull", ezfyH.WildlandFull)
+					ezfyG.GET("/city/warehouse", ezfyH.Warehouse)
+					ezfyG.POST("/city/warehouse", ezfyH.WarehouseSet)
+					ezfyG.POST("/city/occupy/:op", ezfyH.OccupyOp)
+					// ★ 2026-10-07 赎城：被占城市原主人发起赎回，占领方同意后返还
+					ezfyG.POST("/city/ransom", ezfyH.RansomCreate)
+					ezfyG.POST("/city/ransom/handle", ezfyH.RansomHandle)
+					ezfyG.POST("/city/ransom/cancel", ezfyH.RansomCancel)
+					ezfyG.GET("/orders/:id", ezfyH.OrderView)
 
-				// ===== 战场指挥室（军情 → 军队动态 → [指挥]）=====
-				// 每回合 30 秒，前 25 秒可下前进/暂停/后退，后 5 秒锁定结算，最多 40 回合
-				ezfyG.GET("/battle", ezfyH.BattleState)
-				ezfyG.POST("/battle/cmd", ezfyH.BattleCmd)
-				// ★ 指挥时逐兵种改「优先攻击目标」（默认值来自司令部兵种战斗配置）
-				ezfyG.POST("/battle/target", ezfyH.BattleTarget)
-				ezfyG.POST("/battle/auto", ezfyH.BattleAuto)
-				// ★ 2026-10-06 保存 / 取消本回合配置（保存即锁定伤害，双方都锁立即结算）
-				ezfyG.POST("/battle/lock", ezfyH.BattleLock)
+					// ===== 战场指挥室（军情 → 军队动态 → [指挥]）=====
+					// 每回合 30 秒，前 25 秒可下前进/暂停/后退，后 5 秒锁定结算，最多 40 回合
+					ezfyG.GET("/battle", ezfyH.BattleState)
+					ezfyG.POST("/battle/cmd", ezfyH.BattleCmd)
+					// ★ 指挥时逐兵种改「优先攻击目标」（默认值来自司令部兵种战斗配置）
+					ezfyG.POST("/battle/target", ezfyH.BattleTarget)
+					ezfyG.POST("/battle/auto", ezfyH.BattleAuto)
+					// ★ 2026-10-06 保存 / 取消本回合配置（保存即锁定伤害，双方都锁立即结算）
+					ezfyG.POST("/battle/lock", ezfyH.BattleLock)
 
-				// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====
-				ezfyG.GET("/officers", ezfyH.Officers)
-				ezfyG.GET("/officers/onduty", ezfyH.OfficersOnDuty)
-				ezfyG.GET("/officers/skills", ezfyH.OfficerSkills)
-				ezfyG.GET("/officers/equipments", ezfyH.OfficerEquipments)
-				// ★ 全部套装配置（含加成/部位/我拥有几件）—— 装备页·商城页·军官页共用
-				ezfyG.GET("/equipsets", ezfyH.EquipSets)
-				ezfyG.GET("/officers/generals", ezfyH.OfficerGenerals)
-				// ★ 装备商城（套装用黄金/钻石购买）
-				ezfyG.GET("/equipshop", ezfyH.EquipShop)
-				ezfyG.POST("/equipshop/buy", ezfyH.EquipShopBuy)
-				// ★ 宝箱（钻石/黄金买，开箱按权重出套装件）
-				ezfyG.GET("/chest", ezfyH.ChestList)
-				ezfyG.POST("/chest/open", ezfyH.ChestOpen)
-				// ★ 2026-10-14 商城宝箱「购买」（只买不开，入背包）与背包开箱
-				ezfyG.POST("/chest/buy", ezfyH.ChestBuy)
-				ezfyG.GET("/chest/bag", ezfyH.ChestBag)
-				ezfyG.POST("/chest/open-bag", ezfyH.ChestBagOpen)
-				// ★ 计谋（消耗信号弹）
-				ezfyG.GET("/schemes", ezfyH.Schemes)
-				ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
-				ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
-				// ★ 2026-10-10 背包装备从详情拆分出来，切「背包」tab 才按需拉取（详情降载）
-				ezfyG.GET("/officers/:id/backpack", ezfyH.OfficerBackpack)
-				ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
-				// ★ 赏赐宝物加忠诚（按品质 +10/+20/+35/+50）
-				ezfyG.POST("/officers/:id/treasure-grant", ezfyH.OfficerTreasureGrant)
-				// ★ 属性加点（每级 1 点，只影响玩家自己的军官）
-				ezfyG.POST("/officers/:id/attr", ezfyH.OfficerAttr)
-				ezfyG.POST("/officers/:id/attr/all", ezfyH.OfficerAttrAll)
-				// ★ 升星（消耗星级徽章）
-				ezfyG.POST("/officers/:id/starup", ezfyH.OfficerStarUp)
-				// ★ 军官改名（消耗军官改名卡，只改玩家自己的军官）
-				ezfyG.POST("/officers/:id/rename", ezfyH.OfficerRename)
-				ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
-				ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
-				ezfyG.POST("/officers/:id/unequip-all", ezfyH.OfficerUnequipAll)
-				ezfyG.POST("/officers/:id/equip-set", ezfyH.OfficerEquipSet)
-				ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
-				ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
-				// ★ 2026-10-11 战俘营 [一键释放]：物理删除当前城全部俘虏（写日志文件）
-				ezfyG.POST("/officers/captive/release-all", ezfyH.OfficerCaptiveReleaseAll)
-				ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
-				// 城市列表的 [派遣]：军官调往自己的另一座城
-				ezfyG.POST("/officers/:id/dispatch", ezfyH.OfficerDispatch)
-				ezfyG.GET("/acade/recruit", ezfyH.AcadeRecruit)
-				ezfyG.POST("/acade/recruit/refresh", ezfyH.AcadeRefresh)
-				ezfyG.POST("/acade/recruit/hire", ezfyH.AcadeRecruitDo)
-			}
+					// ===== 军官/学院系统（复刻 stzb-fk：军校/参谋部/技能/装备/俘虏/任命）=====
+					ezfyG.GET("/officers", ezfyH.Officers)
+					ezfyG.GET("/officers/onduty", ezfyH.OfficersOnDuty)
+					ezfyG.GET("/officers/skills", ezfyH.OfficerSkills)
+					ezfyG.GET("/officers/equipments", ezfyH.OfficerEquipments)
+					// ★ 全部套装配置（含加成/部位/我拥有几件）—— 装备页·商城页·军官页共用
+					ezfyG.GET("/equipsets", ezfyH.EquipSets)
+					ezfyG.GET("/officers/generals", ezfyH.OfficerGenerals)
+					// ★ 装备商城（套装用黄金/钻石购买）
+					ezfyG.GET("/equipshop", ezfyH.EquipShop)
+					ezfyG.POST("/equipshop/buy", ezfyH.EquipShopBuy)
+					// ★ 宝箱（钻石/黄金买，开箱按权重出套装件）
+					ezfyG.GET("/chest", ezfyH.ChestList)
+					ezfyG.POST("/chest/open", ezfyH.ChestOpen)
+					// ★ 2026-10-14 商城宝箱「购买」（只买不开，入背包）与背包开箱
+					ezfyG.POST("/chest/buy", ezfyH.ChestBuy)
+					ezfyG.GET("/chest/bag", ezfyH.ChestBag)
+					ezfyG.POST("/chest/open-bag", ezfyH.ChestBagOpen)
+					// ★ 计谋（消耗信号弹）
+					ezfyG.GET("/schemes", ezfyH.Schemes)
+					ezfyG.POST("/scheme/use", ezfyH.SchemeUse)
+					ezfyG.GET("/officers/:id", ezfyH.OfficerDetail)
+					// ★ 2026-10-10 背包装备从详情拆分出来，切「背包」tab 才按需拉取（详情降载）
+					ezfyG.GET("/officers/:id/backpack", ezfyH.OfficerBackpack)
+					ezfyG.POST("/officers/:id/grant", ezfyH.OfficerGrant)
+					// ★ 赏赐宝物加忠诚（按品质 +10/+20/+35/+50）
+					ezfyG.POST("/officers/:id/treasure-grant", ezfyH.OfficerTreasureGrant)
+					// ★ 属性加点（每级 1 点，只影响玩家自己的军官）
+					ezfyG.POST("/officers/:id/attr", ezfyH.OfficerAttr)
+					ezfyG.POST("/officers/:id/attr/all", ezfyH.OfficerAttrAll)
+					// ★ 升星（消耗星级徽章）
+					ezfyG.POST("/officers/:id/starup", ezfyH.OfficerStarUp)
+					// ★ 军官改名（消耗军官改名卡，只改玩家自己的军官）
+					ezfyG.POST("/officers/:id/rename", ezfyH.OfficerRename)
+					ezfyG.POST("/officers/:id/skill", ezfyH.OfficerSkill)
+					ezfyG.POST("/officers/:id/equip", ezfyH.OfficerEquip)
+					ezfyG.POST("/officers/:id/unequip-all", ezfyH.OfficerUnequipAll)
+					ezfyG.POST("/officers/:id/equip-set", ezfyH.OfficerEquipSet)
+					ezfyG.POST("/officers/:id/position", ezfyH.OfficerPosition)
+					ezfyG.POST("/officers/:id/captive", ezfyH.OfficerCaptive)
+					// ★ 2026-10-11 战俘营 [一键释放]：物理删除当前城全部俘虏（写日志文件）
+					ezfyG.POST("/officers/captive/release-all", ezfyH.OfficerCaptiveReleaseAll)
+					ezfyG.POST("/officers/:id/exile", ezfyH.OfficerExile)
+					// 城市列表的 [派遣]：军官调往自己的另一座城
+					ezfyG.POST("/officers/:id/dispatch", ezfyH.OfficerDispatch)
+					ezfyG.GET("/acade/recruit", ezfyH.AcadeRecruit)
+					ezfyG.POST("/acade/recruit/refresh", ezfyH.AcadeRefresh)
+					ezfyG.POST("/acade/recruit/hire", ezfyH.AcadeRecruitDo)
+				}
 
-			// 我的游戏
-			authed.GET("/my-games", gameH.MyList)
-			authed.POST("/my-games", gameH.MyAdd)
-			authed.DELETE("/my-games/:gameId", gameH.MyRemove)
-			authed.POST("/my-games/:gameId/move", gameH.MyMove)
+				// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
+				// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
+				// ★★ 2026-10-17 二战独立部署：三个 BgTick 只在 wwii 模式启动（home 模式无二战库）。
+				go ezfyH.BgTickBattles()
+				// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
+				//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
+				go ezfyH.BgTickTitles()
+				// ★ 2026-10-17 人机（AI 玩家）：内部自调用要打本机端口 → 先绑定 base URL，再起 tick
+				//   （tick 自带租约锁，多进程只有一台真正执行；启动先等 45s 让建表/配置缓存就绪）
+				ezfy.SetEzfyBotBaseURL(cfg.Server.Port)
+				ezfy.SetEzfyBotAdminSecret(cfg.Jwt.Secret)
+				go ezfyH.BgTickBots()
+			} // ★★ 2026-10-17 wwii 二战用户路由分支结束
 
-			authed.POST("/signin", signH.Do)
-			authed.GET("/signin/info", signH.Info)
-			authed.GET("/friends", friendH.List)
-			authed.POST("/friends", friendH.Add)
-			authed.GET("/friends/status/:id", friendH.Status)
-			authed.GET("/friends/search", friendH.Search)
-			authed.GET("/friends/news", fnewsH.List)
-			authed.POST("/friends/:id/remark", friendH.SetRemark)
-			authed.POST("/friends/:id/group", friendH.MoveGroup)
-			authed.POST("/friends/apply/:id/handle", friendH.Handle)
-			authed.POST("/friends/policy", friendH.SetPolicy)
-			authed.DELETE("/friends/:id", friendH.Remove)
+			// 我的游戏（家园专属，home 模式注册）
+			if cfg.Mode() != "wwii" {
+				authed.GET("/my-games", gameH.MyList)
+				authed.POST("/my-games", gameH.MyAdd)
+				authed.DELETE("/my-games/:gameId", gameH.MyRemove)
+				authed.POST("/my-games/:gameId/move", gameH.MyMove)
 
-			// 黑名单
-			authed.GET("/friends/black", blackH.List)
-			authed.POST("/friends/black/:id", blackH.Add)
-			authed.DELETE("/friends/black/:id", blackH.Remove)
+				authed.POST("/signin", signH.Do)
+				authed.GET("/signin/info", signH.Info)
+				authed.GET("/friends", friendH.List)
+				authed.POST("/friends", friendH.Add)
+				authed.GET("/friends/status/:id", friendH.Status)
+				authed.GET("/friends/search", friendH.Search)
+				authed.GET("/friends/news", fnewsH.List)
+				authed.POST("/friends/:id/remark", friendH.SetRemark)
+				authed.POST("/friends/:id/group", friendH.MoveGroup)
+				authed.POST("/friends/apply/:id/handle", friendH.Handle)
+				authed.POST("/friends/policy", friendH.SetPolicy)
+				authed.DELETE("/friends/:id", friendH.Remove)
 
-			authed.GET("/messages/conversations", msgH.Conversations)
-			authed.GET("/messages/inbox", msgH.Inbox)
-			authed.GET("/messages/outbox", msgH.Outbox)
-			authed.GET("/messages/with/:id", msgH.With)
-			authed.POST("/messages/clear", msgH.Clear)
-			authed.DELETE("/messages/:id", msgH.Del)
-			authed.GET("/messages/unread", msgH.Unread)
-			authed.POST("/messages/read-all", msgH.ReadAll)
-			authed.POST("/messages", msgH.Send)
-			authed.GET("/chat", chatH.List)
-			authed.POST("/chat", chatH.Send)
-			authed.GET("/notifications", notifyH.List)
-			authed.POST("/notifications/read", notifyH.ReadAll)
-			// 婚恋（对齐诺哈 bbs/marriage）
-			authed.GET("/marriage/status", marryH.Status)
-			authed.POST("/marriage/propose", marryH.Propose)
-			authed.POST("/marriage/:id/handle", marryH.Handle)
-			authed.POST("/marriage/divorce", marryH.Divorce)
+				// 黑名单
+				authed.GET("/friends/black", blackH.List)
+				authed.POST("/friends/black/:id", blackH.Add)
+				authed.DELETE("/friends/black/:id", blackH.Remove)
 
-			// 空间认证接口
-			authed.POST("/space", spaceH.OpenSpace)
-			authed.PUT("/space", spaceH.UpdateSpace)
-			authed.POST("/space/mood", spaceH.MoodAdd)
-			authed.DELETE("/space/mood/:id", spaceH.MoodDel)
-			authed.POST("/space/mood/:id/comment", spaceH.MoodCommentAdd)
-			authed.POST("/space/mood/:id/forward", spaceH.MoodForward)
-			authed.POST("/space/article", spaceH.ArticleAdd)
-			authed.DELETE("/space/article/:id", spaceH.ArticleDel)
-			authed.POST("/space/album", spaceH.AlbumCreate)
-			authed.POST("/space/message/:userId", spaceH.SpaceMsgAdd)
-			authed.DELETE("/space/message/:id", spaceH.SpaceMsgDel)
-			authed.POST("/space/visit/:userId", spaceH.VisitSpace)
+				authed.GET("/messages/conversations", msgH.Conversations)
+				authed.GET("/messages/inbox", msgH.Inbox)
+				authed.GET("/messages/outbox", msgH.Outbox)
+				authed.GET("/messages/with/:id", msgH.With)
+				authed.POST("/messages/clear", msgH.Clear)
+				authed.DELETE("/messages/:id", msgH.Del)
+				authed.GET("/messages/unread", msgH.Unread)
+				authed.POST("/messages/read-all", msgH.ReadAll)
+				authed.POST("/messages", msgH.Send)
+				authed.GET("/chat", chatH.List)
+				authed.POST("/chat", chatH.Send)
+				authed.GET("/notifications", notifyH.List)
+				authed.POST("/notifications/read", notifyH.ReadAll)
+				// 婚恋（对齐诺哈 bbs/marriage）
+				authed.GET("/marriage/status", marryH.Status)
+				authed.POST("/marriage/propose", marryH.Propose)
+				authed.POST("/marriage/:id/handle", marryH.Handle)
+				authed.POST("/marriage/divorce", marryH.Divorce)
 
-			// 家园聚合（诺哈 my_home.asp）与新鲜事
-			authed.GET("/home", homeH.View)
-			authed.GET("/home/news", homeH.NewsList)
+				// 空间认证接口
+				authed.POST("/space", spaceH.OpenSpace)
+				authed.PUT("/space", spaceH.UpdateSpace)
+				authed.POST("/space/mood", spaceH.MoodAdd)
+				authed.DELETE("/space/mood/:id", spaceH.MoodDel)
+				authed.POST("/space/mood/:id/comment", spaceH.MoodCommentAdd)
+				authed.POST("/space/mood/:id/forward", spaceH.MoodForward)
+				authed.POST("/space/article", spaceH.ArticleAdd)
+				authed.DELETE("/space/article/:id", spaceH.ArticleDel)
+				authed.POST("/space/album", spaceH.AlbumCreate)
+				authed.POST("/space/message/:userId", spaceH.SpaceMsgAdd)
+				authed.DELETE("/space/message/:id", spaceH.SpaceMsgDel)
+				authed.POST("/space/visit/:userId", spaceH.VisitSpace)
 
-			// 我的收藏（诺哈 wap_bbs_favor 泛化）
-			authed.GET("/favorites", homeH.FavList)
-			authed.POST("/favorites", homeH.FavAdd)
-			authed.DELETE("/favorites/:id", homeH.FavDel)
+				// 家园聚合（诺哈 my_home.asp）与新鲜事
+				authed.GET("/home", homeH.View)
+				authed.GET("/home/news", homeH.NewsList)
 
-			// 邀请开通家园（诺哈 invite.asp）
-			authed.GET("/invite", homeH.InviteInfo)
+				// 我的收藏（诺哈 wap_bbs_favor 泛化）
+				authed.GET("/favorites", homeH.FavList)
+				authed.POST("/favorites", homeH.FavAdd)
+				authed.DELETE("/favorites/:id", homeH.FavDel)
 
-			// 通讯录（诺哈 contact.asp）+ QQ 绑定
-			authed.GET("/contact", contactH.View)
-			authed.POST("/contact", contactH.Save)
-			authed.POST("/contact/qq", contactH.SaveQQ)
+				// 邀请开通家园（诺哈 invite.asp）
+				authed.GET("/invite", homeH.InviteInfo)
 
-			// 空间日志分类 / 相册照片 / 日志评论（诺哈 blog 子模块）
-			authed.GET("/space/article-categories", spaceH.ArticleCatList)
-			authed.POST("/space/article-categories", spaceH.ArticleCatAdd)
-			authed.POST("/space/albums/:albumId/photos", spaceH.PhotoAdd)
-			authed.DELETE("/space/photos/:id", spaceH.PhotoDel)
-			authed.POST("/space/file", spaceH.SpaceFileAdd)
-			authed.DELETE("/space/file/:id", spaceH.SpaceFileDel)
-			authed.POST("/space/article/:id/comment", spaceH.ArticleCommentAdd)
+				// 通讯录（诺哈 contact.asp）+ QQ 绑定
+				authed.GET("/contact", contactH.View)
+				authed.POST("/contact", contactH.Save)
+				authed.POST("/contact/qq", contactH.SaveQQ)
 
-			// 留言本（诺哈 guest.asp）
-			authed.POST("/guestbook", guestH.Add)
-			authed.POST("/guestbook/:id/unlock", guestH.Unlock)
-			authed.POST("/guestbook/:id/reply", perm(db, "module:guestbook"), guestH.Reply)
-			authed.DELETE("/guestbook/:id", guestH.Del)
+				// 空间日志分类 / 相册照片 / 日志评论（诺哈 blog 子模块）
+				authed.GET("/space/article-categories", spaceH.ArticleCatList)
+				authed.POST("/space/article-categories", spaceH.ArticleCatAdd)
+				authed.POST("/space/albums/:albumId/photos", spaceH.PhotoAdd)
+				authed.DELETE("/space/photos/:id", spaceH.PhotoDel)
+				authed.POST("/space/file", spaceH.SpaceFileAdd)
+				authed.DELETE("/space/file/:id", spaceH.SpaceFileDel)
+				authed.POST("/space/article/:id/comment", spaceH.ArticleCommentAdd)
 
-			// 文章（诺哈 article.asp 社区专栏）
-			authed.POST("/articles", saH.Add)
-			authed.POST("/articles/:id/comments", saH.CommentAdd)
-			authed.DELETE("/articles/:id", saH.Del)
+				// 留言本（诺哈 guest.asp）
+				authed.POST("/guestbook", guestH.Add)
+				authed.POST("/guestbook/:id/unlock", guestH.Unlock)
+				authed.POST("/guestbook/:id/reply", perm(db, "module:guestbook"), guestH.Reply)
+				authed.DELETE("/guestbook/:id", guestH.Del)
 
-			// 商店（诺哈 shop.asp C2C 道具买卖）
-			authed.GET("/shop/mine", shopH.MyShop)
-			authed.POST("/shop", shopH.OpenShop)
-			authed.POST("/market", shopH.GoodsAdd)
-			authed.PUT("/market/:id", shopH.GoodsUpdate)
-			authed.DELETE("/market/:id", shopH.GoodsDelete)
-			authed.POST("/market/:id/order", shopH.OrderCreate)
-			authed.POST("/shop/orders/:id/pay", shopH.OrderPay)
-			authed.POST("/shop/orders/:id/ship", shopH.OrderShip)
-			authed.POST("/shop/orders/:id/receive", shopH.OrderReceive)
-			authed.POST("/shop/orders/:id/cancel", shopH.OrderCancel)
-			authed.GET("/shop/orders", shopH.MyOrders)
-			authed.POST("/market/:id/comments", shopH.CommentAdd)
-			authed.POST("/shop/comments/:id/reply", shopH.CommentReply)
+				// 文章（诺哈 article.asp 社区专栏）
+				authed.POST("/articles", saH.Add)
+				authed.POST("/articles/:id/comments", saH.CommentAdd)
+				authed.DELETE("/articles/:id", saH.Del)
 
-			// 我的心情（家园个人动态，不依赖空间）
-			authed.GET("/moods", moodH.List)
-			authed.POST("/moods", moodH.Add)
-			authed.DELETE("/moods/:id", moodH.Del)
-			authed.GET("/moods/latest", moodH.Latest)
+				// 商店（诺哈 shop.asp C2C 道具买卖）
+				authed.GET("/shop/mine", shopH.MyShop)
+				authed.POST("/shop", shopH.OpenShop)
+				authed.POST("/market", shopH.GoodsAdd)
+				authed.PUT("/market/:id", shopH.GoodsUpdate)
+				authed.DELETE("/market/:id", shopH.GoodsDelete)
+				authed.POST("/market/:id/order", shopH.OrderCreate)
+				authed.POST("/shop/orders/:id/pay", shopH.OrderPay)
+				authed.POST("/shop/orders/:id/ship", shopH.OrderShip)
+				authed.POST("/shop/orders/:id/receive", shopH.OrderReceive)
+				authed.POST("/shop/orders/:id/cancel", shopH.OrderCancel)
+				authed.GET("/shop/orders", shopH.MyOrders)
+				authed.POST("/market/:id/comments", shopH.CommentAdd)
+				authed.POST("/shop/comments/:id/reply", shopH.CommentReply)
 
-			// 社区经济小助手：银行 / 打工 / 每日星运 / 幸运猜数字
-			// 家族系统
-			authed.GET("/families/mine", famH.Mine)
-			authed.GET("/families/mine/favorites", famH.MyFavorites)
-			authed.POST("/families", famH.Create)
-			authed.POST("/families/:id/join", famH.Join)
-			authed.POST("/families/:id/leave", famH.Leave)
-			authed.POST("/families/:id/favorite", famH.Favorite)
-			authed.POST("/families/:id/members/:userId/remove", famH.RemoveMember)
-			authed.PUT("/families/:id/ann", famH.UpdateAnn)
-			authed.POST("/families/:id/signin", famH.SignIn)
-			authed.POST("/families/:id/tree", famH.Tree)
-			authed.POST("/families/:id/battle", famH.Battle)
-			authed.GET("/families/:id/ld", famH.Ld)
-			authed.POST("/families/:id/ld/fruit", famH.LdFruit)
-			authed.POST("/families/:id/ld/pk/:userId", famH.LdPk)
-			authed.GET("/families/:id/war", famH.War)
-			authed.POST("/families/:id/war/life", famH.WarLife)
-			authed.POST("/families/:id/war/pk/:userId", famH.WarPk)
-			authed.POST("/families/:id/war/chat", famH.WarChat)
+				// 我的心情（家园个人动态，不依赖空间）
+				authed.GET("/moods", moodH.List)
+				authed.POST("/moods", moodH.Add)
+				authed.DELETE("/moods/:id", moodH.Del)
+				authed.GET("/moods/latest", moodH.Latest)
 
-			authed.GET("/home-level", hlH.View)
-			authed.GET("/achieve", achH.View)
-			authed.GET("/me/avatar", userH.MyAvatar)
-			authed.POST("/me/avatar", userH.UploadAvatar)
-			authed.POST("/me/avatar/qq", userH.QqAvatar)
-			authed.POST("/ttou/apply", ttouH.Apply)
-			authed.POST("/ttou/worship", ttouH.Worship)
-			authed.GET("/avatar/presets", userH.AvatarPresets)
-			authed.POST("/avatar/presets", userH.SetPresetAvatar)
-			authed.GET("/wallet", ecoH.Wallet)
-			authed.POST("/wallet/exchange", ecoH.Exchange)
-			authed.POST("/wallet/transfer", ecoH.Transfer)
-			// 友友券中心
-			authed.GET("/youquan", yqH.View)
-			authed.POST("/youquan/daily", yqH.Daily)
-			authed.POST("/youquan/exchange", yqH.Exchange)
-			authed.POST("/youquan/transfer", yqH.Transfer)
-			authed.GET("/bank/view", ecoH.BankView)
-			authed.POST("/bank/deposit", ecoH.BankDeposit)
-			authed.POST("/bank/withdraw", ecoH.BankWithdraw)
-			authed.POST("/bank/interest", ecoH.BankInterest)
-			authed.GET("/work/status", ecoH.WorkStatus)
-			authed.POST("/work", ecoH.WorkDo)
-			authed.GET("/fortune", ecoH.Fortune)
-			authed.POST("/lottery", ecoH.Lottery)
-			authed.GET("/noble", nobleH.View)
-			authed.POST("/noble/activate", nobleH.Activate)
-			authed.POST("/noble/gift", nobleH.Gift)
-			authed.POST("/goods/:id/buy", goodH.Buy)
-			authed.GET("/goods/:id/send-preview", goodH.SendPreview)
-			authed.POST("/goods/:id/send", goodH.Send)
-			authed.GET("/bag", goodH.Bag)
-			authed.POST("/bag/:id/use", goodH.BagUse)
-			authed.POST("/money-shop/:id/buy", msH.Buy)
-			authed.GET("/money-shop/:id/send-preview", msH.SendPreview)
-			authed.POST("/money-shop/:id/send", msH.Send)
+				// 社区经济小助手：银行 / 打工 / 每日星运 / 幸运猜数字
+				// 家族系统
+				authed.GET("/families/mine", famH.Mine)
+				authed.GET("/families/mine/favorites", famH.MyFavorites)
+				authed.POST("/families", famH.Create)
+				authed.POST("/families/:id/join", famH.Join)
+				authed.POST("/families/:id/leave", famH.Leave)
+				authed.POST("/families/:id/favorite", famH.Favorite)
+				authed.POST("/families/:id/members/:userId/remove", famH.RemoveMember)
+				authed.PUT("/families/:id/ann", famH.UpdateAnn)
+				authed.POST("/families/:id/signin", famH.SignIn)
+				authed.POST("/families/:id/tree", famH.Tree)
+				authed.POST("/families/:id/battle", famH.Battle)
+				authed.GET("/families/:id/ld", famH.Ld)
+				authed.POST("/families/:id/ld/fruit", famH.LdFruit)
+				authed.POST("/families/:id/ld/pk/:userId", famH.LdPk)
+				authed.GET("/families/:id/war", famH.War)
+				authed.POST("/families/:id/war/life", famH.WarLife)
+				authed.POST("/families/:id/war/pk/:userId", famH.WarPk)
+				authed.POST("/families/:id/war/chat", famH.WarChat)
 
-			authed.POST("/dig", ecoH.Dig)
-			authed.POST("/charity", ecoH.Charity)
-			authed.GET("/charity/rank", ecoH.CharityRank)
+				authed.GET("/home-level", hlH.View)
+				authed.GET("/achieve", achH.View)
+				authed.GET("/me/avatar", userH.MyAvatar)
+				authed.POST("/me/avatar", userH.UploadAvatar)
+				authed.POST("/me/avatar/qq", userH.QqAvatar)
+				authed.POST("/ttou/apply", ttouH.Apply)
+				authed.POST("/ttou/worship", ttouH.Worship)
+				authed.GET("/avatar/presets", userH.AvatarPresets)
+				authed.POST("/avatar/presets", userH.SetPresetAvatar)
+				authed.GET("/wallet", ecoH.Wallet)
+				authed.POST("/wallet/exchange", ecoH.Exchange)
+				authed.POST("/wallet/transfer", ecoH.Transfer)
+				// 友友券中心
+				authed.GET("/youquan", yqH.View)
+				authed.POST("/youquan/daily", yqH.Daily)
+				authed.POST("/youquan/exchange", yqH.Exchange)
+				authed.POST("/youquan/transfer", yqH.Transfer)
+				authed.GET("/bank/view", ecoH.BankView)
+				authed.POST("/bank/deposit", ecoH.BankDeposit)
+				authed.POST("/bank/withdraw", ecoH.BankWithdraw)
+				authed.POST("/bank/interest", ecoH.BankInterest)
+				authed.GET("/work/status", ecoH.WorkStatus)
+				authed.POST("/work", ecoH.WorkDo)
+				authed.GET("/fortune", ecoH.Fortune)
+				authed.POST("/lottery", ecoH.Lottery)
+				authed.GET("/noble", nobleH.View)
+				authed.POST("/noble/activate", nobleH.Activate)
+				authed.POST("/noble/gift", nobleH.Gift)
+				authed.POST("/goods/:id/buy", goodH.Buy)
+				authed.GET("/goods/:id/send-preview", goodH.SendPreview)
+				authed.POST("/goods/:id/send", goodH.Send)
+				authed.GET("/bag", goodH.Bag)
+				authed.POST("/bag/:id/use", goodH.BagUse)
+				authed.POST("/money-shop/:id/buy", msH.Buy)
+				authed.GET("/money-shop/:id/send-preview", msH.SendPreview)
+				authed.POST("/money-shop/:id/send", msH.Send)
 
-			// 福利院捐款上榜（每日价高者受全社区膜拜）
-			authed.POST("/fla/donate", flaH.Donate)
-			authed.POST("/fla/worship", flaH.Worship)
+				authed.POST("/dig", ecoH.Dig)
+				authed.POST("/charity", ecoH.Charity)
+				authed.GET("/charity/rank", ecoH.CharityRank)
 
-			// 福利院·慈善基金（每日领取/捐献）
-			authed.POST("/welfare/claim", welfareH.Claim)
-			authed.POST("/welfare/donate", welfareH.Donate)
+				// 福利院捐款上榜（每日价高者受全社区膜拜）
+				authed.POST("/fla/donate", flaH.Donate)
+				authed.POST("/fla/worship", flaH.Worship)
+
+				// 福利院·慈善基金（每日领取/捐献）
+				authed.POST("/welfare/claim", welfareH.Claim)
+				authed.POST("/welfare/donate", welfareH.Donate)
+			} // ★★ 2026-10-17 家园 authed 路由（仅 home 模式）结束
 
 			// 管理后台（RBAC 权限点）
+			// ★★ 2026-10-17 二战独立部署：管理端路由按模式分支 ——
+			//   home 模式：admin 挂家园 authed（jwtM + RBAC perm），注册家园各模块路由；
+			//     二战管理端 /api/admin/ezfy* 在 home **不注册**，由下方 catch-all 反代到二战服；
+			//   wwii 模式：二战管理端路由注册在独立 admin 组（api.Group + AdminSecretAuth 内部密钥），
+			//     不挂 jwtM（home 反代会去掉玩家 Authorization、注入 X-Ezfy-Admin-Secret）。
 			admin := authed.Group("/admin")
 			{
-				admin.GET("/stats", perm(db, "module:dashboard"), adminH.Stats)
+				if cfg.Mode() != "wwii" {
+					admin.GET("/stats", perm(db, "module:dashboard"), adminH.Stats)
 
-				// 在线查看 + IP 封禁
-				admin.GET("/online", perm(db, "module:online"), adminH.OnlineView)
-				admin.GET("/ip-bans", perm(db, "module:online"), adminH.IPBanList)
-				admin.POST("/ip-bans", perm(db, "module:online"), adminH.IPBanAdd)
-				admin.DELETE("/ip-bans/:id", perm(db, "module:online"), adminH.IPBanRemove)
+					// 在线查看 + IP 封禁
+					admin.GET("/online", perm(db, "module:online"), adminH.OnlineView)
+					admin.GET("/ip-bans", perm(db, "module:online"), adminH.IPBanList)
+					admin.POST("/ip-bans", perm(db, "module:online"), adminH.IPBanAdd)
+					admin.DELETE("/ip-bans/:id", perm(db, "module:online"), adminH.IPBanRemove)
 
-				// 举报管理
-				admin.GET("/reports", perm(db, "module:threads"), adminH.Reports)
-				admin.PUT("/reports/:id", perm(db, "module:threads"), adminH.ReportHandle)
+					// 举报管理
+					admin.GET("/reports", perm(db, "module:threads"), adminH.Reports)
+					admin.PUT("/reports/:id", perm(db, "module:threads"), adminH.ReportHandle)
 
-				// 广场板块开关
-				admin.GET("/plaza-sections", perm(db, "module:articles"), plazaH.AdminSections)
-				admin.PUT("/plaza-sections/:id", perm(db, "module:articles"), plazaH.AdminSectionUpdate)
+					// 广场板块开关
+					admin.GET("/plaza-sections", perm(db, "module:articles"), plazaH.AdminSections)
+					admin.PUT("/plaza-sections/:id", perm(db, "module:articles"), plazaH.AdminSectionUpdate)
 
-				// 特权管理（蓝钻/超Q，复刻诺哈 vip：等级配置/贵宾会员/贵宾销售）
-				admin.GET("/privileges/stats", perm(db, "module:privileges"), nobleH.AdminStats)
-				admin.GET("/privileges/levels", perm(db, "module:privileges"), nobleH.AdminLevels)
-				admin.POST("/privileges/levels", perm(db, "module:privileges"), nobleH.AdminLevelCreate)
-				admin.PUT("/privileges/levels/:id", perm(db, "module:privileges"), nobleH.AdminLevelUpdate)
-				admin.DELETE("/privileges/levels/:id", perm(db, "module:privileges"), nobleH.AdminLevelDelete)
-				admin.GET("/privileges/plans", perm(db, "module:privileges"), nobleH.AdminPlans)
-				admin.POST("/privileges/plans", perm(db, "module:privileges"), nobleH.AdminPlanCreate)
-				admin.PUT("/privileges/plans/:id", perm(db, "module:privileges"), nobleH.AdminPlanUpdate)
-				admin.DELETE("/privileges/plans/:id", perm(db, "module:privileges"), nobleH.AdminPlanDelete)
-				admin.GET("/privileges/users", perm(db, "module:privileges"), nobleH.AdminUsers)
-				admin.PUT("/privileges/users/:id", perm(db, "module:privileges"), nobleH.AdminUserUpdate)
-				admin.POST("/privileges/users/:id/open", perm(db, "module:privileges"), nobleH.AdminUserOpen)
-				admin.POST("/privileges/users/:id/close", perm(db, "module:privileges"), nobleH.AdminUserClose)
-				admin.POST("/privileges/expired-clean", perm(db, "module:privileges"), nobleH.AdminExpiredClean)
-				admin.POST("/privileges/batch", perm(db, "module:privileges"), nobleH.AdminBatch)
+					// 特权管理（蓝钻/超Q，复刻诺哈 vip：等级配置/贵宾会员/贵宾销售）
+					admin.GET("/privileges/stats", perm(db, "module:privileges"), nobleH.AdminStats)
+					admin.GET("/privileges/levels", perm(db, "module:privileges"), nobleH.AdminLevels)
+					admin.POST("/privileges/levels", perm(db, "module:privileges"), nobleH.AdminLevelCreate)
+					admin.PUT("/privileges/levels/:id", perm(db, "module:privileges"), nobleH.AdminLevelUpdate)
+					admin.DELETE("/privileges/levels/:id", perm(db, "module:privileges"), nobleH.AdminLevelDelete)
+					admin.GET("/privileges/plans", perm(db, "module:privileges"), nobleH.AdminPlans)
+					admin.POST("/privileges/plans", perm(db, "module:privileges"), nobleH.AdminPlanCreate)
+					admin.PUT("/privileges/plans/:id", perm(db, "module:privileges"), nobleH.AdminPlanUpdate)
+					admin.DELETE("/privileges/plans/:id", perm(db, "module:privileges"), nobleH.AdminPlanDelete)
+					admin.GET("/privileges/users", perm(db, "module:privileges"), nobleH.AdminUsers)
+					admin.PUT("/privileges/users/:id", perm(db, "module:privileges"), nobleH.AdminUserUpdate)
+					admin.POST("/privileges/users/:id/open", perm(db, "module:privileges"), nobleH.AdminUserOpen)
+					admin.POST("/privileges/users/:id/close", perm(db, "module:privileges"), nobleH.AdminUserClose)
+					admin.POST("/privileges/expired-clean", perm(db, "module:privileges"), nobleH.AdminExpiredClean)
+					admin.POST("/privileges/batch", perm(db, "module:privileges"), nobleH.AdminBatch)
 
-				// 道具商城管理
-				admin.GET("/goods", perm(db, "module:goods"), goodH.AdminList)
-				admin.POST("/goods", perm(db, "module:goods"), goodH.AdminCreate)
-				admin.PUT("/goods/:id", perm(db, "module:goods"), goodH.AdminUpdate)
-				admin.DELETE("/goods/:id", perm(db, "module:goods"), goodH.AdminDelete)
+					// 道具商城管理
+					admin.GET("/goods", perm(db, "module:goods"), goodH.AdminList)
+					admin.POST("/goods", perm(db, "module:goods"), goodH.AdminCreate)
+					admin.PUT("/goods/:id", perm(db, "module:goods"), goodH.AdminUpdate)
+					admin.DELETE("/goods/:id", perm(db, "module:goods"), goodH.AdminDelete)
 
-				// 货币商店管理（复刻诺哈 wap_money_shop）
-				admin.GET("/money-shops", perm(db, "module:moneyShop"), msH.AdminList)
-				admin.POST("/money-shops", perm(db, "module:moneyShop"), msH.AdminCreate)
-				admin.PUT("/money-shops/:id", perm(db, "module:moneyShop"), msH.AdminUpdate)
-				admin.DELETE("/money-shops/:id", perm(db, "module:moneyShop"), msH.AdminDelete)
+					// 货币商店管理（复刻诺哈 wap_money_shop）
+					admin.GET("/money-shops", perm(db, "module:moneyShop"), msH.AdminList)
+					admin.POST("/money-shops", perm(db, "module:moneyShop"), msH.AdminCreate)
+					admin.PUT("/money-shops/:id", perm(db, "module:moneyShop"), msH.AdminUpdate)
+					admin.DELETE("/money-shops/:id", perm(db, "module:moneyShop"), msH.AdminDelete)
 
-				// 花园活动管理
-				admin.GET("/garden-activities", perm(db, "module:gardenActivities"), gardenH.AdminActivities)
-				admin.POST("/garden-activities", perm(db, "module:gardenActivities"), gardenH.AdminActCreate)
-				admin.PUT("/garden-activities/:id", perm(db, "module:gardenActivities"), gardenH.AdminActUpdate)
-				admin.DELETE("/garden-activities/:id", perm(db, "module:gardenActivities"), gardenH.AdminActDelete)
+					// 花园活动管理
+					admin.GET("/garden-activities", perm(db, "module:gardenActivities"), gardenH.AdminActivities)
+					admin.POST("/garden-activities", perm(db, "module:gardenActivities"), gardenH.AdminActCreate)
+					admin.PUT("/garden-activities/:id", perm(db, "module:gardenActivities"), gardenH.AdminActUpdate)
+					admin.DELETE("/garden-activities/:id", perm(db, "module:gardenActivities"), gardenH.AdminActDelete)
 
-				// 花园数据维护（种子/图鉴/配方）
-				admin.GET("/garden-seeds", perm(db, "module:gardenSeeds"), gardenH.AdminSeeds)
-				admin.POST("/garden-seeds", perm(db, "module:gardenSeeds"), gardenH.AdminSeedCreate)
-				admin.PUT("/garden-seeds/:id", perm(db, "module:gardenSeeds"), gardenH.AdminSeedUpdate)
-				admin.DELETE("/garden-seeds/:id", perm(db, "module:gardenSeeds"), gardenH.AdminSeedDelete)
-				admin.GET("/garden-maps", perm(db, "module:gardenMaps"), gardenH.AdminMaps)
-				admin.POST("/garden-maps", perm(db, "module:gardenMaps"), gardenH.AdminMapCreate)
-				admin.PUT("/garden-maps/:id", perm(db, "module:gardenMaps"), gardenH.AdminMapUpdate)
-				admin.DELETE("/garden-maps/:id", perm(db, "module:gardenMaps"), gardenH.AdminMapDelete)
-				admin.GET("/garden-mixes", perm(db, "module:gardenMixes"), gardenH.AdminMixes)
-				admin.POST("/garden-mixes", perm(db, "module:gardenMixes"), gardenH.AdminMixCreate)
-				admin.PUT("/garden-mixes/:id", perm(db, "module:gardenMixes"), gardenH.AdminMixUpdate)
-				admin.DELETE("/garden-mixes/:id", perm(db, "module:gardenMixes"), gardenH.AdminMixDelete)
-				admin.GET("/garden-elves", perm(db, "module:gardenElves"), gardenH.AdminElves)
-				admin.POST("/garden-elves", perm(db, "module:gardenElves"), gardenH.AdminElfCreate)
-				admin.PUT("/garden-elves/:id", perm(db, "module:gardenElves"), gardenH.AdminElfUpdate)
-				admin.DELETE("/garden-elves/:id", perm(db, "module:gardenElves"), gardenH.AdminElfDelete)
+					// 花园数据维护（种子/图鉴/配方）
+					admin.GET("/garden-seeds", perm(db, "module:gardenSeeds"), gardenH.AdminSeeds)
+					admin.POST("/garden-seeds", perm(db, "module:gardenSeeds"), gardenH.AdminSeedCreate)
+					admin.PUT("/garden-seeds/:id", perm(db, "module:gardenSeeds"), gardenH.AdminSeedUpdate)
+					admin.DELETE("/garden-seeds/:id", perm(db, "module:gardenSeeds"), gardenH.AdminSeedDelete)
+					admin.GET("/garden-maps", perm(db, "module:gardenMaps"), gardenH.AdminMaps)
+					admin.POST("/garden-maps", perm(db, "module:gardenMaps"), gardenH.AdminMapCreate)
+					admin.PUT("/garden-maps/:id", perm(db, "module:gardenMaps"), gardenH.AdminMapUpdate)
+					admin.DELETE("/garden-maps/:id", perm(db, "module:gardenMaps"), gardenH.AdminMapDelete)
+					admin.GET("/garden-mixes", perm(db, "module:gardenMixes"), gardenH.AdminMixes)
+					admin.POST("/garden-mixes", perm(db, "module:gardenMixes"), gardenH.AdminMixCreate)
+					admin.PUT("/garden-mixes/:id", perm(db, "module:gardenMixes"), gardenH.AdminMixUpdate)
+					admin.DELETE("/garden-mixes/:id", perm(db, "module:gardenMixes"), gardenH.AdminMixDelete)
+					admin.GET("/garden-elves", perm(db, "module:gardenElves"), gardenH.AdminElves)
+					admin.POST("/garden-elves", perm(db, "module:gardenElves"), gardenH.AdminElfCreate)
+					admin.PUT("/garden-elves/:id", perm(db, "module:gardenElves"), gardenH.AdminElfUpdate)
+					admin.DELETE("/garden-elves/:id", perm(db, "module:gardenElves"), gardenH.AdminElfDelete)
 
-				// 花园游戏数据管理（用户数据/日志流水/排行榜）
-				admin.GET("/garden-users", perm(db, "module:gardenData"), gardenH.AdminGardenUsers)
-				admin.GET("/garden-users/:uid", perm(db, "module:gardenData"), gardenH.AdminGardenUserDetail)
-				admin.PUT("/garden-users/:uid/garden", perm(db, "module:gardenData"), gardenH.AdminGardenEdit)
-				admin.PUT("/garden-users/:uid/coins", perm(db, "module:gardenData"), gardenH.AdminGardenCoins)
-				admin.PUT("/garden-users/:uid/bag", perm(db, "module:gardenData"), gardenH.AdminGardenBagSet)
-				admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "module:gardenData"), gardenH.AdminGardenFlowerSet)
-				admin.GET("/garden-logs", perm(db, "module:gardenData"), gardenH.AdminGardenLogs)
-				admin.GET("/garden-rank", perm(db, "module:gardenData"), gardenH.AdminGardenRank)
-				admin.GET("/garden-sign-rewards", perm(db, "module:gardenSign"), gardenH.AdminSignRewards)
-				admin.PUT("/garden-sign-rewards/:day", perm(db, "module:gardenSign"), gardenH.AdminSignRewardUpdate)
-				admin.GET("/garden-sign-stats", perm(db, "module:gardenSign"), gardenH.AdminSignStats)
-				// 开心农场管理（种子/化肥/陷阱/用户数据/日志/排行）
-				admin.GET("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeeds)
-				admin.POST("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeedCreate)
-				admin.PUT("/farm-seeds/:id", perm(db, "module:farmSeeds"), farmH.AdminSeedUpdate)
-				admin.DELETE("/farm-seeds/:id", perm(db, "module:farmSeeds"), farmH.AdminSeedDelete)
-				admin.GET("/farm-mucks", perm(db, "module:farmItems"), farmH.AdminMucks)
-				admin.POST("/farm-mucks", perm(db, "module:farmItems"), farmH.AdminMuckCreate)
-				admin.PUT("/farm-mucks/:id", perm(db, "module:farmItems"), farmH.AdminMuckUpdate)
-				admin.DELETE("/farm-mucks/:id", perm(db, "module:farmItems"), farmH.AdminMuckDelete)
-				admin.GET("/farm-traps", perm(db, "module:farmItems"), farmH.AdminTraps)
-				admin.POST("/farm-traps", perm(db, "module:farmItems"), farmH.AdminTrapCreate)
-				admin.PUT("/farm-traps/:id", perm(db, "module:farmItems"), farmH.AdminTrapUpdate)
-				admin.DELETE("/farm-traps/:id", perm(db, "module:farmItems"), farmH.AdminTrapDelete)
-				admin.GET("/farm-users", perm(db, "module:farmData"), farmH.AdminUsers)
-				admin.GET("/farm-users/:uid", perm(db, "module:farmData"), farmH.AdminUserDetail)
-				admin.PUT("/farm-users/:uid/farm", perm(db, "module:farmData"), farmH.AdminFarmEdit)
-				admin.PUT("/farm-users/:uid/coins", perm(db, "module:farmData"), farmH.AdminCoins)
-				admin.PUT("/farm-users/:uid/bag/:target", perm(db, "module:farmData"), farmH.AdminBagSet)
-				admin.PUT("/farm-users/:uid/land/:id/clear", perm(db, "module:farmData"), farmH.AdminLandClear)
-				admin.GET("/farm-logs", perm(db, "module:farmData"), farmH.AdminLogs)
-				admin.GET("/farm-rank", perm(db, "module:farmData"), farmH.AdminRank)
-				// 抢车位管理（车市/用户数据/日志）
-				admin.GET("/park-cars", perm(db, "module:parkCars"), parkH.AdminCars)
-				admin.POST("/park-cars", perm(db, "module:parkCars"), parkH.AdminCarCreate)
-				admin.PUT("/park-cars/:id", perm(db, "module:parkCars"), parkH.AdminCarUpdate)
-				admin.DELETE("/park-cars/:id", perm(db, "module:parkCars"), parkH.AdminCarDelete)
-				admin.GET("/park-users", perm(db, "module:parkData"), parkH.AdminUsers)
-				admin.PUT("/park-users/:uid", perm(db, "module:parkData"), parkH.AdminUserEdit)
-				admin.PUT("/park-users/:uid/spots/:id/clear", perm(db, "module:parkData"), parkH.AdminSpotClear)
-				admin.GET("/park-logs", perm(db, "module:parkData"), parkH.AdminLogs)
+					// 花园游戏数据管理（用户数据/日志流水/排行榜）
+					admin.GET("/garden-users", perm(db, "module:gardenData"), gardenH.AdminGardenUsers)
+					admin.GET("/garden-users/:uid", perm(db, "module:gardenData"), gardenH.AdminGardenUserDetail)
+					admin.PUT("/garden-users/:uid/garden", perm(db, "module:gardenData"), gardenH.AdminGardenEdit)
+					admin.PUT("/garden-users/:uid/coins", perm(db, "module:gardenData"), gardenH.AdminGardenCoins)
+					admin.PUT("/garden-users/:uid/bag", perm(db, "module:gardenData"), gardenH.AdminGardenBagSet)
+					admin.PUT("/garden-users/:uid/flowers/:target", perm(db, "module:gardenData"), gardenH.AdminGardenFlowerSet)
+					admin.GET("/garden-logs", perm(db, "module:gardenData"), gardenH.AdminGardenLogs)
+					admin.GET("/garden-rank", perm(db, "module:gardenData"), gardenH.AdminGardenRank)
+					admin.GET("/garden-sign-rewards", perm(db, "module:gardenSign"), gardenH.AdminSignRewards)
+					admin.PUT("/garden-sign-rewards/:day", perm(db, "module:gardenSign"), gardenH.AdminSignRewardUpdate)
+					admin.GET("/garden-sign-stats", perm(db, "module:gardenSign"), gardenH.AdminSignStats)
+					// 开心农场管理（种子/化肥/陷阱/用户数据/日志/排行）
+					admin.GET("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeeds)
+					admin.POST("/farm-seeds", perm(db, "module:farmSeeds"), farmH.AdminSeedCreate)
+					admin.PUT("/farm-seeds/:id", perm(db, "module:farmSeeds"), farmH.AdminSeedUpdate)
+					admin.DELETE("/farm-seeds/:id", perm(db, "module:farmSeeds"), farmH.AdminSeedDelete)
+					admin.GET("/farm-mucks", perm(db, "module:farmItems"), farmH.AdminMucks)
+					admin.POST("/farm-mucks", perm(db, "module:farmItems"), farmH.AdminMuckCreate)
+					admin.PUT("/farm-mucks/:id", perm(db, "module:farmItems"), farmH.AdminMuckUpdate)
+					admin.DELETE("/farm-mucks/:id", perm(db, "module:farmItems"), farmH.AdminMuckDelete)
+					admin.GET("/farm-traps", perm(db, "module:farmItems"), farmH.AdminTraps)
+					admin.POST("/farm-traps", perm(db, "module:farmItems"), farmH.AdminTrapCreate)
+					admin.PUT("/farm-traps/:id", perm(db, "module:farmItems"), farmH.AdminTrapUpdate)
+					admin.DELETE("/farm-traps/:id", perm(db, "module:farmItems"), farmH.AdminTrapDelete)
+					admin.GET("/farm-users", perm(db, "module:farmData"), farmH.AdminUsers)
+					admin.GET("/farm-users/:uid", perm(db, "module:farmData"), farmH.AdminUserDetail)
+					admin.PUT("/farm-users/:uid/farm", perm(db, "module:farmData"), farmH.AdminFarmEdit)
+					admin.PUT("/farm-users/:uid/coins", perm(db, "module:farmData"), farmH.AdminCoins)
+					admin.PUT("/farm-users/:uid/bag/:target", perm(db, "module:farmData"), farmH.AdminBagSet)
+					admin.PUT("/farm-users/:uid/land/:id/clear", perm(db, "module:farmData"), farmH.AdminLandClear)
+					admin.GET("/farm-logs", perm(db, "module:farmData"), farmH.AdminLogs)
+					admin.GET("/farm-rank", perm(db, "module:farmData"), farmH.AdminRank)
+					// 抢车位管理（车市/用户数据/日志）
+					admin.GET("/park-cars", perm(db, "module:parkCars"), parkH.AdminCars)
+					admin.POST("/park-cars", perm(db, "module:parkCars"), parkH.AdminCarCreate)
+					admin.PUT("/park-cars/:id", perm(db, "module:parkCars"), parkH.AdminCarUpdate)
+					admin.DELETE("/park-cars/:id", perm(db, "module:parkCars"), parkH.AdminCarDelete)
+					admin.GET("/park-users", perm(db, "module:parkData"), parkH.AdminUsers)
+					admin.PUT("/park-users/:uid", perm(db, "module:parkData"), parkH.AdminUserEdit)
+					admin.PUT("/park-users/:uid/spots/:id/clear", perm(db, "module:parkData"), parkH.AdminSpotClear)
+					admin.GET("/park-logs", perm(db, "module:parkData"), parkH.AdminLogs)
 
-				// 精武堂管理（玩家/道具/技能/帮派/聊天）
-				admin.GET("/jwt-players", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayers)
-				admin.GET("/jwt-players/:uid/detail", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayerDetail)
-				admin.PUT("/jwt-players/:uid", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayerUpdate)
-				admin.GET("/jwt-items", perm(db, "module:jwtItems"), adminH.AdminJwtItems)
-				admin.POST("/jwt-items", perm(db, "module:jwtItems"), adminH.AdminJwtItemCreate)
-				admin.PUT("/jwt-items/:id", perm(db, "module:jwtItems"), adminH.AdminJwtItemUpdate)
-				admin.DELETE("/jwt-items/:id", perm(db, "module:jwtItems"), adminH.AdminJwtItemDelete)
-				admin.GET("/jwt-skills", perm(db, "module:jwtSkills"), adminH.AdminJwtSkills)
-				admin.POST("/jwt-skills", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillCreate)
-				admin.PUT("/jwt-skills/:id", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillUpdate)
-				admin.DELETE("/jwt-skills/:id", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillDelete)
-				admin.GET("/jwt-gangs", perm(db, "module:jwtPlayers"), adminH.AdminJwtGangs)
-				admin.DELETE("/jwt-gangs/:id", perm(db, "module:jwtPlayers"), adminH.AdminJwtGangDelete)
-				admin.GET("/jwt-chats", perm(db, "module:jwtPlayers"), adminH.AdminJwtChats)
+					// 精武堂管理（玩家/道具/技能/帮派/聊天）
+					admin.GET("/jwt-players", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayers)
+					admin.GET("/jwt-players/:uid/detail", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayerDetail)
+					admin.PUT("/jwt-players/:uid", perm(db, "module:jwtPlayers"), adminH.AdminJwtPlayerUpdate)
+					admin.GET("/jwt-items", perm(db, "module:jwtItems"), adminH.AdminJwtItems)
+					admin.POST("/jwt-items", perm(db, "module:jwtItems"), adminH.AdminJwtItemCreate)
+					admin.PUT("/jwt-items/:id", perm(db, "module:jwtItems"), adminH.AdminJwtItemUpdate)
+					admin.DELETE("/jwt-items/:id", perm(db, "module:jwtItems"), adminH.AdminJwtItemDelete)
+					admin.GET("/jwt-skills", perm(db, "module:jwtSkills"), adminH.AdminJwtSkills)
+					admin.POST("/jwt-skills", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillCreate)
+					admin.PUT("/jwt-skills/:id", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillUpdate)
+					admin.DELETE("/jwt-skills/:id", perm(db, "module:jwtSkills"), adminH.AdminJwtSkillDelete)
+					admin.GET("/jwt-gangs", perm(db, "module:jwtPlayers"), adminH.AdminJwtGangs)
+					admin.DELETE("/jwt-gangs/:id", perm(db, "module:jwtPlayers"), adminH.AdminJwtGangDelete)
+					admin.GET("/jwt-chats", perm(db, "module:jwtPlayers"), adminH.AdminJwtChats)
 
-				// 个性昵称管理（购买状态/颜色调整/重置）
-				admin.GET("/name-users", perm(db, "module:nickName"), nameH.AdminNameUsers)
-				admin.PUT("/name-users/:uid", perm(db, "module:nickName"), nameH.AdminNameUserEdit)
-				admin.DELETE("/jwt-chats/:id", perm(db, "module:jwtPlayers"), adminH.AdminJwtChatDelete)
-				admin.GET("/jwt-records", perm(db, "module:jwtRecords"), adminH.AdminJwtRecords)
-				admin.GET("/jwt-records/:id/detail", perm(db, "module:jwtRecords"), adminH.AdminJwtRecordDetail)
-				admin.DELETE("/jwt-records/:id", perm(db, "module:jwtRecords"), adminH.AdminJwtRecordDelete)
+					// 个性昵称管理（购买状态/颜色调整/重置）
+					admin.GET("/name-users", perm(db, "module:nickName"), nameH.AdminNameUsers)
+					admin.PUT("/name-users/:uid", perm(db, "module:nickName"), nameH.AdminNameUserEdit)
+					admin.DELETE("/jwt-chats/:id", perm(db, "module:jwtPlayers"), adminH.AdminJwtChatDelete)
+					admin.GET("/jwt-records", perm(db, "module:jwtRecords"), adminH.AdminJwtRecords)
+					admin.GET("/jwt-records/:id/detail", perm(db, "module:jwtRecords"), adminH.AdminJwtRecordDetail)
+					admin.DELETE("/jwt-records/:id", perm(db, "module:jwtRecords"), adminH.AdminJwtRecordDelete)
 
-				// 幻想西游管理（玩家/游戏数据/战斗流水/货币流水/系统管理）
-				admin.GET("/xy-players", perm(db, "module:xyPlayers"), adminH.AdminXyPlayers)
-				admin.GET("/xy-players/:id/detail", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerDetail)
-				admin.PUT("/xy-players/:id", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerUpdate)
-				admin.POST("/xy-players/:id/grant", perm(db, "module:xyPlayers"), adminH.AdminXyGrant)
-				admin.POST("/xy-players/:id/ban", perm(db, "module:xyPlayers"), adminH.AdminXyBan)
-				admin.POST("/xy-players/:id/mute", perm(db, "module:xyPlayers"), adminH.AdminXyMute)
-				admin.DELETE("/xy-players/:id", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerDelete)
-				admin.GET("/xy-data/:table", perm(db, "module:xyData"), adminH.AdminXyData)
-				admin.POST("/xy-data/:table", perm(db, "module:xyData"), adminH.AdminXyDataCreate)
-				admin.PUT("/xy-data/:table/:id", perm(db, "module:xyData"), adminH.AdminXyDataUpdate)
-				admin.DELETE("/xy-data/:table/:id", perm(db, "module:xyData"), adminH.AdminXyDataDelete)
-				admin.GET("/xy-server", perm(db, "module:xySystem"), adminH.AdminXyServer)
-				admin.POST("/xy-server/maintenance", perm(db, "module:xySystem"), adminH.AdminXyServerSet)
-				admin.POST("/xy-server/exp2x", perm(db, "module:xySystem"), adminH.AdminXyExp2xSet)
-				admin.GET("/xy-battles", perm(db, "module:xyLogs"), adminH.AdminXyBattles)
-				admin.DELETE("/xy-battles/:id", perm(db, "module:xySystem"), adminH.AdminXyBattleDelete)
-				admin.GET("/xy-wallet", perm(db, "module:xySystem"), adminH.AdminXyWallet)
-				admin.GET("/xy-stats", perm(db, "module:xySystem"), adminH.AdminXyStats)
-				admin.POST("/xy-announce", perm(db, "module:xySystem"), adminH.AdminXyAnnounce)
-				admin.POST("/xy-grant-all", perm(db, "module:xySystem"), adminH.AdminXyGrantAll)
+					// 幻想西游管理（玩家/游戏数据/战斗流水/货币流水/系统管理）
+					admin.GET("/xy-players", perm(db, "module:xyPlayers"), adminH.AdminXyPlayers)
+					admin.GET("/xy-players/:id/detail", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerDetail)
+					admin.PUT("/xy-players/:id", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerUpdate)
+					admin.POST("/xy-players/:id/grant", perm(db, "module:xyPlayers"), adminH.AdminXyGrant)
+					admin.POST("/xy-players/:id/ban", perm(db, "module:xyPlayers"), adminH.AdminXyBan)
+					admin.POST("/xy-players/:id/mute", perm(db, "module:xyPlayers"), adminH.AdminXyMute)
+					admin.DELETE("/xy-players/:id", perm(db, "module:xyPlayers"), adminH.AdminXyPlayerDelete)
+					admin.GET("/xy-data/:table", perm(db, "module:xyData"), adminH.AdminXyData)
+					admin.POST("/xy-data/:table", perm(db, "module:xyData"), adminH.AdminXyDataCreate)
+					admin.PUT("/xy-data/:table/:id", perm(db, "module:xyData"), adminH.AdminXyDataUpdate)
+					admin.DELETE("/xy-data/:table/:id", perm(db, "module:xyData"), adminH.AdminXyDataDelete)
+					admin.GET("/xy-server", perm(db, "module:xySystem"), adminH.AdminXyServer)
+					admin.POST("/xy-server/maintenance", perm(db, "module:xySystem"), adminH.AdminXyServerSet)
+					admin.POST("/xy-server/exp2x", perm(db, "module:xySystem"), adminH.AdminXyExp2xSet)
+					admin.GET("/xy-battles", perm(db, "module:xyLogs"), adminH.AdminXyBattles)
+					admin.DELETE("/xy-battles/:id", perm(db, "module:xySystem"), adminH.AdminXyBattleDelete)
+					admin.GET("/xy-wallet", perm(db, "module:xySystem"), adminH.AdminXyWallet)
+					admin.GET("/xy-stats", perm(db, "module:xySystem"), adminH.AdminXyStats)
+					admin.POST("/xy-announce", perm(db, "module:xySystem"), adminH.AdminXyAnnounce)
+					admin.POST("/xy-grant-all", perm(db, "module:xySystem"), adminH.AdminXyGrantAll)
+				}
 
-				// ============ 二战风云管理 ezfy/（玩家/数据/流水/系统） ============
-				admin.GET("/ezfy-players", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayers)
-				admin.GET("/ezfy-players/:id/detail", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDetail)
-				admin.PUT("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerUpdate)
-				admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
-				admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)
-				admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDelete)
-				// ===== 人机（AI 玩家）管理：独立前缀 /ezfy-bot/* + 独立权限点 module:ezfyBot =====
-				// ★ 与「玩家信息管理」完全分开（方案 7.1）：改人机不会碰到玩家管理代码，可整块回滚。
-				admin.GET("/ezfy-bot/list", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotList)
-				admin.POST("/ezfy-bot/create", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCreate)
-				admin.POST("/ezfy-bot/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotClear)
-				admin.GET("/ezfy-bot/logs", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogs)
-				admin.GET("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfig)
-				admin.POST("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfigSet)
-				admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
-				admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)
-				admin.POST("/ezfy-bot/:uid/act", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAct)
-				// ★ 2026-10-17 一键立即行动：全部启用人机各连跑 N 轮（活动前/测试加速）
-				admin.POST("/ezfy-bot/act-all", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotActAll)
-				// ★ 2026-10-17 给人机城发资源（加速发育）：人机已从玩家管理排除，只能从这里发
-				admin.POST("/ezfy-bot/:uid/grant", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotGrant)
-				// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
-				admin.GET("/ezfy-bot/:uid/buildings", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotBuildings)
-				admin.POST("/ezfy-bot/:uid/edit", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotEdit)
-				// ★ 2026-10-17 攻击目标：人机可自己找，也可管理端指定（可挂多个）
-					admin.GET("/ezfy-bot/:uid/targets", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargets)
-					admin.POST("/ezfy-bot/:uid/target", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetSet)
-					admin.DELETE("/ezfy-bot/target/:tid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetDel)
-					// ★ 2026-10-17 出征最近敌对真人城 + 管理端直接迁城（加速人机布局/开战）
-					admin.POST("/ezfy-bot/:uid/attack-nearest", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAttackNearest)
-					admin.POST("/ezfy-bot/:uid/relocate", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotRelocate)
-					admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
-				// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
-				//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，
-				//   让只有 module:ezfyPlayers 的管理员也能加道具（发放道具菜单在 module:ezfyData 下）。
-				admin.POST("/ezfy-players/:id/item", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemSet)
-				admin.DELETE("/ezfy-players/:id/item/:cfg_id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemDelete)
-				admin.GET("/ezfy-player-items/options", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemOptions)
-				// ★ 2026-10-12 踢下线：作废该玩家当前的二战登录态（token.iat <= kick_at → 401）
-				admin.POST("/ezfy-players/:id/kick", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerKick)
-				// ★ 2026-10-12 免战模块：列表 / 开始(全城免战,可带 hours) / 结束(清除全部城池免战)，独立权限 module:ezfyPeace
-				admin.GET("/ezfy-peace", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeace)
-				admin.POST("/ezfy-peace/:id/start", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceStart)
-				admin.DELETE("/ezfy-peace/:id", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceEnd)
-				// ★ 2026-10-17 统帅称号：称号定义增删改查 + 授予/撤销 + 「已有称号玩家」列表，独立权限 module:ezfyTitles
-				admin.GET("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitles)
-				admin.POST("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleSave)
-				admin.DELETE("/ezfy-titles/:id", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleDelete)
-				admin.GET("/ezfy-titles/:id/players", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitlePlayers)
-				admin.POST("/ezfy-titles/:id/grant", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleGrant)
-				// ★ 撤销走独立前缀（不能写成 /ezfy-titles/grant/:gid：与 /ezfy-titles/:id 同层会撞 gin 路由树）
-				admin.DELETE("/ezfy-title-grants/:gid", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleRevoke)
-				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantPlayers)
-				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantOptions)
-				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrant)
-				// ★ 2026-10-13 「发放道具」新增全员发放：targets = 目标人数预览（全体二战玩家），all = 执行
-				admin.GET("/ezfy-item-grant/targets", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantTargets)
-				admin.POST("/ezfy-item-grant/all", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantAll)
-				// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
-				admin.GET("/ezfy-love-cards/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardOptions)
-				admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCards)
-				admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardDelete)
-				admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyData)
-				admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataCreate)
-				// ★ 2026-10-14 批量上下架（{ids:[...], shelf:1|0}）。
-				//   ★★ 不能挂在 `/ezfy-data/:table/shelf` —— 与 `/ezfy-data/:table/:id` 同层
-				//      （静态段 shelf vs 参数段 :id）会让 Gin 路由冲突、`shelf` 被当成 id 吞掉。
-				//      改用独立前缀 `/ezfy-data-shelf/:table`（:table 仍是参数，但不与 :id 同层）。
-				admin.PUT("/ezfy-data-shelf/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataShelf)
-				admin.PUT("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataUpdate)
-				admin.DELETE("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataDelete)
-				admin.GET("/ezfy-orders", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrders)
-				admin.DELETE("/ezfy-orders/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrderDelete)
-				// ★ 2026-10-06 战报查询（战报不是订单，独立于 ezfy-orders 列表）
-				admin.GET("/ezfy-reports", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReports)
-				admin.GET("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDetail)
-				admin.DELETE("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDelete)
-				// ★ 2026-10-08 战斗队列管理（查看具体战场 / 手动推进一回合 / 一键自动打完 / 强制结算清理）
-				admin.GET("/ezfy-battles", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattles)
-				admin.GET("/ezfy-battles/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleDetail)
-				admin.POST("/ezfy-battles/:id/tick", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleTick)
-				admin.POST("/ezfy-battles/:id/auto", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleAuto)
-				admin.POST("/ezfy-battles/:id/force", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleForce)
-				// ★ 2026-10-17 聊天管理（原「流水管理-世界聊天」升级）：世界/军团/系统 多频道，
-				//   归属权限 module:ezfyWords（菜单「聊天管理」），支持按时间范围批量物理删除。
-				admin.GET("/ezfy-chats", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChats)
-				admin.DELETE("/ezfy-chats/batch", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatBatchDelete)
-				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatDelete)
-				admin.GET("/ezfy-corps", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorps)
-				admin.DELETE("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsDelete)
-				admin.GET("/ezfy-notices", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNotices)
-				admin.POST("/ezfy-announce", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyAnnounce)
-				admin.DELETE("/ezfy-notices/:id", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNoticeDelete)
-				admin.PUT("/ezfy-notices/:id", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNoticeUpdate)
-				admin.GET("/ezfy-stats", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyStats)
-				admin.GET("/ezfy-server", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServer)
-				admin.POST("/ezfy-server/maintenance", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServerSet)
-				// ★ 2026-10-11 活动监测（造兵/征服/掠夺/召集次数排行，perm 复用系统管理）
-				admin.GET("/ezfy-monitor", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyMonitor)
+				// ★★ 2026-10-17 二战独立部署：二战管理端路由只在 wwii 模式注册。
+				//   鉴权：组级挂 AdminSecretAuth（X-Ezfy-Admin-Secret == cfg.Jwt.Secret 内部密钥）；
+				//   home 侧反代会注入该 header，普通外部请求拿不到 → 403。
+				//   下面的 perm(db, "module:ezfyXxx") 在 wwii 模式下是放行中间件
+				//   （Setup 顶部按模式重定义；RBAC 表在家园库、由 home 侧驱动）。
+				if cfg.Mode() == "wwii" {
+					admin := api.Group("/admin", middleware.AdminSecretAuth(cfg.Jwt.Secret))
+					{
+						// ============ 二战风云管理 ezfy/（玩家/数据/流水/系统） ============
+						admin.GET("/ezfy-players", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayers)
+						admin.GET("/ezfy-players/:id/detail", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDetail)
+						admin.PUT("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerUpdate)
+						admin.POST("/ezfy-players/:id/grant", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrant)
+						admin.POST("/ezfy-players/:id/grant-officer", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyGrantOfficer)
+						admin.DELETE("/ezfy-players/:id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerDelete)
+						// ===== 人机（AI 玩家）管理：独立前缀 /ezfy-bot/* + 独立权限点 module:ezfyBot =====
+						// ★ 与「玩家信息管理」完全分开（方案 7.1）：改人机不会碰到玩家管理代码，可整块回滚。
+						admin.GET("/ezfy-bot/list", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotList)
+						admin.POST("/ezfy-bot/create", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCreate)
+						admin.POST("/ezfy-bot/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotClear)
+						admin.GET("/ezfy-bot/logs", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogs)
+						admin.GET("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfig)
+						admin.POST("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfigSet)
+						admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
+						admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)
+						admin.POST("/ezfy-bot/:uid/act", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAct)
+						// ★ 2026-10-17 一键立即行动：全部启用人机各连跑 N 轮（活动前/测试加速）
+						admin.POST("/ezfy-bot/act-all", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotActAll)
+						// ★ 2026-10-17 给人机城发资源（加速发育）：人机已从玩家管理排除，只能从这里发
+						admin.POST("/ezfy-bot/:uid/grant", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotGrant)
+						// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
+						admin.GET("/ezfy-bot/:uid/buildings", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotBuildings)
+						admin.POST("/ezfy-bot/:uid/edit", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotEdit)
+						// ★ 2026-10-17 攻击目标：人机可自己找，也可管理端指定（可挂多个）
+						admin.GET("/ezfy-bot/:uid/targets", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargets)
+						admin.POST("/ezfy-bot/:uid/target", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetSet)
+						admin.DELETE("/ezfy-bot/target/:tid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetDel)
+						// ★ 2026-10-17 出征最近敌对真人城 + 管理端直接迁城（加速人机布局/开战）
+						admin.POST("/ezfy-bot/:uid/attack-nearest", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAttackNearest)
+						admin.POST("/ezfy-bot/:uid/relocate", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotRelocate)
+						admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
+						// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
+						//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，
+						//   让只有 module:ezfyPlayers 的管理员也能加道具（发放道具菜单在 module:ezfyData 下）。
+						admin.POST("/ezfy-players/:id/item", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemSet)
+						admin.DELETE("/ezfy-players/:id/item/:cfg_id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemDelete)
+						admin.GET("/ezfy-player-items/options", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemOptions)
+						// ★ 2026-10-12 踢下线：作废该玩家当前的二战登录态（token.iat <= kick_at → 401）
+						admin.POST("/ezfy-players/:id/kick", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerKick)
+						// ★ 2026-10-12 免战模块：列表 / 开始(全城免战,可带 hours) / 结束(清除全部城池免战)，独立权限 module:ezfyPeace
+						admin.GET("/ezfy-peace", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeace)
+						admin.POST("/ezfy-peace/:id/start", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceStart)
+						admin.DELETE("/ezfy-peace/:id", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceEnd)
+						// ★ 2026-10-17 统帅称号：称号定义增删改查 + 授予/撤销 + 「已有称号玩家」列表，独立权限 module:ezfyTitles
+						admin.GET("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitles)
+						admin.POST("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleSave)
+						admin.DELETE("/ezfy-titles/:id", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleDelete)
+						admin.GET("/ezfy-titles/:id/players", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitlePlayers)
+						admin.POST("/ezfy-titles/:id/grant", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleGrant)
+						// ★ 撤销走独立前缀（不能写成 /ezfy-titles/grant/:gid：与 /ezfy-titles/:id 同层会撞 gin 路由树）
+						admin.DELETE("/ezfy-title-grants/:gid", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleRevoke)
+						admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantPlayers)
+						admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantOptions)
+						admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrant)
+						// ★ 2026-10-13 「发放道具」新增全员发放：targets = 目标人数预览（全体二战玩家），all = 执行
+						admin.GET("/ezfy-item-grant/targets", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantTargets)
+						admin.POST("/ezfy-item-grant/all", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantAll)
+						// ★ 2026-09-27 为爱发电卡：发放/领取情况维护
+						admin.GET("/ezfy-love-cards/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardOptions)
+						admin.GET("/ezfy-love-cards/list", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCards)
+						admin.DELETE("/ezfy-love-cards/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyLoveCardDelete)
+						admin.GET("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyData)
+						admin.POST("/ezfy-data/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataCreate)
+						// ★ 2026-10-14 批量上下架（{ids:[...], shelf:1|0}）。
+						//   ★★ 不能挂在 `/ezfy-data/:table/shelf` —— 与 `/ezfy-data/:table/:id` 同层
+						//      （静态段 shelf vs 参数段 :id）会让 Gin 路由冲突、`shelf` 被当成 id 吞掉。
+						//      改用独立前缀 `/ezfy-data-shelf/:table`（:table 仍是参数，但不与 :id 同层）。
+						admin.PUT("/ezfy-data-shelf/:table", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataShelf)
+						admin.PUT("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataUpdate)
+						admin.DELETE("/ezfy-data/:table/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyDataDelete)
+						admin.GET("/ezfy-orders", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrders)
+						admin.DELETE("/ezfy-orders/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrderDelete)
+						// ★ 2026-10-06 战报查询（战报不是订单，独立于 ezfy-orders 列表）
+						admin.GET("/ezfy-reports", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReports)
+						admin.GET("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDetail)
+						admin.DELETE("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDelete)
+						// ★ 2026-10-08 战斗队列管理（查看具体战场 / 手动推进一回合 / 一键自动打完 / 强制结算清理）
+						admin.GET("/ezfy-battles", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattles)
+						admin.GET("/ezfy-battles/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleDetail)
+						admin.POST("/ezfy-battles/:id/tick", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleTick)
+						admin.POST("/ezfy-battles/:id/auto", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleAuto)
+						admin.POST("/ezfy-battles/:id/force", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleForce)
+						// ★ 2026-10-17 聊天管理（原「流水管理-世界聊天」升级）：世界/军团/系统 多频道，
+						//   归属权限 module:ezfyWords（菜单「聊天管理」），支持按时间范围批量物理删除。
+						admin.GET("/ezfy-chats", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChats)
+						admin.DELETE("/ezfy-chats/batch", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatBatchDelete)
+						admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatDelete)
+						admin.GET("/ezfy-corps", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorps)
+						admin.DELETE("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsDelete)
+						admin.GET("/ezfy-notices", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNotices)
+						admin.POST("/ezfy-announce", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyAnnounce)
+						admin.DELETE("/ezfy-notices/:id", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNoticeDelete)
+						admin.PUT("/ezfy-notices/:id", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNoticeUpdate)
+						admin.GET("/ezfy-stats", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyStats)
+						admin.GET("/ezfy-server", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServer)
+						admin.POST("/ezfy-server/maintenance", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyServerSet)
+						// ★ 2026-10-11 活动监测（造兵/征服/掠夺/召集次数排行，perm 复用系统管理）
+						admin.GET("/ezfy-monitor", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyMonitor)
 
-				// ---- 城市管理 ----
-				admin.GET("/ezfy-cities", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCities)
-				admin.GET("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityDetail)
-				admin.PUT("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityUpdate)
-				admin.POST("/ezfy-cities/:id/reset", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityReset)
-				admin.DELETE("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityDelete)
+						// ---- 城市管理 ----
+						admin.GET("/ezfy-cities", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCities)
+						admin.GET("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityDetail)
+						admin.PUT("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityUpdate)
+						admin.POST("/ezfy-cities/:id/reset", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityReset)
+						admin.DELETE("/ezfy-cities/:id", perm(db, "module:ezfyCities"), ezfyAdminH.AdminEzfyCityDelete)
 
-				// ---- 建筑管理 ----
-				admin.GET("/ezfy-buildings", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildings)
-				admin.POST("/ezfy-buildings", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCreate)
-				admin.PUT("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingUpdate)
-				admin.POST("/ezfy-buildings/:id/finish", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingFinish)
-				admin.DELETE("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingDelete)
+						// ---- 建筑管理 ----
+						admin.GET("/ezfy-buildings", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildings)
+						admin.POST("/ezfy-buildings", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCreate)
+						admin.PUT("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingUpdate)
+						admin.POST("/ezfy-buildings/:id/finish", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingFinish)
+						admin.DELETE("/ezfy-buildings/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingDelete)
 
-				// 总建筑配置（ezfy_cfg_building / _level，可增删改）
-				admin.GET("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfg)
-				admin.POST("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgCreate)
-				admin.PUT("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgUpdate)
-				admin.DELETE("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgDelete)
-				admin.GET("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevels)
-				admin.POST("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelCreate)
-				admin.PUT("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelUpdate)
-				admin.DELETE("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelDelete)
+						// 总建筑配置（ezfy_cfg_building / _level，可增删改）
+						admin.GET("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfg)
+						admin.POST("/ezfy-building-cfg", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgCreate)
+						admin.PUT("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgUpdate)
+						admin.DELETE("/ezfy-building-cfg/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingCfgDelete)
+						admin.GET("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevels)
+						admin.POST("/ezfy-building-levels", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelCreate)
+						admin.PUT("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelUpdate)
+						admin.DELETE("/ezfy-building-levels/:id", perm(db, "module:ezfyBuildings"), ezfyAdminH.AdminEzfyBuildingLevelDelete)
 
-				// ---- 建筑队列管理 ----
-				admin.GET("/ezfy-build-queue", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueue)
-				admin.POST("/ezfy-build-queue/:id/finish", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinish)
-				admin.POST("/ezfy-build-queue/:id/speed", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueSpeed)
-				admin.POST("/ezfy-build-queue/:id/cancel", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueCancel)
-				admin.POST("/ezfy-build-queue/finish-all", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinishAll)
-				admin.POST("/ezfy-build-queue/finish-ready", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinishReady)
+						// ---- 建筑队列管理 ----
+						admin.GET("/ezfy-build-queue", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueue)
+						admin.POST("/ezfy-build-queue/:id/finish", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinish)
+						admin.POST("/ezfy-build-queue/:id/speed", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueSpeed)
+						admin.POST("/ezfy-build-queue/:id/cancel", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueCancel)
+						admin.POST("/ezfy-build-queue/finish-all", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinishAll)
+						admin.POST("/ezfy-build-queue/finish-ready", perm(db, "module:ezfyBuildQueue"), ezfyAdminH.AdminEzfyBuildQueueFinishReady)
 
-				// ---- 兵种管理 ----
-				admin.GET("/ezfy-troops", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroops)
-				admin.GET("/ezfy-troops-cfg", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopsCfg)
-				admin.POST("/ezfy-troops/grant", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopGrant)
-				admin.PUT("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopUpdate)
-				admin.DELETE("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopDelete)
-				admin.GET("/ezfy-wounded", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyWounded)
-				admin.DELETE("/ezfy-wounded/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyWoundedDelete)
-				// 兵种配置可改参数（含同盟国/轴心国兵种名）
-				admin.PUT("/ezfy-troops-cfg/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopCfgUpdate)
+						// ---- 兵种管理 ----
+						admin.GET("/ezfy-troops", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroops)
+						admin.GET("/ezfy-troops-cfg", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopsCfg)
+						admin.POST("/ezfy-troops/grant", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopGrant)
+						admin.PUT("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopUpdate)
+						admin.DELETE("/ezfy-troops/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopDelete)
+						admin.GET("/ezfy-wounded", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyWounded)
+						admin.DELETE("/ezfy-wounded/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyWoundedDelete)
+						// 兵种配置可改参数（含同盟国/轴心国兵种名）
+						admin.PUT("/ezfy-troops-cfg/:id", perm(db, "module:ezfyTroops"), ezfyAdminH.AdminEzfyTroopCfgUpdate)
 
-				// ---- 队伍征兵（训练队列） ----
-				admin.GET("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainQueue)
-				admin.POST("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainCreate)
-				admin.POST("/ezfy-train-queue/finish-all", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainFinishAll)
-				admin.POST("/ezfy-train-queue/:id/finish", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainFinish)
-				admin.POST("/ezfy-train-queue/:id/speed", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainSpeed)
-				admin.DELETE("/ezfy-train-queue/:id", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainDelete)
+						// ---- 队伍征兵（训练队列） ----
+						admin.GET("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainQueue)
+						admin.POST("/ezfy-train-queue", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainCreate)
+						admin.POST("/ezfy-train-queue/finish-all", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainFinishAll)
+						admin.POST("/ezfy-train-queue/:id/finish", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainFinish)
+						admin.POST("/ezfy-train-queue/:id/speed", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainSpeed)
+						admin.DELETE("/ezfy-train-queue/:id", perm(db, "module:ezfyRecruit"), ezfyAdminH.AdminEzfyTrainDelete)
 
-				// ---- 军官管理 ----
-				admin.GET("/ezfy-officers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficers)
-				admin.GET("/ezfy-officers-cfg", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerCfg)
-				admin.POST("/ezfy-officers/grant", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerGrant)
-				// ★ 2026-09-28 「发放名将」支持按玩家昵称/游戏ID搜索目标玩家：
-				//   复用「发放道具」的同一个 handler（AdminEzfyItemGrantPlayers），
-				//   但权限挂在军官模块上 —— 否则只有军官管理权限、没有数据管理权限的管理员会 403。
-				admin.GET("/ezfy-officers/players", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyItemGrantPlayers)
-				admin.PUT("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUpdate)
-				admin.POST("/ezfy-officers/:id/captive", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerCaptive)
-				admin.DELETE("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerDelete)
-				// ★ 2026-10-13 军官管理 →「玩家军官列表」→ 查看：军官信息 + 已穿戴装备 + 后台卸下装备
-				admin.GET("/ezfy-officer-equips", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerEquips)
-				admin.POST("/ezfy-officer-unequip", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUnequip)
-				// 总览 + 下拉数据
-				admin.GET("/ezfy-officer-overview", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerOverview)
-				admin.GET("/ezfy-officer-pickers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerPickers)
-				// 名将列表（配置表 CRUD）
-				admin.GET("/ezfy-generals", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGenerals)
-				// ★ 2026-09-29 军官池「拥有玩家」点击查看：该名将/军官被哪些玩家以何种状态持有
-				admin.GET("/ezfy-generals/:id/owners", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralOwners)
-				admin.POST("/ezfy-generals", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralCreate)
-				admin.PUT("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralUpdate)
-				admin.DELETE("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralDelete)
-				// 军官技能列表（配置表 CRUD）
-				admin.GET("/ezfy-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkills)
-				admin.POST("/ezfy-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillCreate)
-				admin.PUT("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillUpdate)
-				admin.DELETE("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillDelete)
-				// 玩家军官技能列表（ezfy_officer.skill 展开）
-				admin.GET("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillsOwned)
-				admin.POST("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillAdd)
-				admin.DELETE("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillRemove)
-				// 军官装备配置表 CRUD
-				// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（module:ezfyEquips）。
-				//   GET 列表是「军官管理→给玩家发装备」下拉和「军官装备管理」共用的，两个权限任一放行；
-				//   增删改只归军官装备管理。
-				admin.GET("/ezfy-equipments", permAny(db, "module:ezfyOfficers", "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipments)
-				admin.POST("/ezfy-equipments", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentCreate)
-				admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentUpdate)
-				admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentDelete)
-				// ★ 装备套装（穿戴同套 N 件触发套装加成；玩家在商城买）
-				//   GET 列表是「数据管理→套装装备配置」批量加入下拉和「军官装备管理」共用的，两个权限任一放行；
-				//   增删改只归军官装备管理。
-				admin.GET("/ezfy-equip-sets", permAny(db, "module:ezfyData", "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSets)
-				admin.POST("/ezfy-equip-sets", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetCreate)
-				admin.PUT("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetUpdate)
-				admin.DELETE("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetDelete)
-				admin.GET("/ezfy-equip-sets/:id/pieces", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetPieces)
-				// ★ 宝箱 + 奖池（宝箱是套装装备唯一产出渠道；价格/库存/上架与奖池都在「数据管理→套装装备配置」维护）
-				admin.GET("/ezfy-chests", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChests)
-				admin.POST("/ezfy-chests", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestCreate)
-				admin.PUT("/ezfy-chests/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestUpdate)
-				admin.DELETE("/ezfy-chests/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestDelete)
-				admin.GET("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPool)
-				admin.POST("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolCreate)
-				admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolBulkAdd)
-				admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolUpdate)
-				admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolDelete)
-				// ★ 2026-10-14 发放宝箱给玩家（入待开宝箱表，玩家在「我的宝箱」里自己开）
-				admin.GET("/ezfy-chest-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantOptions)
-				admin.POST("/ezfy-chest-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrant)
-				// ★ 计谋配置（消耗信号弹）
-				admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemes)
-				admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeCreate)
-				admin.PUT("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeUpdate)
-				admin.DELETE("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeDelete)
-				// 玩家军官装备列表（ezfy_equipment）
-				admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentsOwned)
-				// ★ 2026-10-13 「装备详情」弹框的实例明细按需查（列表接口不再随行下发，避免 size 大时拉回上万行）
-				admin.GET("/ezfy-equipments-owned/details", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDetails)
-				admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedCreate)
-				admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedUpdate)
-				admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDelete)
+						// ---- 军官管理 ----
+						admin.GET("/ezfy-officers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficers)
+						admin.GET("/ezfy-officers-cfg", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerCfg)
+						admin.POST("/ezfy-officers/grant", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerGrant)
+						// ★ 2026-09-28 「发放名将」支持按玩家昵称/游戏ID搜索目标玩家：
+						//   复用「发放道具」的同一个 handler（AdminEzfyItemGrantPlayers），
+						//   但权限挂在军官模块上 —— 否则只有军官管理权限、没有数据管理权限的管理员会 403。
+						admin.GET("/ezfy-officers/players", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyItemGrantPlayers)
+						admin.PUT("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUpdate)
+						admin.POST("/ezfy-officers/:id/captive", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerCaptive)
+						admin.DELETE("/ezfy-officers/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerDelete)
+						// ★ 2026-10-13 军官管理 →「玩家军官列表」→ 查看：军官信息 + 已穿戴装备 + 后台卸下装备
+						admin.GET("/ezfy-officer-equips", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerEquips)
+						admin.POST("/ezfy-officer-unequip", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerUnequip)
+						// 总览 + 下拉数据
+						admin.GET("/ezfy-officer-overview", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerOverview)
+						admin.GET("/ezfy-officer-pickers", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerPickers)
+						// 名将列表（配置表 CRUD）
+						admin.GET("/ezfy-generals", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGenerals)
+						// ★ 2026-09-29 军官池「拥有玩家」点击查看：该名将/军官被哪些玩家以何种状态持有
+						admin.GET("/ezfy-generals/:id/owners", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralOwners)
+						admin.POST("/ezfy-generals", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralCreate)
+						admin.PUT("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralUpdate)
+						admin.DELETE("/ezfy-generals/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGeneralDelete)
+						// 军官技能列表（配置表 CRUD）
+						admin.GET("/ezfy-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkills)
+						admin.POST("/ezfy-skills", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillCreate)
+						admin.PUT("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillUpdate)
+						admin.DELETE("/ezfy-skills/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySkillDelete)
+						// 玩家军官技能列表（ezfy_officer.skill 展开）
+						admin.GET("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillsOwned)
+						admin.POST("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillAdd)
+						admin.DELETE("/ezfy-officer-skills-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyOfficerSkillRemove)
+						// 军官装备配置表 CRUD
+						// ★ 2026-09-27 装备属性单独起新菜单「军官装备管理」（module:ezfyEquips）。
+						//   GET 列表是「军官管理→给玩家发装备」下拉和「军官装备管理」共用的，两个权限任一放行；
+						//   增删改只归军官装备管理。
+						admin.GET("/ezfy-equipments", permAny(db, "module:ezfyOfficers", "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipments)
+						admin.POST("/ezfy-equipments", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentCreate)
+						admin.PUT("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentUpdate)
+						admin.DELETE("/ezfy-equipments/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipmentDelete)
+						// ★ 装备套装（穿戴同套 N 件触发套装加成；玩家在商城买）
+						//   GET 列表是「数据管理→套装装备配置」批量加入下拉和「军官装备管理」共用的，两个权限任一放行；
+						//   增删改只归军官装备管理。
+						admin.GET("/ezfy-equip-sets", permAny(db, "module:ezfyData", "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSets)
+						admin.POST("/ezfy-equip-sets", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetCreate)
+						admin.PUT("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetUpdate)
+						admin.DELETE("/ezfy-equip-sets/:id", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetDelete)
+						admin.GET("/ezfy-equip-sets/:id/pieces", perm(db, "module:ezfyEquips"), ezfyAdminH.AdminEzfyEquipSetPieces)
+						// ★ 宝箱 + 奖池（宝箱是套装装备唯一产出渠道；价格/库存/上架与奖池都在「数据管理→套装装备配置」维护）
+						admin.GET("/ezfy-chests", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChests)
+						admin.POST("/ezfy-chests", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestCreate)
+						admin.PUT("/ezfy-chests/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestUpdate)
+						admin.DELETE("/ezfy-chests/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestDelete)
+						admin.GET("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPool)
+						admin.POST("/ezfy-chests/:id/pool", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolCreate)
+						admin.POST("/ezfy-chests/:id/pool/bulk", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolBulkAdd)
+						admin.PUT("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolUpdate)
+						admin.DELETE("/ezfy-chest-items/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestPoolDelete)
+						// ★ 2026-10-14 发放宝箱给玩家（入待开宝箱表，玩家在「我的宝箱」里自己开）
+						admin.GET("/ezfy-chest-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrantOptions)
+						admin.POST("/ezfy-chest-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyChestGrant)
+						// ★ 计谋配置（消耗信号弹）
+						admin.GET("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemes)
+						admin.POST("/ezfy-schemes", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeCreate)
+						admin.PUT("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeUpdate)
+						admin.DELETE("/ezfy-schemes/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfySchemeDelete)
+						// 玩家军官装备列表（ezfy_equipment）
+						admin.GET("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentsOwned)
+						// ★ 2026-10-13 「装备详情」弹框的实例明细按需查（列表接口不再随行下发，避免 size 大时拉回上万行）
+						admin.GET("/ezfy-equipments-owned/details", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDetails)
+						admin.POST("/ezfy-equipments-owned", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedCreate)
+						admin.PUT("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedUpdate)
+						admin.DELETE("/ezfy-equipments-owned/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyEquipmentOwnedDelete)
 
-				// ---- 一键生成军官（随机名字/等级/星级，属性不超过名将） ----
-				admin.POST("/ezfy-officers/gen", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGenOfficers)
+						// ---- 一键生成军官（随机名字/等级/星级，属性不超过名将） ----
+						admin.POST("/ezfy-officers/gen", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyGenOfficers)
 
-				// ---- 军衔配置维护 ----
-				admin.GET("/ezfy-ranks", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRanks)
-				admin.PUT("/ezfy-ranks/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankUpdate)
-				admin.POST("/ezfy-ranks/reset", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankReset)
-				// ---- 玩家军衔维护 ----
-				admin.GET("/ezfy-rank-players", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankPlayers)
-				admin.PUT("/ezfy-rank-players/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPlayer)
-				admin.POST("/ezfy-rank-players/:id/prestige", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPrestige)
+						// ---- 军衔配置维护 ----
+						admin.GET("/ezfy-ranks", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRanks)
+						admin.PUT("/ezfy-ranks/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankUpdate)
+						admin.POST("/ezfy-ranks/reset", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankReset)
+						// ---- 玩家军衔维护 ----
+						admin.GET("/ezfy-rank-players", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankPlayers)
+						admin.PUT("/ezfy-rank-players/:id", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPlayer)
+						admin.POST("/ezfy-rank-players/:id/prestige", perm(db, "module:ezfyRankCfg"), ezfyAdminH.AdminEzfyRankSetPrestige)
 
-				// ---- 排行榜（风云榜 + 战力榜，perm 复用数据管理） ----
-				// ★ 2026-10-14 用户需求：管理系统「风云榜」改名「排行榜」，下设两个 tab：
-				//   风云榜（周榜 + 统计开关 + 不参与排名名单）、战力榜（复用游戏内战力口径）。
-				// ★ 2026-10-15 用户需求：加入「军衔声望榜」tab（复用玩家端口径，同样支持不参与排名）。
-				admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
-				admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
-				admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
-				admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
-				admin.GET("/ezfy-power-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPowerRank)
-				admin.GET("/ezfy-prestige-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPrestigeRank)
+						// ---- 排行榜（风云榜 + 战力榜，perm 复用数据管理） ----
+						// ★ 2026-10-14 用户需求：管理系统「风云榜」改名「排行榜」，下设两个 tab：
+						//   风云榜（周榜 + 统计开关 + 不参与排名名单）、战力榜（复用游戏内战力口径）。
+						// ★ 2026-10-15 用户需求：加入「军衔声望榜」tab（复用玩家端口径，同样支持不参与排名）。
+						admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
+						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
+						admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
+						admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
+						admin.GET("/ezfy-power-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPowerRank)
+						admin.GET("/ezfy-prestige-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPrestigeRank)
 
-				// ---- 军校免费刷新次数维护 ----
-				admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitGet)
-				admin.POST("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitSet)
-				admin.GET("/ezfy-recruit-limit-users", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitList)
-				admin.PUT("/ezfy-recruit-limit-users/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitSetUser)
-				admin.POST("/ezfy-recruit-limit-users/:id/reset", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitReset)
+						// ---- 军校免费刷新次数维护 ----
+						admin.GET("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitGet)
+						admin.POST("/ezfy-recruit-limit", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitSet)
+						admin.GET("/ezfy-recruit-limit-users", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitList)
+						admin.PUT("/ezfy-recruit-limit-users/:id", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitSetUser)
+						admin.POST("/ezfy-recruit-limit-users/:id/reset", perm(db, "module:ezfyOfficers"), ezfyAdminH.AdminEzfyRecruitLimitReset)
 
-				// ---- 资源管理 ----
-				admin.GET("/ezfy-resources", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResources)
-				admin.GET("/ezfy-resources-summary", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSummary)
-				admin.POST("/ezfy-resources/set", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSet)
-				admin.POST("/ezfy-resources/grant", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceGrant)
+						// ---- 资源管理 ----
+						admin.GET("/ezfy-resources", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResources)
+						admin.GET("/ezfy-resources-summary", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSummary)
+						admin.POST("/ezfy-resources/set", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceSet)
+						admin.POST("/ezfy-resources/grant", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResourceGrant)
 
-				// ---- 资源名称维护（改名后游戏端/管理端展示全部跟随） ----
-				admin.GET("/ezfy-res-cfg", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgList)
-				admin.PUT("/ezfy-res-cfg/:id", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgUpdate)
-				admin.POST("/ezfy-res-cfg/reset", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgReset)
+						// ---- 资源名称维护（改名后游戏端/管理端展示全部跟随） ----
+						admin.GET("/ezfy-res-cfg", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgList)
+						admin.PUT("/ezfy-res-cfg/:id", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgUpdate)
+						admin.POST("/ezfy-res-cfg/reset", perm(db, "module:ezfyResources"), ezfyAdminH.AdminEzfyResCfgReset)
 
-				// ---- 资源交易行维护（系统挂单可定价黄金/钻石；玩家挂单只能黄金） ----
-				admin.GET("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeList)
-				admin.POST("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeCreate)
-				admin.POST("/ezfy-exchange/:id/off", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeOff)
-				admin.DELETE("/ezfy-exchange/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeRemove)
-				// ★ 2026-10-17 一键删除全部已成交记录（status=1）
-				admin.DELETE("/ezfy-exchange/dealt", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeDealtDelete)
-				// 挂单模板维护（2026-09-24：资源包模板落库，管理端可增删改）
-				admin.GET("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplList)
-				admin.POST("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplCreate)
-				admin.PUT("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplUpdate)
-				admin.DELETE("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplDelete)
+						// ---- 资源交易行维护（系统挂单可定价黄金/钻石；玩家挂单只能黄金） ----
+						admin.GET("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeList)
+						admin.POST("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeCreate)
+						admin.POST("/ezfy-exchange/:id/off", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeOff)
+						admin.DELETE("/ezfy-exchange/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeRemove)
+						// ★ 2026-10-17 一键删除全部已成交记录（status=1）
+						admin.DELETE("/ezfy-exchange/dealt", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeDealtDelete)
+						// 挂单模板维护（2026-09-24：资源包模板落库，管理端可增删改）
+						admin.GET("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplList)
+						admin.POST("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplCreate)
+						admin.PUT("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplUpdate)
+						admin.DELETE("/ezfy-exchange-tpls/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplDelete)
 
-				// ---- 科技管理 ----
-				admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechs)
-				admin.GET("/ezfy-techs-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechsCfg)
-				admin.POST("/ezfy-techs/set", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechSet)
-				// 一键满级所有玩家科技（幂等，先去重再 upsert）
-				admin.POST("/ezfy-techs/max-all", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechMaxAll)
-				admin.PUT("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechUpdate)
-				admin.POST("/ezfy-techs/:id/finish", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechFinish)
-				admin.DELETE("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechDelete)
+						// ---- 科技管理 ----
+						admin.GET("/ezfy-techs", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechs)
+						admin.GET("/ezfy-techs-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechsCfg)
+						admin.POST("/ezfy-techs/set", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechSet)
+						// 一键满级所有玩家科技（幂等，先去重再 upsert）
+						admin.POST("/ezfy-techs/max-all", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechMaxAll)
+						admin.PUT("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechUpdate)
+						admin.POST("/ezfy-techs/:id/finish", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechFinish)
+						admin.DELETE("/ezfy-techs/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechDelete)
 
-				// ---- 科技配置维护（原先只能只读参考） ----
-				admin.GET("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgList)
-				admin.POST("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgCreate)
-				admin.PUT("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgUpdate)
-				admin.DELETE("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgDelete)
-				admin.GET("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelList)
-				admin.POST("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelCreate)
-				admin.PUT("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelUpdate)
-				admin.DELETE("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelDelete)
+						// ---- 科技配置维护（原先只能只读参考） ----
+						admin.GET("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgList)
+						admin.POST("/ezfy-tech-cfg", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgCreate)
+						admin.PUT("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgUpdate)
+						admin.DELETE("/ezfy-tech-cfg/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechCfgDelete)
+						admin.GET("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelList)
+						admin.POST("/ezfy-tech-levels", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelCreate)
+						admin.PUT("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelUpdate)
+						admin.DELETE("/ezfy-tech-levels/:id", perm(db, "module:ezfyTechs"), ezfyAdminH.AdminEzfyTechLevelDelete)
 
-				// ---- 建筑数量上限配置（军事区/资源区各 36，默认 36） ----
-				admin.GET("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), ezfyAdminH.AdminEzfyBuildLimitGet)
-				admin.PUT("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), ezfyAdminH.AdminEzfyBuildLimitUpdate)
+						// ---- 建筑数量上限配置（军事区/资源区各 36，默认 36） ----
+						admin.GET("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), ezfyAdminH.AdminEzfyBuildLimitGet)
+						admin.PUT("/ezfy-build-limit", perm(db, "module:ezfyBuildLimit"), ezfyAdminH.AdminEzfyBuildLimitUpdate)
 
-				// ---- 二战聊天敏感词（独立维护页，与社区黑名单榜分开） ----
-				admin.GET("/ezfy-word-filters", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilters)
-				admin.POST("/ezfy-word-filters", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterCreate)
-				admin.POST("/ezfy-word-filters/bulk", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterBulk)
-				admin.PUT("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterUpdate)
-				admin.DELETE("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterDelete)
+						// ---- 二战聊天敏感词（独立维护页，与社区黑名单榜分开） ----
+						admin.GET("/ezfy-word-filters", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilters)
+						admin.POST("/ezfy-word-filters", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterCreate)
+						admin.POST("/ezfy-word-filters/bulk", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterBulk)
+						admin.PUT("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterUpdate)
+						admin.DELETE("/ezfy-word-filters/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyWordFilterDelete)
 
-				// ---- 钻石发放（钻石只能管理端发放/扣减） ----
-				admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyDiamondGrant)
+						// ---- 钻石发放（钻石只能管理端发放/扣减） ----
+						admin.POST("/ezfy-players/:id/diamond", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyDiamondGrant)
 
-				// ---- 宣战管理（列表 / 一键生效 / 一键完成 / 代建 / 删除） ----
-				// ★ 批量接口必须注册在 /:id 路由**之前**，否则 gin 会把 "finish-all"
-				//   当成 :id 匹配掉（gin 的通配优先级：静态路径 > 参数路径，但
-				//   POST /ezfy-wars/finish-all 与 POST /ezfy-wars 不冲突，
-				//   真正要注意的是别把它写成 /ezfy-wars/:id/finish 的形式）。
-				admin.GET("/ezfy-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWars)
-				admin.POST("/ezfy-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarCreate)
-				admin.POST("/ezfy-wars/effect-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarEffectAll)
-				admin.POST("/ezfy-wars/finish-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarFinishAll)
-				admin.PUT("/ezfy-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarUpdate)
-				admin.POST("/ezfy-wars/:id/effect", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarEffect)
-				admin.POST("/ezfy-wars/:id/finish", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarFinish)
-				admin.DELETE("/ezfy-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarDelete)
+						// ---- 宣战管理（列表 / 一键生效 / 一键完成 / 代建 / 删除） ----
+						// ★ 批量接口必须注册在 /:id 路由**之前**，否则 gin 会把 "finish-all"
+						//   当成 :id 匹配掉（gin 的通配优先级：静态路径 > 参数路径，但
+						//   POST /ezfy-wars/finish-all 与 POST /ezfy-wars 不冲突，
+						//   真正要注意的是别把它写成 /ezfy-wars/:id/finish 的形式）。
+						admin.GET("/ezfy-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWars)
+						admin.POST("/ezfy-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarCreate)
+						admin.POST("/ezfy-wars/effect-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarEffectAll)
+						admin.POST("/ezfy-wars/finish-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarFinishAll)
+						admin.PUT("/ezfy-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarUpdate)
+						admin.POST("/ezfy-wars/:id/effect", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarEffect)
+						admin.POST("/ezfy-wars/:id/finish", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarFinish)
+						admin.DELETE("/ezfy-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyWarDelete)
 
-				// ---- 军团宣战维护（列表 / 代宣战 / 强制结束 / 全部结束 / 删除）----
-				// ★ 批量接口 finish-all 注册在 /:id 之前，避免被 :id 匹配（同 ezfy-wars 的注意事项）。
-				//   权限复用 module:ezfyWars，不新增权限项。
-				admin.GET("/ezfy-corps-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWars)
-				admin.POST("/ezfy-corps-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarCreate)
-				admin.POST("/ezfy-corps-wars/effect-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffectAll)
-				admin.POST("/ezfy-corps-wars/finish-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinishAll)
-				// ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」→ 单条生效
-				admin.POST("/ezfy-corps-wars/:id/effect", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffect)
-				admin.POST("/ezfy-corps-wars/:id/finish", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinish)
-				admin.DELETE("/ezfy-corps-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarDelete)
+						// ---- 军团宣战维护（列表 / 代宣战 / 强制结束 / 全部结束 / 删除）----
+						// ★ 批量接口 finish-all 注册在 /:id 之前，避免被 :id 匹配（同 ezfy-wars 的注意事项）。
+						//   权限复用 module:ezfyWars，不新增权限项。
+						admin.GET("/ezfy-corps-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWars)
+						admin.POST("/ezfy-corps-wars", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarCreate)
+						admin.POST("/ezfy-corps-wars/effect-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffectAll)
+						admin.POST("/ezfy-corps-wars/finish-all", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinishAll)
+						// ★ 2026-09-25 「军团宣战维护也加个按钮一键生效」→ 单条生效
+						admin.POST("/ezfy-corps-wars/:id/effect", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarEffect)
+						admin.POST("/ezfy-corps-wars/:id/finish", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarFinish)
+						admin.DELETE("/ezfy-corps-wars/:id", perm(db, "module:ezfyWars"), ezfyAdminH.AdminEzfyCorpsWarDelete)
 
-				// ---- 军团商城维护（列表 / 新增或更新 / 上下架 / 删除 / 道具池）----
-				//   权限复用 module:ezfyCorps，不新增权限项。
-				admin.GET("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallList)
-				admin.GET("/ezfy-corps-mall/items", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallItems)
-				admin.POST("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallSave)
-				admin.POST("/ezfy-corps-mall/:id/toggle", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallToggle)
-				admin.DELETE("/ezfy-corps-mall/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallDelete)
+						// ---- 军团商城维护（列表 / 新增或更新 / 上下架 / 删除 / 道具池）----
+						//   权限复用 module:ezfyCorps，不新增权限项。
+						admin.GET("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallList)
+						admin.GET("/ezfy-corps-mall/items", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallItems)
+						admin.POST("/ezfy-corps-mall", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallSave)
+						admin.POST("/ezfy-corps-mall/:id/toggle", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallToggle)
+						admin.DELETE("/ezfy-corps-mall/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMallDelete)
 
-				// ---- 地图管理 ----
-				admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapCities)
-				admin.GET("/ezfy-map/wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapWildlands)
-				admin.GET("/ezfy-map/occupy", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupy)
-				admin.POST("/ezfy-map/occupy/:id/release", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupyRelease)
-				admin.DELETE("/ezfy-map/occupy/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupyDelete)
-				admin.GET("/ezfy-map/areas", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapAreas)
-				admin.DELETE("/ezfy-map/areas/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapAreaDelete)
-				admin.GET("/ezfy-map/stars", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapStars)
-				admin.DELETE("/ezfy-map/stars/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapStarsDelete)
-				admin.GET("/ezfy-map/lookup", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapLookup)
+						// ---- 地图管理 ----
+						admin.GET("/ezfy-map/cities", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapCities)
+						admin.GET("/ezfy-map/wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapWildlands)
+						admin.GET("/ezfy-map/occupy", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupy)
+						admin.POST("/ezfy-map/occupy/:id/release", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupyRelease)
+						admin.DELETE("/ezfy-map/occupy/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOccupyDelete)
+						admin.GET("/ezfy-map/areas", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapAreas)
+						admin.DELETE("/ezfy-map/areas/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapAreaDelete)
+						admin.GET("/ezfy-map/stars", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapStars)
+						admin.DELETE("/ezfy-map/stars/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapStarsDelete)
+						admin.GET("/ezfy-map/lookup", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapLookup)
 
-				// ---- 野地维护（全量列表 + 增删改） ----
-				admin.GET("/ezfy-wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandList)
-				admin.POST("/ezfy-wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandCreate)
-				admin.PUT("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandUpdate)
-				admin.POST("/ezfy-wildlands/:id/finish", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandFinish)
-				admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandDelete)
-				// ★ 2026-10-05 批量物理删除（「管理端删除做好批量删除」）
-				admin.POST("/ezfy-wildlands/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandBatchDelete)
+						// ---- 野地维护（全量列表 + 增删改） ----
+						admin.GET("/ezfy-wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandList)
+						admin.POST("/ezfy-wildlands", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandCreate)
+						admin.PUT("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandUpdate)
+						admin.POST("/ezfy-wildlands/:id/finish", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandFinish)
+						admin.DELETE("/ezfy-wildlands/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandDelete)
+						// ★ 2026-10-05 批量物理删除（「管理端删除做好批量删除」）
+						admin.POST("/ezfy-wildlands/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildlandBatchDelete)
 
-				// ---- 野地类型维护（ezfy_cfg_wildland） ----
-				admin.GET("/ezfy-map/options", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOptions)
-				// 活动野地配置（地图管理「活动野地」tab，2026-09-29）
-				admin.GET("/ezfy-act-wilds", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildList)
-				admin.POST("/ezfy-act-wilds", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildSave)
-				admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildToggle)
-				admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildAttacks)
-				admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildDelete)
-				admin.POST("/ezfy-act-wilds/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildBatchDelete)
-				// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
-				admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTiles)
-				admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileCell)
-				admin.POST("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileSave)
-				admin.DELETE("/ezfy-map-tiles/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileDelete)
-				admin.POST("/ezfy-map-tiles/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileBatchDelete)
-				admin.GET("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgList)
-				admin.POST("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgCreate)
-				admin.PUT("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgUpdate)
-				admin.DELETE("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgDelete)
+						// ---- 野地类型维护（ezfy_cfg_wildland） ----
+						admin.GET("/ezfy-map/options", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapOptions)
+						// 活动野地配置（地图管理「活动野地」tab，2026-09-29）
+						admin.GET("/ezfy-act-wilds", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildList)
+						admin.POST("/ezfy-act-wilds", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildSave)
+						admin.POST("/ezfy-act-wilds/:id/toggle", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildToggle)
+						admin.GET("/ezfy-act-wilds/:id/attacks", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildAttacks)
+						admin.DELETE("/ezfy-act-wilds/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildDelete)
+						admin.POST("/ezfy-act-wilds/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyActWildBatchDelete)
+						// 地图格子覆盖（改土地类型 / 设寇城·活动寇城）
+						admin.GET("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTiles)
+						admin.GET("/ezfy-map-tile", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileCell)
+						admin.POST("/ezfy-map-tiles", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileSave)
+						admin.DELETE("/ezfy-map-tiles/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileDelete)
+						admin.POST("/ezfy-map-tiles/batch-delete", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyMapTileBatchDelete)
+						admin.GET("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgList)
+						admin.POST("/ezfy-wild-cfg", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgCreate)
+						admin.PUT("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgUpdate)
+						admin.DELETE("/ezfy-wild-cfg/:id", perm(db, "module:ezfyMap"), ezfyAdminH.AdminEzfyWildCfgDelete)
 
-				// ---- 军团管理 ----
-				admin.GET("/ezfy-corps/:id/members", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMembers)
-				admin.PUT("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsUpdate)
-				admin.DELETE("/ezfy-corps/:id/members/:uid", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsKick)
-				admin.GET("/ezfy-corps/:id/chats", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsChats)
-				admin.DELETE("/ezfy-corps-chats/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsChatDelete)
+						// ---- 军团管理 ----
+						admin.GET("/ezfy-corps/:id/members", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsMembers)
+						admin.PUT("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsUpdate)
+						admin.DELETE("/ezfy-corps/:id/members/:uid", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsKick)
+						admin.GET("/ezfy-corps/:id/chats", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsChats)
+						admin.DELETE("/ezfy-corps-chats/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsChatDelete)
 
-				// ---- 私聊管理 ----
-				admin.GET("/ezfy-privchats", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchats)
-				admin.DELETE("/ezfy-privchats/:id", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatDelete)
-				admin.POST("/ezfy-privchats/clear", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatClear)
+						// ---- 私聊管理 ----
+						admin.GET("/ezfy-privchats", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchats)
+						admin.DELETE("/ezfy-privchats/:id", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatDelete)
+						admin.POST("/ezfy-privchats/clear", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyPrivchatClear)
 
-				// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----
-				admin.GET("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemList)
-				admin.POST("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemSend)
+						// ---- 系统邮件（★ 2026-10-13 管理端群发/单发，玩家在「邮箱 → 系统邮件」收到）----
+						admin.GET("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemList)
+						admin.POST("/ezfy-mails/system", perm(db, "module:ezfyPrivchat"), ezfyAdminH.AdminEzfyMailSystemSend)
+					}
+				} else {
+					// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
+					admin.GET("/users", perm(db, "module:users"), adminH.Users)
+					admin.GET("/users/:id/detail", perm(db, "module:users"), adminH.UserDetail)
+					admin.GET("/pretty-suggest", perm(db, "module:users"), adminH.PrettySuggest)
+					admin.POST("/users/:id/pretty", perm(db, "module:users"), adminH.UserPretty)
+					admin.PUT("/users/:id/home", perm(db, "module:home"), adminH.UserHomeSet)
+					admin.GET("/invites", perm(db, "module:invites"), adminH.AdminInvites)
+					admin.POST("/invites", perm(db, "module:invites"), adminH.AdminInviteCreate)
+					admin.DELETE("/invites/:id", perm(db, "module:invites"), adminH.AdminInviteDelete)
+					admin.GET("/wallet-logs", perm(db, "module:walletLogs"), adminH.AdminWalletLogs)
+					// 会员子页（诺哈：会员证件/联系/地址/密保/日志）
+					admin.GET("/user-docu", perm(db, "module:userDocu"), adminH.AdminUserDocu)
+					admin.DELETE("/user-docu/:id", perm(db, "module:userDocu"), adminH.AdminUserDocuDelete)
+					admin.GET("/user-contacts", perm(db, "module:userContact"), adminH.AdminUserContacts)
+					admin.PUT("/user-contacts/:id", perm(db, "module:userContact"), adminH.AdminUserContactUpdate)
+					admin.GET("/user-addresses", perm(db, "module:userAddress"), adminH.AdminUserAddresses)
+					admin.PUT("/user-addresses/:id", perm(db, "module:userAddress"), adminH.AdminUserAddressUpdate)
+					admin.GET("/user-protections", perm(db, "module:userProtec"), adminH.AdminUserProtections)
+					admin.DELETE("/user-protections/:uid", perm(db, "module:userProtec"), adminH.AdminUserProtectionDelete)
+					admin.GET("/user-logs", perm(db, "module:userLogs"), adminH.AdminUserLogs)
 
-				// ============ 会员管理 user/（诺哈：会员列表/证件/联系/地址/密保/日志/财务/推荐） ============
-				admin.GET("/users", perm(db, "module:users"), adminH.Users)
-				admin.GET("/users/:id/detail", perm(db, "module:users"), adminH.UserDetail)
-				admin.GET("/pretty-suggest", perm(db, "module:users"), adminH.PrettySuggest)
-				admin.POST("/users/:id/pretty", perm(db, "module:users"), adminH.UserPretty)
-				admin.PUT("/users/:id/home", perm(db, "module:home"), adminH.UserHomeSet)
-				admin.GET("/invites", perm(db, "module:invites"), adminH.AdminInvites)
-				admin.POST("/invites", perm(db, "module:invites"), adminH.AdminInviteCreate)
-				admin.DELETE("/invites/:id", perm(db, "module:invites"), adminH.AdminInviteDelete)
-				admin.GET("/wallet-logs", perm(db, "module:walletLogs"), adminH.AdminWalletLogs)
-				// 会员子页（诺哈：会员证件/联系/地址/密保/日志）
-				admin.GET("/user-docu", perm(db, "module:userDocu"), adminH.AdminUserDocu)
-				admin.DELETE("/user-docu/:id", perm(db, "module:userDocu"), adminH.AdminUserDocuDelete)
-				admin.GET("/user-contacts", perm(db, "module:userContact"), adminH.AdminUserContacts)
-				admin.PUT("/user-contacts/:id", perm(db, "module:userContact"), adminH.AdminUserContactUpdate)
-				admin.GET("/user-addresses", perm(db, "module:userAddress"), adminH.AdminUserAddresses)
-				admin.PUT("/user-addresses/:id", perm(db, "module:userAddress"), adminH.AdminUserAddressUpdate)
-				admin.GET("/user-protections", perm(db, "module:userProtec"), adminH.AdminUserProtections)
-				admin.DELETE("/user-protections/:uid", perm(db, "module:userProtec"), adminH.AdminUserProtectionDelete)
-				admin.GET("/user-logs", perm(db, "module:userLogs"), adminH.AdminUserLogs)
+					// ============ 家园管理 home/（诺哈：家园列表/家园访客/游戏管理） ============
+					admin.GET("/homes", perm(db, "module:homes"), adminH.AdminHomes)
+					admin.GET("/visitors", perm(db, "module:visitors"), adminH.AdminVisitors)
 
-				// ============ 家园管理 home/（诺哈：家园列表/家园访客/游戏管理） ============
-				admin.GET("/homes", perm(db, "module:homes"), adminH.AdminHomes)
-				admin.GET("/visitors", perm(db, "module:visitors"), adminH.AdminVisitors)
+					// ============ 信息管理 message/（诺哈：家信列表） ============
+					admin.GET("/home-news", perm(db, "module:messages"), adminH.AdminHomeNews)
+					admin.DELETE("/home-news/:id", perm(db, "module:messages"), adminH.AdminHomeNewsDel)
+					admin.GET("/messages", perm(db, "module:messages"), adminH.AdminMessages)
+					admin.DELETE("/messages/:id", perm(db, "module:messages"), adminH.AdminMessageDel)
 
-				// ============ 信息管理 message/（诺哈：家信列表） ============
-				admin.GET("/home-news", perm(db, "module:messages"), adminH.AdminHomeNews)
-				admin.DELETE("/home-news/:id", perm(db, "module:messages"), adminH.AdminHomeNewsDel)
-				admin.GET("/messages", perm(db, "module:messages"), adminH.AdminMessages)
-				admin.DELETE("/messages/:id", perm(db, "module:messages"), adminH.AdminMessageDel)
+					// ============ 书城管理 book/（诺哈：小说/章节/书评） ============
+					admin.GET("/books", perm(db, "module:books"), adminH.AdminBooks)
+					admin.POST("/books", perm(db, "module:books"), adminH.AdminBookCreate)
+					admin.PUT("/books/:id", perm(db, "module:books"), adminH.AdminBookUpdate)
+					admin.DELETE("/books/:id", perm(db, "module:books"), adminH.AdminBookDel)
+					admin.GET("/books/:id/chapters", perm(db, "module:bookChapters"), adminH.AdminBookChapters)
+					admin.POST("/books/:id/chapters", perm(db, "module:bookChapters"), adminH.AdminChapterCreate)
+					admin.PUT("/book-chapters/:id", perm(db, "module:bookChapters"), adminH.AdminChapterUpdate)
+					admin.DELETE("/book-chapters/:id", perm(db, "module:bookChapters"), adminH.AdminChapterDel)
+					admin.GET("/book-comments", perm(db, "module:bookComments"), adminH.AdminBookComments)
+					admin.PUT("/book-comments/:id", perm(db, "module:bookComments"), adminH.AdminBookCommentUpdate)
+					admin.DELETE("/book-comments/:id", perm(db, "module:bookComments"), adminH.AdminBookCommentDel)
 
-				// ============ 书城管理 book/（诺哈：小说/章节/书评） ============
-				admin.GET("/books", perm(db, "module:books"), adminH.AdminBooks)
-				admin.POST("/books", perm(db, "module:books"), adminH.AdminBookCreate)
-				admin.PUT("/books/:id", perm(db, "module:books"), adminH.AdminBookUpdate)
-				admin.DELETE("/books/:id", perm(db, "module:books"), adminH.AdminBookDel)
-				admin.GET("/books/:id/chapters", perm(db, "module:bookChapters"), adminH.AdminBookChapters)
-				admin.POST("/books/:id/chapters", perm(db, "module:bookChapters"), adminH.AdminChapterCreate)
-				admin.PUT("/book-chapters/:id", perm(db, "module:bookChapters"), adminH.AdminChapterUpdate)
-				admin.DELETE("/book-chapters/:id", perm(db, "module:bookChapters"), adminH.AdminChapterDel)
-				admin.GET("/book-comments", perm(db, "module:bookComments"), adminH.AdminBookComments)
-				admin.PUT("/book-comments/:id", perm(db, "module:bookComments"), adminH.AdminBookCommentUpdate)
-				admin.DELETE("/book-comments/:id", perm(db, "module:bookComments"), adminH.AdminBookCommentDel)
+					// ============ 系统配置 config/（站点设置） ============
+					admin.GET("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfig)
+					admin.PUT("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfigSave)
 
-				// ============ 系统配置 config/（站点设置） ============
-				admin.GET("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfig)
-				admin.PUT("/site-config", perm(db, "module:siteConfig"), adminH.AdminSiteConfigSave)
+					// ============ 菜单维护 admin_menus/（管理端菜单覆盖配置） ============
+					admin.GET("/menus", adminH.AdminMenus)
+					admin.PUT("/menus", perm(db, "module:menus"), adminH.AdminMenuSave)
+					admin.DELETE("/menus/:key", perm(db, "module:menus"), adminH.AdminMenuDel)
 
-				// ============ 菜单维护 admin_menus/（管理端菜单覆盖配置） ============
-				admin.GET("/menus", adminH.AdminMenus)
-				admin.PUT("/menus", perm(db, "module:menus"), adminH.AdminMenuSave)
-				admin.DELETE("/menus/:key", perm(db, "module:menus"), adminH.AdminMenuDel)
+					// ============ 社区管理 bbs/（诺哈：帖子管理/回复管理/恢复帖子/黑名单） ============
+					admin.GET("/threads/recycle", perm(db, "module:recycle"), adminH.AdminThreadRecycle)
+					admin.PUT("/threads/:id/restore", perm(db, "module:recycle"), adminH.AdminThreadRestore)
 
-				// ============ 社区管理 bbs/（诺哈：帖子管理/回复管理/恢复帖子/黑名单） ============
-				admin.GET("/threads/recycle", perm(db, "module:recycle"), adminH.AdminThreadRecycle)
-				admin.PUT("/threads/:id/restore", perm(db, "module:recycle"), adminH.AdminThreadRestore)
+					// ============ 商城管理 shop/（诺哈：商品管理/订单/评论） ============
+					admin.GET("/shops", perm(db, "module:shops"), adminH.AdminShops)
+					admin.GET("/shop-goods", perm(db, "module:shopGoods"), adminH.AdminShopGoods)
+					admin.PUT("/shop-goods/:id/status", perm(db, "module:shopGoods"), adminH.AdminShopGoodsStatus)
+					admin.DELETE("/shop-goods/:id", perm(db, "module:shopGoods"), adminH.AdminShopGoodsDel)
+					admin.GET("/shop-orders", perm(db, "module:shopOrders"), adminH.AdminShopOrders)
+					admin.GET("/shop-comments", perm(db, "module:shopComments"), adminH.AdminShopComments)
+					admin.DELETE("/shop-comments/:id", perm(db, "module:shopComments"), adminH.AdminShopCommentDel)
 
-				// ============ 商城管理 shop/（诺哈：商品管理/订单/评论） ============
-				admin.GET("/shops", perm(db, "module:shops"), adminH.AdminShops)
-				admin.GET("/shop-goods", perm(db, "module:shopGoods"), adminH.AdminShopGoods)
-				admin.PUT("/shop-goods/:id/status", perm(db, "module:shopGoods"), adminH.AdminShopGoodsStatus)
-				admin.DELETE("/shop-goods/:id", perm(db, "module:shopGoods"), adminH.AdminShopGoodsDel)
-				admin.GET("/shop-orders", perm(db, "module:shopOrders"), adminH.AdminShopOrders)
-				admin.GET("/shop-comments", perm(db, "module:shopComments"), adminH.AdminShopComments)
-				admin.DELETE("/shop-comments/:id", perm(db, "module:shopComments"), adminH.AdminShopCommentDel)
+					// ============ 文章管理 article/（诺哈：文章配置/文章分类） ============
+					admin.GET("/site-articles", perm(db, "module:articles"), adminH.AdminSiteArticles)
+					admin.DELETE("/site-articles/:id", perm(db, "module:articles"), adminH.AdminSiteArticleDel)
+					admin.GET("/article-categories", perm(db, "module:articles"), adminH.AdminArticleCategories)
+					admin.POST("/article-categories", perm(db, "module:articles"), adminH.AdminArticleCategoryCreate)
+					admin.PUT("/article-categories/:id", perm(db, "module:articles"), adminH.AdminArticleCategoryUpdate)
+					admin.DELETE("/article-categories/:id", perm(db, "module:articles"), adminH.AdminArticleCategoryDel)
 
-				// ============ 文章管理 article/（诺哈：文章配置/文章分类） ============
-				admin.GET("/site-articles", perm(db, "module:articles"), adminH.AdminSiteArticles)
-				admin.DELETE("/site-articles/:id", perm(db, "module:articles"), adminH.AdminSiteArticleDel)
-				admin.GET("/article-categories", perm(db, "module:articles"), adminH.AdminArticleCategories)
-				admin.POST("/article-categories", perm(db, "module:articles"), adminH.AdminArticleCategoryCreate)
-				admin.PUT("/article-categories/:id", perm(db, "module:articles"), adminH.AdminArticleCategoryUpdate)
-				admin.DELETE("/article-categories/:id", perm(db, "module:articles"), adminH.AdminArticleCategoryDel)
+					// ============ 留言管理 guest/ ============
+					admin.GET("/guestbook", perm(db, "module:guestbook"), adminH.AdminGuestbook)
+					admin.DELETE("/guestbook/:id", perm(db, "module:guestbook"), adminH.AdminGuestbookDel)
+					admin.GET("/wallets", perm(db, "module:wallet"), adminH.Wallets)
+					admin.PUT("/wallets/:id", perm(db, "module:wallet"), adminH.WalletSet)
 
-				// ============ 留言管理 guest/ ============
-				admin.GET("/guestbook", perm(db, "module:guestbook"), adminH.AdminGuestbook)
-				admin.DELETE("/guestbook/:id", perm(db, "module:guestbook"), adminH.AdminGuestbookDel)
-				admin.GET("/wallets", perm(db, "module:wallet"), adminH.Wallets)
-				admin.PUT("/wallets/:id", perm(db, "module:wallet"), adminH.WalletSet)
+					// 家族 / 同城 / T台秀
+					admin.GET("/families", perm(db, "module:families"), adminH.Families)
+					admin.PUT("/families/:id/status", perm(db, "module:families"), adminH.FamilyStatus)
+					admin.PUT("/families/:id/ann", perm(db, "module:families"), adminH.FamilyAnn)
+					admin.GET("/families/pending", perm(db, "module:families"), adminH.PendingFamilies)
+					admin.PUT("/families/:id/feature", perm(db, "module:families"), adminH.FamilyFeature)
+					admin.PUT("/families/:id/review", perm(db, "module:families"), adminH.FamilyReview)
+					admin.GET("/tongcheng", perm(db, "module:tongcheng"), cityH.AdminTree)
+					admin.POST("/tongcheng/provinces", perm(db, "module:tongcheng"), cityH.AdminCreateProvince)
+					admin.PUT("/tongcheng/provinces/:id", perm(db, "module:tongcheng"), cityH.AdminUpdateProvince)
+					admin.DELETE("/tongcheng/provinces/:id", perm(db, "module:tongcheng"), cityH.AdminDeleteProvince)
+					admin.POST("/tongcheng/cities", perm(db, "module:tongcheng"), cityH.AdminCreateCity)
+					admin.PUT("/tongcheng/cities/:id", perm(db, "module:tongcheng"), cityH.AdminUpdateCity)
+					admin.DELETE("/tongcheng/cities/:id", perm(db, "module:tongcheng"), cityH.AdminDeleteCity)
+					admin.GET("/tongcheng/managers/:id", perm(db, "module:tongcheng"), cityH.AdminManagers)
+					admin.POST("/tongcheng/managers", perm(db, "module:tongcheng"), cityH.AdminManagerAdd)
+					admin.DELETE("/tongcheng/managers/:id", perm(db, "module:tongcheng"), cityH.AdminManagerDelete)
+					admin.GET("/ttou", perm(db, "module:ttou"), adminH.Ttou)
+					admin.PUT("/ttou", perm(db, "module:ttou"), adminH.TtouSet)
+					admin.DELETE("/ttou", perm(db, "module:ttou"), adminH.TtouClear)
+					admin.GET("/ttou/applies", perm(db, "module:ttou"), adminH.TtouApplies)
+					admin.POST("/ttou/applies/:id/accept", perm(db, "module:ttou"), adminH.TtouApplyAccept)
 
-				// 家族 / 同城 / T台秀
-				admin.GET("/families", perm(db, "module:families"), adminH.Families)
-				admin.PUT("/families/:id/status", perm(db, "module:families"), adminH.FamilyStatus)
-				admin.PUT("/families/:id/ann", perm(db, "module:families"), adminH.FamilyAnn)
-				admin.GET("/families/pending", perm(db, "module:families"), adminH.PendingFamilies)
-				admin.PUT("/families/:id/feature", perm(db, "module:families"), adminH.FamilyFeature)
-				admin.PUT("/families/:id/review", perm(db, "module:families"), adminH.FamilyReview)
-				admin.GET("/tongcheng", perm(db, "module:tongcheng"), cityH.AdminTree)
-				admin.POST("/tongcheng/provinces", perm(db, "module:tongcheng"), cityH.AdminCreateProvince)
-				admin.PUT("/tongcheng/provinces/:id", perm(db, "module:tongcheng"), cityH.AdminUpdateProvince)
-				admin.DELETE("/tongcheng/provinces/:id", perm(db, "module:tongcheng"), cityH.AdminDeleteProvince)
-				admin.POST("/tongcheng/cities", perm(db, "module:tongcheng"), cityH.AdminCreateCity)
-				admin.PUT("/tongcheng/cities/:id", perm(db, "module:tongcheng"), cityH.AdminUpdateCity)
-				admin.DELETE("/tongcheng/cities/:id", perm(db, "module:tongcheng"), cityH.AdminDeleteCity)
-				admin.GET("/tongcheng/managers/:id", perm(db, "module:tongcheng"), cityH.AdminManagers)
-				admin.POST("/tongcheng/managers", perm(db, "module:tongcheng"), cityH.AdminManagerAdd)
-				admin.DELETE("/tongcheng/managers/:id", perm(db, "module:tongcheng"), cityH.AdminManagerDelete)
-				admin.GET("/ttou", perm(db, "module:ttou"), adminH.Ttou)
-				admin.PUT("/ttou", perm(db, "module:ttou"), adminH.TtouSet)
-				admin.DELETE("/ttou", perm(db, "module:ttou"), adminH.TtouClear)
-				admin.GET("/ttou/applies", perm(db, "module:ttou"), adminH.TtouApplies)
-				admin.POST("/ttou/applies/:id/accept", perm(db, "module:ttou"), adminH.TtouApplyAccept)
+					// 福利院捐款上榜记录管理
+					admin.GET("/fla-donations", perm(db, "module:fla"), flaH.AdminList)
+					admin.POST("/fla-donations", perm(db, "module:fla"), flaH.AdminCreate)
+					admin.PUT("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminUpdate)
+					admin.DELETE("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminDelete)
 
-				// 福利院捐款上榜记录管理
-				admin.GET("/fla-donations", perm(db, "module:fla"), flaH.AdminList)
-				admin.POST("/fla-donations", perm(db, "module:fla"), flaH.AdminCreate)
-				admin.PUT("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminUpdate)
-				admin.DELETE("/fla-donations/:id", perm(db, "module:fla"), flaH.AdminDelete)
+					// 福利院·慈善基金管理
+					admin.GET("/welfare", perm(db, "module:welfare"), welfareH.AdminStats)
+					admin.POST("/welfare/pool", perm(db, "module:welfare"), welfareH.AdminSetPool)
+					admin.GET("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminClaims)
+					admin.POST("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminCreateClaim)
+					admin.DELETE("/welfare/claims/:id", perm(db, "module:welfare"), welfareH.AdminDeleteClaim)
+					admin.GET("/welfare/donations", perm(db, "module:welfare"), welfareH.AdminDonations)
+					admin.DELETE("/welfare/donations/:id", perm(db, "module:welfare"), welfareH.AdminDeleteDonate)
+					admin.PUT("/users/:id/status", perm(db, "module:users"), adminH.UserStatus)
+					admin.PUT("/users/:id/password", perm(db, "module:users"), adminH.ResetPassword)
+					admin.PUT("/users/:id/roles", perm(db, "module:users"), adminH.UserRoles)
+					admin.PUT("/users/:id/badges", perm(db, "module:badges"), badgeH.UserBadges)
+					admin.PUT("/users/:id/extras", perm(db, "module:users"), adminH.UserExtras)
+					admin.POST("/users/batch-delete", perm(db, "module:users"), adminH.UsersBatchDelete)
+					admin.GET("/phones", perm(db, "module:userPhones"), adminH.Phones)
+					admin.POST("/phones/:id/audit", perm(db, "module:userPhones"), adminH.PhoneAudit)
+					admin.DELETE("/phones/:id", perm(db, "module:userPhones"), adminH.PhoneDelete)
 
-				// 福利院·慈善基金管理
-				admin.GET("/welfare", perm(db, "module:welfare"), welfareH.AdminStats)
-				admin.POST("/welfare/pool", perm(db, "module:welfare"), welfareH.AdminSetPool)
-				admin.GET("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminClaims)
-				admin.POST("/welfare/claims", perm(db, "module:welfare"), welfareH.AdminCreateClaim)
-				admin.DELETE("/welfare/claims/:id", perm(db, "module:welfare"), welfareH.AdminDeleteClaim)
-				admin.GET("/welfare/donations", perm(db, "module:welfare"), welfareH.AdminDonations)
-				admin.DELETE("/welfare/donations/:id", perm(db, "module:welfare"), welfareH.AdminDeleteDonate)
-				admin.PUT("/users/:id/status", perm(db, "module:users"), adminH.UserStatus)
-				admin.PUT("/users/:id/password", perm(db, "module:users"), adminH.ResetPassword)
-				admin.PUT("/users/:id/roles", perm(db, "module:users"), adminH.UserRoles)
-				admin.PUT("/users/:id/badges", perm(db, "module:badges"), badgeH.UserBadges)
-				admin.PUT("/users/:id/extras", perm(db, "module:users"), adminH.UserExtras)
-				admin.POST("/users/batch-delete", perm(db, "module:users"), adminH.UsersBatchDelete)
-				admin.GET("/phones", perm(db, "module:userPhones"), adminH.Phones)
-				admin.POST("/phones/:id/audit", perm(db, "module:userPhones"), adminH.PhoneAudit)
-				admin.DELETE("/phones/:id", perm(db, "module:userPhones"), adminH.PhoneDelete)
+					admin.GET("/badges", perm(db, "module:badges"), badgeH.AdminList)
+					admin.POST("/badges", perm(db, "module:badges"), badgeH.Create)
+					admin.PUT("/badges/:id", perm(db, "module:badges"), badgeH.Update)
+					admin.DELETE("/badges/:id", perm(db, "module:badges"), badgeH.Delete)
+					admin.GET("/user-badges", perm(db, "module:badges"), badgeH.AdminUserBadges)
+					admin.POST("/user-badges/grant", perm(db, "module:badges"), badgeH.GrantOne)
+					admin.PUT("/user-badges/:id", perm(db, "module:badges"), badgeH.AdminUserBadgeUpdate)
+					admin.DELETE("/user-badges/:id", perm(db, "module:badges"), badgeH.AdminUserBadgeDel)
 
-				admin.GET("/badges", perm(db, "module:badges"), badgeH.AdminList)
-				admin.POST("/badges", perm(db, "module:badges"), badgeH.Create)
-				admin.PUT("/badges/:id", perm(db, "module:badges"), badgeH.Update)
-				admin.DELETE("/badges/:id", perm(db, "module:badges"), badgeH.Delete)
-				admin.GET("/user-badges", perm(db, "module:badges"), badgeH.AdminUserBadges)
-				admin.POST("/user-badges/grant", perm(db, "module:badges"), badgeH.GrantOne)
-				admin.PUT("/user-badges/:id", perm(db, "module:badges"), badgeH.AdminUserBadgeUpdate)
-				admin.DELETE("/user-badges/:id", perm(db, "module:badges"), badgeH.AdminUserBadgeDel)
+					admin.GET("/games", perm(db, "module:games"), gameH.AdminList)
+					admin.POST("/games", perm(db, "module:games"), gameH.Create)
+					admin.PUT("/games/:id", perm(db, "module:games"), gameH.Update)
+					admin.DELETE("/games/:id", perm(db, "module:games"), gameH.Delete)
+					// ★★ 2026-10-15 游戏大厅维护：游戏区服（服务器选择）配置
+					admin.GET("/games/:id/servers", perm(db, "module:games"), gameH.AdminServers)
+					admin.POST("/games/:id/servers", perm(db, "module:games"), gameH.AdminServerCreate)
+					admin.PUT("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerUpdate)
+					admin.DELETE("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerDelete)
 
-				admin.GET("/games", perm(db, "module:games"), gameH.AdminList)
-				admin.POST("/games", perm(db, "module:games"), gameH.Create)
-				admin.PUT("/games/:id", perm(db, "module:games"), gameH.Update)
-				admin.DELETE("/games/:id", perm(db, "module:games"), gameH.Delete)
-				// ★★ 2026-10-15 游戏大厅维护：游戏区服（服务器选择）配置
-				admin.GET("/games/:id/servers", perm(db, "module:games"), gameH.AdminServers)
-				admin.POST("/games/:id/servers", perm(db, "module:games"), gameH.AdminServerCreate)
-				admin.PUT("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerUpdate)
-				admin.DELETE("/game-servers/:id", perm(db, "module:games"), gameH.AdminServerDelete)
+					admin.GET("/resources", perm(db, "module:resources"), resH.List)
+					admin.PUT("/resources/:id", perm(db, "module:resources"), resH.Update)
+					admin.POST("/resources/sync", perm(db, "module:resources"), resH.Sync)
+					admin.POST("/resources/upload", perm(db, "module:resources"), resH.Upload)
+					admin.DELETE("/resources/:id", perm(db, "module:resources"), resH.Delete)
 
-				admin.GET("/resources", perm(db, "module:resources"), resH.List)
-				admin.PUT("/resources/:id", perm(db, "module:resources"), resH.Update)
-				admin.POST("/resources/sync", perm(db, "module:resources"), resH.Sync)
-				admin.POST("/resources/upload", perm(db, "module:resources"), resH.Upload)
-				admin.DELETE("/resources/:id", perm(db, "module:resources"), resH.Delete)
+					admin.GET("/boards", perm(db, "module:boards"), adminH.Boards)
+					admin.POST("/boards", perm(db, "module:boards"), adminH.CreateBoard)
+					admin.PUT("/boards/:id", perm(db, "module:boards"), adminH.UpdateBoard)
+					admin.DELETE("/boards/:id", perm(db, "module:boards"), adminH.DeleteBoard)
+					admin.GET("/board-categories", perm(db, "module:boardCategories"), adminH.BoardCategories)
+					admin.POST("/board-categories", perm(db, "module:boardCategories"), adminH.CreateBoardCategory)
+					admin.PUT("/board-categories/:id", perm(db, "module:boardCategories"), adminH.UpdateBoardCategory)
+					admin.DELETE("/board-categories/:id", perm(db, "module:boardCategories"), adminH.DeleteBoardCategory)
+					admin.GET("/board-members", perm(db, "module:boards"), adminH.BoardMembers)
+					admin.POST("/board-members", perm(db, "module:boards"), adminH.BoardMemberAdd)
+					admin.DELETE("/board-members/:boardId/:userId", perm(db, "module:boards"), adminH.BoardMemberRemove)
+					admin.GET("/word-filters", perm(db, "module:wordFilters"), adminH.WordFilters)
+					admin.POST("/word-filters", perm(db, "module:wordFilters"), adminH.CreateWordFilter)
+					admin.POST("/word-filters/bulk", perm(db, "module:wordFilters"), adminH.BulkCreateWordFilter)
+					admin.PUT("/word-filters/:id", perm(db, "module:wordFilters"), adminH.UpdateWordFilter)
+					admin.DELETE("/word-filters/:id", perm(db, "module:wordFilters"), adminH.DeleteWordFilter)
 
-				admin.GET("/boards", perm(db, "module:boards"), adminH.Boards)
-				admin.POST("/boards", perm(db, "module:boards"), adminH.CreateBoard)
-				admin.PUT("/boards/:id", perm(db, "module:boards"), adminH.UpdateBoard)
-				admin.DELETE("/boards/:id", perm(db, "module:boards"), adminH.DeleteBoard)
-				admin.GET("/board-categories", perm(db, "module:boardCategories"), adminH.BoardCategories)
-				admin.POST("/board-categories", perm(db, "module:boardCategories"), adminH.CreateBoardCategory)
-				admin.PUT("/board-categories/:id", perm(db, "module:boardCategories"), adminH.UpdateBoardCategory)
-				admin.DELETE("/board-categories/:id", perm(db, "module:boardCategories"), adminH.DeleteBoardCategory)
-				admin.GET("/board-members", perm(db, "module:boards"), adminH.BoardMembers)
-				admin.POST("/board-members", perm(db, "module:boards"), adminH.BoardMemberAdd)
-				admin.DELETE("/board-members/:boardId/:userId", perm(db, "module:boards"), adminH.BoardMemberRemove)
-				admin.GET("/word-filters", perm(db, "module:wordFilters"), adminH.WordFilters)
-				admin.POST("/word-filters", perm(db, "module:wordFilters"), adminH.CreateWordFilter)
-				admin.POST("/word-filters/bulk", perm(db, "module:wordFilters"), adminH.BulkCreateWordFilter)
-				admin.PUT("/word-filters/:id", perm(db, "module:wordFilters"), adminH.UpdateWordFilter)
-				admin.DELETE("/word-filters/:id", perm(db, "module:wordFilters"), adminH.DeleteWordFilter)
+					admin.GET("/threads", perm(db, "module:threads"), adminH.Threads)
+					admin.PUT("/threads/:id", perm(db, "module:threads"), adminH.UpdateThread)
+					admin.DELETE("/threads/:id", perm(db, "module:threads"), adminH.DeleteThread)
+					admin.DELETE("/replies/:id", perm(db, "module:threads"), adminH.DeleteReply)
 
-				admin.GET("/threads", perm(db, "module:threads"), adminH.Threads)
-				admin.PUT("/threads/:id", perm(db, "module:threads"), adminH.UpdateThread)
-				admin.DELETE("/threads/:id", perm(db, "module:threads"), adminH.DeleteThread)
-				admin.DELETE("/replies/:id", perm(db, "module:threads"), adminH.DeleteReply)
+					admin.GET("/announcements", perm(db, "module:announcements"), adminH.Announcements)
+					admin.POST("/announcements", perm(db, "module:announcements"), adminH.CreateAnnouncement)
+					admin.PUT("/announcements/:id", perm(db, "module:announcements"), adminH.UpdateAnnouncement)
+					admin.DELETE("/announcements/:id", perm(db, "module:announcements"), adminH.DeleteAnnouncement)
 
-				admin.GET("/announcements", perm(db, "module:announcements"), adminH.Announcements)
-				admin.POST("/announcements", perm(db, "module:announcements"), adminH.CreateAnnouncement)
-				admin.PUT("/announcements/:id", perm(db, "module:announcements"), adminH.UpdateAnnouncement)
-				admin.DELETE("/announcements/:id", perm(db, "module:announcements"), adminH.DeleteAnnouncement)
+					admin.GET("/roles", perm(db, "module:roles"), adminH.Roles)
+					admin.GET("/permissions", perm(db, "module:roles"), adminH.Permissions)
+					// 当前管理员的权限码（前端菜单按角色过滤）
+					admin.GET("/my-perms", adminH.MyPerms)
+					admin.POST("/roles", perm(db, "module:roles"), adminH.CreateRole)
+					admin.PUT("/roles/:id/perms", perm(db, "module:roles"), adminH.UpdateRolePerms)
+					admin.DELETE("/roles/:id", perm(db, "module:roles"), adminH.DeleteRole)
 
-				admin.GET("/roles", perm(db, "module:roles"), adminH.Roles)
-				admin.GET("/permissions", perm(db, "module:roles"), adminH.Permissions)
-				// 当前管理员的权限码（前端菜单按角色过滤）
-				admin.GET("/my-perms", adminH.MyPerms)
-				admin.POST("/roles", perm(db, "module:roles"), adminH.CreateRole)
-				admin.PUT("/roles/:id/perms", perm(db, "module:roles"), adminH.UpdateRolePerms)
-				admin.DELETE("/roles/:id", perm(db, "module:roles"), adminH.DeleteRole)
+					// 空间管理
+					admin.GET("/spaces", perm(db, "module:spaces"), spaceH.AdminSpaces)
+					admin.PUT("/spaces/:id/status", perm(db, "module:spaces"), spaceH.AdminSpaceStatus)
+					admin.DELETE("/spaces/:id", perm(db, "module:spaces"), spaceH.AdminSpaceDelete)
+					admin.GET("/spaces/:userId/moods", perm(db, "module:spaces"), spaceH.AdminSpaceMoods)
+					admin.DELETE("/moods/:id", perm(db, "module:spaces"), spaceH.AdminDeleteMood)
+					admin.GET("/spaces/:userId/articles", perm(db, "module:spaces"), spaceH.AdminSpaceArticles)
+					admin.DELETE("/articles/:id", perm(db, "module:spaces"), spaceH.AdminDeleteArticle)
+					admin.GET("/spaces/:userId/albums", perm(db, "module:spaces"), spaceH.AdminSpaceAlbums)
+					admin.GET("/spaces/:userId/messages", perm(db, "module:spaces"), spaceH.AdminSpaceMessages)
+					admin.GET("/spaces/:userId/visitors", perm(db, "module:spaces"), spaceH.AdminSpaceVisitors)
+					admin.GET("/albums/:id/photos", perm(db, "module:spaces"), spaceH.AdminAlbumPhotos)
+					admin.DELETE("/photos/:id", perm(db, "module:spaces"), spaceH.AdminDeletePhoto)
+					admin.DELETE("/albums/:id", perm(db, "module:spaces"), spaceH.AdminDeleteAlbum)
+					admin.DELETE("/space-messages/:id", perm(db, "module:spaces"), spaceH.AdminDeleteSpaceMessage)
 
-				// 空间管理
-				admin.GET("/spaces", perm(db, "module:spaces"), spaceH.AdminSpaces)
-				admin.PUT("/spaces/:id/status", perm(db, "module:spaces"), spaceH.AdminSpaceStatus)
-				admin.DELETE("/spaces/:id", perm(db, "module:spaces"), spaceH.AdminSpaceDelete)
-				admin.GET("/spaces/:userId/moods", perm(db, "module:spaces"), spaceH.AdminSpaceMoods)
-				admin.DELETE("/moods/:id", perm(db, "module:spaces"), spaceH.AdminDeleteMood)
-				admin.GET("/spaces/:userId/articles", perm(db, "module:spaces"), spaceH.AdminSpaceArticles)
-				admin.DELETE("/articles/:id", perm(db, "module:spaces"), spaceH.AdminDeleteArticle)
-				admin.GET("/spaces/:userId/albums", perm(db, "module:spaces"), spaceH.AdminSpaceAlbums)
-				admin.GET("/spaces/:userId/messages", perm(db, "module:spaces"), spaceH.AdminSpaceMessages)
-				admin.GET("/spaces/:userId/visitors", perm(db, "module:spaces"), spaceH.AdminSpaceVisitors)
-				admin.GET("/albums/:id/photos", perm(db, "module:spaces"), spaceH.AdminAlbumPhotos)
-				admin.DELETE("/photos/:id", perm(db, "module:spaces"), spaceH.AdminDeletePhoto)
-				admin.DELETE("/albums/:id", perm(db, "module:spaces"), spaceH.AdminDeleteAlbum)
-				admin.DELETE("/space-messages/:id", perm(db, "module:spaces"), spaceH.AdminDeleteSpaceMessage)
+					// ============ 二战管理端反向代理（★ 2026-10-17 二战独立部署） ============
+					// 原 1179-1584 的 /api/admin/ezfy* 路由在 home 模式不注册（已移入 wwii 模式）。
+					// ★★ 不用 `admin.Any("/*p")` 兜底：Gin 禁止 catch-all 与同组静态路由共存
+					//   （panic: catch-all wildcard '*p' conflicts with existing path segment 'g'）。
+					//   改挂 NoRoute：home 模式下凡未匹配到家园管理端路由的 /api/admin/* 请求
+					//   （即二战管理端路径）统一走 ezfyAdminProxy 反代到二战服（见下方 NoRoute）。
+					//   admin-web 零改动。
+				}
 			}
 		}
 	}
@@ -1794,6 +1876,21 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 			r.Static("/assets", cfg.Server.WebDir+"/assets")
 			r.NoRoute(func(c *gin.Context) {
 				path := c.Request.URL.Path
+				// ★★ 2026-10-17 二战独立部署：home 模式二战管理端兜底反代。
+				//   家园管理端路由都是精确注册的，凡落到 NoRoute 的 /api/admin/* 即二战管理端路径
+				//   → 反代到二战服（X-Ezfy-Zone 命中指定区服，缺省第一个；无区服/无 Host 回 502）。
+				//   wwii 模式自己注册了二战管理端路由（带 AdminSecretAuth），不走这里。
+				//   ★★ 2026-10-17 修隐患：反代前必须先过家园登录鉴权（jwtM），
+				//     否则任何人裸访问 /api/admin/ezfy* 都会被转发并注入内部密钥，
+				//     二战管理端等于零门槛（原注释宣称 RBAC 由 home 驱动，实际没接线）。
+				if cfg.Mode() != "wwii" && strings.HasPrefix(path, "/api/admin/") {
+					jwtM(c)
+					if c.IsAborted() {
+						return
+					}
+					ezfyAdminProxy(db, cfg.Jwt.Secret)(c)
+					return
+				}
 				// ★ bug 修复：API 404 一律回 JSON，绝不给 index.html。
 				//   否则前端「交易行维护」等新接口在旧二进制上 404 时被兜底成 HTML，
 				//   管理端拦截器会误判成「被 IP 封禁」跳转到 503 页。
@@ -1802,11 +1899,24 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					return
 				}
 				if path == "/" || !strings.Contains(path, ".") {
-					// ★ 2026-10-04 二战独立入口：/games/ezfy 直接返回 ezfy.html
-					//   （独立构建的二战壳，不引家园 CSS、不走家园 SPA，刷新无家园影子）。
-					if strings.HasPrefix(path, "/games/ezfy") {
+					if cfg.Mode() == "wwii" {
+						// ★★ 2026-10-17 二战独立部署：wwii 模式只托管二战前端（ezfy.html）。
+						//   /games/ezfy* 与 / 都返回 ezfy.html（hash 路由整页刷新）。
 						c.Header("Cache-Control", "no-cache")
 						c.File(cfg.Server.WebDir + "/ezfy.html")
+						return
+					}
+					// ★ 2026-10-04 二战独立入口：/games/ezfy 直接返回 ezfy.html
+					//   （独立构建的二战壳，不引家园 CSS、不走家园 SPA，刷新无家园影子）。
+					// ★★ 2026-10-17 二战独立部署：home 模式不再托管 ezfy.html ——
+					//   /games/ezfy* 302 到二战默认区服 host（整页跳转，服务端只管 Location）。
+					if strings.HasPrefix(path, "/games/ezfy") {
+						target := ezfyServerHost(db, c.Request.URL)
+						if target != "" {
+							c.Redirect(http.StatusFound, target)
+							return
+						}
+						c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "二战服未配置（game_servers 无启用区服）", "data": nil})
 						return
 					}
 					// ★ 2026-10-02 手机端"进去数据没刷新出来"根因修复：
@@ -1842,7 +1952,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		}
 	}
 	// 管理系统前端（/admin-ui/，FileServer 对目录根自动回 index.html）
-	if cfg.Server.AdminWebDir != "" {
+	// ★★ 2026-10-17 二战独立部署：admin-ui 只在 home 模式托管
+	//   （wwii 模式不需要 admin-web；二战管理从 home 反代入口进入）。
+	if cfg.Mode() != "wwii" && cfg.Server.AdminWebDir != "" {
 		if st, err := os.Stat(cfg.Server.AdminWebDir); err == nil && st.IsDir() {
 			r.Static("/admin-ui", cfg.Server.AdminWebDir)
 		}
@@ -1851,4 +1963,106 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"code": 0, "msg": "ok", "data": "家园社区 API 运行中"})
 	})
 	return r
+}
+
+// ezfyServers 二战征途的启用区服列表（game_servers，status=1，sort 升序）。
+// ★★ 2026-10-17 二战独立部署：/api/ezfy/zone（两模式）、home 反代、home 302 共用这一份列表。
+func ezfyServers(db *gorm.DB) []model.GameServer {
+	var srv []model.GameServer
+	if db == nil {
+		return srv
+	}
+	var ww model.Game
+	if err := db.Where("path = ? OR url LIKE ?", "/games/ezfy", "%/games/ezfy%").First(&ww).Error; err != nil {
+		return srv
+	}
+	db.Where("game_id = ? AND status = 1", ww.ID).Order("sort ASC, id ASC").Find(&srv)
+	return srv
+}
+
+// ezfyServerHost 返回二战默认区服（第一个）的入口 URL = host + 原路径(+query)。
+// 二战服没配 host / 无启用区服 → 返回 ""（调用方回 404/502）。
+// ★★ 2026-10-17 二战独立部署：home 模式 NoRoute 302 用（整页跳转，服务端只管 Location）。
+func ezfyServerHost(db *gorm.DB, u *url.URL) string {
+	srv := ezfyServers(db)
+	if len(srv) == 0 {
+		return ""
+	}
+	host := strings.TrimRight(srv[0].Host, "/")
+	if host == "" {
+		return ""
+	}
+	if u.Path == "" {
+		return host + "/"
+	}
+	target := host + u.Path
+	if u.RawQuery != "" {
+		target += "?" + u.RawQuery
+	}
+	return target
+}
+
+// ezfyAdminProxy home 模式二战管理端反向代理（★ 2026-10-17 二战独立部署）：
+//  1. 在 homeDB 查二战区服列表（/api/ezfy/zone 同一来源 ezfyServers）；
+//  2. 按 header X-Ezfy-Zone（可选，admin-web 区切换会带）命中指定区服，否则取第一个；
+//  3. 目标 = host + 原路径（原路径已含 /api/admin/ 前缀，二战服管理端同挂 /api/admin/ezfy*）+ query；
+//  4. 注入内部密钥 header X-Ezfy-Admin-Secret（二战服 AdminSecretAuth 只认它），
+//     去掉玩家 Authorization（二战 admin 不需要玩家 token）。
+//     Host 为空 / 无启用区服 → 502。admin-web 零改动；RBAC 仍由 home 侧 authed jwtM + perm() 驱动。
+func ezfyAdminProxy(db *gorm.DB, secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		srv := ezfyServers(db)
+		if len(srv) == 0 {
+			c.JSON(http.StatusBadGateway, gin.H{"code": 502, "msg": "二战服未配置（game_servers 无启用区服）", "data": nil})
+			return
+		}
+		// 区服命中：X-Ezfy-Zone → 指定 id；否则默认第一个区。
+		var target *model.GameServer
+		if zid := c.GetHeader("X-Ezfy-Zone"); zid != "" {
+			if id, err := strconv.Atoi(zid); err == nil {
+				for i := range srv {
+					if int(srv[i].ID) == id {
+						target = &srv[i]
+						break
+					}
+				}
+			}
+		}
+		if target == nil {
+			target = &srv[0]
+		}
+		host := strings.TrimRight(target.Host, "/")
+		if host == "" {
+			c.JSON(http.StatusBadGateway, gin.H{"code": 502, "msg": "二战服未配置 Host", "data": nil})
+			return
+		}
+		director := func(req *http.Request) {
+			// 原路径已含 /api 前缀（如 /api/admin/ezfy-players），目标 = host + 原路径 + query。
+			// ★ 2026-10-17 修 bug：之前拼成 host + "/api" + 原路径 = /api/api/admin/... → 二战服 404。
+			u, err := url.Parse(host + c.Request.URL.Path)
+			if err != nil {
+				req.URL = &url.URL{Path: "/"}
+				return
+			}
+			req.URL.Scheme = u.Scheme
+			req.URL.Host = u.Host
+			req.URL.Path = u.Path
+			req.URL.RawQuery = c.Request.URL.RawQuery
+			// 内部密钥校验（二战服 AdminSecretAuth 只认这个 header）
+			req.Header.Set("X-Ezfy-Admin-Secret", secret)
+			// 去掉玩家 token（二战 admin 不需要玩家身份；RBAC 已在家园侧校验）
+			req.Header.Del("Authorization")
+			req.Host = u.Host
+		}
+		proxy := &httputil.ReverseProxy{
+			Director: director,
+			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				log.Printf("二战管理端反代失败 %s → %v", host, err)
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusBadGateway)
+				fmt.Fprintf(w, `{"code":502,"msg":"二战服转发失败","data":null}`)
+			},
+		}
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
 }

@@ -5,6 +5,10 @@ import Ezfy from './views/ezfy/Ezfy.vue'
 
 Vue.config.productionTip = false
 
+// ★ 2026-10-17 二战独立部署：独立壳标记，共享的 router 导航守卫靠它区分「家园 SPA」与「二战独立壳」。
+//   家园 SPA（index.html）访问二战页 → 守卫整页跳默认二战区服；独立壳（ezfy.html）→ 正常放行渲染。
+window.__EZFY_SHELL__ = true
+
 // ★ 2026-10-04 二战独立入口（构建为 dist/ezfy.html，与家园 SPA 完全分离）：
 //   · 不 import App.vue / assets/style.css —— 没有家园的顶栏/导航/页脚与全局样式，
 //     刷新页面也不会再出现「家园影子」。

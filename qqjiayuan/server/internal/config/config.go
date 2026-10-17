@@ -10,6 +10,11 @@ type ServerConfig struct {
 	Port        int    `yaml:"port"`
 	WebDir      string `yaml:"web_dir"`
 	AdminWebDir string `yaml:"admin_web_dir"`
+	// ★★ 2026-10-17 二战独立部署：服务运行模式。
+	//   home（默认）= 家园服，只注册家园路由 + 管理端非二战路由，二战管理端路径反代到二战服；
+	//   wwii         = 二战独立服，只注册二战路由 + 托管二战前端（web/dist 的 ezfy.html）。
+	//   同一二进制由启动参数 -mode 覆盖（flag 优先于 yaml）。
+	Mode string `yaml:"mode"`
 	// ★★ 2026-10-15 区名写活（开多区准备）：游戏名 / 区编号 / 区名 / 区后缀。
 	//   前端标题、浏览器标签、选服页都从这里拼，不再是写死的「二战征途-【1区】红色警戒」。
 	GameName string `yaml:"game_name"`
@@ -37,6 +42,11 @@ type MysqlConfig struct {
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
+	// ★★ 2026-10-17 二战独立部署：二战库（ezfy_mysql）初始化方式。
+	//   ""|"migrate" = 旧行为：二战库为空且家园库有残留二战数据时，整体搬库（开新服的默认保护）；
+	//   "fresh"       = 空库只建表+灌种子，**绝不**从家园库搬数据（qq_ezzt2 等新开区用，
+	//                    防止把 homeDB 残留的 zone1 数据误搬进 2 区）。
+	Bootstrap string `yaml:"bootstrap"`
 }
 
 type JwtConfig struct {
@@ -93,6 +103,20 @@ func (c *Config) EzfyDBConfig() MysqlConfig {
 // EzfySplit 二战是否使用独立库。
 func (c *Config) EzfySplit() bool {
 	return c.EzfyMysql.DBName != "" && c.EzfyMysql.DBName != c.Mysql.DBName
+}
+
+// Mode 服务运行模式：空回落 "home"（家园）；"wwii" = 二战独立服。
+func (c *Config) Mode() string {
+	if c.Server.Mode == "" {
+		return "home"
+	}
+	return c.Server.Mode
+}
+
+// EzfyBootstrapFresh 二战库是否以「fresh」方式初始化（空库只建表+灌种子、跳过搬库）。
+// 仅独立库模式生效（单库模式下不存在「搬库」问题，Bootstrap 字段无意义）。
+func (c *Config) EzfyBootstrapFresh() bool {
+	return c.EzfySplit() && c.EzfyMysql.Bootstrap == "fresh"
 }
 
 func Load(path string) (*Config, error) {

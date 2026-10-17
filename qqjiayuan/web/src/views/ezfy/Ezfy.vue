@@ -478,7 +478,10 @@ export default {
       //   zoneTitle 为完整标题（如「二战征途-【1区】红色警戒」），zoneList/zoneSel 供登录页选服。
       zoneList: [],
       zoneSel: 1,
-      zoneTitle: '二战征途-【1区】红色警戒', // 接口没回来前的兜底文案（老前端标题）
+      // ★★ 2026-10-17 二战独立部署（多区）：兜底标题不再写死「1区」。
+      //   原来写死 1 区名 → 2 区玩家刷新时接口没回来先闪「二战征途-【1区】红色警戒」掠影。
+      //   现在优先用上次缓存的本区名（刷新首帧即正确），没有缓存回落通用游戏名。
+      zoneTitle: localStorage.getItem('ezfy_zone_title') || '二战征途',
       ssoPending: !!this.$store.state.token,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
@@ -1970,7 +1973,11 @@ export default {
       document.title = this.zoneTitle
       // ★ 2026-10-12 家园已登录（有家园 token）→ 静默换取二战登录态，不再要求二次登录；
       //   家园没登录就安静地显示下面二战自己的登录框。
-      this.trySsoLogin()
+      // ★★ 2026-10-17 二战独立部署：URL 带 sso_token（家园跨服跳转拼的）→ 优先走它换二战 token，
+      //   与「本地 jy_token」路径互不冲突（跨 host 后家园源的 jy_token 在本源读不到，只能靠 sso_token）。
+      if (!this.ssoFromUrl()) {
+        this.trySsoLogin()
+      }
       return
     }
     // 沉浸式: 去掉 body 默认的 5px 外边距, 标题条才能贴满屏幕上方与左右
@@ -2360,9 +2367,24 @@ export default {
           if (cur && cur.name) {
             this.zoneTitle = cur.name
             document.title = cur.name
+            // ★★ 2026-10-17 缓存本区名：刷新首帧就能显示正确区名，不再先闪兜底文案
+            localStorage.setItem('ezfy_zone_title', cur.name)
           }
         }
       }).catch(() => {}) // 拿不到就用 data() 里的兜底标题，不影响登录
+    },
+    // ★★ 2026-10-17 二战独立部署：家园跨服跳转把 jy_token 拼进 hash query（sso_token，不进 HTTP 请求）。
+    //   本地无 ezfy_token 且 URL 带 sso_token → 先写进家园 token（让 trySsoLogin 能拿到），
+    //   再走现有 SSO 流程换二战 token；成功后由 trySsoLogin 用 history.replaceState 清掉 sso_token。
+    //   有 sso_token 时优先走它（跨 host 后 localStorage 按源隔离，家园源的 jy_token 在这读不到）。
+    ssoFromUrl () {
+      const m = (location.hash || '').match(/[?&]sso_token=([^&]*)/)
+      if (!m || !m[1]) return false
+      const ssoToken = decodeURIComponent(m[1])
+      if (!ssoToken) return false
+      this.$store.commit('setToken', ssoToken)
+      this.trySsoLogin()
+      return true
     },
     // 家园已登录 → 自动换二战登录态（免二次登录）。
     //   家园 token 有效 → 后端 /api/ezfy/sso 直接签发二战 token（不再验密码）；
@@ -2377,6 +2399,16 @@ export default {
         if (r.code === 0 && r.data && r.data.token) {
           this.$store.commit('setEzfyToken', r.data.token)
           this.$store.commit('setEzfyUser', { id: r.data.game_id, nickname: r.data.nickname || '' })
+          // ★ 2026-10-17 二战独立部署：sso_token 是一次性的，换到 ezfy_token 后从地址栏清掉
+          //   （保留 cur=home 等其它 hash query；hash 路由下 replaceState 只改地址、不触发导航）。
+          const qi = location.hash.indexOf('?')
+          if (qi >= 0) {
+            const hashPath = location.hash.slice(0, qi)
+            const params = new URLSearchParams(location.hash.slice(qi + 1))
+            params.delete('sso_token')
+            const rest = params.toString()
+            history.replaceState(null, '', location.pathname + location.search + (rest ? hashPath + '?' + rest : hashPath))
+          }
           window.location.reload()
           return
         }

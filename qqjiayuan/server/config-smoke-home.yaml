@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  mode: "home"
+  web_dir: "../web/dist"
+  admin_web_dir: "../admin-web/dist"
+  game_name: "二战征途"
+  zone_id: 1
+  zone_name: "1区"
+  zone_sub: "红色警戒"
+
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: "1234567890"
+  dbname: qq_jiayuan
+
+ezfy_mysql:
+  dbname: qq_ezzt
+
+seed:
+  skip: true
+
+jwt:
+  secret: "qq-jiayuan-secret-2026-do-not-leak"
+  expire_hours: 168

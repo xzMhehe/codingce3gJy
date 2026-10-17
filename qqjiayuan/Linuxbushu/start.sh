@@ -39,6 +39,10 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 cd "$SERVER_DIR" || exit 1
+# ★ 2026-10-17 二战独立部署: 端口/模式从 config.yaml 读(家园 8080 / 二战 8081),不再写死
+PORT="$(sed -nE 's/^[[:space:]]*port:[[:space:]]*([0-9]+).*/\1/p' "$SERVER_DIR/config.yaml" | head -n1)"
+[ -n "$PORT" ] || PORT=8080
+MODE="$(sed -nE 's/^[[:space:]]*mode:[[:space:]]*"?([a-z]+)"?.*/\1/p' "$SERVER_DIR/config.yaml" | head -n1)"
 nohup ./server >> "$LOGFILE" 2>&1 &
 NEWPID=$!
 echo "$NEWPID" > "$PIDFILE"
@@ -47,7 +51,11 @@ sleep 1
 if kill -0 "$NEWPID" 2>/dev/null; then
   echo "已启动 (pid $NEWPID)"
   echo "  日志: $LOGFILE"
-  echo "  地址: http://127.0.0.1:8080"
+  if [ "$MODE" = "wwii" ]; then
+    echo "  地址: 二战征途独立服 http://127.0.0.1:$PORT"
+  else
+    echo "  地址: 家园服 http://127.0.0.1:$PORT"
+  fi
   echo "  停止: $BASE/stop.sh"
 else
   echo "启动失败,看日志: $LOGFILE" >&2

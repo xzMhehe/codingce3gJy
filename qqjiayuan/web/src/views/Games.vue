@@ -221,10 +221,18 @@ export default {
     },
     // 选定区服：host 为空 = 同源本服直接路由；有 host = 跨服整页跳（hash 路由拼 #/ 前缀）
     // ★ 2026-10-15 path 可带 query（如 /games/ezfy?cur=home），统一解析成 {path,query} 再跳
+    // ★★ 2026-10-17 二战独立部署：跨服跳时把家园 jy_token 拼进 hash query（sso_token 参数，
+    //   只进地址栏不进 HTTP 请求），二战壳挂载后用 /api/ezfy/sso 换二战 token——跨 host 后
+    //   localStorage 按源隔离，家园源的 jy_token 二战壳读不到，只能靠 URL 带过去。
     enterServer (s) {
       const p = (s.path || (this.srvDlg.game && this.srvDlg.game.path) || '')
       if (s.host) {
-        window.location.href = s.host.replace(/\/+$/, '') + '/#' + (p.charAt(0) === '/' ? '' : '/') + p
+        let target = p
+        const jyToken = localStorage.getItem('jy_token')
+        if (jyToken) {
+          target += (target.indexOf('?') >= 0 ? '&' : '?') + 'sso_token=' + encodeURIComponent(jyToken)
+        }
+        window.location.href = s.host.replace(/\/+$/, '') + '/#' + (target.charAt(0) === '/' ? '' : '/') + target
         return
       }
       this.closeSrvDlg()

@@ -45,6 +45,14 @@
           <span class="cur">{{ currentName }}</span>
         </div>
         <div class="right">
+          <!-- ★ 2026-10-17 二战拆多区部署：仅二战管理页显示「管理区」切换（选中 id 存 localStorage 'admin_ezfy_zone'，
+               所有 /api/admin/ezfy* 请求经 api/index.js 自动带 X-Ezfy-Zone 头，家园服据此反向代理到对应二战区服） -->
+          <div class="zone-switch" v-if="isEzfyTab">
+            <span class="zone-lab">管理区</span>
+            <el-select v-model="ezfyZone" size="mini" style="width:170px" placeholder="选择区服" @change="switchZone">
+              <el-option v-for="z in ezfyZones" :key="z.id" :label="z.name" :value="z.id" />
+            </el-select>
+          </div>
           <el-dropdown @command="onCmd">
             <span class="who">
               <span class="avatar">{{ (user.nickname || 'Q').slice(0, 1) }}</span>
@@ -97,7 +105,11 @@ export default {
       // 登录用户角色未分配权限的菜单不展示（管理端菜单按角色过滤）
       menu: undefined,
       visited: ['dashboard'],
-      ctxShow: false, ctxX: 0, ctxY: 0, ctxTab: ''
+      ctxShow: false, ctxX: 0, ctxY: 0, ctxTab: '',
+      // ★ 二战区服切换：区服列表来自家园服公开接口 /ezfy/zone
+      ezfyZones: [],
+      ezfyZone: '',
+      ezfyZonesLoaded: false
     }
   },
   watch: {
@@ -112,6 +124,13 @@ export default {
       immediate: true,
       handler (t) {
         if (!this.visited.includes(t)) this.visited.push(t)
+      }
+    },
+    // ★ 进入二战管理页时按需拉区服列表（首次进入加载一次，失败后下次进入重试）
+    isEzfyTab: {
+      immediate: true,
+      handler (v) {
+        if (v && !this.ezfyZonesLoaded) this.loadEzfyZones()
       }
     }
   },
@@ -134,11 +153,34 @@ export default {
       const t = this.$route.query.tab || 'dashboard'
       return this.names[t] ? t : 'dashboard'
     },
-    currentName () { return this.names[this.activeTab] || '数据概览' }
+    currentName () { return this.names[this.activeTab] || '数据概览' },
+    // 当前菜单是否属于二战征途（所有二战子菜单 key 均以 ezfy 开头）→ 决定是否显示区服切换
+    isEzfyTab () { return this.activeTab.indexOf('ezfy') === 0 }
   },
   methods: {
     loadUser () {
       this.user = JSON.parse(localStorage.getItem('jy_admin_user') || 'null') || {}
+    },
+    // ★ 拉取二战区服列表（家园服公开接口 /api/ezfy/zone → { list, current }），
+    //   默认选中 localStorage 里已保存的区服 id，没有则用接口 current 或列表第一个
+    loadEzfyZones () {
+      this.ezfyZonesLoaded = true // 防重复请求；失败时还原以便下次重试
+      api.get('/ezfy/zone').then(r => {
+        if (!r || r.code !== 0) { this.ezfyZonesLoaded = false; return }
+        const list = (r.data && r.data.list) || []
+        this.ezfyZones = list
+        if (!list.length) return
+        const saved = localStorage.getItem('admin_ezfy_zone')
+        const hit = saved != null && list.find(z => String(z.id) === String(saved))
+        this.ezfyZone = hit ? hit.id : (r.data.current || list[0].id)
+      }).catch(() => { this.ezfyZonesLoaded = false })
+    },
+    // ★ 切换区服：写 localStorage，提示后整页刷新（当前二战页重新按新区服拉数据，简单可靠）
+    switchZone (id) {
+      const z = this.ezfyZones.find(x => String(x.id) === String(id))
+      localStorage.setItem('admin_ezfy_zone', id)
+      this.$message.success('已切换至「' + (z ? z.name : id) + '」')
+      setTimeout(() => { window.location.reload() }, 400)
     },
     // 按登录用户角色的权限码过滤菜单：未分配的菜单不展示（超级管理员全量展示）
     // 菜单维护的覆盖配置（名称/图标/排序/隐藏）在权限过滤前先合并
@@ -387,6 +429,10 @@ body {
 .header .crumb .sep { color: #d0d6e0; }
 .header .crumb .cur { color: #303133; font-weight: 600; }
 .header .right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+/* ★ 二战区服切换控件（仅二战管理页显示） */
+.zone-switch { display: flex; align-items: center; gap: 6px; }
+.zone-switch .zone-lab { font-size: 12px; color: #97a8be; white-space: nowrap; }
+.zone-switch .el-select { flex-shrink: 0; }
 .header .who {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   padding: 4px 12px 4px 4px; border-radius: 20px; transition: background .2s;

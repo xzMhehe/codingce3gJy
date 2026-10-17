@@ -33,11 +33,14 @@ set "ROOT=%CD%"
 set "PKG=%ROOT%\Linuxbushu"
 set "TARBALL=%ROOT%\Linuxbushu.tar.gz"
 set "ZIP=%ROOT%\Linuxbushu.zip"
+set "WWIIPKG=%ROOT%\WWIIbushu"
+set "WWII_TARBALL=%ROOT%\WWIIbushu.tar.gz"
+set "WWII_ZIP=%ROOT%\WWIIbushu.zip"
 set "NPMREG=%NPM_REGISTRY%"
 if "%NPMREG%"=="" set "NPMREG=https://registry.npmmirror.com"
 if "%GOPROXY%"=="" set "GOPROXY=https://goproxy.cn,direct"
 
-call :log "STEP 0/5 toolchain check"
+call :log "STEP 0/6 toolchain check"
 
 where node >nul 2>nul
 if errorlevel 1 goto :err_node
@@ -57,7 +60,7 @@ if not defined GO_BIN (
 if not defined GO_BIN goto :err_go
 for /f "tokens=3" %%v in ('"%GO_BIN%" version') do echo   [pack] go uses %%v
 
-call :log "STEP 1/5 build web"
+call :log "STEP 1/6 build web"
 
 REM NOTE: check .bin\vue-cli-service.cmd, not just node_modules/ -- an interrupted
 REM       npm install leaves node_modules/ present but without .bin, and the build
@@ -81,7 +84,7 @@ if not %RC%==0 goto :err_generic
 if not exist "%ROOT%\web\dist\index.html" goto :err_generic
 echo   [pack] web\dist done
 
-call :log "STEP 2/5 build admin-web"
+call :log "STEP 2/6 build admin-web"
 
 if not exist "%ROOT%\admin-web\node_modules\.bin\vue-cli-service.cmd" (
     echo   [pack] admin-web deps missing/incomplete, running npm install ^(slow on first run^)
@@ -102,7 +105,7 @@ if not %RC%==0 goto :err_generic
 if not exist "%ROOT%\admin-web\dist\index.html" goto :err_generic
 echo   [pack] admin-web\dist done
 
-call :log "STEP 3/5 cross compile server / dbinit (linux/amd64)"
+call :log "STEP 3/6 cross compile server / dbinit (linux/amd64)"
 
 if not exist "%PKG%\server" mkdir "%PKG%\server"
 pushd "%ROOT%\server"
@@ -131,7 +134,7 @@ call :check_elf "%PKG%\server\server"
 call :check_elf "%PKG%\server\dbinit"
 echo   [pack] server / dbinit done (linux/amd64 ELF verified)
 
-call :log "STEP 4/5 assemble package"
+call :log "STEP 4/6 assemble package"
 
 if exist "%PKG%\web" rmdir /s /q "%PKG%\web"
 if exist "%PKG%\admin-web" rmdir /s /q "%PKG%\admin-web"
@@ -177,9 +180,50 @@ REM CRLF -> LF for shell scripts, service unit and docs (else "bad interpreter" 
 powershell -NoProfile -Command "$n=0; Get-ChildItem -Path '%PKG%\*' -Include *.sh,*.service,*.txt -File | ForEach-Object { $c=[IO.File]::ReadAllText($_.FullName); $d=$c.Replace([string][char]13+[string][char]10,[string][char]10); if($d -ne $c){ [IO.File]::WriteAllText($_.FullName,$d); $n++ } }; if($n -gt 0){ Write-Output ('  [pack] CRLF to LF normalized: ' + $n + ' file(s)') }"
 if not exist "%PKG%\*.txt" echo   [pack] warning: deploy doc (.txt) not found, doc not packaged
 
-call :log "STEP 5/5 tar.gz / zip and verify"
+REM ================= WWII ezfy independent deploy package =================
+REM   1st-zone template config + open-zone tool + docs. Same binary as home.
+call :log "STEP 5/6 WWII independent package (WWIIbushu)"
+
+if exist "%WWIIPKG%\server" rmdir /s /q "%WWIIPKG%\server"
+if exist "%WWIIPKG%\web" rmdir /s /q "%WWIIPKG%\web"
+mkdir "%WWIIPKG%\server"
+mkdir "%WWIIPKG%\web\dist"
+copy /y "%PKG%\server\server" "%WWIIPKG%\server\server" >nul
+robocopy "%ROOT%\web\dist" "%WWIIPKG%\web\dist" /e /nfl /ndl /njh >nul
+copy /y "%PKG%\start.sh" "%WWIIPKG%\start.sh" >nul
+copy /y "%PKG%\stop.sh" "%WWIIPKG%\stop.sh" >nul
+REM ASCII-only names for WWII extras (cmd parses this UTF-8 bat as GBK, so any Chinese
+REM literal in a path would garble and the copy would silently skip - use zone2.sh /
+REM wwii-readme.txt, which pack-linxu.sh keeps in sync on the Mac side too).
+copy /y "%ROOT%\WWIIbushu\zone2.sh" "%WWIIPKG%\zone2.sh" >nul
+copy /y "%ROOT%\WWIIbushu\wwii-readme.txt" "%WWIIPKG%\wwii-readme.txt" >nul
+
+REM WWII zone-1 config is generated inline (UTF-8 via powershell, base64-embedded so this
+REM bat stays ASCII / encoding-proof). No external template file needed. jwt.secret must
+REM match the home package (SSO + admin reverse-proxy depend on it). MySQL password stays
+REM a placeholder here - deploy-wwii fills it from the server's home config /opt/config.yaml.
+set "HSEC="
+findstr /b /c:"  secret:" "%PKG%\server\config.yaml" > "%TEMP%\hsec.tmp" 2>nul
+if exist "%TEMP%\hsec.tmp" (
+    for /f "tokens=2 delims=: " %%s in (%TEMP%\hsec.tmp) do set "HSEC=%%s"
+    del /f /q "%TEMP%\hsec.tmp" 2>nul
+)
+set "HSEC=!HSEC:"=!"
+powershell -NoProfile -Command "$e=$env:HSEC; $p='%WWIIPKG:\=\\%\server\config.yaml'; $b='IyBXV0lJIGV6ZnkgaW5kZXBlbmRlbnQgZGVwbG95IGNvbmZpZyAoem9uZSAxLCBnZW5lcmF0ZWQgYnkgcGFjay1saW54dSkKc2VydmVyOgogIG1vZGU6IHd3aWkKICBwb3J0OiA4MDgxCiAgd2ViX2RpcjogIi9vcHQvV1dJSWJ1c2h1L3dlYi9kaXN0IgogIGdhbWVfbmFtZTogIuS6jOaImOW+gemAlCIKICB6b25lX2lkOiAxCiAgem9uZV9uYW1lOiAiMeWMuiIKICB6b25lX3N1YjogIue6ouiJsuitpuaIkiIKbXlzcWw6CiAgaG9zdDogMTI3LjAuMC4xCiAgcG9ydDogMzMwNgogIHVzZXI6IHJvb3QKICBwYXNzd29yZDogIkNIQU5HRS1UTy1TRVJWRVItTVlTUUwtUk9PVC1QQVNTV09SRCIKICBkYm5hbWU6IHFxX2ppYXl1YW4KZXpmeV9teXNxbDoKICBkYm5hbWU6IHFxX2V6enQKICBib290c3RyYXA6ICJtaWdyYXRlIgpqd3Q6CiAgc2VjcmV0OiAiX19KV1RfU0VDUkVUX18iCiAgZXhwaXJlX2hvdXJzOiAxNjgK'; $c=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)); if($e){$c=$c.Replace('__JWT_SECRET__',$e)}; [IO.File]::WriteAllText($p,$c,(New-Object System.Text.UTF8Encoding($false)))"
+if defined HSEC (
+    echo   [pack] WWII jwt.secret aligned with home package ^(!HSEC:~0,8!...^)
+) else (
+    echo   [pack] WARNING: no jwt.secret in home config - __JWT_SECRET__ placeholder kept, set it before deploy!
+)
+echo   [pack] WWII server\config.yaml generated ^(zone 1 template; MySQL password filled by deploy-wwii from server /opt/config.yaml^)
+
+REM CRLF -> LF for WWII scripts / docs (copied from source, may be CRLF)
+powershell -NoProfile -Command "$n=0; Get-ChildItem -Path '%WWIIPKG%' -Include *.sh,*.txt -File | ForEach-Object { $c=[IO.File]::ReadAllText($_.FullName); $d=$c.Replace([string][char]13+[string][char]10,[string][char]10); if($d -ne $c){ [IO.File]::WriteAllText($_.FullName,$d); $n++ } }; if($n -gt 0){ Write-Output ('  [pack] WWII CRLF to LF normalized: ' + $n + ' file(s)') }"
+
+call :log "STEP 6/6 tar.gz / zip and verify"
 
 if exist "%TARBALL%" del /f /q "%TARBALL%"
+if exist "%WWII_TARBALL%" del /f /q "%WWII_TARBALL%"
 where tar >nul 2>nul
 if errorlevel 1 (
     echo   [pack] tar not found, skipping tar.gz ^(folder package still valid^)
@@ -197,6 +241,15 @@ if not %RC%==0 (
     echo   [pack]       chmod +x server/server server/dbinit *.sh
     echo   [pack]       ./start.sh and ./init-db.sh also chmod by themselves.
 )
+pushd "%ROOT%"
+tar -czf "%WWII_TARBALL%" WWIIbushu
+set "RC=%errorlevel%"
+popd
+if not %RC%==0 (
+    echo   [pack] WWII tar failed, skipping WWIIbushu.tar.gz
+) else (
+    echo   [pack] WWII tar.gz: %WWII_TARBALL%
+)
 
 :ziptry
 if exist "%ZIP%" del /f /q "%ZIP%"
@@ -206,6 +259,13 @@ if errorlevel 1 (
 ) else (
     echo   [pack] zip: %ZIP%
 )
+if exist "%WWII_ZIP%" del /f /q "%WWII_ZIP%"
+powershell -NoProfile -Command "Compress-Archive -Path '%WWIIPKG:\=\\%' -DestinationPath '%WWII_ZIP:\=\\%' -Force" >nul 2>nul
+if errorlevel 1 (
+    echo   [pack] WWII Compress-Archive failed, skipping zip
+) else (
+    echo   [pack] WWII zip: %WWII_ZIP%
+)
 
 set "FAIL=0"
 for %%f in ("%PKG%\server\server" "%PKG%\server\dbinit" "%PKG%\server\config.yaml" "%PKG%\web\dist\index.html" "%PKG%\admin-web\dist\index.html" "%PKG%\start.sh") do (
@@ -214,15 +274,28 @@ for %%f in ("%PKG%\server\server" "%PKG%\server\dbinit" "%PKG%\server\config.yam
 if not exist "%PKG%\*.txt" set "FAIL=1"
 if not %FAIL%==0 goto :err_incomplete
 
+set "WFAIL=0"
+for %%f in ("%WWIIPKG%\server\server" "%WWIIPKG%\server\config.yaml" "%WWIIPKG%\web\dist\ezfy.html" "%WWIIPKG%\start.sh" "%WWIIPKG%\stop.sh" "%WWIIPKG%\zone2.sh" "%WWIIPKG%\wwii-readme.txt") do (
+    if exist "%%f" (echo   OK  %%f) else (echo   WWII MISSING %%f & set "WFAIL=1")
+)
+if not %WFAIL%==0 goto :err_incomplete
+
 echo.
 echo ============================================================
-echo   package done -^> %PKG%
+echo   package done -^> %PKG%  +  %WWIIPKG%
 echo ============================================================
 echo   On the server (minimal steps):
 echo     tar -xzf Linuxbushu.tar.gz -C /opt ^&^& cd /opt/Linuxbushu
 echo     chmod +x server/server server/dbinit *.sh
 echo     vi server/config.yaml                  ^(set the MySQL password^)
 echo     ./init-db.sh ^&^& ./start.sh
+echo.
+echo   WWII independent deploy ^(does not touch home, no restart of home server^):
+echo     tar -xzf WWIIbushu.tar.gz -C /opt ^&^& cd /opt/WWIIbushu
+echo     chmod +x *.sh server/server
+echo     vi server/config.yaml                  ^(set MySQL password, keep jwt.secret = home^)
+echo     ./start.sh                             ^(WWII zone 1, port 8081^)
+echo     ./zone2.sh                              ^(clone zone 2: port 8082, db qq_ezzt2, fresh^)
 echo.
 endlocal
 exit /b 0

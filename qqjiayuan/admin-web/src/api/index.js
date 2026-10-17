@@ -6,6 +6,10 @@ const api = axios.create({ baseURL: '/api', timeout: 15000 })
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('jy_admin_token')
   if (token) cfg.headers.Authorization = 'Bearer ' + token
+  // ★ 2026-10-17 二战拆多区部署：家园服按 X-Ezfy-Zone 请求头反向代理到对应二战区服；
+  //   不带该头时后端默认转发第一个区服。全量请求都带上也无害（非代理接口忽略此头）。
+  const zone = localStorage.getItem('admin_ezfy_zone')
+  if (zone) cfg.headers['X-Ezfy-Zone'] = zone
   return cfg
 })
 

@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import store from '../store'
+import api from '../api'
 
 Vue.use(VueRouter)
 
@@ -159,10 +160,30 @@ router.beforeEach((to, from, next) => {
   if (to.path === '/login' && store.getters.isLogin) {
     return next('/')
   }
-  // ★ 2026-10-12 二战独立登录：二战页自带独立登录界面（看 ezfy_token），
-  //   不强制家园登录，也不被家园路由守卫拦走。
+  // ★★ 2026-10-17 二战独立部署：二战已拆成独立进程（不同 host/port），
+  //   /games/ezfy 不再在家园 SPA 里渲染——
+  //   · 二战独立壳（ezfy.html，window.__EZFY_SHELL__=true）：放行，由 Ezfy.vue 渲染二战页/二战登录界面；
+  //   · 家园 SPA（index.html）：整页跳到默认二战区服（host + path），并把家园 jy_token 拼进 hash query
+  //     （sso_token 参数，只进地址栏不进 HTTP 请求），由二战壳用 /api/ezfy/sso 换二战 token。
   if (to.meta.ezfy) {
-    return next()
+    if (window.__EZFY_SHELL__) {
+      return next()
+    }
+    // 家园 SPA：先查全区服列表（公开接口），取第一个 host 非空的区服整页跳走；
+    // 查不到（接口失败/都没配 host）→ 兜底回家园首页，绝不渲染二战页。
+    api.get('/ezfy/zone').then(r => {
+      const list = (r && r.code === 0 && r.data && r.data.list) || []
+      const zone = list.find(z => z && z.host) || null
+      if (!zone || !zone.host) return next('/')
+      let p = zone.path || to.fullPath // 优先用区服配的 path，否则用原 to 的 path+query（如 /games/ezfy?cur=home）
+      if (p.charAt(0) !== '/') p = '/' + p
+      const jyToken = localStorage.getItem('jy_token')
+      if (jyToken) {
+        p += (p.indexOf('?') >= 0 ? '&' : '?') + 'sso_token=' + encodeURIComponent(jyToken)
+      }
+      window.location.href = zone.host.replace(/\/+$/, '') + '/#' + p
+    }).catch(() => next('/'))
+    return
   }
   if (to.meta.auth && !store.getters.isLogin) {
     return next('/login?redirect=' + encodeURIComponent(to.fullPath))
