@@ -11,6 +11,7 @@ package ezfy
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,6 +132,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"list": out, "total": len(out), "max": ezfyBotMaxCount,
 		"attack_on": ezfyBotAttackOn(), "atk_daily_cap": ezfyBotDailyAtkCap(),
+		// ★ 2026-10-17 免耗粮开关一并下发，前端 list 页首帧即显示真实状态（此前每次进页面自动变「关」）
+		"food_free": ezfyBotFoodFree(1),
 	})
 }
 
@@ -1135,4 +1138,110 @@ func (h *EzfyAdmin) AdminEzfyBotTargetDel(c *gin.Context) {
 func ezBotPopFree(h *EzfyAdmin, city model.EzfyCity) int64 {
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	return ezfyPopFree(city.Pop, ez.buildingPop(city.ID), ez.troopPop(city.ID), city.PopRecover)
+}
+
+// AdminEzfyBotAttackNearest POST /admin/ezfy-bot/:uid/attack-nearest —— 出征最近的敌对真人城市
+//
+// ★ 2026-10-17 用户需求：管理端一键让人机打「最近的真人敌对城」（非自己、非同盟）。
+//   写入攻击计划(status=0 待宣战) + 置 next_act_at=now，人机下一轮自动 宣战→生效→出击。
+func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	botCity := h.ezfyBotCurrentCity(uint(uid))
+	if botCity.ID == 0 {
+		resp.NotFound(c, "人机主城不存在")
+		return
+	}
+	// 候选：所有真人城（is_bot=0），排除自己与同盟，取欧氏距离最近
+	var cities []model.EzfyCity
+	h.DB.Select("id, user_id, name, x, y").Where("is_bot = 0").Find(&cities)
+	best := model.EzfyCity{}
+	bestDist := int64(1 << 62)
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	for _, cty := range cities {
+		if cty.UserID == uint(uid) {
+			continue
+		}
+		if ez.isAllyCity(uint(uid), int64(cty.ID)) {
+			continue
+		}
+		dx, dy := int64(cty.X-botCity.X), int64(cty.Y-botCity.Y)
+		if d := dx*dx + dy*dy; d < bestDist {
+			bestDist, best = d, cty
+		}
+	}
+	if best.ID == 0 {
+		resp.NotFound(c, "没有可攻击的敌对城市")
+		return
+	}
+	var dup int64
+	h.DB.Model(&model.EzfyBotTarget{}).
+		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2,3)", uid, best.UserID).Count(&dup)
+	if dup > 0 {
+		resp.ParamError(c, "已在对该城玩家的攻击计划中")
+		return
+	}
+	if err := h.DB.Create(&model.EzfyBotTarget{
+		BotUid: uint(uid), TargetUid: best.UserID, TargetCityId: int64(best.ID),
+		Status: 0, Note: fmt.Sprintf("最近敌对 %s(%d,%d)", best.Name, best.X, best.Y),
+	}).Error; err != nil {
+		resp.ParamError(c, "写入计划失败（可能已存在）")
+		return
+	}
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
+	ez.ezfyBotLog(uint(uid), "锁定最近敌对", fmt.Sprintf("锁定最近敌对城 %s(%d,%d)，下一轮自动宣战", best.Name, best.X, best.Y), 1)
+	dist := int(math.Sqrt(float64(bestDist)))
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已锁定最近的敌对城「%s」(距%d格)，人机下一轮自动宣战出击", best.Name, dist)})
+}
+
+// AdminEzfyBotRelocate POST /admin/ezfy-bot/:uid/relocate {x, y} —— 管理端给人机迁城
+//
+// ★ 2026-10-17 用户需求：输入目标坐标直接迁，复用玩家迁城 checkMoveTarget 校验
+//   （坐标 1~499、平原/沿海平原、该坐标无城市），省去等迁城计划。
+func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var in struct {
+		X int `json:"x"`
+		Y int `json:"y"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	if msg := ez.checkMoveTarget(in.X, in.Y, false); msg != "" {
+		resp.ParamError(c, msg)
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	ct := h.ezfyBotCurrentCity(uint(uid))
+	if ct.ID == 0 {
+		resp.NotFound(c, "人机主城不存在")
+		return
+	}
+	old := fmt.Sprintf("%s(%d,%d)", ct.Name, ct.X, ct.Y)
+	if err := h.DB.Model(&model.EzfyCity{}).Where("id = ?", ct.ID).
+		Updates(map[string]interface{}{"x": in.X, "y": in.Y}).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
+	ez.ezfyBotLog(uint(uid), "管理端迁城", fmt.Sprintf("迁城 %s → (%d,%d)", old, in.X, in.Y), 1)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把人机主城迁至 (%d,%d)", in.X, in.Y)})
 }

@@ -78,12 +78,13 @@
             <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '运行中' : '已暂停' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="370" align="center" fixed="right">
+        <el-table-column label="操作" width="440" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/建筑）" @click="openEdit(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发放资源" @click="openGrant(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-video-play" title="立即行动一轮" @click="actNow(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-aim" title="攻击目标（查看/指定/删除）" @click="openTargets(row)" />
+            <el-button size="mini" type="danger" plain icon="el-icon-map-location" title="迁城（输入坐标）" @click="openRelocate(row)" />
             <el-button size="mini" plain icon="el-icon-tickets" title="行为日志" @click="openLogs(row)" />
             <el-button size="mini" :type="row.enabled ? 'warning' : 'success'" plain
                        :icon="row.enabled ? 'el-icon-video-pause' : 'el-icon-video-play'"
@@ -194,12 +195,13 @@
             </el-table>
           </el-tab-pane>
           <el-tab-pane label="兵种数量" name="troop">
+            <!-- ★ 2026-10-17 兵种名收窄、数量列占大：人机兵力可达亿级，需要足够输入宽度 -->
             <el-table :data="editTroops" size="mini" border max-height="300" style="width:100%">
-              <el-table-column prop="name" label="兵种" min-width="120" />
-              <el-table-column label="数量" width="180" align="center">
+              <el-table-column prop="name" label="兵种" min-width="90" show-overflow-tooltip />
+              <el-table-column label="数量" min-width="300" align="center">
                 <template slot-scope="{row}">
-                  <el-input-number v-model="row.count" :min="0" :step="100"
-                                   controls-position="right" style="width:120px" />
+                  <el-input-number v-model="row.count" :min="0" :step="1000"
+                                   controls-position="right" style="width:260px" />
                 </template>
               </el-table-column>
             </el-table>
@@ -297,6 +299,7 @@
       <div class="toolbar" style="margin-bottom:10px">
         <el-input v-model.number="tgtInput" placeholder="目标玩家ID / 游戏号" clearable style="width:200px" />
         <el-button type="primary" size="mini" icon="el-icon-plus" :loading="tgtSaving" @click="addTarget">加入计划</el-button>
+        <el-button type="danger" size="mini" plain icon="el-icon-s-custom" :loading="tgtSaving" @click="attackNearest">出征最近敌对城</el-button>
         <span class="td-gray" style="font-size:12px">目标必须是真人；加入后该人机下一轮自动宣战（24h 生效）</span>
       </div>
       <el-table :data="targets" v-loading="tgtLoading" size="mini" border max-height="300">
@@ -315,6 +318,28 @@
         </el-table-column>
       </el-table>
       <div slot="footer"><el-button @click="tgtDlg = false">关 闭</el-button></div>
+    </el-dialog>
+
+    <!-- 迁城（管理端直接输入坐标，省去等迁城计划） -->
+    <el-dialog :title="'迁城 —— ' + (cur ? cur.nickname : '')" :visible.sync="relocateDlg" width="440px"
+               :close-on-click-modal="false">
+      <el-form label-width="80px" label-position="left">
+        <el-form-item label="目标坐标">
+          <el-input-number v-model.number="relocateForm.x" :min="1" :max="499" controls-position="right"
+                           style="width:130px" />
+          <span style="margin:0 4px">,</span>
+          <el-input-number v-model.number="relocateForm.y" :min="1" :max="499" controls-position="right"
+                           style="width:130px" />
+        </el-form-item>
+        <el-form-item label="当前坐标">
+          <span class="td-gray">{{ cur ? cur.city_name + '(' + cur.x + ',' + cur.y + ')' : '—' }}</span>
+        </el-form-item>
+        <div class="td-gray" style="font-size:12px">只能迁到平原或沿海平原，且目标坐标不能已有城市；迁完人机下一轮立即按新城行动</div>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="relocateDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="relocateSaving" @click="doRelocate">迁 移</el-button>
+      </div>
     </el-dialog>
 
     <!-- 行为日志 -->
@@ -356,6 +381,8 @@ export default {
       attackOn: 1, atkDailyCap: 3, foodFree: 1, saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
+      // 迁城（管理端直接输入坐标）
+      relocateDlg: false, relocateSaving: false, relocateForm: { x: 1, y: 1 },
       // 编辑快照（保存时只提交有变化的 tab —— 修复「保存卡顿」：几十条 UPDATE 串行跨 WAN 太慢）
       editSnap: { b: '', t: '', tr: '', o: '' },
       createDlg: false, createCount: 3, createLevel: 2, createBoost: true,
@@ -651,6 +678,35 @@ export default {
         if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadTargets() }
         else this.$message.error(r.msg)
       })
+    },
+    // ★ 2026-10-17 出征最近敌对真人城（非自己、非同盟，自动宣战出击）
+    attackNearest () {
+      if (!this.cur) return
+      this.tgtSaving = true
+      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/attack-nearest').then(r => {
+        this.tgtSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已锁定')
+          this.loadTargets()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.tgtSaving = false })
+    },
+    // ---- 迁城（管理端直接输入坐标） ----
+    openRelocate (row) {
+      this.cur = row
+      this.relocateForm = { x: row.x || 1, y: row.y || 1 }
+      this.relocateDlg = true
+    },
+    doRelocate () {
+      this.relocateSaving = true
+      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/relocate', this.relocateForm).then(r => {
+        this.relocateSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已迁移')
+          this.relocateDlg = false
+          this.load()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.relocateSaving = false })
     },
     openLogs (row) {
       this.cur = row

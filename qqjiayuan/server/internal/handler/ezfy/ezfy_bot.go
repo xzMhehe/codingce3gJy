@@ -609,9 +609,15 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 
 	// ① 已有计划：推进状态
 	var plans []model.EzfyBotTarget
-	h.DB.Where("bot_uid = ? AND status IN (0,1,2)", b.UserID).Order("id ASC").Limit(3).Find(&plans)
+	h.DB.Where("bot_uid = ? AND status IN (0,1,2,3)", b.UserID).Order("id ASC").Limit(3).Find(&plans)
 	for _, p := range plans {
 		switch p.Status {
+		case 3: // 冷却重试：到点转回待宣战
+			if now >= p.EffectTime {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 0)
+				return "重试宣战", fmt.Sprintf("目标 %d 冷却结束，重新宣战", p.TargetUid), true
+			}
+			continue
 		case 1: // 已宣战，等生效
 			if now >= p.EffectTime {
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
@@ -621,17 +627,47 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 		case 2: // 可出击
 			return h.botAttack(b, city, p, troopTotal)
 		case 0: // 待宣战 → 立即宣战
-			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
-				map[string]interface{}{"target_user_id": p.TargetUid, "city_id": int64(city.ID)})
-			if code == 0 {
-				eff := now + int64(ezfyWarDelayHours)*3600000
+				code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
+					map[string]interface{}{"target_user_id": p.TargetUid, "city_id": int64(city.ID)})
+				if code == 0 {
+					eff := now + int64(ezfyWarDelayHours)*3600000
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+						Updates(map[string]interface{}{"status": 1, "effect_time": eff})
+					return "宣战", fmt.Sprintf("向玩家 %d 宣战，%d 小时后生效", p.TargetUid, ezfyWarDelayHours), true
+				}
+				// ★ 2026-10-17 宣战失败分类（此前一律置 status=4 放弃，目标会莫名从列表消失）
+				//   ① 目标已不需要宣战（可直打）→ 直接可出击
+				if strings.Contains(msg, "不需要宣战") {
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
+					return "宣战跳过", fmt.Sprintf("目标 %d 不需要宣战，直接出击", p.TargetUid), true
+				}
+				//   ② 已宣战/已处于战争 → 沿用现有战争生效时间，状态挂起等待
+				if strings.Contains(msg, "已宣战") || strings.Contains(msg, "已处于战争") || strings.Contains(msg, "战争") {
+					w := h.getWar(b.UserID, uint(p.TargetUid))
+					if w != nil && w.Status == 2 {
+						// 战争已生效 → 直接出击
+						h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
+						return "宣战已生效", fmt.Sprintf("与目标 %d 战争已生效，直接出击", p.TargetUid), true
+					}
+					if w != nil && w.EffectTime > 0 {
+						h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+							Updates(map[string]interface{}{"status": 1, "effect_time": w.EffectTime})
+						return "宣战挂起", fmt.Sprintf("与目标 %d 已有宣战，等待生效", p.TargetUid), true
+					}
+					// 没查到战争记录 → 先挂起 2 小时再试
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+						Updates(map[string]interface{}{"status": 3, "effect_time": now + 2*3600000})
+					return "宣战失败", msg, false
+				}
+				//   ③ 同盟成员 → 真的打不了，放弃并留提示
+				if strings.Contains(msg, "同盟") {
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+					return "宣战失败", fmt.Sprintf("目标 %d 为同盟成员，放弃该计划", p.TargetUid), false
+				}
+				//   ④ 其他未知失败 → 冷却 2 小时重试，不消失
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-					Updates(map[string]interface{}{"status": 1, "effect_time": eff})
-				return "宣战", fmt.Sprintf("向玩家 %d 宣战，%d 小时后生效", p.TargetUid, ezfyWarDelayHours), true
-			}
-			// 宣战失败（不需要宣战/同盟/已有宣战）→ 放弃该计划
-			h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
-			return "宣战失败", msg, false
+					Updates(map[string]interface{}{"status": 3, "effect_time": now + 2*3600000})
+				return "宣战失败", msg, false
 		}
 	}
 
