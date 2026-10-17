@@ -184,6 +184,49 @@ func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, s
 	return "世界发言", content, true
 }
 
+// botHeal 立即恢复伤兵/逃兵（★ 2026-10-17 用户规则「人机会立即恢复伤兵、逃兵」）。
+//
+// 走真人 `/games/ezfy/troops/recover` 接口：免费版立即回城、只扣黄金（不花钻石，符合人机红线）。
+// 每轮只处理「有伤兵/逃兵的城」，逐城 all=1（伤兵 type=0、逃兵 type=1），
+// 黄金不足/伤兵营空时接口会拒 → 正常跳过（这轮做别的）。恢复不占用人口窗口。
+func (h *EzfyHandler) botHeal(b *model.EzfyBot) (string, string, bool) {
+	var cities []model.EzfyCity
+	h.DB.Where("user_id = ?", b.UserID).Find(&cities)
+	if len(cities) == 0 {
+		return "", "", false
+	}
+	// 找出有伤兵/逃兵的城（聚一次库，避免逐城 HTTP 白打）
+	var ids []int64
+	for _, ct := range cities {
+		ids = append(ids, int64(ct.ID))
+	}
+	if len(ids) == 0 {
+		return "", "", false
+	}
+	var wTypes []int
+	h.DB.Model(&model.EzfyWounded{}).Where("city_id IN ? AND count > 0", ids).
+		Distinct("type").Pluck("type", &wTypes)
+	if len(wTypes) == 0 {
+		return "", "", false
+	}
+	// 逐城恢复（伤兵 0 / 逃兵 1）；同一城两种都恢复
+	for _, ct := range cities {
+		for _, wt := range wTypes {
+			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/troops/recover",
+				map[string]interface{}{"city_id": int64(ct.ID), "type": wt, "all": true})
+			if code == 0 {
+				label := "伤兵"
+				if wt == 1 {
+					label = "逃兵"
+				}
+				return "恢复" + label, fmt.Sprintf("%s 全部恢复", label), true
+			}
+			_ = msg // 黄金不足/空营 → 跳过，本轮做别的
+		}
+	}
+	return "", "", false
+}
+
 // ezfyBotNickPool 昵称词库（军事风格，像真人 ID 而不是 NPC 编号）。
 var ezfyBotNickPool = []string{
 	"钢铁洪流", "沙漠之狐", "北境守望", "铁血孤鹰", "雪原狼", "暗夜尖刀",
@@ -317,6 +360,12 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 			"food": 500000, "steel": 200000, "oil": 200000, "rare": 200000,
 		})
 	}
+	// ★ 2026-10-17 人机默认人口 50 万（用户规则「默认人口 50 万吧，够用了」）：
+	//   侦察显示当前人口 50 万；征兵线、出征人口承载都以它为基准，开局就能撑起大军团出征。
+	//   （createMainCity 初始 100 上限太寒酸，人机懒得慢慢召集人口。）
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+		"pop": 500000, "pop_max": 500000,
+	})
 	// ★ 2026-10-17 新增人机按难度给初始兵力：侦察机 10/20/30 万、火箭 1/2/3 亿（有兵才敢宣战）
 	scoutN, rocketN := int64(100000), int64(100000000)
 	switch level {
@@ -620,6 +669,11 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 
 	// 0) 保命（★ 2026-10-17 加强）：被打光（城里一个兵没有）→ **立即征兵，无冷却**，
 	//    每轮 tick 都先补兵，直到能出门反击/发育为止。
+	// 0') 伤兵/逃兵优先恢复（★ 2026-10-17 用户规则「人机会立即恢复伤兵、逃兵」）：
+	//    有伤兵就先用黄金恢复（走真人接口，立即回城，免费版只扣黄金）。
+	if a, d, ok := h.botHeal(b); ok {
+		return a, d, ok
+	}
 	if troopTotal == 0 && buildingLv[14] > 0 {
 		if a, d, ok := h.botTrain(city, troopTotal, cfg, 1); ok {
 			return a, d, ok
@@ -753,23 +807,41 @@ func (h *EzfyHandler) botBuild(city *model.EzfyCity, bs []model.EzfyCityBuilding
 	return "", "", false, why
 }
 
-// botTrain 造兵（★ 2026-10-17 改造）：征兵线 50 万，低于就征；兵种按城型选——
+// botTrain 造兵（★ 2026-10-17 改造）：
 //
-//	陆地城 → 火箭(8)（军工厂 6 级起），海城 → 航母(16)（军工厂/航海协会/科技不够时退回火箭）。
+//	征兵线 50 万，低于就征。兵种按**当前局势动态选择**（用户规则「根据被打、出征别人优化造兵目标」）：
+//	  - 近期被真人攻打（10 分钟内有敌方单）→ 造**守军步兵**(1)：Pop 1 便宜、军工厂 1 级就能训，
+//	    被打光时能快速堆回来扛住下一波；
+//	  - 有活跃攻击计划（status 0/1/2）→ 造**攻击兵种**：陆地火箭(8) / 海城航母(16)；
+//	  - 无计划也无敌袭 → 默认攻击兵种（火箭/航母，随时准备出门打）。
 //	force=1 保命（被打光立即补，无冷却）；普通调用 force=0（常态征兵，征不满说明被人口/资源卡住）。
 func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyBotLevelCfg, force int) (string, string, bool) {
 	const keepTroops = 500000 // 征兵线：低于 50 万就一直补
 	if troopTotal >= keepTroops {
 		return "", "", false
 	}
-	// 兵种选择：海城航母 / 陆地火箭；不可训退回火箭
-	tid := 8
-	if h.isSeaCity(city) {
-		tid = 16
+	// 局势判定（★ 2026-10-17 动态兵种）
+	tid := 8 // 默认攻击：火箭
+	// ① 近期被打 → 守军步兵
+	var hit int64
+	now := time.Now().UnixMilli()
+	h.DB.Model(&model.EzfyOrder{}).
+		Where("order_type IN (1,2,3) AND target_type = 3 AND target_id = ? AND user_id != ? AND status IN (0,1) AND created_at_ms >= ?-600000",
+			int64(city.ID), city.UserID, now).Count(&hit)
+	if hit > 0 {
+		tid = 1
+	} else {
+		// ② 无敌袭：有活跃攻击计划 → 攻击兵种（默认火箭）；海城可训则航母
+		var active int64
+		h.DB.Model(&model.EzfyBotTarget{}).
+			Where("bot_uid = ? AND status IN (0,1,2)", city.UserID).Count(&active)
+		if active > 0 && h.isSeaCity(city) {
+			tid = 16
+		}
 	}
 	t := ezfyCfg.troop(tid)
+	// 不可训（航母要求 军工厂10/航海协会10）→ 退火箭
 	if t == nil || tid == 16 {
-		// 航母（军工厂10+航海协会10+科技）通常建不起来 → 退火箭
 		if tt := ezfyCfg.troop(8); tt != nil {
 			t, tid = tt, 8
 		}

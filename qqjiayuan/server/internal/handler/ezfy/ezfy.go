@@ -2823,11 +2823,15 @@ func (h *EzfyHandler) recoverAllWounded(city *model.EzfyCity, wtype int) string 
 		}
 		cost += ezfyWoundHealGoldPer(w.TroopId) * w.Count
 	}
-	if city.Gold < cost {
-		return fmt.Sprintf("黄金不足: 全部恢复需要%d黄金, 当前只有%d", cost, city.Gold)
+	// ★ 2026-10-17 人机恢复伤兵/逃兵**不消耗资源**（用户规则：人机免费恢复，不扣黄金）。
+	//   真人照旧校验黄金并扣减；人机城（is_bot=1）直接跳过扣费落库。
+	if city.IsBot == 0 {
+		if city.Gold < cost {
+			return fmt.Sprintf("黄金不足: 全部恢复需要%d黄金, 当前只有%d", cost, city.Gold)
+		}
+		city.Gold -= cost
+		h.saveCityRes(city)
 	}
-	city.Gold -= cost
-	h.saveCityRes(city)
 	for _, w := range list {
 		if w.Count <= 0 {
 			continue

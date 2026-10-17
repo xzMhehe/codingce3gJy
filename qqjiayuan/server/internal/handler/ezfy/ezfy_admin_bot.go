@@ -1196,21 +1196,15 @@ func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
 		return
 	}
 	// ★ 2026-10-17 管理端手动指定**不受最低声望门槛限制**（运营操作：管理员说打谁就打谁）
-	// 重复检查：活跃计划(0/1/2)已存在 → 友好提示
-	// ★ 2026-10-17 冷却中(3)不算「在计划中」：管理员冷却期间手动指定 → 允许，复活旧行清冷却强制开打
-	var dup int64
-	h.DB.Model(&model.EzfyBotTarget{}).
-		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, tp.UserID).Count(&dup)
-	if dup > 0 {
-		resp.ParamError(c, "该目标已在计划中")
-		return
-	}
+	// ★★ 2026-10-17 强制开打修复：不再有「已在计划中」拒绝 —— 无论旧计划是什么状态
+	//    （活跃 0/1/2、冷却 3、放弃 4），一律**复活重置**（status=0、清宣战生效/冷却），
+	//    管理员每次下达都会立刻生效：人机下一轮重新宣战出击。
 	// 目标当前城
 	var tc model.EzfyCity
 	h.DB.Where("user_id = ?", tp.UserID).Order("id ASC").First(&tc)
 	note := fmt.Sprintf("管理端指定 %s(%d,%d)", tp.Nickname, tc.X, tc.Y)
-	// ★ 2026-10-17 唯一键是 (bot_uid,target_uid) 不分状态：存在「已放弃(4)」旧行时若直接 Create 会撞唯一键报「写入计划失败」。
-	//   改为**复活旧行**（status 拉回 0、更新目标城与备注），复用而非新建。
+	// ★ 2026-10-17 唯一键是 (bot_uid,target_uid) 不分状态：存在旧行时若直接 Create 会撞唯一键。
+	//   统一走**复活旧行**（status 拉回 0、更新目标城与备注、清生效/冷却），复用而非新建。
 	var old = model.EzfyBotTarget{}
 	err := h.DB.Where("bot_uid = ? AND target_uid = ?", uid, tp.UserID).First(&old).Error
 	if err == nil {
@@ -1322,15 +1316,9 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		resp.NotFound(c, "没有可攻击的敌对城市")
 		return
 	}
-	var dup int64
-	h.DB.Model(&model.EzfyBotTarget{}).
-		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, best.UserID).Count(&dup)
-	if dup > 0 {
-		resp.ParamError(c, "已在对该城玩家的攻击计划中")
-		return
-	}
+	// ★★ 2026-10-17 强制开打修复：不再有「已在计划中」拒绝 —— 无论旧计划什么状态一律复活重置
 	note := fmt.Sprintf("最近敌对 %s(%d,%d)", best.Name, best.X, best.Y)
-	// ★ 2026-10-17 同 AdminEzfyBotTargetSet：存在「已放弃(4)」旧行时复活复用，避免撞 (bot_uid,target_uid) 唯一键
+	// ★ 2026-10-17 同 AdminEzfyBotTargetSet：存在旧行时复活复用，避免撞 (bot_uid,target_uid) 唯一键
 	var old = model.EzfyBotTarget{}
 	err := h.DB.Where("bot_uid = ? AND target_uid = ?", uid, best.UserID).First(&old).Error
 	if err == nil {

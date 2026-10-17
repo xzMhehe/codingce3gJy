@@ -348,6 +348,9 @@ func (h *EzfyHandler) BgTickBattles() {
 	for range time.Tick(15 * time.Second) {
 		tick++
 		now := time.Now().UnixMilli()
+		// ★ 2026-10-17 人机智能指挥：真人玩家会「进入射程后撤」风筝，bot 必须每回合主动前进追进射程，
+		//   否则守方/攻方永远碰不到玩家、被活活耗死。每轮先替 bot 侧写「全军前进」再结算回合。
+		h.botBattleCmds()
 		// 只处理「有活跃战场」或「有等待订单」的 uid，避免全量扫描订单表
 		seen := map[uint]bool{}
 		// cityOnly：由「到期建筑/到期订单」发现的 uid —— 这些还要逐城跑一次完整结算
@@ -400,6 +403,94 @@ func (h *EzfyHandler) BgTickBattles() {
 		if tick%40 == 0 {
 			h.purgeExpiredCaptives()
 		}
+	}
+}
+
+// botBattleCmds 人机战场智能指挥（★ 2026-10-17）。
+//
+// 背景：真人玩家打人机时**会一直停在射程内输出**（打一轮不撤），而人机守军射程短
+// （如步兵射程 20 vs 玩家火箭 3300）就永远够不着、被白嫖到死。反过来人机远程兵
+// 无脑「全军前进」又会追着玩家冲锋贴脸、被风筝遛狗。
+// 正确策略是**逐兵种按射程决策**（★ 2026-10-17 用户澄清「自己决策要不要前进，不是无脑前进」）：
+//   - 该单位到最近活敌的距离 > 本单位射程 → **前进**（advance，冲到射程内开火）
+//   - 距离 ≤ 射程 → **暂停**（hold，留在射程边缘输出，不冲锋白送）
+// 守方同理（守方 advance 的方向由战斗引擎按阵营处理，这里只发指令）。
+//
+// 性能：活跃战场行数很小（status=1）；人机 ≤ 50 个，一次性读入内存判 side。
+func (h *EzfyHandler) botBattleCmds() {
+	var bots []model.EzfyBot
+	h.DB.Select("user_id").Find(&bots)
+	if len(bots) == 0 {
+		return
+	}
+	botSet := make(map[uint]bool, len(bots))
+	for _, b := range bots {
+		botSet[b.UserID] = true
+	}
+	var battles []model.EzfyBattle
+	h.DB.Where("status = ?", 1).Find(&battles)
+	for i := range battles {
+		b := &battles[i]
+		side := "" // 该战场 bot 站在哪边：atk / def
+		if botSet[b.UserID] {
+			side = "atk"
+		} else if botSet[b.DefUserID] {
+			side = "def"
+		}
+		if side == "" {
+			continue
+		}
+		snap, ok := ezfyBattleSnapshotDecode(b.State)
+		if !ok {
+			continue
+		}
+		st := ezfyBattleStateFromSnapshot(snap)
+		units, enemies := st.Attackers, st.Defenders
+		rangeBonus := st.AtkRangeBonus
+		if side == "def" {
+			units, enemies = st.Defenders, st.Attackers
+			rangeBonus = st.DefRangeBonus
+		}
+		cmds := map[int]string{}
+		for _, u := range units {
+			if !u.alive() {
+				continue
+			}
+			// 最近活敌距离
+			nearest := int(^uint(0) >> 1)
+			for _, e := range enemies {
+				if !e.alive() {
+					continue
+				}
+				if d := ezfyAbs(e.pos - u.pos); d < nearest {
+					nearest = d
+				}
+			}
+			// 本单位实际射程（含科技加成）
+			rangeD := u.cfg.AttackRange
+			if rangeBonus != 0 {
+				rangeD = u.cfg.AttackRange * (100 + rangeBonus) / 100
+			}
+			cmd := ezfyCmdAdvance
+			if nearest <= rangeD {
+				cmd = ezfyCmdHold // 射程内 → 停住输出，别无脑冲锋被风筝
+			}
+			cmds[u.cfg.ID] = cmd
+		}
+		if len(cmds) == 0 {
+			continue
+		}
+		enc := ezfyAtkCmdsEncode(cmds)
+		field := "atk_cmd"
+		old := b.AtkCmd
+		if side == "def" {
+			field = "def_cmd"
+			old = b.DefCmd
+		}
+		if old == enc {
+			continue // 指令没变化，不重复写库
+		}
+		h.DB.Model(&model.EzfyBattle{}).Where("id = ?", b.ID).Update(field, enc)
 	}
 }
 
