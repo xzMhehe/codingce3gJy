@@ -246,6 +246,11 @@ func EnsureEzfyIndexes(db *gorm.DB) {
 	ensureEzfyIndex(db, "ezfy_exchange", "idx_exchange_buyer", "buyer_id", false)
 	ensureEzfyIndex(db, "ezfy_visit_log", "idx_ezfy_visit_visitor", "visitor_uid", false)
 
+	// ★ 2026-10-17 统帅称号：风云榜「每日第一」按 ts 区间聚合（GROUP BY user_id），
+	//   没有索引就是每天一次全表扫（ezfy_pvp_detail 会一直增长）。
+	//   （model 里 Ts 已带 index 标签，独立库 AutoMigrate 会建；这里照顾单库 skip 的存量表。）
+	ensureEzfyIndex(db, "ezfy_pvp_detail", "idx_pvp_detail_ts", "ts", false)
+
 	// ★★ 2026-10-10 原来这里还建 4 个**家园论坛**索引（threads/replies）——
 	//   二战拆到独立库后，这条函数跑在二战库上，家园表不在 → 每次启动刷 4 条
 	//   `Table 'qq_ezzt.threads' doesn't exist` 噪音。已挪到 EnsureHomeForumIndexes，

@@ -68,12 +68,18 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		cityIds = append(cityIds, ct.ID)
 	}
 	// ★ 2026-10-05 第二波并行（1 RTT）：军官/野地数、单城最高兵力、军团、好友关系
+	// ★ 2026-10-17 同一波加上「统帅称号」（生效中的徽章，昵称下方/阵营上方展示）
 	var officerCount, wildCount, maxCityTroop int64
+	var titles []map[string]interface{}
 	corpsName, corpsTitle := "", ""
 	isSelf := target == uid // 好友关系判定前置（复刻 infoOther 的 isShowAdd）
 	isFriend, isApplied := false, false
 	var wg2 sync.WaitGroup
-	wg2.Add(4)
+	wg2.Add(5)
+	go func() { // 称号（一次 JOIN，最多 6 个）
+		defer wg2.Done()
+		titles = ezfyTitlesOf(h.DB, target)
+	}()
 	go func() { // 军官数 / 野地数（跨城）
 		defer wg2.Done()
 		if len(cityIds) > 0 {
@@ -128,9 +134,11 @@ func (h *EzfyHandler) PlayerInfo(c *gin.Context) {
 		"officer_count": officerCount,
 		"troop_max":     maxCityTroop,
 		"wild_count":    wildCount,
-		"is_self":       isSelf,
-		"is_friend":     isFriend,
-		"is_applied":    isApplied,
+		// ★ 2026-10-17 统帅称号：昵称下方、阵营上方展示（生效中，过期自动不返回）
+		"titles":     titles,
+		"is_self":    isSelf,
+		"is_friend":  isFriend,
+		"is_applied": isApplied,
 	})
 }
 

@@ -17,6 +17,12 @@
           <a href="javascript:;" @click="ezfy.renameEditing = false">[取消]</a>
         </template>
         <br/>
+        <!-- ★ 2026-10-17 统帅称号：昵称下方、阵营上方（与「他人统帅页」同款徽章） -->
+        <div class="ezfy-title-line" v-if="ezfy.selfInfo.titles && ezfy.selfInfo.titles.length">
+          <span v-for="t in ezfy.selfInfo.titles" :key="t.id"
+                class="ezfy-title-badge" :class="'ezfy-title-t' + t.type"
+                :title="t.permanent ? '永久称号' : ('有效期至 ' + t.expire_fmt)">{{ t.name }}</span>
+        </div>
         <!-- ★ 2026-10-05 「没用的页面提示去掉」：改名/阵营提示不再展示（文案保留在代码里） -->
         阵营：{{ ezfy.selfInfo.camp_name || (ezfy.profile.camp === 2 ? '轴心国' : '同盟国') }}
         <a href="javascript:;" @click="ezfy.doChangeCamp(1)">[转同盟国]</a>
@@ -52,6 +58,12 @@
         <div class="old-line">
           <b :style="ezfy.nickColorAt(ezfy.playerInfo.color, 0)">{{ ezfy.playerInfo.nickname }}</b>
           <span class="gray">(玩家号码 {{ ezfy.playerInfo.game_uid || ezfy.playerInfo.user_id }})</span>
+        </div>
+        <!-- ★ 2026-10-17 统帅称号：昵称下方、阵营上方（生效中的才返回，过期自动消失） -->
+        <div class="ezfy-title-line" v-if="ezfy.playerInfo.titles && ezfy.playerInfo.titles.length">
+          <span v-for="t in ezfy.playerInfo.titles" :key="t.id"
+                class="ezfy-title-badge" :class="'ezfy-title-t' + t.type"
+                :title="t.permanent ? '永久称号' : ('有效期至 ' + t.expire_fmt)">{{ t.name }}</span>
         </div>
         <div class="old-line">
           阵营：{{ ezfy.playerInfo.camp_name }}<br/>

@@ -99,6 +99,9 @@ func (h *EzfyHandler) ProfileSelfInfo(c *gin.Context) {
 
 		// ★ 2026-10-12 访问记录：别人看我统帅页的总量（信息页「占领野地」下方可点开访问列表）
 		"visit_count": h.visitCount(uid),
+
+		// ★ 2026-10-17 统帅称号：自己的统帅页也展示（与「他人统帅页」同口径，昵称下方/阵营上方）
+		"titles": ezfyTitlesOf(h.DB, uid),
 	})
 }
 

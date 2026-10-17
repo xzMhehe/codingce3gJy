@@ -76,6 +76,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
 	// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
 	go ezfyH.BgTickBattles()
+	// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
+	//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
+	go ezfyH.BgTickTitles()
 	itH := &handler.InteractHandler{DB: db}
 	homeH := &handler.HomeHandler{DB: db}
 	contactH := &handler.ContactHandler{DB: db}
@@ -1181,6 +1184,14 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.GET("/ezfy-peace", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeace)
 				admin.POST("/ezfy-peace/:id/start", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceStart)
 				admin.DELETE("/ezfy-peace/:id", perm(db, "module:ezfyPeace"), ezfyAdminH.AdminEzfyPeaceEnd)
+				// ★ 2026-10-17 统帅称号：称号定义增删改查 + 授予/撤销 + 「已有称号玩家」列表，独立权限 module:ezfyTitles
+				admin.GET("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitles)
+				admin.POST("/ezfy-titles", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleSave)
+				admin.DELETE("/ezfy-titles/:id", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleDelete)
+				admin.GET("/ezfy-titles/:id/players", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitlePlayers)
+				admin.POST("/ezfy-titles/:id/grant", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleGrant)
+				// ★ 撤销走独立前缀（不能写成 /ezfy-titles/grant/:gid：与 /ezfy-titles/:id 同层会撞 gin 路由树）
+				admin.DELETE("/ezfy-title-grants/:gid", perm(db, "module:ezfyTitles"), ezfyAdminH.AdminEzfyTitleRevoke)
 				admin.GET("/ezfy-item-grant/players", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantPlayers)
 				admin.GET("/ezfy-item-grant/options", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrantOptions)
 				admin.POST("/ezfy-item-grant", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyItemGrant)

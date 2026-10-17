@@ -1840,6 +1840,8 @@ var modulePerms = []model.Permission{
 	rbacMod("游戏-二战征途", "军官装备管理", "ezfyEquips"),
 	// ★ 2026-10-12 免战管理（开始/结束免战，绕过个号冷却），独立可分配权限
 	rbacMod("游戏-二战征途", "免战管理", "ezfyPeace"),
+	// ★ 2026-10-17 统帅称号（称号定义维护 + 授予/撤销 + 已有称号玩家），独立可分配权限
+	rbacMod("游戏-二战征途", "统帅称号", "ezfyTitles"),
 	rbacMod("游戏-二战征途", "风云资源", "ezfyResources"), rbacMod("游戏-二战征途", "风云科技", "ezfyTechs"),
 	// 资源交易行维护（系统挂单定价黄金/钻石）
 	rbacMod("游戏-二战征途", "风云交易行", "ezfyExchange"),
@@ -2993,6 +2995,17 @@ func EnsureEzfyPvpWeekTable(db *gorm.DB) {
 func EnsureEzfyPvpDetailTable(db *gorm.DB) {
 	if err := db.AutoMigrate(&model.EzfyPvpDetail{}); err != nil {
 		log.Printf("[seed] 补建/更新 ezfy_pvp_detail 表失败: %v", err)
+	}
+}
+
+// EnsureEzfyTitleTables 幂等补建/更新统帅称号三张表（★ 2026-10-17）。
+//
+// 同 hazard：多机共享库的 skip 分支不跑全量 seed → 不补建则管理端「统帅称号」
+// 与玩家端统帅页的称号展示直接报 Error 1146 表不存在。
+// 所以它必须同时挂在 main.go 的 skip 分支和独立库模式（RunEzfy → AutoMigrate 已含）。
+func EnsureEzfyTitleTables(db *gorm.DB) {
+	if err := db.AutoMigrate(&model.EzfyTitle{}, &model.EzfyTitleGrant{}, &model.EzfyTitleDaily{}); err != nil {
+		log.Printf("[seed] 补建/更新统帅称号表失败: %v", err)
 	}
 }
 

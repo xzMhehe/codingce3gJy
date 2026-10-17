@@ -8269,6 +8269,39 @@ body.ezfy-ios .ezfy-page textarea {
   font-weight: normal;
 }
 .ezfy-page .old-line { padding: 2px 0; word-break: break-all; }
+/* ★ 2026-10-17 统帅称号徽章（昵称下方、阵营上方，见 modules/EzfyAcademy.vue）。
+   简约但有仪式感：深底 + 金边 + 金字的窄标签，前缀小菱形，像军功章绶带；
+   按称号类型换底色（t1 战功 赤金 / t2 榜单 紫金 / t3 活动 靛青 / t4 荣誉 银灰）。
+   ★ 不写解释性文案、不加卡片/色块背景，保持老式 WAP 文字页的排版节奏。 */
+.ezfy-page .ezfy-title-line { padding: 3px 0 2px; }
+.ezfy-page .ezfy-title-badge {
+  display: inline-block;
+  padding: 1px 9px 2px;
+  margin: 0 5px 3px 0;
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border-radius: 2px;
+  color: #ffe9b0;
+  background: linear-gradient(180deg, #b8342a 0%, #8e1f18 100%);
+  border: 1px solid #d9a53c;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12), 0 1px 2px rgba(0, 0, 0, .22);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .55);
+  vertical-align: middle;
+}
+.ezfy-page .ezfy-title-badge::before {
+  content: '◆';
+  margin-right: 4px;
+  font-size: 7px;
+  letter-spacing: 0;
+  color: #f7d478;
+  vertical-align: 1px;
+}
+.ezfy-page .ezfy-title-t1 { background: linear-gradient(180deg, #b8342a 0%, #8e1f18 100%); }
+.ezfy-page .ezfy-title-t2 { background: linear-gradient(180deg, #7a2a86 0%, #4a1055 100%); }
+.ezfy-page .ezfy-title-t3 { background: linear-gradient(180deg, #1f5f8b 0%, #123a58 100%); }
+.ezfy-page .ezfy-title-t4 { background: linear-gradient(180deg, #5c6b7a 0%, #37424d 100%); }
 /* ★ 建筑行「升级 / 一键满级 / 拆除」三个操作间隔再大一点（） */
 .ezfy-page .build-act { display: inline-block; }
 .ezfy-page .build-act a { margin: 0 5px; }

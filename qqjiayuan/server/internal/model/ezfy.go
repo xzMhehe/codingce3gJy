@@ -248,9 +248,9 @@ func (EzfyFriendApply) TableName() string { return "ezfy_friend_apply" }
 //   删除只置自己视角的标记，不影响对方。
 type EzfyMail struct {
 	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	SenderId   uint      `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"`     // 0 = 系统邮件
-	ReceiverId uint      `gorm:"index:idx_ezfy_mail_recv;comment:收件人" json:"receiver_id"`           // 0 = 收件人为全体（系统群发）
-	SenderName string    `gorm:"type:varchar(30);comment:发件人昵称快照" json:"sender_name"`              // 系统邮件为「系统」
+	SenderId   uint      `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"` // 0 = 系统邮件
+	ReceiverId uint      `gorm:"index:idx_ezfy_mail_recv;comment:收件人" json:"receiver_id"`     // 0 = 收件人为全体（系统群发）
+	SenderName string    `gorm:"type:varchar(30);comment:发件人昵称快照" json:"sender_name"`         // 系统邮件为「系统」
 	Subject    string    `gorm:"type:varchar(30);comment:主题(≤20字)" json:"subject"`
 	Content    string    `gorm:"type:varchar(1000);comment:正文(≤500字)" json:"content"`
 	IsRead     int       `gorm:"default:0;comment:0未读 1已读" json:"is_read"`
@@ -389,18 +389,18 @@ type EzfyCfgLimit struct {
 	//   战斗引擎 ezfy_battle.go 顶部的 5 个硬编码机制常量全部配置化，管理端可调、保存即热生效。
 	//   默认值 = 移植前的硬编码值（40/6000/10000/50/50），不改默认战斗行为；
 	//   读取端用 ezfyLimitOr 兜底（0 = 未配置/配置错 → 回落默认值）。
-	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`    // 战斗最多多少回合，达到上限按平局（默认 40）
-	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`    // 战场初始距离（攻方 0，守方 6000，相距 6000，默认 6000）
+	BattleMaxRounds  int `gorm:"default:40;comment:战斗最大回合数" json:"battle_max_rounds"`      // 战斗最多多少回合，达到上限按平局（默认 40）
+	BattleStartDist  int `gorm:"default:6000;comment:战场初始距离" json:"battle_start_dist"`     // 战场初始距离（攻方 0，守方 6000，相距 6000，默认 6000）
 	BattleRetreatMax int `gorm:"default:10000;comment:战斗最大后退距离" json:"battle_retreat_max"` // 双方各自最多后退多少（默认 10000）
-	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`   // 装备无暴击伤害(crit_dmg=0)时的兜底暴击倍率%（默认 50）
+	CritBaseBonusPct int `gorm:"default:50;comment:暴击基础伤害加成%" json:"crit_base_bonus_pct"`  // 装备无暴击伤害(crit_dmg=0)时的兜底暴击倍率%（默认 50）
 	GarrisonBreakPct int `gorm:"default:50;comment:盟军驻军溃败撤退阈值%" json:"garrison_break_pct"` // 盟军驻军战：守方兵力跌破初始的此比例% 即判败撤退（默认 50）
 	// ★ 2026-10-13 伤害公式系数：伤害 = (攻×攻系数+攻加值)/(防×(100+防加成%)×防系数+防加值)×数量, 再乘攻加成; 最小伤害=数量×最小伤害系数
 	BattleRoundMs int `gorm:"default:30000;comment:战斗每回合时长(毫秒)" json:"battle_round_ms"` // 指挥室实时战斗每回合毫秒数（默认 30000 = 30 秒）
-	AtkCoeff      int `gorm:"default:5;comment:伤害公式攻击系数" json:"atk_coeff"`                 // 伤害分子 攻×系数（默认 5）
-	AtkBase       int `gorm:"default:1000;comment:伤害公式攻击加值" json:"atk_base"`                // 伤害分子 +加值（默认 1000）
-	DefCoeff      int `gorm:"default:3;comment:伤害公式防御系数" json:"def_coeff"`                 // 伤害分母 防×系数（默认 3）
-	DefBase       int `gorm:"default:10;comment:伤害公式防御加值" json:"def_base"`                 // 伤害分母 +加值（默认 10）
-	MinDmgCoeff   int `gorm:"default:5;comment:最小伤害系数(数量×系数)" json:"min_dmg_coeff"`        // 最小伤害 = 数量×系数（默认 5）
+	AtkCoeff      int `gorm:"default:5;comment:伤害公式攻击系数" json:"atk_coeff"`              // 伤害分子 攻×系数（默认 5）
+	AtkBase       int `gorm:"default:1000;comment:伤害公式攻击加值" json:"atk_base"`            // 伤害分子 +加值（默认 1000）
+	DefCoeff      int `gorm:"default:3;comment:伤害公式防御系数" json:"def_coeff"`              // 伤害分母 防×系数（默认 3）
+	DefBase       int `gorm:"default:10;comment:伤害公式防御加值" json:"def_base"`              // 伤害分母 +加值（默认 10）
+	MinDmgCoeff   int `gorm:"default:5;comment:最小伤害系数(数量×系数)" json:"min_dmg_coeff"`     // 最小伤害 = 数量×系数（默认 5）
 
 	// ============ 系统配置（管理端「系统配置」页可维护）============
 	//
@@ -800,11 +800,11 @@ func (EzfyUserChestPity) TableName() string { return "ezfy_user_chest_pity" }
 // 用于核实「开了宝箱东西没到账」「开箱结果不对」类反馈——管理员按玩家ID/昵称/宝箱名
 // 搜索即可看到每次开箱开出了什么。
 type EzfyChestLog struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserID    uint      `gorm:"index:idx_ezfy_chest_log_user;comment:玩家ID" json:"user_id"`
-	ChestId   int       `gorm:"comment:宝箱配置ID(ezfy_cfg_chest.id)" json:"chest_id"`
-	ChestName string    `gorm:"type:varchar(50);comment:宝箱名快照(开箱时)" json:"chest_name"`
-	Count     int       `gorm:"comment:本次开的宝箱数量" json:"count"`
+	ID        uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint   `gorm:"index:idx_ezfy_chest_log_user;comment:玩家ID" json:"user_id"`
+	ChestId   int    `gorm:"comment:宝箱配置ID(ezfy_cfg_chest.id)" json:"chest_id"`
+	ChestName string `gorm:"type:varchar(50);comment:宝箱名快照(开箱时)" json:"chest_name"`
+	Count     int    `gorm:"comment:本次开的宝箱数量" json:"count"`
 	// 开箱结果聚合文本，如「获得：黄金×5000、经验×100」（同名合并，与开箱播报同口径）
 	Result    string    `gorm:"type:varchar(255);comment:开出的东西(聚合文本)" json:"result"`
 	CreatedAt time.Time `gorm:"comment:开箱时间" json:"created_at"`
@@ -839,12 +839,14 @@ func (EzfyPvpWeek) TableName() string { return "ezfy_pvp_week" }
 // 每场玩家对战结算时，攻守双方**各写一条**（points = 本场实际入账积分，封顶/门槛/同对手上限之后的值，0 也记——玩家看得明明白白）。
 // 独立于战报表：战报会定期清理，明细表不受影响，历史照查。
 type EzfyPvpDetail struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	Week      string    `gorm:"type:varchar(17);index:uk_pvp_detail;comment:自然周 20060102-20060102" json:"week"`
-	UserID    uint      `gorm:"index:uk_pvp_detail;comment:玩家ID" json:"user_id"`
-	FoeID     uint      `gorm:"comment:对手玩家ID" json:"foe_id"`
-	FoeNick   string    `gorm:"type:varchar(20);comment:对手昵称快照(结算时)" json:"foe_nick"`
-	Ts        int64     `gorm:"comment:战斗时间(毫秒)" json:"ts"`
+	ID      uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Week    string `gorm:"type:varchar(17);index:uk_pvp_detail;comment:自然周 20060102-20060102" json:"week"`
+	UserID  uint   `gorm:"index:uk_pvp_detail;comment:玩家ID" json:"user_id"`
+	FoeID   uint   `gorm:"comment:对手玩家ID" json:"foe_id"`
+	FoeNick string `gorm:"type:varchar(20);comment:对手昵称快照(结算时)" json:"foe_nick"`
+	// ★ 2026-10-17 加 ts 索引：统帅称号「风云榜每日第一」按天聚合积分（ts 区间 + GROUP BY user_id），
+	//   没有索引就是每天一次全表扫。
+	Ts        int64     `gorm:"index:idx_pvp_detail_ts;comment:战斗时间(毫秒)" json:"ts"`
 	Kills     int64     `gorm:"default:0;comment:本场灭敌(原始数量，展示口径)" json:"kills"`
 	Losses    int64     `gorm:"default:0;comment:本场战损(原始数量，展示口径)" json:"losses"`
 	Points    int64     `gorm:"default:0;comment:本场入账积分(0 也记)" json:"points"`
@@ -882,16 +884,73 @@ func (EzfyPvpFoe) TableName() string { return "ezfy_pvp_foe" }
 //   再由 seed.EnsureEzfyPvpExcludeTable 一次性复制到 power/prestige，
 //   保持「拆分前标一个 = 三个榜都不参与」的既有效果（不让玩家突然出现在另外两个榜上）。
 type EzfyPvpExclude struct {
-	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserID   uint   `gorm:"uniqueIndex:uk_excl_board_user,priority:2;comment:玩家ID" json:"user_id"`
-	Board    string `gorm:"type:varchar(16);not null;default:'pvp';uniqueIndex:uk_excl_board_user,priority:1;comment:榜单类型 pvp风云榜/power战力榜/prestige军衔声望榜" json:"board"`
-	Nickname string `gorm:"type:varchar(20);comment:昵称快照(便于后台识别)" json:"nickname"`
-	Reason   string `gorm:"type:varchar(100);comment:排除原因(后台备注)" json:"reason"`
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserID    uint      `gorm:"uniqueIndex:uk_excl_board_user,priority:2;comment:玩家ID" json:"user_id"`
+	Board     string    `gorm:"type:varchar(16);not null;default:'pvp';uniqueIndex:uk_excl_board_user,priority:1;comment:榜单类型 pvp风云榜/power战力榜/prestige军衔声望榜" json:"board"`
+	Nickname  string    `gorm:"type:varchar(20);comment:昵称快照(便于后台识别)" json:"nickname"`
+	Reason    string    `gorm:"type:varchar(100);comment:排除原因(后台备注)" json:"reason"`
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
 }
 
 func (EzfyPvpExclude) TableName() string { return "ezfy_pvp_exclude" }
+
+// EzfyTitle 统帅称号定义（★ 2026-10-17）
+//
+// 管理端「二战征途 → 统帅称号」维护：称号名称 / 类型 / 有效期(天) / 创建日期。
+// 玩家端统帅页（`games/ezfy?cur=playerinfo` 与他人统帅页）在**昵称下方、阵营上方**
+// 展示生效中的称号徽章，样式按 Type 区分颜色（榜单=紫金，最醒目）。
+//
+// ★ 自动发放：风云榜**每日积分第一** → 自动获得「天下无双」（有效期 1 天）。
+//   结算记录见 EzfyTitleDaily（每天一条，day 唯一，多实例安全），玩家持有见 EzfyTitleGrant。
+type EzfyTitle struct {
+	ID        uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Name      string `gorm:"type:varchar(20);not null;uniqueIndex:uk_ezfy_title_name;comment:称号名称" json:"name"`
+	Type      int    `gorm:"default:1;comment:称号类型(1战功 2榜单 3活动 4荣誉)" json:"type"`
+	ValidDays int    `gorm:"default:1;comment:有效期(天,0=永久)" json:"valid_days"`
+	Remark    string `gorm:"type:varchar(100);comment:备注/获得条件说明" json:"remark"`
+	Status    int    `gorm:"default:1;comment:状态(1启用 0停用)" json:"status"`
+
+	CreatedAt time.Time `gorm:"comment:称号创建日期" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyTitle) TableName() string { return "ezfy_title" }
+
+// EzfyTitleGrant 玩家持有的称号（★ 2026-10-17）
+//
+// (title_id, user_id) 唯一：同一玩家同一称号只有一行，重复授予 = 续期（到期时间取较晚的，
+// 永久(0) 不被缩短）。管理端「撤销」= 物理删除该行。
+type EzfyTitleGrant struct {
+	ID       uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	TitleId  uint   `gorm:"uniqueIndex:uk_title_grant_user;comment:称号ID(ezfy_title.id)" json:"title_id"`
+	UserID   uint   `gorm:"uniqueIndex:uk_title_grant_user;index:idx_title_grant_user;comment:玩家ID" json:"user_id"`
+	Nickname string `gorm:"type:varchar(20);comment:昵称快照(授予时)" json:"nickname"`
+	// Source 来源：admin=管理端手动授予 / pvp_daily=风云榜每日第一自动发放
+	Source    string    `gorm:"type:varchar(20);default:'admin';comment:来源 admin/pvp_daily" json:"source"`
+	ExpireAt  int64     `gorm:"default:0;comment:到期时间戳(ms,0=永久)" json:"expire_at"`
+	CreatedAt time.Time `gorm:"comment:获得时间" json:"created_at"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (EzfyTitleGrant) TableName() string { return "ezfy_title_grant" }
+
+// EzfyTitleDaily 风云榜「每日第一」称号结算记录（★ 2026-10-17）
+//
+// 每天一条（Day 唯一），用于**幂等**：多实例同时跑定时器时，靠 INSERT IGNORE 抢锁，
+// 只有抢到的那台会真的发称号（重复发放虽无副作用，但会多打库）。
+// UserID = 0 表示当天无有效冠军（无人上榜 / 全部被排除 / 称号被停用），也记一条避免反复重算。
+type EzfyTitleDaily struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Day       string    `gorm:"type:varchar(10);uniqueIndex:uk_title_daily_day;comment:结算日期 yyyymmdd" json:"day"`
+	UserID    uint      `gorm:"index;comment:当日冠军玩家ID(0=当天无冠军)" json:"user_id"`
+	Nickname  string    `gorm:"type:varchar(20);comment:昵称快照" json:"nickname"`
+	Points    int64     `gorm:"default:0;comment:当日风云积分" json:"points"`
+	TitleId   uint      `gorm:"default:0;comment:授予的称号ID(0=未授予)" json:"title_id"`
+	CreatedAt time.Time `gorm:"comment:结算时间" json:"created_at"`
+}
+
+func (EzfyTitleDaily) TableName() string { return "ezfy_title_daily" }
 
 // EzfyAccount 二战征途独立登录账号
 //
@@ -957,17 +1016,17 @@ type EzfyCity struct {
 	PopRecover int64 `gorm:"comment:待恢复人口(训练已消耗、还没回到空闲)" json:"pop_recover"`
 	// ★ 2026-10-13 待恢复人口上次结算时间戳(ms)，0 = 还没结算过（首次结算只记时间、不恢复）。
 	PopRecoverAt int64 `gorm:"comment:待恢复人口上次结算时间戳(ms)" json:"pop_recover_at"`
-	Gold        int64 `gorm:"comment:黄金" json:"gold"`
-	Food        int64 `gorm:"comment:粮食" json:"food"`
-	Steel       int64 `gorm:"comment:钢铁" json:"steel"`
-	Oil         int64 `gorm:"comment:石油" json:"oil"`
-	Rare        int64 `gorm:"comment:稀矿" json:"rare"`
-	GoldCap     int64 `gorm:"comment:黄金上限" json:"gold_cap"`
-	FoodCap     int64 `gorm:"comment:粮食上限" json:"food_cap"`
-	SteelCap    int64 `gorm:"comment:钢铁上限" json:"steel_cap"`
-	OilCap      int64 `gorm:"comment:石油上限" json:"oil_cap"`
-	RareCap     int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
-	LastTime    int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
+	Gold         int64 `gorm:"comment:黄金" json:"gold"`
+	Food         int64 `gorm:"comment:粮食" json:"food"`
+	Steel        int64 `gorm:"comment:钢铁" json:"steel"`
+	Oil          int64 `gorm:"comment:石油" json:"oil"`
+	Rare         int64 `gorm:"comment:稀矿" json:"rare"`
+	GoldCap      int64 `gorm:"comment:黄金上限" json:"gold_cap"`
+	FoodCap      int64 `gorm:"comment:粮食上限" json:"food_cap"`
+	SteelCap     int64 `gorm:"comment:钢铁上限" json:"steel_cap"`
+	OilCap       int64 `gorm:"comment:石油上限" json:"oil_cap"`
+	RareCap      int64 `gorm:"comment:稀矿上限" json:"rare_cap"`
+	LastTime     int64 `gorm:"comment:上次资源结算时间戳(ms)" json:"last_time"` // 上次资源结算时间戳(ms)
 	// ★ 2026-10-12 用户规则「迁城道具加个冷却，针对**迁过城的城市**冷却 24 小时」：
 	//   冷却记在**城市**上 —— 本城迁城时间 + 配置的冷却时长的截止时间戳(ms)，0 = 无冷却。
 	//   别的城不受影响；时长由管理端「二战系统配置 → 迁城冷却(小时)」维护（0 = 关闭）。
@@ -1883,7 +1942,7 @@ type EzfyCfgChestItem struct {
 	Quality string `gorm:"type:varchar(20);default:'';comment:Quality 展示用品质标签（普通/稀有/史诗/传说），纯展示" json:"quality"`
 	// MinDraws 保底抽取次数（★ 2026-10-14）：玩家抽该宝箱累计满 MinDraws 次仍没出此奖品，
 	// 则下一次必出此奖品（出后清零重新累计）。1 = 不启用保底（默认，普通奖品）；传说类按品质 50~500。
-	MinDraws int `gorm:"default:1;comment:MinDraws 保底抽取次数(1=不启用,>=2生效,出后清零)" json:"min_draws"`
+	MinDraws int    `gorm:"default:1;comment:MinDraws 保底抽取次数(1=不启用,>=2生效,出后清零)" json:"min_draws"`
 	Des      string `gorm:"type:varchar(200);default:'';comment:描述" json:"des"`
 }
 

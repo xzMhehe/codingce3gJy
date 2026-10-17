@@ -59,16 +59,19 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyDiamondLog{}, &model.EzfyItemUseLog{},
 	&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 	&model.EzfyPreset{}, &model.EzfyActivity{}, &model.EzfyFriend{}, &model.EzfyFriendApply{},
-	&model.EzfyMail{}, // ★ 2026-10-13 游戏内邮件（收件箱/系统邮件/发件箱）
+	&model.EzfyMail{},                              // ★ 2026-10-13 游戏内邮件（收件箱/系统邮件/发件箱）
 	&model.EzfyLoveCard{}, &model.EzfyConveneLog{}, // ★ 2026-10-11 召集埋点（活动监测）
 	&model.EzfyVisitLog{}, &model.EzfyAccount{}, // ★ 2026-10-12 访问记录 / 二战独立登录账号
-	&model.EzfyUserChest{}, // ★ 2026-10-14 玩家持有的未开宝箱（发放后自己开）
+	&model.EzfyUserChest{},     // ★ 2026-10-14 玩家持有的未开宝箱（发放后自己开）
 	&model.EzfyUserChestPity{}, // ★ 2026-10-14 玩家宝箱奖池保底进度（min_draws）
-	&model.EzfyChestLog{}, // ★ 2026-10-16 玩家开箱流水（管理端「数据管理→宝箱开启」）
-	&model.EzfyPvpWeek{}, // ★ 2026-10-14 风云榜（每周玩家对战战绩）
-	&model.EzfyPvpFoe{}, // ★ 2026-10-14 风云榜同对手积分封顶（防小号互刷）
-	&model.EzfyPvpDetail{}, // ★ 2026-10-16 风云榜「我的战绩」场次明细（战报会删，明细独立留存）
-	&model.EzfyPvpExclude{}, // ★ 2026-10-14 风云榜「不参与排名」名单
+	&model.EzfyChestLog{},      // ★ 2026-10-16 玩家开箱流水（管理端「数据管理→宝箱开启」）
+	&model.EzfyPvpWeek{},       // ★ 2026-10-14 风云榜（每周玩家对战战绩）
+	&model.EzfyPvpFoe{},        // ★ 2026-10-14 风云榜同对手积分封顶（防小号互刷）
+	&model.EzfyPvpDetail{},     // ★ 2026-10-16 风云榜「我的战绩」场次明细（战报会删，明细独立留存）
+	&model.EzfyPvpExclude{},    // ★ 2026-10-14 风云榜「不参与排名」名单
+	&model.EzfyTitle{},         // ★ 2026-10-17 统帅称号定义（管理端维护）
+	&model.EzfyTitleGrant{},    // ★ 2026-10-17 玩家持有的称号（(title_id,user_id) 唯一）
+	&model.EzfyTitleDaily{},    // ★ 2026-10-17 风云榜每日第一称号结算记录（day 唯一，幂等锁）
 	// —— 二战自己用的通用表（不共享家园）——
 	&model.PrivateMessage{}, // 二战的家信/系统通知（不再写家园家信）
 	&model.Setting{},        // 二战自己的系统开关（ezfy_maintenance 等）

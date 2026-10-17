@@ -103,6 +103,10 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	//   ★ 只按 user_id 清（**不清 foe_id**）：这张表是「谁的战绩明细」，按 foe_id 清会把
 	//     **别人**的历史记录删掉；对手名在表里已是快照(foe_nick)，留着不影响。
 	{"ezfy_pvp_detail", []string{"user_id"}},
+	// ★ 2026-10-17 统帅称号：玩家持有的称号 + 每日冠军结算记录（都是玩家数据，删号必须清；
+	//   称号**定义**表 ezfy_title 是全局配置，见 ezfyPurgeGlobalTables）
+	{"ezfy_title_grant", []string{"user_id"}},
+	{"ezfy_title_daily", []string{"user_id"}},
 }
 
 // ezfyPurgeByCity 按**城市**归属的表（占位值 = 该玩家的城池 id 列表）。
@@ -146,6 +150,7 @@ var ezfyPurgeGlobalTables = []string{
 	"ezfy_corps_mall",   // 军团商城**配置**（玩家购买流水是 ezfy_corps_mall_log，已清）
 	"ezfy_exchange_tpl", // 交易行挂单模板
 	"ezfy_map_tile",     // 地图瓦片（全服共享地形）
+	"ezfy_title",        // 统帅称号**定义**（管理端维护的全局配置，与玩家无关）
 	"settings",          // 二战系统设置（全服一份）
 }
 
