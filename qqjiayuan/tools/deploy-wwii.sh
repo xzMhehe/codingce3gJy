@@ -136,26 +136,14 @@ elif [ "$(rsh_read "test -f '$CONFIG_SEED' && echo yes || echo no")" = "yes" ]; 
   node "$SSH_RUN" exec "cp -a '$CONFIG_SEED' $REMOTE_DIR/server/config.yaml" || die "恢复种子配置失败"
   info "已从 $CONFIG_SEED 恢复配置"
 else
-  # 无备份/种子 → 模板就位。wwii 模式连家园库只读 + ezfy_mysql 继承 mysql 的
-  # host/user/password，故从服务器上家园配置 /opt/Linuxbushu/server/config.yaml
-  # （退路 /opt/config.yaml）提取 MySQL 的 host 与密码回填（库可能在远端 RDS）。
-  HOME_HOST=$(rsh_read "sed -n 's/^[[:space:]]*host:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
-  HOME_PASS=$(rsh_read "sed -n 's/^[[:space:]]*password:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
-  [ -z "$HOME_PASS" ] && HOME_PASS=$(rsh_read "sed -n 's/^[[:space:]]*password:[[:space:]]*//p' /opt/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
-  if [ -n "$HOME_PASS" ]; then
-    node "$SSH_RUN" exec "sed -i 's/^[[:space:]]*password:[[:space:]]*.*/  password: \"$HOME_PASS\"/' $REMOTE_DIR/server/config.yaml && echo patched" \
-      || die "回填 MySQL 密码失败"
-    info "已从家园配置回填 MySQL 密码"
-  else
-    info "WARN: 无备份/种子配置，且读不到家园配置 —— 请先编辑 $REMOTE_DIR/server/config.yaml 填 MySQL 密码再启动"
-  fi
-  if [ -n "$HOME_HOST" ]; then
-    node "$SSH_RUN" exec "sed -i 's/^[[:space:]]*host:[[:space:]]*.*/  host: \"$HOME_HOST\"/' $REMOTE_DIR/server/config.yaml && echo hostpatched" \
-      || die "回填 MySQL host 失败"
-    info "已从家园配置回填 MySQL host（$HOME_HOST）"
-  else
-    info "WARN: 读不到家园配置 mysql host —— 请先编辑 $REMOTE_DIR/server/config.yaml 的 host 再启动"
-  fi
+  # 无备份/种子 → 模板就位。上传 wwii-patch-cfg.sh，从服务器上家园配置
+  # /opt/Linuxbushu/server/config.yaml（退路 /opt/config.yaml）回填 MySQL host/密码，
+  # 并写入 home_url（家园服公网地址 http://<主机IP>:<家园端口>）供二战「家园」按钮整页跳转。
+  node "$SSH_RUN" put "$SCRIPT_DIR/wwii-patch-cfg.sh" "$REMOTE_DIR/wwii-patch-cfg.sh" || die "上传补丁脚本失败"
+  HOME_PORT=$(rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'")
+  [ -n "$HOME_PORT" ] || HOME_PORT=8080
+  node "$SSH_RUN" exec "bash $REMOTE_DIR/wwii-patch-cfg.sh $REMOTE_DIR/server/config.yaml /opt/Linuxbushu/server/config.yaml http://$SSH_HOST:$HOME_PORT" || die "回填 WWII 配置失败"
+  info "已从家园配置回填 MySQL host/密码 + home_url（http://$SSH_HOST:$HOME_PORT）"
 fi
 
 step "6/7 启动"

@@ -281,13 +281,14 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		//   绝不把全区服列表（尤其 1 区）暴露给 2 区玩家 —— 2 区首页刷新不再闪「1区」掠影。
 		//   管理端切区走 home 模式的反代（home 的 /api/ezfy/zone 返回全区列表）。
 		if cfg.Mode() == "wwii" {
-			zoneName := cfg.ZoneTitle()
-			resp.OK(c, gin.H{
-				"list":    []gin.H{{"id": cfg.Server.ZoneID, "name": zoneName, "host": "", "path": ""}},
-				"current": cfg.Server.ZoneID,
-			})
-			return
-		}
+		zoneName := cfg.ZoneTitle()
+		resp.OK(c, gin.H{
+			"list":     []gin.H{{"id": cfg.Server.ZoneID, "name": zoneName, "host": "", "path": ""}},
+			"current":  cfg.Server.ZoneID,
+			"home_url": cfg.Server.HomeURL,
+		})
+		return
+	}
 		list := make([]gin.H, 0)
 		current := 0
 		srv := ezfyServers(db)

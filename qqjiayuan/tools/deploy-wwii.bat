@@ -232,9 +232,12 @@ if not "!PUT_RC!"=="0" (
     echo   XX patch script upload failed
     goto fail_clean
 )
-call :rsh "bash %REMOTE_DIR%/wwii-patch-cfg.sh %REMOTE_DIR%/server/config.yaml /opt/Linuxbushu/server/config.yaml"
+call :rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'"
+set "HOME_PORT=!RH_OUT!"
+if "!HOME_PORT!"=="" set "HOME_PORT=8080"
+call :rsh "bash %REMOTE_DIR%/wwii-patch-cfg.sh %REMOTE_DIR%/server/config.yaml /opt/Linuxbushu/server/config.yaml http://%SSH_HOST%:!HOME_PORT!"
 if "!RH_RC!"=="0" (
-    echo   OK MySQL host/password derived from home config
+    echo   OK MySQL host/password + home_url derived from home config ^(http://%SSH_HOST%:!HOME_PORT!^)
 ) else (
     echo   WARN: patch script failed - edit %REMOTE_DIR%\server\config.yaml to set MySQL host/password before start
 )

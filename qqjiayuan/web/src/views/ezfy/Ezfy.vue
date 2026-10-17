@@ -482,6 +482,9 @@ export default {
       //   原来写死 1 区名 → 2 区玩家刷新时接口没回来先闪「二战征途-【1区】红色警戒」掠影。
       //   现在优先用上次缓存的本区名（刷新首帧即正确），没有缓存回落通用游戏名。
       zoneTitle: localStorage.getItem('ezfy_zone_title') || '二战征途',
+      // ★★ 2026-10-17 二战独立部署：家园服公网地址（zone 接口下发）。
+      //   二战服是独立 SPA，「家园」按钮不能用站内路由（/home 不存在），要整页跳回家园服。
+      homeUrl: '',
       ssoPending: !!this.$store.state.token,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
@@ -2218,6 +2221,12 @@ export default {
     // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
     // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
     exitToHome () {
+      // ★★ 2026-10-17 二战独立部署：二战服是独立 SPA，站内没有 /home 路由。
+      //   有 home_url（zone 接口下发）→ 整页跳回家园服；没有（home 模式同进程）→ 走站内路由。
+      if (this.homeUrl) {
+        window.location.href = this.homeUrl
+        return
+      }
       this.$router.push('/home')
     },
     // 沉浸式卡控①: 拦掉一切会把玩家带出游戏的站内链接
@@ -2370,6 +2379,8 @@ export default {
             // ★★ 2026-10-17 缓存本区名：刷新首帧就能显示正确区名，不再先闪兜底文案
             localStorage.setItem('ezfy_zone_title', cur.name)
           }
+          // ★★ 2026-10-17 二战独立部署：家园服地址随 zone 接口下发，「家园」按钮整页跳转用
+          if (r.data.home_url) this.homeUrl = r.data.home_url
         }
       }).catch(() => {}) // 拿不到就用 data() 里的兜底标题，不影响登录
     },

@@ -21,6 +21,10 @@ type ServerConfig struct {
 	ZoneID   int    `yaml:"zone_id"`
 	ZoneName string `yaml:"zone_name"`
 	ZoneSub  string `yaml:"zone_sub"`
+	// ★★ 2026-10-17 二战独立部署：家园服公网地址（如 http://124.222.208.92:8080）。
+	//   二战独立服（wwii 模式）前端「家园」按钮用它整页跳回家园；home 模式留空走站内路由。
+	//   部署时由 deploy-wwii 自动回填为 http://<主机IP>:8080，无需手动配。
+	HomeURL string `yaml:"home_url"`
 }
 
 // ZoneTitle 完整服务标题，如「二战征途-【1区】红色警戒」。

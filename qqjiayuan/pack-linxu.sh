@@ -302,6 +302,9 @@ server:
   zone_id: 1
   zone_name: "1区"
   zone_sub: "红色警戒"
+  # ★★ 2026-10-17 家园服公网地址(二战服「家园」按钮整页跳转用)。
+  #   打包时留空,deploy-wwii.sh 部署时自动回填为 http://<主机IP>:8080。
+  home_url: ""
 mysql:
   host: 127.0.0.1
   port: 3306
