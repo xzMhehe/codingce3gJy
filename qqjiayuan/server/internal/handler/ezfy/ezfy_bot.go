@@ -865,10 +865,10 @@ func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyB
 	if gap <= 0 {
 		return "", "", false
 	}
-	// ★ 2026-10-17 人口门槛：没人口直接跳过（不然每次发请求都吃「人口不足」失败，白烧往返）。
-	if int64(city.Pop) < int64(t.Pop) {
-		return "", "", false
-	}
+	// ★★ 2026-10-17 人机训练**不占人口**（用户规则：出征数量 30~40 万，火箭 Pop12 训 40 万
+	//   要 480 万人口，50 万人口根本训不出来 → 出征只能带 4 万）。
+	//   人机（IsBot=1）跳过人口门槛；真人照旧（训练校验 ezfy.go 也同步对 is_bot 跳过）。
+	//   资源约束保留（人机也要留资源建设）。
 	// 可负担数量（留 20% 资源做后续建设）
 	maxByRes := int64(1 << 30)
 	for _, pair := range [][2]int64{{t.Food, city.Food * 8 / 10}, {t.Steel, city.Steel * 8 / 10},
@@ -883,10 +883,15 @@ func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyB
 	if count > maxByRes {
 		count = maxByRes
 	}
-	// 人口上限（每个兵占 t.Pop 人口）
-	if t.Pop > 0 {
-		if n := int64(city.Pop) / int64(t.Pop); count > n {
-			count = n
+	if city.IsBot == 0 {
+		if int64(city.Pop) < int64(t.Pop) {
+			return "", "", false
+		}
+		// 人口上限（每个兵占 t.Pop 人口）
+		if t.Pop > 0 {
+			if n := int64(city.Pop) / int64(t.Pop); count > n {
+				count = n
+			}
 		}
 	}
 	// 单批不超过 2000（训练队列有上限，且大批量排队太久）
@@ -1320,9 +1325,12 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	//   侦察只派 1 兵探路（大部队去送没意义）。
 	leadName := ""
 	var lead model.EzfyOfficer
+	// ★★ 2026-10-17 不带军官 bug 修复：此前有 `Military > 0` 门槛，人机招募的普通军官
+	//   军事可能是 0 → 永远选不到 → 出征不带军官（战报只有守军军官）。
+	//   改成**本城军事最高的在职军官就带**（军事 0 也带，出征吃经验/升级；真人也会带低级军官练级）。
 	h.DB.Where("city_id = ? AND status = 0", city.ID).
 		Order("military DESC, level DESC").First(&lead)
-	if lead.ID > 0 && lead.Military > 0 {
+	if lead.ID > 0 {
 		leadName = lead.Name
 	}
 	atkType := ezfyBotOrderTypeOf(b.AtkType)
@@ -1377,30 +1385,11 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	if len(groups) == 0 {
 		return "出击失败", "出征兵力缩放后为空（上限过小）", false
 	}
-	// ★★ 2026-10-17 出征还要受**人口承载**约束：createOrder 出征校验要求部队占人口 ≤ 城市可用人口。
-	//   人机若带 30~40 万火箭（Pop12/个 = 360~480 万人口）但人口只有 50 万 → 出征必被拒「人口不足」→ 不打人。
-	//   算出全部兵种的单位人口占用，总量超过城市人口 → 等比缩放到人口窗口内（派得少总比打不出去强）。
-	var popNeed int64
-	for _, g := range groups {
-		if tc := ezfyCfg.troop(g.TroopId); tc != nil {
-			popNeed += int64(tc.Pop) * g.Count
-		}
-	}
-	if popNeed > int64(city.Pop) && int64(city.Pop) > 0 {
-		for i := range groups {
-			groups[i].Count = groups[i].Count * int64(city.Pop) / popNeed
-		}
-		trim := groups[:0]
-		for _, g := range groups {
-			if g.Count > 0 {
-				trim = append(trim, g)
-			}
-		}
-		groups = trim
-		if len(groups) == 0 {
-			return "出击失败", "出征兵力人口承载后为空（人口过少）", false
-		}
-	}
+	// ★★ 2026-10-17 出征数量 bug 修复：此前这里加了一段「人口承载等比缩放」——以为
+	//   createOrder 出征会校验人口。实际**出征不占人口**（部队一出征就从城内部队表扣掉、
+	//   人口瞬间归还，见 ezfy.go 出征注释）→ 那段裁剪把 30~40 万火箭缩到 4 万（50 万人口
+	//   / Pop12），人机出征数量永远不对。已删除；真正卡人口的是**训练**（botTrain 已对
+	//   is_bot 跳过人口门槛，训练校验 ezfy.go 也跳过），训得出就能带得出。
 	var tc model.EzfyCity
 	if err := h.DB.First(&tc, p.TargetCityId).Error; err != nil {
 		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)

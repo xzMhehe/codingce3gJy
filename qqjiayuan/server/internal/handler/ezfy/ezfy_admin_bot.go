@@ -489,7 +489,13 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 	// 让它立刻消化这批资源（下一轮 tick 不用等）
 	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
 	ez.ezfyBotLog(uint(uid), "管理端发资源", trimStr(msg, 200), 1)
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给人机「%s」发放：%s（它会立刻行动消化资源）", nick, msg)})
+	// ★ 2026-10-17 返回发放后的最新集结令数量：前端弹窗「当前」直接用返回值刷新，
+	//   否则发放完显示的还是打开弹窗时的旧值（集结令数量 bug）。
+	gatherNow := 0
+	if gatherCID := ezfyGatherItemID(); gatherCID > 0 {
+		gatherNow = ez.itemCount(uint(uid), gatherCID)
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给人机「%s」发放：%s（它会立刻行动消化资源）", nick, msg), "gather_count": gatherNow})
 }
 
 // AdminEzfyBotBuildings GET /admin/ezfy-bot/:uid/buildings —— 编辑弹窗的数据源

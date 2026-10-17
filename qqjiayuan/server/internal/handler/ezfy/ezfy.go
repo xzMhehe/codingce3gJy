@@ -2451,7 +2451,10 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 		// ★ 2026-10-13 还要扣掉「待恢复人口」——训练完占用的人口不瞬间归还，
 		//   这段时间里它既不算空闲、也不该被拿来训练（否则等于训练完立刻又满了）。
 		popAvailable := city.Pop - popUsed - city.PopRecover
-		if cfg.Type != 4 && int64(cfg.Pop)*int64(count) > popAvailable {
+		// ★ 2026-10-17 人机训练不占人口（用户规则：出征数量 30~40 万，50 万人口训不出 40 万火箭
+		//   Pop12 的 480 万人口需求 → 出征只能带 4 万）。人机城（IsBot=1）跳过人口校验，
+		//   真人照旧校验。botTrain 侧的门槛已同步跳过。
+		if cfg.Type != 4 && city.IsBot == 0 && int64(cfg.Pop)*int64(count) > popAvailable {
 			return fmt.Sprintf("人口不足(当前居民%d, 建筑及训练已占用%d, 待恢复%d, 可用%d); 可召集人口突破民居上限",
 				city.Pop, popUsed, city.PopRecover, popAvailable)
 		}
