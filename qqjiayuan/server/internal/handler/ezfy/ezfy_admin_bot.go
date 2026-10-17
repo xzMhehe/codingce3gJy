@@ -134,6 +134,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 		"attack_on": ezfyBotAttackOn(), "atk_daily_cap": ezfyBotDailyAtkCap(),
 		// ★ 2026-10-17 免耗粮开关一并下发，前端 list 页首帧即显示真实状态（此前每次进页面自动变「关」）
 		"food_free": ezfyBotFoodFree(1),
+		// ★ 2026-10-17 自动攻击目标最低声望门槛（0=不限），供顶栏配置展示
+		"min_prestige": ezfyBotMinPrestige(),
 	})
 }
 
@@ -604,14 +606,14 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			Level  int `json:"level"`
 		} `json:"techs"`
 		Officers []struct {
-			ID        int      `json:"id"`
-			Level     int      `json:"level"`
-			Exp       int64    `json:"exp"`
-			FreePoints *int    `json:"free_points"` // ★ 2026-10-17 直接设待分配点（0 合法）
-			Military  *int     `json:"military"`    // ★ 三维直接设最终值，差额自动从待分配点扣
-			Logistics *int     `json:"logistics"`
-			Learning  *int     `json:"learning"`
-			Skills    []string `json:"skills"`
+			ID         int      `json:"id"`
+			Level      int      `json:"level"`
+			Exp        int64    `json:"exp"`
+			FreePoints *int     `json:"free_points"` // ★ 2026-10-17 直接设待分配点（0 合法）
+			Military   *int     `json:"military"`    // ★ 三维直接设最终值，差额自动从待分配点扣
+			Logistics  *int     `json:"logistics"`
+			Learning   *int     `json:"learning"`
+			Skills     []string `json:"skills"`
 		} `json:"officers"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -961,13 +963,14 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 		"attack_on":     ezfyBotAttackOn(),
 		"atk_daily_cap": ezfyBotDailyAtkCap(),
 		"food_free":     ezfyCfg.ready() && ezfyCfg.limit.BotFoodFree != 0,
+		"min_prestige":  ezfyBotMinPrestige(),
 		"max_count":     ezfyBotMaxCount,
 		"tick_seconds":  int(ezfyBotTickInterval.Seconds()),
 		"batch_size":    ezfyBotBatchSize,
 	})
 }
 
-// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config {attack_on, atk_daily_cap}
+// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config {attack_on, atk_daily_cap, food_free, min_prestige}
 //
 // ★ 改完必须 ezfyCfg.reload：开关读的是进程内配置缓存（不 reload 要等 30s 周期刷新）。
 func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
@@ -975,6 +978,7 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 		AttackOn    *int `json:"attack_on"`
 		AtkDailyCap *int `json:"atk_daily_cap"`
 		FoodFree    *int `json:"food_free"`
+		MinPrestige *int `json:"min_prestige"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1004,6 +1008,16 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 			v = 1
 		}
 		up["bot_food_free"] = v
+	}
+	if in.MinPrestige != nil {
+		v := *in.MinPrestige
+		if v < 0 {
+			v = 0
+		}
+		if v > 100000000 {
+			v = 100000000
+		}
+		up["bot_min_prestige"] = v
 	}
 	if len(up) == 0 {
 		resp.ParamError(c, "没有要修改的配置")
@@ -1095,10 +1109,15 @@ func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
 		resp.ParamError(c, "目标是人机，人机不打人机")
 		return
 	}
-	// 重复检查（唯一键也会兜底，这里提前给友好提示）
+	// ★ 2026-10-17 最低声望门槛：低于配置值（默认 50 万，0=不限）的目标直接拒绝，与「自动选目标」口径一致
+	if min := ezfyBotMinPrestige(); min > 0 && tp.Prestige < min {
+		resp.ParamError(c, fmt.Sprintf("目标声望 %d 未达人机攻击门槛（需 ≥ %d）", tp.Prestige, min))
+		return
+	}
+	// 重复检查：活跃计划(0/1/2/3)已存在 → 友好提示
 	var dup int64
 	h.DB.Model(&model.EzfyBotTarget{}).
-		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, tp.UserID).Count(&dup)
+		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2,3)", uid, tp.UserID).Count(&dup)
 	if dup > 0 {
 		resp.ParamError(c, "该目标已在计划中")
 		return
@@ -1106,9 +1125,17 @@ func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
 	// 目标当前城
 	var tc model.EzfyCity
 	h.DB.Where("user_id = ?", tp.UserID).Order("id ASC").First(&tc)
-	if err := h.DB.Create(&model.EzfyBotTarget{
+	note := fmt.Sprintf("管理端指定 %s(%d,%d)", tp.Nickname, tc.X, tc.Y)
+	// ★ 2026-10-17 唯一键是 (bot_uid,target_uid) 不分状态：存在「已放弃(4)」旧行时若直接 Create 会撞唯一键报「写入计划失败」。
+	//   改为**复活旧行**（status 拉回 0、更新目标城与备注），复用而非新建。
+	var old = model.EzfyBotTarget{}
+	err := h.DB.Where("bot_uid = ? AND target_uid = ?", uid, tp.UserID).First(&old).Error
+	if err == nil {
+		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", old.ID).
+			Updates(map[string]interface{}{"status": 0, "target_city_id": int64(tc.ID), "note": note, "effect_time": 0, "cool_until": 0})
+	} else if err := h.DB.Create(&model.EzfyBotTarget{
 		BotUid: uint(uid), TargetUid: tp.UserID, TargetCityId: int64(tc.ID),
-		Status: 0, Note: fmt.Sprintf("管理端指定 %s(%d,%d)", tp.Nickname, tc.X, tc.Y),
+		Status: 0, Note: note,
 	}).Error; err != nil {
 		resp.ParamError(c, "写入计划失败（可能已存在）")
 		return
@@ -1143,7 +1170,8 @@ func ezBotPopFree(h *EzfyAdmin, city model.EzfyCity) int64 {
 // AdminEzfyBotAttackNearest POST /admin/ezfy-bot/:uid/attack-nearest —— 出征最近的敌对真人城市
 //
 // ★ 2026-10-17 用户需求：管理端一键让人机打「最近的真人敌对城」（非自己、非同盟）。
-//   写入攻击计划(status=0 待宣战) + 置 next_act_at=now，人机下一轮自动 宣战→生效→出击。
+//
+//	写入攻击计划(status=0 待宣战) + 置 next_act_at=now，人机下一轮自动 宣战→生效→出击。
 func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 	uid, _ := strconv.Atoi(c.Param("uid"))
 	if uid <= 0 {
@@ -1160,9 +1188,37 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		resp.NotFound(c, "人机主城不存在")
 		return
 	}
-	// 候选：所有真人城（is_bot=0），排除自己与同盟，取欧氏距离最近
-	var cities []model.EzfyCity
-	h.DB.Select("id, user_id, name, x, y").Where("is_bot = 0").Find(&cities)
+	// ★ 2026-10-17 修复：①真人候选直接用 JOIN 过滤（ezfy_profile.is_bot=0），
+	//   不能用 `user_id IN (?万uid)` —— 全服真人上万就超 MySQL 占位符上限(65535) 报错；
+	//   ② 同盟判断改为「预读军团映射 + 内存比对」，避免对每个候选城各查 2 次库（几十万城 = 超时）。
+	var members []model.EzfyCorpsMember
+	h.DB.Select("user_id, corps_id").Find(&members)
+	corpsMap := make(map[uint]uint, len(members))
+	for _, m := range members {
+		corpsMap[m.UserId] = m.CorpsId
+	}
+	myCorps := corpsMap[uint(uid)] // 无军团时为 0，不会与真实军团号(≥1)匹配 → 天然非同盟
+	type cand struct {
+		ID       uint
+		UserID   uint
+		Name     string
+		X, Y     int
+		Prestige int
+	}
+	var cities []cand
+	if err := h.DB.Model(&model.EzfyCity{}).
+		Select("ezfy_city.id, ezfy_city.user_id, ezfy_city.name, ezfy_city.x, ezfy_city.y, p.prestige").
+		Joins("JOIN ezfy_profile p ON p.user_id = ezfy_city.user_id AND p.is_bot = 0").
+		Find(&cities).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	if len(cities) == 0 {
+		resp.NotFound(c, "没有可攻击的敌对城市")
+		return
+	}
+	// ★ 2026-10-17 最低声望门槛也套用到「出征最近敌对城」：本地筛选低于配置值（默认 50 万，0=不限）的候选
+	minPrestige := ezfyBotMinPrestige()
 	best := model.EzfyCity{}
 	bestDist := int64(1 << 62)
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
@@ -1170,16 +1226,25 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		if cty.UserID == uint(uid) {
 			continue
 		}
-		if ez.isAllyCity(uint(uid), int64(cty.ID)) {
+		// 同盟 = 双方都有军团且军团号相同（与 isAllyCity 同语义）
+		if cid, ok := corpsMap[cty.UserID]; ok && cid == myCorps {
+			continue
+		}
+		if minPrestige > 0 && cty.Prestige < minPrestige {
 			continue
 		}
 		dx, dy := int64(cty.X-botCity.X), int64(cty.Y-botCity.Y)
 		if d := dx*dx + dy*dy; d < bestDist {
-			bestDist, best = d, cty
+			bestDist = d
+			best = model.EzfyCity{ID: cty.ID, UserID: cty.UserID, Name: cty.Name, X: cty.X, Y: cty.Y}
 		}
 	}
 	if best.ID == 0 {
-		resp.NotFound(c, "没有可攻击的敌对城市")
+		if minPrestige > 0 {
+			resp.NotFound(c, fmt.Sprintf("附近没有声望 ≥ %d 的敌对城市（可在顶栏调低「最低声望」，或设 0 不限）", minPrestige))
+		} else {
+			resp.NotFound(c, "没有可攻击的敌对城市")
+		}
 		return
 	}
 	var dup int64
@@ -1189,9 +1254,16 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		resp.ParamError(c, "已在对该城玩家的攻击计划中")
 		return
 	}
-	if err := h.DB.Create(&model.EzfyBotTarget{
+	note := fmt.Sprintf("最近敌对 %s(%d,%d)", best.Name, best.X, best.Y)
+	// ★ 2026-10-17 同 AdminEzfyBotTargetSet：存在「已放弃(4)」旧行时复活复用，避免撞 (bot_uid,target_uid) 唯一键
+	var old = model.EzfyBotTarget{}
+	err := h.DB.Where("bot_uid = ? AND target_uid = ?", uid, best.UserID).First(&old).Error
+	if err == nil {
+		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", old.ID).
+			Updates(map[string]interface{}{"status": 0, "target_city_id": int64(best.ID), "note": note, "effect_time": 0, "cool_until": 0})
+	} else if err := h.DB.Create(&model.EzfyBotTarget{
 		BotUid: uint(uid), TargetUid: best.UserID, TargetCityId: int64(best.ID),
-		Status: 0, Note: fmt.Sprintf("最近敌对 %s(%d,%d)", best.Name, best.X, best.Y),
+		Status: 0, Note: note,
 	}).Error; err != nil {
 		resp.ParamError(c, "写入计划失败（可能已存在）")
 		return
@@ -1205,7 +1277,8 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 // AdminEzfyBotRelocate POST /admin/ezfy-bot/:uid/relocate {x, y} —— 管理端给人机迁城
 //
 // ★ 2026-10-17 用户需求：输入目标坐标直接迁，复用玩家迁城 checkMoveTarget 校验
-//   （坐标 1~499、平原/沿海平原、该坐标无城市），省去等迁城计划。
+//
+//	（坐标 1~499、平原/沿海平原、该坐标无城市），省去等迁城计划。
 func (h *EzfyAdmin) AdminEzfyBotRelocate(c *gin.Context) {
 	uid, _ := strconv.Atoi(c.Param("uid"))
 	if uid <= 0 {

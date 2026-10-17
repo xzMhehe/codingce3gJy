@@ -451,6 +451,11 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 	// 4) 军事（总开关 / 允许攻击玩家 / 每日节流）
 	if a, d, ok := h.botMilitary(b, city, troopTotal, cfg); ok {
 		return a, d, ok
+	} else if a != "" {
+		// ★★ 2026-10-17 修复：botMilitary 失败也带原因（出击失败/宣战失败/冷却中…），
+		//   此前 ok=false 直接丢弃落到「休整」，线上经常只看到休整、看不到「为什么不动手」。
+		//   失败信息完整透传 → tick 主循环写进行为日志 + 2~4 分钟短间隔重试。
+		return a, d, false
 	}
 
 	// 5) 闲置（把「建筑为什么没动」带出来，管理端行为日志能直接看到卡点）
@@ -613,11 +618,17 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	for _, p := range plans {
 		switch p.Status {
 		case 3: // 冷却重试：到点转回待宣战
-			if now >= p.EffectTime {
-				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 0)
-				return "重试宣战", fmt.Sprintf("目标 %d 冷却结束，重新宣战", p.TargetUid), true
+			// ★ 2026-10-17 修复：冷却截止此前被写成 cool_until（botAttack 失败）与 effect_time（宣战失败）两处混用，
+			//   case 只查 EffectTime → botAttack 失败写的 2h 冷却形同虚设，每轮都重试刷屏。
+			//   统一起点判断：CoolUntil 未到 → 等；否则 EffectTime 未到 → 等；都到点 → 恢复宣战。
+			if p.CoolUntil > 0 && now < p.CoolUntil {
+				continue
 			}
-			continue
+			if p.EffectTime > 0 && now < p.EffectTime {
+				continue
+			}
+			h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 0)
+			return "重试宣战", fmt.Sprintf("目标 %d 冷却结束，重新宣战", p.TargetUid), true
 		case 1: // 已宣战，等生效
 			if now >= p.EffectTime {
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
@@ -627,47 +638,47 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 		case 2: // 可出击
 			return h.botAttack(b, city, p, troopTotal)
 		case 0: // 待宣战 → 立即宣战
-				code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
-					map[string]interface{}{"target_user_id": p.TargetUid, "city_id": int64(city.ID)})
-				if code == 0 {
-					eff := now + int64(ezfyWarDelayHours)*3600000
-					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-						Updates(map[string]interface{}{"status": 1, "effect_time": eff})
-					return "宣战", fmt.Sprintf("向玩家 %d 宣战，%d 小时后生效", p.TargetUid, ezfyWarDelayHours), true
-				}
-				// ★ 2026-10-17 宣战失败分类（此前一律置 status=4 放弃，目标会莫名从列表消失）
-				//   ① 目标已不需要宣战（可直打）→ 直接可出击
-				if strings.Contains(msg, "不需要宣战") {
-					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
-					return "宣战跳过", fmt.Sprintf("目标 %d 不需要宣战，直接出击", p.TargetUid), true
-				}
-				//   ② 已宣战/已处于战争 → 沿用现有战争生效时间，状态挂起等待
-				if strings.Contains(msg, "已宣战") || strings.Contains(msg, "已处于战争") || strings.Contains(msg, "战争") {
-					w := h.getWar(b.UserID, uint(p.TargetUid))
-					if w != nil && w.Status == 2 {
-						// 战争已生效 → 直接出击
-						h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
-						return "宣战已生效", fmt.Sprintf("与目标 %d 战争已生效，直接出击", p.TargetUid), true
-					}
-					if w != nil && w.EffectTime > 0 {
-						h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-							Updates(map[string]interface{}{"status": 1, "effect_time": w.EffectTime})
-						return "宣战挂起", fmt.Sprintf("与目标 %d 已有宣战，等待生效", p.TargetUid), true
-					}
-					// 没查到战争记录 → 先挂起 2 小时再试
-					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-						Updates(map[string]interface{}{"status": 3, "effect_time": now + 2*3600000})
-					return "宣战失败", msg, false
-				}
-				//   ③ 同盟成员 → 真的打不了，放弃并留提示
-				if strings.Contains(msg, "同盟") {
-					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
-					return "宣战失败", fmt.Sprintf("目标 %d 为同盟成员，放弃该计划", p.TargetUid), false
-				}
-				//   ④ 其他未知失败 → 冷却 2 小时重试，不消失
+			code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/war/declare",
+				map[string]interface{}{"target_user_id": p.TargetUid, "city_id": int64(city.ID)})
+			if code == 0 {
+				eff := now + int64(ezfyWarDelayHours)*3600000
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-					Updates(map[string]interface{}{"status": 3, "effect_time": now + 2*3600000})
+					Updates(map[string]interface{}{"status": 1, "effect_time": eff})
+				return "宣战", fmt.Sprintf("向玩家 %d 宣战，%d 小时后生效", p.TargetUid, ezfyWarDelayHours), true
+			}
+			// ★ 2026-10-17 宣战失败分类（此前一律置 status=4 放弃，目标会莫名从列表消失）
+			//   ① 目标已不需要宣战（可直打）→ 直接可出击
+			if strings.Contains(msg, "不需要宣战") {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
+				return "宣战跳过", fmt.Sprintf("目标 %d 不需要宣战，直接出击", p.TargetUid), true
+			}
+			//   ② 已宣战/已处于战争 → 沿用现有战争生效时间，状态挂起等待
+			if strings.Contains(msg, "已宣战") || strings.Contains(msg, "已处于战争") || strings.Contains(msg, "战争") {
+				w := h.getWar(b.UserID, uint(p.TargetUid))
+				if w != nil && w.Status == 2 {
+					// 战争已生效 → 直接出击
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
+					return "宣战已生效", fmt.Sprintf("与目标 %d 战争已生效，直接出击", p.TargetUid), true
+				}
+				if w != nil && w.EffectTime > 0 {
+					h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+						Updates(map[string]interface{}{"status": 1, "effect_time": w.EffectTime})
+					return "宣战挂起", fmt.Sprintf("与目标 %d 已有宣战，等待生效", p.TargetUid), true
+				}
+				// 没查到战争记录 → 先挂起 2 小时再试（冷却写在 cool_until，见 case 3）
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+					Updates(map[string]interface{}{"status": 3, "cool_until": now + 2*3600000})
 				return "宣战失败", msg, false
+			}
+			//   ③ 同盟成员 → 真的打不了，放弃并留提示
+			if strings.Contains(msg, "同盟") {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				return "宣战失败", fmt.Sprintf("目标 %d 为同盟成员，放弃该计划", p.TargetUid), false
+			}
+			//   ④ 其他未知失败 → 冷却 2 小时重试，不消失（冷却写在 cool_until，见 case 3）
+			h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
+				Updates(map[string]interface{}{"status": 3, "cool_until": now + 2*3600000})
+			return "宣战失败", msg, false
 		}
 	}
 
@@ -699,10 +710,13 @@ type ezfyBotTargetRow struct {
 // 过滤（全部下推 SQL，走索引）：
 //   - 非人机（is_bot = 0）、不是自己
 //   - 坐标在自己 ±25 格内（走 idx_xy / is_bot 索引）
+//   - ★ 2026-10-17 声望 ≥ 配置门槛 bot_min_prestige（管理端可配，默认 500000，0 = 不限）
 //   - 目标兵力 < 自己兵力 × 0.6（打得过才打）
 //   - 无生效中的免战保护（ezfy_city_effect effect_type=2）
 //   - 城建时间 > 3 天（新手保护）
 //   - 不在已放弃的冷却名单里
+//
+// 排序：声望高优先（人机专挑高声望的大号打），同声望挑兵力少的软柿子。
 func (h *EzfyHandler) botPickTarget(city *model.EzfyCity, myTroops int64, cfg ezfyBotLevelCfg) (ezfyBotTargetRow, bool) {
 	var r ezfyBotTargetRow
 	limit := myTroops * 60 / 100
@@ -721,15 +735,16 @@ WHERE c.is_bot = 0
   AND c.user_id <> ?
   AND c.x BETWEEN ? AND ? AND c.y BETWEEN ? AND ?
   AND c.created_at < ?
+  AND p.prestige >= ?
   AND COALESCE(t.troops, 0) BETWEEN 1 AND ?
   AND NOT EXISTS (SELECT 1 FROM ezfy_city_effect e
                   WHERE e.city_id = c.id AND e.effect_type = 2 AND e.until_time > ?)
   AND NOT EXISTS (SELECT 1 FROM ezfy_bot_target bt
                   WHERE bt.bot_uid = ? AND bt.target_uid = c.user_id AND bt.status = 3 AND bt.cool_until > ?)
-ORDER BY COALESCE(t.troops, 0) ASC
+ORDER BY p.prestige DESC, COALESCE(t.troops, 0) ASC
 LIMIT 1`,
 		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25,
-		newbieBefore, limit, now, city.UserID, now).Scan(&r).Error
+		newbieBefore, ezfyBotMinPrestige(), limit, now, city.UserID, now).Scan(&r).Error
 	if err != nil || r.CityID == 0 {
 		return r, false
 	}
@@ -750,6 +765,31 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	}
 	if len(groups) == 0 {
 		return "", "", false
+	}
+	// ★★ 2026-10-17 修复：出征兵力必须 ≤ 出征上限（司令部等级×1万×指挥科技 + 家族集结 + 军官），
+	//   否则线上 march_cap_on=1 → createOrder 拒绝 → 人机「有 1 亿兵也打不出去」（只看见休整）。
+	//   超了 → 全兵种等比缩放到上限内（派够上限也够拆目标城）。
+	cap, unlimited := h.ezfyOrderTroopCap(city.ID, 0, "")
+	if !unlimited && cap > 0 {
+		var total int64
+		for _, g := range groups {
+			total += g.Count
+		}
+		if total > cap {
+			for i := range groups {
+				groups[i].Count = groups[i].Count * cap / total
+			}
+			trim := groups[:0]
+			for _, g := range groups {
+				if g.Count > 0 {
+					trim = append(trim, g)
+				}
+			}
+			groups = trim
+		}
+	}
+	if len(groups) == 0 {
+		return "出击失败", "出征兵力缩放后为空（上限过小）", false
 	}
 	var tc model.EzfyCity
 	if err := h.DB.First(&tc, p.TargetCityId).Error; err != nil {
@@ -795,11 +835,26 @@ func ezfyBotDailyAtkCap() int {
 	return 3
 }
 
+// ezfyBotMinPrestige 人机自动挑攻击目标的最低声望门槛（ezfy_cfg_limit.bot_min_prestige，默认 500000）。
+//
+// 0 = 不限（对全体真人有效）；只影响 botPickTarget 自动选目标，管理端手动
+// 「出征最近敌对城」不受此限制。（0 是合法值，配置未加载时回默认）
+func ezfyBotMinPrestige() int {
+	if !ezfyCfg.ready() {
+		return 500000
+	}
+	if n := ezfyCfg.limit.BotMinPrestige; n > 0 {
+		return n
+	}
+	return 0
+}
+
 // ezfyBotFoodFree 人机军队免耗粮开关（ezfy_cfg_limit.bot_food_free）。
 //
 // ★ 只对 city.IsBot=1 的城生效（调用方保证），真人**永远照常扣粮**；
-//   判断只读内存 city 字段 + 配置缓存 —— calcResource 红线路径零查询。
-//   0 是合法值（默认正常耗粮），不能用 ezfyLimitOr。
+//
+//	判断只读内存 city 字段 + 配置缓存 —— calcResource 红线路径零查询。
+//	0 是合法值（默认正常耗粮），不能用 ezfyLimitOr。
 func ezfyBotFoodFree(isBot int) bool {
 	if isBot == 0 {
 		return false

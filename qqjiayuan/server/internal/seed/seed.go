@@ -294,6 +294,8 @@ func Run(db *gorm.DB, staticDir string) {
 		addNumCol("officer_star_attr_gain", 10)
 		// ★ 用户规则「军官最多 5 星」
 		addNumCol("officer_star_max", 5)
+		// ★ 2026-10-17 人机自动攻击目标的最低声望门槛（默认 500000；0 = 不限）
+		addNumCol("bot_min_prestige", 500000)
 
 		// ★ 2026-09-30 「使用招生简章出五星军官的概率」：
 		//   招生简章刷新时按此概率出 5 星（默认 1 = 1%，100 = 必出）。

@@ -615,6 +615,8 @@ type EzfyCfgLimit struct {
 	// ★ 2026-10-17 人机免耗粮：1 = 人机（city.is_bot=1）的城内军队不扣维护粮（真人照常扣）。
 	//   人机不打劫不打野时粮食全靠产出，军队耗粮经常把它饿死 → 运营可开这个让 AI 专注发育。
 	BotFoodFree int `gorm:"default:0;comment:人机军队免耗粮(1=不扣,真人照常)" json:"bot_food_free"`
+	// ★ 2026-10-17 人机自动挑目标的最低声望门槛（默认 500000；0 = 不限；只影响自动选目标，管理端手动指定不受限）
+	BotMinPrestige int `gorm:"default:500000;comment:人机自动攻击目标最低声望(0=不限)" json:"bot_min_prestige"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }
