@@ -9,7 +9,9 @@
 package ezfy
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -251,6 +253,39 @@ var ezfyBotAdminSecret = ""
 // SetEzfyBotAdminSecret 由 router.Setup 调用。
 func SetEzfyBotAdminSecret(secret string) { ezfyBotAdminSecret = secret }
 
+// AdminEzfyBotActAll POST /admin/ezfy-bot/act-all —— 一键立即行动：全部启用人机各连跑 N 轮
+//
+// ★ 2026-10-17 用户要求「加速人机变强」：手动批量加速（如活动前/测试时）。
+//   每轮 = 一次 botTickOne（懒结算 → 决策 → 执行一个动作 → 写日志/排下次），
+//   与「立即行动一轮」完全同链路，只是循环跑。轮数上限 50，防止误填刷爆日志。
+func (h *EzfyAdmin) AdminEzfyBotActAll(c *gin.Context) {
+	var in struct {
+		Rounds int `json:"rounds"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if in.Rounds < 1 || in.Rounds > 50 {
+		resp.ParamError(c, "轮数需在 1~50 之间")
+		return
+	}
+	var bots []model.EzfyBot
+	h.DB.Where("enabled = 1").Find(&bots)
+	if len(bots) == 0 {
+		resp.ParamError(c, "没有运行中的人机")
+		return
+	}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB, Secret: ezfyBotAdminSecret, ExpH: 1}
+	ez.cfgs()
+	for i := 0; i < in.Rounds; i++ {
+		for _, b := range bots {
+			ez.botTickOne(b)
+		}
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已对 %d 个人机各执行 %d 轮", len(bots), in.Rounds)})
+}
+
 // AdminEzfyBotDelete DELETE /admin/ezfy-bot/:uid —— 删除单个人机（连根拔掉）
 func (h *EzfyAdmin) AdminEzfyBotDelete(c *gin.Context) {
 	uid, _ := strconv.Atoi(c.Param("uid"))
@@ -377,7 +412,11 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 
 // AdminEzfyBotBuildings GET /admin/ezfy-bot/:uid/buildings —— 编辑弹窗的数据源
 //
-// 返回人机当前城的建筑行（含未建造的坑位，level=0）+ 昵称/声望/城市名，一次回填表单。
+// ★ 2026-10-17 用户要求「加速人机变强」：编辑数据从「建筑」扩展到整城——
+//
+//	返回人机当前城的：人口(总/上限/待恢复)、建筑行（含未建造坑位 level=0）、
+//	兵种数量（ezfy_city_troop 全兵种）、科技等级（ezfy_user_tech 用户级）、
+//	军官列表（ezfy_officer 按城），外加昵称/声望/城市名，一次回填表单。
 func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 	uid, _ := strconv.Atoi(c.Param("uid"))
 	if uid <= 0 {
@@ -397,7 +436,13 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 		"prestige":  p.Prestige,
 		"city_id":   city.ID,
 		"city_name": city.Name,
+		"pop":       city.Pop,        // 总人口
+		"pop_max":   city.PopMax,     // 人口上限
+		"pop_recover": city.PopRecover, // 待恢复人口（空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复）
 		"buildings": []gin.H{},
+		"troops":    []gin.H{},
+		"techs":     []gin.H{},
+		"officers":  []gin.H{},
 	}
 	h.cfgs()
 	if city.ID > 0 {
@@ -420,15 +465,72 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 			})
 		}
 		out["buildings"] = list
+
+		// 兵种数量：ezfy_city_troop 按城查，全兵种配置对齐（未造的 count=0）
+		var troops []model.EzfyCityTroop
+		h.DB.Where("city_id = ?", city.ID).Find(&troops)
+		troopCount := map[int]int64{}
+		for _, t := range troops {
+			troopCount[t.TroopId] = t.Count
+		}
+		troopList := []gin.H{}
+		for _, tc := range ezfyCfg.sortedTroops() {
+			troopList = append(troopList, gin.H{
+				"troop_id": tc.ID, "name": tc.Name, "count": troopCount[tc.ID],
+			})
+		}
+		out["troops"] = troopList
+
+		// 科技等级：ezfy_user_tech 用户级（无主城概念，全城共用），按用户查
+		var uts []model.EzfyUserTech
+		h.DB.Where("user_id = ?", uint(uid)).Find(&uts)
+		techLevel := map[int]int{}
+		for _, t := range uts {
+			techLevel[t.TechId] = t.Level
+		}
+		techList := []gin.H{}
+		techIDs := make([]int, 0, len(ezfyCfg.techs))
+		for id := range ezfyCfg.techs {
+			techIDs = append(techIDs, id)
+		}
+		sort.Ints(techIDs)
+		for _, id := range techIDs {
+			if cfg := ezfyCfg.tech(id); cfg != nil {
+				techList = append(techList, gin.H{
+					"tech_id": id, "name": cfg.Name, "max_level": cfg.MaxLevel,
+					"level": techLevel[id],
+				})
+			}
+		}
+		out["techs"] = techList
+
+		// 军官：ezfy_officer 按城查（逻辑删除自动过滤）
+		var officers []model.EzfyOfficer
+		h.DB.Where("city_id = ?", city.ID).Order("position DESC, id ASC").Find(&officers)
+		offList := make([]gin.H, 0, len(officers))
+		for _, o := range officers {
+			offList = append(offList, gin.H{
+				"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level,
+				"exp": o.Exp, "military": o.Military, "logistics": o.Logistics,
+				"learning": o.Learning, "skills": officerSkills(&o), "position": o.Position,
+			})
+		}
+		out["officers"] = offList
 	}
 	resp.OK(c, out)
 }
 
-// AdminEzfyBotEdit POST /admin/ezfy-bot/:uid/edit —— 编辑人机（昵称/声望/城市名/建筑等级）
+// AdminEzfyBotEdit POST /admin/ezfy-bot/:uid/edit —— 编辑人机（昵称/声望/城市名/建筑/人口/科技/兵种/军官）
 //
 // body（全部可选，传了才改）：
 //
-//	{nickname, prestige, city_name, buildings:[{id, level}]}
+//	{nickname, prestige, city_name,
+//	 pop, pop_max, pop_recover,            // 城市人口（空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复）
+//	 buildings:[{id, level}],              // 建筑等级（改等级会顺带清施工状态）
+//	 troops:[{troop_id, count}],           // 兵种数量（按 (city_id,troop_id) upsert，count=0 删行）
+//	 techs:[{tech_id, level}],             // 科技等级（ezfy_user_tech 用户级 upsert）
+//	 officers:[{id, level, exp, skills[]}] // 军官等级/经验/技能（技能为名字数组）
+//	}
 //
 // ★ 昵称**三处同步**：家园 users（展示权威源）/ ezfy_profile / ezfy_account ——
 //
@@ -450,10 +552,27 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		Nickname  *string `json:"nickname"`
 		Prestige  *int    `json:"prestige"`
 		CityName  *string `json:"city_name"`
+		Pop       *int64  `json:"pop"`
+		PopMax    *int64  `json:"pop_max"`
+		PopRecover *int64 `json:"pop_recover"`
 		Buildings []struct {
 			ID    int64 `json:"id"`
 			Level int   `json:"level"`
 		} `json:"buildings"`
+		Troops []struct {
+			TroopID int   `json:"troop_id"`
+			Count   int64 `json:"count"`
+		} `json:"troops"`
+		Techs []struct {
+			TechID int `json:"tech_id"`
+			Level  int `json:"level"`
+		} `json:"techs"`
+		Officers []struct {
+			ID     int      `json:"id"`
+			Level  int      `json:"level"`
+			Exp    int64    `json:"exp"`
+			Skills []string `json:"skills"`
+		} `json:"officers"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -520,6 +639,132 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			changes = append(changes, fmt.Sprintf("建筑等级 %d 项", n))
 		}
 	}
+
+	// ⑤ 人口：总人口 / 上限 / 待恢复人口（空闲人口由此推导，无需单独字段）
+	if city.ID > 0 && (in.Pop != nil || in.PopMax != nil || in.PopRecover != nil) {
+		upd := map[string]interface{}{}
+		if in.Pop != nil && *in.Pop >= 0 {
+			upd["pop"] = *in.Pop
+		}
+		if in.PopMax != nil && *in.PopMax >= 0 {
+			upd["pop_max"] = *in.PopMax
+		}
+		if in.PopRecover != nil && *in.PopRecover >= 0 {
+			upd["pop_recover"] = *in.PopRecover
+		}
+		if len(upd) > 0 {
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(upd)
+			// 待恢复人口改小/清零 → 空闲人口立刻恢复（与移民法案道具同口径）
+			changes = append(changes, "人口(总/上限/待恢复)")
+		}
+	}
+
+	// ⑥ 兵种数量：按 (city_id, troop_id) upsert；count=0 删除该行
+	if len(in.Troops) > 0 && city.ID > 0 {
+		n := 0
+		for _, tp := range in.Troops {
+			if tp.TroopID <= 0 || tp.Count < 0 {
+				continue
+			}
+			if tp.Count == 0 {
+				res := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, tp.TroopID).Delete(&model.EzfyCityTroop{})
+				if res.RowsAffected > 0 {
+					n++
+				}
+				continue
+			}
+			var exist model.EzfyCityTroop
+			err := h.DB.Where("city_id = ? AND troop_id = ?", city.ID, tp.TroopID).First(&exist).Error
+			if err != nil { // 无行 → 新建
+				if h.DB.Create(&model.EzfyCityTroop{CityId: int64(city.ID), TroopId: tp.TroopID, Count: tp.Count}).Error == nil {
+					n++
+				}
+			} else { // 有行 → 更新数量
+				if h.DB.Model(&model.EzfyCityTroop{}).Where("id = ?", exist.ID).Update("count", tp.Count).Error == nil {
+					n++
+				}
+			}
+		}
+		if n > 0 {
+			changes = append(changes, fmt.Sprintf("兵种 %d 种", n))
+		}
+	}
+
+	// ⑦ 科技等级：ezfy_user_tech 用户级 upsert（全城共用）
+	if len(in.Techs) > 0 {
+		n := 0
+		for _, tc := range in.Techs {
+			if tc.TechID <= 0 || tc.Level < 0 {
+				continue
+			}
+			if tc.Level > 100 {
+				tc.Level = 100
+			}
+			var exist model.EzfyUserTech
+			err := h.DB.Where("user_id = ? AND tech_id = ?", uint(uid), tc.TechID).First(&exist).Error
+			if err != nil {
+				if h.DB.Create(&model.EzfyUserTech{UserId: uint(uid), TechId: tc.TechID, Level: tc.Level}).Error == nil {
+					n++
+				}
+			} else {
+				if h.DB.Model(&model.EzfyUserTech{}).Where("id = ?", exist.ID).Update("level", tc.Level).Error == nil {
+					n++
+				}
+			}
+		}
+		if n > 0 {
+			changes = append(changes, fmt.Sprintf("科技 %d 项", n))
+		}
+	}
+
+	// ⑧ 军官：等级 / 经验 / 技能（技能为名字数组 → 存 JSON）
+	if len(in.Officers) > 0 {
+		n := 0
+		for _, of := range in.Officers {
+			if of.ID <= 0 {
+				continue
+			}
+			upd := map[string]interface{}{}
+			if of.Level >= 1 {
+				lv := of.Level
+				if lv > 350 {
+					lv = 350
+				}
+				upd["level"] = lv
+			}
+			if of.Exp >= 0 {
+				upd["exp"] = of.Exp
+			}
+			if of.Skills != nil {
+				// 技能去重、每名军官最多 3 个（与游戏规则一致）
+				seen := map[string]bool{}
+				names := make([]string, 0, len(of.Skills))
+				for _, s := range of.Skills {
+					s = strings.TrimSpace(s)
+					if s == "" || seen[s] {
+						continue
+					}
+					seen[s] = true
+					names = append(names, s)
+					if len(names) >= 3 {
+						break
+					}
+				}
+				buf, _ := json.Marshal(names)
+				upd["skill"] = string(buf)
+			}
+			if len(upd) > 0 {
+				// 归属校验：军官行必须属于这个人机的城
+				res := h.DB.Model(&model.EzfyOfficer{}).
+					Where("id = ? AND city_id = ?", of.ID, city.ID).Updates(upd)
+				n += int(res.RowsAffected)
+			}
+		}
+		if n > 0 {
+			changes = append(changes, fmt.Sprintf("军官 %d 名", n))
+		}
+	}
+
 	if len(changes) == 0 {
 		resp.ParamError(c, "没有要修改的内容")
 		return

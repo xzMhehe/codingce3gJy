@@ -15,6 +15,7 @@
         <el-input-number v-model.number="atkDailyCap" :min="0" :max="100" size="mini"
                          controls-position="right" style="width:90px" @change="saveConfig" />
         <div class="grow" />
+        <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
         <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
         <el-button type="danger" plain icon="el-icon-delete" :disabled="!list.length" @click="clearAll">清空全部</el-button>
       </div>
@@ -113,26 +114,62 @@
       </div>
     </el-dialog>
 
-    <!-- 编辑人机（昵称/声望/城市名/建筑等级） -->
-    <el-dialog title="编辑人机" :visible.sync="editDlg" width="620px" :close-on-click-modal="false">
-      <div v-loading="editLoading" style="min-height:200px">
-        <el-form label-width="90px">
-          <el-form-item label="游戏昵称">
-            <el-input v-model="editForm.nickname" maxlength="20" show-word-limit style="width:220px" />
-            <el-tooltip placement="top" content="同步改家园昵称 + 二战昵称（地图/聊天/战报一致）"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
-          </el-form-item>
-          <el-form-item label="军功声望">
-            <el-input-number v-model.number="editForm.prestige" :min="0" :step="1000"
-                             controls-position="right" style="width:160px" />
-          </el-form-item>
-          <el-form-item label="城市名">
-            <el-input v-model="editForm.city_name" maxlength="20" show-word-limit style="width:220px" />
-            <span class="td-gray" style="margin-left:6px">当前主城</span>
-          </el-form-item>
-          <el-form-item label="建筑等级">
-            <el-table :data="editBuildings" size="mini" border max-height="240" style="width:100%">
+    <!-- 一键立即行动（全部启用人机各连跑 N 轮） -->
+    <el-dialog title="一键立即行动" :visible.sync="actAllDlg" width="440px" :close-on-click-modal="false">
+      <el-form label-width="120px">
+        <el-form-item label="行动轮数">
+          <el-input-number v-model.number="actAllRounds" :min="1" :max="50" controls-position="right"
+                           style="width:140px" />
+        </el-form-item>
+      </el-form>
+      <div class="td-gray" style="font-size:12px; margin-left:120px">
+        对全部运行中的人机各连跑 N 轮（每轮 = 懒结算 → 决策 → 执行一个动作 → 写日志），适合活动前/测试时批量加速。
+      </div>
+      <div slot="footer">
+        <el-button @click="actAllDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="actAllSaving" @click="doActAll">立即执行</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 编辑人机（昵称/声望/城市名/人口/建筑/科技/兵种/军官） -->
+    <el-dialog :title="'编辑人机 —— ' + (cur ? cur.nickname : '')" :visible.sync="editDlg" width="760px"
+               :close-on-click-modal="false">
+      <div v-loading="editLoading" style="min-height:300px">
+        <el-tabs v-model="editTab" type="card">
+          <el-tab-pane label="基本信息" name="base">
+            <el-form label-width="90px">
+              <el-form-item label="游戏昵称">
+                <el-input v-model="editForm.nickname" maxlength="20" show-word-limit style="width:220px" />
+                <el-tooltip placement="top" content="同步改家园昵称 + 二战昵称（地图/聊天/战报一致）"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
+              </el-form-item>
+              <el-form-item label="军功声望">
+                <el-input-number v-model.number="editForm.prestige" :min="0" :step="1000"
+                                 controls-position="right" style="width:160px" />
+              </el-form-item>
+              <el-form-item label="城市名">
+                <el-input v-model="editForm.city_name" maxlength="20" show-word-limit style="width:220px" />
+                <span class="td-gray" style="margin-left:6px">当前主城</span>
+              </el-form-item>
+              <el-form-item label="总人口">
+                <el-input-number v-model.number="editForm.pop" :min="0" :step="1000"
+                                 controls-position="right" style="width:160px" />
+                <span class="td-gray" style="margin-left:6px">当前 {{ fmtNum(editForm.pop) }}</span>
+              </el-form-item>
+              <el-form-item label="人口上限">
+                <el-input-number v-model.number="editForm.pop_max" :min="0" :step="1000"
+                                 controls-position="right" style="width:160px" />
+              </el-form-item>
+              <el-form-item label="待恢复人口">
+                <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000"
+                                 controls-position="right" style="width:160px" />
+                <span class="td-gray" style="margin-left:6px">空闲人口 = 总人口 − 建筑/训练占用 − 待恢复</span>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+          <el-tab-pane label="建筑等级" name="build">
+            <el-table :data="editBuildings" size="mini" border max-height="300" style="width:100%">
               <el-table-column prop="name" label="建筑" min-width="120" />
-              <el-table-column label="等级" width="170" align="center">
+              <el-table-column label="等级" width="180" align="center">
                 <template slot-scope="{row}">
                   <el-input-number v-model="row.level" :min="0" :max="row.max_level" size="mini"
                                    controls-position="right" style="width:100px" />
@@ -143,8 +180,74 @@
             <div class="td-gray" style="font-size:12px; line-height:1.6">
               只列已建造的建筑；改等级会顺带取消施工队列；0 = 未建造。
             </div>
-          </el-form-item>
-        </el-form>
+          </el-tab-pane>
+          <el-tab-pane label="科技等级" name="tech">
+            <el-table :data="editTechs" size="mini" border max-height="300" style="width:100%">
+              <el-table-column prop="name" label="科技" min-width="120" />
+              <el-table-column label="等级" width="180" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.level" :min="0" :max="row.max_level" size="mini"
+                                   controls-position="right" style="width:100px" />
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="td-gray" style="font-size:12px; line-height:1.6">0 = 未研究；直接改等级立即生效，无研究队列。</div>
+          </el-tab-pane>
+          <el-tab-pane label="兵种数量" name="troop">
+            <el-table :data="editTroops" size="mini" border max-height="300" style="width:100%">
+              <el-table-column prop="name" label="兵种" min-width="120" />
+              <el-table-column label="数量" width="180" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.count" :min="0" :step="100"
+                                   controls-position="right" style="width:120px" />
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="td-gray" style="font-size:12px; line-height:1.6">0 = 该城无此兵种；填入数量立即生效。</div>
+          </el-tab-pane>
+          <el-tab-pane label="军官" name="officer">
+            <div class="toolbar" style="margin-bottom:8px">
+              <span class="td-main">发放军官</span>
+              <el-select v-model="grantGeneralId" filterable placeholder="选择军官池/名将" size="mini" style="width:200px">
+                <el-option v-for="g in generalOptions" :key="g.id" :label="(g.kind === 2 ? '★' : '') + g.name + '（' + g.star + '星）'" :value="g.id" />
+              </el-select>
+              <el-button size="mini" type="success" plain icon="el-icon-plus" :loading="grantSaving"
+                         @click="grantGeneral">发放到主城</el-button>
+              <div class="grow" />
+              <span class="td-gray" style="font-size:12px">发放后在本页底部刷新可看到新军官</span>
+            </div>
+            <el-table :data="editOfficers" size="mini" border max-height="300" style="width:100%">
+              <el-table-column prop="name" label="军官" min-width="110" show-overflow-tooltip />
+              <el-table-column prop="star" label="星" width="50" align="center" />
+              <el-table-column label="等级" width="130" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.level" :min="1" :max="350" size="mini"
+                                   controls-position="right" style="width:90px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="经验" width="140" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.exp" :min="0" :step="1000" size="mini"
+                                   controls-position="right" style="width:100px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="技能（最多3个）" min-width="240">
+                <template slot-scope="{row}">
+                  <el-select v-model="row.skills" multiple filterable collapse-tags size="mini" style="width:230px"
+                             placeholder="选技能">
+                    <el-option v-for="s in skillOptions" :key="s" :label="s" :value="s" />
+                  </el-select>
+                </template>
+              </el-table-column>
+              <el-table-column label="三维" width="150" align="center">
+                <template slot-scope="{row}">{{ row.military }}/{{ row.logistics }}/{{ row.learning }}</template>
+              </el-table-column>
+            </el-table>
+            <div class="td-gray" style="font-size:12px; line-height:1.6">
+              技能名取自「军官技能列表」配置；三维由池子+装备+加点决定，本页不直接改。
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
       <div slot="footer">
         <el-button @click="editDlg = false">取 消</el-button>
@@ -209,10 +312,17 @@ export default {
       list: [], max: 50, loading: false, word: '',
       attackOn: 1, atkDailyCap: 3, saving: false,
       createDlg: false, createCount: 3, createLevel: 2, createBoost: true,
-      // 编辑（昵称/声望/城市名/建筑）
-      editDlg: false, editLoading: false, editSaving: false,
-      editForm: { nickname: '', prestige: 0, city_name: '' },
+      // 一键立即行动（全部人机连跑 N 轮）
+      actAllDlg: false, actAllSaving: false, actAllRounds: 5,
+      // 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）
+      editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
+      editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0 },
       editBuildings: [],
+      editTechs: [],
+      editTroops: [],
+      editOfficers: [],
+      // 发放军官 + 技能下拉
+      grantGeneralId: 0, generalOptions: [], skillOptions: [],
       // 发放资源
       grantDlg: false, grantSaving: false,
       grantForm: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
@@ -269,6 +379,19 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => { this.saving = false })
     },
+    // 一键立即行动：全部启用人机各连跑 N 轮
+    openActAll () { this.actAllRounds = 5; this.actAllDlg = true },
+    doActAll () {
+      this.actAllSaving = true
+      api.post('/admin/ezfy-bot/act-all', { rounds: this.actAllRounds }).then(r => {
+        this.actAllSaving = false
+        if (r.code === 0) {
+          this.actAllDlg = false
+          this.$message.success(r.data.msg || '已执行')
+          this.load()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.actAllSaving = false })
+    },
     clearAll () {
       this.$confirm('确认清空全部人机？\n将物理删除每个人机的家园账号与二战全部数据，不可恢复。',
         '清空人机', { type: 'error' }).then(() => {
@@ -286,11 +409,15 @@ export default {
         else this.$message.error(r.msg)
       })
     },
-    // ---- 编辑（昵称/声望/城市名/建筑等级）----
+    // ---- 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）----
     openEdit (row) {
       this.cur = row
+      this.editTab = 'base'
       this.editBuildings = []
-      this.editForm = { nickname: '', prestige: 0, city_name: '' }
+      this.editTechs = []
+      this.editTroops = []
+      this.editOfficers = []
+      this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0 }
       this.editDlg = true
       this.editLoading = true
       api.get('/admin/ezfy-bot/' + row.user_id + '/buildings').then(r => {
@@ -298,12 +425,54 @@ export default {
         if (r.code === 0) {
           this.editForm = {
             nickname: r.data.nickname || '', prestige: r.data.prestige || 0,
-            city_name: r.data.city_name || ''
+            city_name: r.data.city_name || '',
+            pop: r.data.pop || 0, pop_max: r.data.pop_max || 0, pop_recover: r.data.pop_recover || 0
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
+          this.editTechs = r.data.techs || []
+          this.editTroops = r.data.troops || []
+          this.editOfficers = (r.data.officers || []).map(o => ({
+            id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
+            military: o.military, logistics: o.logistics, learning: o.learning,
+            skills: o.skills || []
+          }))
+          this.loadEditOptions()
         } else { this.editDlg = false; this.$message.error(r.msg) }
       }).catch(() => { this.editLoading = false })
+    },
+    loadEditOptions () {
+      // 军官池（普通+名将）供「发放军官」下拉
+      api.get('/admin/ezfy-generals', { params: { page: 1, size: 500 } }).then(r => {
+        if (r.code === 0) this.generalOptions = r.data.list || []
+      })
+      // 技能配置（名去重）供军官技能下拉
+      api.get('/admin/ezfy-skills', { params: { page: 1, size: 500 } }).then(r => {
+        if (r.code === 0) {
+          const seen = {}
+          this.skillOptions = (r.data.list || []).filter(x => x.name && !seen[x.name] ? (seen[x.name] = 1, true) : false).map(x => x.name)
+        }
+      })
+    },
+    grantGeneral () {
+      if (!this.grantGeneralId) { this.$message.warning('请先选择军官池/名将'); return }
+      this.grantSaving = true
+      api.post('/admin/ezfy-officers/grant', { user_id: this.cur.user_id, general_id: this.grantGeneralId }).then(r => {
+        this.grantSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已发放')
+          // 重新拉取军官列表
+          api.get('/admin/ezfy-bot/' + this.cur.user_id + '/buildings').then(r2 => {
+            if (r2.code === 0) {
+              this.editOfficers = (r2.data.officers || []).map(o => ({
+                id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
+                military: o.military, logistics: o.logistics, learning: o.learning,
+                skills: o.skills || []
+              }))
+            }
+          })
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.grantSaving = false })
     },
     saveEdit () {
       this.editSaving = true
@@ -311,7 +480,13 @@ export default {
         nickname: this.editForm.nickname,
         prestige: this.editForm.prestige,
         city_name: this.editForm.city_name,
-        buildings: this.editBuildings.map(x => ({ id: x.id, level: x.level }))
+        pop: this.editForm.pop,
+        pop_max: this.editForm.pop_max,
+        pop_recover: this.editForm.pop_recover,
+        buildings: this.editBuildings.map(x => ({ id: x.id, level: x.level })),
+        techs: this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })),
+        troops: this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })),
+        officers: this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills }))
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {

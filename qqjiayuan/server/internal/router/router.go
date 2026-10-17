@@ -1194,6 +1194,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
 				admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)
 				admin.POST("/ezfy-bot/:uid/act", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAct)
+				// ★ 2026-10-17 一键立即行动：全部启用人机各连跑 N 轮（活动前/测试加速）
+				admin.POST("/ezfy-bot/act-all", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotActAll)
 				// ★ 2026-10-17 给人机城发资源（加速发育）：人机已从玩家管理排除，只能从这里发
 				admin.POST("/ezfy-bot/:uid/grant", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotGrant)
 				// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
