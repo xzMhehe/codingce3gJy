@@ -180,6 +180,22 @@ func main() {
 		//   超管菜单是全量展示的（前端 my-perms 返回 super=true），点进去却被
 		//   RequirePerm 拦成 403「你没有权限进入！」（免战管理 module:ezfyPeace）。
 		//   幂等补权限点 + 给「全量角色」追加，自定义角色不动，见 seed/rbac_ensure.go。
+		//   ★★ 2026-10-17 移出：见下面 if cfg.Seed.Skip 单独一步（原来挂在
+		//   `else if !seed.EzfyUsesOwnDB` 里，独立库模式整段不跑 = 线上从来没补过）。
+	}
+
+	// ★★ 2026-10-17 线上事故修复：「管理端能登录进去，但里面全是没数据/403」。
+	//   根因一：RBAC 补权限点原来挂在 `else if !seed.EzfyUsesOwnDB`（拆库 65000b4 引入）
+	//   的分支里，而 EnsureRBACPerms 是 10-12 才加进去的 —— 线上是**独立库模式**
+	//   （EzfyUsesOwnDB=true），这个 else if 恒为 false → 补权限点在线上**一次都没跑过**，
+	//   10-12 之后新加的菜单权限码（module:ezfyPeace 等）在线上 permissions 表里根本不存在：
+	//   超管菜单全量展示 → 点进去 RequirePerm 403「你没有权限进入！」→ 页面没数据。
+	//   根因二：超管角色存量权限被改少时无法自愈（角色管理保存是 Replace 全量替换），
+	//   EnsureRBACPerms 现在会每次启动把内置全量角色（super_admin/admin）对齐全部权限点
+	//   （只增不删，见 rbac_ensure.go）。
+	//   RBAC 表（permissions/roles/role_permissions）都在**家园库**，与单库/独立库无关，
+	//   所以 skip 模式下无论哪种库形态都要补。非 skip 模式由 seed.Run → seedRBAC 全量灌。
+	if cfg.Seed.Skip {
 		timedStep("EnsureRBACPerms", func() { seed.EnsureRBACPerms(homeDB) })
 	}
 

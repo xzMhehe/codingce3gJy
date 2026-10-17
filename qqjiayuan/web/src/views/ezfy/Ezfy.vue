@@ -6,41 +6,41 @@
          （原来会先渲染出二战登录框、SSO 成功后再整页刷新 —— 玩家进二战会看到「登陆掠影」）。
          ssoPending 在 data() 初始化（首帧就占位，连一帧登录框都不会闪）。 -->
     <div v-if="!isLogin && ssoPending" class="wwii-login"
-         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
+         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f8f8f9;border:1px solid #e0e0e0;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">{{ zoneTitle }}</div>
-      <div style="text-align:center;padding:14px 0 16px;color:#8a6d3b;font-size:14px;">正在进入{{ zoneTitle }}…</div>
+      <div style="text-align:center;padding:14px 0 16px;color:#888;font-size:14px;">正在进入{{ zoneTitle }}…</div>
     </div>
     <div v-else-if="!isLogin" class="wwii-login"
-         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f7f2e7;border:1px solid #d8c9a3;border-radius:8px;">
+         style="max-width:340px;margin:80px auto 0;padding:24px;background:#f8f8f9;border:1px solid #e0e0e0;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:4px;">{{ zoneTitle }}</div>
       <!-- ★★ 2026-10-15 入口选服：目前单进程=单区（一区），先做「服务器选择」占位；
            以后二区/更多区各起一个实例后，这里会下发全区列表供切换 -->
       <div style="display:flex;align-items:center;margin-bottom:12px;">
-        <span style="flex-shrink:0;color:#8a6d3b;font-size:13px;margin-right:8px;">服务器</span>
+        <span style="flex-shrink:0;color:#888;font-size:13px;margin-right:8px;">服务器</span>
         <select v-model="zoneSel" class="wwii-select"
-                style="flex:1;box-sizing:border-box;height:34px;padding:0 8px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;color:#5b4a26;outline:none;">
+                style="flex:1;box-sizing:border-box;height:34px;padding:0 8px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;font-size:14px;color:#2b2b2b;outline:none;">
           <option v-for="z in zoneList" :key="z.id" :value="z.id">{{ z.name }}</option>
         </select>
       </div>
       <!-- class=wwii-input + 行内 style(含 !important) 双保险，保证账号/密码/验证码输入框宽高完全一致 -->
       <input v-model="wwiiName" placeholder="家园号" class="wwii-input"
-             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
+             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;font-size:14px;"
              @keyup.enter="wwiiLogin()"/>
       <input v-model="wwiiPwd" type="password" placeholder="家园密码" class="wwii-input"
-             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
+             style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;font-size:14px;"
              @keyup.enter="wwiiLogin()"/>
       <!-- 密码错误满 3 次后展示验证码（算式图片，点了换一张） -->
       <div v-if="wwiiNeedCaptcha" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
         <input v-model="wwiiCaptcha" placeholder="验证码" class="wwii-input"
-               style="margin-bottom:0;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #cbbd96;border-radius:4px;background:#fffdf5;font-size:14px;"
+               style="margin-bottom:0;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;font-size:14px;"
                @keyup.enter="wwiiLogin()"/>
         <img v-if="wwiiCaptchaImg" :src="wwiiCaptchaImg" alt="验证码" title="点击换一张"
-             style="height:38px;flex-shrink:0;border:1px solid #cbbd96;border-radius:4px;background:#fff;cursor:pointer;"
+             style="height:38px;flex-shrink:0;border:1px solid #e0e0e0;border-radius:4px;background:#fff;cursor:pointer;"
              @click="loadWwiiCaptcha"/>
       </div>
       <div v-if="wwiiErr" style="color:#c0392b;font-size:13px;margin-bottom:10px;text-align:center;">{{ wwiiErr }}</div>
-      <button @click="wwiiLogin()" :disabled="wwiiBusy"
-              style="width:100%;padding:10px;border:0;border-radius:4px;background:#b8860b;color:#fff;font-size:15px;cursor:pointer;">
+      <button @click="wwiiLogin()" :disabled="wwiiBusy" class="wwii-submit"
+              style="width:100%;padding:10px;border:0;border-radius:6px;font-size:15px;cursor:pointer;">
         {{ wwiiBusy ? '登录中…' : '进入二战征途' }}
       </button>
     </div>
@@ -8573,13 +8573,21 @@ body.ezfy-ios .ezfy-page textarea {
   height: 38px !important;
   padding: 10px !important;
   margin: 0 0 10px 0;
-  border: 1px solid #cbbd96 !important;
+  border: 1px solid #e0e0e0 !important;
   border-radius: 4px !important;
-  background: #fffdf5 !important;
+  background: #fff !important;
   color: #333 !important;
   font-size: 14px !important;
   line-height: 1.4 !important;
 }
+.wwii-login input.wwii-input:focus { border-color: #888 !important; }
+.wwii-login .wwii-submit {
+  background: #2b2b2b;
+  color: #fff;
+  transition: background .2s;
+}
+.wwii-login .wwii-submit:hover { background: #444; }
+.wwii-login .wwii-submit:disabled { background: #999; cursor: not-allowed; }
 .ezfy-page input[type="text"],
 .ezfy-page input[type="number"],
 .ezfy-page input:not([type]),

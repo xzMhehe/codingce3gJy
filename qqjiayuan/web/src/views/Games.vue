@@ -81,7 +81,7 @@
         <!-- ★ 2026-10-15 接口失败不再偷偷关窗直接进（否则"掠影秒进"）：停留显示原因 + 重试 -->
         <div v-else-if="srvDlg.err" class="gs-empty">
           服务器列表加载失败<br>
-          <a href="javascript:;" style="color:#b8860b;margin-top:6px;display:inline-block;" @click="loadServers">重新加载</a>
+          <a href="javascript:;" style="color:#2b2b2b;text-decoration:underline;margin-top:6px;display:inline-block;" @click="loadServers">重新加载</a>
         </div>
         <div v-else-if="!srvDlg.list.length" class="gs-empty">该游戏暂无可进入的服务器</div>
         <div v-else class="gs-list">
@@ -276,36 +276,37 @@ function parseRoute (u) {
 .g-toast-enter-active, .g-toast-leave-active { transition: opacity .2s; }
 .g-toast-enter, .g-toast-leave-to { opacity: 0; }
 
-/* ★★ 2026-10-15 选择服务器弹层（诺哈风：米黄卡片 + 绿条题头） */
+/* ★★ 2026-10-17 选择服务器弹层（深灰系简约：柔和深灰 + 灰白层次，替代纯黑纯白） */
 .gs-mask {
   position: fixed; inset: 0; z-index: 999;
-  background: rgba(0, 0, 0, .45);
+  background: rgba(0, 0, 0, .5);
   display: flex; align-items: center; justify-content: center;
 }
 .gs-box {
   width: 320px; max-width: 92vw; max-height: 80vh; overflow: auto;
-  background: #f7f2e7; border: 1px solid #d8c9a3; border-radius: 8px;
+  background: #f8f8f9; border: 1px solid #e0e0e0; border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
 }
 .gs-title {
-  background: #e8dcc0;
-  padding: 10px 16px; font-weight: bold; color: #004299; text-align: center;
+  background: #2b2b2b;
+  padding: 10px 16px; font-weight: bold; color: #fff; text-align: center;
 }
-.gs-sub { padding: 8px 16px 2px; color: #8a6d3b; font-size: 12px; }
+.gs-sub { padding: 8px 16px 2px; color: #888; font-size: 12px; }
 .gs-list { padding: 10px 16px; }
 .gs-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 12px; margin-bottom: 8px;
-  background: #fffdf5; border: 1px solid #d8c9a3; border-radius: 5px;
-  cursor: pointer;
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+  cursor: pointer; transition: background .2s, border-color .2s;
 }
-.gs-item:hover { background: #fdf3d8; }
-.gs-name { color: #5b4a26; font-weight: bold; }
-.gs-in { color: #b8860b; }
-.gs-loading, .gs-empty { padding: 20px 16px; text-align: center; color: #8a6d3b; }
+.gs-item:hover { background: #f2f2f3; border-color: #ccc; }
+.gs-name { color: #2b2b2b; font-weight: bold; }
+.gs-in { color: #2b2b2b; }
+.gs-loading, .gs-empty { padding: 20px 16px; text-align: center; color: #888; }
 .gs-close {
   margin: 4px 16px 14px; padding: 7px 0; text-align: center;
-  background: #e8dcc0; border: 1px solid #d8c9a3; border-radius: 5px;
-  color: #5b4a26; cursor: pointer;
+  background: #fff; border: 1px solid #2b2b2b; border-radius: 6px;
+  color: #2b2b2b; cursor: pointer; transition: background .2s, color .2s;
 }
-.gs-close:hover { background: #fdf3d8; }
+.gs-close:hover { background: #f2f2f3; }
 </style>

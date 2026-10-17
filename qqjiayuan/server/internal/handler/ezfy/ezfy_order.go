@@ -2259,18 +2259,29 @@ func (h *EzfyHandler) finishReturn(uid uint, order *model.EzfyOrder) {
 	if c.total() > 0 {
 		// ★ 2026-09-25 「各项资源有最大的配置」→ 入库统一走 ezfyResAddExpr：
 		//   无条件累加，累加到配置的「资源最大值」（默认 100 亿）为止，且不拉低已有更大值。
+		// ★★ 2026-10-17 用户口径：返航带回出发城同样按「资源最大值」封顶累加
+		//   （上限读二战系统配置，不写死），装不下的部分**系统回收**；
+		//   战报如实显示实际入库量与回收量。
+		fit, rec := h.ezfyCarryFit(city.ID, c)
 		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food":  ezfyResAddExpr("food", c.Food),
-			"steel": ezfyResAddExpr("steel", c.Steel),
-			"oil":   ezfyResAddExpr("oil", c.Oil),
-			"rare":  ezfyResAddExpr("rare", c.Rare),
-			"gold":  ezfyResAddExpr("gold", c.Gold),
+			"food":  ezfyResAddExpr("food", fit.Food),
+			"steel": ezfyResAddExpr("steel", fit.Steel),
+			"oil":   ezfyResAddExpr("oil", fit.Oil),
+			"rare":  ezfyResAddExpr("rare", fit.Rare),
+			"gold":  ezfyResAddExpr("gold", fit.Gold),
 		})
 		// ★ 2026-10-11 文案改中性：本函数现在承接**所有**出征类型的返航资源入城
 		//   （不止采集），别再说「采集部队」。标题前缀「部队返航」被战报分类依赖，保持不变。
 		h.addReport(uid, 5, "部队返航: 资源已入库",
-			fmt.Sprintf("部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
-				city.Name, c.Food, c.Steel, c.Oil, c.Rare, c.Gold), "", order.ID)
+			fmt.Sprintf("部队返回%s\n带回: 粮%d 钢%d 油%d 稀矿%d 金%d", city.Name,
+				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)+
+				func() string {
+					if rec.total() > 0 {
+						return fmt.Sprintf("\n超出上限被系统回收: 粮%d 钢%d 油%d 稀矿%d 金%d",
+							rec.Food, rec.Steel, rec.Oil, rec.Rare, rec.Gold)
+					}
+					return ""
+				}(), "", order.ID)
 	}
 	// 带队军官归来, 恢复在职
 	if order.Officer != "" {
@@ -2943,21 +2954,34 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				fmt.Sprintf("运输目标城市已不存在, 运输部队已返航, 资源将随部队带回%s。", city.Name), "", order.ID)
 			return
 		}
-		// ★ 2026-09-24 规则修正（用户确认原版口径）：运输到达入城**不受仓储上限截断**
-		//   （只有超过数据库字段最大值才溢出），全部入库、不再把超出部分原路带回。
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-			"food":  ezfyResAddExpr("food", f),
-			"steel": ezfyResAddExpr("steel", s),
-			"oil":   ezfyResAddExpr("oil", o),
-			"rare":  ezfyResAddExpr("rare", r),
-			"gold":  ezfyResAddExpr("gold", g),
-		})
-		order.Carry = ""
+		// ★★ 2026-10-17 用户口径（上限读二战系统配置 res_max_*，不写死）：
+		//   运输到达目标城按「资源最大值」封顶累加，装不下的部分**原路带回出发城**
+		//   （记进 Carry，随部队返航入出发城，同样封顶）。
+		fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{Food: f, Steel: s, Oil: o, Rare: r, Gold: g})
+		if fit.total() > 0 {
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
+				"food":  ezfyResAddExpr("food", fit.Food),
+				"steel": ezfyResAddExpr("steel", fit.Steel),
+				"oil":   ezfyResAddExpr("oil", fit.Oil),
+				"rare":  ezfyResAddExpr("rare", fit.Rare),
+				"gold":  ezfyResAddExpr("gold", fit.Gold),
+			})
+		}
+		if exc.total() > 0 {
+			order.Carry = carryJSON(exc) // 装不下的原路带回出发城
+		} else {
+			order.Carry = ""
+		}
 		// ★ 2026-10-11 资源已送达目标城 → 清空 Resources，避免返航时又被 finishReturn 带回一次
 		order.Resources = ""
 		desc := fmt.Sprintf("运输部队已到达%s\n", target.Name)
-		if f+s+o+r+g > 0 {
-			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n", f, s, o, r, g)
+		if fit.total() > 0 {
+			desc += fmt.Sprintf("送达: 粮%d 钢%d 油%d 稀矿%d 金%d\n",
+				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)
+		}
+		if exc.total() > 0 {
+			desc += fmt.Sprintf("目标城已接近上限, 装不下随队带回: 粮%d 钢%d 油%d 稀矿%d 金%d\n",
+				exc.Food, exc.Steel, exc.Oil, exc.Rare, exc.Gold)
 		}
 		desc += "护送部队正在返航, 到达后回到出发城市。"
 		h.beginReturn(order, now, 0)
@@ -3005,27 +3029,54 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		}
 		// ★ 2026-10-11 随军资源入目标城：原来增援**完全不处理** order.Resources ——
 		//   带过去的粮/钢/油/稀/金到达后凭空消失。与运输/派遣同口径，送到增援目标城。
+		// ★★ 2026-10-17 按配置「资源最大值」封顶累加：装不下的部分随队原路带回（盟友城驻军，
+		//   召回时入库出发城）；增援**自己城市**订单直接删除、无返航，装不下的直接退加回出发城。
+		var excRein ezfyCarry
 		if res := h.parseResMap(order.Resources); res["food"]+res["steel"]+res["oil"]+res["rare"]+res["gold"] > 0 {
 			h.calcResource(&target, h.officerList(target.ID))
+			fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{
+				Food: res["food"], Steel: res["steel"], Oil: res["oil"], Rare: res["rare"], Gold: res["gold"],
+			})
+			excRein = exc
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  ezfyResAddExpr("food", res["food"]),
-				"steel": ezfyResAddExpr("steel", res["steel"]),
-				"oil":   ezfyResAddExpr("oil", res["oil"]),
-				"rare":  ezfyResAddExpr("rare", res["rare"]),
-				"gold":  ezfyResAddExpr("gold", res["gold"]),
+				"food":  ezfyResAddExpr("food", fit.Food),
+				"steel": ezfyResAddExpr("steel", fit.Steel),
+				"oil":   ezfyResAddExpr("oil", fit.Oil),
+				"rare":  ezfyResAddExpr("rare", fit.Rare),
+				"gold":  ezfyResAddExpr("gold", fit.Gold),
 			})
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
-				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
+				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)
+			if exc.total() > 0 {
+				desc += fmt.Sprintf("\n目标城已接近上限, 装不下: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					exc.Food, exc.Steel, exc.Oil, exc.Rare, exc.Gold)
+			}
 		}
 		order.Resources = "" // 已送达，避免返航时重复带回
 		if own {
 			// ★ 2026-10-02 增援自己城市: 兵力/军官已并入目标城, 订单已完结 → 删除,
 			//   避免 status=3 僵尸订单被军情误判为驻军、占用驻军槽位。
+			// ★★ 2026-10-17 订单删除无返航：装不下的资源直接退加回出发城（按配置上限封顶）。
+			if excRein.total() > 0 {
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+					"food":  ezfyResAddExpr("food", excRein.Food),
+					"steel": ezfyResAddExpr("steel", excRein.Steel),
+					"oil":   ezfyResAddExpr("oil", excRein.Oil),
+					"rare":  ezfyResAddExpr("rare", excRein.Rare),
+					"gold":  ezfyResAddExpr("gold", excRein.Gold),
+				})
+				desc += fmt.Sprintf("\n装不下的资源已退加回%s: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					city.Name, excRein.Food, excRein.Steel, excRein.Oil, excRein.Rare, excRein.Gold)
+			}
 			h.DB.Delete(&model.EzfyOrder{}, order.ID)
 		} else {
+			// ★★ 2026-10-17 盟友城驻军不返航：装不下的资源记进 Carry，召回驻军时随队带回出发城。
+			if excRein.total() > 0 {
+				order.Carry = carryJSON(excRein)
+			}
 			order.Status = 3
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-				Updates(map[string]interface{}{"status": 3, "resources": ""})
+				Updates(map[string]interface{}{"status": 3, "resources": "", "carry": order.Carry})
 		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
@@ -3056,23 +3107,30 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			desc += ezfyCfg.troopName(g.TroopId, 0) + "×" + strconv.FormatInt(g.Count, 10) + " "
 		}
 		// 随军资源入目标城
-		// ★ 2026-09-24 规则修正（用户确认原版口径）：不受仓储上限截断（只有超过
-		//   数据库字段最大值才溢出），装不下的不再原路带回；仍用 DB 原子累加，
-		//   不覆盖这期间其它写入的增量。
+		// ★★ 2026-10-17 用户口径（上限读二战系统配置 res_max_*，不写死）：
+		//   派遣到达目标城按「资源最大值」封顶累加，装不下的部分**原路带回出发城**
+		//   （记进 back → Carry，随部队返航入出发城，同样封顶）。
 		res := h.parseResMap(order.Resources)
 		back := ezfyCarry{}
-		total := res["food"] + res["steel"] + res["oil"] + res["rare"] + res["gold"]
-		if total > 0 {
+		fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{
+			Food: res["food"], Steel: res["steel"], Oil: res["oil"], Rare: res["rare"], Gold: res["gold"],
+		})
+		back = exc
+		if fit.total() > 0 {
 			h.calcResource(&target, h.officerList(target.ID))
 			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  ezfyResAddExpr("food", res["food"]),
-				"steel": ezfyResAddExpr("steel", res["steel"]),
-				"oil":   ezfyResAddExpr("oil", res["oil"]),
-				"rare":  ezfyResAddExpr("rare", res["rare"]),
-				"gold":  ezfyResAddExpr("gold", res["gold"]),
+				"food":  ezfyResAddExpr("food", fit.Food),
+				"steel": ezfyResAddExpr("steel", fit.Steel),
+				"oil":   ezfyResAddExpr("oil", fit.Oil),
+				"rare":  ezfyResAddExpr("rare", fit.Rare),
+				"gold":  ezfyResAddExpr("gold", fit.Gold),
 			})
 			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
-				res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
+				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)
+		}
+		if exc.total() > 0 {
+			desc += fmt.Sprintf("\n目标城已接近上限, 装不下随队带回: 粮%d 钢%d 油%d 稀矿%d 金%d",
+				exc.Food, exc.Steel, exc.Oil, exc.Rare, exc.Gold)
 		}
 		// ★ 2026-10-11 随军资源已送达目标城（或本来就没有）→ 清空 Resources，
 		//   否则返航时 finishReturn 会把它们再带回出发城（凭空多一份）。

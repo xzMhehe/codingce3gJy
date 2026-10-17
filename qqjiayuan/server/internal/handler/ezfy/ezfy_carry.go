@@ -25,6 +25,67 @@ type ezfyCarry struct {
 
 func (c ezfyCarry) total() int64 { return c.Food + c.Steel + c.Oil + c.Rare + c.Gold }
 
+// ezfyCarryFit 按「资源最大值」（二战系统配置，不写死）计算一次入城能装多少、超出多少。
+//
+// ★★ 2026-10-17 用户口径（派遣/运输/返航带回的拉资源）：
+//   目标城/出发城按配置上限封顶累加，装不下的部分原路带回或系统回收。
+//   返回 (可入库量, 超出量)。
+func (h *EzfyHandler) ezfyCarryFit(cityID uint, c ezfyCarry) (fit, excess ezfyCarry) {
+	if cityID <= 0 {
+		return c, ezfyCarry{}
+	}
+	var city model.EzfyCity
+	if err := h.DB.Select("food", "steel", "oil", "rare", "gold").
+		First(&city, cityID).Error; err != nil {
+		return c, ezfyCarry{}
+	}
+	fitRes := func(cur, inc int64, res string) (int64, int64) {
+		if inc <= 0 {
+			return 0, 0
+		}
+		max := ezfyResMaxOf(res) // 二战系统配置的「资源最大值」，不写死
+		room := max - cur
+		if room < 0 {
+			room = 0
+		}
+		if inc <= room {
+			return inc, 0
+		}
+		return room, inc - room
+	}
+	fit.Food, excess.Food = fitRes(city.Food, c.Food, "food")
+	fit.Steel, excess.Steel = fitRes(city.Steel, c.Steel, "steel")
+	fit.Oil, excess.Oil = fitRes(city.Oil, c.Oil, "oil")
+	fit.Rare, excess.Rare = fitRes(city.Rare, c.Rare, "rare")
+	fit.Gold, excess.Gold = fitRes(city.Gold, c.Gold, "gold")
+	return fit, excess
+}
+
+// ezfyCarryFitTo 计算「携带资源入目标城」：按配置上限封顶，返回可入库量与超出量。
+// 超出量由调用方原路带回出发城（记进 order.Carry / Resources）。
+func (h *EzfyHandler) ezfyCarryFitTo(city *model.EzfyCity, c ezfyCarry) (fit, excess ezfyCarry) {
+	fitRes := func(cur, inc int64, res string) (int64, int64) {
+		if inc <= 0 {
+			return 0, 0
+		}
+		max := ezfyResMaxOf(res) // 二战系统配置的「资源最大值」，不写死
+		room := max - cur
+		if room < 0 {
+			room = 0
+		}
+		if inc <= room {
+			return inc, 0
+		}
+		return room, inc - room
+	}
+	fit.Food, excess.Food = fitRes(city.Food, c.Food, "food")
+	fit.Steel, excess.Steel = fitRes(city.Steel, c.Steel, "steel")
+	fit.Oil, excess.Oil = fitRes(city.Oil, c.Oil, "oil")
+	fit.Rare, excess.Rare = fitRes(city.Rare, c.Rare, "rare")
+	fit.Gold, excess.Gold = fitRes(city.Gold, c.Gold, "gold")
+	return fit, excess
+}
+
 // parseCarry 读订单上的待带回资源
 func parseCarry(raw string) ezfyCarry {
 	var c ezfyCarry

@@ -164,7 +164,14 @@ export default {
           ...(it.children ? { children: walk(it.children).filter(x => !x.children || x.children.length) } : {})
         }))
         .filter(it => !it.children || it.children.length)
-      this.menu = isSuper || !codes.length ? merged : walk(merged)
+      // ★★ 2026-10-17 修复「没权限的账号能进系统、菜单全亮、点进去全是没数据」：
+      //   原来 `isSuper || !codes.length ? merged : walk(merged)` —— 权限码列表为空
+      //   （或 /admin/my-perms 请求失败 codes 拿不到）时会**把全部菜单都展示出来**，
+      //   而页面接口按权限逐条 403 → 「能进系统里面，就是没数据」。
+      //   现在只有超管（后端按 roles.code=super_admin 判定）才全量展示；
+      //   其余账号一律按权限码过滤，没权限的菜单不出现（与注释口径一致）。
+      //   顺带：my-perms 请求失败（r=null）也按「无权限」处理，绝不放全量菜单。
+      this.menu = isSuper ? merged : walk(merged)
       // 同步面包屑/标签页名称（菜单维护改名后即时生效）
       const rf = items => items.forEach(it => { tabNames[it.key] = it.name; if (it.children) rf(it.children) })
       rf(merged)
