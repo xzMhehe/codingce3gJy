@@ -543,6 +543,8 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 				"id": o.ID, "name": o.Name, "star": o.Star, "level": o.Level,
 				"exp": o.Exp, "military": o.Military, "logistics": o.Logistics,
 				"learning": o.Learning, "skills": officerSkills(&o), "position": o.Position,
+				// ★ 2026-10-17 管理端加点：带出待分配点，前端可改三维最终值（差额自动从这扣）
+				"free_points": o.FreePoints,
 			})
 		}
 		out["officers"] = offList
@@ -599,10 +601,14 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			Level  int `json:"level"`
 		} `json:"techs"`
 		Officers []struct {
-			ID     int      `json:"id"`
-			Level  int      `json:"level"`
-			Exp    int64    `json:"exp"`
-			Skills []string `json:"skills"`
+			ID        int      `json:"id"`
+			Level     int      `json:"level"`
+			Exp       int64    `json:"exp"`
+			FreePoints *int    `json:"free_points"` // ★ 2026-10-17 直接设待分配点（0 合法）
+			Military  *int     `json:"military"`    // ★ 三维直接设最终值，差额自动从待分配点扣
+			Logistics *int     `json:"logistics"`
+			Learning  *int     `json:"learning"`
+			Skills    []string `json:"skills"`
 		} `json:"officers"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -787,7 +793,12 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		}
 	}
 
-	// ⑧ 军官：等级 / 经验 / 技能（技能为名字数组 → 存 JSON）
+	// ⑧ 军官：等级 / 经验 / 技能 / 属性加点
+	//   加点规则（★ 2026-10-17 用户要求「管理端也要能加点」）：
+	//   三维(military/logistics/learning)直接设**最终值**，差额自动从待分配点扣减——
+	//   三维合计调高 → 待分配点减少；调低 → 多出的点退回待分配点。
+	//   同时显式传 free_points → 以传值为准（管理端可直接给点）。
+	//   若调高但待分配点不够 → 拒绝并提示（防凭空加属性）。
 	if len(in.Officers) > 0 {
 		n := 0
 		for _, of := range in.Officers {
@@ -822,6 +833,48 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 				}
 				buf, _ := json.Marshal(names)
 				upd["skill"] = string(buf)
+			}
+			// ★ 加点：三维最终值 + 待分配点守恒
+			if of.Military != nil || of.Logistics != nil || of.Learning != nil || of.FreePoints != nil {
+				var o model.EzfyOfficer
+				if err := h.DB.Where("id = ? AND city_id = ?", of.ID, city.ID).First(&o).Error; err == nil {
+					oldSum := o.Military + o.Logistics + o.Learning
+					newM, newLg, newLn := o.Military, o.Logistics, o.Learning
+					if of.Military != nil {
+						newM = *of.Military
+					}
+					if of.Logistics != nil {
+						newLg = *of.Logistics
+					}
+					if of.Learning != nil {
+						newLn = *of.Learning
+					}
+					if newM < 0 || newLg < 0 || newLn < 0 {
+						resp.ParamError(c, "军官属性值不能为负")
+						return
+					}
+					delta := (newM + newLg + newLn) - oldSum
+					newFree := o.FreePoints - delta
+					if of.FreePoints != nil {
+						newFree = *of.FreePoints // 显式给点，管理端说了算
+					}
+					if newFree < 0 {
+						resp.ParamError(c, fmt.Sprintf("「%s」三维合计超出待分配点 %d 点，请先调高待分配点或降低属性", o.Name, -newFree))
+						return
+					}
+					if of.Military != nil {
+						upd["military"] = newM
+					}
+					if of.Logistics != nil {
+						upd["logistics"] = newLg
+					}
+					if of.Learning != nil {
+						upd["learning"] = newLn
+					}
+					if of.FreePoints != nil || delta != 0 {
+						upd["free_points"] = newFree
+					}
+				}
 			}
 			if len(upd) > 0 {
 				// 归属校验：军官行必须属于这个人机的城

@@ -135,12 +135,12 @@
     </el-dialog>
 
     <!-- 编辑人机（昵称/声望/城市名/人口/建筑/科技/兵种/军官） -->
-    <el-dialog :title="'编辑人机 —— ' + (cur ? cur.nickname : '')" :visible.sync="editDlg" width="760px"
+    <el-dialog :title="'编辑人机 —— ' + (cur ? cur.nickname : '')" :visible.sync="editDlg" width="1000px"
                :close-on-click-modal="false">
       <div v-loading="editLoading" style="min-height:300px">
         <el-tabs v-model="editTab" type="card">
           <el-tab-pane label="基本信息" name="base">
-            <el-form label-width="90px">
+            <el-form label-width="100px" label-position="left">
               <el-form-item label="游戏昵称">
                 <el-input v-model="editForm.nickname" maxlength="20" show-word-limit style="width:220px" />
                 <el-tooltip placement="top" content="同步改家园昵称 + 二战昵称（地图/聊天/战报一致）"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
@@ -212,34 +212,55 @@
               </el-select>
               <el-button size="mini" type="success" plain icon="el-icon-plus" :loading="grantSaving"
                          @click="grantGeneral">发放到主城</el-button>
-              <el-tooltip placement="top" content="技能名取自军官技能配置；三维由池子+装备+加点决定，本页不直接改"><i class="el-icon-info cfg-tip" /></el-tooltip>
+              <el-tooltip placement="top" content="加点：直接填三维最终值，差额自动从「待分配点」扣减，待分配点不够会保存失败；待分配点也可直接调（管理端给点）"><i class="el-icon-info cfg-tip" /></el-tooltip>
               <div class="grow" />
             </div>
-            <el-table :data="editOfficers" size="mini" border max-height="300" style="width:100%">
-              <el-table-column prop="name" label="军官" min-width="110" show-overflow-tooltip />
-              <el-table-column prop="star" label="星" width="50" align="center" />
-              <el-table-column label="等级" width="130" align="center">
+            <el-table :data="editOfficers" size="mini" border max-height="320" style="width:100%">
+              <el-table-column prop="name" label="军官" min-width="90" show-overflow-tooltip />
+              <el-table-column prop="star" label="星" width="45" align="center" />
+              <el-table-column label="等级" width="110" align="center">
                 <template slot-scope="{row}">
                   <el-input-number v-model="row.level" :min="1" :max="350" size="mini"
                                    controls-position="right" style="width:90px" />
                 </template>
               </el-table-column>
-              <el-table-column label="经验" width="140" align="center">
+              <el-table-column label="经验" width="120" align="center">
                 <template slot-scope="{row}">
                   <el-input-number v-model="row.exp" :min="0" :step="1000" size="mini"
                                    controls-position="right" style="width:100px" />
                 </template>
               </el-table-column>
-              <el-table-column label="技能（最多3个）" min-width="240">
+              <el-table-column label="待分配点" width="110" align="center">
                 <template slot-scope="{row}">
-                  <el-select v-model="row.skills" multiple filterable collapse-tags size="mini" style="width:230px"
+                  <el-input-number v-model="row.free_points" :min="0" :step="10" size="mini"
+                                   controls-position="right" style="width:90px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="军事" width="100" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.military" :min="0" :step="10" size="mini"
+                                   controls-position="right" style="width:85px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="后勤" width="100" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.logistics" :min="0" :step="10" size="mini"
+                                   controls-position="right" style="width:85px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="学识" width="100" align="center">
+                <template slot-scope="{row}">
+                  <el-input-number v-model="row.learning" :min="0" :step="10" size="mini"
+                                   controls-position="right" style="width:85px" />
+                </template>
+              </el-table-column>
+              <el-table-column label="技能（最多3个）" min-width="200">
+                <template slot-scope="{row}">
+                  <el-select v-model="row.skills" multiple filterable collapse-tags size="mini" style="width:190px"
                              placeholder="选技能">
                     <el-option v-for="s in skillOptions" :key="s" :label="s" :value="s" />
                   </el-select>
                 </template>
-              </el-table-column>
-              <el-table-column label="三维" width="150" align="center">
-                <template slot-scope="{row}">{{ row.military }}/{{ row.logistics }}/{{ row.learning }}</template>
               </el-table-column>
             </el-table>
           </el-tab-pane>
@@ -464,7 +485,7 @@ export default {
           this.editOfficers = (r.data.officers || []).map(o => ({
             id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
             military: o.military, logistics: o.logistics, learning: o.learning,
-            skills: o.skills || []
+            free_points: o.free_points || 0, skills: o.skills || []
           }))
           this.snapEdit()
           this.loadEditOptions()
@@ -497,8 +518,9 @@ export default {
               this.editOfficers = (r2.data.officers || []).map(o => ({
                 id: o.id, name: o.name, star: o.star, level: o.level, exp: o.exp,
                 military: o.military, logistics: o.logistics, learning: o.learning,
-                skills: o.skills || []
+                free_points: o.free_points || 0, skills: o.skills || []
               }))
+              this.snapEdit()
             }
           })
         } else this.$message.error(r.msg)
@@ -510,14 +532,18 @@ export default {
         b: JSON.stringify(this.editBuildings.map(x => ({ id: x.id, level: x.level }))),
         t: JSON.stringify(this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level }))),
         tr: JSON.stringify(this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count }))),
-        o: JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills })))
+        o: JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp,
+          free_points: x.free_points, military: x.military, logistics: x.logistics,
+          learning: x.learning, skills: x.skills })))
       }
     },
     saveEdit () {
       const bNow = JSON.stringify(this.editBuildings.map(x => ({ id: x.id, level: x.level })))
       const tNow = JSON.stringify(this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })))
       const trNow = JSON.stringify(this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })))
-      const oNow = JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills })))
+      const oNow = JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp,
+        free_points: x.free_points, military: x.military, logistics: x.logistics,
+        learning: x.learning, skills: x.skills })))
       this.editSaving = true
       api.post('/admin/ezfy-bot/' + this.cur.user_id + '/edit', {
         nickname: this.editForm.nickname,
@@ -529,7 +555,9 @@ export default {
         buildings: bNow === this.editSnap.b ? [] : this.editBuildings.map(x => ({ id: x.id, level: x.level })),
         techs: tNow === this.editSnap.t ? [] : this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })),
         troops: trNow === this.editSnap.tr ? [] : this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })),
-        officers: oNow === this.editSnap.o ? [] : this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills }))
+        officers: oNow === this.editSnap.o ? [] : this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp,
+          free_points: x.free_points, military: x.military, logistics: x.logistics,
+          learning: x.learning, skills: x.skills }))
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {
