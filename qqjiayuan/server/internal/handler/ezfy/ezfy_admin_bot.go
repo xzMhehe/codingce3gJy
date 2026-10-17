@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -235,12 +237,15 @@ func (h *EzfyAdmin) AdminEzfyBotAct(c *gin.Context) {
 		resp.NotFound(c, "人机不存在")
 		return
 	}
+	// ★★ 2026-10-17 卡顿修复：决策 = 懒结算 + 内部 HTTP，同步等要 400ms+。
+	//   改成后台 goroutine，管理端立刻返回；1~2 秒后刷新列表/日志即可看到动作。
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB, Secret: ezfyBotAdminSecret, ExpH: 1}
-	ez.cfgs()
-	ez.botTickOne(b)
-	// 回读最新动作
-	h.DB.Where("user_id = ?", uid).First(&b)
-	resp.OK(c, gin.H{"msg": "已执行一轮：" + b.LastAction, "last_action": b.LastAction})
+	bot := b
+	go func() {
+		ez.cfgs()
+		ez.botTickOne(bot)
+	}()
+	resp.OK(c, gin.H{"msg": "已提交行动，稍后刷新查看它的动作"})
 }
 
 // ezfyBotAdminSecret 管理端「立即行动」用的 JWT 密钥。
@@ -256,8 +261,9 @@ func SetEzfyBotAdminSecret(secret string) { ezfyBotAdminSecret = secret }
 // AdminEzfyBotActAll POST /admin/ezfy-bot/act-all —— 一键立即行动：全部启用人机各连跑 N 轮
 //
 // ★ 2026-10-17 用户要求「加速人机变强」：手动批量加速（如活动前/测试时）。
-//   每轮 = 一次 botTickOne（懒结算 → 决策 → 执行一个动作 → 写日志/排下次），
-//   与「立即行动一轮」完全同链路，只是循环跑。轮数上限 50，防止误填刷爆日志。
+//
+//	每轮 = 一次 botTickOne（懒结算 → 决策 → 执行一个动作 → 写日志/排下次），
+//	与「立即行动一轮」完全同链路，只是循环跑。轮数上限 50，防止误填刷爆日志。
 func (h *EzfyAdmin) AdminEzfyBotActAll(c *gin.Context) {
 	var in struct {
 		Rounds int `json:"rounds"`
@@ -276,15 +282,38 @@ func (h *EzfyAdmin) AdminEzfyBotActAll(c *gin.Context) {
 		resp.ParamError(c, "没有运行中的人机")
 		return
 	}
-	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB, Secret: ezfyBotAdminSecret, ExpH: 1}
-	ez.cfgs()
-	for i := 0; i < in.Rounds; i++ {
-		for _, b := range bots {
-			ez.botTickOne(b)
-		}
+	// ★★ 2026-10-17 卡顿修复：原来 N 人机 × M 轮**全部串行**（50 个 × 10 轮 = 500 次懒结算+HTTP，
+	//   每轮 400ms+ → 请求挂几分钟）。改成：后台 goroutine + 8 并发 worker pool，
+	//   管理端立刻返回；带防重入标志（上一批没跑完再点直接拒绝）。
+	if !atomic.CompareAndSwapInt32(&ezfyBotActAllRunning, 0, 1) {
+		resp.ParamError(c, "上一批批量行动还在执行中，请稍后再试")
+		return
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已对 %d 个人机各执行 %d 轮", len(bots), in.Rounds)})
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB, Secret: ezfyBotAdminSecret, ExpH: 1}
+	rounds, botsCopy := in.Rounds, bots
+	go func() {
+		defer atomic.StoreInt32(&ezfyBotActAllRunning, 0)
+		ez.cfgs()
+		sem := make(chan struct{}, 8)
+		var wg sync.WaitGroup
+		for i := 0; i < rounds; i++ {
+			for _, b := range botsCopy {
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(bot model.EzfyBot) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					ez.botTickOne(bot)
+				}(b)
+			}
+			wg.Wait()
+		}
+	}()
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已在后台对 %d 个人机各执行 %d 轮，稍后刷新列表/日志查看", len(bots), in.Rounds)})
 }
+
+// ezfyBotActAllRunning 一键批量行动的防重入标志（1 = 正在跑）。
+var ezfyBotActAllRunning int32
 
 // AdminEzfyBotDelete DELETE /admin/ezfy-bot/:uid —— 删除单个人机（连根拔掉）
 func (h *EzfyAdmin) AdminEzfyBotDelete(c *gin.Context) {
@@ -432,17 +461,18 @@ func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
 	h.DB.Where("user_id = ?", uid).First(&p)
 	city := h.ezfyBotCurrentCity(uint(uid))
 	out := gin.H{
-		"nickname":  p.Nickname,
-		"prestige":  p.Prestige,
-		"city_id":   city.ID,
-		"city_name": city.Name,
-		"pop":       city.Pop,        // 总人口
-		"pop_max":   city.PopMax,     // 人口上限
-		"pop_recover": city.PopRecover, // 待恢复人口（空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复）
-		"buildings": []gin.H{},
-		"troops":    []gin.H{},
-		"techs":     []gin.H{},
-		"officers":  []gin.H{},
+		"nickname":    p.Nickname,
+		"prestige":    p.Prestige,
+		"city_id":     city.ID,
+		"city_name":   city.Name,
+		"pop":         city.Pop,              // 总人口
+		"pop_max":     city.PopMax,           // 人口上限
+		"pop_recover": city.PopRecover,       // 待恢复人口（空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复）
+		"free_pop":    ezBotPopFree(h, city), // 空闲人口（可直接编辑，保存时反推总人口）
+		"buildings":   []gin.H{},
+		"troops":      []gin.H{},
+		"techs":       []gin.H{},
+		"officers":    []gin.H{},
 	}
 	h.cfgs()
 	if city.ID > 0 {
@@ -549,13 +579,14 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Nickname  *string `json:"nickname"`
-		Prestige  *int    `json:"prestige"`
-		CityName  *string `json:"city_name"`
-		Pop       *int64  `json:"pop"`
-		PopMax    *int64  `json:"pop_max"`
-		PopRecover *int64 `json:"pop_recover"`
-		Buildings []struct {
+		Nickname   *string `json:"nickname"`
+		Prestige   *int    `json:"prestige"`
+		CityName   *string `json:"city_name"`
+		Pop        *int64  `json:"pop"`
+		PopMax     *int64  `json:"pop_max"`
+		PopRecover *int64  `json:"pop_recover"`
+		FreePop    *int64  `json:"free_pop"`
+		Buildings  []struct {
 			ID    int64 `json:"id"`
 			Level int   `json:"level"`
 		} `json:"buildings"`
@@ -657,6 +688,45 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			// 待恢复人口改小/清零 → 空闲人口立刻恢复（与移民法案道具同口径）
 			changes = append(changes, "人口(总/上限/待恢复)")
 		}
+	}
+
+	// ⑤½ 空闲人口（★ 2026-10-17 用户要求「空闲人口也能编辑」）
+	//
+	// 空闲人口 = 人口 − 建筑占用 − 训练占用 − 待恢复（ezfyPopFree），是**计算值**没有存储列，
+	// 所以编辑它 = 按增量反推总人口：
+	//
+	//	newPop = pop + (目标空闲 − 当前空闲)
+	//
+	// 下限夹到「占用+待恢复」（人口不能低到让占用变成负空闲），上限夹到 pop_max（受截断会提示）。
+	// ★ 必须放在 ⑤ 之后执行：同时传 pop 和 free_pop 时以 free_pop 为准（它基于最终 pop 反推）。
+	if city.ID > 0 && in.FreePop != nil {
+		if *in.FreePop < 0 {
+			resp.ParamError(c, "空闲人口不能为负")
+			return
+		}
+		ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+		// 重新读一次城（⑤ 可能刚改过 pop/pop_max/pop_recover）
+		var c2 model.EzfyCity
+		h.DB.First(&c2, city.ID)
+		bPop := ez.buildingPop(c2.ID)
+		tPop := ez.troopPop(c2.ID)
+		curFree := ezfyPopFree(c2.Pop, bPop, tPop, c2.PopRecover)
+		newPop := c2.Pop + (*in.FreePop - curFree)
+		minPop := bPop + tPop + c2.PopRecover
+		if newPop < minPop {
+			newPop = minPop
+		}
+		truncated := false
+		if c2.PopMax > 0 && newPop > c2.PopMax {
+			newPop = c2.PopMax
+			truncated = true
+		}
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", c2.ID).Update("pop", newPop)
+		msg := fmt.Sprintf("空闲人口→%d", *in.FreePop)
+		if truncated {
+			msg += "(受人口上限截断)"
+		}
+		changes = append(changes, msg)
 	}
 
 	// ⑥ 兵种数量：按 (city_id, troop_id) upsert；count=0 删除该行
@@ -834,6 +904,7 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 	resp.OK(c, gin.H{
 		"attack_on":     ezfyBotAttackOn(),
 		"atk_daily_cap": ezfyBotDailyAtkCap(),
+		"food_free":     ezfyCfg.ready() && ezfyCfg.limit.BotFoodFree != 0,
 		"max_count":     ezfyBotMaxCount,
 		"tick_seconds":  int(ezfyBotTickInterval.Seconds()),
 		"batch_size":    ezfyBotBatchSize,
@@ -847,6 +918,7 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	var in struct {
 		AttackOn    *int `json:"attack_on"`
 		AtkDailyCap *int `json:"atk_daily_cap"`
+		FoodFree    *int `json:"food_free"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -870,6 +942,13 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 		}
 		up["bot_atk_daily"] = v
 	}
+	if in.FoodFree != nil {
+		v := 0
+		if *in.FoodFree != 0 {
+			v = 1
+		}
+		up["bot_food_free"] = v
+	}
 	if len(up) == 0 {
 		resp.ParamError(c, "没有要修改的配置")
 		return
@@ -880,4 +959,127 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	}
 	ezfyCfg.reload(h.DB, true)
 	resp.OK(c, gin.H{"msg": "已保存"})
+}
+
+// AdminEzfyBotTargets GET /admin/ezfy-bot/:uid/targets —— 攻击目标计划列表
+//
+// 人机可以**同时挂多个目标**（(bot_uid,target_uid) 唯一），按顺序逐个推进状态机。
+func (h *EzfyAdmin) AdminEzfyBotTargets(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var rows []model.EzfyBotTarget
+	h.DB.Where("bot_uid = ? AND status IN (0,1,2,3)", uid).Order("id ASC").Limit(20).Find(&rows)
+	// 目标昵称批量
+	tids := make([]uint, 0, len(rows))
+	for _, r := range rows {
+		tids = append(tids, r.TargetUid)
+	}
+	nickOf := map[uint]string{}
+	if len(tids) > 0 {
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", tids).Find(&profs)
+		for _, p := range profs {
+			nickOf[p.UserID] = p.Nickname
+		}
+	}
+	statusText := map[int]string{0: "待宣战", 1: "宣战待生效", 2: "可出击", 3: "冷却中", 4: "已放弃"}
+	out := make([]gin.H, 0, len(rows))
+	now := time.Now().UnixMilli()
+	for _, r := range rows {
+		out = append(out, gin.H{
+			"id": r.ID, "target_uid": r.TargetUid, "nickname": nickOf[r.TargetUid],
+			"status": r.Status, "status_text": statusText[r.Status],
+			"note":       r.Note,
+			"cool_until": r.CoolUntil,
+			"cooling":    r.Status == 3 && r.CoolUntil > now,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// AdminEzfyBotTargetSet POST /admin/ezfy-bot/:uid/target {target_uid} —— 管理端指定攻击目标
+//
+// ★ 与「自己找目标」并存：指定的目标直接写入计划表（status=0 待宣战），
+//
+//	人机下一轮自动走「宣战 → 等 24h 生效 → 出击」；发完把 next_act_at 提前，立刻开始。
+//
+// ★ 目标必须是**真人**（is_bot=0）—— 人机不打人机。
+func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var in struct {
+		TargetUID uint `json:"target_uid"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.TargetUID == 0 {
+		resp.ParamError(c, "请填写目标玩家ID或游戏号")
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	if uint(in.TargetUID) == uint(uid) {
+		resp.ParamError(c, "不能指定自己")
+		return
+	}
+	// 目标：支持用户ID或游戏号，必须是真人
+	var tp model.EzfyProfile
+	if err := h.DB.Where("user_id = ? OR game_uid = ?", in.TargetUID, in.TargetUID).First(&tp).Error; err != nil {
+		resp.NotFound(c, "目标玩家不存在")
+		return
+	}
+	if tp.IsBot == 1 {
+		resp.ParamError(c, "目标是人机，人机不打人机")
+		return
+	}
+	// 重复检查（唯一键也会兜底，这里提前给友好提示）
+	var dup int64
+	h.DB.Model(&model.EzfyBotTarget{}).
+		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, tp.UserID).Count(&dup)
+	if dup > 0 {
+		resp.ParamError(c, "该目标已在计划中")
+		return
+	}
+	// 目标当前城
+	var tc model.EzfyCity
+	h.DB.Where("user_id = ?", tp.UserID).Order("id ASC").First(&tc)
+	if err := h.DB.Create(&model.EzfyBotTarget{
+		BotUid: uint(uid), TargetUid: tp.UserID, TargetCityId: int64(tc.ID),
+		Status: 0, Note: fmt.Sprintf("管理端指定 %s(%d,%d)", tp.Nickname, tc.X, tc.Y),
+	}).Error; err != nil {
+		resp.ParamError(c, "写入计划失败（可能已存在）")
+		return
+	}
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	ez.ezfyBotLog(uint(uid), "管理端指定目标", fmt.Sprintf("目标 %s(ID:%d)，下一轮自动宣战", tp.Nickname, tp.UserID), 1)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已把「%s」加入「%s」的攻击计划，它下一轮会自动宣战（24h 后生效）", tp.Nickname, ez.ezfyBotNickOf(uint(uid)))})
+}
+
+// AdminEzfyBotTargetDel DELETE /admin/ezfy-bot/target/:tid —— 删除一条攻击计划
+func (h *EzfyAdmin) AdminEzfyBotTargetDel(c *gin.Context) {
+	tid, _ := strconv.Atoi(c.Param("tid"))
+	if tid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	res := h.DB.Delete(&model.EzfyBotTarget{}, tid)
+	if res.RowsAffected == 0 {
+		resp.NotFound(c, "计划不存在")
+		return
+	}
+	resp.OK(c, gin.H{"msg": "已删除该攻击计划"})
+}
+
+// ezBotPopFree 管理端算人机城的空闲人口（口径与玩家端 ezfyPopFree 完全一致）。
+func ezBotPopFree(h *EzfyAdmin, city model.EzfyCity) int64 {
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	return ezfyPopFree(city.Pop, ez.buildingPop(city.ID), ez.troopPop(city.ID), city.PopRecover)
 }

@@ -74,6 +74,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitGet(c *gin.Context) {
 		OfficerStarMax: ezfyStarMaxDef,
 		// ★ 训练加速黄金倍率 / 伤兵恢复黄金折扣率（百分比口径：100 = 100% = 原价）+ 伤兵恢复黄金折扣率
 		SpeedTrainRate: 0.1, WoundHealRate: 100,
+		// ★ 2026-10-17 训练一键加速开关（默认 1 开）
+		SpeedTrainOn: 1,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
@@ -395,6 +397,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		SysSellRare  *int `json:"sys_sell_rare"`
 		// ★ 2026-10-14 风云榜统计开关（0 = 关，1 = 开；0 合法）
 		PvpRankOn *int `json:"pvp_rank_on"`
+		// ★ 2026-10-17 训练一键加速开关（0 = 关 = 前端隐藏按钮 + 后端拒绝；1 = 开 = 默认）
+		SpeedTrainOn *int `json:"speed_train_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -445,6 +449,8 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 		// ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
 		RecruitFiveStarRate: ezfyRecruitFiveStarDef,
 		SpeedTrainRate:      0.1, WoundHealRate: 100,
+		// ★ 2026-10-17 训练一键加速开关（默认 1 开）
+		SpeedTrainOn: 1,
 		// ★ 2026-09-23 线上「负数兵力」事故：单城兵力上限 + 伤兵存活天数
 		TroopMax: ezfyTroopMaxDef, WoundExpireDays: ezfyWoundExpireDaysDef,
 		// ★ 2026-10-02 侦察机每架侦查成功率%（默认 20）
@@ -840,6 +846,10 @@ func (h *EzfyAdmin) AdminEzfyBuildLimitUpdate(c *gin.Context) {
 	}
 	// ★ 军官升星的功能开关（0/1 都合法）
 	if !setSwitch(in.OfficerStarUpOn, &lim.OfficerStarUpOn, "军官升星功能") {
+		return
+	}
+	// ★ 2026-10-17 训练一键加速开关（0 = 关 = 前端隐藏 + 后端拒绝；1 = 开 = 默认）
+	if !setSwitch(in.SpeedTrainOn, &lim.SpeedTrainOn, "训练一键加速开关") {
 		return
 	}
 	// ★ 军官升星的数值项：0 无意义，只接受 >= 1；成功率与上限不超过 100

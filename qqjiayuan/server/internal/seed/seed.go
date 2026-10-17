@@ -276,6 +276,8 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("officer_star_up_on", 1)        // 升星功能：1 开（默认）/ 0 关
 		addSwitchCol("officer_star_chance_on", 1)    // 概率开关：1 按概率（默认）/ 0 必成功
 		addSwitchCol("officer_star_keep_on_fail", 0) // 失败是否保留升星卡：0 扣掉（默认）/ 1 保留
+		// ★ 2026-10-17 「训练一键加速」「所有城市训练一键加速」开关（默认 1 开；0 关 = 前端隐藏按钮 + 后端拒绝）
+		addSwitchCol("speed_train_on", 1)
 		// 数值类（0 无意义 → 回落默认值），用只回填 NULL 的写法，别覆盖管理端改过的值
 		addNumCol := func(col string, def int) {
 			d := fmt.Sprintf("%d", def)

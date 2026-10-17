@@ -1201,6 +1201,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
 				admin.GET("/ezfy-bot/:uid/buildings", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotBuildings)
 				admin.POST("/ezfy-bot/:uid/edit", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotEdit)
+				// ★ 2026-10-17 攻击目标：人机可自己找，也可管理端指定（可挂多个）
+				admin.GET("/ezfy-bot/:uid/targets", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargets)
+				admin.POST("/ezfy-bot/:uid/target", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetSet)
+				admin.DELETE("/ezfy-bot/target/:tid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotTargetDel)
 				admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
 				// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
 				//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，

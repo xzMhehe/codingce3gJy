@@ -727,6 +727,12 @@ func (h *EzfyHandler) SpeedTrainAll(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 	h.cfgs()
 
+	// ★ 2026-10-17 训练一键加速开关：0 关 = 后端直接拒绝（前端也不展示按钮，双保险）
+	if !ezfySpeedTrainOn() {
+		resp.ParamError(c, "训练一键加速已关闭")
+		return
+	}
+
 	// ★ 2026-10-05 5 秒卡控（前后端双保险，防连点/脚本反复刷黄金结算）
 	{
 		nowCd := time.Now().UnixMilli()

@@ -751,6 +751,21 @@ func ezfyBotDailyAtkCap() int {
 	return 3
 }
 
+// ezfyBotFoodFree 人机军队免耗粮开关（ezfy_cfg_limit.bot_food_free）。
+//
+// ★ 只对 city.IsBot=1 的城生效（调用方保证），真人**永远照常扣粮**；
+//   判断只读内存 city 字段 + 配置缓存 —— calcResource 红线路径零查询。
+//   0 是合法值（默认正常耗粮），不能用 ezfyLimitOr。
+func ezfyBotFoodFree(isBot int) bool {
+	if isBot == 0 {
+		return false
+	}
+	if !ezfyCfg.ready() {
+		return false
+	}
+	return ezfyCfg.limit.BotFoodFree != 0
+}
+
 // botAtkQuotaOK 今日出征次数是否还没到上限（跨天自动清零）。
 func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
 	today := time.Now().Format("20060102")

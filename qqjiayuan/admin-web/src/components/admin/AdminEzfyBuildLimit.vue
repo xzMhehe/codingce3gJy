@@ -269,6 +269,12 @@
               <template slot="label">军官工资系数<el-tooltip placement="top" :content="tips.officer_salary_per_level"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.officer_salary_per_level" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <!-- ★ 2026-10-17 训练一键加速开关：开（默认）= 训练页展示并使用两个一键加速按钮；关 = 前端隐藏 + 后端拒绝 -->
+            <el-form-item>
+              <template slot="label">训练一键加速<el-tooltip placement="top" :content="tips.speed_train_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
+              <el-switch v-model="form.speed_train_on" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+              <span class="td-gray" style="margin-left:8px">关闭后训练页不再展示「训练一键加速 / 所有城市训练一键加速」</span>
+            </el-form-item>
             <el-form-item>
               <template slot="label">训练加速黄金倍率(%)<el-tooltip placement="top" :content="tips.speed_train_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.speed_train_rate" :min="0.01" :max="100" :step="1" :precision="2" controls-position="right" style="width:180px" />
@@ -438,6 +444,7 @@ export default {
         // ★ 2026-10-08 新玩家落地洲（默认欧洲）
         default_continent: 1,
         speed_train_rate: 100, wound_heal_rate: 100, heal_all_diamond: 100,
+        speed_train_on: 1,
         // ★ 2026-09-27：资源最大值（每项资源唯一硬上限），默认 21 亿 = 2100000000
         res_max_food: 2100000000, res_max_steel: 2100000000, res_max_oil: 2100000000,
         res_max_rare: 2100000000, res_max_gold: 2100000000,
@@ -548,6 +555,7 @@ export default {
         // ★ 2026-10-08 新玩家落地洲
         default_continent: '新玩家首次建城、以及没有指定洲时默认落到的洲（默认欧洲）。选哪个洲，内测玩家就聚在哪个洲，方便互相征服/侦查/掠夺。',
         speed_train_rate: '训练一键加速费用 = 剩余秒数 × 10 × 倍率 ÷ 100，100 = 原价、50 = 半价，默认 0.1',
+        speed_train_on: '训练一键加速开关：开 = 训练页展示并使用「训练一键加速 / 所有城市训练一键加速」；关 = 按钮隐藏、接口也拒绝（默认开）',
         // ★ 2026-09-27：资源最大值 = **每项资源唯一硬上限**，产量/获取统一累加到该值为止（不再看仓储）
         res_max_food: '粮食的唯一硬上限（默认 21 亿 = 2100000000）。玩家通过战斗掠夺 / 采集 / 运输 / 签到 / 商城等获得的粮食会无条件累加，' +
           '自动产量（农田等产出）同样累加，都到该值后不再增加。换算参考：1 亿 = 100000000、21 亿 = 2100000000；' +
@@ -670,6 +678,8 @@ export default {
             gold_prod_mult: (r.data.gold_prod_mult === undefined || r.data.gold_prod_mult === null)
               ? 1 : Number(r.data.gold_prod_mult),
             speed_train_rate: pos(Number(r.data.speed_train_rate), 100),
+            speed_train_on: r.data.speed_train_on === undefined || r.data.speed_train_on === null
+              ? 1 : Number(r.data.speed_train_on),
             wound_heal_rate: pos(Number(r.data.wound_heal_rate), 100),
             // ★ 2026-09-27：资源最大值；非数字 / 0 / 负数一律回落 21 亿
             res_max_food: pos(Number(r.data.res_max_food) || 0, 2100000000),

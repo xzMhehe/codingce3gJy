@@ -108,9 +108,12 @@
           <div class="old-line gray" v-if="!ezfy.zoneBuilt.length">(本区还没有建筑, 点上面的「建造」)</div>
           <br/>
           <div class="old-line">
-            <!-- ★ 2026-10-05 恢复：训练一键加速（前后端已加 5 秒卡控，防连点/脚本刷黄金） -->
-            <a href="javascript:;" @click="ezfy.doSpeedTrainAll">[训练一键加速]</a>|
-            <a href="javascript:;" @click="ezfy.doSpeedTrainAllCity">[所有城市训练一键加速]</a>
+            <!-- ★ 2026-10-05 恢复：训练一键加速（前后端已加 5 秒卡控，防连点/脚本刷黄金）
+                 ★ 2026-10-17 加开关：二战系统配置「训练一键加速开关」=1 才展示（默认开），0 关 = 隐藏 -->
+            <template v-if="ezfy.speedTrainOn">
+              <a href="javascript:;" @click="ezfy.doSpeedTrainAll">[训练一键加速]</a>|
+              <a href="javascript:;" @click="ezfy.doSpeedTrainAllCity">[所有城市训练一键加速]</a>
+            </template>
           </div>
           <!-- ★ 训练加速道具(item_type=4)的入口：上面两个是「花黄金一键完成」，
                这里才是商城买的「训练加速30分钟/2小时」真正被消耗的地方。 -->

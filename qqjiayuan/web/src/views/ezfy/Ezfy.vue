@@ -2801,6 +2801,9 @@ export default {
       this.convenePopGain = Number(d.convene_pop_gain) || 100000
       // ★ 2026-09-26 全局硬性人口上限（0 = 不限），超过禁止召集
       this.convenePopMax = Number(d.convene_pop_max) || 0
+      // ★ 2026-10-17 训练一键加速开关（1 开 / 0 关，默认开）：训练页据此展示/隐藏两个一键加速按钮
+      this.speedTrainOn = d.speed_train_on === undefined || d.speed_train_on === null
+        ? true : !!Number(d.speed_train_on)
       // ★ 2026-10-04 同上：/view 不再下发 wildlands/queues，下发才覆盖、不下发保留
       if (d.wildlands !== undefined) this.wildlands = d.wildlands || []
       if (d.queues !== undefined) this.queues = d.queues || []

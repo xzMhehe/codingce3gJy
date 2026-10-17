@@ -14,6 +14,10 @@
         <span>每人每日出征</span>
         <el-input-number v-model.number="atkDailyCap" :min="0" :max="100" size="mini"
                          controls-position="right" style="width:90px" @change="saveConfig" />
+        <span>人机免耗粮
+          <el-tooltip placement="top" :content="tips.foodFree"><i class="el-icon-info cfg-tip" /></el-tooltip>
+        </span>
+        <el-switch v-model="foodFree" :active-value="1" :inactive-value="0" @change="saveConfig" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
         <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
@@ -74,11 +78,12 @@
             <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '运行中' : '已暂停' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="335" align="center" fixed="right">
+        <el-table-column label="操作" width="370" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/建筑）" @click="openEdit(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发放资源" @click="openGrant(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-video-play" title="立即行动一轮" @click="actNow(row)" />
+            <el-button size="mini" type="warning" plain icon="el-icon-aim" title="攻击目标（查看/指定/删除）" @click="openTargets(row)" />
             <el-button size="mini" plain icon="el-icon-tickets" title="行为日志" @click="openLogs(row)" />
             <el-button size="mini" :type="row.enabled ? 'warning' : 'success'" plain
                        :icon="row.enabled ? 'el-icon-video-pause' : 'el-icon-video-play'"
@@ -120,11 +125,9 @@
         <el-form-item label="行动轮数">
           <el-input-number v-model.number="actAllRounds" :min="1" :max="50" controls-position="right"
                            style="width:140px" />
+          <el-tooltip placement="top" content="后台 8 并发执行，对全部运行中的人机各连跑 N 轮；执行中再点会被拒绝"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
         </el-form-item>
       </el-form>
-      <div class="td-gray" style="font-size:12px; margin-left:120px">
-        对全部运行中的人机各连跑 N 轮（每轮 = 懒结算 → 决策 → 执行一个动作 → 写日志），适合活动前/测试时批量加速。
-      </div>
       <div slot="footer">
         <el-button @click="actAllDlg = false">取 消</el-button>
         <el-button type="primary" :loading="actAllSaving" @click="doActAll">立即执行</el-button>
@@ -150,10 +153,11 @@
                 <el-input v-model="editForm.city_name" maxlength="20" show-word-limit style="width:220px" />
                 <span class="td-gray" style="margin-left:6px">当前主城</span>
               </el-form-item>
-              <el-form-item label="总人口">
-                <el-input-number v-model.number="editForm.pop" :min="0" :step="1000"
+              <el-form-item label="空闲人口">
+                <el-input-number v-model.number="editForm.freePop" :min="0" :step="1000"
                                  controls-position="right" style="width:160px" />
-                <span class="td-gray" style="margin-left:6px">当前 {{ fmtNum(editForm.pop) }}</span>
+                <el-tooltip placement="top" content="空闲人口 = 总人口 − 建筑占用 − 训练占用 − 待恢复；保存时自动反推总人口，训练占用不受影响"><i class="el-icon-info cfg-tip" style="margin-left:6px" /></el-tooltip>
+                <span class="td-gray" style="margin-left:6px">总人口 {{ fmtNum(editForm.pop) }}（自动反推）</span>
               </el-form-item>
               <el-form-item label="人口上限">
                 <el-input-number v-model.number="editForm.pop_max" :min="0" :step="1000"
@@ -177,9 +181,6 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div class="td-gray" style="font-size:12px; line-height:1.6">
-              只列已建造的建筑；改等级会顺带取消施工队列；0 = 未建造。
-            </div>
           </el-tab-pane>
           <el-tab-pane label="科技等级" name="tech">
             <el-table :data="editTechs" size="mini" border max-height="300" style="width:100%">
@@ -191,7 +192,6 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div class="td-gray" style="font-size:12px; line-height:1.6">0 = 未研究；直接改等级立即生效，无研究队列。</div>
           </el-tab-pane>
           <el-tab-pane label="兵种数量" name="troop">
             <el-table :data="editTroops" size="mini" border max-height="300" style="width:100%">
@@ -203,7 +203,6 @@
                 </template>
               </el-table-column>
             </el-table>
-            <div class="td-gray" style="font-size:12px; line-height:1.6">0 = 该城无此兵种；填入数量立即生效。</div>
           </el-tab-pane>
           <el-tab-pane label="军官" name="officer">
             <div class="toolbar" style="margin-bottom:8px">
@@ -213,8 +212,8 @@
               </el-select>
               <el-button size="mini" type="success" plain icon="el-icon-plus" :loading="grantSaving"
                          @click="grantGeneral">发放到主城</el-button>
+              <el-tooltip placement="top" content="技能名取自军官技能配置；三维由池子+装备+加点决定，本页不直接改"><i class="el-icon-info cfg-tip" /></el-tooltip>
               <div class="grow" />
-              <span class="td-gray" style="font-size:12px">发放后在本页底部刷新可看到新军官</span>
             </div>
             <el-table :data="editOfficers" size="mini" border max-height="300" style="width:100%">
               <el-table-column prop="name" label="军官" min-width="110" show-overflow-tooltip />
@@ -243,9 +242,6 @@
                 <template slot-scope="{row}">{{ row.military }}/{{ row.logistics }}/{{ row.learning }}</template>
               </el-table-column>
             </el-table>
-            <div class="td-gray" style="font-size:12px; line-height:1.6">
-              技能名取自「军官技能列表」配置；三维由池子+装备+加点决定，本页不直接改。
-            </div>
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -272,6 +268,32 @@
         <el-button @click="grantDlg = false">取 消</el-button>
         <el-button type="primary" :loading="grantSaving" @click="doGrant">发 放</el-button>
       </div>
+    </el-dialog>
+
+    <!-- 攻击目标（人机可自己找，也可管理端指定；可挂多个） -->
+    <el-dialog :title="'攻击目标 —— ' + (cur ? cur.nickname : '')" :visible.sync="tgtDlg" width="640px"
+               :close-on-click-modal="false">
+      <div class="toolbar" style="margin-bottom:10px">
+        <el-input v-model.number="tgtInput" placeholder="目标玩家ID / 游戏号" clearable style="width:200px" />
+        <el-button type="primary" size="mini" icon="el-icon-plus" :loading="tgtSaving" @click="addTarget">加入计划</el-button>
+        <span class="td-gray" style="font-size:12px">目标必须是真人；加入后该人机下一轮自动宣战（24h 生效）</span>
+      </div>
+      <el-table :data="targets" v-loading="tgtLoading" size="mini" border max-height="300">
+        <el-table-column prop="target_uid" label="目标ID" width="95" align="center" />
+        <el-table-column prop="nickname" label="目标昵称" min-width="110" show-overflow-tooltip />
+        <el-table-column label="状态" width="100" align="center">
+          <template slot-scope="{row}">
+            <el-tag size="mini" :type="row.status === 2 ? 'success' : (row.status === 3 ? 'info' : 'warning')">{{ row.status_text }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="note" label="备注" min-width="140" show-overflow-tooltip />
+        <el-table-column label="操作" width="70" align="center">
+          <template slot-scope="{row}">
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除计划" @click="delTarget(row)" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <div slot="footer"><el-button @click="tgtDlg = false">关 闭</el-button></div>
     </el-dialog>
 
     <!-- 行为日志 -->
@@ -310,13 +332,17 @@ export default {
   data () {
     return {
       list: [], max: 50, loading: false, word: '',
-      attackOn: 1, atkDailyCap: 3, saving: false,
+      attackOn: 1, atkDailyCap: 3, foodFree: 0, saving: false,
+      // 攻击目标
+      tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
+      // 编辑快照（保存时只提交有变化的 tab —— 修复「保存卡顿」：几十条 UPDATE 串行跨 WAN 太慢）
+      editSnap: { b: '', t: '', tr: '', o: '' },
       createDlg: false, createCount: 3, createLevel: 2, createBoost: true,
       // 一键立即行动（全部人机连跑 N 轮）
       actAllDlg: false, actAllSaving: false, actAllRounds: 5,
       // 编辑（昵称/声望/城市名/人口/建筑/科技/兵种/军官）
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
-      editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0 },
+      editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0 },
       editBuildings: [],
       editTechs: [],
       editTroops: [],
@@ -337,6 +363,7 @@ export default {
       tips: {
         overview: '人机走和真人完全相同的接口（建城/升级/造兵/宣战），每 60 秒一轮、每轮最多 10 个，带租约锁（多进程只有一台真正执行）；人机不出现在「玩家信息管理」里。',
         atk: '关闭 = 人机只发育、不打扰玩家；开启后受「每人每日出征上限」与新手保护约束（建城不满 3 天、兵力过低的目标不会被打）。',
+        foodFree: '开启后人机的城内军队不扣维护粮（真人照常扣）。人机不打劫时粮食全靠产出，开着能让 AI 专注发育。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
     }
@@ -357,12 +384,13 @@ export default {
           this.max = r.data.max || 50
           this.attackOn = r.data.attack_on ? 1 : 0
           this.atkDailyCap = r.data.atk_daily_cap || 0
+          this.foodFree = r.data.food_free ? 1 : 0
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
     },
     saveConfig () {
       api.post('/admin/ezfy-bot/config', {
-        attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap
+        attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap, food_free: this.foodFree
       }).then(r => {
         if (r.code === 0) this.$message.success('已保存')
         else this.$message.error(r.msg)
@@ -426,7 +454,8 @@ export default {
           this.editForm = {
             nickname: r.data.nickname || '', prestige: r.data.prestige || 0,
             city_name: r.data.city_name || '',
-            pop: r.data.pop || 0, pop_max: r.data.pop_max || 0, pop_recover: r.data.pop_recover || 0
+            pop: r.data.pop || 0, pop_max: r.data.pop_max || 0, pop_recover: r.data.pop_recover || 0,
+            freePop: r.data.free_pop || 0
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
@@ -437,6 +466,7 @@ export default {
             military: o.military, logistics: o.logistics, learning: o.learning,
             skills: o.skills || []
           }))
+          this.snapEdit()
           this.loadEditOptions()
         } else { this.editDlg = false; this.$message.error(r.msg) }
       }).catch(() => { this.editLoading = false })
@@ -474,19 +504,32 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => { this.grantSaving = false })
     },
+    // 快照四个列表（保存时逐个 diff，只提交有变化的 —— 不变的 tab 传空数组，后端零 SQL）
+    snapEdit () {
+      this.editSnap = {
+        b: JSON.stringify(this.editBuildings.map(x => ({ id: x.id, level: x.level }))),
+        t: JSON.stringify(this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level }))),
+        tr: JSON.stringify(this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count }))),
+        o: JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills })))
+      }
+    },
     saveEdit () {
+      const bNow = JSON.stringify(this.editBuildings.map(x => ({ id: x.id, level: x.level })))
+      const tNow = JSON.stringify(this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })))
+      const trNow = JSON.stringify(this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })))
+      const oNow = JSON.stringify(this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills })))
       this.editSaving = true
       api.post('/admin/ezfy-bot/' + this.cur.user_id + '/edit', {
         nickname: this.editForm.nickname,
         prestige: this.editForm.prestige,
         city_name: this.editForm.city_name,
-        pop: this.editForm.pop,
+        free_pop: this.editForm.freePop,
         pop_max: this.editForm.pop_max,
         pop_recover: this.editForm.pop_recover,
-        buildings: this.editBuildings.map(x => ({ id: x.id, level: x.level })),
-        techs: this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })),
-        troops: this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })),
-        officers: this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills }))
+        buildings: bNow === this.editSnap.b ? [] : this.editBuildings.map(x => ({ id: x.id, level: x.level })),
+        techs: tNow === this.editSnap.t ? [] : this.editTechs.map(x => ({ tech_id: x.tech_id, level: x.level })),
+        troops: trNow === this.editSnap.tr ? [] : this.editTroops.map(x => ({ troop_id: x.troop_id, count: x.count })),
+        officers: oNow === this.editSnap.o ? [] : this.editOfficers.map(x => ({ id: x.id, level: x.level, exp: x.exp, skills: x.skills }))
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {
@@ -545,6 +588,41 @@ export default {
           this.load()
         } else this.$message.error(r.msg)
       }).catch(() => { this.grantSaving = false })
+    },
+    // ---- 攻击目标 ----
+    openTargets (row) {
+      this.cur = row
+      this.tgtInput = ''
+      this.targets = []
+      this.tgtDlg = true
+      this.loadTargets()
+    },
+    loadTargets () {
+      this.tgtLoading = true
+      api.get('/admin/ezfy-bot/' + this.cur.user_id + '/targets').then(r => {
+        this.tgtLoading = false
+        if (r.code === 0) this.targets = r.data.list || []
+        else this.$message.error(r.msg)
+      }).catch(() => { this.tgtLoading = false })
+    },
+    addTarget () {
+      const v = parseInt(this.tgtInput) || 0
+      if (!v) { this.$message.warning('请填写目标玩家ID或游戏号'); return }
+      this.tgtSaving = true
+      api.post('/admin/ezfy-bot/' + this.cur.user_id + '/target', { target_uid: v }).then(r => {
+        this.tgtSaving = false
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已加入计划')
+          this.tgtInput = ''
+          this.loadTargets()
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.tgtSaving = false })
+    },
+    delTarget (row) {
+      api.delete('/admin/ezfy-bot/target/' + row.id).then(r => {
+        if (r.code === 0) { this.$message.success(r.data.msg || '已删除'); this.loadTargets() }
+        else this.$message.error(r.msg)
+      })
     },
     openLogs (row) {
       this.cur = row

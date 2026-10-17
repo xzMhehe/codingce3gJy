@@ -1226,8 +1226,10 @@ func (h *EzfyHandler) calcResourceD(city *model.EzfyCity, d *resCalcData, office
 	//   落库随下面的「写合并」一起走（pop_recover / pop_recover_at）。
 	h.ezfySettlePopRecover(city)
 	// ★ 「耗粮开关也做个吧，默认开」→ 关掉时城内军队每小时不扣粮。
+	// ★ 2026-10-17 人机免耗粮：bot_food_free=1 时人机（city.IsBot=1）的军队不扣维护粮，
+	//   真人照常扣 —— 判断只用内存 city.IsBot + 配置缓存，零查询（calcResource 红线）。
 	var troopFoodCost int64
-	if ezfyFoodUpkeepOn() {
+	if ezfyFoodUpkeepOn() && !ezfyBotFoodFree(city.IsBot) {
 		for tid, count := range d.troopsOf(h, city.ID) {
 			if cfg := ezfyCfg.troop(tid); cfg != nil {
 				troopFoodCost += int64(cfg.FoodKeep) * count
@@ -1866,7 +1868,8 @@ func (h *EzfyHandler) getResourceCalcWith(city *model.EzfyCity, d *resCalcData) 
 	wildGold = ezfyScaleGoldByProdMult(wildGold)
 	var troopFood int64
 	// ★ 耗粮开关关掉时这里也要显示 0，否则界面写着「每小时耗粮 N」，实际却不扣
-	if ezfyFoodUpkeepOn() {
+	// ★ 2026-10-17 人机免耗粮：显示口径与实扣一致（人机城显示 0）
+	if ezfyFoodUpkeepOn() && !ezfyBotFoodFree(city.IsBot) {
 		for tid, count := range troops {
 			if cfg := ezfyCfg.troop(tid); cfg != nil {
 				troopFood += int64(cfg.FoodKeep) * count
@@ -4188,6 +4191,8 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 		"convene_pop_gain":  ezfyConvenePopGainCfg(),
 		// ★ 2026-09-26：召集硬性人口上限（0 = 不限），前端提示与按钮禁用都要用
 		"convene_pop_max": ezfyConvenePopMaxCfg(),
+		// ★ 2026-10-17 训练一键加速开关（1 开 / 0 关）：训练页据此决定是否展示「训练一键加速 / 所有城市训练一键加速」
+		"speed_train_on": ezfySpeedTrainOn(),
 	}
 	// ★ 2026-10-03 第三批：3 秒短 TTL 玩家级缓存。写操作后的刷新最多滞后 3 秒（可接受）。
 	//   这里只负责「构建」，缓存/下发由 View（或切城等接口）决定。

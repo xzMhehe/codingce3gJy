@@ -549,6 +549,11 @@ type EzfyCfgLimit struct {
 	//   0 无意义 → 回落 0.1。
 	SpeedTrainRate float64 `gorm:"default:0.1;comment:速度训练比率" json:"speed_train_rate"`
 
+	// ★ 2026-10-17 训练一键加速开关：1 开（默认）= 训练页展示并使用「训练一键加速 / 所有城市训练一键加速」；
+	//   0 关 = 前端不展示按钮、后端接口也直接拒绝。
+	//   ⚠️ 开关（0 有意义），不能带 gorm:"default:x" 标签，seed 走 addSwitchCol（只回填 NULL）。
+	SpeedTrainOn int `gorm:"comment:训练一键加速开关（关 = 按钮不展示也无法使用）" json:"speed_train_on"`
+
 	// ★ 伤兵恢复黄金折扣率（百分比口径）：恢复费用 = 兵种总造价 / wound_heal_divisor × 折扣率/100。
 	//   默认 100 = 100% = 原价；调低 = 恢复便宜。0 无意义 → 回落 100。
 	WoundHealRate float64 `gorm:"default:100;comment:伤兵治疗比率" json:"wound_heal_rate"`
@@ -607,6 +612,9 @@ type EzfyCfgLimit struct {
 	//   BotAtkDaily：每个人机每日出征次数上限（默认 3）
 	BotAtkOn    int `gorm:"default:1;comment:人机允许攻击玩家(1开0关=只发育)" json:"bot_atk_on"`
 	BotAtkDaily int `gorm:"default:3;comment:每个人机每日出征上限" json:"bot_atk_daily"`
+	// ★ 2026-10-17 人机免耗粮：1 = 人机（city.is_bot=1）的城内军队不扣维护粮（真人照常扣）。
+	//   人机不打劫不打野时粮食全靠产出，军队耗粮经常把它饿死 → 运营可开这个让 AI 专注发育。
+	BotFoodFree int `gorm:"default:0;comment:人机军队免耗粮(1=不扣,真人照常)" json:"bot_food_free"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

@@ -1317,6 +1317,12 @@ func ezfySpeedTrainRate() float64 {
 	return v / 100
 }
 
+// ezfySpeedTrainOn 训练一键加速开关：1 开（默认）= 训练页展示并使用「训练一键加速 / 所有城市训练一键加速」；
+// 0 关 = 前端不展示按钮、后端接口也直接拒绝（2026-10-17 用户规则）。
+func ezfySpeedTrainOn() bool {
+	return ezfyCfg.limit.SpeedTrainOn != 0
+}
+
 // ezfyWarRequireOn 是否要求「先宣战才能掠夺/征服别人城市」
 //
 // ★ 「加一个宣战功能开关，默认开启：开启 = 玩家之间需要宣战；
