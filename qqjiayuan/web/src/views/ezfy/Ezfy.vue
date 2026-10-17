@@ -1341,8 +1341,9 @@ export default {
       return ['gold', 'food', 'steel', 'oil', 'rare'].reduce((s, k) => s + this.resQty(k), 0)
     },
     // 没选任何部队 → 随军资源整块禁用（滑块/数字/[最大] 都灰掉，也不能填写）
+    // ★ 2026-10-17 增援(6)=驻守，不带资源（盟友间资源运输靠运输(5)）→ 同样禁用
     orderResDisabled () {
-      return this.orderTroopTotal <= 0
+      return this.orderTroopTotal <= 0 || this.orderType === 6
     },
     // 是否超出负重上限（红了要玩家减资源或多带部队）
     orderResOver () {

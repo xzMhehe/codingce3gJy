@@ -1177,6 +1177,13 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 			break
 		}
 	}
+	// ★★ 2026-10-17 用户口径：增援(6)=驻守，携带资源无效
+	//   （盟友间资源运输靠运输(5)）。前端已禁用增援的资源输入，这里后端兜底：
+	//   就算客户端伪造资源参数，也强制清空，不给目标城也不带回。
+	if orderType == 6 && hasRes {
+		resources = map[string]int64{}
+		hasRes = false
+	}
 	// ★ 2026-09-30 用户规则：侦察只有侦察机才能侦察。
 	//   侦察(orderType 1)必须携带侦察机(troopId 9)，且只能带侦察机；
 	//   其它部队不能混编侦察，防止用普通部队当炮灰探路。
@@ -3027,56 +3034,33 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			}
 			desc += "\n部队已编入驻防队列(不并入该城兵力): 敌军进攻时先攻击先到达的驻军, 驻军全部被消灭后才攻击我方部队。"
 		}
-		// ★ 2026-10-11 随军资源入目标城：原来增援**完全不处理** order.Resources ——
-		//   带过去的粮/钢/油/稀/金到达后凭空消失。与运输/派遣同口径，送到增援目标城。
-		// ★★ 2026-10-17 按配置「资源最大值」封顶累加：装不下的部分随队原路带回（盟友城驻军，
-		//   召回时入库出发城）；增援**自己城市**订单直接删除、无返航，装不下的直接退加回出发城。
-		var excRein ezfyCarry
-		if res := h.parseResMap(order.Resources); res["food"]+res["steel"]+res["oil"]+res["rare"]+res["gold"] > 0 {
-			h.calcResource(&target, h.officerList(target.ID))
-			fit, exc := h.ezfyCarryFitTo(&target, ezfyCarry{
-				Food: res["food"], Steel: res["steel"], Oil: res["oil"], Rare: res["rare"], Gold: res["gold"],
-			})
-			excRein = exc
-			h.DB.Model(&model.EzfyCity{}).Where("id = ?", target.ID).Updates(map[string]interface{}{
-				"food":  ezfyResAddExpr("food", fit.Food),
-				"steel": ezfyResAddExpr("steel", fit.Steel),
-				"oil":   ezfyResAddExpr("oil", fit.Oil),
-				"rare":  ezfyResAddExpr("rare", fit.Rare),
-				"gold":  ezfyResAddExpr("gold", fit.Gold),
-			})
-			desc += fmt.Sprintf("\n随军资源已入库: 粮%d 钢%d 油%d 稀矿%d 金%d",
-				fit.Food, fit.Steel, fit.Oil, fit.Rare, fit.Gold)
-			if exc.total() > 0 {
-				desc += fmt.Sprintf("\n目标城已接近上限, 装不下: 粮%d 钢%d 油%d 稀矿%d 金%d",
-					exc.Food, exc.Steel, exc.Oil, exc.Rare, exc.Gold)
-			}
-		}
-		order.Resources = "" // 已送达，避免返航时重复带回
+		// ★★ 2026-10-17 增援(6) = 驻守，不带资源（盟友间资源运输靠运输(5)）。
+		//   创建订单时后端已强制清空 order.Resources（CreateOrder 兜底，防客户端伪造）。
+		//   own 分支订单删除 → 残留退加回出发城；盟友城分支订单保留 → resources 留着，
+		//   召回时由 finishReturn 并入带回出发城（见 own 分支的处理与下方 else 分支）。
 		if own {
 			// ★ 2026-10-02 增援自己城市: 兵力/军官已并入目标城, 订单已完结 → 删除,
 			//   避免 status=3 僵尸订单被军情误判为驻军、占用驻军槽位。
-			// ★★ 2026-10-17 订单删除无返航：装不下的资源直接退加回出发城（按配置上限封顶）。
-			if excRein.total() > 0 {
+			// ★★ 2026-10-17 订单删除无召回路径：残留 resources（旧数据）退加回出发城
+			//   （按配置上限封顶），避免蒸发。
+			if res := h.parseResMap(order.Resources); res["food"]+res["steel"]+res["oil"]+res["rare"]+res["gold"] > 0 {
 				h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-					"food":  ezfyResAddExpr("food", excRein.Food),
-					"steel": ezfyResAddExpr("steel", excRein.Steel),
-					"oil":   ezfyResAddExpr("oil", excRein.Oil),
-					"rare":  ezfyResAddExpr("rare", excRein.Rare),
-					"gold":  ezfyResAddExpr("gold", excRein.Gold),
+					"food":  ezfyResAddExpr("food", res["food"]),
+					"steel": ezfyResAddExpr("steel", res["steel"]),
+					"oil":   ezfyResAddExpr("oil", res["oil"]),
+					"rare":  ezfyResAddExpr("rare", res["rare"]),
+					"gold":  ezfyResAddExpr("gold", res["gold"]),
 				})
-				desc += fmt.Sprintf("\n装不下的资源已退加回%s: 粮%d 钢%d 油%d 稀矿%d 金%d",
-					city.Name, excRein.Food, excRein.Steel, excRein.Oil, excRein.Rare, excRein.Gold)
+				desc += fmt.Sprintf("\n残留随军资源已退回%s: 粮%d 钢%d 油%d 稀矿%d 金%d",
+					city.Name, res["food"], res["steel"], res["oil"], res["rare"], res["gold"])
 			}
 			h.DB.Delete(&model.EzfyOrder{}, order.ID)
 		} else {
-			// ★★ 2026-10-17 盟友城驻军不返航：装不下的资源记进 Carry，召回驻军时随队带回出发城。
-			if excRein.total() > 0 {
-				order.Carry = carryJSON(excRein)
-			}
+			// 盟友城驻军：订单保留，召回时 finishReturn 会把 order.Resources 并入带回出发城
+			// （创单时已强制清空，正常为空；旧数据残留则随召回带回，不蒸发）。
 			order.Status = 3
 			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
-				Updates(map[string]interface{}{"status": 3, "resources": "", "carry": order.Carry})
+				Updates(map[string]interface{}{"status": 3})
 		}
 		h.addReport(uid, 5, "增援报告: "+target.Name, desc)
 		if target.UserID > 0 && target.UserID != uid {
