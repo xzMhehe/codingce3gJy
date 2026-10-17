@@ -1391,8 +1391,17 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 			// ★ 2026-10-07 数字既可能是 user_id，也可能是游戏里看到的游戏ID(game_uid)，两者都匹配。
 			// ★★ 2026-10-15 用户规则：**家园号条件查询全部换成游戏号** → 去掉按
 			//   `users.username`(家园号) 反查 uid 的那一支（家园号会随转靓号变，游戏号才是玩家报的那个）。
-			q = q.Where(`user_id = ?
-				OR user_id IN (SELECT user_id FROM ezfy_profile WHERE game_uid = ?)`, uid, uid)
+			// ★★ 2026-10-17 卡顿优化：原来用 `OR user_id IN (SELECT ...)` 子查询，每次查询都重跑子查询。
+			//   改成**一次性内存查集合**再 IN（ezfy_profile 有 user_id 索引，战报走 idx_user 索引命中），
+			//   管理端查人机战报（人机 GameUID==UserID）天然只命中 user_id = ? 一个值。
+			var gids []uint
+			h.DB.Model(&model.EzfyProfile{}).Where("game_uid = ?", uid).Pluck("user_id", &gids)
+			ids := append([]uint{uint(uid)}, gids...)
+			if len(ids) > 1 {
+				q = q.Where("user_id IN ?", ids)
+			} else {
+				q = q.Where("user_id = ?", uid)
+			}
 		} else {
 			var ids []uint
 			h.DB.Model(&model.EzfyProfile{}).Select("user_id").

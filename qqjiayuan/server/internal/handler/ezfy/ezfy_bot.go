@@ -337,7 +337,7 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	}
 	if err := h.DB.Create(&model.EzfyProfile{
 		UserID: uid, GameUID: int64(uid), Nickname: nick,
-		Prestige: 0, Camp: camp, Rank: 1, IsBot: 1,
+		Prestige: 0, Camp: camp, Rank: 9, IsBot: 1, // ★ 2026-10-17 军衔默认中尉（rank 9，用户规则）
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建二战档案失败: %w", err))
 	}
@@ -353,13 +353,16 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	for _, bid := range ezfyBotDefaultBuildings {
 		h.ensureBotBuilding(city.ID, bid, 9)
 	}
-	// 运营初始化（方案 4.7「开服调参」）：可选「加速开局」——给一笔启动资源，
-	// 否则人机要花很久才能攒够「召集人口」的 20 万粮（从零开始是默认档）。
-	if boost {
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"food": 500000, "steel": 200000, "oil": 200000, "rare": 200000,
-		})
+	// ★ 2026-10-17 人机默认科技全 9 级（用户规则：新增人机默认科技都是 9 级）
+	//   走 ezfy_user_tech（账号级科技，唯一键 uk_user_tech），与真人科技升级同一存储。
+	for tid := range ezfyCfg.techs {
+		h.ensureBotTech(uid, tid, 9)
 	}
+	// ★ 2026-10-17 资源默认 2000 万各项目（用户规则：新增人机 4 项资源各 2000 万），
+	//   无条件生效（此前只有勾选「加速开局」才给 50 万，太寒酸；现在默认就是富开局）。
+	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+		"food": 20000000, "steel": 20000000, "oil": 20000000, "rare": 20000000,
+	})
 	// ★ 2026-10-17 人机默认人口 50 万（用户规则「默认人口 50 万吧，够用了」）：
 	//   侦察显示当前人口 50 万；征兵线、出征人口承载都以它为基准，开局就能撑起大军团出征。
 	//   （createMainCity 初始 100 上限太寒酸，人机懒得慢慢召集人口。）
@@ -935,6 +938,17 @@ func (h *EzfyHandler) botRevenge(b *model.EzfyBot, city *model.EzfyCity) bool {
 	if hit.UID == 0 {
 		return false
 	}
+	// ★★ 2026-10-17 声望门槛修复：反击 = 主动把攻方纳入攻击目标，同样要过最低声望线。
+	//   此前 botRevenge 直接写入计划不查声望 → 低于最低声望的玩家一打就被人机反打，
+	//   等于把人机当免费复仇器（用户反馈「人机还是会把低于最低声望的纳入目标」根因之一）。
+	if min := ezfyBotMinPrestige(); min > 0 {
+		var ap model.EzfyProfile
+		h.DB.Select("prestige").Where("user_id = ?", hit.UID).First(&ap)
+		if ap.Prestige < min {
+			h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，但声望 %d 低于门槛 %d，不予反击", hit.UID, ap.Prestige, min), 0)
+			return false
+		}
+	}
 	// 已在计划中（任意状态）→ 不重复写（正常流程会打它；唯一键 (bot_uid,target_uid)）
 	var dup int64
 	h.DB.Model(&model.EzfyBotTarget{}).Where("bot_uid = ? AND target_uid = ?", b.UserID, hit.UID).Count(&dup)
@@ -1477,7 +1491,16 @@ func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
 	}
 	window := 3600000 / int64(rate)
 	now := time.Now().UnixMilli()
-	return b.LastAtkAt <= 0 || now-b.LastAtkAt >= window
+	if b.LastAtkAt > 0 && now-b.LastAtkAt < window {
+		return false
+	}
+	// ★ 2026-10-17 每日出征次数上限（用户规则「征服次数按难度 40-60 阶梯」）：
+	//   新手 40 / 普通 50 / 精英 60 次/天；今日次数达到 → 今天不再出征（跨天重置）。
+	daily := ezfyBotAtkDailyOf(b.Level)
+	if daily > 0 && b.AtkDate == time.Now().Format("20060102") && b.AtkCountToday >= daily {
+		return false
+	}
+	return true
 }
 
 // botAtkCountInc 今日出征次数 +1（跨天重置），并记录本次出征时间供攻频节流。
@@ -1489,6 +1512,19 @@ func (h *EzfyHandler) botAtkCountInc(b *model.EzfyBot) {
 	}
 	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).
 		Updates(map[string]interface{}{"atk_count_today": cnt, "atk_date": today, "last_atk_at": time.Now().UnixMilli()})
+}
+
+// ezfyBotAtkDailyOf 每日出征次数上限（★ 2026-10-17 用户规则「征服次数按难度 40-60 阶梯」）：
+//
+//	新手 40 / 普通 50 / 精英 60 次/天；0 或负 = 不限制。
+func ezfyBotAtkDailyOf(level int) int {
+	switch level {
+	case 1:
+		return 40
+	case 3:
+		return 60
+	}
+	return 50
 }
 
 // ezfyBotAtkPerHourOf 攻击频率（次/小时）：0=按难度默认（新手6 普通8 精英10），管理端可单独覆盖。

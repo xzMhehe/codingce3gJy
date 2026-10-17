@@ -401,9 +401,11 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 }
 
 // ★ 2026-10-17 人机默认发育底盘：直接给 9 级，避免从零爬建筑长期卡「休整」。
+// ★ 2026-10-17 民居(2) 补进默认清单：此前没有民居 → 新建人机只有 1 级民居，
+//   人口上限全靠初始 50 万撑着，召集人口/伤兵恢复等依赖民居等级的机制都起不来。
 //
-//	市政厅(1) 农田(3) 炼钢厂(4) 石油基地(5) 稀矿厂(6) 军工厂(14) 参谋部(10) 司令部(13)
-var ezfyBotDefaultBuildings = []int{1, 3, 4, 5, 6, 14, 10, 13}
+//	市政厅(1) 民居(2) 农田(3) 炼钢厂(4) 石油基地(5) 稀矿厂(6) 军工厂(14) 参谋部(10) 司令部(13)
+var ezfyBotDefaultBuildings = []int{1, 2, 3, 4, 5, 6, 14, 10, 13}
 
 // ensureBotBuilding 把人机城市的指定建筑补/提到 target 级（幂等）。
 // 该城没有该建筑 → 新建一条；已有 → 只升不降，且不管施工状态直接置为 9（Status 清零，
@@ -431,6 +433,24 @@ func (h *EzfyHandler) ensureBotBuilding(cityId uint, buildingId, target int) {
 		h.DB.Model(&model.EzfyCityBuilding{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
 			"level": b.Level, "status": 0, "start_time": 0, "end_time": 0,
 		})
+	}
+}
+
+// ensureBotTech 把人机账号的指定科技补/提到 target 级（幂等，★ 2026-10-17 新增人机默认科技 9 级）。
+// 走 ezfy_user_tech（账号级科技，唯一键 uk_user_tech），没有 → 新建；已有 → 只升不降。
+func (h *EzfyHandler) ensureBotTech(uid uint, techId, target int) {
+	cfg := ezfyCfg.tech(techId)
+	if cfg != nil && target > 100 {
+		target = 100
+	}
+	var t model.EzfyUserTech
+	err := h.DB.Where("user_id = ? AND tech_id = ?", uid, techId).First(&t).Error
+	if err != nil {
+		h.DB.Create(&model.EzfyUserTech{UserId: uid, TechId: techId, Level: target})
+		return
+	}
+	if t.Level < target {
+		h.DB.Model(&model.EzfyUserTech{}).Where("id = ?", t.ID).Update("level", target)
 	}
 }
 

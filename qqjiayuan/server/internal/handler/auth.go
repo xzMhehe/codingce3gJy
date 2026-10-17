@@ -242,6 +242,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
 		return
 	}
+	// ★ 2026-10-17 人机账号禁止登录（防止别人登录人机账号）：
+	//   人机只由内部 botCall 驱动（JWT 直调业务接口，不走登录），真人登录一律拒绝。
+	if user.IsBot == 1 {
+		userLog(h.DB, user.ID, "登陆失败", "人机账号禁止登录", c.ClientIP())
+		resp.Forbidden(c, "该账号不可登录")
+		return
+	}
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
 		userLog(h.DB, user.ID, "登陆失败", "密码错误", c.ClientIP())
 		loginlimiter.Fail(name)

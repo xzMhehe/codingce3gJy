@@ -410,7 +410,12 @@
         <el-table-column prop="created_at" label="时间" width="160" align="center" />
         <el-table-column prop="type_name" label="类型" width="110" align="center" />
         <el-table-column prop="player_name" label="玩家" width="120" show-overflow-tooltip />
-        <el-table-column prop="preview" label="内容" min-width="340" show-overflow-tooltip />
+        <el-table-column prop="preview" label="内容" min-width="300" show-overflow-tooltip />
+        <el-table-column label="操作" width="80" align="center">
+          <template slot-scope="s">
+            <el-button size="mini" plain icon="el-icon-view" @click="openReportDetail(s.row)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <div class="pager-bar">
         <div class="pager-info">共 <b>{{ reportTotal }}</b> 条战报</div>
@@ -419,6 +424,16 @@
                        @current-change="p => { reportPage = p; loadReports() }" />
       </div>
       <div slot="footer"><el-button @click="reportsDlg = false">关 闭</el-button></div>
+    </el-dialog>
+
+    <!-- 战报详情（★ 2026-10-17 点「详情」拉全文：content + detail） -->
+    <el-dialog :title="reportDetail.title || '战报详情'" :visible.sync="reportDetailDlg" width="720px">
+      <div class="report-detail" v-if="reportDetail">
+        <pre v-if="reportDetail.content" class="report-pre">{{ reportDetail.content }}</pre>
+        <pre v-if="reportDetail.detail" class="report-pre report-pre-detail">{{ reportDetail.detail }}</pre>
+        <div v-if="!reportDetail.content && !reportDetail.detail" class="td-gray">（战报内容为空）</div>
+      </div>
+      <div slot="footer"><el-button @click="reportDetailDlg = false">关 闭</el-button></div>
     </el-dialog>
   </div>
 </template>
@@ -469,6 +484,8 @@ export default {
       logsDlg: false, logs: [], logTotal: 0, logPage: 1, logSize: 20, logsLoading: false,
       // ★ 2026-10-17 出征战报
       reportsDlg: false, reports: [], reportTotal: 0, reportPage: 1, reportSize: 20, reportsLoading: false,
+      // 战报详情（★ 2026-10-17 点「详情」拉全文单独弹窗）
+      reportDetailDlg: false, reportDetail: { title: '', content: '', detail: '' },
       cur: null,
       tips: {
         overview: '人机走和真人完全相同的接口（建城/升级/造兵/宣战），每 60 秒一轮、每轮最多 10 个，带租约锁（多进程只有一台真正执行）；人机不出现在「玩家信息管理」里。',
@@ -828,6 +845,16 @@ export default {
           this.reportTotal = r.data.total || 0
         }
       }).catch(() => { this.reportsLoading = false })
+    },
+    // ★ 2026-10-17 战报详情：列表只给预览，点「详情」拉全文（content/detail）单独弹窗，列表不臃肿
+    openReportDetail (row) {
+      this.reportDetail = { title: row.title || row.type_name, content: '', detail: '' }
+      this.reportDetailDlg = true
+      api.get('/admin/ezfy-reports/' + row.id).then(r => {
+        if (r.code === 0) {
+          this.reportDetail = r.data
+        }
+      }).catch(() => {})
     }
   }
 }
@@ -838,4 +865,8 @@ export default {
 /* ★ label 提示图标（与「二战系统配置」页同款，鼠标悬停显示） */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
+/* ★ 战报详情：全文白底黑字，保留换行；detail 与 content 之间留分隔 */
+.report-pre { margin: 0 0 10px; padding: 10px; background: #fff; border: 1px solid #ebeef5;
+  border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.7; }
+.report-pre-detail { margin-top: 10px; }
 </style>
