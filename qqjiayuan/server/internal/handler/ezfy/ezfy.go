@@ -454,6 +454,46 @@ func (h *EzfyHandler) ensureBotTech(uid uint, techId, target int) {
 	}
 }
 
+// seedBotOfficers 人机创建默认送军官（★ 2026-10-17 用户规则：默认给两个五星普通军官，
+// 军事/学识高的随机官，后面人机自己招去）。
+//
+// 从军官池（ezfy_cfg_general）抽 **kind=1 普通 + star=5** 的模板随机 2 个，
+// 直接落 EzfyOfficer（不走招募流程、不扣黄金）——出生就有军官：出征有官带（botAttack
+// 选军事最高的在职军官）、城守有人当（botOfficer 任命），初始就是战力底盘。
+// 与真人招募同款字段（Base* 洗点基准、FreePoints=0、忠诚满、source=招募），保证后续
+// 加点/重修/技能全链路兼容。
+func (h *EzfyHandler) seedBotOfficers(uid uint, cityID uint) {
+	var gens []model.EzfyCfgGeneral
+	h.DB.Where("kind = 1 AND star = 5").Find(&gens)
+	if len(gens) == 0 {
+		h.DB.Where("kind = 1").Find(&gens) // 兜底：没有 5 星普通就用任意普通
+	}
+	if len(gens) == 0 {
+		return
+	}
+	perm := rand.Perm(len(gens))
+	for i := 0; i < 2 && i < len(perm); i++ {
+		g := gens[perm[i]]
+		o := model.EzfyOfficer{
+			CityId: int64(cityID), GeneralId: g.ID, Name: g.Name, Star: g.Star,
+			Level: 1, Exp: 0,
+			Military: g.Military, Logistics: g.Logistics, Learning: g.Learning,
+			BaseMilitary: g.Military, BaseLogistics: g.Logistics, BaseLearning: g.Learning,
+			FreePoints: 0, Loyalty: ezfyOfficerLoyaltyMax,
+			Skill: g.Skill, Equipment: "",
+			Position: ezfyPositionNone, Status: 0, IsCaptive: 0,
+			Source: model.EzfyOfficerSourceRecruit, UpdateTime: time.Now(),
+		}
+		// 同名军官限制（真人规则同城同名只能一个）：模板重名就跳过换下一个
+		var dup int64
+		h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ? AND name = ?", cityID, o.Name).Count(&dup)
+		if dup > 0 {
+			continue
+		}
+		h.DB.Create(&o)
+	}
+}
+
 // findFreePos 新玩家首次进游戏的落点
 //
 // ★ 第十二轮：默认落在**欧洲**（ezfyDefaultMoveContinent），

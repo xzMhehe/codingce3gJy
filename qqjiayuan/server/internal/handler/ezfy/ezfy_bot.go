@@ -369,6 +369,9 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
 		"pop": 500000, "pop_max": 500000,
 	})
+	// ★ 2026-10-17 人机创建默认送 2 个五星普通军官（军事/学识高、随机）：
+	//   出生就有军官可用（出征带官、城守有人当），后续军官靠人机自己招。
+	h.seedBotOfficers(uid, city.ID)
 	// ★ 2026-10-17 新增人机按难度给初始兵力：侦察机 10/20/30 万、火箭 1/2/3 亿（有兵才敢宣战）
 	scoutN, rocketN := int64(100000), int64(100000000)
 	switch level {
