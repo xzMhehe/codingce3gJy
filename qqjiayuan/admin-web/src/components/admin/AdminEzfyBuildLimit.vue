@@ -273,7 +273,6 @@
             <el-form-item>
               <template slot="label">训练一键加速<el-tooltip placement="top" :content="tips.speed_train_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.speed_train_on" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
-              <span class="td-gray" style="margin-left:8px">关闭后训练页不再展示「训练一键加速 / 所有城市训练一键加速」</span>
             </el-form-item>
             <el-form-item>
               <template slot="label">训练加速黄金倍率(%)<el-tooltip placement="top" :content="tips.speed_train_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
