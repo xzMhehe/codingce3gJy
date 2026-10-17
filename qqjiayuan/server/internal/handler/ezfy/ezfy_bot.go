@@ -65,6 +65,102 @@ func SetEzfyBotBaseURL(port int) {
 	}
 }
 
+// ezfyBotChatPool 人机世界发言词库（口语化、像人话，★ 2026-10-17）。
+//
+//	[0] 交流玩法 [1] 被打喊冤 [2] 撩架挑衅 —— 每天每台人机各类句不重复（跨天重置）。
+var ezfyBotChatPool = [][]string{
+	{
+		"新手求教，前期是不是先堆农田比较稳？",
+		"都说先升司令部出兵量大，我怎么觉得军工厂也不差啊",
+		"火箭配掠夺是真的爽，一队过去对面就空了",
+		"问下大佬们，集结令是等活动再烧还是平时就用了？",
+		"研究先把指挥点上，出征上限高一截，亲测有效",
+		"刚试了三骑兵带一火箭，掠夺效率比想象中高多了",
+		"感觉六级矿不好打，还是先屯个十万兵再试",
+		"建议新手先把稀矿厂升起来，后面科技全都要稀矿",
+		"有人一起打野地刷声望吗，天天被高战蹲点",
+		"资源还是得双开号攒，单开太慢了",
+	},
+	{
+		"谁打我城了…刚出去采集回来就看见城在冒烟",
+		"我就一默默发育的小号，大哥别盯着我呀",
+		"守城兵全没了，谁这么狠啊",
+		"我又被打飞了，才搬完家没两天",
+		"无缘无故打我，我连谁打的都不知道",
+		"还我兵啊，攒了一个星期的兵一晚上就没了",
+	},
+	{
+		"听说附近来了个高战？我的火箭已经饥渴难耐了",
+		"谁再说这服没活人，出来干一架",
+		"城里的兵都训完了，找个目标练练手",
+		"有没有人一起组队，把对面那个盟打趴下",
+	},
+}
+
+// botChat 人机世界发言（★ 2026-10-17）：被打（最近 60 分钟有人打本 bot 城）→ 优先喊冤；
+//
+//	平时 → 8% 概率主动聊玩法/撩架（"时不时"说一句，别刷屏）。
+//	每天句子不重复（chat_date/chat_used 记录），跨天清空重来。
+func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, string, bool) {
+	today := time.Now().Format("20060102")
+	// ① 被打了？查最近 60 分钟内对「本 bot 任一城」的敌方掠夺/征服单（行军/驻守中）
+	var ids []int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", b.UserID).Pluck("id", &ids)
+	victim := false
+	if len(ids) > 0 {
+		var hit int64
+		h.DB.Model(&model.EzfyOrder{}).
+			Where("order_type IN (2,3) AND target_type = 3 AND target_id IN ? AND status IN (0,1) AND user_id != ?",
+				ids, b.UserID).Count(&hit)
+		victim = hit > 0
+	}
+	// ② 主动聊天是低概率动作；被打喊冤必说
+	if !victim && mathrand.Intn(100) >= 8 {
+		return "", "", false
+	}
+	pool := ezfyBotChatPool[0]
+	if victim {
+		pool = ezfyBotChatPool[1]
+	} else if mathrand.Intn(2) == 0 {
+		pool = ezfyBotChatPool[2]
+	}
+	// ③ 每天不重复：跳过今天已用下标
+	if b.ChatDate != today {
+		b.ChatUsed = "" // 跨天重置
+	}
+	usedSet := map[int]bool{}
+	for _, s := range strings.Split(b.ChatUsed, ",") {
+		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+			usedSet[n] = true
+		}
+	}
+	var cands []int
+	for i := range pool {
+		if !usedSet[i] {
+			cands = append(cands, i)
+		}
+	}
+	if len(cands) == 0 {
+		return "", "", false // 今天的句子说完了，明天再来
+	}
+	idx := cands[mathrand.Intn(len(cands))]
+	content := pool[idx]
+	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/chat",
+		map[string]interface{}{"channel": 1, "content": content})
+	if code != 0 {
+		return "世界发言", "发言失败: " + msg, false
+	}
+	seg := strconv.Itoa(idx)
+	newUsed := seg
+	if b.ChatUsed != "" {
+		newUsed = b.ChatUsed + "," + seg
+	}
+	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).
+		Updates(map[string]interface{}{"chat_date": today, "chat_used": newUsed})
+	h.ezfyBotLog(b.UserID, "世界发言", content, 1)
+	return "世界发言", content, true
+}
+
 // ezfyBotNickPool 昵称词库（军事风格，像真人 ID 而不是 NPC 编号）。
 var ezfyBotNickPool = []string{
 	"钢铁洪流", "沙漠之狐", "北境守望", "铁血孤鹰", "雪原狼", "暗夜尖刀",
@@ -504,6 +600,12 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		if a, d, ok := h.botTrain(city, 0, cfg); ok {
 			return a, d, ok
 		}
+	}
+
+	// 0½) 世界聊天（★ 2026-10-17 人机也会在世界里说话：被打喊冤优先、平时低概率聊玩法）
+	//     ⚠️ 只占一轮动作里的一个：说话时这轮不发育，符合「最像真人」（真人也不可能一边出兵一边聊天）
+	if a, d, ok := h.botChat(b, city); ok {
+		return a, d, ok
 	}
 
 	// 1) 人口：空闲人口低于人口上限的 40% → 召集

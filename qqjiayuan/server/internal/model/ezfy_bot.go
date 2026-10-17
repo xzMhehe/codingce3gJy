@@ -38,6 +38,9 @@ type EzfyBot struct {
 	LastAtkAt  int64 `gorm:"default:0;comment:上次出征时间(ms)，按小时频率节流" json:"last_atk_at"`
 	// ★ 2026-10-17 出征类型：0=默认征服(3)；1=侦察 2=掠夺 3=征服（管理端可调整）
 	AtkType int `gorm:"default:0;comment:出征类型 0=默认征服 1=侦察 2=掠夺 3=征服" json:"atk_type"`
+	// ★ 2026-10-17 世界聊天（机器人也能说话）：每天句子不重复，跨天清空
+	ChatDate string `gorm:"type:varchar(10);comment:世界发言日期 yyyymmdd" json:"chat_date"`
+	ChatUsed string `gorm:"type:text;comment:今日已用发言句下标(逗号分隔)" json:"chat_used"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

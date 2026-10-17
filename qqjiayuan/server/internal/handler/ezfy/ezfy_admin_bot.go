@@ -1195,10 +1195,11 @@ func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
 		resp.ParamError(c, fmt.Sprintf("目标声望 %d 未达人机攻击门槛（需 ≥ %d）", tp.Prestige, min))
 		return
 	}
-	// 重复检查：活跃计划(0/1/2/3)已存在 → 友好提示
+	// 重复检查：活跃计划(0/1/2)已存在 → 友好提示
+	// ★ 2026-10-17 冷却中(3)不算「在计划中」：管理员冷却期间手动指定 → 允许，复活旧行清冷却强制开打
 	var dup int64
 	h.DB.Model(&model.EzfyBotTarget{}).
-		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2,3)", uid, tp.UserID).Count(&dup)
+		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, tp.UserID).Count(&dup)
 	if dup > 0 {
 		resp.ParamError(c, "该目标已在计划中")
 		return
@@ -1330,7 +1331,7 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 	}
 	var dup int64
 	h.DB.Model(&model.EzfyBotTarget{}).
-		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2,3)", uid, best.UserID).Count(&dup)
+		Where("bot_uid = ? AND target_uid = ? AND status IN (0,1,2)", uid, best.UserID).Count(&dup)
 	if dup > 0 {
 		resp.ParamError(c, "已在对该城玩家的攻击计划中")
 		return
