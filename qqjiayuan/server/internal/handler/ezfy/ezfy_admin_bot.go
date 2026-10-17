@@ -9,6 +9,7 @@
 package ezfy
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -312,6 +313,236 @@ func (h *EzfyAdmin) ezfyBotPurgeOne(uid uint) error {
 	// 家园账号（只删带 is_bot=1 的，防误删真人）
 	h.home().Exec("DELETE FROM users WHERE id = ? AND is_bot = 1", uid)
 	return nil
+}
+
+// AdminEzfyBotGrant POST /admin/ezfy-bot/:uid/grant —— 给人机城发资源（加速发育）
+//
+// ★ 与「玩家信息管理」的发放走同一个内部实现（giveResourcesNoCap，资源入当前所在城），
+//
+//	但入口独立挂 module:ezfyBot —— 人机已从玩家管理列表排除，运营只能从这里发。
+//
+// ★ 只发五类资源，**不发钻石**：人机不参与钻石/充值体系（方案 4.1）。
+// ★ 发完把 next_act_at 提前到当前时刻 —— 资源到位立刻行动，不用等下一轮 tick。
+func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var in struct {
+		Gold  int64 `json:"gold"`
+		Food  int64 `json:"food"`
+		Steel int64 `json:"steel"`
+		Oil   int64 `json:"oil"`
+		Rare  int64 `json:"rare"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	if in.Gold == 0 && in.Food == 0 && in.Steel == 0 && in.Oil == 0 && in.Rare == 0 {
+		resp.ParamError(c, "请先填写要发放的数量")
+		return
+	}
+	// 必须是人机（防误发真人 / 拿这个接口绕过玩家管理）
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	nick := ""
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	nick = ez.ezfyBotNickOf(uint(uid))
+	city, got := ez.giveResourcesNoCap(uint(uid), in.Food, in.Steel, in.Oil, in.Rare, in.Gold)
+	msg := "已发放入「" + city.Name + "」"
+	add := func(label string, want, real int64) {
+		if want == 0 {
+			return
+		}
+		msg += fmt.Sprintf(" %s%+d", label, real)
+		if real != want {
+			msg += fmt.Sprintf("(填%+d, 受资源上限/下限截断)", want)
+		}
+	}
+	add("粮食", in.Food, got[0])
+	add("钢铁", in.Steel, got[1])
+	add("石油", in.Oil, got[2])
+	add("稀矿", in.Rare, got[3])
+	add("黄金", in.Gold, got[4])
+	// 让它立刻消化这批资源（下一轮 tick 不用等）
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
+	ez.ezfyBotLog(uint(uid), "管理端发资源", trimStr(msg, 200), 1)
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给人机「%s」发放：%s（它会立刻行动消化资源）", nick, msg)})
+}
+
+// AdminEzfyBotBuildings GET /admin/ezfy-bot/:uid/buildings —— 编辑弹窗的数据源
+//
+// 返回人机当前城的建筑行（含未建造的坑位，level=0）+ 昵称/声望/城市名，一次回填表单。
+func (h *EzfyAdmin) AdminEzfyBotBuildings(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	var p model.EzfyProfile
+	h.DB.Where("user_id = ?", uid).First(&p)
+	city := h.ezfyBotCurrentCity(uint(uid))
+	out := gin.H{
+		"nickname":  p.Nickname,
+		"prestige":  p.Prestige,
+		"city_id":   city.ID,
+		"city_name": city.Name,
+		"buildings": []gin.H{},
+	}
+	h.cfgs()
+	if city.ID > 0 {
+		var rows []model.EzfyCityBuilding
+		h.DB.Where("city_id = ?", city.ID).Order("building_id ASC, level DESC").Find(&rows)
+		list := make([]gin.H, 0, len(rows))
+		for _, r := range rows {
+			name := ""
+			if cfg := ezfyCfg.building(r.BuildingId); cfg != nil {
+				name = cfg.Name
+			}
+			list = append(list, gin.H{
+				"id": r.ID, "building_id": r.BuildingId, "name": name,
+				"level": r.Level, "max_level": func() int {
+					if cfg := ezfyCfg.building(r.BuildingId); cfg != nil {
+						return cfg.MaxLevel
+					}
+					return 10
+				}(), "status": r.Status,
+			})
+		}
+		out["buildings"] = list
+	}
+	resp.OK(c, out)
+}
+
+// AdminEzfyBotEdit POST /admin/ezfy-bot/:uid/edit —— 编辑人机（昵称/声望/城市名/建筑等级）
+//
+// body（全部可选，传了才改）：
+//
+//	{nickname, prestige, city_name, buildings:[{id, level}]}
+//
+// ★ 昵称**三处同步**：家园 users（展示权威源）/ ezfy_profile / ezfy_account ——
+//
+//	漏一处就会出现「地图上叫 A、聊天里叫 B」的分裂。
+//
+// ★ 建筑直接改库（管理端权限），顺手清掉施工状态（改等级时正在建的队列没有意义）。
+func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var b model.EzfyBot
+	if err := h.DB.Where("user_id = ?", uid).First(&b).Error; err != nil {
+		resp.NotFound(c, "人机不存在")
+		return
+	}
+	var in struct {
+		Nickname  *string `json:"nickname"`
+		Prestige  *int    `json:"prestige"`
+		CityName  *string `json:"city_name"`
+		Buildings []struct {
+			ID    int64 `json:"id"`
+			Level int   `json:"level"`
+		} `json:"buildings"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	changes := []string{}
+
+	// ① 昵称（三处同步）
+	if in.Nickname != nil {
+		nick := strings.TrimSpace(*in.Nickname)
+		if nick != "" {
+			r := []rune(nick)
+			if len(r) < 2 || len(r) > 20 {
+				resp.ParamError(c, "昵称 2~20 个字")
+				return
+			}
+			var cnt int64
+			h.home().Model(&model.User{}).Where("nickname = ? AND id <> ?", nick, uid).Count(&cnt)
+			if cnt > 0 {
+				resp.ParamError(c, "昵称「"+nick+"」已被占用")
+				return
+			}
+			h.home().Model(&model.User{}).Where("id = ?", uid).Update("nickname", nick)
+			h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("nickname", nick)
+			h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).Update("nickname", nick)
+			changes = append(changes, "昵称→"+nick)
+		}
+	}
+
+	// ② 声望
+	if in.Prestige != nil {
+		if *in.Prestige < 0 {
+			resp.ParamError(c, "声望不能为负")
+			return
+		}
+		h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", uid).Update("prestige", *in.Prestige)
+		changes = append(changes, fmt.Sprintf("声望→%d", *in.Prestige))
+	}
+
+	// ③ 城市名 / ④ 建筑等级（都挂在人机的当前城上）
+	city := h.ezfyBotCurrentCity(uint(uid))
+	if in.CityName != nil && city.ID > 0 {
+		cn := strings.TrimSpace(*in.CityName)
+		if cn != "" {
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Update("name", trimStr(cn, 20))
+			changes = append(changes, "城市名→"+trimStr(cn, 20))
+		}
+	}
+	if len(in.Buildings) > 0 && city.ID > 0 {
+		n := 0
+		for _, bl := range in.Buildings {
+			if bl.Level < 0 || bl.Level > 15 {
+				continue
+			}
+			// 归属校验：建筑行必须真属于这个人机的城（AND city_id），防乱传 id 改别人的城
+			res := h.DB.Model(&model.EzfyCityBuilding{}).
+				Where("id = ? AND city_id = ?", bl.ID, city.ID).
+				Updates(map[string]interface{}{
+					"level": bl.Level, "status": 0, "start_time": 0, "end_time": 0, "target_level": 0,
+				})
+			n += int(res.RowsAffected)
+		}
+		if n > 0 {
+			changes = append(changes, fmt.Sprintf("建筑等级 %d 项", n))
+		}
+	}
+	if len(changes) == 0 {
+		resp.ParamError(c, "没有要修改的内容")
+		return
+	}
+	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
+	ez.ezfyBotLog(uint(uid), "管理端编辑", trimStr(strings.Join(changes, "；"), 200), 1)
+	// 发完立刻行动（改建筑等级后它下一轮就能用上）
+	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
+	resp.OK(c, gin.H{"msg": "已修改：" + strings.Join(changes, "；")})
+}
+
+// ezfyBotCurrentCity 人机的当前城（current_city_id 优先，无效回落第一座）。
+func (h *EzfyAdmin) ezfyBotCurrentCity(uid uint) model.EzfyCity {
+	var city model.EzfyCity
+	var p model.EzfyProfile
+	if err := h.DB.Where("user_id = ?", uid).First(&p).Error; err == nil && p.CurrentCityId > 0 {
+		h.DB.Where("id = ? AND user_id = ?", p.CurrentCityId, uid).First(&city)
+		if city.ID > 0 {
+			return city
+		}
+	}
+	h.DB.Where("user_id = ?", uid).Order("id ASC").First(&city)
+	return city
 }
 
 // AdminEzfyBotLogs GET /admin/ezfy-bot/logs?uid=&page=&size= —— 行为日志

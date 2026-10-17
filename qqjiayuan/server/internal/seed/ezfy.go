@@ -481,10 +481,11 @@ func seedEzfyRanks(db *gorm.DB) {
 		{ID: 14, Name: "上校", Post: "旅长", NeedPrestige: 2000000, CityMax: 14},
 		{ID: 15, Name: "大校", Post: "师长", NeedPrestige: 4000000, CityMax: 15},
 		{ID: 16, Name: "少将", Post: "师长", NeedPrestige: 8000000, CityMax: 16},
-		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 16000000, CityMax: 17},
-		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 32000000, CityMax: 18},
-		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 19},
-		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 20},
+		// ★ 2026-10-17 军衔「可建城数」按线上现版调整：17-20 级统一下调封顶为 16 座（用户规则：城市数量上限不再随高级军衔继续提升）
+		{ID: 17, Name: "中将", Post: "军长", NeedPrestige: 16000000, CityMax: 16},
+		{ID: 18, Name: "上将", Post: "军长", NeedPrestige: 32000000, CityMax: 16},
+		{ID: 19, Name: "大将", Post: "军长", NeedPrestige: 64000000, CityMax: 16},
+		{ID: 20, Name: "五星上将", Post: "司令", NeedPrestige: 100000000, CityMax: 16},
 	}
 	if err := db.Clauses(clause.OnConflict{DoNothing: true}).
 		CreateInBatches(rows, 50).Error; err != nil {

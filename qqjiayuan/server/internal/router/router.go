@@ -1194,6 +1194,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)
 				admin.POST("/ezfy-bot/:uid/level", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLevel)
 				admin.POST("/ezfy-bot/:uid/act", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAct)
+				// ★ 2026-10-17 给人机城发资源（加速发育）：人机已从玩家管理排除，只能从这里发
+				admin.POST("/ezfy-bot/:uid/grant", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotGrant)
+				// ★ 2026-10-17 编辑人机（昵称/声望/城市名/建筑等级）
+				admin.GET("/ezfy-bot/:uid/buildings", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotBuildings)
+				admin.POST("/ezfy-bot/:uid/edit", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotEdit)
 				admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
 				// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
 				//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，

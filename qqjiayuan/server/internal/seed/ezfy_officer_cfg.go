@@ -27,7 +27,8 @@ var ezfyEzfyCfgGeneral = []model.EzfyCfgGeneral{
 	{ID: 18, Name: "朱可夫(Zhukov)", Level: 1, Military: 220, Logistics: 60, Learning: 90, Star: 5, Source: "10亿金子", GetCondition: "310", Skill: "任务", Des: "突击+2，军事+300，攻速+30％", Recruit: 0},
 	{ID: 19, Name: "科涅夫(Konev)", Level: 1, Military: 130, Logistics: 215, Learning: 66, Star: 5, Source: "15凭证", GetCondition: "196", Skill: "任务", Des: "", Recruit: 0},
 	{ID: 20, Name: "罗科索夫斯基(Rokossovsky)", Level: 1, Military: 150, Logistics: 94, Learning: 50, Star: 5, Source: "15凭证", GetCondition: "200", Skill: "任务", Des: "", Recruit: 0},
-	{ID: 21, Name: "麦克阿瑟(MacArthur)", Level: 1, Military: 210, Logistics: 110, Learning: 50, Star: 5, Source: "10亿金子", GetCondition: "260", Skill: "任务", Des: "防御+2，攻击防御+15％", Recruit: 0},
+	// ★ 2026-10-17 名将「麦克阿瑟」军事按线上现版调整 210 → 310（用户规则：与线上 ezfy_cfg_general.id=21 一致）
+	{ID: 21, Name: "麦克阿瑟(MacArthur)", Level: 1, Military: 310, Logistics: 110, Learning: 50, Star: 5, Source: "10亿金子", GetCondition: "260", Skill: "任务", Des: "防御+2，攻击防御+15％", Recruit: 0},
 	{ID: 22, Name: "蒙哥马利(Montgomery)", Level: 1, Military: 210, Logistics: 75, Learning: 75, Star: 5, Source: "10亿金子", GetCondition: "285", Skill: "任务", Des: "", Recruit: 0},
 	{ID: 23, Name: "爱森豪威尔(Eisenhower)", Level: 1, Military: 190, Logistics: 120, Learning: 60, Star: 5, Source: "110个Birthday Token(商店买)", GetCondition: "250", Skill: "任务", Des: "", Recruit: 0},
 	{ID: 24, Name: "Model(莫德尔)", Level: 1, Military: 100, Logistics: 70, Learning: 200, Star: 5, Source: "100个Birthday Token(商店买)", GetCondition: "300", Skill: "任务", Des: "突击+2，攻速移速+15％", Recruit: 0},
