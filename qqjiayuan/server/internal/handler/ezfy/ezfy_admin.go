@@ -1482,19 +1482,80 @@ func (h *EzfyAdmin) AdminEzfyReportDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
-// AdminEzfyChats 世界聊天列表
+// ezfyAdminParseTime 管理端时间范围参数解析：兼容「2006-01-02」与「2006-01-02 15:04:05」两种写法。
+func ezfyAdminParseTime(s string) (time.Time, bool) {
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// AdminEzfyChats 聊天记录列表（频道过滤 + 关键词 + 时间范围）
+//
+// ★ 2026-10-17 由「世界聊天」升级为多频道：channel 1公共 2军团 4系统，
+//   配合管理端「聊天管理」的 世界/军团/系统 三个 tab。
 func (h *EzfyAdmin) AdminEzfyChats(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	word := strings.TrimSpace(c.Query("word"))
+	channel := atoiOr(c.Query("channel"), 0)
 	q := h.DB.Model(&model.EzfyChat{})
+	if channel > 0 {
+		q = q.Where("channel = ?", channel)
+	}
 	if word != "" {
 		q = q.Where("user_name LIKE ? OR content LIKE ?", "%"+word+"%", "%"+word+"%")
+	}
+	if startStr := strings.TrimSpace(c.Query("start")); startStr != "" {
+		if st, ok := ezfyAdminParseTime(startStr); ok {
+			q = q.Where("created_at >= ?", st)
+		}
+	}
+	if endStr := strings.TrimSpace(c.Query("end")); endStr != "" {
+		if et, ok := ezfyAdminParseTime(endStr); ok {
+			// 结束时间按「整天含末」：纯日期时 < 末日+1 天；带时分秒则 < 下一秒
+			if strings.Contains(endStr, ":") {
+				q = q.Where("created_at < ?", et.Add(time.Second))
+			} else {
+				q = q.Where("created_at < ?", et.AddDate(0, 0, 1))
+			}
+		}
 	}
 	var total int64
 	q.Count(&total)
 	var rows []model.EzfyChat
 	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
 	resp.OK(c, gin.H{"list": rows, "total": total, "page": page, "size": size})
+}
+
+// AdminEzfyChatBatchDelete 按频道+时间范围批量物理删除聊天记录
+//
+// ★ 2026-10-17 管理端「聊天管理」世界/军团/系统 tab 的「删除所选时间段」：
+//   channel + start/end 均必填，防止误删整频道数据。
+func (h *EzfyAdmin) AdminEzfyChatBatchDelete(c *gin.Context) {
+	channel := atoiOr(c.Query("channel"), 0)
+	startStr := strings.TrimSpace(c.Query("start"))
+	endStr := strings.TrimSpace(c.Query("end"))
+	if channel <= 0 || startStr == "" || endStr == "" {
+		resp.ParamError(c, "请选择频道并填写起止时间")
+		return
+	}
+	st, ok1 := ezfyAdminParseTime(startStr)
+	et, ok2 := ezfyAdminParseTime(endStr)
+	if !ok1 || !ok2 {
+		resp.ParamError(c, "时间格式错误，应为 2006-01-02 或 2006-01-02 15:04:05")
+		return
+	}
+	q := h.DB.Model(&model.EzfyChat{}).Where("channel = ? AND created_at >= ?", channel, st)
+	if strings.Contains(endStr, ":") {
+		q = q.Where("created_at < ?", et.Add(time.Second))
+	} else {
+		q = q.Where("created_at < ?", et.AddDate(0, 0, 1))
+	}
+	// ezfy_chat 无软删字段，Delete 即物理删除
+	res := q.Delete(&model.EzfyChat{})
+	resp.OK(c, gin.H{"msg": "已删除", "count": res.RowsAffected})
 }
 
 // AdminEzfyChatDelete 删除世界聊天
@@ -1504,41 +1565,13 @@ func (h *EzfyAdmin) AdminEzfyChatDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
-// AdminEzfyExchanges 交易所挂单列表
-func (h *EzfyAdmin) AdminEzfyExchanges(c *gin.Context) {
-	page, offset, size := pageOf(c, 10)
-	word := strings.TrimSpace(c.Query("word"))
-	status := atoiOr(c.Query("status"), -1)
-	q := h.DB.Model(&model.EzfyExchange{})
-	if word != "" {
-		q = q.Where("seller_name LIKE ?", "%"+word+"%")
-	}
-	if status >= 0 {
-		q = q.Where("status = ?", status)
-	}
-	var total int64
-	q.Count(&total)
-	var rows []model.EzfyExchange
-	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
-	type rowOut struct {
-		model.EzfyExchange
-		TypeName   string `json:"type_name"`
-		StatusName string `json:"status_name"`
-	}
-	out := []rowOut{}
-	statusNames := map[int]string{0: "在售", 1: "成交", 2: "下架"}
-	for _, e := range rows {
-		out = append(out, rowOut{EzfyExchange: e, TypeName: ezfyResNames[e.EsType],
-			StatusName: statusNames[e.Status]})
-	}
-	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
-}
-
-// AdminEzfyExchangeDelete 删除交易所挂单
-func (h *EzfyAdmin) AdminEzfyExchangeDelete(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	h.DB.Delete(&model.EzfyExchange{}, id)
-	resp.OK(c, gin.H{"msg": "已删除"})
+// AdminEzfyExchangeDealtDelete 一键删除全部已成交记录（status = 1）
+//
+// ★ 2026-10-17 管理端「交易行维护 → 挂单维护」的一键清理按钮；
+//    ezfy_exchange 无软删字段，Delete 即物理删除。
+func (h *EzfyAdmin) AdminEzfyExchangeDealtDelete(c *gin.Context) {
+	res := h.DB.Where("status = 1").Delete(&model.EzfyExchange{})
+	resp.OK(c, gin.H{"msg": "已删除", "count": res.RowsAffected})
 }
 
 func (h *EzfyAdmin) ezfyAdminName(uid uint) (string, string) {

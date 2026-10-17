@@ -65,7 +65,6 @@ import AdminXyPlayers from './components/admin/AdminXyPlayers.vue'
 import AdminXyData from './components/admin/AdminXyData.vue'
 import AdminEzfyPlayers from './components/admin/AdminEzfyPlayers.vue'
 import AdminEzfyData from './components/admin/AdminEzfyData.vue'
-import AdminEzfyLogs from './components/admin/AdminEzfyLogs.vue'
 import AdminEzfyReports from './components/admin/AdminEzfyReports.vue'
 import AdminEzfyBattles from './components/admin/AdminEzfyBattles.vue'
 import AdminEzfyPeace from './components/admin/AdminEzfyPeace.vue'
@@ -306,8 +305,8 @@ export const menu = [
           { key: 'ezfyWars', name: '宣战管理', icon: 'el-icon-s-flag', component: AdminEzfyWars, perm: 'module:ezfyWars' },
           // ★ 2026-09-25 军团商城维护（perm 复用军团管理 module:ezfyCorps）
           { key: 'ezfyCorpsMall', name: '军团商城维护', icon: 'el-icon-shopping-cart-full', component: AdminEzfyCorpsMall, perm: 'module:ezfyCorps' },
-          { key: 'ezfyWords', name: '聊天敏感词', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
-          { key: 'ezfyLogs', name: '流水管理', icon: 'el-icon-document', component: AdminEzfyLogs, perm: 'module:ezfyLogs' },
+          // ★ 2026-10-17 聊天管理（原「聊天敏感词」改名）：世界/军团/系统 聊天记录 + 敏感词维护
+          { key: 'ezfyWords', name: '聊天管理', icon: 'el-icon-chat-dot-square', component: AdminEzfyWords, perm: 'module:ezfyWords' },
           // ★ 2026-10-06 战报查询（独立于流水/出征记录：战报不是订单，按玩家+类型查 ezfy_report）
           //   ★ 2026-10-07 图标 el-icon-notice-board 在 Element UI 2.15 里不存在 → 图标空白，改用 notebook-2
           { key: 'ezfyReports', name: '战报查询', icon: 'el-icon-notebook-2', component: AdminEzfyReports, perm: 'module:ezfyLogs' },

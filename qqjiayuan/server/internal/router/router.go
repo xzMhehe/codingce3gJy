@@ -1251,10 +1251,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-battles/:id/tick", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleTick)
 				admin.POST("/ezfy-battles/:id/auto", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleAuto)
 				admin.POST("/ezfy-battles/:id/force", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyBattleForce)
-				admin.GET("/ezfy-chats", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChats)
-				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyChatDelete)
-				admin.GET("/ezfy-exchanges", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyExchanges)
-				admin.DELETE("/ezfy-exchanges/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyExchangeDelete)
+				// ★ 2026-10-17 聊天管理（原「流水管理-世界聊天」升级）：世界/军团/系统 多频道，
+				//   归属权限 module:ezfyWords（菜单「聊天管理」），支持按时间范围批量物理删除。
+				admin.GET("/ezfy-chats", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChats)
+				admin.DELETE("/ezfy-chats/batch", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatBatchDelete)
+				admin.DELETE("/ezfy-chats/:id", perm(db, "module:ezfyWords"), ezfyAdminH.AdminEzfyChatDelete)
 				admin.GET("/ezfy-corps", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorps)
 				admin.DELETE("/ezfy-corps/:id", perm(db, "module:ezfyCorps"), ezfyAdminH.AdminEzfyCorpsDelete)
 				admin.GET("/ezfy-notices", perm(db, "module:ezfySystem"), ezfyAdminH.AdminEzfyNotices)
@@ -1439,6 +1440,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				admin.POST("/ezfy-exchange", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeCreate)
 				admin.POST("/ezfy-exchange/:id/off", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeOff)
 				admin.DELETE("/ezfy-exchange/:id", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeRemove)
+				// ★ 2026-10-17 一键删除全部已成交记录（status=1）
+				admin.DELETE("/ezfy-exchange/dealt", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeDealtDelete)
 				// 挂单模板维护（2026-09-24：资源包模板落库，管理端可增删改）
 				admin.GET("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplList)
 				admin.POST("/ezfy-exchange-tpls", perm(db, "module:ezfyExchange"), ezfyAdminH.AdminEzfyExchangeTplCreate)

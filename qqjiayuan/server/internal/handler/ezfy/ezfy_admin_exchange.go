@@ -302,9 +302,6 @@ func (h *EzfyAdmin) AdminEzfyExchangeOff(c *gin.Context) {
 
 // AdminEzfyExchangeRemove DELETE /admin/ezfy-exchange/:id
 // 直接删除记录（历史流水清理用；在售的玩家单会先把资源退回）。
-//
-// 注意：不能叫 AdminEzfyExchangeDelete —— 那个名字被 ezfy_admin.go 里「流水管理」的
-// 旧接口占了（它只删记录、不退资源）。
 func (h *EzfyAdmin) AdminEzfyExchangeRemove(c *gin.Context) {
 	id := int64(atoiOr(c.Param("id"), 0))
 	var e model.EzfyExchange

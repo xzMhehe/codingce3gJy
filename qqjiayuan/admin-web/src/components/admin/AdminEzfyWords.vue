@@ -2,46 +2,106 @@
   <div class="farm-admin">
     <el-card shadow="never" class="box">
       <div slot="header" class="card-head">
-        <span>二战征途 · 聊天敏感词（独立维护，与社区「黑名单榜」分开）</span>
-        <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
+        <span>二战征途 · 聊天管理（世界/军团/系统 聊天记录 + 敏感词维护）</span>
+        <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="onRefresh">刷新</el-button>
       </div>
-      <div class="toolbar">
-        <el-input v-model="word" placeholder="按敏感词搜索" clearable style="width:220px"
-                  @keyup.enter.native="page = 1; load()" />
-        <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
-        <el-button type="success" icon="el-icon-plus" @click="openAdd">新增敏感词</el-button>
-        <el-button type="warning" plain icon="el-icon-upload2" @click="bulkDlg = true">批量导入</el-button>
-        <div class="grow" />
-        <span class="td-sub">类型：<b>替换</b> = 用替换词覆盖（留空则打 *）；<b>拦截</b> = 直接拒绝发言</span>
+
+      <!-- ★ 2026-10-17 聊天管理多 tab：世界(1)/军团(2)/系统(4)/聊天敏感词 -->
+      <el-tabs v-model="tab" @tab-click="onTab">
+        <el-tab-pane label="世界" name="chat1" />
+        <el-tab-pane label="军团" name="chat2" />
+        <el-tab-pane label="系统" name="chat4" />
+        <el-tab-pane label="聊天敏感词" name="words" />
+      </el-tabs>
+
+      <!-- ========== 聊天记录（三个频道共用一套面板，tab 切换频道） ========== -->
+      <div v-if="tab !== 'words'">
+        <div class="toolbar">
+          <el-input v-model="chat.word" placeholder="按玩家/内容搜索" clearable style="width:200px"
+                    @keyup.enter.native="chat.page = 1; loadChats()" />
+          <span class="td-sub" style="margin:0 4px 0 8px">时间</span>
+          <el-date-picker v-model="chat.start" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="开始时间" style="width:180px" />
+          <span class="td-sub">—</span>
+          <el-date-picker v-model="chat.end" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" placeholder="结束时间" style="width:180px" />
+          <el-button type="primary" icon="el-icon-search" @click="chat.page = 1; loadChats()">查询</el-button>
+          <el-button type="danger" icon="el-icon-delete" @click="batchDelete">删除所选时间段</el-button>
+          <div class="grow" />
+          <span class="td-sub">当前频道：<b>{{ channelName }}</b> · 共 {{ chat.total }} 条</span>
+        </div>
+        <el-table :data="chat.list" v-loading="chat.loading" stripe border>
+          <el-table-column prop="id" label="ID" width="70" align="center" />
+          <el-table-column label="频道" width="80" align="center">
+            <template slot-scope="{row}">
+              <el-tag :type="row.channel === 4 ? 'info' : row.channel === 2 ? 'success' : 'primary'" size="mini">
+                {{ row.channel === 4 ? '系统' : row.channel === 2 ? '军团' : '世界' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_name" label="玩家" min-width="120" show-overflow-tooltip />
+          <el-table-column label="类型" width="90" align="center">
+            <template slot-scope="{row}">
+              <el-tag :type="row.talk_type === 0 ? 'info' : 'warning'" size="mini">{{ row.talk_type === 0 ? '系统' : '玩家' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="content" label="内容" min-width="260" show-overflow-tooltip />
+          <el-table-column label="时间" width="165" align="center">
+            <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" align="center" fixed="right">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="removeChat(row)" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pager-bar">
+          <div class="pager-info">共 <b>{{ chat.total }}</b> 条 · 每页 {{ chat.size }} 条</div>
+          <el-pagination v-show="chat.total > 0" small background layout="sizes, prev, pager, next, jumper" :total="chat.total" :page-size="chat.size"
+                         :current-page="chat.page" :page-sizes="[10, 20, 50, 100]"
+                         @current-change="p => { chat.page = p; loadChats() }"
+                         @size-change="s => { chat.size = s; chat.page = 1; loadChats() }" />
+        </div>
       </div>
-      <el-table :data="list" v-loading="loading" stripe border>
-        <el-table-column prop="id" label="ID" width="70" align="center" />
-        <el-table-column label="敏感词" min-width="170" show-overflow-tooltip>
-          <template slot-scope="{row}"><span class="td-main">{{ row.word }}</span></template>
-        </el-table-column>
-        <el-table-column label="替换词" min-width="170" show-overflow-tooltip>
-          <template slot-scope="{row}"><span class="td-mono">{{ row.replace || '（打 * ）' }}</span></template>
-        </el-table-column>
-        <el-table-column label="类型" width="110" align="center">
-          <template slot-scope="{row}">
-            <el-tag :type="row.type === 2 ? 'danger' : 'warning'" size="mini">
-              {{ row.type === 2 ? '拦截' : '替换' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" align="center" fixed="right">
-          <template slot-scope="{row}">
-            <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
-            <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="remove(row)" />
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pager-bar">
-        <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
-        <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
-                       :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
-                       @current-change="p => { page = p; load() }"
-                       @size-change="s => { size = s; page = 1; load() }" />
+
+      <!-- ========== 聊天敏感词维护 ========== -->
+      <div v-else>
+        <div class="toolbar">
+          <el-input v-model="word" placeholder="按敏感词搜索" clearable style="width:220px"
+                    @keyup.enter.native="page = 1; loadWords()" />
+          <el-button type="primary" icon="el-icon-search" @click="page = 1; loadWords()">查询</el-button>
+          <el-button type="success" icon="el-icon-plus" @click="openAdd">新增敏感词</el-button>
+          <el-button type="warning" plain icon="el-icon-upload2" @click="bulkDlg = true">批量导入</el-button>
+          <div class="grow" />
+          <span class="td-sub">类型：<b>替换</b> = 用替换词覆盖（留空则打 *）；<b>拦截</b> = 直接拒绝发言</span>
+        </div>
+        <el-table :data="list" v-loading="loading" stripe border>
+          <el-table-column prop="id" label="ID" width="70" align="center" />
+          <el-table-column label="敏感词" min-width="170" show-overflow-tooltip>
+            <template slot-scope="{row}"><span class="td-main">{{ row.word }}</span></template>
+          </el-table-column>
+          <el-table-column label="替换词" min-width="170" show-overflow-tooltip>
+            <template slot-scope="{row}"><span class="td-mono">{{ row.replace || '（打 * ）' }}</span></template>
+          </el-table-column>
+          <el-table-column label="类型" width="110" align="center">
+            <template slot-scope="{row}">
+              <el-tag :type="row.type === 2 ? 'danger' : 'warning'" size="mini">
+                {{ row.type === 2 ? '拦截' : '替换' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" align="center" fixed="right">
+            <template slot-scope="{row}">
+              <el-button size="mini" type="primary" plain icon="el-icon-edit" title="编辑" @click="openEdit(row)" />
+              <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除" @click="remove(row)" />
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="pager-bar">
+          <div class="pager-info">共 <b>{{ total }}</b> 条 · 每页 {{ size }} 条</div>
+          <el-pagination v-show="total > 0" small background layout="sizes, prev, pager, next, jumper" :total="total" :page-size="size"
+                         :current-page="page" :page-sizes="[5, 10, 20, 50, 100]"
+                         @current-change="p => { page = p; loadWords() }"
+                         @size-change="s => { size = s; page = 1; loadWords() }" />
+        </div>
       </div>
     </el-card>
 
@@ -82,18 +142,70 @@
 <script>
 import api from '../../api'
 
+// ★ 2026-10-17 聊天管理：原「聊天敏感词」页面升级。
+//   tab：chat1 世界 / chat2 军团 / chat4 系统（共用一套聊天面板）+ words 敏感词维护。
+//   世界/军团/系统 支持按时间范围物理删除（DELETE /admin/ezfy-chats/batch）。
 export default {
   name: 'AdminEzfyWords',
   data () {
     return {
+      tab: 'chat1',
+      channelName: '世界',
+      // 聊天记录（三频道共用）
+      chat: { list: [], total: 0, page: 1, size: 20, word: '', start: '', end: '', loading: false },
+      // 敏感词
       list: [], total: 0, page: 1, size: 5, word: '', loading: false,
       dlg: false, formId: 0, form: { word: '', replace: '', type: 1 }, saving: false,
       bulkDlg: false, bulkText: ''
     }
   },
-  mounted () { this.load() },
+  mounted () { this.loadChats() },
   methods: {
-    load () {
+    channelOf (tab) { return { chat1: 1, chat2: 2, chat4: 4 }[tab] || 0 },
+    channelNameOf (tab) { return { chat1: '世界', chat2: '军团', chat4: '系统' }[tab] || '' },
+    onTab () {
+      if (this.tab === 'words') this.loadWords()
+      else { this.channelName = this.channelNameOf(this.tab); this.loadChats() }
+    },
+    onRefresh () { if (this.tab === 'words') this.loadWords(); else this.loadChats() },
+    fmtTime (t) { return t ? String(t).slice(0, 19).replace('T', ' ') : '' },
+    loadChats () {
+      this.chat.loading = true
+      api.get('/admin/ezfy-chats', {
+        params: { page: this.chat.page, size: this.chat.size, word: this.chat.word, channel: this.channelOf(this.tab), start: this.chat.start, end: this.chat.end }
+      }).then(r => {
+        this.chat.loading = false
+        if (r.code === 0) { this.chat.list = r.data.list || []; this.chat.total = r.data.total || 0 } else this.$message.error(r.msg)
+      })
+    },
+    removeChat (row) {
+      this.$confirm('删除该聊天记录（ID ' + row.id + '）？', '提示', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-chats/' + row.id).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已删除')
+            if (this.chat.list.length <= 1 && this.chat.page > 1) this.chat.page--
+            this.loadChats()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    batchDelete () {
+      if (!this.chat.start || !this.chat.end) { this.$message.error('请先选择开始/结束时间'); return }
+      this.$confirm(`删除【${this.channelName}】频道 ${this.chat.start} 至 ${this.chat.end} 的全部聊天记录？该操作不可恢复！`,
+        '确认物理删除', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-chats/batch', {
+          params: { channel: this.channelOf(this.tab), start: this.chat.start, end: this.chat.end }
+        }).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg + '，共 ' + (r.data.count || 0) + ' 条')
+            this.chat.page = 1
+            this.loadChats()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ---- 敏感词 ----
+    loadWords () {
       this.loading = true
       api.get('/admin/ezfy-word-filters', {
         params: { page: this.page, size: this.size, word: this.word }
@@ -118,7 +230,7 @@ export default {
           //   列表看起来「只剩一条 / 其他数据都没了」（用户反馈「新增了分页其他数据就没有了」）。
           if (isNew) this.word = ''
           this.page = 1
-          this.load()
+          this.loadWords()
         } else this.$message.error(r.msg)
       }
       if (this.formId) api.put('/admin/ezfy-word-filters/' + this.formId, this.form).then(done)
@@ -131,7 +243,7 @@ export default {
             this.$message.success(r.data.msg || '已删除')
             // ★ 2026-10-11 删掉当前页最后一条 → 回退一页，避免停在空页（列表看起来「数据没了」）
             if (this.list.length <= 1 && this.page > 1) this.page--
-            this.load()
+            this.loadWords()
           } else this.$message.error(r.msg)
         })
       }).catch(() => {})
@@ -147,7 +259,7 @@ export default {
           this.$message.success(r.data.msg || '导入完成')
           // ★ 2026-10-11 批量导入的词同样排在最前 → 回到第 1 页才能看到
           this.page = 1
-          this.load()
+          this.loadWords()
         }
         else this.$message.error(r.msg)
       })
