@@ -736,6 +736,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 	}
 
 	// ⑤ 人口：总人口 / 上限 / 待恢复人口（空闲人口由此推导，无需单独字段）
+	// ★ 2026-10-17 侦察读的是「当前人口 pop」：配置 pop_max 时同步 pop = pop_max，
+	//   否则别人侦察永远看到初始的 5000（用户反馈：配置了 50 万但侦察显示默认 5000）
 	if city.ID > 0 && (in.Pop != nil || in.PopMax != nil || in.PopRecover != nil) {
 		upd := map[string]interface{}{}
 		if in.Pop != nil && *in.Pop >= 0 {
@@ -743,6 +745,9 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		}
 		if in.PopMax != nil && *in.PopMax >= 0 {
 			upd["pop_max"] = *in.PopMax
+			if _, ok := upd["pop"]; !ok {
+				upd["pop"] = *in.PopMax // 只配上限时把当前人口一起提到上限（要的就是显示 50 万）
+			}
 		}
 		if in.PopRecover != nil && *in.PopRecover >= 0 {
 			upd["pop_recover"] = *in.PopRecover
@@ -1190,11 +1195,7 @@ func (h *EzfyAdmin) AdminEzfyBotTargetSet(c *gin.Context) {
 		resp.ParamError(c, "目标是人机，人机不打人机")
 		return
 	}
-	// ★ 2026-10-17 最低声望门槛：低于配置值（默认 50 万，0=不限）的目标直接拒绝，与「自动选目标」口径一致
-	if min := ezfyBotMinPrestige(); min > 0 && tp.Prestige < min {
-		resp.ParamError(c, fmt.Sprintf("目标声望 %d 未达人机攻击门槛（需 ≥ %d）", tp.Prestige, min))
-		return
-	}
+	// ★ 2026-10-17 管理端手动指定**不受最低声望门槛限制**（运营操作：管理员说打谁就打谁）
 	// 重复检查：活跃计划(0/1/2)已存在 → 友好提示
 	// ★ 2026-10-17 冷却中(3)不算「在计划中」：管理员冷却期间手动指定 → 允许，复活旧行清冷却强制开打
 	var dup int64
@@ -1299,8 +1300,7 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		resp.NotFound(c, "没有可攻击的敌对城市")
 		return
 	}
-	// ★ 2026-10-17 最低声望门槛也套用到「出征最近敌对城」：本地筛选低于配置值（默认 50 万，0=不限）的候选
-	minPrestige := ezfyBotMinPrestige()
+	// ★ 2026-10-17 管理端手动「出征最近敌对城」不受最低声望门槛限制（运营操作：管理员说打谁就打谁）
 	best := model.EzfyCity{}
 	bestDist := int64(1 << 62)
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
@@ -1312,9 +1312,6 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		if cid, ok := corpsMap[cty.UserID]; ok && cid == myCorps {
 			continue
 		}
-		if minPrestige > 0 && cty.Prestige < minPrestige {
-			continue
-		}
 		dx, dy := int64(cty.X-botCity.X), int64(cty.Y-botCity.Y)
 		if d := dx*dx + dy*dy; d < bestDist {
 			bestDist = d
@@ -1322,11 +1319,7 @@ func (h *EzfyAdmin) AdminEzfyBotAttackNearest(c *gin.Context) {
 		}
 	}
 	if best.ID == 0 {
-		if minPrestige > 0 {
-			resp.NotFound(c, fmt.Sprintf("附近没有声望 ≥ %d 的敌对城市（可在顶栏调低「最低声望」，或设 0 不限）", minPrestige))
-		} else {
-			resp.NotFound(c, "没有可攻击的敌对城市")
-		}
+		resp.NotFound(c, "没有可攻击的敌对城市")
 		return
 	}
 	var dup int64

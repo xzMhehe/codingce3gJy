@@ -35,7 +35,6 @@
         <el-input v-model="word" placeholder="昵称 / 用户ID 搜索" clearable style="width:220px"
                   @keyup.enter.native="load" @clear="load" />
         <el-button type="primary" icon="el-icon-search" @click="load">查询</el-button>
-        <el-button icon="el-icon-refresh" :loading="loading" @click="load">刷新</el-button>
         <div class="grow" />
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
@@ -182,6 +181,7 @@
               <el-form-item label="人口上限">
                 <el-input-number v-model.number="editForm.pop_max" :min="0" :step="1000"
                                  controls-position="right" style="width:160px" />
+                <span class="td-gray" style="margin-left:6px">配置后当前人口同步到上限（别人侦察即显示该值）</span>
               </el-form-item>
               <el-form-item label="待恢复人口">
                 <el-input-number v-model.number="editForm.pop_recover" :min="0" :step="1000"

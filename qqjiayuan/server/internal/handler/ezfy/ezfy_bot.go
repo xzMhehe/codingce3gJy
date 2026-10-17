@@ -67,7 +67,8 @@ func SetEzfyBotBaseURL(port int) {
 
 // ezfyBotChatPool 人机世界发言词库（口语化、像人话，★ 2026-10-17）。
 //
-//	[0] 交流玩法 [1] 被打喊冤 [2] 撩架挑衅 —— 每天每台人机各类句不重复（跨天重置）。
+//	[0] 交流玩法（12句） [1] 被打喊冤（8句） [2] 撩架挑衅（6句）。
+//	每周每台人机各类句不重复；不同人机按 UserID 取不同起始偏移 → 发言内容互不相同。
 var ezfyBotChatPool = [][]string{
 	{
 		"新手求教，前期是不是先堆农田比较稳？",
@@ -80,6 +81,8 @@ var ezfyBotChatPool = [][]string{
 		"建议新手先把稀矿厂升起来，后面科技全都要稀矿",
 		"有人一起打野地刷声望吗，天天被高战蹲点",
 		"资源还是得双开号攒，单开太慢了",
+		"征兵真费油，火箭一口下去油仓就见底了",
+		"昨天抢了个高战的城，油都搬回来一车一车的",
 	},
 	{
 		"谁打我城了…刚出去采集回来就看见城在冒烟",
@@ -88,13 +91,23 @@ var ezfyBotChatPool = [][]string{
 		"我又被打飞了，才搬完家没两天",
 		"无缘无故打我，我连谁打的都不知道",
 		"还我兵啊，攒了一个星期的兵一晚上就没了",
+		"能不能打之前说一声，我好把城里的兵撤走",
+		"又是那个红色名字的，专挑半夜偷袭",
 	},
 	{
 		"听说附近来了个高战？我的火箭已经饥渴难耐了",
 		"谁再说这服没活人，出来干一架",
 		"城里的兵都训完了，找个目标练练手",
 		"有没有人一起组队，把对面那个盟打趴下",
+		"天天打我盟友，这事咱们得算算",
+		"晚上别睡太死，我随时可能上门",
 	},
+}
+
+// ezfyBotWeekKey 本周序号（ISO 周，如 2026-W42）：跨周重置发言去重。
+func ezfyBotWeekKey() string {
+	y, w := time.Now().ISOWeek()
+	return fmt.Sprintf("%d-W%02d", y, w)
 }
 
 // botChat 人机世界发言（★ 2026-10-17）：被打（最近 60 分钟有人打本 bot 城）→ 优先喊冤；
@@ -102,31 +115,37 @@ var ezfyBotChatPool = [][]string{
 //	平时 → 8% 概率主动聊玩法/撩架（"时不时"说一句，别刷屏）。
 //	每天句子不重复（chat_date/chat_used 记录），跨天清空重来。
 func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, string, bool) {
-	today := time.Now().Format("20060102")
-	// ① 被打了？查最近 60 分钟内对「本 bot 任一城」的敌方掠夺/征服单（行军/驻守中）
+	week := ezfyBotWeekKey()
+	// ① 被打了？查最近 30 分钟内对「本 bot 任一城」的敌方侦察/掠夺/征服单（行军/驻守中）
 	var ids []int64
 	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", b.UserID).Pluck("id", &ids)
 	victim := false
 	if len(ids) > 0 {
 		var hit int64
 		h.DB.Model(&model.EzfyOrder{}).
-			Where("order_type IN (2,3) AND target_type = 3 AND target_id IN ? AND status IN (0,1) AND user_id != ?",
+			Where("order_type IN (1,2,3) AND target_type = 3 AND target_id IN ? AND status IN (0,1) AND user_id != ?",
 				ids, b.UserID).Count(&hit)
 		victim = hit > 0
 	}
-	// ② 主动聊天是低概率动作；被打喊冤必说
+	// ② 主动聊天是低概率动作；被打喊冤优先（必说）
 	if !victim && mathrand.Intn(100) >= 8 {
 		return "", "", false
 	}
-	pool := ezfyBotChatPool[0]
+	poolIdx := 0
 	if victim {
-		pool = ezfyBotChatPool[1]
+		poolIdx = 1
 	} else if mathrand.Intn(2) == 0 {
-		pool = ezfyBotChatPool[2]
+		poolIdx = 2
 	}
-	// ③ 每天不重复：跳过今天已用下标
-	if b.ChatDate != today {
-		b.ChatUsed = "" // 跨天重置
+	pool := ezfyBotChatPool[poolIdx]
+	// ③ ★ 2026-10-17 一周不重复 + 每人机不同：
+	//   每台人机取「自己的起始偏移」= UserID % 池长；发言按 (偏移 + 本周次数×步长) 逐个取，
+	//   本周用过的相对序号记在 chat_used，跨周（ISO 周变化）清空重来。
+	//   不同人机偏移不同 → 同一时刻说的句子不一样。
+	offset := int(b.UserID) % len(pool)
+	stride := 5 // 与池长互质，保证遍历完之前不撞
+	if b.ChatDate != week {
+		b.ChatUsed = "" // 跨周重置
 	}
 	usedSet := map[int]bool{}
 	for _, s := range strings.Split(b.ChatUsed, ",") {
@@ -134,29 +153,33 @@ func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, s
 			usedSet[n] = true
 		}
 	}
-	var cands []int
-	for i := range pool {
-		if !usedSet[i] {
-			cands = append(cands, i)
+	// 从自己的偏移开始按步长找本周第一个没说过、且属于所选语境的句
+	content := ""
+	take := -1
+	for i := 0; i < len(pool); i++ {
+		rel := (offset + i*stride) % len(pool)
+		if usedSet[rel] {
+			continue
 		}
+		take = rel
+		content = pool[rel]
+		break
 	}
-	if len(cands) == 0 {
-		return "", "", false // 今天的句子说完了，明天再来
+	if content == "" {
+		return "", "", false // 本语境的句子这周说完了（被打时也会暂时没得说）
 	}
-	idx := cands[mathrand.Intn(len(cands))]
-	content := pool[idx]
 	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/chat",
 		map[string]interface{}{"channel": 1, "content": content})
 	if code != 0 {
 		return "世界发言", "发言失败: " + msg, false
 	}
-	seg := strconv.Itoa(idx)
+	seg := strconv.Itoa(take)
 	newUsed := seg
 	if b.ChatUsed != "" {
 		newUsed = b.ChatUsed + "," + seg
 	}
 	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).
-		Updates(map[string]interface{}{"chat_date": today, "chat_used": newUsed})
+		Updates(map[string]interface{}{"chat_date": week, "chat_used": newUsed})
 	h.ezfyBotLog(b.UserID, "世界发言", content, 1)
 	return "世界发言", content, true
 }
@@ -595,18 +618,17 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 	h.DB.Model(&model.EzfyCityTroop{}).Where("city_id = ?", city.ID).
 		Select("COALESCE(SUM(count),0)").Scan(&troopTotal)
 
-	// 0) 保命：部队打光了，先造兵
+	// 0) 保命（★ 2026-10-17 加强）：被打光（城里一个兵没有）→ **立即征兵，无冷却**，
+	//    每轮 tick 都先补兵，直到能出门反击/发育为止。
 	if troopTotal == 0 && buildingLv[14] > 0 {
-		if a, d, ok := h.botTrain(city, 0, cfg); ok {
+		if a, d, ok := h.botTrain(city, troopTotal, cfg, 1); ok {
 			return a, d, ok
 		}
 	}
 
-	// 0½) 世界聊天（★ 2026-10-17 人机也会在世界里说话：被打喊冤优先、平时低概率聊玩法）
-	//     ⚠️ 只占一轮动作里的一个：说话时这轮不发育，符合「最像真人」（真人也不可能一边出兵一边聊天）
-	if a, d, ok := h.botChat(b, city); ok {
-		return a, d, ok
-	}
+	// 0½) 世界聊天：**放在最后（闲置前）** —— 只在什么都做不了时才说话，
+	//    绝不抢占征兵/军官/军事轮次（★ 2026-10-17 回归修复：原来放最前面导致人机每天光说话不打人）。
+	//    这里保留已经说过的句去重；优先级交给 step 5。
 
 	// 1) 人口：空闲人口低于人口上限的 40% → 召集
 	//
@@ -635,8 +657,8 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		}
 	}
 
-	// 3) 兵
-	if a, d, ok := h.botTrain(city, troopTotal, cfg); ok {
+	// 3) 兵（★ 2026-10-17 征兵线 = 50 万，低于就征；兵种：陆地火箭 / 海城航母）
+	if a, d, ok := h.botTrain(city, troopTotal, cfg, 0); ok {
 		return a, d, ok
 	}
 
@@ -655,6 +677,11 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 		//   此前 ok=false 直接丢弃落到「休整」，线上经常只看到休整、看不到「为什么不动手」。
 		//   失败信息完整透传 → tick 主循环写进行为日志 + 2~4 分钟短间隔重试。
 		return a, d, false
+	}
+
+	// 5) 世界聊天（★ 2026-10-17 移到闲置位：军事/征兵/军官都做完才说话，不抢轮次）
+	if a, d, ok := h.botChat(b, city); ok {
+		return a, d, ok
 	}
 
 	// 5) 闲置（把「建筑为什么没动」带出来，管理端行为日志能直接看到卡点）
@@ -726,23 +753,40 @@ func (h *EzfyHandler) botBuild(city *model.EzfyCity, bs []model.EzfyCityBuilding
 	return "", "", false, why
 }
 
-// botTrain 造兵：兵力低于目标就造步兵（Require 只有「军工厂1级」，最稳）。
+// botTrain 造兵（★ 2026-10-17 改造）：征兵线 50 万，低于就征；兵种按城型选——
 //
-// troopTotal = 当前总兵力（保命调用时传 0 表示「刚被打光」）。
-func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyBotLevelCfg) (string, string, bool) {
-	if troopTotal >= cfg.TroopTarget {
+//	陆地城 → 火箭(8)（军工厂 6 级起），海城 → 航母(16)（军工厂/航海协会/科技不够时退回火箭）。
+//	force=1 保命（被打光立即补，无冷却）；普通调用 force=0（常态征兵，征不满说明被人口/资源卡住）。
+func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyBotLevelCfg, force int) (string, string, bool) {
+	const keepTroops = 500000 // 征兵线：低于 50 万就一直补
+	if troopTotal >= keepTroops {
 		return "", "", false
 	}
-	t := ezfyCfg.troop(1) // 步兵
+	// 兵种选择：海城航母 / 陆地火箭；不可训退回火箭
+	tid := 8
+	if h.isSeaCity(city) {
+		tid = 16
+	}
+	t := ezfyCfg.troop(tid)
+	if t == nil || tid == 16 {
+		// 航母（军工厂10+航海协会10+科技）通常建不起来 → 退火箭
+		if tt := ezfyCfg.troop(8); tt != nil {
+			t, tid = tt, 8
+		}
+	}
 	if t == nil {
 		return "", "", false
 	}
-	// 军工厂等级（步兵 Require = 军工厂(1级)）
+	// 军工厂必须存在（兵工厂房等级）
 	var fac model.EzfyCityBuilding
 	if err := h.DB.Where("city_id = ? AND building_id = 14 AND level > 0", city.ID).First(&fac).Error; err != nil {
 		return "", "", false
 	}
-	gap := cfg.TroopTarget - troopTotal
+	// 训练设施门槛：火箭要军工厂 6 级（航母 10 级——上面已退回）
+	if t.ID == 8 && fac.Level < 6 {
+		return "", "", false
+	}
+	gap := keepTroops - troopTotal
 	if gap <= 0 {
 		return "", "", false
 	}
@@ -778,9 +822,9 @@ func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyB
 		return "", "", false
 	}
 	code, msg := h.botCall(city.UserID, "", "POST", "/games/ezfy/troops/train",
-		map[string]interface{}{"city_id": int64(city.ID), "troop_id": 1, "count": int(count)})
+		map[string]interface{}{"city_id": int64(city.ID), "troop_id": tid, "count": int(count)})
 	if code == 0 {
-		return "造兵", fmt.Sprintf("训练步兵 ×%d（当前 %d/%d）", count, troopTotal, cfg.TroopTarget), true
+		return "造兵", fmt.Sprintf("训练%s ×%d（当前 %d/%d）", t.Name, count, troopTotal, keepTroops), true
 	}
 	return "造兵", "训练失败: " + msg, false
 }
@@ -793,6 +837,51 @@ func ezfyBotCanPay(city *model.EzfyCity, food, steel, oil, rare, gold int64) boo
 
 // ============ 军事 AI ============
 
+// botRevenge 被打反击（★ 2026-10-17）：近 10 分钟有真人侦察/掠夺/征服单命中本 bot 任一城 →
+//
+//	把攻方写成攻击计划（status=0 待宣战，下轮自动宣战 → 生效 → 征服）。
+//	已有计划（任意状态，含冷却/放弃）→ 不再重复写（正常流程本来就会打它）。
+//	返回 true = 已写入反击计划；false = 无可反击目标或已在计划中。
+func (h *EzfyHandler) botRevenge(b *model.EzfyBot, city *model.EzfyCity) bool {
+	var ids []int64
+	h.DB.Model(&model.EzfyCity{}).Where("user_id = ?", b.UserID).Pluck("id", &ids)
+	if len(ids) == 0 {
+		return false
+	}
+	now := time.Now().UnixMilli()
+	var hit struct {
+		UID uint
+	}
+	// 近 10 分钟：侦察(1)/掠夺(2)/征服(3) 打本 bot 城、且不是 bot 自己（排除自己劫自己）
+	h.DB.Raw(`
+		SELECT o.user_id AS uid
+		FROM ezfy_order o
+		WHERE o.order_type IN (1,2,3) AND o.target_type = 3
+		  AND o.target_id IN ? AND o.user_id != ?
+		  AND o.status IN (0,1) AND o.created_at_ms >= ? - 600000
+		ORDER BY o.id ASC LIMIT 1`, ids, b.UserID, now).Scan(&hit)
+	if hit.UID == 0 {
+		return false
+	}
+	// 已在计划中（任意状态）→ 不重复写（正常流程会打它；唯一键 (bot_uid,target_uid)）
+	var dup int64
+	h.DB.Model(&model.EzfyBotTarget{}).Where("bot_uid = ? AND target_uid = ?", b.UserID, hit.UID).Count(&dup)
+	if dup > 0 {
+		return false
+	}
+	var tc model.EzfyCity
+	if err := h.DB.Where("user_id = ?", hit.UID).Order("id ASC").First(&tc).Error; err != nil {
+		return false
+	}
+	h.DB.Create(&model.EzfyBotTarget{
+		BotUid: b.UserID, TargetUid: hit.UID, TargetCityId: int64(tc.ID),
+		Status: 0, Note: fmt.Sprintf("反击 %s(%d,%d)", tc.Name, tc.X, tc.Y),
+	})
+	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Update("next_act_at", now)
+	h.ezfyBotLog(b.UserID, "反击", fmt.Sprintf("玩家 %d 攻击了我，已列入反击计划（下轮宣战征服）", hit.UID), 1)
+	return true
+}
+
 // botMilitary 军事：计划表驱动的「宣战 → 等 24h → 出击」。
 //
 // 硬约束：打玩家城必须先宣战，宣战 24h 生效、48h 有效期 → 不能看到谁就打谁。
@@ -800,6 +889,12 @@ func ezfyBotCanPay(city *model.EzfyCity, food, steel, oil, rare, gold int64) boo
 func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopTotal int64, cfg ezfyBotLevelCfg) (string, string, bool) {
 	if !ezfyBotAttackOn() {
 		return "", "", false
+	}
+	// ★ 2026-10-17 被打反击：近 10 分钟有敌方侦察/掠夺/征服单打本 bot 的城 → 写反击计划（征服），
+	//   下轮自动走「宣战 → 生效 → 征服」，反击不受攻频节流限制（计划表驱动，宣战前不打）。
+	//   ⚠️ 真人规则：征服玩家城必须先宣战，反击也走同一链路（人机不可能绕过）。
+	if h.botRevenge(b, city) {
+		return "", "", false // 反击计划已写入，本轮让宣战流程接管
 	}
 	// 兵力不足目标的一半 → 不打仗，专心发育
 	if troopTotal < cfg.TroopTarget/2 || troopTotal < 200 {
@@ -1011,18 +1106,15 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 		}
 		return "军官加点", fmt.Sprintf("%s 加点失败: %s", o.Name, msg), false
 	}
-	// ③ 待分配点都点完了 → 「招募」：军官没满员 + 本周期有候选 + 黄金够 → 招一个
+	// ③ 待分配点都点完了 → 「招募」：军官没满员 + 有候选（★ 2026-10-17 修复：直接调 recruitInfo，
+	//   它没有候选时会自动 roll 并落库 —— 此前人机从没打开过军校页 → 候选表为空 → 永远招不到人）
 	var cnt int64
 	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ?", city.ID).Count(&cnt)
 	if int(cnt) >= staff {
 		return "", "", false
 	}
-	var rec model.EzfyRecruit
-	if err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, recruitCycleKey()).
-		First(&rec).Error; err != nil {
-		return "", "", false // 候选还没生成（玩家没打开过军校页）→ 跳过
-	}
-	for _, d := range parseDrafts(rec.Candidates) {
+	drafts, _, _ := h.recruitInfo(uid, academy)
+	for _, d := range drafts {
 		if d.Key == "" {
 			continue
 		}
@@ -1198,6 +1290,30 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	}
 	if len(groups) == 0 {
 		return "出击失败", "出征兵力缩放后为空（上限过小）", false
+	}
+	// ★★ 2026-10-17 出征还要受**人口承载**约束：createOrder 出征校验要求部队占人口 ≤ 城市可用人口。
+	//   人机若带 30~40 万火箭（Pop12/个 = 360~480 万人口）但人口只有 50 万 → 出征必被拒「人口不足」→ 不打人。
+	//   算出全部兵种的单位人口占用，总量超过城市人口 → 等比缩放到人口窗口内（派得少总比打不出去强）。
+	var popNeed int64
+	for _, g := range groups {
+		if tc := ezfyCfg.troop(g.TroopId); tc != nil {
+			popNeed += int64(tc.Pop) * g.Count
+		}
+	}
+	if popNeed > int64(city.Pop) && int64(city.Pop) > 0 {
+		for i := range groups {
+			groups[i].Count = groups[i].Count * int64(city.Pop) / popNeed
+		}
+		trim := groups[:0]
+		for _, g := range groups {
+			if g.Count > 0 {
+				trim = append(trim, g)
+			}
+		}
+		groups = trim
+		if len(groups) == 0 {
+			return "出击失败", "出征兵力人口承载后为空（人口过少）", false
+		}
 	}
 	var tc model.EzfyCity
 	if err := h.DB.First(&tc, p.TargetCityId).Error; err != nil {
