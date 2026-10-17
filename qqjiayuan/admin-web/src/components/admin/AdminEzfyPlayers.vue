@@ -61,6 +61,9 @@
 
     <!-- 详情（档案+军官+城池+背包+军团+最近出征） -->
     <el-dialog title="玩家详情" :visible.sync="detailDlg" width="940px" :close-on-click-modal="false">
+      <!-- ★ 2026-10-17 加载遮罩：详情要跑 8~10 条查询（跨 WAN 几十~几百毫秒），
+           原来加载期间弹窗一片空白，看起来像卡死 -->
+      <div v-loading="detailLoading" element-loading-text="正在加载玩家数据…" style="min-height:260px">
       <template v-if="detail">
         <!-- 玩家头卡 -->
         <div class="player-head">
@@ -213,6 +216,7 @@
           </el-tab-pane>
         </el-tabs>
       </template>
+      </div>
       <div slot="footer">
         <el-button @click="detailDlg = false">关 闭</el-button>
       </div>
@@ -326,7 +330,7 @@ export default {
   data () {
     return {
       list: [], total: 0, page: 1, size: 5, loading: false, word: '',
-      detailDlg: false, detail: null, detailTab: 'officers',
+      detailDlg: false, detail: null, detailTab: 'officers', detailLoading: false,
       editDlg: false, saving: false, editId: 0, form: {}, editCur: {},
       grantDlg: false, grantId: 0, grant: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, diamond: 0 },
       grantDiamond: 0,
@@ -395,10 +399,12 @@ export default {
     },
     // ★ 2026-10-17 抽出 loadDetail：背包维护后要就地刷新详情（不用关掉重开弹窗）
     loadDetail (uid) {
+      this.detailLoading = true
       api.get('/admin/ezfy-players/' + uid + '/detail').then(r => {
+        this.detailLoading = false
         if (r.code === 0) this.detail = r.data
         else { this.detailDlg = false; this.$message.error(r.msg) }
-      })
+      }).catch(() => { this.detailLoading = false })
     },
     // ---- 背包维护（★ 2026-10-17）----
     openBagAdd () {

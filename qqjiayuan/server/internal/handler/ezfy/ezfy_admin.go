@@ -114,26 +114,67 @@ func ezfyCampName(camp int) string {
 	return "同盟国"
 }
 
-// AdminEzfyPlayerDetail 玩家详情（档案+军官+城池+背包+军团+最近出征）
+// AdminEzfyPlayerDetail GET /admin/ezfy-players/:id/detail —— 玩家详情（档案/城池/背包/军团/军官/最近出征）
+//
+// ★★ 2026-10-17 卡顿优化（用户反馈「玩家详情打开有些卡顿」）：
+//
+//	原来 11 条 SQL **全部串行**，线上二战库是远端 RDS（单次 20~40ms）→ 打开详情固定 400ms+。
+//	其中最慢的一条是「按战报反查名将获取时间」：`content LIKE '%俘虏敌将:x%'` 要扫该玩家全部战报
+//	（前缀通配符用不了索引）。现在：
+//	  ① 独立查询**分波并行**：第一波 6 条（档案/城池/背包/军团/出征/家园昵称）
+//	     → 第二波 3 条（兵力求和/军官/军团名）→ 第三波（名将配置，必要时才查战报）；
+//	  ② 战报反查只针对 **source 未标注(0) 的名将** —— source 有枚举后，军校招募/野地俘虏/
+//	     抢玩家/管理端发放都能直接判定，正常情况下这条最慢的 SQL **根本不执行**。
 func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
+
+	// ===== 第一波并行：6 条互不依赖的查询（1 RTT 而不是 6 RTT）=====
 	var p model.EzfyProfile
-	if err := h.DB.Where("user_id = ?", id).First(&p).Error; err != nil {
+	var pErr error
+	var cities []model.EzfyCity
+	var bag []model.EzfyItem
+	var members []model.EzfyCorpsMember
+	var orders []model.EzfyOrder
+	var u model.User
+	homeOK := false
+
+	var wg sync.WaitGroup
+	wg.Add(6)
+	go func() { defer wg.Done(); pErr = h.DB.Where("user_id = ?", id).First(&p).Error }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&cities) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&bag) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&members) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Order("id DESC").Limit(20).Find(&orders) }()
+	go func() {
+		defer wg.Done()
+		if err := h.home().First(&u, id).Error; err == nil {
+			homeOK = true
+		}
+	}()
+	wg.Wait()
+	if pErr != nil {
 		resp.NotFound(c, "玩家不存在")
 		return
 	}
-	var cities []model.EzfyCity
-	h.DB.Where("user_id = ?", p.UserID).Find(&cities)
-	// ★ 城池总兵力：一次批量查所有城的兵力求和，避免每城一条 SQL（N+1）
-	type cityOut struct {
-		model.EzfyCity
-		TroopTotal int64 `json:"troop_total"` // 城池总兵力（ezfy_city_troop.count 求和）
+	homeNick, homeNum := "", ""
+	if homeOK {
+		homeNick, homeNum = u.Nickname, u.Username
 	}
-	citiesViews := make([]cityOut, 0, len(cities))
-	if len(cities) > 0 {
-		cityIDs := make([]uint, 0, len(cities))
-		for _, ct := range cities {
-			cityIDs = append(cityIDs, ct.ID)
+	cityIDs := make([]int64, 0, len(cities))
+	for _, ct := range cities {
+		cityIDs = append(cityIDs, int64(ct.ID))
+	}
+
+	// ===== 第二波并行：依赖城池/军团成员的三条 =====
+	var troopOf map[uint]int64
+	var officers []model.EzfyOfficer
+	corpsNameOf := map[uint]string{}
+	var wg2 sync.WaitGroup
+	wg2.Add(3)
+	go func() { // 城池总兵力：一次 GROUP BY，避免每城一条 SQL（N+1）
+		defer wg2.Done()
+		if len(cityIDs) == 0 {
+			return
 		}
 		var sums []struct {
 			CityID uint
@@ -142,26 +183,55 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		h.DB.Model(&model.EzfyCityTroop{}).
 			Select("city_id, SUM(count) AS total").
 			Where("city_id IN ?", cityIDs).Group("city_id").Scan(&sums)
-		troopOf := map[uint]int64{}
+		m := make(map[uint]int64, len(sums))
 		for _, s := range sums {
-			troopOf[s.CityID] = s.Total
+			m[s.CityID] = s.Total
 		}
-		for _, ct := range cities {
-			citiesViews = append(citiesViews, cityOut{EzfyCity: ct, TroopTotal: troopOf[ct.ID]})
+		troopOf = m
+	}()
+	go func() { // 军官：玩家名下所有城市的全部军官（含出征中/俘虏）
+		defer wg2.Done()
+		if len(cityIDs) == 0 {
+			return
 		}
+		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
+	}()
+	go func() { // 军团名：批量一次（原来每个成员一条 SQL）
+		defer wg2.Done()
+		if len(members) == 0 {
+			return
+		}
+		cids := make([]uint, 0, len(members))
+		for _, m := range members {
+			cids = append(cids, m.CorpsId)
+		}
+		var cps []model.EzfyCorps
+		h.DB.Select("id, name").Where("id IN ?", cids).Find(&cps)
+		m := make(map[uint]string, len(cps))
+		for _, cp := range cps {
+			m[cp.ID] = cp.Name
+		}
+		corpsNameOf = m
+	}()
+	wg2.Wait()
+
+	// 城池视图
+	type cityOut struct {
+		model.EzfyCity
+		TroopTotal int64 `json:"troop_total"` // 城池总兵力（ezfy_city_troop.count 求和）
 	}
-	var bag []model.EzfyItem
-	h.DB.Where("user_id = ?", p.UserID).Find(&bag)
-	// 补道具名称
+	citiesViews := make([]cityOut, 0, len(cities))
+	for _, ct := range cities {
+		citiesViews = append(citiesViews, cityOut{EzfyCity: ct, TroopTotal: troopOf[ct.ID]})
+	}
+
+	// 背包：道具名走进程内配置缓存（0 条 SQL）
 	type bagOut struct {
 		model.EzfyItem
 		ItemName string `json:"item_name"`
 	}
-	bagViews := []bagOut{}
-	// ★★ 2026-10-05 性能（用户反馈「玩家信息管理 → 玩家详情 超时」）：
-	//   原来**背包里每一件道具**都单独查一次 `ezfy_cfg_item` —— 老玩家背包几百件
-	//   就是几百条跨 WAN 往返，必然超时。道具配置本来就在进程内缓存 ezfyCfg 里，直接取内存（0 条 SQL）。
 	ezfyCfg.load(h.DB)
+	bagViews := make([]bagOut, 0, len(bag))
 	for _, it := range bag {
 		name := ""
 		if cfg := ezfyCfg.item(it.CfgId); cfg != nil {
@@ -169,38 +239,18 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		}
 		bagViews = append(bagViews, bagOut{EzfyItem: it, ItemName: name})
 	}
-	var members []model.EzfyCorpsMember
-	h.DB.Where("user_id = ?", p.UserID).Find(&members)
+
+	// 军团视图
 	type corpsOut struct {
 		model.EzfyCorpsMember
 		CorpsName string `json:"corps_name"`
 	}
-	corpsViews := []corpsOut{}
-	// ★ 2026-10-05 性能：军团名批量取一次（原来是每个成员一条 SQL）
-	corpsNameOf := map[uint]string{}
-	if len(members) > 0 {
-		cids := make([]uint, 0, len(members))
-		for _, m := range members {
-			cids = append(cids, m.CorpsId)
-		}
-		var cps []model.EzfyCorps
-		h.DB.Select("id, name").Where("id IN ?", cids).Find(&cps)
-		for _, cp := range cps {
-			corpsNameOf[cp.ID] = cp.Name
-		}
-	}
+	corpsViews := make([]corpsOut, 0, len(members))
 	for _, m := range members {
 		corpsViews = append(corpsViews, corpsOut{EzfyCorpsMember: m, CorpsName: corpsNameOf[m.CorpsId]})
 	}
-	var orders []model.EzfyOrder
-	h.DB.Where("user_id = ?", p.UserID).Order("id DESC").Limit(20).Find(&orders)
-	var u model.User
-	homeNick, homeNum := "", ""
-	if err := h.home().First(&u, p.UserID).Error; err == nil {
-		homeNick, homeNum = u.Nickname, u.Username
-	}
-	// ★ 军官：玩家名下所有城市的全部军官（含出征中/俘虏），带所属城市名/职位/状态
-	//   （管理端查看玩家信息用，数据口径与用户端军官列表一致）
+
+	// ===== 军官视图（名将原名 / 获取方式与时间）=====
 	type officerOut struct {
 		model.EzfyOfficer
 		CityName     string    `json:"city_name"`
@@ -212,30 +262,26 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		GetWay       string    `json:"get_way"`      // ★ 获取方式（活动野地俘虏/战俘营/管理端发放）
 		GetTime      time.Time `json:"get_time"`     // ★ 获取时间（按战报反查；无战报回落到军官更新时间）
 	}
-	officersViews := []officerOut{}
-	if len(cities) > 0 {
-		cityIDs := make([]int64, 0, len(cities))
-		cityNames := map[int64]string{}
+	officersViews := make([]officerOut, 0, len(officers))
+	if len(officers) > 0 {
+		cityNames := make(map[int64]string, len(cities))
 		for _, ct := range cities {
-			cityIDs = append(cityIDs, int64(ct.ID))
 			cityNames[int64(ct.ID)] = ct.Name
 		}
-		var officers []model.EzfyOfficer
-		h.DB.Where("city_id IN ?", cityIDs).Order("star DESC, level DESC, id ASC").Find(&officers)
-		// ★ 原名将信息：收集所有 general_id 一次查配置表，避免 N+1
+		// 原名将配置：收集 general_id 一次查配置表，避免 N+1
 		gNameOf, gStarOf, gKindOf := map[int]string{}, map[int]int{}, map[int]int{}
 		{
-			generalIDs := make([]int, 0)
+			ids := make([]int, 0)
 			seen := map[int]bool{}
 			for _, o := range officers {
 				if o.GeneralId > 0 && !seen[o.GeneralId] {
 					seen[o.GeneralId] = true
-					generalIDs = append(generalIDs, o.GeneralId)
+					ids = append(ids, o.GeneralId)
 				}
 			}
-			if len(generalIDs) > 0 {
+			if len(ids) > 0 {
 				var gs []model.EzfyCfgGeneral
-				h.DB.Where("id IN ?", generalIDs).Find(&gs)
+				h.DB.Where("id IN ?", ids).Find(&gs)
 				for _, g := range gs {
 					gNameOf[g.ID] = g.Name
 					gStarOf[g.ID] = g.Star
@@ -243,13 +289,13 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 				}
 			}
 		}
-		// ★ 获取时间/获取方式：名将(kind=2)按「俘虏敌将:<名字>」战报反查活动野地俘虏时间；
-		//   查不到且仍在战俘营 → 活动野地俘虏(战俘营)；否则视为管理端发放。
+		// 获取方式/时间：只有「名将 + source 未标注(0)」才需要按战报反查
+		// （source 有枚举后，军校招募/野地俘虏/抢玩家/管理端发放都能直接判定 → 这条慢 SQL 通常不执行）
 		getWayOf, getTimeOf := map[uint]string{}, map[uint]time.Time{}
 		{
 			names := make([]string, 0)
 			for _, o := range officers {
-				if o.GeneralId > 0 && gKindOf[o.GeneralId] == 2 {
+				if o.GeneralId > 0 && gKindOf[o.GeneralId] == 2 && o.Source == 0 {
 					names = append(names, o.Name)
 				}
 			}
@@ -343,6 +389,7 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 			})
 		}
 	}
+
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
 		"cities": citiesViews, "bag": bagViews, "corps": corpsViews, "orders": orders,
 		"officers":  officersViews,
