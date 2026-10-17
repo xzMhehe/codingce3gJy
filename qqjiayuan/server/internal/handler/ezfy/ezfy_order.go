@@ -1500,6 +1500,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 	// ★ 2026-10-05 性能：这里**只改内存、不立刻写库** —— 与下面的随军资源合并成**一次**整行写
 	//   （原来油一次 saveCityRes、随军资源再一次 = 2 条 ~240ms 的写往返）。
 	oilCost := h.ezfyOilCost(city, orderType, distance, validTroops, resources, h.officerOilReducePct(lead))
+	// ★ 2026-10-17 人机免耗粮开启时，人机出征同样免油耗（city.IsBot=1，真人照常扣油）
+	if ezfyBotFoodFree(city.IsBot) {
+		oilCost = 0
+	}
 	if city.Oil < oilCost {
 		return fmt.Sprintf("石油不足: 本次出征需耗油%d, 当前油库仅%d", oilCost, city.Oil)
 	}

@@ -278,6 +278,8 @@ func Run(db *gorm.DB, staticDir string) {
 		addSwitchCol("officer_star_keep_on_fail", 0) // 失败是否保留升星卡：0 扣掉（默认）/ 1 保留
 		// ★ 2026-10-17 「训练一键加速」「所有城市训练一键加速」开关（默认 1 开；0 关 = 前端隐藏按钮 + 后端拒绝）
 		addSwitchCol("speed_train_on", 1)
+		// ★ 2026-10-17 人机免耗粮（默认 1 开）：人机城内军队不扣维护粮 + 人机出征免油耗（真人照常扣）
+		addSwitchCol("bot_food_free", 1)
 		// 数值类（0 无意义 → 回落默认值），用只回填 NULL 的写法，别覆盖管理端改过的值
 		addNumCol := func(col string, def int) {
 			d := fmt.Sprintf("%d", def)

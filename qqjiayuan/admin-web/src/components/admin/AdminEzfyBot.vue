@@ -353,7 +353,7 @@ export default {
   data () {
     return {
       list: [], max: 50, loading: false, word: '',
-      attackOn: 1, atkDailyCap: 3, foodFree: 0, saving: false,
+      attackOn: 1, atkDailyCap: 3, foodFree: 1, saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
       // 编辑快照（保存时只提交有变化的 tab —— 修复「保存卡顿」：几十条 UPDATE 串行跨 WAN 太慢）
@@ -384,7 +384,7 @@ export default {
       tips: {
         overview: '人机走和真人完全相同的接口（建城/升级/造兵/宣战），每 60 秒一轮、每轮最多 10 个，带租约锁（多进程只有一台真正执行）；人机不出现在「玩家信息管理」里。',
         atk: '关闭 = 人机只发育、不打扰玩家；开启后受「每人每日出征上限」与新手保护约束（建城不满 3 天、兵力过低的目标不会被打）。',
-        foodFree: '开启后人机的城内军队不扣维护粮（真人照常扣）。人机不打劫时粮食全靠产出，开着能让 AI 专注发育。',
+        foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
     }
