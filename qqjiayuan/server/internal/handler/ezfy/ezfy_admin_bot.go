@@ -71,6 +71,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 	profOf := map[uint]model.EzfyProfile{}
 	cityOf := map[uint]model.EzfyCity{}
 	troopOf := map[uint]int64{}
+	// ★ 2026-10-17 人机集结令持有数（列表一眼可见，发/扣集结令有据可依）
+	gatherOf := map[uint]int{}
 	if len(uids) > 0 {
 		var profs []model.EzfyProfile
 		h.DB.Select("user_id, nickname, prestige, camp, game_uid, current_city_id").
@@ -109,6 +111,15 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 				}
 			}
 		}
+		// ★ 2026-10-17 人机集结令持有数
+		gatherCID := ezfyGatherItemID()
+		if gatherCID > 0 {
+			var items []model.EzfyItem
+			h.DB.Where("user_id IN ? AND cfg_id = ?", uids, gatherCID).Find(&items)
+			for _, it := range items {
+				gatherOf[it.UserId] = it.Count
+			}
+		}
 	}
 
 	now := time.Now().UnixMilli()
@@ -123,6 +134,7 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"prestige": p.Prestige, "camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
 			"city_id": ct.ID, "city_name": ct.Name, "x": ct.X, "y": ct.Y, "city_level": ct.CityLevel,
 			"troop_total": troopOf[b.UserID],
+			"gather_count": gatherOf[b.UserID],
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -404,12 +416,14 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 		Steel int64 `json:"steel"`
 		Oil   int64 `json:"oil"`
 		Rare  int64 `json:"rare"`
+		// ★ 2026-10-17 集结令（正数发放进背包，负数从背包扣除，最低扣到 0）
+		Gather int64 `json:"gather"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
 		return
 	}
-	if in.Gold == 0 && in.Food == 0 && in.Steel == 0 && in.Oil == 0 && in.Rare == 0 {
+	if in.Gold == 0 && in.Food == 0 && in.Steel == 0 && in.Oil == 0 && in.Rare == 0 && in.Gather == 0 {
 		resp.ParamError(c, "请先填写要发放的数量")
 		return
 	}
@@ -438,6 +452,20 @@ func (h *EzfyAdmin) AdminEzfyBotGrant(c *gin.Context) {
 	add("石油", in.Oil, got[2])
 	add("稀矿", in.Rare, got[3])
 	add("黄金", in.Gold, got[4])
+	// ★ 2026-10-17 集结令走道具背包（ezfy_item）：正数发、负数扣（最低扣到 0），
+	//   人机出征时自动烧集结令扩出征上限。
+	if in.Gather != 0 {
+		ez.cfgs()
+		if gatherCID := ezfyGatherItemID(); gatherCID > 0 {
+			if in.Gather > 0 {
+				ez.addItem(uint(uid), gatherCID, int(in.Gather))
+			} else {
+				ez.DB.Exec("UPDATE ezfy_item SET count = GREATEST(count + ?, 0) WHERE user_id = ? AND cfg_id = ?",
+					in.Gather, uid, gatherCID)
+			}
+			msg += fmt.Sprintf(" 集结令%+d", in.Gather)
+		}
+	}
 	// 让它立刻消化这批资源（下一轮 tick 不用等）
 	h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Update("next_act_at", time.Now().UnixMilli())
 	ez.ezfyBotLog(uint(uid), "管理端发资源", trimStr(msg, 200), 1)

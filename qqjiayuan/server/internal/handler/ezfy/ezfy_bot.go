@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -197,6 +198,8 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 			"food": 500000, "steel": 200000, "oil": 200000, "rare": 200000,
 		})
 	}
+	// ★ 2026-10-17 人机默认持有 5000 个集结令（每个 +10 万出征上限，大兵力一样能派出去）
+	h.addItem(uid, ezfyGatherItemID(), 5000)
 
 	// ③ 人机档案：立刻可行动（首轮 tick 就会开始发育）
 	now := time.Now().UnixMilli()
@@ -242,6 +245,53 @@ func ezfyBotPersona(level int) string {
 // ezfyBotLog 写一条行为日志（管理端「行为日志」数据源）。
 func (h *EzfyHandler) ezfyBotLog(uid uint, action, detail string, ok int) {
 	h.DB.Create(&model.EzfyBotLog{BotUid: uid, Action: action, Detail: trimStr(detail, 240), Result: ok})
+}
+
+// ============ 存量人机补一批集结令 ============
+
+// ezfyBotGatherMark 存量人机「补 5000 集结令」的数据库标记（借用 ezfy_bot_lock 的 name 主键）。
+const ezfyBotGatherMark = "ezfy_bot_gather_v1"
+
+// ezfyBotGatherOnce 进程内只补一次（防同进程并发/重复跑）。
+var ezfyBotGatherOnce sync.Once
+
+// ezfyBotGatherBackfill 存量人机一次性补足 5000 集结令。
+//
+// ★ 2026-10-17 ezfyBotProvision 只负责**新造的人机**；线上已存在的人机走这里补齐，
+//   否则它们背包里没有集结令、出征永远不烧（列表「集结令」列会一直是 0）。
+//
+// ⚠️ 为什么还要 DB 标记而不用 sync.Once 就够：sync.Once 每次重启都会重跑。
+//
+//	若每次重启都把「人机烧掉/管理端扣掉」的集结令补回 5000，管理端手动扣减会被悄悄吞掉。
+//	→ 补完落一条标记行，之后任何一次重启都不再重复补。
+func (h *EzfyHandler) ezfyBotGatherBackfill() {
+	cid := ezfyGatherItemID()
+	if cid <= 0 {
+		return // 配置没就绪/没有集结令道具，跳过（下次 cfgs 再试也会被 Once 挡住——配置一般不会倒着变，可接受）
+	}
+	var marked int64
+	h.DB.Model(&model.EzfyBotLock{}).Where("name = ?", ezfyBotGatherMark).Count(&marked)
+	if marked > 0 {
+		return
+	}
+	var uids []uint
+	h.DB.Model(&model.EzfyBot{}).Select("user_id").Find(&uids)
+	for _, uid := range uids {
+		var cur int
+		h.DB.Model(&model.EzfyItem{}).Where("user_id = ? AND cfg_id = ?", uid, cid).
+			Select("count").Scan(&cur)
+		if cur >= 5000 {
+			continue // 已有 ≥5000（管理端发过了）→ 不动
+		}
+		if cur == 0 {
+			h.addItem(uid, cid, 5000) // 背包里没有 → 直接建行
+		} else {
+			// 有但 < 5000（调号/发少了）→ 补到 5000
+			h.DB.Exec("UPDATE ezfy_item SET count = 5000 WHERE user_id = ? AND cfg_id = ?", uid, cid)
+		}
+	}
+	h.DB.Exec("INSERT IGNORE INTO ezfy_bot_lock (name, owner, expire_at, updated_at) VALUES (?, 'gather-backfill', 1, NOW())",
+		ezfyBotGatherMark)
 }
 
 // ============ 调度层：租约锁 + tick ============
@@ -766,10 +816,19 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	if len(groups) == 0 {
 		return "", "", false
 	}
-	// ★★ 2026-10-17 修复：出征兵力必须 ≤ 出征上限（司令部等级×1万×指挥科技 + 家族集结 + 军官），
+	// ★★ 2026-10-17 修复：出征兵力必须 ≤ 出征上限（司令部等级×1万×指挥科技 + 集结令 + 军官），
 	//   否则线上 march_cap_on=1 → createOrder 拒绝 → 人机「有 1 亿兵也打不出去」（只看见休整）。
 	//   超了 → 全兵种等比缩放到上限内（派够上限也够拆目标城）。
-	cap, unlimited := h.ezfyOrderTroopCap(city.ID, 0, "")
+	// ★★ 2026-10-17 人机用集结令：上限不够 → 烧背包集结令扩额（每个 +10 万），
+	//   最多烧到单次出征上限 ezfyGatherMax()；集结令在 createOrder 里真实扣减。
+	gather := 0
+	if ezfyMarchCapOn() {
+		gather = h.itemCount(b.UserID, ezfyGatherItemID())
+		if maxG := ezfyGatherMax(); gather > maxG {
+			gather = maxG
+		}
+	}
+	cap, unlimited := h.ezfyOrderTroopCap(city.ID, gather, "")
 	if !unlimited && cap > 0 {
 		var total int64
 		for _, g := range groups {
@@ -800,7 +859,7 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 		"city_id": int64(city.ID), "order_type": 2, // 掠夺
 		"target_type": 3, "target_id": int64(tc.ID),
 		"target_x": tc.X, "target_y": tc.Y,
-		"troops": groups, "auto_battle": 1,
+		"troops": groups, "auto_battle": 1, "gather": gather,
 	})
 	if code == 0 {
 		// 冷却 12 小时 + 记一次出征

@@ -65,6 +65,9 @@
         <el-table-column label="兵力" width="110" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.troop_total) }}</span></template>
         </el-table-column>
+        <el-table-column label="集结令" width="100" align="center">
+          <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.gather_count) }}</span></template>
+        </el-table-column>
         <el-table-column label="声望" width="100" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.prestige) }}</span></template>
         </el-table-column>
@@ -288,6 +291,11 @@
                            controls-position="right" style="width:160px" />
           <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur[f.k]) }}</span>
         </el-form-item>
+        <el-form-item label="集结令">
+          <el-input-number v-model.number="grantForm.gather" :step="1000" :precision="0"
+                           controls-position="right" style="width:160px" />
+          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur.gather) }}（人机出征打架自动烧）</span>
+        </el-form-item>
       </el-form>
       <div class="td-gray" style="font-size:12px">
         可填负数扣除；发完人机会立刻行动消化资源；不发钻石。
@@ -404,8 +412,8 @@ export default {
       grantGeneralId: 0, generalOptions: [], skillOptions: [],
       // 发放资源
       grantDlg: false, grantSaving: false,
-      grantForm: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
-      grantCur: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 },
+      grantForm: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 },
+      grantCur: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 },
       resFields: [
         { k: 'gold', t: '黄金' }, { k: 'food', t: '粮食' }, { k: 'steel', t: '钢铁' },
         { k: 'oil', t: '石油' }, { k: 'rare', t: '稀矿' }
@@ -624,8 +632,8 @@ export default {
     },
     openGrant (row) {
       this.cur = row
-      this.grantForm = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }
-      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0 }
+      this.grantForm = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 }
+      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: row.gather_count || 0 }
       this.grantDlg = true
       api.get('/admin/ezfy-players/' + row.user_id + '/detail').then(r => {
         if (r.code !== 0 || !r.data) return
@@ -640,7 +648,7 @@ export default {
     },
     doGrant () {
       const g = this.grantForm
-      if (!g.gold && !g.food && !g.steel && !g.oil && !g.rare) {
+      if (!g.gold && !g.food && !g.steel && !g.oil && !g.rare && !g.gather) {
         this.$message.warning('请先填写要发放的数量')
         return
       }
