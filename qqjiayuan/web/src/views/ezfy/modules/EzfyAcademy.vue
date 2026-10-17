@@ -8,7 +8,7 @@
         玩家号码：{{ ezfy.selfInfo.game_uid || ezfy.profile.game_uid || ezfy.userBrief.game_uid || '—' }}<br/>
         昵称：{{ ezfy.selfInfo.nickname || ezfy.profile.nickname }}
         <template v-if="!ezfy.renameEditing">
-          <a href="javascript:;" @click="ezfy.startRename">[修改昵称]</a>
+          <a href="javascript:;" @click="ezfy.startRename">[修改]</a>
         </template>
         <template v-else>
           <br/>
