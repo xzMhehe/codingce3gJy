@@ -76,11 +76,12 @@
         <el-table-column label="声望" width="100" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.prestige) }}</span></template>
         </el-table-column>
-        <el-table-column label="最后行动" width="170" align="center">
+        <!-- ★ 2026-10-18 最后行动：不再展示具体日期时间（占地方），只留上次动作文字 -->
+        <el-table-column label="最后行动" min-width="90" align="center">
           <template slot-scope="{row}">
-            <span v-if="row.last_act_at">{{ fmtTime(row.last_act_at) }}</span>
+            <span v-if="row.last_action" class="td-gray">{{ row.last_action }}</span>
+            <span v-else-if="row.last_act_at" class="td-gray">已行动</span>
             <span v-else class="td-gray">未行动</span>
-            <div class="td-gray" style="font-size:12px">{{ row.last_action || '' }}</div>
           </template>
         </el-table-column>
         <el-table-column label="今日出征" width="90" align="center">
@@ -407,7 +408,10 @@
     <!-- 出征战报（★ 2026-10-17 管理员看人机战报：复用全局战报查询，按 user_id 过滤） -->
     <el-dialog :title="'出征战报 —— ' + (cur ? cur.nickname : '')" :visible.sync="reportsDlg" width="860px">
       <el-table :data="reports" v-loading="reportsLoading" size="mini" border max-height="430">
-        <el-table-column prop="created_at" label="时间" width="160" align="center" />
+        <!-- ★ 2026-10-18 时间列格式化：原来直接吐后端 ISO 时间串（2026-10-18T14:30:25+08:00），看不清 → 统一 fmtTime -->
+        <el-table-column label="时间" width="160" align="center">
+          <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column prop="type_name" label="类型" width="110" align="center" />
         <el-table-column prop="player_name" label="玩家" width="120" show-overflow-tooltip />
         <el-table-column prop="preview" label="内容" min-width="300" show-overflow-tooltip />
@@ -852,7 +856,9 @@ export default {
       this.reportDetailDlg = true
       api.get('/admin/ezfy-reports/' + row.id).then(r => {
         if (r.code === 0) {
-          this.reportDetail = r.data
+          // ★ 2026-10-18 修复详情查询空：后端返回 { report, player_name, home_num, type_name }，正文在 report 里
+          const d = r.data || {}
+          this.reportDetail = d.report || this.reportDetail
         }
       }).catch(() => {})
     }

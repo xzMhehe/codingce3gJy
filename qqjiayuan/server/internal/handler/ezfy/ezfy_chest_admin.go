@@ -92,3 +92,112 @@ func (h *EzfyAdmin) AdminEzfyChestGrant(c *gin.Context) {
 		Content: "管理员发放宝箱：" + strings.TrimSpace(names) + "，请在「我的宝箱」中开启，请查收。"})
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发放给玩家「%s」(ID:%d)%s", p.Nickname, p.UserID, names)})
 }
+
+// AdminEzfyPlayerChestOptions GET /admin/ezfy-player-chests/options —— 玩家详情「添加宝箱」下拉选项。
+//
+// ★ 2026-10-18 挂 module:ezfyPlayers 权限：只有「玩家信息管理」权限、没有「数据管理」权限的管理员
+// 也能在玩家详情里加宝箱（口径同 AdminEzfyPlayerItemOptions 复用道具下拉）。
+func (h *EzfyAdmin) AdminEzfyPlayerChestOptions(c *gin.Context) {
+	h.AdminEzfyChestGrantOptions(c)
+}
+
+// AdminEzfyPlayerChestSet POST /admin/ezfy-players/:id/chest —— 添加宝箱 / 编辑待开数量
+//
+// ★ 2026-10-18 用户需求「玩家详情 背包 也要能看到玩家的宝箱个数 并且能编辑」。
+// 玩家详情 → 背包 tab 里的待开宝箱维护，口径与背包道具维护（ezfy_admin_bag.go）一致：
+//
+//	· mode = "add"：累加进待开宝箱（已有则 count + N，与发放宝箱同款 upsert）；
+//	· mode = "set"：把该宝箱待开数量**直接设为**指定值（覆盖，不累加）；
+//	· set 到 0 = 等价于删除该行（不残留 count=0 僵尸行）。
+//
+// 不做数量上限校验（运营修正数据以管理员为准），设一个 10 亿硬上限防手误。
+func (h *EzfyAdmin) AdminEzfyPlayerChestSet(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("id"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var in struct {
+		ChestID int    `json:"chest_id"`
+		Count   int    `json:"count"`
+		Mode    string `json:"mode"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.ChestID <= 0 {
+		resp.ParamError(c, "请选择宝箱")
+		return
+	}
+	if in.Count < 0 || in.Count > 1000000000 {
+		resp.ParamError(c, "数量请填 0~1000000000")
+		return
+	}
+	var chest model.EzfyCfgChest
+	if err := h.DB.First(&chest, in.ChestID).Error; err != nil {
+		resp.ParamError(c, "宝箱不存在："+strconv.Itoa(in.ChestID))
+		return
+	}
+	nick := ezfyNickByUid(h.DB, h.HomeDB, uint(uid))
+	mode := strings.TrimSpace(in.Mode)
+
+	// set 到 0 = 删除（避免待开宝箱留 count=0 僵尸行）
+	if mode == "set" && in.Count == 0 {
+		if err := h.DB.Exec("DELETE FROM ezfy_user_chest WHERE user_id = ? AND chest_id = ?", uid, in.ChestID).Error; err != nil {
+			resp.ServerError(c, err)
+			return
+		}
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("已删除「%s」的【%s】", nick, chest.Name), "count": 0})
+		return
+	}
+	if in.Count <= 0 {
+		resp.ParamError(c, "数量必须大于 0（要清空请用删除）")
+		return
+	}
+	// 原子 upsert：add=累加 / set=覆盖（唯一键 user_id+chest_id，同发放宝箱）
+	expr := "count = count + ?"
+	if mode != "add" {
+		expr = "count = ?"
+	}
+	if err := h.DB.Exec(`INSERT INTO ezfy_user_chest (user_id, chest_id, count) VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE `+expr+`, updated_at = NOW()`, uid, in.ChestID, in.Count, in.Count).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	var now model.EzfyUserChest
+	h.DB.Where("user_id = ? AND chest_id = ?", uid, in.ChestID).First(&now)
+	msg := fmt.Sprintf("已把「%s」的【%s】待开数量设为 %d", nick, chest.Name, now.Count)
+	if mode == "add" {
+		msg = fmt.Sprintf("已给「%s」添加【%s】×%d（现有 %d）", nick, chest.Name, in.Count, now.Count)
+	}
+	ezfyChestCacheDel(uint(uid))
+	resp.OK(c, gin.H{"msg": msg, "count": now.Count, "chest_id": in.ChestID, "chest_name": chest.Name})
+}
+
+// AdminEzfyPlayerChestDelete DELETE /admin/ezfy-players/:id/chest/:chest_id —— 物理删除玩家待开宝箱
+//
+// 只删这一行（user_id + chest_id），玩家其余宝箱/道具不受影响；不可恢复。
+func (h *EzfyAdmin) AdminEzfyPlayerChestDelete(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("id"))
+	chestID, _ := strconv.Atoi(c.Param("chest_id"))
+	if uid <= 0 || chestID <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var row model.EzfyUserChest
+	if err := h.DB.Where("user_id = ? AND chest_id = ?", uid, chestID).First(&row).Error; err != nil {
+		resp.NotFound(c, "该玩家没有这个待开宝箱")
+		return
+	}
+	name := "宝箱#" + strconv.Itoa(chestID)
+	var chest model.EzfyCfgChest
+	if err := h.DB.First(&chest, chestID).Error; err == nil {
+		name = chest.Name
+	}
+	nick := ezfyNickByUid(h.DB, h.HomeDB, uint(uid))
+	if err := h.DB.Exec("DELETE FROM ezfy_user_chest WHERE user_id = ? AND chest_id = ?", uid, chestID).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	ezfyChestCacheDel(uint(uid))
+	resp.OK(c, gin.H{
+		"msg": fmt.Sprintf("已物理删除「%s」的【%s】×%d", nick, name, row.Count),
+	})
+}

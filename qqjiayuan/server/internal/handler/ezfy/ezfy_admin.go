@@ -142,14 +142,17 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 	var orders []model.EzfyOrder
 	var u model.User
 	homeOK := false
+	// ★ 2026-10-18 玩家详情背包 tab 要看「待开宝箱」个数：一并查 ezfy_user_chest
+	var chests []model.EzfyUserChest
 
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
 	go func() { defer wg.Done(); pErr = h.DB.Where("user_id = ?", id).First(&p).Error }()
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&cities) }()
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&bag) }()
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&members) }()
 	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Order("id DESC").Limit(20).Find(&orders) }()
+	go func() { defer wg.Done(); h.DB.Where("user_id = ?", id).Find(&chests) }()
 	go func() {
 		defer wg.Done()
 		if err := h.home().First(&u, id).Error; err == nil {
@@ -395,8 +398,29 @@ func (h *EzfyAdmin) AdminEzfyPlayerDetail(c *gin.Context) {
 		}
 	}
 
+	// ===== 待开宝箱视图（ezfy_user_chest：管理端/活动发放，玩家背包→宝箱里自己开）=====
+	type chestOut struct {
+		model.EzfyUserChest
+		ChestName string `json:"chest_name"` // 宝箱配置名（ezfy_cfg_chest）
+	}
+	chestsViews := make([]chestOut, 0, len(chests))
+	if len(chests) > 0 {
+		chestNameOf := map[int]string{}
+		var cfgChests []model.EzfyCfgChest
+		h.DB.Select("id, name").Find(&cfgChests)
+		for _, cc := range cfgChests {
+			chestNameOf[cc.ID] = cc.Name
+		}
+		for _, ch := range chests {
+			chestsViews = append(chestsViews, chestOut{
+				EzfyUserChest: ch,
+				ChestName:     chestNameOf[ch.ChestId],
+			})
+		}
+	}
+
 	resp.OK(c, gin.H{"player": p, "home_nick": homeNick, "home_num": homeNum,
-		"cities": citiesViews, "bag": bagViews, "corps": corpsViews, "orders": orders,
+		"cities": citiesViews, "bag": bagViews, "chests": chestsViews, "corps": corpsViews, "orders": orders,
 		"officers":  officersViews,
 		"camp_name": ezfyCampName(p.Camp), "rank_name": ezfyRankNameAt(ezfyProfileRank(&p))})
 }
@@ -1479,7 +1503,8 @@ func ezfyAdminParseTime(s string) (time.Time, bool) {
 // AdminEzfyChats 聊天记录列表（频道过滤 + 关键词 + 时间范围）
 //
 // ★ 2026-10-17 由「世界聊天」升级为多频道：channel 1公共 2军团 4系统，
-//   配合管理端「聊天管理」的 世界/军团/系统 三个 tab。
+//
+//	配合管理端「聊天管理」的 世界/军团/系统 三个 tab。
 func (h *EzfyAdmin) AdminEzfyChats(c *gin.Context) {
 	page, offset, size := pageOf(c, 20)
 	word := strings.TrimSpace(c.Query("word"))
@@ -1516,7 +1541,8 @@ func (h *EzfyAdmin) AdminEzfyChats(c *gin.Context) {
 // AdminEzfyChatBatchDelete 按频道+时间范围批量物理删除聊天记录
 //
 // ★ 2026-10-17 管理端「聊天管理」世界/军团/系统 tab 的「删除所选时间段」：
-//   channel + start/end 均必填，防止误删整频道数据。
+//
+//	channel + start/end 均必填，防止误删整频道数据。
 func (h *EzfyAdmin) AdminEzfyChatBatchDelete(c *gin.Context) {
 	channel := atoiOr(c.Query("channel"), 0)
 	startStr := strings.TrimSpace(c.Query("start"))
@@ -1552,7 +1578,8 @@ func (h *EzfyAdmin) AdminEzfyChatDelete(c *gin.Context) {
 // AdminEzfyExchangeDealtDelete 一键删除全部已成交记录（status = 1）
 //
 // ★ 2026-10-17 管理端「交易行维护 → 挂单维护」的一键清理按钮；
-//    ezfy_exchange 无软删字段，Delete 即物理删除。
+//
+//	ezfy_exchange 无软删字段，Delete 即物理删除。
 func (h *EzfyAdmin) AdminEzfyExchangeDealtDelete(c *gin.Context) {
 	res := h.DB.Where("status = 1").Delete(&model.EzfyExchange{})
 	resp.OK(c, gin.H{"msg": "已删除", "count": res.RowsAffected})

@@ -1303,6 +1303,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-players/:id/item", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemSet)
 						admin.DELETE("/ezfy-players/:id/item/:cfg_id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemDelete)
 						admin.GET("/ezfy-player-items/options", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerItemOptions)
+						// ★ 2026-10-18 玩家详情背包里的待开宝箱维护：添加（累加）/ 编辑数量（覆盖）/ 物理删除 + 下拉选项
+						admin.POST("/ezfy-players/:id/chest", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerChestSet)
+						admin.DELETE("/ezfy-players/:id/chest/:chest_id", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerChestDelete)
+						admin.GET("/ezfy-player-chests/options", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerChestOptions)
 						// ★ 2026-10-12 踢下线：作废该玩家当前的二战登录态（token.iat <= kick_at → 401）
 						admin.POST("/ezfy-players/:id/kick", perm(db, "module:ezfyPlayers"), ezfyAdminH.AdminEzfyPlayerKick)
 						// ★ 2026-10-12 免战模块：列表 / 开始(全城免战,可带 hours) / 结束(清除全部城池免战)，独立权限 module:ezfyPeace

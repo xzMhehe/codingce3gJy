@@ -84,6 +84,9 @@
             <span v-else-if="col.fmt === 'param'">{{ paramText(row) }}</span>
             <!-- ★ 宝箱价格列：黄金价/钻石价合并显示（宝箱只用其中一种货币，分两列总有一列是 0） -->
             <span v-else-if="col.fmt === 'price'">{{ priceText(row) }}</span>
+            <!-- ★ 2026-10-18 宝箱开启「开出的东西」：文本长、列里会截断 → 整列可点击，弹窗逐条看全 -->
+            <a v-else-if="col.fmt === 'chestResult'" href="javascript:;" class="chest-result-link"
+               :title="row[col.k]" @click="openChestResult(row)">{{ row[col.k] || '—' }}</a>
             <span v-else>{{ fmt(row[col.k]) }}</span>
           </template>
         </el-table-column>
@@ -358,6 +361,19 @@
         <div slot="footer">
           <el-button @click="chItemDlg = false">取 消</el-button>
           <el-button type="primary" :loading="saving" @click="doChestItemSave">保 存</el-button>
+        </div>
+      </el-dialog>
+
+      <!-- ★ 2026-10-18 宝箱开启「开出的东西」详情：表格里太长会被截断，点「开出的东西」弹窗逐条看全 -->
+      <el-dialog :title="chResultTitle || '开箱明细'" :visible.sync="chResultDlg" width="560px" append-to-body>
+        <div class="chest-result-box">
+          <div v-for="(it, i) in chResultList" :key="i" class="chest-result-item">
+            <span class="chest-result-idx">{{ i + 1 }}</span>{{ it }}
+          </div>
+          <div v-if="!chResultList.length" class="td-gray">（该条开箱没有产出明细）</div>
+        </div>
+        <div slot="footer">
+          <el-button @click="chResultDlg = false">关 闭</el-button>
         </div>
       </el-dialog>
     </el-card>
@@ -684,7 +700,8 @@ const COLS = {
     { k: 'chest_id', n: '宝箱ID', minW: 76 },
     { k: 'chest_name', n: '宝箱名', minW: 110 },
     { k: 'count', n: '数量', minW: 64 },
-    { k: 'result', n: '开出的东西', minW: 240 },
+    // ★ 2026-10-18 开出的东西：整列可点击（fmt=chestResult），弹窗里按顿号拆成逐条看全
+    { k: 'result', n: '开出的东西', minW: 240, fmt: 'chestResult' },
     { k: 'created_at', n: '开箱时间', minW: 170 }
   ]
 }
@@ -908,6 +925,8 @@ export default {
       // ★ 2026-10-14 发放宝箱对话框状态（目标玩家复用 grantPlayer/grantPlayers/grantUserId 搜索）
       chGrantDlg: false, chGrantSaving: false,
       chGrantOpts: [], chGrantItems: [],
+      // ★ 2026-10-18 宝箱开启「开出的东西」详情弹窗状态
+      chResultDlg: false, chResultTitle: '', chResultList: [],
       // ★ 套装装备配置（宝箱）→ 奖池管理状态（2026-09-27 从「军官管理 → 宝箱」迁来）
       chPoolDlg: false, chPoolChest: {}, chPool: [], chWeightSum: 0,
       chItemDlg: false, chif: {}, chBulkSetId: 0, chBulkWeight: 100,
@@ -1209,6 +1228,17 @@ export default {
         else this.$message.error(r.msg || '发放失败')
       }).catch(() => { this.chGrantSaving = false })
     },
+    // ★ 2026-10-18 宝箱开启「开出的东西」：弹窗里按顿号拆成逐条，看全开出了什么
+    openChestResult (row) {
+      this.chResultTitle = '开箱明细 —— ' + (row.nickname || ('玩家' + row.user_id)) +
+        ' · ' + (row.chest_name || ('宝箱#' + row.chest_id)) +
+        (row.count ? ' ×' + row.count : '') + ' · ' + (row.created_at || '')
+      let body = row.result || ''
+      if (body.startsWith('获得：')) body = body.slice(3)
+      // 后端聚合文本用「、」分隔，兼容「，」与「,」
+      this.chResultList = body.split(/[、，,]/).map(s => s.trim()).filter(Boolean)
+      this.chResultDlg = true
+    },
     // ============ 套装装备配置（宝箱）→ 奖池管理（2026-09-27 从「军官管理 → 宝箱」迁来） ============
     openChestPool (row) {
       this.chPoolChest = row
@@ -1322,4 +1352,14 @@ export default {
 .grant-all-tip { color: #e6a23c; font-size: 12px; line-height: 1.8; }
 .grant-item-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .grant-x { color: #909399; }
+/* ★ 2026-10-18 宝箱开启「开出的东西」：整列可点击（列内省略号截断不撑宽） */
+.chest-result-link { display: inline-block; max-width: 100%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; color: #409eff; }
+.chest-result-box { max-height: 420px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 4px;
+  padding: 8px 10px; background: #fafbfc; }
+.chest-result-item { display: flex; align-items: baseline; gap: 8px; padding: 5px 4px;
+  border-bottom: 1px dashed #ebeef5; font-size: 13px; line-height: 1.6; }
+.chest-result-item:last-child { border-bottom: none; }
+.chest-result-idx { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #409eff;
+  color: #fff; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
 </style>

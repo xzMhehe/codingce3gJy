@@ -185,6 +185,32 @@
               </el-table-column>
             </el-table>
           </el-tab-pane>
+          <!-- ★ 2026-10-18 待开宝箱：玩家详情里也能看到宝箱个数并编辑（管理端发放/活动发放的，玩家在「我的宝箱」自己开） -->
+          <el-tab-pane :label="'宝箱 (' + (detail.chests || []).length + ')'" name="chests">
+            <div class="bag-bar">
+              <span class="td-gray" style="font-size:12px">
+                共 {{ (detail.chests || []).length }} 种宝箱 · 添加为<b>累加</b>，编辑数量为<b>直接设为</b>该值，删除为<b>物理删除</b>（不可恢复）
+              </span>
+              <div class="grow" />
+              <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="openChestAdd">添加宝箱</el-button>
+            </div>
+            <el-table :data="detail.chests" size="mini" border max-height="330">
+              <el-table-column prop="id" label="行ID" width="80" align="center" />
+              <el-table-column prop="chest_id" label="宝箱ID" width="90" align="center" />
+              <el-table-column label="宝箱名" min-width="160" show-overflow-tooltip>
+                <template slot-scope="{row}"><span class="td-main">{{ row.chest_name || '宝箱#' + row.chest_id }}</span></template>
+              </el-table-column>
+              <el-table-column label="数量" width="110" align="center">
+                <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.count) }}</span></template>
+              </el-table-column>
+              <el-table-column label="操作" width="150" align="center" fixed="right">
+                <template slot-scope="{row}">
+                  <el-button size="mini" plain icon="el-icon-edit" title="编辑数量" @click="openChestEdit(row)" />
+                  <el-button size="mini" type="danger" plain icon="el-icon-delete" title="物理删除" @click="chestDelete(row)" />
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
           <!-- 军团 -->
           <el-tab-pane :label="'军团 (' + detail.corps.length + ')'" name="corps">
             <el-table :data="detail.corps" size="mini" border max-height="360">
@@ -319,6 +345,31 @@
         <el-button type="primary" :loading="bagSaving" @click="saveBag">确 定</el-button>
       </div>
     </el-dialog>
+
+    <!-- ★ 2026-10-18 待开宝箱：添加宝箱 / 编辑数量（玩家详情 → 宝箱 tab） -->
+    <el-dialog :title="chestEdit.row ? ('编辑数量 —— ' + (chestEdit.row.chest_name || '宝箱#' + chestEdit.row.chest_id)) : '添加宝箱'"
+               :visible.sync="chestDlg" width="470px" :close-on-click-modal="false" append-to-body>
+      <el-form label-width="80px">
+        <el-form-item label="宝箱" v-if="!chestEdit.row">
+          <el-select v-model="chestEdit.chest_id" filterable placeholder="选择宝箱（可输入名称搜索）" style="width:300px">
+            <el-option v-for="it in chestOptions" :key="it.id" :label="it.name + '（ID ' + it.id + '）'" :value="it.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model.number="chestEdit.count" :min="1" :max="1000000000" :step="1" style="width:190px" />
+          <span v-if="chestEdit.row" class="td-gray" style="margin-left:8px">当前 {{ fmtNum(chestEdit.row.count) }}</span>
+        </el-form-item>
+        <div class="td-gray" style="font-size:12px; line-height:1.7; padding-left:80px">
+          <template v-if="chestEdit.row">· 保存后数量<b>直接设为</b>该值（不是累加）。</template>
+          <template v-else>· 添加为<b>累加</b>：玩家已有该宝箱就在原数量上加。</template><br/>
+          · 编辑的是玩家「待开宝箱」个数（玩家在游戏内「我的宝箱」里自己开）；不需要时可用「物理删除」直接清掉。
+        </div>
+      </el-form>
+      <div slot="footer">
+        <el-button @click="chestDlg = false">取 消</el-button>
+        <el-button type="primary" :loading="chestSaving" @click="saveChest">确 定</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -337,6 +388,9 @@ export default {
       // ★ 2026-10-17 背包维护：添加道具 / 编辑数量 / 物理删除
       bagDlg: false, bagSaving: false, bagOptions: [], bagLoaded: false,
       bagEdit: { row: null, cfg_id: null, count: 1 },
+      // ★ 2026-10-18 待开宝箱维护：添加宝箱 / 编辑数量 / 物理删除（同背包维护一套交互）
+      chestDlg: false, chestSaving: false, chestOptions: [], chestLoaded: false,
+      chestEdit: { row: null, chest_id: null, count: 1 },
       // ★ 2026-10-12 label 上的 i 图标提示（沿用「二战系统配置」页的 tips 写法，鼠标悬停显示）
       tips: {
         step: '数字框右侧 ▲/▼ 每点一次的增减量（只影响点箭头，手打数字不受影响）。' +
@@ -447,6 +501,54 @@ export default {
         this.fmtNum(row.count) + '？\n删除后不可恢复（玩家背包里这一行会直接消失）。',
       '物理删除道具', { type: 'warning' }).then(() => {
         api.delete('/admin/ezfy-players/' + uid + '/item/' + row.cfg_id).then(r => {
+          if (r.code === 0) {
+            this.$message.success(r.data.msg || '已删除')
+            this.loadDetail(uid)
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ---- 待开宝箱维护（★ 2026-10-18：玩家详情 → 宝箱 tab，同背包维护一套交互）----
+    openChestAdd () {
+      this.loadChestOptions()
+      this.chestEdit = { row: null, chest_id: null, count: 1 }
+      this.chestDlg = true
+    },
+    // 宝箱下拉只拉一次（全量 id+name，宝箱配置数量很少）
+    loadChestOptions () {
+      if (this.chestLoaded) return
+      api.get('/admin/ezfy-player-chests/options').then(r => {
+        if (r.code === 0) { this.chestOptions = r.data.list || []; this.chestLoaded = true }
+      }).catch(() => {})
+    },
+    openChestEdit (row) {
+      this.chestEdit = { row: row, chest_id: row.chest_id, count: row.count }
+      this.chestDlg = true
+    },
+    saveChest () {
+      const e = this.chestEdit
+      if (!e.chest_id) { this.$message.warning('请选择宝箱'); return }
+      const cnt = parseInt(e.count) || 0
+      if (cnt <= 0) { this.$message.warning('数量必须大于 0'); return }
+      const uid = this.detail.player.user_id
+      this.chestSaving = true
+      api.post('/admin/ezfy-players/' + uid + '/chest', {
+        chest_id: e.chest_id, count: cnt, mode: e.row ? 'set' : 'add'
+      }).then(r => {
+        this.chestSaving = false
+        if (r.code === 0) {
+          this.chestDlg = false
+          this.$message.success(r.data.msg || '已保存')
+          this.loadDetail(uid)
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.chestSaving = false })
+    },
+    chestDelete (row) {
+      const uid = this.detail.player.user_id
+      this.$confirm('确认物理删除「' + this.detail.player.nickname + '」的【' + (row.chest_name || '宝箱#' + row.chest_id) + '】×' +
+        this.fmtNum(row.count) + '？\n删除后不可恢复（玩家「我的宝箱」里这一行会直接消失）。',
+      '物理删除宝箱', { type: 'warning' }).then(() => {
+        api.delete('/admin/ezfy-players/' + uid + '/chest/' + row.chest_id).then(r => {
           if (r.code === 0) {
             this.$message.success(r.data.msg || '已删除')
             this.loadDetail(uid)
