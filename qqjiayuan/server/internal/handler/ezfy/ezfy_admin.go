@@ -1490,6 +1490,68 @@ func (h *EzfyAdmin) AdminEzfyReportDelete(c *gin.Context) {
 	resp.OK(c, gin.H{"msg": "已删除"})
 }
 
+// AdminEzfyReportsDeleteRange 时间范围内**物理删除**战报（POST /admin/ezfy-reports/delete-range，body: {start, end}）
+//
+// ★ 2026-10-18 用户需求「战报查询 加个 时间范围内删除（物理删除历史数据，别展示出来）」：
+//
+//	按 created_at 落在 [start, end] 的战报**物理删除**（Unscoped().Delete，连软删标记一起清掉），
+//	删除后列表不再展示；管理员操作前由前端二次确认，接口返回实际删除条数便于提示。
+func (h *EzfyAdmin) AdminEzfyReportsDeleteRange(c *gin.Context) {
+	var in struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	startStr := strings.TrimSpace(in.Start)
+	endStr := strings.TrimSpace(in.End)
+	if startStr == "" && endStr == "" {
+		resp.ParamError(c, "请选择要删除的时间范围")
+		return
+	}
+	q := h.DB.Unscoped().Model(&model.EzfyReport{})
+	if startStr != "" {
+		st, ok := ezfyAdminParseTime(startStr)
+		if !ok {
+			resp.ParamError(c, "开始时间格式应为 2006-01-02 或 2006-01-02 15:04:05")
+			return
+		}
+		q = q.Where("created_at >= ?", st)
+	}
+	if endStr != "" {
+		et, ok := ezfyAdminParseTime(endStr)
+		if !ok {
+			resp.ParamError(c, "结束时间格式应为 2006-01-02 或 2006-01-02 15:04:05")
+			return
+		}
+		// 纯日期（无时间）→ 整天含末（< 次日 0 点）；带具体时间 → 精确到该时刻之前
+		if strings.Contains(endStr, ":") {
+			q = q.Where("created_at < ?", et)
+		} else {
+			q = q.Where("created_at < ?", et.AddDate(0, 0, 1))
+		}
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	if total <= 0 {
+		resp.OK(c, gin.H{"msg": "该时间范围内没有战报，无需删除", "deleted": 0})
+		return
+	}
+	if err := q.Delete(&model.EzfyReport{}).Error; err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	resp.OK(c, gin.H{
+		"msg":     fmt.Sprintf("已物理删除 %d 条战报（%s ~ %s），删除后不可恢复", total, startStr, endStr),
+		"deleted": total,
+	})
+}
+
 // ezfyAdminParseTime 管理端时间范围参数解析：兼容「2006-01-02」与「2006-01-02 15:04:05」两种写法。
 func ezfyAdminParseTime(s string) (time.Time, bool) {
 	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02"} {

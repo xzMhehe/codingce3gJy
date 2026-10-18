@@ -654,6 +654,9 @@ type EzfyCfgLimit struct {
 	//   管理端「排行榜 → 风云榜」页可直接开关；关闭后新战斗不再累计，
 	//   历史周榜数据保留（重新开启即继续统计，不清历史）。
 	PvpRankOn int `gorm:"default:1;comment:风云榜统计开关(1开0关)" json:"pvp_rank_on"`
+	// ★ 2026-10-18 风云榜锁分：锁定某周后该周战绩**不再累计积分**（相当于终止当周竞争），
+	//   存锁定的周串（如 20261012-20261018），空 = 未锁定；管理端「风云榜」页可锁/解锁。
+	PvpRankLockWeek string `gorm:"type:varchar(17);default:'';comment:风云榜锁定周(锁分后该周不再累计)" json:"pvp_rank_lock_week"`
 
 	// ★ 2026-10-17 人机（AI 玩家）风控开关
 	//   BotAtkOn：0 = 只发育、不打扰玩家（**0 是合法值**，读取时不能用 ezfyLimitOr 兜底）

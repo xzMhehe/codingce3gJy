@@ -857,12 +857,16 @@ func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyB
 	}
 	// 军工厂必须存在（兵工厂房等级）
 	var fac model.EzfyCityBuilding
-	if err := h.DB.Where("city_id = ? AND building_id = 14 AND level > 0", city.ID).First(&fac).Error; err != nil {
-		return "", "", false
-	}
-	// 训练设施门槛：火箭要军工厂 6 级（航母 10 级——上面已退回）
-	if t.ID == 8 && fac.Level < 6 {
-		return "", "", false
+	facOK := h.DB.Where("city_id = ? AND building_id = 14 AND level > 0", city.ID).First(&fac).Error == nil
+	// ★ 2026-10-18 修复「被打光后不知道征兵」：军工厂没有 / 等级不够训当前兵种
+	//   （火箭要军工厂 6 级）时，原来直接 return false → 保命征兵被卡死，
+	//   人机被打没了也永远不征兵。退到守军步兵（军工厂 1 级就能训）保底。
+	if !facOK || (t.ID == 8 && fac.Level < 6) {
+		if tt := ezfyCfg.troop(1); tt != nil {
+			t, tid = tt, 1
+		} else {
+			return "", "", false
+		}
 	}
 	gap := keepTroops - troopTotal
 	if gap <= 0 {

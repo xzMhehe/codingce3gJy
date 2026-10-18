@@ -451,9 +451,33 @@ func (h *EzfyHandler) botBattleCmds() {
 			units, enemies = st.Defenders, st.Attackers
 			rangeBonus = st.DefRangeBonus
 		}
+		// ★ 2026-10-18 攻击策略增强（用户「出征玩家别无脑前进，要有攻击策略，不然都被全歼灭」）：
+		//   ① 攻方总兵力被打到不足敌方一半 → 全兵种撤退（明知必败不白送，保住有生力量）
+		//   ② 攻方某兵种自身被打残（剩余 < 1/3）→ 该兵种撤退（不留残兵送死）
+		//   守方仍死守（城在人在，撤退等于白丢城），不适用撤退策略。
+		myTotal, enTotal := int64(0), int64(0)
+		for _, u := range units {
+			if u.alive() {
+				myTotal += u.count
+			}
+		}
+		for _, e := range enemies {
+			if e.alive() {
+				enTotal += e.count
+			}
+		}
+		giveUp := side == "atk" && enTotal > 0 && myTotal < enTotal/2
 		cmds := map[int]string{}
 		for _, u := range units {
 			if !u.alive() {
+				continue
+			}
+			if giveUp {
+				cmds[u.cfg.ID] = ezfyCmdRetreat
+				continue
+			}
+			if side == "atk" && u.initialCount > 0 && u.count < u.initialCount/3 {
+				cmds[u.cfg.ID] = ezfyCmdRetreat
 				continue
 			}
 			// 最近活敌距离

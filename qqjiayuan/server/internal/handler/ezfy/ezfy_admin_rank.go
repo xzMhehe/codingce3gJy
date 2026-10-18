@@ -259,15 +259,51 @@ func (h *EzfyAdmin) AdminEzfyPvpRank(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{
 		"week": week, "weeks": weeks, "ranks": ranks,
-		"enabled":  ezfyPvpRankOn(),
-		"excluded": pvpExcludedRows(h.DB, ezfyBoardPvp),
+		"enabled":   ezfyPvpRankOn(),
+		"lock_week": ezfyPvpRankLockWeek(),
+		"excluded":  pvpExcludedRows(h.DB, ezfyBoardPvp),
 	})
+}
+
+// AdminEzfyPvpRankLock 锁分 / 解锁风云榜（POST /admin/ezfy-pvp-rank/lock，body: {week, lock}）。
+//
+// ★ 2026-10-18 用户需求「风云榜能锁分，锁住了就相当于终止了不会再加」：
+//
+//	锁住某周 = 该周风云榜终止竞争，战绩不再累计积分（榜单冻结在锁定前）。
+//	lock=1 且带 week → 锁定该周；lock=0 → 解除锁定。解锁后该周恢复累计。
+func (h *EzfyAdmin) AdminEzfyPvpRankLock(c *gin.Context) {
+	var in struct {
+		Week string `json:"week"`
+		Lock int    `json:"lock"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || (in.Lock != 0 && in.Lock != 1) {
+		resp.ParamError(c, "参数错误（lock 只能是 0 或 1）")
+		return
+	}
+	lockWeek := ""
+	if in.Lock == 1 {
+		lockWeek = strings.TrimSpace(in.Week)
+		if lockWeek == "" {
+			lockWeek = ezfyPvpWeekOf(time.Now())
+		}
+	}
+	if err := h.DB.Model(&model.EzfyCfgLimit{}).Where("id = 1").Update("pvp_rank_lock_week", lockWeek).Error; err != nil {
+		resp.ParamError(c, "保存失败："+err.Error())
+		return
+	}
+	h.ezfyReload()
+	if in.Lock == 1 {
+		resp.OK(c, gin.H{"msg": "已锁分【" + lockWeek + "】：该周战绩不再累计积分，榜单冻结在锁定前", "week": lockWeek})
+		return
+	}
+	resp.OK(c, gin.H{"msg": "已解除锁分，该周恢复累计积分", "week": ""})
 }
 
 // AdminEzfyPvpRankToggle 开关风云榜统计（POST /admin/ezfy-pvp-rank/toggle，body: {on: 0|1}）。
 //
 // ★ 2026-10-14 用户需求「风云榜 tab 能够选择开启关闭，开启就是现在这样，关闭就是不进行统计」。
-//   关闭后战斗结算不再写榜（历史数据保留）；重新开启即继续累计。
+//
+//	关闭后战斗结算不再写榜（历史数据保留）；重新开启即继续累计。
 func (h *EzfyAdmin) AdminEzfyPvpRankToggle(c *gin.Context) {
 	var in struct {
 		On *int `json:"on"`
@@ -292,10 +328,13 @@ func (h *EzfyAdmin) AdminEzfyPvpRankToggle(c *gin.Context) {
 // AdminEzfyPvpExclude POST /admin/ezfy-pvp-rank/exclude，body: {user_id, reason, board}。
 //
 // ★ 2026-10-14 风云榜「操作列」：[不参与排名] —— 把该玩家加入排除名单，
-//   榜单不再展示 TA 的名次（历史战绩数据保留，从名单移除即恢复）。
+//
+//	榜单不再展示 TA 的名次（历史战绩数据保留，从名单移除即恢复）。
+//
 // ★ 2026-10-16 用户需求「风云榜和战力榜、军衔声望榜都可以单独不参与排名」：
-//   加 board（pvp/power/prestige）→ 三个榜各存一份**互不影响**的名单；
-//   不传 board 时按 pvp 处理（兼容老调用）。
+//
+//	加 board（pvp/power/prestige）→ 三个榜各存一份**互不影响**的名单；
+//	不传 board 时按 pvp 处理（兼容老调用）。
 func (h *EzfyAdmin) AdminEzfyPvpExclude(c *gin.Context) {
 	var in struct {
 		UserID uint   `json:"user_id"`
@@ -342,7 +381,8 @@ ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), reason = VALUES(reason), up
 // AdminEzfyPvpExcludeRemove DELETE /admin/ezfy-pvp-rank/exclude/:id —— 从排除名单移除（该榜恢复参与排名）。
 //
 // ★ 2026-10-16 三榜名单独立：删的是**这一条**（board+user_id），只让该玩家在**这一榜**恢复，
-//   另外两个榜若也有记录则不受影响（前端按当前 tab 的名单展示，不会误删别的榜）。
+//
+//	另外两个榜若也有记录则不受影响（前端按当前 tab 的名单展示，不会误删别的榜）。
 func (h *EzfyAdmin) AdminEzfyPvpExcludeRemove(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if id <= 0 {
@@ -368,8 +408,9 @@ func (h *EzfyAdmin) AdminEzfyPvpExcludeRemove(c *gin.Context) {
 // AdminEzfyPowerRank 管理端战力榜（GET /admin/ezfy-power-rank?page=&size=&word=）。
 //
 // ★ 2026-10-14 用户需求「排行榜下再设战力榜 tab」：**复用玩家端战力口径**
-//   （科技 + 建筑 + 兵种，权重读 ezfy_cfg_limit），管理端做**全量分页**查看，
-//   便于运营按玩家名/ID 检索。口径与玩家端 /rank 的「战力榜」完全一致。
+//
+//	（科技 + 建筑 + 兵种，权重读 ezfy_cfg_limit），管理端做**全量分页**查看，
+//	便于运营按玩家名/ID 检索。口径与玩家端 /rank 的「战力榜」完全一致。
 func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	h.ezfyH().cfgs() // 战力权重在配置缓存里
 	page, offset, size := pageOf(c, 20)
@@ -572,7 +613,7 @@ func (h *EzfyAdmin) AdminEzfyPowerRank(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
 		"excluded": pvpExcludedRows(h.DB, ezfyBoardPower),
-		"usage": "战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径"})
+		"usage":    "战力 = 科技 + 建筑 + 兵种（权重在「二战系统配置」可调），与游戏内战力榜同口径"})
 }
 
 // AdminEzfyPrestigeRank 管理端军衔声望榜（GET /admin/ezfy-prestige-rank?page=&size=&word=）。
@@ -656,7 +697,7 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
 		"excluded": pvpExcludedRows(h.DB, ezfyBoardPrestige),
-		"usage": "与游戏内「军衔声望榜」同口径（按声望降序）；已标记「不参与排名」的玩家不参与名次，名次为剔除后的全服排名"})
+		"usage":    "与游戏内「军衔声望榜」同口径（按声望降序）；已标记「不参与排名」的玩家不参与名次，名次为剔除后的全服排名"})
 }
 
 // ============ 风云榜奖励发放（★ 2026-10-18） ============
@@ -742,10 +783,39 @@ func (h *EzfyAdmin) AdminEzfyPvpRewardStatus(c *gin.Context) {
 	}
 	rows := ezfyPvpRankRows(h.DB, week, 0)
 	var sent []model.EzfyPvpReward
-	h.DB.Where("week = ?", week).Order("rank_no ASC").Find(&sent)
+	h.DB.Where("week = ?", week).Order("rank_no ASC, id ASC").Find(&sent)
 	sentSet := make(map[uint]bool, len(sent))
+	// ★ 2026-10-18 「本期已发放奖励」明细：已发玩家昵称 + 档位 + 时间，页面下方展示
+	type sentOne struct {
+		UserID    uint      `json:"user_id"`
+		Name      string    `json:"name"`
+		RankNo    int       `json:"rank_no"`
+		Tier      string    `json:"tier"`
+		TierName  string    `json:"tier_name"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	records := make([]sentOne, 0, len(sent))
+	nickOf := map[uint]string{}
 	for _, s := range sent {
 		sentSet[s.UserID] = true
+		nickOf[s.UserID] = ""
+	}
+	if len(nickOf) > 0 {
+		uids := make([]uint, 0, len(nickOf))
+		for uid := range nickOf {
+			uids = append(uids, uid)
+		}
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&profs)
+		for _, p := range profs {
+			nickOf[p.UserID] = p.Nickname
+		}
+		for _, s := range sent {
+			records = append(records, sentOne{
+				UserID: s.UserID, Name: nickOf[s.UserID], RankNo: s.RankNo,
+				Tier: s.Tier, TierName: ezfyPvpRewardTierName(s.Tier), CreatedAt: s.CreatedAt,
+			})
+		}
 	}
 	type one struct {
 		UserID   uint   `json:"user_id"`
@@ -766,7 +836,22 @@ func (h *EzfyAdmin) AdminEzfyPvpRewardStatus(c *gin.Context) {
 			Battles: r.Battles, Sent: sentSet[r.UserID], Eligible: ok})
 	}
 	resp.OK(c, gin.H{"week": week, "total": len(rows), "eligible": eligible,
-		"sent": len(sent), "list": list})
+		"sent": len(sent), "list": list, "records": records})
+}
+
+// ezfyPvpRewardTierName 发放档位中文名（补发 / 已发明细展示用）。
+func ezfyPvpRewardTierName(tier string) string {
+	switch tier {
+	case "rank1":
+		return "第 1 名"
+	case "rank2":
+		return "第 2 名"
+	case "rank3":
+		return "第 3 名"
+	case "join":
+		return "参与奖"
+	}
+	return tier
 }
 
 // AdminEzfyPvpReward POST /admin/ezfy-pvp-rank/reward —— 一键发放本周风云榜奖励
@@ -787,7 +872,11 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		// ★ 2026-10-18 用户「发放的时候加个条件吧 积分大于多少」：
 		//   最低积分门槛，当周积分 < MinPoints 的玩家不发奖（0 = 只要积分 > 0 就算有效参与）。
 		MinPoints int64 `json:"min_points"`
-		Tiers      struct {
+		// ★ 2026-10-18 补发（用户「发过一次了，还想给参与者再发宝箱」）：
+		//   resend=true 时**忽略已发幂等**，符合条件的玩家全部再发一次邮件；
+		//   发放记录 upsert 更新为最新邮件（唯一键 week+user_id 不新增行）。
+		Resend bool `json:"resend"`
+		Tiers  struct {
 			Rank1 ezfyRewardTier `json:"rank1"`
 			Rank2 ezfyRewardTier `json:"rank2"`
 			Rank3 ezfyRewardTier `json:"rank3"`
@@ -851,7 +940,8 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		resp.ParamError(c, "该周没有任何战绩，无法发放")
 		return
 	}
-	// 已发名单（幂等）
+	// 已发名单（幂等）。★ 2026-10-18 补发模式（resend=true）跳过幂等：
+	//   已发过的人也会再发一次（玩家邮件里多一封可领取的奖励）。
 	var done []model.EzfyPvpReward
 	h.DB.Where("week = ?", week).Find(&done)
 	doneSet := make(map[uint]bool, len(done))
@@ -861,9 +951,9 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 
 	drafts := make([]ezfyMailDraft, 0, len(rows))
 	meta := make([]struct {
-		uid   uint
-		rank  int
-		tier  string
+		uid  uint
+		rank int
+		tier string
 	}, 0, len(rows))
 	skipped := 0
 	zeroSkipped := 0
@@ -896,7 +986,7 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		if !ok {
 			continue // 该档没配奖励
 		}
-		if doneSet[r.UserID] {
+		if doneSet[r.UserID] && !in.Resend {
 			skipped++
 			continue
 		}
@@ -944,8 +1034,21 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 	}
 	now := time.Now()
 	for _, m := range meta {
-		h.DB.Exec(`INSERT IGNORE INTO ezfy_pvp_reward (week, user_id, rank_no, tier, mail_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?)`, week, m.uid, m.rank, m.tier, mailOf[m.uid], now)
+		// ★ 2026-10-18 补发：唯一键 week+user_id 已存在时更新为**最新一封**邮件
+		//   （首次发放 INSERT；补发 UPDATE mail_id/rank_no/tier/created_at，不新增行）
+		h.DB.Exec(`INSERT INTO ezfy_pvp_reward (week, user_id, rank_no, tier, mail_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE
+rank_no = VALUES(rank_no), tier = VALUES(tier), mail_id = VALUES(mail_id), created_at = VALUES(created_at)`,
+			week, m.uid, m.rank, m.tier, mailOf[m.uid], now)
+	}
+	if in.Resend {
+		resp.OK(c, gin.H{
+			"msg": fmt.Sprintf("风云榜奖励已补发：%d 人（补发模式已发过的人也再发了一次，跳过积分不达标的 %d 人），奖励已通过系统邮件送达，%d 天内未领取作废",
+				len(drafts), zeroSkipped, expireDays),
+			"sent": len(drafts), "skipped": skipped, "zero_skipped": zeroSkipped,
+			"batch_no": batchNo, "week": week, "resend": true,
+		})
+		return
 	}
 	resp.OK(c, gin.H{
 		"msg": fmt.Sprintf("风云榜奖励已发放：%d 人（跳过已发 %d 人、积分不达标的 %d 人），奖励已通过系统邮件送达，%d 天内未领取作废",

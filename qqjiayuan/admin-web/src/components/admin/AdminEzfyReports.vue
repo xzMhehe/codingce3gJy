@@ -12,6 +12,9 @@
         <el-date-picker v-model="tmEnd" type="date" value-format="yyyy-MM-dd" placeholder="截止日期"
                         style="width:150px; margin-left: 8px" clearable />
         <el-button type="primary" icon="el-icon-search" @click="page = 1; load()">查询</el-button>
+        <!-- ★ 2026-10-18 时间范围内物理删除：历史数据清理，删除后不可恢复，管理员确认提示 -->
+        <el-button type="danger" plain icon="el-icon-delete" :disabled="!tmStart && !tmEnd"
+                   @click="removeRange">按时间删除</el-button>
         <div class="grow" />
       </div>
       <el-table :data="list" v-loading="loading" stripe border>
@@ -158,6 +161,21 @@ export default {
           } else this.$message.error(r.msg)
         })
       })
+    },
+    // ★ 2026-10-18 时间范围内物理删除（用户「战报查询 加个 时间范围内删除（物理删除历史数据，别展示出来）」）
+    removeRange () {
+      const rangeText = (this.tmStart || '不限') + ' ~ ' + (this.tmEnd || '不限')
+      this.$confirm('将【物理删除】' + rangeText + ' 范围内的全部战报（数据库直接清除，不可恢复！）\n确定继续？',
+        '按时间删除战报', { type: 'error', confirmButtonText: '确认删除', confirmButtonClass: 'el-button--danger' })
+        .then(() => {
+          api.post('/admin/ezfy-reports/delete-range', { start: this.tmStart, end: this.tmEnd }).then(r => {
+            if (r.code === 0) {
+              this.$message.success(r.data.msg || '已删除')
+              this.page = 1
+              this.load()
+            } else this.$message.error(r.msg)
+          }).catch(() => {})
+        }).catch(() => {})
     }
   }
 }

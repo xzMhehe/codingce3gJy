@@ -108,23 +108,23 @@ func pvpUnitsOf(gs []ezfyUnitGroup) int64 {
 
 // pvpBattlePoints 单场 PVP 积分（风云榜，★ 2026-10-14 规则；杀敌分同日本轮补充）。
 //
-//	积分 = ((行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分) × 兵力规模系数，
-//	单场**封顶按规模分档**（★ 2026-10-16 用户要求「鼓励大仗、小仗卡 400 以下、大兵团趋近封顶」）：
-//	  本场投入 < 大兵团线(300 万加权 ≈ 10000 航母 / 150 万步兵) → 单场最多 **400**；
-//	  达到大兵团线（集结令拉满级别的会战）→ 单场最多 **800**。
+//		积分 = ((行动分 + 胜负分) × 兵力劣势系数 + 杀敌分 + 战损比分) × 兵力规模系数，
+//		单场**封顶按规模分档**（★ 2026-10-16 用户要求「鼓励大仗、小仗卡 400 以下、大兵团趋近封顶」）：
+//		  本场投入 < 大兵团线(300 万加权 ≈ 10000 航母 / 150 万步兵) → 单场最多 **400**；
+//		  达到大兵团线（集结令拉满级别的会战）→ 单场最多 **800**。
 //
-//   - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
-//   - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
-//   - 兵力劣势系数：己方本场投入兵力 < 对方时，以少打多奖励：
-//     系数 = min(3.0, 对方兵力÷己方兵力)；攻方出征少、守方兵力多时攻击方按比例**多拿分**；
-//     系数对双方都生效（谁兵力劣势谁加成），≥1 时系数=1
-//   - 兵力规模系数（★ 2026-10-16）：按己方投入兵力取 0.3×~3.0×（见 pvpArmyScale），
-//     大兵团分越多、少兵碰瓷的白拿分被压低
-//   - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上；★ 2026-10-16 灭敌改按兵种价值加权后
-//     同数量高级兵种 > 低级兵种）：按**加权灭敌量**对数缩放，
-//     20×log10(灭敌) 封顶 200 —— 千万级大战与百万级小仗拉开差距、大仗有分量；
-//     对数压缩 → 灭敌量翻 10 倍只多 20 分，不会被天文数字刷爆。1 兵刷/空城刷由门槛拦住。
-//   - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
+//	  - 行动分：进攻(掠夺/征服) 20 分，防守 15 分（进攻稍高，鼓励主动出击）
+//	  - 胜负分：胜 40 / 平 15 / 负 10（参战即有，鼓励对抗）
+//	  - 兵力劣势系数：己方本场投入兵力 < 对方时，以少打多奖励：
+//	    系数 = min(3.0, 对方兵力÷己方兵力)；攻方出征少、守方兵力多时攻击方按比例**多拿分**；
+//	    系数对双方都生效（谁兵力劣势谁加成），≥1 时系数=1
+//	  - 兵力规模系数（★ 2026-10-16）：按己方投入兵力取 0.3×~3.0×（见 pvpArmyScale），
+//	    大兵团分越多、少兵碰瓷的白拿分被压低
+//	  - 杀敌分（★ 2026-10-14 用户反馈「大战积分太少」补上；★ 2026-10-16 灭敌改按兵种价值加权后
+//	    同数量高级兵种 > 低级兵种）：按**加权灭敌量**对数缩放，
+//	    20×log10(灭敌) 封顶 200 —— 千万级大战与百万级小仗拉开差距、大仗有分量；
+//	    对数压缩 → 灭敌量翻 10 倍只多 20 分，不会被天文数字刷爆。1 兵刷/空城刷由门槛拦住。
+//	  - 战损比分：按 战损比 = 灭敌÷战损 给分，kdr×10 封顶 30；无损(战损=0)按满 30 给
 const (
 	// ezfyPvpKillPtCap 杀敌分封顶
 	ezfyPvpKillPtCap = int64(200)
@@ -264,16 +264,36 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
 // ezfyPvpRankOn 风云榜统计开关（读 ezfy_cfg_limit.pvp_rank_on，管理端「排行榜 → 风云榜」可开关）。
 //
 // ★ 2026-10-14 用户需求「风云榜 tab 能够选择开启关闭，开启就是现在这样，关闭就是不进行统计」。
-//   · 开（1）= 战斗结算写周榜（现状）；
-//   · 关（0）= **完全不做统计**：不写 ezfy_pvp_week / ezfy_pvp_foe，玩家端榜单为空。
-//   历史数据保留，重新开启即继续累计（不清历史）。
-//   ⚠️ 读的是缓存里的 limit，开关是「0 合法」的值 → 必须确认配置已加载（ready()），
-//     否则未加载时会读到零值 0 → 把「开」误判成「关」（/war/status 踩过同款坑）。
+//
+//	· 开（1）= 战斗结算写周榜（现状）；
+//	· 关（0）= **完全不做统计**：不写 ezfy_pvp_week / ezfy_pvp_foe，玩家端榜单为空。
+//	历史数据保留，重新开启即继续累计（不清历史）。
+//	⚠️ 读的是缓存里的 limit，开关是「0 合法」的值 → 必须确认配置已加载（ready()），
+//	  否则未加载时会读到零值 0 → 把「开」误判成「关」（/war/status 踩过同款坑）。
 func ezfyPvpRankOn() bool {
 	if !ezfyCfg.ready() {
 		return true // 配置未加载 → 按默认「开」，避免误判成关
 	}
 	return ezfyCfg.limit.PvpRankOn != 0
+}
+
+// ezfyPvpRankLocked 该周风云榜是否被「锁分」（★ 2026-10-18 用户需求）：
+//
+//	锁住的周 = 终止当周竞争，战绩不再累计积分（榜单冻结在锁定前）。
+//	与统计开关的区别：开关是全局开/关，锁分只冻**指定周**，其他周照常累计。
+func ezfyPvpRankLocked(week string) bool {
+	if !ezfyCfg.ready() || week == "" {
+		return false
+	}
+	return ezfyCfg.limit.PvpRankLockWeek == week
+}
+
+// ezfyPvpRankLockWeek 当前锁定的周（空 = 未锁定），管理端展示用。
+func ezfyPvpRankLockWeek() string {
+	if !ezfyCfg.ready() {
+		return ""
+	}
+	return ezfyCfg.limit.PvpRankLockWeek
 }
 
 // ★ 2026-10-16 榜单「不参与排名」名单按榜单维度隔离（用户需求：
@@ -302,7 +322,8 @@ func ezfyBoardName(board string) string {
 //
 // ★ 2026-10-14：榜单查询时把名单内玩家过滤掉（统计照常不入榜 → 「标记排除，不显示在榜」）。
 // ★ 2026-10-16：必须带 board —— 三个榜各有一份独立名单，混用会让「只在风云榜排除」的人
-//   在战力榜/军衔声望榜上也消失（用户反馈的「公用一个不对」）。
+//
+//	在战力榜/军衔声望榜上也消失（用户反馈的「公用一个不对」）。
 func pvpExcludedSet(db *gorm.DB, board string) map[uint]bool {
 	var ids []uint
 	db.Model(&model.EzfyPvpExclude{}).Where("board = ?", board).Pluck("user_id", &ids)
@@ -337,6 +358,10 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 		return
 	}
 	week := ezfyPvpWeekOf(time.UnixMilli(now))
+	// ★ 2026-10-18 锁分：该周已被锁定 → 终止当周竞争，不再累计积分（榜单冻结在锁定前）
+	if ezfyPvpRankLocked(week) {
+		return
+	}
 	// ★ 2026-10-16 积分口径（加权）：灭敌/战损/兵力都按「兵种分权重」算（侦察机/卡车不计）——
 	//   同数量下高级兵种(航母/战列舰)分远高于步兵，堵「无差别刷步兵」。
 	//   展示口径（原始数量）另存，写榜/战报里的灭敌/战损列仍是玩家看到的真实杀敌数。
@@ -344,7 +369,7 @@ func (h *EzfyHandler) accumPvpWeek(now int64, atkUID, defUID uint, br ezfyBattle
 	atkLossesV := pvpUnitsOf(br.AttackerLosses)
 	defKillsV := pvpUnitsOf(br.AttackerLosses)
 	defLossesV := pvpUnitsOf(br.DefenderLosses)
-	atkPower := atkKillsV + pvpUnitsOf(br.AttackerLeft) // 攻方本场投入（加权）
+	atkPower := atkKillsV + pvpUnitsOf(br.AttackerLeft)  // 攻方本场投入（加权）
 	defPower := defLossesV + pvpUnitsOf(br.DefenderLeft) // 守方本场投入（加权）
 	// 榜单展示列：原始灭敌/战损
 	atkKills := enemyDeadOf(br.DefenderLosses) // 攻方灭敌 = 守方阵亡

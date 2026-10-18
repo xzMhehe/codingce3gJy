@@ -24,6 +24,10 @@
             {{ enabled ? '按自然周统计玩家对战战绩' : '已关闭：不再统计新的玩家对战战绩（历史周榜保留）' }}
           </span>
           <div class="grow" />
+          <!-- ★ 2026-10-18 锁分：锁住 = 该周终止竞争（战绩不再累计积分，榜单冻结在锁定前） -->
+          <el-button v-if="!lockWeek" type="danger" plain icon="el-icon-lock" :loading="locking" @click="onLock(true)">锁分</el-button>
+          <el-button v-else type="success" plain icon="el-icon-unlock" :loading="locking" @click="onLock(false)">已锁分({{ lockWeek }})，点击解锁</el-button>
+          <span class="td-sub" style="margin-left:6px" v-if="lockWeek">该周风云榜已冻结，不再累计积分</span>
           <!-- ★ 2026-10-15 风云榜查询：按游戏ID(user_id)精确查找玩家（清空 = 全量榜单） -->
           <el-input v-model="pvpWord" placeholder="游戏ID" clearable style="width:160px"
                     @keyup.enter.native="doPvpSearch()" />
@@ -80,6 +84,26 @@
                          @current-change="p => { pvpPage = p }"
                          @size-change="s => { pvpSize = s; pvpPage = 1 }" />
         </div>
+
+        <!-- ★ 2026-10-18 「本期已发放奖励」：该周已发放的记录（谁、什么档位、什么时候），随周切换自动刷新 -->
+        <div class="panel-title">本期已发放奖励（{{ rewardRecords.length }} 条）</div>
+        <el-table :data="rewardRecords" v-loading="rewardLoading" stripe border size="mini"
+                  :empty-text="'该周尚未发放风云榜奖励（点右上角「发放奖励」）'">
+          <el-table-column label="名次" width="80" align="center">
+            <template slot-scope="{row}">{{ row.rank_no > 3 ? '参与' : row.rank_no }}</template>
+          </el-table-column>
+          <el-table-column prop="name" label="玩家" min-width="120" show-overflow-tooltip>
+            <template slot-scope="{row}">{{ row.name || ('ID ' + row.user_id) }}</template>
+          </el-table-column>
+          <el-table-column prop="tier_name" label="档位" width="100" align="center">
+            <template slot-scope="{row}">
+              <el-tag size="mini" :type="row.tier === 'join' ? 'info' : 'warning'">{{ row.tier_name }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="发放时间" width="170" align="center">
+            <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
+          </el-table-column>
+        </el-table>
       </template>
 
       <!-- ==================== 战力榜 tab ==================== -->
@@ -251,6 +275,13 @@
           <el-input-number v-if="!reward.joinAll" v-model="reward.join_limit" :min="4" :max="1000"
                            size="small" controls-position="right" style="width:88px;margin-left:4px" />
         </el-form-item>
+        <!-- ★ 2026-10-18 补发：发过一次还能再给参与者补发（已发过的人也会再发一封，玩家邮件多一封可领的奖励） -->
+        <el-form-item label="补发模式">
+          <el-switch v-model="reward.resend" active-text="补发" inactive-text="正常发放" />
+          <span class="td-sub" style="margin-left:6px">
+            {{ reward.resend ? '已发过的人也会再发一次（用于给参与者补发宝箱）' : '默认只发没发过的人（同一玩家同一周只发一次）' }}
+          </span>
+        </el-form-item>
       </el-form>
 
       <!-- 四档 → 真表格：档位 / 钻石 / 宝箱 / 道具 四列（table-layout:fixed + colgroup 保证表头与内容严格对齐） -->
@@ -274,14 +305,22 @@
             </td>
 
             <td>
+              <!-- ★ 2026-10-18 修复「宝箱清空了不能再加了」：v-if 只在最后一行显示加号，
+                   删空数组后没有行 → 加号也跟着消失 → 永远加不回来。
+                   改成：数组为空时也单独给一个加号行。 -->
               <div class="rw-line" v-for="(c, i) in t.chests" :key="'c' + i">
                 <el-select v-model="c.chest_id" size="mini" filterable placeholder="选择宝箱" style="flex:1;min-width:96px">
                   <el-option v-for="o in chestOptions" :key="'co' + o.id" :label="o.name" :value="o.id" />
                 </el-select>
                 <el-input-number v-model="c.count" :min="1" :max="100000" size="mini"
-                                 controls-position="right" style="width:72px;flex:0 0 72px" />
+                                 controls-position="right" style="width:86px;flex:0 0 86px" />
                 <i class="el-icon-close rw-del" title="移除" @click="t.chests.splice(i, 1)"></i>
                 <i v-if="i === t.chests.length - 1" class="el-icon-plus rw-add" title="再加一个宝箱"
+                   @click="t.chests.push({ chest_id: null, count: 1 })"></i>
+              </div>
+              <div v-if="t.chests.length === 0" class="rw-line">
+                <span class="rw-empty">（无）</span>
+                <i class="el-icon-plus rw-add" title="加一个宝箱"
                    @click="t.chests.push({ chest_id: null, count: 1 })"></i>
               </div>
             </td>
@@ -292,9 +331,14 @@
                   <el-option v-for="o in itemOptions" :key="'io' + o.id" :label="o.name" :value="o.id" />
                 </el-select>
                 <el-input-number v-model="it.count" :min="1" :max="100000" size="mini"
-                                 controls-position="right" style="width:72px;flex:0 0 72px" />
+                                 controls-position="right" style="width:86px;flex:0 0 86px" />
                 <i class="el-icon-close rw-del" title="移除" @click="t.items.splice(i, 1)"></i>
                 <i v-if="i === t.items.length - 1" class="el-icon-plus rw-add" title="再加一个道具"
+                   @click="t.items.push({ cfg_id: null, count: 1 })"></i>
+              </div>
+              <div v-if="t.items.length === 0" class="rw-line">
+                <span class="rw-empty">（无）</span>
+                <i class="el-icon-plus rw-add" title="加一个道具"
                    @click="t.items.push({ cfg_id: null, count: 1 })"></i>
               </div>
             </td>
@@ -334,10 +378,15 @@ export default {
       // ---- 风云榜 ----
       loading: false,
       toggling: false,
+      locking: false, // ★ 2026-10-18 锁分按钮 loading
       enabled: 1,
+      lockWeek: '', // ★ 2026-10-18 锁分：当前被锁定的周（空 = 未锁定）
       week: '',
       weeks: [],
       list: [],
+      // ★ 2026-10-18 「本期已发放奖励」明细（风云榜页下方展示，随周切换刷新）
+      rewardRecords: [],
+      rewardLoading: false,
       // ★ 2026-10-14 风云榜分页（默认每页 10 条）——后端一次性返回整周榜单，前端切片
       pvpPage: 1,
       pvpSize: 10,
@@ -368,6 +417,7 @@ export default {
         joinAll: false, // true = 第 4 名及以后全部参战玩家
         saving: false,
         status: null,
+        resend: false, // ★ 2026-10-18 补发：true = 已发过的人也会再发一封（用于给参与者补发宝箱）
         // 每档默认各带一行空宝箱 / 空道具 —— 弹窗一打开就是「一行一档」，最紧凑
         // （空行在 doReward 里按 chest_id/cfg_id 为空自动跳过）
         tiers: [
@@ -422,6 +472,7 @@ export default {
     openReward () {
       this.reward.on = true
       this.reward.week = this.week || this.weeks[0] || ''
+      this.reward.resend = false // ★ 2026-10-18 每次打开默认「正常发放」，避免误按成补发
       if (!this.chestOptions.length) {
         api.get('/admin/ezfy-chest-grant/options').then(r => {
           if (r.code === 0) this.chestOptions = r.data.list || []
@@ -455,14 +506,18 @@ export default {
         tiers[t.key] = o
       }
       if (!any) { this.$message.warning('请至少给一个档位配置奖励（宝箱 / 道具 / 钻石）'); return }
-      this.$confirm('确定给「' + this.reward.week + '」风云榜发放奖励吗？发放后不可撤回；同一玩家同一周只会发一次。',
-        '确认发放', { type: 'warning' }).then(() => {
+      // ★ 2026-10-18 补发模式提示：管理员能清楚知道自己是在补发（已发过的也会再收到）
+      const tip = this.reward.resend
+        ? '按【补发】给「' + this.reward.week + '」风云榜补发奖励：已发过的玩家也会再收到一封新邮件（用于给参与者补发宝箱等）。确定继续？'
+        : '确定给「' + this.reward.week + '」风云榜发放奖励吗？发放后不可撤回；同一玩家同一周只会发一次。'
+      this.$confirm(tip, '确认发放', { type: 'warning' }).then(() => {
         this.reward.saving = true
         api.post('/admin/ezfy-pvp-rank/reward', {
           week: this.reward.week,
           expire_days: this.reward.expire_days,
           min_points: this.reward.min_points || 0,
           join_limit: this.reward.joinAll ? 0 : this.reward.join_limit,
+          resend: this.reward.resend || false, // ★ 2026-10-18 补发：true = 已发过的人也会再发一封
           tiers: tiers
         }).then(r => {
           this.reward.saving = false
@@ -506,7 +561,10 @@ export default {
           this.$set(this.excluded, 'pvp', r.data.excluded || [])
           // 后端 1 = 开 / 0 = 关
           this.enabled = r.data.enabled ? 1 : 0
+          // ★ 2026-10-18 锁分状态：锁定周（空 = 未锁定）
+          this.lockWeek = r.data.lock_week || ''
           if (this.weeks.indexOf(this.week) < 0 && this.week) this.weeks.unshift(this.week)
+          this.loadRewardRecords()
         } else {
           // ★ 2026-10-15 防「空白页」：接口异常时明确提示，而不是静默一片空白
           this.$message.error(r.msg || '加载排行榜失败')
@@ -529,6 +587,44 @@ export default {
         }
       }).catch(() => { this.enabled = val ? 0 : 1 })
         .finally(() => { this.toggling = false })
+    },
+    // ★ 2026-10-18 锁分 / 解锁：锁住当前查看的周 = 终止该周竞争（战绩不再累计积分）
+    onLock (lock) {
+      const wk = this.week || this.weeks[0] || ''
+      if (lock) {
+        this.$confirm('锁分【' + wk + '】后，该周风云榜终止竞争：战绩不再累计积分，榜单冻结在锁定前。确定锁分？',
+          '风云榜锁分', { type: 'warning' }).then(() => {
+          this.doLock(lock, wk)
+        }).catch(() => {})
+      } else {
+        this.doLock(lock, wk)
+      }
+    },
+    doLock (lock, week) {
+      this.locking = true
+      api.post('/admin/ezfy-pvp-rank/lock', { week, lock: lock ? 1 : 0 }).then(r => {
+        if (r.code === 0) {
+          this.$message.success(r.data.msg || '已保存')
+          this.lockWeek = lock ? week : ''
+        } else this.$message.error(r.msg)
+      }).catch(() => {}).finally(() => { this.locking = false })
+    },
+    // ★ 2026-10-18 「本期已发放奖励」明细（随查看的周切换自动刷新）
+    loadRewardRecords () {
+      this.rewardLoading = true
+      api.get('/admin/ezfy-pvp-rank/reward', { params: { week: this.week } }).then(r => {
+        if (r.code === 0) this.rewardRecords = r.data.records || []
+      }).catch(() => { this.rewardRecords = [] })
+        .finally(() => { this.rewardLoading = false })
+    },
+    // 时间格式化（created_at 为 ISO 字符串 → YYYY-MM-DD HH:mm）
+    fmtTime (v) {
+      if (!v) return '—'
+      const d = new Date(v)
+      if (isNaN(d.getTime())) return String(v)
+      const p = n => String(n).padStart(2, '0')
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+        ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
     },
     // ★ 2026-10-16 标记「不参与排名」：带上当前 tab 对应的榜单（board），
     //   只影响该榜；成功后只刷新当前 tab 的数据（不再三榜齐刷）。
@@ -623,4 +719,5 @@ export default {
   .rw-del:hover { color: #f56c6c; }
   .rw-add { color: #c0c4cc; }
   .rw-add:hover { color: #409eff; }
+  .rw-empty { color: #c0c4cc; font-size: 13px; line-height: 28px; }
 </style>

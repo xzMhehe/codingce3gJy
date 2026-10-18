@@ -284,32 +284,32 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 		//   ★ 区名优先取管理端「游戏大厅维护」里配的 game_servers（DB 驱动，改名即时生效），
 		//     二战游戏首页标题/登录页选服都用它；没配过区服才回落 config 里的旧区名兜底。
 		api.GET("/ezfy/zone", func(c *gin.Context) {
-		// ★★ 2026-10-17 二战独立部署（多区）：wwii 模式玩家端只下发**本区**，
-		//   绝不把全区服列表（尤其 1 区）暴露给 2 区玩家 —— 2 区首页刷新不再闪「1区」掠影。
-		//   管理端切区走 home 模式的反代（home 的 /api/ezfy/zone 返回全区列表）。
-		if cfg.Mode() == "wwii" {
-		zoneName := cfg.ZoneTitle()
-		resp.OK(c, gin.H{
-			"list":     []gin.H{{"id": cfg.Server.ZoneID, "name": zoneName, "host": "", "path": ""}},
-			"current":  cfg.Server.ZoneID,
-			"home_url": cfg.Server.HomeURL,
+			// ★★ 2026-10-17 二战独立部署（多区）：wwii 模式玩家端只下发**本区**，
+			//   绝不把全区服列表（尤其 1 区）暴露给 2 区玩家 —— 2 区首页刷新不再闪「1区」掠影。
+			//   管理端切区走 home 模式的反代（home 的 /api/ezfy/zone 返回全区列表）。
+			if cfg.Mode() == "wwii" {
+				zoneName := cfg.ZoneTitle()
+				resp.OK(c, gin.H{
+					"list":     []gin.H{{"id": cfg.Server.ZoneID, "name": zoneName, "host": "", "path": ""}},
+					"current":  cfg.Server.ZoneID,
+					"home_url": cfg.Server.HomeURL,
+				})
+				return
+			}
+			list := make([]gin.H, 0)
+			current := 0
+			srv := ezfyServers(db)
+			for _, s := range srv {
+				list = append(list, gin.H{"id": s.ID, "name": s.Name, "host": s.Host, "path": s.Path})
+			}
+			if len(srv) > 0 {
+				current = int(srv[0].ID)
+			}
+			if len(list) == 0 {
+				list = append(list, gin.H{"id": 0, "name": cfg.ZoneTitle()})
+			}
+			resp.OK(c, gin.H{"list": list, "current": current})
 		})
-		return
-	}
-		list := make([]gin.H, 0)
-		current := 0
-		srv := ezfyServers(db)
-		for _, s := range srv {
-			list = append(list, gin.H{"id": s.ID, "name": s.Name, "host": s.Host, "path": s.Path})
-		}
-		if len(srv) > 0 {
-			current = int(srv[0].ID)
-		}
-		if len(list) == 0 {
-			list = append(list, gin.H{"id": 0, "name": cfg.ZoneTitle()})
-		}
-		resp.OK(c, gin.H{"list": list, "current": current})
-	})
 
 		authed := api.Group("/", jwtM)
 		// ★ 2026-10-12 二战独立账号：二战专属授权组（不挂家园 jwtM，走 ezfyJwtM）。
@@ -1344,6 +1344,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.DELETE("/ezfy-orders/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyOrderDelete)
 						// ★ 2026-10-06 战报查询（战报不是订单，独立于 ezfy-orders 列表）
 						admin.GET("/ezfy-reports", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReports)
+						// ★ 2026-10-18 战报「时间范围内物理删除」（历史数据清理，删除后不可恢复）
+						admin.POST("/ezfy-reports/delete-range", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportsDeleteRange)
 						admin.GET("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDetail)
 						admin.DELETE("/ezfy-reports/:id", perm(db, "module:ezfyLogs"), ezfyAdminH.AdminEzfyReportDelete)
 						// ★ 2026-10-08 战斗队列管理（查看具体战场 / 手动推进一回合 / 一键自动打完 / 强制结算清理）
@@ -1512,9 +1514,11 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						//   风云榜（周榜 + 统计开关 + 不参与排名名单）、战力榜（复用游戏内战力口径）。
 						// ★ 2026-10-15 用户需求：加入「军衔声望榜」tab（复用玩家端口径，同样支持不参与排名）。
 						admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
-					// ★ 2026-10-18 风云榜奖励发放：GET=该周已发情况预览，POST=一键发放（走系统邮件）
-					admin.GET("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardStatus)
-					admin.POST("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpReward)
+						// ★ 2026-10-18 风云榜奖励发放：GET=该周已发情况预览，POST=一键发放（走系统邮件）
+						admin.GET("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardStatus)
+						admin.POST("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpReward)
+						// ★ 2026-10-18 风云榜锁分：锁定某周 = 终止当周竞争（战绩不再累计积分）
+						admin.POST("/ezfy-pvp-rank/lock", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankLock)
 						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
 						admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
 						admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)
