@@ -1277,6 +1277,7 @@ func (h *EzfyHandler) OccupyOp(c *gin.Context) {
 // ★ 2026-10-07 赎城功能：发起即扣「赎城金额」钻石（押金），攻击者同意后金额归攻击者、城市返还，
 //
 //	拒绝/撤销押金退回。仅「占领中」(occupy status=1) 可赎；同一城市同时最多 1 条待处理请求。
+//
 // ★ 2026-10-15 成交收取 20% 手续费：同意时占领方只实收 80%，20% 由系统收取（见 RansomHandle）。
 func (h *EzfyHandler) RansomCreate(c *gin.Context) {
 	uid := middleware.GetUID(c)
@@ -1550,25 +1551,27 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	// ★ 2026-10-04 性能（用户反馈「wildfull 卡」）：独立查询并行（1 个 RTT）；
 	//   被占城市归属玩家的游戏昵称改为一次 IN 批量查，消除原来「每行 ensureProfile」的 N+1。
 	var (
-		wildlands   []model.EzfyWildland
-		gatherIds   []int64
-		idleOrders  []model.EzfyOrder
-		occupies    []model.EzfyOccupy
-		ransoms     []model.EzfyRansom // ★ 2026-10-07 赎城：发给占领方的待处理赎回请求
-		buildings   []model.EzfyCityBuilding
-		trainQueues []model.EzfyTrainQueue
-		techRows    []model.EzfyCityTech
-		techs       map[int]int
-		troops      map[int]int64
-		boost       *model.EzfyCityEffect
-		mayor       int
+		wildlands    []model.EzfyWildland
+		gatherIds    []int64
+		gatherOrders []model.EzfyOrder // ★★ 2026-10-18 采集中订单全量(要下发订单 id 给[停止])
+		garrisonCnt  map[int64]int64   // ★★ 2026-10-18 附属野地驻军支数(order_type=6 status=3)
+		idleOrders   []model.EzfyOrder
+		occupies     []model.EzfyOccupy
+		ransoms      []model.EzfyRansom // ★ 2026-10-07 赎城：发给占领方的待处理赎回请求
+		buildings    []model.EzfyCityBuilding
+		trainQueues  []model.EzfyTrainQueue
+		techRows     []model.EzfyCityTech
+		techs        map[int]int
+		troops       map[int]int64
+		boost        *model.EzfyCityEffect
+		mayor        int
 	)
 	var wg sync.WaitGroup
 	// ★ 2026-10-05 修复「wildfull 调用失败」：原 wg.Add(7) 但下面只有 6 个 goroutine
 	//   （昵称查询早改成串行 IN 批量查），WaitGroup 永远等不到第 7 次 Done → 请求死锁挂死。
 	// ★ 2026-10-05 性能：并行块再补 5 条（科技行/科技表/部队/增产令/市长加成），
 	//   让下面的 calcResourceD 零额外查询（原来它自己又串行查了 6 遍）。
-	wg.Add(12)
+	wg.Add(14)
 	go func() { defer wg.Done(); h.DB.Where("city_id = ?", city.ID).Find(&wildlands) }()
 	go func() {
 		defer wg.Done()
@@ -1584,6 +1587,25 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 		h.DB.Model(&model.EzfyOrder{}).
 			Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).
 			Pluck("target_id", &gatherIds)
+	}()
+	go func() {
+		defer wg.Done()
+		h.DB.Where("user_id = ? AND status = 1 AND order_type = 7 AND arrive_time > 0", uid).Find(&gatherOrders)
+	}()
+	go func() {
+		defer wg.Done()
+		garrisonCnt = map[int64]int64{}
+		var rows []struct {
+			TargetId int64
+			Cnt      int64
+		}
+		h.DB.Model(&model.EzfyOrder{}).
+			Select("target_id, COUNT(*) as cnt").
+			Where("user_id = ? AND status = 3 AND order_type = 6", uid).
+			Group("target_id").Scan(&rows)
+		for _, r := range rows {
+			garrisonCnt[r.TargetId] = r.Cnt
+		}
 	}()
 	go func() {
 		defer wg.Done()
@@ -1620,22 +1642,31 @@ func (h *EzfyHandler) WildlandFull(c *gin.Context) {
 	for _, o := range idleOrders {
 		idleOrderByWild[o.TargetId] = o.ID
 	}
+	gatherOrderByWild := map[int64]uint{} // ★★ 2026-10-18 采集中的订单 id（前端[停止]要用）
+	for _, o := range gatherOrders {
+		gatherOrderByWild[o.TargetId] = o.ID
+	}
 	wildViews := []gin.H{}
 	for _, w := range wildlands {
 		sts := w.Status
 		idleOrderId := uint(0)
+		gatherOrderId := uint(0)
 		if gathering[int64(w.ID)] {
 			sts = 1
+			gatherOrderId = gatherOrderByWild[int64(w.ID)]
 		} else if oid, ok := idleOrderByWild[int64(w.ID)]; ok {
 			sts = 0
 			idleOrderId = oid
 		}
+		garCnt := garrisonCnt[int64(w.ID)] // ★★ 2026-10-18 驻军支数（增援驻军）
 		// ★ 必须带 terrain_name：前端 loadWilds() 会用这里的返回**整体覆盖** wildlands，
 		//   之前漏了这个字段，导致「附属野地」页面的【地形】列永远是空的。
 		wildViews = append(wildViews, gin.H{"id": w.ID, "x": w.X, "y": w.Y,
 			"wild_type": w.WildType, "level": w.Level, "status": sts,
-			"idle_order_id": idleOrderId,
-			"terrain":       ezfyTerrainEx(w.X, w.Y),
+			"idle_order_id":   idleOrderId,
+			"gather_order_id": gatherOrderId,
+			"garrison_count":  garCnt,
+			"terrain":         ezfyTerrainEx(w.X, w.Y),
 			// ★ 2026-10-05 用户纠正：① 海洋野地→海底森林、岛屿→岛屿（岛屿仍是海野玩法，只是名字不同）；
 			//   ② 表里有这一行 ⇒ 确定有野地 ⇒ knownWild=true（不看 level，避免 level=0 的海洋野地被显示成「海洋」）。
 			"terrain_name": ezfyWildTerrainDisplayName(w.X, w.Y, true),

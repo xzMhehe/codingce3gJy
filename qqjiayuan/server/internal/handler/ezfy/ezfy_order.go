@@ -1209,38 +1209,53 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		return "请填写运输资源或选择运输部队"
 	}
 	if orderType == 5 || orderType == 6 {
-		if targetType != 3 || targetId <= 0 {
+		// ★★ 2026-10-18 增援(6)也可派往**自己的附属野地**（驻守）：
+		//   部队抵达后编为该野地「驻军队列」(status=3)，敌军进攻时与采集部队一同防守。
+		//   增援驻军不占「一块野地一支采集队」的名额，可与采集部队并存（用户需求）。
+		if orderType == 6 && targetType != 3 {
+			var wl model.EzfyWildland
+			if err := h.DB.First(&wl, targetId).Error; err != nil || wl.CityId != int64(city.ID) {
+				return "增援(驻守)只能派往自己占领的附属野地"
+			}
+			if officer == "" {
+				return "增援部队必须携带一名军官"
+			}
+			if len(validTroops) == 0 {
+				return "增援必须携带部队"
+			}
+		} else if targetType != 3 || targetId <= 0 {
 			return "目标必须为城市"
-		}
-		own := h.isOwnCity(uid, targetId)
-		ally := !own && h.isAllyCity(uid, targetId)
-		if orderType == 6 {
-			if !own {
-				// 盟友驻军(复刻联络中心): 只能增援同一联盟成员的城市,
-				// 且目标城需有联络中心, 驻军队伍数受其等级限制
-				if !ally {
-					return "增援(部队调动)仅限自己的城市或同一联盟成员的城市"
-				}
-				var tc model.EzfyCity
-				if err := h.DB.First(&tc, targetId).Error; err != nil {
-					return "目标城市不存在"
-				}
-				cap := h.allyGarrisonCap(tc.ID)
-				if cap < 1 {
-					return "目标城市未建造联络中心, 无法接收盟友驻军"
-				}
-				if h.allyGarrisonCount(tc.ID) >= cap {
-					return fmt.Sprintf("目标城市联络中心%d级, 最多接收%d支盟友驻军", cap, cap)
-				}
-			}
 		} else {
-			// ★ 第九轮用户规则：自己城市之间能运输，同盟(军团)成员之间也能运输；
-			//   运量看负重（所以要用卡车等部队装），**可以不带队军官**。
-			if !own && !ally {
-				return "运输目标必须是自己或同盟成员的城市"
-			}
-			if !hasRes {
-				return "运输必须携带资源"
+			own := h.isOwnCity(uid, targetId)
+			ally := !own && h.isAllyCity(uid, targetId)
+			if orderType == 6 {
+				if !own {
+					// 盟友驻军(复刻联络中心): 只能增援同一联盟成员的城市,
+					// 且目标城需有联络中心, 驻军队伍数受其等级限制
+					if !ally {
+						return "增援(部队调动)仅限自己的城市或同一联盟成员的城市"
+					}
+					var tc model.EzfyCity
+					if err := h.DB.First(&tc, targetId).Error; err != nil {
+						return "目标城市不存在"
+					}
+					cap := h.allyGarrisonCap(tc.ID)
+					if cap < 1 {
+						return "目标城市未建造联络中心, 无法接收盟友驻军"
+					}
+					if h.allyGarrisonCount(tc.ID) >= cap {
+						return fmt.Sprintf("目标城市联络中心%d级, 最多接收%d支盟友驻军", cap, cap)
+					}
+				}
+			} else {
+				// ★ 第九轮用户规则：自己城市之间能运输，同盟(军团)成员之间也能运输；
+				//   运量看负重（所以要用卡车等部队装），**可以不带队军官**。
+				if !own && !ally {
+					return "运输目标必须是自己或同盟成员的城市"
+				}
+				if !hasRes {
+					return "运输必须携带资源"
+				}
 			}
 		}
 	}
@@ -1334,14 +1349,10 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 					"; 如要攻打请先在「附属野地」里[放弃]该野地"
 			}
 		}
-		// ★ 2026-10-11 用户规则：**采集中的野地不能被征服/掠夺**（不论归属谁）——
-		//   别人正在采集的野地打掉会把采集部队/已采资源弄丢，自己的同理（先召回/放弃再打）。
-		//   与 WildlandView 下发的 collecting 同源（ezfyWildlandOccupiedCount），前端按钮已置灰。
-		if (orderType == 2 || orderType == 3) && ownWild != nil && ownWild.ID > 0 &&
-			h.ezfyWildlandOccupiedCount(int64(ownWild.ID), 0) > 0 {
-			return "该野地正在被采集, 不能" + ezfyOrderTypeName(orderType) +
-				"; 请等采集结束(召回)后再攻打"
-		}
+		// ★ 2026-10-18 用户规则更新：**玩家附属野地允许被攻打**（即使有人在驻守/采集）。
+		//   守军 = 该野地的驻军 + 采集部队（无则为 0），其在野地的兵力与随军资源
+		//   随战斗正常结算（全灭则资源损失）。原「采集中不能征服/掠夺」拦截已废弃。
+		//   中立野地/寇城仍按配置守军（见 processArrive 守军构建），这里不再拦截。
 	}
 	if orderType == 4 {
 		var wl model.EzfyWildland
@@ -1753,10 +1764,10 @@ func (h *EzfyHandler) deductCityTroops(cityId uint, troops []ezfyUnitGroup) {
 
 // 雷达站预警相关常量
 const (
-	ezfyRadarBuildingID    = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
-	ezfyReconTechID        = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
-	ezfyIntelMaxLevel      = 10 // 情报等级封顶
-	ezfyReconPlaneTroopID  = 9  // ★ 2026-10-14 侦察机兵种 id（侦查只能带它；被侦查城有它且未设「不参与防御」时升空拦截空战）
+	ezfyRadarBuildingID   = 21 // 建筑：雷达站（「对敌军入侵进行预警」）
+	ezfyReconTechID       = 12 // 科技：侦察技巧（原来只加行军速度，现在同时加成军情情报）
+	ezfyIntelMaxLevel     = 10 // 情报等级封顶
+	ezfyReconPlaneTroopID = 9  // ★ 2026-10-14 侦察机兵种 id（侦查只能带它；被侦查城有它且未设「不参与防御」时升空拦截空战）
 )
 
 // ezfyIntelLevel 被攻击方城市的「军情情报等级」= 雷达站等级 + 侦察技巧等级（合计封顶 10）。
@@ -1934,10 +1945,19 @@ func (h *EzfyHandler) RecallOrder(c *gin.Context) {
 			resp.ParamError(c, "该驻军已返航归队, 无法召回")
 			return
 		}
-		var tcity model.EzfyCity
-		if err := h.DB.First(&tcity, order.TargetId).Error; err != nil || tcity.UserID == uid {
-			resp.ParamError(c, "该部队不在盟友城市, 无法召回")
-			return
+		if order.TargetType != 3 {
+			// ★★ 2026-10-18 附属野地驻军（增援野地）允许单独召回, 按单程返航回出发城市
+			var wl model.EzfyWildland
+			if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+				resp.ParamError(c, "该野地驻军不存在, 无法召回")
+				return
+			}
+		} else {
+			var tcity model.EzfyCity
+			if err := h.DB.First(&tcity, order.TargetId).Error; err != nil || tcity.UserID == uid {
+				resp.ParamError(c, "该部队不在盟友城市, 无法召回")
+				return
+			}
 		}
 	} else if order.Status != 0 && order.Status != 1 && order.Status != ezfyOrderStatusWaiting {
 		// ★ 2026-10-09 「等待中的玩家可以自己取消」→ 等待(6) 也放行
@@ -2465,10 +2485,11 @@ func (h *EzfyHandler) beginReturn(order *model.EzfyOrder, now int64, travelSec i
 // ezfyLootBatch 单次「批量结算」的宝物播报聚合器。
 //
 // ★ 2026-10-13 用户反馈「采集播报太多了」：玩家批量采集时，几十支采集队同一批结算，
-//   每掉一件宝物就往世界频道播一条「恭喜玩家xx在野地x级采集到宝物」，全服频道刷屏。
-//   批量入口（processOrders 轮询 / 一键收获）一次结算多支部队时，把掉落的宝物名攒进
-//   本批次，循环结束统一 flush 成**一条**合并播报；单条结算（停止采集/召回）不传
-//   批次，保持原样立即播报。
+//
+//	每掉一件宝物就往世界频道播一条「恭喜玩家xx在野地x级采集到宝物」，全服频道刷屏。
+//	批量入口（processOrders 轮询 / 一键收获）一次结算多支部队时，把掉落的宝物名攒进
+//	本批次，循环结束统一 flush 成**一条**合并播报；单条结算（停止采集/召回）不传
+//	批次，保持原样立即播报。
 type ezfyLootBatch struct {
 	name string   // 玩家昵称（首次掉落时取一次，避免每件宝物都查一次）
 	loot []string // 本批次掉落的宝物名
@@ -2485,7 +2506,8 @@ func (b *ezfyLootBatch) add(loot string) {
 // ezfyLootBatchFlush 结算批次结束：有掉落则发一条合并播报（无掉落直接返回）。
 //
 // ★ 2026-10-13 用户反馈「相同宝物按数量展示，不然播报太长」：
-//   同种宝物聚合统计后拼接，形如「红宝石戒指×3」（全部宝物都带 ×N，顺序按本批首次掉落）。
+//
+//	同种宝物聚合统计后拼接，形如「红宝石戒指×3」（全部宝物都带 ×N，顺序按本批首次掉落）。
 func (h *EzfyHandler) ezfyLootBatchFlush(uid uint, b *ezfyLootBatch) {
 	if b == nil || len(b.loot) == 0 {
 		return
@@ -2692,9 +2714,10 @@ func (h *EzfyHandler) settleDispatch(uid uint, order *model.EzfyOrder, now int64
 // ezfyClaimSettle 原子认领一次采集结算窗口（跨进程幂等，防双机重复结算多给资源）。
 //
 // ★★ 2026-10-12 修复「一键收货随机多收资源」：enterProcess 只是进程内锁，双机共享库时
-//   两台 server 会各自把同一笔采集订单的同一周期结算一次。这里用条件更新
-//   `WHERE id=? AND arrive_time=?（旧快照）` 把 arrive_time 原子推进到 next：
-//   只有没被另一台进程抢先结算的快照能认领成功（RowsAffected==1）；否则说明他方已结算 → 返回 false。
+//
+//	两台 server 会各自把同一笔采集订单的同一周期结算一次。这里用条件更新
+//	`WHERE id=? AND arrive_time=?（旧快照）` 把 arrive_time 原子推进到 next：
+//	只有没被另一台进程抢先结算的快照能认领成功（RowsAffected==1）；否则说明他方已结算 → 返回 false。
 func (h *EzfyHandler) ezfyClaimSettle(order *model.EzfyOrder, oldArrive, next int64) bool {
 	if oldArrive <= 0 {
 		return false
@@ -3011,6 +3034,25 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	//     敌军进攻该城时, 守方部队 = 驻军队列(按到达先后) + 友军自身部队(最后),
 	//     先打先驻守的队列, 全部驻军被消灭后才轮到友军自己的部队(见战斗结算守方部队构建)。
 	if order.OrderType == 6 {
+		// ★★ 2026-10-18 增援到**自己的附属野地**(驻守野地)：
+		//   抵达后部队编为该野地「驻军队列」(status=3, 与盟友城驻军同口径)，
+		//   敌军进攻该野地时守军 = 驻军队列 + 采集部队(见战斗结算守军构建)；
+		//   不占「一块野地一支采集队」名额，可与采集部队并存（用户需求）。
+		if order.TargetType != 3 {
+			var wl model.EzfyWildland
+			if err := h.DB.First(&wl, order.TargetId).Error; err != nil || wl.CityId != order.CityId {
+				h.beginReturn(order, now, 0)
+				h.addReport(uid, 5, "增援报告: 野地已丢失",
+					"增援的附属野地已不属于我方, 增援部队已返航。", "", order.ID)
+				return
+			}
+			order.Status = 3
+			h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
+				Updates(map[string]interface{}{"status": 3})
+			h.addReport(uid, 5, "增援报告: 附属野地",
+				fmt.Sprintf("增援部队已抵达%d级野地(%d,%d)驻防, 敌袭时协同防守。", wl.Level, wl.X, wl.Y), "", order.ID)
+			return
+		}
 		var target model.EzfyCity
 		if err := h.DB.First(&target, order.TargetId).Error; err != nil {
 			h.beginReturn(order, now, 0)
@@ -3295,50 +3337,90 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			return
 		}
 		wildLevel = level
-		defender = parseWildlandTroops(cfg.Troops)
-		// ★ 野地守将（2026-09-24 ）：军官必须来自军官池(ezfy_cfg_general)、
-		//   每块野地最多 1 名，配在野地类型的 officer_id 上；守将的学识给守军提供防御加成。
-		wildDefCamp = 1 // 野地守军按盟军兵种名展示
-		if cfgType == 3 {
-			wildDefCamp = 2 // 寇城守军按轴心国兵种名展示
-		}
-		if cfg.OfficerId > 0 {
-			defGeneral = ezfyCfg.general(cfg.OfficerId)
-			if defGeneral != nil {
-				guardAttr := ezfyAttrToBonus(defGeneral.Learning)
-				defBonus += guardAttr
-				// ★ 2026-10-06 守将防御类技能（弧形防御/弹幕支援）也计入守军防御加成
-				//   （与活动守军 ezfyActWildDefBonus 同口径；原来野地守将只有属性加成，
-				//   带防御技能的守将加成完全看不出来 → 明细也不会拆出「军官技能·」段）
-				defBonus += generalSkillDefBonus(defGeneral)
-				// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
-				defAtkBonus += guardAttr
-				defOfficerAtkBonus = guardAttr
-				// ★ 2026-10-06 守方「防御加成」逐项明细（被打时展示：属性+技能，与 defBonus 构成同口径）
-				defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + defGeneral.Name, Value: guardAttr})
-				for _, s := range generalSkillDefBreak(defGeneral) {
-					defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
-				}
-				// ★ 2026-10-08 守将军官行与玩家城城守同口径：**同时**列出「攻击加成」与
-				//   「守军防御」（属性部分，都是有效学识加成），技能逐项单列 —— 读者把属性项与
-				//   技能项相加即得该守将对守军的全部贡献（原来只写守军防御，攻击那半看不到）。
-				officerLv := generalSkillLevel(defGeneral)
-				descParts := []string{}
-				if guardAttr > 0 {
-					descParts = append(descParts, "攻击加成+"+strconv.Itoa(guardAttr)+"%",
-						"守军防御+"+strconv.Itoa(guardAttr)+"%")
-				}
-				for _, s := range generalSkillList(defGeneral) {
-					if eff := ezfySkillEffectTextAt(s, officerLv); eff != "" {
-						descParts = append(descParts, s+"(Lv."+strconv.Itoa(officerLv)+" "+eff+")")
+		// ★★ 2026-10-18 玩家附属野地守军（用户规则）：
+		//   该坐标存在**玩家占领**的野地记录（ezfy_wildland.CityId>0）时：
+		//   · 守军 = 该野地上的 驻军(增援6) + 采集/驻守采集(7) 部队，按订单实况；
+		//   · 没有任何驻守/采集部队 → 守军为 **0**（不再用默认野地配置守军）；
+		//   · 无守将/无配置加成（守军是真人部队，按基础值交战，与盟军驻军战同口径）。
+		//   中立野地 / AI 寇城（无野地行）仍走原「配置守军」。
+		var wildDef model.EzfyWildland
+		var wildDefOrders []model.EzfyOrder
+		if h.DB.Where("x = ? AND y = ?", order.TargetX, order.TargetY).Order("id DESC").First(&wildDef).Error == nil &&
+			wildDef.CityId > 0 {
+			// 自己的野地不会被攻打（createOrder 已拦），能到这里的主人必是他人
+			h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wildDef.ID).
+				Order("id ASC").Find(&wildDefOrders)
+			cnt := map[int]int64{}
+			sum := int64(0)
+			for i := range wildDefOrders {
+				for _, g := range parseGroups(wildDefOrders[i].Troops) {
+					if g.Count > 0 {
+						cnt[g.TroopId] += g.Count
+						sum += g.Count
 					}
 				}
-				defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
-				if len(descParts) > 0 {
-					defOfficerDesc += " " + strings.Join(descParts, " ")
+			}
+			if sum <= 0 {
+				wildDefOrders = nil // 全是空壳订单 → 视为无守军
+			}
+			defender = nil
+			tids := make([]int, 0, len(cnt))
+			for tid := range cnt {
+				tids = append(tids, tid)
+			}
+			sort.Ints(tids)
+			for _, tid := range tids {
+				defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: cnt[tid]})
+			}
+			wildDefCamp = 0 // 玩家部队按基础(通用)兵种名展示
+			targetName = ezfyWildTerrainDisplayName(order.TargetX, order.TargetY, true) +
+				strconv.Itoa(wildDef.Level) + "级"
+		} else {
+			defender = parseWildlandTroops(cfg.Troops)
+			// ★ 野地守将（2026-09-24 ）：军官必须来自军官池(ezfy_cfg_general)、
+			//   每块野地最多 1 名，配在野地类型的 officer_id 上；守将的学识给守军提供防御加成。
+			wildDefCamp = 1 // 野地守军按盟军兵种名展示
+			if cfgType == 3 {
+				wildDefCamp = 2 // 寇城守军按轴心国兵种名展示
+			}
+			if cfg.OfficerId > 0 {
+				defGeneral = ezfyCfg.general(cfg.OfficerId)
+				if defGeneral != nil {
+					guardAttr := ezfyAttrToBonus(defGeneral.Learning)
+					defBonus += guardAttr
+					// ★ 2026-10-06 守将防御类技能（弧形防御/弹幕支援）也计入守军防御加成
+					//   （与活动守军 ezfyActWildDefBonus 同口径；原来野地守将只有属性加成，
+					//   带防御技能的守将加成完全看不出来 → 明细也不会拆出「军官技能·」段）
+					defBonus += generalSkillDefBonus(defGeneral)
+					// ★ 2026-10-06 守将加成同时作用于守军攻击（统一加成口径）
+					defAtkBonus += guardAttr
+					defOfficerAtkBonus = guardAttr
+					// ★ 2026-10-06 守方「防御加成」逐项明细（被打时展示：属性+技能，与 defBonus 构成同口径）
+					defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官·" + defGeneral.Name, Value: guardAttr})
+					for _, s := range generalSkillDefBreak(defGeneral) {
+						defDefBreak = append(defDefBreak, ezfyBonusItem{Name: "军官技能·" + s.Name, Value: s.Value})
+					}
+					// ★ 2026-10-08 守将军官行与玩家城城守同口径：**同时**列出「攻击加成」与
+					//   「守军防御」（属性部分，都是有效学识加成），技能逐项单列 —— 读者把属性项与
+					//   技能项相加即得该守将对守军的全部贡献（原来只写守军防御，攻击那半看不到）。
+					officerLv := generalSkillLevel(defGeneral)
+					descParts := []string{}
+					if guardAttr > 0 {
+						descParts = append(descParts, "攻击加成+"+strconv.Itoa(guardAttr)+"%",
+							"守军防御+"+strconv.Itoa(guardAttr)+"%")
+					}
+					for _, s := range generalSkillList(defGeneral) {
+						if eff := ezfySkillEffectTextAt(s, officerLv); eff != "" {
+							descParts = append(descParts, s+"(Lv."+strconv.Itoa(officerLv)+" "+eff+")")
+						}
+					}
+					defOfficerDesc = defGeneral.Name + " Lv." + strconv.Itoa(defGeneral.Level)
+					if len(descParts) > 0 {
+						defOfficerDesc += " " + strings.Join(descParts, " ")
+					}
 				}
 			}
-		}
+		} // ★★ 2026-10-18 中立野地守军分支(else)结束；下面为 case 0/1/2 公共的战利品/名称计算
 		// ★ 战报里的野地要标出**具体地形类型**（丘陵/沼泽/平原…），
 		//   原来一律写「野地N级」，看不出打的是什么地形。
 		// ★ 2026-10-04 与地图同口径改用 Ex（覆盖表/沿海平原），修复「地图沿海平原、战报平原」不一致
@@ -3616,7 +3698,14 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			return
 		}
 		// 成功：若有拦截，把空战正文接在情报之前
-		scoutBody := h.scoutReportBody(uid, order, targetName, target, defender)
+		wildOwned := false // ★★ 2026-10-18 玩家附属野地：报告不显示配置守将（守军=真人驻军/采集部队）
+		if order.TargetType == 1 || order.TargetType == 2 {
+			var wd model.EzfyWildland
+			if h.DB.Where("x = ? AND y = ?", order.TargetX, order.TargetY).Order("id DESC").First(&wd).Error == nil && wd.CityId > 0 {
+				wildOwned = true
+			}
+		}
+		scoutBody := h.scoutReportBody(uid, order, targetName, target, defender, wildOwned)
 		if battleBlock != "" {
 			scoutBody = strings.Replace(scoutBody, "侦查过程中未受到任何阻拦。",
 				"侦查过程中在目标城市上空与敌方侦察机交战，击破拦截后继续侦查。"+battleBlock, 1)
@@ -4164,6 +4253,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if (order.OrderType == 2 || order.OrderType == 3) && order.TargetType == 3 &&
 			target != nil && target.UserID != 0 && target.UserID != uid {
 			h.ezfyCorpsWarAward(uid, target.UserID, order.OrderType)
+		}
+		// ★★ 2026-10-18 攻方战胜 **玩家附属野地** → 歼灭该野地守军(驻军+采集部队)：
+		//   全部守军订单置阵亡(4) + 采集负重清零（采集资源随之损失, 不入野地主人城市）。
+		//   掠夺/征服共用；在途采集队(4)不在此列（还没驻守到地, 由 ezfyClearWildlandAt 转返航）。
+		if order.TargetType == 1 || order.TargetType == 2 {
+			h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now)
 		}
 		if targetProtected && order.TargetType == 3 {
 			report += "\n目标城市处于免战保护期, 无法掠夺资源!"
@@ -5198,6 +5293,52 @@ func ezfyReconSucceed(order *model.EzfyOrder) bool {
 	return rand.Float64() < rate
 }
 
+// ezfyDestroyWildlandDefenders 歼灭**玩家附属野地**的全部守军（用户规则 2026-10-18）。
+//
+// 玩家附属野地的守军 = 驻军(增援6, status=3) + 采集/驻守采集(7, status=1) 部队。
+// 攻方战胜（掠夺/征服共用）→ 这些部队全部阵亡：
+//
+//	· 订单置 status=4(阵亡)，不再返航、不留战后兵力；
+//	· 采集部队负重(carry) 一并清零 —— 「采集部队被打没, 采集到的资源也一起消失」,
+//	  不会运回野地主人城市（与 HarvestAll 的「收获入城」相反, 这里直接损失）。
+//
+// 在途(4)采集队不在此列：它还没驻守到地，由 ezfyClearWildlandAt 转返航带回。
+func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64) int {
+	var wl model.EzfyWildland
+	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error; err != nil || wl.CityId <= 0 {
+		return 0 // 中立野地/寇城: 没有玩家守军
+	}
+	var owner model.EzfyCity
+	if err := h.DB.First(&owner, wl.CityId).Error; err != nil || owner.UserID == 0 {
+		return 0 // 野地主人城不存在（遗留野地行）
+	}
+	var orders []model.EzfyOrder
+	h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wl.ID).Find(&orders)
+	if len(orders) == 0 {
+		return 0 // 无驻军/采集部队 → 守军本来就是 0
+	}
+	ids := make([]int64, 0, len(orders))
+	for i := range orders {
+		ids = append(ids, int64(orders[i].ID))
+	}
+	h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", ids).
+		Updates(map[string]interface{}{"status": 4, "carry": "", "arrive_time": 0, "collect_start": 0})
+	atkName := "敌军"
+	if atkCityID > 0 {
+		var ac model.EzfyCity
+		if err := h.DB.First(&ac, atkCityID).Error; err == nil {
+			atkName = ac.Name
+		}
+	}
+	body := fmt.Sprintf("你占领的野地(%d,%d) 遭到「%s」的军队进攻, 守军(驻军/采集部队)全军覆没, 采集到的资源随之损失。",
+		wl.X, wl.Y, atkName)
+	for i := range orders {
+		o := &orders[i]
+		h.addReport(owner.UserID, 2, "战斗报告: 附属野地失守", body, "", o.ID, owner.ID)
+	}
+	return len(ids)
+}
+
 // addReport 战报写入
 // scoutReportBody 侦查报告正文
 //
@@ -5215,7 +5356,7 @@ func ezfyReconSucceed(order *model.EzfyOrder) bool {
 // 野地与寇城（无城市建筑）保持原样只给守军情况。
 // 城市报告格式取自 `参考材料/开发文档/侦察报告1.txt`。
 func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetName string,
-	target *model.EzfyCity, defender []ezfyUnitGroup) string {
+	target *model.EzfyCity, defender []ezfyUnitGroup, wildOwned bool) string {
 	// 侦查方侦察技巧等级（科技12，0-10），决定报告能看清多少细节
 	scoutLv := h.techMap(uint(order.CityId))[ezfyReconTechID]
 	var b strings.Builder
@@ -5250,9 +5391,12 @@ func (h *EzfyHandler) scoutReportBody(uid uint, order *model.EzfyOrder, targetNa
 			}
 		}
 		// ★ 守将（军官池配置，每块野地最多 1 名）
-		if cfg := ezfyCfg.wildland(cfgType, level); cfg != nil && cfg.OfficerId > 0 {
-			if g := ezfyCfg.general(cfg.OfficerId); g != nil {
-				fmt.Fprintf(&b, "\n守将: %s Lv.%d", g.Name, g.Level)
+		// ★★ 2026-10-18 玩家附属野地（用户规则）：守军是真人驻军/采集部队, 无配置守将 → 不显示
+		if !wildOwned {
+			if cfg := ezfyCfg.wildland(cfgType, level); cfg != nil && cfg.OfficerId > 0 {
+				if g := ezfyCfg.general(cfg.OfficerId); g != nil {
+					fmt.Fprintf(&b, "\n守将: %s Lv.%d", g.Name, g.Level)
+				}
 			}
 		}
 		b.WriteString("\n侦查完成, 部队已返航。")

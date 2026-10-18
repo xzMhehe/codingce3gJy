@@ -191,13 +191,14 @@
             <!-- ★ 2026-09-28 用户规则：自己的附属野地不能侦查/掠夺/征服（要先[放弃]）→
                  三个命令灰掉、点了给提示（判据 isOwnWild 取后端下发的 selDetail.mine，
                  与「归属：我」同源，不靠前端猜）；[采集] 不受影响。
-                 ★ 2026-10-11 采集中的野地也不能征服/掠夺（不论归属谁）→ 依据后端下发的
-                 selDetail.collecting 置灰，点了给提示；与后端 createOrder 拦截同一口径。 -->
+                 ★★ 2026-10-18 用户规则更新: 采集中的野地允许被攻打（攻方获胜则歼灭
+                 该野地的驻军+采集部队, 采集资源随之损失）→ 不再按 collecting 置灰。 -->
             <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(1)">[侦查]</a><span class="home-gap"></span>
-            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild || ezfy.isWildCollecting }" @click="ezfy.pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
-            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild || ezfy.isWildCollecting }" @click="ezfy.pickOrder(3)">[征服]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(2)">[掠夺]</a><span class="home-gap"></span>
+            <a href="javascript:;" :class="{ gray: ezfy.isOwnWild }" @click="ezfy.pickOrder(3)">[征服]</a><span class="home-gap"></span>
             <a v-if="ezfy.selCell.occupied && ezfy.isOwnWild" href="javascript:;" @click="ezfy.pickOrder(4)">[采集]</a>
-            <span v-if="ezfy.isWildCollecting" class="orange">(该野地正在被采集)</span>
+            <!-- ★★ 2026-10-18 自己的附属野地也能派兵驻守（该野地守军 = 驻军 + 采集部队） -->
+            <a v-if="ezfy.isOwnWild" href="javascript:;" @click="ezfy.pickOrder(6)">[增援]</a>
           </div>
           <a href="javascript:;" @click="ezfy.go('map')">[返回地图]</a>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
@@ -658,7 +659,8 @@
             <br/>
             <!-- ★ 2026-10-09 等待中(6) 也能取消（「等待中的玩家可以自己取消」）：
                  部队已到达、只是在排队等交战，撤兵后按单程返航回出发城。 -->
-            <span v-if="o.status === 0 || o.status === 1 || o.status === 6">
+            <!-- ★★ 2026-10-18 附属野地驻军(增援, status=3, target_type≠3) 也能单独[取消]召回 -->
+            <span v-if="o.status === 0 || o.status === 1 || o.status === 6 || (o.status === 3 && o.order_type === 6 && o.target_type !== 3)">
               <a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[取消]</a><br/>
             </span>
             --------------------
@@ -689,8 +691,12 @@
                 <template v-if="w.status === 1">采集中</template>
                 <template v-else-if="w.idle_order_id">驻守(空闲)</template>
                 <template v-else>空闲</template>
+                <template v-if="w.garrison_count">·驻军{{ w.garrison_count }}支</template>
               </td>
               <td>
+                <!-- ★★ 2026-10-18 附属野地可派兵驻守: [增援] 对所有野地常驻显示
+                     (驻军与采集部队并存, 不占「一块野地一支采集队」名额) -->
+                <a href="javascript:;" @click="ezfy.openWildReinforce(w)">[增援]</a>
                 <!-- ★ 2026-09-28 平原/沿海平原可建城、采集无宝物, 附属野地列表不再提供采集, 仅保留[放弃] -->
                 <a v-if="w.status === 0 && !w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" href="javascript:;" @click="ezfy.openWildGather(w)">[采集]</a>
                 <a v-else-if="w.idle_order_id && w.terrain !== 1 && w.terrain !== 9" class="red" href="javascript:;" @click="ezfy.startCollect(w.idle_order_id)">[开始采集]</a>

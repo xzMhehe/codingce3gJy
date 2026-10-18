@@ -1404,13 +1404,8 @@ export default {
       return !!(this.selDetail && this.selDetail.mine &&
         this.selCell && this.selCell.area_type !== 3)
     },
-    // ★ 2026-10-11 采集中的野地不能被征服/掠夺（不论归属谁）。
-    //   判据取后端 WildlandView 下发的 collecting（ezfyWildlandOccupiedCount>0），
-    //   与后端 createOrder 拦截同一口径；前端据此置灰[掠夺][征服]并给提示。
-    isWildCollecting () {
-      return !!(this.selDetail && this.selDetail.collecting &&
-        this.selCell && this.selCell.area_type !== 3)
-    },
+    // ★★ 2026-10-18 原「采集中野地不能打」的前端拦截已随新规则移除
+    //   （攻方获胜歼灭守军=驻军+采集部队, 采集资源随军损失）——isWildCollecting 判定不再需要。
     // ★★ 2026-10-13 「出征确认」命令下拉里**要列出的命令**（按 orderNames 的固定顺序：
     //   侦查→掠夺→征服→采集→运输→增援）。判据见 orderAvail —— 与地图详情页那几个命令按钮**同源**，
     //   于是「地图上点不了的」在下拉里也不会出现（用户：还没宣战就只能侦查，那下拉里就只有侦查）。
@@ -5271,6 +5266,15 @@ export default {
       this.orderCalc = null
       this.go('orderpre')
     },
+    // ★★ 2026-10-18 野地列表 → [增援]：派兵驻守自己的附属野地（不占采集名额, 与采集部队并存）
+    openWildReinforce (w) {
+      this.selCell = { x: w.x, y: w.y, area_type: 1, level: w.level,
+        name: (w.terrain_name || '野地'), wild_id: w.id }
+      this.selDetail = { id: w.id, level: w.level, x: w.x, y: w.y }
+      this.orderType = 6
+      this.orderCalc = null
+      this.go('orderpre')
+    },
     // ---- 军队 ----
     // 兵种详情(复刻 cityTroopView.html): 军队页/军工厂页/城防页点兵种名进来
     openTroopView (troopId) {
@@ -5906,13 +5910,9 @@ export default {
           '; 请先在「附属野地」里[放弃]该野地')
         return
       }
-      // ★ 2026-10-11 采集中的野地不能被征服/掠夺（不论归属谁）——前端兜底提示，
-      //   后端 createOrder 有同样拦截。侦查(1)不受影响（不伤害采集部队）。
-      if ((t === 2 || t === 3) && this.isWildCollecting) {
-        this.notify('该野地正在被采集, 不能' + (this.orderNames[t] || '') +
-          '; 请等采集结束(召回)后再攻打')
-        return
-      }
+      // ★★ 2026-10-18 用户规则更新: 采集中的野地允许被攻打(攻方获胜则歼灭该野地
+      //   的驻军+采集部队, 采集资源随之损失); 原「采集中不能打」的前端拦截已移除
+      //   (后端 createOrder 拦截同样移除)。
       this.orderType = t
       this.orderCalc = null
       this.go('orderpre')
@@ -5936,8 +5936,9 @@ export default {
       if (t === 4) return !isCity && (!!c.wild_id || (this.isOwnWild && !!c.occupied))
       // ④ 驻守采集(7)：只在「附属野地」页对已有采集队操作，出征页不给
       if (t === 7) return false
-      // ⑤ 运输(5)/增援(6) 只对城，野地不给
-      if (t === 5 || t === 6) return false
+      // ⑤ 运输(5) 只对城；增援(6) 除城市外, 还允许对自己的附属野地驻守（★★ 2026-10-18）
+      if (t === 5) return false
+      if (t === 6) return isCity ? false : (!!c.wild_id || (this.isOwnWild && !!c.occupied))
       // ⑥ 侦查(1)：非自己的城常显；野地只要不是自己的附属野地
       if (t === 1) return isCity ? !c.mine : !this.isOwnWild
       // ⑦ 掠夺(2)/征服(3)
@@ -5946,8 +5947,9 @@ export default {
           // 与地图按钮同判据：宣战已生效 / 管理端关了宣战开关 / 军团交战期
           return this.warStatus === 2 || !this.warRequire || this.atWar
         }
-        // 野地：自己的附属野地要先[放弃]；正在被采集的野地不能打（与后端 createOrder 同口径）
-        return !this.isOwnWild && !this.isWildCollecting
+        // 野地：自己的附属野地要先[放弃]
+        // ★★ 2026-10-18 采集中不再拦截（攻方获胜将歼灭驻军+采集部队, 采集资源随军损失）
+        return !this.isOwnWild
       }
       return false
     },
@@ -6188,7 +6190,9 @@ export default {
       // ★ 采集(4)/派遣(7) 后端要按 target_id 校验「这块野地是你占领的」，
       //   而地图格子只有坐标 → 这里按坐标在「我的野地」里反查记录 id。
       //   （之前没带 target_id，采集/派遣永远发不出去）
-      if (this.orderType === 4 || this.orderType === 7) {
+      // ★★ 2026-10-18 增援(6) 到自己的附属野地同理要带 target_id（野地 id）
+      if (this.orderType === 4 || this.orderType === 7 ||
+        (this.orderType === 6 && this.selCell.area_type !== 3)) {
         if (this.selCell.wild_id) {
           body.target_id = this.selCell.wild_id
         } else {
