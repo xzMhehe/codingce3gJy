@@ -1,44 +1,48 @@
 <template>
   <div class="farm-admin">
-    <!-- 顶栏：统计 + 风控 + 生成/清空（★ 说明一律 tooltip，不上页面） -->
+    <!-- ★ 2026-10-18 顶栏布局优化：统计/开关+操作按钮一行、数值配置一行，分组清晰 -->
     <el-card shadow="never" class="box" style="margin-bottom:12px">
-      <div class="toolbar">
-        <span class="td-main">人机 <b>{{ list.length }}</b>/{{ max }}
-          <el-tooltip placement="top" :content="tips.overview"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-divider direction="vertical" />
-        <span>攻击玩家
-          <el-tooltip placement="top" :content="tips.atk"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-switch v-model="attackOn" :active-value="1" :inactive-value="0" @change="saveConfig" />
-        <span>每人每日出征</span>
-        <el-input-number v-model.number="atkDailyCap" :min="0" :max="100" size="mini"
-                         controls-position="right" style="width:90px" @change="saveConfig" />
-        <span>人机免耗粮
-          <el-tooltip placement="top" :content="tips.foodFree"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-switch v-model="foodFree" :active-value="1" :inactive-value="0" @change="saveConfig" />
-        <span>最低声望
-          <el-tooltip placement="top" :content="tips.minPrestige"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-input-number v-model.number="minPrestige" :min="0" :step="100000"
-                         controls-position="right" style="width:130px" @change="saveConfig" />
-        <!-- ★ 2026-10-18 征兵线（管理端可配置，默认 50 万） -->
-        <span>征兵线
-          <el-tooltip placement="top" :content="tips.train"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
-                         controls-position="right" style="width:130px" @change="saveConfig" />
-        <!-- ★ 2026-10-18 人机出征时间段（空 = 全天） -->
-        <span>出征时间段
-          <el-tooltip placement="top" :content="tips.window"><i class="el-icon-info cfg-tip" /></el-tooltip>
-        </span>
-        <el-input v-model="atkWindows" placeholder="留空=全天 如 20:00-22:00,08:00-12:00"
-                  style="width:230px" maxlength="120" @change="saveConfig" />
-        <div class="grow" />
-        <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
-        <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
-        <el-button type="danger" plain icon="el-icon-delete" :disabled="!list.length" @click="clearAll">清空全部</el-button>
+      <div class="bot-bar">
+        <div class="bot-bar-row">
+          <span class="td-main">人机 <b>{{ list.length }}</b>/{{ max }}
+            <el-tooltip placement="top" :content="tips.overview"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <span class="bot-sep" />
+          <span class="bot-item">攻击玩家
+            <el-tooltip placement="top" :content="tips.atk"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <el-switch v-model="attackOn" :active-value="1" :inactive-value="0" @change="saveConfig" />
+          <span class="bot-sep" />
+          <span class="bot-item">人机免耗粮
+            <el-tooltip placement="top" :content="tips.foodFree"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <el-switch v-model="foodFree" :active-value="1" :inactive-value="0" @change="saveConfig" />
+          <div class="grow" />
+          <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
+          <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
+          <el-button type="danger" plain icon="el-icon-delete" :disabled="!list.length" @click="clearAll">清空全部</el-button>
+        </div>
+        <div class="bot-bar-row">
+          <span class="bot-item">每人每日出征</span>
+          <el-input-number v-model.number="atkDailyCap" :min="0" :max="100" size="mini"
+                           controls-position="right" style="width:90px" @change="saveConfig" />
+          <span class="bot-sep" />
+          <span class="bot-item">最低声望
+            <el-tooltip placement="top" :content="tips.minPrestige"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <el-input-number v-model.number="minPrestige" :min="0" :step="100000"
+                           controls-position="right" style="width:130px" @change="saveConfig" />
+          <span class="bot-sep" />
+          <span class="bot-item">征兵线
+            <el-tooltip placement="top" :content="tips.train"><i class="el-icon-info cfg-tip" /></el-tooltip>
+          </span>
+          <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
+                           controls-position="right" style="width:130px" @change="saveConfig" />
+          <span class="bot-sep" />
+          <span class="bot-item">出征时间段</span>
+          <el-input v-model="atkWindows" placeholder="留空=全天 如 20:00-22:00,08:00-12:00"
+                    style="width:230px" maxlength="120" @change="saveConfig" />
+        </div>
       </div>
     </el-card>
 
@@ -1052,6 +1056,11 @@ export default {
 
 <style scoped>
 @import './farm-admin.css';
+/* ★ 2026-10-18 顶栏布局优化：两行分组，组间竖分隔线 */
+.bot-bar { display: flex; flex-direction: column; gap: 10px; }
+.bot-bar-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bot-sep { width: 1px; height: 16px; background: #dcdfe6; margin: 0 6px; flex: none; }
+.bot-item { color: #606266; font-size: 13px; white-space: nowrap; }
 /* ★ label 提示图标（与「二战系统配置」页同款，鼠标悬停显示） */
 .cfg-tip { margin-left: 3px; padding: 1px 3px; color: #909399; font-size: 13px; cursor: help; vertical-align: -1px; }
 .cfg-tip:hover { color: #409eff; }
