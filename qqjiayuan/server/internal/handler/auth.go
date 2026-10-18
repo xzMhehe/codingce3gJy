@@ -261,6 +261,21 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	loginlimiter.Success(name)
+
+	// ★★ 2026-10-18 单设备在线（用户：「一个账户只能在线一个设备」，多地登录=异常缓存，一并踢下线）：
+	//   登录成功即把「最近签发时刻」顶到当前 → 该账号此前签发的**所有** token 立即作废，
+	//   后登录的顶掉先登录的（其它设备 / 异常缓存里的旧 token 全部 401）。
+	//   与「退出」(Logout) 同口径：家园 users.session_at + 二战 ezfy_account.session_at 一起顶。
+	//   ★ session_at 必须在**签发 token 之前**写（iat 取自签发时刻，二者同秒才恒通过；
+	//     若先签 token 再写 session_at，跨秒的瞬间刚签发的 token 就会立刻失效 = 登录即掉线）。
+	nowSec := time.Now().Unix() * 1000
+	h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("session_at", nowSec)
+	middleware.SetHomeSessionAt(user.ID, nowSec)
+	if h.EzfyDB != nil && h.EzfyDB.Migrator().HasTable("ezfy_account") {
+		h.EzfyDB.Model(&model.EzfyAccount{}).Where("game_id = ?", user.ID).Update("session_at", nowSec)
+		middleware.SetEzfySessionAt(user.ID, nowSec)
+	}
+
 	token, err := authutil.GenerateToken(user.ID, user.Nickname, h.Secret, h.ExpH)
 	if err != nil {
 		resp.ServerError(c, err)

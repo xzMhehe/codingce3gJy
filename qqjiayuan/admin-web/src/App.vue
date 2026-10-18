@@ -278,6 +278,10 @@ export default {
     openFront () { window.open('http://' + location.host + '/') },
     onCmd (cmd) {
       if (cmd === 'front') return this.openFront()
+      // ★★ 2026-10-18 退出 → 先通知服务端作废 token（users.session_at 顶到当前），
+      //   否则只是清了本地缓存，脚本/其它设备拿着旧 token 依然能打接口。
+      //   家园侧 /auth/logout 会连二战 token 一起作废，与玩家端退出同口径。
+      api.post('/auth/logout').catch(() => {})
       localStorage.removeItem('jy_admin_token')
       localStorage.removeItem('jy_admin_user')
       this.$router.push('/login')

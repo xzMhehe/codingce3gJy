@@ -34,11 +34,10 @@ type ezfyLoginReq struct {
 //
 //	path: POST /api/ezfy/login （公开路由，不走二战/家园认证）
 //
-//	game_id = 家园号(users.id)。
-//	· 二战已有该账号 → 直接用二战密码比对。
-//	· 首次进入（本表无记录）→ 用家园号去家园库校验家园密码，通过后把家园密码 hash
-//	  拷入 ezfy_account 建档，并回带 bound=true。
-//	返回二战专属 token（Issuer=qqjiayuan-ezfy），与家园 token 完全独立。
+//	game_id = 家园号(users.id)。★★ 2026-10-18 账号统一：**密码永远以家园账号为准**
+//	（家园改密码后二战旧密码立即失效，校验通过后把家园 hash 同步回 ezfy_account），
+//	彻底消除「家园账号 A 和二战账号 A 密码不一致」的分裂。
+//	返回二战专属 token（Issuer=qqjiayuan-ezfy）+ 家园 token（Issuer=qqjiayuan）各一个。
 func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 	var req ezfyLoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -83,55 +82,59 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ParamError(c, "密码不对哦，再想想")
 	}
 
-	var acct model.EzfyAccount
-	found := h.DB.Where("game_id = ?", gameID).First(&acct).Error == nil
-	// ★★ 2026-10-17 人机账号禁止登录（人机是「自动操作的玩家代理」，不是给真人用的号）。
-	//   放在密码校验**之前**：不泄露「这个号存在且是人机」以外的任何信息，也不给人机密码爆破面。
-	if found && acct.IsBot == 1 {
+	// ★★ 2026-10-18 账号统一（用户：「家园账号和二战账号不一致，这不是乱了」）：
+	//   二战**不再有自己的密码** —— 身份与口令永远以家园账号为准：
+	//     · 校验一律走家园库 users.password（家园改密码后，二战旧密码立即失效）；
+	//     · 校验通过后把家园密码 hash 同步回 ezfy_account，两边永远一致。
+	//   ezfy_account 从此只承载「登录态」职责：session_at（单点登录）/ kick_at（踢下线）/ last_login_*。
+	//   每个区各一份（qq_ezzt / qq_ezzt2），但**身份都是同一个家园账号 A**。
+	var user model.User
+	if err := h.home().First(&user, gameID).Error; err != nil {
+		resp.ParamError(c, "该家园号不存在，请先注册家园账号")
+		return
+	}
+	if user.Status == 0 {
+		resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
+		return
+	}
+	// ★ 人机账号禁止登录：家园侧 / 二战侧双重卡控，都放在密码校验之前（不给爆破面）
+	if user.IsBot == 1 {
 		resp.ParamError(c, "该账号无法登录")
 		return
 	}
-	bound := false
-	if found {
-		// 二战自有账号 → 二战密码校验
-		if bcrypt.CompareHashAndPassword([]byte(acct.Password), []byte(req.Password)) != nil {
-			passFail()
-			return
-		}
+	var acct model.EzfyAccount
+	acctFound := h.DB.Where("game_id = ?", gameID).First(&acct).Error == nil
+	if acctFound && acct.IsBot == 1 {
+		resp.ParamError(c, "该账号无法登录")
+		return
+	}
+	// 口令 = 家园密码（唯一口令）
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+		passFail()
+		return
+	}
+
+	// 密码/昵称同步回 ezfy_account（家园改密码后这里跟着更新，彻底消除「两个账号」）
+	sync := map[string]interface{}{
+		"password": user.Password,
+		"nickname": user.Nickname,
+		"m_sync":   1,
+	}
+	if acctFound {
+		h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", gameID).Updates(sync)
 	} else {
-		// 首登：去家园库核对家园号 + 家园密码
-		var user model.User
-		if err := h.home().First(&user, gameID).Error; err != nil {
-			resp.ParamError(c, "该家园号不存在，请先注册家园账号")
-			return
-		}
-		if user.Status == 0 {
-			resp.Forbidden(c, "该账号已被封禁，如有疑问请联系客服")
-			return
-		}
-		// ★ 2026-10-17 家园侧人机标识兜底（二战账号行缺失时也不能让 bot 登进来）
-		if user.IsBot == 1 {
-			resp.ParamError(c, "该账号无法登录")
-			return
-		}
-		if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
-			passFail()
-			return
-		}
-		// 校验通过 → 同步家园密码 hash 建档（此后二战自助管，不再依赖家园）
-		acct = model.EzfyAccount{
-			GameID:   uint(gameID),
-			Password: user.Password,
-			Nickname: user.Nickname,
-			MSync:    1,
-		}
+		acct = model.EzfyAccount{GameID: uint(gameID), Password: user.Password, Nickname: user.Nickname, MSync: 1}
 		if err := h.DB.Create(&acct).Error; err != nil {
 			log.Printf("二战独立账号建档失败 uid=%d: %v", gameID, err)
 			resp.ServerError(c, err)
 			return
 		}
-		bound = true
 	}
+	if acct.Nickname != user.Nickname {
+		acct.Nickname = user.Nickname
+	}
+	bound := !acctFound
+
 	loginlimiter.Success(name)
 
 	if acct.Nickname == "" {
@@ -141,13 +144,25 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 			acct.Nickname = cu.Nickname
 		}
 	}
+	// ★★ 2026-10-15 单点登录卡控（只能一个 IP 在线，防脚本多 IP 同时刷号）：
+	//   session_at 取「秒级」时间戳 ×1000 —— 与 JWT 的 iat 精度对齐（jwt/v5 秒级），
+	//   中间件判据 = token.iat < session_at → 掉线。
+	//   ★★ 2026-10-18 必须在**签发 token 之前**写：若先签 token 再写 session_at，
+	//     跨秒的瞬间刚签发的 token 就 iat < session_at = 登录即掉线。
+	//   写库后立即刷新本机缓存（多机部署时其他节点最迟 60s 生效，与「踢下线」同策略）。
+	//   last_login_ip 留痕（配合排查「不同城市/IP 刷号」）。
+	nowSec := time.Now().Unix() * 1000
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
+		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
+	middleware.SetEzfySessionAt(acct.GameID, nowSec)
+
 	token, err := authutil.GenerateEzfyToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
 	if err != nil {
 		resp.ServerError(c, err)
 		return
 	}
 	// ★ 2026-10-12 用家园号+家园密码登二战，点【家园】应已是家园已登录态。
-	//   二战口令经过家园校验（或已建档的自有账号）→ 用同一签名秘密再签发一个**家园** token
+	//   二战口令经过家园校验 → 用同一签名秘密再签发一个**家园** token
 	//   （Issuer=qqjiayuan，与二战 Issuer=qqjiayuan-ezfy 区分）一起返回，前端顺势写进家园 jy_token；
 	//   两个 token 各自独立签名、独立过期，互不影响。
 	homeToken, herr := authutil.GenerateToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
@@ -155,15 +170,6 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 		resp.ServerError(c, herr)
 		return
 	}
-	// ★★ 2026-10-15 单点登录卡控（只能一个 IP 在线，防脚本多 IP 同时刷号）：
-	//   session_at 取「秒级」时间戳 ×1000 —— 与 JWT 的 iat 精度对齐（jwt/v5 秒级），
-	//   中间件判据 = token.iat < session_at → 掉线；刚签发的 token iat == session_at 恒通过。
-	//   写库后立即刷新本机缓存（多机部署时其他节点最迟 60s 生效，与「踢下线」同策略）。
-	//   last_login_ip 留痕（配合排查「不同城市/IP 刷号」）。
-	nowSec := time.Now().Unix() * 1000
-	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
-		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
-	middleware.SetEzfySessionAt(acct.GameID, nowSec)
 	resp.OK(c, gin.H{"token": token, "home_token": homeToken, "game_id": acct.GameID, "nickname": acct.Nickname, "bound": bound})
 }
 
@@ -210,12 +216,13 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 		resp.ParamError(c, "该账号无法登录")
 		return
 	}
-	// 找/建二战账号：已建档的**不动**它的二战密码（玩家可能已在二战里改过密码）
+	// 找/建二战账号。★★ 2026-10-18 账号统一：密码/昵称**永远以家园为准**（已建档的也同步），
+	// 不再有「二战自有密码」，与家园账号 A 永远一致。
 	var acct model.EzfyAccount
 	if err := h.DB.Where("game_id = ?", uid).First(&acct).Error; err != nil {
 		acct = model.EzfyAccount{
 			GameID:   uid,
-			Password: user.Password, // 与首登一致：拷家园 hash 作初始二战密码
+			Password: user.Password, // 拷家园 hash（保持列语义，登录校验不再用它）
 			Nickname: user.Nickname,
 			MSync:    1,
 		}
@@ -224,19 +231,24 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 			resp.ServerError(c, err)
 			return
 		}
+	} else {
+		h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).
+			Updates(map[string]interface{}{"password": user.Password, "nickname": user.Nickname, "m_sync": 1})
 	}
 	if acct.Nickname == "" {
 		acct.Nickname = user.Nickname
 	}
+	// ★★ 2026-10-15 单点登录卡控（与 EzfyLogin 同口径）：SSO 换发新 token 同样顶掉旧 token。
+	//   ★★ 2026-10-18 必须在**签发 token 之前**写（同 EzfyLogin，跨秒会登录即掉线）。
+	nowSec := time.Now().Unix() * 1000
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
+		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
+	middleware.SetEzfySessionAt(acct.GameID, nowSec)
+
 	token, err := authutil.GenerateEzfyToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
 	if err != nil {
 		resp.ServerError(c, err)
 		return
 	}
-	// ★★ 2026-10-15 单点登录卡控（与 EzfyLogin 同口径）：SSO 换发新 token 同样顶掉旧 token。
-	nowSec := time.Now().Unix() * 1000
-	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
-		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
-	middleware.SetEzfySessionAt(acct.GameID, nowSec)
 	resp.OK(c, gin.H{"token": token, "game_id": acct.GameID, "nickname": acct.Nickname})
 }
