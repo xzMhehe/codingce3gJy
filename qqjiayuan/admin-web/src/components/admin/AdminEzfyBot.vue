@@ -23,6 +23,12 @@
         </span>
         <el-input-number v-model.number="minPrestige" :min="0" :step="100000"
                          controls-position="right" style="width:130px" @change="saveConfig" />
+        <!-- ★ 2026-10-18 征兵线（管理端可配置，默认 50 万） -->
+        <span>征兵线
+          <el-tooltip placement="top" :content="tips.train"><i class="el-icon-info cfg-tip" /></el-tooltip>
+        </span>
+        <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
+                         controls-position="right" style="width:130px" @change="saveConfig" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
         <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
@@ -322,7 +328,12 @@
         <el-form-item label="集结令">
           <el-input-number v-model.number="grantForm.gather" :step="1000" :precision="0"
                            controls-position="right" style="width:160px" />
-          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur.gather) }}（人机出征打架自动烧）</span>
+          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur.gather) }}
+            <!-- ★ 2026-10-18 提示改为「i」悬停（原「人机出征打架自动烧」太占位，鼠标滑过才展示） -->
+            <el-tooltip effect="dark" content="人机出征时自动烧集结令扩出征上限（每个 +10 万），烧完列表实时可见" placement="top">
+              <i class="el-icon-question" style="cursor:pointer"></i>
+            </el-tooltip>
+          </span>
         </el-form-item>
       </el-form>
       <div class="td-gray" style="font-size:12px">
@@ -454,7 +465,7 @@ export default {
   data () {
     return {
       list: [], max: 50, loading: false, word: '',
-      attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, saving: false,
+      attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000, saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
       // 迁城（管理端直接输入坐标）
@@ -496,6 +507,7 @@ export default {
         atk: '关闭 = 人机只发育、不打扰玩家；开启后受「每人每日出征上限」与新手保护约束（建城不满 3 天、兵力过低的目标不会被打）。',
         foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
         minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
+        train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
     }
@@ -522,13 +534,16 @@ export default {
           if (r.data.min_prestige !== undefined && r.data.min_prestige !== null) {
             this.minPrestige = r.data.min_prestige
           }
+          if (r.data.train_threshold !== undefined && r.data.train_threshold !== null) {
+            this.trainThreshold = r.data.train_threshold
+          }
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
     },
     saveConfig () {
       api.post('/admin/ezfy-bot/config', {
         attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap, food_free: this.foodFree,
-        min_prestige: this.minPrestige
+        min_prestige: this.minPrestige, train_threshold: this.trainThreshold
       }).then(r => {
         if (r.code === 0) this.$message.success('已保存')
         else this.$message.error(r.msg)

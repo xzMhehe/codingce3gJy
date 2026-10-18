@@ -44,6 +44,9 @@ type ezfyBotRow struct {
 //
 // 与「玩家信息管理」完全独立：这里只出 is_bot=1 的人，那边只出 is_bot=0 的人。
 func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
+	// ★ 2026-10-18 修复「发放资源里集结令显示 0」：集结令按道具名解析（ezfyGatherItemID），
+	//   依赖 ezfyCfg 配置缓存；不先加载的话 gatherCID=0 → 全列表集结令都查成 0。
+	h.ezfyH().cfgs()
 	word := strings.TrimSpace(c.Query("word"))
 	q := h.DB.Model(&model.EzfyBot{})
 	if word != "" {
@@ -133,11 +136,11 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"persona": b.Persona, "enabled": b.Enabled,
 			"prestige": p.Prestige, "camp": p.Camp, "camp_name": ezfyCampName(p.Camp),
 			"city_id": ct.ID, "city_name": ct.Name, "x": ct.X, "y": ct.Y, "city_level": ct.CityLevel,
-			"troop_total": troopOf[b.UserID],
+			"troop_total":  troopOf[b.UserID],
 			"gather_count": gatherOf[b.UserID],
 			// ★ 2026-10-17 出征设置：原值（0=按难度默认）+ 生效值（默认按难度阶梯）
 			"atk_per_hour": b.AtkPerHour, "atk_per_hour_eff": ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour),
-			"atk_troop":     b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
+			"atk_troop": b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
 			"atk_type": b.AtkType, "atk_type_eff": ezfyBotOrderTypeOf(b.AtkType), // 0=默认征服，1侦查/2掠夺/3征服
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
@@ -1059,18 +1062,29 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 		"max_count":     ezfyBotMaxCount,
 		"tick_seconds":  int(ezfyBotTickInterval.Seconds()),
 		"batch_size":    ezfyBotBatchSize,
+		// ★ 2026-10-18 征兵线（低于此值人机执行征兵；0/负 = 未配置，回落默认 50 万）
+		"train_threshold": ezfyBotTrainThreshold(),
 	})
 }
 
-// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config {attack_on, atk_daily_cap, food_free, min_prestige}
+// ezfyBotTrainThreshold 人机征兵线（0/负值回落默认 50 万）
+func ezfyBotTrainThreshold() int64 {
+	if ezfyCfg.ready() && ezfyCfg.limit.BotTrainThreshold > 0 {
+		return ezfyCfg.limit.BotTrainThreshold
+	}
+	return 500000
+}
+
+// AdminEzfyBotConfigSet POST /admin/ezfy-bot/config {attack_on, atk_daily_cap, food_free, min_prestige, train_threshold}
 //
 // ★ 改完必须 ezfyCfg.reload：开关读的是进程内配置缓存（不 reload 要等 30s 周期刷新）。
 func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	var in struct {
-		AttackOn    *int `json:"attack_on"`
-		AtkDailyCap *int `json:"atk_daily_cap"`
-		FoodFree    *int `json:"food_free"`
-		MinPrestige *int `json:"min_prestige"`
+		AttackOn       *int   `json:"attack_on"`
+		AtkDailyCap    *int   `json:"atk_daily_cap"`
+		FoodFree       *int   `json:"food_free"`
+		MinPrestige    *int   `json:"min_prestige"`
+		TrainThreshold *int64 `json:"train_threshold"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1110,6 +1124,14 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 			v = 100000000
 		}
 		up["bot_min_prestige"] = v
+	}
+	if in.TrainThreshold != nil {
+		v := *in.TrainThreshold
+		// 过小（<1 万）视为没配 → 回落默认 50 万
+		if v < 10000 {
+			v = 500000
+		}
+		up["bot_train_threshold"] = v
 	}
 	if len(up) == 0 {
 		resp.ParamError(c, "没有要修改的配置")

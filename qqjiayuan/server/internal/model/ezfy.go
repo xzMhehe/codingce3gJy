@@ -668,6 +668,9 @@ type EzfyCfgLimit struct {
 	BotFoodFree int `gorm:"default:0;comment:人机军队免耗粮(1=不扣,真人照常)" json:"bot_food_free"`
 	// ★ 2026-10-17 人机自动挑目标的最低声望门槛（默认 500000；0 = 不限；只影响自动选目标，管理端手动指定不受限）
 	BotMinPrestige int `gorm:"default:500000;comment:人机自动攻击目标最低声望(0=不限)" json:"bot_min_prestige"`
+	// ★ 2026-10-18 人机征兵线（默认 500000）：城内部队总数低于此值就执行征兵行动，
+	//   管理端「人机管理」可配置（0 或过小无意义 → 回落默认 50 万）。
+	BotTrainThreshold int64 `gorm:"default:500000;comment:人机征兵线(低于此值执行征兵)" json:"bot_train_threshold"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

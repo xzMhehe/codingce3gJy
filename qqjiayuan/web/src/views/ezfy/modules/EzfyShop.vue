@@ -419,7 +419,7 @@
               <span class="gray">共 {{ ezfy.chestPoolAll.length }} 项</span>
             </div>
             <table class="ezfy-plain-table">
-              <tr><th>奖品</th><th>品质</th><th>数量</th><th>解锁</th></tr>
+              <tr><th>奖品</th><th>品质</th><th>数量</th></tr>
               <template v-for="(p, i) in ezfy.chestPoolPaged">
                 <tr :key="'cv' + p.kind + '_' + p.ref_id + '_' + i">
                   <td>
@@ -429,18 +429,9 @@
                   </td>
                   <td :class="ezfy.qualityClass(p.quality)">{{ p.quality }}</td>
                   <td>{{ p.kind === 3 ? '整套' : ('×' + p.count) }}</td>
-                  <td class="gray">
-                    <!-- ★ 2026-10-15 解锁信息改成「i」悬停提示（满 N 抽解锁进奖池），不再每行直接展示文字 -->
-                    <span v-if="p.min_draws > 1">
-                      <el-tooltip effect="dark" :content="'满 ' + p.min_draws + ' 抽解锁进奖池'" placement="top">
-                        <i class="el-icon-question" style="cursor:pointer" />
-                      </el-tooltip>
-                    </span>
-                    <span v-else>—</span>
-                  </td>
                 </tr>
                 <tr v-if="ezfy.chestViewDetailIdx === i" :key="'cvd' + i">
-                  <td colspan="4">
+                  <td colspan="3">
                     <div class="set-card">
                       <div class="sc-h"><b>{{ p.name }}</b>
                         <span :class="ezfy.qualityClass(p.quality)">[{{ p.quality }}]</span>

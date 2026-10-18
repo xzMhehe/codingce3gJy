@@ -335,9 +335,12 @@ func (h *EzfyHandler) ezfyBotProvision(level int, boost bool) (uint, error) {
 	if mathrand.Intn(2) == 0 {
 		camp = 2
 	}
+	// ★ 2026-10-18 军衔默认中尉（rank 9，用户规则）+ **声望同步为该军衔门槛值**：
+	//   此前 Prestige 固定 0 → 管理端显示「军衔中尉、声望 30」不一致；现在军衔与声望对应。
+	botRank := ezfyRankAt(9)
 	if err := h.DB.Create(&model.EzfyProfile{
 		UserID: uid, GameUID: int64(uid), Nickname: nick,
-		Prestige: 0, Camp: camp, Rank: 9, IsBot: 1, // ★ 2026-10-17 军衔默认中尉（rank 9，用户规则）
+		Prestige: botRank.NeedPrestige, Camp: camp, Rank: botRank.ID, IsBot: 1,
 	}).Error; err != nil {
 		return rollback(fmt.Errorf("建二战档案失败: %w", err))
 	}
@@ -472,7 +475,8 @@ var ezfyBotGatherOnce sync.Once
 // ezfyBotGatherBackfill 存量人机一次性补足 5000 集结令。
 //
 // ★ 2026-10-17 ezfyBotProvision 只负责**新造的人机**；线上已存在的人机走这里补齐，
-//   否则它们背包里没有集结令、出征永远不烧（列表「集结令」列会一直是 0）。
+//
+//	否则它们背包里没有集结令、出征永远不烧（列表「集结令」列会一直是 0）。
 //
 // ⚠️ 为什么还要 DB 标记而不用 sync.Once 就够：sync.Once 每次重启都会重跑。
 //
@@ -822,7 +826,13 @@ func (h *EzfyHandler) botBuild(city *model.EzfyCity, bs []model.EzfyCityBuilding
 //	  - 无计划也无敌袭 → 默认攻击兵种（火箭/航母，随时准备出门打）。
 //	force=1 保命（被打光立即补，无冷却）；普通调用 force=0（常态征兵，征不满说明被人口/资源卡住）。
 func (h *EzfyHandler) botTrain(city *model.EzfyCity, troopTotal int64, cfg ezfyBotLevelCfg, force int) (string, string, bool) {
-	const keepTroops = 500000 // 征兵线：低于 50 万就一直补
+	// ★ 2026-10-18 征兵线改为管理端可配置（ezfy_cfg_limit.bot_train_threshold，默认 50 万）：
+	//   低于该值就一直补；配 0/负值无意义时回落默认 50 万。
+	const keepTroopsDef = 500000
+	keepTroops := int64(keepTroopsDef)
+	if ezfyCfg.ready() && ezfyCfg.limit.BotTrainThreshold > 0 {
+		keepTroops = ezfyCfg.limit.BotTrainThreshold
+	}
 	if troopTotal >= keepTroops {
 		return "", "", false
 	}
@@ -1191,16 +1201,26 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 			_ = errMsg
 		}
 	}
-	// ② 优先「点属性」：本城在职军官里有待分配点的 → 一次全点「军事」
-	//   （军事又加出征上限又加战斗力，人机要的就是能打）。
+	// ② 优先「点属性」：本城在职军官里有待分配点的 → 一次全点当前**最高**属性
+	//   （★ 2026-10-18 用户规则「哪个属性高就给哪个属性加点」：专精人机将领的长板，
+	//   比固定点军事更贴合将领定位）。
 	var o model.EzfyOfficer
 	if err := h.DB.Where("city_id = ? AND status = 0 AND free_points > 0", city.ID).
 		Order("free_points DESC").First(&o).Error; err == nil {
+		// 找出三维里当前最高的那一项；并列时军事 > 后勤 > 学识 优先
+		attrName, attrKey := "military", "军事"
+		max := o.Military
+		if o.Logistics > max {
+			attrName, attrKey, max = "logistics", "后勤", o.Logistics
+		}
+		if o.Learning > max {
+			attrName, attrKey = "learning", "学识"
+		}
 		code, msg := h.botCall(uid, "", "POST",
 			fmt.Sprintf("/games/ezfy/officers/%d/attr", o.ID),
-			map[string]interface{}{"attr": "military", "count": o.FreePoints})
+			map[string]interface{}{"attr": attrName, "count": o.FreePoints})
 		if code == 0 {
-			return "军官加点", fmt.Sprintf("%s 军事+%d", o.Name, o.FreePoints), true
+			return "军官加点", fmt.Sprintf("%s %s+%d", o.Name, attrKey, o.FreePoints), true
 		}
 		return "军官加点", fmt.Sprintf("%s 加点失败: %s", o.Name, msg), false
 	}
@@ -1478,8 +1498,9 @@ func ezfyBotFoodFree(isBot int) bool {
 // botAtkQuotaOK 该人机「现在能否再出征」：按「次/小时」频率节流。
 //
 // ★ 2026-10-17 从「每日上限」改成「每小时频率」：默认按难度阶梯（新手6 普通8 精英10 次/小时），
-//   管理端可在人机编辑里单独覆盖（atk_per_hour>0）。时间窗 = 1小时 / 频率；
-//   距上次出征不足时间窗 → 本小时额度用光，等下一轮再试。
+//
+//	管理端可在人机编辑里单独覆盖（atk_per_hour>0）。时间窗 = 1小时 / 频率；
+//	距上次出征不足时间窗 → 本小时额度用光，等下一轮再试。
 func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
 	rate := ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour)
 	if rate <= 0 {

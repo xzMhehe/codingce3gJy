@@ -3859,8 +3859,8 @@ func (h *EzfyHandler) ChestList(c *gin.Context) {
 			}
 			pool = append(pool, gin.H{
 				"kind": p.Kind, "ref_id": p.RefId, "name": name,
-				"count": p.Count, "weight": p.Weight, "quality": quality,
-				"detail": h.ezfyChestPrizeDetail(&p), "min_draws": p.MinDraws,
+				"count": p.Count, "quality": quality,
+				"detail": h.ezfyChestPrizeDetail(&p),
 			})
 		}
 		out = append(out, gin.H{

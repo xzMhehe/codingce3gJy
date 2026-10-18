@@ -3433,12 +3433,12 @@ func ezfyReportCategory(title string) int {
 //	单一来源、不会因各处重复实现而漂移。
 func EzfyReportTypeName(reportType int, title string) string {
 	switch {
-	// ★ 2026-10-06 被掠夺/被征服归属战斗报告后, 列表前缀与攻方「掠夺/征服」一致:
-	//   [掠夺] 被掠夺报告: 城市名(X,Y) / [征服] 被征服报告: 城市名(X,Y)
+	// ★ 2026-10-18 类型写全（用户「征服、掠夺、被征服、被掠夺、侦察、被侦察 等等」）：
+	//   攻/守双方类型名各自独立成列（被掠夺/被征服/被侦查不再并入攻方类型）。
 	case strings.HasPrefix(title, "被掠夺报告"):
-		return "掠夺"
+		return "被掠夺"
 	case strings.HasPrefix(title, "被征服报告"), strings.HasPrefix(title, "城破报告"):
-		return "征服"
+		return "被征服"
 	case strings.HasPrefix(title, "被侦查报告"):
 		return "被侦查"
 	case strings.HasPrefix(title, "军情警报"):

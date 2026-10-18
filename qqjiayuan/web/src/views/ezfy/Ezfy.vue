@@ -5543,6 +5543,29 @@ export default {
       if (e.learning) parts.push('学识+' + e.learning)
       return parts.join(' ')
     },
+    // ★ 2026-10-18 简约化：装备行不再展开详情卡，悬停（原生 title）看加成/套装信息
+    equipItemTip (e) {
+      if (!e) return ''
+      const lines = []
+      lines.push(e.name + ' [' + (e.tier_name || '普通') + ']')
+      lines.push('部位：' + (e.slot || e.type) + (e.level ? ' · ' + e.level + '级' : ''))
+      lines.push('装备加成：' + (this.equipAttrText(e) || '无'))
+      if (e.set_id) {
+        const s = this.setOf(e.set_id)
+        if (s) lines.push('所属套装：' + s.name + '（穿齐 ' + s.parts + ' 件才生效）')
+      }
+      return lines.join('\n')
+    },
+    // ★ 2026-10-18 套装名悬停提示：套装加成 + 我的进度
+    equipSetTip (setId) {
+      const s = this.setOf(setId)
+      if (!s) return ''
+      const lines = []
+      lines.push(s.name + '（穿齐 ' + s.parts + ' 件才生效）')
+      lines.push('套装加成：' + (this.setBonusText(setId) || '无'))
+      lines.push('我的进度：已拥有 ' + (s.owned || 0) + '/' + s.parts + ' 件')
+      return lines.join('\n')
+    },
     // ★ 2026-10-14 装备商城统一价格展示：套装件 1~7 是**黄金价**、其余（套装 8~17 / 系列件 / 散件）是**钻石价**。
     //   返回 { cur:'gold'|'diamond', val:数字, text:'50,000金' / '1500钻' }，表格与购买确认页共用，避免两处各写一套。
     equipPrice (e) {

@@ -683,143 +683,75 @@
         <div v-if="ezfy.officerDetailTab === 'equip'">
         <table class="ezfy-plain-table">
           <colgroup>
-            <col style="width:30%"><col style="width:14%"><col style="width:12%"><col style="width:22%"><col style="width:22%">
+            <col style="width:34%"><col style="width:16%"><col style="width:30%"><col style="width:20%">
           </colgroup>
-          <tr><th colspan="5">已穿戴装备
+          <tr><th colspan="4">已穿戴装备
             <a v-if="ezfy.officerDetail.equipped.length" href="javascript:;" @click="ezfy.doUnequipAll">[一键卸下]</a>
           </th></tr>
-          <tr><th class="nm">名称</th><th>部位</th><th>品质</th><th>套装</th><th>操作</th></tr>
-          <!-- ★ 2026-09-29：已穿戴装备同 cfg 叠加成一行（数量 >1 显示 ×N）——
-               点装备名看这件加成 / 点套装名看套装加成（两个入口看不同内容）。 -->
+          <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>操作</th></tr>
+          <!-- ★ 2026-10-18 简约化：加成/套装信息改悬停(title)查看，去掉撑开表格行的展开详情卡 -->
           <template v-for="g in ezfy.officerEquipGroups">
           <tr :key="'de' + g.key">
-            <td class="nm"><a href="javascript:;" @click="ezfy.toggleDetail(g.first.id, 'item')">{{ g.name }}</a><span v-if="g.count > 1" class="gray"> ×{{ g.count }}</span></td>
+            <td class="nm">
+              <a href="javascript:;" :title="ezfy.equipItemTip(g.first)">{{ g.name }}</a><span v-if="g.count > 1" class="gray"> ×{{ g.count }}</span>
+            </td>
             <td>{{ g.slot }}</td>
-            <td :class="ezfy.qualityClass(g.tier_name)">{{ g.tier_name || '—' }}</td>
             <td>
-              <a v-if="g.set_id" href="javascript:;" @click="ezfy.toggleDetail(g.first.id, 'set')">{{ g.set_name || ('套装' + g.set_id) }}</a>
+              <a v-if="g.set_id" href="javascript:;" :title="ezfy.equipSetTip(g.set_id)">{{ g.set_name || ('套装' + g.set_id) }}</a>
               <span v-else class="gray">—</span>
             </td>
             <td><a href="javascript:;" @click="ezfy.doUnequip(g.first.id)">[卸下]</a></td>
           </tr>
-          <tr v-if="ezfy.detailRowId === g.first.id" :key="'dt' + g.key" class="set-card-row">
-            <td :colspan="5">
-              <div class="set-card">
-                <!-- ① 点「装备名」→ 只看这件自己的加成 -->
-                <template v-if="ezfy.detailMode === 'item'">
-                  <div class="sc-h"><b>{{ g.first.name }}</b>
-                    <span :class="ezfy.qualityClass(g.first.tier_name)">[{{ g.first.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ g.first.slot || g.first.type }} · 已穿戴</span>
-                  </div>
-                  <div class="sc-b">装备加成：<b class="green">{{ ezfy.equipAttrText(g.first) || '（这件没有额外属性加成）' }}</b></div>
-                  <div class="sc-b gray" v-if="ezfy.setOf(g.first.set_id)">所属套装：{{ ezfy.setOf(g.first.set_id).name }}（点套装名看套装加成）</div>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
-                </template>
-                <!-- ② 点「套装名」→ 只看套装加成 -->
-                <template v-else-if="ezfy.setOf(g.first.set_id)">
-                  <div class="sc-h"><b>{{ ezfy.setOf(g.first.set_id).name }}</b>
-                    <span :class="ezfy.qualityClass(ezfy.setOf(g.first.set_id).tier_name)">[{{ ezfy.setOf(g.first.set_id).tier_name || '特殊' }}]</span>
-                    <span class="gray">穿齐 {{ ezfy.setOf(g.first.set_id).parts }} 件才生效</span>
-                  </div>
-                  <div class="sc-b">套装加成：<b class="green">{{ ezfy.setBonusText(g.first.set_id) || '（本套装无额外属性加成）' }}</b></div>
-
-                  <div class="sc-b">我的进度：已拥有 <b>{{ ezfy.setOf(g.first.set_id).owned || 0 }}</b>/{{ ezfy.setOf(g.first.set_id).parts }} 件
-                    <span v-if="(ezfy.setOf(g.first.set_id).owned || 0) >= ezfy.setOf(g.first.set_id).parts" class="green">已够穿齐</span>
-                    <span v-else class="red">还差 {{ ezfy.setOf(g.first.set_id).parts - (ezfy.setOf(g.first.set_id).owned || 0) }} 件</span>
-                  </div>
-                  <div class="sc-b gray" v-if="ezfy.setOf(g.first.set_id).slots && ezfy.setOf(g.first.set_id).slots.length">部位：{{ ezfy.setOf(g.first.set_id).slots.join(' / ') }}</div>
-                  <div class="sc-b gray">点装备名看这件自己的加成</div>
-                </template>
-                <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
-              </div>
-            </td>
-          </tr>
           </template>
-          <tr v-if="!ezfy.officerDetail.equipped.length"><td colspan="5" class="gray">(未穿戴装备)</td></tr>
+          <tr v-if="!ezfy.officerDetail.equipped.length"><td colspan="4" class="gray">(未穿戴装备)</td></tr>
         </table>
 
-        <!-- 一键穿戴套装（背包里有件的套装） -->
+        <!-- 一键穿戴套装（背包里有件的套装；同部位已穿戴的会自动卸下让位） -->
         <table class="ezfy-plain-table" v-if="ezfy.officerBagSets && ezfy.officerBagSets.length">
           <colgroup>
-            <col style="width:36%"><col style="width:32%"><col style="width:12%"><col style="width:20%">
+            <col style="width:34%"><col style="width:46%"><col style="width:20%">
           </colgroup>
-          <tr><th colspan="4">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
-          <tr><th class="nm">套装</th><th>穿齐进度</th><th>等级</th><th>操作</th></tr>
+          <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
+          <tr><th class="nm">套装</th><th>穿齐进度</th><th>操作</th></tr>
           <tr v-for="s in ezfy.officerBagSets" :key="'bs' + s.set_id">
-            <td class="nm">{{ s.name }}</td>
+            <td class="nm">
+              <a href="javascript:;" :title="ezfy.equipSetTip(s.set_id)">{{ s.name }}</a>
+              <span class="gray" v-if="s.level">（需{{ s.level }}级）</span>
+            </td>
             <td>
               <span :class="s.need > 0 ? 'gray' : 'green'">
                 已穿 {{ s.worn }}/{{ s.parts }} 件{{ s.need > 0 ? (' · 还差 ' + s.need + ' 件生效') : ' · 已生效' }}
               </span>
               <span class="gray" v-if="s.need > 0 && s.bag_count > 0">（背包还有 {{ s.bag_count }} 件）</span>
-              <!-- ★ 2026-09-25：一键穿戴这里也把套装加成写出来，玩家才知道穿齐能拿到什么 -->
-              <div class="set-mini" v-if="ezfy.setBonusText(s.set_id)">
-                套装加成：<b class="green">{{ ezfy.setBonusText(s.set_id) }}</b>
-              </div>
             </td>
-            <td>{{ s.level }}</td>
             <td><a href="javascript:;" @click="ezfy.doEquipSet(s)">[一键穿戴]</a></td>
           </tr>
         </table>
 
-        <!-- ★ 2026-10-10 装备背包已合并进「装备」tab（检索 + 分页） -->
+        <!-- ★ 2026-10-18 装备背包已合并进「装备」tab（检索 + 分页）；品质/等级信息悬停(title)看 -->
         <table class="ezfy-plain-table">
           <colgroup>
-            <col style="width:30%"><col style="width:12%"><col style="width:18%"><col style="width:11%"><col style="width:11%"><col style="width:18%">
+            <col style="width:34%"><col style="width:16%"><col style="width:30%"><col style="width:20%">
           </colgroup>
-          <tr><th colspan="6">装备背包</th></tr>
-          <!-- ★ 2026-09-29：同一件装备（同 cfg）叠加成一行「名称 ×N」；部位有空余才能 [穿戴]，
-               没空余（同部位已穿戴）显示「部位已满」不可穿戴。 -->
-          <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>品质</th><th>要求等级</th><th>操作</th></tr>
+          <tr><th colspan="4">装备背包</th></tr>
+          <tr><th class="nm">名称</th><th>部位</th><th>套装</th><th>操作</th></tr>
           <template v-for="g in ezfy.officerBagPaged">
           <tr :key="'db' + g.key">
-            <td class="nm"><a href="javascript:;" @click="ezfy.toggleDetail(g.first.id, 'item')">{{ g.name }}</a><span class="gray"> ×{{ g.count }}</span></td>
+            <td class="nm">
+              <a href="javascript:;" :title="ezfy.equipItemTip(g.first)">{{ g.name }}</a><span class="gray"> ×{{ g.count }}</span>
+            </td>
             <td>{{ g.slot }}</td>
             <td>
-              <a v-if="g.set_id" href="javascript:;" @click="ezfy.toggleDetail(g.first.id, 'set')">{{ g.set_name }}</a>
+              <a v-if="g.set_id" href="javascript:;" :title="ezfy.equipSetTip(g.set_id)">{{ g.set_name }}</a>
               <span v-else class="gray">—</span>
             </td>
-            <td :class="ezfy.qualityClass(g.tier_name)">{{ g.tier_name }}</td>
-            <td>{{ g.first.level }}</td>
             <td>
               <a v-if="g.canEquip" href="javascript:;" @click="ezfy.doEquipGroup(g)">[穿戴]</a>
               <span v-else class="gray">部位已满</span>
             </td>
           </tr>
-          <tr v-if="ezfy.detailRowId === g.first.id" :key="'dtb' + g.key" class="set-card-row">
-            <td :colspan="6">
-              <div class="set-card">
-                <!-- ① 点「装备名」→ 只看这件自己的加成 -->
-                <template v-if="ezfy.detailMode === 'item'">
-                  <div class="sc-h"><b>{{ g.first.name }}</b>
-                    <span :class="ezfy.qualityClass(g.first.tier_name)">[{{ g.first.tier_name || '普通' }}]</span>
-                    <span class="gray">{{ g.first.slot || g.first.type }} · {{ g.first.level }}级 · 背包 {{ g.count }} 件</span>
-                  </div>
-                  <div class="sc-b">装备加成：<b class="green">{{ ezfy.equipAttrText(g.first) || '（这件没有额外属性加成）' }}</b></div>
-                  <div class="sc-b gray" v-if="ezfy.setOf(g.first.set_id)">所属套装：{{ ezfy.setOf(g.first.set_id).name }}（点套装名看套装加成）</div>
-                  <div class="sc-b gray" v-else>这件是散件，不属于任何套装。</div>
-                </template>
-                <!-- ② 点「套装名」→ 只看套装加成 -->
-                <template v-else-if="ezfy.setOf(g.first.set_id)">
-                  <div class="sc-h"><b>{{ ezfy.setOf(g.first.set_id).name }}</b>
-                    <span :class="ezfy.qualityClass(ezfy.setOf(g.first.set_id).tier_name)">[{{ ezfy.setOf(g.first.set_id).tier_name || '特殊' }}]</span>
-                    <span class="gray">穿齐 {{ ezfy.setOf(g.first.set_id).parts }} 件才生效</span>
-                  </div>
-                  <div class="sc-b">套装加成：<b class="green">{{ ezfy.setBonusText(g.first.set_id) || '（本套装无额外属性加成）' }}</b></div>
-
-                  <div class="sc-b">我的进度：已拥有 <b>{{ ezfy.setOf(g.first.set_id).owned || 0 }}</b>/{{ ezfy.setOf(g.first.set_id).parts }} 件
-                    <span v-if="(ezfy.setOf(g.first.set_id).owned || 0) >= ezfy.setOf(g.first.set_id).parts" class="green">已够穿齐</span>
-                    <span v-else class="red">还差 {{ ezfy.setOf(g.first.set_id).parts - (ezfy.setOf(g.first.set_id).owned || 0) }} 件</span>
-                  </div>
-                  <div class="sc-b gray" v-if="ezfy.setOf(g.first.set_id).slots && ezfy.setOf(g.first.set_id).slots.length">部位：{{ ezfy.setOf(g.first.set_id).slots.join(' / ') }}</div>
-                  <div class="sc-b gray">点装备名看这件自己的加成</div>
-                </template>
-                <div class="sc-b gray" v-else>套装资料还没加载出来，稍后再试。</div>
-              </div>
-            </td>
-          </tr>
           </template>
-          <tr v-if="!ezfy.officerBagGroups.length"><td colspan="6" class="gray">{{ ezfy.officerBagWord ? '(没有匹配「' + ezfy.officerBagWord + '」的装备)' : '(背包暂无装备)' }}</td></tr>
+          <tr v-if="!ezfy.officerBagGroups.length"><td colspan="4" class="gray">{{ ezfy.officerBagWord ? '(没有匹配「' + ezfy.officerBagWord + '」的装备)' : '(背包暂无装备)' }}</td></tr>
         </table>
         <div class="old-line">
           搜索:
