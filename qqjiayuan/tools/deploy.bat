@@ -330,8 +330,8 @@ echo ==^> 6/7 启动
 call :rsh "chmod +x %REMOTE_DIR%/*.sh %REMOTE_DIR%/server/server %REMOTE_DIR%/server/dbinit %REMOTE_DIR%/server/ezfymigrate 2>/dev/null; cd %REMOTE_DIR% && ./start.sh"
 if not "%RH_RC%"=="0" (
   echo   XX 启动脚本失败, 看日志: %REMOTE_DIR%/logs/server.log
-  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo !RH_OUT!
+  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log | iconv -f UTF-8 -t GBK -c 2>/dev/null"
+  if exist "%TMPOUT%" type "%TMPOUT%"
   goto fail_clean
 )
 
@@ -341,8 +341,8 @@ ping -n 7 127.0.0.1 >nul 2>&1
 call :rsh_read "ss -lntp 2>/dev/null | grep ':8080 ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL"
 if not "%RH_OUT%"=="LISTEN_OK" (
   echo   XX 8080 没在监听
-  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo !RH_OUT!
+  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log | iconv -f UTF-8 -t GBK -c 2>/dev/null"
+  if exist "%TMPOUT%" type "%TMPOUT%"
   goto fail_clean
 )
 echo   OK 8080 已监听
@@ -353,15 +353,15 @@ call :rsh_read "curl -sI --max-time 8 http://127.0.0.1:8080/ | head -1"
 echo !RH_OUT! | findstr /c:" 200 " >nul
 if errorlevel 1 (
   echo   XX 首页不是 200 ^(!RH_OUT!^)
-  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log"
-  echo !RH_OUT!
+  call :rsh_read "tail -n 25 %REMOTE_DIR%/logs/server.log | iconv -f UTF-8 -t GBK -c 2>/dev/null"
+  if exist "%TMPOUT%" type "%TMPOUT%"
   goto fail_clean
 )
 echo   OK 首页 HTTP 200
 
 rem 版本指纹: 未知路径会回落 index.html 返 200, 所以必须看响应体是不是 JSON
-call :rsh_read "curl -s --max-time 8 http://127.0.0.1:8080/api/games/ezfy/view | head -c 60"
-echo %RH_OUT% | findstr /c:"code" >nul
+call :rsh_read "curl -s --max-time 8 http://127.0.0.1:8080/api/games/ezfy/view | head -c 400 | iconv -f UTF-8 -t GBK -c 2>/dev/null"
+findstr /c:"code" "%TMPOUT%" >nul
 if errorlevel 1 goto verify_not_json
 echo   OK 接口返回 JSON —— 新版本已生效
 goto after_verify
@@ -371,8 +371,8 @@ echo   WARN: 接口返回的不是 JSON^(可能是 index.html 回落^) —— 确认下版本
 echo %RH_OUT%
 
 :after_verify
-call :rsh_read "tail -n 8 %REMOTE_DIR%/logs/server.log"
-echo %RH_OUT%
+call :rsh_read "tail -n 8 %REMOTE_DIR%/logs/server.log | iconv -f UTF-8 -t GBK -c 2>/dev/null"
+if exist "%TMPOUT%" type "%TMPOUT%"
 
 echo.
 echo 部署完成  http://%SSH_HOST%:8080
@@ -412,7 +412,7 @@ goto :eof
 rem :rsh "远端命令"  —— 有副作用的命令, DRY_RUN 时只打印
 :rsh
 if "%DRY_RUN%"=="1" (
-  echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: %~1
+  echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: "%~1"
   set "RH_RC=0"
   goto :eof
 )

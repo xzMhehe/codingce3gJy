@@ -230,7 +230,7 @@ if not "!PUT_RC!"=="0" (
     echo   XX patch script upload failed
     goto fail_clean
 )
-call :rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*//p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1 | tr -d '\"' | tr -d '\r'"
+call :rsh_read "sed -n 's/^[[:space:]]*port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' /opt/Linuxbushu/server/config.yaml 2>/dev/null | head -n1"
 set "HOME_PORT=!RH_OUT!"
 if "!HOME_PORT!"=="" set "HOME_PORT=8080"
 
@@ -282,18 +282,18 @@ if not "!WP_RESULT!"=="OK" (
 ) else (
   echo   OK WWII %WWII_PORT% listening
 )
-call :rsh_read "curl -s --max-time 8 http://127.0.0.1:%WWII_PORT%/api/ezfy/zone | head -c 80"
-echo %RH_OUT% | findstr /c:"code" >nul
+call :rsh_read "curl -s --max-time 8 http://127.0.0.1:%WWII_PORT%/api/ezfy/zone | head -c 400"
+findstr /c:"code" "%TMPOUT%" >nul
 if errorlevel 1 (
   echo   WARN: zone api not JSON ^(maybe still seeding^), check later
 ) else (
-  echo   OK zone api JSON: %RH_OUT%
+  echo   OK zone api JSON: !RH_OUT!
 )
 
 rem ---------- optional zone 2 ----------
 if "%ZONE2%"=="1" (
   echo ==^> --zone2: clone zone 2 ^(%ZONE2_DIR%, port %ZONE2_PORT%, db qq_ezzt2, fresh^)
-  call :rsh "test -d '%ZONE2_DIR%' && echo yes || echo no"
+  call :rsh_read "test -d '%ZONE2_DIR%' && echo yes || echo no"
   if "!RH_OUT!"=="yes" (
     echo   %ZONE2_DIR% exists - syncing new binary/web/scripts ^(config.yaml kept^), restarting zone 2
     call :rsh "cp -f %REMOTE_DIR%/server/server %ZONE2_DIR%/server/server && cp -R %REMOTE_DIR%/web/dist/. %ZONE2_DIR%/web/dist/ && cp -f %REMOTE_DIR%/start.sh %REMOTE_DIR%/stop.sh %ZONE2_DIR%/ && chmod +x %ZONE2_DIR%/*.sh %ZONE2_DIR%/server/server"
@@ -345,7 +345,7 @@ goto :eof
 
 :rsh
 if "%DRY_RUN%"=="1" (
-  echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: %~1
+  echo      dry-run: ssh %SSH_USER%@%SSH_HOST%: "%~1"
   set "RH_RC=0"
   goto :eof
 )
@@ -387,7 +387,7 @@ goto wp_loop
 :usage
 echo deploy-wwii.bat - deploy WWII independent package to a Linux host
 echo.
-echo   tools\deploy-wwii.bat -p PASS -h HOST [options]
+echo   tools\deploy-wwii.bat -p PASS -h HOST ^(options^)
 echo     -f FILE        package, default ..\WWIIbushu.tar.gz
 echo     -h HOST        ssh host, default 39.105.151.141
 echo     -u USER        ssh user, default root
