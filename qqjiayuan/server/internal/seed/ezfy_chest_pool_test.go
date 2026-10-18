@@ -110,36 +110,44 @@ func TestChestSetWeightOrdered(t *testing.T) {
 	}
 }
 
-// TestChestSetProbabilityOnePercent 4/5/6 号箱的「出套装概率」必须 ≈ 1%。
+// TestChestSetProbabilityBaseline 各宝箱「出套装概率」的**现状基线**
+// （★★ 2026-10-18 用户定案：按线上 1 区现状，不再强制 1%）
 //
-// ★★ 2026-10-09 ：「战神宝箱、荣耀宝箱、统帅宝箱 出套装概率应该是 1%」。
+// 历史：2026-10-09 曾要求「战神/荣耀/统帅宝箱 出套装概率 1%」。但 1 区在管理端被反复调过奖池，
+// 现状已明显偏离该规则 —— 战神 0.34%、荣耀 **6.65%**、统帅 3.00%（其中荣耀/统帅各多了一行
+// 「套装 1 × 权重 200」，疑似误加，但用户确认按现状定案）。
 //
-//	口径 = 套装总权重 ÷ 全部奖品总权重。这三个箱子各自加了一批道具（11 个 × 权重 100），
-//	道具权重（约 1190~1220）远大于套装 → 套装**总权重**必须压到 12 才能维持 1%
-//	（战神 2 套各 6 / 荣耀 4 套各 3 / 统帅 12 套各 1，见 ezfyChestOverride）。
-//
-// ⚠️ **以后往这三个箱子加奖品或调权重时，记得同步套装权重**，否则概率会被带偏；
-// 老库的行由 `migrateEzfyChestSetWeight` 幂等迁移（只改「还是旧值」的行）。
-func TestChestSetProbabilityOnePercent(t *testing.T) {
-	items := buildEzfyChestItems()
-	for _, chestID := range []int{4, 5, 6} {
-		setW, total := 0, 0
-		for _, it := range items {
-			if it.ChestId != chestID {
-				continue
-			}
-			total += it.Weight
-			if it.Kind == 3 {
-				setW += it.Weight
-			}
+// 所以这里不再校验 1%，而是**钉住当前基线**：谁改奖池把概率带偏，这个用例就会红，
+// 逼改动者显式确认「是有意调整，还是误加了一行」。基线来源 = 线上 1 区 2026-10-18 快照
+// （`ezfyChestPoolSeedRows`，与 qq_ezzt.ezfy_cfg_chest_item 逐行一致）。
+func TestChestSetProbabilityBaseline(t *testing.T) {
+	want := map[int][2]int{ // chestID -> {套装权重, 总权重}
+		1: {0, 5300},
+		2: {2, 112},
+		3: {3, 133},
+		4: {4, 1194},
+		5: {208, 3128},
+		6: {436, 14536},
+	}
+	got := map[int][2]int{}
+	for _, it := range buildEzfyChestItems() {
+		v := got[it.ChestId]
+		v[1] += it.Weight
+		if it.Kind == 3 {
+			v[0] += it.Weight
 		}
-		if total == 0 {
-			t.Fatalf("宝箱 %d 奖池为空", chestID)
-		}
-		pct := float64(setW) * 100 / float64(total)
-		if pct < 0.9 || pct > 1.1 {
-			t.Fatalf("宝箱 %d 出套装概率 = %.2f%%（套装权重 %d / 总权重 %d），应在 1%% 附近",
-				chestID, pct, setW, total)
+		got[it.ChestId] = v
+	}
+	for _, chest := range []int{1, 2, 3, 4, 5, 6} {
+		w, g := want[chest], got[chest]
+		if g != w {
+			pct := 0.0
+			if g[1] > 0 {
+				pct = float64(g[0]) * 100 / float64(g[1])
+			}
+			t.Fatalf("宝箱 %d 奖池基线变了：套装权重/总权重 = %d/%d（出套装 %.2f%%），基线 %d/%d。\n"+
+				"若是有意调整奖池，请同步更新本用例的基线；若是误加（例如多了一行套装），请把它修掉。",
+				chest, g[0], g[1], pct, w[0], w[1])
 		}
 	}
 }

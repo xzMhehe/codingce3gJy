@@ -120,6 +120,15 @@ export default {
         if (wrap) wrap.scrollTop = 0
       })
     },
+    // ★★ 2026-10-18 修复「管理员账号密码登录后左侧菜单空白，必须 Ctrl+F5 强制刷新才出来」：
+    //   filterMenu() 原来只在 created() 里调一次，而 App 是在 **/login** 页创建的 ——
+    //   那时 filterMenu 一进来就 `if (this.$route.path === '/login') return` 直接返回；
+    //   登录成功后 `$router.push('/')` 只是 SPA 路由变化，App 不会重建 → 菜单永远空着，
+    //   只有强制刷新（重新走一遍 created）才会正常。
+    //   这里按 **path** 变化补一次（不用整个 $route：切 tab 只改 query，不必反复请求 my-perms）。
+    '$route.path' (p) {
+      if (p !== '/login') this.filterMenu()
+    },
     activeTab: {
       immediate: true,
       handler (t) {
@@ -186,10 +195,17 @@ export default {
     // 菜单维护的覆盖配置（名称/图标/排序/隐藏）在权限过滤前先合并
     async filterMenu () {
       if (this.$route.path === '/login') return
-      const [r, ov] = await Promise.all([
+      const [r0, ov] = await Promise.all([
         api.get('/admin/my-perms').catch(() => null),
         api.get('/admin/menus').catch(() => null)
       ])
+      // ★ 2026-10-18 兜底：my-perms 偶发失败（token 刚写入 / 网络抖动 / 后端刚重启）时重试一次。
+      //   原来失败即按「无权限」处理 → 菜单全空且不重试，只能强制刷新。
+      let r = r0
+      if (!r || r.code !== 0) {
+        await new Promise(res => setTimeout(res, 600))
+        r = await api.get('/admin/my-perms').catch(() => null)
+      }
       const codes = (r && r.code === 0) ? (r.data.codes || []) : []
       const isSuper = (r && r.code === 0) ? !!r.data.super : false
       const keyMap = {}

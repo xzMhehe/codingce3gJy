@@ -211,75 +211,89 @@
     <!-- ★★ 2026-10-18 风云榜奖励发放（用户需求）：
          给第 1/2/3 名和参与者分别发 宝箱 / 道具 / 钻石；奖励**不直接进背包**，
          以系统邮件发给玩家，玩家在邮箱点 [领取] 才到账，超过领取期限作废。
-         同一玩家同一周只发一次（后端 ezfy_pvp_reward 唯一索引），重复点只补发没发过的人。 -->
-    <el-dialog title="风云榜奖励发放" :visible.sync="reward.on" width="900px" :close-on-click-modal="false"
+         同一玩家同一周只发一次（后端 ezfy_pvp_reward 唯一索引），重复点只补发没发过的人。
+         ★ 2026-10-18 用户「提示冗余了，用 i 然后鼠标滑动展示那种，发放页面要简约」：
+           大段说明收进标题旁的 i 图标 tooltip，四档压成单行。 -->
+    <el-dialog title="风云榜奖励发放" :visible.sync="reward.on" width="880px" :close-on-click-modal="false"
                append-to-body>
-      <div class="td-sub" style="margin-bottom:10px;line-height:1.8">
-        奖励<b>不直接进背包</b>，以<b>系统邮件</b>发送，玩家在「邮箱」点 [领取] 才到账；超过领取期限未领取自动作废。<br>
-        同一玩家同一周只发一次，重复点「确认发放」只会补发还没发过的人。
-      </div>
-
-      <el-form label-width="90px" size="small">
+      <el-form label-width="84px" size="small" class="rw-form">
         <el-form-item label="统计周">
-          <el-select v-model="reward.week" style="width:200px" @change="loadRewardStatus()">
+          <el-select v-model="reward.week" style="width:190px" @change="loadRewardStatus()">
             <el-option v-for="w in weeks" :key="'rw' + w" :label="w" :value="w" />
           </el-select>
           <span class="td-sub" style="margin-left:10px">
-            榜单 {{ pvpTotal }} 人<span v-if="reward.status">，本周已发放 {{ reward.status.sent }} 人</span>
+            榜单 {{ pvpTotal }} 人<span v-if="reward.status">，已发放 {{ reward.status.sent }} 人</span>
           </span>
+          <el-tooltip placement="top" effect="light">
+            <div slot="content" style="max-width:320px;line-height:1.7">
+              奖励不直接进背包，以系统邮件发送，玩家在「邮箱」点 [领取] 才到账；超过领取期限未领取自动作废。<br>
+              同一玩家同一周只发一次，重复点「确认发放」只会补发还没发过的人。
+            </div>
+            <i class="el-icon-info rw-info"></i>
+          </el-tooltip>
         </el-form-item>
-        <el-form-item label="领取期限">
-          <el-input-number v-model="reward.expire_days" :min="1" :max="90" />
-          <span class="td-sub" style="margin-left:8px">天（到期未领取作废）</span>
-        </el-form-item>
-        <el-form-item label="参与奖范围">
+        <el-form-item label="期限/范围">
+          <el-input-number v-model="reward.expire_days" :min="1" :max="90" size="small"
+                           controls-position="right" style="width:96px" />
+          <span class="td-sub">天未领作废</span>
+          <span class="rw-sep">|</span>
           <el-radio-group v-model="reward.joinAll">
             <el-radio :label="false">第 4 ~ 第 {{ reward.join_limit }} 名</el-radio>
-            <el-radio :label="true">第 4 名及以后全部参战玩家</el-radio>
+            <el-radio :label="true">全部参战玩家</el-radio>
           </el-radio-group>
           <el-input-number v-if="!reward.joinAll" v-model="reward.join_limit" :min="4" :max="1000"
-                           size="small" style="margin-left:10px" />
+                           size="small" controls-position="right" style="width:88px;margin-left:4px" />
         </el-form-item>
       </el-form>
 
-      <div v-for="t in reward.tiers" :key="'rt' + t.key" class="rw-tier">
-        <div class="rw-tier-head">{{ t.label }}</div>
+      <!-- 四档 → 真表格：档位 / 钻石 / 宝箱 / 道具 四列（table-layout:fixed + colgroup 保证表头与内容严格对齐） -->
+      <table class="rw-tb">
+        <colgroup>
+          <col style="width:76px" />
+          <col style="width:132px" />
+          <col />
+          <col />
+        </colgroup>
+        <thead>
+          <tr><th>档位</th><th>钻石</th><th>宝箱</th><th>道具</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in reward.tiers" :key="'rt' + t.key">
+            <td class="rw-name">{{ t.label }}</td>
 
-        <div class="rw-row">
-          <span class="rw-lb">钻石</span>
-          <el-input-number v-model="t.diamond" :min="0" :max="100000000" size="small" />
-        </div>
+            <td>
+              <el-input-number v-model="t.diamond" :min="0" :max="100000000" size="mini"
+                               controls-position="right" style="width:112px" />
+            </td>
 
-        <div class="rw-row">
-          <span class="rw-lb">宝箱</span>
-          <div class="rw-items">
-            <div v-for="(c, i) in t.chests" :key="'c' + i" class="rw-item">
-              <el-select v-model="c.chest_id" placeholder="选择宝箱" filterable size="small" style="width:200px">
-                <el-option v-for="o in chestOptions" :key="'co' + o.id" :label="o.name" :value="o.id" />
-              </el-select>
-              <el-input-number v-model="c.count" :min="1" :max="100000" size="small" style="width:110px" />
-              <el-button type="text" @click="t.chests.splice(i, 1)">删除</el-button>
-            </div>
-            <el-button size="mini" plain icon="el-icon-plus"
-                       @click="t.chests.push({ chest_id: null, count: 1 })">添加宝箱</el-button>
-          </div>
-        </div>
+            <td>
+              <div class="rw-line" v-for="(c, i) in t.chests" :key="'c' + i">
+                <el-select v-model="c.chest_id" size="mini" filterable placeholder="选择宝箱" style="flex:1;min-width:96px">
+                  <el-option v-for="o in chestOptions" :key="'co' + o.id" :label="o.name" :value="o.id" />
+                </el-select>
+                <el-input-number v-model="c.count" :min="1" :max="100000" size="mini"
+                                 controls-position="right" style="width:72px;flex:0 0 72px" />
+                <i class="el-icon-close rw-del" title="移除" @click="t.chests.splice(i, 1)"></i>
+                <i v-if="i === t.chests.length - 1" class="el-icon-plus rw-add" title="再加一个宝箱"
+                   @click="t.chests.push({ chest_id: null, count: 1 })"></i>
+              </div>
+            </td>
 
-        <div class="rw-row">
-          <span class="rw-lb">道具</span>
-          <div class="rw-items">
-            <div v-for="(it, i) in t.items" :key="'i' + i" class="rw-item">
-              <el-select v-model="it.cfg_id" placeholder="选择道具" filterable size="small" style="width:220px">
-                <el-option v-for="o in itemOptions" :key="'io' + o.id" :label="o.name" :value="o.id" />
-              </el-select>
-              <el-input-number v-model="it.count" :min="1" :max="100000" size="small" style="width:110px" />
-              <el-button type="text" @click="t.items.splice(i, 1)">删除</el-button>
-            </div>
-            <el-button size="mini" plain icon="el-icon-plus"
-                       @click="t.items.push({ cfg_id: null, count: 1 })">添加道具</el-button>
-          </div>
-        </div>
-      </div>
+            <td>
+              <div class="rw-line" v-for="(it, i) in t.items" :key="'i' + i">
+                <el-select v-model="it.cfg_id" size="mini" filterable placeholder="选择道具" style="flex:1;min-width:110px">
+                  <el-option v-for="o in itemOptions" :key="'io' + o.id" :label="o.name" :value="o.id" />
+                </el-select>
+                <el-input-number v-model="it.count" :min="1" :max="100000" size="mini"
+                                 controls-position="right" style="width:72px;flex:0 0 72px" />
+                <i class="el-icon-close rw-del" title="移除" @click="t.items.splice(i, 1)"></i>
+                <i v-if="i === t.items.length - 1" class="el-icon-plus rw-add" title="再加一个道具"
+                   @click="t.items.push({ cfg_id: null, count: 1 })"></i>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
       <div slot="footer">
         <el-button @click="reward.on = false">取消</el-button>
@@ -346,11 +360,13 @@ export default {
         joinAll: false, // true = 第 4 名及以后全部参战玩家
         saving: false,
         status: null,
+        // 每档默认各带一行空宝箱 / 空道具 —— 弹窗一打开就是「一行一档」，最紧凑
+        // （空行在 doReward 里按 chest_id/cfg_id 为空自动跳过）
         tiers: [
-          { key: 'rank1', label: '第 1 名', diamond: 0, chests: [], items: [] },
-          { key: 'rank2', label: '第 2 名', diamond: 0, chests: [], items: [] },
-          { key: 'rank3', label: '第 3 名', diamond: 0, chests: [], items: [] },
-          { key: 'join', label: '参与奖（第 4 名及以后）', diamond: 0, chests: [], items: [] }
+          { key: 'rank1', label: '第 1 名', diamond: 0, chests: [{ chest_id: null, count: 1 }], items: [{ cfg_id: null, count: 1 }] },
+          { key: 'rank2', label: '第 2 名', diamond: 0, chests: [{ chest_id: null, count: 1 }], items: [{ cfg_id: null, count: 1 }] },
+          { key: 'rank3', label: '第 3 名', diamond: 0, chests: [{ chest_id: null, count: 1 }], items: [{ cfg_id: null, count: 1 }] },
+          { key: 'join', label: '参与奖', diamond: 0, chests: [{ chest_id: null, count: 1 }], items: [{ cfg_id: null, count: 1 }] }
         ]
       },
       chestOptions: [],
@@ -571,11 +587,24 @@ export default {
   .cfg-tabs { margin-bottom: 6px; }
   .sw-label { font-size: 13px; color: #606266; margin-right: 6px; }
   .panel-title { font-size: 14px; font-weight: 600; color: #303133; margin: 16px 0 8px; }
-  /* ★ 2026-10-18 风云榜奖励发放弹窗：每档一个浅灰块，避免四档糊在一起 */
-  .rw-tier { border: 1px solid #ebeef5; border-radius: 4px; padding: 8px 12px 4px; margin-bottom: 10px; background: #fafafa; }
-  .rw-tier-head { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 6px; }
-  .rw-row { display: flex; align-items: flex-start; margin-bottom: 6px; }
-  .rw-lb { flex: 0 0 48px; font-size: 13px; color: #606266; line-height: 32px; }
-  .rw-items { flex: 1; }
-  .rw-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  /* ★ 2026-10-18 风云榜奖励发放弹窗：真表格（table-layout:fixed，表头与内容严格对齐） */
+  .rw-form .el-form-item { margin-bottom: 8px; }
+  .rw-info { margin-left: 6px; color: #909399; cursor: help; font-size: 14px; vertical-align: -1px; }
+  .rw-sep { color: #dcdfe6; margin: 0 10px; }
+  .rw-tb { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #ebeef5; border-radius: 4px; }
+  .rw-tb th {
+    padding: 7px 10px; background: #f5f7fa; font-size: 12px; font-weight: 400;
+    color: #909399; text-align: left; border-bottom: 1px solid #ebeef5;
+  }
+  .rw-tb td { padding: 8px 10px; vertical-align: top; border-bottom: 1px solid #ebeef5; }
+  .rw-tb tbody tr:last-child td { border-bottom: 0; }
+  .rw-tb tbody tr:nth-child(even) td { background: #fafbfc; }
+  .rw-tb td.rw-name { font-size: 13px; font-weight: 600; color: #303133; line-height: 28px; }
+  .rw-line { display: flex; align-items: center; gap: 5px; }
+  .rw-line + .rw-line { margin-top: 5px; }
+  .rw-del, .rw-add { cursor: pointer; font-size: 13px; flex: 0 0 auto; }
+  .rw-del { color: #c0c4cc; }
+  .rw-del:hover { color: #f56c6c; }
+  .rw-add { color: #c0c4cc; }
+  .rw-add:hover { color: #409eff; }
 </style>

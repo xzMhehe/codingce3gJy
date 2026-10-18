@@ -27,6 +27,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,56 @@ const (
 
 // ezfyMailAttachExpireDays 带附件邮件的默认领取期限（天）。用户规则「7 天不领取默认无效」。
 const ezfyMailAttachExpireDays = 7
+
+// ★ 2026-10-18 领取防刷（用户要求「领取的时候注意防抖、防刷领取」）：
+//
+//	同一玩家 300ms 内只允许点一次 + 每分钟最多 60 次。
+//
+// 说明：**真正的防重复发奖**靠 `UPDATE ... WHERE claimed = 0` 的条件更新（多端并发也只有一个成功），
+// 这里只挡「脚本连点 / 高频刷接口」这类无意义请求，不参与业务判定。
+const (
+	ezfyMailClaimMinGapMs = 300
+	ezfyMailClaimWinMs    = 60 * 1000
+	ezfyMailClaimWinMax   = 60
+)
+
+type ezfyMailClaimRate struct {
+	lastMs   int64
+	winStart int64
+	winCount int
+}
+
+var (
+	ezfyMailClaimMu    sync.Mutex
+	ezfyMailClaimRates = map[uint]*ezfyMailClaimRate{}
+)
+
+// ezfyMailClaimAllow 领取限流（进程内计数；多机部署各机独立，够用）。
+func ezfyMailClaimAllow(uid uint, nowMs int64) (bool, string) {
+	ezfyMailClaimMu.Lock()
+	defer ezfyMailClaimMu.Unlock()
+	if len(ezfyMailClaimRates) > 65536 { // 防无限增长（与其它进程内备忘同一策略）
+		ezfyMailClaimRates = map[uint]*ezfyMailClaimRate{}
+	}
+	r := ezfyMailClaimRates[uid]
+	if r == nil {
+		r = &ezfyMailClaimRate{winStart: nowMs}
+		ezfyMailClaimRates[uid] = r
+	}
+	if nowMs-r.lastMs < ezfyMailClaimMinGapMs {
+		return false, "点得太快了，稍等一下再领"
+	}
+	if nowMs-r.winStart >= ezfyMailClaimWinMs {
+		r.winStart = nowMs
+		r.winCount = 0
+	}
+	if r.winCount >= ezfyMailClaimWinMax {
+		return false, "领取太频繁，请稍后再试"
+	}
+	r.lastMs = nowMs
+	r.winCount++
+	return true, ""
+}
 
 // ezfyMailAttachKindName 附件类型的展示名（管理端/玩家端文案用）。
 func ezfyMailAttachKindName(kind int) string {
@@ -196,6 +247,11 @@ func (h *EzfyHandler) MailClaim(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID == 0 {
 		resp.ParamError(c, "参数错误")
+		return
+	}
+	// ★ 防抖 / 防刷：连点、脚本高频请求直接挡掉（真正的防重复发奖靠下面的条件 UPDATE）
+	if ok, msg := ezfyMailClaimAllow(uid, time.Now().UnixMilli()); !ok {
+		resp.FailData(c, 429, msg, nil)
 		return
 	}
 	h.cfgs()

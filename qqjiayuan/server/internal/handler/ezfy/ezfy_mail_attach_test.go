@@ -57,3 +57,41 @@ func TestEzfyMailAttachKindName(t *testing.T) {
 		}
 	}
 }
+
+// 护栏：领取限流（★ 2026-10-18 用户「领取的时候注意防抖，防刷领取」）。
+//
+// 注意：这里测的是**进程内限流**（挡连点/脚本高频），真正的「不重复发奖」是 DB 条件更新
+// `WHERE claimed = 0`，不在本用例范围。
+func TestEzfyMailClaimAllow(t *testing.T) {
+	uid := uint(990001) // 用独立 uid，避免和别的用例互相污染
+	now := int64(1_000_000)
+
+	if ok, _ := ezfyMailClaimAllow(uid, now); !ok {
+		t.Fatal("首次领取应放行")
+	}
+	// 100ms 内连点 → 拒
+	if ok, msg := ezfyMailClaimAllow(uid, now+100); ok || msg == "" {
+		t.Fatalf("300ms 内连点应被拒并给出提示，实际 ok=%v msg=%q", ok, msg)
+	}
+	// 超过 300ms → 放行
+	if ok, _ := ezfyMailClaimAllow(uid, now+400); !ok {
+		t.Fatal("间隔超过 300ms 应放行")
+	}
+
+	// 一分钟窗口上限 60 次
+	uid2 := uint(990002)
+	base := int64(2_000_000)
+	allowed := 0
+	for i := 0; i < 70; i++ {
+		if ok, _ := ezfyMailClaimAllow(uid2, base+int64(i)*400); ok {
+			allowed++
+		}
+	}
+	if allowed != ezfyMailClaimWinMax {
+		t.Fatalf("一分钟内应最多放行 %d 次，实际 %d 次", ezfyMailClaimWinMax, allowed)
+	}
+	// 跨过一分钟窗口后恢复
+	if ok, _ := ezfyMailClaimAllow(uid2, base+ezfyMailClaimWinMs+1000); !ok {
+		t.Fatal("跨过一分钟窗口后应恢复放行")
+	}
+}

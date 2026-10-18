@@ -9,6 +9,10 @@
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f8f8f9;border:1px solid #e0e0e0;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">{{ zoneTitle }}</div>
       <div style="text-align:center;padding:14px 0 16px;color:#888;font-size:14px;">正在进入{{ zoneTitle }}…</div>
+      <!-- ★★ 2026-10-18 卡住兜底：SSO 超过 5 秒还没结果就露出「点此进入」，玩家可手动触发跳转 -->
+      <div v-if="ssoStuck" style="text-align:center;padding:0 0 4px;font-size:14px;">
+        <a href="javascript:;" style="display:inline-block;padding:2px 10px;color:#2b6cb0;text-decoration:underline;" @click="manualEnter">点此进入</a>
+      </div>
     </div>
     <div v-else-if="!isLogin" class="wwii-login"
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f8f8f9;border:1px solid #e0e0e0;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);">
@@ -486,6 +490,9 @@ export default {
       //   二战服是独立 SPA，「家园」按钮不能用站内路由（/home 不存在），要整页跳回家园服。
       homeUrl: '',
       ssoPending: !!this.$store.state.token,
+      // ★★ 2026-10-18 卡住兜底：SSO 占位超过 5 秒就置 true，露出「点此进入」手动跳转
+      ssoStuck: false,
+      ssoStuckTimer: null,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
       wwiiCaptchaImg: '',     // 验证码 base64 图
@@ -662,6 +669,8 @@ export default {
       mailUnread: { inbox: 0, system: 0, total: 0 },
       mailTotal: 0, mailPage: 1, mailSize: 10,
       mailOpen: 0,
+      // ★ 2026-10-18 领取防抖：正在领取的邮件 id（0=空闲），按钮变「领取中…」且不可再点
+      mailClaiming: 0,
       mailCompose: { to: '', subject: '', content: '' },
       taskGroups: [],
       // ★ 任务分类 tab(0=默认第一个分类: 新手/日常/每周); -1=为爱发电卡。
@@ -2406,6 +2415,10 @@ export default {
       if (!this.$store.state.token) return // 家园没登录：不打扰，直接显示二战登录框
       this.wwiiBusy = true
       this.ssoPending = true // 占位兜底（data() 已按家园登录态初始化）
+      // ★★ 2026-10-18 卡住兜底：/ezfy/sso 走的是跨机 HTTP（最长 15s 才超时），这期间页面一直停在
+      //   「正在进入…」；超过 5s 就露出「点此进入」，让玩家手动触发跳转（自动跳转偶尔会卡住）。
+      this.clearSsoStuck()
+      this.ssoStuckTimer = setTimeout(() => { this.ssoStuck = true }, 5000)
       api.post('/ezfy/sso').then(r => {
         if (r.code === 0 && r.data && r.data.token) {
           this.$store.commit('setEzfyToken', r.data.token)
@@ -2424,9 +2437,25 @@ export default {
           return
         }
         // SSO 失败（二战未建档等）→ 撤掉占位，露出二战登录框让玩家自己输密码
+        this.clearSsoStuck()
         this.ssoPending = false
         this.wwiiBusy = false
-      }).catch(() => { this.ssoPending = false; this.wwiiBusy = false })
+      }).catch(() => { this.clearSsoStuck(); this.ssoPending = false; this.wwiiBusy = false })
+    },
+    clearSsoStuck () {
+      if (this.ssoStuckTimer) { clearTimeout(this.ssoStuckTimer); this.ssoStuckTimer = null }
+      this.ssoStuck = false
+    },
+    // ★★ 2026-10-18 占位页「点此进入」：自动跳转卡住时玩家手动触发。
+    //   已有二战 token（SSO 其实成功了、只是没跳走）→ 直接刷新进游戏；
+    //   没有家园 token（SSO 无从谈起）→ 刷新一次露出登录框，绝不再自动重试（避免死循环刷新）；
+    //   其余情况重走一次 SSO，仍未跳转就由 15s 超时兜底撤掉占位。
+    manualEnter () {
+      if (this.$store.getters.isEzfyLogin) { window.location.reload(); return }
+      if (!this.$store.state.token) { window.location.reload(); return }
+      this.clearSsoStuck()
+      this.wwiiBusy = false
+      this.trySsoLogin()
     },
     // 输入家园号(=二战游戏ID) + 家园密码，走二战自己的登录接口 /api/ezfy/login：
     //   首登用「家园号+家园密码」校验并同步建档，签发二战专属 token；
@@ -3151,17 +3180,21 @@ export default {
         })
       })
     },
+    // ★ 2026-10-18 领取：前端防抖（同一封邮件请求未回之前不再发第二次），后端还有 300ms 限流兜底。
+    //   真正的「不重复发奖」由后端 `WHERE claimed = 0` 条件更新保证。
     doMailClaim (m) {
       if (!m || m.claimed === 1 || !m.can_claim) return
+      if (this.mailClaiming) return // 已有领取请求在飞，忽略连点
+      this.mailClaiming = m.id
       api.post('/games/ezfy/mail/claim', { id: m.id }).then(r => {
+        this.mailClaiming = 0
         if (r.code === 0) {
           this.notify(r.data && r.data.msg ? r.data.msg : '领取成功')
-          // 本地先置已领（防连点），再整页刷新邮件拿最新状态
           m.claimed = 1
           m.can_claim = false
           this.loadMail(this.mailTab, true)
         } else this.notify(r.msg || '领取失败')
-      })
+      }).catch(() => { this.mailClaiming = 0 })
     },
     doSendMail () {
       const to = (this.mailCompose.to || '').trim()

@@ -53,7 +53,8 @@
                   附件：<span v-for="(a,i) in m.attach" :key="'at' + i">{{ i ? '、' : '' }}{{ a.name }}×{{ a.num }}</span>
                 </div>
                 <div class="old-line" style="margin-top:2px;">
-                  <a v-if="m.can_claim" href="javascript:;" @click="ezfy.doMailClaim(m)">[领取]</a>
+                  <a v-if="m.can_claim" href="javascript:;" :class="{ gray: ezfy.mailClaiming === m.id }"
+                     @click="ezfy.doMailClaim(m)">{{ ezfy.mailClaiming === m.id ? '[领取中…]' : '[领取]' }}</a>
                   <span v-else-if="m.claimed === 1" class="gray">[已领取]</span>
                   <span v-else-if="m.expired" class="gray">[已过期]</span>
                 </div>
