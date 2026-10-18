@@ -451,7 +451,7 @@
             <span>操作选项：</span>
             <label><input type="radio" :value="true" v-model="ezfy.trainSplit"/>[全部工厂]</label>
             <label><input type="radio" :value="false" v-model="ezfy.trainSplit"/>[仅此工厂]</label>
-            <span class="gray" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence'">(可用{{ ezfy.eligibleFactories }}座军工厂平分)</span>
+            <span class="gray" v-if="ezfy.trainSplit && ezfy.trainMode !== 'defence'">({{ ezfy.eligibleFactories }}座平分)</span>
           </div>
           <div class="old-line">预计耗时：{{ ezfy.trainEstimateText }}</div>
           <div class="old-line">

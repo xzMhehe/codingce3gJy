@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"qqjiayuan/server/internal/model"
 	"qqjiayuan/server/pkg/resp"
@@ -1252,20 +1253,233 @@ func (h *EzfyAdmin) AdminEzfyBotOccupy(c *gin.Context) {
 			nickOf[p.UserID] = p.Nickname
 		}
 	}
+	// ★ 2026-10-18 待处理赎城请求数（status=0 按被赎城市聚合，管理端据此显示「同意赎回」）
+	ransomCnt := map[uint]int64{}
+	{
+		occIds := make([]uint, 0, len(rows))
+		for _, r := range rows {
+			occIds = append(occIds, r.ID)
+		}
+		if len(occIds) > 0 {
+			var rnList []struct {
+				OccupyId uint
+				Cnt      int64
+			}
+			h.DB.Model(&model.EzfyRansom{}).Select("occupy_id, COUNT(*) as cnt").
+				Where("occupy_id IN ? AND status = 0", occIds).Group("occupy_id").Find(&rnList)
+			for _, rn := range rnList {
+				ransomCnt[rn.OccupyId] = rn.Cnt
+			}
+		}
+	}
 	out := make([]gin.H, 0, len(rows))
 	for _, r := range rows {
 		st := "占领中"
 		if r.Status == 2 {
 			st = "已归还"
 		}
+		if r.Status == 3 {
+			st = "已摧毁"
+		}
+		if r.Status == 4 {
+			st = "已建城"
+		}
 		out = append(out, gin.H{
 			"id": r.ID, "city_name": r.CityName, "x": r.X, "y": r.Y,
 			"def_uid": r.DefUserId, "def_name": nickOf[r.DefUserId],
-			"status": r.Status, "status_txt": st,
+			"status": r.Status, "status_txt": st, "ransom_count": ransomCnt[r.ID],
 			"created_at": r.CreatedAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// adminOccupyReport 管理端替代人机操作占用城市时，给相关玩家写一条战报（对齐 newReport 简化版）。
+func adminOccupyReport(db *gorm.DB, uid uint, reportType int, title, content string) {
+	r := model.EzfyReport{UserID: uid, ReportType: reportType, TypeName: EzfyReportTypeName(reportType, title),
+		Title: title, Content: content, IsRead: 0}
+	db.Create(&r)
+}
+
+// adminRansomApprove 管理员代占领方（人机）同意赎城请求 —— 与玩家端 RansomHandle「同意」同口径：
+// 事务 + 置终态兜底防重复发放，城市归还守方、占领方实收 80% 押金（20% 系统收）、流水/战报照落。
+// 返回成功消息与错误；已处理(status≠0)等业务失败也走 error 返回。
+func (h *EzfyAdmin) adminRansomApprove(c *gin.Context, r *model.EzfyRansom) (string, error) {
+	if r.Status != 0 {
+		return "", fmt.Errorf("该赎回请求已处理")
+	}
+	tx := h.DB.Begin()
+	defer tx.Rollback()
+	// 同意前重校验占领记录：已被建立/摧毁/归还(status≠1) → 请求作废 + 押金退回
+	var occ model.EzfyOccupy
+	if err := tx.Where("id = ? AND status = 1", r.OccupyId).First(&occ).Error; err != nil {
+		if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+			Update("status", 3); res.RowsAffected != 1 {
+			return "", fmt.Errorf("该赎回请求已处理")
+		}
+		if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", r.DefUserId).
+			Update("diamond", gorm.Expr("diamond + ?", r.Cost)).Error; err != nil {
+			return "", fmt.Errorf("退回押金失败：%s", err.Error())
+		}
+		tx.Commit()
+		adminOccupyReport(h.DB, r.DefUserId, 5, "赎城押金退回",
+			fmt.Sprintf("你为赎回城市[%s](%d,%d)支付的%d钻石押金已退回: 该城市已被占领方处理, 请求作废。",
+				r.CityName, r.X, r.Y, r.Cost))
+		return "", fmt.Errorf("该城市已被建城/摧毁/归还, 赎回请求已作废并退回押金")
+	}
+	// 原子置终态（锁内 + WHERE status=0 兜底）：并发重复同意等锁后必被拒，杜绝重复发放
+	if res := tx.Model(&model.EzfyRansom{}).Where("id = ? AND status = 0", r.ID).
+		Update("status", 1); res.RowsAffected != 1 {
+		return "", fmt.Errorf("该赎回请求已处理")
+	}
+	// 20% 手续费：占领方实收 80%（整数向下取整）
+	receive := r.Cost - r.Cost/5
+	if err := tx.Model(&model.EzfyProfile{}).Where("user_id = ?", r.AtkUserId).
+		Update("diamond", gorm.Expr("diamond + ?", receive)).Error; err != nil {
+		return "", fmt.Errorf("钻石发放失败：%s", err.Error())
+	}
+	// 同意：城市返还（user_id 本仍属守方，补民心）
+	var ct model.EzfyCity
+	if tx.First(&ct, r.CityId).Error == nil && ct.Feelings < 20 {
+		tx.Model(&model.EzfyCity{}).Where("id = ?", r.CityId).Update("feelings", 20)
+	}
+	tx.Model(&model.EzfyOccupy{}).Where("id = ?", r.OccupyId).Update("status", 2)
+	if err := tx.Commit().Error; err != nil {
+		return "", fmt.Errorf("提交失败：%s", err.Error())
+	}
+	// 占领方钻石流水 + 双方战报
+	adminOccupyRansomLog(h, r, receive)
+	return fmt.Sprintf("[%s](%d,%d) 已同意赎城, 人机收到%d钻石(已扣20%%手续费), 城市已归还原主人",
+		r.CityName, r.X, r.Y, receive), nil
+}
+
+// adminOccupyRansomLog 赎城成交后的钻石流水与双方战报（事务已提交，普通 DB 写）。
+func adminOccupyRansomLog(h *EzfyAdmin, r *model.EzfyRansom, receive int64) {
+	var bal int64
+	h.DB.Model(&model.EzfyProfile{}).Where("user_id = ?", r.AtkUserId).Pluck("diamond", &bal)
+	h.DB.Create(&model.EzfyDiamondLog{UserId: r.AtkUserId, Change: receive, Balance: bal,
+		Reason: "赎城收入(已扣20%手续费,管理员代处理)"})
+	adminOccupyReport(h.DB, r.AtkUserId, 5, "赎城成功",
+		fmt.Sprintf("你同意了赎城, 收到%d钻石(已扣20%%手续费), 城市[%s](%d,%d)已归还原主人。",
+			receive, r.CityName, r.X, r.Y))
+	adminOccupyReport(h.DB, r.DefUserId, 5, "赎城成功",
+		fmt.Sprintf("占领方已同意你的赎城, 你成功赎回城市[%s](%d,%d)! 民心已恢复。", r.CityName, r.X, r.Y))
+}
+
+// AdminEzfyBotOccupyOp POST /admin/ezfy-bot/occupy/:id/op {op: return|destroy|redeem}
+//
+// ★ 2026-10-18 管理员对人机占领的城市进行操作（与玩家端「附属野地」的归还/摧毁/同意赎回同口径）：
+//
+//	return  → 城市归还守方（user_id 过户 + 民心 + 占领记录 status=2）
+//	destroy → 摧毁城市（城市/建筑/部队/军官等全删 + 地图格子恢复平原 + 占领记录 status=3）
+//	redeem  → 若有原主人的待处理赎城申请，代替人机同意赎回（城市归还 + 人机收 80% 押金）
+func (h *EzfyAdmin) AdminEzfyBotOccupyOp(c *gin.Context) {
+	var in struct {
+		Op string `json:"op"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || (in.Op != "return" && in.Op != "destroy" && in.Op != "redeem") {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	id, _ := strconv.Atoi(c.Param("id"))
+	var o model.EzfyOccupy
+	if err := h.DB.First(&o, id).Error; err != nil {
+		resp.NotFound(c, "占领记录不存在")
+		return
+	}
+	if o.Status != 1 {
+		resp.ParamError(c, "当前状态不可操作（仅占领中可归还/摧毁/同意赎回）")
+		return
+	}
+	switch in.Op {
+	case "return":
+		// 与玩家端 return 同口径：城市过户归还守方 + 民心兜底 + 占领记录置已归还
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", o.CityId).
+			Updates(map[string]interface{}{"user_id": o.DefUserId})
+		var city model.EzfyCity
+		if h.DB.First(&city, o.CityId).Error == nil && city.Feelings < 20 {
+			h.DB.Model(&model.EzfyCity{}).Where("id = ?", o.CityId).Update("feelings", 20)
+		}
+		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 2)
+		if o.DefUserId != 0 {
+			adminOccupyReport(h.DB, o.DefUserId, 5, "城市归还",
+				fmt.Sprintf("你被占领的城市[%s](%d,%d)已由敌方归还!\n民心已恢复。", o.CityName, o.X, o.Y))
+		}
+		resp.OK(c, gin.H{"msg": "已归还「" + o.CityName + "」给原主人"})
+	case "destroy":
+		// 与玩家端 destroy 同口径：城市数据连根删除 + 地图格子恢复 + 占领记录置已摧毁。
+		// 装备不得按 city_id 删（归属 user_id，仅历史出生城）；本城军官装备放回背包（officer_id=0）。
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyCityBuilding{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyCityTroop{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyCityTech{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyTrainQueue{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyWildland{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyWounded{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyCityTarget{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyCityEffect{})
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyOrder{})
+		h.DB.Model(&model.EzfyEquipment{}).
+			Where("officer_id IN (?)", h.DB.Model(&model.EzfyOfficer{}).Select("id").Where("city_id = ?", o.CityId)).
+			Update("officer_id", 0)
+		h.DB.Where("city_id = ?", o.CityId).Delete(&model.EzfyOfficer{})
+		h.DB.Where("x = ? AND y = ?", o.X, o.Y).Delete(&model.EzfyMapArea{})
+		h.DB.Delete(&model.EzfyCity{}, o.CityId)
+		h.DB.Model(&model.EzfyOccupy{}).Where("id = ?", o.ID).Update("status", 3)
+		adminOccupyReport(h.DB, o.DefUserId, 5, "城市被摧毁",
+			fmt.Sprintf("你被占领的城市[%s](%d,%d)已被敌方摧毁, 该坐标恢复为普通平原。", o.CityName, o.X, o.Y))
+		resp.OK(c, gin.H{"msg": "已摧毁城市「" + o.CityName + "」，坐标恢复平原"})
+	case "redeem":
+		var r model.EzfyRansom
+		if err := h.DB.Where("city_id = ? AND occupy_id = ? AND status = 0", o.CityId, o.ID).First(&r).Error; err != nil {
+			resp.ParamError(c, "该城市暂无待处理的赎城申请")
+			return
+		}
+		msg, err := h.adminRansomApprove(c, &r)
+		if err != nil {
+			resp.ParamError(c, err.Error())
+			return
+		}
+		resp.OK(c, gin.H{"msg": msg})
+	}
+}
+
+// AdminEzfyBotOccupyRedeemAll POST /admin/ezfy-bot/occupy/redeem/all {uid} —— 统一赎回
+//
+// ★ 2026-10-18 一次同意该人机名下**全部**待处理赎城申请（每单与玩家端同意同口径），
+// 返回成功/跳过/失败统计。
+func (h *EzfyAdmin) AdminEzfyBotOccupyRedeemAll(c *gin.Context) {
+	var in struct {
+		UID uint `json:"uid"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.UID == 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	var ransoms []model.EzfyRansom
+	h.DB.Where("atk_user_id = ? AND status = 0", in.UID).Order("id ASC").Find(&ransoms)
+	if len(ransoms) == 0 {
+		resp.OK(c, gin.H{"msg": "该人机暂无待处理的赎城申请", "ok": 0, "skip": 0, "fail": 0})
+		return
+	}
+	ok, skip, fail := 0, 0, 0
+	failMsgs := []string{}
+	for i := range ransoms {
+		r := &ransoms[i]
+		msg, err := h.adminRansomApprove(c, r)
+		if err != nil {
+			if strings.Contains(err.Error(), "已处理") {
+				skip++
+			} else {
+				fail++
+				failMsgs = append(failMsgs, fmt.Sprintf("[%s](%d,%d)：%s", r.CityName, r.X, r.Y, err.Error()))
+			}
+			continue
+		}
+		_ = msg
+		ok++
+	}
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("统一赎回完成：成功 %d 单，跳过 %d，失败 %d", ok, skip, fail),
+		"ok": ok, "skip": skip, "fail": fail, "fails": failMsgs})
 }
 
 // AdminEzfyBotTargetSet POST /admin/ezfy-bot/:uid/target {target_uid} —— 管理端指定攻击目标

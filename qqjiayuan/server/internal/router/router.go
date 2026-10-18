@@ -1301,6 +1301,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-bot/:uid/relocate", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotRelocate)
 						// ★ 2026-10-18 人机占领的城市（征服玩家城后写入 ezfy_occupy）
 						admin.GET("/ezfy-bot/:uid/occupy", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotOccupy)
+						// ★ 2026-10-18 管理员操作占领城市：归还 / 摧毁 / 同意赎回（人机代操作）
+						admin.POST("/ezfy-bot/occupy/:id/op", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotOccupyOp)
+						// ★ 2026-10-18 统一赎回：一次同意该人机名下全部待处理赎城申请
+						admin.POST("/ezfy-bot/occupy/redeem/all", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotOccupyRedeemAll)
 						admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
 						// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
 						//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，

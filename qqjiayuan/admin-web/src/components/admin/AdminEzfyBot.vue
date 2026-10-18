@@ -70,9 +70,6 @@
             <span v-else class="td-gray">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="市政厅" width="80" align="center">
-          <template slot-scope="{row}">{{ row.city_level || '—' }}</template>
-        </el-table-column>
         <el-table-column label="兵力" width="110" align="center">
           <template slot-scope="{row}"><span class="td-mono">{{ fmtNum(row.troop_total) }}</span></template>
         </el-table-column>
@@ -446,9 +443,9 @@
           <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column prop="type_name" label="类型" width="110" align="center" />
-        <el-table-column prop="player_name" label="玩家" width="120" show-overflow-tooltip />
-        <!-- ★ 2026-10-18 目标玩家名字（出征战报：打玩家城显示守方玩家名） -->
-        <el-table-column label="目标玩家" width="120" show-overflow-tooltip>
+        <!-- ★ 2026-10-18 出征战报弹窗：攻击方（= 该人机）/ 被攻击方（守方玩家名） -->
+        <el-table-column prop="player_name" label="攻击方" width="120" show-overflow-tooltip />
+        <el-table-column label="被攻击方" width="120" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.target_name || '—' }}</template>
         </el-table-column>
         <el-table-column prop="preview" label="内容" min-width="300" show-overflow-tooltip />
@@ -468,23 +465,45 @@
     </el-dialog>
 
     <!-- 人机占领的城市（★ 2026-10-18 出征胜利→直接征服，占下的玩家城写 ezfy_occupy） -->
-    <el-dialog :title="'占领城市 —— ' + (cur ? cur.nickname : '')" :visible.sync="occDlg" width="720px">
+    <el-dialog :title="'占领城市 —— ' + (cur ? cur.nickname : '')" :visible.sync="occDlg" width="820px">
+      <div class="toolbar" style="margin-bottom:8px">
+        <span class="td-gray">管理员可直接归还 / 摧毁；有原主人赎城申请的，可同意赎回（人机收 80% 押金，20% 系统收）</span>
+        <div class="grow" />
+        <!-- ★ 2026-10-18 统一赎回：一次同意该人机名下全部待处理赎城申请 -->
+        <el-button size="mini" type="warning" plain icon="el-icon-refresh" :loading="occRedeemAllLoading"
+                   @click="redeemAllOccupy">统一赎回全部</el-button>
+      </div>
       <el-table :data="occList" v-loading="occLoading" size="mini" border max-height="420"
                 :empty-text="'该人机暂无占领的城市（出征胜利后会直接征服目标城）'">
-        <el-table-column prop="city_name" label="城市" min-width="120" show-overflow-tooltip />
-        <el-table-column label="坐标" width="120" align="center">
+        <el-table-column prop="city_name" label="城市" min-width="110" show-overflow-tooltip />
+        <el-table-column label="坐标" width="100" align="center">
           <template slot-scope="{row}">（{{ row.x }},{{ row.y }}）</template>
         </el-table-column>
-        <el-table-column prop="def_name" label="守方玩家" min-width="120" show-overflow-tooltip>
+        <el-table-column prop="def_name" label="原主人" min-width="110" show-overflow-tooltip>
           <template slot-scope="{row}">{{ row.def_name || ('ID ' + row.def_uid) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template slot-scope="{row}">
             <el-tag size="mini" :type="row.status === 1 ? 'danger' : 'info'">{{ row.status_txt }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="占领时间" width="160" align="center">
+        <el-table-column label="赎回申请" width="90" align="center">
+          <template slot-scope="{row}">{{ row.ransom_count || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="占领时间" width="140" align="center">
           <template slot-scope="{row}">{{ row.created_at }}</template>
+        </el-table-column>
+        <!-- ★ 2026-10-18 操作：归还 / 摧毁 / 同意赎回（仅占领中可操作） -->
+        <el-table-column label="操作" width="210" align="center">
+          <template slot-scope="{row}">
+            <template v-if="row.status === 1">
+              <el-button size="mini" type="success" plain @click="occReturn(row)">归还</el-button>
+              <el-button size="mini" type="danger" plain @click="occDestroy(row)">摧毁</el-button>
+              <el-button size="mini" type="warning" plain :disabled="!row.ransom_count"
+                         @click="occRedeem(row)">同意赎回</el-button>
+            </template>
+            <span v-else class="td-gray">—</span>
+          </template>
         </el-table-column>
       </el-table>
       <div class="pager-bar">
@@ -557,6 +576,8 @@ export default {
       reportsDlg: false, reports: [], reportTotal: 0, reportPage: 1, reportSize: 20, reportsLoading: false,
       // ★ 2026-10-18 人机占领的城市
       occDlg: false, occList: [], occTotal: 0, occPage: 1, occSize: 10, occLoading: false,
+      // ★ 2026-10-18 占领城市操作：统一赎回 loading
+      occRedeemAllLoading: false,
       // 战报详情（★ 2026-10-17 点「详情」拉全文单独弹窗）
       reportDetailDlg: false, reportDetail: { title: '', content: '', detail: '' },
       cur: null,
@@ -973,6 +994,45 @@ export default {
           this.occTotal = r.data.total || 0
         } else this.$message.error(r.msg)
       }).catch(() => { this.occLoading = false })
+    },
+    // ★ 2026-10-18 占领城市操作（管理员代人机处理，与玩家端「附属野地」同口径）
+    occReturn (row) {
+      this.$confirm('将城市「' + row.city_name + '」（' + row.x + ',' + row.y + '）归还给原主人' + (row.def_name || ('ID ' + row.def_uid)) + '？',
+        '归还城市', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-bot/occupy/' + row.id + '/op', { op: 'return' }).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已归还'); this.loadOccupy() }
+          else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    occDestroy (row) {
+      this.$confirm('将城市「' + row.city_name + '」（' + row.x + ',' + row.y + '）彻底摧毁？\n建筑/部队/军官等全部清除，坐标恢复为平原，原主人将收到战报。',
+        '摧毁城市', { type: 'error' }).then(() => {
+        api.post('/admin/ezfy-bot/occupy/' + row.id + '/op', { op: 'destroy' }).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已摧毁'); this.loadOccupy() }
+          else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    occRedeem (row) {
+      this.$confirm('同意「' + (row.def_name || ('ID ' + row.def_uid)) + '」赎回城市「' + row.city_name + '」？\n城市归还原主人，人机收到押金（已扣 20% 手续费）。',
+        '同意赎回', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-bot/occupy/' + row.id + '/op', { op: 'redeem' }).then(r => {
+          if (r.code === 0) { this.$message.success(r.data.msg || '已同意赎回'); this.loadOccupy() }
+          else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    redeemAllOccupy () {
+      this.$confirm('统一同意该人机名下全部待处理的赎城申请？\n每单与「同意赎回」同口径（城市归还 + 人机收 80% 押金）。',
+        '统一赎回', { type: 'warning' }).then(() => {
+        this.occRedeemAllLoading = true
+        api.post('/admin/ezfy-bot/occupy/redeem/all', { uid: this.cur.user_id }).then(r => {
+          this.occRedeemAllLoading = false
+          if (r.code === 0) { this.$message.success(r.data.msg || '完成'); this.loadOccupy() }
+          else this.$message.error(r.msg)
+        }).catch(() => { this.occRedeemAllLoading = false })
+      }).catch(() => {})
     },
     // ★ 2026-10-17 战报详情：列表只给预览，点「详情」拉全文（content/detail）单独弹窗，列表不臃肿
     openReportDetail (row) {

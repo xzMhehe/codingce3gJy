@@ -1421,6 +1421,12 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 	if typeName != "" {
 		q = q.Where("type_name = ?", typeName)
 	}
+	// ★ 2026-10-18 支持按用户ID精确过滤（人机出征战报弹窗：uid=人机 user_id，只显示该人机的战报）
+	if uidStr := strings.TrimSpace(c.Query("uid")); uidStr != "" {
+		if uid, err := strconv.Atoi(uidStr); err == nil && uid > 0 {
+			q = q.Where("user_id = ?", uid)
+		}
+	}
 	// 时间范围走 SQL（created_at 起止，配合索引）。
 	if startStr != "" {
 		if st, err := time.ParseInLocation("2006-01-02", startStr, time.Local); err == nil {
