@@ -2,6 +2,7 @@ package ezfy
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -656,4 +657,273 @@ func (h *EzfyAdmin) AdminEzfyPrestigeRank(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size,
 		"excluded": pvpExcludedRows(h.DB, ezfyBoardPrestige),
 		"usage": "与游戏内「军衔声望榜」同口径（按声望降序）；已标记「不参与排名」的玩家不参与名次，名次为剔除后的全服排名"})
+}
+
+// ============ 风云榜奖励发放（★ 2026-10-18） ============
+//
+// 用户需求（原话）：
+//
+//	「风云榜 开发一个发放宝箱功能：给第一名/第二名/第三名发宝箱；给参与者发宝箱；
+//	 给第一二三名发道具；给参与者发道具；给第一二三名发钻石；给参与者发钻石。
+//	 发放不是直接进玩家背包，相当于系统给玩家发邮件，玩家领取，7 天不领取默认无效。
+//	 风云榜发东西会加修饰就是『参与风云榜获得的』，普通数据管理的发放就是『系统发放的』」
+//
+// 实现要点：
+//   - 奖励**只写邮件**（ezfy_mail + ezfy_mail_attach），玩家在邮箱点「领取」才到账；
+//   - 档位四档：rank1 / rank2 / rank3 / join（参与奖）；
+//   - 参与奖范围可设：join_limit=N 表示**第 4 ~ 第 N 名**（截止名次）；join_limit=0 表示第 4 名及以后**全部参战玩家**；
+//   - **同一个人同一周只发一次**（ezfy_pvp_reward 唯一索引），重复点只补发还没发的人。
+
+// ezfyRewardTier 一档奖励配置（前端弹窗填什么，这里就收什么）。
+type ezfyRewardTier struct {
+	Diamond int64 `json:"diamond"`
+	Chests  []struct {
+		ChestID int `json:"chest_id"`
+		Count   int `json:"count"`
+	} `json:"chests"`
+	Items []struct {
+		CfgID int `json:"cfg_id"`
+		Count int `json:"count"`
+	} `json:"items"`
+}
+
+// ezfyRewardTierEmpty 该档是否什么都没配（空档跳过，不发空邮件）。
+func ezfyRewardTierEmpty(t ezfyRewardTier) bool {
+	if t.Diamond > 0 {
+		return false
+	}
+	for _, c := range t.Chests {
+		if c.ChestID > 0 && c.Count > 0 {
+			return false
+		}
+	}
+	for _, it := range t.Items {
+		if it.CfgID > 0 && it.Count > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// ezfyRewardAttaches 把一档配置解析成附件行（同时校验配置是否存在，返回错误文案）。
+func (h *EzfyAdmin) ezfyRewardAttaches(t ezfyRewardTier) ([]model.EzfyMailAttach, error) {
+	out := make([]model.EzfyMailAttach, 0, len(t.Chests)+len(t.Items)+1)
+	if t.Diamond > 0 {
+		out = append(out, model.EzfyMailAttach{Kind: ezfyAttachDiamond, Num: t.Diamond, Name: "钻石"})
+	}
+	for _, c := range t.Chests {
+		if c.ChestID <= 0 || c.Count <= 0 {
+			continue
+		}
+		var cfg model.EzfyCfgChest
+		if err := h.DB.First(&cfg, c.ChestID).Error; err != nil {
+			return nil, fmt.Errorf("宝箱不存在：%d", c.ChestID)
+		}
+		out = append(out, model.EzfyMailAttach{Kind: ezfyAttachChest, CfgID: c.ChestID, Num: int64(c.Count), Name: cfg.Name})
+	}
+	for _, it := range t.Items {
+		if it.CfgID <= 0 || it.Count <= 0 {
+			continue
+		}
+		var cfg model.EzfyCfgItem
+		if err := h.DB.First(&cfg, it.CfgID).Error; err != nil {
+			return nil, fmt.Errorf("道具不存在：%d", it.CfgID)
+		}
+		out = append(out, model.EzfyMailAttach{Kind: ezfyAttachItem, CfgID: it.CfgID, Num: int64(it.Count), Name: cfg.Name})
+	}
+	return out, nil
+}
+
+// AdminEzfyPvpRewardStatus GET /admin/ezfy-pvp-rank/reward?week= —— 该周已发放情况（弹窗打开时预览）
+func (h *EzfyAdmin) AdminEzfyPvpRewardStatus(c *gin.Context) {
+	week := strings.TrimSpace(c.Query("week"))
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	rows := ezfyPvpRankRows(h.DB, week, 0)
+	var sent []model.EzfyPvpReward
+	h.DB.Where("week = ?", week).Order("rank_no ASC").Find(&sent)
+	sentSet := make(map[uint]bool, len(sent))
+	for _, s := range sent {
+		sentSet[s.UserID] = true
+	}
+	type one struct {
+		UserID uint   `json:"user_id"`
+		Name   string `json:"name"`
+		Points  int64 `json:"points"`
+		Battles int64 `json:"battles"`
+		Sent   bool   `json:"sent"`
+	}
+	list := make([]one, 0, len(rows))
+	for _, r := range rows {
+		list = append(list, one{UserID: r.UserID, Name: r.Nickname, Points: r.Points,
+			Battles: r.Battles, Sent: sentSet[r.UserID]})
+	}
+	resp.OK(c, gin.H{"week": week, "total": len(rows), "sent": len(sent), "list": list})
+}
+
+// AdminEzfyPvpReward POST /admin/ezfy-pvp-rank/reward —— 一键发放本周风云榜奖励
+//
+// body:
+//
+//	{
+//	  "week": "20261012-20261018",
+//	  "expire_days": 7,
+//	  "join_limit": 20,                       // 0 = 全部参战玩家（第4名及以后）
+//	  "tiers": {"rank1": {...}, "rank2": {...}, "rank3": {...}, "join": {...}}
+//	}
+func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
+	var in struct {
+		Week       string `json:"week"`
+		ExpireDays int    `json:"expire_days"`
+		JoinLimit  int    `json:"join_limit"`
+		Tiers      struct {
+			Rank1 ezfyRewardTier `json:"rank1"`
+			Rank2 ezfyRewardTier `json:"rank2"`
+			Rank3 ezfyRewardTier `json:"rank3"`
+			Join  ezfyRewardTier `json:"join"`
+		} `json:"tiers"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	week := strings.TrimSpace(in.Week)
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	expireDays := in.ExpireDays
+	if expireDays <= 0 {
+		expireDays = 7
+	}
+	if expireDays > 90 {
+		resp.ParamError(c, "领取期限最多 90 天")
+		return
+	}
+	if in.JoinLimit < 0 {
+		in.JoinLimit = 0
+	}
+	if in.JoinLimit > 0 && in.JoinLimit < 4 {
+		in.JoinLimit = 4 // 参与奖从第 4 名开始，截止名次不可能小于 4
+	}
+
+	// 每档先解析成附件（顺便校验配置是否存在）；空档不参与发放
+	plans := map[string][]model.EzfyMailAttach{}
+	for _, p := range []struct {
+		key string
+		cfg ezfyRewardTier
+	}{
+		{"rank1", in.Tiers.Rank1}, {"rank2", in.Tiers.Rank2},
+		{"rank3", in.Tiers.Rank3}, {"join", in.Tiers.Join},
+	} {
+		if ezfyRewardTierEmpty(p.cfg) {
+			continue
+		}
+		as, err := h.ezfyRewardAttaches(p.cfg)
+		if err != nil {
+			resp.ParamError(c, err.Error())
+			return
+		}
+		if len(as) > 0 {
+			plans[p.key] = as
+		}
+	}
+	if len(plans) == 0 {
+		resp.ParamError(c, "请至少给一个档位配置奖励（宝箱 / 道具 / 钻石）")
+		return
+	}
+
+	rows := ezfyPvpRankRows(h.DB, week, 0)
+	if len(rows) == 0 {
+		resp.ParamError(c, "该周没有任何战绩，无法发放")
+		return
+	}
+	// 已发名单（幂等）
+	var done []model.EzfyPvpReward
+	h.DB.Where("week = ?", week).Find(&done)
+	doneSet := make(map[uint]bool, len(done))
+	for _, d := range done {
+		doneSet[d.UserID] = true
+	}
+
+	drafts := make([]ezfyMailDraft, 0, len(rows))
+	meta := make([]struct {
+		uid   uint
+		rank  int
+		tier  string
+	}, 0, len(rows))
+	skipped := 0
+	for i, r := range rows {
+		rankNo := i + 1
+		tier := ""
+		switch {
+		case rankNo == 1:
+			tier = "rank1"
+		case rankNo == 2:
+			tier = "rank2"
+		case rankNo == 3:
+			tier = "rank3"
+		default:
+			// 参与奖：第 4 名及以后；join_limit>0 时它是**截止名次**（如 20 = 第 4~20 名）
+			if in.JoinLimit > 0 && rankNo > in.JoinLimit {
+				continue
+			}
+			tier = "join"
+		}
+		as, ok := plans[tier]
+		if !ok {
+			continue // 该档没配奖励
+		}
+		if doneSet[r.UserID] {
+			skipped++
+			continue
+		}
+		subject := "风云榜奖励"
+		var content string
+		if tier == "join" {
+			content = fmt.Sprintf("你在【%s】风云榜中累计参战 %d 场，这是你参与风云榜获得的参与奖，请在 %d 天内领取，过期作废。",
+				week, r.Battles, expireDays)
+		} else {
+			content = fmt.Sprintf("恭喜你在【%s】风云榜中获得第 %d 名！这是你参与风云榜获得的奖励，请在 %d 天内领取，过期作废。",
+				week, rankNo, expireDays)
+		}
+		drafts = append(drafts, ezfyMailDraft{
+			ReceiverID: r.UserID, Subject: subject, Content: content, Attaches: as,
+		})
+		meta = append(meta, struct {
+			uid  uint
+			rank int
+			tier string
+		}{r.UserID, rankNo, tier})
+	}
+	if len(drafts) == 0 {
+		resp.OK(c, gin.H{"msg": fmt.Sprintf("本周已发放完毕（%d 人已领过奖励），本次没有新增发放", skipped), "sent": 0})
+		return
+	}
+
+	batchNo, err := ezfyMailSendBatch(h.DB, drafts, expireDays)
+	if err != nil {
+		resp.ServerError(c, err)
+		return
+	}
+	// 回查邮件 id，写发放记录（唯一索引兜底，重复点也插不进去）
+	var saved []struct {
+		ID         uint
+		ReceiverId uint
+	}
+	h.DB.Model(&model.EzfyMail{}).Select("id, receiver_id").Where("batch_no = ?", batchNo).Scan(&saved)
+	mailOf := make(map[uint]uint, len(saved))
+	for _, s := range saved {
+		mailOf[s.ReceiverId] = s.ID
+	}
+	now := time.Now()
+	for _, m := range meta {
+		h.DB.Exec(`INSERT IGNORE INTO ezfy_pvp_reward (week, user_id, rank_no, tier, mail_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?)`, week, m.uid, m.rank, m.tier, mailOf[m.uid], now)
+	}
+	resp.OK(c, gin.H{
+		"msg": fmt.Sprintf("风云榜奖励已发放：%d 人（跳过已发 %d 人），奖励已通过系统邮件送达，%d 天内未领取作废",
+			len(drafts), skipped, expireDays),
+		"sent": len(drafts), "skipped": skipped, "batch_no": batchNo, "week": week,
+	})
 }

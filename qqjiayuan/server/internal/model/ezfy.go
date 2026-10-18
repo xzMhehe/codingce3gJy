@@ -248,19 +248,67 @@ func (EzfyFriendApply) TableName() string { return "ezfy_friend_apply" }
 //	- 发件人视角：sender_id = 我 且 receiver_deleted = 0
 //	删除只置自己视角的标记，不影响对方。
 type EzfyMail struct {
-	ID         uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	SenderId   uint      `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"` // 0 = 系统邮件
-	ReceiverId uint      `gorm:"index:idx_ezfy_mail_recv;comment:收件人" json:"receiver_id"`     // 0 = 收件人为全体（系统群发）
-	SenderName string    `gorm:"type:varchar(30);comment:发件人昵称快照" json:"sender_name"`         // 系统邮件为「系统」
-	Subject    string    `gorm:"type:varchar(30);comment:主题(≤20字)" json:"subject"`
-	Content    string    `gorm:"type:varchar(1000);comment:正文(≤500字)" json:"content"`
-	IsRead     int       `gorm:"default:0;comment:0未读 1已读" json:"is_read"`
-	SenderDel  int       `gorm:"default:0;comment:发件人视角已删" json:"sender_del"`
-	RecvDel    int       `gorm:"default:0;comment:收件人视角已删" json:"recv_del"`
-	CreatedAt  time.Time `gorm:"comment:创建时间" json:"created_at"`
+	ID         uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	SenderId   uint   `gorm:"index:idx_ezfy_mail_send;comment:发件人(0=系统)" json:"sender_id"` // 0 = 系统邮件
+	ReceiverId uint   `gorm:"index:idx_ezfy_mail_recv;comment:收件人" json:"receiver_id"`     // 0 = 收件人为全体（系统群发）
+	SenderName string `gorm:"type:varchar(30);comment:发件人昵称快照" json:"sender_name"`         // 系统邮件为「系统」
+	Subject    string `gorm:"type:varchar(30);comment:主题(≤20字)" json:"subject"`
+	Content    string `gorm:"type:varchar(1000);comment:正文(≤500字)" json:"content"`
+	IsRead     int    `gorm:"default:0;comment:0未读 1已读" json:"is_read"`
+	SenderDel  int    `gorm:"default:0;comment:发件人视角已删" json:"sender_del"`
+	RecvDel    int    `gorm:"default:0;comment:收件人视角已删" json:"recv_del"`
+	// ★★ 2026-10-18 邮件附件（风云榜奖励 / 系统发放走这里）：
+	//   HasAttach 0=纯文本邮件 1=带附件（列表徽标与查询用，省一次子查询）
+	//   Claimed   0=未领取 1=已领取（领取后附件入背包/宝箱/钻石，邮件正文保留）
+	//   ExpireAt  附件过期时间(ms)，0=永不过期；过期后不可领取（玩家仍能看到「已过期」）
+	HasAttach int   `gorm:"default:0;comment:0无附件 1有附件" json:"has_attach"`
+	Claimed   int   `gorm:"default:0;comment:0未领取 1已领取" json:"claimed"`
+	ExpireAt  int64 `gorm:"default:0;comment:附件过期时间(ms) 0=不过期" json:"expire_at"`
+	// ★ 2026-10-18 批次号：一次「一键发放」写入的所有邮件共用同一个 BatchNo。
+	//   用途：批量插入后按它回查邮件 id（比依赖自增连号可靠），以及管理端按批次对账。
+	BatchNo   string    `gorm:"type:varchar(40);index:idx_ezfy_mail_batch;comment:发放批次号" json:"batch_no"`
+	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 }
 
 func (EzfyMail) TableName() string { return "ezfy_mail" }
+
+// EzfyMailAttach 邮件附件（★ 2026-10-18 风云榜奖励 / 系统发放）
+//
+// 一封邮件可带多件附件，Kind 区分三类：
+//
+//	1 道具（CfgID = ezfy_cfg_item.id，进背包 ezfy_item）
+//	2 宝箱（CfgID = ezfy_cfg_chest.id，进待开宝箱 ezfy_user_chest）
+//	3 钻石（CfgID = 0，直接加 ezfy_profile.diamond）
+//
+// ★ Name 是发放时的**名称快照**：配置被改名/删除后，邮件里仍能显示玩家当时看到的名字。
+// ★ UserID 冗余存收件人：删号清理（ezfyPurgeByUid）按 user_id 一把清，不必先查邮件 id。
+type EzfyMailAttach struct {
+	ID     uint   `gorm:"primaryKey;comment:主键ID" json:"id"`
+	MailID uint   `gorm:"index:idx_ezfy_mail_attach_mail;comment:邮件ID" json:"mail_id"`
+	UserID uint   `gorm:"index:idx_ezfy_mail_attach_user;comment:收件人(删号清理用)" json:"user_id"`
+	Kind   int    `gorm:"comment:1道具 2宝箱 3钻石" json:"kind"`
+	CfgID  int    `gorm:"comment:道具/宝箱配置ID(钻石=0)" json:"cfg_id"`
+	Num    int64  `gorm:"comment:数量" json:"num"`
+	Name   string `gorm:"type:varchar(50);comment:名称快照" json:"name"`
+}
+
+func (EzfyMailAttach) TableName() string { return "ezfy_mail_attach" }
+
+// EzfyPvpReward 风云榜奖励发放记录（★ 2026-10-18）
+//
+// 作用只有一个：**同一个人同一周只发一次**。(week,user_id) 唯一索引，
+// 重复点「发放奖励」时只补发还没发过的人，绝不重复发。
+type EzfyPvpReward struct {
+	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
+	Week      string    `gorm:"type:varchar(20);uniqueIndex:uk_ezfy_pvp_reward;comment:周(如 20261012-20261018)" json:"week"`
+	UserID    uint      `gorm:"uniqueIndex:uk_ezfy_pvp_reward;comment:玩家ID" json:"user_id"`
+	RankNo    int       `gorm:"comment:当周名次" json:"rank_no"`
+	Tier      string    `gorm:"type:varchar(10);comment:档位 rank1/rank2/rank3/join" json:"tier"`
+	MailID    uint      `gorm:"comment:发出的邮件ID" json:"mail_id"`
+	CreatedAt time.Time `gorm:"comment:发放时间" json:"created_at"`
+}
+
+func (EzfyPvpReward) TableName() string { return "ezfy_pvp_reward" }
 
 // EzfyCfgResource 资源显示名配置（管理端可改名，全站展示跟随）
 //

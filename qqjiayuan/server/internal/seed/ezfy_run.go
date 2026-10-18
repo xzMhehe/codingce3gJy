@@ -66,6 +66,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyOfficer{}, &model.EzfyEquipment{}, &model.EzfyRecruit{},
 	&model.EzfyPreset{}, &model.EzfyActivity{}, &model.EzfyFriend{}, &model.EzfyFriendApply{},
 	&model.EzfyMail{},                              // ★ 2026-10-13 游戏内邮件（收件箱/系统邮件/发件箱）
+	&model.EzfyMailAttach{},                        // ★ 2026-10-18 邮件附件（风云榜奖励/系统发放：道具·宝箱·钻石）
 	&model.EzfyLoveCard{}, &model.EzfyConveneLog{}, // ★ 2026-10-11 召集埋点（活动监测）
 	&model.EzfyVisitLog{}, &model.EzfyAccount{}, // ★ 2026-10-12 访问记录 / 二战独立登录账号
 	&model.EzfyUserChest{},     // ★ 2026-10-14 玩家持有的未开宝箱（发放后自己开）
@@ -75,6 +76,7 @@ var ezfyMigrateModels = []interface{}{
 	&model.EzfyPvpFoe{},        // ★ 2026-10-14 风云榜同对手积分封顶（防小号互刷）
 	&model.EzfyPvpDetail{},     // ★ 2026-10-16 风云榜「我的战绩」场次明细（战报会删，明细独立留存）
 	&model.EzfyPvpExclude{},    // ★ 2026-10-14 风云榜「不参与排名」名单
+	&model.EzfyPvpReward{},     // ★ 2026-10-18 风云榜奖励发放记录（(week,user_id) 唯一，防重复发）
 	&model.EzfyTitle{},         // ★ 2026-10-17 统帅称号定义（管理端维护）
 	&model.EzfyTitleGrant{},    // ★ 2026-10-17 玩家持有的称号（(title_id,user_id) 唯一）
 	&model.EzfyTitleDaily{},    // ★ 2026-10-17 风云榜每日第一称号结算记录（day 唯一，幂等锁）

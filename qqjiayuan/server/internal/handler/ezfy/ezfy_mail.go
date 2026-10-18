@@ -143,6 +143,16 @@ func (h *EzfyHandler) MailList(c *gin.Context) {
 	}
 
 	views := make([]gin.H, 0, len(rows))
+	// ★ 2026-10-18 邮件附件：本页所有邮件一次性把附件捞出来（一条 SQL），
+	//   前端直接展示「附件：道具×N / 宝箱×N / 钻石×N」+ 领取按钮。
+	mailIDs := make([]uint, 0, len(rows))
+	for _, m := range rows {
+		if m.HasAttach == 1 {
+			mailIDs = append(mailIDs, m.ID)
+		}
+	}
+	attachOf := ezfyMailAttachMap(h.DB, mailIDs)
+	nowMs := time.Now().UnixMilli()
 	for _, m := range rows {
 		v := gin.H{"id": m.ID, "sender_id": m.SenderId, "sender_name": m.SenderName,
 			"subject": m.Subject, "content": m.Content, "is_read": m.IsRead,
@@ -150,6 +160,19 @@ func (h *EzfyHandler) MailList(c *gin.Context) {
 		if tab == "sent" {
 			v["receiver_id"] = m.ReceiverId
 			v["receiver_name"] = receiverNames[m.ReceiverId]
+		}
+		if m.HasAttach == 1 {
+			list := make([]gin.H, 0, 4)
+			for _, a := range attachOf[m.ID] {
+				list = append(list, ezfyMailAttachView(a))
+			}
+			expired := m.ExpireAt > 0 && nowMs >= m.ExpireAt
+			v["attach"] = list
+			v["claimed"] = m.Claimed
+			v["expire_at"] = m.ExpireAt
+			v["expired"] = expired
+			// can_claim：只有收件人视角、未领、未过期才显示「领取」
+			v["can_claim"] = tab != "sent" && m.Claimed == 0 && !expired
 		}
 		views = append(views, v)
 	}
@@ -283,6 +306,13 @@ func (h *EzfyHandler) MailDelete(c *gin.Context) {
 	var m model.EzfyMail
 	if err := h.DB.First(&m, req.ID).Error; err != nil {
 		resp.NotFound(c, "邮件不存在")
+		return
+	}
+	// ★ 2026-10-18 带未领附件的邮件不许删：删了附件就永远拿不到了（玩家容易误删奖励邮件）。
+	//   已领取 / 已过期 的可以正常删。
+	if m.ReceiverId == uid && m.HasAttach == 1 && m.Claimed == 0 &&
+		(m.ExpireAt == 0 || time.Now().UnixMilli() < m.ExpireAt) {
+		resp.ParamError(c, "这封邮件还有未领取的奖励，请先领取再删除")
 		return
 	}
 	switch {

@@ -86,6 +86,8 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_chat", []string{"user_id"}},
 	{"ezfy_corps_chat", []string{"user_id"}},
 	{"ezfy_mail", []string{"sender_id", "receiver_id"}},
+	// ★ 2026-10-18 邮件附件（风云榜奖励/系统发放）：user_id 冗余存收件人，按它一把清
+	{"ezfy_mail_attach", []string{"user_id"}},
 	{"private_messages", []string{"sender_id", "receiver_id"}},
 	// 军团：成员关系 / 入团申请 / 军团商城日志 / 本人发起的军团宣战
 	// （军团**本体**由 ezfyPurgeCorpsOf 整体解散，见下）
@@ -98,6 +100,8 @@ var ezfyPurgeByUid = []ezfyPurgeRule{
 	{"ezfy_pvp_week", []string{"user_id"}},
 	{"ezfy_pvp_foe", []string{"user_id", "foe_id"}},
 	{"ezfy_pvp_exclude", []string{"user_id"}},
+	// ★ 2026-10-18 风云榜奖励发放记录（(week,user_id) 唯一）
+	{"ezfy_pvp_reward", []string{"user_id"}},
 	// ★ 2026-10-16 补漏：风云榜「我的战绩」场次明细（2026-10-16 新增的 ezfy_pvp_detail）——
 	//   漏表护栏 TestEzfyPlayerPurgeCoversAllTables 报出来的。
 	//   ★ 只按 user_id 清（**不清 foe_id**）：这张表是「谁的战绩明细」，按 foe_id 清会把

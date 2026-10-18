@@ -764,6 +764,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					ezfyG.POST("/mail/read", ezfyH.MailRead)
 					ezfyG.POST("/mail/readall", ezfyH.MailReadAll)
 					ezfyG.POST("/mail/delete", ezfyH.MailDelete)
+					// ★ 2026-10-18 邮件附件领取（风云榜奖励 / 系统发放）：未领 + 未过期才能领，领完置 claimed
+					ezfyG.POST("/mail/claim", ezfyH.MailClaim)
 					// ★ 2026-10-13 好友私聊（强制仅好友，非好友请走邮箱）
 					ezfyG.POST("/privchat/send", ezfyH.PrivChatSend)
 					ezfyG.GET("/privchat/convs", ezfyH.PrivChatConvs)
@@ -1500,6 +1502,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						//   风云榜（周榜 + 统计开关 + 不参与排名名单）、战力榜（复用游戏内战力口径）。
 						// ★ 2026-10-15 用户需求：加入「军衔声望榜」tab（复用玩家端口径，同样支持不参与排名）。
 						admin.GET("/ezfy-pvp-rank", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRank)
+					// ★ 2026-10-18 风云榜奖励发放：GET=该周已发情况预览，POST=一键发放（走系统邮件）
+					admin.GET("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardStatus)
+					admin.POST("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpReward)
 						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)
 						admin.POST("/ezfy-pvp-rank/exclude", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExclude)
 						admin.DELETE("/ezfy-pvp-rank/exclude/:id", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpExcludeRemove)

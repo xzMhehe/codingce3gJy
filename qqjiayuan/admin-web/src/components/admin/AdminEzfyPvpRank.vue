@@ -31,6 +31,8 @@
           <el-select v-model="week" placeholder="选择统计周" style="width:200px" @change="loadPvp(true)">
             <el-option v-for="w in weeks" :key="w" :label="w" :value="w" />
           </el-select>
+          <!-- ★ 2026-10-18 风云榜奖励发放：给前三名 / 参与者发宝箱·道具·钻石，走系统邮件领取 -->
+          <el-button type="warning" icon="el-icon-present" @click="openReward()">发放奖励</el-button>
         </div>
 
         <el-table :data="pvpPageList" v-loading="loading" stripe border>
@@ -205,6 +207,85 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- ★★ 2026-10-18 风云榜奖励发放（用户需求）：
+         给第 1/2/3 名和参与者分别发 宝箱 / 道具 / 钻石；奖励**不直接进背包**，
+         以系统邮件发给玩家，玩家在邮箱点 [领取] 才到账，超过领取期限作废。
+         同一玩家同一周只发一次（后端 ezfy_pvp_reward 唯一索引），重复点只补发没发过的人。 -->
+    <el-dialog title="风云榜奖励发放" :visible.sync="reward.on" width="900px" :close-on-click-modal="false"
+               append-to-body>
+      <div class="td-sub" style="margin-bottom:10px;line-height:1.8">
+        奖励<b>不直接进背包</b>，以<b>系统邮件</b>发送，玩家在「邮箱」点 [领取] 才到账；超过领取期限未领取自动作废。<br>
+        同一玩家同一周只发一次，重复点「确认发放」只会补发还没发过的人。
+      </div>
+
+      <el-form label-width="90px" size="small">
+        <el-form-item label="统计周">
+          <el-select v-model="reward.week" style="width:200px" @change="loadRewardStatus()">
+            <el-option v-for="w in weeks" :key="'rw' + w" :label="w" :value="w" />
+          </el-select>
+          <span class="td-sub" style="margin-left:10px">
+            榜单 {{ pvpTotal }} 人<span v-if="reward.status">，本周已发放 {{ reward.status.sent }} 人</span>
+          </span>
+        </el-form-item>
+        <el-form-item label="领取期限">
+          <el-input-number v-model="reward.expire_days" :min="1" :max="90" />
+          <span class="td-sub" style="margin-left:8px">天（到期未领取作废）</span>
+        </el-form-item>
+        <el-form-item label="参与奖范围">
+          <el-radio-group v-model="reward.joinAll">
+            <el-radio :label="false">第 4 ~ 第 {{ reward.join_limit }} 名</el-radio>
+            <el-radio :label="true">第 4 名及以后全部参战玩家</el-radio>
+          </el-radio-group>
+          <el-input-number v-if="!reward.joinAll" v-model="reward.join_limit" :min="4" :max="1000"
+                           size="small" style="margin-left:10px" />
+        </el-form-item>
+      </el-form>
+
+      <div v-for="t in reward.tiers" :key="'rt' + t.key" class="rw-tier">
+        <div class="rw-tier-head">{{ t.label }}</div>
+
+        <div class="rw-row">
+          <span class="rw-lb">钻石</span>
+          <el-input-number v-model="t.diamond" :min="0" :max="100000000" size="small" />
+        </div>
+
+        <div class="rw-row">
+          <span class="rw-lb">宝箱</span>
+          <div class="rw-items">
+            <div v-for="(c, i) in t.chests" :key="'c' + i" class="rw-item">
+              <el-select v-model="c.chest_id" placeholder="选择宝箱" filterable size="small" style="width:200px">
+                <el-option v-for="o in chestOptions" :key="'co' + o.id" :label="o.name" :value="o.id" />
+              </el-select>
+              <el-input-number v-model="c.count" :min="1" :max="100000" size="small" style="width:110px" />
+              <el-button type="text" @click="t.chests.splice(i, 1)">删除</el-button>
+            </div>
+            <el-button size="mini" plain icon="el-icon-plus"
+                       @click="t.chests.push({ chest_id: null, count: 1 })">添加宝箱</el-button>
+          </div>
+        </div>
+
+        <div class="rw-row">
+          <span class="rw-lb">道具</span>
+          <div class="rw-items">
+            <div v-for="(it, i) in t.items" :key="'i' + i" class="rw-item">
+              <el-select v-model="it.cfg_id" placeholder="选择道具" filterable size="small" style="width:220px">
+                <el-option v-for="o in itemOptions" :key="'io' + o.id" :label="o.name" :value="o.id" />
+              </el-select>
+              <el-input-number v-model="it.count" :min="1" :max="100000" size="small" style="width:110px" />
+              <el-button type="text" @click="t.items.splice(i, 1)">删除</el-button>
+            </div>
+            <el-button size="mini" plain icon="el-icon-plus"
+                       @click="t.items.push({ cfg_id: null, count: 1 })">添加道具</el-button>
+          </div>
+        </div>
+      </div>
+
+      <div slot="footer">
+        <el-button @click="reward.on = false">取消</el-button>
+        <el-button type="warning" :loading="reward.saving" @click="doReward">确认发放</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -256,6 +337,24 @@ export default {
       prestigeTotal: 0,
       prestigeWord: '',
       prestigeList: [],
+      // ---- ★ 2026-10-18 风云榜奖励发放 ----
+      reward: {
+        on: false,
+        week: '',
+        expire_days: 7,
+        join_limit: 20,
+        joinAll: false, // true = 第 4 名及以后全部参战玩家
+        saving: false,
+        status: null,
+        tiers: [
+          { key: 'rank1', label: '第 1 名', diamond: 0, chests: [], items: [] },
+          { key: 'rank2', label: '第 2 名', diamond: 0, chests: [], items: [] },
+          { key: 'rank3', label: '第 3 名', diamond: 0, chests: [], items: [] },
+          { key: 'join', label: '参与奖（第 4 名及以后）', diamond: 0, chests: [], items: [] }
+        ]
+      },
+      chestOptions: [],
+      itemOptions: [],
     }
   },
   mounted () {
@@ -288,6 +387,60 @@ export default {
     }
   },
   methods: {
+    // ---- ★ 2026-10-18 风云榜奖励发放 ----
+    openReward () {
+      this.reward.on = true
+      this.reward.week = this.week || this.weeks[0] || ''
+      if (!this.chestOptions.length) {
+        api.get('/admin/ezfy-chest-grant/options').then(r => {
+          if (r.code === 0) this.chestOptions = r.data.list || []
+        })
+      }
+      if (!this.itemOptions.length) {
+        api.get('/admin/ezfy-item-grant/options').then(r => {
+          if (r.code === 0) this.itemOptions = r.data.list || []
+        })
+      }
+      this.loadRewardStatus()
+    },
+    // 该周已发放情况（弹窗里显示「已发放 N 人」，避免以为没发又点一次）
+    loadRewardStatus () {
+      api.get('/admin/ezfy-pvp-rank/reward', { params: { week: this.reward.week } }).then(r => {
+        if (r.code === 0) this.reward.status = r.data
+      })
+    },
+    doReward () {
+      const tiers = {}
+      let any = false
+      for (const t of this.reward.tiers) {
+        const o = { diamond: t.diamond || 0, chests: [], items: [] }
+        for (const c of t.chests) {
+          if (c.chest_id) { o.chests.push({ chest_id: c.chest_id, count: c.count || 1 }); any = true }
+        }
+        for (const it of t.items) {
+          if (it.cfg_id) { o.items.push({ cfg_id: it.cfg_id, count: it.count || 1 }); any = true }
+        }
+        if (o.diamond > 0) any = true
+        tiers[t.key] = o
+      }
+      if (!any) { this.$message.warning('请至少给一个档位配置奖励（宝箱 / 道具 / 钻石）'); return }
+      this.$confirm('确定给「' + this.reward.week + '」风云榜发放奖励吗？发放后不可撤回；同一玩家同一周只会发一次。',
+        '确认发放', { type: 'warning' }).then(() => {
+        this.reward.saving = true
+        api.post('/admin/ezfy-pvp-rank/reward', {
+          week: this.reward.week,
+          expire_days: this.reward.expire_days,
+          join_limit: this.reward.joinAll ? 0 : this.reward.join_limit,
+          tiers: tiers
+        }).then(r => {
+          this.reward.saving = false
+          if (r.code === 0) {
+            this.$message.success((r.data && r.data.msg) || '已发放')
+            this.loadRewardStatus()
+          } else this.$message.error(r.msg || '发放失败')
+        }).catch(() => { this.reward.saving = false })
+      }).catch(() => {})
+    },
     // ★ 2026-10-15 风云榜查询：按游戏ID精确查找玩家（查不到提示，便于核对输入）
     doPvpSearch () {
       this.pvpPage = 1
@@ -418,4 +571,11 @@ export default {
   .cfg-tabs { margin-bottom: 6px; }
   .sw-label { font-size: 13px; color: #606266; margin-right: 6px; }
   .panel-title { font-size: 14px; font-weight: 600; color: #303133; margin: 16px 0 8px; }
+  /* ★ 2026-10-18 风云榜奖励发放弹窗：每档一个浅灰块，避免四档糊在一起 */
+  .rw-tier { border: 1px solid #ebeef5; border-radius: 4px; padding: 8px 12px 4px; margin-bottom: 10px; background: #fafafa; }
+  .rw-tier-head { font-size: 13px; font-weight: 600; color: #303133; margin-bottom: 6px; }
+  .rw-row { display: flex; align-items: flex-start; margin-bottom: 6px; }
+  .rw-lb { flex: 0 0 48px; font-size: 13px; color: #606266; line-height: 32px; }
+  .rw-items { flex: 1; }
+  .rw-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 </style>

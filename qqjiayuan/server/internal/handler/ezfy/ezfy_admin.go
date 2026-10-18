@@ -649,15 +649,18 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 	}
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	items := ""
+	attaches := make([]model.EzfyMailAttach, 0, len(in.Items))
 	for _, it := range in.Items {
 		if it.CfgID <= 0 || it.Count <= 0 {
 			continue
 		}
 		// ★ 2026-10-10 为爱发电卡：已彻底脱离道具体系（不在 ezfy_cfg_item），
 		//   发放即生效（创建激活记录），先按卡片目录识别，命中即不再查道具表。
+		//   ★ 2026-10-18 改走邮件后，卡片仍**直接生效**（没有背包概念，走邮件领取反而绕），
+		//     邮件正文里注明「已直接激活」。
 		if cat := loveCardByID(it.CfgID); cat != nil {
 			ez.createLoveCard(p.UserID, cat, it.Count)
-			items = items + fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+			items = items + fmt.Sprintf(" 【%s】×%d（已直接激活）", cat.Name, it.Count)
 			continue
 		}
 		var cfg model.EzfyCfgItem
@@ -669,60 +672,39 @@ func (h *EzfyAdmin) AdminEzfyItemGrant(c *gin.Context) {
 		if isLoveCardItem(cfg.ItemType) {
 			if cat := loveCardByType(cfg.ItemType); cat != nil {
 				ez.createLoveCard(p.UserID, cat, it.Count)
-				items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+				items += fmt.Sprintf(" 【%s】×%d（已直接激活）", cat.Name, it.Count)
 				continue
 			}
 		}
-		ez.addItem(p.UserID, it.CfgID, it.Count)
+		// ★★ 2026-10-18 用户需求「数据管理里面发放道具也是走邮件吧，不然用户都不知道获得了什么」：
+		//   不再直接 addItem 进背包，改成**系统邮件 + 附件**，玩家在邮箱点「领取」才到账。
+		attaches = append(attaches, model.EzfyMailAttach{
+			Kind: ezfyAttachItem, CfgID: it.CfgID, Num: int64(it.Count), Name: cfg.Name,
+		})
 		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
 	}
-	if items == "" {
+	if items == "" && len(attaches) == 0 {
 		resp.ParamError(c, "请添加要发放的道具")
 		return
 	}
-	h.DB.Create(&model.EzfyNotice{UserId: p.UserID, Title: "管理员发放道具",
-		Content: "管理员发放道具：" + strings.TrimSpace(items) + "，请查收。"})
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已发放给玩家「%s」(ID:%d)%s", p.Nickname, p.UserID, items)})
-}
-
-// ezfyGrantAllChunk 全员发放的分批大小（一条 SQL 最多塞多少个玩家）。
-// 500 个玩家 × 3 个占位符 = 1500 个参数，远低于 MySQL 的 max_allowed_packet / 占位符上限。
-const ezfyGrantAllChunk = 500
-
-// ezfyGrantItemToPlayers 把**同一件道具**一次性发给一批玩家（全员发放用）。
-//
-// ★★ 2026-10-13 不能逐个玩家调 addItem：那是「先查背包 → 再写」两次往返，
-// 几百个玩家就是上千次 SQL（跨 WAN 的 RDS 直接超时）。这里用**一条 upsert** 覆盖两种情况：
-//
-//	背包里已有该道具 → 唯一索引 uk_user_item(user_id,cfg_id) 冲突 → `count = count + ?`（原子自增，不读-改-写）
-//	背包里还没有     → 直接插入一行
-//
-// ⚠️ 与 `addItem` 一样**不校验背包单件上限**（管理端发放本就该无视上限，与单人发放口径一致）。
-func ezfyGrantItemToPlayers(db *gorm.DB, cfgID, count int, uids []uint) error {
-	if count <= 0 || len(uids) == 0 {
-		return nil
-	}
-	for i := 0; i < len(uids); i += ezfyGrantAllChunk {
-		j := i + ezfyGrantAllChunk
-		if j > len(uids) {
-			j = len(uids)
-		}
-		chunk := uids[i:j]
-		ph := make([]string, 0, len(chunk))
-		args := make([]interface{}, 0, len(chunk)*3+1)
-		for _, u := range chunk {
-			ph = append(ph, "(?, ?, ?)")
-			args = append(args, u, cfgID, count)
-		}
-		args = append(args, count) // ON DUPLICATE KEY UPDATE 里要再加一次增量
-		sql := "INSERT INTO ezfy_item (user_id, cfg_id, count) VALUES " +
-			strings.Join(ph, ",") + " ON DUPLICATE KEY UPDATE count = count + ?"
-		if err := db.Exec(sql, args...).Error; err != nil {
-			return err
+	if len(attaches) > 0 {
+		content := "系统发放道具：" + strings.TrimSpace(items) +
+			fmt.Sprintf("，请在 %d 天内到邮箱领取，过期作废。", ezfyMailAttachExpireDays)
+		if _, err := ezfyMailSendBatch(h.DB, []ezfyMailDraft{{
+			ReceiverID: p.UserID, Subject: "系统发放道具", Content: content, Attaches: attaches,
+		}}, ezfyMailAttachExpireDays); err != nil {
+			resp.ServerError(c, fmt.Errorf("发放失败：%w", err))
+			return
 		}
 	}
-	return nil
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已通过系统邮件发放给玩家「%s」(ID:%d)%s，玩家需在邮箱领取",
+		p.Nickname, p.UserID, items)})
 }
+
+// ★★ 2026-10-18 「发放道具」改走系统邮件后，原来的 ezfyGrantItemToPlayers（直接写背包）
+//   已无调用方，整体删除 —— 避免留一条与邮件发放**口径不同**的旁路，
+//   以后有人想「补发」时误用它（那条路玩家收不到任何通知/邮件）。
+//   批量写背包的原子 upsert 写法在邮件领取里（ezfy_mail_attach.go::MailClaim）继续沿用。
 
 // AdminEzfyItemGrantTargets GET /admin/ezfy-item-grant/targets —— 全员发放的「目标人数」预览。
 //
@@ -768,6 +750,7 @@ func (h *EzfyAdmin) AdminEzfyItemGrantAll(c *gin.Context) {
 	}
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
 	items := ""
+	attaches := make([]model.EzfyMailAttach, 0, len(in.Items))
 	for _, it := range in.Items {
 		if it.CfgID <= 0 || it.Count <= 0 {
 			continue
@@ -777,7 +760,7 @@ func (h *EzfyAdmin) AdminEzfyItemGrantAll(c *gin.Context) {
 			for _, uid := range uids {
 				ez.createLoveCard(uid, cat, it.Count)
 			}
-			items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+			items += fmt.Sprintf(" 【%s】×%d（已直接激活）", cat.Name, it.Count)
 			continue
 		}
 		var cfg model.EzfyCfgItem
@@ -790,43 +773,35 @@ func (h *EzfyAdmin) AdminEzfyItemGrantAll(c *gin.Context) {
 				for _, uid := range uids {
 					ez.createLoveCard(uid, cat, it.Count)
 				}
-				items += fmt.Sprintf(" 【%s】×%d", cat.Name, it.Count)
+				items += fmt.Sprintf(" 【%s】×%d（已直接激活）", cat.Name, it.Count)
 				continue
 			}
 		}
-		if err := ezfyGrantItemToPlayers(h.DB, it.CfgID, it.Count, uids); err != nil {
-			resp.ServerError(c, fmt.Errorf("发放【%s】失败：%w（前面已成功的道具不会回滚）", cfg.Name, err))
-			return
-		}
+		// ★★ 2026-10-18 全员发放同样改走邮件（不再直接写背包）：每人一封系统邮件 + 同一份附件。
+		attaches = append(attaches, model.EzfyMailAttach{
+			Kind: ezfyAttachItem, CfgID: it.CfgID, Num: int64(it.Count), Name: cfg.Name,
+		})
 		items += fmt.Sprintf(" 【%s】×%d", cfg.Name, it.Count)
 	}
-	if items == "" {
+	if items == "" && len(attaches) == 0 {
 		resp.ParamError(c, "请添加要发放的道具")
 		return
 	}
-	// 每人一条站内通知（分批插入）。
-	// ⚠️ 不用「全员公告」(ezfy_notice.user_id=0)：那会占掉首页公告位（notice_home_count 默认只展示 1 条），
-	//   把管理员真正要发的公告顶掉。所以按人写通知，口径与单人发放一致。
-	content := "管理员发放道具：" + strings.TrimSpace(items) + "，请查收。"
-	notices := make([]model.EzfyNotice, 0, len(uids))
-	now := time.Now()
-	for _, uid := range uids {
-		notices = append(notices, model.EzfyNotice{UserId: uid, Title: "管理员发放道具", Content: content, CreatedAt: now})
-	}
-	for i := 0; i < len(notices); i += ezfyGrantAllChunk {
-		j := i + ezfyGrantAllChunk
-		if j > len(notices) {
-			j = len(notices)
+	if len(attaches) > 0 {
+		content := "系统发放道具：" + strings.TrimSpace(items) +
+			fmt.Sprintf("，请在 %d 天内到邮箱领取，过期作废。", ezfyMailAttachExpireDays)
+		drafts := make([]ezfyMailDraft, 0, len(uids))
+		for _, uid := range uids {
+			drafts = append(drafts, ezfyMailDraft{
+				ReceiverID: uid, Subject: "系统发放道具", Content: content, Attaches: attaches,
+			})
 		}
-		part := notices[i:j]
-		if err := h.DB.Create(&part).Error; err != nil {
-			// 通知失败不回滚道具（道具已经发出去了）—— 只提示，别让管理员以为发放失败又发一次
-			resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发放%s；但站内通知写入失败：%s",
-				len(uids), items, err.Error()), "players": len(uids), "notify_failed": true})
+		if _, err := ezfyMailSendBatch(h.DB, drafts, ezfyMailAttachExpireDays); err != nil {
+			resp.ServerError(c, fmt.Errorf("发放失败：%w", err))
 			return
 		}
 	}
-	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发放%s", len(uids), items), "players": len(uids)})
+	resp.OK(c, gin.H{"msg": fmt.Sprintf("已给全部 %d 名玩家发送系统邮件%s，玩家需在邮箱领取", len(uids), items), "players": len(uids)})
 }
 
 // AdminEzfyPlayerDelete 删除玩家（**物理删除该玩家在二战库的全部数据**）。

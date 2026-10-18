@@ -3151,6 +3151,18 @@ export default {
         })
       })
     },
+    doMailClaim (m) {
+      if (!m || m.claimed === 1 || !m.can_claim) return
+      api.post('/games/ezfy/mail/claim', { id: m.id }).then(r => {
+        if (r.code === 0) {
+          this.notify(r.data && r.data.msg ? r.data.msg : '领取成功')
+          // 本地先置已领（防连点），再整页刷新邮件拿最新状态
+          m.claimed = 1
+          m.can_claim = false
+          this.loadMail(this.mailTab, true)
+        } else this.notify(r.msg || '领取失败')
+      })
+    },
     doSendMail () {
       const to = (this.mailCompose.to || '').trim()
       const subject = (this.mailCompose.subject || '').trim()

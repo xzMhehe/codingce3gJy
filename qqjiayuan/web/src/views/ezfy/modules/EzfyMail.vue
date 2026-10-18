@@ -42,10 +42,22 @@
               <a href="javascript:;" @click="ezfy.mailToggle(m)">
                 <span :class="m.is_read === 0 ? 'red' : ''">{{ m.subject || '(无主题)' }}</span>
               </a>
+              <span v-if="m.attach && m.attach.length" class="red">[附件]</span>
               <span class="gray">({{ ezfy.mailSender(m) }} · {{ ezfy.fmtTime(m.created_at) }})</span>
               <a v-if="m.is_read === 0" href="javascript:;" @click="ezfy.doMailRead(m)">[标已读]</a>
               <a href="javascript:;" @click="ezfy.doMailDelete(m)">[删除]</a>
               <div v-if="ezfy.mailOpen === m.id" class="sub" style="margin-top:4px;white-space:pre-wrap;word-break:break-all;">{{ m.content }}</div>
+              <!-- ★ 2026-10-18 邮件附件（风云榜奖励 / 系统发放）：玩家点 [领取] 才到账，7 天不领过期 -->
+              <template v-if="ezfy.mailOpen === m.id && m.attach && m.attach.length">
+                <div class="sub" style="margin-top:4px;">
+                  附件：<span v-for="(a,i) in m.attach" :key="'at' + i">{{ i ? '、' : '' }}{{ a.name }}×{{ a.num }}</span>
+                </div>
+                <div class="old-line" style="margin-top:2px;">
+                  <a v-if="m.can_claim" href="javascript:;" @click="ezfy.doMailClaim(m)">[领取]</a>
+                  <span v-else-if="m.claimed === 1" class="gray">[已领取]</span>
+                  <span v-else-if="m.expired" class="gray">[已过期]</span>
+                </div>
+              </template>
             </div>
             <div class="old-line gray" v-if="!ezfy.mailList(ezfy.mailTab).length">
               {{ ezfy.mailTab === 'inbox' ? '收件箱暂无邮件。' : ezfy.mailTab === 'system' ? '暂无系统邮件。' : '发件箱暂无邮件。' }}
