@@ -222,21 +222,28 @@
             <el-option v-for="w in weeks" :key="'rw' + w" :label="w" :value="w" />
           </el-select>
           <span class="td-sub" style="margin-left:10px">
-            榜单 {{ pvpTotal }} 人<span v-if="reward.status">，已发放 {{ reward.status.sent }} 人</span>
+            榜单 {{ pvpTotal }} 人，有效参战 {{ rewardEligible }} 人<span v-if="reward.status">，已发放 {{ reward.status.sent }} 人</span>
           </span>
           <el-tooltip placement="top" effect="light">
             <div slot="content" style="max-width:320px;line-height:1.7">
               奖励不直接进背包，以系统邮件发送，玩家在「邮箱」点 [领取] 才到账；超过领取期限未领取自动作废。<br>
+              当周积分 0 视为「没有效参与」，不发奖（前三名也一样）；可设最低积分门槛进一步过滤。<br>
               同一玩家同一周只发一次，重复点「确认发放」只会补发还没发过的人。
             </div>
             <i class="el-icon-info rw-info"></i>
           </el-tooltip>
         </el-form-item>
-        <el-form-item label="期限/范围">
+        <el-form-item label="领取期限">
           <el-input-number v-model="reward.expire_days" :min="1" :max="90" size="small"
                            controls-position="right" style="width:96px" />
-          <span class="td-sub">天未领作废</span>
+          <span class="td-sub" style="margin-left:6px">天未领作废</span>
           <span class="rw-sep">|</span>
+          <span class="td-sub">最低积分</span>
+          <el-input-number v-model="reward.min_points" :min="0" :max="100000000" size="small"
+                           controls-position="right" style="width:110px;margin-left:4px" />
+          <span class="td-sub" style="margin-left:6px">分（低于此分不发奖，0 = 只要有积分就发）</span>
+        </el-form-item>
+        <el-form-item label="参与奖">
           <el-radio-group v-model="reward.joinAll">
             <el-radio :label="false">第 4 ~ 第 {{ reward.join_limit }} 名</el-radio>
             <el-radio :label="true">全部参战玩家</el-radio>
@@ -356,6 +363,7 @@ export default {
         on: false,
         week: '',
         expire_days: 7,
+        min_points: 0,
         join_limit: 20,
         joinAll: false, // true = 第 4 名及以后全部参战玩家
         saving: false,
@@ -394,6 +402,13 @@ export default {
       const uid = Number(this.pvpWord)
       if (isNaN(uid)) return []
       return this.list.filter(r => r.user_id === uid)
+    },
+    // ★ 2026-10-18 有效参战人数 = 当周积分 > 0 且 ≥ 最低积分门槛（随门槛改动实时变化）
+    rewardEligible () {
+      const st = this.reward.status
+      if (!st || !st.list) return this.pvpTotal
+      const min = Number(this.reward.min_points) || 0
+      return st.list.filter(x => x.points > 0 && x.points >= min).length
     },
     // ★ 2026-10-15 修复「排行榜空白」：pvpShown 是计算属性，取值用 this.pvpShown，不能当函数调用
     pvpTotal () { return this.pvpShown.length },
@@ -446,6 +461,7 @@ export default {
         api.post('/admin/ezfy-pvp-rank/reward', {
           week: this.reward.week,
           expire_days: this.reward.expire_days,
+          min_points: this.reward.min_points || 0,
           join_limit: this.reward.joinAll ? 0 : this.reward.join_limit,
           tiers: tiers
         }).then(r => {

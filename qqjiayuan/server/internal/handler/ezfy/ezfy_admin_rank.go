@@ -748,18 +748,25 @@ func (h *EzfyAdmin) AdminEzfyPvpRewardStatus(c *gin.Context) {
 		sentSet[s.UserID] = true
 	}
 	type one struct {
-		UserID uint   `json:"user_id"`
-		Name   string `json:"name"`
-		Points  int64 `json:"points"`
-		Battles int64 `json:"battles"`
-		Sent   bool   `json:"sent"`
+		UserID   uint   `json:"user_id"`
+		Name     string `json:"name"`
+		Points   int64  `json:"points"`
+		Battles  int64  `json:"battles"`
+		Sent     bool   `json:"sent"`
+		Eligible bool   `json:"eligible"` // 积分 > 0 = 有效参与，才发奖
 	}
 	list := make([]one, 0, len(rows))
+	eligible := 0
 	for _, r := range rows {
+		ok := r.Points > 0
+		if ok {
+			eligible++
+		}
 		list = append(list, one{UserID: r.UserID, Name: r.Nickname, Points: r.Points,
-			Battles: r.Battles, Sent: sentSet[r.UserID]})
+			Battles: r.Battles, Sent: sentSet[r.UserID], Eligible: ok})
 	}
-	resp.OK(c, gin.H{"week": week, "total": len(rows), "sent": len(sent), "list": list})
+	resp.OK(c, gin.H{"week": week, "total": len(rows), "eligible": eligible,
+		"sent": len(sent), "list": list})
 }
 
 // AdminEzfyPvpReward POST /admin/ezfy-pvp-rank/reward —— 一键发放本周风云榜奖励
@@ -777,6 +784,9 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		Week       string `json:"week"`
 		ExpireDays int    `json:"expire_days"`
 		JoinLimit  int    `json:"join_limit"`
+		// ★ 2026-10-18 用户「发放的时候加个条件吧 积分大于多少」：
+		//   最低积分门槛，当周积分 < MinPoints 的玩家不发奖（0 = 只要积分 > 0 就算有效参与）。
+		MinPoints int64 `json:"min_points"`
 		Tiers      struct {
 			Rank1 ezfyRewardTier `json:"rank1"`
 			Rank2 ezfyRewardTier `json:"rank2"`
@@ -805,6 +815,9 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 	}
 	if in.JoinLimit > 0 && in.JoinLimit < 4 {
 		in.JoinLimit = 4 // 参与奖从第 4 名开始，截止名次不可能小于 4
+	}
+	if in.MinPoints < 0 {
+		in.MinPoints = 0
 	}
 
 	// 每档先解析成附件（顺便校验配置是否存在）；空档不参与发放
@@ -853,8 +866,17 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		tier  string
 	}, 0, len(rows))
 	skipped := 0
+	zeroSkipped := 0
 	for i, r := range rows {
 		rankNo := i + 1
+		// ★★ 2026-10-18 用户规则「积分 0 的不发奖，这是没有效参与」+「发放的时候加个条件 积分大于多少」：
+		//   当周积分 <= 0 或低于最低积分门槛的一律跳过（连第 1/2/3 名也不发）——
+		//   榜单里可能因为没人打而出现 0 分占前几名的情况，那种名次没有意义。
+		//   ★ 名次仍按**原榜单名次**（不重排）：奖励邮件里写的「第 N 名」必须和榜单显示一致。
+		if r.Points <= 0 || r.Points < in.MinPoints {
+			zeroSkipped++
+			continue
+		}
 		tier := ""
 		switch {
 		case rankNo == 1:
@@ -897,7 +919,11 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 		}{r.UserID, rankNo, tier})
 	}
 	if len(drafts) == 0 {
-		resp.OK(c, gin.H{"msg": fmt.Sprintf("本周已发放完毕（%d 人已领过奖励），本次没有新增发放", skipped), "sent": 0})
+		msg := fmt.Sprintf("本次没有可发放的玩家（已发过 %d 人，积分不达标跳过 %d 人）", skipped, zeroSkipped)
+		if skipped == 0 {
+			msg = fmt.Sprintf("本周没有达到积分门槛的玩家（跳过 %d 人），未发放", zeroSkipped)
+		}
+		resp.OK(c, gin.H{"msg": msg, "sent": 0, "skipped": skipped, "zero_skipped": zeroSkipped})
 		return
 	}
 
@@ -922,8 +948,9 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 VALUES (?, ?, ?, ?, ?, ?)`, week, m.uid, m.rank, m.tier, mailOf[m.uid], now)
 	}
 	resp.OK(c, gin.H{
-		"msg": fmt.Sprintf("风云榜奖励已发放：%d 人（跳过已发 %d 人），奖励已通过系统邮件送达，%d 天内未领取作废",
-			len(drafts), skipped, expireDays),
-		"sent": len(drafts), "skipped": skipped, "batch_no": batchNo, "week": week,
+		"msg": fmt.Sprintf("风云榜奖励已发放：%d 人（跳过已发 %d 人、积分不达标的 %d 人），奖励已通过系统邮件送达，%d 天内未领取作废",
+			len(drafts), skipped, zeroSkipped, expireDays),
+		"sent": len(drafts), "skipped": skipped, "zero_skipped": zeroSkipped,
+		"batch_no": batchNo, "week": week,
 	})
 }
