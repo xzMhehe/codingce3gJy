@@ -1688,6 +1688,10 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 					originLine = fmt.Sprintf("出发城市: %s(%d,%d)\n", city.Name, city.X, city.Y)
 				}
 				warn := "军情警报: 敌方部队正向我方城市进发!\n" + originLine
+				// ★ 2026-10-18 「预警战报加个目标城市」：多城玩家一眼看清敌人要打哪座城。
+				//   目标城市是**自己的城**，不依赖情报等级、无条件显示
+				//   （体例与「被侦查报告」的「我方城市」一致）。
+				warn += fmt.Sprintf("目标城市: %s(%d,%d)\n", target.Name, target.X, target.Y)
 				if radar >= 2 {
 					warn += "进攻意图: " + ezfyOrderTypeName(orderType) + "\n"
 				}
