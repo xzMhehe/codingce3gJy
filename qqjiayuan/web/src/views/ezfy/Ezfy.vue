@@ -9,8 +9,10 @@
          style="max-width:340px;margin:80px auto 0;padding:24px;background:#f8f8f9;border:1px solid #e0e0e0;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);">
       <div style="font-size:18px;font-weight:bold;text-align:center;margin-bottom:12px;">{{ zoneTitle }}</div>
       <div style="text-align:center;padding:14px 0 16px;color:#888;font-size:14px;">正在进入{{ zoneTitle }}…</div>
-      <!-- ★★ 2026-10-18 卡住兜底：SSO 超过 5 秒还没结果就露出「点此进入」，玩家可手动触发跳转 -->
-      <div v-if="ssoStuck" style="text-align:center;padding:0 0 4px;font-size:14px;">
+      <!-- ★★ 2026-10-18 手动入口**常显**（用户：「点此进入能不能别几秒后，直接就有」）。
+           正常 SSO 几百毫秒就自动 reload 进游戏，这个链接只是一闪而过；
+           真卡住时玩家第一眼就能点，不用干等。 -->
+      <div style="text-align:center;padding:0 0 4px;font-size:14px;">
         <a href="javascript:;" style="display:inline-block;padding:2px 10px;color:#2b6cb0;text-decoration:underline;" @click="manualEnter">点此进入</a>
       </div>
     </div>
@@ -497,9 +499,8 @@ export default {
       //   二战服是独立 SPA，「家园」按钮不能用站内路由（/home 不存在），要整页跳回家园服。
       homeUrl: '',
       ssoPending: !!this.$store.state.token,
-      // ★★ 2026-10-18 卡住兜底：SSO 占位超过 5 秒就置 true，露出「点此进入」手动跳转
-      ssoStuck: false,
-      ssoStuckTimer: null,
+      // ★★ 2026-10-18 SSO 请求序号：手动「点此进入」与自动 SSO 并发时只认最新一次响应
+      ssoSeq: 0,
       wwiiCaptcha: '',        // 验证码答案
       wwiiCaptchaId: '',      // 验证码 ID
       wwiiCaptchaImg: '',     // 验证码 base64 图
@@ -2273,8 +2274,12 @@ export default {
       //   有 home_url（zone 接口下发）→ 整页跳回家园服；没有（home 模式同进程）→ 走站内路由。
       if (this.homeUrl) {
         window.location.href = this.homeUrl
+        // ★★ 2026-10-18 兜底：跳转成功的话页面会卸载，这个定时器不会执行；
+        //   万一地址无效/被拦（页面还在），把 Vuex 也同步清掉，避免「界面还停在已登录、本地却没 token」。
+        setTimeout(() => { this.$store.commit('ezfyLogout') }, 1200)
         return
       }
+      this.$store.commit('ezfyLogout')
       this.$router.push('/home')
     },
     // 作废当前二战 token 并清掉本地登录态（点「家园」出口时调用）
@@ -2289,7 +2294,12 @@ export default {
           }).catch(() => {})
         } catch (e) { /* 忽略：不能让登出失败挡住回家园 */ }
       }
-      this.$store.commit('ezfyLogout')
+      // ★★ 2026-10-18 只清存储、**不 commit**（用户：「二战点击家园也卡顿，导致回不去家园」）：
+      //   commit('ezfyLogout') 会把 isLogin 变 false → 整个游戏界面卸载、重渲染成登录框
+      //   （游戏 DOM 很大，几百 ms），而页面马上要跳走，这次重渲染纯属浪费，
+      //   玩家感知就是「点了没反应 / 卡一下才走」。
+      localStorage.removeItem('ezfy_token')
+      localStorage.removeItem('ezfy_user')
     },
     // 沉浸式卡控①: 拦掉一切会把玩家带出游戏的站内链接
     // 兼容 '/home' 与 '/#/home' 两种写法; 不动浏览器的前进/后退(那由下面的 popstate 守卫接管)
@@ -2486,13 +2496,16 @@ export default {
     //   ★ /ezfy/sso 不在 /games/ezfy/ 前缀下 → api 拦截器会自动带**家园** token（正是这里要的）。
     trySsoLogin () {
       if (!this.$store.state.token) return // 家园没登录：不打扰，直接显示二战登录框
+      // ★★ 2026-10-18 请求序号：手动点「点此进入」可能和自动 SSO 并发，两个请求各自签发 token，
+      //   后到的会把 session_at 顶掉 → 先到的 token 失效，玩家可能拿着失效 token 进游戏。
+      //   只认最新一次请求的结果，过期响应直接丢弃。
+      const seq = ++this.ssoSeq
       this.wwiiBusy = true
       this.ssoPending = true // 占位兜底（data() 已按家园登录态初始化）
-      // ★★ 2026-10-18 卡住兜底：/ezfy/sso 走的是跨机 HTTP（最长 15s 才超时），这期间页面一直停在
-      //   「正在进入…」；超过 5s 就露出「点此进入」，让玩家手动触发跳转（自动跳转偶尔会卡住）。
-      this.clearSsoStuck()
-      this.ssoStuckTimer = setTimeout(() => { this.ssoStuck = true }, 5000)
-      api.post('/ezfy/sso').then(r => {
+      // ★★ 2026-10-18 超时收到 4s（原来吃 axios 全局 15s）：跨机 SSO 超过 4s 基本就是卡了，
+      //   再等下去玩家只能干看着。超时 → 走 catch 撤掉占位、露出登录框，玩家可自己输密码进。
+      api.post('/ezfy/sso', {}, { timeout: 4000 }).then(r => {
+        if (seq !== this.ssoSeq) return // 过期响应（玩家又点了一次），丢弃
         if (r.code === 0 && r.data && r.data.token) {
           this.$store.commit('setEzfyToken', r.data.token)
           this.$store.commit('setEzfyUser', { id: r.data.game_id, nickname: r.data.nickname || '' })
@@ -2510,24 +2523,21 @@ export default {
           return
         }
         // SSO 失败（二战未建档等）→ 撤掉占位，露出二战登录框让玩家自己输密码
-        this.clearSsoStuck()
         this.ssoPending = false
         this.wwiiBusy = false
-      }).catch(() => { this.clearSsoStuck(); this.ssoPending = false; this.wwiiBusy = false })
+      }).catch(() => {
+        if (seq !== this.ssoSeq) return // 过期响应（超时后又重试了），别把新请求的占位撤掉
+        this.ssoPending = false
+        this.wwiiBusy = false
+      })
     },
-    clearSsoStuck () {
-      if (this.ssoStuckTimer) { clearTimeout(this.ssoStuckTimer); this.ssoStuckTimer = null }
-      this.ssoStuck = false
-    },
-    // ★★ 2026-10-18 占位页「点此进入」：自动跳转卡住时玩家手动触发。
+    // ★★ 2026-10-18 占位页「点此进入」：常显，玩家随时可点。
     //   已有二战 token（SSO 其实成功了、只是没跳走）→ 直接刷新进游戏；
     //   没有家园 token（SSO 无从谈起）→ 刷新一次露出登录框，绝不再自动重试（避免死循环刷新）；
-    //   其余情况重走一次 SSO，仍未跳转就由 15s 超时兜底撤掉占位。
+    //   其余情况重走一次 SSO（序号机制会自动作废上一次未完成的请求）。
     manualEnter () {
       if (this.$store.getters.isEzfyLogin) { window.location.reload(); return }
       if (!this.$store.state.token) { window.location.reload(); return }
-      this.clearSsoStuck()
-      this.wwiiBusy = false
       this.trySsoLogin()
     },
     // 输入家园号(=二战游戏ID) + 家园密码，走二战自己的登录接口 /api/ezfy/login：

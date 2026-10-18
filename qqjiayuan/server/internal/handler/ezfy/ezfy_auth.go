@@ -10,6 +10,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -231,8 +232,24 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 		return
 	}
 	uid := claims.UserID
+	// ★★ 2026-10-18 性能（用户：「SSO 请求顺便优化性能，这系统人少，还不至于卡顿吧，才200多个人」）：
+	//   家园库 `users` 和二战库 `ezfy_account` 是**两个库**，原来串行查 → 两次跨 WAN 往返；
+	//   这里并发查，只花一次的时间。Select 只取用到的列，少传点数据。
 	var user model.User
-	if err := h.home().First(&user, uid).Error; err != nil {
+	var acct model.EzfyAccount
+	var userErr, acctErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		userErr = h.home().Select("id, password, nickname, status, is_bot").First(&user, uid).Error
+	}()
+	go func() {
+		defer wg.Done()
+		acctErr = h.DB.Where("game_id = ?", uid).First(&acct).Error
+	}()
+	wg.Wait()
+	if userErr != nil {
 		resp.ParamError(c, "家园账号不存在")
 		return
 	}
@@ -245,34 +262,40 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 		resp.ParamError(c, "该账号无法登录")
 		return
 	}
-	// 找/建二战账号。★★ 2026-10-18 账号统一：密码/昵称**永远以家园为准**（已建档的也同步），
-	// 不再有「二战自有密码」，与家园账号 A 永远一致。
-	var acct model.EzfyAccount
-	if err := h.DB.Where("game_id = ?", uid).First(&acct).Error; err != nil {
+	// ★★ 2026-10-18 单点登录卡控（与 EzfyLogin 同口径）：SSO 换发新 token 同样顶掉旧 token。
+	//   ★ 必须在**签发 token 之前**写（跨秒会登录即掉线）。
+	nowSec := time.Now().Unix() * 1000
+	// ★★ 2026-10-18 资料同步 + 登录痕迹**合并成一条写**（原来拆两条 UPDATE = 两次往返）。
+	//   账号统一后密码/昵称永远以家园为准，这里顺带覆盖；session_at 同一条写掉。
+	if acctErr == nil {
+		h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).
+			Updates(map[string]interface{}{
+				"password": user.Password, "nickname": user.Nickname, "m_sync": 1,
+				"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP(),
+			})
+		if user.Nickname != "" {
+			acct.Nickname = user.Nickname
+		}
+	} else {
 		acct = model.EzfyAccount{
-			GameID:   uid,
-			Password: user.Password, // 拷家园 hash（保持列语义，登录校验不再用它）
-			Nickname: user.Nickname,
-			MSync:    1,
+			GameID:      uid,
+			Password:    user.Password, // 拷家园 hash（保持列语义，登录校验不再用它）
+			Nickname:    user.Nickname,
+			MSync:       1,
+			LastLoginAt: nowSec,
+			SessionAt:   nowSec,
+			LastLoginIP: c.ClientIP(),
 		}
 		if err := h.DB.Create(&acct).Error; err != nil {
 			log.Printf("二战 SSO 建档失败 uid=%d: %v", uid, err)
 			resp.ServerError(c, err)
 			return
 		}
-	} else {
-		h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", uid).
-			Updates(map[string]interface{}{"password": user.Password, "nickname": user.Nickname, "m_sync": 1})
 	}
 	if acct.Nickname == "" {
 		acct.Nickname = user.Nickname
 	}
-	// ★★ 2026-10-15 单点登录卡控（与 EzfyLogin 同口径）：SSO 换发新 token 同样顶掉旧 token。
-	//   ★★ 2026-10-18 必须在**签发 token 之前**写（同 EzfyLogin，跨秒会登录即掉线）。
-	nowSec := time.Now().Unix() * 1000
-	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", acct.GameID).
-		Updates(map[string]interface{}{"last_login_at": nowSec, "session_at": nowSec, "last_login_ip": c.ClientIP()})
-	middleware.SetEzfySessionAt(acct.GameID, nowSec)
+	middleware.SetEzfySessionAt(uid, nowSec)
 
 	token, err := authutil.GenerateEzfyToken(acct.GameID, acct.Nickname, h.Secret, h.ExpH)
 	if err != nil {
