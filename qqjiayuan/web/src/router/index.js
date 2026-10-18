@@ -2,6 +2,7 @@ import Vue from 'vue'
 import VueRouter from 'vue-router'
 import store from '../store'
 import api from '../api'
+import { resolveZoneHost, isAbsoluteHttpUrl, looksLikeBrokenZonePath } from '../utils/zoneHost'
 
 Vue.use(VueRouter)
 
@@ -169,6 +170,12 @@ router.beforeEach((to, from, next) => {
     if (window.__EZFY_SHELL__) {
       return next()
     }
+    // ★ 2026-10-18 兜底：地址栏已经出现「端口被当路径」的坏形态（/:8081/:8081/...），
+    //   说明上一跳已经把相对地址当 URL 用了 → 回首页，绝不能再跳一次（否则继续累加、无限刷新）。
+    if (looksLikeBrokenZonePath(window.location.pathname)) {
+      window.location.replace('/')
+      return
+    }
     // 家园 SPA：先查全区服列表（公开接口），取第一个 host 非空的区服整页跳走；
     // 查不到（接口失败/都没配 host）→ 兜底回家园首页，绝不渲染二战页。
     api.get('/ezfy/zone').then(r => {
@@ -181,7 +188,12 @@ router.beforeEach((to, from, next) => {
       if (jyToken) {
         p += (p.indexOf('?') >= 0 ? '&' : '?') + 'sso_token=' + encodeURIComponent(jyToken)
       }
-      window.location.href = zone.host.replace(/\/+$/, '') + '/#' + p
+      // ★★ 必须先解析成绝对地址：host 支持三种写法（'' / ':端口' / 'http(s)://...'），
+      //   直接把 ':8081' 当 URL 用 = 相对路径 → 浏览器按当前目录拼接 → 无限刷新（2026-10-18 事故）。
+      //   解析后仍不是 http(s) 绝对地址 → 兜底回首页，绝不 location.href。
+      const host = resolveZoneHost(zone.host)
+      if (!isAbsoluteHttpUrl(host)) return next('/')
+      window.location.href = host.replace(/\/+$/, '') + '/#' + p
     }).catch(() => next('/'))
     return
   }

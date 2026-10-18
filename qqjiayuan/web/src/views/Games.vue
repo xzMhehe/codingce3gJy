@@ -98,6 +98,7 @@
 
 <script>
 import api from '../api'
+import { resolveZoneHost, isAbsoluteHttpUrl, looksLikeBrokenZonePath } from '../utils/zoneHost'
 
 export default {
   name: 'Games',
@@ -228,8 +229,15 @@ export default {
     //   按当前访问的域名 + 该端口解析 —— 39 上跳 39:8082、124 上跳 124:8082，不会跑到对方机器。
     enterServer (s) {
       const p = (s.path || (this.srvDlg.game && this.srvDlg.game.path) || '')
-      const host = resolveSrvHost(s.host)
-      if (host) {
+      // ★★ 2026-10-18 统一走 utils/zoneHost 的解析（`:端口` → 当前域名+端口），
+      //   且跳转前必须确认是绝对 http(s) 地址 —— 否则相对地址会被浏览器按当前目录拼接，
+      //   造成 /:8081/:8081/... 无限刷新（与路由守卫同一起事故）。
+      if (looksLikeBrokenZonePath(window.location.pathname)) {
+        window.location.replace('/')
+        return
+      }
+      const host = resolveZoneHost(s.host)
+      if (host && isAbsoluteHttpUrl(host)) {
         let target = p
         const jyToken = localStorage.getItem('jy_token')
         if (jyToken) {
@@ -264,13 +272,8 @@ function parseRoute (u) {
 //   ':8082'           → '<当前协议>://<当前域名>:8082'
 //                       ★ 多台机器共用同一个家园库时用它：谁访问就跳谁自己的机器
 //   'http(s)://...'   → 原样（真正的跨机器 / 跨域入口）
-function resolveSrvHost (raw) {
-  const h = (raw || '').trim()
-  if (!h) return ''
-  if (h.charAt(0) === ':') return window.location.protocol + '//' + window.location.hostname + h
-  if (h.indexOf('//:') === 0) return window.location.protocol + '//' + window.location.hostname + h.slice(2)
-  return h
-}
+// 区服地址解析已抽到 utils/zoneHost.js（router 守卫与本页共用同一实现，
+// 防止再出现「一处修了另一处没修」—— 2026-10-18 无限刷新事故的根因之一）。
 </script>
 
 <style scoped>

@@ -31,11 +31,18 @@
     2. 一区读取：ezfy_profile.diamond、ezfy_equipment 全部行、ezfy_item 全部行
     3. 二区写入（单个事务）：
          · 钻石   ezfy_profile.diamond += 一区余额（累加，不清空二区原有）
-         · 装备   逐行复制到 ezfy_equipment，city_id 改成本玩家在二区的主城、
+         · 装备   逐行复制到 ezfy_equipment，**city_id 写 0**、
                  officer_id / original_user_id 归零（二区没有对应军官，穿戴状态不保留）
          · 道具   ezfy_item 按 (user_id,cfg_id) 累加（ON DUPLICATE KEY UPDATE）
          · 流水   写一条 ezfy_diamond_logs（reason='一区资产迁移'）兼作「已迁移」标记
     4. 执行前把一区原始数据导出成 JSON 备份（默认写到脚本同目录 backups/）
+
+★★ 2026-10-18 装备与城市解耦（重要）
+--------------------------------------
+    装备只认 `user_id`（账号）+ `officer_id`（穿戴者，0=背包），**和城市没有任何关系**。
+    一区的 `ezfy_equipment.city_id` 是历史「出生城」，已全量清零并废弃（恒 0）；
+    所以迁移时**必须写 0**，不能再映射到二区主城 —— 否则一旦那座城被摧毁，
+    旧逻辑 `DELETE FROM ezfy_equipment WHERE city_id = ?` 又会把刚迁过去的装备删掉。
 
 安全设计
 --------
@@ -96,6 +103,16 @@ def cfg_ids(cur, schema, table, ids):
     return {r["id"] for r in rows}
 
 
+def table_exists(cur, schema, table):
+    """目标库里有没有这张表（老库可能缺后加的表，缺了就跳过而不是整个崩）。"""
+    return bool(q1(
+        cur,
+        "SELECT 1 AS ok FROM information_schema.tables "
+        "WHERE table_schema=%s AND table_name=%s LIMIT 1",
+        (schema, table),
+    ))
+
+
 # ---------------------------------------------------------------- 主流程
 def main():
     ap = argparse.ArgumentParser(description="二战一区 → 二区 资产迁移")
@@ -136,10 +153,13 @@ def main():
                 print("[中止] 二区有账号但没有 ezfy_profile（档案不完整），请先让玩家登录一次。")
                 return 2
             city2 = q1(cur, "SELECT id, name FROM `%s`.ezfy_city WHERE user_id=%%s ORDER BY id LIMIT 1" % DST, (uid,))
-            if not city2:
-                print("[中止] 二区没有城市（ezfy_city），装备无处挂靠，请先让玩家进入游戏建城。")
-                return 2
-            print("        二区档案 ✅  当前钻石=%d  主城 id=%d(%s)" % (prof2["diamond"], city2["id"], city2["name"]))
+            # ★ 2026-10-18 装备/道具/钻石/发电卡**都不挂城市**（装备 city_id 恒 0），
+            #   所以二区还没建城也能迁 —— 玩家进游戏时后端会自动建主城。
+            if city2:
+                print("        二区档案 ✅  当前钻石=%d  主城 id=%d(%s)" % (prof2["diamond"], city2["id"], city2["name"]))
+            else:
+                print("        二区档案 ✅  当前钻石=%d（还没有城市：资产不挂城市，照常迁移；"
+                      "玩家进游戏后自动建主城）" % prof2["diamond"])
 
             # ---------- 2. 防重复 ----------
             dup = q1(
@@ -160,12 +180,16 @@ def main():
                 return 2
             diamond1 = int(prof1["diamond"] or 0)
 
-            eqs = qall(cur, "SELECT * FROM `%s`.ezfy_equipment WHERE user_id=%%s" % SRC, (uid,))
-            items = qall(cur, "SELECT cfg_id, count FROM `%s`.ezfy_item WHERE user_id=%%s ORDER BY cfg_id" % SRC, (uid,))
+            # ★ 装备/道具/发电卡三张表老库可能缺（尤其二区新开服）→ 缺表就按空处理，不整段崩
+            eqs = (qall(cur, "SELECT * FROM `%s`.ezfy_equipment WHERE user_id=%%s" % SRC, (uid,))
+                   if table_exists(cur, SRC, "ezfy_equipment") else [])
+            items = (qall(cur, "SELECT cfg_id, count FROM `%s`.ezfy_item WHERE user_id=%%s ORDER BY cfg_id" % SRC, (uid,))
+                     if table_exists(cur, SRC, "ezfy_item") else [])
             # ★ 为爱发电卡：独立表 ezfy_love_card（不在道具体系）。迁移口径 = **剩余未领天数**累加：
             #   已领的天数对应钻石玩家早就拿到了，不能再给；只把 (total_days - claimed_days) 搬过去。
             #   同 cfg_id 有多张历史卡 → 剩余天数合并后按类型处理一次。
-            cards = qall(cur, "SELECT * FROM `%s`.ezfy_love_card WHERE user_id=%%s ORDER BY id" % SRC, (uid,))
+            cards = (qall(cur, "SELECT * FROM `%s`.ezfy_love_card WHERE user_id=%%s ORDER BY id" % SRC, (uid,))
+                     if table_exists(cur, SRC, "ezfy_love_card") else [])
             love_plan = {}
             for c in cards:
                 remain = int(c["total_days"] or 0) - int(c["claimed_days"] or 0)
@@ -202,10 +226,20 @@ def main():
 
             # ---------- 5. 计划 ----------
             new_diamond = int(prof2["diamond"] or 0) + diamond1
+            eq2_now = q1(cur, "SELECT COUNT(*) AS n FROM `%s`.ezfy_equipment WHERE user_id=%%s" % DST, (uid,)) \
+                if table_exists(cur, DST, "ezfy_equipment") else {"n": 0}
             print("\n[3/6] 迁移计划")
             print("  钻石 : %d + %d = %d" % (prof2["diamond"], diamond1, new_diamond))
-            print("  装备 : %d 件 → 二区主城 id=%d（officer_id 归零，穿戴状态不保留）"
-                  % (len(eq_use), city2["id"]))
+            # ★ city_id 一律写 0：装备是玩家背包资产，不挂城市（详见文件头 2026-10-18 说明）
+            print("  装备 : %d 件 → 二区（city_id=0，officer_id/original_user_id 归零，穿戴状态不保留）"
+                  % len(eq_use))
+            if len(eq_use) > 4000:
+                print("        ⚠️ 装备较多（%d 件）：宝物库存上限 treasure_max 默认 5000，"
+                      "迁完若未穿戴宝物超过上限，**采集会暂停**（已有资产不受影响，消耗后自动恢复）" % len(eq_use))
+            if int(eq2_now["n"] or 0) > 0:
+                print("        ⚠️ 二区该玩家**已有 %d 件装备**：本次是全量复制、不去重，"
+                      "迁完会变成 %d 件（若之前迁过又加了 --force，请先确认要不要先清二区装备）"
+                      % (int(eq2_now["n"]), int(eq2_now["n"]) + len(eq_use)))
             print("  道具 : %d 种（同名道具在二区已有则数量累加）" % len(it_use))
             for cid, p in sorted(love_plan.items()):
                 print("  发电卡: cfg_id=%d %s 剩 %d 天（%d 钻石/天，二区已有同类型未领完则续天数）"
@@ -250,7 +284,8 @@ def main():
                     (diamond1, uid),
                 )
 
-                # 6.2 装备：city_id 映射到二区主城；officer_id / original_user_id 归零
+                # 6.2 装备：★ city_id 一律 0（装备不挂城市，与后端 buildEquipment 同口径）；
+                #     officer_id / original_user_id 归零（二区没有对应军官，穿戴状态不保留）
                 if eq_use:
                     cols = [
                         "user_id", "city_id", "cfg_id", "name", "type", "tier",
@@ -267,8 +302,7 @@ def main():
                     for e in eq_use:
                         rows.append(tuple(
                             uid if c == "user_id" else
-                            city2["id"] if c == "city_id" else
-                            0 if c in ("officer_id", "original_user_id") else
+                            0 if c in ("city_id", "officer_id", "original_user_id") else
                             e.get(c)
                             for c in cols
                         ))
@@ -276,15 +310,19 @@ def main():
                         cur.executemany(sql, rows[i:i + 200])
 
                 # 6.3 道具：按 (user_id,cfg_id) 累加
-                if it_use:
+                if it_use and table_exists(cur, DST, "ezfy_item"):
                     cur.executemany(
                         "INSERT INTO `%s`.ezfy_item (user_id, cfg_id, count) VALUES (%%s,%%s,%%s) "
                         "ON DUPLICATE KEY UPDATE count = count + VALUES(count)" % DST,
                         [(uid, i["cfg_id"], int(i["count"] or 0)) for i in it_use],
                     )
+                elif it_use:
+                    print("  [告警] 二区没有 ezfy_item 表，跳过 %d 种道具" % len(it_use))
 
                 # 6.4 为爱发电卡：二区同类型还有未领天数的卡 → 续天数；否则新建（从今天起 remain 天）
-                if love_plan:
+                if love_plan and not table_exists(cur, DST, "ezfy_love_card"):
+                    print("  [告警] 二区没有 ezfy_love_card 表，跳过 %d 种发电卡" % len(love_plan))
+                elif love_plan:
                     now_ms = int(time.time() * 1000)
                     for cid, p in love_plan.items():
                         cur_card = q1(

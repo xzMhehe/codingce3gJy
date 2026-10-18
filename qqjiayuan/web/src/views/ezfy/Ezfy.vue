@@ -424,6 +424,8 @@
 
 <script>
 import api from '../../api'
+
+import { isAbsoluteHttpUrl, looksLikeBrokenZonePath } from '../../utils/zoneHost'
 // ★★ 2026-10-18 从 JWT 里解 uid：跨端口时 user 对象读不到，只能靠 token 判断「家园是不是换了人」
 import { jwtUid } from '../../store'
 
@@ -2272,7 +2274,11 @@ export default {
       this.ezfySignOut()
       // ★★ 2026-10-17 二战独立部署：二战服是独立 SPA，站内没有 /home 路由。
       //   有 home_url（zone 接口下发）→ 整页跳回家园服；没有（home 模式同进程）→ 走站内路由。
-      if (this.homeUrl) {
+      //   ★ 2026-10-18 护栏：home_url 必须是**绝对 http(s) 地址**才整页跳 ——
+      //     万一配成 ':8080' 这类相对写法，赋给 location.href 会被浏览器按当前目录拼接，
+      //     造成 /:8080/:8080/... 无限刷新；地址栏已出现坏形态时同样只回站内。
+      if (this.homeUrl && isAbsoluteHttpUrl(this.homeUrl) &&
+          !looksLikeBrokenZonePath(window.location.pathname)) {
         window.location.href = this.homeUrl
         // ★★ 2026-10-18 兜底：跳转成功的话页面会卸载，这个定时器不会执行；
         //   万一地址无效/被拦（页面还在），把 Vuex 也同步清掉，避免「界面还停在已登录、本地却没 token」。
