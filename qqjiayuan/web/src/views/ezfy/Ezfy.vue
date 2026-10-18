@@ -2279,14 +2279,20 @@ export default {
       //     造成 /:8080/:8080/... 无限刷新；地址栏已出现坏形态时同样只回站内。
       if (this.homeUrl && isAbsoluteHttpUrl(this.homeUrl) &&
           !looksLikeBrokenZonePath(window.location.pathname)) {
-        window.location.href = this.homeUrl
+        // ★★ 2026-10-18 落点 = 家园「游戏大厅」(/#/games)，不再落在广场首页
+        //   （用户：「点家园跳转 家园 /games 游戏页面 别去广场了」）。
+        //   home_url 若配置时已带 # 路由则原样尊重；否则统一拼 /#/games。
+        window.location.href = this.homeUrl.indexOf('#') >= 0
+          ? this.homeUrl
+          : this.homeUrl.replace(/\/+$/, '') + '/#/games'
         // ★★ 2026-10-18 兜底：跳转成功的话页面会卸载，这个定时器不会执行；
         //   万一地址无效/被拦（页面还在），把 Vuex 也同步清掉，避免「界面还停在已登录、本地却没 token」。
         setTimeout(() => { this.$store.commit('ezfyLogout') }, 1200)
         return
       }
       this.$store.commit('ezfyLogout')
-      this.$router.push('/home')
+      // 站内出口（home 模式同进程）同样落在游戏大厅
+      this.$router.push('/games')
     },
     // 作废当前二战 token 并清掉本地登录态（点「家园」出口时调用）
     ezfySignOut () {

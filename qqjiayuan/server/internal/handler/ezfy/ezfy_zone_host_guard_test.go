@@ -80,3 +80,20 @@ func TestRouterGuardNeverHrefsRelativeAddress(t *testing.T) {
 		t.Fatal("路由守卫的跳转目标必须用解析后的绝对地址（host）拼 `/#` + 站内路由")
 	}
 }
+
+// TestExitToHomeLandsGamesHall 二战页点「家园」必须落在家园的**游戏大厅**（/#/games），不是广场首页。
+func TestExitToHomeLandsGamesHall(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "../../../../web/src/views/ezfy/Ezfy.vue"), "\r\n", "\n")
+	i := strings.Index(src, "exitToHome () {")
+	j := strings.Index(src[i:], "ezfySignOut () {")
+	if i < 0 || j < 0 {
+		t.Fatal("找不到 exitToHome / ezfySignOut")
+	}
+	body := src[i : i+j]
+	if !strings.Contains(body, "'/#/games'") {
+		t.Fatal("exitToHome 没有拼 `/#/games` —— 点「家园」应落在游戏大厅（用户 2026-10-18：别去广场了）")
+	}
+	if strings.Contains(body, `this.$router.push('/home')`) {
+		t.Fatal("exitToHome 的站内出口不应落在「我的家园」(/home)，应与整页跳转一致落在游戏大厅")
+	}
+}
