@@ -147,7 +147,7 @@
           <el-input v-model.trim="srvForm.name" maxlength="50" placeholder="如 二战征途-【1区】红色警戒" />
         </el-form-item>
         <el-form-item label="入口地址">
-          <el-input v-model.trim="srvForm.host" maxlength="200" placeholder="留空=本服务器；跨服填 http(s)://域名(:端口)，如 http://1.2.3.4:8081" />
+          <el-input v-model.trim="srvForm.host" maxlength="200" placeholder="留空=本服务器；多机共用一份配置填「:端口」如 :8081（跟随访问域名）；真正的跨机器入口填 http(s)://域名(:端口)" />
         </el-form-item>
         <el-form-item label="入口路由">
           <el-input v-model.trim="srvForm.path" maxlength="100" placeholder="如 /games/ezfy（空则沿用游戏内部网址）" />

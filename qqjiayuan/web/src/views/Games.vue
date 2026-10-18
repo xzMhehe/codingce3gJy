@@ -224,15 +224,18 @@ export default {
     // ★★ 2026-10-17 二战独立部署：跨服跳时把家园 jy_token 拼进 hash query（sso_token 参数，
     //   只进地址栏不进 HTTP 请求），二战壳挂载后用 /api/ezfy/sso 换二战 token——跨 host 后
     //   localStorage 按源隔离，家园源的 jy_token 二战壳读不到，只能靠 URL 带过去。
+    // ★★ 2026-10-18 区服 host 支持「:端口」相对写法：多台机器共用同一个家园库（同一份区服配置）时，
+    //   按当前访问的域名 + 该端口解析 —— 39 上跳 39:8082、124 上跳 124:8082，不会跑到对方机器。
     enterServer (s) {
       const p = (s.path || (this.srvDlg.game && this.srvDlg.game.path) || '')
-      if (s.host) {
+      const host = resolveSrvHost(s.host)
+      if (host) {
         let target = p
         const jyToken = localStorage.getItem('jy_token')
         if (jyToken) {
           target += (target.indexOf('?') >= 0 ? '&' : '?') + 'sso_token=' + encodeURIComponent(jyToken)
         }
-        window.location.href = s.host.replace(/\/+$/, '') + '/#' + (target.charAt(0) === '/' ? '' : '/') + target
+        window.location.href = host.replace(/\/+$/, '') + '/#' + (target.charAt(0) === '/' ? '' : '/') + target
         return
       }
       this.closeSrvDlg()
@@ -254,6 +257,19 @@ function parseRoute (u) {
   const query = {}
   new URLSearchParams(u.slice(qi + 1)).forEach((v, k) => { query[k] = v })
   return { path, query }
+}
+
+// ★★ 2026-10-18 区服入口地址解析（与后端 ezfyZoneURL 同一套约定）：
+//   ''                → ''（本服同源，走站内路由）
+//   ':8082'           → '<当前协议>://<当前域名>:8082'
+//                       ★ 多台机器共用同一个家园库时用它：谁访问就跳谁自己的机器
+//   'http(s)://...'   → 原样（真正的跨机器 / 跨域入口）
+function resolveSrvHost (raw) {
+  const h = (raw || '').trim()
+  if (!h) return ''
+  if (h.charAt(0) === ':') return window.location.protocol + '//' + window.location.hostname + h
+  if (h.indexOf('//:') === 0) return window.location.protocol + '//' + window.location.hostname + h.slice(2)
+  return h
 }
 </script>
 

@@ -332,7 +332,8 @@ if "%ZONE2%"=="1" (
 echo.
 echo   WWII deployed:  http://%SSH_HOST%:%WWII_PORT%   ^(zone 1^)
 if "%ZONE2%"=="1" echo   Zone 2:          http://%SSH_HOST%:%ZONE2_PORT%
-echo   Next: home admin 'game hall' add WWII zone entries ^(host http://%SSH_HOST%:%WWII_PORT%^)
+echo   Next: home admin 'game hall' WWII zone entries - host use ":%WWII_PORT%" / ":%ZONE2_PORT%"
+echo         (port-only = follow the visitor's domain; correct on EVERY machine sharing the same home DB)
 goto done
 
 rem =========================================================

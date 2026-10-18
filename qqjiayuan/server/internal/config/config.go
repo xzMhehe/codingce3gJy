@@ -25,6 +25,16 @@ type ServerConfig struct {
 	//   二战独立服（wwii 模式）前端「家园」按钮用它整页跳回家园；home 模式留空走站内路由。
 	//   部署时由 deploy-wwii 自动回填为 http://<主机IP>:8080，无需手动配。
 	HomeURL string `yaml:"home_url"`
+	// ★★ 2026-10-18 多机共享同一个二战库：是否启动二战后台推进 goroutine（战报/称号/人机）。
+	//   两台以上机器连**同一个** ezfy 库时，只让一台开，其余写 `bg_tick: false` ——
+	//   否则同一批到点订单 / 到期建筑会被两台机器各结算一遍。
+	//   缺省（不写这一行）= true，老配置行为完全不变。
+	BgTick *bool `yaml:"bg_tick"`
+}
+
+// BgTickEnabled 是否启动二战后台推进（未配置时默认 true）。
+func (c *Config) BgTickEnabled() bool {
+	return c.Server.BgTick == nil || *c.Server.BgTick
 }
 
 // ZoneTitle 完整服务标题，如「二战征途-【1区】红色警戒」。

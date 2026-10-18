@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -875,15 +876,21 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 				// 后台兜底推进「战斗中」战场（玩家下线时活动野地等无人守方的战斗也能打完，
 				// 排队「等待」的部队自动放行）。常驻 goroutine，见 EzfyHandler.bgTickBattles。
 				// ★★ 2026-10-17 二战独立部署：三个 BgTick 只在 wwii 模式启动（home 模式无二战库）。
-				go ezfyH.BgTickBattles()
-				// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
-				//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
-				go ezfyH.BgTickTitles()
-				// ★ 2026-10-17 人机（AI 玩家）：内部自调用要打本机端口 → 先绑定 base URL，再起 tick
-				//   （tick 自带租约锁，多进程只有一台真正执行；启动先等 45s 让建表/配置缓存就绪）
-				ezfy.SetEzfyBotBaseURL(cfg.Server.Port)
-				ezfy.SetEzfyBotAdminSecret(cfg.Jwt.Secret)
-				go ezfyH.BgTickBots()
+				// ★★ 2026-10-18 多机共享同一个二战库：server.bg_tick=false 的机器不跑后台推进，
+				//   由其中一台统一负责（否则到点订单 / 到期建筑会被两台机器各结算一遍）。
+				if cfg.BgTickEnabled() {
+					go ezfyH.BgTickBattles()
+					// ★ 2026-10-17 统帅称号：后台每 5 分钟结算「昨天」的风云榜日冠军 → 发放「天下无双」
+					//   （day 唯一 + INSERT IGNORE 幂等，重启/多实例都不会重复发）
+					go ezfyH.BgTickTitles()
+					// ★ 2026-10-17 人机（AI 玩家）：内部自调用要打本机端口 → 先绑定 base URL，再起 tick
+					//   （tick 自带租约锁，多进程只有一台真正执行；启动先等 45s 让建表/配置缓存就绪）
+					ezfy.SetEzfyBotBaseURL(cfg.Server.Port)
+					ezfy.SetEzfyBotAdminSecret(cfg.Jwt.Secret)
+					go ezfyH.BgTickBots()
+				} else {
+					log.Printf("★ server.bg_tick=false：本机不启动二战后台推进（战报/称号/人机），交由同库的另一台机器负责")
+				}
 			} // ★★ 2026-10-17 wwii 二战用户路由分支结束
 
 			// 我的游戏（家园专属，home 模式注册）
@@ -1912,7 +1919,7 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 					// ★★ 2026-10-17 二战独立部署：home 模式不再托管 ezfy.html ——
 					//   /games/ezfy* 302 到二战默认区服 host（整页跳转，服务端只管 Location）。
 					if strings.HasPrefix(path, "/games/ezfy") {
-						target := ezfyServerHost(db, c.Request.URL)
+						target := ezfyServerHost(db, c)
 						if target != "" {
 							c.Redirect(http.StatusFound, target)
 							return
@@ -1981,18 +1988,88 @@ func ezfyServers(db *gorm.DB) []model.GameServer {
 	return srv
 }
 
+// ezfyZoneURL 把 game_servers.host 解析成**可跳转的绝对 URL**（★ 2026-10-18 多机共享区服配置）。
+//
+// 三种写法：
+//
+//	""                  → ""（本服同源，调用方走站内路由，老行为不变）
+//	":8082" / "//:8082" → <scheme>://<当前请求的 hostname>:8082
+//	                      ★ 多台机器共用同一个家园库（同一份 game_servers）时用它：
+//	                      39 的玩家跳到 39:8082、124 的玩家跳到 124:8082，谁都不会跑到对方机器上。
+//	"http(s)://..."     → 原样返回（真正的跨机器 / 跨域入口）
+//
+// reqHost 传 c.Request.Host（可能带端口，也可能被 nginx 反代成域名）。
+func ezfyZoneURL(raw, scheme, reqHost string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.HasPrefix(raw, ":") && !strings.HasPrefix(raw, "//") {
+		return raw // 绝对地址，原样
+	}
+	port := strings.TrimPrefix(raw, "//")
+	if !strings.HasPrefix(port, ":") {
+		// "//host:port" 这种显式写法：补 scheme 直接用
+		return scheme + ":" + raw
+	}
+	host := strings.TrimSpace(reqHost)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "" {
+		return ""
+	}
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]" // IPv6 字面量
+	}
+	return scheme + "://" + host + port
+}
+
+// ezfyZoneLoopback 反代用的地址解析：服务端自己发起请求，走本机回环最稳
+// （区服 host 写成 ":8082" 时，直接打 127.0.0.1:8082，不绕公网/DNS）。
+//
+//	""            → ""
+//	":8082"       → "http://127.0.0.1:8082"
+//	"http(s)://…" → 原样
+func ezfyZoneLoopback(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, ":") {
+		return "http://127.0.0.1" + raw
+	}
+	if strings.HasPrefix(raw, "//:") {
+		return "http://127.0.0.1" + strings.TrimPrefix(raw, "//")
+	}
+	return raw
+}
+
+// reqScheme 当前请求的协议（优先信任反代给的 X-Forwarded-Proto）。
+func reqScheme(c *gin.Context) string {
+	if p := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); p != "" {
+		return strings.ToLower(p)
+	}
+	if c.Request.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
 // ezfyServerHost 返回二战默认区服（第一个）的入口 URL = host + 原路径(+query)。
 // 二战服没配 host / 无启用区服 → 返回 ""（调用方回 404/502）。
 // ★★ 2026-10-17 二战独立部署：home 模式 NoRoute 302 用（整页跳转，服务端只管 Location）。
-func ezfyServerHost(db *gorm.DB, u *url.URL) string {
+// ★★ 2026-10-18 host 支持 ":端口" 相对写法，按当前请求的域名解析（见 ezfyZoneURL）。
+func ezfyServerHost(db *gorm.DB, c *gin.Context) string {
 	srv := ezfyServers(db)
 	if len(srv) == 0 {
 		return ""
 	}
-	host := strings.TrimRight(srv[0].Host, "/")
+	host := strings.TrimRight(ezfyZoneURL(srv[0].Host, reqScheme(c), c.Request.Host), "/")
 	if host == "" {
 		return ""
 	}
+	u := c.Request.URL
 	if u.Path == "" {
 		return host + "/"
 	}
@@ -2032,7 +2109,9 @@ func ezfyAdminProxy(db *gorm.DB, secret string) gin.HandlerFunc {
 		if target == nil {
 			target = &srv[0]
 		}
-		host := strings.TrimRight(target.Host, "/")
+		// ★★ 2026-10-18 区服 host 支持 ":端口" 相对写法：反代由服务端自己发起，
+		//   解析成 http://127.0.0.1:<端口>（本机回环），不绕公网/DNS。
+		host := strings.TrimRight(ezfyZoneLoopback(target.Host), "/")
 		if host == "" {
 			c.JSON(http.StatusBadGateway, gin.H{"code": 502, "msg": "二战服未配置 Host", "data": nil})
 			return
