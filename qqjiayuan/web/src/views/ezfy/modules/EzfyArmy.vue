@@ -7,10 +7,10 @@
             节日活动·造兵打折：资源消耗 -{{ ezfy.troopsData.train_discount }}%（下方为折后价）
           </div>
           <div class="old-line">人口:{{ ezfy.troopsData.pop }} 空闲:{{ ezfy.freePop }} | 围墙:{{ ezfy.troopsData.wall_level }}级</div>
-          <!-- ★ 空闲人口 = 人口 - 占用；占用只算「训练中、还没出厂」的新兵。
-               已训练完成的部队（含出征在外的）不占人口位置 —— 用户 2026-09-21 明确的规则 -->
-          <div class="old-line gray" v-if="ezfy.popUsed > 0">
-            训练中占用人口：{{ ezfy.popUsed }}
+          <!-- ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）当下人口即转入「待恢复」，
+               按 空闲人口每小时恢复量 慢慢恢复，不再等训练出厂。故这里展示的是待恢复人口。 -->
+          <div class="old-line gray" v-if="ezfy.popRecover > 0">
+            训练消耗人口（恢复中）：{{ ezfy.popRecover }}
           </div>
           <div class="old-line" v-for="t in ezfy.trainCfgs" :key="'tt' + t.id">
             <!-- ★ 2026-09-28 军队列表只留名称和类型，属性/消耗/前提都进[训练]详情页看 -->

@@ -4,13 +4,14 @@
       <div slot="header" class="card-head">
         <span>二战系统配置</span>
         <div>
-          <span class="head-hint">按类别分了 tab，改完点右下角「保存并立即生效」</span>
+          <span class="head-hint">各 tab 独立保存，改完点该 tab 底部「保存本类」</span>
           <el-button size="mini" type="primary" plain icon="el-icon-refresh" @click="load">刷新</el-button>
         </div>
       </div>
       <!-- ★ 2026-09-25 「二战系统配置也做成 tab，相同类别的在同一个 tab」：
            原来是一张长表单 + el-divider 分段，滚起来很长、找一项要翻半天。
-           现在按**类别**分成 6 个 tab；保存按钮**放在 tabs 外面**，任何 tab 下都能直接点。 -->
+           现在按**类别**分成 6 个 tab；★ 2026-10-18 改为**分 tab 独立保存**：
+           每个 tab 底部有自己的「保存本类」按钮，只提交该分类字段（整体保存太慢）。 -->
       <el-form label-width="180px" size="small" style="max-width:660px">
         <el-tabs v-model="activeTab">
           <!-- ① 建筑与上限 -->
@@ -86,6 +87,11 @@
                 <el-option :value="7" label="南极洲" />
               </el-select>
             </el-form-item>
+            <!-- ★ 2026-10-18 分 tab 保存：只提交本类字段，立即生效 -->
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「建筑与上限」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('build')">保存本类</el-button>
+            </div>
           </el-tab-pane>
 
           <!-- ② 兵力与伤兵 -->
@@ -110,6 +116,10 @@
               <template slot="label">伤兵营钻石恢复(钻/次)<el-tooltip placement="top" :content="tips.heal_all_diamond"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.heal_all_diamond" :min="1" controls-position="right" style="width:180px" />
             </el-form-item>
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「兵力与伤兵」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('troop')">保存本类</el-button>
+            </div>
           </el-tab-pane>
 
           <!-- ③ 野地与行军 -->
@@ -183,6 +193,10 @@
                  四个配置已删除：掉落**全部走手动配置** ——
                  野地/寇城 →「地图管理 → 野地类型 → 掉落宝物/掉落道具」，
                  活动野地 →「活动野地配置 → 必掉宝物」。 -->
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「野地与行军」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('wild')">保存本类</el-button>
+            </div>
           </el-tab-pane>
 
           <!-- ④ 战斗与经济 -->
@@ -300,6 +314,10 @@
               <template slot="label">黄金最大值<el-tooltip placement="top" :content="tips.res_max_gold"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.res_max_gold" :min="1" :max="1000000000000" :step="1000000000" :precision="0" controls-position="right" style="width:180px" />
             </el-form-item>
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「战斗与经济」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('battle')">保存本类</el-button>
+            </div>
           </el-tab-pane>
 
           <!-- ⑤ 玩法开关 -->
@@ -357,6 +375,10 @@
               <template slot="label">风云榜统计<el-tooltip placement="top" :content="tips.pvp_rank_on"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-switch v-model="form.pvp_rank_on" :active-value="1" :inactive-value="0" active-text="开" inactive-text="关" />
             </el-form-item>
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「玩法开关」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('switch')">保存本类</el-button>
+            </div>
           </el-tab-pane>
 
           <!-- ⑥ 军官升星 -->
@@ -381,14 +403,13 @@
               <template slot="label">招生简章出五星军官概率(%)<el-tooltip placement="top" :content="tips.recruit_five_star_rate"><i class="el-icon-info cfg-tip" /></el-tooltip></template>
               <el-input-number v-model.number="form.recruit_five_star_rate" :min="1" :max="100" controls-position="right" style="width:180px" />
             </el-form-item>
+            <div class="tab-save-bar">
+              <span class="save-hint">仅保存「军官升星」分类</span>
+              <el-button type="primary" size="small" icon="el-icon-check" :loading="saving" @click="saveTab('star')">保存本类</el-button>
+            </div>
           </el-tab-pane>
         </el-tabs>
       </el-form>
-      <!-- ★ 保存条放在 tabs **外面**：任何 tab 下都在，不用先切回去找按钮 -->
-      <div class="save-bar">
-        <span class="save-hint">所有 tab 共用一份配置，改完点这里一次保存即可</span>
-        <el-button type="primary" icon="el-icon-check" :loading="saving" @click="save">保存并立即生效</el-button>
-      </div>
     </el-card>
   </div>
 </template>
@@ -463,6 +484,27 @@ export default {
         officer_star_attr_gain: 10, officer_star_max: 5,
         // ★ 2026-09-30 招生简章出五星军官概率（默认 1 = 1%，100 = 必出）
         recruit_five_star_rate: 1,
+      },
+      // ★ 2026-10-18 分 tab 保存：每个 tab 所属字段清单，保存时只提交当前分类（后端按字段判空部分更新）
+      fieldGroups: {
+        build: ['military_max', 'resource_max', 'house_max', 'factory_max', 'notice_home_count',
+          'gather_max_per_order', 'sell_price_max', 'officer_cap_per_military', 'officer_speed_per_military',
+          'mall_buy_max', 'bag_item_max', 'treasure_max', 'recruit_cycle_mode', 'default_continent'],
+        troop: ['troop_max', 'wound_expire_days', 'wound_heal_divisor', 'wound_heal_rate', 'heal_all_diamond'],
+        wild: ['wild_troop_mult', 'wild_res_mult', 'gather_res_mult', 'officer_gather_mult', 'gather_level_pow',
+          'gather_sea_mult', 'res_prod_mult', 'gold_prod_mult', 'mayor_gain_mult', 'dispatch_period_h',
+          'march_speed_bonus', 'wild_treasure_cooldown_h', 'wild_item_cooldown_h', 'move_cool_h'],
+        battle: ['battle_max_rounds', 'battle_start_dist', 'battle_retreat_max', 'crit_base_bonus_pct',
+          'garrison_break_pct', 'battle_round_ms', 'atk_coeff', 'atk_base', 'def_coeff', 'def_base',
+          'min_dmg_coeff', 'conquer_feelings_max', 'loot_feelings', 'ransom_cost', 'placate_gold',
+          'placate_grievance', 'placate_feelings', 'placate_cooldown_min', 'officer_salary_per_level',
+          'speed_train_on', 'speed_train_rate', 'res_max_food', 'res_max_steel', 'res_max_oil',
+          'res_max_rare', 'res_max_gold'],
+        switch: ['war_require_on', 'march_cap_on', 'recruit_cost_on', 'food_upkeep_on', 'march_oil_on',
+          'house_pop_limit_on', 'convene_flexible_on', 'convene_food_cost', 'convene_pop_gain',
+          'convene_pop_max', 'pop_recover_per_hour', 'pvp_rank_on'],
+        star: ['officer_star_up_on', 'officer_star_chance', 'officer_star_attr_gain', 'officer_star_max',
+          'recruit_five_star_rate'],
       },
       // ★ 各配置项的悬停说明（鼠标移到标题后的 i 图标上显示）
       //   文案口径以后端 model/ezfy.go 的 EzfyCfgLimit 注释为准，改逻辑时同步改这里
@@ -711,9 +753,12 @@ export default {
         } else this.$message.error(r.msg)
       })
     },
-    save () {
+    saveTab (tab) {
+      // ★ 2026-10-18 分 tab 保存：只提交当前 tab 所属字段，后端逐字段判空 → 天然支持部分更新
+      const payload = {}
+      ;(this.fieldGroups[tab] || []).forEach(k => { payload[k] = this.form[k] })
       this.saving = true
-      api.put('/admin/ezfy-build-limit', this.form).then(r => {
+      api.put('/admin/ezfy-build-limit', payload).then(r => {
         this.saving = false
         if (r.code === 0) this.$message.success(r.msg || (r.data && r.data.msg) || '已保存')
         else this.$message.error(r.msg)
@@ -731,10 +776,10 @@ export default {
 .cfg-tip:hover { color: #409eff; }
 /* ★ 2026-09-25 改成 tab 后新增的两个小样式 */
 .head-hint { font-size: 12px; color: #909399; margin-right: 10px; }
-/* 保存条放在 tabs 外面：任何 tab 下都看得到、点得到 */
-.save-bar {
+/* ★ 2026-10-18 分 tab 保存条：放在每个 tab 底部，只保存当前分类 */
+.tab-save-bar {
   display: flex; align-items: center; justify-content: space-between;
-  max-width: 660px; margin-top: 12px; padding-top: 12px;
+  max-width: 660px; margin-top: 4px; padding-top: 8px;
   border-top: 1px dashed #dcdfe6;
 }
 .save-hint { font-size: 12px; color: #909399; }

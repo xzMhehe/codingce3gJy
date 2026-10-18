@@ -402,9 +402,10 @@ func (h *EzfyHandler) initBuilding(cityId uint, buildingId, level int) {
 
 // ★ 2026-10-17 人机默认发育底盘：直接给 9 级，避免从零爬建筑长期卡「休整」。
 // ★ 2026-10-17 民居(2) 补进默认清单：此前没有民居 → 新建人机只有 1 级民居，
-//   人口上限全靠初始 50 万撑着，召集人口/伤兵恢复等依赖民居等级的机制都起不来。
 //
-//	市政厅(1) 民居(2) 农田(3) 炼钢厂(4) 石油基地(5) 稀矿厂(6) 军工厂(14) 参谋部(10) 司令部(13)
+//	  人口上限全靠初始 50 万撑着，召集人口/伤兵恢复等依赖民居等级的机制都起不来。
+//
+//		市政厅(1) 民居(2) 农田(3) 炼钢厂(4) 石油基地(5) 稀矿厂(6) 军工厂(14) 参谋部(10) 司令部(13)
 var ezfyBotDefaultBuildings = []int{1, 2, 3, 4, 5, 6, 14, 10, 13}
 
 // ensureBotBuilding 把人机城市的指定建筑补/提到 target 级（幂等）。
@@ -1498,10 +1499,9 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity, reuse ...[]model.E
 	} else {
 		h.DB.Where("city_id = ? AND status = 0", city.ID).Find(&list)
 	}
-	// ★ 2026-10-13 出厂的新兵**不再瞬间归还人口**：占用转成「待恢复人口」慢慢恢复
-	//   （用户规则：训练完立即恢复是 bug，要一点一点恢复到当前人口）。
-	//   本次出厂的所有队列合计一笔，最后一次性落库，避免逐队列打库。
-	var recovered int64
+	// ★★ 2026-10-18 「用完就恢复」改造：训练开始时占用的人口已**立即**转入
+	//   「待恢复人口」（见 trainTroopLocked），出厂时**不再累加** recover ——
+	//   否则同一笔人口从「训练开始」和「出厂」各算一次，恢复量凭空翻倍。
 	for i := range list {
 		q := list[i]
 		if q.EndTime > now {
@@ -1520,31 +1520,10 @@ func (h *EzfyHandler) collectTrainQueue(city *model.EzfyCity, reuse ...[]model.E
 			continue // 已被其他并发请求收走
 		}
 		h.addTroop(city.ID, q.TroopId, q.Count)
-		// 城防(type 4)不占人口（走城防空间那套），与 troopPop 的排除口径一致；
-		// 征兵消耗开关关掉时训练本来就不占人口 → 同样不产生待恢复人口。
-		if ezfyRecruitCostOn() {
-			if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
-				recovered += int64(cfg.Pop) * q.Count
-			}
-		}
 		// ★★ 关键：把该队列在本请求快照里的数量清零。
 		//   reuse[0] 与调用方（/view、/troops）的 trainQueues 是**同一份底层数组**，
-		//   不清零的话「训练中占用」会把这条已出厂的队列再算一遍，
-		//   与下面刚加进去的「待恢复人口」**重复计**（空闲人口凭空少一截）。
+		//   不清零的话会把这条已出厂的队列再算一遍（checkTroopCapD 上限等）。
 		list[i].Count = 0
-	}
-	if recovered > 0 {
-		// ★ 先把旧账按时间结清（顺带把 pop_recover_at 推进到「已兑换掉的那部分时间」），
-		//   再把本次出厂的占用并进来 —— 这样新加入的这笔从**当前时间点**起算恢复，
-		//   不会因为沿用旧的 pop_recover_at 而被「一次性恢复光」。
-		h.ezfySettlePopRecover(city)
-		city.PopRecover += recovered
-		// 直接落库一次：/troops 这类**不跑 calcResource**的路径也要能存住。
-		// 与内存 city.PopRecover 同值，随后 calcResourceD 的写合并写的是同一份，不会打架。
-		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
-			"pop_recover":    city.PopRecover,
-			"pop_recover_at": city.PopRecoverAt,
-		})
 	}
 }
 
@@ -2589,41 +2568,38 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 			StartTime: now, EndTime: now + int64(cfg.TrainTime)*1000*part, FreeTrain: freeFlag}
 		h.DB.Create(&q)
 	}
+	// ★★ 2026-10-18 「用完就恢复」改造：训练开始（消耗人口）的**当下**就把占用人口
+	//   转入「待恢复人口」，从这一刻起按「空闲人口每小时恢复量」开始恢复 ——
+	//   不再等训练出厂（原逻辑是 collectTrainQueue 出厂时才转 recover）。
+	//   ⚠️ 必须先在内存里结算掉旧账再累加（ezfySettlePopRecover 内部推进 pop_recover_at），
+	//   否则新加的一笔会从旧的恢复游标起算，被「一次性恢复光」。
+	//   城防(type 4)不占人口、人机城(IsBot=1)不占人口、征兵开关关闭时不占人口 → 均跳过。
+	if recruitCost && cfg.Type != 4 && city.IsBot == 0 {
+		h.ezfySettlePopRecover(city)
+		city.PopRecover += int64(cfg.Pop) * int64(count)
+		// 直接落库：/troops 这类不跑 calcResource 的路径也要能存住。
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"pop_recover":    city.PopRecover,
+			"pop_recover_at": city.PopRecoverAt,
+		})
+	}
 	h.taskProgress(city.UserID, "train_troop", count)
 	return ""
 }
 
-// troopPop 城市「已占用人口」= **训练队列里还没出厂的新兵**占用的人口。
+// troopPop 城市「训练中占用人口」。
 //
-// ★ 用户规则（2026-09-21 明确）：兵确实用人口训练，但**不占用人口位置**。
+// ★★ 2026-10-18 「用完就恢复」改造后，训练中占用的人口**已并入「待恢复人口」**：
 //
-//	即：已训练完成的部队（城内驻军 / 出征在外 / 返航途中）一律不再占人口，
-//	    只有「正在训练、还没出厂」的新兵临时占用，出厂进城的瞬间人口就归还。
+//	训练开始时（trainTroopLocked）占用人口即转入 pop_recover，从当下按小时恢复。
+//	因此「训练中占用」不再是独立的扣减项，本函数恒返回 0 —— 空闲人口口径统一为
+//	「总人口 − 建筑占用 − 待恢复人口」（见 ezfyPopFree）。
 //
-// 背景（用户反馈的 bug）：原实现只统计 ezfy_city_troop（城内部队表），于是
-//   - 部队一出征就从城内部队表扣掉 → 占用人口瞬间归零、空闲人口变回满值；
-//   - 训练队列里的新兵出厂前完全不占人口。
-//     两处口径都不对：前者让「出征=凭空多出人口」，后者让「训练不吃人口」。
-//     统一成「只看训练队列」后，空闲人口 = 人口 - 训练中占用，语义唯一。
-//
-// 注意：城防设施(type 4)不占人口，它走「城防空间」那一套（见 defenceSpaceUsed），
-//
-//	这里必须排除，否则城防会被重复计一次。
+// 背景（用户规则 2026-09-21 明确）：兵确实用人口训练，但**不占用人口位置**。
+// 城防设施(type 4)不占人口，它走「城防空间」那一套（见 defenceSpaceUsed），
+// 这里同样排除。
 func (h *EzfyHandler) troopPop(cityId uint) int64 {
-	// ★ 「征兵资源消耗开关关了，征兵无需空闲人口」→ 关掉时人口占用恒为 0，
-	//   空闲人口 = 人口（与「训练不占人口」的语义一致，界面不会显示「被占满」）。
-	if !ezfyRecruitCostOn() {
-		return 0
-	}
-	var qs []model.EzfyTrainQueue
-	h.DB.Where("city_id = ? AND status = 0", cityId).Find(&qs)
-	pop := int64(0)
-	for _, q := range qs {
-		if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
-			pop += int64(cfg.Pop) * q.Count
-		}
-	}
-	return pop
+	return 0
 }
 
 // buildingPop 城市「已占用人口」中的**建筑占用**部分：每栋已建建筑的「占用人口」(lv.Pop) 累加。
@@ -2646,8 +2622,11 @@ func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
 	return h.buildingPop(cityId) + h.troopPop(cityId)
 }
 
-// cityPopUsedD 与 cityPopUsed 同口径，但复用本请求已查好的建筑列表 / 训练队列：
+// cityPopUsedD 与 cityPopUsed 同口径，但复用本请求已查好的建筑列表：
 // 两者都非 nil 时零 SQL（原来各自再查一次 buildingList / train_queue）。
+// ★★ 2026-10-18 「用完就恢复」改造：训练中占用已并入「待恢复人口」（见 troopPop），
+//
+//	占用口径统一为**建筑占用**，trainQ 参数保留仅为兼容签名、不再累加。
 func (h *EzfyHandler) cityPopUsedD(cityId uint, buildings []model.EzfyCityBuilding, trainQ []model.EzfyTrainQueue) int64 {
 	pop := int64(0)
 	if buildings != nil {
@@ -2658,17 +2637,6 @@ func (h *EzfyHandler) cityPopUsedD(cityId uint, buildings []model.EzfyCityBuildi
 		}
 	} else {
 		pop += h.buildingPop(cityId)
-	}
-	if !ezfyRecruitCostOn() {
-		return pop
-	}
-	if trainQ == nil {
-		return pop + h.troopPop(cityId)
-	}
-	for _, q := range trainQ {
-		if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
-			pop += int64(cfg.Pop) * q.Count
-		}
 	}
 	return pop
 }
@@ -4353,8 +4321,9 @@ var (
 )
 
 // ★★ 2026-10-15 加速类道具 3 秒卡控（建筑3/训练4/科技5及百分比24/25/26）
-//   与前端「多 tab 共享锁」同口径的后端双保险 —— 绕过前端直接打接口 / 一个账号开多个 tab 连点，
-//   加速/采集/收获/召回的请求同样被卡死，杜绝「多 tab 刷资源刷兵」。
+//
+//	与前端「多 tab 共享锁」同口径的后端双保险 —— 绕过前端直接打接口 / 一个账号开多个 tab 连点，
+//	加速/采集/收获/召回的请求同样被卡死，杜绝「多 tab 刷资源刷兵」。
 var (
 	ezfyItemUseMu   sync.Mutex
 	ezfyItemUseMemo = map[uint]int64{}

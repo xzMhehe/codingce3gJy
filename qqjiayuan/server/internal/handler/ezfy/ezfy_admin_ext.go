@@ -1238,6 +1238,31 @@ func (h *EzfyAdmin) AdminEzfyTrainSpeed(c *gin.Context) {
 // AdminEzfyTrainDelete 取消征兵队列
 func (h *EzfyAdmin) AdminEzfyTrainDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
+	var q model.EzfyTrainQueue
+	if err := h.DB.First(&q, id).Error; err != nil {
+		resp.NotFound(c, "队列项不存在")
+		return
+	}
+	// ★★ 2026-10-18 「用完就恢复」改造联动：训练开始时占用的人口已转入 pop_recover，
+	//   管理端删队列同样要把这笔还回去（部队没训出来，人口不该继续在「待恢复」里磨）。
+	//   免费征兵(FreeTrain)不占人口、城防(type 4)不占人口 → 不处理。
+	if q.FreeTrain == 0 {
+		var ct model.EzfyCity
+		if err := h.DB.First(&ct, q.CityId).Error; err == nil {
+			if cfg := ezfyCfg.troop(q.TroopId); cfg != nil && cfg.Type != 4 {
+				ez := h.ezfyH()
+				ez.ezfySettlePopRecover(&ct)
+				ct.PopRecover -= int64(cfg.Pop) * q.Count
+				if ct.PopRecover < 0 {
+					ct.PopRecover = 0
+				}
+				h.DB.Model(&model.EzfyCity{}).Where("id = ?", ct.ID).Updates(map[string]interface{}{
+					"pop_recover":    ct.PopRecover,
+					"pop_recover_at": ct.PopRecoverAt,
+				})
+			}
+		}
+	}
 	h.DB.Delete(&model.EzfyTrainQueue{}, id)
 	resp.OK(c, gin.H{"msg": "已取消该征兵队列"})
 }

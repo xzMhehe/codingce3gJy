@@ -639,6 +639,7 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 	//   否则「趁开关关着排队、等开关打开再取消」就能凭空换出资源。
 	//   注意这里用队列上的 Free 标记（建队列时的状态），而不是当前开关状态。
 	if q.FreeTrain != 0 {
+		// ★★ 2026-10-18 免费征兵（开关关）不占人口，pop_recover 也从未累加过 → 无需处理人口。
 		h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)
 		resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练（免费征兵，不退还资源）", cfg.Name, q.Count)})
 		return
@@ -657,6 +658,21 @@ func (h *EzfyHandler) CancelTrain(c *gin.Context) {
 	oil -= oil * fee / 100
 	rare -= rare * fee / 100
 	h.giveResNoCap(city, food, steel, oil, rare, 0)
+	// ★★ 2026-10-18 「用完就恢复」改造联动：训练开始时该队列占用的人口已转入
+	//   pop_recover（见 trainTroopLocked），取消训练要把这笔**立即还回去**——
+	//   部队还没训出来，人口不该继续在「待恢复」里慢慢磨。
+	//   城防(type 4)不占人口、征兵开关关时不占人口 → 不处理。
+	if cfg.Type != 4 && ezfyRecruitCostOn() {
+		h.ezfySettlePopRecover(city)
+		city.PopRecover -= int64(cfg.Pop) * q.Count
+		if city.PopRecover < 0 {
+			city.PopRecover = 0
+		}
+		h.DB.Model(&model.EzfyCity{}).Where("id = ?", city.ID).Updates(map[string]interface{}{
+			"pop_recover":    city.PopRecover,
+			"pop_recover_at": city.PopRecoverAt,
+		})
+	}
 	h.DB.Delete(&model.EzfyTrainQueue{}, q.ID)
 	resp.OK(c, gin.H{"msg": fmt.Sprintf("已取消「%s×%d」的训练，扣除%d%%手续费后退还 粮%d 钢%d 油%d 稀矿%d",
 		cfg.Name, q.Count, ezfyCancelTrainFeePct, food, steel, oil, rare)})
@@ -4255,7 +4271,8 @@ func (h *EzfyHandler) ReportDelete(c *gin.Context) {
 // ★ 2026-10-01 军情按当前城过滤：city_id>0 时只删**当前城市**的战报（口径与当时的 Reports 列表一致）。
 // ★ 2026-10-06 军情警讯支持删除：category=1 只删军情警讯 / 2 只删战斗报告（口径与 ezfyReportCounts 一致）。
 // ★★ 2026-10-16 「列表改成全部城市」后，前端两个分区都传 `city_id: 0` → 删除也是**全部城市**口径
-//   （列表全城、删除只删当前城会「删完还剩一堆」）。city_id 过滤能力保留，供将来按城删除使用。
+//
+//	（列表全城、删除只删当前城会「删完还剩一堆」）。city_id 过滤能力保留，供将来按城删除使用。
 func (h *EzfyHandler) ReportClear(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	var req struct {
