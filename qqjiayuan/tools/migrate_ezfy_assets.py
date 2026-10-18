@@ -69,6 +69,15 @@ except ImportError:
 # 为爱发电卡 1 天的毫秒数（与后端 ezfyLoveCardDayMS 一致）
 LOVE_DAY_MS = 24 * 3600 * 1000
 
+# 采集宝物名单（与后端 ezfyCollectibleTreasureNames 同一套，cfg 27~35）。
+# ★★ 2026-10-18 用户规则：**采集宝物不迁移** —— 宝物是逐日采集攒出来的，
+#     二区从零开始采集；迁过去反而直接顶满 treasure_max(5000) 上限。
+#     按名字过滤（与后端判定一致），不按 id 段。
+TREASURE_NAMES = {
+    "黄金手镯", "玛瑙项坠", "红宝石戒指", "黑曜石戒指", "琥珀项链",
+    "铂金戒指", "翡翠项链", "祖母绿", "蓝宝石戒指",
+}
+
 
 # ---------------------------------------------------------------- 连接
 def connect(args):
@@ -181,8 +190,13 @@ def main():
             diamond1 = int(prof1["diamond"] or 0)
 
             # ★ 装备/道具/发电卡三张表老库可能缺（尤其二区新开服）→ 缺表就按空处理，不整段崩
-            eqs = (qall(cur, "SELECT * FROM `%s`.ezfy_equipment WHERE user_id=%%s" % SRC, (uid,))
-                   if table_exists(cur, SRC, "ezfy_equipment") else [])
+            eq_all = (qall(cur, "SELECT * FROM `%s`.ezfy_equipment WHERE user_id=%%s" % SRC, (uid,))
+                      if table_exists(cur, SRC, "ezfy_equipment") else [])
+            # ★★ 2026-10-18 用户规则：**采集宝物不迁移**（二区从零开始采集）。
+            #   采集宝物 = 装备表里那 9 种珠宝（cfg 27~35，与后端 ezfyCollectibleTreasureNames 同一名单）。
+            #   按**名字**过滤而不是按 id 段 —— 与后端口径一致，id 段变了也不受影响。
+            eqs = [e for e in eq_all if (e.get("name") or "") not in TREASURE_NAMES]
+            treasure_cnt = len(eq_all) - len(eqs)
             items = (qall(cur, "SELECT cfg_id, count FROM `%s`.ezfy_item WHERE user_id=%%s ORDER BY cfg_id" % SRC, (uid,))
                      if table_exists(cur, SRC, "ezfy_item") else [])
             # ★ 为爱发电卡：独立表 ezfy_love_card（不在道具体系）。迁移口径 = **剩余未领天数**累加：
@@ -202,8 +216,8 @@ def main():
                 })
                 p["remain"] += remain
             love_days = sum(p["remain"] for p in love_plan.values())
-            print("\n[2/6] 一区数据 ✅  钻石=%d  装备=%d 件  道具=%d 种  为爱发电卡=%d 种/剩 %d 天"
-                  % (diamond1, len(eqs), len(items), len(love_plan), love_days))
+            print("\n[2/6] 一区数据 ✅  钻石=%d  装备=%d 件（另有采集宝物 %d 件**不迁移**）  道具=%d 种  为爱发电卡=%d 种/剩 %d 天"
+                  % (diamond1, len(eqs), treasure_cnt, len(items), len(love_plan), love_days))
 
             if diamond1 == 0 and not eqs and not items and not love_plan:
                 print("\n[跳过] 一区这几样都是空的，没有可迁移的内容。")
@@ -263,7 +277,7 @@ def main():
                             "taken_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                             "src_diamond": diamond1,
                             "dst_diamond_before": int(prof2["diamond"] or 0),
-                            "equipment": eqs,
+                            "equipment": eq_all,  # ★ 备份一区全量原始数据（含未迁移的宝物），便于以后对账
                             "items": items,
                             "love_cards": cards,
                         },
