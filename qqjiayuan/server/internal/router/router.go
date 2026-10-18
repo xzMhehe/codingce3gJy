@@ -1296,6 +1296,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ★ 2026-10-17 出征最近敌对真人城 + 管理端直接迁城（加速人机布局/开战）
 						admin.POST("/ezfy-bot/:uid/attack-nearest", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotAttackNearest)
 						admin.POST("/ezfy-bot/:uid/relocate", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotRelocate)
+						// ★ 2026-10-18 人机占领的城市（征服玩家城后写入 ezfy_occupy）
+						admin.GET("/ezfy-bot/:uid/occupy", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotOccupy)
 						admin.DELETE("/ezfy-bot/:uid", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotDelete)
 						// ★ 2026-10-17 玩家背包维护（玩家信息管理 → 玩家详情 → 背包）：
 						//   添加道具（累加）/ 编辑数量（覆盖）/ 物理删除；另给一个同权限的道具下拉，
@@ -1517,6 +1519,8 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						// ★ 2026-10-18 风云榜奖励发放：GET=该周已发情况预览，POST=一键发放（走系统邮件）
 						admin.GET("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardStatus)
 						admin.POST("/ezfy-pvp-rank/reward", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpReward)
+						// ★ 2026-10-18 「本期已发放奖励」分页列表（局部刷新，含奖励明细）
+						admin.GET("/ezfy-pvp-rank/reward/records", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRewardRecords)
 						// ★ 2026-10-18 风云榜锁分：锁定某周 = 终止当周竞争（战绩不再累计积分）
 						admin.POST("/ezfy-pvp-rank/lock", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankLock)
 						admin.POST("/ezfy-pvp-rank/toggle", perm(db, "module:ezfyData"), ezfyAdminH.AdminEzfyPvpRankToggle)

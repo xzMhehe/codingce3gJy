@@ -85,8 +85,9 @@
                          @size-change="s => { pvpSize = s; pvpPage = 1 }" />
         </div>
 
-        <!-- ★ 2026-10-18 「本期已发放奖励」：该周已发放的记录（谁、什么档位、什么时候），随周切换自动刷新 -->
-        <div class="panel-title">本期已发放奖励（{{ rewardRecords.length }} 条）</div>
+        <!-- ★ 2026-10-18 「本期已发放奖励」：该周已发放的记录（谁、什么档位、发了什么奖励、什么时候），
+             分页 + 局部刷新（点分页只刷这一块），随周切换自动刷新 -->
+        <div class="panel-title">本期已发放奖励（共 <b>{{ rewardRecordTotal }}</b> 条）</div>
         <el-table :data="rewardRecords" v-loading="rewardLoading" stripe border size="mini"
                   :empty-text="'该周尚未发放风云榜奖励（点右上角「发放奖励」）'">
           <el-table-column label="名次" width="80" align="center">
@@ -100,10 +101,25 @@
               <el-tag size="mini" :type="row.tier === 'join' ? 'info' : 'warning'">{{ row.tier_name }}</el-tag>
             </template>
           </el-table-column>
+          <!-- ★ 2026-10-18 发放明细：钻石/宝箱[名]×N、道具[名]×N，一眼看出发了什么 -->
+          <el-table-column label="发放明细" min-width="260" show-overflow-tooltip>
+            <template slot-scope="{row}">
+              <span v-if="row.detail" class="rw-detail">{{ row.detail }}</span>
+              <span v-else class="td-gray">—</span>
+            </template>
+          </el-table-column>
           <el-table-column label="发放时间" width="170" align="center">
             <template slot-scope="{row}">{{ fmtTime(row.created_at) }}</template>
           </el-table-column>
         </el-table>
+        <div class="pager-bar">
+          <div class="pager-info">共 <b>{{ rewardRecordTotal }}</b> 条 · 每页 {{ rewardRecordSize }} 条</div>
+          <el-pagination v-show="rewardRecordTotal > 0" small background layout="sizes, prev, pager, next, jumper"
+                         :total="rewardRecordTotal" :page-size="rewardRecordSize" :current-page="rewardRecordPage"
+                         :page-sizes="[10, 20, 50]"
+                         @current-change="p => { rewardRecordPage = p; loadRewardRecords() }"
+                         @size-change="s => { rewardRecordSize = s; rewardRecordPage = 1; loadRewardRecords() }" />
+        </div>
       </template>
 
       <!-- ==================== 战力榜 tab ==================== -->
@@ -275,13 +291,19 @@
           <el-input-number v-if="!reward.joinAll" v-model="reward.join_limit" :min="4" :max="1000"
                            size="small" controls-position="right" style="width:88px;margin-left:4px" />
         </el-form-item>
-        <!-- ★ 2026-10-18 补发：发过一次还能再给参与者补发（已发过的人也会再发一封，玩家邮件多一封可领的奖励） -->
+        <!-- ★ 2026-10-18 补发：发过一次还能再给参与者补发（已发过的人也会再发一封，玩家邮件多一封可领的奖励）
+             ★ 2026-10-18 展示优化：开启补发后下面弹琥珀色警示条，一眼看清当前是补发模式 -->
         <el-form-item label="补发模式">
           <el-switch v-model="reward.resend" active-text="补发" inactive-text="正常发放" />
           <span class="td-sub" style="margin-left:6px">
             {{ reward.resend ? '已发过的人也会再发一次（用于给参与者补发宝箱）' : '默认只发没发过的人（同一玩家同一周只发一次）' }}
           </span>
         </el-form-item>
+        <div v-if="reward.resend" class="rw-warn">
+          <i class="el-icon-warning-outline"></i>
+          <span><b>补发模式已开启</b>：符合条件的玩家（含已发过的人）会<b>再收到一封</b>对应档位的新邮件、可再领一次；
+            仅用于给参与者补发遗漏的宝箱 / 道具，请确认后再点「确认发放」。</span>
+        </div>
       </el-form>
 
       <!-- 四档 → 真表格：档位 / 钻石 / 宝箱 / 道具 四列（table-layout:fixed + colgroup 保证表头与内容严格对齐） -->
@@ -312,8 +334,10 @@
                 <el-select v-model="c.chest_id" size="mini" filterable placeholder="选择宝箱" style="flex:1;min-width:96px">
                   <el-option v-for="o in chestOptions" :key="'co' + o.id" :label="o.name" :value="o.id" />
                 </el-select>
-                <el-input-number v-model="c.count" :min="1" :max="100000" size="mini"
-                                 controls-position="right" style="width:86px;flex:0 0 86px" />
+                <!-- ★ 2026-10-18 数量优化：加 × 前缀、输入框加大（用户「宝箱、道具数量还是小呢」） -->
+                <span class="rw-x">×</span>
+                <el-input-number v-model="c.count" :min="1" :max="100000" size="small"
+                                 controls-position="right" style="width:112px;flex:0 0 112px" />
                 <i class="el-icon-close rw-del" title="移除" @click="t.chests.splice(i, 1)"></i>
                 <i v-if="i === t.chests.length - 1" class="el-icon-plus rw-add" title="再加一个宝箱"
                    @click="t.chests.push({ chest_id: null, count: 1 })"></i>
@@ -330,8 +354,10 @@
                 <el-select v-model="it.cfg_id" size="mini" filterable placeholder="选择道具" style="flex:1;min-width:110px">
                   <el-option v-for="o in itemOptions" :key="'io' + o.id" :label="o.name" :value="o.id" />
                 </el-select>
-                <el-input-number v-model="it.count" :min="1" :max="100000" size="mini"
-                                 controls-position="right" style="width:86px;flex:0 0 86px" />
+                <!-- ★ 2026-10-18 数量优化：加 × 前缀、输入框加大 -->
+                <span class="rw-x">×</span>
+                <el-input-number v-model="it.count" :min="1" :max="100000" size="small"
+                                 controls-position="right" style="width:112px;flex:0 0 112px" />
                 <i class="el-icon-close rw-del" title="移除" @click="t.items.splice(i, 1)"></i>
                 <i v-if="i === t.items.length - 1" class="el-icon-plus rw-add" title="再加一个道具"
                    @click="t.items.push({ cfg_id: null, count: 1 })"></i>
@@ -384,9 +410,12 @@ export default {
       week: '',
       weeks: [],
       list: [],
-      // ★ 2026-10-18 「本期已发放奖励」明细（风云榜页下方展示，随周切换刷新）
+      // ★ 2026-10-18 「本期已发放奖励」明细（风云榜页下方展示，随周切换刷新；分页局部刷新）
       rewardRecords: [],
       rewardLoading: false,
+      rewardRecordTotal: 0,
+      rewardRecordPage: 1,
+      rewardRecordSize: 10,
       // ★ 2026-10-14 风云榜分页（默认每页 10 条）——后端一次性返回整周榜单，前端切片
       pvpPage: 1,
       pvpSize: 10,
@@ -609,11 +638,16 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => {}).finally(() => { this.locking = false })
     },
-    // ★ 2026-10-18 「本期已发放奖励」明细（随查看的周切换自动刷新）
+    // ★ 2026-10-18 「本期已发放奖励」明细（随查看的周切换自动刷新；分页局部刷新，只刷这一块）
     loadRewardRecords () {
       this.rewardLoading = true
-      api.get('/admin/ezfy-pvp-rank/reward', { params: { week: this.week } }).then(r => {
-        if (r.code === 0) this.rewardRecords = r.data.records || []
+      api.get('/admin/ezfy-pvp-rank/reward/records', {
+        params: { week: this.week, page: this.rewardRecordPage, size: this.rewardRecordSize }
+      }).then(r => {
+        if (r.code === 0) {
+          this.rewardRecords = r.data.list || []
+          this.rewardRecordTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
       }).catch(() => { this.rewardRecords = [] })
         .finally(() => { this.rewardLoading = false })
     },
@@ -720,4 +754,16 @@ export default {
   .rw-add { color: #c0c4cc; }
   .rw-add:hover { color: #409eff; }
   .rw-empty { color: #c0c4cc; font-size: 13px; line-height: 28px; }
+  /* ★ 2026-10-18 数量优化：× 前缀 + 更大输入框 */
+  .rw-x { color: #606266; font-size: 14px; font-weight: 600; flex: 0 0 auto; line-height: 28px; }
+  /* ★ 2026-10-18 补发模式琥珀色警示条 */
+  .rw-warn {
+    display: flex; align-items: flex-start; gap: 6px;
+    margin: 2px 0 12px; padding: 8px 12px; line-height: 1.6;
+    font-size: 13px; color: #7a5c00;
+    background: #fdf6ec; border: 1px solid #f5dab1; border-radius: 4px;
+  }
+  .rw-warn i { font-size: 16px; margin-top: 2px; }
+  /* ★ 2026-10-18 发放明细：奖励摘要显眼 */
+  .rw-detail { color: #b8860b; font-size: 13px; }
 </style>

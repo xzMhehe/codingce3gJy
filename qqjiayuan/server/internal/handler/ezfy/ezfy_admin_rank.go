@@ -854,6 +854,58 @@ func ezfyPvpRewardTierName(tier string) string {
 	return tier
 }
 
+// AdminEzfyPvpRewardRecords GET /admin/ezfy-pvp-rank/reward/records?week=&page=&size=
+// —— 「本期已发放奖励」分页列表（★ 2026-10-18 局部刷新，含奖励明细 detail）
+func (h *EzfyAdmin) AdminEzfyPvpRewardRecords(c *gin.Context) {
+	week := strings.TrimSpace(c.Query("week"))
+	if week == "" {
+		week = ezfyPvpWeekOf(time.Now())
+	}
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.EzfyPvpReward{}).Where("week = ?", week)
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyPvpReward
+	q.Order("rank_no ASC, id ASC").Offset(offset).Limit(size).Find(&rows)
+	nickOf := map[uint]string{}
+	if len(rows) > 0 {
+		uids := make([]uint, 0, len(rows))
+		for _, r := range rows {
+			uids = append(uids, r.UserID)
+		}
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", uids).Find(&profs)
+		for _, p := range profs {
+			nickOf[p.UserID] = p.Nickname
+		}
+	}
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, gin.H{
+			"user_id": r.UserID, "name": nickOf[r.UserID],
+			"rank_no": r.RankNo, "tier": r.Tier, "tier_name": ezfyPvpRewardTierName(r.Tier),
+			"detail": r.Detail, "created_at": r.CreatedAt,
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
+}
+
+// ezfyRewardDetail 一档附件 → 明细摘要（管理端「已发放奖励」可见发了什么）。
+func ezfyRewardDetail(as []model.EzfyMailAttach) string {
+	parts := make([]string, 0, len(as))
+	for _, a := range as {
+		switch a.Kind {
+		case ezfyAttachDiamond:
+			parts = append(parts, fmt.Sprintf("钻石×%d", a.Num))
+		case ezfyAttachChest:
+			parts = append(parts, fmt.Sprintf("宝箱[%s]×%d", a.Name, a.Num))
+		case ezfyAttachItem:
+			parts = append(parts, fmt.Sprintf("道具[%s]×%d", a.Name, a.Num))
+		}
+	}
+	return strings.Join(parts, "、")
+}
+
 // AdminEzfyPvpReward POST /admin/ezfy-pvp-rank/reward —— 一键发放本周风云榜奖励
 //
 // body:
@@ -951,9 +1003,10 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 
 	drafts := make([]ezfyMailDraft, 0, len(rows))
 	meta := make([]struct {
-		uid  uint
-		rank int
-		tier string
+		uid    uint
+		rank   int
+		tier   string
+		detail string
 	}, 0, len(rows))
 	skipped := 0
 	zeroSkipped := 0
@@ -1003,10 +1056,11 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 			ReceiverID: r.UserID, Subject: subject, Content: content, Attaches: as,
 		})
 		meta = append(meta, struct {
-			uid  uint
-			rank int
-			tier string
-		}{r.UserID, rankNo, tier})
+			uid    uint
+			rank   int
+			tier   string
+			detail string
+		}{r.UserID, rankNo, tier, ezfyRewardDetail(as)})
 	}
 	if len(drafts) == 0 {
 		msg := fmt.Sprintf("本次没有可发放的玩家（已发过 %d 人，积分不达标跳过 %d 人）", skipped, zeroSkipped)
@@ -1035,11 +1089,11 @@ func (h *EzfyAdmin) AdminEzfyPvpReward(c *gin.Context) {
 	now := time.Now()
 	for _, m := range meta {
 		// ★ 2026-10-18 补发：唯一键 week+user_id 已存在时更新为**最新一封**邮件
-		//   （首次发放 INSERT；补发 UPDATE mail_id/rank_no/tier/created_at，不新增行）
-		h.DB.Exec(`INSERT INTO ezfy_pvp_reward (week, user_id, rank_no, tier, mail_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE
-rank_no = VALUES(rank_no), tier = VALUES(tier), mail_id = VALUES(mail_id), created_at = VALUES(created_at)`,
-			week, m.uid, m.rank, m.tier, mailOf[m.uid], now)
+		//   （首次发放 INSERT；补发 UPDATE mail_id/rank_no/tier/detail/created_at，不新增行）
+		h.DB.Exec(`INSERT INTO ezfy_pvp_reward (week, user_id, rank_no, tier, mail_id, detail, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE
+rank_no = VALUES(rank_no), tier = VALUES(tier), mail_id = VALUES(mail_id), detail = VALUES(detail), created_at = VALUES(created_at)`,
+			week, m.uid, m.rank, m.tier, mailOf[m.uid], m.detail, now)
 	}
 	if in.Resend {
 		resp.OK(c, gin.H{

@@ -588,10 +588,28 @@ func (h *EzfyHandler) botTickOne(b model.EzfyBot) {
 }
 
 // botReschedule 写回 next_act_at（随机抖动，模拟真人节奏）。
+//
+// ★ 2026-10-18 攻击频率修复：有活跃攻击计划（待宣战/待生效/可出击/冷却）时，
+//
+//	按「1 小时 / 频率」的节奏排下次行动 —— 让宣战 → 生效 → 出击链路按配置的
+//	atk_per_hour 推进，而不是被 GrowMin~GrowMax（5~11 分钟）的发育节奏压住，
+//	导致实际出征次数远低于配置（线上表现：频率配置 8 次/h，实际一天只有几次）。
 func (h *EzfyHandler) botReschedule(b model.EzfyBot, cfg ezfyBotLevelCfg, action, detail string, ok bool) {
 	gap := cfg.GrowMin + mathrand.Intn(cfg.GrowMax-cfg.GrowMin+1)
 	if !ok {
 		gap = 2 + mathrand.Intn(3) // 失败/跳过：2~4 分钟后重试
+	} else if rate := ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour); rate > 0 {
+		// 成功行动后：若手头还有活跃攻击计划 → 下次行动按攻击间隔来
+		var plan int64
+		h.DB.Model(&model.EzfyBotTarget{}).
+			Where("bot_uid = ? AND status IN (0,1,2,3)", b.UserID).Count(&plan)
+		if plan > 0 {
+			if g := 3600000 / int64(rate) / 60000; g > 2 {
+				gap = int(g)
+			} else {
+				gap = 2 // 至少 2 分钟，避免宣战未生效时空转
+			}
+		}
 	}
 	now := time.Now().UnixMilli()
 	h.DB.Model(&model.EzfyBot{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
@@ -687,6 +705,19 @@ func (h *EzfyHandler) botDecide(b *model.EzfyBot, city *model.EzfyCity, cfg ezfy
 	if troopTotal == 0 && buildingLv[14] > 0 {
 		if a, d, ok := h.botTrain(city, troopTotal, cfg, 1); ok {
 			return a, d, ok
+		}
+	}
+
+	// 0½) 攻击优先（★ 2026-10-18 攻击频率修复）：
+	//   有「可出击」的战争计划且攻频额度可用 → **先打仗**。
+	//   原来军事排在第 4 步（召集/建筑/征兵/军官之后），人机一旦在发育就把轮次占掉，
+	//   实际出征次数永远到不了配置的 atk_per_hour —— 这里是「可出击」的硬前置，
+	//   只在真正能打的时候插队；额度用光/无计划时照常走下面的发育步骤。
+	if h.botReadyPlan(b.UserID) && h.botAtkQuotaOK(b) {
+		if a, d, ok := h.botMilitary(b, city, troopTotal, cfg); ok {
+			return a, d, ok
+		} else if a != "" {
+			return a, d, false
 		}
 	}
 
@@ -1034,15 +1065,30 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			}
 			continue
 		case 2: // 可出击
+			// ★★ 2026-10-18 攻击频率修复：出战前先判目标是否还有效 ——
+			//   目标城已不存在 / 已被占走（ezfy_occupy.status=1）/ 战争已结束 → 计划作废换新目标，
+			//   避免「宣战 24h 后目标早没了」还在反复对空城宣战、狂刷失败。
+			var tcity model.EzfyCity
+			if err := h.DB.First(&tcity, p.TargetCityId).Error; err != nil {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				return "放弃目标", fmt.Sprintf("目标 %d 城市已不存在", p.TargetUid), true
+			}
+			var occ int64
+			h.DB.Model(&model.EzfyOccupy{}).Where("city_id = ? AND status = 1", p.TargetCityId).Count(&occ)
+			if occ > 0 {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				return "放弃目标", fmt.Sprintf("目标 %s(%d,%d) 已被占领，换新目标", tcity.Name, tcity.X, tcity.Y), true
+			}
+			if !h.isAtWar(b.UserID, p.TargetUid) {
+				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 4)
+				return "放弃目标", fmt.Sprintf("与目标 %d 的战争已结束", p.TargetUid), true
+			}
 			// ★ 2026-10-17 出征时间 > 10 分钟 → 人机先自迁城贴近目标，再出击
 			//   （默认行军速度换算：每格约 60 秒 → 10 分钟 ≈ 10 格；用曼哈顿距离估算，
 			//    实际受兵种/科技速度影响，够用来做「太远就搬家」的判断。迁城不受冷却。）
-			var tcity model.EzfyCity
-			if err := h.DB.First(&tcity, p.TargetCityId).Error; err == nil {
-				if dist := ezfyAbs(city.X-tcity.X) + ezfyAbs(city.Y-tcity.Y); dist > 10 {
-					if a, d, ok := h.botRelocateNear(b, city, tcity.X, tcity.Y); ok {
-						return a, d, ok
-					}
+			if dist := ezfyAbs(city.X-tcity.X) + ezfyAbs(city.Y-tcity.Y); dist > 10 {
+				if a, d, ok := h.botRelocateNear(b, city, tcity.X, tcity.Y); ok {
+					return a, d, ok
 				}
 			}
 			// ★ 2026-10-17 攻频从「每日上限」改成「按小时频率」：宣战/生效照常推进，
@@ -1097,6 +1143,16 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 	}
 
 	// ② 没有计划 → 找目标（坐标区间走索引，绝不遍历全图）
+	// ★ 2026-10-18 人机也会打玩家的附属野地（约 1/4 概率优先）：挑一块附近的真人附属野地
+	//   掠夺，抢完资源就放（不占领、不留计划、不打持久战）；额度不足/没野地就照常找玩家城。
+	if mathrand.Intn(100) < 25 {
+		if wt, ok := h.botPickWildTarget(city); ok {
+			if !h.botAtkQuotaOK(b) {
+				return "", "", false
+			}
+			return h.botAttackWild(b, city, wt)
+		}
+	}
 	if tgt, ok := h.botPickTarget(city, troopTotal, cfg); ok {
 		if err := h.DB.Create(&model.EzfyBotTarget{
 			BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
@@ -1107,6 +1163,128 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 		return "锁定目标", fmt.Sprintf("锁定 %s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops), true
 	}
 	return "", "", false
+}
+
+// botReadyPlan 该人机是否有「可出击」的战争计划（★ 2026-10-18 攻击频率修复用）。
+//
+//	只数 status=2（宣战已生效、可以打）；有 → 本轮优先推进攻击。
+func (h *EzfyHandler) botReadyPlan(botUID uint) bool {
+	var n int64
+	h.DB.Model(&model.EzfyBotTarget{}).Where("bot_uid = ? AND status = 2", botUID).Count(&n)
+	return n > 0
+}
+
+// ============ 打玩家附属野地（★ 2026-10-18）============
+
+// ezfyBotWildTarget 一块可打的玩家附属野地快照
+type ezfyBotWildTarget struct {
+	ID       int64
+	X, Y     int
+	Level    int
+	WildType int
+	Owner    string
+}
+
+// botPickWildTarget 在自己周围挑一块**真人**的附属野地（抢完就放，不写占领）。
+//
+// 过滤（全部下推 SQL）：
+//   - 野地已被占领（city_id > 0）且主人是真人（is_bot=0）、不是自己
+//   - 坐标在自己 ±25 格内
+//   - 未被采集（w.status != 1，且没有在途采集/驻守部队）
+//   - 新手村周围的低级野地（level <= 2）不打，留给人机自己发育
+func (h *EzfyHandler) botPickWildTarget(city *model.EzfyCity) (ezfyBotWildTarget, bool) {
+	var r ezfyBotWildTarget
+	err := h.DB.Raw(`
+SELECT w.id AS id, w.x AS x, w.y AS y, w.level AS level, w.wild_type AS wild_type,
+       COALESCE(p.nickname, '') AS owner
+FROM ezfy_wildland w
+JOIN ezfy_city c ON c.id = w.city_id
+LEFT JOIN ezfy_profile p ON p.user_id = c.user_id
+WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id <> ?
+  AND w.x BETWEEN ? AND ? AND w.y BETWEEN ? AND ?
+  AND w.status = 0 AND w.level > 2
+  AND NOT EXISTS (SELECT 1 FROM ezfy_order o
+                  WHERE o.target_id = w.id AND o.target_type = 1
+                    AND o.status IN (0,1,2,5,6))
+ORDER BY RAND() LIMIT 1`,
+		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25).Scan(&r).Error
+	if err != nil || r.ID == 0 {
+		return r, false
+	}
+	return r, true
+}
+
+// botAttackWild 人机掠夺一块真人附属野地：抢完资源就放（不占领、不留计划）。
+//
+// ★ 打野不走战争链路（野地 1/2 目标不需要宣战），直接按「掠夺(2)」下单；
+//
+//	征服(3)会写占领记录把人家的地占了，违背「抢完就放」的用户规则。
+func (h *EzfyHandler) botAttackWild(b *model.EzfyBot, city *model.EzfyCity, wt ezfyBotWildTarget) (string, string, bool) {
+	var troops []model.EzfyCityTroop
+	h.DB.Where("city_id = ? AND count > 0", city.ID).Find(&troops)
+	var total int64
+	for _, t := range troops {
+		total += int64(t.Count)
+	}
+	if total == 0 {
+		return "", "", false
+	}
+	// 掠野出半兵（留一半守城/继续发育）
+	want := ezfyBotAtkTroopOf(b.Level, b.AtkTroop) / 2
+	if want > total {
+		want = total
+	}
+	groups := make([]ezfyUnitGroup, 0, len(troops))
+	for _, t := range troops {
+		n := int64(t.Count) * want / total
+		if n <= 0 {
+			continue
+		}
+		groups = append(groups, ezfyUnitGroup{TroopId: int(t.TroopId), Count: n})
+	}
+	if len(groups) == 0 {
+		return "", "", false
+	}
+	// 出征上限（与 botAttack 同一口径：集结令扩容 + 等比缩放）
+	gather := 0
+	if ezfyMarchCapOn() {
+		gather = h.itemCount(b.UserID, ezfyGatherItemID())
+		if maxG := ezfyGatherMax(); gather > maxG {
+			gather = maxG
+		}
+	}
+	cap, unlimited := h.ezfyOrderTroopCap(city.ID, gather, "")
+	if !unlimited && cap > 0 {
+		var gTotal int64
+		for _, g := range groups {
+			gTotal += g.Count
+		}
+		if gTotal > cap {
+			for i := range groups {
+				groups[i].Count = groups[i].Count * cap / gTotal
+			}
+			trim := groups[:0]
+			for _, g := range groups {
+				if g.Count > 0 {
+					trim = append(trim, g)
+				}
+			}
+			groups = trim
+		}
+	}
+	if len(groups) == 0 {
+		return "", "", false
+	}
+	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/order", map[string]interface{}{
+		"city_id": int64(city.ID), "order_type": 2, "target_type": 1,
+		"target_id": wt.ID, "target_x": wt.X, "target_y": wt.Y,
+		"troops": groups, "auto_battle": 1, "gather": gather,
+	})
+	if code == 0 {
+		h.botAtkCountInc(b)
+		return "掠野", fmt.Sprintf("掠夺玩家野地 Lv%d(%d,%d) 派兵 %d 支", wt.Level, wt.X, wt.Y, len(groups)), true
+	}
+	return "掠野失败", msg, false
 }
 
 // ezfyBotTargetRow 目标筛选结果
@@ -1433,9 +1611,11 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	}
 	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/order", body)
 	if code == 0 {
-		// 冷却 12 小时 + 记一次出征
-		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).
-			Updates(map[string]interface{}{"status": 3, "cool_until": time.Now().Add(12 * time.Hour).UnixMilli()})
+		// ★★ 2026-10-18 攻击频率修复：出击成功**不再冷却 12 小时**，计划保持「可出击」——
+		//   同一场宣战生效期内按 atk_per_hour 频率反复出击（每次出击后由 botReschedule
+		//   按攻击间隔排下一轮），直到目标被征服（ezfy_occupy）或战争结束，由
+		//   botMilitary case2 出战前检查拦截并换新目标。原来打一次冷却 12h，频率再高也白搭。
+		h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
 		h.botAtkCountInc(b)
 		return "出击", fmt.Sprintf("%s %s(%d,%d) 派兵 %d 支", ezfyOrderTypeName(atkType), p.Note, tc.X, tc.Y, len(groups)), true
 	}
@@ -1502,6 +1682,10 @@ func ezfyBotFoodFree(isBot int) bool {
 //	管理端可在人机编辑里单独覆盖（atk_per_hour>0）。时间窗 = 1小时 / 频率；
 //	距上次出征不足时间窗 → 本小时额度用光，等下一轮再试。
 func (h *EzfyHandler) botAtkQuotaOK(b *model.EzfyBot) bool {
+	// ★ 2026-10-18 出征时间段：配置了时间段（如 20:00-22:00）就只在段内出击，空 = 全天不限
+	if !ezfyBotAtkWindowOK() {
+		return false
+	}
 	rate := ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour)
 	if rate <= 0 {
 		return true
@@ -1542,6 +1726,58 @@ func ezfyBotAtkDailyOf(level int) int {
 		return 60
 	}
 	return 50
+}
+
+// ezfyBotAtkWindowOK 出征时间段是否放行（ezfy_cfg_limit.bot_atk_windows，管理端可配）。
+//
+// 格式：逗号分隔多个时间段，如 "20:00-22:00,08:00-12:00"；空 = 全天不限。
+// 支持跨天时段（如 22:00-02:00 = 晚上十点到凌晨两点）。0 是合法值，不能用 ezfyLimitOr。
+func ezfyBotAtkWindowOK() bool {
+	if !ezfyCfg.ready() {
+		return true
+	}
+	raw := strings.TrimSpace(ezfyCfg.limit.BotAtkWindows)
+	if raw == "" {
+		return true
+	}
+	now := time.Now()
+	cur := now.Hour()*60 + now.Minute()
+	for _, seg := range strings.Split(raw, ",") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		parts := strings.Split(seg, "-")
+		if len(parts) != 2 {
+			continue
+		}
+		s, e := ezfyBotParseHM(parts[0]), ezfyBotParseHM(parts[1])
+		if s < 0 || e < 0 {
+			continue
+		}
+		if s <= e { // 同天时段
+			if cur >= s && cur <= e {
+				return true
+			}
+		} else if cur >= s || cur <= e { // 跨天时段
+			return true
+		}
+	}
+	return false
+}
+
+// ezfyBotParseHM 解析 "HH:MM" → 当日分钟数；非法返回 -1。
+func ezfyBotParseHM(s string) int {
+	p := strings.Split(strings.TrimSpace(s), ":")
+	if len(p) != 2 {
+		return -1
+	}
+	h, e1 := strconv.Atoi(strings.TrimSpace(p[0]))
+	m, e2 := strconv.Atoi(strings.TrimSpace(p[1]))
+	if e1 != nil || e2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+		return -1
+	}
+	return h*60 + m
 }
 
 // ezfyBotAtkPerHourOf 攻击频率（次/小时）：0=按难度默认（新手6 普通8 精英10），管理端可单独覆盖。

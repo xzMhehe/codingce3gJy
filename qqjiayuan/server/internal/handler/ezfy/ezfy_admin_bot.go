@@ -1064,7 +1064,17 @@ func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 		"batch_size":    ezfyBotBatchSize,
 		// ★ 2026-10-18 征兵线（低于此值人机执行征兵；0/负 = 未配置，回落默认 50 万）
 		"train_threshold": ezfyBotTrainThreshold(),
+		// ★ 2026-10-18 人机出征时间段（空 = 全天；如 "20:00-22:00,08:00-12:00"）
+		"atk_windows": ezfyBotAtkWindows(),
 	})
+}
+
+// ezfyBotAtkWindows 人机出征时间段（空 = 全天）
+func ezfyBotAtkWindows() string {
+	if ezfyCfg.ready() {
+		return ezfyCfg.limit.BotAtkWindows
+	}
+	return ""
 }
 
 // ezfyBotTrainThreshold 人机征兵线（0/负值回落默认 50 万）
@@ -1080,11 +1090,12 @@ func ezfyBotTrainThreshold() int64 {
 // ★ 改完必须 ezfyCfg.reload：开关读的是进程内配置缓存（不 reload 要等 30s 周期刷新）。
 func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 	var in struct {
-		AttackOn       *int   `json:"attack_on"`
-		AtkDailyCap    *int   `json:"atk_daily_cap"`
-		FoodFree       *int   `json:"food_free"`
-		MinPrestige    *int   `json:"min_prestige"`
-		TrainThreshold *int64 `json:"train_threshold"`
+		AttackOn       *int    `json:"attack_on"`
+		AtkDailyCap    *int    `json:"atk_daily_cap"`
+		FoodFree       *int    `json:"food_free"`
+		MinPrestige    *int    `json:"min_prestige"`
+		TrainThreshold *int64  `json:"train_threshold"`
+		AtkWindows     *string `json:"atk_windows"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -1132,6 +1143,9 @@ func (h *EzfyAdmin) AdminEzfyBotConfigSet(c *gin.Context) {
 			v = 500000
 		}
 		up["bot_train_threshold"] = v
+	}
+	if in.AtkWindows != nil {
+		up["bot_atk_windows"] = strings.TrimSpace(*in.AtkWindows)
 	}
 	if len(up) == 0 {
 		resp.ParamError(c, "没有要修改的配置")
@@ -1182,6 +1196,50 @@ func (h *EzfyAdmin) AdminEzfyBotTargets(c *gin.Context) {
 		})
 	}
 	resp.OK(c, gin.H{"list": out, "total": len(out)})
+}
+
+// AdminEzfyBotOccupy GET /admin/ezfy-bot/:uid/occupy —— 人机占领的城市列表
+//
+// ★ 2026-10-18 人机征服玩家城市后占领记录写 ezfy_occupy（atk_user_id = 人机 uid）。
+func (h *EzfyAdmin) AdminEzfyBotOccupy(c *gin.Context) {
+	uid, _ := strconv.Atoi(c.Param("uid"))
+	if uid <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	page, offset, size := pageOf(c, 10)
+	q := h.DB.Model(&model.EzfyOccupy{}).Where("atk_user_id = ?", uid)
+	var total int64
+	q.Count(&total)
+	var rows []model.EzfyOccupy
+	q.Order("id DESC").Offset(offset).Limit(size).Find(&rows)
+	// 守方昵称批量
+	duids := make([]uint, 0, len(rows))
+	for _, r := range rows {
+		duids = append(duids, r.DefUserId)
+	}
+	nickOf := map[uint]string{}
+	if len(duids) > 0 {
+		var profs []model.EzfyProfile
+		h.DB.Select("user_id, nickname").Where("user_id IN ?", duids).Find(&profs)
+		for _, p := range profs {
+			nickOf[p.UserID] = p.Nickname
+		}
+	}
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		st := "占领中"
+		if r.Status == 2 {
+			st = "已归还"
+		}
+		out = append(out, gin.H{
+			"id": r.ID, "city_name": r.CityName, "x": r.X, "y": r.Y,
+			"def_uid": r.DefUserId, "def_name": nickOf[r.DefUserId],
+			"status": r.Status, "status_txt": st,
+			"created_at": r.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
 // AdminEzfyBotTargetSet POST /admin/ezfy-bot/:uid/target {target_uid} —— 管理端指定攻击目标

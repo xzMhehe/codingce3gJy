@@ -3245,6 +3245,11 @@ func EnsureEzfyLimitColumns(db *gorm.DB) {
 		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN pvp_rank_on int DEFAULT 1")
 	}
 	db.Exec("UPDATE ezfy_cfg_limit SET pvp_rank_on = 1 WHERE pvp_rank_on IS NULL")
+	// ★ 2026-10-18 人机出征时间段（如 "20:00-22:00,08:00-12:00"，空 = 全天）：varchar 列，空串合法
+	if !db.Migrator().HasColumn("ezfy_cfg_limit", "bot_atk_windows") {
+		db.Exec("ALTER TABLE ezfy_cfg_limit ADD COLUMN bot_atk_windows varchar(120) DEFAULT ''")
+	}
+	db.Exec("UPDATE ezfy_cfg_limit SET bot_atk_windows = '' WHERE bot_atk_windows IS NULL")
 	// 野地类型后加列（管理端「野地类型」保存依赖）
 	if db.Migrator().HasTable("ezfy_cfg_wildland") {
 		if !db.Migrator().HasColumn("ezfy_cfg_wildland", "drop_items") {

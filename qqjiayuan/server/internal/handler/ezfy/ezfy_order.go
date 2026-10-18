@@ -4345,6 +4345,11 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			if cur < 0 {
 				cur = 0
 			}
+			// ★ 2026-10-18 人机出征胜利 → 民心直接归零，下一次直接征服目标城市
+			//   （人机与真人走同一 /games/ezfy/order 结算链路，这里对攻方是 bot 时特判）
+			if city.IsBot == 1 {
+				cur = 0
+			}
 			report += fmt.Sprintf("\n民心 - %d\n当前民心 %d", feelingDrop, cur)
 			if cur > 0 {
 				target.Feelings = cur

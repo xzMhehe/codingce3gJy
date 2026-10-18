@@ -305,6 +305,7 @@ type EzfyPvpReward struct {
 	RankNo    int       `gorm:"comment:当周名次" json:"rank_no"`
 	Tier      string    `gorm:"type:varchar(10);comment:档位 rank1/rank2/rank3/join" json:"tier"`
 	MailID    uint      `gorm:"comment:发出的邮件ID" json:"mail_id"`
+	Detail    string    `gorm:"type:varchar(255);comment:奖励明细摘要(如 钻石x500、宝箱[名]x2、道具[名]x5)" json:"detail"`
 	CreatedAt time.Time `gorm:"comment:发放时间" json:"created_at"`
 }
 
@@ -671,6 +672,9 @@ type EzfyCfgLimit struct {
 	// ★ 2026-10-18 人机征兵线（默认 500000）：城内部队总数低于此值就执行征兵行动，
 	//   管理端「人机管理」可配置（0 或过小无意义 → 回落默认 50 万）。
 	BotTrainThreshold int64 `gorm:"default:500000;comment:人机征兵线(低于此值执行征兵)" json:"bot_train_threshold"`
+	// ★ 2026-10-18 人机出征时间段（管理端可配）：逗号分隔多个时段，如 "20:00-22:00,08:00-12:00"，
+	//   空 = 全天不限；支持跨天时段（22:00-02:00）。只影响人机主动出击，发育不受限。
+	BotAtkWindows string `gorm:"type:varchar(120);default:'';comment:人机出征时间段(空=全天)" json:"bot_atk_windows"`
 }
 
 func (EzfyCfgLimit) TableName() string { return "ezfy_cfg_limit" }

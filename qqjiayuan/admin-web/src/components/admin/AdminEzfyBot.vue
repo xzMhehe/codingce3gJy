@@ -29,6 +29,12 @@
         </span>
         <el-input-number v-model.number="trainThreshold" :min="10000" :step="100000"
                          controls-position="right" style="width:130px" @change="saveConfig" />
+        <!-- ★ 2026-10-18 人机出征时间段（空 = 全天） -->
+        <span>出征时间段
+          <el-tooltip placement="top" :content="tips.window"><i class="el-icon-info cfg-tip" /></el-tooltip>
+        </span>
+        <el-input v-model="atkWindows" placeholder="留空=全天 如 20:00-22:00,08:00-12:00"
+                  style="width:230px" maxlength="120" @change="saveConfig" />
         <div class="grow" />
         <el-button type="primary" icon="el-icon-video-play" @click="openActAll">一键立即行动</el-button>
         <el-button type="primary" icon="el-icon-plus" @click="createDlg = true">生成人机</el-button>
@@ -98,12 +104,14 @@
             <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '运行中' : '已暂停' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="500" align="center" fixed="right">
+        <el-table-column label="操作" width="560" align="center" fixed="right">
           <template slot-scope="{row}">
             <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/建筑）" @click="openEdit(row)" />
             <el-button size="mini" type="success" plain icon="el-icon-present" title="发放资源" @click="openGrant(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-video-play" title="立即行动一轮" @click="actNow(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-aim" title="攻击目标（查看/指定/删除）" @click="openTargets(row)" />
+            <!-- ★ 2026-10-18 人机占领的城市（出征胜利→直接征服写 ezfy_occupy） -->
+            <el-button size="mini" type="danger" plain icon="el-icon-office-building" title="占领城市（人机征服玩家城后占领的城市）" @click="openOccupy(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-map-location" title="迁城（输入坐标）" @click="openRelocate(row)" />
             <el-button size="mini" plain icon="el-icon-tickets" title="行为日志" @click="openLogs(row)" />
             <el-button size="mini" plain icon="el-icon-document" title="出征战报" @click="openReports(row)" />
@@ -441,6 +449,35 @@
       <div slot="footer"><el-button @click="reportsDlg = false">关 闭</el-button></div>
     </el-dialog>
 
+    <!-- 人机占领的城市（★ 2026-10-18 出征胜利→直接征服，占下的玩家城写 ezfy_occupy） -->
+    <el-dialog :title="'占领城市 —— ' + (cur ? cur.nickname : '')" :visible.sync="occDlg" width="720px">
+      <el-table :data="occList" v-loading="occLoading" size="mini" border max-height="420"
+                :empty-text="'该人机暂无占领的城市（出征胜利后会直接征服目标城）'">
+        <el-table-column prop="city_name" label="城市" min-width="120" show-overflow-tooltip />
+        <el-table-column label="坐标" width="120" align="center">
+          <template slot-scope="{row}">（{{ row.x }},{{ row.y }}）</template>
+        </el-table-column>
+        <el-table-column prop="def_name" label="守方玩家" min-width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.def_name || ('ID ' + row.def_uid) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100" align="center">
+          <template slot-scope="{row}">
+            <el-tag size="mini" :type="row.status === 1 ? 'danger' : 'info'">{{ row.status_txt }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="占领时间" width="160" align="center">
+          <template slot-scope="{row}">{{ row.created_at }}</template>
+        </el-table-column>
+      </el-table>
+      <div class="pager-bar">
+        <div class="pager-info">共 <b>{{ occTotal }}</b> 条</div>
+        <el-pagination v-show="occTotal > 0" small background layout="prev, pager, next" :total="occTotal"
+                       :page-size="occSize" :current-page="occPage"
+                       @current-change="p => { occPage = p; loadOccupy() }" />
+      </div>
+      <div slot="footer"><el-button @click="occDlg = false">关 闭</el-button></div>
+    </el-dialog>
+
     <!-- 战报详情（★ 2026-10-17 点「详情」拉全文：content + detail） -->
     <el-dialog :title="reportDetail.title || '战报详情'" :visible.sync="reportDetailDlg" width="720px">
       <div class="report-detail" v-if="reportDetail">
@@ -465,7 +502,8 @@ export default {
   data () {
     return {
       list: [], max: 50, loading: false, word: '',
-      attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000, saving: false,
+      attackOn: 1, atkDailyCap: 3, foodFree: 1, minPrestige: 500000, trainThreshold: 500000,
+      atkWindows: '', saving: false,
       // 攻击目标
       tgtDlg: false, tgtLoading: false, tgtSaving: false, tgtInput: '', targets: [],
       // 迁城（管理端直接输入坐标）
@@ -499,6 +537,8 @@ export default {
       logsDlg: false, logs: [], logTotal: 0, logPage: 1, logSize: 20, logsLoading: false,
       // ★ 2026-10-17 出征战报
       reportsDlg: false, reports: [], reportTotal: 0, reportPage: 1, reportSize: 20, reportsLoading: false,
+      // ★ 2026-10-18 人机占领的城市
+      occDlg: false, occList: [], occTotal: 0, occPage: 1, occSize: 10, occLoading: false,
       // 战报详情（★ 2026-10-17 点「详情」拉全文单独弹窗）
       reportDetailDlg: false, reportDetail: { title: '', content: '', detail: '' },
       cur: null,
@@ -508,6 +548,7 @@ export default {
         foodFree: '开启后人机城内军队不扣维护粮、出征也免油耗（真人照常扣），让人机专注发育与出击。',
         minPrestige: '人机自动挑攻击目标时，只打声望 ≥ 此值的真人玩家（0 = 不限制）；声望越高越优先被选中。',
         train: '人机城内部队总数低于该值就执行征兵行动（默认 50 万）；填低于 1 万会自动回落到 50 万。',
+        window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）；留空 = 全天。发育/集结等其它行动不受限。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
     }
@@ -537,13 +578,14 @@ export default {
           if (r.data.train_threshold !== undefined && r.data.train_threshold !== null) {
             this.trainThreshold = r.data.train_threshold
           }
+          this.atkWindows = r.data.atk_windows || ''
         } else this.$message.error(r.msg)
       }).catch(() => { this.loading = false })
     },
     saveConfig () {
       api.post('/admin/ezfy-bot/config', {
         attack_on: this.attackOn, atk_daily_cap: this.atkDailyCap, food_free: this.foodFree,
-        min_prestige: this.minPrestige, train_threshold: this.trainThreshold
+        min_prestige: this.minPrestige, train_threshold: this.trainThreshold, atk_windows: this.atkWindows
       }).then(r => {
         if (r.code === 0) this.$message.success('已保存')
         else this.$message.error(r.msg)
@@ -848,22 +890,37 @@ export default {
     openReports (row) {
       this.cur = row
       this.reports = []
-      this.reportTotal = 0
       this.reportPage = 1
       this.reportsDlg = true
       this.loadReports()
     },
     loadReports () {
       this.reportsLoading = true
-      api.get('/admin/ezfy-reports', {
-        params: { word: this.cur ? this.cur.user_id : 0, page: this.reportPage, size: this.reportSize }
-      }).then(r => {
+      api.get('/admin/ezfy-reports', { params: { uid: this.cur.user_id, page: this.reportPage, size: this.reportSize } }).then(r => {
         this.reportsLoading = false
         if (r.code === 0) {
           this.reports = r.data.list || []
           this.reportTotal = r.data.total || 0
-        }
+        } else this.$message.error(r.msg)
       }).catch(() => { this.reportsLoading = false })
+    },
+    // ★ 2026-10-18 人机占领的城市
+    openOccupy (row) {
+      this.cur = row
+      this.occList = []
+      this.occPage = 1
+      this.occDlg = true
+      this.loadOccupy()
+    },
+    loadOccupy () {
+      this.occLoading = true
+      api.get('/admin/ezfy-bot/' + this.cur.user_id + '/occupy', { params: { page: this.occPage, size: this.occSize } }).then(r => {
+        this.occLoading = false
+        if (r.code === 0) {
+          this.occList = r.data.list || []
+          this.occTotal = r.data.total || 0
+        } else this.$message.error(r.msg)
+      }).catch(() => { this.occLoading = false })
     },
     // ★ 2026-10-17 战报详情：列表只给预览，点「详情」拉全文（content/detail）单独弹窗，列表不臃肿
     openReportDetail (row) {
