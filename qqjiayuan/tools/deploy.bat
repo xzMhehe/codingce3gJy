@@ -104,8 +104,8 @@ set "CONFIG_SEED=/opt/config.yaml"
 set "NO_RESTART=0"
 set "NO_BACKUP=0"
 set "DRY_RUN=0"
-set "TMPOUT=%TEMP%\deploy_out_%RANDOM%.txt"
-set "TMPERR=%TEMP%\deploy_err_%RANDOM%.txt"
+set "TMPOUT=%TEMP%\deploy_out_%RANDOM%%RANDOM%.txt"
+set "TMPERR=%TEMP%\deploy_err_%RANDOM%%RANDOM%.txt"
 
 rem ---------- ²ÎÊý ----------
 :parse

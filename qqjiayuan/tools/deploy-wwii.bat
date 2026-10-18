@@ -39,8 +39,8 @@ set "NO_RESTART=0"
 set "NO_BACKUP=0"
 set "DRY_RUN=0"
 set "ZONE2=0"
-set "TMPOUT=%TEMP%\wwii_out_%RANDOM%.txt"
-set "TMPERR=%TEMP%\wwii_err_%RANDOM%.txt"
+set "TMPOUT=%TEMP%\wwii_out_%RANDOM%%RANDOM%.txt"
+set "TMPERR=%TEMP%\wwii_err_%RANDOM%%RANDOM%.txt"
 
 rem ---------- parse ----------
 :parse
