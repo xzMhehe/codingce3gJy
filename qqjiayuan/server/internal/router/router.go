@@ -103,7 +103,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 	jwtM := middleware.JWTAuth(db, cfg.Jwt.Secret)
 	// ★ 2026-10-12 二战专属认证：只认二战签发的 token（与家园彻底独立）。
 	// ★ 2026-10-12 传 ezfyDB：二战中间件要读 ezfy_account.kick_at 支持管理端「踢下线」
-	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret, ezfyDB)
+	// ★★ 2026-10-18 再传 db（家园库）：多区时家园退出只会写一个二战库，
+	//   靠家园 users.session_at 才能把所有区的旧 token 一起作废。
+	ezfyJwtM := middleware.EzfyJWTAuth(cfg.Jwt.Secret, ezfyDB, db)
 	optAuth := middleware.OptionalAuth(db, cfg.Jwt.Secret)
 	perm := middleware.RequirePerm
 	permAny := middleware.RequireAnyPerm
@@ -270,6 +272,10 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 			// ★ 2026-10-12 家园已登录 → 免密换二战登录态（Authorization 里带家园 token），
 			//   解决「家园登录后进二战还要再登一次」。同样公开路由，内部手动校验家园 token。
 			api.POST("/ezfy/sso", ezfyH.EzfySSO)
+			// ★★ 2026-10-18 二战登出（公开路由，Authorization 带二战 token）：
+			//   二战点底部「家园」导航时调用 —— 作废当前二战 token，回家园再进二战由 SSO
+			//   重新签发。避免旧 token 长期残留，换号时串台。
+			api.POST("/ezfy/logout", ezfyH.EzfyLogout)
 		}
 
 		// ★★ 2026-10-15 区名写活 + 入口选服（开多区准备）：

@@ -30,6 +30,25 @@ type ezfyLoginReq struct {
 	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
 }
 
+// homeUIDFromAuth 从 Authorization 里取**家园** token 的 uid。
+// 无 token / 不是家园 Issuer / 已过期 / 已作废 → 返回 0（表示「家园没登录」，调用方放行）。
+// ★ 只用于二战登录页的「不许换号」卡控，不参与任何鉴权。
+func homeUIDFromAuth(c *gin.Context, secret string) uint64 {
+	raw := strings.TrimSpace(c.GetHeader("Authorization"))
+	if raw == "" {
+		return 0
+	}
+	tok := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
+	if tok == "" {
+		return 0
+	}
+	claims, err := authutil.ParseToken(tok, secret)
+	if err != nil || claims == nil || claims.UserID == 0 {
+		return 0
+	}
+	return uint64(claims.UserID)
+}
+
 // EzfyLogin 二战独立登录。
 //
 //	path: POST /api/ezfy/login （公开路由，不走二战/家园认证）
@@ -56,6 +75,16 @@ func (h *EzfyHandler) EzfyLogin(c *gin.Context) {
 	}
 	if gameID == 0 {
 		resp.ParamError(c, "家园号不正确")
+		return
+	}
+	// ★★ 2026-10-18 防账号串台（用户：「A 账户登录家园，现在还能 B 账户登录二战，这不乱了」）：
+	//   前端 api 拦截器对 /ezfy/login（不在 /games/ezfy/ 前缀下）会自动带**家园** token。
+	//   带了有效家园 token 就说明「家园当前登录着某个账号」，此时二战登录页只允许登这个账号；
+	//   想换号必须先去家园退出。否则会写出「家园是 A、二战是 B」的分叉登录态 ——
+	//   更糟的是 home_token 回传还会把家园的 jy_token 一并换成 B。
+	//   ★ 解析失败（没带 token / 已过期）= 家园未登录 → 放行，允许玩家直接登二战。
+	if uid := homeUIDFromAuth(c, h.Secret); uid != 0 && uid != gameID {
+		resp.ParamError(c, "当前已登录家园账号 "+strconv.FormatUint(uid, 10)+"，请先退出家园再登录其他账号")
 		return
 	}
 	// ★ 密码输错满 3 次（15 分钟窗口）→ 必须过图形验证码（与家园登录一致，防脚本刷密码）
@@ -251,4 +280,41 @@ func (h *EzfyHandler) EzfySSO(c *gin.Context) {
 		return
 	}
 	resp.OK(c, gin.H{"token": token, "game_id": acct.GameID, "nickname": acct.Nickname})
+}
+
+// EzfyLogout 二战登出：作废当前账号的二战 token。
+//
+// ★★ 2026-10-18 用户要求：「再二战进家园（底部家园导航）也要作废二战的 token，
+// 家园再进二战就继续生成新的 token」。二战页没有独立退出入口（也不需要），
+// 点底部「家园」就是唯一的出口 —— 那里顺手把二战 token 作废，回家园再进来时
+// 由 EzfySSO 重新签发。这样二战 token 不会长期残留在浏览器里，换号（退家园 A →
+// 登家园 B → 进二战）时也不可能拿着 A 的旧 token 继续玩。
+//
+// 实现：把 ezfy_account.session_at 顶到当前 → 该账号此前签发的二战 token 全部
+// 按「iat < session_at」作废（与单点登录同一套判据）。没带 token / token 已失效
+// 一律当「已退出」返回成功，前端照常跳转，不阻塞玩家回家园。
+//
+//	path: POST /api/ezfy/logout （公开路由）
+func (h *EzfyHandler) EzfyLogout(c *gin.Context) {
+	raw := strings.TrimSpace(c.GetHeader("Authorization"))
+	tok := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
+	if tok == "" {
+		resp.OK(c, gin.H{"msg": "已退出"})
+		return
+	}
+	claims, err := authutil.ParseEzfyToken(tok, h.Secret)
+	if err != nil || claims == nil || claims.UserID == 0 {
+		resp.OK(c, gin.H{"msg": "已退出"})
+		return
+	}
+	// ★★ 2026-10-18 作废线取「当前秒 + 1」：JWT 的 iat 只有**秒级**精度，
+	//   若同秒内先签发再登出，`iat(T) < session_at(T)` 为 false → 旧 token 作废不掉。
+	//   推到下一秒后：本秒签发的 token 一律 `iat < session_at` ✅ 作废；
+	//   而登录/SSO 会**重新写** session_at=now（见 EzfyLogin/EzfySSO），新 token 不会被误杀。
+	//   （家园侧不能这么干：家园登录不写 users.session_at，+1 秒会让「退出后同秒登录」直接掉线。）
+	nowSec := (time.Now().Unix() + 1) * 1000
+	h.DB.Model(&model.EzfyAccount{}).Where("game_id = ?", claims.UserID).
+		Updates(map[string]interface{}{"session_at": nowSec})
+	middleware.SetEzfySessionAt(claims.UserID, nowSec)
+	resp.OK(c, gin.H{"msg": "已退出"})
 }

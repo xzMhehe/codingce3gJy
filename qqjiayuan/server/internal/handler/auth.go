@@ -300,7 +300,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // 只在退出时写、登录不写 —— 家园多设备同时登录不受影响。
 func (h *AuthHandler) Logout(c *gin.Context) {
 	uid := middleware.GetUID(c)
-	nowSec := time.Now().Unix() * 1000
+	// ★★ 2026-10-18 作废线取「当前秒 + 1」：JWT 的 iat 只有**秒级**精度，
+	//   同一秒内「登录 → 退出」会判成 `iat(T) < session_at(T)` = false → 旧 token 作废不掉
+	//   （用户要求「退出家园，token 立即失效」）。
+	//   代价：退出后**同一秒内**重新登录会被判过期（要再登一次）。正常操作是
+	//   「点退出 → 跳登录页 → 输账号密码」，必然跨秒，实际不可见。
+	nowSec := (time.Now().Unix() + 1) * 1000
 
 	// 家园 token 作废
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("session_at", nowSec)

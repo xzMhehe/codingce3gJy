@@ -84,10 +84,22 @@ var (
 
 const homeSessionCacheTTL = 60 * time.Second
 
+// ★★ 2026-10-18 二战跨区校验专用 TTL（5s）：
+//   家园服的 JWT 中间件走 homeSessionCacheTTL(60s) 没问题 —— 家园 logout 会调
+//   SetHomeSessionAt **即时刷新本进程缓存**。但二战一区/二区是**别的进程**，刷不到，
+//   60s 内旧 token 仍然可用（用户：「退出家园，二战 token 也要失效」+「还有缓存问题」）。
+//   这里给二战侧单独一个短 TTL；同一进程内只会用到其中一种，共享 map 不冲突。
+const homeSessionCacheTTLCross = 5 * time.Second
+
 // homeSessionAtOf 取玩家「最近退出登录」时刻（0 = 从未退出），带进程内缓存。
 func homeSessionAtOf(db *gorm.DB, uid uint) int64 {
+	return homeSessionAtWith(db, uid, homeSessionCacheTTL)
+}
+
+// homeSessionAtWith 同上，但可指定缓存 TTL（二战跨区校验用短 TTL）。
+func homeSessionAtWith(db *gorm.DB, uid uint, ttl time.Duration) int64 {
 	homeSessionCacheMu.Lock()
-	if at, ok := homeSessionCache[uid]; ok && time.Since(homeSessionCacheDone[uid]) < homeSessionCacheTTL {
+	if at, ok := homeSessionCache[uid]; ok && time.Since(homeSessionCacheDone[uid]) < ttl {
 		homeSessionCacheMu.Unlock()
 		return at
 	}
@@ -192,7 +204,7 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 //	校验通过后同样 set CtxUID/CtxUName —— 值就是「家园号(=二战游戏ID)」，
 //	二战 handler 按 middleware.GetUID(c) 沿用既有查询，**零迁移**。
 //	不写家园库（无活跃时间/勋章等家园逻辑），登录态彻底独立。
-func EzfyJWTAuth(secret string, db *gorm.DB) gin.HandlerFunc {
+func EzfyJWTAuth(secret string, db *gorm.DB, homeDB *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
@@ -218,6 +230,22 @@ func EzfyJWTAuth(secret string, db *gorm.DB) gin.HandlerFunc {
 			}
 			if sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
 				resp.Unauthorized(c, "账号已在其他地点登录，请重新登录")
+				c.Abort()
+				return
+			}
+		}
+		// ★★ 2026-10-18 跨区统一作废源：家园 `users.session_at`。
+		//   为什么需要：家园退出（/api/auth/logout）只更新**它自己配置的那一个**二战库
+		//   （config 的 ezfy_mysql.dbname，通常是 1 区库）→ 2 区的 ezfy_account.session_at
+		//   根本不会被碰 → 2 区 token 能一直活到 JWT 自然过期（用户：「退出家园，二战 token
+		//   也要失效」在多区下是漏的）。二战服本来就挂着 HomeDB（账号/昵称都读家园库），
+		//   顺带校一下家园的作废线就覆盖了所有区。
+		//   ★ 复用家园那套 homeSessionAtOf（60s 进程内缓存，与家园 JWT 中间件同口径）；
+		//   前端 logout 会同时清掉 jy_token（cookie + localStorage），二战页刷新即回登录框，
+		//   这里的 60s 只是「不刷新页面也能作废」的服务端兜底。
+		if homeDB != nil && claims.IssuedAt != nil {
+			if sat := homeSessionAtWith(homeDB, claims.UserID, homeSessionCacheTTLCross); sat > 0 && claims.IssuedAt.UnixMilli() < sat {
+				resp.Unauthorized(c, "家园账号已退出，请重新登录")
 				c.Abort()
 				return
 			}
@@ -250,7 +278,11 @@ type ezfyKickEntry struct {
 	at        time.Time
 }
 
-const ezfyKickCacheTTL = 60 * time.Second
+// ★★ 2026-10-18 从 60s 收到 5s：家园服 / 二战一区 / 二战二区是**三个独立进程**，
+//   `SetEzfySessionAt` 只能刷新「自己这个进程」的缓存。玩家在家园点退出时，一区/二区
+//   进程的缓存还是旧值 → 60s 内旧二战 token 仍然可用（用户反馈的「退了还有缓存」）。
+//   5s 的代价：每用户每 5s 最多一次查询（只在有请求时查），远小于 60s 的错误窗口。
+const ezfyKickCacheTTL = 5 * time.Second
 
 // ezfySessionOf 取玩家「token 作废线」两项（kick_at / session_at），带进程内缓存。
 func ezfySessionOf(db *gorm.DB, uid uint) (kickAt, sessionAt int64) {
@@ -293,8 +325,7 @@ func SetEzfySessionAt(uid uint, sessionAt int64) {
 	ezfyKickCache.Store(uid, ezfyKickEntry{kickAt: kickAt, sessionAt: sessionAt, at: time.Now()})
 }
 
-func GetUID(c *gin.Context) uint {
-	v, _ := c.Get(CtxUID)
+func GetUID(c *gin.Context) uint {	v, _ := c.Get(CtxUID)
 	uid, _ := v.(uint)
 	return uid
 }

@@ -27,7 +27,11 @@
         </select>
       </div>
       <!-- class=wwii-input + 行内 style(含 !important) 双保险，保证账号/密码/验证码输入框宽高完全一致 -->
-      <input v-model="wwiiName" placeholder="家园号" class="wwii-input"
+      <!-- ★★ 2026-10-18 防账号串台：家园已登录时这里锁定为**当前家园号**（只读灰底）。
+           原来允许随便输另一个家园号 → 玩家「A 登录家园、二战里输 B」→ 二战身份变 B、
+           家园 token 也被后端回传的 home_token 换成 B = 账号乱。 -->
+      <input v-model="wwiiName" :readonly="!!homeUid" :placeholder="homeUid ? '当前家园账号（已锁定）' : '家园号'" class="wwii-input"
+             :style="homeUid ? { background: '#f2f2f3', color: '#666', cursor: 'not-allowed' } : null"
              style="display:block;box-sizing:border-box;width:100% !important;max-width:100%;height:38px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#fff;font-size:14px;"
              @keyup.enter="wwiiLogin()"/>
       <input v-model="wwiiPwd" type="password" placeholder="家园密码" class="wwii-input"
@@ -418,6 +422,8 @@
 
 <script>
 import api from '../../api'
+// ★★ 2026-10-18 从 JWT 里解 uid：跨端口时 user 对象读不到，只能靠 token 判断「家园是不是换了人」
+import { jwtUid } from '../../store'
 
 // ★ 资源显示名的「兜底默认值」。真正的名字由后端 /games/ezfy/res-cfg 下发
 //   （管理端「资源管理 → 资源名称维护」可改），改名后全站展示跟随。
@@ -474,7 +480,8 @@ export default {
       cur: 'home',
       prevCur: 'home', // ★ 2026-09-29 上一页（各页 [返回] goBack 用）
       // ★ 2026-10-12 二战独立登录界面（未登录时根组件只渲染它）：
-      wwiiName: '',
+      // ★★ 2026-10-18 家园已登录 → 预填当前家园号（模板里配合 readonly 锁定，防账号串台）
+      wwiiName: String(this.$store.getters.homeUid || ''),
       wwiiPwd: '',
       wwiiErr: '',
       wwiiBusy: false,
@@ -1110,6 +1117,17 @@ export default {
     //   只是没登录 → 根组件渲染二战自己的登录界面，不依赖家园 token、不弹回家园。
     isLogin () {
       return !!this.$store.getters.isEzfyLogin
+    },
+    // ★★ 2026-10-18 当前家园账号（家园号）。有值时二战登录页的账号框锁定成它，
+    //   杜绝「A 登录家园、再用 B 登二战」的账号串台。
+    //   ★ 从 token 里解（store getter），不读 user 对象 —— 跨端口时 user 在别的源里读不到。
+    homeUid () {
+      return String(this.$store.getters.homeUid || '')
+    },
+    // ★★ 2026-10-18 本地二战登录态属于哪个家园号（登录/SSO 时写入 ezfyUser.id）
+    ezfyUid () {
+      const u = this.$store.state.ezfyUser
+      return (u && u.id) ? String(u.id) : ''
     },
     freePop () {
       // ★ 占用人口由后端统一算：只有「训练中、还没出厂」的新兵占人口。
@@ -1976,6 +1994,21 @@ export default {
     }
   },
   mounted () {
+    // ★★ 2026-10-18 家园退出 → 二战联动（跨端口场景）：
+    //   二战 token 存在 8081/8082 自己的 localStorage 里，家园在 8080 退出时**清不到它**
+    //   （localStorage 按 origin 隔离）→ 刷新后仍显示「已登录」，玩家反馈「退了还有缓存」。
+    //   判据：有 ezfy_token 却拿不到 jy_token（localStorage 和 cookie 都没有）。
+    //   而二战登录 / SSO **必然同时下发家园 token**（后端 home_token），所以「只有二战 token、
+    //   没有家园 token」只可能出现在家园已退出（或被清）之后 → 直接清掉二战登录态回登录框。
+    if (this.isLogin && !this.$store.state.token) {
+      this.$store.commit('ezfyLogout')
+    }
+    // ★★ 2026-10-18 家园换人（A 退出、B 登录）→ 本地二战 token 还是 A 的，必须作废重换。
+    //   二战页自己没有退出入口，玩家换号只能「家园退出 A → B 登录家园 → 再进二战」；
+    //   若这里不比对，8081/8082 会带着 A 的 ezfy_token 直接进游戏 = 又一种账号串台。
+    if (this.isLogin && this.homeUid && this.ezfyUid && this.homeUid !== this.ezfyUid) {
+      this.$store.commit('ezfyLogout')
+    }
     // ★★ 2026-10-15 区名写活：先拉 /api/ezfy/zone 拿本区信息（标题/选服列表），再走登录流程。
     //   接口是公开的，未登录也要能拿到，好让登录页标题/选服显示正确区名。
     this.loadZone()
@@ -2230,6 +2263,12 @@ export default {
     // 退出游戏回家园 —— 游戏内唯一的合法出口(底部导航最后的「家园」, 原「首页」)。
     // 用 @click 而不是 <a href>, 这样不会被下面的 blockEscape 拦掉。
     exitToHome () {
+      // ★★ 2026-10-18 二战点「家园」= 二战登出（用户：「再二战进家园（底部家园导航）也要作废
+      //   二战的 token，家园再进二战就继续生成新的 token」）。
+      //   作废 + 清本地后跳回家园；下次从家园进二战由 /api/ezfy/sso 重新签发新 token。
+      //   这样二战 token 不会长期残留，换号（退家园 A → 登 B → 进二战）也不会拿 A 的旧 token 继续玩。
+      //   ★ 用 fetch + keepalive：整页跳转后请求仍会送达；失败也照常跳，不阻塞玩家回家园。
+      this.ezfySignOut()
       // ★★ 2026-10-17 二战独立部署：二战服是独立 SPA，站内没有 /home 路由。
       //   有 home_url（zone 接口下发）→ 整页跳回家园服；没有（home 模式同进程）→ 走站内路由。
       if (this.homeUrl) {
@@ -2237,6 +2276,20 @@ export default {
         return
       }
       this.$router.push('/home')
+    },
+    // 作废当前二战 token 并清掉本地登录态（点「家园」出口时调用）
+    ezfySignOut () {
+      const t = this.$store.state.ezfyToken
+      if (t) {
+        try {
+          fetch('/api/ezfy/logout', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + t },
+            keepalive: true
+          }).catch(() => {})
+        } catch (e) { /* 忽略：不能让登出失败挡住回家园 */ }
+      }
+      this.$store.commit('ezfyLogout')
     },
     // 沉浸式卡控①: 拦掉一切会把玩家带出游戏的站内链接
     // 兼容 '/home' 与 '/#/home' 两种写法; 不动浏览器的前进/后退(那由下面的 popstate 守卫接管)
@@ -2402,9 +2455,29 @@ export default {
       if (!m || !m[1]) return false
       const ssoToken = decodeURIComponent(m[1])
       if (!ssoToken) return false
+      // ★★ 2026-10-18 本地已经是**同一个家园号**的二战登录态 → 清掉 URL 里的 token 直接进游戏
+      //   （省一次 SSO 往返）。不同号 / 未登录 → 必须以 sso_token 为准重换，
+      //   否则「家园换了 B、8081 还带着 A 的 ezfy_token」会直接进 A 的游戏 = 账号串台。
+      const ssoUid = String(jwtUid(ssoToken) || '')
+      if (this.isLogin && ssoUid && ssoUid === this.ezfyUid) {
+        this.stripSsoToken()
+        return false
+      }
       this.$store.commit('setToken', ssoToken)
       this.trySsoLogin()
       return true
+    },
+    // 从地址栏清掉一次性的 sso_token（保留 cur=home 等其它 hash query；
+    //   hash 路由下 replaceState 只改地址、不触发导航）
+    stripSsoToken () {
+      const qi = location.hash.indexOf('?')
+      if (qi < 0) return
+      const hashPath = location.hash.slice(0, qi)
+      const params = new URLSearchParams(location.hash.slice(qi + 1))
+      if (!params.has('sso_token')) return
+      params.delete('sso_token')
+      const rest = params.toString()
+      history.replaceState(null, '', location.pathname + location.search + (rest ? hashPath + '?' + rest : hashPath))
     },
     // 家园已登录 → 自动换二战登录态（免二次登录）。
     //   家园 token 有效 → 后端 /api/ezfy/sso 直接签发二战 token（不再验密码）；
@@ -2462,7 +2535,8 @@ export default {
     //   二战登录态只存 ezfy_token，与家园账号体系彻底分离。
     wwiiLogin () {
       if (this.wwiiBusy) return
-      const name = (this.wwiiName || '').trim()
+      // ★★ 2026-10-18 家园已登录时强制用当前家园号（输入框虽已只读，这里再兜一层防篡改）
+      const name = (this.homeUid || this.wwiiName || '').trim()
       const pwd = this.wwiiPwd || ''
       if (!name || !pwd) {
         this.wwiiErr = '请输入家园号和密码'
