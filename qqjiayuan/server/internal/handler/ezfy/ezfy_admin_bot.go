@@ -1052,6 +1052,32 @@ func (h *EzfyAdmin) AdminEzfyBotLogs(c *gin.Context) {
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size})
 }
 
+// AdminEzfyBotLogDelete POST /admin/ezfy-bot/log/:id/delete —— 物理删除单条行为日志
+//
+// ★ 2026-10-18 用户需求「人机行为日志支持管理员物理删除」：日志刷太多想清掉旧的。
+func (h *EzfyAdmin) AdminEzfyBotLogDelete(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Unscoped().Delete(&model.EzfyBotLog{}, id)
+	resp.OK(c, gin.H{"msg": "已删除该条日志"})
+}
+
+// AdminEzfyBotLogClear POST /admin/ezfy-bot/logs/clear {bot_uid} —— 清空某个人机的全部行为日志（物理删除）
+func (h *EzfyAdmin) AdminEzfyBotLogClear(c *gin.Context) {
+	var in struct {
+		BotUID uint `json:"bot_uid"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || in.BotUID <= 0 {
+		resp.ParamError(c, "参数错误")
+		return
+	}
+	h.DB.Unscoped().Where("bot_uid = ?", in.BotUID).Delete(&model.EzfyBotLog{})
+	resp.OK(c, gin.H{"msg": "已清空该人机的全部行为日志"})
+}
+
 // AdminEzfyBotConfig GET /admin/ezfy-bot/config —— 风控配置
 func (h *EzfyAdmin) AdminEzfyBotConfig(c *gin.Context) {
 	resp.OK(c, gin.H{

@@ -1277,6 +1277,9 @@ func Setup(db *gorm.DB, ezfyDB *gorm.DB, cfg *config.Config) *gin.Engine {
 						admin.POST("/ezfy-bot/create", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotCreate)
 						admin.POST("/ezfy-bot/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotClear)
 						admin.GET("/ezfy-bot/logs", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogs)
+						// ★ 2026-10-18 人机行为日志物理删除（单条 / 清空该人机全部）
+						admin.POST("/ezfy-bot/log/:id/delete", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogDelete)
+						admin.POST("/ezfy-bot/logs/clear", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotLogClear)
 						admin.GET("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfig)
 						admin.POST("/ezfy-bot/config", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotConfigSet)
 						admin.POST("/ezfy-bot/:uid/toggle", perm(db, "module:ezfyBot"), ezfyAdminH.AdminEzfyBotToggle)

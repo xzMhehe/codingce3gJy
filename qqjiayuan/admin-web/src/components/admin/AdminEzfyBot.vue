@@ -270,48 +270,52 @@
             <el-table :data="editOfficers" size="mini" border max-height="320" style="width:100%">
               <el-table-column prop="name" label="军官" min-width="90" show-overflow-tooltip />
               <el-table-column prop="star" label="星" width="45" align="center" />
-              <el-table-column label="等级" width="110" align="center">
+              <!-- ★ 2026-10-18 编辑人机军官页精简：等级/经验 合并、三维属性 合并为一列，技能列加「随机」 -->
+              <el-table-column label="等级/经验" width="120" align="center">
                 <template slot-scope="{row}">
-                  <el-input-number v-model="row.level" :min="1" :max="350" size="mini"
-                                   controls-position="right" style="width:90px" />
+                  <div style="display:flex; flex-direction:column; gap:4px">
+                    <el-input-number v-model="row.level" :min="1" :max="350" size="mini"
+                                     controls-position="right" style="width:100px" placeholder="等级" />
+                    <el-input-number v-model="row.exp" :min="0" :step="1000" size="mini"
+                                     controls-position="right" style="width:100px" placeholder="经验" />
+                  </div>
                 </template>
               </el-table-column>
-              <el-table-column label="经验" width="120" align="center">
-                <template slot-scope="{row}">
-                  <el-input-number v-model="row.exp" :min="0" :step="1000" size="mini"
-                                   controls-position="right" style="width:100px" />
-                </template>
-              </el-table-column>
-              <el-table-column label="待分配点" width="110" align="center">
+              <el-table-column label="待分配点" width="100" align="center">
                 <template slot-scope="{row}">
                   <el-input-number v-model="row.free_points" :min="0" :step="10" size="mini"
                                    controls-position="right" style="width:90px" />
                 </template>
               </el-table-column>
-              <el-table-column label="军事" width="100" align="center">
+              <el-table-column label="三维属性" width="250" align="center">
+                <template slot="header">
+                  <span>三维属性</span>
+                  <el-tooltip placement="top" content="顺序：军事 / 后勤 / 学识，填最终值，差额自动从待分配点扣减">
+                    <i class="el-icon-info cfg-tip" style="margin-left:2px" />
+                  </el-tooltip>
+                </template>
                 <template slot-scope="{row}">
-                  <el-input-number v-model="row.military" :min="0" :step="10" size="mini"
-                                   controls-position="right" style="width:85px" />
+                  <div style="display:flex; align-items:center; justify-content:center; gap:6px">
+                    <el-input-number v-model="row.military" :min="0" :step="10" size="mini"
+                                     controls-position="right" style="width:74px" placeholder="军事" />
+                    <el-input-number v-model="row.logistics" :min="0" :step="10" size="mini"
+                                     controls-position="right" style="width:74px" placeholder="后勤" />
+                    <el-input-number v-model="row.learning" :min="0" :step="10" size="mini"
+                                     controls-position="right" style="width:74px" placeholder="学识" />
+                  </div>
                 </template>
               </el-table-column>
-              <el-table-column label="后勤" width="100" align="center">
+              <el-table-column label="技能（最多3个）" min-width="240">
                 <template slot-scope="{row}">
-                  <el-input-number v-model="row.logistics" :min="0" :step="10" size="mini"
-                                   controls-position="right" style="width:85px" />
-                </template>
-              </el-table-column>
-              <el-table-column label="学识" width="100" align="center">
-                <template slot-scope="{row}">
-                  <el-input-number v-model="row.learning" :min="0" :step="10" size="mini"
-                                   controls-position="right" style="width:85px" />
-                </template>
-              </el-table-column>
-              <el-table-column label="技能（最多3个）" min-width="200">
-                <template slot-scope="{row}">
-                  <el-select v-model="row.skills" multiple filterable collapse-tags size="mini" style="width:190px"
-                             placeholder="选技能">
-                    <el-option v-for="s in skillOptions" :key="s" :label="s" :value="s" />
-                  </el-select>
+                  <div style="display:flex; align-items:center; gap:6px">
+                    <el-select v-model="row.skills" multiple filterable collapse-tags size="mini" style="flex:1"
+                               placeholder="选技能">
+                      <el-option v-for="s in skillOptions" :key="s" :label="s" :value="s" />
+                    </el-select>
+                    <!-- ★ 2026-10-18 随机 3 个不重复技能（对齐人机自动配技能，不消耗技能书） -->
+                    <el-button size="mini" type="success" plain icon="el-icon-refresh"
+                               title="随机配置 3 个不重复技能" @click="randomSkills(row)">随机</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -413,10 +417,20 @@
             <el-tag size="mini" :type="row.result ? 'success' : 'info'">{{ row.result ? '成功' : '失败/跳过' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="detail" label="详情" min-width="300" show-overflow-tooltip />
+        <el-table-column prop="detail" label="详情" min-width="280" show-overflow-tooltip />
+        <!-- ★ 2026-10-18 物理删除：单条删除 + 顶部清空该人机全部（用户需求） -->
+        <el-table-column label="操作" width="80" align="center">
+          <template slot-scope="s">
+            <el-button size="mini" type="danger" plain icon="el-icon-delete" title="删除该条日志"
+                       @click="delLog(s.row)">删除</el-button>
+          </template>
+        </el-table-column>
       </el-table>
       <div class="pager-bar">
-        <div class="pager-info">共 <b>{{ logTotal }}</b> 条</div>
+        <div class="pager-info">共 <b>{{ logTotal }}</b> 条
+          <el-button v-if="cur" size="mini" type="danger" plain icon="el-icon-delete" style="margin-left:8px"
+                     @click="clearLogs(cur)">清空该人机全部日志</el-button>
+        </div>
         <el-pagination v-show="logTotal > 0" small background layout="prev, pager, next" :total="logTotal"
                        :page-size="logSize" :current-page="logPage"
                        @current-change="p => { logPage = p; loadLogs() }" />
@@ -433,6 +447,10 @@
         </el-table-column>
         <el-table-column prop="type_name" label="类型" width="110" align="center" />
         <el-table-column prop="player_name" label="玩家" width="120" show-overflow-tooltip />
+        <!-- ★ 2026-10-18 目标玩家名字（出征战报：打玩家城显示守方玩家名） -->
+        <el-table-column label="目标玩家" width="120" show-overflow-tooltip>
+          <template slot-scope="{row}">{{ row.target_name || '—' }}</template>
+        </el-table-column>
         <el-table-column prop="preview" label="内容" min-width="300" show-overflow-tooltip />
         <el-table-column label="操作" width="80" align="center">
           <template slot-scope="s">
@@ -707,6 +725,16 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => { this.grantSaving = false })
     },
+    // ★ 2026-10-18 随机 3 个不重复技能（对齐人机自动配技能逻辑，不消耗技能书）
+    randomSkills (o) {
+      if (!this.skillOptions.length) { this.$message.warning('技能池为空，请稍后重试'); return }
+      const pool = this.skillOptions.slice()
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        const t = pool[i]; pool[i] = pool[j]; pool[j] = t
+      }
+      o.skills = pool.slice(0, 3)
+    },
     // 快照四个列表（保存时逐个 diff，只提交有变化的 —— 不变的 tab 传空数组，后端零 SQL）
     snapEdit () {
       this.editSnap = {
@@ -885,6 +913,30 @@ export default {
           this.logTotal = r.data.total
         }
       }).catch(() => { this.logsLoading = false })
+    },
+    // ★ 2026-10-18 物理删除单条行为日志
+    delLog (row) {
+      this.$confirm('确定删除该条行为日志？删除后不可恢复。', '删除日志', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-bot/log/' + row.id + '/delete').then(r => {
+          if (r.code === 0) {
+            this.$message.success('已删除')
+            this.loadLogs()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
+    },
+    // ★ 2026-10-18 清空该人机全部行为日志
+    clearLogs (row) {
+      this.$confirm('确定清空「' + (row.nickname || row.nick_name || '该人机') + '」的全部行为日志？删除后不可恢复。',
+        '清空日志', { type: 'warning' }).then(() => {
+        api.post('/admin/ezfy-bot/logs/clear', { bot_uid: row.user_id }).then(r => {
+          if (r.code === 0) {
+            this.$message.success('已清空')
+            this.logPage = 1
+            this.loadLogs()
+          } else this.$message.error(r.msg)
+        })
+      }).catch(() => {})
     },
     // ★ 2026-10-17 出征战报：复用全局战报接口按 game_uid 过滤（人机 GameUID == UserID）
     openReports (row) {

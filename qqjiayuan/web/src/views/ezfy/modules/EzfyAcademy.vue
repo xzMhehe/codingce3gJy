@@ -706,12 +706,12 @@
           <tr v-if="!ezfy.officerDetail.equipped.length"><td colspan="4" class="gray">(未穿戴装备)</td></tr>
         </table>
 
-        <!-- 一键穿戴套装（背包里有件的套装；同部位已穿戴的会自动卸下让位） -->
+        <!-- ★ 2026-10-18 一键穿戴套装：文案精简（用户「描述还能精简继续精简」） -->
         <table class="ezfy-plain-table" v-if="ezfy.officerBagSets && ezfy.officerBagSets.length">
           <colgroup>
             <col style="width:34%"><col style="width:46%"><col style="width:20%">
           </colgroup>
-          <tr><th colspan="3">一键穿戴套装（同部位已穿戴的会自动卸下让位）</th></tr>
+          <tr><th colspan="3">一键穿戴套装（同部位自动让位）</th></tr>
           <tr><th class="nm">套装</th><th>穿齐进度</th><th>操作</th></tr>
           <tr v-for="s in ezfy.officerBagSets" :key="'bs' + s.set_id">
             <td class="nm">
@@ -720,9 +720,9 @@
             </td>
             <td>
               <span :class="s.need > 0 ? 'gray' : 'green'">
-                已穿 {{ s.worn }}/{{ s.parts }} 件{{ s.need > 0 ? (' · 还差 ' + s.need + ' 件生效') : ' · 已生效' }}
+                已穿{{ s.worn }}/{{ s.parts }}件{{ s.need > 0 ? '·差' + s.need + '件生效' : '·已生效' }}
               </span>
-              <span class="gray" v-if="s.need > 0 && s.bag_count > 0">（背包还有 {{ s.bag_count }} 件）</span>
+              <span class="gray" v-if="s.need > 0 && s.bag_count > 0">（背包{{ s.bag_count }}件）</span>
             </td>
             <td><a href="javascript:;" @click="ezfy.doEquipSet(s)">[一键穿戴]</a></td>
           </tr>

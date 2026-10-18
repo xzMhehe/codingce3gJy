@@ -904,7 +904,7 @@ export default {
       goldMax: 0,
       trainSel: null,
       trainCount: 10,
-      trainSplit: false,
+      trainSplit: true,
       trainMode: 'troop', // troop=训练(createTroop) / defence=建造(createDefence)
       troopViewId: 0,     // 兵种详情页当前兵种 id
       troopViewBack: 'troops', // 兵种详情页 [返回] 回到哪一页
@@ -5284,7 +5284,7 @@ export default {
       this.trainSel = t
       this.trainMode = mode || 'troop'
       this.trainCount = 10
-      this.trainSplit = false
+      this.trainSplit = true // ★ 2026-10-18 训练页操作选项默认「全部工厂」
       this.go('trainpre')
     },
     // ★ 2026-09-28 城内军队表改为遍历 armyRows（全兵种含 0 数量），原 quickTrain 已无引用，移除。

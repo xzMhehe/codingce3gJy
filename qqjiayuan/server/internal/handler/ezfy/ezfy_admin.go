@@ -1453,16 +1453,71 @@ func (h *EzfyAdmin) AdminEzfyReports(c *gin.Context) {
 		PlayerName string `json:"player_name"`
 		HomeNum    string `json:"home_num"`
 		Preview    string `json:"preview"`
+		// ★ 2026-10-18 目标玩家名字：出征战报（玩家城目标）展示守方玩家名
+		TargetName string `json:"target_name"`
 	}
 	out := []rowOut{}
+
+	// ★★ 2026-10-18 卡顿优化：原来每行 `ezfyAdminName`（h.DB + 家园库各查一次）= N+1 跨库，
+	//   一次翻页 20 条 = 40 次往返。改为**批量取一次**（ezfyAdminNamesBatch），
+	//   目标玩家名再从订单/城市批量反查后内存映射，整页最多 4~5 条 SQL。
+	uidSet := map[uint]bool{}
+	orderIds := make([]int64, 0, len(rows))
 	for _, r := range rows {
-		pn, hn := h.ezfyAdminName(r.UserID)
+		uidSet[r.UserID] = true
+		if r.OrderId > 0 {
+			orderIds = append(orderIds, r.OrderId)
+		}
+	}
+	// 订单 → 目标玩家城 ID（只认打玩家城 target_type=3；野地/寇城无目标玩家）
+	orderCity := map[int64]int64{}
+	if len(orderIds) > 0 {
+		var orders []model.EzfyOrder
+		h.DB.Select("id, target_type, target_id").Where("id IN ?", orderIds).Find(&orders)
+		for _, o := range orders {
+			if o.TargetType == 3 && o.TargetId > 0 {
+				orderCity[int64(o.ID)] = o.TargetId
+			}
+		}
+	}
+	// 玩家城 ID → 守方 uid
+	cityUid := map[int64]uint{}
+	if len(orderCity) > 0 {
+		cids := make([]int64, 0, len(orderCity))
+		for _, cid := range orderCity {
+			cids = append(cids, cid)
+		}
+		var cities []model.EzfyCity
+		h.DB.Select("id, user_id").Where("id IN ?", cids).Find(&cities)
+		for _, ct := range cities {
+			cityUid[int64(ct.ID)] = ct.UserID
+			uidSet[ct.UserID] = true
+		}
+	}
+	// 订单 → 目标玩家 uid
+	targetUid := map[int64]uint{}
+	for oid, cid := range orderCity {
+		if tu, ok := cityUid[cid]; ok {
+			targetUid[oid] = tu
+		}
+	}
+	allUids := make([]uint, 0, len(uidSet))
+	for u := range uidSet {
+		allUids = append(allUids, u)
+	}
+	nickOf, _ := h.ezfyAdminNamesBatch(allUids)
+
+	for _, r := range rows {
 		preview := r.Content
 		if len([]rune(preview)) > 200 {
 			preview = string([]rune(preview)[:200])
 		}
+		tname := ""
+		if tu, ok := targetUid[r.OrderId]; ok {
+			tname = nickOf[tu]
+		}
 		out = append(out, rowOut{EzfyReport: r, TypeName: ezfyTypeNameStored(r),
-			PlayerName: pn, HomeNum: hn, Preview: preview})
+			PlayerName: nickOf[r.UserID], HomeNum: "", Preview: preview, TargetName: tname})
 	}
 	resp.OK(c, gin.H{"list": out, "total": total, "page": page, "size": size, "types": types})
 }

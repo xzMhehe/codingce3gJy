@@ -1402,12 +1402,44 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 		}
 		return "军官加点", fmt.Sprintf("%s 加点失败: %s", o.Name, msg), false
 	}
-	// ③ 待分配点都点完了 → 「招募」：军官没满员 + 有候选（★ 2026-10-17 修复：直接调 recruitInfo，
-	//   它没有候选时会自动 roll 并落库 —— 此前人机从没打开过军校页 → 候选表为空 → 永远招不到人）
+	// ②½ 无技能军官自动配技能（★ 2026-10-18 用户规则「人机会给没有技能的军官配置
+	//   技能 随机的三个技能，不消耗技能书」）：直接写 skill JSON（不走道具接口，
+	//   不打技能书消耗 —— 人机没有道具生产回路，不该卡在这）。
+	var noSkill model.EzfyOfficer
+	if err := h.DB.Where("city_id = ? AND status = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
+		city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil {
+		names := h.ezfyRandomSkills(3)
+		if len(names) > 0 {
+			h.saveOfficerSkills(&noSkill, names)
+			return "配置技能", fmt.Sprintf("%s 学会 %d 个技能（%s）", noSkill.Name, len(names),
+				strings.Join(names, "/")), true
+		}
+	}
+	// ③ 待分配点都点完了 → 「招募」：军官没满员就招。
+	//   ★ 2026-10-18 用户规则「人机军官不够用就自己招募5星普通军官」：优先从军官池
+	//   取一条**5 星普通军官**（黄金够才招，5 星 3% 概率随机摇等不起）；
+	//   池子里没有招得起的 5 星 → 回落原逻辑（recruitInfo 随机候选招第一个够黄金的）。
 	var cnt int64
 	h.DB.Model(&model.EzfyOfficer{}).Where("city_id = ?", city.ID).Count(&cnt)
 	if int(cnt) >= staff {
 		return "", "", false
+	}
+	if draft, ok := h.ezfyBotFiveStarDraft(city.Gold); ok {
+		date := recruitCycleKey()
+		var rec model.EzfyRecruit
+		cands := joinDrafts([]ezfyOfficerDraft{*draft})
+		if err := h.DB.Where("user_id = ? AND recruit_date = ?", uid, date).First(&rec).Error; err != nil {
+			h.DB.Create(&model.EzfyRecruit{UserId: uid, RecruitDate: date, RefreshCount: 0, Candidates: cands})
+		} else {
+			h.DB.Model(&model.EzfyRecruit{}).Where("id = ?", rec.ID).
+				Updates(map[string]interface{}{"candidates": cands})
+		}
+		code, msg := h.botCall(uid, "", "POST", "/games/ezfy/acade/recruit/hire",
+			map[string]interface{}{"key": draft.Key})
+		if code == 0 {
+			return "招募军官", fmt.Sprintf("%s（5星普通军官 军事%d）", draft.Name, draft.Military), true
+		}
+		return "招募军官", "招募失败: " + msg, false
 	}
 	drafts, _, _ := h.recruitInfo(uid, academy)
 	for _, d := range drafts {
@@ -1425,6 +1457,69 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 		return "招募军官", "招募失败: " + msg, false
 	}
 	return "", "", false
+}
+
+// ezfyRandomSkills 随机取 n 个技能名（不重复）。
+func (h *EzfyHandler) ezfyRandomSkills(n int) []string {
+	h.cfgs()
+	names := make([]string, 0, len(ezfyCfg.skills))
+	for _, s := range ezfyCfg.skills {
+		names = append(names, s.Name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	// 洗牌后取前 n 个
+	for i := len(names) - 1; i > 0; i-- {
+		j := mathrand.Intn(i + 1)
+		names[i], names[j] = names[j], names[i]
+	}
+	if len(names) > n {
+		names = names[:n]
+	}
+	return names
+}
+
+// ezfyBotFiveStarDraft 从军官池取一条**招得起的 5 星普通军官**候选（黄金不够的跳过）。
+//
+// ★ 2026-10-18 用户规则「人机军官不够用就自己招募5星普通军官」。返回的候选只负责
+// 塞进今日候选表，雇佣仍走真人同款 /acade/recruit/hire 业务接口（黄金/容量/同名照常校验）。
+func (h *EzfyHandler) ezfyBotFiveStarDraft(gold int64) (*ezfyOfficerDraft, bool) {
+	h.cfgs()
+	pool := ezfyCfg.poolOfficers()
+	if len(pool) == 0 {
+		return nil, false
+	}
+	best := -1
+	for i, g := range pool {
+		if g.Star != 5 {
+			continue
+		}
+		lv := g.Level
+		if lv <= 0 || lv > ezfyOfficerMaxLevel {
+			lv = ezfyOfficerMaxLevel
+		}
+		if int64(lv)*ezfyRecruitCostPerLevel > gold {
+			continue // 招不起
+		}
+		if best < 0 || g.Military > pool[best].Military {
+			best = i
+		}
+	}
+	if best < 0 {
+		return nil, false
+	}
+	g := pool[best]
+	lv := g.Level
+	if lv <= 0 || lv > ezfyOfficerMaxLevel {
+		lv = ezfyOfficerMaxLevel
+	}
+	return &ezfyOfficerDraft{
+		Key:    g.Name + "-" + strconv.Itoa(g.ID) + "-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		PoolId: g.ID, Name: g.Name, Level: lv, Star: g.Star,
+		Logistics: g.Logistics, Military: g.Military, Learning: g.Learning,
+		Cost: int64(lv) * ezfyRecruitCostPerLevel,
+	}, true
 }
 
 // botRelocateNear 人机自迁城（★ 2026-10-17 用户规则「人机迁城不受冷却限制」）。
@@ -1530,11 +1625,20 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	//   侦察只派 1 兵探路（大部队去送没意义）。
 	leadName := ""
 	var lead model.EzfyOfficer
-	// ★★ 2026-10-17 不带军官 bug 修复：此前有 `Military > 0` 门槛，人机招募的普通军官
-	//   军事可能是 0 → 永远选不到 → 出征不带军官（战报只有守军军官）。
-	//   改成**本城军事最高的在职军官就带**（军事 0 也带，出征吃经验/升级；真人也会带低级军官练级）。
-	h.DB.Where("city_id = ? AND status = 0", city.ID).
+	// ★★ 2026-10-18 城守/市长有城务在身不能带队（createOrder 会拒「「城守」xx有城务在身」）：
+	//   先找**无官职**在职军官（military 0 也带，出征吃经验/升级）；若本城全是官员，
+	//   则把军事最高的那位**临时卸任**（position=0，走真人卸任接口）再带 —— 人机出征不再被卡。
+	h.DB.Where("city_id = ? AND status = 0 AND position = 0", city.ID).
 		Order("military DESC, level DESC").First(&lead)
+	if lead.ID == 0 {
+		h.DB.Where("city_id = ? AND status = 0", city.ID).
+			Order("military DESC, level DESC").First(&lead)
+		if lead.ID > 0 && lead.Position != 0 {
+			h.botCall(b.UserID, "", "POST",
+				fmt.Sprintf("/games/ezfy/officers/%d/position", lead.ID),
+				map[string]interface{}{"position": 0})
+		}
+	}
 	if lead.ID > 0 {
 		leadName = lead.Name
 	}
