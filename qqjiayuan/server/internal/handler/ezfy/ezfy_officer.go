@@ -845,10 +845,17 @@ func (h *EzfyHandler) equipmentList(uid uint) []model.EzfyEquipment {
 }
 
 // buildEquipment 按配置生成一件装备实例（内存对象，未落库）。
+//
+// ★ 2026-10-18 **不再写 city_id**：装备是玩家背包资产，只认 user_id（归属账号）+
+//
+//	officer_id（穿在谁身上，0=背包）。city_id 是历史「出生城」，穿戴/俘虏/派遣后都不更新，
+//	却两次被当成删除依据（弃城 305 件、占城摧毁 3 件）→ 新装备一律写 0，让按 city_id 的
+//	任何逻辑天然命中不到；存量由 `seed.EnsureEzfyEquipmentNoCity` 清零。
+//
 // ★ 2026-10-13 性能：从 addEquipment 拆出，批量结算可攒起来一次 CreateInBatches。
 func (h *EzfyHandler) buildEquipment(city *model.EzfyCity, cfg *model.EzfyCfgEquipment) model.EzfyEquipment {
 	return model.EzfyEquipment{
-		UserId: city.UserID, CityId: int64(city.ID), CfgId: cfg.ID, Name: cfg.Name,
+		UserId: city.UserID, CfgId: cfg.ID, Name: cfg.Name,
 		Type: cfg.Type, Tier: cfg.Tier, Military: cfg.Military, Logistics: cfg.Logistics,
 		Learning: cfg.Learning, Level: cfg.Level, OfficerId: 0, CreatedAt: time.Now(),
 		// ★ 部位统一存归一后的规范名，老实例的原始字符串由判重时归一兜底

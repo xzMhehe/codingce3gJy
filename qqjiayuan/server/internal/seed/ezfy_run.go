@@ -113,6 +113,9 @@ func RunEzfy(db *gorm.DB, homeDB *gorm.DB) {
 	EnsureEzfyBattleLockColumns(db)
 	EnsureEzfyExchangeColumns(db)
 	EnsureEzfyOrderColumns(db)
+	// ★★ 2026-10-18 装备是玩家背包资产（只认 user_id/officer_id），city_id 已废弃 →
+	//   存量清零，让任何按 city_id 删/迁装备的 SQL 天然命中 0 行（幂等）。
+	EnsureEzfyEquipmentNoCity(db)
 	// ★ 2026-10-16 榜单排除名单拆成「风云榜/战力榜/军衔声望榜」三份：加 board 列、
 	//   删老唯一索引、一次性把老记录复制到另外两榜（幂等，带 settings 标记位）。
 	EnsureEzfyPvpExcludeTable(db)

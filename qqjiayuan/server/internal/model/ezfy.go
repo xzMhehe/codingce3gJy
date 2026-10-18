@@ -2138,10 +2138,16 @@ func EzfyOfficerSourceName(src int) string {
 func (EzfyOfficer) TableName() string { return "ezfy_officer" }
 
 // EzfyEquipment 玩家装备背包（野地掉宝 / 商城购买入库，可穿戴到军官）
+//
+// ★★ 装备只认两个外键：`user_id`（属于哪个账号）+ `officer_id`（穿在哪名军官身上，0=在背包）。
+//
+//	**和城市没有任何关系** —— 弃城 / 占城摧毁 / 派遣 / 俘虏转移都不应影响装备的归属。
 type EzfyEquipment struct {
-	ID        uint      `gorm:"primaryKey;comment:主键ID" json:"id"`
-	UserId    uint      `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
-	CityId    int64     `gorm:"comment:城市ID" json:"city_id"`
+	ID     uint `gorm:"primaryKey;comment:主键ID" json:"id"`
+	UserId uint `gorm:"index:idx_user;comment:用户ID" json:"user_id"`
+	// CityId 已废弃（2026-10-18 起恒 0）：历史「获得时的出生城」，穿戴/俘虏/派遣后不会更新。
+	// 曾两次被误当删除依据（弃城丢 305 件、占城摧毁丢 3 件）→ 代码里禁止按它删/迁装备。
+	CityId    int64     `gorm:"comment:已废弃（历史出生城，恒0）；装备归属只看 user_id，禁止按它删除/迁移" json:"city_id"`
 	CfgId     int       `gorm:"comment:配置ID" json:"cfg_id"`
 	Name      string    `gorm:"type:varchar(50);comment:名称" json:"name"`
 	Type      string    `gorm:"type:varchar(20);comment:类型" json:"type"`

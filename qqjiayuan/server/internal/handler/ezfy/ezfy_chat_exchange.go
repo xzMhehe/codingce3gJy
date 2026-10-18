@@ -1521,9 +1521,15 @@ func (h *EzfyHandler) deleteCityData(cityId int64) {
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyCityTarget{})
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyCityEffect{})
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyOrder{})
-	// ★ 2026-09-24：占城摧毁后军官/装备一并清理（对齐 ezfyDestroyCity，不留孤儿数据）
+	// ★★ 2026-10-18 占城摧毁同样**不得按 city_id 删装备**（35806363 丢 3 件青天白日的根因）：
+	//   装备归属是 `user_id`，`city_id` 只是历史「出生城」（俘虏/派遣后不更新）。
+	//   这座城可能"出生"过别人的装备（俘虏来源城），一条 `DELETE WHERE city_id=?`
+	//   就会把别人账号里的装备删掉。正确做法与 ezfyDestroyCity 一致：
+	//   只把**本城军官身上**的装备放回背包（军官随城删除），装备行一律保留。
+	h.DB.Model(&model.EzfyEquipment{}).
+		Where("officer_id IN (?)", h.DB.Model(&model.EzfyOfficer{}).Select("id").Where("city_id = ?", cityId)).
+		Update("officer_id", 0)
 	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyOfficer{})
-	h.DB.Where("city_id = ?", cityId).Delete(&model.EzfyEquipment{})
 	h.DB.Delete(&model.EzfyCity{}, cityId)
 }
 

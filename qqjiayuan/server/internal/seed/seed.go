@@ -159,6 +159,9 @@ func Run(db *gorm.DB, staticDir string) {
 		EnsureEzfyExchangeColumns(db)
 	}
 
+	// 二战风云：装备是玩家背包资产，不再挂城市（2026-10-18 事故后清零 city_id）
+	EnsureEzfyEquipmentNoCity(db)
+
 	// 二战风云：出征集结令单次上限（默认 99）—— 存量表补列 + 老行回填
 	// ★ 「出征集结令上限后台管理系统可维护，最大默认 99」（2026-09-26 按线上现值对齐）。
 	//   老行该列是 NULL/0 时统一回填 99（0 无意义 = 等于禁用集结令道具）。
