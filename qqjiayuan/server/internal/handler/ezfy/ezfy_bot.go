@@ -1063,6 +1063,22 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 				h.DB.Model(&model.EzfyBotTarget{}).Where("id = ?", p.ID).Update("status", 2)
 				return "宣战生效", fmt.Sprintf("对目标 %d 的宣战已生效，准备出击", p.TargetUid), true
 			}
+			// ★★ 2026-10-19 宣战等待期：打玩家城要等宣战生效，但**附属野地不需要宣战** →
+			//   等待期先征服该目标玩家的附属野地（用户规则「宣战有等待期，等待期可以打玩家附属野地」）。
+			//   目标城太远 → 先自迁城贴近（与 case 2 出击前同一口径，迁城不受冷却）。
+			var wtc model.EzfyCity
+			if err := h.DB.First(&wtc, p.TargetCityId).Error; err == nil &&
+				ezfyAbs(city.X-wtc.X)+ezfyAbs(city.Y-wtc.Y) > 10 {
+				if a, d, ok := h.botRelocateNear(b, city, wtc.X, wtc.Y); ok {
+					return a, d, ok
+				}
+			}
+			if wt, ok := h.botPickWildTargetOf(p.TargetUid, city); ok {
+				if !h.botAtkQuotaOK(b) {
+					return "", "", false
+				}
+				return h.botAttackWild(b, city, wt)
+			}
 			continue
 		case 2: // 可出击
 			// ★★ 2026-10-18 攻击频率修复：出战前先判目标是否还有效 ——
@@ -1216,6 +1232,33 @@ WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id > 0 AND c.user_id <> ?
                     AND o.status IN (0,1,2,5,6))
 ORDER BY RAND() LIMIT 1`,
 		city.UserID, city.X-25, city.X+25, city.Y-25, city.Y+25).Scan(&r).Error
+	if err != nil || r.ID == 0 {
+		return r, false
+	}
+	return r, true
+}
+
+// botPickWildTargetOf 打**指定玩家**的附属野地（★ 2026-10-19 宣战等待期用）。
+//
+// 与 botPickWildTarget 同一套过滤口径，只是归属限定为该玩家本人（`c.user_id = ?`）：
+// 打玩家城要等宣战生效，但附属野地不需要宣战 —— 宣战等待期就先征服目标玩家的野地。
+func (h *EzfyHandler) botPickWildTargetOf(userID uint, city *model.EzfyCity) (ezfyBotWildTarget, bool) {
+	var r ezfyBotWildTarget
+	err := h.DB.Raw(`
+SELECT w.id AS id, w.x AS x, w.y AS y, w.level AS level, w.wild_type AS wild_type,
+       COALESCE(p.nickname, '') AS owner
+FROM ezfy_wildland w
+JOIN ezfy_city c ON c.id = w.city_id
+LEFT JOIN ezfy_profile p ON p.user_id = c.user_id
+WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id = ?
+  AND c.id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)
+  AND w.x BETWEEN ? AND ? AND w.y BETWEEN ? AND ?
+  AND w.status = 0 AND w.level > 2
+  AND NOT EXISTS (SELECT 1 FROM ezfy_order o
+                  WHERE o.target_id = w.id AND o.target_type = 1
+                    AND o.status IN (0,1,2,5,6))
+ORDER BY RAND() LIMIT 1`,
+		userID, city.X-25, city.X+25, city.Y-25, city.Y+25).Scan(&r).Error
 	if err != nil || r.ID == 0 {
 		return r, false
 	}
