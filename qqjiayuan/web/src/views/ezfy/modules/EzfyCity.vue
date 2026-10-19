@@ -91,19 +91,19 @@
           <!-- ★ 2026-09-26：提示文案随「民居容量限制 / 召集人口灵活配置」两个开关变化，
                花费粮食/获得人口都读管理端配置（默认各 10 万），勿再写死 -->
           <template v-if="!ezfy.housePopLimitOn">
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口(民居容量限制已关闭, 人口无上限)<br/>
+            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           </template>
           <template v-else-if="ezfy.conveneFlexibleOn">
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口(不受民居容纳上限限制, 可突破上限)<br/>
+            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           </template>
           <template v-else>
-            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口(受民居容纳上限限制, 满员后无法召集)<br/>
+            花费 {{ ezfy.fmtBig(ezfy.conveneFoodCost) }}{{ ezfy.resNames.food }} 召集 {{ ezfy.fmtBig(ezfy.convenePopGain) }}人口<br/>
           </template>
           <div class="old-line">{{ ezfy.resNames.food }}: {{ ezfy.city.food }}</div>
           <!-- ★ 2026-10-09 「去掉按钮样式」：改成与全站一致的 [链接] 写法
                （原来用 <button>，样式和别处不统一）；卡控由后端 + doConvene 3 秒双保险。 -->
           <a v-if="!ezfy.conveneBlocked" href="javascript:;" @click="ezfy.doConvene">[召集]</a>
-          <span v-else class="gray">[召集]（已达人口上限, 无法召集）</span>
+          <span v-else class="gray">[召集]</span>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>
