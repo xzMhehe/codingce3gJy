@@ -258,7 +258,6 @@
             <span v-if="ezfy.orderType === 7" class="red">(派遣必须选择)</span>
             <span v-else-if="ezfy.orderType === 6" class="gray">(增援后军官调任目标城市)</span>
             <span v-else-if="ezfy.orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
-            <span v-if="ezfy.curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ ezfy.curOfficerBonus }}%</span>
             <span v-if="!ezfy.onDutyOfficers.length" class="gray">(暂无可带队军官，可前往军校招募)</span>
           </div>
 
@@ -269,7 +268,7 @@
             <input type="number" min="0" :max="ezfy.gatherMax" v-model.number="ezfy.orderGather"
                    :disabled="ezfy.gatherCount <= 0" @change="ezfy.onGatherChange" style="width:80px"/>
             个
-            <span class="gray">（背包里有 {{ ezfy.gatherCount }} 个）</span>
+            <span class="gray">（背包 {{ ezfy.gatherCount }} 个）</span>
           </div>
           <div class="old-line" v-if="ezfy.attackTroops.length">
             <span :class="ezfy.orderOverCap ? 'red' : 'green'">
@@ -607,8 +606,10 @@
     <template v-else-if="ezfy.cur === 'orders'">
         <div class="panel">
           <div class="panel-title">出征队列({{ ezfy.queueItems.length }})</div>
+          <!-- ★ 2026-10-19 简化：状态说明去掉（列表里每条都带 status_name，看得出是什么）；
+               「驻守空闲需点[采集]」这半句对新手有用，保留精简版。 -->
           <div class="old-line gray">
-            包含行军中 / 战斗中 / 返航中 / 驻守采集的全部部队；驻守空闲的部队需点 [采集] 才开始采集。
+            驻守空闲的部队需点 [采集] 才开始采集。
           </div>
           <!-- ★ 2026-10-08 出征队列分页：默认每页 5 条，上一页/下一页（与军情军队动态同款） -->
           <div class="old-line" v-for="o in ezfy.queuePaged" :key="'oq' + o.id">

@@ -1297,12 +1297,6 @@ export default {
         return Object.assign({}, c, { count: row ? row.count : 0, troop_id: c.id })
       })
     },
-    curOfficerBonus () {
-      for (const o of this.onDutyOfficers) {
-        if (o.name === this.orderOfficer) return o.battle_bonus
-      }
-      return 0
-    },
     wareSum () {
       const r = this.wareRatio
       return (parseInt(r.food) || 0) + (parseInt(r.steel) || 0) + (parseInt(r.oil) || 0) + (parseInt(r.rare) || 0)
