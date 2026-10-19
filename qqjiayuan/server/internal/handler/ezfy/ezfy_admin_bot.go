@@ -143,6 +143,8 @@ func (h *EzfyAdmin) AdminEzfyBotList(c *gin.Context) {
 			"atk_per_hour": b.AtkPerHour, "atk_per_hour_eff": ezfyBotAtkPerHourOf(b.Level, b.AtkPerHour),
 			"atk_troop": b.AtkTroop, "atk_troop_eff": ezfyBotAtkTroopOf(b.Level, b.AtkTroop),
 			"atk_type": b.AtkType, "atk_type_eff": ezfyBotOrderTypeOf(b.AtkType), // 0=默认征服，1侦查/2掠夺/3征服
+			// ★ 2026-10-19 是否自动发言（编辑人机-基本信息可调）：0=关闭 1=开启
+			"chat_on": b.ChatOn,
 			"last_act_at": b.LastActAt, "last_action": b.LastAction,
 			"next_act_at":     b.NextActAt,
 			"status_text":     ezfyBotStatusText(b, now),
@@ -678,6 +680,8 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		AtkTroop   *int64 `json:"atk_troop"`
 		// ★ 2026-10-17 出征类型：1侦察 2掠夺 3征服（不传/0=默认征服）
 		AtkType *int `json:"atk_type"`
+		// ★ 2026-10-19 是否自动发言（基本信息）：0=关闭 1=开启（默认开）
+		ChatOn *int `json:"chat_on"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		resp.ParamError(c, "参数错误")
@@ -983,6 +987,15 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 			return
 		}
 		ezUpd["atk_type"] = *in.AtkType
+	}
+	// ⑩ 是否自动发言（★ 2026-10-19 用户规则「编辑人机-基本信息可调」）
+	if in.ChatOn != nil {
+		if *in.ChatOn < 0 || *in.ChatOn > 1 {
+			resp.ParamError(c, "自动发言需为 0/1（0=关闭 1=开启）")
+			return
+		}
+		ezUpd["chat_on"] = *in.ChatOn
+		changes = append(changes, fmt.Sprintf("自动发言→%s", map[bool]string{true: "开", false: "关"}[*in.ChatOn == 1]))
 	}
 	if len(ezUpd) > 0 {
 		h.DB.Model(&model.EzfyBot{}).Where("user_id = ?", uid).Updates(ezUpd)

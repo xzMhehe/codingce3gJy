@@ -105,14 +105,12 @@
             <el-tag size="mini" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '运行中' : '已暂停' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="560" align="center" fixed="right">
+        <el-table-column label="操作" width="460" align="center" fixed="right">
           <template slot-scope="{row}">
-            <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/建筑）" @click="openEdit(row)" />
-            <el-button size="mini" type="success" plain icon="el-icon-present" title="发放资源" @click="openGrant(row)" />
+            <!-- ★ 2026-10-19 发放资源/占领城市 已收进「编辑人机」对话框 tab（外置按钮过多） -->
+            <el-button size="mini" plain icon="el-icon-edit" title="编辑（昵称/声望/城市名/人口/出征/发放/占领等）" @click="openEdit(row)" />
             <el-button size="mini" type="primary" plain icon="el-icon-video-play" title="立即行动一轮" @click="actNow(row)" />
             <el-button size="mini" type="warning" plain icon="el-icon-aim" title="攻击目标（查看/指定/删除）" @click="openTargets(row)" />
-            <!-- ★ 2026-10-18 人机占领的城市（出征胜利→直接征服写 ezfy_occupy） -->
-            <el-button size="mini" type="danger" plain icon="el-icon-office-building" title="占领城市（人机征服玩家城后占领的城市）" @click="openOccupy(row)" />
             <el-button size="mini" type="danger" plain icon="el-icon-map-location" title="迁城（输入坐标）" @click="openRelocate(row)" />
             <el-button size="mini" plain icon="el-icon-tickets" title="行为日志" @click="openLogs(row)" />
             <el-button size="mini" plain icon="el-icon-document" title="出征战报" @click="openReports(row)" />
@@ -220,6 +218,11 @@
                 </el-select>
                 <span class="td-gray" style="margin-left:6px">出征类型</span>
               </el-form-item>
+              <!-- ★ 2026-10-19 自动发言开关（人机是否像真人一样在世界/城市频道自动发言） -->
+              <el-form-item label="自动发言">
+                <el-switch v-model="editForm.chat_on" :active-value="1" :inactive-value="0" />
+                <span class="td-gray" style="margin-left:6px">关闭后人机不再自动发言（玩家端无从察觉它是机器人）</span>
+              </el-form-item>
             </el-form>
           </el-tab-pane>
           <el-tab-pane label="建筑等级" name="build">
@@ -321,40 +324,83 @@
               </el-table-column>
             </el-table>
           </el-tab-pane>
+          <!-- ★ 2026-10-19 发放资源 + 占领城市 收进编辑人机 tab（外置按钮过多，用户要求挪进来） -->
+          <el-tab-pane label="发放/占领" name="grant">
+            <div class="td-main" style="margin-bottom:4px">发放资源</div>
+            <el-form label-width="56px" label-position="left">
+              <div style="display:flex; flex-wrap:wrap; gap:4px 28px">
+                <el-form-item v-for="f in resFields" :key="f.k" :label="f.t">
+                  <el-input-number v-model.number="grantForm[f.k]" :step="10000" :precision="0"
+                                   controls-position="right" style="width:130px" />
+                  <div class="td-gray" style="font-size:12px">当前 {{ fmtNum(grantCur[f.k]) }}</div>
+                </el-form-item>
+                <el-form-item label="集结令">
+                  <el-input-number v-model.number="grantForm.gather" :step="1000" :precision="0"
+                                   controls-position="right" style="width:130px" />
+                  <div class="td-gray" style="font-size:12px">当前 {{ fmtNum(grantCur.gather) }}
+                    <el-tooltip effect="dark" content="人机出征时自动烧集结令扩出征上限（每个 +10 万），烧完列表实时可见" placement="top">
+                      <i class="el-icon-question" style="cursor:pointer"></i>
+                    </el-tooltip>
+                  </div>
+                </el-form-item>
+              </div>
+              <el-form-item>
+                <el-button type="primary" size="mini" :loading="grantSaving" @click="doGrant">发 放</el-button>
+                <span class="td-gray" style="font-size:12px;margin-left:8px">可填负数扣除；发完人机会立刻行动消化资源；不发钻石。</span>
+              </el-form-item>
+            </el-form>
+            <el-divider style="margin:8px 0" />
+            <div class="toolbar" style="margin-bottom:8px">
+              <span class="td-main">占领城市</span>
+              <span class="td-gray" style="font-size:12px;margin-left:8px">出征胜利→直接征服；可归还 / 摧毁 / 同意赎回（人机收 80% 押金，20% 系统收）</span>
+              <div class="grow" />
+              <el-button size="mini" type="warning" plain icon="el-icon-refresh" :loading="occRedeemAllLoading"
+                         @click="redeemAllOccupy">统一赎回全部</el-button>
+            </div>
+            <el-table :data="occList" v-loading="occLoading" size="mini" border max-height="300"
+                      :empty-text="'该人机暂无占领的城市（出征胜利后会直接征服目标城）'">
+              <el-table-column prop="city_name" label="城市" min-width="110" show-overflow-tooltip />
+              <el-table-column label="坐标" width="100" align="center">
+                <template slot-scope="{row}">（{{ row.x }},{{ row.y }}）</template>
+              </el-table-column>
+              <el-table-column prop="def_name" label="原主人" min-width="110" show-overflow-tooltip>
+                <template slot-scope="{row}">{{ row.def_name || ('ID ' + row.def_uid) }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="90" align="center">
+                <template slot-scope="{row}">
+                  <el-tag size="mini" :type="row.status === 1 ? 'danger' : 'info'">{{ row.status_txt }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="赎回申请" width="90" align="center">
+                <template slot-scope="{row}">{{ row.ransom_count || 0 }}</template>
+              </el-table-column>
+              <el-table-column label="占领时间" width="140" align="center">
+                <template slot-scope="{row}">{{ row.created_at }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="210" align="center">
+                <template slot-scope="{row}">
+                  <template v-if="row.status === 1">
+                    <el-button size="mini" type="success" plain @click="occReturn(row)">归还</el-button>
+                    <el-button size="mini" type="danger" plain @click="occDestroy(row)">摧毁</el-button>
+                    <el-button size="mini" type="warning" plain :disabled="!row.ransom_count"
+                               @click="occRedeem(row)">同意赎回</el-button>
+                  </template>
+                  <span v-else class="td-gray">—</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div class="pager-bar">
+              <div class="pager-info">共 <b>{{ occTotal }}</b> 条</div>
+              <el-pagination v-show="occTotal > 0" small background layout="prev, pager, next" :total="occTotal"
+                             :page-size="occSize" :current-page="occPage"
+                             @current-change="p => { occPage = p; loadOccupy() }" />
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </div>
       <div slot="footer">
         <el-button @click="editDlg = false">取 消</el-button>
         <el-button type="primary" :loading="editSaving" @click="saveEdit">保 存</el-button>
-      </div>
-    </el-dialog>
-
-    <!-- 发放资源 -->
-    <el-dialog :title="'发放资源 —— ' + (cur ? cur.nickname : '')" :visible.sync="grantDlg" width="500px"
-               :close-on-click-modal="false">
-      <el-form label-width="80px">
-        <el-form-item v-for="f in resFields" :key="f.k" :label="f.t">
-          <el-input-number v-model.number="grantForm[f.k]" :step="10000" :precision="0"
-                           controls-position="right" style="width:160px" />
-          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur[f.k]) }}</span>
-        </el-form-item>
-        <el-form-item label="集结令">
-          <el-input-number v-model.number="grantForm.gather" :step="1000" :precision="0"
-                           controls-position="right" style="width:160px" />
-          <span class="td-gray" style="margin-left:8px">当前 {{ fmtNum(grantCur.gather) }}
-            <!-- ★ 2026-10-18 提示改为「i」悬停（原「人机出征打架自动烧」太占位，鼠标滑过才展示） -->
-            <el-tooltip effect="dark" content="人机出征时自动烧集结令扩出征上限（每个 +10 万），烧完列表实时可见" placement="top">
-              <i class="el-icon-question" style="cursor:pointer"></i>
-            </el-tooltip>
-          </span>
-        </el-form-item>
-      </el-form>
-      <div class="td-gray" style="font-size:12px">
-        可填负数扣除；发完人机会立刻行动消化资源；不发钻石。
-      </div>
-      <div slot="footer">
-        <el-button @click="grantDlg = false">取 消</el-button>
-        <el-button type="primary" :loading="grantSaving" @click="doGrant">发 放</el-button>
       </div>
     </el-dialog>
 
@@ -468,57 +514,6 @@
       <div slot="footer"><el-button @click="reportsDlg = false">关 闭</el-button></div>
     </el-dialog>
 
-    <!-- 人机占领的城市（★ 2026-10-18 出征胜利→直接征服，占下的玩家城写 ezfy_occupy） -->
-    <el-dialog :title="'占领城市 —— ' + (cur ? cur.nickname : '')" :visible.sync="occDlg" width="820px">
-      <div class="toolbar" style="margin-bottom:8px">
-        <span class="td-gray">管理员可直接归还 / 摧毁；有原主人赎城申请的，可同意赎回（人机收 80% 押金，20% 系统收）</span>
-        <div class="grow" />
-        <!-- ★ 2026-10-18 统一赎回：一次同意该人机名下全部待处理赎城申请 -->
-        <el-button size="mini" type="warning" plain icon="el-icon-refresh" :loading="occRedeemAllLoading"
-                   @click="redeemAllOccupy">统一赎回全部</el-button>
-      </div>
-      <el-table :data="occList" v-loading="occLoading" size="mini" border max-height="420"
-                :empty-text="'该人机暂无占领的城市（出征胜利后会直接征服目标城）'">
-        <el-table-column prop="city_name" label="城市" min-width="110" show-overflow-tooltip />
-        <el-table-column label="坐标" width="100" align="center">
-          <template slot-scope="{row}">（{{ row.x }},{{ row.y }}）</template>
-        </el-table-column>
-        <el-table-column prop="def_name" label="原主人" min-width="110" show-overflow-tooltip>
-          <template slot-scope="{row}">{{ row.def_name || ('ID ' + row.def_uid) }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="90" align="center">
-          <template slot-scope="{row}">
-            <el-tag size="mini" :type="row.status === 1 ? 'danger' : 'info'">{{ row.status_txt }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="赎回申请" width="90" align="center">
-          <template slot-scope="{row}">{{ row.ransom_count || 0 }}</template>
-        </el-table-column>
-        <el-table-column label="占领时间" width="140" align="center">
-          <template slot-scope="{row}">{{ row.created_at }}</template>
-        </el-table-column>
-        <!-- ★ 2026-10-18 操作：归还 / 摧毁 / 同意赎回（仅占领中可操作） -->
-        <el-table-column label="操作" width="210" align="center">
-          <template slot-scope="{row}">
-            <template v-if="row.status === 1">
-              <el-button size="mini" type="success" plain @click="occReturn(row)">归还</el-button>
-              <el-button size="mini" type="danger" plain @click="occDestroy(row)">摧毁</el-button>
-              <el-button size="mini" type="warning" plain :disabled="!row.ransom_count"
-                         @click="occRedeem(row)">同意赎回</el-button>
-            </template>
-            <span v-else class="td-gray">—</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pager-bar">
-        <div class="pager-info">共 <b>{{ occTotal }}</b> 条</div>
-        <el-pagination v-show="occTotal > 0" small background layout="prev, pager, next" :total="occTotal"
-                       :page-size="occSize" :current-page="occPage"
-                       @current-change="p => { occPage = p; loadOccupy() }" />
-      </div>
-      <div slot="footer"><el-button @click="occDlg = false">关 闭</el-button></div>
-    </el-dialog>
-
     <!-- 战报详情（★ 2026-10-17 点「详情」拉全文：content + detail） -->
     <el-dialog :title="reportDetail.title || '战报详情'" :visible.sync="reportDetailDlg" width="720px">
       <div class="report-detail" v-if="reportDetail">
@@ -558,7 +553,7 @@ export default {
       editDlg: false, editLoading: false, editSaving: false, editTab: 'base',
       editForm: { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0, freePop: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3 },
+        atk_type: 0, atk_type_eff: 3, chat_on: 1 },
       editSnapA: { h: 0, t: 0, ty: 0 },
       editBuildings: [],
       editTechs: [],
@@ -566,8 +561,8 @@ export default {
       editOfficers: [],
       // 发放军官 + 技能下拉
       grantGeneralId: 0, generalOptions: [], skillOptions: [],
-      // 发放资源
-      grantDlg: false, grantSaving: false,
+      // 发放资源（已收进编辑对话框「发放/占领」tab）
+      grantSaving: false,
       grantForm: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 },
       grantCur: { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 },
       resFields: [
@@ -578,8 +573,8 @@ export default {
       logsDlg: false, logs: [], logTotal: 0, logPage: 1, logSize: 20, logsLoading: false,
       // ★ 2026-10-17 出征战报
       reportsDlg: false, reports: [], reportTotal: 0, reportPage: 1, reportSize: 20, reportsLoading: false,
-      // ★ 2026-10-18 人机占领的城市
-      occDlg: false, occList: [], occTotal: 0, occPage: 1, occSize: 10, occLoading: false,
+      // ★ 2026-10-18 人机占领的城市（收进编辑对话框「发放/占领」tab）
+      occList: [], occTotal: 0, occPage: 1, occSize: 10, occLoading: false,
       // ★ 2026-10-18 占领城市操作：统一赎回 loading
       occRedeemAllLoading: false,
       // 战报详情（★ 2026-10-17 点「详情」拉全文单独弹窗）
@@ -594,6 +589,12 @@ export default {
         window: '人机只在指定时间段内出征（如 20:00-22:00,08:00-12:00，支持跨天 22:00-02:00）；留空 = 全天。发育/集结等其它行动不受限。',
         boost: '给一笔启动资源（50 万粮 / 20 万钢油稀）。不开 = 严格从零（1 级市政厅 + 5000 资源），攒够召集人口的 20 万粮要很久；开 = 运营初始化，当天就能造兵。'
       }
+    }
+  },
+  watch: {
+    // ★ 2026-10-19 发放/占领 tab：切进来才拉当前资源 + 占领城市（避免每次打开编辑都多查两个接口）
+    editTab (v) {
+      if (v === 'grant' && this.cur) this.loadGrantTab()
     }
   },
   mounted () {
@@ -685,7 +686,8 @@ export default {
       this.editOfficers = []
       this.editForm = { nickname: '', prestige: 0, city_name: '', pop: 0, pop_max: 0, pop_recover: 0,
         atk_per_hour: 0, atk_troop: 0, atk_per_hour_eff: 0, atk_troop_eff: 0,
-        atk_type: 0, atk_type_eff: 3 }
+        atk_type: 0, atk_type_eff: 3,
+        chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on }
       this.editSnapA = { h: row.atk_per_hour || 0, t: row.atk_troop || 0, ty: row.atk_type || 0 }
       this.editDlg = true
       this.editLoading = true
@@ -700,7 +702,8 @@ export default {
             // ★ 2026-10-17 出征设置（原值 + 按难度生效值，列表接口已返回）
             atk_per_hour: row.atk_per_hour || 0, atk_troop: row.atk_troop || 0,
             atk_per_hour_eff: row.atk_per_hour_eff || 0, atk_troop_eff: row.atk_troop_eff || 0,
-            atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3
+            atk_type: row.atk_type || 0, atk_type_eff: row.atk_type_eff || 3,
+            chat_on: row.chat_on === undefined || row.chat_on === null ? 1 : row.chat_on
           }
           // 只列已建造的建筑（level>0），未建造的坑位是噪音
           this.editBuildings = (r.data.buildings || []).filter(x => x.level > 0)
@@ -795,7 +798,10 @@ export default {
         // ★ 2026-10-17 出征设置：改了才提交（null=不更新；0=恢复按难度默认）
         atk_per_hour: this.editSnapA.h === this.editForm.atk_per_hour ? null : this.editForm.atk_per_hour,
         atk_troop: this.editSnapA.t === this.editForm.atk_troop ? null : this.editForm.atk_troop,
-        atk_type: this.editSnapA.ty === this.editForm.atk_type ? null : this.editForm.atk_type
+        atk_type: this.editSnapA.ty === this.editForm.atk_type ? null : this.editForm.atk_type,
+        // ★ 2026-10-19 自动发言开关（基本信息 tab）
+        chat_on: this.editForm.chat_on === undefined || this.editForm.chat_on === null
+          ? 1 : (this.editForm.chat_on ? 1 : 0)
       }).then(r => {
         this.editSaving = false
         if (r.code === 0) {
@@ -823,12 +829,11 @@ export default {
         })
       }).catch(() => {})
     },
-    openGrant (row) {
-      this.cur = row
+    // ★ 2026-10-19 发放/占领 tab：切进来拉当前资源 + 占领城市（原 openGrant/openOccupy 合并进编辑对话框）
+    loadGrantTab () {
       this.grantForm = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: 0 }
-      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: row.gather_count || 0 }
-      this.grantDlg = true
-      api.get('/admin/ezfy-players/' + row.user_id + '/detail').then(r => {
+      this.grantCur = { gold: 0, food: 0, steel: 0, oil: 0, rare: 0, gather: this.cur.gather_count || 0 }
+      api.get('/admin/ezfy-players/' + this.cur.user_id + '/detail').then(r => {
         if (r.code !== 0 || !r.data) return
         const cs = r.data.cities || []
         if (cs.length) {
@@ -838,6 +843,9 @@ export default {
           }
         }
       })
+      this.occList = []
+      this.occPage = 1
+      this.loadOccupy()
     },
     doGrant () {
       const g = this.grantForm
@@ -849,9 +857,9 @@ export default {
       api.post('/admin/ezfy-bot/' + this.cur.user_id + '/grant', g).then(r => {
         this.grantSaving = false
         if (r.code === 0) {
-          this.grantDlg = false
           this.$message.success(r.data.msg || '已发放')
           this.load()
+          this.loadGrantTab()
         } else this.$message.error(r.msg)
       }).catch(() => { this.grantSaving = false })
     },
@@ -981,14 +989,7 @@ export default {
         } else this.$message.error(r.msg)
       }).catch(() => { this.reportsLoading = false })
     },
-    // ★ 2026-10-18 人机占领的城市
-    openOccupy (row) {
-      this.cur = row
-      this.occList = []
-      this.occPage = 1
-      this.occDlg = true
-      this.loadOccupy()
-    },
+    // ★ 2026-10-18 人机占领的城市（已收进编辑对话框「发放/占领」tab，由 loadGrantTab 触发加载）
     loadOccupy () {
       this.occLoading = true
       api.get('/admin/ezfy-bot/' + this.cur.user_id + '/occupy', { params: { page: this.occPage, size: this.occSize } }).then(r => {

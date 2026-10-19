@@ -41,6 +41,8 @@ type EzfyBot struct {
 	// ★ 2026-10-17 世界聊天（机器人也能说话）：每天句子不重复，跨天清空
 	ChatDate string `gorm:"type:varchar(10);comment:世界发言日期 yyyymmdd" json:"chat_date"`
 	ChatUsed string `gorm:"type:text;comment:今日已用发言句下标(逗号分隔)" json:"chat_used"`
+	// ★ 2026-10-19 自动发言开关（管理端「编辑人机-基本信息」可调）：0=不自动发言
+	ChatOn int `gorm:"default:1;comment:是否自动发言(0=关闭,1=开启)" json:"chat_on"`
 
 	CreatedAt time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`

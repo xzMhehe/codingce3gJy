@@ -4743,6 +4743,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				}
 			}
 			lock.Unlock()
+			// ★★ 2026-10-19 用户规则「人机被即将打飞会给玩家发邮件让他别打了」：
+			//   守方是人机、且该城被占走（新建占领记录）→ 人机给进攻方发邮件求饶。
+			//   只剩最后一座自由城（freeCount <= 1，占掉就飞）→ 用「被打飞求放过」口径；
+			//   还有余城 → 用「即将打飞，求停手」口径。邮箱防刷：同一对人机/玩家 24h 一封。
+			if target.IsBot == 1 && newOccupy {
+				h.ezfyBotBegMail(uid, target.UserID, freeCount <= 1)
+			}
 			// 补给在解锁后执行（不占用守方锁；建城自带 findFreePos 找空位）
 			if needReplenish {
 				newCity := h.replenishCity(target.UserID)

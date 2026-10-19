@@ -115,6 +115,11 @@ func ezfyBotWeekKey() string {
 //	平时 → 8% 概率主动聊玩法/撩架（"时不时"说一句，别刷屏）。
 //	每天句子不重复（chat_date/chat_used 记录），跨天清空重来。
 func (h *EzfyHandler) botChat(b *model.EzfyBot, city *model.EzfyCity) (string, string, bool) {
+	// ★★ 2026-10-19 用户规则「是否自动发言可在管理端编辑人机-基本信息里调」：
+	//   ChatOn=0 → 完全闭嘴（被打喊冤也不说）。
+	if b.ChatOn == 0 {
+		return "", "", false
+	}
 	week := ezfyBotWeekKey()
 	// ① 被打了？查最近 30 分钟内对「本 bot 任一城」的敌方侦察/掠夺/征服单（行军/驻守中）
 	var ids []int64
@@ -1420,10 +1425,11 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 	// ①½ 任命城守（★ 2026-10-17 用户规则「人机自己设置城守」）：当前城没有城守 →
 	//   把军事最高的在职军官任命为城守（position=2，走真人任命接口）。
 	//   城守给守军加防御还领被动经验，人机被打飞后新城市也立刻有守将。
+	//   ★★ 2026-10-19 用户规则「设置城守优先设置有技能的军官」：技能优先于军事。
 	if h.positionOfficer(city.ID, ezfyPositionGuard) == nil {
 		var best model.EzfyOfficer
 		if err := h.DB.Where("city_id = ? AND status = 0", city.ID).
-			Order("military DESC, level DESC").First(&best).Error; err == nil && best.ID > 0 &&
+			Order("CASE WHEN skill IS NULL OR skill = '' OR skill = '[]' THEN 1 ELSE 0 END ASC, military DESC, level DESC").First(&best).Error; err == nil && best.ID > 0 &&
 			best.Position != ezfyPositionGuard {
 			code, errMsg := h.botCall(uid, "", "POST",
 				fmt.Sprintf("/games/ezfy/officers/%d/position", best.ID),
@@ -1461,14 +1467,21 @@ func (h *EzfyHandler) botOfficer(city *model.EzfyCity, botLevel int) (string, st
 	// ②½ 无技能军官自动配技能（★ 2026-10-18 用户规则「人机会给没有技能的军官配置
 	//   技能 随机的三个技能，不消耗技能书」）：直接写 skill JSON（不走道具接口，
 	//   不打技能书消耗 —— 人机没有道具生产回路，不该卡在这）。
-	var noSkill model.EzfyOfficer
-	if err := h.DB.Where("city_id = ? AND status = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
-		city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil {
-		names := h.ezfyRandomSkills(3)
-		if len(names) > 0 {
-			h.saveOfficerSkills(&noSkill, names)
-			return "配置技能", fmt.Sprintf("%s 学会 %d 个技能（%s）", noSkill.Name, len(names),
-				strings.Join(names, "/")), true
+	//   ★★ 2026-10-19 用户规则「人机带技能的军官只能有三个」：已有技能军官 ≥ 3 就不再配。
+	var skillCnt int64
+	h.DB.Model(&model.EzfyOfficer{}).
+		Where("city_id = ? AND status = 0 AND skill IS NOT NULL AND skill <> '' AND skill <> '[]'", city.ID).
+		Count(&skillCnt)
+	if skillCnt < 3 {
+		var noSkill model.EzfyOfficer
+		if err := h.DB.Where("city_id = ? AND status = 0 AND (skill IS NULL OR skill = '' OR skill = '[]')",
+			city.ID).Order("military DESC, level DESC").First(&noSkill).Error; err == nil {
+			names := h.ezfyRandomSkills(3)
+			if len(names) > 0 {
+				h.saveOfficerSkills(&noSkill, names)
+				return "配置技能", fmt.Sprintf("%s 学会 %d 个技能（%s）", noSkill.Name, len(names),
+					strings.Join(names, "/")), true
+			}
 		}
 	}
 	// ③ 待分配点都点完了 → 「招募」：军官没满员就招。
@@ -1684,11 +1697,12 @@ func (h *EzfyHandler) botAttack(b *model.EzfyBot, city *model.EzfyCity, p model.
 	// ★★ 2026-10-18 城守/市长有城务在身不能带队（createOrder 会拒「「城守」xx有城务在身」）：
 	//   先找**无官职**在职军官（military 0 也带，出征吃经验/升级）；若本城全是官员，
 	//   则把军事最高的那位**临时卸任**（position=0，走真人卸任接口）再带 —— 人机出征不再被卡。
+	//   ★★ 2026-10-19 用户规则「人机出征优先带有技能的军官」：技能优先于军事。
 	h.DB.Where("city_id = ? AND status = 0 AND position = 0", city.ID).
-		Order("military DESC, level DESC").First(&lead)
+		Order("CASE WHEN skill IS NULL OR skill = '' OR skill = '[]' THEN 1 ELSE 0 END ASC, military DESC, level DESC").First(&lead)
 	if lead.ID == 0 {
 		h.DB.Where("city_id = ? AND status = 0", city.ID).
-			Order("military DESC, level DESC").First(&lead)
+			Order("CASE WHEN skill IS NULL OR skill = '' OR skill = '[]' THEN 1 ELSE 0 END ASC, military DESC, level DESC").First(&lead)
 		if lead.ID > 0 && lead.Position != 0 {
 			h.botCall(b.UserID, "", "POST",
 				fmt.Sprintf("/games/ezfy/officers/%d/position", lead.ID),
@@ -1795,6 +1809,41 @@ func ezfyBotAttackOn() bool {
 		return true
 	}
 	return ezfyCfg.limit.BotAtkOn != 0
+}
+
+// ============ 人机求饶邮件 ============
+
+var ezfyBotBegLock sync.Mutex
+var ezfyBotBegRecent = map[string]int64{} // "botUID-atkUID" → 上次求饶邮件时间戳
+
+// ezfyBotBegMail 人机被「即将打飞」→ 给进攻玩家发求饶邮件（★ 2026-10-19 用户规则
+// 「人机要是被即将打飞会给玩家发邮件让他别打了」）。
+//
+//	knockedOut：占掉这座后守方已无自由城（当场被打飞）→ 求放过口径；
+//	还有余城 → 求停手口径。
+//
+// 防刷：同一对人机/玩家 24 小时内最多一封（纯内存，服务器单进程）。
+func (h *EzfyHandler) ezfyBotBegMail(atkUID, botUID uint, knockedOut bool) {
+	key := fmt.Sprintf("%d-%d", botUID, atkUID)
+	now := time.Now().UnixMilli()
+	ezfyBotBegLock.Lock()
+	if last, ok := ezfyBotBegRecent[key]; ok && now-last < 24*3600000 {
+		ezfyBotBegLock.Unlock()
+		return
+	}
+	ezfyBotBegRecent[key] = now
+	ezfyBotBegLock.Unlock()
+	name := h.ezfyProfileName(botUID)
+	if name == "" {
+		name = "新城市"
+	}
+	if knockedOut {
+		h.ezfyMailCreate(botUID, atkUID, name, "别打了！",
+			"我都被你打飞了……新家刚搬好，求你放过我。我保证不再犯你的地盘。")
+		return
+	}
+	h.ezfyMailCreate(botUID, atkUID, name, "求别打了！",
+		"城都被你占了，再打我就真要飞了。咱们停手吧，我认输。")
 }
 
 // ezfyBotDailyAtkCap 每个人机每日出征次数上限（ezfy_cfg_limit.bot_atk_daily，默认 3）。
