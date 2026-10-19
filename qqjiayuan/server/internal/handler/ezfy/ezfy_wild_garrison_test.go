@@ -78,4 +78,28 @@ func TestWildGarrison(t *testing.T) {
 	if strings.Contains(ws, `o.status === 3 && o.target_type !== 3`) {
 		t.Fatal("驻军列表又给 status=3 的野地驻军加了 [采集] 入口")
 	}
+
+	// ⑧ 攻击**有玩家守军（驻军6 / 采集7）**的附属野地 → 必须进指挥室，不能自动战斗
+	//   后端：守军订单非空就强制 autoBattle=false
+	if !strings.Contains(order, "hasPlayerDefender := len(wildDefOrders) > 0") {
+		t.Fatal("processArrive 未按「有玩家守军」强制手动指挥")
+	}
+	if !strings.Contains(order, "if order.TargetType == 3 || hasPlayerDefender {") {
+		t.Fatal("有玩家守军的附属野地仍可能自动战斗")
+	}
+	//   详情接口下发 has_defender（口径与守军构建一致：6/7 + status 1/3）
+	if !strings.Contains(order, `"has_defender": hasDefender`) {
+		t.Fatal("野地详情未下发 has_defender（前端无法禁用自动战斗）")
+	}
+	if !strings.Contains(order, `Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", w.ID)`) {
+		t.Fatal("has_defender 口径不对（必须含采集部队 7 与驻军 6）")
+	}
+	//   前端：出征页「自动战斗」对这类目标强制「否」
+	main, err := os.ReadFile("../../../../web/src/views/ezfy/Ezfy.vue")
+	if err != nil {
+		t.Fatalf("读前端 Ezfy.vue 失败: %v", err)
+	}
+	if !strings.Contains(string(main), "this.selDetail && this.selDetail.has_defender") {
+		t.Fatal("前端 orderIsPlayerTarget 未包含「有玩家驻军的野地」")
+	}
 }

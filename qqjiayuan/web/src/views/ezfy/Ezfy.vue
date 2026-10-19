@@ -1023,8 +1023,13 @@ export default {
     // ★ 2026-10-07 出征目标是不是「玩家城市」：
     //   地图格 area_type=3 表示玩家城 → 出征页「自动战斗」强制「否」且只读
     //   （守方是真人，必须留指挥机会）。野地 / AI 寇城为 1/2，不受限。
+    // ★★ 2026-10-19 扩展到**有玩家驻军的附属野地**（用户：「攻击有玩家驻守的附属野地
+    //   不能自动战斗，还是进入指挥」）：野地详情下发 has_defender（该坐标上有
+    //   增援驻军6/驻守采集7 的活跃订单）→ 守方同样是真人部队，必须手动指挥。
+    //   后端 processArrive 也有同一判定（不信任前端提交的 auto_battle）。
     orderIsPlayerTarget () {
-      return !!(this.selCell && this.selCell.area_type === 3)
+      if (this.selCell && this.selCell.area_type === 3) return true
+      return !!(this.selDetail && this.selDetail.has_defender)
     },
     // ★ 2026-10-07 「自动战斗」的**生效值**：打玩家城市恒为 0（前端只读、后端也强制），
     //   其余按玩家在出征页所选。模板高亮与提交都用它，保证「显示 = 实际提交」。

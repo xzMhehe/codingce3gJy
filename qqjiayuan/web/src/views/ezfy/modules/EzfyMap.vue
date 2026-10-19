@@ -377,7 +377,6 @@
             <a href="javascript:;" class="of-opt"
                :class="{ on: ezfy.orderAutoBattleVal === 0, disabled: ezfy.orderIsPlayerTarget }"
                @click="ezfy.orderIsPlayerTarget || (ezfy.orderAutoBattle = 0)">[否]</a>
-            <span class="gray" v-if="ezfy.orderIsPlayerTarget">（打玩家城须指挥）</span>
           </div>
 
           <!-- ⑦ 计算 / 出征 -->

@@ -525,6 +525,17 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 	if w.ID > 0 {
 		collecting = h.ezfyWildlandOccupiedCount(int64(w.ID), 0) > 0
 	}
+	// ★★ 2026-10-19 是否有**玩家守军**（驻军 6 / 驻守采集 7，未结束）：
+	//   有 → 守方是真人部队，出征页「自动战斗」必须强制「否」（抵达后进指挥室），
+	//   与打玩家城市同口径。口径与 processArrive 构建守军时完全一致
+	//   （`order_type IN (6,7) AND status IN (1,3)`）。
+	hasDefender := false
+	if w.ID > 0 {
+		var dn int64
+		h.DB.Model(&model.EzfyOrder{}).
+			Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", w.ID).Count(&dn)
+		hasDefender = dn > 0
+	}
 	resp.OK(c, gin.H{
 		"x": x, "y": y, "type": ttype, "level": level,
 		"name": cfg.Des, "troops": previews,
@@ -541,6 +552,7 @@ func (h *EzfyHandler) WildlandView(c *gin.Context) {
 		"owner":        owner,
 		"mine":         isMine,      // ★ 自己的附属野地（不能侦查/掠夺/征服，要先放弃）
 		"collecting":   collecting,  // ★ 2026-10-11 正在被采集（不能征服/掠夺）
+		"has_defender": hasDefender, // ★ 2026-10-19 有玩家守军 → 出征页强制手动指挥
 		"is_starred":   starCnt > 0, // ★ 2026-09-30 收藏态
 	})
 }
@@ -3971,7 +3983,13 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   所以这里**不信任字段值**，按 target_type 重新判定：
 		//     玩家城 → 恒不自动（只有攻守双方都离线时才自动，见下）；
 		//     野地 / AI 寇城 → 按字段（默认 1 = 自动）。
-		if order.TargetType == 3 {
+		// ★★ 2026-10-19 用户规则：**攻击有玩家驻守的附属野地**同样必须进指挥室。
+		//   原来只按 target_type 判（野地恒按字段、默认自动）→ 打别人有驻军的野地
+		//   一到就自动打完，守方（真人）根本没机会指挥。
+		//   现在只要该野地上有活跃守军订单（增援6/驻守采集7，见上面的 wildDefOrders），
+		//   就跟打玩家城市一个口径：强制不自动。
+		hasPlayerDefender := len(wildDefOrders) > 0
+		if order.TargetType == 3 || hasPlayerDefender {
 			autoBattle = false
 		}
 		// ★★ 2026-10-08 离线自动结算**只对打玩家城（target_type=3）生效**。
@@ -3982,9 +4000,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//     · 玩家城 → 攻守都不在线才自动（真人守方，避免占目标堵后面的人）；
 		//     · 野地 / AI 寇城 → 尊重出征页所选，选了「否」就开战场进指挥室，
 		//       绝不因在线窗口过期而偷偷自动打完。
-		if !autoBattle && order.TargetType == 3 && !h.ezfyUserOnline(uid) {
-			defOnline := target != nil && target.UserID > 0 && h.ezfyUserOnline(target.UserID)
-			if !defOnline {
+		// ★★ 2026-10-19 有玩家驻军的附属野地同样适用「双方都不在线才自动」：
+		//   否则攻方离线、守方也离线时，战场会一直挂着把目标堵死。
+		if !autoBattle && !h.ezfyUserOnline(uid) {
+			defOnline := false
+			if order.TargetType == 3 {
+				defOnline = target != nil && target.UserID > 0 && h.ezfyUserOnline(target.UserID)
+			} else if hasPlayerDefender {
+				defOnline = h.ezfyUserOnline(wildDefOrders[0].UserID)
+			}
+			if (order.TargetType == 3 || hasPlayerDefender) && !defOnline {
 				autoBattle = true
 			}
 		}
