@@ -65,14 +65,16 @@ func main() {
 	stats := flag.Bool("stats", false, "只统计各大洲的空闲沿海平原/空地余量，不做任何迁移")
 	// ★ 用户规则：「不够就给移动到亚洲的沿海平原」—— 目标洲放不下时自动退到备用洲。
 	coastalFallback := flag.Int("coastal-fallback", 2, "沿海迁城计划的备用洲 ID（默认 2 = 亚洲；0 = 不启用备用洲）")
+	// ★ 2026-10-19 导出工具：把全图沿海平原坐标 dump 成 CSV（线上运维查坐标用，不迁移任何数据）
+	coastalCSV := flag.String("coastal-csv", "", "把全图沿海平原坐标导出到 CSV（填输出文件路径，如 沿海平原.csv），导出完即退出")
 	apply := flag.Bool("apply", false, "真正落库；不加则只预演（dry-run）")
 	dryRun := flag.Bool("dry-run", false, "显式预演（与不加 --apply 等价，方便脚本里写清楚意图）")
 	limit := flag.Int("limit", 0, "最多迁移多少座城（0 = 不限）")
 	yes := flag.Bool("yes", false, "跳过交互确认（适合脚本/自动化调用）")
 	flag.Parse()
 
-	if !*all && *uid == 0 && !*coastal && !*stats {
-		log.Fatal("请指定迁移范围：--all（全部玩家）/ --uid <ID>（单个玩家）/ --coastal（所有航海协会城）/ --stats（只看余量）")
+	if !*all && *uid == 0 && !*coastal && !*stats && *coastalCSV == "" {
+		log.Fatal("请指定迁移范围：--all（全部玩家）/ --uid <ID>（单个玩家）/ --coastal（所有航海协会城）/ --stats（只看余量）/ --coastal-csv（导出沿海平原）")
 	}
 	if *all && *uid != 0 {
 		log.Fatal("--all 与 --uid 不能同时使用")
@@ -89,15 +91,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("读取配置失败: %v（当前目录下需要有 config.yaml，或用 -config 指定）", err)
 	}
-	db := database.Init(&cfg.Mysql)
+	// ★ 2026-10-19 连二战库：ezfy_* 表在独立库（qq_ezzt）时走 EzfyDBConfig，单库模式自动回落家园库。
+	//   此前直接连 cfg.Mysql（家园库），split 部署下 ezfy_city 读到的是残留空表，占用判断全错。
+	ezfyDB := cfg.EzfyDBConfig()
+	db := database.Init(&ezfyDB)
 	h := &ezfy.EzfyHandler{DB: db}
+
+	// ★ 2026-10-19 导出沿海平原 CSV：独立模式，导出完即退出（不迁移任何数据）
+	if *coastalCSV != "" {
+		dumpCoastalPlains(db, *coastalCSV)
+		return
+	}
 
 	continentName := ezfyContinentLabel(db, *continent)
 
 	fmt.Println("============================================================")
 	fmt.Println("  二战风云 · 城池批量迁移")
 	fmt.Println("============================================================")
-	fmt.Printf("  MySQL      : %s:%d / %s\n", cfg.Mysql.Host, cfg.Mysql.Port, cfg.Mysql.DBName)
+	fmt.Printf("  MySQL      : %s:%d / %s\n", ezfyDB.Host, ezfyDB.Port, ezfyDB.DBName)
 	if *all {
 		fmt.Println("  迁移范围   : 全部玩家")
 	} else {
@@ -348,6 +359,56 @@ func printCoastalStats(db *gorm.DB) {
 		}
 		fmt.Printf("  %-6s    %6d / %-8d    %6d / %-8d\n", names[id], s.coastFree, s.coastAll, s.landFree, s.landAll)
 	}
+}
+
+// dumpCoastalPlains 把全图沿海平原坐标导出成 CSV（★ 2026-10-19 新增）
+//
+// 输出列：x, y, 大洲, 大洲ID, 是否被占（0=空地 1=已被城市占用）
+// 加 UTF-8 BOM，Excel 直接打开不乱码。只读库、不迁移任何数据。
+func dumpCoastalPlains(db *gorm.DB, path string) {
+	names := map[int]string{1: "欧洲", 2: "亚洲", 3: "非洲", 4: "北美洲", 5: "南美洲", 6: "大洋洲", 7: "南极洲"}
+	occupied := map[[2]int]bool{}
+	var cs []model.EzfyCity
+	if err := db.Select("x, y").Find(&cs).Error; err != nil {
+		log.Fatalf("读取城市表失败: %v", err)
+	}
+	for _, c := range cs {
+		occupied[[2]int{c.X, c.Y}] = true
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		log.Fatalf("创建 CSV 失败: %v", err)
+	}
+	defer f.Close()
+	// UTF-8 BOM，Excel 直接打开不乱码
+	if _, err := f.WriteString("\ufeff"); err != nil {
+		log.Fatalf("写 BOM 失败: %v", err)
+	}
+	if _, err := f.WriteString("x,y,大洲,大洲ID,是否被占\n"); err != nil {
+		log.Fatalf("写表头失败: %v", err)
+	}
+
+	count, free := 0, 0
+	for x := 0; x < 500; x++ {
+		for y := 0; y < 500; y++ {
+			if ezfy.EzfyTerrainAt(x, y) != ezfy.EzfyCoastalPlainValue {
+				continue
+			}
+			cont := ezfy.EzfyContinentOf(x, y)
+			occupiedFlag := "0"
+			if occupied[[2]int{x, y}] {
+				occupiedFlag = "1"
+			} else {
+				free++
+			}
+			if _, err := fmt.Fprintf(f, "%d,%d,%s,%d,%s\n", x, y, names[cont], cont, occupiedFlag); err != nil {
+				log.Fatalf("写 CSV 失败: %v", err)
+			}
+			count++
+		}
+	}
+	fmt.Printf("已导出 %d 格沿海平原（其中空闲 %d 格、已被城市占用 %d 格）→ %s\n", count, free, count-free, path)
 }
 
 // ezfyContinentLabel 把洲 ID 转成中文名（读库里能查到的城来反推，避免 import 循环）

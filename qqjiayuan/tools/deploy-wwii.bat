@@ -109,6 +109,22 @@ if "%LOCAL_MD5%"=="" (
 set /a LOCAL_MB=%LOCAL_SIZE%/1048576
 echo   OK package %PKG% ~%LOCAL_MB% MB md5=%LOCAL_MD5%
 
+rem 2026-10-19 hardening: local package integrity pre-check.
+rem Windows tar.exe can crash (0xC0000005) and leave a TRUNCATED tar.gz
+rem that md5 checks cannot detect; abort before uploading a bad package.
+where python >nul 2>nul
+if errorlevel 1 (
+  echo   WARN: python not found, skip local package integrity check
+) else (
+  python -c "import tarfile,sys; t=tarfile.open(sys.argv[1],'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%PKG%" >nul 2>&1
+  if errorlevel 1 (
+    echo   XX local package integrity FAILED ^(truncated/corrupt^): %PKG%
+    echo       rerun pack-linxu.bat to rebuild, then deploy again
+    goto fail_clean
+  )
+  echo   OK local package integrity check passed
+)
+
 call :rsh_read "echo ping"
 if "%RH_OUT%"=="ping" goto ssh_ok
 echo   XX SSH unreachable %SSH_USER%@%SSH_HOST%

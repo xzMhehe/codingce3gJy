@@ -222,33 +222,44 @@ powershell -NoProfile -Command "$n=0; Get-ChildItem -Path '%WWIIPKG%' -Include *
 
 call :log "STEP 6/6 tar.gz / zip and verify"
 
+rem 2026-10-19 FIX: Windows built-in tar.exe (bsdtar) crashes deterministically
+rem (0xC0000005, around ~21MB output) when packing trees with Chinese filenames,
+rem leaving a TRUNCATED tar.gz that md5 checks cannot detect. Use python tarfile
+rem (write + full read-back verify); on failure the tarball is deleted so a bad
+rem package never survives. Windows tar is only a fallback when python is missing.
 if exist "%TARBALL%" del /f /q "%TARBALL%"
 if exist "%WWII_TARBALL%" del /f /q "%WWII_TARBALL%"
-where tar >nul 2>nul
-if errorlevel 1 (
-    echo   [pack] tar not found, skipping tar.gz ^(folder package still valid^)
-    goto :ziptry
-)
+set "TAR_FAIL=0"
+where python >nul 2>nul
+if not errorlevel 1 goto tgz_python
+
 pushd "%ROOT%"
 tar -czf "%TARBALL%" Linuxbushu
 set "RC=%errorlevel%"
 popd
-if not %RC%==0 (
-    echo   [pack] tar failed, skipping tar.gz
-) else (
-    echo   [pack] tar.gz: %TARBALL%
-    echo   [pack] NOTE: Windows-built tar has no unix exec bit - on the server run
-    echo   [pack]       chmod +x server/server server/dbinit *.sh
-    echo   [pack]       ./start.sh and ./init-db.sh also chmod by themselves.
-)
+if not "%RC%"=="0" set "TAR_FAIL=1"
 pushd "%ROOT%"
 tar -czf "%WWII_TARBALL%" WWIIbushu
 set "RC=%errorlevel%"
 popd
-if not %RC%==0 (
-    echo   [pack] WWII tar failed, skipping WWIIbushu.tar.gz
+if not "%RC%"=="0" set "TAR_FAIL=1"
+goto tgz_done
+
+:tgz_python
+python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close(); t=tarfile.open(p,'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%PKG%" Linuxbushu "%TARBALL%"
+if errorlevel 1 set "TAR_FAIL=1"
+python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close(); t=tarfile.open(p,'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%WWIIPKG%" WWIIbushu "%WWII_TARBALL%"
+if errorlevel 1 set "TAR_FAIL=1"
+
+:tgz_done
+if "%TAR_FAIL%"=="1" (
+    if exist "%TARBALL%" del /f /q "%TARBALL%"
+    if exist "%WWII_TARBALL%" del /f /q "%WWII_TARBALL%"
+    echo   [pack] tar.gz FAILED - truncated/bad tarball deleted ^(folder package still valid^)
 ) else (
-    echo   [pack] WWII tar.gz: %WWII_TARBALL%
+    echo   [pack] tar.gz: %TARBALL%
+    echo   [pack] tar.gz: %WWII_TARBALL%
+    echo   [pack] NOTE: archive has no unix exec bit - deploy scripts chmod on the server
 )
 
 :ziptry
