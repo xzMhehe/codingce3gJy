@@ -190,7 +190,14 @@ func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	// ★ 2026-10-12 修复「军官战斗中还能再次出征」：原来只查 status IN (0,1,2)，
 	//   漏掉了 status=5(战斗中)/6(等待) —— 行军中会被拦，但**战斗中**的军官却能再下一单。
 	//   补齐为与 createOrder 的出兵限额同口径的 `status IN (0,1,2,5,6)`（未结束命令全集）。
-	h.DB.Select("id, officer").Where("city_id = ? AND status IN (0,1,2,5,6)", cityId).Find(&orders)
+	// ★★ 2026-10-19 补 status=3（驻守中）：增援到盟友城/附属野地的部队常驻在那里，
+	//   军官随军驻守，原来不查 3 → officerList 的「自愈」把它当成没命令 → 状态被改回空闲，
+	//   玩家看到「派出去的军官不见了/又出现在城里」（同一军官还能被重复派出）。
+	//   ★ status=3 只算**仍在驻守**的（result 为空）；已完成返航的驻军订单（result 非空）
+	//     不该再占着军官 —— 历史僵尸行兜底，否则军官永远回不来。
+	h.DB.Select("id, officer").
+		Where("city_id = ? AND (status IN (0,1,2,5,6) OR (status = 3 AND IFNULL(result,'') = ''))", cityId).
+		Find(&orders)
 	return orders
 }
 
@@ -4513,11 +4520,14 @@ func ezfyEquipIDsAsc() []int {
 // 上架范围 = `Shelf=1`（管理端上下架开关）**且** 有价格的「军官装备 / 套装」。
 // ★ 历史：2026-09-22 定稿「散件也上吧」→ 只上散件；2026-10-06 套装件全部下架（set_id > 0 不售）；
 // ★★ 2026-10-14 用户「之前下的装备现在上架吧」→ **套装件与系列件重新上架**（价格见 seed），
-//    商城不再按 set_id 拦，只要求「是军官装备 + 有价格（黄金或钻石）」。
+//
+//	商城不再按 set_id 拦，只要求「是军官装备 + 有价格（黄金或钻石）」。
+//
 // ★★ 2026-10-14 用户「上下架不好维护」→ 新增 `shelf` 字段（与价格解耦：下架不清价），
-//    上架判定 = `shelf=1 && (price_gold>0 || price_diamond>0)`。
-//    注意：套装件/系列件仍**不会**从野地战斗掉落（wildlandConfigLoot 里 `eq.SetId > 0` 跳过），
-//    商城购买是它们的第二个获取途径（第一个仍是宝箱）。
+//
+//	上架判定 = `shelf=1 && (price_gold>0 || price_diamond>0)`。
+//	注意：套装件/系列件仍**不会**从野地战斗掉落（wildlandConfigLoot 里 `eq.SetId > 0` 跳过），
+//	商城购买是它们的第二个获取途径（第一个仍是宝箱）。
 func (h *EzfyHandler) equipShopList() ([]gin.H, []gin.H) {
 	slots := []string{}
 	bySlot := map[string][]gin.H{}

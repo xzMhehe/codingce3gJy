@@ -79,8 +79,10 @@
               {{ o.time_label }}：{{ o._lt || (o._lg ? o._lg.timeText : o.time_text) }}
               <span v-if="o.status === 1 && !o.arrive_time"><a href="javascript:;" class="red" @click="ezfy.startCollect(o)">[采集]</a></span>
               <span v-else-if="o.status === 1 && o.arrive_time"><a href="javascript:;" class="red" @click="ezfy.stopCollect(o)">[停止]</a></span>
-              <!-- ★ 2026-10-02 出站驻军(增援盟友城): 不可采集, 只能[召回]撤兵 -->
-              <span v-else-if="o.status === 3"><a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[召回]</a></span><br/>
+              <!-- ★ 2026-10-19 驻守部队（status=1 采集队 / status=3 增援驻军）都能单支召回。
+                   增援到附属野地的部队是**纯驻军**（order_type=6）：只驻守、不采集，
+                   敌军进攻时作为守军参战；玩家可在这里单支召回，或用顶部 [一键召回]。 -->
+              <span v-if="o.status === 1 || o.status === 3"><a href="javascript:;" class="red" @click="ezfy.doRecall(o)">[召回]</a></span><br/>
               <!-- ★ 2026-09-28 采集中部队: 实时累加显示本期已采资源(每秒由 liveGather 重算)。
                    规则已改为「收获即入起点城市」，故不再显示「需召回返航后入库」。
                    ★★ 2026-10-09 修复「采集队列会整块消失（隐藏情况）」：

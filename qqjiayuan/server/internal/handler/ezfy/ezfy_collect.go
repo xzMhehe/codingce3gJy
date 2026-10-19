@@ -18,8 +18,9 @@ import (
 // CollectAll POST /games/ezfy/wild/collect-all —— 一键采集
 //
 // ★ 2026-09-24 用户规则: 采集部队到达野地后驻守**空闲**, 需手工点[采集]才开始。
-//   「一键采集」= 对本城所有**空闲驻军**(status=1, arrive_time=0)批量下达采集命令;
-//   派新部队到未驻守的野地走「附属野地 → [采集]」。
+//
+//	「一键采集」= 对本城所有**空闲驻军**(status=1, arrive_time=0)批量下达采集命令;
+//	派新部队到未驻守的野地走「附属野地 → [采集]」。
 //
 // ★★ 2026-10-09 用户反馈「一键采集只对**当前城市**的采集空闲部队生效」：
 //
@@ -105,7 +106,8 @@ func (h *EzfyHandler) CollectAll(c *gin.Context) {
 // StartCollect POST /games/ezfy/wild/start-collect —— 单支空闲驻军开始采集
 //
 // ★ 2026-09-24 用户规则: 驻军没采集就是「空闲」状态, 手工点[采集]才进入采集状态。
-//   驻军趋(情报→驻军)/野地列表/出征队列上的 [采集] 都走本接口。
+//
+//	驻军趋(情报→驻军)/野地列表/出征队列上的 [采集] 都走本接口。
 func (h *EzfyHandler) StartCollect(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	ezfyPageCacheDel(uid) // 开始采集 → 附属野地缓存失效
@@ -124,6 +126,8 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 		resp.ParamError(c, "命令不存在")
 		return
 	}
+	// ★★ 2026-10-19 用户澄清：**增援到附属野地的部队是纯驻军（order_type=6），不提供采集**。
+	//   这里只认驻守采集部队(7)；野地驻军点不到这个接口（前端也不给 [采集] 按钮）。
 	if order.Status != 1 || order.OrderType != 7 {
 		resp.ParamError(c, "该部队不是驻守采集部队")
 		return
@@ -168,12 +172,14 @@ func (h *EzfyHandler) StartCollect(c *gin.Context) {
 // HarvestAll POST /games/ezfy/wild/harvest-all —— 一键收获(批量)
 //
 // ★ 2026-09-28 用户规则澄清：**「一键收获」与「停止采集」是同一个功能**，
-//   只是一个批量、一个单个 —— 都是「把已产出的资源收进起点城市」。
-//   所以本接口 = 对每支在采集的部队走一遍「结算 → 入起点城 → 停止采集(原地待命)」。
-//   （原实现只结算 carry 不落库、还要等召回返航，导致玩家以为资源丢了。）
+//
+//	只是一个批量、一个单个 —— 都是「把已产出的资源收进起点城市」。
+//	所以本接口 = 对每支在采集的部队走一遍「结算 → 入起点城 → 停止采集(原地待命)」。
+//	（原实现只结算 carry 不落库、还要等召回返航，导致玩家以为资源丢了。）
 //
 // ★★ 2026-10-09 与「一键采集 / 一键召回」同口径：只处理**当前城市**出发的采集部队
-//   （军情→驻军 tab 本身就是按当前城展示的，批量操作不该越界到别的城）。
+//
+//	（军情→驻军 tab 本身就是按当前城展示的，批量操作不该越界到别的城）。
 func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -263,9 +269,10 @@ func (h *EzfyHandler) HarvestAll(c *gin.Context) {
 // RecallAll POST /games/ezfy/wild/recall-all —— 一键召回
 //
 // ★ 2026-09-28 用户规则修正：资源在「收获/停止」时**已经直接入起点城市**，
-//   所以召回**只是撤兵返航**，不再有「待带回资源」要等到达才入库
-//   （原实现在这里既没落库 carry、又靠 finishReturn 清空 carry，造成「召回资源丢了」）。
-//   为稳妥起见，召回前仍先做一次结算，保证「还在采但没收获过」的那部分资源不丢。
+//
+//	所以召回**只是撤兵返航**，不再有「待带回资源」要等到达才入库
+//	（原实现在这里既没落库 carry、又靠 finishReturn 清空 carry，造成「召回资源丢了」）。
+//	为稳妥起见，召回前仍先做一次结算，保证「还在采但没收获过」的那部分资源不丢。
 func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	uid := middleware.GetUID(c)
 	h.cfgs()
@@ -280,8 +287,13 @@ func (h *EzfyHandler) RecallAll(c *gin.Context) {
 	// ★ 2026-10-02 「一键召回」需覆盖出站驻军：
 	//   驻守盟友城市的驻军(增援, status=3)也一并召回返航回出发城市。
 	//   仅召回「活跃驻军」(result 为空 + 目标城属于他人)，避免旧僵尸/已归队订单重复入兵。
+	// ★★ 2026-10-19 补**附属野地驻军**：增援到野地同样是 order_type=6 + status=3，
+	//   但 target_type=1/2（不是 3），原来被 `target_type = 3` 挡掉 → 一键召回永远召不回它
+	//   （用户反馈「一键召回也召回不了」）。野地驻军无需再判「目标城属于他人」——
+	//   能挂在野地上的驻军本身就是「驻守别人的地」（自己的地不允许增援，createOrder 已拦）。
 	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
-	h.DB.Where("user_id = ? AND city_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND target_type = 3 AND result = '' AND target_id IN (?)))", uid, current.ID, allyCity).
+	h.DB.Where("user_id = ? AND city_id = ? AND ((order_type = 7 AND status = 1) OR (order_type = 6 AND status = 3 AND result = '' AND (target_type IN (1,2) OR (target_type = 3 AND target_id IN (?)))))",
+		uid, current.ID, allyCity).
 		Order("id ASC").Find(&orders)
 	if len(orders) == 0 {
 		resp.ParamError(c, "当前城市没有可召回的外出部队(采集/驻军)")
@@ -330,7 +342,7 @@ func (h *EzfyHandler) StopCollect(c *gin.Context) {
 	h.cfgs()
 	var req struct {
 		OrderId int64 `json:"order_id"`
-		Force   bool `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 玩家确认后带 force=true 才真正结算
+		Force   bool  `json:"force"` // ★ 2026-09-30 资源已满时的强制确认: 玩家确认后带 force=true 才真正结算
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.OrderId <= 0 {
 		resp.ParamError(c, "参数错误")
