@@ -246,9 +246,13 @@ if not "%RC%"=="0" set "TAR_FAIL=1"
 goto tgz_done
 
 :tgz_python
-python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close(); t=tarfile.open(p,'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%PKG%" Linuxbushu "%TARBALL%"
+python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close()" "%PKG%" Linuxbushu "%TARBALL%"
 if errorlevel 1 set "TAR_FAIL=1"
-python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close(); t=tarfile.open(p,'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%WWIIPKG%" WWIIbushu "%WWII_TARBALL%"
+python "%ROOT%\tools\tgz_check.py" "%TARBALL%" >nul 2>&1
+if errorlevel 1 set "TAR_FAIL=1"
+python -c "import tarfile,sys; p=sys.argv[3]; t=tarfile.open(p,'w:gz'); t.add(sys.argv[1], arcname=sys.argv[2], recursive=True); t.close()" "%WWIIPKG%" WWIIbushu "%WWII_TARBALL%"
+if errorlevel 1 set "TAR_FAIL=1"
+python "%ROOT%\tools\tgz_check.py" "%WWII_TARBALL%" >nul 2>&1
 if errorlevel 1 set "TAR_FAIL=1"
 
 :tgz_done

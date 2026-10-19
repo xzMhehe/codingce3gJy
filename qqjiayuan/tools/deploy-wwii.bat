@@ -116,7 +116,7 @@ where python >nul 2>nul
 if errorlevel 1 (
   echo   WARN: python not found, skip local package integrity check
 ) else (
-  python -c "import tarfile,sys; t=tarfile.open(sys.argv[1],'r:gz'); n=sum(1 for _ in t); t.close(); assert n>0" "%PKG%" >nul 2>&1
+  python "%SCRIPT_DIR%tgz_check.py" "%PKG%" >nul 2>&1
   if errorlevel 1 (
     echo   XX local package integrity FAILED ^(truncated/corrupt^): %PKG%
     echo       rerun pack-linxu.bat to rebuild, then deploy again
