@@ -22,11 +22,48 @@ func TestPvPDefenderWounded(t *testing.T) {
 		// 战报里两方的回收比例各算一份（「谁看展示谁的」）
 		"healLineAtk := ezfyHealPctLine(repairedTotal, br.AttackerLosses)",
 		"healLineDef := ezfyHealPctLine(defRepairedTotal, br.DefenderLosses)",
-		// 守方那份战报复用攻方正文 → 必须把「回收比例」换成守方自己的
-		"defBody = strings.Replace(report, healLineAtk, healLineDef, 1)",
+		// ★ 2026-10-19 守方正文**不再复用攻方正文**（那正是「守方战报是攻方视角」的根因）：
+		//   改由 ezfyDefenderReportBody 生成，守方「回收比例」直接吃 healLineDef。
+		"HealLineDef: healLineDef",
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("PvP 守方伤兵入营未接入（缺 %s）", want)
+		}
+	}
+}
+
+// TestDefenderReportIsDefenderPerspective ★ 2026-10-19 用户两点：
+//
+//	① 玩家城市守方战报原来**直接复用攻方正文**（defBody := report）→ 守方看到的是
+//	   「我方一支部队对 XXX 进行了征服」+ 攻方的军衔声望/军官经验/战果，完全是攻方视角。
+//	   现在玩家城市与附属野地统一走 ezfyDefenderReportBody()（守方视角）。
+//	② 守方也要有军功声望与军官经验（原来野地守军军官白打一场、守方零声望）。
+func TestDefenderReportIsDefenderPerspective(t *testing.T) {
+	src := strings.ReplaceAll(rawFile(t, "ezfy_order.go"), "\r\n", "\n")
+	// ① 攻方视角正文的复用源必须消失（先剥掉注释行：注释里引用旧写法是正常的）
+	code := stripGoCommentLines(src)
+	if strings.Contains(code, "defBody := report") {
+		t.Fatal("玩家城市守方战报仍在复用攻方正文（守方看到攻方视角）")
+	}
+	if strings.Contains(code, "defBody = strings.Replace(report, healLineAtk, healLineDef, 1)") {
+		t.Fatal("玩家城市守方战报仍靠字符串替换攻方正文的「回收比例」")
+	}
+	for _, want := range []string{
+		// 城市/野地共用的守方视角正文生成器
+		"func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {",
+		// 守方视角描述句（敌方进攻、我方战败/守住）
+		"敌方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗%s",
+		// ② 守方军功声望（城市守住/被攻破、野地被掠夺/被征服 都给）
+		"PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef",
+		"defPrestige := 100",
+		"h.addPrestige(target.UserID, 100)",
+		// ② 野地守军带队军官经验
+		"h.addWildGarrisonOfficerExp(wildDefOrders, wlOwnerCityID, wildDefExp)",
+		// 守方「击杀数」= 攻方战损（原来误传守方自己人的损失）
+		"defExp = ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)",
+	} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("守方视角 / 守方奖励接入缺失: %s", want)
 		}
 	}
 }

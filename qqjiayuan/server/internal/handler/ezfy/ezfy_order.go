@@ -1760,9 +1760,12 @@ func (h *EzfyHandler) ezfyOrderRadarWarn(city *model.EzfyCity, order *model.Ezfy
 	//   标题带上侦查方城市名+坐标（重名城一眼可分，与城市被侦查同体例）。
 	//   ★ 事后报告（侦查成功/失败）仍只给攻方，守方这条是**预警**（出征即发）。
 	if (targetType == 1 || targetType == 2) && orderType == 1 {
-		if ownerUID, ownerCityID := h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, city.UserID); ownerUID > 0 {
-			body := fmt.Sprintf("有敌军对我方附属野地进行了侦查!\n我方野地: (%d,%d)\n侦查方城市: %s(%d,%d)\n侦查时间: %s\n",
-				order.TargetX, order.TargetY, city.Name, city.X, city.Y,
+		if ownerUID, ownerCityID, wl := h.ezfyWildlandOwnerInfo(order.TargetX, order.TargetY, city.UserID); ownerUID > 0 {
+			// 「我方野地」写全**名字+等级+坐标**（与城市那条的「我方城市: 城名(x,y)」同体例，
+			// 也与战斗中守方战报里的野地称谓一致），否则光看坐标分不清是哪块地。
+			wlName := ezfyWildTerrainDisplayName(wl.X, wl.Y, true) + strconv.Itoa(wl.Level) + "级"
+			body := fmt.Sprintf("有敌军对我方附属野地进行了侦查!\n我方野地: %s(%d,%d)\n侦查方城市: %s(%d,%d)\n侦查时间: %s\n",
+				wlName, order.TargetX, order.TargetY, city.Name, city.X, city.Y,
 				time.UnixMilli(order.StartTime).Format("01-02 15:04"))
 			h.addReport(ownerUID, 6, fmt.Sprintf("被侦查报告: %s(%d,%d)", city.Name, city.X, city.Y),
 				body, "", 0, ownerCityID)
@@ -4121,9 +4124,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// 注：攻方原来写死 myDead/10 + 50（按自己的战损算），语义是「越惨越有经验」，
 	// 与「胜利拿更多」相悖，这里一并改成按**击杀**计算（把对方打死才有战功）。
 	defExp := int64(0)
-	// 守方：拿到城守军官的城才有（野地/寇城无军官，自然跳过）
+	// 守方：拿到城守军官的城才有（中立野地/寇城无玩家军官，自然跳过）
 	if cityGuard != nil && target != nil {
-		defExp = ezfyOfficerBattleExp(enemyDeadOf(br.DefenderLosses), !win)
+		// ★★ 2026-10-19 口径修正：守方的「击杀数」= **攻方战损**(br.AttackerLosses)。
+		//   原来传 br.DefenderLosses（守方自己人的损失）→ 守方杀敌越多、经验反而按自己死伤算，
+		//   与上一条注释「按击杀敌军数衡量」自相矛盾（攻方那一处传的才是对的，见下面 atkExp）。
+		defExp = ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)
 		h.addOfficerExp(target, cityGuard.ID, defExp)
 	}
 	// 攻方：带队军官无论胜负都给经验（原来只在 if win 分支里给，
@@ -4364,6 +4370,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		recyclePct = 0 // 无战利品 → 战报「掠夺比例」也应为 0（原野地口径写死 100%）
 	}
 
+	// ★★ 2026-10-19 玩家附属野地守军军官（增援6/采集7 各带一名）也拿战斗经验
+	//   （用户：「军官经验…应该有的」）—— 原来只有玩家城城守有经验，野地驻军军官白打一场。
+	//   守方口径与城守统一：击杀数 = **攻方战损**，胜负加成取守方(!win)；按归属城+军官名
+	//   回查实例逐个发放（订单只存名字，与 ezfyWildDefOfficersDesc 同口径）。
+	wildDefExp := int64(0)
+	if len(wildDefOrders) > 0 && wlOwnerCityID > 0 {
+		wildDefExp = ezfyOfficerBattleExp(enemyDeadOf(br.AttackerLosses), !win)
+		h.addWildGarrisonOfficerExp(wildDefOrders, wlOwnerCityID, wildDefExp)
+	}
+
 	// ★★ 2026-10-19 野地驻军「被打掉一部分」→ 剩余兵力必须写回订单。
 	//   原来只有攻方**全胜**时统一歼灭（status=4），攻方被打退/打平时守军的战损
 	//   只出现在战报里，订单 Troops 仍是满编 → 下次继续打时守军数量又变回原来的满编。
@@ -4411,7 +4427,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			// ★★ 2026-10-19 用户规则：有归属(玩家)的野地不产出战利品 → 歼灭守军时，
 			//   采集队身上已采的资源也**随之损失**，不并入攻方 loot（否则可反复刷资源）。
 			//   中立野地/寇城不经过本函数，其战利品不受影响。
-			h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now, detail)
+			h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, now)
 		}
 		if targetProtected && order.TargetType == 3 {
 			report += "\n目标城市处于免战保护期, 无法掠夺资源!"
@@ -4504,7 +4520,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 				// ★ 2026-10-19 野地上限放弃占领 ≠ 没打：战利品已抢走、守军已歼灭，
 				//   野地主人必须收到「被掠夺/被征服」报告（这个 return 会跳过函数末尾的统一写报）
-				h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, true, report, detail)
+				h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, true, detail, now,
+					br, atkTag, defTag, atkBefore, atkAfter, defBefore, defAfter, leadOfficer, wildDefOfficerDesc, wildDefExp)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -4859,19 +4876,42 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   （targetName = target.Name 即被掠夺/被征服的那座守城），
 		//   如 [掠夺] 被掠夺报告: 我的城名(X,Y)；与攻方报告(L3490)保持对称口径。
 		if order.TargetType == 3 && target != nil {
-			// ★★ 2026-10-09 「回收比例 谁看展示谁的」：守方这份战报复用攻方正文，
-			//   所以要把尾部那行「回收比例」换成**守方自己**的（守方零战损 → 换成空串=不显示）。
-			defBody := report
-			if healLineAtk != healLineDef {
-				defBody = strings.Replace(report, healLineAtk, healLineDef, 1)
+			// ★★ 2026-10-19 用户反馈「防守方战报怎么是攻方视角」：
+			//   原来这里 `defBody := report` **直接复用攻方正文** —— 守方看到的是
+			//   「我方一支部队对 XXX 进行了征服」+ 攻方的军衔声望/军官经验/个人荣誉，
+			//   完全是攻方视角。现在与「守方成功守住」分支共用 ezfyDefenderReportBody()，
+			//   生成**守方视角**正文（敌方进攻、我方战败；军衔声望/战果/尾部都是守方自己的）。
+			//   ★ 「回收比例」也不再需要字符串替换 —— 正文按守方口径直接生成（healLineDef）。
+			defTitle, repType, ocTitle := "被掠夺报告", 2, "掠夺"
+			if order.OrderType == 3 {
+				defTitle, repType, ocTitle = "被征服报告", 4, "征服"
 			}
-			if order.OrderType == 2 {
-				h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-					fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n\n%s", targetName, lootFeel, lootFeel, defBody),
-					detail, 0, target.ID)
-			} else if order.OrderType == 3 && defConqBody != "" {
-				h.addReport(target.UserID, 4, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-					defConqBody+"\n\n"+defBody, detail, 0, target.ID)
+			if order.OrderType == 2 || (order.OrderType == 3 && defConqBody != "") {
+				defBody := h.ezfyDefenderReportBody(ezfyDefReportSpec{
+					DefUID: target.UserID, DefName: targetName, DefWin: false, Draw: draw, Rounds: br.Rounds,
+					Now: now, DefTitle: defTitle, OcTitle: ocTitle, AtkCity: city, Order: order,
+					AtkTag: atkTag, DefTag: defTag,
+					AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
+					AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
+					PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
+				})
+				head := defConqBody
+				if order.OrderType == 2 {
+					// 掠夺：守方看不到战利品明细（原攻方正文里的「战果」）→ 抬头里补上「被掠夺资源」，
+					// 不能因为改了视角就把「我被抢了多少」这个关键信息弄丢。
+					head = fmt.Sprintf("你的城市%s被敌方部队掠夺!\n民心-%d 民怨+%d\n被掠夺资源: 粮%d 钢%d 油%d 稀矿%d 金%d",
+						targetName, lootFeel, lootFeel, lootFood, lootSteel, lootOil, lootRare, lootGold)
+				}
+				if order.OrderType == 2 {
+					h.addReport(target.UserID, 2, "被掠夺报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+						head+"\n\n"+defBody, detail, 0, target.ID)
+				} else {
+					h.addReport(target.UserID, repType, "被征服报告: "+targetName+"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
+						head+"\n\n"+defBody, detail, 0, target.ID)
+				}
+				// ★★ 2026-10-19 守方「军功声望」：**参战即得 100**（守住/被攻破都给，
+				//   与守方军官经验同为「防守贡献」口径）；原来攻方获胜这一场守方一点声望都没有。
+				h.addPrestige(target.UserID, 100)
 			}
 		}
 		// ★ 2026-10-08 补出发城 id（与守方战报同口径；原来 city_id=0，按当前城过滤时靠坐标反查兜底）
@@ -4920,43 +4960,25 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 && target != nil {
 			// ★ 2026-10-06 守方成功守住也按进攻意图归「战斗报告」：
 			//   掠夺→被掠夺报告 / 征服→被征服报告，军情警讯不再出现防守报告（只留预警）。
-			// ★ 2026-10-06 正文升级为与攻方报告同款的完整公文模板：
-			//   主题/出发地/目的地/时间/公文报告/一段式描述/军衔声望/军官/攻守兵力块/
-			//   军功声望/军官经验/战果/个人荣誉等（守方视角：敌方进攻、我方守住）。
-			defTitle, defType := "被掠夺报告", 2
-			ocTitle := "掠夺"
+			// ★★ 2026-10-19 正文与「攻方获胜」分支统一走 ezfyDefenderReportBody()
+			//   （守方视角：敌方进攻、我方守住；军衔声望/战果/尾部都是守方自己的）。
+			//   平局不算守住（Win=false → 公文报告显示「与敌方打成平局！」）。
+			defTitle, repType, ocTitle := "被掠夺报告", 2, "掠夺"
 			if order.OrderType == 3 {
-				defTitle, defType = "被征服报告", 4
-				ocTitle = "征服"
+				defTitle, repType, ocTitle = "被征服报告", 4, "征服"
 			}
-			defProfile := h.ensureProfile(target.UserID)
-			defReport := fmt.Sprintf("主题:%s\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:%s\n敌方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗胜利！\n",
-				defTitle, city.Name, city.X, city.Y, targetName, order.TargetX, order.TargetY,
-				time.UnixMilli(now).Format("2006-01-02 15:04"), defTitle,
-				targetName, order.TargetX, order.TargetY, ocTitle, br.Rounds)
-			defReport += fmt.Sprintf("军衔声望:%d\n", defProfile.Prestige)
-			// 攻守兵力块复用上面的标签/兵力口径（win=false：攻方落败、守方获胜）
-			// ★★ 2026-10-19 军官行挂在各自标题下（与攻方战报同体例）：
-			//   攻方 = 敌方带队军官(leadOfficer)，守方 = 我方城守(cityGuard)。
-			defReport += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
-			if leadOfficer != nil {
-				defReport += "军官:" + officerReportDesc(leadOfficer) + "\n"
-			}
-			defReport += troopChangeText(atkBefore, atkAfter)
-			defReport += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
-			if cityGuard != nil {
-				defReport += "军官:" + officerReportDesc(cityGuard) + "\n"
-			}
-			defReport += troopChangeText(defBefore, defAfter)
-			defReport += "\n军功声望+100"
-			if defExp > 0 {
-				defReport += fmt.Sprintf("\n军官经验+%d", defExp)
-			}
-			defReport += "\n战果\n黄金:0\n粮食:0\n钢铁:0\n石油:0\n稀矿:0"
-			defReport += h.battleStatsTail(target.UserID, 100, 0, healLineDef)
-			h.addReport(target.UserID, defType, defTitle+": "+targetName+
+			defReport := h.ezfyDefenderReportBody(ezfyDefReportSpec{
+				DefUID: target.UserID, DefName: targetName, DefWin: !draw, Draw: draw, Rounds: br.Rounds,
+				Now: now, DefTitle: defTitle, OcTitle: ocTitle, AtkCity: city, Order: order,
+				AtkTag: atkTag, DefTag: defTag,
+				AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
+				AtkOfficer: leadOfficer, DefOfficerDesc: officerReportDesc(cityGuard),
+				PrestigeGain: 100, DefExp: defExp, HealLineDef: healLineDef,
+			})
+			head := fmt.Sprintf("你的城市%s遭到「%s」的军队进攻, 我方守军击退了敌军!", targetName, city.Name)
+			h.addReport(target.UserID, repType, defTitle+": "+targetName+
 				"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")",
-				defReport, detail, 0, target.ID)
+				head+"\n\n"+defReport, detail, 0, target.ID)
 			h.addPrestige(target.UserID, 100)
 		}
 	}
@@ -4964,7 +4986,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-19 附属野地守方战报：胜利 → 被掠夺/被征服；失败 → 防守成功。
 	//   野地主人（可能是多城玩家）在这块地的归属城军情里就能看到这条。
 	if order.TargetType == 1 || order.TargetType == 2 {
-		h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, win, report, detail)
+		h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, win, detail, now,
+			br, atkTag, defTag, atkBefore, atkAfter, defBefore, defAfter, leadOfficer, wildDefOfficerDesc, wildDefExp)
 	}
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -5532,15 +5555,97 @@ func (h *EzfyHandler) ezfyWildDefOfficersDesc(orders []model.EzfyOrder) string {
 //	玩家切到那座城的「军情 → 战斗报告」就能看到（与城市守方战报同口径）。
 //	atkUID = 攻方 uid：打自己的地不生成守方战报。
 func (h *EzfyHandler) ezfyWildlandOwnerOf(x, y int, atkUID uint) (uid uint, cityID int64) {
-	var wl model.EzfyWildland
+	uid, cityID, _ = h.ezfyWildlandOwnerInfo(x, y, atkUID)
+	return uid, cityID
+}
+
+// ezfyWildlandOwnerInfo 与 ezfyWildlandOwnerOf 完全同口径，额外把**野地行**一起返回 ——
+// 供需要「我方野地名字(坐标)」的守方战报用（如「被侦查报告」）。这样同一份守方文案
+// 不用为了拿 Level 再查一次同一行（服务器单核，少一次读就少一次）。
+func (h *EzfyHandler) ezfyWildlandOwnerInfo(x, y int, atkUID uint) (uid uint, cityID int64, wl model.EzfyWildland) {
 	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error; err != nil || wl.CityId <= 0 {
-		return 0, 0
+		return 0, 0, model.EzfyWildland{}
 	}
 	var owner model.EzfyCity
 	if err := h.DB.First(&owner, wl.CityId).Error; err != nil || owner.UserID == 0 || owner.UserID == atkUID {
-		return 0, 0
+		return 0, 0, model.EzfyWildland{}
 	}
-	return owner.UserID, int64(owner.ID)
+	return owner.UserID, int64(owner.ID), wl
+}
+
+// ezfyDefReportSpec 「守方视角」战报正文的输入（★ 2026-10-19）。
+//
+// ★★ 抽出来的原因：玩家城市守方战报原来在「攻方获胜」分支**直接复用攻方正文**
+// （defBody := report）→ 守方看到的是「我方一支部队对 XXX 进行了征服」+ 攻方的
+// 军衔声望/军官经验/个人荣誉，完全是攻方视角（用户：「防守方战报怎么是攻方视角」）。
+// 「守方成功守住」分支本来就有正确模板，附属野地守方又是另一份手写模板 —— 三处很容易漂移。
+// 现在统一由 ezfyDefenderReportBody 生成（抬头句另由调用方拼）：
+//
+//	主题/出发地(敌方城)/目的地(我方城或野地)/时间/公文报告(「敌方一支部队对…」)/
+//	守方军衔声望(本人)/攻守兵力块(军官行挂各自标题下)/军功声望(守方)/军官经验(守方)/战果(守方)/尾部。
+type ezfyDefReportSpec struct {
+	DefUID   uint            // 守方玩家 uid（取本人军衔声望与尾部统计）
+	DefName  string          // 守方目标名（城市名 / 野地名）
+	DefWin   bool            // 守方是否获胜（顶住进攻）
+	Draw     bool            // 40 回合未分胜负
+	Rounds   int             // 回合数
+	Now      int64           // 结算时间(ms)
+	DefTitle string          // 主题/公文报告类型名："被掠夺报告"/"被征服报告"
+	OcTitle  string          // 战斗描述用词："掠夺"/"征服"
+	AtkCity  *model.EzfyCity // 攻方城（取名字与出发坐标）
+	Order    *model.EzfyOrder
+
+	AtkTag, DefTag                           string // 攻/守方 胜败平标签
+	AtkBefore, AtkAfter, DefBefore, DefAfter map[int]int64
+
+	AtkOfficer     *model.EzfyOfficer // 攻方带队军官（挂在 [攻方] 标题下）
+	DefOfficerDesc string             // 守方军官展示文案（城守 / 野地驻军带队军官聚合）
+	PrestigeGain   int                // 守方本场军功声望（>0 才输出该行）
+	DefExp         int64              // 守方军官本场经验（>0 才输出该行）
+	HealLineDef    string             // 守方「回收比例」行（空串=不显示）
+}
+
+// ezfyDefenderReportBody 生成「守方视角」战报正文（**不含抬头句**，调用方自己拼），
+// 玩家城市（被掠夺/被征服/守住）与附属野地（被掠夺/被征服/守住）共用，避免视角与口径漂移。
+func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {
+	atkName := "敌军"
+	atkX, atkY := 0, 0
+	if s.AtkCity != nil {
+		if s.AtkCity.Name != "" {
+			atkName = s.AtkCity.Name
+		}
+		atkX, atkY = s.AtkCity.X, s.AtkCity.Y
+	}
+	tx, ty := 0, 0
+	if s.Order != nil {
+		tx, ty = s.Order.TargetX, s.Order.TargetY
+	}
+	defProfile := h.ensureProfile(s.DefUID)
+	b := fmt.Sprintf("主题:%s\n出发地:%s(%d,%d)\n目的地:%s(%d,%d)\n时间:%s\n公文报告:%s\n敌方一支部队对 %s[ %d，%d ]进行了%s。战斗共持续 %d 回合，我方战斗%s\n",
+		s.DefTitle, atkName, atkX, atkY, s.DefName, tx, ty,
+		time.UnixMilli(s.Now).Format("2006-01-02 15:04"), s.DefTitle,
+		s.DefName, tx, ty, s.OcTitle, s.Rounds, battleOutcomeText(s.DefWin, s.Draw))
+	b += fmt.Sprintf("军衔声望:%d\n", defProfile.Prestige)
+	b += fmt.Sprintf("[%s]攻方:%s\n", s.AtkTag, atkName)
+	if s.AtkOfficer != nil {
+		b += "军官:" + officerReportDesc(s.AtkOfficer) + "\n"
+	}
+	b += troopChangeText(s.AtkBefore, s.AtkAfter)
+	b += fmt.Sprintf("--------------------\n[%s]守方:%s\n", s.DefTag, s.DefName)
+	if s.DefOfficerDesc != "" {
+		b += "军官:" + s.DefOfficerDesc + "\n"
+	}
+	b += troopChangeText(s.DefBefore, s.DefAfter)
+	if s.PrestigeGain > 0 {
+		b += fmt.Sprintf("\n军功声望+%d", s.PrestigeGain)
+	}
+	if s.DefExp > 0 {
+		b += fmt.Sprintf("\n军官经验+%d", s.DefExp)
+	}
+	// 守方战果恒为 0（战利品/失地都由抬头句与攻方战报承载）—— 与「回收比例/掠夺比例」口径一致。
+	b += "\n战果\n黄金:0\n粮食:0\n钢铁:0\n石油:0\n稀矿:0"
+	b += h.battleStatsTail(s.DefUID, s.PrestigeGain, 0, s.HealLineDef)
+	return b
 }
 
 // addWildlandOwnerReport 给「附属野地」主人写守方战报（用户 2026-10-19：
@@ -5551,11 +5656,14 @@ func (h *EzfyHandler) ezfyWildlandOwnerOf(x, y int, atkUID uint) (uid uint, city
 //	                    （与玩家城市守方完全同口径：ezfyReportCategory 只有这两个前缀
 //	                     才归「战斗报告(2)」，「防守报告」会被归到「其他(3)」看不到）
 //
-// body 复用攻方战报正文（同一份战况，标题/抬头换成守方视角）。
-// detail = 逐回合战斗详情：原样写进守方战报，前端才会出现 [展开/收起逐回合详情]
-// （用户反馈「附属野地被打战报没有逐回合详情」）。
+// detail = 逐回合战斗详情：原样写进守方战报，前端才会出现 [展开/收起逐回合详情]。
+// 正文由 ezfyDefenderReportBody() 按**守方视角**生成（不再复用攻方正文），
+// 守方军官经验(defExp)与军功声望(参战 +100)也在这里落地。
 func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID uint, ownerCityID int64,
-	atkCity *model.EzfyCity, targetName string, win bool, body, detail string) {
+	atkCity *model.EzfyCity, targetName string, win bool, detail string, now int64,
+	br ezfyBattleResult, atkTag, defTag string,
+	atkBefore, atkAfter, defBefore, defAfter map[int]int64,
+	leadOfficer *model.EzfyOfficer, defOfficerDesc string, defExp int64) {
 	if ownerUID == 0 || ownerCityID == 0 {
 		return
 	}
@@ -5565,24 +5673,73 @@ func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID ui
 	}
 	pos := fmt.Sprintf("(%d,%d)", order.TargetX, order.TargetY)
 	title := "被掠夺报告: " + targetName + pos
+	defTitle := "被掠夺报告"
 	reportType := 2
-	head := fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 未被掠夺!\n", targetName, pos, atkName)
+	ocName := "掠夺"
+	head := fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 未被掠夺!", targetName, pos, atkName)
 	if order.OrderType == 3 {
 		title = "被征服报告: " + targetName + pos
+		defTitle = "被征服报告"
 		reportType = 4
-		head = fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 野地仍在!\n", targetName, pos, atkName)
+		ocName = "征服"
+		head = fmt.Sprintf("你的附属野地 %s%s 遭到「%s」的军队进攻, 我方守军击退了敌军, 野地仍在!", targetName, pos, atkName)
 	}
 	if win {
 		if order.OrderType == 3 {
-			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队征服, 该野地已被敌方占领!\n", targetName, pos, atkName)
+			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队征服, 该野地已被敌方占领!", targetName, pos, atkName)
 		} else {
-			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队掠夺!\n", targetName, pos, atkName)
+			head = fmt.Sprintf("你的附属野地 %s%s 被「%s」的军队掠夺!", targetName, pos, atkName)
 		}
 	}
-	if body != "" {
-		head += "\n" + body
+	// ★★ 2026-10-19 守方「军功声望」：**参战即得 100**（守住/被攻破都给，与玩家城守方同口径，
+	//   也与守方军官经验一样按「防守贡献」算）—— 用户：「军官经验、声望补下吧应该有的」。
+	//   原来野地守方一点声望都没有（被攻破那份报告显示的其实是**攻方**的声望，见上）。
+	defPrestige := 100
+	body := h.ezfyDefenderReportBody(ezfyDefReportSpec{
+		DefUID: ownerUID, DefName: targetName, DefWin: !win && !br.Draw, Draw: br.Draw, Rounds: br.Rounds,
+		Now: now, DefTitle: defTitle, OcTitle: ocName, AtkCity: atkCity, Order: order,
+		AtkTag: atkTag, DefTag: defTag,
+		AtkBefore: atkBefore, AtkAfter: atkAfter, DefBefore: defBefore, DefAfter: defAfter,
+		AtkOfficer: leadOfficer, DefOfficerDesc: defOfficerDesc,
+		PrestigeGain: defPrestige, DefExp: defExp,
+	})
+	h.addReport(ownerUID, reportType, title, head+"\n\n"+body, detail, order.ID, ownerCityID)
+	if defPrestige > 0 {
+		h.addPrestige(ownerUID, defPrestige)
 	}
-	h.addReport(ownerUID, reportType, title, head, detail, order.ID, ownerCityID)
+}
+
+// addWildGarrisonOfficerExp 给「玩家附属野地」守军各部队的带队军官发战斗经验
+// （★ 2026-10-19 用户：「军官经验…应该有的」）。
+//
+// 野地守军是订单（增援6/采集7），每单只存带队军官**名字**；这里按归属城 + 名字
+// 回查军官实例逐个加经验（与 ezfyWildDefOfficersDesc 同口径）。exp<=0 / 无名字则跳过。
+func (h *EzfyHandler) addWildGarrisonOfficerExp(orders []model.EzfyOrder, ownerCityID int64, exp int64) {
+	if exp <= 0 || ownerCityID <= 0 || len(orders) == 0 {
+		return
+	}
+	names := make([]string, 0, len(orders))
+	seen := map[string]bool{}
+	for i := range orders {
+		n := strings.TrimSpace(orders[i].Officer)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		names = append(names, n)
+	}
+	if len(names) == 0 {
+		return
+	}
+	var owner model.EzfyCity
+	if err := h.DB.First(&owner, ownerCityID).Error; err != nil {
+		return
+	}
+	var os []model.EzfyOfficer
+	h.DB.Where("city_id = ? AND name IN ?", owner.ID, names).Find(&os)
+	for i := range os {
+		h.addOfficerExp(&owner, os[i].ID, exp)
+	}
 }
 
 // ezfyWriteBackWildGarrisonLeft 野地驻军战损写回（**攻方未胜**时调用）。
@@ -5670,24 +5827,24 @@ func (h *EzfyHandler) ezfyWriteBackWildGarrisonLeft(orders []model.EzfyOrder, lo
 //	  不会运回野地主人城市，也**不缴获给攻方**（与 HarvestAll 的「收获入城」相反, 这里直接损失）。
 //
 // ★★ 2026-10-19 用户规则：攻击**有归属(玩家附属)**的野地**不产出任何战利品**
-//   （防「反复打同一块有主野地刷资源」）—— 所以守军采集队身上已采的资源也一并损失，
-//   不并入攻方 loot。中立野地 / AI 寇城的战利品不受影响（不经过本函数）。
+//
+//	（防「反复打同一块有主野地刷资源」）—— 所以守军采集队身上已采的资源也一并损失，
+//	不并入攻方 loot。中立野地 / AI 寇城的战利品不受影响（不经过本函数）。
 //
 // 在途(4)采集队不在此列：它还没驻守到地，由 ezfyClearWildlandAt 转返航带回。
-// detail = 逐回合战斗详情，随「附属野地失守」战报一并落库（前端才会出现 [展开/收起逐回合详情]）。
-func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64, detail string) int {
+//
+// ★★ 2026-10-19 用户规则（去重）：「附属野地失守」这条不再单独发 ——
+// 野地主人已经会收到一条「被掠夺/被征服报告」（见 addWildlandOwnerReport），
+// 「有第一个就够了」，再发一条纯属浪费服务器资源。本函数现在只负责歼灭守军订单。
+func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, now int64) {
 	var wl model.EzfyWildland
 	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error; err != nil || wl.CityId <= 0 {
-		return 0 // 中立野地/寇城: 没有玩家守军
-	}
-	var owner model.EzfyCity
-	if err := h.DB.First(&owner, wl.CityId).Error; err != nil || owner.UserID == 0 {
-		return 0 // 野地主人城不存在（遗留野地行）
+		return // 中立野地/寇城: 没有玩家守军
 	}
 	var orders []model.EzfyOrder
 	h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wl.ID).Find(&orders)
 	if len(orders) == 0 {
-		return 0 // 无驻军/采集部队 → 守军本来就是 0
+		return // 无驻军/采集部队 → 守军本来就是 0
 	}
 	ids := make([]int64, 0, len(orders))
 	for i := range orders {
@@ -5697,23 +5854,6 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, no
 	//   （用户：「攻击有归属的野地应该都是 0，不然有人靠这个刷资源」）。
 	h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", ids).
 		Updates(map[string]interface{}{"status": 4, "carry": "", "arrive_time": 0, "collect_start": 0})
-	atkName := "敌军"
-	if atkCityID > 0 {
-		var ac model.EzfyCity
-		if err := h.DB.First(&ac, atkCityID).Error; err == nil {
-			atkName = ac.Name
-		}
-	}
-	lootNote := "采集到的资源随之损失。"
-	body := fmt.Sprintf("你占领的野地(%d,%d) 遭到「%s」的军队进攻, 守军(驻军/采集部队)全军覆没, %s",
-		wl.X, wl.Y, atkName, lootNote)
-	// ★ 2026-10-19 合并成**一条**：原来按「驻军/采集订单」逐条写，野地被打一次要收 N 条
-	//   一模一样的「附属野地失守」。守军损失说一次就够，战果细节由
-	//   addWildlandOwnerReport 写的「被掠夺/被征服报告」承载。
-	if len(orders) > 0 {
-		h.addReport(owner.UserID, 2, "战斗报告: 附属野地失守", body, detail, orders[0].ID, owner.ID)
-	}
-	return len(ids)
 }
 
 // addReport 战报写入

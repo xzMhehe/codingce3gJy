@@ -48,16 +48,26 @@ func TestWildlandPvp(t *testing.T) {
 		t.Fatal("指挥室「准备回合」未把野地守军军官写进 defOfficerDesc")
 	}
 
-	// ④ 守方战报带逐回合详情：addWildlandOwnerReport 必须接收并透传 detail
-	if !strings.Contains(order, "atkCity *model.EzfyCity, targetName string, win bool, body, detail string) {") {
-		t.Fatal("addWildlandOwnerReport 未接收 detail（守方战报没有逐回合详情）")
+	// ④ 守方战报带逐回合详情 + **守方视角**：addWildlandOwnerReport 现搭守方正文并透传 detail
+	if !strings.Contains(order, "atkCity *model.EzfyCity, targetName string, win bool, detail string, now int64,") {
+		t.Fatal("addWildlandOwnerReport 未接收 detail/now（守方战报没有逐回合详情 / 模板参数）")
 	}
-	if !strings.Contains(order, "h.addReport(ownerUID, reportType, title, head, detail, order.ID, ownerCityID)") {
+	if !strings.Contains(order, `h.addReport(ownerUID, reportType, title, head+"\n\n"+body, detail, order.ID, ownerCityID)`) {
 		t.Fatal("守方战报未把 detail 写进战报（前端不显示 [展开/收起逐回合详情]）")
 	}
-	if strings.Count(order, ", city, targetName, true, report, detail)") < 1 ||
-		strings.Count(order, ", city, targetName, win, report, detail)") < 1 {
-		t.Fatal("addWildlandOwnerReport 的两处调用未传 detail")
+	if !strings.Contains(order, "敌方一支部队对 %s[ %d，%d ]进行了%s") {
+		t.Fatal("守方战报仍是攻方视角（应为「敌方一支部队对…」）")
+	}
+	if strings.Count(order, ", targetName, true, detail, now,") < 1 ||
+		strings.Count(order, ", targetName, win, detail, now,") < 1 {
+		t.Fatal("addWildlandOwnerReport 的两处调用未传 detail/now")
+	}
+	// ④b 守方也有军官经验/军功声望（用户 2026-10-19：「军官经验、声望补下吧应该有的」）
+	if !strings.Contains(order, "h.addWildGarrisonOfficerExp(wildDefOrders, wlOwnerCityID, wildDefExp)") {
+		t.Fatal("野地守军带队军官未发战斗经验")
+	}
+	if !strings.Contains(order, "func (h *EzfyHandler) ezfyDefenderReportBody(s ezfyDefReportSpec) string {") {
+		t.Fatal("缺少城市/野地共用的守方视角正文生成器 ezfyDefenderReportBody")
 	}
 
 	// ⑤ 有玩家守军的附属野地：像玩家城一样进指挥室，守方也能指挥

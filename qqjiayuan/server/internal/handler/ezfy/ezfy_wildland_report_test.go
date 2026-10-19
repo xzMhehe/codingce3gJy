@@ -35,8 +35,9 @@ func TestWildlandOwnerReport(t *testing.T) {
 	if !strings.Contains(src, "owner.UserID == atkUID") {
 		t.Fatal("ezfyWildlandOwnerOf 未排除「自己打自己的野地」")
 	}
-	// 守军覆没报告合并成一条（原来按驻军/采集订单逐条写，野地主人一次被打收 N 条重复）
-	if !strings.Contains(src, "if len(orders) > 0 {\n\t\th.addReport(owner.UserID, 2, \"战斗报告: 附属野地失守\"") {
-		t.Fatal("「附属野地失守」未收敛成一条（仍按订单逐条写）")
+	// 守方只留一条「被掠夺/被征服报告」：不再另发「战斗报告: 附属野地失守」
+	// （用户 2026-10-19：「有第一个就够了」——重复报告浪费服务器资源）
+	if strings.Contains(src, "战斗报告: 附属野地失守") {
+		t.Fatal("附属野地被打仍另发「战斗报告: 附属野地失守」（与守方战报重复）")
 	}
 }
