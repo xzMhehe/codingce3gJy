@@ -311,9 +311,7 @@
 
           <!-- ④ 随军资源（★ 2026-10-07 所有出征类型都能带：玩家资源多了可随身带出腾仓库/防被抢。
                从出发城扣除、占部队负重；采集产出入库时不重复入库，返航/召回原样带回） -->
-          <div class="of-sec">④ 随军资源
-            <span class="of-hint">（从出发城扣、占负重；返航随部队带回）</span>
-          </div>
+          <div class="of-sec">④ 随军资源</div>
           <div class="of-rows">
             <div class="of-row" v-for="res in ezfy.resFields" :key="res.key"
                  :class="{ 'of-off': ezfy.orderResDisabled }"
