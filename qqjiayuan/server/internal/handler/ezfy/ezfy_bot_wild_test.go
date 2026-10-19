@@ -50,4 +50,9 @@ func TestBotWildAttack(t *testing.T) {
 	if !strings.Contains(order, "if city.IsBot == 1 && order.TargetType != 3 {") {
 		t.Fatal("人机打野地仍会被强制进指挥室（人机无法指挥，会干等）")
 	}
+
+	// ⑤ 战报不再追加机制说明「(人机只摧毁野地归属, 不占领)」—— 用户要求去掉（冗余提示）
+	if strings.Contains(order, `report += "\n(人机只摧毁野地归属`) {
+		t.Fatal("战报里仍有冗余提示「人机只摧毁野地归属, 不占领」，应删除")
+	}
 }

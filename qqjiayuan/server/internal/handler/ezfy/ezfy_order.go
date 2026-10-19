@@ -1356,9 +1356,18 @@ func (h *EzfyHandler) createOrder(uid uint, city *model.EzfyCity, orderType, tar
 		// ★ 野地记录来自上面那个并行波（ownWild），不再单独查一次
 		if ownWild != nil && ownWild.CityId > 0 {
 			var oc model.EzfyCity
-			if err := h.DB.First(&oc, ownWild.CityId).Error; err == nil && oc.UserID == uid {
-				return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
-					"; 如要攻打请先在「附属野地」里[放弃]该野地"
+			if err := h.DB.First(&oc, ownWild.CityId).Error; err == nil {
+				if oc.UserID == uid {
+					return "这是你自己的附属野地, 不能" + ezfyOrderTypeName(orderType) +
+						"; 如要攻打请先在「附属野地」里[放弃]该野地"
+				}
+				// ★★ 2026-10-19 用户规则：**自己军团（同盟）成员的附属野地也不能出征/掠夺/征服**。
+				//   与「不能攻击同盟成员的城市」（上面掠夺/征服玩家城那段 isAllyCity 判定）同口径，
+				//   原来只拦了自己名下的野地 —— 同团成员的野地照打不误（用户反馈的 bug）。
+				if h.isAllyCity(uid, int64(oc.ID)) {
+					return "不能" + ezfyOrderTypeName(orderType) +
+						"同盟(军团)成员的附属野地"
+				}
 			}
 		}
 		// ★ 2026-10-18 用户规则更新：**玩家附属野地允许被攻打**（即使有人在驻守/采集）。
@@ -2208,8 +2217,9 @@ func hasBattleOrder(orders []model.EzfyOrder) bool {
 	return false
 }
 
-// processIncoming 把「正在攻打 uid 名下城市、已到点」的敌方订单结算掉（开战场 / 发军情警讯）。
-// 只处理 target_type=3（玩家城）且 status=0（行进中，到点）的订单，交给 processArrive 走统一流程。
+// processIncoming 把「正在攻打 uid 名下城市/附属野地、已到点」的敌方订单结算掉（开战场 / 发军情警讯）。
+// 处理 target_type=3（玩家城）与 target_type IN (1,2)（有玩家驻军的附属野地）且 status=0（行进中，到点）的订单，
+// 交给 processArrive 走统一流程。
 // ★ 2026-10-04 cities 可选：调用方（如 /view）已查好城市 id 时传入，省一次 Pluck 的 RTT。
 //
 // ★ 2026-10-04 性能（用户反馈「/view 2s+」）：3 秒内刚确认过「无来袭订单」就直接跳过，
@@ -2243,9 +2253,17 @@ func (h *EzfyHandler) fetchIncoming(uid uint, now int64, cities ...[]int64) ([]m
 	if len(ids) == 0 {
 		return nil, false
 	}
+	// ★★ 2026-10-19 「有玩家驻军的附属野地」的守方也是真人：把「正在打我方附属野地」
+	//   的到达订单也纳入来袭，让守方自己的轮询就能触发开战场/军情警报（原来只认 target_type=3 玩家城）。
+	//   用一条 LEFT JOIN 完成（野地 target_id 是野地 id，需要按 ezfy_wildland.city_id 映射到归属城）。
 	var orders []model.EzfyOrder
-	h.DB.Where("status = 0 AND target_type = 3 AND target_id IN ? AND arrive_time <= ?", ids, now).
-		Order("id ASC").Find(&orders)
+	h.DB.Table("ezfy_order").
+		Select("ezfy_order.*"). // ★ 只取订单列，避免野地表同名列(id/x/y/city_id)在 SELECT * 时覆盖订单字段
+		Joins("LEFT JOIN ezfy_wildland w ON w.id = ezfy_order.target_id").
+		Where("ezfy_order.status = 0 AND ezfy_order.arrive_time <= ?", now).
+		Where("((ezfy_order.target_type = 3 AND ezfy_order.target_id IN ?) OR "+
+			"(ezfy_order.target_type IN (1,2) AND w.city_id IN ?))", ids, ids).
+		Order("ezfy_order.id ASC").Find(&orders)
 	if len(orders) == 0 {
 		// 确认无来袭 → 记 memo（下次 3 秒内跳过）
 		ezfyIncomingMemoMu.Lock()
@@ -3308,6 +3326,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	var cityGuard *model.EzfyOfficer
 	defEquip := ezfyBattleBonus{}
 	defOfficerDesc := ""
+	// ★★ 2026-10-19 玩家附属野地守军带队的军官（增援6/采集7 各带一名军官）：
+	//   攻方打「有驻军的附属野地」时，战报/指挥室也要能看到守方带的军官
+	//   （用户反馈「被攻击方附属野地增援带了军官，攻击方打的时候没显示」）。
+	wildDefOfficerDesc := ""
 
 	defender := []ezfyUnitGroup{}
 	var defExclude map[int]bool // 城市「不参与防御」兵种集合（case 3 里填充，驻军战块后构建友军守军时用）
@@ -3414,6 +3436,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				defender = append(defender, ezfyUnitGroup{TroopId: tid, Count: cnt[tid]})
 			}
 			wildDefCamp = 0 // 玩家部队按基础(通用)兵种名展示
+			// ★★ 2026-10-19 汇总该野地守军各部队的带队军官（战报/指挥室展示）。
+			wildDefOfficerDesc = h.ezfyWildDefOfficersDesc(wildDefOrders)
+			// 指挥室「准备回合」里的【守方军官】也一并展示（原来野地守军这段是空的）。
+			defOfficerDesc = wildDefOfficerDesc
 			targetName = ezfyWildTerrainDisplayName(order.TargetX, order.TargetY, true) +
 				strconv.Itoa(wildDef.Level) + "级"
 		} else {
@@ -4044,6 +4070,19 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 						target.Name, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
 					"", 0, target.ID)
 			}
+			// ★★ 2026-10-19 附属野地有玩家守军（增援6/采集7）时，守方同样是真人：
+			//   敌军抵达即给野地主人发「军情警报」，并提示到「军情 → 军队动态」[指挥]，
+			//   与打玩家城市同口径（原来守方完全不知道，等打完才知道）。
+			if hasPlayerDefender && (order.TargetType == 1 || order.TargetType == 2) {
+				ownerUID := wildDefOrders[0].UserID
+				if ownerUID > 0 && ownerUID != uid {
+					h.addReport(ownerUID, 6,
+						fmt.Sprintf("军情警报: 敌军已抵达 来自 %s(%d,%d)", city.Name, city.X, city.Y),
+						fmt.Sprintf("敌方部队已抵达我方附属野地「%s」(%d,%d) 附近，双方即将交战！\n来袭方城市：%s(%d,%d)\n请到「军情 → 军队动态」进入[指挥]部署守军。",
+							targetName, order.TargetX, order.TargetY, city.Name, city.X, city.Y),
+						"", order.ID, wildDefOrders[0].CityId)
+				}
+			}
 			// ★ 「等待指挥」不要放进战斗报告列表 —— 战斗还没结束，战报应当是**结果**。
 			//   部队状态在「军情 → 军队动态 / 出征队列」里已显示「战斗中 + [指挥]」，
 			//   再发一条战报只会把战斗报告列表搅乱。
@@ -4120,6 +4159,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	if cityGuard != nil {
 		report += "守军军官:" + officerReportDesc(cityGuard) + "\n"
+	}
+	// ★★ 2026-10-19 附属野地守军带队的军官（增援6/采集7）：与玩家城城守同体例展示。
+	if wildDefOfficerDesc != "" {
+		report += "守军军官:" + wildDefOfficerDesc + "\n"
 	}
 
 	atkBefore := groupCounts(attacker)
@@ -4338,7 +4381,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   全部守军订单置阵亡(4) + 采集负重清零（采集资源随之损失, 不入野地主人城市）。
 		//   掠夺/征服共用；在途采集队(4)不在此列（还没驻守到地, 由 ezfyClearWildlandAt 转返航）。
 		if order.TargetType == 1 || order.TargetType == 2 {
-			_, captured := h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now)
+			_, captured := h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now, detail)
 			// ★ 2026-10-19 缴获：被歼灭的采集部队身上已采的资源并入本次战利品
 			//   （用户：「征服、掠夺别人的附属野地不会获取资源」）
 			if captured.total() > 0 {
@@ -4442,7 +4485,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 					"("+strconv.Itoa(order.TargetX)+","+strconv.Itoa(order.TargetY)+")", report, detail, order.ID, city.ID)
 				// ★ 2026-10-19 野地上限放弃占领 ≠ 没打：战利品已抢走、守军已歼灭，
 				//   野地主人必须收到「被掠夺/被征服」报告（这个 return 会跳过函数末尾的统一写报）
-				h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, true, report)
+				h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, true, report, detail)
 				h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 					Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
 				return
@@ -4484,7 +4527,8 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				h.ezfyClearWildlandAt(order.TargetX, order.TargetY, now)
 				h.DB.Model(&model.EzfyMapArea{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
 					Update("owner_id", 0)
-				report += "\n(人机只摧毁野地归属, 不占领)"
+				// ★ 2026-10-19 战报不再追加「(人机只摧毁野地归属, 不占领)」——
+				//   这是机制说明（本应只写在注释里），玩家战报只需呈现战果。
 			}
 			// 寇城被摧毁, 24小时后复活
 			if order.TargetType == 2 {
@@ -4896,7 +4940,7 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	// ★ 2026-10-19 附属野地守方战报：胜利 → 被掠夺/被征服；失败 → 防守成功。
 	//   野地主人（可能是多城玩家）在这块地的归属城军情里就能看到这条。
 	if order.TargetType == 1 || order.TargetType == 2 {
-		h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, win, report)
+		h.addWildlandOwnerReport(order, wlOwnerUID, wlOwnerCityID, city, targetName, win, report, detail)
 	}
 	h.DB.Model(&model.EzfyOrder{}).Where("id = ?", order.ID).
 		Updates(map[string]interface{}{"status": order.Status, "result": order.Result, "return_time": order.ReturnTime})
@@ -5403,6 +5447,59 @@ func ezfyReconSucceed(order *model.EzfyOrder) bool {
 	return rand.Float64() < rate
 }
 
+// ezfyWildDefOfficersDesc 汇总「玩家附属野地」守军各部队（增援6/采集7）的带队军官，
+// 生成战报正文与指挥室「准备回合」共用的展示文案（如「甲(5级), 乙(3级)」）。
+//
+// ★★ 2026-10-19 用户反馈「被攻击方附属野地增援带了军官，攻击方打的时候没显示」：
+//
+//	野地守军是真人部队（驻军/采集队各带一名军官），原来只有野地/寇城「配置守将」
+//	那一分支会写 defOfficerDesc，玩家守军这分支完全没展示带队军官。
+//	这里从守军订单聚合军官名（订单只存名字），再批量回查等级补上「(N级)」。
+//	同野地守军都来自归属城（createOrder 限定 wl.CityId == 出发城），CityId 一致。
+func (h *EzfyHandler) ezfyWildDefOfficersDesc(orders []model.EzfyOrder) string {
+	if len(orders) == 0 {
+		return ""
+	}
+	names := []string{}
+	seen := map[string]bool{}
+	cityIDs := map[uint]bool{}
+	for i := range orders {
+		n := strings.TrimSpace(orders[i].Officer)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		names = append(names, n)
+		if orders[i].CityId > 0 {
+			cityIDs[uint(orders[i].CityId)] = true
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	levels := map[string]int{}
+	if len(cityIDs) > 0 {
+		ids := make([]uint, 0, len(cityIDs))
+		for cid := range cityIDs {
+			ids = append(ids, cid)
+		}
+		var os []model.EzfyOfficer
+		h.DB.Where("city_id IN ? AND name IN ?", ids, names).Find(&os)
+		for i := range os {
+			levels[os[i].Name] = os[i].Level
+		}
+	}
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		if lv := levels[n]; lv > 0 {
+			parts = append(parts, n+"("+strconv.Itoa(lv)+"级)")
+		} else {
+			parts = append(parts, n)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 // ezfyWildlandOwnerOf 查某坐标「附属野地」的主人（0,0 = 无主/中立/寇城/自己打自己）。
 //
 // ★ 2026-10-19 附属野地战报：ezfy_wildland.CityId 指向占领者城市，
@@ -5431,8 +5528,10 @@ func (h *EzfyHandler) ezfyWildlandOwnerOf(x, y int, atkUID uint) (uid uint, city
 //	                     才归「战斗报告(2)」，「防守报告」会被归到「其他(3)」看不到）
 //
 // body 复用攻方战报正文（同一份战况，标题/抬头换成守方视角）。
+// detail = 逐回合战斗详情：原样写进守方战报，前端才会出现 [展开/收起逐回合详情]
+// （用户反馈「附属野地被打战报没有逐回合详情」）。
 func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID uint, ownerCityID int64,
-	atkCity *model.EzfyCity, targetName string, win bool, body string) {
+	atkCity *model.EzfyCity, targetName string, win bool, body, detail string) {
 	if ownerUID == 0 || ownerCityID == 0 {
 		return
 	}
@@ -5459,7 +5558,7 @@ func (h *EzfyHandler) addWildlandOwnerReport(order *model.EzfyOrder, ownerUID ui
 	if body != "" {
 		head += "\n" + body
 	}
-	h.addReport(ownerUID, reportType, title, head, "", order.ID, ownerCityID)
+	h.addReport(ownerUID, reportType, title, head, detail, order.ID, ownerCityID)
 }
 
 // ezfyWriteBackWildGarrisonLeft 野地驻军战损写回（**攻方未胜**时调用）。
@@ -5547,7 +5646,8 @@ func (h *EzfyHandler) ezfyWriteBackWildGarrisonLeft(orders []model.EzfyOrder, lo
 //	  不会运回野地主人城市（与 HarvestAll 的「收获入城」相反, 这里直接损失）。
 //
 // 在途(4)采集队不在此列：它还没驻守到地，由 ezfyClearWildlandAt 转返航带回。
-func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64) (int, ezfyCarry) {
+// detail = 逐回合战斗详情，随「附属野地失守」战报一并落库（前端才会出现 [展开/收起逐回合详情]）。
+func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64, detail string) (int, ezfyCarry) {
 	var loot ezfyCarry
 	var wl model.EzfyWildland
 	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error; err != nil || wl.CityId <= 0 {
@@ -5598,7 +5698,7 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, no
 	//   一模一样的「附属野地失守」。守军损失说一次就够，战果细节由
 	//   addWildlandOwnerReport 写的「被掠夺/被征服报告」承载。
 	if len(orders) > 0 {
-		h.addReport(owner.UserID, 2, "战斗报告: 附属野地失守", body, "", orders[0].ID, owner.ID)
+		h.addReport(owner.UserID, 2, "战斗报告: 附属野地失守", body, detail, orders[0].ID, owner.ID)
 	}
 	return len(ids), loot
 }

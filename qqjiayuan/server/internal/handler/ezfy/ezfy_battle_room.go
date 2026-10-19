@@ -133,14 +133,20 @@ func (h *EzfyHandler) ezfyBattleByOrder(orderId int64) *model.EzfyBattle {
 	return &b
 }
 
-// ezfyBattleDefenderUid 取战场守方玩家 uid（仅 target_type=3 攻击玩家城时有值，0 = AI/野地/寇城）。
-// 优先读 DefUserID（新开战场已落库），旧战场没写时回落按 target_id 查城市归属。
+// ezfyBattleDefenderUid 取战场守方玩家 uid（0 = 无真人守方：中立野地/寇城/AI）。
+//
+// ★★ 2026-10-19 附属野地也可能有真人守方（野地主人派了驻军/采集队）——
+// 新开战场已按 ezfyWildlandOwnerOf 落 DefUserID，这里优先读它；
+// 旧战场（target_type=3 且没写 DefUserID）仍回落按 target_id 查城市归属。
 func (h *EzfyHandler) ezfyBattleDefenderUid(b *model.EzfyBattle) uint {
-	if b == nil || b.TargetType != 3 {
+	if b == nil {
 		return 0
 	}
 	if b.DefUserID > 0 {
 		return b.DefUserID
+	}
+	if b.TargetType != 3 {
+		return 0
 	}
 	var city model.EzfyCity
 	if err := h.DB.First(&city, b.TargetId).Error; err == nil {
@@ -176,6 +182,11 @@ func (h *EzfyHandler) ezfyBattleStart(uid uint, order *model.EzfyOrder,
 		if err := h.DB.First(&tc, order.TargetId).Error; err == nil {
 			defUID = tc.UserID
 		}
+	} else if order.TargetType == 1 || order.TargetType == 2 {
+		// ★★ 2026-10-19 有玩家驻军的附属野地：守方是「野地主人」（真人），
+		//   记下 def_user_id，守方才能在「军情 → 军队动态」看到 [指挥] 并逐回合指挥
+		//   （与打玩家城市同口径）。中立野地/寇城无主 → 0，仍按 AI 处理。
+		defUID, _ = h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, uid)
 	}
 	b := &model.EzfyBattle{
 		OrderId: int64(order.ID), UserID: uid, CityId: order.CityId,
@@ -217,6 +228,10 @@ func (h *EzfyHandler) ezfyBattleAutoFinish(uid uint, order *model.EzfyOrder,
 			if err := h.DB.First(&tc, order.TargetId).Error; err == nil {
 				defUID = tc.UserID
 			}
+		} else if order.TargetType == 1 || order.TargetType == 2 {
+			// ★★ 2026-10-19 同 ezfyBattleStart：附属野地的守方是「野地主人」（真人），
+			//   记 def_user_id（攻守双方都离线时的自动结算也留痕，指挥室/战报归属正确）。
+			defUID, _ = h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, uid)
 		}
 		win := 2
 		if br.AttackerWin {
@@ -618,14 +633,12 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		phase = "cmd" // 指令期（前 25 秒）
 	}
 
-	// ★ 2026-10-06 攻守双方玩家昵称：PvP（target_type=3 打玩家城）时双方都是真人，
-	//   指挥室敌方行的「AI」标签换成玩家昵称；打野地/寇城（无玩家守方）保持 AI 兜底。
+	// ★ 2026-10-06 攻守双方玩家昵称：有真人守方（打玩家城 / 有驻军的附属野地）时双方都是真人，
+	//   指挥室敌方行的「AI」标签换成玩家昵称；无主野地/寇城保持 AI 兜底。
 	atkName, defName := "", ""
-	if b.TargetType == 3 {
+	if defUID := h.ezfyBattleDefenderUid(b); defUID > 0 {
 		atkName = h.ensureProfile(b.UserID).Nickname
-		if defUID := h.ezfyBattleDefenderUid(b); defUID > 0 {
-			defName = h.ensureProfile(defUID).Nickname
-		}
+		defName = h.ensureProfile(defUID).Nickname
 	}
 
 	// ★ 逐兵种指令：攻守双方各自带自己的指令，前端每行单独显示/下达
@@ -778,8 +791,8 @@ func (h *EzfyHandler) ezfyBattleView(b *model.EzfyBattle, snap ezfyBattleSnapsho
 		defTotal += u.Count
 	}
 
-	// PvP（攻击玩家城）→ 双方都能指挥，一键[自动战斗]对另一方不公平，禁用
-	pvp := b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0
+	// 有真人守方（打玩家城 / 有驻军的附属野地）→ 双方都能指挥，一键[自动战斗]对另一方不公平，禁用
+	pvp := h.ezfyBattleDefenderUid(b) > 0
 
 	// ★ 2026-10-06 保存/锁定配置：我方是否已锁定、对方是否已锁定、我方能否锁定。
 	//   my_locked = 观察方自己这一边是否已保存配置（保存即锁定，双方都锁或到点立即结算）。
@@ -1110,8 +1123,8 @@ func (h *EzfyHandler) BattleAuto(c *gin.Context) {
 		return
 	}
 	// ★ 2026-09-23 「两个人都在指挥的话不能点击[自动战斗]」：
-	//   攻击玩家城（PvP，双方都能指挥）时，一键打完对另一方不公平，禁用。
-	if b.TargetType == 3 && h.ezfyBattleDefenderUid(b) > 0 {
+	//   有真人守方（攻击玩家城 / 有驻军的附属野地，PvP，双方都能指挥）时，一键打完对另一方不公平，禁用。
+	if h.ezfyBattleDefenderUid(b) > 0 {
 		resp.OK(c, gin.H{"done": false, "msg": "真人对抗无法自动战斗，请逐回合指挥"})
 		return
 	}

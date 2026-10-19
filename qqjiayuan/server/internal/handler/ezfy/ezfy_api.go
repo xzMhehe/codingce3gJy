@@ -3927,8 +3927,14 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	//   status=3(常驻) 的增援订单(到友军城)此前不在动态查询内, 出站驻军不可见。
 	//   一并纳入；仅展示「活跃驻军」= result 为空(未返航过) 且目标城属于他人，
 	//   排除增援自己城市的僵尸订单与已归队订单。
+	// ★★ 2026-10-19 「附属野地增援驻军」也要出现在「军情 → 驻军」（用户反馈部队到了没显示）：
+	//   原来 status=3 分支只认 target_id IN (盟友城市) —— 野地驻军的 target_id 是**野地 id**，
+	//   不在城市列表里 → 到达后整支从驻军 tab 消失。野地驻军是增援到**自己占领的**野地
+	//   （createOrder 已限定 wl.CityId == 出发城），target_type 1/2，无需再判归属。
 	allyCity := h.DB.Model(&model.EzfyCity{}).Select("id").Where("user_id <> ?", uid)
-	oq := h.DB.Where("user_id = ? AND (status IN (0,1,2,?,?) OR (status = 3 AND order_type = 6 AND result = '' AND target_id IN (?)))",
+	oq := h.DB.Where("user_id = ? AND (status IN (0,1,2,?,?) OR "+
+		"(status = 3 AND order_type = 6 AND result = '' AND "+
+		"((target_type = 3 AND target_id IN (?)) OR target_type IN (1,2))))",
 		uid, ezfyOrderStatusBattle, ezfyOrderStatusWaiting, allyCity)
 	if cityId > 0 {
 		oq = oq.Where("city_id = ?", cityId)
@@ -4050,9 +4056,15 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			timeText = ezfyDurationText((o.ReturnTime - now) / 1000)
 		case 3:
 			// ★ 2026-10-02 出站驻军(增援到友军城, 常驻待命)：不采集, 可[召回]或等对方城主[遣返]
+			// ★★ 2026-10-19 增援到**自己附属野地**的驻军同样是 status=3：
+			//   文案不再写死「增援友军城」，按目标类型区分（野地驻军无法被对方遣返）。
 			statusName = "驻守中"
 			timeLabel = "驻守"
-			timeText = "增援友军城, 不可采集; 可[召回]撤兵或由对方城主[遣返]"
+			if o.TargetType == 3 {
+				timeText = "增援友军城, 不可采集; 可[召回]撤兵或由对方城主[遣返]"
+			} else {
+				timeText = "增援附属野地驻守, 敌袭时协助防守; 可[召回]撤兵"
+			}
 		case ezfyOrderStatusBattle:
 			statusName = "战斗中"
 			timeLabel = "本回合剩余"
@@ -4126,8 +4138,12 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 	dbq := h.DB.Where("def_user_id = ? AND status = 1 AND order_id IN (SELECT id FROM ezfy_order WHERE status = ?)",
 		uid, ezfyOrderStatusBattle)
 	// ★ 2026-10-01 防守战场按「被打的城市」过滤（battle.target_id = 守方城市 id）
+	// ★★ 2026-10-19 附属野地防守战场：target_id 是**野地 id**（不是城市 id），
+	//   按当前城过滤时要把「归属该城的野地」映射进来，否则守方切到该城看不到 [指挥]。
 	if cityId > 0 {
-		dbq = dbq.Where("target_id = ?", cityId)
+		dbq = dbq.Where("(target_type = 3 AND target_id = ?) OR "+
+			"(target_type IN (1,2) AND target_id IN (SELECT id FROM ezfy_wildland WHERE city_id = ?))",
+			cityId, cityId)
 	}
 	dbq.Find(&defBattles)
 	// ★★ 2026-10-05 修复「守方指挥结束了还显示指挥 / 指挥结束有延迟」：
@@ -4180,6 +4196,12 @@ func (h *EzfyHandler) ReportDynamics(c *gin.Context) {
 			if g := h.positionOfficer(uint(b.TargetId), ezfyPositionGuard); g != nil {
 				defOfficer = g.Name
 			}
+		} else if b.TargetType == 1 || b.TargetType == 2 {
+			// ★★ 2026-10-19 附属野地守军带队的军官（增援6/采集7），与战报展示同口径。
+			var gs []model.EzfyOrder
+			h.DB.Where("target_id = ? AND target_type IN (1,2) AND order_type IN (6,7) AND status IN (1,3)", b.TargetId).
+				Find(&gs)
+			defOfficer = h.ezfyWildDefOfficersDesc(gs)
 		}
 		views = append(views, gin.H{
 			"id": b.OrderId, "order_type": 0, "type_name": "防御",
