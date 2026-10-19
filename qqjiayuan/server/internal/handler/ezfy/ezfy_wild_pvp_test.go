@@ -37,8 +37,12 @@ func TestWildlandPvp(t *testing.T) {
 	if !strings.Contains(order, "wildDefOfficerDesc = h.ezfyWildDefOfficersDesc(wildDefOrders)") {
 		t.Fatal("附属野地守军分支未汇总带队军官")
 	}
-	if !strings.Contains(order, `report += "守军军官:" + wildDefOfficerDesc + "\n"`) {
-		t.Fatal("攻方战报未展示「守军军官:」（野地增援带的军官看不到）")
+	// ★ 2026-10-19 军官行改挂在 [攻方]/[守方] 标题下（用户：「看不出哪一方的」）
+	if !strings.Contains(order, `report += "军官:" + officerReportDesc(leadOfficer) + "\n"`) {
+		t.Fatal("攻方战报未在 [攻方] 块展示带队军官")
+	}
+	if !strings.Contains(order, `report += "军官:" + wildDefOfficerDesc + "\n"`) {
+		t.Fatal("攻方战报未在 [守方] 块展示野地增援带的军官")
 	}
 	if !strings.Contains(order, "defOfficerDesc = wildDefOfficerDesc") {
 		t.Fatal("指挥室「准备回合」未把野地守军军官写进 defOfficerDesc")

@@ -16,7 +16,7 @@ import (
 // 同时覆盖同批修复的三个真 bug：
 //  1. 战后剩余兵力没写回订单 → 下次继续打兵力又变满编；
 //  2. 一键召回漏掉野地驻军（只认 target_type=3）→ 永远召不回；
-//  3. 歼灭对方采集部队时 carry 被清空 = 资源蒸发，攻方「打附属野地拿不到资源」。
+//  3. 攻击有归属(玩家附属)的野地不产出战利品（战果全 0，防刷资源）。
 func TestWildGarrison(t *testing.T) {
 	order := rawFile(t, "ezfy_order.go")
 
@@ -41,13 +41,17 @@ func TestWildGarrison(t *testing.T) {
 		t.Fatal("野地驻军战损未写回订单（下次继续打时守军数量还是满编）")
 	}
 
-	// ③ 缴获：歼灭对方采集部队时，carry 里的资源要交给攻方，不能凭空清空
-	if !strings.Contains(order, "func (h *EzfyHandler) ezfyDestroyWildlandDefenders(") ||
-		!strings.Contains(order, ") (int, ezfyCarry)") {
-		t.Fatal("ezfyDestroyWildlandDefenders 未返回缴获资源")
+	// ③ 用户规则（2026-10-19 澄清）：攻击**有归属(玩家附属)**的野地**不产出资源/黄金**
+	//   —— 「应该都是 0 ... 不然有人靠这个刷资源」。所以野地配置产出 + 缴获守军采集物资
+	//   一律不计（战果全 0），采集队身上已采的资源随守军一起损失。
+	if !strings.Contains(order, "playerOwnedWild := (order.TargetType == 1 || order.TargetType == 2) && wlOwnerCityID > 0") {
+		t.Fatal("缺少「有归属野地战利品清零」判定（否则可反复打有主野地刷资源）")
 	}
-	if !strings.Contains(order, "lootFood += captured.Food") {
-		t.Fatal("缴获的采集物资未并入战利品（攻方打附属野地拿不到资源）")
+	if !strings.Contains(order, "lootFood, lootSteel, lootOil, lootRare, lootGold = 0, 0, 0, 0, 0") {
+		t.Fatal("有归属野地未把战利品清零（战果应全 0）")
+	}
+	if strings.Contains(order, "lootFood += captured.Food") {
+		t.Fatal("有归属野地仍把缴获的采集物资并入战利品（违反「战果全 0」）")
 	}
 
 	// ④ 军官：驻军订单(status=3 且未返航)也要算「军官在外」；但必须限定 order_type=6，

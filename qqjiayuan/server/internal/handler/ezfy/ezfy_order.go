@@ -4151,19 +4151,17 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 
 	profile := h.ensureProfile(uid)
 	report += fmt.Sprintf("军衔声望:%d\n", profile.Prestige)
-	// ★ 2026-10-05 战报里的兵种名**统一用基础兵种名**（不带阵营前缀），
-	//   攻方/守方都不再按阵营取 name_ally / name_axis。
-	// 带队军官 / 城守军官
-	if leadOfficer != nil {
-		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
-	}
-	if cityGuard != nil {
-		report += "守军军官:" + officerReportDesc(cityGuard) + "\n"
-	}
-	// ★★ 2026-10-19 附属野地守军带队的军官（增援6/采集7）：与玩家城城守同体例展示。
-	if wildDefOfficerDesc != "" {
-		report += "守军军官:" + wildDefOfficerDesc + "\n"
-	}
+	// ★★ 2026-10-19 用户反馈「攻守军官堆在抬头，看不出哪一方的」：
+	//   军官行不再集中写在「军衔声望」下方，改为**各自挂在 [攻方]/[守方] 标题下面**：
+	//     [胜]攻方:再战辉煌基地
+	//     军官:斯大林(350级)
+	//     航母 244900->244880(-20)
+	//     --------------------
+	//     [败]守方:海底森林10级
+	//     军官:Stalin(约瑟夫·斯大林)(350级)
+	//     航母 10000->0(-10000)
+	//   攻方军官 = 带队军官(leadOfficer)；守方军官 = 城守(cityGuard) 或
+	//   野地驻军带队军官(wildDefOfficerDesc，增援6/采集7)。
 
 	atkBefore := groupCounts(attacker)
 	atkAfter := groupCounts(br.AttackerLeft)
@@ -4173,8 +4171,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		atkTag, defTag = "平", "平"
 	}
 	report += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	if leadOfficer != nil {
+		report += "军官:" + officerReportDesc(leadOfficer) + "\n"
+	}
 	report += troopChangeText(atkBefore, atkAfter)
 	report += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
+	// ★★ 2026-10-19 守方军官跟在「[败]守方:」标题下（玩家城=城守；附属野地=驻军带队军官）。
+	if cityGuard != nil {
+		report += "军官:" + officerReportDesc(cityGuard) + "\n"
+	}
+	if wildDefOfficerDesc != "" {
+		report += "军官:" + wildDefOfficerDesc + "\n"
+	}
 	// ★★ 守方兵力(2026-09-23 修复报错)：原来 defBefore 直接取**野地配置满编兵力**，
 	//   再用它减去战斗损失得出「剩余」。但战斗实际打到的是**已经损耗过的守军**
 	//   （同一野地/城市被先前战斗打过、或指挥官中途换过），满编数 ≠ 战斗初始数，
@@ -4198,8 +4206,17 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	}
 	detail += "\n[双方兵力]\n"
 	detail += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+	if leadOfficer != nil {
+		detail += "军官:" + officerReportDesc(leadOfficer) + "\n"
+	}
 	detail += troopChangeText(atkBefore, atkAfter)
 	detail += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
+	if cityGuard != nil {
+		detail += "军官:" + officerReportDesc(cityGuard) + "\n"
+	}
+	if wildDefOfficerDesc != "" {
+		detail += "军官:" + wildDefOfficerDesc + "\n"
+	}
 	detail += troopChangeText(defBefore, defAfter)
 	detail += "[双方兵力]"
 
@@ -4336,6 +4353,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 	if order.TargetType == 1 || order.TargetType == 2 {
 		wlOwnerUID, wlOwnerCityID = h.ezfyWildlandOwnerOf(order.TargetX, order.TargetY, uid)
 	}
+	// ★★ 2026-10-19 用户规则：攻击**有归属(玩家附属)**的野地**不产出任何战利品** ——
+	//   野地配置产出（前面按 cfg.ResMin/ResMax 算好的 rnd）+ 守军缴获一律不计，战果全 0。
+	//   原因：「不然有人靠这个刷资源」—— 有主野地打完仍归主人，可被反复攻打刷战利品。
+	//   中立野地 / AI 寇城（wlOwnerCityID=0）照旧产出，不受影响。
+	//   ⚠️ 这里把 loot 清零后，下面「守方战报」仍会如实展示战果为 0。
+	playerOwnedWild := (order.TargetType == 1 || order.TargetType == 2) && wlOwnerCityID > 0
+	if playerOwnedWild {
+		lootFood, lootSteel, lootOil, lootRare, lootGold = 0, 0, 0, 0, 0
+		recyclePct = 0 // 无战利品 → 战报「掠夺比例」也应为 0（原野地口径写死 100%）
+	}
 
 	// ★★ 2026-10-19 野地驻军「被打掉一部分」→ 剩余兵力必须写回订单。
 	//   原来只有攻方**全胜**时统一歼灭（status=4），攻方被打退/打平时守军的战损
@@ -4381,18 +4408,10 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		//   全部守军订单置阵亡(4) + 采集负重清零（采集资源随之损失, 不入野地主人城市）。
 		//   掠夺/征服共用；在途采集队(4)不在此列（还没驻守到地, 由 ezfyClearWildlandAt 转返航）。
 		if order.TargetType == 1 || order.TargetType == 2 {
-			_, captured := h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now, detail)
-			// ★ 2026-10-19 缴获：被歼灭的采集部队身上已采的资源并入本次战利品
-			//   （用户：「征服、掠夺别人的附属野地不会获取资源」）
-			if captured.total() > 0 {
-				lootFood += captured.Food
-				lootSteel += captured.Steel
-				lootOil += captured.Oil
-				lootRare += captured.Rare
-				lootGold += captured.Gold
-				report += fmt.Sprintf("\n缴获敌军采集物资: 粮%d 钢%d 油%d 稀矿%d 金%d",
-					captured.Food, captured.Steel, captured.Oil, captured.Rare, captured.Gold)
-			}
+			// ★★ 2026-10-19 用户规则：有归属(玩家)的野地不产出战利品 → 歼灭守军时，
+			//   采集队身上已采的资源也**随之损失**，不并入攻方 loot（否则可反复刷资源）。
+			//   中立野地/寇城不经过本函数，其战利品不受影响。
+			h.ezfyDestroyWildlandDefenders(order.TargetX, order.TargetY, int64(city.ID), now, detail)
 		}
 		if targetProtected && order.TargetType == 3 {
 			report += "\n目标城市处于免战保护期, 无法掠夺资源!"
@@ -4916,13 +4935,18 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 				time.UnixMilli(now).Format("2006-01-02 15:04"), defTitle,
 				targetName, order.TargetX, order.TargetY, ocTitle, br.Rounds)
 			defReport += fmt.Sprintf("军衔声望:%d\n", defProfile.Prestige)
+			// 攻守兵力块复用上面的标签/兵力口径（win=false：攻方落败、守方获胜）
+			// ★★ 2026-10-19 军官行挂在各自标题下（与攻方战报同体例）：
+			//   攻方 = 敌方带队军官(leadOfficer)，守方 = 我方城守(cityGuard)。
+			defReport += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
+			if leadOfficer != nil {
+				defReport += "军官:" + officerReportDesc(leadOfficer) + "\n"
+			}
+			defReport += troopChangeText(atkBefore, atkAfter)
+			defReport += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
 			if cityGuard != nil {
 				defReport += "军官:" + officerReportDesc(cityGuard) + "\n"
 			}
-			// 攻守兵力块复用上面的标签/兵力口径（win=false：攻方落败、守方获胜）
-			defReport += fmt.Sprintf("[%s]攻方:%s\n", atkTag, city.Name)
-			defReport += troopChangeText(atkBefore, atkAfter)
-			defReport += fmt.Sprintf("--------------------\n[%s]守方:%s\n", defTag, targetName)
 			defReport += troopChangeText(defBefore, defAfter)
 			defReport += "\n军功声望+100"
 			if defExp > 0 {
@@ -5643,41 +5667,34 @@ func (h *EzfyHandler) ezfyWriteBackWildGarrisonLeft(orders []model.EzfyOrder, lo
 //
 //	· 订单置 status=4(阵亡)，不再返航、不留战后兵力；
 //	· 采集部队负重(carry) 一并清零 —— 「采集部队被打没, 采集到的资源也一起消失」,
-//	  不会运回野地主人城市（与 HarvestAll 的「收获入城」相反, 这里直接损失）。
+//	  不会运回野地主人城市，也**不缴获给攻方**（与 HarvestAll 的「收获入城」相反, 这里直接损失）。
+//
+// ★★ 2026-10-19 用户规则：攻击**有归属(玩家附属)**的野地**不产出任何战利品**
+//   （防「反复打同一块有主野地刷资源」）—— 所以守军采集队身上已采的资源也一并损失，
+//   不并入攻方 loot。中立野地 / AI 寇城的战利品不受影响（不经过本函数）。
 //
 // 在途(4)采集队不在此列：它还没驻守到地，由 ezfyClearWildlandAt 转返航带回。
 // detail = 逐回合战斗详情，随「附属野地失守」战报一并落库（前端才会出现 [展开/收起逐回合详情]）。
-func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64, detail string) (int, ezfyCarry) {
-	var loot ezfyCarry
+func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, now int64, detail string) int {
 	var wl model.EzfyWildland
 	if err := h.DB.Where("x = ? AND y = ?", x, y).Order("id DESC").First(&wl).Error; err != nil || wl.CityId <= 0 {
-		return 0, loot // 中立野地/寇城: 没有玩家守军
+		return 0 // 中立野地/寇城: 没有玩家守军
 	}
 	var owner model.EzfyCity
 	if err := h.DB.First(&owner, wl.CityId).Error; err != nil || owner.UserID == 0 {
-		return 0, loot // 野地主人城不存在（遗留野地行）
+		return 0 // 野地主人城不存在（遗留野地行）
 	}
 	var orders []model.EzfyOrder
 	h.DB.Where("target_id = ? AND order_type IN (6,7) AND status IN (1,3)", wl.ID).Find(&orders)
 	if len(orders) == 0 {
-		return 0, loot // 无驻军/采集部队 → 守军本来就是 0
+		return 0 // 无驻军/采集部队 → 守军本来就是 0
 	}
 	ids := make([]int64, 0, len(orders))
 	for i := range orders {
 		ids = append(ids, int64(orders[i].ID))
 	}
-	// ★★ 2026-10-19 缴获：被歼灭的采集部队身上「已采但还没运回」的资源，
-	//   改为**战利品交给攻方**（由调用方并入 loot 入账）。
-	//   原来这里直接 `carry=""` 清空 = 资源凭空蒸发 ——
-	//   攻方打下别人附属野地什么也拿不到（用户：「征服、掠夺别人的附属野地不会获取资源」）。
-	for i := range orders {
-		c := parseCarry(orders[i].Carry)
-		loot.Food += c.Food
-		loot.Steel += c.Steel
-		loot.Oil += c.Oil
-		loot.Rare += c.Rare
-		loot.Gold += c.Gold
-	}
+	// ★★ 2026-10-19 采集部队负重(carry) 直接清空：资源随守军一起损失，**不缴获给攻方**
+	//   （用户：「攻击有归属的野地应该都是 0，不然有人靠这个刷资源」）。
 	h.DB.Model(&model.EzfyOrder{}).Where("id IN ?", ids).
 		Updates(map[string]interface{}{"status": 4, "carry": "", "arrive_time": 0, "collect_start": 0})
 	atkName := "敌军"
@@ -5688,10 +5705,6 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, no
 		}
 	}
 	lootNote := "采集到的资源随之损失。"
-	if loot.total() > 0 {
-		lootNote = fmt.Sprintf("采集中的资源已被敌军缴获(粮%d 钢%d 油%d 稀矿%d 金%d)。",
-			loot.Food, loot.Steel, loot.Oil, loot.Rare, loot.Gold)
-	}
 	body := fmt.Sprintf("你占领的野地(%d,%d) 遭到「%s」的军队进攻, 守军(驻军/采集部队)全军覆没, %s",
 		wl.X, wl.Y, atkName, lootNote)
 	// ★ 2026-10-19 合并成**一条**：原来按「驻军/采集订单」逐条写，野地被打一次要收 N 条
@@ -5700,7 +5713,7 @@ func (h *EzfyHandler) ezfyDestroyWildlandDefenders(x, y int, atkCityID int64, no
 	if len(orders) > 0 {
 		h.addReport(owner.UserID, 2, "战斗报告: 附属野地失守", body, detail, orders[0].ID, owner.ID)
 	}
-	return len(ids), loot
+	return len(ids)
 }
 
 // addReport 战报写入
