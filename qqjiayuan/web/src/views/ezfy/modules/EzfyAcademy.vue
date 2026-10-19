@@ -45,8 +45,8 @@
         访问记录：<a href="javascript:;" @click="ezfy.go('visits')">{{ ezfy.selfInfo.visit_count || 0 }}</a><br/>
         <!-- ★ 2026-10-10 首页布局单选（老布局/新布局）：即选即生效，简约无提示 -->
         首页布局：
-        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout !== 2" @change="ezfy.setHomeLayout(1)"/>新布局</label>
-        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout === 2" @change="ezfy.setHomeLayout(2)"/>老布局</label><br/>
+        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout !== 2" @change="ezfy.setHomeLayout(1)"/>新</label>
+        <label><input type="radio" name="homeLayout" :checked="ezfy.homeLayout === 2" @change="ezfy.setHomeLayout(2)"/>老</label><br/>
         <a href="javascript:;" @click="ezfy.go('friends')">[申请好友]</a>
         <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
       </div>
@@ -197,7 +197,7 @@
           </span>
           <a href="javascript:;" @click="ezfy.doRefreshRecruit">[刷新]</a>
           <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
-          <a href="javascript:;" @click="ezfy.doUseRecruitTicket">[使用招生简章刷新]</a>
+          <a href="javascript:;" @click="ezfy.doUseRecruitTicket">[招生简章刷新]</a>
           <span class="gray">({{ ezfy.recruitTicketCount() }} 张)</span>
         </div>
         <div class="old-line">

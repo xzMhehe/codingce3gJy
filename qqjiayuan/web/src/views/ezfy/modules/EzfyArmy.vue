@@ -57,7 +57,6 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray">城防设施占用「城防空间」(围墙容量)，不占用人口。</div>
           <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
         </div>
     </template>

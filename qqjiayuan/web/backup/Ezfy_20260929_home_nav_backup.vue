@@ -827,7 +827,6 @@
               </td>
             </tr>
           </table>
-          <div class="old-line gray">城防设施占用「城防空间」(围墙容量)，不占用人口。</div>
           <a href="javascript:;" @click="go('back')">[返回]</a> <a href="javascript:;" @click="go('home')">[返回首页]</a>
         </div>
       </template>
@@ -3422,7 +3421,7 @@
             </span>
             <a href="javascript:;" @click="doRefreshRecruit">[刷新]</a>
             <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
-            <a href="javascript:;" @click="doUseRecruitTicket">[使用招生简章刷新]</a>
+            <a href="javascript:;" @click="doUseRecruitTicket">[招生简章刷新]</a>
             <span class="gray">(持有 {{ bagCount(13) }} 张)</span>
           </div>
           <div class="old-line">
