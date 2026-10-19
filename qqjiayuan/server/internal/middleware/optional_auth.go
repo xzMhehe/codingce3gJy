@@ -16,9 +16,11 @@ func OptionalAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 		auth := c.GetHeader("Authorization")
 		if auth != "" {
 			tokenStr := strings.TrimPrefix(auth, "Bearer ")
-			if claims, err := authutil.ParseToken(tokenStr, secret); err == nil {
+			// ★★ 2026-10-19 管理端/用户端 token 分离：两类都认（管理端页面也会调公开接口）。
+			if claims, err := authutil.ParseAnyToken(tokenStr, secret); err == nil {
 				c.Set(CtxUID, claims.UserID)
 				c.Set(CtxUName, claims.Nickname)
+				c.Set(CtxScope, claims.Issuer)
 			}
 		}
 		c.Next()

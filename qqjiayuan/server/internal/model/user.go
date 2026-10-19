@@ -68,6 +68,10 @@ type User struct {
 	//   退出接口把它顶到当前 → 中间件按「token 的 iat < session_at → 401 作废」。
 	//   只在退出时写，登录不写 —— 家园多设备同时登录不受影响。
 	SessionAt      int64     `gorm:"default:0;comment:最近退出登录时刻(ms,0=从未)" json:"session_at"`
+	// ★★ 2026-10-19 管理端 token 独立作废线（与上面的 SessionAt 互不影响）。
+	//   管理端登录/退出只顶这一列 → 不再把用户端（家园 web / 二战用户端）的 token 顶掉。
+	//   列缺失由 seed.EnsureHomeSchema 自动补（homeSchemaModels 已含 &model.User{}）。
+	AdminSessionAt int64     `gorm:"default:0;comment:管理端最近登录/退出时刻(ms,0=从未)" json:"admin_session_at"`
 	ActiveDays     float64    `gorm:"default:0;comment:家园活跃天数" json:"active_days"`                 // 家园活跃天数
 	LastActiveDate string     `gorm:"type:varchar(10);comment:最后活跃日期(去重)" json:"last_active_date"` // 最后活跃日期(去重)
 	InvitedBy      uint       `gorm:"default:0;comment:邀请人（0=自然注册）" json:"invited_by"`             // 邀请人（0=自然注册）

@@ -17,6 +17,9 @@ import (
 const (
 	CtxUID   = "uid"
 	CtxUName = "uname"
+	// CtxScope token 来源端（claims.Issuer）：authutil 的 homeIssuer / AdminIssuer / EzfyIssuer。
+	// ★★ 2026-10-19 管理端与用户端 token 分离：Logout 靠它决定「顶哪条会话作废线」。
+	CtxScope = "token_scope"
 )
 
 // badgeCleanLastMs 上次执行「过期勋章清理」的毫秒时间戳。
@@ -73,9 +76,18 @@ func CORS() gin.HandlerFunc {
 // `token 的 iat < session_at → 401 作废` 判掉线）。家园 token 无状态，本地清了不算数，
 // 脚本拿着旧 token 还能打接口 —— 退出时服务端把 session_at 顶到当前，旧 token 即失效。
 //
+// ★★ 2026-10-19 管理端/用户端 token 分离后，作废线有**两条**（互不影响）：
+//
+//	用户端 home token  → users.session_at        （本函数下方 homeSessionAtOf）
+//	管理端 admin token → users.admin_session_at  （下方 adminSessionAtOf）
+//
+// 两条线各自只作废本端的 token：管理端登录/退出不再把玩家端踢下线，玩家端登录也不再踢管理端。
+//
 // 性能：家园请求也走 1核1G + RDS，这里同样用 60s 进程内缓存；logout 接口写库后调
-// SetHomeSessionAt **立即刷新本机缓存**（多机部署时其他节点最迟 60s 生效，与二战侧同策略）。
-// 注意：只在「退出」时写 session_at，登录不写 → 家园多设备同时登录不受影响。
+// SetHomeSessionAt / SetAdminSessionAt **立即刷新本机缓存**（多机部署时其他节点最迟 60s 生效，
+// 与二战侧同策略）。
+// 注意：家园「退出」时写 session_at，「登录」也写（2026-10-18 单设备在线）→ 家园同一账号
+// 只允许一处在线；管理端是另一条线，不受此限制。
 var (
 	homeSessionCacheMu   sync.Mutex
 	homeSessionCache     = map[uint]int64{}
@@ -126,6 +138,48 @@ func SetHomeSessionAt(uid uint, at int64) {
 	homeSessionCacheMu.Unlock()
 }
 
+// ★★ 2026-10-19 管理端独立作废线（users.admin_session_at）。
+//
+//	与 homeSessionCache 完全独立的两份缓存/两条线：
+//	  用户端登录/退出 → users.session_at       → 只作废 home token
+//	  管理端登录/退出 → users.admin_session_at → 只作废 admin token
+//	所以「管理端登录 → 玩家端被迫下线」不再发生（反之亦然）。
+var (
+	adminSessionCacheMu   sync.Mutex
+	adminSessionCache     = map[uint]int64{}
+	adminSessionCacheDone = map[uint]time.Time{}
+)
+
+// adminSessionAtOf 取玩家「管理端最近登录/退出」时刻（0 = 从未），带进程内缓存。
+func adminSessionAtOf(db *gorm.DB, uid uint) int64 {
+	adminSessionCacheMu.Lock()
+	if at, ok := adminSessionCache[uid]; ok && time.Since(adminSessionCacheDone[uid]) < homeSessionCacheTTL {
+		adminSessionCacheMu.Unlock()
+		return at
+	}
+	adminSessionCacheMu.Unlock()
+	var at int64
+	// Raw 而非 model.User：列不存在时 at 保持 0 = 从未，不影响管理端登录。
+	db.Raw("SELECT admin_session_at FROM users WHERE id = ?", uid).Scan(&at)
+	adminSessionCacheMu.Lock()
+	if len(adminSessionCache) > 65536 {
+		adminSessionCache = map[uint]int64{}
+		adminSessionCacheDone = map[uint]time.Time{}
+	}
+	adminSessionCache[uid] = at
+	adminSessionCacheDone[uid] = time.Now()
+	adminSessionCacheMu.Unlock()
+	return at
+}
+
+// SetAdminSessionAt 管理端登录/退出后立即刷新本机缓存，保证本机即时生效。
+func SetAdminSessionAt(uid uint, at int64) {
+	adminSessionCacheMu.Lock()
+	adminSessionCache[uid] = at
+	adminSessionCacheDone[uid] = time.Now()
+	adminSessionCacheMu.Unlock()
+}
+
 // JWT 认证，并把活跃时间落库用于「在线人数」统计（节流 1 分钟）
 func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -136,7 +190,9 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 			return
 		}
 		tokenStr := strings.TrimPrefix(auth, "Bearer ")
-		claims, err := authutil.ParseToken(tokenStr, secret)
+		// ★★ 2026-10-19 管理端与用户端 token 分离：两类 token 都认（Issuer 不同），
+		//   下面按 Issuer 分别校各自的会话作废线 —— 这是「管理端登录不踢用户端」的关键。
+		claims, err := authutil.ParseAnyToken(tokenStr, secret)
 		if err != nil {
 			resp.Unauthorized(c, "登录已过期，请重新登录")
 			c.Abort()
@@ -144,11 +200,24 @@ func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 		}
 		c.Set(CtxUID, claims.UserID)
 		c.Set(CtxUName, claims.Nickname)
+		c.Set(CtxScope, claims.Issuer)
 
-		// ★★ 2026-10-15 家园退出 → 家园 token 作废：token 签发时刻早于「最近退出登录时刻」→ 401。
+		// ★★ 2026-10-19 按端分流校验（两条线互不影响）：
+		//   管理端 token → users.admin_session_at（管理端自己的登录/退出线）
+		//   用户端 token → users.session_at      （家园退出/单设备在线的线）
 		if claims.IssuedAt != nil {
-			if sessionAt := homeSessionAtOf(db, claims.UserID); sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
-				resp.Unauthorized(c, "账号已在其他设备退出登录，请重新登录")
+			var sessionAt int64
+			if claims.Issuer == authutil.AdminIssuer {
+				sessionAt = adminSessionAtOf(db, claims.UserID)
+			} else {
+				sessionAt = homeSessionAtOf(db, claims.UserID)
+			}
+			if sessionAt > 0 && claims.IssuedAt.UnixMilli() < sessionAt {
+				if claims.Issuer == authutil.AdminIssuer {
+					resp.Unauthorized(c, "管理端已在其他设备登录，请重新登录")
+				} else {
+					resp.Unauthorized(c, "账号已在其他设备退出登录，请重新登录")
+				}
 				c.Abort()
 				return
 			}

@@ -164,7 +164,10 @@ export default {
       }
 
       this.loading = true
-      const body = { name: this.name, password: this.pass }
+      // ★★ 2026-10-19 管理端/用户端 token 分离：带 scope=admin → 后端签发管理端专属 token
+      //   （Issuer=qqjiayuan-admin），并用 users.admin_session_at 这条独立作废线，
+      //   **不会**顶掉同账号在用户端（家园 web / 二战）的登录态。
+      const body = { name: this.name, password: this.pass, scope: 'admin' }
       if (this.needCaptcha) {
         body.captcha_id = this.captchaId
         body.captcha = this.captcha

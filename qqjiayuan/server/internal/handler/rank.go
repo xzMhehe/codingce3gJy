@@ -23,9 +23,10 @@ func (h *RankHandler) Top(c *gin.Context) {
 	typ := c.DefaultQuery("type", "noble")
 	uid := middleware.GetUID(c)
 	// 排行页为公开路由：已登录用户从 token 手动解析 uid 以计算「我的排名」
+	// ★★ 2026-10-19 管理端/用户端 token 分离：两类 token 都认（管理端页面也会看排行）。
 	if uid == 0 && h.Secret != "" {
 		if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") {
-			if claims, err := authutil.ParseToken(strings.TrimPrefix(auth, "Bearer "), h.Secret); err == nil {
+			if claims, err := authutil.ParseAnyToken(strings.TrimPrefix(auth, "Bearer "), h.Secret); err == nil {
 				uid = claims.UserID
 			}
 		}

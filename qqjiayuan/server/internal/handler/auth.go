@@ -197,6 +197,11 @@ type loginReq struct {
 	Password  string `json:"password" binding:"required"`
 	CaptchaID string `json:"captcha_id"` // 图形验证码 ID（密码输错满3次后必填）
 	Captcha   string `json:"captcha"`    // 图形验证码答案（算式计算结果）
+	// Scope 登录端：""/"user" = 用户端（家园 web，签 homeIssuer token）；
+	// "admin" = 管理端（admin-web，签 AdminIssuer token）。
+	// ★★ 2026-10-19 管理端与用户端 token 分离：两端 token 类型 + 会话作废线完全独立，
+	//   管理端登录不再把玩家端顶下线（见 authutil.AdminIssuer / middleware.JWTAuth）。
+	Scope string `json:"scope"`
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -262,21 +267,47 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	loginlimiter.Success(name)
 
-	// ★★ 2026-10-18 单设备在线（用户：「一个账户只能在线一个设备」，多地登录=异常缓存，一并踢下线）：
-	//   登录成功即把「最近签发时刻」顶到当前 → 该账号此前签发的**所有** token 立即作废，
-	//   后登录的顶掉先登录的（其它设备 / 异常缓存里的旧 token 全部 401）。
-	//   与「退出」(Logout) 同口径：家园 users.session_at + 二战 ezfy_account.session_at 一起顶。
-	//   ★ session_at 必须在**签发 token 之前**写（iat 取自签发时刻，二者同秒才恒通过；
-	//     若先签 token 再写 session_at，跨秒的瞬间刚签发的 token 就会立刻失效 = 登录即掉线）。
+	// ★★ 2026-10-19 管理端与用户端 token 分离（按「登录端」分流，不按账号身份判断）：
+	//
+	//	scope=admin（admin-web 登录）→ 签 AdminIssuer token，只顶 users.admin_session_at
+	//	   **不碰** users.session_at / ezfy_account.session_at
+	//	   → 玩家端（家园 web + 二战用户端）不会被迫下线（原现象：管理端一登录玩家就掉）。
+	//	scope=user/空（用户端登录）→ 签 homeIssuer token，顶 users.session_at + 二战 session_at
+	//	   （★ 2026-10-18 单设备在线：一个账号只能一处在线）**不碰** admin_session_at
+	//	   → 管理端已登录的会话不受影响。
+	//
+	//	★ 作废线必须在**签发 token 之前**写：iat 取自签发时刻，二者同秒才恒通过；
+	//	  若先签 token 再写 session_at，跨秒的瞬间刚签发的 token 就会立刻失效 = 登录即掉线。
+	//	★★ 2026-10-19 必须是「秒×1000」而不是 UnixMilli：JWT 的 NumericDate 精度是**秒**
+	//	  （iat 存的是 T，取 UnixMilli 得 T*1000）。若写毫秒(T*1000+500)，刚签发的 token
+	//	  iat=T*1000 立刻 < 作废线 → **登录即掉线**（已实测踩到）。同秒内重复登录顶不掉旧
+	//	  token 是该精度的固有限制，人工操作不可能触发，保持既有口径。
+	//	★ 管理端 token 只发给有 module:* 权限的账号（否则普通玩家也能顶管理端会话线）。
+	isAdminScope := strings.EqualFold(strings.TrimSpace(req.Scope), "admin")
 	nowSec := time.Now().Unix() * 1000
-	h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("session_at", nowSec)
-	middleware.SetHomeSessionAt(user.ID, nowSec)
-	if h.EzfyDB != nil && h.EzfyDB.Migrator().HasTable("ezfy_account") {
-		h.EzfyDB.Model(&model.EzfyAccount{}).Where("game_id = ?", user.ID).Update("session_at", nowSec)
-		middleware.SetEzfySessionAt(user.ID, nowSec)
+	var token string
+	var err error
+	if isAdminScope {
+		if !middleware.HasAdminPerm(h.DB, user.ID) {
+			userLog(h.DB, user.ID, "登陆失败", "无后台权限尝试登录管理端", c.ClientIP())
+			resp.Forbidden(c, "该账号没有后台访问权限，请用管理员账号登录")
+			return
+		}
+		if e := h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("admin_session_at", nowSec).Error; e != nil {
+			fmt.Printf("【警告】写 users.admin_session_at 失败（管理端退出将无法作废旧 token）: %v\n", e)
+		}
+		middleware.SetAdminSessionAt(user.ID, nowSec)
+		token, err = authutil.GenerateAdminToken(user.ID, user.Nickname, h.Secret, h.ExpH)
+	} else {
+		h.DB.Model(&model.User{}).Where("id = ?", user.ID).Update("session_at", nowSec)
+		middleware.SetHomeSessionAt(user.ID, nowSec)
+		if h.EzfyDB != nil && h.EzfyDB.Migrator().HasTable("ezfy_account") {
+			h.EzfyDB.Model(&model.EzfyAccount{}).Where("game_id = ?", user.ID).Update("session_at", nowSec)
+			middleware.SetEzfySessionAt(user.ID, nowSec)
+		}
+		token, err = authutil.GenerateToken(user.ID, user.Nickname, h.Secret, h.ExpH)
 	}
 
-	token, err := authutil.GenerateToken(user.ID, user.Nickname, h.Secret, h.ExpH)
 	if err != nil {
 		resp.ServerError(c, err)
 		return
@@ -307,7 +338,24 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	//   「点退出 → 跳登录页 → 输账号密码」，必然跨秒，实际不可见。
 	nowSec := (time.Now().Unix() + 1) * 1000
 
-	// 家园 token 作废
+	// ★★ 2026-10-19 管理端与用户端 token 分离：按**当前 token 的来源端**决定顶哪条作废线。
+	//
+	//	管理端 token（AdminIssuer）退出 → 只顶 users.admin_session_at
+	//	   → 同账号的家园 web / 二战用户端**不受影响**（原来管理端一退出玩家就掉线）。
+	//	用户端 token（homeIssuer）退出 → 顶 users.session_at + 二战 ezfy_account.session_at
+	//	   → 管理端会话不受影响。
+	scope, _ := c.Get(middleware.CtxScope)
+	if scope == authutil.AdminIssuer {
+		if e := h.DB.Model(&model.User{}).Where("id = ?", uid).Update("admin_session_at", nowSec).Error; e != nil {
+			fmt.Printf("【警告】写 users.admin_session_at 失败（管理端旧 token 未能作废）: %v\n", e)
+		}
+		middleware.SetAdminSessionAt(uid, nowSec)
+		userLog(h.DB, uid, "登出", "管理端退出", c.ClientIP())
+		resp.OK(c, gin.H{"msg": "已退出登录"})
+		return
+	}
+
+	// 用户端 token 作废
 	h.DB.Model(&model.User{}).Where("id = ?", uid).Update("session_at", nowSec)
 	middleware.SetHomeSessionAt(uid, nowSec)
 

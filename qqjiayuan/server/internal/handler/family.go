@@ -1044,12 +1044,13 @@ func familyBattleTitle(win bool) string {
 }
 
 // optUID 在公开接口里可选解析登录用户（未带 token 或无效则返回 0）
+// ★★ 2026-10-19 管理端/用户端 token 分离：两类 token 都认。
 func (h *FamilyHandler) optUID(c *gin.Context) uint {
 	auth := c.GetHeader("Authorization")
 	if auth == "" {
 		return 0
 	}
-	claims, err := authutil.ParseToken(strings.TrimPrefix(auth, "Bearer "), h.Secret)
+	claims, err := authutil.ParseAnyToken(strings.TrimPrefix(auth, "Bearer "), h.Secret)
 	if err != nil {
 		return 0
 	}
