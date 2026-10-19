@@ -85,7 +85,7 @@ info "/opt 剩余 ${AVAIL_MB}MB"
 
 HAS_DIR=$(rsh_read "test -d '$REMOTE_DIR' && echo yes || echo no")
 if [ "$HAS_DIR" = "yes" ]; then
-  info "远程已有 $REMOTE_DIR（二战 ${WWII_PORT} 监听数: $(rsh_read "ss -lntp 2>/dev/null | grep -c ':$WWII_PORT ' || true")）"
+  info "远程已有 ${REMOTE_DIR}（二战 ${WWII_PORT} 监听数: $(rsh_read "ss -lntp 2>/dev/null | grep -c ':$WWII_PORT ' || true")）"
 else
   info "WARN: 远程无 $REMOTE_DIR —— 全新部署（没有可备份的旧配置）"
 fi
@@ -147,7 +147,7 @@ else
   info "无备份/种子 → 使用解压出的模板配置"
 fi
 node "$SSH_RUN" exec "bash $REMOTE_DIR/wwii-patch-cfg.sh $REMOTE_DIR/server/config.yaml /opt/Linuxbushu/server/config.yaml http://$SSH_HOST:$HOME_PORT" || die "回填 WWII 配置失败"
-info "已从家园配置回填 MySQL host/密码 + home_url（http://$SSH_HOST:$HOME_PORT）"
+info "已从家园配置回填 MySQL host/密码 + home_url（http://${SSH_HOST}:${HOME_PORT}）"
 
 step "6/7 启动"
 node "$SSH_RUN" exec "cd $REMOTE_DIR && ./start.sh" || {
@@ -157,15 +157,21 @@ node "$SSH_RUN" exec "cd $REMOTE_DIR && ./start.sh" || {
 }
 
 step "7/7 验证"
-sleep 6
-LISTEN=$(rsh_read "ss -lntp 2>/dev/null | grep ':$WWII_PORT ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL")
+# ★ 2026-10-19 二战启动链（跨 WAN 跑 Ensure* DDL/灌种子）可能 30~60 秒才 bind 8081，
+#   原来 sleep 6 必误报 → 改成轮询，每 2 秒查一次，最多等 90 秒。
+WAITED=0; LISTEN=LISTEN_FAIL
+while [ "$WAITED" -lt 90 ]; do
+  [ "$(rsh_read "ss -lntp 2>/dev/null | grep ':$WWII_PORT ' >/dev/null && echo LISTEN_OK || echo LISTEN_FAIL")" = "LISTEN_OK" ] && { LISTEN=LISTEN_OK; break; }
+  sleep 2; WAITED=$((WAITED + 2))
+  [ $((WAITED % 10)) = 0 ] && info "等待 $WWII_PORT 就绪… 已 ${WAITED}s"
+done
 [ "$LISTEN" = "LISTEN_OK" ] || { info "二战 ${WWII_PORT} 未监听，日志尾部："; node "$SSH_RUN" exec "tail -n 25 $REMOTE_DIR/logs/server.log" 2>/dev/null || true; die "二战 ${WWII_PORT} 未监听"; }
-info "二战 ${WWII_PORT} 已监听"
+info "二战 ${WWII_PORT} 已监听（就绪等待 ${WAITED}s）"
 ZONE_JSON=$(rsh_read "curl -s --max-time 8 http://127.0.0.1:$WWII_PORT/api/ezfy/zone | head -c 80")
 case "$ZONE_JSON" in *code*) info "zone 接口返回 JSON: $ZONE_JSON" ;; *) info "WARN: zone 接口暂无 JSON（可能还在灌种子），稍后自查" ;; esac
 
 if [ "$ZONE2" = "1" ]; then
-  echo "==> --zone2: 克隆 2 区（$ZONE2_DIR，端口 $ZONE2_PORT，独立库 qq_ezzt2，fresh）"
+  echo "==> --zone2: 克隆 2 区（${ZONE2_DIR}，端口 ${ZONE2_PORT}，独立库 qq_ezzt2，fresh）"
   if [ "$(rsh_read "test -d '$ZONE2_DIR' && echo yes || echo no")" = "yes" ]; then
     info "$ZONE2_DIR 已存在 —— 同步新二进制/web/脚本（保留其 config.yaml），重启 2 区"
     node "$SSH_RUN" exec "cp -f $REMOTE_DIR/server/server $ZONE2_DIR/server/server && cp -R $REMOTE_DIR/web/dist/. $ZONE2_DIR/web/dist/ && cp -f $REMOTE_DIR/start.sh $REMOTE_DIR/stop.sh $ZONE2_DIR/ && chmod +x $ZONE2_DIR/*.sh $ZONE2_DIR/server/server" || {
@@ -178,9 +184,14 @@ if [ "$ZONE2" = "1" ]; then
       node "$SSH_RUN" exec "tail -n 15 $ZONE2_DIR/logs/server.log 2>/dev/null" || true
       exit 1
     }
-    sleep 6
-    if [ "$(rsh_read "ss -lntp 2>/dev/null | grep ':$ZONE2_PORT ' >/dev/null && echo ZONE2_OK || echo ZONE2_FAIL")" = "ZONE2_OK" ]; then
-      info "2 区 $ZONE2_PORT 已监听（已更新）"
+    # ★ 2026-10-19 与 1 区同理：轮询等 2 区就绪（原 sleep 6 易误报）
+    WAITED2=0
+    while [ "$WAITED2" -lt 90 ]; do
+      [ "$(rsh_read "ss -lntp 2>/dev/null | grep ':$ZONE2_PORT ' >/dev/null && echo ZONE2_OK || echo ZONE2_FAIL")" = "ZONE2_OK" ] && break
+      sleep 2; WAITED2=$((WAITED2 + 2))
+    done
+    if [ "$WAITED2" -lt 90 ]; then
+      info "2 区 $ZONE2_PORT 已监听（已更新，就绪等待 ${WAITED2}s）"
     else
       info "WARN: 2 区 $ZONE2_PORT 还没监听 —— 看 $ZONE2_DIR/logs/server.log"
     fi
@@ -190,9 +201,14 @@ if [ "$ZONE2" = "1" ]; then
       node "$SSH_RUN" exec "tail -n 15 $ZONE2_DIR/logs/server.log 2>/dev/null" || true
       exit 1
     }
-    sleep 6
-    if [ "$(rsh_read "ss -lntp 2>/dev/null | grep ':$ZONE2_PORT ' >/dev/null && echo ZONE2_OK || echo ZONE2_FAIL")" = "ZONE2_OK" ]; then
-      info "2 区 $ZONE2_PORT 已监听"
+    # ★ 2026-10-19 同 1 区：轮询等 2 区就绪
+    WAITED2=0
+    while [ "$WAITED2" -lt 90 ]; do
+      [ "$(rsh_read "ss -lntp 2>/dev/null | grep ':$ZONE2_PORT ' >/dev/null && echo ZONE2_OK || echo ZONE2_FAIL")" = "ZONE2_OK" ] && break
+      sleep 2; WAITED2=$((WAITED2 + 2))
+    done
+    if [ "$WAITED2" -lt 90 ]; then
+      info "2 区 $ZONE2_PORT 已监听（就绪等待 ${WAITED2}s）"
     else
       info "WARN: 2 区 $ZONE2_PORT 还没监听 —— 看 $ZONE2_DIR/logs/server.log"
     fi

@@ -427,7 +427,7 @@ func (h *EzfyHandler) Troops(c *gin.Context) {
 	h.ezfySettlePopRecover(&city)
 	// ★ 2026-10-13 占用人口必须在 collectTrainQueue **之后**算：出厂队列在上面被清零
 	//   （其占用已转成「待恢复人口」），放前面会把同一条队列重复计一次。
-	popUsed = h.cityPopUsedD(city.ID, buildings, qs)
+	popUsed = h.cityPopUsedD(&city, buildings, qs)
 	// ★ 2026-09-23：超过「伤兵存活天数」还没救治的伤兵直接消失（ 5 天）
 	wounded = h.filterExpiredWounded(wounded)
 	deserters = h.filterExpiredWounded(deserters)
@@ -1122,8 +1122,8 @@ func (h *EzfyHandler) ProduceSet(c *gin.Context) {
 	city := h.bodyCity(uid, req.CityId)
 	vals := []int{req.RateFood, req.RateSteel, req.RateOil, req.RateRare}
 	for _, v := range vals {
-		if v < 1 || v > 100 {
-			resp.ParamError(c, "开工率需在 1~100 之间")
+		if v < 0 || v > 100 {
+			resp.ParamError(c, "开工率需在 0~100 之间")
 			return
 		}
 	}

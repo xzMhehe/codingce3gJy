@@ -324,32 +324,32 @@
     <template v-else-if="ezfy.cur === 'sourceset'">
         <div class="panel">
           <div class="panel-title">调整生产（开工率）</div>
-          <div class="old-line gray">开工率影响该资源的实际产量：实际产量 = 基础产量 × 开工率 / 100</div>
+          <div class="old-line gray">开工率影响该资源的实际产量：实际产量 = 基础产量 × 开工率 / 100；设为 0 表示停产，且该资源的资源建筑不再占用人口（空闲人口会相应增加）</div>
           <div class="old-line">
             {{ ezfy.resNames.food }}：
-            <input v-model="ezfy.rateFood" type="number" min="1" max="100" style="width:70px"/>%
-            <a href="javascript:;" @click="ezfy.rateFood = 1">[最小]</a>
+            <input v-model="ezfy.rateFood" type="number" min="0" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="ezfy.rateFood = 0">[最小]</a>
             <a href="javascript:;" @click="ezfy.rateFood = 100">[最大]</a>
           </div>
           <div class="old-line">
             {{ ezfy.resNames.steel }}：
-            <input v-model="ezfy.rateSteel" type="number" min="1" max="100" style="width:70px"/>%
-            <a href="javascript:;" @click="ezfy.rateSteel = 1">[最小]</a>
+            <input v-model="ezfy.rateSteel" type="number" min="0" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="ezfy.rateSteel = 0">[最小]</a>
             <a href="javascript:;" @click="ezfy.rateSteel = 100">[最大]</a>
           </div>
           <div class="old-line">
             {{ ezfy.resNames.oil }}：
-            <input v-model="ezfy.rateOil" type="number" min="1" max="100" style="width:70px"/>%
-            <a href="javascript:;" @click="ezfy.rateOil = 1">[最小]</a>
+            <input v-model="ezfy.rateOil" type="number" min="0" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="ezfy.rateOil = 0">[最小]</a>
             <a href="javascript:;" @click="ezfy.rateOil = 100">[最大]</a>
           </div>
           <div class="old-line">
             {{ ezfy.resNames.rare }}：
-            <input v-model="ezfy.rateRare" type="number" min="1" max="100" style="width:70px"/>%
-            <a href="javascript:;" @click="ezfy.rateRare = 1">[最小]</a>
+            <input v-model="ezfy.rateRare" type="number" min="0" max="100" style="width:70px"/>%
+            <a href="javascript:;" @click="ezfy.rateRare = 0">[最小]</a>
             <a href="javascript:;" @click="ezfy.rateRare = 100">[最大]</a>
           </div>
-          <div class="old-line" style="color:#0000cc">请检查输入数字是否合理（范围 1~100）</div>
+          <div class="old-line" style="color:#0000cc">请检查输入数字是否合理（范围 0~100，0 = 停产且不占用人口）</div>
           <div class="old-line">
             <button @click="ezfy.doSaveRate">确认调整</button>
           </div>

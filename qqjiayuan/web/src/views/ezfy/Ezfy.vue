@@ -4856,7 +4856,7 @@ export default {
       const vals = [this.rateFood, this.rateSteel, this.rateOil, this.rateRare]
       for (const v of vals) {
         const n = parseInt(v)
-        if (!n || n < 1 || n > 100) { this.notify('开工率需在 1~100 之间'); return }
+        if (isNaN(n) || n < 0 || n > 100) { this.notify('开工率需在 0~100 之间'); return }
       }
       api.post('/games/ezfy/city/produce', {
         rate_food: parseInt(this.rateFood), rate_steel: parseInt(this.rateSteel),

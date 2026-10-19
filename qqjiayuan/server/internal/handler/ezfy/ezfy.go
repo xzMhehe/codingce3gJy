@@ -338,6 +338,8 @@ func (h *EzfyHandler) createMainCity(uid uint) model.EzfyCity {
 		GoldCap: 1000000, FoodCap: 100000, SteelCap: 100000, OilCap: 100000, RareCap: 100000,
 		CityLevel: 1, LastTime: time.Now().UnixMilli(),
 		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
+		// ★ 2026-10-19 开工率默认 100（0 = 停产，见 ezfyRate）——库列默认 0 会让新城停产
+		RateFood: 100, RateSteel: 100, RateOil: 100, RateRare: 100,
 		X: pos[0], Y: pos[1],
 	}
 	h.DB.Create(&city)
@@ -370,6 +372,8 @@ func (h *EzfyHandler) replenishCity(uid uint) model.EzfyCity {
 		GoldCap: 1000000, FoodCap: 100000, SteelCap: 100000, OilCap: 100000, RareCap: 100000,
 		CityLevel: 1, LastTime: time.Now().UnixMilli(),
 		WareFood: 25, WareSteel: 25, WareOil: 25, WareRare: 25,
+		// ★ 2026-10-19 开工率默认 100（0 = 停产，见 ezfyRate）——库列默认 0 会让新城停产
+		RateFood: 100, RateSteel: 100, RateOil: 100, RateRare: 100,
 		X: pos[0], Y: pos[1],
 	}
 	h.DB.Create(&city)
@@ -2466,7 +2470,7 @@ func (h *EzfyHandler) trainTroopLocked(city *model.EzfyCity, troopId, count int,
 	//   开关关掉时整段跳过（不校验人口、不扣资源）。
 	recruitCost := ezfyRecruitCostOn()
 	if recruitCost {
-		popUsed := h.cityPopUsedD(city.ID, snap.buildingsOf(h, city.ID), trainQ)
+		popUsed := h.cityPopUsedD(city, snap.buildingsOf(h, city.ID), trainQ)
 		// ★ 2026-10-13 还要扣掉「待恢复人口」——训练完占用的人口不瞬间归还，
 		//   这段时间里它既不算空闲、也不该被拿来训练（否则等于训练完立刻又满了）。
 		popAvailable := city.Pop - popUsed - city.PopRecover
@@ -2602,15 +2606,43 @@ func (h *EzfyHandler) troopPop(cityId uint) int64 {
 	return 0
 }
 
+// ezfyResBuildingRateZero 该资源建筑是否因「开工率 = 0」而停产。
+//
+// ★ 2026-10-19 用户规则：调整生产里把某资源开工率设为 0 → 该资源停产（产量为 0），
+// 且对应资源建筑**不再占用人口**——玩家可借此腾出空闲人口。资源建筑对应关系：
+// 农田(3)=粮食 / 炼钢厂(4)=钢铁 / 石油基地(5)=石油 / 稀矿厂(6)=稀矿。
+// 民居(2)、仓库(11/12)等其它资源类建筑不随开工率释放人口。
+func ezfyResBuildingRateZero(city *model.EzfyCity, buildingId int) bool {
+	if city == nil {
+		return false
+	}
+	switch buildingId {
+	case 3:
+		return city.RateFood <= 0
+	case 4:
+		return city.RateSteel <= 0
+	case 5:
+		return city.RateOil <= 0
+	case 6:
+		return city.RateRare <= 0
+	}
+	return false
+}
+
 // buildingPop 城市「已占用人口」中的**建筑占用**部分：每栋已建建筑的「占用人口」(lv.Pop) 累加。
 //
 // ★ 用户反馈（2026-09-23）：建筑的「占用人口」此前完全没计入，导致空闲人口虚高。
-//
-//	每家建筑（市政厅/资源建筑/军事建筑/城防等）升级后都有「占用人口」，统一在此累加。
-func (h *EzfyHandler) buildingPop(cityId uint) int64 {
+// ★ 2026-10-19：开工率为 0 的资源建筑停产、不再占人口（见 ezfyResBuildingRateZero）。
+func (h *EzfyHandler) buildingPop(city *model.EzfyCity) int64 {
+	if city == nil {
+		return 0
+	}
 	pop := int64(0)
-	for _, b := range h.buildingList(cityId) {
+	for _, b := range h.buildingList(city.ID) {
 		if lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level); lv != nil {
+			if ezfyResBuildingRateZero(city, b.BuildingId) {
+				continue
+			}
 			pop += int64(lv.Pop)
 		}
 	}
@@ -2618,8 +2650,8 @@ func (h *EzfyHandler) buildingPop(cityId uint) int64 {
 }
 
 // cityPopUsed 城市「已占用人口」= 建筑占用 + 训练队列占用。
-func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
-	return h.buildingPop(cityId) + h.troopPop(cityId)
+func (h *EzfyHandler) cityPopUsed(city *model.EzfyCity) int64 {
+	return h.buildingPop(city) + h.troopPop(city.ID)
 }
 
 // cityPopUsedD 与 cityPopUsed 同口径，但复用本请求已查好的建筑列表：
@@ -2627,16 +2659,19 @@ func (h *EzfyHandler) cityPopUsed(cityId uint) int64 {
 // ★★ 2026-10-18 「用完就恢复」改造：训练中占用已并入「待恢复人口」（见 troopPop），
 //
 //	占用口径统一为**建筑占用**，trainQ 参数保留仅为兼容签名、不再累加。
-func (h *EzfyHandler) cityPopUsedD(cityId uint, buildings []model.EzfyCityBuilding, trainQ []model.EzfyTrainQueue) int64 {
+func (h *EzfyHandler) cityPopUsedD(city *model.EzfyCity, buildings []model.EzfyCityBuilding, trainQ []model.EzfyTrainQueue) int64 {
 	pop := int64(0)
 	if buildings != nil {
 		for _, b := range buildings {
 			if lv := ezfyCfg.buildingLevel(b.BuildingId, b.Level); lv != nil {
+				if ezfyResBuildingRateZero(city, b.BuildingId) {
+					continue
+				}
 				pop += int64(lv.Pop)
 			}
 		}
-	} else {
-		pop += h.buildingPop(cityId)
+	} else if city != nil {
+		pop += h.buildingPop(city)
 	}
 	return pop
 }
@@ -3545,7 +3580,7 @@ func (h *EzfyHandler) useItemOnce(uid uint, city *model.EzfyCity, cfg *model.Ezf
 		room := city.PopRecover
 		// 上限封顶：空闲人口 ≤ min(召集人口上限, 当前人口)
 		if hard := ezfyConvenePopMaxCfg(); hard > 0 {
-			free := ezfyPopFree(city.Pop, h.buildingPop(city.ID), h.troopPop(city.ID), city.PopRecover)
+			free := ezfyPopFree(city.Pop, h.buildingPop(city), h.troopPop(city.ID), city.PopRecover)
 			if d := hard - free; d < room {
 				room = d
 			}
@@ -4159,7 +4194,7 @@ func (h *EzfyHandler) viewPayload(uid uint) gin.H {
 	//   出厂队列在 collectTrainQueue 里被清零（其占用转成「待恢复人口」），
 	//   放前面会把同一条队列既算成「训练中占用」又算成「待恢复人口」→ 空闲人口凭空少一截。
 	//   ★ 2026-10-05 性能：已占用人口用已取数据纯内存算（零 SQL）。
-	popUsed = h.cityPopUsedD(city.ID, buildings, trainQueues)
+	popUsed = h.cityPopUsedD(&city, buildings, trainQueues)
 	// ★ 2026-10-04 传入已查好的城市列表：processIncoming 直接复用，省一次 Pluck 的 RTT
 	cids := make([]int64, 0, len(cities))
 	for _, c := range cities {
@@ -4473,12 +4508,14 @@ func (h *EzfyHandler) ezfyUserBrief(uid uint) (account string, level, exp int) {
 	return u.Username, u.Level, u.Exp
 }
 
-// ezfyRate 开工率归一化：0 视为未设置(按 100% 处理), 否则限制在 0~100
-// 说明: 0 与「未设置」在本模型里无法区分, 而把开工率设成 0 等于停产(没有实际意义),
-// 因此把 0 当作 100% 处理, 避免老数据(字段为 0)一上线就停产。
+// ezfyRate 开工率归一化：0 = 停产(不生产、资源建筑不占人口), 否则夹到 1~100。
+//
+// ★ 2026-10-19 语义变更：原来 0 当「未设置按 100%」——因为老数据字段为 0 表示从未调过。
+//   现在改为「0 = 停产」，上线前必须先回填老数据（rate_* = 0 → 100，见上线 SQL），
+//   否则老城/新城的默认 0 会全部停产。新建城市也显式写 100（见 createMainCity）。
 func ezfyRate(v int) int {
 	if v <= 0 {
-		return 100
+		return 0
 	}
 	if v > 100 {
 		return 100

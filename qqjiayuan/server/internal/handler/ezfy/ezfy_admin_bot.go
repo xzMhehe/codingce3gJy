@@ -787,7 +787,7 @@ func (h *EzfyAdmin) AdminEzfyBotEdit(c *gin.Context) {
 		// 重新读一次城（⑤ 可能刚改过 pop/pop_max/pop_recover）
 		var c2 model.EzfyCity
 		h.DB.First(&c2, city.ID)
-		bPop := ez.buildingPop(c2.ID)
+		bPop := ez.buildingPop(&c2)
 		tPop := ez.troopPop(c2.ID)
 		curFree := ezfyPopFree(c2.Pop, bPop, tPop, c2.PopRecover)
 		newPop := c2.Pop + (*in.FreePop - curFree)
@@ -1567,7 +1567,7 @@ func (h *EzfyAdmin) AdminEzfyBotTargetDel(c *gin.Context) {
 // ezBotPopFree 管理端算人机城的空闲人口（口径与玩家端 ezfyPopFree 完全一致）。
 func ezBotPopFree(h *EzfyAdmin, city model.EzfyCity) int64 {
 	ez := &EzfyHandler{DB: h.DB, HomeDB: h.HomeDB}
-	return ezfyPopFree(city.Pop, ez.buildingPop(city.ID), ez.troopPop(city.ID), city.PopRecover)
+	return ezfyPopFree(city.Pop, ez.buildingPop(&city), ez.troopPop(city.ID), city.PopRecover)
 }
 
 // AdminEzfyBotAttackNearest POST /admin/ezfy-bot/:uid/attack-nearest —— 出征最近的敌对真人城市

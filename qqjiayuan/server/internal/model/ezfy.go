@@ -1123,11 +1123,13 @@ type EzfyCity struct {
 	WareRare  int `gorm:"comment:仓库稀矿" json:"ware_rare"`
 
 	// 调整生产·开工率(0~100, 复刻原版 city/sourceSet.html)
-	// 实际产量 = 基础产量 × 开工率 / 100, 降低开工率可减少军队耗粮以外的资源消耗压力
-	RateFood  int `gorm:"comment:比率粮食" json:"rate_food"`
-	RateSteel int `gorm:"comment:比率钢铁" json:"rate_steel"`
-	RateOil   int `gorm:"comment:比率石油" json:"rate_oil"`
-	RateRare  int `gorm:"comment:比率稀矿" json:"rate_rare"`
+	// 实际产量 = 基础产量 × 开工率 / 100。
+	// ★ 2026-10-19 语义变更：0 = 停产（不生产，且该资源的资源建筑不再占用人口）。
+	//   老数据 0 表示「从未调整」——上线前必须回填为 100（见上线 SQL），否则老城全停产。
+	RateFood  int `gorm:"comment:比率粮食(0=停产)" json:"rate_food"`
+	RateSteel int `gorm:"comment:比率钢铁(0=停产)" json:"rate_steel"`
+	RateOil   int `gorm:"comment:比率石油(0=停产)" json:"rate_oil"`
+	RateRare  int `gorm:"comment:比率稀矿(0=停产)" json:"rate_rare"`
 
 	// ★ 2026-10-17 人机标识（profile 的冗余副本）：地图渲染 / 目标筛选 / 城市统计大量**直接查 city 表**、
 	//   不 join profile —— 线上 1核1G+跨 WAN，冗余一列比每次 join 便宜。写入点统一从 profile 取。
