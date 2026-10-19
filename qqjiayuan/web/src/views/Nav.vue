@@ -55,7 +55,7 @@
       <a href="javascript:;" @click="$router.push('/sign')">每日签到</a>.<a href="javascript:;" @click="$router.push('/play')">社区银行</a>.<a href="javascript:;" @click="$router.push('/play')">打工</a>.<a href="javascript:;" @click="$router.push('/search')">搜搜</a><br>
     </div>
 
-    <div class="login-tips">【管理专区】<a href="javascript:;" @click="window.open('http://'+location.host+'/admin-ui/')">管理系统</a>　移动版 WAP 风格 · 家园社区 出品</div>
+    <div class="login-tips">【管理专区】<a href="javascript:;" @click="window.open('http://'+location.host+'/admin-ui/#/login')">管理系统</a>　移动版 WAP 风格 · 家园社区 出品</div>
   </div>
 </template>
 

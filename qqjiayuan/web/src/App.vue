@@ -147,9 +147,9 @@ export default {
     goNoble () {
       this.$router.push('/noble')
     },
-    // 页脚"管理"：新窗口打开管理后台（诺哈 Page_Bottom 管理入口）
+    // 页脚"管理"：新窗口打开管理后台登录页（诺哈 Page_Bottom 管理入口）
     goAdmin () {
-      window.open(location.origin + '/admin-ui/')
+      window.open(location.origin + '/admin-ui/#/login')
     },
     isCurrent (n) {
       const p = this.$route.path
