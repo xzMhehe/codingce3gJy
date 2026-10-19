@@ -24,18 +24,20 @@ import (
 // ============ 一、军官池：普通军官 ============
 
 // ezfyPoolFirstNames / ezfyPoolLastNames 普通军官姓名库（40×40 = 1600 种组合，取前 1000）
+//
+// ★ 2026-10-19 用户规则：普通军官名由英文音译改为汉字（英文太长），下标顺序与英文版一一对应，线上库按此映射 UPDATE。
 var ezfyPoolFirstNames = []string{
-	"Pater", "Jeremy", "David", "Michael", "John", "Robert", "James", "William", "Charles", "Henry",
-	"George", "Edward", "Frank", "Albert", "Arthur", "Walter", "Harold", "Ralph", "Roy", "Earl",
-	"Bernard", "Clifford", "Norman", "Stanley", "Leonard", "Herbert", "Frederick", "Raymond", "Ernest", "Douglas",
-	"Andrew", "Patrick", "Victor", "Oliver", "Samuel", "Theodore", "Vincent", "Howard", "Gordon", "Lester",
+	"帕特", "杰里米", "大卫", "迈克尔", "约翰", "罗伯特", "詹姆斯", "威廉", "查尔斯", "亨利",
+	"乔治", "爱德华", "弗兰克", "艾伯特", "亚瑟", "沃尔特", "哈罗德", "拉尔夫", "罗伊", "厄尔",
+	"伯纳德", "克利福德", "诺曼", "斯坦利", "伦纳德", "赫伯特", "腓特烈", "雷蒙德", "欧内斯特", "道格拉斯",
+	"安德鲁", "帕特里克", "维克多", "奥利弗", "塞缪尔", "西奥多", "文森特", "霍华德", "戈登", "莱斯特",
 }
 
 var ezfyPoolLastNames = []string{
-	"Robinson", "Lee", "Smith", "Brown", "Wilson", "Taylor", "Clark", "Hall", "Young", "Wright",
-	"King", "Scott", "Green", "Baker", "Adams", "Nelson", "Carter", "Mitchell", "Perez", "Roberts",
-	"Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards", "Collins", "Stewart", "Morris", "Murphy",
-	"Cook", "Rogers", "Morgan", "Peterson", "Cooper", "Reed", "Bailey", "Bell", "Kelly", "Ward",
+	"罗宾逊", "李", "史密斯", "布朗", "威尔逊", "泰勒", "克拉克", "霍尔", "扬", "赖特",
+	"金", "斯科特", "格林", "贝克", "亚当斯", "纳尔逊", "卡特", "米切尔", "佩雷斯", "罗伯茨",
+	"特纳", "菲利普", "坎贝尔", "帕克", "埃文斯", "爱德华", "柯林斯", "斯图尔", "莫里斯", "墨菲",
+	"库克", "罗杰斯", "摩根", "彼得森", "库珀", "里德", "贝利", "贝尔", "凯利", "沃德",
 }
 
 // ezfyPoolOfficerCount 军官池里预置的普通军官数量（用户举例「比如有 1000 个军官」）

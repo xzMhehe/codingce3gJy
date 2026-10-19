@@ -198,7 +198,7 @@
           <a href="javascript:;" @click="ezfy.doRefreshRecruit">[刷新]</a>
           <!-- ★ 次数用完后，直接在军校使用招生简章（不用先去背包用） -->
           <a href="javascript:;" @click="ezfy.doUseRecruitTicket">[使用招生简章刷新]</a>
-          <span class="gray">(持有 {{ ezfy.recruitTicketCount() }} 张)</span>
+          <span class="gray">({{ ezfy.recruitTicketCount() }} 张)</span>
         </div>
         <div class="old-line">
           军校等级决定每小时候选数量, 参谋部{{ ezfy.recruitData.staff_level }}级(已用{{ ezfy.recruitData.used }}/{{ ezfy.recruitData.capacity }}),
@@ -590,10 +590,9 @@
 
         <!-- 操作 -->
         <div class="old-line officer-actions">
-          <a href="javascript:;" @click="ezfy.doGrant">[赏赐+10忠诚(1万金)]</a>
+          <a href="javascript:;" @click="ezfy.doGrant">[赏赐黄金]</a>
           <a href="javascript:;" @click="ezfy.doTreasureGrant()">[赏赐宝物]</a>
           <a href="javascript:;" @click="ezfy.doRespec">[洗点]</a>
-          <span v-if="ezfy.bagCount(16) > 0" class="gray">(持有军官洗点卡 {{ ezfy.bagCount(16) }} 张)</span>
           <a v-if="ezfy.officerDetail.officer.status !== 1 && ezfy.officerDetail.officer.position === 0"
              href="javascript:;" @click="ezfy.doExile">[流放]</a>
           <a v-if="ezfy.officerDetail.officer.star_up_on &&

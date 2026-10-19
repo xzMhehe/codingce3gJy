@@ -24,7 +24,11 @@ router.beforeEach((to, from, next) => {
     return next()
   }
   if (to.path.indexOf('/games/ezfy') !== 0) {
-    window.location.href = window.location.origin + to.fullPath
+    // ★★ 2026-10-19 修复无限刷新：原实现 `origin + fullPath` 在独立服上是「原地自跳」——
+    //   直接打开 http://host:8081/#/（路由 /）会 location.href = origin + '/'，
+    //   等于自己刷新自己，页面一直转圈。
+    //   独立壳只承载二战游戏，非二战路径统一落到游戏入口，绝不回跳自身。
+    window.location.href = window.location.origin + '/#/games/ezfy'
     return
   }
   next()
