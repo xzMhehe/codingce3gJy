@@ -193,10 +193,13 @@ func (h *EzfyHandler) orderListByCity(cityId uint) []model.EzfyOrder {
 	// ★★ 2026-10-19 补 status=3（驻守中）：增援到盟友城/附属野地的部队常驻在那里，
 	//   军官随军驻守，原来不查 3 → officerList 的「自愈」把它当成没命令 → 状态被改回空闲，
 	//   玩家看到「派出去的军官不见了/又出现在城里」（同一军官还能被重复派出）。
-	//   ★ status=3 只算**仍在驻守**的（result 为空）；已完成返航的驻军订单（result 非空）
-	//     不该再占着军官 —— 历史僵尸行兜底，否则军官永远回不来。
+	//   ★ 必须限定 `order_type = 6`（增援）：其他类型返航到达后也是 status=3，
+	//     但那是**已结束**（finishReturn 只改 status/carry，不写 result）——
+	//     不加限定会把「刚打完仗返航归队的订单」当成还在驻守，
+	//     军官被永久判忙、出征页选不到（线上 1 区「斯大林无法出征」就是这么来的：
+	//     两条 status=3 result='' 的征服野地订单把它锁死了）。
 	h.DB.Select("id, officer").
-		Where("city_id = ? AND (status IN (0,1,2,5,6) OR (status = 3 AND IFNULL(result,'') = ''))", cityId).
+		Where("city_id = ? AND (status IN (0,1,2,5,6) OR (status = 3 AND order_type = 6 AND IFNULL(result,'') = ''))", cityId).
 		Find(&orders)
 	return orders
 }

@@ -6410,17 +6410,9 @@ export default {
       api.get('/games/ezfy/officers/onduty').then(r => {
         if (r.code === 0) {
           this.onDutyOfficers = r.data.officers || []
-          // ★ 2026-10-13 性能（用户反馈「点[出征]卡顿」）：本城军官全量列表**只用于**
-          //   「为什么没有可带队军官」那句提示 —— 只有真的没有可带队军官时才需要。
-          //   挪到这里按需拉，别和出征页另外几个接口抢浏览器同域并发（上限 6）。
-          if (!this.onDutyOfficers.length) this.loadCityOfficers()
+          // ★ 2026-10-19 提示已简化成「(暂无可带队军官，可前往军校招募)」，
+          //   不再需要本城军官全量列表来解释「为什么」→ 省掉这次请求。
         }
-      })
-    },
-    // 本城军官全量列表（含出征中/俘虏）：只用于出征页的「为什么没有可带队军官」提示
-    loadCityOfficers () {
-      api.get('/games/ezfy/officers').then(r => {
-        if (r.code === 0) this.cityOfficers = r.data.officers || []
       })
     },
     // ---- 联络中心 ----

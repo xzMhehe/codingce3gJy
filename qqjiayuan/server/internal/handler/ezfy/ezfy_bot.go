@@ -1142,17 +1142,7 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 		}
 	}
 
-	// ② 没有计划 → 找目标（坐标区间走索引，绝不遍历全图）
-	// ★ 2026-10-18 人机也会打玩家的附属野地（约 1/4 概率优先）：挑一块附近的真人附属野地
-	//   掠夺，抢完资源就放（不占领、不留计划、不打持久战）；额度不足/没野地就照常找玩家城。
-	if mathrand.Intn(100) < 25 {
-		if wt, ok := h.botPickWildTarget(city); ok {
-			if !h.botAtkQuotaOK(b) {
-				return "", "", false
-			}
-			return h.botAttackWild(b, city, wt)
-		}
-	}
+	// ② 没有计划 → 先找**玩家城市**（坐标区间走索引，绝不遍历全图）
 	if tgt, ok := h.botPickTarget(city, troopTotal, cfg); ok {
 		if err := h.DB.Create(&model.EzfyBotTarget{
 			BotUid: b.UserID, TargetUid: tgt.UserID, TargetCityId: int64(tgt.CityID),
@@ -1161,6 +1151,18 @@ func (h *EzfyHandler) botMilitary(b *model.EzfyBot, city *model.EzfyCity, troopT
 			return "", "", false // 唯一键冲突（已有计划）→ 下轮再说
 		}
 		return "锁定目标", fmt.Sprintf("锁定 %s(%d,%d) 兵力%d", tgt.Name, tgt.X, tgt.Y, tgt.Troops), true
+	}
+	// ③ 攻击不了玩家（周围没有可打的城市 / 都打不过 / 没有符合条件的目标）
+	//   → 改打**玩家占领的附属野地**（用户规则 2026-10-19）：
+	//     · 必须是**征服(3)**，不是掠夺 —— 直接把对方的野地归属打掉；
+	//     · 胜利后立刻**放弃**（人机只摧毁，不占领，见 processArrive 的 bot 分支）；
+	//     · 只打有主的野地（中立野地不打，抢不到任何玩家的东西）。
+	//   原来是「25% 概率优先掠野」，会随机打中立野地，不符合用户口径。
+	if wt, ok := h.botPickWildTarget(city); ok {
+		if !h.botAtkQuotaOK(b) {
+			return "", "", false
+		}
+		return h.botAttackWild(b, city, wt)
 	}
 	return "", "", false
 }
@@ -1185,10 +1187,15 @@ type ezfyBotWildTarget struct {
 	Owner    string
 }
 
-// botPickWildTarget 在自己周围挑一块**真人**的附属野地（抢完就放，不写占领）。
+// botPickWildTarget 在自己周围挑一块**真人玩家占领**的附属野地（征服后放弃，不写占领）。
+//
+// ★★ 2026-10-19 用户规则「人机不该攻击没有归属的附属野地」：
+//
+//	`JOIN ezfy_city` 保证 city_id 指向的城真实存在，再加 `c.user_id > 0` 排除
+//	「野地行还在、归属城已无主」的历史脏数据 —— 这种行以前会被误判成「玩家野地」。
 //
 // 过滤（全部下推 SQL）：
-//   - 野地已被占领（city_id > 0）且主人是真人（is_bot=0）、不是自己
+//   - 野地已被占领（city_id > 0）且主人是真人（is_bot=0）、有 user_id、不是自己
 //   - 坐标在自己 ±25 格内
 //   - 未被采集（w.status != 1，且没有在途采集/驻守部队）
 //   - 新手村周围的低级野地（level <= 2）不打，留给人机自己发育
@@ -1200,7 +1207,8 @@ SELECT w.id AS id, w.x AS x, w.y AS y, w.level AS level, w.wild_type AS wild_typ
 FROM ezfy_wildland w
 JOIN ezfy_city c ON c.id = w.city_id
 LEFT JOIN ezfy_profile p ON p.user_id = c.user_id
-WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id <> ?
+WHERE w.city_id > 0 AND c.is_bot = 0 AND c.user_id > 0 AND c.user_id <> ?
+  AND c.id NOT IN (SELECT city_id FROM ezfy_occupy WHERE status = 1)
   AND w.x BETWEEN ? AND ? AND w.y BETWEEN ? AND ?
   AND w.status = 0 AND w.level > 2
   AND NOT EXISTS (SELECT 1 FROM ezfy_order o
@@ -1214,11 +1222,16 @@ ORDER BY RAND() LIMIT 1`,
 	return r, true
 }
 
-// botAttackWild 人机掠夺一块真人附属野地：抢完资源就放（不占领、不留计划）。
+// botAttackWild 人机**征服**一块真人玩家的附属野地，胜利后立刻放弃（只摧毁归属，自己不占）。
 //
-// ★ 打野不走战争链路（野地 1/2 目标不需要宣战），直接按「掠夺(2)」下单；
+// ★★ 2026-10-19 用户规则：
+//   - 「人机若攻击不了玩家，那么应该攻击玩家的附属野地」→ 由 botMilitary 在
+//     botPickTarget 失败后调用（不再 25% 随机掠野）；
+//   - 「而且是征服，胜利后就放弃拿到的附属野地」→ order_type=3；
+//     征服成功后由 processArrive 的 bot 分支调 ezfyClearWildlandAt 放弃；
+//   - 「现在人机在攻击没有归属的附属野地不对」→ botPickWildTarget 只挑有主野地。
 //
-//	征服(3)会写占领记录把人家的地占了，违背「抢完就放」的用户规则。
+// 打野不走战争链路（野地目标不需要宣战）。
 func (h *EzfyHandler) botAttackWild(b *model.EzfyBot, city *model.EzfyCity, wt ezfyBotWildTarget) (string, string, bool) {
 	var troops []model.EzfyCityTroop
 	h.DB.Where("city_id = ? AND count > 0", city.ID).Find(&troops)
@@ -1276,15 +1289,15 @@ func (h *EzfyHandler) botAttackWild(b *model.EzfyBot, city *model.EzfyCity, wt e
 		return "", "", false
 	}
 	code, msg := h.botCall(b.UserID, "", "POST", "/games/ezfy/order", map[string]interface{}{
-		"city_id": int64(city.ID), "order_type": 2, "target_type": 1,
+		"city_id": int64(city.ID), "order_type": 3, "target_type": 1,
 		"target_id": wt.ID, "target_x": wt.X, "target_y": wt.Y,
 		"troops": groups, "auto_battle": 1, "gather": gather,
 	})
 	if code == 0 {
 		h.botAtkCountInc(b)
-		return "掠野", fmt.Sprintf("掠夺玩家野地 Lv%d(%d,%d) 派兵 %d 支", wt.Level, wt.X, wt.Y, len(groups)), true
+		return "征服玩家野地", fmt.Sprintf("征服玩家野地 Lv%d(%d,%d) 派兵 %d 支(胜利后放弃)", wt.Level, wt.X, wt.Y, len(groups)), true
 	}
-	return "掠野失败", msg, false
+	return "征服野地失败", msg, false
 }
 
 // ezfyBotTargetRow 目标筛选结果

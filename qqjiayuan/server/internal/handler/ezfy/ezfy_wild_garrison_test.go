@@ -50,10 +50,11 @@ func TestWildGarrison(t *testing.T) {
 		t.Fatal("缴获的采集物资未并入战利品（攻方打附属野地拿不到资源）")
 	}
 
-	// ④ 军官：驻军订单(status=3 且未返航)也要算「军官在外」
+	// ④ 军官：驻军订单(status=3 且未返航)也要算「军官在外」；但必须限定 order_type=6，
+	//   否则「返航归队后 status=3、result 为空」的普通战斗订单会把军官永久判忙（线上斯大林事故）
 	off := rawFile(t, "ezfy_officer.go")
-	if !strings.Contains(off, "status IN (0,1,2,5,6) OR (status = 3 AND IFNULL(result,'') = '')") {
-		t.Fatal("军官 busy 判定漏了 status=3（驻军军官会被自愈成空闲/可重复派出）")
+	if !strings.Contains(off, "status IN (0,1,2,5,6) OR (status = 3 AND order_type = 6 AND IFNULL(result,'') = '')") {
+		t.Fatal("军官 busy 判定的 status=3 分支必须限定 order_type=6（否则打完仗返航的订单会锁死军官）")
 	}
 
 	// ⑤ 一键召回必须覆盖野地驻军（原来只认 target_type=3）

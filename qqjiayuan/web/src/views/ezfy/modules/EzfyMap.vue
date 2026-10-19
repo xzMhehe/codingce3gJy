@@ -259,10 +259,7 @@
             <span v-else-if="ezfy.orderType === 6" class="gray">(增援后军官调任目标城市)</span>
             <span v-else-if="ezfy.orderType === 8" class="gray">(派遣后军官随军调往目标城市)</span>
             <span v-if="ezfy.curOfficerBonus" class="green"> 军官战斗加成: 攻击+{{ ezfy.curOfficerBonus }}%</span>
-            <span v-if="!ezfy.onDutyOfficers.length" class="gray">
-              (「{{ ezfy.city.name }}」暂无可带队军官<template v-if="ezfy.cityOfficers.length">：本城 {{ ezfy.cityOfficers.length }} 名军官都在出征中或为俘虏</template>；
-              军官跟着城市走，别的城的军官不能在这里出征，可前往军校招募)
-            </span>
+            <span v-if="!ezfy.onDutyOfficers.length" class="gray">(暂无可带队军官，可前往军校招募)</span>
           </div>
 
           <!-- ② 集结令 -->

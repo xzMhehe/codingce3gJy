@@ -3992,6 +3992,12 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 		if order.TargetType == 3 || hasPlayerDefender {
 			autoBattle = false
 		}
+		// ★★ 2026-10-19 人机没有指挥能力：打**野地**（含玩家驻军）仍自动结算，
+		//   否则人机部队会进指挥室干等 20 分钟（40 回合 × 30 秒）才出结果，
+		//   期间还占着攻击额度。打玩家城维持原逻辑（进指挥室，给真人守方机会）。
+		if city.IsBot == 1 && order.TargetType != 3 {
+			autoBattle = true
+		}
 		// ★★ 2026-10-08 离线自动结算**只对打玩家城（target_type=3）生效**。
 		//   原因：180 秒在线窗口容易被放过（行军久、或结算那一刻不在操作），
 		//   打野地 / AI 寇城时玩家在出征页选了「否」却仍被静默自动打完 →
@@ -4469,6 +4475,16 @@ func (h *EzfyHandler) processArrive(uid uint, order *model.EzfyOrder, now int64)
 			} else {
 				h.DB.Model(&model.EzfyMapArea{}).Where("id = ?", area.ID).
 					Updates(map[string]interface{}{"area_type": 1, "owner_id": int64(city.ID), "level": wildLevel})
+			}
+			// ★★ 2026-10-19 人机「只摧毁、不占领」：征服成功后**立刻放弃**这块野地
+			//   （用户规则：「而且是征服，胜利后就放弃拿到的附属野地」）。
+			//   效果：原主人的野地归属被打掉、该坐标变回中立；人机不占上限、不留记录。
+			//   与玩家点[放弃]同口径 —— ezfyClearWildlandAt 会先把该坐标上的部队转返航再删行。
+			if city.IsBot == 1 {
+				h.ezfyClearWildlandAt(order.TargetX, order.TargetY, now)
+				h.DB.Model(&model.EzfyMapArea{}).Where("x = ? AND y = ?", order.TargetX, order.TargetY).
+					Update("owner_id", 0)
+				report += "\n(人机只摧毁野地归属, 不占领)"
 			}
 			// 寇城被摧毁, 24小时后复活
 			if order.TargetType == 2 {
