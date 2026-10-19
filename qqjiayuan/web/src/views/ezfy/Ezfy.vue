@@ -7398,11 +7398,34 @@ export default {
       this.officerBagFor = 0
       this.ensureOfficerBag()
     },
+    // ★★ 2026-10-19 静默重拉背包（不清空旧数据，避免列表闪一下空白）：
+    //   赏赐宝物这类「只减一件」的操作后，用它把数量校准到服务端真实值。
+    //   与 ensureOfficerBag 的区别：后者会先 `officerBag = []`（首次加载用），
+    //   这里保留现有行，请求回来整体替换。
+    async reloadOfficerBag () {
+      const o = this.officerDetail && this.officerDetail.officer
+      if (!o || !o.id) return
+      const id = o.id
+      try {
+        const r = await api.get('/games/ezfy/officers/' + id + '/backpack')
+        // 期间切了军官 → 丢弃这次结果，避免串数据
+        if (!this.officerDetail || !this.officerDetail.officer || this.officerDetail.officer.id !== id) return
+        if (r.code === 0) {
+          this.officerBag = (r.data && r.data.bag) || []
+          this.officerBagSets = (r.data && r.data.bag_sets) || []
+          this.officerBagLoaded = 1
+          this.officerBagFor = id
+        }
+      } catch (e) { /* 网络异常：保留本地乐观更新的结果 */ }
+    },
     // ★ 2026-10-10 打开军官详情页签：装备/装备背包 需要背包数据 → 先懒加载再切页
+    // ★ 2026-10-19 计谋 tab 从军校页搬到军官详情 → 切到它时按需拉计谋配置/信号弹持有量
+    //   （军校页那个入口已删，所以这里必须自己保证数据到位，否则进 tab 是空列表）
     openOfficerDetailTab (tab) {
       if ((tab === 'equip' || tab === 'bag') && !(this.officerBagLoaded && this.officerBagFor === (this.officerDetail && this.officerDetail.officer && this.officerDetail.officer.id))) {
         this.ensureOfficerBag()
       }
+      if (tab === 'scheme') this.loadSchemes()
       this.officerDetailTab = tab
     },
     loadOfficerDetail (id) {
@@ -7501,12 +7524,15 @@ export default {
         if (r.code !== 0) { this.notify(r.msg || '赏赐失败'); return }
         this.notify('赏赐成功, 忠诚+10')
         // ★ 2026-10-05 局部刷新（，别全页面刷新）：就地 忠诚+10、黄金-1万，零接口重拉
-        o.loyalty = Math.min(100, o.loyalty + 10)
+        // ★★ 2026-10-19 与「赏赐宝物」同口径：Number 转换 + $set 写入 + 服务端校准
+        //   （直接赋值在字段缺失/类型为字符串时不会触发视图更新，玩家看到「赏赐了没反应」）
+        this.$set(o, 'loyalty', Math.min(100, (Number(o.loyalty) || 0) + 10))
         if (this.officerDetail && this.officerDetail.gold !== undefined) {
           this.officerDetail.gold = Math.max(0, this.officerDetail.gold - 10000)
         }
         const lst = (this.officerData && this.officerData.officers) || []
         for (const m of lst) { if (m.id === id) { m.loyalty = o.loyalty; break } }
+        this.loadOfficerDetail(id)
       })
     },
     // ★ 2026-09-28 宝物可赏赐给军官加忠诚，品质不同加的不同（最高 +50）。
@@ -7540,12 +7566,21 @@ export default {
         //   · 从详情背包里移除已赏赐的那件宝物（数量 -1，computed officerTreasures 自动刷新，
         //     已赏赐的宝物不会再出现在列表里可点）
         //   · 军官列表里同步该军官忠诚
-        o.loyalty = Math.min(100, o.loyalty + gain)
+        // ★★ 2026-10-19 修「赏赐后忠诚 / 宝物数量不刷新」：
+        //   ① 忠诚先转 Number 再算（后端 JSON 若给字符串，"50"+10 会拼成 "5010"）；
+        //   ② 用 $set 写入，避免字段原本不存在时 Vue 2 侦测不到（直接赋值不触发视图更新）；
+        //   ③ 本地更新只是**乐观反馈**，随后用服务端数据校准（详情 = 忠诚/三维，背包 = 剩余数量）。
+        //      原来只靠本地推算 + splice，一旦 id 对不上或响应式没触发，界面就停在旧值。
+        this.$set(o, 'loyalty', Math.min(100, (Number(o.loyalty) || 0) + gain))
         const bag = this.officerBag || []
         const idx = bag.findIndex(x => x.id === e.id)
         if (idx >= 0) bag.splice(idx, 1)
         const lst = (this.officerData && this.officerData.officers) || []
         for (const m of lst) { if (m.id === o.id) { m.loyalty = o.loyalty; break } }
+        // 向服务端校准（静默，不闪屏）：详情整体替换 → 忠诚/属性一定是最新；
+        // 背包走 reload 而不是 refresh（后者会先清空，列表会闪一下空）
+        this.loadOfficerDetail(o.id)
+        this.reloadOfficerBag()
       })
     },
     // ★ 属性加点（每升 1 级得 1 点，只影响自己的军官）

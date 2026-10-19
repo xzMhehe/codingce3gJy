@@ -136,7 +136,8 @@
       </div>
       <div class="acade-tab">
         <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'officer' }" @click="ezfy.switchAcade('officer')">军官</a>|
-        <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'scheme' }" @click="ezfy.switchAcade('scheme')">计谋</a>|
+        <!-- ★ 2026-10-19 计谋 tab 已移到「军官详情 → 计谋」（属性/技能/装备 之间），
+             军校页不再单列；行军计谋仍在 军情→军队动态 里对部队使用。 -->
         <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'search' }" @click="ezfy.switchAcade('search')">招募</a>|
         <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'mayor' }" @click="ezfy.switchAcade('mayor')">任命市长</a>|
         <a href="javascript:;" :class="{ on: ezfy.acadeTab === 'equip' }" @click="ezfy.switchAcade('equip')">装备</a>|
@@ -440,43 +441,9 @@
              学习/遗忘统一走 军官列表 → 详情 → 技能 tab -->
       </div>
 
-      <!-- 计谋(复刻原版 acade/scheme.html: 12 条计谋, 发动消耗信号弹)
-           ★ 2026-09-22：计谋配置改由后端下发（管理端可维护消耗数量/上下架），
-             页面显示持有的信号弹数量，够了才能发动。 -->
-      <div class="panel" v-else-if="ezfy.acadeTab === 'scheme'">
-        <div class="old-line">
-          持有「{{ ezfy.schemeData.bullet_name }}」：
-          <b :class="ezfy.schemeData.bullet_have > 0 ? 'green' : 'red'">{{ ezfy.schemeData.bullet_have }}</b> 个
-          <a href="javascript:;" @click="ezfy.switchMallTab('item'); ezfy.go('mall')">[去商城购买]</a>
-        </div>
-        <div class="old-line" v-for="(s, i) in ezfy.schemeData.schemes" :key="'sc' + s.id">
-          {{ i + 1 }}.{{ s.name }}：<br/>
-          {{ s.des }}<br/>
-          需要{{ ezfy.schemeData.bullet_name }}：{{ s.bullet }}
-          <span class="gray">（持有 {{ ezfy.schemeData.bullet_have }}）</span>
-          <!-- 先发制人：要选目标城市坐标 -->
-          <template v-if="s.kind === 1">
-            <span class="gray"> 目标坐标:</span>
-            <input v-model="ezfy.schemeX" type="text" placeholder="x" style="width:56px"/>
-            <input v-model="ezfy.schemeY" type="text" placeholder="y" style="width:56px"/>
-          </template>
-          <!-- ★ 2026-09-30 行军计谋（神兵天降/战略转移）：作用于部队，不在军校页发动，
-               引导玩家去「军情 → 军队动态」对出征中/返回中的部队使用 -->
-          <span v-if="s.kind === 2 || s.kind === 3" class="green">
-            [去「军情→军队动态」对出征中/返回中的部队使用]
-          </span>
-          <template v-else>
-            <a v-if="s.enough" href="javascript:;" @click="ezfy.doScheme(s)">[发动]</a>
-            <span v-else class="red">[{{ ezfy.schemeData.bullet_name }}不足]</span>
-          </template>
-          <br/>--------------------
-        </div>
-        <div class="old-line gray" v-if="!ezfy.schemeData.schemes.length">(暂无计谋，等管理员在后台配置)</div>
-        <div class="old-line">
-          <a href="javascript:;" @click="ezfy.go('bag')">[背包(信号弹)]</a>
-          <a href="javascript:;" @click="ezfy.go('back')">[返回]</a> <a href="javascript:;" @click="ezfy.go('home')">[返回首页]</a>
-        </div>
-      </div>
+      <!-- ★ 2026-10-19 军校页的「计谋」面板已整体搬到「军官详情 → 计谋」tab
+           （用户要求：放到 属性 和 装备 之间，为后续「军官属性加成」做准备）。
+           这里不再渲染，避免同一份计谋列表在军校页和军官详情两处重复出现。 -->
 
       <!-- 战俘营(复刻原版 acade/conquer.html) -->
       <div class="panel" v-else-if="ezfy.acadeTab === 'captive'">
@@ -529,7 +496,7 @@
 
     <!-- ============ 军官详情(officerdetail) ============ -->
     <template v-else-if="ezfy.cur === 'officerdetail'">
-      <!-- ★ 军官详情：按 tab 分「属性 / 技能 / 装备」三块（同 acade 页 .acade-tab 写法） -->
+      <!-- ★ 军官详情：按 tab 分「属性 / 技能 / 计谋 / 装备」四块（同 acade 页 .acade-tab 写法） -->
       <div class="panel" v-if="ezfy.officerDetail.officer">
         <div class="panel-title">
           {{ ezfy.officerDetail.officer.name }}
@@ -545,6 +512,9 @@
         <div class="acade-tab">
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'attr' }" @click="ezfy.officerDetailTab = 'attr'">属性</a>|
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'skill' }" @click="ezfy.officerDetailTab = 'skill'">技能</a>|
+          <!-- ★ 2026-10-19 计谋 tab 从军校页移到这里（属性 ↔ 装备 之间）：
+               同一个列表、同一套发动逻辑，只是入口改到军官详情，为后续「军官属性加成」做准备。 -->
+          <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'scheme' }" @click="ezfy.openOfficerDetailTab('scheme')">计谋</a>|
           <!-- ★ 2026-10-10 装备背包 tab 已合并进「装备」：一个 tab 看已穿 + 一键穿戴 + 背包 -->
           <a href="javascript:;" :class="{ on: ezfy.officerDetailTab === 'equip' }" @click="ezfy.openOfficerDetailTab('equip')">装备</a>
           <!-- ★ 2026-10-04 名将背景 tab 放到最后（仅名将显示）：二战的功勋介绍 -->
@@ -677,6 +647,43 @@
             <td><a href="javascript:;" @click="ezfy.doLearn(s)">[学习]</a></td>
           </tr>
         </table>
+        </div>
+
+        <!-- 计谋 tab（★ 2026-10-19 从军校页搬来：12 条计谋，发动消耗信号弹）
+             位置按用户要求放在「属性 / 技能」之后、「装备」之前，
+             后续「军官属性加成」也接在这一段（计谋 → 加成），所以独立成一个 tab 而不是塞进属性。 -->
+        <div v-if="ezfy.officerDetailTab === 'scheme'">
+          <div class="old-line">
+            持有「{{ ezfy.schemeData.bullet_name }}」：
+            <b :class="ezfy.schemeData.bullet_have > 0 ? 'green' : 'red'">{{ ezfy.schemeData.bullet_have }}</b> 个
+            <a href="javascript:;" @click="ezfy.switchMallTab('item'); ezfy.go('mall')">[去商城购买]</a>
+          </div>
+          <div class="old-line" v-for="(s, i) in ezfy.schemeData.schemes" :key="'sc' + s.id">
+            {{ i + 1 }}.{{ s.name }}：<br/>
+            {{ s.des }}<br/>
+            需要{{ ezfy.schemeData.bullet_name }}：{{ s.bullet }}
+            <span class="gray">（持有 {{ ezfy.schemeData.bullet_have }}）</span>
+            <!-- 先发制人：要选目标城市坐标 -->
+            <template v-if="s.kind === 1">
+              <span class="gray"> 目标坐标:</span>
+              <input v-model="ezfy.schemeX" type="text" placeholder="x" style="width:56px"/>
+              <input v-model="ezfy.schemeY" type="text" placeholder="y" style="width:56px"/>
+            </template>
+            <!-- ★ 2026-09-30 行军计谋（神兵天降/战略转移）：作用于部队，
+                 引导玩家去「军情 → 军队动态」对出征中/返回中的部队使用 -->
+            <span v-if="s.kind === 2 || s.kind === 3" class="green">
+              [去「军情→军队动态」对出征中/返回中的部队使用]
+            </span>
+            <template v-else>
+              <a v-if="s.enough" href="javascript:;" @click="ezfy.doScheme(s)">[发动]</a>
+              <span v-else class="red">[{{ ezfy.schemeData.bullet_name }}不足]</span>
+            </template>
+            <br/>--------------------
+          </div>
+          <div class="old-line gray" v-if="!ezfy.schemeData.schemes.length">(暂无计谋，等管理员在后台配置)</div>
+          <div class="old-line">
+            <a href="javascript:;" @click="ezfy.go('bag')">[背包(信号弹)]</a>
+          </div>
         </div>
 
         <!-- 装备 tab（已穿戴 + 一键卸下 + 一键穿套装） -->
